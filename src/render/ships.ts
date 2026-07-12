@@ -124,7 +124,7 @@ export function buildBulletMesh(): THREE.Mesh {
   return m;
 }
 
-const casingGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.26, 5);
+const casingGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.52, 5);
 const casingMat = new THREE.MeshStandardMaterial({
   color: 0xd9a441,
   flatShading: true,

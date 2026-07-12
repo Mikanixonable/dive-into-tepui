@@ -105,6 +105,7 @@ export class Game {
   private casings: Casing[] = [];
   private debris: DebrisPiece[] = [];
   private effects: FlashEffect[] = [];
+  private planeCrossMarks: { pos: Vec3; age: number }[] = [];
 
   private readonly glowTex: THREE.Texture;
   private readonly playerOrbitLine = new OrbitLine(0x35e0ff, 0.55);
@@ -120,6 +121,8 @@ export class Game {
   private target: Ship | null = null;
   private throttleIdx = C.THROTTLE_DEFAULT_IDX;
   private fineAttitude = false;
+  private zoomActive = false;
+  private wasFiring = false;
 
   private fireCooldown = 0;
   private shots = 0;
@@ -258,6 +261,7 @@ export class Game {
 
   update(dtRaw: number): void {
     const dt = Math.min(dtRaw, 0.1);
+    this.zoomActive = this.input.down('KeyZ');
     this.handleEdgeInput();
     if (!this.paused && this.phase === 'playing') {
       this.simulate(dt);
@@ -364,13 +368,20 @@ export class Game {
     const simDt = dt * warp;
     const canAct = warp <= C.MAX_PHYS_WARP && this.player.alive;
 
-    // 射撃(実時間ベースの連射間隔)
-    this.fireCooldown -= dt;
-    const wantFire = this.input.down('Space') || this.input.mouseFiring;
-    if (wantFire && this.player.alive) {
-      if (warp > C.MAX_PHYS_WARP) {
-        this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
-      } else if (this.fireCooldown <= 0) {
+    // 射撃(実時間ベースの連射間隔)。撃ち始めはレールが動き出す起動遅延を挟む。
+    const rawWantFire = this.input.down('Space') || this.input.mouseFiring;
+    if (rawWantFire && this.player.alive && warp > C.MAX_PHYS_WARP) {
+      this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
+    }
+    const wantFire = rawWantFire && this.player.alive && warp <= C.MAX_PHYS_WARP;
+    if (wantFire && !this.wasFiring) {
+      this.sfx.spinUp();
+      this.fireCooldown = C.SPINUP_TIME;
+    }
+    this.wasFiring = wantFire;
+    if (wantFire) {
+      this.fireCooldown -= dt;
+      if (this.fireCooldown <= 0) {
         this.fireGun();
         this.fireCooldown = C.FIRE_INTERVAL;
       }
@@ -405,6 +416,7 @@ export class Game {
       for (const d of this.debris) stepOrbitRK4(d.state, sub);
       this.simTime += sub;
       this.checkBulletHits();
+      this.checkPlaneCrossings();
     }
     this.lastSimDt = simDt;
 
@@ -567,11 +579,40 @@ export class Game {
       this.scene.remove(old.obj);
     }
 
-    // マズルフラッシュ
-    this.spawnFlash(addScaled(clone(p.state.r), fwd, 9), clone(p.state.v), 2.5, 7, 0.07, 0xfff0b8);
+    // マズルフラッシュ(ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
+    this.spawnFlash(
+      addScaled(clone(p.state.r), fwd, 9),
+      clone(p.state.v),
+      2.5,
+      7,
+      0.07,
+      0xfff0b8,
+      this.zoomActive ? C.ZOOM_MUZZLE_FLASH_SCALE : 1,
+    );
 
     this.shots++;
     this.sfx.fire();
+  }
+
+  // 発射弾がターゲットの軌道面(自機正面にある、目標がいる面)を通過した位置を記録し、
+  // 次弾の照準修正の目安になるマーカーを表示する。
+  private checkPlaneCrossings(): void {
+    const tgt = this.target;
+    if (!tgt || !tgt.alive) return;
+    const tgtEl = elementsFromState(tgt.state.r, tgt.state.v);
+    if (!tgtEl) return;
+    const n = tgtEl.hHat;
+
+    for (const b of this.bullets) {
+      if (!b.alive) continue;
+      const d0 = dot(b.prevR, n);
+      const d1 = dot(b.state.r, n);
+      if (d0 === d1 || d0 > 0 === d1 > 0) continue;
+      const t = d0 / (d0 - d1);
+      const pos = addScaled(b.prevR, sub(b.state.r, b.prevR), t);
+      this.planeCrossMarks.push({ pos, age: 0 });
+      if (this.planeCrossMarks.length > C.MAX_PLANE_CROSS_MARKS) this.planeCrossMarks.shift();
+    }
   }
 
   // サブステップ間の相対運動を線分 vs 球でチェック(高速弾のトンネリング防止)
@@ -695,9 +736,10 @@ export class Game {
     size1: number,
     duration: number,
     color: number,
+    peakOpacity = 1,
   ): void {
     const mesh = buildFlashMesh(this.glowTex, color);
-    const fx: FlashEffect = { mesh, pos, vel, age: 0, duration, size0, size1 };
+    const fx: FlashEffect = { mesh, pos, vel, age: 0, duration, size0, size1, peakOpacity };
     this.effects.push(fx);
     this.scene.add(mesh);
   }
@@ -755,17 +797,16 @@ export class Game {
 
     // カメラ(自機中心、上 = 動径方向)。[Z] 長押しで機首固定の照準ズーム。
     const mouse = this.input.consumeMouse();
-    const zoomActive = this.input.down('KeyZ');
     const boreFwd = this.player.alive ? qRotate(this.player.att.q, v3(0, 0, 1)) : null;
     const boreUp = this.player.alive ? qRotate(this.player.att.q, v3(0, 1, 0)) : null;
-    this.chase.update(this.camera, mouse, norm(o), norm(pv), zoomActive, dt, boreFwd, boreUp);
+    this.chase.update(this.camera, mouse, norm(o), norm(pv), this.zoomActive, dt, boreFwd, boreUp);
     this.camera.updateMatrixWorld();
     this.sun.mesh.quaternion.copy(this.camera.quaternion);
 
     // 機体(ズーム中は視界を妨げないよう自機を非表示にする)
     this.player.obj.position.set(0, 0, 0);
     this.setObjAttitude(this.player);
-    this.player.obj.visible = this.player.alive && !zoomActive;
+    this.player.obj.visible = this.player.alive && !this.zoomActive;
     for (const e of this.enemies) {
       if (!e.alive) continue;
       e.obj.position.set(e.state.r.x - o.x, e.state.r.y - o.y, e.state.r.z - o.z);
@@ -806,7 +847,7 @@ export class Game {
       fx.mesh.position.set(fx.pos.x - o.x, fx.pos.y - o.y, fx.pos.z - o.z);
       fx.mesh.scale.setScalar(size);
       fx.mesh.quaternion.copy(this.camera.quaternion);
-      (fx.mesh.material as THREE.MeshBasicMaterial).opacity = 1 - t;
+      (fx.mesh.material as THREE.MeshBasicMaterial).opacity = fx.peakOpacity * (1 - t);
       return true;
     });
 
@@ -818,8 +859,27 @@ export class Game {
 
     this.updateMarkers(o, pv, tgt);
     this.updateNodeMarkers(playerEl, tgt, o);
+    this.updatePlaneCrossMarkers(o, dt);
     this.updateHudPanels(dt, playerEl, tgt);
     this.hud.tick();
+  }
+
+  // ターゲット軌道面を通過した自弾の位置を、しばらくの間マーカーとして表示する
+  private updatePlaneCrossMarkers(o: Vec3, dt: number): void {
+    this.planeCrossMarks = this.planeCrossMarks.filter((m) => {
+      m.age += dt;
+      return m.age < C.PLANE_CROSS_LIFETIME;
+    });
+    for (let i = 0; i < C.MAX_PLANE_CROSS_MARKS; i++) {
+      const key = `pc${i}`;
+      const m = this.planeCrossMarks[i];
+      if (!m) {
+        this.hud.hideMarker(key);
+        continue;
+      }
+      const p = this.project(sub(m.pos, o));
+      this.hud.marker(key, 'mk-planecross', '·', p.x, p.y, p.front);
+    }
   }
 
   private setObjAttitude(s: Ship): void {

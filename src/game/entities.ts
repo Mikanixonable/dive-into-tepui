@@ -47,4 +47,5 @@ export interface FlashEffect {
   duration: number;
   size0: number;
   size1: number;
+  peakOpacity: number; // 発生直後の最大不透明度倍率(ズーム中のマズルフラッシュ減光などに使う)
 }

@@ -68,8 +68,28 @@ export class Sfx {
   }
 
   fire(): void {
-    this.noiseBurst(0.09, 'highpass', 1800, 0.22);
-    this.tone(150, 0.06, 0.12, 'square');
+    this.noiseBurst(0.1, 'lowpass', 900, 0.28);
+    this.tone(65, 0.09, 0.18, 'square');
+  }
+
+  // 連射開始前、レールが機械的に動き出すような起動音
+  spinUp(): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(55, t);
+    osc.frequency.exponentialRampToValueAtTime(320, t + 0.3);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.linearRampToValueAtTime(0.13, t + 0.05);
+    gain.gain.setValueAtTime(0.13, t + 0.22);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.32);
+    this.noiseBurst(0.3, 'bandpass', 550, 0.09);
   }
 
   hit(): void {
