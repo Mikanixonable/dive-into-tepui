@@ -4,9 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repository is in a pre-implementation planning stage. There is no application code, build system, package manifest, or test suite yet — only `dev.md`, a design/concept note. Do not invent build/lint/test commands or architecture that don't exist; check the actual repository contents before assuming any tooling is present.
+A minimal project skeleton exists: TypeScript + Webpack + npm, Three.js (WebGPU renderer via the `three/webgpu` entry point) for rendering, and a Web Worker running an RK4 N-body integrator for orbital physics. No game logic, UI, or asset pipeline yet — this is scaffolding only. There is no test suite.
 
 `dev.md` is explicitly marked as human-authored only ("この文書は人間のみが記入できる") — do not edit it. Read it for project context, but leave modifications to the user.
+
+### Commands
+- `npm run dev` — start webpack-dev-server at http://localhost:8080
+- `npm run build` — production build to `dist/`
+- `npm run typecheck` — `tsc --noEmit`
+
+### Architecture
+- `src/main.ts` — entry point; sets up the scene, seeds initial Earth/Moon state, spawns the physics worker, and runs the render loop.
+- `src/render/scene.ts` — Three.js `WebGPURenderer` setup (async `init()` required before first render).
+- `src/physics/bodies.ts` — plain-data types (`Body`, `SimState`) shared between the main thread and the worker (structured-cloned across `postMessage`).
+- `src/physics/integrator.ts` — RK4 integrator over Newtonian N-body gravity (`stepRK4`). Pure functions, no THREE/DOM dependency, so it can run in a worker.
+- `src/physics/physics.worker.ts` — receives `{state, dt, substeps}`, sub-steps the integrator, posts back the updated `SimState`.
+- `src/types/three-shims.d.ts` — this three.js version (0.169) ships no `.d.ts` for the `three/webgpu` entry point; this file patches in minimal types for `WebGPURenderer`. Remove once upstream types cover it.
+
+Not yet implemented: atmospheric drag, J2/tidal perturbations, three-body (Sun) perturbation, timewarp/adaptive step control, ECS, collision/debris physics, UI/HUD. See `dev.md` and `memo.md` for design direction on these.
 
 ## Project concept (from dev.md)
 
