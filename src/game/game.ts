@@ -5,6 +5,7 @@
 // 描画は自機中心のフローティングオリジン(自機が常に (0,0,0))。
 import * as THREE from 'three/webgpu';
 import {
+  Elements,
   ExtraAccel,
   OrbitState,
   R_EARTH,
@@ -752,16 +753,19 @@ export class Game {
     this.earth.group.position.set(-o.x, -o.y, -o.z);
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * this.simTime) / SIDEREAL_DAY);
 
-    // カメラ(自機中心、上 = 動径方向)。[Z] 長押しで照準ズーム。
+    // カメラ(自機中心、上 = 動径方向)。[Z] 長押しで機首固定の照準ズーム。
     const mouse = this.input.consumeMouse();
     const zoomActive = this.input.down('KeyZ');
-    this.chase.update(this.camera, mouse, norm(o), norm(pv), zoomActive, dt);
+    const boreFwd = this.player.alive ? qRotate(this.player.att.q, v3(0, 0, 1)) : null;
+    const boreUp = this.player.alive ? qRotate(this.player.att.q, v3(0, 1, 0)) : null;
+    this.chase.update(this.camera, mouse, norm(o), norm(pv), zoomActive, dt, boreFwd, boreUp);
     this.camera.updateMatrixWorld();
     this.sun.mesh.quaternion.copy(this.camera.quaternion);
 
-    // 機体
+    // 機体(ズーム中は視界を妨げないよう自機を非表示にする)
     this.player.obj.position.set(0, 0, 0);
     this.setObjAttitude(this.player);
+    this.player.obj.visible = this.player.alive && !zoomActive;
     for (const e of this.enemies) {
       if (!e.alive) continue;
       e.obj.position.set(e.state.r.x - o.x, e.state.r.y - o.y, e.state.r.z - o.z);
@@ -813,6 +817,7 @@ export class Game {
     this.targetOrbitLine.update(tgt ? elementsFromState(tgt.state.r, tgt.state.v) : null, o);
 
     this.updateMarkers(o, pv, tgt);
+    this.updateNodeMarkers(playerEl, tgt, o);
     this.updateHudPanels(dt, playerEl, tgt);
     this.hud.tick();
   }
@@ -882,6 +887,34 @@ export class Game {
     if (!leadShown) this.hud.hideMarker('lead');
   }
 
+  // ターゲットの軌道面との交線(相対昇交点・降交点)を自機の軌道上に表示する。
+  // 面変更(ノーマル/アンチノーマル)burn を行うべき位置がひと目で分かる。
+  private updateNodeMarkers(playerEl: Elements | null, tgt: Ship | null, o: Vec3): void {
+    if (!playerEl || !tgt) {
+      this.hud.hideMarker('an');
+      this.hud.hideMarker('dn');
+      return;
+    }
+    const tgtEl = elementsFromState(tgt.state.r, tgt.state.v);
+    const lineDir = tgtEl ? cross(playerEl.hHat, tgtEl.hHat) : null;
+    if (!tgtEl || !lineDir || lenSq(lineDir) < 1e-6) {
+      // 軌道面がほぼ一致 → 交線が定まらない
+      this.hud.hideMarker('an');
+      this.hud.hideMarker('dn');
+      return;
+    }
+
+    const d = norm(lineDir);
+    const thAsc = Math.atan2(dot(d, playerEl.qHat), dot(d, playerEl.pHat));
+    const rAsc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc));
+    const rDesc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc + Math.PI));
+
+    const ascP = this.project(sub(scale(d, rAsc), o));
+    const descP = this.project(sub(scale(d, -rDesc), o));
+    this.hud.marker('an', 'mk-node', '▲', ascP.x, ascP.y, ascP.front, 'AN');
+    this.hud.marker('dn', 'mk-node', '▽', descP.x, descP.y, descP.front, 'DN');
+  }
+
   // |relP + relV t| = s t を満たす最小の正の t
   private solveLeadTime(relP: Vec3, relV: Vec3, s: number): number | null {
     const a = lenSq(relV) - s * s;
@@ -935,6 +968,11 @@ export class Game {
         const relP = sub(tgt.state.r, this.player.state.r);
         const relV = sub(tgt.state.v, this.player.state.v);
         const dist = len(relP);
+        const tgtEl = elementsFromState(tgt.state.r, tgt.state.v);
+        const relIncDeg =
+          playerEl && tgtEl
+            ? (Math.acos(Math.max(-1, Math.min(1, dot(playerEl.hHat, tgtEl.hHat)))) * 180) / Math.PI
+            : NaN;
         this.hud.setTarget({
           name: tgt.name,
           dist,
@@ -942,6 +980,11 @@ export class Game {
           relSpeed: len(relV),
           hp: tgt.hp,
           maxHp: tgt.maxHp,
+          apAlt: tgtEl ? tgtEl.apAlt : NaN,
+          peAlt: tgtEl ? tgtEl.peAlt : NaN,
+          incDeg: tgtEl ? tgtEl.incDeg : NaN,
+          period: tgtEl ? tgtEl.period : NaN,
+          relIncDeg,
         });
       } else {
         this.hud.setTarget(null);

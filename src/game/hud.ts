@@ -28,6 +28,11 @@ export interface TargetData {
   relSpeed: number;
   hp: number;
   maxHp: number;
+  apAlt: number;
+  peAlt: number;
+  incDeg: number;
+  period: number;
+  relIncDeg: number; // 自機軌道面との相対傾斜角 [deg]
 }
 
 export interface EnemyRow {
@@ -91,6 +96,7 @@ const STYLE = `
 .mk-lead { color: #ff5f5f; }
 .mk-pro { color: #8aff8a; }
 .mk-retro { color: #8aff8a; }
+.mk-node { color: #c9a0ff; }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
   background: rgba(2, 8, 12, 0.72); flex-direction: column; text-align: center;
@@ -205,8 +211,9 @@ export class Hud {
         <tr><td class="key">T</td><td>RCS 回転制動 ON/OFF</td></tr>
         <tr><td class="key">1 / 2 / 3</td><td>エンジン出力 3段階切替 (弱 / 中 / 強)</td></tr>
         <tr><td class="key">V</td><td>姿勢微調整モード ON/OFF (角加速度・角速度を絞って小刻みに操作)</td></tr>
-        <tr><td class="key">Z (長押し)</td><td>照準ズーム (画角を狭めてターゲット方向を拡大表示)</td></tr>
-        <tr><td class="key">Tab</td><td>ターゲット切替 (近い順)</td></tr>
+        <tr><td class="key">Z (長押し)</td><td>照準ズーム (機首方向を画面中心に拡大表示、自機は非表示になる)</td></tr>
+        <tr><td class="key">Tab</td><td>ターゲット切替 (近い順)。TARGET パネルに軌道要素・相対傾斜角を表示</td></tr>
+        <tr><td class="key">▲AN / ▽DN マーカー</td><td>自機軌道とターゲット軌道面の交点。面変更(ノーマル/アンチノーマル)burn の目安位置</td></tr>
         <tr><td class="key">Space / 左クリック</td><td>機関砲発射 (ワープ×4以下)</td></tr>
         <tr><td class="key">, / .</td><td>タイムワープ 減 / 増</td></tr>
         <tr><td class="key">P</td><td>一時停止</td></tr>
@@ -265,7 +272,12 @@ export class Hud {
       <div class="row"><span class="k">距離</span><span class="v">${fmtDist(t.dist)}</span></div>
       <div class="row"><span class="k">接近速度</span><span class="v">${fmtSpeed(t.closing)}</span></div>
       <div class="row"><span class="k">相対速度</span><span class="v">${fmtSpeed(t.relSpeed)}</span></div>
-      <div class="row"><span class="k">HP</span><span class="v">${'■'.repeat(Math.max(0, t.hp))}${'□'.repeat(Math.max(0, t.maxHp - t.hp))}</span></div>`;
+      <div class="row"><span class="k">HP</span><span class="v">${'■'.repeat(Math.max(0, t.hp))}${'□'.repeat(Math.max(0, t.maxHp - t.hp))}</span></div>
+      <div class="row"><span class="k">遠地点 AP</span><span class="v">${fmtDist(t.apAlt)}</span></div>
+      <div class="row"><span class="k">近地点 PE</span><span class="v">${fmtDist(t.peAlt)}</span></div>
+      <div class="row"><span class="k">傾斜角 INC</span><span class="v">${isFinite(t.incDeg) ? t.incDeg.toFixed(2) + '°' : '---'}</span></div>
+      <div class="row"><span class="k">周期 PRD</span><span class="v">${fmtTime(t.period)}</span></div>
+      <div class="row"><span class="k">相対傾斜 [AN/DN]</span><span class="v">${isFinite(t.relIncDeg) ? t.relIncDeg.toFixed(2) + '°' : '---'}</span></div>`;
   }
 
   setEnemyList(rows: EnemyRow[]): void {

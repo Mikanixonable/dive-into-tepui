@@ -24,15 +24,9 @@ export class ChaseCamera {
     fwd: Vec3,
     zoomActive: boolean,
     dt: number,
+    boreFwd: Vec3 | null,
+    boreUp: Vec3 | null,
   ): void {
-    // ズーム中は画角に応じて視点感度を落とし、細かい照準合わせをしやすくする
-    const lookScale = this.fov / C.BASE_FOV;
-    this.yaw -= mouse.dx * 0.005 * lookScale;
-    this.pitch += mouse.dy * 0.005 * lookScale;
-    this.pitch = Math.max(-1.35, Math.min(1.35, this.pitch));
-    this.dist *= Math.exp(mouse.wheel * 0.0012);
-    this.dist = Math.max(12, Math.min(8000, this.dist));
-
     const targetFov = zoomActive ? C.ZOOM_FOV : C.BASE_FOV;
     const k = 1 - Math.exp(-C.ZOOM_LERP_RATE * dt);
     this.fov += (targetFov - this.fov) * k;
@@ -40,6 +34,24 @@ export class ChaseCamera {
       camera.fov = this.fov;
       camera.updateProjectionMatrix();
     }
+
+    // 照準ズーム中: 三人称視点をやめ、機体位置(原点)から機首方向を狙う
+    // 固定ガンサイト視点にする(画面中心 = 照準先、自機は呼び出し側で非表示にする)。
+    // 姿勢操作(I/K/J/L)で狙いを付ける設計のため、マウスでの視点回転は行わない。
+    if (zoomActive && boreFwd && boreUp) {
+      this.fwdV.set(boreFwd.x, boreFwd.y, boreFwd.z).normalize();
+      this.upV.set(boreUp.x, boreUp.y, boreUp.z).normalize();
+      camera.position.set(0, 0, 0);
+      camera.up.copy(this.upV);
+      camera.lookAt(this.fwdV.x * 1000, this.fwdV.y * 1000, this.fwdV.z * 1000);
+      return;
+    }
+
+    this.yaw -= mouse.dx * 0.005;
+    this.pitch += mouse.dy * 0.005;
+    this.pitch = Math.max(-1.35, Math.min(1.35, this.pitch));
+    this.dist *= Math.exp(mouse.wheel * 0.0012);
+    this.dist = Math.max(12, Math.min(8000, this.dist));
 
     this.upV.set(up.x, up.y, up.z);
     this.fwdV.set(fwd.x, fwd.y, fwd.z);
