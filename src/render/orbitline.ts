@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { Elements, sampleOrbit } from '../physics/orbital';
 import { Vec3 } from '../physics/vec3';
 
-const POINT_COUNT = 160;
+const POINT_COUNT = 220;
 
 // WebGPU レンダラー(r169)は LineLoop 非対応のため、THREE.Line で
 // 始点を終端に複製して閉じた楕円を描く。
