@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-A minimal project skeleton exists: TypeScript + Webpack + npm, Three.js (WebGPU renderer via the `three/webgpu` entry point) for rendering, and a Web Worker running an RK4 N-body integrator for orbital physics. No game logic, UI, or asset pipeline yet — this is scaffolding only. There is no test suite.
+A playable LEO (low Earth orbit) shooting game: TypeScript + Webpack + npm, Three.js `WebGPURenderer` (via the `three/webgpu` entry point). Real-scale/real-time Earth orbit, KSP-style frame-based RCS translation (orbital / target reference frames), manual rotation with RCS damping, time warp, lead-marker gunnery, shell casings and destruction debris on accurate orbital physics, win on destroying all 5 enemies, lose on atmospheric reentry.
 
 `dev.md` is explicitly marked as human-authored only ("この文書は人間のみが記入できる") — do not edit it. Read it for project context, but leave modifications to the user.
 
@@ -13,26 +13,42 @@ A minimal project skeleton exists: TypeScript + Webpack + npm, Three.js (WebGPU 
 - `npm run build` — production build to `dist/`
 - `npm run typecheck` — `tsc --noEmit`
 
-### Architecture
-- `src/main.ts` — entry point; sets up the scene, seeds initial Earth/Moon state, spawns the physics worker, and runs the render loop.
-- `src/render/scene.ts` — Three.js `WebGPURenderer` setup (async `init()` required before first render).
-- `src/physics/bodies.ts` — plain-data types (`Body`, `SimState`) shared between the main thread and the worker (structured-cloned across `postMessage`).
-- `src/physics/integrator.ts` — RK4 integrator over Newtonian N-body gravity (`stepRK4`). Pure functions, no THREE/DOM dependency, so it can run in a worker.
-- `src/physics/physics.worker.ts` — receives `{state, dt, substeps}`, sub-steps the integrator, posts back the updated `SimState`.
-- `src/types/three-shims.d.ts` — this three.js version (0.169) ships no `.d.ts` for the `three/webgpu` entry point; this file patches in minimal types for `WebGPURenderer`. Remove once upstream types cover it.
+There is no automated test suite wired into npm. Physics can be verified by compiling `src/physics/*.ts` to CommonJS with `tsc` and running assertions in node (pure functions, no DOM/THREE deps).
 
-Not yet implemented: atmospheric drag, J2/tidal perturbations, three-body (Sun) perturbation, timewarp/adaptive step control, ECS, collision/debris physics, UI/HUD. See `dev.md` and `memo.md` for design direction on these.
+### Architecture
+
+Simulation state lives in ECI coordinates (Y axis = north pole), SI units (m, m/s), as plain `{x,y,z}` data. Rendering uses a **floating origin**: the player ship is always at world (0,0,0) and everything else (including the Earth mesh at `-playerR`) is positioned relative to it each frame, so f32 GPU precision never sees absolute LEO magnitudes. Camera: near=2m, far=6e7m — no logarithmic depth needed (see comment in `scene.ts`).
+
+Physics runs on the main thread (per-entity central-gravity two-body integration is cheap); the N-body worker is **currently unused**, kept for the future cislunar (Sun-Earth-Moon) phase.
+
+- `src/main.ts` — entry point; WebGPU init, error overlay fallback, rAF loop driving `Game.update`.
+- `src/game/game.ts` — orchestrator: entity management, substepped integration (higher warp → more substeps, max 20s each), input→thrust/torque, segment-vs-sphere bullet collision (tunneling-proof), win/lose, render sync, HUD markers (boresight/lead/prograde/target).
+- `src/game/const.ts` — all gameplay tuning constants (thrust, warp levels, fire rate, hit radii...).
+- `src/game/{input,camera,hud,audio,entities}.ts` — keyboard/mouse state + edge-trigger queue; ship-centered chase camera (up = radial); DOM-overlay HUD (panels, screen-projected markers, help, end screen); WebAudio synth SFX (no assets); entity type defs.
+- `src/physics/orbital.ts` — central-gravity RK4 for one entity with optional extra-acceleration callback (thrust, evaluated per RK4 stage), state→orbital elements, ellipse sampling for orbit lines. Pure functions.
+- `src/physics/attitude.ts` — rigid-body attitude: quaternion + body-frame ω via Euler's equations. ω integrated with RK4 + kinetic-energy projection (naive explicit integration diverges — this is what makes the Dzhanibekov effect on debris stable long-term). Pure functions.
+- `src/physics/vec3.ts` — plain-object Vec3 math helpers.
+- `src/physics/{bodies,integrator,physics.worker}.ts` — original N-body RK4 worker stack, unused by the LEO game; retained for the cislunar phase.
+- `src/render/earth.ts` — low-poly Earth: per-face vertex colors from deterministic 3D fBm noise (continents/biomes/ice), clouds **baked into face colors** (a separate cloud shell z-fights with the surface near the horizon at 24-bit depth), additive BackSide atmosphere rim shells.
+- `src/render/ships.ts` — primitive-built low-poly meshes: player ship (nose = body +Z), enemy variants, shared-geometry tracer bullets, casings, debris shards, billboard flash.
+- `src/render/{stars,orbitline}.ts` — stars as tiny world-space triangles (WebGPU points are 1px; `THREE.Points` size doesn't work), sun billboard; orbit ellipse lines (`THREE.Line` — **`LineLoop` is unsupported by the WebGPU renderer**, close the loop manually).
+- `src/types/three-shims.d.ts` — three.js 0.169 ships no `.d.ts` for `three/webgpu`; minimal `WebGPURenderer` typings. Remove once upstream types cover it. Import THREE **only** from `'three/webgpu'` (mixing with `'three'` would duplicate classes at runtime).
+
+### WebGPU renderer gotchas (three.js 0.169)
+- `THREE.LineLoop` and `THREE.Points` sizing are not supported; use `THREE.Line` / triangle-based sprites.
+- Additive-blended materials need explicit `transparent: true`.
+- Headless-Chrome screenshots work with `--headless=new --enable-gpu --enable-unsafe-webgpu --disable-gpu-sandbox --no-sandbox` (flaky; retry a few times).
+
+Not yet implemented: atmospheric drag, J2/tidal perturbations, Sun/Moon perturbation, enemy AI (targets are passive), aurora effects, cloud shadows, sound assets, ECS. See `dev.md` for design direction.
 
 ## Project concept (from dev.md)
 
-An orbital-mechanics shooting game, intended as a web game, set in the Earth-Moon system:
+An orbital-mechanics shooting game, intended as a web game, set in the Earth-Moon system (current build: LEO only):
 
 - Gameplay centers on realistic orbital maneuvers and physically accurate ballistic calculations, low-poly but visually appealing depictions of Earth's atmosphere, spacecraft, and spacecraft destruction.
 - Orbital calculations should account for Sun-Earth-Moon three-body dynamics, atmospheric drag, and tidal forces. Reference concepts to consider: Sun-Earth and Earth-Moon Lagrange points, sun-synchronous recurrent orbits, halo orbits, low-energy transfers and ballistic capture, double lunar swingbys, and gradual altitude-raising approach maneuvers (like the Kounotori HTV's ISS approach).
 - Aesthetic goals: Earth auroras, auroras from solar storms, auroras from charged particles generated by combat, shadows on Earth's evening clouds, and the Dzhanibekov effect on destroyed debris.
 
-## Working in this repo
+## Controls (current build)
 
-Since there is no established codebase yet, when the user asks to start implementation:
-- Confirm the intended tech stack/framework before scaffolding anything, since none is specified in dev.md.
-- Once code, build tooling, or tests are added, update this file with the actual commands and architecture.
+W/S = prograde/retrograde, A/D = normal±, Q/E = radial in/out (F switches to target-relative frame: approach/retreat/left/right/down/up). I/K/J/L/U/O = pitch/yaw/roll, T = RCS rotation damping, Tab = cycle target, Space / left click = fire, right drag / wheel = camera, `,` / `.` = time warp (thrust and guns locked above ×4), P = pause, H = help, R = restart (after game end).

@@ -8,18 +8,20 @@ export interface GameScene {
   resize: () => void;
 }
 
-// 地球半径(約6,400km)から宇宙船(数m)までのスケール差に対応するため
-// 対数深度バッファ相当の設定と、遠近カメラのnear/far比を広く取る。
+// 描画は自機中心のフローティングオリジン(単位: m)。宇宙船(数m)から
+// 地球(半径6,371km)・星空シェル(3.5e7m)までを1つの深度レンジに収める。
+// near=2m なら地平線距離(~2,400km)での深度誤差も大気シェルの厚みより
+// 十分小さく、対数深度バッファなしで z-fighting を回避できる。
 export async function createGameScene(canvas: HTMLCanvasElement): Promise<GameScene> {
   const scene = new THREE.Scene();
 
   const camera = new THREE.PerspectiveCamera(
-    50,
+    55,
     window.innerWidth / window.innerHeight,
-    0.1,
-    1e9,
+    2,
+    6e7,
   );
-  camera.position.set(0, 0, 20000);
+  camera.position.set(0, 0, 40);
 
   const renderer = new WebGPURenderer({ canvas, antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
