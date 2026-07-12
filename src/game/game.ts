@@ -117,6 +117,8 @@ export class Game {
   private frameMode: FrameMode = 'orbital';
   private rcsDamp = true;
   private target: Ship | null = null;
+  private throttleIdx = C.THROTTLE_DEFAULT_IDX;
+  private fineAttitude = false;
 
   private fireCooldown = 0;
   private shots = 0;
@@ -293,6 +295,18 @@ export class Game {
           this.rcsDamp = !this.rcsDamp;
           this.hud.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
           break;
+        case 'KeyV':
+          this.fineAttitude = !this.fineAttitude;
+          this.hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
+          break;
+        case 'Digit1':
+        case 'Digit2':
+        case 'Digit3': {
+          const idx = Number(code[code.length - 1]) - 1;
+          this.throttleIdx = idx;
+          this.hud.hint(`エンジン出力: 第${idx + 1}段 (${C.THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
+          break;
+        }
         case 'Comma':
           if (this.warpIdx > 0) {
             this.warpIdx--;
@@ -432,6 +446,7 @@ export class Game {
 
     const mode = this.frameMode;
     const tR = this.target && this.target.alive ? this.target.state.r : null;
+    const thrustAccel = C.THROTTLE_LEVELS[this.throttleIdx]!;
 
     return (r: Vec3, v: Vec3): Vec3 => {
       let d1: Vec3;
@@ -455,9 +470,9 @@ export class Game {
         d3 = radOut;
       }
       return v3(
-        (d1.x * ax1 + d2.x * ax2 + d3.x * ax3) * C.THRUST_ACCEL,
-        (d1.y * ax1 + d2.y * ax2 + d3.y * ax3) * C.THRUST_ACCEL,
-        (d1.z * ax1 + d2.z * ax2 + d3.z * ax3) * C.THRUST_ACCEL,
+        (d1.x * ax1 + d2.x * ax2 + d3.x * ax3) * thrustAccel,
+        (d1.y * ax1 + d2.y * ax2 + d3.y * ax3) * thrustAccel,
+        (d1.z * ax1 + d2.z * ax2 + d3.z * ax3) * thrustAccel,
       );
     };
   }
@@ -472,10 +487,15 @@ export class Game {
     const inY = (i.down('KeyL') ? 1 : 0) + (i.down('KeyJ') ? -1 : 0); // ヨー
     const inZ = (i.down('KeyU') ? 1 : 0) + (i.down('KeyO') ? -1 : 0); // ロール
 
+    // 微調整モード: 角加速度・角速度上限を絞り、小刻みな姿勢操作を可能にする
+    const angScale = this.fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
+    const maxAngAccel = C.MAX_ANG_ACCEL * angScale;
+    const maxAngVel = C.MAX_ANG_VEL * angScale;
+
     const tq = v3(
-      inX * C.MAX_ANG_ACCEL * I.x,
-      inY * C.MAX_ANG_ACCEL * I.y,
-      inZ * C.MAX_ANG_ACCEL * I.z,
+      inX * maxAngAccel * I.x,
+      inY * maxAngAccel * I.y,
+      inZ * maxAngAccel * I.z,
     );
     if (this.rcsDamp) {
       // 入力のない軸のみ制動(手動操作を妨げない)
@@ -486,8 +506,8 @@ export class Game {
     stepAttitude(att, tq, attDt);
 
     const wMag = len(att.w);
-    if (wMag > C.MAX_ANG_VEL) {
-      att.w = scale(att.w, C.MAX_ANG_VEL / wMag);
+    if (wMag > maxAngVel) {
+      att.w = scale(att.w, maxAngVel / wMag);
     }
   }
 
@@ -732,9 +752,10 @@ export class Game {
     this.earth.group.position.set(-o.x, -o.y, -o.z);
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * this.simTime) / SIDEREAL_DAY);
 
-    // カメラ(自機中心、上 = 動径方向)
+    // カメラ(自機中心、上 = 動径方向)。[Z] 長押しで照準ズーム。
     const mouse = this.input.consumeMouse();
-    this.chase.update(this.camera, mouse, norm(o), norm(pv));
+    const zoomActive = this.input.down('KeyZ');
+    this.chase.update(this.camera, mouse, norm(o), norm(pv), zoomActive, dt);
     this.camera.updateMatrixWorld();
     this.sun.mesh.quaternion.copy(this.camera.quaternion);
 
@@ -897,6 +918,8 @@ export class Game {
         paused: this.paused,
         frameMode: this.frameMode,
         rcsDamp: this.rcsDamp,
+        throttleIdx: this.throttleIdx,
+        fineAttitude: this.fineAttitude,
         alt: this.altitudeOf(this.player.state.r),
         spd: len(this.player.state.v),
         apAlt: playerEl ? playerEl.apAlt : NaN,

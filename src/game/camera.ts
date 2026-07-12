@@ -4,23 +4,42 @@
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../physics/vec3';
 import { MouseDelta } from './input';
+import * as C from './const';
 
 export class ChaseCamera {
   yaw = 0; // 0 = 機体後方(プログレード側から見る)
   pitch = 0.3;
   dist = 38;
+  private fov = C.BASE_FOV;
 
   private readonly upV = new THREE.Vector3();
   private readonly fwdV = new THREE.Vector3();
   private readonly sideV = new THREE.Vector3();
   private readonly offset = new THREE.Vector3();
 
-  update(camera: THREE.PerspectiveCamera, mouse: MouseDelta, up: Vec3, fwd: Vec3): void {
-    this.yaw -= mouse.dx * 0.005;
-    this.pitch += mouse.dy * 0.005;
+  update(
+    camera: THREE.PerspectiveCamera,
+    mouse: MouseDelta,
+    up: Vec3,
+    fwd: Vec3,
+    zoomActive: boolean,
+    dt: number,
+  ): void {
+    // ズーム中は画角に応じて視点感度を落とし、細かい照準合わせをしやすくする
+    const lookScale = this.fov / C.BASE_FOV;
+    this.yaw -= mouse.dx * 0.005 * lookScale;
+    this.pitch += mouse.dy * 0.005 * lookScale;
     this.pitch = Math.max(-1.35, Math.min(1.35, this.pitch));
     this.dist *= Math.exp(mouse.wheel * 0.0012);
     this.dist = Math.max(12, Math.min(8000, this.dist));
+
+    const targetFov = zoomActive ? C.ZOOM_FOV : C.BASE_FOV;
+    const k = 1 - Math.exp(-C.ZOOM_LERP_RATE * dt);
+    this.fov += (targetFov - this.fov) * k;
+    if (Math.abs(this.fov - camera.fov) > 1e-3) {
+      camera.fov = this.fov;
+      camera.updateProjectionMatrix();
+    }
 
     this.upV.set(up.x, up.y, up.z);
     this.fwdV.set(fwd.x, fwd.y, fwd.z);

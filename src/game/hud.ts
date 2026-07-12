@@ -1,11 +1,15 @@
 // DOM オーバーレイの HUD。数値パネル・スクリーン投影マーカー・
 // ヒント・リザルト画面を管理する。WebGPU キャンバスの上に重ねる。
+import * as C from './const';
+
 export interface StatsData {
   met: number;
   warpLabel: string;
   paused: boolean;
   frameMode: 'orbital' | 'target';
   rcsDamp: boolean;
+  throttleIdx: number;
+  fineAttitude: boolean;
   alt: number;
   spd: number;
   apAlt: number;
@@ -155,7 +159,9 @@ export class Hud {
       <div class="row"><span class="k">MET</span><span class="v" data-id="met"></span></div>
       <div class="row"><span class="k">TIME WARP</span><span class="v" data-id="warp"></span></div>
       <div class="row"><span class="k">推進基準 [F]</span><span class="v" data-id="mode"></span></div>
-      <div class="row"><span class="k">RCS制動 [T]</span><span class="v" data-id="rcs"></span></div>`;
+      <div class="row"><span class="k">RCS制動 [T]</span><span class="v" data-id="rcs"></span></div>
+      <div class="row"><span class="k">出力 [1-3]</span><span class="v" data-id="throttle"></span></div>
+      <div class="row"><span class="k">微調整 [V]</span><span class="v" data-id="fine"></span></div>`;
 
     const orbit = el('div', 'hud-orbit', this.root, 'panel');
     orbit.innerHTML = `
@@ -179,7 +185,8 @@ export class Hud {
 
     const controls = el('div', 'hud-controls', this.root);
     controls.innerHTML =
-      'W/S/A/D/Q/E:並進 &nbsp;I/K/J/L/U/O:回転 &nbsp;Space/左クリック:射撃 &nbsp;右ドラッグ:視点 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
+      'W/S/A/D/Q/E:並進 &nbsp;I/K/J/L/U/O:回転 &nbsp;1/2/3:出力 &nbsp;V:微調整 &nbsp;Z:ズーム &nbsp;' +
+      'Space/左クリック:射撃 &nbsp;右ドラッグ:視点 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
 
     el('div', 'hud-hint', this.root);
     el('div', 'hud-toast', this.root);
@@ -196,11 +203,14 @@ export class Hud {
         <tr><td class="key">J / L</td><td>ヨー (左 / 右)</td></tr>
         <tr><td class="key">U / O</td><td>ロール (左 / 右)</td></tr>
         <tr><td class="key">T</td><td>RCS 回転制動 ON/OFF</td></tr>
+        <tr><td class="key">1 / 2 / 3</td><td>エンジン出力 3段階切替 (弱 / 中 / 強)</td></tr>
+        <tr><td class="key">V</td><td>姿勢微調整モード ON/OFF (角加速度・角速度を絞って小刻みに操作)</td></tr>
+        <tr><td class="key">Z (長押し)</td><td>照準ズーム (画角を狭めてターゲット方向を拡大表示)</td></tr>
         <tr><td class="key">Tab</td><td>ターゲット切替 (近い順)</td></tr>
         <tr><td class="key">Space / 左クリック</td><td>機関砲発射 (ワープ×4以下)</td></tr>
         <tr><td class="key">, / .</td><td>タイムワープ 減 / 増</td></tr>
         <tr><td class="key">P</td><td>一時停止</td></tr>
-        <tr><td class="key">右ドラッグ / ホイール</td><td>カメラ回転 / ズーム</td></tr>
+        <tr><td class="key">右ドラッグ / ホイール</td><td>カメラ回転 / 距離ズーム</td></tr>
       </table>`;
 
     el('div', 'hud-end', this.root);
@@ -228,6 +238,12 @@ export class Hud {
       modeEl.classList.toggle('mode-tgt', d.frameMode === 'target');
     }
     this.setText('rcs', d.rcsDamp ? 'ON' : 'OFF');
+    this.setText('throttle', `第${d.throttleIdx + 1}段 (${C.THROTTLE_LEVELS[d.throttleIdx]!.toFixed(1)} m/s²)`);
+    const fineEl = this.els.get('fine');
+    if (fineEl) {
+      fineEl.textContent = d.fineAttitude ? 'ON' : 'OFF';
+      fineEl.classList.toggle('mode-tgt', d.fineAttitude);
+    }
     this.setText('alt', fmtDist(d.alt));
     this.setText('spd', fmtSpeed(d.spd));
     this.setText('ap', fmtDist(d.apAlt));
