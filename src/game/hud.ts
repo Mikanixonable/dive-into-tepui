@@ -97,6 +97,8 @@ const STYLE = `
 .mk-pro { color: #8aff8a; }
 .mk-retro { color: #8aff8a; }
 .mk-node { color: #c9a0ff; }
+.mk-planecross { color: #ffffff; opacity: 0.55; }
+.mk-planecross .sym { font-size: 14px; }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
   background: rgba(2, 8, 12, 0.72); flex-direction: column; text-align: center;
@@ -214,7 +216,8 @@ export class Hud {
         <tr><td class="key">Z (長押し)</td><td>照準ズーム (機首方向を画面中心に拡大表示、自機は非表示になる)</td></tr>
         <tr><td class="key">Tab</td><td>ターゲット切替 (近い順)。TARGET パネルに軌道要素・相対傾斜角を表示</td></tr>
         <tr><td class="key">▲AN / ▽DN マーカー</td><td>自機軌道とターゲット軌道面の交点。面変更(ノーマル/アンチノーマル)burn の目安位置</td></tr>
-        <tr><td class="key">Space / 左クリック</td><td>機関砲発射 (ワープ×4以下)</td></tr>
+        <tr><td class="key">・ マーカー</td><td>発射した弾がターゲットの軌道面を通過した位置。次弾の照準修正の目安</td></tr>
+        <tr><td class="key">Space / 左クリック</td><td>機関砲発射 (ワープ×4以下)。撃ち始めは起動音とともに一瞬遅れて連射開始</td></tr>
         <tr><td class="key">, / .</td><td>タイムワープ 減 / 増</td></tr>
         <tr><td class="key">P</td><td>一時停止</td></tr>
         <tr><td class="key">右ドラッグ / ホイール</td><td>カメラ回転 / 距離ズーム</td></tr>

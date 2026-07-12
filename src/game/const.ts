@@ -13,18 +13,23 @@ export const MAX_ANG_VEL = 1.6; // 手動回転の角速度上限 [rad/s]
 export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
 
 // 微調整モード([V]キーでトグル): 角加速度・角速度上限を絞り、小刻みな姿勢調整を可能にする
-export const FINE_ATTITUDE_SCALE = 0.16;
+export const FINE_ATTITUDE_SCALE = 0.032;
 
 export const BASE_FOV = 55; // 通常時の垂直画角 [deg]
 export const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg]
 export const ZOOM_LERP_RATE = 9; // 画角遷移の追従速度 [1/s]
+export const ZOOM_MUZZLE_FLASH_SCALE = 0.1; // ズーム中のマズルフラッシュ最大不透明度倍率(完全には消さない)
 
 export const MUZZLE_SPEED = 800; // 機関砲初速 [m/s]
-export const FIRE_INTERVAL = 0.14; // 発射間隔 [s]
+export const FIRE_INTERVAL = 0.112; // 発射間隔 [s]
+export const SPINUP_TIME = 0.3; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
 export const BULLET_SPREAD = 0.002; // 散布界 [rad]
 export const BULLET_LIFETIME = 240; // [sim s]
 export const RECOIL_DV = 0.04; // 反動 [m/s]
 export const SELF_HIT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
+
+export const PLANE_CROSS_LIFETIME = 1.5; // ターゲット軌道面通過点マーカーの表示時間 [s]
+export const MAX_PLANE_CROSS_MARKS = 12;
 
 export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
 export const MAX_BULLETS = 400;
