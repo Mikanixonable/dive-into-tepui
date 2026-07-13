@@ -111,10 +111,35 @@ function vertexColor(px: number, py: number, pz: number, out: THREE.Color): void
   out.multiplyScalar(0.94 + micro * 0.12);
 
   // 雲: 大小 2 スケールを合成し、縁を柔らかく
+  const cover = cloudCover(px, py, pz);
+
+  // 雲の影: 雲は地表から ~10km 上にあるので、影は雲の位置から少し西へずれて落ちる。
+  // 地球固定(頂点色)への焼き込みなので太陽方向には追従しない近似だが、
+  // 「雲の隣に影が伸びる」見た目は常時成立する。
+  const hl = Math.sqrt(px * px + pz * pz);
+  if (hl > 1e-4) {
+    // 東向き単位ベクトル(自転方向) = ŷ × p̂ の正規化
+    const ex = -pz / hl;
+    const ez = px / hl;
+    const off = 0.025;
+    let sx = px + ex * off;
+    let sy = py;
+    let sz = pz + ez * off;
+    const sl = Math.sqrt(sx * sx + sy * sy + sz * sz);
+    sx /= sl;
+    sy /= sl;
+    sz /= sl;
+    const shadow = cloudCover(sx, sy, sz);
+    out.multiplyScalar(1 - 0.32 * shadow * (1 - cover));
+  }
+
+  out.lerp(CLOUD_WHITE, cover * 0.9);
+}
+
+function cloudCover(px: number, py: number, pz: number): number {
   const cloudBase = fbm(px * 2.3 + 51.7, py * 2.3, pz * 2.3, 5);
   const cloudWisp = fbm(px * 6.1 + 13.9, py * 6.1, pz * 6.1, 3);
-  const cover = smoothstep(0.52, 0.72, cloudBase * 0.75 + cloudWisp * 0.25);
-  out.lerp(CLOUD_WHITE, cover * 0.9);
+  return smoothstep(0.52, 0.72, cloudBase * 0.75 + cloudWisp * 0.25);
 }
 
 function buildSurface(): THREE.Mesh {
@@ -157,25 +182,119 @@ function buildAtmoShell(radius: number, color: number, opacity: number): THREE.M
   return mesh;
 }
 
+// 太陽光で照らされる加算シェル。Lambert の減光がそのまま昼夜の
+// ターミネーターをまたぐ「薄明のグラデーション」になる。
+function buildLitAtmoShell(radius: number, color: number, opacity: number): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(radius, 96, 64);
+  const mat = new THREE.MeshLambertMaterial({
+    color,
+    transparent: true,
+    opacity,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = 2;
+  return mesh;
+}
+
+// オーロラカーテン: 磁気(≒地理)極を囲む緯度 ~67° の波打つリング帯。
+// 下端は緑、上端はほぼ黒(加算合成なので黒 = 透明)へフェードする紫。
+function buildAurora(sign: 1 | -1, seed: number): THREE.Mesh {
+  const SEG = 160;
+  const positions = new Float32Array((SEG + 1) * 2 * 3);
+  const colors = new Float32Array((SEG + 1) * 2 * 3);
+  const indices: number[] = [];
+
+  for (let i = 0; i <= SEG; i++) {
+    const th = (i / SEG) * Math.PI * 2;
+    // 緯度・高さをノイズ的に波打たせる(閉ループになるよう周期関数のみ)
+    const latDeg =
+      66 + 4.5 * Math.sin(3 * th + seed) + 2.2 * Math.sin(7 * th + seed * 2.3) + 1.1 * Math.sin(13 * th);
+    const lat = ((latDeg * Math.PI) / 180) * sign;
+    const hTop = 240e3 + 90e3 * Math.sin(2 * th + seed * 1.7) + 40e3 * Math.sin(5 * th);
+    const cl = Math.cos(lat);
+    const dirX = cl * Math.cos(th);
+    const dirY = Math.sin(lat);
+    const dirZ = cl * Math.sin(th);
+    const rBot = R_EARTH + 95e3;
+    const rTop = R_EARTH + 95e3 + hTop;
+    const iBot = i * 2 * 3;
+    positions.set([dirX * rBot, dirY * rBot, dirZ * rBot], iBot);
+    positions.set([dirX * rTop, dirY * rTop, dirZ * rTop], iBot + 3);
+    const flick = 0.75 + 0.25 * Math.sin(9 * th + seed * 3.1);
+    colors.set([0.1 * flick, 0.85 * flick, 0.45 * flick], iBot); // 下端: 緑
+    colors.set([0.1, 0.03, 0.14], iBot + 3); // 上端: ほぼ黒に落ちる紫
+    if (i < SEG) {
+      const a = i * 2;
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setIndex(indices);
+  const mat = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.55,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = 3;
+  return mesh;
+}
+
 export interface Earth {
   group: THREE.Group;
   setRotation(angleRad: number): void;
+  tick(dt: number): void; // オーロラの明滅アニメーション
 }
 
 export function createEarth(): Earth {
   const group = new THREE.Group();
   const spin = new THREE.Group();
   spin.add(buildSurface());
-  group.add(spin);
-  // 大気のリム光: 加算合成の BackSide シェルは地球本体に隠されない
-  // 縁の部分だけがリング状に見える
-  group.add(buildAtmoShell(R_EARTH + 90e3, 0x4d9fff, 0.22));
-  group.add(buildAtmoShell(R_EARTH + 170e3, 0x2a6bdd, 0.09));
 
+  // オーロラは磁気極に固定なので自転と一緒に回す
+  const auroras = [buildAurora(1, 1.3), buildAurora(-1, 4.1)];
+  for (const a of auroras) spin.add(a);
+  group.add(spin);
+
+  // 連続な濃度の大気: 指数的に不透明度を落とした薄い発光シェルを重ねる。
+  // Lambert 照明なので昼側だけ青く光り、ターミネーターに薄明のグラデーションが出る。
+  // 最大高度は通常の飛行高度(420km)より低くし、カメラがシェル内に入らないようにする。
+  const layers: [number, number][] = [
+    [25e3, 0.09],
+    [60e3, 0.065],
+    [105e3, 0.045],
+    [165e3, 0.03],
+    [240e3, 0.018],
+    [330e3, 0.01],
+  ];
+  for (const [h, op] of layers) group.add(buildLitAtmoShell(R_EARTH + h, 0x5d9fe8, op));
+
+  // 大気のリム光: 加算合成の BackSide シェルは地球本体に隠されず、
+  // 縁の部分だけがリング状に見える
+  group.add(buildAtmoShell(R_EARTH + 90e3, 0x4d9fff, 0.18));
+  group.add(buildAtmoShell(R_EARTH + 170e3, 0x2a6bdd, 0.08));
+
+  let auroraPhase = 0;
   return {
     group,
     setRotation(angleRad: number) {
       spin.rotation.y = angleRad;
+    },
+    tick(dt: number) {
+      // ゆっくりした明滅(実時間ベース)
+      auroraPhase += dt;
+      for (let i = 0; i < auroras.length; i++) {
+        const m = auroras[i]!.material as THREE.MeshBasicMaterial;
+        m.opacity = 0.45 + 0.2 * Math.sin(auroraPhase * 0.7 + i * 2.1) * Math.sin(auroraPhase * 0.23 + i);
+      }
     },
   };
 }

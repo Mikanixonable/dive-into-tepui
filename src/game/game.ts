@@ -12,8 +12,17 @@ import {
   MU_EARTH,
   SIDEREAL_DAY,
   elementsFromState,
+  j2Accel,
   stepOrbitRK4,
+  thirdBodyAccel,
 } from '../physics/orbital';
+import {
+  MU_MOON,
+  MU_SUN,
+  R_MOON,
+  moonPosition,
+  sunPosition,
+} from '../physics/ephemeris';
 import {
   Attitude,
   qIdentity,
@@ -46,7 +55,15 @@ import { Hud } from './hud';
 import { Sfx } from './audio';
 import { GameScene } from '../render/scene';
 import { createEarth, Earth } from '../render/earth';
-import { createStars, createSun, makeGlowTexture, Sun } from '../render/stars';
+import {
+  MOON_VIS_DIST,
+  SUN_DISTANCE,
+  createMoon,
+  createStars,
+  createSun,
+  makeGlowTexture,
+  Sun,
+} from '../render/stars';
 import {
   buildBulletMesh,
   buildCasingMesh,
@@ -152,12 +169,19 @@ export class Game {
   private thrustVizDir: Vec3 | null = null; // 現在の推力方向(ワールド、噴射エフェクト用)
   private readonly sunLight: THREE.DirectionalLight;
   private readonly ambient: THREE.AmbientLight;
-  private readonly sunDirV: Vec3;
+  private sunDirV: Vec3 = v3(1, 0, 0);
 
-  // 大気抵抗の追加加速度(エンティティ種別ごとに弾道係数を変える)
-  private readonly dragShip = makeDragAccel(C.SHIP_BCINV);
-  private readonly dragBullet = makeDragAccel(C.BULLET_BCINV);
-  private readonly dragSmall = makeDragAccel(C.SMALL_DEBRIS_BCINV);
+  // 天体暦(初期位相はゲームごとにランダム)
+  private readonly sunPhase0 = Math.random() * Math.PI * 2;
+  private readonly moonPhase0 = Math.random() * Math.PI * 2;
+  private sunPos: Vec3 = v3(1.496e11, 0, 0);
+  private moonPos: Vec3 = v3(3.844e8, 0, 0);
+  private readonly moonMesh = createMoon();
+
+  // 環境加速度 = 大気抵抗(種別ごとの弾道係数) + J2 + 月・太陽の第三体摂動
+  private readonly envShip = this.makeEnvAccel(C.SHIP_BCINV);
+  private readonly envBullet = this.makeEnvAccel(C.BULLET_BCINV);
+  private readonly envSmall = this.makeEnvAccel(C.SMALL_DEBRIS_BCINV);
 
   private fireCooldown = 0;
   private shots = 0;
@@ -179,10 +203,11 @@ export class Game {
     this.glowTex = makeGlowTexture();
     this.sun = createSun(this.glowTex);
     this.scene.add(this.sun.mesh);
-    this.sunDirV = v3(this.sun.dir.x, this.sun.dir.y, this.sun.dir.z);
+    this.updateEphemeris();
     this.sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
-    this.sunLight.position.copy(this.sun.dir).multiplyScalar(1e5);
+    this.sunLight.position.set(this.sunDirV.x * 1e5, this.sunDirV.y * 1e5, this.sunDirV.z * 1e5);
     this.scene.add(this.sunLight);
+    this.scene.add(this.moonMesh);
     this.scene.add(createStars());
     this.earth = createEarth();
     this.scene.add(this.earth.group);
@@ -443,15 +468,16 @@ export class Game {
       ? norm(thrustFn(this.player.state.r, this.player.state.v))
       : null;
 
-    // 自機の追加加速度 = 推力 + 大気抵抗
+    // 自機の追加加速度 = 推力 + 環境(大気抵抗 + J2 + 月・太陽摂動)
     const playerAccel: ExtraAccel = thrustFn
-      ? (r, v) => add(thrustFn(r, v), this.dragShip(r, v))
-      : this.dragShip;
+      ? (r, v) => add(thrustFn(r, v), this.envShip(r, v))
+      : this.envShip;
 
     // 軌道積分(高ワープ時はサブステップ分割)
     const nSub = warp <= C.MAX_PHYS_WARP ? 1 : Math.min(64, Math.ceil(simDt / 20));
     const sub = simDt / nSub;
     for (let i = 0; i < nSub; i++) {
+      this.updateEphemeris(); // 高ワープでも太陽・月の位置と摂動がサブステップ内で追従する
       this.player.prevR = clone(this.player.state.r);
       if (this.player.alive) {
         stepOrbitRK4(this.player.state, sub, playerAccel);
@@ -460,15 +486,15 @@ export class Game {
       for (const e of this.enemies) {
         if (!e.alive) continue;
         e.prevR = clone(e.state.r);
-        stepOrbitRK4(e.state, sub, this.dragShip);
+        stepOrbitRK4(e.state, sub, this.envShip);
       }
       for (const b of this.bullets) {
         if (!b.alive) continue;
         b.prevR = clone(b.state.r);
-        stepOrbitRK4(b.state, sub, this.dragBullet);
+        stepOrbitRK4(b.state, sub, this.envBullet);
       }
-      for (const cs of this.casings) stepOrbitRK4(cs.state, sub, this.dragSmall);
-      for (const d of this.debris) stepOrbitRK4(d.state, sub, this.dragSmall);
+      for (const cs of this.casings) stepOrbitRK4(cs.state, sub, this.envSmall);
+      for (const d of this.debris) stepOrbitRK4(d.state, sub, this.envSmall);
       this.simTime += sub;
       this.checkBulletHits();
       this.checkBoardCrossings();
@@ -484,6 +510,30 @@ export class Game {
     for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
 
     this.cleanup();
+  }
+
+  // 太陽・月の ECI 位置を simTime から更新する
+  private updateEphemeris(): void {
+    this.sunPos = sunPosition(this.simTime, this.sunPhase0);
+    this.moonPos = moonPosition(this.simTime, this.moonPhase0);
+    this.sunDirV = norm(this.sunPos);
+  }
+
+  // 大気抵抗 + J2(地球扁平) + 月・太陽の第三体(潮汐)摂動を合成した環境加速度。
+  // 天体位置はサブステップ更新の this.sunPos / moonPos を閉包で参照する。
+  private makeEnvAccel(bcInv: number): ExtraAccel {
+    const drag = makeDragAccel(bcInv);
+    return (r: Vec3, v: Vec3): Vec3 => {
+      const a = drag(r, v);
+      const j = j2Accel(r);
+      const s = thirdBodyAccel(r, this.sunPos, MU_SUN);
+      const m = thirdBodyAccel(r, this.moonPos, MU_MOON);
+      return v3(
+        a.x + j.x + s.x + m.x,
+        a.y + j.y + s.y + m.y,
+        a.z + j.z + s.z + m.z,
+      );
+    };
   }
 
   // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の
@@ -532,10 +582,11 @@ export class Game {
   // 勝敗確定後もデブリ・薬莢・弾を漂わせる
   private coastWorld(dt: number): void {
     const simDt = dt * Math.min(this.warp(), 4);
-    for (const b of this.bullets) if (b.alive) stepOrbitRK4(b.state, simDt, this.dragBullet);
-    for (const cs of this.casings) stepOrbitRK4(cs.state, simDt, this.dragSmall);
-    for (const d of this.debris) stepOrbitRK4(d.state, simDt, this.dragSmall);
-    for (const e of this.enemies) if (e.alive) stepOrbitRK4(e.state, simDt, this.dragShip);
+    this.updateEphemeris();
+    for (const b of this.bullets) if (b.alive) stepOrbitRK4(b.state, simDt, this.envBullet);
+    for (const cs of this.casings) stepOrbitRK4(cs.state, simDt, this.envSmall);
+    for (const d of this.debris) stepOrbitRK4(d.state, simDt, this.envSmall);
+    for (const e of this.enemies) if (e.alive) stepOrbitRK4(e.state, simDt, this.envShip);
     const attDt = Math.min(simDt, 0.12);
     for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
     for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
@@ -910,6 +961,17 @@ export class Game {
     // 地球・恒星・太陽
     this.earth.group.position.set(-o.x, -o.y, -o.z);
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * this.simTime) / SIDEREAL_DAY);
+    this.earth.tick(dt);
+
+    // 太陽・月: 天体暦の方向に表示(距離は視距離に圧縮、角直径は実距離から換算)
+    const sd = this.sunDirV;
+    this.sun.mesh.position.set(sd.x * SUN_DISTANCE, sd.y * SUN_DISTANCE, sd.z * SUN_DISTANCE);
+    this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
+    const moonRel = sub(this.moonPos, o);
+    const moonDist = len(moonRel);
+    const md = scale(moonRel, 1 / moonDist);
+    this.moonMesh.position.set(md.x * MOON_VIS_DIST, md.y * MOON_VIS_DIST, md.z * MOON_VIS_DIST);
+    this.moonMesh.scale.setScalar(MOON_VIS_DIST * (R_MOON / moonDist));
 
     // 地球の影: 自機周辺が影円柱内にあれば太陽光・環境光を減光する
     const lit = this.shadowLitFactor(o);
