@@ -52,7 +52,7 @@ import {
 } from '../physics/vec3';
 import { atmosphericDensity } from '../physics/atmosphere';
 import * as C from './const';
-import { Bullet, Casing, DebrisPiece, FlashEffect, Ship } from './entities';
+import { Bullet, Casing, DebrisPiece, FlashEffect, MagPickup, Ship } from './entities';
 import { Navball } from './navball';
 import { Input } from './input';
 import { ChaseCamera } from './camera';
@@ -70,11 +70,16 @@ import {
   Sun,
 } from '../render/stars';
 import {
+  MAG_BELT_PITCH,
+  MUZZLE_OFFSETS,
+  RCS_BLOCK_OFFSETS,
   buildBulletMesh,
   buildCasingMesh,
   buildDebrisMesh,
   buildEnemyShip,
   buildFlashMesh,
+  buildMagazineMesh,
+  buildMagPickup,
   buildPlayerShip,
 } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
@@ -221,6 +226,17 @@ export class Game {
   private shots = 0;
   private hits = 0;
   private kills = 0;
+
+  // --- 弾薬・マガジン ---
+  private muzzleIdx = 0; // 縦二連砲口の交互発射用
+  private roundsInMag = C.MAG_ROUNDS; // 給弾中マガジンの残弾
+  private magsLeft = C.INITIAL_MAGS - 1; // ベルトに連結された未使用マガジン数
+  private wasEmptyClick = false;
+  private magPickups: MagPickup[] = [];
+  private resupplyCheckAt = C.RESUPPLY_CHECK_INTERVAL; // [sim s]
+  private clankCd = 0; // 薬莢接触音のレート制限 [実 s]
+  private readonly beltGroup = new THREE.Group();
+  private readonly beltLinks: THREE.Group[] = [];
   private hudTimer = 0;
   private listTimer = 0;
   private readonly earthPhase0 = Math.random() * Math.PI * 2;
@@ -297,6 +313,16 @@ export class Game {
       alive: true,
     };
     this.scene.add(this.player.obj);
+
+    // マガジンベルト: 機体右舷から +X 方向へ連結。先頭リンクは機体に半分
+    // 取り込まれた位置に置く(給弾中もベルトごと取り込まれている見た目)。
+    for (let i = 0; i < C.BELT_MAX_VISIBLE; i++) {
+      const link = buildMagazineMesh();
+      link.position.x = 0.9 + i * MAG_BELT_PITCH;
+      this.beltGroup.add(link);
+      this.beltLinks.push(link);
+    }
+    this.player.obj.add(this.beltGroup);
 
     // --- 敵機配置 ---
     for (const spec of this.makeEnemySpecs(playerState, stage)) {
@@ -779,7 +805,14 @@ export class Game {
     if (rawWantFire && this.player.alive && warp > C.MAX_PHYS_WARP) {
       this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
     }
-    const wantFire = rawWantFire && this.player.alive && warp <= C.MAX_PHYS_WARP;
+    // 弾切れチェック(空撃ちクリックは押し直しごとに 1 回)
+    const hasAmmo = this.roundsInMag > 0 || this.magsLeft > 0;
+    if (rawWantFire && !hasAmmo && this.player.alive && !this.wasEmptyClick) {
+      this.sfx.emptyClick();
+      this.hud.hint('弾薬切れ — 軌道上の補給マガジン ▣ を回収せよ', 3000);
+    }
+    this.wasEmptyClick = rawWantFire && !hasAmmo;
+    const wantFire = rawWantFire && this.player.alive && warp <= C.MAX_PHYS_WARP && hasAmmo;
     if (wantFire && !this.wasFiring) {
       this.sfx.spinUp();
       this.fireCooldown = C.SPINUP_TIME;
@@ -830,12 +863,14 @@ export class Game {
       }
       for (const cs of this.casings) stepOrbitRK4(cs.state, sub, this.envSmall);
       for (const d of this.debris) stepOrbitRK4(d.state, sub, this.envSmall);
+      for (const mp of this.magPickups) if (mp.alive) stepOrbitRK4(mp.state, sub, this.envSmall);
       this.simTime += sub;
       this.checkBulletHits();
       this.checkBoardCrossings();
     }
     this.lastSimDt = simDt;
     this.checkThermalLimits();
+    this.updateAmmoLogistics(dt);
 
     // 姿勢力学(高ワープ時は見かけ上スローになるが数値的に安定)
     const attDt = Math.min(simDt, 0.12);
@@ -843,8 +878,84 @@ export class Game {
     for (const e of this.enemies) if (e.alive) stepAttitude(e.att, v3(), attDt);
     for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
     for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
+    for (const mp of this.magPickups) if (mp.alive) stepAttitude(mp.att, v3(), attDt);
 
     this.cleanup();
+  }
+
+  // 弾薬まわりの毎フレーム処理: 補給の取り込み・低残弾時の補給投入・薬莢の接触音
+  private updateAmmoLogistics(dt: number): void {
+    // 補給マガジンの取り込み
+    if (this.player.alive) {
+      for (const mp of this.magPickups) {
+        if (!mp.alive) continue;
+        if (lenSq(sub(mp.state.r, this.player.state.r)) < C.MAG_PICKUP_RADIUS * C.MAG_PICKUP_RADIUS) {
+          mp.alive = false;
+          this.scene.remove(mp.obj);
+          this.magsLeft += C.MAG_PICKUP_MAGS;
+          if (this.roundsInMag <= 0) {
+            this.magsLeft--;
+            this.roundsInMag = C.MAG_ROUNDS;
+          }
+          this.sfx.pickup();
+          this.hud.hint(`補給マガジン取り込み — ベルト +${C.MAG_PICKUP_MAGS} 連`, 3000);
+        }
+      }
+      this.magPickups = this.magPickups.filter((mp) => mp.alive);
+    }
+
+    // 残弾が少なくなってきたら付近の軌道に補給を投入する
+    if (this.simTime >= this.resupplyCheckAt) {
+      this.resupplyCheckAt = this.simTime + C.RESUPPLY_CHECK_INTERVAL;
+      if (this.magsLeft < C.AMMO_LOW_MAGS && this.magPickups.length < C.MAX_MAG_PICKUPS) {
+        this.spawnMagPickup();
+      }
+    }
+
+    // 薬莢が機体に当たったときの金属音(かすかに、レート制限つき)。
+    // 排出直後は必ず機体の近くにいるため、一度 6m 以上離れて「アーム」された
+    // 薬莢が再接近したときだけ鳴らす。
+    this.clankCd -= dt;
+    if (this.player.alive) {
+      for (const cs of this.casings) {
+        if (cs.clanked) continue;
+        const d2 = lenSq(sub(cs.state.r, this.player.state.r));
+        if (!cs.clankArmed) {
+          if (d2 > 6 * 6) cs.clankArmed = true;
+          continue;
+        }
+        if (d2 < 3.2 * 3.2 && this.clankCd <= 0) {
+          cs.clanked = true;
+          this.sfx.clank();
+          this.clankCd = 0.07;
+        }
+      }
+    }
+  }
+
+  // 自機軌道の少し先(同一軌道を位相シフト)に補給マガジンを投入する
+  private spawnMagPickup(): void {
+    const r = this.player.state.r;
+    const v = this.player.state.v;
+    const hHat = norm(cross(r, v));
+    const ang = (2500 + Math.random() * 2500) / len(r); // 2.5〜5km 先
+    const mp: MagPickup = {
+      state: {
+        r: rotateAxis(r, hHat, ang),
+        v: add(rotateAxis(v, hHat, ang), randVec(1.5)),
+      },
+      att: {
+        q: randomQuat(),
+        w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),
+        inertia: v3(1, 1.4, 1.2),
+      },
+      obj: buildMagPickup(),
+      alive: true,
+    };
+    this.magPickups.push(mp);
+    this.scene.add(mp.obj);
+    this.sfx.warp();
+    this.hud.hint('付近の軌道に補給マガジンが投入された — ▣ AMMO マーカーへ接近して回収', 5000);
   }
 
   // 太陽・月の ECI 位置を simTime から更新する
@@ -922,9 +1033,11 @@ export class Game {
     for (const cs of this.casings) stepOrbitRK4(cs.state, simDt, this.envSmall);
     for (const d of this.debris) stepOrbitRK4(d.state, simDt, this.envSmall);
     for (const e of this.enemies) if (e.alive) stepOrbitRK4(e.state, simDt, this.envShip);
+    for (const mp of this.magPickups) if (mp.alive) stepOrbitRK4(mp.state, simDt, this.envSmall);
     const attDt = Math.min(simDt, 0.12);
     for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
     for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
+    for (const mp of this.magPickups) if (mp.alive) stepAttitude(mp.att, v3(), attDt);
     this.simTime += simDt;
     this.lastSimDt = simDt;
   }
@@ -1067,11 +1180,16 @@ export class Game {
     const right = qRotate(p.att.q, v3(1, 0, 0));
     const up = qRotate(p.att.q, v3(0, 1, 0));
 
+    // 縦二連の砲口から交互に発射する
+    const mo = MUZZLE_OFFSETS[this.muzzleIdx]!;
+    this.muzzleIdx = (this.muzzleIdx + 1) % MUZZLE_OFFSETS.length;
+    const muzzle = add(p.state.r, qRotate(p.att.q, v3(mo.x, mo.y, mo.z)));
+
     // 弾丸: 機首方向 + 散布界
     const dir = norm(addScaled(fwd, randPerp(fwd), Math.abs(randSym(C.BULLET_SPREAD))));
     const bullet: Bullet = {
       state: {
-        r: addScaled(clone(p.state.r), fwd, 8),
+        r: addScaled(clone(muzzle), fwd, 1.5),
         v: addScaled(clone(p.state.v), dir, C.MUZZLE_SPEED),
       },
       prevR: v3(),
@@ -1090,13 +1208,13 @@ export class Game {
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv
     p.state.v = addScaled(p.state.v, fwd, -C.RECOIL_DV);
 
-    // 薬莢: 右舷へ排出、激しくタンブリング
+    // 薬莢: 左舷へ排出(右舷はマガジンベルトがあるため)、激しくタンブリング
     const casing: Casing = {
       state: {
-        r: add(p.state.r, add(scale(right, 1.4), scale(fwd, 0.8))),
+        r: add(muzzle, scale(right, -1.4)),
         v: add(
           p.state.v,
-          add(scale(right, 2.2 + Math.random() * 1.2), add(scale(up, randSym(0.8)), randVec(0.4))),
+          add(scale(right, -(2.2 + Math.random() * 1.2)), add(scale(up, randSym(0.8)), randVec(0.4))),
         ),
       },
       att: {
@@ -1114,12 +1232,13 @@ export class Game {
       this.scene.remove(old.obj);
     }
 
-    // マズルフラッシュ(ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
+    // マズルフラッシュ: 発射した側の砲口に出す
+    // (ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
     this.spawnFlash(
-      addScaled(clone(p.state.r), fwd, 9),
+      addScaled(clone(muzzle), fwd, 1.2),
       clone(p.state.v),
-      2.5,
-      7,
+      2.2,
+      6,
       0.07,
       0xfff0b8,
       this.zoomActive ? C.ZOOM_MUZZLE_FLASH_SCALE : 1,
@@ -1127,6 +1246,14 @@ export class Game {
 
     this.shots++;
     this.sfx.fire();
+
+    // 弾薬消費: 16 発でマガジン 1 個を消費し、ベルトから次を自動給弾する
+    this.roundsInMag--;
+    if (this.roundsInMag <= 0 && this.magsLeft > 0) {
+      this.magsLeft--;
+      this.roundsInMag = C.MAG_ROUNDS;
+      this.sfx.magFeed();
+    }
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
@@ -1346,6 +1473,12 @@ export class Game {
       if (expired) this.removeDebrisObj(d);
       return !expired;
     });
+
+    this.magPickups = this.magPickups.filter((mp) => {
+      const expired = !mp.alive || this.altitudeOf(mp.state.r) < C.DEBRIS_REENTRY_ALT;
+      if (expired) this.scene.remove(mp.obj);
+      return !expired;
+    });
   }
 
   // --------------------------------------------------------- render sync
@@ -1473,6 +1606,28 @@ export class Game {
     for (const cs of this.casings) {
       cs.obj.position.set(cs.state.r.x - o.x, cs.state.r.y - o.y, cs.state.r.z - o.z);
       cs.obj.quaternion.set(cs.att.q.x, cs.att.q.y, cs.att.q.z, cs.att.q.w);
+    }
+    for (const mp of this.magPickups) {
+      mp.obj.position.set(mp.state.r.x - o.x, mp.state.r.y - o.y, mp.state.r.z - o.z);
+      mp.obj.quaternion.set(mp.att.q.x, mp.att.q.y, mp.att.q.z, mp.att.q.w);
+    }
+
+    // マガジンベルト: 残数ぶんだけ表示し、無重力で漂うように揺らす。
+    // 先頭(給弾中)リンクは機体に固定、遠いリンクほど振幅を大きくする。
+    const beltCount = Math.min(this.magsLeft, C.BELT_MAX_VISIBLE);
+    const bt = performance.now() / 1000;
+    for (let i = 0; i < this.beltLinks.length; i++) {
+      const link = this.beltLinks[i]!;
+      link.visible = this.player.alive && i < beltCount;
+      if (!link.visible) continue;
+      const sway = Math.min(i * 0.18, 1.2);
+      link.position.set(
+        0.9 + i * MAG_BELT_PITCH,
+        Math.sin(bt * 0.6 + i * 0.7) * 0.09 * sway,
+        Math.cos(bt * 0.45 + i * 0.55) * 0.07 * sway,
+      );
+      link.rotation.z = Math.sin(bt * 0.5 + i * 0.8) * 0.03 * sway;
+      link.rotation.x = Math.cos(bt * 0.4 + i * 0.6) * 0.03 * sway;
     }
     for (const d of this.debris) {
       d.obj.position.set(d.state.r.x - o.x, d.state.r.y - o.y, d.state.r.z - o.z);
@@ -1615,7 +1770,8 @@ export class Game {
     const cam = this.activeCamera;
     for (let k = 0; k < 4; k++) {
       const puff = this.rcsPuffs[k]!;
-      const rb = v3(k % 2 === 0 ? 0.75 : -0.75, k < 2 ? 0.65 : -0.65, 1.6);
+      const ro = RCS_BLOCK_OFFSETS[k]!;
+      const rb = v3(ro.x, ro.y, ro.z);
       const f = cross(tau, rb); // このブロックがトルクに寄与する力の方向
       if (lenSq(f) < 0.2) {
         puff.visible = false;
@@ -1695,6 +1851,21 @@ export class Game {
       const isTgt = e === tgt;
       const label = `${e.name} ${dist >= 1000 ? (dist / 1000).toFixed(1) + 'km' : dist.toFixed(0) + 'm'}`;
       this.hud.marker(key, isTgt ? 'mk-target' : 'mk-enemy', '◇', p.x, p.y, p.front, label);
+    }
+
+    // 補給マガジンのマーカー
+    for (let i = 0; i < C.MAX_MAG_PICKUPS; i++) {
+      const key = `mg${i}`;
+      const mp = this.magPickups[i];
+      if (!mp || !mp.alive) {
+        this.hud.hideMarker(key);
+        continue;
+      }
+      const rel = sub(mp.state.r, o);
+      const p = this.project(rel);
+      const dist = len(rel);
+      const label = `AMMO ${dist >= 1000 ? (dist / 1000).toFixed(1) + 'km' : dist.toFixed(0) + 'm'}`;
+      this.hud.marker(key, 'mk-ammo', '▣', p.x, p.y, p.front, label);
     }
 
     // リード(見越し)マーカー: 相対等速近似で弾丸到達時刻を解く
@@ -1780,6 +1951,8 @@ export class Game {
         throttleIdx: this.throttleIdx,
         fineAttitude: this.fineAttitude,
         progradeHold: this.progradeHold,
+        roundsInMag: this.roundsInMag,
+        magsLeft: this.magsLeft,
         alt: this.altitudeOf(this.player.state.r),
         spd: len(this.player.state.v),
         apAlt: playerEl ? playerEl.apAlt : NaN,

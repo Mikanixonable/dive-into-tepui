@@ -29,6 +29,16 @@ export interface Casing {
   att: Attitude;
   bornSim: number;
   obj: THREE.Object3D;
+  clankArmed?: boolean; // 一度機体から離れたか(排出直後の誤検知防止)
+  clanked?: boolean; // 機体への接触音を鳴らしたか(多重再生防止)
+}
+
+// 軌道上の補給マガジン(接近すると取り込んでベルトを延長できる)
+export interface MagPickup {
+  state: OrbitState;
+  att: Attitude;
+  obj: THREE.Object3D;
+  alive: boolean;
 }
 
 export interface DebrisPiece {

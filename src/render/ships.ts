@@ -12,60 +12,81 @@ function std(color: number, opts: Partial<THREE.MeshStandardMaterialParameters> 
   });
 }
 
+// 機関砲の銃口位置(機体座標系、前面に縦に並んだ 2 つの大きな短い穴)。
+// 発砲・マズルフラッシュ・薬莢排出はこの 2 点から交互に行う。
+export const MUZZLE_OFFSETS: { x: number; y: number; z: number }[] = [
+  { x: 0, y: 0.55, z: 2.55 },
+  { x: 0, y: -0.55, z: 2.55 },
+];
+
+// RCS スラスタブロックの機体座標(噴射パフの表示位置と一致させるためエクスポート)
+export const RCS_BLOCK_OFFSETS: { x: number; y: number; z: number }[] = [
+  { x: 1.0, y: 0.85, z: 1.9 },
+  { x: -1.0, y: 0.85, z: 1.9 },
+  { x: 1.0, y: -0.85, z: 1.9 },
+  { x: -1.0, y: -0.85, z: 1.9 },
+];
+
+// 自機: 寸胴な直方体。後部に 4 発のエンジン、左右に小さな太陽電池パドル、
+// 前面に縦二連の機関砲口を持つ。
 export function buildPlayerShip(): THREE.Group {
   const g = new THREE.Group();
 
-  const hull = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.2, 4.2), std(0xd8dde6));
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.0, 5.0), std(0xd8dde6));
   g.add(hull);
 
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.6, 6), std(0xb8c2cf));
-  nose.rotation.x = Math.PI / 2;
-  nose.position.z = 2.9;
-  g.add(nose);
+  // 前面プレート(わずかに暗い色で面の分節を出す)
+  const face = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.8, 0.12), std(0xb8c2cf));
+  face.position.z = 2.52;
+  g.add(face);
 
-  const gun = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.12, 0.12, 2.2, 6),
-    std(0x555c66, { metalness: 0.7, roughness: 0.35 }),
-  );
-  gun.rotation.x = Math.PI / 2;
-  gun.position.set(0, -0.35, 3.2);
-  g.add(gun);
+  // 機関砲口: 縦に並んだ 2 つの大きな短い穴(暗い内筒 + 明るいリム)
+  const boreMat = std(0x14161a, { metalness: 0.3, roughness: 0.8 });
+  const rimMat = std(0x555c66, { metalness: 0.7, roughness: 0.35 });
+  for (const m of MUZZLE_OFFSETS) {
+    const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.5, 10), boreMat);
+    bore.rotation.x = Math.PI / 2;
+    bore.position.set(m.x, m.y, m.z);
+    g.add(bore);
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.16, 10), rimMat);
+    rim.rotation.x = Math.PI / 2;
+    rim.position.set(m.x, m.y, m.z + 0.18);
+    g.add(rim);
+  }
 
-  const engine = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.7, 0.85, 0.8, 8),
-    std(0x3a3f47, { metalness: 0.6 }),
-  );
-  engine.rotation.x = Math.PI / 2;
-  engine.position.z = -2.4;
-  g.add(engine);
+  // 後部エンジン 4 発(2×2)+ ノズルグロー
+  const engMat = std(0x3a3f47, { metalness: 0.6 });
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x66d9ff, transparent: true, opacity: 0.9 });
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      const eng = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.46, 0.7, 8), engMat);
+      eng.rotation.x = Math.PI / 2;
+      eng.position.set(sx * 0.58, sy * 0.55, -2.65);
+      g.add(eng);
+      const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.34, 0.14, 8), glowMat);
+      glow.rotation.x = Math.PI / 2;
+      glow.position.set(sx * 0.58, sy * 0.55, -3.02);
+      g.add(glow);
+    }
+  }
 
-  const nozzleGlow = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.5, 0.62, 0.2, 8),
-    new THREE.MeshBasicMaterial({ color: 0x66d9ff, transparent: true, opacity: 0.9 }),
-  );
-  nozzleGlow.rotation.x = Math.PI / 2;
-  nozzleGlow.position.z = -2.85;
-  g.add(nozzleGlow);
-
-  // 太陽電池パネル
+  // 小さな太陽電池パドル(左右)
   const panelMat = std(0x2456c8, { metalness: 0.5, roughness: 0.4 });
   for (const side of [-1, 1]) {
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.08, 1.6), panelMat);
-    panel.position.set(side * 2.5, 0, -0.6);
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.07, 1.1), panelMat);
+    panel.position.set(side * 2.2, 0.4, -1.2);
     g.add(panel);
-    const strut = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.12, 0.12), std(0x8a919c));
-    strut.position.set(side * 1.1, 0, -0.6);
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.1, 0.1), std(0x8a919c));
+    strut.position.set(side * 1.4, 0.4, -1.2);
     g.add(strut);
   }
 
   // RCS スラスタブロック
   const rcsMat = std(0x9aa3ad);
-  for (const sx of [-1, 1]) {
-    for (const sy of [-1, 1]) {
-      const rcs = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 0.28), rcsMat);
-      rcs.position.set(sx * 0.75, sy * 0.65, 1.6);
-      g.add(rcs);
-    }
+  for (const p of RCS_BLOCK_OFFSETS) {
+    const rcs = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 0.28), rcsMat);
+    rcs.position.set(p.x, p.y, p.z);
+    g.add(rcs);
   }
 
   // 視認用アクセント灯
@@ -73,9 +94,78 @@ export function buildPlayerShip(): THREE.Group {
     new THREE.BoxGeometry(0.18, 0.18, 0.18),
     new THREE.MeshBasicMaterial({ color: 0x4dffc4 }),
   );
-  beacon.position.set(0, 0.75, -1.6);
+  beacon.position.set(0, 1.1, -1.6);
   g.add(beacon);
 
+  return g;
+}
+
+// --- マガジン ---
+// 寸法(機体座標系): 厚み(上下) 0.5 = 機体全高 2.0 の 1/4、
+// 横幅(ベルト方向 X)は厚みの 4 倍 = 2.0、前後幅(Z)は 3 倍 = 1.5。
+// 弾をケージで固定した見た目で、2(上下)×4(横)の配列が外から見える。
+export const MAG_THICKNESS = 0.5;
+export const MAG_WIDTH = MAG_THICKNESS * 4; // ベルト方向(X)
+export const MAG_DEPTH = MAG_THICKNESS * 3; // 前後(Z)
+export const MAG_BELT_PITCH = MAG_WIDTH + 0.18; // 連結間隔
+
+const magPlateMat = std(0x6b7280, { metalness: 0.55, roughness: 0.45 });
+const magRoundMat = std(0xd9a441, { metalness: 0.85, roughness: 0.35 }); // 薬莢と同じ真鍮色
+const magTipMat = std(0x9aa3ad, { metalness: 0.7, roughness: 0.4 });
+const magPlateGeo = new THREE.BoxGeometry(MAG_WIDTH, 0.05, MAG_DEPTH);
+const magPostGeo = new THREE.BoxGeometry(0.07, MAG_THICKNESS, 0.07);
+const magRoundGeo = new THREE.CylinderGeometry(0.09, 0.09, MAG_DEPTH * 0.8, 6);
+const magTipGeo = new THREE.ConeGeometry(0.09, 0.14, 6);
+
+export function buildMagazineMesh(): THREE.Group {
+  const g = new THREE.Group();
+  // 上下プレート(ケージの枠。側面は開いていて弾が見える)
+  for (const sy of [-1, 1]) {
+    const plate = new THREE.Mesh(magPlateGeo, magPlateMat);
+    plate.position.y = sy * (MAG_THICKNESS / 2 - 0.025);
+    g.add(plate);
+  }
+  // 四隅の支柱
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const post = new THREE.Mesh(magPostGeo, magPlateMat);
+      post.position.set(sx * (MAG_WIDTH / 2 - 0.06), 0, sz * (MAG_DEPTH / 2 - 0.06));
+      g.add(post);
+    }
+  }
+  // 弾: 2(上下)×4(横) の配列、+Z(前方)向き
+  for (let iy = 0; iy < 2; iy++) {
+    for (let ix = 0; ix < 4; ix++) {
+      const x = (ix - 1.5) * (MAG_WIDTH / 4.4);
+      const y = (iy - 0.5) * (MAG_THICKNESS * 0.42);
+      const round = new THREE.Mesh(magRoundGeo, magRoundMat);
+      round.rotation.x = Math.PI / 2;
+      round.position.set(x, y, 0);
+      g.add(round);
+      const tip = new THREE.Mesh(magTipGeo, magTipMat);
+      tip.rotation.x = Math.PI / 2;
+      tip.position.set(x, y, MAG_DEPTH * 0.4 + 0.07);
+      g.add(tip);
+    }
+  }
+  return g;
+}
+
+// 軌道上に投入される補給マガジン: マガジン数個を束ねてビーコンを付けた漂流物
+export function buildMagPickup(count = 4): THREE.Group {
+  const g = new THREE.Group();
+  for (let i = 0; i < count; i++) {
+    const mag = buildMagazineMesh();
+    mag.position.y = (i - (count - 1) / 2) * (MAG_THICKNESS + 0.12);
+    g.add(mag);
+  }
+  // 視認用の発光ビーコン(遠距離でも点として見える)
+  const beacon = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.35, 0),
+    new THREE.MeshBasicMaterial({ color: 0x4de8ff }),
+  );
+  beacon.position.y = (count / 2) * (MAG_THICKNESS + 0.12) + 0.4;
+  g.add(beacon);
   return g;
 }
 
@@ -124,7 +214,7 @@ export function buildBulletMesh(): THREE.Mesh {
   return m;
 }
 
-const casingGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.52, 5);
+const casingGeo = new THREE.CylinderGeometry(0.28, 0.28, 1.04, 5);
 const casingMat = new THREE.MeshStandardMaterial({
   color: 0xd9a441,
   flatShading: true,
