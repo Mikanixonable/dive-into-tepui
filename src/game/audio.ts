@@ -18,6 +18,7 @@ export class Sfx {
   private ctx: AudioContext | null = null;
   private noiseBuf: AudioBuffer | null = null;
   private thrustGain: GainNode | null = null;
+  private rcsGain: GainNode | null = null;
   private bgmGain: GainNode | null = null;
   private bgmTimer: ReturnType<typeof setInterval> | null = null;
   private bgmNextTime = 0;
@@ -51,6 +52,20 @@ export class Sfx {
     src.connect(filter).connect(gain).connect(ctx.destination);
     src.start();
     this.thrustGain = gain;
+
+    // RCS 姿勢制御スラスタの噴射音(メインエンジンより高く軽いシュー音、通常は無音)
+    const rcsSrc = ctx.createBufferSource();
+    rcsSrc.buffer = buf;
+    rcsSrc.loop = true;
+    const rcsFilter = ctx.createBiquadFilter();
+    rcsFilter.type = 'bandpass';
+    rcsFilter.frequency.value = 1600;
+    rcsFilter.Q.value = 1.1;
+    const rcsG = ctx.createGain();
+    rcsG.gain.value = 0;
+    rcsSrc.connect(rcsFilter).connect(rcsG).connect(ctx.destination);
+    rcsSrc.start();
+    this.rcsGain = rcsG;
 
     this.startBgm();
   }
@@ -222,5 +237,10 @@ export class Sfx {
     if (!this.ctx || !this.thrustGain) return;
     const target = on ? 0.1 : 0;
     this.thrustGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.04);
+  }
+
+  setRcs(on: boolean): void {
+    if (!this.ctx || !this.rcsGain) return;
+    this.rcsGain.gain.setTargetAtTime(on ? 0.05 : 0, this.ctx.currentTime, 0.03);
   }
 }

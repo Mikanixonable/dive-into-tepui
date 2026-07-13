@@ -68,6 +68,11 @@ async function main() {
   const stage = forced === 1 || forced === 2 ? forced : await selectStage();
   const game = new Game(gs, stage);
 
+  // TEMP debug hook
+  if (new URLSearchParams(location.search).get('mapdbg') === '1') {
+    setTimeout(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM' })), 1500);
+  }
+
   let lastTime = performance.now();
   function animate(now: number) {
     requestAnimationFrame(animate);

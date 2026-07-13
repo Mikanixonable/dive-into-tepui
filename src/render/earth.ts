@@ -167,9 +167,11 @@ function buildSurface(): THREE.Mesh {
   return new THREE.Mesh(geo, mat);
 }
 
+// 地平線のリム光用 BackSide シェル。Lambert 照明にすることで夜側では
+// 太陽光と一緒に暗くなる(Basic だと夜側でも光ってしまい、縞に見える)。
 function buildAtmoShell(radius: number, color: number, opacity: number): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(radius, 48, 32);
-  const mat = new THREE.MeshBasicMaterial({
+  const geo = new THREE.SphereGeometry(radius, 64, 48);
+  const mat = new THREE.MeshLambertMaterial({
     color,
     transparent: true,
     opacity,
@@ -264,23 +266,29 @@ export function createEarth(): Earth {
   for (const a of auroras) spin.add(a);
   group.add(spin);
 
-  // 連続な濃度の大気: 指数的に不透明度を落とした薄い発光シェルを重ねる。
+  // 連続な濃度の大気: 指数減衰する薄い発光シェルを多数重ね、離散的な
+  // 「縞」が見えない滑らかなグラデーションにする。高度方向は二乗分布で
+  // 低高度ほど密にシェルを置き、不透明度はスケールハイト ~100km の指数則。
   // Lambert 照明なので昼側だけ青く光り、ターミネーターに薄明のグラデーションが出る。
   // 最大高度は通常の飛行高度(420km)より低くし、カメラがシェル内に入らないようにする。
-  const layers: [number, number][] = [
-    [25e3, 0.09],
-    [60e3, 0.065],
-    [105e3, 0.045],
-    [165e3, 0.03],
-    [240e3, 0.018],
-    [330e3, 0.01],
-  ];
-  for (const [h, op] of layers) group.add(buildLitAtmoShell(R_EARTH + h, 0x5d9fe8, op));
+  const SHELLS = 16;
+  for (let i = 0; i < SHELLS; i++) {
+    const t = i / (SHELLS - 1);
+    const h = 10e3 + 330e3 * t * t;
+    const op = 0.052 * Math.exp(-h / 100e3) + 0.0035;
+    group.add(buildLitAtmoShell(R_EARTH + h, 0x5d9fe8, op));
+  }
 
   // 大気のリム光: 加算合成の BackSide シェルは地球本体に隠されず、
-  // 縁の部分だけがリング状に見える
-  group.add(buildAtmoShell(R_EARTH + 90e3, 0x4d9fff, 0.18));
-  group.add(buildAtmoShell(R_EARTH + 170e3, 0x2a6bdd, 0.08));
+  // 縁の部分だけがリング状に見える。こちらも多層化して指数的に減衰させ、
+  // 単発の輪ではなく外側へ溶けるグラデーションにする。
+  const RIMS = 8;
+  for (let i = 0; i < RIMS; i++) {
+    const t = i / (RIMS - 1);
+    const h = 40e3 + 280e3 * t * t;
+    const op = 0.075 * Math.exp(-h / 90e3) + 0.004;
+    group.add(buildAtmoShell(R_EARTH + h, 0x4d9fff, op));
+  }
 
   let auroraPhase = 0;
   return {
