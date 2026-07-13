@@ -1099,12 +1099,13 @@ export class Game {
     return (): Vec3 => {
       const localThrustDir = v3(axX, axY, axZ);
       const rcsDir = lenSq(localThrustDir) > 0 ? norm(localThrustDir) : v3();
-      // メイン推力は W を押したとき (+Z方向) にのみ適用。RCS推力と合算する。
-      const engineThrust = (wDown * manual > 0) ? mainAccel : 0;
+      // W/S を押したとき (+Z/-Z方向)、エンジンモードが1以上ならメインエンジンの出力を適用。
+      // モード0(カットオフ)の時はRCS同等(maxRcsThrust)の推力を前後に出す。
+      const zThrustMag = this.throttleIdx > 0 ? mainAccel : maxRcsThrust;
       const localTotal = v3(
         rcsDir.x * maxRcsThrust,
         rcsDir.y * maxRcsThrust,
-        rcsDir.z * maxRcsThrust + engineThrust
+        rcsDir.z * zThrustMag
       );
       return qRotate(q, localTotal);
     };
@@ -1512,8 +1513,9 @@ export class Game {
     const o = this.player.state.r; // フローティングオリジン
     const pv = this.player.state.v;
 
-    // 地球・恒星・太陽 (巨大座標系による Float32 ジッターを抑えるため通常は 1/10000 スケールで描画、マップでは実寸)
-    const earthScale = this.mapMode ? 1.0 : 1e-4;
+    // 地球・恒星・太陽 (巨大座標系による Float32 ジッターを抑えるため通常は 1/100 スケールで描画、マップでは実寸)
+    // 1e-4 (1/10000) だとカメラと地球表面の距離が数十メートルになり、深度テストで他のオブジェクトが隠れてしまうため 1e-2 とする
+    const earthScale = this.mapMode ? 1.0 : 1e-2;
     this.earth.group.position.set(-o.x * earthScale, -o.y * earthScale, -o.z * earthScale);
     this.earth.group.scale.set(earthScale, earthScale, earthScale);
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * this.simTime) / SIDEREAL_DAY);
