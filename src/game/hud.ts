@@ -101,7 +101,15 @@ const STYLE = `
 .mk-node { color: #c9a0ff; }
 .mk-boardhit { color: #8fdbff; text-shadow: 0 0 6px #6ff, 0 0 12px rgba(102,255,255,0.7); }
 .mk-boardhit .sym { font-size: 16px; }
+.mk-mnode { color: #ff5fd0; }
+.mk-burn { color: #ffd23d; text-shadow: 0 0 8px rgba(255,210,61,0.8); }
+.mk-self { color: #35e0ff; }
 #hud .warn-hot { color: #ff6a5f; }
+#hud-plan {
+  position: absolute; bottom: 40px; left: 12px; min-width: 280px;
+  border-color: rgba(255, 95, 208, 0.45);
+}
+#hud-plan h3 { color: #ff8fdc; border-bottom-color: rgba(255,95,208,0.3); }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
   background: rgba(2, 8, 12, 0.72); flex-direction: column; text-align: center;
@@ -198,8 +206,12 @@ export class Hud {
 
     const controls = el('div', 'hud-controls', this.root);
     controls.innerHTML =
-      'W/S/A/D/Q/E:並進 &nbsp;I/K/J/L/U/O:回転 &nbsp;1/2/3:出力 &nbsp;V:微調整 &nbsp;Z:ズーム &nbsp;' +
+      'W/S/A/D/Q/E:並進 &nbsp;I/K/J/L/U/O:回転 &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
       'Space/左クリック:射撃 &nbsp;右ドラッグ:視点 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
+
+    const plan = el('div', 'hud-plan', this.root, 'panel');
+    plan.innerHTML = `<h3>MANEUVER PLAN [M]</h3><div data-id="planbody"></div>`;
+    plan.style.display = 'none';
 
     el('div', 'hud-hint', this.root);
     el('div', 'hud-toast', this.root);
@@ -223,6 +235,10 @@ export class Hud {
         <tr><td class="key">▲AN / ▽DN マーカー</td><td>自機軌道とターゲット軌道面の交点。面変更(ノーマル/アンチノーマル)burn の目安位置</td></tr>
         <tr><td class="key">✦ マーカー</td><td>ターゲット位置に自機側を向けた仮想標的面を弾が通過した点。次弾の照準修正の目安</td></tr>
         <tr><td class="key">Navball</td><td>画面下中央の姿勢儀。青半球 = 地球方向。PRO/RET・NRM/ANM・OUT/IN・TGT/ATG を表示</td></tr>
+        <tr><td class="key">M</td><td>軌道計画モード。地球中心ビューで自機軌道をクリックしノード配置、W/S・A/D・Q/E で Δv 調整、再度 M で確定</td></tr>
+        <tr><td class="key">N</td><td>マニューバノードへ自動タイムワープ(実行点の直前で自動解除)</td></tr>
+        <tr><td class="key">X</td><td>マニューバノードを削除</td></tr>
+        <tr><td class="key">◆NODE / ⬢BURN</td><td>マニューバ実行点と噴射ガイド。BURN の方向へ加速し、計画軌道(マゼンタ)に十分近づくと達成</td></tr>
         <tr><td class="key">Space / 左クリック</td><td>機関砲発射 (ワープ×4以下)。撃ち始めは起動音とともに一瞬遅れて連射開始</td></tr>
         <tr><td class="key">, / .</td><td>タイムワープ 減 / 増</td></tr>
         <tr><td class="key">P</td><td>一時停止</td></tr>
@@ -312,6 +328,43 @@ export class Hud {
           `<div class="erow${r.targeted ? ' tgt' : ''}"><span>${r.targeted ? '▶ ' : ''}${r.name}</span><span>${fmtDist(r.dist)}</span></div>`,
       )
       .join('');
+  }
+
+  // 軌道計画パネル。html=null で非表示。
+  setPlanPanel(html: string | null): void {
+    const panel = document.getElementById('hud-plan');
+    const body = this.els.get('planbody');
+    if (!panel || !body) return;
+    if (html === null) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = 'block';
+    if (body.innerHTML !== html) body.innerHTML = html;
+  }
+
+  // 計画パネルの定型 HTML(Δv 成分・飛行時間・計画軌道の要素)
+  planHtml(dv: { x: number; y: number; z: number }, tofSec: number, el: { apAlt: number; peAlt: number; incDeg: number; period: number } | null): string {
+    const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+    let s =
+      row('Δv PRO [W/S]', `${dv.x.toFixed(1)} m/s`) +
+      row('Δv NRM [A/D]', `${dv.y.toFixed(1)} m/s`) +
+      row('Δv RAD [E/Q]', `${dv.z.toFixed(1)} m/s`) +
+      row('合計 Δv', `${Math.hypot(dv.x, dv.y, dv.z).toFixed(1)} m/s`) +
+      row('ノードまで', fmtTime(tofSec));
+    if (el) {
+      s +=
+        `<div style="margin-top:4px;color:#ff8fdc;font-size:11px;letter-spacing:1px">計画軌道</div>` +
+        row('遠地点 AP', fmtDist(el.apAlt)) +
+        row('近地点 PE', fmtDist(el.peAlt)) +
+        row('傾斜角 INC', isFinite(el.incDeg) ? `${el.incDeg.toFixed(2)}°` : '---') +
+        row('周期 PRD', fmtTime(el.period));
+      if (isFinite(el.peAlt) && el.peAlt < 120e3) {
+        s += `<div style="color:#ff6a5f;margin-top:2px">⚠ 近地点が大気圏内</div>`;
+      }
+    }
+    s += `<div style="margin-top:6px;color:#58899a;font-size:11px">[クリック] ノード移動 [X] 削除 [V] 微調整 [M] 確定して戻る</div>`;
+    return s;
   }
 
   // マーカー(スクリーン座標)。visible=false で非表示。

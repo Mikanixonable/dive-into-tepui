@@ -72,3 +72,20 @@ export const ENEMY_RADIUS = 9;
 
 export const INITIAL_ALT = 420e3; // 自機初期高度 [m]
 export const INITIAL_INC_DEG = 51.6; // 自機初期軌道傾斜角 [deg]
+
+// --- 軌道計画モード([M]) ---
+export const MAP_MIN_DIST = 9e6; // マップカメラ距離 [m]
+export const MAP_MAX_DIST = 2.6e8;
+export const NODE_DV_RATE = 30; // Δv 調整速度 [m/s per 実秒]
+export const NODE_DV_RATE_FINE = 2.5; // 微調整モード時
+export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
+export const NODE_MIN_DV = 0.5; // これ未満のノードは確定時に破棄 [m/s]
+// マニューバ達成判定(計画軌道への接近許容)
+export const NODE_TOL_SMA = 0.02; // 長半径の相対誤差
+export const NODE_TOL_ECC = 0.02; // 離心率差
+export const NODE_TOL_PLANE_DEG = 2.0; // 軌道面の角度差 [deg]
+// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大ワープを選び、STOP 秒前に解除
+export const AUTOWARP_MARGIN = 15;
+export const AUTOWARP_STOP = 20;
+
+export const STAGE1_CLEARED_KEY = 'tepui.stage1.cleared'; // localStorage キー
