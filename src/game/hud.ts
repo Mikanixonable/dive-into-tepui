@@ -6,7 +6,7 @@ export interface StatsData {
   met: number;
   warpLabel: string;
   paused: boolean;
-  frameMode: 'orbital' | 'target';
+
   rcsDamp: boolean;
   throttleIdx: number;
   fineAttitude: boolean;
@@ -199,7 +199,7 @@ export class Hud {
       <h3>SHIP STATUS</h3>
       <div class="row"><span class="k">MET</span><span class="v" data-id="met"></span></div>
       <div class="row"><span class="k">TIME WARP</span><span class="v" data-id="warp"></span></div>
-      <div class="row"><span class="k">推進基準 [F]</span><span class="v" data-id="mode"></span></div>
+
       <div class="row"><span class="k">RCS制動 [T]</span><span class="v" data-id="rcs"></span></div>
       <div class="row"><span class="k">出力 [1-3]</span><span class="v" data-id="throttle"></span></div>
       <div class="row"><span class="k">微調整 [V]</span><span class="v" data-id="fine"></span></div>
@@ -245,10 +245,9 @@ export class Hud {
     help.innerHTML = `
       <h3>操作方法 [H で閉じる]</h3>
       <table>
-        <tr><td class="key">W / S</td><td>加速(プログレード) / 減速(レトログレード) ※TGT基準では接近/離脱</td></tr>
-        <tr><td class="key">A / D</td><td>ノーマル / アンチノーマル ※TGT基準では左右</td></tr>
-        <tr><td class="key">Q / E</td><td>ラジアルイン / ラジアルアウト ※TGT基準では下上</td></tr>
-        <tr><td class="key">F</td><td>推進基準の切替 (軌道基準 ⇄ ターゲット基準)</td></tr>
+        <tr><td class="key">W / S</td><td>前進 / 後退</td></tr>
+        <tr><td class="key">A / D</td><td>左 / 右</td></tr>
+        <tr><td class="key">Q / E</td><td>下 / 上</td></tr>
         <tr><td class="key">I / K</td><td>ピッチ (機首下げ / 上げ)</td></tr>
         <tr><td class="key">J / L</td><td>ヨー (左 / 右)</td></tr>
         <tr><td class="key">U / O</td><td>ロール (左 / 右)</td></tr>
@@ -294,11 +293,7 @@ export class Hud {
       warpEl.textContent = d.paused ? 'PAUSE' : d.warpLabel;
       warpEl.classList.toggle('warp-hot', d.warpLabel !== '×1' || d.paused);
     }
-    const modeEl = this.els.get('mode');
-    if (modeEl) {
-      modeEl.textContent = d.frameMode === 'orbital' ? 'ORBIT' : 'TARGET';
-      modeEl.classList.toggle('mode-tgt', d.frameMode === 'target');
-    }
+
     this.setText('rcs', d.rcsDamp ? 'ON' : 'OFF');
     this.setText('throttle', `第${d.throttleIdx + 1}段 (${C.THROTTLE_LEVELS[d.throttleIdx]!.toFixed(1)} m/s²)`);
     const fineEl = this.els.get('fine');
