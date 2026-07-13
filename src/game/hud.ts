@@ -11,6 +11,8 @@ export interface StatsData {
   throttleIdx: number;
   fineAttitude: boolean;
   progradeHold: boolean;
+  roundsInMag: number; // 給弾中マガジンの残弾
+  magsLeft: number; // ベルトの未使用マガジン数
   alt: number;
   spd: number;
   apAlt: number;
@@ -81,7 +83,7 @@ const STYLE = `
 #hud .row .k { color: ${INK_SOFT}; }
 #hud .row .v { color: ${INK}; min-width: 90px; text-align: right; font-weight: 600; }
 #hud-status { top: 12px; left: 12px; min-width: 230px; }
-#hud-orbit { top: 196px; left: 12px; min-width: 230px; }
+#hud-orbit { top: 236px; left: 12px; min-width: 230px; }
 #hud-target { top: 12px; right: 12px; min-width: 240px; }
 #hud-enemies { top: 348px; right: 12px; min-width: 240px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
@@ -126,6 +128,7 @@ const STYLE = `
 .mk-mnode { color: #ff5fd0; }
 .mk-burn { color: #ffd23d; text-shadow: 0 0 8px rgba(255,210,61,0.8); }
 .mk-self { color: #35e0ff; }
+.mk-ammo { color: #4de8ff; text-shadow: 0 0 6px rgba(77,232,255,0.7), 0 0 3px #000; }
 #hud .warn-hot { color: #c62f0f; }
 #hud-plan {
   position: absolute; bottom: 40px; left: 12px; min-width: 280px;
@@ -207,7 +210,8 @@ export class Hud {
       <div class="row"><span class="k">RCS制動 [T]</span><span class="v" data-id="rcs"></span></div>
       <div class="row"><span class="k">出力 [1-3]</span><span class="v" data-id="throttle"></span></div>
       <div class="row"><span class="k">微調整 [V]</span><span class="v" data-id="fine"></span></div>
-      <div class="row"><span class="k">進行方向ホールド [C]</span><span class="v" data-id="prohold"></span></div>`;
+      <div class="row"><span class="k">進行方向ホールド [C]</span><span class="v" data-id="prohold"></span></div>
+      <div class="row"><span class="k">弾薬 AMMO</span><span class="v" data-id="ammo"></span></div>`;
 
     const orbit = el('div', 'hud-orbit', this.root, 'panel');
     orbit.innerHTML = `
@@ -268,6 +272,7 @@ export class Hud {
         <tr><td class="key">X</td><td>マニューバノードを削除</td></tr>
         <tr><td class="key">◆NODE / ⬢BURN</td><td>マニューバ実行点と噴射ガイド。BURN の方向へ加速し、計画軌道(マゼンタ)に十分近づくと達成</td></tr>
         <tr><td class="key">金色の軌道線</td><td>ターゲットの軌道(自機軌道とほぼ重なる場合は上に重ねて描画)</td></tr>
+        <tr><td class="key">弾薬 / ▣ AMMO</td><td>16発でマガジン1連を消費(右舷のベルトから自動給弾)。残弾が少なくなると付近の軌道に補給が投入されるので、▣ マーカーへ接近して回収</td></tr>
         <tr><td class="key">Space / 右クリック</td><td>機関砲発射 (ワープ×4以下)。撃ち始めは起動音とともに一瞬遅れて連射開始</td></tr>
         <tr><td class="key">, / .</td><td>タイムワープ 減 / 増</td></tr>
         <tr><td class="key">P</td><td>一時停止</td></tr>
@@ -310,6 +315,14 @@ export class Hud {
     if (proholdEl) {
       proholdEl.textContent = d.progradeHold ? 'ON' : 'OFF';
       proholdEl.classList.toggle('mode-tgt', d.progradeHold);
+    }
+    const ammoEl = this.els.get('ammo');
+    if (ammoEl) {
+      ammoEl.textContent =
+        d.roundsInMag <= 0 && d.magsLeft <= 0
+          ? '弾切れ'
+          : `${d.roundsInMag}/${C.MAG_ROUNDS} +${d.magsLeft}連`;
+      ammoEl.classList.toggle('warn-hot', d.magsLeft < 4);
     }
     this.setText('alt', fmtDist(d.alt));
     this.setText('spd', fmtSpeed(d.spd));

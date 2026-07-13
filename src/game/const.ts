@@ -69,6 +69,16 @@ export const BOARD_MARK_LIFETIME = 5.0; // 表示時間 [s]
 export const MAX_BOARD_MARKS = 1;
 export const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)
 
+// --- 弾薬・マガジン ---
+export const MAG_ROUNDS = 16; // 1 マガジンの装弾数
+export const INITIAL_MAGS = 32; // ゲーム開始時に連結されているマガジン数
+export const MAG_PICKUP_MAGS = 8; // 補給 1 個の取り込みで増えるマガジン数
+export const MAG_PICKUP_RADIUS = 60; // 取り込み距離 [m]
+export const AMMO_LOW_MAGS = 8; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
+export const MAX_MAG_PICKUPS = 2; // 同時に存在する補給の最大数
+export const RESUPPLY_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
+export const BELT_MAX_VISIBLE = 32; // ベルト描画の最大リンク数
+
 export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
 export const MAX_BULLETS = 400;
 export const MAX_CASINGS = 260;

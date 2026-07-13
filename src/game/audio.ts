@@ -200,24 +200,72 @@ export class Sfx {
     this.tone(65, 0.09, 0.18, 'square');
   }
 
-  // 連射開始前、レールが機械的に動き出すような起動音
+  // 連射開始前の起動音: 電子音ではなく、レールの上を金属が滑るような摩擦音。
+  // 帯域ノイズの中心周波数を滑り上げてこすれ感を、高域の薄いノイズで金属の
+  // きしみを表現する(オシレータは使わない)。
   spinUp(): void {
-    if (!this.ctx) return;
+    if (!this.ctx || !this.noiseBuf) return;
     const ctx = this.ctx;
     const t = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(55, t);
-    osc.frequency.exponentialRampToValueAtTime(320, t + 0.3);
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.linearRampToValueAtTime(0.13, t + 0.05);
-    gain.gain.setValueAtTime(0.13, t + 0.22);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.32);
-    this.noiseBurst(0.3, 'bandpass', 550, 0.09);
+
+    // 主成分: こすれ(バンドパスノイズ、周波数が滑り上がる)
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    src.playbackRate.value = 0.9;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 3.0;
+    bp.frequency.setValueAtTime(180, t);
+    bp.frequency.exponentialRampToValueAtTime(950, t + 0.28);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.16, t + 0.06);
+    g.gain.setValueAtTime(0.16, t + 0.22);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    src.connect(bp).connect(g).connect(ctx.destination);
+    src.start(t, Math.random() * 0.4, 0.35);
+
+    // 高域のきしみ(薄く)
+    const src2 = ctx.createBufferSource();
+    src2.buffer = this.noiseBuf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 3800;
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(0.0001, t);
+    g2.gain.linearRampToValueAtTime(0.03, t + 0.1);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    src2.connect(hp).connect(g2).connect(ctx.destination);
+    src2.start(t, Math.random() * 0.4, 0.35);
+  }
+
+  // 薬莢が機体に当たったときの、からんとした金属音(かすかに)
+  clank(): void {
+    if (!this.ctx) return;
+    const f0 = 1800 + Math.random() * 1600;
+    this.tone(f0, 0.05, 0.035, 'triangle');
+    this.tone(f0 * 1.53, 0.04, 0.02, 'triangle'); // 非整数倍音で金属感
+    this.noiseBurst(0.03, 'highpass', 5000, 0.02);
+  }
+
+  // マガジン給弾(次のマガジンが取り込まれるガチャッという機械音)
+  magFeed(): void {
+    this.noiseBurst(0.1, 'lowpass', 500, 0.14);
+    this.tone(140, 0.07, 0.08, 'square');
+    this.noiseBurst(0.05, 'highpass', 3000, 0.04);
+  }
+
+  // 補給マガジンの取り込み(肯定的なブリップ)
+  pickup(): void {
+    this.tone(660, 0.09, 0.09, 'sine');
+    this.tone(990, 0.12, 0.07, 'sine');
+    this.noiseBurst(0.08, 'lowpass', 600, 0.06);
+  }
+
+  // 弾切れの空撃ちクリック
+  emptyClick(): void {
+    this.tone(1400, 0.03, 0.05, 'square');
+    this.noiseBurst(0.02, 'highpass', 4000, 0.03);
   }
 
   hit(): void {
