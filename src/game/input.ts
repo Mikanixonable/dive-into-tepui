@@ -13,6 +13,7 @@ export class Input {
   private dy = 0;
   private wheel = 0;
   private rightDrag = false;
+  private clicks: { x: number; y: number }[] = [];
   mouseFiring = false;
   onFirstGesture: (() => void) | null = null;
   private gestureFired = false;
@@ -42,6 +43,7 @@ export class Input {
         target.setPointerCapture(e.pointerId);
       } else if (e.button === 0) {
         this.mouseFiring = true;
+        this.clicks.push({ x: e.clientX, y: e.clientY });
       }
     });
     target.addEventListener('pointermove', (e) => {
@@ -85,6 +87,13 @@ export class Input {
     const q = this.pressQueue;
     this.pressQueue = [];
     return q;
+  }
+
+  // 左クリック位置をまとめて取得(取得後クリア)。マップモードのノード配置用。
+  takeClicks(): { x: number; y: number }[] {
+    const c = this.clicks;
+    this.clicks = [];
+    return c;
   }
 
   consumeMouse(): MouseDelta {
