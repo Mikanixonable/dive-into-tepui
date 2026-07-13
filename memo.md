@@ -7,7 +7,7 @@
 
                                                                             
 ---
-
+# Geminiによる実現可能性調査
 結論から言うと、**十分に作成可能**です。
 
 現在のブラウザ環境（特にJavaScriptエンジンとWebGL/WebGPU）は非常に強力であり、ハードSF的なアプローチが求められる複雑な軌道力学のシミュレーションをブラウザ上でリアルタイムに動かすことができます。月面開発のロジスティクスや、L1/L2ラグランジュ点を利用した物資輸送シミュレーションなどを表現するには非常に面白いテーマです。
@@ -56,3 +56,90 @@ UIの構築や状態管理の観点から、モダンなWebフロントエンド
 月まで数日かかるため、ゲーム内時間を1000倍などに加速させる必要があります。単純に1フレームあたりの時間ステップ（$\Delta t$）を大きくすると計算が爆発して宇宙船が地球を突き抜けます。Dormand-Prince法などの「刻み幅制御付きルンゲ＝クッタ法」を用いて、天体に近づいた時だけ自動的に計算の解像度を上げる工夫が必要です。
 2. **極端なスケール差（Zファイティング）:**
 地球（半径約6,400km）から宇宙船（数メートル）までを描画しようとすると、通常の深度バッファでは精度が足りず、テクスチャがチラつく「Zファイティング」が発生します。Three.jsで `logarithmicDepthBuffer: true` を有効に設定することが必須となります。
+
+
+---
+
+# Geminiによる要約
+Listed directory dive-into-tepui
+Viewed README.md:1-95
+Viewed package.json:1-24
+Listed directory src
+Listed directory physics
+Listed directory render
+Listed directory game
+Listed directory types
+Viewed CLAUDE.md:1-68
+
+このプロジェクト **`dive-into-tepui`** は、**地球低軌道（LEO）を舞台にした、リアルな軌道力学に基づく3Dシューティングゲーム**です。
+
+技術的には、**TypeScript + Three.js（WebGPUレンダラー）**で構築されており、本格的な宇宙シミュレーター（Kerbal Space Programのようなシステム）とシューティングゲームの要素を融合させています。
+
+以下にプロジェクトの主要な特徴、アーキテクチャ、およびコード構成について解説します。
+
+---
+
+### 1. 主な機能と特徴
+
+*   **リアルな軌道力学のシミュレーション**
+    *   RK4（ルンゲ・クッタ4次）数値積分を用いて、自機や敵機、薬莢、デブリ（破片）の軌道を計算しています。
+    *   単なる二体問題だけでなく、**地球の扁平率による影響（J2摂動）**、**太陽や月による潮汐力（第三体摂動）**、**大気抗力（高度による密度変化と減速）**などをシミュレートしています。
+*   **本格的な宇宙船の操作とナビゲーション**
+    *   **RCS（姿勢制御システム）**による3軸姿勢制御（ピッチ・ヨー・ロール）および並進移動（前進・後退・左右・上下）。
+    *   `[C]` キーによる**進行方向（Prograde）の自動維持（オートパイロット）**。
+    *   画面下部中央に、宇宙船の姿勢を示す **ナビボール（Navball）** を描画。
+*   **軌道計画マップモード (`[M]`キー)**
+    *   地球を俯瞰するマップ画面に切り替えることができ、プレイヤーの軌道をクリックして**マニューバーノード（軌道変更計画）**を作成できます。
+    *   WASDQEキーで必要速度変化（$\Delta v$）を調整し、軌道遷移の計画を立ててタイムワープで自動移動する機能があります。
+*   **大気圏突入と熱シミュレーション**
+    *   高度が下がると大気密度が上がって軌道が減衰します。
+    *   大気摩擦によって機体が加熱され（サットン・グレイブス式）、放射冷却とのバランスで熱が計算されます。耐熱限界を超えると大気圏で燃え尽きてゲームオーバーになります。
+*   **物理ベースのディテール**
+    *   発砲すると薬莢が排出され、慣性で漂います。宇宙船が破壊されると破片が散らばり、非対称コマの特有の回転運動である **ジャニベコフ効果（テニスラケットの定理）** に基づいてスピンします。
+    *   弾薬ベルトが宇宙船の挙動（推進加速度、回転時の遠心力・コリオリ力など）に応じてリアルに揺れる物理シミュレーション（Position-Based Dynamics）を搭載しています。
+*   **WebAudioによるBGMと効果音**
+    *   音声ファイルを読み込むのではなく、シンセサイザーの波形生成によってBGM（ミニマル・ミュージック風）やCIWSの射撃音・モーター音などをリアルタイム合成しています。
+
+---
+
+### 2. ディレクトリ・コード構成
+
+主要なコードは `src/` ディレクトリ配下に分類されています。
+
+*   **`src/`**
+    *   [main.ts](file:///Users/pandeaconica/lab/dive-into-tepui/src/main.ts) — エントリーポイント。WebGPU の初期化、描画ループ（`requestAnimationFrame`）と `Game.update` の呼び出し。
+    *   **[game/](file:///Users/pandeaconica/lab/dive-into-tepui/src/game/)** (ゲームロジック)
+        *   [game.ts](file:///Users/pandeaconica/lab/dive-into-tepui/src/game/game.ts) — ゲームの司令塔。エンティティ（自機、敵機、弾、デブリ）の更新、入力処理、衝突判定、オートパイロット制御。
+        *   [hud.ts](file:///Users/pandeaconica/lab/dive-into-tepui/src/game/hud.ts) — 画面上に表示される HUD（高度、速度、ターゲット情報など）の描画。
+        *   [navball.ts](file:///Users/pandeaconica/lab/dive-into-tepui/src/game/navball.ts) — 2D Canvasを使ったナビボール計器の描画。
+        *   [audio.ts](file:///Users/pandeaconica/lab/dive-into-tepui/src/game/audio.ts) — WebAudioによる動的サウンド合成。
+    *   **[physics/](file:///Users/pandeaconica/lab/dive-into-tepui/src/physics/)** (物理・軌道計算)
+        *   [orbital.ts](file:///Users/pandeaconica/lab/dive-into-tepui/src/physics/orbital.ts) — 万有引力、J2摂動、潮汐摂動、マニューバー軌道予測計算。
+        *   [attitude.ts](file:///Users/pandeaconica/lab/dive-into-tepui/src/physics/attitude.ts) — 剛体の姿勢角（クォータニオン）と角速度の統合計算（ジャニベコフ効果を維持するアルゴリズム）。
+        *   [atmosphere.ts](file:///Users/pandeaconica/lab/dive-into-tepui/src/physics/atmosphere.ts) — 高度ごとの大気密度モデル。
+        *   [ephemeris.ts](file:///Users/pandeaconica/lab/dive-into-tepui/src/physics/ephemeris.ts) — 太陽と月の軌道位置（暦）の計算。
+    *   **[render/](file:///Users/pandeaconica/lab/dive-into-tepui/src/render/)** (3D描画)
+        *   [earth.ts](file:///Users/pandeaconica/lab/dive-into-tepui/src/render/earth.ts) — 地球の 3D メッシュ（fBmノイズによる自動生成）、大気のグラデーションシェル、オーロラ。
+        *   [ships.ts](file:///Users/pandeaconica/lab/dive-into-tepui/src/render/ships.ts) — 自機や敵機、薬莢、デブリ、弾薬ベルトなどのローポリメッシュ構築。
+        *   [orbitline.ts](file:///Users/pandeaconica/lab/dive-into-tepui/src/render/orbitline.ts) — 自機やターゲットの軌道予測線の描画。
+
+---
+
+### 3. 特殊な描画アプローチ：「フローティング・オリジン (Floating Origin)」
+
+広大な宇宙空間（地球低軌道）を float32（単精度浮動小数点数）で描画しようとすると、座標値が大きくなりすぎてジッター（グラフィックスのがたつき）が発生します。
+このゲームでは、**プレイヤー宇宙船を常にワールド座標の原点 `(0, 0, 0)` に固定**し、地球や敵機などのすべてのオブジェクトをプレイヤーからの相対位置に毎フレーム配置し直す「フローティング・オリジン」アプローチを採用しています。これにより、カメラ付近の描画精度を極限まで保っています。
+
+---
+
+### 4. 実行コマンド
+
+開発や動作確認には以下のコマンドを使用します（[package.json](file:///Users/pandeaconica/lab/dive-into-tepui/package.json) より）：
+
+*   **開発サーバー起動**: `npm run dev` (Webpack デブサーバーが `http://localhost:8080` で起動します)
+*   **プロダクションビルド**: `npm run build` (`dist/` ディレクトリに最適化されたJSとHTMLが出力されます)
+*   **型チェック**: `npm run typecheck` (`tsc` による型エラーの静的検証)
+
+※ WebGPUを使用しているため、動作確認には **Chrome や Edge などの WebGPU 対応ブラウザ** が必要です。
+
+より詳細なゲーム仕様については [README.md](file:///Users/pandeaconica/lab/dive-into-tepui/README.md) または開発上のガイダンスが書かれた [CLAUDE.md](file:///Users/pandeaconica/lab/dive-into-tepui/CLAUDE.md) もあわせてご参照ください。

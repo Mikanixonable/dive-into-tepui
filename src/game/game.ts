@@ -195,6 +195,10 @@ export class Game {
   private throttleIdx = C.THROTTLE_DEFAULT_IDX;
   private fineAttitude = false;
   private progradeHold = false; // [C] 機首をプログレードへ自動保持するオートパイロット
+  // [G] 視点(チェイスカメラ)を自機の姿勢(RCS操作)に追従させるか。
+  // デフォルト ON: 機首・機体の天頂面を基準に視点が回転し、姿勢操作と一体的に見える。
+  // OFF にすると従来通り軌道基準(プログレード・動径outward)の独立した視点に戻る。
+  private camFollowAttitude = true;
   private zoomActive = false;
   private wasFiring = false;
 
@@ -522,6 +526,12 @@ export class Game {
         case 'KeyC':
           this.progradeHold = !this.progradeHold;
           this.hud.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
+          break;
+        case 'KeyG':
+          this.camFollowAttitude = !this.camFollowAttitude;
+          this.hud.hint(
+            `視点のRCS追従: ${this.camFollowAttitude ? 'ON (視点が機体姿勢に追従)' : 'OFF (軌道基準の独立視点)'}`,
+          );
           break;
         case 'Digit1':
         case 'Digit2':
@@ -1552,7 +1562,12 @@ export class Game {
       }
       const boreFwd = this.player.alive ? qRotate(this.player.att.q, v3(0, 0, 1)) : null;
       const boreUp = this.player.alive ? qRotate(this.player.att.q, v3(0, 1, 0)) : null;
-      this.chase.update(this.camera, mouse, norm(o), norm(pv), this.zoomActive, dt, boreFwd, boreUp);
+      // [G] 視点のRCS追従が ON かつ自機が健在なら、軌道基準(プログレード/動径)ではなく
+      // 機体姿勢(機首/天頂面)を基準フレームにして、RCS操作と視点回転が一体的に動くようにする。
+      const useAttitudeFrame = this.camFollowAttitude && this.player.alive && boreFwd && boreUp;
+      const camFwd = useAttitudeFrame ? boreFwd! : norm(pv);
+      const camUp = useAttitudeFrame ? boreUp! : norm(o);
+      this.chase.update(this.camera, mouse, camUp, camFwd, this.zoomActive, dt, boreFwd, boreUp);
       this.camera.updateMatrixWorld();
     }
     const cam = this.activeCamera;
@@ -2062,6 +2077,7 @@ export class Game {
         throttleIdx: this.throttleIdx,
         fineAttitude: this.fineAttitude,
         progradeHold: this.progradeHold,
+        camFollowAttitude: this.camFollowAttitude,
         roundsInMag: this.roundsInMag,
         magsLeft: this.magsLeft,
         alt: this.altitudeOf(this.player.state.r),
