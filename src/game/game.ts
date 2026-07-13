@@ -36,8 +36,10 @@ import {
   sub,
   v3,
 } from '../physics/vec3';
+import { atmosphericDensity } from '../physics/atmosphere';
 import * as C from './const';
 import { Bullet, Casing, DebrisPiece, FlashEffect, Ship } from './entities';
+import { Navball } from './navball';
 import { Input } from './input';
 import { ChaseCamera } from './camera';
 import { Hud } from './hud';
@@ -78,6 +80,20 @@ function randVec(amp: number): Vec3 {
   return v3(randSym(amp), randSym(amp), randSym(amp));
 }
 
+const EARTH_OMEGA = (2 * Math.PI) / SIDEREAL_DAY; // 地球自転角速度 [rad/s](Y軸=北極まわり)
+
+// 大気抵抗の加速度関数。大気は地球と共回転するとし、対気速度で
+// a = -½ρ|v_rel|·(Cd·A/m)·v_rel を返す。bcInv = Cd·A/m [m²/kg]。
+function makeDragAccel(bcInv: number): ExtraAccel {
+  return (r: Vec3, v: Vec3): Vec3 => {
+    const rho = atmosphericDensity(len(r) - R_EARTH);
+    if (rho < 1e-15) return v3();
+    // v_atm = ω × r, ω = (0, ω, 0)
+    const vr = v3(v.x - EARTH_OMEGA * r.z, v.y, v.z + EARTH_OMEGA * r.x);
+    return scale(vr, -0.5 * rho * len(vr) * bcInv);
+  };
+}
+
 // fwd に直交するランダム単位ベクトル(散布界用)
 function randPerp(fwd: Vec3): Vec3 {
   for (;;) {
@@ -105,7 +121,8 @@ export class Game {
   private casings: Casing[] = [];
   private debris: DebrisPiece[] = [];
   private effects: FlashEffect[] = [];
-  private planeCrossMarks: { pos: Vec3; age: number }[] = [];
+  // ターゲット標的面の通過点(ターゲット相対オフセットで保持し、的に貼り付いて見せる)
+  private boardMarks: { off: Vec3; age: number }[] = [];
 
   private readonly glowTex: THREE.Texture;
   private readonly playerOrbitLine = new OrbitLine(0x35e0ff, 0.55);
@@ -124,6 +141,21 @@ export class Game {
   private zoomActive = false;
   private wasFiring = false;
 
+  private hullTemp = C.HULL_START_TEMP;
+  private qdyn = 0;
+  private heatWarned = false;
+  private lostReason = '大気圏に突入し機体を喪失した';
+
+  private readonly navball = new Navball();
+  private readonly sunLight: THREE.DirectionalLight;
+  private readonly ambient: THREE.AmbientLight;
+  private readonly sunDirV: Vec3;
+
+  // 大気抵抗の追加加速度(エンティティ種別ごとに弾道係数を変える)
+  private readonly dragShip = makeDragAccel(C.SHIP_BCINV);
+  private readonly dragBullet = makeDragAccel(C.BULLET_BCINV);
+  private readonly dragSmall = makeDragAccel(C.SMALL_DEBRIS_BCINV);
+
   private fireCooldown = 0;
   private shots = 0;
   private hits = 0;
@@ -139,13 +171,15 @@ export class Game {
     this.input.onFirstGesture = () => this.sfx.unlock();
 
     // --- 環境 ---
-    this.scene.add(new THREE.AmbientLight(0x8899bb, 0.25));
+    this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
+    this.scene.add(this.ambient);
     this.glowTex = makeGlowTexture();
     this.sun = createSun(this.glowTex);
     this.scene.add(this.sun.mesh);
-    const sunLight = new THREE.DirectionalLight(0xfff4e0, 2.2);
-    sunLight.position.copy(this.sun.dir).multiplyScalar(1e5);
-    this.scene.add(sunLight);
+    this.sunDirV = v3(this.sun.dir.x, this.sun.dir.y, this.sun.dir.z);
+    this.sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
+    this.sunLight.position.copy(this.sun.dir).multiplyScalar(1e5);
+    this.scene.add(this.sunLight);
     this.scene.add(createStars());
     this.earth = createEarth();
     this.scene.add(this.earth.group);
@@ -394,31 +428,38 @@ export class Game {
     }
     this.sfx.setThrust(thrustFn !== null);
 
+    // 自機の追加加速度 = 推力 + 大気抵抗
+    const playerAccel: ExtraAccel = thrustFn
+      ? (r, v) => add(thrustFn(r, v), this.dragShip(r, v))
+      : this.dragShip;
+
     // 軌道積分(高ワープ時はサブステップ分割)
     const nSub = warp <= C.MAX_PHYS_WARP ? 1 : Math.min(64, Math.ceil(simDt / 20));
     const sub = simDt / nSub;
     for (let i = 0; i < nSub; i++) {
       this.player.prevR = clone(this.player.state.r);
       if (this.player.alive) {
-        stepOrbitRK4(this.player.state, sub, thrustFn ?? undefined);
+        stepOrbitRK4(this.player.state, sub, playerAccel);
+        this.updateThermal(sub);
       }
       for (const e of this.enemies) {
         if (!e.alive) continue;
         e.prevR = clone(e.state.r);
-        stepOrbitRK4(e.state, sub);
+        stepOrbitRK4(e.state, sub, this.dragShip);
       }
       for (const b of this.bullets) {
         if (!b.alive) continue;
         b.prevR = clone(b.state.r);
-        stepOrbitRK4(b.state, sub);
+        stepOrbitRK4(b.state, sub, this.dragBullet);
       }
-      for (const cs of this.casings) stepOrbitRK4(cs.state, sub);
-      for (const d of this.debris) stepOrbitRK4(d.state, sub);
+      for (const cs of this.casings) stepOrbitRK4(cs.state, sub, this.dragSmall);
+      for (const d of this.debris) stepOrbitRK4(d.state, sub, this.dragSmall);
       this.simTime += sub;
       this.checkBulletHits();
-      this.checkPlaneCrossings();
+      this.checkBoardCrossings();
     }
     this.lastSimDt = simDt;
+    this.checkThermalLimits();
 
     // 姿勢力学(高ワープ時は見かけ上スローになるが数値的に安定)
     const attDt = Math.min(simDt, 0.12);
@@ -430,13 +471,56 @@ export class Game {
     this.cleanup();
   }
 
+  // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の
+  // Sutton–Graves 近似 q̇ = k·√(ρ/Rn)·v³、冷却はステファン・ボルツマン放射。
+  private updateThermal(dtSub: number): void {
+    const r = this.player.state.r;
+    const v = this.player.state.v;
+    const rho = atmosphericDensity(len(r) - R_EARTH);
+    const vr = v3(v.x - EARTH_OMEGA * r.z, v.y, v.z + EARTH_OMEGA * r.x);
+    const s = len(vr);
+    this.qdyn = 0.5 * rho * s * s;
+    const qdot = C.SG_CONST * Math.sqrt(rho / C.NOSE_RADIUS) * s * s * s;
+    const cool =
+      C.HULL_EMISS *
+      C.STEFAN_BOLTZMANN *
+      C.RAD_AREA *
+      (Math.pow(C.ENV_TEMP, 4) - Math.pow(this.hullTemp, 4));
+    this.hullTemp = Math.max(
+      120,
+      this.hullTemp + ((qdot * C.HEAT_ABSORB_AREA + cool) / C.HEAT_CAPACITY) * dtSub,
+    );
+  }
+
+  // 熱防御の飽和・空力破壊の判定と警告表示
+  private checkThermalLimits(): void {
+    if (!this.player.alive) return;
+    if (this.hullTemp > C.MAX_HULL_TEMP) {
+      this.lostReason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
+      this.destroyShip(this.player);
+      return;
+    }
+    if (this.qdyn > C.MAX_DYN_PRESSURE) {
+      this.lostReason = '動圧が構造限界を超え、機体は空力的に分解した';
+      this.destroyShip(this.player);
+      return;
+    }
+    const hot = this.hullTemp > 0.7 * C.MAX_HULL_TEMP || this.qdyn > 0.5 * C.MAX_DYN_PRESSURE;
+    if (hot && !this.heatWarned) {
+      this.heatWarned = true;
+      this.hud.hint('警告: 空力加熱・動圧が危険域 — 高度を上げよ', 4000);
+    } else if (!hot && this.hullTemp < 0.6 * C.MAX_HULL_TEMP) {
+      this.heatWarned = false;
+    }
+  }
+
   // 勝敗確定後もデブリ・薬莢・弾を漂わせる
   private coastWorld(dt: number): void {
     const simDt = dt * Math.min(this.warp(), 4);
-    for (const b of this.bullets) if (b.alive) stepOrbitRK4(b.state, simDt);
-    for (const cs of this.casings) stepOrbitRK4(cs.state, simDt);
-    for (const d of this.debris) stepOrbitRK4(d.state, simDt);
-    for (const e of this.enemies) if (e.alive) stepOrbitRK4(e.state, simDt);
+    for (const b of this.bullets) if (b.alive) stepOrbitRK4(b.state, simDt, this.dragBullet);
+    for (const cs of this.casings) stepOrbitRK4(cs.state, simDt, this.dragSmall);
+    for (const d of this.debris) stepOrbitRK4(d.state, simDt, this.dragSmall);
+    for (const e of this.enemies) if (e.alive) stepOrbitRK4(e.state, simDt, this.dragShip);
     const attDt = Math.min(simDt, 0.12);
     for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
     for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
@@ -594,24 +678,26 @@ export class Game {
     this.sfx.fire();
   }
 
-  // 発射弾がターゲットの軌道面(自機正面にある、目標がいる面)を通過した位置を記録し、
-  // 次弾の照準修正の目安になるマーカーを表示する。
-  private checkPlaneCrossings(): void {
+  // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
+  // 発射弾がその面を自機側から通過した点をターゲット相対で記録する。
+  // 次弾の照準修正の目安になるマーカーとして一定時間表示する。
+  private checkBoardCrossings(): void {
     const tgt = this.target;
     if (!tgt || !tgt.alive) return;
-    const tgtEl = elementsFromState(tgt.state.r, tgt.state.v);
-    if (!tgtEl) return;
-    const n = tgtEl.hHat;
+    const n = norm(sub(tgt.state.r, this.player.state.r)); // 的の法線 = 視線方向
+    if (lenSq(n) < 0.5) return;
 
     for (const b of this.bullets) {
       if (!b.alive) continue;
-      const d0 = dot(b.prevR, n);
-      const d1 = dot(b.state.r, n);
-      if (d0 === d1 || d0 > 0 === d1 > 0) continue;
+      const d0 = dot(sub(b.prevR, tgt.state.r), n);
+      const d1 = dot(sub(b.state.r, tgt.state.r), n);
+      if (!(d0 < 0 && d1 >= 0)) continue; // 自機側 → 向こう側への通過のみ
       const t = d0 / (d0 - d1);
       const pos = addScaled(b.prevR, sub(b.state.r, b.prevR), t);
-      this.planeCrossMarks.push({ pos, age: 0 });
-      if (this.planeCrossMarks.length > C.MAX_PLANE_CROSS_MARKS) this.planeCrossMarks.shift();
+      const off = sub(pos, tgt.state.r);
+      if (lenSq(off) > C.BOARD_RADIUS * C.BOARD_RADIUS) continue; // 的から外れすぎ
+      this.boardMarks.push({ off, age: 0 });
+      if (this.boardMarks.length > C.MAX_BOARD_MARKS) this.boardMarks.shift();
     }
   }
 
@@ -651,6 +737,7 @@ export class Game {
   private applyHit(b: Bullet, ship: Ship): void {
     b.alive = false;
     ship.hp--;
+    if (ship === this.player) this.lostReason = '自弾の被弾により機体を喪失した';
     this.hits++;
     this.sfx.hit();
     this.spawnFlash(clone(b.state.r), clone(ship.state.v), 1.5, 6, 0.25, 0xffe2a0);
@@ -670,10 +757,7 @@ export class Game {
     if (ship === this.player) {
       this.phase = 'lost';
       this.sfx.setThrust(false);
-      this.hud.showEnd(
-        false,
-        `大気圏に突入し機体を喪失した<br>撃破 ${this.kills}/${this.enemies.length} 機`,
-      );
+      this.hud.showEnd(false, `${this.lostReason}<br>撃破 ${this.kills}/${this.enemies.length} 機`);
       return;
     }
 
@@ -751,8 +835,9 @@ export class Game {
   }
 
   private cleanup(): void {
-    // 機体の大気圏突入
-    if (this.player.alive && this.altitudeOf(this.player.state.r) < C.REENTRY_ALT) {
+    // 自機の構造限界高度(通常は加熱・動圧で先に喪失する)
+    if (this.player.alive && this.altitudeOf(this.player.state.r) < C.PLAYER_MIN_ALT) {
+      this.lostReason = '濃密な大気に突入し機体は分解した';
       this.destroyShip(this.player);
     }
     for (const e of this.enemies) {
@@ -794,6 +879,12 @@ export class Game {
     // 地球・恒星・太陽
     this.earth.group.position.set(-o.x, -o.y, -o.z);
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * this.simTime) / SIDEREAL_DAY);
+
+    // 地球の影: 自機周辺が影円柱内にあれば太陽光・環境光を減光する
+    const lit = this.shadowLitFactor(o);
+    this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
+    this.ambient.intensity =
+      C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
 
     // カメラ(自機中心、上 = 動径方向)。[Z] 長押しで機首固定の照準ズーム。
     const mouse = this.input.consumeMouse();
@@ -859,27 +950,56 @@ export class Game {
 
     this.updateMarkers(o, pv, tgt);
     this.updateNodeMarkers(playerEl, tgt, o);
-    this.updatePlaneCrossMarkers(o, dt);
+    this.updateBoardMarkers(o, dt, tgt);
+    this.updateNavball(o, pv, tgt);
     this.updateHudPanels(dt, playerEl, tgt);
     this.hud.tick();
   }
 
-  // ターゲット軌道面を通過した自弾の位置を、しばらくの間マーカーとして表示する
-  private updatePlaneCrossMarkers(o: Vec3, dt: number): void {
-    this.planeCrossMarks = this.planeCrossMarks.filter((m) => {
+  // 自機位置の地表影(円柱近似 + 縁のぼかし)による日照率 0..1
+  private shadowLitFactor(r: Vec3): number {
+    const along = dot(r, this.sunDirV);
+    if (along >= 0) return 1; // 太陽側
+    const perp = len(addScaled(r, this.sunDirV, -along));
+    return Math.min(1, Math.max(0, (perp - R_EARTH) / C.SHADOW_PENUMBRA));
+  }
+
+  // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
+  private updateBoardMarkers(o: Vec3, dt: number, tgt: Ship | null): void {
+    if (!tgt) this.boardMarks.length = 0;
+    this.boardMarks = this.boardMarks.filter((m) => {
       m.age += dt;
-      return m.age < C.PLANE_CROSS_LIFETIME;
+      return m.age < C.BOARD_MARK_LIFETIME;
     });
-    for (let i = 0; i < C.MAX_PLANE_CROSS_MARKS; i++) {
-      const key = `pc${i}`;
-      const m = this.planeCrossMarks[i];
-      if (!m) {
+    for (let i = 0; i < C.MAX_BOARD_MARKS; i++) {
+      const key = `bh${i}`;
+      const m = this.boardMarks[i];
+      if (!m || !tgt) {
         this.hud.hideMarker(key);
         continue;
       }
-      const p = this.project(sub(m.pos, o));
-      this.hud.marker(key, 'mk-planecross', '·', p.x, p.y, p.front);
+      const p = this.project(sub(add(tgt.state.r, m.off), o));
+      const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
+      this.hud.marker(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
     }
+  }
+
+  // Navball: 機体姿勢と各基準方向(ワールド)を渡して姿勢儀を描画する
+  private updateNavball(o: Vec3, pv: Vec3, tgt: Ship | null): void {
+    if (!this.player.alive) {
+      this.navball.setVisible(false);
+      return;
+    }
+    this.navball.setVisible(true);
+    const pro = norm(pv);
+    const h = norm(cross(o, pv));
+    this.navball.update(this.player.att.q, {
+      earthDown: scale(norm(o), -1),
+      prograde: pro,
+      normal: h,
+      radialOut: cross(pro, h),
+      target: tgt ? norm(sub(tgt.state.r, o)) : null,
+    });
   }
 
   private setObjAttitude(s: Ship): void {
@@ -1019,6 +1139,8 @@ export class Game {
         peAlt: playerEl ? playerEl.peAlt : NaN,
         incDeg: playerEl ? playerEl.incDeg : NaN,
         period: playerEl ? playerEl.period : NaN,
+        qdyn: this.qdyn,
+        hullTemp: this.hullTemp,
         shots: this.shots,
         kills: this.kills,
         total: this.enemies.length,
