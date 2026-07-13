@@ -161,12 +161,14 @@ export class Game {
   private boardMarks: { off: Vec3; age: number }[] = [];
 
   private readonly glowTex: THREE.Texture;
-  private readonly playerOrbitLine = new OrbitLine(0x35e0ff, 0.55);
+  // 軌道線もモノトーン + オレンジアクセントの配色: 自機 = 明るいグレー、
+  // ターゲット = オレンジ(注目対象)、計画軌道 = 白(最も明るい = 未来)。
+  private readonly playerOrbitLine = new OrbitLine(0xbfc9d4, 0.55);
   // ターゲット軌道は自機軌道とほぼ重なるケースが多い(近傍ランデブー狙いのため)。
-  // 同系色に埋もれて「表示されていない」ように見えないよう、暖色で強い不透明度にし、
+  // 埋もれて「表示されていない」ように見えないよう強い不透明度にし、
   // renderOrder を自機軌道より上げて透明オブジェクトの描画順に依存せず必ず上に描く。
-  private readonly targetOrbitLine = new OrbitLine(0xffd23d, 0.9);
-  private readonly plannedOrbitLine = new OrbitLine(0xff5fd0, 0.85);
+  private readonly targetOrbitLine = new OrbitLine(0xff6a00, 0.9);
+  private readonly plannedOrbitLine = new OrbitLine(0xffffff, 0.9);
   private readonly enemyOrbitLines: OrbitLine[] = [];
 
   // 軌道計画モード
@@ -205,6 +207,8 @@ export class Game {
   private readonly plumeCore: THREE.Mesh;
   private readonly plumeOuter: THREE.Mesh;
   private thrustVizDir: Vec3 | null = null; // 現在の推力方向(ワールド、噴射エフェクト用)
+  private thrustAccelVec: Vec3 = v3(); // 現在の推力加速度(ワールド、ベルト物理の慣性力用)
+  private prevBodyW = v3(); // 前フレームの機体角速度(ベルト物理の角加速度推定用)
   private readonly rcsPuffs: THREE.Mesh[] = []; // RCS ブロック位置の噴射パフ(4基)
   private readonly sunLight: THREE.DirectionalLight;
   private readonly ambient: THREE.AmbientLight;
@@ -235,8 +239,16 @@ export class Game {
   private magPickups: MagPickup[] = [];
   private resupplyCheckAt = C.RESUPPLY_CHECK_INTERVAL; // [sim s]
   private clankCd = 0; // 薬莢接触音のレート制限 [実 s]
+  private beltFeed = 0; // 給弾の進み(0..1、表示用に平滑化)
   private readonly beltGroup = new THREE.Group();
   private readonly beltLinks: THREE.Group[] = [];
+  // ベルトのたわみは物理演算(Verlet 積分 + 距離拘束)で行う。位置は機体座標系
+  // (機体原点基準)。無重力(自由落下軌道)なので重力そのものは効かず、
+  // 自機の推力加速度とスピン(角速度・角加速度)による慣性力(擬似力)だけが
+  // ベルトを揺らす。
+  private beltPos: THREE.Vector3[] = [];
+  private beltPrevPos: THREE.Vector3[] = [];
+  private beltInit = false;
   private hudTimer = 0;
   private listTimer = 0;
   private readonly earthPhase0 = Math.random() * Math.PI * 2;
@@ -341,9 +353,10 @@ export class Game {
         maxHp: spec.hp,
         alive: true,
       };
+      ship.obj.scale.setScalar(C.ENEMY_SCALE);
       this.enemies.push(ship);
       this.scene.add(ship.obj);
-      const line = new OrbitLine(0x9a5230, 0.3);
+      const line = new OrbitLine(0x565b63, 0.35);
       this.enemyOrbitLines.push(line);
       this.scene.add(line.line);
     }
@@ -468,6 +481,7 @@ export class Game {
       this.lastSimDt = 0;
       this.sfx.setThrust(false);
       this.thrustVizDir = null;
+      this.thrustAccelVec = v3();
       this.input.takeClicks();
     }
     if (this.phase !== 'playing') {
@@ -632,7 +646,7 @@ export class Game {
   private updateMapPlanning(dt: number): void {
     const el = elementsFromState(this.player.state.r, this.player.state.v);
     if (!el || el.e >= 0.98 || !isFinite(el.period)) {
-      this.hud.setPlanPanel('<div style="color:#c62f0f">現在の軌道では計画できません(楕円軌道が必要)</div>');
+      this.hud.setPlanPanel('<div style="color:#ff6a00">現在の軌道では計画できません(楕円軌道が必要)</div>');
       this.input.takeClicks();
       return;
     }
@@ -659,7 +673,7 @@ export class Game {
     const nuNow = trueAnomalyAt(el, this.player.state.r);
     if (this.editNu === null) {
       this.hud.setPlanPanel(
-        '<div style="color:#8891a3">自機軌道(水色)をクリックしてマニューバノードを配置(時間は進み続ける)<br>' +
+        '<div style="color:#7d838c">自機軌道(グレー)をクリックしてマニューバノードを配置(時間は進み続ける)<br>' +
           '[Tab] ターゲット切替 / 左ドラッグ・ホイールで視点 / [M] 戦闘ビューへ</div>',
       );
     } else {
@@ -832,9 +846,13 @@ export class Game {
       this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
     }
     this.sfx.setThrust(thrustFn !== null);
-    this.thrustVizDir = thrustFn
-      ? norm(thrustFn(this.player.state.r, this.player.state.v))
-      : null;
+    if (thrustFn) {
+      this.thrustAccelVec = thrustFn(this.player.state.r, this.player.state.v);
+      this.thrustVizDir = norm(this.thrustAccelVec);
+    } else {
+      this.thrustAccelVec = v3();
+      this.thrustVizDir = null;
+    }
 
     // 自機の追加加速度 = 推力 + 環境(大気抵抗 + J2 + 月・太陽摂動)
     const playerAccel: ExtraAccel = thrustFn
@@ -1208,18 +1226,19 @@ export class Game {
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv
     p.state.v = addScaled(p.state.v, fwd, -C.RECOIL_DV);
 
-    // 薬莢: 左舷へ排出(右舷はマガジンベルトがあるため)、激しくタンブリング
+    // 薬莢: 左舷へ排出(右舷はマガジンベルトがあるため)。初速・回転とも
+    // 従来より抑え、ゆっくり漂いながら緩やかに回転する見た目にする。
     const casing: Casing = {
       state: {
         r: add(muzzle, scale(right, -1.4)),
         v: add(
           p.state.v,
-          add(scale(right, -(2.2 + Math.random() * 1.2)), add(scale(up, randSym(0.8)), randVec(0.4))),
+          add(scale(right, -(0.5 + Math.random() * 0.3)), add(scale(up, randSym(0.2)), randVec(0.1))),
         ),
       },
       att: {
         q: randomQuat(),
-        w: v3(randSym(12), randSym(12), randSym(12)),
+        w: v3(randSym(2.5), randSym(2.5), randSym(2.5)),
         inertia: v3(1, 0.3, 1), // 円筒: 長軸まわりが小さい
       },
       bornSim: this.simTime,
@@ -1330,9 +1349,11 @@ export class Game {
     ship.alive = false;
     ship.obj.visible = false;
     this.sfx.explosion();
-    this.spawnFlash(clone(ship.state.r), clone(ship.state.v), 10, 110, 1.1, 0xffb36b);
-    this.spawnFlash(clone(ship.state.r), clone(ship.state.v), 6, 40, 0.5, 0xfffbe8);
-    this.spawnDebris(ship);
+    // 敵機は自機の 10 倍サイズなので、爆発・破片も見合った大きさにする
+    const sc = ship === this.player ? 1 : C.ENEMY_SCALE;
+    this.spawnFlash(clone(ship.state.r), clone(ship.state.v), 10 * sc, 110 * sc, 1.1, 0xffb36b);
+    this.spawnFlash(clone(ship.state.r), clone(ship.state.v), 6 * sc, 40 * sc, 0.5, 0xfffbe8);
+    this.spawnDebris(ship, sc);
 
     if (ship === this.player) {
       this.phase = 'lost';
@@ -1356,7 +1377,7 @@ export class Game {
         try {
           const first = localStorage.getItem(C.STAGE1_CLEARED_KEY) !== '1';
           localStorage.setItem(C.STAGE1_CLEARED_KEY, '1');
-          if (first) unlockNote = '<br><span style="color:#e0630f;font-weight:600">第二ステージ(モルニヤ戦域)が解放された</span>';
+          if (first) unlockNote = '<br><span style="color:#ff6a00">第二ステージ(モルニヤ戦域)が解放された</span>';
         } catch {
           /* localStorage 不可なら解放なし */
         }
@@ -1373,9 +1394,9 @@ export class Game {
   }
 
   // 撃破デブリ: 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果
-  private spawnDebris(ship: Ship): void {
+  private spawnDebris(ship: Ship, sc = 1): void {
     const accent = ship === this.player ? 0x9fd8e8 : 0xff6a4a;
-    this.spawnFragments(ship.state.r, ship.state.v, 11, accent, 0.5, 1.6, 2.8);
+    this.spawnFragments(ship.state.r, ship.state.v, 11, accent, 0.5 * sc, 1.6 * sc, 2.8);
   }
 
   // 破片を飛散させる共通処理(撃破デブリ・被弾の欠片)
@@ -1612,23 +1633,18 @@ export class Game {
       mp.obj.quaternion.set(mp.att.q.x, mp.att.q.y, mp.att.q.z, mp.att.q.w);
     }
 
-    // マガジンベルト: 残数ぶんだけ表示し、無重力で漂うように揺らす。
-    // 先頭(給弾中)リンクは機体に固定、遠いリンクほど振幅を大きくする。
+    // マガジンベルト: 残数ぶんだけ表示。給弾の進みに応じてベルト全体が
+    // 連続的に機体側へスライドし(撃つたび 1/16 リンクずつ)、マガジンを
+    // 消費し切ると feed が 1→0 に巻き戻ると同時にリンクが 1 つ減るので、
+    // 見た目には途切れなくベルトが取り込まれ続ける。
     const beltCount = Math.min(this.magsLeft, C.BELT_MAX_VISIBLE);
-    const bt = performance.now() / 1000;
-    for (let i = 0; i < this.beltLinks.length; i++) {
-      const link = this.beltLinks[i]!;
-      link.visible = this.player.alive && i < beltCount;
-      if (!link.visible) continue;
-      const sway = Math.min(i * 0.18, 1.2);
-      link.position.set(
-        0.9 + i * MAG_BELT_PITCH,
-        Math.sin(bt * 0.6 + i * 0.7) * 0.09 * sway,
-        Math.cos(bt * 0.45 + i * 0.55) * 0.07 * sway,
-      );
-      link.rotation.z = Math.sin(bt * 0.5 + i * 0.8) * 0.03 * sway;
-      link.rotation.x = Math.cos(bt * 0.4 + i * 0.6) * 0.03 * sway;
+    const targetFeed = 1 - this.roundsInMag / C.MAG_ROUNDS;
+    if (targetFeed < this.beltFeed - 0.5) {
+      this.beltFeed = targetFeed; // マガジン消費で巻き戻り(リンク減と同時なので連続)
+    } else {
+      this.beltFeed += (targetFeed - this.beltFeed) * Math.min(1, dt * 12);
     }
+    this.updateBeltPhysics(dt, beltCount);
     for (const d of this.debris) {
       d.obj.position.set(d.state.r.x - o.x, d.state.r.y - o.y, d.state.r.z - o.z);
       d.obj.quaternion.set(d.att.q.x, d.att.q.y, d.att.q.z, d.att.q.w);
@@ -1670,7 +1686,7 @@ export class Game {
       }
     }
 
-    // 計画軌道(マゼンタ): マップ編集中はプレビュー、戦闘中は確定ノードの目標軌道
+    // 計画軌道(白): マップ編集中はプレビュー、戦闘中は確定ノードの目標軌道
     let plannedEl: Elements | null = null;
     if (this.mapMode && playerEl) {
       plannedEl = this.plannedPreview(playerEl);
@@ -1742,6 +1758,101 @@ export class Game {
       radialOut: cross(pro, h),
       target: tgt ? norm(sub(tgt.state.r, o)) : null,
     });
+  }
+
+  // マガジンベルトのたわみを物理演算(Verlet 積分 + 距離拘束)で解く。
+  // 軌道上は自由落下(無重力)なので、通常の重力によるたわみは発生しない。
+  // 代わりに、機体自身の推力加速度(並進)とスピン(角速度・角加速度)が
+  // 生む慣性力(擬似力)——並進慣性 -a、遠心力 -ω×(ω×r)、オイラー力 -α×r、
+  // コリオリ力 -2ω×v——だけがベルトを機体座標系の中で揺らす。
+  // ベルトは「接合部で連結されているが曲げられる」チェーンとして、各リンクの
+  // 節点を距離拘束(剛体棒)でつなぐ position-based dynamics で表現する。
+  private updateBeltPhysics(dt: number, beltCount: number): void {
+    const n = this.beltLinks.length;
+    if (!this.beltInit) {
+      this.beltInit = true;
+      for (let i = 0; i < n; i++) {
+        const p = new THREE.Vector3(0.9 + (i + 1) * MAG_BELT_PITCH, 0, 0);
+        this.beltPos.push(p.clone());
+        this.beltPrevPos.push(p.clone());
+      }
+    }
+
+    // 機体の角加速度を前フレームとの差分から推定(body-frame ω の差分)
+    const w = this.player.att.w;
+    const alpha =
+      dt > 1e-6 ? v3((w.x - this.prevBodyW.x) / dt, (w.y - this.prevBodyW.y) / dt, (w.z - this.prevBodyW.z) / dt) : v3();
+    this.prevBodyW = v3(w.x, w.y, w.z);
+
+    // 推力加速度をワールド→機体座標系へ変換(擬似力は加速度と逆向き)
+    const qInv = new THREE.Quaternion(
+      this.player.att.q.x,
+      this.player.att.q.y,
+      this.player.att.q.z,
+      this.player.att.q.w,
+    ).invert();
+    const aThrustWorld = this.thrustAccelVec;
+    const aThrustBody = new THREE.Vector3(aThrustWorld.x, aThrustWorld.y, aThrustWorld.z).applyQuaternion(qInv);
+
+    const h = Math.min(dt, 0.05); // 積分刻みの上限(大きな dt でのはみ出し防止)
+    const damping = 0.985; // 空気抵抗の無い環境でも数値的な発散を防ぐための減衰
+    const wV = new THREE.Vector3(w.x, w.y, w.z);
+    const alphaV = new THREE.Vector3(alpha.x, alpha.y, alpha.z);
+
+    for (let i = 0; i < n; i++) {
+      const pos = this.beltPos[i]!;
+      const prev = this.beltPrevPos[i]!;
+      const vel = new THREE.Vector3().copy(pos).sub(prev); // 前フレームの変位(Verlet の速度相当)
+
+      // 擬似力による加速度: -a_thrust - α×r - ω×(ω×r) - 2ω×v
+      const accel = new THREE.Vector3(-aThrustBody.x, -aThrustBody.y, -aThrustBody.z);
+      accel.sub(new THREE.Vector3().crossVectors(alphaV, pos));
+      accel.sub(new THREE.Vector3().crossVectors(wV, new THREE.Vector3().crossVectors(wV, pos)));
+      accel.sub(new THREE.Vector3().crossVectors(wV, vel).multiplyScalar(2 / Math.max(h, 1e-4)));
+
+      const next = new THREE.Vector3()
+        .copy(pos)
+        .addScaledVector(vel, damping)
+        .addScaledVector(accel, h * h);
+      prev.copy(pos);
+      pos.copy(next);
+    }
+
+    // 距離拘束(剛体棒): 先頭はベルトの給弾進みに応じて動くアンカーに固定。
+    // 数回反復して各リンク間隔を MAG_BELT_PITCH に収束させる。
+    const anchor = new THREE.Vector3(0.9 - this.beltFeed * MAG_BELT_PITCH, 0, 0);
+    for (let iter = 0; iter < 4; iter++) {
+      for (let i = 0; i < n; i++) {
+        const a = i === 0 ? anchor : this.beltPos[i - 1]!;
+        const b = this.beltPos[i]!;
+        const delta = new THREE.Vector3().copy(b).sub(a);
+        const dist = delta.length();
+        if (dist < 1e-6) continue;
+        const corr = delta.multiplyScalar((dist - MAG_BELT_PITCH) / dist);
+        if (i === 0) {
+          b.sub(corr); // アンカー側は固定、リンク側だけ補正
+        } else {
+          b.addScaledVector(corr, -0.5);
+          a.addScaledVector(corr, 0.5);
+        }
+      }
+    }
+
+    // 表示: 各リンクをその節点の手前(アンカー or 前リンクの節点)に置き、
+    // 節点への方向へ向ける(ローカル +X = ベルト方向)。
+    let prevPoint = anchor;
+    const xAxis = new THREE.Vector3(1, 0, 0);
+    for (let i = 0; i < n; i++) {
+      const link = this.beltLinks[i]!;
+      link.visible = this.player.alive && i < beltCount;
+      const pos = this.beltPos[i]!;
+      link.position.copy(prevPoint);
+      const dir = new THREE.Vector3().copy(pos).sub(prevPoint).normalize();
+      if (dir.lengthSq() > 1e-8) {
+        link.quaternion.setFromUnitVectors(xAxis, dir);
+      }
+      prevPoint = pos;
+    }
   }
 
   // RCS 姿勢制御の噴射パフと音。4 基のスラスタブロック(機体 ±0.75, ±0.65, z=1.6)

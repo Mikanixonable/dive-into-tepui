@@ -46,19 +46,16 @@ export interface EnemyRow {
   targeted: boolean;
 }
 
-// デザイン方針: パネル・ボタン・リザルト画面などの「UIクロム」はライトグレーの
-// ニューモーフィズム(2 方向のソフトシャドウで浮き出た質感)+ オレンジを僅かな
-// アクセントとして使う。一方、3D シーン上に直接重なるスクリーン投影マーカー
-// (プログレード・ターゲット・ノードなど)は、宇宙空間や明るい地球の両方を
-// 背景にしても意味が伝わるよう、既存の機能的な色分け(緑=プログレード、
-// 紫=ノード、金=ターゲット等)を維持しつつオレンジ系アクセントと調和させる。
-const INK = '#3d4451'; // 本文色(明るい面でも十分なコントラスト)
-const INK_SOFT = '#8891a3'; // ラベル・キャプション色
-const ACCENT = '#ff7a1f'; // オレンジ・アクセント(唯一のアクセントカラー)
-const ACCENT_DEEP = '#e0630f'; // アクセントの濃色(警告・強調)
-const SURFACE = 'rgba(234, 237, 242, 0.94)'; // パネル面(ライトグレー)
-const SHADOW_LIGHT = 'rgba(255, 255, 255, 0.85)';
-const SHADOW_DARK = 'rgba(163, 177, 198, 0.55)';
+// デザイン方針: ダークテーマ。ニューモーフィズムは廃止し、モノトーン
+// (ほぼ無彩色のグレースケール)+ 彩度の高いオレンジ 1 色をアクセントに使う
+// フラットなパネルにする。スクリーン投影マーカーもモノトーンに揃え、
+// 「注目すべきもの」(ターゲット・リード・マニューバ・補給)だけをオレンジで示す。
+const INK = '#e6e8eb'; // 本文色
+const INK_SOFT = '#7d838c'; // ラベル・キャプション色
+const ACCENT = '#ff6a00'; // 彩度の高いオレンジ(唯一のアクセントカラー)
+const ACCENT_SOFT = '#ff9040'; // アクセントの淡色
+const SURFACE = 'rgba(13, 15, 18, 0.82)'; // パネル面(ほぼ黒)
+const EDGE = 'rgba(255, 255, 255, 0.09)'; // 細いエッジライン
 
 const STYLE = `
 #hud, #hud * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -70,41 +67,38 @@ const STYLE = `
 }
 #hud .panel {
   position: absolute; background: ${SURFACE};
-  border-radius: 14px; padding: 10px 14px; line-height: 1.55;
-  backdrop-filter: blur(6px);
-  box-shadow: 7px 7px 14px ${SHADOW_DARK}, -6px -6px 13px ${SHADOW_LIGHT};
+  border: 1px solid ${EDGE}; border-radius: 4px;
+  padding: 10px 14px; line-height: 1.55; backdrop-filter: blur(4px);
 }
 #hud .panel h3 {
   font-size: 11px; letter-spacing: 2.5px; color: ${ACCENT};
-  border-bottom: 1px solid rgba(224, 99, 15, 0.22); margin-bottom: 6px; padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 106, 0, 0.25); margin-bottom: 6px; padding-bottom: 4px;
   font-weight: 600;
 }
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
 #hud .row .k { color: ${INK_SOFT}; }
-#hud .row .v { color: ${INK}; min-width: 90px; text-align: right; font-weight: 600; }
+#hud .row .v { color: ${INK}; min-width: 90px; text-align: right; }
 #hud-status { top: 12px; left: 12px; min-width: 230px; }
 #hud-orbit { top: 236px; left: 12px; min-width: 230px; }
 #hud-target { top: 12px; right: 12px; min-width: 240px; }
 #hud-enemies { top: 348px; right: 12px; min-width: 240px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
-#hud-enemies .erow.tgt { color: ${ACCENT_DEEP}; font-weight: 600; }
+#hud-enemies .erow.tgt { color: ${ACCENT}; }
 #hud-controls {
   position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
-  background: ${SURFACE}; border-radius: 999px; padding: 7px 20px;
-  box-shadow: 5px 5px 10px ${SHADOW_DARK}, -5px -5px 10px ${SHADOW_LIGHT};
+  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px; padding: 6px 18px;
   color: ${INK_SOFT}; font-size: 11px; text-align: center; white-space: nowrap;
 }
 #hud-hint {
   position: absolute; bottom: 200px; left: 50%; transform: translateX(-50%);
-  background: ${SURFACE}; border-radius: 10px; padding: 8px 18px;
-  box-shadow: 5px 5px 10px ${SHADOW_DARK}, -5px -5px 10px ${SHADOW_LIGHT};
-  color: ${ACCENT_DEEP}; font-size: 14px; font-weight: 600;
+  background: ${SURFACE}; border: 1px solid rgba(255, 106, 0, 0.35); border-radius: 4px;
+  padding: 8px 18px;
+  color: ${ACCENT_SOFT}; font-size: 14px;
   transition: opacity 0.4s; opacity: 0; text-align: center;
 }
 #hud-toast {
   position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
-  background: ${SURFACE}; border-radius: 14px; padding: 14px 26px;
-  box-shadow: 7px 7px 14px ${SHADOW_DARK}, -6px -6px 13px ${SHADOW_LIGHT};
+  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px; padding: 14px 26px;
   color: ${INK}; font-size: 15px; text-align: center;
   transition: opacity 1s; opacity: 0; line-height: 1.8;
 }
@@ -116,45 +110,43 @@ const STYLE = `
 }
 .mk .sym { display: block; font-size: 22px; line-height: 1; }
 .mk .lbl { display: block; font-size: 10px; margin-top: 2px; letter-spacing: 1px; }
-.mk-boresight { color: #7df0ff; font-size: 18px; }
+.mk-boresight { color: #dfe3e8; font-size: 18px; }
 .mk-target { color: ${ACCENT}; }
-.mk-enemy { color: rgba(255, 154, 77, 0.5); }
-.mk-lead { color: #ff5f5f; }
-.mk-pro { color: #8aff8a; }
-.mk-retro { color: #8aff8a; }
-.mk-node { color: #c9a0ff; }
-.mk-boardhit { color: #a5e4ff; text-shadow: 0 0 5px rgba(120,230,255,0.9), 0 0 10px rgba(102,220,255,0.5); }
+.mk-enemy { color: rgba(230, 232, 235, 0.35); }
+.mk-lead { color: ${ACCENT}; }
+.mk-pro { color: #cfd6dd; }
+.mk-retro { color: #cfd6dd; }
+.mk-node { color: #8b93a0; }
+.mk-boardhit { color: #ffffff; text-shadow: 0 0 5px rgba(255,255,255,0.9), 0 0 10px rgba(255,255,255,0.45); }
 .mk-boardhit .sym { font-size: 8px; }
-.mk-mnode { color: #ff5fd0; }
-.mk-burn { color: #ffd23d; text-shadow: 0 0 8px rgba(255,210,61,0.8); }
-.mk-self { color: #35e0ff; }
-.mk-ammo { color: #4de8ff; text-shadow: 0 0 6px rgba(77,232,255,0.7), 0 0 3px #000; }
-#hud .warn-hot { color: #c62f0f; }
+.mk-mnode { color: ${ACCENT_SOFT}; }
+.mk-burn { color: ${ACCENT}; text-shadow: 0 0 8px rgba(255,106,0,0.7); }
+.mk-self { color: #dfe3e8; }
+.mk-ammo { color: ${ACCENT_SOFT}; text-shadow: 0 0 6px rgba(255,144,64,0.6), 0 0 3px #000; }
+#hud .warn-hot { color: ${ACCENT}; }
 #hud-plan {
   position: absolute; bottom: 40px; left: 12px; min-width: 280px;
 }
-#hud-plan h3 { color: #d868c8; border-bottom-color: rgba(216,104,200,0.28); }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(224, 228, 234, 0.88); backdrop-filter: blur(4px);
+  background: rgba(6, 7, 9, 0.82); backdrop-filter: blur(3px);
   flex-direction: column; text-align: center;
 }
 #hud-end h1 { font-size: 34px; letter-spacing: 6px; margin-bottom: 18px; }
-#hud-end.win h1 { color: #2a9d6f; text-shadow: 0 2px 10px rgba(42,157,111,0.25); }
-#hud-end.lose h1 { color: #c62f0f; text-shadow: 0 2px 10px rgba(198,47,15,0.25); }
+#hud-end.win h1 { color: ${INK}; text-shadow: 0 0 18px rgba(230,232,235,0.35); }
+#hud-end.lose h1 { color: ${ACCENT}; text-shadow: 0 0 18px rgba(255,106,0,0.4); }
 #hud-end .detail {
   font-size: 15px; line-height: 2; color: ${INK};
-  background: ${SURFACE}; border-radius: 16px; padding: 18px 30px;
-  box-shadow: 8px 8px 16px ${SHADOW_DARK}, -7px -7px 15px ${SHADOW_LIGHT};
+  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px; padding: 18px 30px;
 }
-#hud-end .restart { margin-top: 22px; color: ${ACCENT_DEEP}; font-size: 13px; font-weight: 600; }
+#hud-end .restart { margin-top: 22px; color: ${ACCENT_SOFT}; font-size: 13px; }
 #hud-help {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  display: none; min-width: 480px;
+  display: none; min-width: 480px; max-height: 86vh; overflow-y: auto;
 }
 #hud-help table { border-collapse: collapse; width: 100%; }
 #hud-help td { padding: 3px 10px; color: ${INK}; }
-#hud-help td.key { color: ${ACCENT_DEEP}; text-align: right; white-space: nowrap; font-weight: 600; }
+#hud-help td.key { color: ${ACCENT_SOFT}; text-align: right; white-space: nowrap; }
 `;
 
 function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLElement {
@@ -270,8 +262,8 @@ export class Hud {
         <tr><td class="key">M</td><td>軌道計画モード。地球中心ビューで自機軌道をクリックしノード配置、W/S・A/D・Q/E で Δv 調整、再度 M で確定(時間は進み続けるのでワープも可)</td></tr>
         <tr><td class="key">N</td><td>マニューバノードへ自動タイムワープ(実行点の直前で自動解除)</td></tr>
         <tr><td class="key">X</td><td>マニューバノードを削除</td></tr>
-        <tr><td class="key">◆NODE / ⬢BURN</td><td>マニューバ実行点と噴射ガイド。BURN の方向へ加速し、計画軌道(マゼンタ)に十分近づくと達成</td></tr>
-        <tr><td class="key">金色の軌道線</td><td>ターゲットの軌道(自機軌道とほぼ重なる場合は上に重ねて描画)</td></tr>
+        <tr><td class="key">◆NODE / ⬢BURN</td><td>マニューバ実行点と噴射ガイド。BURN の方向へ加速し、計画軌道(白)に十分近づくと達成</td></tr>
+        <tr><td class="key">オレンジの軌道線</td><td>ターゲットの軌道(自機軌道とほぼ重なる場合は上に重ねて描画)</td></tr>
         <tr><td class="key">弾薬 / ▣ AMMO</td><td>16発でマガジン1連を消費(右舷のベルトから自動給弾)。残弾が少なくなると付近の軌道に補給が投入されるので、▣ マーカーへ接近して回収</td></tr>
         <tr><td class="key">Space / 右クリック</td><td>機関砲発射 (ワープ×4以下)。撃ち始めは起動音とともに一瞬遅れて連射開始</td></tr>
         <tr><td class="key">, / .</td><td>タイムワープ 減 / 増</td></tr>
@@ -347,7 +339,7 @@ export class Hud {
     const body = this.els.get('tgtbody');
     if (!body) return;
     if (!t) {
-      body.innerHTML = '<div style="color:#8891a3">ターゲットなし</div>';
+      body.innerHTML = '<div style="color:#7d838c">ターゲットなし</div>';
       return;
     }
     body.innerHTML = `
@@ -367,7 +359,7 @@ export class Hud {
     const list = this.els.get('elist');
     if (!list) return;
     if (rows.length === 0) {
-      list.innerHTML = '<div style="color:#8891a3">残存目標なし</div>';
+      list.innerHTML = '<div style="color:#7d838c">残存目標なし</div>';
       return;
     }
     list.innerHTML = rows
@@ -402,16 +394,16 @@ export class Hud {
       row('ノードまで', fmtTime(tofSec));
     if (el) {
       s +=
-        `<div style="margin-top:4px;color:#d868c8;font-size:11px;letter-spacing:1px">計画軌道</div>` +
+        `<div style="margin-top:4px;color:#e6e8eb;font-size:11px;letter-spacing:1px">計画軌道</div>` +
         row('遠地点 AP', fmtDist(el.apAlt)) +
         row('近地点 PE', fmtDist(el.peAlt)) +
         row('傾斜角 INC', isFinite(el.incDeg) ? `${el.incDeg.toFixed(2)}°` : '---') +
         row('周期 PRD', fmtTime(el.period));
       if (isFinite(el.peAlt) && el.peAlt < 120e3) {
-        s += `<div style="color:#c62f0f;margin-top:2px">⚠ 近地点が大気圏内</div>`;
+        s += `<div style="color:#ff6a00;margin-top:2px">⚠ 近地点が大気圏内</div>`;
       }
     }
-    s += `<div style="margin-top:6px;color:#8891a3;font-size:11px">[クリック] ノード移動 [X] 削除 [V] 微調整 [M] 確定して戻る(時間は進み続ける)</div>`;
+    s += `<div style="margin-top:6px;color:#7d838c;font-size:11px">[クリック] ノード移動 [X] 削除 [V] 微調整 [M] 確定して戻る(時間は進み続ける)</div>`;
     return s;
   }
 
