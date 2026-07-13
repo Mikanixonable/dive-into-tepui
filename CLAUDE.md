@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-A playable LEO (low Earth orbit) shooting game: TypeScript + Webpack + npm, Three.js `WebGPURenderer` (via the `three/webgpu` entry point). Real-scale/real-time Earth orbit, KSP-style frame-based RCS translation (orbital / target reference frames), manual rotation with RCS damping, time warp, lead-marker gunnery, shell casings and destruction debris on accurate orbital physics, win on destroying all 5 enemies, lose on atmospheric reentry.
+A playable LEO (low Earth orbit) shooting game: TypeScript + Webpack + npm, Three.js `WebGPURenderer` (via the `three/webgpu` entry point). Real-scale/real-time Earth orbit, KSP-style frame-based RCS translation (orbital / target reference frames), manual rotation with RCS damping, time warp, lead-marker gunnery, shell casings and destruction debris on accurate orbital physics, win on destroying all 5 enemies, lose on atmospheric reentry (drag decay → adiabatic-heating overheat or dynamic-pressure breakup). Also: Earth-shadow lighting, a KSP-style navball (canvas 2D, bottom center), and target-board bullet-pass markers for aim correction.
 
 `dev.md` is explicitly marked as human-authored only ("この文書は人間のみが記入できる") — do not edit it. Read it for project context, but leave modifications to the user.
 
@@ -24,6 +24,8 @@ Physics runs on the main thread (per-entity central-gravity two-body integration
 - `src/main.ts` — entry point; WebGPU init, error overlay fallback, rAF loop driving `Game.update`.
 - `src/game/game.ts` — orchestrator: entity management, substepped integration (higher warp → more substeps, max 20s each), input→thrust/torque, segment-vs-sphere bullet collision (tunneling-proof), win/lose, render sync, HUD markers (boresight/lead/prograde/target).
 - `src/game/const.ts` — all gameplay tuning constants (thrust, warp levels, fire rate, hit radii...).
+- `src/game/navball.ts` — canvas-2D attitude ball (body frame: +X right/+Y up/+Z nose); sphere is repainted per frame via a per-pixel dot product against the body-frame Earth direction (cheap: rotate Earth dir into body frame once, not per pixel).
+- `src/physics/atmosphere.ts` — piecewise-exponential density model (Vallado table, 0–1000 km). Drag (Cd·A/m per entity class, co-rotating atmosphere) is applied as the RK4 extra-acceleration; player hull temp uses Sutton–Graves stagnation heating + Stefan-Boltzmann radiative cooling (see `updateThermal` in game.ts).
 - `src/game/{input,camera,hud,audio,entities}.ts` — keyboard/mouse state + edge-trigger queue; ship-centered chase camera (up = radial); DOM-overlay HUD (panels, screen-projected markers, help, end screen); WebAudio synth SFX (no assets); entity type defs.
 - `src/physics/orbital.ts` — central-gravity RK4 for one entity with optional extra-acceleration callback (thrust, evaluated per RK4 stage), state→orbital elements, ellipse sampling for orbit lines. Pure functions.
 - `src/physics/attitude.ts` — rigid-body attitude: quaternion + body-frame ω via Euler's equations. ω integrated with RK4 + kinetic-energy projection (naive explicit integration diverges — this is what makes the Dzhanibekov effect on debris stable long-term). Pure functions.
@@ -39,7 +41,7 @@ Physics runs on the main thread (per-entity central-gravity two-body integration
 - Additive-blended materials need explicit `transparent: true`.
 - Headless-Chrome screenshots work with `--headless=new --enable-gpu --enable-unsafe-webgpu --disable-gpu-sandbox --no-sandbox` (flaky; retry a few times).
 
-Not yet implemented: atmospheric drag, J2/tidal perturbations, Sun/Moon perturbation, enemy AI (targets are passive), aurora effects, cloud shadows, sound assets, ECS. See `dev.md` for design direction.
+Not yet implemented: J2/tidal perturbations, Sun/Moon perturbation, enemy AI (targets are passive), aurora effects, cloud shadows, sound assets, ECS. See `dev.md` for design direction.
 
 ## Project concept (from dev.md)
 

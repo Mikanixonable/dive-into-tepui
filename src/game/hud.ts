@@ -16,6 +16,8 @@ export interface StatsData {
   peAlt: number;
   incDeg: number;
   period: number;
+  qdyn: number; // 動圧 [Pa]
+  hullTemp: number; // 機体表面温度 [K]
   shots: number;
   kills: number;
   total: number;
@@ -73,7 +75,7 @@ const STYLE = `
   color: #4e7c8c; font-size: 11px; text-align: center; white-space: nowrap;
 }
 #hud-hint {
-  position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: 200px; left: 50%; transform: translateX(-50%);
   color: #ffd27a; font-size: 14px; text-shadow: 0 0 6px #000;
   transition: opacity 0.4s; opacity: 0; text-align: center;
 }
@@ -97,8 +99,9 @@ const STYLE = `
 .mk-pro { color: #8aff8a; }
 .mk-retro { color: #8aff8a; }
 .mk-node { color: #c9a0ff; }
-.mk-planecross { color: #ffffff; opacity: 0.55; }
-.mk-planecross .sym { font-size: 14px; }
+.mk-boardhit { color: #8fdbff; text-shadow: 0 0 6px #6ff, 0 0 12px rgba(102,255,255,0.7); }
+.mk-boardhit .sym { font-size: 16px; }
+#hud .warn-hot { color: #ff6a5f; }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
   background: rgba(2, 8, 12, 0.72); flex-direction: column; text-align: center;
@@ -179,7 +182,9 @@ export class Hud {
       <div class="row"><span class="k">遠地点 AP</span><span class="v" data-id="ap"></span></div>
       <div class="row"><span class="k">近地点 PE</span><span class="v" data-id="pe"></span></div>
       <div class="row"><span class="k">傾斜角 INC</span><span class="v" data-id="inc"></span></div>
-      <div class="row"><span class="k">周期 PRD</span><span class="v" data-id="prd"></span></div>`;
+      <div class="row"><span class="k">周期 PRD</span><span class="v" data-id="prd"></span></div>
+      <div class="row"><span class="k">動圧 Q</span><span class="v" data-id="qdyn"></span></div>
+      <div class="row"><span class="k">機体温度</span><span class="v" data-id="temp"></span></div>`;
 
     const target = el('div', 'hud-target', this.root, 'panel');
     target.innerHTML = `
@@ -216,7 +221,8 @@ export class Hud {
         <tr><td class="key">Z (長押し)</td><td>照準ズーム (機首方向を画面中心に拡大表示、自機は非表示になる)</td></tr>
         <tr><td class="key">Tab</td><td>ターゲット切替 (近い順)。TARGET パネルに軌道要素・相対傾斜角を表示</td></tr>
         <tr><td class="key">▲AN / ▽DN マーカー</td><td>自機軌道とターゲット軌道面の交点。面変更(ノーマル/アンチノーマル)burn の目安位置</td></tr>
-        <tr><td class="key">・ マーカー</td><td>発射した弾がターゲットの軌道面を通過した位置。次弾の照準修正の目安</td></tr>
+        <tr><td class="key">✦ マーカー</td><td>ターゲット位置に自機側を向けた仮想標的面を弾が通過した点。次弾の照準修正の目安</td></tr>
+        <tr><td class="key">Navball</td><td>画面下中央の姿勢儀。青半球 = 地球方向。PRO/RET・NRM/ANM・OUT/IN・TGT/ATG を表示</td></tr>
         <tr><td class="key">Space / 左クリック</td><td>機関砲発射 (ワープ×4以下)。撃ち始めは起動音とともに一瞬遅れて連射開始</td></tr>
         <tr><td class="key">, / .</td><td>タイムワープ 減 / 増</td></tr>
         <tr><td class="key">P</td><td>一時停止</td></tr>
@@ -260,6 +266,16 @@ export class Hud {
     this.setText('pe', fmtDist(d.peAlt));
     this.setText('inc', `${d.incDeg.toFixed(2)}°`);
     this.setText('prd', fmtTime(d.period));
+    const qEl = this.els.get('qdyn');
+    if (qEl) {
+      qEl.textContent = d.qdyn >= 10 ? `${(d.qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
+      qEl.classList.toggle('warn-hot', d.qdyn > 0.5 * C.MAX_DYN_PRESSURE);
+    }
+    const tEl = this.els.get('temp');
+    if (tEl) {
+      tEl.textContent = `${d.hullTemp.toFixed(0)} K`;
+      tEl.classList.toggle('warn-hot', d.hullTemp > 0.7 * C.MAX_HULL_TEMP);
+    }
     this.setText('count', `${d.total - d.kills}/${d.total}`);
   }
 
@@ -299,7 +315,16 @@ export class Hud {
   }
 
   // マーカー(スクリーン座標)。visible=false で非表示。
-  marker(key: string, cls: string, sym: string, x: number, y: number, visible: boolean, label = ''): void {
+  marker(
+    key: string,
+    cls: string,
+    sym: string,
+    x: number,
+    y: number,
+    visible: boolean,
+    label = '',
+    opacity = 1,
+  ): void {
     let m = this.markers.get(key);
     if (!m) {
       const root = el('div', `mk-${key}`, this.root, `mk ${cls}`);
@@ -312,6 +337,7 @@ export class Hud {
     if (!visible) return;
     m.root.style.left = `${x.toFixed(1)}px`;
     m.root.style.top = `${y.toFixed(1)}px`;
+    m.root.style.opacity = opacity >= 1 ? '' : opacity.toFixed(2);
     if (m.sym.textContent !== sym) m.sym.textContent = sym;
     if (m.lbl.textContent !== label) m.lbl.textContent = label;
   }
