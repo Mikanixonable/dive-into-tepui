@@ -1,17 +1,21 @@
 // WebAudio による合成効果音(アセット不要)。
 // ブラウザの自動再生制限のため、最初のユーザー操作で unlock() を呼ぶこと。
-// --- 戦闘 BGM のシーケンスデータ(A マイナー系、64 ステップ = 8 小節ループ) ---
-// 0 = 休符。ベースは 8 分、アルペジオは裏拍に鳴らす。
-const BGM_STEP_DUR = 0.27; // 8分音符 ≈ 111 BPM
-const BGM_BASS: number[] = [
-  55, 0, 55, 0, 55, 0, 65.41, 0, 55, 0, 55, 0, 49, 0, 58.27, 0, // A A A C | A A G B♭
-];
-const BGM_PENTA = [220, 261.63, 329.63, 392, 440]; // A ペンタトニック
+// --- BGM: スティーブ・ライヒ風のアンビエント・ミニマル ---
+// 長調でも短調でもない旋法的な音集合(D を中心にした四度堆積/サス系)を、
+// 長さの異なる 2 つのパルス・パターン(16 拍と 12 拍)でゆっくり反復する。
+// 周期が互いに素なので 2 声のフェイズが少しずつずれていき(ライヒのフェイジング)、
+// その上に四度堆積のパッドと低いドローンが漂う。レトロシンセ的な柔らかい
+// 波形(sine / triangle)のみで、打楽器は使わない。
+const BGM_STEP_DUR = 0.42; // ゆっくりしたパルス
+const BGM_SCALE = [146.83, 164.81, 196.0, 220.0, 261.63, 293.66, 329.63, 392.0]; // D E G A C D E G
+const BGM_PAT_A = [0, 4, 2, 5, 3, 7, 2, 6, 0, 5, 3, 6, 2, 7, 4, 6]; // 16 拍
+const BGM_PAT_B = [7, 3, 5, 2, 6, 4, 5, 3, 6, 2, 4, 5]; // 12 拍(ポリメトリック)
+// 四度堆積のパッド(3度を含まないので長短が定まらず、空気感だけが残る)
 const BGM_PADS: number[][] = [
-  [110, 164.81, 220, 261.63], // Am
-  [87.31, 130.81, 174.61, 220], // F
-  [98, 146.83, 196, 246.94], // G
-  [110, 164.81, 220, 329.63], // Am (open)
+  [73.42, 98.0, 130.81, 196.0], // D2 G2 C3 G3
+  [82.41, 110.0, 146.83, 220.0], // E2 A2 D3 A3
+  [98.0, 130.81, 174.61, 261.63], // G2 C3 F3 C4
+  [110.0, 146.83, 196.0, 293.66], // A2 D3 G3 D4
 ];
 
 export class Sfx {
@@ -97,33 +101,45 @@ export class Sfx {
 
   private pumpBgm(): void {
     if (!this.ctx || !this.bgmGain) return;
-    // 0.5s ぶん先読みしてスケジュール(タイマー精度に依存しない)
-    while (this.bgmNextTime < this.ctx.currentTime + 0.5) {
+    // 0.6s ぶん先読みしてスケジュール(タイマー精度に依存しない)
+    while (this.bgmNextTime < this.ctx.currentTime + 0.6) {
       this.scheduleBgmStep(this.bgmStep, this.bgmNextTime);
-      this.bgmStep = (this.bgmStep + 1) % 64;
+      this.bgmStep = (this.bgmStep + 1) % 960; // 16 と 12 と 32 と 64 の公倍数で一周
       this.bgmNextTime += BGM_STEP_DUR;
     }
   }
 
   private scheduleBgmStep(step: number, t: number): void {
-    const bass = BGM_BASS[step % 16]!;
-    if (bass > 0) {
-      this.toneAt(bass, t, BGM_STEP_DUR * 1.8, 0.085, 'triangle', this.bgmGain!);
-      this.toneAt(bass * 2, t, BGM_STEP_DUR * 0.9, 0.02, 'sawtooth', this.bgmGain!);
-    }
-    // パッド: 2 小節ごとにコードチェンジ
-    if (step % 16 === 0) {
-      for (const f of BGM_PADS[(step / 16) % BGM_PADS.length]!) {
-        this.toneAt(f, t, BGM_STEP_DUR * 15, 0.016, 'triangle', this.bgmGain!, 1.2);
+    const g = this.bgmGain!;
+    // 声部 A: 16 拍パターンの柔らかいパルス(マリンバ的な短い sine)
+    const fa = BGM_SCALE[BGM_PAT_A[step % 16]!]!;
+    this.toneAt(fa, t, BGM_STEP_DUR * 1.3, 0.03, 'sine', g, 0.015);
+    this.toneAt(fa * 2.003, t, BGM_STEP_DUR * 0.7, 0.009, 'triangle', g, 0.015); // わずかにデチューンした倍音
+
+    // 声部 B: 12 拍パターンを半拍ずらして重ねる(フェイジングで模様が移ろう)
+    const fb = BGM_SCALE[BGM_PAT_B[step % 12]!]!;
+    this.toneAt(fb, t + BGM_STEP_DUR / 2, BGM_STEP_DUR * 1.1, 0.022, 'triangle', g, 0.02);
+
+    // パッド: 四度堆積の和音が約 13 秒ごとにゆっくり移ろう(長いアタック)
+    if (step % 32 === 0) {
+      for (const f of BGM_PADS[((step / 32) | 0) % BGM_PADS.length]!) {
+        this.toneAt(f, t, BGM_STEP_DUR * 34, 0.013, 'triangle', g, 4.5);
       }
     }
-    // アルペジオ: 裏拍にペンタトニックを決定論的な疑似ランダムで
-    if (step % 2 === 1 && step % 16 !== 15) {
-      const f = BGM_PENTA[(step * 7 + ((step / 16) | 0) * 3) % BGM_PENTA.length]! * 2;
-      this.toneAt(f, t, BGM_STEP_DUR * 0.8, 0.02, 'square', this.bgmGain!);
+
+    // ドローン: 深い D のうなり(大気圏と宇宙の茫漠さ)
+    if (step % 64 === 0) {
+      this.toneAt(36.71, t, BGM_STEP_DUR * 66, 0.02, 'sine', g, 6);
+      this.toneAt(73.42, t, BGM_STEP_DUR * 66, 0.012, 'sine', g, 6);
     }
-    // ハット: 拍頭を強く
-    this.noiseAt(t, 0.05, step % 8 === 0 ? 0.035 : 0.015, 7000, this.bgmGain!);
+
+    // ときおり高音の煌めき + 減衰エコー
+    if (step % 8 === 5) {
+      const fs = BGM_SCALE[(step * 5) % BGM_SCALE.length]! * 4;
+      this.toneAt(fs, t, 0.5, 0.011, 'sine', g, 0.01);
+      this.toneAt(fs, t + 0.63, 0.5, 0.005, 'sine', g, 0.01);
+      this.toneAt(fs, t + 1.26, 0.5, 0.0025, 'sine', g, 0.01);
+    }
   }
 
   // 指定時刻に鳴らすトーン(BGM 用。attack を付けてクリックノイズを避ける)
@@ -195,48 +211,62 @@ export class Sfx {
     osc.stop(t + duration);
   }
 
+  // 艦砲 CIWS 風の砲声: 低く重い胴鳴り + 鋭いクラック。
+  // 実物のように連続音にはせず、1 発ずつ聞こえる離散的な発砲音のまま。
   fire(): void {
-    this.noiseBurst(0.1, 'lowpass', 900, 0.28);
-    this.tone(65, 0.09, 0.18, 'square');
+    this.noiseBurst(0.11, 'lowpass', 480, 0.4);
+    this.noiseBurst(0.025, 'highpass', 2600, 0.09);
+    this.tone(48, 0.1, 0.2, 'square');
+    this.tone(96, 0.05, 0.07, 'sawtooth');
   }
 
-  // 連射開始前の起動音: 電子音ではなく、レールの上を金属が滑るような摩擦音。
-  // 帯域ノイズの中心周波数を滑り上げてこすれ感を、高域の薄いノイズで金属の
-  // きしみを表現する(オシレータは使わない)。
+  // 連射開始前の起動音: 艦砲 CIWS のモーターが立ち上がる唸りに似せる。
+  // 低い三角波の唸りが滑り上がり、機械的なこすれノイズが重なる。
   spinUp(): void {
     if (!this.ctx || !this.noiseBuf) return;
     const ctx = this.ctx;
     const t = ctx.currentTime;
 
-    // 主成分: こすれ(バンドパスノイズ、周波数が滑り上がる)
+    // モーターの唸り(基音 + 3 倍音、周波数が立ち上がる)
+    const whine = ctx.createOscillator();
+    whine.type = 'triangle';
+    whine.frequency.setValueAtTime(50, t);
+    whine.frequency.exponentialRampToValueAtTime(205, t + 0.3);
+    const wg = ctx.createGain();
+    wg.gain.setValueAtTime(0.0001, t);
+    wg.gain.linearRampToValueAtTime(0.09, t + 0.08);
+    wg.gain.setValueAtTime(0.09, t + 0.24);
+    wg.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    whine.connect(wg).connect(ctx.destination);
+    whine.start(t);
+    whine.stop(t + 0.34);
+
+    const harm = ctx.createOscillator();
+    harm.type = 'sawtooth';
+    harm.frequency.setValueAtTime(150, t);
+    harm.frequency.exponentialRampToValueAtTime(615, t + 0.3);
+    const hg = ctx.createGain();
+    hg.gain.setValueAtTime(0.0001, t);
+    hg.gain.linearRampToValueAtTime(0.022, t + 0.1);
+    hg.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    harm.connect(hg).connect(ctx.destination);
+    harm.start(t);
+    harm.stop(t + 0.34);
+
+    // 機械のこすれ(バンドパスノイズ、周波数が滑り上がる)
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuf;
-    src.playbackRate.value = 0.9;
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
-    bp.Q.value = 3.0;
-    bp.frequency.setValueAtTime(180, t);
-    bp.frequency.exponentialRampToValueAtTime(950, t + 0.28);
+    bp.Q.value = 2.2;
+    bp.frequency.setValueAtTime(260, t);
+    bp.frequency.exponentialRampToValueAtTime(1150, t + 0.28);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.16, t + 0.06);
-    g.gain.setValueAtTime(0.16, t + 0.22);
+    g.gain.linearRampToValueAtTime(0.07, t + 0.06);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
     src.connect(bp).connect(g).connect(ctx.destination);
     src.start(t, Math.random() * 0.4, 0.35);
-
-    // 高域のきしみ(薄く)
-    const src2 = ctx.createBufferSource();
-    src2.buffer = this.noiseBuf;
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 3800;
-    const g2 = ctx.createGain();
-    g2.gain.setValueAtTime(0.0001, t);
-    g2.gain.linearRampToValueAtTime(0.03, t + 0.1);
-    g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-    src2.connect(hp).connect(g2).connect(ctx.destination);
-    src2.start(t, Math.random() * 0.4, 0.35);
   }
 
   // 薬莢が機体に当たったときの、からんとした金属音(かすかに)

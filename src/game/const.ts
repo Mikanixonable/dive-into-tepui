@@ -88,7 +88,8 @@ export const WARP_LEVELS = [1, 4, 16, 64, 256, 1024, 4096];
 export const MAX_PHYS_WARP = 4; // 推進・射撃が可能な最大タイムワープ
 
 export const PLAYER_RADIUS = 5; // 当たり判定 [m]
-export const ENEMY_RADIUS = 9;
+export const ENEMY_RADIUS = 90; // 視認性を高めるため従来比 10 倍の大型機体
+export const ENEMY_SCALE = 10; // buildEnemyShip() の見た目メッシュに掛けるスケール
 
 export const INITIAL_ALT = 420e3; // 自機初期高度 [m]
 export const INITIAL_INC_DEG = 51.6; // 自機初期軌道傾斜角 [deg]

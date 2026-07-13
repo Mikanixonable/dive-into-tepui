@@ -114,8 +114,8 @@ const magRoundMat = std(0xd9a441, { metalness: 0.85, roughness: 0.35 }); // 薬�
 const magTipMat = std(0x9aa3ad, { metalness: 0.7, roughness: 0.4 });
 const magPlateGeo = new THREE.BoxGeometry(MAG_WIDTH, 0.05, MAG_DEPTH);
 const magPostGeo = new THREE.BoxGeometry(0.07, MAG_THICKNESS, 0.07);
-const magRoundGeo = new THREE.CylinderGeometry(0.09, 0.09, MAG_DEPTH * 0.8, 6);
-const magTipGeo = new THREE.ConeGeometry(0.09, 0.14, 6);
+const magRoundGeo = new THREE.CylinderGeometry(0.15, 0.15, MAG_DEPTH * 0.8, 6);
+const magTipGeo = new THREE.ConeGeometry(0.15, 0.22, 6);
 
 export function buildMagazineMesh(): THREE.Group {
   const g = new THREE.Group();
@@ -137,7 +137,7 @@ export function buildMagazineMesh(): THREE.Group {
   for (let iy = 0; iy < 2; iy++) {
     for (let ix = 0; ix < 4; ix++) {
       const x = (ix - 1.5) * (MAG_WIDTH / 4.4);
-      const y = (iy - 0.5) * (MAG_THICKNESS * 0.42);
+      const y = (iy - 0.5) * (MAG_THICKNESS * 0.28);
       const round = new THREE.Mesh(magRoundGeo, magRoundMat);
       round.rotation.x = Math.PI / 2;
       round.position.set(x, y, 0);
@@ -214,10 +214,24 @@ export function buildBulletMesh(): THREE.Mesh {
   return m;
 }
 
-const casingGeo = new THREE.CylinderGeometry(0.28, 0.28, 1.04, 5);
+// 薬莢: 艦砲 CIWS の弾薬をモチーフにしたボトルネック形状。
+// リム(抽出溝つき)→ わずかにテーパーした胴 → 肩 → 細いネックを
+// 回転体(Lathe)で作る。(半径, 軸方向 y) のプロファイル。
+const casingProfile: THREE.Vector2[] = [
+  new THREE.Vector2(0.0, -0.52), // 底面中心
+  new THREE.Vector2(0.3, -0.52), // リム底
+  new THREE.Vector2(0.3, -0.45), // リム上端
+  new THREE.Vector2(0.23, -0.45), // 抽出溝へ
+  new THREE.Vector2(0.23, -0.39), // 溝
+  new THREE.Vector2(0.29, -0.37), // 胴の付け根
+  new THREE.Vector2(0.27, 0.26), // 胴(わずかにテーパー)
+  new THREE.Vector2(0.16, 0.4), // 肩
+  new THREE.Vector2(0.16, 0.52), // ネック
+  new THREE.Vector2(0.13, 0.52), // 口
+];
+const casingGeo = new THREE.LatheGeometry(casingProfile, 12);
 const casingMat = new THREE.MeshStandardMaterial({
   color: 0xd9a441,
-  flatShading: true,
   metalness: 0.85,
   roughness: 0.35,
 });
