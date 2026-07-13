@@ -157,7 +157,10 @@ export class Game {
 
   private readonly glowTex: THREE.Texture;
   private readonly playerOrbitLine = new OrbitLine(0x35e0ff, 0.55);
-  private readonly targetOrbitLine = new OrbitLine(0xffa04a, 0.5);
+  // ターゲット軌道は自機軌道とほぼ重なるケースが多い(近傍ランデブー狙いのため)。
+  // 同系色に埋もれて「表示されていない」ように見えないよう、暖色で強い不透明度にし、
+  // renderOrder を自機軌道より上げて透明オブジェクトの描画順に依存せず必ず上に描く。
+  private readonly targetOrbitLine = new OrbitLine(0xffd23d, 0.9);
   private readonly plannedOrbitLine = new OrbitLine(0xff5fd0, 0.85);
   private readonly enemyOrbitLines: OrbitLine[] = [];
 
@@ -184,6 +187,7 @@ export class Game {
   private target: Ship | null = null;
   private throttleIdx = C.THROTTLE_DEFAULT_IDX;
   private fineAttitude = false;
+  private progradeHold = false; // [C] 機首をプログレードへ自動保持するオートパイロット
   private zoomActive = false;
   private wasFiring = false;
 
@@ -252,7 +256,9 @@ export class Game {
     this.earth = createEarth();
     this.scene.add(this.earth.group);
     this.scene.add(this.playerOrbitLine.line);
+    this.targetOrbitLine.line.renderOrder = 2;
     this.scene.add(this.targetOrbitLine.line);
+    this.plannedOrbitLine.line.renderOrder = 3;
     this.scene.add(this.plannedOrbitLine.line);
 
     // マヌーバ噴射プルーム(推力方向の逆側に置く発光ビルボード 2 枚)
@@ -421,22 +427,24 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.zoomActive = !this.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
-    if (this.mapMode) {
-      // 軌道計画モード: 物理を止めてノードを編集する
-      this.lastSimDt = 0;
-      this.sfx.setThrust(false);
-      this.thrustVizDir = null;
-      this.updateMapPlanning(dt);
-    } else if (!this.paused && this.phase === 'playing') {
-      this.input.takeClicks(); // 戦闘中のクリックは射撃扱いのみ(座標キューは捨てる)
+    if (this.phase !== 'playing' && this.mapMode) {
+      // ゲーム終了時はマップモードを強制解除する
+      this.mapMode = false;
+      this.hud.setPlanPanel(null);
+    }
+    if (!this.paused && this.phase === 'playing') {
+      // 軌道計画モード中も時間を進め、ワープできるようにする(手動推進・射撃のみ
+      // simulate() 内部で無効化する)。ノード編集は同じフレームの現在軌道に対して行う。
       this.simulate(dt);
+      if (this.mapMode) this.updateMapPlanning(dt);
+      else this.input.takeClicks(); // 戦闘中のクリックは射撃扱いのみ(座標キューは捨てる)
     } else {
       this.lastSimDt = 0;
       this.sfx.setThrust(false);
       this.thrustVizDir = null;
       this.input.takeClicks();
     }
-    if (this.phase !== 'playing' && !this.mapMode) {
+    if (this.phase !== 'playing') {
       // 撃破後もデブリ等は流し続ける(演出)
       this.coastWorld(dt);
     }
@@ -470,6 +478,10 @@ export class Game {
         case 'KeyV':
           this.fineAttitude = !this.fineAttitude;
           this.hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
+          break;
+        case 'KeyC':
+          this.progradeHold = !this.progradeHold;
+          this.hud.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
           break;
         case 'Digit1':
         case 'Digit2':
@@ -594,7 +606,7 @@ export class Game {
   private updateMapPlanning(dt: number): void {
     const el = elementsFromState(this.player.state.r, this.player.state.v);
     if (!el || el.e >= 0.98 || !isFinite(el.period)) {
-      this.hud.setPlanPanel('<div style="color:#ff6a5f">現在の軌道では計画できません(楕円軌道が必要)</div>');
+      this.hud.setPlanPanel('<div style="color:#c62f0f">現在の軌道では計画できません(楕円軌道が必要)</div>');
       this.input.takeClicks();
       return;
     }
@@ -621,8 +633,8 @@ export class Game {
     const nuNow = trueAnomalyAt(el, this.player.state.r);
     if (this.editNu === null) {
       this.hud.setPlanPanel(
-        '<div style="color:#58899a">自機軌道(水色)をクリックしてマニューバノードを配置<br>' +
-          '[Tab] ターゲット切替 / 右ドラッグ・ホイールで視点 / [M] 戦闘ビューへ</div>',
+        '<div style="color:#8891a3">自機軌道(水色)をクリックしてマニューバノードを配置(時間は進み続ける)<br>' +
+          '[Tab] ターゲット切替 / 左ドラッグ・ホイールで視点 / [M] 戦闘ビューへ</div>',
       );
     } else {
       const tof = tofBetween(el, nuNow, this.editNu);
@@ -759,10 +771,11 @@ export class Game {
     }
     const warp = this.warp();
     const simDt = dt * warp;
-    const canAct = warp <= C.MAX_PHYS_WARP && this.player.alive;
+    const canAct = warp <= C.MAX_PHYS_WARP && this.player.alive && !this.mapMode;
 
     // 射撃(実時間ベースの連射間隔)。撃ち始めはレールが動き出す起動遅延を挟む。
-    const rawWantFire = this.input.down('Space') || this.input.mouseFiring;
+    // マップモード中は WASDQE がノード Δv 編集に使われるため、射撃・推進とも無効。
+    const rawWantFire = !this.mapMode && (this.input.down('Space') || this.input.mouseFiring);
     if (rawWantFire && this.player.alive && warp > C.MAX_PHYS_WARP) {
       this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
     }
@@ -782,7 +795,7 @@ export class Game {
 
     // 推進入力
     const thrustFn = canAct ? this.buildThrustAccel() : null;
-    if (!canAct && this.anyThrustKey() && this.player.alive) {
+    if (!canAct && !this.mapMode && this.anyThrustKey() && this.player.alive) {
       this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
     }
     this.sfx.setThrust(thrustFn !== null);
@@ -967,10 +980,18 @@ export class Game {
     const i = this.input;
     const att = this.player.att;
     const I = att.inertia;
-    // 機体軸: +X 右, +Y 上, +Z 前(機首)
-    const inX = (i.down('KeyI') ? 1 : 0) + (i.down('KeyK') ? -1 : 0); // ピッチ
-    const inY = (i.down('KeyL') ? 1 : 0) + (i.down('KeyJ') ? -1 : 0); // ヨー
-    const inZ = (i.down('KeyU') ? 1 : 0) + (i.down('KeyO') ? -1 : 0); // ロール
+    // 機体軸: +X 右, +Y 上, +Z 前(機首)。マップモード中は手動回転操作を無効化する
+    // (WASDQE はノード Δv 編集に使うため、姿勢キーは残っていても無視する)。
+    const manual = this.mapMode ? 0 : 1;
+    const inX = ((i.down('KeyI') ? 1 : 0) + (i.down('KeyK') ? -1 : 0)) * manual; // ピッチ
+    const inY = ((i.down('KeyL') ? 1 : 0) + (i.down('KeyJ') ? -1 : 0)) * manual; // ヨー
+    const inZ = ((i.down('KeyU') ? 1 : 0) + (i.down('KeyO') ? -1 : 0)) * manual; // ロール
+
+    if (this.progradeHold && (inX !== 0 || inY !== 0 || inZ !== 0)) {
+      // 手動操作で自動保持を解除(SAS 的な挙動: 操作すると一旦解除される)
+      this.progradeHold = false;
+      this.hud.hint('進行方向ホールド解除(手動操作)');
+    }
 
     // 微調整モード: 角加速度・角速度上限を絞り、小刻みな姿勢操作を可能にする
     const angScale = this.fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
@@ -982,7 +1003,14 @@ export class Game {
       inY * maxAngAccel * I.y,
       inZ * maxAngAccel * I.z,
     );
-    if (this.rcsDamp) {
+    if (this.progradeHold && inX === 0 && inY === 0 && inZ === 0) {
+      // 機首(+Z)をプログレード方向へ向ける PD 制御。天頂方向を基準ロールに使い、
+      // 姿勢が一意に定まるようにする(progradeAttitude と同じ基底の作り方)。
+      const auto = this.autoAlignTorque(this.player.state.v, this.player.state.r, att, I);
+      tq.x += auto.x;
+      tq.y += auto.y;
+      tq.z += auto.z;
+    } else if (this.rcsDamp) {
       // 入力のない軸のみ制動(手動操作を妨げない)
       if (inX === 0) tq.x -= C.RCS_DAMP_RATE * I.x * att.w.x;
       if (inY === 0) tq.y -= C.RCS_DAMP_RATE * I.y * att.w.y;
@@ -994,6 +1022,41 @@ export class Game {
     if (wMag > maxAngVel) {
       att.w = scale(att.w, maxAngVel / wMag);
     }
+  }
+
+  // 機首(+Z)を desiredFwd へ、天頂基準(desiredUp)でロールも安定させる姿勢へ
+  // 収束させる PD トルク(機体座標系)。progradeAttitude と同じ基底の作り方で
+  // 目標姿勢を作り、クォータニオン誤差を軸角度に変換して比例減衰制御する。
+  private autoAlignTorque(desiredFwd: Vec3, desiredUp: Vec3, att: Attitude, I: Vec3): Vec3 {
+    const zAxis = norm(desiredFwd);
+    const yAxisRaw = norm(desiredUp);
+    const xAxis = cross(yAxisRaw, zAxis);
+    if (lenSq(xAxis) < 1e-9) return v3(); // 進行方向と天頂がほぼ平行(特異点)なら制御しない
+    const yAxis = cross(zAxis, norm(xAxis));
+    const m = new THREE.Matrix4().makeBasis(
+      new THREE.Vector3(xAxis.x, xAxis.y, xAxis.z).normalize(),
+      new THREE.Vector3(yAxis.x, yAxis.y, yAxis.z),
+      new THREE.Vector3(zAxis.x, zAxis.y, zAxis.z),
+    );
+    const qDesired = new THREE.Quaternion().setFromRotationMatrix(m);
+    const qCurrent = new THREE.Quaternion(att.q.x, att.q.y, att.q.z, att.q.w);
+    const qCurInv = qCurrent.clone().invert();
+    const qErr = qDesired.multiply(qCurInv); // ワールド系での誤差回転
+
+    let w = Math.max(-1, Math.min(1, qErr.w));
+    let angle = 2 * Math.acos(w);
+    if (angle > Math.PI) angle -= 2 * Math.PI; // 最短経路
+    const s = Math.sqrt(Math.max(0, 1 - w * w));
+    const axisWorld =
+      s > 1e-6 ? new THREE.Vector3(qErr.x / s, qErr.y / s, qErr.z / s) : new THREE.Vector3(1, 0, 0);
+    // 回転軸をワールド系から機体座標系へ変換(トルクは機体座標系で表現するため)
+    const axisBody = axisWorld.applyQuaternion(qCurInv);
+
+    return v3(
+      (C.PROGRADE_HOLD_KP * angle * axisBody.x - C.PROGRADE_HOLD_KD * att.w.x) * I.x,
+      (C.PROGRADE_HOLD_KP * angle * axisBody.y - C.PROGRADE_HOLD_KD * att.w.y) * I.y,
+      (C.PROGRADE_HOLD_KP * angle * axisBody.z - C.PROGRADE_HOLD_KD * att.w.z) * I.z,
+    );
   }
 
   // ------------------------------------------------------------ weapons
@@ -1166,7 +1229,7 @@ export class Game {
         try {
           const first = localStorage.getItem(C.STAGE1_CLEARED_KEY) !== '1';
           localStorage.setItem(C.STAGE1_CLEARED_KEY, '1');
-          if (first) unlockNote = '<br><span style="color:#ffd27a">第二ステージ(モルニヤ戦域)が解放された</span>';
+          if (first) unlockNote = '<br><span style="color:#e0630f;font-weight:600">第二ステージ(モルニヤ戦域)が解放された</span>';
         } catch {
           /* localStorage 不可なら解放なし */
         }
@@ -1298,9 +1361,16 @@ export class Game {
 
     // カメラ: 戦闘 = 自機中心チェイス / 計画 = 地球中心軌道ビュー
     const mouse = this.input.consumeMouse();
+    // 矢印キーでも視点回転できるようにする(マウスドラッグと同じ換算式に合わせる)
+    const keyYaw = (this.input.down('ArrowLeft') ? 1 : 0) + (this.input.down('ArrowRight') ? -1 : 0);
+    const keyPitch = (this.input.down('ArrowDown') ? 1 : 0) + (this.input.down('ArrowUp') ? -1 : 0);
     if (this.mapMode) {
-      this.mapYaw -= mouse.dx * 0.005;
-      this.mapPitch = Math.max(-1.4, Math.min(1.4, this.mapPitch + mouse.dy * 0.005));
+      // 戦闘ビューは yaw -= dx*0.005 なので、符号を反転させて左右の回転方向を揃える
+      this.mapYaw += mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;
+      this.mapPitch = Math.max(
+        -1.4,
+        Math.min(1.4, this.mapPitch + mouse.dy * 0.005 + keyPitch * C.CAM_KEY_PITCH_RATE * dt),
+      );
       this.mapDist = Math.max(C.MAP_MIN_DIST, Math.min(C.MAP_MAX_DIST, this.mapDist * Math.exp(mouse.wheel * 0.0012)));
       const cp = Math.cos(this.mapPitch);
       // 地球中心はフローティングオリジンで -o
@@ -1318,6 +1388,14 @@ export class Game {
       }
       this.mapCamera.updateMatrixWorld();
     } else {
+      // 矢印キーによる視点回転をマウスドラッグと同じ yaw -= dx*0.005 の換算式に合わせて加算
+      if (!this.zoomActive) {
+        this.chase.yaw -= keyYaw * C.CAM_KEY_YAW_RATE * dt;
+        this.chase.pitch = Math.max(
+          -1.35,
+          Math.min(1.35, this.chase.pitch + keyPitch * C.CAM_KEY_PITCH_RATE * dt),
+        );
+      }
       const boreFwd = this.player.alive ? qRotate(this.player.att.q, v3(0, 0, 1)) : null;
       const boreUp = this.player.alive ? qRotate(this.player.att.q, v3(0, 1, 0)) : null;
       this.chase.update(this.camera, mouse, norm(o), norm(pv), this.zoomActive, dt, boreFwd, boreUp);
@@ -1701,6 +1779,7 @@ export class Game {
         rcsDamp: this.rcsDamp,
         throttleIdx: this.throttleIdx,
         fineAttitude: this.fineAttitude,
+        progradeHold: this.progradeHold,
         alt: this.altitudeOf(this.player.state.r),
         spd: len(this.player.state.v),
         apAlt: playerEl ? playerEl.apAlt : NaN,

@@ -10,6 +10,7 @@ export interface StatsData {
   rcsDamp: boolean;
   throttleIdx: number;
   fineAttitude: boolean;
+  progradeHold: boolean;
   alt: number;
   spd: number;
   apAlt: number;
@@ -43,59 +44,79 @@ export interface EnemyRow {
   targeted: boolean;
 }
 
+// デザイン方針: パネル・ボタン・リザルト画面などの「UIクロム」はライトグレーの
+// ニューモーフィズム(2 方向のソフトシャドウで浮き出た質感)+ オレンジを僅かな
+// アクセントとして使う。一方、3D シーン上に直接重なるスクリーン投影マーカー
+// (プログレード・ターゲット・ノードなど)は、宇宙空間や明るい地球の両方を
+// 背景にしても意味が伝わるよう、既存の機能的な色分け(緑=プログレード、
+// 紫=ノード、金=ターゲット等)を維持しつつオレンジ系アクセントと調和させる。
+const INK = '#3d4451'; // 本文色(明るい面でも十分なコントラスト)
+const INK_SOFT = '#8891a3'; // ラベル・キャプション色
+const ACCENT = '#ff7a1f'; // オレンジ・アクセント(唯一のアクセントカラー)
+const ACCENT_DEEP = '#e0630f'; // アクセントの濃色(警告・強調)
+const SURFACE = 'rgba(234, 237, 242, 0.94)'; // パネル面(ライトグレー)
+const SHADOW_LIGHT = 'rgba(255, 255, 255, 0.85)';
+const SHADOW_DARK = 'rgba(163, 177, 198, 0.55)';
+
 const STYLE = `
 #hud, #hud * { box-sizing: border-box; margin: 0; padding: 0; }
 #hud {
   position: fixed; inset: 0; pointer-events: none; overflow: hidden;
   font-family: 'Consolas', 'Courier New', monospace;
-  color: #9fd8e8; user-select: none; z-index: 10;
+  color: ${INK}; user-select: none; z-index: 10;
   font-size: 13px;
 }
 #hud .panel {
-  position: absolute; background: rgba(4, 13, 20, 0.62);
-  border: 1px solid rgba(95, 182, 204, 0.26); border-radius: 6px;
-  padding: 9px 13px; line-height: 1.55; backdrop-filter: blur(3px);
-  box-shadow: 0 0 18px rgba(0, 0, 0, 0.35);
+  position: absolute; background: ${SURFACE};
+  border-radius: 14px; padding: 10px 14px; line-height: 1.55;
+  backdrop-filter: blur(6px);
+  box-shadow: 7px 7px 14px ${SHADOW_DARK}, -6px -6px 13px ${SHADOW_LIGHT};
 }
 #hud .panel h3 {
-  font-size: 11px; letter-spacing: 2.5px; color: #6fc4d8;
-  border-bottom: 1px solid rgba(95,182,204,0.22); margin-bottom: 5px; padding-bottom: 3px;
-  font-weight: normal;
+  font-size: 11px; letter-spacing: 2.5px; color: ${ACCENT};
+  border-bottom: 1px solid rgba(224, 99, 15, 0.22); margin-bottom: 6px; padding-bottom: 4px;
+  font-weight: 600;
 }
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
-#hud .row .k { color: #4f7d8e; }
-#hud .row .v { color: #d4f2fb; min-width: 90px; text-align: right; }
+#hud .row .k { color: ${INK_SOFT}; }
+#hud .row .v { color: ${INK}; min-width: 90px; text-align: right; font-weight: 600; }
 #hud-status { top: 12px; left: 12px; min-width: 230px; }
 #hud-orbit { top: 196px; left: 12px; min-width: 230px; }
 #hud-target { top: 12px; right: 12px; min-width: 240px; }
 #hud-enemies { top: 348px; right: 12px; min-width: 240px; }
-#hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; }
-#hud-enemies .erow.tgt { color: #ffb15e; }
+#hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
+#hud-enemies .erow.tgt { color: ${ACCENT_DEEP}; font-weight: 600; }
 #hud-controls {
   position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
-  color: #4e7c8c; font-size: 11px; text-align: center; white-space: nowrap;
+  background: ${SURFACE}; border-radius: 999px; padding: 7px 20px;
+  box-shadow: 5px 5px 10px ${SHADOW_DARK}, -5px -5px 10px ${SHADOW_LIGHT};
+  color: ${INK_SOFT}; font-size: 11px; text-align: center; white-space: nowrap;
 }
 #hud-hint {
   position: absolute; bottom: 200px; left: 50%; transform: translateX(-50%);
-  color: #ffd27a; font-size: 14px; text-shadow: 0 0 6px #000;
+  background: ${SURFACE}; border-radius: 10px; padding: 8px 18px;
+  box-shadow: 5px 5px 10px ${SHADOW_DARK}, -5px -5px 10px ${SHADOW_LIGHT};
+  color: ${ACCENT_DEEP}; font-size: 14px; font-weight: 600;
   transition: opacity 0.4s; opacity: 0; text-align: center;
 }
 #hud-toast {
   position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
-  color: #c9f0fa; font-size: 15px; text-align: center; text-shadow: 0 0 8px #000;
+  background: ${SURFACE}; border-radius: 14px; padding: 14px 26px;
+  box-shadow: 7px 7px 14px ${SHADOW_DARK}, -6px -6px 13px ${SHADOW_LIGHT};
+  color: ${INK}; font-size: 15px; text-align: center;
   transition: opacity 1s; opacity: 0; line-height: 1.8;
 }
-#hud .warp-hot { color: #ffb15e; }
-#hud .mode-tgt { color: #ffb15e; }
+#hud .warp-hot { color: ${ACCENT}; }
+#hud .mode-tgt { color: ${ACCENT}; }
 .mk {
   position: absolute; transform: translate(-50%, -50%);
-  text-align: center; white-space: nowrap; text-shadow: 0 0 4px #000;
+  text-align: center; white-space: nowrap; text-shadow: 0 0 4px #000, 0 0 2px #000;
 }
 .mk .sym { display: block; font-size: 22px; line-height: 1; }
 .mk .lbl { display: block; font-size: 10px; margin-top: 2px; letter-spacing: 1px; }
 .mk-boresight { color: #7df0ff; font-size: 18px; }
-.mk-target { color: #ffb15e; }
-.mk-enemy { color: rgba(255, 177, 94, 0.45); }
+.mk-target { color: ${ACCENT}; }
+.mk-enemy { color: rgba(255, 154, 77, 0.5); }
 .mk-lead { color: #ff5f5f; }
 .mk-pro { color: #8aff8a; }
 .mk-retro { color: #8aff8a; }
@@ -105,28 +126,32 @@ const STYLE = `
 .mk-mnode { color: #ff5fd0; }
 .mk-burn { color: #ffd23d; text-shadow: 0 0 8px rgba(255,210,61,0.8); }
 .mk-self { color: #35e0ff; }
-#hud .warn-hot { color: #ff6a5f; }
+#hud .warn-hot { color: #c62f0f; }
 #hud-plan {
   position: absolute; bottom: 40px; left: 12px; min-width: 280px;
-  border-color: rgba(255, 95, 208, 0.45);
 }
-#hud-plan h3 { color: #ff8fdc; border-bottom-color: rgba(255,95,208,0.3); }
+#hud-plan h3 { color: #d868c8; border-bottom-color: rgba(216,104,200,0.28); }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(2, 8, 12, 0.72); flex-direction: column; text-align: center;
+  background: rgba(224, 228, 234, 0.88); backdrop-filter: blur(4px);
+  flex-direction: column; text-align: center;
 }
 #hud-end h1 { font-size: 34px; letter-spacing: 6px; margin-bottom: 18px; }
-#hud-end.win h1 { color: #7dffc4; text-shadow: 0 0 24px rgba(125,255,196,0.6); }
-#hud-end.lose h1 { color: #ff6a5f; text-shadow: 0 0 24px rgba(255,106,95,0.6); }
-#hud-end .detail { font-size: 15px; line-height: 2; color: #c9f0fa; }
-#hud-end .restart { margin-top: 22px; color: #5fb6cc; font-size: 13px; }
+#hud-end.win h1 { color: #2a9d6f; text-shadow: 0 2px 10px rgba(42,157,111,0.25); }
+#hud-end.lose h1 { color: #c62f0f; text-shadow: 0 2px 10px rgba(198,47,15,0.25); }
+#hud-end .detail {
+  font-size: 15px; line-height: 2; color: ${INK};
+  background: ${SURFACE}; border-radius: 16px; padding: 18px 30px;
+  box-shadow: 8px 8px 16px ${SHADOW_DARK}, -7px -7px 15px ${SHADOW_LIGHT};
+}
+#hud-end .restart { margin-top: 22px; color: ${ACCENT_DEEP}; font-size: 13px; font-weight: 600; }
 #hud-help {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   display: none; min-width: 480px;
 }
 #hud-help table { border-collapse: collapse; width: 100%; }
-#hud-help td { padding: 2px 10px; }
-#hud-help td.key { color: #ffd27a; text-align: right; white-space: nowrap; }
+#hud-help td { padding: 3px 10px; color: ${INK}; }
+#hud-help td.key { color: ${ACCENT_DEEP}; text-align: right; white-space: nowrap; font-weight: 600; }
 `;
 
 function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLElement {
@@ -181,7 +206,8 @@ export class Hud {
       <div class="row"><span class="k">推進基準 [F]</span><span class="v" data-id="mode"></span></div>
       <div class="row"><span class="k">RCS制動 [T]</span><span class="v" data-id="rcs"></span></div>
       <div class="row"><span class="k">出力 [1-3]</span><span class="v" data-id="throttle"></span></div>
-      <div class="row"><span class="k">微調整 [V]</span><span class="v" data-id="fine"></span></div>`;
+      <div class="row"><span class="k">微調整 [V]</span><span class="v" data-id="fine"></span></div>
+      <div class="row"><span class="k">進行方向ホールド [C]</span><span class="v" data-id="prohold"></span></div>`;
 
     const orbit = el('div', 'hud-orbit', this.root, 'panel');
     orbit.innerHTML = `
@@ -207,8 +233,8 @@ export class Hud {
 
     const controls = el('div', 'hud-controls', this.root);
     controls.innerHTML =
-      'W/S/A/D/Q/E:並進 &nbsp;I/K/J/L/U/O:回転 &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
-      'Space/左クリック:射撃 &nbsp;右ドラッグ:視点 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
+      'W/S/A/D/Q/E:並進 &nbsp;I/K/J/L/U/O:回転 &nbsp;C:進行方向ホールド &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
+      'Space/右クリック:射撃 &nbsp;左ドラッグ/矢印キー:視点 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
 
     const plan = el('div', 'hud-plan', this.root, 'panel');
     plan.innerHTML = `<h3>MANEUVER PLAN [M]</h3><div data-id="planbody"></div>`;
@@ -231,19 +257,22 @@ export class Hud {
         <tr><td class="key">T</td><td>RCS 回転制動 ON/OFF</td></tr>
         <tr><td class="key">1 / 2 / 3</td><td>エンジン出力 3段階切替 (弱 / 中 / 強)</td></tr>
         <tr><td class="key">V</td><td>姿勢微調整モード ON/OFF (角加速度・角速度を絞って小刻みに操作)</td></tr>
+        <tr><td class="key">C</td><td>進行方向ホールド ON/OFF (機首をプログレード方向へ自動で向け続ける。手動回転で解除)</td></tr>
         <tr><td class="key">Z (長押し)</td><td>照準ズーム (機首方向を画面中心に拡大表示、自機は非表示になる)</td></tr>
         <tr><td class="key">Tab</td><td>ターゲット切替 (近い順)。TARGET パネルに軌道要素・相対傾斜角を表示</td></tr>
         <tr><td class="key">▲AN / ▽DN マーカー</td><td>自機軌道とターゲット軌道面の交点。面変更(ノーマル/アンチノーマル)burn の目安位置</td></tr>
         <tr><td class="key">✦ マーカー</td><td>ターゲット位置に自機側を向けた仮想標的面を弾が通過した点。次弾の照準修正の目安</td></tr>
         <tr><td class="key">Navball</td><td>画面下中央の姿勢儀。青半球 = 地球方向。PRO/RET・NRM/ANM・OUT/IN・TGT/ATG を表示</td></tr>
-        <tr><td class="key">M</td><td>軌道計画モード。地球中心ビューで自機軌道をクリックしノード配置、W/S・A/D・Q/E で Δv 調整、再度 M で確定</td></tr>
+        <tr><td class="key">M</td><td>軌道計画モード。地球中心ビューで自機軌道をクリックしノード配置、W/S・A/D・Q/E で Δv 調整、再度 M で確定(時間は進み続けるのでワープも可)</td></tr>
         <tr><td class="key">N</td><td>マニューバノードへ自動タイムワープ(実行点の直前で自動解除)</td></tr>
         <tr><td class="key">X</td><td>マニューバノードを削除</td></tr>
         <tr><td class="key">◆NODE / ⬢BURN</td><td>マニューバ実行点と噴射ガイド。BURN の方向へ加速し、計画軌道(マゼンタ)に十分近づくと達成</td></tr>
-        <tr><td class="key">Space / 左クリック</td><td>機関砲発射 (ワープ×4以下)。撃ち始めは起動音とともに一瞬遅れて連射開始</td></tr>
+        <tr><td class="key">金色の軌道線</td><td>ターゲットの軌道(自機軌道とほぼ重なる場合は上に重ねて描画)</td></tr>
+        <tr><td class="key">Space / 右クリック</td><td>機関砲発射 (ワープ×4以下)。撃ち始めは起動音とともに一瞬遅れて連射開始</td></tr>
         <tr><td class="key">, / .</td><td>タイムワープ 減 / 増</td></tr>
         <tr><td class="key">P</td><td>一時停止</td></tr>
-        <tr><td class="key">右ドラッグ / ホイール</td><td>カメラ回転 / 距離ズーム</td></tr>
+        <tr><td class="key">左ドラッグ / ホイール</td><td>カメラ回転 / 距離ズーム</td></tr>
+        <tr><td class="key">矢印キー</td><td>マウスの代わりにキーボードで視点回転</td></tr>
       </table>`;
 
     el('div', 'hud-end', this.root);
@@ -277,6 +306,11 @@ export class Hud {
       fineEl.textContent = d.fineAttitude ? 'ON' : 'OFF';
       fineEl.classList.toggle('mode-tgt', d.fineAttitude);
     }
+    const proholdEl = this.els.get('prohold');
+    if (proholdEl) {
+      proholdEl.textContent = d.progradeHold ? 'ON' : 'OFF';
+      proholdEl.classList.toggle('mode-tgt', d.progradeHold);
+    }
     this.setText('alt', fmtDist(d.alt));
     this.setText('spd', fmtSpeed(d.spd));
     this.setText('ap', fmtDist(d.apAlt));
@@ -300,7 +334,7 @@ export class Hud {
     const body = this.els.get('tgtbody');
     if (!body) return;
     if (!t) {
-      body.innerHTML = '<div style="color:#58899a">ターゲットなし</div>';
+      body.innerHTML = '<div style="color:#8891a3">ターゲットなし</div>';
       return;
     }
     body.innerHTML = `
@@ -320,7 +354,7 @@ export class Hud {
     const list = this.els.get('elist');
     if (!list) return;
     if (rows.length === 0) {
-      list.innerHTML = '<div style="color:#58899a">残存目標なし</div>';
+      list.innerHTML = '<div style="color:#8891a3">残存目標なし</div>';
       return;
     }
     list.innerHTML = rows
@@ -355,16 +389,16 @@ export class Hud {
       row('ノードまで', fmtTime(tofSec));
     if (el) {
       s +=
-        `<div style="margin-top:4px;color:#ff8fdc;font-size:11px;letter-spacing:1px">計画軌道</div>` +
+        `<div style="margin-top:4px;color:#d868c8;font-size:11px;letter-spacing:1px">計画軌道</div>` +
         row('遠地点 AP', fmtDist(el.apAlt)) +
         row('近地点 PE', fmtDist(el.peAlt)) +
         row('傾斜角 INC', isFinite(el.incDeg) ? `${el.incDeg.toFixed(2)}°` : '---') +
         row('周期 PRD', fmtTime(el.period));
       if (isFinite(el.peAlt) && el.peAlt < 120e3) {
-        s += `<div style="color:#ff6a5f;margin-top:2px">⚠ 近地点が大気圏内</div>`;
+        s += `<div style="color:#c62f0f;margin-top:2px">⚠ 近地点が大気圏内</div>`;
       }
     }
-    s += `<div style="margin-top:6px;color:#58899a;font-size:11px">[クリック] ノード移動 [X] 削除 [V] 微調整 [M] 確定して戻る</div>`;
+    s += `<div style="margin-top:6px;color:#8891a3;font-size:11px">[クリック] ノード移動 [X] 削除 [V] 微調整 [M] 確定して戻る(時間は進み続ける)</div>`;
     return s;
   }
 
