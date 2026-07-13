@@ -54,9 +54,10 @@ export const BULLET_LIFETIME = 240; // [sim s]
 export const RECOIL_DV = 0.04; // 反動 [m/s]
 export const SELF_HIT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
 
-// ターゲット位置に自機側を向けて置いた仮想標的面(的)を弾が通過した点のマーカー
-export const BOARD_MARK_LIFETIME = 2.5; // 表示時間 [s]
-export const MAX_BOARD_MARKS = 14;
+// ターゲット位置に自機側を向けて置いた仮想標的面(的)を弾が通過した点のマーカー。
+// 最新の 1 点のみ表示する(複数出ると照準の目安として紛らわしいため)。
+export const BOARD_MARK_LIFETIME = 5.0; // 表示時間 [s]
+export const MAX_BOARD_MARKS = 1;
 export const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)
 
 export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]

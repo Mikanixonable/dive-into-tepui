@@ -52,22 +52,23 @@ const STYLE = `
   font-size: 13px;
 }
 #hud .panel {
-  position: absolute; background: rgba(6, 18, 26, 0.55);
-  border: 1px solid rgba(90, 190, 220, 0.35); border-radius: 4px;
-  padding: 8px 12px; line-height: 1.55; backdrop-filter: blur(2px);
+  position: absolute; background: rgba(4, 13, 20, 0.62);
+  border: 1px solid rgba(95, 182, 204, 0.26); border-radius: 6px;
+  padding: 9px 13px; line-height: 1.55; backdrop-filter: blur(3px);
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.35);
 }
 #hud .panel h3 {
-  font-size: 11px; letter-spacing: 2px; color: #5fb6cc;
-  border-bottom: 1px solid rgba(90,190,220,0.25); margin-bottom: 4px; padding-bottom: 2px;
+  font-size: 11px; letter-spacing: 2.5px; color: #6fc4d8;
+  border-bottom: 1px solid rgba(95,182,204,0.22); margin-bottom: 5px; padding-bottom: 3px;
   font-weight: normal;
 }
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
-#hud .row .k { color: #58899a; }
-#hud .row .v { color: #c9f0fa; min-width: 90px; text-align: right; }
+#hud .row .k { color: #4f7d8e; }
+#hud .row .v { color: #d4f2fb; min-width: 90px; text-align: right; }
 #hud-status { top: 12px; left: 12px; min-width: 230px; }
-#hud-orbit { top: 150px; left: 12px; min-width: 230px; }
+#hud-orbit { top: 196px; left: 12px; min-width: 230px; }
 #hud-target { top: 12px; right: 12px; min-width: 240px; }
-#hud-enemies { top: 190px; right: 12px; min-width: 240px; }
+#hud-enemies { top: 348px; right: 12px; min-width: 240px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; }
 #hud-enemies .erow.tgt { color: #ffb15e; }
 #hud-controls {
@@ -99,8 +100,8 @@ const STYLE = `
 .mk-pro { color: #8aff8a; }
 .mk-retro { color: #8aff8a; }
 .mk-node { color: #c9a0ff; }
-.mk-boardhit { color: #8fdbff; text-shadow: 0 0 6px #6ff, 0 0 12px rgba(102,255,255,0.7); }
-.mk-boardhit .sym { font-size: 16px; }
+.mk-boardhit { color: #a5e4ff; text-shadow: 0 0 5px rgba(120,230,255,0.9), 0 0 10px rgba(102,220,255,0.5); }
+.mk-boardhit .sym { font-size: 8px; }
 .mk-mnode { color: #ff5fd0; }
 .mk-burn { color: #ffd23d; text-shadow: 0 0 8px rgba(255,210,61,0.8); }
 .mk-self { color: #35e0ff; }

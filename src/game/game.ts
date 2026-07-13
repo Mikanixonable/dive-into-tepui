@@ -196,6 +196,7 @@ export class Game {
   private readonly plumeCore: THREE.Mesh;
   private readonly plumeOuter: THREE.Mesh;
   private thrustVizDir: Vec3 | null = null; // 現在の推力方向(ワールド、噴射エフェクト用)
+  private readonly rcsPuffs: THREE.Mesh[] = []; // RCS ブロック位置の噴射パフ(4基)
   private readonly sunLight: THREE.DirectionalLight;
   private readonly ambient: THREE.AmbientLight;
   private sunDirV: Vec3 = v3(1, 0, 0);
@@ -261,6 +262,14 @@ export class Game {
     this.plumeOuter.visible = false;
     this.scene.add(this.plumeCore);
     this.scene.add(this.plumeOuter);
+
+    // RCS パフ(機首側の 4 基のスラスタブロックに対応、ships.ts の配置と一致)
+    for (let i = 0; i < 4; i++) {
+      const puff = buildFlashMesh(this.glowTex, 0xcfeaff);
+      puff.visible = false;
+      this.rcsPuffs.push(puff);
+      this.scene.add(puff);
+    }
 
     // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
     const r0 = R_EARTH + C.INITIAL_ALT;
@@ -1361,6 +1370,8 @@ export class Game {
       (this.plumeOuter.material as THREE.MeshBasicMaterial).opacity = 0.32 * flick;
     }
 
+    this.updateRcsEffects();
+
     // 機体(ズーム中は視界を妨げないよう自機を非表示にする)
     this.player.obj.position.set(0, 0, 0);
     this.setObjAttitude(this.player);
@@ -1409,9 +1420,9 @@ export class Game {
       return true;
     });
 
-    // 軌道線
+    // 軌道線(推力中は要素が能動的に変化するので毎フレーム再生成させる)
     const playerEl = elementsFromState(o, pv);
-    this.playerOrbitLine.update(this.player.alive ? playerEl : null, o);
+    this.playerOrbitLine.update(this.player.alive ? playerEl : null, o, this.thrustVizDir !== null);
     const tgt = this.target && this.target.alive ? this.target : null;
     this.targetOrbitLine.update(tgt ? elementsFromState(tgt.state.r, tgt.state.v) : null, o);
 
@@ -1433,7 +1444,8 @@ export class Game {
     } else if (this.node) {
       plannedEl = this.node.targetEl;
     }
-    this.plannedOrbitLine.update(plannedEl, o);
+    // マップ編集中は Δv 操作に即時追従させる
+    this.plannedOrbitLine.update(plannedEl, o, this.mapMode);
 
     // マップ編集中のノード位置マーカー
     if (this.mapMode && playerEl && this.editNu !== null) {
@@ -1497,6 +1509,49 @@ export class Game {
       radialOut: cross(pro, h),
       target: tgt ? norm(sub(tgt.state.r, o)) : null,
     });
+  }
+
+  // RCS 姿勢制御の噴射パフと音。4 基のスラスタブロック(機体 ±0.75, ±0.65, z=1.6)
+  // それぞれについて、要求トルク τ に寄与する接線力 F = τ × r を求め、
+  // その反対方向(排気側)に小さな発光パフを出す。
+  private updateRcsEffects(): void {
+    const i = this.input;
+    const rotating =
+      this.player.alive &&
+      this.phase === 'playing' &&
+      !this.paused &&
+      !this.mapMode &&
+      (i.down('KeyI') || i.down('KeyK') || i.down('KeyJ') || i.down('KeyL') || i.down('KeyU') || i.down('KeyO'));
+    this.sfx.setRcs(rotating);
+    if (!rotating || this.zoomActive) {
+      for (const p of this.rcsPuffs) p.visible = false;
+      return;
+    }
+
+    const tau = v3(
+      (i.down('KeyI') ? 1 : 0) + (i.down('KeyK') ? -1 : 0),
+      (i.down('KeyL') ? 1 : 0) + (i.down('KeyJ') ? -1 : 0),
+      (i.down('KeyU') ? 1 : 0) + (i.down('KeyO') ? -1 : 0),
+    );
+    const q = this.player.att.q;
+    const cam = this.activeCamera;
+    for (let k = 0; k < 4; k++) {
+      const puff = this.rcsPuffs[k]!;
+      const rb = v3(k % 2 === 0 ? 0.75 : -0.75, k < 2 ? 0.65 : -0.65, 1.6);
+      const f = cross(tau, rb); // このブロックがトルクに寄与する力の方向
+      if (lenSq(f) < 0.2) {
+        puff.visible = false;
+        continue;
+      }
+      const exhaust = scale(norm(f), -1); // 排気は力と逆向き
+      const flick = 0.6 + Math.random() * 0.4;
+      const pos = qRotate(q, addScaled(rb, exhaust, 0.55));
+      puff.position.set(pos.x, pos.y, pos.z);
+      puff.scale.setScalar(0.55 * flick);
+      puff.quaternion.copy(cam.quaternion);
+      (puff.material as THREE.MeshBasicMaterial).opacity = 0.75 * flick;
+      puff.visible = true;
+    }
   }
 
   private setObjAttitude(s: Ship): void {
