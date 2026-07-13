@@ -193,7 +193,7 @@ export class Game {
 
   private rcsDamp = true;
   private target: Ship | null = null;
-  private throttleIdx = C.THROTTLE_DEFAULT_IDX;
+  private throttleIdx = 0; // 0: 0%, 1: RCSと同等, 2: 中, 3: MAX
   private fineAttitude = false;
   private progradeHold = false; // [C] 機首をプログレードへ自動保持するオートパイロット
   // [G] 視点(チェイスカメラ)を自機の姿勢(RCS操作)に追従させるか。
@@ -251,8 +251,8 @@ export class Game {
   // (機体原点基準)。無重力(自由落下軌道)なので重力そのものは効かず、
   // 自機の推力加速度とスピン(角速度・角加速度)による慣性力(擬似力)だけが
   // ベルトを揺らす。
-  private beltPos: THREE.Vector3[] = [];
-  private beltPrevPos: THREE.Vector3[] = [];
+  private readonly beltPos: THREE.Vector3[] = [];
+  private readonly beltPrevPos: THREE.Vector3[] = [];
   private beltInit = false;
   private hudTimer = 0;
   private listTimer = 0;
@@ -526,13 +526,17 @@ export class Game {
           );
           break;
         case 'Digit1':
-        case 'Digit2':
-        case 'Digit3': {
-          const idx = Number(code[code.length - 1]) - 1;
-          this.throttleIdx = idx;
-          this.hud.hint(`エンジン出力: 第${idx + 1}段 (${C.THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
+          this.throttleIdx = 0;
+          this.hud.hint('メインエンジン出力: 0% (CUTOFF)');
           break;
-        }
+        case 'Digit2':
+          this.throttleIdx = 1;
+          this.hud.hint('メインエンジン出力: 弱 (RCS同等)');
+          break;
+        case 'Digit3':
+          this.throttleIdx = 3;
+          this.hud.hint('メインエンジン出力: 100% (FULL)');
+          break;
         case 'Comma':
           this.autoWarp = false;
           if (this.warpIdx > 0) {
@@ -842,12 +846,15 @@ export class Game {
       }
     }
 
+    // スロットル操作はエッジ入力 (handleEdgeInput) に移動しました
+
     // 推進入力
     const thrustFn = canAct ? this.buildThrustAccel() : null;
-    if (!canAct && !this.mapMode && this.anyThrustKey() && this.player.alive) {
+    if (!canAct && !this.mapMode && this.throttleIdx > 0 && this.player.alive) {
+      this.throttleIdx = 0; // ワープ中等は安全のためカットオフ
       this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
     }
-    this.sfx.setThrust(thrustFn !== null);
+    this.sfx.setThrust(thrustFn !== null || this.throttleIdx > 0);
     if (thrustFn) {
       this.thrustAccelVec = thrustFn(this.player.state.r, this.player.state.v);
       this.thrustVizDir = norm(this.thrustAccelVec);
@@ -887,6 +894,7 @@ export class Game {
       this.simTime += sub;
       this.checkBulletHits();
       this.checkBoardCrossings();
+      this.resolvePhysicalCollisions();
     }
     this.lastSimDt = simDt;
     this.checkThermalLimits();
@@ -1070,24 +1078,35 @@ export class Game {
   // 機体座標系（+Z前, +X右, +Y上）を基準とする。
   private buildThrustAccel(): ExtraAccel | null {
     const i = this.input;
-    const axZ = (i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0); // 前/後
-    // X軸が左を向いているため、A(左)を+X、D(右)を-Xに割り当てる
-    const axX = (i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0); // 左/右
-    const axY = (i.down('KeyE') ? 1 : 0) + (i.down('KeyQ') ? -1 : 0); // 上/下
-    if (axX === 0 && axY === 0 && axZ === 0) return null;
+    const manual = this.mapMode ? 0 : 1;
+    // RCS並進: WSADQE
+    const axY = ((i.down('KeyQ') ? 1 : 0) + (i.down('KeyE') ? -1 : 0)) * manual; // 上/下 (Q=上昇, E=下降)
+    const axX = ((i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0)) * manual; // 左(X)/右(-X) => A(1)/D(-1)
+    const wDown = i.down('KeyW') ? 1 : 0;
+    const sDown = i.down('KeyS') ? 1 : 0;
+    const axZ = (wDown - sDown) * manual; // 前/後
 
-    const thrustAccel = C.THROTTLE_LEVELS[this.throttleIdx]!;
+    const rcsActive = axX !== 0 || axY !== 0 || axZ !== 0;
+    // エンジンが "起動" しているわけではなく、Wを押したときだけ推力を発生させる
+    if (!rcsActive) return null;
+
+    const maxRcsThrust = 5.0;   // RCS並進の最大加速度 [m/s^2]
+    const throttleLevels = [0, maxRcsThrust, 10.0, 15.0]; // 1の時はRCS(5.0)と同等
+    const mainAccel = throttleLevels[this.throttleIdx]!;
+    
     const q = this.player.att.q;
 
     return (): Vec3 => {
       const localThrustDir = v3(axX, axY, axZ);
-      const normalizedLocal = norm(localThrustDir);
-      const worldThrustDir = qRotate(q, normalizedLocal);
-      return v3(
-        worldThrustDir.x * thrustAccel,
-        worldThrustDir.y * thrustAccel,
-        worldThrustDir.z * thrustAccel,
+      const rcsDir = lenSq(localThrustDir) > 0 ? norm(localThrustDir) : v3();
+      // メイン推力は W を押したとき (+Z方向) にのみ適用。RCS推力と合算する。
+      const engineThrust = (wDown * manual > 0) ? mainAccel : 0;
+      const localTotal = v3(
+        rcsDir.x * maxRcsThrust,
+        rcsDir.y * maxRcsThrust,
+        rcsDir.z * maxRcsThrust + engineThrust
       );
+      return qRotate(q, localTotal);
     };
   }
 
@@ -1097,11 +1116,11 @@ export class Game {
     const att = this.player.att;
     const I = att.inertia;
     // 機体軸: +X 右, +Y 上, +Z 前(機首)。マップモード中は手動回転操作を無効化する
-    // (WASDQE はノード Δv 編集に使うため、姿勢キーは残っていても無視する)。
     const manual = this.mapMode ? 0 : 1;
+    // IKJLUO による回転操作
     const inX = ((i.down('KeyI') ? 1 : 0) + (i.down('KeyK') ? -1 : 0)) * manual; // ピッチ
-    const inY = ((i.down('KeyL') ? 1 : 0) + (i.down('KeyJ') ? -1 : 0)) * manual; // ヨー
-    const inZ = ((i.down('KeyU') ? 1 : 0) + (i.down('KeyO') ? -1 : 0)) * manual; // ロール
+    const inY = ((i.down('KeyJ') ? 1 : 0) + (i.down('KeyL') ? -1 : 0)) * manual; // ヨー
+    const inZ = ((i.down('KeyO') ? 1 : 0) + (i.down('KeyU') ? -1 : 0)) * manual; // ロール (O=右, U=左)
 
     if (this.progradeHold && (inX !== 0 || inY !== 0 || inZ !== 0)) {
       // 手動操作で自動保持を解除(SAS 的な挙動: 操作すると一旦解除される)
@@ -1493,8 +1512,10 @@ export class Game {
     const o = this.player.state.r; // フローティングオリジン
     const pv = this.player.state.v;
 
-    // 地球・恒星・太陽
-    this.earth.group.position.set(-o.x, -o.y, -o.z);
+    // 地球・恒星・太陽 (巨大座標系による Float32 ジッターを抑えるため通常は 1/10000 スケールで描画、マップでは実寸)
+    const earthScale = this.mapMode ? 1.0 : 1e-4;
+    this.earth.group.position.set(-o.x * earthScale, -o.y * earthScale, -o.z * earthScale);
+    this.earth.group.scale.set(earthScale, earthScale, earthScale);
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * this.simTime) / SIDEREAL_DAY);
     this.earth.tick(dt);
 
@@ -1551,6 +1572,12 @@ export class Game {
     // 背景として振る舞う。距離は視距離に圧縮、月の角直径は実距離から換算)
     const sd = this.sunDirV;
     this.starsMesh.position.copy(cam.position);
+    if (this.mapMode) {
+      // マップモードではカメラが遠く引かれるため、星が地球の手前にならないようにカメラの far の内側に押し込む
+      this.starsMesh.scale.setScalar((this.mapCamera.far * 0.9) / 3.5e7);
+    } else {
+      this.starsMesh.scale.setScalar(1.0);
+    }
     this.sun.mesh.position.set(
       cam.position.x + sd.x * SUN_DISTANCE,
       cam.position.y + sd.y * SUN_DISTANCE,
@@ -1580,8 +1607,8 @@ export class Game {
     this.plumeOuter.visible = showPlume;
     if (showPlume) {
       const d = this.thrustVizDir!;
-      const flick = 0.82 + Math.random() * 0.36; // 揺らぎ
-      const sc = (1.5 + 0.9 * this.throttleIdx) * flick; // 出力段で大きく
+      const flick = 0.8 + 0.2 * Math.random();
+      const sc = (1.5 + 2.5 * (this.throttleIdx / 3.0)) * flick; // 出力に応じたサイズ
       this.plumeCore.position.set(-d.x * 3.4, -d.y * 3.4, -d.z * 3.4);
       this.plumeCore.scale.setScalar(sc * 1.6);
       this.plumeCore.quaternion.copy(this.camera.quaternion);
@@ -1661,7 +1688,7 @@ export class Game {
 
     // 軌道線(推力中は要素が能動的に変化するので毎フレーム再生成させる)
     const playerEl = elementsFromState(o, pv);
-    this.playerOrbitLine.update(this.player.alive ? playerEl : null, o, this.thrustVizDir !== null);
+    this.playerOrbitLine.update(this.player.alive ? playerEl : null, o, this.thrustVizDir !== null, true);
     const tgt = this.target && this.target.alive ? this.target : null;
     this.targetOrbitLine.update(tgt ? elementsFromState(tgt.state.r, tgt.state.v) : null, o);
 
@@ -1785,9 +1812,10 @@ export class Game {
     const aThrustBody = new THREE.Vector3(aThrustWorld.x, aThrustWorld.y, aThrustWorld.z).applyQuaternion(qInv);
 
     const h = Math.min(dt, 0.05); // 積分刻みの上限(大きな dt でのはみ出し防止)
-    const damping = 0.985; // 空気抵抗の無い環境でも数値的な発散を防ぐための減衰
+    const damping = 0.999; // 慣性を維持するため減衰を弱める
     const wV = new THREE.Vector3(w.x, w.y, w.z);
     const alphaV = new THREE.Vector3(alpha.x, alpha.y, alpha.z);
+    const anchorX = 0.9 - this.beltFeed * MAG_BELT_PITCH;
 
     for (let i = 0; i < n; i++) {
       const pos = this.beltPos[i]!;
@@ -2107,6 +2135,101 @@ export class Game {
         }))
         .sort((a, b) => a.dist - b.dist);
       this.hud.setEnemyList(rows);
+    }
+  }
+
+  // ------------------------------------------------------------- physical collisions
+  // 剛体反発(球体)処理
+  private resolvePhysicalCollisions(): void {
+    const resolvePair = (
+      rA: Vec3, vA: Vec3, massA: number, radA: number,
+      rB: Vec3, vB: Vec3, massB: number, radB: number,
+      restitution = 0.4
+    ) => {
+      const dx = rB.x - rA.x, dy = rB.y - rA.y, dz = rB.z - rA.z;
+      const distSq = dx * dx + dy * dy + dz * dz;
+      const minD = radA + radB;
+      if (distSq > 0 && distSq < minD * minD) {
+        const dist = Math.sqrt(distSq);
+        const nx = dx / dist, ny = dy / dist, nz = dz / dist;
+        const pen = minD - dist;
+        const invMa = 1 / massA, invMb = 1 / massB;
+        const invM = invMa + invMb;
+        const pCorr = (pen / invM) * 0.8;
+        rA.x -= nx * pCorr * invMa; rA.y -= ny * pCorr * invMa; rA.z -= nz * pCorr * invMa;
+        rB.x += nx * pCorr * invMb; rB.y += ny * pCorr * invMb; rB.z += nz * pCorr * invMb;
+
+        const dvx = vB.x - vA.x, dvy = vB.y - vA.y, dvz = vB.z - vA.z;
+        const vn = dvx * nx + dvy * ny + dvz * nz;
+        if (vn < 0) {
+          const j = -(1 + restitution) * vn / invM;
+          vA.x -= nx * j * invMa; vA.y -= ny * j * invMa; vA.z -= nz * j * invMa;
+          vB.x += nx * j * invMb; vB.y += ny * j * invMb; vB.z += nz * j * invMb;
+        }
+      }
+    };
+
+    // エンティティリスト(ベルトのワールド座標化含む)
+    const ents: { r: Vec3; v: Vec3; m: number; rad: number; isBelt?: boolean; beltIdx?: number; isPlayer?: boolean }[] = [];
+
+    if (this.player.alive) ents.push({ r: this.player.state.r, v: this.player.state.v, m: 1000, rad: this.player.radius, isPlayer: true });
+    for (const e of this.enemies) {
+      if (e.alive) ents.push({ r: e.state.r, v: e.state.v, m: 10000, rad: e.radius });
+    }
+    for (const c of this.casings) ents.push({ r: c.state.r, v: c.state.v, m: 1, rad: 0.2 });
+    for (const m of this.magPickups) {
+      if (m.alive) ents.push({ r: m.state.r, v: m.state.v, m: 50, rad: C.MAG_PICKUP_RADIUS });
+    }
+
+    // マガジンベルト(Verlet積分の位置・疑似速度)
+    if (this.player.alive) {
+      const q = this.player.att.q;
+      const baseR = this.player.state.r;
+      const baseV = this.player.state.v;
+      for (let i = 0; i < this.beltPos.length; i++) {
+        const bp = this.beltPos[i]!;
+        const bpPrev = this.beltPrevPos[i]!;
+        // clone してワールド座標化する
+        const localBp = new THREE.Vector3().copy(bp);
+        const localBpPrev = new THREE.Vector3().copy(bpPrev);
+        const wr = add(baseR, qRotate(q, localBp));
+        const wv = add(baseV, qRotate(q, localBp.sub(localBpPrev).multiplyScalar(60)));
+        ents.push({ r: wr, v: wv, m: 5, rad: 0.8, isBelt: true, beltIdx: i });
+      }
+    }
+
+    // 衝突判定 O(N^2) (N<200)
+    for (let i = 0; i < ents.length; i++) {
+      for (let j = i + 1; j < ents.length; j++) {
+        const A = ents[i]!;
+        const B = ents[j]!;
+        if (A.isBelt && B.isBelt) continue; // ベルト同士は距離拘束があるため省略
+        if ((A.isPlayer && B.isBelt) || (B.isPlayer && A.isBelt)) continue; // 自機と自機のベルトは判定しない
+        resolvePair(A.r, A.v, A.m, A.rad, B.r, B.v, B.m, B.rad);
+      }
+    }
+
+    // ベルトの位置を自機ローカル座標に書き戻す
+    if (this.player.alive) {
+      const pq = this.player.att.q;
+      const qInv = { x: -pq.x, y: -pq.y, z: -pq.z, w: pq.w };
+      const baseR = this.player.state.r;
+      const baseV = this.player.state.v;
+      for (const e of ents) {
+        if (e.isBelt && e.beltIdx !== undefined) {
+          const bpLocal = qRotate(qInv, sub(e.r, baseR));
+          const bvLocal = qRotate(qInv, sub(e.v, baseV));
+          // THREE.Vector3 にコピー
+          this.beltPos[e.beltIdx]!.set(bpLocal.x, bpLocal.y, bpLocal.z);
+          // bvLocal を加算して prevPos を逆算: pos - vel*dt
+          const dtLocal = 1 / 60;
+          this.beltPrevPos[e.beltIdx]!.set(
+            bpLocal.x - bvLocal.x * dtLocal,
+            bpLocal.y - bvLocal.y * dtLocal,
+            bpLocal.z - bvLocal.z * dtLocal
+          );
+        }
+      }
     }
   }
 }

@@ -14,9 +14,8 @@ import * as THREE from 'three/webgpu';
 import { Elements } from '../physics/orbital';
 import { Vec3 } from '../physics/vec3';
 
-// 離心近点角 E で一様サンプリング(近点・遠点の両方で弧長が偏らない)。
-// 1024 点なら LEO で 1 セグメント ~40km、弦の矢高 ~30cm で視認不能。
-const POINT_COUNT = 1024;
+// 離心近点角 E で一様サンプリング + 自機付近を密にする非線形マッピング。
+const POINT_COUNT = 2048;
 
 // 再生成の閾値: これを超えて要素が動いたときだけ楕円を作り直す
 const REGEN_MIN_INTERVAL_MS = 120; // 最短再生成間隔
@@ -28,7 +27,7 @@ const TOL_APSE = Math.cos((0.3 * Math.PI) / 180); // 近点方向の角変化(e 
 export class OrbitLine {
   readonly line: THREE.Line;
   private readonly positions: Float32Array;
-  private snap: { a: number; e: number; hHat: Vec3; pHat: Vec3 } | null = null;
+  private snap: { a: number; e: number; hHat: Vec3; pHat: Vec3; focusE?: number } | null = null;
   private lastRegen = 0;
 
   constructor(color: number, opacity = 0.5) {
@@ -50,7 +49,7 @@ export class OrbitLine {
 
   // 毎フレーム呼ぶ。origin = 自機の ECI 位置(フローティングオリジン)。
   // force = 要素が能動的に変化している間(推力中・ノード編集中)は true。
-  update(el: Elements | null, origin: Vec3, force = false): void {
+  update(el: Elements | null, origin: Vec3, force = false, isPlayer = false): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.line.visible = false;
       this.snap = null;
@@ -61,12 +60,21 @@ export class OrbitLine {
     // (頂点は地球中心座標のまま触らない)
     this.line.position.set(-origin.x, -origin.y, -origin.z);
 
-    if (this.needsRegen(el, force)) {
-      this.regenerate(el);
+    let focusE: number | undefined;
+    if (isPlayer) {
+      // origin は ECI における自機位置。軌道面内ローカル座標 (x, y)
+      const x = origin.x * el.pHat.x + origin.y * el.pHat.y + origin.z * el.pHat.z;
+      const y = origin.x * el.qHat.x + origin.y * el.qHat.y + origin.z * el.qHat.z;
+      const b = el.a * Math.sqrt(1 - el.e * el.e);
+      focusE = Math.atan2(y / b, x / el.a + el.e);
+    }
+
+    if (this.needsRegen(el, force, focusE)) {
+      this.regenerate(el, focusE);
     }
   }
 
-  private needsRegen(el: Elements, force: boolean): boolean {
+  private needsRegen(el: Elements, force: boolean, focusE?: number): boolean {
     if (!this.snap) return true;
     const now = performance.now();
     if (now - this.lastRegen < REGEN_MIN_INTERVAL_MS) return false;
@@ -81,13 +89,29 @@ export class OrbitLine {
     ) {
       return true;
     }
+    // フォーカス位置が大きくずれたら再生成(5度以上)
+    if (focusE !== undefined && s.focusE !== undefined) {
+      let diff = Math.abs(focusE - s.focusE);
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      if (Math.abs(diff) > 0.087) return true; // ~5 deg
+    }
     return false;
   }
 
-  private regenerate(el: Elements): void {
+  private regenerate(el: Elements, focusE?: number): void {
     const b = el.a * Math.sqrt(1 - el.e * el.e);
     for (let i = 0; i < POINT_COUNT; i++) {
-      const E = (i / POINT_COUNT) * Math.PI * 2;
+      let t = i / POINT_COUNT;
+      if (focusE !== undefined) {
+        // focusE 周辺に頂点を集める非線形マッピング(3次関数による歪み)
+        const f = focusE / (Math.PI * 2);
+        let u = t - f;
+        while (u > 0.5) u -= 1;
+        while (u < -0.5) u += 1;
+        // u は [-0.5, 0.5]。u^3 で中心付近を密にする
+        t = f + 4 * u * u * u;
+      }
+      const E = t * Math.PI * 2;
       const x = el.a * (Math.cos(E) - el.e);
       const y = b * Math.sin(E);
       this.positions[i * 3] = el.pHat.x * x + el.qHat.x * y;
@@ -104,6 +128,7 @@ export class OrbitLine {
       e: el.e,
       hHat: { ...el.hHat },
       pHat: { ...el.pHat },
+      focusE,
     };
     this.lastRegen = performance.now();
   }
