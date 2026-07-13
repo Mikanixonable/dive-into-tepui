@@ -15,21 +15,27 @@ function selectStage(): Promise<number> {
     } catch {
       /* localStorage 不可の環境ではステージ1のみ */
     }
+    const SURFACE = 'rgba(234, 237, 242, 0.96)';
+    const SHADOW_LIGHT = 'rgba(255, 255, 255, 0.85)';
+    const SHADOW_DARK = 'rgba(163, 177, 198, 0.55)';
+    const ACCENT = '#ff7a1f';
+    const ACCENT_DEEP = '#e0630f';
     const div = document.createElement('div');
     div.style.cssText =
       'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-      'gap:18px;color:#9fd8e8;background:#04080c;font-family:Consolas,monospace;z-index:100;text-align:center';
+      'gap:18px;color:#3d4451;background:#e4e7ec;font-family:Consolas,monospace;z-index:100;text-align:center';
     const btn = (label: string, sub: string, enabled: boolean) => {
       const b = document.createElement('div');
       b.style.cssText =
-        `min-width:420px;padding:14px 22px;border:1px solid rgba(90,190,220,${enabled ? 0.5 : 0.15});` +
-        `border-radius:6px;line-height:1.7;${enabled ? 'cursor:pointer' : 'opacity:0.4'}`;
-      b.innerHTML = `<div style="font-size:17px;letter-spacing:3px">${label}</div><div style="font-size:12px;color:#58899a">${sub}</div>`;
+        `min-width:420px;padding:16px 24px;background:${SURFACE};border-radius:14px;` +
+        `box-shadow:7px 7px 14px ${SHADOW_DARK}, -6px -6px 13px ${SHADOW_LIGHT};` +
+        `line-height:1.7;${enabled ? 'cursor:pointer' : 'opacity:0.45'}`;
+      b.innerHTML = `<div style="font-size:17px;letter-spacing:3px;color:${enabled ? ACCENT_DEEP : '#8891a3'}">${label}</div><div style="font-size:12px;color:#8891a3">${sub}</div>`;
       return b;
     };
     div.innerHTML =
-      '<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px">DIVE INTO TEPUI</div>' +
-      '<div style="font-size:12px;color:#58899a;margin-bottom:12px">ステージを選択 ([1] / [2] キーまたはクリック)</div>';
+      `<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
+      '<div style="font-size:12px;color:#8891a3;margin-bottom:12px">ステージを選択 ([1] / [2] キーまたはクリック)</div>';
     const b1 = btn('[1] 第一ステージ — LEO 戦域', '高度420kmの低軌道。敵5機はすべて近傍軌道に分布', true);
     const b2 = btn(
       '[2] 第二ステージ — モルニヤ戦域',
@@ -68,11 +74,6 @@ async function main() {
   const stage = forced === 1 || forced === 2 ? forced : await selectStage();
   const game = new Game(gs, stage);
 
-  // TEMP debug hook
-  if (new URLSearchParams(location.search).get('mapdbg') === '1') {
-    setTimeout(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM' })), 1500);
-  }
-
   let lastTime = performance.now();
   function animate(now: number) {
     requestAnimationFrame(animate);
@@ -93,10 +94,12 @@ main().catch((err) => {
   const div = document.createElement('div');
   div.style.cssText =
     'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
-    'color:#9fd8e8;background:#04080c;font-family:monospace;font-size:16px;text-align:center;line-height:2';
+    'color:#3d4451;background:#e4e7ec;font-family:monospace;font-size:16px;text-align:center;line-height:2';
   div.innerHTML =
-    'WebGPU の初期化に失敗しました。<br>' +
+    '<div style="background:rgba(234,237,242,0.96);border-radius:16px;padding:22px 32px;' +
+    'box-shadow:8px 8px 16px rgba(163,177,198,0.55), -7px -7px 15px rgba(255,255,255,0.85)">' +
+    '<span style="color:#e0630f">WebGPU の初期化に失敗しました。</span><br>' +
     'Chrome / Edge 最新版など WebGPU 対応ブラウザでアクセスしてください。<br>' +
-    `<span style="color:#58899a;font-size:12px">${String(err)}</span>`;
+    `<span style="color:#8891a3;font-size:12px">${String(err)}</span></div>`;
   document.body.appendChild(div);
 });
