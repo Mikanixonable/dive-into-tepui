@@ -11,6 +11,7 @@ export interface StatsData {
   throttleIdx: number;
   fineAttitude: boolean;
   progradeHold: boolean;
+  camFollowAttitude: boolean;
   roundsInMag: number; // 給弾中マガジンの残弾
   magsLeft: number; // ベルトの未使用マガジン数
   alt: number;
@@ -203,6 +204,7 @@ export class Hud {
       <div class="row"><span class="k">出力 [1-3]</span><span class="v" data-id="throttle"></span></div>
       <div class="row"><span class="k">微調整 [V]</span><span class="v" data-id="fine"></span></div>
       <div class="row"><span class="k">進行方向ホールド [C]</span><span class="v" data-id="prohold"></span></div>
+      <div class="row"><span class="k">視点のRCS追従 [G]</span><span class="v" data-id="camfollow"></span></div>
       <div class="row"><span class="k">弾薬 AMMO</span><span class="v" data-id="ammo"></span></div>`;
 
     const orbit = el('div', 'hud-orbit', this.root, 'panel');
@@ -229,7 +231,7 @@ export class Hud {
 
     const controls = el('div', 'hud-controls', this.root);
     controls.innerHTML =
-      'W/S/A/D/Q/E:並進 &nbsp;I/K/J/L/U/O:回転 &nbsp;C:進行方向ホールド &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
+      'W/S/A/D/Q/E:並進 &nbsp;I/K/J/L/U/O:回転 &nbsp;C:進行方向ホールド &nbsp;G:視点のRCS追従 &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
       'Space/右クリック:射撃 &nbsp;左ドラッグ/矢印キー:視点 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
 
     const plan = el('div', 'hud-plan', this.root, 'panel');
@@ -254,6 +256,7 @@ export class Hud {
         <tr><td class="key">1 / 2 / 3</td><td>エンジン出力 3段階切替 (弱 / 中 / 強)</td></tr>
         <tr><td class="key">V</td><td>姿勢微調整モード ON/OFF (角加速度・角速度を絞って小刻みに操作)</td></tr>
         <tr><td class="key">C</td><td>進行方向ホールド ON/OFF (機首をプログレード方向へ自動で向け続ける。手動回転で解除)</td></tr>
+        <tr><td class="key">G</td><td>視点のRCS追従 ON/OFF (既定 ON: 視点が機体姿勢を基準に回転し、RCS操作と一体的に動く。OFF で従来の軌道基準の独立視点に戻る)</td></tr>
         <tr><td class="key">Z (長押し)</td><td>照準ズーム (機首方向を画面中心に拡大表示、自機は非表示になる)</td></tr>
         <tr><td class="key">Tab</td><td>ターゲット切替 (近い順)。TARGET パネルに軌道要素・相対傾斜角を表示</td></tr>
         <tr><td class="key">▲AN / ▽DN マーカー</td><td>自機軌道とターゲット軌道面の交点。面変更(ノーマル/アンチノーマル)burn の目安位置</td></tr>
@@ -302,6 +305,11 @@ export class Hud {
     if (fineEl) {
       fineEl.textContent = d.fineAttitude ? 'ON' : 'OFF';
       fineEl.classList.toggle('mode-tgt', d.fineAttitude);
+    }
+    const camfollowEl = this.els.get('camfollow');
+    if (camfollowEl) {
+      camfollowEl.textContent = d.camFollowAttitude ? 'ON' : 'OFF';
+      camfollowEl.classList.toggle('mode-tgt', d.camFollowAttitude);
     }
     const proholdEl = this.els.get('prohold');
     if (proholdEl) {
