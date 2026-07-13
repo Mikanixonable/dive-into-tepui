@@ -44,6 +44,7 @@ import {
   dot,
   len,
   lenSq,
+  neg,
   norm,
   rotateAxis,
   scale,
@@ -84,7 +85,7 @@ import {
 } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
 
-type FrameMode = 'orbital' | 'target';
+
 type GamePhase = 'playing' | 'won' | 'lost';
 
 interface EnemySpec {
@@ -189,7 +190,7 @@ export class Game {
   private lastSimDt = 0;
   private warpIdx = 0;
   private paused = false;
-  private frameMode: FrameMode = 'orbital';
+
   private rcsDamp = true;
   private target: Ship | null = null;
   private throttleIdx = C.THROTTLE_DEFAULT_IDX;
@@ -219,7 +220,7 @@ export class Game {
   private sunDirV: Vec3 = v3(1, 0, 0);
 
   // 天体暦(初期位相はゲームごとにランダム)
-  private readonly sunPhase0 = Math.random() * Math.PI * 2;
+  private readonly sunPhase0 = 0; // 昼(太陽が+X側)から開始するように固定
   private readonly moonPhase0 = Math.random() * Math.PI * 2;
   private sunPos: Vec3 = v3(1.496e11, 0, 0);
   private moonPos: Vec3 = v3(3.844e8, 0, 0);
@@ -384,7 +385,7 @@ export class Game {
   // 機首をプログレード、背を天頂に向けた初期姿勢
   private progradeAttitude(s: OrbitState): Attitude {
     const zAxis = norm(s.v);
-    const yAxis = norm(s.r);
+    const yAxis = norm(s.r); // 天頂を背にする(地球が下になる)
     const xAxis = cross(yAxis, zAxis);
     const m = new THREE.Matrix4().makeBasis(
       new THREE.Vector3(xAxis.x, xAxis.y, xAxis.z),
@@ -505,16 +506,7 @@ export class Game {
         case 'Tab':
           this.cycleTarget();
           break;
-        case 'KeyF':
-          if (this.target) {
-            this.frameMode = this.frameMode === 'orbital' ? 'target' : 'orbital';
-            this.hud.hint(
-              this.frameMode === 'orbital' ? '推進基準: 軌道 (ORBIT)' : '推進基準: ターゲット (TARGET)',
-            );
-          } else {
-            this.hud.hint('ターゲットがありません ([Tab] で選択)');
-          }
-          break;
+
         case 'KeyT':
           this.rcsDamp = !this.rcsDamp;
           this.hud.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
@@ -1074,44 +1066,27 @@ export class Game {
     return ['KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE'].some((k) => this.input.down(k));
   }
 
-  // 押下キーから推力加速度関数を構築。RK4 の各ステージで
-  // その時点の r, v から基準ベクトルを再評価する。
+  // 押下キーから推力加速度関数を構築。
+  // 機体座標系（+Z前, +X右, +Y上）を基準とする。
   private buildThrustAccel(): ExtraAccel | null {
     const i = this.input;
-    const ax1 = (i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0); // プログレード / 接近
-    const ax2 = (i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0); // ノーマル / 左右
-    const ax3 = (i.down('KeyE') ? 1 : 0) + (i.down('KeyQ') ? -1 : 0); // ラジアルアウト / 上下
-    if (ax1 === 0 && ax2 === 0 && ax3 === 0) return null;
+    const axZ = (i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0); // 前/後
+    // X軸が左を向いているため、A(左)を+X、D(右)を-Xに割り当てる
+    const axX = (i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0); // 左/右
+    const axY = (i.down('KeyE') ? 1 : 0) + (i.down('KeyQ') ? -1 : 0); // 上/下
+    if (axX === 0 && axY === 0 && axZ === 0) return null;
 
-    const mode = this.frameMode;
-    const tR = this.target && this.target.alive ? this.target.state.r : null;
     const thrustAccel = C.THROTTLE_LEVELS[this.throttleIdx]!;
+    const q = this.player.att.q;
 
-    return (r: Vec3, v: Vec3): Vec3 => {
-      let d1: Vec3;
-      let d2: Vec3;
-      let d3: Vec3;
-      if (mode === 'target' && tR) {
-        const los = norm(sub(tR, r)); // 視線方向
-        let ref = norm(cross(r, v));
-        if (Math.abs(dot(los, ref)) > 0.95) ref = norm(r);
-        const side = norm(cross(los, ref));
-        const up = cross(side, los);
-        d1 = los;
-        d2 = side;
-        d3 = up;
-      } else {
-        const pro = norm(v);
-        const h = norm(cross(r, v));
-        const radOut = cross(pro, h); // 速度・法線と直交する「外向き」
-        d1 = pro;
-        d2 = h;
-        d3 = radOut;
-      }
+    return (): Vec3 => {
+      const localThrustDir = v3(axX, axY, axZ);
+      const normalizedLocal = norm(localThrustDir);
+      const worldThrustDir = qRotate(q, normalizedLocal);
       return v3(
-        (d1.x * ax1 + d2.x * ax2 + d3.x * ax3) * thrustAccel,
-        (d1.y * ax1 + d2.y * ax2 + d3.y * ax3) * thrustAccel,
-        (d1.z * ax1 + d2.z * ax2 + d3.z * ax3) * thrustAccel,
+        worldThrustDir.x * thrustAccel,
+        worldThrustDir.y * thrustAccel,
+        worldThrustDir.z * thrustAccel,
       );
     };
   }
@@ -1170,7 +1145,7 @@ export class Game {
   // 目標姿勢を作り、クォータニオン誤差を軸角度に変換して比例減衰制御する。
   private autoAlignTorque(desiredFwd: Vec3, desiredUp: Vec3, att: Attitude, I: Vec3): Vec3 {
     const zAxis = norm(desiredFwd);
-    const yAxisRaw = norm(desiredUp);
+    const yAxisRaw = norm(desiredUp); // 180度裏返しを解除
     const xAxis = cross(yAxisRaw, zAxis);
     if (lenSq(xAxis) < 1e-9) return v3(); // 進行方向と天頂がほぼ平行(特異点)なら制御しない
     const yAxis = cross(zAxis, norm(xAxis));
@@ -2072,7 +2047,7 @@ export class Game {
         met: this.simTime,
         warpLabel: `×${this.warp()}`,
         paused: this.paused,
-        frameMode: this.frameMode,
+
         rcsDamp: this.rcsDamp,
         throttleIdx: this.throttleIdx,
         fineAttitude: this.fineAttitude,
