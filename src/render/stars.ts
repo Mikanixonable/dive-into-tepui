@@ -3,7 +3,8 @@
 import * as THREE from 'three/webgpu';
 
 const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
-const SUN_DISTANCE = 4.2e7;
+export const SUN_DISTANCE = 4.2e7; // 太陽ビルボードの表示距離(方向のみ実天体暦に従う)
+export const MOON_VIS_DIST = 4.5e7; // 月メッシュの表示距離(角直径は実距離から毎フレーム換算)
 
 export function createStars(count = 2200): THREE.Mesh {
   const positions = new Float32Array(count * 9);
@@ -79,6 +80,28 @@ export function makeGlowTexture(size = 128): THREE.CanvasTexture {
 export interface Sun {
   mesh: THREE.Mesh;
   dir: THREE.Vector3; // ワールド(ECI)での太陽方向(単位)
+}
+
+// 月: 単位球(半径1)を生成し、表示側で位置・スケールを毎フレーム設定する。
+// 太陽の DirectionalLight で照らされるので月相(満ち欠け)が自然に出る。
+export function createMoon(): THREE.Mesh {
+  const geo = new THREE.IcosahedronGeometry(1, 4);
+  const pos = geo.getAttribute('position');
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    // 海(暗い玄武岩地帯)風の濃淡を決定論的ノイズで
+    const s =
+      Math.sin(pos.getX(i) * 5.3 + 1.1) * Math.sin(pos.getY(i) * 4.7 + 2.3) * Math.sin(pos.getZ(i) * 6.1);
+    const v = 0.62 + 0.16 * s + 0.06 * Math.sin(pos.getX(i) * 17 + pos.getZ(i) * 13);
+    colors[i * 3] = v;
+    colors[i * 3 + 1] = v;
+    colors[i * 3 + 2] = v * 0.98;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  return mesh;
 }
 
 export function createSun(glow: THREE.Texture): Sun {

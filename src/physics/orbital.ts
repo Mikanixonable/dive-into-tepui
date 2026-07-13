@@ -14,6 +14,37 @@ export interface OrbitState {
 // 追加加速度(推力など)。RK4 の各ステージで現在の r, v を渡して評価する。
 export type ExtraAccel = (r: Vec3, v: Vec3) => Vec3;
 
+export const J2_EARTH = 1.08262668e-3; // 地球扁平の J2 項
+export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
+
+// J2(地球扁平)摂動加速度。極軸 = Y。
+// 軌道面に非対称なトルクを与え、昇交点の歳差(LEO 51.6° で約 -5°/日)を生む。
+export function j2Accel(r: Vec3): Vec3 {
+  const r2 = r.x * r.x + r.y * r.y + r.z * r.z;
+  const rl = Math.sqrt(r2);
+  const k = (-1.5 * J2_EARTH * MU_EARTH * R_EARTH_EQ * R_EARTH_EQ) / (r2 * r2 * rl); // /r^5
+  const f = (5 * r.y * r.y) / r2;
+  return { x: k * r.x * (1 - f), y: k * r.y * (3 - f), z: k * r.z * (1 - f) };
+}
+
+// 第三体(太陽・月)の潮汐摂動: 機体への直接引力から地球中心への引力を
+// 差し引いた差分加速度。a = μ[(ρ/|ρ|³) - (r_b/|r_b|³)], ρ = r_b - r。
+export function thirdBodyAccel(r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
+  const dx = bodyPos.x - r.x;
+  const dy = bodyPos.y - r.y;
+  const dz = bodyPos.z - r.z;
+  const d3 = Math.pow(dx * dx + dy * dy + dz * dz, 1.5);
+  const b3 = Math.pow(
+    bodyPos.x * bodyPos.x + bodyPos.y * bodyPos.y + bodyPos.z * bodyPos.z,
+    1.5,
+  );
+  return {
+    x: (mu * dx) / d3 - (mu * bodyPos.x) / b3,
+    y: (mu * dy) / d3 - (mu * bodyPos.y) / b3,
+    z: (mu * dz) / d3 - (mu * bodyPos.z) / b3,
+  };
+}
+
 function accel(r: Vec3, v: Vec3, extra?: ExtraAccel): Vec3 {
   const d = len(r);
   const k = -MU_EARTH / (d * d * d);
