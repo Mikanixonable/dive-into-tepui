@@ -136,19 +136,32 @@ export function buildCasingMesh(): THREE.Mesh {
   return new THREE.Mesh(casingGeo, casingMat);
 }
 
-// 撃破時の破片: 不規則な低ポリ塊
+// 破片: 塊・外板(パネル)・桁(ロッド)の 3 種をランダムに混ぜる。
+// 撃破時の飛散と被弾時の欠片の両方で使う。
 export function buildDebrisMesh(accent: number, size: number): THREE.Mesh {
-  const geo = new THREE.TetrahedronGeometry(size, 0);
-  const pos = geo.getAttribute('position');
-  for (let i = 0; i < pos.count; i++) {
-    pos.setXYZ(
-      i,
-      pos.getX(i) * (0.6 + Math.random() * 0.9),
-      pos.getY(i) * (0.6 + Math.random() * 0.9),
-      pos.getZ(i) * (0.6 + Math.random() * 0.9),
-    );
+  const kind = Math.random();
+  let geo: THREE.BufferGeometry;
+  if (kind < 0.45) {
+    // 不規則な低ポリ塊
+    const tetra = new THREE.TetrahedronGeometry(size, 0);
+    const pos = tetra.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) {
+      pos.setXYZ(
+        i,
+        pos.getX(i) * (0.6 + Math.random() * 0.9),
+        pos.getY(i) * (0.6 + Math.random() * 0.9),
+        pos.getZ(i) * (0.6 + Math.random() * 0.9),
+      );
+    }
+    tetra.computeVertexNormals();
+    geo = tetra;
+  } else if (kind < 0.78) {
+    // ちぎれた外板(タンブリングで表裏がチラつき、破片らしく見える)
+    geo = new THREE.BoxGeometry(size * (1.2 + Math.random() * 0.8), size * 0.1, size * (0.8 + Math.random() * 0.6));
+  } else {
+    // 折れた桁・配管
+    geo = new THREE.CylinderGeometry(size * 0.1, size * 0.13, size * (1.6 + Math.random()), 5);
   }
-  geo.computeVertexNormals();
   const dark = Math.random() < 0.6;
   const mat = std(dark ? 0x3c4149 : accent, { roughness: 0.8, metalness: 0.2 });
   return new THREE.Mesh(geo, mat);

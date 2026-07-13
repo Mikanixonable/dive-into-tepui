@@ -147,6 +147,9 @@ export class Game {
   private lostReason = '大気圏に突入し機体を喪失した';
 
   private readonly navball = new Navball();
+  private readonly plumeCore: THREE.Mesh;
+  private readonly plumeOuter: THREE.Mesh;
+  private thrustVizDir: Vec3 | null = null; // 現在の推力方向(ワールド、噴射エフェクト用)
   private readonly sunLight: THREE.DirectionalLight;
   private readonly ambient: THREE.AmbientLight;
   private readonly sunDirV: Vec3;
@@ -185,6 +188,14 @@ export class Game {
     this.scene.add(this.earth.group);
     this.scene.add(this.playerOrbitLine.line);
     this.scene.add(this.targetOrbitLine.line);
+
+    // マヌーバ噴射プルーム(推力方向の逆側に置く発光ビルボード 2 枚)
+    this.plumeCore = buildFlashMesh(this.glowTex, 0xaee6ff);
+    this.plumeOuter = buildFlashMesh(this.glowTex, 0x4f9fff);
+    this.plumeCore.visible = false;
+    this.plumeOuter.visible = false;
+    this.scene.add(this.plumeCore);
+    this.scene.add(this.plumeOuter);
 
     // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
     const r0 = R_EARTH + C.INITIAL_ALT;
@@ -302,6 +313,7 @@ export class Game {
     } else {
       this.lastSimDt = 0;
       this.sfx.setThrust(false);
+      this.thrustVizDir = null;
     }
     if (this.phase !== 'playing') {
       // 撃破後もデブリ等は流し続ける(演出)
@@ -427,6 +439,9 @@ export class Game {
       this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
     }
     this.sfx.setThrust(thrustFn !== null);
+    this.thrustVizDir = thrustFn
+      ? norm(thrustFn(this.player.state.r, this.player.state.v))
+      : null;
 
     // 自機の追加加速度 = 推力 + 大気抵抗
     const playerAccel: ExtraAccel = thrustFn
@@ -741,6 +756,8 @@ export class Game {
     this.hits++;
     this.sfx.hit();
     this.spawnFlash(clone(b.state.r), clone(ship.state.v), 1.5, 6, 0.25, 0xffe2a0);
+    // 被弾時にも小さな欠片を飛散させる
+    this.spawnFragments(clone(b.state.r), clone(ship.state.v), 3, 0x6a7078, 0.18, 0.5, 5.5);
     if (ship.hp <= 0) {
       this.destroyShip(ship);
     }
@@ -757,6 +774,7 @@ export class Game {
     if (ship === this.player) {
       this.phase = 'lost';
       this.sfx.setThrust(false);
+      this.sfx.stopBgm();
       this.hud.showEnd(false, `${this.lostReason}<br>撃破 ${this.kills}/${this.enemies.length} 機`);
       return;
     }
@@ -769,6 +787,7 @@ export class Game {
     if (this.enemies.every((e) => !e.alive)) {
       this.phase = 'won';
       this.sfx.setThrust(false);
+      this.sfx.stopBgm();
       const acc = this.shots > 0 ? ((this.hits / this.shots) * 100).toFixed(1) : '0.0';
       this.hud.showEnd(
         true,
@@ -782,13 +801,25 @@ export class Game {
   // 撃破デブリ: 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果
   private spawnDebris(ship: Ship): void {
     const accent = ship === this.player ? 0x9fd8e8 : 0xff6a4a;
-    const count = 9;
+    this.spawnFragments(ship.state.r, ship.state.v, 11, accent, 0.5, 1.6, 2.8);
+  }
+
+  // 破片を飛散させる共通処理(撃破デブリ・被弾の欠片)
+  private spawnFragments(
+    origin: Vec3,
+    baseVel: Vec3,
+    count: number,
+    accent: number,
+    sizeMin: number,
+    sizeMax: number,
+    spread: number,
+  ): void {
     for (let i = 0; i < count; i++) {
-      const size = 0.5 + Math.random() * 1.1;
+      const size = sizeMin + Math.random() * (sizeMax - sizeMin);
       const piece: DebrisPiece = {
         state: {
-          r: add(ship.state.r, randVec(2.5)),
-          v: add(ship.state.v, randVec(2.8)),
+          r: add(origin, randVec(2.5)),
+          v: add(baseVel, randVec(spread)),
         },
         att: {
           q: randomQuat(),
@@ -893,6 +924,24 @@ export class Game {
     this.chase.update(this.camera, mouse, norm(o), norm(pv), this.zoomActive, dt, boreFwd, boreUp);
     this.camera.updateMatrixWorld();
     this.sun.mesh.quaternion.copy(this.camera.quaternion);
+
+    // マヌーバ噴射プルーム: 推力方向の逆側に、明るい芯 + 淡い外殻の 2 枚を置く
+    const showPlume = this.thrustVizDir !== null && this.player.alive && !this.zoomActive;
+    this.plumeCore.visible = showPlume;
+    this.plumeOuter.visible = showPlume;
+    if (showPlume) {
+      const d = this.thrustVizDir!;
+      const flick = 0.82 + Math.random() * 0.36; // 揺らぎ
+      const sc = (1.5 + 0.9 * this.throttleIdx) * flick; // 出力段で大きく
+      this.plumeCore.position.set(-d.x * 3.4, -d.y * 3.4, -d.z * 3.4);
+      this.plumeCore.scale.setScalar(sc * 1.6);
+      this.plumeCore.quaternion.copy(this.camera.quaternion);
+      (this.plumeCore.material as THREE.MeshBasicMaterial).opacity = 0.85 * flick;
+      this.plumeOuter.position.set(-d.x * 5.6, -d.y * 5.6, -d.z * 5.6);
+      this.plumeOuter.scale.setScalar(sc * 3.6);
+      this.plumeOuter.quaternion.copy(this.camera.quaternion);
+      (this.plumeOuter.material as THREE.MeshBasicMaterial).opacity = 0.32 * flick;
+    }
 
     // 機体(ズーム中は視界を妨げないよう自機を非表示にする)
     this.player.obj.position.set(0, 0, 0);
