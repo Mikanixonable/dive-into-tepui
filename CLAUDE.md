@@ -26,12 +26,12 @@ Physics runs on the main thread (per-entity central-gravity two-body integration
 - `src/game/const.ts` — all gameplay tuning constants (thrust, warp levels, fire rate, hit radii...).
 - `src/game/navball.ts` — canvas-2D attitude ball (body frame: +X right/+Y up/+Z nose); sphere is repainted per frame via a per-pixel dot product against the body-frame Earth direction (cheap: rotate Earth dir into body frame once, not per pixel).
 - `src/physics/atmosphere.ts` — piecewise-exponential density model (Vallado table, 0–1000 km). Drag (Cd·A/m per entity class, co-rotating atmosphere) is applied as the RK4 extra-acceleration; player hull temp uses Sutton–Graves stagnation heating + Stefan-Boltzmann radiative cooling (see `updateThermal` in game.ts).
-- `src/game/{input,camera,hud,audio,entities}.ts` — keyboard/mouse state + edge-trigger queue; ship-centered chase camera (up = radial); DOM-overlay HUD (panels, screen-projected markers, help, end screen); WebAudio synth SFX (no assets); entity type defs.
+- `src/game/{input,camera,hud,audio,entities}.ts` — keyboard/mouse state + edge-trigger queue; ship-centered chase camera (up = radial); DOM-overlay HUD (panels, screen-projected markers, help, end screen); WebAudio synth SFX + lookahead-scheduled synth battle BGM loop (no assets; starts on first user gesture, stops on win/lose); entity type defs.
 - `src/physics/orbital.ts` — central-gravity RK4 for one entity with optional extra-acceleration callback (thrust, evaluated per RK4 stage), state→orbital elements, ellipse sampling for orbit lines. Pure functions.
 - `src/physics/attitude.ts` — rigid-body attitude: quaternion + body-frame ω via Euler's equations. ω integrated with RK4 + kinetic-energy projection (naive explicit integration diverges — this is what makes the Dzhanibekov effect on debris stable long-term). Pure functions.
 - `src/physics/vec3.ts` — plain-object Vec3 math helpers.
 - `src/physics/{bodies,integrator,physics.worker}.ts` — original N-body RK4 worker stack, unused by the LEO game; retained for the cislunar phase.
-- `src/render/earth.ts` — low-poly Earth: per-face vertex colors from deterministic 3D fBm noise (continents/biomes/ice), clouds **baked into face colors** (a separate cloud shell z-fights with the surface near the horizon at 24-bit depth), additive BackSide atmosphere rim shells.
+- `src/render/earth.ts` — realistic-style Earth: high-res indexed `SphereGeometry` (512×384) with smooth per-vertex colors from deterministic 3D fBm noise (continuous smoothstep-blended biomes, no facet jitter), clouds **baked into vertex colors** (a separate cloud shell z-fights with the surface near the horizon at 24-bit depth), additive BackSide atmosphere rim shells.
 - `src/render/ships.ts` — primitive-built low-poly meshes: player ship (nose = body +Z), enemy variants, shared-geometry tracer bullets, casings, debris shards, billboard flash.
 - `src/render/{stars,orbitline}.ts` — stars as tiny world-space triangles (WebGPU points are 1px; `THREE.Points` size doesn't work), sun billboard; orbit ellipse lines (`THREE.Line` — **`LineLoop` is unsupported by the WebGPU renderer**, close the loop manually).
 - `src/types/three-shims.d.ts` — three.js 0.169 ships no `.d.ts` for `three/webgpu`; minimal `WebGPURenderer` typings. Remove once upstream types cover it. Import THREE **only** from `'three/webgpu'` (mixing with `'three'` would duplicate classes at runtime).
@@ -41,7 +41,7 @@ Physics runs on the main thread (per-entity central-gravity two-body integration
 - Additive-blended materials need explicit `transparent: true`.
 - Headless-Chrome screenshots work with `--headless=new --enable-gpu --enable-unsafe-webgpu --disable-gpu-sandbox --no-sandbox` (flaky; retry a few times).
 
-Not yet implemented: J2/tidal perturbations, Sun/Moon perturbation, enemy AI (targets are passive), aurora effects, cloud shadows, sound assets, ECS. See `dev.md` for design direction.
+Not yet implemented: J2/tidal perturbations, Sun/Moon perturbation, enemy AI (targets are passive), aurora effects, cloud shadows, ECS. See `dev.md` for design direction.
 
 ## Project concept (from dev.md)
 

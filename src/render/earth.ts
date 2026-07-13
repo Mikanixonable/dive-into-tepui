@@ -1,5 +1,6 @@
-// ローポリ地球: 面ごとの頂点色(ノイズによる大陸生成)+ フラットシェーディング、
-// 雲シェル、加算合成の大気リムで構成する。実寸(半径 6371km)。
+// リアル調の地球: 高解像度球 + 頂点ごとの滑らかな色(ノイズによる大陸・バイオーム生成)
+// + スムーズシェーディング、加算合成の大気リムで構成する。実寸(半径 6371km)。
+// テクスチャアセットは使わず、起動時に手続き的に頂点色を計算する。
 import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../physics/orbital';
 
@@ -46,81 +47,97 @@ function fbm(x: number, y: number, z: number, octaves: number): number {
   return sum; // おおよそ [0, 1)
 }
 
-const OCEAN_DEEP = new THREE.Color(0x0a2f66);
-const OCEAN_SHALLOW = new THREE.Color(0x155a96);
-const LAND_GREEN = new THREE.Color(0x3f8f4d);
-const LAND_FOREST = new THREE.Color(0x2c6b3f);
-const LAND_DESERT = new THREE.Color(0xc9aa60);
-const LAND_ROCK = new THREE.Color(0x8d8577);
-const SNOW = new THREE.Color(0xeef3fa);
-const CLOUD_WHITE = new THREE.Color(0xf6f9fd);
+function clamp01(t: number): number {
+  return t < 0 ? 0 : t > 1 ? 1 : t;
+}
 
-function faceColor(px: number, py: number, pz: number, out: THREE.Color): void {
-  const continents = fbm(px * 1.6, py * 1.6, pz * 1.6, 5);
-  const detail = fbm(px * 5.0 + 9.1, py * 5.0, pz * 5.0, 4);
+function smoothstep(a: number, b: number, t: number): number {
+  return smooth(clamp01((t - a) / (b - a)));
+}
+
+const OCEAN_DEEP = new THREE.Color(0x08234f);
+const OCEAN_MID = new THREE.Color(0x0d3a74);
+const OCEAN_SHALLOW = new THREE.Color(0x1d6aa8);
+const COAST_SAND = new THREE.Color(0xc9b982);
+const LAND_GREEN = new THREE.Color(0x4d8a4a);
+const LAND_FOREST = new THREE.Color(0x2a5c36);
+const LAND_DESERT = new THREE.Color(0xc7a35f);
+const LAND_TUNDRA = new THREE.Color(0x8f8f76);
+const LAND_ROCK = new THREE.Color(0x7d766a);
+const SNOW = new THREE.Color(0xf2f6fc);
+const CLOUD_WHITE = new THREE.Color(0xf8fafd);
+const tmpA = new THREE.Color();
+const tmpB = new THREE.Color();
+
+// 頂点位置(単位球)→ 色。閾値の段差を作らず smoothstep で連続的に混ぜて
+// 実写調のグラデーションにする。雲は別シェルだと水平線付近で地表と
+// z-fighting するため頂点色に焼き込む(LEO から高度16kmの視差はほぼ知覚できない)。
+function vertexColor(px: number, py: number, pz: number, out: THREE.Color): void {
+  const continents = fbm(px * 1.6, py * 1.6, pz * 1.6, 6);
+  const detail = fbm(px * 5.0 + 9.1, py * 5.0, pz * 5.0, 5);
+  const micro = fbm(px * 13.0 + 3.3, py * 13.0, pz * 13.0, 3);
   const lat = Math.abs(py); // 単位球なので |y| = sin(緯度)
 
-  const iceEdge = 0.955 + (detail - 0.5) * 0.06;
-  if (lat > iceEdge) {
-    out.copy(SNOW);
-  } else if (continents > 0.52) {
-    // 陸地: 緯度と細部ノイズでバイオームを変える
-    const t = lat + (detail - 0.5) * 0.35;
-    if (continents > 0.62 && detail > 0.55) {
-      out.copy(LAND_ROCK);
-    } else if (t < 0.28 && detail > 0.48) {
-      out.copy(LAND_DESERT);
-    } else if (t > 0.72) {
-      out.lerpColors(LAND_FOREST, SNOW, (t - 0.72) / 0.28);
-    } else {
-      out.lerpColors(LAND_GREEN, LAND_FOREST, detail);
-    }
-  } else {
-    // 海: 大陸縁で浅くなる
-    const shore = Math.max(0, (continents - 0.40) / 0.12);
-    out.lerpColors(OCEAN_DEEP, OCEAN_SHALLOW, shore * 0.9 + detail * 0.1);
-  }
-  // 面ごとの明度ジッタでローポリ感を強調(隣接面の融合を防ぐ)
-  const jitter = 0.9 + hash3(px * 91, py * 87, pz * 83) * 0.17;
-  out.multiplyScalar(jitter);
+  const landness = smoothstep(0.5, 0.535, continents); // 0=海, 1=陸
 
-  // 雲: 別シェルだと水平線付近で地表と z-fighting するため面色に焼き込む
-  // (LEO からは高度16kmの視差はほぼ知覚できない)
-  const cloud = fbm(px * 2.3 + 51.7, py * 2.3, pz * 2.3, 4);
-  if (cloud > 0.57) {
-    const t = Math.min(0.88, ((cloud - 0.57) / 0.18) * 0.88);
-    out.lerp(CLOUD_WHITE, t);
-  }
+  // --- 海: 深海 → 沿岸のグラデーション + 微細な色むら ---
+  const depth = smoothstep(0.3, 0.52, continents);
+  tmpA.lerpColors(OCEAN_DEEP, OCEAN_MID, depth * 0.7 + micro * 0.15);
+  tmpA.lerp(OCEAN_SHALLOW, smoothstep(0.47, 0.53, continents) * 0.8);
+
+  // --- 陸: 高度・緯度・乾燥度でバイオームを連続的に混合 ---
+  const elev = smoothstep(0.535, 0.75, continents) + (detail - 0.5) * 0.3; // 標高感
+  const climate = clamp01(lat + (detail - 0.5) * 0.3); // 0=熱帯, 1=極
+  const dryness = smoothstep(0.45, 0.65, fbm(px * 2.6 + 77.7, py * 2.6, pz * 2.6, 4));
+
+  tmpB.lerpColors(LAND_GREEN, LAND_FOREST, smoothstep(0.15, 0.55, detail));
+  // 低緯度の乾燥地帯は砂漠へ
+  tmpB.lerp(LAND_DESERT, dryness * smoothstep(0.5, 0.15, climate));
+  // 高緯度はツンドラ → 雪原へ
+  tmpB.lerp(LAND_TUNDRA, smoothstep(0.6, 0.8, climate));
+  tmpB.lerp(SNOW, smoothstep(0.8, 0.95, climate));
+  // 高標高は岩肌、さらに高いと冠雪
+  tmpB.lerp(LAND_ROCK, smoothstep(0.55, 0.85, elev) * 0.85);
+  tmpB.lerp(SNOW, smoothstep(0.85, 1.05, elev + climate * 0.25));
+  // 海岸線の砂浜(ごく狭い帯)
+  tmpB.lerp(COAST_SAND, smoothstep(0.08, 0.0, landness - 0.08) * 0.5);
+
+  out.lerpColors(tmpA, tmpB, landness);
+
+  // 極冠(縁をノイズで揺らす)
+  out.lerp(SNOW, smoothstep(0.94, 0.975, lat + (detail - 0.5) * 0.04));
+
+  // 微細な明度むら(のっぺり感を防ぐ。面ジッタではなく連続ノイズ)
+  out.multiplyScalar(0.94 + micro * 0.12);
+
+  // 雲: 大小 2 スケールを合成し、縁を柔らかく
+  const cloudBase = fbm(px * 2.3 + 51.7, py * 2.3, pz * 2.3, 5);
+  const cloudWisp = fbm(px * 6.1 + 13.9, py * 6.1, pz * 6.1, 3);
+  const cover = smoothstep(0.52, 0.72, cloudBase * 0.75 + cloudWisp * 0.25);
+  out.lerp(CLOUD_WHITE, cover * 0.9);
 }
 
 function buildSurface(): THREE.Mesh {
-  // PolyhedronGeometry は非インデックスで頂点が面ごとに複製されるため、
-  // 3頂点まとめて同色を書けば面単位の色になる。
-  const geo = new THREE.IcosahedronGeometry(R_EARTH, 6);
+  // インデックス付き球ジオメトリ + 頂点色 + スムーズシェーディング。
+  // 512×384 分割で三角形は ~80km — LEO からは滑らかな球面に見える。
+  const geo = new THREE.SphereGeometry(R_EARTH, 512, 384);
   const pos = geo.getAttribute('position');
   const count = pos.count;
   const colors = new Float32Array(count * 3);
   const c = new THREE.Color();
 
-  for (let f = 0; f < count / 3; f++) {
-    const i0 = f * 3;
-    const cx = (pos.getX(i0) + pos.getX(i0 + 1) + pos.getX(i0 + 2)) / 3 / R_EARTH;
-    const cy = (pos.getY(i0) + pos.getY(i0 + 1) + pos.getY(i0 + 2)) / 3 / R_EARTH;
-    const cz = (pos.getZ(i0) + pos.getZ(i0 + 1) + pos.getZ(i0 + 2)) / 3 / R_EARTH;
-    faceColor(cx, cy, cz, c);
-    for (let k = 0; k < 3; k++) {
-      colors[(i0 + k) * 3] = c.r;
-      colors[(i0 + k) * 3 + 1] = c.g;
-      colors[(i0 + k) * 3 + 2] = c.b;
-    }
+  for (let i = 0; i < count; i++) {
+    vertexColor(pos.getX(i) / R_EARTH, pos.getY(i) / R_EARTH, pos.getZ(i) / R_EARTH, c);
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
-    flatShading: true,
-    roughness: 0.95,
-    metalness: 0,
+    roughness: 0.62, // 海面の太陽ハイライトがうっすら出る程度
+    metalness: 0.05,
   });
   return new THREE.Mesh(geo, mat);
 }

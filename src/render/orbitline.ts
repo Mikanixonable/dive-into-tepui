@@ -4,7 +4,9 @@ import * as THREE from 'three/webgpu';
 import { Elements, sampleOrbit } from '../physics/orbital';
 import { Vec3 } from '../physics/vec3';
 
-const POINT_COUNT = 220;
+// LEO 軌道(周長 ~42,000 km)で 1 セグメント ~20 km になる点数。
+// 弦の矢高は数 m まで落ちるので、軌道上(=線のすぐ近く)から見ても折れ線に見えない。
+const POINT_COUNT = 2048;
 
 // WebGPU レンダラー(r169)は LineLoop 非対応のため、THREE.Line で
 // 始点を終端に複製して閉じた楕円を描く。
