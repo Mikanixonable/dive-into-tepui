@@ -101,21 +101,25 @@ export function buildPlayerShip(): THREE.Group {
 }
 
 // --- マガジン ---
-// 寸法(機体座標系): 厚み(上下) 0.5 = 機体全高 2.0 の 1/4、
-// 横幅(ベルト方向 X)は厚みの 4 倍 = 2.0、前後幅(Z)は 3 倍 = 1.5。
-// 弾をケージで固定した見た目で、2(上下)×4(横)の配列が外から見える。
-export const MAG_THICKNESS = 0.5;
+// 寸法(機体座標系): 厚み(上下)は機体全高 2.0 の 1/2(従来比 2 倍)、
+// 横幅(ベルト方向 X)は厚みの 4 倍、前後幅(Z)は 3 倍。
+// 弾をケージで固定した見た目で、4(上下)×8(横) = 32 発の配列が外から見える
+// (MAG_ROUNDS = 32 と 1 対 1 対応)。
+export const MAG_THICKNESS = 1.0;
 export const MAG_WIDTH = MAG_THICKNESS * 4; // ベルト方向(X)
 export const MAG_DEPTH = MAG_THICKNESS * 3; // 前後(Z)
 export const MAG_BELT_PITCH = MAG_WIDTH + 0.18; // 連結間隔
+
+const MAG_ROWS = 4;
+const MAG_COLS = 8;
 
 const magPlateMat = std(0x6b7280, { metalness: 0.55, roughness: 0.45 });
 const magRoundMat = std(0xd9a441, { metalness: 0.85, roughness: 0.35 }); // 薬莢と同じ真鍮色
 const magTipMat = std(0x9aa3ad, { metalness: 0.7, roughness: 0.4 });
 const magPlateGeo = new THREE.BoxGeometry(MAG_WIDTH, 0.05, MAG_DEPTH);
 const magPostGeo = new THREE.BoxGeometry(0.07, MAG_THICKNESS, 0.07);
-const magRoundGeo = new THREE.CylinderGeometry(0.15, 0.15, MAG_DEPTH * 0.8, 6);
-const magTipGeo = new THREE.ConeGeometry(0.15, 0.22, 6);
+const magRoundGeo = new THREE.CylinderGeometry(0.11, 0.11, MAG_DEPTH * 0.8, 6);
+const magTipGeo = new THREE.ConeGeometry(0.11, 0.16, 6);
 
 export function buildMagazineMesh(): THREE.Group {
   const g = new THREE.Group();
@@ -133,11 +137,11 @@ export function buildMagazineMesh(): THREE.Group {
       g.add(post);
     }
   }
-  // 弾: 2(上下)×4(横) の配列、+Z(前方)向き
-  for (let iy = 0; iy < 2; iy++) {
-    for (let ix = 0; ix < 4; ix++) {
-      const x = (ix - 1.5) * (MAG_WIDTH / 4.4);
-      const y = (iy - 0.5) * (MAG_THICKNESS * 0.28);
+  // 弾: 4(上下)×8(横) = 32 発の配列、+Z(前方)向き
+  for (let iy = 0; iy < MAG_ROWS; iy++) {
+    for (let ix = 0; ix < MAG_COLS; ix++) {
+      const x = (ix - (MAG_COLS - 1) / 2) * (MAG_WIDTH / (MAG_COLS * 1.1));
+      const y = (iy - (MAG_ROWS - 1) / 2) * (MAG_THICKNESS * 0.24);
       const round = new THREE.Mesh(magRoundGeo, magRoundMat);
       round.rotation.x = Math.PI / 2;
       round.position.set(x, y, 0);

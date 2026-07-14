@@ -121,6 +121,11 @@ const beltTmpB = new THREE.Vector3();
 const beltNext = new THREE.Vector3();
 const beltDelta = new THREE.Vector3();
 const beltDir = new THREE.Vector3();
+const beltTmpVX = new THREE.Vector3();
+const beltQPrev = new THREE.Quaternion();
+const beltQDelta = new THREE.Quaternion();
+const beltQBend = new THREE.Quaternion();
+const beltQTwist = new THREE.Quaternion();
 
 function randSym(amp: number): number {
   return (Math.random() * 2 - 1) * amp;
@@ -204,7 +209,7 @@ export class Game {
 
   private rcsDamp = true;
   private target: Ship | null = null;
-  private throttleIdx = 0; // 0: 0%, 1: RCSと同等, 2: 中, 3: MAX
+  private throttleIdx = C.THROTTLE_DEFAULT_IDX; // 並進出力の段(0:弱 1:中 2:強、全 6 方向で共通)
   private fineAttitude = false;
   private progradeHold = false; // [C] 機首をプログレードへ自動保持するオートパイロット
   // [G] 視点(チェイスカメラ)を自機の姿勢(RCS操作)に追従させるか。
@@ -265,6 +270,11 @@ export class Game {
   private readonly beltPos: THREE.Vector3[] = [];
   private readonly beltPrevPos: THREE.Vector3[] = [];
   private beltInit = false;
+  // 各リンクのチェーン軸まわりのねじれ角 [rad](機関銃ベルト同様、上下方向の
+  // 折れ曲がりは距離拘束のみで自由に許容する一方、ロールはここで角度上限を掛けて
+  // 制限する)。機体のロール角速度を発生源に、リンクからリンクへ位相遅れつつ
+  // 伝播させ、常に ±MAG_CHAIN_MAX_ROLL_DEG に収まるよう追従・クランプする。
+  private readonly beltTwist: number[] = [];
   private hudTimer = 0;
   private listTimer = 0;
   private readonly earthPhase0 = Math.random() * Math.PI * 2;
@@ -538,19 +548,15 @@ export class Game {
           break;
         case 'Digit1':
           this.throttleIdx = 0;
-          this.hud.hint('メインエンジン出力: 0% (CUTOFF)');
+          this.hud.hint(`並進出力: 弱 (${C.THROTTLE_LEVELS[0]!.toFixed(1)} m/s²)`);
           break;
         case 'Digit2':
           this.throttleIdx = 1;
-          this.hud.hint('メインエンジン出力: 弱 (RCS同等)');
+          this.hud.hint(`並進出力: 中 (${C.THROTTLE_LEVELS[1]!.toFixed(1)} m/s²)`);
           break;
         case 'Digit3':
           this.throttleIdx = 2;
-          this.hud.hint('メインエンジン出力: 中');
-          break;
-        case 'Digit4':
-          this.throttleIdx = 3;
-          this.hud.hint('メインエンジン出力: 100% (FULL)');
+          this.hud.hint(`並進出力: 強 (${C.THROTTLE_LEVELS[2]!.toFixed(1)} m/s²)`);
           break;
         case 'Comma':
           this.autoWarp = false;
@@ -867,15 +873,9 @@ export class Game {
       }
     }
 
-    // スロットル操作はエッジ入力 (handleEdgeInput) に移動しました
-
-    // 推進入力
+    // 推進入力(並進出力の段数選択は handleEdgeInput のエッジ入力で行う)
     const thrustFn = canAct ? this.buildThrustAccel() : null;
-    if (!canAct && !this.mapMode && this.throttleIdx > 0 && this.player.alive) {
-      this.throttleIdx = 0; // ワープ中等は安全のためカットオフ
-      this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
-    }
-    this.sfx.setThrust(thrustFn !== null || this.throttleIdx > 0);
+    this.sfx.setThrust(thrustFn !== null);
     if (thrustFn) {
       this.thrustAccelVec = thrustFn(this.player.state.r, this.player.state.v);
       this.thrustVizDir = norm(this.thrustAccelVec);
@@ -1097,37 +1097,24 @@ export class Game {
     this.lastSimDt = simDt;
   }
 
-  // 押下キーから推力加速度関数を構築。
-  // 機体座標系（+Z前, +X右, +Y上）を基準とする。
+  // 押下キーから推力加速度関数を構築。機体座標系(+Z前, +X右, +Y上)を基準とする。
+  // 並進(WSADQE の 6 方向)とエンジンは統合されており、前後・左右・上下いずれの
+  // 方向も同じ [1]/[2]/[3] 出力段(弱/中/強)の加速度で駆動する。
   private buildThrustAccel(): ExtraAccel | null {
     const i = this.input;
     const manual = this.mapMode ? 0 : 1;
-    // RCS並進: WSADQE
-    const axY = ((i.down('KeyQ') ? 1 : 0) + (i.down('KeyE') ? -1 : 0)) * manual; // 上/下 (Q=上昇, E=下降)
     const axX = ((i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0)) * manual; // 左(X)/右(-X) => A(1)/D(-1)
-    const wDown = i.down('KeyW') ? 1 : 0;
-    const sDown = i.down('KeyS') ? 1 : 0;
-    const axZ = (wDown - sDown) * manual; // 前/後
+    const axY = ((i.down('KeyQ') ? 1 : 0) + (i.down('KeyE') ? -1 : 0)) * manual; // 上/下 (Q=上昇, E=下降)
+    const axZ = ((i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0)) * manual; // 前/後 (W=前進, S=後進)
 
-    const rcsActive = axX !== 0 || axY !== 0 || axZ !== 0;
-    // エンジンが "起動" しているわけではなく、Wを押したときだけ推力を発生させる
-    if (!rcsActive) return null;
+    if (axX === 0 && axY === 0 && axZ === 0) return null;
 
-    const mainAccel = C.THROTTLE_LEVELS[this.throttleIdx]!;
+    const thrustAccel = C.THROTTLE_LEVELS[this.throttleIdx]!;
     const q = this.player.att.q;
 
     return (): Vec3 => {
-      const localThrustDir = v3(axX, axY, axZ);
-      const rcsDir = lenSq(localThrustDir) > 0 ? norm(localThrustDir) : v3();
-      // W/S を押したとき (+Z/-Z方向)、エンジン出力が 1 段以上ならメインエンジンの出力を適用。
-      // 0 段(カットオフ)の時は RCS 同等(MAX_RCS_THRUST)の推力を前後に出す。
-      const zThrustMag = this.throttleIdx > 0 ? mainAccel : C.MAX_RCS_THRUST;
-      const localTotal = v3(
-        rcsDir.x * C.MAX_RCS_THRUST,
-        rcsDir.y * C.MAX_RCS_THRUST,
-        rcsDir.z * zThrustMag
-      );
-      return qRotate(q, localTotal);
+      const dir = norm(v3(axX, axY, axZ));
+      return qRotate(q, scale(dir, thrustAccel));
     };
   }
 
@@ -1816,6 +1803,7 @@ export class Game {
         const p = new THREE.Vector3(0.9 + (i + 1) * MAG_BELT_PITCH, 0, 0);
         this.beltPos.push(p.clone());
         this.beltPrevPos.push(p.clone());
+        this.beltTwist.push(0);
       }
     }
 
@@ -1873,16 +1861,43 @@ export class Game {
 
     // 表示: 各リンクをその節点の手前(アンカー or 前リンクの節点)に置き、
     // 節点への方向へ向ける(ローカル +X = ベルト方向)。
+    // 向きは「平行移動(parallel transport)」で求める: 前リンクの姿勢を基準に、
+    // その進行方向(ローカル+X)を新しい節点方向へ向ける最小回転だけを加える。
+    // これにより曲げ(ピッチ/ヨー相当)は距離拘束だけで自由に発生し、余計な
+    // ねじれが混入しない。そこへ、機体のロールに由来する有限のねじれ角
+    // (this.beltTwist、リンクからリンクへ伝播しつつ ±MAG_CHAIN_MAX_ROLL_DEG に
+    // クランプ)だけを追加で載せることで、「上下方向の折りたたみは自由だが
+    // ロールには上限がある」という機関銃ベルトらしい可動域を実現する。
+    const maxRoll = (C.MAG_CHAIN_MAX_ROLL_DEG * Math.PI) / 180;
+    const rollLerp = Math.min(1, dt * C.MAG_CHAIN_ROLL_RATE);
     let prevPoint: THREE.Vector3 = beltAnchor;
+    beltQPrev.identity(); // アンカー(機体)側の基準姿勢
+    let prevTwist = this.player.att.w.z * C.MAG_CHAIN_ROLL_GAIN; // ねじれの発生源: 機体のロール角速度
     for (let i = 0; i < n; i++) {
       const link = this.beltLinks[i]!;
       link.visible = this.player.alive && i < beltCount;
       const pos = this.beltPos[i]!;
       link.position.copy(prevPoint);
+
       beltDir.copy(pos).sub(prevPoint).normalize();
       if (beltDir.lengthSq() > 1e-8) {
-        link.quaternion.setFromUnitVectors(X_AXIS, beltDir);
+        beltTmpVX.copy(X_AXIS).applyQuaternion(beltQPrev); // 前リンクの進行方向(ワールド)
+        beltQDelta.setFromUnitVectors(beltTmpVX, beltDir); // 曲げぶんの最小回転
+        beltQBend.copy(beltQDelta).multiply(beltQPrev);
+      } else {
+        beltQBend.copy(beltQPrev);
       }
+
+      // ねじれ角を目標へ追従させつつ ±maxRoll にクランプ(常に上限内)
+      const target = Math.max(-maxRoll, Math.min(maxRoll, prevTwist));
+      const twist = this.beltTwist[i]! + (target - this.beltTwist[i]!) * rollLerp;
+      this.beltTwist[i] = Math.max(-maxRoll, Math.min(maxRoll, twist));
+
+      beltQTwist.setFromAxisAngle(X_AXIS, this.beltTwist[i]!);
+      link.quaternion.copy(beltQBend).multiply(beltQTwist);
+
+      beltQPrev.copy(beltQBend);
+      prevTwist = this.beltTwist[i]!; // 次のリンクへ位相遅れつつ伝播
       prevPoint = pos;
     }
   }
@@ -1905,10 +1920,11 @@ export class Game {
       return;
     }
 
+    // updatePlayerAttitude の inX/inY/inZ(実際のトルク方向)と符号を一致させる
     const tau = v3(
-      (i.down('KeyI') ? 1 : 0) + (i.down('KeyK') ? -1 : 0),
-      (i.down('KeyL') ? 1 : 0) + (i.down('KeyJ') ? -1 : 0),
-      (i.down('KeyU') ? 1 : 0) + (i.down('KeyO') ? -1 : 0),
+      (i.down('KeyI') ? 1 : 0) + (i.down('KeyK') ? -1 : 0), // ピッチ
+      (i.down('KeyJ') ? 1 : 0) + (i.down('KeyL') ? -1 : 0), // ヨー
+      (i.down('KeyO') ? 1 : 0) + (i.down('KeyU') ? -1 : 0), // ロール
     );
     const q = this.player.att.q;
     const cam = this.activeCamera;

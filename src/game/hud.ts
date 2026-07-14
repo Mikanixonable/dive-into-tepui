@@ -200,7 +200,7 @@ export class Hud {
       <div class="row"><span class="k">TIME WARP</span><span class="v" data-id="warp"></span></div>
 
       <div class="row"><span class="k">RCS制動 [T]</span><span class="v" data-id="rcs"></span></div>
-      <div class="row"><span class="k">出力 [1-4]</span><span class="v" data-id="throttle"></span></div>
+      <div class="row"><span class="k">並進出力 [1-3]</span><span class="v" data-id="throttle"></span></div>
       <div class="row"><span class="k">微調整 [V]</span><span class="v" data-id="fine"></span></div>
       <div class="row"><span class="k">進行方向ホールド [C]</span><span class="v" data-id="prohold"></span></div>
       <div class="row"><span class="k">視点のRCS追従 [G]</span><span class="v" data-id="camfollow"></span></div>
@@ -230,7 +230,7 @@ export class Hud {
 
     const controls = el('div', 'hud-controls', this.root);
     controls.innerHTML =
-      'W/S/A/D/Q/E:並進 &nbsp;I/K/J/L/U/O:回転 &nbsp;1/2/3/4:推力 &nbsp;C:進行方向ホールド &nbsp;G:視点のRCS追従 &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
+      'W/S/A/D/Q/E:並進 &nbsp;I/K/J/L/U/O:回転 &nbsp;1/2/3:並進出力 &nbsp;C:進行方向ホールド &nbsp;G:視点のRCS追従 &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
       'Space/右クリック:射撃 &nbsp;左ドラッグ/矢印キー:視点 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
 
     const plan = el('div', 'hud-plan', this.root, 'panel');
@@ -251,7 +251,7 @@ export class Hud {
         <tr><td class="key">J / L</td><td>ヨー (左 / 右)</td></tr>
         <tr><td class="key">O / U</td><td>ロール (右 / 左)</td></tr>
         <tr><td class="key">T</td><td>RCS 回転制動 ON/OFF</td></tr>
-        <tr><td class="key">1 / 2 / 3 / 4</td><td>Wキー前進時のエンジン推力設定 (カットオフ / 弱 / 中 / フル)</td></tr>
+        <tr><td class="key">1 / 2 / 3</td><td>並進出力の切替 (弱 / 中 / 強)。W/S/A/D/Q/E の全 6 方向に共通で適用される</td></tr>
         <tr><td class="key">V</td><td>姿勢微調整モード ON/OFF (角加速度・角速度を絞って小刻みに操作)</td></tr>
         <tr><td class="key">C</td><td>進行方向ホールド ON/OFF (機首をプログレード方向へ自動で向け続ける。手動回転で解除)</td></tr>
         <tr><td class="key">G</td><td>視点のRCS追従 ON/OFF (既定 ON: 視点が機体姿勢を基準に回転し、RCS操作と一体的に動く。OFF で従来の軌道基準の独立視点に戻る)</td></tr>
@@ -294,7 +294,7 @@ export class Hud {
     }
 
     this.setText('rcs', d.rcsDamp ? 'ON' : 'OFF');
-    const throttleLabels = ['CUTOFF', '弱', '中', 'FULL'];
+    const throttleLabels = ['弱', '中', '強'];
     this.setText(
       'throttle',
       `${throttleLabels[d.throttleIdx]} (${C.THROTTLE_LEVELS[d.throttleIdx]!.toFixed(1)} m/s²)`,
