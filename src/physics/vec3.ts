@@ -53,10 +53,6 @@ export function norm(a: Vec3): Vec3 {
   return scale(a, 1 / l);
 }
 
-export function neg(a: Vec3): Vec3 {
-  return { x: -a.x, y: -a.y, z: -a.z };
-}
-
 // ロドリゲスの回転公式: v を単位軸 axis まわりに angle 回転
 export function rotateAxis(v: Vec3, axis: Vec3, angle: number): Vec3 {
   const c = Math.cos(angle);
@@ -71,6 +67,3 @@ export function rotateAxis(v: Vec3, axis: Vec3, angle: number): Vec3 {
   };
 }
 
-export function distance(a: Vec3, b: Vec3): number {
-  return len(sub(a, b));
-}

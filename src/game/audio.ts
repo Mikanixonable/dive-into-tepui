@@ -165,19 +165,6 @@ export class Sfx {
     osc.stop(t + duration + 0.05);
   }
 
-  private noiseAt(t: number, duration: number, volume: number, freq: number, dest: AudioNode): void {
-    if (!this.ctx || !this.noiseBuf) return;
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.noiseBuf;
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.value = freq;
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(volume, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-    src.connect(filter).connect(gain).connect(dest);
-    src.start(t, Math.random() * 0.5, duration + 0.05);
-  }
 
   private noiseBurst(duration: number, filterType: BiquadFilterType, freq: number, volume: number): void {
     if (!this.ctx || !this.noiseBuf) return;
