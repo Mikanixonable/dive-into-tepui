@@ -30,10 +30,11 @@ export const AMBIENT_INTENSITY = 0.25; // 環境光の基準強度
 export const SHADOW_MIN_SUN = 0.04; // 影の中に残す太陽光の割合(星明かり・地球照ぶん)
 export const SHADOW_MIN_AMBIENT = 0.35; // 影の中に残す環境光の割合
 
-// メインエンジン出力 4 段階 [m/s^2]。[1]/[2]/[3]/[4] キーで切替。
-// index 0 (カットオフ) は W 前進時に RCS 同等推力(MAX_RCS_THRUST)にフォールバックする。
-export const THROTTLE_LEVELS = [0, 5.0, 10.0, 15.0];
-export const MAX_RCS_THRUST = 5.0; // RCS 並進(WSADQE)の最大加速度 [m/s^2]
+// 並進推力(WSADQE の全 6 方向、前後左右上下を問わず共通)出力 3 段階 [m/s^2]。
+// [1]/[2]/[3] キーで切替。並進とエンジンは統合されており、方向キーが押されて
+// いる間だけ、選択中の段の加速度がその方向へ出る(常時噴射のカットオフ段はない)。
+export const THROTTLE_LEVELS = [5.0, 10.0, 15.0];
+export const THROTTLE_DEFAULT_IDX = 0;
 
 export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
 export const MAX_ANG_VEL = 1.6; // 手動回転の角速度上限 [rad/s]
@@ -71,15 +72,24 @@ export const MAX_BOARD_MARKS = 1;
 export const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)
 
 // --- 弾薬・マガジン ---
-export const MAG_ROUNDS = 16; // 1 マガジンの装弾数
-export const INITIAL_MAGS = 32; // ゲーム開始時に連結されているマガジン数
-export const MAG_PICKUP_MAGS = 8; // 補給 1 個の取り込みで増えるマガジン数
+// マガジンの厚みを倍にしたぶん装弾数も倍(32発)にしたので、同程度の総弾薬量を
+// 半分程度のマガジン数(=物理的に短いチェーン)で賄える。
+export const MAG_ROUNDS = 32; // 1 マガジンの装弾数
+export const INITIAL_MAGS = 12; // ゲーム開始時に連結されているマガジン数
+export const MAG_PICKUP_MAGS = 4; // 補給 1 個の取り込みで増えるマガジン数
 export const MAG_PICKUP_RADIUS = 60; // 取り込み距離 [m](ゲームプレイ上の吸収判定。物理サイズではない)
 export const MAG_PICKUP_PHYS_RADIUS = 1.3; // 補給マガジン束の物理接触用の半径 [m](見た目に近い実寸)
-export const AMMO_LOW_MAGS = 8; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
+export const AMMO_LOW_MAGS = 3; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
 export const MAX_MAG_PICKUPS = 2; // 同時に存在する補給の最大数
 export const RESUPPLY_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
-export const BELT_MAX_VISIBLE = 32; // ベルト描画の最大リンク数
+export const BELT_MAX_VISIBLE = 12; // ベルト描画の最大リンク数
+
+// マガジンチェーンの可動域: 機関銃のベルトと同様、接合部の折れ曲がり(隣接リンクの
+// 進行方向の変化=ピッチ/ヨー方向)は距離拘束のみで自由に許容するが、チェーン軸まわりの
+// ロール(ねじれ)は角度上限で制限し、暴れた見た目にならないようにする。
+export const MAG_CHAIN_MAX_ROLL_DEG = 35;
+export const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
+export const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
 
 export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
 export const MAX_BULLETS = 400;
