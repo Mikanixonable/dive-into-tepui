@@ -30,7 +30,6 @@ import {
 } from '../physics/ephemeris';
 import {
   Attitude,
-  qIdentity,
   qRotate,
   randomQuat,
   stepAttitude,
@@ -44,7 +43,6 @@ import {
   dot,
   len,
   lenSq,
-  neg,
   norm,
   rotateAxis,
   scale,
@@ -85,7 +83,6 @@ import {
 } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
 
-
 type GamePhase = 'playing' | 'won' | 'lost';
 
 interface EnemySpec {
@@ -108,6 +105,22 @@ const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+
+// updateBeltPhysics 専用のスクラッチ変数(毎フレーム/リンクごとの new THREE.Vector3
+// 割り当てを避けるため使い回す。同一フレーム内で再入・並行使用されないことが前提)。
+const beltQInv = new THREE.Quaternion();
+const beltAThrustBody = new THREE.Vector3();
+const beltW = new THREE.Vector3();
+const beltAlpha = new THREE.Vector3();
+const beltAnchor = new THREE.Vector3();
+const beltVel = new THREE.Vector3();
+const beltAccel = new THREE.Vector3();
+const beltTmpA = new THREE.Vector3();
+const beltTmpB = new THREE.Vector3();
+const beltNext = new THREE.Vector3();
+const beltDelta = new THREE.Vector3();
+const beltDir = new THREE.Vector3();
 
 function randSym(amp: number): number {
   return (Math.random() * 2 - 1) * amp;
@@ -117,18 +130,16 @@ function randVec(amp: number): Vec3 {
   return v3(randSym(amp), randSym(amp), randSym(amp));
 }
 
+// スクリーン投影マーカーのラベル用コンパクトな距離表記(例: "420m" / "2.2km")
+function fmtMarkerDist(m: number): string {
+  return m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${m.toFixed(0)}m`;
+}
+
 const EARTH_OMEGA = (2 * Math.PI) / SIDEREAL_DAY; // 地球自転角速度 [rad/s](Y軸=北極まわり)
 
-// 大気抵抗の加速度関数。大気は地球と共回転するとし、対気速度で
-// a = -½ρ|v_rel|·(Cd·A/m)·v_rel を返す。bcInv = Cd·A/m [m²/kg]。
-function makeDragAccel(bcInv: number): ExtraAccel {
-  return (r: Vec3, v: Vec3): Vec3 => {
-    const rho = atmosphericDensity(len(r) - R_EARTH);
-    if (rho < 1e-15) return v3();
-    // v_atm = ω × r, ω = (0, ω, 0)
-    const vr = v3(v.x - EARTH_OMEGA * r.z, v.y, v.z + EARTH_OMEGA * r.x);
-    return scale(vr, -0.5 * rho * len(vr) * bcInv);
-  };
+// 地球と共回転する大気に対する対気速度: v - ω×r, ω = (0, ω, 0)
+function airspeed(r: Vec3, v: Vec3): Vec3 {
+  return v3(v.x - EARTH_OMEGA * r.z, v.y, v.z + EARTH_OMEGA * r.x);
 }
 
 // fwd に直交するランダム単位ベクトル(散布界用)
@@ -534,6 +545,10 @@ export class Game {
           this.hud.hint('メインエンジン出力: 弱 (RCS同等)');
           break;
         case 'Digit3':
+          this.throttleIdx = 2;
+          this.hud.hint('メインエンジン出力: 中');
+          break;
+        case 'Digit4':
           this.throttleIdx = 3;
           this.hud.hint('メインエンジン出力: 100% (FULL)');
           break;
@@ -648,7 +663,8 @@ export class Game {
     return elementsFromState(rN, vP);
   }
 
-  // マップ表示中のノード編集(物理停止中)
+  // マップ表示中のノード編集(時間・物理は simulate() 側で通常どおり進み続ける。
+  // ここではクリックによるノード配置と Δv 調整、計画パネルの表示だけを行う)
   private updateMapPlanning(dt: number): void {
     const el = elementsFromState(this.player.state.r, this.player.state.v);
     if (!el || el.e >= 0.98 || !isFinite(el.period)) {
@@ -753,6 +769,11 @@ export class Game {
     // 達成判定: 現在軌道が計画軌道に十分近い
     if (playerEl && this.orbitClose(playerEl, node.targetEl)) {
       this.node = null;
+      // editNu/editDv も一緒に消す。残したままだと次に [M] でマップを開いて
+      // 何も操作せず閉じただけで finalizeNode() が古い計画を再凍結し、
+      // 消えたはずのノードと BURN ガイドが復活してしまう。
+      this.editNu = null;
+      this.editDv = v3();
       this.autoWarp = false;
       this.hud.hideMarker('nd');
       this.hud.hideMarker('burn');
@@ -894,11 +915,17 @@ export class Game {
       this.simTime += sub;
       this.checkBulletHits();
       this.checkBoardCrossings();
-      this.resolvePhysicalCollisions();
     }
     this.lastSimDt = simDt;
     this.checkThermalLimits();
     this.updateAmmoLogistics(dt);
+    // 剛体衝突(薬莢・マガジンベルト等)はワープ ×4 以下(操縦可能な範囲)でのみ解決する。
+    // 高ワープ中はサブステップが最大20秒に及び、反発処理も薬莢多数だと O(N²) で
+    // 高コストになる上、物理的な意味も薄いため。実時間 dt で 1 回だけ呼ぶ
+    // (ベルト自体が実時間で動いているため、サブステップごとに複数回呼ぶ必要もない)。
+    if (warp <= C.MAX_PHYS_WARP) {
+      this.resolvePhysicalCollisions(dt);
+    }
 
     // 姿勢力学(高ワープ時は見かけ上スローになるが数値的に安定)
     const attDt = Math.min(simDt, 0.12);
@@ -911,9 +938,14 @@ export class Game {
     this.cleanup();
   }
 
-  // 弾薬まわりの毎フレーム処理: 補給の取り込み・低残弾時の補給投入・薬莢の接触音
+  // 弾薬まわりの毎フレーム処理: 補給の取り込み・低残弾時の補給投入。
+  // 薬莢の接触音は resolvePhysicalCollisions() の実衝突イベントから直接鳴らす
+  // (このメソッドでは this.clankCd のレート制限だけを実時間 dt で減算する)。
   private updateAmmoLogistics(dt: number): void {
-    // 補給マガジンの取り込み
+    this.clankCd -= dt;
+
+    // 補給マガジンの取り込み(回収判定距離 = MAG_PICKUP_RADIUS。これは物理サイズではなく
+    // ゲームプレイ上の吸収距離なので、物理衝突 resolvePhysicalCollisions とは別に判定する)
     if (this.player.alive) {
       for (const mp of this.magPickups) {
         if (!mp.alive) continue;
@@ -937,26 +969,6 @@ export class Game {
       this.resupplyCheckAt = this.simTime + C.RESUPPLY_CHECK_INTERVAL;
       if (this.magsLeft < C.AMMO_LOW_MAGS && this.magPickups.length < C.MAX_MAG_PICKUPS) {
         this.spawnMagPickup();
-      }
-    }
-
-    // 薬莢が機体に当たったときの金属音(かすかに、レート制限つき)。
-    // 排出直後は必ず機体の近くにいるため、一度 6m 以上離れて「アーム」された
-    // 薬莢が再接近したときだけ鳴らす。
-    this.clankCd -= dt;
-    if (this.player.alive) {
-      for (const cs of this.casings) {
-        if (cs.clanked) continue;
-        const d2 = lenSq(sub(cs.state.r, this.player.state.r));
-        if (!cs.clankArmed) {
-          if (d2 > 6 * 6) cs.clankArmed = true;
-          continue;
-        }
-        if (d2 < 3.2 * 3.2 && this.clankCd <= 0) {
-          cs.clanked = true;
-          this.sfx.clank();
-          this.clankCd = 0.07;
-        }
       }
     }
   }
@@ -995,17 +1007,32 @@ export class Game {
 
   // 大気抵抗 + J2(地球扁平) + 月・太陽の第三体(潮汐)摂動を合成した環境加速度。
   // 天体位置はサブステップ更新の this.sunPos / moonPos を閉包で参照する。
+  // この関数は RK4 の全ステージ × 全エンティティ × サブステップで呼ばれるホット
+  // パスなので、大気抵抗は(専用の Vec3 を作らず)直接数値演算でインライン化し、
+  // 割り当てを 1 個(戻り値ぶんのみ)に抑える。J2・第三体項は共有の純関数
+  // (physics/orbital.ts、テストで数値検証済み)をそのまま使う。
   private makeEnvAccel(bcInv: number): ExtraAccel {
-    const drag = makeDragAccel(bcInv);
     return (r: Vec3, v: Vec3): Vec3 => {
-      const a = drag(r, v);
+      const rho = atmosphericDensity(len(r) - R_EARTH);
+      let ax = 0;
+      let ay = 0;
+      let az = 0;
+      if (rho >= 1e-15) {
+        const vrx = v.x - EARTH_OMEGA * r.z;
+        const vry = v.y;
+        const vrz = v.z + EARTH_OMEGA * r.x;
+        const k = -0.5 * rho * Math.sqrt(vrx * vrx + vry * vry + vrz * vrz) * bcInv;
+        ax = vrx * k;
+        ay = vry * k;
+        az = vrz * k;
+      }
       const j = j2Accel(r);
       const s = thirdBodyAccel(r, this.sunPos, MU_SUN);
       const m = thirdBodyAccel(r, this.moonPos, MU_MOON);
       return v3(
-        a.x + j.x + s.x + m.x,
-        a.y + j.y + s.y + m.y,
-        a.z + j.z + s.z + m.z,
+        ax + j.x + s.x + m.x,
+        ay + j.y + s.y + m.y,
+        az + j.z + s.z + m.z,
       );
     };
   }
@@ -1016,7 +1043,7 @@ export class Game {
     const r = this.player.state.r;
     const v = this.player.state.v;
     const rho = atmosphericDensity(len(r) - R_EARTH);
-    const vr = v3(v.x - EARTH_OMEGA * r.z, v.y, v.z + EARTH_OMEGA * r.x);
+    const vr = airspeed(r, v);
     const s = len(vr);
     this.qdyn = 0.5 * rho * s * s;
     const qdot = C.SG_CONST * Math.sqrt(rho / C.NOSE_RADIUS) * s * s * s;
@@ -1070,10 +1097,6 @@ export class Game {
     this.lastSimDt = simDt;
   }
 
-  private anyThrustKey(): boolean {
-    return ['KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE'].some((k) => this.input.down(k));
-  }
-
   // 押下キーから推力加速度関数を構築。
   // 機体座標系（+Z前, +X右, +Y上）を基準とする。
   private buildThrustAccel(): ExtraAccel | null {
@@ -1090,21 +1113,18 @@ export class Game {
     // エンジンが "起動" しているわけではなく、Wを押したときだけ推力を発生させる
     if (!rcsActive) return null;
 
-    const maxRcsThrust = 5.0;   // RCS並進の最大加速度 [m/s^2]
-    const throttleLevels = [0, maxRcsThrust, 10.0, 15.0]; // 1の時はRCS(5.0)と同等
-    const mainAccel = throttleLevels[this.throttleIdx]!;
-    
+    const mainAccel = C.THROTTLE_LEVELS[this.throttleIdx]!;
     const q = this.player.att.q;
 
     return (): Vec3 => {
       const localThrustDir = v3(axX, axY, axZ);
       const rcsDir = lenSq(localThrustDir) > 0 ? norm(localThrustDir) : v3();
-      // W/S を押したとき (+Z/-Z方向)、エンジンモードが1以上ならメインエンジンの出力を適用。
-      // モード0(カットオフ)の時はRCS同等(maxRcsThrust)の推力を前後に出す。
-      const zThrustMag = this.throttleIdx > 0 ? mainAccel : maxRcsThrust;
+      // W/S を押したとき (+Z/-Z方向)、エンジン出力が 1 段以上ならメインエンジンの出力を適用。
+      // 0 段(カットオフ)の時は RCS 同等(MAX_RCS_THRUST)の推力を前後に出す。
+      const zThrustMag = this.throttleIdx > 0 ? mainAccel : C.MAX_RCS_THRUST;
       const localTotal = v3(
-        rcsDir.x * maxRcsThrust,
-        rcsDir.y * maxRcsThrust,
+        rcsDir.x * C.MAX_RCS_THRUST,
+        rcsDir.y * C.MAX_RCS_THRUST,
         rcsDir.z * zThrustMag
       );
       return qRotate(q, localTotal);
@@ -1513,11 +1533,11 @@ export class Game {
     const o = this.player.state.r; // フローティングオリジン
     const pv = this.player.state.v;
 
-    // 地球・恒星・太陽 (巨大座標系による Float32 ジッターを抑えるため通常は 1/100 スケールで描画、マップでは実寸)
-    // 1e-4 (1/10000) だとカメラと地球表面の距離が数十メートルになり、深度テストで他のオブジェクトが隠れてしまうため 1e-2 とする
-    const earthScale = this.mapMode ? 1.0 : 1e-2;
-    this.earth.group.position.set(-o.x * earthScale, -o.y * earthScale, -o.z * earthScale);
-    this.earth.group.scale.set(earthScale, earthScale, earthScale);
+    // 地球・恒星・太陽(実寸で描画。フローティングオリジン設計により
+    // カメラは常にワールド原点にあるため、地球側の平行移動量(|o| 〜 R_EARTH+高度)
+    // は近地点侵入時でも 1e7 未満で、near=2m の深度バッファでも十分な精度が出る
+    // (詳細は CLAUDE.md「フローティングオリジンの精度設計」参照)。
+    this.earth.group.position.set(-o.x, -o.y, -o.z);
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * this.simTime) / SIDEREAL_DAY);
     this.earth.tick(dt);
 
@@ -1692,7 +1712,9 @@ export class Game {
     const playerEl = elementsFromState(o, pv);
     this.playerOrbitLine.update(this.player.alive ? playerEl : null, o, this.thrustVizDir !== null, true);
     const tgt = this.target && this.target.alive ? this.target : null;
-    this.targetOrbitLine.update(tgt ? elementsFromState(tgt.state.r, tgt.state.v) : null, o);
+    // ターゲットの軌道要素は1フレームに複数箇所で使うので一度だけ計算して使い回す
+    const tgtEl = tgt ? elementsFromState(tgt.state.r, tgt.state.v) : null;
+    this.targetOrbitLine.update(tgtEl, o);
 
     // マップモード: 全敵の軌道を表示して比較できるようにする
     for (let i = 0; i < this.enemies.length; i++) {
@@ -1724,12 +1746,12 @@ export class Game {
     }
 
     this.updateMarkers(o, pv, tgt);
-    this.updateNodeMarkers(playerEl, tgt, o);
+    this.updateNodeMarkers(playerEl, tgtEl, o);
     this.updateBoardMarkers(o, dt, tgt);
     if (!this.mapMode) this.updateNodeGuide(o, pv, playerEl);
     else this.hud.hideMarker('burn');
     this.updateNavball(o, pv, tgt);
-    this.updateHudPanels(dt, playerEl, tgt);
+    this.updateHudPanels(dt, playerEl, tgt, tgtEl);
     this.hud.tick();
   }
 
@@ -1799,56 +1821,47 @@ export class Game {
 
     // 機体の角加速度を前フレームとの差分から推定(body-frame ω の差分)
     const w = this.player.att.w;
-    const alpha =
-      dt > 1e-6 ? v3((w.x - this.prevBodyW.x) / dt, (w.y - this.prevBodyW.y) / dt, (w.z - this.prevBodyW.z) / dt) : v3();
+    const invDt = dt > 1e-6 ? 1 / dt : 0;
+    beltAlpha.set((w.x - this.prevBodyW.x) * invDt, (w.y - this.prevBodyW.y) * invDt, (w.z - this.prevBodyW.z) * invDt);
     this.prevBodyW = v3(w.x, w.y, w.z);
 
     // 推力加速度をワールド→機体座標系へ変換(擬似力は加速度と逆向き)
-    const qInv = new THREE.Quaternion(
-      this.player.att.q.x,
-      this.player.att.q.y,
-      this.player.att.q.z,
-      this.player.att.q.w,
-    ).invert();
+    beltQInv.set(this.player.att.q.x, this.player.att.q.y, this.player.att.q.z, this.player.att.q.w).invert();
     const aThrustWorld = this.thrustAccelVec;
-    const aThrustBody = new THREE.Vector3(aThrustWorld.x, aThrustWorld.y, aThrustWorld.z).applyQuaternion(qInv);
+    beltAThrustBody.set(aThrustWorld.x, aThrustWorld.y, aThrustWorld.z).applyQuaternion(beltQInv);
 
     const h = Math.min(dt, 0.05); // 積分刻みの上限(大きな dt でのはみ出し防止)
     const damping = 0.999; // 慣性を維持するため減衰を弱める
-    const wV = new THREE.Vector3(w.x, w.y, w.z);
-    const alphaV = new THREE.Vector3(alpha.x, alpha.y, alpha.z);
-    const anchorX = 0.9 - this.beltFeed * MAG_BELT_PITCH;
+    const invH2 = 2 / Math.max(h, 1e-4);
+    beltW.set(w.x, w.y, w.z);
 
     for (let i = 0; i < n; i++) {
       const pos = this.beltPos[i]!;
       const prev = this.beltPrevPos[i]!;
-      const vel = new THREE.Vector3().copy(pos).sub(prev); // 前フレームの変位(Verlet の速度相当)
+      beltVel.copy(pos).sub(prev); // 前フレームの変位(Verlet の速度相当)
 
       // 擬似力による加速度: -a_thrust - α×r - ω×(ω×r) - 2ω×v
-      const accel = new THREE.Vector3(-aThrustBody.x, -aThrustBody.y, -aThrustBody.z);
-      accel.sub(new THREE.Vector3().crossVectors(alphaV, pos));
-      accel.sub(new THREE.Vector3().crossVectors(wV, new THREE.Vector3().crossVectors(wV, pos)));
-      accel.sub(new THREE.Vector3().crossVectors(wV, vel).multiplyScalar(2 / Math.max(h, 1e-4)));
+      beltAccel.set(-beltAThrustBody.x, -beltAThrustBody.y, -beltAThrustBody.z);
+      beltAccel.sub(beltTmpA.crossVectors(beltAlpha, pos));
+      beltAccel.sub(beltTmpA.crossVectors(beltW, beltTmpB.crossVectors(beltW, pos)));
+      beltAccel.sub(beltTmpA.crossVectors(beltW, beltVel).multiplyScalar(invH2));
 
-      const next = new THREE.Vector3()
-        .copy(pos)
-        .addScaledVector(vel, damping)
-        .addScaledVector(accel, h * h);
+      beltNext.copy(pos).addScaledVector(beltVel, damping).addScaledVector(beltAccel, h * h);
       prev.copy(pos);
-      pos.copy(next);
+      pos.copy(beltNext);
     }
 
     // 距離拘束(剛体棒): 先頭はベルトの給弾進みに応じて動くアンカーに固定。
     // 数回反復して各リンク間隔を MAG_BELT_PITCH に収束させる。
-    const anchor = new THREE.Vector3(0.9 - this.beltFeed * MAG_BELT_PITCH, 0, 0);
+    beltAnchor.set(0.9 - this.beltFeed * MAG_BELT_PITCH, 0, 0);
     for (let iter = 0; iter < 4; iter++) {
       for (let i = 0; i < n; i++) {
-        const a = i === 0 ? anchor : this.beltPos[i - 1]!;
+        const a = i === 0 ? beltAnchor : this.beltPos[i - 1]!;
         const b = this.beltPos[i]!;
-        const delta = new THREE.Vector3().copy(b).sub(a);
-        const dist = delta.length();
+        beltDelta.copy(b).sub(a);
+        const dist = beltDelta.length();
         if (dist < 1e-6) continue;
-        const corr = delta.multiplyScalar((dist - MAG_BELT_PITCH) / dist);
+        const corr = beltDelta.multiplyScalar((dist - MAG_BELT_PITCH) / dist);
         if (i === 0) {
           b.sub(corr); // アンカー側は固定、リンク側だけ補正
         } else {
@@ -1860,22 +1873,22 @@ export class Game {
 
     // 表示: 各リンクをその節点の手前(アンカー or 前リンクの節点)に置き、
     // 節点への方向へ向ける(ローカル +X = ベルト方向)。
-    let prevPoint = anchor;
-    const xAxis = new THREE.Vector3(1, 0, 0);
+    let prevPoint: THREE.Vector3 = beltAnchor;
     for (let i = 0; i < n; i++) {
       const link = this.beltLinks[i]!;
       link.visible = this.player.alive && i < beltCount;
       const pos = this.beltPos[i]!;
       link.position.copy(prevPoint);
-      const dir = new THREE.Vector3().copy(pos).sub(prevPoint).normalize();
-      if (dir.lengthSq() > 1e-8) {
-        link.quaternion.setFromUnitVectors(xAxis, dir);
+      beltDir.copy(pos).sub(prevPoint).normalize();
+      if (beltDir.lengthSq() > 1e-8) {
+        link.quaternion.setFromUnitVectors(X_AXIS, beltDir);
       }
       prevPoint = pos;
     }
   }
 
-  // RCS 姿勢制御の噴射パフと音。4 基のスラスタブロック(機体 ±0.75, ±0.65, z=1.6)
+  // RCS 姿勢制御の噴射パフと音。4 基のスラスタブロック(配置は ships.ts の
+  // RCS_BLOCK_OFFSETS と一致させる)
   // それぞれについて、要求トルク τ に寄与する接線力 F = τ × r を求め、
   // その反対方向(排気側)に小さな発光パフを出す。
   private updateRcsEffects(): void {
@@ -1980,8 +1993,7 @@ export class Game {
       const p = this.project(rel);
       const dist = len(rel);
       const isTgt = e === tgt;
-      const label = `${e.name} ${dist >= 1000 ? (dist / 1000).toFixed(1) + 'km' : dist.toFixed(0) + 'm'}`;
-      this.hud.marker(key, isTgt ? 'mk-target' : 'mk-enemy', '◇', p.x, p.y, p.front, label);
+      this.hud.marker(key, isTgt ? 'mk-target' : 'mk-enemy', '◇', p.x, p.y, p.front, `${e.name} ${fmtMarkerDist(dist)}`);
     }
 
     // 補給マガジンのマーカー
@@ -1995,8 +2007,7 @@ export class Game {
       const rel = sub(mp.state.r, o);
       const p = this.project(rel);
       const dist = len(rel);
-      const label = `AMMO ${dist >= 1000 ? (dist / 1000).toFixed(1) + 'km' : dist.toFixed(0) + 'm'}`;
-      this.hud.marker(key, 'mk-ammo', '▣', p.x, p.y, p.front, label);
+      this.hud.marker(key, 'mk-ammo', '▣', p.x, p.y, p.front, `AMMO ${fmtMarkerDist(dist)}`);
     }
 
     // リード(見越し)マーカー: 相対等速近似で弾丸到達時刻を解く
@@ -2017,15 +2028,14 @@ export class Game {
 
   // ターゲットの軌道面との交線(相対昇交点・降交点)を自機の軌道上に表示する。
   // 面変更(ノーマル/アンチノーマル)burn を行うべき位置がひと目で分かる。
-  private updateNodeMarkers(playerEl: Elements | null, tgt: Ship | null, o: Vec3): void {
-    if (!playerEl || !tgt) {
+  private updateNodeMarkers(playerEl: Elements | null, tgtEl: Elements | null, o: Vec3): void {
+    if (!playerEl || !tgtEl) {
       this.hud.hideMarker('an');
       this.hud.hideMarker('dn');
       return;
     }
-    const tgtEl = elementsFromState(tgt.state.r, tgt.state.v);
-    const lineDir = tgtEl ? cross(playerEl.hHat, tgtEl.hHat) : null;
-    if (!tgtEl || !lineDir || lenSq(lineDir) < 1e-6) {
+    const lineDir = cross(playerEl.hHat, tgtEl.hHat);
+    if (lenSq(lineDir) < 1e-6) {
       // 軌道面がほぼ一致 → 交線が定まらない
       this.hud.hideMarker('an');
       this.hud.hideMarker('dn');
@@ -2069,6 +2079,7 @@ export class Game {
     dt: number,
     playerEl: ReturnType<typeof elementsFromState>,
     tgt: Ship | null,
+    tgtEl: ReturnType<typeof elementsFromState>,
   ): void {
     this.hudTimer -= dt;
     if (this.hudTimer <= 0) {
@@ -2077,7 +2088,6 @@ export class Game {
         met: this.simTime,
         warpLabel: `×${this.warp()}`,
         paused: this.paused,
-
         rcsDamp: this.rcsDamp,
         throttleIdx: this.throttleIdx,
         fineAttitude: this.fineAttitude,
@@ -2102,7 +2112,6 @@ export class Game {
         const relP = sub(tgt.state.r, this.player.state.r);
         const relV = sub(tgt.state.v, this.player.state.v);
         const dist = len(relP);
-        const tgtEl = elementsFromState(tgt.state.r, tgt.state.v);
         const relIncDeg =
           playerEl && tgtEl
             ? (Math.acos(Math.max(-1, Math.min(1, dot(playerEl.hHat, tgtEl.hHat)))) * 180) / Math.PI
@@ -2141,13 +2150,18 @@ export class Game {
   }
 
   // ------------------------------------------------------------- physical collisions
-  // 剛体反発(球体)処理
-  private resolvePhysicalCollisions(): void {
+  // 剛体反発(球体)処理。実時間 dt(syncRender と同じ実 dt。ベルト物理と同じ
+  // 実時間ベースで動かすことで、時間ワープ中でも整合させる)。
+  // ワープ ×4 以下(操縦可能な範囲)でのみ呼ばれる。高ワープ中の O(N²) 判定は
+  // サブステップが最大20秒に及び物理的に無意味な上、薬莢260個程度が漂う状態では
+  // 毎フレーム数百万ペアに達し得るため、呼び出し側(simulate)でゲートしている。
+  private resolvePhysicalCollisions(dt: number): void {
+    // A-B の衝突を解決し、実際に貫入(かつ接近方向の速度成分あり)が起きたら true を返す
     const resolvePair = (
       rA: Vec3, vA: Vec3, massA: number, radA: number,
       rB: Vec3, vB: Vec3, massB: number, radB: number,
       restitution = 0.4
-    ) => {
+    ): boolean => {
       const dx = rB.x - rA.x, dy = rB.y - rA.y, dz = rB.z - rA.z;
       const distSq = dx * dx + dy * dy + dz * dz;
       const minD = radA + radB;
@@ -2167,24 +2181,37 @@ export class Game {
           const j = -(1 + restitution) * vn / invM;
           vA.x -= nx * j * invMa; vA.y -= ny * j * invMa; vA.z -= nz * j * invMa;
           vB.x += nx * j * invMb; vB.y += ny * j * invMb; vB.z += nz * j * invMb;
+          return true;
         }
       }
+      return false;
     };
 
     // エンティティリスト(ベルトのワールド座標化含む)
-    const ents: { r: Vec3; v: Vec3; m: number; rad: number; isBelt?: boolean; beltIdx?: number; isPlayer?: boolean }[] = [];
+    const ents: {
+      r: Vec3; v: Vec3; m: number; rad: number;
+      isBelt?: boolean; beltIdx?: number; isPlayer?: boolean; isCasing?: boolean;
+    }[] = [];
 
-    if (this.player.alive) ents.push({ r: this.player.state.r, v: this.player.state.v, m: 1000, rad: this.player.radius, isPlayer: true });
+    if (this.player.alive) {
+      // 物理接触には被弾判定用の PLAYER_RADIUS(大きめ)ではなく、実寸に近い
+      // PLAYER_HULL_RADIUS を使う。砲口(機体中心から距離約2.9m)で生まれた
+      // 薬莢が生成直後に弾き飛ばされるのを防ぐ。
+      ents.push({ r: this.player.state.r, v: this.player.state.v, m: 1000, rad: C.PLAYER_HULL_RADIUS, isPlayer: true });
+    }
     for (const e of this.enemies) {
       if (e.alive) ents.push({ r: e.state.r, v: e.state.v, m: 10000, rad: e.radius });
     }
-    for (const c of this.casings) ents.push({ r: c.state.r, v: c.state.v, m: 1, rad: 0.2 });
+    for (const c of this.casings) ents.push({ r: c.state.r, v: c.state.v, m: 1, rad: 0.2, isCasing: true });
     for (const m of this.magPickups) {
-      if (m.alive) ents.push({ r: m.state.r, v: m.state.v, m: 50, rad: C.MAG_PICKUP_RADIUS });
+      // MAG_PICKUP_RADIUS は回収判定距離(60m)であり物理サイズではないため、
+      // 物理接触には見た目に近い専用の半径を使う。
+      if (m.alive) ents.push({ r: m.state.r, v: m.state.v, m: 50, rad: C.MAG_PICKUP_PHYS_RADIUS });
     }
 
-    // マガジンベルト(Verlet積分の位置・疑似速度)
-    if (this.player.alive) {
+    // マガジンベルト(Verlet積分の位置・疑似速度)。ベルト自体は実時間(dt)で
+    // 動いているため、ワールド化・書き戻しとも同じ実時間刻みを使う。
+    if (this.player.alive && dt > 1e-6) {
       const q = this.player.att.q;
       const baseR = this.player.state.r;
       const baseV = this.player.state.v;
@@ -2195,7 +2222,7 @@ export class Game {
         const localBp = new THREE.Vector3().copy(bp);
         const localBpPrev = new THREE.Vector3().copy(bpPrev);
         const wr = add(baseR, qRotate(q, localBp));
-        const wv = add(baseV, qRotate(q, localBp.sub(localBpPrev).multiplyScalar(60)));
+        const wv = add(baseV, qRotate(q, localBp.sub(localBpPrev).multiplyScalar(1 / dt)));
         ents.push({ r: wr, v: wv, m: 5, rad: 0.8, isBelt: true, beltIdx: i });
       }
     }
@@ -2207,12 +2234,18 @@ export class Game {
         const B = ents[j]!;
         if (A.isBelt && B.isBelt) continue; // ベルト同士は距離拘束があるため省略
         if ((A.isPlayer && B.isBelt) || (B.isPlayer && A.isBelt)) continue; // 自機と自機のベルトは判定しない
-        resolvePair(A.r, A.v, A.m, A.rad, B.r, B.v, B.m, B.rad);
+        const impact = resolvePair(A.r, A.v, A.m, A.rad, B.r, B.v, B.m, B.rad);
+        // 薬莢が機体に実際にぶつかったら、からんという金属音を鳴らす
+        // (レート制限は updateAmmoLogistics で実時間 dt により減算される this.clankCd)
+        if (impact && this.clankCd <= 0 && ((A.isPlayer && B.isCasing) || (B.isPlayer && A.isCasing))) {
+          this.sfx.clank();
+          this.clankCd = 0.07;
+        }
       }
     }
 
     // ベルトの位置を自機ローカル座標に書き戻す
-    if (this.player.alive) {
+    if (this.player.alive && dt > 1e-6) {
       const pq = this.player.att.q;
       const qInv = { x: -pq.x, y: -pq.y, z: -pq.z, w: pq.w };
       const baseR = this.player.state.r;
@@ -2224,11 +2257,10 @@ export class Game {
           // THREE.Vector3 にコピー
           this.beltPos[e.beltIdx]!.set(bpLocal.x, bpLocal.y, bpLocal.z);
           // bvLocal を加算して prevPos を逆算: pos - vel*dt
-          const dtLocal = 1 / 60;
           this.beltPrevPos[e.beltIdx]!.set(
-            bpLocal.x - bvLocal.x * dtLocal,
-            bpLocal.y - bvLocal.y * dtLocal,
-            bpLocal.z - bvLocal.z * dtLocal
+            bpLocal.x - bvLocal.x * dt,
+            bpLocal.y - bvLocal.y * dt,
+            bpLocal.z - bvLocal.z * dt
           );
         }
       }
