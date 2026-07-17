@@ -287,6 +287,8 @@ export class Game {
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this.sfx.unlock();
     if (TouchControls.isTouchDevice()) new TouchControls(this.input);
+    this.hud.setBgmState(this.sfx.isBgmEnabled());
+    this.hud.onBgmToggle = (on) => this.sfx.setBgmEnabled(on);
 
     // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
     this.mapCamera = new THREE.PerspectiveCamera(
@@ -606,6 +608,9 @@ export class Game {
           break;
         case 'KeyH':
           this.hud.toggleHelp();
+          break;
+        case 'Escape':
+          this.hud.toggleSettings();
           break;
         case 'KeyR':
           if (this.phase !== 'playing') location.reload();

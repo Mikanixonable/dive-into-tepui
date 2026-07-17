@@ -18,6 +18,8 @@ const BGM_PADS: number[][] = [
   [110.0, 146.83, 196.0, 293.66], // A2 D3 G3 D4
 ];
 
+const BGM_ENABLED_KEY = 'tepui.settings.bgm'; // localStorage キー
+
 export class Sfx {
   private ctx: AudioContext | null = null;
   private noiseBuf: AudioBuffer | null = null;
@@ -27,6 +29,33 @@ export class Sfx {
   private bgmTimer: ReturnType<typeof setInterval> | null = null;
   private bgmNextTime = 0;
   private bgmStep = 0;
+  private bgmEnabled = true;
+
+  constructor() {
+    try {
+      const saved = localStorage.getItem(BGM_ENABLED_KEY);
+      if (saved !== null) this.bgmEnabled = saved === '1';
+    } catch {
+      /* localStorage 不可の環境では既定値(ON)のまま */
+    }
+  }
+
+  isBgmEnabled(): boolean {
+    return this.bgmEnabled;
+  }
+
+  // 設定画面からの BGM ON/OFF 切替。unlock() 前でも呼べる(値だけ保存し、
+  // unlock() 時にそれを見て再生を開始する)。
+  setBgmEnabled(on: boolean): void {
+    this.bgmEnabled = on;
+    try {
+      localStorage.setItem(BGM_ENABLED_KEY, on ? '1' : '0');
+    } catch {
+      /* 保存できなくても再生の ON/OFF 自体は反映する */
+    }
+    if (on) this.startBgm();
+    else this.stopBgm();
+  }
 
   unlock(): void {
     if (this.ctx) return;
@@ -71,7 +100,7 @@ export class Sfx {
     rcsSrc.start();
     this.rcsGain = rcsG;
 
-    this.startBgm();
+    if (this.bgmEnabled) this.startBgm();
   }
 
   // ------------------------------------------------------------------ BGM
