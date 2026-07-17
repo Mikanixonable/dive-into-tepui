@@ -36,6 +36,7 @@ export class Navball {
 
   constructor() {
     this.canvas = document.createElement('canvas');
+    this.canvas.id = 'navball'; // hud.ts のモバイル用メディアクエリから参照
     this.canvas.width = N;
     this.canvas.height = N;
     this.canvas.style.cssText =

@@ -26,7 +26,7 @@ function selectStage(): Promise<number> {
     const btn = (label: string, sub: string, enabled: boolean) => {
       const b = document.createElement('div');
       b.style.cssText =
-        `min-width:420px;padding:16px 24px;background:${SURFACE};` +
+        `min-width:min(420px, 88vw);max-width:92vw;padding:16px 24px;background:${SURFACE};` +
         `border:1px solid ${enabled ? 'rgba(255,106,0,0.4)' : EDGE};border-radius:4px;` +
         `line-height:1.7;${enabled ? 'cursor:pointer' : 'opacity:0.45'}`;
       b.innerHTML = `<div style="font-size:17px;letter-spacing:3px;color:${enabled ? ACCENT : '#7d838c'}">${label}</div><div style="font-size:12px;color:#7d838c">${sub}</div>`;

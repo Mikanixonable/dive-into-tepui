@@ -19,6 +19,9 @@ export class Input {
   private dragging = false;
   private dragMoved = 0;
   private clicks: { x: number; y: number }[] = [];
+  // タッチ用: アクティブポインタの座標(ピンチズーム判定に使う)
+  private pointers = new Map<number, { x: number; y: number }>();
+  private pinchDist = 0;
   mouseFiring = false;
   onFirstGesture: (() => void) | null = null;
   private gestureFired = false;
@@ -50,17 +53,37 @@ export class Input {
     });
 
     target.addEventListener('contextmenu', (e) => e.preventDefault());
+    target.style.touchAction = 'none'; // ブラウザのスクロール/ピンチを奪う
     target.addEventListener('pointerdown', (e) => {
       this.fireGesture();
       if (e.button === 0) {
-        this.dragging = true;
-        this.dragMoved = 0;
-        target.setPointerCapture(e.pointerId);
+        this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (this.pointers.size === 2) {
+          // 2本指になったらドラッグをやめてピンチズームに移行
+          this.dragging = false;
+          this.pinchDist = this.currentPinchDist();
+        } else if (this.pointers.size === 1) {
+          this.dragging = true;
+          this.dragMoved = 0;
+          target.setPointerCapture(e.pointerId);
+        }
       } else if (e.button === 2) {
         this.mouseFiring = true;
       }
     });
     target.addEventListener('pointermove', (e) => {
+      const p = this.pointers.get(e.pointerId);
+      if (p) {
+        p.x = e.clientX;
+        p.y = e.clientY;
+      }
+      if (this.pointers.size >= 2) {
+        // ピンチ: 指の間隔の変化をホイール量へ変換(開く = ズームイン)
+        const d = this.currentPinchDist();
+        this.wheel += (this.pinchDist - d) * 3;
+        this.pinchDist = d;
+        return;
+      }
       if (this.dragging) {
         this.dx += e.movementX;
         this.dy += e.movementY;
@@ -68,18 +91,22 @@ export class Input {
       }
     });
     const release = (e: PointerEvent) => {
-      if (e.button === 0) {
+      if (e.button === 0 || e.pointerType === 'touch') {
+        this.pointers.delete(e.pointerId);
         if (this.dragging && this.dragMoved < CLICK_MOVE_THRESHOLD) {
           this.clicks.push({ x: e.clientX, y: e.clientY });
         }
         this.dragging = false;
+        this.pinchDist = 0;
       }
       if (e.button === 2) this.mouseFiring = false;
     };
     target.addEventListener('pointerup', release);
-    target.addEventListener('pointercancel', () => {
+    target.addEventListener('pointercancel', (e) => {
+      this.pointers.delete(e.pointerId);
       this.dragging = false;
       this.mouseFiring = false;
+      this.pinchDist = 0;
     });
     target.addEventListener(
       'wheel',
@@ -89,6 +116,24 @@ export class Input {
       },
       { passive: false },
     );
+  }
+
+  private currentPinchDist(): number {
+    const [a, b] = [...this.pointers.values()];
+    if (!a || !b) return 0;
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  // タッチ UI などからの仮想キー入力。物理キーボードと同じ扱いで
+  // 押下中セットとエッジトリガキューへ反映する。
+  setVirtualKey(code: string, down: boolean): void {
+    this.fireGesture();
+    if (down) {
+      if (!this.keys.has(code)) this.pressQueue.push(code);
+      this.keys.add(code);
+    } else {
+      this.keys.delete(code);
+    }
   }
 
   private fireGesture(): void {

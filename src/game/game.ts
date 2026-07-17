@@ -54,6 +54,7 @@ import * as C from './const';
 import { Bullet, Casing, DebrisPiece, FlashEffect, MagPickup, Ship } from './entities';
 import { Navball } from './navball';
 import { Input } from './input';
+import { TouchControls } from './touch';
 import { ChaseCamera } from './camera';
 import { Hud } from './hud';
 import { Sfx } from './audio';
@@ -285,6 +286,7 @@ export class Game {
     this.stage = stage;
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this.sfx.unlock();
+    if (TouchControls.isTouchDevice()) new TouchControls(this.input);
 
     // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
     this.mapCamera = new THREE.PerspectiveCamera(
