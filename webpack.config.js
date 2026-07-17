@@ -28,6 +28,6 @@ module.exports = {
   ],
   devServer: {
     static: './docs',
-    port: 8080,
+    port: 8070,
   },
 };
