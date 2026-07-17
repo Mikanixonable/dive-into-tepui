@@ -142,7 +142,7 @@ const STYLE = `
 #hud-end .restart { margin-top: 22px; color: ${ACCENT_SOFT}; font-size: 13px; }
 #hud-help {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  display: none; min-width: 480px; max-height: 86vh; overflow-y: auto;
+  display: none; min-width: 480px; max-height: 86vh; overflow-y: auto; pointer-events: auto;
 }
 #hud-help table { border-collapse: collapse; width: 100%; }
 #hud-help td { padding: 3px 10px; color: ${INK}; }
