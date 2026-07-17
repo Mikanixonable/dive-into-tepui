@@ -147,6 +147,27 @@ const STYLE = `
 #hud-help table { border-collapse: collapse; width: 100%; }
 #hud-help td { padding: 3px 10px; color: ${INK}; }
 #hud-help td.key { color: ${ACCENT_SOFT}; text-align: right; white-space: nowrap; }
+#hud-gear {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  width: 30px; height: 30px; border-radius: 50%; pointer-events: auto; cursor: pointer;
+  background: ${SURFACE}; border: 1px solid ${EDGE};
+  display: flex; align-items: center; justify-content: center; font-size: 15px; color: ${INK_SOFT};
+}
+#hud-settings {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  display: none; min-width: 260px; pointer-events: auto;
+}
+#hud-settings .srow {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 6px 0;
+}
+#hud-settings .stoggle {
+  pointer-events: auto; cursor: pointer; padding: 4px 16px; min-width: 46px; text-align: center;
+  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
+}
+#hud-settings .stoggle.on { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud-settings .sclose {
+  margin-top: 10px; text-align: center; color: ${INK_SOFT}; font-size: 11px; cursor: pointer;
+}
 
 /* --- モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる --- */
 @media (max-width: 900px), (pointer: coarse) {
@@ -167,6 +188,8 @@ const STYLE = `
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
   #navball { width: 100px !important; height: 100px !important; bottom: 130px !important; }
+  #hud-gear { top: 8px; width: 26px; height: 26px; font-size: 13px; }
+  #hud-settings { min-width: 0; width: 78vw; }
 }
 `;
 
@@ -206,6 +229,8 @@ export class Hud {
   private markers = new Map<string, { root: HTMLElement; sym: HTMLElement; lbl: HTMLElement }>();
   private hintUntil = 0;
   private toastUntil = 0;
+  private bgmOn = true;
+  onBgmToggle: ((on: boolean) => void) | null = null;
 
   constructor() {
     const style = document.createElement('style');
@@ -258,6 +283,24 @@ export class Hud {
     plan.innerHTML = `<h3>MANEUVER PLAN [M]</h3><div data-id="planbody"></div>`;
     plan.style.display = 'none';
 
+    const gear = el('div', 'hud-gear', this.root);
+    gear.textContent = '⚙';
+    gear.addEventListener('click', () => this.toggleSettings());
+
+    const settings = el('div', 'hud-settings', this.root, 'panel');
+    settings.innerHTML = `
+      <h3>設定</h3>
+      <div class="srow"><span class="k">BGM</span><span class="stoggle" data-id="bgmtoggle">ON</span></div>
+      <div class="sclose" data-id="settingsclose">[閉じる]</div>`;
+    settings.querySelector<HTMLElement>('[data-id="bgmtoggle"]')!.addEventListener('click', () => {
+      const on = !this.bgmOn;
+      this.setBgmState(on);
+      if (this.onBgmToggle) this.onBgmToggle(on);
+    });
+    settings.querySelector<HTMLElement>('[data-id="settingsclose"]')!.addEventListener('click', () =>
+      this.toggleSettings(false),
+    );
+
     el('div', 'hud-hint', this.root);
     el('div', 'hud-toast', this.root);
 
@@ -292,6 +335,7 @@ export class Hud {
         <tr><td class="key">P</td><td>一時停止</td></tr>
         <tr><td class="key">左ドラッグ / ホイール</td><td>カメラ回転 / 距離ズーム</td></tr>
         <tr><td class="key">矢印キー</td><td>マウスの代わりにキーボードで視点回転</td></tr>
+        <tr><td class="key">Esc / ⚙</td><td>設定画面(BGM ON/OFF)を開閉</td></tr>
       </table>`;
 
     el('div', 'hud-end', this.root);
@@ -486,6 +530,24 @@ export class Hud {
   toggleHelp(): void {
     const e = document.getElementById('hud-help');
     if (e) e.style.display = e.style.display === 'block' ? 'none' : 'block';
+  }
+
+  // 設定パネルの開閉。force を渡すとその状態に固定する。
+  toggleSettings(force?: boolean): void {
+    const e = document.getElementById('hud-settings');
+    if (!e) return;
+    const show = force !== undefined ? force : e.style.display !== 'block';
+    e.style.display = show ? 'block' : 'none';
+  }
+
+  // BGM トグル表示の反映(実際の再生制御は呼び出し側の Sfx が行う)
+  setBgmState(on: boolean): void {
+    this.bgmOn = on;
+    const t = this.els.get('bgmtoggle');
+    if (t) {
+      t.textContent = on ? 'ON' : 'OFF';
+      t.classList.toggle('on', on);
+    }
   }
 
   showEnd(win: boolean, detailHtml: string): void {
