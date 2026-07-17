@@ -147,6 +147,27 @@ const STYLE = `
 #hud-help table { border-collapse: collapse; width: 100%; }
 #hud-help td { padding: 3px 10px; color: ${INK}; }
 #hud-help td.key { color: ${ACCENT_SOFT}; text-align: right; white-space: nowrap; }
+
+/* --- モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる --- */
+@media (max-width: 900px), (pointer: coarse) {
+  #hud { font-size: 11px; }
+  #hud .panel { padding: 6px 8px; line-height: 1.4; }
+  #hud .panel h3 { font-size: 10px; letter-spacing: 1.5px; margin-bottom: 4px; }
+  #hud .row { gap: 8px; }
+  #hud .row .v { min-width: 64px; }
+  #hud-status { top: 8px; left: 8px; min-width: 178px; }
+  #hud-orbit { top: 184px; left: 8px; min-width: 178px; }
+  #hud-target { top: 8px; right: 8px; min-width: 182px; }
+  #hud-enemies { top: 286px; right: 8px; min-width: 182px; }
+  #hud-controls { display: none; }
+  #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
+  #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
+  #hud-plan { bottom: 216px; left: 8px; min-width: 210px; max-width: 60vw; }
+  #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
+  #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
+  #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
+  #navball { width: 100px !important; height: 100px !important; bottom: 130px !important; }
+}
 `;
 
 function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLElement {
@@ -472,10 +493,12 @@ export class Hud {
     if (!e) return;
     e.className = win ? 'win' : 'lose';
     e.style.display = 'flex';
+    e.style.pointerEvents = 'auto'; // タップでも再出撃できるようにする
     e.innerHTML = `
       <h1>${win ? 'MISSION COMPLETE' : 'SHIP LOST'}</h1>
       <div class="detail">${detailHtml}</div>
-      <div class="restart">[R] キーで再出撃</div>`;
+      <div class="restart">[R] キーまたはタップで再出撃</div>`;
+    e.onclick = () => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyR' }));
   }
 
   tick(): void {
