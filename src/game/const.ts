@@ -187,9 +187,9 @@ export const STAGE00_SPAWN_DIST_MIN = 4000;
 export const STAGE00_SPAWN_DIST_MAX = 6000;
 export const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
 
-export const PLAYER_MAX_HP = 3;
+export const PLAYER_MAX_HP = 100;
 export const PLASMA_BULLET_SPEED = 800 * 2 / 3; // MUZZLE_SPEED の約 2/3
 export const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s] (3倍に増加)
+export const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]
 export const ENEMY_FIRE_RANGE = 4000; // 敵が射撃してくる距離 [m]
-
