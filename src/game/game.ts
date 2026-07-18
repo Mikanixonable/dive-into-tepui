@@ -245,11 +245,11 @@ export class Game {
   private warpIdx = 0;
   private paused = false;
 
-  private rcsDamp = true;
+  private rcsDamp = false;
   private target: Ship | null = null;
   private throttleIdx = C.THROTTLE_DEFAULT_IDX; // 並進出力の段(0:弱 1:中 2:強、全 6 方向で共通)
   private fineAttitude = false;
-  private progradeHold = false; // [C] 機首をプログレードへ自動保持するオートパイロット
+  private progradeHold = true; // [C] 機首をプログレードへ自動保持するオートパイロット
   // [G] 視点(チェイスカメラ)を自機の姿勢(RCS操作)に追従させるか。
   // デフォルト ON: 機首・機体の天頂面を基準に視点が回転し、姿勢操作と一体的に見える。
   // OFF にすると従来通り軌道基準(プログレード・動径outward)の独立した視点に戻る。
@@ -2201,8 +2201,9 @@ export class Game {
       this.moonMesh.scale.setScalar(MOON_VIS_DIST * (R_MOON / moonDist));
     }
 
-    // 地球の影: 自機周辺が影円柱内にあれば太陽光・環境光を減光する
-    const lit = this.shadowLitFactor(o);
+    // 地球の影: 戦闘ビューでは自機周辺が影円柱内にあれば太陽光・環境光を減光する
+    // マップモードでは全体像を見るため地球の昼側が常に明るくなるよう減光しない
+    const lit = this.mapMode ? 1.0 : this.shadowLitFactor(o);
     this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
     this.ambient.intensity =
       C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
@@ -2720,6 +2721,9 @@ export class Game {
       this.hud.marker('self', 'mk-self', '▷', sp.x, sp.y, sp.front, 'PLAYER');
     } else {
       this.hud.hideMarker('self');
+      for (const lbl of this.mapLabels) {
+        this.hud.hideMarker(lbl.id);
+      }
     }
 
     if (!this.mapMode) {
