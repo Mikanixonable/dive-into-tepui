@@ -131,6 +131,14 @@ export const NODE_DV_RATE_FINE = 2.5; // 微調整モード時
 export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 export const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
 export const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
+// マップモードの DOM ギズモ(mapgizmo.ts): 選択中ノードの Δv アーム(6方向ハンドル)
+export const NODE_GIZMO_HANDLE_PX = 42; // ノードからアームハンドルを離す距離 [px]
+export const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリック/ドラッグ判定しきい値 [px]
+// ノード実行目標の凍結しきい値 [s]: 残り時間がこれを切ったらバーン目標
+// (実行後の目標速度・目標軌道要素)を固定し、以降の予測リフレッシュでは
+// 更新しない。目標を毎回「現在状態+全Δv」で再計算すると、噴射するほど
+// 目標が先へ逃げていく(残Δvが減らない)ため、実噴射前に凍結する必要がある。
+export const NODE_TARGET_FREEZE_S = 30;
 // マニューバ達成判定(計画軌道への接近許容)
 export const NODE_TOL_SMA = 0.02; // 長半径の相対誤差
 export const NODE_TOL_ECC = 0.02; // 離心率差
