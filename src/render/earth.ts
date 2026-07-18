@@ -2,38 +2,34 @@
 // + 加算合成の大気リムで構成する。実寸(半径 6371km)。
 // テクスチャは実在の地球の写真 (src/assets/earth.jpg) を使用。
 import * as THREE from 'three/webgpu';
+import { texture as textureNode, mix, uv, vec2, vec3 } from 'three/tsl';
 import { R_EARTH } from '../physics/orbital';
 import earthTextureUrl from '../assets/earth.jpg';
 import cloudsTextureUrl from '../assets/8k_clouds.jpg';
 
+// 地表 + 雲を単一の不透明メッシュとして合成する。雲を別シェル(地表+12km)で
+// 重ねると、near=2m の 24bit 深度バッファでは水平線近くで両者の深度差が
+// 1ulp 未満になり z-fighting でちらつく(このプロジェクトが実寸フローティング
+// オリジン+非対数深度を選んでいる以上、深度分解能は距離の2乗で落ちるため
+// シェル同士の間隔をどれだけ広げても解決しない)。雲はアルベド段階で
+// 地表テクスチャに焼き合成し、深度上は地球を1枚のサーフェスにする。
 function buildSurface(): THREE.Mesh {
-  // インデックス付き球ジオメトリ + 焼き込みテクスチャ + スムーズシェーディング。
+  // インデックス付き球ジオメトリ + スムーズシェーディング。
   // 512×384 分割で三角形は ~80km — LEO からは滑らかな球面に見える。
   const geo = new THREE.SphereGeometry(R_EARTH, 512, 384);
 
-  const texture = new THREE.TextureLoader().load(earthTextureUrl);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  const earthMap = new THREE.TextureLoader().load(earthTextureUrl);
+  earthMap.colorSpace = THREE.SRGBColorSpace;
+  const cloudsMap = new THREE.TextureLoader().load(cloudsTextureUrl);
 
-  const mat = new THREE.MeshStandardMaterial({
-    map: texture,
+  const mat = new THREE.MeshStandardNodeMaterial({
     roughness: 0.62, // 海面の太陽ハイライトがうっすら出る程度
     metalness: 0.05,
   });
-  return new THREE.Mesh(geo, mat);
-}
-
-function buildClouds(): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(R_EARTH + 12e3, 512, 384); // 地表から約12km上空
-  const texture = new THREE.TextureLoader().load(cloudsTextureUrl);
-  
-  const mat = new THREE.MeshLambertMaterial({
-    color: 0xffffff,
-    alphaMap: texture,
-    transparent: true,
-    depthWrite: false,
-  });
-  
-  return new THREE.Mesh(geo, mat);
+  const earthSample = textureNode(earthMap, uv());
+  const cloudAlpha = textureNode(cloudsMap, uv().add(vec2(0.0008, 0))).r; // わずかに東へオフセットし雲の陰を表現
+  mat.colorNode = mix(earthSample, vec3(1, 1, 1), cloudAlpha);
+  return new THREE.Mesh(geo, mat as unknown as THREE.Material);
 }
 
 // 地平線のリム光用 BackSide シェル。Lambert 照明にすることで夜側では
@@ -129,7 +125,6 @@ export function createEarth(): Earth {
   const group = new THREE.Group();
   const spin = new THREE.Group();
   spin.add(buildSurface());
-  spin.add(buildClouds());
 
   // オーロラは磁気極に固定なので自転と一緒に回す
   const auroras = [buildAurora(1, 1.3), buildAurora(-1, 4.1)];
