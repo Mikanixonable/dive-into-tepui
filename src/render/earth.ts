@@ -1,70 +1,102 @@
-// リアル調の地球: 高解像度球 + 実在の地球のテクスチャ
-// + 加算合成の大気リムで構成する。実寸(半径 6371km)。
-// テクスチャは実在の地球の写真 (src/assets/earth.jpg) を使用。
+// リアル調の地球: 高解像度球 + 実在の地球のテクスチャ、大気は解析的シェーディング。
+// 実寸(半径 6371km)。テクスチャは実在の地球の写真 (src/assets/earth.jpg) を使用。
+//
+// 大気(雲を含む)は過去に FrontSide/BackSide の重ねシェルとして描画していたが、
+// near=2m・24bit 非対数深度バッファでは、地表 +数十〜数百km に浮かぶジオメトリは
+// 水平線に近い視線ほど地表との深度差が量子化幅(δz ≈ z²/near/2^24。距離の2乗で
+// 悪化する)を下回り z-fighting でちらつく。シェルの間隔や枚数をどれだけ増やしても
+// この量子化そのものは解決しない。そこで「高度 ~400km 以下で深度テストされる
+// ジオメトリは不透明な地球1枚だけ」という不変条件を維持し、雲は地表マテリアルの
+// アルベドに焼き込み、大気の発光(近距離のもや・遠距離のリム光)はシェルを使わず
+// 視線方向から解析的に計算する(地球本体による遮蔽もレイ・スフィア交差で解析的に
+// 判定し、ハードウェア深度テストの精度に依存しない)。
 import * as THREE from 'three/webgpu';
+import {
+  texture as textureNode, mix, uv, vec2, vec3, float, uniform, exp,
+  normalWorld, positionWorld, cameraPosition,
+  dot, max, sqrt, select, and, greaterThan, lessThan, normalize, length, sub, clamp,
+} from 'three/tsl';
 import { R_EARTH } from '../physics/orbital';
 import earthTextureUrl from '../assets/earth.jpg';
 import cloudsTextureUrl from '../assets/8k_clouds.jpg';
 
-function buildSurface(): THREE.Mesh {
-  // インデックス付き球ジオメトリ + 焼き込みテクスチャ + スムーズシェーディング。
+const ATMO_COLOR = vec3(0.36, 0.62, 0.91);
+// 大気のもやの濃さ(視線が真上からのときの光学的厚み)。旧・重ねシェル16枚の
+// 合計不透明度(≈0.3)に見た目を合わせた値。
+const ATMO_HAZE_TAU0 = 0.34;
+// リム光の可視上限高度。通常飛行高度(420km)より低く保ち、カメラがリムの
+// ジオメトリ内に入らないようにする(内側からだと加算合成が破綻するため)。
+const ATMO_RIM_MAX_H = 340e3;
+const ATMO_RIM_MIN_H = 20e3;
+const ATMO_RIM_SCALE_H = 90e3;
+
+type SunDirUniform = ReturnType<typeof uniform>;
+type EarthCenterUniform = ReturnType<typeof uniform>;
+
+function buildSurface(sunDir: SunDirUniform): THREE.Mesh {
+  // インデックス付き球ジオメトリ + スムーズシェーディング。
   // 512×384 分割で三角形は ~80km — LEO からは滑らかな球面に見える。
   const geo = new THREE.SphereGeometry(R_EARTH, 512, 384);
 
-  const texture = new THREE.TextureLoader().load(earthTextureUrl);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  const earthMap = new THREE.TextureLoader().load(earthTextureUrl);
+  earthMap.colorSpace = THREE.SRGBColorSpace;
+  const cloudsMap = new THREE.TextureLoader().load(cloudsTextureUrl);
 
-  const mat = new THREE.MeshStandardMaterial({
-    map: texture,
+  const mat = new THREE.MeshStandardNodeMaterial({
     roughness: 0.62, // 海面の太陽ハイライトがうっすら出る程度
     metalness: 0.05,
   });
-  return new THREE.Mesh(geo, mat);
+
+  const earthSample = textureNode(earthMap, uv());
+  const cloudAlpha = textureNode(cloudsMap, uv().add(vec2(0.0008, 0))).r; // わずかに東へオフセットし雲の陰を表現
+  const baseColor = mix(earthSample, vec3(1, 1, 1), cloudAlpha);
+
+  // 大気のもや(aerial perspective): 視線が地平線に近いほど大気中の光路長が
+  // 伸びて濃くなる。Beer-Lambert 則で haze = 1 - exp(-tau0 / cosθ)。
+  const viewDir = normalize(sub(cameraPosition, positionWorld));
+  const cosTheta = clamp(dot(normalWorld, viewDir), 0.05, 1);
+  const haze = float(1).sub(exp(float(ATMO_HAZE_TAU0).div(cosTheta).negate()));
+  const sunFactor = clamp(dot(normalWorld, sunDir), 0, 1);
+  mat.colorNode = mix(baseColor, ATMO_COLOR, haze.mul(sunFactor));
+
+  return new THREE.Mesh(geo, mat as unknown as THREE.Material);
 }
 
-function buildClouds(): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(R_EARTH + 12e3, 512, 384); // 地表から約12km上空
-  const texture = new THREE.TextureLoader().load(cloudsTextureUrl);
-  
-  const mat = new THREE.MeshLambertMaterial({
-    color: 0xffffff,
-    alphaMap: texture,
+// 大気のリム光: 地球の縁だけをリング状に光らせる加算合成の1枚シェル。
+// 地球本体による遮蔽はハードウェア深度テストに頼らず、レイ・スフィア交差で
+// 解析的に判定する(fp32 の相対誤差は地球規模のスケールでも数m程度に収まり、
+// 24bit 深度バッファのような距離依存の量子化崩れが原理的に起こらない)。
+function buildAtmoRim(sunDir: SunDirUniform, earthCenter: EarthCenterUniform): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(R_EARTH + ATMO_RIM_MAX_H, 96, 64);
+  const mat = new THREE.MeshBasicNodeMaterial({
     transparent: true,
+    blending: THREE.AdditiveBlending,
     depthWrite: false,
-  });
-  
-  return new THREE.Mesh(geo, mat);
-}
-
-// 地平線のリム光用 BackSide シェル。Lambert 照明にすることで夜側では
-// 太陽光と一緒に暗くなる(Basic だと夜側でも光ってしまい、縞に見える)。
-function buildAtmoShell(radius: number, color: number, opacity: number): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(radius, 64, 48);
-  const mat = new THREE.MeshLambertMaterial({
-    color,
-    transparent: true,
-    opacity,
     side: THREE.BackSide,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
   });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.renderOrder = 2;
-  return mesh;
-}
 
-// 太陽光で照らされる加算シェル。Lambert の減光がそのまま昼夜の
-// ターミネーターをまたぐ「薄明のグラデーション」になる。
-function buildLitAtmoShell(radius: number, color: number, opacity: number): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(radius, 96, 64);
-  const mat = new THREE.MeshLambertMaterial({
-    color,
-    transparent: true,
-    opacity,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
+  const rEarth = float(R_EARTH);
+  const viewDir = normalize(sub(positionWorld, cameraPosition));
+  const oc = sub(cameraPosition, earthCenter);
+  const b = dot(oc, viewDir);
+  const cTerm = sub(dot(oc, oc), rEarth.mul(rEarth));
+  const disc = sub(b.mul(b), cTerm);
+  const tNear = sub(b.negate(), sqrt(max(disc, 0)));
+  const distToFrag = length(sub(positionWorld, cameraPosition));
+  // 1km のマージンを持たせ、交点がフラグメントよりわずかに手前でも解析的に
+  // 「遮蔽なし」寄りに倒す(浮動小数点誤差でリムの縁が欠けるのを防ぐ)。
+  const occluded = and(greaterThan(disc, 0), and(greaterThan(tNear, 0), lessThan(tNear, sub(distToFrag, 1e3))));
+  const visible = select(occluded, float(0), float(1));
+
+  const rFrag = length(sub(positionWorld, earthCenter));
+  const excess = max(sub(rFrag, rEarth.add(ATMO_RIM_MIN_H)), 0);
+  const falloff = exp(excess.div(-ATMO_RIM_SCALE_H));
+  const sunFactor = clamp(dot(normalWorld, sunDir), 0, 1);
+
+  mat.colorNode = ATMO_COLOR;
+  mat.opacityNode = falloff.mul(sunFactor).mul(visible).mul(0.6);
+
+  const mesh = new THREE.Mesh(geo, mat as unknown as THREE.Material);
   mesh.renderOrder = 2;
   return mesh;
 }
@@ -122,43 +154,27 @@ function buildAurora(sign: 1 | -1, seed: number): THREE.Mesh {
 export interface Earth {
   group: THREE.Group;
   setRotation(angleRad: number): void;
-  tick(dt: number): void; // オーロラの明滅アニメーション
+  setSunDir(x: number, y: number, z: number): void;
+  tick(dt: number): void; // オーロラの明滅アニメーション、大気シェーダの地球中心uniform更新
 }
 
 export function createEarth(): Earth {
   const group = new THREE.Group();
   const spin = new THREE.Group();
-  spin.add(buildSurface());
-  spin.add(buildClouds());
+
+  const sunDir = uniform(new THREE.Vector3(1, 0, 0));
+  const earthCenter = uniform(new THREE.Vector3(0, 0, 0));
+
+  spin.add(buildSurface(sunDir));
 
   // オーロラは磁気極に固定なので自転と一緒に回す
   const auroras = [buildAurora(1, 1.3), buildAurora(-1, 4.1)];
   for (const a of auroras) spin.add(a);
   group.add(spin);
 
-  // 連続な濃度の大気: 指数減衰する薄い発光シェルを多数重ね、離散的な
-  // 「縞」が見えない滑らかなグラデーションにする。高度方向は二乗分布で
-  // 低高度ほど密にシェルを置き、不透明度はスケールハイト ~100km の指数則。
-  // Lambert 照明なので昼側だけ青く光り、ターミネーターに薄明のグラデーションが出る。
-  // 最大高度は通常の飛行高度(420km)より低くし、カメラがシェル内に入らないようにする。
-  const SHELLS = 16;
-  for (let i = 0; i < SHELLS; i++) {
-    const t = i / (SHELLS - 1);
-    const h = 10e3 + 330e3 * t * t;
-    const op = 0.052 * Math.exp(-h / 100e3) + 0.0035;
-    group.add(buildLitAtmoShell(R_EARTH + h, 0x5d9fe8, op));
-  }
-
-  // 大気のリム光: 加算合成の BackSide シェルは地球本体に隠されず、
-  // 縁の部分だけがリング状に見える。こちらも多層化して指数的に減衰させ、
-  // 単発の輪ではなく外側へ溶けるグラデーションにする。
-  const RIMS = 8;
-  for (let i = 0; i < RIMS; i++) {
-    const t = i / (RIMS - 1);
-    const h = 40e3 + 280e3 * t * t;
-    const op = 0.075 * Math.exp(-h / 90e3) + 0.004;
-    group.add(buildAtmoShell(R_EARTH + h, 0x4d9fff, op));
-  }
+  // 大気リム光(地球中心を基準にした解析シェーディングなので自転させる必要はなく、
+  // spin ではなく group 直下に置く)。
+  group.add(buildAtmoRim(sunDir, earthCenter));
 
   let auroraPhase = 0;
   return {
@@ -166,7 +182,12 @@ export function createEarth(): Earth {
     setRotation(angleRad: number) {
       spin.rotation.y = angleRad;
     },
+    setSunDir(x: number, y: number, z: number) {
+      (sunDir.value as THREE.Vector3).set(x, y, z);
+    },
     tick(dt: number) {
+      (earthCenter.value as THREE.Vector3).copy(group.position);
+
       // ゆっくりした明滅(実時間ベース)
       auroraPhase += dt;
       for (let i = 0; i < auroras.length; i++) {
