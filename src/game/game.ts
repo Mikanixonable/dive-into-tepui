@@ -162,6 +162,7 @@ export class Game {
   private readonly camera: THREE.PerspectiveCamera;
 
   private readonly input: Input;
+  private touchControls: TouchControls | null = null;
   private readonly hud = new Hud();
   private readonly sfx = new Sfx();
   private readonly chase = new ChaseCamera();
@@ -288,7 +289,7 @@ export class Game {
     this.stage = stage;
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this.sfx.unlock();
-    if (TouchControls.isTouchDevice()) new TouchControls(this.input);
+    if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.hud.setBgmState(this.sfx.isBgmEnabled());
     this.hud.onBgmToggle = (on) => this.sfx.setBgmEnabled(on);
 
@@ -2190,6 +2191,12 @@ export class Game {
     this.hudTimer -= dt;
     if (this.hudTimer <= 0) {
       this.hudTimer = 0.1;
+      // タッチUIのトグルボタン(制動・微動・ホールド)の点灯状態を実際のモードに同期する。
+      // progradeHold は手動回転で自動解除されることもあるため、専用のトグル時だけでなく
+      // ここで毎回反映しておく。
+      this.touchControls?.setActive('KeyT', this.rcsDamp);
+      this.touchControls?.setActive('KeyV', this.fineAttitude);
+      this.touchControls?.setActive('KeyC', this.progradeHold);
       this.hud.setStats({
         met: this.simTime,
         warpLabel: `×${this.warp()}`,
