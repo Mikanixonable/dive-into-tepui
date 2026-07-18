@@ -2185,12 +2185,23 @@ export class Game {
     });
 
     // 軌道線(推力中は要素が能動的に変化するので毎フレーム再生成させる)
+    // 戦闘視点(!mapMode)ではカメラが近いため、自機・ターゲット線は
+    // continuous=true で毎フレーム regenerate し、J2 短周期摂動や
+    // osculating 要素の微小なゆらぎに追従させて船からの乖離・ジッターを防ぐ。
+    // マップモードはカメラが遠くコストの方が問題になるため従来の閾値方式を使う。
+    const combatView = !this.mapMode;
     const playerEl = elementsFromState(o, pv);
-    this.playerOrbitLine.update(this.player.alive ? playerEl : null, o, this.thrustVizDir !== null, true);
+    this.playerOrbitLine.update(
+      this.player.alive ? playerEl : null,
+      o,
+      this.thrustVizDir !== null,
+      true,
+      combatView,
+    );
     const tgt = this.target && this.target.alive ? this.target : null;
     // ターゲットの軌道要素は1フレームに複数箇所で使うので一度だけ計算して使い回す
     const tgtEl = tgt ? elementsFromState(tgt.state.r, tgt.state.v) : null;
-    this.targetOrbitLine.update(tgtEl, o);
+    this.targetOrbitLine.update(tgtEl, o, false, false, combatView);
 
     // マップモード: 全敵の軌道を表示して比較できるようにする
     for (let i = 0; i < this.enemies.length; i++) {
