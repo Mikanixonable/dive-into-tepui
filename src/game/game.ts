@@ -25,7 +25,7 @@ import {
   sunAzimuth,
   sunPosition,
 } from '../physics/ephemeris';
-import { PlannedNode, PredictOpts, TrajectorySample, predictTrajectory, sampleAt } from '../physics/predict';
+import { PlannedNode, PredictOpts, TrajectorySample, dvToWorld, predictTrajectory, sampleAt } from '../physics/predict';
 import {
   Attitude,
   qRotate,
@@ -115,6 +115,8 @@ const beltNext = new THREE.Vector3();
 const beltDelta = new THREE.Vector3();
 const beltDir = new THREE.Vector3();
 const beltTmpVX = new THREE.Vector3();
+const beltDirLocal = new THREE.Vector3(); // 前リンクのローカル系に変換した辺り方向（ピッチ/ヨー制限用）
+const beltQInvPrev = new THREE.Quaternion(); // beltQPrev の逆四元数局所変数
 const beltQPrev = new THREE.Quaternion();
 const beltQDelta = new THREE.Quaternion();
 const beltQBend = new THREE.Quaternion();
@@ -142,7 +144,7 @@ function airspeed(r: Vec3, v: Vec3): Vec3 {
 
 // fwd に直交するランダム単位ベクトル(散布界用)
 function randPerp(fwd: Vec3): Vec3 {
-  for (;;) {
+  for (; ;) {
     const r = randVec(1);
     const p = sub(r, scale(fwd, dot(r, fwd)));
     if (lenSq(p) > 1e-6) return norm(p);
@@ -212,6 +214,13 @@ export class Game {
   private mapFrameRotating = false;
   private mapSliderT = 0; // 0..1(0 でゴーストマーカー非表示)
   private autoWarp = false;
+  // 直近ノードの「実行目標」(実行後の目標位置・速度・軌道要素)。
+  // 遠方(残り NODE_TARGET_FREEZE_S 超)では予測リフレッシュのたびに追従更新するが、
+  // ノード接近後は凍結する。予測は毎回「現在状態にノードの全Δvを適用」して
+  // 作られるため、噴射中に目標を再計算し続けると目標が噴射分だけ先へ逃げて
+  // 収束しない(さらにノード時刻超過後は予測から除外されて目標が現在状態に
+  // 一致し、噴射せずとも達成判定が誤成立する)——凍結はその両方を防ぐ。
+  private activeTarget: { nodeTime: number; rNode: Vec3; vPlanned: Vec3; targetEl: Elements } | null = null;
 
   private phase: GamePhase = 'playing';
   // 第零ステージ専用: 制限時間内の撃墜数を競うスコアアタックの残り時間(実秒)
@@ -428,18 +437,18 @@ export class Game {
       this.spawnStage0InitialAmmo();
       this.hud.toast(
         `<b>訓練ステージ: 制限時間 ${Math.floor(C.STAGE0_TIME_LIMIT / 60)}分で何機撃墜できるか</b><br>` +
-          '周囲5km以内の色分けされた集団を撃墜せよ — RCS並進(WSADQE)と回転(IKJLUO)の練習に最適<br>' +
-          '補給マガジンが近くに浮いている — 弾切れ時は回収せよ<br>' +
-          '[H] キーで操作方法を表示',
+        '周囲5km以内の色分けされた集団を撃墜せよ — RCS並進(WSADQE)と回転(IKJLUO)の練習に最適<br>' +
+        '補給マガジンが近くに浮いている — 弾切れ時は回収せよ<br>' +
+        '[H] キーで操作方法を表示',
         12000,
       );
     } else {
       this.hud.toast(
         `<b>作戦目標: 敵機 ${this.enemies.length} 機を全機撃破せよ</b><br>` +
-          (stage === 2
-            ? '敵の一部はモルニヤ級の高楕円軌道上にいる — [M] 軌道計画モードで遷移を計画せよ<br>'
-            : '[Tab] ターゲット選択 → [F] ターゲット基準推進で接近 → [,/.] タイムワープで会合を短縮<br>') +
-          '[H] キーで操作方法を表示',
+        (stage === 2
+          ? '敵の一部はモルニヤ級の高楕円軌道上にいる — [M] 軌道計画モードで遷移を計画せよ<br>'
+          : '[Tab] ターゲット選択 → [F] ターゲット基準推進で接近 → [,/.] タイムワープで会合を短縮<br>') +
+        '[H] キーで操作方法を表示',
         12000,
       );
     }
@@ -594,7 +603,7 @@ export class Game {
       this.hud.showEnd(
         true,
         `撃墜 ${this.kills} / ${this.enemies.length} 機<br>` +
-          `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)`,
+        `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)`,
         'TIME UP',
       );
     }
@@ -710,12 +719,14 @@ export class Game {
             if (this.selectedNodeIdx !== null) {
               this.planNodes.splice(this.selectedNodeIdx, 1);
               this.selectedNodeIdx = null;
+              this.activeTarget = null;
               this.trajDirty = true;
               this.hud.hint('ノードを削除');
             }
           } else if (code === 'KeyX' && this.planNodes.length > 0) {
             this.planNodes = [];
             this.selectedNodeIdx = null;
+            this.activeTarget = null;
             this.autoWarp = false;
             this.trajDirty = true;
             this.hud.hint('マニューバ計画を破棄');
@@ -777,6 +788,9 @@ export class Game {
       // Δv がほぼゼロのまま放置されたノード(クリックしただけで調整しなかった等)は破棄する。
       this.planNodes = this.planNodes.filter((n) => len(n.dv) >= C.NODE_MIN_DV);
       this.selectedNodeIdx = null;
+      // マップで Δv・ノード構成が変わった可能性があるので凍結済み目標は作り直す
+      // (時刻が同じままΔvだけ編集されたケースは nodeTime 比較では検出できない)。
+      this.activeTarget = null;
       this.trajDirty = true;
       this.hud.setMapToolbarVisible(false);
       this.hud.setPlanPanel(null);
@@ -963,13 +977,39 @@ export class Game {
       return;
     }
 
-    const s = sampleAt(this.trajSamples, node.time);
-    const targetEl = s ? elementsFromState(s.r, s.v) : null;
+    // 実行目標の構築・追従・凍結(凍結の理由は activeTarget フィールドのコメント参照)。
+    const tRem = node.time - this.simTime;
+    if (this.activeTarget && this.activeTarget.nodeTime !== node.time) this.activeTarget = null;
+    if (!this.activeTarget || tRem > C.NODE_TARGET_FREEZE_S) {
+      if (tRem > 0) {
+        // 予測(ノードΔv適用済み)からノード実行直後の状態を取る
+        const s = sampleAt(this.trajSamples, node.time);
+        const el = s ? elementsFromState(s.r, s.v) : null;
+        if (s && el) {
+          this.activeTarget = { nodeTime: node.time, rNode: s.r, vPlanned: s.v, targetEl: el };
+        }
+      } else if (!this.activeTarget) {
+        // ノード時刻を過ぎているのに目標が無い(過去時刻へのノード配置など)。
+        // 「今すぐ全Δvを噴射する」目標として現在状態から一度だけ構築・凍結する。
+        const vP = add(pv, dvToWorld(o, pv, node.dv));
+        const el = elementsFromState(o, vP);
+        if (el) {
+          this.activeTarget = { nodeTime: node.time, rNode: clone(o), vPlanned: vP, targetEl: el };
+        }
+      }
+    }
+    const tgt = this.activeTarget;
+    if (!tgt) {
+      this.hud.hideMarker('nd');
+      this.hud.hideMarker('burn');
+      return;
+    }
 
-    // 達成判定: 現在軌道がこのノード実行後の計画軌道に十分近い
-    if (playerEl && targetEl && this.orbitClose(playerEl, targetEl)) {
+    // 達成判定: 現在軌道が(凍結済みの)ノード実行後の計画軌道に十分近い
+    if (playerEl && this.orbitClose(playerEl, tgt.targetEl)) {
       this.planNodes.shift();
       this.selectedNodeIdx = null;
+      this.activeTarget = null;
       this.autoWarp = false;
       this.trajDirty = true;
       this.hud.hideMarker('nd');
@@ -984,15 +1024,8 @@ export class Game {
       return;
     }
 
-    if (!s) {
-      this.hud.hideMarker('nd');
-      this.hud.hideMarker('burn');
-      return;
-    }
-
     // ノード位置マーカー(カウントダウン付き)
-    const tRem = node.time - this.simTime;
-    const p = this.project(sub(s.r, o));
+    const p = this.project(sub(tgt.rNode, o));
     const tLabel =
       tRem >= 0
         ? `T-${Math.floor(tRem / 60)}:${String(Math.floor(tRem % 60)).padStart(2, '0')}`
@@ -1000,8 +1033,8 @@ export class Game {
     const more = this.planNodes.length > 1 ? ` (+${this.planNodes.length - 1})` : '';
     this.hud.marker('nd', 'mk-mnode', '◆', p.x, p.y, p.front, `NODE ${tLabel}${more}`);
 
-    // 噴射ガイド: 目標速度ベクトルとの差分方向へ加速する
-    const dvRem = sub(s.v, pv);
+    // 噴射ガイド: (凍結済みの)目標速度ベクトルとの差分方向へ加速する
+    const dvRem = sub(tgt.vPlanned, pv);
     const mag = len(dvRem);
     const g = this.project(scale(norm(dvRem), 5e4));
     this.hud.marker(
@@ -1011,7 +1044,7 @@ export class Game {
       g.x,
       g.y,
       g.front,
-      `BURN ${mag.toFixed(1)} m/s → ${(len(s.v) / 1000).toFixed(2)} km/s`,
+      `BURN ${mag.toFixed(1)} m/s → ${(len(tgt.vPlanned) / 1000).toFixed(2)} km/s`,
     );
   }
 
@@ -1634,9 +1667,9 @@ export class Game {
       this.hud.showEnd(
         true,
         `全 ${this.enemies.length} 機撃破<br>` +
-          `ミッション時間 T+ ${Math.floor(this.simTime / 3600)}h ${Math.floor((this.simTime % 3600) / 60)}m ${Math.floor(this.simTime % 60)}s<br>` +
-          `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)` +
-          unlockNote,
+        `ミッション時間 T+ ${Math.floor(this.simTime / 3600)}h ${Math.floor((this.simTime % 3600) / 60)}m ${Math.floor(this.simTime % 60)}s<br>` +
+        `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)` +
+        unlockNote,
       );
     }
   }
@@ -2072,8 +2105,10 @@ export class Game {
     beltAThrustBody.set(aThrustWorld.x, aThrustWorld.y, aThrustWorld.z).applyQuaternion(beltQInv);
 
     const h = Math.min(dt, 0.05); // 積分刻みの上限(大きな dt でのはみ出し防止)
-    const damping = 0.999; // 慣性を維持するため減衰を弱める
-    const invH2 = 2 / Math.max(h, 1e-4);
+    const damping = 0.95; // 慣性を維持するため減衰を弱める
+    // コリオリ力 -2ω×v の係数: beltVel = pos-prevPos = v*dt なので速度への変換に 2/dt を使う。
+    // invH2(=2/h) ではなく実際の dt を使わないと dt > 0.05 のときコリオリ力が過大になる。
+    const inv2Dt = invDt * 2;
     beltW.set(w.x, w.y, w.z);
 
     for (let i = 0; i < n; i++) {
@@ -2085,7 +2120,7 @@ export class Game {
       beltAccel.set(-beltAThrustBody.x, -beltAThrustBody.y, -beltAThrustBody.z);
       beltAccel.sub(beltTmpA.crossVectors(beltAlpha, pos));
       beltAccel.sub(beltTmpA.crossVectors(beltW, beltTmpB.crossVectors(beltW, pos)));
-      beltAccel.sub(beltTmpA.crossVectors(beltW, beltVel).multiplyScalar(invH2));
+      beltAccel.sub(beltTmpA.crossVectors(beltW, beltVel).multiplyScalar(inv2Dt));
 
       beltNext.copy(pos).addScaledVector(beltVel, damping).addScaledVector(beltAccel, h * h);
       prev.copy(pos);
@@ -2149,12 +2184,14 @@ export class Game {
     // 節点への方向へ向ける(ローカル +X = ベルト方向)。
     // 向きは「平行移動(parallel transport)」で求める: 前リンクの姿勢を基準に、
     // その進行方向(ローカル+X)を新しい節点方向へ向ける最小回転だけを加える。
-    // これにより曲げ(ピッチ/ヨー相当)は距離拘束だけで自由に発生し、余計な
-    // ねじれが混入しない。そこへ、機体のロールに由来する有限のねじれ角
-    // (this.beltTwist、リンクからリンクへ伝播しつつ ±MAG_CHAIN_MAX_ROLL_DEG に
-    // クランプ)だけを追加で載せることで、「上下方向の折りたたみは自由だが
-    // ロールには上限がある」という機関銃ベルトらしい可動域を実現する。
+    // 各つなぎ目で許容するピッチ/ヨーの角度上限を tan クランプで適用し、
+    // クランプ後の方向を beltPos へ書き戻して物理とビジュアルを一致させる。
+    // そこへ、機体のロールに由来する有限のねじれ角(this.beltTwist)を
+    // 追加で載せることで、ロールにも独立した上限を課す。
     const maxRoll = (C.MAG_CHAIN_MAX_ROLL_DEG * Math.PI) / 180;
+    // tan(最大角度) = ローカル座標系での横ずれ/前進量の上限
+    const tanMaxPitch = Math.tan((C.MAG_CHAIN_MAX_PITCH_DEG * Math.PI) / 180);
+    const tanMaxYaw = Math.tan((C.MAG_CHAIN_MAX_YAW_DEG * Math.PI) / 180);
     const rollLerp = Math.min(1, dt * C.MAG_CHAIN_ROLL_RATE);
     let prevPoint: THREE.Vector3 = beltAnchor;
     beltQPrev.identity(); // アンカー(機体)側の基準姿勢: ベルトは+X方向へ伸びる
@@ -2165,10 +2202,38 @@ export class Game {
       const pos = this.beltPos[i]!;
       link.position.copy(prevPoint);
 
-      beltDir.copy(pos).sub(prevPoint).normalize();
-      if (beltDir.lengthSq() > 1e-8) {
+      beltDir.copy(pos).sub(prevPoint);
+      const segLen = beltDir.length(); // このリンクの実長(距離拘束で ≒ MAG_BELT_PITCH)
+      if (segLen > 1e-6) {
+        beltDir.multiplyScalar(1 / segLen); // 正規化
+
+        // ---- ピッチ / ヨー クランプ ----
+        // 前リンクのローカル座標系(+X = 進行方向)に変換し、
+        // Y 成分(ヨー方向の横ずれ)と Z 成分(ピッチ方向の上下ずれ)を
+        // それぞれ tan(上限角度) でクランプする。
+        // 「X 成分 = 1 固定でロジカルに考えると tan θ = 横ずれ/前進量」
+        // となるので、正規化ベクトルをローカル系に変換後 X を 1 として
+        // Y/X と Z/X をクランプし、再正規化してワールドへ戻す。
+        beltQInvPrev.copy(beltQPrev).invert();
+        beltDirLocal.copy(beltDir).applyQuaternion(beltQInvPrev);
+        // beltDirLocal.x は cos(折れ角) ≈ 1(小角度近似で正のはず)。
+        // ゼロ割を避けるため最低 0.001 に制限。
+        const lx = Math.max(beltDirLocal.x, 0.001);
+        beltDirLocal.y = Math.max(-tanMaxYaw * lx, Math.min(tanMaxYaw * lx, beltDirLocal.y));
+        beltDirLocal.z = Math.max(-tanMaxPitch * lx, Math.min(tanMaxPitch * lx, beltDirLocal.z));
+        beltDirLocal.normalize();
+        // クランプ後の方向をワールドへ戻す
+        beltDir.copy(beltDirLocal).applyQuaternion(beltQPrev);
+        // beltPos[i] を「前点 + クランプ済み方向 × 元の長さ」に更新して
+        // 物理とビジュアルを一致させる(次フレームの Verlet 積分に反映)。
+        // 【重要】beltPrevPos[i] も同量だけ平行移動して Verlet の速度 (pos - prevPos) を保つ。
+        // 移動前の pos を beltNext に退避(物理ループ終了後なので安全に再利用できる)。
+        beltNext.copy(pos);                                       // 移動前の pos を退避
+        pos.copy(prevPoint).addScaledVector(beltDir, segLen);     // クランプ後の pos
+        this.beltPrevPos[i]!.add(pos).sub(beltNext);             // prevPos += (pos_new - pos_old)
+
         beltTmpVX.copy(X_AXIS).applyQuaternion(beltQPrev); // 前リンクの進行方向(ワールド)
-        beltQDelta.setFromUnitVectors(beltTmpVX, beltDir); // 曲げぶんの最小回転
+        beltQDelta.setFromUnitVectors(beltTmpVX, beltDir);  // 曲げぶんの最小回転
         beltQBend.copy(beltQDelta).multiply(beltQPrev);
       } else {
         beltQBend.copy(beltQPrev);
