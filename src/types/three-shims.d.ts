@@ -11,4 +11,17 @@ declare module 'three/webgpu' {
     setSize(width: number, height: number, updateStyle?: boolean): void;
     render(scene: import('three').Scene, camera: import('three').Camera): void;
   }
+  export class MeshStandardNodeMaterial extends import('three').MeshStandardMaterial {
+    constructor(parameters?: import('three').MeshStandardMaterialParameters);
+    colorNode: unknown;
+  }
+}
+
+// TSL (Three Shading Language) ノード関数群。型定義が未整備なため any で緩く扱う。
+declare module 'three/tsl' {
+  export const texture: (map: import('three').Texture, uvNode?: unknown) => any;
+  export const uv: () => any;
+  export const mix: (a: unknown, b: unknown, t: unknown) => any;
+  export const vec2: (x: number, y: number) => any;
+  export const vec3: (x: number, y: number, z: number) => any;
 }
