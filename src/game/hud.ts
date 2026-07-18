@@ -141,6 +141,9 @@ const STYLE = `
 #hud-maptool input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
 #hud-maptool .mt-sliderlabel { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; }
 .mk-ghost { color: #8fd0ff; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
+.mk-poi { color: #8fd0ff; text-shadow: 0 0 4px #000; }
+.mk-poi .sym { font-size: 14px; }
+.mk-poi .lbl { font-size: 11px; margin-top: 4px; padding: 2px 4px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
   background: rgba(6, 7, 9, 0.82); backdrop-filter: blur(3px);
@@ -257,7 +260,7 @@ export class Hud {
   // 軌道計画モードのマップツールバー(期間選択・スライダー・座標系トグル)
   onDurationSelect: ((key: string) => void) | null = null;
   onFrameToggle: (() => void) | null = null;
-  onMapFocusSelect: ((focus: 'earth' | 'moon') => void) | null = null;
+  onMapFocusSelect: ((focus: string) => void) | null = null;
   onMapViewReset: (() => void) | null = null;
   onSliderChange: ((t: number) => void) | null = null;
 
@@ -346,7 +349,7 @@ export class Hud {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const focus = btn.dataset['focus'];
-        if (focus === 'earth' || focus === 'moon') this.onMapFocusSelect?.(focus);
+        if (focus) this.onMapFocusSelect?.(focus);
       });
     });
     const resetBtn = mapTool.querySelector<HTMLElement>('[data-id="mt-reset"]')!;
@@ -615,7 +618,7 @@ export class Hud {
     durationKey: string,
     frameRotating: boolean,
     sliderLabel: string | null,
-    focus: 'earth' | 'moon' = 'earth',
+    focus: string = 'earth',
   ): void {
     const bar = document.getElementById('hud-maptool');
     if (!bar) return;

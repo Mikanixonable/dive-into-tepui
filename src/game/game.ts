@@ -24,6 +24,8 @@ import {
   moonPosition,
   sunAzimuth,
   sunPosition,
+  emLagrangePoints,
+  seLagrangePoints,
 } from '../physics/ephemeris';
 import { PlannedNode, PredictOpts, TrajectorySample, dvToWorld, predictTrajectory, sampleAt } from '../physics/predict';
 import {
@@ -94,7 +96,7 @@ interface EnemySpec {
   accent: number;
 }
 
-type MapFocus = 'earth' | 'moon';
+type MapFocus = string;
 
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
@@ -186,6 +188,8 @@ export class Game {
   private readonly targetOrbitLine = new OrbitLine(0xff6a00, 0.9);
   private readonly plannedOrbitLine = new OrbitLine(0xffffff, 0.9);
   private readonly enemyOrbitLines: OrbitLine[] = [];
+  private readonly geoOrbitLine = new OrbitLine(0x8b93a0, 0.2);
+  private readonly moonOrbitLine = new OrbitLine(0xaab3c0, 0.2);
 
   // 軌道計画モード
   readonly stage: number;
@@ -351,6 +355,10 @@ export class Game {
     this.scene.add(this.targetOrbitLine.line);
     this.plannedOrbitLine.line.renderOrder = 3;
     this.scene.add(this.plannedOrbitLine.line);
+    this.geoOrbitLine.line.renderOrder = 0;
+    this.scene.add(this.geoOrbitLine.line);
+    this.moonOrbitLine.line.renderOrder = 0;
+    this.scene.add(this.moonOrbitLine.line);
     this.scene.add(this.trajLine.group);
 
     // マップモードのツールバー(予測期間・スライダー・座標系トグル)
@@ -404,6 +412,13 @@ export class Game {
         this.activeTarget = null;
         this.trajDirty = true;
         this.hud.hint('ノードを削除');
+      }
+    };
+    this.mapGizmo.onMenuFocus = (targetKey) => {
+      this.mapFocus = targetKey;
+      const lbl = this.mapLabels.find(l => l.id === targetKey);
+      if (lbl) {
+        this.hud.hint(`${lbl.name} にフォーカス`);
       }
     };
 
@@ -884,9 +899,25 @@ export class Game {
         bestIdx = i;
       }
     }
+
+    let bestTargetKey: string | null = null;
+    let bestTargetD = 20 * 20;
+    for (const lbl of this.mapLabels) {
+      const wp = sub(lbl.pos, o);
+      const p = this.project(wp);
+      if (!p || !p.front) continue;
+      const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
+      if (d < bestTargetD) {
+        bestTargetD = d;
+        bestTargetKey = lbl.id;
+      }
+    }
+
     if (bestIdx !== null) {
       this.selectedNodeIdx = bestIdx;
-      this.mapGizmo.openMenu(mx, my, bestIdx);
+      this.mapGizmo.openMenu(mx, my, { idx: bestIdx });
+    } else if (bestTargetKey !== null) {
+      this.mapGizmo.openMenu(mx, my, { targetKey: bestTargetKey });
     } else {
       this.mapGizmo.closeMenu();
     }
@@ -1170,6 +1201,8 @@ export class Game {
       this.mapFocus,
     );
 
+    this.drawMapLabels(o);
+
     const nodesInfo = this.planNodes.map((n, i) => ({
       tRel: n.time - this.simTime,
       dvMag: len(n.dv),
@@ -1183,6 +1216,39 @@ export class Game {
       if (s) selEl = elementsFromState(s.r, s.v);
     }
     this.hud.setPlanPanel(this.hud.planHtml(nodesInfo, selDv, selEl));
+  }
+
+  private mapLabels: { id: string; name: string; pos: Vec3 }[] = [];
+
+  private drawMapLabels(o: Vec3): void {
+    const t = this.simTime;
+    const mPos = moonPosition(t, this.sunPhase0);
+    const sPos = sunPosition(t, this.sunPhase0);
+    const emL = emLagrangePoints(t, this.sunPhase0);
+    const seL = seLagrangePoints(t, this.sunPhase0);
+
+    this.mapLabels = [
+      { id: 'earth', name: '地球', pos: v3(0, 0, 0) },
+      { id: 'moon', name: '月', pos: mPos },
+      { id: 'sun', name: '太陽', pos: sPos },
+      { id: 'em-l1', name: '地球-月 L1', pos: emL.L1 },
+      { id: 'em-l2', name: '地球-月 L2', pos: emL.L2 },
+      { id: 'em-l3', name: '地球-月 L3', pos: emL.L3 },
+      { id: 'em-l4', name: '地球-月 L4', pos: emL.L4 },
+      { id: 'em-l5', name: '地球-月 L5', pos: emL.L5 },
+      { id: 'se-l1', name: '太陽-地球 L1', pos: seL.L1 },
+      { id: 'se-l2', name: '太陽-地球 L2', pos: seL.L2 },
+    ];
+
+    for (const lbl of this.mapLabels) {
+      const wp = sub(lbl.pos, o);
+      const p = this.project(wp);
+      if (p && p.front) {
+        this.hud.marker(lbl.id, 'poi', '●', p.x, p.y, true, lbl.name);
+      } else {
+        this.hud.marker(lbl.id, 'poi', '●', 0, 0, false, lbl.name);
+      }
+    }
   }
 
   // 噴射ガイドの達成判定と表示(戦闘ビュー)。直近(最も時刻が早い)未達成ノードを対象にする。
@@ -2054,10 +2120,13 @@ export class Game {
       // 組み合わせて、t=simTime では回転量ゼロで整合する)。
       const displayYaw = this.mapYaw + (this.mapFrameRotating ? sunAzimuth(this.simTime, this.sunPhase0) : 0);
       // 地球中心はフローティングオリジンで -o
-      const focusRel =
-        this.mapFocus === 'moon'
-          ? sub(this.moonPos, o)
-          : v3(-o.x, -o.y, -o.z);
+      let focusRel = v3(-o.x, -o.y, -o.z);
+      if (this.mapFocus !== 'earth') {
+        const lbl = this.mapLabels.find(l => l.id === this.mapFocus);
+        if (lbl) {
+          focusRel = sub(lbl.pos, o);
+        }
+      }
       const targetX = focusRel.x + this.mapPan.x;
       const targetY = focusRel.y + this.mapPan.y;
       const targetZ = focusRel.z + this.mapPan.z;
@@ -2268,6 +2337,24 @@ export class Game {
       if (s) plannedEl = elementsFromState(s.r, s.v);
     }
     this.plannedOrbitLine.update(this.mapMode ? null : plannedEl, o);
+
+    if (this.mapMode) {
+      const geoEl: Elements = {
+        a: R_EARTH + 35786e3, e: 1e-6, p: R_EARTH + 35786e3, incDeg: 0, apAlt: 35786e3, peAlt: 35786e3, period: 86164,
+        hHat: v3(0, 1, 0), pHat: v3(1, 0, 0), qHat: v3(0, 0, -1)
+      };
+      this.geoOrbitLine.update(geoEl, o, false, false);
+      
+      const dtMoon = 10;
+      const mR1 = moonPosition(this.simTime, 0);
+      const mR2 = moonPosition(this.simTime + dtMoon, 0);
+      const mV = scale(sub(mR2, mR1), 1 / dtMoon);
+      const moonEl = elementsFromState(mR1, mV);
+      this.moonOrbitLine.update(moonEl, o, false, false);
+    } else {
+      this.geoOrbitLine.update(null, o);
+      this.moonOrbitLine.update(null, o);
+    }
 
     this.updateMarkers(o, pv, tgt);
     this.updateNodeMarkers(playerEl, tgtEl, o);
