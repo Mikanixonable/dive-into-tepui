@@ -52,7 +52,7 @@ import {
 import { atmosphericDensity } from '../physics/atmosphere';
 import * as C from './const';
 import { Bullet, Casing, DebrisPiece, FlashEffect, MagPickup, Ship } from './entities';
-import { Navball } from './navball';
+
 import { Input } from './input';
 import { TouchControls } from './touch';
 import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from './mapgizmo';
@@ -247,6 +247,7 @@ export class Game {
 
   private rcsDamp = false;
   private target: Ship | null = null;
+  private lockedTarget: Ship | null = null;
   private throttleIdx = C.THROTTLE_DEFAULT_IDX; // 並進出力の段(0:弱 1:中 2:強、全 6 方向で共通)
   private fineAttitude = false;
   private progradeHold = true; // [C] 機首をプログレードへ自動保持するオートパイロット
@@ -262,7 +263,7 @@ export class Game {
   private heatWarned = false;
   private lostReason = '大気圏に突入し機体を喪失した';
 
-  private readonly navball = new Navball();
+
   private readonly plumeCore: THREE.Mesh;
   private readonly plumeOuter: THREE.Mesh;
   private thrustVizDir: Vec3 | null = null; // 現在の推力方向(ワールド、噴射エフェクト用)
@@ -496,7 +497,7 @@ export class Game {
       this.enemyOrbitLines.push(line);
       this.scene.add(line.line);
     }
-    this.retargetNearest();
+
 
     if (stage === 0) {
       this.spawnStage0InitialAmmo();
@@ -694,9 +695,65 @@ export class Game {
       this.simulate(dt);
       if (this.mapMode) this.updateMapPlanning(dt);
       else {
-        // 戦闘中のクリック・右クリックは射撃扱いのみ(座標キューは捨てる)
+        // 戦闘中の左クリックは射撃・カメラ用として消費(キューは捨てる)
         this.input.takeClicks();
-        this.input.takeRightClicks();
+        
+        // 右クリックによるターゲット固定・解除
+        const rClicks = this.input.takeRightClicks();
+        if (rClicks.length > 0 && this.player.alive) {
+          const rc = rClicks[rClicks.length - 1]!;
+          let hit: Ship | null = null;
+          let minDistSq = 600; // ~24px radius
+          for (const e of this.enemies) {
+            if (!e.alive) continue;
+            const p = this.project(sub(e.state.r, this.player.state.r));
+            if (p.front) {
+              const dx = p.x - rc.x;
+              const dy = p.y - rc.y;
+              const distSq = dx * dx + dy * dy;
+              if (distSq < minDistSq) {
+                minDistSq = distSq;
+                hit = e;
+              }
+            }
+          }
+          if (hit) {
+            if (this.lockedTarget === hit) {
+              this.lockedTarget = null; // Toggle off
+              this.hud.hint(`ターゲット固定解除`);
+            } else {
+              this.lockedTarget = hit;
+              this.hud.hint(`ターゲット固定: ${hit.name}`);
+            }
+          } else {
+            if (this.lockedTarget !== null) {
+              this.lockedTarget = null;
+              this.hud.hint(`ターゲット固定解除`);
+            }
+          }
+        }
+
+        // 自動ターゲット更新 (ロックされていればそれ、そうでなければ画面中央に一番近い敵)
+        if (this.lockedTarget && this.lockedTarget.alive) {
+          this.target = this.lockedTarget;
+        } else {
+          this.lockedTarget = null;
+          let bestTarget: Ship | null = null;
+          let bestDot = -1;
+          const camFwdW = new THREE.Vector3();
+          this.activeCamera.getWorldDirection(camFwdW);
+          const camFwdVec = v3(camFwdW.x, camFwdW.y, camFwdW.z);
+          for (const e of this.enemies) {
+            if (!e.alive) continue;
+            const dir = norm(sub(e.state.r, this.player.state.r));
+            const d = dot(camFwdVec, dir);
+            if (d > bestDot) {
+              bestDot = d;
+              bestTarget = e;
+            }
+          }
+          this.target = bestTarget;
+        }
       }
       if (this.stage === 0) this.updateStage0Timer(dt);
     } else {
@@ -721,10 +778,6 @@ export class Game {
   private handleEdgeInput(): void {
     for (const code of this.input.takePresses()) {
       switch (code) {
-        case 'Tab':
-          this.cycleTarget();
-          break;
-
         case 'KeyT':
           this.rcsDamp = !this.rcsDamp;
           this.hud.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
@@ -818,28 +871,6 @@ export class Game {
           break;
       }
     }
-  }
-
-  private cycleTarget(): void {
-    const alive = this.enemies
-      .filter((e) => e.alive)
-      .sort((a, b) => lenSq(sub(a.state.r, this.player.state.r)) - lenSq(sub(b.state.r, this.player.state.r)));
-    if (alive.length === 0) return;
-    const idx = this.target ? alive.indexOf(this.target) : -1;
-    this.target = alive[(idx + 1) % alive.length]!;
-    this.hud.hint(`ターゲット: ${this.target.name}`);
-  }
-
-  private retargetNearest(): void {
-    const alive = this.enemies.filter((e) => e.alive);
-    if (alive.length === 0) {
-      this.target = null;
-      return;
-    }
-    alive.sort(
-      (a, b) => lenSq(sub(a.state.r, this.player.state.r)) - lenSq(sub(b.state.r, this.player.state.r)),
-    );
-    this.target = alive[0]!;
   }
 
   // ------------------------------------------------------- maneuver planning
@@ -1933,7 +1964,7 @@ export class Game {
     this.kills++;
     this.hud.hint(`${ship.name} 撃破`);
     if (this.target === ship) {
-      this.retargetNearest();
+
     }
     if (this.enemies.every((e) => !e.alive)) {
       this.phase = 'won';
@@ -2370,7 +2401,7 @@ export class Game {
     this.updateBoardMarkers(o, dt, tgt);
     if (!this.mapMode) this.updateNodeGuide(o, pv, playerEl);
     else this.hud.hideMarker('burn');
-    this.updateNavball(o, pv, tgt);
+
     this.updateHudPanels(dt, playerEl, tgt, tgtEl);
     this.hud.tick();
   }
@@ -2401,24 +2432,6 @@ export class Game {
       const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
       this.hud.marker(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
     }
-  }
-
-  // Navball: 機体姿勢と各基準方向(ワールド)を渡して姿勢儀を描画する
-  private updateNavball(o: Vec3, pv: Vec3, tgt: Ship | null): void {
-    if (!this.player.alive || this.mapMode) {
-      this.navball.setVisible(false);
-      return;
-    }
-    this.navball.setVisible(true);
-    const pro = norm(pv);
-    const h = norm(cross(o, pv));
-    this.navball.update(this.player.att.q, {
-      earthDown: scale(norm(o), -1),
-      prograde: pro,
-      normal: h,
-      radialOut: cross(pro, h),
-      target: tgt ? norm(sub(tgt.state.r, o)) : null,
-    });
   }
 
   private shiftBeltNodes(): void {
@@ -2733,6 +2746,12 @@ export class Game {
     if (this.mapMode) {
       this.hud.hideMarker('pro');
       this.hud.hideMarker('retro');
+      this.hud.hideMarker('nrm');
+      this.hud.hideMarker('anm');
+      this.hud.hideMarker('radout');
+      this.hud.hideMarker('radin');
+      this.hud.hideMarker('tgtdir');
+      this.hud.hideMarker('atgdir');
       this.hud.hideMarker('bore');
       this.hud.hideMarker('lead');
       // 自機位置マーカー
@@ -2746,12 +2765,37 @@ export class Game {
     }
 
     if (!this.mapMode) {
-      // プログレード / レトログレード
+      // 軌道基準方向 (Navball の代わり)
       const proDir = norm(pv);
-      const pro = this.project(scale(proDir, 5e4));
-      this.hud.marker('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PRO');
-      const ret = this.project(scale(proDir, -5e4));
-      this.hud.marker('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RET');
+      const nrmDir = norm(cross(o, pv));
+      const radDir = cross(proDir, nrmDir);
+      const DIST = 5e4; // 遠方に投影して方向を示す
+      
+      const pro = this.project(scale(proDir, DIST));
+      this.hud.marker('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PRO [W]');
+      const ret = this.project(scale(proDir, -DIST));
+      this.hud.marker('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RET [S]');
+      
+      const nrm = this.project(scale(nrmDir, DIST));
+      this.hud.marker('nrm', 'mk-nrm', '▲', nrm.x, nrm.y, nrm.front, 'NRM [A]');
+      const anm = this.project(scale(nrmDir, -DIST));
+      this.hud.marker('anm', 'mk-nrm', '▽', anm.x, anm.y, anm.front, 'ANM [D]');
+      
+      const radOut = this.project(scale(radDir, DIST));
+      this.hud.marker('radout', 'mk-rad', '◎', radOut.x, radOut.y, radOut.front, 'OUT [Q]');
+      const radIn = this.project(scale(radDir, -DIST));
+      this.hud.marker('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'IN [E]');
+      
+      if (tgt) {
+        const tgtDir = norm(sub(tgt.state.r, o));
+        const tmk = this.project(scale(tgtDir, DIST));
+        this.hud.marker('tgtdir', 'mk-tgtdir', '◇', tmk.x, tmk.y, tmk.front, '');
+        const atmk = this.project(scale(tgtDir, -DIST));
+        this.hud.marker('atgdir', 'mk-tgtdir', '◆', atmk.x, atmk.y, atmk.front, '');
+      } else {
+        this.hud.hideMarker('tgtdir');
+        this.hud.hideMarker('atgdir');
+      }
     }
 
     // 機首方向(ボアサイト)
@@ -2801,11 +2845,14 @@ export class Game {
       if (t !== null && t < 25) {
         const lead = addScaled(relP, relV, t);
         const p = this.project(lead);
-        this.hud.marker('lead', 'mk-lead', '✛', p.x, p.y, p.front, 'LEAD');
+        this.hud.marker('lead', 'mk-lead', '✛', p.x, p.y, p.front, '');
         leadShown = true;
       }
     }
     if (!leadShown) this.hud.hideMarker('lead');
+
+    // 重なったマーカーテキストを押し退けて線で繋ぐ
+    this.hud.resolveMarkerCollisions();
   }
 
   // ターゲットの軌道面との交線(相対昇交点・降交点)を自機の軌道上に表示する。
