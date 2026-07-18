@@ -84,7 +84,7 @@ import {
 } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
 
-type GamePhase = 'playing' | 'won' | 'lost';
+type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
 interface EnemySpec {
   name: string;
@@ -203,6 +203,8 @@ export class Game {
   private autoWarp = false;
 
   private phase: GamePhase = 'playing';
+  // 第零ステージ専用: 制限時間内の撃墜数を競うスコアアタックの残り時間(実秒)
+  private stage0TimeLeft = C.STAGE0_TIME_LIMIT;
   private simTime = 0;
   private lastSimDt = 0;
   private warpIdx = 0;
@@ -392,14 +394,25 @@ export class Game {
     }
     this.retargetNearest();
 
-    this.hud.toast(
-      `<b>作戦目標: 敵機 ${this.enemies.length} 機を全機撃破せよ</b><br>` +
-        (stage === 2
-          ? '敵の一部はモルニヤ級の高楕円軌道上にいる — [M] 軌道計画モードで遷移を計画せよ<br>'
-          : '[Tab] ターゲット選択 → [F] ターゲット基準推進で接近 → [,/.] タイムワープで会合を短縮<br>') +
-        '[H] キーで操作方法を表示',
-      12000,
-    );
+    if (stage === 0) {
+      this.spawnStage0InitialAmmo();
+      this.hud.toast(
+        `<b>訓練ステージ: 制限時間 ${Math.floor(C.STAGE0_TIME_LIMIT / 60)}分で何機撃墜できるか</b><br>` +
+          '周囲5km以内の色分けされた集団を撃墜せよ — RCS並進(WSADQE)と回転(IKJLUO)の練習に最適<br>' +
+          '補給マガジンが近くに浮いている — 弾切れ時は回収せよ<br>' +
+          '[H] キーで操作方法を表示',
+        12000,
+      );
+    } else {
+      this.hud.toast(
+        `<b>作戦目標: 敵機 ${this.enemies.length} 機を全機撃破せよ</b><br>` +
+          (stage === 2
+            ? '敵の一部はモルニヤ級の高楕円軌道上にいる — [M] 軌道計画モードで遷移を計画せよ<br>'
+            : '[Tab] ターゲット選択 → [F] ターゲット基準推進で接近 → [,/.] タイムワープで会合を短縮<br>') +
+          '[H] キーで操作方法を表示',
+        12000,
+      );
+    }
   }
 
   // 描画に使うカメラ(戦闘 / 軌道計画で切り替え)
@@ -425,11 +438,13 @@ export class Game {
     };
   }
 
-  // ステージごとの敵軌道。ステージ1は自機軌道の近傍、
-  // ステージ2は低軌道 2 機 + モルニヤ級高楕円軌道 3 機。
+  // ステージごとの敵軌道。ステージ0は自機周囲 5km 以内に密集する近接戦闘訓練、
+  // ステージ1は自機軌道の近傍、ステージ2は低軌道 2 機 + モルニヤ級高楕円軌道 3 機。
   private makeEnemySpecs(base: OrbitState, stage: number): EnemySpec[] {
     const r0 = len(base.r);
     const hHat = norm(cross(base.r, base.v));
+
+    if (stage === 0) return this.makeStage0Specs(base, hHat);
 
     const phased = (dAlong: number): OrbitState => {
       const ang = dAlong / r0;
@@ -490,6 +505,71 @@ export class Game {
     ];
   }
 
+  // 第零ステージ: 色分けされた 5 グループ(各 10 機)を自機周囲 5km 以内に配置する。
+  // ローカル基底(動径 r̂・進行方向 v̂・軌道法線 ĥ)上でクラスタ中心を円周状に散らし、
+  // 各機はクラスタ中心の近傍にさらにジッタを加える。速度は自機と同一(概ね等速の
+  // フォーメーション)にすることで、ヒルの方程式に従うゆるやかな相対運動だけが残り、
+  // 静止した的にならず適度に動き続ける近接戦闘訓練場になる。
+  private makeStage0Specs(base: OrbitState, hHat: Vec3): EnemySpec[] {
+    const vHat = norm(base.v);
+    const rHat = norm(base.r);
+    const specs: EnemySpec[] = [];
+    const groupCount = C.STAGE0_GROUP_ACCENTS.length;
+    const safeRange = C.STAGE0_MAX_RANGE * 0.94; // マージンを残して確実に5km以内に収める
+
+    for (let gi = 0; gi < groupCount; gi++) {
+      const theta = (gi / groupCount) * Math.PI * 2;
+      const centerDist = safeRange * (0.52 + Math.random() * 0.14);
+      const cAlong = Math.cos(theta) * centerDist;
+      const cNormal = Math.sin(theta) * centerDist;
+      const cRadial = randSym(safeRange * 0.1);
+
+      for (let i = 0; i < C.STAGE0_PER_GROUP; i++) {
+        const jAlong = cAlong + randSym(500);
+        const jNormal = cNormal + randSym(500);
+        const jRadial = cRadial + randSym(350);
+        let off = add(scale(vHat, jAlong), scale(hHat, jNormal));
+        off = add(off, scale(rHat, jRadial));
+        const offLen = len(off);
+        if (offLen > safeRange) off = scale(off, safeRange / offLen);
+
+        specs.push({
+          name: `${C.STAGE0_GROUP_LABELS[gi]}-${i + 1}`,
+          state: { r: add(base.r, off), v: clone(base.v) },
+          hp: C.STAGE0_ENEMY_HP,
+          accent: C.STAGE0_GROUP_ACCENTS[gi]!,
+        });
+      }
+    }
+    return specs;
+  }
+
+  // 第零ステージ開始時: 自機の近く(1km 以内)に補給マガジンを複数浮かべておく
+  private spawnStage0InitialAmmo(): void {
+    for (let i = 0; i < C.STAGE0_AMMO_PICKUPS; i++) {
+      this.spawnMagPickup(C.STAGE0_AMMO_MIN_DIST, C.STAGE0_AMMO_MAX_DIST);
+    }
+  }
+
+  // 第零ステージの制限時間(実秒。タイムワープの影響を受けない)を減算し、
+  // 0 になったらスコアアタック終了として結果画面を表示する。
+  private updateStage0Timer(dt: number): void {
+    this.stage0TimeLeft -= dt;
+    if (this.stage0TimeLeft <= 0) {
+      this.stage0TimeLeft = 0;
+      this.phase = 'timeup';
+      this.sfx.setThrust(false);
+      this.sfx.stopBgm();
+      const acc = this.shots > 0 ? ((this.hits / this.shots) * 100).toFixed(1) : '0.0';
+      this.hud.showEnd(
+        true,
+        `撃墜 ${this.kills} / ${this.enemies.length} 機<br>` +
+          `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)`,
+        'TIME UP',
+      );
+    }
+  }
+
   // ---------------------------------------------------------------- update
 
   update(dtRaw: number): void {
@@ -507,6 +587,7 @@ export class Game {
       this.simulate(dt);
       if (this.mapMode) this.updateMapPlanning(dt);
       else this.input.takeClicks(); // 戦闘中のクリックは射撃扱いのみ(座標キューは捨てる)
+      if (this.stage === 0) this.updateStage0Timer(dt);
     } else {
       this.lastSimDt = 0;
       this.sfx.setThrust(false);
@@ -980,12 +1061,14 @@ export class Game {
     }
   }
 
-  // 自機軌道の少し先(同一軌道を位相シフト)に補給マガジンを投入する
-  private spawnMagPickup(): void {
+  // 自機軌道の少し先(同一軌道を位相シフト)に補給マガジンを投入する。
+  // 既定は 2.5〜5km 先(通常ステージの残弾補給用)。第零ステージの開始時配置では
+  // より近い距離を明示的に渡す。
+  private spawnMagPickup(minDist = 2500, maxDist = 5000): void {
     const r = this.player.state.r;
     const v = this.player.state.v;
     const hHat = norm(cross(r, v));
-    const ang = (2500 + Math.random() * 2500) / len(r); // 2.5〜5km 先
+    const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
     const mp: MagPickup = {
       state: {
         r: rotateAxis(r, hHat, ang),
@@ -2129,6 +2212,7 @@ export class Game {
         shots: this.shots,
         kills: this.kills,
         total: this.enemies.length,
+        stage0TimeLeft: this.stage === 0 ? this.stage0TimeLeft : null,
       });
 
       if (tgt) {
