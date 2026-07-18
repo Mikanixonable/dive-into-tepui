@@ -6,17 +6,15 @@
 // 周期が互いに素なので 2 声のフェイズが少しずつずれていき(ライヒのフェイジング)、
 // その上に四度堆積のパッドと低いドローンが漂う。レトロシンセ的な柔らかい
 // 波形(sine / triangle)のみで、打楽器は使わない。
-const BGM_STEP_DUR = 0.42; // ゆっくりしたパルス
-const BGM_SCALE = [146.83, 164.81, 196.0, 220.0, 261.63, 293.66, 329.63, 392.0]; // D E G A C D E G
-const BGM_PAT_A = [0, 4, 2, 5, 3, 7, 2, 6, 0, 5, 3, 6, 2, 7, 4, 6]; // 16 拍
-const BGM_PAT_B = [7, 3, 5, 2, 6, 4, 5, 3, 6, 2, 4, 5]; // 12 拍(ポリメトリック)
+// 作曲データ(音階/パターン/パッド/拍長)は src/assets/bgm.json に分離してある。
+import bgmData from '../assets/bgm.json';
+
+const BGM_STEP_DUR: number = bgmData.stepDur; // ゆっくりしたパルス
+const BGM_SCALE: number[] = bgmData.scale; // D E G A C D E G
+const BGM_PAT_A: number[] = bgmData.patA; // 16 拍
+const BGM_PAT_B: number[] = bgmData.patB; // 12 拍(ポリメトリック)
 // 四度堆積のパッド(3度を含まないので長短が定まらず、空気感だけが残る)
-const BGM_PADS: number[][] = [
-  [73.42, 98.0, 130.81, 196.0], // D2 G2 C3 G3
-  [82.41, 110.0, 146.83, 220.0], // E2 A2 D3 A3
-  [98.0, 130.81, 174.61, 261.63], // G2 C3 F3 C4
-  [110.0, 146.83, 196.0, 293.66], // A2 D3 G3 D4
-];
+const BGM_PADS: number[][] = bgmData.pads; // D2G2C3G3 / E2A2D3A3 / G2C3F3C4 / A2D3G3D4
 
 const BGM_ENABLED_KEY = 'tepui.settings.bgm'; // localStorage キー
 
