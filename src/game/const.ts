@@ -125,3 +125,16 @@ export const AUTOWARP_MARGIN = 15;
 export const AUTOWARP_STOP = 20;
 
 export const STAGE1_CLEARED_KEY = 'tepui.stage1.cleared'; // localStorage キー
+
+// --- 第零ステージ(近接戦闘訓練): RCS・並進操作に慣れるためのアーケード的
+// スコアアタック。色分けされた集団が自機周囲 5km 以内に密集し、制限時間内の
+// 撃墜数を競う。いつでも選択可能(解放条件なし)。---
+export const STAGE0_GROUP_ACCENTS = [0xff4a3d, 0x3dc6ff, 0x3dff8f, 0xffe23d, 0xbf3dff]; // 赤/青/緑/黄/紫
+export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
+export const STAGE0_PER_GROUP = 10; // グループあたりの機数(総計 STAGE0_GROUP_ACCENTS.length 倍)
+export const STAGE0_ENEMY_HP = 1; // 一撃撃破の軽量機(操作練習向けにテンポ重視)
+export const STAGE0_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]
+export const STAGE0_TIME_LIMIT = 120; // 制限時間 [実秒]
+export const STAGE0_AMMO_PICKUPS = 4; // 開始時に浮かべておく補給マガジンの数
+export const STAGE0_AMMO_MIN_DIST = 300; // 補給の配置距離 [m](自機から)
+export const STAGE0_AMMO_MAX_DIST = 900;

@@ -24,6 +24,7 @@ export interface StatsData {
   shots: number;
   kills: number;
   total: number;
+  stage0TimeLeft: number | null; // 第零ステージのスコアアタック残り時間 [実秒](非対象なら null)
 }
 
 export interface TargetData {
@@ -153,6 +154,13 @@ const STYLE = `
   background: ${SURFACE}; border: 1px solid ${EDGE};
   display: flex; align-items: center; justify-content: center; font-size: 15px; color: ${INK_SOFT};
 }
+#hud-stage0 {
+  position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+  display: none; text-align: center; min-width: 170px; padding: 8px 16px;
+}
+#hud-stage0 .t { font-size: 22px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
+#hud-stage0 .t.warn { color: ${ACCENT}; }
+#hud-stage0 .k { font-size: 11px; color: ${INK_SOFT}; margin-top: 2px; }
 #hud-settings {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   display: none; min-width: 260px; pointer-events: auto;
@@ -190,6 +198,8 @@ const STYLE = `
   #navball { width: 100px !important; height: 100px !important; bottom: 130px !important; }
   #hud-gear { top: 8px; width: 26px; height: 26px; font-size: 13px; }
   #hud-settings { min-width: 0; width: 78vw; }
+  #hud-stage0 { top: 42px; min-width: 130px; padding: 6px 10px; }
+  #hud-stage0 .t { font-size: 17px; }
 }
 `;
 
@@ -282,6 +292,9 @@ export class Hud {
     const plan = el('div', 'hud-plan', this.root, 'panel');
     plan.innerHTML = `<h3>MANEUVER PLAN [M]</h3><div data-id="planbody"></div>`;
     plan.style.display = 'none';
+
+    const stage0 = el('div', 'hud-stage0', this.root, 'panel');
+    stage0.innerHTML = `<div class="t" data-id="stage0time"></div><div class="k">残り時間 — 撃墜 <span data-id="stage0kills"></span></div>`;
 
     const gear = el('div', 'hud-gear', this.root);
     gear.textContent = '⚙';
@@ -404,6 +417,24 @@ export class Hud {
       tEl.classList.toggle('warn-hot', d.hullTemp > 0.7 * C.MAX_HULL_TEMP);
     }
     this.setText('count', `${d.total - d.kills}/${d.total}`);
+
+    const stage0El = document.getElementById('hud-stage0');
+    if (stage0El) {
+      if (d.stage0TimeLeft !== null) {
+        stage0El.style.display = 'block';
+        const t = Math.max(0, d.stage0TimeLeft);
+        const mm = Math.floor(t / 60);
+        const ss = Math.floor(t % 60);
+        const timeEl = this.els.get('stage0time');
+        if (timeEl) {
+          timeEl.textContent = `${mm}:${String(ss).padStart(2, '0')}`;
+          timeEl.classList.toggle('warn', t <= 20);
+        }
+        this.setText('stage0kills', `${d.kills}/${d.total}`);
+      } else {
+        stage0El.style.display = 'none';
+      }
+    }
   }
 
   setTarget(t: TargetData | null): void {
@@ -550,14 +581,16 @@ export class Hud {
     }
   }
 
-  showEnd(win: boolean, detailHtml: string): void {
+  // title を渡すと見出しを差し替える(第零ステージのスコアアタック終了など、
+  // 勝敗二択に収まらない結果画面向け)。
+  showEnd(win: boolean, detailHtml: string, title?: string): void {
     const e = document.getElementById('hud-end');
     if (!e) return;
     e.className = win ? 'win' : 'lose';
     e.style.display = 'flex';
     e.style.pointerEvents = 'auto'; // タップでも再出撃できるようにする
     e.innerHTML = `
-      <h1>${win ? 'MISSION COMPLETE' : 'SHIP LOST'}</h1>
+      <h1>${title ?? (win ? 'MISSION COMPLETE' : 'SHIP LOST')}</h1>
       <div class="detail">${detailHtml}</div>
       <div class="restart">[R] キーまたはタップで再出撃</div>`;
     e.onclick = () => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyR' }));
