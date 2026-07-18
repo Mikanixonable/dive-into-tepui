@@ -273,8 +273,8 @@ function buildDebrisRod() {
   return new THREE.Mesh(geo, std(0x3c4149, { roughness: 0.8, metalness: 0.2 }));
 }
 
-// ステージ0の敵機: キレート錯体を模した対照的なデザイン
-function buildStage0Enemy() {
+// ステージ0の敵機A: キレート錯体を模した対照的なデザイン (オリジナルのまま)
+function buildStage0EnemyA() {
   const accent = 0x3dc6ff; // プレースホルダ
   const g = new THREE.Group();
 
@@ -321,9 +321,64 @@ function buildStage0Enemy() {
   return g;
 }
 
-// プラズマ弾: 単純な球体
+// ステージ0の敵機B: 平らなリング形状
+function buildStage0EnemyB() {
+  const accent = 0x3dc6ff;
+  const g = new THREE.Group();
+
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.6, 8), std(0x4a4f58));
+  core.rotation.x = Math.PI / 2;
+  g.add(core);
+
+  const ligandMat = std(accent, { metalness: 0.4, roughness: 0.4 });
+  ligandMat.userData = { role: 'accent' };
+  
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(2.5, 0.2, 8, 16), std(0x666d78, { metalness: 0.6 }));
+  g.add(ring);
+
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const pod = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 8), ligandMat);
+    pod.position.set(Math.cos(a) * 2.5, Math.sin(a) * 2.5, 0);
+    g.add(pod);
+  }
+
+  return g;
+}
+
+// ステージ0の敵機C: トゲトゲした四面体形状
+function buildStage0EnemyC() {
+  const accent = 0x3dc6ff;
+  const g = new THREE.Group();
+
+  const core = new THREE.Mesh(new THREE.TetrahedronGeometry(1.8, 0), std(0x4a4f58));
+  g.add(core);
+
+  const ligandMat = std(accent, { metalness: 0.4, roughness: 0.4 });
+  ligandMat.userData = { role: 'accent' };
+
+  const positions = [
+    new THREE.Vector3(1, 1, 1),
+    new THREE.Vector3(-1, -1, 1),
+    new THREE.Vector3(-1, 1, -1),
+    new THREE.Vector3(1, -1, -1),
+  ];
+
+  for (const p of positions) {
+    p.normalize().multiplyScalar(2.4);
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2.0, 4), ligandMat);
+    spike.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p.clone().normalize());
+    spike.position.copy(p);
+    g.add(spike);
+  }
+
+  return g;
+}
+
+// プラズマ弾: 棒状の光弾
 function buildPlasmaBullet() {
-  const geo = new THREE.SphereGeometry(0.4, 8, 8);
+  const geo = new THREE.CylinderGeometry(0.2, 0.2, 4.0, 5);
+  geo.rotateX(Math.PI / 2); // Z方向に向ける
   const mat = new THREE.MeshBasicMaterial({
     color: 0x3dc6ff,
     transparent: true,
@@ -338,7 +393,9 @@ function buildPlasmaBullet() {
 const models = {
   player: buildPlayerShip(),
   enemy: buildEnemyShip(),
-  stage0Enemy: buildStage0Enemy(),
+  stage0EnemyA: buildStage0EnemyA(),
+  stage0EnemyB: buildStage0EnemyB(),
+  stage0EnemyC: buildStage0EnemyC(),
   magazine: buildMagazineMesh(),
   magPickup: buildMagPickup(),
   bullet: buildBulletMesh(),

@@ -7,7 +7,9 @@ import * as THREE from 'three/webgpu';
 
 import playerData from '../assets/models/player.json';
 import enemyData from '../assets/models/enemy.json';
-import stage0EnemyData from '../assets/models/stage0Enemy.json';
+import stage0EnemyDataA from '../assets/models/stage0EnemyA.json';
+import stage0EnemyDataB from '../assets/models/stage0EnemyB.json';
+import stage0EnemyDataC from '../assets/models/stage0EnemyC.json';
 import magazineData from '../assets/models/magazine.json';
 import magPickupData from '../assets/models/magPickup.json';
 import bulletData from '../assets/models/bullet.json';
@@ -71,7 +73,9 @@ function memoParse<T extends THREE.Object3D>(data: object): () => T {
 
 const parsePlayer = memoParse<THREE.Group>(playerData);
 const parseEnemy = memoParse<THREE.Group>(enemyData);
-const parseStage0Enemy = memoParse<THREE.Group>(stage0EnemyData);
+const parseStage0EnemyA = memoParse<THREE.Group>(stage0EnemyDataA);
+const parseStage0EnemyB = memoParse<THREE.Group>(stage0EnemyDataB);
+const parseStage0EnemyC = memoParse<THREE.Group>(stage0EnemyDataC);
 const parseMagazine = memoParse<THREE.Group>(magazineData);
 const parseMagPickup = memoParse<THREE.Group>(magPickupData);
 const parseBullet = memoParse<THREE.Mesh>(bulletData);
@@ -138,8 +142,12 @@ export function buildEnemyShip(accent = 0xff4a3d): THREE.Group {
   return g;
 }
 
-export function buildStage0EnemyShip(accent = 0x3dc6ff): THREE.Group {
-  const g = parseStage0Enemy();
+export function buildStage0EnemyShip(accent = 0x3dc6ff, typeIndex = 0): THREE.Group {
+  let g: THREE.Group;
+  if (typeIndex === 1) g = parseStage0EnemyB();
+  else if (typeIndex === 2) g = parseStage0EnemyC();
+  else g = parseStage0EnemyA();
+  
   g.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!mesh.isMesh) return;

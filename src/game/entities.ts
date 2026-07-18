@@ -15,6 +15,8 @@ export interface Ship {
   maxHp: number;
   alive: boolean;
   lastFireSim?: number;
+  burstLeft?: number;
+  burstDelay?: number;
 }
 
 export interface Bullet {

@@ -517,8 +517,9 @@ export class Hud {
         const hpEl = this.els.get('stage0hp');
         if (hpEl) {
           const { hp, maxHp } = d.stage0State;
-          hpEl.textContent = `HP: ${'■'.repeat(Math.max(0, hp))}${'□'.repeat(Math.max(0, maxHp - hp))}`;
-          hpEl.classList.toggle('warn', hp <= 1);
+          const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+          hpEl.innerHTML = `HP: ${Math.floor(hp)} / ${maxHp} <div style="display:inline-block; width:120px; height:10px; border:1px solid #aaa; background:#222; vertical-align:middle; margin-left:8px;"><div style="width:${pct}%; height:100%; background:${hp <= maxHp * 0.3 ? '#ff4a3d' : '#4de8ff'}; transition:width 0.2s;"></div></div>`;
+          hpEl.classList.toggle('warn', hp <= maxHp * 0.3);
         }
         this.setText('stage0phase', d.stage0State.msg);
         this.setText('stage0kills', `${d.kills}`);
@@ -542,7 +543,7 @@ export class Hud {
       <div class="row"><span class="k">距離</span><span class="v">${fmtDist(t.dist)}</span></div>
       <div class="row"><span class="k">接近速度</span><span class="v">${fmtSpeed(t.closing)}</span></div>
       <div class="row"><span class="k">相対速度</span><span class="v">${fmtSpeed(t.relSpeed)}</span></div>
-      <div class="row"><span class="k">HP</span><span class="v">${'■'.repeat(Math.max(0, t.hp))}${'□'.repeat(Math.max(0, t.maxHp - t.hp))}</span></div>
+      <div class="row"><span class="k">HP</span><span class="v">${Math.floor(t.hp)} / ${t.maxHp} <div style="display:inline-block; width:100px; height:8px; border:1px solid #aaa; background:#222; vertical-align:middle; margin-left:4px;"><div style="width:${Math.max(0, Math.min(100, (t.hp / t.maxHp) * 100))}%; height:100%; background:${t.hp <= t.maxHp * 0.3 ? '#ff4a3d' : '#ffc86e'}; transition:width 0.2s;"></div></div></span></div>
       <div class="row"><span class="k">遠地点 AP</span><span class="v">${fmtDist(t.apAlt)}</span></div>
       <div class="row"><span class="k">近地点 PE</span><span class="v">${fmtDist(t.peAlt)}</span></div>
       <div class="row"><span class="k">傾斜角 INC</span><span class="v">${isFinite(t.incDeg) ? t.incDeg.toFixed(2) + '°' : '---'}</span></div>

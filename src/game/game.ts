@@ -467,8 +467,8 @@ export class Game {
 
 
     if (stage === -1) {
-      this.magsLeft = 0;
-      this.roundsInMag = 0;
+      this.magsLeft = C.INITIAL_MAGS - 1;
+      this.roundsInMag = C.MAG_ROUNDS;
       this.spawnStage00InitialAmmo();
       this.hud.toast(
         `<b>サバイバル任務: 弾薬を回収し、無限の敵から生き残れ！</b><br>` +
@@ -657,6 +657,8 @@ export class Game {
     for (let i = 0; i < C.MAX_MAG_PICKUPS; i++) {
       this.spawnMagPickup(C.STAGE00_AMMO_MIN_DIST, C.STAGE00_AMMO_MAX_DIST);
     }
+    // 初期状態でもランダムに敵を配置する
+    this.spawnStage00Wave('random');
   }
 
   private updateStage00(dt: number): void {
@@ -698,7 +700,7 @@ export class Game {
     }
   }
 
-  private spawnStage00Wave(): void {
+  private spawnStage00Wave(forcedPattern?: 'linear' | 'random'): void {
     this.stage00WaveCount++;
     const w = this.stage00WaveCount;
     const shipCount = 5 + Math.floor((w - 1) * 2); // 5, 7, 9...
@@ -729,8 +731,8 @@ export class Game {
     }
 
     // 自機に向かう相対速度成分(フライパス用)
-    // 200m ~ 1500m の範囲ですれ違うようにターゲット位置をずらす
-    const missDist = 200 + Math.random() * 1300;
+    // 1000m ~ 2000m の範囲ですれ違うようにターゲット位置をずらす
+    const missDist = 1000 + Math.random() * 1000;
     const directDir = norm(sub(r0, centerR));
     const missPerp = randPerp(directDir);
     const targetPos = add(r0, scale(missPerp, missDist));
@@ -742,13 +744,25 @@ export class Game {
     const spread = scale(perpDir, Math.random() * 20);
     const centerV = add(v0, add(scale(approachDir, flybySpeed), spread));
 
-    const accent = 0xff6a00;
+    const colors = [0xff6a00, 0x3dc6ff, 0xff2d6b, 0xaaff00, 0xd000ff, 0xffd700];
+    const accent = colors[Math.floor(Math.random() * colors.length)]!;
+    const typeIndex = Math.floor(Math.random() * 3);
+
+    const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');
 
     for (let i = 0; i < shipCount; i++) {
-      // 隊列は接近方向に対して後方へ直列に並べる
-      const offset = (i - (shipCount - 1) / 2) * C.STAGE00_FORMATION_SPACING;
-      // approachDir が前なので、後ろへ下げるには -approachDir
-      const pos = add(centerR, scale(approachDir, -offset));
+      let pos: Vec3;
+      if (pattern === 'linear') {
+        // 隊列は接近方向に対して後方へ直列に並べる。直線状のものも少しランダムに配置
+        const offset = (i - (shipCount - 1) / 2) * C.STAGE00_FORMATION_SPACING;
+        const jitter = scale(randPerp(approachDir), (Math.random() - 0.5) * 200);
+        pos = add(centerR, add(scale(approachDir, -offset), jitter));
+      } else {
+        // ランダムな球状の配置
+        const randDir = norm(v3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5));
+        const randDist = Math.random() * C.STAGE00_FORMATION_SPACING * (shipCount / 2);
+        pos = add(centerR, scale(randDir, randDist));
+      }
 
       // 高度を少し下げる (200m~1km)
       const altDrop = C.STAGE00_ALT_OFFSET_MIN + Math.random() * (C.STAGE00_ALT_OFFSET_MAX - C.STAGE00_ALT_OFFSET_MIN);
@@ -763,7 +777,7 @@ export class Game {
           w: v3(0, 0, 0),
           inertia: v3(1, 1, 1),
         },
-        obj: buildStage0EnemyShip(accent),
+        obj: buildStage0EnemyShip(accent, typeIndex),
         radius: C.ENEMY_RADIUS,
         hp: C.STAGE0_ENEMY_HP,
         maxHp: C.STAGE0_ENEMY_HP,
@@ -797,6 +811,11 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.zoomActive = !this.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
+
+    // HP自動回復 (1分間に1回復)
+    if (this.phase === 'playing' && this.player.alive && this.player.hp > 0 && this.player.hp < this.player.maxHp) {
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + dt / 60.0);
+    }
     if (this.phase !== 'playing' && this.mapMode) {
       // ゲーム終了時はマップモードを強制解除する
       this.mapMode = false;
@@ -1173,20 +1192,34 @@ export class Game {
     this.cleanup();
 
     if (this.stage === -1 && this.phase === 'playing' && canAct) {
-      this.updateEnemyAI();
+      this.updateEnemyAI(dt);
     }
   }
 
-  private updateEnemyAI(): void {
+  private updateEnemyAI(dt: number): void {
     if (!this.player.alive) return;
     for (const e of this.enemies) {
       if (!e.alive) continue;
       const dist = len(sub(this.player.state.r, e.state.r));
       if (dist < C.STAGE00_MAX_RANGE && dist > 50) {
-        if (e.lastFireSim === undefined) e.lastFireSim = this.simTime - Math.random() * C.ENEMY_FIRE_INTERVAL;
-        if (this.simTime - e.lastFireSim > C.ENEMY_FIRE_INTERVAL) {
-          e.lastFireSim = this.simTime;
-          this.firePlasma(e);
+        if (e.burstLeft && e.burstLeft > 0) {
+          e.burstDelay = (e.burstDelay ?? 0) - dt;
+          if (e.burstDelay <= 0) {
+            this.firePlasma(e);
+            e.burstLeft--;
+            e.burstDelay = C.ENEMY_BURST_INTERVAL;
+          }
+        } else {
+          if (e.lastFireSim === undefined) e.lastFireSim = this.simTime - Math.random() * C.ENEMY_FIRE_INTERVAL;
+          if (this.simTime - e.lastFireSim > C.ENEMY_FIRE_INTERVAL) {
+            e.lastFireSim = this.simTime;
+            if (Math.random() < 0.3) {
+              const counts = [3, 5, 7, 20];
+              e.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
+              e.burstDelay = C.ENEMY_BURST_INTERVAL;
+            }
+            this.firePlasma(e);
+          }
         }
       }
     }
@@ -1196,19 +1229,21 @@ export class Game {
     const r = enemy.state.r;
     const v = enemy.state.v;
     const toPlayer = sub(this.player.state.r, r);
-    // 偏差射撃 (弾も敵も自機も重力で落下するため、重力項は相殺される。純粋な相対速度で予測する)
-    const timeToHit = len(toPlayer) / C.PLASMA_BULLET_SPEED;
+    let timeToHit = len(toPlayer) / C.PLASMA_BULLET_SPEED;
     const pV = this.player.state.v;
     const eV = enemy.state.v;
 
     // 自機と敵機の相対速度を考慮した予測位置 (自機の未来位置 - 敵の未来位置)
     const relV = sub(pV, eV);
-    const predictedRelPos = add(toPlayer, scale(relV, timeToHit));
+    let predictedRelPos = add(toPlayer, scale(relV, timeToHit));
+    timeToHit = len(predictedRelPos) / C.PLASMA_BULLET_SPEED;
+    predictedRelPos = add(toPlayer, scale(relV, timeToHit));
+    
     const aimDir = norm(predictedRelPos);
 
     // 波状攻撃が進むにつれて弾が多くなる(散布界は少し持たせる)
     const perp = randPerp(aimDir);
-    const spreadAng = (Math.random() * 1 * Math.PI) / 180;
+    const spreadAng = (Math.random() * 0.1 * Math.PI) / 180; // 0.1度に絞ってビームのようにする
     const actualAim = rotateAxis(aimDir, perp, spreadAng);
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
@@ -1668,7 +1703,7 @@ export class Game {
       if (this.player.alive && this.segmentHit(pb, this.player)) {
         pb.alive = false;
         this.scene.remove(pb.obj);
-        this.player.hp--;
+        this.player.hp -= 5;
         this.lostReason = '敵のエネルギー弾により機体を喪失した';
         this.hits++;
         this.sfx.hit();
@@ -1693,7 +1728,7 @@ export class Game {
 
   private applyHit(b: Bullet, ship: Ship): void {
     b.alive = false;
-    ship.hp--;
+    ship.hp -= (ship === this.player ? 5 : 1);
     if (ship === this.player) this.lostReason = '自弾の被弾により機体を喪失した';
     this.hits++;
     this.sfx.hit();
