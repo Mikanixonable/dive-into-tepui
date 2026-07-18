@@ -86,10 +86,12 @@ export const BELT_MAX_VISIBLE = 12; // ベルト描画の最大リンク数
 export const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの物理接触用の半径 [m]
 export const EJECTED_MAG_MASS = 20; // 同、物理接触用の質量(実質量ではなくゲーム内衝突用の値)
 
-// マガジンチェーンの可動域: 機関銃のベルトと同様、接合部の折れ曲がり(隣接リンクの
-// 進行方向の変化=ピッチ/ヨー方向)は距離拘束のみで自由に許容するが、チェーン軸まわりの
-// ロール(ねじれ)は角度上限で制限し、暴れた見た目にならないようにする。
-export const MAG_CHAIN_MAX_ROLL_DEG = 35;
+// マガジンチェーンの可動域: 各つなぎ目(リンク間接合部)で許容する最大折れ角。
+// ロール(チェーン軸まわりのねじれ)・ピッチ(上下方向の折れ)・ヨー(左右方向の折れ)
+// をそれぞれ独立に制限する。いずれも隣接リンク間の相対角度 [deg]。
+export const MAG_CHAIN_MAX_ROLL_DEG = 15;  // ロール上限
+export const MAG_CHAIN_MAX_PITCH_DEG = 30; // ピッチ上限(上下方向の折れ)
+export const MAG_CHAIN_MAX_YAW_DEG = 10;   // ヨー上限(左右方向の折れ)
 export const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
 export const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
 // 各リンクを前後2点の中点(または根本側は固定方向の延長点)へわずかに
