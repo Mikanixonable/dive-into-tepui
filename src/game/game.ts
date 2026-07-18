@@ -2154,6 +2154,7 @@ export class Game {
     const beltCount = Math.min(this.magsLeft, C.BELT_MAX_VISIBLE);
     const targetFeed = 1 - this.roundsInMag / C.MAG_ROUNDS;
     if (targetFeed < this.beltFeed - 0.5) {
+      this.shiftBeltNodes();
       this.beltFeed = targetFeed; // マガジン消費で巻き戻り(リンク減と同時なので連続)
     } else {
       this.beltFeed += (targetFeed - this.beltFeed) * Math.min(1, dt * 12);
@@ -2273,6 +2274,30 @@ export class Game {
     });
   }
 
+  private shiftBeltNodes(): void {
+    const n = this.beltLinks.length;
+    if (n < 2) return;
+
+    // ノードを 1 つ前詰め (i=0 は消費済みマガジン、破棄)
+    for (let i = 0; i < n - 1; i++) {
+      this.beltPos[i]!.copy(this.beltPos[i + 1]!);
+      this.beltPrevPos[i]!.copy(this.beltPrevPos[i + 1]!);
+      this.beltTwist[i] = this.beltTwist[i + 1]!;
+    }
+
+    // 末尾に新ノードを追加(前の末尾から +X 方向へ PITCH 分延長)
+    // このノードは直後に beltCount が 1 減って非表示になるので、
+    // 位置精度はどうでもよい(次フレームで距離拘束に収束する)。
+    const last = this.beltPos[n - 2]!;
+    const lastPrev = this.beltPrevPos[n - 2]!;
+
+    // 前のノードの速度ベクトルを引き継いで自然に延長
+    beltTmpA.copy(last).sub(lastPrev);
+    this.beltPos[n - 1]!.copy(last).add(beltTmpA).addScaledVector(X_AXIS, MAG_BELT_PITCH);
+    this.beltPrevPos[n - 1]!.copy(this.beltPos[n - 1]!); // 新末尾は追加直後は速度ゼロ
+    this.beltTwist[n - 1] = this.beltTwist[n - 2]!;
+  }
+
   // マガジンベルトのたわみを物理演算(Verlet 積分 + 距離拘束)で解く。
   // 軌道上は自由落下(無重力)なので、通常の重力によるたわみは発生しない。
   // 代わりに、機体自身の推力加速度(並進)とスピン(角速度・角加速度)が
@@ -2304,7 +2329,7 @@ export class Game {
     beltAThrustBody.set(aThrustWorld.x, aThrustWorld.y, aThrustWorld.z).applyQuaternion(beltQInv);
 
     const h = Math.min(dt, 0.05); // 積分刻みの上限(大きな dt でのはみ出し防止)
-    const damping = 0.9; // 慣性を維持するため減衰を弱める
+    const damping = 0.95; // 慣性を維持するため減衰を弱める
     // コリオリ力 -2ω×v の係数: beltVel = pos-prevPos = v*dt なので速度への変換に 2/dt を使う。
     // invH2(=2/h) ではなく実際の dt を使わないと dt > 0.05 のときコリオリ力が過大になる。
     const inv2Dt = invDt * 2;
@@ -2337,26 +2362,6 @@ export class Game {
     beltRootPos.copy(beltAnchor).addScaledVector(X_AXIS, MAG_BELT_PITCH);
     this.beltPos[0]!.copy(beltRootPos);
     this.beltPrevPos[0]!.copy(beltRootPos);
-
-    // リンク1(次のマガジン消費後に根本になるリンク)のソフトロック。
-    // beltFeed が 0→1 に進む後半から徐々に「次の根本位置」へ引き寄せ、
-    // beltFeed = 1(消費直前)で完全固定する。これにより、消費後に beltPos[0] が
-    // 新根本位置(= 現在の nextRootPos)へジャンプしても、beltPos[1] が
-    // すでにそこにいるため衝撃(距離拘束の急激な補正)が発生しない。
-    // pos と prevPos をともに目標へ lerp して Verlet の速度も同時に絞ることで、
-    // ロック直前の残留速度がスナップ後に飛び跳ねるのを防ぐ。
-    if (n >= 2) {
-      // LOCK_START を超えた beltFeed の割合を [0, 1] にマップしたロック係数
-      const LOCK_START = 0.5;
-      const lockFactor = Math.max(0, (this.beltFeed - LOCK_START) / (1 - LOCK_START));
-      if (lockFactor > 0) {
-        // 次の根本位置 = 現在の根本位置 + 1 リンク分(+X 方向)
-        // beltFeed → 1 のとき、スナップ後の beltPos[0] 位置と一致する。
-        beltTmpA.copy(beltRootPos).addScaledVector(X_AXIS, MAG_BELT_PITCH);
-        this.beltPos[1]!.lerp(beltTmpA, lockFactor);
-        this.beltPrevPos[1]!.lerp(beltTmpA, lockFactor);
-      }
-    }
 
     for (let iter = 0; iter < 6; iter++) {
       for (let i = 0; i < n; i++) {
