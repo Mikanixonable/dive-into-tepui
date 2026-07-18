@@ -14,6 +14,11 @@ export interface Ship {
   hp: number;
   maxHp: number;
   alive: boolean;
+  accent?: number;
+  waveId?: number;
+  lastTargetedSim?: number;
+  
+  // 敵AI用
   lastFireSim?: number;
   burstLeft?: number;
   burstDelay?: number;
