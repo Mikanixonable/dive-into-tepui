@@ -64,3 +64,71 @@ export function moonPosition(t: number, phase0: number): Vec3 {
   const p = eclToGame(xe, ye, ze);
   return v3(p.x * MOON_DIST, p.y * MOON_DIST, p.z * MOON_DIST);
 }
+
+// Earth-Moon L-points (calculated from Earth center in ECI)
+export function emLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec3, L3: Vec3, L4: Vec3, L5: Vec3 } {
+  const mPos = moonPosition(t, phase0);
+  const R = MOON_DIST;
+  const mu = MU_MOON / (3.986004418e14 + MU_MOON);
+  
+  const rL1 = R * (1 - Math.pow(mu / 3, 1/3));
+  const rL2 = R * (1 + Math.pow(mu / 3, 1/3));
+  const rL3 = -R * (1 + 5/12 * mu);
+
+  const l1 = v3(mPos.x * rL1 / R, mPos.y * rL1 / R, mPos.z * rL1 / R);
+  const l2 = v3(mPos.x * rL2 / R, mPos.y * rL2 / R, mPos.z * rL2 / R);
+  const l3 = v3(mPos.x * rL3 / R, mPos.y * rL3 / R, mPos.z * rL3 / R);
+
+  // L4/L5 are 60 degrees ahead/behind the Moon in its orbit plane
+  const node = -(2 * Math.PI * t) / NODE_PERIOD;
+  const ci = Math.cos(MOON_INC);
+  const si = Math.sin(MOON_INC);
+  const cn = Math.cos(node);
+  const sn = Math.sin(node);
+  
+  // Orbit normal in ecliptic
+  const nxe = sn * si;
+  const nye = -cn * si;
+  const nze = ci;
+  const nHat = eclToGame(nxe, nye, nze);
+  
+  const mHat = v3(mPos.x / R, mPos.y / R, mPos.z / R);
+  const tHat = v3(
+    nHat.y * mHat.z - nHat.z * mHat.y,
+    nHat.z * mHat.x - nHat.x * mHat.z,
+    nHat.x * mHat.y - nHat.y * mHat.x
+  );
+  
+  const cos60 = 0.5;
+  const sin60 = Math.sqrt(3) / 2;
+  
+  const l4 = v3(
+    R * (mHat.x * cos60 + tHat.x * sin60),
+    R * (mHat.y * cos60 + tHat.y * sin60),
+    R * (mHat.z * cos60 + tHat.z * sin60)
+  );
+  const l5 = v3(
+    R * (mHat.x * cos60 - tHat.x * sin60),
+    R * (mHat.y * cos60 - tHat.y * sin60),
+    R * (mHat.z * cos60 - tHat.z * sin60)
+  );
+  
+  return { L1: l1, L2: l2, L3: l3, L4: l4, L5: l5 };
+}
+
+// Sun-Earth L-points (calculated from Earth center in ECI)
+// Note: Earth is at origin in ECI. The Sun is at `sunPosition`.
+// L1 is between Sun and Earth. L2 is past Earth.
+export function seLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec3 } {
+  const sPos = sunPosition(t, phase0);
+  const D = SUN_DIST;
+  const mu = 3.986004418e14 / MU_SUN;
+  
+  const rL = D * Math.pow(mu / 3, 1/3); // distance from Earth
+  const sHat = v3(sPos.x / D, sPos.y / D, sPos.z / D);
+  
+  const l1 = v3(sHat.x * rL, sHat.y * rL, sHat.z * rL); // towards Sun
+  const l2 = v3(-sHat.x * rL, -sHat.y * rL, -sHat.z * rL); // away from Sun
+  
+  return { L1: l1, L2: l2 };
+}
