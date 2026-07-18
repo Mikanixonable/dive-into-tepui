@@ -6,6 +6,8 @@
 export interface MouseDelta {
   dx: number;
   dy: number;
+  panDx: number;
+  panDy: number;
   wheel: number;
 }
 
@@ -16,8 +18,11 @@ export class Input {
   private pressQueue: string[] = [];
   private dx = 0;
   private dy = 0;
+  private panDx = 0;
+  private panDy = 0;
   private wheel = 0;
   private dragging = false;
+  private panDragging = false;
   private dragMoved = 0;
   private clicks: { x: number; y: number }[] = [];
   // 右ボタン押下位置のキュー(マップモードのコンテキストメニュー呼び出し用)。
@@ -55,6 +60,7 @@ export class Input {
       this.keys.clear();
       this.mouseFiring = false;
       this.dragging = false;
+      this.panDragging = false;
     });
 
     target.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -75,6 +81,12 @@ export class Input {
       } else if (e.button === 2) {
         this.mouseFiring = true;
         this.rightClicks.push({ x: e.clientX, y: e.clientY });
+      } else if (e.button === 1) {
+        // Map mode consumes this as a camera translation gesture. Keep it
+        // separate from the left-drag orbit rotation delta.
+        e.preventDefault();
+        this.panDragging = true;
+        target.setPointerCapture(e.pointerId);
       }
     });
     target.addEventListener('pointermove', (e) => {
@@ -88,6 +100,11 @@ export class Input {
         const d = this.currentPinchDist();
         this.wheel += (this.pinchDist - d) * 3;
         this.pinchDist = d;
+        return;
+      }
+      if (this.panDragging) {
+        this.panDx += e.movementX;
+        this.panDy += e.movementY;
         return;
       }
       if (this.dragging) {
@@ -106,11 +123,13 @@ export class Input {
         this.pinchDist = 0;
       }
       if (e.button === 2) this.mouseFiring = false;
+      if (e.button === 1) this.panDragging = false;
     };
     target.addEventListener('pointerup', release);
     target.addEventListener('pointercancel', (e) => {
       this.pointers.delete(e.pointerId);
       this.dragging = false;
+      this.panDragging = false;
       this.mouseFiring = false;
       this.pinchDist = 0;
     });
@@ -175,9 +194,17 @@ export class Input {
   }
 
   consumeMouse(): MouseDelta {
-    const d = { dx: this.dx, dy: this.dy, wheel: this.wheel };
+    const d = {
+      dx: this.dx,
+      dy: this.dy,
+      panDx: this.panDx,
+      panDy: this.panDy,
+      wheel: this.wheel,
+    };
     this.dx = 0;
     this.dy = 0;
+    this.panDx = 0;
+    this.panDy = 0;
     this.wheel = 0;
     return d;
   }
