@@ -33,7 +33,7 @@ export const SHADOW_MIN_AMBIENT = 0.35; // 影の中に残す環境光の割合
 // 並進推力(WSADQE の全 6 方向、前後左右上下を問わず共通)出力 3 段階 [m/s^2]。
 // [1]/[2]/[3] キーで切替。並進とエンジンは統合されており、方向キーが押されて
 // いる間だけ、選択中の段の加速度がその方向へ出る(常時噴射のカットオフ段はない)。
-export const THROTTLE_LEVELS = [5.0, 10.0, 15.0];
+export const THROTTLE_LEVELS = [5.0, 20.0, 100.0];//エンジン出力、スロットル
 export const THROTTLE_DEFAULT_IDX = 0;
 
 export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
@@ -163,15 +163,33 @@ export const AUTOWARP_STOP = 20;
 
 export const STAGE1_CLEARED_KEY = 'tepui.stage1.cleared'; // localStorage キー
 
-// --- 第零ステージ(近接戦闘訓練): RCS・並進操作に慣れるためのアーケード的
-// スコアアタック。色分けされた集団が自機周囲 5km 以内に密集し、制限時間内の
-// 撃墜数を競う。いつでも選択可能(解放条件なし)。---
+// --- 第零ステージ(近接戦闘訓練) ---
 export const STAGE0_GROUP_ACCENTS = [0xff4a3d, 0x3dc6ff, 0x3dff8f, 0xffe23d, 0xbf3dff]; // 赤/青/緑/黄/紫
 export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
-export const STAGE0_PER_GROUP = 10; // グループあたりの機数(総計 STAGE0_GROUP_ACCENTS.length 倍)
-export const STAGE0_ENEMY_HP = 1; // 一撃撃破の軽量機(操作練習向けにテンポ重視)
+export const STAGE0_PER_GROUP = 10; // グループあたりの機数
+export const STAGE0_ENEMY_HP = 1; // 一撃撃破の軽量機
 export const STAGE0_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]
-export const STAGE0_TIME_LIMIT = 300; // 制限時間 [実秒]
+export const STAGE0_TIME_LIMIT = 120; // 制限時間 [実秒]
 export const STAGE0_AMMO_PICKUPS = 4; // 開始時に浮かべておく補給マガジンの数
 export const STAGE0_AMMO_MIN_DIST = 300; // 補給の配置距離 [m](自機から)
 export const STAGE0_AMMO_MAX_DIST = 900;
+
+// --- ステージ00(無限耐久サバイバル) ---
+export const STAGE00_MAX_RANGE = 15000; // 自機からの配置半径の上限(デスポーン距離) [m]
+export const STAGE00_AMMO_MIN_DIST = 50; // 補給の配置距離 [m](自機から)
+export const STAGE00_AMMO_MAX_DIST = 200;
+export const STAGE00_SPAWN_DELAY = 10; // 弾取得からスポーンまでの遅延 [s]
+export const STAGE00_FORMATION_SPACING = 200; // 編隊の機体間隔 [m]
+export const STAGE00_ALT_OFFSET_MIN = -1000; // 自機よりどれくらい低くするか [m]
+export const STAGE00_ALT_OFFSET_MAX = -200;
+export const STAGE00_SPAWN_INTERVAL = 30.0; // 波状攻撃の間隔 [s]
+export const STAGE00_SPAWN_DIST_MIN = 4000;
+export const STAGE00_SPAWN_DIST_MAX = 6000;
+export const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
+
+export const PLAYER_MAX_HP = 3;
+export const PLASMA_BULLET_SPEED = 800 * 2 / 3; // MUZZLE_SPEED の約 2/3
+export const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
+export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s] (3倍に増加)
+export const ENEMY_FIRE_RANGE = 4000; // 敵が射撃してくる距離 [m]
+

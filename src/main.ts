@@ -35,8 +35,13 @@ function selectStage(): Promise<number> {
     div.innerHTML =
       `<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
       '<div style="font-size:12px;color:#7d838c;margin-bottom:12px">ステージを選択 ([0] / [1] / [2] キーまたはクリック)</div>';
+    const b00 = btn(
+      '[0] 無限耐久サバイバル (Stage 00)',
+      '常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く',
+      true,
+    );
     const b0 = btn(
-      '[0] 訓練ステージ — 近接戦闘訓練',
+      '[T] 訓練ステージ — 近接戦闘訓練 (Stage 0)',
       '常時選択可。5km以内に色分けされた敵集団 約50機、制限時間2分の撃墜数スコアアタック',
       true,
     );
@@ -48,6 +53,7 @@ function selectStage(): Promise<number> {
         : '🔒 第一ステージをクリアすると解放',
       unlocked,
     );
+    div.appendChild(b00);
     div.appendChild(b0);
     div.appendChild(b1);
     div.appendChild(b2);
@@ -59,11 +65,13 @@ function selectStage(): Promise<number> {
       resolve(stage);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.code === 'Digit0') done(0);
+      if (e.code === 'Digit0') done(-1); // 0 key = Stage 00
+      if (e.code === 'KeyT') done(0);    // T key = Stage 0
       if (e.code === 'Digit1' || e.code === 'Enter') done(1);
       if (e.code === 'Digit2' && unlocked) done(2);
     };
     window.addEventListener('keydown', onKey);
+    b00.addEventListener('click', () => done(-1));
     b0.addEventListener('click', () => done(0));
     b1.addEventListener('click', () => done(1));
     if (unlocked) b2.addEventListener('click', () => done(2));
