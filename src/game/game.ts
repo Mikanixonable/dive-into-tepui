@@ -51,7 +51,7 @@ import {
 } from '../physics/vec3';
 import { atmosphericDensity } from '../physics/atmosphere';
 import * as C from './const';
-import { Bullet, Casing, DebrisPiece, FlashEffect, MagPickup, Ship } from './entities';
+import { Bullet, Casing, DebrisPiece, FlashEffect, MagPickup, Ship, PlasmaBullet } from './entities';
 
 import { Input } from './input';
 import { TouchControls } from './touch';
@@ -83,6 +83,8 @@ import {
   buildMagazineMesh,
   buildMagPickup,
   buildPlayerShip,
+  buildStage0EnemyShip,
+  buildPlasmaMesh,
 } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
 import { TrajLine } from '../render/trajline';
@@ -172,11 +174,13 @@ export class Game {
   private readonly player: Ship;
   private readonly enemies: Ship[] = [];
   private bullets: Bullet[] = [];
+  private plasmaBullets: PlasmaBullet[] = [];
   private casings: Casing[] = [];
   private debris: DebrisPiece[] = [];
   private effects: FlashEffect[] = [];
   // ターゲット標的面の通過点(ターゲット相対オフセットで保持し、的に貼り付いて見せる)
   private boardMarks: { off: Vec3; age: number }[] = [];
+
 
   private readonly glowTex: THREE.Texture;
   // 軌道線もモノトーン + オレンジアクセントの配色: 自機 = 明るいグレー、
@@ -240,9 +244,13 @@ export class Game {
   private phase: GamePhase = 'playing';
   // 第零ステージ専用: 制限時間内の撃墜数を競うスコアアタックの残り時間(実秒)
   private stage0TimeLeft = C.STAGE0_TIME_LIMIT;
+
+  private stage00Phase: 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat' | 'game_over' = 'waiting_for_ammo';
+  private stage00SpawnTimer = 0;
+  private stage00WaveCount = 0;
   private simTime = 0;
   private lastSimDt = 0;
-  private warpIdx = 0;
+  private warpIdx = C.THROTTLE_DEFAULT_IDX;
   private paused = false;
 
   private rcsDamp = false;
@@ -268,7 +276,7 @@ export class Game {
   private readonly plumeOuter: THREE.Mesh;
   private thrustVizDir: Vec3 | null = null; // 現在の推力方向(ワールド、噴射エフェクト用)
   private thrustAccelVec: Vec3 = v3(); // 現在の推力加速度(ワールド、ベルト物理の慣性力用)
-  private prevBodyW = v3(); // 前フレームの機体角速度(ベルト物理の角加速度推定用)
+  private prevBodyW = v3(); // 前フレーム的機体角速度(ベルト物理の角加速度推定用)
   private readonly rcsPuffs: THREE.Mesh[] = []; // RCS ブロック位置の噴射パフ(4基)
   private readonly sunLight: THREE.DirectionalLight;
   private readonly ambient: THREE.AmbientLight;
@@ -297,7 +305,7 @@ export class Game {
   private magsLeft = C.INITIAL_MAGS - 1; // ベルトに連結された未使用マガジン数
   private wasEmptyClick = false;
   private magPickups: MagPickup[] = [];
-  private resupplyCheckAt = C.RESUPPLY_CHECK_INTERVAL; // [sim s]
+  private resupplyCheckAt = 0; // [sim s]
   private clankCd = 0; // 薬莢接触音のレート制限 [実 s]
   private beltFeed = 0; // 給弾の進み(0..1、表示用に平滑化)
   private readonly beltGroup = new THREE.Group();
@@ -454,8 +462,8 @@ export class Game {
       att: this.progradeAttitude(playerState),
       obj: buildPlayerShip(),
       radius: C.PLAYER_RADIUS,
-      hp: 1,
-      maxHp: 1,
+      hp: C.PLAYER_MAX_HP,
+      maxHp: C.PLAYER_MAX_HP,
       alive: true,
     };
     this.scene.add(this.player.obj);
@@ -499,13 +507,26 @@ export class Game {
     }
 
 
-    if (stage === 0) {
+    if (stage === -1) {
+      this.magsLeft = 0;
+      this.roundsInMag = 0;
+      this.spawnStage00InitialAmmo();
+      this.hud.toast(
+        `<b>サバイバル任務: 弾薬を回収し、無限の敵から生き残れ！</b><br>` +
+          '敵は次々と波状攻撃を仕掛けてくる。<br>' +
+          '補給マガジンが近くに浮いている — 弾切れ時は回収せよ<br>' +
+          '[H] キーで操作方法を表示',
+        12000,
+      );
+    } else if (stage === 0) {
+      this.magsLeft = 0;
+      this.roundsInMag = 0;
       this.spawnStage0InitialAmmo();
       this.hud.toast(
         `<b>訓練ステージ: 制限時間 ${Math.floor(C.STAGE0_TIME_LIMIT / 60)}分で何機撃墜できるか</b><br>` +
-        '周囲5km以内の色分けされた集団を撃墜せよ — RCS並進(WSADQE)と回転(IKJLUO)の練習に最適<br>' +
-        '補給マガジンが近くに浮いている — 弾切れ時は回収せよ<br>' +
-        '[H] キーで操作方法を表示',
+          '周囲5km以内の色分けされた集団を撃墜せよ — RCS並進(WSADQE)と回転(IKJLUO)の練習に最適<br>' +
+          '補給マガジンが近くに浮いている — 弾切れ時は回収せよ<br>' +
+          '[H] キーで操作方法を表示',
         12000,
       );
     } else {
@@ -549,6 +570,7 @@ export class Game {
     const r0 = len(base.r);
     const hHat = norm(cross(base.r, base.v));
 
+    if (stage === -1) return []; // ステージ00は初期敵なしで動的スポーンする
     if (stage === 0) return this.makeStage0Specs(base, hHat);
 
     const phased = (dAlong: number): OrbitState => {
@@ -611,10 +633,6 @@ export class Game {
   }
 
   // 第零ステージ: 色分けされた 5 グループ(各 10 機)を自機周囲 5km 以内に配置する。
-  // ローカル基底(動径 r̂・進行方向 v̂・軌道法線 ĥ)上でクラスタ中心を円周状に散らし、
-  // 各機はクラスタ中心の近傍にさらにジッタを加える。速度は自機と同一(概ね等速の
-  // フォーメーション)にすることで、ヒルの方程式に従うゆるやかな相対運動だけが残り、
-  // 静止した的にならず適度に動き続ける近接戦闘訓練場になる。
   private makeStage0Specs(base: OrbitState, hHat: Vec3): EnemySpec[] {
     const vHat = norm(base.v);
     const rHat = norm(base.r);
@@ -669,9 +687,148 @@ export class Game {
       this.hud.showEnd(
         true,
         `撃墜 ${this.kills} / ${this.enemies.length} 機<br>` +
-        `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)`,
+          `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)`,
         'TIME UP',
       );
+    }
+  }
+
+  // ステージ00(サバイバル)開始時:
+  private spawnStage00InitialAmmo(): void {
+    for (let i = 0; i < C.MAX_MAG_PICKUPS; i++) {
+      this.spawnMagPickup(C.STAGE00_AMMO_MIN_DIST, C.STAGE00_AMMO_MAX_DIST);
+    }
+  }
+
+  private updateStage00(dt: number): void {
+    if (this.phase !== 'playing') return;
+
+    if (this.stage00Phase === 'waiting_for_ammo') {
+      if (this.magsLeft > 0 || this.roundsInMag > 0) {
+        this.stage00Phase = 'spawning_enemies';
+        this.stage00SpawnTimer = C.STAGE00_SPAWN_DELAY;
+        this.hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
+      }
+    } else if (this.stage00Phase === 'spawning_enemies') {
+      this.stage00SpawnTimer -= dt;
+      if (this.stage00SpawnTimer <= 0) {
+        this.spawnStage00Wave();
+        this.stage00Phase = 'active_combat';
+        this.stage00SpawnTimer = C.STAGE00_SPAWN_INTERVAL;
+      }
+    } else if (this.stage00Phase === 'active_combat') {
+      // 遠距離の敵をデスポーン(配列からはcleanupで消えるが、alive=falseにして消去)
+      for (let i = 0; i < this.enemies.length; i++) {
+        const e = this.enemies[i]!;
+        if (!e.alive) continue;
+        const dist = len(sub(e.state.r, this.player.state.r));
+        if (dist > C.STAGE00_MAX_RANGE) {
+          e.alive = false;
+          this.scene.remove(e.obj);
+          this.enemyOrbitLines[i]?.update(null, v3());
+        }
+      }
+
+      this.stage00SpawnTimer -= dt;
+      if (this.stage00SpawnTimer <= 0) {
+        this.spawnStage00Wave();
+        // 重なりを増やすため、少し間隔をランダムにするかそのまま
+        this.stage00SpawnTimer = C.STAGE00_SPAWN_INTERVAL;
+        this.hud.toast(`波状攻撃 第${this.stage00WaveCount}波 接近中！`, 3000);
+      }
+    }
+  }
+
+  private spawnStage00Wave(): void {
+    this.stage00WaveCount++;
+    const w = this.stage00WaveCount;
+    const shipCount = 5 + Math.floor((w - 1) * 2); // 5, 7, 9...
+    
+    const types = ['behind', 'front', 'above', 'side'];
+    const type = w === 1 ? 'behind' : types[Math.floor(Math.random() * types.length)];
+    
+    const dist = C.STAGE00_SPAWN_DIST_MIN + Math.random() * (C.STAGE00_SPAWN_DIST_MAX - C.STAGE00_SPAWN_DIST_MIN);
+    const r0 = this.player.state.r;
+    const v0 = this.player.state.v;
+    const hHat = norm(cross(r0, v0));
+    const rHat = norm(r0);
+    const vHat = cross(hHat, rHat);
+    
+    let centerR: Vec3;
+    
+    // 配置位置を決定 (少しランダムなオフセットもつける)
+    const dr = (Math.random() - 0.5) * 1000;
+    if (type === 'behind') {
+      centerR = add(r0, add(scale(vHat, -dist), scale(rHat, dr)));
+    } else if (type === 'front') {
+      centerR = add(r0, add(scale(vHat, dist), scale(rHat, dr)));
+    } else if (type === 'above') {
+      centerR = add(r0, add(scale(rHat, dist), scale(vHat, dr)));
+    } else { // side
+      const sideSign = Math.random() < 0.5 ? 1 : -1;
+      centerR = add(r0, add(scale(hHat, dist * sideSign), scale(rHat, dr)));
+    }
+
+    // 自機に向かう相対速度成分(フライパス用)
+    // 200m ~ 1500m の範囲ですれ違うようにターゲット位置をずらす
+    const missDist = 200 + Math.random() * 1300;
+    const directDir = norm(sub(r0, centerR));
+    const missPerp = randPerp(directDir);
+    const targetPos = add(r0, scale(missPerp, missDist));
+
+    const approachDir = norm(sub(targetPos, centerR));
+    const flybySpeed = C.STAGE00_FLYBY_SPEED + (w - 1) * 10; // ウェーブが進むと少し速くなる
+    // 敵の初速度 = 自機の速度 + 接近速度 + わずかな横ブレ
+    const perpDir = randPerp(approachDir);
+    const spread = scale(perpDir, Math.random() * 20);
+    const centerV = add(v0, add(scale(approachDir, flybySpeed), spread));
+
+    const accent = 0xff6a00;
+
+    for (let i = 0; i < shipCount; i++) {
+      // 隊列は接近方向に対して後方へ直列に並べる
+      const offset = (i - (shipCount - 1) / 2) * C.STAGE00_FORMATION_SPACING;
+      // approachDir が前なので、後ろへ下げるには -approachDir
+      const pos = add(centerR, scale(approachDir, -offset));
+      
+      // 高度を少し下げる (200m~1km)
+      const altDrop = C.STAGE00_ALT_OFFSET_MIN + Math.random() * (C.STAGE00_ALT_OFFSET_MAX - C.STAGE00_ALT_OFFSET_MIN);
+      const r = add(pos, scale(norm(pos), altDrop));
+
+      const ship: Ship = {
+        name: `W${w}-${i + 1}`,
+        state: { r, v: clone(centerV) },
+        prevR: clone(r),
+        att: {
+          q: randomQuat(),
+          w: v3(0, 0, 0),
+          inertia: v3(1, 1, 1),
+        },
+        obj: buildStage0EnemyShip(accent),
+        radius: C.ENEMY_RADIUS,
+        hp: C.STAGE0_ENEMY_HP,
+        maxHp: C.STAGE0_ENEMY_HP,
+        alive: true,
+      };
+      ship.obj.scale.setScalar(C.ENEMY_SCALE);
+      
+      const zAxis = norm(ship.state.v);
+      const yAxis = norm(ship.state.r);
+      const xAxis = cross(yAxis, zAxis);
+      const m = new THREE.Matrix4().makeBasis(
+        new THREE.Vector3(xAxis.x, xAxis.y, xAxis.z),
+        new THREE.Vector3(yAxis.x, yAxis.y, yAxis.z),
+        new THREE.Vector3(zAxis.x, zAxis.y, zAxis.z),
+      );
+      const tmpQ = new THREE.Quaternion().setFromRotationMatrix(m);
+      ship.att.q = { x: tmpQ.x, y: tmpQ.y, z: tmpQ.z, w: tmpQ.w };
+
+      this.enemies.push(ship);
+      this.scene.add(ship.obj);
+      
+      const ol = new OrbitLine(accent, 0.35);
+      this.enemyOrbitLines.push(ol);
+      this.scene.add(ol.line);
     }
   }
 
@@ -755,6 +912,7 @@ export class Game {
           this.target = bestTarget;
         }
       }
+      if (this.stage === -1) this.updateStage00(dt);
       if (this.stage === 0) this.updateStage0Timer(dt);
     } else {
       this.lastSimDt = 0;
@@ -1462,6 +1620,11 @@ export class Game {
         b.prevR = clone(b.state.r);
         stepOrbitRK4(b.state, sub, this.envBullet);
       }
+      for (const pb of this.plasmaBullets) {
+        if (!pb.alive) continue;
+        pb.prevR = clone(pb.state.r);
+        stepOrbitRK4(pb.state, sub, this.envBullet);
+      }
       for (const cs of this.casings) stepOrbitRK4(cs.state, sub, this.envSmall);
       for (const d of this.debris) stepOrbitRK4(d.state, sub, this.envSmall);
       for (const mp of this.magPickups) if (mp.alive) stepOrbitRK4(mp.state, sub, this.envSmall);
@@ -1489,6 +1652,70 @@ export class Game {
     for (const mp of this.magPickups) if (mp.alive) stepAttitude(mp.att, v3(), attDt);
 
     this.cleanup();
+
+    if (this.stage === -1 && this.phase === 'playing' && canAct) {
+      this.updateEnemyAI();
+    }
+  }
+
+  private updateEnemyAI(): void {
+    if (!this.player.alive) return;
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const dist = len(sub(this.player.state.r, e.state.r));
+      if (dist < C.STAGE00_MAX_RANGE && dist > 50) {
+        if (e.lastFireSim === undefined) e.lastFireSim = this.simTime - Math.random() * C.ENEMY_FIRE_INTERVAL;
+        if (this.simTime - e.lastFireSim > C.ENEMY_FIRE_INTERVAL) {
+          e.lastFireSim = this.simTime;
+          this.firePlasma(e);
+        }
+      }
+    }
+  }
+
+  private firePlasma(enemy: Ship): void {
+    const r = enemy.state.r;
+    const v = enemy.state.v;
+    const toPlayer = sub(this.player.state.r, r);
+    // 偏差射撃 (弾も敵も自機も重力で落下するため、重力項は相殺される。純粋な相対速度で予測する)
+    const timeToHit = len(toPlayer) / C.PLASMA_BULLET_SPEED;
+    const pV = this.player.state.v;
+    const eV = enemy.state.v;
+    
+    // 自機と敵機の相対速度を考慮した予測位置 (自機の未来位置 - 敵の未来位置)
+    const relV = sub(pV, eV);
+    const predictedRelPos = add(toPlayer, scale(relV, timeToHit));
+    const aimDir = norm(predictedRelPos);
+    
+    // 波状攻撃が進むにつれて弾が多くなる(散布界は少し持たせる)
+    const perp = randPerp(aimDir);
+    const spreadAng = (Math.random() * 1 * Math.PI) / 180;
+    const actualAim = rotateAxis(aimDir, perp, spreadAng);
+
+    const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
+    
+    const pb: PlasmaBullet = {
+      state: { r: clone(r), v: bV },
+      prevR: clone(r),
+      bornSim: this.simTime,
+      obj: buildPlasmaMesh(),
+      alive: true,
+    };
+    pb.obj.position.set(r.x, r.y, r.z);
+    // 進行方向に向ける
+    const mz = new THREE.Matrix4().lookAt(
+      new THREE.Vector3(),
+      new THREE.Vector3(actualAim.x, actualAim.y, actualAim.z),
+      new THREE.Vector3(0, 1, 0)
+    );
+    pb.obj.quaternion.setFromRotationMatrix(mz);
+
+    this.plasmaBullets.push(pb);
+    this.scene.add(pb.obj);
+    if (this.plasmaBullets.length > C.MAX_BULLETS * 2) {
+      const old = this.plasmaBullets.shift()!;
+      this.scene.remove(old.obj);
+    }
   }
 
   // 弾薬まわりの毎フレーム処理: 補給の取り込み・低残弾時の補給投入。
@@ -1917,6 +2144,22 @@ export class Game {
         this.applyHit(b, this.player);
       }
     }
+    for (const pb of this.plasmaBullets) {
+      if (!pb.alive) continue;
+      if (this.player.alive && this.segmentHit(pb, this.player)) {
+        pb.alive = false;
+        this.scene.remove(pb.obj);
+        this.player.hp--;
+        this.lostReason = '敵のエネルギー弾により機体を喪失した';
+        this.hits++;
+        this.sfx.hit();
+        this.spawnFlash(clone(pb.state.r), clone(this.player.state.v), 2, 8, 0.3, 0xffa0ff);
+        this.spawnFragments(clone(pb.state.r), clone(this.player.state.v), 3, 0x6a7078, 0.18, 0.5, 5.5);
+        if (this.player.hp <= 0) {
+          this.destroyShip(this.player);
+        }
+      }
+    }
   }
 
   private segmentHit(b: Bullet, ship: Ship): boolean {
@@ -1966,7 +2209,7 @@ export class Game {
     if (this.target === ship) {
 
     }
-    if (this.enemies.every((e) => !e.alive)) {
+    if (this.stage !== 0 && this.enemies.every((e) => !e.alive)) {
       this.phase = 'won';
       this.sfx.setThrust(false);
       this.sfx.stopBgm();
@@ -2083,6 +2326,15 @@ export class Game {
         this.simTime - b.bornSim > C.BULLET_LIFETIME ||
         this.altitudeOf(b.state.r) < C.DEBRIS_REENTRY_ALT;
       if (expired) this.scene.remove(b.obj);
+      return !expired;
+    });
+
+    this.plasmaBullets = this.plasmaBullets.filter((pb) => {
+      const expired =
+        !pb.alive ||
+        this.simTime - pb.bornSim > C.PLASMA_LIFETIME ||
+        this.altitudeOf(pb.state.r) < C.DEBRIS_REENTRY_ALT;
+      if (expired) this.scene.remove(pb.obj);
       return !expired;
     });
 
@@ -2293,6 +2545,15 @@ export class Game {
         b.obj.quaternion.copy(tmpQ);
       }
     }
+    
+    for (const pb of this.plasmaBullets) {
+      pb.obj.position.set(pb.state.r.x - o.x, pb.state.r.y - o.y, pb.state.r.z - o.z);
+      tmpV.set(pb.state.v.x - pv.x, pb.state.v.y - pv.y, pb.state.v.z - pv.z);
+      if (tmpV.lengthSq() > 1e-6) {
+        tmpQ.setFromUnitVectors(Z_AXIS, tmpV.normalize());
+        pb.obj.quaternion.copy(tmpQ);
+      }
+    }
 
     for (const cs of this.casings) {
       cs.obj.position.set(cs.state.r.x - o.x, cs.state.r.y - o.y, cs.state.r.z - o.z);
@@ -2405,6 +2666,8 @@ export class Game {
     this.updateHudPanels(dt, playerEl, tgt, tgtEl);
     this.hud.tick();
   }
+
+
 
   // 自機位置の地表影(円柱近似 + 縁のぼかし)による日照率 0..1
   private shadowLitFactor(r: Vec3): number {
@@ -2941,7 +3204,17 @@ export class Game {
         shots: this.shots,
         kills: this.kills,
         total: this.enemies.length,
-        stage0TimeLeft: this.stage === 0 ? this.stage0TimeLeft : null,
+        stage0State:
+          this.stage === -1 || this.stage === 0
+            ? {
+                hp: this.player.hp,
+                maxHp: C.PLAYER_MAX_HP,
+                msg:
+                  this.stage === -1
+                    ? `サバイバル 第${this.stage00WaveCount}波`
+                    : `残り時間: ${Math.ceil(this.stage0TimeLeft)}秒`,
+              }
+            : null,
       });
 
       if (tgt) {

@@ -24,7 +24,7 @@ export interface StatsData {
   shots: number;
   kills: number;
   total: number;
-  stage0TimeLeft: number | null; // 第零ステージのスコアアタック残り時間 [実秒](非対象なら null)
+  stage0State: { hp: number; maxHp: number; msg: string } | null;
 }
 
 export interface TargetData {
@@ -385,7 +385,7 @@ export class Hud {
     });
 
     const stage0 = el('div', 'hud-stage0', this.root, 'panel');
-    stage0.innerHTML = `<div class="t" data-id="stage0time"></div><div class="k">残り時間 — 撃墜 <span data-id="stage0kills"></span></div>`;
+    stage0.innerHTML = `<div class="t" data-id="stage0hp"></div><div class="k"><span data-id="stage0phase"></span><br>撃墜 <span data-id="stage0kills"></span></div>`;
 
     const gear = el('div', 'hud-gear', this.root);
     gear.textContent = '⚙';
@@ -517,17 +517,16 @@ export class Hud {
 
     const stage0El = document.getElementById('hud-stage0');
     if (stage0El) {
-      if (d.stage0TimeLeft !== null) {
+      if (d.stage0State !== null) {
         stage0El.style.display = 'block';
-        const t = Math.max(0, d.stage0TimeLeft);
-        const mm = Math.floor(t / 60);
-        const ss = Math.floor(t % 60);
-        const timeEl = this.els.get('stage0time');
-        if (timeEl) {
-          timeEl.textContent = `${mm}:${String(ss).padStart(2, '0')}`;
-          timeEl.classList.toggle('warn', t <= 20);
+        const hpEl = this.els.get('stage0hp');
+        if (hpEl) {
+          const { hp, maxHp } = d.stage0State;
+          hpEl.textContent = `HP: ${'■'.repeat(Math.max(0, hp))}${'□'.repeat(Math.max(0, maxHp - hp))}`;
+          hpEl.classList.toggle('warn', hp <= 1);
         }
-        this.setText('stage0kills', `${d.kills}/${d.total}`);
+        this.setText('stage0phase', d.stage0State.msg);
+        this.setText('stage0kills', `${d.kills}`);
       } else {
         stage0El.style.display = 'none';
       }
