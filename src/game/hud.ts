@@ -257,6 +257,8 @@ export class Hud {
   // 軌道計画モードのマップツールバー(期間選択・スライダー・座標系トグル)
   onDurationSelect: ((key: string) => void) | null = null;
   onFrameToggle: (() => void) | null = null;
+  onMapFocusSelect: ((focus: 'earth' | 'moon') => void) | null = null;
+  onMapViewReset: (() => void) | null = null;
   onSliderChange: ((t: number) => void) | null = null;
 
   constructor() {
@@ -304,7 +306,7 @@ export class Hud {
     const controls = el('div', 'hud-controls', this.root);
     controls.innerHTML =
       'W/S/A/D/Q/E:並進 &nbsp;I/K/J/L/U/O:回転 &nbsp;1/2/3:並進出力 &nbsp;C:進行方向ホールド &nbsp;G:視点のRCS追従 &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
-      'Space/右クリック:射撃 &nbsp;左ドラッグ/矢印キー:視点 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
+      'Space/右クリック:射撃 &nbsp;左ドラッグ/矢印キー:視点 &nbsp;中ドラッグ:マップ平行移動 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
 
     const plan = el('div', 'hud-plan', this.root, 'panel');
     plan.innerHTML = `<h3>MANEUVER PLAN [M]</h3><div data-id="planbody"></div>`;
@@ -318,6 +320,11 @@ export class Hud {
         <span class="mt-btn" data-dur="week">7日</span>
         <span class="mt-btn" data-dur="month">28日</span>
         <span class="mt-btn" data-id="mt-frame">慣性系</span>
+      </div>
+      <div class="mt-row" data-id="mt-focus">
+        <span class="mt-btn" data-focus="earth">地球中心</span>
+        <span class="mt-btn" data-focus="moon">月中心</span>
+        <span class="mt-btn" data-id="mt-reset">視点リセット</span>
       </div>
       <input type="range" data-id="mt-slider" min="0" max="1000" value="0" />
       <div class="mt-sliderlabel" data-id="mt-sliderlabel">スライダーで未来位置を確認</div>`;
@@ -333,6 +340,20 @@ export class Hud {
     frameBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (this.onFrameToggle) this.onFrameToggle();
+    });
+    mapTool.querySelectorAll<HTMLElement>('.mt-btn[data-focus]').forEach((btn) => {
+      btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const focus = btn.dataset['focus'];
+        if (focus === 'earth' || focus === 'moon') this.onMapFocusSelect?.(focus);
+      });
+    });
+    const resetBtn = mapTool.querySelector<HTMLElement>('[data-id="mt-reset"]')!;
+    resetBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    resetBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onMapViewReset?.();
     });
     const slider = mapTool.querySelector<HTMLInputElement>('[data-id="mt-slider"]')!;
     slider.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -590,7 +611,12 @@ export class Hud {
   // durationKey: 選択中の期間ボタン('orbit'|'day'|'week'|'month')。
   // frameRotating: 太陽回転系が有効か。sliderT: スライダー位置(0..1、変更なしなら省略)。
   // sliderLabel: スライダーが 0 より大きいときに表示するラベル(T+ 表記・高度など)。
-  setMapToolbarState(durationKey: string, frameRotating: boolean, sliderLabel: string | null): void {
+  setMapToolbarState(
+    durationKey: string,
+    frameRotating: boolean,
+    sliderLabel: string | null,
+    focus: 'earth' | 'moon' = 'earth',
+  ): void {
     const bar = document.getElementById('hud-maptool');
     if (!bar) return;
     bar.querySelectorAll<HTMLElement>('.mt-btn[data-dur]').forEach((btn) => {
@@ -601,6 +627,9 @@ export class Hud {
       frameBtn.textContent = frameRotating ? '太陽回転系' : '慣性系';
       frameBtn.classList.toggle('on', frameRotating);
     }
+    bar.querySelectorAll<HTMLElement>('.mt-btn[data-focus]').forEach((btn) => {
+      btn.classList.toggle('on', btn.dataset['focus'] === focus);
+    });
     const lbl = bar.querySelector<HTMLElement>('[data-id="mt-sliderlabel"]');
     if (lbl) lbl.textContent = sliderLabel ?? 'スライダーで未来位置を確認';
   }
