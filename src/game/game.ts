@@ -1219,7 +1219,10 @@ export class Game {
   private mapLabels: { id: string; name: string; pos: Vec3 }[] = [];
 
   private drawMapLabels(o: Vec3): void {
-    const t = this.simTime;
+    const duration = this.predictDurationSec();
+    const t = (this.mapMode && this.mapSliderT > 0)
+      ? this.simTime + this.mapSliderT * duration
+      : this.simTime;
     const mPos = moonPosition(t, this.moonPhase0);
     const sPos = sunPosition(t, this.sunPhase0);
     const emL = emLagrangePoints(t, this.moonPhase0);
@@ -2079,12 +2082,17 @@ export class Game {
     const o = this.player.state.r; // フローティングオリジン
     const pv = this.player.state.v;
 
+    const duration = this.predictDurationSec();
+    const displayTime = (this.mapMode && this.mapSliderT > 0)
+      ? this.simTime + this.mapSliderT * duration
+      : this.simTime;
+
     // 地球・恒星・太陽(実寸で描画。フローティングオリジン設計により
     // カメラは常にワールド原点にあるため、地球側の平行移動量(|o| 〜 R_EARTH+高度)
     // は近地点侵入時でも 1e7 未満で、near=2m の深度バッファでも十分な精度が出る
     // (詳細は CLAUDE.md「フローティングオリジンの精度設計」参照)。
     this.earth.group.position.set(-o.x, -o.y, -o.z);
-    this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * this.simTime) / SIDEREAL_DAY);
+    this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
     this.earth.tick(dt);
 
     // カメラ: 戦闘 = 自機中心チェイス / 計画 = 地球中心軌道ビュー
@@ -2164,7 +2172,8 @@ export class Game {
 
     // 太陽・月・星: カメラ位置基準で天体暦の方向に表示(マップの遠距離ズームでも
     // 背景として振る舞う。距離は視距離に圧縮、月の角直径は実距離から換算)
-    const sd = this.sunDirV;
+    const visSunPos = sunPosition(displayTime, this.sunPhase0);
+    const sd = norm(visSunPos);
     this.starsMesh.position.copy(cam.position);
     if (this.mapMode) {
       // マップモードではカメラが遠く引かれるため、星が地球の手前にならないようにカメラの far の内側に押し込む
@@ -2179,7 +2188,8 @@ export class Game {
     );
     this.sun.mesh.quaternion.copy(cam.quaternion);
     this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
-    const moonRel = sub(this.moonPos, o); // フローティングオリジン座標(= true ECI - o)
+    const visMoonPos = moonPosition(displayTime, this.moonPhase0);
+    const moonRel = sub(visMoonPos, o); // フローティングオリジン座標(= true ECI - o)
     if (this.mapMode) {
       // マップモードは地球中心を実寸スケールで俯瞰するビューなので、月も
       // 圧縮せず実際の位置・実寸(R_MOON)で描く(シスルナ軌道の計画に、
