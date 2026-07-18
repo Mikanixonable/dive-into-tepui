@@ -23,12 +23,20 @@ const STYLE = `
 #touch-ui .tbtn .g { font-size: 16px; }
 #touch-ui .tbtn .l { font-size: 9px; color: #7d838c; margin-top: 1px; }
 #touch-ui .tbtn.held { background: rgba(255, 106, 0, 0.28); border-color: ${ACCENT}; color: #fff; }
+/* .on: 押下中かどうかに関わらず、モードが実際に ON の間ずっと点灯させる
+   (制動・微動・ホールドなどのトグル系ボタン向け。.held と見た目は同じでよい) */
+#touch-ui .tbtn.on { background: rgba(255, 106, 0, 0.28); border-color: ${ACCENT}; color: #fff; }
+#touch-ui .mini-col {
+  position: absolute; display: grid; gap: 6px; grid-template-rows: repeat(2, 52px);
+}
+#touch-ui .mini-col .tbtn { width: 46px; }
 #touch-ui .pad {
   position: absolute; display: grid; gap: 6px;
   grid-template-columns: repeat(3, 52px); grid-auto-rows: 52px;
 }
 #touch-pad-move { left: 10px; bottom: 12px; }
 #touch-pad-rot { right: 10px; bottom: 12px; }
+#touch-mode-col { right: 186px; bottom: 12px; }
 #touch-fire {
   position: absolute; right: 22px; bottom: 138px;
   width: 74px; height: 74px; border-radius: 50% !important;
@@ -53,6 +61,8 @@ const STYLE = `
   }
   #touch-pad-move { left: 6px; bottom: 6px; }
   #touch-pad-rot { right: 6px; bottom: 6px; }
+  #touch-mode-col { right: 140px; bottom: 6px; grid-template-rows: repeat(2, 40px); }
+  #touch-mode-col .tbtn { width: 38px; }
   #touch-fire { width: 56px; height: 56px; right: 14px; bottom: 116px; }
   #touch-zoom { width: 44px; height: 44px; right: 76px; bottom: 124px; }
   #touch-util { bottom: 110px; max-width: 40vw; }
@@ -67,8 +77,18 @@ interface Btn {
 }
 
 export class TouchControls {
+  // ON/OFF 状態を反映させるトグル系ボタン(制動・微動・ホールド等)。
+  // タップの押下フィードバック(.held)とは独立に、実際のモード状態で光らせる。
+  private readonly toggleButtons = new Map<string, HTMLElement>();
+
   static isTouchDevice(): boolean {
     return navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+  }
+
+  // ゲーム側のモード状態(RCS制動・微調整・進行方向ホールド等)が変化した際に
+  // 呼び、対応するボタンの ON/OFF 表示を同期する。該当ボタンが無ければ何もしない。
+  setActive(code: string, on: boolean): void {
+    this.toggleButtons.get(code)?.classList.toggle('on', on);
   }
 
   constructor(input: Input) {
@@ -80,7 +100,7 @@ export class TouchControls {
     root.id = 'touch-ui';
     document.body.appendChild(root);
 
-    const mkBtn = (parent: HTMLElement, b: Btn, id = ''): HTMLElement => {
+    const mkBtn = (parent: HTMLElement, b: Btn, id = '', isToggle = false): HTMLElement => {
       const e = document.createElement('div');
       e.className = 'tbtn';
       if (id) e.id = id;
@@ -100,6 +120,7 @@ export class TouchControls {
       e.addEventListener('pointercancel', up);
       e.addEventListener('contextmenu', (ev) => ev.preventDefault());
       parent.appendChild(e);
+      if (isToggle) this.toggleButtons.set(b.code, e);
       return e;
     };
 
@@ -131,6 +152,15 @@ export class TouchControls {
       { code: 'KeyL', glyph: '→', label: 'ヨー' },
     ]);
 
+    // 姿勢制御パッドのすぐ近くに、姿勢まわりのモード切替(制動・微動)をまとめる。
+    // ON の間は色が変わる(タップの瞬間だけ光る .held とは別に .on を常時反映)。
+    const modeCol = document.createElement('div');
+    modeCol.id = 'touch-mode-col';
+    modeCol.className = 'mini-col';
+    root.appendChild(modeCol);
+    mkBtn(modeCol, { code: 'KeyT', glyph: 'T', label: '制動' }, '', true);
+    mkBtn(modeCol, { code: 'KeyV', glyph: 'V', label: '微動' }, '', true);
+
     mkBtn(root, { code: 'Space', glyph: 'FIRE', label: '' }, 'touch-fire');
 
     // ズームは長押しでなく ON/OFF トグル(タップのたびに切り替え、指を離しても保持)
@@ -155,13 +185,13 @@ export class TouchControls {
       { code: 'Tab', glyph: 'TGT', label: '切替' },
       { code: 'Comma', glyph: '«', label: 'warp' },
       { code: 'Period', glyph: '»', label: 'warp' },
-      { code: 'KeyT', glyph: 'T', label: '制動' },
-      { code: 'KeyC', glyph: 'C', label: 'ホールド' },
       { code: 'KeyM', glyph: 'M', label: '計画' },
       { code: 'KeyN', glyph: 'N', label: 'ノードへ' },
       { code: 'KeyH', glyph: 'H', label: 'ヘルプ' },
     ]) {
       mkBtn(util, b);
     }
+    // 進行方向ホールドも ON/OFF 表示を反映するトグルボタンとして登録する
+    mkBtn(util, { code: 'KeyC', glyph: 'C', label: 'ホールド' }, '', true);
   }
 }
