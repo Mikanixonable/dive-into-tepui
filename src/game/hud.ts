@@ -664,6 +664,8 @@ export class Hud {
     visible: boolean,
     label = '',
     opacity = 1,
+    color?: string,
+    rotationDeg?: number
   ): void {
     let m = this.markers.get(key);
     if (!m) {
@@ -680,6 +682,21 @@ export class Hud {
     m.root.style.opacity = opacity >= 1 ? '' : opacity.toFixed(2);
     if (m.sym.textContent !== sym) m.sym.textContent = sym;
     if (m.lbl.textContent !== label) m.lbl.textContent = label;
+
+    if (color) {
+      m.root.style.color = color;
+      m.root.style.textShadow = `0 0 4px ${color}`;
+    } else {
+      m.root.style.color = '';
+      m.root.style.textShadow = '';
+    }
+
+    if (rotationDeg !== undefined) {
+      m.sym.style.transform = `translate(-50%, -50%) rotate(${rotationDeg}deg)`;
+      m.sym.style.display = 'inline-block';
+    } else {
+      m.sym.style.transform = 'translate(-50%, -50%)'; // default translation for sym
+    }
   }
 
   hideMarker(key: string): void {
