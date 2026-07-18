@@ -4,6 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../physics/orbital';
 import earthTextureUrl from '../assets/earth.jpg';
+import cloudsTextureUrl from '../assets/8k_clouds.jpg';
 
 function buildSurface(): THREE.Mesh {
   // インデックス付き球ジオメトリ + 焼き込みテクスチャ + スムーズシェーディング。
@@ -18,6 +19,20 @@ function buildSurface(): THREE.Mesh {
     roughness: 0.62, // 海面の太陽ハイライトがうっすら出る程度
     metalness: 0.05,
   });
+  return new THREE.Mesh(geo, mat);
+}
+
+function buildClouds(): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(R_EARTH + 12e3, 512, 384); // 地表から約12km上空
+  const texture = new THREE.TextureLoader().load(cloudsTextureUrl);
+  
+  const mat = new THREE.MeshLambertMaterial({
+    color: 0xffffff,
+    alphaMap: texture,
+    transparent: true,
+    depthWrite: false,
+  });
+  
   return new THREE.Mesh(geo, mat);
 }
 
@@ -114,6 +129,7 @@ export function createEarth(): Earth {
   const group = new THREE.Group();
   const spin = new THREE.Group();
   spin.add(buildSurface());
+  spin.add(buildClouds());
 
   // オーロラは磁気極に固定なので自転と一緒に回す
   const auroras = [buildAurora(1, 1.3), buildAurora(-1, 4.1)];
