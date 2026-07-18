@@ -3,20 +3,13 @@
 // 楕円が毎フレーム作り直されて振動して見える、(2) 大きな座標を Float32 頂点へ
 // 毎フレーム再量子化することでガタつく、という 2 つの問題があった。
 //
-// 実装方針:
-// - 頂点は「現在の origin(自機の ECI 位置)を基準とした相対座標」を
-//   毎回 f64 の JS 数値で計算する。この場合 (2) の絶対座標 Float32 量子化は
-//   そもそも発生しない(古いコメントは f64 origin 基準ではなく絶対座標での
-//   再構築を前提にした誤った懸念だった)。
-// - 残る問題は (1) のみで、これは regen 頻度そのものではなく「閾値ヒステリシス
-//   により要素が変化してから regen されるまでの間、線が実際の軌道からずれる」
-//   ことが原因。そこで用途に応じて 2 モードを使い分ける:
-//   - continuous=true (戦闘視点の自機・ターゲット線): 毎フレーム無条件に
-//     regenerate する。origin 相対計算のため残差はゼロ、量子化ガタつきなし。
-//     J2 短周期摂動(km オーダー)に追従して線が船から離れない。
-//   - continuous=false (マップモードの多数の敵軌道線、コスト重視): 従来通り
-//     要素変化の閾値 + 最短間隔でのみ regen する。カメラが遠くサブピクセルの
-//     ゆらぎは見えないため許容できる。
+// 新実装の方針:
+// - 頂点は地球中心(ECI)座標で一度だけ生成し、毎フレームは
+//   line.position = -origin(フローティングオリジン補正)を動かすだけ。
+//   楕円の焦点は常に地球中心に一致し、フレーム間で形が揺れない。
+// - ジオメトリの再生成は軌道要素が実際に変化したとき(閾値超過)だけ行う。
+//   J2 や第三体摂動による osculating 要素の微小なゆらぎでは再生成しない。
+//   推力中・ノード編集中は force=true で毎フレーム追従させる。
 import * as THREE from 'three/webgpu';
 import { Elements } from '../physics/orbital';
 import { Vec3 } from '../physics/vec3';
@@ -35,7 +28,6 @@ export class OrbitLine {
   readonly line: THREE.Line;
   private readonly positions: Float32Array;
   private snap: { a: number; e: number; hHat: Vec3; pHat: Vec3; focusE?: number } | null = null;
-  private snapOrigin: Vec3 | null = null;
   private lastRegen = 0;
 
   constructor(color: number, opacity = 0.5) {
@@ -57,30 +49,16 @@ export class OrbitLine {
 
   // 毎フレーム呼ぶ。origin = 自機の ECI 位置(フローティングオリジン)。
   // force = 要素が能動的に変化している間(推力中・ノード編集中)は true。
-  // continuous = true なら閾値判定をスキップして毎フレーム regenerate する
-  // (戦闘視点用。頂点は origin 相対の f64 計算のため量子化ガタつきは生じない)。
-  update(
-    el: Elements | null,
-    origin: Vec3,
-    force = false,
-    isPlayer = false,
-    continuous = false,
-  ): void {
+  update(el: Elements | null, origin: Vec3, force = false, isPlayer = false): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.line.visible = false;
       this.snap = null;
       return;
     }
     this.line.visible = true;
-    // フローティングオリジン補正は snapOrigin との差分だけを Object3D の平行移動で行う
-    // これにより残差が小さくなり、Float32 の量子化誤差による揺れを防ぐ。
-    if (this.snapOrigin) {
-      this.line.position.set(
-        this.snapOrigin.x - origin.x,
-        this.snapOrigin.y - origin.y,
-        this.snapOrigin.z - origin.z,
-      );
-    }
+    // フローティングオリジン補正は Object3D の平行移動だけで行う
+    // (頂点は地球中心座標のまま触らない)
+    this.line.position.set(-origin.x, -origin.y, -origin.z);
 
     let focusE: number | undefined;
     if (isPlayer) {
@@ -91,8 +69,8 @@ export class OrbitLine {
       focusE = Math.atan2(y / b, x / el.a + el.e);
     }
 
-    if (continuous || this.needsRegen(el, force, focusE)) {
-      this.regenerate(el, origin, focusE);
+    if (this.needsRegen(el, force, focusE)) {
+      this.regenerate(el, focusE);
     }
   }
 
@@ -120,9 +98,8 @@ export class OrbitLine {
     return false;
   }
 
-  private regenerate(el: Elements, origin: Vec3, focusE?: number): void {
+  private regenerate(el: Elements, focusE?: number): void {
     const b = el.a * Math.sqrt(1 - el.e * el.e);
-    this.snapOrigin = { x: origin.x, y: origin.y, z: origin.z };
     for (let i = 0; i < POINT_COUNT; i++) {
       let t = i / POINT_COUNT;
       if (focusE !== undefined) {
@@ -137,9 +114,9 @@ export class OrbitLine {
       const E = t * Math.PI * 2;
       const x = el.a * (Math.cos(E) - el.e);
       const y = b * Math.sin(E);
-      this.positions[i * 3] = el.pHat.x * x + el.qHat.x * y - this.snapOrigin.x;
-      this.positions[i * 3 + 1] = el.pHat.y * x + el.qHat.y * y - this.snapOrigin.y;
-      this.positions[i * 3 + 2] = el.pHat.z * x + el.qHat.z * y - this.snapOrigin.z;
+      this.positions[i * 3] = el.pHat.x * x + el.qHat.x * y;
+      this.positions[i * 3 + 1] = el.pHat.y * x + el.qHat.y * y;
+      this.positions[i * 3 + 2] = el.pHat.z * x + el.qHat.z * y;
     }
     // 閉路化
     this.positions[POINT_COUNT * 3] = this.positions[0]!;
@@ -153,8 +130,6 @@ export class OrbitLine {
       pHat: { ...el.pHat },
       focusE,
     };
-    // 再生成直後は差分がゼロになるため position もゼロリセット
-    this.line.position.set(0, 0, 0);
     this.lastRegen = performance.now();
   }
 }
