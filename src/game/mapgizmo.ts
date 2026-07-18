@@ -95,6 +95,7 @@ export class MapGizmo {
   private readonly nodeEls = new Map<number, NodeEntry>();
   private readonly axisEls: HTMLDivElement[] = [];
   private menuNodeIdx: number | null = null;
+  private menuTargetKey: string | null = null;
 
   // ノードハンドル: クリック=選択、ドラッグ=時刻移動、右クリック/右ボタン押下=コンテキストメニュー要求。
   onNodeSelect: ((idx: number) => void) | null = null;
@@ -107,6 +108,7 @@ export class MapGizmo {
   onMenuWarpTo: ((idx: number) => void) | null = null;
   onMenuDelete: ((idx: number) => void) | null = null;
   onMenuCancel: (() => void) | null = null;
+  onMenuFocus: ((targetKey: string) => void) | null = null;
 
   constructor() {
     const style = document.createElement('style');
@@ -131,22 +133,41 @@ export class MapGizmo {
     this.root.appendChild(this.menuEl);
     this.menuEl.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.menuEl.addEventListener('contextmenu', (e) => e.preventDefault());
+    this.bindMenuEvents();
+  }
+
+  private bindMenuEvents(): void {
     this.menuEl.querySelectorAll<HTMLElement>('.gz-menu-item').forEach((item) => {
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         const act = item.dataset['act'];
         const idx = this.menuNodeIdx;
+        const tk = this.menuTargetKey;
         this.closeMenu();
-        if (idx === null) return;
-        if (act === 'warp') this.onMenuWarpTo?.(idx);
-        else if (act === 'delete') this.onMenuDelete?.(idx);
+        if (act === 'warp' && idx !== null) this.onMenuWarpTo?.(idx);
+        else if (act === 'delete' && idx !== null) this.onMenuDelete?.(idx);
+        else if (act === 'focus' && tk !== null) this.onMenuFocus?.(tk);
         else if (act === 'cancel') this.onMenuCancel?.();
       });
     });
   }
 
-  openMenu(clientX: number, clientY: number, idx: number): void {
-    this.menuNodeIdx = idx;
+  openMenu(clientX: number, clientY: number, params: { idx?: number; targetKey?: string }): void {
+    this.menuNodeIdx = params.idx ?? null;
+    this.menuTargetKey = params.targetKey ?? null;
+    
+    if (this.menuTargetKey !== null) {
+      this.menuEl.innerHTML = `
+        <div class="gz-menu-item" data-act="focus">フォーカスを移動</div>
+        <div class="gz-menu-item" data-act="cancel">キャンセル</div>`;
+    } else {
+      this.menuEl.innerHTML = `
+        <div class="gz-menu-item" data-act="warp">この時刻まで自動ワープ</div>
+        <div class="gz-menu-item" data-act="delete">ノードを削除</div>
+        <div class="gz-menu-item" data-act="cancel">キャンセル</div>`;
+    }
+    this.bindMenuEvents();
+
     this.menuEl.style.left = `${clientX}px`;
     this.menuEl.style.top = `${clientY}px`;
     this.menuEl.style.display = 'block';
@@ -156,6 +177,7 @@ export class MapGizmo {
     if (this.menuEl.style.display === 'none') return;
     this.menuEl.style.display = 'none';
     this.menuNodeIdx = null;
+    this.menuTargetKey = null;
   }
 
   get menuIsOpen(): boolean {
