@@ -27,7 +27,7 @@ import {
   emLagrangePoints,
   seLagrangePoints,
 } from '../physics/ephemeris';
-import { dvToWorld, sampleAt } from '../physics/predict';
+import { sampleAt } from '../physics/predict';
 import { MapPlanner, PlannerCtx } from './planner';
 import {
   Attitude,
@@ -214,13 +214,6 @@ export class Game {
   // 目標時刻(絶対 simTime)。null なら自動ワープ無効。任意のノード(2件目以降も可)や
   // 将来的には任意の時刻を対象にできるよう、真偽値ではなく時刻そのものを持つ。
   private autoWarpUntil: number | null = null;
-  // 直近ノードの「実行目標」(実行後の目標位置・速度・軌道要素)。
-  // 遠方(残り NODE_TARGET_FREEZE_S 超)では予測リフレッシュのたびに追従更新するが、
-  // ノード接近後は凍結する。予測は毎回「現在状態にノードの全Δvを適用」して
-  // 作られるため、噴射中に目標を再計算し続けると目標が噴射分だけ先へ逃げて
-  // 収束しない(さらにノード時刻超過後は予測から除外されて目標が現在状態に
-  // 一致し、噴射せずとも達成判定が誤成立する)——凍結はその両方を防ぐ。
-  private activeTarget: { nodeTime: number; rNode: Vec3; vPlanned: Vec3; targetEl: Elements } | null = null;
 
   private phase: GamePhase = 'playing';
   // 第零ステージ専用: 制限時間内の撃墜数を競うスコアアタックの残り時間(実秒)
@@ -395,7 +388,7 @@ export class Game {
         this.planner.planNodes.splice(idx, 1);
         if (this.planner.selectedNodeIdx === idx) this.planner.selectedNodeIdx = null;
         else if (this.planner.selectedNodeIdx !== null && this.planner.selectedNodeIdx > idx) this.planner.selectedNodeIdx--;
-        this.activeTarget = null;
+        this.planner.clearActiveTarget();
         this.planner.trajDirty = true;
         this.hud.hint('ノードを削除');
       }
@@ -821,7 +814,7 @@ export class Game {
         case 'KeyN':
           if (this.mapMode) break;
           if (this.planner.planNodes.length > 0 && this.phase === 'playing') {
-            this.autoWarpUntil = this.autoWarpUntil !== null ? null : this.planner.planNodes[0]!.time;
+            this.autoWarpUntil = this.autoWarpUntil !== null ? null : this.planner.firstNode()!.time;
             this.hud.hint(this.autoWarpUntil !== null ? 'ノードへ自動ワープ開始' : '自動ワープ解除');
           } else {
             this.hud.hint('マニューバノードがありません ([M] で計画)');
@@ -835,14 +828,14 @@ export class Game {
             if (this.planner.selectedNodeIdx !== null) {
               this.planner.planNodes.splice(this.planner.selectedNodeIdx, 1);
               this.planner.selectedNodeIdx = null;
-              this.activeTarget = null;
+              this.planner.clearActiveTarget();
               this.planner.trajDirty = true;
               this.hud.hint('ノードを削除');
             }
           } else if (this.planner.planNodes.length > 0) {
             this.planner.planNodes = [];
             this.planner.selectedNodeIdx = null;
-            this.activeTarget = null;
+            this.planner.clearActiveTarget();
             this.autoWarpUntil = null;
             this.planner.trajDirty = true;
             this.hud.hint('マニューバ計画を破棄');
@@ -880,13 +873,7 @@ export class Game {
       );
     } else {
       this.mapMode = false;
-      // Δv がほぼゼロのまま放置されたノード(クリックしただけで調整しなかった等)は破棄する。
-      this.planner.planNodes = this.planner.planNodes.filter((n) => len(n.dv) >= C.NODE_MIN_DV);
-      this.planner.selectedNodeIdx = null;
-      // マップで Δv・ノード構成が変わった可能性があるので凍結済み目標は作り直す
-      // (時刻が同じままΔvだけ編集されたケースは nodeTime 比較では検出できない)。
-      this.activeTarget = null;
-      this.planner.trajDirty = true;
+      this.planner.onMapClosed();
       this.hud.setMapToolbarVisible(false);
       this.hud.setPlanPanel(null);
       this.planner.closeMenu();
@@ -969,98 +956,6 @@ export class Game {
         this.hud.marker(lbl.id, 'poi', '●', 0, 0, false, lbl.name);
       }
     }
-  }
-
-  // 噴射ガイドの達成判定と表示(戦闘ビュー)。直近(最も時刻が早い)未達成ノードを対象にする。
-  private updateNodeGuide(o: Vec3, pv: Vec3, playerEl: Elements | null): void {
-    const node = this.planner.planNodes[0];
-    if (!node || this.mapMode || !this.player.alive) {
-      this.hud.hideMarker('nd');
-      this.hud.hideMarker('burn');
-      if (!this.mapMode) this.hud.setPlanPanel(null);
-      return;
-    }
-
-    // 実行目標の構築・追従・凍結(凍結の理由は activeTarget フィールドのコメント参照)。
-    const tRem = node.time - this.simTime;
-    if (this.activeTarget && this.activeTarget.nodeTime !== node.time) this.activeTarget = null;
-    if (!this.activeTarget || tRem > C.NODE_TARGET_FREEZE_S) {
-      if (tRem > 0) {
-        // 予測(ノードΔv適用済み)からノード実行直後の状態を取る
-        const s = sampleAt(this.planner.trajSamples, node.time);
-        const el = s ? elementsFromState(s.r, s.v) : null;
-        if (s && el) {
-          this.activeTarget = { nodeTime: node.time, rNode: s.r, vPlanned: s.v, targetEl: el };
-        }
-      } else if (!this.activeTarget) {
-        // ノード時刻を過ぎているのに目標が無い(過去時刻へのノード配置など)。
-        // 「今すぐ全Δvを噴射する」目標として現在状態から一度だけ構築・凍結する。
-        const vP = add(pv, dvToWorld(o, pv, node.dv));
-        const el = elementsFromState(o, vP);
-        if (el) {
-          this.activeTarget = { nodeTime: node.time, rNode: clone(o), vPlanned: vP, targetEl: el };
-        }
-      }
-    }
-    const tgt = this.activeTarget;
-    if (!tgt) {
-      this.hud.hideMarker('nd');
-      this.hud.hideMarker('burn');
-      return;
-    }
-
-    // 達成判定: 現在軌道が(凍結済みの)ノード実行後の計画軌道に十分近い
-    if (playerEl && this.orbitClose(playerEl, tgt.targetEl)) {
-      this.planner.planNodes.shift();
-      this.planner.selectedNodeIdx = null;
-      this.activeTarget = null;
-      this.autoWarpUntil = null;
-      this.planner.trajDirty = true;
-      this.hud.hideMarker('nd');
-      this.hud.hideMarker('burn');
-      if (this.planner.planNodes.length === 0) {
-        this.hud.setPlanPanel(null);
-        this.hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
-      } else {
-        this.hud.hint(`✓ ノード達成 — 残り ${this.planner.planNodes.length} 件`, 4000);
-      }
-      this.sfx.warp();
-      return;
-    }
-
-    // ノード位置マーカー(カウントダウン付き)
-    const p = this.project(sub(tgt.rNode, o));
-    const tLabel =
-      tRem >= 0
-        ? `T-${Math.floor(tRem / 60)}:${String(Math.floor(tRem % 60)).padStart(2, '0')}`
-        : `T+${Math.floor(-tRem / 60)}:${String(Math.floor(-tRem % 60)).padStart(2, '0')}`;
-    const more = this.planner.planNodes.length > 1 ? ` (+${this.planner.planNodes.length - 1})` : '';
-    this.hud.marker('nd', 'mk-mnode', '◆', p.x, p.y, p.front, `NODE ${tLabel}${more}`);
-
-    // 噴射ガイド: (凍結済みの)目標速度ベクトルとの差分方向へ加速する
-    const dvRem = sub(tgt.vPlanned, pv);
-    const mag = len(dvRem);
-    const g = this.project(scale(norm(dvRem), 5e4));
-    this.hud.marker(
-      'burn',
-      'mk-burn',
-      '⬢',
-      g.x,
-      g.y,
-      g.front,
-      `BURN ${mag.toFixed(1)} m/s → ${(len(tgt.vPlanned) / 1000).toFixed(2)} km/s`,
-    );
-  }
-
-  // 2 軌道の近さ判定(長半径・離心率・軌道面)
-  private orbitClose(a: Elements, b: Elements): boolean {
-    if (!isFinite(a.a) || !isFinite(b.a) || a.a <= 0 || b.a <= 0) return false;
-    const planeCos = Math.max(-1, Math.min(1, dot(a.hHat, b.hHat)));
-    return (
-      Math.abs(a.a - b.a) / b.a < C.NODE_TOL_SMA &&
-      Math.abs(a.e - b.e) < C.NODE_TOL_ECC &&
-      (Math.acos(planeCos) * 180) / Math.PI < C.NODE_TOL_PLANE_DEG
-    );
   }
 
   // ------------------------------------------------------------- simulate
@@ -2087,8 +1982,12 @@ export class Game {
     this.updateMarkers(o, pv, tgt);
     this.updateNodeMarkers(playerEl, tgtEl, o);
     this.updateBoardMarkers(o, dt, tgt);
-    if (!this.mapMode) this.updateNodeGuide(o, pv, playerEl);
-    else this.hud.hideMarker('burn');
+    if (!this.mapMode) {
+      const { achieved } = this.planner.updateGuide(this.plannerCtx(), o, pv, playerEl, this.player.alive, (rel) =>
+        this.project(rel),
+      );
+      if (achieved) this.autoWarpUntil = null;
+    } else this.hud.hideMarker('burn');
 
     this.updateHudPanels(dt, playerEl, tgt, tgtEl);
     this.hud.tick();
