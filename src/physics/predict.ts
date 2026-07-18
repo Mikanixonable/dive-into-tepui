@@ -41,8 +41,9 @@ function envAccel(sunPos: Vec3, moonPos: Vec3): ExtraAccel {
 }
 
 // ノードの Δv(プログレード/ノーマル/ラジアルアウト)を、その時点の r, v から
-// ワールド ECI ベクトルへ変換する。
-function dvToWorld(r: Vec3, v: Vec3, dv: Vec3): Vec3 {
+// ワールド ECI ベクトルへ変換する。ゲーム側の「ノード時刻超過時のフォールバック
+// 目標構築」でも使うため export する。
+export function dvToWorld(r: Vec3, v: Vec3, dv: Vec3): Vec3 {
   const pro = norm(v);
   const h = norm(cross(r, v));
   const radOut = cross(pro, h);

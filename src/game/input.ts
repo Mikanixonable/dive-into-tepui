@@ -1,7 +1,8 @@
 // キーボード・マウス入力の集約。押下中キーの参照と、
 // フレームごとに消費するエッジトリガ(押した瞬間)キューを提供する。
 // マウス: 左ボタン=視点ドラッグ(小さな動きならクリックとして扱う。
-// マップモードのノード配置に使う)、右ボタン=射撃。
+// マップモードのノード配置に使う)、右ボタン=射撃(押下位置は takeRightClicks() で
+// 取得でき、マップモードのコンテキストメニュー呼び出しに使う)。
 export interface MouseDelta {
   dx: number;
   dy: number;
@@ -19,6 +20,10 @@ export class Input {
   private dragging = false;
   private dragMoved = 0;
   private clicks: { x: number; y: number }[] = [];
+  // 右ボタン押下位置のキュー(マップモードのコンテキストメニュー呼び出し用)。
+  // 戦闘中は消費されず貯まっていかないよう、呼び出し側は毎フレーム drain する
+  // (takeClicks と同じ運用)。
+  private rightClicks: { x: number; y: number }[] = [];
   // タッチ用: アクティブポインタの座標(ピンチズーム判定に使う)
   private pointers = new Map<number, { x: number; y: number }>();
   private pinchDist = 0;
@@ -69,10 +74,7 @@ export class Input {
         }
       } else if (e.button === 2) {
         this.mouseFiring = true;
-        // 右クリックの押下エッジも合成コードとしてキューに積む(戦闘中は
-        // mouseFiring による発射のみ意味を持つが、マップモードなど別用途
-        // (例: ノード削除)から takePresses() 経由で拾えるようにする)。
-        this.pressQueue.push('MouseRight');
+        this.rightClicks.push({ x: e.clientX, y: e.clientY });
       }
     });
     target.addEventListener('pointermove', (e) => {
@@ -162,6 +164,13 @@ export class Input {
   takeClicks(): { x: number; y: number }[] {
     const c = this.clicks;
     this.clicks = [];
+    return c;
+  }
+
+  // 右ボタン押下位置をまとめて取得(取得後クリア)。マップモードのコンテキストメニュー呼び出し用。
+  takeRightClicks(): { x: number; y: number }[] {
+    const c = this.rightClicks;
+    this.rightClicks = [];
     return c;
   }
 
