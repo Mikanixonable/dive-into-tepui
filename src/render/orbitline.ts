@@ -28,6 +28,7 @@ export class OrbitLine {
   readonly line: THREE.Line;
   private readonly positions: Float32Array;
   private snap: { a: number; e: number; hHat: Vec3; pHat: Vec3; focusE?: number } | null = null;
+  private snapOrigin: Vec3 | null = null;
   private lastRegen = 0;
 
   constructor(color: number, opacity = 0.5) {
@@ -56,9 +57,15 @@ export class OrbitLine {
       return;
     }
     this.line.visible = true;
-    // フローティングオリジン補正は Object3D の平行移動だけで行う
-    // (頂点は地球中心座標のまま触らない)
-    this.line.position.set(-origin.x, -origin.y, -origin.z);
+    // フローティングオリジン補正は snapOrigin との差分だけを Object3D の平行移動で行う
+    // これにより残差が小さくなり、Float32 の量子化誤差による揺れを防ぐ。
+    if (this.snapOrigin) {
+      this.line.position.set(
+        this.snapOrigin.x - origin.x,
+        this.snapOrigin.y - origin.y,
+        this.snapOrigin.z - origin.z,
+      );
+    }
 
     let focusE: number | undefined;
     if (isPlayer) {
@@ -70,7 +77,7 @@ export class OrbitLine {
     }
 
     if (this.needsRegen(el, force, focusE)) {
-      this.regenerate(el, focusE);
+      this.regenerate(el, origin, focusE);
     }
   }
 
@@ -98,8 +105,9 @@ export class OrbitLine {
     return false;
   }
 
-  private regenerate(el: Elements, focusE?: number): void {
+  private regenerate(el: Elements, origin: Vec3, focusE?: number): void {
     const b = el.a * Math.sqrt(1 - el.e * el.e);
+    this.snapOrigin = { x: origin.x, y: origin.y, z: origin.z };
     for (let i = 0; i < POINT_COUNT; i++) {
       let t = i / POINT_COUNT;
       if (focusE !== undefined) {
@@ -114,9 +122,9 @@ export class OrbitLine {
       const E = t * Math.PI * 2;
       const x = el.a * (Math.cos(E) - el.e);
       const y = b * Math.sin(E);
-      this.positions[i * 3] = el.pHat.x * x + el.qHat.x * y;
-      this.positions[i * 3 + 1] = el.pHat.y * x + el.qHat.y * y;
-      this.positions[i * 3 + 2] = el.pHat.z * x + el.qHat.z * y;
+      this.positions[i * 3] = el.pHat.x * x + el.qHat.x * y - this.snapOrigin.x;
+      this.positions[i * 3 + 1] = el.pHat.y * x + el.qHat.y * y - this.snapOrigin.y;
+      this.positions[i * 3 + 2] = el.pHat.z * x + el.qHat.z * y - this.snapOrigin.z;
     }
     // 閉路化
     this.positions[POINT_COUNT * 3] = this.positions[0]!;
@@ -130,6 +138,8 @@ export class OrbitLine {
       pHat: { ...el.pHat },
       focusE,
     };
+    // 再生成直後は差分がゼロになるため position もゼロリセット
+    this.line.position.set(0, 0, 0);
     this.lastRegen = performance.now();
   }
 }
