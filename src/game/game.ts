@@ -1396,11 +1396,15 @@ export class Game {
         v: add(p.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
       },
       att: {
-        q: randomQuat(),
-        w: v3(randSym(0.6), randSym(0.6), randSym(0.6)),
+        // ランダムな向きではなく、給弾ベルトの根本と同じく機体に対して垂直な
+        // 姿勢(=機体の姿勢そのまま)で排出する。そこにかすかなランダム回転
+        // (角速度)だけを加え、漂いながらゆっくり回転する見た目にする。
+        q: { x: p.att.q.x, y: p.att.q.y, z: p.att.q.z, w: p.att.q.w },
+        w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },
       obj: buildMagazineFrame(),
+      collideRadius: C.EJECTED_MAG_PHYS_RADIUS,
     };
     this.debris.push(piece);
     this.scene.add(piece.obj);
@@ -2015,7 +2019,9 @@ export class Game {
             const nextP = this.beltPos[i + 1]!;
             beltTmpA.copy(prevP).add(nextP).multiplyScalar(0.5);
           }
-          this.beltPos[i]!.lerp(beltTmpA, C.MAG_CHAIN_STRAIGHTEN);
+          // 根本(i=1)に近いほど強く、先端に近いほど弱く(実際の片持ち梁のように)
+          const strength = C.MAG_CHAIN_STRAIGHTEN * Math.pow(C.MAG_CHAIN_STRAIGHTEN_FALLOFF, i - 1);
+          this.beltPos[i]!.lerp(beltTmpA, strength);
         }
       }
     }
@@ -2397,6 +2403,13 @@ export class Game {
       // MAG_PICKUP_RADIUS は回収判定距離(60m)であり物理サイズではないため、
       // 物理接触には見た目に近い専用の半径を使う。
       if (m.alive) ents.push({ r: m.state.r, v: m.state.v, m: 50, rad: C.MAG_PICKUP_PHYS_RADIUS });
+    }
+    // デブリのうち collideRadius を持つもの(排出された空マガジン)だけ当たり判定を持つ。
+    // 爆発破片・被弾の欠片など既存のデブリは従来どおりすり抜ける。
+    for (const d of this.debris) {
+      if (d.collideRadius !== undefined) {
+        ents.push({ r: d.state.r, v: d.state.v, m: C.EJECTED_MAG_MASS, rad: d.collideRadius });
+      }
     }
 
     // マガジンベルト(Verlet積分の位置・疑似速度)。ベルト自体は実時間(dt)で

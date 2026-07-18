@@ -83,6 +83,8 @@ export const AMMO_LOW_MAGS = 3; // 残りマガジンがこれ未満になると
 export const MAX_MAG_PICKUPS = 2; // 同時に存在する補給の最大数
 export const RESUPPLY_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
 export const BELT_MAX_VISIBLE = 12; // ベルト描画の最大リンク数
+export const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの物理接触用の半径 [m]
+export const EJECTED_MAG_MASS = 20; // 同、物理接触用の質量(実質量ではなくゲーム内衝突用の値)
 
 // マガジンチェーンの可動域: 機関銃のベルトと同様、接合部の折れ曲がり(隣接リンクの
 // 進行方向の変化=ピッチ/ヨー方向)は距離拘束のみで自由に許容するが、チェーン軸まわりの
@@ -90,10 +92,13 @@ export const BELT_MAX_VISIBLE = 12; // ベルト描画の最大リンク数
 export const MAG_CHAIN_MAX_ROLL_DEG = 35;
 export const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
 export const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
-// 各リンクを前後2点の中点へわずかに引き寄せる、曲げ剛性の簡易近似(かすかな
-// 直線復元力)。外力が止むとゆっくりまっすぐに戻る。距離拘束の反復1回あたりの
-// 引き寄せ割合(0..1)なので小さい値にして「かすか」な効きに留める。
-export const MAG_CHAIN_STRAIGHTEN = 0.03;
+// 各リンクを前後2点の中点(または根本側は固定方向の延長点)へわずかに
+// 引き寄せる、曲げ剛性の簡易近似(かすかな直線復元力)。外力が止むと
+// ゆっくりまっすぐに戻る。距離拘束の反復1回あたりの引き寄せ割合(0..1)。
+export const MAG_CHAIN_STRAIGHTEN = 0.03; // 根本(2本目)での基準の強さ
+// 根本から1本離れるごとにこの倍率で弱くなる(0..1、実際の梁のように
+// 固定端に近いほど強く、先端に近いほど自由に揺れる)。
+export const MAG_CHAIN_STRAIGHTEN_FALLOFF = 0.8;
 
 export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
 export const MAX_BULLETS = 400;
@@ -138,7 +143,7 @@ export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
 export const STAGE0_PER_GROUP = 10; // グループあたりの機数(総計 STAGE0_GROUP_ACCENTS.length 倍)
 export const STAGE0_ENEMY_HP = 1; // 一撃撃破の軽量機(操作練習向けにテンポ重視)
 export const STAGE0_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]
-export const STAGE0_TIME_LIMIT = 120; // 制限時間 [実秒]
+export const STAGE0_TIME_LIMIT = 300; // 制限時間 [実秒]
 export const STAGE0_AMMO_PICKUPS = 4; // 開始時に浮かべておく補給マガジンの数
 export const STAGE0_AMMO_MIN_DIST = 300; // 補給の配置距離 [m](自機から)
 export const STAGE0_AMMO_MAX_DIST = 900;

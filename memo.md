@@ -143,3 +143,41 @@ Viewed CLAUDE.md:1-68
 ※ WebGPUを使用しているため、動作確認には **Chrome や Edge などの WebGPU 対応ブラウザ** が必要です。
 
 より詳細なゲーム仕様については [README.md](file:///Users/pandeaconica/lab/dive-into-tepui/README.md) または開発上のガイダンスが書かれた [CLAUDE.md](file:///Users/pandeaconica/lab/dive-into-tepui/CLAUDE.md) もあわせてご参照ください。
+
+
+---
+
+
+軌道計画モード(マップモード)の現状実装
+概要
+[M] キーでトグルする第2の操作モード。時間・物理シミュレーションは通常どおり進み続けたまま(simulate() は止まらない)、カメラと入力の解釈だけを「地球中心の俯瞰ビュー」に切り替え、将来のマニューバ(軌道変更)を視覚的に計画できるようにする機能です。実装は全部 game.ts 内に集約されています。
+
+状態(フィールド)
+mapMode: boolean — トグル状態。toggleMap()(case 'KeyM')で切替。
+mapYaw/mapPitch/mapDist — 俯瞰カメラの球面座標(ドラッグ・ホイールで操作)。
+mapCamera: THREE.PerspectiveCamera — 戦闘用カメラとは別インスタンス。near=1e4, far=6e8(モルニヤ級の高楕円軌道全体が収まる遠方)。
+editNu: number | null — 編集中ノードの位置(自機軌道上の真近点角)。nullなら未配置。
+editDv: Vec3 — 編集中のΔv(x=プログレード、y=ノーマル、z=ラジアルアウト成分)。
+node: ManeuverNode | null — 確定済みの実行計画(nodeTime・rNode・vPlanned・targetEl・dvTotal)。
+autoWarp: boolean — [N] によるノードへの自動タイムワープ中フラグ。
+フロー
+[M] でモード開始(toggleMap()) — mapMode=true、ヒントを表示。マップに入っても時間・物理は継続。
+updateMapPlanning(dt)(mapMode中は毎フレーム呼ばれる)
+現在軌道の要素を計算し、離心率0.98以上や非有限周期(双曲線軌道など)なら「計画できません」と表示して以降をスキップ。
+クリックは pickOrbitNu() で処理: 自機軌道を離心近点角で512分割サンプルし、画面投影して最も近い点の真近点角を返す → editNu に設定。
+editNu が設定済みなら、通常の推進キー(W/S/A/D/Q/E)をΔv調整に転用([V]微調整で感度をNODE_DV_RATE_FINEに切替)。
+計画パネル(HUD左下)に Δv 内訳・到達までの時間・計画後の軌道要素(遠地点/近地点/傾斜角/周期)をリアルタイム表示(planHtml())。近地点が120km未満なら警告。
+カメラ: mapYaw/mapPitch/mapDist をマウス/矢印キーで操作し、mapCamera を地球中心(フローティングオリジンなので -o)を注視する球面軌道カメラとして毎フレーム再配置。
+再度 [M] で確定(finalizeNode()) — editNu・editDv から計画軌道要素を計算して this.node に凍結し、マップを抜ける。ΔvがNODE_MIN_DV未満なら何も確定しない。
+[X] — マップ中なら編集中のノード(editNu/editDv)を破棄。戦闘中なら確定済みnodeを破棄。
+[N] — nodeがあれば自動ワープをトグル。simulate()内で残り時間に応じて WARP_LEVELS から適切な段を自動選択し、AUTOWARP_STOP(20秒)前で解除。
+戦闘ビューでの誘導(updateNodeGuide()) — ノード位置マーカー(残り時間カウントダウン付き)と、目標速度との差分方向を示す「BURN」マーカーを表示。
+達成判定(orbitClose()) — 長半径の相対誤差・離心率差・軌道面角度差がすべて閾値内(NODE_TOL_SMA/ECC/PLANE_DEG)なら「マニューバ達成」としてノードを消去・ヒント表示。
+表示面での特記事項
+マップ中は方向系マーカー(プログレード/レトログレード/ボアサイト/リード)を隠し、自機位置マーカー(▷)のみ表示。
+計画軌道線(白、plannedOrbitLine)は、マップ中はeditNuに基づくプレビュー、戦闘中は確定済みnode.targetElを表示。
+マップ中のみ、生存中の全敵の軌道線(enemyOrbitLines)をターゲット以外も含めて表示し比較可能に。
+既知の設計上の制約
+双曲線軌道・離心率0.98以上・非有限周期の状態では計画不可(エラーメッセージのみ)。
+ノード配置はスクリーン投影ベースのピクセル距離判定(NODE_PICK_PX)なので、軌道線が画面上で密集/重なる配置だと誤ってクリックしにくい。
+finalizeNode() は現在の軌道要素を再計算するため、マップを開いてから閉じるまでの間に(自動ワープ等で)軌道が変化していても、確定時点の実軌道を基準に計画される(マップ表示中に見ていた軌道とズレる可能性はある設計)。
