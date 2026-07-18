@@ -24,11 +24,10 @@ import {
   moonPosition,
   sunAzimuth,
   sunPosition,
-  emLagrangePoints,
-  seLagrangePoints,
 } from '../physics/ephemeris';
 import { sampleAt } from '../physics/predict';
 import { MapPlanner, PlannerCtx } from './planner';
+import { MapView } from './mapview';
 import {
   Attitude,
   qRotate,
@@ -96,8 +95,6 @@ interface EnemySpec {
   hp: number;
   accent: number;
 }
-
-type MapFocus = string;
 
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
@@ -195,21 +192,13 @@ export class Game {
   // 軌道計画モード
   readonly stage: number;
   private mapMode = false;
-  private mapYaw = 0.7;
-  private mapPitch = 0.45;
-  private mapDist = 4.5e7;
-  private mapFocus: MapFocus = 'earth';
-  // Stored in the floating-origin render frame. It is applied to both the
-  // camera and its target, so middle-drag is a true parallel translation.
-  private readonly mapPan = new THREE.Vector3();
-  private readonly mapCamera: THREE.PerspectiveCamera;
   private readonly starsMesh: THREE.Mesh;
   private readonly trajLine = new TrajLine();
 
   // マニューバ計画(ノード列)・予測軌道キャッシュ・ノード編集入力。詳細は planner.ts のコメント参照。
   private readonly planner = new MapPlanner(this.hud, this.sfx);
-  private mapFrameRotating = false;
-  private mapSliderT = 0; // 0..1(0 でゴーストマーカー非表示)
+  // マップモードの視点・表示状態(マップカメラ・ラベル・フォーカス・太陽回転系・スライダー)。詳細は mapview.ts のコメント参照。
+  private readonly mapView = new MapView(this.hud);
   // [N] または右クリックメニューの「この時刻まで自動ワープ」で設定する自動ワープの
   // 目標時刻(絶対 simTime)。null なら自動ワープ無効。任意のノード(2件目以降も可)や
   // 将来的には任意の時刻を対象にできるよう、真偽値ではなく時刻そのものを持つ。
@@ -306,14 +295,6 @@ export class Game {
     this.hud.setBgmState(this.sfx.isBgmEnabled());
     this.hud.onBgmToggle = (on) => this.sfx.setBgmEnabled(on);
 
-    // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
-    this.mapCamera = new THREE.PerspectiveCamera(
-      50,
-      window.innerWidth / window.innerHeight,
-      1e4,
-      C.MAP_CAMERA_FAR,
-    );
-
     // --- 環境 ---
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     this.scene.add(this.ambient);
@@ -348,16 +329,16 @@ export class Game {
       }
     };
     this.hud.onFrameToggle = () => {
-      this.mapFrameRotating = !this.mapFrameRotating;
+      this.mapView.frameRotating = !this.mapView.frameRotating;
       this.planner.trajDirty = true;
     };
     this.hud.onMapFocusSelect = (focus) => {
-      this.mapFocus = focus;
-      this.mapPan.set(0, 0, 0);
+      this.mapView.focus = focus;
+      this.mapView.pan.set(0, 0, 0);
     };
-    this.hud.onMapViewReset = () => this.resetMapView();
+    this.hud.onMapViewReset = () => this.mapView.reset();
     this.hud.onSliderChange = (t) => {
-      this.mapSliderT = t;
+      this.mapView.sliderT = t;
     };
 
     // マップモードの DOM ギズモ(ノードハンドル・Δv アーム・コンテキストメニュー)
@@ -371,7 +352,7 @@ export class Game {
       this.planner.dragNodeToNearestSample(idx, clientX, clientY, this.plannerCtx(), (rel) => this.project(rel));
     };
     this.planner.mapGizmo.onNodeContextMenu = (clientX, clientY) => {
-      this.planner.handleMapRightClick(clientX, clientY, this.plannerCtx(), (rel) => this.project(rel), this.mapLabels);
+      this.planner.handleMapRightClick(clientX, clientY, this.plannerCtx(), (rel) => this.project(rel), this.mapView.labels);
     };
     this.planner.mapGizmo.onAxisDrag = (axis, sign, deltaPx) => {
       this.planner.applyAxisDrag(axis, sign, deltaPx, this.fineAttitude);
@@ -394,8 +375,8 @@ export class Game {
       }
     };
     this.planner.mapGizmo.onMenuFocus = (targetKey) => {
-      this.mapFocus = targetKey;
-      const lbl = this.mapLabels.find(l => l.id === targetKey);
+      this.mapView.focus = targetKey;
+      const lbl = this.mapView.labels.find(l => l.id === targetKey);
       if (lbl) {
         this.hud.hint(`${lbl.name} にフォーカス`);
       }
@@ -500,7 +481,7 @@ export class Game {
 
   // 描画に使うカメラ(戦闘 / 軌道計画で切り替え)
   get activeCamera(): THREE.PerspectiveCamera {
-    return this.mapMode ? this.mapCamera : this.camera;
+    return this.mapMode ? this.mapView.camera : this.camera;
   }
 
   // 機首をプログレード、背を天頂に向けた初期姿勢
@@ -674,9 +655,9 @@ export class Game {
       if (this.mapMode) {
         this.planner.updateEditing(dt, this.plannerCtx(), this.input, (rel) => this.project(rel), {
           fineAttitude: this.fineAttitude,
-          mapSliderT: this.mapSliderT,
-          mapFocus: this.mapFocus,
-          labels: this.mapLabels,
+          mapSliderT: this.mapView.sliderT,
+          mapFocus: this.mapView.focus,
+          labels: this.mapView.labels,
         });
       } else {
         // 戦闘中の左クリックは射撃・カメラ用として消費(キューは捨てる)
@@ -884,15 +865,6 @@ export class Game {
     }
   }
 
-  private resetMapView(): void {
-    this.mapFocus = 'earth';
-    this.mapYaw = 0.7;
-    this.mapPitch = 0.45;
-    this.mapDist = 4.5e7;
-    this.mapPan.set(0, 0, 0);
-    this.hud.hint('マップ視点をリセット');
-  }
-
   // 選択中ノードの Δv アーム(mapgizmo.ts)ドラッグを Δv 成分の変更へ変換する。
   // axis: 0=プログレード(dv.x) 1=法線(dv.y) 2=動径(dv.z)。sign はハンドル自身の向き
   // (mapgizmo.ts の AxisHandleSpec 参照)。deltaPx はポインタ移動のハンドル方向への射影量。
@@ -905,7 +877,7 @@ export class Game {
       sunPhase0: this.sunPhase0,
       moonPhase0: this.moonPhase0,
       mapMode: this.mapMode,
-      mapFrameRotating: this.mapFrameRotating,
+      mapFrameRotating: this.mapView.frameRotating,
     };
   }
 
@@ -920,42 +892,6 @@ export class Game {
   // マップモードでもなくノードもなければ(表示・ガイドとも不要なので)何もしない。
   private updateTrajectoryRefresh(): void {
     this.planner.maybeRefresh(this.plannerCtx());
-  }
-
-  private mapLabels: { id: string; name: string; pos: Vec3 }[] = [];
-
-  private drawMapLabels(o: Vec3): void {
-    const duration = this.predictDurationSec();
-    const t = (this.mapMode && this.mapSliderT > 0)
-      ? this.simTime + this.mapSliderT * duration
-      : this.simTime;
-    const mPos = moonPosition(t, this.moonPhase0);
-    const sPos = sunPosition(t, this.sunPhase0);
-    const emL = emLagrangePoints(t, this.moonPhase0);
-    const seL = seLagrangePoints(t, this.sunPhase0);
-
-    this.mapLabels = [
-      { id: 'earth', name: '地球', pos: v3(0, 0, 0) },
-      { id: 'moon', name: '月', pos: mPos },
-      { id: 'sun', name: '太陽', pos: sPos },
-      { id: 'em-l1', name: '地球-月 L1', pos: emL.L1 },
-      { id: 'em-l2', name: '地球-月 L2', pos: emL.L2 },
-      { id: 'em-l3', name: '地球-月 L3', pos: emL.L3 },
-      { id: 'em-l4', name: '地球-月 L4', pos: emL.L4 },
-      { id: 'em-l5', name: '地球-月 L5', pos: emL.L5 },
-      { id: 'se-l1', name: '太陽-地球 L1', pos: seL.L1 },
-      { id: 'se-l2', name: '太陽-地球 L2', pos: seL.L2 },
-    ];
-
-    for (const lbl of this.mapLabels) {
-      const wp = sub(lbl.pos, o);
-      const p = this.project(wp);
-      if (p && p.front) {
-        this.hud.marker(lbl.id, 'poi', '●', p.x, p.y, true, lbl.name);
-      } else {
-        this.hud.marker(lbl.id, 'poi', '●', 0, 0, false, lbl.name);
-      }
-    }
   }
 
   // ------------------------------------------------------------- simulate
@@ -1697,8 +1633,8 @@ export class Game {
     const pv = this.player.state.v;
 
     const duration = this.predictDurationSec();
-    const displayTime = (this.mapMode && this.mapSliderT > 0)
-      ? this.simTime + this.mapSliderT * duration
+    const displayTime = (this.mapMode && this.mapView.sliderT > 0)
+      ? this.mapView.displayTime(this.simTime, duration)
       : this.simTime;
 
     // 地球・恒星・太陽(実寸で描画。フローティングオリジン設計により
@@ -1715,54 +1651,12 @@ export class Game {
     const keyYaw = (this.input.down('ArrowLeft') ? 1 : 0) + (this.input.down('ArrowRight') ? -1 : 0);
     const keyPitch = (this.input.down('ArrowDown') ? 1 : 0) + (this.input.down('ArrowUp') ? -1 : 0);
     if (this.mapMode) {
-      // 戦闘ビューは yaw -= dx*0.005 なので、符号を反転させて左右の回転方向を揃える
-      this.mapYaw += mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;
-      this.mapPitch = Math.max(
-        -1.4,
-        Math.min(1.4, this.mapPitch + mouse.dy * 0.005 + keyPitch * C.CAM_KEY_PITCH_RATE * dt),
-      );
-      this.mapDist = Math.max(C.MAP_MIN_DIST, Math.min(C.MAP_MAX_DIST, this.mapDist * Math.exp(mouse.wheel * 0.0012)));
-      if (mouse.panDx !== 0 || mouse.panDy !== 0) {
-        // Convert pixels to map-world metres at the current target plane.
-        // The camera basis makes the gesture independent of orbit yaw/pitch.
-        this.mapCamera.updateMatrixWorld();
-        const right = new THREE.Vector3().setFromMatrixColumn(this.mapCamera.matrixWorld, 0).normalize();
-        const up = new THREE.Vector3().setFromMatrixColumn(this.mapCamera.matrixWorld, 1).normalize();
-        const metersPerPixel =
-          (2 * this.mapDist * Math.tan(THREE.MathUtils.degToRad(this.mapCamera.fov * 0.5))) /
-          Math.max(1, window.innerHeight);
-        this.mapPan.addScaledVector(right, -mouse.panDx * metersPerPixel);
-        this.mapPan.addScaledVector(up, mouse.panDy * metersPerPixel);
-      }
-      const cp = Math.cos(this.mapPitch);
       // 太陽回転系表示: 太陽の実際の方位ドリフトぶんカメラ方位を追従させ、
       // 画面上で太陽方向がほぼ固定されて見えるようにする(予測サンプルの回転補正と
-      // 組み合わせて、t=simTime では回転量ゼロで整合する)。
-      const displayYaw = this.mapYaw + (this.mapFrameRotating ? sunAzimuth(this.simTime, this.sunPhase0) : 0);
-      // 地球中心はフローティングオリジンで -o
-      let focusRel = v3(-o.x, -o.y, -o.z);
-      if (this.mapFocus !== 'earth') {
-        const lbl = this.mapLabels.find(l => l.id === this.mapFocus);
-        if (lbl) {
-          focusRel = sub(lbl.pos, o);
-        }
-      }
-      const targetX = focusRel.x + this.mapPan.x;
-      const targetY = focusRel.y + this.mapPan.y;
-      const targetZ = focusRel.z + this.mapPan.z;
-      this.mapCamera.position.set(
-        targetX + cp * Math.cos(displayYaw) * this.mapDist,
-        targetY + Math.sin(this.mapPitch) * this.mapDist,
-        targetZ + cp * Math.sin(displayYaw) * this.mapDist,
-      );
-      this.mapCamera.up.set(0, 1, 0);
-      this.mapCamera.lookAt(targetX, targetY, targetZ);
-      const aspect = window.innerWidth / window.innerHeight;
-      if (Math.abs(this.mapCamera.aspect - aspect) > 1e-6) {
-        this.mapCamera.aspect = aspect;
-        this.mapCamera.updateProjectionMatrix();
-      }
-      this.mapCamera.updateMatrixWorld();
+      // 組み合わせて、t=simTime では回転量ゼロで整合する)。frameRotating が OFF なら
+      // MapView 側で無視される。
+      const sunAz = sunAzimuth(this.simTime, this.sunPhase0);
+      this.mapView.updateCamera(mouse, keyYaw, keyPitch, dt, o, sunAz);
     } else {
       // 矢印キーによる視点回転をマウスドラッグと同じ yaw -= dx*0.005 の換算式に合わせて加算
       if (!this.zoomActive) {
@@ -1791,7 +1685,7 @@ export class Game {
     this.starsMesh.position.copy(cam.position);
     if (this.mapMode) {
       // マップモードではカメラが遠く引かれるため、星が地球の手前にならないようにカメラの far の内側に押し込む
-      this.starsMesh.scale.setScalar((this.mapCamera.far * 0.9) / 3.5e7);
+      this.starsMesh.scale.setScalar((this.mapView.camera.far * 0.9) / 3.5e7);
     } else {
       this.starsMesh.scale.setScalar(1.0);
     }
@@ -1945,10 +1839,10 @@ export class Game {
     // 数値予測(predict.ts)の再計算とポリライン描画・ノードマーカー
     this.updateTrajectoryRefresh();
     this.updateTrajLineAndMarkers(o);
-    this.planner.updateMapGizmo(o, this.plannerCtx(), (rel) => this.project(rel), this.mapMode, this.mapDist);
+    this.planner.updateMapGizmo(o, this.plannerCtx(), (rel) => this.project(rel), this.mapMode, this.mapView.dist);
 
     if (this.mapMode) {
-      this.drawMapLabels(o);
+      this.mapView.drawLabels(o, { simTime: this.simTime, sunPhase0: this.sunPhase0, moonPhase0: this.moonPhase0, duration: this.predictDurationSec() }, (rel) => this.project(rel));
     }
 
     // 計画軌道(白、解析的な楕円): マップモード中は数値予測のポリライン(trajLine)が
@@ -2293,13 +2187,13 @@ export class Game {
       this.planner.trajGeomDirty = false;
     }
 
-    if (this.mapSliderT > 0 && this.planner.trajSamples.length > 0) {
+    if (this.mapView.sliderT > 0 && this.planner.trajSamples.length > 0) {
       const duration = this.predictDurationSec();
-      const t = this.simTime + this.mapSliderT * duration;
+      const t = this.mapView.displayTime(this.simTime, duration);
       const s = sampleAt(this.planner.trajSamples, t);
       if (s) {
         const p = this.project(sub(this.planner.toDisplayFrame(s.r, t, this.plannerCtx()), o));
-        this.hud.marker('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.planner.ghostLabel(this.plannerCtx(), this.mapSliderT));
+        this.hud.marker('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.planner.ghostLabel(this.plannerCtx(), this.mapView.sliderT));
       } else {
         this.hud.hideMarker('ghost');
       }
@@ -2346,7 +2240,7 @@ export class Game {
       this.hud.marker('self', 'mk-self', '▷', sp.x, sp.y, sp.front, 'PLAYER');
     } else {
       this.hud.hideMarker('self');
-      for (const lbl of this.mapLabels) {
+      for (const lbl of this.mapView.labels) {
         this.hud.hideMarker(lbl.id);
       }
     }
