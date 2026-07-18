@@ -94,6 +94,8 @@ interface EnemySpec {
   accent: number;
 }
 
+type MapFocus = 'earth' | 'moon';
+
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
@@ -191,6 +193,10 @@ export class Game {
   private mapYaw = 0.7;
   private mapPitch = 0.45;
   private mapDist = 4.5e7;
+  private mapFocus: MapFocus = 'earth';
+  // Stored in the floating-origin render frame. It is applied to both the
+  // camera and its target, so middle-drag is a true parallel translation.
+  private readonly mapPan = new THREE.Vector3();
   private readonly mapCamera: THREE.PerspectiveCamera;
   private readonly starsMesh: THREE.Mesh;
   private readonly trajLine = new TrajLine();
@@ -358,6 +364,11 @@ export class Game {
       this.mapFrameRotating = !this.mapFrameRotating;
       this.trajDirty = true;
     };
+    this.hud.onMapFocusSelect = (focus) => {
+      this.mapFocus = focus;
+      this.mapPan.set(0, 0, 0);
+    };
+    this.hud.onMapViewReset = () => this.resetMapView();
     this.hud.onSliderChange = (t) => {
       this.mapSliderT = t;
     };
@@ -852,6 +863,15 @@ export class Game {
   // マップモードの右クリック処理: 既存ノードマーカー近傍(NODE_PICK_PX 以内)なら
   // そのノードを選択してコンテキストメニューを開く。それ以外なら開いているメニューを閉じるだけ
   // (右クリックの元の「即削除」動作はメニュー経由に置き換えた。[X] キーは従来どおり残す)。
+  private resetMapView(): void {
+    this.mapFocus = 'earth';
+    this.mapYaw = 0.7;
+    this.mapPitch = 0.45;
+    this.mapDist = 4.5e7;
+    this.mapPan.set(0, 0, 0);
+    this.hud.hint('マップ視点をリセット');
+  }
+
   private handleMapRightClick(mx: number, my: number, o: Vec3): void {
     let bestIdx: number | null = null;
     let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
@@ -1147,6 +1167,7 @@ export class Game {
       this.predictDurationKey,
       this.mapFrameRotating,
       this.mapSliderT > 0 ? this.ghostLabel() : null,
+      this.mapFocus,
     );
 
     const nodesInfo = this.planNodes.map((n, i) => ({
@@ -2015,19 +2036,38 @@ export class Game {
         Math.min(1.4, this.mapPitch + mouse.dy * 0.005 + keyPitch * C.CAM_KEY_PITCH_RATE * dt),
       );
       this.mapDist = Math.max(C.MAP_MIN_DIST, Math.min(C.MAP_MAX_DIST, this.mapDist * Math.exp(mouse.wheel * 0.0012)));
+      if (mouse.panDx !== 0 || mouse.panDy !== 0) {
+        // Convert pixels to map-world metres at the current target plane.
+        // The camera basis makes the gesture independent of orbit yaw/pitch.
+        this.mapCamera.updateMatrixWorld();
+        const right = new THREE.Vector3().setFromMatrixColumn(this.mapCamera.matrixWorld, 0).normalize();
+        const up = new THREE.Vector3().setFromMatrixColumn(this.mapCamera.matrixWorld, 1).normalize();
+        const metersPerPixel =
+          (2 * this.mapDist * Math.tan(THREE.MathUtils.degToRad(this.mapCamera.fov * 0.5))) /
+          Math.max(1, window.innerHeight);
+        this.mapPan.addScaledVector(right, -mouse.panDx * metersPerPixel);
+        this.mapPan.addScaledVector(up, mouse.panDy * metersPerPixel);
+      }
       const cp = Math.cos(this.mapPitch);
       // 太陽回転系表示: 太陽の実際の方位ドリフトぶんカメラ方位を追従させ、
       // 画面上で太陽方向がほぼ固定されて見えるようにする(予測サンプルの回転補正と
       // 組み合わせて、t=simTime では回転量ゼロで整合する)。
       const displayYaw = this.mapYaw + (this.mapFrameRotating ? sunAzimuth(this.simTime, this.sunPhase0) : 0);
       // 地球中心はフローティングオリジンで -o
+      const focusRel =
+        this.mapFocus === 'moon'
+          ? sub(this.moonPos, o)
+          : v3(-o.x, -o.y, -o.z);
+      const targetX = focusRel.x + this.mapPan.x;
+      const targetY = focusRel.y + this.mapPan.y;
+      const targetZ = focusRel.z + this.mapPan.z;
       this.mapCamera.position.set(
-        -o.x + cp * Math.cos(displayYaw) * this.mapDist,
-        -o.y + Math.sin(this.mapPitch) * this.mapDist,
-        -o.z + cp * Math.sin(displayYaw) * this.mapDist,
+        targetX + cp * Math.cos(displayYaw) * this.mapDist,
+        targetY + Math.sin(this.mapPitch) * this.mapDist,
+        targetZ + cp * Math.sin(displayYaw) * this.mapDist,
       );
       this.mapCamera.up.set(0, 1, 0);
-      this.mapCamera.lookAt(-o.x, -o.y, -o.z);
+      this.mapCamera.lookAt(targetX, targetY, targetZ);
       const aspect = window.innerWidth / window.innerHeight;
       if (Math.abs(this.mapCamera.aspect - aspect) > 1e-6) {
         this.mapCamera.aspect = aspect;
