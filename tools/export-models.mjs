@@ -284,6 +284,14 @@ const models = {
 };
 
 for (const [name, object] of Object.entries(models)) {
+  // toJSON() は各ノードの `matrix` プロパティをそのままシリアライズするだけで、
+  // position/rotation/scale から再合成はしない。ここはレンダーループの外(ヘッド
+  // レスな export スクリプト)なので、three.js が通常フレーム毎に自動で行う
+  // updateMatrix() が一度も呼ばれておらず、matrix は単位行列のまま出力されてしまう
+  // (= ObjectLoader.parse() 側で decompose しても位置・回転が全部ゼロになる)。
+  // toJSON() の前に明示的に updateMatrixWorld(true) を呼び、全ノードの matrix に
+  // position/quaternion/scale を焼き込んでからシリアライズする。
+  object.updateMatrixWorld(true);
   const json = object.toJSON();
   const outPath = join(outDir, `${name}.json`);
   writeFileSync(outPath, JSON.stringify(json));
