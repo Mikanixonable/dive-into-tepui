@@ -43,6 +43,9 @@ export interface DebrisPiece {
   state: OrbitState;
   att: Attitude;
   obj: THREE.Object3D;
+  // 物理接触(resolvePhysicalCollisions)の当たり判定半径 [m]。未設定なら
+  // その破片は当たり判定を持たない(既存の爆発デブリ等はすり抜けたままでよい)。
+  collideRadius?: number;
 }
 
 // 爆発・マズルフラッシュなどの一時エフェクト。
