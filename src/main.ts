@@ -34,7 +34,12 @@ function selectStage(): Promise<number> {
     };
     div.innerHTML =
       `<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
-      '<div style="font-size:12px;color:#7d838c;margin-bottom:12px">ステージを選択 ([1] / [2] キーまたはクリック)</div>';
+      '<div style="font-size:12px;color:#7d838c;margin-bottom:12px">ステージを選択 ([0] / [1] / [2] キーまたはクリック)</div>';
+    const b0 = btn(
+      '[0] 訓練ステージ — 近接戦闘訓練',
+      '常時選択可。5km以内に色分けされた敵集団 約50機、制限時間2分の撃墜数スコアアタック',
+      true,
+    );
     const b1 = btn('[1] 第一ステージ — LEO 戦域', '高度420kmの低軌道。敵5機はすべて近傍軌道に分布', true);
     const b2 = btn(
       '[2] 第二ステージ — モルニヤ戦域',
@@ -43,6 +48,7 @@ function selectStage(): Promise<number> {
         : '🔒 第一ステージをクリアすると解放',
       unlocked,
     );
+    div.appendChild(b0);
     div.appendChild(b1);
     div.appendChild(b2);
     document.body.appendChild(div);
@@ -53,10 +59,12 @@ function selectStage(): Promise<number> {
       resolve(stage);
     };
     const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'Digit0') done(0);
       if (e.code === 'Digit1' || e.code === 'Enter') done(1);
       if (e.code === 'Digit2' && unlocked) done(2);
     };
     window.addEventListener('keydown', onKey);
+    b0.addEventListener('click', () => done(0));
     b1.addEventListener('click', () => done(1));
     if (unlocked) b2.addEventListener('click', () => done(2));
   });
@@ -68,9 +76,12 @@ async function main() {
 
   const gs = await createGameScene(canvas);
   const { scene, renderer } = gs;
-  // ?stage=1|2 で選択画面をスキップ(デバッグ・共有リンク用)
-  const forced = Number(new URLSearchParams(location.search).get('stage'));
-  const stage = forced === 1 || forced === 2 ? forced : await selectStage();
+  // ?stage=0|1|2 で選択画面をスキップ(デバッグ・共有リンク用)。
+  // パラメータ未指定時は get() が null を返すので、Number(null)=0 とは
+  // 区別してステージ0への誤フォースを避ける。
+  const stageParam = new URLSearchParams(location.search).get('stage');
+  const forced = stageParam !== null ? Number(stageParam) : NaN;
+  const stage = forced === 0 || forced === 1 || forced === 2 ? forced : await selectStage();
   const game = new Game(gs, stage);
 
   let lastTime = performance.now();
