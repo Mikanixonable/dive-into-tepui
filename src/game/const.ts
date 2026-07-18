@@ -90,6 +90,10 @@ export const BELT_MAX_VISIBLE = 12; // ベルト描画の最大リンク数
 export const MAG_CHAIN_MAX_ROLL_DEG = 35;
 export const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
 export const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
+// 各リンクを前後2点の中点へわずかに引き寄せる、曲げ剛性の簡易近似(かすかな
+// 直線復元力)。外力が止むとゆっくりまっすぐに戻る。距離拘束の反復1回あたりの
+// 引き寄せ割合(0..1)なので小さい値にして「かすか」な効きに留める。
+export const MAG_CHAIN_STRAIGHTEN = 0.03;
 
 export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
 export const MAX_BULLETS = 400;
