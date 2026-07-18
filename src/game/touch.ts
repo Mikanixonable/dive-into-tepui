@@ -3,8 +3,10 @@
 // 押しっぱなし系(並進・回転・射撃・ズーム)とエッジトリガ系(トグル類)を
 // 同じ仕組みで扱える。マウス+キーボード環境では生成しない。
 import { Input } from './input';
+import { ACCENT, ACCENT_RGB, TEXT_DIM } from './theme';
 
-const ACCENT = '#ff6a00';
+// SURFACE/EDGE はこのファイル固有の不透明度(0.66 / 0.14)を使うため、
+// theme.ts の SURFACE(0.82)/EDGE(0.09)とは別定数のまま保持する。
 const SURFACE = 'rgba(13, 15, 18, 0.66)';
 const EDGE = 'rgba(255, 255, 255, 0.14)';
 
@@ -21,11 +23,11 @@ const STYLE = `
   color: #cfd6dd; line-height: 1.1;
 }
 #touch-ui .tbtn .g { font-size: 16px; }
-#touch-ui .tbtn .l { font-size: 9px; color: #7d838c; margin-top: 1px; }
-#touch-ui .tbtn.held { background: rgba(255, 106, 0, 0.28); border-color: ${ACCENT}; color: #fff; }
+#touch-ui .tbtn .l { font-size: 9px; color: ${TEXT_DIM}; margin-top: 1px; }
+#touch-ui .tbtn.held { background: rgba(${ACCENT_RGB}, 0.28); border-color: ${ACCENT}; color: #fff; }
 /* .on: 押下中かどうかに関わらず、モードが実際に ON の間ずっと点灯させる
    (制動・微動・ホールドなどのトグル系ボタン向け。.held と見た目は同じでよい) */
-#touch-ui .tbtn.on { background: rgba(255, 106, 0, 0.28); border-color: ${ACCENT}; color: #fff; }
+#touch-ui .tbtn.on { background: rgba(${ACCENT_RGB}, 0.28); border-color: ${ACCENT}; color: #fff; }
 #touch-ui .mini-col {
   position: absolute; display: grid; gap: 6px; grid-template-rows: repeat(2, 52px);
 }
@@ -40,7 +42,7 @@ const STYLE = `
 #touch-fire {
   position: absolute; right: 22px; bottom: 138px;
   width: 74px; height: 74px; border-radius: 50% !important;
-  border-color: rgba(255, 106, 0, 0.55) !important; color: ${ACCENT} !important;
+  border-color: rgba(${ACCENT_RGB}, 0.55) !important; color: ${ACCENT} !important;
 }
 #touch-zoom {
   position: absolute; right: 112px; bottom: 148px;

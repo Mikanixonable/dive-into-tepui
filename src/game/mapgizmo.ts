@@ -7,12 +7,12 @@
 // #hud-maptool と同様、DOM 要素側の pointerdown で stopPropagation して
 // Input のキャンバスドラッグ(視点回転)へイベントが漏れないようにする。
 import * as C from './const';
+import { ACCENT, ACCENT_SOFT, ACCENT_RGB, TEXT as INK } from './theme';
 
-const ACCENT = '#ff6a00';
-const ACCENT_SOFT = '#ff9040';
+// SURFACE/EDGE はこのファイル固有の不透明度(0.85 / 0.16)を使うため、
+// theme.ts の SURFACE(0.82)/EDGE(0.09)とは別定数のまま保持する。
 const SURFACE = 'rgba(13, 15, 18, 0.85)';
 const EDGE = 'rgba(255, 255, 255, 0.16)';
-const INK = '#e6e8eb';
 
 // z-index の方針: #hud(10)より下、キャンバス(0)より上の 9 に固定する。
 // #hud-settings・#hud-end 等のモーダルは #hud の子要素として #hud の
@@ -30,9 +30,9 @@ const STYLE = `
   position: absolute; transform: translate(-50%, -50%);
   width: 22px; height: 22px; border-radius: 50%; touch-action: none;
   pointer-events: auto; cursor: grab;
-  border: 2px solid ${ACCENT_SOFT}; background: rgba(255, 106, 0, 0.16);
+  border: 2px solid ${ACCENT_SOFT}; background: rgba(${ACCENT_RGB}, 0.16);
 }
-#map-gizmo .gz-node.sel { border-color: ${ACCENT}; background: rgba(255, 106, 0, 0.38); }
+#map-gizmo .gz-node.sel { border-color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.38); }
 #map-gizmo .gz-node .gz-lbl {
   position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
   font-size: 10px; color: ${INK}; white-space: nowrap;
@@ -56,7 +56,7 @@ const STYLE = `
 }
 #map-gizmo .gz-menu-item:last-child { border-bottom: none; }
 #map-gizmo .gz-menu-item:hover, #map-gizmo .gz-menu-item:active {
-  background: rgba(255, 106, 0, 0.18); color: ${ACCENT_SOFT};
+  background: rgba(${ACCENT_RGB}, 0.18); color: ${ACCENT_SOFT};
 }
 `;
 

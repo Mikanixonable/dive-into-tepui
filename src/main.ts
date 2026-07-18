@@ -1,6 +1,7 @@
 import { createGameScene } from './render/scene';
 import { Game } from './game/game';
 import { STAGE1_CLEARED_KEY } from './game/const';
+import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './game/theme';
 
 // 低軌道シューティング: エントリポイント。
 // 物理はメインスレッドで毎フレーム積分する(単体エンティティの中心重力
@@ -16,25 +17,23 @@ function selectStage(): Promise<number> {
       /* localStorage 不可の環境ではステージ1のみ */
     }
     // ダークテーマ(HUD と同じ: モノトーン + 彩度の高いオレンジ)
-    const SURFACE = 'rgba(13, 15, 18, 0.92)';
-    const EDGE = 'rgba(255, 255, 255, 0.09)';
-    const ACCENT = '#ff6a00';
+    const SURFACE = SURFACE_OPAQUE;
     const div = document.createElement('div');
     div.style.cssText =
       'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-      'gap:18px;color:#e6e8eb;background:#08090c;font-family:Consolas,monospace;z-index:100;text-align:center';
+      `gap:18px;color:${TEXT};background:${BG};font-family:Consolas,monospace;z-index:100;text-align:center`;
     const btn = (label: string, sub: string, enabled: boolean) => {
       const b = document.createElement('div');
       b.style.cssText =
         `min-width:min(420px, 88vw);max-width:92vw;padding:16px 24px;background:${SURFACE};` +
-        `border:1px solid ${enabled ? 'rgba(255,106,0,0.4)' : EDGE};border-radius:4px;` +
+        `border:1px solid ${enabled ? `rgba(${ACCENT_RGB}, 0.4)` : EDGE};border-radius:4px;` +
         `line-height:1.7;${enabled ? 'cursor:pointer' : 'opacity:0.45'}`;
-      b.innerHTML = `<div style="font-size:17px;letter-spacing:3px;color:${enabled ? ACCENT : '#7d838c'}">${label}</div><div style="font-size:12px;color:#7d838c">${sub}</div>`;
+      b.innerHTML = `<div style="font-size:17px;letter-spacing:3px;color:${enabled ? ACCENT : TEXT_DIM}">${label}</div><div style="font-size:12px;color:${TEXT_DIM}">${sub}</div>`;
       return b;
     };
     div.innerHTML =
       `<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
-      '<div style="font-size:12px;color:#7d838c;margin-bottom:12px">ステージを選択 ([0] / [1] / [2] キーまたはクリック)</div>';
+      `<div style="font-size:12px;color:${TEXT_DIM};margin-bottom:12px">ステージを選択 ([0] / [1] / [2] キーまたはクリック)</div>`;
     const b0 = btn(
       '[0] 訓練ステージ — 近接戦闘訓練',
       '常時選択可。5km以内に色分けされた敵集団 約50機、制限時間2分の撃墜数スコアアタック',
@@ -74,17 +73,16 @@ function selectStage(): Promise<number> {
 // ローディング画面。createGameScene() の await が解決するまでは canvas が
 // 真っ黒のままで「固まっている」ように見えるため、先にこれを出しておく。
 function showLoading(): () => void {
-  const SURFACE = 'rgba(13, 15, 18, 0.92)';
-  const ACCENT = '#ff6a00';
+  const SURFACE = SURFACE_OPAQUE;
   const div = document.createElement('div');
   div.style.cssText =
     'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-    'gap:14px;color:#e6e8eb;background:#08090c;font-family:Consolas,monospace;z-index:200;text-align:center';
+    `gap:14px;color:${TEXT};background:${BG};font-family:Consolas,monospace;z-index:200;text-align:center`;
   div.innerHTML =
     `<div style="font-size:22px;letter-spacing:6px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
     `<div style="width:40px;height:40px;border-radius:50%;border:3px solid ${SURFACE};` +
     `border-top-color:${ACCENT};animation:tepui-spin 0.9s linear infinite"></div>` +
-    '<div style="font-size:12px;color:#7d838c">初期化中(WebGPU)…</div>';
+    `<div style="font-size:12px;color:${TEXT_DIM}">初期化中(WebGPU)…</div>`;
   const style = document.createElement('style');
   style.textContent = '@keyframes tepui-spin { to { transform: rotate(360deg); } }';
   document.head.appendChild(style);
@@ -135,11 +133,11 @@ main().catch((err) => {
   const div = document.createElement('div');
   div.style.cssText =
     'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
-    'color:#e6e8eb;background:#08090c;font-family:monospace;font-size:16px;text-align:center;line-height:2';
+    `color:${TEXT};background:${BG};font-family:monospace;font-size:16px;text-align:center;line-height:2`;
   div.innerHTML =
-    '<div style="background:rgba(13,15,18,0.92);border:1px solid rgba(255,255,255,0.09);border-radius:4px;padding:22px 32px">' +
-    '<span style="color:#ff6a00">WebGPU の初期化に失敗しました。</span><br>' +
+    `<div style="background:${SURFACE_OPAQUE};border:1px solid ${EDGE};border-radius:4px;padding:22px 32px">` +
+    `<span style="color:${ACCENT}">WebGPU の初期化に失敗しました。</span><br>` +
     'Chrome / Edge 最新版など WebGPU 対応ブラウザでアクセスしてください。<br>' +
-    `<span style="color:#7d838c;font-size:12px">${String(err)}</span></div>`;
+    `<span style="color:${TEXT_DIM};font-size:12px">${String(err)}</span></div>`;
   document.body.appendChild(div);
 });

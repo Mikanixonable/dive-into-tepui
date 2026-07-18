@@ -59,6 +59,7 @@ import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from './mapgizmo';
 import { ChaseCamera } from './camera';
 import { Hud } from './hud';
 import { Sfx } from './audio';
+import { ACCENT } from './theme';
 import { GameScene } from '../render/scene';
 import { createEarth, Earth } from '../render/earth';
 import {
@@ -1975,7 +1976,7 @@ export class Game {
         try {
           const first = localStorage.getItem(C.STAGE1_CLEARED_KEY) !== '1';
           localStorage.setItem(C.STAGE1_CLEARED_KEY, '1');
-          if (first) unlockNote = '<br><span style="color:#ff6a00">第二ステージ(モルニヤ戦域)が解放された</span>';
+          if (first) unlockNote = `<br><span style="color:${ACCENT}">第二ステージ(モルニヤ戦域)が解放された</span>`;
         } catch {
           /* localStorage 不可なら解放なし */
         }

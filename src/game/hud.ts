@@ -1,6 +1,7 @@
 // DOM オーバーレイの HUD。数値パネル・スクリーン投影マーカー・
 // ヒント・リザルト画面を管理する。WebGPU キャンバスの上に重ねる。
 import * as C from './const';
+import { ACCENT, ACCENT_SOFT, ACCENT_RGB, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT } from './theme';
 
 export interface StatsData {
   met: number;
@@ -51,12 +52,6 @@ export interface EnemyRow {
 // (ほぼ無彩色のグレースケール)+ 彩度の高いオレンジ 1 色をアクセントに使う
 // フラットなパネルにする。スクリーン投影マーカーもモノトーンに揃え、
 // 「注目すべきもの」(ターゲット・リード・マニューバ・補給)だけをオレンジで示す。
-const INK = '#e6e8eb'; // 本文色
-const INK_SOFT = '#7d838c'; // ラベル・キャプション色
-const ACCENT = '#ff6a00'; // 彩度の高いオレンジ(唯一のアクセントカラー)
-const ACCENT_SOFT = '#ff9040'; // アクセントの淡色
-const SURFACE = 'rgba(13, 15, 18, 0.82)'; // パネル面(ほぼ黒)
-const EDGE = 'rgba(255, 255, 255, 0.09)'; // 細いエッジライン
 
 const STYLE = `
 #hud, #hud * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -73,7 +68,7 @@ const STYLE = `
 }
 #hud .panel h3 {
   font-size: 11px; letter-spacing: 2.5px; color: ${ACCENT};
-  border-bottom: 1px solid rgba(255, 106, 0, 0.25); margin-bottom: 6px; padding-bottom: 4px;
+  border-bottom: 1px solid rgba(${ACCENT_RGB}, 0.25); margin-bottom: 6px; padding-bottom: 4px;
   font-weight: 600;
 }
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
@@ -97,7 +92,7 @@ const STYLE = `
 }
 #hud-hint {
   position: absolute; bottom: 200px; left: 50%; transform: translateX(-50%);
-  background: ${SURFACE}; border: 1px solid rgba(255, 106, 0, 0.35); border-radius: 4px;
+  background: ${SURFACE}; border: 1px solid rgba(${ACCENT_RGB}, 0.35); border-radius: 4px;
   padding: 8px 18px;
   color: ${ACCENT_SOFT}; font-size: 14px;
   transition: opacity 0.4s; opacity: 0; text-align: center;
@@ -130,7 +125,7 @@ const STYLE = `
 .mk-boardhit { color: #ffffff; text-shadow: 0 0 5px rgba(255,255,255,0.9), 0 0 10px rgba(255,255,255,0.45); }
 .mk-boardhit .sym { font-size: 8px; }
 .mk-mnode { color: ${ACCENT_SOFT}; }
-.mk-burn { color: ${ACCENT}; text-shadow: 0 0 8px rgba(255,106,0,0.7); }
+.mk-burn { color: ${ACCENT}; text-shadow: 0 0 8px rgba(${ACCENT_RGB}, 0.7); }
 .mk-self { color: #dfe3e8; }
 .mk-ammo { color: ${ACCENT_SOFT}; text-shadow: 0 0 6px rgba(255,144,64,0.6), 0 0 3px #000; }
 #hud .warn-hot { color: ${ACCENT}; }
@@ -160,7 +155,7 @@ const STYLE = `
 }
 #hud-end h1 { font-size: 34px; letter-spacing: 6px; margin-bottom: 18px; }
 #hud-end.win h1 { color: ${INK}; text-shadow: 0 0 18px rgba(230,232,235,0.35); }
-#hud-end.lose h1 { color: ${ACCENT}; text-shadow: 0 0 18px rgba(255,106,0,0.4); }
+#hud-end.lose h1 { color: ${ACCENT}; text-shadow: 0 0 18px rgba(${ACCENT_RGB}, 0.4); }
 #hud-end .detail {
   font-size: 15px; line-height: 2; color: ${INK};
   background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px; padding: 18px 30px;
@@ -540,7 +535,7 @@ export class Hud {
     const title = this.els.get('tgtname');
     if (!t) {
       if (title) title.textContent = 'TARGET';
-      body.innerHTML = '<div style="color:#7d838c">ターゲットなし</div>';
+      body.innerHTML = `<div style="color:${INK_SOFT}">ターゲットなし</div>`;
       return;
     }
     if (title) title.textContent = t.name;
@@ -560,7 +555,7 @@ export class Hud {
     const list = this.els.get('elist');
     if (!list) return;
     if (rows.length === 0) {
-      list.innerHTML = '<div style="color:#7d838c">残存目標なし</div>';
+      list.innerHTML = `<div style="color:${INK_SOFT}">残存目標なし</div>`;
       return;
     }
     list.innerHTML = rows
@@ -595,7 +590,7 @@ export class Hud {
     const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
     let s = '';
     if (nodes.length === 0) {
-      s += '<div style="color:#7d838c">予測軌道(グレー)をクリックしてマニューバノードを配置</div>';
+      s += `<div style="color:${INK_SOFT}">予測軌道(グレー)をクリックしてマニューバノードを配置</div>`;
     } else {
       s += nodes
         .map((n, i) => {
@@ -606,7 +601,7 @@ export class Hud {
     }
     if (selDv) {
       s +=
-        `<div style="margin-top:4px;color:#e6e8eb;font-size:11px;letter-spacing:1px">選択中ノードの Δv</div>` +
+        `<div style="margin-top:4px;color:${INK};font-size:11px;letter-spacing:1px">選択中ノードの Δv</div>` +
         row('Δv PRO [W/S]', `${selDv.x.toFixed(1)} m/s`) +
         row('Δv NRM [A/D]', `${selDv.y.toFixed(1)} m/s`) +
         row('Δv RAD [E/Q]', `${selDv.z.toFixed(1)} m/s`) +
@@ -614,16 +609,16 @@ export class Hud {
     }
     if (selEl) {
       s +=
-        `<div style="margin-top:4px;color:#e6e8eb;font-size:11px;letter-spacing:1px">噴射後の軌道</div>` +
+        `<div style="margin-top:4px;color:${INK};font-size:11px;letter-spacing:1px">噴射後の軌道</div>` +
         row('遠地点 AP', fmtDist(selEl.apAlt)) +
         row('近地点 PE', fmtDist(selEl.peAlt)) +
         row('傾斜角 INC', isFinite(selEl.incDeg) ? `${selEl.incDeg.toFixed(2)}°` : '---') +
         row('周期 PRD', fmtTime(selEl.period));
       if (isFinite(selEl.peAlt) && selEl.peAlt < 120e3) {
-        s += `<div style="color:#ff6a00;margin-top:2px">⚠ 近地点が大気圏内</div>`;
+        s += `<div style="color:${ACCENT};margin-top:2px">⚠ 近地点が大気圏内</div>`;
       }
     }
-    s += `<div style="margin-top:6px;color:#7d838c;font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/W/S・A/D・Q/E] Δv調整 [右クリック] メニュー(自動ワープ/削除) [X] 選択ノード削除 [V] 微調整 [M] 確定して戻る(時間は進み続ける)</div>`;
+    s += `<div style="margin-top:6px;color:${INK_SOFT};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/W/S・A/D・Q/E] Δv調整 [右クリック] メニュー(自動ワープ/削除) [X] 選択ノード削除 [V] 微調整 [M] 確定して戻る(時間は進み続ける)</div>`;
     return s;
   }
 
