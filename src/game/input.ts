@@ -69,6 +69,10 @@ export class Input {
         }
       } else if (e.button === 2) {
         this.mouseFiring = true;
+        // 右クリックの押下エッジも合成コードとしてキューに積む(戦闘中は
+        // mouseFiring による発射のみ意味を持つが、マップモードなど別用途
+        // (例: ノード削除)から takePresses() 経由で拾えるようにする)。
+        this.pressQueue.push('MouseRight');
       }
     });
     target.addEventListener('pointermove', (e) => {

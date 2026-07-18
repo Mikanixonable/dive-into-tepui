@@ -38,6 +38,15 @@ export function sunPosition(t: number, phase0: number): Vec3 {
   return v3(p.x * SUN_DIST, p.y * SUN_DIST, p.z * SUN_DIST);
 }
 
+// 太陽方向の ECI 上での「方位角」(Y軸=極を軸としたXZ平面への射影の偏角)。
+// 黄道傾斜(23.44°)により太陽の実際の運動は Y軸まわりの純粋な回転ではないが、
+// マップモードの「太陽回転系」表示(カメラ方位・予測軌道の回転補正)には
+// この近似で十分(年周期のドリフトなので誤差は視覚上ごく僅か)。
+export function sunAzimuth(t: number, phase0: number): number {
+  const p = sunPosition(t, phase0);
+  return Math.atan2(p.z, p.x);
+}
+
 // 月の ECI 位置。phase0 は初期の軌道内位相 [rad]。
 export function moonPosition(t: number, phase0: number): Vec3 {
   const u = phase0 + (2 * Math.PI * t) / MOON_PERIOD; // 昇交点からの引数

@@ -13,21 +13,19 @@ import {
   SIDEREAL_DAY,
   elementsFromState,
   j2Accel,
-  positionOnOrbit,
   stateFromElements,
   stepOrbitRK4,
   thirdBodyAccel,
-  tofBetween,
-  trueAnomalyAt,
-  velocityOnOrbit,
 } from '../physics/orbital';
 import {
   MU_MOON,
   MU_SUN,
   R_MOON,
   moonPosition,
+  sunAzimuth,
   sunPosition,
 } from '../physics/ephemeris';
+import { PlannedNode, PredictOpts, TrajectorySample, predictTrajectory, sampleAt } from '../physics/predict';
 import {
   Attitude,
   qRotate,
@@ -84,6 +82,7 @@ import {
   buildPlayerShip,
 } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
+import { TrajLine } from '../render/trajline';
 
 type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
@@ -92,15 +91,6 @@ interface EnemySpec {
   state: OrbitState;
   hp: number;
   accent: number;
-}
-
-// 確定済みマニューバノード(計画時の軌道で凍結)
-interface ManeuverNode {
-  nodeTime: number; // 実行予定時刻 [simTime]
-  rNode: Vec3; // ノード点の ECI 位置
-  vPlanned: Vec3; // 噴射完了後の目標速度(ワールド)
-  targetEl: Elements; // 計画軌道の要素
-  dvTotal: number; // 計画 Δv [m/s]
 }
 
 const tmpV = new THREE.Vector3();
@@ -200,9 +190,27 @@ export class Game {
   private mapDist = 4.5e7;
   private readonly mapCamera: THREE.PerspectiveCamera;
   private readonly starsMesh: THREE.Mesh;
-  private editNu: number | null = null; // 編集中ノードの真近点角(現在軌道上)
-  private editDv = v3(); // 編集中 Δv (x=プログレード, y=ノーマル, z=ラジアルアウト) [m/s]
-  private node: ManeuverNode | null = null;
+  private readonly trajLine = new TrajLine();
+
+  // 複数ノード・時間ベースの軌道計画(絶対 simTime を持つノードの列。時刻順)。
+  // 各ノードの Δv はノード実行時点の(その時点までの計画を反映した)速度を基準に
+  // プログレード/ノーマル/ラジアルアウト成分で保持する — ワープで時間が進んでも
+  // ノード自体の実行時刻は絶対時刻なのでドリフトしない。
+  private planNodes: PlannedNode[] = [];
+  private selectedNodeIdx: number | null = null;
+  // 数値予測(predict.ts)の結果キャッシュ。マップモードのポリライン描画・
+  // クリックピッキング・戦闘ビューの噴射ガイドの双方で共有する。
+  private trajSamples: TrajectorySample[] = [];
+  private trajDirty = true; // ノード変更等で再計算が必要
+  private trajGeomDirty = true; // trajLine のジオメトリ再構築が必要(refreshTrajectory 後に立てる)
+  private trajLastRefreshMs = -Infinity; // performance.now() 基準
+  // マップモードの「太陽回転系」表示で、予測サンプルを t_now 時点の太陽方位へ
+  // 揃えるための回転角。再計算(refreshTrajectory)のたびに固定し、次の
+  // 再計算まではクリック判定・描画とも同じ値を使う(表示と判定の整合を取るため)。
+  private trajYawRef = 0;
+  private predictDurationKey: 'orbit' | 'day' | 'week' | 'month' = 'day';
+  private mapFrameRotating = false;
+  private mapSliderT = 0; // 0..1(0 でゴーストマーカー非表示)
   private autoWarp = false;
 
   private phase: GamePhase = 'playing';
@@ -300,7 +308,7 @@ export class Game {
       50,
       window.innerWidth / window.innerHeight,
       1e4,
-      6e8,
+      C.MAP_CAMERA_FAR,
     );
 
     // --- 環境 ---
@@ -323,6 +331,22 @@ export class Game {
     this.scene.add(this.targetOrbitLine.line);
     this.plannedOrbitLine.line.renderOrder = 3;
     this.scene.add(this.plannedOrbitLine.line);
+    this.scene.add(this.trajLine.group);
+
+    // マップモードのツールバー(予測期間・スライダー・座標系トグル)
+    this.hud.onDurationSelect = (key) => {
+      if (key === 'orbit' || key === 'day' || key === 'week' || key === 'month') {
+        this.predictDurationKey = key;
+        this.trajDirty = true;
+      }
+    };
+    this.hud.onFrameToggle = () => {
+      this.mapFrameRotating = !this.mapFrameRotating;
+      this.trajDirty = true;
+    };
+    this.hud.onSliderChange = (t) => {
+      this.mapSliderT = t;
+    };
 
     // マヌーバ噴射プルーム(推力方向の逆側に置く発光ビルボード 2 枚)
     this.plumeCore = buildFlashMesh(this.glowTex, 0xaee6ff);
@@ -586,6 +610,7 @@ export class Game {
       // ゲーム終了時はマップモードを強制解除する
       this.mapMode = false;
       this.hud.setPlanPanel(null);
+      this.hud.setMapToolbarVisible(false);
     }
     if (!this.paused && this.phase === 'playing') {
       // 軌道計画モード中も時間を進め、ワープできるようにする(手動推進・射撃のみ
@@ -670,7 +695,7 @@ export class Game {
           break;
         case 'KeyN':
           if (this.mapMode) break;
-          if (this.node && this.phase === 'playing') {
+          if (this.planNodes.length > 0 && this.phase === 'playing') {
             this.autoWarp = !this.autoWarp;
             this.hud.hint(this.autoWarp ? 'ノードへ自動ワープ開始' : '自動ワープ解除');
           } else {
@@ -678,16 +703,22 @@ export class Game {
           }
           break;
         case 'KeyX':
+        case 'MouseRight':
+          // マップモード中の右クリックは、選択中ノードを削除する [X] キーと同じ扱い
+          // (戦闘ビューでの右クリックは発射に使うため、mapMode 中のみ意味を持たせる)。
           if (this.mapMode) {
-            if (this.editNu !== null) this.hud.hint('ノードを削除');
-            this.editNu = null;
-            this.editDv = v3();
-          } else if (this.node) {
-            this.node = null;
-            this.editNu = null;
-            this.editDv = v3();
+            if (this.selectedNodeIdx !== null) {
+              this.planNodes.splice(this.selectedNodeIdx, 1);
+              this.selectedNodeIdx = null;
+              this.trajDirty = true;
+              this.hud.hint('ノードを削除');
+            }
+          } else if (code === 'KeyX' && this.planNodes.length > 0) {
+            this.planNodes = [];
+            this.selectedNodeIdx = null;
             this.autoWarp = false;
-            this.hud.hint('マニューバノードを破棄');
+            this.trajDirty = true;
+            this.hud.hint('マニューバ計画を破棄');
           }
           break;
         case 'KeyP':
@@ -734,131 +765,197 @@ export class Game {
     if (this.phase !== 'playing') return;
     if (!this.mapMode) {
       this.mapMode = true;
-      this.hud.hint('軌道計画モード: 自機軌道をクリックしてノード配置 → W/S・A/D・Q/E で Δv 調整 → [M] で確定', 5000);
+      this.selectedNodeIdx = null;
+      this.trajDirty = true;
+      this.hud.setMapToolbarVisible(true);
+      this.hud.hint(
+        '軌道計画モード: 予測軌道(折れ線)をクリックしてノード配置 → W/S・A/D・Q/E で Δv 調整 → [M] で確定',
+        5000,
+      );
     } else {
       this.mapMode = false;
-      this.finalizeNode();
+      // Δv がほぼゼロのまま放置されたノード(クリックしただけで調整しなかった等)は破棄する。
+      this.planNodes = this.planNodes.filter((n) => len(n.dv) >= C.NODE_MIN_DV);
+      this.selectedNodeIdx = null;
+      this.trajDirty = true;
+      this.hud.setMapToolbarVisible(false);
       this.hud.setPlanPanel(null);
+      if (this.planNodes.length > 0) {
+        this.hud.hint(`マニューバ計画 ${this.planNodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
+      }
     }
   }
 
-  // ノードでの Δv(プログレード/ノーマル/ラジアル成分)をワールドベクトルへ
-  private dvWorldAt(el: Elements, vNode: Vec3, dv: Vec3): Vec3 {
-    const pro = norm(vNode);
-    const h = el.hHat;
-    const radOut = cross(pro, h);
-    return v3(
-      pro.x * dv.x + h.x * dv.y + radOut.x * dv.z,
-      pro.y * dv.x + h.y * dv.y + radOut.y * dv.z,
-      pro.z * dv.x + h.z * dv.y + radOut.z * dv.z,
-    );
+  // 数値予測(predict.ts)の再計算対象の期間 [s]。マップモードではツールバーで
+  // 選んだ期間、戦闘ビューでは直近の未達成ノードをちょうど含む程度の短い期間だけ
+  // 計算する(28日ぶんを毎回計算するのは無駄なコストになるため)。
+  private predictDurationSec(): number {
+    if (this.predictDurationKey === 'orbit') {
+      const el = elementsFromState(this.player.state.r, this.player.state.v);
+      if (el && isFinite(el.period) && el.period > 0) return el.period;
+      return C.PREDICT_DUR_DAY; // 双曲線・放物線軌道では1日にフォールバック
+    }
+    if (this.predictDurationKey === 'week') return C.PREDICT_DUR_WEEK;
+    if (this.predictDurationKey === 'month') return C.PREDICT_DUR_MONTH;
+    return C.PREDICT_DUR_DAY;
   }
 
-  // 編集中ノードの計画軌道要素(プレビュー用)。null = プレビューなし。
-  private plannedPreview(el: Elements): Elements | null {
-    if (this.editNu === null) return null;
-    const rN = positionOnOrbit(el, this.editNu);
-    const vN = velocityOnOrbit(el, this.editNu);
-    const vP = add(vN, this.dvWorldAt(el, vN, this.editDv));
-    return elementsFromState(rN, vP);
+  private refreshTrajectory(): void {
+    let duration: number;
+    if (this.mapMode) {
+      duration = this.predictDurationSec();
+    } else {
+      const first = this.planNodes[0];
+      duration = first ? Math.max(60, first.time - this.simTime + 120) : 0;
+    }
+    if (duration <= 0) {
+      this.trajSamples = [];
+    } else {
+      const opts: PredictOpts = {
+        sunPhase0: this.sunPhase0,
+        moonPhase0: this.moonPhase0,
+        maxSamples: C.PREDICT_MAX_SAMPLES,
+      };
+      this.trajSamples = predictTrajectory(this.player.state, this.simTime, duration, this.planNodes, opts);
+    }
+    this.trajYawRef = this.mapFrameRotating ? sunAzimuth(this.simTime, this.sunPhase0) : 0;
+    this.trajDirty = false;
+    this.trajGeomDirty = true;
+    this.trajLastRefreshMs = performance.now();
   }
 
-  // マップ表示中のノード編集(時間・物理は simulate() 側で通常どおり進み続ける。
-  // ここではクリックによるノード配置と Δv 調整、計画パネルの表示だけを行う)
-  private updateMapPlanning(dt: number): void {
-    const el = elementsFromState(this.player.state.r, this.player.state.v);
-    if (!el || el.e >= 0.98 || !isFinite(el.period)) {
-      this.hud.setPlanPanel('<div style="color:#ff6a00">現在の軌道では計画できません(楕円軌道が必要)</div>');
-      this.input.takeClicks();
+  // dirty フラグが立っていれば ~5Hz、そうでなければ2秒ごとに予測を再計算する。
+  // マップモードでもなくノードもなければ(表示・ガイドとも不要なので)何もしない。
+  private updateTrajectoryRefresh(): void {
+    const needed = this.mapMode || this.planNodes.length > 0;
+    if (!needed) {
+      if (this.trajSamples.length > 0) this.trajSamples = [];
+      return;
+    }
+    const elapsed = performance.now() - this.trajLastRefreshMs;
+    const threshold = this.trajDirty ? C.PREDICT_DIRTY_THROTTLE_MS : C.PREDICT_REFRESH_INTERVAL_MS;
+    if (elapsed >= threshold) this.refreshTrajectory();
+  }
+
+  // ECI 座標 r(時刻 t のもの)をマップの「太陽回転系」表示用に回転させる
+  // (非回転系なら無変換)。回転角は直近の refreshTrajectory 時点で固定した
+  // trajYawRef を使うので、次回再計算までは描画とクリック判定が一致する。
+  private toDisplayFrame(r: Vec3, t: number): Vec3 {
+    if (!this.mapFrameRotating) return r;
+    const phi = this.trajYawRef - sunAzimuth(t, this.sunPhase0);
+    return rotateAxis(r, v3(0, 1, 0), phi);
+  }
+
+  private nodeScreenPos(node: PlannedNode, o: Vec3): { x: number; y: number; front: boolean } | null {
+    const s = sampleAt(this.trajSamples, node.time);
+    if (!s) return null;
+    return this.project(sub(this.toDisplayFrame(s.r, node.time), o));
+  }
+
+  // マップ上のクリック処理: 既存ノードマーカー近傍なら選択、そうでなければ
+  // 予測軌道(既存ノードの噴射も反映済みの折れ線)上の最近傍サンプル時刻に
+  // 新規ノードを配置して選択する。
+  private handleMapClick(mx: number, my: number, o: Vec3): void {
+    let bestNodeIdx: number | null = null;
+    let bestNodeD = C.NODE_PICK_PX * C.NODE_PICK_PX;
+    for (let i = 0; i < this.planNodes.length; i++) {
+      const p = this.nodeScreenPos(this.planNodes[i]!, o);
+      if (!p || !p.front) continue;
+      const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
+      if (d < bestNodeD) {
+        bestNodeD = d;
+        bestNodeIdx = i;
+      }
+    }
+    if (bestNodeIdx !== null) {
+      this.selectedNodeIdx = bestNodeIdx;
+      this.sfx.warp();
       return;
     }
 
-    // クリック → 自機軌道上の最近傍点にノードを配置
-    for (const c of this.input.takeClicks()) {
-      const nu = this.pickOrbitNu(el, c.x, c.y);
-      if (nu !== null) {
-        this.editNu = nu;
-        this.sfx.warp();
-      }
-    }
-
-    // Δv 調整(推進キーを流用、[V] で微調整)
-    if (this.editNu !== null) {
-      const i = this.input;
-      const rate = (this.fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) * dt;
-      this.editDv.x += ((i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0)) * rate;
-      this.editDv.y += ((i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0)) * rate;
-      this.editDv.z += ((i.down('KeyE') ? 1 : 0) + (i.down('KeyQ') ? -1 : 0)) * rate;
-    }
-
-    // 計画パネル
-    const nuNow = trueAnomalyAt(el, this.player.state.r);
-    if (this.editNu === null) {
-      this.hud.setPlanPanel(
-        '<div style="color:#7d838c">自機軌道(グレー)をクリックしてマニューバノードを配置(時間は進み続ける)<br>' +
-          '[Tab] ターゲット切替 / 左ドラッグ・ホイールで視点 / [M] 戦闘ビューへ</div>',
-      );
-    } else {
-      const tof = tofBetween(el, nuNow, this.editNu);
-      const pl = this.plannedPreview(el);
-      this.hud.setPlanPanel(this.hud.planHtml(this.editDv, tof, pl));
-    }
-  }
-
-  // スクリーン座標から自機軌道上の最近傍点の真近点角を求める(離心近点角で一様サンプル)
-  private pickOrbitNu(el: Elements, mx: number, my: number): number | null {
-    const o = this.player.state.r;
-    const b = el.a * Math.sqrt(1 - el.e * el.e);
-    let best: number | null = null;
+    if (this.trajSamples.length < 2) return;
+    let bestT: number | null = null;
     let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
-    const N = 512;
-    for (let i = 0; i < N; i++) {
-      const E = (i / N) * Math.PI * 2;
-      const x = el.a * (Math.cos(E) - el.e);
-      const y = b * Math.sin(E);
-      const pt = v3(
-        el.pHat.x * x + el.qHat.x * y,
-        el.pHat.y * x + el.qHat.y * y,
-        el.pHat.z * x + el.qHat.z * y,
-      );
-      const p = this.project(sub(pt, o));
+    for (const s of this.trajSamples) {
+      const p = this.project(sub(this.toDisplayFrame(s.r, s.t), o));
       if (!p.front) continue;
       const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
       if (d < bestD) {
         bestD = d;
-        best = 2 * Math.atan2(Math.sqrt(1 + el.e) * Math.sin(E / 2), Math.sqrt(1 - el.e) * Math.cos(E / 2));
+        bestT = s.t;
       }
     }
-    return best;
+    if (bestT !== null) {
+      const newNode: PlannedNode = { time: bestT, dv: v3() };
+      this.planNodes.push(newNode);
+      this.planNodes.sort((a, b) => a.time - b.time);
+      this.selectedNodeIdx = this.planNodes.indexOf(newNode);
+      this.trajDirty = true;
+      this.sfx.warp();
+    }
   }
 
-  // マップを抜けるとき、編集中のノードを実行計画として凍結する
-  private finalizeNode(): void {
-    this.node = null;
-    this.autoWarp = false;
-    const dvMag = len(this.editDv);
-    if (this.editNu === null || dvMag < C.NODE_MIN_DV) return;
-    const el = elementsFromState(this.player.state.r, this.player.state.v);
-    if (!el || el.e >= 0.98 || !isFinite(el.period)) return;
-    const nuNow = trueAnomalyAt(el, this.player.state.r);
-    const rNode = positionOnOrbit(el, this.editNu);
-    const vNode = velocityOnOrbit(el, this.editNu);
-    const vPlanned = add(vNode, this.dvWorldAt(el, vNode, this.editDv));
-    const targetEl = elementsFromState(rNode, vPlanned);
-    if (!targetEl) return;
-    this.node = {
-      nodeTime: this.simTime + tofBetween(el, nuNow, this.editNu),
-      rNode,
-      vPlanned,
-      targetEl,
-      dvTotal: dvMag,
-    };
-    this.hud.hint(`マニューバノード確定 (Δv ${dvMag.toFixed(1)} m/s) — [N] でノードへ自動ワープ`, 4500);
+  // 未来位置ゴースト(スライダー)のラベル文字列
+  private ghostLabel(): string {
+    const duration = this.predictDurationSec();
+    const t = this.simTime + this.mapSliderT * duration;
+    const s = sampleAt(this.trajSamples, t);
+    if (!s) return '';
+    const tRel = t - this.simTime;
+    const alt = len(s.r) - R_EARTH;
+    const h = Math.floor(tRel / 3600);
+    const m = Math.floor((tRel % 3600) / 60);
+    return `T+${h}h${String(m).padStart(2, '0')}m 高度 ${(alt / 1000).toFixed(0)}km`;
   }
 
-  // 噴射ガイドの達成判定と表示(戦闘ビュー)
+  // マップ表示中のノード編集(時間・物理は simulate() 側で通常どおり進み続ける。
+  // ここではクリックによるノード配置・選択、選択中ノードの Δv 調整、
+  // ツールバー・計画パネルの表示を行う)
+  private updateMapPlanning(dt: number): void {
+    const o = this.player.state.r;
+
+    for (const c of this.input.takeClicks()) {
+      this.handleMapClick(c.x, c.y, o);
+    }
+
+    // Δv 調整(推進キーを流用、[V] で微調整)。選択中ノードがあるときのみ。
+    const selNode = this.selectedNodeIdx !== null ? this.planNodes[this.selectedNodeIdx] : undefined;
+    if (selNode) {
+      const i = this.input;
+      const rate = (this.fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) * dt;
+      const dvx = ((i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0)) * rate;
+      const dvy = ((i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0)) * rate;
+      const dvz = ((i.down('KeyE') ? 1 : 0) + (i.down('KeyQ') ? -1 : 0)) * rate;
+      if (dvx !== 0 || dvy !== 0 || dvz !== 0) {
+        selNode.dv = v3(selNode.dv.x + dvx, selNode.dv.y + dvy, selNode.dv.z + dvz);
+        this.trajDirty = true;
+      }
+    }
+
+    this.hud.setMapToolbarState(
+      this.predictDurationKey,
+      this.mapFrameRotating,
+      this.mapSliderT > 0 ? this.ghostLabel() : null,
+    );
+
+    const nodesInfo = this.planNodes.map((n, i) => ({
+      tRel: n.time - this.simTime,
+      dvMag: len(n.dv),
+      selected: i === this.selectedNodeIdx,
+    }));
+    let selDv: Vec3 | null = null;
+    let selEl: Elements | null = null;
+    if (selNode) {
+      selDv = selNode.dv;
+      const s = sampleAt(this.trajSamples, selNode.time);
+      if (s) selEl = elementsFromState(s.r, s.v);
+    }
+    this.hud.setPlanPanel(this.hud.planHtml(nodesInfo, selDv, selEl));
+  }
+
+  // 噴射ガイドの達成判定と表示(戦闘ビュー)。直近(最も時刻が早い)未達成ノードを対象にする。
   private updateNodeGuide(o: Vec3, pv: Vec3, playerEl: Elements | null): void {
-    const node = this.node;
+    const node = this.planNodes[0];
     if (!node || this.mapMode || !this.player.alive) {
       this.hud.hideMarker('nd');
       this.hud.hideMarker('burn');
@@ -866,34 +963,45 @@ export class Game {
       return;
     }
 
-    // 達成判定: 現在軌道が計画軌道に十分近い
-    if (playerEl && this.orbitClose(playerEl, node.targetEl)) {
-      this.node = null;
-      // editNu/editDv も一緒に消す。残したままだと次に [M] でマップを開いて
-      // 何も操作せず閉じただけで finalizeNode() が古い計画を再凍結し、
-      // 消えたはずのノードと BURN ガイドが復活してしまう。
-      this.editNu = null;
-      this.editDv = v3();
+    const s = sampleAt(this.trajSamples, node.time);
+    const targetEl = s ? elementsFromState(s.r, s.v) : null;
+
+    // 達成判定: 現在軌道がこのノード実行後の計画軌道に十分近い
+    if (playerEl && targetEl && this.orbitClose(playerEl, targetEl)) {
+      this.planNodes.shift();
+      this.selectedNodeIdx = null;
       this.autoWarp = false;
+      this.trajDirty = true;
       this.hud.hideMarker('nd');
       this.hud.hideMarker('burn');
-      this.hud.setPlanPanel(null);
-      this.hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
+      if (this.planNodes.length === 0) {
+        this.hud.setPlanPanel(null);
+        this.hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
+      } else {
+        this.hud.hint(`✓ ノード達成 — 残り ${this.planNodes.length} 件`, 4000);
+      }
       this.sfx.warp();
       return;
     }
 
+    if (!s) {
+      this.hud.hideMarker('nd');
+      this.hud.hideMarker('burn');
+      return;
+    }
+
     // ノード位置マーカー(カウントダウン付き)
-    const tRem = node.nodeTime - this.simTime;
-    const p = this.project(sub(node.rNode, o));
+    const tRem = node.time - this.simTime;
+    const p = this.project(sub(s.r, o));
     const tLabel =
       tRem >= 0
         ? `T-${Math.floor(tRem / 60)}:${String(Math.floor(tRem % 60)).padStart(2, '0')}`
         : `T+${Math.floor(-tRem / 60)}:${String(Math.floor(-tRem % 60)).padStart(2, '0')}`;
-    this.hud.marker('nd', 'mk-mnode', '◆', p.x, p.y, p.front, `NODE ${tLabel}`);
+    const more = this.planNodes.length > 1 ? ` (+${this.planNodes.length - 1})` : '';
+    this.hud.marker('nd', 'mk-mnode', '◆', p.x, p.y, p.front, `NODE ${tLabel}${more}`);
 
     // 噴射ガイド: 目標速度ベクトルとの差分方向へ加速する
-    const dvRem = sub(node.vPlanned, pv);
+    const dvRem = sub(s.v, pv);
     const mag = len(dvRem);
     const g = this.project(scale(norm(dvRem), 5e4));
     this.hud.marker(
@@ -903,7 +1011,7 @@ export class Game {
       g.x,
       g.y,
       g.front,
-      `BURN ${mag.toFixed(1)} m/s → ${(len(node.vPlanned) / 1000).toFixed(2)} km/s`,
+      `BURN ${mag.toFixed(1)} m/s → ${(len(s.v) / 1000).toFixed(2)} km/s`,
     );
   }
 
@@ -921,9 +1029,10 @@ export class Game {
   // ------------------------------------------------------------- simulate
 
   private simulate(dt: number): void {
-    // [N] 自動ワープ: ノード到達時刻に向けてワープ段数を自動調整する
-    if (this.autoWarp && this.node) {
-      const tRem = this.node.nodeTime - this.simTime;
+    // [N] 自動ワープ: 直近ノード到達時刻に向けてワープ段数を自動調整する
+    const autoWarpNode = this.planNodes[0];
+    if (this.autoWarp && autoWarpNode) {
+      const tRem = autoWarpNode.time - this.simTime;
       if (tRem <= C.AUTOWARP_STOP) {
         this.warpIdx = 0;
         this.autoWarp = false;
@@ -1676,11 +1785,15 @@ export class Game {
       );
       this.mapDist = Math.max(C.MAP_MIN_DIST, Math.min(C.MAP_MAX_DIST, this.mapDist * Math.exp(mouse.wheel * 0.0012)));
       const cp = Math.cos(this.mapPitch);
+      // 太陽回転系表示: 太陽の実際の方位ドリフトぶんカメラ方位を追従させ、
+      // 画面上で太陽方向がほぼ固定されて見えるようにする(予測サンプルの回転補正と
+      // 組み合わせて、t=simTime では回転量ゼロで整合する)。
+      const displayYaw = this.mapYaw + (this.mapFrameRotating ? sunAzimuth(this.simTime, this.sunPhase0) : 0);
       // 地球中心はフローティングオリジンで -o
       this.mapCamera.position.set(
-        -o.x + cp * Math.cos(this.mapYaw) * this.mapDist,
+        -o.x + cp * Math.cos(displayYaw) * this.mapDist,
         -o.y + Math.sin(this.mapPitch) * this.mapDist,
-        -o.z + cp * Math.sin(this.mapYaw) * this.mapDist,
+        -o.z + cp * Math.sin(displayYaw) * this.mapDist,
       );
       this.mapCamera.up.set(0, 1, 0);
       this.mapCamera.lookAt(-o.x, -o.y, -o.z);
@@ -1728,15 +1841,25 @@ export class Game {
     );
     this.sun.mesh.quaternion.copy(cam.quaternion);
     this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
-    const moonRel = sub(this.moonPos, o);
-    const moonDist = len(moonRel);
-    const md = scale(moonRel, 1 / moonDist);
-    this.moonMesh.position.set(
-      cam.position.x + md.x * MOON_VIS_DIST,
-      cam.position.y + md.y * MOON_VIS_DIST,
-      cam.position.z + md.z * MOON_VIS_DIST,
-    );
-    this.moonMesh.scale.setScalar(MOON_VIS_DIST * (R_MOON / moonDist));
+    const moonRel = sub(this.moonPos, o); // フローティングオリジン座標(= true ECI - o)
+    if (this.mapMode) {
+      // マップモードは地球中心を実寸スケールで俯瞰するビューなので、月も
+      // 圧縮せず実際の位置・実寸(R_MOON)で描く(シスルナ軌道の計画に、
+      // 月との実際の位置関係が分かる必要があるため)。
+      this.moonMesh.position.set(moonRel.x, moonRel.y, moonRel.z);
+      this.moonMesh.scale.setScalar(R_MOON);
+    } else {
+      // 戦闘ビューは近距離の背景として、カメラ基準の一定視距離(MOON_VIS_DIST)へ
+      // 圧縮して表示する(実距離のままだと far クリップや精度の問題が出るため)。
+      const moonDist = len(moonRel);
+      const md = scale(moonRel, 1 / moonDist);
+      this.moonMesh.position.set(
+        cam.position.x + md.x * MOON_VIS_DIST,
+        cam.position.y + md.y * MOON_VIS_DIST,
+        cam.position.z + md.z * MOON_VIS_DIST,
+      );
+      this.moonMesh.scale.setScalar(MOON_VIS_DIST * (R_MOON / moonDist));
+    }
 
     // 地球の影: 自機周辺が影円柱内にあれば太陽光・環境光を減光する
     const lit = this.shadowLitFactor(o);
@@ -1848,23 +1971,19 @@ export class Game {
       }
     }
 
-    // 計画軌道(白): マップ編集中はプレビュー、戦闘中は確定ノードの目標軌道
-    let plannedEl: Elements | null = null;
-    if (this.mapMode && playerEl) {
-      plannedEl = this.plannedPreview(playerEl);
-    } else if (this.node) {
-      plannedEl = this.node.targetEl;
-    }
-    // マップ編集中は Δv 操作に即時追従させる
-    this.plannedOrbitLine.update(plannedEl, o, this.mapMode);
+    // 数値予測(predict.ts)の再計算とポリライン描画・ノードマーカー
+    this.updateTrajectoryRefresh();
+    this.updateTrajLineAndMarkers(o);
 
-    // マップ編集中のノード位置マーカー
-    if (this.mapMode && playerEl && this.editNu !== null) {
-      const np = this.project(sub(positionOnOrbit(playerEl, this.editNu), o));
-      this.hud.marker('nd', 'mk-mnode', '◆', np.x, np.y, np.front, `NODE Δv ${len(this.editDv).toFixed(1)} m/s`);
-    } else if (this.mapMode) {
-      this.hud.hideMarker('nd');
+    // 計画軌道(白、解析的な楕円): マップモード中は数値予測のポリライン(trajLine)が
+    // 代わりを務めるので非表示にし、戦闘ビューでは直近ノードの噴射後サンプルから
+    // 求めた軌道要素を表示する。
+    let plannedEl: Elements | null = null;
+    if (!this.mapMode && this.planNodes.length > 0) {
+      const s = sampleAt(this.trajSamples, this.planNodes[0]!.time);
+      if (s) plannedEl = elementsFromState(s.r, s.v);
     }
+    this.plannedOrbitLine.update(this.mapMode ? null : plannedEl, o);
 
     this.updateMarkers(o, pv, tgt);
     this.updateNodeMarkers(playerEl, tgtEl, o);
@@ -2136,6 +2255,82 @@ export class Game {
       y: (-tmpV2.y * 0.5 + 0.5) * window.innerHeight,
       front,
     };
+  }
+
+  // マップモードの数値予測ポリライン(trajLine)を必要なときだけ再構築し、
+  // 毎フレームはフローティングオリジン補正だけを行う。あわせてノードマーカーと
+  // スライダーのゴーストマーカーを更新する(いずれもマップモードのみ表示)。
+  private updateTrajLineAndMarkers(o: Vec3): void {
+    if (!this.mapMode) {
+      this.trajLine.setVisible(false);
+      for (let i = 0; i < C.MAX_PLAN_NODE_MARKERS; i++) this.hud.hideMarker(`nd${i}`);
+      this.hud.hideMarker('ghost');
+      return;
+    }
+
+    this.trajLine.setVisible(true);
+    this.trajLine.setOrigin(o);
+    if (this.trajGeomDirty) {
+      this.rebuildTrajLineGeom();
+      this.trajGeomDirty = false;
+    }
+
+    for (let i = 0; i < C.MAX_PLAN_NODE_MARKERS; i++) {
+      const node = this.planNodes[i];
+      if (!node) {
+        this.hud.hideMarker(`nd${i}`);
+        continue;
+      }
+      const p = this.nodeScreenPos(node, o);
+      if (!p) {
+        this.hud.hideMarker(`nd${i}`);
+        continue;
+      }
+      const selected = i === this.selectedNodeIdx;
+      this.hud.marker(
+        `nd${i}`,
+        'mk-mnode',
+        selected ? '▶' : '◆',
+        p.x,
+        p.y,
+        p.front,
+        `NODE${i + 1} Δv ${len(node.dv).toFixed(1)} m/s`,
+      );
+    }
+
+    if (this.mapSliderT > 0 && this.trajSamples.length > 0) {
+      const duration = this.predictDurationSec();
+      const t = this.simTime + this.mapSliderT * duration;
+      const s = sampleAt(this.trajSamples, t);
+      if (s) {
+        const p = this.project(sub(this.toDisplayFrame(s.r, t), o));
+        this.hud.marker('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.ghostLabel());
+      } else {
+        this.hud.hideMarker('ghost');
+      }
+    } else {
+      this.hud.hideMarker('ghost');
+    }
+  }
+
+  // trajSamples をノード時刻で区切り、太陽回転系表示なら座標変換した上で
+  // trajLine のジオメトリを再構築する(refreshTrajectory 後、内容が変わったときだけ)。
+  private rebuildTrajLineGeom(): void {
+    const nodeTimes = this.planNodes.map((n) => n.time);
+    const segments: Vec3[][] = [];
+    let seg: Vec3[] = [];
+    let nodeIdx = 0;
+    for (const s of this.trajSamples) {
+      seg.push(this.toDisplayFrame(s.r, s.t));
+      if (nodeIdx < nodeTimes.length && s.t >= nodeTimes[nodeIdx]! - 1e-6) {
+        segments.push(seg);
+        // 次のセグメントはこの区切り点(ノード位置)から続ける(線が途切れないように)
+        seg = [seg[seg.length - 1]!];
+        nodeIdx++;
+      }
+    }
+    if (seg.length > 1) segments.push(seg);
+    this.trajLine.refresh(segments);
   }
 
   private updateMarkers(o: Vec3, pv: Vec3, tgt: Ship | null): void {
