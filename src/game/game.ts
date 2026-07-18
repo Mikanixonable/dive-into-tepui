@@ -1661,6 +1661,7 @@ export class Game {
     // 背景として振る舞う。距離は視距離に圧縮、月の角直径は実距離から換算)
     const visSunPos = sunPosition(displayTime, this.sunPhase0);
     const sd = norm(visSunPos);
+    this.earth.setSunDir(sd.x, sd.y, sd.z);
     this.starsMesh.position.copy(cam.position);
     if (this.mapMode) {
       // マップモードではカメラが遠く引かれるため、星が地球の手前にならないようにカメラの far の内側に押し込む
