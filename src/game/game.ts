@@ -1651,30 +1651,9 @@ export class Game {
     const keyYaw = (this.input.down('ArrowLeft') ? 1 : 0) + (this.input.down('ArrowRight') ? -1 : 0);
     const keyPitch = (this.input.down('ArrowDown') ? 1 : 0) + (this.input.down('ArrowUp') ? -1 : 0);
     if (this.mapMode) {
-      // 太陽回転系表示: 太陽の実際の方位ドリフトぶんカメラ方位を追従させ、
-      // 画面上で太陽方向がほぼ固定されて見えるようにする(予測サンプルの回転補正と
-      // 組み合わせて、t=simTime では回転量ゼロで整合する)。frameRotating が OFF なら
-      // MapView 側で無視される。
-      const sunAz = sunAzimuth(this.simTime, this.sunPhase0);
-      this.mapView.updateCamera(mouse, keyYaw, keyPitch, dt, o, sunAz);
+      this.syncRenderMapCamera(mouse, keyYaw, keyPitch, dt, o);
     } else {
-      // 矢印キーによる視点回転をマウスドラッグと同じ yaw -= dx*0.005 の換算式に合わせて加算
-      if (!this.zoomActive) {
-        this.chase.yaw -= keyYaw * C.CAM_KEY_YAW_RATE * dt;
-        this.chase.pitch = Math.max(
-          -1.35,
-          Math.min(1.35, this.chase.pitch + keyPitch * C.CAM_KEY_PITCH_RATE * dt),
-        );
-      }
-      const boreFwd = this.player.alive ? qRotate(this.player.att.q, v3(0, 0, 1)) : null;
-      const boreUp = this.player.alive ? qRotate(this.player.att.q, v3(0, 1, 0)) : null;
-      // [G] 視点のRCS追従が ON かつ自機が健在なら、軌道基準(プログレード/動径)ではなく
-      // 機体姿勢(機首/天頂面)を基準フレームにして、RCS操作と視点回転が一体的に動くようにする。
-      const useAttitudeFrame = this.camFollowAttitude && this.player.alive && boreFwd && boreUp;
-      const camFwd = useAttitudeFrame ? boreFwd! : norm(pv);
-      const camUp = useAttitudeFrame ? boreUp! : norm(o);
-      this.chase.update(this.camera, mouse, camUp, camFwd, this.zoomActive, dt, boreFwd, boreUp);
-      this.camera.updateMatrixWorld();
+      this.syncRenderCombatCamera(mouse, keyYaw, keyPitch, dt, o, pv);
     }
     const cam = this.activeCamera;
 
@@ -1705,16 +1684,7 @@ export class Game {
       this.moonMesh.position.set(moonRel.x, moonRel.y, moonRel.z);
       this.moonMesh.scale.setScalar(R_MOON);
     } else {
-      // 戦闘ビューは近距離の背景として、カメラ基準の一定視距離(MOON_VIS_DIST)へ
-      // 圧縮して表示する(実距離のままだと far クリップや精度の問題が出るため)。
-      const moonDist = len(moonRel);
-      const md = scale(moonRel, 1 / moonDist);
-      this.moonMesh.position.set(
-        cam.position.x + md.x * MOON_VIS_DIST,
-        cam.position.y + md.y * MOON_VIS_DIST,
-        cam.position.z + md.z * MOON_VIS_DIST,
-      );
-      this.moonMesh.scale.setScalar(MOON_VIS_DIST * (R_MOON / moonDist));
+      this.syncRenderCombatMoon(cam, moonRel);
     }
 
     // 月は常に地球(真のECI座標の原点)へ+Z方向を向ける(潮汐ロック)
@@ -1856,18 +1826,7 @@ export class Game {
     this.plannedOrbitLine.update(this.mapMode ? null : plannedEl, o);
 
     if (this.mapMode) {
-      const geoEl: Elements = {
-        a: R_EARTH + 35786e3, e: 1e-6, p: R_EARTH + 35786e3, incDeg: 0, apAlt: 35786e3, peAlt: 35786e3, period: 86164,
-        hHat: v3(0, 1, 0), pHat: v3(1, 0, 0), qHat: v3(0, 0, -1)
-      };
-      this.geoOrbitLine.update(geoEl, o, false, false);
-      
-      const dtMoon = 10;
-      const mR1 = moonPosition(this.simTime, 0);
-      const mR2 = moonPosition(this.simTime + dtMoon, 0);
-      const mV = scale(sub(mR2, mR1), 1 / dtMoon);
-      const moonEl = elementsFromState(mR1, mV);
-      this.moonOrbitLine.update(moonEl, o, false, false);
+      this.syncRenderMapOrbitReferences(o);
     } else {
       this.geoOrbitLine.update(null, o);
       this.moonOrbitLine.update(null, o);
@@ -1885,6 +1844,67 @@ export class Game {
 
     this.updateHudPanels(dt, playerEl, tgt, tgtEl);
     this.hud.tick();
+  }
+
+  // syncRender: マップモードのカメラ更新(太陽回転系の方位追従を含む)
+  private syncRenderMapCamera(mouse: ReturnType<Input['consumeMouse']>, keyYaw: number, keyPitch: number, dt: number, o: Vec3): void {
+    // 太陽回転系表示: 太陽の実際の方位ドリフトぶんカメラ方位を追従させ、
+    // 画面上で太陽方向がほぼ固定されて見えるようにする(予測サンプルの回転補正と
+    // 組み合わせて、t=simTime では回転量ゼロで整合する)。frameRotating が OFF なら
+    // MapView 側で無視される。
+    const sunAz = sunAzimuth(this.simTime, this.sunPhase0);
+    this.mapView.updateCamera(mouse, keyYaw, keyPitch, dt, o, sunAz);
+  }
+
+  // syncRender: 戦闘ビューのチェイスカメラ更新(矢印キー視点回転 + 姿勢/軌道基準フレーム選択)
+  private syncRenderCombatCamera(mouse: ReturnType<Input['consumeMouse']>, keyYaw: number, keyPitch: number, dt: number, o: Vec3, pv: Vec3): void {
+    // 矢印キーによる視点回転をマウスドラッグと同じ yaw -= dx*0.005 の換算式に合わせて加算
+    if (!this.zoomActive) {
+      this.chase.yaw -= keyYaw * C.CAM_KEY_YAW_RATE * dt;
+      this.chase.pitch = Math.max(
+        -1.35,
+        Math.min(1.35, this.chase.pitch + keyPitch * C.CAM_KEY_PITCH_RATE * dt),
+      );
+    }
+    const boreFwd = this.player.alive ? qRotate(this.player.att.q, v3(0, 0, 1)) : null;
+    const boreUp = this.player.alive ? qRotate(this.player.att.q, v3(0, 1, 0)) : null;
+    // [G] 視点のRCS追従が ON かつ自機が健在なら、軌道基準(プログレード/動径)ではなく
+    // 機体姿勢(機首/天頂面)を基準フレームにして、RCS操作と視点回転が一体的に動くようにする。
+    const useAttitudeFrame = this.camFollowAttitude && this.player.alive && boreFwd && boreUp;
+    const camFwd = useAttitudeFrame ? boreFwd! : norm(pv);
+    const camUp = useAttitudeFrame ? boreUp! : norm(o);
+    this.chase.update(this.camera, mouse, camUp, camFwd, this.zoomActive, dt, boreFwd, boreUp);
+    this.camera.updateMatrixWorld();
+  }
+
+  // syncRender: 戦闘ビューでの月描画(カメラ基準の一定視距離 MOON_VIS_DIST へ圧縮して表示)
+  private syncRenderCombatMoon(cam: THREE.PerspectiveCamera, moonRel: Vec3): void {
+    // 戦闘ビューは近距離の背景として、カメラ基準の一定視距離(MOON_VIS_DIST)へ
+    // 圧縮して表示する(実距離のままだと far クリップや精度の問題が出るため)。
+    const moonDist = len(moonRel);
+    const md = scale(moonRel, 1 / moonDist);
+    this.moonMesh.position.set(
+      cam.position.x + md.x * MOON_VIS_DIST,
+      cam.position.y + md.y * MOON_VIS_DIST,
+      cam.position.z + md.z * MOON_VIS_DIST,
+    );
+    this.moonMesh.scale.setScalar(MOON_VIS_DIST * (R_MOON / moonDist));
+  }
+
+  // syncRender: マップモードの参照軌道線(静止軌道 + 月軌道)を表示する
+  private syncRenderMapOrbitReferences(o: Vec3): void {
+    const geoEl: Elements = {
+      a: R_EARTH + 35786e3, e: 1e-6, p: R_EARTH + 35786e3, incDeg: 0, apAlt: 35786e3, peAlt: 35786e3, period: 86164,
+      hHat: v3(0, 1, 0), pHat: v3(1, 0, 0), qHat: v3(0, 0, -1)
+    };
+    this.geoOrbitLine.update(geoEl, o, false, false);
+
+    const dtMoon = 10;
+    const mR1 = moonPosition(this.simTime, 0);
+    const mR2 = moonPosition(this.simTime + dtMoon, 0);
+    const mV = scale(sub(mR2, mR1), 1 / dtMoon);
+    const moonEl = elementsFromState(mR1, mV);
+    this.moonOrbitLine.update(moonEl, o, false, false);
   }
 
   // 自機位置の地表影(円柱近似 + 縁のぼかし)による日照率 0..1
