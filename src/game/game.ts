@@ -27,7 +27,7 @@ import {
   emLagrangePoints,
   seLagrangePoints,
 } from '../physics/ephemeris';
-import { PlannedNode, dvToWorld, sampleAt } from '../physics/predict';
+import { dvToWorld, sampleAt } from '../physics/predict';
 import { MapPlanner, PlannerCtx } from './planner';
 import {
   Attitude,
@@ -56,7 +56,6 @@ import { Bullet, Casing, DebrisPiece, FlashEffect, MagPickup, Ship } from './ent
 
 import { Input } from './input';
 import { TouchControls } from './touch';
-import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from './mapgizmo';
 import { ChaseCamera } from './camera';
 import { Hud } from './hud';
 import { Sfx } from './audio';
@@ -207,15 +206,14 @@ export class Game {
   private readonly starsMesh: THREE.Mesh;
   private readonly trajLine = new TrajLine();
 
-  // マニューバ計画(ノード列)と予測軌道キャッシュ。詳細は planner.ts のコメント参照。
-  private readonly planner = new MapPlanner();
+  // マニューバ計画(ノード列)・予測軌道キャッシュ・ノード編集入力。詳細は planner.ts のコメント参照。
+  private readonly planner = new MapPlanner(this.hud, this.sfx);
   private mapFrameRotating = false;
   private mapSliderT = 0; // 0..1(0 でゴーストマーカー非表示)
   // [N] または右クリックメニューの「この時刻まで自動ワープ」で設定する自動ワープの
   // 目標時刻(絶対 simTime)。null なら自動ワープ無効。任意のノード(2件目以降も可)や
   // 将来的には任意の時刻を対象にできるよう、真偽値ではなく時刻そのものを持つ。
   private autoWarpUntil: number | null = null;
-  private readonly mapGizmo = new MapGizmo();
   // 直近ノードの「実行目標」(実行後の目標位置・速度・軌道要素)。
   // 遠方(残り NODE_TARGET_FREEZE_S 超)では予測リフレッシュのたびに追従更新するが、
   // ノード接近後は凍結する。予測は毎回「現在状態にノードの全Δvを適用」して
@@ -370,29 +368,29 @@ export class Game {
     };
 
     // マップモードの DOM ギズモ(ノードハンドル・Δv アーム・コンテキストメニュー)
-    this.mapGizmo.onNodeSelect = (idx) => {
+    this.planner.mapGizmo.onNodeSelect = (idx) => {
       this.planner.selectedNodeIdx = idx;
-      this.mapGizmo.closeMenu();
+      this.planner.mapGizmo.closeMenu();
       this.sfx.warp();
     };
-    this.mapGizmo.onNodeDragMove = (idx, clientX, clientY) => {
-      this.mapGizmo.closeMenu();
-      this.dragNodeToNearestSample(idx, clientX, clientY);
+    this.planner.mapGizmo.onNodeDragMove = (idx, clientX, clientY) => {
+      this.planner.mapGizmo.closeMenu();
+      this.planner.dragNodeToNearestSample(idx, clientX, clientY, this.plannerCtx(), (rel) => this.project(rel));
     };
-    this.mapGizmo.onNodeContextMenu = (clientX, clientY) => {
-      this.handleMapRightClick(clientX, clientY, this.player.state.r);
+    this.planner.mapGizmo.onNodeContextMenu = (clientX, clientY) => {
+      this.planner.handleMapRightClick(clientX, clientY, this.plannerCtx(), (rel) => this.project(rel), this.mapLabels);
     };
-    this.mapGizmo.onAxisDrag = (axis, sign, deltaPx) => {
-      this.applyAxisDrag(axis, sign, deltaPx);
+    this.planner.mapGizmo.onAxisDrag = (axis, sign, deltaPx) => {
+      this.planner.applyAxisDrag(axis, sign, deltaPx, this.fineAttitude);
     };
-    this.mapGizmo.onMenuWarpTo = (idx) => {
+    this.planner.mapGizmo.onMenuWarpTo = (idx) => {
       const n = this.planner.planNodes[idx];
       if (n) {
         this.autoWarpUntil = n.time;
         this.hud.hint('指定時刻まで自動ワープ開始');
       }
     };
-    this.mapGizmo.onMenuDelete = (idx) => {
+    this.planner.mapGizmo.onMenuDelete = (idx) => {
       if (this.planner.planNodes[idx]) {
         this.planner.planNodes.splice(idx, 1);
         if (this.planner.selectedNodeIdx === idx) this.planner.selectedNodeIdx = null;
@@ -402,7 +400,7 @@ export class Game {
         this.hud.hint('ノードを削除');
       }
     };
-    this.mapGizmo.onMenuFocus = (targetKey) => {
+    this.planner.mapGizmo.onMenuFocus = (targetKey) => {
       this.mapFocus = targetKey;
       const lbl = this.mapLabels.find(l => l.id === targetKey);
       if (lbl) {
@@ -673,15 +671,21 @@ export class Game {
       this.mapMode = false;
       this.hud.setPlanPanel(null);
       this.hud.setMapToolbarVisible(false);
-      this.mapGizmo.closeMenu();
+      this.planner.closeMenu();
       this.touchControls?.setMapMode(false);
     }
     if (!this.paused && this.phase === 'playing') {
       // 軌道計画モード中も時間を進め、ワープできるようにする(手動推進・射撃のみ
       // simulate() 内部で無効化する)。ノード編集は同じフレームの現在軌道に対して行う。
       this.simulate(dt);
-      if (this.mapMode) this.updateMapPlanning(dt);
-      else {
+      if (this.mapMode) {
+        this.planner.updateEditing(dt, this.plannerCtx(), this.input, (rel) => this.project(rel), {
+          fineAttitude: this.fineAttitude,
+          mapSliderT: this.mapSliderT,
+          mapFocus: this.mapFocus,
+          labels: this.mapLabels,
+        });
+      } else {
         // 戦闘中の左クリックは射撃・カメラ用として消費(キューは捨てる)
         this.input.takeClicks();
         
@@ -885,7 +889,7 @@ export class Game {
       this.planner.trajDirty = true;
       this.hud.setMapToolbarVisible(false);
       this.hud.setPlanPanel(null);
-      this.mapGizmo.closeMenu();
+      this.planner.closeMenu();
       this.touchControls?.setMapMode(false);
       if (this.planner.planNodes.length > 0) {
         this.hud.hint(`マニューバ計画 ${this.planner.planNodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
@@ -893,9 +897,6 @@ export class Game {
     }
   }
 
-  // マップモードの右クリック処理: 既存ノードマーカー近傍(NODE_PICK_PX 以内)なら
-  // そのノードを選択してコンテキストメニューを開く。それ以外なら開いているメニューを閉じるだけ
-  // (右クリックの元の「即削除」動作はメニュー経由に置き換えた。[X] キーは従来どおり残す)。
   private resetMapView(): void {
     this.mapFocus = 'earth';
     this.mapYaw = 0.7;
@@ -905,163 +906,9 @@ export class Game {
     this.hud.hint('マップ視点をリセット');
   }
 
-  private handleMapRightClick(mx: number, my: number, o: Vec3): void {
-    let bestIdx: number | null = null;
-    let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
-    for (let i = 0; i < this.planner.planNodes.length; i++) {
-      const p = this.nodeScreenPos(this.planner.planNodes[i]!, o);
-      if (!p || !p.front) continue;
-      const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
-      if (d < bestD) {
-        bestD = d;
-        bestIdx = i;
-      }
-    }
-
-    let bestTargetKey: string | null = null;
-    let bestTargetD = 20 * 20;
-    for (const lbl of this.mapLabels) {
-      const wp = sub(lbl.pos, o);
-      const p = this.project(wp);
-      if (!p || !p.front) continue;
-      const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
-      if (d < bestTargetD) {
-        bestTargetD = d;
-        bestTargetKey = lbl.id;
-      }
-    }
-
-    if (bestIdx !== null) {
-      this.planner.selectedNodeIdx = bestIdx;
-      this.mapGizmo.openMenu(mx, my, { idx: bestIdx });
-    } else if (bestTargetKey !== null) {
-      this.mapGizmo.openMenu(mx, my, { targetKey: bestTargetKey });
-    } else {
-      this.mapGizmo.closeMenu();
-    }
-  }
-
-  // ノードハンドルのドラッグ移動: ポインタ最寄りの予測サンプル時刻へノードを移動する
-  // (handleMapClick の第二段(軌道クリック配置)と同じピッキング方式)。
-  // 移動後は時刻順を保つよう再ソートし、同一ノードオブジェクトを選択し直す
-  // (この結果、後続ノードは絶対時刻を保ったままになる=並び順が変わり得る)。
-  private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
-    const node = this.planner.planNodes[idx];
-    if (!node || this.planner.trajSamples.length === 0) return;
-    const o = this.player.state.r;
-    let bestT: number | null = null;
-    let bestD = Infinity;
-    for (const s of this.planner.trajSamples) {
-      const p = this.project(sub(this.toDisplayFrame(s.r, s.t), o));
-      if (!p.front) continue;
-      const d = (p.x - clientX) * (p.x - clientX) + (p.y - clientY) * (p.y - clientY);
-      if (d < bestD) {
-        bestD = d;
-        bestT = s.t;
-      }
-    }
-    if (bestT !== null && bestT !== node.time) {
-      node.time = bestT;
-      this.planner.planNodes.sort((a, b) => a.time - b.time);
-      this.planner.selectedNodeIdx = this.planner.planNodes.indexOf(node);
-      this.planner.trajDirty = true;
-    }
-  }
-
   // 選択中ノードの Δv アーム(mapgizmo.ts)ドラッグを Δv 成分の変更へ変換する。
   // axis: 0=プログレード(dv.x) 1=法線(dv.y) 2=動径(dv.z)。sign はハンドル自身の向き
   // (mapgizmo.ts の AxisHandleSpec 参照)。deltaPx はポインタ移動のハンドル方向への射影量。
-  private applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number): void {
-    if (this.planner.selectedNodeIdx === null) return;
-    const node = this.planner.planNodes[this.planner.selectedNodeIdx];
-    if (!node) return;
-    const rate = (this.fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) / 200;
-    const d = deltaPx * sign * rate;
-    if (axis === 0) node.dv = v3(node.dv.x + d, node.dv.y, node.dv.z);
-    else if (axis === 1) node.dv = v3(node.dv.x, node.dv.y + d, node.dv.z);
-    else node.dv = v3(node.dv.x, node.dv.y, node.dv.z + d);
-    this.planner.trajDirty = true;
-  }
-
-  // 選択中ノードの Δv アーム 6 個(プログレード/レトログレード・ノーマル/アンチノーマル・
-  // アウト/イン)の画面方向を求める。トラジェクトリサンプルの r, v からその時点の
-  // プログレード・軌道法線・動径アウト方向を求め、toDisplayFrame で表示座標系へ回転した
-  // 上でノード位置との画面上の差分を取ることで、3D 回転行列を介さず画面方向を得る。
-  private computeAxisScreenDirs(
-    node: PlannedNode,
-    o: Vec3,
-  ): { pro: { x: number; y: number }; nrm: { x: number; y: number }; rad: { x: number; y: number } } | null {
-    const s = sampleAt(this.planner.trajSamples, node.time);
-    if (!s) return null;
-    const pro = norm(s.v);
-    const h = norm(cross(s.r, s.v));
-    const radOut = cross(pro, h);
-    const L = this.mapDist * 0.05;
-    const p0 = this.project(sub(this.toDisplayFrame(s.r, node.time), o));
-    const dirFor = (axisVec: Vec3): { x: number; y: number } => {
-      const p1 = this.project(sub(this.toDisplayFrame(add(s.r, scale(axisVec, L)), node.time), o));
-      const dx = p1.x - p0.x;
-      const dy = p1.y - p0.y;
-      const m = Math.hypot(dx, dy);
-      return m > 1e-6 ? { x: dx / m, y: dy / m } : { x: 0, y: -1 };
-    };
-    return { pro: dirFor(pro), nrm: dirFor(h), rad: dirFor(radOut) };
-  }
-
-  private buildAxisHandles(
-    nx: number,
-    ny: number,
-    dirs: { pro: { x: number; y: number }; nrm: { x: number; y: number }; rad: { x: number; y: number } },
-  ): AxisHandleSpec[] {
-    const R = C.NODE_GIZMO_HANDLE_PX;
-    const mk = (axis: 0 | 1 | 2, sign: 1 | -1, d: { x: number; y: number }, label: string): AxisHandleSpec => ({
-      axis,
-      sign,
-      x: nx + d.x * R * sign,
-      y: ny + d.y * R * sign,
-      dirx: d.x * sign,
-      diry: d.y * sign,
-      label,
-    });
-    return [
-      mk(0, 1, dirs.pro, 'PRO'),
-      mk(0, -1, dirs.pro, 'RET'),
-      mk(1, 1, dirs.nrm, 'NRM'),
-      mk(1, -1, dirs.nrm, 'ANM'),
-      mk(2, 1, dirs.rad, 'OUT'),
-      mk(2, -1, dirs.rad, 'IN'),
-    ];
-  }
-
-  // 毎フレーム、マップモードの DOM ギズモ(ノードハンドル・選択中ノードの Δv アーム)を
-  // 画面座標で更新する。マップモード外・ノードが背後(front=false)なら該当分を隠す。
-  private updateMapGizmo(o: Vec3): void {
-    if (!this.mapMode) {
-      this.mapGizmo.update([], null);
-      return;
-    }
-    const nodeSpecs: NodeHandleSpec[] = [];
-    const limit = Math.min(this.planner.planNodes.length, C.MAX_PLAN_NODE_MARKERS);
-    for (let i = 0; i < limit; i++) {
-      const node = this.planner.planNodes[i]!;
-      const p = this.nodeScreenPos(node, o);
-      if (!p || !p.front) continue;
-      nodeSpecs.push({ idx: i, x: p.x, y: p.y, selected: i === this.planner.selectedNodeIdx, dvMag: len(node.dv) });
-    }
-    let axisSpecs: AxisHandleSpec[] | null = null;
-    if (this.planner.selectedNodeIdx !== null) {
-      const node = this.planner.planNodes[this.planner.selectedNodeIdx];
-      if (node) {
-        const p = this.nodeScreenPos(node, o);
-        if (p && p.front) {
-          const dirs = this.computeAxisScreenDirs(node, o);
-          if (dirs) axisSpecs = this.buildAxisHandles(p.x, p.y, dirs);
-        }
-      }
-    }
-    this.mapGizmo.update(nodeSpecs, axisSpecs);
-  }
-
   // MapPlanner の各メソッド呼び出しに渡す、現在状態のスナップショット。
   private plannerCtx(): PlannerCtx {
     return {
@@ -1086,127 +933,6 @@ export class Game {
   // マップモードでもなくノードもなければ(表示・ガイドとも不要なので)何もしない。
   private updateTrajectoryRefresh(): void {
     this.planner.maybeRefresh(this.plannerCtx());
-  }
-
-  // ECI 座標 r(時刻 t のもの)をマップの「太陽回転系」表示用に回転させる
-  // (非回転系なら無変換)。回転角は直近の refreshTrajectory 時点で固定した
-  // trajYawRef を使うので、次回再計算までは描画とクリック判定が一致する。
-  private toDisplayFrame(r: Vec3, t: number): Vec3 {
-    if (!this.mapFrameRotating) return r;
-    const phi = this.planner.trajYawRef - sunAzimuth(t, this.sunPhase0);
-    return rotateAxis(r, v3(0, 1, 0), phi);
-  }
-
-  private nodeScreenPos(node: PlannedNode, o: Vec3): { x: number; y: number; front: boolean } | null {
-    const s = sampleAt(this.planner.trajSamples, node.time);
-    if (!s) return null;
-    return this.project(sub(this.toDisplayFrame(s.r, node.time), o));
-  }
-
-  // マップ上のクリック処理: 既存ノードマーカー近傍なら選択、そうでなければ
-  // 予測軌道(既存ノードの噴射も反映済みの折れ線)上の最近傍サンプル時刻に
-  // 新規ノードを配置して選択する。
-  private handleMapClick(mx: number, my: number, o: Vec3): void {
-    this.mapGizmo.closeMenu();
-    let bestNodeIdx: number | null = null;
-    let bestNodeD = C.NODE_PICK_PX * C.NODE_PICK_PX;
-    for (let i = 0; i < this.planner.planNodes.length; i++) {
-      const p = this.nodeScreenPos(this.planner.planNodes[i]!, o);
-      if (!p || !p.front) continue;
-      const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
-      if (d < bestNodeD) {
-        bestNodeD = d;
-        bestNodeIdx = i;
-      }
-    }
-    if (bestNodeIdx !== null) {
-      this.planner.selectedNodeIdx = bestNodeIdx;
-      this.sfx.warp();
-      return;
-    }
-
-    if (this.planner.trajSamples.length < 2) return;
-    let bestT: number | null = null;
-    let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
-    for (const s of this.planner.trajSamples) {
-      const p = this.project(sub(this.toDisplayFrame(s.r, s.t), o));
-      if (!p.front) continue;
-      const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
-      if (d < bestD) {
-        bestD = d;
-        bestT = s.t;
-      }
-    }
-    if (bestT !== null) {
-      const newNode: PlannedNode = { time: bestT, dv: v3() };
-      this.planner.planNodes.push(newNode);
-      this.planner.planNodes.sort((a, b) => a.time - b.time);
-      this.planner.selectedNodeIdx = this.planner.planNodes.indexOf(newNode);
-      this.planner.trajDirty = true;
-      this.sfx.warp();
-    }
-  }
-
-  // 未来位置ゴースト(スライダー)のラベル文字列
-  private ghostLabel(): string {
-    const duration = this.predictDurationSec();
-    const t = this.simTime + this.mapSliderT * duration;
-    const s = sampleAt(this.planner.trajSamples, t);
-    if (!s) return '';
-    const tRel = t - this.simTime;
-    const alt = len(s.r) - R_EARTH;
-    const h = Math.floor(tRel / 3600);
-    const m = Math.floor((tRel % 3600) / 60);
-    return `T+${h}h${String(m).padStart(2, '0')}m 高度 ${(alt / 1000).toFixed(0)}km`;
-  }
-
-  // マップ表示中のノード編集(時間・物理は simulate() 側で通常どおり進み続ける。
-  // ここではクリックによるノード配置・選択、選択中ノードの Δv 調整、
-  // ツールバー・計画パネルの表示を行う)
-  private updateMapPlanning(dt: number): void {
-    const o = this.player.state.r;
-
-    for (const c of this.input.takeClicks()) {
-      this.handleMapClick(c.x, c.y, o);
-    }
-    for (const rc of this.input.takeRightClicks()) {
-      this.handleMapRightClick(rc.x, rc.y, o);
-    }
-
-    // Δv 調整(推進キーを流用、[V] で微調整)。選択中ノードがあるときのみ。
-    const selNode = this.planner.selectedNodeIdx !== null ? this.planner.planNodes[this.planner.selectedNodeIdx] : undefined;
-    if (selNode) {
-      const i = this.input;
-      const rate = (this.fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) * dt;
-      const dvx = ((i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0)) * rate;
-      const dvy = ((i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0)) * rate;
-      const dvz = ((i.down('KeyE') ? 1 : 0) + (i.down('KeyQ') ? -1 : 0)) * rate;
-      if (dvx !== 0 || dvy !== 0 || dvz !== 0) {
-        selNode.dv = v3(selNode.dv.x + dvx, selNode.dv.y + dvy, selNode.dv.z + dvz);
-        this.planner.trajDirty = true;
-      }
-    }
-
-    this.hud.setMapToolbarState(
-      this.planner.predictDurationKey,
-      this.mapFrameRotating,
-      this.mapSliderT > 0 ? this.ghostLabel() : null,
-      this.mapFocus,
-    );
-
-    const nodesInfo = this.planner.planNodes.map((n, i) => ({
-      tRel: n.time - this.simTime,
-      dvMag: len(n.dv),
-      selected: i === this.planner.selectedNodeIdx,
-    }));
-    let selDv: Vec3 | null = null;
-    let selEl: Elements | null = null;
-    if (selNode) {
-      selDv = selNode.dv;
-      const s = sampleAt(this.planner.trajSamples, selNode.time);
-      if (s) selEl = elementsFromState(s.r, s.v);
-    }
-    this.hud.setPlanPanel(this.hud.planHtml(nodesInfo, selDv, selEl));
   }
 
   private mapLabels: { id: string; name: string; pos: Vec3 }[] = [];
@@ -2324,7 +2050,7 @@ export class Game {
     // 数値予測(predict.ts)の再計算とポリライン描画・ノードマーカー
     this.updateTrajectoryRefresh();
     this.updateTrajLineAndMarkers(o);
-    this.updateMapGizmo(o);
+    this.planner.updateMapGizmo(o, this.plannerCtx(), (rel) => this.project(rel), this.mapMode, this.mapDist);
 
     if (this.mapMode) {
       this.drawMapLabels(o);
@@ -2673,8 +2399,8 @@ export class Game {
       const t = this.simTime + this.mapSliderT * duration;
       const s = sampleAt(this.planner.trajSamples, t);
       if (s) {
-        const p = this.project(sub(this.toDisplayFrame(s.r, t), o));
-        this.hud.marker('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.ghostLabel());
+        const p = this.project(sub(this.planner.toDisplayFrame(s.r, t, this.plannerCtx()), o));
+        this.hud.marker('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.planner.ghostLabel(this.plannerCtx(), this.mapSliderT));
       } else {
         this.hud.hideMarker('ghost');
       }
@@ -2691,7 +2417,7 @@ export class Game {
     let seg: Vec3[] = [];
     let nodeIdx = 0;
     for (const s of this.planner.trajSamples) {
-      seg.push(this.toDisplayFrame(s.r, s.t));
+      seg.push(this.planner.toDisplayFrame(s.r, s.t, this.plannerCtx()));
       if (nodeIdx < nodeTimes.length && s.t >= nodeTimes[nodeIdx]! - 1e-6) {
         segments.push(seg);
         // 次のセグメントはこの区切り点(ノード位置)から続ける(線が途切れないように)
