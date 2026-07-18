@@ -1220,9 +1220,9 @@ export class Game {
 
   private drawMapLabels(o: Vec3): void {
     const t = this.simTime;
-    const mPos = moonPosition(t, this.sunPhase0);
+    const mPos = moonPosition(t, this.moonPhase0);
     const sPos = sunPosition(t, this.sunPhase0);
-    const emL = emLagrangePoints(t, this.sunPhase0);
+    const emL = emLagrangePoints(t, this.moonPhase0);
     const seL = seLagrangePoints(t, this.sunPhase0);
 
     this.mapLabels = [
