@@ -2209,6 +2209,13 @@ export class Game {
       this.moonMesh.scale.setScalar(MOON_VIS_DIST * (R_MOON / moonDist));
     }
 
+    // 月は常に地球(真のECI座標の原点)へ+Z方向を向ける(潮汐ロック)
+    this.moonMesh.lookAt(
+      this.moonMesh.position.x - visMoonPos.x,
+      this.moonMesh.position.y - visMoonPos.y,
+      this.moonMesh.position.z - visMoonPos.z
+    );
+
     // 地球の影: 戦闘ビューでは自機周辺が影円柱内にあれば太陽光・環境光を減光する
     // マップモードでは全体像を見るため地球の昼側が常に明るくなるよう減光しない
     const lit = this.mapMode ? 1.0 : this.shadowLitFactor(o);

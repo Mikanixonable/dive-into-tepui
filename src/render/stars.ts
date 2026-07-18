@@ -54,6 +54,7 @@ export interface Sun {
 // 太陽の DirectionalLight で照らされるので月相(満ち欠け)が自然に出る。
 export function createMoon(): THREE.Mesh {
   const geo = new THREE.SphereGeometry(1, 64, 32);
+  geo.rotateY(-Math.PI / 2);
   const texture = new THREE.TextureLoader().load(moonTextureUrl);
   texture.colorSpace = THREE.SRGBColorSpace;
   const mat = new THREE.MeshStandardMaterial({
