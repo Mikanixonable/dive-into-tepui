@@ -85,6 +85,18 @@ export function buildMagazineMesh(): THREE.Group {
   return parseMagazine();
 }
 
+// 弾を抜いた「空」のマガジン(外枠のみ)。給弾機構内で既に発射済みの弾を
+// 保持しているマガジンは見た目上「空」であるべきなので、ここで弾(role==='round'
+// が付いた丸・弾頭メッシュ)を除去したフレームだけの版を作る。
+// 右舷排出口の常設表示・排出デブリの両方で使う。
+export function buildMagazineFrame(): THREE.Group {
+  const g = parseMagazine();
+  for (const child of [...g.children]) {
+    if ((child as THREE.Mesh).userData?.['role'] === 'round') g.remove(child);
+  }
+  return g;
+}
+
 // 軌道上に投入される補給マガジン: マガジン数個を束ねてビーコンを付けた漂流物。
 // テンプレートは既定の count=4 で焼き出し済み。他の個数の呼び出しは現状ないが、
 // 念のため count が既定と異なる場合は都度組み立てる(マガジンサブメッシュは
