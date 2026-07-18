@@ -79,14 +79,14 @@ const STYLE = `
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
 #hud .row .k { color: ${INK_SOFT}; }
 #hud .row .v { color: ${INK}; min-width: 90px; text-align: right; }
-#hud-status { bottom: 12px; left: 12px; min-width: 200px; font-size: 10.4px; }
+#hud-status { bottom: 44px; left: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-status h3 { font-size: 8.8px; }
-#hud-orbit { bottom: 12px; left: 250px; min-width: 200px; font-size: 10.4px; }
+#hud-orbit { bottom: 44px; left: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-orbit h3 { font-size: 8.8px; }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
-#hud-target { bottom: 12px; right: 250px; min-width: 200px; font-size: 10.4px; }
+#hud-target { bottom: 44px; right: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-target h3 { font-size: 8.8px; }
-#hud-enemies { bottom: 12px; right: 12px; min-width: 200px; font-size: 10.4px; }
+#hud-enemies { bottom: 44px; right: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
 #hud-enemies .erow.tgt { color: ${ACCENT}; }

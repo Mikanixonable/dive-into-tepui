@@ -2772,19 +2772,19 @@ export class Game {
       const DIST = 5e4; // 遠方に投影して方向を示す
       
       const pro = this.project(scale(proDir, DIST));
-      this.hud.marker('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PRO [W]');
+      this.hud.marker('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PROGRADE [W]');
       const ret = this.project(scale(proDir, -DIST));
-      this.hud.marker('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RET [S]');
+      this.hud.marker('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RETROGRADE [S]');
       
       const nrm = this.project(scale(nrmDir, DIST));
-      this.hud.marker('nrm', 'mk-nrm', '▲', nrm.x, nrm.y, nrm.front, 'NRM [A]');
+      this.hud.marker('nrm', 'mk-nrm', '▲', nrm.x, nrm.y, nrm.front, 'NORMAL [A]');
       const anm = this.project(scale(nrmDir, -DIST));
-      this.hud.marker('anm', 'mk-nrm', '▽', anm.x, anm.y, anm.front, 'ANM [D]');
+      this.hud.marker('anm', 'mk-nrm', '▽', anm.x, anm.y, anm.front, 'ANTINORMAL [D]');
       
       const radOut = this.project(scale(radDir, DIST));
-      this.hud.marker('radout', 'mk-rad', '◎', radOut.x, radOut.y, radOut.front, 'OUT [Q]');
+      this.hud.marker('radout', 'mk-rad', '◎', radOut.x, radOut.y, radOut.front, 'RADIAL OUT [Q]');
       const radIn = this.project(scale(radDir, -DIST));
-      this.hud.marker('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'IN [E]');
+      this.hud.marker('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'RADIAL IN [E]');
       
       if (tgt) {
         const tgtDir = norm(sub(tgt.state.r, o));
