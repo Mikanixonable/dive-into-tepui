@@ -14,6 +14,7 @@ export interface Ship {
   hp: number;
   maxHp: number;
   alive: boolean;
+  lastFireSim?: number;
 }
 
 export interface Bullet {
@@ -23,6 +24,15 @@ export interface Bullet {
   obj: THREE.Object3D;
   alive: boolean;
 }
+
+export interface PlasmaBullet {
+  state: OrbitState;
+  prevR: Vec3;
+  bornSim: number;
+  obj: THREE.Object3D;
+  alive: boolean;
+}
+
 
 export interface Casing {
   state: OrbitState;

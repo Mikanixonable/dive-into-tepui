@@ -273,12 +273,76 @@ function buildDebrisRod() {
   return new THREE.Mesh(geo, std(0x3c4149, { roughness: 0.8, metalness: 0.2 }));
 }
 
+// ステージ0の敵機: キレート錯体を模した対照的なデザイン
+function buildStage0Enemy() {
+  const accent = 0x3dc6ff; // プレースホルダ
+  const g = new THREE.Group();
+
+  // 中心金属(コア)
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.2, 0), std(0x4a4f58));
+  g.add(core);
+
+  const ligandMat = std(accent, { metalness: 0.4, roughness: 0.4 });
+  ligandMat.userData = { role: 'accent' };
+  const bondMat = std(0x666d78, { metalness: 0.6 });
+
+  // 6配位(八面体型)
+  const positions = [
+    new THREE.Vector3(2.2, 0, 0),
+    new THREE.Vector3(-2.2, 0, 0),
+    new THREE.Vector3(0, 2.2, 0),
+    new THREE.Vector3(0, -2.2, 0),
+    new THREE.Vector3(0, 0, 2.2),
+    new THREE.Vector3(0, 0, -2.2),
+  ];
+
+  for (const pos of positions) {
+    const ligand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), ligandMat);
+    ligand.position.copy(pos);
+    g.add(ligand);
+
+    // 結合(ボンド)
+    const bondLen = pos.length() - 1.2;
+    const bond = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, bondLen, 5), bondMat);
+    bond.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), pos.clone().normalize());
+    bond.position.copy(pos.clone().normalize().multiplyScalar(1.2 + bondLen / 2));
+    g.add(bond);
+  }
+
+  // キレート環(リング)
+  const ringMat = std(0x8a919c, { metalness: 0.5 });
+  const ring1 = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.1, 4, 12), ringMat);
+  ring1.rotation.x = Math.PI / 2;
+  g.add(ring1);
+  const ring2 = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.1, 4, 12), ringMat);
+  ring2.rotation.y = Math.PI / 2;
+  g.add(ring2);
+
+  return g;
+}
+
+// プラズマ弾: 単純な球体
+function buildPlasmaBullet() {
+  const geo = new THREE.SphereGeometry(0.4, 8, 8);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x3dc6ff,
+    transparent: true,
+    opacity: 0.95,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+
 const models = {
   player: buildPlayerShip(),
   enemy: buildEnemyShip(),
+  stage0Enemy: buildStage0Enemy(),
   magazine: buildMagazineMesh(),
   magPickup: buildMagPickup(),
   bullet: buildBulletMesh(),
+  plasma: buildPlasmaBullet(),
   casing: buildCasingMesh(),
   debrisChunk: buildDebrisChunk(),
   debrisPanel: buildDebrisPanel(),
