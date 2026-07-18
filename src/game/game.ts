@@ -2573,6 +2573,9 @@ export class Game {
     }
 
     // 敵マーカー
+    const CLUSTER_RADIUS = 40;
+    const enemyMarkers: { i: number, e: Ship, p: {x:number, y:number, front:boolean}, dist: number, isTgt: boolean, groupHide: boolean, groupCount: number }[] = [];
+    
     for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i]!;
       const key = `e${i}`;
@@ -2584,7 +2587,52 @@ export class Game {
       const p = this.project(rel);
       const dist = len(rel);
       const isTgt = e === tgt;
-      this.hud.marker(key, isTgt ? 'mk-target' : 'mk-enemy', '◇', p.x, p.y, p.front, `${e.name} ${fmtMarkerDist(dist)}`);
+      enemyMarkers.push({ i, e, p, dist, isTgt, groupHide: false, groupCount: 1 });
+    }
+
+    const groups: (typeof enemyMarkers)[] = [];
+    for (const m of enemyMarkers) {
+      if (!m.p.front) continue;
+      let added = false;
+      for (const g of groups) {
+        const head = g[0]!;
+        const dx = head.p.x - m.p.x;
+        const dy = head.p.y - m.p.y;
+        if (Math.sqrt(dx * dx + dy * dy) < CLUSTER_RADIUS) {
+          g.push(m);
+          added = true;
+          break;
+        }
+      }
+      if (!added) {
+        groups.push([m]);
+      }
+    }
+
+    for (const g of groups) {
+      if (g.length <= 1) continue;
+      g.sort((a, b) => {
+        if (a.isTgt !== b.isTgt) return a.isTgt ? -1 : 1;
+        return a.dist - b.dist;
+      });
+      const rep = g[0]!;
+      rep.groupCount = g.length;
+      for (let j = 1; j < g.length; j++) {
+        g[j]!.groupHide = true;
+      }
+    }
+
+    for (const m of enemyMarkers) {
+      const key = `e${m.i}`;
+      let text = '';
+      if (!m.groupHide) {
+        if (m.groupCount > 1) {
+          text = `${m.e.name} x${m.groupCount} ${fmtMarkerDist(m.dist)}`;
+        } else {
+          text = `${m.e.name} ${fmtMarkerDist(m.dist)}`;
+        }
+      }
+      this.hud.marker(key, m.isTgt ? 'mk-target' : 'mk-enemy', '◇', m.p.x, m.p.y, m.p.front, text);
     }
 
     // 補給マガジンのマーカー
