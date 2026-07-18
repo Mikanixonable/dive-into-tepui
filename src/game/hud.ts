@@ -128,6 +128,19 @@ const STYLE = `
 #hud-plan {
   position: absolute; bottom: 40px; left: 12px; min-width: 280px;
 }
+#hud-maptool {
+  display: none; position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+  min-width: 320px; pointer-events: auto; text-align: center;
+}
+#hud-maptool .mt-row { display: flex; justify-content: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+#hud-maptool .mt-btn {
+  pointer-events: auto; cursor: pointer; padding: 4px 12px; font-size: 11px;
+  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
+}
+#hud-maptool .mt-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud-maptool input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
+#hud-maptool .mt-sliderlabel { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; }
+.mk-ghost { color: #8fd0ff; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
   background: rgba(6, 7, 9, 0.82); backdrop-filter: blur(3px);
@@ -241,6 +254,10 @@ export class Hud {
   private toastUntil = 0;
   private bgmOn = true;
   onBgmToggle: ((on: boolean) => void) | null = null;
+  // 軌道計画モードのマップツールバー(期間選択・スライダー・座標系トグル)
+  onDurationSelect: ((key: string) => void) | null = null;
+  onFrameToggle: (() => void) | null = null;
+  onSliderChange: ((t: number) => void) | null = null;
 
   constructor() {
     const style = document.createElement('style');
@@ -293,6 +310,36 @@ export class Hud {
     plan.innerHTML = `<h3>MANEUVER PLAN [M]</h3><div data-id="planbody"></div>`;
     plan.style.display = 'none';
 
+    const mapTool = el('div', 'hud-maptool', this.root, 'panel');
+    mapTool.innerHTML = `
+      <div class="mt-row" data-id="mt-duration">
+        <span class="mt-btn" data-dur="orbit">1周回</span>
+        <span class="mt-btn" data-dur="day">1日</span>
+        <span class="mt-btn" data-dur="week">7日</span>
+        <span class="mt-btn" data-dur="month">28日</span>
+        <span class="mt-btn" data-id="mt-frame">慣性系</span>
+      </div>
+      <input type="range" data-id="mt-slider" min="0" max="1000" value="0" />
+      <div class="mt-sliderlabel" data-id="mt-sliderlabel">スライダーで未来位置を確認</div>`;
+    mapTool.querySelectorAll<HTMLElement>('.mt-btn[data-dur]').forEach((btn) => {
+      btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.onDurationSelect) this.onDurationSelect(btn.dataset['dur']!);
+      });
+    });
+    const frameBtn = mapTool.querySelector<HTMLElement>('[data-id="mt-frame"]')!;
+    frameBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    frameBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.onFrameToggle) this.onFrameToggle();
+    });
+    const slider = mapTool.querySelector<HTMLInputElement>('[data-id="mt-slider"]')!;
+    slider.addEventListener('pointerdown', (e) => e.stopPropagation());
+    slider.addEventListener('input', () => {
+      if (this.onSliderChange) this.onSliderChange(Number(slider.value) / 1000);
+    });
+
     const stage0 = el('div', 'hud-stage0', this.root, 'panel');
     stage0.innerHTML = `<div class="t" data-id="stage0time"></div><div class="k">残り時間 — 撃墜 <span data-id="stage0kills"></span></div>`;
 
@@ -337,10 +384,13 @@ export class Hud {
         <tr><td class="key">▲AN / ▽DN マーカー</td><td>自機軌道とターゲット軌道面の交点。面変更(ノーマル/アンチノーマル)burn の目安位置</td></tr>
         <tr><td class="key">✦ マーカー</td><td>ターゲット位置に自機側を向けた仮想標的面を弾が通過した点。次弾の照準修正の目安</td></tr>
         <tr><td class="key">Navball</td><td>画面下中央の姿勢儀。青半球 = 地球方向。PRO/RET・NRM/ANM・OUT/IN・TGT/ATG を表示</td></tr>
-        <tr><td class="key">M</td><td>軌道計画モード。地球中心ビューで自機軌道をクリックしノード配置、W/S・A/D・Q/E で Δv 調整、再度 M で確定(時間は進み続けるのでワープも可)</td></tr>
-        <tr><td class="key">N</td><td>マニューバノードへ自動タイムワープ(実行点の直前で自動解除)</td></tr>
-        <tr><td class="key">X</td><td>マニューバノードを削除</td></tr>
-        <tr><td class="key">◆NODE / ⬢BURN</td><td>マニューバ実行点と噴射ガイド。BURN の方向へ加速し、計画軌道(白)に十分近づくと達成</td></tr>
+        <tr><td class="key">M</td><td>軌道計画モード。地球中心ビューで数値予測した軌道(折れ線)をクリックしてノードを複数配置でき、W/S・A/D・Q/E で選択中ノードの Δv を調整、再度 M で確定(時間は進み続けるのでワープも可)</td></tr>
+        <tr><td class="key">1周回/1日/7日/28日</td><td>マップモード下部のボタンで予測期間を切替(1周回は現在の周期、双曲線等では1日にフォールバック)</td></tr>
+        <tr><td class="key">スライダー</td><td>予測期間内の任意の時刻へゴースト位置(⬡)を表示(0で非表示)</td></tr>
+        <tr><td class="key">慣性系/太陽回転系</td><td>マップモードの表示座標系を切替。太陽回転系では太陽方向が画面上でほぼ固定される(遷移計画の目安)</td></tr>
+        <tr><td class="key">N</td><td>直近のマニューバノードへ自動タイムワープ(実行点の直前で自動解除)</td></tr>
+        <tr><td class="key">X / 右クリック</td><td>マップモード中は選択中のノードを削除、戦闘ビューでは [X] で計画全体を破棄</td></tr>
+        <tr><td class="key">◆/▶NODE / ⬢BURN</td><td>直近のマニューバ実行点(▶は選択中)と噴射ガイド。BURN の方向へ加速し、噴射後の計画軌道に十分近づくとそのノードを達成として次のノードへ進む</td></tr>
         <tr><td class="key">オレンジの軌道線</td><td>ターゲットの軌道(自機軌道とほぼ重なる場合は上に重ねて描画)</td></tr>
         <tr><td class="key">弾薬 / ▣ AMMO</td><td>16発でマガジン1連を消費(右舷のベルトから自動給弾)。残弾が少なくなると付近の軌道に補給が投入されるので、▣ マーカーへ接近して回収</td></tr>
         <tr><td class="key">Space / 右クリック</td><td>機関砲発射 (ワープ×4以下)。撃ち始めは起動音とともに一瞬遅れて連射開始</td></tr>
@@ -485,28 +535,71 @@ export class Hud {
     if (body.innerHTML !== html) body.innerHTML = html;
   }
 
-  // 計画パネルの定型 HTML(Δv 成分・飛行時間・計画軌道の要素)
-  planHtml(dv: { x: number; y: number; z: number }, tofSec: number, el: { apAlt: number; peAlt: number; incDeg: number; period: number } | null): string {
+  // 計画パネルの定型 HTML(複数ノード対応)。nodes は時刻順のノード一覧
+  // (選択中ノードのみ selected=true)、selDv/selEl は選択中ノードの Δv 成分と
+  // 噴射後の軌道要素(未選択なら null)。
+  planHtml(
+    nodes: { tRel: number; dvMag: number; selected: boolean }[],
+    selDv: { x: number; y: number; z: number } | null,
+    selEl: { apAlt: number; peAlt: number; incDeg: number; period: number } | null,
+  ): string {
     const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
-    let s =
-      row('Δv PRO [W/S]', `${dv.x.toFixed(1)} m/s`) +
-      row('Δv NRM [A/D]', `${dv.y.toFixed(1)} m/s`) +
-      row('Δv RAD [E/Q]', `${dv.z.toFixed(1)} m/s`) +
-      row('合計 Δv', `${Math.hypot(dv.x, dv.y, dv.z).toFixed(1)} m/s`) +
-      row('ノードまで', fmtTime(tofSec));
-    if (el) {
+    let s = '';
+    if (nodes.length === 0) {
+      s += '<div style="color:#7d838c">予測軌道(グレー)をクリックしてマニューバノードを配置</div>';
+    } else {
+      s += nodes
+        .map((n, i) => {
+          const sign = n.tRel >= 0 ? 'T-' : 'T+';
+          return `<div class="row"><span class="k">${n.selected ? '▶ ' : '◆ '}NODE${i + 1} ${sign}${fmtTime(Math.abs(n.tRel))}</span><span class="v">${n.dvMag.toFixed(1)} m/s</span></div>`;
+        })
+        .join('');
+    }
+    if (selDv) {
       s +=
-        `<div style="margin-top:4px;color:#e6e8eb;font-size:11px;letter-spacing:1px">計画軌道</div>` +
-        row('遠地点 AP', fmtDist(el.apAlt)) +
-        row('近地点 PE', fmtDist(el.peAlt)) +
-        row('傾斜角 INC', isFinite(el.incDeg) ? `${el.incDeg.toFixed(2)}°` : '---') +
-        row('周期 PRD', fmtTime(el.period));
-      if (isFinite(el.peAlt) && el.peAlt < 120e3) {
+        `<div style="margin-top:4px;color:#e6e8eb;font-size:11px;letter-spacing:1px">選択中ノードの Δv</div>` +
+        row('Δv PRO [W/S]', `${selDv.x.toFixed(1)} m/s`) +
+        row('Δv NRM [A/D]', `${selDv.y.toFixed(1)} m/s`) +
+        row('Δv RAD [E/Q]', `${selDv.z.toFixed(1)} m/s`) +
+        row('合計 Δv', `${Math.hypot(selDv.x, selDv.y, selDv.z).toFixed(1)} m/s`);
+    }
+    if (selEl) {
+      s +=
+        `<div style="margin-top:4px;color:#e6e8eb;font-size:11px;letter-spacing:1px">噴射後の軌道</div>` +
+        row('遠地点 AP', fmtDist(selEl.apAlt)) +
+        row('近地点 PE', fmtDist(selEl.peAlt)) +
+        row('傾斜角 INC', isFinite(selEl.incDeg) ? `${selEl.incDeg.toFixed(2)}°` : '---') +
+        row('周期 PRD', fmtTime(selEl.period));
+      if (isFinite(selEl.peAlt) && selEl.peAlt < 120e3) {
         s += `<div style="color:#ff6a00;margin-top:2px">⚠ 近地点が大気圏内</div>`;
       }
     }
-    s += `<div style="margin-top:6px;color:#7d838c;font-size:11px">[クリック] ノード移動 [X] 削除 [V] 微調整 [M] 確定して戻る(時間は進み続ける)</div>`;
+    s += `<div style="margin-top:6px;color:#7d838c;font-size:11px">[クリック] ノード配置/選択 [W/S・A/D・Q/E] 選択ノードのΔv調整 [X/右クリック] 選択ノード削除 [V] 微調整 [M] 確定して戻る(時間は進み続ける)</div>`;
     return s;
+  }
+
+  // マップモードのツールバー表示切替
+  setMapToolbarVisible(visible: boolean): void {
+    const e = document.getElementById('hud-maptool');
+    if (e) e.style.display = visible ? 'block' : 'none';
+  }
+
+  // durationKey: 選択中の期間ボタン('orbit'|'day'|'week'|'month')。
+  // frameRotating: 太陽回転系が有効か。sliderT: スライダー位置(0..1、変更なしなら省略)。
+  // sliderLabel: スライダーが 0 より大きいときに表示するラベル(T+ 表記・高度など)。
+  setMapToolbarState(durationKey: string, frameRotating: boolean, sliderLabel: string | null): void {
+    const bar = document.getElementById('hud-maptool');
+    if (!bar) return;
+    bar.querySelectorAll<HTMLElement>('.mt-btn[data-dur]').forEach((btn) => {
+      btn.classList.toggle('on', btn.dataset['dur'] === durationKey);
+    });
+    const frameBtn = bar.querySelector<HTMLElement>('[data-id="mt-frame"]');
+    if (frameBtn) {
+      frameBtn.textContent = frameRotating ? '太陽回転系' : '慣性系';
+      frameBtn.classList.toggle('on', frameRotating);
+    }
+    const lbl = bar.querySelector<HTMLElement>('[data-id="mt-sliderlabel"]');
+    if (lbl) lbl.textContent = sliderLabel ?? 'スライダーで未来位置を確認';
   }
 
   // マーカー(スクリーン座標)。visible=false で非表示。

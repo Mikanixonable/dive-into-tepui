@@ -120,17 +120,35 @@ export const INITIAL_INC_DEG = 51.6; // 自機初期軌道傾斜角 [deg]
 
 // --- 軌道計画モード([M]) ---
 export const MAP_MIN_DIST = 9e6; // マップカメラ距離 [m]
-export const MAP_MAX_DIST = 2.6e8;
+// 月軌道(平均距離 3.844e8m)全体+マージンが収まるまでカメラを引けるようにする
+// (地球低軌道だけでなく、遷移軌道の計画にシスルナ空間まで見渡せる必要があるため)。
+export const MAP_MAX_DIST = 1.2e9;
+export const MAP_CAMERA_FAR = 4e9; // マップカメラの far(MAP_MAX_DIST + 十分な余裕)
 export const NODE_DV_RATE = 30; // Δv 調整速度 [m/s per 実秒]
 export const NODE_DV_RATE_FINE = 2.5; // 微調整モード時
 export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
-export const NODE_MIN_DV = 0.5; // これ未満のノードは確定時に破棄 [m/s]
+export const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
+export const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
 // マニューバ達成判定(計画軌道への接近許容)
 export const NODE_TOL_SMA = 0.02; // 長半径の相対誤差
 export const NODE_TOL_ECC = 0.02; // 離心率差
 export const NODE_TOL_PLANE_DEG = 2.0; // 軌道面の角度差 [deg]
-// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大ワープを選び、STOP 秒前に解除
-export const AUTOWARP_MARGIN = 15;
+
+// --- 数値予測(軌道計画モードのポリライン、predict.ts) ---
+export const PREDICT_DUR_DAY = 86400; // 1日
+export const PREDICT_DUR_WEEK = 7 * 86400; // 7日
+export const PREDICT_DUR_MONTH = 28 * 86400; // 28日
+export const PREDICT_MAX_SAMPLES = 2000; // 保持する予測サンプル数の上限
+// 予測の再計算頻度: ノード追加・削除・Δv変更・期間/系変更時は最短でこの間隔(高頻度キー
+// 操作を約5Hzに間引く)、それ以外は変化がなくてもこの間隔ごとに再計算する(摂動により
+// 「現在の軌道」自体がドリフトしていくため)。
+export const PREDICT_DIRTY_THROTTLE_MS = 200;
+export const PREDICT_REFRESH_INTERVAL_MS = 2000;
+// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大ワープを選び、STOP 秒前に解除。
+// ワープ段は 4 倍刻み(1/4/16/64/256/1024/4096)なので、1 段降りるごとに
+// 実時間で約 MARGIN×0.75 秒かかる計算になる。全体(最大ワープから解除まで)を
+// 概ね20実秒以内に収めるよう、以前の15から大きく下げてある。
+export const AUTOWARP_MARGIN = 4;
 export const AUTOWARP_STOP = 20;
 
 export const STAGE1_CLEARED_KEY = 'tepui.stage1.cleared'; // localStorage キー
