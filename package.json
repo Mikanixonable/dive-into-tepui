@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "webpack serve --mode development",
     "build": "webpack --mode production",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "export-assets": "node tools/export-models.mjs && node tools/export-earth-texture.mjs"
   },
   "devDependencies": {
     "@types/three": "^0.169.0",
