@@ -1201,8 +1201,6 @@ export class Game {
       this.mapFocus,
     );
 
-    this.drawMapLabels(o);
-
     const nodesInfo = this.planNodes.map((n, i) => ({
       tRel: n.time - this.simTime,
       dvMag: len(n.dv),
@@ -2317,6 +2315,10 @@ export class Game {
     this.updateTrajectoryRefresh();
     this.updateTrajLineAndMarkers(o);
     this.updateMapGizmo(o);
+
+    if (this.mapMode) {
+      this.drawMapLabels(o);
+    }
 
     // 計画軌道(白、解析的な楕円): マップモード中は数値予測のポリライン(trajLine)が
     // 代わりを務めるので非表示にし、戦闘ビューでは直近ノードの噴射後サンプルから

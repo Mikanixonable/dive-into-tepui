@@ -49,8 +49,27 @@ export function sunAzimuth(t: number, phase0: number): number {
 
 // 月の ECI 位置。phase0 は初期の軌道内位相 [rad]。
 export function moonPosition(t: number, phase0: number): Vec3 {
-  const u = phase0 + (2 * Math.PI * t) / MOON_PERIOD; // 昇交点からの引数
-  const node = -(2 * Math.PI * t) / NODE_PERIOD; // 昇交点黄経(逆行)
+  // 昇交点黄経(逆行)
+  const node = -(2 * Math.PI * t) / NODE_PERIOD; 
+  // 近地点の移動周期(約8.85年、順行)
+  const PERIGEE_PERIOD = 8.85 * 365.25 * 86400;
+  const omega = (2 * Math.PI * t) / PERIGEE_PERIOD;
+  
+  // 平均近点角 M
+  const L = phase0 + (2 * Math.PI * t) / MOON_PERIOD; 
+  const M = L - omega;
+  
+  // 中心差(Equation of the center)による真近点角 ν の近似 (e = 0.0549)
+  const e = 0.0549;
+  const nu = M + (2 * e - 0.25 * e * e * e) * Math.sin(M) + 1.25 * e * e * Math.sin(2 * M);
+  
+  // 昇交点からの真の引数 u
+  const u = nu + omega;
+  
+  // 軌道半径 r
+  const a = MOON_DIST;
+  const r = a * (1 - e * e) / (1 + e * Math.cos(nu));
+
   const cu = Math.cos(u);
   const su = Math.sin(u);
   const cn = Math.cos(node);
@@ -62,13 +81,13 @@ export function moonPosition(t: number, phase0: number): Vec3 {
   const ye = sn * cu + cn * su * ci;
   const ze = su * si;
   const p = eclToGame(xe, ye, ze);
-  return v3(p.x * MOON_DIST, p.y * MOON_DIST, p.z * MOON_DIST);
+  return v3(p.x * r, p.y * r, p.z * r);
 }
 
 // Earth-Moon L-points (calculated from Earth center in ECI)
 export function emLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec3, L3: Vec3, L4: Vec3, L5: Vec3 } {
   const mPos = moonPosition(t, phase0);
-  const R = MOON_DIST;
+  const R = Math.sqrt(mPos.x * mPos.x + mPos.y * mPos.y + mPos.z * mPos.z);
   const mu = MU_MOON / (3.986004418e14 + MU_MOON);
   
   const rL1 = R * (1 - Math.pow(mu / 3, 1/3));
