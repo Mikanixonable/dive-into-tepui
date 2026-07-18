@@ -1,10 +1,9 @@
-// リアル調の地球: 高解像度球 + 焼き込み済みテクスチャ(大陸・バイオーム・雲)
+// リアル調の地球: 高解像度球 + 実在の地球のテクスチャ
 // + 加算合成の大気リムで構成する。実寸(半径 6371km)。
-// テクスチャは tools/export-earth-texture.mjs が src/render/earthcolor.ts の
-// fBm ロジックから事前に焼き込んだ src/assets/earth.png。
+// テクスチャは実在の地球の写真 (src/assets/earth.jpg) を使用。
 import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../physics/orbital';
-import earthTextureUrl from '../assets/earth.png';
+import earthTextureUrl from '../assets/earth.jpg';
 
 function buildSurface(): THREE.Mesh {
   // インデックス付き球ジオメトリ + 焼き込みテクスチャ + スムーズシェーディング。
