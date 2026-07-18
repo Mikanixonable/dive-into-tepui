@@ -217,10 +217,10 @@ export class Game {
   private stage00WaveCount = 0;
   private simTime = 0;
   private lastSimDt = 0;
-  private warpIdx = C.THROTTLE_DEFAULT_IDX;
+  private warpIdx = 0;
   private paused = false;
 
-  private rcsDamp = false;
+  private rcsDamp = true;
   private target: Ship | null = null;
   private lockedTarget: Ship | null = null;
   private throttleIdx = C.THROTTLE_DEFAULT_IDX; // 並進出力の段(0:弱 1:中 2:強、全 6 方向で共通)
@@ -690,12 +690,40 @@ export class Game {
         }
       }
 
-      this.stage00SpawnTimer -= dt;
-      if (this.stage00SpawnTimer <= 0) {
-        this.spawnStage00Wave();
-        // 重なりを増やすため、少し間隔をランダムにするかそのまま
-        this.stage00SpawnTimer = C.STAGE00_SPAWN_INTERVAL;
-        this.hud.toast(`波状攻撃 第${this.stage00WaveCount}波 接近中！`, 3000);
+      const activeWaves = new Set<number>();
+      for (const e of this.enemies) {
+        if (e.alive && e.waveId !== undefined) activeWaves.add(e.waveId);
+      }
+      const activeGroups = activeWaves.size;
+
+      let maxGroups = 1;
+      let allowedMaxWaveCount = 2;
+
+      if (this.stage00WaveCount >= 4) {
+        if (this.stage00WaveCount >= 5 || activeGroups === 0) {
+          maxGroups = 3;
+          allowedMaxWaveCount = Infinity; // 第三段階: 同時3つまで無限波状攻撃
+        } else {
+          maxGroups = 2;
+          allowedMaxWaveCount = 4; // まだ第二段階(W3, W4がデスポーンするのを待つ)
+        }
+      } else if (this.stage00WaveCount >= 2) {
+        if (this.stage00WaveCount >= 3 || activeGroups === 0) {
+          maxGroups = 2;
+          allowedMaxWaveCount = 4; // 第二段階: 同時2つまで (W3, W4)
+        } else {
+          maxGroups = 1;
+          allowedMaxWaveCount = 2; // まだ第一段階(W1, W2がデスポーンするのを待つ)
+        }
+      }
+
+      if (activeGroups < maxGroups && this.stage00WaveCount < allowedMaxWaveCount) {
+        this.stage00SpawnTimer -= dt;
+        if (this.stage00SpawnTimer <= 0) {
+          this.spawnStage00Wave();
+          this.stage00SpawnTimer = C.STAGE00_SPAWN_INTERVAL;
+          this.hud.toast(`波状攻撃 第${this.stage00WaveCount}波 接近中！`, 3000);
+        }
       }
     }
   }
@@ -782,6 +810,8 @@ export class Game {
         hp: C.STAGE0_ENEMY_HP,
         maxHp: C.STAGE0_ENEMY_HP,
         alive: true,
+        accent,
+        waveId: w,
       };
       ship.obj.scale.setScalar(C.ENEMY_SCALE);
 
@@ -1198,6 +1228,16 @@ export class Game {
 
   private updateEnemyAI(dt: number): void {
     if (!this.player.alive) return;
+    
+    // 集団(色)ごとの攻撃中(バースト中)の機体数をカウント
+    const attackingCounts = new Map<number, number>();
+    for (const e of this.enemies) {
+      if (e.alive && e.burstLeft && e.burstLeft > 0) {
+        const key = e.accent ?? 0;
+        attackingCounts.set(key, (attackingCounts.get(key) || 0) + 1);
+      }
+    }
+
     for (const e of this.enemies) {
       if (!e.alive) continue;
       const dist = len(sub(this.player.state.r, e.state.r));
@@ -1213,12 +1253,16 @@ export class Game {
           if (e.lastFireSim === undefined) e.lastFireSim = this.simTime - Math.random() * C.ENEMY_FIRE_INTERVAL;
           if (this.simTime - e.lastFireSim > C.ENEMY_FIRE_INTERVAL) {
             e.lastFireSim = this.simTime;
-            if (Math.random() < 0.3) {
+            const key = e.accent ?? 0;
+            const countInGroup = attackingCounts.get(key) || 0;
+            // 同一集団内で同時に攻撃するのは最大3機まで
+            if (countInGroup < 3 && Math.random() < 0.6) {
               const counts = [3, 5, 7, 20];
               e.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
               e.burstDelay = C.ENEMY_BURST_INTERVAL;
+              attackingCounts.set(key, countInGroup + 1);
+              this.firePlasma(e);
             }
-            this.firePlasma(e);
           }
         }
       }
@@ -1252,7 +1296,7 @@ export class Game {
       state: { r: clone(r), v: bV },
       prevR: clone(r),
       bornSim: this.simTime,
-      obj: buildPlasmaMesh(),
+      obj: buildPlasmaMesh(enemy.accent ?? 0xffa0ff),
       alive: true,
     };
     pb.obj.position.set(r.x, r.y, r.z);
@@ -1703,7 +1747,7 @@ export class Game {
       if (this.player.alive && this.segmentHit(pb, this.player)) {
         pb.alive = false;
         this.scene.remove(pb.obj);
-        this.player.hp -= 5;
+        this.player.hp -= 1.25;
         this.lostReason = '敵のエネルギー弾により機体を喪失した';
         this.hits++;
         this.sfx.hit();
@@ -1728,7 +1772,7 @@ export class Game {
 
   private applyHit(b: Bullet, ship: Ship): void {
     b.alive = false;
-    ship.hp -= (ship === this.player ? 5 : 1);
+    ship.hp -= (ship === this.player ? 1.25 : 1);
     if (ship === this.player) this.lostReason = '自弾の被弾により機体を喪失した';
     this.hits++;
     this.sfx.hit();
@@ -2431,24 +2475,31 @@ export class Game {
   // その反対方向(排気側)に小さな発光パフを出す。
   private updateRcsEffects(): void {
     const i = this.input;
+    let tauX = (i.down('KeyI') ? 1 : 0) + (i.down('KeyK') ? -1 : 0);
+    let tauY = (i.down('KeyL') ? 1 : 0) + (i.down('KeyJ') ? -1 : 0);
+    let tauZ = (i.down('KeyO') ? 1 : 0) + (i.down('KeyU') ? -1 : 0);
+
+    if (this.rcsDamp && this.player.alive && this.phase === 'playing' && !this.mapMode) {
+      const w = this.player.att.w;
+      const EPS = 0.005;
+      if (tauX === 0 && Math.abs(w.x) > EPS) tauX = -Math.sign(w.x);
+      if (tauY === 0 && Math.abs(w.y) > EPS) tauY = -Math.sign(w.y);
+      if (tauZ === 0 && Math.abs(w.z) > EPS) tauZ = -Math.sign(w.z);
+    }
+
+    const tau = v3(tauX, tauY, tauZ);
     const rotating =
       this.player.alive &&
       this.phase === 'playing' &&
       !this.paused &&
       !this.mapMode &&
-      (i.down('KeyI') || i.down('KeyK') || i.down('KeyJ') || i.down('KeyL') || i.down('KeyU') || i.down('KeyO'));
+      lenSq(tau) > 0.01;
     this.sfx.setRcs(rotating);
     if (!rotating || this.zoomActive) {
       for (const p of this.rcsPuffs) p.visible = false;
       return;
     }
 
-    // updatePlayerAttitude の inX/inY/inZ(実際のトルク方向)と符号を一致させる
-    const tau = v3(
-      (i.down('KeyI') ? 1 : 0) + (i.down('KeyK') ? -1 : 0), // ピッチ
-      (i.down('KeyL') ? 1 : 0) + (i.down('KeyJ') ? -1 : 0), // ヨー
-      (i.down('KeyO') ? 1 : 0) + (i.down('KeyU') ? -1 : 0), // ロール
-    );
     const q = this.player.att.q;
     const cam = this.activeCamera;
     for (let k = 0; k < 4; k++) {
@@ -2684,20 +2735,76 @@ export class Game {
       this.hud.marker(key, 'mk-ammo', '▣', p.x, p.y, p.front, `AMMO ${fmtMarkerDist(dist)}`);
     }
 
-    // リード(見越し)マーカー: 相対等速近似で弾丸到達時刻を解く
-    let leadShown = false;
-    if (tgt && this.player.alive && !this.mapMode) {
-      const relP = sub(tgt.state.r, o);
-      const relV = sub(tgt.state.v, pv);
-      const t = this.solveLeadTime(relP, relV, C.MUZZLE_SPEED);
-      if (t !== null && t < 25) {
-        const lead = addScaled(relP, relV, t);
-        const p = this.project(lead);
-        this.hud.marker('lead', 'mk-lead', '✛', p.x, p.y, p.front, '');
-        leadShown = true;
+    // リード(見越し)マーカーと、視界外敵機の方位マーカー
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    
+    if (!this.mapMode && this.player.alive) {
+      for (const ship of this.enemies) {
+        if (!ship.alive) {
+          this.hud.hideMarker('lead-' + ship.name);
+          this.hud.hideMarker('dir-' + ship.name);
+          continue;
+        }
+        
+        // Target tracking for LEAD (keep showing for ~20s)
+        if (ship === tgt) {
+          ship.lastTargetedSim = this.simTime;
+        }
+        
+        const relP = sub(ship.state.r, o);
+        const p = this.project(relP);
+        const hexColor = ship.accent ? '#' + ship.accent.toString(16).padStart(6, '0') : '#ff6a00';
+        
+        // 方位マーカー (視界外)
+        const offscreen = !p.front || p.x < 0 || p.x > window.innerWidth || p.y < 0 || p.y > window.innerHeight;
+        if (offscreen) {
+          let dx = p.x - cx;
+          let dy = p.y - cy;
+          if (!p.front) {
+            dx = -dx;
+            dy = -dy;
+          }
+          const ang = Math.atan2(dy, dx);
+          const r = Math.min(cx, cy) * 0.8;
+          const mx = cx + r * Math.cos(ang);
+          const my = cy + r * Math.sin(ang);
+          
+          const rotDeg = ang * 180 / Math.PI + 90; // '▲' faces UP initially, so add 90 deg
+          this.hud.marker('dir-' + ship.name, 'mk-dir', '▲', mx, my, true, '', 0.6, hexColor, rotDeg);
+        } else {
+          this.hud.hideMarker('dir-' + ship.name);
+        }
+
+        // LEAD マーカー (20秒履歴)
+        let showLead = false;
+        if (ship.lastTargetedSim !== undefined && (this.simTime - ship.lastTargetedSim < 20)) {
+          showLead = true;
+        }
+        
+        if (showLead) {
+          const relV = sub(ship.state.v, pv);
+          const t = this.solveLeadTime(relP, relV, C.MUZZLE_SPEED);
+          if (t !== null && t < 25) {
+            const lead = addScaled(relP, relV, t);
+            const lp = this.project(lead);
+            this.hud.marker('lead-' + ship.name, 'mk-lead', '✛', lp.x, lp.y, lp.front, '', 1, hexColor);
+          } else {
+            this.hud.hideMarker('lead-' + ship.name);
+          }
+        } else {
+          this.hud.hideMarker('lead-' + ship.name);
+        }
+      }
+    } else {
+      for (const ship of this.enemies) {
+        this.hud.hideMarker('lead-' + ship.name);
+        this.hud.hideMarker('dir-' + ship.name);
       }
     }
-    if (!leadShown) this.hud.hideMarker('lead');
+
+    // 以前の単一リードマーカーのクリーンアップ
+    this.hud.hideMarker('lead');
 
     // 重なったマーカーテキストを押し退けて線で繋ぐ
     this.hud.resolveMarkerCollisions();

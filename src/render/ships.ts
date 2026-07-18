@@ -165,14 +165,39 @@ export function buildBulletMesh(): THREE.Mesh {
   return m;
 }
 
-export function buildPlasmaMesh(): THREE.Mesh {
+export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Group {
   const m = parsePlasma();
+  const mat = m.material as THREE.MeshBasicMaterial;
+  mat.color.set(accent);
+  mat.blending = THREE.AdditiveBlending;
   m.frustumCulled = false;
-  return m;
+  
+  // スケールを大きくして視認性を上げる
+  m.scale.set(1.5, 1.5, 1.5);
+  
+  // 遠くからでも見やすいように大きめのグロー(発光)用スフィアを被せる
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: accent,
+    transparent: true,
+    opacity: 0.35,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), haloMat);
+  halo.scale.set(2, 2, 2);
+  
+  const g = new THREE.Group();
+  g.add(m);
+  g.add(halo);
+  return g;
 }
 
 export function buildCasingMesh(): THREE.Mesh {
-  return parseCasing();
+  const mesh = parseCasing();
+  // 薬莢の全長(Y軸)を2倍にする
+  mesh.geometry = mesh.geometry.clone();
+  mesh.geometry.scale(1, 2, 1);
+  return mesh;
 }
 
 // 破片: 塊・外板(パネル)・桁(ロッド)の 3 種をランダムに混ぜる。
