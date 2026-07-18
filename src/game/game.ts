@@ -108,7 +108,6 @@ const tmpV2 = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 const X_AXIS = new THREE.Vector3(1, 0, 0);
-const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 // updateBeltPhysics 専用のスクラッチ変数(毎フレーム/リンクごとの new THREE.Vector3
 // 割り当てを避けるため使い回す。同一フレーム内で再入・並行使用されないことが前提)。
@@ -117,6 +116,7 @@ const beltAThrustBody = new THREE.Vector3();
 const beltW = new THREE.Vector3();
 const beltAlpha = new THREE.Vector3();
 const beltAnchor = new THREE.Vector3();
+const beltRootPos = new THREE.Vector3();
 const beltVel = new THREE.Vector3();
 const beltAccel = new THREE.Vector3();
 const beltTmpA = new THREE.Vector3();
@@ -269,9 +269,6 @@ export class Game {
   private beltFeed = 0; // 給弾の進み(0..1、表示用に平滑化)
   private readonly beltGroup = new THREE.Group();
   private readonly beltLinks: THREE.Group[] = [];
-  // 右舷(+X)の排出口: 発射済みの空マガジンが常設で見えている位置(弾は入っていない)。
-  // マガジン 1 個を撃ち尽くすたびに、この位置からフレームだけのデブリを1個放出する。
-  private readonly magEjectPort = buildMagazineFrame();
   // ベルトのたわみは物理演算(Verlet 積分 + 距離拘束)で行う。位置は機体座標系
   // (機体原点基準)。無重力(自由落下軌道)なので重力そのものは効かず、
   // 自機の推力加速度とスピン(角速度・角加速度)による慣性力(擬似力)だけが
@@ -364,21 +361,18 @@ export class Game {
     };
     this.scene.add(this.player.obj);
 
-    // マガジンベルト(未使用の実弾入りマガジン): 機体左舷(-X)の面に垂直に
-    // 連結する。先頭リンクは機体に半分取り込まれた位置に置く(給弾中もベルト
-    // ごと取り込まれている見た目)。
+    // マガジンベルト(未使用の実弾入りマガジン): 機体左面(+X)に垂直に連結する。
+    // 先頭リンクは機体に半分取り込まれた位置に置く(給弾中もベルトごと
+    // 取り込まれている見た目)。ゲーム開始時は空のマガジンは一切表示されず、
+    // 弾を撃ち尽くすたびに機体反対側(-X)からフレームだけの空マガジンが
+    // デブリとして放出される(spawnEjectedMagazineFrame 参照)。
     for (let i = 0; i < C.BELT_MAX_VISIBLE; i++) {
       const link = buildMagazineMesh();
-      link.position.x = -(0.9 + i * MAG_BELT_PITCH);
+      link.position.x = 0.9 + i * MAG_BELT_PITCH;
       this.beltGroup.add(link);
       this.beltLinks.push(link);
     }
     this.player.obj.add(this.beltGroup);
-
-    // 右舷(+X)の排出口: 弾を撃ち尽くした空のマガジン(外枠のみ、弾は見えない)
-    // が常に見えている。撃ち尽くすたびにここからフレームがデブリとして放出される。
-    this.magEjectPort.position.set(0.9, 0, 0);
-    this.player.obj.add(this.magEjectPort);
 
     // --- 敵機配置 ---
     for (const spec of this.makeEnemySpecs(playerState, stage)) {
@@ -1340,14 +1334,14 @@ export class Game {
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv
     p.state.v = addScaled(p.state.v, fwd, -C.RECOIL_DV);
 
-    // 薬莢: 右舷へ排出(左舷はマガジンベルトの給弾があるため)。初速・回転とも
-    // 従来より抑え、ゆっくり漂いながら緩やかに回転する見た目にする。
+    // 薬莢: 機体右側(-X)へ排出(左側(+X)はマガジンベルトの給弾があるため)。
+    // 初速・回転とも抑え、ゆっくり漂いながら緩やかに回転する見た目にする。
     const casing: Casing = {
       state: {
-        r: add(muzzle, scale(right, 1.4)),
+        r: add(muzzle, scale(right, -1.4)),
         v: add(
           p.state.v,
-          add(scale(right, 0.5 + Math.random() * 0.3), add(scale(up, randSym(0.2)), randVec(0.1))),
+          add(scale(right, -(0.5 + Math.random() * 0.3)), add(scale(up, randSym(0.2)), randVec(0.1))),
         ),
       },
       att: {
@@ -1390,16 +1384,16 @@ export class Game {
     }
   }
 
-  // マガジン1個を撃ち尽くした瞬間、右舷排出口(magEjectPort)の位置から
+  // マガジン1個を撃ち尽くした瞬間、機体右側(-X、薬莢と同じ側)の位置から
   // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
   private spawnEjectedMagazineFrame(): void {
     const p = this.player;
-    const right = qRotate(p.att.q, v3(1, 0, 0)); // 右舷方向(ワールド)
-    const portWorld = add(p.state.r, qRotate(p.att.q, v3(0.9, 0, 0)));
+    const right = qRotate(p.att.q, v3(1, 0, 0));
+    const portWorld = add(p.state.r, qRotate(p.att.q, v3(-0.9, 0, 0)));
     const piece: DebrisPiece = {
       state: {
         r: portWorld,
-        v: add(p.state.v, add(scale(right, 0.5 + Math.random() * 0.3), randVec(0.15))),
+        v: add(p.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
       },
       att: {
         q: randomQuat(),
@@ -1573,11 +1567,18 @@ export class Game {
     }
   }
 
+  // d.obj は単一 Mesh(通常の破片)の場合と、複数子メッシュを持つ Group
+  // (排出された空マガジンのフレーム等)の場合がある。traverse して
+  // 見つかった Mesh すべてのジオメトリ・マテリアルを破棄する。
   private removeDebrisObj(d: DebrisPiece): void {
     this.scene.remove(d.obj);
-    const mesh = d.obj as THREE.Mesh;
-    mesh.geometry.dispose();
-    (mesh.material as THREE.Material).dispose();
+    d.obj.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry.dispose();
+      if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
+      else mesh.material.dispose();
+    });
   }
 
   private spawnFlash(
@@ -1929,7 +1930,7 @@ export class Game {
     if (!this.beltInit) {
       this.beltInit = true;
       for (let i = 0; i < n; i++) {
-        const p = new THREE.Vector3(-(0.9 + (i + 1) * MAG_BELT_PITCH), 0, 0);
+        const p = new THREE.Vector3(0.9 + (i + 1) * MAG_BELT_PITCH, 0, 0);
         this.beltPos.push(p.clone());
         this.beltPrevPos.push(p.clone());
         this.beltTwist.push(0);
@@ -1970,8 +1971,17 @@ export class Game {
 
     // 距離拘束(剛体棒): 先頭はベルトの給弾進みに応じて動くアンカーに固定。
     // 数回反復して各リンク間隔を MAG_BELT_PITCH に収束させる。
-    beltAnchor.set(-(0.9 - this.beltFeed * MAG_BELT_PITCH), 0, 0);
-    for (let iter = 0; iter < 4; iter++) {
+    beltAnchor.set(0.9 - this.beltFeed * MAG_BELT_PITCH, 0, 0);
+
+    // 根本(リンク0)は常に機体に対して垂直(ローカル+X方向)になるよう、
+    // 揺動物理を経由させずアンカーから固定距離・固定方向の位置に毎フレーム
+    // 強制する(速度もゼロにして慣性ドリフトを止める)。これにより根本の
+    // 接合部は常に垂直のまま、リンク1以降だけが自由に揺れる。
+    beltRootPos.copy(beltAnchor).addScaledVector(X_AXIS, MAG_BELT_PITCH);
+    this.beltPos[0]!.copy(beltRootPos);
+    this.beltPrevPos[0]!.copy(beltRootPos);
+
+    for (let iter = 0; iter < 6; iter++) {
       for (let i = 0; i < n; i++) {
         const a = i === 0 ? beltAnchor : this.beltPos[i - 1]!;
         const b = this.beltPos[i]!;
@@ -1979,11 +1989,33 @@ export class Game {
         const dist = beltDelta.length();
         if (dist < 1e-6) continue;
         const corr = beltDelta.multiplyScalar((dist - MAG_BELT_PITCH) / dist);
-        if (i === 0) {
-          b.sub(corr); // アンカー側は固定、リンク側だけ補正
+        if (i <= 1) {
+          // i===0: 参照点はアンカー(固定)。i===1: 参照点は根本(beltPos[0]、
+          // 常に垂直固定)。どちらも a 側は動かさず b 側だけ補正する。
+          b.sub(corr);
         } else {
           b.addScaledVector(corr, -0.5);
           a.addScaledVector(corr, 0.5);
+        }
+      }
+      // かすかな直線復元力(曲げ剛性の簡易近似): 距離拘束をある程度収束させた
+      // 中間で1回だけ、各リンクの継ぎ目をまっすぐ揃える方向へわずかに引き寄せる。
+      // 直後に残りの距離拘束反復で生じた長さのずれを収束させ直す。
+      if (iter === 2) {
+        for (let i = 1; i < n - 1; i++) {
+          if (i === 1) {
+            // 根本(beltPos[0])と2番目のリンクの継ぎ目: 根本は常に+X方向に
+            // 固定されているが、中点方式(prevP・nextPの平均)だと相方の
+            // beltPos[2]が自由に揺れているぶん引っ張られてしまい、根本の
+            // 固定方向を反映しきれず、この継ぎ目だけ折れが残っていた。
+            // 根本の固定方向をそのまま延長した点を直接の目標にすることで解消する。
+            beltTmpA.copy(this.beltPos[0]!).addScaledVector(X_AXIS, MAG_BELT_PITCH);
+          } else {
+            const prevP = this.beltPos[i - 1]!;
+            const nextP = this.beltPos[i + 1]!;
+            beltTmpA.copy(prevP).add(nextP).multiplyScalar(0.5);
+          }
+          this.beltPos[i]!.lerp(beltTmpA, C.MAG_CHAIN_STRAIGHTEN);
         }
       }
     }
@@ -2000,10 +2032,7 @@ export class Game {
     const maxRoll = (C.MAG_CHAIN_MAX_ROLL_DEG * Math.PI) / 180;
     const rollLerp = Math.min(1, dt * C.MAG_CHAIN_ROLL_RATE);
     let prevPoint: THREE.Vector3 = beltAnchor;
-    // アンカー(機体)側の基準姿勢: ベルトは左舷(-X)へ伸びるので、無偏向時に
-    // リンクのローカル+X(ベルト方向)が-Xを向くよう180°回転させておく
-    // (そうしないと毎フレーム「ほぼ真後ろ向き」の縮退ケースを経由してしまう)。
-    beltQPrev.setFromAxisAngle(Y_AXIS, Math.PI);
+    beltQPrev.identity(); // アンカー(機体)側の基準姿勢: ベルトは+X方向へ伸びる
     let prevTwist = this.player.att.w.z * C.MAG_CHAIN_ROLL_GAIN; // ねじれの発生源: 機体のロール角速度
     for (let i = 0; i < n; i++) {
       const link = this.beltLinks[i]!;
@@ -2020,16 +2049,22 @@ export class Game {
         beltQBend.copy(beltQPrev);
       }
 
-      // ねじれ角を目標へ追従させつつ ±maxRoll にクランプ(常に上限内)
-      const target = Math.max(-maxRoll, Math.min(maxRoll, prevTwist));
-      const twist = this.beltTwist[i]! + (target - this.beltTwist[i]!) * rollLerp;
-      this.beltTwist[i] = Math.max(-maxRoll, Math.min(maxRoll, twist));
+      if (i === 0) {
+        // 根本はロール方向も含めて完全固定(ねじれ0)。伝播用シード(prevTwist)
+        // は機体のロール角速度由来のまま変えず、ねじれはリンク1から始める。
+        this.beltTwist[0] = 0;
+      } else {
+        // ねじれ角を目標へ追従させつつ ±maxRoll にクランプ(常に上限内)
+        const target = Math.max(-maxRoll, Math.min(maxRoll, prevTwist));
+        const twist = this.beltTwist[i]! + (target - this.beltTwist[i]!) * rollLerp;
+        this.beltTwist[i] = Math.max(-maxRoll, Math.min(maxRoll, twist));
+        prevTwist = this.beltTwist[i]!; // 次のリンクへ位相遅れつつ伝播
+      }
 
       beltQTwist.setFromAxisAngle(X_AXIS, this.beltTwist[i]!);
       link.quaternion.copy(beltQBend).multiply(beltQTwist);
 
       beltQPrev.copy(beltQBend);
-      prevTwist = this.beltTwist[i]!; // 次のリンクへ位相遅れつつ伝播
       prevPoint = pos;
     }
   }
