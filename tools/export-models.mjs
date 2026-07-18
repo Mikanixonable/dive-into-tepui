@@ -146,10 +146,12 @@ function buildMagazineMesh() {
       const round = new THREE.Mesh(magRoundGeo, magRoundMat);
       round.rotation.x = Math.PI / 2;
       round.position.set(x, y, 0);
+      round.userData = { role: 'round' }; // 実行時に「弾なし(空)」表示を作る際の判別用
       g.add(round);
       const tip = new THREE.Mesh(magTipGeo, magTipMat);
       tip.rotation.x = Math.PI / 2;
       tip.position.set(x, y, MAG_DEPTH * 0.4 + 0.07);
+      tip.userData = { role: 'round' };
       g.add(tip);
     }
   }

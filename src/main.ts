@@ -70,11 +70,41 @@ function selectStage(): Promise<number> {
   });
 }
 
+// WebGPU 初期化(シェーダーコンパイル等でしばらく無反応になり得る)の間に表示する
+// ローディング画面。createGameScene() の await が解決するまでは canvas が
+// 真っ黒のままで「固まっている」ように見えるため、先にこれを出しておく。
+function showLoading(): () => void {
+  const SURFACE = 'rgba(13, 15, 18, 0.92)';
+  const ACCENT = '#ff6a00';
+  const div = document.createElement('div');
+  div.style.cssText =
+    'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+    'gap:14px;color:#e6e8eb;background:#08090c;font-family:Consolas,monospace;z-index:200;text-align:center';
+  div.innerHTML =
+    `<div style="font-size:22px;letter-spacing:6px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
+    `<div style="width:40px;height:40px;border-radius:50%;border:3px solid ${SURFACE};` +
+    `border-top-color:${ACCENT};animation:tepui-spin 0.9s linear infinite"></div>` +
+    '<div style="font-size:12px;color:#7d838c">初期化中(WebGPU)…</div>';
+  const style = document.createElement('style');
+  style.textContent = '@keyframes tepui-spin { to { transform: rotate(360deg); } }';
+  document.head.appendChild(style);
+  document.body.appendChild(div);
+  return () => {
+    div.remove();
+    style.remove();
+  };
+}
+
+let hideLoading: (() => void) | null = null;
+
 async function main() {
+  hideLoading = showLoading();
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
 
   const gs = await createGameScene(canvas);
+  hideLoading();
+  hideLoading = null;
   const { scene, renderer } = gs;
   // ?stage=0|1|2 で選択画面をスキップ(デバッグ・共有リンク用)。
   // パラメータ未指定時は get() が null を返すので、Number(null)=0 とは
@@ -101,6 +131,7 @@ async function main() {
 
 main().catch((err) => {
   console.error(err);
+  hideLoading?.();
   const div = document.createElement('div');
   div.style.cssText =
     'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +

@@ -325,7 +325,7 @@ export class Hud {
         <tr><td class="key">A / D</td><td>並進 (左 / 右)</td></tr>
         <tr><td class="key">Q / E</td><td>並進 (上 / 下)</td></tr>
         <tr><td class="key">I / K</td><td>ピッチ (機首下げ / 上げ)</td></tr>
-        <tr><td class="key">J / L</td><td>ヨー (左 / 右)</td></tr>
+        <tr><td class="key">J / L</td><td>ヨー (右 / 左)</td></tr>
         <tr><td class="key">O / U</td><td>ロール (右 / 左)</td></tr>
         <tr><td class="key">T</td><td>RCS 回転制動 ON/OFF</td></tr>
         <tr><td class="key">1 / 2 / 3</td><td>並進出力の切替 (弱 / 中 / 強)。W/S/A/D/Q/E の全 6 方向に共通で適用される</td></tr>

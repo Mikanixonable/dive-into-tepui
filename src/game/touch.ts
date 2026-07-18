@@ -147,9 +147,9 @@ export class TouchControls {
       { code: 'KeyU', glyph: '⟲', label: 'ロール' },
       { code: 'KeyI', glyph: '↓', label: '機首下げ' },
       { code: 'KeyO', glyph: '⟳', label: 'ロール' },
-      { code: 'KeyJ', glyph: '←', label: 'ヨー' },
+      { code: 'KeyJ', glyph: '→', label: 'ヨー' },
       { code: 'KeyK', glyph: '↑', label: '機首上げ' },
-      { code: 'KeyL', glyph: '→', label: 'ヨー' },
+      { code: 'KeyL', glyph: '←', label: 'ヨー' },
     ]);
 
     // 姿勢制御パッドのすぐ近くに、姿勢まわりのモード切替(制動・微動)をまとめる。

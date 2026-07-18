@@ -78,6 +78,7 @@ import {
   buildDebrisMesh,
   buildEnemyShip,
   buildFlashMesh,
+  buildMagazineFrame,
   buildMagazineMesh,
   buildMagPickup,
   buildPlayerShip,
@@ -107,6 +108,7 @@ const tmpV2 = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 const X_AXIS = new THREE.Vector3(1, 0, 0);
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 // updateBeltPhysics 専用のスクラッチ変数(毎フレーム/リンクごとの new THREE.Vector3
 // 割り当てを避けるため使い回す。同一フレーム内で再入・並行使用されないことが前提)。
@@ -267,6 +269,9 @@ export class Game {
   private beltFeed = 0; // 給弾の進み(0..1、表示用に平滑化)
   private readonly beltGroup = new THREE.Group();
   private readonly beltLinks: THREE.Group[] = [];
+  // 右舷(+X)の排出口: 発射済みの空マガジンが常設で見えている位置(弾は入っていない)。
+  // マガジン 1 個を撃ち尽くすたびに、この位置からフレームだけのデブリを1個放出する。
+  private readonly magEjectPort = buildMagazineFrame();
   // ベルトのたわみは物理演算(Verlet 積分 + 距離拘束)で行う。位置は機体座標系
   // (機体原点基準)。無重力(自由落下軌道)なので重力そのものは効かず、
   // 自機の推力加速度とスピン(角速度・角加速度)による慣性力(擬似力)だけが
@@ -359,15 +364,21 @@ export class Game {
     };
     this.scene.add(this.player.obj);
 
-    // マガジンベルト: 機体右舷から +X 方向へ連結。先頭リンクは機体に半分
-    // 取り込まれた位置に置く(給弾中もベルトごと取り込まれている見た目)。
+    // マガジンベルト(未使用の実弾入りマガジン): 機体左舷(-X)の面に垂直に
+    // 連結する。先頭リンクは機体に半分取り込まれた位置に置く(給弾中もベルト
+    // ごと取り込まれている見た目)。
     for (let i = 0; i < C.BELT_MAX_VISIBLE; i++) {
       const link = buildMagazineMesh();
-      link.position.x = 0.9 + i * MAG_BELT_PITCH;
+      link.position.x = -(0.9 + i * MAG_BELT_PITCH);
       this.beltGroup.add(link);
       this.beltLinks.push(link);
     }
     this.player.obj.add(this.beltGroup);
+
+    // 右舷(+X)の排出口: 弾を撃ち尽くした空のマガジン(外枠のみ、弾は見えない)
+    // が常に見えている。撃ち尽くすたびにここからフレームがデブリとして放出される。
+    this.magEjectPort.position.set(0.9, 0, 0);
+    this.player.obj.add(this.magEjectPort);
 
     // --- 敵機配置 ---
     for (const spec of this.makeEnemySpecs(playerState, stage)) {
@@ -1218,7 +1229,7 @@ export class Game {
     const manual = this.mapMode ? 0 : 1;
     // IKJLUO による回転操作
     const inX = ((i.down('KeyI') ? 1 : 0) + (i.down('KeyK') ? -1 : 0)) * manual; // ピッチ
-    const inY = ((i.down('KeyJ') ? 1 : 0) + (i.down('KeyL') ? -1 : 0)) * manual; // ヨー
+    const inY = ((i.down('KeyL') ? 1 : 0) + (i.down('KeyJ') ? -1 : 0)) * manual; // ヨー (L=左, J=右)
     const inZ = ((i.down('KeyO') ? 1 : 0) + (i.down('KeyU') ? -1 : 0)) * manual; // ロール (O=右, U=左)
 
     if (this.progradeHold && (inX !== 0 || inY !== 0 || inZ !== 0)) {
@@ -1329,14 +1340,14 @@ export class Game {
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv
     p.state.v = addScaled(p.state.v, fwd, -C.RECOIL_DV);
 
-    // 薬莢: 左舷へ排出(右舷はマガジンベルトがあるため)。初速・回転とも
+    // 薬莢: 右舷へ排出(左舷はマガジンベルトの給弾があるため)。初速・回転とも
     // 従来より抑え、ゆっくり漂いながら緩やかに回転する見た目にする。
     const casing: Casing = {
       state: {
-        r: add(muzzle, scale(right, -1.4)),
+        r: add(muzzle, scale(right, 1.4)),
         v: add(
           p.state.v,
-          add(scale(right, -(0.5 + Math.random() * 0.3)), add(scale(up, randSym(0.2)), randVec(0.1))),
+          add(scale(right, 0.5 + Math.random() * 0.3), add(scale(up, randSym(0.2)), randVec(0.1))),
         ),
       },
       att: {
@@ -1375,6 +1386,33 @@ export class Game {
       this.magsLeft--;
       this.roundsInMag = C.MAG_ROUNDS;
       this.sfx.magFeed();
+      this.spawnEjectedMagazineFrame();
+    }
+  }
+
+  // マガジン1個を撃ち尽くした瞬間、右舷排出口(magEjectPort)の位置から
+  // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
+  private spawnEjectedMagazineFrame(): void {
+    const p = this.player;
+    const right = qRotate(p.att.q, v3(1, 0, 0)); // 右舷方向(ワールド)
+    const portWorld = add(p.state.r, qRotate(p.att.q, v3(0.9, 0, 0)));
+    const piece: DebrisPiece = {
+      state: {
+        r: portWorld,
+        v: add(p.state.v, add(scale(right, 0.5 + Math.random() * 0.3), randVec(0.15))),
+      },
+      att: {
+        q: randomQuat(),
+        w: v3(randSym(0.6), randSym(0.6), randSym(0.6)),
+        inertia: v3(1, 1.2, 1.4),
+      },
+      obj: buildMagazineFrame(),
+    };
+    this.debris.push(piece);
+    this.scene.add(piece.obj);
+    while (this.debris.length > C.MAX_DEBRIS) {
+      const old = this.debris.shift()!;
+      this.removeDebrisObj(old);
     }
   }
 
@@ -1891,7 +1929,7 @@ export class Game {
     if (!this.beltInit) {
       this.beltInit = true;
       for (let i = 0; i < n; i++) {
-        const p = new THREE.Vector3(0.9 + (i + 1) * MAG_BELT_PITCH, 0, 0);
+        const p = new THREE.Vector3(-(0.9 + (i + 1) * MAG_BELT_PITCH), 0, 0);
         this.beltPos.push(p.clone());
         this.beltPrevPos.push(p.clone());
         this.beltTwist.push(0);
@@ -1932,7 +1970,7 @@ export class Game {
 
     // 距離拘束(剛体棒): 先頭はベルトの給弾進みに応じて動くアンカーに固定。
     // 数回反復して各リンク間隔を MAG_BELT_PITCH に収束させる。
-    beltAnchor.set(0.9 - this.beltFeed * MAG_BELT_PITCH, 0, 0);
+    beltAnchor.set(-(0.9 - this.beltFeed * MAG_BELT_PITCH), 0, 0);
     for (let iter = 0; iter < 4; iter++) {
       for (let i = 0; i < n; i++) {
         const a = i === 0 ? beltAnchor : this.beltPos[i - 1]!;
@@ -1962,7 +2000,10 @@ export class Game {
     const maxRoll = (C.MAG_CHAIN_MAX_ROLL_DEG * Math.PI) / 180;
     const rollLerp = Math.min(1, dt * C.MAG_CHAIN_ROLL_RATE);
     let prevPoint: THREE.Vector3 = beltAnchor;
-    beltQPrev.identity(); // アンカー(機体)側の基準姿勢
+    // アンカー(機体)側の基準姿勢: ベルトは左舷(-X)へ伸びるので、無偏向時に
+    // リンクのローカル+X(ベルト方向)が-Xを向くよう180°回転させておく
+    // (そうしないと毎フレーム「ほぼ真後ろ向き」の縮退ケースを経由してしまう)。
+    beltQPrev.setFromAxisAngle(Y_AXIS, Math.PI);
     let prevTwist = this.player.att.w.z * C.MAG_CHAIN_ROLL_GAIN; // ねじれの発生源: 機体のロール角速度
     for (let i = 0; i < n; i++) {
       const link = this.beltLinks[i]!;
@@ -2014,7 +2055,7 @@ export class Game {
     // updatePlayerAttitude の inX/inY/inZ(実際のトルク方向)と符号を一致させる
     const tau = v3(
       (i.down('KeyI') ? 1 : 0) + (i.down('KeyK') ? -1 : 0), // ピッチ
-      (i.down('KeyJ') ? 1 : 0) + (i.down('KeyL') ? -1 : 0), // ヨー
+      (i.down('KeyL') ? 1 : 0) + (i.down('KeyJ') ? -1 : 0), // ヨー
       (i.down('KeyO') ? 1 : 0) + (i.down('KeyU') ? -1 : 0), // ロール
     );
     const q = this.player.att.q;
