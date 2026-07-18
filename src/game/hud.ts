@@ -79,10 +79,15 @@ const STYLE = `
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
 #hud .row .k { color: ${INK_SOFT}; }
 #hud .row .v { color: ${INK}; min-width: 90px; text-align: right; }
-#hud-status { top: 12px; left: 12px; min-width: 230px; }
-#hud-orbit { top: 236px; left: 12px; min-width: 230px; }
-#hud-target { top: 12px; right: 12px; min-width: 240px; }
-#hud-enemies { top: 348px; right: 12px; min-width: 240px; }
+#hud-status { bottom: 12px; left: 12px; min-width: 200px; font-size: 10.4px; }
+#hud-status h3 { font-size: 8.8px; }
+#hud-orbit { bottom: 12px; left: 250px; min-width: 200px; font-size: 10.4px; }
+#hud-orbit h3 { font-size: 8.8px; }
+#hud-status .v, #hud-orbit .v { min-width: 75px; }
+#hud-target { bottom: 12px; right: 250px; min-width: 200px; font-size: 10.4px; }
+#hud-target h3 { font-size: 8.8px; }
+#hud-enemies { bottom: 12px; right: 12px; min-width: 200px; font-size: 10.4px; }
+#hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
 #hud-enemies .erow.tgt { color: ${ACCENT}; }
 #hud-controls {
@@ -108,15 +113,19 @@ const STYLE = `
 .mk {
   position: absolute; transform: translate(-50%, -50%);
   text-align: center; white-space: nowrap; text-shadow: 0 0 4px #000, 0 0 2px #000;
+  width: 24px; height: 24px;
 }
-.mk .sym { display: block; font-size: 22px; line-height: 1; }
-.mk .lbl { display: block; font-size: 10px; margin-top: 2px; letter-spacing: 1px; }
+.mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; line-height: 1; }
+.mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: 10px; margin-top: 2px; letter-spacing: 1px; }
 .mk-boresight { color: #dfe3e8; font-size: 18px; }
 .mk-target { color: ${ACCENT}; }
 .mk-enemy { color: rgba(230, 232, 235, 0.35); }
 .mk-lead { color: ${ACCENT}; }
 .mk-pro { color: #cfd6dd; }
 .mk-retro { color: #cfd6dd; }
+.mk-nrm { color: #d08cff; }
+.mk-rad { color: #7de8ff; }
+.mk-tgtdir { color: #ff7ab0; }
 .mk-node { color: #8b93a0; }
 .mk-boardhit { color: #ffffff; text-shadow: 0 0 5px rgba(255,255,255,0.9), 0 0 10px rgba(255,255,255,0.45); }
 .mk-boardhit .sym { font-size: 8px; }
@@ -264,12 +273,23 @@ export class Hud {
   onMapViewReset: (() => void) | null = null;
   onSliderChange: ((t: number) => void) | null = null;
 
+  private svgOverlay: SVGSVGElement;
+
   constructor() {
     const style = document.createElement('style');
     style.textContent = STYLE;
     document.head.appendChild(style);
 
     this.root = el('div', 'hud', document.body);
+    
+    this.svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.svgOverlay.style.position = 'absolute';
+    this.svgOverlay.style.inset = '0';
+    this.svgOverlay.style.width = '100%';
+    this.svgOverlay.style.height = '100%';
+    this.svgOverlay.style.pointerEvents = 'none';
+    this.svgOverlay.style.zIndex = '-1';
+    this.root.appendChild(this.svgOverlay);
 
     const status = el('div', 'hud-status', this.root, 'panel');
     status.innerHTML = `
@@ -298,7 +318,7 @@ export class Hud {
 
     const target = el('div', 'hud-target', this.root, 'panel');
     target.innerHTML = `
-      <h3>TARGET [Tab]</h3>
+      <h3 data-id="tgtname">TARGET</h3>
       <div data-id="tgtbody"></div>`;
 
     const enemies = el('div', 'hud-enemies', this.root, 'panel');
@@ -404,10 +424,10 @@ export class Hud {
         <tr><td class="key">C</td><td>進行方向ホールド ON/OFF (機首をプログレード方向へ自動で向け続ける。手動回転で解除)</td></tr>
         <tr><td class="key">G</td><td>視点のRCS追従 ON/OFF (既定 ON: 視点が機体姿勢を基準に回転し、RCS操作と一体的に動く。OFF で従来の軌道基準の独立視点に戻る)</td></tr>
         <tr><td class="key">Z (長押し)</td><td>照準ズーム (機首方向を画面中心に拡大表示、自機は非表示になる)</td></tr>
-        <tr><td class="key">Tab</td><td>ターゲット切替 (近い順)。TARGET パネルに軌道要素・相対傾斜角を表示</td></tr>
+        <tr><td class="key">右クリック (敵)</td><td>敵をターゲット固定 / 解除 (固定中はターゲット名が画面右上に表示される)</td></tr>
         <tr><td class="key">▲AN / ▽DN マーカー</td><td>自機軌道とターゲット軌道面の交点。面変更(ノーマル/アンチノーマル)burn の目安位置</td></tr>
         <tr><td class="key">✦ マーカー</td><td>ターゲット位置に自機側を向けた仮想標的面を弾が通過した点。次弾の照準修正の目安</td></tr>
-        <tr><td class="key">Navball</td><td>画面下中央の姿勢儀。青半球 = 地球方向。PRO/RET・NRM/ANM・OUT/IN・TGT/ATG を表示</td></tr>
+        <tr><td class="key">方向マーカー</td><td>W/S (PRO/RET), A/D (NRM/ANM), Q/E (OUT/IN) 方向を示すマーカー</td></tr>
         <tr><td class="key">M</td><td>軌道計画モード。地球中心ビューで数値予測した軌道(折れ線)をクリックしてノードを複数配置でき、再度 M で確定(時間は進み続けるのでワープも可)</td></tr>
         <tr><td class="key">ノードのドラッグ</td><td>ノード上の丸ハンドルをドラッグすると、ポインタに最も近い軌道上の時刻へノードを移動する(小さな動きはドラッグでなくクリック=選択として扱う)</td></tr>
         <tr><td class="key">Δv 矢印ハンドル</td><td>選択中ノードの周囲に PRO/RET・NRM/ANM・OUT/IN の6ハンドルを表示。ドラッグした向きに応じて対応する Δv 成分を増減する(W/S・A/D・Q/E キーでも同じ成分を調整可能、[V] で微調整)</td></tr>
@@ -517,12 +537,14 @@ export class Hud {
   setTarget(t: TargetData | null): void {
     const body = this.els.get('tgtbody');
     if (!body) return;
+    const title = this.els.get('tgtname');
     if (!t) {
+      if (title) title.textContent = 'TARGET';
       body.innerHTML = '<div style="color:#7d838c">ターゲットなし</div>';
       return;
     }
+    if (title) title.textContent = t.name;
     body.innerHTML = `
-      <div class="row"><span class="k">名称</span><span class="v">${t.name}</span></div>
       <div class="row"><span class="k">距離</span><span class="v">${fmtDist(t.dist)}</span></div>
       <div class="row"><span class="k">接近速度</span><span class="v">${fmtSpeed(t.closing)}</span></div>
       <div class="row"><span class="k">相対速度</span><span class="v">${fmtSpeed(t.relSpeed)}</span></div>
@@ -668,6 +690,80 @@ export class Hud {
   hideMarker(key: string): void {
     const m = this.markers.get(key);
     if (m) m.root.style.display = 'none';
+  }
+
+  resolveMarkerCollisions(): void {
+    const active: { m: any; ox: number; oy: number; w: number; h: number; dx: number; dy: number }[] = [];
+    
+    // 1. Gather active markers and their estimated label bounding boxes
+    for (const m of this.markers.values()) {
+      if (m.root.style.display === 'none' || !m.lbl.textContent) {
+        m.lbl.style.transform = 'translateX(-50%)';
+        continue;
+      }
+      const xStr = m.root.style.left;
+      const yStr = m.root.style.top;
+      if (!xStr || !yStr) continue;
+      const x = parseFloat(xStr);
+      const y = parseFloat(yStr);
+      
+      const textLen = m.lbl.textContent.length;
+      const w = textLen * 6.5 + 4; // approx width
+      const h = 14;
+      
+      // Default label center is 12px + h/2 below the symbol center (x, y)
+      active.push({ m, ox: x, oy: y + 12 + h / 2, w, h, dx: 0, dy: 0 });
+    }
+
+    // 2. Simple relaxation to push overlapping labels apart
+    const ITER = 5;
+    for (let iter = 0; iter < ITER; iter++) {
+      for (let i = 0; i < active.length; i++) {
+        for (let j = i + 1; j < active.length; j++) {
+          const a = active[i]!;
+          const b = active[j]!;
+          const ax = a.ox + a.dx;
+          const ay = a.oy + a.dy;
+          const bx = b.ox + b.dx;
+          const by = b.oy + b.dy;
+          const minDistX = (a.w + b.w) / 2 + 4;
+          const minDistY = (a.h + b.h) / 2 + 4;
+          const dx = ax - bx;
+          const dy = ay - by;
+          if (Math.abs(dx) < minDistX && Math.abs(dy) < minDistY) {
+            const ex = minDistX - Math.abs(dx);
+            const ey = minDistY - Math.abs(dy);
+            if (ex < ey) {
+              const push = (ex / 2 + 0.5) * Math.sign(dx || 1);
+              a.dx += push;
+              b.dx -= push;
+            } else {
+              const push = (ey / 2 + 0.5) * Math.sign(dy || 1);
+              a.dy += push;
+              b.dy -= push;
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Apply positions and draw SVG lines
+    this.svgOverlay.innerHTML = '';
+    for (const a of active) {
+      if (Math.abs(a.dx) > 1 || Math.abs(a.dy) > 1) {
+        a.m.lbl.style.transform = `translate(calc(-50% + ${a.dx}px), ${a.dy}px)`;
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', a.ox.toString());
+        line.setAttribute('y1', (a.oy - 12 - a.h / 2).toString());
+        line.setAttribute('x2', (a.ox + a.dx).toString());
+        line.setAttribute('y2', (a.oy + a.dy - a.h / 2).toString());
+        line.setAttribute('stroke', 'rgba(255,255,255,0.4)');
+        line.setAttribute('stroke-width', '1');
+        this.svgOverlay.appendChild(line);
+      } else {
+        a.m.lbl.style.transform = 'translateX(-50%)';
+      }
+    }
   }
 
   hint(text: string, durationMs = 1800): void {
