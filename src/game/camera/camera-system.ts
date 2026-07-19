@@ -6,7 +6,7 @@ import * as C from '../const';
 import { ChaseCamera } from '../camera/chase-camera';
 import { MouseDelta } from '../input';
 import { MapView } from '../map-mode/mapview';
-import { Player } from '../player';
+import { Player } from '../player/player';
 
 export interface CameraUpdateCtx {
   mapMode: boolean;

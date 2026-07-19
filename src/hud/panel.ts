@@ -6,7 +6,7 @@ import { TEXT_DIM as INK_SOFT } from '../game/theme';
 import { Elements } from '../physics/orbital';
 import { dot, len, sub } from '../physics/vec3';
 import { Enemy } from '../game/entities';
-import { Player } from '../game/player';
+import { Player } from '../game/player/player';
 import { TouchControls } from '../game/touch';
 import { fmtDist, fmtSpeed, fmtTime } from './utils';
 
