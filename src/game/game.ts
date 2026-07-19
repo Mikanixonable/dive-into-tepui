@@ -417,17 +417,8 @@ export class Game {
       input: this.input,
       warp,
       mapMode: this.mapMode,
-      onFire: (ammoEvent) => {
-        this.combat.fireGun(this.combatCtx());
-        if (ammoEvent === 'mag') {
-          this.combat.spawnEjectedMagazineFrame(this.combatCtx());
-          this.sfx.magFeed();
-        } else if (ammoEvent === 'reload') {
-          this.combat.spawnEjectedMagazineFrame(this.combatCtx());
-          this.combat.dropBarrel(this.combatCtx());
-          this.sfx.playReload();
-        }
-      },
+      combat: this.combat,
+      combatCtx: this.combatCtx(),
     });
     const playerAccel = this.simulator.buildPlayerAccel(action.thrustFn);
 
