@@ -103,7 +103,23 @@ export class TouchControls {
     }
   }
 
-  constructor(input: Input) {
+  constructor(private readonly input: Input) {
+    const root = this.buildRoot();
+    // 並進 (RCS)
+    this.buildTranslationPad(root);
+    // 回転
+    this.buildRotationPad(root);
+    // 姿勢まわりのモード切替(制動・微動)
+    this.buildModeColumn(root);
+    // 射撃
+    this.makeButton(root, { code: 'Space', glyph: 'FIRE', label: '' }, 'touch-fire');
+    // ズームトグル
+    this.buildZoomToggle(root);
+    // トグル・ワープ等の util 行
+    this.buildUtilRow(root);
+  }
+
+  private buildRoot(): HTMLElement {
     const style = document.createElement('style');
     style.textContent = STYLE;
     document.head.appendChild(style);
@@ -111,41 +127,44 @@ export class TouchControls {
     const root = document.createElement('div');
     root.id = 'touch-ui';
     document.body.appendChild(root);
+    return root;
+  }
 
-    const mkBtn = (parent: HTMLElement, b: Btn, id = '', isToggle = false): HTMLElement => {
-      const e = document.createElement('div');
-      e.className = 'tbtn';
-      if (id) e.id = id;
-      e.innerHTML = `<span class="g">${b.glyph}</span>${b.label ? `<span class="l">${b.label}</span>` : ''}`;
-      const down = (ev: PointerEvent) => {
-        ev.preventDefault();
-        e.setPointerCapture(ev.pointerId);
-        e.classList.add('held');
-        input.setVirtualKey(b.code, true);
-      };
-      const up = () => {
-        e.classList.remove('held');
-        input.setVirtualKey(b.code, false);
-      };
-      e.addEventListener('pointerdown', down);
-      e.addEventListener('pointerup', up);
-      e.addEventListener('pointercancel', up);
-      e.addEventListener('contextmenu', (ev) => ev.preventDefault());
-      parent.appendChild(e);
-      if (isToggle) this.toggleButtons.set(b.code, e);
-      return e;
+  private makeButton(parent: HTMLElement, b: Btn, id = '', isToggle = false): HTMLElement {
+    const e = document.createElement('div');
+    e.className = 'tbtn';
+    if (id) e.id = id;
+    e.innerHTML = `<span class="g">${b.glyph}</span>${b.label ? `<span class="l">${b.label}</span>` : ''}`;
+    const down = (ev: PointerEvent) => {
+      ev.preventDefault();
+      e.setPointerCapture(ev.pointerId);
+      e.classList.add('held');
+      this.input.setVirtualKey(b.code, true);
     };
-
-    const mkPad = (id: string, btns: Btn[]): void => {
-      const pad = document.createElement('div');
-      pad.id = id;
-      pad.className = 'pad';
-      root.appendChild(pad);
-      for (const b of btns) mkBtn(pad, b);
+    const up = () => {
+      e.classList.remove('held');
+      this.input.setVirtualKey(b.code, false);
     };
+    e.addEventListener('pointerdown', down);
+    e.addEventListener('pointerup', up);
+    e.addEventListener('pointercancel', up);
+    e.addEventListener('contextmenu', (ev) => ev.preventDefault());
+    parent.appendChild(e);
+    if (isToggle) this.toggleButtons.set(b.code, e);
+    return e;
+  }
 
-    // 並進 (RCS): 上段 = 上/前/下, 下段 = 左/後/右
-    mkPad('touch-pad-move', [
+  private makePad(root: HTMLElement, id: string, btns: Btn[]): void {
+    const pad = document.createElement('div');
+    pad.id = id;
+    pad.className = 'pad';
+    root.appendChild(pad);
+    for (const b of btns) this.makeButton(pad, b);
+  }
+
+  // 並進 (RCS): 上段 = 上/前/下, 下段 = 左/後/右
+  private buildTranslationPad(root: HTMLElement): void {
+    this.makePad(root, 'touch-pad-move', [
       { code: 'KeyQ', glyph: '▲', label: '上' },
       { code: 'KeyW', glyph: '●', label: '前' },
       { code: 'KeyE', glyph: '▼', label: '下' },
@@ -153,9 +172,11 @@ export class TouchControls {
       { code: 'KeyS', glyph: '○', label: '後' },
       { code: 'KeyD', glyph: '▶', label: '右' },
     ]);
+  }
 
-    // 回転: 上段 = ロール左/ピッチ下げ/ロール右, 下段 = ヨー左/ピッチ上げ/ヨー右
-    mkPad('touch-pad-rot', [
+  // 回転: 上段 = ロール左/ピッチ下げ/ロール右, 下段 = ヨー左/ピッチ上げ/ヨー右
+  private buildRotationPad(root: HTMLElement): void {
+    this.makePad(root, 'touch-pad-rot', [
       { code: 'KeyU', glyph: '⟲', label: 'ロール' },
       { code: 'KeyI', glyph: '↓', label: '機首下げ' },
       { code: 'KeyO', glyph: '⟳', label: 'ロール' },
@@ -163,19 +184,21 @@ export class TouchControls {
       { code: 'KeyK', glyph: '↑', label: '機首上げ' },
       { code: 'KeyL', glyph: '←', label: 'ヨー' },
     ]);
+  }
 
-    // 姿勢制御パッドのすぐ近くに、姿勢まわりのモード切替(制動・微動)をまとめる。
-    // ON の間は色が変わる(タップの瞬間だけ光る .held とは別に .on を常時反映)。
+  // 姿勢制御パッドのすぐ近くに、姿勢まわりのモード切替(制動・微動)をまとめる。
+  // ON の間は色が変わる(タップの瞬間だけ光る .held とは別に .on を常時反映)。
+  private buildModeColumn(root: HTMLElement): void {
     const modeCol = document.createElement('div');
     modeCol.id = 'touch-mode-col';
     modeCol.className = 'mini-col';
     root.appendChild(modeCol);
-    mkBtn(modeCol, { code: 'KeyT', glyph: 'T', label: '制動' }, '', true);
-    mkBtn(modeCol, { code: 'KeyV', glyph: 'V', label: '微動' }, '', true);
+    this.makeButton(modeCol, { code: 'KeyT', glyph: 'T', label: '制動' }, '', true);
+    this.makeButton(modeCol, { code: 'KeyV', glyph: 'V', label: '微動' }, '', true);
+  }
 
-    mkBtn(root, { code: 'Space', glyph: 'FIRE', label: '' }, 'touch-fire');
-
-    // ズームは長押しでなく ON/OFF トグル(タップのたびに切り替え、指を離しても保持)
+  // ズームは長押しでなく ON/OFF トグル(タップのたびに切り替え、指を離しても保持)
+  private buildZoomToggle(root: HTMLElement): void {
     const zoomBtn = document.createElement('div');
     zoomBtn.id = 'touch-zoom';
     zoomBtn.className = 'tbtn';
@@ -185,11 +208,13 @@ export class TouchControls {
       ev.preventDefault();
       zoomOn = !zoomOn;
       zoomBtn.classList.toggle('held', zoomOn);
-      input.setVirtualKey('KeyZ', zoomOn);
+      this.input.setVirtualKey('KeyZ', zoomOn);
     });
     zoomBtn.addEventListener('contextmenu', (ev) => ev.preventDefault());
     root.appendChild(zoomBtn);
+  }
 
+  private buildUtilRow(root: HTMLElement): void {
     const util = document.createElement('div');
     util.id = 'touch-util';
     root.appendChild(util);
@@ -201,9 +226,9 @@ export class TouchControls {
       { code: 'KeyN', glyph: 'N', label: 'ノードへ' },
       { code: 'KeyH', glyph: 'H', label: 'ヘルプ' },
     ]) {
-      mkBtn(util, b);
+      this.makeButton(util, b);
     }
     // 進行方向ホールドも ON/OFF 表示を反映するトグルボタンとして登録する
-    mkBtn(util, { code: 'KeyC', glyph: 'C', label: 'ホールド' }, '', true);
+    this.makeButton(util, { code: 'KeyC', glyph: 'C', label: 'ホールド' }, '', true);
   }
 }

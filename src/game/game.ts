@@ -83,6 +83,16 @@ import { OrbitLine } from '../render/orbitline';
 import { TrajLine } from '../render/trajline';
 
 type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
+type CollisionEntity = {
+  r: Vec3;
+  v: Vec3;
+  m: number;
+  rad: number;
+  isBelt?: boolean;
+  beltIdx?: number;
+  isPlayer?: boolean;
+  isCasing?: boolean;
+};
 
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
@@ -227,6 +237,39 @@ export class Game {
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this.sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
+    this.wireHudCallbacks();
+
+    // --- 環境 ---
+    const env = this.buildEnvironmentScene();
+    this.ambient = env.ambient;
+    this.glowTex = env.glowTex;
+    this.sun = env.sun;
+    this.sunLight = env.sunLight;
+    this.starsMesh = env.starsMesh;
+    this.earth = env.earth;
+    this.addOrbitLines();
+
+    this.wireMapToolbarCallbacks();
+    this.wireMapGizmoCallbacks();
+
+    const plumes = this.buildThrustPlumes();
+    this.plumeCore = plumes.core;
+    this.plumeOuter = plumes.outer;
+    this.buildRcsPuffs();
+
+    // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
+    const playerState = this.makeInitialPlayerState();
+    this.player = this.createPlayer(playerState);
+    this.scene.add(this.player.obj);
+    this.buildBeltLinks();
+
+    // --- 敵機配置 ---
+    this.spawnInitialEnemies(playerState);
+
+    this.initStage();
+  }
+
+  private wireHudCallbacks(): void {
     this.hud.setBgmState(this.sfx.isBgmEnabled());
     this.hud.onBgmToggle = (on) => this.sfx.setBgmEnabled(on);
     // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
@@ -237,23 +280,35 @@ export class Game {
     this.hud.onQuitToTitle = () => {
       location.assign(location.pathname);
     };
+  }
 
-    // --- 環境 ---
-    this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
-    this.scene.add(this.ambient);
-    this.glowTex = makeGlowTexture();
-    this.sun = createSun(this.glowTex);
-    this.scene.add(this.sun.mesh);
+  private buildEnvironmentScene(): {
+    ambient: THREE.AmbientLight;
+    glowTex: THREE.Texture;
+    sun: Sun;
+    sunLight: THREE.DirectionalLight;
+    starsMesh: THREE.Mesh;
+    earth: Earth;
+  } {
+    const ambient = new THREE.AmbientLight(0x8899bb, 0.25);
+    this.scene.add(ambient);
+    const glowTex = makeGlowTexture();
+    const sun = createSun(glowTex);
+    this.scene.add(sun.mesh);
     this.environment.updateEphemeris(this.simTime);
-    this.sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
+    const sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
     const sunDir0 = this.environment.sunDir;
-    this.sunLight.position.set(sunDir0.x * 1e5, sunDir0.y * 1e5, sunDir0.z * 1e5);
-    this.scene.add(this.sunLight);
+    sunLight.position.set(sunDir0.x * 1e5, sunDir0.y * 1e5, sunDir0.z * 1e5);
+    this.scene.add(sunLight);
     this.scene.add(this.moonMesh);
-    this.starsMesh = createStars();
-    this.scene.add(this.starsMesh);
-    this.earth = createEarth();
-    this.scene.add(this.earth.group);
+    const starsMesh = createStars();
+    this.scene.add(starsMesh);
+    const earth = createEarth();
+    this.scene.add(earth.group);
+    return { ambient, glowTex, sun, sunLight, starsMesh, earth };
+  }
+
+  private addOrbitLines(): void {
     this.scene.add(this.playerOrbitLine.line);
     this.targetOrbitLine.line.renderOrder = 2;
     this.scene.add(this.targetOrbitLine.line);
@@ -264,8 +319,10 @@ export class Game {
     this.moonOrbitLine.line.renderOrder = 0;
     this.scene.add(this.moonOrbitLine.line);
     this.scene.add(this.trajLine.group);
+  }
 
-    // マップモードのツールバー(予測期間・スライダー・座標系トグル)
+  // マップモードのツールバー(予測期間・スライダー・座標系トグル)
+  private wireMapToolbarCallbacks(): void {
     this.hud.onDurationSelect = (key) => {
       if (key === 'orbit' || key === 'day' || key === 'week' || key === 'month') {
         this.planner.predictDurationKey = key;
@@ -284,8 +341,10 @@ export class Game {
     this.hud.onSliderChange = (t) => {
       this.mapView.sliderT = t;
     };
+  }
 
-    // マップモードの DOM ギズモ(ノードハンドル・Δv アーム・コンテキストメニュー)
+  // マップモードの DOM ギズモ(ノードハンドル・Δv アーム・コンテキストメニュー)
+  private wireMapGizmoCallbacks(): void {
     this.planner.mapGizmo.onNodeSelect = (idx) => {
       this.planner.selectedNodeIdx = idx;
       this.planner.mapGizmo.closeMenu();
@@ -325,49 +384,59 @@ export class Game {
         this.hud.hint(`${lbl.name} にフォーカス`);
       }
     };
+  }
 
-    // マヌーバ噴射プルーム(推力方向の逆側に置く発光ビルボード 2 枚)
-    this.plumeCore = buildFlashMesh(this.glowTex, 0xaee6ff);
-    this.plumeOuter = buildFlashMesh(this.glowTex, 0x4f9fff);
-    this.plumeCore.visible = false;
-    this.plumeOuter.visible = false;
-    this.scene.add(this.plumeCore);
-    this.scene.add(this.plumeOuter);
+  // マヌーバ噴射プルーム(推力方向の逆側に置く発光ビルボード 2 枚)
+  private buildThrustPlumes(): { core: THREE.Mesh; outer: THREE.Mesh } {
+    const core = buildFlashMesh(this.glowTex, 0xaee6ff);
+    const outer = buildFlashMesh(this.glowTex, 0x4f9fff);
+    core.visible = false;
+    outer.visible = false;
+    this.scene.add(core);
+    this.scene.add(outer);
+    return { core, outer };
+  }
 
-    // RCS パフ(機首側の 4 基のスラスタブロックに対応、ships.ts の配置と一致)
+  // RCS パフ(機首側の 4 基のスラスタブロックに対応、ships.ts の配置と一致)
+  private buildRcsPuffs(): void {
     for (let i = 0; i < 4; i++) {
       const puff = buildFlashMesh(this.glowTex, 0xcfeaff);
       puff.visible = false;
       this.rcsPuffs.push(puff);
       this.scene.add(puff);
     }
+  }
 
-    // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
+  private makeInitialPlayerState(): OrbitState {
     const r0 = R_EARTH + C.INITIAL_ALT;
     const vCirc = Math.sqrt(MU_EARTH / r0);
     const inc = (C.INITIAL_INC_DEG * Math.PI) / 180;
-    const playerState: OrbitState = {
+    return {
       r: v3(r0, 0, 0),
       v: v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)),
     };
-    this.player = {
+  }
+
+  private createPlayer(state: OrbitState): Ship {
+    return {
       name: 'PLAYER',
-      state: playerState,
-      prevR: clone(playerState.r),
-      att: this.progradeAttitude(playerState),
+      state,
+      prevR: clone(state.r),
+      att: this.progradeAttitude(state),
       obj: buildPlayerShip(),
       radius: C.PLAYER_RADIUS,
       hp: C.PLAYER_MAX_HP,
       maxHp: C.PLAYER_MAX_HP,
       alive: true,
     };
-    this.scene.add(this.player.obj);
+  }
 
-    // マガジンベルト(未使用の実弾入りマガジン): 機体左面(+X)に垂直に連結する。
-    // 先頭リンクは機体に半分取り込まれた位置に置く(給弾中もベルトごと
-    // 取り込まれている見た目)。ゲーム開始時は空のマガジンは一切表示されず、
-    // 弾を撃ち尽くすたびに機体反対側(-X)からフレームだけの空マガジンが
-    // デブリとして放出される(spawnEjectedMagazineFrame 参照)。
+  // マガジンベルト(未使用の実弾入りマガジン): 機体左面(+X)に垂直に連結する。
+  // 先頭リンクは機体に半分取り込まれた位置に置く(給弾中もベルトごと
+  // 取り込まれている見た目)。ゲーム開始時は空のマガジンは一切表示されず、
+  // 弾を撃ち尽くすたびに機体反対側(-X)からフレームだけの空マガジンが
+  // デブリとして放出される(spawnEjectedMagazineFrame 参照)。
+  private buildBeltLinks(): void {
     for (let i = 0; i < C.BELT_MAX_VISIBLE; i++) {
       const link = buildMagazineMesh();
       link.position.x = 0.9 + i * MAG_BELT_PITCH;
@@ -375,9 +444,10 @@ export class Game {
       this.beltLinks.push(link);
     }
     this.player.obj.add(this.beltGroup);
+  }
 
-    // --- 敵機配置 ---
-    for (const spec of this.stageDirector.makeEnemySpecs(playerState, stage)) {
+  private spawnInitialEnemies(playerState: OrbitState): void {
+    for (const spec of this.stageDirector.makeEnemySpecs(playerState, this.stage)) {
       const ship: Ship = {
         name: spec.name,
         state: spec.state,
@@ -400,8 +470,11 @@ export class Game {
       this.enemyOrbitLines.push(line);
       this.scene.add(line.line);
     }
+  }
 
-
+  // ステージ別の初期弾薬・初期補給の配置と作戦目標のブリーフィング表示
+  private initStage(): void {
+    const stage = this.stage;
     if (stage === -1) {
       this.magsLeft = C.INITIAL_MAGS - 1;
       this.roundsInMag = C.MAG_ROUNDS;
@@ -467,112 +540,138 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.zoomActive = !this.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
+    this.updatePlayerHpRegen(dt);
+    this.syncMapModeWithPhase();
+    if (this.isFrameSimulating()) {
+      this.runPlayingFrame(dt);
+    } else {
+      this.handleIdleFrame();
+    }
+    if (this.phase !== 'playing') {
+      this.coastWorld(dt);
+    }
+    this.updateFineAttitudeFromPipState();
+    this.syncRender(dt);
+  }
 
-    // HP自動回復 (1秒間に1回復)。一時停止メニュー表示中は回復も止める。
+  private updatePlayerHpRegen(dt: number): void {
     if (!this.paused && this.phase === 'playing' && this.player.alive && this.player.hp > 0 && this.player.hp < this.player.maxHp) {
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + dt * C.HP_REGEN_RATE);
     }
+  }
+
+  private syncMapModeWithPhase(): void {
     if (this.phase !== 'playing' && this.mapMode) {
-      // ゲーム終了時はマップモードを強制解除する
       this.mapMode = false;
       this.hud.setPlanPanel(null);
       this.hud.setMapToolbarVisible(false);
       this.planner.closeMenu();
       this.touchControls?.setMapMode(false);
     }
-    if (!this.paused && this.phase === 'playing') {
-      // 軌道計画モード中も時間を進め、ワープできるようにする(手動推進・射撃のみ
-      // simulate() 内部で無効化する)。ノード編集は同じフレームの現在軌道に対して行う。
-      this.simulate(dt);
-      if (this.mapMode) {
-        this.planner.updateEditing(dt, this.plannerCtx(), this.input, (rel) => this.project(rel), {
-          fineAttitude: this.fineAttitude,
-          mapSliderT: this.mapView.sliderT,
-          mapFocus: this.mapView.focus,
-          labels: this.mapView.labels,
-        });
-      } else {
-        // 戦闘中の左クリックは射撃・カメラ用として消費(キューは捨てる)
-        this.input.takeClicks();
+  }
 
-        // 右クリックによるターゲット固定・解除
-        const rClicks = this.input.takeRightClicks();
-        if (rClicks.length > 0 && this.player.alive) {
-          const rc = rClicks[rClicks.length - 1]!;
-          let hit: Ship | null = null;
-          let minDistSq = C.TARGET_LOCK_PICK_PX_SQ;
-          for (const e of this.enemies) {
-            if (!e.alive) continue;
-            const p = this.project(sub(e.state.r, this.player.state.r));
-            if (p.front) {
-              const dx = p.x - rc.x;
-              const dy = p.y - rc.y;
-              const distSq = dx * dx + dy * dy;
-              if (distSq < minDistSq) {
-                minDistSq = distSq;
-                hit = e;
-              }
-            }
-          }
-          if (hit) {
-            if (this.lockedTarget === hit) {
-              this.lockedTarget = null; // Toggle off
-              this.hud.hint(`ターゲット固定解除`);
-            } else {
-              this.lockedTarget = hit;
-              this.hud.hint(`ターゲット固定: ${hit.name}`);
-            }
-          } else {
-            if (this.lockedTarget !== null) {
-              this.lockedTarget = null;
-              this.hud.hint(`ターゲット固定解除`);
-            }
-          }
-        }
+  private isFrameSimulating(): boolean {
+    return !this.paused && this.phase === 'playing';
+  }
 
-        // 自動ターゲット更新 (ロックされていればそれ、そうでなければ画面中央に一番近い敵)
-        if (this.lockedTarget && this.lockedTarget.alive) {
-          this.target = this.lockedTarget;
-        } else {
-          this.lockedTarget = null;
-          let bestTarget: Ship | null = null;
-          let bestDot = -1;
-          const camFwdW = new THREE.Vector3();
-          this.activeCamera.getWorldDirection(camFwdW);
-          const camFwdVec = v3(camFwdW.x, camFwdW.y, camFwdW.z);
-          for (const e of this.enemies) {
-            if (!e.alive) continue;
-            const dir = norm(sub(e.state.r, this.player.state.r));
-            const d = dot(camFwdVec, dir);
-            if (d > bestDot) {
-              bestDot = d;
-              bestTarget = e;
-            }
-          }
-          this.target = bestTarget;
-        }
-      }
-      if (this.stage === -1) this.stageDirector.updateStage00(dt, this.stageCtx());
-      if (this.stage === 0) this.stageDirector.updateStage0Timer(dt, this.stageCtx());
+  private runPlayingFrame(dt: number): void {
+    this.simulate(dt);
+    if (this.mapMode) {
+      this.updateMapEditing(dt);
     } else {
-      this.lastSimDt = 0;
-      this.sfx.setThrust(false);
-      this.thrustVizDir = null;
-      this.thrustAccelVec = v3();
-      this.input.takeClicks();
-      this.input.takeRightClicks();
-      // ポーズ中/非プレイ中はズームウィンドウ(PIP)を閉じ、連動する微動モードも解除する
-      this.wasFiring = false;
+      this.updateCombatTargeting();
     }
-    if (this.phase !== 'playing') {
-      // 撃破後もデブリ等は流し続ける(演出)
-      this.coastWorld(dt);
+    if (this.stage === -1) this.stageDirector.updateStage00(dt, this.stageCtx());
+    if (this.stage === 0) this.stageDirector.updateStage0Timer(dt, this.stageCtx());
+  }
+
+  private updateMapEditing(dt: number): void {
+    this.planner.updateEditing(dt, this.plannerCtx(), this.input, (rel) => this.project(rel), {
+      fineAttitude: this.fineAttitude,
+      mapSliderT: this.mapView.sliderT,
+      mapFocus: this.mapView.focus,
+      labels: this.mapView.labels,
+    });
+  }
+
+  private updateCombatTargeting(): void {
+    this.input.takeClicks();
+    this.handleTargetLockByRightClick();
+    this.updateAutoTarget();
+  }
+
+  private handleTargetLockByRightClick(): void {
+    const rClicks = this.input.takeRightClicks();
+    if (rClicks.length <= 0 || !this.player.alive) return;
+    const rc = rClicks[rClicks.length - 1]!;
+    let hit: Ship | null = null;
+    let minDistSq = C.TARGET_LOCK_PICK_PX_SQ;
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const p = this.project(sub(e.state.r, this.player.state.r));
+      if (!p.front) continue;
+      const dx = p.x - rc.x;
+      const dy = p.y - rc.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < minDistSq) {
+        minDistSq = distSq;
+        hit = e;
+      }
     }
-    // ズームウィンドウ(PIP)は isFiring(=wasFiring) の間だけ表示される。その立ち下がりで
-    // 微動モードも自動解除する(射撃開始時の自動 fineAttitude=true と対になる挙動)。
+    if (hit) {
+      this.toggleLockedTarget(hit);
+    } else if (this.lockedTarget !== null) {
+      this.lockedTarget = null;
+      this.hud.hint('ターゲット固定解除');
+    }
+  }
+
+  private toggleLockedTarget(hit: Ship): void {
+    if (this.lockedTarget === hit) {
+      this.lockedTarget = null;
+      this.hud.hint('ターゲット固定解除');
+    } else {
+      this.lockedTarget = hit;
+      this.hud.hint(`ターゲット固定: ${hit.name}`);
+    }
+  }
+
+  private updateAutoTarget(): void {
+    if (this.lockedTarget && this.lockedTarget.alive) {
+      this.target = this.lockedTarget;
+      return;
+    }
+    this.lockedTarget = null;
+    let bestTarget: Ship | null = null;
+    let bestDot = -1;
+    const camFwdW = new THREE.Vector3();
+    this.activeCamera.getWorldDirection(camFwdW);
+    const camFwdVec = v3(camFwdW.x, camFwdW.y, camFwdW.z);
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const dir = norm(sub(e.state.r, this.player.state.r));
+      const d = dot(camFwdVec, dir);
+      if (d > bestDot) {
+        bestDot = d;
+        bestTarget = e;
+      }
+    }
+    this.target = bestTarget;
+  }
+
+  private handleIdleFrame(): void {
+    this.lastSimDt = 0;
+    this.sfx.setThrust(false);
+    this.thrustVizDir = null;
+    this.thrustAccelVec = v3();
+    this.input.takeClicks();
+    this.input.takeRightClicks();
+    this.wasFiring = false;
+  }
+
+  private updateFineAttitudeFromPipState(): void {
     if (this.prevFiringForPip && !this.wasFiring) this.fineAttitude = false;
     this.prevFiringForPip = this.wasFiring;
-    this.syncRender(dt);
   }
 
   private warp(): number {
@@ -581,113 +680,115 @@ export class Game {
 
   private handleEdgeInput(): void {
     for (const code of this.input.takePresses()) {
-      switch (code) {
-        case 'KeyT':
-          this.rcsDamp = !this.rcsDamp;
-          this.hud.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
-          break;
-        case 'KeyF':
-          this.progradeHold = true;
-          this.hud.hint('プログレード姿勢リセット(機首を進行方向へ)');
-          break;
-        case 'KeyV':
-          this.fineAttitude = !this.fineAttitude;
-          this.hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
-          break;
-        case 'KeyC':
-          this.progradeHold = !this.progradeHold;
-          this.hud.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
-          break;
-        case 'KeyG':
-          this.camFollowAttitude = !this.camFollowAttitude;
-          this.hud.hint(
-            `視点のRCS追従: ${this.camFollowAttitude ? 'ON (視点が機体姿勢に追従)' : 'OFF (軌道基準の独立視点)'}`,
-          );
-          break;
-        case 'Digit1':
-          this.throttleIdx = 0;
-          this.hud.hint(`並進出力: 弱 (${C.THROTTLE_LEVELS[0]!.toFixed(1)} m/s²)`);
-          break;
-        case 'Digit2':
-          this.throttleIdx = 1;
-          this.hud.hint(`並進出力: 中 (${C.THROTTLE_LEVELS[1]!.toFixed(1)} m/s²)`);
-          break;
-        case 'Digit3':
-          this.throttleIdx = 2;
-          this.hud.hint(`並進出力: 強 (${C.THROTTLE_LEVELS[2]!.toFixed(1)} m/s²)`);
-          break;
-        case 'Comma':
-          this.autoWarpUntil = null;
-          if (this.warpIdx > 0) {
-            this.warpIdx--;
-            this.sfx.warp();
-            this.hud.hint(`TIME WARP ×${this.warp()}`);
-          }
-          break;
-        case 'Period':
-          this.autoWarpUntil = null;
-          if (this.warpIdx < C.WARP_LEVELS.length - 1) {
-            this.warpIdx++;
-            this.sfx.warp();
-            this.hud.hint(`TIME WARP ×${this.warp()}`);
-          }
-          break;
-        case 'KeyM':
-          this.toggleMap();
-          break;
-        case 'KeyN':
-          if (this.mapMode) break;
-          if (this.planner.planNodes.length > 0 && this.phase === 'playing') {
-            this.autoWarpUntil = this.autoWarpUntil !== null ? null : this.planner.firstNode()!.time;
-            this.hud.hint(this.autoWarpUntil !== null ? 'ノードへ自動ワープ開始' : '自動ワープ解除');
-          } else {
-            this.hud.hint('マニューバノードがありません ([M] で計画)');
-          }
-          break;
-        case 'KeyX':
-          // 右クリックはコンテキストメニュー(この時刻まで自動ワープ / ノードを削除)に
-          // 置き換えたので、キーボード [X] は従来どおりのフォールバック操作として残す:
-          // マップモード中は選択中ノードを削除、戦闘ビューでは計画全体を破棄する。
-          if (this.mapMode) {
-            if (this.planner.selectedNodeIdx !== null) {
-              this.planner.planNodes.splice(this.planner.selectedNodeIdx, 1);
-              this.planner.selectedNodeIdx = null;
-              this.planner.clearActiveTarget();
-              this.planner.trajDirty = true;
-              this.hud.hint('ノードを削除');
-            }
-          } else if (this.planner.planNodes.length > 0) {
-            this.planner.planNodes = [];
-            this.planner.selectedNodeIdx = null;
-            this.planner.clearActiveTarget();
-            this.autoWarpUntil = null;
-            this.planner.trajDirty = true;
-            this.hud.hint('マニューバ計画を破棄');
-          }
-          break;
-        case 'KeyH':
-          this.hud.toggleHelp();
-          break;
-        case 'Escape':
-          this.toggleEscMenu();
-          break;
-        case 'KeyR':
-          if (this.phase !== 'playing') {
-            location.reload();
-          } else {
-            // 手動リロード(残弾がある場合のみ)
-            if (this.reloadTimer <= 0 && (this.roundsInMag < C.MAG_ROUNDS || this.magsConsumedSinceReload > 0) && this.magsLeft > 0) {
-              this.magsLeft--; // 残弾ごと捨てる
-              this.roundsInMag = C.MAG_ROUNDS;
-              this.magsConsumedSinceReload = 0;
-              this.reloadTimer = C.RELOAD_TIME;
-              this.combat.dropBarrel(this.combatCtx());
-              this.sfx.playReload();
-            }
-          }
-          break;
-      }
+      this.handleEdgePress(code);
     }
+  }
+
+  private handleEdgePress(code: string): void {
+    switch (code) {
+      case 'KeyT': this.toggleRcsDamp(); break;
+      case 'KeyF': this.enableProgradeReset(); break;
+      case 'KeyV': this.toggleFineAttitude(); break;
+      case 'KeyC': this.toggleProgradeHold(); break;
+      case 'KeyG': this.toggleCameraFollowAttitude(); break;
+      case 'Digit1': this.setThrottle(0, '弱'); break;
+      case 'Digit2': this.setThrottle(1, '中'); break;
+      case 'Digit3': this.setThrottle(2, '強'); break;
+      case 'Comma': this.adjustWarp(-1); break;
+      case 'Period': this.adjustWarp(1); break;
+      case 'KeyM': this.toggleMap(); break;
+      case 'KeyN': this.toggleAutoWarpToFirstNode(); break;
+      case 'KeyX': this.clearPlanByKey(); break;
+      case 'KeyH': this.hud.toggleHelp(); break;
+      case 'Escape': this.toggleEscMenu(); break;
+      case 'KeyR': this.handleReloadOrRestartKey(); break;
+    }
+  }
+
+  private toggleRcsDamp(): void {
+    this.rcsDamp = !this.rcsDamp;
+    this.hud.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
+  }
+
+  private enableProgradeReset(): void {
+    this.progradeHold = true;
+    this.hud.hint('プログレード姿勢リセット(機首を進行方向へ)');
+  }
+
+  private toggleFineAttitude(): void {
+    this.fineAttitude = !this.fineAttitude;
+    this.hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
+  }
+
+  private toggleProgradeHold(): void {
+    this.progradeHold = !this.progradeHold;
+    this.hud.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
+  }
+
+  private toggleCameraFollowAttitude(): void {
+    this.camFollowAttitude = !this.camFollowAttitude;
+    this.hud.hint(`視点のRCS追従: ${this.camFollowAttitude ? 'ON (視点が機体姿勢に追従)' : 'OFF (軌道基準の独立視点)'}`);
+  }
+
+  private setThrottle(idx: number, label: string): void {
+    this.throttleIdx = idx;
+    this.hud.hint(`並進出力: ${label} (${C.THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
+  }
+
+  private adjustWarp(step: number): void {
+    this.autoWarpUntil = null;
+    const next = this.warpIdx + step;
+    if (next < 0 || next >= C.WARP_LEVELS.length) return;
+    this.warpIdx = next;
+    this.sfx.warp();
+    this.hud.hint(`TIME WARP ×${this.warp()}`);
+  }
+
+  private toggleAutoWarpToFirstNode(): void {
+    if (this.mapMode) return;
+    if (this.planner.planNodes.length > 0 && this.phase === 'playing') {
+      this.autoWarpUntil = this.autoWarpUntil !== null ? null : this.planner.firstNode()!.time;
+      this.hud.hint(this.autoWarpUntil !== null ? 'ノードへ自動ワープ開始' : '自動ワープ解除');
+      return;
+    }
+    this.hud.hint('マニューバノードがありません ([M] で計画)');
+  }
+
+  private clearPlanByKey(): void {
+    if (this.mapMode) {
+      if (this.planner.selectedNodeIdx === null) return;
+      this.planner.planNodes.splice(this.planner.selectedNodeIdx, 1);
+      this.planner.selectedNodeIdx = null;
+      this.planner.clearActiveTarget();
+      this.planner.trajDirty = true;
+      this.hud.hint('ノードを削除');
+      return;
+    }
+    if (this.planner.planNodes.length <= 0) return;
+    this.planner.planNodes = [];
+    this.planner.selectedNodeIdx = null;
+    this.planner.clearActiveTarget();
+    this.autoWarpUntil = null;
+    this.planner.trajDirty = true;
+    this.hud.hint('マニューバ計画を破棄');
+  }
+
+  private handleReloadOrRestartKey(): void {
+    if (this.phase !== 'playing') {
+      location.reload();
+      return;
+    }
+    const canReload =
+      this.reloadTimer <= 0 &&
+      (this.roundsInMag < C.MAG_ROUNDS || this.magsConsumedSinceReload > 0) &&
+      this.magsLeft > 0;
+    if (!canReload) return;
+    this.magsLeft--;
+    this.roundsInMag = C.MAG_ROUNDS;
+    this.magsConsumedSinceReload = 0;
+    this.reloadTimer = C.RELOAD_TIME;
+    this.combat.dropBarrel(this.combatCtx());
+    this.sfx.playReload();
   }
 
   // 一時停止メニュー(旧 [P] 一時停止と [Esc] 設定パネルを統合)。force を渡すと
@@ -845,147 +946,166 @@ export class Game {
   // ------------------------------------------------------------- simulate
 
   private simulate(dt: number): void {
-    // 自動ワープ: 目標時刻(autoWarpUntil、[N] なら直近ノード・メニューなら任意のノード)に
-    // 向けてワープ段数を自動調整する。目標はノードの存在に依存しない単なる絶対時刻なので、
-    // 2件目以降のノードや(削除済みでも)残った時刻をそのまま目指せる。
-    if (this.autoWarpUntil !== null) {
-      const tRem = this.autoWarpUntil - this.simTime;
-      if (tRem <= C.AUTOWARP_STOP) {
-        this.warpIdx = 0;
-        this.autoWarpUntil = null;
-        this.hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
-      } else {
-        let idx = 0;
-        for (let i = 0; i < C.WARP_LEVELS.length; i++) {
-          if (C.WARP_LEVELS[i]! <= tRem / C.AUTOWARP_MARGIN) idx = i;
-        }
-        this.warpIdx = idx;
-      }
-    }
+    this.updateAutoWarpTarget();
     const warp = this.warp();
     const simDt = dt * warp;
     const canAct = warp <= C.MAX_PHYS_WARP && this.player.alive && !this.mapMode;
+    const rawWantFire = this.readRawWantFire(warp);
+    const hasAmmo = this.checkPlayerAmmoEmpty(rawWantFire);
+    this.updateFiringState(dt, rawWantFire, warp, hasAmmo);
+    const thrustFn = this.updateThrustState(canAct);
+    const playerAccel = this.buildPlayerAccel(thrustFn);
+    this.integrateSimulation(simDt, warp, playerAccel);
+    this.handlePostSimulation(dt, simDt, warp, canAct);
+  }
 
-    // 射撃(実時間ベースの連射間隔)。撃ち始めはレールが動き出す起動遅延を挟む。
-    // マップモード中は WASDQE がノード Δv 編集に使われるため、射撃・推進とも無効。
+  private updateAutoWarpTarget(): void {
+    if (this.autoWarpUntil === null) return;
+    const tRem = this.autoWarpUntil - this.simTime;
+    if (tRem <= C.AUTOWARP_STOP) {
+      this.warpIdx = 0;
+      this.autoWarpUntil = null;
+      this.hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
+      return;
+    }
+    let idx = 0;
+    for (let i = 0; i < C.WARP_LEVELS.length; i++) {
+      if (C.WARP_LEVELS[i]! <= tRem / C.AUTOWARP_MARGIN) idx = i;
+    }
+    this.warpIdx = idx;
+  }
+
+  private readRawWantFire(warp: number): boolean {
     const rawWantFire = !this.mapMode && (this.input.down('Space') || this.input.mouseFiring);
     if (rawWantFire && this.player.alive && warp > C.MAX_PHYS_WARP) {
       this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
     }
-    // 弾切れチェック(空撃ちクリックは押し直しごとに 1 回)
+    return rawWantFire;
+  }
+
+  private checkPlayerAmmoEmpty(rawWantFire: boolean): boolean {
     const hasAmmo = this.roundsInMag > 0 || this.magsLeft > 0;
     if (rawWantFire && !hasAmmo && this.player.alive && !this.wasEmptyClick) {
       this.sfx.emptyClick();
       this.hud.hint('弾薬切れ — 軌道上の補給マガジン ▣ を回収せよ', 3000);
     }
     this.wasEmptyClick = rawWantFire && !hasAmmo;
-    
-    // リロード中は射撃不可
+    return hasAmmo;
+  }
+
+  private updateFiringState(dt: number, rawWantFire: boolean, warp: number, hasAmmo: boolean): void {
     if (this.reloadTimer > 0) {
       this.reloadTimer -= dt;
       this.wasFiring = false;
-    } else {
-      const wantFire = rawWantFire && this.player.alive && warp <= C.MAX_PHYS_WARP && hasAmmo;
-      if (wantFire && !this.wasFiring) {
-        this.sfx.spinUp();
-        this.fireCooldown = C.SPINUP_TIME;
-        this.fineAttitude = true; // 連射時に自動的に微動モードに入る
-      }
-      this.wasFiring = wantFire;
-      if (wantFire) {
-        this.fireCooldown -= dt;
-        if (this.fireCooldown <= 0) {
-          const ctx = this.combatCtx();
-          this.combat.fireGun(ctx);
-          this.roundsInMag = ctx.roundsInMag;
-          this.magsLeft = ctx.magsLeft;
-          this.magsConsumedSinceReload = ctx.magsConsumedSinceReload;
-          this.reloadTimer = ctx.reloadTimer;
-          this.fireCooldown = C.FIRE_INTERVAL;
-        }
-      }
+      return;
     }
+    const wantFire = rawWantFire && this.player.alive && warp <= C.MAX_PHYS_WARP && hasAmmo;
+    if (wantFire && !this.wasFiring) {
+      this.sfx.spinUp();
+      this.fireCooldown = C.SPINUP_TIME;
+      this.fineAttitude = true;
+    }
+    this.wasFiring = wantFire;
+    if (!wantFire) return;
+    this.fireCooldown -= dt;
+    if (this.fireCooldown <= 0) this.fireGunOnce();
+  }
 
-    // 推進入力(並進出力の段数選択は handleEdgeInput のエッジ入力で行う)
+  private fireGunOnce(): void {
+    const ctx = this.combatCtx();
+    this.combat.fireGun(ctx);
+    this.roundsInMag = ctx.roundsInMag;
+    this.magsLeft = ctx.magsLeft;
+    this.magsConsumedSinceReload = ctx.magsConsumedSinceReload;
+    this.reloadTimer = ctx.reloadTimer;
+    this.fireCooldown = C.FIRE_INTERVAL;
+  }
+
+  private updateThrustState(canAct: boolean): ExtraAccel | null {
     const thrustFn = canAct ? this.buildThrustAccel() : null;
     this.sfx.setThrust(thrustFn !== null);
-    if (thrustFn) {
-      this.thrustAccelVec = thrustFn(this.player.state.r, this.player.state.v);
-      this.thrustVizDir = norm(this.thrustAccelVec);
-    } else {
+    if (!thrustFn) {
       this.thrustAccelVec = v3();
       this.thrustVizDir = null;
+      return null;
     }
+    this.thrustAccelVec = thrustFn(this.player.state.r, this.player.state.v);
+    this.thrustVizDir = norm(this.thrustAccelVec);
+    return thrustFn;
+  }
 
-    // 自機の追加加速度 = 推力 + 環境(大気抵抗 + J2 + 月・太陽摂動)
-    const playerAccel: ExtraAccel = thrustFn
-      ? (r, v) => add(thrustFn(r, v), this.environment.envShip(r, v))
-      : this.environment.envShip;
+  private buildPlayerAccel(thrustFn: ExtraAccel | null): ExtraAccel {
+    return thrustFn ? (r, v) => add(thrustFn(r, v), this.environment.envShip(r, v)) : this.environment.envShip;
+  }
 
-    // 軌道積分(高ワープ時はサブステップ分割)
+  private integrateSimulation(simDt: number, warp: number, playerAccel: ExtraAccel): void {
     const nSub = warp <= C.MAX_PHYS_WARP ? 1 : Math.min(64, Math.ceil(simDt / 20));
     const sub = simDt / nSub;
     for (let i = 0; i < nSub; i++) {
-      this.environment.updateEphemeris(this.simTime); // 高ワープでも太陽・月の位置と摂動がサブステップ内で追従する
-      this.player.prevR = clone(this.player.state.r);
-      if (this.player.alive) {
-        stepOrbitRK4(this.player.state, sub, playerAccel);
-        this.environment.updateThermal(sub, this.player.state.r, this.player.state.v);
-      }
-      for (const e of this.enemies) {
-        if (!e.alive) continue;
-        e.prevR = clone(e.state.r);
-        stepOrbitRK4(e.state, sub, this.environment.envShip);
-      }
-      for (const b of this.bullets) {
-        if (!b.alive) continue;
-        b.prevR = clone(b.state.r);
-        stepOrbitRK4(b.state, sub, this.environment.envBullet);
-      }
-      for (const pb of this.plasmaBullets) {
-        if (!pb.alive) continue;
-        pb.prevR = clone(pb.state.r);
-        stepOrbitRK4(pb.state, sub, this.environment.envBullet);
-      }
-      for (const cs of this.casings) stepOrbitRK4(cs.state, sub, this.environment.envSmall);
-      for (const d of this.debris) stepOrbitRK4(d.state, sub, this.environment.envSmall);
-      for (const mp of this.magPickups) if (mp.alive) stepOrbitRK4(mp.state, sub, this.environment.envSmall);
-      this.simTime += sub;
-      this.combat.checkBulletHits(this.combatCtx());
-      this.combat.checkBoardCrossings(this.combatCtx());
+      this.integrateSimulationSubstep(sub, playerAccel);
     }
+  }
+
+  private integrateSimulationSubstep(sub: number, playerAccel: ExtraAccel): void {
+    this.environment.updateEphemeris(this.simTime);
+    this.player.prevR = clone(this.player.state.r);
+    if (this.player.alive) {
+      stepOrbitRK4(this.player.state, sub, playerAccel);
+      this.environment.updateThermal(sub, this.player.state.r, this.player.state.v);
+    }
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      e.prevR = clone(e.state.r);
+      stepOrbitRK4(e.state, sub, this.environment.envShip);
+    }
+    for (const b of this.bullets) {
+      if (!b.alive) continue;
+      b.prevR = clone(b.state.r);
+      stepOrbitRK4(b.state, sub, this.environment.envBullet);
+    }
+    for (const pb of this.plasmaBullets) {
+      if (!pb.alive) continue;
+      pb.prevR = clone(pb.state.r);
+      stepOrbitRK4(pb.state, sub, this.environment.envBullet);
+    }
+    for (const cs of this.casings) stepOrbitRK4(cs.state, sub, this.environment.envSmall);
+    for (const d of this.debris) stepOrbitRK4(d.state, sub, this.environment.envSmall);
+    for (const mp of this.magPickups) if (mp.alive) stepOrbitRK4(mp.state, sub, this.environment.envSmall);
+    this.simTime += sub;
+    this.combat.checkBulletHits(this.combatCtx());
+    this.combat.checkBoardCrossings(this.combatCtx());
+  }
+
+  private handlePostSimulation(dt: number, simDt: number, warp: number, canAct: boolean): void {
     this.lastSimDt = simDt;
-    const limit = this.environment.checkThermalLimits(this.player.alive);
-    if (limit) {
-      this.lostReason =
-        limit === 'heat'
-          ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
-          : '動圧が構造限界を超え、機体は空力的に分解した';
-      this.combat.destroyShip(this.player, this.combatCtx());
-    }
+    this.applyThermalLimitLoss(this.environment.checkThermalLimits(this.player.alive));
     this.environment.updateAltitudeAlarm(dt, this.player.alive, this.environment.altitudeOf(this.player.state.r));
     this.updateAmmoLogistics(dt);
-    // 剛体衝突(薬莢・マガジンベルト等)はワープ ×4 以下(操縦可能な範囲)でのみ解決する。
-    // 高ワープ中はサブステップが最大20秒に及び、反発処理も薬莢多数だと O(N²) で
-    // 高コストになる上、物理的な意味も薄いため。実時間 dt で 1 回だけ呼ぶ
-    // (ベルト自体が実時間で動いているため、サブステップごとに複数回呼ぶ必要もない)。
     if (warp <= C.MAX_PHYS_WARP) {
       this.resolvePhysicalCollisions(dt);
     }
+    this.updateAttitudes(Math.min(simDt, 0.12));
+    this.cleanup();
+    if (this.stage === -1 && this.phase === 'playing' && canAct) {
+      this.combat.updateEnemyAI(dt, this.combatCtx());
+    }
+  }
 
-    // 姿勢力学(高ワープ時は見かけ上スローになるが数値的に安定)
-    const attDt = Math.min(simDt, 0.12);
+  private applyThermalLimitLoss(limit: 'heat' | 'dynpressure' | null): void {
+    if (!limit) return;
+    this.lostReason =
+      limit === 'heat'
+        ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
+        : '動圧が構造限界を超え、機体は空力的に分解した';
+    this.combat.destroyShip(this.player, this.combatCtx());
+  }
+
+  private updateAttitudes(attDt: number): void {
     this.updatePlayerAttitude(attDt);
     for (const e of this.enemies) if (e.alive) stepAttitude(e.att, v3(), attDt);
     for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
     for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
     for (const mp of this.magPickups) if (mp.alive) stepAttitude(mp.att, v3(), attDt);
-
-    this.cleanup();
-
-    if (this.stage === -1 && this.phase === 'playing' && canAct) {
-      this.combat.updateEnemyAI(dt, this.combatCtx());
-    }
   }
 
   // 弾薬まわりの毎フレーム処理: 補給の取り込み・低残弾時の補給投入。
@@ -1251,25 +1371,31 @@ export class Game {
   // --------------------------------------------------------- render sync
 
   private syncRender(dt: number): void {
-    const o = this.player.state.r; // フローティングオリジン
+    const o = this.player.state.r;
     const pv = this.player.state.v;
+    const displayTime = this.resolveDisplayTime();
+    this.syncRenderEarth(dt, o, displayTime);
+    const cam = this.syncRenderCamera(dt, o, pv);
+    this.syncRenderSkyBodies(displayTime, o, cam);
+    this.syncRenderLighting(o);
+    this.syncRenderThrustAndRcs();
+    this.syncRenderShipsAndProjectiles(dt, o, pv);
+    this.syncRenderEffectsAndHud(dt, o, pv);
+  }
 
+  private resolveDisplayTime(): number {
     const duration = this.predictDurationSec();
-    const displayTime = (this.mapMode && this.mapView.sliderT > 0)
-      ? this.mapView.displayTime(this.simTime, duration)
-      : this.simTime;
+    return this.mapMode && this.mapView.sliderT > 0 ? this.mapView.displayTime(this.simTime, duration) : this.simTime;
+  }
 
-    // 地球・恒星・太陽(実寸で描画。フローティングオリジン設計により
-    // カメラは常にワールド原点にあるため、地球側の平行移動量(|o| 〜 R_EARTH+高度)
-    // は近地点侵入時でも 1e7 未満で、near=2m の深度バッファでも十分な精度が出る
-    // (詳細は CLAUDE.md「フローティングオリジンの精度設計」参照)。
+  private syncRenderEarth(dt: number, o: Vec3, displayTime: number): void {
     this.earth.group.position.set(-o.x, -o.y, -o.z);
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
     this.earth.tick(dt, displayTime);
+  }
 
-    // カメラ: 戦闘 = 自機中心チェイス / 計画 = 地球中心軌道ビュー
+  private syncRenderCamera(dt: number, o: Vec3, pv: Vec3): THREE.PerspectiveCamera {
     const mouse = this.input.consumeMouse();
-    // 矢印キーでも視点回転できるようにする(マウスドラッグと同じ換算式に合わせる)
     const keyYaw = (this.input.down('ArrowLeft') ? 1 : 0) + (this.input.down('ArrowRight') ? -1 : 0);
     const keyPitch = (this.input.down('ArrowDown') ? 1 : 0) + (this.input.down('ArrowUp') ? -1 : 0);
     if (this.mapMode) {
@@ -1277,20 +1403,15 @@ export class Game {
     } else {
       this.syncRenderCombatCamera(mouse, keyYaw, keyPitch, dt, o, pv);
     }
-    const cam = this.activeCamera;
+    return this.activeCamera;
+  }
 
-    // 太陽・月・星: カメラ位置基準で天体暦の方向に表示(マップの遠距離ズームでも
-    // 背景として振る舞う。距離は視距離に圧縮、月の角直径は実距離から換算)
+  private syncRenderSkyBodies(displayTime: number, o: Vec3, cam: THREE.PerspectiveCamera): void {
     const visSunPos = sunPosition(displayTime, this.environment.sunPhase0);
     const sd = norm(visSunPos);
     this.earth.setSunDir(sd.x, sd.y, sd.z);
     this.starsMesh.position.copy(cam.position);
-    if (this.mapMode) {
-      // マップモードではカメラが遠く引かれるため、星が地球の手前にならないようにカメラの far の内側に押し込む
-      this.starsMesh.scale.setScalar((this.mapView.camera.far * 0.9) / 3.5e7);
-    } else {
-      this.starsMesh.scale.setScalar(1.0);
-    }
+    this.starsMesh.scale.setScalar(this.mapMode ? (this.mapView.camera.far * 0.9) / 3.5e7 : 1.0);
     this.sun.mesh.position.set(
       cam.position.x + sd.x * SUN_DISTANCE,
       cam.position.y + sd.y * SUN_DISTANCE,
@@ -1299,32 +1420,28 @@ export class Game {
     this.sun.mesh.quaternion.copy(cam.quaternion);
     this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
     const visMoonPos = moonPosition(displayTime, this.environment.moonPhase0);
-    const moonRel = sub(visMoonPos, o); // フローティングオリジン座標(= true ECI - o)
+    const moonRel = sub(visMoonPos, o);
     if (this.mapMode) {
-      // マップモードは地球中心を実寸スケールで俯瞰するビューなので、月も
-      // 圧縮せず実際の位置・実寸(R_MOON)で描く(シスルナ軌道の計画に、
-      // 月との実際の位置関係が分かる必要があるため)。
       this.moonMesh.position.set(moonRel.x, moonRel.y, moonRel.z);
       this.moonMesh.scale.setScalar(R_MOON);
     } else {
       this.syncRenderCombatMoon(cam, moonRel);
     }
-
-    // 月は常に地球(真のECI座標の原点)へ+Z方向を向ける(潮汐ロック)
     this.moonMesh.lookAt(
       this.moonMesh.position.x - visMoonPos.x,
       this.moonMesh.position.y - visMoonPos.y,
       this.moonMesh.position.z - visMoonPos.z
     );
+  }
 
-    // 地球の影: 戦闘ビューでは自機周辺が影円柱内にあれば太陽光・環境光を減光する
-    // マップモードでは全体像を見るため地球の昼側が常に明るくなるよう減光しない
+  private syncRenderLighting(o: Vec3): void {
     const lit = this.mapMode ? 1.0 : this.environment.shadowLitFactor(o);
     this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
     this.ambient.intensity =
       C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
+  }
 
-    // マヌーバ噴射プルーム: 推力方向の逆側に、明るい芯 + 淡い外殻の 2 枚を置く
+  private syncRenderThrustAndRcs(): void {
     const showPlume = this.thrustVizDir !== null && this.player.alive && !this.zoomActive;
     this.plumeCore.visible = showPlume;
     this.plumeOuter.visible = showPlume;
@@ -1341,10 +1458,19 @@ export class Game {
       this.plumeOuter.quaternion.copy(this.camera.quaternion);
       (this.plumeOuter.material as THREE.MeshBasicMaterial).opacity = 0.32 * flick;
     }
-
     this.updateRcsEffects();
+  }
 
-    // 機体(ズーム中は視界を妨げないよう自機を非表示にする)
+  private syncRenderShipsAndProjectiles(dt: number, o: Vec3, pv: Vec3): void {
+    this.syncRenderShips(o);
+    this.syncRenderBullets(this.bullets, o, pv);
+    this.syncRenderBullets(this.plasmaBullets, o, pv);
+    this.syncRenderCasingsAndPickups(o);
+    this.syncRenderBelt(dt);
+    this.syncRenderDebris(o);
+  }
+
+  private syncRenderShips(o: Vec3): void {
     this.player.obj.position.set(0, 0, 0);
     this.setObjAttitude(this.player);
     this.player.obj.visible = this.player.alive && !this.zoomActive;
@@ -1353,9 +1479,10 @@ export class Game {
       e.obj.position.set(e.state.r.x - o.x, e.state.r.y - o.y, e.state.r.z - o.z);
       this.setObjAttitude(e);
     }
+  }
 
-    // 弾(自機から見た相対速度方向へ伸ばす)
-    for (const b of this.bullets) {
+  private syncRenderBullets(bullets: Array<Bullet | PlasmaBullet>, o: Vec3, pv: Vec3): void {
+    for (const b of bullets) {
       b.obj.position.set(b.state.r.x - o.x, b.state.r.y - o.y, b.state.r.z - o.z);
       tmpV.set(b.state.v.x - pv.x, b.state.v.y - pv.y, b.state.v.z - pv.z);
       if (tmpV.lengthSq() > 1e-6) {
@@ -1363,16 +1490,9 @@ export class Game {
         b.obj.quaternion.copy(tmpQ);
       }
     }
+  }
 
-    for (const pb of this.plasmaBullets) {
-      pb.obj.position.set(pb.state.r.x - o.x, pb.state.r.y - o.y, pb.state.r.z - o.z);
-      tmpV.set(pb.state.v.x - pv.x, pb.state.v.y - pv.y, pb.state.v.z - pv.z);
-      if (tmpV.lengthSq() > 1e-6) {
-        tmpQ.setFromUnitVectors(Z_AXIS, tmpV.normalize());
-        pb.obj.quaternion.copy(tmpQ);
-      }
-    }
-
+  private syncRenderCasingsAndPickups(o: Vec3): void {
     for (const cs of this.casings) {
       cs.obj.position.set(cs.state.r.x - o.x, cs.state.r.y - o.y, cs.state.r.z - o.z);
       cs.obj.quaternion.set(cs.att.q.x, cs.att.q.y, cs.att.q.z, cs.att.q.w);
@@ -1381,11 +1501,9 @@ export class Game {
       mp.obj.position.set(mp.state.r.x - o.x, mp.state.r.y - o.y, mp.state.r.z - o.z);
       mp.obj.quaternion.set(mp.att.q.x, mp.att.q.y, mp.att.q.z, mp.att.q.w);
     }
+  }
 
-    // マガジンベルト: 残数ぶんだけ表示。給弾の進みに応じてベルト全体が
-    // 連続的に機体側へスライドし(撃つたび 1/16 リンクずつ)、マガジンを
-    // 消費し切ると feed が 1→0 に巻き戻ると同時にリンクが 1 つ減るので、
-    // 見た目には途切れなくベルトが取り込まれ続ける。
+  private syncRenderBelt(dt: number): void {
     const beltCount = Math.min(this.magsLeft, C.BELT_MAX_VISIBLE);
     const targetFeed = 1 - this.roundsInMag / C.MAG_ROUNDS;
     if (targetFeed < this.beltFeed - 0.5) {
@@ -1395,12 +1513,22 @@ export class Game {
       this.beltFeed += (targetFeed - this.beltFeed) * Math.min(1, dt * 12);
     }
     this.belt.updateBeltPhysics(dt, beltCount, this.player.att, this.thrustAccelVec, this.beltFeed, this.player.alive);
+  }
+
+  private syncRenderDebris(o: Vec3): void {
     for (const d of this.debris) {
       d.obj.position.set(d.state.r.x - o.x, d.state.r.y - o.y, d.state.r.z - o.z);
       d.obj.quaternion.set(d.att.q.x, d.att.q.y, d.att.q.z, d.att.q.w);
     }
+  }
 
-    // エフェクト
+  private syncRenderEffectsAndHud(dt: number, o: Vec3, pv: Vec3): void {
+    this.updateEffects(dt, o);
+    const { playerEl, tgtEl } = this.updateOrbitLinesAndPlanner(o, pv);
+    this.updateMarkersAndHud(dt, o, pv, playerEl, tgtEl);
+  }
+
+  private updateEffects(dt: number, o: Vec3): void {
     this.effects = this.effects.filter((fx) => {
       fx.age += dt;
       if (fx.age >= fx.duration) {
@@ -1418,16 +1546,14 @@ export class Game {
       (fx.mesh.material as THREE.MeshBasicMaterial).opacity = fx.peakOpacity * (1 - t);
       return true;
     });
+  }
 
-    // 軌道線(推力中は要素が能動的に変化するので毎フレーム再生成させる)
+  private updateOrbitLinesAndPlanner(o: Vec3, pv: Vec3): { playerEl: Elements | null; tgtEl: Elements | null } {
     const playerEl = elementsFromState(o, pv);
     this.playerOrbitLine.update(this.player.alive ? playerEl : null, o, this.thrustVizDir !== null, true);
     const tgt = this.target && this.target.alive ? this.target : null;
-    // ターゲットの軌道要素は1フレームに複数箇所で使うので一度だけ計算して使い回す
     const tgtEl = tgt ? elementsFromState(tgt.state.r, tgt.state.v) : null;
     this.targetOrbitLine.update(tgtEl, o);
-
-    // マップモード: 全敵の軌道を表示して比較できるようにする
     for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i]!;
       const line = this.enemyOrbitLines[i]!;
@@ -1437,33 +1563,28 @@ export class Game {
         line.update(null, o);
       }
     }
-
-    // 数値予測(predict.ts)の再計算とポリライン描画・ノードマーカー
     this.updateTrajectoryRefresh();
     this.updateTrajLineAndMarkers(o);
     this.planner.updateMapGizmo(o, this.plannerCtx(), (rel) => this.project(rel), this.mapMode, this.mapView.dist);
-
     if (this.mapMode) {
       this.mapView.drawLabels(o, { simTime: this.simTime, sunPhase0: this.environment.sunPhase0, moonPhase0: this.environment.moonPhase0, duration: this.predictDurationSec() }, (rel) => this.project(rel));
     }
-
-    // 計画軌道(白、解析的な楕円): マップモード中は数値予測のポリライン(trajLine)が
-    // 代わりを務めるので非表示にし、戦闘ビューでは直近ノードの噴射後サンプルから
-    // 求めた軌道要素を表示する。
     let plannedEl: Elements | null = null;
     if (!this.mapMode && this.planner.planNodes.length > 0) {
       const s = sampleAt(this.planner.trajSamples, this.planner.planNodes[0]!.time);
       if (s) plannedEl = elementsFromState(s.r, s.v);
     }
     this.plannedOrbitLine.update(this.mapMode ? null : plannedEl, o);
-
     if (this.mapMode) {
       this.syncRenderMapOrbitReferences(o);
     } else {
       this.geoOrbitLine.update(null, o);
       this.moonOrbitLine.update(null, o);
     }
+    return { playerEl, tgtEl };
+  }
 
+  private updateMarkersAndHud(dt: number, o: Vec3, pv: Vec3, playerEl: Elements | null, tgtEl: Elements | null): void {
     const mctx = this.markersCtx();
     this.markers.updateMarkers(mctx, pv, (rel) => this.project(rel));
     this.markers.updateNodeMarkers(mctx, playerEl, tgtEl, (rel) => this.project(rel));
@@ -1474,7 +1595,6 @@ export class Game {
       );
       if (achieved) this.autoWarpUntil = null;
     } else this.hud.hideMarker('burn');
-
     this.markers.updateHudPanels(mctx, dt, playerEl, tgtEl);
     this.hud.tick();
   }
@@ -1678,121 +1798,113 @@ export class Game {
   // サブステップが最大20秒に及び物理的に無意味な上、薬莢260個程度が漂う状態では
   // 毎フレーム数百万ペアに達し得るため、呼び出し側(simulate)でゲートしている。
   private resolvePhysicalCollisions(dt: number): void {
-    // A-B の衝突を解決し、実際に貫入(かつ接近方向の速度成分あり)が起きたら true を返す
-    const resolvePair = (
-      rA: Vec3, vA: Vec3, massA: number, radA: number,
-      rB: Vec3, vB: Vec3, massB: number, radB: number,
-      restitution = 0.4
-    ): boolean => {
-      const dx = rB.x - rA.x, dy = rB.y - rA.y, dz = rB.z - rA.z;
-      const distSq = dx * dx + dy * dy + dz * dz;
-      const minD = radA + radB;
-      if (distSq > 0 && distSq < minD * minD) {
-        const dist = Math.sqrt(distSq);
-        const nx = dx / dist, ny = dy / dist, nz = dz / dist;
-        const pen = minD - dist;
-        const invMa = 1 / massA, invMb = 1 / massB;
-        const invM = invMa + invMb;
-        const pCorr = (pen / invM) * 0.8;
-        rA.x -= nx * pCorr * invMa; rA.y -= ny * pCorr * invMa; rA.z -= nz * pCorr * invMa;
-        rB.x += nx * pCorr * invMb; rB.y += ny * pCorr * invMb; rB.z += nz * pCorr * invMb;
+    const ents = this.buildCollisionEntities(dt);
+    this.resolveCollisionPairs(ents);
+    this.writeBackBeltCollisionState(dt, ents);
+  }
 
-        const dvx = vB.x - vA.x, dvy = vB.y - vA.y, dvz = vB.z - vA.z;
-        const vn = dvx * nx + dvy * ny + dvz * nz;
-        if (vn < 0) {
-          const j = -(1 + restitution) * vn / invM;
-          vA.x -= nx * j * invMa; vA.y -= ny * j * invMa; vA.z -= nz * j * invMa;
-          vB.x += nx * j * invMb; vB.y += ny * j * invMb; vB.z += nz * j * invMb;
-          return true;
-        }
-      }
-      return false;
-    };
-
-    // エンティティリスト(ベルトのワールド座標化含む)
-    const ents: {
-      r: Vec3; v: Vec3; m: number; rad: number;
-      isBelt?: boolean; beltIdx?: number; isPlayer?: boolean; isCasing?: boolean;
-    }[] = [];
-
+  private buildCollisionEntities(dt: number): CollisionEntity[] {
+    const ents: CollisionEntity[] = [];
     if (this.player.alive) {
-      // 物理接触には被弾判定用の PLAYER_RADIUS(大きめ)ではなく、実寸に近い
-      // PLAYER_HULL_RADIUS を使う。砲口(機体中心から距離約2.9m)で生まれた
-      // 薬莢が生成直後に弾き飛ばされるのを防ぐ。
       ents.push({ r: this.player.state.r, v: this.player.state.v, m: 1000, rad: C.PLAYER_HULL_RADIUS, isPlayer: true });
     }
-    for (const e of this.enemies) {
-      if (e.alive) ents.push({ r: e.state.r, v: e.state.v, m: 10000, rad: e.radius });
-    }
+    for (const e of this.enemies) if (e.alive) ents.push({ r: e.state.r, v: e.state.v, m: 10000, rad: e.radius });
     for (const c of this.casings) ents.push({ r: c.state.r, v: c.state.v, m: 1, rad: 0.2, isCasing: true });
-    for (const m of this.magPickups) {
-      // MAG_PICKUP_RADIUS は回収判定距離(60m)であり物理サイズではないため、
-      // 物理接触には見た目に近い専用の半径を使う。
-      if (m.alive) ents.push({ r: m.state.r, v: m.state.v, m: 50, rad: C.MAG_PICKUP_PHYS_RADIUS });
-    }
-    // デブリのうち collideRadius を持つもの(排出された空マガジン)だけ当たり判定を持つ。
-    // 爆発破片・被弾の欠片など既存のデブリは従来どおりすり抜ける。
+    for (const m of this.magPickups) if (m.alive) ents.push({ r: m.state.r, v: m.state.v, m: 50, rad: C.MAG_PICKUP_PHYS_RADIUS });
     for (const d of this.debris) {
       if (d.collideRadius !== undefined) {
         ents.push({ r: d.state.r, v: d.state.v, m: C.EJECTED_MAG_MASS, rad: d.collideRadius });
       }
     }
+    this.appendBeltCollisionEntities(dt, ents);
+    return ents;
+  }
 
-    // マガジンベルト(Verlet積分の位置・疑似速度)。ベルト自体は実時間(dt)で
-    // 動いているため、ワールド化・書き戻しとも同じ実時間刻みを使う。
-    if (this.player.alive && dt > 1e-6) {
-      const q = this.player.att.q;
-      const baseR = this.player.state.r;
-      const baseV = this.player.state.v;
-      for (let i = 0; i < this.belt.beltPos.length; i++) {
-        const bp = this.belt.beltPos[i]!;
-        const bpPrev = this.belt.beltPrevPos[i]!;
-        // clone してワールド座標化する
-        const localBp = new THREE.Vector3().copy(bp);
-        const localBpPrev = new THREE.Vector3().copy(bpPrev);
-        const wr = add(baseR, qRotate(q, localBp));
-        const wv = add(baseV, qRotate(q, localBp.sub(localBpPrev).multiplyScalar(1 / dt)));
-        ents.push({ r: wr, v: wv, m: 5, rad: 0.8, isBelt: true, beltIdx: i });
-      }
+  private appendBeltCollisionEntities(dt: number, ents: CollisionEntity[]): void {
+    if (!this.player.alive || dt <= 1e-6) return;
+    const q = this.player.att.q;
+    const baseR = this.player.state.r;
+    const baseV = this.player.state.v;
+    for (let i = 0; i < this.belt.beltPos.length; i++) {
+      const bp = this.belt.beltPos[i]!;
+      const bpPrev = this.belt.beltPrevPos[i]!;
+      const localBp = new THREE.Vector3().copy(bp);
+      const localBpPrev = new THREE.Vector3().copy(bpPrev);
+      const wr = add(baseR, qRotate(q, localBp));
+      const wv = add(baseV, qRotate(q, localBp.sub(localBpPrev).multiplyScalar(1 / dt)));
+      ents.push({ r: wr, v: wv, m: 5, rad: 0.8, isBelt: true, beltIdx: i });
     }
+  }
 
-    // 衝突判定 O(N^2) (N<200)
+  private resolveCollisionPairs(ents: CollisionEntity[]): void {
     for (let i = 0; i < ents.length; i++) {
       for (let j = i + 1; j < ents.length; j++) {
         const A = ents[i]!;
         const B = ents[j]!;
-        if (A.isBelt && B.isBelt) continue; // ベルト同士は距離拘束があるため省略
-        if ((A.isPlayer && B.isBelt) || (B.isPlayer && A.isBelt)) continue; // 自機と自機のベルトは判定しない
-        const impact = resolvePair(A.r, A.v, A.m, A.rad, B.r, B.v, B.m, B.rad);
-        // 薬莢が機体に実際にぶつかったら、からんという金属音を鳴らす
-        // (レート制限は updateAmmoLogistics で実時間 dt により減算される this.clankCd)
+        if (A.isBelt && B.isBelt) continue;
+        if ((A.isPlayer && B.isBelt) || (B.isPlayer && A.isBelt)) continue;
+        const impact = this.resolveCollisionPair(A.r, A.v, A.m, A.rad, B.r, B.v, B.m, B.rad);
         if (impact && this.clankCd <= 0 && ((A.isPlayer && B.isCasing) || (B.isPlayer && A.isCasing))) {
           this.sfx.clank();
           this.clankCd = C.CASING_CLANK_COOLDOWN;
         }
       }
     }
+  }
 
-    // ベルトの位置を自機ローカル座標に書き戻す
-    if (this.player.alive && dt > 1e-6) {
-      const pq = this.player.att.q;
-      const qInv = { x: -pq.x, y: -pq.y, z: -pq.z, w: pq.w };
-      const baseR = this.player.state.r;
-      const baseV = this.player.state.v;
-      for (const e of ents) {
-        if (e.isBelt && e.beltIdx !== undefined) {
-          const bpLocal = qRotate(qInv, sub(e.r, baseR));
-          const bvLocal = qRotate(qInv, sub(e.v, baseV));
-          // THREE.Vector3 にコピー
-          this.belt.beltPos[e.beltIdx]!.set(bpLocal.x, bpLocal.y, bpLocal.z);
-          // bvLocal を加算して prevPos を逆算: pos - vel*dt
-          this.belt.beltPrevPos[e.beltIdx]!.set(
-            bpLocal.x - bvLocal.x * dt,
-            bpLocal.y - bvLocal.y * dt,
-            bpLocal.z - bvLocal.z * dt
-          );
-        }
-      }
+  private resolveCollisionPair(rA: Vec3, vA: Vec3, massA: number, radA: number, rB: Vec3, vB: Vec3, massB: number, radB: number, restitution = 0.4): boolean {
+    const dx = rB.x - rA.x;
+    const dy = rB.y - rA.y;
+    const dz = rB.z - rA.z;
+    const distSq = dx * dx + dy * dy + dz * dz;
+    const minD = radA + radB;
+    if (distSq <= 0 || distSq >= minD * minD) return false;
+    const dist = Math.sqrt(distSq);
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const nz = dz / dist;
+    const pen = minD - dist;
+    const invMa = 1 / massA;
+    const invMb = 1 / massB;
+    const invM = invMa + invMb;
+    const pCorr = (pen / invM) * 0.8;
+    rA.x -= nx * pCorr * invMa;
+    rA.y -= ny * pCorr * invMa;
+    rA.z -= nz * pCorr * invMa;
+    rB.x += nx * pCorr * invMb;
+    rB.y += ny * pCorr * invMb;
+    rB.z += nz * pCorr * invMb;
+    const dvx = vB.x - vA.x;
+    const dvy = vB.y - vA.y;
+    const dvz = vB.z - vA.z;
+    const vn = dvx * nx + dvy * ny + dvz * nz;
+    if (vn >= 0) return false;
+    const j = -(1 + restitution) * vn / invM;
+    vA.x -= nx * j * invMa;
+    vA.y -= ny * j * invMa;
+    vA.z -= nz * j * invMa;
+    vB.x += nx * j * invMb;
+    vB.y += ny * j * invMb;
+    vB.z += nz * j * invMb;
+    return true;
+  }
+
+  private writeBackBeltCollisionState(dt: number, ents: CollisionEntity[]): void {
+    if (!this.player.alive || dt <= 1e-6) return;
+    const pq = this.player.att.q;
+    const qInv = { x: -pq.x, y: -pq.y, z: -pq.z, w: pq.w };
+    const baseR = this.player.state.r;
+    const baseV = this.player.state.v;
+    for (const e of ents) {
+      if (!e.isBelt || e.beltIdx === undefined) continue;
+      const bpLocal = qRotate(qInv, sub(e.r, baseR));
+      const bvLocal = qRotate(qInv, sub(e.v, baseV));
+      this.belt.beltPos[e.beltIdx]!.set(bpLocal.x, bpLocal.y, bpLocal.z);
+      this.belt.beltPrevPos[e.beltIdx]!.set(
+        bpLocal.x - bvLocal.x * dt,
+        bpLocal.y - bvLocal.y * dt,
+        bpLocal.z - bvLocal.z * dt
+      );
     }
   }
 }
