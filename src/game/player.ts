@@ -8,8 +8,7 @@ import { Input } from './input';
 import { Hud } from '../hud/hud';
 import { buildPlayerShip, RCS_BLOCK_OFFSETS } from '../render/ships';
 
-export class Player implements Ship {
-  private readonly ship: Ship;
+export class Player extends Ship {
   rcsDamp = true;
   throttleIdx = C.THROTTLE_DEFAULT_IDX;
   fineAttitude = false;
@@ -26,50 +25,22 @@ export class Player implements Ship {
   private magsConsumedSinceReloadValue = 0;
   private reloadTimerValue = 0;
 
-  constructor(ship: Ship) {
-    this.ship = ship;
+  // 高度420km・傾斜51.6°の円軌道に機首プログレードで初期配置する
+  constructor() {
+    const state = Player.makeInitialState();
+    super('PLAYER', state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP);
+    this.mass = 1000;
+    // 剛体接触は実機体サイズ。被弾判定半径(radius)を使うと排莢直後の薬莢を弾いてしまう
+    this.collideRadius = C.PLAYER_HULL_RADIUS;
   }
 
-  get name(): string { return this.ship.name; }
-  set name(v: string) { this.ship.name = v; }
-  get state(): OrbitState { return this.ship.state; }
-  set state(v: OrbitState) { this.ship.state = v; }
-  get prevR(): Vec3 { return this.ship.prevR; }
-  set prevR(v: Vec3) { this.ship.prevR = v; }
-  get att(): Attitude { return this.ship.att; }
-  set att(v: Attitude) { this.ship.att = v; }
-  get obj(): THREE.Object3D { return this.ship.obj; }
-  set obj(v: THREE.Object3D) { this.ship.obj = v; }
-  get radius(): number { return this.ship.radius; }
-  set radius(v: number) { this.ship.radius = v; }
-  get hp(): number { return this.ship.hp; }
-  set hp(v: number) { this.ship.hp = v; }
-  get maxHp(): number { return this.ship.maxHp; }
-  set maxHp(v: number) { this.ship.maxHp = v; }
-  get alive(): boolean { return this.ship.alive; }
-  set alive(v: boolean) { this.ship.alive = v; }
-
-  static makeInitialState(): OrbitState {
+  private static makeInitialState(): OrbitState {
     const r0 = R_EARTH + C.INITIAL_ALT;
     const vCirc = Math.sqrt(MU_EARTH / r0);
     const inc = (C.INITIAL_INC_DEG * Math.PI) / 180;
     return {
       r: v3(r0, 0, 0),
       v: v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)),
-    };
-  }
-
-  static createShip(state: OrbitState): Ship {
-    return {
-      name: 'PLAYER',
-      state,
-      prevR: { ...state.r },
-      att: Player.progradeAttitude(state),
-      obj: buildPlayerShip(),
-      radius: C.PLAYER_RADIUS,
-      hp: C.PLAYER_MAX_HP,
-      maxHp: C.PLAYER_MAX_HP,
-      alive: true,
     };
   }
 
@@ -82,8 +53,8 @@ export class Player implements Ship {
   }
 
   updateHpRegen(dt: number, active: boolean): void {
-    if (!active || !this.ship.alive || this.ship.hp <= 0 || this.ship.hp >= this.ship.maxHp) return;
-    this.ship.hp = Math.min(this.ship.maxHp, this.ship.hp + dt * C.HP_REGEN_RATE);
+    if (!active || !this.alive || this.hp <= 0 || this.hp >= this.maxHp) return;
+    this.hp = Math.min(this.maxHp, this.hp + dt * C.HP_REGEN_RATE);
   }
 
   get roundsInMag(): number { return this.roundsInMagValue; }
@@ -235,7 +206,7 @@ export class Player implements Ship {
       manual;
     if (axX === 0 && axY === 0 && axZ === 0) return null;
     const thrustAccel = C.THROTTLE_LEVELS[this.throttleIdx]!;
-    const q = this.ship.att.q;
+    const q = this.att.q;
     return (): Vec3 => {
       const dir = norm(v3(axX, axY, axZ));
       return qRotate(q, scale(dir, thrustAccel));
@@ -248,7 +219,7 @@ export class Player implements Ship {
       this.thrustVizDir = null;
       return;
     }
-    this.thrustAccelVec = thrustFn(this.ship.state.r, this.ship.state.v);
+    this.thrustAccelVec = thrustFn(this.state.r, this.state.v);
     this.thrustVizDir = norm(this.thrustAccelVec);
   }
 
@@ -328,8 +299,8 @@ export class Player implements Ship {
     attDt: number,
     onProgradeHoldReleased: () => void,
   ): void {
-    if (!this.ship.alive) return;
-    const att = this.ship.att;
+    if (!this.alive) return;
+    const att = this.att;
     const inertia = att.inertia;
     const manual = mapMode ? 0 : 1;
     const inX = ((input.down('KeyI') ? 1 : 0) + (input.down('KeyK') ? -1 : 0)) * manual;
@@ -357,7 +328,7 @@ export class Player implements Ship {
     );
 
     if (this.progradeHold && inX === 0 && inY === 0 && inZ === 0) {
-      const auto = this.autoAlignTorque(this.ship.state.v, this.ship.state.r, att, inertia);
+      const auto = this.autoAlignTorque(this.state.v, this.state.r, att, inertia);
       torque.x += auto.x;
       torque.y += auto.y;
       torque.z += auto.z;

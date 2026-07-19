@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import * as C from './const';
 import { Vec3 } from '../physics/vec3';
 import { BeltPhysics } from './belt';
-import { Bullet, Casing, DebrisPiece, Enemy, MagPickup, PlasmaBullet } from './entities';
+import { Bullet, Casing, DebrisPiece, Enemy, MagPickup } from './entities';
 import { Player } from './player';
 
 const tmpVel = new THREE.Vector3();
@@ -16,7 +16,7 @@ export interface RenderDynamicsCtx {
   player: Player;
   enemies: Enemy[];
   bullets: Bullet[];
-  plasmaBullets: PlasmaBullet[];
+  plasmaBullets: Bullet[];
   casings: Casing[];
   magPickups: MagPickup[];
   debris: DebrisPiece[];
@@ -31,7 +31,8 @@ export class RenderDynamicsSystem {
   private beltFeed = 0;
 
   render(ctx: RenderDynamicsCtx): void {
-    this.renderShips(ctx.player, ctx.enemies, ctx.origin, ctx.zoomActive);
+    this.renderPlayer(ctx.player, ctx.zoomActive);
+    this.renderEnemies(ctx.enemies, ctx.origin);
     this.renderBullets(ctx.bullets, ctx.origin, ctx.playerVelocity);
     this.renderBullets(ctx.plasmaBullets, ctx.origin, ctx.playerVelocity);
     this.renderCasings(ctx.casings, ctx.origin);
@@ -40,10 +41,13 @@ export class RenderDynamicsSystem {
     this.renderDebris(ctx.debris, ctx.origin);
   }
 
-  private renderShips(player: Player, enemies: Enemy[], origin: Vec3, zoomActive: boolean): void {
+  private renderPlayer(player: Player, zoomActive: boolean): void {
     player.obj.position.set(0, 0, 0);
     player.obj.quaternion.set(player.att.q.x, player.att.q.y, player.att.q.z, player.att.q.w);
     player.obj.visible = player.alive && !zoomActive;
+  }
+
+  private renderEnemies(enemies: Enemy[], origin: Vec3): void {
     for (const e of enemies) {
       if (!e.alive) continue;
       e.obj.position.set(e.state.r.x - origin.x, e.state.r.y - origin.y, e.state.r.z - origin.z);
@@ -51,11 +55,7 @@ export class RenderDynamicsSystem {
     }
   }
 
-  private renderBullets(
-    bullets: Array<Bullet | PlasmaBullet>,
-    origin: Vec3,
-    playerVelocity: Vec3,
-  ): void {
+  private renderBullets(bullets: Bullet[], origin: Vec3, playerVelocity: Vec3): void {
     for (const b of bullets) {
       b.obj.position.set(b.state.r.x - origin.x, b.state.r.y - origin.y, b.state.r.z - origin.z);
       tmpVel.set(

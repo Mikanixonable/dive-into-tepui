@@ -1,10 +1,11 @@
 // マガジンベルトの物理演算(Verlet 積分 + 距離拘束によるチェーンのたわみ・ねじれ)。
 // game.ts を import しない — 依存は BeltCtx 引数・コンストラクタ注入のみ。
 import * as THREE from 'three/webgpu';
-import { Attitude } from '../physics/attitude';
-import { Vec3, v3 } from '../physics/vec3';
+import { Attitude, Quat, qRotate } from '../physics/attitude';
+import { Vec3, add, sub, v3 } from '../physics/vec3';
 import { MAG_BELT_PITCH } from '../render/ships';
 import * as C from './const';
+import { BeltSection } from './entities';
 
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 
@@ -43,8 +44,8 @@ export class BeltPhysics {
   // (機体原点基準)。無重力(自由落下軌道)なので重力そのものは効かず、
   // 自機の推力加速度とスピン(角速度・角加速度)による慣性力(擬似力)だけが
   // ベルトを揺らす。
-  readonly beltPos: THREE.Vector3[] = [];
-  readonly beltPrevPos: THREE.Vector3[] = [];
+  private readonly beltPos: THREE.Vector3[] = [];
+  private readonly beltPrevPos: THREE.Vector3[] = [];
   private beltInit = false;
   // 各リンクのチェーン軸まわりのねじれ角 [rad](機関銃ベルト同様、上下方向の
   // 折れ曲がりは距離拘束のみで自由に許容する一方、ロールはここで角度上限を掛けて
@@ -309,6 +310,44 @@ export class BeltPhysics {
     beltNext.copy(pos);                                       // 移動前の pos を退避
     pos.copy(prevPoint).addScaledVector(beltDir, segLen);     // クランプ後の pos
     this.beltPrevPos[i]!.add(pos).sub(beltNext);             // prevPos += (pos_new - pos_old)
+  }
+
+  // ---- 剛体接触 (collision.ts) との受け渡し -------------------------------
+  // beltPos/beltPrevPos は機体座標系の Verlet 状態なので、接触解決には
+  // ワールド ECI の位置・速度へ変換した BeltSection プロキシ(リンクごとに
+  // 永続保持)を渡し、解決後に applyCollisionSections で逆変換して書き戻す。
+  // 衝突がなければこの往復は恒等変換になり、Verlet 状態は変化しない。
+  private readonly sections: BeltSection[] = [];
+
+  collisionSections(dt: number, baseR: Vec3, baseV: Vec3, q: Quat): BeltSection[] {
+    while (this.sections.length < this.beltPos.length) {
+      this.sections.push(new BeltSection(this.sections.length));
+    }
+    const invDt = 1 / dt;
+    for (const s of this.sections) {
+      const bp = this.beltPos[s.beltIndex]!;
+      const bpPrev = this.beltPrevPos[s.beltIndex]!;
+      s.state.r = add(baseR, qRotate(q, bp));
+      s.state.v = add(
+        baseV,
+        qRotate(q, v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt)),
+      );
+    }
+    return this.sections;
+  }
+
+  applyCollisionSections(dt: number, baseR: Vec3, baseV: Vec3, q: Quat): void {
+    const qInv: Quat = { x: -q.x, y: -q.y, z: -q.z, w: q.w };
+    for (const s of this.sections) {
+      const bpLocal = qRotate(qInv, sub(s.state.r, baseR));
+      const bvLocal = qRotate(qInv, sub(s.state.v, baseV));
+      this.beltPos[s.beltIndex]!.set(bpLocal.x, bpLocal.y, bpLocal.z);
+      this.beltPrevPos[s.beltIndex]!.set(
+        bpLocal.x - bvLocal.x * dt,
+        bpLocal.y - bvLocal.y * dt,
+        bpLocal.z - bvLocal.z * dt,
+      );
+    }
   }
 
   // beltTwist[i] を更新し、次リンクへ位相遅れつつ伝播させるシード値を返す
