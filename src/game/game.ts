@@ -48,7 +48,7 @@ import { AmmoResupplySystem } from './ammo-resupply';
 import { ManeuverSystem } from './maneuver-system';
 import { PipRect, PipRenderer } from './pip-renderer';
 import * as C from './const';
-import { Bullet, Casing, DebrisPiece, FlashEffect, PlasmaBullet, Enemy } from './entities';
+import { Bullet, Casing, DebrisPiece, FlashEffect, Enemy } from './entities';
 import { Input } from './input';
 import { TouchControls } from './touch';
 import { ChaseCamera } from './camera';
@@ -92,7 +92,7 @@ export class Game {
   private readonly player: Player;
   private readonly enemies: Enemy[] = [];
   private bullets: Bullet[] = [];
-  private plasmaBullets: PlasmaBullet[] = [];
+  private plasmaBullets: Bullet[] = [];
   private casings: Casing[] = [];
   private debris: DebrisPiece[] = [];
   private effects: FlashEffect[] = [];
@@ -218,14 +218,13 @@ export class Game {
     this.buildRcsPuffs();
 
     // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
-    const playerState = Player.makeInitialState();
-    this.player = new Player(Player.createShip(playerState));
+    this.player = new Player();
     this.scene.add(this.player.obj);
     this.buildBeltLinks();
     this.maneuver.bindCallbacks(() => this.plannerCtx());
 
     // --- 敵機配置 ---
-    this.spawnInitialEnemies(playerState);
+    this.spawnInitialEnemies(this.player.state);
 
     this.initStage();
   }
@@ -320,23 +319,18 @@ export class Game {
 
   private spawnInitialEnemies(playerState: OrbitState): void {
     for (const spec of this.stageDirector.makeEnemySpecs(playerState, this.stage)) {
-      const enemy: Enemy = {
-        name: spec.name,
-        state: spec.state,
-        prevR: clone(spec.state.r),
-        att: {
+      const enemy = new Enemy(
+        spec.name,
+        spec.state,
+        buildEnemyShip(spec.accent),
+        {
           q: randomQuat(),
           w: v3(randSym(0.12), randSym(0.12), randSym(0.12)),
           inertia: v3(1, 1.1, 1.05),
         },
-        obj: buildEnemyShip(spec.accent),
-        radius: C.ENEMY_RADIUS,
-        hp: spec.hp,
-        maxHp: spec.hp,
-        alive: true,
-        accent: spec.accent,
-      };
-      enemy.obj.scale.setScalar(C.ENEMY_SCALE);
+        spec.hp,
+        spec.accent,
+      );
       this.enemies.push(enemy);
       this.scene.add(enemy.obj);
       const line = new OrbitLine(0x565b63, 0.35);

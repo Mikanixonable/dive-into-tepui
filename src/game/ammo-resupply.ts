@@ -32,19 +32,18 @@ export class AmmoResupplySystem {
     const v = player.state.v;
     const hHat = norm(cross(r, v));
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
-    const mp: MagPickup = {
-      state: {
+    const mp = new MagPickup(
+      {
         r: rotateAxis(r, hHat, ang),
         v: add(rotateAxis(v, hHat, ang), randVec(1.5)),
       },
-      att: {
+      buildMagPickup(),
+      {
         q: randomQuat(),
         w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),
         inertia: v3(1, 1.4, 1.2),
       },
-      obj: buildMagPickup(),
-      alive: true,
-    };
+    );
     this.pickups.push(mp);
     this.scene.add(mp.obj);
     this.sfx.warp();

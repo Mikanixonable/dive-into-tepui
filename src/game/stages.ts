@@ -455,28 +455,20 @@ function spawnWaveShip(
   typeIndex: number,
   waveId: number
 ): void {
-  const enemy: Enemy = {
+  const enemy = new Enemy(
     name,
-    state: { r, v },
-    prevR: clone(r),
-    att: {
-      q: randomQuat(),
+    { r, v },
+    buildStage0EnemyShip(accent, typeIndex),
+    {
+      // 機首をプログレード、背を天頂に
+      q: qFromForwardUp(v, r) ?? randomQuat(),
       w: v3(0, 0, 0),
       inertia: v3(1, 1, 1),
     },
-    obj: buildStage0EnemyShip(accent, typeIndex),
-    radius: C.ENEMY_RADIUS,
-    hp: C.STAGE0_ENEMY_HP,
-    maxHp: C.STAGE0_ENEMY_HP,
-    alive: true,
+    C.STAGE0_ENEMY_HP,
     accent,
     waveId,
-  };
-  enemy.obj.scale.setScalar(C.ENEMY_SCALE);
-
-  // 機首をプログレード、背を天頂に
-  enemy.att.q = qFromForwardUp(enemy.state.v, enemy.state.r) ?? enemy.att.q;
-
+  );
   ctx.enemies.push(enemy);
   ctx.scene.add(enemy.obj);
 

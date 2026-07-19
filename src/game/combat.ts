@@ -20,7 +20,7 @@ import {
   v3,
 } from '../physics/vec3';
 import * as C from './const';
-import { Bullet, Casing, DebrisPiece, Enemy, FlashEffect, PlasmaBullet, Ship } from './entities';
+import { Bullet, Casing, DebrisPiece, Enemy, FlashEffect, Ship } from './entities';
 import { Hud } from '../hud/hud';
 import { Sfx } from './audio';
 import { ACCENT } from './theme';
@@ -50,7 +50,7 @@ export interface CombatCtx {
   scene: THREE.Scene;
   glowTex: THREE.Texture;
   bullets: Bullet[];
-  plasmaBullets: PlasmaBullet[];
+  plasmaBullets: Bullet[];
   casings: Casing[];
   debris: DebrisPiece[];
   effects: FlashEffect[];
@@ -88,17 +88,14 @@ export class CombatSystem {
 
     // 弾丸: 機首方向 + 散布界
     const dir = norm(addScaled(fwd, randPerp(fwd), Math.abs(randSym(C.BULLET_SPREAD))));
-    const bullet: Bullet = {
-      state: {
+    const bullet = new Bullet(
+      {
         r: addScaled(clone(muzzle), fwd, 1.5),
         v: addScaled(clone(p.state.v), dir, C.MUZZLE_SPEED),
       },
-      prevR: v3(),
-      bornSim: ctx.simTime,
-      obj: buildBulletMesh(),
-      alive: true,
-    };
-    bullet.prevR = clone(bullet.state.r);
+      buildBulletMesh(),
+      ctx.simTime,
+    );
     ctx.bullets.push(bullet);
     ctx.scene.add(bullet.obj);
     if (ctx.bullets.length > C.MAX_BULLETS) {
@@ -111,22 +108,22 @@ export class CombatSystem {
 
     // 薬莢: 機体右側(-X)へ排出(左側(+X)はマガジンベルトの給弾があるため)。
     // 初速・回転とも抑え、ゆっくり漂いながら緩やかに回転する見た目にする。
-    const casing: Casing = {
-      state: {
+    const casing = new Casing(
+      {
         r: add(muzzle, scale(right, -1.4)),
         v: add(
           p.state.v,
           add(scale(right, -(0.5 + Math.random() * 0.3)), add(scale(up, randSym(0.2)), randVec(0.1))),
         ),
       },
-      att: {
+      buildCasingMesh(),
+      {
         q: randomQuat(),
         w: v3(randSym(2.5), randSym(2.5), randSym(2.5)),
         inertia: v3(1, 0.3, 1), // 円筒: 長軸まわりが小さい
       },
-      bornSim: ctx.simTime,
-      obj: buildCasingMesh(),
-    };
+      ctx.simTime,
+    );
     ctx.casings.push(casing);
     ctx.scene.add(casing.obj);
     if (ctx.casings.length > C.MAX_CASINGS) {
@@ -158,19 +155,19 @@ export class CombatSystem {
     const p = ctx.player;
     // 下方に少し勢いをつけて放出
     const down = qRotate(p.att.q, v3(0, -1, 0));
-    const piece: DebrisPiece = {
-      state: {
+    const piece = new DebrisPiece(
+      {
         r: add(p.state.r, qRotate(p.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
         v: add(p.state.v, add(scale(down, 3.0), randVec(0.5))),
       },
-      att: {
+      buildBarrelMesh(),
+      {
         q: { x: p.att.q.x, y: p.att.q.y, z: p.att.q.z, w: p.att.q.w },
         w: v3(randSym(2), randSym(2), randSym(2)),
         inertia: v3(1, 0.2, 1), // 円柱
       },
-      obj: buildBarrelMesh(),
-      collideRadius: 0.8,
-    };
+      0.8,
+    );
     ctx.debris.push(piece);
     ctx.scene.add(piece.obj);
     while (ctx.debris.length > C.MAX_DEBRIS) {
@@ -185,19 +182,19 @@ export class CombatSystem {
     const p = ctx.player;
     const right = qRotate(p.att.q, v3(1, 0, 0));
     const portWorld = add(p.state.r, qRotate(p.att.q, v3(-0.9, 0, 0)));
-    const piece: DebrisPiece = {
-      state: {
+    const piece = new DebrisPiece(
+      {
         r: portWorld,
         v: add(p.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
       },
-      att: {
+      buildMagazineFrame(),
+      {
         q: { x: p.att.q.x, y: p.att.q.y, z: p.att.q.z, w: p.att.q.w },
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },
-      obj: buildMagazineFrame(),
-      collideRadius: C.EJECTED_MAG_PHYS_RADIUS,
-    };
+      C.EJECTED_MAG_PHYS_RADIUS,
+    );
     ctx.debris.push(piece);
     ctx.scene.add(piece.obj);
     while (ctx.debris.length > C.MAX_DEBRIS) {
@@ -275,13 +272,7 @@ export class CombatSystem {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb: PlasmaBullet = {
-      state: { r: clone(r), v: bV },
-      prevR: clone(r),
-      bornSim: ctx.simTime,
-      obj: buildPlasmaMesh(enemy.accent ?? 0xffa0ff),
-      alive: true,
-    };
+    const pb = new Bullet({ r: clone(r), v: bV }, buildPlasmaMesh(enemy.accent), ctx.simTime);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
@@ -363,7 +354,7 @@ export class CombatSystem {
     }
   }
 
-  private segmentHit(b: Bullet | PlasmaBullet, ship: Ship): boolean {
+  private segmentHit(b: Bullet, ship: Ship): boolean {
     const a = sub(b.prevR, ship.prevR);
     const bb = sub(b.state.r, ship.state.r);
     const d = sub(bb, a);
@@ -471,18 +462,18 @@ export class CombatSystem {
   ): void {
     for (let i = 0; i < count; i++) {
       const size = sizeMin + Math.random() * (sizeMax - sizeMin);
-      const piece: DebrisPiece = {
-        state: {
+      const piece = new DebrisPiece(
+        {
           r: add(origin, randVec(2.5)),
           v: add(baseVel, randVec(spread)),
         },
-        att: {
+        buildDebrisMesh(accent, size),
+        {
           q: randomQuat(),
           w: v3(randSym(0.25), (1.4 + Math.random() * 1.2) * (Math.random() < 0.5 ? -1 : 1), randSym(0.25)),
           inertia: v3(1, 2.05, 3.0), // 中間軸 = y: ここに主回転を与えると周期的に反転する
         },
-        obj: buildDebrisMesh(accent, size),
-      };
+      );
       ctx.debris.push(piece);
       ctx.scene.add(piece.obj);
     }
