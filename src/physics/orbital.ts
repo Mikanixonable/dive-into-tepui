@@ -1,6 +1,6 @@
 // 地球中心の二体問題 + 任意の追加加速度(推力など)の RK4 積分と、
 // 状態ベクトル → 軌道要素の変換。THREE/DOM 非依存の純粋関数群。
-import { Vec3, add, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
+import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
 
 export const MU_EARTH = 3.986004418e14; // 地球重力定数 [m^3/s^2]
 export const R_EARTH = 6.371e6; // 地球平均半径 [m]
@@ -12,7 +12,9 @@ export interface OrbitState {
 }
 
 // 追加加速度(推力など)。RK4 の各ステージで現在の r, v を渡して評価する。
-export type ExtraAccel = (r: Vec3, v: Vec3) => Vec3;
+// out が渡された場合、実装は out に書き込んで out を返してよい(アロケーション回避)。
+// out を無視して新規オブジェクトを返す実装も引き続き有効。
+export type ExtraAccel = (r: Vec3, v: Vec3, out?: Vec3) => Vec3;
 
 export const J2_EARTH = 1.08262668e-3; // 地球扁平の J2 項
 export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
@@ -20,16 +22,29 @@ export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
 // J2(地球扁平)摂動加速度。極軸 = Y。
 // 軌道面に非対称なトルクを与え、昇交点の歳差(LEO 51.6° で約 -5°/日)を生む。
 export function j2Accel(r: Vec3): Vec3 {
+  return j2AccelInto(v3(), r);
+}
+
+// j2Accel のアロケーション回避版: out に書き込んで out を返す
+export function j2AccelInto(out: Vec3, r: Vec3): Vec3 {
   const r2 = r.x * r.x + r.y * r.y + r.z * r.z;
   const rl = Math.sqrt(r2);
   const k = (-1.5 * J2_EARTH * MU_EARTH * R_EARTH_EQ * R_EARTH_EQ) / (r2 * r2 * rl); // /r^5
   const f = (5 * r.y * r.y) / r2;
-  return { x: k * r.x * (1 - f), y: k * r.y * (3 - f), z: k * r.z * (1 - f) };
+  out.x = k * r.x * (1 - f);
+  out.y = k * r.y * (3 - f);
+  out.z = k * r.z * (1 - f);
+  return out;
 }
 
 // 第三体(太陽・月)の潮汐摂動: 機体への直接引力から地球中心への引力を
 // 差し引いた差分加速度。a = μ[(ρ/|ρ|³) - (r_b/|r_b|³)], ρ = r_b - r。
 export function thirdBodyAccel(r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
+  return thirdBodyAccelInto(v3(), r, bodyPos, mu);
+}
+
+// thirdBodyAccel のアロケーション回避版: out に「加算」する(合成用)
+export function thirdBodyAccelAdd(out: Vec3, r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
   const dx = bodyPos.x - r.x;
   const dy = bodyPos.y - r.y;
   const dz = bodyPos.z - r.z;
@@ -38,43 +53,71 @@ export function thirdBodyAccel(r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
     bodyPos.x * bodyPos.x + bodyPos.y * bodyPos.y + bodyPos.z * bodyPos.z,
     1.5,
   );
-  return {
-    x: (mu * dx) / d3 - (mu * bodyPos.x) / b3,
-    y: (mu * dy) / d3 - (mu * bodyPos.y) / b3,
-    z: (mu * dz) / d3 - (mu * bodyPos.z) / b3,
-  };
+  out.x += (mu * dx) / d3 - (mu * bodyPos.x) / b3;
+  out.y += (mu * dy) / d3 - (mu * bodyPos.y) / b3;
+  out.z += (mu * dz) / d3 - (mu * bodyPos.z) / b3;
+  return out;
 }
 
-function accel(r: Vec3, v: Vec3, extra?: ExtraAccel): Vec3 {
+export function thirdBodyAccelInto(out: Vec3, r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
+  out.x = 0;
+  out.y = 0;
+  out.z = 0;
+  return thirdBodyAccelAdd(out, r, bodyPos, mu);
+}
+
+// stepOrbitRK4 用のモジュール内スクラッチ。RK4 はゲーム内の全エンティティ×
+// サブステップで毎フレーム呼ばれる最ホットパスなので、中間ベクトルを再利用して
+// 1 ステップあたりのアロケーションをゼロにする(extra が out を無視する実装の場合のみ
+// その戻り値ぶんが残る)。stepOrbitRK4 は再入しない前提(同期・単一スレッド)。
+const S_A1 = v3(), S_A2 = v3(), S_A3 = v3(), S_A4 = v3();
+const S_R = v3(), S_V = v3(), S_E = v3();
+
+// out に 中心重力 + extra を書き込む(out を返す)
+function accelInto(out: Vec3, r: Vec3, v: Vec3, extra?: ExtraAccel): Vec3 {
   const d = len(r);
   const k = -MU_EARTH / (d * d * d);
-  const a = scale(r, k);
+  out.x = r.x * k;
+  out.y = r.y * k;
+  out.z = r.z * k;
   if (extra) {
-    const e = extra(r, v);
-    a.x += e.x;
-    a.y += e.y;
-    a.z += e.z;
+    const e = extra(r, v, S_E);
+    out.x += e.x;
+    out.y += e.y;
+    out.z += e.z;
   }
-  return a;
+  return out;
 }
 
 // 単一エンティティの RK4 1ステップ(中心重力 + 追加加速度)
 export function stepOrbitRK4(s: OrbitState, dt: number, extra?: ExtraAccel): void {
   const r0 = s.r;
   const v0 = s.v;
-  const a1 = accel(r0, v0, extra);
-  const r2 = addScaled(r0, v0, dt / 2);
-  const v2 = addScaled(v0, a1, dt / 2);
-  const a2 = accel(r2, v2, extra);
-  const r3 = addScaled(r0, v2, dt / 2);
-  const v3 = addScaled(v0, a2, dt / 2);
-  const a3 = accel(r3, v3, extra);
-  const r4 = addScaled(r0, v3, dt);
-  const v4 = addScaled(v0, a3, dt);
-  const a4 = accel(r4, v4, extra);
+  const h2 = dt / 2;
+  accelInto(S_A1, r0, v0, extra);
+  // ステージ2: r2 = r0 + v0·h/2, v2 = v0 + a1·h/2
+  S_R.x = r0.x + v0.x * h2; S_R.y = r0.y + v0.y * h2; S_R.z = r0.z + v0.z * h2;
+  S_V.x = v0.x + S_A1.x * h2; S_V.y = v0.y + S_A1.y * h2; S_V.z = v0.z + S_A1.z * h2;
+  const v2x = S_V.x, v2y = S_V.y, v2z = S_V.z;
+  accelInto(S_A2, S_R, S_V, extra);
+  // ステージ3: r3 = r0 + v2·h/2, v3 = v0 + a2·h/2
+  S_R.x = r0.x + v2x * h2; S_R.y = r0.y + v2y * h2; S_R.z = r0.z + v2z * h2;
+  S_V.x = v0.x + S_A2.x * h2; S_V.y = v0.y + S_A2.y * h2; S_V.z = v0.z + S_A2.z * h2;
+  const v3x = S_V.x, v3y = S_V.y, v3z = S_V.z;
+  accelInto(S_A3, S_R, S_V, extra);
+  // ステージ4: r4 = r0 + v3·dt, v4 = v0 + a3·dt
+  S_R.x = r0.x + v3x * dt; S_R.y = r0.y + v3y * dt; S_R.z = r0.z + v3z * dt;
+  S_V.x = v0.x + S_A3.x * dt; S_V.y = v0.y + S_A3.y * dt; S_V.z = v0.z + S_A3.z * dt;
+  const v4x = S_V.x, v4y = S_V.y, v4z = S_V.z;
+  accelInto(S_A4, S_R, S_V, extra);
 
-  s.r = addScaled(r0, add(add(v0, v4), scale(add(v2, v3), 2)), dt / 6);
-  s.v = addScaled(v0, add(add(a1, a4), scale(add(a2, a3), 2)), dt / 6);
+  const h6 = dt / 6;
+  r0.x += h6 * (v0.x + v4x + 2 * (v2x + v3x));
+  r0.y += h6 * (v0.y + v4y + 2 * (v2y + v3y));
+  r0.z += h6 * (v0.z + v4z + 2 * (v2z + v3z));
+  v0.x += h6 * (S_A1.x + S_A4.x + 2 * (S_A2.x + S_A3.x));
+  v0.y += h6 * (S_A1.y + S_A4.y + 2 * (S_A2.y + S_A3.y));
+  v0.z += h6 * (S_A1.z + S_A4.z + 2 * (S_A2.z + S_A3.z));
 }
 
 export interface Elements {

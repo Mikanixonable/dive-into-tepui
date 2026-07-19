@@ -5,8 +5,8 @@ import {
   ExtraAccel,
   R_EARTH,
   SIDEREAL_DAY,
-  j2Accel,
-  thirdBodyAccel,
+  j2AccelInto,
+  thirdBodyAccelAdd,
 } from '../physics/orbital';
 import { MU_MOON, MU_SUN, moonPosition, sunPosition } from '../physics/ephemeris';
 import { Vec3, addScaled, dot, len, norm, v3 } from '../physics/vec3';
@@ -16,6 +16,9 @@ import { Hud } from './hud';
 import { Sfx } from './audio';
 
 const EARTH_OMEGA = (2 * Math.PI) / SIDEREAL_DAY; // 地球自転角速度 [rad/s](Y軸=北極まわり)
+
+// makeEnvAccel ホットパス用スクラッチ(単一スレッド前提)
+const J2_SCRATCH = v3();
 
 // 地球と共回転する大気に対する対気速度: v - ω×r, ω = (0, ω, 0)
 function airspeed(r: Vec3, v: Vec3): Vec3 {
@@ -76,28 +79,30 @@ export class EnvironmentSystem {
   // 割り当てを 1 個(戻り値ぶんのみ)に抑える。J2・第三体項は共有の純関数
   // (physics/orbital.ts、テストで数値検証済み)をそのまま使う。
   private makeEnvAccel(bcInv: number): ExtraAccel {
-    return (r: Vec3, v: Vec3): Vec3 => {
+    return (r: Vec3, v: Vec3, out?: Vec3): Vec3 => {
+      const acc = out ?? v3();
       const rho = atmosphericDensity(len(r) - R_EARTH);
-      let ax = 0;
-      let ay = 0;
-      let az = 0;
       if (rho >= 1e-15) {
         const vrx = v.x - EARTH_OMEGA * r.z;
         const vry = v.y;
         const vrz = v.z + EARTH_OMEGA * r.x;
         const k = -0.5 * rho * Math.sqrt(vrx * vrx + vry * vry + vrz * vrz) * bcInv;
-        ax = vrx * k;
-        ay = vry * k;
-        az = vrz * k;
+        acc.x = vrx * k;
+        acc.y = vry * k;
+        acc.z = vrz * k;
+      } else {
+        acc.x = 0;
+        acc.y = 0;
+        acc.z = 0;
       }
-      const j = j2Accel(r);
-      const s = thirdBodyAccel(r, this.sunPos, MU_SUN);
-      const m = thirdBodyAccel(r, this.moonPos, MU_MOON);
-      return v3(
-        ax + j.x + s.x + m.x,
-        ay + j.y + s.y + m.y,
-        az + j.z + s.z + m.z,
-      );
+      // J2 は加算合成: j2AccelInto はスクラッチに書き、成分を acc へ足す
+      const j = j2AccelInto(J2_SCRATCH, r);
+      acc.x += j.x;
+      acc.y += j.y;
+      acc.z += j.z;
+      thirdBodyAccelAdd(acc, r, this.sunPos, MU_SUN);
+      thirdBodyAccelAdd(acc, r, this.moonPos, MU_MOON);
+      return acc;
     };
   }
 

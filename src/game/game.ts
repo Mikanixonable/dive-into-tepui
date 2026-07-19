@@ -115,6 +115,16 @@ export class Game {
   private debris: DebrisPiece[] = [];
   private effects: FlashEffect[] = [];
 
+  // ?perf=1 のデバッグ表示用エンティティ数(軽量化計画ステップ0)。挙動には影響しない。
+  perfCounts(): { enemies: number; bullets: number; casings: number; debris: number } {
+    return {
+      enemies: this.enemies.length,
+      bullets: this.bullets.length + this.plasmaBullets.length,
+      casings: this.casings.length,
+      debris: this.debris.length,
+    };
+  }
+
 
   private readonly glowTex: THREE.Texture;
   // 軌道線もモノトーン + オレンジアクセントの配色: 自機 = 明るいグレー、

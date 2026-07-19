@@ -138,12 +138,46 @@ async function main() {
   const upVec = new THREE.Vector3();
   const targetVec = new THREE.Vector3();
 
+  // ?perf=1: 軽量化計測用のフレームタイム表示(sim/render CPU時間・FPS・エンティティ数)。
+  // 0.5秒ごとに集計値を更新するだけで、ゲームの挙動には影響しない。
+  const perfOn = new URLSearchParams(location.search).get('perf') === '1';
+  let perfEl: HTMLDivElement | null = null;
+  let perfSimMs = 0;
+  let perfRenderMs = 0;
+  let perfFrames = 0;
+  let perfLastFlush = performance.now();
+  if (perfOn) {
+    perfEl = document.createElement('div');
+    perfEl.style.cssText =
+      `position:fixed;left:8px;top:8px;z-index:2000;pointer-events:none;` +
+      `font:11px Consolas,monospace;color:${TEXT};background:rgba(0,0,0,0.55);` +
+      `border:1px solid ${EDGE};border-radius:3px;padding:4px 8px;white-space:pre;line-height:1.5`;
+    document.body.appendChild(perfEl);
+  }
+  function perfFlush(now: number) {
+    if (!perfEl || now - perfLastFlush < 500) return;
+    const n = Math.max(1, perfFrames);
+    const c = game.perfCounts();
+    const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
+    perfEl.textContent =
+      `fps ${((n * 1000) / (now - perfLastFlush)).toFixed(0)}  ` +
+      `sim ${(perfSimMs / n).toFixed(2)}ms  render ${(perfRenderMs / n).toFixed(2)}ms\n` +
+      `enemies ${c.enemies}  bullets ${c.bullets}  casings ${c.casings}  debris ${c.debris}` +
+      (mem ? `\nheap ${(mem.usedJSHeapSize / 1048576).toFixed(1)} MB` : '');
+    perfSimMs = 0;
+    perfRenderMs = 0;
+    perfFrames = 0;
+    perfLastFlush = now;
+  }
+
   let lastTime = performance.now();
   function animate(now: number) {
     requestAnimationFrame(animate);
     const dt = (now - lastTime) / 1000;
     lastTime = now;
+    const t0 = perfOn ? performance.now() : 0;
     game.update(dt);
+    const t1 = perfOn ? performance.now() : 0;
     // 戦闘ビュー / 軌道計画ビューでカメラを切り替える
     if (game.isFiring && !game.isMapMode) {
       const w = window.innerWidth;
@@ -214,6 +248,13 @@ async function main() {
       pipCrosshair.style.display = 'none';
       game.updatePipOverlay(null);
       renderer.render(scene, game.activeCamera);
+    }
+    if (perfOn) {
+      const t2 = performance.now();
+      perfSimMs += t1 - t0;
+      perfRenderMs += t2 - t1;
+      perfFrames++;
+      perfFlush(t2);
     }
   }
   requestAnimationFrame((now) => {

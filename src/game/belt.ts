@@ -103,7 +103,9 @@ export class BeltPhysics {
     const w = att.w;
     const invDt = dt > 1e-6 ? 1 / dt : 0;
     beltAlpha.set((w.x - this.prevBodyW.x) * invDt, (w.y - this.prevBodyW.y) * invDt, (w.z - this.prevBodyW.z) * invDt);
-    this.prevBodyW = v3(w.x, w.y, w.z);
+    this.prevBodyW.x = w.x;
+    this.prevBodyW.y = w.y;
+    this.prevBodyW.z = w.z;
 
     // 推力加速度をワールド→機体座標系へ変換(擬似力は加速度と逆向き)
     beltQInv.set(att.q.x, att.q.y, att.q.z, att.q.w).invert();

@@ -80,13 +80,16 @@ const ATT_MAX_SUB_DT = 0.04; // 姿勢積分の最大刻み [s]
 const ATT_MAX_ITERS = 12;
 
 // オイラーの運動方程式(主軸系): I ω̇ = (I ω) × ω + τ
-function eulerRates(I: Vec3, w: Vec3, tq: Vec3): Vec3 {
-  return v3(
-    (tq.x + (I.y - I.z) * w.y * w.z) / I.x,
-    (tq.y + (I.z - I.x) * w.z * w.x) / I.y,
-    (tq.z + (I.x - I.y) * w.x * w.y) / I.z,
-  );
+// アロケーション回避のため out に書き込む(ホットパス: 全エンティティ×サブステップ)
+function eulerRatesInto(out: Vec3, I: Vec3, w: Vec3, tq: Vec3): Vec3 {
+  out.x = (tq.x + (I.y - I.z) * w.y * w.z) / I.x;
+  out.y = (tq.y + (I.z - I.x) * w.z * w.x) / I.y;
+  out.z = (tq.z + (I.x - I.y) * w.x * w.y) / I.z;
+  return out;
 }
+
+// stepAttitude 用のモジュール内スクラッチ(単一スレッド・非再入前提)
+const K1 = v3(), K2 = v3(), K3 = v3(), K4 = v3(), WTMP = v3();
 
 function kineticEnergy(I: Vec3, w: Vec3): number {
   return 0.5 * (I.x * w.x * w.x + I.y * w.y * w.y + I.z * w.z * w.z);
@@ -109,15 +112,15 @@ export function stepAttitude(att: Attitude, torque: Vec3, dt: number): void {
     remaining -= h;
 
     const e0 = kineticEnergy(I, w);
-    const k1 = eulerRates(I, w, torque);
-    const w2 = v3(w.x + (k1.x * h) / 2, w.y + (k1.y * h) / 2, w.z + (k1.z * h) / 2);
-    const k2 = eulerRates(I, w2, torque);
-    const w3 = v3(w.x + (k2.x * h) / 2, w.y + (k2.y * h) / 2, w.z + (k2.z * h) / 2);
-    const k3 = eulerRates(I, w3, torque);
-    const w4 = v3(w.x + k3.x * h, w.y + k3.y * h, w.z + k3.z * h);
-    const k4 = eulerRates(I, w4, torque);
+    const k1 = eulerRatesInto(K1, I, w, torque);
+    WTMP.x = w.x + (k1.x * h) / 2; WTMP.y = w.y + (k1.y * h) / 2; WTMP.z = w.z + (k1.z * h) / 2;
+    const k2 = eulerRatesInto(K2, I, WTMP, torque);
+    WTMP.x = w.x + (k2.x * h) / 2; WTMP.y = w.y + (k2.y * h) / 2; WTMP.z = w.z + (k2.z * h) / 2;
+    const k3 = eulerRatesInto(K3, I, WTMP, torque);
+    WTMP.x = w.x + k3.x * h; WTMP.y = w.y + k3.y * h; WTMP.z = w.z + k3.z * h;
+    const k4 = eulerRatesInto(K4, I, WTMP, torque);
 
-    const wOld = v3(w.x, w.y, w.z);
+    const wOldX = w.x, wOldY = w.y, wOldZ = w.z;
     w.x += (h / 6) * (k1.x + 2 * k2.x + 2 * k3.x + k4.x);
     w.y += (h / 6) * (k1.y + 2 * k2.y + 2 * k3.y + k4.y);
     w.z += (h / 6) * (k1.z + 2 * k2.z + 2 * k3.z + k4.z);
@@ -134,12 +137,21 @@ export function stepAttitude(att: Attitude, torque: Vec3, dt: number): void {
     }
 
     // 機体座標系の角速度なので右から乗算: q ← q ⊗ Δq(ω̄ h)
-    const ax = (wOld.x + w.x) / 2;
-    const ay = (wOld.y + w.y) / 2;
-    const az = (wOld.z + w.z) / 2;
+    const ax = (wOldX + w.x) / 2;
+    const ay = (wOldY + w.y) / 2;
+    const az = (wOldZ + w.z) / 2;
     const aMag = Math.sqrt(ax * ax + ay * ay + az * az);
     if (aMag > 1e-12) {
-      att.q = qMul(att.q, qFromAxisAngle(v3(ax / aMag, ay / aMag, az / aMag), aMag * h));
+      // Δq をインラインで作り q ⊗ Δq をインプレース合成(アロケーションゼロ)
+      const half = (aMag * h) / 2;
+      const s = Math.sin(half) / aMag;
+      const bx = ax * s, by = ay * s, bz = az * s, bw = Math.cos(half);
+      const q = att.q;
+      const qx = q.x, qy = q.y, qz = q.z, qw = q.w;
+      q.x = qw * bx + qx * bw + qy * bz - qz * by;
+      q.y = qw * by - qx * bz + qy * bw + qz * bx;
+      q.z = qw * bz + qx * by - qy * bx + qz * bw;
+      q.w = qw * bw - qx * bx - qy * by - qz * bz;
       qNormalize(att.q);
     }
   }
