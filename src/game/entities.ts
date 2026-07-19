@@ -17,12 +17,15 @@ export interface Ship {
   accent?: number;
   waveId?: number;
   lastTargetedSim?: number;
-  
+  /** 撃破時に飛散する破片のスタイル。敵種別に固有の形状を選ぶ。 */
+  debrisStyle?: 'mech' | 'crystal' | 'ring' | 'spike' | 'default';
+
   // 敵AI用
   lastFireSim?: number;
   burstLeft?: number;
   burstDelay?: number;
 }
+
 
 export interface Bullet {
   state: OrbitState;
