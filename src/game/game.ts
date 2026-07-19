@@ -68,7 +68,6 @@ import {
 import {
   MAG_BELT_PITCH,
   buildEnemyShip,
-  buildFlashMesh,
   buildMagazineMesh,
 } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
@@ -155,11 +154,6 @@ export class Game {
   private readonly thermal = new ThermalSystem(this.hud, this.sfx);
   private lostReason = '大気圏に突入し機体を喪失した';
 
-
-  private readonly plumeCore: THREE.Mesh;
-  private readonly plumeOuter: THREE.Mesh;
-  private readonly rcsPuffs: THREE.Mesh[] = []; // RCS ブロック位置の噴射パフ(4基)
-
   // --- 弾薬・マガジン ---
   private readonly beltGroup = new THREE.Group();
   private readonly beltLinks: THREE.Group[] = [];
@@ -217,13 +211,8 @@ export class Game {
     
     this.addOrbitLines();
 
-    const plumes = this.buildThrustPlumes();
-    this.plumeCore = plumes.core;
-    this.plumeOuter = plumes.outer;
-    this.buildRcsPuffs();
-
     // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
-    this.player = new Player(this.hud, this.sfx);
+    this.player = new Player(this.hud, this.sfx, this.scene, this.glowTex);
     this.scene.add(this.player.obj);
     this.buildBeltLinks();
     this.maneuver.bindCallbacks(() => this.plannerCtx());
@@ -277,27 +266,6 @@ export class Game {
     this.moonOrbitLine.line.renderOrder = 0;
     this.scene.add(this.moonOrbitLine.line);
     this.scene.add(this.trajOverlay.line.group);
-  }
-
-  // マヌーバ噴射プルーム(推力方向の逆側に置く発光ビルボード 2 枚)
-  private buildThrustPlumes(): { core: THREE.Mesh; outer: THREE.Mesh; } {
-    const core = buildFlashMesh(this.glowTex, 0xaee6ff);
-    const outer = buildFlashMesh(this.glowTex, 0x4f9fff);
-    core.visible = false;
-    outer.visible = false;
-    this.scene.add(core);
-    this.scene.add(outer);
-    return { core, outer };
-  }
-
-  // RCS パフ(機首側の 4 基のスラスタブロックに対応、ships.ts の配置と一致)
-  private buildRcsPuffs(): void {
-    for (let i = 0; i < 4; i++) {
-      const puff = buildFlashMesh(this.glowTex, 0xcfeaff);
-      puff.visible = false;
-      this.rcsPuffs.push(puff);
-      this.scene.add(puff);
-    }
   }
 
   // マガジンベルト(未使用の実弾入りマガジン): 機体左面(+X)に垂直に連結する。
@@ -827,14 +795,13 @@ export class Game {
   }
 
   private syncRenderThrust(): void {
-    this.player.renderThrustEffects(this.plumeCore, this.plumeOuter, this.camera, this.zoomActive);
+    this.player.renderThrustEffects(this.camera, this.zoomActive);
   }
 
   private syncRenderRcs(): void {
     this.sfx.setRcs(
       this.player.updateRcsEffects(
         this.input,
-        this.rcsPuffs,
         this.activeCamera,
         this.zoomActive,
         this.phase === 'playing',

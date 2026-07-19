@@ -23,9 +23,7 @@ ctxか微妙に重複し、微妙に異なるフィールドを持つ場合、�
 どうしてもgameのcontextすべてが必要である場合、contextを渡すのではなくgameを渡すべきじゃないか（そのようなパターンは乱用すべきではないが）
 
 ### mapModeの管理
-GameがmapModeを管理しているけど、mapModeと、mapMode=trueの時の描画や入力処理を管理するためのモジュールに責務を切り出すべきじゃないか？ combatが委譲されているように。
-
-現在のプロジェクトは、大きく分けてmapMode系とcombat系の2つのモードに分かれている？　それらの分岐がGame.tsやPlayer.tsに絡まっていそう。
+mapModeあたりの配線が全然読めない。是正すべき
 
 ### 早期リターン
 player.tsの各関数について、早期リターンが使えるものは使うべきだ。playerが動けないのに移動しようとしている、射撃しようとしているパターンなど。
@@ -38,7 +36,6 @@ targetをGameが保持しているが、Targteterが持っているlockedTarget�
 同様のパターンがほかにもありそう。ctx注入しているが、そもそもそこでしか使っていないものは、ctx注入せずにそのモジュールが持つべきだ。
 
 ### Gameの責務の縮小 playerへの移動
-buildThrustPlumesやbuildRcsPuffsなどは、Gameが直接持つべき責務ではない。Playerに委譲する。
 beltもPlayerに委譲する。Playerが持つべき責務をGameが持っているパターンが多い。
 
 renderDynamics.ts内にあるそれぞれの描画関数は、各entityが持つべき責務で、集約すべきではない。

@@ -20,7 +20,8 @@ import {
   v3,
 } from '../../physics/vec3';
 import * as C from '../const';
-import { Bullet, Casing, DebrisPiece, Enemy, FlashEffect, Ship } from '../entities';
+import { Bullet, Casing, DebrisPiece, Enemy, Ship } from '../entities';
+import { FlashEffect } from '../effects-system';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { ACCENT } from '../theme';
