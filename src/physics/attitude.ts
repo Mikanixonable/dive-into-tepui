@@ -16,10 +16,6 @@ export interface Attitude {
   inertia: Vec3; // 主慣性モーメント(対角、相対値でよい)
 }
 
-export function qIdentity(): Quat {
-  return { x: 0, y: 0, z: 0, w: 1 };
-}
-
 export function qMul(a: Quat, b: Quat): Quat {
   return {
     x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
