@@ -347,8 +347,51 @@ export class Sfx {
   }
 
   explosion(): void {
-    this.noiseBurst(0.9, 'lowpass', 350, 0.5);
-    this.tone(70, 0.5, 0.25, 'sine');
+    // 宇宙での爆発音の代わりに、戦闘システムが検知した撃破通知(ピロっという複数音)
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.toneAt(1200, t, 0.08, 0.08, 'square', this.ctx.destination, 0.01);
+    this.toneAt(1500, t + 0.1, 0.08, 0.08, 'square', this.ctx.destination, 0.01);
+    this.toneAt(1800, t + 0.2, 0.08, 0.08, 'square', this.ctx.destination, 0.01);
+    this.toneAt(2200, t + 0.3, 0.12, 0.08, 'square', this.ctx.destination, 0.01);
+  }
+
+  // デブリ衝突音群: 「ことっ」というしょぼい音を複数回。距離(km)に応じて遅延
+  debrisImpact(distanceKm: number): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    
+    // 距離に応じた遅れ: 1km = 1s, ±5%の誤差
+    const baseDelay = Math.max(0, distanceKm);
+    const hits = 2 + Math.floor(Math.random() * 5); // 2〜6回
+    
+    let currentDelay = baseDelay * (0.95 + Math.random() * 0.1);
+    let currentFreq = 350 + Math.random() * 150; // 最初は中音域
+    
+    for (let i = 0; i < hits; i++) {
+      const hitTime = t + currentDelay;
+      
+      // 「ことっ」という紙コップに物が当たるような音:
+      // 少し高めの周波数から一気に落とすことで打撃感を強調。音量も上げる。
+      const osc = this.ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(currentFreq, hitTime);
+      osc.frequency.exponentialRampToValueAtTime(currentFreq * 0.2, hitTime + 0.05);
+      
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, hitTime);
+      gain.gain.linearRampToValueAtTime(0.8, hitTime + 0.005); // 音量を0.15 -> 0.8に増加
+      gain.gain.exponentialRampToValueAtTime(0.0001, hitTime + 0.06);
+      
+      osc.connect(gain).connect(this.ctx.destination);
+      osc.start(hitTime);
+      osc.stop(hitTime + 0.07);
+      
+      // 次の破片が当たるまでの時間差
+      currentDelay += 0.04 + Math.random() * 0.15;
+      // 後の破片ほどエネルギーが低く(音が低く)なる
+      currentFreq *= (0.7 + Math.random() * 0.2); 
+    }
   }
 
   warp(): void {
