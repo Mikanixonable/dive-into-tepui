@@ -39,13 +39,15 @@ export interface EnemySpec {
 }
 
 // updateStage00 / spawnStage00Wave / updateStage0Timer が必要とする、Game 側の
-// 現在状態のスナップショット(毎フレーム渡す)。enemies / enemyOrbitLines / scene は
-// 参照渡しでミューテートする(game.ts 側の配列・シーンをそのまま操作する)。
+// 現在状態のスナップショット(毎フレーム渡す)。enemies / enemyOrbitLines は
+// 読み取り参照(要素の alive 等はミューテートしてよい)。敵の追加は addEnemy
+// (game.ts 側で Simulator への登録と軌道線の生成まで行う)を通す。
 export interface StageCtx {
   phase: string;
   player: Player;
-  enemies: Enemy[];
-  enemyOrbitLines: OrbitLine[];
+  enemies: readonly Enemy[];
+  enemyOrbitLines: readonly OrbitLine[];
+  addEnemy(enemy: Enemy, orbitLineColor: number): void;
   scene: THREE.Scene;
   shots: number;
   hits: number;
@@ -451,7 +453,7 @@ function waveShipPosition(
   return add(pos, scale(norm(pos), altDrop));
 }
 
-// 敵機を生成して ctx の enemies / enemyOrbitLines / scene へ登録する
+// 敵機を生成して ctx.addEnemy で登録する(配列・シーン・軌道線は game.ts 側が管理)
 function spawnWaveShip(
   ctx: StageCtx,
   name: string,
@@ -475,10 +477,5 @@ function spawnWaveShip(
     accent,
     waveId,
   );
-  ctx.enemies.push(enemy);
-  ctx.scene.add(enemy.obj);
-
-  const ol = new OrbitLine(accent, 0.35);
-  ctx.enemyOrbitLines.push(ol);
-  ctx.scene.add(ol.line);
+  ctx.addEnemy(enemy, accent);
 }
