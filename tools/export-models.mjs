@@ -181,52 +181,118 @@ function buildPlayerShip() {
   for (const side of [-1, 1]) {
     // パネル面
     const panel = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.055, 1.5), panelMat);
-    panel.position.set(side * 2.62, 0.52, -0.90);
+    panel.position.set(side * 2.62, 0.52, -2.20);
     g.add(panel);
 
     // 外枠(上下 2 本)
     for (const fz of [-0.76, 0.76]) {
       const bar = new THREE.Mesh(new THREE.BoxGeometry(2.50, 0.10, 0.07), panelFrame);
-      bar.position.set(side * 2.62, 0.52, -0.90 + fz);
+      bar.position.set(side * 2.62, 0.52, -2.20 + fz);
       g.add(bar);
     }
     // 外枠(左右 2 本)
     for (const fx of [-1.26, 1.26]) {
       const bar = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.10, 1.60), panelFrame);
-      bar.position.set(side * 2.62 + fx * side, 0.52, -0.90);
+      bar.position.set(side * 2.62 + fx * side, 0.52, -2.20);
       g.add(bar);
     }
     // 内部格子(縦 2 本)
     for (const dx of [-0.54, 0.54]) {
       const div = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 1.48), panelFrame);
-      div.position.set(side * 2.62 + dx * side, 0.52, -0.90);
+      div.position.set(side * 2.62 + dx * side, 0.52, -2.20);
       g.add(div);
     }
 
     // パネル接続ストラット
     const strut = new THREE.Mesh(new THREE.BoxGeometry(1.30, 0.10, 0.10), panelFrame);
-    strut.position.set(side * 1.78, 0.52, -0.90);
+    strut.position.set(side * 1.78, 0.52, -2.20);
     g.add(strut);
     // 補強ブラケット(Z方向)
     const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.10, 1.50), panelFrame);
-    bracket.position.set(side * 1.18, 0.52, -0.90);
+    bracket.position.set(side * 1.18, 0.52, -2.20);
     g.add(bracket);
   }
 
-  // === RCS スラスタ(ノズルリング付き) ===
+  // === 並進RCS ノズル(前進RCSの他に、左右 +X/-X 方向と上下 +Y/-Y 方向を追加) ===
   const rcsMat      = std(0x9aa3ad, { metalness: 0.52 });
   const rcsNozzMat  = std(0xb5bfc9, { metalness: 0.72, roughness: 0.28 });
-
+  // 前進RCS ノズル(元コードから継承)
   for (const p of RCS_BLOCK_OFFSETS) {
     const rcs = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.30, 0.30), rcsMat);
     rcs.position.set(p.x, p.y, p.z);
     g.add(rcs);
-    // ノズル先端(小さな前向き円筒)
     const nozzleSmall = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.11, 6), rcsNozzMat);
     nozzleSmall.rotation.x = Math.PI / 2;
     nozzleSmall.position.set(p.x, p.y, p.z + 0.21);
     g.add(nozzleSmall);
   }
+
+  // 左右向き並訳RCS (機体中央附近、前後 2 箇所)
+  const sideRcsNozzMat = std(0xb5bfc9, { metalness: 0.72, roughness: 0.28 });
+  for (const sideX of [-1, 1]) {
+    for (const sz of [0.8, -0.8]) {
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.20, 0.20), rcsMat);
+      block.position.set(sideX * 1.22, 0, sz);
+      g.add(block);
+      // ノズル（X方向に向く）
+      const nzX = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.12, 6), sideRcsNozzMat);
+      nzX.rotation.z = Math.PI / 2; // 軸をX方向に向ける
+      nzX.position.set(sideX * (1.22 + 0.16), 0, sz);
+      g.add(nzX);
+    }
+  }
+
+  // 上下向き並訳RCS (機体上面/下面、前後 2 箇所)
+  for (const sideY of [-1, 1]) {
+    for (const sz of [0.6, -0.6]) {
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.20, 0.20), rcsMat);
+      block.position.set(0, sideY * 1.05, sz);
+      g.add(block);
+      // ノズル（Y方向に向く）
+      const nzY = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.12, 6), sideRcsNozzMat);
+      nzY.rotation.z = 0; // 已に Y 軸方向
+      nzY.position.set(0, sideY * (1.05 + 0.16), sz);
+      g.add(nzY);
+    }
+  }
+
+  // === マガジン取込口(右側+X前方)・排出口(左側-X後方) ===
+  const portMat    = std(0x1e2530, { metalness: 0.75, roughness: 0.35 });
+  const portFrameMat = std(0x6b7580, { metalness: 0.65, roughness: 0.40 });
+
+  // 取込口(右面 +X, z=+0.5 後方富)
+  const intakeSlot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.15, 0.82), portMat);
+  intakeSlot.position.set(1.08, 0, 0.5);
+  g.add(intakeSlot);
+  // 取込口フレーム
+  const intakeFrameTop = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.88), portFrameMat);
+  intakeFrameTop.position.set(1.08, 0.60, 0.5);
+  g.add(intakeFrameTop);
+  const intakeFrameBot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.88), portFrameMat);
+  intakeFrameBot.position.set(1.08, -0.60, 0.5);
+  g.add(intakeFrameBot);
+  // ガイドレール(上下内側に細張り)
+  for (const gy of [-0.28, 0.28]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.06, 0.80), portFrameMat);
+    rail.position.set(1.10, gy, 0.5);
+    g.add(rail);
+  }
+
+  // 排出口(左面 -X, z=-0.8 後方)
+  const ejectSlot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.05, 0.72), portMat);
+  ejectSlot.position.set(-1.08, 0, -0.8);
+  g.add(ejectSlot);
+  // 排出口フレーム
+  const ejectFrameTop = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.78), portFrameMat);
+  ejectFrameTop.position.set(-1.08, 0.55, -0.8);
+  g.add(ejectFrameTop);
+  const ejectFrameBot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.78), portFrameMat);
+  ejectFrameBot.position.set(-1.08, -0.55, -0.8);
+  g.add(ejectFrameBot);
+  // 排出角(後方に傾斜のガイド)
+  const ejectRamp = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.06, 0.70), portFrameMat);
+  ejectRamp.position.set(-1.10, 0, -0.8);
+  g.add(ejectRamp);
 
   // === アンテナ ===
   const antMat = std(0x8a9199, { metalness: 0.72, roughness: 0.30 });
