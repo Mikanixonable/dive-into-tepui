@@ -2,14 +2,9 @@
 // THREE/DOM 非依存)。中心重力 + J2 + 月・太陽の第三体摂動で RK4 積分する。
 // 大気抵抗は意図的に省略する(計画ツールであることに加え、高度200km以上では
 // 抵抗による軌道変化が予測期間(最大28日)に対して無視できるほど小さいため)。
-import {
-  ExtraAccel,
-  OrbitState,
-  j2AccelInto,
-  stepOrbitRK4,
-  thirdBodyAccelAdd,
-} from './orbital';
-import { MU_MOON, MU_SUN, moonPosition, sunPosition } from './ephemeris';
+import { ExtraAccel, OrbitState, stepOrbitRK4 } from './orbital';
+import { moonPosition, sunPosition } from './ephemeris';
+import { envAccelInto } from './envaccel';
 import { Vec3, add, clone, cross, len, norm, v3 } from './vec3';
 
 // ノードでの Δv(現在の速度・位置から定義するローカル成分: x=プログレード, y=軌道法線(ノーマル), z=ラジアルアウト)。
@@ -30,14 +25,10 @@ export interface PredictOpts {
   maxSamples?: number; // 保持するサンプル数の上限(既定 2000)
 }
 
-// 環境加速度(J2 + 月 + 太陽の第三体摂動のみ。大気抵抗は含まない)
+// 環境加速度(J2 + 月 + 太陽の第三体摂動のみ。bcInv = 0 で大気抵抗を省略)
 function envAccel(sunPos: Vec3, moonPos: Vec3): ExtraAccel {
-  return (r: Vec3, _v: Vec3, out?: Vec3): Vec3 => {
-    const acc = j2AccelInto(out ?? v3(), r);
-    thirdBodyAccelAdd(acc, r, sunPos, MU_SUN);
-    thirdBodyAccelAdd(acc, r, moonPos, MU_MOON);
-    return acc;
-  };
+  return (r: Vec3, v: Vec3, out?: Vec3): Vec3 =>
+    envAccelInto(out ?? v3(), r, v, sunPos, moonPos, 0);
 }
 
 // ノードの Δv(プログレード/ノーマル/ラジアルアウト)を、その時点の r, v から

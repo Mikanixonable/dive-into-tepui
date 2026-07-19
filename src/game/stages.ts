@@ -7,16 +7,16 @@ import {
   R_EARTH,
   stateFromElements,
 } from '../physics/orbital';
-import { randomQuat } from '../physics/attitude';
+import { qFromForwardUp, randomQuat } from '../physics/attitude';
 import {
   Vec3,
   add,
   clone,
   cross,
-  dot,
   len,
-  lenSq,
   norm,
+  randPerp,
+  randSym,
   rotateAxis,
   scale,
   sub,
@@ -34,23 +34,6 @@ export interface EnemySpec {
   state: OrbitState;
   hp: number;
   accent: number;
-}
-
-function randSym(amp: number): number {
-  return (Math.random() * 2 - 1) * amp;
-}
-
-function randVec(amp: number): Vec3 {
-  return v3(randSym(amp), randSym(amp), randSym(amp));
-}
-
-// fwd に直交するランダム単位ベクトル(散布界用)。game.ts の randPerp と同一実装。
-function randPerp(fwd: Vec3): Vec3 {
-  for (; ;) {
-    const r = randVec(1);
-    const p = sub(r, scale(fwd, dot(r, fwd)));
-    if (lenSq(p) > 1e-6) return norm(p);
-  }
 }
 
 // updateStage00 / spawnStage00Wave / updateStage0Timer が必要とする、Game 側の
@@ -414,16 +397,8 @@ export class StageDirector {
       };
       ship.obj.scale.setScalar(C.ENEMY_SCALE);
 
-      const zAxis = norm(ship.state.v);
-      const yAxis = norm(ship.state.r);
-      const xAxis = cross(yAxis, zAxis);
-      const m = new THREE.Matrix4().makeBasis(
-        new THREE.Vector3(xAxis.x, xAxis.y, xAxis.z),
-        new THREE.Vector3(yAxis.x, yAxis.y, yAxis.z),
-        new THREE.Vector3(zAxis.x, zAxis.y, zAxis.z),
-      );
-      const tmpQ = new THREE.Quaternion().setFromRotationMatrix(m);
-      ship.att.q = { x: tmpQ.x, y: tmpQ.y, z: tmpQ.z, w: tmpQ.w };
+      // 機首をプログレード、背を天頂に
+      ship.att.q = qFromForwardUp(ship.state.v, ship.state.r) ?? ship.att.q;
 
       ctx.enemies.push(ship);
       ctx.scene.add(ship.obj);

@@ -23,6 +23,7 @@ import {
 import { sampleAt } from '../physics/predict';
 import {
   Attitude,
+  qFromForwardUp,
   qRotate,
   randomQuat,
   stepAttitude,
@@ -37,6 +38,8 @@ import {
   len,
   lenSq,
   norm,
+  randSym,
+  randVec,
   rotateAxis,
   scale,
   sub,
@@ -85,14 +88,6 @@ const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
-
-function randSym(amp: number): number {
-  return (Math.random() * 2 - 1) * amp;
-}
-
-function randVec(amp: number): Vec3 {
-  return v3(randSym(amp), randSym(amp), randSym(amp));
-}
 
 export class Game {
   private readonly scene: THREE.Scene;
@@ -457,19 +452,10 @@ export class Game {
     for (const fx of this.effects) if (fx.muzzle) fx.mesh.visible = v;
   }
 
-  // 機首をプログレード、背を天頂に向けた初期姿勢
+  // 機首をプログレード、背を天頂に向けた初期姿勢(地球が下になる)
   private progradeAttitude(s: OrbitState): Attitude {
-    const zAxis = norm(s.v);
-    const yAxis = norm(s.r); // 天頂を背にする(地球が下になる)
-    const xAxis = cross(yAxis, zAxis);
-    const m = new THREE.Matrix4().makeBasis(
-      new THREE.Vector3(xAxis.x, xAxis.y, xAxis.z),
-      new THREE.Vector3(yAxis.x, yAxis.y, yAxis.z),
-      new THREE.Vector3(zAxis.x, zAxis.y, zAxis.z),
-    );
-    tmpQ.setFromRotationMatrix(m);
     return {
-      q: { x: tmpQ.x, y: tmpQ.y, z: tmpQ.z, w: tmpQ.w },
+      q: qFromForwardUp(s.v, s.r) ?? { x: 0, y: 0, z: 0, w: 1 },
       w: v3(),
       inertia: v3(1, 1, 1),
     };
@@ -1166,20 +1152,12 @@ export class Game {
   }
 
   // 機首(+Z)を desiredFwd へ、天頂基準(desiredUp)でロールも安定させる姿勢へ
-  // 収束させる PD トルク(機体座標系)。progradeAttitude と同じ基底の作り方で
-  // 目標姿勢を作り、クォータニオン誤差を軸角度に変換して比例減衰制御する。
+  // 収束させる PD トルク(機体座標系)。qFromForwardUp で目標姿勢を作り、
+  // クォータニオン誤差を軸角度に変換して比例減衰制御する。
   private autoAlignTorque(desiredFwd: Vec3, desiredUp: Vec3, att: Attitude, I: Vec3): Vec3 {
-    const zAxis = norm(desiredFwd);
-    const yAxisRaw = norm(desiredUp); // 180度裏返しを解除
-    const xAxis = cross(yAxisRaw, zAxis);
-    if (lenSq(xAxis) < 1e-9) return v3(); // 進行方向と天頂がほぼ平行(特異点)なら制御しない
-    const yAxis = cross(zAxis, norm(xAxis));
-    const m = new THREE.Matrix4().makeBasis(
-      new THREE.Vector3(xAxis.x, xAxis.y, xAxis.z).normalize(),
-      new THREE.Vector3(yAxis.x, yAxis.y, yAxis.z),
-      new THREE.Vector3(zAxis.x, zAxis.y, zAxis.z),
-    );
-    const qDesired = new THREE.Quaternion().setFromRotationMatrix(m);
+    const qd = qFromForwardUp(desiredFwd, desiredUp);
+    if (!qd) return v3(); // 進行方向と天頂がほぼ平行(特異点)なら制御しない
+    const qDesired = new THREE.Quaternion(qd.x, qd.y, qd.z, qd.w);
     const qCurrent = new THREE.Quaternion(att.q.x, att.q.y, att.q.z, att.q.w);
     const qCurInv = qCurrent.clone().invert();
     const qErr = qDesired.multiply(qCurInv); // ワールド系での誤差回転

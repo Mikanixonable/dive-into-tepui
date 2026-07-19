@@ -1,7 +1,7 @@
 // 剛体姿勢力学: クォータニオン + 機体座標系角速度をオイラーの運動方程式で積分。
 // 非対称な慣性主軸を与えると中間軸まわりの回転が不安定化し、
 // ジャニベコフ効果(デブリの周期的な反転)が自然に現れる。
-import { Vec3, v3 } from './vec3';
+import { Vec3, cross, lenSq, norm, v3 } from './vec3';
 
 export interface Quat {
   x: number;
@@ -59,6 +59,36 @@ export function qRotate(q: Quat, v: Vec3): Vec3 {
     y: v.y + w * ty + (z * tx - x * tz),
     z: v.z + w * tz + (x * ty - y * tx),
   };
+}
+
+// 機首方向(+Z)と上方向の基準(+Y)から姿勢クォータニオンを構築する。
+// up は fwd と直交していなくてよい(再直交化する)。fwd と up がほぼ平行で
+// 基底が定まらない(特異点)場合は null を返す。
+export function qFromForwardUp(fwd: Vec3, up: Vec3): Quat | null {
+  const z = norm(fwd);
+  const xRaw = cross(norm(up), z);
+  if (lenSq(xRaw) < 1e-9) return null;
+  const x = norm(xRaw);
+  const y = cross(z, x);
+  // 列 (x, y, z) の回転行列 → クォータニオン(Shepperd 法: 最大対角成分で分岐)
+  const m00 = x.x, m01 = y.x, m02 = z.x;
+  const m10 = x.y, m11 = y.y, m12 = z.y;
+  const m20 = x.z, m21 = y.z, m22 = z.z;
+  const trace = m00 + m11 + m22;
+  if (trace > 0) {
+    const s = 0.5 / Math.sqrt(trace + 1);
+    return { x: (m21 - m12) * s, y: (m02 - m20) * s, z: (m10 - m01) * s, w: 0.25 / s };
+  }
+  if (m00 > m11 && m00 > m22) {
+    const s = 2 * Math.sqrt(1 + m00 - m11 - m22);
+    return { x: 0.25 * s, y: (m01 + m10) / s, z: (m02 + m20) / s, w: (m21 - m12) / s };
+  }
+  if (m11 > m22) {
+    const s = 2 * Math.sqrt(1 + m11 - m00 - m22);
+    return { x: (m01 + m10) / s, y: 0.25 * s, z: (m12 + m21) / s, w: (m02 - m20) / s };
+  }
+  const s = 2 * Math.sqrt(1 + m22 - m00 - m11);
+  return { x: (m02 + m20) / s, y: (m12 + m21) / s, z: 0.25 * s, w: (m10 - m01) / s };
 }
 
 export function randomQuat(rand: () => number = Math.random): Quat {
