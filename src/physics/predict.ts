@@ -5,9 +5,9 @@
 import {
   ExtraAccel,
   OrbitState,
-  j2Accel,
+  j2AccelInto,
   stepOrbitRK4,
-  thirdBodyAccel,
+  thirdBodyAccelAdd,
 } from './orbital';
 import { MU_MOON, MU_SUN, moonPosition, sunPosition } from './ephemeris';
 import { Vec3, add, clone, cross, len, norm, v3 } from './vec3';
@@ -32,11 +32,11 @@ export interface PredictOpts {
 
 // 環境加速度(J2 + 月 + 太陽の第三体摂動のみ。大気抵抗は含まない)
 function envAccel(sunPos: Vec3, moonPos: Vec3): ExtraAccel {
-  return (r: Vec3): Vec3 => {
-    const j = j2Accel(r);
-    const s = thirdBodyAccel(r, sunPos, MU_SUN);
-    const m = thirdBodyAccel(r, moonPos, MU_MOON);
-    return v3(j.x + s.x + m.x, j.y + s.y + m.y, j.z + s.z + m.z);
+  return (r: Vec3, _v: Vec3, out?: Vec3): Vec3 => {
+    const acc = j2AccelInto(out ?? v3(), r);
+    thirdBodyAccelAdd(acc, r, sunPos, MU_SUN);
+    thirdBodyAccelAdd(acc, r, moonPos, MU_MOON);
+    return acc;
   };
 }
 
