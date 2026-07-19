@@ -355,6 +355,12 @@ export class Sfx {
     this.tone(660, 0.06, 0.08, 'sine');
   }
 
+  // 高度低下警報: 短い二音の警告音(熱防御警報よりは緊急度の低いトーン)
+  altAlarm(): void {
+    this.tone(392, 0.16, 0.09, 'square');
+    this.tone(415.3, 0.16, 0.07, 'square'); // わずかに不協和にして警報らしいうなりを出す
+  }
+
   setThrust(on: boolean): void {
     if (!this.ctx || !this.thrustGain) return;
     const target = on ? 0.1 : 0;

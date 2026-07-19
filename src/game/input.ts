@@ -51,6 +51,15 @@ export class Input {
       ) {
         e.preventDefault();
       }
+      // CTRL=前進のキー割り当てがブラウザの Ctrl+S(保存)・Ctrl+R(リロード)等と
+      // 衝突するのを防ぐ(Ctrl+W/T/N や Ctrl+数字はブラウザが予約しており
+      // JSからは抑止できないため許容する)
+      if (
+        e.ctrlKey &&
+        (e.code === 'KeyS' || e.code === 'KeyD' || e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyR')
+      ) {
+        e.preventDefault();
+      }
       if (!e.repeat) this.pressQueue.push(e.code);
       this.keys.add(e.code);
       this.fireGesture();
