@@ -28,6 +28,7 @@ import { Hud } from './hud';
 import { Sfx } from './audio';
 import { buildStage0EnemyShip } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
+import { getStageDefinition, StageEnemyPreset } from './stage-data';
 
 export interface EnemySpec {
   name: string;
@@ -72,12 +73,12 @@ export class StageDirector {
   makeEnemySpecs(base: OrbitState, stage: number): EnemySpec[] {
     const r0 = len(base.r);
     const hHat = norm(cross(base.r, base.v));
-
-    if (stage === -1) return []; // ステージ00は初期敵なしで動的スポーンする
-    if (stage === 0) return this.makeStage0Specs(base, hHat);
+    const stageDef = getStageDefinition(stage);
+    if (stageDef.enemyLayout.kind === 'none') return []; // ステージ00は初期敵なしで動的スポーンする
+    if (stageDef.enemyLayout.kind === 'training-cluster') return this.makeStage0Specs(base, hHat);
 
     const phased = this.makePhasedFactory(base, hHat, r0);
-    return stage === 2 ? this.makeStage2Specs(phased, r0) : this.makeStage1Specs(phased, r0);
+    return this.buildPresetSpecs(stageDef.enemyLayout.presets, phased, r0);
   }
 
   private makePhasedFactory(base: OrbitState, hHat: Vec3, radius: number): (dAlong: number) => OrbitState {
@@ -88,17 +89,6 @@ export class StageDirector {
         v: rotateAxis(base.v, hHat, ang),
       };
     };
-  }
-
-  private makeStage2Specs(phased: (dAlong: number) => OrbitState, radius: number): EnemySpec[] {
-    const beta = this.makeCoellipticState(phased(-2600), radius + 3000);
-    return [
-      { name: 'HOSTILE-α', state: phased(1800), hp: 2, accent: 0xff4a3d },
-      { name: 'HOSTILE-β', state: beta, hp: 2, accent: 0xff7a2d },
-      this.makeMolniyaSpec(0.4, 2.6, 'MOLNIYA-γ', 0xe0409f),
-      this.makeMolniyaSpec(2.5, 0.9, 'MOLNIYA-δ', 0xbf3dff),
-      this.makeMolniyaSpec(4.6, 3.8, 'MOLNIYA-ε', 0xff2d6b),
-    ];
   }
 
   private makeMolniyaSpec(raan: number, nu: number, name: string, accent: number): EnemySpec {
@@ -114,17 +104,40 @@ export class StageDirector {
     };
   }
 
-  private makeStage1Specs(phased: (dAlong: number) => OrbitState, radius: number): EnemySpec[] {
-    const beta = this.makeCoellipticState(phased(-2800), radius + 2500);
-    const gamma = this.makeCrossingState(phased(2200));
-    const delta = this.makeEllipticState(phased(5000));
-    return [
-      { name: 'HOSTILE-α', state: phased(1400), hp: 2, accent: 0xff4a3d },
-      { name: 'HOSTILE-β', state: beta, hp: 2, accent: 0xff7a2d },
-      { name: 'HOSTILE-γ', state: gamma, hp: 2, accent: 0xe0409f },
-      { name: 'HOSTILE-δ', state: delta, hp: 3, accent: 0xbf3dff },
-      { name: 'HOSTILE-ε', state: phased(60000), hp: 3, accent: 0xff2d6b },
-    ];
+  private buildPresetSpecs(
+    presets: StageEnemyPreset[],
+    phased: (dAlong: number) => OrbitState,
+    radius: number,
+  ): EnemySpec[] {
+    return presets.map((preset): EnemySpec => {
+      switch (preset.kind) {
+        case 'phased':
+          return { name: preset.name, state: phased(preset.dAlong), hp: preset.hp, accent: preset.accent };
+        case 'coelliptic':
+          return {
+            name: preset.name,
+            state: this.makeCoellipticState(phased(preset.dAlong), radius + preset.altitudeOffset),
+            hp: preset.hp,
+            accent: preset.accent,
+          };
+        case 'crossing':
+          return {
+            name: preset.name,
+            state: this.makeCrossingState(phased(preset.dAlong)),
+            hp: preset.hp,
+            accent: preset.accent,
+          };
+        case 'elliptic':
+          return {
+            name: preset.name,
+            state: this.makeEllipticState(phased(preset.dAlong)),
+            hp: preset.hp,
+            accent: preset.accent,
+          };
+        case 'molniya':
+          return this.makeMolniyaSpec(preset.raan, preset.nu, preset.name, preset.accent);
+      }
+    });
   }
 
   private makeCoellipticState(state: OrbitState, altitude: number): OrbitState {
