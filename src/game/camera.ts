@@ -8,7 +8,7 @@ import * as C from './const';
 
 export class ChaseCamera {
   yaw = 0; // 0 = 機体後方(プログレード側から見る)
-  pitch = 0.3;
+  pitch = 0.3 - (10 * Math.PI) / 180; // 初期カメラ位置を5度低く
   dist = 38;
   private fov = C.BASE_FOV;
 
