@@ -5,17 +5,28 @@ import * as THREE from 'three/webgpu';
 import { Vec3 } from '../physics/vec3';
 import { MouseDelta } from './input';
 import * as C from './const';
+import { Hud } from './hud';
 
 export class ChaseCamera {
   yaw = 0; // 0 = 機体後方(プログレード側から見る)
   pitch = 0.3 - (10 * Math.PI) / 180; // 初期カメラ位置を5度低く
   dist = 38;
+  camFollowAttitude = true;
   private fov = C.BASE_FOV;
 
   private readonly upV = new THREE.Vector3();
   private readonly fwdV = new THREE.Vector3();
   private readonly sideV = new THREE.Vector3();
   private readonly offset = new THREE.Vector3();
+
+  toggleFollowAttitude(hud: Hud): void {
+    this.camFollowAttitude = !this.camFollowAttitude;
+    hud.hint(
+      `視点のRCS追従: ${
+        this.camFollowAttitude ? 'ON (視点が機体姿勢に追従)' : 'OFF (軌道基準の独立視点)'
+      }`,
+    );
+  }
 
   update(
     camera: THREE.PerspectiveCamera,

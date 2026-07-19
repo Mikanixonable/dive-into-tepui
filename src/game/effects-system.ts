@@ -1,0 +1,32 @@
+import * as THREE from 'three/webgpu';
+import { addScaled, Vec3 } from '../physics/vec3';
+import { FlashEffect } from './entities';
+
+export class EffectsSystem {
+  updateFlashEffects(
+    effects: FlashEffect[],
+    dt: number,
+    simDt: number,
+    origin: Vec3,
+    activeCamera: THREE.PerspectiveCamera,
+    scene: THREE.Scene,
+  ): FlashEffect[] {
+    return effects.filter((fx) => {
+      fx.age += dt;
+      if (fx.age >= fx.duration) {
+        scene.remove(fx.mesh);
+        (fx.mesh.material as THREE.Material).dispose();
+        fx.mesh.geometry.dispose();
+        return false;
+      }
+      fx.pos = addScaled(fx.pos, fx.vel, simDt);
+      const t = fx.age / fx.duration;
+      const size = fx.size0 + (fx.size1 - fx.size0) * Math.sqrt(t);
+      fx.mesh.position.set(fx.pos.x - origin.x, fx.pos.y - origin.y, fx.pos.z - origin.z);
+      fx.mesh.scale.setScalar(size);
+      fx.mesh.quaternion.copy(activeCamera.quaternion);
+      (fx.mesh.material as THREE.MeshBasicMaterial).opacity = fx.peakOpacity * (1 - t);
+      return true;
+    });
+  }
+}

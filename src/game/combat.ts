@@ -39,9 +39,6 @@ import {
 // 現在状態のスナップショット(毎フレーム/毎呼び出しで渡す)。enemies / bullets /
 // plasmaBullets / casings / debris / effects / boardMarks / scene は参照渡しで
 // ミューテートする(game.ts 側の配列・シーンをそのまま操作する)。
-// roundsInMag / magsLeft / magsConsumedSinceReload / reloadTimer は fireGun 内で
-// 書き換えられる値渡しのスナップショットで、呼び出し側(game.ts)が戻り値を
-// 自身のフィールドへ書き戻す。
 export interface CombatCtx {
   simTime: number;
   player: Ship;
@@ -58,10 +55,6 @@ export interface CombatCtx {
   effects: FlashEffect[];
   boardMarks: { off: Vec3; age: number }[];
   lostReason: string;
-  roundsInMag: number;
-  magsLeft: number;
-  magsConsumedSinceReload: number;
-  reloadTimer: number;
   setLostReason(reason: string): void;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
 }
@@ -157,25 +150,6 @@ export class CombatSystem {
     this.shots++;
     this.sfx.fire();
 
-    // 弾薬消費: マガジン撃ち尽くした瞬間
-    ctx.roundsInMag--;
-    if (ctx.roundsInMag <= 0 && ctx.magsLeft > 0) {
-      ctx.magsLeft--;
-      ctx.roundsInMag = C.MAG_ROUNDS;
-      ctx.magsConsumedSinceReload++;
-      this.spawnEjectedMagazineFrame(ctx);
-
-      // マガジン3つ消費でバレル交換リロード
-      if (ctx.magsConsumedSinceReload >= 3) {
-        ctx.magsConsumedSinceReload = 0;
-        ctx.reloadTimer = C.RELOAD_TIME; // クールダウン
-        this.sfx.playReload();
-        this.dropBarrel(ctx);
-      } else {
-        // 通常の給弾(マガジン連結のみ)
-        this.sfx.magFeed();
-      }
-    }
   }
 
   // リロード時(バレル交換)に円柱アイテムをデブリとして放出する
