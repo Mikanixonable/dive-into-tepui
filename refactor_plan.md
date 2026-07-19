@@ -48,8 +48,8 @@ Rcsの表示非表示の切り替えなどはPlayerが行うべきことで、�
 
 renderBeltはcontextを丸ごともらうべきではない。
 
-### playerとgameの境界の是正
-updateActionStateがonfireを受け取ってonfireの具体実装がgame側にあるのはおかしい。onfireはPlayer側にあるべきで、game側はそれに必要な情報をplayerに綿わなくてはいけない。combatとcombatCtx(ctxは悪しき慣習だが、暫定的にこうするしかない)とsfxが必要で、sfxはplayerは既に持っているのだから話が早い。
+### player内の配線
+onfireあたりの配線が変。
 
 ### playerの責務の分割
 playerの責務は、移動と射撃、そしてその両方を反映した描画の3つに分割されるべき。beltは射撃と描画、Rcsやthrustは移動と描画に関わる。描画はrenderDynamicsに委譲されていて、そこで必要な情報をplayerは公開しなければならない。
