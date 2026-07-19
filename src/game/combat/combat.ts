@@ -39,21 +39,24 @@ import { Player } from '../player';
 
 // fireGun / firePlasma / checkBulletHits / destroyShip 等が必要とする、Game 側の
 // 現在状態のスナップショット(毎フレーム/毎呼び出しで渡す)。enemies / bullets /
-// plasmaBullets / casings / debris / effects / boardMarks / scene は参照渡しで
-// ミューテートする(game.ts 側の配列・シーンをそのまま操作する)。
+// plasmaBullets は Simulator が所有する配列への読み取り参照で、要素の alive 等は
+// ミューテートしてよい。新規エンティティの追加は addXxx(Simulator の追加関数)を通す。
+// effects / boardMarks / scene は参照渡しでミューテートする。
 export interface CombatCtx {
   simTime: number;
   player: Player;
-  enemies: Enemy[];
+  enemies: readonly Enemy[];
   target: Enemy | null;
   stage: number;
   zoomActive: boolean;
   scene: THREE.Scene;
   glowTex: THREE.Texture;
-  bullets: Bullet[];
-  plasmaBullets: Bullet[];
-  casings: Casing[];
-  debris: DebrisPiece[];
+  bullets: readonly Bullet[];
+  plasmaBullets: readonly Bullet[];
+  addBullet(bullet: Bullet): void;
+  addPlasmaBullet(bullet: Bullet): void;
+  addCasing(casing: Casing): void;
+  addDebris(piece: DebrisPiece): void;
   effects: FlashEffect[];
   boardMarks: { off: Vec3; age: number }[];
   lostReason: string;
@@ -97,12 +100,7 @@ export class CombatSystem {
       buildBulletMesh(),
       ctx.simTime,
     );
-    ctx.bullets.push(bullet);
-    ctx.scene.add(bullet.obj);
-    if (ctx.bullets.length > C.MAX_BULLETS) {
-      const old = ctx.bullets.shift()!;
-      ctx.scene.remove(old.obj);
-    }
+    ctx.addBullet(bullet);
 
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv
     p.state.v = addScaled(p.state.v, fwd, -C.RECOIL_DV);
@@ -125,12 +123,7 @@ export class CombatSystem {
       },
       ctx.simTime,
     );
-    ctx.casings.push(casing);
-    ctx.scene.add(casing.obj);
-    if (ctx.casings.length > C.MAX_CASINGS) {
-      const old = ctx.casings.shift()!;
-      ctx.scene.remove(old.obj);
-    }
+    ctx.addCasing(casing);
 
     // マズルフラッシュ: 発射した側の砲口に出す
     // (ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
@@ -169,12 +162,7 @@ export class CombatSystem {
       },
       0.8,
     );
-    ctx.debris.push(piece);
-    ctx.scene.add(piece.obj);
-    while (ctx.debris.length > C.MAX_DEBRIS) {
-      const old = ctx.debris.shift()!;
-      this.removeDebrisObj(ctx, old);
-    }
+    ctx.addDebris(piece);
   }
 
   // マガジン1個を撃ち尽くした瞬間、機体右側(-X、薬莢と同じ側)の位置から
@@ -196,12 +184,7 @@ export class CombatSystem {
       },
       C.EJECTED_MAG_PHYS_RADIUS,
     );
-    ctx.debris.push(piece);
-    ctx.scene.add(piece.obj);
-    while (ctx.debris.length > C.MAX_DEBRIS) {
-      const old = ctx.debris.shift()!;
-      this.removeDebrisObj(ctx, old);
-    }
+    ctx.addDebris(piece);
   }
 
   // ---------------------------------------------------------- enemy AI
@@ -283,12 +266,7 @@ export class CombatSystem {
     );
     pb.obj.quaternion.setFromRotationMatrix(mz);
 
-    ctx.plasmaBullets.push(pb);
-    ctx.scene.add(pb.obj);
-    if (ctx.plasmaBullets.length > C.MAX_BULLETS * 2) {
-      const old = ctx.plasmaBullets.shift()!;
-      ctx.scene.remove(old.obj);
-    }
+    ctx.addPlasmaBullet(pb);
   }
 
   // ---------------------------------------------------------- hits / damage
@@ -475,27 +453,8 @@ export class CombatSystem {
           inertia: v3(1, 2.05, 3.0), // 中間軸 = y: ここに主回転を与えると周期的に反転する
         },
       );
-      ctx.debris.push(piece);
-      ctx.scene.add(piece.obj);
+      ctx.addDebris(piece);
     }
-    while (ctx.debris.length > C.MAX_DEBRIS) {
-      const old = ctx.debris.shift()!;
-      this.removeDebrisObj(ctx, old);
-    }
-  }
-
-  // d.obj は単一 Mesh(通常の破片)の場合と、複数子メッシュを持つ Group
-  // (排出された空マガジンのフレーム等)の場合がある。traverse して
-  // 見つかった Mesh すべてのジオメトリ・マテリアルを破棄する。
-  removeDebrisObj(ctx: CombatCtx, d: DebrisPiece): void {
-    ctx.scene.remove(d.obj);
-    d.obj.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      mesh.geometry.dispose();
-      if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
-      else mesh.material.dispose();
-    });
   }
 
   private spawnFlash(
