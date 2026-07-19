@@ -14,6 +14,7 @@ export interface StatsData {
   camFollowAttitude: boolean;
   roundsInMag: number; // 給弾中マガジンの残弾
   magsLeft: number; // ベルトの未使用マガジン数
+  reloadTimer: number; // リロード(バレル交換)中の残り時間
   alt: number;
   spd: number;
   apAlt: number;
@@ -486,11 +487,16 @@ export class Hud {
     }
     const ammoEl = this.els.get('ammo');
     if (ammoEl) {
-      ammoEl.textContent =
-        d.roundsInMag <= 0 && d.magsLeft <= 0
-          ? '弾切れ'
-          : `${d.roundsInMag}/${C.MAG_ROUNDS} +${d.magsLeft}連`;
-      ammoEl.classList.toggle('warn-hot', d.magsLeft < 4);
+      if (d.reloadTimer > 0) {
+        ammoEl.textContent = 'RELOADING...';
+        ammoEl.classList.add('warn-hot');
+      } else {
+        ammoEl.textContent =
+          d.roundsInMag <= 0 && d.magsLeft <= 0
+            ? '弾切れ'
+            : `${d.roundsInMag}/${C.MAG_ROUNDS} +${d.magsLeft}連`;
+        ammoEl.classList.toggle('warn-hot', d.magsLeft < 4);
+      }
     }
     this.setText('alt', fmtDist(d.alt));
     this.setText('spd', fmtSpeed(d.spd));

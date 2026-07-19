@@ -127,7 +127,49 @@ async function main() {
     lastTime = now;
     game.update(dt);
     // 戦闘ビュー / 軌道計画ビューでカメラを切り替える
-    renderer.render(scene, game.activeCamera);
+    if (game.isFiring && !game.isMapMode) {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      
+      renderer.autoClear = false;
+      renderer.clear();
+      
+      // Main view
+      renderer.setViewport(0, 0, w, h);
+      renderer.setScissor(0, 0, w, h);
+      renderer.setScissorTest(true);
+      renderer.render(scene, game.activeCamera);
+      
+      // PiP Zoom view in the upper right
+      const pipSize = Math.min(w, h) * 0.35; // 画面サイズの35%
+      const padding = 20;
+      const pipX = w - pipSize - padding;
+      const pipY = padding; // WebGPUは左上が原点なので padding が上端になる
+      
+      const originalFov = game.activeCamera.fov;
+      const originalAspect = game.activeCamera.aspect;
+      game.activeCamera.fov = 6; // C.ZOOM_FOV (ハードコードで回避するか、importするか。現状は6固定)
+      game.activeCamera.aspect = 1;
+      game.activeCamera.updateProjectionMatrix();
+      
+      game.playerShipObj.visible = false; // ズームウィンドウでは自機を非表示
+      
+      renderer.setViewport(pipX, pipY, pipSize, pipSize);
+      renderer.setScissor(pipX, pipY, pipSize, pipSize);
+      renderer.render(scene, game.activeCamera);
+      
+      game.playerShipObj.visible = true; // 戻す
+      
+      // Restore
+      game.activeCamera.fov = originalFov;
+      game.activeCamera.aspect = originalAspect;
+      game.activeCamera.updateProjectionMatrix();
+      renderer.setViewport(0, 0, w, h);
+      renderer.setScissorTest(false);
+      renderer.autoClear = true;
+    } else {
+      renderer.render(scene, game.activeCamera);
+    }
   }
   requestAnimationFrame((now) => {
     lastTime = now;

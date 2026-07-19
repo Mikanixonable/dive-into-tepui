@@ -261,3 +261,17 @@ export function buildFlashMesh(texture: THREE.Texture, color: number): THREE.Mes
   m.renderOrder = 5;
   return m;
 }
+
+// リロード時に放出される砲身（バレル）メッシュ
+export function buildBarrelMesh(): THREE.Mesh {
+  // 黒光りする金属質の円柱 (4倍サイズに変更)
+  const geo = new THREE.CylinderGeometry(0.6, 0.6, 4.8, 8);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x222222,
+    roughness: 0.3,
+    metalness: 0.8,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  // 放出時は少し赤熱している表現を入れるとなお良い（ここではシンプルに金属色）
+  return mesh;
+}
