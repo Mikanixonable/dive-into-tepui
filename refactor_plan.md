@@ -37,7 +37,9 @@ Gameがcameraを保持してcameraSystemにctxとして渡しているけども�
 targetをGameが保持しているが、Targteterが持っているlockedTargetと何が違う？
 同様のパターンがほかにもありそう。ctx注入しているが、そもそもそこでしか使っていないものは、ctx注入せずにそのモジュールが持つべきだ。
 
-### Gameの責務の縮小
+stageIndexをgameが直接保持しているが、stageDerectorが持つべきだ。
+
+### Gameの責務の縮小 playerへの移動
 buildThrustPlumesやbuildRcsPuffsなどは、Gameが直接持つべき責務ではない。Playerに委譲する。
 beltもPlayerに委譲する。Playerが持つべき責務をGameが持っているパターンが多い。
 
