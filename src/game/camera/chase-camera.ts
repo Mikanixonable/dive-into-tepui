@@ -2,10 +2,10 @@
 // 基準フレームは「上 = 動径方向(地球と反対)、前 = 速度方向」で、
 // 軌道運動とともにゆっくり共回転するため地球が常に足元に見える。
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../physics/vec3';
-import { MouseDelta } from './input';
-import * as C from './const';
-import { Hud } from '../hud/hud';
+import { Vec3 } from '../../physics/vec3';
+import { MouseDelta } from '../input';
+import * as C from '../const';
+import { Hud } from '../../hud/hud';
 
 export class ChaseCamera {
   yaw = 0; // 0 = 機体後方(プログレード側から見る)

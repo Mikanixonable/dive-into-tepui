@@ -3,12 +3,13 @@
 // 未来スライダー。「マップモード中の見た目と視点」の担当で、mapMode 中のみ意味を持つ。
 // game.ts を import しない — 依存はコンストラクタ注入(hud)・引数(Vec3/project等)のみ。
 import * as THREE from 'three/webgpu';
-import { moonPosition, sunPosition, emLagrangePoints, seLagrangePoints } from '../physics/ephemeris';
-import { Vec3, sub, v3 } from '../physics/vec3';
-import * as C from './const';
-import { Hud } from '../hud/hud';
-import { MouseDelta } from './input';
-import { MapLabel, ProjectFn } from './planner';
+import { moonPosition, sunPosition, emLagrangePoints, seLagrangePoints } from '../../physics/ephemeris';
+import { Vec3, sub, v3 } from '../../physics/vec3';
+import * as C from '../const';
+import { Hud } from '../../hud/hud';
+import { MouseDelta } from '../input';
+import { MapLabel } from './planner';
+import { ProjectFn } from '../camera/projection';
 
 // drawLabels() / displayTime() が必要とする、Game 側の現在状態のスナップショット。
 export interface MapViewCtx {

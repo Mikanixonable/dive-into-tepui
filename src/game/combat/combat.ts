@@ -1,7 +1,7 @@
 // 武器(発射・敵AI)と被弾・撃破まわりの処理。
 // game.ts を import しない — 依存は CombatCtx 引数・コンストラクタ注入のみ。
 import * as THREE from 'three/webgpu';
-import { qRotate, randomQuat } from '../physics/attitude';
+import { qRotate, randomQuat } from '../../physics/attitude';
 import {
   Vec3,
   add,
@@ -18,12 +18,12 @@ import {
   scale,
   sub,
   v3,
-} from '../physics/vec3';
-import * as C from './const';
-import { Bullet, Casing, DebrisPiece, Enemy, FlashEffect, Ship } from './entities';
-import { Hud } from '../hud/hud';
-import { Sfx } from './audio';
-import { ACCENT } from './theme';
+} from '../../physics/vec3';
+import * as C from '../const';
+import { Bullet, Casing, DebrisPiece, Enemy, FlashEffect, Ship } from '../entities';
+import { Hud } from '../../hud/hud';
+import { Sfx } from '../../audio/sfx';
+import { ACCENT } from '../theme';
 import {
   MUZZLE_OFFSETS,
   buildBarrelMesh,
@@ -33,8 +33,8 @@ import {
   buildFlashMesh,
   buildMagazineFrame,
   buildPlasmaMesh,
-} from '../render/ships';
-import { Player } from './player';
+} from '../../render/ships';
+import { Player } from '../player';
 
 // fireGun / firePlasma / checkBulletHits / destroyShip 等が必要とする、Game 側の
 // 現在状態のスナップショット(毎フレーム/毎呼び出しで渡す)。enemies / bullets /

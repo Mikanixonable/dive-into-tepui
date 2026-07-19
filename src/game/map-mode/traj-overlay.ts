@@ -1,8 +1,9 @@
-import { sampleAt } from '../physics/predict';
-import { Vec3, sub } from '../physics/vec3';
-import { TrajLine } from '../render/trajline';
-import { MarkerManager } from '../hud/markerManager';
-import { MapPlanner, PlannerCtx, ProjectFn } from './planner';
+import { sampleAt } from '../../physics/predict';
+import { Vec3, sub } from '../../physics/vec3';
+import { TrajLine } from '../../render/trajline';
+import { MarkerManager } from '../../hud/markerManager';
+import { MapPlanner, PlannerCtx } from './planner';
+import { ProjectFn } from '../camera/projection';
 
 export class TrajectoryOverlay {
   readonly line = new TrajLine();
