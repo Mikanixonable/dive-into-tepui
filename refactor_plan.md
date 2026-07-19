@@ -33,16 +33,10 @@ Game.tsにおける配列の統合はいきなりやらない。いきなりや�
 - 責務の分散と再結合
   - 肥大しているモジュールがないか検査。あるいは、無駄に分割されていて統合した方がむしろ良いモジュールがないか検査。
 
-MarkersCtxを2つに分割。MarkersCtxをMarkerCtx（マーカー用）とHudPanelCtx（パネル用）に分割するのは確実な改善。
-hud.tsの責務が大きすぎる。hud/panel.tsを新設し、HudPanelCtxを利用する依存箇所をそこに集約。
-markerManagerとmarkerSystemの責務を分離する。
-HudSyncCtxはctxを直接下位システムに渡すだけなら存在意義が薄い。アンチパターンの「薄すぎるラッパー」に該当。
+mapModeの管理
 
-
-Ctxの最小化
-
-EnvironmentSystemがゴミ箱みたいなクラスになっている。摂動要因をまとめていると言えば聞こえはいいが、空気抵抗と天体歴は全く別の関心領域。分割すべき。
-OrbitLineUpdateCtxでEnvironmentSystem全体を渡している箇所は{ sunPhase0, moonPhase0 }という最小インターフェイスに変えるだけで良い。これは天体歴だけに興味があって大気抵抗には興味がないという典型。
+cameraの管理
+Gameが保持してcameraSystemにctxとして渡しているけども、cameraSystemが普通に持っておくべきじゃないか？
 
 - ctx注入パターンの見直し。過剰な依存関係の解消。
 ctx注入パターンはそもそも密結合を生む原因に見える。

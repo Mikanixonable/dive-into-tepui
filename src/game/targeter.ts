@@ -5,52 +5,28 @@ import { Enemy } from './entities';
 import { Player } from './player';
 import { Hud } from '../hud/hud';
 import { Input } from './input';
-import { MapPlanner, PlannerCtx, ProjectFn } from './planner';
-import { MapView } from './mapview';
+import { ProjectFn } from './planner';
 
-export interface PlayModeUpdateCtx {
-  mapMode: boolean;
+export interface TargeterCtx {
   player: Player;
   enemies: Enemy[];
-  planner: MapPlanner;
-  plannerCtx: PlannerCtx;
-  mapView: MapView;
   input: Input;
-  dt: number;
   activeCamera: THREE.PerspectiveCamera;
-  fineAttitude: boolean;
   project: ProjectFn;
 }
 
-export class PlayModes {
+export class Targeter {
   private lockedTarget: Enemy | null = null;
 
   constructor(private readonly hud: Hud) {}
 
-  update(ctx: PlayModeUpdateCtx, prevTarget: Enemy | null): Enemy | null {
-    if (ctx.mapMode) {
-      this.updateMapEditing(ctx);
-      return prevTarget;
-    }
-    return this.updateCombatTargeting(ctx);
-  }
-
-  private updateMapEditing(ctx: PlayModeUpdateCtx): void {
-    ctx.planner.updateEditing(ctx.dt, ctx.plannerCtx, ctx.input, ctx.project, {
-      fineAttitude: ctx.fineAttitude,
-      mapSliderT: ctx.mapView.sliderT,
-      mapFocus: ctx.mapView.focus,
-      labels: ctx.mapView.labels,
-    });
-  }
-
-  private updateCombatTargeting(ctx: PlayModeUpdateCtx): Enemy | null {
+  updateCombatTargeting(ctx: TargeterCtx): Enemy | null {
     ctx.input.takeClicks();
     this.handleTargetLockByRightClick(ctx);
     return this.resolveAutoTarget(ctx);
   }
 
-  private handleTargetLockByRightClick(ctx: PlayModeUpdateCtx): void {
+  private handleTargetLockByRightClick(ctx: TargeterCtx): void {
     const rightClicks = ctx.input.takeRightClicks();
     if (rightClicks.length <= 0 || !ctx.player.alive) return;
     const click = rightClicks[rightClicks.length - 1]!;
@@ -88,7 +64,7 @@ export class PlayModes {
     this.hud.hint(`ターゲット固定: ${hit.name}`);
   }
 
-  private resolveAutoTarget(ctx: PlayModeUpdateCtx): Enemy | null {
+  private resolveAutoTarget(ctx: TargeterCtx): Enemy | null {
     if (this.lockedTarget && this.lockedTarget.alive) {
       return this.lockedTarget;
     }
