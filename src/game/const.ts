@@ -183,8 +183,8 @@ export const STAGE00_FORMATION_SPACING = 200; // 編隊の機体間隔 [m]
 export const STAGE00_ALT_OFFSET_MIN = -1000; // 自機よりどれくらい低くするか [m]
 export const STAGE00_ALT_OFFSET_MAX = -200;
 export const STAGE00_SPAWN_INTERVAL = 30.0; // 波状攻撃の間隔 [s]
-export const STAGE00_SPAWN_DIST_MIN = 4000;
-export const STAGE00_SPAWN_DIST_MAX = 6000;
+export const STAGE00_SPAWN_DIST_MIN = 5000;
+export const STAGE00_SPAWN_DIST_MAX = 7000;
 export const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
 
 export const PLAYER_MAX_HP = 1000;
