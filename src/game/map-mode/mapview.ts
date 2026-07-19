@@ -8,8 +8,14 @@ import { Vec3, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../../hud/hud';
 import { MouseDelta } from '../input';
-import { MapLabel } from './planner';
 import { ProjectFn } from '../camera/projection';
+
+// マップ上のフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベル。
+export interface MapLabel {
+  id: string;
+  name: string;
+  pos: Vec3;
+}
 
 // drawLabels() / displayTime() が必要とする、Game 側の現在状態のスナップショット。
 export interface MapViewCtx {

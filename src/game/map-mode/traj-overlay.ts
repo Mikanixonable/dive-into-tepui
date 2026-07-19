@@ -13,14 +13,6 @@ export class TrajectoryOverlay {
     private readonly planner: MapPlanner,
   ) {}
 
-  predictDurationSec(ctx: PlannerCtx): number {
-    return this.planner.predictDurationSec(ctx);
-  }
-
-  maybeRefresh(ctx: PlannerCtx): void {
-    this.planner.maybeRefresh(ctx);
-  }
-
   updateForMapMode(
     mapMode: boolean,
     origin: Vec3,
@@ -45,7 +37,7 @@ export class TrajectoryOverlay {
       this.markers.hide('ghost');
       return;
     }
-    const duration = this.predictDurationSec(plannerCtx);
+    const duration = this.planner.predictDurationSec(plannerCtx);
     const t = displayTime(simTime, duration);
     const sample = sampleAt(this.planner.trajSamples, t);
     if (!sample) {
