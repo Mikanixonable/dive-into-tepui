@@ -8,6 +8,7 @@ import { Input } from './input';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
 import { buildPlayerShip, RCS_BLOCK_OFFSETS } from '../render/ships';
+import { CombatCtx, CombatSystem } from './combat/combat';
 
 type AmmoEvent = 'none' | 'mag' | 'reload';
 
@@ -97,15 +98,39 @@ export class Player extends Ship {
     input: Input;
     warp: number;
     mapMode: boolean;
-    onFire: (ammoEvent: AmmoEvent) => void;
+    combat: CombatSystem;
+    combatCtx: CombatCtx;
+    //onFire: (ammoEvent: AmmoEvent) => void;
   }): PlayerActionState {
-    const { dt, input, warp, mapMode, onFire } = params;
+    const { dt, input, warp, mapMode } = params;
     const canAct = this.canAct(warp, mapMode);
-    this.updateFireState({ dt, input, warp, mapMode, onFire });
+    this.updateFireState({ dt, input, warp, mapMode, onFire: (ammoEvent) => this.onFire(ammoEvent, params.combat, params.combatCtx) });
     const thrustFn = this.updateThrustState(input, canAct);
     return { canAct, thrustFn };
   }
 
+  private ammoMag(combat: CombatSystem, combatCtx: CombatCtx): void {
+    combat.spawnEjectedMagazineFrame(combatCtx);
+    this.sfx.magFeed();
+  }
+
+  private ammoReload(combat: CombatSystem, combatCtx: CombatCtx): void {
+    combat.spawnEjectedMagazineFrame(combatCtx);
+    combat.dropBarrel(combatCtx);
+    this.sfx.playReload();
+  }
+
+  // todo: 展開する
+  private onFire(ammoEvent: AmmoEvent, combat: CombatSystem, combatCtx: CombatCtx): void {
+    combat.fireGun(combatCtx);
+    if (ammoEvent === 'mag') {
+      this.ammoMag(combat, combatCtx);
+    } else if (ammoEvent === 'reload') {
+      this.ammoReload(combat, combatCtx);
+    }
+  }
+
+  // todo: 責務が変。直す
   updateFireState(params: {
     dt: number;
     input: Input;
@@ -362,7 +387,7 @@ export class Player extends Ship {
     const rcsOutputFactor =
       C.RCS_MANUAL_OUTPUT_MIN +
       C.RCS_MANUAL_OUTPUT_RAMP *
-        (Math.min(C.RCS_MANUAL_RAMP_TIME, this.rotationHoldTime) / C.RCS_MANUAL_RAMP_TIME);
+      (Math.min(C.RCS_MANUAL_RAMP_TIME, this.rotationHoldTime) / C.RCS_MANUAL_RAMP_TIME);
     const angScale = this.fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
     const maxAngAccel = C.MAX_ANG_ACCEL * angScale * rcsOutputFactor;
     const maxAngVel = C.MAX_ANG_VEL * angScale;
