@@ -1,8 +1,9 @@
 // エンティティ配列の所有と、その受動的な更新(軌道積分・慣性姿勢・寿命管理)。
 // 描画同期や能動的な更新(AI・発射・スポーン判断)は行わない — それらは
 // game.ts / combat.ts / stage-director.ts が担い、追加は addXxx 経由で行う。
+// scene への add/remove は各 entity 自身の責務(entities.ts)なので、
+// Simulator は配列管理・上限管理・寿命判定に専念する。
 // game.ts を import しない — 依存は constructor 注入と各メソッド引数のみ。
-import * as THREE from 'three/webgpu';
 import { stepAttitude } from '../physics/attitude';
 import { envAccelInto } from '../physics/envaccel';
 import { ExtraAccel, R_EARTH, stepOrbitRK4 } from '../physics/orbital';
@@ -48,16 +49,15 @@ export class Simulator {
     private readonly ephemeris: EphemerisSystem,
     private readonly thermal: ThermalSystem,
     private readonly combat: CombatSystem,
-    private readonly scene: THREE.Scene,
   ) { }
 
   // ------------------------------------------------------------ 追加
-  // 配列への追加はここを通す(scene への登録と上限管理まで面倒を見る)。
-  // 破壊は alive = false にすれば cleanup が回収するので、削除関数は持たない。
+  // 配列への追加はここを通す(上限管理まで面倒を見る)。scene への登録は
+  // entity 自身のコンストラクタが既に済ませている。破壊は alive = false に
+  // すれば cleanup が回収するので、削除関数は持たない。
 
   addEnemy(enemy: Enemy): void {
     this.enemies.push(enemy);
-    this.scene.add(enemy.obj);
   }
 
   addBullet(bullet: Bullet): void {
@@ -74,20 +74,17 @@ export class Simulator {
 
   addDebris(piece: DebrisPiece): void {
     this.debris.push(piece);
-    this.scene.add(piece.obj);
-    while (this.debris.length > C.MAX_DEBRIS) this.disposeDebris(this.debris.shift()!);
+    while (this.debris.length > C.MAX_DEBRIS) this.debris.shift()!.dispose();
   }
 
   addMagPickup(pickup: MagPickup): void {
     this.magPickups.push(pickup);
-    this.scene.add(pickup.obj);
   }
 
   // 上限超過時は最古の個体をシーンから外す(弾・薬莢のジオメトリは共有なので破棄しない)
   private addCapped<T extends OrbitEntity>(arr: T[], entity: T, cap: number): void {
     arr.push(entity);
-    this.scene.add(entity.obj);
-    if (arr.length > cap) this.scene.remove(arr.shift()!.obj);
+    if (arr.length > cap) arr.shift()!.dispose();
   }
 
   // ------------------------------------------------------------ 積分
@@ -187,36 +184,30 @@ export class Simulator {
       }
     }
 
-    this.prune(this.bullets, (b) =>
-      !b.alive ||
-      simTime - b.bornSim > C.BULLET_LIFETIME ||
-      altitudeOf(b.state.r) < C.DEBRIS_REENTRY_ALT,
-      (b) => this.scene.remove(b.obj),
+    this.prune(this.bullets,
+      (b) => !b.alive || simTime - b.bornSim > C.BULLET_LIFETIME || altitudeOf(b.state.r) < C.DEBRIS_REENTRY_ALT,
+      (b) => b.dispose(),
     );
 
-    this.prune(this.plasmaBullets, (pb) =>
-      !pb.alive ||
-      simTime - pb.bornSim > C.PLASMA_LIFETIME ||
-      altitudeOf(pb.state.r) < C.DEBRIS_REENTRY_ALT,
-      (pb) => this.scene.remove(pb.obj),
+    this.prune(this.plasmaBullets,
+      (pb) => !pb.alive || simTime - pb.bornSim > C.PLASMA_LIFETIME || altitudeOf(pb.state.r) < C.DEBRIS_REENTRY_ALT,
+      (pb) => pb.dispose(),
     );
 
-    this.prune(this.casings, (cs) =>
-      simTime - cs.bornSim > C.CASING_LIFETIME ||
-      altitudeOf(cs.state.r) < C.DEBRIS_REENTRY_ALT,
-      (cs) => this.scene.remove(cs.obj),
+    this.prune(this.casings,
+      (cs) => simTime - cs.bornSim > C.CASING_LIFETIME || altitudeOf(cs.state.r) < C.DEBRIS_REENTRY_ALT,
+      (cs) => cs.dispose(),
     );
 
-    this.prune(this.debris, (d) =>
-      altitudeOf(d.state.r) < C.DEBRIS_REENTRY_ALT,
-      (d) => this.disposeDebris(d),
+    this.prune(this.debris,
+      (d) => altitudeOf(d.state.r) < C.DEBRIS_REENTRY_ALT,
+      (d) => d.dispose(),
     );
 
     // 取り込み・デスポーン判断(alive=false)は ammo-resupply.ts 側で行われる
-    this.prune(this.magPickups, (mp) =>
-      !mp.alive ||
-      altitudeOf(mp.state.r) < C.DEBRIS_REENTRY_ALT,
-      (mp) => this.scene.remove(mp.obj),
+    this.prune(this.magPickups,
+      (mp) => !mp.alive || altitudeOf(mp.state.r) < C.DEBRIS_REENTRY_ALT,
+      (mp) => mp.dispose(),
     );
   }
 
@@ -228,19 +219,5 @@ export class Simulator {
       else arr[w++] = x;
     }
     arr.length = w;
-  }
-
-  // d.obj は単一 Mesh(通常の破片)の場合と、複数子メッシュを持つ Group
-  // (排出された空マガジンのフレーム等)の場合がある。traverse して
-  // 見つかった Mesh すべてのジオメトリ・マテリアルを破棄する。
-  private disposeDebris(d: DebrisPiece): void {
-    this.scene.remove(d.obj);
-    d.obj.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      mesh.geometry.dispose();
-      if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
-      else mesh.material.dispose();
-    });
   }
 }
