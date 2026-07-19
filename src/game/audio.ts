@@ -6,15 +6,9 @@
 // 周期が互いに素なので 2 声のフェイズが少しずつずれていき(ライヒのフェイジング)、
 // その上に四度堆積のパッドと低いドローンが漂う。レトロシンセ的な柔らかい
 // 波形(sine / triangle)のみで、打楽器は使わない。
-// 作曲データ(音階/パターン/パッド/拍長)は src/assets/bgm.json に分離してある。
-import bgmData from '../assets/bgm.json';
+// 作曲データ(音階/パターン/パッド/拍長)は複数曲用意し、5分ごとに切り替える
+import { BGM_TRACKS, BgmTrack } from './bgm';
 
-const BGM_STEP_DUR: number = bgmData.stepDur; // ゆっくりしたパルス
-const BGM_SCALE: number[] = bgmData.scale; // D E G A C D E G
-const BGM_PAT_A: number[] = bgmData.patA; // 16 拍
-const BGM_PAT_B: number[] = bgmData.patB; // 12 拍(ポリメトリック)
-// 四度堆積のパッド(3度を含まないので長短が定まらず、空気感だけが残る)
-const BGM_PADS: number[][] = bgmData.pads; // D2G2C3G3 / E2A2D3A3 / G2C3F3C4 / A2D3G3D4
 
 const BGM_ENABLED_KEY = 'tepui.settings.bgm'; // localStorage キー
 
@@ -28,6 +22,8 @@ export class Sfx {
   private bgmNextTime = 0;
   private bgmStep = 0;
   private bgmEnabled = true;
+  private currentTrackIdx = 0;
+  private bgmTrackStartTime = 0;
 
   constructor() {
     try {
@@ -113,6 +109,9 @@ export class Sfx {
     g.connect(ctx.destination);
     this.bgmGain = g;
     this.bgmNextTime = ctx.currentTime + 0.15;
+    this.bgmTrackStartTime = ctx.currentTime;
+    this.currentTrackIdx = Math.floor(Math.random() * BGM_TRACKS.length);
+    this.bgmStep = 0;
     this.bgmTimer = setInterval(() => this.pumpBgm(), 120);
   }
 
@@ -128,41 +127,88 @@ export class Sfx {
 
   private pumpBgm(): void {
     if (!this.ctx || !this.bgmGain) return;
+
+    // 約5分(300秒)経過したら次の曲へクロスフェードなしでパターンを切り替える
+    // (ミニマルミュージックなので、パターンのデータが切り替わるだけでも
+    // フェーズの変化として違和感なくアンビエントに馴染む)
+    if (this.ctx.currentTime - this.bgmTrackStartTime > 300) {
+      // 次の曲をランダムに選ぶ（同じ曲が連続しないようにする）
+      let nextIdx = Math.floor(Math.random() * (BGM_TRACKS.length - 1));
+      if (nextIdx >= this.currentTrackIdx) nextIdx++;
+      this.currentTrackIdx = nextIdx;
+      this.bgmTrackStartTime = this.ctx.currentTime;
+      this.bgmStep = 0;
+    }
+
+    const track = BGM_TRACKS[this.currentTrackIdx]!;
+
     // 0.6s ぶん先読みしてスケジュール(タイマー精度に依存しない)
     while (this.bgmNextTime < this.ctx.currentTime + 0.6) {
-      this.scheduleBgmStep(this.bgmStep, this.bgmNextTime);
-      this.bgmStep = (this.bgmStep + 1) % 960; // 16 と 12 と 32 と 64 の公倍数で一周
-      this.bgmNextTime += BGM_STEP_DUR;
+      this.scheduleBgmStep(this.bgmStep, this.bgmNextTime, track);
+      this.bgmStep++;
+      this.bgmNextTime += track.stepDur;
     }
   }
 
-  private scheduleBgmStep(step: number, t: number): void {
+  private scheduleBgmStep(step: number, t: number, track: BgmTrack): void {
     const g = this.bgmGain!;
-    // 声部 A: 16 拍パターンの柔らかいパルス(マリンバ的な短い sine)
-    const fa = BGM_SCALE[BGM_PAT_A[step % 16]!]!;
-    this.toneAt(fa, t, BGM_STEP_DUR * 1.3, 0.03, 'sine', g, 0.015);
-    this.toneAt(fa * 2.003, t, BGM_STEP_DUR * 0.7, 0.009, 'triangle', g, 0.015); // わずかにデチューンした倍音
+    
+    // --- 3階層の入れ子構造による長周期化 (元の周期192ステップの8倍 = 1536ステップで1巡) ---
+    // 第1階層(Micro): patA(16) と patB(12) のポリリズム (48ステップ周期)
+    // 第2階層(Macro): 192ステップごとにスケールを移調する (4フェーズ)
+    const macroCycle = Math.floor(step / 192);
+    const macroPhase = macroCycle % 4;
+    const transpose = [0, 2, 3, 1][macroPhase]!; // 0, +2, +3, +1 スケールステップ
+    
+    // 第3階層(Global): 768ステップ(192*4)ごとに全体の音域(オクターブ)を変化させる (2フェーズ)
+    const globalCycle = Math.floor(step / 768);
+    const globalPhase = globalCycle % 2;
+    const octaveShift = globalPhase === 1 ? 1 : 0; // 後半は1オクターブ上がる
+    
+    // 指定した音階インデックスから、移調とオクターブシフトを適用した周波数を計算
+    const getFreq = (idx: number, trans: number, oct: number) => {
+      let absoluteIdx = idx + trans;
+      let octShift = oct;
+      while (absoluteIdx >= track.scale.length) {
+        absoluteIdx -= track.scale.length;
+        octShift++;
+      }
+      while (absoluteIdx < 0) {
+        absoluteIdx += track.scale.length;
+        octShift--;
+      }
+      return track.scale[absoluteIdx]! * Math.pow(2, octShift);
+    };
 
-    // 声部 B: 12 拍パターンを半拍ずらして重ねる(フェイジングで模様が移ろう)
-    const fb = BGM_SCALE[BGM_PAT_B[step % 12]!]!;
-    this.toneAt(fb, t + BGM_STEP_DUR / 2, BGM_STEP_DUR * 1.1, 0.022, 'triangle', g, 0.02);
+    // 移調幅のおおよその周波数比 (パッドやドローンの絶対周波数シフト用)
+    // 1スケールステップ = 約2半音(長2度)として近似
+    const freqRatio = Math.pow(2, (transpose * 2) / 12) * Math.pow(2, octaveShift);
 
-    // パッド: 四度堆積の和音が約 13 秒ごとにゆっくり移ろう(長いアタック)
+    // 声部 A: 16 拍パターンの柔らかいパルス
+    const fa = getFreq(track.patA[step % track.patA.length]!, transpose, octaveShift);
+    this.toneAt(fa, t, track.stepDur * 1.3, 0.03, track.toneA1, g, 0.015);
+    this.toneAt(fa * 2.003, t, track.stepDur * 0.7, 0.009, track.toneA2, g, 0.015); // わずかにデチューンした倍音
+
+    // 声部 B: 12 拍パターンを半拍ずらして重ねる
+    const fb = getFreq(track.patB[step % track.patB.length]!, transpose, octaveShift);
+    this.toneAt(fb, t + track.stepDur / 2, track.stepDur * 1.1, 0.022, track.toneB, g, 0.02);
+
+    // パッド: 四度堆積の和音が約 13 秒ごとにゆっくり移ろう
     if (step % 32 === 0) {
-      for (const f of BGM_PADS[((step / 32) | 0) % BGM_PADS.length]!) {
-        this.toneAt(f, t, BGM_STEP_DUR * 34, 0.013, 'triangle', g, 4.5);
+      for (const f of track.pads[((step / 32) | 0) % track.pads.length]!) {
+        this.toneAt(f * freqRatio, t, track.stepDur * 34, 0.013, 'triangle', g, 4.5);
       }
     }
 
-    // ドローン: 深い D のうなり(大気圏と宇宙の茫漠さ)
+    // ドローン: 深い D のうなり
     if (step % 64 === 0) {
-      this.toneAt(36.71, t, BGM_STEP_DUR * 66, 0.02, 'sine', g, 6);
-      this.toneAt(73.42, t, BGM_STEP_DUR * 66, 0.012, 'sine', g, 6);
+      this.toneAt(track.drone[0]! * freqRatio, t, track.stepDur * 66, 0.02, 'sine', g, 6);
+      this.toneAt(track.drone[1]! * freqRatio, t, track.stepDur * 66, 0.012, 'sine', g, 6);
     }
 
     // ときおり高音の煌めき + 減衰エコー
     if (step % 8 === 5) {
-      const fs = BGM_SCALE[(step * 5) % BGM_SCALE.length]! * 4;
+      const fs = getFreq((step * 5) % track.scale.length, transpose, octaveShift + 2); // 基本より2オクターブ上
       this.toneAt(fs, t, 0.5, 0.011, 'sine', g, 0.01);
       this.toneAt(fs, t + 0.63, 0.5, 0.005, 'sine', g, 0.01);
       this.toneAt(fs, t + 1.26, 0.5, 0.0025, 'sine', g, 0.01);
