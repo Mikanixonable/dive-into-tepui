@@ -772,13 +772,46 @@ export class Game {
     const spread = scale(perpDir, Math.random() * 20);
     const centerV = add(v0, add(scale(approachDir, flybySpeed), spread));
 
-    const colors = [0xff6a00, 0x3dc6ff, 0xff2d6b, 0xaaff00, 0xd000ff, 0xffd700];
-    const accent = colors[Math.floor(Math.random() * colors.length)]!;
-    const typeIndex = Math.floor(Math.random() * 3);
+    const randCol = Math.random();
+    let baseHex: number;
+    if (randCol < 0.7) {
+      // アースカラー (7割)
+      const earthColors = [0xc2b280, 0x808080, 0xb2beb5, 0x8b4513, 0xc3b091, 0x556b2f, 0x8f9779, 0x5f9ea0];
+      baseHex = earthColors[Math.floor(Math.random() * earthColors.length)]!;
+    } else if (randCol < 0.9) {
+      // 寒色系 (2割)
+      const coolColors = [0x722f37, 0x8a2be2, 0x0000ff, 0x00ffff, 0x40e0d0, 0x008000, 0x9acd32];
+      baseHex = coolColors[Math.floor(Math.random() * coolColors.length)]!;
+    } else {
+      // アクセントカラー (1割)
+      const accentColors = [0xffa500, 0xffc0cb, 0xff0000, 0xffffff];
+      baseHex = accentColors[Math.floor(Math.random() * accentColors.length)]!;
+    }
 
+    const baseColor = new THREE.Color(baseHex);
+    const hsl = { h: 0, s: 0, l: 0 };
+    baseColor.getHSL(hsl);
+
+    // 個体を2~4のサブグループに分け、色相・彩度・明度をわずかにずらす
+    const subGroupCount = 2 + Math.floor(Math.random() * 3);
+    const subGroups: number[] = [];
+    for (let i = 0; i < subGroupCount; i++) {
+      const hOffset = (Math.random() - 0.5) * 0.12;
+      const sOffset = (Math.random() - 0.5) * 0.35;
+      const lOffset = (Math.random() - 0.5) * 0.25;
+      const subColor = new THREE.Color().setHSL(
+        (hsl.h + hOffset + 1) % 1,
+        Math.max(0, Math.min(1, hsl.s + sOffset)),
+        Math.max(0.1, Math.min(0.9, hsl.l + lOffset))
+      );
+      subGroups.push(subColor.getHex());
+    }
+
+    const typeIndex = Math.floor(Math.random() * 3);
     const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');
 
     for (let i = 0; i < shipCount; i++) {
+      const accent = subGroups[i % subGroupCount]!;
       let pos: Vec3;
       if (pattern === 'linear') {
         // 隊列は接近方向に対して後方へ直列に並べる。直線状のものも少しランダムに配置
@@ -1273,21 +1306,22 @@ export class Game {
     const r = enemy.state.r;
     const v = enemy.state.v;
     const toPlayer = sub(this.player.state.r, r);
-    let timeToHit = len(toPlayer) / C.PLASMA_BULLET_SPEED;
     const pV = this.player.state.v;
     const eV = enemy.state.v;
-
-    // 自機と敵機の相対速度を考慮した予測位置 (自機の未来位置 - 敵の未来位置)
     const relV = sub(pV, eV);
-    let predictedRelPos = add(toPlayer, scale(relV, timeToHit));
-    timeToHit = len(predictedRelPos) / C.PLASMA_BULLET_SPEED;
-    predictedRelPos = add(toPlayer, scale(relV, timeToHit));
+
+    // 正確な見越し時間を計算
+    let timeToHit = this.solveLeadTime(toPlayer, relV, C.PLASMA_BULLET_SPEED);
+    if (timeToHit === null || timeToHit < 0) {
+      timeToHit = len(toPlayer) / C.PLASMA_BULLET_SPEED; // フォールバック
+    }
     
+    const predictedRelPos = add(toPlayer, scale(relV, timeToHit));
     const aimDir = norm(predictedRelPos);
 
-    // 波状攻撃が進むにつれて弾が多くなる(散布界は少し持たせる)
+    // 散布界を非常に小さくして、正確に狙う
     const perp = randPerp(aimDir);
-    const spreadAng = (Math.random() * 0.1 * Math.PI) / 180; // 0.1度に絞ってビームのようにする
+    const spreadAng = (Math.random() * 0.05 * Math.PI) / 180; // 0.05度
     const actualAim = rotateAxis(aimDir, perp, spreadAng);
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
@@ -2481,7 +2515,7 @@ export class Game {
 
     if (this.rcsDamp && this.player.alive && this.phase === 'playing' && !this.mapMode) {
       const w = this.player.att.w;
-      const EPS = 0.005;
+      const EPS = 0.04; // 閾値を上げて、視覚/音響的な持続時間を短くする
       if (tauX === 0 && Math.abs(w.x) > EPS) tauX = -Math.sign(w.x);
       if (tauY === 0 && Math.abs(w.y) > EPS) tauY = -Math.sign(w.y);
       if (tauZ === 0 && Math.abs(w.z) > EPS) tauZ = -Math.sign(w.z);
