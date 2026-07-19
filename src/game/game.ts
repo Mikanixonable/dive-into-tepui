@@ -12,13 +12,9 @@ import {
   MU_EARTH,
   SIDEREAL_DAY,
   elementsFromState,
-  j2Accel,
   stepOrbitRK4,
-  thirdBodyAccel,
 } from '../physics/orbital';
 import {
-  MU_MOON,
-  MU_SUN,
   R_MOON,
   moonPosition,
   sunAzimuth,
@@ -30,6 +26,7 @@ import { MapView } from './mapview';
 import { BeltPhysics } from './belt';
 import { CombatCtx, CombatSystem } from './combat';
 import { StageCtx, StageDirector } from './stages';
+import { EnvironmentSystem } from './environment';
 import {
   Attitude,
   qRotate,
@@ -51,7 +48,6 @@ import {
   sub,
   v3,
 } from '../physics/vec3';
-import { atmosphericDensity } from '../physics/atmosphere';
 import * as C from './const';
 import { Bullet, Casing, DebrisPiece, FlashEffect, MagPickup, Ship, PlasmaBullet } from './entities';
 
@@ -101,13 +97,6 @@ function randVec(amp: number): Vec3 {
 // スクリーン投影マーカーのラベル用コンパクトな距離表記(例: "420m" / "2.2km")
 function fmtMarkerDist(m: number): string {
   return m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${m.toFixed(0)}m`;
-}
-
-const EARTH_OMEGA = (2 * Math.PI) / SIDEREAL_DAY; // 地球自転角速度 [rad/s](Y軸=北極まわり)
-
-// 地球と共回転する大気に対する対気速度: v - ω×r, ω = (0, ω, 0)
-function airspeed(r: Vec3, v: Vec3): Vec3 {
-  return v3(v.x - EARTH_OMEGA * r.z, v.y, v.z + EARTH_OMEGA * r.x);
 }
 
 export class Game {
@@ -189,15 +178,9 @@ export class Game {
   // 前フレームの射撃状態(ズームウィンドウ/PIPの表示条件と同一)。立ち下がり検出用。
   private prevFiringForPip = false;
 
-  private hullTemp = C.HULL_START_TEMP;
-  private qdyn = 0;
-  private heatWarned = false;
-  private altEma = NaN; // 高度の指数移動平均(離心率によるふらつきを均す)
-  private altRateEma = 0; // 高度変化率の指数移動平均 [m/s]
-  private altDescendWarned = false;
-  // 既に警告済みのしきい値(降順走破)。しきい値+ヒステリシスまで登り返すと解除され、
-  // 再度潜った際に同じしきい値で再警告できる
-  private altWarnedThresholds = new Set<number>();
+  // 環境モデル(大気抵抗+J2+第三体摂動)・自機の熱/動圧・高度警告・天体暦は
+  // environment.ts の EnvironmentSystem に切り出し済み。
+  private readonly environment = new EnvironmentSystem(this.hud, this.sfx);
   private lostReason = '大気圏に突入し機体を喪失した';
 
 
@@ -208,19 +191,7 @@ export class Game {
   private readonly rcsPuffs: THREE.Mesh[] = []; // RCS ブロック位置の噴射パフ(4基)
   private readonly sunLight: THREE.DirectionalLight;
   private readonly ambient: THREE.AmbientLight;
-  private sunDirV: Vec3 = v3(1, 0, 0);
-
-  // 天体暦(初期位相はゲームごとにランダム)
-  private readonly sunPhase0 = 0; // 昼(太陽が+X側)から開始するように固定
-  private readonly moonPhase0 = Math.random() * Math.PI * 2;
-  private sunPos: Vec3 = v3(1.496e11, 0, 0);
-  private moonPos: Vec3 = v3(3.844e8, 0, 0);
   private readonly moonMesh = createMoon();
-
-  // 環境加速度 = 大気抵抗(種別ごとの弾道係数) + J2 + 月・太陽の第三体摂動
-  private readonly envShip = this.makeEnvAccel(C.SHIP_BCINV);
-  private readonly envBullet = this.makeEnvAccel(C.BULLET_BCINV);
-  private readonly envSmall = this.makeEnvAccel(C.SMALL_DEBRIS_BCINV);
 
   private fireCooldown = 0;
   private reloadTimer = 0;
@@ -273,9 +244,10 @@ export class Game {
     this.glowTex = makeGlowTexture();
     this.sun = createSun(this.glowTex);
     this.scene.add(this.sun.mesh);
-    this.updateEphemeris();
+    this.environment.updateEphemeris(this.simTime);
     this.sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
-    this.sunLight.position.set(this.sunDirV.x * 1e5, this.sunDirV.y * 1e5, this.sunDirV.z * 1e5);
+    const sunDir0 = this.environment.sunDir;
+    this.sunLight.position.set(sunDir0.x * 1e5, sunDir0.y * 1e5, sunDir0.z * 1e5);
     this.scene.add(this.sunLight);
     this.scene.add(this.moonMesh);
     this.starsMesh = createStars();
@@ -770,8 +742,8 @@ export class Game {
       simTime: this.simTime,
       playerR: this.player.state.r,
       playerV: this.player.state.v,
-      sunPhase0: this.sunPhase0,
-      moonPhase0: this.moonPhase0,
+      sunPhase0: this.environment.sunPhase0,
+      moonPhase0: this.environment.moonPhase0,
       mapMode: this.mapMode,
       mapFrameRotating: this.mapView.frameRotating,
     };
@@ -920,44 +892,51 @@ export class Game {
 
     // 自機の追加加速度 = 推力 + 環境(大気抵抗 + J2 + 月・太陽摂動)
     const playerAccel: ExtraAccel = thrustFn
-      ? (r, v) => add(thrustFn(r, v), this.envShip(r, v))
-      : this.envShip;
+      ? (r, v) => add(thrustFn(r, v), this.environment.envShip(r, v))
+      : this.environment.envShip;
 
     // 軌道積分(高ワープ時はサブステップ分割)
     const nSub = warp <= C.MAX_PHYS_WARP ? 1 : Math.min(64, Math.ceil(simDt / 20));
     const sub = simDt / nSub;
     for (let i = 0; i < nSub; i++) {
-      this.updateEphemeris(); // 高ワープでも太陽・月の位置と摂動がサブステップ内で追従する
+      this.environment.updateEphemeris(this.simTime); // 高ワープでも太陽・月の位置と摂動がサブステップ内で追従する
       this.player.prevR = clone(this.player.state.r);
       if (this.player.alive) {
         stepOrbitRK4(this.player.state, sub, playerAccel);
-        this.updateThermal(sub);
+        this.environment.updateThermal(sub, this.player.state.r, this.player.state.v);
       }
       for (const e of this.enemies) {
         if (!e.alive) continue;
         e.prevR = clone(e.state.r);
-        stepOrbitRK4(e.state, sub, this.envShip);
+        stepOrbitRK4(e.state, sub, this.environment.envShip);
       }
       for (const b of this.bullets) {
         if (!b.alive) continue;
         b.prevR = clone(b.state.r);
-        stepOrbitRK4(b.state, sub, this.envBullet);
+        stepOrbitRK4(b.state, sub, this.environment.envBullet);
       }
       for (const pb of this.plasmaBullets) {
         if (!pb.alive) continue;
         pb.prevR = clone(pb.state.r);
-        stepOrbitRK4(pb.state, sub, this.envBullet);
+        stepOrbitRK4(pb.state, sub, this.environment.envBullet);
       }
-      for (const cs of this.casings) stepOrbitRK4(cs.state, sub, this.envSmall);
-      for (const d of this.debris) stepOrbitRK4(d.state, sub, this.envSmall);
-      for (const mp of this.magPickups) if (mp.alive) stepOrbitRK4(mp.state, sub, this.envSmall);
+      for (const cs of this.casings) stepOrbitRK4(cs.state, sub, this.environment.envSmall);
+      for (const d of this.debris) stepOrbitRK4(d.state, sub, this.environment.envSmall);
+      for (const mp of this.magPickups) if (mp.alive) stepOrbitRK4(mp.state, sub, this.environment.envSmall);
       this.simTime += sub;
       this.combat.checkBulletHits(this.combatCtx());
       this.combat.checkBoardCrossings(this.combatCtx());
     }
     this.lastSimDt = simDt;
-    this.checkThermalLimits();
-    this.updateAltitudeAlarm(dt);
+    const limit = this.environment.checkThermalLimits(this.player.alive);
+    if (limit) {
+      this.lostReason =
+        limit === 'heat'
+          ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
+          : '動圧が構造限界を超え、機体は空力的に分解した';
+      this.combat.destroyShip(this.player, this.combatCtx());
+    }
+    this.environment.updateAltitudeAlarm(dt, this.player.alive, this.environment.altitudeOf(this.player.state.r));
     this.updateAmmoLogistics(dt);
     // 剛体衝突(薬莢・マガジンベルト等)はワープ ×4 以下(操縦可能な範囲)でのみ解決する。
     // 高ワープ中はサブステップが最大20秒に及び、反発処理も薬莢多数だと O(N²) で
@@ -1044,133 +1023,15 @@ export class Game {
     this.hud.hint('付近の軌道に補給マガジンが投入された — ▣ AMMO マーカーへ接近して回収', 5000);
   }
 
-  // 太陽・月の ECI 位置を simTime から更新する
-  private updateEphemeris(): void {
-    this.sunPos = sunPosition(this.simTime, this.sunPhase0);
-    this.moonPos = moonPosition(this.simTime, this.moonPhase0);
-    this.sunDirV = norm(this.sunPos);
-  }
-
-  // 大気抵抗 + J2(地球扁平) + 月・太陽の第三体(潮汐)摂動を合成した環境加速度。
-  // 天体位置はサブステップ更新の this.sunPos / moonPos を閉包で参照する。
-  // この関数は RK4 の全ステージ × 全エンティティ × サブステップで呼ばれるホット
-  // パスなので、大気抵抗は(専用の Vec3 を作らず)直接数値演算でインライン化し、
-  // 割り当てを 1 個(戻り値ぶんのみ)に抑える。J2・第三体項は共有の純関数
-  // (physics/orbital.ts、テストで数値検証済み)をそのまま使う。
-  private makeEnvAccel(bcInv: number): ExtraAccel {
-    return (r: Vec3, v: Vec3): Vec3 => {
-      const rho = atmosphericDensity(len(r) - R_EARTH);
-      let ax = 0;
-      let ay = 0;
-      let az = 0;
-      if (rho >= 1e-15) {
-        const vrx = v.x - EARTH_OMEGA * r.z;
-        const vry = v.y;
-        const vrz = v.z + EARTH_OMEGA * r.x;
-        const k = -0.5 * rho * Math.sqrt(vrx * vrx + vry * vry + vrz * vrz) * bcInv;
-        ax = vrx * k;
-        ay = vry * k;
-        az = vrz * k;
-      }
-      const j = j2Accel(r);
-      const s = thirdBodyAccel(r, this.sunPos, MU_SUN);
-      const m = thirdBodyAccel(r, this.moonPos, MU_MOON);
-      return v3(
-        ax + j.x + s.x + m.x,
-        ay + j.y + s.y + m.y,
-        az + j.z + s.z + m.z,
-      );
-    };
-  }
-
-  // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の
-  // Sutton–Graves 近似 q̇ = k·√(ρ/Rn)·v³、冷却はステファン・ボルツマン放射。
-  private updateThermal(dtSub: number): void {
-    const r = this.player.state.r;
-    const v = this.player.state.v;
-    const rho = atmosphericDensity(len(r) - R_EARTH);
-    const vr = airspeed(r, v);
-    const s = len(vr);
-    this.qdyn = 0.5 * rho * s * s;
-    const qdot = C.SG_CONST * Math.sqrt(rho / C.NOSE_RADIUS) * s * s * s;
-    const cool =
-      C.HULL_EMISS *
-      C.STEFAN_BOLTZMANN *
-      C.RAD_AREA *
-      (Math.pow(C.ENV_TEMP, 4) - Math.pow(this.hullTemp, 4));
-    this.hullTemp = Math.max(
-      C.HULL_TEMP_FLOOR,
-      this.hullTemp + ((qdot * C.HEAT_ABSORB_AREA + cool) / C.HEAT_CAPACITY) * dtSub,
-    );
-  }
-
-  // 熱防御の飽和・空力破壊の判定と警告表示
-  private checkThermalLimits(): void {
-    if (!this.player.alive) return;
-    if (this.hullTemp > C.MAX_HULL_TEMP) {
-      this.lostReason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
-      this.combat.destroyShip(this.player, this.combatCtx());
-      return;
-    }
-    if (this.qdyn > C.MAX_DYN_PRESSURE) {
-      this.lostReason = '動圧が構造限界を超え、機体は空力的に分解した';
-      this.combat.destroyShip(this.player, this.combatCtx());
-      return;
-    }
-    const hot = this.hullTemp > 0.7 * C.MAX_HULL_TEMP || this.qdyn > 0.5 * C.MAX_DYN_PRESSURE;
-    if (hot && !this.heatWarned) {
-      this.heatWarned = true;
-      this.hud.hint('警告: 空力加熱・動圧が危険域 — 高度を上げよ', 4000);
-    } else if (!hot && this.hullTemp < 0.6 * C.MAX_HULL_TEMP) {
-      this.heatWarned = false;
-    }
-  }
-
-  // 高度低下(降下)の検知と警告。離心率による短周期の高度振動で誤反応しないよう
-  // 高度・変化率とも指数移動平均で平滑化する(時定数 約3秒)。
-  private updateAltitudeAlarm(dt: number): void {
-    if (!this.player.alive) return;
-    const alt = this.altitudeOf(this.player.state.r);
-    if (!isFinite(this.altEma)) this.altEma = alt;
-    const prevEma = this.altEma;
-    const k = Math.min(1, dt / C.ALT_EMA_TIME_CONST);
-    this.altEma += (alt - this.altEma) * k;
-    if (dt > 1e-6) {
-      const rate = (this.altEma - prevEma) / dt;
-      this.altRateEma += (rate - this.altRateEma) * k;
-    }
-    if (this.altRateEma < C.ALT_DESCEND_WARN_RATE) {
-      this.altDescendWarned = true;
-    } else if (this.altRateEma > C.ALT_DESCEND_CLEAR_RATE) {
-      this.altDescendWarned = false;
-    }
-
-    // しきい値(120km/100km/80km)を下から上まで一つずつ跨いだタイミングで警告する。
-    // EMA 高度なので離心率によるふらつきでは誤爆しにくい。しきい値+ヒステリシスまで
-    // 登り返すと解除し、再降下時に同じしきい値で再警告できるようにする。
-    const HYSTERESIS = C.ALT_WARN_HYSTERESIS; // [m]
-    for (const th of C.ALT_WARN_THRESHOLDS) {
-      if (this.altEma < th) {
-        if (!this.altWarnedThresholds.has(th)) {
-          this.altWarnedThresholds.add(th);
-          this.hud.hint(`警告: 高度が${Math.round(th / 1000)}km以下です`, 3000);
-          this.sfx.altAlarm();
-        }
-      } else if (this.altEma > th + HYSTERESIS) {
-        this.altWarnedThresholds.delete(th);
-      }
-    }
-  }
-
   // 勝敗確定後もデブリ・薬莢・弾を漂わせる
   private coastWorld(dt: number): void {
     const simDt = dt * Math.min(this.warp(), 4);
-    this.updateEphemeris();
-    for (const b of this.bullets) if (b.alive) stepOrbitRK4(b.state, simDt, this.envBullet);
-    for (const cs of this.casings) stepOrbitRK4(cs.state, simDt, this.envSmall);
-    for (const d of this.debris) stepOrbitRK4(d.state, simDt, this.envSmall);
-    for (const e of this.enemies) if (e.alive) stepOrbitRK4(e.state, simDt, this.envShip);
-    for (const mp of this.magPickups) if (mp.alive) stepOrbitRK4(mp.state, simDt, this.envSmall);
+    this.environment.updateEphemeris(this.simTime);
+    for (const b of this.bullets) if (b.alive) stepOrbitRK4(b.state, simDt, this.environment.envBullet);
+    for (const cs of this.casings) stepOrbitRK4(cs.state, simDt, this.environment.envSmall);
+    for (const d of this.debris) stepOrbitRK4(d.state, simDt, this.environment.envSmall);
+    for (const e of this.enemies) if (e.alive) stepOrbitRK4(e.state, simDt, this.environment.envShip);
+    for (const mp of this.magPickups) if (mp.alive) stepOrbitRK4(mp.state, simDt, this.environment.envSmall);
     const attDt = Math.min(simDt, 0.12);
     for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
     for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
@@ -1301,7 +1162,7 @@ export class Game {
   // ------------------------------------------------------------- cleanup
 
   private altitudeOf(r: Vec3): number {
-    return len(r) - R_EARTH;
+    return this.environment.altitudeOf(r);
   }
 
   private cleanup(): void {
@@ -1401,7 +1262,7 @@ export class Game {
 
     // 太陽・月・星: カメラ位置基準で天体暦の方向に表示(マップの遠距離ズームでも
     // 背景として振る舞う。距離は視距離に圧縮、月の角直径は実距離から換算)
-    const visSunPos = sunPosition(displayTime, this.sunPhase0);
+    const visSunPos = sunPosition(displayTime, this.environment.sunPhase0);
     const sd = norm(visSunPos);
     this.earth.setSunDir(sd.x, sd.y, sd.z);
     this.starsMesh.position.copy(cam.position);
@@ -1418,7 +1279,7 @@ export class Game {
     );
     this.sun.mesh.quaternion.copy(cam.quaternion);
     this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
-    const visMoonPos = moonPosition(displayTime, this.moonPhase0);
+    const visMoonPos = moonPosition(displayTime, this.environment.moonPhase0);
     const moonRel = sub(visMoonPos, o); // フローティングオリジン座標(= true ECI - o)
     if (this.mapMode) {
       // マップモードは地球中心を実寸スケールで俯瞰するビューなので、月も
@@ -1439,7 +1300,7 @@ export class Game {
 
     // 地球の影: 戦闘ビューでは自機周辺が影円柱内にあれば太陽光・環境光を減光する
     // マップモードでは全体像を見るため地球の昼側が常に明るくなるよう減光しない
-    const lit = this.mapMode ? 1.0 : this.shadowLitFactor(o);
+    const lit = this.mapMode ? 1.0 : this.environment.shadowLitFactor(o);
     this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
     this.ambient.intensity =
       C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
@@ -1564,7 +1425,7 @@ export class Game {
     this.planner.updateMapGizmo(o, this.plannerCtx(), (rel) => this.project(rel), this.mapMode, this.mapView.dist);
 
     if (this.mapMode) {
-      this.mapView.drawLabels(o, { simTime: this.simTime, sunPhase0: this.sunPhase0, moonPhase0: this.moonPhase0, duration: this.predictDurationSec() }, (rel) => this.project(rel));
+      this.mapView.drawLabels(o, { simTime: this.simTime, sunPhase0: this.environment.sunPhase0, moonPhase0: this.environment.moonPhase0, duration: this.predictDurationSec() }, (rel) => this.project(rel));
     }
 
     // 計画軌道(白、解析的な楕円): マップモード中は数値予測のポリライン(trajLine)が
@@ -1604,7 +1465,7 @@ export class Game {
     // 画面上で太陽方向がほぼ固定されて見えるようにする(予測サンプルの回転補正と
     // 組み合わせて、t=simTime では回転量ゼロで整合する)。frameRotating が OFF なら
     // MapView 側で無視される。
-    const sunAz = sunAzimuth(this.simTime, this.sunPhase0);
+    const sunAz = sunAzimuth(this.simTime, this.environment.sunPhase0);
     this.mapView.updateCamera(mouse, keyYaw, keyPitch, dt, o, sunAz);
   }
 
@@ -1660,14 +1521,6 @@ export class Game {
   }
 
 
-
-  // 自機位置の地表影(円柱近似 + 縁のぼかし)による日照率 0..1
-  private shadowLitFactor(r: Vec3): number {
-    const along = dot(r, this.sunDirV);
-    if (along >= 0) return 1; // 太陽側
-    const perp = len(addScaled(r, this.sunDirV, -along));
-    return Math.min(1, Math.max(0, (perp - R_EARTH) / C.SHADOW_PENUMBRA));
-  }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
   private updateBoardMarkers(o: Vec3, dt: number, tgt: Ship | null): void {
@@ -2135,14 +1988,14 @@ export class Game {
         magsLeft: this.magsLeft,
         reloadTimer: this.reloadTimer,
         alt: this.altitudeOf(this.player.state.r),
-        altDescending: this.altDescendWarned,
+        altDescending: this.environment.altDescendWarned,
         spd: len(this.player.state.v),
         apAlt: playerEl ? playerEl.apAlt : NaN,
         peAlt: playerEl ? playerEl.peAlt : NaN,
         incDeg: playerEl ? playerEl.incDeg : NaN,
         period: playerEl ? playerEl.period : NaN,
-        qdyn: this.qdyn,
-        hullTemp: this.hullTemp,
+        qdyn: this.environment.qdyn,
+        hullTemp: this.environment.hullTemp,
         shots: this.combat.shots,
         kills: this.combat.kills,
         total: this.enemies.length,
