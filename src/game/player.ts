@@ -7,7 +7,7 @@ import { Ship } from './entities';
 import { Input } from './input';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
-import { buildPlayerShip, RCS_BLOCK_OFFSETS } from '../render/ships';
+import { buildFlashMesh, buildPlayerShip, RCS_BLOCK_OFFSETS } from '../render/ships';
 import { CombatCtx, CombatSystem } from './combat/combat';
 
 type AmmoEvent = 'none' | 'mag' | 'reload';
@@ -34,16 +34,48 @@ export class Player extends Ship {
   private magsConsumedSinceReloadValue = 0;
   private reloadTimerValue = 0;
 
+  private readonly plumeCore: THREE.Mesh;
+  private readonly plumeOuter: THREE.Mesh;
+  private readonly rcsPuffs: THREE.Mesh[] = []; // RCS ブロック位置の噴射パフ(4基)
+
   // 高度420km・傾斜51.6°の円軌道に機首プログレードで初期配置する
   constructor(
     private readonly hud: Hud,
     private readonly sfx: Sfx,
+    scene: THREE.Scene,
+    glowTex: THREE.Texture,
   ) {
     const state = Player.makeInitialState();
     super('PLAYER', state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP);
     this.mass = 1000;
     // 剛体接触は実機体サイズ。被弾判定半径(radius)を使うと排莢直後の薬莢を弾いてしまう
     this.collideRadius = C.PLAYER_HULL_RADIUS;
+
+    const plumes = this.buildThrustPlumes(scene, glowTex);
+    this.plumeCore = plumes.core;
+    this.plumeOuter = plumes.outer;
+    this.buildRcsPuffs(scene, glowTex);
+  }
+
+  // マヌーバ噴射プルーム(推力方向の逆側に置く発光ビルボード 2 枚)
+  private buildThrustPlumes(scene: THREE.Scene, glowTex: THREE.Texture): { core: THREE.Mesh; outer: THREE.Mesh; } {
+    const core = buildFlashMesh(glowTex, 0xaee6ff);
+    const outer = buildFlashMesh(glowTex, 0x4f9fff);
+    core.visible = false;
+    outer.visible = false;
+    scene.add(core);
+    scene.add(outer);
+    return { core, outer };
+  }
+
+  // RCS パフ(機首側の 4 基のスラスタブロックに対応、ships.ts の配置と一致)
+  private buildRcsPuffs(scene: THREE.Scene, glowTex: THREE.Texture): void {
+    for (let i = 0; i < 4; i++) {
+      const puff = buildFlashMesh(glowTex, 0xcfeaff);
+      puff.visible = false;
+      this.rcsPuffs.push(puff);
+      scene.add(puff);
+    }
   }
 
   private static makeInitialState(): OrbitState {
@@ -294,31 +326,28 @@ export class Player extends Ship {
   }
 
   renderThrustEffects(
-    plumeCore: THREE.Mesh,
-    plumeOuter: THREE.Mesh,
     camera: THREE.PerspectiveCamera,
     zoomActive: boolean,
   ): void {
     const showPlume = this.thrustVizDir !== null && this.alive && !zoomActive;
-    plumeCore.visible = showPlume;
-    plumeOuter.visible = showPlume;
+    this.plumeCore.visible = showPlume;
+    this.plumeOuter.visible = showPlume;
     if (!showPlume) return;
     const d = this.thrustVizDir!;
     const flick = 0.8 + 0.2 * Math.random();
     const sc = (1.5 + 2.5 * (this.throttleIdx / 3.0)) * flick;
-    plumeCore.position.set(-d.x * 3.4, -d.y * 3.4, -d.z * 3.4);
-    plumeCore.scale.setScalar(sc * 1.6);
-    plumeCore.quaternion.copy(camera.quaternion);
-    (plumeCore.material as THREE.MeshBasicMaterial).opacity = 0.85 * flick;
-    plumeOuter.position.set(-d.x * 5.6, -d.y * 5.6, -d.z * 5.6);
-    plumeOuter.scale.setScalar(sc * 3.6);
-    plumeOuter.quaternion.copy(camera.quaternion);
-    (plumeOuter.material as THREE.MeshBasicMaterial).opacity = 0.32 * flick;
+    this.plumeCore.position.set(-d.x * 3.4, -d.y * 3.4, -d.z * 3.4);
+    this.plumeCore.scale.setScalar(sc * 1.6);
+    this.plumeCore.quaternion.copy(camera.quaternion);
+    (this.plumeCore.material as THREE.MeshBasicMaterial).opacity = 0.85 * flick;
+    this.plumeOuter.position.set(-d.x * 5.6, -d.y * 5.6, -d.z * 5.6);
+    this.plumeOuter.scale.setScalar(sc * 3.6);
+    this.plumeOuter.quaternion.copy(camera.quaternion);
+    (this.plumeOuter.material as THREE.MeshBasicMaterial).opacity = 0.32 * flick;
   }
 
   updateRcsEffects(
     input: Input,
-    rcsPuffs: THREE.Mesh[],
     activeCamera: THREE.PerspectiveCamera,
     zoomActive: boolean,
     phasePlaying: boolean,
@@ -338,12 +367,12 @@ export class Player extends Ship {
     const tau = v3(tauX, tauY, tauZ);
     const rotating = this.alive && phasePlaying && !paused && !mapMode && lenSq(tau) > 0.01;
     if (!rotating || zoomActive) {
-      for (const p of rcsPuffs) p.visible = false;
+      for (const p of this.rcsPuffs) p.visible = false;
       return false;
     }
     const q = this.att.q;
     for (let k = 0; k < 4; k++) {
-      const puff = rcsPuffs[k]!;
+      const puff = this.rcsPuffs[k]!;
       const ro = RCS_BLOCK_OFFSETS[k]!;
       const rb = v3(ro.x, ro.y, ro.z);
       const f = cross(tau, rb);
