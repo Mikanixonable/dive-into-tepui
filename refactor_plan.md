@@ -37,8 +37,6 @@ Gameがcameraを保持してcameraSystemにctxとして渡しているけども�
 targetをGameが保持しているが、Targteterが持っているlockedTargetと何が違う？
 同様のパターンがほかにもありそう。ctx注入しているが、そもそもそこでしか使っていないものは、ctx注入せずにそのモジュールが持つべきだ。
 
-stageIndexをgameが直接保持しているが、stageDerectorが持つべきだ。
-
 ### Gameの責務の縮小 playerへの移動
 buildThrustPlumesやbuildRcsPuffsなどは、Gameが直接持つべき責務ではない。Playerに委譲する。
 beltもPlayerに委譲する。Playerが持つべき責務をGameが持っているパターンが多い。
@@ -60,6 +58,8 @@ renderFrameという関数がありながら、そこではpipの描画のみを
 ### dom操作の分散（優先度低）
 touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散している。これが直接悪いとは言い切れないが…
 
+### gameとstageDirectorの責務の分割
+初期化とかもstageDirectorに委譲できる。
 
 ### この時点で重複実装、類似実装を再度検査し、適切に共通化する。
 重複実装の検査にLLMは役に立たないということが分かった。人力で頑張る…

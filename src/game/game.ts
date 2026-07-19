@@ -31,7 +31,7 @@ import { BeltPhysics } from './combat/belt';
 import { Player } from './player';
 import { CameraSystem } from './camera/camera-system';
 import { CombatCtx, CombatSystem } from './combat/combat';
-import { StageCtx, StageDirector } from './stages';
+import { StageCtx, StageDirector } from './stage-director';
 import { ThermalSystem } from './thermal';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
@@ -128,7 +128,7 @@ export class Game {
   private readonly geoOrbitLine = new OrbitLine(0x8b93a0, 0.2);
   private readonly moonOrbitLine = new OrbitLine(0xaab3c0, 0.2);
 
-  readonly stage: number;
+  //readonly stage: number;
 
   // 軌道計画モード
   private readonly maneuver = new ManeuverSystem(
@@ -140,11 +140,7 @@ export class Game {
 
   private phase: GamePhase = 'playing';
   // ステージ構成・ウェーブ生成・ステージ専用タイマー(stages.ts参照)。
-  private readonly stageDirector = new StageDirector(
-    this.hud,
-    this.sfx,
-    (minDist?: number, maxDist?: number) => this.ammoResupply.spawnForPlayer(this.player, minDist, maxDist),
-  );
+  private readonly stageDirector: StageDirector;
   private simTime = 0;
   private lastSimDt = 0;
   private warpIdx = 0;
@@ -198,7 +194,14 @@ export class Game {
     this.scene = gs.scene;
     this.camera = gs.camera;
     this.renderer = gs.renderer;
-    this.stage = stage;
+
+    this.stageDirector = new StageDirector(
+      this.hud,
+      this.sfx,
+      stage,
+      (minDist?: number, maxDist?: number) => this.ammoResupply.spawnForPlayer(this.player, minDist, maxDist),
+    );
+
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this.sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
@@ -313,7 +316,7 @@ export class Game {
   }
 
   private spawnInitialEnemies(playerState: OrbitState): void {
-    for (const spec of this.stageDirector.makeEnemySpecs(playerState, this.stage)) {
+    for (const spec of this.stageDirector.makeEnemySpecs(playerState)) {
       const enemy = new Enemy(
         spec.name,
         spec.state,
@@ -336,8 +339,8 @@ export class Game {
 
   // ステージ別の初期弾薬・初期補給の配置と作戦目標のブリーフィング表示
   private initStage(): void {
-    const data = resolveStageInitData(this.stage, this.enemies.length);
-    const stageDef = getStageDefinition(this.stage);
+    const data = resolveStageInitData(this.stageDirector.stage, this.enemies.length);
+    const stageDef = getStageDefinition(this.stageDirector.stage);
     this.player.initAmmo(data.magsLeft, data.roundsInMag);
     if (stageDef.initAction === 'spawn-stage00-ammo') {
       this.stageDirector.spawnStage00InitialAmmo(this.stageCtx());
@@ -459,8 +462,7 @@ export class Game {
         });
     }
 
-    if (this.stage === -1) this.stageDirector.updateStage00(dt, this.stageCtx());
-    if (this.stage === 0) this.stageDirector.updateStage0Timer(dt, this.stageCtx());
+    this.stageDirector.update(dt, this.stageCtx());
   }
 
   private handlePausedFrame(): void {
@@ -554,7 +556,7 @@ export class Game {
       player: this.player,
       enemies: this.enemies,
       target: this.target,
-      stage: this.stage,
+      stage: this.stageDirector.stage,
       zoomActive: this.zoomActive,
       scene: this.scene,
       glowTex: this.glowTex,
@@ -614,7 +616,7 @@ export class Game {
       shots: this.combat.shots,
       kills: this.combat.kills,
       totalEnemies: this.enemies.length,
-      stage: this.stage,
+      stage: this.stageDirector.stage,
       stage00WaveCount: this.stageDirector.stage00WaveCount,
       stage0TimeLeft: this.stageDirector.stage0TimeLeft,
     };
@@ -662,7 +664,7 @@ export class Game {
     }
     this.updateAttitudes(Math.min(simDt, 0.12));
     this.cleanup();
-    if (this.stage === -1 && this.phase === 'playing' && canAct) {
+    if (this.stageDirector.stage === -1 && this.phase === 'playing' && canAct) {
       this.combat.updateEnemyAI(dt, this.combatCtx());
     }
   }
@@ -736,7 +738,7 @@ export class Game {
       return !expired;
     });
 
-    this.ammoResupply.cleanup(this.stage, this.player, (r) => this.altitudeOf(r));
+    this.ammoResupply.cleanup(this.stageDirector.stage, this.player, (r) => this.altitudeOf(r));
   }
 
   // --------------------------------------------------------- render sync
