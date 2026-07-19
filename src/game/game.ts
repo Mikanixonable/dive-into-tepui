@@ -1975,7 +1975,11 @@ export class Game {
     }
   }
 
-  private destroyShip(ship: Ship): void {
+  /**
+   * @param byPlayer true = 弾丸命中による正式撃破（kills に加算し勝利判定を行う）
+   *                 false = 再突入・空力分解など物理的消滅（カウントせず静かに除去）
+   */
+  private destroyShip(ship: Ship, byPlayer = true): void {
     ship.alive = false;
     ship.obj.visible = false;
     this.sfx.explosion();
@@ -1993,34 +1997,46 @@ export class Game {
       return;
     }
 
-    this.kills++;
-    this.hud.hint(`${ship.name} 撃破`);
+    if (byPlayer) {
+      // 弾丸命中による正式撃破のみカウント
+      this.kills++;
+      this.hud.hint(`${ship.name} 撃破`);
+    } else {
+      // 再突入・空力分解によるデスポーンは撃破に含めない
+      this.hud.hint(`${ship.name} 再突入により喪失`);
+    }
     if (this.target === ship) {
 
     }
     // ステージ00(無限サバイバル)とステージ0(時間制限スコアアタック)は、敵全滅でクリアにはならない
     if (this.stage !== 0 && this.stage !== -1 && this.enemies.every((e) => !e.alive)) {
-      this.phase = 'won';
-      this.sfx.setThrust(false);
-      this.sfx.stopBgm();
-      let unlockNote = '';
-      if (this.stage === 1) {
-        try {
-          const first = localStorage.getItem(C.STAGE1_CLEARED_KEY) !== '1';
-          localStorage.setItem(C.STAGE1_CLEARED_KEY, '1');
-          if (first) unlockNote = `<br><span style="color:${ACCENT}">第二ステージ(モルニヤ戦域)が解放された</span>`;
-        } catch {
-          /* localStorage 不可なら解放なし */
+      if (byPlayer) {
+        // 全機を自力で撃破した場合のみクリア
+        this.phase = 'won';
+        this.sfx.setThrust(false);
+        this.sfx.stopBgm();
+        let unlockNote = '';
+        if (this.stage === 1) {
+          try {
+            const first = localStorage.getItem(C.STAGE1_CLEARED_KEY) !== '1';
+            localStorage.setItem(C.STAGE1_CLEARED_KEY, '1');
+            if (first) unlockNote = `<br><span style="color:${ACCENT}">第二ステージ(モルニヤ戦域)が解放された</span>`;
+          } catch {
+            /* localStorage 不可なら解放なし */
+          }
         }
+        const acc = this.shots > 0 ? ((this.hits / this.shots) * 100).toFixed(1) : '0.0';
+        this.hud.showEnd(
+          true,
+          `全 ${this.enemies.length} 機撃破<br>` +
+          `ミッション時間 T+ ${Math.floor(this.simTime / 3600)}h ${Math.floor((this.simTime % 3600) / 60)}m ${Math.floor(this.simTime % 60)}s<br>` +
+          `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)` +
+          unlockNote,
+        );
+      } else {
+        // 再突入等で全機消滅しても勝利にはしない（残存機ゼロだが kills < enemies.length）
+        // 継続してプレイングを続けさせる（そもそも alive === false なので弾も当たらない）
       }
-      const acc = this.shots > 0 ? ((this.hits / this.shots) * 100).toFixed(1) : '0.0';
-      this.hud.showEnd(
-        true,
-        `全 ${this.enemies.length} 機撃破<br>` +
-        `ミッション時間 T+ ${Math.floor(this.simTime / 3600)}h ${Math.floor((this.simTime % 3600) / 60)}m ${Math.floor(this.simTime % 60)}s<br>` +
-        `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)` +
-        unlockNote,
-      );
     }
   }
 
@@ -2107,7 +2123,8 @@ export class Game {
     }
     for (const e of this.enemies) {
       if (e.alive && this.altitudeOf(e.state.r) < C.REENTRY_ALT) {
-        this.destroyShip(e);
+        // 再突入による空力分解はプレイヤーによる撃破ではないためカウントしない
+        this.destroyShip(e, false);
       }
     }
 
