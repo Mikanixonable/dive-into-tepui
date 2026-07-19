@@ -38,7 +38,11 @@
 `hud.ts` / `planner.ts` / `audio.ts` にも同様の掃き出しを行うが、描画レイアウト専用の
 数値はファイルローカル定数に留める(const.ts をレイアウト値で汚さない)。
 
-## ステップ 3. game.ts の責務分割(大・中リスク) — 本丸
+## ステップ 3. game.ts の責務分割(大・中リスク) — 本丸 — ✅ 完了 (2026-07-19)
+
+実績: belt.ts(272行)/ stages.ts(436行)/ combat.ts(586行)/ environment.ts(189行)/
+markers.ts(489行)を切り出し、game.ts は 3,356 → 1,811 行。resolvePhysicalCollisions と
+syncRender 系(軌道線・カメラ・シーン変異)は密結合のため game.ts に残置(計画どおり)。
 
 3,356 行の `Game` クラスを、planner/mapview と同じ「Ctx 注入・game.ts を import しない」
 方式でモジュールへ切り出す。1 モジュール = 1 コミットで段階的に:
