@@ -11,7 +11,7 @@ import * as C from './const';
 import { CombatCtx, CombatSystem } from './combat/combat';
 import { Bullet, Casing, DebrisPiece, Enemy, MagPickup, OrbitEntity } from './entities';
 import { EphemerisSystem } from './ephemeris';
-import { Player } from './player';
+import { Player } from './player/player';
 import { ThermalSystem } from './thermal';
 import { Vec3 } from '../physics/nbody/bodies';
 

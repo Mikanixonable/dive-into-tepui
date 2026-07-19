@@ -11,7 +11,7 @@ import * as C from '../game/const';
 import { Enemy, MagPickup, Ship } from '../game/entities';
 import { MarkerManager } from './markerManager';
 import { fmtMarkerDist } from './utils';
-import { Player } from '../game/player';
+import { Player } from '../game/player/player';
 
 export type ProjectFn = (rel: Vec3) => { x: number; y: number; front: boolean };
 
