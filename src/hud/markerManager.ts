@@ -1,5 +1,6 @@
-// HUD のスクリーン投影マーカー管理(旧 Hud.marker/hideMarker/resolveMarkerCollisions)。
-// マーカー DOM 要素の生成・更新と、ラベル衝突回避のための SVG 引き出し線描画を担う。
+// HUD のスクリーン投影マーカー管理。マーカー DOM 要素の生成・更新と、
+// ラベル衝突回避のための SVG 引き出し線描画を担う。利用側は Hud.markers から
+// 直接 set/hide/resolveCollisions を呼ぶ(Hud を経由した委譲はしない)。
 
 function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLElement {
   const e = document.createElement(tag);
@@ -19,7 +20,7 @@ export class MarkerManager {
   ) {}
 
   // マーカー(スクリーン座標)。visible=false で非表示。
-  marker(
+  set(
     key: string,
     cls: string,
     sym: string,
@@ -63,12 +64,12 @@ export class MarkerManager {
     }
   }
 
-  hideMarker(key: string): void {
+  hide(key: string): void {
     const m = this.markers.get(key);
     if (m) m.root.style.display = 'none';
   }
 
-  resolveMarkerCollisions(): void {
+  resolveCollisions(): void {
     const active: { m: any; ox: number; oy: number; w: number; h: number; dx: number; dy: number }[] = [];
 
     // 1. Gather active markers and their estimated label bounding boxes

@@ -1,14 +1,14 @@
 import { sampleAt } from '../physics/predict';
 import { Vec3, sub } from '../physics/vec3';
 import { TrajLine } from '../render/trajline';
-import { Hud } from '../hud/hud';
+import { MarkerManager } from '../hud/markerManager';
 import { MapPlanner, PlannerCtx, ProjectFn } from './planner';
 
 export class TrajectoryOverlay {
   readonly line = new TrajLine();
 
   constructor(
-    private readonly hud: Hud,
+    private readonly markers: MarkerManager,
     private readonly planner: MapPlanner,
   ) {}
 
@@ -31,7 +31,7 @@ export class TrajectoryOverlay {
   ): void {
     if (!mapMode) {
       this.line.setVisible(false);
-      this.hud.hideMarker('ghost');
+      this.markers.hide('ghost');
       return;
     }
     this.line.setVisible(true);
@@ -41,18 +41,18 @@ export class TrajectoryOverlay {
       this.planner.trajGeomDirty = false;
     }
     if (sliderT <= 0 || this.planner.trajSamples.length <= 0) {
-      this.hud.hideMarker('ghost');
+      this.markers.hide('ghost');
       return;
     }
     const duration = this.predictDurationSec(plannerCtx);
     const t = displayTime(simTime, duration);
     const sample = sampleAt(this.planner.trajSamples, t);
     if (!sample) {
-      this.hud.hideMarker('ghost');
+      this.markers.hide('ghost');
       return;
     }
     const p = project(sub(this.planner.toDisplayFrame(sample.r, t, plannerCtx), origin));
-    this.hud.marker('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.planner.ghostLabel(plannerCtx, sliderT));
+    this.markers.set('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.planner.ghostLabel(plannerCtx, sliderT));
   }
 
   private rebuildGeometry(plannerCtx: PlannerCtx): void {

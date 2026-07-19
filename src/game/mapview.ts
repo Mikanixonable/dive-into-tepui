@@ -76,9 +76,9 @@ export class MapView {
       const wp = sub(lbl.pos, o);
       const p = project(wp);
       if (p && p.front) {
-        this.hud.marker(lbl.id, 'poi', '●', p.x, p.y, true, lbl.name);
+        this.hud.markers.set(lbl.id, 'poi', '●', p.x, p.y, true, lbl.name);
       } else {
-        this.hud.marker(lbl.id, 'poi', '●', 0, 0, false, lbl.name);
+        this.hud.markers.set(lbl.id, 'poi', '●', 0, 0, false, lbl.name);
       }
     }
   }

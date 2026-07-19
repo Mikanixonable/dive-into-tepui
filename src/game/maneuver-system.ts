@@ -24,7 +24,7 @@ export class ManeuverSystem {
   ) {
     this.planner = new MapPlanner(hud, sfx);
     this.mapView = new MapView(hud);
-    this.trajOverlay = new TrajectoryOverlay(hud, this.planner);
+    this.trajOverlay = new TrajectoryOverlay(hud.markers, this.planner);
     this.mapModeController = new MapModeController(hud, this.planner);
   }
 
