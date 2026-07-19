@@ -145,12 +145,14 @@ export class TouchControls {
     };
 
     // 並進 (RCS): 上段 = 上/前/下, 下段 = 左/後/右
+    // Q/E は今回から前後並進の連続入力専用キーに戻り、handleEdgeInput 側にエッジ
+    // トリガの case が無いため、タップしても副作用(RCS制動トグル等)は起きない。
     mkPad('touch-pad-move', [
-      { code: 'KeyQ', glyph: '▲', label: '上' },
-      { code: 'KeyW', glyph: '●', label: '前' },
-      { code: 'KeyE', glyph: '▼', label: '下' },
+      { code: 'KeyW', glyph: '▲', label: '上' },
+      { code: 'KeyQ', glyph: '●', label: '前' },
+      { code: 'KeyS', glyph: '▼', label: '下' },
       { code: 'KeyA', glyph: '◀', label: '左' },
-      { code: 'KeyS', glyph: '○', label: '後' },
+      { code: 'KeyE', glyph: '○', label: '後' },
       { code: 'KeyD', glyph: '▶', label: '右' },
     ]);
 

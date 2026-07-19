@@ -16,6 +16,7 @@ export interface StatsData {
   magsLeft: number; // ベルトの未使用マガジン数
   reloadTimer: number; // リロード(バレル交換)中の残り時間
   alt: number;
+  altDescending: boolean;
   spd: number;
   apAlt: number;
   peAlt: number;
@@ -194,6 +195,11 @@ const STYLE = `
   border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
 }
 #hud-settings .stoggle.on { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud-settings .squit {
+  margin-top: 14px; text-align: center; padding: 8px 10px; cursor: pointer;
+  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT}; font-size: 12px;
+}
+#hud-settings .squit:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
 #hud-settings .sclose {
   margin-top: 10px; text-align: center; color: ${INK_SOFT}; font-size: 11px; cursor: pointer;
 }
@@ -262,6 +268,11 @@ export class Hud {
   private toastUntil = 0;
   private bgmOn = true;
   onBgmToggle: ((on: boolean) => void) | null = null;
+  // 一時停止メニュー(旧 [P] を統合した [Esc]/⚙設定パネル)の開閉状態が変化した際に呼ぶ。
+  // ゲーム側はこれを HP自動回復・時間経過の一時停止フラグ (paused) に同期させる。
+  onSettingsOpenChange: ((open: boolean) => void) | null = null;
+  // 「ゲームを中断してタイトル画面に戻る」ボタン
+  onQuitToTitle: (() => void) | null = null;
   // 軌道計画モードのマップツールバー(期間選択・スライダー・座標系トグル)
   onDurationSelect: ((key: string) => void) | null = null;
   onFrameToggle: (() => void) | null = null;
@@ -324,7 +335,7 @@ export class Hud {
 
     const controls = el('div', 'hud-controls', this.root);
     controls.innerHTML =
-      'W/S/A/D/Q/E:並進 &nbsp;I/K/J/L/U/O:回転 &nbsp;1/2/3:並進出力 &nbsp;C:進行方向ホールド &nbsp;G:視点のRCS追従 &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
+      'W/S:上下 &nbsp;Q/E(またはCTRL/SHIFT):前後 &nbsp;A/D:左右 &nbsp;I/K/J/L/U/O:回転 &nbsp;1/2/3:並進出力 &nbsp;T:RCS制動 &nbsp;F:プログレードリセット &nbsp;C:進行方向ホールド &nbsp;G:視点のRCS追従 &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
       'Space/右クリック:射撃 &nbsp;左ドラッグ/矢印キー:視点 &nbsp;中ドラッグ:マップ平行移動 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
 
     const plan = el('div', 'hud-plan', this.root, 'panel');
@@ -389,13 +400,17 @@ export class Hud {
 
     const settings = el('div', 'hud-settings', this.root, 'panel');
     settings.innerHTML = `
-      <h3>設定</h3>
+      <h3>一時停止 / 設定</h3>
       <div class="srow"><span class="k">BGM</span><span class="stoggle" data-id="bgmtoggle">ON</span></div>
+      <div class="squit" data-id="settingsquit">ゲームを中断してタイトル画面に戻る</div>
       <div class="sclose" data-id="settingsclose">[閉じる]</div>`;
     settings.querySelector<HTMLElement>('[data-id="bgmtoggle"]')!.addEventListener('click', () => {
       const on = !this.bgmOn;
       this.setBgmState(on);
       if (this.onBgmToggle) this.onBgmToggle(on);
+    });
+    settings.querySelector<HTMLElement>('[data-id="settingsquit"]')!.addEventListener('click', () => {
+      this.onQuitToTitle?.();
     });
     settings.querySelector<HTMLElement>('[data-id="settingsclose"]')!.addEventListener('click', () =>
       this.toggleSettings(false),
@@ -408,14 +423,15 @@ export class Hud {
     help.innerHTML = `
       <h3>操作方法 [H で閉じる]</h3>
       <table>
-        <tr><td class="key">W / S</td><td>並進 (前 / 後)</td></tr>
+        <tr><td class="key">Q / E (または CTRL / SHIFT)</td><td>並進 (前 / 後)</td></tr>
+        <tr><td class="key">W / S</td><td>並進 (上 / 下)</td></tr>
         <tr><td class="key">A / D</td><td>並進 (左 / 右)</td></tr>
-        <tr><td class="key">Q / E</td><td>並進 (上 / 下)</td></tr>
         <tr><td class="key">I / K</td><td>ピッチ (機首下げ / 上げ)</td></tr>
         <tr><td class="key">J / L</td><td>ヨー (右 / 左)</td></tr>
         <tr><td class="key">O / U</td><td>ロール (右 / 左)</td></tr>
         <tr><td class="key">T</td><td>RCS 回転制動 ON/OFF</td></tr>
-        <tr><td class="key">1 / 2 / 3</td><td>並進出力の切替 (弱 / 中 / 強)。W/S/A/D/Q/E の全 6 方向に共通で適用される</td></tr>
+        <tr><td class="key">F</td><td>プログレード姿勢リセット (機首を進行方向へ即座に向ける)</td></tr>
+        <tr><td class="key">1 / 2 / 3</td><td>並進出力の切替 (弱 / 中 / 強)。W/S/A/D の並進 4 方向に共通で適用される</td></tr>
         <tr><td class="key">V</td><td>姿勢微調整モード ON/OFF (角加速度・角速度を絞って小刻みに操作)</td></tr>
         <tr><td class="key">C</td><td>進行方向ホールド ON/OFF (機首をプログレード方向へ自動で向け続ける。手動回転で解除)</td></tr>
         <tr><td class="key">G</td><td>視点のRCS追従 ON/OFF (既定 ON: 視点が機体姿勢を基準に回転し、RCS操作と一体的に動く。OFF で従来の軌道基準の独立視点に戻る)</td></tr>
@@ -423,10 +439,10 @@ export class Hud {
         <tr><td class="key">右クリック (敵)</td><td>敵をターゲット固定 / 解除 (固定中はターゲット名が画面右上に表示される)</td></tr>
         <tr><td class="key">▲AN / ▽DN マーカー</td><td>自機軌道とターゲット軌道面の交点。面変更(ノーマル/アンチノーマル)burn の目安位置</td></tr>
         <tr><td class="key">✦ マーカー</td><td>ターゲット位置に自機側を向けた仮想標的面を弾が通過した点。次弾の照準修正の目安</td></tr>
-        <tr><td class="key">方向マーカー</td><td>W/S (PRO/RET), A/D (NRM/ANM), Q/E (OUT/IN) 方向を示すマーカー</td></tr>
+        <tr><td class="key">方向マーカー</td><td>Q/E (PRO/RET), A/D (NRM/ANM), W/S (OUT/IN) 方向を示すマーカー</td></tr>
         <tr><td class="key">M</td><td>軌道計画モード。地球中心ビューで数値予測した軌道(折れ線)をクリックしてノードを複数配置でき、再度 M で確定(時間は進み続けるのでワープも可)</td></tr>
         <tr><td class="key">ノードのドラッグ</td><td>ノード上の丸ハンドルをドラッグすると、ポインタに最も近い軌道上の時刻へノードを移動する(小さな動きはドラッグでなくクリック=選択として扱う)</td></tr>
-        <tr><td class="key">Δv 矢印ハンドル</td><td>選択中ノードの周囲に PRO/RET・NRM/ANM・OUT/IN の6ハンドルを表示。ドラッグした向きに応じて対応する Δv 成分を増減する(W/S・A/D・Q/E キーでも同じ成分を調整可能、[V] で微調整)</td></tr>
+        <tr><td class="key">Δv 矢印ハンドル</td><td>選択中ノードの周囲に PRO/RET・NRM/ANM・OUT/IN の6ハンドルを表示。ドラッグした向きに応じて対応する Δv 成分を増減する(マップモード中のみ W/S・A/D・Q/E キーでも同じ成分を調整可能、[V] で微調整)</td></tr>
         <tr><td class="key">1周回/1日/7日/28日</td><td>マップモード下部のボタンで予測期間を切替(1周回は現在の周期、双曲線等では1日にフォールバック)</td></tr>
         <tr><td class="key">スライダー</td><td>予測期間内の任意の時刻へゴースト位置(⬡)を表示(0で非表示)</td></tr>
         <tr><td class="key">慣性系/太陽回転系</td><td>マップモードの表示座標系を切替。太陽回転系では太陽方向が画面上でほぼ固定される(遷移計画の目安)</td></tr>
@@ -438,10 +454,9 @@ export class Hud {
         <tr><td class="key">弾薬 / ▣ AMMO</td><td>16発でマガジン1連を消費(右舷のベルトから自動給弾)。残弾が少なくなると付近の軌道に補給が投入されるので、▣ マーカーへ接近して回収</td></tr>
         <tr><td class="key">Space / 右クリック</td><td>機関砲発射 (ワープ×4以下)。撃ち始めは起動音とともに一瞬遅れて連射開始</td></tr>
         <tr><td class="key">, / .</td><td>タイムワープ 減 / 増</td></tr>
-        <tr><td class="key">P</td><td>一時停止</td></tr>
         <tr><td class="key">左ドラッグ / ホイール</td><td>カメラ回転 / 距離ズーム</td></tr>
         <tr><td class="key">矢印キー</td><td>マウスの代わりにキーボードで視点回転</td></tr>
-        <tr><td class="key">Esc / ⚙</td><td>設定画面(BGM ON/OFF)を開閉</td></tr>
+        <tr><td class="key">Esc / ⚙</td><td>一時停止メニュー (設定 / タイトルへ戻る)</td></tr>
       </table>`;
 
     el('div', 'hud-end', this.root);
@@ -499,6 +514,8 @@ export class Hud {
       }
     }
     this.setText('alt', fmtDist(d.alt));
+    const altEl = this.els.get('alt');
+    if (altEl) altEl.classList.toggle('warn-hot', d.altDescending);
     this.setText('spd', fmtSpeed(d.spd));
     this.setText('ap', fmtDist(d.apAlt));
     this.setText('pe', fmtDist(d.peAlt));
@@ -805,12 +822,17 @@ export class Hud {
     if (e) e.style.display = e.style.display === 'block' ? 'none' : 'block';
   }
 
-  // 設定パネルの開閉。force を渡すとその状態に固定する。
+  // 設定パネル(一時停止メニュー)の開閉。force を渡すとその状態に固定する。
+  // ⚙ギアクリック・[閉じる]クリック・[Esc]キーいずれの経路でも同じここを通るので、
+  // onSettingsOpenChange 経由でゲーム側の一時停止フラグを漏れなく同期できる。
   toggleSettings(force?: boolean): void {
     const e = document.getElementById('hud-settings');
     if (!e) return;
-    const show = force !== undefined ? force : e.style.display !== 'block';
+    const wasOpen = e.style.display === 'block';
+    const show = force !== undefined ? force : !wasOpen;
+    if (show === wasOpen) return;
     e.style.display = show ? 'block' : 'none';
+    this.onSettingsOpenChange?.(show);
   }
 
   // BGM トグル表示の反映(実際の再生制御は呼び出し側の Sfx が行う)

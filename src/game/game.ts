@@ -233,10 +233,16 @@ export class Game {
   private camFollowAttitude = true;
   private zoomActive = false;
   private wasFiring = false;
+  // 前フレームの射撃状態(ズームウィンドウ/PIPの表示条件と同一)。立ち下がり検出用。
+  private prevFiringForPip = false;
 
   private hullTemp = C.HULL_START_TEMP;
   private qdyn = 0;
   private heatWarned = false;
+  private altEma = NaN; // 高度の指数移動平均(離心率によるふらつきを均す)
+  private altRateEma = 0; // 高度変化率の指数移動平均 [m/s]
+  private altDescendWarned = false;
+  private altAlarmHintCd = 0; // 再警告までのクールダウン [s]
   private lostReason = '大気圏に突入し機体を喪失した';
 
 
@@ -307,6 +313,14 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.hud.setBgmState(this.sfx.isBgmEnabled());
     this.hud.onBgmToggle = (on) => this.sfx.setBgmEnabled(on);
+    // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
+    this.hud.onSettingsOpenChange = (open) => {
+      this.paused = open;
+    };
+    // 「ゲームを中断してタイトル画面に戻る」— ?stage= クエリを落として選択画面へ
+    this.hud.onQuitToTitle = () => {
+      location.assign(location.pathname);
+    };
 
     // --- 環境 ---
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
@@ -511,6 +525,14 @@ export class Game {
   public get playerShipObj(): THREE.Object3D { return this.player.obj; }
   public get activeCamera(): THREE.PerspectiveCamera {
     return this.mapMode ? this.mapView.camera : this.camera;
+  }
+
+  // ズームウィンドウ(PIP)描画中、マズルフラッシュを非表示にする(main.ts の PIP パスから
+  // playerShipObj.visible=false と同じタイミングで呼ばれる)。this.effects には被弾スパーク・
+  // 撃破爆発のフラッシュも入っているため、muzzle フラグ付きのものだけを切り替える
+  // (ズーム中でも敵側の命中・爆発の閃光は照準フィードバックとして見せたい)。
+  public setFlashesVisible(v: boolean): void {
+    for (const fx of this.effects) if (fx.muzzle) fx.mesh.visible = v;
   }
 
   // 機首をプログレード、背を天頂に向けた初期姿勢
@@ -888,8 +910,8 @@ export class Game {
     this.zoomActive = !this.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
 
-    // HP自動回復 (1秒間に1回復)
-    if (this.phase === 'playing' && this.player.alive && this.player.hp > 0 && this.player.hp < this.player.maxHp) {
+    // HP自動回復 (1秒間に1回復)。一時停止メニュー表示中は回復も止める。
+    if (!this.paused && this.phase === 'playing' && this.player.alive && this.player.hp > 0 && this.player.hp < this.player.maxHp) {
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + dt);
     }
     if (this.phase !== 'playing' && this.mapMode) {
@@ -981,11 +1003,17 @@ export class Game {
       this.thrustAccelVec = v3();
       this.input.takeClicks();
       this.input.takeRightClicks();
+      // ポーズ中/非プレイ中はズームウィンドウ(PIP)を閉じ、連動する微動モードも解除する
+      this.wasFiring = false;
     }
     if (this.phase !== 'playing') {
       // 撃破後もデブリ等は流し続ける(演出)
       this.coastWorld(dt);
     }
+    // ズームウィンドウ(PIP)は isFiring(=wasFiring) の間だけ表示される。その立ち下がりで
+    // 微動モードも自動解除する(射撃開始時の自動 fineAttitude=true と対になる挙動)。
+    if (this.prevFiringForPip && !this.wasFiring) this.fineAttitude = false;
+    this.prevFiringForPip = this.wasFiring;
     this.syncRender(dt);
   }
 
@@ -999,6 +1027,10 @@ export class Game {
         case 'KeyT':
           this.rcsDamp = !this.rcsDamp;
           this.hud.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
+          break;
+        case 'KeyF':
+          this.progradeHold = true;
+          this.hud.hint('プログレード姿勢リセット(機首を進行方向へ)');
           break;
         case 'KeyV':
           this.fineAttitude = !this.fineAttitude;
@@ -1075,14 +1107,11 @@ export class Game {
             this.hud.hint('マニューバ計画を破棄');
           }
           break;
-        case 'KeyP':
-          this.paused = !this.paused;
-          break;
         case 'KeyH':
           this.hud.toggleHelp();
           break;
         case 'Escape':
-          this.hud.toggleSettings();
+          this.toggleEscMenu();
           break;
         case 'KeyR':
           if (this.phase !== 'playing') {
@@ -1101,6 +1130,13 @@ export class Game {
           break;
       }
     }
+  }
+
+  // 一時停止メニュー(旧 [P] 一時停止と [Esc] 設定パネルを統合)。force を渡すと
+  // その開閉状態に固定する(⚙ギアクリック等、hud 側の操作でも paused を同期させるため
+  // onSettingsOpenChange 経由でも呼ばれる — 実際の開閉状態変更はそちらが担う)。
+  private toggleEscMenu(force?: boolean): void {
+    this.hud.toggleSettings(force);
   }
 
   // ------------------------------------------------------- maneuver planning
@@ -1268,6 +1304,7 @@ export class Game {
     }
     this.lastSimDt = simDt;
     this.checkThermalLimits();
+    this.updateAltitudeAlarm(dt);
     this.updateAmmoLogistics(dt);
     // 剛体衝突(薬莢・マガジンベルト等)はワープ ×4 以下(操縦可能な範囲)でのみ解決する。
     // 高ワープ中はサブステップが最大20秒に及び、反発処理も薬莢多数だと O(N²) で
@@ -1527,6 +1564,36 @@ export class Game {
     }
   }
 
+  // 高度低下(降下)の検知と警告。離心率による短周期の高度振動で誤反応しないよう
+  // 高度・変化率とも指数移動平均で平滑化する(時定数 約3秒)。
+  private updateAltitudeAlarm(dt: number): void {
+    if (!this.player.alive) return;
+    const alt = this.altitudeOf(this.player.state.r);
+    if (!isFinite(this.altEma)) this.altEma = alt;
+    const prevEma = this.altEma;
+    const k = Math.min(1, dt / 3);
+    this.altEma += (alt - this.altEma) * k;
+    if (dt > 1e-6) {
+      const rate = (this.altEma - prevEma) / dt;
+      this.altRateEma += (rate - this.altRateEma) * k;
+    }
+    if (this.altRateEma < -3) {
+      if (!this.altDescendWarned) {
+        this.altDescendWarned = true;
+        this.altAlarmHintCd = 0;
+      }
+      if (this.altAlarmHintCd <= 0) {
+        this.hud.hint('警告: 高度低下中', 3000);
+        this.sfx.altAlarm();
+        this.altAlarmHintCd = 15;
+      } else {
+        this.altAlarmHintCd -= dt;
+      }
+    } else if (this.altRateEma > -1) {
+      this.altDescendWarned = false;
+    }
+  }
+
   // 勝敗確定後もデブリ・薬莢・弾を漂わせる
   private coastWorld(dt: number): void {
     const simDt = dt * Math.min(this.warp(), 4);
@@ -1551,8 +1618,12 @@ export class Game {
     const i = this.input;
     const manual = this.mapMode ? 0 : 1;
     const axX = ((i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0)) * manual; // 左(X)/右(-X) => A(1)/D(-1)
-    const axY = ((i.down('KeyQ') ? 1 : 0) + (i.down('KeyE') ? -1 : 0)) * manual; // 上/下 (Q=上昇, E=下降)
-    const axZ = ((i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0)) * manual; // 前/後 (W=前進, S=後進)
+    const axY = ((i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0)) * manual; // 上/下 (W=上昇, S=下降)
+    // 前後: Q/E に加え、CTRL=前進・SHIFT=後退を同義語として受け付ける
+    const axZ =
+      ((i.down('KeyQ') || i.down('ControlLeft') || i.down('ControlRight') ? 1 : 0) +
+        (i.down('KeyE') || i.down('ShiftLeft') || i.down('ShiftRight') ? -1 : 0)) *
+      manual; // 前/後 (Q/CTRL=前進, E/SHIFT=後進)
 
     if (axX === 0 && axY === 0 && axZ === 0) return null;
 
@@ -1730,6 +1801,7 @@ export class Game {
       0.07,
       0xfff0b8,
       this.zoomActive ? C.ZOOM_MUZZLE_FLASH_SCALE : 1,
+      true, // マズルフラッシュ: PIP 描画時のみ非表示化の対象
     );
 
     this.shots++;
@@ -2005,9 +2077,10 @@ export class Game {
     duration: number,
     color: number,
     peakOpacity = 1,
+    muzzle = false,
   ): void {
     const mesh = buildFlashMesh(this.glowTex, color);
-    const fx: FlashEffect = { mesh, pos, vel, age: 0, duration, size0, size1, peakOpacity };
+    const fx: FlashEffect = { mesh, pos, vel, age: 0, duration, size0, size1, peakOpacity, muzzle };
     this.effects.push(fx);
     this.scene.add(mesh);
   }
@@ -2770,9 +2843,9 @@ export class Game {
       const DIST = 5e4; // 遠方に投影して方向を示す
 
       const pro = this.project(scale(proDir, DIST));
-      this.hud.marker('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PROGRADE [W]');
+      this.hud.marker('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PROGRADE [Q]');
       const ret = this.project(scale(proDir, -DIST));
-      this.hud.marker('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RETROGRADE [S]');
+      this.hud.marker('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RETROGRADE [E]');
 
       const nrm = this.project(scale(nrmDir, DIST));
       this.hud.marker('nrm', 'mk-nrm', '▲', nrm.x, nrm.y, nrm.front, 'NORMAL [A]');
@@ -2780,9 +2853,9 @@ export class Game {
       this.hud.marker('anm', 'mk-nrm', '▽', anm.x, anm.y, anm.front, 'ANTINORMAL [D]');
 
       const radOut = this.project(scale(radDir, DIST));
-      this.hud.marker('radout', 'mk-rad', '◎', radOut.x, radOut.y, radOut.front, 'RADIAL OUT [Q]');
+      this.hud.marker('radout', 'mk-rad', '◎', radOut.x, radOut.y, radOut.front, 'RADIAL OUT [W]');
       const radIn = this.project(scale(radDir, -DIST));
-      this.hud.marker('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'RADIAL IN [E]');
+      this.hud.marker('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'RADIAL IN [S]');
 
       if (tgt) {
         const tgtDir = norm(sub(tgt.state.r, o));
@@ -3006,6 +3079,55 @@ export class Game {
     return best;
   }
 
+  // ズームウィンドウ(PIP)のオーバーレイ: ターゲット菱形枠と LEAD マーカーを PIP の
+  // 矩形内に描く。main.ts が PIP 用に activeCamera を一時的にポーズして render() した
+  // 直後、カメラを元の位置・姿勢へ復元する前に rect を渡して呼ぶ。PIP を描画しない
+  // フレームでは rect=null で呼び、両マーカーを隠す。
+  // (この段階でカメラは PIP 用の position/quaternion/fov/aspect に設定済みで、
+  //  renderer.render() 済みなので matrixWorldInverse/projectionMatrix は最新のはず。
+  //  念のため updateMatrixWorld() を呼んでから使う。)
+  public updatePipOverlay(rect: { x: number; y: number; w: number; h: number } | null): void {
+    const tgt = this.target;
+    if (!rect || !tgt || !tgt.alive || !this.player.alive) {
+      this.hud.hideMarker('pip-tgt');
+      this.hud.hideMarker('pip-lead');
+      return;
+    }
+    const cam = this.activeCamera;
+    cam.updateMatrixWorld();
+    const o = this.player.state.r;
+    const pv = this.player.state.v;
+
+    const projectPip = (rel: Vec3): { x: number; y: number; front: boolean } => {
+      tmpV2.set(rel.x, rel.y, rel.z).applyMatrix4(cam.matrixWorldInverse);
+      const front = tmpV2.z < 0;
+      tmpV2.applyMatrix4(cam.projectionMatrix);
+      return {
+        x: rect.x + (tmpV2.x * 0.5 + 0.5) * rect.w,
+        y: rect.y + (-tmpV2.y * 0.5 + 0.5) * rect.h,
+        front,
+      };
+    };
+    const inRect = (p: { x: number; y: number; front: boolean }): boolean =>
+      p.front && p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h;
+
+    const relP = sub(tgt.state.r, o);
+    const p = projectPip(relP);
+    // ラベル無し(''): resolveMarkerCollisions の押し退け対象から自然に除外される
+    this.hud.marker('pip-tgt', 'mk-target', '◇', p.x, p.y, inRect(p), '');
+
+    const hexColor = tgt.accent ? '#' + tgt.accent.toString(16).padStart(6, '0') : '#ff6a00';
+    const relV = sub(tgt.state.v, pv);
+    const t = this.solveLeadTime(relP, relV, C.MUZZLE_SPEED);
+    if (t !== null && t < 25) {
+      const lead = addScaled(relP, relV, t);
+      const lp = projectPip(lead);
+      this.hud.marker('pip-lead', 'mk-lead', '✛', lp.x, lp.y, inRect(lp), '', 1, hexColor);
+    } else {
+      this.hud.hideMarker('pip-lead');
+    }
+  }
+
   private updateHudPanels(
     dt: number,
     playerEl: ReturnType<typeof elementsFromState>,
@@ -3034,6 +3156,7 @@ export class Game {
         magsLeft: this.magsLeft,
         reloadTimer: this.reloadTimer,
         alt: this.altitudeOf(this.player.state.r),
+        altDescending: this.altDescendWarned,
         spd: len(this.player.state.v),
         apAlt: playerEl ? playerEl.apAlt : NaN,
         peAlt: playerEl ? playerEl.peAlt : NaN,
