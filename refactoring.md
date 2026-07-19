@@ -65,11 +65,13 @@ syncRender 系(軌道線・カメラ・シーン変異)は密結合のため gam
 
 各切り出しで CLAUDE.md の該当セクションを更新する。
 
-## ステップ 4. hud.ts の整理(中・低リスク)
+## ステップ 4. hud.ts の整理(中・低リスク) — ✅ 完了 (2026-07-19)
 
-876 行の `Hud` を、DOM 構築(constructor 内の巨大な innerHTML 組み立て)/ パネル更新
-(`setStats` 等)/ マーカー管理(`marker` / `resolveMarkerCollisions`)の 3 つの関心に
-ファイル内セクション分け、必要ならファイル分割。テーマ値は引き続き `theme.ts` のみ参照。
+実績: `hud/dom.ts`(静的 DOM/スタイル構築、旧 constructor 本体)と `hud/markers.ts`
+(`MarkerManager`: マーカー管理)にファイル分割。`hud.ts` はパネル更新・トースト・
+ヘルプ・設定・終了画面と、`MarkerManager` への委譲メソッドのみを残し 876 → 約 400 行。
+公開 API(メソッド名・シグネチャ)は不変のため呼び出し側(game.ts 等)への diff はゼロ。
+テーマ値は引き続き `theme.ts` のみ参照。
 
 ## ステップ 5. 物理関数の回帰テスト整備(中・低リスク)
 
