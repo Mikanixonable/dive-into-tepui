@@ -159,10 +159,26 @@ export function buildStage0EnemyShip(accent = 0x3dc6ff, typeIndex = 0): THREE.Gr
   return g;
 }
 
-export function buildBulletMesh(): THREE.Mesh {
+export function buildBulletMesh(): THREE.Group {
   const m = parseBullet();
   m.frustumCulled = false;
-  return m;
+
+  // 敵のプラズマ弾と同様、自機の弾丸にも光芒(半透明の加算合成ハロー)を付ける
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: 0xffc86e,
+    transparent: true,
+    opacity: 0.35,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const haloGeom = new THREE.CylinderGeometry(0.5, 0.5, 7, 8);
+  haloGeom.rotateX(Math.PI / 2); // 進行方向(Z軸)に合わせる
+  const halo = new THREE.Mesh(haloGeom, haloMat);
+
+  const g = new THREE.Group();
+  g.add(m);
+  g.add(halo);
+  return g;
 }
 
 let plasmaGeomFixed = false;

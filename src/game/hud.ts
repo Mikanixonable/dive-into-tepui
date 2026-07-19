@@ -335,7 +335,7 @@ export class Hud {
 
     const controls = el('div', 'hud-controls', this.root);
     controls.innerHTML =
-      'W/S:上下 &nbsp;Q/E(またはCTRL/SHIFT):前後 &nbsp;A/D:左右 &nbsp;I/K/J/L/U/O:回転 &nbsp;1/2/3:並進出力 &nbsp;T:RCS制動 &nbsp;F:プログレードリセット &nbsp;C:進行方向ホールド &nbsp;G:視点のRCS追従 &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
+      'W/S(またはCTRL/SHIFT):前後 &nbsp;Q/E:上下 &nbsp;A/D:左右 &nbsp;I/K/J/L/U/O:回転 &nbsp;1/2/3:並進出力 &nbsp;T:RCS制動 &nbsp;F:プログレードリセット &nbsp;C:進行方向ホールド &nbsp;G:視点のRCS追従 &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
       'Space/右クリック:射撃 &nbsp;左ドラッグ/矢印キー:視点 &nbsp;中ドラッグ:マップ平行移動 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
 
     const plan = el('div', 'hud-plan', this.root, 'panel');
