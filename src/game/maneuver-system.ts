@@ -1,6 +1,6 @@
 import { Vec3 } from '../physics/vec3';
 import * as C from './const';
-import { Hud } from './hud';
+import { Hud } from '../hud/hud';
 import { Sfx } from './audio';
 import { MapPlanner, PlannerCtx, ProjectFn } from './planner';
 import { MapView } from './mapview';

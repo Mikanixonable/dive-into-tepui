@@ -2,8 +2,8 @@ import { Elements } from '../physics/orbital';
 import { Vec3 } from '../physics/vec3';
 import { Hud } from './hud';
 import { MarkersCtx, MarkersSystem, ProjectFn as MarkerProjectFn } from './markers';
-import { MapPlanner, PlannerCtx } from './planner';
-import { OrbitLineSystem, OrbitLineUpdateCtx } from './orbit-line-system';
+import { MapPlanner, PlannerCtx } from '../game/planner';
+import { OrbitLineSystem, OrbitLineUpdateCtx } from '../game/orbit-line-system';
 
 interface HudSyncCtx {
   dt: number;
