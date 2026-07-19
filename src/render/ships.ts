@@ -175,7 +175,7 @@ export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Group {
   // スケールを大きくして視認性を上げる
   m.scale.set(1.5, 1.5, 1.5);
   
-  // 遠くからでも見やすいように大きめのグロー(発光)用スフィアを被せる
+  // 弾の発光は弾本体と同じく円柱状にして
   const haloMat = new THREE.MeshBasicMaterial({
     color: accent,
     transparent: true,
@@ -183,8 +183,9 @@ export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Group {
     blending: THREE.AdditiveBlending,
     depthWrite: false
   });
-  const halo = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), haloMat);
-  halo.scale.set(2, 2, 2);
+  const haloGeom = new THREE.CylinderGeometry(1.5, 1.5, 16, 8);
+  haloGeom.rotateX(Math.PI / 2); // 進行方向(Z軸)に合わせる
+  const halo = new THREE.Mesh(haloGeom, haloMat);
   
   const g = new THREE.Group();
   g.add(m);
