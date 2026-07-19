@@ -6,7 +6,7 @@ import * as C from './const';
 import { Ship } from './entities';
 import { Input } from './input';
 import { Hud } from '../hud/hud';
-import { Sfx } from './audio';
+import { Sfx } from '../audio/sfx';
 import { buildPlayerShip, RCS_BLOCK_OFFSETS } from '../render/ships';
 
 type AmmoEvent = 'none' | 'mag' | 'reload';

@@ -3,12 +3,13 @@ import { sampleAt } from '../physics/predict';
 import { elementsFromState, Elements, R_EARTH } from '../physics/orbital';
 import { scale, sub, v3, Vec3 } from '../physics/vec3';
 import { EphemerisSystem } from './ephemeris';
-import { MapPlanner, PlannerCtx, ProjectFn } from './planner';
-import { MapView } from './mapview';
+import { MapPlanner, PlannerCtx } from './map-mode/planner';
+import { MapView } from './map-mode/mapview';
 import { Player } from './player';
 import { Enemy } from './entities';
 import { OrbitLine } from '../render/orbitline';
-import { TrajectoryOverlay } from './traj-overlay';
+import { TrajectoryOverlay } from './map-mode/traj-overlay';
+import { ProjectFn } from './camera/projection';
 
 export interface OrbitLineUpdateCtx {
   mapMode: boolean;

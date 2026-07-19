@@ -6,8 +6,8 @@
 // コールバック発火だけを担当する(物理・座標変換には一切関与しない)。
 // #hud-maptool と同様、DOM 要素側の pointerdown で stopPropagation して
 // Input のキャンバスドラッグ(視点回転)へイベントが漏れないようにする。
-import * as C from './const';
-import { ACCENT, ACCENT_SOFT, ACCENT_RGB, TEXT as INK } from './theme';
+import * as C from '../const';
+import { ACCENT, ACCENT_SOFT, ACCENT_RGB, TEXT as INK } from '../theme';
 
 // SURFACE/EDGE はこのファイル固有の不透明度(0.85 / 0.16)を使うため、
 // theme.ts の SURFACE(0.82)/EDGE(0.09)とは別定数のまま保持する。

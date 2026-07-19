@@ -129,17 +129,3 @@ export class BeltSection extends OrbitEntity {
     this.collideRadius = 0.8;
   }
 }
-
-// 爆発・マズルフラッシュなどの一時エフェクト。
-// 軌道速度で流れないよう、発生源の速度で移流させる。
-export interface FlashEffect {
-  mesh: THREE.Mesh;
-  pos: Vec3;
-  vel: Vec3;
-  age: number;
-  duration: number;
-  size0: number;
-  size1: number;
-  peakOpacity: number; // 発生直後の最大不透明度倍率(ズーム中のマズルフラッシュ減光などに使う)
-  muzzle?: boolean; // マズルフラッシュのみ true。ズームウィンドウ(PIP)描画時はこれだけを非表示にする
-}

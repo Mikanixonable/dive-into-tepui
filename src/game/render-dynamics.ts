@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import * as C from './const';
 import { Vec3 } from '../physics/vec3';
-import { BeltPhysics } from './belt';
+import { BeltPhysics } from './combat/belt';
 import { Bullet, Casing, DebrisPiece, Enemy, MagPickup } from './entities';
 import { Player } from './player';
 

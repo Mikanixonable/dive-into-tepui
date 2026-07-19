@@ -4,42 +4,17 @@
 
 - 現状の依存関係、責務を整理し、関連性順に整理して、modules.mdファイルにまとめる。そのモジュールの実装の細部ではなく、何を責務としていて、どこからimportされているかをまとめる。
 
-## リファクタリング案
-
-Shipをinterfaceからclassに変更
-  PlayerとEnemyはそれぞれShipを継承するclassにする。
-
-OrbitEntity型の利用拡大
-  AttやRadiusもここに含める。
-  使用していないフィールドはコンストラクタがデフォルトで埋める。
-
-  Bullet/PlasmaBullet/Casing/MagPickup/DebrisPieceなどはOrbitObjectを継承するクラス型にする。
-
-CollisionEntityを廃止、OrbitEntityをそのまま利用する形にする。
-  beltの当たり判定もcollisionが担当している？　そうしたら...OrbitObjectを継承しbeltIndexを保持するBeltSection型を追加し、
-  これをBeltPhysicsとcollision.tsの受け渡しに使う。`writeBackBeltCollisionState`の配線は最悪なので修正。
-  `isBelt`は`has beltIndex`なり`.constructor.name`なりで判定すれば置き換え可能。
-  belt.tsのロジックが変わらないように注意！
-
-Game.tsにおける配列の統合はいきなりやらない。いきなりやると、あとから区別のためのfilter処理を入れることになり、無駄
-とりあえず、Bullet/PlasmaBulletは統合してよさそう？
-
-
-
-ポリモーフィズムの利用
-  render-dynamics.ts内のパターン統一？
-
-
 - 責務の分散と再結合
   - 肥大しているモジュールがないか検査。あるいは、無駄に分割されていて統合した方がむしろ良いモジュールがないか検査。
 
-mapModeの管理
+## リファクタリング方針
 
-cameraの管理
-Gameが保持してcameraSystemにctxとして渡しているけども、cameraSystemが普通に持っておくべきじゃないか？
+### ctxの縮小と解体
+現在コードのいたるところで利用されているcontext注入パターンは、時間をかけて滅ぼすべきものである。必要な情報すべてを丸投げするというのは、必要な情報が少なくなるように責務を分割しなければならないことを隠蔽してしまう。徹底して排除するべき。
 
-- ctx注入パターンの見直し。過剰な依存関係の解消。
 ctx注入パターンはそもそも密結合を生む原因に見える。
+ctxをそのまま他のモジュールに受け渡したりして転用しているのは論外。
+
 まず、必要以上のctxを注入してしまっていないかを確認する。
 そもそも、幅広いctxが必要になる時点で、責務分離が不十分である可能性が高い。現在挙がっているメソッドを確認し、ctxのなかで必要としているフィールドが異なるメソッド群が一つのモジュールに混在していないかを確認する。
 
@@ -47,5 +22,42 @@ ctxか微妙に重複し、微妙に異なるフィールドを持つ場合、�
 
 どうしてもgameのcontextすべてが必要である場合、contextを渡すのではなくgameを渡すべきじゃないか（そのようなパターンは乱用すべきではないが）
 
-- この時点で重複実装、類似実装を再度検査し、適切に共通化する。
-  - 完全に共通していなくても、単一責務について、類似の実装が複数個所にあるべきでない。適切な方の責務にのみ残し、不適切な方からは削除する。多少のバリエーションであれば引数で吸収する。
+### mapModeの管理
+GameがmapModeを管理しているけど、mapModeと、mapMode=trueの時の描画や入力処理を管理するためのモジュールに責務を切り出すべきじゃないか？ combatが委譲されているように。
+
+現在のプロジェクトは、大きく分けてmapMode系とcombat系の2つのモードに分かれている？　それらの分岐がGame.tsやPlayer.tsに絡まっていそう。
+
+### 早期リターン
+player.tsの各関数について、早期リターンが使えるものは使うべきだ。playerが動けないのに移動しようとしている、射撃しようとしているパターンなど。
+
+MapModeがPlayerに絡まってきているのも、これで解消の見通しを立てたい。
+
+### cameraの管理、targetの管理、その他Gameが直接持つフィールドの縮小
+Gameがcameraを保持してcameraSystemにctxとして渡しているけども、cameraSystemが普通に持っておくべきじゃないか？
+targetをGameが保持しているが、Targteterが持っているlockedTargetと何が違う？
+同様のパターンがほかにもありそう。ctx注入しているが、そもそもそこでしか使っていないものは、ctx注入せずにそのモジュールが持つべきだ。
+
+### Gameの責務の縮小
+buildThrustPlumesやbuildRcsPuffsなどは、Gameが直接持つべき責務ではない。Playerに委譲する。
+beltもPlayerに委譲する。Playerが持つべき責務をGameが持っているパターンが多い。
+
+renderDynamics.ts内にあるそれぞれの描画関数は、各entityが持つべき責務で、集約すべきではない。
+Rcsの表示非表示の切り替えなどはPlayerが行うべきことで、それを可能にするよう、Playerからrenderにアクセスできなければいけない。
+
+renderBeltはcontextを丸ごともらうべきではない。
+
+### playerとgameの境界の是正
+updateActionStateがonfireを受け取ってonfireの具体実装がgame側にあるのはおかしい。onfireはPlayer側にあるべきで、game側はそれに必要な情報をplayerに綿わなくてはいけない。combatとcombatCtx(ctxは悪しき慣習だが、暫定的にこうするしかない)とsfxが必要で、sfxはplayerは既に持っているのだから話が早い。
+
+### playerの責務の分割
+playerの責務は、移動と射撃、そしてその両方を反映した描画の3つに分割されるべき。beltは射撃と描画、Rcsやthrustは移動と描画に関わる。描画はrenderDynamicsに委譲されていて、そこで必要な情報をplayerは公開しなければならない。
+
+### gameのrenderとupdateの責務の分割
+renderFrameという関数がありながら、そこではpipの描画のみを行っていて、renderはupdateに含まれているのは実態と名前が一致していない。
+
+### dom操作の分散（優先度低）
+touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散している。これが直接悪いとは言い切れないが…
+
+
+### この時点で重複実装、類似実装を再度検査し、適切に共通化する。
+重複実装の検査にLLMは役に立たないということが分かった。人力で頑張る…

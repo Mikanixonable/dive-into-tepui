@@ -26,34 +26,34 @@ import {
   sub,
   v3,
 } from '../physics/vec3';
-import { PlannerCtx } from './planner';
-import { BeltPhysics } from './belt';
+import { PlannerCtx } from './map-mode/planner';
+import { BeltPhysics } from './combat/belt';
 import { Player } from './player';
-import { CameraSystem } from './camera-system';
-import { CombatCtx, CombatSystem } from './combat';
+import { CameraSystem } from './camera/camera-system';
+import { CombatCtx, CombatSystem } from './combat/combat';
 import { StageCtx, StageDirector } from './stages';
 import { ThermalSystem } from './thermal';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
 import { HudPanelCtx } from '../hud/panel';
-import { CollisionPhysics } from './collision';
-import { EffectsSystem } from './effects-system';
+import { CollisionPhysics } from './combat/collision';
+import { EffectsSystem, FlashEffect } from './effects-system';
 import { OrbitLineSystem } from './orbit-line-system';
 import { RenderDynamicsSystem } from './render-dynamics';
 import { getStageDefinition, resolveStageInitData } from './stage-data';
-import { Targeter } from './targeter';
-import { HudProjection } from '../hud/hud-projection';
-import { AmmoResupplySystem } from './ammo-resupply';
-import { ManeuverSystem } from './maneuver-system';
+import { Targeter } from './combat/targeter';
+import { HudProjection } from './camera/projection';
+import { AmmoResupplySystem } from './combat/ammo-resupply';
+import { ManeuverSystem } from './map-mode/maneuver-system';
 import { PipRect, PipRenderer } from './pip-renderer';
 import { Simulator, SimulatorCtx } from './simulator';
 import * as C from './const';
-import { Bullet, Casing, DebrisPiece, FlashEffect, Enemy } from './entities';
+import { Bullet, Casing, DebrisPiece, Enemy } from './entities';
 import { Input } from './input';
 import { TouchControls } from './touch';
-import { ChaseCamera } from './camera';
+import { ChaseCamera } from './camera/chase-camera';
 import { Hud } from '../hud/hud';
-import { Sfx } from './audio';
+import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { createEarth, Earth } from '../render/earth';
 import {

@@ -1,6 +1,6 @@
-import { Hud } from '../hud/hud';
+import { Hud } from '../../hud/hud';
 import { MapPlanner } from './planner';
-import { TouchControls } from './touch';
+import { TouchControls } from '../touch';
 
 export class MapModeController {
   enabled = false;
