@@ -28,6 +28,7 @@ import { sampleAt } from '../physics/predict';
 import { MapPlanner, PlannerCtx } from './planner';
 import { MapView } from './mapview';
 import { BeltPhysics } from './belt';
+import { CombatCtx, CombatSystem } from './combat';
 import { StageCtx, StageDirector } from './stages';
 import {
   Attitude,
@@ -59,7 +60,6 @@ import { TouchControls } from './touch';
 import { ChaseCamera } from './camera';
 import { Hud } from './hud';
 import { Sfx } from './audio';
-import { ACCENT } from './theme';
 import { GameScene } from '../render/scene';
 import { createEarth, Earth } from '../render/earth';
 import {
@@ -73,19 +73,12 @@ import {
 } from '../render/stars';
 import {
   MAG_BELT_PITCH,
-  MUZZLE_OFFSETS,
   RCS_BLOCK_OFFSETS,
-  buildBulletMesh,
-  buildCasingMesh,
-  buildDebrisMesh,
   buildEnemyShip,
   buildFlashMesh,
-  buildMagazineFrame,
   buildMagazineMesh,
   buildMagPickup,
   buildPlayerShip,
-  buildPlasmaMesh,
-  buildBarrelMesh,
 } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
 import { TrajLine } from '../render/trajline';
@@ -115,15 +108,6 @@ const EARTH_OMEGA = (2 * Math.PI) / SIDEREAL_DAY; // 地球自転角速度 [rad/
 // 地球と共回転する大気に対する対気速度: v - ω×r, ω = (0, ω, 0)
 function airspeed(r: Vec3, v: Vec3): Vec3 {
   return v3(v.x - EARTH_OMEGA * r.z, v.y, v.z + EARTH_OMEGA * r.x);
-}
-
-// fwd に直交するランダム単位ベクトル(散布界用)
-function randPerp(fwd: Vec3): Vec3 {
-  for (; ;) {
-    const r = randVec(1);
-    const p = sub(r, scale(fwd, dot(r, fwd)));
-    if (lenSq(p) > 1e-6) return norm(p);
-  }
 }
 
 export class Game {
@@ -240,14 +224,10 @@ export class Game {
 
   private fireCooldown = 0;
   private reloadTimer = 0;
-  private shots = 0;
-  private hits = 0;
-  private kills = 0;
-  
+
   private rotationHoldTime = 0; // 手動回転の継続時間 [s]
 
   // --- 弾薬・マガジン ---
-  private muzzleIdx = 0; // 縦二連砲口の交互発射用
   private roundsInMag = C.MAG_ROUNDS; // 給弾中マガジンの残弾
   private magsLeft = C.INITIAL_MAGS - 1; // ベルトに連結された未使用マガジン数
   private magsConsumedSinceReload = 0; // 今回のバレルで消費したマガジン数
@@ -262,6 +242,9 @@ export class Game {
   // BeltPhysics に切り出し済み。beltLinks(表示メッシュ)を注入して構築する
   // (メッシュ自体は下の constructor で beltGroup に積む)。
   private readonly belt = new BeltPhysics(this.beltLinks);
+  // 武器発射・被弾・撃破まわりの処理は combat.ts の CombatSystem に切り出し済み。
+  // 発射カウンタ(shots/hits/kills)・砲口交互発射のインデックスも CombatSystem が保持する。
+  private readonly combat = new CombatSystem(this.hud, this.sfx);
   private hudTimer = 0;
   private listTimer = 0;
   private readonly earthPhase0 = Math.random() * Math.PI * 2;
@@ -735,7 +718,7 @@ export class Game {
               this.roundsInMag = C.MAG_ROUNDS;
               this.magsConsumedSinceReload = 0;
               this.reloadTimer = C.RELOAD_TIME;
-              this.dropBarrel();
+              this.combat.dropBarrel(this.combatCtx());
               this.sfx.playReload();
             }
           }
@@ -803,13 +786,48 @@ export class Game {
       enemies: this.enemies,
       enemyOrbitLines: this.enemyOrbitLines,
       scene: this.scene,
-      shots: this.shots,
-      hits: this.hits,
-      kills: this.kills,
+      shots: this.combat.shots,
+      hits: this.combat.hits,
+      kills: this.combat.kills,
       magsLeft: this.magsLeft,
       roundsInMag: this.roundsInMag,
       setPhase: (p) => { this.phase = p; },
     };
+  }
+
+  // CombatSystem の各メソッド呼び出しに渡す、現在状態のスナップショット
+  // (enemies / bullets / plasmaBullets / casings / debris / effects / boardMarks /
+  // scene は参照渡しでミューテートされる)。roundsInMag 等の弾薬フィールドは
+  // fireGun 内で書き換えられるため、呼び出し側で戻り値を自身のフィールドへ
+  // 書き戻す(呼び出し箇所を参照)。
+  private combatCtx(): CombatCtx {
+    const ctx: CombatCtx = {
+      simTime: this.simTime,
+      player: this.player,
+      enemies: this.enemies,
+      target: this.target,
+      stage: this.stage,
+      zoomActive: this.zoomActive,
+      scene: this.scene,
+      glowTex: this.glowTex,
+      bullets: this.bullets,
+      plasmaBullets: this.plasmaBullets,
+      casings: this.casings,
+      debris: this.debris,
+      effects: this.effects,
+      boardMarks: this.boardMarks,
+      lostReason: this.lostReason,
+      roundsInMag: this.roundsInMag,
+      magsLeft: this.magsLeft,
+      magsConsumedSinceReload: this.magsConsumedSinceReload,
+      reloadTimer: this.reloadTimer,
+      setLostReason: (reason) => {
+        this.lostReason = reason;
+        ctx.lostReason = reason;
+      },
+      setPhase: (p) => { this.phase = p; },
+    };
+    return ctx;
   }
 
   // 数値予測(predict.ts)の再計算対象の期間 [s]。マップモードではツールバーで
@@ -878,7 +896,12 @@ export class Game {
       if (wantFire) {
         this.fireCooldown -= dt;
         if (this.fireCooldown <= 0) {
-          this.fireGun();
+          const ctx = this.combatCtx();
+          this.combat.fireGun(ctx);
+          this.roundsInMag = ctx.roundsInMag;
+          this.magsLeft = ctx.magsLeft;
+          this.magsConsumedSinceReload = ctx.magsConsumedSinceReload;
+          this.reloadTimer = ctx.reloadTimer;
           this.fireCooldown = C.FIRE_INTERVAL;
         }
       }
@@ -929,8 +952,8 @@ export class Game {
       for (const d of this.debris) stepOrbitRK4(d.state, sub, this.envSmall);
       for (const mp of this.magPickups) if (mp.alive) stepOrbitRK4(mp.state, sub, this.envSmall);
       this.simTime += sub;
-      this.checkBulletHits();
-      this.checkBoardCrossings();
+      this.combat.checkBulletHits(this.combatCtx());
+      this.combat.checkBoardCrossings(this.combatCtx());
     }
     this.lastSimDt = simDt;
     this.checkThermalLimits();
@@ -955,98 +978,7 @@ export class Game {
     this.cleanup();
 
     if (this.stage === -1 && this.phase === 'playing' && canAct) {
-      this.updateEnemyAI(dt);
-    }
-  }
-
-  private updateEnemyAI(dt: number): void {
-    if (!this.player.alive) return;
-    
-    // 集団(色)ごとの攻撃中(バースト中)の機体数をカウント
-    const attackingCounts = new Map<number, number>();
-    for (const e of this.enemies) {
-      if (e.alive && e.burstLeft && e.burstLeft > 0) {
-        const key = e.accent ?? 0;
-        attackingCounts.set(key, (attackingCounts.get(key) || 0) + 1);
-      }
-    }
-
-    for (const e of this.enemies) {
-      if (!e.alive) continue;
-      const dist = len(sub(this.player.state.r, e.state.r));
-      if (dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE) {
-        if (e.burstLeft && e.burstLeft > 0) {
-          e.burstDelay = (e.burstDelay ?? 0) - dt;
-          if (e.burstDelay <= 0) {
-            this.firePlasma(e);
-            e.burstLeft--;
-            e.burstDelay = C.ENEMY_BURST_INTERVAL;
-          }
-        } else {
-          if (e.lastFireSim === undefined) e.lastFireSim = this.simTime - Math.random() * C.ENEMY_FIRE_INTERVAL;
-          if (this.simTime - e.lastFireSim > C.ENEMY_FIRE_INTERVAL) {
-            e.lastFireSim = this.simTime;
-            const key = e.accent ?? 0;
-            const countInGroup = attackingCounts.get(key) || 0;
-            // 同一集団内で同時に攻撃するのは最大3機まで
-            if (countInGroup < C.ENEMY_MAX_ATTACKERS_PER_GROUP && Math.random() < C.ENEMY_ATTACK_CHANCE) {
-              const counts = C.ENEMY_BURST_COUNTS;
-              e.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
-              e.burstDelay = C.ENEMY_BURST_INTERVAL;
-              attackingCounts.set(key, countInGroup + 1);
-              this.firePlasma(e);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  private firePlasma(enemy: Ship): void {
-    const r = enemy.state.r;
-    const v = enemy.state.v;
-    const toPlayer = sub(this.player.state.r, r);
-    const pV = this.player.state.v;
-    const eV = enemy.state.v;
-    const relV = sub(pV, eV);
-
-    // 正確な見越し時間を計算
-    let timeToHit = this.solveLeadTime(toPlayer, relV, C.PLASMA_BULLET_SPEED);
-    if (timeToHit === null || timeToHit < 0) {
-      timeToHit = len(toPlayer) / C.PLASMA_BULLET_SPEED; // フォールバック
-    }
-    
-    const predictedRelPos = add(toPlayer, scale(relV, timeToHit));
-    const aimDir = norm(predictedRelPos);
-
-    // 散布界を非常に小さくして、正確に狙う
-    const perp = randPerp(aimDir);
-    const spreadAng = (Math.random() * C.PLASMA_SPREAD_DEG * Math.PI) / 180;
-    const actualAim = rotateAxis(aimDir, perp, spreadAng);
-
-    const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
-
-    const pb: PlasmaBullet = {
-      state: { r: clone(r), v: bV },
-      prevR: clone(r),
-      bornSim: this.simTime,
-      obj: buildPlasmaMesh(enemy.accent ?? 0xffa0ff),
-      alive: true,
-    };
-    pb.obj.position.set(r.x, r.y, r.z);
-    // 進行方向に向ける
-    const mz = new THREE.Matrix4().lookAt(
-      new THREE.Vector3(),
-      new THREE.Vector3(actualAim.x, actualAim.y, actualAim.z),
-      new THREE.Vector3(0, 1, 0)
-    );
-    pb.obj.quaternion.setFromRotationMatrix(mz);
-
-    this.plasmaBullets.push(pb);
-    this.scene.add(pb.obj);
-    if (this.plasmaBullets.length > C.MAX_BULLETS * 2) {
-      const old = this.plasmaBullets.shift()!;
-      this.scene.remove(old.obj);
+      this.combat.updateEnemyAI(dt, this.combatCtx());
     }
   }
 
@@ -1177,12 +1109,12 @@ export class Game {
     if (!this.player.alive) return;
     if (this.hullTemp > C.MAX_HULL_TEMP) {
       this.lostReason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
-      this.destroyShip(this.player);
+      this.combat.destroyShip(this.player, this.combatCtx());
       return;
     }
     if (this.qdyn > C.MAX_DYN_PRESSURE) {
       this.lostReason = '動圧が構造限界を超え、機体は空力的に分解した';
-      this.destroyShip(this.player);
+      this.combat.destroyShip(this.player, this.combatCtx());
       return;
     }
     const hot = this.hullTemp > 0.7 * C.MAX_HULL_TEMP || this.qdyn > 0.5 * C.MAX_DYN_PRESSURE;
@@ -1366,377 +1298,6 @@ export class Game {
     );
   }
 
-  // ------------------------------------------------------------ weapons
-
-  private fireGun(): void {
-    const p = this.player;
-    const fwd = qRotate(p.att.q, v3(0, 0, 1));
-    const right = qRotate(p.att.q, v3(1, 0, 0));
-    const up = qRotate(p.att.q, v3(0, 1, 0));
-
-    // 縦二連の砲口から交互に発射する
-    const mo = MUZZLE_OFFSETS[this.muzzleIdx]!;
-    this.muzzleIdx = (this.muzzleIdx + 1) % MUZZLE_OFFSETS.length;
-    const muzzle = add(p.state.r, qRotate(p.att.q, v3(mo.x, mo.y, mo.z)));
-
-    // 弾丸: 機首方向 + 散布界
-    const dir = norm(addScaled(fwd, randPerp(fwd), Math.abs(randSym(C.BULLET_SPREAD))));
-    const bullet: Bullet = {
-      state: {
-        r: addScaled(clone(muzzle), fwd, 1.5),
-        v: addScaled(clone(p.state.v), dir, C.MUZZLE_SPEED),
-      },
-      prevR: v3(),
-      bornSim: this.simTime,
-      obj: buildBulletMesh(),
-      alive: true,
-    };
-    bullet.prevR = clone(bullet.state.r);
-    this.bullets.push(bullet);
-    this.scene.add(bullet.obj);
-    if (this.bullets.length > C.MAX_BULLETS) {
-      const old = this.bullets.shift()!;
-      this.scene.remove(old.obj);
-    }
-
-    // 反動(運動量保存の風味): 発射方向と逆に微小 Δv
-    p.state.v = addScaled(p.state.v, fwd, -C.RECOIL_DV);
-
-    // 薬莢: 機体右側(-X)へ排出(左側(+X)はマガジンベルトの給弾があるため)。
-    // 初速・回転とも抑え、ゆっくり漂いながら緩やかに回転する見た目にする。
-    const casing: Casing = {
-      state: {
-        r: add(muzzle, scale(right, -1.4)),
-        v: add(
-          p.state.v,
-          add(scale(right, -(0.5 + Math.random() * 0.3)), add(scale(up, randSym(0.2)), randVec(0.1))),
-        ),
-      },
-      att: {
-        q: randomQuat(),
-        w: v3(randSym(2.5), randSym(2.5), randSym(2.5)),
-        inertia: v3(1, 0.3, 1), // 円筒: 長軸まわりが小さい
-      },
-      bornSim: this.simTime,
-      obj: buildCasingMesh(),
-    };
-    this.casings.push(casing);
-    this.scene.add(casing.obj);
-    if (this.casings.length > C.MAX_CASINGS) {
-      const old = this.casings.shift()!;
-      this.scene.remove(old.obj);
-    }
-
-    // マズルフラッシュ: 発射した側の砲口に出す
-    // (ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
-    this.spawnFlash(
-      addScaled(clone(muzzle), fwd, 1.2),
-      clone(p.state.v),
-      2.2,
-      6,
-      0.07,
-      0xfff0b8,
-      this.zoomActive ? C.ZOOM_MUZZLE_FLASH_SCALE : 1,
-      true, // マズルフラッシュ: PIP 描画時のみ非表示化の対象
-    );
-
-    this.shots++;
-    this.sfx.fire();
-
-    // 弾薬消費: マガジン撃ち尽くした瞬間
-    this.roundsInMag--;
-    if (this.roundsInMag <= 0 && this.magsLeft > 0) {
-      this.magsLeft--;
-      this.roundsInMag = C.MAG_ROUNDS;
-      this.magsConsumedSinceReload++;
-      this.spawnEjectedMagazineFrame();
-      
-      // マガジン3つ消費でバレル交換リロード
-      if (this.magsConsumedSinceReload >= 3) {
-        this.magsConsumedSinceReload = 0;
-        this.reloadTimer = C.RELOAD_TIME; // クールダウン
-        this.sfx.playReload();
-        this.dropBarrel();
-      } else {
-        // 通常の給弾(マガジン連結のみ)
-        this.sfx.magFeed();
-      }
-    }
-  }
-
-  // リロード時(バレル交換)に円柱アイテムをデブリとして放出する
-  private dropBarrel(): void {
-    const p = this.player;
-    // 下方に少し勢いをつけて放出
-    const down = qRotate(p.att.q, v3(0, -1, 0));
-    const piece: DebrisPiece = {
-      state: {
-        r: add(p.state.r, qRotate(p.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
-        v: add(p.state.v, add(scale(down, 3.0), randVec(0.5))),
-      },
-      att: {
-        q: { x: p.att.q.x, y: p.att.q.y, z: p.att.q.z, w: p.att.q.w },
-        w: v3(randSym(2), randSym(2), randSym(2)),
-        inertia: v3(1, 0.2, 1), // 円柱
-      },
-      obj: buildBarrelMesh(),
-      collideRadius: 0.8,
-    };
-    this.debris.push(piece);
-    this.scene.add(piece.obj);
-    while (this.debris.length > C.MAX_DEBRIS) {
-      const old = this.debris.shift()!;
-      this.removeDebrisObj(old);
-    }
-  }
-
-  // マガジン1個を撃ち尽くした瞬間、機体右側(-X、薬莢と同じ側)の位置から
-  // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
-  private spawnEjectedMagazineFrame(): void {
-    const p = this.player;
-    const right = qRotate(p.att.q, v3(1, 0, 0));
-    const portWorld = add(p.state.r, qRotate(p.att.q, v3(-0.9, 0, 0)));
-    const piece: DebrisPiece = {
-      state: {
-        r: portWorld,
-        v: add(p.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
-      },
-      att: {
-        q: { x: p.att.q.x, y: p.att.q.y, z: p.att.q.z, w: p.att.q.w },
-        w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
-        inertia: v3(1, 1.2, 1.4),
-      },
-      obj: buildMagazineFrame(),
-      collideRadius: C.EJECTED_MAG_PHYS_RADIUS,
-    };
-    this.debris.push(piece);
-    this.scene.add(piece.obj);
-    while (this.debris.length > C.MAX_DEBRIS) {
-      const old = this.debris.shift()!;
-      this.removeDebrisObj(old);
-    }
-  }
-
-  // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
-  // 発射弾がその面を自機側から通過した点をターゲット相対で記録する。
-  // 次弾の照準修正の目安になるマーカーとして一定時間表示する。
-  private checkBoardCrossings(): void {
-    const tgt = this.target;
-    if (!tgt || !tgt.alive) return;
-    const n = norm(sub(tgt.state.r, this.player.state.r)); // 的の法線 = 視線方向
-    if (lenSq(n) < 0.5) return;
-
-    for (const b of this.bullets) {
-      if (!b.alive) continue;
-      const d0 = dot(sub(b.prevR, tgt.state.r), n);
-      const d1 = dot(sub(b.state.r, tgt.state.r), n);
-      if (!(d0 < 0 && d1 >= 0)) continue; // 自機側 → 向こう側への通過のみ
-      const t = d0 / (d0 - d1);
-      const pos = addScaled(b.prevR, sub(b.state.r, b.prevR), t);
-      const off = sub(pos, tgt.state.r);
-      if (lenSq(off) > C.BOARD_RADIUS * C.BOARD_RADIUS) continue; // 的から外れすぎ
-      this.boardMarks.push({ off, age: 0 });
-      if (this.boardMarks.length > C.MAX_BOARD_MARKS) this.boardMarks.shift();
-    }
-  }
-
-  // サブステップ間の相対運動を線分 vs 球でチェック(高速弾のトンネリング防止)
-  private checkBulletHits(): void {
-    for (const b of this.bullets) {
-      if (!b.alive) continue;
-      for (const ship of this.enemies) {
-        if (!ship.alive) continue;
-        if (this.segmentHit(b, ship)) {
-          this.applyHit(b, ship);
-          break;
-        }
-      }
-      if (!b.alive) continue;
-      // 自機被弾(軌道を一周して戻ってきた自弾)
-      if (
-        this.player.alive &&
-        this.simTime - b.bornSim > C.SELF_HIT_GRACE &&
-        this.segmentHit(b, this.player)
-      ) {
-        this.applyHit(b, this.player);
-      }
-    }
-    for (const pb of this.plasmaBullets) {
-      if (!pb.alive) continue;
-      if (this.player.alive && this.segmentHit(pb, this.player)) {
-        pb.alive = false;
-        this.scene.remove(pb.obj);
-        this.player.hp -= C.PLAYER_HIT_DAMAGE;
-        this.lostReason = '敵のエネルギー弾により機体を喪失した';
-        this.hits++;
-        this.sfx.hit();
-        this.spawnFlash(clone(pb.state.r), clone(this.player.state.v), C.PLASMA_HIT_FLASH_SIZE0, C.PLASMA_HIT_FLASH_SIZE1, C.PLASMA_HIT_FLASH_DURATION, 0xffa0ff);
-        this.spawnFragments(clone(pb.state.r), clone(this.player.state.v), C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
-        if (this.player.hp <= 0) {
-          this.destroyShip(this.player);
-        }
-      }
-    }
-  }
-
-  private segmentHit(b: Bullet, ship: Ship): boolean {
-    const a = sub(b.prevR, ship.prevR);
-    const bb = sub(b.state.r, ship.state.r);
-    const d = sub(bb, a);
-    const dd = lenSq(d);
-    const t = dd > 1e-9 ? Math.max(0, Math.min(1, -dot(a, d) / dd)) : 0;
-    const closest = addScaled(a, d, t);
-    return lenSq(closest) <= ship.radius * ship.radius;
-  }
-
-  private applyHit(b: Bullet, ship: Ship): void {
-    b.alive = false;
-    ship.hp -= (ship === this.player ? C.PLAYER_HIT_DAMAGE : C.ENEMY_HIT_DAMAGE);
-    if (ship === this.player) this.lostReason = '自弾の被弾により機体を喪失した';
-    this.hits++;
-    this.sfx.hit();
-    this.spawnFlash(clone(b.state.r), clone(ship.state.v), C.BULLET_HIT_FLASH_SIZE0, C.BULLET_HIT_FLASH_SIZE1, C.BULLET_HIT_FLASH_DURATION, 0xffe2a0);
-    // 被弾時にも小さな欠片を飛散させる
-    this.spawnFragments(clone(b.state.r), clone(ship.state.v), C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
-    if (ship.hp <= 0) {
-      this.destroyShip(ship);
-    }
-  }
-
-  /**
-   * @param byPlayer true = 弾丸命中による正式撃破（kills に加算し勝利判定を行う）
-   *                 false = 再突入・空力分解など物理的消滅（カウントせず静かに除去）
-   */
-  private destroyShip(ship: Ship, byPlayer = true): void {
-    ship.alive = false;
-    ship.obj.visible = false;
-    this.sfx.explosion();
-    // 敵機は自機の 10 倍サイズなので、爆発・破片も見合った大きさにする
-    const sc = ship === this.player ? 1 : C.ENEMY_SCALE;
-    this.spawnFlash(clone(ship.state.r), clone(ship.state.v), C.DESTROY_FLASH1_SIZE0 * sc, C.DESTROY_FLASH1_SIZE1 * sc, C.DESTROY_FLASH1_DURATION, 0xffb36b);
-    this.spawnFlash(clone(ship.state.r), clone(ship.state.v), C.DESTROY_FLASH2_SIZE0 * sc, C.DESTROY_FLASH2_SIZE1 * sc, C.DESTROY_FLASH2_DURATION, 0xfffbe8);
-    this.spawnDebris(ship, sc);
-
-    if (ship === this.player) {
-      this.phase = 'lost';
-      this.sfx.setThrust(false);
-      this.sfx.stopBgm();
-      this.hud.showEnd(false, `${this.lostReason}<br>撃破 ${this.kills}/${this.enemies.length} 機`);
-      return;
-    }
-
-    if (byPlayer) {
-      // 弾丸命中による正式撃破のみカウント
-      this.kills++;
-      this.hud.hint(`${ship.name} 撃破`);
-    } else {
-      // 再突入・空力分解によるデスポーンは撃破に含めない
-      this.hud.hint(`${ship.name} 再突入により喪失`);
-    }
-    if (this.target === ship) {
-
-    }
-    // ステージ00(無限サバイバル)とステージ0(時間制限スコアアタック)は、敵全滅でクリアにはならない
-    if (this.stage !== 0 && this.stage !== -1 && this.enemies.every((e) => !e.alive)) {
-      if (byPlayer) {
-        // 全機を自力で撃破した場合のみクリア
-        this.phase = 'won';
-        this.sfx.setThrust(false);
-        this.sfx.stopBgm();
-        let unlockNote = '';
-        if (this.stage === 1) {
-          try {
-            const first = localStorage.getItem(C.STAGE1_CLEARED_KEY) !== '1';
-            localStorage.setItem(C.STAGE1_CLEARED_KEY, '1');
-            if (first) unlockNote = `<br><span style="color:${ACCENT}">第二ステージ(モルニヤ戦域)が解放された</span>`;
-          } catch {
-            /* localStorage 不可なら解放なし */
-          }
-        }
-        const acc = this.shots > 0 ? ((this.hits / this.shots) * 100).toFixed(1) : '0.0';
-        this.hud.showEnd(
-          true,
-          `全 ${this.enemies.length} 機撃破<br>` +
-          `ミッション時間 T+ ${Math.floor(this.simTime / 3600)}h ${Math.floor((this.simTime % 3600) / 60)}m ${Math.floor(this.simTime % 60)}s<br>` +
-          `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)` +
-          unlockNote,
-        );
-      } else {
-        // 再突入等で全機消滅しても勝利にはしない（残存機ゼロだが kills < enemies.length）
-        // 継続してプレイングを続けさせる（そもそも alive === false なので弾も当たらない）
-      }
-    }
-  }
-
-  // 撃破デブリ: 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果
-  private spawnDebris(ship: Ship, sc = 1): void {
-    const accent = ship === this.player ? 0x9fd8e8 : 0xff6a4a;
-    this.spawnFragments(ship.state.r, ship.state.v, 11, accent, C.DEBRIS_SIZE_MIN * sc, C.DEBRIS_SIZE_MAX * sc, 2.8);
-  }
-
-  // 破片を飛散させる共通処理(撃破デブリ・被弾の欠片)
-  private spawnFragments(
-    origin: Vec3,
-    baseVel: Vec3,
-    count: number,
-    accent: number,
-    sizeMin: number,
-    sizeMax: number,
-    spread: number,
-  ): void {
-    for (let i = 0; i < count; i++) {
-      const size = sizeMin + Math.random() * (sizeMax - sizeMin);
-      const piece: DebrisPiece = {
-        state: {
-          r: add(origin, randVec(2.5)),
-          v: add(baseVel, randVec(spread)),
-        },
-        att: {
-          q: randomQuat(),
-          w: v3(randSym(0.25), (1.4 + Math.random() * 1.2) * (Math.random() < 0.5 ? -1 : 1), randSym(0.25)),
-          inertia: v3(1, 2.05, 3.0), // 中間軸 = y: ここに主回転を与えると周期的に反転する
-        },
-        obj: buildDebrisMesh(accent, size),
-      };
-      this.debris.push(piece);
-      this.scene.add(piece.obj);
-    }
-    while (this.debris.length > C.MAX_DEBRIS) {
-      const old = this.debris.shift()!;
-      this.removeDebrisObj(old);
-    }
-  }
-
-  // d.obj は単一 Mesh(通常の破片)の場合と、複数子メッシュを持つ Group
-  // (排出された空マガジンのフレーム等)の場合がある。traverse して
-  // 見つかった Mesh すべてのジオメトリ・マテリアルを破棄する。
-  private removeDebrisObj(d: DebrisPiece): void {
-    this.scene.remove(d.obj);
-    d.obj.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      mesh.geometry.dispose();
-      if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
-      else mesh.material.dispose();
-    });
-  }
-
-  private spawnFlash(
-    pos: Vec3,
-    vel: Vec3,
-    size0: number,
-    size1: number,
-    duration: number,
-    color: number,
-    peakOpacity = 1,
-    muzzle = false,
-  ): void {
-    const mesh = buildFlashMesh(this.glowTex, color);
-    const fx: FlashEffect = { mesh, pos, vel, age: 0, duration, size0, size1, peakOpacity, muzzle };
-    this.effects.push(fx);
-    this.scene.add(mesh);
-  }
-
   // ------------------------------------------------------------- cleanup
 
   private altitudeOf(r: Vec3): number {
@@ -1747,12 +1308,12 @@ export class Game {
     // 自機の構造限界高度(通常は加熱・動圧で先に喪失する)
     if (this.player.alive && this.altitudeOf(this.player.state.r) < C.PLAYER_MIN_ALT) {
       this.lostReason = '濃密な大気に突入し機体は分解した';
-      this.destroyShip(this.player);
+      this.combat.destroyShip(this.player, this.combatCtx());
     }
     for (const e of this.enemies) {
       if (e.alive && this.altitudeOf(e.state.r) < C.REENTRY_ALT) {
         // 再突入による空力分解はプレイヤーによる撃破ではないためカウントしない
-        this.destroyShip(e, false);
+        this.combat.destroyShip(e, this.combatCtx(), false);
       }
     }
 
@@ -1784,7 +1345,7 @@ export class Game {
 
     this.debris = this.debris.filter((d) => {
       const expired = this.altitudeOf(d.state.r) < C.DEBRIS_REENTRY_ALT;
-      if (expired) this.removeDebrisObj(d);
+      if (expired) this.combat.removeDebrisObj(this.combatCtx(), d);
       return !expired;
     });
 
@@ -2444,7 +2005,7 @@ export class Game {
         
         if (showLead) {
           const relV = sub(ship.state.v, pv);
-          const t = this.solveLeadTime(relP, relV, C.MUZZLE_SPEED);
+          const t = this.combat.solveLeadTime(relP, relV, C.MUZZLE_SPEED);
           if (t !== null && t < 25) {
             const lead = addScaled(relP, relV, t);
             const lp = this.project(lead);
@@ -2497,28 +2058,6 @@ export class Game {
     this.hud.marker('dn', 'mk-node', '▽', descP.x, descP.y, descP.front, 'DN');
   }
 
-  // |relP + relV t| = s t を満たす最小の正の t
-  private solveLeadTime(relP: Vec3, relV: Vec3, s: number): number | null {
-    const a = lenSq(relV) - s * s;
-    const b = 2 * dot(relP, relV);
-    const c = lenSq(relP);
-    if (Math.abs(a) < 1e-6) {
-      if (Math.abs(b) < 1e-9) return null;
-      const t = -c / b;
-      return t > 0 ? t : null;
-    }
-    const disc = b * b - 4 * a * c;
-    if (disc < 0) return null;
-    const sq = Math.sqrt(disc);
-    const t1 = (-b - sq) / (2 * a);
-    const t2 = (-b + sq) / (2 * a);
-    let best: number | null = null;
-    for (const t of [t1, t2]) {
-      if (t > 0 && (best === null || t < best)) best = t;
-    }
-    return best;
-  }
-
   // ズームウィンドウ(PIP)のオーバーレイ: ターゲット菱形枠と LEAD マーカーを PIP の
   // 矩形内に描く。main.ts が PIP 用に activeCamera を一時的にポーズして render() した
   // 直後、カメラを元の位置・姿勢へ復元する前に rect を渡して呼ぶ。PIP を描画しない
@@ -2558,7 +2097,7 @@ export class Game {
 
     const hexColor = tgt.accent ? '#' + tgt.accent.toString(16).padStart(6, '0') : '#ff6a00';
     const relV = sub(tgt.state.v, pv);
-    const t = this.solveLeadTime(relP, relV, C.MUZZLE_SPEED);
+    const t = this.combat.solveLeadTime(relP, relV, C.MUZZLE_SPEED);
     if (t !== null && t < 25) {
       const lead = addScaled(relP, relV, t);
       const lp = projectPip(lead);
@@ -2604,8 +2143,8 @@ export class Game {
         period: playerEl ? playerEl.period : NaN,
         qdyn: this.qdyn,
         hullTemp: this.hullTemp,
-        shots: this.shots,
-        kills: this.kills,
+        shots: this.combat.shots,
+        kills: this.combat.kills,
         total: this.enemies.length,
         stage0State:
           this.stage === -1 || this.stage === 0
