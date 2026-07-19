@@ -55,4 +55,5 @@ declare module 'three/tsl' {
   export const length: (a: Node) => Node;
   export const sub: (a: Node, b: Node) => Node;
   export const clamp: (value: Node, low?: number, high?: number) => Node;
+  export const smoothstep: (low: Node | number, high: Node | number, x: Node | number) => Node;
 }
