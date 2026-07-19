@@ -9,6 +9,7 @@ import * as C from './const';
 import { ACCENT, TEXT as INK, TEXT_DIM as INK_SOFT } from './theme';
 import { buildHudDom } from './hud/dom';
 import { MarkerManager } from './hud/markers';
+import { fmtDist, fmtSpeed, fmtTime } from './hud/utils';
 
 export interface StatsData {
   met: number;
@@ -55,28 +56,6 @@ export interface EnemyRow {
   name: string;
   dist: number;
   targeted: boolean;
-}
-
-function fmtDist(m: number): string {
-  if (!isFinite(m)) return '---';
-  if (Math.abs(m) >= 1e6) return `${(m / 1e6).toFixed(2)} Mm`;
-  if (Math.abs(m) >= 1e3) return `${(m / 1e3).toFixed(2)} km`;
-  return `${m.toFixed(0)} m`;
-}
-
-function fmtSpeed(ms: number): string {
-  if (!isFinite(ms)) return '---';
-  if (Math.abs(ms) >= 1000) return `${(ms / 1000).toFixed(2)} km/s`;
-  return `${ms.toFixed(1)} m/s`;
-}
-
-function fmtTime(s: number): string {
-  if (!isFinite(s)) return '--:--:--';
-  const t = Math.max(0, Math.floor(s));
-  const h = Math.floor(t / 3600);
-  const m = Math.floor((t % 3600) / 60);
-  const sec = t % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
 export class Hud {

@@ -11,6 +11,9 @@ import {
   len,
   lenSq,
   norm,
+  randPerp,
+  randSym,
+  randVec,
   rotateAxis,
   scale,
   sub,
@@ -31,23 +34,6 @@ import {
   buildMagazineFrame,
   buildPlasmaMesh,
 } from '../render/ships';
-
-function randSym(amp: number): number {
-  return (Math.random() * 2 - 1) * amp;
-}
-
-function randVec(amp: number): Vec3 {
-  return v3(randSym(amp), randSym(amp), randSym(amp));
-}
-
-// fwd に直交するランダム単位ベクトル(散布界用)。game.ts の randPerp と同一実装。
-function randPerp(fwd: Vec3): Vec3 {
-  for (; ;) {
-    const r = randVec(1);
-    const p = sub(r, scale(fwd, dot(r, fwd)));
-    if (lenSq(p) > 1e-6) return norm(p);
-  }
-}
 
 // fireGun / firePlasma / checkBulletHits / destroyShip 等が必要とする、Game 側の
 // 現在状態のスナップショット(毎フレーム/毎呼び出しで渡す)。enemies / bullets /
