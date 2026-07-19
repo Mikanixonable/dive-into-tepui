@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitState } from '../physics/orbital';
 import { Attitude } from '../physics/attitude';
 import { Vec3, clone, v3 } from '../physics/vec3';
+import { OrbitLine } from '../render/orbitline';
 import * as C from './const';
 
 const identityAttitude = (): Attitude => ({
@@ -76,6 +77,8 @@ export class Ship extends OrbitEntity {
 export class Enemy extends Ship {
   accent: number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
+  // 軌道線: 生成元(addEnemy)が生成直後に必ず設定する(scene への add も呼び出し側が行う)。
+  orbitLine!: OrbitLine;
 
   // 実行時状態(遅延初期化)。未設定 = まだその状態に入っていない
   lastTargetedSim?: number; // 最後にロックオンされた時刻。LEAD マーカー表示の履歴
@@ -99,6 +102,11 @@ export class Enemy extends Ship {
     this.mass = 10000;
     this.collideRadius = C.ENEMY_RADIUS;
     this.obj.scale.setScalar(C.ENEMY_SCALE);
+  }
+
+  dispose(): void {
+    super.dispose();
+    this.scene?.remove(this.orbitLine.line);
   }
 }
 

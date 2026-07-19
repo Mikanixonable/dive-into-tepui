@@ -41,11 +41,14 @@ import { Player } from '../player/player';
 // 現在状態のスナップショット(毎フレーム/毎呼び出しで渡す)。enemies / bullets /
 // plasmaBullets は Simulator が所有する配列への読み取り参照で、要素の alive 等は
 // ミューテートしてよい。新規エンティティの追加は addXxx(Simulator の追加関数)を通す。
+// enemies は撃破された個体から prune されるため「残存数」— 表示用の総数は
+// totalEnemies を使う(kills は撃破のたびに this.kills でこのクラス自身が集計する)。
 // effects / boardMarks / scene は参照渡しでミューテートする。
 export interface CombatCtx {
   simTime: number;
   player: Player;
   enemies: readonly Enemy[];
+  totalEnemies: number;
   target: Enemy | null;
   stage: number;
   zoomActive: boolean;
@@ -71,6 +74,8 @@ export class CombatSystem {
   shots = 0;
   hits = 0;
   kills = 0;
+  // 非プレイヤー起因の喪失数(再突入・空力分解等)。勝利判定の残存数計算にのみ使う。
+  private losses = 0;
 
   constructor(
     private readonly hud: Hud,
@@ -379,7 +384,7 @@ export class CombatSystem {
       ctx.setPhase('lost');
       this.sfx.setThrust(false);
       this.sfx.stopBgm();
-      this.hud.showEnd(false, `${ctx.lostReason}<br>撃破 ${this.kills}/${ctx.enemies.length} 機`);
+      this.hud.showEnd(false, `${ctx.lostReason}<br>撃破 ${this.kills}/${ctx.totalEnemies} 機`);
       return;
     }
 
@@ -389,13 +394,17 @@ export class CombatSystem {
       this.hud.hint(`${ship.name} 撃破`);
     } else {
       // 再突入・空力分解によるデスポーンは撃破に含めない
+      this.losses++;
       this.hud.hint(`${ship.name} 再突入により喪失`);
     }
     if (ctx.target === ship) {
 
     }
+    // 残存数は destroyShip 呼び出しの集計(kills/losses)だけで求める — enemies 配列は
+    // 撃破された個体から prune されて縮むため、勝敗判定にその配列の中身は見ない。
+    const remaining = ctx.totalEnemies - this.kills - this.losses;
     // ステージ00(無限サバイバル)とステージ0(時間制限スコアアタック)は、敵全滅でクリアにはならない
-    if (ctx.stage !== 0 && ctx.stage !== -1 && ctx.enemies.every((e) => !e.alive)) {
+    if (ctx.stage !== 0 && ctx.stage !== -1 && remaining <= 0) {
       if (byPlayer) {
         // 全機を自力で撃破した場合のみクリア
         ctx.setPhase('won');
@@ -414,13 +423,13 @@ export class CombatSystem {
         const acc = this.shots > 0 ? ((this.hits / this.shots) * 100).toFixed(1) : '0.0';
         this.hud.showEnd(
           true,
-          `全 ${ctx.enemies.length} 機撃破<br>` +
+          `全 ${ctx.totalEnemies} 機撃破<br>` +
           `ミッション時間 T+ ${Math.floor(ctx.simTime / 3600)}h ${Math.floor((ctx.simTime % 3600) / 60)}m ${Math.floor(ctx.simTime % 60)}s<br>` +
           `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)` +
           unlockNote,
         );
       } else {
-        // 再突入等で全機消滅しても勝利にはしない（残存機ゼロだが kills < enemies.length）
+        // 再突入等で全機消滅しても勝利にはしない（残存機ゼロだが kills < totalEnemies）
         // 継続してプレイングを続けさせる（そもそも alive === false なので弾も当たらない）
       }
     }

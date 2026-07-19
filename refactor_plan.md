@@ -7,6 +7,13 @@
 - 責務の分散と再結合
   - 肥大しているモジュールがないか検査。あるいは、無駄に分割されていて統合した方がむしろ良いモジュールがないか検査。
 
+怪しいモジュール：
+game.ts
+const.ts
+stage-director.ts
+combat.ts
+belt.ts
+
 ## リファクタリング方針
 
 大方針は、
@@ -19,11 +26,8 @@ Gameがcameraを保持してcameraSystemにctxとして渡しているけども�
 targetをGameが保持しているが、Targteterが持っているlockedTargetと一致しているのであれば、それのgetterなどで情報を供給すべきだ。
 同様のパターンがほかにもありそう。ctx注入しているが、そもそもそこでしか使っていないものは、ctx注入を経由せず、そのモジュールがフィールドを持つべきだ。ctx注入パターンへの依存を最小化すべき。
 
-### 描画の移譲が中途半端。
-render-dynamics.tsに一元化されているが、render-dynamics.ts内にあるそれぞれの描画関数は、各entityが持つべき責務で、集約すべきではない。playerのように単にmodelを描画すればいいというものでもないものがあり、その処理は複雑化しうる。
-
-sceneへのモデル追加も、各entityのコンストラクタなどですべきことで、Gameが管理すべきじゃない。gameは各Entityがどのようにモデルやメッシュを更新しているかに関与してはいけない。
-EnvironmentSceneも同様にGame.tsが直接管理すべきではない。これは比較的疎結合なので簡単に分離できそう。
+### simulatorとplayerの責務の分離
+simulatorにはplayerを委譲していないのだから、cleanupはplayerを渡して行うべきではない。
 
 ### gameのrenderとupdateの責務の分割
 renderFrameという関数がありながら、そこではpipの描画のみを行っていて、renderはupdateに含まれているのは実態と名前が一致していない。
@@ -49,6 +53,10 @@ collisionSectionsとapplyCollisionSectionsをたらい回しにするだけの�
 
 combat/belt.tsをplayer/belt-physics.tsに移動、改名する。
 player.fireが直接beltGroupを持っているが、これは責務が良くない。belt.tsを新設し、責務を分割するべきか？
+
+### combatの責務の分割
+気が付いたらcombatがマンモスクラスになっている……
+読めたもんじゃないので責務の分析から着手し、どう疎結合化するかを検討する。
 
 ### この時点で重複実装、類似実装を再度検査し、適切に共通化する。
 重複実装の検査にLLMは役に立たないということが分かった。人力で頑張る…
