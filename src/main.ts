@@ -184,13 +184,19 @@ async function main() {
       game.activeCamera.updateProjectionMatrix();
       
       game.playerShipObj.visible = false; // ズームウィンドウでは自機を非表示
-      
+      game.setFlashesVisible(false); // ズームウィンドウではマズルフラッシュも非表示
+
       renderer.setViewport(pipX, pipY, pipW, pipH);
       renderer.setScissor(pipX, pipY, pipW, pipH);
       renderer.render(scene, game.activeCamera);
-      
+
       game.playerShipObj.visible = true; // 戻す
-      
+      game.setFlashesVisible(true);
+
+      // PIP のターゲット菱形枠・LEAD マーカー。カメラをまだ PIP 用の位置・姿勢に
+      // 据えたまま(復元前)呼ぶことで、project() 相当の計算を PIP の矩形にマップできる。
+      game.updatePipOverlay({ x: pipX, y: pipY, w: pipW, h: pipH });
+
       // Restore
       game.activeCamera.position.copy(originalPos);
       game.activeCamera.quaternion.copy(originalQuat);
@@ -206,6 +212,7 @@ async function main() {
       pipCrosshair.style.top = (pipY + pipH / 2) + 'px';
     } else {
       pipCrosshair.style.display = 'none';
+      game.updatePipOverlay(null);
       renderer.render(scene, game.activeCamera);
     }
   }

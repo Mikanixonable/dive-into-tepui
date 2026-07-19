@@ -40,8 +40,9 @@ export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
 export const MAX_ANG_VEL = 1.6; // 手動回転の角速度上限 [rad/s]
 export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
 
-// 微調整モード([V]キーでトグル): 角加速度・角速度上限を絞り、小刻みな姿勢調整を可能にする
-export const FINE_ATTITUDE_SCALE = 0.032;
+// 微調整モード([V]キーでトグル、射撃中は自動でON): 角加速度・角速度上限を絞り、
+// 通常時の半分の出力で小刻みな姿勢調整を可能にする
+export const FINE_ATTITUDE_SCALE = 0.5;
 
 export const BASE_FOV = 55; // 通常時の垂直画角 [deg]
 export const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg]

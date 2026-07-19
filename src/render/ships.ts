@@ -165,8 +165,20 @@ export function buildBulletMesh(): THREE.Mesh {
   return m;
 }
 
+let plasmaGeomFixed = false;
+
 export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Group {
   const m = parsePlasma();
+  if (!plasmaGeomFixed) {
+    // plasma.json (CylinderGeometry) は toJSON() がコンストラクタ引数のみを保存する
+    // 仕様のため、export-models.mjs 側で焼き込んだ rotateX() 補正がロード時に失われ、
+    // 円柱の長さ軸が既定の Y のままになる(下の halo は毎回ランタイムで rotateX() し
+    // ているので正しく Z 軸に揃う)。memoParse は geometry を clone しないため全インス
+    // タンスがこの共有ジオメトリを参照する。一度だけ補正を掛け直す(毎回だと累積回転
+    // してしまう)。
+    m.geometry.rotateX(Math.PI / 2);
+    plasmaGeomFixed = true;
+  }
   const mat = m.material as THREE.MeshBasicMaterial;
   mat.color.set(accent);
   mat.blending = THREE.AdditiveBlending;
