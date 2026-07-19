@@ -1,3 +1,4 @@
+import * as THREE from 'three/webgpu';
 import { createGameScene } from './render/scene';
 import { Game } from './game/game';
 import { STAGE1_CLEARED_KEY } from './game/const';
@@ -120,6 +121,23 @@ async function main() {
   const stage = forced === 0 || forced === 1 || forced === 2 ? forced : await selectStage();
   const game = new Game(gs, stage);
 
+  const pipCrosshair = document.createElement('div');
+  pipCrosshair.id = 'pip-crosshair';
+  pipCrosshair.style.position = 'fixed';
+  pipCrosshair.style.pointerEvents = 'none';
+  pipCrosshair.style.color = ACCENT;
+  pipCrosshair.style.fontSize = '24px';
+  pipCrosshair.style.fontFamily = 'sans-serif';
+  pipCrosshair.innerText = '+';
+  pipCrosshair.style.transform = 'translate(-50%, -50%)';
+  pipCrosshair.style.zIndex = '1000';
+  pipCrosshair.style.display = 'none';
+  document.body.appendChild(pipCrosshair);
+
+  const fwdVec = new THREE.Vector3();
+  const upVec = new THREE.Vector3();
+  const targetVec = new THREE.Vector3();
+
   let lastTime = performance.now();
   function animate(now: number) {
     requestAnimationFrame(animate);
@@ -142,32 +160,52 @@ async function main() {
       
       // PiP Zoom view in the upper right
       const pipSize = Math.min(w, h) * 0.35; // 画面サイズの35%
+      const pipW = pipSize * 1.5;
+      const pipH = pipSize;
       const padding = 20;
-      const pipX = w - pipSize - padding;
+      const pipX = w - pipW - padding;
       const pipY = padding; // WebGPUは左上が原点なので padding が上端になる
       
       const originalFov = game.activeCamera.fov;
       const originalAspect = game.activeCamera.aspect;
-      game.activeCamera.fov = 6; // C.ZOOM_FOV (ハードコードで回避するか、importするか。現状は6固定)
-      game.activeCamera.aspect = 1;
+      const originalPos = game.activeCamera.position.clone();
+      const originalQuat = game.activeCamera.quaternion.clone();
+
+      fwdVec.set(0, 0, 1).applyQuaternion(game.playerShipObj.quaternion);
+      upVec.set(0, 1, 0).applyQuaternion(game.playerShipObj.quaternion);
+      targetVec.copy(game.playerShipObj.position).add(fwdVec);
+
+      game.activeCamera.position.copy(game.playerShipObj.position);
+      game.activeCamera.up.copy(upVec);
+      game.activeCamera.lookAt(targetVec);
+
+      game.activeCamera.fov = 6; // C.ZOOM_FOV
+      game.activeCamera.aspect = pipW / pipH;
       game.activeCamera.updateProjectionMatrix();
       
       game.playerShipObj.visible = false; // ズームウィンドウでは自機を非表示
       
-      renderer.setViewport(pipX, pipY, pipSize, pipSize);
-      renderer.setScissor(pipX, pipY, pipSize, pipSize);
+      renderer.setViewport(pipX, pipY, pipW, pipH);
+      renderer.setScissor(pipX, pipY, pipW, pipH);
       renderer.render(scene, game.activeCamera);
       
       game.playerShipObj.visible = true; // 戻す
       
       // Restore
+      game.activeCamera.position.copy(originalPos);
+      game.activeCamera.quaternion.copy(originalQuat);
       game.activeCamera.fov = originalFov;
       game.activeCamera.aspect = originalAspect;
       game.activeCamera.updateProjectionMatrix();
       renderer.setViewport(0, 0, w, h);
       renderer.setScissorTest(false);
       renderer.autoClear = true;
+      
+      pipCrosshair.style.display = 'block';
+      pipCrosshair.style.left = (pipX + pipW / 2) + 'px';
+      pipCrosshair.style.top = (pipY + pipH / 2) + 'px';
     } else {
+      pipCrosshair.style.display = 'none';
       renderer.render(scene, game.activeCamera);
     }
   }
