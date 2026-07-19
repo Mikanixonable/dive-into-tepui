@@ -1,29 +1,14 @@
 // 環境モデル(大気抵抗 + J2 + 月・太陽の第三体摂動)・自機の空力加熱/動圧・
 // 高度低下警告・地球影による日照率。天体暦(太陽・月の ECI 位置)もここで保持する。
 // game.ts を import しない — 依存は constructor 注入(Hud/Sfx)と各メソッド引数のみ。
-import {
-  ExtraAccel,
-  R_EARTH,
-  SIDEREAL_DAY,
-  j2AccelInto,
-  thirdBodyAccelAdd,
-} from '../physics/orbital';
-import { MU_MOON, MU_SUN, moonPosition, sunPosition } from '../physics/ephemeris';
+import { ExtraAccel, R_EARTH } from '../physics/orbital';
+import { moonPosition, sunPosition } from '../physics/ephemeris';
+import { airspeed, envAccelInto } from '../physics/envaccel';
 import { Vec3, addScaled, dot, len, norm, v3 } from '../physics/vec3';
 import { atmosphericDensity } from '../physics/atmosphere';
 import * as C from './const';
 import { Hud } from './hud';
 import { Sfx } from './audio';
-
-const EARTH_OMEGA = (2 * Math.PI) / SIDEREAL_DAY; // 地球自転角速度 [rad/s](Y軸=北極まわり)
-
-// makeEnvAccel ホットパス用スクラッチ(単一スレッド前提)
-const J2_SCRATCH = v3();
-
-// 地球と共回転する大気に対する対気速度: v - ω×r, ω = (0, ω, 0)
-function airspeed(r: Vec3, v: Vec3): Vec3 {
-  return v3(v.x - EARTH_OMEGA * r.z, v.y, v.z + EARTH_OMEGA * r.x);
-}
 
 // checkThermalLimits の戻り値: 限界超過の種別。null なら超過なし。
 // 破壊(destroyShip の呼び出し)は combat.ts へのアクセスを持つ game.ts 側が行う。
@@ -73,37 +58,11 @@ export class EnvironmentSystem {
   }
 
   // 大気抵抗 + J2(地球扁平) + 月・太陽の第三体(潮汐)摂動を合成した環境加速度。
-  // 天体位置はサブステップ更新の this.sunPos / moonPos を閉包で参照する。
-  // この関数は RK4 の全ステージ × 全エンティティ × サブステップで呼ばれるホット
-  // パスなので、大気抵抗は(専用の Vec3 を作らず)直接数値演算でインライン化し、
-  // 割り当てを 1 個(戻り値ぶんのみ)に抑える。J2・第三体項は共有の純関数
-  // (physics/orbital.ts、テストで数値検証済み)をそのまま使う。
+  // 力の列挙・合成は physics/envaccel.ts の envAccelInto に一本化されており、
+  // ここでは天体位置(サブステップ更新の this.sunPos / moonPos)を閉包で束ねるだけ。
   private makeEnvAccel(bcInv: number): ExtraAccel {
-    return (r: Vec3, v: Vec3, out?: Vec3): Vec3 => {
-      const acc = out ?? v3();
-      const rho = atmosphericDensity(len(r) - R_EARTH);
-      if (rho >= 1e-15) {
-        const vrx = v.x - EARTH_OMEGA * r.z;
-        const vry = v.y;
-        const vrz = v.z + EARTH_OMEGA * r.x;
-        const k = -0.5 * rho * Math.sqrt(vrx * vrx + vry * vry + vrz * vrz) * bcInv;
-        acc.x = vrx * k;
-        acc.y = vry * k;
-        acc.z = vrz * k;
-      } else {
-        acc.x = 0;
-        acc.y = 0;
-        acc.z = 0;
-      }
-      // J2 は加算合成: j2AccelInto はスクラッチに書き、成分を acc へ足す
-      const j = j2AccelInto(J2_SCRATCH, r);
-      acc.x += j.x;
-      acc.y += j.y;
-      acc.z += j.z;
-      thirdBodyAccelAdd(acc, r, this.sunPos, MU_SUN);
-      thirdBodyAccelAdd(acc, r, this.moonPos, MU_MOON);
-      return acc;
-    };
+    return (r: Vec3, v: Vec3, out?: Vec3): Vec3 =>
+      envAccelInto(out ?? v3(), r, v, this.sunPos, this.moonPos, bcInv);
   }
 
   // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の

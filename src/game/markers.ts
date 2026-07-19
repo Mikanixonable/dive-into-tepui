@@ -11,14 +11,10 @@ import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } fr
 import * as C from './const';
 import { MagPickup, Ship } from './entities';
 import { Hud } from './hud';
+import { fmtMarkerDist } from './hud/utils';
 import { TouchControls } from './touch';
 
 export type ProjectFn = (rel: Vec3) => { x: number; y: number; front: boolean };
-
-// スクリーン投影マーカーのラベル用コンパクトな距離表記(例: "420m" / "2.2km")
-function fmtMarkerDist(m: number): string {
-  return m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${m.toFixed(0)}m`;
-}
 
 const tmpV2 = new THREE.Vector3();
 

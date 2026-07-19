@@ -55,6 +55,25 @@ export function norm(a: Vec3): Vec3 {
   return scale(a, 1 / l);
 }
 
+// [-amp, amp] の一様乱数
+export function randSym(amp: number): number {
+  return (Math.random() * 2 - 1) * amp;
+}
+
+// 各成分が [-amp, amp] の一様乱数ベクトル
+export function randVec(amp: number): Vec3 {
+  return v3(randSym(amp), randSym(amp), randSym(amp));
+}
+
+// fwd に直交するランダム単位ベクトル(散布界用)
+export function randPerp(fwd: Vec3): Vec3 {
+  for (;;) {
+    const r = randVec(1);
+    const p = sub(r, scale(fwd, dot(r, fwd)));
+    if (lenSq(p) > 1e-6) return norm(p);
+  }
+}
+
 // ロドリゲスの回転公式: v を単位軸 axis まわりに angle 回転
 export function rotateAxis(v: Vec3, axis: Vec3, angle: number): Vec3 {
   const c = Math.cos(angle);

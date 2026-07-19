@@ -8,6 +8,7 @@ import { PlannedNode, PredictOpts, TrajectorySample, dvToWorld, predictTrajector
 import { Vec3, add, clone, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../physics/vec3';
 import * as C from './const';
 import { Hud } from './hud';
+import { fmtMarkerDist, fmtSpeed } from './hud/utils';
 import { Sfx } from './audio';
 import { Input } from './input';
 import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from './mapgizmo';
@@ -362,7 +363,7 @@ export class MapPlanner {
     const alt = len(s.r) - R_EARTH;
     const h = Math.floor(tRel / 3600);
     const m = Math.floor((tRel % 3600) / 60);
-    return `T+${h}h${String(m).padStart(2, '0')}m 高度 ${(alt / 1000).toFixed(0)}km`;
+    return `T+${h}h${String(m).padStart(2, '0')}m 高度 ${fmtMarkerDist(alt, 0)}`;
   }
 
   // マップ表示中のノード編集(時間・物理は Game.simulate() 側で通常どおり進み続ける。
@@ -504,7 +505,7 @@ export class MapPlanner {
       g.x,
       g.y,
       g.front,
-      `BURN ${mag.toFixed(1)} m/s → ${(len(tgt.vPlanned) / 1000).toFixed(2)} km/s`,
+      `BURN ${mag.toFixed(1)} m/s → ${fmtSpeed(len(tgt.vPlanned))}`,
     );
     return { achieved: false };
   }
