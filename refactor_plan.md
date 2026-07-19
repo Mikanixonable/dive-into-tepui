@@ -47,6 +47,9 @@ applyBeltCollisions
 -> player.fire.applyCollisionSections
 -> player.fire.belt.applyCollisionSections
 
+### thermalって本当にgameが持つべき？
+Playerの温度を管理しているのなら、Playerが持つべきではないか？実態把握から
+
 ### beltとplayer.fireの責務境界
 collisionSectionsとapplyCollisionSectionsをたらい回しにするだけのハンドラが存在する。beltを公開して直接操作すべきだ。
 そもそも関数名が何をしているのか分かりにくい。pplyCollisionSectionsは、beltのVerlet物理演算を行う関数であるが、名前からは想像できない。だいたい公開する必要性があるのか？

@@ -11,6 +11,8 @@ import { buildFlashMesh, buildPlayerShip, RCS_BLOCK_OFFSETS } from '../../render
 import { CombatCtx, CombatSystem } from '../combat/combat';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire } from './player-fire';
+import { altitudeOf } from '../simulator';
+import { ThermalSystem } from '../thermal';
 
 export interface PlayerActionState {
   canAct: boolean;
@@ -167,16 +169,22 @@ export class Player extends Ship {
     this.throttle.setThrottlePreset(idx);
   }
 
-  lossReasonByThermalLimit(limit: 'heat' | 'dynpressure' | null): string | null {
-    if (!limit) return null;
-    return limit === 'heat'
-      ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
-      : '動圧が構造限界を超え、機体は空力的に分解した';
-  }
+  checkLoss(dt: number, thermal: ThermalSystem, combat: CombatSystem, combatCtx: CombatCtx): void {
+    if (!this.alive) return;
+    const limit = thermal.updateAltitudeAlarm(dt, this.alive, altitudeOf(this.state.r));
 
-  lossReasonByAltitude(altitude: number): string | null {
-    if (!this.alive || altitude >= C.PLAYER_MIN_ALT) return null;
-    return '濃密な大気に突入し機体は分解した';
+    if (limit === 'heat') {
+      combatCtx.setLostReason('断熱圧縮による加熱で熱防御が飽和し、機体は焼失した');
+      combat.destroyShip(this, combatCtx);
+    }
+    else if (limit === 'dynpressure') {
+      combatCtx.setLostReason('動圧が構造限界を超え、機体は空力的に分解した');
+      combat.destroyShip(this, combatCtx);
+    }
+    else if (altitudeOf(this.state.r) < C.PLAYER_MIN_ALT) {
+      combatCtx.setLostReason('濃密な大気に突入し機体は分解した');
+      combat.destroyShip(this, combatCtx);
+    }
   }
 
   clearTransientState(): void {
