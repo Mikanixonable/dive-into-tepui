@@ -9,7 +9,6 @@
 // 作曲データ(音階/パターン/パッド/拍長)は複数曲用意し、5分ごとに切り替える
 import { BGM_TRACKS, BgmTrack } from './bgm';
 
-
 const BGM_ENABLED_KEY = 'tepui.settings.bgm'; // localStorage キー
 
 export class Sfx {
@@ -152,19 +151,19 @@ export class Sfx {
 
   private scheduleBgmStep(step: number, t: number, track: BgmTrack): void {
     const g = this.bgmGain!;
-    
+
     // --- 3階層の入れ子構造による長周期化 (元の周期192ステップの8倍 = 1536ステップで1巡) ---
     // 第1階層(Micro): patA(16) と patB(12) のポリリズム (48ステップ周期)
     // 第2階層(Macro): 192ステップごとにスケールを移調する (4フェーズ)
     const macroCycle = Math.floor(step / 192);
     const macroPhase = macroCycle % 4;
     const transpose = [0, 2, 3, 1][macroPhase]!; // 0, +2, +3, +1 スケールステップ
-    
+
     // 第3階層(Global): 768ステップ(192*4)ごとに全体の音域(オクターブ)を変化させる (2フェーズ)
     const globalCycle = Math.floor(step / 768);
     const globalPhase = globalCycle % 2;
     const octaveShift = globalPhase === 1 ? 1 : 0; // 後半は1オクターブ上がる
-    
+
     // 指定した音階インデックスから、移調とオクターブシフトを適用した周波数を計算
     const getFreq = (idx: number, trans: number, oct: number) => {
       let absoluteIdx = idx + trans;
@@ -302,7 +301,7 @@ export class Sfx {
     // バレル排出・交換時の甲高い金属音
     this.tone(1200, 0.1, 0.05, 'square');
     this.tone(800, 0.15, 0.05, 'sawtooth');
-    
+
     // 遅れてもう一度ガチャッという音
     setTimeout(() => {
       this.tone(900, 0.1, 0.04, 'square');
@@ -362,6 +361,7 @@ export class Sfx {
   // 薬莢が機体に当たったときの、からんとした金属音(かすかに)
   clank(): void {
     if (!this.ctx) return;
+    
     const f0 = 1800 + Math.random() * 1600;
     this.tone(f0, 0.05, 0.035, 'triangle');
     this.tone(f0 * 1.53, 0.04, 0.02, 'triangle'); // 非整数倍音で金属感
@@ -406,37 +406,37 @@ export class Sfx {
   debrisImpact(distanceKm: number): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    
+
     // 距離に応じた遅れ: 1km = 1s, ±5%の誤差
     const baseDelay = Math.max(0, distanceKm);
     const hits = 2 + Math.floor(Math.random() * 5); // 2〜6回
-    
+
     let currentDelay = baseDelay * (0.95 + Math.random() * 0.1);
     let currentFreq = 350 + Math.random() * 150; // 最初は中音域
-    
+
     for (let i = 0; i < hits; i++) {
       const hitTime = t + currentDelay;
-      
+
       // 「ことっ」という紙コップに物が当たるような音:
       // 少し高めの周波数から一気に落とすことで打撃感を強調。音量も上げる。
       const osc = this.ctx.createOscillator();
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(currentFreq, hitTime);
       osc.frequency.exponentialRampToValueAtTime(currentFreq * 0.2, hitTime + 0.05);
-      
+
       const gain = this.ctx.createGain();
       gain.gain.setValueAtTime(0.0001, hitTime);
       gain.gain.linearRampToValueAtTime(0.8, hitTime + 0.005); // 音量を0.15 -> 0.8に増加
       gain.gain.exponentialRampToValueAtTime(0.0001, hitTime + 0.06);
-      
+
       osc.connect(gain).connect(this.ctx.destination);
       osc.start(hitTime);
       osc.stop(hitTime + 0.07);
-      
+
       // 次の破片が当たるまでの時間差
       currentDelay += 0.04 + Math.random() * 0.15;
       // 後の破片ほどエネルギーが低く(音が低く)なる
-      currentFreq *= (0.7 + Math.random() * 0.2); 
+      currentFreq *= (0.7 + Math.random() * 0.2);
     }
   }
 

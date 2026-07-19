@@ -125,7 +125,7 @@ export const MAX_CASINGS = 260;
 export const MAX_DEBRIS = 160;
 export const DEBRIS_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限
 export const DEBRIS_SIZE_MAX = 6.0; // 撃破デブリの破片サイズ上限
-export const CASING_CLANK_COOLDOWN = 0.07; // 薬莢-機体接触音のレート制限 [実 s]
+//export const CASING_CLANK_COOLDOWN = 0.07; // 薬莢-機体接触音のレート制限 [実 s]
 
 // --- 被弾・撃破エフェクト(フラッシュ/破片) ---
 export const BULLET_HIT_FLASH_SIZE0 = 1.5;

@@ -5,13 +5,10 @@
 // 描画は自機中心のフローティングオリジン(自機が常に (0,0,0))。
 import * as THREE from 'three/webgpu';
 import {
-  ExtraAccel,
   OrbitState,
   R_EARTH,
   SIDEREAL_DAY,
-  stepOrbitRK4,
 } from '../physics/orbital';
-import { envAccelInto } from '../physics/envaccel';
 import {
   R_MOON,
   moonPosition,
@@ -23,8 +20,6 @@ import {
 } from '../physics/attitude';
 import {
   Vec3,
-  add,
-  clone,
   len,
   norm,
   randSym,
@@ -46,11 +41,12 @@ import { EffectsSystem } from './effects-system';
 import { OrbitLineSystem } from './orbit-line-system';
 import { RenderDynamicsSystem } from './render-dynamics';
 import { getStageDefinition, resolveStageInitData } from './stage-data';
-import { PlayModes } from './play-modes';
+import { Targeter } from './targeter';
 import { HudProjection } from '../hud/hud-projection';
 import { AmmoResupplySystem } from './ammo-resupply';
 import { ManeuverSystem } from './maneuver-system';
 import { PipRect, PipRenderer } from './pip-renderer';
+import { Simulator, SimulatorCtx } from './simulator';
 import * as C from './const';
 import { Bullet, Casing, DebrisPiece, FlashEffect, Enemy } from './entities';
 import { Input } from './input';
@@ -125,10 +121,10 @@ export class Game {
   private readonly geoOrbitLine = new OrbitLine(0x8b93a0, 0.2);
   private readonly moonOrbitLine = new OrbitLine(0xaab3c0, 0.2);
 
-  // 軌道計画モード
   readonly stage: number;
   private readonly starsMesh: THREE.Mesh;
 
+  // 軌道計画モード
   private readonly maneuver = new ManeuverSystem(
     this.hud,
     this.sfx,
@@ -141,7 +137,7 @@ export class Game {
   private readonly stageDirector = new StageDirector(
     this.hud,
     this.sfx,
-    (minDist?: number, maxDist?: number) => this.spawnMagPickup(minDist, maxDist),
+    (minDist?: number, maxDist?: number) => this.ammoResupply.spawnForPlayer(this.player, minDist, maxDist),
   );
   private simTime = 0;
   private lastSimDt = 0;
@@ -155,11 +151,6 @@ export class Game {
   // thermal.ts に切り出し済み。
   private readonly ephemeris = new EphemerisSystem();
   private readonly thermal = new ThermalSystem(this.hud, this.sfx);
-  // 環境加速度 = 大気抵抗(種別ごとの弾道係数) + J2 + 月・太陽の第三体摂動。
-  // 天体位置はサブステップ更新される ephemeris の現在値を閉包で参照する。
-  private readonly envShip = this.makeEnvAccel(C.SHIP_BCINV);
-  private readonly envBullet = this.makeEnvAccel(C.BULLET_BCINV);
-  private readonly envSmall = this.makeEnvAccel(C.SMALL_DEBRIS_BCINV);
   private lostReason = '大気圏に突入し機体を喪失した';
 
 
@@ -171,7 +162,6 @@ export class Game {
   private readonly moonMesh = createMoon();
 
   // --- 弾薬・マガジン ---
-  private clankCd = 0; // 薬莢接触音のレート制限 [実 s]
   private readonly beltGroup = new THREE.Group();
   private readonly beltLinks: THREE.Group[] = [];
   // ベルトのたわみ・ねじれの物理演算(Verlet 積分 + 距離拘束)は belt.ts の
@@ -190,9 +180,10 @@ export class Game {
   private readonly orbitLineSystem = new OrbitLineSystem();
   private readonly renderDynamicsSystem = new RenderDynamicsSystem();
   private readonly cameraSystem = new CameraSystem();
-  private readonly playModes = new PlayModes(this.hud);
+  private readonly targeter = new Targeter(this.hud);
   private readonly hudProjection = new HudProjection(() => this.activeCamera);
   private readonly ammoResupply: AmmoResupplySystem;
+  private readonly simulator: Simulator;
   private readonly pipRenderer = new PipRenderer();
   private readonly earthPhase0 = Math.random() * Math.PI * 2;
 
@@ -210,6 +201,7 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
     this.ammoResupply = new AmmoResupplySystem(this.scene, this.hud, this.sfx);
+    this.simulator = new Simulator(this.ephemeris, this.thermal, this.ammoResupply, this.combat);
 
     // --- 環境 ---
     const env = this.buildEnvironmentScene();
@@ -227,7 +219,7 @@ export class Game {
     this.buildRcsPuffs();
 
     // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
-    this.player = new Player();
+    this.player = new Player(this.hud, this.sfx);
     this.scene.add(this.player.obj);
     this.buildBeltLinks();
     this.maneuver.bindCallbacks(() => this.plannerCtx());
@@ -384,16 +376,26 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.zoomActive = !this.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
-    this.player.updateHpRegen(dt, !this.paused && this.phase === 'playing');
     this.syncMapModeWithPhase();
-    if (this.isFrameSimulating()) {
+
+    if (this.phase !== 'playing') {
+      const advanced = this.simulator.integrateSimulation(
+        this.simTime,
+        dt,
+        this.warp(),
+        this.simulatorCtx(),
+        false,
+        false,
+      );
+      this.simTime = advanced.simTime;
+      this.lastSimDt = advanced.simDt;
+    }
+    else if (!this.paused) {
       this.runPlayingFrame(dt);
     } else {
       this.handleIdleFrame();
     }
-    if (this.phase !== 'playing') {
-      this.coastWorld(dt);
-    }
+
     this.pipRenderer.syncFineAttitude(
       this.player.isFiring,
       (prevFiring, nowFiring) => this.player.setFineAttitudeFromFiring(prevFiring, nowFiring),
@@ -405,28 +407,65 @@ export class Game {
     this.maneuver.syncMapModeWithPhase(this.phase, this.touchControls);
   }
 
-  private isFrameSimulating(): boolean {
-    return !this.paused && this.phase === 'playing';
-  }
-
   private runPlayingFrame(dt: number): void {
-    this.simulate(dt);
-    this.target = this.playModes.update(
-      {
-        mapMode: this.mapMode,
-        player: this.player,
-        enemies: this.enemies,
-        planner: this.planner,
-        plannerCtx: this.plannerCtx(),
-        mapView: this.mapView,
-        input: this.input,
-        dt,
-        activeCamera: this.activeCamera,
-        fineAttitude: this.player.fineAttitude,
-        project: (rel) => this.hudProjection.project(rel),
+    this.player.updateHpRegen(dt);
+    this.updateAutoWarpTarget();
+    const warp = this.warp();
+    const simDt = dt * warp;
+    const action = this.player.updateActionState({
+      dt,
+      input: this.input,
+      warp,
+      mapMode: this.mapMode,
+      onFire: (ammoEvent) => {
+        this.combat.fireGun(this.combatCtx());
+        if (ammoEvent === 'mag') {
+          this.combat.spawnEjectedMagazineFrame(this.combatCtx());
+          this.sfx.magFeed();
+        } else if (ammoEvent === 'reload') {
+          this.combat.spawnEjectedMagazineFrame(this.combatCtx());
+          this.combat.dropBarrel(this.combatCtx());
+          this.sfx.playReload();
+        }
       },
-      this.target,
+    });
+    const playerAccel = this.simulator.buildPlayerAccel(action.thrustFn);
+    const advanced = this.simulator.integrateSimulation(
+      this.simTime,
+      dt,
+      warp,
+      this.simulatorCtx(),
+      true,
+      true,
+      playerAccel,
     );
+    this.simTime = advanced.simTime;
+    this.lastSimDt = advanced.simDt;
+    this.handlePostSimulation(dt, simDt, warp, action.canAct);
+
+    if (this.mapMode) {
+      this.planner.updateEditing(
+        dt,
+        this.plannerCtx(),
+        this.input,
+        (rel) => this.hudProjection.project(rel), {
+        fineAttitude: this.player.fineAttitude,
+        mapSliderT: this.mapView.sliderT,
+        mapFocus: this.mapView.focus,
+        labels: this.mapView.labels,
+      });
+    }
+    else {
+      this.target = this.targeter.updateCombatTargeting(
+        {
+          player: this.player,
+          enemies: this.enemies,
+          input: this.input,
+          activeCamera: this.activeCamera,
+          project: (rel) => this.hudProjection.project(rel),
+        });
+    }
+
     if (this.stage === -1) this.stageDirector.updateStage00(dt, this.stageCtx());
     if (this.stage === 0) this.stageDirector.updateStage0Timer(dt, this.stageCtx());
   }
@@ -452,14 +491,14 @@ export class Game {
 
   private handleEdgePress(code: string): void {
     switch (code) {
-      case 'KeyT': this.player.toggleRcsDamp(this.hud); break;
-      case 'KeyF': this.player.enableProgradeReset(this.hud); break;
-      case 'KeyV': this.player.toggleFineAttitude(this.hud); break;
-      case 'KeyC': this.player.toggleProgradeHold(this.hud); break;
+      case 'KeyT': this.player.toggleRcsDamp(); break;
+      case 'KeyF': this.player.enableProgradeReset(); break;
+      case 'KeyV': this.player.toggleFineAttitude(); break;
+      case 'KeyC': this.player.toggleProgradeHold(); break;
       case 'KeyG': this.chase.toggleFollowAttitude(this.hud); break;
-      case 'Digit1': this.player.setThrottlePreset(0, this.hud); break;
-      case 'Digit2': this.player.setThrottlePreset(1, this.hud); break;
-      case 'Digit3': this.player.setThrottlePreset(2, this.hud); break;
+      case 'Digit1': this.player.setThrottlePreset(0); break;
+      case 'Digit2': this.player.setThrottlePreset(1); break;
+      case 'Digit3': this.player.setThrottlePreset(2); break;
       case 'Comma': this.warpIdx = this.maneuver.adjustWarp(this.warpIdx, -1); break;
       case 'Period': this.warpIdx = this.maneuver.adjustWarp(this.warpIdx, 1); break;
       case 'KeyM': this.maneuver.toggleMap(this.phase, this.touchControls); break;
@@ -478,7 +517,6 @@ export class Game {
     }
     if (!this.player.manualReload()) return;
     this.combat.dropBarrel(this.combatCtx());
-    this.sfx.playReload();
   }
 
   // ------------------------------------------------------- maneuver planning
@@ -517,9 +555,9 @@ export class Game {
 
   // CombatSystem の各メソッド呼び出しに渡す、現在状態のスナップショット
   // (enemies / bullets / plasmaBullets / casings / debris / effects / boardMarks /
-  private combatCtx(): CombatCtx {
+  private combatCtx(simTime = this.simTime): CombatCtx {
     const ctx: CombatCtx = {
-      simTime: this.simTime,
+      simTime,
       player: this.player,
       enemies: this.enemies,
       target: this.target,
@@ -600,41 +638,19 @@ export class Game {
     };
   }
 
-  // ------------------------------------------------------------- simulate
-
-  private simulate(dt: number): void {
-    this.updateAutoWarpTarget();
-    const warp = this.warp();
-    const simDt = dt * warp;
-    const canAct = warp <= C.MAX_PHYS_WARP && this.player.alive && !this.mapMode;
-    const rawWantFire = this.readRawWantFire(warp);
-    this.player.updateFireState({
-      dt,
-      rawWantFire,
-      warp,
-      mapMode: this.mapMode,
-      onEmptyClick: () => {
-        this.sfx.emptyClick();
-        this.hud.hint('弾薬切れ — 軌道上の補給マガジン ▣ を回収せよ', 3000);
-      },
-      onSpinUp: () => this.sfx.spinUp(),
-      onFire: (ammoEvent) => {
-        this.combat.fireGun(this.combatCtx());
-        if (ammoEvent === 'mag') {
-          this.combat.spawnEjectedMagazineFrame(this.combatCtx());
-          this.sfx.magFeed();
-        } else if (ammoEvent === 'reload') {
-          this.combat.spawnEjectedMagazineFrame(this.combatCtx());
-          this.combat.dropBarrel(this.combatCtx());
-          this.sfx.playReload();
-        }
-      },
-    });
-    const thrustFn = this.updateThrustState(canAct);
-    const playerAccel = this.buildPlayerAccel(thrustFn);
-    this.integrateSimulation(simDt, warp, playerAccel);
-    this.handlePostSimulation(dt, simDt, warp, canAct);
+  private simulatorCtx(): SimulatorCtx {
+    return {
+      player: this.player,
+      enemies: this.enemies,
+      bullets: this.bullets,
+      plasmaBullets: this.plasmaBullets,
+      casings: this.casings,
+      debris: this.debris,
+      combatCtx: (simTime) => this.combatCtx(simTime),
+    };
   }
+
+  // ------------------------------------------------------------- simulate
 
   private updateAutoWarpTarget(): void {
     const result = this.maneuver.updateAutoWarp(this.simTime, this.warpIdx);
@@ -642,77 +658,13 @@ export class Game {
     if (result.hint) this.hud.hint(result.hint, 5000);
   }
 
-  private readRawWantFire(warp: number): boolean {
-    const rawWantFire = !this.mapMode && (this.input.down('Space') || this.input.mouseFiring);
-    if (rawWantFire && this.player.alive && warp > C.MAX_PHYS_WARP) {
-      this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
-    }
-    return rawWantFire;
-  }
-
-  private updateThrustState(canAct: boolean): ExtraAccel | null {
-    const thrustFn = canAct ? this.player.buildThrustAccel(this.input, this.mapMode) : null;
-    this.sfx.setThrust(thrustFn !== null);
-    this.player.updateThrustVisual(thrustFn);
-    return thrustFn;
-  }
-
-  private makeEnvAccel(bcInv: number): ExtraAccel {
-    return (r, v, out) => envAccelInto(out ?? v3(), r, v, this.ephemeris.sunPos, this.ephemeris.moonPos, bcInv);
-  }
-
-  private buildPlayerAccel(thrustFn: ExtraAccel | null): ExtraAccel {
-    return thrustFn ? (r, v) => add(thrustFn(r, v), this.envShip(r, v)) : this.envShip;
-  }
-
-  private integrateSimulation(simDt: number, warp: number, playerAccel: ExtraAccel): void {
-    const nSub = warp <= C.MAX_PHYS_WARP ? 1 : Math.min(64, Math.ceil(simDt / 20));
-    const sub = simDt / nSub;
-    for (let i = 0; i < nSub; i++) {
-      this.integrateSimulationSubstep(sub, playerAccel);
-    }
-  }
-
-  private integrateSimulationSubstep(sub: number, playerAccel: ExtraAccel): void {
-    this.ephemeris.update(this.simTime);
-    this.player.prevR = clone(this.player.state.r);
-    if (this.player.alive) {
-      stepOrbitRK4(this.player.state, sub, playerAccel);
-      this.thermal.updateThermal(sub, this.player.state.r, this.player.state.v);
-    }
-    for (const e of this.enemies) {
-      if (!e.alive) continue;
-      e.prevR = clone(e.state.r);
-      stepOrbitRK4(e.state, sub, this.envShip);
-    }
-    for (const b of this.bullets) {
-      if (!b.alive) continue;
-      b.prevR = clone(b.state.r);
-      stepOrbitRK4(b.state, sub, this.envBullet);
-    }
-    for (const pb of this.plasmaBullets) {
-      if (!pb.alive) continue;
-      pb.prevR = clone(pb.state.r);
-      stepOrbitRK4(pb.state, sub, this.envBullet);
-    }
-    for (const cs of this.casings) stepOrbitRK4(cs.state, sub, this.envSmall);
-    for (const d of this.debris) stepOrbitRK4(d.state, sub, this.envSmall);
-    this.ammoResupply.stepOrbits(sub, this.envSmall);
-    this.simTime += sub;
-    this.combat.checkBulletHits(this.combatCtx());
-    this.combat.checkBoardCrossings(this.combatCtx());
-  }
-
   private handlePostSimulation(dt: number, simDt: number, warp: number, canAct: boolean): void {
-    this.lastSimDt = simDt;
     this.applyThermalLimitLoss(this.thermal.checkThermalLimits(this.player.alive));
     this.thermal.updateAltitudeAlarm(dt, this.player.alive, this.altitudeOf(this.player.state.r));
-    this.updateAmmoLogistics(dt);
+    this.ammoResupply.updateLogistics(this.simTime, this.player);
     if (warp <= C.MAX_PHYS_WARP) {
       this.collisionPhysics.resolve(dt, this.collisionCtx(), () => {
-        if (this.clankCd > 0) return;
         this.sfx.clank();
-        this.clankCd = C.CASING_CLANK_COOLDOWN;
       });
     }
     this.updateAttitudes(Math.min(simDt, 0.12));
@@ -737,38 +689,6 @@ export class Game {
     for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
     for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
     this.ammoResupply.stepAttitudes(attDt);
-  }
-
-  // 弾薬まわりの毎フレーム処理: 補給の取り込み・低残弾時の補給投入。
-  // 薬莢の接触音は resolvePhysicalCollisions() の実衝突イベントから直接鳴らす
-  // (このメソッドでは this.clankCd のレート制限だけを実時間 dt で減算する)。
-  private updateAmmoLogistics(dt: number): void {
-    this.clankCd -= dt;
-    this.ammoResupply.updateLogistics(this.simTime, this.player);
-  }
-
-  // 自機軌道の少し先(同一軌道を位相シフト)に補給マガジンを投入する。
-  // 既定は 1.25〜2.5km 先(通常ステージの残弾補給用、従来の半分の距離)。第零ステージの
-  // 開始時配置ではより近い距離を明示的に渡す。
-  private spawnMagPickup(minDist = C.AMMO_RESUPPLY_MIN_DIST, maxDist = C.AMMO_RESUPPLY_MAX_DIST): void {
-    this.ammoResupply.spawnForPlayer(this.player, minDist, maxDist);
-  }
-
-  // 勝敗確定後もデブリ・薬莢・弾を漂わせる
-  private coastWorld(dt: number): void {
-    const simDt = dt * Math.min(this.warp(), 4);
-    this.ephemeris.update(this.simTime);
-    for (const b of this.bullets) if (b.alive) stepOrbitRK4(b.state, simDt, this.envBullet);
-    for (const cs of this.casings) stepOrbitRK4(cs.state, simDt, this.envSmall);
-    for (const d of this.debris) stepOrbitRK4(d.state, simDt, this.envSmall);
-    for (const e of this.enemies) if (e.alive) stepOrbitRK4(e.state, simDt, this.envShip);
-    this.ammoResupply.stepOrbits(simDt, this.envSmall);
-    const attDt = Math.min(simDt, 0.12);
-    for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
-    for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
-    this.ammoResupply.stepAttitudes(attDt);
-    this.simTime += simDt;
-    this.lastSimDt = simDt;
   }
 
   // ------------------------------------------------------------- cleanup
