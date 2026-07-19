@@ -6,7 +6,15 @@ import * as C from './const';
 import { Ship } from './entities';
 import { Input } from './input';
 import { Hud } from '../hud/hud';
+import { Sfx } from './audio';
 import { buildPlayerShip, RCS_BLOCK_OFFSETS } from '../render/ships';
+
+type AmmoEvent = 'none' | 'mag' | 'reload';
+
+export interface PlayerActionState {
+  canAct: boolean;
+  thrustFn: ExtraAccel | null;
+}
 
 export class Player extends Ship {
   rcsDamp = true;
@@ -26,7 +34,10 @@ export class Player extends Ship {
   private reloadTimerValue = 0;
 
   // 高度420km・傾斜51.6°の円軌道に機首プログレードで初期配置する
-  constructor() {
+  constructor(
+    private readonly hud: Hud,
+    private readonly sfx: Sfx,
+  ) {
     const state = Player.makeInitialState();
     super('PLAYER', state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP);
     this.mass = 1000;
@@ -52,8 +63,8 @@ export class Player extends Ship {
     };
   }
 
-  updateHpRegen(dt: number, active: boolean): void {
-    if (!active || !this.alive || this.hp <= 0 || this.hp >= this.maxHp) return;
+  updateHpRegen(dt: number): void {
+    if (!this.alive || this.hp <= 0 || this.hp >= this.maxHp) return;
     this.hp = Math.min(this.maxHp, this.hp + dt * C.HP_REGEN_RATE);
   }
 
@@ -77,18 +88,38 @@ export class Player extends Ship {
     return this.roundsInMagValue > 0 || this.magsLeftValue > 0;
   }
 
-  updateFireState(params: {
+  canAct(warp: number, mapMode: boolean): boolean {
+    return warp <= C.MAX_PHYS_WARP && this.alive && !mapMode;
+  }
+
+  updateActionState(params: {
     dt: number;
-    rawWantFire: boolean;
+    input: Input;
     warp: number;
     mapMode: boolean;
-    onEmptyClick: () => void;
-    onSpinUp: () => void;
-    onFire: (ammoEvent: 'none' | 'mag' | 'reload') => void;
+    onFire: (ammoEvent: AmmoEvent) => void;
+  }): PlayerActionState {
+    const { dt, input, warp, mapMode, onFire } = params;
+    const canAct = this.canAct(warp, mapMode);
+    this.updateFireState({ dt, input, warp, mapMode, onFire });
+    const thrustFn = this.updateThrustState(input, canAct);
+    return { canAct, thrustFn };
+  }
+
+  updateFireState(params: {
+    dt: number;
+    input: Input;
+    warp: number;
+    mapMode: boolean;
+    onFire: (ammoEvent: AmmoEvent) => void;
   }): void {
-    const { dt, rawWantFire, warp, mapMode, onEmptyClick, onSpinUp, onFire } = params;
+    const { dt, input, warp, mapMode, onFire } = params;
+    const rawWantFire = this.readRawWantFire(input, warp, mapMode);
     const hasAmmo = this.hasAmmo();
-    if (rawWantFire && !hasAmmo && this.alive && !this.wasEmptyClick) onEmptyClick();
+    if (rawWantFire && !hasAmmo && this.alive && !this.wasEmptyClick) {
+      this.sfx.emptyClick();
+      this.hud.hint('弾薬切れ — 軌道上の補給マガジン ▣ を回収せよ', 3000);
+    }
     this.wasEmptyClick = rawWantFire && !hasAmmo;
     if (this.reloadTimerValue > 0) {
       this.reloadTimerValue -= dt;
@@ -97,7 +128,7 @@ export class Player extends Ship {
     }
     const wantFire = rawWantFire && this.alive && !mapMode && warp <= C.MAX_PHYS_WARP && hasAmmo;
     if (wantFire && !this.wasFiring) {
-      onSpinUp();
+      this.sfx.spinUp();
       this.fireCooldown = C.SPINUP_TIME;
       this.fineAttitude = true;
     }
@@ -109,7 +140,7 @@ export class Player extends Ship {
     this.fireCooldown = C.FIRE_INTERVAL;
   }
 
-  private consumeRound(): 'none' | 'mag' | 'reload' {
+  private consumeRound(): AmmoEvent {
     this.roundsInMagValue--;
     if (this.roundsInMagValue > 0 || this.magsLeftValue <= 0) return 'none';
     this.magsLeftValue--;
@@ -131,33 +162,34 @@ export class Player extends Ship {
     this.roundsInMagValue = C.MAG_ROUNDS;
     this.magsConsumedSinceReloadValue = 0;
     this.reloadTimerValue = C.RELOAD_TIME;
+    this.sfx.playReload();
     return true;
   }
 
-  toggleRcsDamp(hud: Hud): void {
+  toggleRcsDamp(): void {
     this.rcsDamp = !this.rcsDamp;
-    hud.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
+    this.hud.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
   }
 
-  enableProgradeReset(hud: Hud): void {
+  enableProgradeReset(): void {
     this.progradeHold = true;
-    hud.hint('プログレード姿勢リセット(機首を進行方向へ)');
+    this.hud.hint('プログレード姿勢リセット(機首を進行方向へ)');
   }
 
-  toggleFineAttitude(hud: Hud): void {
+  toggleFineAttitude(): void {
     this.fineAttitude = !this.fineAttitude;
-    hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
+    this.hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
   }
 
-  toggleProgradeHold(hud: Hud): void {
+  toggleProgradeHold(): void {
     this.progradeHold = !this.progradeHold;
-    hud.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
+    this.hud.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
   }
 
-  setThrottlePreset(idx: number, hud: Hud): void {
+  setThrottlePreset(idx: number): void {
     this.setThrottle(idx);
     const labels = ['弱', '中', '強'] as const;
-    hud.hint(`並進出力: ${labels[idx]!} (${C.THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
+    this.hud.hint(`並進出力: ${labels[idx]!} (${C.THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
   }
 
   onPickup(mags: number): void {
@@ -196,14 +228,27 @@ export class Player extends Ship {
     if (prevFiring && !nowFiring) this.fineAttitude = false;
   }
 
-  buildThrustAccel(input: Input, mapMode: boolean): ExtraAccel | null {
-    const manual = mapMode ? 0 : 1;
-    const axX = ((input.down('KeyA') ? 1 : 0) + (input.down('KeyD') ? -1 : 0)) * manual;
-    const axY = ((input.down('KeyQ') ? 1 : 0) + (input.down('KeyE') ? -1 : 0)) * manual;
+  private readRawWantFire(input: Input, warp: number, mapMode: boolean): boolean {
+    const rawWantFire = !mapMode && (input.down('Space') || input.mouseFiring);
+    if (rawWantFire && this.alive && warp > C.MAX_PHYS_WARP) {
+      this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
+    }
+    return rawWantFire;
+  }
+
+  private updateThrustState(input: Input, canAct: boolean): ExtraAccel | null {
+    const thrustFn = canAct ? this.buildThrustAccel(input) : null;
+    this.sfx.setThrust(thrustFn !== null);
+    this.updateThrustVisual(thrustFn);
+    return thrustFn;
+  }
+
+  private buildThrustAccel(input: Input): ExtraAccel | null {
+    const axX = (input.down('KeyA') ? 1 : 0) + (input.down('KeyD') ? -1 : 0);
+    const axY = (input.down('KeyQ') ? 1 : 0) + (input.down('KeyE') ? -1 : 0);
     const axZ =
-      ((input.down('KeyW') || input.down('ControlLeft') || input.down('ControlRight') ? 1 : 0) +
-        (input.down('KeyS') || input.down('ShiftLeft') || input.down('ShiftRight') ? -1 : 0)) *
-      manual;
+      (input.down('KeyW') || input.down('ControlLeft') || input.down('ControlRight') ? 1 : 0) +
+      (input.down('KeyS') || input.down('ShiftLeft') || input.down('ShiftRight') ? -1 : 0);
     if (axX === 0 && axY === 0 && axZ === 0) return null;
     const thrustAccel = C.THROTTLE_LEVELS[this.throttleIdx]!;
     const q = this.att.q;
