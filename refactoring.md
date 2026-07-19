@@ -89,7 +89,16 @@ CommonJS にコンパイルして node で assert)を `npm run test:physics` と
 対象: orbital.ts のケプラー往復精度、J2 の RAAN 回帰率、attitude.ts のエネルギー保存、
 atmosphere.ts の密度テーブル境界。ステップ 3 以降の各コミット前に必ず実行。
 
-## ステップ 6. 仕上げ(小)
+## ステップ 6. 仕上げ(小) — ✅ 完了 (2026-07-19)
+
+実績: `tsc --noUnusedLocals --noUnusedParameters` はリポジトリ全体で 0 件(既存 tsconfig で
+有効済み、目視確認でも削除対象なし)。`game.ts` の import ブロックのみ、physics 系
+(`orbital`/`ephemeris`/`predict`/`attitude`/`vec3`)を一箇所にまとめ、game 内モジュール
+(`planner`〜`entities`〜`input`...)をその後に続ける並びに再編(three → physics → game内 →
+render)。CLAUDE.md はアーキテクチャ節を通読し、`game.ts` の説明が旧構成(HUD マーカー
+所有・updateThermal/makeEnvAccel の所在)のままだった箇所と、N-body ワーカー一式の
+パス(`src/physics/{bodies,integrator,physics.worker}.ts` → 実際は `src/physics/nbody/`)
+を修正。three.js のバージョン更新は行わず `three-shims.d.ts` は据え置き。
 
 - import の整理(未使用 import 削除、`game.ts` の巨大 import ブロックの再編)。
 - `three-shims.d.ts` — three.js を更新する場合は upstream 型の有無を確認(今回は据え置き可)。
