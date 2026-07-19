@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { createGameScene } from './render/scene';
+import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { STAGE1_CLEARED_KEY } from './game/const';
 import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './game/theme';
@@ -104,7 +104,8 @@ function showLoading(): () => void {
 
 let hideLoading: (() => void) | null = null;
 
-async function main() {
+// ローディング表示下で canvas を作り WebGPU シーンを初期化する
+async function initScene(): Promise<GameScene> {
   hideLoading = showLoading();
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
@@ -112,15 +113,19 @@ async function main() {
   const gs = await createGameScene(canvas);
   hideLoading();
   hideLoading = null;
-  const { scene, renderer } = gs;
-  // ?stage=0|1|2 で選択画面をスキップ(デバッグ・共有リンク用)。
-  // パラメータ未指定時は get() が null を返すので、Number(null)=0 とは
-  // 区別してステージ0への誤フォースを避ける。
+  return gs;
+}
+
+// ?stage=0|1|2 で選択画面をスキップ(デバッグ・共有リンク用)。
+// パラメータ未指定時は get() が null を返すので、Number(null)=0 とは
+// 区別してステージ0への誤フォースを避ける。
+async function resolveStage(): Promise<number> {
   const stageParam = new URLSearchParams(location.search).get('stage');
   const forced = stageParam !== null ? Number(stageParam) : NaN;
-  const stage = forced === 0 || forced === 1 || forced === 2 ? forced : await selectStage();
-  const game = new Game(gs, stage);
+  return forced === 0 || forced === 1 || forced === 2 ? forced : selectStage();
+}
 
+function createPipCrosshair(): HTMLDivElement {
   const pipCrosshair = document.createElement('div');
   pipCrosshair.id = 'pip-crosshair';
   pipCrosshair.style.position = 'fixed';
@@ -133,13 +138,17 @@ async function main() {
   pipCrosshair.style.zIndex = '1000';
   pipCrosshair.style.display = 'none';
   document.body.appendChild(pipCrosshair);
+  return pipCrosshair;
+}
 
-  const fwdVec = new THREE.Vector3();
-  const upVec = new THREE.Vector3();
-  const targetVec = new THREE.Vector3();
+// ?perf=1: 軽量化計測用のフレームタイム表示(sim/render CPU時間・FPS・エンティティ数)。
+// 0.5秒ごとに集計値を更新するだけで、ゲームの挙動には影響しない。
+interface PerfMeter {
+  on: boolean;
+  record(simMs: number, renderMs: number, now: number): void;
+}
 
-  // ?perf=1: 軽量化計測用のフレームタイム表示(sim/render CPU時間・FPS・エンティティ数)。
-  // 0.5秒ごとに集計値を更新するだけで、ゲームの挙動には影響しない。
+function createPerfMeter(game: Game): PerfMeter {
   const perfOn = new URLSearchParams(location.search).get('perf') === '1';
   let perfEl: HTMLDivElement | null = null;
   let perfSimMs = 0;
@@ -154,7 +163,7 @@ async function main() {
       `border:1px solid ${EDGE};border-radius:3px;padding:4px 8px;white-space:pre;line-height:1.5`;
     document.body.appendChild(perfEl);
   }
-  function perfFlush(now: number) {
+  const perfFlush = (now: number) => {
     if (!perfEl || now - perfLastFlush < 500) return;
     const n = Math.max(1, perfFrames);
     const c = game.perfCounts();
@@ -168,99 +177,132 @@ async function main() {
     perfRenderMs = 0;
     perfFrames = 0;
     perfLastFlush = now;
-  }
+  };
+  return {
+    on: perfOn,
+    record(simMs, renderMs, now) {
+      perfSimMs += simMs;
+      perfRenderMs += renderMs;
+      perfFrames++;
+      perfFlush(now);
+    },
+  };
+}
 
+// 射撃中の PiP ズームウィンドウ描画パス: メインビューを描いたあと、カメラを
+// 機首方向に据え直して右上矩形へ再描画し、復元前に PIP オーバーレイを更新する。
+const fwdVec = new THREE.Vector3();
+const upVec = new THREE.Vector3();
+const targetVec = new THREE.Vector3();
+
+function renderCombatWithPip(gs: GameScene, game: Game, pipCrosshair: HTMLDivElement): void {
+  const { scene, renderer } = gs;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+
+  renderer.autoClear = false;
+  renderer.clear();
+
+  // Main view
+  renderer.setViewport(0, 0, w, h);
+  renderer.setScissor(0, 0, w, h);
+  renderer.setScissorTest(true);
+  renderer.render(scene, game.activeCamera);
+
+  // PiP Zoom view in the upper right
+  const pipSize = Math.min(w, h) * 0.35; // 画面サイズの35%
+  const pipW = pipSize * 1.5;
+  const pipH = pipSize;
+  const padding = 20;
+  const pipX = w - pipW - padding;
+  const pipY = padding; // WebGPUは左上が原点なので padding が上端になる
+
+  const originalFov = game.activeCamera.fov;
+  const originalAspect = game.activeCamera.aspect;
+  const originalPos = game.activeCamera.position.clone();
+  const originalQuat = game.activeCamera.quaternion.clone();
+
+  fwdVec.set(0, 0, 1).applyQuaternion(game.playerShipObj.quaternion);
+  upVec.set(0, 1, 0).applyQuaternion(game.playerShipObj.quaternion);
+  targetVec.copy(game.playerShipObj.position).add(fwdVec);
+
+  game.activeCamera.position.copy(game.playerShipObj.position);
+  game.activeCamera.up.copy(upVec);
+  game.activeCamera.lookAt(targetVec);
+
+  game.activeCamera.fov = 6; // C.ZOOM_FOV
+  game.activeCamera.aspect = pipW / pipH;
+  game.activeCamera.updateProjectionMatrix();
+
+  game.playerShipObj.visible = false; // ズームウィンドウでは自機を非表示
+  game.setFlashesVisible(false); // ズームウィンドウではマズルフラッシュも非表示
+
+  renderer.setViewport(pipX, pipY, pipW, pipH);
+  renderer.setScissor(pipX, pipY, pipW, pipH);
+  renderer.render(scene, game.activeCamera);
+
+  game.playerShipObj.visible = true; // 戻す
+  game.setFlashesVisible(true);
+
+  // PIP のターゲット菱形枠・LEAD マーカー。カメラをまだ PIP 用の位置・姿勢に
+  // 据えたまま(復元前)呼ぶことで、project() 相当の計算を PIP の矩形にマップできる。
+  game.updatePipOverlay({ x: pipX, y: pipY, w: pipW, h: pipH });
+
+  // Restore
+  game.activeCamera.position.copy(originalPos);
+  game.activeCamera.quaternion.copy(originalQuat);
+  game.activeCamera.fov = originalFov;
+  game.activeCamera.aspect = originalAspect;
+  game.activeCamera.updateProjectionMatrix();
+  renderer.setViewport(0, 0, w, h);
+  renderer.setScissorTest(false);
+  renderer.autoClear = true;
+
+  pipCrosshair.style.display = 'block';
+  pipCrosshair.style.left = (pipX + pipW / 2) + 'px';
+  pipCrosshair.style.top = (pipY + pipH / 2) + 'px';
+}
+
+function startAnimationLoop(gs: GameScene, game: Game, pipCrosshair: HTMLDivElement, perf: PerfMeter): void {
+  const { scene, renderer } = gs;
   let lastTime = performance.now();
   function animate(now: number) {
     requestAnimationFrame(animate);
     const dt = (now - lastTime) / 1000;
     lastTime = now;
-    const t0 = perfOn ? performance.now() : 0;
+    const t0 = perf.on ? performance.now() : 0;
     game.update(dt);
-    const t1 = perfOn ? performance.now() : 0;
+    const t1 = perf.on ? performance.now() : 0;
     // 戦闘ビュー / 軌道計画ビューでカメラを切り替える
     if (game.isFiring && !game.isMapMode) {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      
-      renderer.autoClear = false;
-      renderer.clear();
-      
-      // Main view
-      renderer.setViewport(0, 0, w, h);
-      renderer.setScissor(0, 0, w, h);
-      renderer.setScissorTest(true);
-      renderer.render(scene, game.activeCamera);
-      
-      // PiP Zoom view in the upper right
-      const pipSize = Math.min(w, h) * 0.35; // 画面サイズの35%
-      const pipW = pipSize * 1.5;
-      const pipH = pipSize;
-      const padding = 20;
-      const pipX = w - pipW - padding;
-      const pipY = padding; // WebGPUは左上が原点なので padding が上端になる
-      
-      const originalFov = game.activeCamera.fov;
-      const originalAspect = game.activeCamera.aspect;
-      const originalPos = game.activeCamera.position.clone();
-      const originalQuat = game.activeCamera.quaternion.clone();
-
-      fwdVec.set(0, 0, 1).applyQuaternion(game.playerShipObj.quaternion);
-      upVec.set(0, 1, 0).applyQuaternion(game.playerShipObj.quaternion);
-      targetVec.copy(game.playerShipObj.position).add(fwdVec);
-
-      game.activeCamera.position.copy(game.playerShipObj.position);
-      game.activeCamera.up.copy(upVec);
-      game.activeCamera.lookAt(targetVec);
-
-      game.activeCamera.fov = 6; // C.ZOOM_FOV
-      game.activeCamera.aspect = pipW / pipH;
-      game.activeCamera.updateProjectionMatrix();
-      
-      game.playerShipObj.visible = false; // ズームウィンドウでは自機を非表示
-      game.setFlashesVisible(false); // ズームウィンドウではマズルフラッシュも非表示
-
-      renderer.setViewport(pipX, pipY, pipW, pipH);
-      renderer.setScissor(pipX, pipY, pipW, pipH);
-      renderer.render(scene, game.activeCamera);
-
-      game.playerShipObj.visible = true; // 戻す
-      game.setFlashesVisible(true);
-
-      // PIP のターゲット菱形枠・LEAD マーカー。カメラをまだ PIP 用の位置・姿勢に
-      // 据えたまま(復元前)呼ぶことで、project() 相当の計算を PIP の矩形にマップできる。
-      game.updatePipOverlay({ x: pipX, y: pipY, w: pipW, h: pipH });
-
-      // Restore
-      game.activeCamera.position.copy(originalPos);
-      game.activeCamera.quaternion.copy(originalQuat);
-      game.activeCamera.fov = originalFov;
-      game.activeCamera.aspect = originalAspect;
-      game.activeCamera.updateProjectionMatrix();
-      renderer.setViewport(0, 0, w, h);
-      renderer.setScissorTest(false);
-      renderer.autoClear = true;
-      
-      pipCrosshair.style.display = 'block';
-      pipCrosshair.style.left = (pipX + pipW / 2) + 'px';
-      pipCrosshair.style.top = (pipY + pipH / 2) + 'px';
+      renderCombatWithPip(gs, game, pipCrosshair);
     } else {
       pipCrosshair.style.display = 'none';
       game.updatePipOverlay(null);
       renderer.render(scene, game.activeCamera);
     }
-    if (perfOn) {
+    if (perf.on) {
       const t2 = performance.now();
-      perfSimMs += t1 - t0;
-      perfRenderMs += t2 - t1;
-      perfFrames++;
-      perfFlush(t2);
+      perf.record(t1 - t0, t2 - t1, t2);
     }
   }
   requestAnimationFrame((now) => {
     lastTime = now;
     animate(now);
   });
+}
+
+async function main() {
+  // レンダラ初期化
+  const gs = await initScene();
+  // ステージ決定とゲーム生成
+  const stage = await resolveStage();
+  const game = new Game(gs, stage);
+  // PIP 照準・パフォーマンス計測の DOM
+  const pipCrosshair = createPipCrosshair();
+  const perf = createPerfMeter(game);
+  // rAF ループ開始
+  startAnimationLoop(gs, game, pipCrosshair, perf);
 }
 
 main().catch((err) => {
