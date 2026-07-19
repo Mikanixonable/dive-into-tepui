@@ -66,20 +66,26 @@ export class StageDirector {
   constructor(
     private readonly hud: Hud,
     private readonly sfx: Sfx,
+    readonly stage: number,
     private readonly spawnMagPickup: (minDist?: number, maxDist?: number) => void,
   ) {}
 
   // ステージごとの敵軌道。ステージ0は自機周囲 5km 以内に密集する近接戦闘訓練、
   // ステージ1は自機軌道の近傍、ステージ2は低軌道 2 機 + モルニヤ級高楕円軌道 3 機。
-  makeEnemySpecs(base: OrbitState, stage: number): EnemySpec[] {
+  makeEnemySpecs(base: OrbitState): EnemySpec[] {
     const r0 = len(base.r);
     const hHat = norm(cross(base.r, base.v));
-    const stageDef = getStageDefinition(stage);
+    const stageDef = getStageDefinition(this.stage);
     if (stageDef.enemyLayout.kind === 'none') return []; // ステージ00は初期敵なしで動的スポーンする
     if (stageDef.enemyLayout.kind === 'training-cluster') return this.makeStage0Specs(base, hHat);
 
     const phased = this.makePhasedFactory(base, hHat, r0);
     return this.buildPresetSpecs(stageDef.enemyLayout.presets, phased, r0);
+  }
+
+  update(dt: number, ctx: StageCtx): void {
+    if (this.stage === -1) this.updateStage00(dt, ctx);
+    if (this.stage === 0) this.updateStage0Timer(dt, ctx);
   }
 
   private makePhasedFactory(base: OrbitState, hHat: Vec3, radius: number): (dAlong: number) => OrbitState {
