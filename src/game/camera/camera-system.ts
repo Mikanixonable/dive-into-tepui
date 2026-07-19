@@ -1,20 +1,16 @@
 import * as THREE from 'three/webgpu';
 import { qRotate } from '../../physics/attitude';
-import { sunAzimuth } from '../../physics/ephemeris';
 import { Vec3, len, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { ChaseCamera } from '../camera/chase-camera';
 import { MouseDelta } from '../input';
-import { MapView } from '../map-mode/mapview';
+import { MapModeSystem } from '../map-mode/map-mode-system';
 import { Player } from '../player/player';
 
 export interface CameraUpdateCtx {
-  mapMode: boolean;
   zoomActive: boolean;
-  simTime: number;
-  sunPhase0: number;
   player: Player;
-  mapView: MapView;
+  maneuver: MapModeSystem;
   chase: ChaseCamera;
   camera: THREE.PerspectiveCamera;
   mouse: MouseDelta;
@@ -27,17 +23,12 @@ export interface CameraUpdateCtx {
 
 export class CameraSystem {
   updateActiveCamera(ctx: CameraUpdateCtx): THREE.PerspectiveCamera {
-    if (ctx.mapMode) {
-      this.updateMapCamera(ctx);
-      return ctx.mapView.camera;
+    if (ctx.maneuver.mapMode) {
+      ctx.maneuver.updateCamera(ctx.mouse, ctx.keyYaw, ctx.keyPitch, ctx.dt);
+      return ctx.maneuver.mapCamera;
     }
     this.updateCombatCamera(ctx);
     return ctx.camera;
-  }
-
-  private updateMapCamera(ctx: CameraUpdateCtx): void {
-    const sunAz = sunAzimuth(ctx.simTime, ctx.sunPhase0);
-    ctx.mapView.updateCamera(ctx.mouse, ctx.keyYaw, ctx.keyPitch, ctx.dt, ctx.origin, sunAz);
   }
 
   private updateCombatCamera(ctx: CameraUpdateCtx): void {
