@@ -2,7 +2,7 @@ import { moonPosition } from '../physics/ephemeris';
 import { sampleAt } from '../physics/predict';
 import { elementsFromState, Elements, R_EARTH } from '../physics/orbital';
 import { scale, sub, v3, Vec3 } from '../physics/vec3';
-import { EnvironmentSystem } from './environment';
+import { EphemerisSystem } from './ephemeris';
 import { MapPlanner, PlannerCtx, ProjectFn } from './planner';
 import { MapView } from './mapview';
 import { Player } from './player';
@@ -19,7 +19,7 @@ export interface OrbitLineUpdateCtx {
   target: Enemy | null;
   enemies: Enemy[];
   enemyOrbitLines: OrbitLine[];
-  environment: EnvironmentSystem;
+  ephemeris: EphemerisSystem;
   planner: MapPlanner;
   plannerCtx: PlannerCtx;
   mapView: MapView;
@@ -68,8 +68,8 @@ export class OrbitLineSystem {
         ctx.origin,
         {
           simTime: ctx.simTime,
-          sunPhase0: ctx.environment.sunPhase0,
-          moonPhase0: ctx.environment.moonPhase0,
+          sunPhase0: ctx.ephemeris.sunPhase0,
+          moonPhase0: ctx.ephemeris.moonPhase0,
           duration: ctx.trajOverlay.predictDurationSec(ctx.plannerCtx),
         },
         ctx.project,
