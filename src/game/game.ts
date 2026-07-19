@@ -1124,7 +1124,7 @@ export class Game {
               this.magsLeft--; // 残弾ごと捨てる
               this.roundsInMag = C.MAG_ROUNDS;
               this.magsConsumedSinceReload = 0;
-              this.reloadTimer = 3.0;
+              this.reloadTimer = C.RELOAD_TIME;
               this.dropBarrel();
               this.sfx.playReload();
             }
@@ -1458,9 +1458,9 @@ export class Game {
   }
 
   // 自機軌道の少し先(同一軌道を位相シフト)に補給マガジンを投入する。
-  // 既定は 2.5〜5km 先(通常ステージの残弾補給用)。第零ステージの開始時配置では
-  // より近い距離を明示的に渡す。
-  private spawnMagPickup(minDist = 2500, maxDist = 5000): void {
+  // 既定は 1.25〜2.5km 先(通常ステージの残弾補給用、従来の半分の距離)。第零ステージの
+  // 開始時配置ではより近い距離を明示的に渡す。
+  private spawnMagPickup(minDist = 1250, maxDist = 2500): void {
     const r = this.player.state.r;
     const v = this.player.state.v;
     const hHat = norm(cross(r, v));
@@ -1826,7 +1826,7 @@ export class Game {
       // マガジン3つ消費でバレル交換リロード
       if (this.magsConsumedSinceReload >= 3) {
         this.magsConsumedSinceReload = 0;
-        this.reloadTimer = 3.0; // 3秒のクールダウン
+        this.reloadTimer = C.RELOAD_TIME; // クールダウン
         this.sfx.playReload();
         this.dropBarrel();
       } else {
@@ -2027,7 +2027,7 @@ export class Game {
   // 撃破デブリ: 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果
   private spawnDebris(ship: Ship, sc = 1): void {
     const accent = ship === this.player ? 0x9fd8e8 : 0xff6a4a;
-    this.spawnFragments(ship.state.r, ship.state.v, 11, accent, 0.5 * sc, 1.6 * sc, 2.8);
+    this.spawnFragments(ship.state.r, ship.state.v, 11, accent, C.DEBRIS_SIZE_MIN * sc, C.DEBRIS_SIZE_MAX * sc, 2.8);
   }
 
   // 破片を飛散させる共通処理(撃破デブリ・被弾の欠片)
