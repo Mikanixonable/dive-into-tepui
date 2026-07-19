@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { dot, norm, sub, v3 } from '../physics/vec3';
 import * as C from './const';
-import { Ship } from './entities';
+import { Enemy } from './entities';
+import { Player } from './player';
 import { Hud } from '../hud/hud';
 import { Input } from './input';
 import { MapPlanner, PlannerCtx, ProjectFn } from './planner';
@@ -9,8 +10,8 @@ import { MapView } from './mapview';
 
 export interface PlayModeUpdateCtx {
   mapMode: boolean;
-  player: Ship;
-  enemies: Ship[];
+  player: Player;
+  enemies: Enemy[];
   planner: MapPlanner;
   plannerCtx: PlannerCtx;
   mapView: MapView;
@@ -22,11 +23,11 @@ export interface PlayModeUpdateCtx {
 }
 
 export class PlayModes {
-  private lockedTarget: Ship | null = null;
+  private lockedTarget: Enemy | null = null;
 
   constructor(private readonly hud: Hud) {}
 
-  update(ctx: PlayModeUpdateCtx, prevTarget: Ship | null): Ship | null {
+  update(ctx: PlayModeUpdateCtx, prevTarget: Enemy | null): Enemy | null {
     if (ctx.mapMode) {
       this.updateMapEditing(ctx);
       return prevTarget;
@@ -43,7 +44,7 @@ export class PlayModes {
     });
   }
 
-  private updateCombatTargeting(ctx: PlayModeUpdateCtx): Ship | null {
+  private updateCombatTargeting(ctx: PlayModeUpdateCtx): Enemy | null {
     ctx.input.takeClicks();
     this.handleTargetLockByRightClick(ctx);
     return this.resolveAutoTarget(ctx);
@@ -53,7 +54,7 @@ export class PlayModes {
     const rightClicks = ctx.input.takeRightClicks();
     if (rightClicks.length <= 0 || !ctx.player.alive) return;
     const click = rightClicks[rightClicks.length - 1]!;
-    let hit: Ship | null = null;
+    let hit: Enemy | null = null;
     let minDistSq = C.TARGET_LOCK_PICK_PX_SQ;
     for (const enemy of ctx.enemies) {
       if (!enemy.alive) continue;
@@ -77,7 +78,7 @@ export class PlayModes {
     }
   }
 
-  private toggleLockedTarget(hit: Ship): void {
+  private toggleLockedTarget(hit: Enemy): void {
     if (this.lockedTarget === hit) {
       this.lockedTarget = null;
       this.hud.hint('ターゲット固定解除');
@@ -87,12 +88,12 @@ export class PlayModes {
     this.hud.hint(`ターゲット固定: ${hit.name}`);
   }
 
-  private resolveAutoTarget(ctx: PlayModeUpdateCtx): Ship | null {
+  private resolveAutoTarget(ctx: PlayModeUpdateCtx): Enemy | null {
     if (this.lockedTarget && this.lockedTarget.alive) {
       return this.lockedTarget;
     }
     this.lockedTarget = null;
-    let bestTarget: Ship | null = null;
+    let bestTarget: Enemy | null = null;
     let bestDot = -1;
     const camFwdW = new THREE.Vector3();
     ctx.activeCamera.getWorldDirection(camFwdW);

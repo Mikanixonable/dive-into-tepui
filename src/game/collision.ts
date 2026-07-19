@@ -3,7 +3,8 @@ import { qRotate } from '../physics/attitude';
 import { Vec3, add, sub } from '../physics/vec3';
 import * as C from './const';
 import { BeltPhysics } from './belt';
-import { Casing, DebrisPiece, MagPickup, Ship } from './entities';
+import { Casing, DebrisPiece, Enemy, MagPickup } from './entities';
+import { Player } from './player';
 
 type CollisionEntity = {
   r: Vec3;
@@ -17,8 +18,8 @@ type CollisionEntity = {
 };
 
 export interface CollisionPhysicsCtx {
-  player: Ship;
-  enemies: Ship[];
+  player: Player;
+  enemies: Enemy[];
   casings: Casing[];
   magPickups: MagPickup[];
   debris: DebrisPiece[];

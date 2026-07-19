@@ -9,10 +9,11 @@ import { Elements } from '../physics/orbital';
 import { qRotate } from '../physics/attitude';
 import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../physics/vec3';
 import * as C from '../game/const';
-import { MagPickup, Ship } from '../game/entities';
+import { Enemy, MagPickup, Ship } from '../game/entities';
 import { Hud } from './hud';
 import { fmtMarkerDist } from './utils';
 import { TouchControls } from '../game/touch';
+import { Player } from '../game/player';
 
 export type ProjectFn = (rel: Vec3) => { x: number; y: number; front: boolean };
 
@@ -25,9 +26,9 @@ const tmpV2 = new THREE.Vector3();
 // checkBoardCrossings が直接この配列へ push する)。
 export interface MarkersCtx {
   mapMode: boolean;
-  player: Ship;
-  enemies: Ship[];
-  target: Ship | null;
+  player: Player;
+  enemies: Enemy[];
+  target: Enemy | null;
   magPickups: MagPickup[];
   mapLabelIds: string[]; // マップモードのラベル(mapView.labels の id 一覧、非マップ時に隠す)
   activeCamera: THREE.PerspectiveCamera; // PIP オーバーレイ専用の投影に使う
@@ -248,27 +249,27 @@ export class MarkersSystem {
     const cy = window.innerHeight / 2;
 
     if (!ctx.mapMode && ctx.player.alive) {
-      for (const ship of ctx.enemies) {
-        if (!ship.alive) {
-          this.hud.hideMarker('lead-' + ship.name);
-          this.hud.hideMarker('dir-' + ship.name);
+      for (const enemy of ctx.enemies) {
+        if (!enemy.alive) {
+          this.hud.hideMarker('lead-' + enemy.name);
+          this.hud.hideMarker('dir-' + enemy.name);
           continue;
         }
 
         // Target tracking for LEAD (keep showing for ~20s)
-        if (ship === ctx.target) {
-          ship.lastTargetedSim = ctx.simTime;
+        if (enemy === ctx.target) {
+          enemy.lastTargetedSim = ctx.simTime;
         }
 
-        const relP = sub(ship.state.r, o);
+        const relP = sub(enemy.state.r, o);
         const p = project(relP);
-        const hexColor = ship.accent ? '#' + ship.accent.toString(16).padStart(6, '0') : '#ff6a00';
+        const hexColor = enemy.accent ? '#' + enemy.accent.toString(16).padStart(6, '0') : '#ff6a00';
 
         // 方位マーカー (視界外)
-        this.updateOffscreenDirMarker(ship, p, cx, cy, hexColor);
+        this.updateOffscreenDirMarker(enemy, p, cx, cy, hexColor);
 
         // LEAD マーカー (20秒履歴)
-        this.updateLeadMarker(ctx, ship, relP, pv, hexColor, project);
+        this.updateLeadMarker(ctx, enemy, relP, pv, hexColor, project);
       }
     } else {
       for (const ship of ctx.enemies) {
@@ -279,7 +280,7 @@ export class MarkersSystem {
   }
 
   private updateOffscreenDirMarker(
-    ship: Ship,
+    enemy: Enemy,
     p: { x: number; y: number; front: boolean },
     cx: number,
     cy: number,
@@ -299,37 +300,37 @@ export class MarkersSystem {
       const my = cy + r * Math.sin(ang);
 
       const rotDeg = ang * 180 / Math.PI + 90; // '▲' faces UP initially, so add 90 deg
-      this.hud.marker('dir-' + ship.name, 'mk-dir', '▲', mx, my, true, '', 0.6, hexColor, rotDeg);
+      this.hud.marker('dir-' + enemy.name, 'mk-dir', '▲', mx, my, true, '', 0.6, hexColor, rotDeg);
     } else {
-      this.hud.hideMarker('dir-' + ship.name);
+      this.hud.hideMarker('dir-' + enemy.name);
     }
   }
 
   private updateLeadMarker(
     ctx: MarkersCtx,
-    ship: Ship,
+    enemy: Enemy,
     relP: Vec3,
     pv: Vec3,
     hexColor: string,
     project: ProjectFn,
   ): void {
     let showLead = false;
-    if (ship.lastTargetedSim !== undefined && (ctx.simTime - ship.lastTargetedSim < 20)) {
+    if (enemy.lastTargetedSim !== undefined && (ctx.simTime - enemy.lastTargetedSim < 20)) {
       showLead = true;
     }
 
     if (showLead) {
-      const relV = sub(ship.state.v, pv);
+      const relV = sub(enemy.state.v, pv);
       const t = ctx.solveLeadTime(relP, relV, C.MUZZLE_SPEED);
       if (t !== null && t < 25) {
         const lead = addScaled(relP, relV, t);
         const lp = project(lead);
-        this.hud.marker('lead-' + ship.name, 'mk-lead', '✛', lp.x, lp.y, lp.front, '', 1, hexColor);
+        this.hud.marker('lead-' + enemy.name, 'mk-lead', '✛', lp.x, lp.y, lp.front, '', 1, hexColor);
       } else {
-        this.hud.hideMarker('lead-' + ship.name);
+        this.hud.hideMarker('lead-' + enemy.name);
       }
     } else {
-      this.hud.hideMarker('lead-' + ship.name);
+      this.hud.hideMarker('lead-' + enemy.name);
     }
   }
 
