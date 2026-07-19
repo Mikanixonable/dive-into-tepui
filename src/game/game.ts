@@ -27,6 +27,7 @@ import { BeltPhysics } from './belt';
 import { CombatCtx, CombatSystem } from './combat';
 import { StageCtx, StageDirector } from './stages';
 import { EnvironmentSystem } from './environment';
+import { MarkersCtx, MarkersSystem } from './markers';
 import {
   Attitude,
   qRotate,
@@ -94,11 +95,6 @@ function randVec(amp: number): Vec3 {
   return v3(randSym(amp), randSym(amp), randSym(amp));
 }
 
-// スクリーン投影マーカーのラベル用コンパクトな距離表記(例: "420m" / "2.2km")
-function fmtMarkerDist(m: number): string {
-  return m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${m.toFixed(0)}m`;
-}
-
 export class Game {
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
@@ -119,8 +115,6 @@ export class Game {
   private casings: Casing[] = [];
   private debris: DebrisPiece[] = [];
   private effects: FlashEffect[] = [];
-  // ターゲット標的面の通過点(ターゲット相対オフセットで保持し、的に貼り付いて見せる)
-  private boardMarks: { off: Vec3; age: number }[] = [];
 
 
   private readonly glowTex: THREE.Texture;
@@ -216,8 +210,10 @@ export class Game {
   // 武器発射・被弾・撃破まわりの処理は combat.ts の CombatSystem に切り出し済み。
   // 発射カウンタ(shots/hits/kills)・砲口交互発射のインデックスも CombatSystem が保持する。
   private readonly combat = new CombatSystem(this.hud, this.sfx);
-  private hudTimer = 0;
-  private listTimer = 0;
+  // HUDマーカー(方向・敵/リード/AMMO/ノード/PIP/ボード)とステータスパネルの同期は
+  // markers.ts の MarkersSystem に切り出し済み。boardMarks(標的面通過点)・
+  // ステータス更新タイマーもここが保持する(combat.ts が boardMarks へ直接 push する)。
+  private readonly markers = new MarkersSystem(this.hud);
   private readonly earthPhase0 = Math.random() * Math.PI * 2;
 
   constructor(gs: GameScene, stage = 1) {
@@ -787,7 +783,7 @@ export class Game {
       casings: this.casings,
       debris: this.debris,
       effects: this.effects,
-      boardMarks: this.boardMarks,
+      boardMarks: this.markers.boardMarks,
       lostReason: this.lostReason,
       roundsInMag: this.roundsInMag,
       magsLeft: this.magsLeft,
@@ -800,6 +796,42 @@ export class Game {
       setPhase: (p) => { this.phase = p; },
     };
     return ctx;
+  }
+
+  // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
+  private markersCtx(): MarkersCtx {
+    return {
+      mapMode: this.mapMode,
+      player: this.player,
+      enemies: this.enemies,
+      target: this.target,
+      magPickups: this.magPickups,
+      mapLabelIds: this.mapView.labels.map((l) => l.id),
+      activeCamera: this.activeCamera,
+      touchControls: this.touchControls,
+      simTime: this.simTime,
+      solveLeadTime: (relP, relV, s) => this.combat.solveLeadTime(relP, relV, s),
+      warp: this.warp(),
+      paused: this.paused,
+      rcsDamp: this.rcsDamp,
+      throttleIdx: this.throttleIdx,
+      fineAttitude: this.fineAttitude,
+      progradeHold: this.progradeHold,
+      camFollowAttitude: this.camFollowAttitude,
+      roundsInMag: this.roundsInMag,
+      magsLeft: this.magsLeft,
+      reloadTimer: this.reloadTimer,
+      alt: this.altitudeOf(this.player.state.r),
+      altDescending: this.environment.altDescendWarned,
+      qdyn: this.environment.qdyn,
+      hullTemp: this.environment.hullTemp,
+      shots: this.combat.shots,
+      kills: this.combat.kills,
+      totalEnemies: this.enemies.length,
+      stage: this.stage,
+      stage00WaveCount: this.stageDirector.stage00WaveCount,
+      stage0TimeLeft: this.stageDirector.stage0TimeLeft,
+    };
   }
 
   // 数値予測(predict.ts)の再計算対象の期間 [s]。マップモードではツールバーで
@@ -1445,9 +1477,10 @@ export class Game {
       this.moonOrbitLine.update(null, o);
     }
 
-    this.updateMarkers(o, pv, tgt);
-    this.updateNodeMarkers(playerEl, tgtEl, o);
-    this.updateBoardMarkers(o, dt, tgt);
+    const mctx = this.markersCtx();
+    this.markers.updateMarkers(mctx, pv, (rel) => this.project(rel));
+    this.markers.updateNodeMarkers(mctx, playerEl, tgtEl, (rel) => this.project(rel));
+    this.markers.updateBoardMarkers(mctx, dt, (rel) => this.project(rel));
     if (!this.mapMode) {
       const { achieved } = this.planner.updateGuide(this.plannerCtx(), o, pv, playerEl, this.player.alive, (rel) =>
         this.project(rel),
@@ -1455,7 +1488,7 @@ export class Game {
       if (achieved) this.autoWarpUntil = null;
     } else this.hud.hideMarker('burn');
 
-    this.updateHudPanels(dt, playerEl, tgt, tgtEl);
+    this.markers.updateHudPanels(mctx, dt, playerEl, tgtEl);
     this.hud.tick();
   }
 
@@ -1520,27 +1553,6 @@ export class Game {
     this.moonOrbitLine.update(moonEl, o, false, false);
   }
 
-
-
-  // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
-  private updateBoardMarkers(o: Vec3, dt: number, tgt: Ship | null): void {
-    if (!tgt) this.boardMarks.length = 0;
-    this.boardMarks = this.boardMarks.filter((m) => {
-      m.age += dt;
-      return m.age < C.BOARD_MARK_LIFETIME;
-    });
-    for (let i = 0; i < C.MAX_BOARD_MARKS; i++) {
-      const key = `bh${i}`;
-      const m = this.boardMarks[i];
-      if (!m || !tgt) {
-        this.hud.hideMarker(key);
-        continue;
-      }
-      const p = this.project(sub(add(tgt.state.r, m.off), o));
-      const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
-      this.hud.marker(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
-    }
-  }
 
 
   // RCS 姿勢制御の噴射パフと音。4 基のスラスタブロック(配置は ships.ts の
@@ -1666,391 +1678,10 @@ export class Game {
     this.trajLine.refresh(segments);
   }
 
-  private updateMarkers(o: Vec3, pv: Vec3, tgt: Ship | null): void {
-    // 方向マーカーは戦闘ビューのみ(マップでは意味を持たない)
-    if (this.mapMode) {
-      this.hud.hideMarker('pro');
-      this.hud.hideMarker('retro');
-      this.hud.hideMarker('nrm');
-      this.hud.hideMarker('anm');
-      this.hud.hideMarker('radout');
-      this.hud.hideMarker('radin');
-      this.hud.hideMarker('tgtdir');
-      this.hud.hideMarker('atgdir');
-      this.hud.hideMarker('bore');
-      this.hud.hideMarker('lead');
-      // 自機位置マーカー
-      const sp = this.project(v3());
-      this.hud.marker('self', 'mk-self', '▷', sp.x, sp.y, sp.front, 'PLAYER');
-    } else {
-      this.hud.hideMarker('self');
-      for (const lbl of this.mapView.labels) {
-        this.hud.hideMarker(lbl.id);
-      }
-    }
-
-    if (!this.mapMode) {
-      // 軌道基準方向 (Navball の代わり)
-      const proDir = norm(pv);
-      const nrmDir = norm(cross(o, pv));
-      const radDir = cross(proDir, nrmDir);
-      const DIST = 5e4; // 遠方に投影して方向を示す
-
-      const pro = this.project(scale(proDir, DIST));
-      this.hud.marker('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PROGRADE [Q]');
-      const ret = this.project(scale(proDir, -DIST));
-      this.hud.marker('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RETROGRADE [E]');
-
-      const nrm = this.project(scale(nrmDir, DIST));
-      this.hud.marker('nrm', 'mk-nrm', '▲', nrm.x, nrm.y, nrm.front, 'NORMAL [A]');
-      const anm = this.project(scale(nrmDir, -DIST));
-      this.hud.marker('anm', 'mk-nrm', '▽', anm.x, anm.y, anm.front, 'ANTINORMAL [D]');
-
-      const radOut = this.project(scale(radDir, DIST));
-      this.hud.marker('radout', 'mk-rad', '◎', radOut.x, radOut.y, radOut.front, 'RADIAL OUT [W]');
-      const radIn = this.project(scale(radDir, -DIST));
-      this.hud.marker('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'RADIAL IN [S]');
-
-      if (tgt) {
-        const tgtDir = norm(sub(tgt.state.r, o));
-        const tmk = this.project(scale(tgtDir, DIST));
-        this.hud.marker('tgtdir', 'mk-tgtdir', '◇', tmk.x, tmk.y, tmk.front, '');
-        const atmk = this.project(scale(tgtDir, -DIST));
-        this.hud.marker('atgdir', 'mk-tgtdir', '◆', atmk.x, atmk.y, atmk.front, '');
-      } else {
-        this.hud.hideMarker('tgtdir');
-        this.hud.hideMarker('atgdir');
-      }
-    }
-
-    // 機首方向(ボアサイト)
-    if (this.player.alive && !this.mapMode) {
-      const fwd = qRotate(this.player.att.q, v3(0, 0, 1));
-      const bs = this.project(scale(fwd, 5e4));
-      this.hud.marker('bore', 'mk-boresight', '┼', bs.x, bs.y, bs.front);
-    } else {
-      this.hud.hideMarker('bore');
-    }
-
-    // 敵マーカー
-    const CLUSTER_RADIUS = 40;
-    const enemyMarkers: { i: number, e: Ship, p: {x:number, y:number, front:boolean}, dist: number, isTgt: boolean, groupHide: boolean, groupCount: number }[] = [];
-    
-    for (let i = 0; i < this.enemies.length; i++) {
-      const e = this.enemies[i]!;
-      const key = `e${i}`;
-      if (!e.alive) {
-        this.hud.hideMarker(key);
-        continue;
-      }
-      const rel = sub(e.state.r, o);
-      const p = this.project(rel);
-      const dist = len(rel);
-      const isTgt = e === tgt;
-      enemyMarkers.push({ i, e, p, dist, isTgt, groupHide: false, groupCount: 1 });
-    }
-
-    const groups: (typeof enemyMarkers)[] = [];
-    for (const m of enemyMarkers) {
-      if (!m.p.front) continue;
-      let added = false;
-      for (const g of groups) {
-        const head = g[0]!;
-        const dx = head.p.x - m.p.x;
-        const dy = head.p.y - m.p.y;
-        if (Math.sqrt(dx * dx + dy * dy) < CLUSTER_RADIUS) {
-          g.push(m);
-          added = true;
-          break;
-        }
-      }
-      if (!added) {
-        groups.push([m]);
-      }
-    }
-
-    for (const g of groups) {
-      if (g.length <= 1) continue;
-      g.sort((a, b) => {
-        if (a.isTgt !== b.isTgt) return a.isTgt ? -1 : 1;
-        return a.dist - b.dist;
-      });
-      const rep = g[0]!;
-      rep.groupCount = g.length;
-      for (let j = 1; j < g.length; j++) {
-        g[j]!.groupHide = true;
-      }
-    }
-
-    for (const m of enemyMarkers) {
-      const key = `e${m.i}`;
-      let text = '';
-      if (!m.groupHide) {
-        if (m.groupCount > 1) {
-          text = `${m.e.name} x${m.groupCount} ${fmtMarkerDist(m.dist)}`;
-        } else {
-          text = `${m.e.name} ${fmtMarkerDist(m.dist)}`;
-        }
-      }
-      this.hud.marker(key, m.isTgt ? 'mk-target' : 'mk-enemy', '◇', m.p.x, m.p.y, m.p.front, text);
-    }
-
-    // 補給マガジンのマーカー
-    for (let i = 0; i < C.MAX_MAG_PICKUPS; i++) {
-      const key = `mg${i}`;
-      const mp = this.magPickups[i];
-      if (!mp || !mp.alive) {
-        this.hud.hideMarker(key);
-        continue;
-      }
-      const rel = sub(mp.state.r, o);
-      const p = this.project(rel);
-      const dist = len(rel);
-      this.hud.marker(key, 'mk-ammo', '▣', p.x, p.y, p.front, `AMMO ${fmtMarkerDist(dist)}`);
-    }
-
-    // リード(見越し)マーカーと、視界外敵機の方位マーカー
-    const cx = window.innerWidth / 2;
-    const cy = window.innerHeight / 2;
-    
-    if (!this.mapMode && this.player.alive) {
-      for (const ship of this.enemies) {
-        if (!ship.alive) {
-          this.hud.hideMarker('lead-' + ship.name);
-          this.hud.hideMarker('dir-' + ship.name);
-          continue;
-        }
-        
-        // Target tracking for LEAD (keep showing for ~20s)
-        if (ship === tgt) {
-          ship.lastTargetedSim = this.simTime;
-        }
-        
-        const relP = sub(ship.state.r, o);
-        const p = this.project(relP);
-        const hexColor = ship.accent ? '#' + ship.accent.toString(16).padStart(6, '0') : '#ff6a00';
-        
-        // 方位マーカー (視界外)
-        const offscreen = !p.front || p.x < 0 || p.x > window.innerWidth || p.y < 0 || p.y > window.innerHeight;
-        if (offscreen) {
-          let dx = p.x - cx;
-          let dy = p.y - cy;
-          if (!p.front) {
-            dx = -dx;
-            dy = -dy;
-          }
-          const ang = Math.atan2(dy, dx);
-          const r = Math.min(cx, cy) * 0.8;
-          const mx = cx + r * Math.cos(ang);
-          const my = cy + r * Math.sin(ang);
-          
-          const rotDeg = ang * 180 / Math.PI + 90; // '▲' faces UP initially, so add 90 deg
-          this.hud.marker('dir-' + ship.name, 'mk-dir', '▲', mx, my, true, '', 0.6, hexColor, rotDeg);
-        } else {
-          this.hud.hideMarker('dir-' + ship.name);
-        }
-
-        // LEAD マーカー (20秒履歴)
-        let showLead = false;
-        if (ship.lastTargetedSim !== undefined && (this.simTime - ship.lastTargetedSim < 20)) {
-          showLead = true;
-        }
-        
-        if (showLead) {
-          const relV = sub(ship.state.v, pv);
-          const t = this.combat.solveLeadTime(relP, relV, C.MUZZLE_SPEED);
-          if (t !== null && t < 25) {
-            const lead = addScaled(relP, relV, t);
-            const lp = this.project(lead);
-            this.hud.marker('lead-' + ship.name, 'mk-lead', '✛', lp.x, lp.y, lp.front, '', 1, hexColor);
-          } else {
-            this.hud.hideMarker('lead-' + ship.name);
-          }
-        } else {
-          this.hud.hideMarker('lead-' + ship.name);
-        }
-      }
-    } else {
-      for (const ship of this.enemies) {
-        this.hud.hideMarker('lead-' + ship.name);
-        this.hud.hideMarker('dir-' + ship.name);
-      }
-    }
-
-    // 以前の単一リードマーカーのクリーンアップ
-    this.hud.hideMarker('lead');
-
-    // 重なったマーカーテキストを押し退けて線で繋ぐ
-    this.hud.resolveMarkerCollisions();
-  }
-
-  // ターゲットの軌道面との交線(相対昇交点・降交点)を自機の軌道上に表示する。
-  // 面変更(ノーマル/アンチノーマル)burn を行うべき位置がひと目で分かる。
-  private updateNodeMarkers(playerEl: Elements | null, tgtEl: Elements | null, o: Vec3): void {
-    if (!playerEl || !tgtEl) {
-      this.hud.hideMarker('an');
-      this.hud.hideMarker('dn');
-      return;
-    }
-    const lineDir = cross(playerEl.hHat, tgtEl.hHat);
-    if (lenSq(lineDir) < 1e-6) {
-      // 軌道面がほぼ一致 → 交線が定まらない
-      this.hud.hideMarker('an');
-      this.hud.hideMarker('dn');
-      return;
-    }
-
-    const d = norm(lineDir);
-    const thAsc = Math.atan2(dot(d, playerEl.qHat), dot(d, playerEl.pHat));
-    const rAsc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc));
-    const rDesc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc + Math.PI));
-
-    const ascP = this.project(sub(scale(d, rAsc), o));
-    const descP = this.project(sub(scale(d, -rDesc), o));
-    this.hud.marker('an', 'mk-node', '▲', ascP.x, ascP.y, ascP.front, 'AN');
-    this.hud.marker('dn', 'mk-node', '▽', descP.x, descP.y, descP.front, 'DN');
-  }
-
-  // ズームウィンドウ(PIP)のオーバーレイ: ターゲット菱形枠と LEAD マーカーを PIP の
-  // 矩形内に描く。main.ts が PIP 用に activeCamera を一時的にポーズして render() した
-  // 直後、カメラを元の位置・姿勢へ復元する前に rect を渡して呼ぶ。PIP を描画しない
-  // フレームでは rect=null で呼び、両マーカーを隠す。
-  // (この段階でカメラは PIP 用の position/quaternion/fov/aspect に設定済みで、
-  //  renderer.render() 済みなので matrixWorldInverse/projectionMatrix は最新のはず。
-  //  念のため updateMatrixWorld() を呼んでから使う。)
+  // ズームウィンドウ(PIP)のオーバーレイ更新。main.ts から公開 API として呼ばれる
+  // (実処理は markers.ts の MarkersSystem.updatePipOverlay に委譲)。
   public updatePipOverlay(rect: { x: number; y: number; w: number; h: number } | null): void {
-    const tgt = this.target;
-    if (!rect || !tgt || !tgt.alive || !this.player.alive) {
-      this.hud.hideMarker('pip-tgt');
-      this.hud.hideMarker('pip-lead');
-      return;
-    }
-    const cam = this.activeCamera;
-    cam.updateMatrixWorld();
-    const o = this.player.state.r;
-    const pv = this.player.state.v;
-
-    const projectPip = (rel: Vec3): { x: number; y: number; front: boolean } => {
-      tmpV2.set(rel.x, rel.y, rel.z).applyMatrix4(cam.matrixWorldInverse);
-      const front = tmpV2.z < 0;
-      tmpV2.applyMatrix4(cam.projectionMatrix);
-      return {
-        x: rect.x + (tmpV2.x * 0.5 + 0.5) * rect.w,
-        y: rect.y + (-tmpV2.y * 0.5 + 0.5) * rect.h,
-        front,
-      };
-    };
-    const inRect = (p: { x: number; y: number; front: boolean }): boolean =>
-      p.front && p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h;
-
-    const relP = sub(tgt.state.r, o);
-    const p = projectPip(relP);
-    // ラベル無し(''): resolveMarkerCollisions の押し退け対象から自然に除外される
-    this.hud.marker('pip-tgt', 'mk-target', '◇', p.x, p.y, inRect(p), '');
-
-    const hexColor = tgt.accent ? '#' + tgt.accent.toString(16).padStart(6, '0') : '#ff6a00';
-    const relV = sub(tgt.state.v, pv);
-    const t = this.combat.solveLeadTime(relP, relV, C.MUZZLE_SPEED);
-    if (t !== null && t < 25) {
-      const lead = addScaled(relP, relV, t);
-      const lp = projectPip(lead);
-      this.hud.marker('pip-lead', 'mk-lead', '✛', lp.x, lp.y, inRect(lp), '', 1, hexColor);
-    } else {
-      this.hud.hideMarker('pip-lead');
-    }
-  }
-
-  private updateHudPanels(
-    dt: number,
-    playerEl: ReturnType<typeof elementsFromState>,
-    tgt: Ship | null,
-    tgtEl: ReturnType<typeof elementsFromState>,
-  ): void {
-    this.hudTimer -= dt;
-    if (this.hudTimer <= 0) {
-      this.hudTimer = 0.1;
-      // タッチUIのトグルボタン(制動・微動・ホールド)の点灯状態を実際のモードに同期する。
-      // progradeHold は手動回転で自動解除されることもあるため、専用のトグル時だけでなく
-      // ここで毎回反映しておく。
-      this.touchControls?.setActive('KeyT', this.rcsDamp);
-      this.touchControls?.setActive('KeyV', this.fineAttitude);
-      this.touchControls?.setActive('KeyC', this.progradeHold);
-      this.hud.setStats({
-        met: this.simTime,
-        warpLabel: `×${this.warp()}`,
-        paused: this.paused,
-        rcsDamp: this.rcsDamp,
-        throttleIdx: this.throttleIdx,
-        fineAttitude: this.fineAttitude,
-        progradeHold: this.progradeHold,
-        camFollowAttitude: this.camFollowAttitude,
-        roundsInMag: this.roundsInMag,
-        magsLeft: this.magsLeft,
-        reloadTimer: this.reloadTimer,
-        alt: this.altitudeOf(this.player.state.r),
-        altDescending: this.environment.altDescendWarned,
-        spd: len(this.player.state.v),
-        apAlt: playerEl ? playerEl.apAlt : NaN,
-        peAlt: playerEl ? playerEl.peAlt : NaN,
-        incDeg: playerEl ? playerEl.incDeg : NaN,
-        period: playerEl ? playerEl.period : NaN,
-        qdyn: this.environment.qdyn,
-        hullTemp: this.environment.hullTemp,
-        shots: this.combat.shots,
-        kills: this.combat.kills,
-        total: this.enemies.length,
-        stage0State:
-          this.stage === -1 || this.stage === 0
-            ? {
-              hp: this.player.hp,
-              maxHp: C.PLAYER_MAX_HP,
-              msg:
-                this.stage === -1
-                  ? `サバイバル 第${this.stageDirector.stage00WaveCount}波`
-                  : `残り時間: ${Math.ceil(this.stageDirector.stage0TimeLeft)}秒`,
-            }
-            : null,
-      });
-
-      if (tgt) {
-        const relP = sub(tgt.state.r, this.player.state.r);
-        const relV = sub(tgt.state.v, this.player.state.v);
-        const dist = len(relP);
-        const relIncDeg =
-          playerEl && tgtEl
-            ? (Math.acos(Math.max(-1, Math.min(1, dot(playerEl.hHat, tgtEl.hHat)))) * 180) / Math.PI
-            : NaN;
-        this.hud.setTarget({
-          name: tgt.name,
-          dist,
-          closing: dist > 1e-6 ? -dot(relP, relV) / dist : 0,
-          relSpeed: len(relV),
-          hp: tgt.hp,
-          maxHp: tgt.maxHp,
-          apAlt: tgtEl ? tgtEl.apAlt : NaN,
-          peAlt: tgtEl ? tgtEl.peAlt : NaN,
-          incDeg: tgtEl ? tgtEl.incDeg : NaN,
-          period: tgtEl ? tgtEl.period : NaN,
-          relIncDeg,
-        });
-      } else {
-        this.hud.setTarget(null);
-      }
-    }
-
-    this.listTimer -= dt;
-    if (this.listTimer <= 0) {
-      this.listTimer = 0.25;
-      const rows = this.enemies
-        .filter((e) => e.alive)
-        .map((e) => ({
-          name: e.name,
-          dist: len(sub(e.state.r, this.player.state.r)),
-          targeted: e === tgt,
-        }))
-        .sort((a, b) => a.dist - b.dist);
-      this.hud.setEnemyList(rows);
-    }
+    this.markers.updatePipOverlay(this.markersCtx(), rect);
   }
 
   // ------------------------------------------------------------- physical collisions
