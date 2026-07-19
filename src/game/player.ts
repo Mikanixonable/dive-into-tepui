@@ -48,20 +48,6 @@ export class Player implements Ship {
   set maxHp(v: number) { this.ship.maxHp = v; }
   get alive(): boolean { return this.ship.alive; }
   set alive(v: boolean) { this.ship.alive = v; }
-  get accent(): number | undefined { return this.ship.accent; }
-  set accent(v: number | undefined) { this.ship.accent = v; }
-  get waveId(): number | undefined { return this.ship.waveId; }
-  set waveId(v: number | undefined) { this.ship.waveId = v; }
-  get lastTargetedSim(): number | undefined { return this.ship.lastTargetedSim; }
-  set lastTargetedSim(v: number | undefined) { this.ship.lastTargetedSim = v; }
-  get debrisStyle(): Ship['debrisStyle'] { return this.ship.debrisStyle; }
-  set debrisStyle(v: Ship['debrisStyle']) { this.ship.debrisStyle = v; }
-  get lastFireSim(): number | undefined { return this.ship.lastFireSim; }
-  set lastFireSim(v: number | undefined) { this.ship.lastFireSim = v; }
-  get burstLeft(): number | undefined { return this.ship.burstLeft; }
-  set burstLeft(v: number | undefined) { this.ship.burstLeft = v; }
-  get burstDelay(): number | undefined { return this.ship.burstDelay; }
-  set burstDelay(v: number | undefined) { this.ship.burstDelay = v; }
 
   static makeInitialState(): OrbitState {
     const r0 = R_EARTH + C.INITIAL_ALT;

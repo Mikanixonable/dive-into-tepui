@@ -20,7 +20,7 @@ import {
   v3,
 } from '../physics/vec3';
 import * as C from './const';
-import { Bullet, Casing, DebrisPiece, FlashEffect, PlasmaBullet, Ship } from './entities';
+import { Bullet, Casing, DebrisPiece, Enemy, FlashEffect, PlasmaBullet, Ship } from './entities';
 import { Hud } from '../hud/hud';
 import { Sfx } from './audio';
 import { ACCENT } from './theme';
@@ -34,6 +34,7 @@ import {
   buildMagazineFrame,
   buildPlasmaMesh,
 } from '../render/ships';
+import { Player } from './player';
 
 // fireGun / firePlasma / checkBulletHits / destroyShip 等が必要とする、Game 側の
 // 現在状態のスナップショット(毎フレーム/毎呼び出しで渡す)。enemies / bullets /
@@ -41,9 +42,9 @@ import {
 // ミューテートする(game.ts 側の配列・シーンをそのまま操作する)。
 export interface CombatCtx {
   simTime: number;
-  player: Ship;
-  enemies: Ship[];
-  target: Ship | null;
+  player: Player;
+  enemies: Enemy[];
+  target: Enemy | null;
   stage: number;
   zoomActive: boolean;
   scene: THREE.Scene;
@@ -250,7 +251,7 @@ export class CombatSystem {
     }
   }
 
-  firePlasma(enemy: Ship, ctx: CombatCtx): void {
+  firePlasma(enemy: Enemy, ctx: CombatCtx): void {
     const r = enemy.state.r;
     const v = enemy.state.v;
     const toPlayer = sub(ctx.player.state.r, r);

@@ -6,7 +6,7 @@ import { EnvironmentSystem } from './environment';
 import { MapPlanner, PlannerCtx, ProjectFn } from './planner';
 import { MapView } from './mapview';
 import { Player } from './player';
-import { Ship } from './entities';
+import { Enemy } from './entities';
 import { OrbitLine } from '../render/orbitline';
 import { TrajectoryOverlay } from './traj-overlay';
 
@@ -16,8 +16,8 @@ export interface OrbitLineUpdateCtx {
   origin: Vec3;
   playerVelocity: Vec3;
   player: Player;
-  target: Ship | null;
-  enemies: Ship[];
+  target: Enemy | null;
+  enemies: Enemy[];
   enemyOrbitLines: OrbitLine[];
   environment: EnvironmentSystem;
   planner: MapPlanner;

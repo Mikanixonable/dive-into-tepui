@@ -4,28 +4,31 @@ import { OrbitState } from '../physics/orbital';
 import { Attitude } from '../physics/attitude';
 import { Vec3 } from '../physics/vec3';
 
-export interface Ship {
-  name: string;
+export interface OrbitEntity {
   state: OrbitState;
   prevR: Vec3; // 直前サブステップの位置(弾との衝突判定用)
-  att: Attitude;
   obj: THREE.Object3D;
+  alive: boolean;
+}
+
+export interface Ship extends OrbitEntity {
+  name: string;
+  att: Attitude;
   radius: number; // 当たり判定半径 [m]
   hp: number;
   maxHp: number;
-  alive: boolean;
-  accent?: number;
-  waveId?: number;
-  lastTargetedSim?: number;
-  /** 撃破時に飛散する破片のスタイル。敵種別に固有の形状を選ぶ。 */
-  debrisStyle?: 'mech' | 'crystal' | 'ring' | 'spike' | 'default';
-
-  // 敵AI用
-  lastFireSim?: number;
-  burstLeft?: number;
-  burstDelay?: number;
 }
 
+export interface Enemy extends Ship {
+  accent: number; // マーカー色・集団識別。全敵が保持する
+  waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
+
+  // 実行時状態(遅延初期化)。未設定 = まだその状態に入っていない
+  lastTargetedSim?: number; // 最後にロックオンされた時刻。LEAD マーカー表示の履歴
+  lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
+  burstLeft?: number; // バースト射撃の残弾
+  burstDelay?: number; // 次のバースト弾までの残り時間
+}
 
 export interface Bullet {
   state: OrbitState;
@@ -42,7 +45,6 @@ export interface PlasmaBullet {
   obj: THREE.Object3D;
   alive: boolean;
 }
-
 
 export interface Casing {
   state: OrbitState;
