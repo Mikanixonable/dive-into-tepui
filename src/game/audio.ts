@@ -333,6 +333,6 @@ export class Sfx {
 
   setRcs(on: boolean): void {
     if (!this.ctx || !this.rcsGain) return;
-    this.rcsGain.gain.setTargetAtTime(on ? 0.05 : 0, this.ctx.currentTime, 0.03);
+    this.rcsGain.gain.setTargetAtTime(on ? 0.015 : 0, this.ctx.currentTime, 0.03);
   }
 }
