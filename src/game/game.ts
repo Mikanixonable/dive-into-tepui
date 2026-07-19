@@ -23,7 +23,6 @@ import {
   sub,
   v3,
 } from '../physics/vec3';
-import { PlannerCtx } from './map-mode/planner';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
 import { CombatCtx, CombatSystem } from './combat/combat';
@@ -40,7 +39,7 @@ import { getStageDefinition, resolveStageInitData } from './stage-data';
 import { Targeter } from './combat/targeter';
 import { HudProjection } from './camera/projection';
 import { AmmoResupplySystem } from './combat/ammo-resupply';
-import { ManeuverSystem } from './map-mode/maneuver-system';
+import { MapModeSystem } from './map-mode/map-mode-system';
 import { PipRect, PipRenderer } from './pip-renderer';
 import { altitudeOf, Simulator, SimulatorCtx } from './simulator';
 import * as C from './const';
@@ -118,12 +117,19 @@ export class Game {
 
   //readonly stage: number;
 
-  // 軌道計画モード
-  private readonly maneuver = new ManeuverSystem(
+  // 軌道計画モード(map-mode/ フォルダの唯一の外部窓口)
+  private readonly mapModeSystem = new MapModeSystem(
     this.hud,
     this.sfx,
-    (rel) => this.hudProjection.project(rel),
+    (rel: Vec3) => this.hudProjection.project(rel),
     () => this.player.fineAttitude,
+    () => ({
+      simTime: this.simTime,
+      playerR: this.player.state.r,
+      playerV: this.player.state.v,
+      sunPhase0: this.ephemeris.sunPhase0,
+      moonPhase0: this.ephemeris.moonPhase0,
+    }),
   );
 
   private phase: GamePhase = 'playing';
@@ -165,10 +171,6 @@ export class Game {
   private readonly pipRenderer = new PipRenderer();
   private readonly earthPhase0 = Math.random() * Math.PI * 2;
 
-  private get planner() { return this.maneuver.planner; }
-  private get mapView() { return this.maneuver.mapView; }
-  private get trajOverlay() { return this.maneuver.trajOverlay; }
-
   constructor(gs: GameScene, stage = 1) {
     this.scene = gs.scene;
     this.camera = gs.camera;
@@ -204,7 +206,6 @@ export class Game {
     // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
     this.player = new Player(this.hud, this.sfx, this.scene, this.glowTex);
     this.scene.add(this.player.obj);
-    this.maneuver.bindCallbacks(() => this.plannerCtx());
 
     // --- 敵機配置 ---
     this.spawnInitialEnemies(this.player.state);
@@ -254,7 +255,7 @@ export class Game {
     this.scene.add(this.geoOrbitLine.line);
     this.moonOrbitLine.line.renderOrder = 0;
     this.scene.add(this.moonOrbitLine.line);
-    this.scene.add(this.trajOverlay.line.group);
+    this.scene.add(this.mapModeSystem.trajLineGroup);
   }
 
   private spawnInitialEnemies(playerState: OrbitState): void {
@@ -299,11 +300,11 @@ export class Game {
 
   // 描画に使うカメラ(戦闘 / 軌道計画で切り替え)
   private get activeCamera(): THREE.PerspectiveCamera {
-    return this.mapMode ? this.mapView.camera : this.camera;
+    return this.mapModeSystem.activeCamera(this.camera);
   }
 
   private get mapMode(): boolean {
-    return this.maneuver.mapMode;
+    return this.mapModeSystem.mapMode;
   }
 
   // ズームウィンドウ(PIP)描画中、マズルフラッシュを非表示にする(pip-renderer.ts から
@@ -320,7 +321,7 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.zoomActive = !this.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
-    this.maneuver.syncMapModeWithPhase(this.phase, this.touchControls);
+    this.mapModeSystem.syncMapModeWithPhase(this.phase, this.touchControls);
 
     this.handleFrame(dt);
 
@@ -387,16 +388,7 @@ export class Game {
     this.handlePostSimulation(dt, simDt, warp, action.canAct);
 
     if (this.mapMode) {
-      this.planner.updateEditing(
-        dt,
-        this.plannerCtx(),
-        this.input,
-        (rel) => this.hudProjection.project(rel), {
-        fineAttitude: this.player.fineAttitude,
-        mapSliderT: this.mapView.sliderT,
-        mapFocus: this.mapView.focus,
-        labels: this.mapView.labels,
-      });
+      this.mapModeSystem.updateEditing(dt, this.input);
     }
     else {
       this.target = this.targeter.updateCombatTargeting(
@@ -441,11 +433,11 @@ export class Game {
       case 'Digit1': this.player.setThrottlePreset(0); break;
       case 'Digit2': this.player.setThrottlePreset(1); break;
       case 'Digit3': this.player.setThrottlePreset(2); break;
-      case 'Comma': this.warpIdx = this.maneuver.adjustWarp(this.warpIdx, -1); break;
-      case 'Period': this.warpIdx = this.maneuver.adjustWarp(this.warpIdx, 1); break;
-      case 'KeyM': this.maneuver.toggleMap(this.phase, this.touchControls); break;
-      case 'KeyN': this.maneuver.toggleAutoWarpToFirstNode(this.phase); break;
-      case 'KeyX': this.maneuver.clearPlanByKey(); break;
+      case 'Comma': this.warpIdx = this.mapModeSystem.adjustWarp(this.warpIdx, -1); break;
+      case 'Period': this.warpIdx = this.mapModeSystem.adjustWarp(this.warpIdx, 1); break;
+      case 'KeyM': this.mapModeSystem.toggleMap(this.phase, this.touchControls); break;
+      case 'KeyN': this.mapModeSystem.toggleAutoWarpToFirstNode(this.phase); break;
+      case 'KeyX': this.mapModeSystem.clearPlanByKey(); break;
       case 'KeyH': this.hud.toggleHelp(); break;
       case 'Escape': this.hud.toggleSettings(); break;
       case 'KeyR': this.handleReloadOrRestartKey(); break;
@@ -459,22 +451,6 @@ export class Game {
     }
     if (!this.player.manualReload()) return;
     this.combat.dropBarrel(this.combatCtx());
-  }
-
-  // ------------------------------------------------------- maneuver planning
-
-  // 選択中ノードの Δv アーム(mapgizmo.ts)ドラッグを Δv 成分の変更へ変換する。
-  // axis: 0=プログレード(dv.x) 1=法線(dv.y) 2=動径(dv.z)。sign はハンドル自身の向き
-  // (mapgizmo.ts の AxisHandleSpec 参照)。deltaPx はポインタ移動のハンドル方向への射影量。
-  // MapPlanner の各メソッド呼び出しに渡す、現在状態のスナップショット。
-  private plannerCtx(): PlannerCtx {
-    return this.maneuver.plannerCtx(
-      this.simTime,
-      this.player.state.r,
-      this.player.state.v,
-      this.ephemeris.sunPhase0,
-      this.ephemeris.moonPhase0,
-    );
   }
 
   // StageDirector の各メソッド呼び出しに渡す、現在状態のスナップショット
@@ -534,7 +510,7 @@ export class Game {
       enemies: this.simulator.enemies,
       target: this.target,
       magPickups: this.simulator.magPickups,
-      mapLabelIds: this.mapView.labels.map((l) => l.id),
+      mapLabelIds: this.mapModeSystem.mapLabelIds(),
       activeCamera: this.activeCamera,
       simTime: this.simTime,
       solveLeadTime: (relP, relV, s) => this.combat.solveLeadTime(relP, relV, s),
@@ -592,7 +568,7 @@ export class Game {
   // ------------------------------------------------------------- simulate
 
   private updateAutoWarpTarget(): void {
-    const result = this.maneuver.updateAutoWarp(this.simTime, this.warpIdx);
+    const result = this.mapModeSystem.updateAutoWarp(this.warpIdx);
     this.warpIdx = result.warpIdx;
     if (result.hint) this.hud.hint(result.hint, 5000);
   }
@@ -634,7 +610,7 @@ export class Game {
   private syncRender(dt: number): void {
     const o = this.player.state.r;
     const pv = this.player.state.v;
-    const displayTime = this.resolveDisplayTime();
+    const displayTime = this.mapModeSystem.resolveDisplayTime();
     this.syncRenderEarth(dt, o, displayTime);
     const cam = this.syncRenderCamera(dt, o, pv);
     this.syncRenderSkyBodies(displayTime, o, cam);
@@ -644,11 +620,6 @@ export class Game {
     this.syncRenderDynamicObjects(dt, o, pv);
     this.syncRenderEffects(dt, o);
     this.syncRenderHud(dt, o, pv);
-  }
-
-  private resolveDisplayTime(): number {
-    const duration = this.trajOverlay.predictDurationSec(this.plannerCtx());
-    return this.mapMode && this.mapView.sliderT > 0 ? this.mapView.displayTime(this.simTime, duration) : this.simTime;
   }
 
   private syncRenderEarth(dt: number, o: Vec3, displayTime: number): void {
@@ -662,12 +633,9 @@ export class Game {
     const keyYaw = (this.input.down('ArrowLeft') ? 1 : 0) + (this.input.down('ArrowRight') ? -1 : 0);
     const keyPitch = (this.input.down('ArrowDown') ? 1 : 0) + (this.input.down('ArrowUp') ? -1 : 0);
     return this.cameraSystem.updateActiveCamera({
-      mapMode: this.mapMode,
       zoomActive: this.zoomActive,
-      simTime: this.simTime,
-      sunPhase0: this.ephemeris.sunPhase0,
       player: this.player,
-      mapView: this.mapView,
+      maneuver: this.mapModeSystem,
       chase: this.chase,
       camera: this.camera,
       mouse,
@@ -684,7 +652,7 @@ export class Game {
     const sd = norm(visSunPos);
     this.environment.earth.setSunDir(sd.x, sd.y, sd.z);
     this.environment.starsMesh.position.copy(cam.position);
-    this.environment.starsMesh.scale.setScalar(this.mapMode ? (this.mapView.camera.far * 0.9) / 3.5e7 : 1.0);
+    this.environment.starsMesh.scale.setScalar(this.mapMode ? (this.mapModeSystem.mapCameraFar * 0.9) / 3.5e7 : 1.0);
     this.environment.sun.mesh.position.set(
       cam.position.x + sd.x * SUN_DISTANCE,
       cam.position.y + sd.y * SUN_DISTANCE,
@@ -762,7 +730,6 @@ export class Game {
   private syncRenderHud(dt: number, o: Vec3, pv: Vec3): void {
     const project = (rel: Vec3) => this.hudProjection.project(rel);
     const { playerEl, tgtEl } = this.orbitLineSystem.update({
-      mapMode: this.mapMode,
       simTime: this.simTime,
       origin: o,
       playerVelocity: pv,
@@ -770,17 +737,12 @@ export class Game {
       target: this.target,
       enemies: this.simulator.enemies,
       enemyOrbitLines: this.enemyOrbitLines,
-      ephemeris: this.ephemeris,
-      planner: this.planner,
-      plannerCtx: this.plannerCtx(),
-      mapView: this.mapView,
-      trajOverlay: this.trajOverlay,
+      maneuver: this.mapModeSystem,
       playerOrbitLine: this.playerOrbitLine,
       targetOrbitLine: this.targetOrbitLine,
       plannedOrbitLine: this.plannedOrbitLine,
       geoOrbitLine: this.geoOrbitLine,
       moonOrbitLine: this.moonOrbitLine,
-      project,
     });
 
     const markerCtx = this.markerCtx();
@@ -790,15 +752,7 @@ export class Game {
     if (this.mapMode) {
       this.hud.markers.hide('burn');
     } else {
-      const { achieved } = this.planner.updateGuide(
-        this.plannerCtx(),
-        o,
-        pv,
-        playerEl,
-        this.player.alive,
-        project,
-      );
-      if (achieved) this.maneuver.onGuideAchieved();
+      this.mapModeSystem.updateGuide(playerEl, this.player.alive);
     }
 
     this.hud.panels.update(this.hudPanelCtx(), dt, playerEl, tgtEl);

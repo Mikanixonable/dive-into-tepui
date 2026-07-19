@@ -13,13 +13,18 @@ import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
 import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from './mapgizmo';
 import { ProjectFn } from '../camera/projection';
+import { MapLabel } from './mapview';
 
-// マップ上のフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベル。
-// ラベル自体は MapView の持ち物(現時点では game.ts)なので Game から都度渡す。
-export interface MapLabel {
-  id: string;
-  name: string;
-  pos: Vec3;
+// mapGizmo のイベントを外部(MapModeSystem)のロジックへ橋渡しするためのコールバック束。
+// mapGizmo 自体は private のため、外部からのコールバック配線はこの一箇所を通す。
+export interface MapGizmoCallbacks {
+  onNodeSelect: (idx: number) => void;
+  onNodeDragMove: (idx: number, clientX: number, clientY: number) => void;
+  onNodeContextMenu: (clientX: number, clientY: number) => void;
+  onAxisDrag: (axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number) => void;
+  onMenuWarpTo: (idx: number) => void;
+  onMenuDelete: (idx: number) => void;
+  onMenuFocus: (targetKey: string) => void;
 }
 
 // refresh() / predictDurationSec() が必要とする、Game 側の現在状態のスナップショット。
@@ -53,7 +58,8 @@ export class MapPlanner {
   predictDurationKey: 'orbit' | 'day' | 'week' | 'month' = 'day';
 
   // マップモードの DOM ギズモ(ノードハンドル・Δv アーム・コンテキストメニュー)。
-  readonly mapGizmo = new MapGizmo();
+  // イベント配線は bindGizmoCallbacks() 経由のみ(外部に直接公開しない)。
+  private readonly mapGizmo = new MapGizmo();
 
   // 直近ノードの「実行目標」(実行後の目標位置・速度・軌道要素)。
   // 遠方(残り NODE_TARGET_FREEZE_S 超)では予測リフレッシュのたびに追従更新するが、
@@ -64,6 +70,17 @@ export class MapPlanner {
   private activeTarget: { nodeTime: number; rNode: Vec3; vPlanned: Vec3; targetEl: Elements } | null = null;
 
   constructor(private readonly hud: Hud, private readonly sfx: Sfx) {}
+
+  // mapGizmo (private) のイベントを外部ロジックへ橋渡しする唯一の配線口。
+  bindGizmoCallbacks(cb: MapGizmoCallbacks): void {
+    this.mapGizmo.onNodeSelect = cb.onNodeSelect;
+    this.mapGizmo.onNodeDragMove = cb.onNodeDragMove;
+    this.mapGizmo.onNodeContextMenu = cb.onNodeContextMenu;
+    this.mapGizmo.onAxisDrag = cb.onAxisDrag;
+    this.mapGizmo.onMenuWarpTo = cb.onMenuWarpTo;
+    this.mapGizmo.onMenuDelete = cb.onMenuDelete;
+    this.mapGizmo.onMenuFocus = cb.onMenuFocus;
+  }
 
   // 選んだ期間、戦闘ビューでは直近の未達成ノードをちょうど含む程度の短い期間だけ
   // 計算する(28日ぶんを毎回計算するのは無駄なコストになるため)。

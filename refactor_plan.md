@@ -14,16 +14,6 @@
 - 各モジュールの疎結合化と責務の整理
 - ctx注入パターンの根絶。
 
-### mapModeの管理
-map-modeフォルダの配線が全然読めない。是正すべき。
-このフォルダ内のモジュールが外部に対してどのように露出しているのか、また相互にどのように関連しているのかを調査する。
-互いに密結合であれば、外部との露出を一つのモジュールに集約し、そこから内部のモジュールに委譲するような木構造型の依存関係を目指す。
-そもそも巨視的に見て単一でない、全体を2つ以上の疎結合なモジュールに分割可能であれば、そのようにする。
-
-なお、現状の関数が最適なモジュールに配置されている可能性は低いので、現在のそれぞれの関数がどのような責務を持っていて、再配置の結果どのように疎結合にできるかを調査する。また、ctx注入による依存関係は、ctxが肥大化していることにより意味をなさないので、その関数が本質的にどの情報を参照する必要があったのかを整理すること。
-
-
-
 ### cameraの管理、targetの管理、その他Gameが直接持つフィールドの縮小
 Gameがcameraを保持してcameraSystemにctxとして渡しているけども、cameraSystemが普通に持っておくべきじゃないか？
 targetをGameが保持しているが、Targteterが持っているlockedTargetと一致しているのであれば、それのgetterなどで情報を供給すべきだ。
@@ -35,12 +25,6 @@ render-dynamics.tsに一元化されているが、render-dynamics.ts内にあ�
 sceneへのモデル追加も、各entityのコンストラクタなどですべきことで、Gameが管理すべきじゃない。gameは各Entityがどのようにモデルやメッシュを更新しているかに関与してはいけない。
 EnvironmentSceneも同様にGame.tsが直接管理すべきではない。これは比較的疎結合なので簡単に分離できそう。
 
-### playerの責務の分割
-playerの責務は、移動と射撃、そしてその両方を反映した描画の3つに分割されるべき。beltは射撃と描画、Rcsやthrustは移動と描画に関わる。描画（モデルの管理と更新）はplayer.tsに維持し、移動はplayer-throttle.ts、射撃はplayer-fire.tsに分割する。
-
-### player内の配線
-onfireあたりの配線が変。その他にも、分割する必要のない関数が分割されている。一度しか参照されていないような関数は、責務が混乱しない範囲で、一度インライン展開してから、再度最適な分割の見通しを立てる。
-
 ### gameのrenderとupdateの責務の分割
 renderFrameという関数がありながら、そこではpipの描画のみを行っていて、renderはupdateに含まれているのは実態と名前が一致していない。
 
@@ -50,11 +34,24 @@ touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散してい�
 ### gameとstageDirectorの責務の分割
 初期化とかもstageDirectorに委譲できる。
 
+### playerのbeltの配線が長い。
+player.beltCollisionSections
+-> player.fire.collisionSections
+-> player.fire.belt.collisionSections
+
+applyBeltCollisions
+-> player.fire.applyCollisionSections
+-> player.fire.belt.applyCollisionSections
+
+### beltとplayer.fireの責務境界
+collisionSectionsとapplyCollisionSectionsをたらい回しにするだけのハンドラが存在する。beltを公開して直接操作すべきだ。
+そもそも関数名が何をしているのか分かりにくい。pplyCollisionSectionsは、beltのVerlet物理演算を行う関数であるが、名前からは想像できない。だいたい公開する必要性があるのか？
+
+combat/belt.tsをplayer/belt-physics.tsに移動、改名する。
+player.fireが直接beltGroupを持っているが、これは責務が良くない。belt.tsを新設し、責務を分割するべきか？
+
 ### この時点で重複実装、類似実装を再度検査し、適切に共通化する。
 重複実装の検査にLLMは役に立たないということが分かった。人力で頑張る…
-
-## Ammo-resupplyが軌道計算されていない
-これも軌道要素としてsimulatorに追加すべきだ。
 
 ## ctxの縮小と解体
 現在コードのいたるところで利用されているcontext注入パターンは、時間をかけて滅ぼすべきものである。必要な情報すべてを丸投げするというのは、必要な情報が少なくなるように責務を分割しなければならないことを隠蔽してしまう。徹底して排除するべき。
