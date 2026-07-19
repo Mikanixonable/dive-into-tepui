@@ -1,0 +1,45 @@
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+
+# docs/ への push-back とその他のトリガー実行が同時に走らないようにする
+concurrency:
+  group: build-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # ビルド結果のコミット(下記)が新たなビルドを誘発しないよう、
+    # [skip ci] 付きコミットではジョブ自体を起動しない
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+      # webpack の出力先は docs/(GitHub Pages の公開元)。ビルド結果に差分があれば
+      # そのままリポジトリへコミット・push し、Pages に反映されるようにする。
+      - name: Commit built docs/
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs
+          if git diff --cached --quiet; then
+            echo "docs/ に変更なし"
+          else
+            git commit -m "build: docs を自動ビルド [skip ci]"
+            git push
+          fi
