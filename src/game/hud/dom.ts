@@ -215,14 +215,14 @@ export interface HudDomRefs {
   els: Map<string, HTMLElement>;
 }
 
-// 旧 Hud constructor 本体だった静的 DOM/スタイル構築。document.body に直接要素を追加する。
-export function buildHudDom(host: HudDomHost): HudDomRefs {
+function injectStyle(): void {
   const style = document.createElement('style');
   style.textContent = STYLE;
   document.head.appendChild(style);
+}
 
-  const root = el('div', 'hud', document.body);
-
+// マーカーのリーダーライン描画用 SVG レイヤー
+function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   const svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svgOverlay.style.position = 'absolute';
   svgOverlay.style.inset = '0';
@@ -231,7 +231,11 @@ export function buildHudDom(host: HudDomHost): HudDomRefs {
   svgOverlay.style.pointerEvents = 'none';
   svgOverlay.style.zIndex = '-1';
   root.appendChild(svgOverlay);
+  return svgOverlay;
+}
 
+// ステータス・軌道・ターゲット・敵一覧の 4 パネル
+function buildInfoPanels(root: HTMLElement): void {
   const status = el('div', 'hud-status', root, 'panel');
   status.innerHTML = `
     <h3>SHIP STATUS</h3>
@@ -266,16 +270,23 @@ export function buildHudDom(host: HudDomHost): HudDomRefs {
   enemies.innerHTML = `
     <h3>CONTACTS <span data-id="count"></span></h3>
     <div data-id="elist"></div>`;
+}
 
+function buildControlsBar(root: HTMLElement): void {
   const controls = el('div', 'hud-controls', root);
   controls.innerHTML =
     'W/S(またはCTRL/SHIFT):前後 &nbsp;Q/E:上下 &nbsp;A/D:左右 &nbsp;I/K/J/L/U/O:回転 &nbsp;1/2/3:並進出力 &nbsp;T:RCS制動 &nbsp;F:プログレードリセット &nbsp;C:進行方向ホールド &nbsp;G:視点のRCS追従 &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
     'Space/右クリック:射撃 &nbsp;左ドラッグ/矢印キー:視点 &nbsp;中ドラッグ:マップ平行移動 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
+}
 
+function buildPlanPanel(root: HTMLElement): void {
   const plan = el('div', 'hud-plan', root, 'panel');
   plan.innerHTML = `<h3>MANEUVER PLAN [M]</h3><div data-id="planbody"></div>`;
   plan.style.display = 'none';
+}
 
+// マップモードのツールバー(予測期間・座標系・フォーカス・未来位置スライダー)
+function buildMapToolbar(root: HTMLElement, host: HudDomHost): void {
   const mapTool = el('div', 'hud-maptool', root, 'panel');
   mapTool.innerHTML = `
     <div class="mt-row" data-id="mt-duration">
@@ -324,14 +335,21 @@ export function buildHudDom(host: HudDomHost): HudDomRefs {
   slider.addEventListener('input', () => {
     if (host.onSliderChange) host.onSliderChange(Number(slider.value) / 1000);
   });
+}
 
+function buildStage0Panel(root: HTMLElement): void {
   const stage0 = el('div', 'hud-stage0', root, 'panel');
   stage0.innerHTML = `<div class="t" data-id="stage0hp"></div><div class="k"><span data-id="stage0phase"></span><br>撃墜 <span data-id="stage0kills"></span></div>`;
+}
 
+function buildGearButton(root: HTMLElement, host: HudDomHost): void {
   const gear = el('div', 'hud-gear', root);
   gear.textContent = '⚙';
   gear.addEventListener('click', () => host.toggleSettings());
+}
 
+// 一時停止 / 設定パネル(BGM トグル・タイトルへ戻る・閉じる)
+function buildSettingsPanel(root: HTMLElement, host: HudDomHost): void {
   const settings = el('div', 'hud-settings', root, 'panel');
   settings.innerHTML = `
     <h3>一時停止 / 設定</h3>
@@ -349,10 +367,9 @@ export function buildHudDom(host: HudDomHost): HudDomRefs {
   settings.querySelector<HTMLElement>('[data-id="settingsclose"]')!.addEventListener('click', () =>
     host.toggleSettings(false),
   );
+}
 
-  el('div', 'hud-hint', root);
-  el('div', 'hud-toast', root);
-
+function buildHelpPanel(root: HTMLElement): void {
   const help = el('div', 'hud-help', root, 'panel');
   help.innerHTML = `
     <h3>操作方法 [H で閉じる]</h3>
@@ -392,13 +409,37 @@ export function buildHudDom(host: HudDomHost): HudDomRefs {
       <tr><td class="key">矢印キー</td><td>マウスの代わりにキーボードで視点回転</td></tr>
       <tr><td class="key">Esc / ⚙</td><td>一時停止メニュー (設定 / タイトルへ戻る)</td></tr>
     </table>`;
+}
 
-  el('div', 'hud-end', root);
-
+function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   const els = new Map<string, HTMLElement>();
   root.querySelectorAll<HTMLElement>('[data-id]').forEach((e) => {
     els.set(e.dataset['id']!, e);
   });
+  return els;
+}
 
+// 旧 Hud constructor 本体だった静的 DOM/スタイル構築。document.body に直接要素を追加する。
+export function buildHudDom(host: HudDomHost): HudDomRefs {
+  injectStyle();
+  const root = el('div', 'hud', document.body);
+  const svgOverlay = buildSvgOverlay(root);
+
+  buildInfoPanels(root);
+  buildControlsBar(root);
+  buildPlanPanel(root);
+  buildMapToolbar(root, host);
+  buildStage0Panel(root);
+  buildGearButton(root, host);
+  buildSettingsPanel(root, host);
+
+  el('div', 'hud-hint', root);
+  el('div', 'hud-toast', root);
+
+  buildHelpPanel(root);
+
+  el('div', 'hud-end', root);
+
+  const els = collectDataIdElements(root);
   return { root, svgOverlay, els };
 }

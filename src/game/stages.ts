@@ -76,56 +76,48 @@ export class StageDirector {
     if (stage === -1) return []; // ステージ00は初期敵なしで動的スポーンする
     if (stage === 0) return this.makeStage0Specs(base, hHat);
 
-    const phased = (dAlong: number): OrbitState => {
-      const ang = dAlong / r0;
+    const phased = this.makePhasedFactory(base, hHat, r0);
+    return stage === 2 ? this.makeStage2Specs(phased, r0) : this.makeStage1Specs(phased, r0);
+  }
+
+  private makePhasedFactory(base: OrbitState, hHat: Vec3, radius: number): (dAlong: number) => OrbitState {
+    return (dAlong: number): OrbitState => {
+      const ang = dAlong / radius;
       return {
         r: rotateAxis(base.r, hHat, ang),
         v: rotateAxis(base.v, hHat, ang),
       };
     };
+  }
 
-    if (stage === 2) {
-      // モルニヤ軌道: 近地点 1,200km / 遠地点 39,400km, i=63.4°(近地点引数が歳差しない臨界傾斜),
-      // ω=-90°(遠地点が北半球上空)。RAAN と位相を散らして配置。
-      const molniya = (raan: number, nu: number, name: string, accent: number): EnemySpec => {
-        const rp = R_EARTH + 1200e3;
-        const ra = R_EARTH + 39400e3;
-        const a = (rp + ra) / 2;
-        const e = (ra - rp) / (ra + rp);
-        return {
-          name,
-          state: stateFromElements(a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu),
-          hp: 3,
-          accent,
-        };
-      };
-      const beta = phased(-2600);
-      const betaAlt = r0 + 3000;
-      beta.r = scale(norm(beta.r), betaAlt);
-      beta.v = scale(norm(beta.v), Math.sqrt(MU_EARTH / betaAlt));
-      return [
-        { name: 'HOSTILE-α', state: phased(1800), hp: 2, accent: 0xff4a3d },
-        { name: 'HOSTILE-β', state: beta, hp: 2, accent: 0xff7a2d },
-        molniya(0.4, 2.6, 'MOLNIYA-γ', 0xe0409f),
-        molniya(2.5, 0.9, 'MOLNIYA-δ', 0xbf3dff),
-        molniya(4.6, 3.8, 'MOLNIYA-ε', 0xff2d6b),
-      ];
-    }
+  private makeStage2Specs(phased: (dAlong: number) => OrbitState, radius: number): EnemySpec[] {
+    const beta = this.makeCoellipticState(phased(-2600), radius + 3000);
+    return [
+      { name: 'HOSTILE-α', state: phased(1800), hp: 2, accent: 0xff4a3d },
+      { name: 'HOSTILE-β', state: beta, hp: 2, accent: 0xff7a2d },
+      this.makeMolniyaSpec(0.4, 2.6, 'MOLNIYA-γ', 0xe0409f),
+      this.makeMolniyaSpec(2.5, 0.9, 'MOLNIYA-δ', 0xbf3dff),
+      this.makeMolniyaSpec(4.6, 3.8, 'MOLNIYA-ε', 0xff2d6b),
+    ];
+  }
 
-    // β: コエリプティック(少し高い円軌道)
-    const beta = phased(-2800);
-    const betaAlt = r0 + 2500;
-    beta.r = scale(norm(beta.r), betaAlt);
-    beta.v = scale(norm(beta.v), Math.sqrt(MU_EARTH / betaAlt));
+  private makeMolniyaSpec(raan: number, nu: number, name: string, accent: number): EnemySpec {
+    const rp = R_EARTH + 1200e3;
+    const ra = R_EARTH + 39400e3;
+    const a = (rp + ra) / 2;
+    const e = (ra - rp) / (ra + rp);
+    return {
+      name,
+      state: stateFromElements(a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu),
+      hp: 3,
+      accent,
+    };
+  }
 
-    // γ: 相対傾斜 0.4° の交差軌道
-    const gamma = phased(2200);
-    gamma.v = rotateAxis(gamma.v, norm(gamma.r), (0.4 * Math.PI) / 180);
-
-    // δ: 楕円軌道(遠地点が高く、毎周期近傍へ戻る)
-    const delta = phased(5000);
-    delta.v = scale(delta.v, 1.006);
-
+  private makeStage1Specs(phased: (dAlong: number) => OrbitState, radius: number): EnemySpec[] {
+    const beta = this.makeCoellipticState(phased(-2800), radius + 2500);
+    const gamma = this.makeCrossingState(phased(2200));
+    const delta = this.makeEllipticState(phased(5000));
     return [
       { name: 'HOSTILE-α', state: phased(1400), hp: 2, accent: 0xff4a3d },
       { name: 'HOSTILE-β', state: beta, hp: 2, accent: 0xff7a2d },
@@ -133,6 +125,27 @@ export class StageDirector {
       { name: 'HOSTILE-δ', state: delta, hp: 3, accent: 0xbf3dff },
       { name: 'HOSTILE-ε', state: phased(60000), hp: 3, accent: 0xff2d6b },
     ];
+  }
+
+  private makeCoellipticState(state: OrbitState, altitude: number): OrbitState {
+    return {
+      r: scale(norm(state.r), altitude),
+      v: scale(norm(state.v), Math.sqrt(MU_EARTH / altitude)),
+    };
+  }
+
+  private makeCrossingState(state: OrbitState): OrbitState {
+    return {
+      r: state.r,
+      v: rotateAxis(state.v, norm(state.r), (0.4 * Math.PI) / 180),
+    };
+  }
+
+  private makeEllipticState(state: OrbitState): OrbitState {
+    return {
+      r: state.r,
+      v: scale(state.v, 1.006),
+    };
   }
 
   // 第零ステージ: 色分けされた 5 グループ(各 10 機)を自機周囲 5km 以内に配置する。
@@ -207,205 +220,253 @@ export class StageDirector {
 
   updateStage00(dt: number, ctx: StageCtx): void {
     if (ctx.phase !== 'playing') return;
+    if (this.stage00Phase === 'waiting_for_ammo') return this.updateStage00WaitForAmmo(ctx);
+    if (this.stage00Phase === 'spawning_enemies') return this.updateStage00SpawningEnemies(dt, ctx);
+    if (this.stage00Phase === 'active_combat') this.updateStage00ActiveCombat(dt, ctx);
+  }
 
-    if (this.stage00Phase === 'waiting_for_ammo') {
-      if (ctx.magsLeft > 0 || ctx.roundsInMag > 0) {
-        this.stage00Phase = 'spawning_enemies';
-        this.stage00SpawnTimer = C.STAGE00_SPAWN_DELAY;
-        this.hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
-      }
-    } else if (this.stage00Phase === 'spawning_enemies') {
-      this.stage00SpawnTimer -= dt;
-      if (this.stage00SpawnTimer <= 0) {
-        this.spawnStage00Wave(ctx);
-        this.stage00Phase = 'active_combat';
-        this.stage00SpawnTimer = C.STAGE00_SPAWN_INTERVAL;
-      }
-    } else if (this.stage00Phase === 'active_combat') {
-      // 遠距離の敵をデスポーン(配列からはcleanupで消えるが、alive=falseにして消去)
-      for (let i = 0; i < ctx.enemies.length; i++) {
-        const e = ctx.enemies[i]!;
-        if (!e.alive) continue;
-        const dist = len(sub(e.state.r, ctx.player.state.r));
-        if (dist > C.STAGE00_MAX_RANGE) {
-          e.alive = false;
-          ctx.scene.remove(e.obj);
-          ctx.enemyOrbitLines[i]?.update(null, v3());
-        }
-      }
+  private updateStage00WaitForAmmo(ctx: StageCtx): void {
+    if (ctx.magsLeft <= 0 && ctx.roundsInMag <= 0) return;
+    this.stage00Phase = 'spawning_enemies';
+    this.stage00SpawnTimer = C.STAGE00_SPAWN_DELAY;
+    this.hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
+  }
 
-      const activeWaves = new Set<number>();
-      for (const e of ctx.enemies) {
-        if (e.alive && e.waveId !== undefined) activeWaves.add(e.waveId);
-      }
-      const activeGroups = activeWaves.size;
+  private updateStage00SpawningEnemies(dt: number, ctx: StageCtx): void {
+    this.stage00SpawnTimer -= dt;
+    if (this.stage00SpawnTimer > 0) return;
+    this.spawnStage00Wave(ctx);
+    this.stage00Phase = 'active_combat';
+    this.stage00SpawnTimer = C.STAGE00_SPAWN_INTERVAL;
+  }
 
-      let maxGroups = 1;
-      let allowedMaxWaveCount = 2;
+  private updateStage00ActiveCombat(dt: number, ctx: StageCtx): void {
+    this.despawnOutOfRangeStage00Enemies(ctx);
+    const activeGroups = this.countStage00ActiveGroups(ctx);
+    const limits = this.resolveStage00SpawnLimits(activeGroups);
+    if (activeGroups === 0) this.stage00SpawnTimer = 0;
+    if (!this.canSpawnNextStage00Wave(activeGroups, limits)) return;
+    this.stage00SpawnTimer -= dt;
+    if (this.stage00SpawnTimer > 0) return;
+    this.spawnStage00Wave(ctx);
+    this.stage00SpawnTimer = C.STAGE00_SPAWN_INTERVAL;
+    this.hud.toast(`波状攻撃 第${this.stage00WaveCount}波 接近中！`, 3000);
+  }
 
-      if (this.stage00WaveCount >= 4) {
-        if (this.stage00WaveCount >= 5 || activeGroups === 0) {
-          maxGroups = 3;
-          allowedMaxWaveCount = Infinity; // 第三段階: 同時3つまで無限波状攻撃
-        } else {
-          maxGroups = 2;
-          allowedMaxWaveCount = 4; // まだ第二段階(W3, W4がデスポーンするのを待つ)
-        }
-      } else if (this.stage00WaveCount >= 2) {
-        if (this.stage00WaveCount >= 3 || activeGroups === 0) {
-          maxGroups = 2;
-          allowedMaxWaveCount = 4; // 第二段階: 同時2つまで (W3, W4)
-        } else {
-          maxGroups = 1;
-          allowedMaxWaveCount = 2; // まだ第一段階(W1, W2がデスポーンするのを待つ)
-        }
-      }
-
-      if (activeGroups === 0) {
-        // 敵集団が場にいない場合は即座にスポーン
-        this.stage00SpawnTimer = 0;
-      }
-
-      if (activeGroups < maxGroups && this.stage00WaveCount < allowedMaxWaveCount) {
-        this.stage00SpawnTimer -= dt;
-        if (this.stage00SpawnTimer <= 0) {
-          this.spawnStage00Wave(ctx);
-          this.stage00SpawnTimer = C.STAGE00_SPAWN_INTERVAL;
-          this.hud.toast(`波状攻撃 第${this.stage00WaveCount}波 接近中！`, 3000);
-        }
-      }
+  private despawnOutOfRangeStage00Enemies(ctx: StageCtx): void {
+    for (let i = 0; i < ctx.enemies.length; i++) {
+      const enemy = ctx.enemies[i]!;
+      if (!enemy.alive) continue;
+      const dist = len(sub(enemy.state.r, ctx.player.state.r));
+      if (dist <= C.STAGE00_MAX_RANGE) continue;
+      enemy.alive = false;
+      ctx.scene.remove(enemy.obj);
+      ctx.enemyOrbitLines[i]?.update(null, v3());
     }
+  }
+
+  private countStage00ActiveGroups(ctx: StageCtx): number {
+    const activeWaves = new Set<number>();
+    for (const enemy of ctx.enemies) {
+      if (enemy.alive && enemy.waveId !== undefined) activeWaves.add(enemy.waveId);
+    }
+    return activeWaves.size;
+  }
+
+  private resolveStage00SpawnLimits(activeGroups: number): { maxGroups: number; allowedMaxWaveCount: number } {
+    if (this.stage00WaveCount >= 4) {
+      if (this.stage00WaveCount >= 5 || activeGroups === 0) {
+        return { maxGroups: 3, allowedMaxWaveCount: Infinity };
+      }
+      return { maxGroups: 2, allowedMaxWaveCount: 4 };
+    }
+    if (this.stage00WaveCount >= 2) {
+      if (this.stage00WaveCount >= 3 || activeGroups === 0) {
+        return { maxGroups: 2, allowedMaxWaveCount: 4 };
+      }
+      return { maxGroups: 1, allowedMaxWaveCount: 2 };
+    }
+    return { maxGroups: 1, allowedMaxWaveCount: 2 };
+  }
+
+  private canSpawnNextStage00Wave(
+    activeGroups: number,
+    limits: { maxGroups: number; allowedMaxWaveCount: number },
+  ): boolean {
+    return activeGroups < limits.maxGroups && this.stage00WaveCount < limits.allowedMaxWaveCount;
   }
 
   spawnStage00Wave(ctx: StageCtx, forcedPattern?: 'linear' | 'random'): void {
-    this.stage00WaveCount++;
-    const w = this.stage00WaveCount;
-    const shipCount = C.STAGE00_WAVE_BASE_SHIPS + Math.floor((w - 1) * C.STAGE00_WAVE_SHIPS_PER_WAVE); // 5, 7, 9...
-
-    const types = ['behind', 'front', 'above', 'side'];
-    const type = w === 1 ? 'behind' : types[Math.floor(Math.random() * types.length)];
-
-    const dist = C.STAGE00_SPAWN_DIST_MIN + Math.random() * (C.STAGE00_SPAWN_DIST_MAX - C.STAGE00_SPAWN_DIST_MIN);
-    const r0 = ctx.player.state.r;
-    const v0 = ctx.player.state.v;
-    const hHat = norm(cross(r0, v0));
-    const rHat = norm(r0);
-    const vHat = cross(hHat, rHat);
-
-    let centerR: Vec3;
-
-    // 配置位置を決定 (少しランダムなオフセットもつける)
-    const dr = (Math.random() - 0.5) * C.STAGE00_PLACEMENT_JITTER;
-    if (type === 'behind') {
-      centerR = add(r0, add(scale(vHat, -dist), scale(rHat, dr)));
-    } else if (type === 'front') {
-      centerR = add(r0, add(scale(vHat, dist), scale(rHat, dr)));
-    } else if (type === 'above') {
-      centerR = add(r0, add(scale(rHat, dist), scale(vHat, dr)));
-    } else { // side
-      const sideSign = Math.random() < 0.5 ? 1 : -1;
-      centerR = add(r0, add(scale(hHat, dist * sideSign), scale(rHat, dr)));
-    }
-
-    // 自機に向かう相対速度成分(フライパス用)
-    // 1000m ~ 2000m の範囲ですれ違うようにターゲット位置をずらす
-    const missDist = C.STAGE00_FLYBY_MISS_DIST_MIN + Math.random() * C.STAGE00_FLYBY_MISS_DIST_RANGE;
-    const directDir = norm(sub(r0, centerR));
-    const missPerp = randPerp(directDir);
-    const targetPos = add(r0, scale(missPerp, missDist));
-
-    const approachDir = norm(sub(targetPos, centerR));
-    const flybySpeed = C.STAGE00_FLYBY_SPEED + (w - 1) * C.STAGE00_FLYBY_SPEED_RAMP; // ウェーブが進むと少し速くなる
-    // 敵の初速度 = 自機の速度 + 接近速度 + わずかな横ブレ
-    const perpDir = randPerp(approachDir);
-    const spread = scale(perpDir, Math.random() * C.STAGE00_FLYBY_LATERAL_SPREAD);
-    const centerV = add(v0, add(scale(approachDir, flybySpeed), spread));
-
-    const randCol = Math.random();
-    let baseHex: number;
-    if (randCol < 0.7) {
-      // アースカラー (7割)
-      const earthColors = [0xc2b280, 0x808080, 0xb2beb5, 0x8b4513, 0xc3b091, 0x556b2f, 0x8f9779, 0x5f9ea0];
-      baseHex = earthColors[Math.floor(Math.random() * earthColors.length)]!;
-    } else if (randCol < 0.9) {
-      // 寒色系 (2割)
-      const coolColors = [0x722f37, 0x8a2be2, 0x0000ff, 0x00ffff, 0x40e0d0, 0x008000, 0x9acd32];
-      baseHex = coolColors[Math.floor(Math.random() * coolColors.length)]!;
-    } else {
-      // アクセントカラー (1割)
-      const accentColors = [0xffa500, 0xffc0cb, 0xff0000, 0xffffff];
-      baseHex = accentColors[Math.floor(Math.random() * accentColors.length)]!;
-    }
-
-    const baseColor = new THREE.Color(baseHex);
-    const hsl = { h: 0, s: 0, l: 0 };
-    baseColor.getHSL(hsl);
-
-    // 個体を2~4のサブグループに分け、色相・彩度・明度をわずかにずらす
-    const subGroupCount = 2 + Math.floor(Math.random() * 3);
-    const subGroups: number[] = [];
-    for (let i = 0; i < subGroupCount; i++) {
-      const hOffset = (Math.random() - 0.5) * 0.12;
-      const sOffset = (Math.random() - 0.5) * 0.35;
-      const lOffset = (Math.random() - 0.5) * 0.25;
-      const subColor = new THREE.Color().setHSL(
-        (hsl.h + hOffset + 1) % 1,
-        Math.max(0, Math.min(1, hsl.s + sOffset)),
-        Math.max(0.1, Math.min(0.9, hsl.l + lOffset))
-      );
-      subGroups.push(subColor.getHex());
-    }
-
-    const typeIndex = Math.floor(Math.random() * 3);
-    const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');
-
-    for (let i = 0; i < shipCount; i++) {
-      const accent = subGroups[i % subGroupCount]!;
-      let pos: Vec3;
-      if (pattern === 'linear') {
-        // 隊列は接近方向に対して後方へ直列に並べる。直線状のものも少しランダムに配置
-        const offset = (i - (shipCount - 1) / 2) * C.STAGE00_FORMATION_SPACING;
-        const jitter = scale(randPerp(approachDir), (Math.random() - 0.5) * 200);
-        pos = add(centerR, add(scale(approachDir, -offset), jitter));
-      } else {
-        // ランダムな球状の配置
-        const randDir = norm(v3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5));
-        const randDist = Math.random() * C.STAGE00_FORMATION_SPACING * (shipCount / 2);
-        pos = add(centerR, scale(randDir, randDist));
-      }
-
-      // 高度を少し下げる (200m~1km)
-      const altDrop = C.STAGE00_ALT_OFFSET_MIN + Math.random() * (C.STAGE00_ALT_OFFSET_MAX - C.STAGE00_ALT_OFFSET_MIN);
-      const r = add(pos, scale(norm(pos), altDrop));
-
-      const ship: Ship = {
-        name: `W${w}-${i + 1}`,
-        state: { r, v: clone(centerV) },
-        prevR: clone(r),
-        att: {
-          q: randomQuat(),
-          w: v3(0, 0, 0),
-          inertia: v3(1, 1, 1),
-        },
-        obj: buildStage0EnemyShip(accent, typeIndex),
-        radius: C.ENEMY_RADIUS,
-        hp: C.STAGE0_ENEMY_HP,
-        maxHp: C.STAGE0_ENEMY_HP,
-        alive: true,
-        accent,
-        waveId: w,
-      };
-      ship.obj.scale.setScalar(C.ENEMY_SCALE);
-
-      // 機首をプログレード、背を天頂に
-      ship.att.q = qFromForwardUp(ship.state.v, ship.state.r) ?? ship.att.q;
-
-      ctx.enemies.push(ship);
-      ctx.scene.add(ship.obj);
-
-      const ol = new OrbitLine(accent, 0.35);
-      ctx.enemyOrbitLines.push(ol);
-      ctx.scene.add(ol.line);
+    const plan = this.buildStage00WavePlan(ctx, forcedPattern);
+    for (let i = 0; i < plan.shipCount; i++) {
+      const accent = plan.subGroups[i % plan.subGroups.length]!;
+      const position = waveShipPosition(plan.pattern, i, plan.shipCount, plan.centerR, plan.approachDir);
+      spawnWaveShip(ctx, `W${plan.wave}-${i + 1}`, position, clone(plan.centerV), accent, plan.typeIndex, plan.wave);
     }
   }
+
+  private buildStage00WavePlan(
+    ctx: StageCtx,
+    forcedPattern?: 'linear' | 'random',
+  ): {
+    wave: number;
+    shipCount: number;
+    centerR: Vec3;
+    approachDir: Vec3;
+    centerV: Vec3;
+    subGroups: number[];
+    typeIndex: number;
+    pattern: 'linear' | 'random';
+  } {
+    this.stage00WaveCount++;
+    const wave = this.stage00WaveCount;
+    const shipCount = C.STAGE00_WAVE_BASE_SHIPS + Math.floor((wave - 1) * C.STAGE00_WAVE_SHIPS_PER_WAVE);
+    const centerR = pickWaveCenter(ctx.player.state, wave);
+    const { approachDir, centerV } = makeFlybyVelocity(ctx.player.state, centerR, wave);
+    const subGroups = makeSubGroupHexes(pickWaveBaseHex());
+    const typeIndex = Math.floor(Math.random() * 3);
+    const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');
+    return { wave, shipCount, centerR, approachDir, centerV, subGroups, typeIndex, pattern };
+  }
+}
+
+// ウェーブ出現位置: 自機の後方/前方/上方/側方いずれか(第1波は必ず後方)
+function pickWaveCenter(player: OrbitState, wave: number): Vec3 {
+  const types = ['behind', 'front', 'above', 'side'];
+  const type = wave === 1 ? 'behind' : types[Math.floor(Math.random() * types.length)];
+
+  const dist = C.STAGE00_SPAWN_DIST_MIN + Math.random() * (C.STAGE00_SPAWN_DIST_MAX - C.STAGE00_SPAWN_DIST_MIN);
+  const r0 = player.r;
+  const hHat = norm(cross(r0, player.v));
+  const rHat = norm(r0);
+  const vHat = cross(hHat, rHat);
+
+  const dr = (Math.random() - 0.5) * C.STAGE00_PLACEMENT_JITTER;
+  if (type === 'behind') return add(r0, add(scale(vHat, -dist), scale(rHat, dr)));
+  if (type === 'front') return add(r0, add(scale(vHat, dist), scale(rHat, dr)));
+  if (type === 'above') return add(r0, add(scale(rHat, dist), scale(vHat, dr)));
+  const sideSign = Math.random() < 0.5 ? 1 : -1; // side
+  return add(r0, add(scale(hHat, dist * sideSign), scale(rHat, dr)));
+}
+
+// フライパス初速: 1000m ~ 2000m の範囲ですれ違うようにターゲット位置をずらし、
+// 敵の初速度 = 自機の速度 + 接近速度 + わずかな横ブレ とする
+function makeFlybyVelocity(
+  player: OrbitState,
+  centerR: Vec3,
+  wave: number
+): { approachDir: Vec3; centerV: Vec3 } {
+  const missDist = C.STAGE00_FLYBY_MISS_DIST_MIN + Math.random() * C.STAGE00_FLYBY_MISS_DIST_RANGE;
+  const directDir = norm(sub(player.r, centerR));
+  const missPerp = randPerp(directDir);
+  const targetPos = add(player.r, scale(missPerp, missDist));
+
+  const approachDir = norm(sub(targetPos, centerR));
+  const flybySpeed = C.STAGE00_FLYBY_SPEED + (wave - 1) * C.STAGE00_FLYBY_SPEED_RAMP; // ウェーブが進むと少し速くなる
+  const perpDir = randPerp(approachDir);
+  const spread = scale(perpDir, Math.random() * C.STAGE00_FLYBY_LATERAL_SPREAD);
+  return { approachDir, centerV: add(player.v, add(scale(approachDir, flybySpeed), spread)) };
+}
+
+// 基調色: アースカラー7割 / 寒色系2割 / アクセントカラー1割
+function pickWaveBaseHex(): number {
+  const randCol = Math.random();
+  if (randCol < 0.7) {
+    const earthColors = [0xc2b280, 0x808080, 0xb2beb5, 0x8b4513, 0xc3b091, 0x556b2f, 0x8f9779, 0x5f9ea0];
+    return earthColors[Math.floor(Math.random() * earthColors.length)]!;
+  }
+  if (randCol < 0.9) {
+    const coolColors = [0x722f37, 0x8a2be2, 0x0000ff, 0x00ffff, 0x40e0d0, 0x008000, 0x9acd32];
+    return coolColors[Math.floor(Math.random() * coolColors.length)]!;
+  }
+  const accentColors = [0xffa500, 0xffc0cb, 0xff0000, 0xffffff];
+  return accentColors[Math.floor(Math.random() * accentColors.length)]!;
+}
+
+// 個体を2~4のサブグループに分け、色相・彩度・明度をわずかにずらす
+function makeSubGroupHexes(baseHex: number): number[] {
+  const baseColor = new THREE.Color(baseHex);
+  const hsl = { h: 0, s: 0, l: 0 };
+  baseColor.getHSL(hsl);
+
+  const subGroupCount = 2 + Math.floor(Math.random() * 3);
+  const subGroups: number[] = [];
+  for (let i = 0; i < subGroupCount; i++) {
+    const hOffset = (Math.random() - 0.5) * 0.12;
+    const sOffset = (Math.random() - 0.5) * 0.35;
+    const lOffset = (Math.random() - 0.5) * 0.25;
+    const subColor = new THREE.Color().setHSL(
+      (hsl.h + hOffset + 1) % 1,
+      Math.max(0, Math.min(1, hsl.s + sOffset)),
+      Math.max(0.1, Math.min(0.9, hsl.l + lOffset))
+    );
+    subGroups.push(subColor.getHex());
+  }
+  return subGroups;
+}
+
+// 隊列内の各機の配置位置(高度を少し下げるオフセット込み)
+function waveShipPosition(
+  pattern: 'linear' | 'random',
+  i: number,
+  shipCount: number,
+  centerR: Vec3,
+  approachDir: Vec3
+): Vec3 {
+  let pos: Vec3;
+  if (pattern === 'linear') {
+    // 隊列は接近方向に対して後方へ直列に並べる。直線状のものも少しランダムに配置
+    const offset = (i - (shipCount - 1) / 2) * C.STAGE00_FORMATION_SPACING;
+    const jitter = scale(randPerp(approachDir), (Math.random() - 0.5) * 200);
+    pos = add(centerR, add(scale(approachDir, -offset), jitter));
+  } else {
+    // ランダムな球状の配置
+    const randDir = norm(v3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5));
+    const randDist = Math.random() * C.STAGE00_FORMATION_SPACING * (shipCount / 2);
+    pos = add(centerR, scale(randDir, randDist));
+  }
+
+  // 高度を少し下げる (200m~1km)
+  const altDrop = C.STAGE00_ALT_OFFSET_MIN + Math.random() * (C.STAGE00_ALT_OFFSET_MAX - C.STAGE00_ALT_OFFSET_MIN);
+  return add(pos, scale(norm(pos), altDrop));
+}
+
+// 敵機を生成して ctx の enemies / enemyOrbitLines / scene へ登録する
+function spawnWaveShip(
+  ctx: StageCtx,
+  name: string,
+  r: Vec3,
+  v: Vec3,
+  accent: number,
+  typeIndex: number,
+  waveId: number
+): void {
+  const ship: Ship = {
+    name,
+    state: { r, v },
+    prevR: clone(r),
+    att: {
+      q: randomQuat(),
+      w: v3(0, 0, 0),
+      inertia: v3(1, 1, 1),
+    },
+    obj: buildStage0EnemyShip(accent, typeIndex),
+    radius: C.ENEMY_RADIUS,
+    hp: C.STAGE0_ENEMY_HP,
+    maxHp: C.STAGE0_ENEMY_HP,
+    alive: true,
+    accent,
+    waveId,
+  };
+  ship.obj.scale.setScalar(C.ENEMY_SCALE);
+
+  // 機首をプログレード、背を天頂に
+  ship.att.q = qFromForwardUp(ship.state.v, ship.state.r) ?? ship.att.q;
+
+  ctx.enemies.push(ship);
+  ctx.scene.add(ship.obj);
+
+  const ol = new OrbitLine(accent, 0.35);
+  ctx.enemyOrbitLines.push(ol);
+  ctx.scene.add(ol.line);
 }

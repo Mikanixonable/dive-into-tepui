@@ -37,6 +37,15 @@ export class Input {
   private gestureFired = false;
 
   constructor(target: HTMLElement) {
+    // キーボード(押下中セット + エッジトリガキュー)
+    this.attachKeyboardListeners();
+    // ポインタ(左ドラッグ/クリック・右射撃・中パン・ピンチ)
+    this.attachPointerListeners(target);
+    // ホイールズーム
+    this.attachWheelListener(target);
+  }
+
+  private attachKeyboardListeners(): void {
     window.addEventListener('keydown', (e) => {
       // Tab のフォーカス移動と Space スクロール、矢印キーでのページスクロールを抑止
       if (
@@ -71,77 +80,89 @@ export class Input {
       this.dragging = false;
       this.panDragging = false;
     });
+  }
 
+  private attachPointerListeners(target: HTMLElement): void {
     target.addEventListener('contextmenu', (e) => e.preventDefault());
     target.style.touchAction = 'none'; // ブラウザのスクロール/ピンチを奪う
-    target.addEventListener('pointerdown', (e) => {
-      this.fireGesture();
-      if (e.button === 0) {
-        this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (this.pointers.size === 2) {
-          // 2本指になったらドラッグをやめてピンチズームに移行
-          this.dragging = false;
-          this.pinchDist = this.currentPinchDist();
-        } else if (this.pointers.size === 1) {
-          this.dragging = true;
-          this.dragMoved = 0;
-          target.setPointerCapture(e.pointerId);
-        }
-      } else if (e.button === 2) {
-        this.mouseFiring = true;
-        this.rightClicks.push({ x: e.clientX, y: e.clientY });
-      } else if (e.button === 1) {
-        // Map mode consumes this as a camera translation gesture. Keep it
-        // separate from the left-drag orbit rotation delta.
-        e.preventDefault();
-        this.panDragging = true;
+    target.addEventListener('pointerdown', (e) => this.onPointerDown(target, e));
+    target.addEventListener('pointermove', (e) => this.onPointerMove(e));
+    target.addEventListener('pointerup', (e) => this.onPointerUp(e));
+    target.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
+  }
+
+  private onPointerDown(target: HTMLElement, e: PointerEvent): void {
+    this.fireGesture();
+    if (e.button === 0) {
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.pointers.size === 2) {
+        // 2本指になったらドラッグをやめてピンチズームに移行
+        this.dragging = false;
+        this.pinchDist = this.currentPinchDist();
+      } else if (this.pointers.size === 1) {
+        this.dragging = true;
+        this.dragMoved = 0;
         target.setPointerCapture(e.pointerId);
       }
-    });
-    target.addEventListener('pointermove', (e) => {
-      const p = this.pointers.get(e.pointerId);
-      if (p) {
-        p.x = e.clientX;
-        p.y = e.clientY;
-      }
-      if (this.pointers.size >= 2) {
-        // ピンチ: 指の間隔の変化をホイール量へ変換(開く = ズームイン)
-        const d = this.currentPinchDist();
-        this.wheel += (this.pinchDist - d) * 3;
-        this.pinchDist = d;
-        return;
-      }
-      if (this.panDragging) {
-        this.panDx += e.movementX;
-        this.panDy += e.movementY;
-        return;
-      }
-      if (this.dragging) {
-        this.dx += e.movementX;
-        this.dy += e.movementY;
-        this.dragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
-      }
-    });
-    const release = (e: PointerEvent) => {
-      if (e.button === 0 || e.pointerType === 'touch') {
-        this.pointers.delete(e.pointerId);
-        if (this.dragging && this.dragMoved < CLICK_MOVE_THRESHOLD) {
-          this.clicks.push({ x: e.clientX, y: e.clientY });
-        }
-        this.dragging = false;
-        this.pinchDist = 0;
-      }
-      if (e.button === 2) this.mouseFiring = false;
-      if (e.button === 1) this.panDragging = false;
-    };
-    target.addEventListener('pointerup', release);
-    target.addEventListener('pointercancel', (e) => {
+    } else if (e.button === 2) {
+      this.mouseFiring = true;
+      this.rightClicks.push({ x: e.clientX, y: e.clientY });
+    } else if (e.button === 1) {
+      // Map mode consumes this as a camera translation gesture. Keep it
+      // separate from the left-drag orbit rotation delta.
+      e.preventDefault();
+      this.panDragging = true;
+      target.setPointerCapture(e.pointerId);
+    }
+  }
+
+  private onPointerMove(e: PointerEvent): void {
+    const p = this.pointers.get(e.pointerId);
+    if (p) {
+      p.x = e.clientX;
+      p.y = e.clientY;
+    }
+    if (this.pointers.size >= 2) {
+      // ピンチ: 指の間隔の変化をホイール量へ変換(開く = ズームイン)
+      const d = this.currentPinchDist();
+      this.wheel += (this.pinchDist - d) * 3;
+      this.pinchDist = d;
+      return;
+    }
+    if (this.panDragging) {
+      this.panDx += e.movementX;
+      this.panDy += e.movementY;
+      return;
+    }
+    if (this.dragging) {
+      this.dx += e.movementX;
+      this.dy += e.movementY;
+      this.dragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
+    }
+  }
+
+  private onPointerUp(e: PointerEvent): void {
+    if (e.button === 0 || e.pointerType === 'touch') {
       this.pointers.delete(e.pointerId);
+      if (this.dragging && this.dragMoved < CLICK_MOVE_THRESHOLD) {
+        this.clicks.push({ x: e.clientX, y: e.clientY });
+      }
       this.dragging = false;
-      this.panDragging = false;
-      this.mouseFiring = false;
       this.pinchDist = 0;
-    });
+    }
+    if (e.button === 2) this.mouseFiring = false;
+    if (e.button === 1) this.panDragging = false;
+  }
+
+  private onPointerCancel(e: PointerEvent): void {
+    this.pointers.delete(e.pointerId);
+    this.dragging = false;
+    this.panDragging = false;
+    this.mouseFiring = false;
+    this.pinchDist = 0;
+  }
+
+  private attachWheelListener(target: HTMLElement): void {
     target.addEventListener(
       'wheel',
       (e) => {
