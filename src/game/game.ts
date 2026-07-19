@@ -24,8 +24,7 @@ import {
   v3,
 } from '../physics/vec3';
 import { PlannerCtx } from './map-mode/planner';
-import { BeltPhysics } from './combat/belt';
-import { Player } from './player';
+import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
 import { CombatCtx, CombatSystem } from './combat/combat';
 import { StageCtx, StageDirector } from './stage-director';
@@ -62,11 +61,7 @@ import {
   makeGlowTexture,
   Sun,
 } from '../render/stars';
-import {
-  MAG_BELT_PITCH,
-  buildEnemyShip,
-  buildMagazineMesh,
-} from '../render/ships';
+import { buildEnemyShip } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
 
 type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
@@ -149,12 +144,8 @@ export class Game {
   private lostReason = '大気圏に突入し機体を喪失した';
 
   // --- 弾薬・マガジン ---
-  private readonly beltGroup = new THREE.Group();
-  private readonly beltLinks: THREE.Group[] = [];
-  // ベルトのたわみ・ねじれの物理演算(Verlet 積分 + 距離拘束)は belt.ts の
-  // BeltPhysics に切り出し済み。beltLinks(表示メッシュ)を注入して構築する
-  // (メッシュ自体は下の constructor で beltGroup に積む)。
-  private readonly belt = new BeltPhysics(this.beltLinks);
+  // マガジンベルト(表示メッシュ + Verlet 物理)は弾薬状態に密結合なため
+  // player/player-fire.ts の PlayerFire が所有する(this.player.updateBelt 等)。
   // 武器発射・被弾・撃破まわりの処理は combat.ts の CombatSystem に切り出し済み。
   // 発射カウンタ(shots/hits/kills)・砲口交互発射のインデックスも CombatSystem が保持する。
   private readonly combat = new CombatSystem(this.hud, this.sfx);
@@ -213,7 +204,6 @@ export class Game {
     // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
     this.player = new Player(this.hud, this.sfx, this.scene, this.glowTex);
     this.scene.add(this.player.obj);
-    this.buildBeltLinks();
     this.maneuver.bindCallbacks(() => this.plannerCtx());
 
     // --- 敵機配置 ---
@@ -265,21 +255,6 @@ export class Game {
     this.moonOrbitLine.line.renderOrder = 0;
     this.scene.add(this.moonOrbitLine.line);
     this.scene.add(this.trajOverlay.line.group);
-  }
-
-  // マガジンベルト(未使用の実弾入りマガジン): 機体左面(+X)に垂直に連結する。
-  // 先頭リンクは機体に半分取り込まれた位置に置く(給弾中もベルトごと
-  // 取り込まれている見た目)。ゲーム開始時は空のマガジンは一切表示されず、
-  // 弾を撃ち尽くすたびに機体反対側(-X)からフレームだけの空マガジンが
-  // デブリとして放出される(spawnEjectedMagazineFrame 参照)。
-  private buildBeltLinks(): void {
-    for (let i = 0; i < C.BELT_MAX_VISIBLE; i++) {
-      const link = buildMagazineMesh();
-      link.position.x = 0.9 + i * MAG_BELT_PITCH;
-      this.beltGroup.add(link);
-      this.beltLinks.push(link);
-    }
-    this.player.obj.add(this.beltGroup);
   }
 
   private spawnInitialEnemies(playerState: OrbitState): void {
@@ -604,7 +579,6 @@ export class Game {
       casings: this.simulator.casings,
       magPickups: this.simulator.magPickups,
       debris: this.simulator.debris,
-      belt: this.belt,
     };
   }
 
@@ -769,9 +743,6 @@ export class Game {
       casings: this.simulator.casings,
       magPickups: this.simulator.magPickups,
       debris: this.simulator.debris,
-      belt: this.belt,
-      magsLeft: this.player.magsLeft,
-      roundsInMag: this.player.roundsInMag,
       camera: this.camera,
       zoomActive: this.zoomActive,
     });

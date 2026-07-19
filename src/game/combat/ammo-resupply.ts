@@ -9,7 +9,7 @@ import * as C from '../const';
 import { MagPickup } from '../entities';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { Player } from '../player';
+import { Player } from '../player/player';
 
 export class AmmoResupplySystem {
   private resupplyCheckAt = 0;

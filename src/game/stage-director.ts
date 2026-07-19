@@ -29,7 +29,7 @@ import { Sfx } from '../audio/sfx';
 import { buildStage0EnemyShip } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
 import { getStageDefinition, StageEnemyPreset } from './stage-data';
-import { Player } from './player';
+import { Player } from './player/player';
 
 export interface EnemySpec {
   name: string;

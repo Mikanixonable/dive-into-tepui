@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { dot, norm, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Enemy } from '../entities';
-import { Player } from '../player';
+import { Player } from '../player/player';
 import { Hud } from '../../hud/hud';
 import { Input } from '../input';
 import { ProjectFn } from '../camera/projection';

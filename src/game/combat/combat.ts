@@ -35,7 +35,7 @@ import {
   buildMagazineFrame,
   buildPlasmaMesh,
 } from '../../render/ships';
-import { Player } from '../player';
+import { Player } from '../player/player';
 
 // fireGun / firePlasma / checkBulletHits / destroyShip 等が必要とする、Game 側の
 // 現在状態のスナップショット(毎フレーム/毎呼び出しで渡す)。enemies / bullets /

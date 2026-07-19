@@ -5,7 +5,7 @@ import { scale, sub, v3, Vec3 } from '../physics/vec3';
 import { EphemerisSystem } from './ephemeris';
 import { MapPlanner, PlannerCtx } from './map-mode/planner';
 import { MapView } from './map-mode/mapview';
-import { Player } from './player';
+import { Player } from './player/player';
 import { Enemy } from './entities';
 import { OrbitLine } from '../render/orbitline';
 import { TrajectoryOverlay } from './map-mode/traj-overlay';
