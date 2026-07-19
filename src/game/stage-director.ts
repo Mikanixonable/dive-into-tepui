@@ -27,7 +27,6 @@ import { Enemy } from './entities';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
 import { buildStage0EnemyShip } from '../render/ships';
-import { OrbitLine } from '../render/orbitline';
 import { getStageDefinition, StageEnemyPreset } from './stage-data';
 import { Player } from './player/player';
 
@@ -39,14 +38,15 @@ export interface EnemySpec {
 }
 
 // updateStage00 / spawnStage00Wave / updateStage0Timer が必要とする、Game 側の
-// 現在状態のスナップショット(毎フレーム渡す)。enemies / enemyOrbitLines は
-// 読み取り参照(要素の alive 等はミューテートしてよい)。敵の追加は addEnemy
-// (game.ts 側で Simulator への登録と軌道線の生成まで行う)を通す。
+// 現在状態のスナップショット(毎フレーム渡す)。enemies は読み取り参照
+// (要素の alive 等はミューテートしてよいが、生成累計数の表示には totalEnemies を
+// 使う — enemies は撃破された個体から prune されるため配列長は「残存数」)。
+// 敵の追加は addEnemy(game.ts 側で Simulator への登録と軌道線の生成まで行う)を通す。
 export interface StageCtx {
   phase: string;
   player: Player;
   enemies: readonly Enemy[];
-  enemyOrbitLines: readonly OrbitLine[];
+  totalEnemies: number;
   addEnemy(enemy: Enemy, orbitLineColor: number): void;
   scene: THREE.Scene;
   shots: number;
@@ -224,7 +224,7 @@ export class StageDirector {
       const acc = ctx.shots > 0 ? ((ctx.hits / ctx.shots) * 100).toFixed(1) : '0.0';
       this.hud.showEnd(
         true,
-        `撃墜 ${ctx.kills} / ${ctx.enemies.length} 機<br>` +
+        `撃墜 ${ctx.kills} / ${ctx.totalEnemies} 機<br>` +
         `発射 ${ctx.shots} 発 / 命中 ${ctx.hits} 発 (命中率 ${acc}%)`,
         'TIME UP',
       );
@@ -276,14 +276,12 @@ export class StageDirector {
   }
 
   private despawnOutOfRangeStage00Enemies(ctx: StageCtx): void {
-    for (let i = 0; i < ctx.enemies.length; i++) {
-      const enemy = ctx.enemies[i]!;
+    for (const enemy of ctx.enemies) {
       if (!enemy.alive) continue;
       const dist = len(sub(enemy.state.r, ctx.player.state.r));
       if (dist <= C.STAGE00_MAX_RANGE) continue;
       enemy.alive = false;
       enemy.dispose();
-      ctx.enemyOrbitLines[i]?.update(null, v3());
     }
   }
 

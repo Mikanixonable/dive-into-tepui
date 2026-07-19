@@ -86,7 +86,6 @@ export class Game {
   // renderOrder を自機軌道より上げて透明オブジェクトの描画順に依存せず必ず上に描く。
   private readonly targetOrbitLine = new OrbitLine(0xff6a00, 0.9);
   private readonly plannedOrbitLine = new OrbitLine(0xffffff, 0.9);
-  private readonly enemyOrbitLines: OrbitLine[] = [];
   private readonly geoOrbitLine = new OrbitLine(0x8b93a0, 0.2);
   private readonly moonOrbitLine = new OrbitLine(0xaab3c0, 0.2);
 
@@ -239,18 +238,17 @@ export class Game {
     }
   }
 
-  // 敵の追加は Simulator への登録(配列 + scene)と軌道線の生成を常に対で行う
-  // (enemyOrbitLines は enemies とインデックス対応の並行配列)。
+  // 敵の追加は Simulator への登録(配列)と軌道線の生成・scene 登録を常に対で行う。
+  // 軌道線は enemy 自身に持たせる(orbit-line-system.ts が enemy.orbitLine を直接参照)。
   private addEnemy(enemy: Enemy, orbitLineColor: number): void {
+    enemy.orbitLine = new OrbitLine(orbitLineColor, 0.35);
+    this.scene.add(enemy.orbitLine.line);
     this.simulator.addEnemy(enemy);
-    const line = new OrbitLine(orbitLineColor, 0.35);
-    this.enemyOrbitLines.push(line);
-    this.scene.add(line.line);
   }
 
   // ステージ別の初期弾薬・初期補給の配置と作戦目標のブリーフィング表示
   private initStage(): void {
-    const data = resolveStageInitData(this.stageDirector.stage, this.simulator.enemies.length);
+    const data = resolveStageInitData(this.stageDirector.stage, this.simulator.totalEnemiesSpawned);
     const stageDef = getStageDefinition(this.stageDirector.stage);
     this.player.initAmmo(data.magsLeft, data.roundsInMag);
     if (stageDef.initAction === 'spawn-stage00-ammo') {
@@ -422,7 +420,7 @@ export class Game {
       phase: this.phase,
       player: this.player,
       enemies: this.simulator.enemies,
-      enemyOrbitLines: this.enemyOrbitLines,
+      totalEnemies: this.simulator.totalEnemiesSpawned,
       addEnemy: (enemy, orbitLineColor) => this.addEnemy(enemy, orbitLineColor),
       scene: this.scene,
       shots: this.combat.shots,
@@ -441,6 +439,7 @@ export class Game {
       simTime,
       player: this.player,
       enemies: this.simulator.enemies,
+      totalEnemies: this.simulator.totalEnemiesSpawned,
       target: this.target,
       stage: this.stageDirector.stage,
       zoomActive: this.zoomActive,
@@ -503,7 +502,7 @@ export class Game {
       hullTemp: this.thermal.hullTemp,
       shots: this.combat.shots,
       kills: this.combat.kills,
-      totalEnemies: this.simulator.enemies.length,
+      totalEnemies: this.simulator.totalEnemiesSpawned,
       stage: this.stageDirector.stage,
       stage00WaveCount: this.stageDirector.stage00WaveCount,
       stage0TimeLeft: this.stageDirector.stage0TimeLeft,
@@ -536,8 +535,10 @@ export class Game {
   }
 
   private handlePostSimulation(dt: number, simDt: number, warp: number, canAct: boolean): void {
-    this.applyThermalLimitLoss(this.thermal.checkThermalLimits(this.player.alive));
-    this.thermal.updateAltitudeAlarm(dt, this.player.alive, altitudeOf(this.player.state.r));
+    const limit = this.thermal.updateAltitudeAlarm(dt, this.player.alive, altitudeOf(this.player.state.r));
+    this.applyThermalLimitLoss(limit);
+    this.applyAltitudeLimitLoss();
+
     this.ammoResupply.updateLogistics(this.simTime, this.stageDirector.stage, this.player);
     if (warp <= C.MAX_PHYS_WARP) {
       this.collisionPhysics.resolve(dt, this.collisionCtx(), () => {
@@ -546,10 +547,20 @@ export class Game {
     }
     this.updateAttitudes(Math.min(simDt, 0.12));
 
-    this.simulator.cleanup(this.player, this.combatCtx(), this.simTime);
+    // シミュレーション配列から不要なものを消去
+    this.simulator.cleanup(this.combatCtx(), this.simTime);
 
     if (this.stageDirector.stage === -1 && this.phase === 'playing' && canAct) {
       this.combat.updateEnemyAI(dt, this.combatCtx());
+    }
+  }
+
+  private applyAltitudeLimitLoss(): void {
+    // 自機の構造限界高度(通常は加熱・動圧で先に喪失する)
+    const reason = this.player.lossReasonByAltitude(altitudeOf(this.player.state.r));
+    if (reason) {
+      this.combatCtx().setLostReason(reason);
+      this.combat.destroyShip(this.player, this.combatCtx());
     }
   }
 
@@ -680,7 +691,6 @@ export class Game {
       player: this.player,
       target: this.target,
       enemies: this.simulator.enemies,
-      enemyOrbitLines: this.enemyOrbitLines,
       maneuver: this.mapModeSystem,
       playerOrbitLine: this.playerOrbitLine,
       targetOrbitLine: this.targetOrbitLine,

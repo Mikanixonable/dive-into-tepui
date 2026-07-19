@@ -13,7 +13,6 @@ export interface OrbitLineUpdateCtx {
   player: Player;
   target: Enemy | null;
   enemies: Enemy[];
-  enemyOrbitLines: OrbitLine[];
   maneuver: MapModeSystem;
   playerOrbitLine: OrbitLine;
   targetOrbitLine: OrbitLine;
@@ -32,13 +31,11 @@ export class OrbitLineSystem {
     ctx.targetOrbitLine.update(tgtEl, ctx.origin);
 
     const mapMode = ctx.maneuver.mapMode;
-    for (let i = 0; i < ctx.enemies.length; i++) {
-      const enemy = ctx.enemies[i]!;
-      const line = ctx.enemyOrbitLines[i]!;
+    for (const enemy of ctx.enemies) {
       if (mapMode && enemy.alive && enemy !== tgt) {
-        line.update(elementsFromState(enemy.state.r, enemy.state.v), ctx.origin);
+        enemy.orbitLine.update(elementsFromState(enemy.state.r, enemy.state.v), ctx.origin);
       } else {
-        line.update(null, ctx.origin);
+        enemy.orbitLine.update(null, ctx.origin);
       }
     }
 

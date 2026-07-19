@@ -37,6 +37,10 @@ export class Simulator {
   readonly casings: Casing[] = [];
   readonly debris: DebrisPiece[] = [];
   readonly magPickups: MagPickup[] = [];
+  // 生成された累計数(prune で enemies 配列から消えても減らない)。
+  // 「何機中何機撃破」等の表示は enemies.length ではなくこちらを使う。
+  private totalEnemiesSpawnedValue = 0;
+  get totalEnemiesSpawned(): number { return this.totalEnemiesSpawnedValue; }
 
   private makeEnvAccel(bcInv: number): ExtraAccel {
     return (r, v, out) => envAccelInto(out ?? v3(), r, v, this.ephemeris.sunPos, this.ephemeris.moonPos, bcInv);
@@ -58,6 +62,7 @@ export class Simulator {
 
   addEnemy(enemy: Enemy): void {
     this.enemies.push(enemy);
+    this.totalEnemiesSpawnedValue++;
   }
 
   addBullet(bullet: Bullet): void {
@@ -169,20 +174,30 @@ export class Simulator {
 
   // ------------------------------------------------------------ 寿命管理
 
-  cleanup(player: Player, combatCtx: CombatCtx, simTime: number): void {
-    // 自機の構造限界高度(通常は加熱・動圧で先に喪失する)
-    const playerLossReason = player.lossReasonByAltitude(altitudeOf(player.state.r));
-    if (playerLossReason) {
-      combatCtx.setLostReason(playerLossReason);
-      this.combat.destroyShip(player, combatCtx);
-    }
+  cleanup(combatCtx: CombatCtx, simTime: number): void {
+
+    // プレイヤーによる撃破（checkBulletHits -> applyHit で alive=falseにされている、はず）
+    this.prune(this.enemies,
+      (e) => !e.alive,
+      (e) => { this.combat.destroyShip(e, combatCtx, true); e.dispose(); },
+    );
+
+    // 再突入による破壊を除去
+    this.prune(this.enemies,
+      (e) => e.alive && altitudeOf(e.state.r) < C.REENTRY_ALT,
+      (e) => { this.combat.destroyShip(e, combatCtx, false); e.dispose(); },
+    );
 
     for (const e of this.enemies) {
       if (e.alive && altitudeOf(e.state.r) < C.REENTRY_ALT) {
-        // 再突入による空力分解はプレイヤーによる撃破ではないためカウントしない
         this.combat.destroyShip(e, combatCtx, false);
       }
     }
+
+    // 撃破・喪失(alive=false)は destroyShip 経由でのみ起きる。ここでは配列からの
+    // 除去と scene からの後片付け(軌道線含む)のみを行う — 撃破数・勝敗判定は
+    // combat.ts が destroyShip 経由で自前集計するので、この配列を見に行かない。
+    this.prune(this.enemies, (e) => !e.alive, (e) => e.dispose());
 
     this.prune(this.bullets,
       (b) => !b.alive || simTime - b.bornSim > C.BULLET_LIFETIME || altitudeOf(b.state.r) < C.DEBRIS_REENTRY_ALT,

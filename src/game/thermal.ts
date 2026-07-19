@@ -52,8 +52,7 @@ export class ThermalSystem {
 
   // 熱防御の飽和・空力破壊の判定と警告表示。限界超過時は種別を返すのみで、
   // 実際の破壊(combat.destroyShip の呼び出し)は game.ts 側が行う。
-  checkThermalLimits(playerAlive: boolean): ThermalLimit {
-    if (!playerAlive) return null;
+  checkThermalLimits(): ThermalLimit {
     if (this.hullTemp > C.MAX_HULL_TEMP) {
       return 'heat';
     }
@@ -72,8 +71,8 @@ export class ThermalSystem {
 
   // 高度低下(降下)の検知と警告。離心率による短周期の高度振動で誤反応しないよう
   // 高度・変化率とも指数移動平均で平滑化する(時定数 約3秒)。
-  updateAltitudeAlarm(dt: number, playerAlive: boolean, alt: number): void {
-    if (!playerAlive) return;
+  updateAltitudeAlarm(dt: number, playerAlive: boolean, alt: number): ThermalLimit {
+    if (!playerAlive) return null;
     if (!isFinite(this.altEma)) this.altEma = alt;
     const prevEma = this.altEma;
     const k = Math.min(1, dt / C.ALT_EMA_TIME_CONST);
@@ -103,5 +102,7 @@ export class ThermalSystem {
         this.altWarnedThresholds.delete(th);
       }
     }
+
+    return this.checkThermalLimits();
   }
 }
