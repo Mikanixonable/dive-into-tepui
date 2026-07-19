@@ -25,7 +25,7 @@ import {
 import * as C from './const';
 import { Enemy } from './entities';
 import { Hud } from '../hud/hud';
-import { Sfx } from './audio';
+import { Sfx } from '../audio/sfx';
 import { buildStage0EnemyShip } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
 import { getStageDefinition, StageEnemyPreset } from './stage-data';

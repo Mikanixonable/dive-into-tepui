@@ -2,19 +2,17 @@
 // (クリック配置・ドラッグ・Δv アームギズモ)。マップモードでなくても生きている
 // (確定済みノードの噴射ガイドは戦闘ビューで表示される)。
 // game.ts を import しない — 依存は PlannerCtx 引数・コンストラクタ注入・コールバックのみ。
-import { Elements, R_EARTH, elementsFromState } from '../physics/orbital';
-import { sunAzimuth } from '../physics/ephemeris';
-import { PlannedNode, PredictOpts, TrajectorySample, dvToWorld, predictTrajectory, sampleAt } from '../physics/predict';
-import { Vec3, add, clone, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../physics/vec3';
-import * as C from './const';
-import { Hud } from '../hud/hud';
-import { fmtMarkerDist, fmtSpeed } from '../hud/utils';
-import { Sfx } from './audio';
-import { Input } from './input';
+import { Elements, R_EARTH, elementsFromState } from '../../physics/orbital';
+import { sunAzimuth } from '../../physics/ephemeris';
+import { PlannedNode, PredictOpts, TrajectorySample, dvToWorld, predictTrajectory, sampleAt } from '../../physics/predict';
+import { Vec3, add, clone, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../../physics/vec3';
+import * as C from '../const';
+import { Hud } from '../../hud/hud';
+import { fmtMarkerDist, fmtSpeed } from '../../hud/utils';
+import { Sfx } from '../../audio/sfx';
+import { Input } from '../input';
 import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from './mapgizmo';
-
-// スクリーン投影。アクティブカメラに依存するので Game から都度コールバックで渡す。
-export type ProjectFn = (rel: Vec3) => { x: number; y: number; front: boolean };
+import { ProjectFn } from '../camera/projection';
 
 // マップ上のフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベル。
 // ラベル自体は MapView の持ち物(現時点では game.ts)なので Game から都度渡す。

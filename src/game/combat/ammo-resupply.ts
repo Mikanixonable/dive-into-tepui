@@ -1,13 +1,13 @@
 import * as THREE from 'three/webgpu';
-import { randomQuat, stepAttitude } from '../physics/attitude';
-import { stepOrbitRK4 } from '../physics/orbital';
-import { Vec3, add, cross, len, lenSq, norm, randSym, randVec, rotateAxis, sub, v3 } from '../physics/vec3';
-import { buildMagPickup } from '../render/ships';
-import * as C from './const';
-import { MagPickup } from './entities';
-import { Hud } from '../hud/hud';
-import { Sfx } from './audio';
-import { Player } from './player';
+import { randomQuat, stepAttitude } from '../../physics/attitude';
+import { stepOrbitRK4 } from '../../physics/orbital';
+import { Vec3, add, cross, len, lenSq, norm, randSym, randVec, rotateAxis, sub, v3 } from '../../physics/vec3';
+import { buildMagPickup } from '../../render/ships';
+import * as C from '../const';
+import { MagPickup } from '../entities';
+import { Hud } from '../../hud/hud';
+import { Sfx } from '../../audio/sfx';
+import { Player } from '../player';
 
 export class AmmoResupplySystem {
   private readonly pickups: MagPickup[] = [];

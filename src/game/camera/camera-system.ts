@@ -1,12 +1,12 @@
 import * as THREE from 'three/webgpu';
-import { qRotate } from '../physics/attitude';
-import { sunAzimuth } from '../physics/ephemeris';
-import { Vec3, len, norm, scale, v3 } from '../physics/vec3';
-import * as C from './const';
-import { ChaseCamera } from './camera';
-import { MouseDelta } from './input';
-import { MapView } from './mapview';
-import { Player } from './player';
+import { qRotate } from '../../physics/attitude';
+import { sunAzimuth } from '../../physics/ephemeris';
+import { Vec3, len, norm, scale, v3 } from '../../physics/vec3';
+import * as C from '../const';
+import { ChaseCamera } from '../camera/chase-camera';
+import { MouseDelta } from '../input';
+import { MapView } from '../map-mode/mapview';
+import { Player } from '../player';
 
 export interface CameraUpdateCtx {
   mapMode: boolean;

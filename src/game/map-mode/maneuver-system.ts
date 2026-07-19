@@ -1,12 +1,13 @@
-import { Vec3 } from '../physics/vec3';
-import * as C from './const';
-import { Hud } from '../hud/hud';
-import { Sfx } from './audio';
-import { MapPlanner, PlannerCtx, ProjectFn } from './planner';
+import { Vec3 } from '../../physics/vec3';
+import * as C from '../const';
+import { Hud } from '../../hud/hud';
+import { Sfx } from '../../audio/sfx';
+import { MapPlanner, PlannerCtx } from './planner';
 import { MapView } from './mapview';
-import { MapModeController } from './map-mode';
+import { MapModeController } from './mapmode-controller';
 import { TrajectoryOverlay } from './traj-overlay';
-import { TouchControls } from './touch';
+import { TouchControls } from '../touch';
+import { ProjectFn } from '../camera/projection';
 
 export class ManeuverSystem {
   readonly planner: MapPlanner;

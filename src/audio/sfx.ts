@@ -7,7 +7,7 @@
 // その上に四度堆積のパッドと低いドローンが漂う。レトロシンセ的な柔らかい
 // 波形(sine / triangle)のみで、打楽器は使わない。
 // 作曲データ(音階/パターン/パッド/拍長)は複数曲用意し、5分ごとに切り替える
-import { BGM_TRACKS, BgmTrack } from './bgm';
+import { BGM_TRACKS, BgmTrack } from './bgm-tracks';
 
 const BGM_ENABLED_KEY = 'tepui.settings.bgm'; // localStorage キー
 

@@ -1,11 +1,11 @@
 // マガジンベルトの物理演算(Verlet 積分 + 距離拘束によるチェーンのたわみ・ねじれ)。
 // game.ts を import しない — 依存は BeltCtx 引数・コンストラクタ注入のみ。
 import * as THREE from 'three/webgpu';
-import { Attitude, Quat, qRotate } from '../physics/attitude';
-import { Vec3, add, sub, v3 } from '../physics/vec3';
-import { MAG_BELT_PITCH } from '../render/ships';
-import * as C from './const';
-import { BeltSection } from './entities';
+import { Attitude, Quat, qRotate } from '../../physics/attitude';
+import { Vec3, add, sub, v3 } from '../../physics/vec3';
+import { MAG_BELT_PITCH } from '../../render/ships';
+import * as C from '../const';
+import { BeltSection } from '../entities';
 
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 
