@@ -2042,9 +2042,13 @@ export class Game {
 
   // 撃破デブリ: 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果
   private spawnDebris(ship: Ship, sc = 1): void {
-    const accent = ship === this.player ? 0x9fd8e8 : 0xff6a4a;
-    this.spawnFragments(ship.state.r, ship.state.v, 11, accent, C.DEBRIS_SIZE_MIN * sc, C.DEBRIS_SIZE_MAX * sc, 2.8);
+    // 自機はシアン系、敵機はアクセントカラーを破片に継承させる
+    const accent = ship === this.player ? 0x9fd8e8 : (ship.accent ?? 0xff6a4a);
+    // 敵機の破片には当たり判定を付ける(size に比例した半径)
+    const collideRad = ship === this.player ? 0 : 0.6;
+    this.spawnFragments(ship.state.r, ship.state.v, 11, accent, C.DEBRIS_SIZE_MIN * sc, C.DEBRIS_SIZE_MAX * sc, 2.8, collideRad);
   }
+
 
   // 破片を飛散させる共通処理(撃破デブリ・被弾の欠片)
   private spawnFragments(
@@ -2055,9 +2059,16 @@ export class Game {
     sizeMin: number,
     sizeMax: number,
     spread: number,
+    // 破片に当たり判定を付けるか。弾丸表面の欠片など小さい破片は空洟を避けるため小さめに設定。
+    collideRad = 0,
   ): void {
     for (let i = 0; i < count; i++) {
       const size = sizeMin + Math.random() * (sizeMax - sizeMin);
+      // 慣性テンソルをばらつかせて各破片ごとに異なるジャニベコフ動を演出
+      // 中間軸(y)に主回転を与えると周期的に反転する
+      const Ix = 0.8 + Math.random() * 0.6;   // 小軸
+      const Iy = 1.8 + Math.random() * 0.8;   // 中間軸(ジャニベコフ効果)
+      const Iz = 2.5 + Math.random() * 1.0;   // 大軸
       const piece: DebrisPiece = {
         state: {
           r: add(origin, randVec(2.5)),
@@ -2066,9 +2077,10 @@ export class Game {
         att: {
           q: randomQuat(),
           w: v3(randSym(0.25), (1.4 + Math.random() * 1.2) * (Math.random() < 0.5 ? -1 : 1), randSym(0.25)),
-          inertia: v3(1, 2.05, 3.0), // 中間軸 = y: ここに主回転を与えると周期的に反転する
+          inertia: v3(Ix, Iy, Iz),
         },
         obj: buildDebrisMesh(accent, size),
+        ...(collideRad > 0 ? { collideRadius: collideRad * size } : {}),
       };
       this.debris.push(piece);
       this.scene.add(piece.obj);

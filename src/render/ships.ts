@@ -229,50 +229,108 @@ export function buildCasingMesh(): THREE.Mesh {
   return mesh;
 }
 
-// 破片: 塊・外板(パネル)・桁(ロッド)の 3 種をランダムに混ぜる。
-// 撃破時の飛散と被弾時の欠片の両方で使う。
-// 各テンプレートは size=1 の基準形状として焼き出されており、個体差(サイズ・
-// 塊の不規則な歪み・パネル/ロッドの伸縮・暗色/アクセント色の別)は
-// この関数がクローン後に scale とジオメトリ頂点・マテリアル色で都度付与する
-// (旧実装では Math.random() で毎回ジオメトリを作り直していたのと同じ見た目になるよう、
-// 塊(テトラヒドロン)は頂点ジッタを再現し、パネル/ロッドは非一様スケールで
-// 元の乱数幅を再現する)。
+// 破片: 撃破時の飛散と被弾欠片に使う。
+// 形状を 6 種類に増やし、アクセントカラーを積極的に使用して
+// 敵機のテーマカラーを継承させる。
+// 各形状を強く非対称にしてジャニベコフ効果(中間軸反転)が映えるようにする。
 export function buildDebrisMesh(accent: number, size: number): THREE.Mesh {
   const kind = Math.random();
-  const dark = Math.random() < 0.6;
-  const color = dark ? 0x3c4149 : accent;
+  // 70% がアクセントカラー、30% が暗色金属
+  const dark = Math.random() < 0.30;
+  const color = dark ? 0x2e3340 : accent;
 
   let mesh: THREE.Mesh;
-  if (kind < 0.45) {
-    // 不規則な低ポリ塊: クローンしたジオメトリ自体をジッタさせる(共有ジオメトリを汚さないよう複製必須)
+
+  if (kind < 0.22) {
+    // ① 不規則な低ポリ塊(四面体ベース) — Z 方向を強く歪めて非対称性を高める
     mesh = parseDebrisChunk();
     mesh.geometry = mesh.geometry.clone();
     const pos = mesh.geometry.getAttribute('position');
     for (let i = 0; i < pos.count; i++) {
       pos.setXYZ(
         i,
-        pos.getX(i) * (0.6 + Math.random() * 0.9),
-        pos.getY(i) * (0.6 + Math.random() * 0.9),
-        pos.getZ(i) * (0.6 + Math.random() * 0.9),
+        pos.getX(i) * (0.5 + Math.random() * 1.2),
+        pos.getY(i) * (0.5 + Math.random() * 1.2),
+        pos.getZ(i) * (0.4 + Math.random() * 1.6),  // Z を強く歪める
       );
     }
     pos.needsUpdate = true;
     mesh.geometry.computeVertexNormals();
     mesh.scale.setScalar(size);
-  } else if (kind < 0.78) {
-    // ちぎれた外板(タンブリングで表裏がチラつき、破片らしく見える)
+    const mat0 = mesh.material as THREE.MeshStandardMaterial;
+    mat0.color.set(color);
+
+  } else if (kind < 0.42) {
+    // ② ちぎれた外板 — 強い非一様スケールでタンブリング時に表裏チラつく
     mesh = parseDebrisPanel();
-    mesh.scale.set(size * (1.2 + Math.random() * 0.8), size * 0.1, size * (0.8 + Math.random() * 0.6));
-  } else {
-    // 折れた桁・配管
+    mesh.scale.set(
+      size * (1.5 + Math.random() * 1.2),
+      size * (0.06 + Math.random() * 0.08),
+      size * (0.7 + Math.random() * 0.8),
+    );
+    const mat1 = mesh.material as THREE.MeshStandardMaterial;
+    mat1.color.set(color);
+
+  } else if (kind < 0.58) {
+    // ③ 折れた桁・骨格材 — 細長い形状で中間軸回転しやすい
     mesh = parseDebrisRod();
-    mesh.scale.set(size, size * (1.6 + Math.random()), size);
+    mesh.scale.set(size * (0.8 + Math.random() * 0.4), size * (2.2 + Math.random() * 1.4), size * (0.8 + Math.random() * 0.4));
+    const mat2 = mesh.material as THREE.MeshStandardMaterial;
+    mat2.color.set(color);
+
+  } else if (kind < 0.72) {
+    // ④ 歪んだオクタヘドロン(敵機コアを模した形状) — ランタイム生成
+    const geo4 = new THREE.OctahedronGeometry(1, 0);
+    const pos4 = geo4.getAttribute('position');
+    for (let i = 0; i < pos4.count; i++) {
+      pos4.setXYZ(
+        i,
+        pos4.getX(i) * (0.5 + Math.random() * 1.0),
+        pos4.getY(i) * (0.5 + Math.random() * 1.0),
+        pos4.getZ(i) * (0.7 + Math.random() * 0.9),
+      );
+    }
+    pos4.needsUpdate = true;
+    geo4.computeVertexNormals();
+    mesh = new THREE.Mesh(
+      geo4,
+      new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.65, metalness: 0.30 }),
+    );
+    mesh.scale.setScalar(size);
+
+  } else if (kind < 0.86) {
+    // ⑤ 歪んだ薄板 — 頂点をランダムオフセットして有機的な形状に
+    const geo5 = new THREE.BoxGeometry(1, 1, 1);
+    const pos5 = geo5.getAttribute('position');
+    for (let i = 0; i < pos5.count; i++) {
+      pos5.setXYZ(
+        i,
+        pos5.getX(i) + (Math.random() - 0.5) * 0.35,
+        pos5.getY(i) + (Math.random() - 0.5) * 0.35,
+        pos5.getZ(i) * 0.12,
+      );
+    }
+    pos5.needsUpdate = true;
+    geo5.computeVertexNormals();
+    mesh = new THREE.Mesh(
+      geo5,
+      new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.70, metalness: 0.35 }),
+    );
+    mesh.scale.set(size * (1.2 + Math.random() * 1.0), size * (1.2 + Math.random() * 1.0), size * 0.12);
+
+  } else {
+    // ⑥ 断面矩形の構造枠材 — 非常に細長く、中間軸回転でジャニベコフ効果が顕著
+    const geo6 = new THREE.BoxGeometry(0.15, 1, 0.15);
+    mesh = new THREE.Mesh(
+      geo6,
+      new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.55, metalness: 0.55 }),
+    );
+    mesh.scale.set(size * (0.8 + Math.random() * 0.4), size * (2.0 + Math.random() * 1.6), size * (0.8 + Math.random() * 0.4));
   }
 
-  const mat = mesh.material as THREE.MeshStandardMaterial;
-  mat.color.set(color);
   return mesh;
 }
+
 
 // カメラ方向を向く発光ビルボード(マズルフラッシュ・爆発)。
 // キャンバステクスチャによる実行時グロー生成のため、これのみ従来どおり手続き的。
@@ -291,15 +349,76 @@ export function buildFlashMesh(texture: THREE.Texture, color: number): THREE.Mes
 }
 
 // リロード時に放出される砲身（バレル）メッシュ
-export function buildBarrelMesh(): THREE.Mesh {
-  // 黒光りする金属質の円柱 (4倍サイズに変更)
-  const geo = new THREE.CylinderGeometry(0.6, 0.6, 4.8, 8);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x222222,
-    roughness: 0.3,
-    metalness: 0.8,
+// 砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + 赤熱グロー + ガスポート
+export function buildBarrelMesh(): THREE.Group {
+  const g = new THREE.Group();
+
+  // --- 砲身チューブ本体(熱焼け黒鋼) ---
+  const tubeGeo = new THREE.CylinderGeometry(0.58, 0.64, 4.4, 12);
+  const tubeMat = new THREE.MeshStandardMaterial({ color: 0x1c2028, roughness: 0.38, metalness: 0.88 });
+  const tube = new THREE.Mesh(tubeGeo, tubeMat);
+  tube.rotation.x = Math.PI / 2;
+  g.add(tube);
+
+  // --- 後端フランジ(薬室側・太めリング) ---
+  const flangeMat = new THREE.MeshStandardMaterial({ color: 0x2c3440, roughness: 0.42, metalness: 0.82 });
+  const flange = new THREE.Mesh(new THREE.CylinderGeometry(0.88, 0.85, 0.32, 12), flangeMat);
+  flange.rotation.x = Math.PI / 2;
+  flange.position.z = -2.3;
+  g.add(flange);
+
+  // 後端中補強リング
+  const midRing = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.72, 0.10, 12), flangeMat);
+  midRing.rotation.x = Math.PI / 2;
+  midRing.position.z = -0.8;
+  g.add(midRing);
+
+  // --- 放熱フィン(6枚、後部寄りに配置) ---
+  const finMat = new THREE.MeshStandardMaterial({ color: 0x252d38, roughness: 0.52, metalness: 0.78 });
+  const FIN_COUNT = 6;
+  for (let i = 0; i < FIN_COUNT; i++) {
+    const angle = (i / FIN_COUNT) * Math.PI * 2;
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.52, 1.6), finMat);
+    fin.rotation.z = angle;
+    fin.position.set(Math.cos(angle) * 0.90, Math.sin(angle) * 0.90, -0.8);
+    g.add(fin);
+  }
+
+  // --- ガスポートリング(中間部) ---
+  const gasPortMat = new THREE.MeshStandardMaterial({ color: 0x3a4250, roughness: 0.50, metalness: 0.72 });
+  const gasPort = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.065, 6, 16), gasPortMat);
+  gasPort.rotation.x = Math.PI / 2;
+  gasPort.position.z = 0.4;
+  g.add(gasPort);
+
+  // --- マズルブレーキ(先端3連リング) ---
+  const brakeMat = new THREE.MeshStandardMaterial({ color: 0x242c38, roughness: 0.30, metalness: 0.92 });
+  for (let ri = 0; ri < 3; ri++) {
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.76, 0.70, 0.11, 12), brakeMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.z = 1.55 + ri * 0.24;
+    g.add(ring);
+  }
+
+  // --- 砲口ボア(最前端・暗い穴) ---
+  const boreMat = new THREE.MeshStandardMaterial({ color: 0x080b10, roughness: 0.80, metalness: 0.20 });
+  const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.14, 10), boreMat);
+  bore.rotation.x = Math.PI / 2;
+  bore.position.z = 2.28;
+  g.add(bore);
+
+  // --- 赤熱グロー(後端・発射熱を表現) ---
+  const heatMat = new THREE.MeshBasicMaterial({
+    color: 0xff3c00,
+    transparent: true,
+    opacity: 0.48,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
   });
-  const mesh = new THREE.Mesh(geo, mat);
-  // 放出時は少し赤熱している表現を入れるとなお良い（ここではシンプルに金属色）
-  return mesh;
+  const heat = new THREE.Mesh(new THREE.CylinderGeometry(0.70, 0.70, 0.95, 10), heatMat);
+  heat.rotation.x = Math.PI / 2;
+  heat.position.z = -2.1;
+  g.add(heat);
+
+  return g;
 }
