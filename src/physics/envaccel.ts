@@ -1,5 +1,5 @@
 // 環境加速度の合成: 大気抵抗(bcInv = 0 で省略) + J2(地球扁平) + 月・太陽の
-// 第三体(潮汐)摂動。ゲーム本体(game/environment.ts)と軌道計画の数値予測
+// 第三体(潮汐)摂動。ゲーム本体(game/game.ts の makeEnvAccel)と軌道計画の数値予測
 // (physics/predict.ts)が同じ力の列挙を共有するための唯一の定義箇所。
 // THREE/DOM 非依存の純関数。
 import { R_EARTH, SIDEREAL_DAY, j2AccelInto, thirdBodyAccelAdd } from './orbital';

@@ -1,10 +1,8 @@
-// 環境モデル(大気抵抗 + J2 + 月・太陽の第三体摂動)・自機の空力加熱/動圧・
-// 高度低下警告・地球影による日照率。天体暦(太陽・月の ECI 位置)もここで保持する。
+// 大気飛行の危険の監視: 自機の空力加熱/動圧と高度低下警告。
 // game.ts を import しない — 依存は constructor 注入(Hud/Sfx)と各メソッド引数のみ。
-import { ExtraAccel, R_EARTH } from '../physics/orbital';
-import { moonPosition, sunPosition } from '../physics/ephemeris';
-import { airspeed, envAccelInto } from '../physics/envaccel';
-import { Vec3, addScaled, dot, len, norm, v3 } from '../physics/vec3';
+import { R_EARTH } from '../physics/orbital';
+import { airspeed } from '../physics/envaccel';
+import { Vec3, len } from '../physics/vec3';
 import { atmosphericDensity } from '../physics/atmosphere';
 import * as C from './const';
 import { Hud } from '../hud/hud';
@@ -14,7 +12,7 @@ import { Sfx } from './audio';
 // 破壊(destroyShip の呼び出し)は combat.ts へのアクセスを持つ game.ts 側が行う。
 export type ThermalLimit = 'heat' | 'dynpressure' | null;
 
-export class EnvironmentSystem {
+export class ThermalSystem {
   // --- 自機の熱・動圧状態 ---
   hullTemp = C.HULL_START_TEMP;
   qdyn = 0;
@@ -28,42 +26,10 @@ export class EnvironmentSystem {
   // 再度潜った際に同じしきい値で再警告できる
   private altWarnedThresholds = new Set<number>();
 
-  // --- 天体暦(初期位相はゲームごとにランダム) ---
-  private sunDirV: Vec3 = v3(1, 0, 0);
-  readonly sunPhase0 = 0; // 昼(太陽が+X側)から開始するように固定
-  readonly moonPhase0 = Math.random() * Math.PI * 2;
-  private sunPos: Vec3 = v3(1.496e11, 0, 0);
-  private moonPos: Vec3 = v3(3.844e8, 0, 0);
-
-  // 環境加速度 = 大気抵抗(種別ごとの弾道係数) + J2 + 月・太陽の第三体摂動
-  readonly envShip = this.makeEnvAccel(C.SHIP_BCINV);
-  readonly envBullet = this.makeEnvAccel(C.BULLET_BCINV);
-  readonly envSmall = this.makeEnvAccel(C.SMALL_DEBRIS_BCINV);
-
   constructor(
     private readonly hud: Hud,
     private readonly sfx: Sfx,
   ) {}
-
-  // 太陽方向の単位ベクトル(ライティング・影判定用)
-  get sunDir(): Vec3 {
-    return this.sunDirV;
-  }
-
-  // 太陽・月の ECI 位置を simTime から更新する
-  updateEphemeris(simTime: number): void {
-    this.sunPos = sunPosition(simTime, this.sunPhase0);
-    this.moonPos = moonPosition(simTime, this.moonPhase0);
-    this.sunDirV = norm(this.sunPos);
-  }
-
-  // 大気抵抗 + J2(地球扁平) + 月・太陽の第三体(潮汐)摂動を合成した環境加速度。
-  // 力の列挙・合成は physics/envaccel.ts の envAccelInto に一本化されており、
-  // ここでは天体位置(サブステップ更新の this.sunPos / moonPos)を閉包で束ねるだけ。
-  private makeEnvAccel(bcInv: number): ExtraAccel {
-    return (r: Vec3, v: Vec3, out?: Vec3): Vec3 =>
-      envAccelInto(out ?? v3(), r, v, this.sunPos, this.moonPos, bcInv);
-  }
 
   // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の
   // Sutton–Graves 近似 q̇ = k·√(ρ/Rn)·v³、冷却はステファン・ボルツマン放射。
@@ -137,17 +103,5 @@ export class EnvironmentSystem {
         this.altWarnedThresholds.delete(th);
       }
     }
-  }
-
-  altitudeOf(r: Vec3): number {
-    return len(r) - R_EARTH;
-  }
-
-  // 自機位置の地表影(円柱近似 + 縁のぼかし)による日照率 0..1
-  shadowLitFactor(r: Vec3): number {
-    const along = dot(r, this.sunDirV);
-    if (along >= 0) return 1; // 太陽側
-    const perp = len(addScaled(r, this.sunDirV, -along));
-    return Math.min(1, Math.max(0, (perp - R_EARTH) / C.SHADOW_PENUMBRA));
   }
 }

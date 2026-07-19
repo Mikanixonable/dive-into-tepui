@@ -7,9 +7,11 @@ import * as THREE from 'three/webgpu';
 import {
   ExtraAccel,
   OrbitState,
+  R_EARTH,
   SIDEREAL_DAY,
   stepOrbitRK4,
 } from '../physics/orbital';
+import { envAccelInto } from '../physics/envaccel';
 import {
   R_MOON,
   moonPosition,
@@ -23,6 +25,7 @@ import {
   Vec3,
   add,
   clone,
+  len,
   norm,
   randSym,
   sub,
@@ -34,7 +37,8 @@ import { Player } from './player';
 import { CameraSystem } from './camera-system';
 import { CombatCtx, CombatSystem } from './combat';
 import { StageCtx, StageDirector } from './stages';
-import { EnvironmentSystem } from './environment';
+import { ThermalSystem } from './thermal';
+import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
 import { HudPanelCtx } from '../hud/panel';
 import { CollisionPhysics } from './collision';
@@ -147,9 +151,15 @@ export class Game {
   private target: Enemy | null = null;
   private zoomActive = false;
 
-  // 環境モデル(大気抵抗+J2+第三体摂動)・自機の熱/動圧・高度警告・天体暦は
-  // environment.ts の EnvironmentSystem に切り出し済み。
-  private readonly environment = new EnvironmentSystem(this.hud, this.sfx);
+  // 天体暦(太陽・月の位置と日照率)は ephemeris.ts、自機の熱/動圧・高度警告は
+  // thermal.ts に切り出し済み。
+  private readonly ephemeris = new EphemerisSystem();
+  private readonly thermal = new ThermalSystem(this.hud, this.sfx);
+  // 環境加速度 = 大気抵抗(種別ごとの弾道係数) + J2 + 月・太陽の第三体摂動。
+  // 天体位置はサブステップ更新される ephemeris の現在値を閉包で参照する。
+  private readonly envShip = this.makeEnvAccel(C.SHIP_BCINV);
+  private readonly envBullet = this.makeEnvAccel(C.BULLET_BCINV);
+  private readonly envSmall = this.makeEnvAccel(C.SMALL_DEBRIS_BCINV);
   private lostReason = '大気圏に突入し機体を喪失した';
 
 
@@ -254,9 +264,9 @@ export class Game {
     const glowTex = makeGlowTexture();
     const sun = createSun(glowTex);
     this.scene.add(sun.mesh);
-    this.environment.updateEphemeris(this.simTime);
+    this.ephemeris.update(this.simTime);
     const sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
-    const sunDir0 = this.environment.sunDir;
+    const sunDir0 = this.ephemeris.sunDir;
     sunLight.position.set(sunDir0.x * 1e5, sunDir0.y * 1e5, sunDir0.z * 1e5);
     this.scene.add(sunLight);
     this.scene.add(this.moonMesh);
@@ -482,8 +492,8 @@ export class Game {
       this.simTime,
       this.player.state.r,
       this.player.state.v,
-      this.environment.sunPhase0,
-      this.environment.moonPhase0,
+      this.ephemeris.sunPhase0,
+      this.ephemeris.moonPhase0,
     );
   }
 
@@ -567,9 +577,9 @@ export class Game {
       magsLeft: this.player.magsLeft,
       reloadTimer: this.player.reloadTimer,
       alt: this.altitudeOf(this.player.state.r),
-      altDescending: this.environment.altDescendWarned,
-      qdyn: this.environment.qdyn,
-      hullTemp: this.environment.hullTemp,
+      altDescending: this.thermal.altDescendWarned,
+      qdyn: this.thermal.qdyn,
+      hullTemp: this.thermal.hullTemp,
       shots: this.combat.shots,
       kills: this.combat.kills,
       totalEnemies: this.enemies.length,
@@ -647,8 +657,12 @@ export class Game {
     return thrustFn;
   }
 
+  private makeEnvAccel(bcInv: number): ExtraAccel {
+    return (r, v, out) => envAccelInto(out ?? v3(), r, v, this.ephemeris.sunPos, this.ephemeris.moonPos, bcInv);
+  }
+
   private buildPlayerAccel(thrustFn: ExtraAccel | null): ExtraAccel {
-    return thrustFn ? (r, v) => add(thrustFn(r, v), this.environment.envShip(r, v)) : this.environment.envShip;
+    return thrustFn ? (r, v) => add(thrustFn(r, v), this.envShip(r, v)) : this.envShip;
   }
 
   private integrateSimulation(simDt: number, warp: number, playerAccel: ExtraAccel): void {
@@ -660,30 +674,30 @@ export class Game {
   }
 
   private integrateSimulationSubstep(sub: number, playerAccel: ExtraAccel): void {
-    this.environment.updateEphemeris(this.simTime);
+    this.ephemeris.update(this.simTime);
     this.player.prevR = clone(this.player.state.r);
     if (this.player.alive) {
       stepOrbitRK4(this.player.state, sub, playerAccel);
-      this.environment.updateThermal(sub, this.player.state.r, this.player.state.v);
+      this.thermal.updateThermal(sub, this.player.state.r, this.player.state.v);
     }
     for (const e of this.enemies) {
       if (!e.alive) continue;
       e.prevR = clone(e.state.r);
-      stepOrbitRK4(e.state, sub, this.environment.envShip);
+      stepOrbitRK4(e.state, sub, this.envShip);
     }
     for (const b of this.bullets) {
       if (!b.alive) continue;
       b.prevR = clone(b.state.r);
-      stepOrbitRK4(b.state, sub, this.environment.envBullet);
+      stepOrbitRK4(b.state, sub, this.envBullet);
     }
     for (const pb of this.plasmaBullets) {
       if (!pb.alive) continue;
       pb.prevR = clone(pb.state.r);
-      stepOrbitRK4(pb.state, sub, this.environment.envBullet);
+      stepOrbitRK4(pb.state, sub, this.envBullet);
     }
-    for (const cs of this.casings) stepOrbitRK4(cs.state, sub, this.environment.envSmall);
-    for (const d of this.debris) stepOrbitRK4(d.state, sub, this.environment.envSmall);
-    this.ammoResupply.stepOrbits(sub, this.environment.envSmall);
+    for (const cs of this.casings) stepOrbitRK4(cs.state, sub, this.envSmall);
+    for (const d of this.debris) stepOrbitRK4(d.state, sub, this.envSmall);
+    this.ammoResupply.stepOrbits(sub, this.envSmall);
     this.simTime += sub;
     this.combat.checkBulletHits(this.combatCtx());
     this.combat.checkBoardCrossings(this.combatCtx());
@@ -691,8 +705,8 @@ export class Game {
 
   private handlePostSimulation(dt: number, simDt: number, warp: number, canAct: boolean): void {
     this.lastSimDt = simDt;
-    this.applyThermalLimitLoss(this.environment.checkThermalLimits(this.player.alive));
-    this.environment.updateAltitudeAlarm(dt, this.player.alive, this.environment.altitudeOf(this.player.state.r));
+    this.applyThermalLimitLoss(this.thermal.checkThermalLimits(this.player.alive));
+    this.thermal.updateAltitudeAlarm(dt, this.player.alive, this.altitudeOf(this.player.state.r));
     this.updateAmmoLogistics(dt);
     if (warp <= C.MAX_PHYS_WARP) {
       this.collisionPhysics.resolve(dt, this.collisionCtx(), () => {
@@ -743,12 +757,12 @@ export class Game {
   // 勝敗確定後もデブリ・薬莢・弾を漂わせる
   private coastWorld(dt: number): void {
     const simDt = dt * Math.min(this.warp(), 4);
-    this.environment.updateEphemeris(this.simTime);
-    for (const b of this.bullets) if (b.alive) stepOrbitRK4(b.state, simDt, this.environment.envBullet);
-    for (const cs of this.casings) stepOrbitRK4(cs.state, simDt, this.environment.envSmall);
-    for (const d of this.debris) stepOrbitRK4(d.state, simDt, this.environment.envSmall);
-    for (const e of this.enemies) if (e.alive) stepOrbitRK4(e.state, simDt, this.environment.envShip);
-    this.ammoResupply.stepOrbits(simDt, this.environment.envSmall);
+    this.ephemeris.update(this.simTime);
+    for (const b of this.bullets) if (b.alive) stepOrbitRK4(b.state, simDt, this.envBullet);
+    for (const cs of this.casings) stepOrbitRK4(cs.state, simDt, this.envSmall);
+    for (const d of this.debris) stepOrbitRK4(d.state, simDt, this.envSmall);
+    for (const e of this.enemies) if (e.alive) stepOrbitRK4(e.state, simDt, this.envShip);
+    this.ammoResupply.stepOrbits(simDt, this.envSmall);
     const attDt = Math.min(simDt, 0.12);
     for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
     for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
@@ -760,7 +774,7 @@ export class Game {
   // ------------------------------------------------------------- cleanup
 
   private altitudeOf(r: Vec3): number {
-    return this.environment.altitudeOf(r);
+    return len(r) - R_EARTH;
   }
 
   private cleanup(): void {
@@ -848,7 +862,7 @@ export class Game {
       mapMode: this.mapMode,
       zoomActive: this.zoomActive,
       simTime: this.simTime,
-      sunPhase0: this.environment.sunPhase0,
+      sunPhase0: this.ephemeris.sunPhase0,
       player: this.player,
       mapView: this.mapView,
       chase: this.chase,
@@ -863,7 +877,7 @@ export class Game {
   }
 
   private syncRenderSkyBodies(displayTime: number, o: Vec3, cam: THREE.PerspectiveCamera): void {
-    const visSunPos = sunPosition(displayTime, this.environment.sunPhase0);
+    const visSunPos = sunPosition(displayTime, this.ephemeris.sunPhase0);
     const sd = norm(visSunPos);
     this.earth.setSunDir(sd.x, sd.y, sd.z);
     this.starsMesh.position.copy(cam.position);
@@ -875,7 +889,7 @@ export class Game {
     );
     this.sun.mesh.quaternion.copy(cam.quaternion);
     this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
-    const visMoonPos = moonPosition(displayTime, this.environment.moonPhase0);
+    const visMoonPos = moonPosition(displayTime, this.ephemeris.moonPhase0);
     const moonRel = sub(visMoonPos, o);
     if (this.mapMode) {
       this.moonMesh.position.set(moonRel.x, moonRel.y, moonRel.z);
@@ -891,7 +905,7 @@ export class Game {
   }
 
   private syncRenderLighting(o: Vec3): void {
-    const lit = this.mapMode ? 1.0 : this.environment.shadowLitFactor(o);
+    const lit = this.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o);
     this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
     this.ambient.intensity =
       C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
@@ -957,7 +971,7 @@ export class Game {
       target: this.target,
       enemies: this.enemies,
       enemyOrbitLines: this.enemyOrbitLines,
-      environment: this.environment,
+      ephemeris: this.ephemeris,
       planner: this.planner,
       plannerCtx: this.plannerCtx(),
       mapView: this.mapView,
