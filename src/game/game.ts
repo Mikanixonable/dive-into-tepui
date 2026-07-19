@@ -194,8 +194,13 @@ export class Game {
     this.input.onFirstGesture = () => this.sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
-    this.ammoResupply = new AmmoResupplySystem(this.scene, this.hud, this.sfx);
-    this.simulator = new Simulator(this.ephemeris, this.thermal, this.ammoResupply, this.combat, this.scene);
+    this.simulator = new Simulator(this.ephemeris, this.thermal, this.combat, this.scene);
+    this.ammoResupply = new AmmoResupplySystem(
+      this.hud,
+      this.sfx,
+      this.simulator.magPickups,
+      (mp) => this.simulator.addMagPickup(mp),
+    );
 
     // 汎用発光テクスチャ
     this.glowTex = makeGlowTexture();
@@ -553,7 +558,7 @@ export class Game {
       player: this.player,
       enemies: this.simulator.enemies,
       target: this.target,
-      magPickups: this.ammoResupply.list,
+      magPickups: this.simulator.magPickups,
       mapLabelIds: this.mapView.labels.map((l) => l.id),
       activeCamera: this.activeCamera,
       simTime: this.simTime,
@@ -597,7 +602,7 @@ export class Game {
       player: this.player,
       enemies: this.simulator.enemies,
       casings: this.simulator.casings,
-      magPickups: this.ammoResupply.list,
+      magPickups: this.simulator.magPickups,
       debris: this.simulator.debris,
       belt: this.belt,
     };
@@ -621,7 +626,7 @@ export class Game {
   private handlePostSimulation(dt: number, simDt: number, warp: number, canAct: boolean): void {
     this.applyThermalLimitLoss(this.thermal.checkThermalLimits(this.player.alive));
     this.thermal.updateAltitudeAlarm(dt, this.player.alive, altitudeOf(this.player.state.r));
-    this.ammoResupply.updateLogistics(this.simTime, this.player);
+    this.ammoResupply.updateLogistics(this.simTime, this.stageDirector.stage, this.player);
     if (warp <= C.MAX_PHYS_WARP) {
       this.collisionPhysics.resolve(dt, this.collisionCtx(), () => {
         this.sfx.clank();
@@ -631,7 +636,6 @@ export class Game {
 
     this.simulator.cleanup(this.player, this.combatCtx(), this.simTime);
 
-    this.ammoResupply.cleanup(this.stageDirector.stage, this.player, (r) => altitudeOf(r));
     if (this.stageDirector.stage === -1 && this.phase === 'playing' && canAct) {
       this.combat.updateEnemyAI(dt, this.combatCtx());
     }
@@ -763,7 +767,7 @@ export class Game {
       bullets: this.simulator.bullets,
       plasmaBullets: this.simulator.plasmaBullets,
       casings: this.simulator.casings,
-      magPickups: this.ammoResupply.list,
+      magPickups: this.simulator.magPickups,
       debris: this.simulator.debris,
       belt: this.belt,
       magsLeft: this.player.magsLeft,

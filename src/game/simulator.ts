@@ -8,9 +8,8 @@ import { envAccelInto } from '../physics/envaccel';
 import { ExtraAccel, R_EARTH, stepOrbitRK4 } from '../physics/orbital';
 import { add, clone, len, v3 } from '../physics/vec3';
 import * as C from './const';
-import { AmmoResupplySystem } from './combat/ammo-resupply';
 import { CombatCtx, CombatSystem } from './combat/combat';
-import { Bullet, Casing, DebrisPiece, Enemy, OrbitEntity } from './entities';
+import { Bullet, Casing, DebrisPiece, Enemy, MagPickup, OrbitEntity } from './entities';
 import { EphemerisSystem } from './ephemeris';
 import { Player } from './player';
 import { ThermalSystem } from './thermal';
@@ -36,6 +35,7 @@ export class Simulator {
   readonly plasmaBullets: Bullet[] = [];
   readonly casings: Casing[] = [];
   readonly debris: DebrisPiece[] = [];
+  readonly magPickups: MagPickup[] = [];
 
   private makeEnvAccel(bcInv: number): ExtraAccel {
     return (r, v, out) => envAccelInto(out ?? v3(), r, v, this.ephemeris.sunPos, this.ephemeris.moonPos, bcInv);
@@ -47,7 +47,6 @@ export class Simulator {
   constructor(
     private readonly ephemeris: EphemerisSystem,
     private readonly thermal: ThermalSystem,
-    private readonly ammoResupply: AmmoResupplySystem,
     private readonly combat: CombatSystem,
     private readonly scene: THREE.Scene,
   ) { }
@@ -77,6 +76,11 @@ export class Simulator {
     this.debris.push(piece);
     this.scene.add(piece.obj);
     while (this.debris.length > C.MAX_DEBRIS) this.disposeDebris(this.debris.shift()!);
+  }
+
+  addMagPickup(pickup: MagPickup): void {
+    this.magPickups.push(pickup);
+    this.scene.add(pickup.obj);
   }
 
   // 上限超過時は最古の個体をシーンから外す(弾・薬莢のジオメトリは共有なので破棄しない)
@@ -140,7 +144,7 @@ export class Simulator {
     for (const e of this.enemies) if (e.alive) stepAttitude(e.att, v3(), attDt);
     for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
     for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
-    this.ammoResupply.stepAttitudes(attDt);
+    for (const mp of this.magPickups) if (mp.alive) stepAttitude(mp.att, v3(), attDt);
   }
 
   private stepWorldOrbits(dt: number, trackPrevR: boolean): void {
@@ -149,7 +153,7 @@ export class Simulator {
     this.stepEntities(this.plasmaBullets, dt, this.envBullet, { skipDead: true, trackPrevR });
     this.stepEntities(this.casings, dt, this.envSmall);
     this.stepEntities(this.debris, dt, this.envSmall);
-    this.ammoResupply.stepOrbits(dt, this.envSmall);
+    this.stepEntities(this.magPickups, dt, this.envSmall, { skipDead: true });
   }
 
   private stepEntities(
@@ -206,6 +210,13 @@ export class Simulator {
     this.prune(this.debris, (d) =>
       altitudeOf(d.state.r) < C.DEBRIS_REENTRY_ALT,
       (d) => this.disposeDebris(d),
+    );
+
+    // 取り込み・デスポーン判断(alive=false)は ammo-resupply.ts 側で行われる
+    this.prune(this.magPickups, (mp) =>
+      !mp.alive ||
+      altitudeOf(mp.state.r) < C.DEBRIS_REENTRY_ALT,
+      (mp) => this.scene.remove(mp.obj),
     );
   }
 
