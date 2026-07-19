@@ -228,50 +228,209 @@ export function buildCasingMesh(): THREE.Mesh {
   return mesh;
 }
 
-// 破片: 塊・外板(パネル)・桁(ロッド)の 3 種をランダムに混ぜる。
-// 撃破時の飛散と被弾時の欠片の両方で使う。
-// 各テンプレートは size=1 の基準形状として焼き出されており、個体差(サイズ・
-// 塊の不規則な歪み・パネル/ロッドの伸縮・暗色/アクセント色の別)は
-// この関数がクローン後に scale とジオメトリ頂点・マテリアル色で都度付与する
-// (旧実装では Math.random() で毎回ジオメトリを作り直していたのと同じ見た目になるよう、
-// 塊(テトラヒドロン)は頂点ジッタを再現し、パネル/ロッドは非一様スケールで
-// 元の乱数幅を再現する)。
-export function buildDebrisMesh(accent: number, size: number): THREE.Mesh {
-  const kind = Math.random();
-  const dark = Math.random() < 0.6;
-  const color = dark ? 0x3c4149 : accent;
+// 破片: 撃破時の飛散と被弾欠片に使う。
+// 形状を 6 種類に増やし、アクセントカラーを積極的に使用して
+// 敵機のテーマカラーを継承させる。
+// style 引数によって敵種別の固有形状を生成する。
+export function buildDebrisMesh(accent: number, size: number, style?: string): THREE.Mesh {
+  const dark = Math.random() < 0.30;
+  const color = dark ? 0x2e3340 : accent;
+
+  const mat = (opts?: { roughness?: number; metalness?: number; flatShading?: boolean }) =>
+    new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.65, metalness: 0.30, ...opts });
 
   let mesh: THREE.Mesh;
-  if (kind < 0.45) {
-    // 不規則な低ポリ塊: クローンしたジオメトリ自体をジッタさせる(共有ジオメトリを汚さないよう複製必須)
+
+  if (style === 'mech') {
+    const kind = Math.floor(Math.random() * 4);
+    if (kind === 0) {
+      // T字断面の構造桁材: 垂直に交差する 2 本の矩形桁を結合(ここでは近似としてBoxで包んだGroup)
+      const g2 = new THREE.Group();
+      const m1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1, 0.12), mat({ roughness: 0.50, metalness: 0.60 }));
+      g2.add(m1);
+      const m2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.12, 0.12), mat({ roughness: 0.50, metalness: 0.60 }));
+      m2.position.y = 0.40;
+      g2.add(m2);
+      const wrapper = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), mat());
+      wrapper.add(g2);
+      wrapper.scale.setScalar(size);
+      return wrapper;
+    } else if (kind === 1) {
+      // 歯車状(多角形に突起)
+      const N = 6;
+      const geo = new THREE.CylinderGeometry(1, 1, 0.20, N, 1, false);
+      const posG = geo.getAttribute('position');
+      for (let i = 0; i < posG.count; i++) {
+        const angle = Math.atan2(posG.getX(i), posG.getZ(i));
+        const nearToothAngle = Math.round(angle / (Math.PI * 2 / N)) * (Math.PI * 2 / N);
+        const toothAmt = Math.cos((angle - nearToothAngle) * N / 2);
+        const scale2 = 1 + Math.max(0, toothAmt) * 0.5;
+        posG.setXYZ(i, posG.getX(i) * scale2, posG.getY(i), posG.getZ(i) * scale2);
+      }
+      posG.needsUpdate = true;
+      geo.computeVertexNormals();
+      mesh = new THREE.Mesh(geo, mat({ roughness: 0.45, metalness: 0.70 }));
+      mesh.scale.setScalar(size);
+      return mesh;
+    } else if (kind === 2) {
+      // 歪んだ外板
+      const geo = new THREE.BoxGeometry(1, 0.08, 0.6);
+      const pv = geo.getAttribute('position');
+      for (let i = 0; i < pv.count; i++) {
+        pv.setXYZ(i, pv.getX(i) + (Math.random() - 0.5) * 0.2, pv.getY(i), pv.getZ(i) + (Math.random() - 0.5) * 0.15);
+      }
+      pv.needsUpdate = true;
+      geo.computeVertexNormals();
+      mesh = new THREE.Mesh(geo, mat({ roughness: 0.60, metalness: 0.55 }));
+      mesh.scale.set(size * (1.2 + Math.random()), size * 0.9, size * (0.8 + Math.random() * 0.6));
+      return mesh;
+    } else {
+      const geo = new THREE.TorusGeometry(0.5, 0.12, 4, 8, Math.PI * (0.6 + Math.random() * 1.2));
+      mesh = new THREE.Mesh(geo, mat({ roughness: 0.40, metalness: 0.75 }));
+      mesh.scale.setScalar(size);
+      return mesh;
+    }
+  }
+
+  if (style === 'crystal') {
+    const kind = Math.floor(Math.random() * 3);
+    if (kind === 0) {
+      const profile = [
+        new THREE.Vector2(0, -1), new THREE.Vector2(0.5, -0.5), new THREE.Vector2(0.55, 0),
+        new THREE.Vector2(0.5, 0.5), new THREE.Vector2(0, 1),
+      ];
+      const geo = new THREE.LatheGeometry(profile, 6);
+      mesh = new THREE.Mesh(geo, mat({ roughness: 0.20, metalness: 0.10 }));
+      mesh.scale.set(size * (0.2 + Math.random() * 0.2), size * (0.6 + Math.random() * 0.6), size * (0.2 + Math.random() * 0.2));
+      return mesh;
+    } else if (kind === 1) {
+      const geo = new THREE.OctahedronGeometry(1, 0);
+      const pv = geo.getAttribute('position');
+      for (let i = 0; i < pv.count; i++) {
+        pv.setXYZ(i, pv.getX(i) * (0.6 + Math.random() * 0.8), pv.getY(i) * (0.7 + Math.random() * 0.6), pv.getZ(i) * (0.6 + Math.random() * 0.8));
+      }
+      pv.needsUpdate = true;
+      geo.computeVertexNormals();
+      mesh = new THREE.Mesh(geo, mat({ roughness: 0.15, metalness: 0.10 }));
+      mesh.scale.setScalar(size);
+      return mesh;
+    } else {
+      const geo = new THREE.CylinderGeometry(0.8, 0, 0.3, 5);
+      const pv = geo.getAttribute('position');
+      for (let i = 0; i < pv.count; i++) {
+        pv.setXYZ(i, pv.getX(i) * (0.8 + Math.random() * 0.6), pv.getY(i) * (0.8 + Math.random() * 0.6), pv.getZ(i) * 1.5);
+      }
+      pv.needsUpdate = true;
+      geo.computeVertexNormals();
+      mesh = new THREE.Mesh(geo, mat({ roughness: 0.25, metalness: 0.10 }));
+      mesh.scale.setScalar(size);
+      return mesh;
+    }
+  }
+
+  if (style === 'ring') {
+    const kind = Math.floor(Math.random() * 3);
+    if (kind === 0) {
+      const arc = Math.PI * (0.4 + Math.random() * 1.2);
+      const geo = new THREE.TorusGeometry(1, 0.18, 4, 10, arc);
+      mesh = new THREE.Mesh(geo, mat({ roughness: 0.50, metalness: 0.60 }));
+      mesh.scale.setScalar(size);
+      return mesh;
+    } else if (kind === 1) {
+      const geo = new THREE.CylinderGeometry(1, 1, 0.08, 8, 1);
+      const pv = geo.getAttribute('position');
+      for (let i = 0; i < pv.count; i++) {
+        pv.setXYZ(i, pv.getX(i) + (Math.random() - 0.5) * 0.25, pv.getY(i), pv.getZ(i) + (Math.random() - 0.5) * 0.25);
+      }
+      pv.needsUpdate = true;
+      geo.computeVertexNormals();
+      mesh = new THREE.Mesh(geo, mat({ roughness: 0.45, metalness: 0.65 }));
+      mesh.scale.set(size * (0.8 + Math.random() * 0.6), size * 0.6, size * (0.8 + Math.random() * 0.6));
+      return mesh;
+    } else {
+      const geo = new THREE.CylinderGeometry(0.7, 0.7, 0.40, 8, 1, true);
+      mesh = new THREE.Mesh(geo, mat({ roughness: 0.40, metalness: 0.70, flatShading: false }));
+      mesh.scale.setScalar(size);
+      return mesh;
+    }
+  }
+
+  if (style === 'spike') {
+    const kind = Math.floor(Math.random() * 3);
+    if (kind === 0) {
+      const geo = new THREE.ConeGeometry(0.35, 1 + Math.random() * 0.8, 5, 1);
+      mesh = new THREE.Mesh(geo, mat({ roughness: 0.30, metalness: 0.55 }));
+      mesh.scale.set(size, size * (1.5 + Math.random()), size);
+      return mesh;
+    } else if (kind === 1) {
+      const geo = new THREE.CylinderGeometry(0.2, 0.8, 1, 4);
+      const pv = geo.getAttribute('position');
+      for (let i = 0; i < pv.count; i++) {
+        pv.setXYZ(i, pv.getX(i) * (0.5 + Math.random() * 0.8), pv.getY(i), pv.getZ(i) * (0.5 + Math.random() * 0.8));
+      }
+      pv.needsUpdate = true;
+      geo.computeVertexNormals();
+      mesh = new THREE.Mesh(geo, mat({ roughness: 0.35, metalness: 0.50 }));
+      mesh.scale.setScalar(size);
+      return mesh;
+    } else {
+      const geo = new THREE.CylinderGeometry(0.08, 0.02, 1, 5, 1);
+      mesh = new THREE.Mesh(geo, mat({ roughness: 0.35, metalness: 0.50 }));
+      mesh.scale.set(size * 0.8, size * (3.0 + Math.random() * 2.0), size * 0.8);
+      return mesh;
+    }
+  }
+
+  // default: 汎用形状(複雑化)
+  const kind = Math.random();
+  if (kind < 0.22) {
     mesh = parseDebrisChunk();
     mesh.geometry = mesh.geometry.clone();
     const pos = mesh.geometry.getAttribute('position');
     for (let i = 0; i < pos.count; i++) {
-      pos.setXYZ(
-        i,
-        pos.getX(i) * (0.6 + Math.random() * 0.9),
-        pos.getY(i) * (0.6 + Math.random() * 0.9),
-        pos.getZ(i) * (0.6 + Math.random() * 0.9),
-      );
+      pos.setXYZ(i, pos.getX(i) * (0.5 + Math.random() * 1.2), pos.getY(i) * (0.5 + Math.random() * 1.2), pos.getZ(i) * (0.4 + Math.random() * 1.6));
     }
     pos.needsUpdate = true;
     mesh.geometry.computeVertexNormals();
     mesh.scale.setScalar(size);
-  } else if (kind < 0.78) {
-    // ちぎれた外板(タンブリングで表裏がチラつき、破片らしく見える)
+    (mesh.material as THREE.MeshStandardMaterial).color.set(color);
+  } else if (kind < 0.42) {
     mesh = parseDebrisPanel();
-    mesh.scale.set(size * (1.2 + Math.random() * 0.8), size * 0.1, size * (0.8 + Math.random() * 0.6));
-  } else {
-    // 折れた桁・配管
+    mesh.scale.set(size * (1.5 + Math.random() * 1.2), size * (0.06 + Math.random() * 0.08), size * (0.7 + Math.random() * 0.8));
+    (mesh.material as THREE.MeshStandardMaterial).color.set(color);
+  } else if (kind < 0.58) {
     mesh = parseDebrisRod();
-    mesh.scale.set(size, size * (1.6 + Math.random()), size);
+    mesh.scale.set(size * (0.8 + Math.random() * 0.4), size * (2.2 + Math.random() * 1.4), size * (0.8 + Math.random() * 0.4));
+    (mesh.material as THREE.MeshStandardMaterial).color.set(color);
+  } else if (kind < 0.72) {
+    const geo4 = new THREE.OctahedronGeometry(1, 0);
+    const pos4 = geo4.getAttribute('position');
+    for (let i = 0; i < pos4.count; i++) {
+      pos4.setXYZ(i, pos4.getX(i) * (0.5 + Math.random() * 1.0), pos4.getY(i) * (0.5 + Math.random() * 1.0), pos4.getZ(i) * (0.7 + Math.random() * 0.9));
+    }
+    pos4.needsUpdate = true;
+    geo4.computeVertexNormals();
+    mesh = new THREE.Mesh(geo4, mat());
+    mesh.scale.setScalar(size);
+  } else if (kind < 0.86) {
+    const geo5 = new THREE.BoxGeometry(1, 1, 1);
+    const pos5 = geo5.getAttribute('position');
+    for (let i = 0; i < pos5.count; i++) {
+      pos5.setXYZ(i, pos5.getX(i) + (Math.random() - 0.5) * 0.35, pos5.getY(i) + (Math.random() - 0.5) * 0.35, pos5.getZ(i) * 0.12);
+    }
+    pos5.needsUpdate = true;
+    geo5.computeVertexNormals();
+    mesh = new THREE.Mesh(geo5, mat({ roughness: 0.70, metalness: 0.35 }));
+    mesh.scale.set(size * (1.2 + Math.random() * 1.0), size * (1.2 + Math.random() * 1.0), size * 0.12);
+  } else {
+    const geo6 = new THREE.BoxGeometry(0.15, 1, 0.15);
+    mesh = new THREE.Mesh(geo6, mat({ roughness: 0.55, metalness: 0.55 }));
+    mesh.scale.set(size * (0.8 + Math.random() * 0.4), size * (2.0 + Math.random() * 1.6), size * (0.8 + Math.random() * 0.4));
   }
 
-  const mat = mesh.material as THREE.MeshStandardMaterial;
-  mat.color.set(color);
   return mesh;
 }
+
 
 // カメラ方向を向く発光ビルボード(マズルフラッシュ・爆発)。
 // キャンバステクスチャによる実行時グロー生成のため、これのみ従来どおり手続き的。
@@ -290,15 +449,78 @@ export function buildFlashMesh(texture: THREE.Texture, color: number): THREE.Mes
 }
 
 // リロード時に放出される砲身（バレル）メッシュ
-export function buildBarrelMesh(): THREE.Mesh {
-  // 黒光りする金属質の円柱 (4倍サイズに変更)
-  const geo = new THREE.CylinderGeometry(0.6, 0.6, 4.8, 8);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x222222,
-    roughness: 0.3,
-    metalness: 0.8,
+// 砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + 赤熱グロー + ガスポート
+// 全径 ×0.7 でスリム化
+export function buildBarrelMesh(): THREE.Group {
+  const g = new THREE.Group();
+  const S = 0.7; // 直径スケール係数
+
+  // --- 砲身チューブ本体(熱焼け黒鋼) ---
+  const tubeGeo = new THREE.CylinderGeometry(0.58 * S, 0.64 * S, 4.4, 12);
+  const tubeMat = new THREE.MeshStandardMaterial({ color: 0x1c2028, roughness: 0.38, metalness: 0.88 });
+  const tube = new THREE.Mesh(tubeGeo, tubeMat);
+  tube.rotation.x = Math.PI / 2;
+  g.add(tube);
+
+  // --- 後端フランジ(薬室側・太めリング) ---
+  const flangeMat = new THREE.MeshStandardMaterial({ color: 0x2c3440, roughness: 0.42, metalness: 0.82 });
+  const flange = new THREE.Mesh(new THREE.CylinderGeometry(0.88 * S, 0.85 * S, 0.32, 12), flangeMat);
+  flange.rotation.x = Math.PI / 2;
+  flange.position.z = -2.3;
+  g.add(flange);
+
+  // 後端中補強リング
+  const midRing = new THREE.Mesh(new THREE.CylinderGeometry(0.72 * S, 0.72 * S, 0.10, 12), flangeMat);
+  midRing.rotation.x = Math.PI / 2;
+  midRing.position.z = -0.8;
+  g.add(midRing);
+
+  // --- 放熱フィン(6枚、後部寄りに配置) ---
+  const finMat = new THREE.MeshStandardMaterial({ color: 0x252d38, roughness: 0.52, metalness: 0.78 });
+  const FIN_COUNT = 6;
+  for (let i = 0; i < FIN_COUNT; i++) {
+    const angle = (i / FIN_COUNT) * Math.PI * 2;
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.52 * S, 1.6), finMat);
+    fin.rotation.z = angle;
+    fin.position.set(Math.cos(angle) * 0.90 * S, Math.sin(angle) * 0.90 * S, -0.8);
+    g.add(fin);
+  }
+
+  // --- ガスポートリング(中間部) ---
+  const gasPortMat = new THREE.MeshStandardMaterial({ color: 0x3a4250, roughness: 0.50, metalness: 0.72 });
+  const gasPort = new THREE.Mesh(new THREE.TorusGeometry(0.66 * S, 0.065, 6, 16), gasPortMat);
+  gasPort.rotation.x = Math.PI / 2;
+  gasPort.position.z = 0.4;
+  g.add(gasPort);
+
+  // --- マズルブレーキ(先端3連リング) ---
+  const brakeMat = new THREE.MeshStandardMaterial({ color: 0x242c38, roughness: 0.30, metalness: 0.92 });
+  for (let ri = 0; ri < 3; ri++) {
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.76 * S, 0.70 * S, 0.11, 12), brakeMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.z = 1.55 + ri * 0.24;
+    g.add(ring);
+  }
+
+  // --- 砲口ボア(最前端・暗い穴) ---
+  const boreMat = new THREE.MeshStandardMaterial({ color: 0x080b10, roughness: 0.80, metalness: 0.20 });
+  const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.34 * S, 0.34 * S, 0.14, 10), boreMat);
+  bore.rotation.x = Math.PI / 2;
+  bore.position.z = 2.28;
+  g.add(bore);
+
+  // --- 赤熱グロー(後端・発射熱を表現) ---
+  const heatMat = new THREE.MeshBasicMaterial({
+    color: 0xff3c00,
+    transparent: true,
+    opacity: 0.48,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
   });
-  const mesh = new THREE.Mesh(geo, mat);
-  // 放出時は少し赤熱している表現を入れるとなお良い（ここではシンプルに金属色）
-  return mesh;
+  const heat = new THREE.Mesh(new THREE.CylinderGeometry(0.70 * S, 0.70 * S, 0.95, 10), heatMat);
+  heat.rotation.x = Math.PI / 2;
+  heat.position.z = -2.1;
+  g.add(heat);
+
+  return g;
 }

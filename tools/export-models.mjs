@@ -43,95 +43,311 @@ const RCS_BLOCK_OFFSETS = [
   { x: -1.0, y: -0.85, z: 1.9 },
 ];
 
-// 自機: 寸胴な直方体。後部に 4 発のエンジン、左右に小さな太陽電池パドル、
-// 前面に縦二連の機関砲口を持つ。
+// ------------------------------------------------------------- 自機
+
+// 自機: テーパードハル + 突き出した砲身 + ベルノズルエンジン + 大型ソーラーパネル
+// コックピット窓・アンテナ・アーマーストリップを追加してリッチ化。
+// 機首は +Z 方向。MUZZLE_OFFSETS/RCS_BLOCK_OFFSETS 座標は維持。
 function buildPlayerShip() {
   const g = new THREE.Group();
 
-  const hull = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.0, 5.0), std(0xd8dde6));
-  g.add(hull);
+  // === ハル(前部は細く後部は太い2段テーパー構成) ===
+  const hullMat   = std(0xcdd3de, { metalness: 0.30, roughness: 0.55 });
+  const noseMat   = std(0xb2bccb, { metalness: 0.35, roughness: 0.50 });
+  const armorMat  = std(0xaab4c2, { metalness: 0.42, roughness: 0.48 });
 
-  const face = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.8, 0.12), std(0xb8c2cf));
-  face.position.z = 2.52;
-  g.add(face);
+  // 後部胴体(幅広)
+  const rearHull = new THREE.Mesh(new THREE.BoxGeometry(2.3, 2.0, 3.2), hullMat);
+  rearHull.position.z = -1.15;
+  g.add(rearHull);
 
-  const boreMat = std(0x14161a, { metalness: 0.3, roughness: 0.8 });
-  const rimMat = std(0x555c66, { metalness: 0.7, roughness: 0.35 });
-  for (const m of MUZZLE_OFFSETS) {
-    const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.5, 10), boreMat);
-    bore.rotation.x = Math.PI / 2;
-    bore.position.set(m.x, m.y, m.z);
-    g.add(bore);
-    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.16, 10), rimMat);
-    rim.rotation.x = Math.PI / 2;
-    rim.position.set(m.x, m.y, m.z + 0.18);
-    g.add(rim);
+  // 前部胴体(若干細め → テーパー感)
+  const fwdHull = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.8, 2.0), hullMat);
+  fwdHull.position.z = 1.5;
+  g.add(fwdHull);
+
+  // 機首フェイスプレート
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.6, 0.14), noseMat);
+  nose.position.z = 2.47;
+  g.add(nose);
+
+  // 左右アーマーストリップ(縦通材)
+  for (const sx of [-1, 1]) {
+    const armor = new THREE.Mesh(new THREE.BoxGeometry(0.10, 1.75, 5.0), armorMat);
+    armor.position.set(sx * 1.20, 0, -0.10);
+    g.add(armor);
   }
 
-  const engMat = std(0x3a3f47, { metalness: 0.6 });
-  const glowMat = new THREE.MeshBasicMaterial({ color: 0x66d9ff, transparent: true, opacity: 0.9 });
+  // 上下アーマーストリップ
+  for (const sy of [-1, 1]) {
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(2.25, 0.09, 5.0), armorMat);
+    strip.position.set(0, sy * 1.05, -0.10);
+    g.add(strip);
+  }
+
+  // === コックピット窓(前面に埋め込み暗窓) ===
+  const cockpitMat = new THREE.MeshStandardMaterial({
+    color: 0x0a1828, flatShading: true, metalness: 0.12, roughness: 0.18,
+  });
+  const cockpit = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.52, 0.05), cockpitMat);
+  cockpit.position.set(0, 0.36, 2.51);
+  g.add(cockpit);
+  // 窓枠
+  const frameGeo = new THREE.BoxGeometry(0.90, 0.64, 0.04);
+  const frameMesh = new THREE.Mesh(frameGeo, std(0x9aa3ae, { metalness: 0.55, roughness: 0.35 }));
+  frameMesh.position.set(0, 0.36, 2.48);
+  g.add(frameMesh);
+
+  // === 砲身(銃口位置から前方へ突き出す) ===
+  const boreMat    = std(0x10131a, { metalness: 0.55, roughness: 0.65 });
+  const rimMat     = std(0x4a5260, { metalness: 0.82, roughness: 0.28 });
+  const barrelMat  = std(0x252b34, { metalness: 0.68, roughness: 0.40 });
+
+  for (const m of MUZZLE_OFFSETS) {
+    // ハル内部を通る砲身チューブ(z=0.0 〜 z=2.45)
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.28, 2.0, 10), barrelMat);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(m.x, m.y, 1.45);
+    g.add(barrel);
+
+    // 砲口カラー(ハル前面との接合部リング)
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.10, 10), rimMat);
+    collar.rotation.x = Math.PI / 2;
+    collar.position.set(m.x, m.y, m.z - 0.42);
+    g.add(collar);
+
+    // マズルブレーキ(3連リング)
+    for (let ri = 0; ri < 3; ri++) {
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.30, 0.07, 10), rimMat);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.set(m.x, m.y, m.z - 0.20 + ri * 0.14);
+      g.add(ring);
+    }
+
+    // 砲口ボア(最前端の暗い穴)
+    const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.16, 10), boreMat);
+    bore.rotation.x = Math.PI / 2;
+    bore.position.set(m.x, m.y, m.z + 0.04);
+    g.add(bore);
+  }
+
+  // === エンジン(ベルノズル形状) ===
+  const engMat     = std(0x353b44, { metalness: 0.68 });
+  const nozzleMat  = std(0x1e2328, { metalness: 0.82, roughness: 0.28 });
+  const glowMat    = new THREE.MeshBasicMaterial({ color: 0x77dbff, transparent: true, opacity: 0.92 });
+  const heatRingMat = new THREE.MeshBasicMaterial({ color: 0xff7722, transparent: true, opacity: 0.55 });
+
+  // エンジン取付プレート(後端)
+  const mountPlate = new THREE.Mesh(
+    new THREE.BoxGeometry(2.12, 1.82, 0.18),
+    std(0x2e3440, { metalness: 0.52 }),
+  );
+  mountPlate.position.z = -2.72;
+  g.add(mountPlate);
+
   for (const sx of [-1, 1]) {
     for (const sy of [-1, 1]) {
-      const eng = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.46, 0.7, 8), engMat);
+      // エンジン外壁(シュラウド)
+      const eng = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.44, 0.90, 10), engMat);
       eng.rotation.x = Math.PI / 2;
-      eng.position.set(sx * 0.58, sy * 0.55, -2.65);
+      eng.position.set(sx * 0.60, sy * 0.56, -2.86);
       g.add(eng);
-      const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.34, 0.14, 8), glowMat);
+
+      // ノズルベル(出口方向に広がる)
+      const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.62, 0.55, 10), nozzleMat);
+      nozzle.rotation.x = Math.PI / 2;
+      nozzle.position.set(sx * 0.60, sy * 0.56, -3.38);
+      g.add(nozzle);
+
+      // ノズル出口エッジリング
+      const exitRing = new THREE.Mesh(new THREE.CylinderGeometry(0.63, 0.63, 0.055, 12), rimMat);
+      exitRing.rotation.x = Math.PI / 2;
+      exitRing.position.set(sx * 0.60, sy * 0.56, -3.68);
+      g.add(exitRing);
+
+      // エンジングロー(内部発光)
+      const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.30, 0.12, 10), glowMat);
       glow.rotation.x = Math.PI / 2;
-      glow.position.set(sx * 0.58, sy * 0.55, -3.02);
+      glow.position.set(sx * 0.60, sy * 0.56, -3.70);
       g.add(glow);
+      // ヒートリングは省略
     }
   }
 
-  const panelMat = std(0x2456c8, { metalness: 0.5, roughness: 0.4 });
+  // === 太陽電池パネル(大型・フレーム格子付き) ===
+  const panelMat   = std(0x1a3a8c, { metalness: 0.38, roughness: 0.52 });
+  const panelFrame = std(0x7a838f, { metalness: 0.68, roughness: 0.33 });
+
   for (const side of [-1, 1]) {
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.07, 1.1), panelMat);
-    panel.position.set(side * 2.2, 0.4, -1.2);
+    // パネル面
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.055, 1.5), panelMat);
+    panel.position.set(side * 2.62, 0.52, -2.20);
     g.add(panel);
-    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.1, 0.1), std(0x8a919c));
-    strut.position.set(side * 1.4, 0.4, -1.2);
+
+    // 外枠(上下 2 本)
+    for (const fz of [-0.76, 0.76]) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(2.50, 0.10, 0.07), panelFrame);
+      bar.position.set(side * 2.62, 0.52, -2.20 + fz);
+      g.add(bar);
+    }
+    // 外枠(左右 2 本)
+    for (const fx of [-1.26, 1.26]) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.10, 1.60), panelFrame);
+      bar.position.set(side * 2.62 + fx * side, 0.52, -2.20);
+      g.add(bar);
+    }
+    // 内部格子(縦 2 本)
+    for (const dx of [-0.54, 0.54]) {
+      const div = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 1.48), panelFrame);
+      div.position.set(side * 2.62 + dx * side, 0.52, -2.20);
+      g.add(div);
+    }
+
+    // パネル接続ストラット
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(1.30, 0.10, 0.10), panelFrame);
+    strut.position.set(side * 1.78, 0.52, -2.20);
     g.add(strut);
+    // 補強ブラケット(Z方向)
+    const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.10, 1.50), panelFrame);
+    bracket.position.set(side * 1.18, 0.52, -2.20);
+    g.add(bracket);
   }
 
-  const rcsMat = std(0x9aa3ad);
+  // === 並進RCS ノズル(前進RCSの他に、左右 +X/-X 方向と上下 +Y/-Y 方向を追加) ===
+  const rcsMat      = std(0x9aa3ad, { metalness: 0.52 });
+  const rcsNozzMat  = std(0xb5bfc9, { metalness: 0.72, roughness: 0.28 });
+  // 前進RCS ノズル(元コードから継承)
   for (const p of RCS_BLOCK_OFFSETS) {
-    const rcs = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 0.28), rcsMat);
+    const rcs = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.30, 0.30), rcsMat);
     rcs.position.set(p.x, p.y, p.z);
     g.add(rcs);
+    const nozzleSmall = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.11, 6), rcsNozzMat);
+    nozzleSmall.rotation.x = Math.PI / 2;
+    nozzleSmall.position.set(p.x, p.y, p.z + 0.21);
+    g.add(nozzleSmall);
   }
 
+  // 左右向き並訳RCS (機体中央附近、前後 2 箇所)
+  const sideRcsNozzMat = std(0xb5bfc9, { metalness: 0.72, roughness: 0.28 });
+  for (const sideX of [-1, 1]) {
+    for (const sz of [0.8, -0.8]) {
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.20, 0.20), rcsMat);
+      block.position.set(sideX * 1.22, 0, sz);
+      g.add(block);
+      // ノズル（X方向に向く）
+      const nzX = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.12, 6), sideRcsNozzMat);
+      nzX.rotation.z = Math.PI / 2; // 軸をX方向に向ける
+      nzX.position.set(sideX * (1.22 + 0.16), 0, sz);
+      g.add(nzX);
+    }
+  }
+
+  // 上下向き並訳RCS (機体上面/下面、前後 2 箇所)
+  for (const sideY of [-1, 1]) {
+    for (const sz of [0.6, -0.6]) {
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.20, 0.20), rcsMat);
+      block.position.set(0, sideY * 1.05, sz);
+      g.add(block);
+      // ノズル（Y方向に向く）
+      const nzY = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.12, 6), sideRcsNozzMat);
+      nzY.rotation.z = 0; // 已に Y 軸方向
+      nzY.position.set(0, sideY * (1.05 + 0.16), sz);
+      g.add(nzY);
+    }
+  }
+
+  // === マガジン取込口(右側+X前方)・排出口(左側-X後方) ===
+  const portMat    = std(0x1e2530, { metalness: 0.75, roughness: 0.35 });
+  const portFrameMat = std(0x6b7580, { metalness: 0.65, roughness: 0.40 });
+
+  // 取込口(右面 +X, z=+0.5 後方富)
+  const intakeSlot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.15, 0.82), portMat);
+  intakeSlot.position.set(1.08, 0, 0.5);
+  g.add(intakeSlot);
+  // 取込口フレーム
+  const intakeFrameTop = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.88), portFrameMat);
+  intakeFrameTop.position.set(1.08, 0.60, 0.5);
+  g.add(intakeFrameTop);
+  const intakeFrameBot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.88), portFrameMat);
+  intakeFrameBot.position.set(1.08, -0.60, 0.5);
+  g.add(intakeFrameBot);
+  // ガイドレール(上下内側に細張り)
+  for (const gy of [-0.28, 0.28]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.06, 0.80), portFrameMat);
+    rail.position.set(1.10, gy, 0.5);
+    g.add(rail);
+  }
+
+  // 排出口(左面 -X, z=-0.8 後方)
+  const ejectSlot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.05, 0.72), portMat);
+  ejectSlot.position.set(-1.08, 0, -0.8);
+  g.add(ejectSlot);
+  // 排出口フレーム
+  const ejectFrameTop = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.78), portFrameMat);
+  ejectFrameTop.position.set(-1.08, 0.55, -0.8);
+  g.add(ejectFrameTop);
+  const ejectFrameBot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.78), portFrameMat);
+  ejectFrameBot.position.set(-1.08, -0.55, -0.8);
+  g.add(ejectFrameBot);
+  // 排出角(後方に傾斜のガイド)
+  const ejectRamp = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.06, 0.70), portFrameMat);
+  ejectRamp.position.set(-1.10, 0, -0.8);
+  g.add(ejectRamp);
+
+  // === アンテナ ===
+  const antMat = std(0x8a9199, { metalness: 0.72, roughness: 0.30 });
+  const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.033, 0.033, 1.50, 5), antMat);
+  ant.position.set(0.26, 1.22, 0.32);
+  g.add(ant);
+  const antTip = new THREE.Mesh(new THREE.SphereGeometry(0.075, 6, 4), std(0xd9e0ea));
+  antTip.position.set(0.26, 2.00, 0.32);
+  g.add(antTip);
+
+  // === 航法ビーコン ===
   const beacon = new THREE.Mesh(
-    new THREE.BoxGeometry(0.18, 0.18, 0.18),
+    new THREE.BoxGeometry(0.16, 0.16, 0.16),
     new THREE.MeshBasicMaterial({ color: 0x4dffc4 }),
   );
-  beacon.position.set(0, 1.1, -1.6);
+  beacon.position.set(0, 1.12, -1.60);
   g.add(beacon);
 
   return g;
 }
 
-// --- マガジン ---
+// ------------------------------------------------------------- マガジン
 const MAG_THICKNESS = 1.0;
 const MAG_WIDTH = MAG_THICKNESS * 4;
 const MAG_DEPTH = MAG_THICKNESS * 3;
 const MAG_ROWS = 4;
 const MAG_COLS = 8;
 
-const magPlateMat = std(0x6b7280, { metalness: 0.55, roughness: 0.45 });
-const magRoundMat = std(0xd9a441, { metalness: 0.85, roughness: 0.35 });
-const magTipMat = std(0x9aa3ad, { metalness: 0.7, roughness: 0.4 });
-const magPlateGeo = new THREE.BoxGeometry(MAG_WIDTH, 0.05, MAG_DEPTH);
-const magPostGeo = new THREE.BoxGeometry(0.07, MAG_THICKNESS, 0.07);
-const magRoundGeo = new THREE.CylinderGeometry(0.11, 0.11, MAG_DEPTH * 0.8, 6);
-const magTipGeo = new THREE.ConeGeometry(0.11, 0.16, 6);
+const magPlateMat  = std(0x6b7280, { metalness: 0.58, roughness: 0.42 });
+const magRoundMat  = std(0xd4983a, { metalness: 0.88, roughness: 0.32 }); // 真鍮色
+const magTipMat    = std(0x9faab5, { metalness: 0.74, roughness: 0.36 }); // シルバーチップ
+const magPlateGeo  = new THREE.BoxGeometry(MAG_WIDTH, 0.055, MAG_DEPTH);
+const magPostGeo   = new THREE.BoxGeometry(0.07, MAG_THICKNESS, 0.07);
+const magRoundGeo  = new THREE.CylinderGeometry(0.11, 0.11, MAG_DEPTH * 0.8, 8); // 8セグメントでやや滑らか
+const magTipGeo    = new THREE.ConeGeometry(0.11, 0.18, 8);
 
 function buildMagazineMesh() {
   const g = new THREE.Group();
+
+  // 上下プレート
   for (const sy of [-1, 1]) {
     const plate = new THREE.Mesh(magPlateGeo, magPlateMat);
-    plate.position.y = sy * (MAG_THICKNESS / 2 - 0.025);
+    plate.position.y = sy * (MAG_THICKNESS / 2 - 0.028);
     g.add(plate);
   }
+
+  // 左右サイドパネル(X方向の壁)
+  const sideGeo = new THREE.BoxGeometry(0.07, MAG_THICKNESS * 0.90, MAG_DEPTH);
+  for (const sx of [-1, 1]) {
+    const side = new THREE.Mesh(sideGeo, magPlateMat);
+    side.position.set(sx * (MAG_WIDTH / 2 - 0.04), 0, 0);
+    g.add(side);
+  }
+
+  // 4隅ポスト
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
       const post = new THREE.Mesh(magPostGeo, magPlateMat);
@@ -139,28 +355,83 @@ function buildMagazineMesh() {
       g.add(post);
     }
   }
+
+  // フィードリップ(+Z 先端・給弾口突起)
+  const feedLipGeo = new THREE.BoxGeometry(MAG_WIDTH * 0.38, MAG_THICKNESS * 0.28, 0.13);
+  const feedLip = new THREE.Mesh(feedLipGeo, magPlateMat);
+  feedLip.position.set(0, 0, MAG_DEPTH / 2 + 0.05);
+  g.add(feedLip);
+
+  // === 切込み・段差でシルエットに厚みを出す ===
+  const recessMat = std(0x50585f, { metalness: 0.65, roughness: 0.48 });
+  const ridgeMat  = std(0x7e8894, { metalness: 0.55, roughness: 0.42 });
+
+  // 上下面: 前後方向に走る溝(くぼみを外側に出っ張る溝で近似)
+  for (const sy of [-1, 1]) {
+    // 中央溝レール(上面/下面を横切る)
+    const groove = new THREE.Mesh(
+      new THREE.BoxGeometry(MAG_WIDTH * 0.55, 0.06, MAG_DEPTH * 0.80),
+      recessMat,
+    );
+    groove.position.set(0, sy * (MAG_THICKNESS / 2 + 0.03), 0);
+    g.add(groove);
+
+    // 前後の段付きリブ(ショルダー)
+    for (const sz of [-0.85, 0.85]) {
+      const rib = new THREE.Mesh(
+        new THREE.BoxGeometry(MAG_WIDTH * 0.80, 0.07, 0.12),
+        ridgeMat,
+      );
+      rib.position.set(0, sy * (MAG_THICKNESS / 2 + 0.035), sz);
+      g.add(rib);
+    }
+  }
+
+  // 前後面: 縦方向の段差ライン
+  for (const sz of [-1, 1]) {
+    // 左右の縦段差
+    for (const sx of [-1, 1]) {
+      const ledge = new THREE.Mesh(
+        new THREE.BoxGeometry(0.10, MAG_THICKNESS * 0.70, 0.07),
+        recessMat,
+      );
+      ledge.position.set(sx * (MAG_WIDTH / 2 - 0.30), 0, sz * (MAG_DEPTH / 2 + 0.02));
+      g.add(ledge);
+    }
+  }
+
+  // サイド: ベルト案内レール(左右面中央に浮き出たリブ)
+  const railGeo = new THREE.BoxGeometry(0.06, MAG_THICKNESS * 0.60, MAG_DEPTH * 0.75);
+  for (const sx of [-1, 1]) {
+    const rail = new THREE.Mesh(railGeo, ridgeMat);
+    rail.position.set(sx * (MAG_WIDTH / 2 + 0.02), 0, 0);
+    g.add(rail);
+  }
+
+  // 弾(実弾: 薬莢ボディ + シルバーチップ)
   for (let iy = 0; iy < MAG_ROWS; iy++) {
     for (let ix = 0; ix < MAG_COLS; ix++) {
       const x = (ix - (MAG_COLS - 1) / 2) * (MAG_WIDTH / (MAG_COLS * 1.1));
       const y = (iy - (MAG_ROWS - 1) / 2) * (MAG_THICKNESS * 0.24);
+
       const round = new THREE.Mesh(magRoundGeo, magRoundMat);
       round.rotation.x = Math.PI / 2;
       round.position.set(x, y, 0);
-      round.userData = { role: 'round' }; // 実行時に「弾なし(空)」表示を作る際の判別用
+      round.userData = { role: 'round' };
       g.add(round);
+
       const tip = new THREE.Mesh(magTipGeo, magTipMat);
       tip.rotation.x = Math.PI / 2;
-      tip.position.set(x, y, MAG_DEPTH * 0.4 + 0.07);
+      tip.position.set(x, y, MAG_DEPTH * 0.40 + 0.08);
       tip.userData = { role: 'round' };
       g.add(tip);
     }
   }
+
   return g;
 }
 
 // 軌道上に投入される補給マガジン: マガジン数個(既定 4)を束ねてビーコンを付けた漂流物。
-// count は実行時にも可変だが、JSON テンプレートは既定値(4 個)で焼き出し、
-// 他の個数が要る呼び出し元は現状ないため 1 テンプレートのみで足りる。
 function buildMagPickup(count = 4) {
   const g = new THREE.Group();
   for (let i = 0; i < count; i++) {
@@ -177,8 +448,8 @@ function buildMagPickup(count = 4) {
   return g;
 }
 
-// 敵機: 基本(未着色)版を書き出す。アクセントカラーは実行時にマテリアルを
-// クローンして差し替える(色ごとに JSON を複製しない)。
+// ------------------------------------------------------------- 敵機
+// 敵機: 基本(未着色)版を書き出す。アクセントカラーは実行時にマテリアルをクローンして差し替える。
 function buildEnemyShip() {
   const accent = 0xff4a3d; // プレースホルダ(実行時に上書きされる)
   const g = new THREE.Group();
@@ -210,6 +481,8 @@ function buildEnemyShip() {
   return g;
 }
 
+// ------------------------------------------------------------- 弾
+
 // 進行方向 +Z に伸びる曳光弾
 function buildBulletMesh() {
   const geo = new THREE.BoxGeometry(0.22, 0.22, 6);
@@ -223,62 +496,58 @@ function buildBulletMesh() {
   return new THREE.Mesh(geo, mat);
 }
 
-// 薬莢: 艦砲 CIWS の弾薬をモチーフにしたボトルネック形状(Lathe)。
+// ------------------------------------------------------------- 薬莢
+// CIWS 艦砲弾薬をモチーフにしたボトルネック Lathe 形状。
+// セグメント数 8(約半分)に削減。直径を 0.7 倍にしてスリムに。
+const CASING_SCALE = 0.7;
 const casingProfile = [
-  new THREE.Vector2(0.0, -0.52),
-  new THREE.Vector2(0.3, -0.52),
-  new THREE.Vector2(0.3, -0.45),
-  new THREE.Vector2(0.23, -0.45),
-  new THREE.Vector2(0.23, -0.39),
-  new THREE.Vector2(0.29, -0.37),
-  new THREE.Vector2(0.27, 0.26),
-  new THREE.Vector2(0.16, 0.4),
-  new THREE.Vector2(0.16, 0.52),
-  new THREE.Vector2(0.13, 0.52),
+  new THREE.Vector2(0.000 * CASING_SCALE, -0.56),  // 内底(中心)
+  new THREE.Vector2(0.330 * CASING_SCALE, -0.56),  // リム底面
+  new THREE.Vector2(0.330 * CASING_SCALE, -0.47),  // リム側面
+  new THREE.Vector2(0.230 * CASING_SCALE, -0.47),  // エクストラクターグルーブ底
+  new THREE.Vector2(0.230 * CASING_SCALE, -0.38),  // グルーブ上端
+  new THREE.Vector2(0.305 * CASING_SCALE, -0.35),  // ボディ径に戻る
+  new THREE.Vector2(0.300 * CASING_SCALE,  0.18),  // ボディ
+  new THREE.Vector2(0.175 * CASING_SCALE,  0.34),  // ショルダー
+  new THREE.Vector2(0.148 * CASING_SCALE,  0.42),  // ネック
+  new THREE.Vector2(0.148 * CASING_SCALE,  0.54),  // ネック先端
+  new THREE.Vector2(0.115 * CASING_SCALE,  0.54),  // マウス内径
 ];
 
 function buildCasingMesh() {
-  const geo = new THREE.LatheGeometry(casingProfile, 12);
+  const geo = new THREE.LatheGeometry(casingProfile, 8); // 8セグメント(ポリゴン数約半分)
   const mat = new THREE.MeshStandardMaterial({
-    color: 0xd9a441,
-    metalness: 0.85,
-    roughness: 0.35,
+    color: 0xcf9432,
+    metalness: 0.90,
+    roughness: 0.28,
   });
   return new THREE.Mesh(geo, mat);
 }
 
-// 破片: ships.ts 側は kind/size/accent/dark をランダムに選ぶが、テンプレートは
-// 形状ごとに固定サイズ(size=1)で書き出し、実行時に scale と material.color で
-// 個体差(size, accent/dark)を付ける。
-// 単位(size=1, ジッタなし)のテトラヒドロン。実行時に buildDebrisMesh() が
-// 頂点ごとの乱数ジッタ(0.6〜1.5倍)を加えたうえで scale.setScalar(size) する
-// ため、ここでは素の形状のみを焼き出す。
+// ------------------------------------------------------------- 破片
+// 形状ごとに固定サイズ(size=1)で書き出し、実行時に scale と material.color で個体差を付ける。
+
 function buildDebrisChunk() {
   const tetra = new THREE.TetrahedronGeometry(1, 0);
   return new THREE.Mesh(tetra, std(0x3c4149, { roughness: 0.8, metalness: 0.2 }));
 }
 
-// 単位立方体(1x1x1)。実行時に buildDebrisMesh() が
-// scale.set(size*(1.2+rand*0.8), size*0.1, size*(0.8+rand*0.6)) で
-// 元の乱数幅の伸縮を再現する(このテンプレート自体は伸縮を含まない)。
 function buildDebrisPanel() {
   const geo = new THREE.BoxGeometry(1, 1, 1);
   return new THREE.Mesh(geo, std(0x3c4149, { roughness: 0.8, metalness: 0.2 }));
 }
 
-// 半径比(0.1:0.13)のみ焼き込んだ単位高さ(=1)の円柱。実行時に
-// scale.set(size, size*(1.6+rand), size) で高さの乱数幅を再現する。
 function buildDebrisRod() {
   const geo = new THREE.CylinderGeometry(0.1, 0.13, 1, 5);
   return new THREE.Mesh(geo, std(0x3c4149, { roughness: 0.8, metalness: 0.2 }));
 }
 
-// ステージ0の敵機A: キレート錯体を模した対照的なデザイン (オリジナルのまま)
+// ------------------------------------------------------------- ステージ0 敵機
+
 function buildStage0EnemyA() {
-  const accent = 0x3dc6ff; // プレースホルダ
+  const accent = 0x3dc6ff;
   const g = new THREE.Group();
 
-  // 中心金属(コア)
   const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.2, 0), std(0x4a4f58));
   g.add(core);
 
@@ -286,7 +555,6 @@ function buildStage0EnemyA() {
   ligandMat.userData = { role: 'accent' };
   const bondMat = std(0x666d78, { metalness: 0.6 });
 
-  // 6配位(八面体型)
   const positions = [
     new THREE.Vector3(2.2, 0, 0),
     new THREE.Vector3(-2.2, 0, 0),
@@ -301,7 +569,6 @@ function buildStage0EnemyA() {
     ligand.position.copy(pos);
     g.add(ligand);
 
-    // 結合(ボンド)
     const bondLen = pos.length() - 1.2;
     const bond = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, bondLen, 5), bondMat);
     bond.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), pos.clone().normalize());
@@ -309,7 +576,6 @@ function buildStage0EnemyA() {
     g.add(bond);
   }
 
-  // キレート環(リング)
   const ringMat = std(0x8a919c, { metalness: 0.5 });
   const ring1 = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.1, 4, 12), ringMat);
   ring1.rotation.x = Math.PI / 2;
@@ -321,7 +587,6 @@ function buildStage0EnemyA() {
   return g;
 }
 
-// ステージ0の敵機B: 平らなリング形状
 function buildStage0EnemyB() {
   const accent = 0x3dc6ff;
   const g = new THREE.Group();
@@ -332,7 +597,7 @@ function buildStage0EnemyB() {
 
   const ligandMat = std(accent, { metalness: 0.4, roughness: 0.4 });
   ligandMat.userData = { role: 'accent' };
-  
+
   const ring = new THREE.Mesh(new THREE.TorusGeometry(2.5, 0.2, 8, 16), std(0x666d78, { metalness: 0.6 }));
   g.add(ring);
 
@@ -346,7 +611,6 @@ function buildStage0EnemyB() {
   return g;
 }
 
-// ステージ0の敵機C: トゲトゲした四面体形状
 function buildStage0EnemyC() {
   const accent = 0x3dc6ff;
   const g = new THREE.Group();
@@ -375,10 +639,10 @@ function buildStage0EnemyC() {
   return g;
 }
 
-// プラズマ弾: 棒状の光弾
+// ------------------------------------------------------------- プラズマ弾
 function buildPlasmaBullet() {
   const geo = new THREE.CylinderGeometry(0.2, 0.2, 4.0, 5);
-  geo.rotateX(Math.PI / 2); // Z方向に向ける
+  geo.rotateX(Math.PI / 2);
   const mat = new THREE.MeshBasicMaterial({
     color: 0x3dc6ff,
     transparent: true,
@@ -390,20 +654,21 @@ function buildPlasmaBullet() {
 }
 
 
+// ------------------------------------------------------------- 書き出し
 const models = {
-  player: buildPlayerShip(),
-  enemy: buildEnemyShip(),
+  player:       buildPlayerShip(),
+  enemy:        buildEnemyShip(),
   stage0EnemyA: buildStage0EnemyA(),
   stage0EnemyB: buildStage0EnemyB(),
   stage0EnemyC: buildStage0EnemyC(),
-  magazine: buildMagazineMesh(),
-  magPickup: buildMagPickup(),
-  bullet: buildBulletMesh(),
-  plasma: buildPlasmaBullet(),
-  casing: buildCasingMesh(),
-  debrisChunk: buildDebrisChunk(),
-  debrisPanel: buildDebrisPanel(),
-  debrisRod: buildDebrisRod(),
+  magazine:     buildMagazineMesh(),
+  magPickup:    buildMagPickup(),
+  bullet:       buildBulletMesh(),
+  plasma:       buildPlasmaBullet(),
+  casing:       buildCasingMesh(),
+  debrisChunk:  buildDebrisChunk(),
+  debrisPanel:  buildDebrisPanel(),
+  debrisRod:    buildDebrisRod(),
 };
 
 for (const [name, object] of Object.entries(models)) {
