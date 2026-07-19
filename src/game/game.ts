@@ -75,6 +75,15 @@ import { OrbitLine } from '../render/orbitline';
 
 type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
+interface EnvironmentScene {
+  ambient: THREE.AmbientLight;
+  sun: Sun;
+  sunLight: THREE.DirectionalLight;
+  starsMesh: THREE.Mesh;
+  moonMesh: THREE.Mesh;
+  earth: Earth;
+}
+
 export class Game {
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
@@ -86,8 +95,6 @@ export class Game {
   private readonly sfx = new Sfx();
   private readonly chase = new ChaseCamera();
 
-  private readonly earth: Earth;
-  private readonly sun: Sun;
 
   private readonly player: Player;
   private readonly enemies: Enemy[] = [];
@@ -107,8 +114,8 @@ export class Game {
     };
   }
 
-
   private readonly glowTex: THREE.Texture;
+  private readonly environment: EnvironmentScene;
   // 軌道線もモノトーン + オレンジアクセントの配色: 自機 = 明るいグレー、
   // ターゲット = オレンジ(注目対象)、計画軌道 = 白(最も明るい = 未来)。
   private readonly playerOrbitLine = new OrbitLine(0xbfc9d4, 0.55);
@@ -122,7 +129,6 @@ export class Game {
   private readonly moonOrbitLine = new OrbitLine(0xaab3c0, 0.2);
 
   readonly stage: number;
-  private readonly starsMesh: THREE.Mesh;
 
   // 軌道計画モード
   private readonly maneuver = new ManeuverSystem(
@@ -157,9 +163,6 @@ export class Game {
   private readonly plumeCore: THREE.Mesh;
   private readonly plumeOuter: THREE.Mesh;
   private readonly rcsPuffs: THREE.Mesh[] = []; // RCS ブロック位置の噴射パフ(4基)
-  private readonly sunLight: THREE.DirectionalLight;
-  private readonly ambient: THREE.AmbientLight;
-  private readonly moonMesh = createMoon();
 
   // --- 弾薬・マガジン ---
   private readonly beltGroup = new THREE.Group();
@@ -203,14 +206,12 @@ export class Game {
     this.ammoResupply = new AmmoResupplySystem(this.scene, this.hud, this.sfx);
     this.simulator = new Simulator(this.ephemeris, this.thermal, this.ammoResupply, this.combat);
 
+    // 汎用発光テクスチャ
+    this.glowTex = makeGlowTexture();
+
     // --- 環境 ---
-    const env = this.buildEnvironmentScene();
-    this.ambient = env.ambient;
-    this.glowTex = env.glowTex;
-    this.sun = env.sun;
-    this.sunLight = env.sunLight;
-    this.starsMesh = env.starsMesh;
-    this.earth = env.earth;
+    this.environment = this.buildEnvironmentScene(this.glowTex);
+    
     this.addOrbitLines();
 
     const plumes = this.buildThrustPlumes();
@@ -243,17 +244,9 @@ export class Game {
     };
   }
 
-  private buildEnvironmentScene(): {
-    ambient: THREE.AmbientLight;
-    glowTex: THREE.Texture;
-    sun: Sun;
-    sunLight: THREE.DirectionalLight;
-    starsMesh: THREE.Mesh;
-    earth: Earth;
-  } {
+  private buildEnvironmentScene(glowTex: THREE.Texture): EnvironmentScene {
     const ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     this.scene.add(ambient);
-    const glowTex = makeGlowTexture();
     const sun = createSun(glowTex);
     this.scene.add(sun.mesh);
     this.ephemeris.update(this.simTime);
@@ -261,12 +254,13 @@ export class Game {
     const sunDir0 = this.ephemeris.sunDir;
     sunLight.position.set(sunDir0.x * 1e5, sunDir0.y * 1e5, sunDir0.z * 1e5);
     this.scene.add(sunLight);
-    this.scene.add(this.moonMesh);
+    const moonMesh = createMoon();
+    this.scene.add(moonMesh);
     const starsMesh = createStars();
     this.scene.add(starsMesh);
     const earth = createEarth();
     this.scene.add(earth.group);
-    return { ambient, glowTex, sun, sunLight, starsMesh, earth };
+    return { ambient, sun, sunLight, starsMesh, earth, moonMesh };
   }
 
   private addOrbitLines(): void {
@@ -376,8 +370,25 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.zoomActive = !this.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
-    this.syncMapModeWithPhase();
+    this.maneuver.syncMapModeWithPhase(this.phase, this.touchControls);
 
+    this.handleFrame(dt);
+
+    this.pipRenderer.syncFineAttitude(
+      this.player.isFiring,
+      (prevFiring, nowFiring) => this.player.setFineAttitudeFromFiring(prevFiring, nowFiring),
+    );
+    this.syncRender(dt);
+  }
+
+
+  private handleFrame(dt: number): void {
+    if (this.phase === "playing" && this.paused) {
+      this.handlePausedFrame();
+      return;
+    }
+    // ゲームオーバー以降等場合、シミュレーションは進めるが、プレイヤーのアクションは無効化する。
+    // シミュレーションも簡略化する
     if (this.phase !== 'playing') {
       const advanced = this.simulator.integrateSimulation(
         this.simTime,
@@ -389,25 +400,14 @@ export class Game {
       );
       this.simTime = advanced.simTime;
       this.lastSimDt = advanced.simDt;
-    }
-    else if (!this.paused) {
-      this.runPlayingFrame(dt);
-    } else {
-      this.handleIdleFrame();
+      return;
     }
 
-    this.pipRenderer.syncFineAttitude(
-      this.player.isFiring,
-      (prevFiring, nowFiring) => this.player.setFineAttitudeFromFiring(prevFiring, nowFiring),
-    );
-    this.syncRender(dt);
+    this.updateFrame(dt);
   }
 
-  private syncMapModeWithPhase(): void {
-    this.maneuver.syncMapModeWithPhase(this.phase, this.touchControls);
-  }
-
-  private runPlayingFrame(dt: number): void {
+  private updateFrame(dt: number): void {
+    // プレイヤーのアクション更新
     this.player.updateHpRegen(dt);
     this.updateAutoWarpTarget();
     const warp = this.warp();
@@ -430,6 +430,7 @@ export class Game {
       },
     });
     const playerAccel = this.simulator.buildPlayerAccel(action.thrustFn);
+
     const advanced = this.simulator.integrateSimulation(
       this.simTime,
       dt,
@@ -441,6 +442,7 @@ export class Game {
     );
     this.simTime = advanced.simTime;
     this.lastSimDt = advanced.simDt;
+
     this.handlePostSimulation(dt, simDt, warp, action.canAct);
 
     if (this.mapMode) {
@@ -470,7 +472,7 @@ export class Game {
     if (this.stage === 0) this.stageDirector.updateStage0Timer(dt, this.stageCtx());
   }
 
-  private handleIdleFrame(): void {
+  private handlePausedFrame(): void {
     this.lastSimDt = 0;
     this.sfx.setThrust(false);
     this.player.clearTransientState();
@@ -769,9 +771,9 @@ export class Game {
   }
 
   private syncRenderEarth(dt: number, o: Vec3, displayTime: number): void {
-    this.earth.group.position.set(-o.x, -o.y, -o.z);
-    this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
-    this.earth.tick(dt, displayTime);
+    this.environment.earth.group.position.set(-o.x, -o.y, -o.z);
+    this.environment.earth.setRotation(this.earthPhase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
+    this.environment.earth.tick(dt, displayTime);
   }
 
   private syncRenderCamera(dt: number, o: Vec3, pv: Vec3): THREE.PerspectiveCamera {
@@ -799,35 +801,35 @@ export class Game {
   private syncRenderSkyBodies(displayTime: number, o: Vec3, cam: THREE.PerspectiveCamera): void {
     const visSunPos = sunPosition(displayTime, this.ephemeris.sunPhase0);
     const sd = norm(visSunPos);
-    this.earth.setSunDir(sd.x, sd.y, sd.z);
-    this.starsMesh.position.copy(cam.position);
-    this.starsMesh.scale.setScalar(this.mapMode ? (this.mapView.camera.far * 0.9) / 3.5e7 : 1.0);
-    this.sun.mesh.position.set(
+    this.environment.earth.setSunDir(sd.x, sd.y, sd.z);
+    this.environment.starsMesh.position.copy(cam.position);
+    this.environment.starsMesh.scale.setScalar(this.mapMode ? (this.mapView.camera.far * 0.9) / 3.5e7 : 1.0);
+    this.environment.sun.mesh.position.set(
       cam.position.x + sd.x * SUN_DISTANCE,
       cam.position.y + sd.y * SUN_DISTANCE,
       cam.position.z + sd.z * SUN_DISTANCE,
     );
-    this.sun.mesh.quaternion.copy(cam.quaternion);
-    this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
+    this.environment.sun.mesh.quaternion.copy(cam.quaternion);
+    this.environment.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
     const visMoonPos = moonPosition(displayTime, this.ephemeris.moonPhase0);
     const moonRel = sub(visMoonPos, o);
     if (this.mapMode) {
-      this.moonMesh.position.set(moonRel.x, moonRel.y, moonRel.z);
-      this.moonMesh.scale.setScalar(R_MOON);
+      this.environment.moonMesh.position.set(moonRel.x, moonRel.y, moonRel.z);
+      this.environment.moonMesh.scale.setScalar(R_MOON);
     } else {
-      this.cameraSystem.placeCombatMoon(this.moonMesh, cam, moonRel, R_MOON, MOON_VIS_DIST);
+      this.cameraSystem.placeCombatMoon(this.environment.moonMesh, cam, moonRel, R_MOON, MOON_VIS_DIST);
     }
-    this.moonMesh.lookAt(
-      this.moonMesh.position.x - visMoonPos.x,
-      this.moonMesh.position.y - visMoonPos.y,
-      this.moonMesh.position.z - visMoonPos.z
+    this.environment.moonMesh.lookAt(
+      this.environment.moonMesh.position.x - visMoonPos.x,
+      this.environment.moonMesh.position.y - visMoonPos.y,
+      this.environment.moonMesh.position.z - visMoonPos.z
     );
   }
 
   private syncRenderLighting(o: Vec3): void {
     const lit = this.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o);
-    this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
-    this.ambient.intensity =
+    this.environment.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
+    this.environment.ambient.intensity =
       C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
   }
 
