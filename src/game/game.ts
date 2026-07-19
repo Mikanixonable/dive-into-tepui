@@ -1590,11 +1590,8 @@ export class Game {
       this.hud.hint('進行方向ホールド解除(手動操作)');
     }
 
-    // 機体回転のRCS出力: 初期は30%、1秒以上の長押しで最大60%まで段階的に増加
-    let rcsOutputFactor = 0.3;
-    if (this.rotationHoldTime > 1.0) {
-      rcsOutputFactor = 0.3 + 0.3 * Math.min(1.0, this.rotationHoldTime - 1.0);
-    }
+    // 機体回転のRCS出力: 初期は30%、長押し3秒目で最大130%まで段階的に増加
+    const rcsOutputFactor = 0.3 + 1.0 * (Math.min(3.0, this.rotationHoldTime) / 3.0);
 
     // 微調整モード: 角加速度・角速度上限を絞り、小刻みな姿勢操作を可能にする
     const angScale = this.fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
