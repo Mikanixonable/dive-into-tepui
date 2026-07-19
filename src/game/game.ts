@@ -35,12 +35,12 @@ import { CameraSystem } from './camera-system';
 import { CombatCtx, CombatSystem } from './combat';
 import { StageCtx, StageDirector } from './stages';
 import { EnvironmentSystem } from './environment';
-import { MarkersCtx, MarkersSystem } from '../hud/markers';
+import { MarkerCtx, MarkersSystem } from '../hud/markers';
+import { HudPanelCtx } from '../hud/panel';
 import { CollisionPhysics } from './collision';
 import { EffectsSystem } from './effects-system';
 import { OrbitLineSystem } from './orbit-line-system';
 import { RenderDynamicsSystem } from './render-dynamics';
-import { HudSyncSystem } from '../hud/hud-sync-system';
 import { getStageDefinition, resolveStageInitData } from './stage-data';
 import { PlayModes } from './play-modes';
 import { HudProjection } from '../hud/hud-projection';
@@ -171,14 +171,13 @@ export class Game {
   // 武器発射・被弾・撃破まわりの処理は combat.ts の CombatSystem に切り出し済み。
   // 発射カウンタ(shots/hits/kills)・砲口交互発射のインデックスも CombatSystem が保持する。
   private readonly combat = new CombatSystem(this.hud, this.sfx);
-  // HUDマーカー(方向・敵/リード/AMMO/ノード/PIP/ボード)とステータスパネルの同期は
-  // markers.ts の MarkersSystem に切り出し済み。boardMarks(標的面通過点)・
-  // ステータス更新タイマーもここが保持する(combat.ts が boardMarks へ直接 push する)。
-  private readonly markers = new MarkersSystem(this.hud);
+  // HUDマーカー(方向・敵/リード/AMMO/ノード/PIP/ボード)の同期は markers.ts の
+  // MarkersSystem に切り出し済み。boardMarks(標的面通過点)もここが保持する
+  // (combat.ts が boardMarks へ直接 push する)。ステータスパネルは hud.panels が担う。
+  private readonly markersSystem = new MarkersSystem(this.hud.markers);
   private readonly collisionPhysics = new CollisionPhysics();
   private readonly effectsSystem = new EffectsSystem();
   private readonly orbitLineSystem = new OrbitLineSystem();
-  private readonly hudSyncSystem = new HudSyncSystem(this.hud, this.markers, this.orbitLineSystem);
   private readonly renderDynamicsSystem = new RenderDynamicsSystem();
   private readonly cameraSystem = new CameraSystem();
   private readonly playModes = new PlayModes(this.hud);
@@ -523,7 +522,7 @@ export class Game {
       casings: this.casings,
       debris: this.debris,
       effects: this.effects,
-      boardMarks: this.markers.boardMarks,
+      boardMarks: this.markersSystem.boardMarks,
       lostReason: this.lostReason,
       setLostReason: (reason) => {
         this.lostReason = reason;
@@ -535,7 +534,7 @@ export class Game {
   }
 
   // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
-  private markersCtx(): MarkersCtx {
+  private markerCtx(): MarkerCtx {
     return {
       mapMode: this.mapMode,
       player: this.player,
@@ -544,9 +543,19 @@ export class Game {
       magPickups: this.ammoResupply.list,
       mapLabelIds: this.mapView.labels.map((l) => l.id),
       activeCamera: this.activeCamera,
-      touchControls: this.touchControls,
       simTime: this.simTime,
       solveLeadTime: (relP, relV, s) => this.combat.solveLeadTime(relP, relV, s),
+    };
+  }
+
+  // hud.panels.update に渡す、ステータスパネル表示用のスナップショット。
+  private hudPanelCtx(): HudPanelCtx {
+    return {
+      player: this.player,
+      enemies: this.enemies,
+      target: this.target,
+      touchControls: this.touchControls,
+      simTime: this.simTime,
       warp: this.warp(),
       paused: this.paused,
       rcsDamp: this.player.rcsDamp,
@@ -938,44 +947,54 @@ export class Game {
   }
 
   private syncRenderHud(dt: number, o: Vec3, pv: Vec3): void {
-    this.hudSyncSystem.sync({
-      dt,
+    const project = (rel: Vec3) => this.hudProjection.project(rel);
+    const { playerEl, tgtEl } = this.orbitLineSystem.update({
+      mapMode: this.mapMode,
+      simTime: this.simTime,
       origin: o,
       playerVelocity: pv,
-      mapMode: this.mapMode,
-      playerAlive: this.player.alive,
+      player: this.player,
+      target: this.target,
+      enemies: this.enemies,
+      enemyOrbitLines: this.enemyOrbitLines,
+      environment: this.environment,
       planner: this.planner,
       plannerCtx: this.plannerCtx(),
-      markersCtx: this.markersCtx(),
-      orbitLineCtx: {
-        mapMode: this.mapMode,
-        simTime: this.simTime,
-        origin: o,
-        playerVelocity: pv,
-        player: this.player,
-        target: this.target,
-        enemies: this.enemies,
-        enemyOrbitLines: this.enemyOrbitLines,
-        environment: this.environment,
-        planner: this.planner,
-        plannerCtx: this.plannerCtx(),
-        mapView: this.mapView,
-        trajOverlay: this.trajOverlay,
-        playerOrbitLine: this.playerOrbitLine,
-        targetOrbitLine: this.targetOrbitLine,
-        plannedOrbitLine: this.plannedOrbitLine,
-        geoOrbitLine: this.geoOrbitLine,
-        moonOrbitLine: this.moonOrbitLine,
-        project: (rel) => this.hudProjection.project(rel),
-      },
-      project: (rel) => this.hudProjection.project(rel),
-      onGuideAchieved: () => this.maneuver.onGuideAchieved(),
+      mapView: this.mapView,
+      trajOverlay: this.trajOverlay,
+      playerOrbitLine: this.playerOrbitLine,
+      targetOrbitLine: this.targetOrbitLine,
+      plannedOrbitLine: this.plannedOrbitLine,
+      geoOrbitLine: this.geoOrbitLine,
+      moonOrbitLine: this.moonOrbitLine,
+      project,
     });
+
+    const markerCtx = this.markerCtx();
+    this.markersSystem.updateMarkers(markerCtx, pv, project);
+    this.markersSystem.updateNodeMarkers(markerCtx, playerEl, tgtEl, project);
+    this.markersSystem.updateBoardMarkers(markerCtx, dt, project);
+    if (this.mapMode) {
+      this.hud.markers.hide('burn');
+    } else {
+      const { achieved } = this.planner.updateGuide(
+        this.plannerCtx(),
+        o,
+        pv,
+        playerEl,
+        this.player.alive,
+        project,
+      );
+      if (achieved) this.maneuver.onGuideAchieved();
+    }
+
+    this.hud.panels.update(this.hudPanelCtx(), dt, playerEl, tgtEl);
+    this.hud.tick();
   }
 
   // ズームウィンドウ(PIP)のオーバーレイ更新。実処理は markers.ts へ委譲。
   private updatePipOverlay(rect: PipRect | null): void {
-    this.markers.updatePipOverlay(this.markersCtx(), rect);
+    this.markersSystem.updatePipOverlay(this.markerCtx(), rect);
   }
 
   public renderFrame(): void {

@@ -1,7 +1,6 @@
-// HUD マーカー(スクリーン投影)・ステータスパネルの同期。方向マーカー・敵/リード/
-// AMMO マーカー・ターゲット面通過点(ボードマーク)・ノード(AN/DN)・ズーム PIP
-// オーバーレイ・ステータスパネル(setStats/setTarget/setEnemyList)を担う。
-// game.ts を import しない — 依存は MarkersCtx 引数・コンストラクタ注入(Hud)のみ。
+// HUD マーカー(スクリーン投影)の同期。方向マーカー・敵/リード/AMMO マーカー・
+// ターゲット面通過点(ボードマーク)・ノード(AN/DN)・ズーム PIP オーバーレイを担う。
+// game.ts を import しない — 依存は MarkerCtx 引数・コンストラクタ注入(MarkerManager)のみ。
 // スクリーン投影(project)はアクティブカメラ依存のため game.ts 側の関数を呼び出し
 // 引数として受け取る(planner.ts の project 注入パターンに合わせる)。
 import * as THREE from 'three/webgpu';
@@ -10,21 +9,20 @@ import { qRotate } from '../physics/attitude';
 import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../physics/vec3';
 import * as C from '../game/const';
 import { Enemy, MagPickup, Ship } from '../game/entities';
-import { Hud } from './hud';
+import { MarkerManager } from './markerManager';
 import { fmtMarkerDist } from './utils';
-import { TouchControls } from '../game/touch';
 import { Player } from '../game/player';
 
 export type ProjectFn = (rel: Vec3) => { x: number; y: number; front: boolean };
 
 const tmpV2 = new THREE.Vector3();
 
-// updateMarkers / updateNodeMarkers / updateBoardMarkers / updatePipOverlay /
-// updateHudPanels が必要とする、Game 側の現在状態のスナップショット。
+// updateMarkers / updateNodeMarkers / updateBoardMarkers / updatePipOverlay が
+// 必要とする、Game 側の現在状態のスナップショット。
 // player / enemies / target / magPickups は参照渡し(state.r 等を読むだけで
 // ミューテートしない)。boardMarks は MarkersSystem 自身が保持する(combat.ts の
 // checkBoardCrossings が直接この配列へ push する)。
-export interface MarkersCtx {
+export interface MarkerCtx {
   mapMode: boolean;
   player: Player;
   enemies: Enemy[];
@@ -32,44 +30,19 @@ export interface MarkersCtx {
   magPickups: MagPickup[];
   mapLabelIds: string[]; // マップモードのラベル(mapView.labels の id 一覧、非マップ時に隠す)
   activeCamera: THREE.PerspectiveCamera; // PIP オーバーレイ専用の投影に使う
-  touchControls: TouchControls | null;
   simTime: number;
   solveLeadTime: (relP: Vec3, relV: Vec3, s: number) => number | null;
-
-  // --- ステータスパネル(updateHudPanels) ---
-  warp: number;
-  paused: boolean;
-  rcsDamp: boolean;
-  throttleIdx: number;
-  fineAttitude: boolean;
-  progradeHold: boolean;
-  camFollowAttitude: boolean;
-  roundsInMag: number;
-  magsLeft: number;
-  reloadTimer: number;
-  alt: number;
-  altDescending: boolean;
-  qdyn: number;
-  hullTemp: number;
-  shots: number;
-  kills: number;
-  totalEnemies: number;
-  stage: number;
-  stage00WaveCount: number;
-  stage0TimeLeft: number;
 }
 
 export class MarkersSystem {
   // ターゲット標的面の通過点(ターゲット相対オフセットで保持し、的に貼り付いて見せる)
   boardMarks: { off: Vec3; age: number }[] = [];
-  private hudTimer = 0;
-  private listTimer = 0;
 
-  constructor(private readonly hud: Hud) {}
+  constructor(private readonly markers: MarkerManager) {}
 
   // 方向マーカー(プログレード/レトログレード/ノーマル/アンチノーマル/動径 in-out)・
   // 機首ボアサイト・敵/ターゲット/AMMO マーカー・視界外方位/リードマーカーを更新する。
-  updateMarkers(ctx: MarkersCtx, pv: Vec3, project: ProjectFn): void {
+  updateMarkers(ctx: MarkerCtx, pv: Vec3, project: ProjectFn): void {
     const o = ctx.player.state.r;
 
     // マップ/戦闘ビューの出し分け(方向マーカーは戦闘ビューのみ・自機マーカーはマップのみ)
@@ -91,81 +64,81 @@ export class MarkersSystem {
     this.updateLeadAndDirMarkers(ctx, o, pv, project);
 
     // 以前の単一リードマーカーのクリーンアップ
-    this.hud.hideMarker('lead');
+    this.markers.hide('lead');
 
     // 重なったマーカーテキストを押し退けて線で繋ぐ
-    this.hud.resolveMarkerCollisions();
+    this.markers.resolveCollisions();
   }
 
-  private updateMapModeMarkers(ctx: MarkersCtx, project: ProjectFn): void {
+  private updateMapModeMarkers(ctx: MarkerCtx, project: ProjectFn): void {
     if (ctx.mapMode) {
-      this.hud.hideMarker('pro');
-      this.hud.hideMarker('retro');
-      this.hud.hideMarker('nrm');
-      this.hud.hideMarker('anm');
-      this.hud.hideMarker('radout');
-      this.hud.hideMarker('radin');
-      this.hud.hideMarker('tgtdir');
-      this.hud.hideMarker('atgdir');
-      this.hud.hideMarker('bore');
-      this.hud.hideMarker('lead');
+      this.markers.hide('pro');
+      this.markers.hide('retro');
+      this.markers.hide('nrm');
+      this.markers.hide('anm');
+      this.markers.hide('radout');
+      this.markers.hide('radin');
+      this.markers.hide('tgtdir');
+      this.markers.hide('atgdir');
+      this.markers.hide('bore');
+      this.markers.hide('lead');
       // 自機位置マーカー
       const sp = project(v3());
-      this.hud.marker('self', 'mk-self', '▷', sp.x, sp.y, sp.front, 'PLAYER');
+      this.markers.set('self', 'mk-self', '▷', sp.x, sp.y, sp.front, 'PLAYER');
     } else {
-      this.hud.hideMarker('self');
+      this.markers.hide('self');
       for (const id of ctx.mapLabelIds) {
-        this.hud.hideMarker(id);
+        this.markers.hide(id);
       }
     }
   }
 
-  private updateOrbitalDirectionMarkers(ctx: MarkersCtx, o: Vec3, pv: Vec3, project: ProjectFn): void {
+  private updateOrbitalDirectionMarkers(ctx: MarkerCtx, o: Vec3, pv: Vec3, project: ProjectFn): void {
     const proDir = norm(pv);
     const nrmDir = norm(cross(o, pv));
     const radDir = cross(proDir, nrmDir);
     const DIST = 5e4; // 遠方に投影して方向を示す
 
     const pro = project(scale(proDir, DIST));
-    this.hud.marker('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PROGRADE [Q]');
+    this.markers.set('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PROGRADE [Q]');
     const ret = project(scale(proDir, -DIST));
-    this.hud.marker('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RETROGRADE [E]');
+    this.markers.set('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RETROGRADE [E]');
 
     const nrm = project(scale(nrmDir, DIST));
-    this.hud.marker('nrm', 'mk-nrm', '▲', nrm.x, nrm.y, nrm.front, 'NORMAL [A]');
+    this.markers.set('nrm', 'mk-nrm', '▲', nrm.x, nrm.y, nrm.front, 'NORMAL [A]');
     const anm = project(scale(nrmDir, -DIST));
-    this.hud.marker('anm', 'mk-nrm', '▽', anm.x, anm.y, anm.front, 'ANTINORMAL [D]');
+    this.markers.set('anm', 'mk-nrm', '▽', anm.x, anm.y, anm.front, 'ANTINORMAL [D]');
 
     const radOut = project(scale(radDir, DIST));
-    this.hud.marker('radout', 'mk-rad', '◎', radOut.x, radOut.y, radOut.front, 'RADIAL OUT [W]');
+    this.markers.set('radout', 'mk-rad', '◎', radOut.x, radOut.y, radOut.front, 'RADIAL OUT [W]');
     const radIn = project(scale(radDir, -DIST));
-    this.hud.marker('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'RADIAL IN [S]');
+    this.markers.set('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'RADIAL IN [S]');
 
     if (ctx.target) {
       const tgtDir = norm(sub(ctx.target.state.r, o));
       const tmk = project(scale(tgtDir, DIST));
-      this.hud.marker('tgtdir', 'mk-tgtdir', '◇', tmk.x, tmk.y, tmk.front, '');
+      this.markers.set('tgtdir', 'mk-tgtdir', '◇', tmk.x, tmk.y, tmk.front, '');
       const atmk = project(scale(tgtDir, -DIST));
-      this.hud.marker('atgdir', 'mk-tgtdir', '◆', atmk.x, atmk.y, atmk.front, '');
+      this.markers.set('atgdir', 'mk-tgtdir', '◆', atmk.x, atmk.y, atmk.front, '');
     } else {
-      this.hud.hideMarker('tgtdir');
-      this.hud.hideMarker('atgdir');
+      this.markers.hide('tgtdir');
+      this.markers.hide('atgdir');
     }
   }
 
-  private updateBoresightMarker(ctx: MarkersCtx, project: ProjectFn): void {
+  private updateBoresightMarker(ctx: MarkerCtx, project: ProjectFn): void {
     if (ctx.player.alive && !ctx.mapMode) {
       const fwd = qRotate(ctx.player.att.q, v3(0, 0, 1));
       const bs = project(scale(fwd, 5e4));
-      this.hud.marker('bore', 'mk-boresight', '┼', bs.x, bs.y, bs.front);
+      this.markers.set('bore', 'mk-boresight', '┼', bs.x, bs.y, bs.front);
     } else {
-      this.hud.hideMarker('bore');
+      this.markers.hide('bore');
     }
   }
 
   // 画面上で近接する敵マーカーをクラスタ化し、代表(ターゲット優先→最近距離)だけに
   // まとめラベルを付ける。
-  private updateEnemyMarkers(ctx: MarkersCtx, o: Vec3, project: ProjectFn): void {
+  private updateEnemyMarkers(ctx: MarkerCtx, o: Vec3, project: ProjectFn): void {
     const CLUSTER_RADIUS = 40;
     const enemyMarkers: { i: number, e: Ship, p: {x:number, y:number, front:boolean}, dist: number, isTgt: boolean, groupHide: boolean, groupCount: number }[] = [];
 
@@ -173,7 +146,7 @@ export class MarkersSystem {
       const e = ctx.enemies[i]!;
       const key = `e${i}`;
       if (!e.alive) {
-        this.hud.hideMarker(key);
+        this.markers.hide(key);
         continue;
       }
       const rel = sub(e.state.r, o);
@@ -225,34 +198,34 @@ export class MarkersSystem {
           text = `${m.e.name} ${fmtMarkerDist(m.dist)}`;
         }
       }
-      this.hud.marker(key, m.isTgt ? 'mk-target' : 'mk-enemy', '◇', m.p.x, m.p.y, m.p.front, text);
+      this.markers.set(key, m.isTgt ? 'mk-target' : 'mk-enemy', '◇', m.p.x, m.p.y, m.p.front, text);
     }
   }
 
-  private updateMagPickupMarkers(ctx: MarkersCtx, o: Vec3, project: ProjectFn): void {
+  private updateMagPickupMarkers(ctx: MarkerCtx, o: Vec3, project: ProjectFn): void {
     for (let i = 0; i < C.MAX_MAG_PICKUPS; i++) {
       const key = `mg${i}`;
       const mp = ctx.magPickups[i];
       if (!mp || !mp.alive) {
-        this.hud.hideMarker(key);
+        this.markers.hide(key);
         continue;
       }
       const rel = sub(mp.state.r, o);
       const p = project(rel);
       const dist = len(rel);
-      this.hud.marker(key, 'mk-ammo', '▣', p.x, p.y, p.front, `AMMO ${fmtMarkerDist(dist)}`);
+      this.markers.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, `AMMO ${fmtMarkerDist(dist)}`);
     }
   }
 
-  private updateLeadAndDirMarkers(ctx: MarkersCtx, o: Vec3, pv: Vec3, project: ProjectFn): void {
+  private updateLeadAndDirMarkers(ctx: MarkerCtx, o: Vec3, pv: Vec3, project: ProjectFn): void {
     const cx = window.innerWidth / 2;
     const cy = window.innerHeight / 2;
 
     if (!ctx.mapMode && ctx.player.alive) {
       for (const enemy of ctx.enemies) {
         if (!enemy.alive) {
-          this.hud.hideMarker('lead-' + enemy.name);
-          this.hud.hideMarker('dir-' + enemy.name);
+          this.markers.hide('lead-' + enemy.name);
+          this.markers.hide('dir-' + enemy.name);
           continue;
         }
 
@@ -273,8 +246,8 @@ export class MarkersSystem {
       }
     } else {
       for (const ship of ctx.enemies) {
-        this.hud.hideMarker('lead-' + ship.name);
-        this.hud.hideMarker('dir-' + ship.name);
+        this.markers.hide('lead-' + ship.name);
+        this.markers.hide('dir-' + ship.name);
       }
     }
   }
@@ -300,14 +273,14 @@ export class MarkersSystem {
       const my = cy + r * Math.sin(ang);
 
       const rotDeg = ang * 180 / Math.PI + 90; // '▲' faces UP initially, so add 90 deg
-      this.hud.marker('dir-' + enemy.name, 'mk-dir', '▲', mx, my, true, '', 0.6, hexColor, rotDeg);
+      this.markers.set('dir-' + enemy.name, 'mk-dir', '▲', mx, my, true, '', 0.6, hexColor, rotDeg);
     } else {
-      this.hud.hideMarker('dir-' + enemy.name);
+      this.markers.hide('dir-' + enemy.name);
     }
   }
 
   private updateLeadMarker(
-    ctx: MarkersCtx,
+    ctx: MarkerCtx,
     enemy: Enemy,
     relP: Vec3,
     pv: Vec3,
@@ -325,29 +298,29 @@ export class MarkersSystem {
       if (t !== null && t < 25) {
         const lead = addScaled(relP, relV, t);
         const lp = project(lead);
-        this.hud.marker('lead-' + enemy.name, 'mk-lead', '✛', lp.x, lp.y, lp.front, '', 1, hexColor);
+        this.markers.set('lead-' + enemy.name, 'mk-lead', '✛', lp.x, lp.y, lp.front, '', 1, hexColor);
       } else {
-        this.hud.hideMarker('lead-' + enemy.name);
+        this.markers.hide('lead-' + enemy.name);
       }
     } else {
-      this.hud.hideMarker('lead-' + enemy.name);
+      this.markers.hide('lead-' + enemy.name);
     }
   }
 
   // ターゲットの軌道面との交線(相対昇交点・降交点)を自機の軌道上に表示する。
   // 面変更(ノーマル/アンチノーマル)burn を行うべき位置がひと目で分かる。
-  updateNodeMarkers(ctx: MarkersCtx, playerEl: Elements | null, tgtEl: Elements | null, project: ProjectFn): void {
+  updateNodeMarkers(ctx: MarkerCtx, playerEl: Elements | null, tgtEl: Elements | null, project: ProjectFn): void {
     if (!playerEl || !tgtEl) {
-      this.hud.hideMarker('an');
-      this.hud.hideMarker('dn');
+      this.markers.hide('an');
+      this.markers.hide('dn');
       return;
     }
     const o = ctx.player.state.r;
     const lineDir = cross(playerEl.hHat, tgtEl.hHat);
     if (lenSq(lineDir) < 1e-6) {
       // 軌道面がほぼ一致 → 交線が定まらない
-      this.hud.hideMarker('an');
-      this.hud.hideMarker('dn');
+      this.markers.hide('an');
+      this.markers.hide('dn');
       return;
     }
 
@@ -358,12 +331,12 @@ export class MarkersSystem {
 
     const ascP = project(sub(scale(d, rAsc), o));
     const descP = project(sub(scale(d, -rDesc), o));
-    this.hud.marker('an', 'mk-node', '▲', ascP.x, ascP.y, ascP.front, 'AN');
-    this.hud.marker('dn', 'mk-node', '▽', descP.x, descP.y, descP.front, 'DN');
+    this.markers.set('an', 'mk-node', '▲', ascP.x, ascP.y, ascP.front, 'AN');
+    this.markers.set('dn', 'mk-node', '▽', descP.x, descP.y, descP.front, 'DN');
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
-  updateBoardMarkers(ctx: MarkersCtx, dt: number, project: ProjectFn): void {
+  updateBoardMarkers(ctx: MarkerCtx, dt: number, project: ProjectFn): void {
     const tgt = ctx.target;
     const o = ctx.player.state.r;
     if (!tgt) this.boardMarks.length = 0;
@@ -375,12 +348,12 @@ export class MarkersSystem {
       const key = `bh${i}`;
       const m = this.boardMarks[i];
       if (!m || !tgt) {
-        this.hud.hideMarker(key);
+        this.markers.hide(key);
         continue;
       }
       const p = project(sub(add(tgt.state.r, m.off), o));
       const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
-      this.hud.marker(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
+      this.markers.set(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
     }
   }
 
@@ -391,11 +364,11 @@ export class MarkersSystem {
   // (この段階でカメラは PIP 用の position/quaternion/fov/aspect に設定済みで、
   //  renderer.render() 済みなので matrixWorldInverse/projectionMatrix は最新のはず。
   //  念のため updateMatrixWorld() を呼んでから使う。)
-  updatePipOverlay(ctx: MarkersCtx, rect: { x: number; y: number; w: number; h: number } | null): void {
+  updatePipOverlay(ctx: MarkerCtx, rect: { x: number; y: number; w: number; h: number } | null): void {
     const tgt = ctx.target;
     if (!rect || !tgt || !tgt.alive || !ctx.player.alive) {
-      this.hud.hideMarker('pip-tgt');
-      this.hud.hideMarker('pip-lead');
+      this.markers.hide('pip-tgt');
+      this.markers.hide('pip-lead');
       return;
     }
     const cam = ctx.activeCamera;
@@ -418,8 +391,8 @@ export class MarkersSystem {
 
     const relP = sub(tgt.state.r, o);
     const p = projectPip(relP);
-    // ラベル無し(''): resolveMarkerCollisions の押し退け対象から自然に除外される
-    this.hud.marker('pip-tgt', 'mk-target', '◇', p.x, p.y, inRect(p), '');
+    // ラベル無し(''): resolveCollisions の押し退け対象から自然に除外される
+    this.markers.set('pip-tgt', 'mk-target', '◇', p.x, p.y, inRect(p), '');
 
     const hexColor = tgt.accent ? '#' + tgt.accent.toString(16).padStart(6, '0') : '#ff6a00';
     const relV = sub(tgt.state.v, pv);
@@ -427,104 +400,10 @@ export class MarkersSystem {
     if (t !== null && t < 25) {
       const lead = addScaled(relP, relV, t);
       const lp = projectPip(lead);
-      this.hud.marker('pip-lead', 'mk-lead', '✛', lp.x, lp.y, inRect(lp), '', 1, hexColor);
+      this.markers.set('pip-lead', 'mk-lead', '✛', lp.x, lp.y, inRect(lp), '', 1, hexColor);
     } else {
-      this.hud.hideMarker('pip-lead');
+      this.markers.hide('pip-lead');
     }
   }
 
-  // ステータスパネル(HUD 上部のスタッツ・ターゲット情報・敵一覧)を一定周期で更新する。
-  updateHudPanels(
-    ctx: MarkersCtx,
-    dt: number,
-    playerEl: Elements | null,
-    tgtEl: Elements | null,
-  ): void {
-    const tgt = ctx.target;
-    this.hudTimer -= dt;
-    if (this.hudTimer <= 0) {
-      this.hudTimer = 0.1;
-      // タッチUIのトグルボタン(制動・微動・ホールド)の点灯状態を実際のモードに同期する。
-      // progradeHold は手動回転で自動解除されることもあるため、専用のトグル時だけでなく
-      // ここで毎回反映しておく。
-      ctx.touchControls?.setActive('KeyT', ctx.rcsDamp);
-      ctx.touchControls?.setActive('KeyV', ctx.fineAttitude);
-      ctx.touchControls?.setActive('KeyC', ctx.progradeHold);
-      this.hud.setStats({
-        met: ctx.simTime,
-        warpLabel: `×${ctx.warp}`,
-        paused: ctx.paused,
-        rcsDamp: ctx.rcsDamp,
-        throttleIdx: ctx.throttleIdx,
-        fineAttitude: ctx.fineAttitude,
-        progradeHold: ctx.progradeHold,
-        camFollowAttitude: ctx.camFollowAttitude,
-        roundsInMag: ctx.roundsInMag,
-        magsLeft: ctx.magsLeft,
-        reloadTimer: ctx.reloadTimer,
-        alt: ctx.alt,
-        altDescending: ctx.altDescending,
-        spd: len(ctx.player.state.v),
-        apAlt: playerEl ? playerEl.apAlt : NaN,
-        peAlt: playerEl ? playerEl.peAlt : NaN,
-        incDeg: playerEl ? playerEl.incDeg : NaN,
-        period: playerEl ? playerEl.period : NaN,
-        qdyn: ctx.qdyn,
-        hullTemp: ctx.hullTemp,
-        shots: ctx.shots,
-        kills: ctx.kills,
-        total: ctx.totalEnemies,
-        stage0State:
-          ctx.stage === -1 || ctx.stage === 0
-            ? {
-              hp: ctx.player.hp,
-              maxHp: C.PLAYER_MAX_HP,
-              msg:
-                ctx.stage === -1
-                  ? `サバイバル 第${ctx.stage00WaveCount}波`
-                  : `残り時間: ${Math.ceil(ctx.stage0TimeLeft)}秒`,
-            }
-            : null,
-      });
-
-      if (tgt) {
-        const relP = sub(tgt.state.r, ctx.player.state.r);
-        const relV = sub(tgt.state.v, ctx.player.state.v);
-        const dist = len(relP);
-        const relIncDeg =
-          playerEl && tgtEl
-            ? (Math.acos(Math.max(-1, Math.min(1, dot(playerEl.hHat, tgtEl.hHat)))) * 180) / Math.PI
-            : NaN;
-        this.hud.setTarget({
-          name: tgt.name,
-          dist,
-          closing: dist > 1e-6 ? -dot(relP, relV) / dist : 0,
-          relSpeed: len(relV),
-          hp: tgt.hp,
-          maxHp: tgt.maxHp,
-          apAlt: tgtEl ? tgtEl.apAlt : NaN,
-          peAlt: tgtEl ? tgtEl.peAlt : NaN,
-          incDeg: tgtEl ? tgtEl.incDeg : NaN,
-          period: tgtEl ? tgtEl.period : NaN,
-          relIncDeg,
-        });
-      } else {
-        this.hud.setTarget(null);
-      }
-    }
-
-    this.listTimer -= dt;
-    if (this.listTimer <= 0) {
-      this.listTimer = 0.25;
-      const rows = ctx.enemies
-        .filter((e) => e.alive)
-        .map((e) => ({
-          name: e.name,
-          dist: len(sub(e.state.r, ctx.player.state.r)),
-          targeted: e === tgt,
-        }))
-        .sort((a, b) => a.dist - b.dist);
-      this.hud.setEnemyList(rows);
-    }
-  }
 }
