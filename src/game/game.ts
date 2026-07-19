@@ -717,6 +717,11 @@ export class Game {
         }
       }
 
+      if (activeGroups === 0) {
+        // 敵集団が場にいない場合は即座にスポーン
+        this.stage00SpawnTimer = 0;
+      }
+
       if (activeGroups < maxGroups && this.stage00WaveCount < allowedMaxWaveCount) {
         this.stage00SpawnTimer -= dt;
         if (this.stage00SpawnTimer <= 0) {
@@ -875,9 +880,9 @@ export class Game {
     this.zoomActive = !this.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
 
-    // HP自動回復 (1分間に1回復)
+    // HP自動回復 (1秒間に1回復)
     if (this.phase === 'playing' && this.player.alive && this.player.hp > 0 && this.player.hp < this.player.maxHp) {
-      this.player.hp = Math.min(this.player.maxHp, this.player.hp + dt / 60.0);
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + dt);
     }
     if (this.phase !== 'playing' && this.mapMode) {
       // ゲーム終了時はマップモードを強制解除する
@@ -1841,7 +1846,8 @@ export class Game {
     if (this.target === ship) {
 
     }
-    if (this.stage !== 0 && this.enemies.every((e) => !e.alive)) {
+    // ステージ00(無限サバイバル)とステージ0(時間制限スコアアタック)は、敵全滅でクリアにはならない
+    if (this.stage !== 0 && this.stage !== -1 && this.enemies.every((e) => !e.alive)) {
       this.phase = 'won';
       this.sfx.setThrust(false);
       this.sfx.stopBgm();
@@ -1984,11 +1990,23 @@ export class Game {
       return !expired;
     });
 
+    let ammoToRespawn = 0;
     this.magPickups = this.magPickups.filter((mp) => {
-      const expired = !mp.alive || this.altitudeOf(mp.state.r) < C.DEBRIS_REENTRY_ALT;
-      if (expired) this.scene.remove(mp.obj);
+      const dist = len(sub(mp.state.r, this.player.state.r));
+      const tooFar = dist > 50000;
+      const expired = !mp.alive || this.altitudeOf(mp.state.r) < C.DEBRIS_REENTRY_ALT || tooFar;
+      if (expired) {
+        this.scene.remove(mp.obj);
+        // Stage 00の場合、遠すぎてデスポーンした弾薬は別の場所へ再配置する
+        if (this.stage === -1 && tooFar) {
+          ammoToRespawn++;
+        }
+      }
       return !expired;
     });
+    for (let i = 0; i < ammoToRespawn; i++) {
+      this.spawnMagPickup(C.STAGE00_AMMO_MIN_DIST, C.STAGE00_AMMO_MAX_DIST);
+    }
   }
 
   // --------------------------------------------------------- render sync
@@ -2422,6 +2440,29 @@ export class Game {
       // 中間で1回だけ、各リンクの継ぎ目をまっすぐ揃える方向へわずかに引き寄せる。
       // 直後に残りの距離拘束反復で生じた長さのずれを収束させ直す。
 
+    }
+
+    // マガジンチェーンが折りたたまれて重なっているかの判定とリセット
+    // 互いに隣接していないリンク同士の距離が近すぎる場合は絡まっていると見なす
+    let folded = false;
+    const minSq = (MAG_BELT_PITCH * 0.5) * (MAG_BELT_PITCH * 0.5);
+    for (let i = 0; i < n - 2; i++) {
+      for (let j = i + 2; j < n; j++) {
+        if (this.beltPos[i]!.distanceToSquared(this.beltPos[j]!) < minSq) {
+          folded = true;
+          break;
+        }
+      }
+      if (folded) break;
+    }
+
+    if (folded) {
+      for (let i = 0; i < n; i++) {
+        const p = beltRootPos.clone().addScaledVector(X_AXIS, i * MAG_BELT_PITCH);
+        this.beltPos[i]!.copy(p);
+        this.beltPrevPos[i]!.copy(p);
+        this.beltTwist[i] = 0;
+      }
     }
 
     // 表示: 各リンクをその節点の手前(アンカー or 前リンクの節点)に置き、
