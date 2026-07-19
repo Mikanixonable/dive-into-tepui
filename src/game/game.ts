@@ -21,13 +21,6 @@ import {
   sunPosition,
 } from '../physics/ephemeris';
 import { sampleAt } from '../physics/predict';
-import { MapPlanner, PlannerCtx } from './planner';
-import { MapView } from './mapview';
-import { BeltPhysics } from './belt';
-import { CombatCtx, CombatSystem } from './combat';
-import { StageCtx, StageDirector } from './stages';
-import { EnvironmentSystem } from './environment';
-import { MarkersCtx, MarkersSystem } from './markers';
 import {
   Attitude,
   qRotate,
@@ -49,9 +42,15 @@ import {
   sub,
   v3,
 } from '../physics/vec3';
+import { MapPlanner, PlannerCtx } from './planner';
+import { MapView } from './mapview';
+import { BeltPhysics } from './belt';
+import { CombatCtx, CombatSystem } from './combat';
+import { StageCtx, StageDirector } from './stages';
+import { EnvironmentSystem } from './environment';
+import { MarkersCtx, MarkersSystem } from './markers';
 import * as C from './const';
 import { Bullet, Casing, DebrisPiece, FlashEffect, MagPickup, Ship, PlasmaBullet } from './entities';
-
 import { Input } from './input';
 import { TouchControls } from './touch';
 import { ChaseCamera } from './camera';
