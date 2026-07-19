@@ -8,11 +8,11 @@ import * as THREE from 'three/webgpu';
 import { Elements } from '../physics/orbital';
 import { qRotate } from '../physics/attitude';
 import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../physics/vec3';
-import * as C from './const';
-import { MagPickup, Ship } from './entities';
+import * as C from '../game/const';
+import { MagPickup, Ship } from '../game/entities';
 import { Hud } from './hud';
-import { fmtMarkerDist } from './hud/utils';
-import { TouchControls } from './touch';
+import { fmtMarkerDist } from './utils';
+import { TouchControls } from '../game/touch';
 
 export type ProjectFn = (rel: Vec3) => { x: number; y: number; front: boolean };
 

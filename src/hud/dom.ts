@@ -2,7 +2,7 @@
 // 副作用(document への要素追加・スタイル注入)は残るが、状態は持たない。
 // イベントリスナーが参照するコールバックは HudDomHost 経由で呼び出し時に解決するため、
 // (呼び出し元の) Hud インスタンスをそのまま渡せる。
-import { ACCENT, ACCENT_SOFT, ACCENT_RGB, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT } from '../theme';
+import { ACCENT, ACCENT_SOFT, ACCENT_RGB, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT } from '../game/theme';
 
 // デザイン方針: ダークテーマ。ニューモーフィズムは廃止し、モノトーン
 // (ほぼ無彩色のグレースケール)+ 彩度の高いオレンジ 1 色をアクセントに使う

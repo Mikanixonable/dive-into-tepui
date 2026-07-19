@@ -1,4 +1,4 @@
-import { Hud } from './hud';
+import { Hud } from '../hud/hud';
 import { MapPlanner } from './planner';
 import { TouchControls } from './touch';
 

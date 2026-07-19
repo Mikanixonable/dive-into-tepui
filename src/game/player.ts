@@ -5,7 +5,7 @@ import { Vec3, addScaled, cross, len, lenSq, norm, scale, v3 } from '../physics/
 import * as C from './const';
 import { Ship } from './entities';
 import { Input } from './input';
-import { Hud } from './hud';
+import { Hud } from '../hud/hud';
 import { buildPlayerShip, RCS_BLOCK_OFFSETS } from '../render/ships';
 
 export class Player implements Ship {

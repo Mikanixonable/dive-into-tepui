@@ -21,7 +21,7 @@ import {
 } from '../physics/vec3';
 import * as C from './const';
 import { Bullet, Casing, DebrisPiece, FlashEffect, PlasmaBullet, Ship } from './entities';
-import { Hud } from './hud';
+import { Hud } from '../hud/hud';
 import { Sfx } from './audio';
 import { ACCENT } from './theme';
 import {

@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { Vec3 } from '../physics/vec3';
 import { MouseDelta } from './input';
 import * as C from './const';
-import { Hud } from './hud';
+import { Hud } from '../hud/hud';
 
 export class ChaseCamera {
   yaw = 0; // 0 = 機体後方(プログレード側から見る)

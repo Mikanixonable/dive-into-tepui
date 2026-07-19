@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import { moonPosition, sunPosition, emLagrangePoints, seLagrangePoints } from '../physics/ephemeris';
 import { Vec3, sub, v3 } from '../physics/vec3';
 import * as C from './const';
-import { Hud } from './hud';
+import { Hud } from '../hud/hud';
 import { MouseDelta } from './input';
 import { MapLabel, ProjectFn } from './planner';
 

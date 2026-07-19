@@ -5,7 +5,7 @@ import { Vec3, add, cross, len, lenSq, norm, randSym, randVec, rotateAxis, sub, 
 import { buildMagPickup } from '../render/ships';
 import * as C from './const';
 import { MagPickup } from './entities';
-import { Hud } from './hud';
+import { Hud } from '../hud/hud';
 import { Sfx } from './audio';
 import { Player } from './player';
 

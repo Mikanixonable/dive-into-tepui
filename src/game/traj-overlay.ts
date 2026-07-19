@@ -1,7 +1,7 @@
 import { sampleAt } from '../physics/predict';
 import { Vec3, sub } from '../physics/vec3';
 import { TrajLine } from '../render/trajline';
-import { Hud } from './hud';
+import { Hud } from '../hud/hud';
 import { MapPlanner, PlannerCtx, ProjectFn } from './planner';
 
 export class TrajectoryOverlay {

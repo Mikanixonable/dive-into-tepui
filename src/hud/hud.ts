@@ -5,11 +5,11 @@
 //   - hud/dom.ts     … 静的 DOM/スタイル構築(旧 constructor 本体)
 //   - hud/markers.ts … スクリーン投影マーカー管理(marker/hideMarker/resolveMarkerCollisions)
 //   - このファイル   … パネル更新・トースト・ヘルプ・設定・終了画面(公開 API は不変)
-import * as C from './const';
-import { ACCENT, TEXT as INK, TEXT_DIM as INK_SOFT } from './theme';
-import { buildHudDom } from './hud/dom';
-import { MarkerManager } from './hud/markers';
-import { fmtDist, fmtSpeed, fmtTime } from './hud/utils';
+import * as C from '../game/const';
+import { ACCENT, TEXT as INK, TEXT_DIM as INK_SOFT } from '../game/theme';
+import { buildHudDom } from './dom';
+import { MarkerManager } from './markerManager';
+import { fmtDist, fmtSpeed, fmtTime } from './utils';
 
 export interface StatsData {
   met: number;

@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { dot, norm, sub, v3 } from '../physics/vec3';
 import * as C from './const';
 import { Ship } from './entities';
-import { Hud } from './hud';
+import { Hud } from '../hud/hud';
 import { Input } from './input';
 import { MapPlanner, PlannerCtx, ProjectFn } from './planner';
 import { MapView } from './mapview';

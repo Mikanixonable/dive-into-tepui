@@ -7,7 +7,7 @@ import { airspeed, envAccelInto } from '../physics/envaccel';
 import { Vec3, addScaled, dot, len, norm, v3 } from '../physics/vec3';
 import { atmosphericDensity } from '../physics/atmosphere';
 import * as C from './const';
-import { Hud } from './hud';
+import { Hud } from '../hud/hud';
 import { Sfx } from './audio';
 
 // checkThermalLimits の戻り値: 限界超過の種別。null なら超過なし。
