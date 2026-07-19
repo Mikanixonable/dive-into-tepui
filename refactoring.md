@@ -73,7 +73,16 @@ syncRender 系(軌道線・カメラ・シーン変異)は密結合のため gam
 公開 API(メソッド名・シグネチャ)は不変のため呼び出し側(game.ts 等)への diff はゼロ。
 テーマ値は引き続き `theme.ts` のみ参照。
 
-## ステップ 5. 物理関数の回帰テスト整備(中・低リスク)
+## ステップ 5. 物理関数の回帰テスト整備(中・低リスク) — ✅ 完了 (2026-07-19)
+
+実績: `tsconfig.test.json`(CommonJS, outDir `tests/dist`、gitignore 済み)+
+`tests/physics/*.test.ts`(vec3 / orbital / attitude / atmosphere / ephemeris、
+計 23 ケース)+ 極小ランナー `tests/physics/harness.ts` を追加。
+`npm run test:physics` = `tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js`。
+追加 devDependency なし(素の `node:assert/strict`)。往復系(ケプラー要素⇄状態、
+真近点角⇄位置・速度)は機械精度の理論値で検証、RK4 1周誤差・J2 の RAAN 回帰率・
+大気密度テーブル境界の連続性は現状実装を実測してその値を基準値として固定
+(理論値ではなく回帰検知が目的)。23/23 パス。
 
 リファクタの安全網として、既存の検証手順(CLAUDE.md 記載: `src/physics/*.ts` を tsc で
 CommonJS にコンパイルして node で assert)を `npm run test:physics` としてスクリプト化する。

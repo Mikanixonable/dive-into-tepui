@@ -7,6 +7,7 @@
     "dev": "node node_modules/webpack-cli/bin/cli.js serve --mode development",
     "build": "webpack --mode production",
     "typecheck": "tsc --noEmit",
+    "test:physics": "tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js",
     "export-assets": "node tools/export-models.mjs && node tools/export-earth-texture.mjs"
   },
   "devDependencies": {
