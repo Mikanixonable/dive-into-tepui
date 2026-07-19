@@ -10,6 +10,11 @@ declare module 'three/webgpu' {
     setPixelRatio(ratio: number): void;
     setSize(width: number, height: number, updateStyle?: boolean): void;
     render(scene: import('three').Scene, camera: import('three').Camera): void;
+    autoClear: boolean;
+    clear(): void;
+    setViewport(x: number, y: number, width: number, height: number): void;
+    setScissor(x: number, y: number, width: number, height: number): void;
+    setScissorTest(enable: boolean): void;
   }
   export class MeshStandardNodeMaterial extends import('three').MeshStandardMaterial {
     constructor(parameters?: import('three').MeshStandardMaterialParameters);

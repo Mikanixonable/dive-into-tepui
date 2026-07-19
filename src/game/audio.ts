@@ -234,6 +234,36 @@ export class Sfx {
     this.tone(96, 0.05, 0.07, 'sawtooth');
   }
 
+  // リロード音: 金属質のノイズと金属音を組み合わせて「ガチャッ、シャコォォン」という音を作る
+  playReload(): void {
+    if (!this.ctx || !this.noiseBuf) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+
+    // スライドする金属的なノイズ
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1500, t);
+    filter.frequency.exponentialRampToValueAtTime(300, t + 1.2);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.25, t); // 半分に
+    gain.gain.exponentialRampToValueAtTime(0.005, t + 1.2);
+    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.start(t, 0, 1.2);
+
+    // バレル排出・交換時の甲高い金属音
+    this.tone(1200, 0.1, 0.05, 'square');
+    this.tone(800, 0.15, 0.05, 'sawtooth');
+    
+    // 遅れてもう一度ガチャッという音
+    setTimeout(() => {
+      this.tone(900, 0.1, 0.04, 'square');
+      this.tone(600, 0.15, 0.04, 'sawtooth');
+    }, 800);
+  }
+
   // 連射開始前の起動音: 艦砲 CIWS のモーターが立ち上がる唸りに似せる。
   // 低い三角波の唸りが滑り上がり、機械的なこすれノイズが重なる。
   spinUp(): void {

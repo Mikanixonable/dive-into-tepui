@@ -85,6 +85,7 @@ import {
   buildPlayerShip,
   buildStage0EnemyShip,
   buildPlasmaMesh,
+  buildBarrelMesh,
 } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
 import { TrajLine } from '../render/trajline';
@@ -262,14 +263,18 @@ export class Game {
   private readonly envSmall = this.makeEnvAccel(C.SMALL_DEBRIS_BCINV);
 
   private fireCooldown = 0;
+  private reloadTimer = 0;
   private shots = 0;
   private hits = 0;
   private kills = 0;
+  
+  private rotationHoldTime = 0; // 手動回転の継続時間 [s]
 
   // --- 弾薬・マガジン ---
   private muzzleIdx = 0; // 縦二連砲口の交互発射用
   private roundsInMag = C.MAG_ROUNDS; // 給弾中マガジンの残弾
   private magsLeft = C.INITIAL_MAGS - 1; // ベルトに連結された未使用マガジン数
+  private magsConsumedSinceReload = 0; // 今回のバレルで消費したマガジン数
   private wasEmptyClick = false;
   private magPickups: MagPickup[] = [];
   private resupplyCheckAt = 0; // [sim s]
@@ -501,7 +506,10 @@ export class Game {
   }
 
   // 描画に使うカメラ(戦闘 / 軌道計画で切り替え)
-  get activeCamera(): THREE.PerspectiveCamera {
+  public get isMapMode(): boolean { return this.mapMode; }
+  public get isFiring(): boolean { return this.wasFiring; }
+  public get playerShipObj(): THREE.Object3D { return this.player.obj; }
+  public get activeCamera(): THREE.PerspectiveCamera {
     return this.mapMode ? this.mapView.camera : this.camera;
   }
 
@@ -1077,7 +1085,19 @@ export class Game {
           this.hud.toggleSettings();
           break;
         case 'KeyR':
-          if (this.phase !== 'playing') location.reload();
+          if (this.phase !== 'playing') {
+            location.reload();
+          } else {
+            // 手動リロード(残弾がある場合のみ)
+            if (this.reloadTimer <= 0 && (this.roundsInMag < C.MAG_ROUNDS || this.magsConsumedSinceReload > 0) && this.magsLeft > 0) {
+              this.magsLeft--; // 残弾ごと捨てる
+              this.roundsInMag = C.MAG_ROUNDS;
+              this.magsConsumedSinceReload = 0;
+              this.reloadTimer = 3.0;
+              this.dropBarrel();
+              this.sfx.playReload();
+            }
+          }
           break;
       }
     }
@@ -1176,17 +1196,25 @@ export class Game {
       this.hud.hint('弾薬切れ — 軌道上の補給マガジン ▣ を回収せよ', 3000);
     }
     this.wasEmptyClick = rawWantFire && !hasAmmo;
-    const wantFire = rawWantFire && this.player.alive && warp <= C.MAX_PHYS_WARP && hasAmmo;
-    if (wantFire && !this.wasFiring) {
-      this.sfx.spinUp();
-      this.fireCooldown = C.SPINUP_TIME;
-    }
-    this.wasFiring = wantFire;
-    if (wantFire) {
-      this.fireCooldown -= dt;
-      if (this.fireCooldown <= 0) {
-        this.fireGun();
-        this.fireCooldown = C.FIRE_INTERVAL;
+    
+    // リロード中は射撃不可
+    if (this.reloadTimer > 0) {
+      this.reloadTimer -= dt;
+      this.wasFiring = false;
+    } else {
+      const wantFire = rawWantFire && this.player.alive && warp <= C.MAX_PHYS_WARP && hasAmmo;
+      if (wantFire && !this.wasFiring) {
+        this.sfx.spinUp();
+        this.fireCooldown = C.SPINUP_TIME;
+        this.fineAttitude = true; // 連射時に自動的に微動モードに入る
+      }
+      this.wasFiring = wantFire;
+      if (wantFire) {
+        this.fireCooldown -= dt;
+        if (this.fireCooldown <= 0) {
+          this.fireGun();
+          this.fireCooldown = C.FIRE_INTERVAL;
+        }
       }
     }
 
@@ -1549,16 +1577,29 @@ export class Game {
     const inY = ((i.down('KeyL') ? 1 : 0) + (i.down('KeyJ') ? -1 : 0)) * manual; // ヨー (L=左, J=右)
     const inZ = ((i.down('KeyO') ? 1 : 0) + (i.down('KeyU') ? -1 : 0)) * manual; // ロール (O=右, U=左)
 
-    if (this.progradeHold && (inX !== 0 || inY !== 0 || inZ !== 0)) {
+    const isRotating = inX !== 0 || inY !== 0 || inZ !== 0;
+    if (isRotating) {
+      this.rotationHoldTime += attDt;
+    } else {
+      this.rotationHoldTime = 0;
+    }
+
+    if (this.progradeHold && isRotating) {
       // 手動操作で自動保持を解除(SAS 的な挙動: 操作すると一旦解除される)
       this.progradeHold = false;
       this.hud.hint('進行方向ホールド解除(手動操作)');
     }
 
+    // 機体回転のRCS出力: 初期は30%、1秒以上の長押しで最大60%まで段階的に増加
+    let rcsOutputFactor = 0.3;
+    if (this.rotationHoldTime > 1.0) {
+      rcsOutputFactor = 0.3 + 0.3 * Math.min(1.0, this.rotationHoldTime - 1.0);
+    }
+
     // 微調整モード: 角加速度・角速度上限を絞り、小刻みな姿勢操作を可能にする
     const angScale = this.fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
-    const maxAngAccel = C.MAX_ANG_ACCEL * angScale;
-    const maxAngVel = C.MAX_ANG_VEL * angScale;
+    const maxAngAccel = C.MAX_ANG_ACCEL * angScale * rcsOutputFactor;
+    const maxAngVel = C.MAX_ANG_VEL * angScale; // 最高速度は変えないか、連動させるか。要望は「出力」なので加速度のみ絞る
 
     const tq = v3(
       inX * maxAngAccel * I.x,
@@ -1697,13 +1738,50 @@ export class Game {
     this.shots++;
     this.sfx.fire();
 
-    // 弾薬消費: 16 発でマガジン 1 個を消費し、ベルトから次を自動給弾する
+    // 弾薬消費: マガジン撃ち尽くした瞬間
     this.roundsInMag--;
     if (this.roundsInMag <= 0 && this.magsLeft > 0) {
       this.magsLeft--;
       this.roundsInMag = C.MAG_ROUNDS;
-      this.sfx.magFeed();
+      this.magsConsumedSinceReload++;
       this.spawnEjectedMagazineFrame();
+      
+      // マガジン3つ消費でバレル交換リロード
+      if (this.magsConsumedSinceReload >= 3) {
+        this.magsConsumedSinceReload = 0;
+        this.reloadTimer = 3.0; // 3秒のクールダウン
+        this.sfx.playReload();
+        this.dropBarrel();
+      } else {
+        // 通常の給弾(マガジン連結のみ)
+        this.sfx.magFeed();
+      }
+    }
+  }
+
+  // リロード時(バレル交換)に円柱アイテムをデブリとして放出する
+  private dropBarrel(): void {
+    const p = this.player;
+    // 下方に少し勢いをつけて放出
+    const down = qRotate(p.att.q, v3(0, -1, 0));
+    const piece: DebrisPiece = {
+      state: {
+        r: add(p.state.r, qRotate(p.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
+        v: add(p.state.v, add(scale(down, 3.0), randVec(0.5))),
+      },
+      att: {
+        q: { x: p.att.q.x, y: p.att.q.y, z: p.att.q.z, w: p.att.q.w },
+        w: v3(randSym(2), randSym(2), randSym(2)),
+        inertia: v3(1, 0.2, 1), // 円柱
+      },
+      obj: buildBarrelMesh(),
+      collideRadius: 0.8,
+    };
+    this.debris.push(piece);
+    this.scene.add(piece.obj);
+    while (this.debris.length > C.MAX_DEBRIS) {
+      const old = this.debris.shift()!;
+      this.removeDebrisObj(old);
     }
   }
 
@@ -1719,9 +1797,6 @@ export class Game {
         v: add(p.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
       },
       att: {
-        // ランダムな向きではなく、給弾ベルトの根本と同じく機体に対して垂直な
-        // 姿勢(=機体の姿勢そのまま)で排出する。そこにかすかなランダム回転
-        // (角速度)だけを加え、漂いながらゆっくり回転する見た目にする。
         q: { x: p.att.q.x, y: p.att.q.y, z: p.att.q.z, w: p.att.q.w },
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
@@ -2960,6 +3035,7 @@ export class Game {
         camFollowAttitude: this.camFollowAttitude,
         roundsInMag: this.roundsInMag,
         magsLeft: this.magsLeft,
+        reloadTimer: this.reloadTimer,
         alt: this.altitudeOf(this.player.state.r),
         spd: len(this.player.state.v),
         apAlt: playerEl ? playerEl.apAlt : NaN,
