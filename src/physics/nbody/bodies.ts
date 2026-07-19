@@ -1,8 +1,6 @@
-export interface Vec3 {
-  x: number;
-  y: number;
-  z: number;
-}
+import type { Vec3 } from '../vec3';
+
+export type { Vec3 };
 
 export interface Body {
   name: string;

@@ -6,7 +6,7 @@ import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './
 
 // 低軌道シューティング: エントリポイント。
 // 物理はメインスレッドで毎フレーム積分する(単体エンティティの中心重力
-// RK4 は十分軽い)。src/physics/physics.worker.ts の N体ワーカーは
+// RK4 は十分軽い)。src/physics/nbody/physics.worker.ts の N体ワーカーは
 // 将来のシスルナ(太陽-地球-月)フェーズ用に残してあり、現在は未使用。
 // ステージ選択画面。第二ステージは第一ステージクリア(localStorage)で解放。
 function selectStage(): Promise<number> {

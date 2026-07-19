@@ -85,7 +85,7 @@ export class MapPlanner {
       duration = this.predictDurationSec(ctx);
     } else {
       const first = this.planNodes[0];
-      duration = first ? Math.max(60, first.time - ctx.simTime + 120) : 0;
+      duration = first ? Math.max(C.NODE_GUIDE_MIN_DURATION, first.time - ctx.simTime + C.NODE_GUIDE_DURATION_MARGIN) : 0;
     }
     if (duration <= 0) {
       this.trajSamples = [];
@@ -206,7 +206,7 @@ export class MapPlanner {
     }
 
     let bestTargetKey: string | null = null;
-    let bestTargetD = 20 * 20;
+    let bestTargetD = C.MAP_LABEL_PICK_PX * C.MAP_LABEL_PICK_PX;
     for (const lbl of labels) {
       const wp = sub(lbl.pos, o);
       const p = project(wp);

@@ -1,6 +1,8 @@
-import type { Vec3 } from './bodies';
-
-export type { Vec3 };
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
 
 export function v3(x = 0, y = 0, z = 0): Vec3 {
   return { x, y, z };

@@ -629,19 +629,19 @@ export class Game {
     const rHat = norm(base.r);
     const specs: EnemySpec[] = [];
     const groupCount = C.STAGE0_GROUP_ACCENTS.length;
-    const safeRange = C.STAGE0_MAX_RANGE * 0.94; // マージンを残して確実に5km以内に収める
+    const safeRange = C.STAGE0_MAX_RANGE * C.STAGE0_SAFE_RANGE_FACTOR; // マージンを残して確実に5km以内に収める
 
     for (let gi = 0; gi < groupCount; gi++) {
       const theta = (gi / groupCount) * Math.PI * 2;
-      const centerDist = safeRange * (0.52 + Math.random() * 0.14);
+      const centerDist = safeRange * (C.STAGE0_GROUP_CENTER_DIST_MIN + Math.random() * C.STAGE0_GROUP_CENTER_DIST_RANGE);
       const cAlong = Math.cos(theta) * centerDist;
       const cNormal = Math.sin(theta) * centerDist;
-      const cRadial = randSym(safeRange * 0.1);
+      const cRadial = randSym(safeRange * C.STAGE0_GROUP_RADIAL_FACTOR);
 
       for (let i = 0; i < C.STAGE0_PER_GROUP; i++) {
-        const jAlong = cAlong + randSym(500);
-        const jNormal = cNormal + randSym(500);
-        const jRadial = cRadial + randSym(350);
+        const jAlong = cAlong + randSym(C.STAGE0_JITTER_ALONG);
+        const jNormal = cNormal + randSym(C.STAGE0_JITTER_NORMAL);
+        const jRadial = cRadial + randSym(C.STAGE0_JITTER_RADIAL);
         let off = add(scale(vHat, jAlong), scale(hHat, jNormal));
         off = add(off, scale(rHat, jRadial));
         const offLen = len(off);
@@ -768,7 +768,7 @@ export class Game {
   private spawnStage00Wave(forcedPattern?: 'linear' | 'random'): void {
     this.stage00WaveCount++;
     const w = this.stage00WaveCount;
-    const shipCount = 5 + Math.floor((w - 1) * 2); // 5, 7, 9...
+    const shipCount = C.STAGE00_WAVE_BASE_SHIPS + Math.floor((w - 1) * C.STAGE00_WAVE_SHIPS_PER_WAVE); // 5, 7, 9...
 
     const types = ['behind', 'front', 'above', 'side'];
     const type = w === 1 ? 'behind' : types[Math.floor(Math.random() * types.length)];
@@ -783,7 +783,7 @@ export class Game {
     let centerR: Vec3;
 
     // 配置位置を決定 (少しランダムなオフセットもつける)
-    const dr = (Math.random() - 0.5) * 1000;
+    const dr = (Math.random() - 0.5) * C.STAGE00_PLACEMENT_JITTER;
     if (type === 'behind') {
       centerR = add(r0, add(scale(vHat, -dist), scale(rHat, dr)));
     } else if (type === 'front') {
@@ -797,16 +797,16 @@ export class Game {
 
     // 自機に向かう相対速度成分(フライパス用)
     // 1000m ~ 2000m の範囲ですれ違うようにターゲット位置をずらす
-    const missDist = 1000 + Math.random() * 1000;
+    const missDist = C.STAGE00_FLYBY_MISS_DIST_MIN + Math.random() * C.STAGE00_FLYBY_MISS_DIST_RANGE;
     const directDir = norm(sub(r0, centerR));
     const missPerp = randPerp(directDir);
     const targetPos = add(r0, scale(missPerp, missDist));
 
     const approachDir = norm(sub(targetPos, centerR));
-    const flybySpeed = C.STAGE00_FLYBY_SPEED + (w - 1) * 10; // ウェーブが進むと少し速くなる
+    const flybySpeed = C.STAGE00_FLYBY_SPEED + (w - 1) * C.STAGE00_FLYBY_SPEED_RAMP; // ウェーブが進むと少し速くなる
     // 敵の初速度 = 自機の速度 + 接近速度 + わずかな横ブレ
     const perpDir = randPerp(approachDir);
-    const spread = scale(perpDir, Math.random() * 20);
+    const spread = scale(perpDir, Math.random() * C.STAGE00_FLYBY_LATERAL_SPREAD);
     const centerV = add(v0, add(scale(approachDir, flybySpeed), spread));
 
     const randCol = Math.random();
@@ -914,7 +914,7 @@ export class Game {
 
     // HP自動回復 (1秒間に1回復)。一時停止メニュー表示中は回復も止める。
     if (!this.paused && this.phase === 'playing' && this.player.alive && this.player.hp > 0 && this.player.hp < this.player.maxHp) {
-      this.player.hp = Math.min(this.player.maxHp, this.player.hp + dt);
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + dt * C.HP_REGEN_RATE);
     }
     if (this.phase !== 'playing' && this.mapMode) {
       // ゲーム終了時はマップモードを強制解除する
@@ -944,7 +944,7 @@ export class Game {
         if (rClicks.length > 0 && this.player.alive) {
           const rc = rClicks[rClicks.length - 1]!;
           let hit: Ship | null = null;
-          let minDistSq = 600; // ~24px radius
+          let minDistSq = C.TARGET_LOCK_PICK_PX_SQ;
           for (const e of this.enemies) {
             if (!e.alive) continue;
             const p = this.project(sub(e.state.r, this.player.state.r));
@@ -1346,7 +1346,7 @@ export class Game {
     for (const e of this.enemies) {
       if (!e.alive) continue;
       const dist = len(sub(this.player.state.r, e.state.r));
-      if (dist < C.STAGE00_MAX_RANGE && dist > 50) {
+      if (dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE) {
         if (e.burstLeft && e.burstLeft > 0) {
           e.burstDelay = (e.burstDelay ?? 0) - dt;
           if (e.burstDelay <= 0) {
@@ -1361,8 +1361,8 @@ export class Game {
             const key = e.accent ?? 0;
             const countInGroup = attackingCounts.get(key) || 0;
             // 同一集団内で同時に攻撃するのは最大3機まで
-            if (countInGroup < 3 && Math.random() < 0.6) {
-              const counts = [3, 5, 7, 20];
+            if (countInGroup < C.ENEMY_MAX_ATTACKERS_PER_GROUP && Math.random() < C.ENEMY_ATTACK_CHANCE) {
+              const counts = C.ENEMY_BURST_COUNTS;
               e.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
               e.burstDelay = C.ENEMY_BURST_INTERVAL;
               attackingCounts.set(key, countInGroup + 1);
@@ -1393,7 +1393,7 @@ export class Game {
 
     // 散布界を非常に小さくして、正確に狙う
     const perp = randPerp(aimDir);
-    const spreadAng = (Math.random() * 0.05 * Math.PI) / 180; // 0.05度
+    const spreadAng = (Math.random() * C.PLASMA_SPREAD_DEG * Math.PI) / 180;
     const actualAim = rotateAxis(aimDir, perp, spreadAng);
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
@@ -1460,7 +1460,7 @@ export class Game {
   // 自機軌道の少し先(同一軌道を位相シフト)に補給マガジンを投入する。
   // 既定は 1.25〜2.5km 先(通常ステージの残弾補給用、従来の半分の距離)。第零ステージの
   // 開始時配置ではより近い距離を明示的に渡す。
-  private spawnMagPickup(minDist = 1250, maxDist = 2500): void {
+  private spawnMagPickup(minDist = C.AMMO_RESUPPLY_MIN_DIST, maxDist = C.AMMO_RESUPPLY_MAX_DIST): void {
     const r = this.player.state.r;
     const v = this.player.state.v;
     const hHat = norm(cross(r, v));
@@ -1539,7 +1539,7 @@ export class Game {
       C.RAD_AREA *
       (Math.pow(C.ENV_TEMP, 4) - Math.pow(this.hullTemp, 4));
     this.hullTemp = Math.max(
-      120,
+      C.HULL_TEMP_FLOOR,
       this.hullTemp + ((qdot * C.HEAT_ABSORB_AREA + cool) / C.HEAT_CAPACITY) * dtSub,
     );
   }
@@ -1573,22 +1573,22 @@ export class Game {
     const alt = this.altitudeOf(this.player.state.r);
     if (!isFinite(this.altEma)) this.altEma = alt;
     const prevEma = this.altEma;
-    const k = Math.min(1, dt / 3);
+    const k = Math.min(1, dt / C.ALT_EMA_TIME_CONST);
     this.altEma += (alt - this.altEma) * k;
     if (dt > 1e-6) {
       const rate = (this.altEma - prevEma) / dt;
       this.altRateEma += (rate - this.altRateEma) * k;
     }
-    if (this.altRateEma < -3) {
+    if (this.altRateEma < C.ALT_DESCEND_WARN_RATE) {
       this.altDescendWarned = true;
-    } else if (this.altRateEma > -1) {
+    } else if (this.altRateEma > C.ALT_DESCEND_CLEAR_RATE) {
       this.altDescendWarned = false;
     }
 
     // しきい値(120km/100km/80km)を下から上まで一つずつ跨いだタイミングで警告する。
     // EMA 高度なので離心率によるふらつきでは誤爆しにくい。しきい値+ヒステリシスまで
     // 登り返すと解除し、再降下時に同じしきい値で再警告できるようにする。
-    const HYSTERESIS = 5e3; // [m]
+    const HYSTERESIS = C.ALT_WARN_HYSTERESIS; // [m]
     for (const th of C.ALT_WARN_THRESHOLDS) {
       if (this.altEma < th) {
         if (!this.altWarnedThresholds.has(th)) {
@@ -1670,7 +1670,7 @@ export class Game {
     }
 
     // 機体回転のRCS出力: 初期は30%、長押し3秒目で最大130%まで段階的に増加
-    const rcsOutputFactor = 0.3 + 1.0 * (Math.min(3.0, this.rotationHoldTime) / 3.0);
+    const rcsOutputFactor = C.RCS_MANUAL_OUTPUT_MIN + C.RCS_MANUAL_OUTPUT_RAMP * (Math.min(C.RCS_MANUAL_RAMP_TIME, this.rotationHoldTime) / C.RCS_MANUAL_RAMP_TIME);
 
     // 微調整モード: 角加速度・角速度上限を絞り、小刻みな姿勢操作を可能にする
     const angScale = this.fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
@@ -1938,12 +1938,12 @@ export class Game {
       if (this.player.alive && this.segmentHit(pb, this.player)) {
         pb.alive = false;
         this.scene.remove(pb.obj);
-        this.player.hp -= 1.25;
+        this.player.hp -= C.PLAYER_HIT_DAMAGE;
         this.lostReason = '敵のエネルギー弾により機体を喪失した';
         this.hits++;
         this.sfx.hit();
-        this.spawnFlash(clone(pb.state.r), clone(this.player.state.v), 2, 8, 0.3, 0xffa0ff);
-        this.spawnFragments(clone(pb.state.r), clone(this.player.state.v), 3, 0x6a7078, 0.18, 0.5, 5.5);
+        this.spawnFlash(clone(pb.state.r), clone(this.player.state.v), C.PLASMA_HIT_FLASH_SIZE0, C.PLASMA_HIT_FLASH_SIZE1, C.PLASMA_HIT_FLASH_DURATION, 0xffa0ff);
+        this.spawnFragments(clone(pb.state.r), clone(this.player.state.v), C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
         if (this.player.hp <= 0) {
           this.destroyShip(this.player);
         }
@@ -1963,13 +1963,13 @@ export class Game {
 
   private applyHit(b: Bullet, ship: Ship): void {
     b.alive = false;
-    ship.hp -= (ship === this.player ? 1.25 : 1);
+    ship.hp -= (ship === this.player ? C.PLAYER_HIT_DAMAGE : C.ENEMY_HIT_DAMAGE);
     if (ship === this.player) this.lostReason = '自弾の被弾により機体を喪失した';
     this.hits++;
     this.sfx.hit();
-    this.spawnFlash(clone(b.state.r), clone(ship.state.v), 1.5, 6, 0.25, 0xffe2a0);
+    this.spawnFlash(clone(b.state.r), clone(ship.state.v), C.BULLET_HIT_FLASH_SIZE0, C.BULLET_HIT_FLASH_SIZE1, C.BULLET_HIT_FLASH_DURATION, 0xffe2a0);
     // 被弾時にも小さな欠片を飛散させる
-    this.spawnFragments(clone(b.state.r), clone(ship.state.v), 3, 0x6a7078, 0.18, 0.5, 5.5);
+    this.spawnFragments(clone(b.state.r), clone(ship.state.v), C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
     if (ship.hp <= 0) {
       this.destroyShip(ship);
     }
@@ -1981,8 +1981,8 @@ export class Game {
     this.sfx.explosion();
     // 敵機は自機の 10 倍サイズなので、爆発・破片も見合った大きさにする
     const sc = ship === this.player ? 1 : C.ENEMY_SCALE;
-    this.spawnFlash(clone(ship.state.r), clone(ship.state.v), 10 * sc, 110 * sc, 1.1, 0xffb36b);
-    this.spawnFlash(clone(ship.state.r), clone(ship.state.v), 6 * sc, 40 * sc, 0.5, 0xfffbe8);
+    this.spawnFlash(clone(ship.state.r), clone(ship.state.v), C.DESTROY_FLASH1_SIZE0 * sc, C.DESTROY_FLASH1_SIZE1 * sc, C.DESTROY_FLASH1_DURATION, 0xffb36b);
+    this.spawnFlash(clone(ship.state.r), clone(ship.state.v), C.DESTROY_FLASH2_SIZE0 * sc, C.DESTROY_FLASH2_SIZE1 * sc, C.DESTROY_FLASH2_DURATION, 0xfffbe8);
     this.spawnDebris(ship, sc);
 
     if (ship === this.player) {
@@ -2146,7 +2146,7 @@ export class Game {
     let ammoToRespawn = 0;
     this.magPickups = this.magPickups.filter((mp) => {
       const dist = len(sub(mp.state.r, this.player.state.r));
-      const tooFar = dist > 50000;
+      const tooFar = dist > C.AMMO_DESPAWN_DIST;
       const expired = !mp.alive || this.altitudeOf(mp.state.r) < C.DEBRIS_REENTRY_ALT || tooFar;
       if (expired) {
         this.scene.remove(mp.obj);
@@ -2709,7 +2709,7 @@ export class Game {
 
     if (this.rcsDamp && this.player.alive && this.phase === 'playing' && !this.mapMode) {
       const w = this.player.att.w;
-      const EPS = 0.04; // 閾値を上げて、視覚/音響的な持続時間を短くする
+      const EPS = C.RCS_DAMP_PUFF_EPS; // 閾値を上げて、視覚/音響的な持続時間を短くする
       if (tauX === 0 && Math.abs(w.x) > EPS) tauX = -Math.sign(w.x);
       if (tauY === 0 && Math.abs(w.y) > EPS) tauY = -Math.sign(w.y);
       if (tauZ === 0 && Math.abs(w.z) > EPS) tauZ = -Math.sign(w.z);
@@ -3326,7 +3326,7 @@ export class Game {
         // (レート制限は updateAmmoLogistics で実時間 dt により減算される this.clankCd)
         if (impact && this.clankCd <= 0 && ((A.isPlayer && B.isCasing) || (B.isPlayer && A.isCasing))) {
           this.sfx.clank();
-          this.clankCd = 0.07;
+          this.clankCd = C.CASING_CLANK_COOLDOWN;
         }
       }
     }

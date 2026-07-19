@@ -38,7 +38,6 @@ export const RCS_BLOCK_OFFSETS: { x: number; y: number; z: number }[] = [
 // マガジンリンクの並びを計算するのに使う。純粋な数値なので JSON 化はしない。
 export const MAG_THICKNESS = 1.0;
 export const MAG_WIDTH = MAG_THICKNESS * 4; // ベルト方向(X)
-export const MAG_DEPTH = MAG_THICKNESS * 3; // 前後(Z)
 export const MAG_BELT_PITCH = MAG_WIDTH + 0.18; // 連結間隔
 
 const loader = new THREE.ObjectLoader();
