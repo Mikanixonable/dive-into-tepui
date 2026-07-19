@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import * as C from './const';
 import { Vec3 } from '../physics/vec3';
 import { BeltPhysics } from './belt';
-import { Bullet, Casing, DebrisPiece, MagPickup, PlasmaBullet, Ship } from './entities';
+import { Bullet, Casing, DebrisPiece, Enemy, MagPickup, PlasmaBullet } from './entities';
 import { Player } from './player';
 
 const tmpVel = new THREE.Vector3();
@@ -14,7 +14,7 @@ export interface RenderDynamicsCtx {
   origin: Vec3;
   playerVelocity: Vec3;
   player: Player;
-  enemies: Ship[];
+  enemies: Enemy[];
   bullets: Bullet[];
   plasmaBullets: PlasmaBullet[];
   casings: Casing[];
@@ -40,14 +40,14 @@ export class RenderDynamicsSystem {
     this.renderDebris(ctx.debris, ctx.origin);
   }
 
-  private renderShips(player: Player, enemies: Ship[], origin: Vec3, zoomActive: boolean): void {
+  private renderShips(player: Player, enemies: Enemy[], origin: Vec3, zoomActive: boolean): void {
     player.obj.position.set(0, 0, 0);
-    this.setObjAttitude(player);
+    player.obj.quaternion.set(player.att.q.x, player.att.q.y, player.att.q.z, player.att.q.w);
     player.obj.visible = player.alive && !zoomActive;
     for (const e of enemies) {
       if (!e.alive) continue;
       e.obj.position.set(e.state.r.x - origin.x, e.state.r.y - origin.y, e.state.r.z - origin.z);
-      this.setObjAttitude(e);
+      e.obj.quaternion.set(e.att.q.x, e.att.q.y, e.att.q.z, e.att.q.w);
     }
   }
 
@@ -108,9 +108,4 @@ export class RenderDynamicsSystem {
       d.obj.quaternion.set(d.att.q.x, d.att.q.y, d.att.q.z, d.att.q.w);
     }
   }
-
-  private setObjAttitude(s: Ship): void {
-    s.obj.quaternion.set(s.att.q.x, s.att.q.y, s.att.q.z, s.att.q.w);
-  }
-
 }

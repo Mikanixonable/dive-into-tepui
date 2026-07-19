@@ -23,12 +23,13 @@ import {
   v3,
 } from '../physics/vec3';
 import * as C from './const';
-import { Ship } from './entities';
+import { Enemy } from './entities';
 import { Hud } from '../hud/hud';
 import { Sfx } from './audio';
 import { buildStage0EnemyShip } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
 import { getStageDefinition, StageEnemyPreset } from './stage-data';
+import { Player } from './player';
 
 export interface EnemySpec {
   name: string;
@@ -42,8 +43,8 @@ export interface EnemySpec {
 // 参照渡しでミューテートする(game.ts 側の配列・シーンをそのまま操作する)。
 export interface StageCtx {
   phase: string;
-  player: Ship;
-  enemies: Ship[];
+  player: Player;
+  enemies: Enemy[];
   enemyOrbitLines: OrbitLine[];
   scene: THREE.Scene;
   shots: number;
@@ -454,7 +455,7 @@ function spawnWaveShip(
   typeIndex: number,
   waveId: number
 ): void {
-  const ship: Ship = {
+  const enemy: Enemy = {
     name,
     state: { r, v },
     prevR: clone(r),
@@ -471,13 +472,13 @@ function spawnWaveShip(
     accent,
     waveId,
   };
-  ship.obj.scale.setScalar(C.ENEMY_SCALE);
+  enemy.obj.scale.setScalar(C.ENEMY_SCALE);
 
   // 機首をプログレード、背を天頂に
-  ship.att.q = qFromForwardUp(ship.state.v, ship.state.r) ?? ship.att.q;
+  enemy.att.q = qFromForwardUp(enemy.state.v, enemy.state.r) ?? enemy.att.q;
 
-  ctx.enemies.push(ship);
-  ctx.scene.add(ship.obj);
+  ctx.enemies.push(enemy);
+  ctx.scene.add(enemy.obj);
 
   const ol = new OrbitLine(accent, 0.35);
   ctx.enemyOrbitLines.push(ol);

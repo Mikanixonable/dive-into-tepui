@@ -48,7 +48,7 @@ import { AmmoResupplySystem } from './ammo-resupply';
 import { ManeuverSystem } from './maneuver-system';
 import { PipRect, PipRenderer } from './pip-renderer';
 import * as C from './const';
-import { Bullet, Casing, DebrisPiece, FlashEffect, Ship, PlasmaBullet } from './entities';
+import { Bullet, Casing, DebrisPiece, FlashEffect, PlasmaBullet, Enemy } from './entities';
 import { Input } from './input';
 import { TouchControls } from './touch';
 import { ChaseCamera } from './camera';
@@ -90,7 +90,7 @@ export class Game {
   private readonly sun: Sun;
 
   private readonly player: Player;
-  private readonly enemies: Ship[] = [];
+  private readonly enemies: Enemy[] = [];
   private bullets: Bullet[] = [];
   private plasmaBullets: PlasmaBullet[] = [];
   private casings: Casing[] = [];
@@ -144,7 +144,7 @@ export class Game {
   private warpIdx = 0;
   private paused = false;
 
-  private target: Ship | null = null;
+  private target: Enemy | null = null;
   private zoomActive = false;
 
   // 環境モデル(大気抵抗+J2+第三体摂動)・自機の熱/動圧・高度警告・天体暦は
@@ -320,7 +320,7 @@ export class Game {
 
   private spawnInitialEnemies(playerState: OrbitState): void {
     for (const spec of this.stageDirector.makeEnemySpecs(playerState, this.stage)) {
-      const ship: Ship = {
+      const enemy: Enemy = {
         name: spec.name,
         state: spec.state,
         prevR: clone(spec.state.r),
@@ -334,10 +334,11 @@ export class Game {
         hp: spec.hp,
         maxHp: spec.hp,
         alive: true,
+        accent: spec.accent,
       };
-      ship.obj.scale.setScalar(C.ENEMY_SCALE);
-      this.enemies.push(ship);
-      this.scene.add(ship.obj);
+      enemy.obj.scale.setScalar(C.ENEMY_SCALE);
+      this.enemies.push(enemy);
+      this.scene.add(enemy.obj);
       const line = new OrbitLine(0x565b63, 0.35);
       this.enemyOrbitLines.push(line);
       this.scene.add(line.line);
