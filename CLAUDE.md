@@ -12,8 +12,9 @@ A playable LEO (low Earth orbit) shooting game: TypeScript + Webpack + npm, Thre
 - `npm run dev` — start webpack-dev-server at http://localhost:8080
 - `npm run build` — production build to `dist/`
 - `npm run typecheck` — `tsc --noEmit`
+- `npm run test:physics` — regression tests for `src/physics/*.ts` (pure functions, no DOM/THREE deps): compiles `tests/physics/*.test.ts` + the physics modules to CommonJS via `tsconfig.test.json` (outDir `tests/dist`, gitignored) and runs them in node with `node:assert/strict` (no extra devDependency). Covers vec3 smoke tests, orbital.ts Kepler round trips (`stateFromElements`⇄`elementsFromState`, `trueAnomalyAt`/`positionOnOrbit`/`velocityOnOrbit`), `stepOrbitRK4` one-period drift, `j2Accel` RAAN regression rate, attitude.ts kinetic-energy conservation + quaternion norm, atmosphere.ts density-table boundary/monotonicity, and ephemeris.ts sun/moon distance-and-period sanity. Where no clean theoretical value exists (RK4 drift, J2 rate, table-boundary continuity), the test pins the *measured* current behavior with a loose margin rather than an idealized bound — run this before/after any change under `src/physics/`.
 
-There is no automated test suite wired into npm. Physics can be verified by compiling `src/physics/*.ts` to CommonJS with `tsc` and running assertions in node (pure functions, no DOM/THREE deps).
+There is no other automated test suite wired into npm beyond `test:physics`.
 
 ### Architecture
 
