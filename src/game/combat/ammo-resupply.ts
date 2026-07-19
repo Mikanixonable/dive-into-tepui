@@ -2,6 +2,7 @@
 // 取り込み、遠距離デスポーンの判断。配列の所有と軌道積分・姿勢・実削除は Simulator 側
 // (pickups は Simulator 所有の配列への読み取り参照で、追加は addPickup 経由、
 // 破壊は alive = false を立てるだけで simulator.cleanup が回収する)。
+import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../physics/attitude';
 import { add, cross, len, lenSq, norm, randSym, randVec, rotateAxis, sub, v3 } from '../../physics/vec3';
 import { buildMagPickup } from '../../render/ships';
@@ -17,6 +18,7 @@ export class AmmoResupplySystem {
   constructor(
     private readonly hud: Hud,
     private readonly sfx: Sfx,
+    private readonly scene: THREE.Scene,
     private readonly pickups: readonly MagPickup[],
     private readonly addPickup: (mp: MagPickup) => void,
   ) {}
@@ -41,6 +43,7 @@ export class AmmoResupplySystem {
         w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),
         inertia: v3(1, 1.4, 1.2),
       },
+      this.scene,
     );
     this.addPickup(mp);
     this.sfx.warp();

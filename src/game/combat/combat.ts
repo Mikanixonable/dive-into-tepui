@@ -99,6 +99,7 @@ export class CombatSystem {
       },
       buildBulletMesh(),
       ctx.simTime,
+      ctx.scene,
     );
     ctx.addBullet(bullet);
 
@@ -122,6 +123,7 @@ export class CombatSystem {
         inertia: v3(1, 0.3, 1), // 円筒: 長軸まわりが小さい
       },
       ctx.simTime,
+      ctx.scene,
     );
     ctx.addCasing(casing);
 
@@ -161,6 +163,7 @@ export class CombatSystem {
         inertia: v3(1, 0.2, 1), // 円柱
       },
       0.8,
+      ctx.scene,
     );
     ctx.addDebris(piece);
   }
@@ -183,6 +186,7 @@ export class CombatSystem {
         inertia: v3(1, 1.2, 1.4),
       },
       C.EJECTED_MAG_PHYS_RADIUS,
+      ctx.scene,
     );
     ctx.addDebris(piece);
   }
@@ -256,7 +260,7 @@ export class CombatSystem {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet({ r: clone(r), v: bV }, buildPlasmaMesh(enemy.accent), ctx.simTime);
+    const pb = new Bullet({ r: clone(r), v: bV }, buildPlasmaMesh(enemy.accent), ctx.simTime, ctx.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
@@ -319,7 +323,7 @@ export class CombatSystem {
       if (!pb.alive) continue;
       if (ctx.player.alive && this.segmentHit(pb, ctx.player)) {
         pb.alive = false;
-        ctx.scene.remove(pb.obj);
+        pb.dispose();
         ctx.player.hp -= C.PLAYER_HIT_DAMAGE;
         ctx.setLostReason('敵のエネルギー弾により機体を喪失した');
         this.hits++;
@@ -452,6 +456,8 @@ export class CombatSystem {
           w: v3(randSym(0.25), (1.4 + Math.random() * 1.2) * (Math.random() < 0.5 ? -1 : 1), randSym(0.25)),
           inertia: v3(1, 2.05, 3.0), // 中間軸 = y: ここに主回転を与えると周期的に反転する
         },
+        undefined,
+        ctx.scene,
       );
       ctx.addDebris(piece);
     }
