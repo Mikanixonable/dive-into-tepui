@@ -282,7 +282,7 @@ export class StageDirector {
       const dist = len(sub(enemy.state.r, ctx.player.state.r));
       if (dist <= C.STAGE00_MAX_RANGE) continue;
       enemy.alive = false;
-      ctx.scene.remove(enemy.obj);
+      enemy.dispose();
       ctx.enemyOrbitLines[i]?.update(null, v3());
     }
   }
@@ -476,6 +476,7 @@ function spawnWaveShip(
     C.STAGE0_ENEMY_HP,
     accent,
     waveId,
+    ctx.scene,
   );
   ctx.addEnemy(enemy, accent);
 }

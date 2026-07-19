@@ -11,8 +11,14 @@ const identityAttitude = (): Attitude => ({
   inertia: v3(1, 1, 1),
 });
 
+const tmpVel = new THREE.Vector3();
+const tmpQuat = new THREE.Quaternion();
+const zAxis = new THREE.Vector3(0, 0, 1);
+
 // 軌道上を運動するエンティティの基底。
 // collideRadius を持つものだけが剛体接触 (collision.ts) に参加する。
+// scene を渡したものは自身で scene.add/remove を行う(渡さない場合は描画に
+// 参加しない内部専用エンティティ — 例: BeltSection)。
 export class OrbitEntity {
   state: OrbitState;
   prevR: Vec3; // 直前サブステップの位置(弾との衝突判定用)
@@ -21,12 +27,26 @@ export class OrbitEntity {
   alive = true;
   mass = 1; // 剛体接触の換算質量
   collideRadius?: number; // 剛体接触半径 [m]。未設定 = 剛体接触に参加しない
+  protected readonly scene?: THREE.Scene;
 
-  constructor(state: OrbitState, obj: THREE.Object3D, att: Attitude = identityAttitude()) {
+  constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
     this.state = state;
     this.prevR = clone(state.r);
     this.att = att;
     this.obj = obj;
+    this.scene = scene;
+    this.scene?.add(this.obj);
+  }
+
+  // 毎フレームの描画位置・姿勢同期(floating origin: origin = 自機の ECI 位置)。
+  syncTransform(origin: Vec3): void {
+    this.obj.position.set(this.state.r.x - origin.x, this.state.r.y - origin.y, this.state.r.z - origin.z);
+    this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+  }
+
+  // 寿命切れ・上限超過時に呼ばれる。既定は scene からの除去のみ。
+  dispose(): void {
+    this.scene?.remove(this.obj);
   }
 }
 
@@ -43,8 +63,9 @@ export class Ship extends OrbitEntity {
     att: Attitude,
     radius: number,
     hp: number,
+    scene?: THREE.Scene,
   ) {
-    super(state, obj, att);
+    super(state, obj, scene, att);
     this.name = name;
     this.radius = radius;
     this.hp = hp;
@@ -70,8 +91,9 @@ export class Enemy extends Ship {
     hp: number,
     accent: number,
     waveId?: number,
+    scene?: THREE.Scene,
   ) {
-    super(name, state, obj, att, C.ENEMY_RADIUS, hp);
+    super(name, state, obj, att, C.ENEMY_RADIUS, hp, scene);
     this.accent = accent;
     this.waveId = waveId;
     this.mass = 10000;
@@ -85,17 +107,31 @@ export class Enemy extends Ship {
 export class Bullet extends OrbitEntity {
   bornSim: number;
 
-  constructor(state: OrbitState, obj: THREE.Object3D, bornSim: number) {
-    super(state, obj);
+  constructor(state: OrbitState, obj: THREE.Object3D, bornSim: number, scene?: THREE.Scene) {
+    super(state, obj, scene);
     this.bornSim = bornSim;
+  }
+
+  // 姿勢を持たないため、att.q ではなく自機に対する相対速度方向を向く
+  // (OrbitEntity.syncTransform とはシグネチャが異なるため、別名の独自メソッドにする)。
+  syncBulletTransform(origin: Vec3, playerVelocity: Vec3): void {
+    this.obj.position.set(this.state.r.x - origin.x, this.state.r.y - origin.y, this.state.r.z - origin.z);
+    tmpVel.set(
+      this.state.v.x - playerVelocity.x,
+      this.state.v.y - playerVelocity.y,
+      this.state.v.z - playerVelocity.z,
+    );
+    if (tmpVel.lengthSq() <= 1e-6) return;
+    tmpQuat.setFromUnitVectors(zAxis, tmpVel.normalize());
+    this.obj.quaternion.copy(tmpQuat);
   }
 }
 
 export class Casing extends OrbitEntity {
   bornSim: number;
 
-  constructor(state: OrbitState, obj: THREE.Object3D, att: Attitude, bornSim: number) {
-    super(state, obj, att);
+  constructor(state: OrbitState, obj: THREE.Object3D, att: Attitude, bornSim: number, scene?: THREE.Scene) {
+    super(state, obj, scene, att);
     this.bornSim = bornSim;
     this.collideRadius = 0.2;
   }
@@ -103,8 +139,8 @@ export class Casing extends OrbitEntity {
 
 // 軌道上の補給マガジン(接近すると取り込んでベルトを延長できる)
 export class MagPickup extends OrbitEntity {
-  constructor(state: OrbitState, obj: THREE.Object3D, att: Attitude) {
-    super(state, obj, att);
+  constructor(state: OrbitState, obj: THREE.Object3D, att: Attitude, scene?: THREE.Scene) {
+    super(state, obj, scene, att);
     this.mass = 50;
     this.collideRadius = C.MAG_PICKUP_PHYS_RADIUS;
   }
@@ -112,10 +148,24 @@ export class MagPickup extends OrbitEntity {
 
 // collideRadius 未設定の破片(爆発デブリ等)は剛体接触に参加せずすり抜ける。
 export class DebrisPiece extends OrbitEntity {
-  constructor(state: OrbitState, obj: THREE.Object3D, att: Attitude, collideRadius?: number) {
-    super(state, obj, att);
+  constructor(state: OrbitState, obj: THREE.Object3D, att: Attitude, collideRadius?: number, scene?: THREE.Scene) {
+    super(state, obj, scene, att);
     this.mass = C.EJECTED_MAG_MASS;
     this.collideRadius = collideRadius;
+  }
+
+  // d.obj は単一 Mesh(通常の破片)の場合と、複数子メッシュを持つ Group
+  // (排出された空マガジンのフレーム等)の場合がある。traverse して
+  // 見つかった Mesh すべてのジオメトリ・マテリアルを破棄する。
+  dispose(): void {
+    super.dispose();
+    this.obj.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry.dispose();
+      if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose());
+      else mesh.material.dispose();
+    });
   }
 }
 

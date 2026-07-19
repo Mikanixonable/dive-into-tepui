@@ -30,7 +30,7 @@ export class Player extends Ship {
   // 高度420km・傾斜51.6°の円軌道に機首プログレードで初期配置する
   constructor(hud: Hud, sfx: Sfx, scene: THREE.Scene, glowTex: THREE.Texture) {
     const state = Player.makeInitialState();
-    super('PLAYER', state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP);
+    super('PLAYER', state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, scene);
     this.mass = 1000;
     // 剛体接触は実機体サイズ。被弾判定半径(radius)を使うと排莢直後の薬莢を弾いてしまう
     this.collideRadius = C.PLAYER_HULL_RADIUS;
@@ -210,6 +210,13 @@ export class Player extends Ship {
   }
 
   // -------------------------------------------------------------- 描画
+
+  // floating origin のため自機は常にワールド原点。ズーム中(PIP)は本体を隠す。
+  render(zoomActive: boolean): void {
+    this.obj.position.set(0, 0, 0);
+    this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+    this.obj.visible = this.alive && !zoomActive;
+  }
 
   renderThrustEffects(
     camera: THREE.PerspectiveCamera,
