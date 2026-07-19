@@ -178,22 +178,3 @@ export function stateFromElements(
     v: addScaled(scale(pHat, -k * Math.sin(nu)), qHat, k * (e + Math.cos(nu))),
   };
 }
-
-// 楕円軌道を離心近点角 E で一様サンプリングして ECI 座標列を返す (e < 1 のみ)。
-// 真近点角で一様サンプリングすると近地点付近に点が偏り、遠地点付近では
-// 弦が長くなって表示が荒くなる(離心率が大きいほど顕著)。E で一様に取ると
-// 弧長方向によりバランス良く点が分布し、遠地点付近の粗さが解消される。
-export function sampleOrbit(el: Elements, count: number, out: Vec3[]): boolean {
-  if (el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) return false;
-  const b = el.a * Math.sqrt(1 - el.e * el.e);
-  for (let i = 0; i < count; i++) {
-    const E = (i / count) * Math.PI * 2;
-    const x = el.a * (Math.cos(E) - el.e);
-    const y = b * Math.sin(E);
-    const pt = out[i] ?? (out[i] = { x: 0, y: 0, z: 0 });
-    pt.x = el.pHat.x * x + el.qHat.x * y;
-    pt.y = el.pHat.y * x + el.qHat.y * y;
-    pt.z = el.pHat.z * x + el.qHat.z * y;
-  }
-  return true;
-}
