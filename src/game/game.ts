@@ -1988,6 +1988,12 @@ export class Game {
     this.spawnFlash(clone(ship.state.r), clone(ship.state.v), 10 * sc, 110 * sc, 1.1, 0xffb36b);
     this.spawnFlash(clone(ship.state.r), clone(ship.state.v), 6 * sc, 40 * sc, 0.5, 0xfffbe8);
     this.spawnDebris(ship, sc);
+    
+    if (ship !== this.player) {
+      // 距離をkmで計算してデブリ衝突音群を鳴らす
+      const d = len(sub(this.player.state.r, ship.state.r)) / 1000;
+      this.sfx.debrisImpact(d);
+    }
 
     if (ship === this.player) {
       this.phase = 'lost';
@@ -2046,7 +2052,8 @@ export class Game {
     const accent = ship === this.player ? 0x9fd8e8 : (ship.accent ?? 0xff6a4a);
     // 敵機の破片には当たり判定を付ける(size に比例した半径)
     const collideRad = ship === this.player ? 0 : 0.6;
-    this.spawnFragments(ship.state.r, ship.state.v, 11, accent, C.DEBRIS_SIZE_MIN * sc, C.DEBRIS_SIZE_MAX * sc, 2.8, collideRad);
+    // 破片のサイズを 1/2 に縮小、初速の分散を 2 倍に (2.8 -> 5.6)
+    this.spawnFragments(ship.state.r, ship.state.v, 11, accent, C.DEBRIS_SIZE_MIN * sc * 0.5, C.DEBRIS_SIZE_MAX * sc * 0.5, 5.6, collideRad, ship.debrisStyle);
   }
 
 
@@ -2061,6 +2068,7 @@ export class Game {
     spread: number,
     // 破片に当たり判定を付けるか。弾丸表面の欠片など小さい破片は空洟を避けるため小さめに設定。
     collideRad = 0,
+    style?: string,
   ): void {
     for (let i = 0; i < count; i++) {
       const size = sizeMin + Math.random() * (sizeMax - sizeMin);
@@ -2079,7 +2087,7 @@ export class Game {
           w: v3(randSym(0.25), (1.4 + Math.random() * 1.2) * (Math.random() < 0.5 ? -1 : 1), randSym(0.25)),
           inertia: v3(Ix, Iy, Iz),
         },
-        obj: buildDebrisMesh(accent, size),
+        obj: buildDebrisMesh(accent, size, style),
         ...(collideRad > 0 ? { collideRadius: collideRad * size } : {}),
       };
       this.debris.push(piece);
