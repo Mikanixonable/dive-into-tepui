@@ -242,7 +242,9 @@ export class Game {
   private altEma = NaN; // 高度の指数移動平均(離心率によるふらつきを均す)
   private altRateEma = 0; // 高度変化率の指数移動平均 [m/s]
   private altDescendWarned = false;
-  private altAlarmHintCd = 0; // 再警告までのクールダウン [s]
+  // 既に警告済みのしきい値(降順走破)。しきい値+ヒステリシスまで登り返すと解除され、
+  // 再度潜った際に同じしきい値で再警告できる
+  private altWarnedThresholds = new Set<number>();
   private lostReason = '大気圏に突入し機体を喪失した';
 
 
@@ -1578,19 +1580,25 @@ export class Game {
       this.altRateEma += (rate - this.altRateEma) * k;
     }
     if (this.altRateEma < -3) {
-      if (!this.altDescendWarned) {
-        this.altDescendWarned = true;
-        this.altAlarmHintCd = 0;
-      }
-      if (this.altAlarmHintCd <= 0) {
-        this.hud.hint('警告: 高度低下中', 3000);
-        this.sfx.altAlarm();
-        this.altAlarmHintCd = 15;
-      } else {
-        this.altAlarmHintCd -= dt;
-      }
+      this.altDescendWarned = true;
     } else if (this.altRateEma > -1) {
       this.altDescendWarned = false;
+    }
+
+    // しきい値(120km/100km/80km)を下から上まで一つずつ跨いだタイミングで警告する。
+    // EMA 高度なので離心率によるふらつきでは誤爆しにくい。しきい値+ヒステリシスまで
+    // 登り返すと解除し、再降下時に同じしきい値で再警告できるようにする。
+    const HYSTERESIS = 5e3; // [m]
+    for (const th of C.ALT_WARN_THRESHOLDS) {
+      if (this.altEma < th) {
+        if (!this.altWarnedThresholds.has(th)) {
+          this.altWarnedThresholds.add(th);
+          this.hud.hint(`警告: 高度が${Math.round(th / 1000)}km以下です`, 3000);
+          this.sfx.altAlarm();
+        }
+      } else if (this.altEma > th + HYSTERESIS) {
+        this.altWarnedThresholds.delete(th);
+      }
     }
   }
 
@@ -1618,12 +1626,12 @@ export class Game {
     const i = this.input;
     const manual = this.mapMode ? 0 : 1;
     const axX = ((i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0)) * manual; // 左(X)/右(-X) => A(1)/D(-1)
-    const axY = ((i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0)) * manual; // 上/下 (W=上昇, S=下降)
-    // 前後: Q/E に加え、CTRL=前進・SHIFT=後退を同義語として受け付ける
+    const axY = ((i.down('KeyQ') ? 1 : 0) + (i.down('KeyE') ? -1 : 0)) * manual; // 上/下 (Q=上昇, E=下降)
+    // 前後: W/S に加え、CTRL=前進・SHIFT=後退を同義語として受け付ける
     const axZ =
-      ((i.down('KeyQ') || i.down('ControlLeft') || i.down('ControlRight') ? 1 : 0) +
-        (i.down('KeyE') || i.down('ShiftLeft') || i.down('ShiftRight') ? -1 : 0)) *
-      manual; // 前/後 (Q/CTRL=前進, E/SHIFT=後進)
+      ((i.down('KeyW') || i.down('ControlLeft') || i.down('ControlRight') ? 1 : 0) +
+        (i.down('KeyS') || i.down('ShiftLeft') || i.down('ShiftRight') ? -1 : 0)) *
+      manual; // 前/後 (W/CTRL=前進, S/SHIFT=後進)
 
     if (axX === 0 && axY === 0 && axZ === 0) return null;
 
