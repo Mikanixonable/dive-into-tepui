@@ -2216,7 +2216,7 @@ export class Game {
     // (詳細は CLAUDE.md「フローティングオリジンの精度設計」参照)。
     this.earth.group.position.set(-o.x, -o.y, -o.z);
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
-    this.earth.tick(dt);
+    this.earth.tick(dt, displayTime);
 
     // カメラ: 戦闘 = 自機中心チェイス / 計画 = 地球中心軌道ビュー
     const mouse = this.input.consumeMouse();

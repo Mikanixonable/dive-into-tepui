@@ -124,42 +124,63 @@ function buildAtmoRim(sunDir: SunDirUniform, earthCenter: EarthCenterUniform): T
 }
 
 // オーロラカーテン: 磁気(≒地理)極を囲む緯度 ~67° の波打つリング帯。
-// 下端は緑、上端は赤へフェードする。
-function buildAurora(sign: 1 | -1, seed: number) {
+// 複数層、グラデーション拡充、途切れ表現を追加。
+function buildAurora(sign: 1 | -1, geomSeed: number, colorSeed: number, radiusOffset: number, latOffsetDeg: number) {
   const SEG = 160;
-  const positions = new Float32Array((SEG + 1) * 2 * 3);
-  const colors = new Float32Array((SEG + 1) * 2 * 3);
+  const V_SEG = 3; // 4 vertices vertically: 0=bottom fade, 1=core green, 2=mid red, 3=top fade
+  const positions = new Float32Array((SEG + 1) * (V_SEG + 1) * 3);
+  const colors = new Float32Array((SEG + 1) * (V_SEG + 1) * 3);
   const indices: number[] = [];
 
   const update = (phase: number) => {
-    const sPhase = seed + phase; // 位相をずらして波打たせる
+    const sPhase = geomSeed + phase;
+    const cPhase = colorSeed + phase;
     for (let i = 0; i <= SEG; i++) {
       const th = (i / SEG) * Math.PI * 2;
+      
       // 緯度・高さをノイズ的に波打たせる(閉ループになるよう周期関数のみ)
-      const latDeg =
-        66 + 4.5 * Math.sin(3 * th + sPhase) + 2.2 * Math.sin(7 * th + sPhase * 2.3) + 1.1 * Math.sin(13 * th - phase);
+      const latDeg = 66 + latOffsetDeg + 4.5 * Math.sin(3 * th + sPhase) + 2.2 * Math.sin(7 * th + sPhase * 2.3);
       const lat = ((latDeg * Math.PI) / 180) * sign;
-      const hTop = 480e3 + 180e3 * Math.sin(2 * th + sPhase * 1.7) + 80e3 * Math.sin(5 * th - phase * 0.8);
       const cl = Math.cos(lat);
       const dirX = cl * Math.cos(th);
       const dirY = Math.sin(lat);
       const dirZ = cl * Math.sin(th);
-      const rBot = R_EARTH + 95e3;
-      const rTop = R_EARTH + 95e3 + hTop;
-      const iBot = i * 2 * 3;
-      positions.set([dirX * rBot, dirY * rBot, dirZ * rBot], iBot);
-      positions.set([dirX * rTop, dirY * rTop, dirZ * rTop], iBot + 3);
-      const flick = 0.75 + 0.25 * Math.sin(9 * th + sPhase * 3.1);
-      colors.set([0.1 * flick, 0.85 * flick, 0.45 * flick], iBot); // 下端: 緑
-      colors.set([0.8 * flick, 0.1 * flick, 0.2 * flick], iBot + 3); // 上端: 赤
+      
+      // 途切れや二重を表現するノイズ(強度が低い場所は暗くなる)
+      const intensityNode = 0.4 + 0.6 * Math.sin(5 * th + cPhase * 0.8) + 0.4 * Math.sin(11 * th - cPhase * 1.3);
+      const intensity = Math.max(0, Math.min(1, intensityNode));
+      
+      const hTop = 480e3 + 180e3 * Math.sin(2 * th + sPhase * 1.7);
+      const alts = [95e3, 120e3, 120e3 + hTop * 0.4, 95e3 + hTop];
+
+      // 時間による色の揺らぎ
+      const flick = 0.8 + 0.2 * Math.sin(19 * th + cPhase * 4.1);
+      const coreInt = intensity * flick;
+      
+      // 4層のグラデーション色 (加算合成なので 0 で透明)
+      const c0 = [0.0, 0.1 * coreInt, 0.05 * coreInt];
+      const c1 = [0.1 * coreInt, 0.9 * coreInt, 0.4 * coreInt];
+      const c2 = [0.7 * coreInt, 0.15 * coreInt, 0.2 * coreInt];
+      const c3 = [0.1 * coreInt, 0.01 * coreInt, 0.02 * coreInt];
+      const colArr = [c0, c1, c2, c3];
+
+      for (let j = 0; j <= V_SEG; j++) {
+        const r = R_EARTH + alts[j]! + radiusOffset;
+        const idx = (i * (V_SEG + 1) + j) * 3;
+        positions.set([dirX * r, dirY * r, dirZ * r], idx);
+        colors.set(colArr[j]!, idx);
+      }
     }
   };
 
   update(0);
-  for (let i = 0; i <= SEG; i++) {
-    if (i < SEG) {
-      const a = i * 2;
-      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  for (let i = 0; i < SEG; i++) {
+    for (let j = 0; j < V_SEG; j++) {
+      const a = i * (V_SEG + 1) + j;
+      const b = a + 1;
+      const c = (i + 1) * (V_SEG + 1) + j;
+      const d = c + 1;
+      indices.push(a, b, c, c, b, d);
     }
   }
 
@@ -170,7 +191,7 @@ function buildAurora(sign: 1 | -1, seed: number) {
   const mat = new THREE.MeshBasicMaterial({
     vertexColors: true,
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.65, // ベース不透明度(頂点カラーで変調)
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,
@@ -184,7 +205,7 @@ export interface Earth {
   group: THREE.Group;
   setRotation(angleRad: number): void;
   setSunDir(x: number, y: number, z: number): void;
-  tick(dt: number): void; // オーロラの明滅アニメーション、大気シェーダの地球中心uniform更新
+  tick(dt: number, simTime: number): void; // オーロラの明滅アニメーション、大気シェーダの地球中心uniform更新
 }
 
 export function createEarth(): Earth {
@@ -197,7 +218,12 @@ export function createEarth(): Earth {
   spin.add(buildSurface(sunDir));
 
   // オーロラは磁気極に固定なので自転と一緒に回す
-  const auroras = [buildAurora(1, 1.3), buildAurora(-1, 4.1)];
+  const auroras = [
+    buildAurora(1, 1.3, 1.3, 0, 0),
+    buildAurora(1, 1.3, 2.7, 45e3, 1.5), // 北極側の2層目(形状は同じgeomSeedで平行にし交差を防ぐ、色・強度は別seed)
+    buildAurora(-1, 4.1, 4.1, 0, 0),
+    buildAurora(-1, 4.1, 5.5, 45e3, 1.5), // 南極側の2層目
+  ];
   for (const a of auroras) spin.add(a.mesh);
   group.add(spin);
 
@@ -214,20 +240,21 @@ export function createEarth(): Earth {
     setSunDir(x: number, y: number, z: number) {
       (sunDir.value as THREE.Vector3).set(x, y, z);
     },
-    tick(dt: number) {
+    tick(_dt: number, simTime: number) {
       (earthCenter.value as THREE.Vector3).copy(group.position);
 
-      // ゆっくりした明滅と波打ちアニメーション(実時間ベース)
-      auroraPhase += dt;
+      // シミュレーション時間に連動した位相。
+      // 速度を以前の1/10 (x0.02) に減速。
+      auroraPhase = simTime * 0.02;
       for (let i = 0; i < auroras.length; i++) {
         const a = auroras[i]!;
         // 頂点と色を更新して波打たせる
-        a.update(auroraPhase * 0.2); // 位相の進行速度
+        a.update(auroraPhase); // 内部でさらに位相をずらして適用
         a.geo.attributes.position!.needsUpdate = true;
         a.geo.attributes.color!.needsUpdate = true;
 
         const m = a.mesh.material as THREE.MeshBasicMaterial;
-        m.opacity = 0.45 + 0.2 * Math.sin(auroraPhase * 0.7 + i * 2.1) * Math.sin(auroraPhase * 0.23 + i);
+        m.opacity = 0.55 + 0.2 * Math.sin(auroraPhase * 0.7 + i * 2.1) * Math.sin(auroraPhase * 0.23 + i);
       }
     },
   };
