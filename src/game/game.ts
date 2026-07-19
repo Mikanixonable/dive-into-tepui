@@ -535,9 +535,7 @@ export class Game {
   }
 
   private handlePostSimulation(dt: number, simDt: number, warp: number, canAct: boolean): void {
-    const limit = this.thermal.updateAltitudeAlarm(dt, this.player.alive, altitudeOf(this.player.state.r));
-    this.applyThermalLimitLoss(limit);
-    this.applyAltitudeLimitLoss();
+    this.player.checkLoss(dt, this.thermal, this.combat, this.combatCtx());
 
     this.ammoResupply.updateLogistics(this.simTime, this.stageDirector.stage, this.player);
     if (warp <= C.MAX_PHYS_WARP) {
@@ -553,22 +551,6 @@ export class Game {
     if (this.stageDirector.stage === -1 && this.phase === 'playing' && canAct) {
       this.combat.updateEnemyAI(dt, this.combatCtx());
     }
-  }
-
-  private applyAltitudeLimitLoss(): void {
-    // 自機の構造限界高度(通常は加熱・動圧で先に喪失する)
-    const reason = this.player.lossReasonByAltitude(altitudeOf(this.player.state.r));
-    if (reason) {
-      this.combatCtx().setLostReason(reason);
-      this.combat.destroyShip(this.player, this.combatCtx());
-    }
-  }
-
-  private applyThermalLimitLoss(limit: 'heat' | 'dynpressure' | null): void {
-    const reason = this.player.lossReasonByThermalLimit(limit);
-    if (!reason) return;
-    this.lostReason = reason;
-    this.combat.destroyShip(this.player, this.combatCtx());
   }
 
   private updateAttitudes(attDt: number): void {
