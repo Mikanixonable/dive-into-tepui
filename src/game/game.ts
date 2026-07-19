@@ -6,7 +6,6 @@
 import * as THREE from 'three/webgpu';
 import {
   OrbitState,
-  R_EARTH,
   SIDEREAL_DAY,
 } from '../physics/orbital';
 import {
@@ -16,11 +15,9 @@ import {
 } from '../physics/ephemeris';
 import {
   randomQuat,
-  stepAttitude,
 } from '../physics/attitude';
 import {
   Vec3,
-  len,
   norm,
   randSym,
   sub,
@@ -46,9 +43,9 @@ import { HudProjection } from './camera/projection';
 import { AmmoResupplySystem } from './combat/ammo-resupply';
 import { ManeuverSystem } from './map-mode/maneuver-system';
 import { PipRect, PipRenderer } from './pip-renderer';
-import { Simulator, SimulatorCtx } from './simulator';
+import { altitudeOf, Simulator, SimulatorCtx } from './simulator';
 import * as C from './const';
-import { Bullet, Casing, DebrisPiece, Enemy } from './entities';
+import { Enemy } from './entities';
 import { Input } from './input';
 import { TouchControls } from './touch';
 import { ChaseCamera } from './camera/chase-camera';
@@ -96,20 +93,17 @@ export class Game {
 
 
   private readonly player: Player;
-  private readonly enemies: Enemy[] = [];
-  private bullets: Bullet[] = [];
-  private plasmaBullets: Bullet[] = [];
-  private casings: Casing[] = [];
-  private debris: DebrisPiece[] = [];
+  // enemies / bullets / plasmaBullets / casings / debris の各エンティティ配列は
+  // Simulator が所有する(this.simulator.enemies 等)。追加は simulator.addXxx 経由。
   private effects: FlashEffect[] = [];
 
   // ?perf=1 のデバッグ表示用エンティティ数(軽量化計画ステップ0)。挙動には影響しない。
   perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
     return {
-      enemies: this.enemies.length,
-      bullets: this.bullets.length + this.plasmaBullets.length,
-      casings: this.casings.length,
-      debris: this.debris.length,
+      enemies: this.simulator.enemies.length,
+      bullets: this.simulator.bullets.length + this.simulator.plasmaBullets.length,
+      casings: this.simulator.casings.length,
+      debris: this.simulator.debris.length,
     };
   }
 
@@ -201,7 +195,7 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
     this.ammoResupply = new AmmoResupplySystem(this.scene, this.hud, this.sfx);
-    this.simulator = new Simulator(this.ephemeris, this.thermal, this.ammoResupply, this.combat);
+    this.simulator = new Simulator(this.ephemeris, this.thermal, this.ammoResupply, this.combat, this.scene);
 
     // 汎用発光テクスチャ
     this.glowTex = makeGlowTexture();
@@ -297,17 +291,22 @@ export class Game {
         spec.hp,
         spec.accent,
       );
-      this.enemies.push(enemy);
-      this.scene.add(enemy.obj);
-      const line = new OrbitLine(0x565b63, 0.35);
-      this.enemyOrbitLines.push(line);
-      this.scene.add(line.line);
+      this.addEnemy(enemy, 0x565b63);
     }
+  }
+
+  // 敵の追加は Simulator への登録(配列 + scene)と軌道線の生成を常に対で行う
+  // (enemyOrbitLines は enemies とインデックス対応の並行配列)。
+  private addEnemy(enemy: Enemy, orbitLineColor: number): void {
+    this.simulator.addEnemy(enemy);
+    const line = new OrbitLine(orbitLineColor, 0.35);
+    this.enemyOrbitLines.push(line);
+    this.scene.add(line.line);
   }
 
   // ステージ別の初期弾薬・初期補給の配置と作戦目標のブリーフィング表示
   private initStage(): void {
-    const data = resolveStageInitData(this.stageDirector.stage, this.enemies.length);
+    const data = resolveStageInitData(this.stageDirector.stage, this.simulator.enemies.length);
     const stageDef = getStageDefinition(this.stageDirector.stage);
     this.player.initAmmo(data.magsLeft, data.roundsInMag);
     if (stageDef.initAction === 'spawn-stage00-ammo') {
@@ -423,7 +422,7 @@ export class Game {
       this.target = this.targeter.updateCombatTargeting(
         {
           player: this.player,
-          enemies: this.enemies,
+          enemies: this.simulator.enemies,
           input: this.input,
           activeCamera: this.activeCamera,
           project: (rel) => this.hudProjection.project(rel),
@@ -499,13 +498,14 @@ export class Game {
   }
 
   // StageDirector の各メソッド呼び出しに渡す、現在状態のスナップショット
-  // (enemies / enemyOrbitLines / scene は参照渡しでミューテートされる)。
+  // (敵の追加は addEnemy 経由、既存要素は参照渡しでミューテートされる)。
   private stageCtx(): StageCtx {
     return {
       phase: this.phase,
       player: this.player,
-      enemies: this.enemies,
+      enemies: this.simulator.enemies,
       enemyOrbitLines: this.enemyOrbitLines,
+      addEnemy: (enemy, orbitLineColor) => this.addEnemy(enemy, orbitLineColor),
       scene: this.scene,
       shots: this.combat.shots,
       hits: this.combat.hits,
@@ -517,21 +517,23 @@ export class Game {
   }
 
   // CombatSystem の各メソッド呼び出しに渡す、現在状態のスナップショット
-  // (enemies / bullets / plasmaBullets / casings / debris / effects / boardMarks /
+  // (エンティティ配列は Simulator 所有の実体への参照。追加は addXxx 経由)。
   private combatCtx(simTime = this.simTime): CombatCtx {
     const ctx: CombatCtx = {
       simTime,
       player: this.player,
-      enemies: this.enemies,
+      enemies: this.simulator.enemies,
       target: this.target,
       stage: this.stageDirector.stage,
       zoomActive: this.zoomActive,
       scene: this.scene,
       glowTex: this.glowTex,
-      bullets: this.bullets,
-      plasmaBullets: this.plasmaBullets,
-      casings: this.casings,
-      debris: this.debris,
+      bullets: this.simulator.bullets,
+      plasmaBullets: this.simulator.plasmaBullets,
+      addBullet: (bullet) => this.simulator.addBullet(bullet),
+      addPlasmaBullet: (bullet) => this.simulator.addPlasmaBullet(bullet),
+      addCasing: (casing) => this.simulator.addCasing(casing),
+      addDebris: (piece) => this.simulator.addDebris(piece),
       effects: this.effects,
       boardMarks: this.markersSystem.boardMarks,
       lostReason: this.lostReason,
@@ -549,7 +551,7 @@ export class Game {
     return {
       mapMode: this.mapMode,
       player: this.player,
-      enemies: this.enemies,
+      enemies: this.simulator.enemies,
       target: this.target,
       magPickups: this.ammoResupply.list,
       mapLabelIds: this.mapView.labels.map((l) => l.id),
@@ -563,7 +565,7 @@ export class Game {
   private hudPanelCtx(): HudPanelCtx {
     return {
       player: this.player,
-      enemies: this.enemies,
+      enemies: this.simulator.enemies,
       target: this.target,
       touchControls: this.touchControls,
       simTime: this.simTime,
@@ -577,13 +579,13 @@ export class Game {
       roundsInMag: this.player.roundsInMag,
       magsLeft: this.player.magsLeft,
       reloadTimer: this.player.reloadTimer,
-      alt: this.altitudeOf(this.player.state.r),
+      alt: altitudeOf(this.player.state.r),
       altDescending: this.thermal.altDescendWarned,
       qdyn: this.thermal.qdyn,
       hullTemp: this.thermal.hullTemp,
       shots: this.combat.shots,
       kills: this.combat.kills,
-      totalEnemies: this.enemies.length,
+      totalEnemies: this.simulator.enemies.length,
       stage: this.stageDirector.stage,
       stage00WaveCount: this.stageDirector.stage00WaveCount,
       stage0TimeLeft: this.stageDirector.stage0TimeLeft,
@@ -593,10 +595,10 @@ export class Game {
   private collisionCtx() {
     return {
       player: this.player,
-      enemies: this.enemies,
-      casings: this.casings,
+      enemies: this.simulator.enemies,
+      casings: this.simulator.casings,
       magPickups: this.ammoResupply.list,
-      debris: this.debris,
+      debris: this.simulator.debris,
       belt: this.belt,
     };
   }
@@ -604,11 +606,6 @@ export class Game {
   private simulatorCtx(): SimulatorCtx {
     return {
       player: this.player,
-      enemies: this.enemies,
-      bullets: this.bullets,
-      plasmaBullets: this.plasmaBullets,
-      casings: this.casings,
-      debris: this.debris,
       combatCtx: (simTime) => this.combatCtx(simTime),
     };
   }
@@ -623,7 +620,7 @@ export class Game {
 
   private handlePostSimulation(dt: number, simDt: number, warp: number, canAct: boolean): void {
     this.applyThermalLimitLoss(this.thermal.checkThermalLimits(this.player.alive));
-    this.thermal.updateAltitudeAlarm(dt, this.player.alive, this.altitudeOf(this.player.state.r));
+    this.thermal.updateAltitudeAlarm(dt, this.player.alive, altitudeOf(this.player.state.r));
     this.ammoResupply.updateLogistics(this.simTime, this.player);
     if (warp <= C.MAX_PHYS_WARP) {
       this.collisionPhysics.resolve(dt, this.collisionCtx(), () => {
@@ -631,7 +628,10 @@ export class Game {
       });
     }
     this.updateAttitudes(Math.min(simDt, 0.12));
-    this.cleanup();
+
+    this.simulator.cleanup(this.player, this.combatCtx(), this.simTime);
+
+    this.ammoResupply.cleanup(this.stageDirector.stage, this.player, (r) => altitudeOf(r));
     if (this.stageDirector.stage === -1 && this.phase === 'playing' && canAct) {
       this.combat.updateEnemyAI(dt, this.combatCtx());
     }
@@ -648,65 +648,7 @@ export class Game {
     this.player.updateAttitude(this.input, this.mapMode, attDt, () => {
       this.hud.hint('進行方向ホールド解除(手動操作)');
     });
-    for (const e of this.enemies) if (e.alive) stepAttitude(e.att, v3(), attDt);
-    for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
-    for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
-    this.ammoResupply.stepAttitudes(attDt);
-  }
-
-  // ------------------------------------------------------------- cleanup
-
-  private altitudeOf(r: Vec3): number {
-    return len(r) - R_EARTH;
-  }
-
-  private cleanup(): void {
-    // 自機の構造限界高度(通常は加熱・動圧で先に喪失する)
-    const playerLossReason = this.player.lossReasonByAltitude(this.altitudeOf(this.player.state.r));
-    if (playerLossReason) {
-      this.lostReason = playerLossReason;
-      this.combat.destroyShip(this.player, this.combatCtx());
-    }
-    for (const e of this.enemies) {
-      if (e.alive && this.altitudeOf(e.state.r) < C.REENTRY_ALT) {
-        // 再突入による空力分解はプレイヤーによる撃破ではないためカウントしない
-        this.combat.destroyShip(e, this.combatCtx(), false);
-      }
-    }
-
-    this.bullets = this.bullets.filter((b) => {
-      const expired =
-        !b.alive ||
-        this.simTime - b.bornSim > C.BULLET_LIFETIME ||
-        this.altitudeOf(b.state.r) < C.DEBRIS_REENTRY_ALT;
-      if (expired) this.scene.remove(b.obj);
-      return !expired;
-    });
-
-    this.plasmaBullets = this.plasmaBullets.filter((pb) => {
-      const expired =
-        !pb.alive ||
-        this.simTime - pb.bornSim > C.PLASMA_LIFETIME ||
-        this.altitudeOf(pb.state.r) < C.DEBRIS_REENTRY_ALT;
-      if (expired) this.scene.remove(pb.obj);
-      return !expired;
-    });
-
-    this.casings = this.casings.filter((cs) => {
-      const expired =
-        this.simTime - cs.bornSim > C.CASING_LIFETIME ||
-        this.altitudeOf(cs.state.r) < C.DEBRIS_REENTRY_ALT;
-      if (expired) this.scene.remove(cs.obj);
-      return !expired;
-    });
-
-    this.debris = this.debris.filter((d) => {
-      const expired = this.altitudeOf(d.state.r) < C.DEBRIS_REENTRY_ALT;
-      if (expired) this.combat.removeDebrisObj(this.combatCtx(), d);
-      return !expired;
-    });
-
-    this.ammoResupply.cleanup(this.stageDirector.stage, this.player, (r) => this.altitudeOf(r));
+    this.simulator.stepCoastingAttitudes(attDt);
   }
 
   // --------------------------------------------------------- render sync
@@ -817,12 +759,12 @@ export class Game {
       origin: o,
       playerVelocity: pv,
       player: this.player,
-      enemies: this.enemies,
-      bullets: this.bullets,
-      plasmaBullets: this.plasmaBullets,
-      casings: this.casings,
+      enemies: this.simulator.enemies,
+      bullets: this.simulator.bullets,
+      plasmaBullets: this.simulator.plasmaBullets,
+      casings: this.simulator.casings,
       magPickups: this.ammoResupply.list,
-      debris: this.debris,
+      debris: this.simulator.debris,
       belt: this.belt,
       magsLeft: this.player.magsLeft,
       roundsInMag: this.player.roundsInMag,
@@ -851,7 +793,7 @@ export class Game {
       playerVelocity: pv,
       player: this.player,
       target: this.target,
-      enemies: this.enemies,
+      enemies: this.simulator.enemies,
       enemyOrbitLines: this.enemyOrbitLines,
       ephemeris: this.ephemeris,
       planner: this.planner,
