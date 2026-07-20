@@ -212,10 +212,6 @@ export class MapModeSystem {
     return this.mapView.camera.far;
   }
 
-  activeCamera(combatCamera: THREE.PerspectiveCamera): THREE.PerspectiveCamera {
-    return this.mapMode ? this.mapView.camera : combatCamera;
-  }
-
   updateCamera(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number): void {
     const s = this.getExternalState();
     const sunAz = sunAzimuth(s.simTime, s.sunPhase0);
