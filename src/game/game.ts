@@ -16,14 +16,16 @@ import {
   v3,
 } from '../physics/vec3';
 import { Player } from './player/player';
+import { FireCtx } from './player/player-fire';
 import { CameraSystem } from './camera/camera-system';
 import { CombatCtx, CombatSystem } from './combat/combat';
+import { HitCtx, HitSystem } from './combat/hit';
 import { StageCtx, StageDirector } from './stage-director';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
 import { HudPanelCtx } from '../hud/panel';
 import { CollisionPhysics } from './combat/collision';
-import { EffectsSystem, FlashEffect } from './effects-system';
+import { EffectsCtx, EffectsSystem, FlashEffect } from './effects-system';
 import { OrbitLineSystem } from './orbit-line-system';
 import { getStageDefinition, resolveStageInitData } from './stage-data';
 import { Targeter } from './combat/targeter';
@@ -34,7 +36,7 @@ import { SimSpeedManager } from './sim-speed-manager';
 import { PipRect, PipRenderer } from './pip-renderer';
 import { altitudeOf, Simulator, SimulatorCtx } from './combat/simulator';
 import * as C from './const';
-import { Enemy } from './enemy/enemy';
+import { Enemy, EnemyAiCtx } from './enemy/enemy';
 import { Input } from './input';
 import { TouchControls } from './touch';
 import { ChaseCamera } from './camera/chase-camera';
@@ -125,12 +127,17 @@ export class Game {
   // --- 弾薬・マガジン ---
   // マガジンベルト(表示メッシュ + Verlet 物理)は弾薬状態に密結合なため
   // player/player-fire.ts の PlayerFire が所有する(this.player.updateBelt 等)。
-  // 武器発射・被弾・撃破まわりの処理は combat.ts の CombatSystem に切り出し済み。
-  // 発射カウンタ(shots/hits/kills)・砲口交互発射のインデックスも CombatSystem が保持する。
+  // 発射・排莢・バレル交換の演出も PlayerFire が持つ(fireCtx 経由)。
+  // 撃破の集計・勝敗判定(destroyShip)は combat/combat.ts の CombatSystem が持つ。
+  // 発射カウンタ(shots/hits)・撃破カウンタ(kills)も CombatSystem が保持する。
   private readonly combat = new CombatSystem(this.hud, this.sfx);
+  // 弾の高度な衝突判定(トンネリング防止・被弾ダメージ)は combat/hit.ts の HitSystem に
+  // 切り出し済み。撃破が発生したら CombatSystem.destroyShip を呼ぶ。
+  private readonly hitSystem = new HitSystem(this.sfx, this.combat);
   // HUDマーカー(方向・敵/リード/AMMO/ノード/PIP/ボード)の同期は markers.ts の
   // MarkersSystem に切り出し済み。boardMarks(標的面通過点)もここが保持する
-  // (combat.ts が boardMarks へ直接 push する)。ステータスパネルは hud.panels が担う。
+  // (combat/hit.ts の checkBoardCrossings が直接この配列へ push する)。
+  // ステータスパネルは hud.panels が担う。
   private readonly markersSystem = new MarkersSystem(this.hud.markers);
   private readonly collisionPhysics = new CollisionPhysics();
   private readonly effectsSystem = new EffectsSystem();
@@ -158,7 +165,7 @@ export class Game {
     this.input.onFirstGesture = () => this.sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
-    this.simulator = new Simulator(this.ephemeris, this.combat);
+    this.simulator = new Simulator(this.ephemeris, this.combat, this.hitSystem);
     this.ammoResupply = new AmmoResupplySystem(
       this.hud,
       this.sfx,
@@ -326,7 +333,7 @@ export class Game {
       simSpeed,
       mapMode: this.mapMode,
       combat: this.combat,
-      combatCtx: this.combatCtx(),
+      fireCtx: this.fireCtx(),
     });
     const playerAccel = this.simulator.buildPlayerAccel(action.thrustFn);
 
@@ -371,7 +378,7 @@ export class Game {
 
   private handleEdgeInput(): void {
     const presses = this.input.takePresses();
-    const unconsumedPresses = this.player.handleEdgeInput(presses, this.combat, this.combatCtx());
+    const unconsumedPresses = this.player.handleEdgeInput(presses, this.fireCtx());
     for (const code of unconsumedPresses) {
       this.handleEdgePress(code);
     }
@@ -410,35 +417,69 @@ export class Game {
     };
   }
 
-  // CombatSystem の各メソッド呼び出しに渡す、現在状態のスナップショット
-  // (エンティティ配列は Simulator 所有の実体への参照。追加は addXxx 経由)。
+  // CombatSystem.destroyShip(撃破の集計・勝敗判定)が必要とする、現在状態のスナップショット。
   private combatCtx(simTime = this.simTime): CombatCtx {
     const ctx: CombatCtx = {
       simTime,
       player: this.player,
-      enemies: this.simulator.enemies,
       totalEnemies: this.simulator.totalEnemiesSpawned,
-      target: this.targeter.autoTarget,
       stage: this.stageDirector.stage,
-      zoomActive: this.zoomActive,
-      scene: this.scene,
-      glowTex: this.glowTex,
-      bullets: this.simulator.bullets,
-      plasmaBullets: this.simulator.plasmaBullets,
-      addBullet: (bullet) => this.simulator.addBullet(bullet),
-      addPlasmaBullet: (bullet) => this.simulator.addPlasmaBullet(bullet),
-      addCasing: (casing) => this.simulator.addCasing(casing),
-      addDebris: (piece) => this.simulator.addDebris(piece),
-      effects: this.effects,
-      boardMarks: this.markersSystem.boardMarks,
       lostReason: this.lostReason,
       setLostReason: (reason) => {
         this.lostReason = reason;
         ctx.lostReason = reason;
       },
       setPhase: (p) => { this.phase = p; },
+      fx: this.effectsCtx(),
     };
     return ctx;
+  }
+
+  // フラッシュ・破片のスポーン(effects-system.ts の spawnFlash/spawnFragments 等)が
+  // 必要とする最小の受け皿。CombatCtx/FireCtx から共通して参照される。
+  private effectsCtx(): EffectsCtx {
+    return {
+      scene: this.scene,
+      glowTex: this.glowTex,
+      effects: this.effects,
+      addDebris: (piece) => this.simulator.addDebris(piece),
+    };
+  }
+
+  // PlayerFire の発射・排莢・バレル交換が必要とする、現在状態のスナップショット。
+  private fireCtx(): FireCtx {
+    return {
+      simTime: this.simTime,
+      scene: this.scene,
+      zoomActive: this.zoomActive,
+      fx: this.effectsCtx(),
+      addBullet: (bullet) => this.simulator.addBullet(bullet),
+      addCasing: (casing) => this.simulator.addCasing(casing),
+      addDebris: (piece) => this.simulator.addDebris(piece),
+    };
+  }
+
+  // HitSystem(弾の衝突判定)が必要とする、現在状態のスナップショット。
+  private hitCtx(simTime: number): HitCtx {
+    return {
+      combat: this.combatCtx(simTime),
+      enemies: this.simulator.enemies,
+      target: this.targeter.autoTarget,
+      bullets: this.simulator.bullets,
+      plasmaBullets: this.simulator.plasmaBullets,
+      boardMarks: this.markersSystem.boardMarks,
+    };
+  }
+
+  // Enemy.behave(敵 AI)が必要とする、現在状態のスナップショット。
+  private enemyAiCtx(simTime: number): EnemyAiCtx {
+    return {
+      simTime,
+      player: this.player,
+      enemies: this.simulator.enemies,
+      scene: this.scene,
+      addPlasmaBullet: (bullet) => this.simulator.addPlasmaBullet(bullet),
+    };
   }
 
   // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
@@ -452,7 +493,6 @@ export class Game {
       mapLabelIds: this.mapModeSystem.mapLabelIds(),
       activeCamera: this.activeCamera,
       simTime: this.simTime,
-      solveLeadTime: (relP, relV, s) => this.combat.solveLeadTime(relP, relV, s),
     };
   }
 
@@ -498,6 +538,7 @@ export class Game {
     return {
       player: this.player,
       combatCtx: (simTime) => this.combatCtx(simTime),
+      hitCtx: (simTime) => this.hitCtx(simTime),
     };
   }
 
@@ -518,7 +559,10 @@ export class Game {
     this.simulator.cleanup(this.combatCtx(), this.simTime);
 
     if (this.stageDirector.stage === -1 && this.phase === 'playing' && canAct) {
-      this.combat.updateEnemyAI(dt, this.combatCtx());
+      const ctx = this.enemyAiCtx(this.simTime);
+      for (const e of this.simulator.enemies) {
+        if (e.alive) e.behave(dt, ctx);
+      }
     }
   }
 

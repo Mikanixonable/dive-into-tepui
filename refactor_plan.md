@@ -24,15 +24,17 @@ belt.ts
 ### combatの責務の分割（優先度高）
 気が付いたらcombatがマンモスクラスになっている……以下の方針で分割する。
 
-敵AI -> enemy.tsのEnemyクラスにbehave関数を作り、敵の行動ロジックを移動する。ちょうどplayerのbehaveに対応する形になる。behaveの呼び出しはとりあえずgameが行う。
-弾の高度な衝突判定 -> hit.tsを新設し、切り出す。
-spawnDebris, spawnFlashなどの比較的些細なエフェクトスポーン処理 -> effects-system.tsに集約実装する。
-プレイヤーの弾の発射 -> playerのplayer-fire.tsに実装。薬莢の排出エフェクトはeffects-systemある関数をplayer-fire.tsから呼ぶ。
-機体喪失時のエフェクト処理（`destroyShip`） -> destroyEffect関数をShipに共通実装、あるいはEnemyとPlayerそれぞれに実装
 
-敵の集計、勝敗判定 -> これこそがcombatの責務である。
+combatのdestroyShipを適切に解体する必要があります。この関数はshipの破壊処理のみならず、エフェクトの生成とゲームの終了処理まで行っているため、責務が過剰です。
+shipを破壊し、エフェクトを生成する部分：destroyEffect関数をShipに共通実装、あるいはEnemyとPlayerそれぞれに実装。破片の生成や効果音の発音などはそっちに。disposeと紛らわしいので、destroyEffectと命名する。
+破壊した敵を数える部分：combatが担当。従来のdestroyShipのうち、kill++としている部分や、結果の表示を行っている部分だけが残る
+機体喪失時のエフェクト処理（`destroyShip`） -> destroyEffect関数をShipに共通実装、あるいはEnemyとPlayerそれぞれに実装。
+敵の集計、勝敗判定こそがcombatの責務である。
 
 この分割の結果、combatCtxがモジュールに対して過剰な規模になっていることが明らかである。「便利なまとまり」とするのではなく、各モジュールが必要な情報だけを受け取るように改善する。
+
+### simSpeedへのcanAct移動
+canPlayerThrustやcanPlayerFire、canEnemyFireなどに分けて、simSpeedの中で管理する。simSpeed自体を他のモジュールに渡して判定するのは良くない。
 
 ### gameとstageDirectorの責務の分割
 初期化、敵のスポーンロジックをstageDirectorに委譲できる。
@@ -49,8 +51,10 @@ three.jsのrender関数は、すでに出来上がったsceneとcameraを受け�
 updateの中ではthree.tsオブジェクトの更新を行わないことを徹底すべき？。sync系関数の中でのみ行うべきかも
 
 ### beltとplayer.fireの責務境界（優先度低）
-player.fireが直接beltGroupを持っているが、これは責務が良くない。player/belt.tsを新設し、責務を分割するべきかも？
-薬莢の追加登録がここに来ることで肥大化していることが予想される。実態を把握してから行う。
+player.fireが直接beltGroupを持っているが、これは責務が良くない。player/belt.tsを新設し、責務を分割するべき
+player.fireが地味に肥大化してきているので、責務の実態を検証してから実装に移る
+ammoEventの受け渡しの配線は遠回りに見える。consumeRoundをupdateFireStateにインライン展開してください。
+その後に、updateFireStateの適切な分割を再検討します。
 
 ### dom操作の分散（優先度低）
 touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散している。これが直接悪いとは言い切れないが…

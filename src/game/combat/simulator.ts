@@ -10,6 +10,7 @@ import { ExtraAccel, R_EARTH, stepOrbitRK4 } from '../../physics/orbital';
 import { add, clone, len, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { CombatCtx, CombatSystem } from './combat';
+import { HitCtx, HitSystem } from './hit';
 import { Bullet, Casing, DebrisPiece, MagPickup, OrbitEntity } from '../entities';
 import { Player } from '../player/player';
 import { Enemy } from '../enemy/enemy';
@@ -19,6 +20,7 @@ import { Vec3 } from '../../physics/nbody/bodies';
 export interface SimulatorCtx {
   player: Player;
   combatCtx: (simTime: number) => CombatCtx;
+  hitCtx: (simTime: number) => HitCtx;
 }
 
 export interface SimulationAdvance {
@@ -52,6 +54,7 @@ export class Simulator {
   constructor(
     private readonly ephemeris: EphemerisSystem,
     private readonly combat: CombatSystem,
+    private readonly hit: HitSystem,
   ) { }
 
   // ------------------------------------------------------------ 追加
@@ -113,9 +116,9 @@ export class Simulator {
     for (let i = 0; i < nSub; i++) {
       nextSimTime = this.simulationSubStep(nextSimTime, subDt, ctx.player, playerAccel, hardCollision);
       if (hardCollision) {
-        const combatCtx = ctx.combatCtx(nextSimTime);
-        this.combat.checkBulletHits(combatCtx);
-        this.combat.checkBoardCrossings(combatCtx);
+        const hitCtx = ctx.hitCtx(nextSimTime);
+        this.hit.checkBulletHits(hitCtx);
+        this.hit.checkBoardCrossings(hitCtx);
       }
     }
     if (!hardCollision) this.stepCoastingAttitudes(simDt);
@@ -186,12 +189,6 @@ export class Simulator {
       (e) => e.alive && altitudeOf(e.state.r) < C.REENTRY_ALT,
       (e) => { this.combat.destroyShip(e, combatCtx, false); e.dispose(); },
     );
-
-    for (const e of this.enemies) {
-      if (e.alive && altitudeOf(e.state.r) < C.REENTRY_ALT) {
-        this.combat.destroyShip(e, combatCtx, false);
-      }
-    }
 
     // 撃破・喪失(alive=false)は destroyShip 経由でのみ起きる。ここでは配列からの
     // 除去と scene からの後片付け(軌道線含む)のみを行う — 撃破数・勝敗判定は
