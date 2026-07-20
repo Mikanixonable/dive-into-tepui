@@ -27,8 +27,8 @@ export class ThermalSystem {
   private altWarnedThresholds = new Set<number>();
 
   constructor(
-    private readonly hud: Hud,
-    private readonly sfx: Sfx,
+    private readonly _hud: Hud,
+    private readonly _sfx: Sfx,
   ) {}
 
   // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の
@@ -62,7 +62,7 @@ export class ThermalSystem {
     const hot = this.hullTemp > 0.7 * C.MAX_HULL_TEMP || this.qdyn > 0.5 * C.MAX_DYN_PRESSURE;
     if (hot && !this.heatWarned) {
       this.heatWarned = true;
-      this.hud.hint('警告: 空力加熱・動圧が危険域 — 高度を上げよ', 4000);
+      this._hud.hint('警告: 空力加熱・動圧が危険域 — 高度を上げよ', 4000);
     } else if (!hot && this.hullTemp < 0.6 * C.MAX_HULL_TEMP) {
       this.heatWarned = false;
     }
@@ -95,8 +95,8 @@ export class ThermalSystem {
       if (this.altEma < th) {
         if (!this.altWarnedThresholds.has(th)) {
           this.altWarnedThresholds.add(th);
-          this.hud.hint(`警告: 高度が${Math.round(th / 1000)}km以下です`, 3000);
-          this.sfx.altAlarm();
+          this._hud.hint(`警告: 高度が${Math.round(th / 1000)}km以下です`, 3000);
+          this._sfx.altAlarm();
         }
       } else if (this.altEma > th + HYSTERESIS) {
         this.altWarnedThresholds.delete(th);

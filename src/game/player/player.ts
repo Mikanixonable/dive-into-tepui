@@ -3,7 +3,7 @@ import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { ExtraAccel, MU_EARTH, OrbitState, R_EARTH } from '../../physics/orbital';
 import { Vec3, addScaled, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { DestroyEffectCtx, Ship } from '../entities';
+import { Ship } from '../entities';
 import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
@@ -18,7 +18,7 @@ import { Belt } from './belt';
 import { altitudeOf } from '../../physics/orbital';
 import { ThermalSystem } from './thermal';
 import { CheckLossCtx } from '../entities';
-import { spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
+import { EffectsCtx, spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
 import { HitInfo } from '../combat/hit';
 
 export interface PlayerActionState {
@@ -37,16 +37,23 @@ export class Player extends Ship {
   private readonly plumeOuter: THREE.Mesh;
   private readonly rcsPuffs: THREE.Mesh[] = []; // RCS ブロック位置の噴射パフ(4基)
 
+  // hud は現状 Player 自身のメソッドからは未使用だが、hud/sfx は必ず対で注入する方針のため
+  // 受け取る(hud はフィールドとしては保持しない)。
+  private readonly _sfx: Sfx;
+  private readonly _scene: THREE.Scene;
+
   // 高度420km・傾斜51.6°の円軌道に機首プログレードで初期配置する
   constructor(hud: Hud, sfx: Sfx, scene: THREE.Scene) {
     const state = Player.makeInitialState();
     super('PLAYER', state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, scene);
+    this._sfx = sfx;
+    this._scene = scene;
     this.mass = 1000;
     // 剛体接触は実機体サイズ。被弾判定半径(radius)を使うと排莢直後の薬莢を弾いてしまう
     this.collideRadius = C.PLAYER_HULL_RADIUS;
 
     this.throttle = new PlayerThrottle(hud, sfx);
-    this.fire = new PlayerFire(hud, sfx);
+    this.fire = new PlayerFire(hud, sfx, scene);
     this.belt = new Belt(this.obj);
     this.thermal = new ThermalSystem(hud, sfx);
 
@@ -195,19 +202,18 @@ export class Player extends Ship {
   // 被弾によるダメージ・致死判定。
   attacked(hit: HitInfo, ctx: CombatCtx): void {
     if (!this.alive) return;
-    const effectCtx = { sfx: ctx.sfx, fx: ctx.fx };
 
     // todo: 弾種でダメージ分岐しないのか
     this.hp -= C.PLAYER_HIT_DAMAGE
     if (this.hp > 0) {
-      this.hitEffect(effectCtx, hit);
+      this.hitEffect(ctx.fx, hit);
       return;
     }
 
     this.alive = false;
     const reason = hit.shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
     ctx.activeStage.recordKilled(ctx, reason);
-    this.destroyEffect(effectCtx);
+    this.destroyEffect(ctx.fx);
   }
 
   // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。
@@ -222,24 +228,24 @@ export class Player extends Ship {
     if (reason === null) return;
 
     this.alive = false;
-    this.destroyEffect({ sfx: ctx.combatCtx.sfx, fx: ctx.combatCtx.fx });
+    this.destroyEffect(ctx.combatCtx.fx);
     ctx.combatCtx.activeStage.recordKilled(ctx.combatCtx, reason);
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
-  private hitEffect(ctx: DestroyEffectCtx, hit: HitInfo): void {
-    ctx.sfx.hit();
+  private hitEffect(fx: EffectsCtx, hit: HitInfo): void {
+    this._sfx.hit();
     if (hit.kind === 'plasma') {
-      spawnPlasmaFlash(ctx.fx, hit.pos, hit.vel);
+      spawnPlasmaFlash(this._scene, fx, hit.pos, hit.vel);
     } else {
-      spawnBulletFlash(ctx.fx, hit.pos, hit.vel);
+      spawnBulletFlash(this._scene, fx, hit.pos, hit.vel);
     }
-    spawnFragments(ctx.fx, hit.pos, hit.vel, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    spawnFragments(this._scene, fx, hit.pos, hit.vel, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
-  
-  private destroyEffect(ctx: DestroyEffectCtx): void {
-    ctx.sfx.explosion();
-    spawnShipDestroyEffect(ctx.fx, this.state.r, this.state.v, 1, 0x9fd8e8);
+
+  private destroyEffect(fx: EffectsCtx): void {
+    this._sfx.explosion();
+    spawnShipDestroyEffect(this._scene, fx, this.state.r, this.state.v, 1, 0x9fd8e8);
   }
 
   // ポーズ中: 移動/発射の一時状態(推力可視化・射撃継続)を止める。

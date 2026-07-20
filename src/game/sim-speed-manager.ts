@@ -11,8 +11,8 @@ export class SimSpeedManager {
   private autoWarpUntil: number | null = null;
 
   constructor(
-    private readonly hud: Hud,
-    private readonly sfx: Sfx,
+    private readonly _hud: Hud,
+    private readonly _sfx: Sfx,
   ) {}
 
   get simSpeed(): number {
@@ -46,8 +46,8 @@ export class SimSpeedManager {
     const next = this.levelIdx + step;
     if (next < 0 || next >= C.SIM_SPEED_LEVELS.length) return;
     this.levelIdx = next;
-    this.sfx.warp();
-    this.hud.hint(`TIME WARP ×${this.simSpeed}`);
+    this._sfx.warp();
+    this._hud.hint(`TIME WARP ×${this.simSpeed}`);
   }
 
   startAutoWarpTo(time: number): void {
@@ -65,7 +65,7 @@ export class SimSpeedManager {
     const tRem = this.autoWarpUntil - simTime;
     if (tRem <= C.AUTOWARP_STOP) {
       this.autoWarpUntil = null;
-      this.hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
+      this._hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
       this.levelIdx = 0;
     }
     let idx = 0;

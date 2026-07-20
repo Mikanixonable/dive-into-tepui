@@ -1,8 +1,12 @@
 // Stage 00: 無限耐久サバイバル。弾薬確保後、波状攻撃が自機破壊まで無限に続く
 // (撃破数では終わらないので checkWin/onWin は no-op に override する)。
+import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { StageCtx, StageDefinition } from './stage-definition';
 import { WaveManager } from './wave-manager';
+import { Hud } from '../../hud/hud';
+import { Sfx } from '../../audio/sfx';
+import type { Simulator } from '../combat/simulator';
 
 export class Stage00 extends StageDefinition {
   readonly index = -1 as const;
@@ -12,6 +16,11 @@ export class Stage00 extends StageDefinition {
   readonly initialAmmo = { magsLeft: C.INITIAL_MAGS - 1, roundsInMag: C.MAG_ROUNDS };
 
   private readonly waveManager = new WaveManager();
+
+  setup(hud: Hud, sfx: Sfx, scene: THREE.Scene, simulator: Simulator): void {
+    super.setup(hud, sfx, scene, simulator);
+    this.waveManager.setup(hud, sfx, scene);
+  }
 
   briefingHtml(): string {
     return (

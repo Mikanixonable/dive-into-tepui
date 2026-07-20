@@ -21,7 +21,7 @@ export class PipRenderer {
   private readonly targetVec = new THREE.Vector3();
   private prevFiring = false;
 
-  constructor() {
+  constructor(private readonly _scene: THREE.Scene) {
     this.crosshair = this.createCrosshair();
   }
 
@@ -33,17 +33,18 @@ export class PipRenderer {
     this.prevFiring = firing;
   }
 
-  renderFrame(renderer: WebGPURenderer, scene: THREE.Scene, ctx: PipRenderCtx): void {
+  renderFrame(renderer: WebGPURenderer, ctx: PipRenderCtx): void {
     if (!ctx.firing || ctx.mapMode) {
       this.crosshair.style.display = 'none';
       ctx.updateOverlay(null);
-      renderer.render(scene, ctx.camera);
+      renderer.render(this._scene, ctx.camera);
       return;
     }
-    this.renderCombatWithPip(renderer, scene, ctx);
+    this.renderCombatWithPip(renderer, ctx);
   }
 
-  private renderCombatWithPip(renderer: WebGPURenderer, scene: THREE.Scene, ctx: PipRenderCtx): void {
+  private renderCombatWithPip(renderer: WebGPURenderer, ctx: PipRenderCtx): void {
+    const scene = this._scene;
     const cam = ctx.camera;
     const w = window.innerWidth;
     const h = window.innerHeight;

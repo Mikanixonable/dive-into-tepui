@@ -41,7 +41,7 @@ export class PlanGuide {
   // 一致し、噴射せずとも達成判定が誤成立する)——凍結はその両方を防ぐ。
   private activeTarget: { nodeTime: number; rNode: Vec3; vPlanned: Vec3; targetEl: Elements } | null = null;
 
-  constructor(private readonly hud: Hud, private readonly sfx: Sfx) {}
+  constructor(private readonly _hud: Hud, private readonly _sfx: Sfx) {}
 
   // マップでノード構成・Δvが変わった可能性がある時に呼ぶ(同じノード時刻のまま
   // Δvだけ編集されたケースは、達成判定側の nodeTime 比較だけでは検出できないため)。
@@ -60,9 +60,9 @@ export class PlanGuide {
   ): { achieved: boolean } {
     const node = plan.firstNode();
     if (!node || !playerAlive) {
-      this.hud.markers.hide('nd');
-      this.hud.markers.hide('burn');
-      this.hud.setPlanPanel(null);
+      this._hud.markers.hide('nd');
+      this._hud.markers.hide('burn');
+      this._hud.setPlanPanel(null);
       return { achieved: false };
     }
 
@@ -91,8 +91,8 @@ export class PlanGuide {
     }
     const tgt = this.activeTarget;
     if (!tgt) {
-      this.hud.markers.hide('nd');
-      this.hud.markers.hide('burn');
+      this._hud.markers.hide('nd');
+      this._hud.markers.hide('burn');
       return { achieved: false };
     }
 
@@ -100,15 +100,15 @@ export class PlanGuide {
     if (playerEl && this.orbitClose(playerEl, tgt.targetEl)) {
       plan.consumeFirstNode();
       this.activeTarget = null;
-      this.hud.markers.hide('nd');
-      this.hud.markers.hide('burn');
+      this._hud.markers.hide('nd');
+      this._hud.markers.hide('burn');
       if (plan.nodes.length === 0) {
-        this.hud.setPlanPanel(null);
-        this.hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
+        this._hud.setPlanPanel(null);
+        this._hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
       } else {
-        this.hud.hint(`✓ ノード達成 — 残り ${plan.nodes.length} 件`, 4000);
+        this._hud.hint(`✓ ノード達成 — 残り ${plan.nodes.length} 件`, 4000);
       }
-      this.sfx.warp();
+      this._sfx.warp();
       return { achieved: true };
     }
 
@@ -119,13 +119,13 @@ export class PlanGuide {
         ? `T-${Math.floor(tRem / 60)}:${String(Math.floor(tRem % 60)).padStart(2, '0')}`
         : `T+${Math.floor(-tRem / 60)}:${String(Math.floor(-tRem % 60)).padStart(2, '0')}`;
     const more = plan.nodes.length > 1 ? ` (+${plan.nodes.length - 1})` : '';
-    this.hud.markers.set('nd', 'mk-mnode', '◆', p.x, p.y, p.front, `NODE ${tLabel}${more}`);
+    this._hud.markers.set('nd', 'mk-mnode', '◆', p.x, p.y, p.front, `NODE ${tLabel}${more}`);
 
     // 噴射ガイド: (凍結済みの)目標速度ベクトルとの差分方向へ加速する
     const dvRem = sub(tgt.vPlanned, pv);
     const mag = len(dvRem);
     const g = project(scale(norm(dvRem), 5e4));
-    this.hud.markers.set(
+    this._hud.markers.set(
       'burn',
       'mk-burn',
       '⬢',

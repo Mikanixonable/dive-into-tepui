@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
 import { Hud } from '../../hud/hud';
+import { Sfx } from '../../audio/sfx';
 import { ChaseCamera } from './chase-camera';
 import { MapCamera } from './map-camera';
 import { MouseDelta } from '../input';
@@ -24,13 +25,14 @@ export interface CameraUpdateCtx {
 // (マップモードの有無・ラベル一覧など、カメラ外の状態は ctx 経由で受け取るだけで、
 // map-mode-system.ts を import しない)。
 export class CameraSystem {
-  readonly chaseCamera = new ChaseCamera();
+  readonly chaseCamera: ChaseCamera;
   readonly mapCamera: MapCamera;
   mapMode = false;
   zoomActive = false;
 
-  constructor(hud: Hud) {
-    this.mapCamera = new MapCamera(hud);
+  constructor(hud: Hud, sfx: Sfx) {
+    this.chaseCamera = new ChaseCamera(hud, sfx);
+    this.mapCamera = new MapCamera(hud, sfx);
   }
 
   get activeCamera(): THREE.PerspectiveCamera {

@@ -54,8 +54,8 @@ export class MapModeSystem {
   private focus: string = 'earth';
 
   constructor(
-    private readonly hud: Hud,
-    private readonly sfx: Sfx,
+    private readonly _hud: Hud,
+    private readonly _sfx: Sfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly plan: Plan,
     private readonly project: ProjectFn,
@@ -63,33 +63,33 @@ export class MapModeSystem {
     private readonly getFineAttitude: () => boolean,
     private readonly getExternalState: () => MapModeExternalState,
   ) {
-    this.editor = new PlanEditor(hud, sfx);
-    this.display = new PlanDisplay(hud.markers);
-    this.mapHud = new MapHud(hud);
+    this.editor = new PlanEditor(this._hud, this._sfx);
+    this.display = new PlanDisplay(this._hud.markers);
+    this.mapHud = new MapHud(this._hud, this._sfx);
     this.wireHudCallbacks();
     this.wireGizmoCallbacks();
   }
 
   private wireHudCallbacks(): void {
-    this.hud.onDurationSelect = (key) => {
+    this._hud.onDurationSelect = (key) => {
       if (key === 'orbit' || key === 'day' || key === 'week' || key === 'month') {
         this.display.predictDurationKey = key;
         this.plan.markDirty();
       }
     };
-    this.hud.onFrameToggle = () => {
+    this._hud.onFrameToggle = () => {
       this.mapCamera.frameRotating = !this.mapCamera.frameRotating;
       this.plan.markDirty();
     };
-    this.hud.onMapFocusSelect = (focus) => {
+    this._hud.onMapFocusSelect = (focus) => {
       this.focus = focus;
       this.mapCamera.pan.set(0, 0, 0);
     };
-    this.hud.onMapViewReset = () => {
+    this._hud.onMapViewReset = () => {
       this.focus = 'earth';
       this.mapCamera.reset();
     };
-    this.hud.onSliderChange = (t) => {
+    this._hud.onSliderChange = (t) => {
       this.mapCamera.sliderT = t;
     };
   }
@@ -99,7 +99,7 @@ export class MapModeSystem {
       onNodeSelect: (idx) => {
         this.editor.selectedNodeIdx = idx;
         this.editor.closeMenu();
-        this.sfx.warp();
+        this._sfx.warp();
       },
       onNodeDragMove: (idx, clientX, clientY) => {
         this.editor.closeMenu();
@@ -117,7 +117,7 @@ export class MapModeSystem {
         const n = this.plan.nodes[idx];
         if (!n) return;
         this.simSpeedManager.startAutoWarpTo(n.time);
-        this.hud.hint('指定時刻まで自動ワープ開始');
+        this._hud.hint('指定時刻まで自動ワープ開始');
       },
       onMenuDelete: (idx) => {
         this.editor.deleteNode(this.plan, idx);
@@ -126,7 +126,7 @@ export class MapModeSystem {
       onMenuFocus: (targetKey) => {
         this.focus = targetKey;
         const lbl = this.mapHud.findLabel(targetKey);
-        if (lbl) this.hud.hint(`${lbl.name} にフォーカス`);
+        if (lbl) this._hud.hint(`${lbl.name} にフォーカス`);
       },
     });
   }
@@ -152,29 +152,29 @@ export class MapModeSystem {
       // マップの表示用予測期間は戦闘ビューの噴射ガイド用期間と異なるため、
       // 開いた直後は必ず作り直す(スロットリングで最大2秒待たされるのを避ける)。
       this.plan.markDirty();
-      this.hud.setMapToolbarVisible(true);
+      this._hud.setMapToolbarVisible(true);
       touchControls?.setMapMode(true);
-      this.hud.hint(
+      this._hud.hint(
         '軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [M] で確定',
         5000,
       );
       return true;
     }
     this.editor.onMapClosed(this.plan);
-    this.hud.setMapToolbarVisible(false);
-    this.hud.setPlanPanel(null);
+    this._hud.setMapToolbarVisible(false);
+    this._hud.setPlanPanel(null);
     this.editor.closeMenu();
     touchControls?.setMapMode(false);
     if (this.plan.nodes.length > 0) {
-      this.hud.hint(`マニューバ計画 ${this.plan.nodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
+      this._hud.hint(`マニューバ計画 ${this.plan.nodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
     }
     return false;
   }
 
   syncMapModeWithPhase(phase: string, touchControls: TouchControls | null, mapMode: boolean): boolean {
     if (phase !== 'playing' && mapMode) {
-      this.hud.setPlanPanel(null);
-      this.hud.setMapToolbarVisible(false);
+      this._hud.setPlanPanel(null);
+      this._hud.setMapToolbarVisible(false);
       this.editor.closeMenu();
       touchControls?.setMapMode(false);
       return false;
@@ -194,7 +194,7 @@ export class MapModeSystem {
   // ノード削除後の副作用(右クリメニュー・[X] キーの両方で共通)。
   private notifyNodeDeleted(): void {
     this.simSpeedManager.cancelAutoWarp();
-    this.hud.hint('ノードを削除');
+    this._hud.hint('ノードを削除');
   }
 
   // [N] キー: 直近ノードの実行時刻までの自動ワープをトグルする(実際の速度管理は
@@ -203,15 +203,15 @@ export class MapModeSystem {
     if (mapMode) return;
     const first = this.plan.firstNode();
     if (!first || phase !== 'playing') {
-      this.hud.hint('マニューバノードがありません ([M] で計画)');
+      this._hud.hint('マニューバノードがありません ([M] で計画)');
       return;
     }
     if (this.simSpeedManager.isAutoWarping) {
       this.simSpeedManager.cancelAutoWarp();
-      this.hud.hint('自動ワープ解除');
+      this._hud.hint('自動ワープ解除');
     } else {
       this.simSpeedManager.startAutoWarpTo(first.time);
-      this.hud.hint('ノードへ自動ワープ開始');
+      this._hud.hint('ノードへ自動ワープ開始');
     }
   }
 

@@ -1,9 +1,12 @@
 // stage00(無限耐久サバイバル)の波状攻撃: フェーズ遷移・ウェーブ数・ウェーブ生成を管理する。
 // Stage00 専用のヘルパーであり、Stage00 インスタンスが自身のフィールドとして直接保持する。
+import * as THREE from 'three/webgpu';
 import { len, sub } from '../../physics/vec3';
 import type { StageCtx } from './stage-definition';
 import type { AmmoResupplySystem } from '../combat/ammo-resupply';
 import { generateWave } from '../enemy/enemy-spawner';
+import { Hud } from '../../hud/hud';
+import { Sfx } from '../../audio/sfx';
 
 export interface WaveEncounterConfig {
   spawnDelay: number; // 弾薬確保からウェーブ接近までの遅延
@@ -17,10 +20,23 @@ export class WaveManager {
   spawnTimer = 0;
   waveCount = 0;
 
+  // Stage00 も静的シングルトンの一部として module 読み込み時に生成されるため、
+  // WaveManager もコンストラクタ注入ができない — StageDefinition.setup() と同じ理由・
+  // 同じパターンで、Stage00.setup() から一度だけ呼ばれる。
+  private _hud!: Hud;
+  private _sfx!: Sfx;
+  private _scene!: THREE.Scene;
+
+  setup(hud: Hud, sfx: Sfx, scene: THREE.Scene): void {
+    this._hud = hud;
+    this._sfx = sfx;
+    this._scene = scene;
+  }
+
   // 1波分の敵を生成してステージに登録する(配置計算・Enemy 生成は enemy-spawner.ts の責務)。
   spawnWave(ctx: StageCtx, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this.waveCount;
-    const enemies = generateWave(ctx.player.state, wave, ctx.scene, forcedPattern);
+    const enemies = generateWave(ctx.player.state, wave, this._hud, this._sfx, this._scene, forcedPattern);
     for (const enemy of enemies) ctx.addEnemy(enemy, enemy.accent);
   }
 
@@ -39,7 +55,7 @@ export class WaveManager {
     if (ctx.magsLeft <= 0 && ctx.roundsInMag <= 0) return;
     this.phase = 'spawning_enemies';
     this.spawnTimer = spawnDelay;
-    ctx.hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
+    this._hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
   }
 
   // 「ウェーブ接近予告」フェーズ: カウントダウン後に最初のウェーブを生成する。
@@ -62,7 +78,7 @@ export class WaveManager {
     if (this.spawnTimer > 0) return;
     this.spawnWave(ctx);
     this.spawnTimer = spawnInterval;
-    ctx.hud.toast(`波状攻撃 第${this.waveCount}波 接近中！`, 3000);
+    this._hud.toast(`波状攻撃 第${this.waveCount}波 接近中！`, 3000);
   }
 }
 

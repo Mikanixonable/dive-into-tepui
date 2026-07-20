@@ -4,9 +4,7 @@ import { altitudeOf, OrbitState } from '../physics/orbital';
 import { Attitude } from '../physics/attitude';
 import { Vec3, clone, v3 } from '../physics/vec3';
 import * as C from './const';
-import { EffectsCtx } from './effects-system';
 import type { CombatCtx } from './stages/stage-definition';
-import type { Sfx } from '../audio/sfx';
 
 export interface CheckLossCtx {
   dt: number;
@@ -60,12 +58,6 @@ export class OrbitEntity {
   dispose(): void {
     this.scene?.remove(this.obj);
   }
-}
-
-// destroyEffect/hitEffect が必要とする、フラッシュ・破片のスポーン先。
-export interface DestroyEffectCtx {
-  sfx: Sfx;
-  fx: EffectsCtx;
 }
 
 export abstract class Ship extends OrbitEntity {

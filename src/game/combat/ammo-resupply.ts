@@ -16,9 +16,9 @@ export class AmmoResupplySystem {
   private resupplyCheckAt = 0;
 
   constructor(
-    private readonly hud: Hud,
-    private readonly sfx: Sfx,
-    private readonly scene: THREE.Scene,
+    private readonly _hud: Hud,
+    private readonly _sfx: Sfx,
+    private readonly _scene: THREE.Scene,
     private readonly pickups: readonly MagPickup[],
     private readonly addPickup: (mp: MagPickup) => void,
   ) {}
@@ -43,11 +43,11 @@ export class AmmoResupplySystem {
         w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),
         inertia: v3(1, 1.4, 1.2),
       },
-      this.scene,
+      this._scene,
     );
     this.addPickup(mp);
-    this.sfx.warp();
-    this.hud.hint('付近の軌道に補給マガジンが投入された — ▣ AMMO マーカーへ接近して回収', 5000);
+    this._sfx.warp();
+    this._hud.hint('付近の軌道に補給マガジンが投入された — ▣ AMMO マーカーへ接近して回収', 5000);
   }
 
   // respawnOnDespawn: 遠方デスポーンした補給を同数投入し直すか。呼び出し元(各 Stage の
@@ -69,8 +69,8 @@ export class AmmoResupplySystem {
       if (lenSq(sub(mp.state.r, player.state.r)) >= C.MAG_PICKUP_RADIUS * C.MAG_PICKUP_RADIUS) continue;
       mp.alive = false;
       player.onPickup(C.MAG_PICKUP_MAGS);
-      this.sfx.pickup();
-      this.hud.hint(`補給マガジン取り込み — ベルト +${C.MAG_PICKUP_MAGS} 連`, 3000);
+      this._sfx.pickup();
+      this._hud.hint(`補給マガジン取り込み — ベルト +${C.MAG_PICKUP_MAGS} 連`, 3000);
     }
   }
 
