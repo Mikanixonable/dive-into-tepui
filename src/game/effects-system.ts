@@ -28,6 +28,22 @@ export interface EffectsCtx {
   addDebris(piece: DebrisPiece): void;
 }
 
+export function spawnPlasmaFlash(ctx: EffectsCtx, pos: Vec3, vel: Vec3): void {
+  spawnFlash(ctx, clone(pos), clone(vel),
+    C.PLASMA_HIT_FLASH_SIZE0,
+    C.PLASMA_HIT_FLASH_SIZE1,
+    C.PLASMA_HIT_FLASH_DURATION,
+    0xffa0ff);
+}
+
+export function spawnBulletFlash(ctx: EffectsCtx, pos: Vec3, vel: Vec3): void {
+  spawnFlash(ctx, clone(pos), clone(vel),
+    C.BULLET_HIT_FLASH_SIZE0,
+    C.BULLET_HIT_FLASH_SIZE1,
+    C.BULLET_HIT_FLASH_DURATION,
+    0xffe2a0);
+}
+
 export function spawnFlash(
   ctx: EffectsCtx,
   pos: Vec3,

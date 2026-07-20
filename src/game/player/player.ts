@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { ExtraAccel, MU_EARTH, OrbitState, R_EARTH } from '../../physics/orbital';
-import { Vec3, addScaled, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
+import { Vec3, addScaled, clone, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { Ship } from '../entities';
+import { DestroyEffectCtx, Ship } from '../entities';
 import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
@@ -12,8 +12,11 @@ import { CombatCtx, CombatSystem } from '../combat/combat';
 import { PlayerThrottle } from './player-throttle';
 import { FireCtx, PlayerFire } from './player-fire';
 import { Belt } from './belt';
-import { altitudeOf } from '../combat/simulator';
+import { altitudeOf } from '../../physics/orbital';
 import { ThermalSystem } from './thermal';
+import { CheckLossCtx } from '../entities';
+import { spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
+import { HitInfo } from '../combat/hit';
 
 export interface PlayerActionState {
   thrustFn: ExtraAccel | null;
@@ -163,23 +166,55 @@ export class Player extends Ship {
       default: return false;
     }
   }
-
-  checkLoss(dt: number, combat: CombatSystem, combatCtx: CombatCtx): void {
+  
+  // 被弾によるダメージ・致死判定。
+  attacked(hit: HitInfo, combat: CombatSystem, combatCtx: CombatCtx): void {
     if (!this.alive) return;
-    const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, altitudeOf(this.state.r));
+    const effectCtx = { sfx: combatCtx.sfx, fx: combatCtx.fx };
 
-    if (limit === 'heat') {
-      combatCtx.setLostReason('断熱圧縮による加熱で熱防御が飽和し、機体は焼失した');
-      combat.destroyShip(this, combatCtx);
+    // todo: 弾種でダメージ分岐しないのか
+    this.hp -= C.PLAYER_HIT_DAMAGE
+    if (this.hp > 0) {
+      this.hitEffect(effectCtx, hit);
+      return;
     }
-    else if (limit === 'dynpressure') {
-      combatCtx.setLostReason('動圧が構造限界を超え、機体は空力的に分解した');
-      combat.destroyShip(this, combatCtx);
+    
+    this.alive = false;
+    const reason = hit.shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
+    combat.recordKilled(combatCtx, reason);
+    this.destroyEffect(effectCtx);
+  }
+
+  // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。
+  checkLoss(ctx: CheckLossCtx): void {
+    if (!this.alive) return;
+    const limit = this.thermal.updateAltitudeAlarm(ctx.dt, this.alive, altitudeOf(this.state.r));
+
+    let reason: string | null = null;
+    if (limit === 'heat') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
+    else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
+    else if (altitudeOf(this.state.r) < C.PLAYER_MIN_ALT) reason = '濃密な大気に突入し機体は分解した';
+    if (reason === null) return;
+
+    this.alive = false;
+    this.destroyEffect({ sfx: ctx.combatCtx.sfx, fx: ctx.combatCtx.fx });
+    ctx.combat.recordKilled(ctx.combatCtx, reason);
+  }
+
+  // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
+  private hitEffect(ctx: DestroyEffectCtx, hit: HitInfo): void {
+    ctx.sfx.hit();
+    if (hit.kind === 'plasma') {
+      spawnPlasmaFlash(ctx.fx, hit.pos, hit.vel);
+    } else {
+      spawnBulletFlash(ctx.fx, hit.pos, hit.vel);
     }
-    else if (altitudeOf(this.state.r) < C.PLAYER_MIN_ALT) {
-      combatCtx.setLostReason('濃密な大気に突入し機体は分解した');
-      combat.destroyShip(this, combatCtx);
-    }
+    spawnFragments(ctx.fx, clone(hit.pos), clone(hit.vel), C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+  }
+  
+  private destroyEffect(ctx: DestroyEffectCtx): void {
+    ctx.sfx.explosion();
+    spawnShipDestroyEffect(ctx.fx, this.state.r, this.state.v, 1, 0x9fd8e8);
   }
 
   // ポーズ中: 移動/発射の一時状態(推力可視化・射撃継続)を止める。

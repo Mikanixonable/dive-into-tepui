@@ -1,14 +1,17 @@
 
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
-import { Bullet, Ship } from '../../game/entities';
+import { Bullet, CheckLossCtx, DestroyEffectCtx, Ship } from '../../game/entities';
 import { Attitude } from '../../physics/attitude';
-import { OrbitState } from '../../physics/orbital';
+import { altitudeOf, OrbitState } from '../../physics/orbital';
 import { OrbitLine } from '../../render/orbitline';
 import { add, clone, len, norm, randPerp, rotateAxis, scale, sub } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
 import { buildPlasmaMesh } from '../../render/ships';
+import { spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
 import type { Player } from '../player/player';
+import { CombatCtx, CombatSystem } from '../combat/combat';
+import { HitInfo } from '../combat/hit';
 
 // 敵 AI(Enemy.behave)が必要とする、Game 側の現在状態のスナップショット。
 // player / enemies は参照渡し(state.r 等を読むだけでミューテートしない)。
@@ -55,14 +58,52 @@ export class Enemy extends Ship {
     this.scene?.remove(this.orbitLine.line);
   }
 
-  // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-  protected override get destroyScale(): number { return C.ENEMY_SCALE; }
-  protected override get destroyAccent(): number { return 0xff6a4a; }
+  // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。attacked からのみ呼ばれる。
+  private hitEffect(ctx: DestroyEffectCtx, hit: HitInfo): void {
+    ctx.sfx.hit();
+    if (hit.kind === 'plasma') {
+      spawnPlasmaFlash(ctx.fx, hit.pos, hit.vel);
+    } else {
+      spawnBulletFlash(ctx.fx, hit.pos, hit.vel);
+    }
+    spawnFragments(ctx.fx, clone(hit.pos), clone(hit.vel), C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+  }
 
-  // 至近距離帯に入った自機へバースト射撃を行う(player.ts の behave に対応)。
-  // 同一集団(色)内で同時攻撃するのは最大 ENEMY_MAX_ATTACKERS_PER_GROUP 機まで —
-  // 集団の攻撃中カウントは呼び出し時点の ctx.enemies を都度スキャンして求める
-  // (game.ts が敵配列の順に behave を呼ぶため、直前に発射を始めた個体も反映される)。
+  private destroyEffect(ctx: DestroyEffectCtx): void {
+    ctx.sfx.explosion();
+    // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
+    spawnShipDestroyEffect(ctx.fx, this.state.r, this.state.v, C.ENEMY_SCALE, 0xff6a4a);
+  }
+
+  // 被弾によるダメージ・致死判定。
+  attacked(hit: HitInfo, combat: CombatSystem, combatCtx: CombatCtx): void {
+    if (!this.alive) return;
+    if (hit.shooter === 'enemy') return; // 敵弾の被弾は無効化
+    const effectCtx = { sfx: combatCtx.sfx, fx: combatCtx.fx };
+
+    combat.recordHit();
+
+    this.hp -= C.ENEMY_HIT_DAMAGE;
+    if (this.hp > 0) {
+      this.hitEffect(effectCtx, hit);
+      return;
+    }
+
+    this.alive = false;
+    combat.recordKill(this, combatCtx, true);
+    this.destroyEffect(effectCtx);
+  }
+
+  // 再突入による自然死。alive がすでに false なら何もしない(多重処理防止)。
+  checkLoss(ctx: CheckLossCtx): void {
+    if (!this.alive) return;
+    if (altitudeOf(this.state.r) >= C.REENTRY_ALT) return;
+    this.alive = false;
+    this.destroyEffect({ sfx: ctx.combatCtx.sfx, fx: ctx.combatCtx.fx });
+    ctx.combat.recordKill(this, ctx.combatCtx, false);
+  }
+
+  // 行動関数
   behave(dt: number, ctx: EnemyAiCtx): void {
     if (!ctx.player.alive) return;
     const dist = len(sub(ctx.player.state.r, this.state.r));
@@ -120,7 +161,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet({ r: clone(r), v: bV }, buildPlasmaMesh(this.accent), ctx.simTime, ctx.scene);
+    const pb = new Bullet({ r: clone(r), v: bV }, buildPlasmaMesh(this.accent), ctx.simTime, C.PLASMA_LIFETIME, 'enemy', ctx.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(

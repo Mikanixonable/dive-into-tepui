@@ -184,6 +184,8 @@ export class PlayerFire {
       },
       buildBulletMesh(),
       ctx.simTime,
+      C.BULLET_LIFETIME,
+      'player',
       ctx.scene,
     );
     ctx.addBullet(bullet);

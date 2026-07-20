@@ -1,11 +1,18 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { OrbitState } from '../physics/orbital';
+import { altitudeOf, OrbitState } from '../physics/orbital';
 import { Attitude } from '../physics/attitude';
 import { Vec3, clone, v3 } from '../physics/vec3';
 import * as C from './const';
+import { EffectsCtx } from './effects-system';
+import type { CombatCtx, CombatSystem } from './combat/combat';
 import type { Sfx } from '../audio/sfx';
-import { EffectsCtx, spawnShipDestroyEffect } from './effects-system';
+
+export interface CheckLossCtx {
+  dt: number;
+  combat: CombatSystem;
+  combatCtx: CombatCtx;
+}
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -46,20 +53,23 @@ export class OrbitEntity {
     this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 
-  // 寿命切れ・上限超過時に呼ばれる。既定は scene からの除去のみ。
+  checkLoss(_ctx: CheckLossCtx): void {
+    if (!this.alive) return;
+    if (altitudeOf(this.state.r) < C.DEBRIS_REENTRY_ALT) this.alive = false;
+  }
+
   dispose(): void {
     this.scene?.remove(this.obj);
   }
 }
 
-// destroyEffect が必要とする、Game 側の現在状態のスナップショット。
-// fx はエフェクトのスポーンに必要な最小の受け皿(effects-system.ts の EffectsCtx)。
+// destroyEffect/hitEffect が必要とする、フラッシュ・破片のスポーン先。
 export interface DestroyEffectCtx {
   sfx: Sfx;
   fx: EffectsCtx;
 }
 
-export class Ship extends OrbitEntity {
+export abstract class Ship extends OrbitEntity {
   name: string;
   radius: number; // 被弾判定半径 [m](剛体接触の collideRadius とは別)
   hp: number;
@@ -80,28 +90,29 @@ export class Ship extends OrbitEntity {
     this.hp = hp;
     this.maxHp = hp;
   }
-
-  // 撃破時のエフェクト・音・alive 遷移をまとめて行う(撃破数の集計・勝敗判定は
-  // combat.ts の CombatSystem.destroyShip が担う)。scene からの除去等の後片付けは
-  // dispose() の役目であり、こちらとは別物 — 混同しないよう destroyEffect と命名する。
-  destroyEffect(ctx: DestroyEffectCtx): void {
-    this.alive = false;
-    this.obj.visible = false;
-    ctx.sfx.explosion();
-    spawnShipDestroyEffect(ctx.fx, this.state.r, this.state.v, this.destroyScale, this.destroyAccent);
-  }
-
-  protected get destroyScale(): number { return 1; }
-  protected get destroyAccent(): number { return 0x9fd8e8; }
 }
+
+// 弾を撃った主体
+export type Shooter = 'player' | 'enemy';
+
 // 自弾と敵プラズマ弾の両方に使う。配列は射手(自機/敵)ごとに分けて保持し、
-// 命中ルール・寿命の違いは配列単位で扱う。
+// 命中ルールは配列単位で扱うが、寿命(lifetime)は生成時に渡された値を自身で持つ。
 export class Bullet extends OrbitEntity {
   bornSim: number;
+  readonly shooter: Shooter;
+  private readonly lifetime: number;
 
-  constructor(state: OrbitState, obj: THREE.Object3D, bornSim: number, scene?: THREE.Scene) {
+  constructor(state: OrbitState, obj: THREE.Object3D, bornSim: number, lifetime: number, shooter: Shooter, scene?: THREE.Scene) {
     super(state, obj, scene);
     this.bornSim = bornSim;
+    this.lifetime = lifetime;
+    this.shooter = shooter;
+  }
+
+  checkLoss(ctx: CheckLossCtx): void {
+    if (!this.alive) return;
+    if (altitudeOf(this.state.r) < C.DEBRIS_REENTRY_ALT) { this.alive = false; return; }
+    if (ctx.combatCtx.simTime - this.bornSim > this.lifetime) this.alive = false;
   }
 
   // 姿勢を持たないため、att.q ではなく自機に対する相対速度方向を向く
@@ -126,6 +137,12 @@ export class Casing extends OrbitEntity {
     super(state, obj, scene, att);
     this.bornSim = bornSim;
     this.collideRadius = 0.2;
+  }
+
+  checkLoss(ctx: CheckLossCtx): void {
+    if (!this.alive) return;
+    if (altitudeOf(this.state.r) < C.DEBRIS_REENTRY_ALT) { this.alive = false; return; }
+    if (ctx.combatCtx.simTime - this.bornSim > C.CASING_LIFETIME) this.alive = false;
   }
 }
 
