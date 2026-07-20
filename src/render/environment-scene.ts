@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { R_MOON, moonPosition, sunPosition } from '../physics/ephemeris';
 import { SIDEREAL_DAY } from '../physics/orbital';
-import { Vec3, norm, sub } from '../physics/vec3';
+import { Vec3, len, norm, scale, sub } from '../physics/vec3';
 import { createEarth, Earth } from './earth';
 import { MOON_VIS_DIST, SUN_DISTANCE, Sun, createMoon, createStars, createSun } from './stars';
 
@@ -13,14 +13,6 @@ export interface EnvironmentLightingParams {
   shadowMinSun: number;
   shadowMinAmbient: number;
 }
-
-export type PlaceCombatMoon = (
-  moonMesh: THREE.Mesh,
-  cam: THREE.PerspectiveCamera,
-  moonRel: Vec3,
-  moonRadius: number,
-  moonVisDist: number,
-) => void;
 
 export interface EnvironmentRenderParams {
   dt: number;
@@ -32,7 +24,6 @@ export interface EnvironmentRenderParams {
   mapMode: boolean;
   mapCameraFar: number;
   lit: number;
-  placeCombatMoon: PlaceCombatMoon;
 }
 
 export class EnvironmentScene {
@@ -66,20 +57,9 @@ export class EnvironmentScene {
   }
 
   syncRenderEnvironment(params: EnvironmentRenderParams): void {
-    const {
-      dt,
-      origin,
-      displayTime,
-      camera,
-      sunPhase0,
-      moonPhase0,
-      mapMode,
-      mapCameraFar,
-      lit,
-      placeCombatMoon,
-    } = params;
+    const { dt, origin, displayTime, camera, sunPhase0, moonPhase0, mapMode, mapCameraFar, lit } = params;
     this.updateEarth(dt, origin, displayTime);
-    this.updateSkyBodies(displayTime, origin, camera, sunPhase0, moonPhase0, mapMode, mapCameraFar, placeCombatMoon);
+    this.updateSkyBodies(displayTime, origin, camera, sunPhase0, moonPhase0, mapMode, mapCameraFar);
     this.updateLighting(lit);
   }
 
@@ -97,7 +77,6 @@ export class EnvironmentScene {
     moonPhase0: number,
     mapMode: boolean,
     mapCameraFar: number,
-    placeCombatMoon: PlaceCombatMoon,
   ): void {
     const visSunPos = sunPosition(displayTime, sunPhase0);
     const sd = norm(visSunPos);
@@ -117,13 +96,25 @@ export class EnvironmentScene {
       this.moonMesh.position.set(moonRel.x, moonRel.y, moonRel.z);
       this.moonMesh.scale.setScalar(R_MOON);
     } else {
-      placeCombatMoon(this.moonMesh, cam, moonRel, R_MOON, MOON_VIS_DIST);
+      this.placeCombatMoon(cam, moonRel, R_MOON, MOON_VIS_DIST);
     }
     this.moonMesh.lookAt(
       this.moonMesh.position.x - visMoonPos.x,
       this.moonMesh.position.y - visMoonPos.y,
       this.moonMesh.position.z - visMoonPos.z,
     );
+  }
+
+  // 通常戦闘視点: 月をカメラからの一定表示距離に置き、実距離に応じた見かけの大きさへスケールする。
+  private placeCombatMoon(cam: THREE.PerspectiveCamera, moonRel: Vec3, moonRadius: number, moonVisDist: number): void {
+    const moonDist = len(moonRel);
+    const md = scale(moonRel, 1 / moonDist);
+    this.moonMesh.position.set(
+      cam.position.x + md.x * moonVisDist,
+      cam.position.y + md.y * moonVisDist,
+      cam.position.z + md.z * moonVisDist,
+    );
+    this.moonMesh.scale.setScalar(moonVisDist * (moonRadius / moonDist));
   }
 
   private updateLighting(lit: number): void {
