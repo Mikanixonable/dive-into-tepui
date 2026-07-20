@@ -1,30 +1,26 @@
-// プレイヤーの射撃・弾薬(マガジン/リロード)状態と、それに連動するマガジンベルト
-// (未使用弾のベルト、Verlet 物理 + 表示メッシュは belt.ts の BeltPhysics)。
-// 発砲・排莢・バレル交換の演出もここで組み立てる(combat.ts は game.ts を import
-// しないため、combat.ts へ発注する形は取らず、effects-system.ts のスポーン関数を
-// 直接呼び、命中数とは独立な「発射数」だけ CombatSystem.recordShot() で集計する)。
+// プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の
+// 演出もここで組み立てる(combat.ts は game.ts を import しないため、combat.ts
+// へ発注する形は取らず、effects-system.ts のスポーン関数を直接呼び、命中数とは
+// 独立な「発射数」だけ CombatSystem.recordShot() で集計する)。未使用弾のベルト
+// (表示メッシュ + たわみ物理)は belt.ts の Belt が持つ — Player が直接所有する
+// (PlayerFire はベルトの状態を参照しない)。
 import * as THREE from 'three/webgpu';
-import { Attitude, qRotate, randomQuat } from '../../physics/attitude';
-import { Vec3, add, addScaled, clone, norm, randPerp, randSym, randVec, scale, v3 } from '../../physics/vec3';
+import { qRotate, randomQuat } from '../../physics/attitude';
+import { add, addScaled, clone, norm, randPerp, randSym, randVec, scale, v3, Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { BeltPhysics } from './belt-physics';
 import { Bullet, Casing, DebrisPiece, Ship } from '../entities';
 import {
-  MAG_BELT_PITCH,
   MUZZLE_OFFSETS,
   buildBarrelMesh,
   buildBulletMesh,
   buildCasingMesh,
   buildMagazineFrame,
-  buildMagazineMesh,
 } from '../../render/ships';
 import { EffectsCtx, spawnFlash } from '../effects-system';
 import { CombatSystem } from '../combat/combat';
-
-type AmmoEvent = 'none' | 'mag' | 'reload';
 
 // fireGun / dropBarrel / spawnEjectedMagazineFrame が必要とする、Game 側の
 // 現在状態のスナップショット。fx はエフェクトのスポーンに必要な最小の受け皿
@@ -40,60 +36,37 @@ export interface FireCtx {
 }
 
 export class PlayerFire {
-  private fireCooldown = 0;
-  private wasFiring = false;
-  private wasEmptyClick = false;
-  private roundsInMagValue = C.MAG_ROUNDS;
-  private magsLeftValue = C.INITIAL_MAGS - 1;
-  private magsConsumedSinceReloadValue = 0;
-  private reloadTimerValue = 0;
-  private muzzleIdx = 0; // 縦二連砲口の交互発射用
-
-  // マガジンベルト(未使用の実弾入りマガジン): 機体左面(+X)に垂直に連結する。
-  // 先頭リンクは機体に半分取り込まれた位置に置く(給弾中もベルトごと取り込まれて
-  // いる見た目)。弾を撃ち尽くすたびに機体反対側(-X)からフレームだけの空マガジンが
-  // デブリとして放出される(spawnEjectedMagazineFrame 参照)。
-  private readonly beltGroup = new THREE.Group();
-  private readonly beltLinks: THREE.Group[] = [];
-  readonly belt: BeltPhysics;
-  private beltFeed = 0;
+  fireCooldown = 0;
+  wasFiring = false;
+  wasEmptyClick = false;
+  roundsInMag = C.MAG_ROUNDS;
+  magsLeft = C.INITIAL_MAGS - 1;
+  magsLeftInBarrel = C.MAGS_PER_BARREL;
+  reloadTimer = 0;
+  muzzleIdx = 0; // 縦二連砲口の交互発射用
 
   constructor(
     private readonly hud: Hud,
     private readonly sfx: Sfx,
-    playerObj: THREE.Object3D,
-  ) {
-    for (let i = 0; i < C.BELT_MAX_VISIBLE; i++) {
-      const link = buildMagazineMesh();
-      link.position.x = 0.9 + i * MAG_BELT_PITCH;
-      this.beltGroup.add(link);
-      this.beltLinks.push(link);
-    }
-    playerObj.add(this.beltGroup);
-    this.belt = new BeltPhysics(this.beltLinks);
-  }
+  ) { }
 
-  get roundsInMag(): number { return this.roundsInMagValue; }
-  get magsLeft(): number { return this.magsLeftValue; }
-  get magsConsumedSinceReload(): number { return this.magsConsumedSinceReloadValue; }
-  get reloadTimer(): number { return this.reloadTimerValue; }
   get isFiring(): boolean { return this.wasFiring; }
 
   initAmmo(magsLeft: number, roundsInMag: number): void {
-    this.magsLeftValue = magsLeft;
-    this.roundsInMagValue = roundsInMag;
-    this.magsConsumedSinceReloadValue = 0;
-    this.reloadTimerValue = 0;
+    this.magsLeft = magsLeft;
+    this.roundsInMag = roundsInMag;
+    this.magsLeftInBarrel = C.MAGS_PER_BARREL;
+    this.reloadTimer = 0;
     this.wasEmptyClick = false;
     this.fireCooldown = 0;
     this.wasFiring = false;
   }
 
   onPickup(mags: number): void {
-    this.magsLeftValue += mags;
-    if (this.roundsInMagValue > 0) return;
-    this.magsLeftValue--;
-    this.roundsInMagValue = C.MAG_ROUNDS;
+    this.magsLeft += mags;
+    if (this.roundsInMag > 0) return;
+    this.magsLeft--;
+    this.roundsInMag = C.MAG_ROUNDS;
   }
 
   stopFiring(): void {
@@ -102,20 +75,20 @@ export class PlayerFire {
 
   manualReload(): boolean {
     const canReload =
-      this.reloadTimerValue <= 0 &&
-      (this.roundsInMagValue < C.MAG_ROUNDS || this.magsConsumedSinceReloadValue > 0) &&
-      this.magsLeftValue > 0;
+      this.reloadTimer <= 0 &&
+      (this.roundsInMag < C.MAG_ROUNDS || this.magsLeftInBarrel < C.MAGS_PER_BARREL) &&
+      this.magsLeft > 0;
     if (!canReload) return false;
-    this.magsLeftValue--;
-    this.roundsInMagValue = C.MAG_ROUNDS;
-    this.magsConsumedSinceReloadValue = 0;
-    this.reloadTimerValue = C.RELOAD_TIME;
+    this.magsLeft--;
+    this.roundsInMag = C.MAG_ROUNDS;
+    this.magsLeftInBarrel = C.MAGS_PER_BARREL;
+    this.reloadTimer = C.RELOAD_TIME;
     this.sfx.playReload();
     return true;
   }
 
   private hasAmmo(): boolean {
-    return this.roundsInMagValue > 0 || this.magsLeftValue > 0;
+    return this.roundsInMag > 0 || this.magsLeft > 0;
   }
 
   // 発砲入力を処理し、発射・排莢・リロードを行う。戻り値は「このフレームで発砲を
@@ -148,8 +121,8 @@ export class PlayerFire {
 
     // リロードは戦闘可否(マップモード/ワープ/生死)に関わらず実時間で進行する
     // (時間ワープ中でも装填サイクルは現実時間で完了する)。
-    if (this.reloadTimerValue > 0) {
-      this.reloadTimerValue -= dt;
+    if (this.reloadTimer > 0) {
+      this.reloadTimer -= dt;
       this.wasFiring = false;
       return false;
     }
@@ -159,52 +132,50 @@ export class PlayerFire {
     this.wasFiring = wantFire;
     if (!wantFire) return justStartedFiring;
 
+    this.fireCycle(dt, justStartedFiring, fireCtx, ship, combat);
+    return justStartedFiring;
+  }
+
+  // CoolDown 周期での連射管理: 発射開始時のスピンアップと、周期が満ちるごとの
+  // fireGun 呼び出しのみを扱う(発射可否の判定は updateFireState、1発の演出・
+  // 弾薬消費は fireGun の責務)。
+  private fireCycle(dt: number, justStartedFiring: boolean, ctx: FireCtx, ship: Ship, combat: CombatSystem): void {
     if (justStartedFiring) {
       this.sfx.spinUp();
       this.fireCooldown = C.SPINUP_TIME;
     }
     this.fireCooldown -= dt;
-    if (this.fireCooldown > 0) return justStartedFiring;
+    if (this.fireCooldown > 0) return;
     this.fireCooldown = C.FIRE_INTERVAL;
-
-    this.fireGun(fireCtx, ship, combat);
-    const ammoEvent = this.consumeRound();
-    if (ammoEvent === 'mag') {
-      this.spawnEjectedMagazineFrame(fireCtx, ship);
-      this.sfx.magFeed();
-    } else if (ammoEvent === 'reload') {
-      this.spawnEjectedMagazineFrame(fireCtx, ship);
-      this.dropBarrel(fireCtx, ship);
-      this.sfx.playReload();
-    }
-    return justStartedFiring;
-  }
-
-  private consumeRound(): AmmoEvent {
-    this.roundsInMagValue--;
-    if (this.roundsInMagValue > 0 || this.magsLeftValue <= 0) return 'none';
-    this.magsLeftValue--;
-    this.roundsInMagValue = C.MAG_ROUNDS;
-    this.magsConsumedSinceReloadValue++;
-    if (this.magsConsumedSinceReloadValue < 3) return 'mag';
-    this.magsConsumedSinceReloadValue = 0;
-    this.reloadTimerValue = C.RELOAD_TIME;
-    return 'reload';
+    this.fireGun(ctx, ship, combat);
   }
 
   // ---------------------------------------------------------------- weapons
 
+  // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、命中数とは独立な発射数を
+  // 記録したのち、弾薬(マガジン/バレル)を消費する。
   private fireGun(ctx: FireCtx, ship: Ship, combat: CombatSystem): void {
     const fwd = qRotate(ship.att.q, v3(0, 0, 1));
-    const right = qRotate(ship.att.q, v3(1, 0, 0));
-    const up = qRotate(ship.att.q, v3(0, 1, 0));
 
     // 縦二連の砲口から交互に発射する
     const mo = MUZZLE_OFFSETS[this.muzzleIdx]!;
     this.muzzleIdx = (this.muzzleIdx + 1) % MUZZLE_OFFSETS.length;
     const muzzle = add(ship.state.r, qRotate(ship.att.q, v3(mo.x, mo.y, mo.z)));
 
-    // 弾丸: 機首方向 + 散布界
+    this.spawnBullet(ctx, ship, muzzle, fwd);
+    // 反動(運動量保存の風味): 発射方向と逆に微小 Δv
+    ship.state.v = addScaled(ship.state.v, fwd, -C.RECOIL_DV);
+    this.dropCasing(ctx, ship, muzzle);
+    this.spawnMuzzleFlash(ctx, ship, muzzle, fwd);
+
+    combat.recordShot();
+    this.sfx.fire();
+
+    this.consumeRound(ctx, ship);
+  }
+
+  // 弾丸: 機首方向 + 散布界
+  private spawnBullet(ctx: FireCtx, ship: Ship, muzzle: Vec3, fwd: Vec3): void {
     const dir = norm(addScaled(fwd, randPerp(fwd), Math.abs(randSym(C.BULLET_SPREAD))));
     const bullet = new Bullet(
       {
@@ -216,12 +187,13 @@ export class PlayerFire {
       ctx.scene,
     );
     ctx.addBullet(bullet);
+  }
 
-    // 反動(運動量保存の風味): 発射方向と逆に微小 Δv
-    ship.state.v = addScaled(ship.state.v, fwd, -C.RECOIL_DV);
-
-    // 薬莢: 機体右側(-X)へ排出(左側(+X)はマガジンベルトの給弾があるため)。
-    // 初速・回転とも抑え、ゆっくり漂いながら緩やかに回転する見た目にする。
+  // 薬莢: 機体右側(-X)へ排出(左側(+X)はマガジンベルトの給弾があるため)。
+  // 初速・回転とも抑え、ゆっくり漂いながら緩やかに回転する見た目にする。
+  private dropCasing(ctx: FireCtx, ship: Ship, muzzle: Vec3): void {
+    const right = qRotate(ship.att.q, v3(1, 0, 0));
+    const up = qRotate(ship.att.q, v3(0, 1, 0));
     const casing = new Casing(
       {
         r: add(muzzle, scale(right, -1.4)),
@@ -240,9 +212,11 @@ export class PlayerFire {
       ctx.scene,
     );
     ctx.addCasing(casing);
+  }
 
-    // マズルフラッシュ: 発射した側の砲口に出す
-    // (ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
+  // マズルフラッシュ: 発射した側の砲口に出す
+  // (ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
+  private spawnMuzzleFlash(ctx: FireCtx, ship: Ship, muzzle: Vec3, fwd: Vec3): void {
     spawnFlash(
       ctx.fx,
       addScaled(clone(muzzle), fwd, 1.2),
@@ -254,9 +228,25 @@ export class PlayerFire {
       ctx.zoomActive ? C.ZOOM_MUZZLE_FLASH_SCALE : 1,
       true, // マズルフラッシュ: PIP 描画時のみ非表示化の対象
     );
+  }
 
-    combat.recordShot();
-    this.sfx.fire();
+  // 1発分の弾薬を消費する。マガジンを撃ち尽くした場合は外枠をデブリとして排出し、
+  // バレルの残りマガジン数(magsLeftInBarrel)が尽きたらバレル交換(リロード)を発生させる。
+  private consumeRound(ctx: FireCtx, ship: Ship): void {
+    this.roundsInMag--;
+    if (this.roundsInMag > 0 || this.magsLeft <= 0) return;
+    this.magsLeft--;
+    this.roundsInMag = C.MAG_ROUNDS;
+    this.magsLeftInBarrel--;
+    this.spawnEjectedMagazineFrame(ctx, ship);
+    if (this.magsLeftInBarrel > 0) {
+      this.sfx.magFeed();
+      return;
+    }
+    this.magsLeftInBarrel = C.MAGS_PER_BARREL;
+    this.reloadTimer = C.RELOAD_TIME;
+    this.dropBarrel(ctx, ship);
+    this.sfx.playReload();
   }
 
   // リロード時(バレル交換)に円柱アイテムをデブリとして放出する。手動リロード
@@ -301,21 +291,5 @@ export class PlayerFire {
       ctx.scene,
     );
     ctx.addDebris(piece);
-  }
-
-  // ---------------------------------------------------------------- belt
-
-  // マガジンベルトの毎フレーム更新(たわみ物理 + 表示メッシュ)。給弾量
-  // (beltCount/beltFeed)は自身が持つ弾薬状態から直接導出する。
-  updateBelt(dt: number, att: Attitude, thrustAccelVec: Vec3, alive: boolean): void {
-    const beltCount = Math.min(this.magsLeftValue, C.BELT_MAX_VISIBLE);
-    const targetFeed = 1 - this.roundsInMagValue / C.MAG_ROUNDS;
-    if (targetFeed < this.beltFeed - 0.5) {
-      this.belt.shiftBeltNodes();
-      this.beltFeed = targetFeed;
-    } else {
-      this.beltFeed += (targetFeed - this.beltFeed) * Math.min(1, dt * 12);
-    }
-    this.belt.updateBeltPhysics(dt, beltCount, att, thrustAccelVec, this.beltFeed, alive);
   }
 }
