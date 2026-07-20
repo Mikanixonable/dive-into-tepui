@@ -3,8 +3,8 @@
 // ロジックとして game/plan/ に独立して存在し、Game がここへ Plan を注入する
 // (このクラスは Plan を作らず、コンストラクタで受け取るだけ)。
 // PlanEditor(マップ上でのノード編集)/ PlanDisplay(マップ上での予測軌道・ゴースト
-// 表示)/ MapHud(フォーカス対象ラベルの算出・描画)を private に保持し、有効フラグと
-// 開閉時の後始末はこのクラス自身が持つ。MapCamera(マップカメラ・視点操作)はもはや
+// 表示)/ MapHud(フォーカス対象ラベルの算出・描画)を private に保持する。MapCamera
+// (マップカメラ・視点操作)はもはや
 // カメラ以外の責務を持たないため camera-system.ts の CameraSystem が所有し、このクラスは
 // コンストラクタで参照を受け取るだけ(生成しない・カメラ駆動もしない — 駆動は
 // CameraSystem.updateActiveCamera が直接呼ぶ)。frameRotating/pan/dist/sliderT は
@@ -51,7 +51,6 @@ export class MapModeSystem {
   private readonly editor: PlanEditor;
   private readonly display: PlanDisplay;
   private readonly mapHud: MapHud;
-  private enabled = false;
   private focus: string = 'earth';
 
   constructor(
@@ -146,14 +145,9 @@ export class MapModeSystem {
 
   // --------------------------------------------------------------- lifecycle
 
-  get mapMode(): boolean {
-    return this.enabled;
-  }
-
-  toggleMap(phase: string, touchControls: TouchControls | null): void {
-    if (phase !== 'playing') return;
-    if (!this.enabled) {
-      this.enabled = true;
+  toggleMap(phase: string, touchControls: TouchControls | null, mapMode: boolean): boolean {
+    if (phase !== 'playing') return mapMode;
+    if (!mapMode) {
       this.editor.selectedNodeIdx = null;
       // マップの表示用予測期間は戦闘ビューの噴射ガイド用期間と異なるため、
       // 開いた直後は必ず作り直す(スロットリングで最大2秒待たされるのを避ける)。
@@ -164,9 +158,8 @@ export class MapModeSystem {
         '軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [M] で確定',
         5000,
       );
-      return;
+      return true;
     }
-    this.enabled = false;
     this.editor.onMapClosed(this.plan);
     this.hud.setMapToolbarVisible(false);
     this.hud.setPlanPanel(null);
@@ -175,16 +168,18 @@ export class MapModeSystem {
     if (this.plan.nodes.length > 0) {
       this.hud.hint(`マニューバ計画 ${this.plan.nodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
     }
+    return false;
   }
 
-  syncMapModeWithPhase(phase: string, touchControls: TouchControls | null): void {
-    if (phase !== 'playing' && this.enabled) {
-      this.enabled = false;
+  syncMapModeWithPhase(phase: string, touchControls: TouchControls | null, mapMode: boolean): boolean {
+    if (phase !== 'playing' && mapMode) {
       this.hud.setPlanPanel(null);
       this.hud.setMapToolbarVisible(false);
       this.editor.closeMenu();
       touchControls?.setMapMode(false);
+      return false;
     }
+    return mapMode;
   }
 
   // [X] キー(マップモード中のみ): 選択中ノードを削除する(どのノードかの解決は
@@ -204,8 +199,8 @@ export class MapModeSystem {
 
   // [N] キー: 直近ノードの実行時刻までの自動ワープをトグルする(実際の速度管理は
   // SimSpeedManager が持つ — ここではノードの有無/時刻の解決だけを担う)。
-  toggleAutoWarpToFirstNode(phase: string): void {
-    if (this.mapMode) return;
+  toggleAutoWarpToFirstNode(phase: string, mapMode: boolean): void {
+    if (mapMode) return;
     const first = this.plan.firstNode();
     if (!first || phase !== 'playing') {
       this.hud.hint('マニューバノードがありません ([M] で計画)');
@@ -249,8 +244,8 @@ export class MapModeSystem {
 
   // マップ表示中(mapMode)のみ意味を持つ: 予測軌道の再計算・折れ線/ゴースト描画・
   // ギズモ座標更新・フォーカスラベル描画。閉じている間は表示物の後始末のみ行う。
-  updateDisplay(): void {
-    if (!this.mapMode) {
+  updateDisplay(mapMode: boolean): void {
+    if (!mapMode) {
       this.display.hide();
       this.editor.hideGizmo();
       return;
@@ -272,9 +267,9 @@ export class MapModeSystem {
     );
   }
 
-  resolveDisplayTime(): number {
+  resolveDisplayTime(mapMode: boolean): number {
     const ctx = this.planCtx();
-    if (!this.mapMode || this.mapCamera.sliderT <= 0) return ctx.simTime;
+    if (!mapMode || this.mapCamera.sliderT <= 0) return ctx.simTime;
     return this.display.displayTime(ctx.simTime, this.display.predictDurationSec(ctx), this.mapCamera.sliderT);
   }
 
