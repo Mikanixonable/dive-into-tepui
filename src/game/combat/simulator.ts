@@ -4,16 +4,16 @@
 // scene への add/remove は各 entity 自身の責務(entities.ts)なので、
 // Simulator は配列管理・上限管理・寿命判定に専念する。
 // game.ts を import しない — 依存は constructor 注入と各メソッド引数のみ。
-import { stepAttitude } from '../physics/attitude';
-import { envAccelInto } from '../physics/envaccel';
-import { ExtraAccel, R_EARTH, stepOrbitRK4 } from '../physics/orbital';
-import { add, clone, len, v3 } from '../physics/vec3';
-import * as C from './const';
-import { CombatCtx, CombatSystem } from './combat/combat';
-import { Bullet, Casing, DebrisPiece, Enemy, MagPickup, OrbitEntity } from './entities';
-import { EphemerisSystem } from './ephemeris';
-import { Player } from './player/player';
-import { Vec3 } from '../physics/nbody/bodies';
+import { stepAttitude } from '../../physics/attitude';
+import { envAccelInto } from '../../physics/envaccel';
+import { ExtraAccel, R_EARTH, stepOrbitRK4 } from '../../physics/orbital';
+import { add, clone, len, v3 } from '../../physics/vec3';
+import * as C from '../const';
+import { CombatCtx, CombatSystem } from './combat';
+import { Bullet, Casing, DebrisPiece, Enemy, MagPickup, OrbitEntity } from '../entities';
+import { EphemerisSystem } from '../ephemeris';
+import { Player } from '../player/player';
+import { Vec3 } from '../../physics/nbody/bodies';
 
 export interface SimulatorCtx {
   player: Player;
