@@ -370,21 +370,16 @@ export class Game {
   }
 
   private handleEdgeInput(): void {
-    for (const code of this.input.takePresses()) {
+    const presses = this.input.takePresses();
+    const unconsumedPresses = this.player.handleEdgeInput(presses, this.combat, this.combatCtx());
+    for (const code of unconsumedPresses) {
       this.handleEdgePress(code);
     }
   }
 
   private handleEdgePress(code: string): void {
     switch (code) {
-      case 'KeyT': this.player.toggleRcsDamp(); break;
-      case 'KeyF': this.player.enableProgradeReset(); break;
-      case 'KeyV': this.player.toggleFineAttitude(); break;
-      case 'KeyC': this.player.toggleProgradeHold(); break;
       case 'KeyG': this.chase.toggleFollowAttitude(this.hud); break;
-      case 'Digit1': this.player.setThrottlePreset(0); break;
-      case 'Digit2': this.player.setThrottlePreset(1); break;
-      case 'Digit3': this.player.setThrottlePreset(2); break;
       case 'Comma': this.simSpeedManager.shift(-1); break;
       case 'Period': this.simSpeedManager.shift(1); break;
       case 'KeyM': this.mapModeSystem.toggleMap(this.phase, this.touchControls); break;
@@ -392,17 +387,8 @@ export class Game {
       case 'KeyX': this.mapModeSystem.clearPlanByKey(); break;
       case 'KeyH': this.hud.toggleHelp(); break;
       case 'Escape': this.hud.toggleSettings(); break;
-      case 'KeyR': this.handleReloadOrRestartKey(); break;
+      case 'KeyR': if (this.phase !== 'playing') location.reload(); break;
     }
-  }
-
-  private handleReloadOrRestartKey(): void {
-    if (this.phase !== 'playing') {
-      location.reload();
-      return;
-    }
-    if (!this.player.manualReload()) return;
-    this.combat.dropBarrel(this.combatCtx());
   }
 
   // StageDirector の各メソッド呼び出しに渡す、現在状態のスナップショット

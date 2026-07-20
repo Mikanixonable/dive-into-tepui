@@ -113,10 +113,6 @@ export class Player extends Ship {
     this.fire.onPickup(mags);
   }
 
-  manualReload(): boolean {
-    return this.fire.manualReload();
-  }
-
   // マガジンベルトの毎フレーム更新(たわみ物理 + 表示メッシュ、弾薬状態に連動)。
   updateBelt(dt: number): void {
     this.fire.updateBelt(dt, this.att, this.throttle.thrustAccelVec, this.alive);
@@ -126,8 +122,9 @@ export class Player extends Ship {
     return simSpeed <= C.MAX_PHYS_SIM_SPEED && this.alive && !mapMode;
   }
 
-  // 毎フレームの HP 自然回復と、ユーザー入力に対する移動/発射の試行を一括で行う。
-  // 実際の移動加速度の組み立ては PlayerThrottle、発砲・排莢の発注は PlayerFire が持つ。
+  // 毎フレームの HP 自然回復・押下エッジキー処理と、ユーザー入力に対する移動/発射の
+  // 試行を一括で行う。実際の移動加速度の組み立ては PlayerThrottle、発砲・排莢の発注は
+  // PlayerFire が持つ。
   behave(params: {
     dt: number;
     input: Input;
@@ -145,24 +142,25 @@ export class Player extends Ship {
     return { canAct, thrustFn };
   }
 
-  toggleRcsDamp(): void {
-    this.throttle.toggleRcsDamp();
+    // 押下エッジキーの処理し、担当外のキーを記録
+  handleEdgeInput(presses: string[], combat: CombatSystem, combatCtx: CombatCtx): string[] {
+    return presses.filter((code) => !this.handleEdgePress(code, combat, combatCtx));
   }
 
-  enableProgradeReset(): void {
-    this.throttle.enableProgradeReset();
-  }
-
-  toggleFineAttitude(): void {
-    this.throttle.toggleFineAttitude();
-  }
-
-  toggleProgradeHold(): void {
-    this.throttle.toggleProgradeHold();
-  }
-
-  setThrottlePreset(idx: number): void {
-    this.throttle.setThrottlePreset(idx);
+  private handleEdgePress(code: string, combat: CombatSystem, combatCtx: CombatCtx): boolean {
+    switch (code) {
+      case 'KeyT': this.throttle.toggleRcsDamp(); return true;
+      case 'KeyF': this.throttle.enableProgradeReset(); return true;
+      case 'KeyV': this.throttle.toggleFineAttitude(); return true;
+      case 'KeyC': this.throttle.toggleProgradeHold(); return true;
+      case 'Digit1': this.throttle.setThrottlePreset(0); return true;
+      case 'Digit2': this.throttle.setThrottlePreset(1); return true;
+      case 'Digit3': this.throttle.setThrottlePreset(2); return true;
+      case 'KeyR':
+        if (this.fire.manualReload()) combat.dropBarrel(combatCtx);
+        return true;
+      default: return false;
+    }
   }
 
   checkLoss(dt: number, combat: CombatSystem, combatCtx: CombatCtx): void {
