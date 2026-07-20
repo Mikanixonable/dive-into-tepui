@@ -22,25 +22,14 @@ belt.ts
 - ctx注入パターンの根絶。
 
 ### playerにおけるたらいまわし配線を改善（優先度高）
-collisionSectionsとapplyCollisionSectionsをたらい回しにするだけのハンドラが存在する。そもそも関数名が何をしているのか分かりにくい。applyCollisionSectionsは、beltのVerlet物理演算を行う関数であるが、名前からは想像できない。だいたい公開する必要性があるのか？
-player.beltCollisionSections
--> player.fire.collisionSections
--> player.fire.belt.collisionSections
-
-applyBeltCollisions
--> player.fire.applyCollisionSections
--> player.fire.belt.applyCollisionSections
-
-その他にも、playerクラスには不要なたらいまわし関数が多い。そもそも公開する意義が問われる。一度しか参照されておらず、かつひとまとめに参照されているのであれば、ひとまとめにするところまでがPlayerクラスの責務ではないか。
-
-playerにbehavior関数を作り、プレイヤーがユーザー入力に対して移動や発射を試みるロジックの一括呼び出しを実装（実際の移動や発射はplayer-thrustとplayer-fireに実装）。hpRegenもここから。
-
+throttleへのたらいまわしが残っている。
+GameのhandleEdgeInputの分岐処理のうち、playerに関与するものをplayerのbehaveに移動する。behaveは既にinputを受け取っているので移行は難しくないはず。その結果公開する必要のなくなったたらいまわしはplayerフォルダの中で完結させる
 
 ### combatの責務の分割（優先度高）
 気が付いたらcombatがマンモスクラスになっている……以下の方針で分割する。
 
-敵AI -> enemy.tsのEnemyクラスにbehavior関数を作り、敵の行動ロジックを集約する。behaviorの呼び出しはとりあえずgameが行う。
-弾の衝突判定 -> hit.tsを新設し、切り出し。
+敵AI -> enemy.tsのEnemyクラスにbehave関数を作り、敵の行動ロジックを移動する。ちょうどplayerのbehaveに対応する形になる。behaveの呼び出しはとりあえずgameが行う。
+弾の高度な衝突判定 -> hit.tsを新設し、切り出す。
 spawnDebris, spawnFlashなどの比較的些細なエフェクトスポーン処理 -> effects-system.tsに集約実装する。
 プレイヤーの弾の発射 -> playerのplayer-fire.tsに実装。薬莢の排出エフェクトはeffects-systemある関数をplayer-fire.tsから呼ぶ。
 機体喪失時のエフェクト処理（`destroyShip`） -> destroyEffect関数をShipに共通実装、あるいはEnemyとPlayerそれぞれに実装

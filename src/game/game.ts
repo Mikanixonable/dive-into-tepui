@@ -30,6 +30,7 @@ import { Targeter } from './combat/targeter';
 import { HudProjection } from './camera/projection';
 import { AmmoResupplySystem } from './combat/ammo-resupply';
 import { MapModeSystem } from './map-mode/map-mode-system';
+import { SimSpeedManager } from './sim-speed-manager';
 import { PipRect, PipRenderer } from './pip-renderer';
 import { altitudeOf, Simulator, SimulatorCtx } from './combat/simulator';
 import * as C from './const';
@@ -89,10 +90,14 @@ export class Game {
 
   //readonly stage: number;
 
+  // シミュレーション速度(旧「ワープ」)の段階管理と、[N] キーによるノードへの自動ワープ
+  private readonly simSpeedManager = new SimSpeedManager(this.hud, this.sfx);
+
   // 軌道計画モード(map-mode/ フォルダの唯一の外部窓口)
   private readonly mapModeSystem = new MapModeSystem(
     this.hud,
     this.sfx,
+    this.simSpeedManager,
     (rel: Vec3) => this.hudProjection.project(rel),
     () => this.player.fineAttitude,
     () => ({
@@ -297,7 +302,7 @@ export class Game {
       const advanced = this.simulator.integrateSimulation(
         this.simTime,
         dt,
-        this.mapModeSystem.warp(),
+        this.simSpeedManager.simSpeed,
         this.simulatorCtx(),
         false,
         false,
@@ -311,14 +316,14 @@ export class Game {
   }
 
   private updateFrame(dt: number): void {
-    this.mapModeSystem.updateAutoWarp();
-    const warp = this.mapModeSystem.warp();
-    const simDt = dt * warp;
+    this.simSpeedManager.update(this.simTime);
+    const simSpeed = this.simSpeedManager.simSpeed;
+    const simDt = dt * simSpeed;
     // プレイヤーの HP 回復・移動/発射の試行
     const action = this.player.behave({
       dt,
       input: this.input,
-      warp,
+      simSpeed,
       mapMode: this.mapMode,
       combat: this.combat,
       combatCtx: this.combatCtx(),
@@ -328,7 +333,7 @@ export class Game {
     const advanced = this.simulator.integrateSimulation(
       this.simTime,
       dt,
-      warp,
+      simSpeed,
       this.simulatorCtx(),
       true,
       true,
@@ -337,7 +342,7 @@ export class Game {
     this.simTime = advanced.simTime;
     this.lastSimDt = advanced.simDt;
 
-    this.handlePostSimulation(dt, simDt, warp, action.canAct);
+    this.handlePostSimulation(dt, simDt, simSpeed, action.canAct);
 
     if (this.mapMode) {
       this.mapModeSystem.updateEditing(dt, this.input);
@@ -380,8 +385,8 @@ export class Game {
       case 'Digit1': this.player.setThrottlePreset(0); break;
       case 'Digit2': this.player.setThrottlePreset(1); break;
       case 'Digit3': this.player.setThrottlePreset(2); break;
-      case 'Comma': this.mapModeSystem.shiftWarp(-1); break;
-      case 'Period': this.mapModeSystem.shiftWarp(1); break;
+      case 'Comma': this.simSpeedManager.shift(-1); break;
+      case 'Period': this.simSpeedManager.shift(1); break;
       case 'KeyM': this.mapModeSystem.toggleMap(this.phase, this.touchControls); break;
       case 'KeyN': this.mapModeSystem.toggleAutoWarpToFirstNode(this.phase); break;
       case 'KeyX': this.mapModeSystem.clearPlanByKey(); break;
@@ -473,7 +478,7 @@ export class Game {
       target: this.targeter.autoTarget,
       touchControls: this.touchControls,
       simTime: this.simTime,
-      warp: this.mapModeSystem.warp(),
+      simSpeed: this.simSpeedManager.simSpeed,
       paused: this.paused,
       rcsDamp: this.player.rcsDamp,
       throttleIdx: this.player.throttleIdx,
@@ -512,11 +517,11 @@ export class Game {
 
   // ------------------------------------------------------------- simulate
 
-  private handlePostSimulation(dt: number, simDt: number, warp: number, canAct: boolean): void {
+  private handlePostSimulation(dt: number, simDt: number, simSpeed: number, canAct: boolean): void {
     this.player.checkLoss(dt, this.combat, this.combatCtx());
 
     this.ammoResupply.updateLogistics(this.simTime, this.stageDirector.stage, this.player);
-    if (warp <= C.MAX_PHYS_WARP) {
+    if (simSpeed <= C.MAX_PHYS_SIM_SPEED) {
       this.collisionPhysics.resolve(dt, this.collisionCtx(), () => {
         this.sfx.clank();
       });

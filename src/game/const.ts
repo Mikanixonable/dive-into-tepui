@@ -145,8 +145,8 @@ export const DESTROY_FLASH2_SIZE0 = 6; // 撃破時フラッシュ(外殻)のサ
 export const DESTROY_FLASH2_SIZE1 = 40;
 export const DESTROY_FLASH2_DURATION = 0.5; // [s]
 
-export const WARP_LEVELS = [1, 4, 16, 64, 256, 1024, 4096];
-export const MAX_PHYS_WARP = 4; // 推進・射撃が可能な最大タイムワープ
+export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096];
+export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃が可能な最大タイムワープ
 
 export const PLAYER_RADIUS = 5; // 被弾(弾丸ヒット)判定 [m]。実機体より大きめの当たり判定
 export const PLAYER_HULL_RADIUS = 2.6; // 薬莢・破片等との物理接触に使う実寸に近い半径 [m]。
@@ -197,9 +197,9 @@ export const PREDICT_MAX_SAMPLES = 2000; // 保持する予測サンプル数の
 // 「現在の軌道」自体がドリフトしていくため)。
 export const PREDICT_DIRTY_THROTTLE_MS = 200;
 export const PREDICT_REFRESH_INTERVAL_MS = 2000;
-// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大ワープを選び、STOP 秒前に解除。
-// ワープ段は 4 倍刻み(1/4/16/64/256/1024/4096)なので、1 段降りるごとに
-// 実時間で約 MARGIN×0.75 秒かかる計算になる。全体(最大ワープから解除まで)を
+// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
+// 速度段は 4 倍刻み(1/4/16/64/256/1024/4096)なので、1 段降りるごとに
+// 実時間で約 MARGIN×0.75 秒かかる計算になる。全体(最大速度から解除まで)を
 // 概ね20実秒以内に収めるよう、以前の15から大きく下げてある。
 export const AUTOWARP_MARGIN = 4;
 export const AUTOWARP_STOP = 20;
