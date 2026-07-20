@@ -19,7 +19,7 @@ function phasedState(base: OrbitState, dAlong: number): OrbitState {
 }
 
 // 無秩序に漂う敵(訓練クラスタ・通常ステージのプリセット敵の生成本体): ランダム姿勢+角速度。
-export function generateDriftingEnemy(name: string, state: OrbitState, hp: number, accent: number, hud: Hud, sfx: Sfx, scene: THREE.Scene): Enemy {
+export function generateDriftingEnemy(name: string, state: OrbitState, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, scene: THREE.Scene): Enemy {
   return new Enemy(
     name,
     state,
@@ -31,6 +31,7 @@ export function generateDriftingEnemy(name: string, state: OrbitState, hp: numbe
     },
     hp,
     accent,
+    orbitLineColor,
     hud,
     sfx,
     undefined,
@@ -38,12 +39,12 @@ export function generateDriftingEnemy(name: string, state: OrbitState, hp: numbe
   );
 }
 
-export function generatePhasedEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: number, hud: Hud, sfx: Sfx, scene: THREE.Scene): Enemy {
-  return generateDriftingEnemy(name, phasedState(base, dAlong), hp, accent, hud, sfx, scene);
+export function generatePhasedEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, scene: THREE.Scene): Enemy {
+  return generateDriftingEnemy(name, phasedState(base, dAlong), hp, accent, orbitLineColor, hud, sfx, scene);
 }
 
 export function generateCoellipticEnemy(
-  name: string, base: OrbitState, dAlong: number, altitudeOffset: number, hp: number, accent: number, hud: Hud, sfx: Sfx, scene: THREE.Scene,
+  name: string, base: OrbitState, dAlong: number, altitudeOffset: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, scene: THREE.Scene,
 ): Enemy {
   const phased = phasedState(base, dAlong);
   const altitude = len(base.r) + altitudeOffset;
@@ -51,33 +52,33 @@ export function generateCoellipticEnemy(
     r: scale(norm(phased.r), altitude),
     v: scale(norm(phased.v), Math.sqrt(MU_EARTH / altitude)),
   };
-  return generateDriftingEnemy(name, state, hp, accent, hud, sfx, scene);
+  return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, hud, sfx, scene);
 }
 
-export function generateCrossingEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: number, hud: Hud, sfx: Sfx, scene: THREE.Scene): Enemy {
+export function generateCrossingEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, scene: THREE.Scene): Enemy {
   const phased = phasedState(base, dAlong);
   const state: OrbitState = { r: phased.r, v: rotateAxis(phased.v, norm(phased.r), (0.4 * Math.PI) / 180) };
-  return generateDriftingEnemy(name, state, hp, accent, hud, sfx, scene);
+  return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, hud, sfx, scene);
 }
 
-export function generateEllipticEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: number, hud: Hud, sfx: Sfx, scene: THREE.Scene): Enemy {
+export function generateEllipticEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, scene: THREE.Scene): Enemy {
   const phased = phasedState(base, dAlong);
   const state: OrbitState = { r: phased.r, v: scale(phased.v, 1.006) };
-  return generateDriftingEnemy(name, state, hp, accent, hud, sfx, scene);
+  return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, hud, sfx, scene);
 }
 
-export function generateMolniyaEnemy(name: string, raan: number, nu: number, hp: number, accent: number, hud: Hud, sfx: Sfx, scene: THREE.Scene): Enemy {
+export function generateMolniyaEnemy(name: string, raan: number, nu: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, scene: THREE.Scene): Enemy {
   const rp = R_EARTH + 1200e3;
   const ra = R_EARTH + 39400e3;
   const a = (rp + ra) / 2;
   const e = (ra - rp) / (ra + rp);
   const state = stateFromElements(a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu);
-  return generateDriftingEnemy(name, state, hp, accent, hud, sfx, scene);
+  return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, hud, sfx, scene);
 }
 
 // ステージ00ウェーブ敵: 自機へのフライパスなので、機首をプログレードに向けて生成する。
 export function generateApproachingEnemy(
-  name: string, state: OrbitState, hp: number, accent: number, typeIndex: number, waveId: number, hud: Hud, sfx: Sfx, scene: THREE.Scene,
+  name: string, state: OrbitState, hp: number, accent: number, orbitLineColor: number, typeIndex: number, waveId: number, hud: Hud, sfx: Sfx, scene: THREE.Scene,
 ): Enemy {
   return new Enemy(
     name,
@@ -90,6 +91,7 @@ export function generateApproachingEnemy(
     },
     hp,
     accent,
+    orbitLineColor,
     hud,
     sfx,
     waveId,

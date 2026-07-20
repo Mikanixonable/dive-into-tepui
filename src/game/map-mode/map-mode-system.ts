@@ -15,8 +15,8 @@
 // すべてここに集まるため、focus とその解決(focusRel: ラベル位置→フローティング
 // オリジン相対位置)は同じ場所にあるべきで、MapCamera は解決済みの Vec3 を受け取る
 // だけにする(ラベルという概念自体を知らない)。
-// 外部(game.ts / camera-system.ts / orbit-line-system.ts)はこのクラスのメソッドのみを
-// 呼ぶ — 3クラスへ個別に触れさせない。
+// 外部(game.ts)はこのクラスのメソッドのみを呼ぶ — PlanEditor/PlanDisplay/MapHud へ
+// 個別に触れさせない。
 // シミュレーション速度そのものの管理は責務が異なるため SimSpeedManager が別途持ち、
 // ここではノード実行時刻への自動ワープの起点(startAutoWarpTo/cancelAutoWarp の
 // 呼び出しどころ)としてのみ参照する。
