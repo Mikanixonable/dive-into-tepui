@@ -33,7 +33,7 @@ import { MapModeSystem } from './map-mode/map-mode-system';
 import { PipRect, PipRenderer } from './pip-renderer';
 import { altitudeOf, Simulator, SimulatorCtx } from './combat/simulator';
 import * as C from './const';
-import { Enemy } from './entities';
+import { Enemy } from './enemy/enemy';
 import { Input } from './input';
 import { TouchControls } from './touch';
 import { ChaseCamera } from './camera/chase-camera';

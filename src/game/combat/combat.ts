@@ -20,7 +20,9 @@ import {
   v3,
 } from '../../physics/vec3';
 import * as C from '../const';
-import { Bullet, Casing, DebrisPiece, Enemy, Ship } from '../entities';
+import { Bullet, Casing, DebrisPiece, Ship } from '../entities';
+import { Player } from '../player/player';
+import { Enemy } from '../enemy/enemy';
 import { FlashEffect } from '../effects-system';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
@@ -35,7 +37,6 @@ import {
   buildMagazineFrame,
   buildPlasmaMesh,
 } from '../../render/ships';
-import { Player } from '../player/player';
 
 // fireGun / firePlasma / checkBulletHits / destroyShip 等が必要とする、Game 側の
 // 現在状態のスナップショット(毎フレーム/毎呼び出しで渡す)。enemies / bullets /
