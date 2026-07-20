@@ -17,13 +17,15 @@ export interface TargeterCtx {
 
 export class Targeter {
   private lockedTarget: Enemy | null = null;
+  autoTarget: Enemy | null = null;
 
   constructor(private readonly hud: Hud) {}
 
   updateCombatTargeting(ctx: TargeterCtx): Enemy | null {
     ctx.input.takeClicks();
     this.handleTargetLockByRightClick(ctx);
-    return this.resolveAutoTarget(ctx);
+    this.autoTarget = this.resolveAutoTarget(ctx);
+    return this.autoTarget;
   }
 
   private handleTargetLockByRightClick(ctx: TargeterCtx): void {

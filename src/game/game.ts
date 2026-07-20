@@ -112,7 +112,6 @@ export class Game {
   private warpIdx = 0;
   private paused = false;
 
-  private target: Enemy | null = null;
   private zoomActive = false;
 
   // 天体暦(太陽・月の位置と日照率)は ephemeris.ts に切り出し済み。
@@ -346,7 +345,7 @@ export class Game {
       this.mapModeSystem.updateEditing(dt, this.input);
     }
     else {
-      this.target = this.targeter.updateCombatTargeting(
+      this.targeter.updateCombatTargeting(
         {
           player: this.player,
           enemies: this.simulator.enemies,
@@ -435,7 +434,7 @@ export class Game {
       player: this.player,
       enemies: this.simulator.enemies,
       totalEnemies: this.simulator.totalEnemiesSpawned,
-      target: this.target,
+      target: this.targeter.autoTarget,
       stage: this.stageDirector.stage,
       zoomActive: this.zoomActive,
       scene: this.scene,
@@ -464,7 +463,7 @@ export class Game {
       mapMode: this.mapMode,
       player: this.player,
       enemies: this.simulator.enemies,
-      target: this.target,
+      target: this.targeter.autoTarget,
       magPickups: this.simulator.magPickups,
       mapLabelIds: this.mapModeSystem.mapLabelIds(),
       activeCamera: this.activeCamera,
@@ -478,7 +477,7 @@ export class Game {
     return {
       player: this.player,
       enemies: this.simulator.enemies,
-      target: this.target,
+      target: this.targeter.autoTarget,
       touchControls: this.touchControls,
       simTime: this.simTime,
       warp: this.warp(),
@@ -642,7 +641,7 @@ export class Game {
       origin: o,
       playerVelocity: pv,
       player: this.player,
-      target: this.target,
+      target: this.targeter.autoTarget,
       enemies: this.simulator.enemies,
       maneuver: this.mapModeSystem,
       playerOrbitLine: this.playerOrbitLine,

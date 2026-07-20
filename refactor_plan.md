@@ -28,15 +28,8 @@ Gameがcameraを保持してcameraSystemにctxとして渡しているけども�
 
 activeCamera分岐がcameraSystemの責務だとするなら、ActiveCameraがmapModeに実装されているのはダメで、cameraSystemに実装されるべき。
 
-### targetの管理
-targetをGameが保持しているが、Targteterが持っているlockedTargetと一致しているのであれば、それのgetterなどで情報を供給すべきだ。
-
 ### warpの管理
 warpはGameではなくmap-mode-systemが持つべきかも。warpIdxなども同様で、gameが管理すべきでない、はず。要調査。そもそもwarpと呼ばれているものは何？
-
-### orbitLineの管理
-
-playerOrbitLineはplayerが、TargetOrbitLineはtargeterが、管理するべき。
 
 ### playerにおけるたらいまわし配線を改善（優先度高）
 collisionSectionsとapplyCollisionSectionsをたらい回しにするだけのハンドラが存在する。そもそも関数名が何をしているのか分かりにくい。applyCollisionSectionsは、beltのVerlet物理演算を行う関数であるが、名前からは想像できない。だいたい公開する必要性があるのか？
@@ -105,3 +98,6 @@ ctxか微妙に重複し、微妙に異なるフィールドを持つ場合、�
 
 ## const.tsの解体（優先度低）
 一か所で使用されている定数はそのモジュールの責務である可能性が高い。モジュールの分割がある程度進み、責務が明確になった段階で、const.tsの解体を行う。
+
+### orbitLineの管理
+なぜこれでorbitLineが表示されるのかわからない……
