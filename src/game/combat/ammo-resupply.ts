@@ -50,8 +50,8 @@ export class AmmoResupplySystem {
     this.hud.hint('付近の軌道に補給マガジンが投入された — ▣ AMMO マーカーへ接近して回収', 5000);
   }
 
-  // respawnOnDespawn: 遠方デスポーンした補給を同数投入し直すか。呼び出し元(stage-data.ts の
-  // 各ステージの update)がこの真偽値を直接渡す。
+  // respawnOnDespawn: 遠方デスポーンした補給を同数投入し直すか。呼び出し元(各 Stage の
+  // update、stages/wave-manager.ts 経由)がこの真偽値を直接渡す。
   updateLogistics(simTime: number, player: Player, respawnOnDespawn = false): void {
     if (player.alive) this.absorbNearbyPickups(player);
     this.despawnFarPickups(player, respawnOnDespawn);

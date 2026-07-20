@@ -2,7 +2,7 @@
 // isUnlocked(clearCounts) という条件式を持つだけで、localStorage には一切触れない。
 import { ACCENT } from './theme';
 import { Hud } from '../hud/hud';
-import { STAGE_DEFINITIONS } from './stage-data';
+import { STAGE_DEFINITIONS } from './stages/stage-data';
 
 // ステージ index → クリア回数。将来の拡張(周回数によるアンロック等)を見越して、
 // 「クリアしたか否か」ではなく回数を記録する。

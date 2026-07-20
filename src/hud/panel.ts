@@ -71,6 +71,7 @@ export class HudPanels {
       game.touchControls?.setActive('KeyT', player.rcsDamp);
       game.touchControls?.setActive('KeyV', player.fineAttitude);
       game.touchControls?.setActive('KeyC', player.progradeHold);
+      const hudSubStatus = game.activeStage.hudSubStatus();
       this.setStats({
         met: game.simTime,
         simSpeedLabel: `×${game.simSpeedManager.simSpeed}`,
@@ -95,17 +96,7 @@ export class HudPanels {
         shots: game.combat.shots,
         kills: game.combat.kills,
         total: game.simulator.totalEnemiesSpawned,
-        stage0State:
-          game.stageDirector.stage === -1 || game.stageDirector.stage === 0
-            ? {
-              hp: player.hp,
-              maxHp: C.PLAYER_MAX_HP,
-              msg:
-                game.stageDirector.stage === -1
-                  ? `サバイバル 第${game.stageDirector.waveManager.waveCount}波`
-                  : `残り時間: ${Math.ceil(game.stageDirector.scoreAttackTimer.timeLeft)}秒`,
-            }
-            : null,
+        stage0State: hudSubStatus !== null ? { hp: player.hp, maxHp: C.PLAYER_MAX_HP, msg: hudSubStatus } : null,
       });
 
       if (tgt) {
