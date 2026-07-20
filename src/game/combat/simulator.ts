@@ -1,6 +1,6 @@
 // エンティティ配列の所有と、その受動的な更新(軌道積分・慣性姿勢・寿命管理)。
 // 描画同期や能動的な更新(AI・発射・スポーン判断)は行わない — それらは
-// game.ts / combat.ts / 各 Stage(stages/)が担い、追加は addXxx 経由で行う。
+// game.ts / 各 combat/ モジュール / 各 Stage(stages/)が担い、追加は addXxx 経由で行う。
 // scene への add/remove は各 entity 自身の責務(entities.ts)なので、
 // Simulator は配列管理・上限管理・寿命判定に専念する。
 // game.ts を import しない — 依存は constructor 注入と各メソッド引数のみ。
@@ -9,7 +9,7 @@ import { envAccelInto } from '../../physics/envaccel';
 import { ExtraAccel, stepOrbitRK4 } from '../../physics/orbital';
 import { add, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { CombatCtx } from './combat';
+import type { CombatCtx } from '../stages/stage-definition';
 import { HitCtx, HitSystem } from './hit';
 import { Bullet, Casing, CheckLossCtx, DebrisPiece, MagPickup, OrbitEntity } from '../entities';
 import { Player } from '../player/player';

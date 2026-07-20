@@ -5,12 +5,11 @@ import { Attitude } from '../physics/attitude';
 import { Vec3, clone, v3 } from '../physics/vec3';
 import * as C from './const';
 import { EffectsCtx } from './effects-system';
-import type { CombatCtx, CombatSystem } from './combat/combat';
+import type { CombatCtx } from './stages/stage-definition';
 import type { Sfx } from '../audio/sfx';
 
 export interface CheckLossCtx {
   dt: number;
-  combat: CombatSystem;
   combatCtx: CombatCtx;
 }
 

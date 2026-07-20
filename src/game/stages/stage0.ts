@@ -26,7 +26,7 @@ export class Stage0 extends StageDefinition {
 
   init(ctx: StageCtx): number {
     for (let i = 0; i < C.STAGE0_AMMO_PICKUPS; i++) {
-      ctx.ammoResupply.spawnForPlayer(ctx.player, C.STAGE0_AMMO_MIN_DIST, C.STAGE0_AMMO_MAX_DIST);
+      this.ammoResupply.spawnForPlayer(ctx.player, C.STAGE0_AMMO_MIN_DIST, C.STAGE0_AMMO_MAX_DIST);
     }
     const enemies = generateCluster(ctx.player.state, ctx.scene);
     for (const enemy of enemies) ctx.addEnemy(enemy, 0x565b63);
@@ -34,9 +34,9 @@ export class Stage0 extends StageDefinition {
   }
 
   update(dt: number, ctx: StageCtx): void {
-    ctx.ammoResupply.updateLogistics(ctx.simTime, ctx.player);
+    this.ammoResupply.updateLogistics(ctx.simTime, ctx.player);
     if (this.timer.update(dt, ctx.setPhase)) {
-      showScoreAttackResultScreen(ctx.hud, ctx.sfx, ctx, 'TIME UP');
+      showScoreAttackResultScreen(ctx.hud, ctx.sfx, this.killCounter, 'TIME UP');
     }
   }
 

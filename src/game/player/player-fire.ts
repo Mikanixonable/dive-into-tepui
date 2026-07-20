@@ -1,7 +1,6 @@
 // プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の
-// 演出もここで組み立てる(combat.ts は game.ts を import しないため、combat.ts
-// へ発注する形は取らず、effects-system.ts のスポーン関数を直接呼び、命中数とは
-// 独立な「発射数」だけ CombatSystem.recordShot() で集計する)。未使用弾のベルト
+// 演出もここで組み立てる(effects-system.ts のスポーン関数を直接呼び、命中数とは
+// 独立な「発射数」だけ KillCounter.recordShot() で集計する)。未使用弾のベルト
 // (表示メッシュ + たわみ物理)は belt.ts の Belt が持つ — Player が直接所有する
 // (PlayerFire はベルトの状態を参照しない)。
 import * as THREE from 'three/webgpu';
@@ -20,7 +19,7 @@ import {
   buildMagazineFrame,
 } from '../../render/ships';
 import { EffectsCtx, spawnFlash } from '../effects-system';
-import { CombatSystem } from '../combat/combat';
+import { KillCounter } from '../combat/kill-counter';
 
 // fireGun / dropBarrel / spawnEjectedMagazineFrame が必要とする、Game 側の
 // 現在状態のスナップショット。fx はエフェクトのスポーンに必要な最小の受け皿
@@ -103,7 +102,7 @@ export class PlayerFire {
     mapMode: boolean,
     canFire: boolean,
     ship: Ship,
-    combat: CombatSystem,
+    killCounter: KillCounter,
     fireCtx: FireCtx,
   ): boolean {
     const keyHeld = !mapMode && (input.down('Space') || input.mouseFiring);
@@ -132,14 +131,14 @@ export class PlayerFire {
     this.wasFiring = wantFire;
     if (!wantFire) return justStartedFiring;
 
-    this.fireCycle(dt, justStartedFiring, fireCtx, ship, combat);
+    this.fireCycle(dt, justStartedFiring, fireCtx, ship, killCounter);
     return justStartedFiring;
   }
 
   // CoolDown 周期での連射管理: 発射開始時のスピンアップと、周期が満ちるごとの
   // fireGun 呼び出しのみを扱う(発射可否の判定は updateFireState、1発の演出・
   // 弾薬消費は fireGun の責務)。
-  private fireCycle(dt: number, justStartedFiring: boolean, ctx: FireCtx, ship: Ship, combat: CombatSystem): void {
+  private fireCycle(dt: number, justStartedFiring: boolean, ctx: FireCtx, ship: Ship, killCounter: KillCounter): void {
     if (justStartedFiring) {
       this.sfx.spinUp();
       this.fireCooldown = C.SPINUP_TIME;
@@ -147,14 +146,14 @@ export class PlayerFire {
     this.fireCooldown -= dt;
     if (this.fireCooldown > 0) return;
     this.fireCooldown = C.FIRE_INTERVAL;
-    this.fireGun(ctx, ship, combat);
+    this.fireGun(ctx, ship, killCounter);
   }
 
   // ---------------------------------------------------------------- weapons
 
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、命中数とは独立な発射数を
   // 記録したのち、弾薬(マガジン/バレル)を消費する。
-  private fireGun(ctx: FireCtx, ship: Ship, combat: CombatSystem): void {
+  private fireGun(ctx: FireCtx, ship: Ship, killCounter: KillCounter): void {
     const fwd = qRotate(ship.att.q, v3(0, 0, 1));
 
     // 縦二連の砲口から交互に発射する
@@ -168,7 +167,7 @@ export class PlayerFire {
     this.dropCasing(ctx, ship, muzzle);
     this.spawnMuzzleFlash(ctx, ship, muzzle, fwd);
 
-    combat.recordShot();
+    killCounter.recordShot();
     this.sfx.fire();
 
     this.consumeRound(ctx, ship);

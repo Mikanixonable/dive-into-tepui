@@ -41,6 +41,6 @@ export class Stage2 extends StageDefinition {
   }
 
   update(_dt: number, ctx: StageCtx): void {
-    ctx.ammoResupply.updateLogistics(ctx.simTime, ctx.player);
+    this.ammoResupply.updateLogistics(ctx.simTime, ctx.player);
   }
 }
