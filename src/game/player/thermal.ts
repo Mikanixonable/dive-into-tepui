@@ -1,12 +1,12 @@
 // 大気飛行の危険の監視: 自機の空力加熱/動圧と高度低下警告。
 // game.ts を import しない — 依存は constructor 注入(Hud/Sfx)と各メソッド引数のみ。
-import { R_EARTH } from '../physics/orbital';
-import { airspeed } from '../physics/envaccel';
-import { Vec3, len } from '../physics/vec3';
-import { atmosphericDensity } from '../physics/atmosphere';
-import * as C from './const';
-import { Hud } from '../hud/hud';
-import { Sfx } from '../audio/sfx';
+import { R_EARTH } from '../../physics/orbital';
+import { airspeed } from '../../physics/envaccel';
+import { Vec3, len } from '../../physics/vec3';
+import { atmosphericDensity } from '../../physics/atmosphere';
+import * as C from '../const';
+import { Hud } from '../../hud/hud';
+import { Sfx } from '../../audio/sfx';
 
 // checkThermalLimits の戻り値: 限界超過の種別。null なら超過なし。
 // 破壊(destroyShip の呼び出し)は combat.ts へのアクセスを持つ game.ts 側が行う。

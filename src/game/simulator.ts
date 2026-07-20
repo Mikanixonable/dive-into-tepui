@@ -13,7 +13,6 @@ import { CombatCtx, CombatSystem } from './combat/combat';
 import { Bullet, Casing, DebrisPiece, Enemy, MagPickup, OrbitEntity } from './entities';
 import { EphemerisSystem } from './ephemeris';
 import { Player } from './player/player';
-import { ThermalSystem } from './thermal';
 import { Vec3 } from '../physics/nbody/bodies';
 
 export interface SimulatorCtx {
@@ -51,7 +50,6 @@ export class Simulator {
 
   constructor(
     private readonly ephemeris: EphemerisSystem,
-    private readonly thermal: ThermalSystem,
     private readonly combat: CombatSystem,
   ) { }
 
@@ -134,7 +132,7 @@ export class Simulator {
     if (trackPrevR) player.prevR = clone(player.state.r);
     if (playerAccel && player.alive) {
       stepOrbitRK4(player.state, dt, playerAccel);
-      this.thermal.updateThermal(dt, player.state.r, player.state.v);
+      player.thermal.updateThermal(dt, player.state.r, player.state.v);
     }
     this.stepWorldOrbits(dt, trackPrevR);
     return simTime + dt;

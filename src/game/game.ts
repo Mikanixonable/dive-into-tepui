@@ -19,7 +19,6 @@ import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
 import { CombatCtx, CombatSystem } from './combat/combat';
 import { StageCtx, StageDirector } from './stage-director';
-import { ThermalSystem } from './thermal';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
 import { HudPanelCtx } from '../hud/panel';
@@ -117,10 +116,8 @@ export class Game {
   private target: Enemy | null = null;
   private zoomActive = false;
 
-  // 天体暦(太陽・月の位置と日照率)は ephemeris.ts、自機の熱/動圧・高度警告は
-  // thermal.ts に切り出し済み。
+  // 天体暦(太陽・月の位置と日照率)は ephemeris.ts に切り出し済み。
   private readonly ephemeris = new EphemerisSystem();
-  private readonly thermal = new ThermalSystem(this.hud, this.sfx);
   private lostReason = '大気圏に突入し機体を喪失した';
 
   // --- 弾薬・マガジン ---
@@ -160,7 +157,7 @@ export class Game {
     this.input.onFirstGesture = () => this.sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
-    this.simulator = new Simulator(this.ephemeris, this.thermal, this.combat);
+    this.simulator = new Simulator(this.ephemeris, this.combat);
     this.ammoResupply = new AmmoResupplySystem(
       this.hud,
       this.sfx,
@@ -497,9 +494,6 @@ export class Game {
       magsLeft: this.player.magsLeft,
       reloadTimer: this.player.reloadTimer,
       alt: altitudeOf(this.player.state.r),
-      altDescending: this.thermal.altDescendWarned,
-      qdyn: this.thermal.qdyn,
-      hullTemp: this.thermal.hullTemp,
       shots: this.combat.shots,
       kills: this.combat.kills,
       totalEnemies: this.simulator.totalEnemiesSpawned,
@@ -535,7 +529,7 @@ export class Game {
   }
 
   private handlePostSimulation(dt: number, simDt: number, warp: number, canAct: boolean): void {
-    this.player.checkLoss(dt, this.thermal, this.combat, this.combatCtx());
+    this.player.checkLoss(dt, this.combat, this.combatCtx());
 
     this.ammoResupply.updateLogistics(this.simTime, this.stageDirector.stage, this.player);
     if (warp <= C.MAX_PHYS_WARP) {
