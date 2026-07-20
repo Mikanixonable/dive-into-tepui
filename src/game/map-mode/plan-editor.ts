@@ -36,7 +36,7 @@ export class PlanEditor {
   // イベント配線は bindGizmoCallbacks() 経由のみ(外部に直接公開しない)。
   private readonly mapGizmo = new MapGizmo();
 
-  constructor(private readonly hud: Hud, private readonly sfx: Sfx) {}
+  constructor(private readonly _hud: Hud, private readonly _sfx: Sfx) {}
 
   // mapGizmo (private) のイベントを外部ロジックへ橋渡しする唯一の配線口。
   bindGizmoCallbacks(cb: MapGizmoCallbacks): void {
@@ -101,7 +101,7 @@ export class PlanEditor {
     }
     if (bestNodeIdx !== null) {
       this.selectedNodeIdx = bestNodeIdx;
-      this.sfx.warp();
+      this._sfx.warp();
       return;
     }
 
@@ -120,7 +120,7 @@ export class PlanEditor {
     if (bestT !== null) {
       const idx = plan.addNode({ time: bestT, dv: v3() });
       this.selectedNodeIdx = idx;
-      this.sfx.warp();
+      this._sfx.warp();
     }
   }
 
@@ -340,8 +340,8 @@ export class PlanEditor {
       const s = plan.sampleAt(selNode.time);
       if (s) selEl = elementsFromState(s.r, s.v);
     }
-    this.hud.setPlanPanel(this.hud.planHtml(nodesInfo, selDv, selEl));
-    this.hud.setMapToolbarState(
+    this._hud.setPlanPanel(this._hud.planHtml(nodesInfo, selDv, selEl));
+    this._hud.setMapToolbarState(
       opts.toolbar.durationKey,
       opts.toolbar.frameRotating,
       opts.toolbar.ghostLabel,

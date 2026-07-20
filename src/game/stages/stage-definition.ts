@@ -21,19 +21,18 @@ export type StageIndex = -1 | 0 | 1 | 2;
 // enemies は読み取り参照(要素の alive 等はミューテートしてよいが、生成累計数の表示には
 // totalEnemies を使う — enemies は撃破された個体から prune されるため配列長は「残存数」)。
 // 敵の追加は addEnemy(game.ts 側で Simulator への登録と軌道線の生成まで行う)を通す。
+// hud/sfx/scene は含めない — StageDefinition 自身が setup() で受け取り私有する
+// (_hud/_sfx/_scene)ので、毎フレームの ctx 越しに受け渡す必要がない。
 export interface StageCtx {
   phase: string;
   player: Player;
   enemies: readonly Enemy[];
   totalEnemies: number;
   addEnemy(enemy: Enemy, orbitLineColor: number): void;
-  scene: THREE.Scene;
   magsLeft: number;
   roundsInMag: number;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
   simTime: number;
-  hud: Hud;
-  sfx: Sfx;
 }
 
 export interface StageInitData {
@@ -44,15 +43,14 @@ export interface StageInitData {
 
 // Ship.attacked/checkLoss(被弾・自然喪失の判定)が必要とする、Game 側の現在状態の
 // スナップショット。撃破・自機喪失の集計と勝敗判定への橋渡しは activeStage.recordKill/
-// recordKilled(このファイル内)に委ねる。
+// recordKilled(このファイル内)に委ねる。hud/sfx は含めない — Ship 実装(Player/Enemy)も
+// StageDefinition も、それぞれ自身の _hud/_sfx を私有する。
 export interface CombatCtx {
   simTime: number;
   player: Player;
   totalEnemies: number;
   activeStage: StageDefinition;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
-  hud: Hud;
-  sfx: Sfx;
   fx: EffectsCtx;
   unlockManager: UnlockManager;
 }
@@ -78,9 +76,20 @@ export abstract class StageDefinition {
   // 必要とするため、モジュール読み込み時ではなく setup() で構築する。
   protected ammoResupply!: AmmoResupplySystem;
 
+  // setup() で受け取り私有する hud/sfx/scene(STAGE_DEFINITIONS はモジュール読み込み時に
+  // 生成される静的シングルトンなので、コンストラクタ注入ができず setup() が代わりを担う
+  // — これは一度きりの注入であり、毎フレームの ctx 越しの受け渡しではない)。
+  // 派生クラス(stage0/1/2/00.ts)は毎フレームの init/update からこれを直接使ってよい。
+  protected _hud!: Hud;
+  protected _sfx!: Sfx;
+  protected _scene!: THREE.Scene;
+
   // Game がステージ開始前に一度だけ呼ぶ(STAGE_DEFINITIONS はモジュール読み込み時に生成される
   // 静的シングルトンなので、Game 固有のリソースはコンストラクタではなくここで受け取る)。
   setup(hud: Hud, sfx: Sfx, scene: THREE.Scene, simulator: Simulator): void {
+    this._hud = hud;
+    this._sfx = sfx;
+    this._scene = scene;
     this.ammoResupply = new AmmoResupplySystem(hud, sfx, scene, simulator.magPickups, (mp) => simulator.addMagPickup(mp));
   }
 
@@ -101,8 +110,8 @@ export abstract class StageDefinition {
   checkWin(ctx: StageWinCtx): boolean {
     return ctx.totalEnemies - ctx.killCounter.kills - ctx.killCounter.losses <= 0;
   }
-  onWin(ctx: StageWinCtx, hud: Hud, sfx: Sfx): void {
-    showWinScreen(hud, sfx, ctx);
+  onWin(ctx: StageWinCtx): void {
+    showWinScreen(this._hud, this._sfx, ctx);
   }
 
   // HUDステータスパネルの補助表示(サバイバル波数・残り時間など)。既定は非表示。
@@ -117,17 +126,17 @@ export abstract class StageDefinition {
   recordKill(enemy: Enemy, ctx: CombatCtx, byPlayer = true): void {
     if (!byPlayer) {
       this.killCounter.recordLoss();
-      ctx.hud.hint(`${enemy.name} 再突入により喪失`);
+      this._hud.hint(`${enemy.name} 再突入により喪失`);
       return;
     }
     this.killCounter.recordKill();
-    ctx.hud.hint(`${enemy.name} 撃破`);
+    this._hud.hint(`${enemy.name} 撃破`);
 
     const winCtx: StageWinCtx = { killCounter: this.killCounter, totalEnemies: ctx.totalEnemies, simTime: ctx.simTime };
     if (this.checkWin(winCtx)) {
       ctx.setPhase('won');
-      ctx.unlockManager.reportClear(this.index, ctx.hud);
-      this.onWin(winCtx, ctx.hud, ctx.sfx);
+      ctx.unlockManager.reportClear(this.index, this._hud);
+      this.onWin(winCtx);
     }
   }
 
@@ -135,6 +144,6 @@ export abstract class StageDefinition {
   // 明示的に渡す。
   recordKilled(ctx: CombatCtx, reason: string): void {
     ctx.setPhase('lost');
-    showResultScreen(ctx.hud, ctx.sfx, false, `${reason}<br>撃破 ${this.killCounter.kills}/${ctx.totalEnemies} 機`);
+    showResultScreen(this._hud, this._sfx, false, `${reason}<br>撃破 ${this.killCounter.kills}/${ctx.totalEnemies} 機`);
   }
 }

@@ -1,25 +1,27 @@
 
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
-import { Bullet, CheckLossCtx, DestroyEffectCtx, Ship } from '../../game/entities';
+import { Bullet, CheckLossCtx, Ship } from '../../game/entities';
 import { Attitude } from '../../physics/attitude';
 import { altitudeOf, OrbitState } from '../../physics/orbital';
 import { OrbitLine } from '../../render/orbitline';
 import { add, clone, len, norm, randPerp, rotateAxis, scale, sub } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
 import { buildPlasmaMesh } from '../../render/ships';
-import { spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
+import { EffectsCtx, spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
 import type { Player } from '../player/player';
 import { CombatCtx } from '../stages/stage-definition';
 import { HitInfo } from '../combat/hit';
+import { Hud } from '../../hud/hud';
+import { Sfx } from '../../audio/sfx';
 
 // 敵 AI(Enemy.behave)が必要とする、Game 側の現在状態のスナップショット。
 // player / enemies は参照渡し(state.r 等を読むだけでミューテートしない)。
+// scene は含めない — Enemy 自身が(Ship 経由で)自身の scene を私有している。
 export interface EnemyAiCtx {
   simTime: number;
   player: Player;
   enemies: readonly Enemy[]; // 同一集団の同時攻撃数カウントに使う
-  scene: THREE.Scene;
   addPlasmaBullet(bullet: Bullet): void;
 }
 
@@ -35,6 +37,10 @@ export class Enemy extends Ship {
   burstLeft?: number; // バースト射撃の残弾
   burstDelay?: number; // 次のバースト弾までの残り時間
 
+  // hud は現状 Enemy 自身のメソッドからは未使用だが、hud/sfx は必ず対で注入する方針のため
+  // 受け取る(hud はフィールドとしては保持しない)。
+  private readonly _sfx: Sfx;
+
   constructor(
     name: string,
     state: OrbitState,
@@ -42,10 +48,13 @@ export class Enemy extends Ship {
     att: Attitude,
     hp: number,
     accent: number,
+    _hud: Hud,
+    sfx: Sfx,
     waveId?: number,
     scene?: THREE.Scene,
   ) {
     super(name, state, obj, att, C.ENEMY_RADIUS, hp, scene);
+    this._sfx = sfx;
     this.accent = accent;
     this.waveId = waveId;
     this.mass = 10000;
@@ -59,39 +68,38 @@ export class Enemy extends Ship {
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。attacked からのみ呼ばれる。
-  private hitEffect(ctx: DestroyEffectCtx, hit: HitInfo): void {
-    ctx.sfx.hit();
+  private hitEffect(fx: EffectsCtx, hit: HitInfo): void {
+    this._sfx.hit();
     if (hit.kind === 'plasma') {
-      spawnPlasmaFlash(ctx.fx, hit.pos, hit.vel);
+      spawnPlasmaFlash(this.scene!, fx, hit.pos, hit.vel);
     } else {
-      spawnBulletFlash(ctx.fx, hit.pos, hit.vel);
+      spawnBulletFlash(this.scene!, fx, hit.pos, hit.vel);
     }
-    spawnFragments(ctx.fx, hit.pos, hit.vel, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    spawnFragments(this.scene!, fx, hit.pos, hit.vel, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
 
-  private destroyEffect(ctx: DestroyEffectCtx): void {
-    ctx.sfx.explosion();
+  private destroyEffect(fx: EffectsCtx): void {
+    this._sfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    spawnShipDestroyEffect(ctx.fx, this.state.r, this.state.v, C.ENEMY_SCALE, 0xff6a4a);
+    spawnShipDestroyEffect(this.scene!, fx, this.state.r, this.state.v, C.ENEMY_SCALE, 0xff6a4a);
   }
 
   // 被弾によるダメージ・致死判定。
   attacked(hit: HitInfo, ctx: CombatCtx): void {
     if (!this.alive) return;
     if (hit.shooter === 'enemy') return; // 敵弾の被弾は無効化
-    const effectCtx = { sfx: ctx.sfx, fx: ctx.fx };
 
     ctx.activeStage.killCounter.recordHit();
 
     this.hp -= C.ENEMY_HIT_DAMAGE;
     if (this.hp > 0) {
-      this.hitEffect(effectCtx, hit);
+      this.hitEffect(ctx.fx, hit);
       return;
     }
 
     this.alive = false;
     ctx.activeStage.recordKill(this, ctx, true);
-    this.destroyEffect(effectCtx);
+    this.destroyEffect(ctx.fx);
   }
 
   // 再突入による自然死。alive がすでに false なら何もしない(多重処理防止)。
@@ -99,7 +107,7 @@ export class Enemy extends Ship {
     if (!this.alive) return;
     if (altitudeOf(this.state.r) >= C.REENTRY_ALT) return;
     this.alive = false;
-    this.destroyEffect({ sfx: ctx.combatCtx.sfx, fx: ctx.combatCtx.fx });
+    this.destroyEffect(ctx.combatCtx.fx);
     ctx.combatCtx.activeStage.recordKill(this, ctx.combatCtx, false);
   }
 
@@ -161,7 +169,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet({ r: clone(r), v: bV }, buildPlasmaMesh(this.accent), ctx.simTime, C.PLASMA_LIFETIME, 'enemy', ctx.scene);
+    const pb = new Bullet({ r: clone(r), v: bV }, buildPlasmaMesh(this.accent), ctx.simTime, C.PLASMA_LIFETIME, 'enemy', this.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(

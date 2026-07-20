@@ -8,6 +8,7 @@ import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../../hud/hud';
+import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input';
 
 export class MapCamera {
@@ -22,7 +23,8 @@ export class MapCamera {
   frameRotating = false;
   sliderT = 0; // 0..1(0 でゴーストマーカー非表示)
 
-  constructor(private readonly hud: Hud) {
+  // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
+  constructor(private readonly _hud: Hud, _sfx: Sfx) {
     this.camera = new THREE.PerspectiveCamera(
       50,
       window.innerWidth / window.innerHeight,
@@ -36,7 +38,7 @@ export class MapCamera {
     this.pitch = 0.45;
     this.dist = 4.5e7;
     this.pan.set(0, 0, 0);
-    this.hud.hint('マップ視点をリセット');
+    this._hud.hint('マップ視点をリセット');
   }
 
   // 毎フレーム、マップカメラの位置・向きをマウス/矢印キー操作から更新する。

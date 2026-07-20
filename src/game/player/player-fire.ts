@@ -26,7 +26,6 @@ import { KillCounter } from '../combat/kill-counter';
 // (effects-system.ts の EffectsCtx)。
 export interface FireCtx {
   simTime: number;
-  scene: THREE.Scene;
   zoomActive: boolean;
   fx: EffectsCtx;
   addBullet(bullet: Bullet): void;
@@ -45,8 +44,9 @@ export class PlayerFire {
   muzzleIdx = 0; // 縦二連砲口の交互発射用
 
   constructor(
-    private readonly hud: Hud,
-    private readonly sfx: Sfx,
+    private readonly _hud: Hud,
+    private readonly _sfx: Sfx,
+    private readonly _scene: THREE.Scene,
   ) { }
 
   get isFiring(): boolean { return this.wasFiring; }
@@ -82,7 +82,7 @@ export class PlayerFire {
     this.roundsInMag = C.MAG_ROUNDS;
     this.magsLeftInBarrel = C.MAGS_PER_BARREL;
     this.reloadTimer = C.RELOAD_TIME;
-    this.sfx.playReload();
+    this._sfx.playReload();
     return true;
   }
 
@@ -107,12 +107,12 @@ export class PlayerFire {
   ): boolean {
     const keyHeld = input.down('Space') || input.mouseFiring;
     if (keyHeld && alive && !canFire) {
-      this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能`);
+      this._hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能`);
     }
     const hasAmmo = this.hasAmmo();
     if (keyHeld && alive && !hasAmmo && !this.wasEmptyClick) {
-      this.sfx.emptyClick();
-      this.hud.hint('弾薬切れ — 軌道上の補給マガジン ▣ を回収せよ', 3000);
+      this._sfx.emptyClick();
+      this._hud.hint('弾薬切れ — 軌道上の補給マガジン ▣ を回収せよ', 3000);
     }
     this.wasEmptyClick = keyHeld && !hasAmmo;
 
@@ -149,7 +149,7 @@ export class PlayerFire {
   // 弾薬消費は fireGun の責務)。
   private fireCycle(dt: number, justStartedFiring: boolean, ctx: FireCtx, ship: Ship, killCounter: KillCounter): void {
     if (justStartedFiring) {
-      this.sfx.spinUp();
+      this._sfx.spinUp();
       this.fireCooldown = C.SPINUP_TIME;
     }
     this.fireCooldown -= dt;
@@ -177,7 +177,7 @@ export class PlayerFire {
     this.spawnMuzzleFlash(ctx, ship, muzzle, fwd);
 
     killCounter.recordShot();
-    this.sfx.fire();
+    this._sfx.fire();
 
     this.consumeRound(ctx, ship);
   }
@@ -194,7 +194,7 @@ export class PlayerFire {
       ctx.simTime,
       C.BULLET_LIFETIME,
       'player',
-      ctx.scene,
+      this._scene,
     );
     ctx.addBullet(bullet);
   }
@@ -219,7 +219,7 @@ export class PlayerFire {
         inertia: v3(1, 0.3, 1), // 円筒: 長軸まわりが小さい
       },
       ctx.simTime,
-      ctx.scene,
+      this._scene,
     );
     ctx.addCasing(casing);
   }
@@ -228,6 +228,7 @@ export class PlayerFire {
   // (ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
   private spawnMuzzleFlash(ctx: FireCtx, ship: Ship, muzzle: Vec3, fwd: Vec3): void {
     spawnFlash(
+      this._scene,
       ctx.fx,
       addScaled(muzzle, fwd, 1.2),
       ship.state.v,
@@ -250,13 +251,13 @@ export class PlayerFire {
     this.magsLeftInBarrel--;
     this.spawnEjectedMagazineFrame(ctx, ship);
     if (this.magsLeftInBarrel > 0) {
-      this.sfx.magFeed();
+      this._sfx.magFeed();
       return;
     }
     this.magsLeftInBarrel = C.MAGS_PER_BARREL;
     this.reloadTimer = C.RELOAD_TIME;
     this.dropBarrel(ctx, ship);
-    this.sfx.playReload();
+    this._sfx.playReload();
   }
 
   // リロード時(バレル交換)に円柱アイテムをデブリとして放出する。手動リロード
@@ -276,7 +277,7 @@ export class PlayerFire {
         inertia: v3(1, 0.2, 1), // 円柱
       },
       0.8,
-      ctx.scene,
+      this._scene,
     );
     ctx.addDebris(piece);
   }
@@ -298,7 +299,7 @@ export class PlayerFire {
         inertia: v3(1, 1.2, 1.4),
       },
       C.EJECTED_MAG_PHYS_RADIUS,
-      ctx.scene,
+      this._scene,
     );
     ctx.addDebris(piece);
   }

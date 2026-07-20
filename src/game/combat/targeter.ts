@@ -4,6 +4,7 @@ import * as C from '../const';
 import { Enemy } from '../enemy/enemy';
 import { Player } from '../player/player';
 import { Hud } from '../../hud/hud';
+import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
 import { ProjectFn } from '../camera/projection';
 
@@ -19,7 +20,8 @@ export class Targeter {
   private lockedTarget: Enemy | null = null;
   autoTarget: Enemy | null = null;
 
-  constructor(private readonly hud: Hud) {}
+  // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
+  constructor(private readonly _hud: Hud, _sfx: Sfx) {}
 
   updateCombatTargeting(ctx: TargeterCtx): Enemy | null {
     ctx.input.takeClicks();
@@ -52,18 +54,18 @@ export class Targeter {
     }
     if (this.lockedTarget !== null) {
       this.lockedTarget = null;
-      this.hud.hint('ターゲット固定解除');
+      this._hud.hint('ターゲット固定解除');
     }
   }
 
   private toggleLockedTarget(hit: Enemy): void {
     if (this.lockedTarget === hit) {
       this.lockedTarget = null;
-      this.hud.hint('ターゲット固定解除');
+      this._hud.hint('ターゲット固定解除');
       return;
     }
     this.lockedTarget = hit;
-    this.hud.hint(`ターゲット固定: ${hit.name}`);
+    this._hud.hint(`ターゲット固定: ${hit.name}`);
   }
 
   private resolveAutoTarget(ctx: TargeterCtx): Enemy | null {

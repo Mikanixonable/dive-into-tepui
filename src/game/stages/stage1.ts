@@ -26,12 +26,14 @@ export class Stage1 extends StageDefinition {
 
   init(ctx: StageCtx): number {
     const base = ctx.player.state;
-    const scene = ctx.scene;
-    ctx.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 2, 0xff4a3d, scene), 0x565b63);
-    ctx.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 2, 0xff7a2d, scene), 0x565b63);
-    ctx.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 2, 0xe0409f, scene), 0x565b63);
-    ctx.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 3, 0xbf3dff, scene), 0x565b63);
-    ctx.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 3, 0xff2d6b, scene), 0x565b63);
+    const hud = this._hud;
+    const sfx = this._sfx;
+    const scene = this._scene;
+    ctx.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 2, 0xff4a3d, hud, sfx, scene), 0x565b63);
+    ctx.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 2, 0xff7a2d, hud, sfx, scene), 0x565b63);
+    ctx.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 2, 0xe0409f, hud, sfx, scene), 0x565b63);
+    ctx.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 3, 0xbf3dff, hud, sfx, scene), 0x565b63);
+    ctx.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 3, 0xff2d6b, hud, sfx, scene), 0x565b63);
     return 5;
   }
 
