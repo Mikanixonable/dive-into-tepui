@@ -120,23 +120,23 @@ export class PlayerFire {
 
   // 発砲入力を処理し、発射・排莢・リロードを行う。戻り値は「このフレームで発砲を
   // 新規開始したか」— fineAttitude の有効化は移動系(PlayerThrottle)の責務なので、
-  // 呼び出し元(Player)へ判定だけ返す。canAct(ワープ倍率・生死・マップモードを合成
-  // した「行動可能か」)は Player が一元的に判定して渡す — ここではワープ値そのものは
+  // 呼び出し元(Player)へ判定だけ返す。canFire(ワープ倍率・生死・マップモードを合成
+  // した「発射可能か」)は Player が一元的に判定して渡す — ここではワープ値そのものは
   // 扱わない。ship は発射位置・反動・排莢の基準になる自機の位置・姿勢(Player 自身)。
   updateFireState(
     dt: number,
     input: Input,
     alive: boolean,
     mapMode: boolean,
-    canAct: boolean,
+    canFire: boolean,
     ship: Ship,
     combat: CombatSystem,
     fireCtx: FireCtx,
   ): boolean {
     const keyHeld = !mapMode && (input.down('Space') || input.mouseFiring);
-    // keyHeld は !mapMode を含意するため、alive にもかかわらず canAct が偽なのは
+    // keyHeld は !mapMode を含意するため、alive にもかかわらず canFire が偽なのは
     // ワープ倍率超過が原因と判定できる。
-    if (keyHeld && alive && !canAct) {
+    if (keyHeld && alive && !canFire) {
       this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能`);
     }
     const hasAmmo = this.hasAmmo();
@@ -154,7 +154,7 @@ export class PlayerFire {
       return false;
     }
 
-    const wantFire = keyHeld && hasAmmo && canAct;
+    const wantFire = keyHeld && hasAmmo && canFire;
     const justStartedFiring = wantFire && !this.wasFiring;
     this.wasFiring = wantFire;
     if (!wantFire) return justStartedFiring;
