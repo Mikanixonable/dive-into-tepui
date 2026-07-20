@@ -63,6 +63,14 @@ export class PlanEditor {
     this.closeMenu();
   }
 
+  // [X] キー(map-mode-system.ts)向け: 現在選択中のノードを削除する。選択が無ければ
+  // 何もせず false を返す(呼び出し側はこれで警告表示等の要否を判断する)。
+  deleteSelected(plan: Plan): boolean {
+    if (this.selectedNodeIdx === null) return false;
+    this.deleteNode(plan, this.selectedNodeIdx);
+    return true;
+  }
+
   nodeScreenPos(
     plan: Plan,
     node: PlannedNode,
@@ -285,7 +293,9 @@ export class PlanEditor {
   }
 
   // マップ表示中のノード編集(時間・物理は Game.simulate() 側で通常どおり進み続ける。
-  // ここではクリックによるノード配置・選択、選択中ノードの Δv 調整、計画パネルの表示を行う)
+  // ここではクリックによるノード配置・選択、選択中ノードの Δv 調整、計画パネル・
+  // ツールバーの表示を行う)。toolbar は PlanDisplay/MapCamera 側の状態のスナップ
+  // ショット(このクラス自身は持たない)— map-mode-system.ts が毎フレーム組み立てて渡す。
   updateEditing(
     plan: Plan,
     dt: number,
@@ -294,7 +304,11 @@ export class PlanEditor {
     toDisplayFrame: DisplayFrameFn,
     input: Input,
     project: ProjectFn,
-    opts: { fineAttitude: boolean; labels: MapLabel[] },
+    opts: {
+      fineAttitude: boolean;
+      labels: MapLabel[];
+      toolbar: { durationKey: string; frameRotating: boolean; ghostLabel: string | null; focus: string };
+    },
   ): void {
     for (const c of input.takeClicks()) {
       this.handleMapClick(plan, c.x, c.y, o, toDisplayFrame, project);
@@ -327,6 +341,12 @@ export class PlanEditor {
       if (s) selEl = elementsFromState(s.r, s.v);
     }
     this.hud.setPlanPanel(this.hud.planHtml(nodesInfo, selDv, selEl));
+    this.hud.setMapToolbarState(
+      opts.toolbar.durationKey,
+      opts.toolbar.frameRotating,
+      opts.toolbar.ghostLabel,
+      opts.toolbar.focus,
+    );
   }
 
   // マップモードを閉じる ([M] で確定) ときの後始末: Δv がほぼゼロのまま放置された

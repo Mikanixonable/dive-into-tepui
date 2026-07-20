@@ -1,7 +1,6 @@
 import { moonPosition } from '../physics/ephemeris';
 import { elementsFromState, Elements, R_EARTH } from '../physics/orbital';
 import { scale, sub, v3, Vec3 } from '../physics/vec3';
-import { MapModeSystem } from './map-mode/map-mode-system';
 import { Player } from './player/player';
 import { Enemy } from './enemy/enemy';
 import { OrbitLine } from '../render/orbitline';
@@ -13,7 +12,8 @@ export interface OrbitLineUpdateCtx {
   player: Player;
   target: Enemy | null;
   enemies: Enemy[];
-  maneuver: MapModeSystem;
+  mapMode: boolean;
+  plannedEl: Elements | null;
   playerOrbitLine: OrbitLine;
   targetOrbitLine: OrbitLine;
   plannedOrbitLine: OrbitLine;
@@ -30,7 +30,7 @@ export class OrbitLineSystem {
     const tgtEl = tgt ? elementsFromState(tgt.state.r, tgt.state.v) : null;
     ctx.targetOrbitLine.update(tgtEl, ctx.origin);
 
-    const mapMode = ctx.maneuver.mapMode;
+    const mapMode = ctx.mapMode;
     for (const enemy of ctx.enemies) {
       if (mapMode && enemy.alive && enemy !== tgt) {
         enemy.orbitLine.update(elementsFromState(enemy.state.r, enemy.state.v), ctx.origin);
@@ -39,8 +39,7 @@ export class OrbitLineSystem {
       }
     }
 
-    const { plannedEl } = ctx.maneuver.updateDisplay();
-    ctx.plannedOrbitLine.update(mapMode ? null : plannedEl, ctx.origin);
+    ctx.plannedOrbitLine.update(mapMode ? null : ctx.plannedEl, ctx.origin);
     if (mapMode) {
       this.updateMapReferenceLines(ctx.simTime, ctx.origin, ctx.geoOrbitLine, ctx.moonOrbitLine);
     } else {
