@@ -1,41 +1,14 @@
 // HUD ステータスパネル(スタッツ・ターゲット情報・敵一覧)の同期。
-// HudPanelCtx(Game 側の現在状態のスナップショット)からの値の整形と
-// パネル DOM への反映までをこのファイルで完結させる。game.ts を import しない。
+// hudPanel はゲームの全状態からチェリーピックして表示するのが責務そのものなので、
+// 他モジュールと違い ctx スナップショットを介さず Game を直接注入してもらい、
+// 必要な値をここで読み取る(game.ts は import しない — 型のみの参照)。
 import * as C from '../game/const';
 import { TEXT_DIM as INK_SOFT } from '../game/theme';
 import { Elements } from '../physics/orbital';
 import { dot, len, sub } from '../physics/vec3';
-import { Enemy } from '../game/enemy/enemy';
-import { Player } from '../game/player/player';
-import { TouchControls } from '../game/touch';
+import { altitudeOf } from '../game/combat/simulator';
+import type { Game } from '../game/game';
 import { fmtDist, fmtSpeed, fmtTime } from './utils';
-
-// update が必要とする、Game 側の現在状態のスナップショット。
-// player / enemies / target は参照渡し(読むだけでミューテートしない)。
-export interface HudPanelCtx {
-  player: Player;
-  enemies: Enemy[];
-  target: Enemy | null;
-  touchControls: TouchControls | null;
-  simTime: number;
-  simSpeed: number;
-  paused: boolean;
-  rcsDamp: boolean;
-  throttleIdx: number;
-  fineAttitude: boolean;
-  progradeHold: boolean;
-  camFollowAttitude: boolean;
-  roundsInMag: number;
-  magsLeft: number;
-  reloadTimer: number;
-  alt: number;
-  shots: number;
-  kills: number;
-  totalEnemies: number;
-  stage: number;
-  stage00WaveCount: number;
-  stage0TimeLeft: number;
-}
 
 interface StatsData {
   met: number;
@@ -86,58 +59,59 @@ export class HudPanels {
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
   // ステータスパネル(スタッツ・ターゲット情報・敵一覧)を一定周期で更新する。
-  update(ctx: HudPanelCtx, dt: number, playerEl: Elements | null, tgtEl: Elements | null): void {
-    const tgt = ctx.target;
+  update(game: Game, dt: number, playerEl: Elements | null, tgtEl: Elements | null): void {
+    const player = game.player;
+    const tgt = game.targeter.autoTarget;
     this.hudTimer -= dt;
     if (this.hudTimer <= 0) {
       this.hudTimer = 0.1;
-      const thermal = ctx.player.thermal;
+      const thermal = player.thermal;
       // タッチUIのトグルボタン(制動・微動・ホールド)の点灯状態を実際のモードに同期する。
       // progradeHold は手動回転で自動解除されることもあるため、専用のトグル時だけでなく
       // ここで毎回反映しておく。
-      ctx.touchControls?.setActive('KeyT', ctx.rcsDamp);
-      ctx.touchControls?.setActive('KeyV', ctx.fineAttitude);
-      ctx.touchControls?.setActive('KeyC', ctx.progradeHold);
+      game.touchControls?.setActive('KeyT', player.rcsDamp);
+      game.touchControls?.setActive('KeyV', player.fineAttitude);
+      game.touchControls?.setActive('KeyC', player.progradeHold);
       this.setStats({
-        met: ctx.simTime,
-        simSpeedLabel: `×${ctx.simSpeed}`,
-        paused: ctx.paused,
-        rcsDamp: ctx.rcsDamp,
-        throttleIdx: ctx.throttleIdx,
-        fineAttitude: ctx.fineAttitude,
-        progradeHold: ctx.progradeHold,
-        camFollowAttitude: ctx.camFollowAttitude,
-        roundsInMag: ctx.roundsInMag,
-        magsLeft: ctx.magsLeft,
-        reloadTimer: ctx.reloadTimer,
-        alt: ctx.alt,
+        met: game.simTime,
+        simSpeedLabel: `×${game.simSpeedManager.simSpeed}`,
+        paused: game.paused,
+        rcsDamp: player.rcsDamp,
+        throttleIdx: player.throttleIdx,
+        fineAttitude: player.fineAttitude,
+        progradeHold: player.progradeHold,
+        camFollowAttitude: game.chase.camFollowAttitude,
+        roundsInMag: player.roundsInMag,
+        magsLeft: player.magsLeft,
+        reloadTimer: player.reloadTimer,
+        alt: altitudeOf(player.state.r),
         altDescending: thermal.altDescendWarned,
-        spd: len(ctx.player.state.v),
+        spd: len(player.state.v),
         apAlt: playerEl ? playerEl.apAlt : NaN,
         peAlt: playerEl ? playerEl.peAlt : NaN,
         incDeg: playerEl ? playerEl.incDeg : NaN,
         period: playerEl ? playerEl.period : NaN,
         qdyn: thermal.qdyn,
         hullTemp: thermal.hullTemp,
-        shots: ctx.shots,
-        kills: ctx.kills,
-        total: ctx.totalEnemies,
+        shots: game.combat.shots,
+        kills: game.combat.kills,
+        total: game.simulator.totalEnemiesSpawned,
         stage0State:
-          ctx.stage === -1 || ctx.stage === 0
+          game.stageDirector.stage === -1 || game.stageDirector.stage === 0
             ? {
-              hp: ctx.player.hp,
+              hp: player.hp,
               maxHp: C.PLAYER_MAX_HP,
               msg:
-                ctx.stage === -1
-                  ? `サバイバル 第${ctx.stage00WaveCount}波`
-                  : `残り時間: ${Math.ceil(ctx.stage0TimeLeft)}秒`,
+                game.stageDirector.stage === -1
+                  ? `サバイバル 第${game.stageDirector.stage00WaveCount}波`
+                  : `残り時間: ${Math.ceil(game.stageDirector.stage0TimeLeft)}秒`,
             }
             : null,
       });
 
       if (tgt) {
-        const relP = sub(tgt.state.r, ctx.player.state.r);
-        const relV = sub(tgt.state.v, ctx.player.state.v);
+        const relP = sub(tgt.state.r, player.state.r);
+        const relV = sub(tgt.state.v, player.state.v);
         const dist = len(relP);
         const relIncDeg =
           playerEl && tgtEl
@@ -164,11 +138,11 @@ export class HudPanels {
     this.listTimer -= dt;
     if (this.listTimer <= 0) {
       this.listTimer = 0.25;
-      const rows = ctx.enemies
+      const rows = game.simulator.enemies
         .filter((e) => e.alive)
         .map((e) => ({
           name: e.name,
-          dist: len(sub(e.state.r, ctx.player.state.r)),
+          dist: len(sub(e.state.r, player.state.r)),
           targeted: e === tgt,
         }))
         .sort((a, b) => a.dist - b.dist);
