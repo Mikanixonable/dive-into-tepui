@@ -38,6 +38,7 @@ export class MapModeSystem {
   private readonly trajOverlay: TrajectoryOverlay;
   private readonly mapModeController: MapModeController;
   private autoWarpUntil: number | null = null;
+  private warpIdx: number = 0;
 
   constructor(
     private readonly hud: Hud,
@@ -163,27 +164,32 @@ export class MapModeSystem {
 
   // ------------------------------------------------------------------ warp
 
-  adjustWarp(currentWarpIdx: number, step: number): number {
-    this.clearAutoWarp();
-    const next = currentWarpIdx + step;
-    if (next < 0 || next >= C.WARP_LEVELS.length) return currentWarpIdx;
-    this.sfx.warp();
-    this.hud.hint(`TIME WARP ×${C.WARP_LEVELS[next]!}`);
-    return next;
+  warp(): number {
+    return C.WARP_LEVELS[this.warpIdx]!;
   }
 
-  updateAutoWarp(warpIdx: number): { warpIdx: number; hint: string | null } {
-    if (this.autoWarpUntil === null) return { warpIdx, hint: null };
+  shiftWarp(step: number): void {
+    this.clearAutoWarp();
+    const next = this.warpIdx + step;
+    if (next < 0 || next >= C.WARP_LEVELS.length) return;
+    this.warpIdx = next;
+    this.sfx.warp();
+    this.hud.hint(`TIME WARP ×${this.warp()!}`);
+  }
+
+  updateAutoWarp(): void {
+    if (this.autoWarpUntil === null) return;
     const tRem = this.autoWarpUntil - this.getExternalState().simTime;
     if (tRem <= C.AUTOWARP_STOP) {
-      this.autoWarpUntil = null;
-      return { warpIdx: 0, hint: 'マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ' };
+      this.autoWarpUntil = null;    
+      this.hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
+      this.warpIdx = 0;
     }
     let idx = 0;
     for (let i = 0; i < C.WARP_LEVELS.length; i++) {
       if (C.WARP_LEVELS[i]! <= tRem / C.AUTOWARP_MARGIN) idx = i;
     }
-    return { warpIdx: idx, hint: null };
+    this.warpIdx = idx;
   }
 
   toggleAutoWarpToFirstNode(phase: string): void {
