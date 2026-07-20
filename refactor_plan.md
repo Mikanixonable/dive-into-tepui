@@ -21,32 +21,25 @@ belt.ts
 - 各モジュールの疎結合化と責務の整理
 - ctx注入パターンの根絶。
 
-### hudとsfxの受け渡し方の統一
-どうせhudとsfxは多方面で参照されるので、注入経路が多数に分岐しているべきではない。これらを使用するようなクラスにおいては、コンストラクタで注入して各所に参照を保持する形がいいだろう。複製であることが分かるように_hud、_sfxのような命名にし、またprivateにするべき（外部から参照すると乱用になる）。
-現状でhudとsfxのどちらか片方しか参照していないとしても、この二つについては両方セットで注入してしまおう。あとから追加するたびに面倒になるし、統一した方がパターンの一貫性が保てる。
+### attackedとhitEffectのhitInfo引数を Bullet | PlasmaBullet に置き換える
+弾種はinstanceOfで判定。effects-system.tsには変更なしで、spawnDebrisなどにはbulletもhitInfoでもなく、必要な速度ベクトルなどを個別に引数で渡す。
+変更箇所はplayer.tsとenemy.tsの二か所のはず。両方に対してこの変更を行う。
 
-メッシュなどを持った可視オブジェクトについては、これにくわえてsceneも同様の対処をする。多くはすでにコンストラクタで受け渡す経路になっているはずだが、そのsceneについても同様に、private _sceneにする。
+### hitの当たり判定の類似実装部分のリファクタリング
+player/enemyとbullet/plasmaBulletだからこれで済んでいるが、このまま弾種を増やしたりすると組み合わせ爆発するので、bulletとplasmaBulletの配列を統合したい。
 
-そして、ctx注入パターンにおいて（名前はctxじゃなく、contextやparamsかもしれない、とにかくクラスメソッドの引数または引数オブジェクトのプロパティとして）hud、sfx、sceneを注入している経路を全て根絶する。先にそれをすべて消してしまってから、エラーが出た箇所のコンストラクタを配線する流れが確実かもしれない。
+第一段階として、正データであるsimulatorには手を加えず、hit.tsの中で、bulletとplasmaBulletを結合した配列を作り、統一的な処理をする。共通のBullet基底クラス…はあまり作りたくない。Bullet | PlasmaBulletのunion型で十分。hitInfoは、bullet/plasmaBulletのどちらかを受け取るようにする。
+現状三つあるループを、(Bullet | PlasmaBullet)[] と (Player | Enemy)[] の二重ループにまとめ、
+どのようにattackedを呼ぶか判定する必要があれば、instanceofで判定して分岐する。
 
-### orbitLineの責務をsimulatorないしentityに寄せる...？
-
-simuratorに追加されたentityのOrbitLineはsimuratorが自動で追加する。非OrbitEntityのOrbitLineは現状のまま（？）GameやOrbitLineSystem）
-そうするとaddEnemyは単にsimulatorへのたらいまわしになるので、gameから排除できそう
-
-てかなんでOrbitLineってこれで回ってるんだ？　orbitLineがどのような計算をしているのか（楕円軌道なのか積分軌道なのか、そのために何の情報を必要としているのか、実装前に調査したい。
-
+ここまで問題なく実装できたら、第二段階として、SimulatorのbulletとplasmaBulletの配列を統合する。addBulletやaddPlasmaBulletも統合される。
 
 ### 命名が悪い
 recordKillがkillCounter.recordLossとkillCounter.recordKillの両方に繋がっている。recordDeathとかの方がいい
 stageDefinition -> stage
 ammoResupply -> logistics
-combatCtx -> 存続の意義あるか？
-EffectSystem -> FlashEffects　（現effect-system.tsにはflash-effect以外を扱うユーティリティが混在している。この配列管理とユーティリティは無関係なので分離する）
 
-### hitの当たり判定部分の類似実装のリファクタリング
-hitInfoではなくbulletを渡すのでいいのでは？
-player/enemyとbullet/plasmaBulletだからこれで済んでいるが、このままだと組み合わせ爆発するので、配列を統合したい。特にbulletとplasmaBullet
+EffectsSystem -> FlashEffects　これeffects-system.tsからEffectsSystemクラスとFlashEffect型を改名救出して独立モジュールにするべき。させる。（現effects-system.tsにはflash-effect以外を扱うユーティリティが混在している。この配列管理とユーティリティは無関係なので分離する）これは手動でやるか
 
 ### render、update、sync系の関数の命名の不統一
 three.jsのrender関数は、すでに出来上がったsceneとcameraを受け取って描画するものである。その意味合いからすると、sceneの構築、更新を行う関数をrenderと呼ぶのは不適切である。論理データの更新を行う関数はupdate、メッシュなどをsceneに登録する関数をbuild、すでに登録されたメッシュなどの座標を論理データに整合させる関数をsyncと呼ぶことで統一する。renderは実際にthree.jsのrenderを呼んでいる関数に限定する。

@@ -36,7 +36,7 @@ export function generateCluster(base: OrbitState, hud: Hud, sfx: Sfx, scene: THR
 
       const state: OrbitState = { r: add(base.r, off), v: clone(base.v) };
       const accent = C.STAGE0_GROUP_ACCENTS[gi]!;
-      enemies.push(generateDriftingEnemy(`${C.STAGE0_GROUP_LABELS[gi]}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, hud, sfx, scene));
+      enemies.push(generateDriftingEnemy(`${C.STAGE0_GROUP_LABELS[gi]}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
     }
   }
   return enemies;
@@ -147,7 +147,7 @@ export function generateWave(player: OrbitState, waveNumber: number, hud: Hud, s
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir);
     const state: OrbitState = { r: position, v: clone(centerV) };
-    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, typeIndex, waveNumber, hud, sfx, scene));
+    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, accent, typeIndex, waveNumber, hud, sfx, scene));
   }
   return enemies;
 }

@@ -9,6 +9,7 @@ import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildFlashMesh, buildPlayerShip, RCS_BLOCK_OFFSETS } from '../../render/ships';
 import { getGlowTexture } from '../../render/glow-texture';
+import { OrbitLine } from '../../render/orbitline';
 import type { CameraSystem } from '../camera/camera-system';
 import { CombatCtx } from '../stages/stage-definition';
 import { KillCounter } from '../combat/kill-counter';
@@ -36,6 +37,8 @@ export class Player extends Ship {
   private readonly plumeCore: THREE.Mesh;
   private readonly plumeOuter: THREE.Mesh;
   private readonly rcsPuffs: THREE.Mesh[] = []; // RCS ブロック位置の噴射パフ(4基)
+  // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
+  readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55);
 
   // hud は現状 Player 自身のメソッドからは未使用だが、hud/sfx は必ず対で注入する方針のため
   // 受け取る(hud はフィールドとしては保持しない)。
@@ -61,6 +64,7 @@ export class Player extends Ship {
     this.plumeCore = plumes.core;
     this.plumeOuter = plumes.outer;
     this.buildRcsPuffs(scene);
+    scene.add(this.orbitLine.line);
   }
 
   // マヌーバ噴射プルーム(推力方向の逆側に置く発光ビルボード 2 枚)

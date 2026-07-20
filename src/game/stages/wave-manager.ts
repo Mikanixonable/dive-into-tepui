@@ -37,7 +37,7 @@ export class WaveManager {
   spawnWave(ctx: StageCtx, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this.waveCount;
     const enemies = generateWave(ctx.player.state, wave, this._hud, this._sfx, this._scene, forcedPattern);
-    for (const enemy of enemies) ctx.addEnemy(enemy, enemy.accent);
+    for (const enemy of enemies) ctx.addEnemy(enemy);
   }
 
   // 弾薬確保 → ウェーブ接近予告 → 波状攻撃、の3段階を直接遷移させる。数値設定は呼び出し側が渡す。

@@ -7,6 +7,7 @@ import * as THREE from 'three/webgpu';
 import {
   Vec3,
 } from '../physics/vec3';
+import { Elements, elementsFromState } from '../physics/orbital';
 import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
 import { FireCtx } from './player/player-fire';
@@ -17,25 +18,23 @@ import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
 import { CollisionPhysics } from './combat/collision';
 import { EffectsCtx, EffectsSystem } from './effects-system';
-import { OrbitLineSystem } from './orbit-line-system';
 import { getStageDefinition, resolveStageInitData } from './stages/stage-data';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './combat/targeter';
 import { HudProjection } from './camera/projection';
 import { MapModeSystem } from './map-mode/map-mode-system';
 import { Plan, PlanCtx } from './plan/plan';
-import { PlanGuide, plannedOrbitElements } from './plan/plan-guide';
+import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRect, PipRenderer } from './pip-renderer';
 import { Simulator, SimulatorCtx } from './combat/simulator';
 import * as C from './const';
-import { Enemy, EnemyAiCtx } from './enemy/enemy';
+import { EnemyAiCtx } from './enemy/enemy';
 import { Input } from './input';
 import { TouchControls } from './touch';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
-import { OrbitLine } from '../render/orbitline';
 import { EnvironmentScene } from '../render/environment-scene';
 
 type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
@@ -72,16 +71,6 @@ export class Game {
   }
 
   private readonly environment: EnvironmentScene;
-  // 軌道線もモノトーン + オレンジアクセントの配色: 自機 = 明るいグレー、
-  // ターゲット = オレンジ(注目対象)、計画軌道 = 白(最も明るい = 未来)。
-  private readonly playerOrbitLine = new OrbitLine(0xbfc9d4, 0.55);
-  // ターゲット軌道は自機軌道とほぼ重なるケースが多い(近傍ランデブー狙いのため)。
-  // 埋もれて「表示されていない」ように見えないよう強い不透明度にし、
-  // renderOrder を自機軌道より上げて透明オブジェクトの描画順に依存せず必ず上に描く。
-  private readonly targetOrbitLine = new OrbitLine(0xff6a00, 0.9);
-  private readonly plannedOrbitLine = new OrbitLine(0xffffff, 0.9);
-  private readonly geoOrbitLine = new OrbitLine(0x8b93a0, 0.2);
-  private readonly moonOrbitLine = new OrbitLine(0xaab3c0, 0.2);
 
   //readonly stage: number;
 
@@ -93,8 +82,9 @@ export class Game {
   // それぞれ「注入」する — plan-mode/plan.ts 参照。
   private readonly plan = new Plan();
   // 直近ノードの噴射ガイド(戦闘ビューのみ、マップモード中は呼ばない — [M] で開いている
-  // 間は WASDQE がΔv編集に使われるため)。
-  private readonly planGuide = new PlanGuide(this._hud, this._sfx);
+  // 間は WASDQE がΔv編集に使われるため)。scene に計画軌道ラインを持つため
+  // コンストラクタ本体で構築する(effectsSystem 等と同じ理由)。
+  private readonly planGuide: PlanGuide;
 
   // 軌道計画モード(map-mode/ フォルダの唯一の外部窓口)
   private readonly mapModeSystem = new MapModeSystem(
@@ -118,8 +108,9 @@ export class Game {
 
   //private zoomActive = false;
 
-  // 天体暦(太陽・月の位置と日照率)は ephemeris.ts に切り出し済み。
-  private readonly ephemeris = new EphemerisSystem();
+  // 天体暦(太陽・月の位置と日照率)は ephemeris.ts に切り出し済み。マップモード専用の
+  // geo/moon 参照軌道線も scene 登録込みでここが持つため、コンストラクタ本体で構築する。
+  private readonly ephemeris: EphemerisSystem;
 
   // --- 弾薬・マガジン ---
   // マガジンベルト(表示メッシュ + Verlet 物理)は弾薬状態に密結合なため
@@ -138,10 +129,9 @@ export class Game {
   private readonly markersSystem = new MarkersSystem(this._hud.markers);
   private readonly collisionPhysics = new CollisionPhysics();
   // scene(_scene)はコンストラクタ引数 gs 由来で field initializer の時点では未確定のため、
-  // このふたつはコンストラクタ本体で構築する(environment/player と同じ理由)。
+  // これらはコンストラクタ本体で構築する(environment/player と同じ理由)。
   private readonly effectsSystem: EffectsSystem;
-  private readonly orbitLineSystem = new OrbitLineSystem();
-  readonly targeter = new Targeter(this._hud, this._sfx);
+  readonly targeter: Targeter;
   private readonly hudProjection = new HudProjection(() => this.cameraSystem.activeCamera);
   readonly simulator: Simulator;
   private readonly pipRenderer: PipRenderer;
@@ -149,8 +139,11 @@ export class Game {
   constructor(gs: GameScene, stage = 1) {
     this._scene = gs.scene;
     this.renderer = gs.renderer;
+    this.ephemeris = new EphemerisSystem(this._scene);
     this.effectsSystem = new EffectsSystem(this._scene);
     this.pipRenderer = new PipRenderer(this._scene);
+    this.targeter = new Targeter(this._hud, this._sfx, this._scene);
+    this.planGuide = new PlanGuide(this._hud, this._sfx, this._scene);
 
     this.activeStage = getStageDefinition(stage);
 
@@ -170,7 +163,7 @@ export class Game {
       shadowMinAmbient: C.SHADOW_MIN_AMBIENT,
     });
 
-    this.addOrbitLines();
+    this._scene.add(this.mapModeSystem.trajLineGroup);
 
     // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
     this.player = new Player(this._hud, this._sfx, this._scene);
@@ -189,27 +182,6 @@ export class Game {
     this._hud.onQuitToTitle = () => {
       location.assign(location.pathname);
     };
-  }
-
-  private addOrbitLines(): void {
-    this._scene.add(this.playerOrbitLine.line);
-    this.targetOrbitLine.line.renderOrder = 2;
-    this._scene.add(this.targetOrbitLine.line);
-    this.plannedOrbitLine.line.renderOrder = 3;
-    this._scene.add(this.plannedOrbitLine.line);
-    this.geoOrbitLine.line.renderOrder = 0;
-    this._scene.add(this.geoOrbitLine.line);
-    this.moonOrbitLine.line.renderOrder = 0;
-    this._scene.add(this.moonOrbitLine.line);
-    this._scene.add(this.mapModeSystem.trajLineGroup);
-  }
-
-  // 敵の追加は Simulator への登録(配列)と軌道線の生成・scene 登録を常に対で行う。
-  // 軌道線は enemy 自身に持たせる(orbit-line-system.ts が enemy.orbitLine を直接参照)。
-  private addEnemy(enemy: Enemy, orbitLineColor: number): void {
-    enemy.orbitLine = new OrbitLine(orbitLineColor, 0.35);
-    this._scene.add(enemy.orbitLine.line);
-    this.simulator.addEnemy(enemy);
   }
 
   // ステージ別の初期敵配置・初期弾薬・初期補給の配置と作戦目標のブリーフィング表示
@@ -385,7 +357,7 @@ export class Game {
       player: this.player,
       enemies: this.simulator.enemies,
       totalEnemies: this.simulator.totalEnemiesSpawned,
-      addEnemy: (enemy, orbitLineColor) => this.addEnemy(enemy, orbitLineColor),
+      addEnemy: (enemy) => this.simulator.addEnemy(enemy),
       magsLeft: this.player.magsLeft,
       roundsInMag: this.player.roundsInMag,
       setPhase: (p) => { this.phase = p; },
@@ -585,30 +557,34 @@ export class Game {
     this.effectsSystem.updateFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera);
   }
 
+  // 自機・敵の軌道線は各 entity 自身が持つ(Player/Enemy コンストラクタ参照)ため、
+  // ここでは毎フレームの Elements 算出と update() 呼び出しだけを行う。
+  private syncEntityOrbitLines(o: Vec3, pv: Vec3, mapMode: boolean): Elements | null {
+    const playerEl = elementsFromState(o, pv);
+    this.player.orbitLine.update(this.player.alive ? playerEl : null, o, this.player.thrustVizDir !== null, true);
+    const tgt = this.targeter.aliveTarget;
+    for (const enemy of this.simulator.enemies) {
+      const showGray = mapMode && enemy.alive && enemy !== tgt;
+      enemy.orbitLine.update(showGray ? elementsFromState(enemy.state.r, enemy.state.v) : null, o);
+    }
+    return playerEl;
+  }
+
   private syncRenderHud(dt: number, o: Vec3, pv: Vec3): void {
     const project = (rel: Vec3) => this.hudProjection.project(rel);
     this.mapModeSystem.updateDisplay(this.cameraSystem.mapMode);
-    const { playerEl, tgtEl } = this.orbitLineSystem.update({
-      simTime: this.simTime,
-      origin: o,
-      playerVelocity: pv,
-      player: this.player,
-      target: this.targeter.autoTarget,
-      enemies: this.simulator.enemies,
-      mapMode: this.cameraSystem.mapMode,
-      plannedEl: this.cameraSystem.mapMode ? null : plannedOrbitElements(this.plan, this.planCtx()),
-      playerOrbitLine: this.playerOrbitLine,
-      targetOrbitLine: this.targetOrbitLine,
-      plannedOrbitLine: this.plannedOrbitLine,
-      geoOrbitLine: this.geoOrbitLine,
-      moonOrbitLine: this.moonOrbitLine,
-    });
+
+    const mapMode = this.cameraSystem.mapMode;
+    const playerEl = this.syncEntityOrbitLines(o, pv, mapMode);
+    const tgtEl = this.targeter.updateOrbitLine(o);
+    this.ephemeris.updateReferenceLines(this.simTime, o, mapMode);
+    this.planGuide.updatePlannedLine(this.plan, this.planCtx(), o, mapMode);
 
     const markerCtx = this.markerCtx();
     this.markersSystem.updateMarkers(markerCtx, pv, project);
     this.markersSystem.updateNodeMarkers(markerCtx, playerEl, tgtEl, project);
     this.markersSystem.updateBoardMarkers(markerCtx, dt, project);
-    if (this.cameraSystem.mapMode) {
+    if (mapMode) {
       this._hud.markers.hide('burn');
     } else {
       const { achieved } = this.planGuide.update(this.plan, this.planCtx(), o, pv, playerEl, this.player.alive, project);
