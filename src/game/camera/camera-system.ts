@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { qRotate } from '../../physics/attitude';
-import { Vec3, len, norm, scale, v3 } from '../../physics/vec3';
+import { Vec3, norm, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { ChaseCamera } from '../camera/chase-camera';
 import { MouseDelta } from '../input';
@@ -46,16 +46,5 @@ export class CameraSystem {
     const camUp = useAttitudeFrame ? boreUp! : norm(ctx.origin);
     ctx.chase.update(ctx.camera, ctx.mouse, camUp, camFwd, ctx.zoomActive, ctx.dt, boreFwd, boreUp);
     ctx.camera.updateMatrixWorld();
-  }
-
-  placeCombatMoon(moonMesh: THREE.Mesh, cam: THREE.PerspectiveCamera, moonRel: Vec3, moonRadius: number, moonVisDist: number): void {
-    const moonDist = len(moonRel);
-    const md = scale(moonRel, 1 / moonDist);
-    moonMesh.position.set(
-      cam.position.x + md.x * moonVisDist,
-      cam.position.y + md.y * moonVisDist,
-      cam.position.z + md.z * moonVisDist,
-    );
-    moonMesh.scale.setScalar(moonVisDist * (moonRadius / moonDist));
   }
 }

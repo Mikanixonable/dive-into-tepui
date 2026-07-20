@@ -23,7 +23,7 @@ import {
   v3,
 } from '../physics/vec3';
 import * as C from './const';
-import { Enemy } from './entities';
+import { Enemy } from './enemy/enemy';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
 import { buildStage0EnemyShip } from '../render/ships';
