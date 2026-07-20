@@ -2,6 +2,7 @@
 // マップモードとは無関係 — game.ts がマップモードでない間だけ毎フレーム呼ぶ
 // (マップ編集中は WASDQE が Δv 編集に使われており、同時に噴射ガイドを出す意味が
 // ないため。呼び出しどころの判断は game.ts が持つ、このクラス自身は mapMode を知らない)。
+import * as THREE from 'three/webgpu';
 import { Elements, elementsFromState } from '../../physics/orbital';
 import { dvToWorld } from '../../physics/predict';
 import { Vec3, add, clone, dot, len, norm, scale, sub } from '../../physics/vec3';
@@ -9,6 +10,7 @@ import * as C from '../const';
 import { Hud } from '../../hud/hud';
 import { fmtSpeed } from '../../hud/utils';
 import { Sfx } from '../../audio/sfx';
+import { OrbitLine } from '../../render/orbitline';
 import { ProjectFn } from '../camera/projection';
 import { Plan, PlanCtx } from './plan';
 
@@ -41,12 +43,26 @@ export class PlanGuide {
   // 一致し、噴射せずとも達成判定が誤成立する)——凍結はその両方を防ぐ。
   private activeTarget: { nodeTime: number; rNode: Vec3; vPlanned: Vec3; targetEl: Elements } | null = null;
 
-  constructor(private readonly _hud: Hud, private readonly _sfx: Sfx) {}
+  // 戦闘ビューの計画軌道ライン(白)。マップモード中は非表示(マップ側は trajLine が
+  // 予測軌道ゴーストを別途表示する)。
+  readonly plannedLine = new OrbitLine(0xffffff, 0.9);
+
+  constructor(private readonly _hud: Hud, private readonly _sfx: Sfx, scene: THREE.Scene) {
+    this.plannedLine.line.renderOrder = 3;
+    scene.add(this.plannedLine.line);
+  }
 
   // マップでノード構成・Δvが変わった可能性がある時に呼ぶ(同じノード時刻のまま
   // Δvだけ編集されたケースは、達成判定側の nodeTime 比較だけでは検出できないため)。
   clearActiveTarget(): void {
     this.activeTarget = null;
+  }
+
+  // 計画軌道ラインを最新の予測に合わせる。mapMode 中は隠す。update()(噴射ガイド)
+  // とは異なり mapMode 中も含め毎フレーム呼んでよい(このクラス自身は mapMode を
+  // 知らないため、呼び出し側の game.ts が判定して渡す)。
+  updatePlannedLine(plan: Plan, ctx: PlanCtx, origin: Vec3, mapMode: boolean): void {
+    this.plannedLine.update(mapMode ? null : plannedOrbitElements(plan, ctx), origin);
   }
 
   update(

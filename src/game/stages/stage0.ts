@@ -29,7 +29,7 @@ export class Stage0 extends StageDefinition {
       this.ammoResupply.spawnForPlayer(ctx.player, C.STAGE0_AMMO_MIN_DIST, C.STAGE0_AMMO_MAX_DIST);
     }
     const enemies = generateCluster(ctx.player.state, this._hud, this._sfx, this._scene);
-    for (const enemy of enemies) ctx.addEnemy(enemy, 0x565b63);
+    for (const enemy of enemies) ctx.addEnemy(enemy);
     return enemies.length;
   }
 
