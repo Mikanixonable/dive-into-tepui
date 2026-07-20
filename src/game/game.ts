@@ -109,7 +109,6 @@ export class Game {
   private readonly stageDirector: StageDirector;
   private simTime = 0;
   private lastSimDt = 0;
-  private warpIdx = 0;
   private paused = false;
 
   private zoomActive = false;
@@ -298,7 +297,7 @@ export class Game {
       const advanced = this.simulator.integrateSimulation(
         this.simTime,
         dt,
-        this.warp(),
+        this.mapModeSystem.warp(),
         this.simulatorCtx(),
         false,
         false,
@@ -314,8 +313,8 @@ export class Game {
   private updateFrame(dt: number): void {
     // プレイヤーのアクション更新
     this.player.updateHpRegen(dt);
-    this.updateAutoWarpTarget();
-    const warp = this.warp();
+    this.mapModeSystem.updateAutoWarp();
+    const warp = this.mapModeSystem.warp();
     const simDt = dt * warp;
     const action = this.player.updateActionState({
       dt,
@@ -367,10 +366,6 @@ export class Game {
     this.player.stopFiring();
   }
 
-  private warp(): number {
-    return C.WARP_LEVELS[this.warpIdx]!;
-  }
-
   private handleEdgeInput(): void {
     for (const code of this.input.takePresses()) {
       this.handleEdgePress(code);
@@ -387,8 +382,8 @@ export class Game {
       case 'Digit1': this.player.setThrottlePreset(0); break;
       case 'Digit2': this.player.setThrottlePreset(1); break;
       case 'Digit3': this.player.setThrottlePreset(2); break;
-      case 'Comma': this.warpIdx = this.mapModeSystem.adjustWarp(this.warpIdx, -1); break;
-      case 'Period': this.warpIdx = this.mapModeSystem.adjustWarp(this.warpIdx, 1); break;
+      case 'Comma': this.mapModeSystem.shiftWarp(-1); break;
+      case 'Period': this.mapModeSystem.shiftWarp(1); break;
       case 'KeyM': this.mapModeSystem.toggleMap(this.phase, this.touchControls); break;
       case 'KeyN': this.mapModeSystem.toggleAutoWarpToFirstNode(this.phase); break;
       case 'KeyX': this.mapModeSystem.clearPlanByKey(); break;
@@ -480,7 +475,7 @@ export class Game {
       target: this.targeter.autoTarget,
       touchControls: this.touchControls,
       simTime: this.simTime,
-      warp: this.warp(),
+      warp: this.mapModeSystem.warp(),
       paused: this.paused,
       rcsDamp: this.player.rcsDamp,
       throttleIdx: this.player.throttleIdx,
@@ -518,12 +513,6 @@ export class Game {
   }
 
   // ------------------------------------------------------------- simulate
-
-  private updateAutoWarpTarget(): void {
-    const result = this.mapModeSystem.updateAutoWarp(this.warpIdx);
-    this.warpIdx = result.warpIdx;
-    if (result.hint) this.hud.hint(result.hint, 5000);
-  }
 
   private handlePostSimulation(dt: number, simDt: number, warp: number, canAct: boolean): void {
     this.player.checkLoss(dt, this.combat, this.combatCtx());

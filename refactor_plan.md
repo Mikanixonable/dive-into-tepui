@@ -28,8 +28,8 @@ Gameがcameraを保持してcameraSystemにctxとして渡しているけども�
 
 activeCamera分岐がcameraSystemの責務だとするなら、ActiveCameraがmapModeに実装されているのはダメで、cameraSystemに実装されるべき。
 
-### warpの管理
-warpはGameではなくmap-mode-systemが持つべきかも。warpIdxなども同様で、gameが管理すべきでない、はず。要調査。そもそもwarpと呼ばれているものは何？
+### warpIdxの命名の類似
+mapModeSystem側ではIdxに類似した名前が多数あるので注意。warpTargetIdxとかcurrentIdxなどを適切に使い分けて区別すること
 
 ### playerにおけるたらいまわし配線を改善（優先度高）
 collisionSectionsとapplyCollisionSectionsをたらい回しにするだけのハンドラが存在する。そもそも関数名が何をしているのか分かりにくい。applyCollisionSectionsは、beltのVerlet物理演算を行う関数であるが、名前からは想像できない。だいたい公開する必要性があるのか？
