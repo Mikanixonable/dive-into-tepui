@@ -10,9 +10,10 @@ import { ExtraAccel, R_EARTH, stepOrbitRK4 } from '../../physics/orbital';
 import { add, clone, len, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { CombatCtx, CombatSystem } from './combat';
-import { Bullet, Casing, DebrisPiece, Enemy, MagPickup, OrbitEntity } from '../entities';
-import { EphemerisSystem } from '../ephemeris';
+import { Bullet, Casing, DebrisPiece, MagPickup, OrbitEntity } from '../entities';
 import { Player } from '../player/player';
+import { Enemy } from '../enemy/enemy';
+import { EphemerisSystem } from '../ephemeris';
 import { Vec3 } from '../../physics/nbody/bodies';
 
 export interface SimulatorCtx {
