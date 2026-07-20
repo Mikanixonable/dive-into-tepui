@@ -22,6 +22,19 @@ export type PlaceCombatMoon = (
   moonVisDist: number,
 ) => void;
 
+export interface EnvironmentRenderParams {
+  dt: number;
+  origin: Vec3;
+  displayTime: number;
+  camera: THREE.PerspectiveCamera;
+  sunPhase0: number;
+  moonPhase0: number;
+  mapMode: boolean;
+  mapCameraFar: number;
+  lit: number;
+  placeCombatMoon: PlaceCombatMoon;
+}
+
 export class EnvironmentScene {
   readonly ambient: THREE.AmbientLight;
   readonly sun: Sun;
@@ -52,13 +65,31 @@ export class EnvironmentScene {
     scene.add(this.earth.group);
   }
 
-  updateEarth(dt: number, origin: Vec3, displayTime: number): void {
+  syncRenderEnvironment(params: EnvironmentRenderParams): void {
+    const {
+      dt,
+      origin,
+      displayTime,
+      camera,
+      sunPhase0,
+      moonPhase0,
+      mapMode,
+      mapCameraFar,
+      lit,
+      placeCombatMoon,
+    } = params;
+    this.updateEarth(dt, origin, displayTime);
+    this.updateSkyBodies(displayTime, origin, camera, sunPhase0, moonPhase0, mapMode, mapCameraFar, placeCombatMoon);
+    this.updateLighting(lit);
+  }
+
+  private updateEarth(dt: number, origin: Vec3, displayTime: number): void {
     this.earth.group.position.set(-origin.x, -origin.y, -origin.z);
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
     this.earth.tick(dt, displayTime);
   }
 
-  updateSkyBodies(
+  private updateSkyBodies(
     displayTime: number,
     origin: Vec3,
     cam: THREE.PerspectiveCamera,
@@ -95,7 +126,7 @@ export class EnvironmentScene {
     );
   }
 
-  updateLighting(lit: number): void {
+  private updateLighting(lit: number): void {
     const { sunIntensity, ambientIntensity, shadowMinSun, shadowMinAmbient } = this.lighting;
     this.sunLight.intensity = sunIntensity * (shadowMinSun + (1 - shadowMinSun) * lit);
     this.ambient.intensity = ambientIntensity * (shadowMinAmbient + (1 - shadowMinAmbient) * lit);
