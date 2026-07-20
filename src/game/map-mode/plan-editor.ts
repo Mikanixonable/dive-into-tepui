@@ -13,7 +13,7 @@ import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
 import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from './mapgizmo';
 import { ProjectFn } from '../camera/projection';
-import { MapLabel } from './map-camera';
+import { MapLabel } from './map-hud';
 import { DisplayFrameFn } from './plan-display';
 import { Plan } from '../plan/plan';
 
