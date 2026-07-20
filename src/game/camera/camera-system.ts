@@ -22,6 +22,11 @@ export interface CameraUpdateCtx {
 }
 
 export class CameraSystem {
+
+  activeCamera(maneuver: MapModeSystem, camera: THREE.PerspectiveCamera): THREE.PerspectiveCamera {
+    return maneuver.mapMode ? maneuver.mapCamera : camera;
+  }
+
   updateActiveCamera(ctx: CameraUpdateCtx): THREE.PerspectiveCamera {
     if (ctx.maneuver.mapMode) {
       ctx.maneuver.updateCamera(ctx.mouse, ctx.keyYaw, ctx.keyPitch, ctx.dt);
