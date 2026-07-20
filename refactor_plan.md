@@ -21,11 +21,6 @@ belt.ts
 - 各モジュールの疎結合化と責務の整理
 - ctx注入パターンの根絶。
 
-### simSpeedへのcanAct移動 【完了】
-canPlayerThrustやcanPlayerFire、canEnemyFireなどに分けて、simSpeedの中で管理する。simSpeed自体を他のモジュールに渡して判定するのは良くない。
-
-→ `SimSpeedManager` に `canPlayerThrust`/`canPlayerFire`/`canEnemyFire`/`canResolvePhysicalCollisions` を追加。`player.ts` の `canAct(simSpeed, mapMode)` を廃止し `behave()` は `canPlayerThrust`/`canPlayerFire` を受け取って `alive`/`mapMode` とその場で合成するのみに変更。`game.ts` の `handlePostSimulation` も simSpeed 値を受け取らず `simSpeedManager` を直接参照するよう変更。`simulator.ts` の積分サブステップ判定(`simSpeed > MAX_PHYS_SIM_SPEED`)は行動可否ではなく数値積分上の判断なので対象外のまま。
-
 ### gameとstageDirectorの責務の分割
 初期化、敵のスポーンロジックをstageDirectorに委譲できる。
 stageDirectorはstageごとの処理の分岐を引き受けているはずだが、コードのパターンが一定していなくて保守性が悪い。
@@ -39,12 +34,6 @@ Gameがcameraを保持してcameraSystemにctxとして渡しているけども�
 three.jsのrender関数は、すでに出来上がったsceneとcameraを受け取って描画するものである。その意味合いからすると、sceneの構築、更新を行う関数をrenderと呼ぶのは不適切である。論理データの更新を行う関数はupdate、メッシュなどをsceneに登録する関数をbuild、すでに登録されたメッシュなどの座標を論理データに整合させる関数をsyncと呼ぶことで統一する。renderは実際にthree.jsのrenderを呼んでいる関数に限定する。
 
 updateの中ではthree.tsオブジェクトの更新を行わないことを徹底すべき？。sync系関数の中でのみ行うべきかも
-
-### beltとplayer.fireの責務境界（優先度低）
-player.fireが直接beltGroupを持っているが、これは責務が良くない。player/belt.tsを新設し、責務を分割するべき
-player.fireが地味に肥大化してきているので、責務の実態を検証してから実装に移る
-ammoEventの受け渡しの配線は遠回りに見える。consumeRoundをupdateFireStateにインライン展開してください。
-その後に、updateFireStateの適切な分割を再検討します。
 
 ### combatとstageDirectorの責務境界の改善
 ここまで整理したことで、実はstageDirectorがcombatと責務が近いことが見えてくる。
