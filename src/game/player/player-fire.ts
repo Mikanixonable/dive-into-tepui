@@ -3,14 +3,13 @@
 // 実際の発砲・排莢演出は CombatSystem に委ねる(combat.ts は game.ts を import
 // しないため、ここから combat/combatCtx を直接渡す)。
 import * as THREE from 'three/webgpu';
-import { Attitude, Quat } from '../../physics/attitude';
+import { Attitude } from '../../physics/attitude';
 import { Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { BeltPhysics } from './belt-physics';
-import { BeltSection } from '../entities';
 import { buildMagazineMesh, MAG_BELT_PITCH } from '../../render/ships';
 import { CombatCtx, CombatSystem } from '../combat/combat';
 
@@ -31,7 +30,7 @@ export class PlayerFire {
   // デブリとして放出される(CombatSystem.spawnEjectedMagazineFrame 参照)。
   private readonly beltGroup = new THREE.Group();
   private readonly beltLinks: THREE.Group[] = [];
-  private readonly belt: BeltPhysics;
+  readonly belt: BeltPhysics;
   private beltFeed = 0;
 
   constructor(
@@ -94,30 +93,28 @@ export class PlayerFire {
     return this.roundsInMagValue > 0 || this.magsLeftValue > 0;
   }
 
-  // 機体が生存していてワープ倍率が射撃可能範囲内か。マップモードは呼び出し側
-  // (updateFireState の keyHeld)で既に除外済みなのでここでは見ない。
-  private canFire(alive: boolean, warp: number): boolean {
-    return alive && warp <= C.MAX_PHYS_WARP;
-  }
-
   // 発砲入力を処理し、発射・排莢・リロードを CombatSystem に発注する。
   // 戻り値は「このフレームで発砲を新規開始したか」— fineAttitude の有効化は
   // 移動系(PlayerThrottle)の責務なので、呼び出し元(Player)へ判定だけ返す。
+  // canAct(ワープ倍率・生死・マップモードを合成した「行動可能か」)は Player が
+  // 一元的に判定して渡す — ここではワープ値そのものは扱わない。
   updateFireState(
     dt: number,
     input: Input,
     alive: boolean,
-    warp: number,
     mapMode: boolean,
+    canAct: boolean,
     combat: CombatSystem,
     combatCtx: CombatCtx,
   ): boolean {
     const keyHeld = !mapMode && (input.down('Space') || input.mouseFiring);
-    if (keyHeld && alive && warp > C.MAX_PHYS_WARP) {
+    // keyHeld は !mapMode を含意するため、alive にもかかわらず canAct が偽なのは
+    // ワープ倍率超過が原因と判定できる。
+    if (keyHeld && alive && !canAct) {
       this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
     }
     const hasAmmo = this.hasAmmo();
-    if (keyHeld && !hasAmmo && alive && !this.wasEmptyClick) {
+    if (keyHeld && alive && !hasAmmo && !this.wasEmptyClick) {
       this.sfx.emptyClick();
       this.hud.hint('弾薬切れ — 軌道上の補給マガジン ▣ を回収せよ', 3000);
     }
@@ -131,7 +128,7 @@ export class PlayerFire {
       return false;
     }
 
-    const wantFire = keyHeld && hasAmmo && this.canFire(alive, warp);
+    const wantFire = keyHeld && hasAmmo && canAct;
     const justStartedFiring = wantFire && !this.wasFiring;
     this.wasFiring = wantFire;
     if (!wantFire) return justStartedFiring;
@@ -183,15 +180,5 @@ export class PlayerFire {
       this.beltFeed += (targetFeed - this.beltFeed) * Math.min(1, dt * 12);
     }
     this.belt.updateBeltPhysics(dt, beltCount, att, thrustAccelVec, this.beltFeed, alive);
-  }
-
-  // ---- 剛体接触 (collision.ts) との受け渡し。r/v/q は呼び出し元(Player)が
-  // 自身の state/att から渡す — ベルトは機体座標系の Verlet 状態を持つのみ。
-  collisionSections(dt: number, r: Vec3, v: Vec3, q: Quat): BeltSection[] {
-    return this.belt.collisionSections(dt, r, v, q);
-  }
-
-  applyCollisionSections(dt: number, r: Vec3, v: Vec3, q: Quat): void {
-    this.belt.applyCollisionSections(dt, r, v, q);
   }
 }

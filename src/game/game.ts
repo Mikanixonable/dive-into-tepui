@@ -311,12 +311,11 @@ export class Game {
   }
 
   private updateFrame(dt: number): void {
-    // プレイヤーのアクション更新
-    this.player.updateHpRegen(dt);
     this.mapModeSystem.updateAutoWarp();
     const warp = this.mapModeSystem.warp();
     const simDt = dt * warp;
-    const action = this.player.updateActionState({
+    // プレイヤーの HP 回復・移動/発射の試行
+    const action = this.player.behave({
       dt,
       input: this.input,
       warp,
@@ -360,10 +359,9 @@ export class Game {
   private handlePausedFrame(): void {
     this.lastSimDt = 0;
     this.sfx.setThrust(false);
-    this.player.clearTransientState();
+    this.player.pause();
     this.input.takeClicks();
     this.input.takeRightClicks();
-    this.player.stopFiring();
   }
 
   private handleEdgeInput(): void {
