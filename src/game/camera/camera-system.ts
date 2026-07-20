@@ -12,7 +12,6 @@ export interface CameraUpdateCtx {
   player: Player;
   maneuver: MapModeSystem;
   chase: ChaseCamera;
-  camera: THREE.PerspectiveCamera;
   mouse: MouseDelta;
   keyYaw: number;
   keyPitch: number;
@@ -23,17 +22,17 @@ export interface CameraUpdateCtx {
 
 export class CameraSystem {
 
-  activeCamera(maneuver: MapModeSystem, camera: THREE.PerspectiveCamera): THREE.PerspectiveCamera {
-    return maneuver.mapMode ? maneuver.mapCamera : camera;
+  activeCamera(maneuver: MapModeSystem, chase: ChaseCamera): THREE.PerspectiveCamera {
+    return maneuver.mapMode ? maneuver.camera : chase.camera;
   }
 
   updateActiveCamera(ctx: CameraUpdateCtx): THREE.PerspectiveCamera {
     if (ctx.maneuver.mapMode) {
       ctx.maneuver.updateCamera(ctx.mouse, ctx.keyYaw, ctx.keyPitch, ctx.dt);
-      return ctx.maneuver.mapCamera;
+      return ctx.maneuver.camera;
     }
     this.updateCombatCamera(ctx);
-    return ctx.camera;
+    return ctx.chase.camera;
   }
 
   private updateCombatCamera(ctx: CameraUpdateCtx): void {
@@ -49,7 +48,7 @@ export class CameraSystem {
     const useAttitudeFrame = ctx.chase.camFollowAttitude && ctx.player.alive && boreFwd && boreUp;
     const camFwd = useAttitudeFrame ? boreFwd! : norm(ctx.playerVelocity);
     const camUp = useAttitudeFrame ? boreUp! : norm(ctx.origin);
-    ctx.chase.update(ctx.camera, ctx.mouse, camUp, camFwd, ctx.zoomActive, ctx.dt, boreFwd, boreUp);
-    ctx.camera.updateMatrixWorld();
+    ctx.chase.update(ctx.mouse, camUp, camFwd, ctx.zoomActive, ctx.dt, boreFwd, boreUp);
+    ctx.chase.camera.updateMatrixWorld();
   }
 }

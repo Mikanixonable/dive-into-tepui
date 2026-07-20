@@ -1,5 +1,6 @@
 import { Hud } from '../../hud/hud';
-import { MapPlanner } from './planner';
+import { Plan } from '../plan/plan';
+import { PlanEditor } from './plan-editor';
 import { TouchControls } from '../touch';
 
 export class MapModeController {
@@ -7,7 +8,7 @@ export class MapModeController {
 
   constructor(
     private readonly hud: Hud,
-    private readonly planner: MapPlanner,
+    private readonly editor: PlanEditor,
   ) {}
 
   syncWithPhase(phase: string, touchControls: TouchControls | null): void {
@@ -15,17 +16,19 @@ export class MapModeController {
       this.enabled = false;
       this.hud.setPlanPanel(null);
       this.hud.setMapToolbarVisible(false);
-      this.planner.closeMenu();
+      this.editor.closeMenu();
       touchControls?.setMapMode(false);
     }
   }
 
-  toggle(phase: string, touchControls: TouchControls | null): void {
+  toggle(phase: string, touchControls: TouchControls | null, plan: Plan): void {
     if (phase !== 'playing') return;
     if (!this.enabled) {
       this.enabled = true;
-      this.planner.selectedNodeIdx = null;
-      this.planner.trajDirty = true;
+      this.editor.selectedNodeIdx = null;
+      // マップの表示用予測期間は戦闘ビューの噴射ガイド用期間と異なるため、
+      // 開いた直後は必ず作り直す(スロットリングで最大2秒待たされるのを避ける)。
+      plan.markDirty();
       this.hud.setMapToolbarVisible(true);
       touchControls?.setMapMode(true);
       this.hud.hint(
@@ -35,13 +38,13 @@ export class MapModeController {
       return;
     }
     this.enabled = false;
-    this.planner.onMapClosed();
+    this.editor.onMapClosed(plan);
     this.hud.setMapToolbarVisible(false);
     this.hud.setPlanPanel(null);
-    this.planner.closeMenu();
+    this.editor.closeMenu();
     touchControls?.setMapMode(false);
-    if (this.planner.planNodes.length > 0) {
-      this.hud.hint(`マニューバ計画 ${this.planner.planNodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
+    if (plan.nodes.length > 0) {
+      this.hud.hint(`マニューバ計画 ${plan.nodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
     }
   }
 }

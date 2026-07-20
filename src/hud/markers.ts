@@ -30,7 +30,7 @@ export interface MarkerCtx {
   enemies: Enemy[];
   target: Enemy | null;
   magPickups: MagPickup[];
-  mapLabelIds: string[]; // マップモードのラベル(mapView.labels の id 一覧、非マップ時に隠す)
+  mapLabelIds: string[]; // マップモードのラベル(MapCamera.labels の id 一覧、非マップ時に隠す)
   activeCamera: THREE.PerspectiveCamera; // PIP オーバーレイ専用の投影に使う
   simTime: number;
 }

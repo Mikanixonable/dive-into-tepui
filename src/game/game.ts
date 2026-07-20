@@ -32,6 +32,8 @@ import { Targeter } from './combat/targeter';
 import { HudProjection } from './camera/projection';
 import { AmmoResupplySystem } from './combat/ammo-resupply';
 import { MapModeSystem } from './map-mode/map-mode-system';
+import { Plan, PlanCtx } from './plan/plan';
+import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRect, PipRenderer } from './pip-renderer';
 import { altitudeOf, Simulator, SimulatorCtx } from './combat/simulator';
@@ -52,7 +54,6 @@ type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
 export class Game {
   private readonly scene: THREE.Scene;
-  private readonly camera: THREE.PerspectiveCamera;
   private readonly renderer: GameScene['renderer'];
 
   private readonly input: Input;
@@ -95,20 +96,23 @@ export class Game {
   // シミュレーション速度(旧「ワープ」)の段階管理と、[N] キーによるノードへの自動ワープ
   private readonly simSpeedManager = new SimSpeedManager(this.hud, this.sfx);
 
+  // 軌道計画(ノード列+予測キャッシュ)。マップモードの有無と無関係なデータで、
+  // Game が所有し、表示・編集は mapModeSystem へ、実施(噴射ガイド)は planGuide へ
+  // それぞれ「注入」する — plan-mode/plan.ts 参照。
+  private readonly plan = new Plan();
+  // 直近ノードの噴射ガイド(戦闘ビューのみ、マップモード中は呼ばない — [M] で開いている
+  // 間は WASDQE がΔv編集に使われるため)。
+  private readonly planGuide = new PlanGuide(this.hud, this.sfx);
+
   // 軌道計画モード(map-mode/ フォルダの唯一の外部窓口)
   private readonly mapModeSystem = new MapModeSystem(
     this.hud,
     this.sfx,
     this.simSpeedManager,
+    this.plan,
     (rel: Vec3) => this.hudProjection.project(rel),
     () => this.player.fineAttitude,
-    () => ({
-      simTime: this.simTime,
-      playerR: this.player.state.r,
-      playerV: this.player.state.v,
-      sunPhase0: this.ephemeris.sunPhase0,
-      moonPhase0: this.ephemeris.moonPhase0,
-    }),
+    () => this.planCtx(),
   );
 
   private phase: GamePhase = 'playing';
@@ -151,7 +155,6 @@ export class Game {
 
   constructor(gs: GameScene, stage = 1) {
     this.scene = gs.scene;
-    this.camera = gs.camera;
     this.renderer = gs.renderer;
 
     this.stageDirector = new StageDirector(
@@ -266,11 +269,22 @@ export class Game {
 
   // 描画に使うカメラ(戦闘 / 軌道計画で切り替え)
   private get activeCamera(): THREE.PerspectiveCamera {
-    return this.cameraSystem.activeCamera(this.mapModeSystem, this.camera);
+    return this.cameraSystem.activeCamera(this.mapModeSystem, this.chase);
   }
 
   private get mapMode(): boolean {
     return this.mapModeSystem.mapMode;
+  }
+
+  // Plan(軌道計画)の refresh() や PlanGuide が要求する「現在状態」のスナップショット。
+  private planCtx(): PlanCtx {
+    return {
+      simTime: this.simTime,
+      playerR: this.player.state.r,
+      playerV: this.player.state.v,
+      sunPhase0: this.ephemeris.sunPhase0,
+      moonPhase0: this.ephemeris.moonPhase0,
+    };
   }
 
   // ズームウィンドウ(PIP)描画中、マズルフラッシュを非表示にする(pip-renderer.ts から
@@ -377,6 +391,21 @@ export class Game {
     this.input.takeRightClicks();
   }
 
+  // [X] キー: マップモード中は選択中ノードのみ(mapModeSystem 側の責務)、
+  // マップ外では計画全体を破棄する。Plan を直接持つのは Game なので、
+  // 全破棄はここが受け持つ(mapModeSystem にマップ外の状態を持たせないため)。
+  private clearPlanByKey(): void {
+    if (this.mapMode) {
+      this.mapModeSystem.deleteSelectedNode();
+      return;
+    }
+    if (this.plan.nodes.length <= 0) return;
+    this.plan.clear();
+    this.planGuide.clearActiveTarget();
+    this.simSpeedManager.cancelAutoWarp();
+    this.hud.hint('マニューバ計画を破棄');
+  }
+
   private handleEdgeInput(): void {
     const presses = this.input.takePresses();
     const unconsumedPresses = this.player.handleEdgeInput(presses, this.fireCtx());
@@ -390,9 +419,14 @@ export class Game {
       case 'KeyG': this.chase.toggleFollowAttitude(this.hud); break;
       case 'Comma': this.simSpeedManager.shift(-1); break;
       case 'Period': this.simSpeedManager.shift(1); break;
-      case 'KeyM': this.mapModeSystem.toggleMap(this.phase, this.touchControls); break;
+      case 'KeyM':
+        this.mapModeSystem.toggleMap(this.phase, this.touchControls);
+        // マップを閉じた: 同じノードのままΔvだけ編集された可能性があり、
+        // ノード時刻の一致だけでは検出できないため、噴射ガイドの凍結目標を作り直す。
+        if (!this.mapMode) this.planGuide.clearActiveTarget();
+        break;
       case 'KeyN': this.mapModeSystem.toggleAutoWarpToFirstNode(this.phase); break;
-      case 'KeyX': this.mapModeSystem.clearPlanByKey(); break;
+      case 'KeyX': this.clearPlanByKey(); break;
       case 'KeyH': this.hud.toggleHelp(); break;
       case 'Escape': this.hud.toggleSettings(); break;
       case 'KeyR': if (this.phase !== 'playing') location.reload(); break;
@@ -589,7 +623,7 @@ export class Game {
       sunPhase0: this.ephemeris.sunPhase0,
       moonPhase0: this.ephemeris.moonPhase0,
       mapMode: this.mapMode,
-      mapCameraFar: this.mapModeSystem.mapCameraFar,
+      mapCameraFar: this.mapModeSystem.cameraFar,
       lit: this.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
     });
     this.syncRenderThrust();
@@ -608,7 +642,6 @@ export class Game {
       player: this.player,
       maneuver: this.mapModeSystem,
       chase: this.chase,
-      camera: this.camera,
       mouse,
       keyYaw,
       keyPitch,
@@ -681,7 +714,8 @@ export class Game {
     if (this.mapMode) {
       this.hud.markers.hide('burn');
     } else {
-      this.mapModeSystem.updateGuide(playerEl, this.player.alive);
+      const { achieved } = this.planGuide.update(this.plan, this.planCtx(), o, pv, playerEl, this.player.alive, project);
+      if (achieved) this.simSpeedManager.cancelAutoWarp();
     }
 
     this.hud.panels.update(this.hudPanelCtx(), dt, playerEl, tgtEl);
