@@ -9,7 +9,6 @@ import { Player } from '../player/player';
 export interface CameraUpdateCtx {
   zoomActive: boolean;
   player: Player;
-  mapMode: boolean;
   sunAz: number;
   focusRel: Vec3; // MapCamera の注視点(origin 相対)。解決は map-mode-system.ts の責務。
   mouse: MouseDelta;
@@ -27,17 +26,19 @@ export interface CameraUpdateCtx {
 export class CameraSystem {
   readonly chaseCamera = new ChaseCamera();
   readonly mapCamera: MapCamera;
+  mapMode = false;
+  zoomActive = false;
 
   constructor(hud: Hud) {
     this.mapCamera = new MapCamera(hud);
   }
 
-  activeCamera(mapMode: boolean): THREE.PerspectiveCamera {
-    return mapMode ? this.mapCamera.camera : this.chaseCamera.camera;
+  get activeCamera(): THREE.PerspectiveCamera {
+    return this.mapMode ? this.mapCamera.camera : this.chaseCamera.camera;
   }
 
   updateActiveCamera(ctx: CameraUpdateCtx): THREE.PerspectiveCamera {
-    if (ctx.mapMode) {
+    if (this.mapMode) {
       this.mapCamera.update(ctx.mouse, ctx.keyYaw, ctx.keyPitch, ctx.dt, ctx.focusRel, ctx.sunAz);
       return this.mapCamera.camera;
     }

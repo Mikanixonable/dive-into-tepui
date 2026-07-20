@@ -1,13 +1,15 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { ExtraAccel, MU_EARTH, OrbitState, R_EARTH } from '../../physics/orbital';
-import { Vec3, addScaled, clone, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
+import { Vec3, addScaled, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { DestroyEffectCtx, Ship } from '../entities';
 import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildFlashMesh, buildPlayerShip, RCS_BLOCK_OFFSETS } from '../../render/ships';
+import { getGlowTexture } from '../../render/glow-texture';
+import type { CameraSystem } from '../camera/camera-system';
 import { CombatCtx } from '../stages/stage-definition';
 import { KillCounter } from '../combat/kill-counter';
 import { PlayerThrottle } from './player-throttle';
@@ -36,7 +38,7 @@ export class Player extends Ship {
   private readonly rcsPuffs: THREE.Mesh[] = []; // RCS ブロック位置の噴射パフ(4基)
 
   // 高度420km・傾斜51.6°の円軌道に機首プログレードで初期配置する
-  constructor(hud: Hud, sfx: Sfx, scene: THREE.Scene, glowTex: THREE.Texture) {
+  constructor(hud: Hud, sfx: Sfx, scene: THREE.Scene) {
     const state = Player.makeInitialState();
     super('PLAYER', state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, scene);
     this.mass = 1000;
@@ -48,14 +50,15 @@ export class Player extends Ship {
     this.belt = new Belt(this.obj);
     this.thermal = new ThermalSystem(hud, sfx);
 
-    const plumes = this.buildThrustPlumes(scene, glowTex);
+    const plumes = this.buildThrustPlumes(scene);
     this.plumeCore = plumes.core;
     this.plumeOuter = plumes.outer;
-    this.buildRcsPuffs(scene, glowTex);
+    this.buildRcsPuffs(scene);
   }
 
   // マヌーバ噴射プルーム(推力方向の逆側に置く発光ビルボード 2 枚)
-  private buildThrustPlumes(scene: THREE.Scene, glowTex: THREE.Texture): { core: THREE.Mesh; outer: THREE.Mesh; } {
+  private buildThrustPlumes(scene: THREE.Scene): { core: THREE.Mesh; outer: THREE.Mesh; } {
+    const glowTex = getGlowTexture();
     const core = buildFlashMesh(glowTex, 0xaee6ff);
     const outer = buildFlashMesh(glowTex, 0x4f9fff);
     core.visible = false;
@@ -66,9 +69,9 @@ export class Player extends Ship {
   }
 
   // RCS パフ(機首側の 4 基のスラスタブロックに対応、ships.ts の配置と一致)
-  private buildRcsPuffs(scene: THREE.Scene, glowTex: THREE.Texture): void {
+  private buildRcsPuffs(scene: THREE.Scene): void {
     for (let i = 0; i < 4; i++) {
-      const puff = buildFlashMesh(glowTex, 0xcfeaff);
+      const puff = buildFlashMesh(getGlowTexture(), 0xcfeaff);
       puff.visible = false;
       this.rcsPuffs.push(puff);
       scene.add(puff);
@@ -128,6 +131,8 @@ export class Player extends Ship {
   // 試行を一括で行う。実際の移動加速度の組み立ては PlayerThrottle、発砲・排莢の発注は
   // PlayerFire が持つ。canPlayerThrust/canPlayerFire(ワープ倍率による可否)は
   // SimSpeedManager が既に判定した結果を受け取る — ここで simSpeed 値そのものを見ない。
+  // マップモード中は移動/発射の入力そのものを行わない(装填だけは実時間で進行する
+  // — behaveMapMode 参照)ため、通常時とは別関数に分ける。
   behave(params: {
     dt: number;
     input: Input;
@@ -139,9 +144,28 @@ export class Player extends Ship {
   }): PlayerActionState {
     const { dt, input, canPlayerThrust, canPlayerFire, mapMode, killCounter, fireCtx } = params;
     this.updateHpRegen(dt);
-    const canThrust = canPlayerThrust && this.alive && !mapMode;
-    const canFire = canPlayerFire && this.alive && !mapMode;
-    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, mapMode, canFire, this, killCounter, fireCtx);
+    if (mapMode) return this.behaveMapMode(dt);
+    return this.behaveFlying(dt, input, canPlayerThrust, canPlayerFire, killCounter, fireCtx);
+  }
+
+  // マップモード中: 移動/発射の入力は無効。装填(リロード)だけは戦闘可否に関わらず
+  // 実時間で進行し続けるため、PlayerFire にそれだけを進めさせる。
+  private behaveMapMode(dt: number): PlayerActionState {
+    this.fire.tickMapMode(dt);
+    return { thrustFn: null };
+  }
+
+  private behaveFlying(
+    dt: number,
+    input: Input,
+    canPlayerThrust: boolean,
+    canPlayerFire: boolean,
+    killCounter: KillCounter,
+    fireCtx: FireCtx,
+  ): PlayerActionState {
+    const canThrust = canPlayerThrust && this.alive;
+    const canFire = canPlayerFire && this.alive;
+    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, canFire, this, killCounter, fireCtx);
     if (justStartedFiring) this.throttle.fineAttitude = true;
     const thrustFn = this.throttle.updateThrustState(input, canThrust, this.att, this.state);
     return { thrustFn };
@@ -210,7 +234,7 @@ export class Player extends Ship {
     } else {
       spawnBulletFlash(ctx.fx, hit.pos, hit.vel);
     }
-    spawnFragments(ctx.fx, clone(hit.pos), clone(hit.vel), C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    spawnFragments(ctx.fx, hit.pos, hit.vel, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
   
   private destroyEffect(ctx: DestroyEffectCtx): void {
@@ -255,12 +279,9 @@ export class Player extends Ship {
     this.obj.visible = this.alive && !zoomActive;
   }
 
-  renderThrustEffects(
-    camera: THREE.PerspectiveCamera,
-    zoomActive: boolean,
-  ): void {
+  renderThrustEffects(camera: CameraSystem): void {
     const dir = this.throttle.thrustVizDir;
-    const showPlume = dir !== null && this.alive && !zoomActive;
+    const showPlume = dir !== null && this.alive && !camera.zoomActive;
     this.plumeCore.visible = showPlume;
     this.plumeOuter.visible = showPlume;
     if (!showPlume) return;
@@ -269,25 +290,23 @@ export class Player extends Ship {
     const sc = (1.5 + 2.5 * (this.throttle.throttleIdx / 3.0)) * flick;
     this.plumeCore.position.set(-d.x * 3.4, -d.y * 3.4, -d.z * 3.4);
     this.plumeCore.scale.setScalar(sc * 1.6);
-    this.plumeCore.quaternion.copy(camera.quaternion);
+    this.plumeCore.quaternion.copy(camera.activeCamera.quaternion);
     (this.plumeCore.material as THREE.MeshBasicMaterial).opacity = 0.85 * flick;
     this.plumeOuter.position.set(-d.x * 5.6, -d.y * 5.6, -d.z * 5.6);
     this.plumeOuter.scale.setScalar(sc * 3.6);
-    this.plumeOuter.quaternion.copy(camera.quaternion);
+    this.plumeOuter.quaternion.copy(camera.activeCamera.quaternion);
     (this.plumeOuter.material as THREE.MeshBasicMaterial).opacity = 0.32 * flick;
   }
 
   updateRcsEffects(
     input: Input,
-    activeCamera: THREE.PerspectiveCamera,
-    zoomActive: boolean,
+    camera: CameraSystem,
     phasePlaying: boolean,
     paused: boolean,
-    mapMode: boolean,
   ): boolean {
-    const tau = this.throttle.computeRcsTau(input, this.att.w, this.alive, phasePlaying, mapMode);
-    const rotating = this.alive && phasePlaying && !paused && !mapMode && lenSq(tau) > 0.01;
-    if (!rotating || zoomActive) {
+    const tau = this.throttle.computeRcsTau(input, this.att.w, this.alive, phasePlaying, camera.mapMode);
+    const rotating = this.alive && phasePlaying && !paused && !camera.mapMode && lenSq(tau) > 0.01;
+    if (!rotating || camera.zoomActive) {
       for (const p of this.rcsPuffs) p.visible = false;
       return false;
     }
@@ -306,7 +325,7 @@ export class Player extends Ship {
       const pos = qRotate(q, addScaled(rb, exhaust, 0.55));
       puff.position.set(pos.x, pos.y, pos.z);
       puff.scale.setScalar(0.55 * flick);
-      puff.quaternion.copy(activeCamera.quaternion);
+      puff.quaternion.copy(camera.activeCamera.quaternion);
       (puff.material as THREE.MeshBasicMaterial).opacity = 0.75 * flick;
       puff.visible = true;
     }

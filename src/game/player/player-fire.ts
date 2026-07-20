@@ -92,22 +92,20 @@ export class PlayerFire {
 
   // 発砲入力を処理し、発射・排莢・リロードを行う。戻り値は「このフレームで発砲を
   // 新規開始したか」— fineAttitude の有効化は移動系(PlayerThrottle)の責務なので、
-  // 呼び出し元(Player)へ判定だけ返す。canFire(ワープ倍率・生死・マップモードを合成
-  // した「発射可能か」)は Player が一元的に判定して渡す — ここではワープ値そのものは
-  // 扱わない。ship は発射位置・反動・排莢の基準になる自機の位置・姿勢(Player 自身)。
+  // 呼び出し元(Player)へ判定だけ返す。canFire(ワープ倍率・生死を合成した
+  // 「発射可能か」)は Player が一元的に判定して渡す — ここではワープ値そのものは
+  // 扱わない。マップモード中はそもそも呼ばれない(Player.behaveMapMode → tickMapMode
+  // 参照)。ship は発射位置・反動・排莢の基準になる自機の位置・姿勢(Player 自身)。
   updateFireState(
     dt: number,
     input: Input,
     alive: boolean,
-    mapMode: boolean,
     canFire: boolean,
     ship: Ship,
     killCounter: KillCounter,
     fireCtx: FireCtx,
   ): boolean {
-    const keyHeld = !mapMode && (input.down('Space') || input.mouseFiring);
-    // keyHeld は !mapMode を含意するため、alive にもかかわらず canFire が偽なのは
-    // ワープ倍率超過が原因と判定できる。
+    const keyHeld = input.down('Space') || input.mouseFiring;
     if (keyHeld && alive && !canFire) {
       this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能`);
     }
@@ -118,10 +116,7 @@ export class PlayerFire {
     }
     this.wasEmptyClick = keyHeld && !hasAmmo;
 
-    // リロードは戦闘可否(マップモード/ワープ/生死)に関わらず実時間で進行する
-    // (時間ワープ中でも装填サイクルは現実時間で完了する)。
-    if (this.reloadTimer > 0) {
-      this.reloadTimer -= dt;
+    if (this.tickReloadTimer(dt)) {
       this.wasFiring = false;
       return false;
     }
@@ -133,6 +128,20 @@ export class PlayerFire {
 
     this.fireCycle(dt, justStartedFiring, fireCtx, ship, killCounter);
     return justStartedFiring;
+  }
+
+  // マップモード中: 発射入力は無効だが、装填(リロード)だけは戦闘可否に関わらず
+  // 実時間で進行する(時間ワープ中でも装填サイクルは現実時間で完了する)。
+  tickMapMode(dt: number): void {
+    this.tickReloadTimer(dt);
+    this.wasFiring = false;
+    this.wasEmptyClick = false;
+  }
+
+  private tickReloadTimer(dt: number): boolean {
+    if (this.reloadTimer <= 0) return false;
+    this.reloadTimer -= dt;
+    return true;
   }
 
   // CoolDown 周期での連射管理: 発射開始時のスピンアップと、周期が満ちるごとの
@@ -220,8 +229,8 @@ export class PlayerFire {
   private spawnMuzzleFlash(ctx: FireCtx, ship: Ship, muzzle: Vec3, fwd: Vec3): void {
     spawnFlash(
       ctx.fx,
-      addScaled(clone(muzzle), fwd, 1.2),
-      clone(ship.state.v),
+      addScaled(muzzle, fwd, 1.2),
+      ship.state.v,
       2.2,
       6,
       0.07,
