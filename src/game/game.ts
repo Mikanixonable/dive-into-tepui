@@ -16,7 +16,7 @@ import { CombatCtx, StageCtx, StageDefinition } from './stages/stage-definition'
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
 import { CollisionPhysics } from './combat/collision';
-import { EffectsCtx, EffectsSystem, FlashEffect } from './effects-system';
+import { EffectsCtx, EffectsSystem } from './effects-system';
 import { OrbitLineSystem } from './orbit-line-system';
 import { getStageDefinition, resolveStageInitData } from './stages/stage-data';
 import { UnlockManager } from './unlock-manager';
@@ -35,7 +35,6 @@ import { TouchControls } from './touch';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
-import { makeGlowTexture } from '../render/stars';
 import { OrbitLine } from '../render/orbitline';
 import { EnvironmentScene } from '../render/environment-scene';
 
@@ -60,7 +59,7 @@ export class Game {
   readonly player: Player;
   // enemies / bullets / plasmaBullets / casings / debris の各エンティティ配列は
   // Simulator が所有する(this.simulator.enemies 等)。追加は simulator.addXxx 経由。
-  private effects: FlashEffect[] = [];
+  // フラッシュエフェクト配列(effects)は effectsSystem が所有する。
 
   // ?perf=1 のデバッグ表示用エンティティ数(軽量化計画ステップ0)。挙動には影響しない。
   perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
@@ -72,7 +71,6 @@ export class Game {
     };
   }
 
-  private readonly glowTex: THREE.Texture;
   private readonly environment: EnvironmentScene;
   // 軌道線もモノトーン + オレンジアクセントの配色: 自機 = 明るいグレー、
   // ターゲット = オレンジ(注目対象)、計画軌道 = 白(最も明るい = 未来)。
@@ -118,11 +116,10 @@ export class Game {
   private lastSimDt = 0;
   paused = false;
 
-  private zoomActive = false;
+  //private zoomActive = false;
 
   // 天体暦(太陽・月の位置と日照率)は ephemeris.ts に切り出し済み。
   private readonly ephemeris = new EphemerisSystem();
-  private lostReason = '大気圏に突入し機体を喪失した';
 
   // --- 弾薬・マガジン ---
   // マガジンベルト(表示メッシュ + Verlet 物理)は弾薬状態に密結合なため
@@ -143,7 +140,7 @@ export class Game {
   private readonly effectsSystem = new EffectsSystem();
   private readonly orbitLineSystem = new OrbitLineSystem();
   readonly targeter = new Targeter(this.hud);
-  private readonly hudProjection = new HudProjection(() => this.activeCamera);
+  private readonly hudProjection = new HudProjection(() => this.cameraSystem.activeCamera);
   readonly simulator: Simulator;
   private readonly pipRenderer = new PipRenderer();
 
@@ -160,12 +157,9 @@ export class Game {
     this.simulator = new Simulator(this.ephemeris, this.hitSystem);
     this.activeStage.setup(this.hud, this.sfx, this.scene, this.simulator);
 
-    // 汎用発光テクスチャ
-    this.glowTex = makeGlowTexture();
-
     // --- 環境 ---
     this.ephemeris.update(this.simTime);
-    this.environment = new EnvironmentScene(this.scene, this.glowTex, this.ephemeris.sunDir, {
+    this.environment = new EnvironmentScene(this.scene, this.ephemeris.sunDir, {
       sunIntensity: C.SUN_INTENSITY,
       ambientIntensity: C.AMBIENT_INTENSITY,
       shadowMinSun: C.SHADOW_MIN_SUN,
@@ -175,7 +169,7 @@ export class Game {
     this.addOrbitLines();
 
     // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
-    this.player = new Player(this.hud, this.sfx, this.scene, this.glowTex);
+    this.player = new Player(this.hud, this.sfx, this.scene);
 
     this.initStage();
   }
@@ -223,15 +217,6 @@ export class Game {
     this.hud.toast(data.briefingHtml, 12000);
   }
 
-  // 描画に使うカメラ(戦闘 / 軌道計画で切り替え)
-  private get activeCamera(): THREE.PerspectiveCamera {
-    return this.cameraSystem.activeCamera(this.mapMode);
-  }
-
-  private get mapMode(): boolean {
-    return this.mapModeSystem.mapMode;
-  }
-
   // Plan(軌道計画)の refresh() や PlanGuide が要求する「現在状態」のスナップショット。
   private planCtx(): PlanCtx {
     return {
@@ -248,16 +233,16 @@ export class Game {
   // 撃破爆発のフラッシュも入っているため、muzzle フラグ付きのものだけを切り替える
   // (ズーム中でも敵側の命中・爆発の閃光は照準フィードバックとして見せたい)。
   private setMuzzleFlashesVisible(v: boolean): void {
-    for (const fx of this.effects) if (fx.muzzle) fx.mesh.visible = v;
+    for (const fx of this.effectsSystem.effects) if (fx.muzzle) fx.mesh.visible = v;
   }
 
   // ---------------------------------------------------------------- update
 
   update(dtRaw: number): void {
     const dt = Math.min(dtRaw, 0.1);
-    this.zoomActive = !this.mapMode && this.input.down('KeyZ');
+    this.cameraSystem.zoomActive = !this.cameraSystem.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
-    this.mapModeSystem.syncMapModeWithPhase(this.phase, this.touchControls);
+    this.cameraSystem.mapMode = this.mapModeSystem.syncMapModeWithPhase(this.phase, this.touchControls, this.cameraSystem.mapMode);
 
     this.handleFrame(dt);
 
@@ -266,7 +251,6 @@ export class Game {
       (prevFiring, nowFiring) => this.player.setFineAttitudeFromFiring(prevFiring, nowFiring),
     );
   }
-
 
   private handleFrame(dt: number): void {
     if (this.phase === "playing" && this.paused) {
@@ -302,7 +286,7 @@ export class Game {
       input: this.input,
       canPlayerThrust: this.simSpeedManager.canPlayerThrust,
       canPlayerFire: this.simSpeedManager.canPlayerFire,
-      mapMode: this.mapMode,
+      mapMode: this.cameraSystem.mapMode,
       killCounter: this.activeStage.killCounter,
       fireCtx: this.fireCtx(),
     });
@@ -322,7 +306,7 @@ export class Game {
 
     this.handlePostSimulation(dt, simDt);
 
-    if (this.mapMode) {
+    if (this.cameraSystem.mapMode) {
       this.mapModeSystem.updateEditing(dt, this.input);
     }
     else {
@@ -331,7 +315,7 @@ export class Game {
           player: this.player,
           enemies: this.simulator.enemies,
           input: this.input,
-          activeCamera: this.activeCamera,
+          activeCamera: this.cameraSystem.activeCamera,
           project: (rel) => this.hudProjection.project(rel),
         });
     }
@@ -351,7 +335,7 @@ export class Game {
   // マップ外では計画全体を破棄する。Plan を直接持つのは Game なので、
   // 全破棄はここが受け持つ(mapModeSystem にマップ外の状態を持たせないため)。
   private clearPlanByKey(): void {
-    if (this.mapMode) {
+    if (this.cameraSystem.mapMode) {
       this.mapModeSystem.deleteSelectedNode();
       return;
     }
@@ -376,12 +360,12 @@ export class Game {
       case 'Comma': this.simSpeedManager.shift(-1); break;
       case 'Period': this.simSpeedManager.shift(1); break;
       case 'KeyM':
-        this.mapModeSystem.toggleMap(this.phase, this.touchControls);
+        this.cameraSystem.mapMode = this.mapModeSystem.toggleMap(this.phase, this.touchControls, this.cameraSystem.mapMode);
         // マップを閉じた: 同じノードのままΔvだけ編集された可能性があり、
         // ノード時刻の一致だけでは検出できないため、噴射ガイドの凍結目標を作り直す。
-        if (!this.mapMode) this.planGuide.clearActiveTarget();
+        if (!this.cameraSystem.mapMode) this.planGuide.clearActiveTarget();
         break;
-      case 'KeyN': this.mapModeSystem.toggleAutoWarpToFirstNode(this.phase); break;
+      case 'KeyN': this.mapModeSystem.toggleAutoWarpToFirstNode(this.phase, this.cameraSystem.mapMode); break;
       case 'KeyX': this.clearPlanByKey(); break;
       case 'KeyH': this.hud.toggleHelp(); break;
       case 'Escape': this.hud.toggleSettings(); break;
@@ -415,11 +399,6 @@ export class Game {
       player: this.player,
       totalEnemies: this.simulator.totalEnemiesSpawned,
       activeStage: this.activeStage,
-      lostReason: this.lostReason,
-      setLostReason: (reason) => {
-        this.lostReason = reason;
-        ctx.lostReason = reason;
-      },
       setPhase: (p) => { this.phase = p; },
       hud: this.hud,
       sfx: this.sfx,
@@ -434,8 +413,7 @@ export class Game {
   private effectsCtx(): EffectsCtx {
     return {
       scene: this.scene,
-      glowTex: this.glowTex,
-      effects: this.effects,
+      effects: this.effectsSystem.effects,
       addDebris: (piece) => this.simulator.addDebris(piece),
     };
   }
@@ -445,7 +423,7 @@ export class Game {
     return {
       simTime: this.simTime,
       scene: this.scene,
-      zoomActive: this.zoomActive,
+      zoomActive: this.cameraSystem.zoomActive,
       fx: this.effectsCtx(),
       addBullet: (bullet) => this.simulator.addBullet(bullet),
       addCasing: (casing) => this.simulator.addCasing(casing),
@@ -479,13 +457,13 @@ export class Game {
   // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
   private markerCtx(): MarkerCtx {
     return {
-      mapMode: this.mapMode,
+      mapMode: this.cameraSystem.mapMode,
       player: this.player,
       enemies: this.simulator.enemies,
       target: this.targeter.autoTarget,
       magPickups: this.simulator.magPickups,
       mapLabelIds: this.mapModeSystem.mapLabelIds(),
-      activeCamera: this.activeCamera,
+      activeCamera: this.cameraSystem.activeCamera,
       simTime: this.simTime,
     };
   }
@@ -532,7 +510,7 @@ export class Game {
   }
 
   private updateAttitudes(attDt: number): void {
-    this.player.updateAttitude(this.input, this.mapMode, attDt, () => {
+    this.player.updateAttitude(this.input, this.cameraSystem.mapMode, attDt, () => {
       this.hud.hint('進行方向ホールド解除(手動操作)');
     });
     this.simulator.stepCoastingAttitudes(attDt);
@@ -543,7 +521,7 @@ export class Game {
   private syncRender(dt: number): void {
     const o = this.player.state.r;
     const pv = this.player.state.v;
-    const displayTime = this.mapModeSystem.resolveDisplayTime();
+    const displayTime = this.mapModeSystem.resolveDisplayTime(this.cameraSystem.mapMode);
     const cam = this.syncRenderCamera(dt, o, pv);
     this.environment.syncRenderEnvironment({
       dt,
@@ -552,9 +530,9 @@ export class Game {
       camera: cam,
       sunPhase0: this.ephemeris.sunPhase0,
       moonPhase0: this.ephemeris.moonPhase0,
-      mapMode: this.mapMode,
+      mapMode: this.cameraSystem.mapMode,
       mapCameraFar: this.cameraSystem.mapCamera.camera.far,
-      lit: this.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
+      lit: this.cameraSystem.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
     });
     this.syncRenderThrust();
     this.syncRenderRcs();
@@ -568,9 +546,8 @@ export class Game {
     const keyYaw = (this.input.down('ArrowLeft') ? 1 : 0) + (this.input.down('ArrowRight') ? -1 : 0);
     const keyPitch = (this.input.down('ArrowDown') ? 1 : 0) + (this.input.down('ArrowUp') ? -1 : 0);
     return this.cameraSystem.updateActiveCamera({
-      zoomActive: this.zoomActive,
+      zoomActive: this.cameraSystem.zoomActive,
       player: this.player,
-      mapMode: this.mapMode,
       sunAz: sunAzimuth(this.simTime, this.ephemeris.sunPhase0),
       focusRel: this.mapModeSystem.focusRel(o),
       mouse,
@@ -583,24 +560,22 @@ export class Game {
   }
 
   private syncRenderThrust(): void {
-    this.player.renderThrustEffects(this.activeCamera, this.zoomActive);
+    this.player.renderThrustEffects(this.cameraSystem);
   }
 
   private syncRenderRcs(): void {
     this.sfx.setRcs(
       this.player.updateRcsEffects(
         this.input,
-        this.activeCamera,
-        this.zoomActive,
+        this.cameraSystem,
         this.phase === 'playing',
         this.paused,
-        this.mapMode,
       ),
     );
   }
 
   private syncRenderDynamicObjects(dt: number, o: Vec3, pv: Vec3): void {
-    this.player.render(this.zoomActive);
+    this.player.render(this.cameraSystem.zoomActive);
     for (const e of this.simulator.enemies) if (e.alive) e.syncTransform(o);
     for (const b of this.simulator.bullets) b.syncBulletTransform(o, pv);
     for (const pb of this.simulator.plasmaBullets) pb.syncBulletTransform(o, pv);
@@ -611,19 +586,12 @@ export class Game {
   }
 
   private syncRenderEffects(dt: number, o: Vec3): void {
-    this.effects = this.effectsSystem.updateFlashEffects(
-      this.effects,
-      dt,
-      this.lastSimDt,
-      o,
-      this.activeCamera,
-      this.scene,
-    );
+    this.effectsSystem.updateFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera, this.scene);
   }
 
   private syncRenderHud(dt: number, o: Vec3, pv: Vec3): void {
     const project = (rel: Vec3) => this.hudProjection.project(rel);
-    this.mapModeSystem.updateDisplay();
+    this.mapModeSystem.updateDisplay(this.cameraSystem.mapMode);
     const { playerEl, tgtEl } = this.orbitLineSystem.update({
       simTime: this.simTime,
       origin: o,
@@ -631,8 +599,8 @@ export class Game {
       player: this.player,
       target: this.targeter.autoTarget,
       enemies: this.simulator.enemies,
-      mapMode: this.mapMode,
-      plannedEl: this.mapMode ? null : plannedOrbitElements(this.plan, this.planCtx()),
+      mapMode: this.cameraSystem.mapMode,
+      plannedEl: this.cameraSystem.mapMode ? null : plannedOrbitElements(this.plan, this.planCtx()),
       playerOrbitLine: this.playerOrbitLine,
       targetOrbitLine: this.targetOrbitLine,
       plannedOrbitLine: this.plannedOrbitLine,
@@ -644,7 +612,7 @@ export class Game {
     this.markersSystem.updateMarkers(markerCtx, pv, project);
     this.markersSystem.updateNodeMarkers(markerCtx, playerEl, tgtEl, project);
     this.markersSystem.updateBoardMarkers(markerCtx, dt, project);
-    if (this.mapMode) {
+    if (this.cameraSystem.mapMode) {
       this.hud.markers.hide('burn');
     } else {
       const { achieved } = this.planGuide.update(this.plan, this.planCtx(), o, pv, playerEl, this.player.alive, project);
@@ -665,8 +633,8 @@ export class Game {
     this.syncRender(dt);
     this.pipRenderer.renderFrame(this.renderer, this.scene, {
       firing: this.player.isFiring,
-      mapMode: this.mapMode,
-      camera: this.activeCamera,
+      mapMode: this.cameraSystem.mapMode,
+      camera: this.cameraSystem.activeCamera,
       playerShipObj: this.player.obj,
       setMuzzleFlashesVisible: (visible) => this.setMuzzleFlashesVisible(visible),
       updateOverlay: (rect) => this.updatePipOverlay(rect),

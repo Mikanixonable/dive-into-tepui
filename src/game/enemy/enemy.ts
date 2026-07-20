@@ -66,7 +66,7 @@ export class Enemy extends Ship {
     } else {
       spawnBulletFlash(ctx.fx, hit.pos, hit.vel);
     }
-    spawnFragments(ctx.fx, clone(hit.pos), clone(hit.vel), C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    spawnFragments(ctx.fx, hit.pos, hit.vel, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
 
   private destroyEffect(ctx: DestroyEffectCtx): void {

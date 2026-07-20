@@ -21,30 +21,23 @@ belt.ts
 - 各モジュールの疎結合化と責務の整理
 - ctx注入パターンの根絶。
 
+### hudとsfxの受け渡し方の統一
+どうせhudとsfxは多方面で参照されるので、まとめて渡されるべきで、注入経路が多数に分岐しているべきではない。各所に参照を保持する形がいいだろう。
+
+### orbitLineの責務をsimulatorないしentityに寄せる...？
+
+simuratorに追加されたentityのOrbitLineはsimuratorが自動で追加する。非OrbitEntityのOrbitLineは現状のまま（？）GameやOrbitLineSystem）
+そうするとaddEnemyは単にsimulatorへのたらいまわしになるので、gameから排除できそう
+
+てかなんでOrbitLineってこれで回ってるんだ？　orbitLineがどのような計算をしているのか（楕円軌道なのか積分軌道なのか、そのために何の情報を必要としているのか、実装前に調査したい。
+
 
 ### 命名が悪い
 recordKillがkillCounter.recordLossとkillCounter.recordKillの両方に繋がっている。recordDeathとかの方がいい
 stageDefinition -> stage
 ammoResupply -> logistics
 combatCtx -> 存続の意義あるか？
-
-
-### Gameが直接持っているフィールドの整理
-GameのlostReasonって利用されている？　recordKilledで死因表示のために使われていた。
-stageが持つべきな気がするなぁ……　そもそも、死んでいないときから初期値を必要としているのは型の設計が悪い気がするなぁ……
-
-GameのzoomActiveはcameraSystemの責務では
-
-
-
-### effectのcloneの有無の統一
-positionをcloneするのはeffect.tsの責務とし、外部でいちいちcloneしてから渡している箇所をやめる。
-
-### sceneとhudとsfxの統合
-どうせこいつらは多方面で参照されるので、まとめて渡されるべきで、注入経路が多数に分岐しているべきではない
-
-### orbitLineの責務をsimulatorないしentityに寄せ、addEnemyをgameから排除
-現状なぜこれでorbitLineが表示されるのかわからない……が、まあ責務をそっちに寄せるのは妥当そう。
+EffectSystem -> FlashEffects　（現effect-system.tsにはflash-effect以外を扱うユーティリティが混在している。この配列管理とユーティリティは無関係なので分離する）
 
 ### hitの当たり判定部分の類似実装のリファクタリング
 hitInfoではなくbulletを渡すのでいいのでは？
@@ -52,20 +45,16 @@ player/enemyとbullet/plasmaBulletだからこれで済んでいるが、この�
 
 ### render、update、sync系の関数の命名の不統一
 three.jsのrender関数は、すでに出来上がったsceneとcameraを受け取って描画するものである。その意味合いからすると、sceneの構築、更新を行う関数をrenderと呼ぶのは不適切である。論理データの更新を行う関数はupdate、メッシュなどをsceneに登録する関数をbuild、すでに登録されたメッシュなどの座標を論理データに整合させる関数をsyncと呼ぶことで統一する。renderは実際にthree.jsのrenderを呼んでいる関数に限定する。
-また、これらの分割されていないときは、分割するようにパターンを統一する。
+また、これらの分割されていないときは、分割するようにパターンを統一する。pipRendererとかは何をしているのか、何のために分けてあるのか謎な関数になっている。こういうのが生まれないようにする。
 この命名規則は忘れやすいのでCLAUDE.mdに記憶しておくこと。
 
 ### render/内に集約して書かれているメッシュビルダー（優先度低）
 各entityの責務であるべきかも。せめて、メッシュの生成、ロードはrender/の責務で、それを呼ぶのはentityの責務とするか（外部注入ではなく）
 
+EnvironmentSceneとEphemerisSystemは、扱うものは近いのに計算と描画なので分離されている。統合するのとしないのとどっちが良いか。EphemerisSystemを親として、EnvironmentSceneを子とするような構造化がいいのか？
+
 ### dom操作の分散（優先度低）
 touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散している。これが直接悪いとは言い切れないが…
-
-### unlockの分離
-unlockManager.tsを作り、unlockの責務をそこに集約する。unlockの処理は、unlockManagerが行うべきであり、stageDataやgameが直接行うべきではない。
-requiresStage1Clearフラグを解消し、unlock条件をboolean関数で表現する。
-クリア済のステージを報告する（とりあえずステージ1だけでもよい）と、unlockManagerが適切に処理を行い、localStorageへの記録をする。
-さらに、新たにunlock条件を満たしたステージがあることを検出し、toastの表示を行う
 
 ### この時点で重複実装、類似実装を再度検査し、適切に共通化する。
 重複実装の検査にLLMは役に立たないということが分かった。人力で頑張る…

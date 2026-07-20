@@ -50,8 +50,6 @@ export interface CombatCtx {
   player: Player;
   totalEnemies: number;
   activeStage: StageDefinition;
-  lostReason: string;
-  setLostReason(reason: string): void;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
   hud: Hud;
   sfx: Sfx;
@@ -136,8 +134,7 @@ export abstract class StageDefinition {
   // 自機の被弾死・自然死(checkLoss)を集計する。原因ごとに文言が異なるため reason で
   // 明示的に渡す。
   recordKilled(ctx: CombatCtx, reason: string): void {
-    ctx.setLostReason(reason);
     ctx.setPhase('lost');
-    showResultScreen(ctx.hud, ctx.sfx, false, `${ctx.lostReason}<br>撃破 ${this.killCounter.kills}/${ctx.totalEnemies} 機`);
+    showResultScreen(ctx.hud, ctx.sfx, false, `${reason}<br>撃破 ${this.killCounter.kills}/${ctx.totalEnemies} 機`);
   }
 }

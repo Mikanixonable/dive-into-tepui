@@ -6,6 +6,7 @@ import { SIDEREAL_DAY } from '../physics/orbital';
 import { Vec3, len, norm, scale, sub } from '../physics/vec3';
 import { createEarth, Earth } from './earth';
 import { MOON_VIS_DIST, SUN_DISTANCE, Sun, createMoon, createStars, createSun } from './stars';
+import { getGlowTexture } from './glow-texture';
 
 export interface EnvironmentLightingParams {
   sunIntensity: number;
@@ -37,13 +38,12 @@ export class EnvironmentScene {
 
   constructor(
     scene: THREE.Scene,
-    glowTex: THREE.Texture,
     sunDir0: Vec3,
     private readonly lighting: EnvironmentLightingParams,
   ) {
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     scene.add(this.ambient);
-    this.sun = createSun(glowTex);
+    this.sun = createSun(getGlowTexture());
     scene.add(this.sun.mesh);
     this.sunLight = new THREE.DirectionalLight(0xfff4e0, lighting.sunIntensity);
     this.sunLight.position.set(sunDir0.x * 1e5, sunDir0.y * 1e5, sunDir0.z * 1e5);
