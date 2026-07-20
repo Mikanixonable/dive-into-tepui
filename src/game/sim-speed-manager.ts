@@ -23,6 +23,24 @@ export class SimSpeedManager {
     return this.autoWarpUntil !== null;
   }
 
+  // 現在のワープ倍率で物理的な相互作用(推進・射撃・衝突・敵AI)が有効かどうか。
+  // 呼び出し側は simSpeed そのものを受け取って閾値判定するのではなく、ここを見る。
+  get canPlayerThrust(): boolean {
+    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
+  }
+
+  get canPlayerFire(): boolean {
+    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
+  }
+
+  get canEnemyFire(): boolean {
+    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
+  }
+
+  get canResolvePhysicalCollisions(): boolean {
+    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
+  }
+
   shift(step: number): void {
     this.cancelAutoWarp();
     const next = this.levelIdx + step;

@@ -146,7 +146,7 @@ export const DESTROY_FLASH2_SIZE1 = 40;
 export const DESTROY_FLASH2_DURATION = 0.5; // [s]
 
 export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096];
-export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃が可能な最大タイムワープ
+export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
 
 export const PLAYER_RADIUS = 5; // 被弾(弾丸ヒット)判定 [m]。実機体より大きめの当たり判定
 export const PLAYER_HULL_RADIUS = 2.6; // 薬莢・破片等との物理接触に使う実寸に近い半径 [m]。

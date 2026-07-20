@@ -330,7 +330,8 @@ export class Game {
     const action = this.player.behave({
       dt,
       input: this.input,
-      simSpeed,
+      canPlayerThrust: this.simSpeedManager.canPlayerThrust,
+      canPlayerFire: this.simSpeedManager.canPlayerFire,
       mapMode: this.mapMode,
       combat: this.combat,
       fireCtx: this.fireCtx(),
@@ -349,7 +350,7 @@ export class Game {
     this.simTime = advanced.simTime;
     this.lastSimDt = advanced.simDt;
 
-    this.handlePostSimulation(dt, simDt, simSpeed, action.canAct);
+    this.handlePostSimulation(dt, simDt);
 
     if (this.mapMode) {
       this.mapModeSystem.updateEditing(dt, this.input);
@@ -544,11 +545,11 @@ export class Game {
 
   // ------------------------------------------------------------- simulate
 
-  private handlePostSimulation(dt: number, simDt: number, simSpeed: number, canAct: boolean): void {
+  private handlePostSimulation(dt: number, simDt: number): void {
     this.player.checkLoss(dt, this.combat, this.combatCtx());
 
     this.ammoResupply.updateLogistics(this.simTime, this.stageDirector.stage, this.player);
-    if (simSpeed <= C.MAX_PHYS_SIM_SPEED) {
+    if (this.simSpeedManager.canResolvePhysicalCollisions) {
       this.collisionPhysics.resolve(dt, this.collisionCtx(), () => {
         this.sfx.clank();
       });
@@ -558,7 +559,7 @@ export class Game {
     // シミュレーション配列から不要なものを消去
     this.simulator.cleanup(this.combatCtx(), this.simTime);
 
-    if (this.stageDirector.stage === -1 && this.phase === 'playing' && canAct) {
+    if (this.stageDirector.stage === -1 && this.phase === 'playing' && this.simSpeedManager.canEnemyFire) {
       const ctx = this.enemyAiCtx(this.simTime);
       for (const e of this.simulator.enemies) {
         if (e.alive) e.behave(dt, ctx);
