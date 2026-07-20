@@ -1,4 +1,4 @@
-// 軌道計画モード(マップモード)の視点・表示状態: マップ地球中心カメラ・
+// 軌道計画モード(マップモード)のカメラと視点・表示状態: マップ地球中心カメラ・
 // フォーカス対象(地球/月/太陽/ラグランジュ点等)ラベル・太陽回転系表示・
 // 未来スライダー。「マップモード中の見た目と視点」の担当で、mapMode 中のみ意味を持つ。
 // game.ts を import しない — 依存はコンストラクタ注入(hud)・引数(Vec3/project等)のみ。
@@ -18,14 +18,14 @@ export interface MapLabel {
 }
 
 // drawLabels() / displayTime() が必要とする、Game 側の現在状態のスナップショット。
-export interface MapViewCtx {
+export interface MapCameraCtx {
   simTime: number;
   sunPhase0: number;
   moonPhase0: number;
   duration: number; // predictDurationSec()
 }
 
-export class MapView {
+export class MapCamera {
   // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
   readonly camera: THREE.PerspectiveCamera;
   yaw = 0.7;
@@ -59,7 +59,7 @@ export class MapView {
 
   // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルを更新し、
   // HUD マーカーとして描画する。
-  drawLabels(o: Vec3, ctx: MapViewCtx, project: ProjectFn): void {
+  drawLabels(o: Vec3, ctx: MapCameraCtx, project: ProjectFn): void {
     const t = this.sliderT > 0 ? this.displayTime(ctx.simTime, ctx.duration) : ctx.simTime;
     const mPos = moonPosition(t, ctx.moonPhase0);
     const sPos = sunPosition(t, ctx.sunPhase0);

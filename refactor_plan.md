@@ -22,13 +22,32 @@ belt.ts
 - ctx注入パターンの根絶。
 
 ### gameとstageDirectorの責務の分割
-初期化、敵のスポーンロジックをstageDirectorに委譲できる。
+初期化、敵のスポーンロジックをstageDirectorに委譲したい。
 stageDirectorはstageごとの処理の分岐を引き受けているはずだが、コードのパターンが一定していなくて保守性が悪い。
+その辺も抜本的に改善したい。
 
 ### cameraの管理　現状をよく調査する
-Gameがcameraを保持してcameraSystemにctxとして渡しているけども、cameraSystemかchaseCameraが普通に持っておくべきじゃないか？
+Gameがcameraを保持してcameraSystemにctxとして渡しているけども、cameraSystemかchaseCameraを普通に持っておくべきじゃないか？
 実態調査
 　Game.cameraとGame.ActiveCameraは違って、Game.cameraはCombatCameraと呼ばれていて、mapModeの時にはactiveCameraはmapModeに応じてGame.cameraとmapMode.mapView.cameraで切り替わる。chase:ChaseCameraは、名前に反して、THREE.PerspectiveCameraは保持していない。Game.cameraを外部から受け取って更新している。
+
+mapViewもcameraの管理を行っている？
+
+案としては、
+mapViewをmapCameraに改名して、現状通りcameraを保持する。
+chaseCameraが(combat)cameraを保持して、gameが保持したり、context注入で受け取るのをやめる。
+の両方をやる。一旦これでコードを見る。
+
+map-modeフォルダ内のモジュールについて、以下のような責務がいくつかのファイルにまたがって存在していますよね？　それぞれどこが該当しているか、各モジュールを調査してください。
+
+- カメラの管理
+- マップビューの表示
+- マップビュー上のラベルの表示
+- マップビュー上の視点操作
+
+- 軌道計画（マニューバとかautoWarpとか呼ばれているかも。名前の不統一がありそう）の編集
+- 軌道計画の表示
+- 軌道計画の実施
 
 ### render、update、sync系の関数の命名の不統一
 three.jsのrender関数は、すでに出来上がったsceneとcameraを受け取って描画するものである。その意味合いからすると、sceneの構築、更新を行う関数をrenderと呼ぶのは不適切である。論理データの更新を行う関数はupdate、メッシュなどをsceneに登録する関数をbuild、すでに登録されたメッシュなどの座標を論理データに整合させる関数をsyncと呼ぶことで統一する。renderは実際にthree.jsのrenderを呼んでいる関数に限定する。
