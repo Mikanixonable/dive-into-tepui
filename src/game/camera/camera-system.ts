@@ -1,17 +1,17 @@
 import * as THREE from 'three/webgpu';
-import { qRotate } from '../../physics/attitude';
-import { Vec3, norm, v3 } from '../../physics/vec3';
-import * as C from '../const';
-import { ChaseCamera } from '../camera/chase-camera';
+import { Vec3 } from '../../physics/vec3';
+import { Hud } from '../../hud/hud';
+import { ChaseCamera } from './chase-camera';
+import { MapCamera } from './map-camera';
 import { MouseDelta } from '../input';
-import { MapModeSystem } from '../map-mode/map-mode-system';
 import { Player } from '../player/player';
 
 export interface CameraUpdateCtx {
   zoomActive: boolean;
   player: Player;
-  maneuver: MapModeSystem;
-  chase: ChaseCamera;
+  mapMode: boolean;
+  sunAz: number;
+  focusRel: Vec3; // MapCamera の注視点(origin 相対)。解決は map-mode-system.ts の責務。
   mouse: MouseDelta;
   keyYaw: number;
   keyPitch: number;
@@ -20,35 +20,28 @@ export interface CameraUpdateCtx {
   playerVelocity: Vec3;
 }
 
+// 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する。
+// どちらも視点操作のみの責務のカメラで、このクラスが対称に内部保持する
+// (マップモードの有無・ラベル一覧など、カメラ外の状態は ctx 経由で受け取るだけで、
+// map-mode-system.ts を import しない)。
 export class CameraSystem {
+  readonly chaseCamera = new ChaseCamera();
+  readonly mapCamera: MapCamera;
 
-  activeCamera(maneuver: MapModeSystem, chase: ChaseCamera): THREE.PerspectiveCamera {
-    return maneuver.mapMode ? maneuver.camera : chase.camera;
+  constructor(hud: Hud) {
+    this.mapCamera = new MapCamera(hud);
+  }
+
+  activeCamera(mapMode: boolean): THREE.PerspectiveCamera {
+    return mapMode ? this.mapCamera.camera : this.chaseCamera.camera;
   }
 
   updateActiveCamera(ctx: CameraUpdateCtx): THREE.PerspectiveCamera {
-    if (ctx.maneuver.mapMode) {
-      ctx.maneuver.updateCamera(ctx.mouse, ctx.keyYaw, ctx.keyPitch, ctx.dt);
-      return ctx.maneuver.camera;
+    if (ctx.mapMode) {
+      this.mapCamera.update(ctx.mouse, ctx.keyYaw, ctx.keyPitch, ctx.dt, ctx.focusRel, ctx.sunAz);
+      return this.mapCamera.camera;
     }
-    this.updateCombatCamera(ctx);
-    return ctx.chase.camera;
-  }
-
-  private updateCombatCamera(ctx: CameraUpdateCtx): void {
-    if (!ctx.zoomActive) {
-      ctx.chase.yaw -= ctx.keyYaw * C.CAM_KEY_YAW_RATE * ctx.dt;
-      ctx.chase.pitch = Math.max(
-        -1.35,
-        Math.min(1.35, ctx.chase.pitch + ctx.keyPitch * C.CAM_KEY_PITCH_RATE * ctx.dt),
-      );
-    }
-    const boreFwd = ctx.player.alive ? qRotate(ctx.player.att.q, v3(0, 0, 1)) : null;
-    const boreUp = ctx.player.alive ? qRotate(ctx.player.att.q, v3(0, 1, 0)) : null;
-    const useAttitudeFrame = ctx.chase.camFollowAttitude && ctx.player.alive && boreFwd && boreUp;
-    const camFwd = useAttitudeFrame ? boreFwd! : norm(ctx.playerVelocity);
-    const camUp = useAttitudeFrame ? boreUp! : norm(ctx.origin);
-    ctx.chase.update(ctx.mouse, camUp, camFwd, ctx.zoomActive, ctx.dt, boreFwd, boreUp);
-    ctx.chase.camera.updateMatrixWorld();
+    this.chaseCamera.update(ctx);
+    return this.chaseCamera.camera;
   }
 }

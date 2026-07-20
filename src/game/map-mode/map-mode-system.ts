@@ -3,9 +3,20 @@
 // ロジックとして game/plan/ に独立して存在し、Game がここへ Plan を注入する
 // (このクラスは Plan を作らず、コンストラクタで受け取るだけ)。
 // PlanEditor(マップ上でのノード編集)/ PlanDisplay(マップ上での予測軌道・ゴースト
-// 表示)/ MapCamera(マップカメラ・視点操作・フォーカスラベル)を private に保持し、
-// 有効フラグと開閉時の後始末はこのクラス自身が持つ。外部(game.ts / camera-system.ts /
-// orbit-line-system.ts)はこのクラスのメソッドのみを呼ぶ — 3クラスへ個別に触れさせない。
+// 表示)/ MapHud(フォーカス対象ラベルの算出・描画)を private に保持し、有効フラグと
+// 開閉時の後始末はこのクラス自身が持つ。MapCamera(マップカメラ・視点操作)はもはや
+// カメラ以外の責務を持たないため camera-system.ts の CameraSystem が所有し、このクラスは
+// コンストラクタで参照を受け取るだけ(生成しない・カメラ駆動もしない — 駆動は
+// CameraSystem.updateActiveCamera が直接呼ぶ)。frameRotating/pan/dist/sliderT は
+// 軌道計画編集(toDisplayFrame・ツールバー・ギズモ)がカメラの視点状態を読む必要が
+// あるための実質的な依存で、単なる薄い転送ではない。
+// フォーカス対象(focus: どのラベルを注視するかの文字列 ID)は MapCamera ではなく
+// このクラスが持つ — focus を変更する UI 操作(ツールバー・右クリメニュー)は
+// すべてここに集まるため、focus とその解決(focusRel: ラベル位置→フローティング
+// オリジン相対位置)は同じ場所にあるべきで、MapCamera は解決済みの Vec3 を受け取る
+// だけにする(ラベルという概念自体を知らない)。
+// 外部(game.ts / camera-system.ts / orbit-line-system.ts)はこのクラスのメソッドのみを
+// 呼ぶ — 3クラスへ個別に触れさせない。
 // シミュレーション速度そのものの管理は責務が異なるため SimSpeedManager が別途持ち、
 // ここではノード実行時刻への自動ワープの起点(startAutoWarpTo/cancelAutoWarp の
 // 呼び出しどころ)としてのみ参照する。
@@ -15,18 +26,18 @@
 // コンストラクタ注入のコールバックとして持つ)。project も同様の理由で
 // コンストラクタ注入(カメラ依存のクロージャ)。
 import * as THREE from 'three/webgpu';
-import { sunAzimuth } from '../../physics/ephemeris';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3, sub, v3 } from '../../physics/vec3';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { Input, MouseDelta } from '../input';
+import { Input } from '../input';
 import { TouchControls } from '../touch';
 import { ProjectFn } from '../camera/projection';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { Plan, PlanCtx } from '../plan/plan';
 import { PlanEditor } from './plan-editor';
 import { DisplayFrameFn, PlanDisplay } from './plan-display';
-import { MapCamera } from './map-camera';
+import { MapCamera } from '../camera/map-camera';
+import { MapHud } from './map-hud';
 
 export interface MapModeExternalState {
   simTime: number;
@@ -39,8 +50,9 @@ export interface MapModeExternalState {
 export class MapModeSystem {
   private readonly editor: PlanEditor;
   private readonly display: PlanDisplay;
-  private readonly mapCamera: MapCamera;
+  private readonly mapHud: MapHud;
   private enabled = false;
+  private focus: string = 'earth';
 
   constructor(
     private readonly hud: Hud,
@@ -48,12 +60,13 @@ export class MapModeSystem {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly plan: Plan,
     private readonly project: ProjectFn,
+    private readonly mapCamera: MapCamera,
     private readonly getFineAttitude: () => boolean,
     private readonly getExternalState: () => MapModeExternalState,
   ) {
     this.editor = new PlanEditor(hud, sfx);
     this.display = new PlanDisplay(hud.markers);
-    this.mapCamera = new MapCamera(hud);
+    this.mapHud = new MapHud(hud);
     this.wireHudCallbacks();
     this.wireGizmoCallbacks();
   }
@@ -70,10 +83,13 @@ export class MapModeSystem {
       this.plan.markDirty();
     };
     this.hud.onMapFocusSelect = (focus) => {
-      this.mapCamera.focus = focus;
+      this.focus = focus;
       this.mapCamera.pan.set(0, 0, 0);
     };
-    this.hud.onMapViewReset = () => this.mapCamera.reset();
+    this.hud.onMapViewReset = () => {
+      this.focus = 'earth';
+      this.mapCamera.reset();
+    };
     this.hud.onSliderChange = (t) => {
       this.mapCamera.sliderT = t;
     };
@@ -93,7 +109,7 @@ export class MapModeSystem {
       },
       onNodeContextMenu: (clientX, clientY) => {
         const ctx = this.planCtx();
-        this.editor.handleMapRightClick(this.plan, clientX, clientY, ctx.playerR, this.toDisplayFrame(ctx), this.project, this.mapCamera.labels);
+        this.editor.handleMapRightClick(this.plan, clientX, clientY, ctx.playerR, this.toDisplayFrame(ctx), this.project, this.mapHud.labels);
       },
       onAxisDrag: (axis, sign, deltaPx) => {
         this.editor.applyAxisDrag(this.plan, axis, sign, deltaPx, this.getFineAttitude());
@@ -109,8 +125,8 @@ export class MapModeSystem {
         this.notifyNodeDeleted();
       },
       onMenuFocus: (targetKey) => {
-        this.mapCamera.focus = targetKey;
-        const lbl = this.mapCamera.labels.find((l) => l.id === targetKey);
+        this.focus = targetKey;
+        const lbl = this.mapHud.findLabel(targetKey);
         if (lbl) this.hud.hint(`${lbl.name} にフォーカス`);
       },
     });
@@ -204,20 +220,12 @@ export class MapModeSystem {
     }
   }
 
-  // ---------------------------------------------------------------- camera
-
-  get camera(): THREE.PerspectiveCamera {
-    return this.mapCamera.camera;
-  }
-
-  get cameraFar(): number {
-    return this.mapCamera.camera.far;
-  }
-
-  updateCamera(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number): void {
-    const s = this.getExternalState();
-    const sunAz = sunAzimuth(s.simTime, s.sunPhase0);
-    this.mapCamera.updateCamera(mouse, keyYaw, keyPitch, dt, s.playerR, sunAz);
+  // focus(地球中心 or ラベル ID)を解決し、フローティングオリジン(origin)相対の
+  // 位置として返す。CameraUpdateCtx.focusRel の供給元 — MapCamera 自身は focus という
+  // 文字列もラベルという概念も知らない。
+  focusRel(origin: Vec3): Vec3 {
+    const pos = this.focus === 'earth' ? v3(0, 0, 0) : this.mapHud.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
+    return sub(pos, origin);
   }
 
   // --------------------------------------------------------------- per-frame
@@ -229,12 +237,12 @@ export class MapModeSystem {
     const ctx = this.planCtx();
     this.editor.updateEditing(this.plan, dt, ctx.simTime, ctx.playerR, this.toDisplayFrame(ctx), input, this.project, {
       fineAttitude: this.getFineAttitude(),
-      labels: this.mapCamera.labels,
+      labels: this.mapHud.labels,
       toolbar: {
         durationKey: this.display.predictDurationKey,
         frameRotating: this.mapCamera.frameRotating,
         ghostLabel: this.mapCamera.sliderT > 0 ? this.display.ghostLabel(this.plan, ctx, this.mapCamera.sliderT) : null,
-        focus: this.mapCamera.focus,
+        focus: this.focus,
       },
     });
   }
@@ -251,7 +259,7 @@ export class MapModeSystem {
     const origin = ctx.playerR;
     this.display.update(this.plan, ctx, origin, this.mapCamera.frameRotating, this.mapCamera.sliderT, this.project);
     this.editor.updateGizmo(this.plan, origin, this.toDisplayFrame(ctx), this.project, this.mapCamera.dist);
-    this.mapCamera.drawLabels(
+    this.mapHud.drawLabels(
       origin,
       {
         simTime: ctx.simTime,
@@ -259,6 +267,7 @@ export class MapModeSystem {
         moonPhase0: ctx.moonPhase0,
         duration: this.display.predictDurationSec(ctx),
       },
+      this.mapCamera.sliderT,
       this.project,
     );
   }
@@ -270,7 +279,7 @@ export class MapModeSystem {
   }
 
   mapLabelIds(): string[] {
-    return this.mapCamera.labels.map((l) => l.id);
+    return this.mapHud.labels.map((l) => l.id);
   }
 
   get trajLineGroup(): THREE.Object3D {
