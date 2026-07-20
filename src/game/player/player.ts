@@ -11,6 +11,7 @@ import { buildFlashMesh, buildPlayerShip, RCS_BLOCK_OFFSETS } from '../../render
 import { CombatCtx, CombatSystem } from '../combat/combat';
 import { PlayerThrottle } from './player-throttle';
 import { FireCtx, PlayerFire } from './player-fire';
+import { Belt } from './belt';
 import { altitudeOf } from '../combat/simulator';
 import { ThermalSystem } from './thermal';
 
@@ -23,6 +24,7 @@ export interface PlayerActionState {
 export class Player extends Ship {
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
+  readonly belt: Belt;
   readonly thermal: ThermalSystem;
 
   private readonly plumeCore: THREE.Mesh;
@@ -38,7 +40,8 @@ export class Player extends Ship {
     this.collideRadius = C.PLAYER_HULL_RADIUS;
 
     this.throttle = new PlayerThrottle(hud, sfx);
-    this.fire = new PlayerFire(hud, sfx, this.obj);
+    this.fire = new PlayerFire(hud, sfx);
+    this.belt = new Belt(this.obj);
     this.thermal = new ThermalSystem(hud, sfx);
 
     const plumes = this.buildThrustPlumes(scene, glowTex);
@@ -100,7 +103,7 @@ export class Player extends Ship {
 
   get roundsInMag(): number { return this.fire.roundsInMag; }
   get magsLeft(): number { return this.fire.magsLeft; }
-  get magsConsumedSinceReload(): number { return this.fire.magsConsumedSinceReload; }
+  get magsLeftInBarrel(): number { return this.fire.magsLeftInBarrel; }
   get reloadTimer(): number { return this.fire.reloadTimer; }
   get isFiring(): boolean { return this.fire.isFiring; }
 
@@ -114,7 +117,7 @@ export class Player extends Ship {
 
   // マガジンベルトの毎フレーム更新(たわみ物理 + 表示メッシュ、弾薬状態に連動)。
   updateBelt(dt: number): void {
-    this.fire.updateBelt(dt, this.att, this.throttle.thrustAccelVec, this.alive);
+    this.belt.update(dt, this.fire.magsLeft, this.fire.roundsInMag, this.att, this.throttle.thrustAccelVec, this.alive);
   }
 
   // 毎フレームの HP 自然回復・押下エッジキー処理と、ユーザー入力に対する移動/発射の
