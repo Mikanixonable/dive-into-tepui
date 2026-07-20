@@ -15,6 +15,7 @@ import {
   randSym,
   v3,
 } from '../physics/vec3';
+import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
 import { FireCtx } from './player/player-fire';
 import { CameraSystem } from './camera/camera-system';
@@ -40,7 +41,6 @@ import * as C from './const';
 import { Enemy, EnemyAiCtx } from './enemy/enemy';
 import { Input } from './input';
 import { TouchControls } from './touch';
-import { ChaseCamera } from './camera/chase-camera';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
@@ -60,7 +60,11 @@ export class Game {
   touchControls: TouchControls | null = null;
   private readonly hud = new Hud();
   private readonly sfx = new Sfx();
-  readonly chase = new ChaseCamera();
+  // 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する
+  // (mapModeSystem のコンストラクタで MapCamera への参照を注入するため、
+  // mapModeSystem より前に構築する必要がある)。panel.ts が chase.camFollowAttitude を
+  // 読むため public(旧 readonly chase フィールドと同じ可視性)。
+  readonly cameraSystem = new CameraSystem(this.hud);
 
 
   readonly player: Player;
@@ -111,6 +115,7 @@ export class Game {
     this.simSpeedManager,
     this.plan,
     (rel: Vec3) => this.hudProjection.project(rel),
+    this.cameraSystem.mapCamera,
     () => this.player.fineAttitude,
     () => this.planCtx(),
   );
@@ -146,7 +151,6 @@ export class Game {
   private readonly collisionPhysics = new CollisionPhysics();
   private readonly effectsSystem = new EffectsSystem();
   private readonly orbitLineSystem = new OrbitLineSystem();
-  private readonly cameraSystem = new CameraSystem();
   readonly targeter = new Targeter(this.hud);
   private readonly hudProjection = new HudProjection(() => this.activeCamera);
   private readonly ammoResupply: AmmoResupplySystem;
@@ -269,7 +273,7 @@ export class Game {
 
   // 描画に使うカメラ(戦闘 / 軌道計画で切り替え)
   private get activeCamera(): THREE.PerspectiveCamera {
-    return this.cameraSystem.activeCamera(this.mapModeSystem, this.chase);
+    return this.cameraSystem.activeCamera(this.mapMode);
   }
 
   private get mapMode(): boolean {
@@ -416,7 +420,7 @@ export class Game {
 
   private handleEdgePress(code: string): void {
     switch (code) {
-      case 'KeyG': this.chase.toggleFollowAttitude(this.hud); break;
+      case 'KeyG': this.cameraSystem.chaseCamera.toggleFollowAttitude(this.hud); break;
       case 'Comma': this.simSpeedManager.shift(-1); break;
       case 'Period': this.simSpeedManager.shift(1); break;
       case 'KeyM':
@@ -596,7 +600,7 @@ export class Game {
       sunPhase0: this.ephemeris.sunPhase0,
       moonPhase0: this.ephemeris.moonPhase0,
       mapMode: this.mapMode,
-      mapCameraFar: this.mapModeSystem.cameraFar,
+      mapCameraFar: this.cameraSystem.mapCamera.camera.far,
       lit: this.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
     });
     this.syncRenderThrust();
@@ -613,8 +617,9 @@ export class Game {
     return this.cameraSystem.updateActiveCamera({
       zoomActive: this.zoomActive,
       player: this.player,
-      maneuver: this.mapModeSystem,
-      chase: this.chase,
+      mapMode: this.mapMode,
+      sunAz: sunAzimuth(this.simTime, this.ephemeris.sunPhase0),
+      focusRel: this.mapModeSystem.focusRel(o),
       mouse,
       keyYaw,
       keyPitch,
