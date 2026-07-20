@@ -3,7 +3,7 @@ import { elementsFromState, Elements, R_EARTH } from '../physics/orbital';
 import { scale, sub, v3, Vec3 } from '../physics/vec3';
 import { MapModeSystem } from './map-mode/map-mode-system';
 import { Player } from './player/player';
-import { Enemy } from './entities';
+import { Enemy } from './enemy/enemy';
 import { OrbitLine } from '../render/orbitline';
 
 export interface OrbitLineUpdateCtx {

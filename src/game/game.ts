@@ -569,8 +569,6 @@ export class Game {
       mapMode: this.mapMode,
       mapCameraFar: this.mapModeSystem.mapCameraFar,
       lit: this.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
-      placeCombatMoon: (moonMesh, c, moonRel, moonRadius, moonVisDist) =>
-        this.cameraSystem.placeCombatMoon(moonMesh, c, moonRel, moonRadius, moonVisDist),
     });
     this.syncRenderThrust();
     this.syncRenderRcs();

@@ -21,12 +21,22 @@ belt.ts
 - 各モジュールの疎結合化と責務の整理
 - ctx注入パターンの根絶。
 
-### cameraの管理、targetの管理、その他Gameが直接持つフィールドの縮小
-Gameがcameraを保持してcameraSystemにctxとして渡しているけども、cameraSystemが普通に持っておくべきじゃないか？
+### cameraの管理　現状をよく調査する
+Gameがcameraを保持してcameraSystemにctxとして渡しているけども、cameraSystemかchaseCameraが普通に持っておくべきじゃないか？
+実態調査
+　Game.cameraとGame.ActiveCameraは違って、Game.cameraはCombatCameraと呼ばれていて、mapModeの時にはactiveCameraはmapModeに応じてGame.cameraとmapMode.mapView.cameraで切り替わる。chase:ChaseCameraは、名前に反して、THREE.PerspectiveCameraは保持していない。Game.cameraを外部から受け取って更新している。じゃあcameraSystemの責務は何……？　ActiveCamera分岐に応じて更新処理を走らせているだけに見える。
 
+activeCamera分岐がcameraSystemの責務だとするなら、ActiveCameraがmapModeに実装されているのはダメで、cameraSystemに実装されるべき。
+
+### targetの管理
 targetをGameが保持しているが、Targteterが持っているlockedTargetと一致しているのであれば、それのgetterなどで情報を供給すべきだ。
 
-warpはGameではなくmap-mode-systemが持つべきだ。warpIdxなども同様で、gameが管理すべきでない
+### warpの管理
+warpはGameではなくmap-mode-systemが持つべきかも。warpIdxなども同様で、gameが管理すべきでない、はず。要調査。そもそもwarpと呼ばれているものは何？
+
+### orbitLineの管理
+
+playerOrbitLineはplayerが、TargetOrbitLineはtargeterが、管理するべき。
 
 ### playerにおけるたらいまわし配線を改善（優先度高）
 collisionSectionsとapplyCollisionSectionsをたらい回しにするだけのハンドラが存在する。そもそも関数名が何をしているのか分かりにくい。applyCollisionSectionsは、beltのVerlet物理演算を行う関数であるが、名前からは想像できない。だいたい公開する必要性があるのか？
@@ -64,6 +74,8 @@ stageDirectorはstageごとの処理の分岐を引き受けているはずだ�
 
 ### render、update、sync系の関数の命名の不統一
 three.jsのrender関数は、すでに出来上がったsceneとcameraを受け取って描画するものである。その意味合いからすると、sceneの構築、更新を行う関数をrenderと呼ぶのは不適切である。論理データの更新を行う関数はupdate、メッシュなどをsceneに登録する関数をbuild、すでに登録されたメッシュなどの座標を論理データに整合させる関数をsyncと呼ぶことで統一する。renderは実際にthree.jsのrenderを呼んでいる関数に限定する。
+
+updateの中ではthree.tsオブジェクトの更新を行わないことを徹底すべき？。sync系関数の中でのみ行うべきかも
 
 ### beltとplayer.fireの責務境界（優先度低）
 player.fireが直接beltGroupを持っているが、これは責務が良くない。player/belt.tsを新設し、責務を分割するべきかも？
