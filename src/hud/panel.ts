@@ -29,9 +29,6 @@ export interface HudPanelCtx {
   magsLeft: number;
   reloadTimer: number;
   alt: number;
-  altDescending: boolean;
-  qdyn: number;
-  hullTemp: number;
   shots: number;
   kills: number;
   totalEnemies: number;
@@ -94,6 +91,7 @@ export class HudPanels {
     this.hudTimer -= dt;
     if (this.hudTimer <= 0) {
       this.hudTimer = 0.1;
+      const thermal = ctx.player.thermal;
       // タッチUIのトグルボタン(制動・微動・ホールド)の点灯状態を実際のモードに同期する。
       // progradeHold は手動回転で自動解除されることもあるため、専用のトグル時だけでなく
       // ここで毎回反映しておく。
@@ -113,14 +111,14 @@ export class HudPanels {
         magsLeft: ctx.magsLeft,
         reloadTimer: ctx.reloadTimer,
         alt: ctx.alt,
-        altDescending: ctx.altDescending,
+        altDescending: thermal.altDescendWarned,
         spd: len(ctx.player.state.v),
         apAlt: playerEl ? playerEl.apAlt : NaN,
         peAlt: playerEl ? playerEl.peAlt : NaN,
         incDeg: playerEl ? playerEl.incDeg : NaN,
         period: playerEl ? playerEl.period : NaN,
-        qdyn: ctx.qdyn,
-        hullTemp: ctx.hullTemp,
+        qdyn: thermal.qdyn,
+        hullTemp: thermal.hullTemp,
         shots: ctx.shots,
         kills: ctx.kills,
         total: ctx.totalEnemies,
