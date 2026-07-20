@@ -254,7 +254,7 @@ export class Game {
 
   // 描画に使うカメラ(戦闘 / 軌道計画で切り替え)
   private get activeCamera(): THREE.PerspectiveCamera {
-    return this.mapModeSystem.activeCamera(this.camera);
+    return this.cameraSystem.activeCamera(this.mapModeSystem, this.camera);
   }
 
   private get mapMode(): boolean {
@@ -585,7 +585,7 @@ export class Game {
   }
 
   private syncRenderThrust(): void {
-    this.player.renderThrustEffects(this.camera, this.zoomActive);
+    this.player.renderThrustEffects(this.activeCamera, this.zoomActive);
   }
 
   private syncRenderRcs(): void {
