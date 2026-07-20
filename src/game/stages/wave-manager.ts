@@ -1,7 +1,8 @@
 // stage00(無限耐久サバイバル)の波状攻撃: フェーズ遷移・ウェーブ数・ウェーブ生成を管理する。
-import { len, sub } from '../physics/vec3';
-import type { StageCtx } from './stage-director';
-import { generateWave } from './enemy/enemy-spawner';
+// Stage00 専用のヘルパーであり、Stage00 インスタンスが自身のフィールドとして直接保持する。
+import { len, sub } from '../../physics/vec3';
+import type { StageCtx } from './stage-definition';
+import { generateWave } from '../enemy/enemy-spawner';
 
 export interface WaveEncounterConfig {
   spawnDelay: number; // 弾薬確保からウェーブ接近までの遅延

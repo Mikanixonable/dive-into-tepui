@@ -1,7 +1,6 @@
 import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
-import { StageWinCtx } from './stage-data';
-import { StageCtx } from './stage-director';
+import { StageCtx, StageWinCtx } from './stages/stage-definition';
 
 
 

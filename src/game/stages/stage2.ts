@@ -1,0 +1,46 @@
+// Stage 2: 第二ステージ(モルニヤ戦域)。ステージ1クリアで解放(isUnlocked override)。
+// checkWin/onWin/hudSubStatus は基底クラスの既定(撃破数で勝利・HUD補助表示なし)のまま使う。
+import * as C from '../const';
+import { StageCtx, StageDefinition } from './stage-definition';
+import type { ClearCounts } from '../unlock-manager';
+import {
+  generateCoellipticEnemy,
+  generateMolniyaEnemy,
+  generatePhasedEnemy,
+} from '../enemy/enemy-generator';
+
+export class Stage2 extends StageDefinition {
+  readonly index = 2 as const;
+  readonly selectLabel = '[2] 第二ステージ — モルニヤ戦域';
+  readonly selectSub = '敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モード [M] での遷移が必須';
+  readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
+  readonly selectKeys = ['Digit2'];
+  readonly initialAmmo = { magsLeft: C.INITIAL_MAGS - 1, roundsInMag: C.MAG_ROUNDS };
+
+  isUnlocked(clearCounts: ClearCounts): boolean {
+    return (clearCounts[1] ?? 0) > 0;
+  }
+
+  briefingHtml(enemyCount: number): string {
+    return (
+      `<b>作戦目標: 敵機 ${enemyCount} 機を全機撃破せよ</b><br>` +
+      '敵の一部はモルニヤ級の高楕円軌道上にいる — [M] 軌道計画モードで遷移を計画せよ<br>' +
+      '[H] キーで操作方法を表示'
+    );
+  }
+
+  init(ctx: StageCtx): number {
+    const base = ctx.player.state;
+    const scene = ctx.scene;
+    ctx.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 2, 0xff4a3d, scene), 0x565b63);
+    ctx.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 2, 0xff7a2d, scene), 0x565b63);
+    ctx.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', 0.4, 2.6, 3, 0xe0409f, scene), 0x565b63);
+    ctx.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', 2.5, 0.9, 3, 0xbf3dff, scene), 0x565b63);
+    ctx.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', 4.6, 3.8, 3, 0xff2d6b, scene), 0x565b63);
+    return 5;
+  }
+
+  update(_dt: number, ctx: StageCtx): void {
+    ctx.ammoResupply.updateLogistics(ctx.simTime, ctx.player);
+  }
+}

@@ -1,7 +1,7 @@
 // 敵の撃破・喪失の集計と勝敗判定。
 // 弾の発射・衝突判定・敵 AI・エフェクトのスポーンは、それぞれ player-fire.ts /
 // combat/hit.ts / enemy.ts の Enemy.behave / effects-system.ts へ切り出し済み。
-// ステージごとの勝利条件・勝利画面は stage-data.ts の StageDefinition が持つ(ここでは
+// ステージごとの勝利条件・勝利画面は StageDefinition(activeStage)が持つ(ここでは
 // 撃破/喪失の集計のみ行い、ステージ番号による分岐は一切しない)。
 // game.ts を import しない — 依存は CombatCtx 引数・コンストラクタ注入のみ。
 import { Ship as Enemy } from '../entities';
@@ -9,7 +9,7 @@ import { Player } from '../player/player';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { EffectsCtx } from '../effects-system';
-import { getStageDefinition, StageWinCtx } from '../stage-data';
+import { StageDefinition, StageWinCtx } from '../stages/stage-definition';
 import { showResultScreen } from '../result-screen';
 import { UnlockManager } from '../unlock-manager';
 
@@ -19,7 +19,7 @@ export interface CombatCtx {
   simTime: number;
   player: Player;
   totalEnemies: number;
-  stage: number;
+  activeStage: StageDefinition;
   lostReason: string;
   setLostReason(reason: string): void;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
@@ -74,7 +74,6 @@ export class CombatSystem {
     this.kills++;
     this.hud.hint(`${enemy.name} 撃破`);
 
-    const stageDef = getStageDefinition(ctx.stage);
     const winCtx: StageWinCtx = {
       kills: this.kills,
       losses: this.losses,
@@ -83,11 +82,11 @@ export class CombatSystem {
       hits: this.hits,
       simTime: ctx.simTime,
     };
-    
-    if (stageDef.checkWin(winCtx)) {
+
+    if (ctx.activeStage.checkWin(winCtx)) {
       ctx.setPhase('won');
-      this.unlockManager.reportClear(ctx.stage, this.hud);
-      stageDef.onWin(winCtx, this.hud, this.sfx);
+      this.unlockManager.reportClear(ctx.activeStage.index, this.hud);
+      ctx.activeStage.onWin(winCtx, this.hud, this.sfx);
     }
   }
 }

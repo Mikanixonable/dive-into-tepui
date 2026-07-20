@@ -13,13 +13,13 @@ import { FireCtx } from './player/player-fire';
 import { CameraSystem } from './camera/camera-system';
 import { CombatCtx, CombatSystem } from './combat/combat';
 import { HitCtx, HitSystem } from './combat/hit';
-import { StageCtx, StageDirector } from './stage-director';
+import { StageCtx, StageDefinition } from './stages/stage-definition';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
 import { CollisionPhysics } from './combat/collision';
 import { EffectsCtx, EffectsSystem, FlashEffect } from './effects-system';
 import { OrbitLineSystem } from './orbit-line-system';
-import { getStageDefinition, resolveStageInitData } from './stage-data';
+import { getStageDefinition, resolveStageInitData } from './stages/stage-data';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './combat/targeter';
 import { HudProjection } from './camera/projection';
@@ -113,8 +113,9 @@ export class Game {
   );
 
   private phase: GamePhase = 'playing';
-  // ステージ構成・ウェーブ生成・ステージ専用タイマー(stages.ts参照)。
-  readonly stageDirector: StageDirector;
+  // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定)を持つインスタンス
+  // (stages/ 参照)。固有のランタイム状態(タイマー・ウェーブ管理等)もこれ自身が持つ。
+  readonly activeStage: StageDefinition;
   simTime = 0;
   private lastSimDt = 0;
   paused = false;
@@ -154,7 +155,7 @@ export class Game {
     this.scene = gs.scene;
     this.renderer = gs.renderer;
 
-    this.stageDirector = new StageDirector(stage);
+    this.activeStage = getStageDefinition(stage);
 
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this.sfx.unlock();
@@ -226,8 +227,8 @@ export class Game {
   // ステージ別の初期敵配置・初期弾薬・初期補給の配置と作戦目標のブリーフィング表示
   // (ステージごとの分岐は stage-data.ts の StageDefinition.init が直接行う)。
   private initStage(): void {
-    const enemyCount = getStageDefinition(this.stageDirector.stage).init(this.stageCtx());
-    const data = resolveStageInitData(this.stageDirector.stage, enemyCount);
+    const enemyCount = this.activeStage.init(this.stageCtx());
+    const data = resolveStageInitData(this.activeStage, enemyCount);
     this.player.initAmmo(data.magsLeft, data.roundsInMag);
     this.hud.toast(data.briefingHtml, 12000);
   }
@@ -345,7 +346,7 @@ export class Game {
         });
     }
 
-    getStageDefinition(this.stageDirector.stage).update(dt, this.stageCtx());
+    this.activeStage.update(dt, this.stageCtx());
   }
 
   private handlePausedFrame(): void {
@@ -398,7 +399,7 @@ export class Game {
     }
   }
 
-  // StageDirector の各メソッド呼び出しに渡す、現在状態のスナップショット
+  // activeStage.init/update に渡す、現在状態のスナップショット
   // (敵の追加は addEnemy 経由、既存要素は参照渡しでミューテートされる)。
   private stageCtx(): StageCtx {
     return {
@@ -418,7 +419,6 @@ export class Game {
       hud: this.hud,
       sfx: this.sfx,
       ammoResupply: this.ammoResupply,
-      stageState: this.stageDirector,
     };
   }
 
@@ -428,7 +428,7 @@ export class Game {
       simTime,
       player: this.player,
       totalEnemies: this.simulator.totalEnemiesSpawned,
-      stage: this.stageDirector.stage,
+      activeStage: this.activeStage,
       lostReason: this.lostReason,
       setLostReason: (reason) => {
         this.lostReason = reason;
@@ -535,7 +535,7 @@ export class Game {
     // シミュレーション配列から不要なものを消去
     this.simulator.cleanup({ dt, combat: this.combat, combatCtx: this.combatCtx() });
 
-    if (this.stageDirector.stage === -1 && this.phase === 'playing' && this.simSpeedManager.canEnemyFire) {
+    if (this.activeStage.index === -1 && this.phase === 'playing' && this.simSpeedManager.canEnemyFire) {
       const ctx = this.enemyAiCtx(this.simTime);
       for (const e of this.simulator.enemies) {
         if (e.alive) e.behave(dt, ctx);
