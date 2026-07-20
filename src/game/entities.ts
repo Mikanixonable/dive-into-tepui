@@ -4,6 +4,8 @@ import { OrbitState } from '../physics/orbital';
 import { Attitude } from '../physics/attitude';
 import { Vec3, clone, v3 } from '../physics/vec3';
 import * as C from './const';
+import type { Sfx } from '../audio/sfx';
+import { EffectsCtx, spawnShipDestroyEffect } from './effects-system';
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -50,6 +52,13 @@ export class OrbitEntity {
   }
 }
 
+// destroyEffect が必要とする、Game 側の現在状態のスナップショット。
+// fx はエフェクトのスポーンに必要な最小の受け皿(effects-system.ts の EffectsCtx)。
+export interface DestroyEffectCtx {
+  sfx: Sfx;
+  fx: EffectsCtx;
+}
+
 export class Ship extends OrbitEntity {
   name: string;
   radius: number; // 被弾判定半径 [m](剛体接触の collideRadius とは別)
@@ -71,6 +80,19 @@ export class Ship extends OrbitEntity {
     this.hp = hp;
     this.maxHp = hp;
   }
+
+  // 撃破時のエフェクト・音・alive 遷移をまとめて行う(撃破数の集計・勝敗判定は
+  // combat.ts の CombatSystem.destroyShip が担う)。scene からの除去等の後片付けは
+  // dispose() の役目であり、こちらとは別物 — 混同しないよう destroyEffect と命名する。
+  destroyEffect(ctx: DestroyEffectCtx): void {
+    this.alive = false;
+    this.obj.visible = false;
+    ctx.sfx.explosion();
+    spawnShipDestroyEffect(ctx.fx, this.state.r, this.state.v, this.destroyScale, this.destroyAccent);
+  }
+
+  protected get destroyScale(): number { return 1; }
+  protected get destroyAccent(): number { return 0x9fd8e8; }
 }
 // 自弾と敵プラズマ弾の両方に使う。配列は射手(自機/敵)ごとに分けて保持し、
 // 命中ルール・寿命の違いは配列単位で扱う。

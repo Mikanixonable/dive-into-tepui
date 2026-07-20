@@ -13,6 +13,7 @@ import { Enemy } from '../game/enemy/enemy';
 import { MarkerManager } from './markerManager';
 import { fmtMarkerDist } from './utils';
 import { Player } from '../game/player/player';
+import { solveLeadTime } from '../physics/intercept';
 
 export type ProjectFn = (rel: Vec3) => { x: number; y: number; front: boolean };
 
@@ -21,7 +22,7 @@ const tmpV2 = new THREE.Vector3();
 // updateMarkers / updateNodeMarkers / updateBoardMarkers / updatePipOverlay が
 // 必要とする、Game 側の現在状態のスナップショット。
 // player / enemies / target / magPickups は参照渡し(state.r 等を読むだけで
-// ミューテートしない)。boardMarks は MarkersSystem 自身が保持する(combat.ts の
+// ミューテートしない)。boardMarks は MarkersSystem 自身が保持する(combat/hit.ts の
 // checkBoardCrossings が直接この配列へ push する)。
 export interface MarkerCtx {
   mapMode: boolean;
@@ -32,7 +33,6 @@ export interface MarkerCtx {
   mapLabelIds: string[]; // マップモードのラベル(mapView.labels の id 一覧、非マップ時に隠す)
   activeCamera: THREE.PerspectiveCamera; // PIP オーバーレイ専用の投影に使う
   simTime: number;
-  solveLeadTime: (relP: Vec3, relV: Vec3, s: number) => number | null;
 }
 
 export class MarkersSystem {
@@ -295,7 +295,7 @@ export class MarkersSystem {
 
     if (showLead) {
       const relV = sub(enemy.state.v, pv);
-      const t = ctx.solveLeadTime(relP, relV, C.MUZZLE_SPEED);
+      const t = solveLeadTime(relP, relV, C.MUZZLE_SPEED);
       if (t !== null && t < 25) {
         const lead = addScaled(relP, relV, t);
         const lp = project(lead);
@@ -397,7 +397,7 @@ export class MarkersSystem {
 
     const hexColor = tgt.accent ? '#' + tgt.accent.toString(16).padStart(6, '0') : '#ff6a00';
     const relV = sub(tgt.state.v, pv);
-    const t = ctx.solveLeadTime(relP, relV, C.MUZZLE_SPEED);
+    const t = solveLeadTime(relP, relV, C.MUZZLE_SPEED);
     if (t !== null && t < 25) {
       const lead = addScaled(relP, relV, t);
       const lp = projectPip(lead);

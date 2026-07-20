@@ -10,7 +10,7 @@ import { Sfx } from '../../audio/sfx';
 import { buildFlashMesh, buildPlayerShip, RCS_BLOCK_OFFSETS } from '../../render/ships';
 import { CombatCtx, CombatSystem } from '../combat/combat';
 import { PlayerThrottle } from './player-throttle';
-import { PlayerFire } from './player-fire';
+import { FireCtx, PlayerFire } from './player-fire';
 import { altitudeOf } from '../combat/simulator';
 import { ThermalSystem } from './thermal';
 
@@ -131,23 +131,23 @@ export class Player extends Ship {
     simSpeed: number;
     mapMode: boolean;
     combat: CombatSystem;
-    combatCtx: CombatCtx;
+    fireCtx: FireCtx;
   }): PlayerActionState {
-    const { dt, input, simSpeed, mapMode, combat, combatCtx } = params;
+    const { dt, input, simSpeed, mapMode, combat, fireCtx } = params;
     this.updateHpRegen(dt);
     const canAct = this.canAct(simSpeed, mapMode);
-    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, mapMode, canAct, combat, combatCtx);
+    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, mapMode, canAct, this, combat, fireCtx);
     if (justStartedFiring) this.throttle.fineAttitude = true;
     const thrustFn = this.throttle.updateThrustState(input, canAct, this.att, this.state);
     return { canAct, thrustFn };
   }
 
     // 押下エッジキーの処理し、担当外のキーを記録
-  handleEdgeInput(presses: string[], combat: CombatSystem, combatCtx: CombatCtx): string[] {
-    return presses.filter((code) => !this.handleEdgePress(code, combat, combatCtx));
+  handleEdgeInput(presses: string[], fireCtx: FireCtx): string[] {
+    return presses.filter((code) => !this.handleEdgePress(code, fireCtx));
   }
 
-  private handleEdgePress(code: string, combat: CombatSystem, combatCtx: CombatCtx): boolean {
+  private handleEdgePress(code: string, fireCtx: FireCtx): boolean {
     switch (code) {
       case 'KeyT': this.throttle.toggleRcsDamp(); return true;
       case 'KeyF': this.throttle.enableProgradeReset(); return true;
@@ -157,7 +157,7 @@ export class Player extends Ship {
       case 'Digit2': this.throttle.setThrottlePreset(1); return true;
       case 'Digit3': this.throttle.setThrottlePreset(2); return true;
       case 'KeyR':
-        if (this.fire.manualReload()) combat.dropBarrel(combatCtx);
+        if (this.fire.manualReload()) this.fire.dropBarrel(fireCtx, this);
         return true;
       default: return false;
     }
