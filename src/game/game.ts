@@ -23,7 +23,6 @@ import { HitCtx, HitSystem } from './combat/hit';
 import { StageCtx, StageDirector } from './stage-director';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
-import { HudPanelCtx } from '../hud/panel';
 import { CollisionPhysics } from './combat/collision';
 import { EffectsCtx, EffectsSystem, FlashEffect } from './effects-system';
 import { OrbitLineSystem } from './orbit-line-system';
@@ -36,7 +35,7 @@ import { Plan, PlanCtx } from './plan/plan';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRect, PipRenderer } from './pip-renderer';
-import { altitudeOf, Simulator, SimulatorCtx } from './combat/simulator';
+import { Simulator, SimulatorCtx } from './combat/simulator';
 import * as C from './const';
 import { Enemy, EnemyAiCtx } from './enemy/enemy';
 import { Input } from './input';
@@ -57,13 +56,14 @@ export class Game {
   private readonly renderer: GameScene['renderer'];
 
   private readonly input: Input;
-  private touchControls: TouchControls | null = null;
+  // HudPanels が状態を直接参照するため public(下記 hud.panels.update 呼び出し参照)。
+  touchControls: TouchControls | null = null;
   private readonly hud = new Hud();
   private readonly sfx = new Sfx();
-  private readonly chase = new ChaseCamera();
+  readonly chase = new ChaseCamera();
 
 
-  private readonly player: Player;
+  readonly player: Player;
   // enemies / bullets / plasmaBullets / casings / debris の各エンティティ配列は
   // Simulator が所有する(this.simulator.enemies 等)。追加は simulator.addXxx 経由。
   private effects: FlashEffect[] = [];
@@ -94,7 +94,7 @@ export class Game {
   //readonly stage: number;
 
   // シミュレーション速度(旧「ワープ」)の段階管理と、[N] キーによるノードへの自動ワープ
-  private readonly simSpeedManager = new SimSpeedManager(this.hud, this.sfx);
+  readonly simSpeedManager = new SimSpeedManager(this.hud, this.sfx);
 
   // 軌道計画(ノード列+予測キャッシュ)。マップモードの有無と無関係なデータで、
   // Game が所有し、表示・編集は mapModeSystem へ、実施(噴射ガイド)は planGuide へ
@@ -117,10 +117,10 @@ export class Game {
 
   private phase: GamePhase = 'playing';
   // ステージ構成・ウェーブ生成・ステージ専用タイマー(stages.ts参照)。
-  private readonly stageDirector: StageDirector;
-  private simTime = 0;
+  readonly stageDirector: StageDirector;
+  simTime = 0;
   private lastSimDt = 0;
-  private paused = false;
+  paused = false;
 
   private zoomActive = false;
 
@@ -134,7 +134,7 @@ export class Game {
   // 発射・排莢・バレル交換の演出も PlayerFire が持つ(fireCtx 経由)。
   // 撃破の集計・勝敗判定(destroyShip)は combat/combat.ts の CombatSystem が持つ。
   // 発射カウンタ(shots/hits)・撃破カウンタ(kills)も CombatSystem が保持する。
-  private readonly combat = new CombatSystem(this.hud, this.sfx);
+  readonly combat = new CombatSystem(this.hud, this.sfx);
   // 弾の高度な衝突判定(トンネリング防止・被弾ダメージ)は combat/hit.ts の HitSystem に
   // 切り出し済み。撃破が発生したら CombatSystem.destroyShip を呼ぶ。
   private readonly hitSystem = new HitSystem(this.sfx, this.combat);
@@ -147,10 +147,10 @@ export class Game {
   private readonly effectsSystem = new EffectsSystem();
   private readonly orbitLineSystem = new OrbitLineSystem();
   private readonly cameraSystem = new CameraSystem();
-  private readonly targeter = new Targeter(this.hud);
+  readonly targeter = new Targeter(this.hud);
   private readonly hudProjection = new HudProjection(() => this.activeCamera);
   private readonly ammoResupply: AmmoResupplySystem;
-  private readonly simulator: Simulator;
+  readonly simulator: Simulator;
   private readonly pipRenderer = new PipRenderer();
 
   constructor(gs: GameScene, stage = 1) {
@@ -531,34 +531,6 @@ export class Game {
     };
   }
 
-  // hud.panels.update に渡す、ステータスパネル表示用のスナップショット。
-  private hudPanelCtx(): HudPanelCtx {
-    return {
-      player: this.player,
-      enemies: this.simulator.enemies,
-      target: this.targeter.autoTarget,
-      touchControls: this.touchControls,
-      simTime: this.simTime,
-      simSpeed: this.simSpeedManager.simSpeed,
-      paused: this.paused,
-      rcsDamp: this.player.rcsDamp,
-      throttleIdx: this.player.throttleIdx,
-      fineAttitude: this.player.fineAttitude,
-      progradeHold: this.player.progradeHold,
-      camFollowAttitude: this.chase.camFollowAttitude,
-      roundsInMag: this.player.roundsInMag,
-      magsLeft: this.player.magsLeft,
-      reloadTimer: this.player.reloadTimer,
-      alt: altitudeOf(this.player.state.r),
-      shots: this.combat.shots,
-      kills: this.combat.kills,
-      totalEnemies: this.simulator.totalEnemiesSpawned,
-      stage: this.stageDirector.stage,
-      stage00WaveCount: this.stageDirector.stage00WaveCount,
-      stage0TimeLeft: this.stageDirector.stage0TimeLeft,
-    };
-  }
-
   private collisionCtx() {
     return {
       player: this.player,
@@ -718,7 +690,7 @@ export class Game {
       if (achieved) this.simSpeedManager.cancelAutoWarp();
     }
 
-    this.hud.panels.update(this.hudPanelCtx(), dt, playerEl, tgtEl);
+    this.hud.panels.update(this, dt, playerEl, tgtEl);
     this.hud.tick();
   }
 
