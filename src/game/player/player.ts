@@ -12,7 +12,7 @@ import { CombatCtx, CombatSystem } from '../combat/combat';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire } from './player-fire';
 import { altitudeOf } from '../simulator';
-import { ThermalSystem } from '../thermal';
+import { ThermalSystem } from './thermal';
 
 export interface PlayerActionState {
   canAct: boolean;
@@ -24,6 +24,7 @@ export interface PlayerActionState {
 export class Player extends Ship {
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
+  readonly thermal: ThermalSystem;
 
   private readonly plumeCore: THREE.Mesh;
   private readonly plumeOuter: THREE.Mesh;
@@ -39,6 +40,7 @@ export class Player extends Ship {
 
     this.throttle = new PlayerThrottle(hud, sfx);
     this.fire = new PlayerFire(hud, sfx, this.obj);
+    this.thermal = new ThermalSystem(hud, sfx);
 
     const plumes = this.buildThrustPlumes(scene, glowTex);
     this.plumeCore = plumes.core;
@@ -169,9 +171,9 @@ export class Player extends Ship {
     this.throttle.setThrottlePreset(idx);
   }
 
-  checkLoss(dt: number, thermal: ThermalSystem, combat: CombatSystem, combatCtx: CombatCtx): void {
+  checkLoss(dt: number, combat: CombatSystem, combatCtx: CombatCtx): void {
     if (!this.alive) return;
-    const limit = thermal.updateAltitudeAlarm(dt, this.alive, altitudeOf(this.state.r));
+    const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, altitudeOf(this.state.r));
 
     if (limit === 'heat') {
       combatCtx.setLostReason('断熱圧縮による加熱で熱防御が飽和し、機体は焼失した');
