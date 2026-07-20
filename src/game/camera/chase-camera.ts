@@ -8,6 +8,17 @@ import * as C from '../const';
 import { Hud } from '../../hud/hud';
 
 export class ChaseCamera {
+  // 戦闘ビュー用のカメラ。near=2m なら地平線距離(~2,400km)での深度誤差も大気シェルの
+  // 厚みより十分小さく、対数深度バッファなしで z-fighting を回避できる(far=6e7m は
+  // 星空シェルを含む)。window resize には追従せず、update() 呼び出し毎にアスペクト比を
+  // 自己補正する(このカメラは Game 構築時に生成されるため、resize イベントリスナーを
+  // 先に張れない — map-camera.ts の MapCamera と同じ方式)。
+  readonly camera = new THREE.PerspectiveCamera(
+    C.BASE_FOV,
+    window.innerWidth / window.innerHeight,
+    2,
+    6e7,
+  );
   yaw = 0; // 0 = 機体後方(プログレード側から見る)
   pitch = 0.3 - (10 * Math.PI) / 180; // 初期カメラ位置を5度低く
   dist = 38;
@@ -29,7 +40,6 @@ export class ChaseCamera {
   }
 
   update(
-    camera: THREE.PerspectiveCamera,
     mouse: MouseDelta,
     up: Vec3,
     fwd: Vec3,
@@ -38,13 +48,19 @@ export class ChaseCamera {
     boreFwd: Vec3 | null,
     boreUp: Vec3 | null,
   ): void {
+    const camera = this.camera;
+    const aspect = window.innerWidth / window.innerHeight;
+    let projectionDirty = Math.abs(camera.aspect - aspect) > 1e-6;
+    if (projectionDirty) camera.aspect = aspect;
+
     const targetFov = zoomActive ? C.ZOOM_FOV : C.BASE_FOV;
     const k = 1 - Math.exp(-C.ZOOM_LERP_RATE * dt);
     this.fov += (targetFov - this.fov) * k;
     if (Math.abs(this.fov - camera.fov) > 1e-3) {
       camera.fov = this.fov;
-      camera.updateProjectionMatrix();
+      projectionDirty = true;
     }
+    if (projectionDirty) camera.updateProjectionMatrix();
 
     // 照準ズーム中: 三人称視点をやめ、機体位置(原点)から機首方向を狙う
     // 固定ガンサイト視点にする(画面中心 = 照準先、自機は呼び出し側で非表示にする)。
