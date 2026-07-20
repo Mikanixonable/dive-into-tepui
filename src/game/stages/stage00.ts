@@ -24,14 +24,14 @@ export class Stage00 extends StageDefinition {
 
   init(ctx: StageCtx): number {
     for (let i = 0; i < C.MAX_MAG_PICKUPS; i++) {
-      ctx.ammoResupply.spawnForPlayer(ctx.player, C.STAGE00_AMMO_MIN_DIST, C.STAGE00_AMMO_MAX_DIST);
+      this.ammoResupply.spawnForPlayer(ctx.player, C.STAGE00_AMMO_MIN_DIST, C.STAGE00_AMMO_MAX_DIST);
     }
     this.waveManager.spawnWave(ctx, 'random'); // 初期状態でもランダムに敵を配置する
     return 0;
   }
 
   update(dt: number, ctx: StageCtx): void {
-    this.waveManager.update(dt, ctx, {
+    this.waveManager.update(dt, ctx, this.ammoResupply, {
       spawnDelay: C.STAGE00_SPAWN_DELAY,
       spawnInterval: C.STAGE00_SPAWN_INTERVAL,
       maxRange: C.STAGE00_MAX_RANGE,
