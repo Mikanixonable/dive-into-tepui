@@ -3,7 +3,7 @@
 // combat/hit.ts / enemy.ts の Enemy.behave / effects-system.ts へ切り出し済み。
 // game.ts を import しない — 依存は CombatCtx 引数・コンストラクタ注入のみ。
 import * as C from '../const';
-import { Ship } from '../entities';
+import { Ship as Enemy } from '../entities';
 import { Player } from '../player/player';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
@@ -20,6 +20,7 @@ export interface CombatCtx {
   lostReason: string;
   setLostReason(reason: string): void;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
+  sfx: Sfx;
   fx: EffectsCtx;
 }
 
@@ -33,7 +34,7 @@ export class CombatSystem {
   constructor(
     private readonly hud: Hud,
     private readonly sfx: Sfx,
-  ) {}
+  ) { }
 
   recordShot(): void {
     this.shots++;
@@ -43,30 +44,33 @@ export class CombatSystem {
     this.hits++;
   }
 
+  // reason 省略時は被弾(attacked)の2択文言を byPlayer から決める。
+  // 自然死(checkLoss)は原因ごとに異なる文言を持つため reason で明示的に渡す。
+  recordKilled(ctx: CombatCtx, reason: string): void {
+    ctx.setLostReason(reason);
+
+    ctx.setPhase('lost');
+    this.sfx.setThrust(false);
+    this.sfx.stopBgm();
+    this.hud.showEnd(false, `${ctx.lostReason}<br>撃破 ${this.kills}/${ctx.totalEnemies} 機`);
+    return;
+  }
+
   /**
-   * 撃破の集計・勝敗判定のみを行う(エフェクト・SFX・alive 遷移は Ship.destroyEffect の責務)。
+   * 撃破の集計・勝敗判定のみを行う(alive 遷移・撃破エフェクトは呼び出し元の
+   * Ship.attacked/checkLoss が既に済ませている — ここでは呼ばない)。
    * @param byPlayer true = 弾丸命中による正式撃破(kills に加算し勝利判定を行う)
    *                 false = 再突入・空力分解など物理的消滅(カウントせず静かに除去)
    */
-  destroyShip(ship: Ship, ctx: CombatCtx, byPlayer = true): void {
-    ship.destroyEffect({ sfx: this.sfx, fx: ctx.fx });
-
-    if (ship === ctx.player) {
-      ctx.setPhase('lost');
-      this.sfx.setThrust(false);
-      this.sfx.stopBgm();
-      this.hud.showEnd(false, `${ctx.lostReason}<br>撃破 ${this.kills}/${ctx.totalEnemies} 機`);
-      return;
-    }
-
+  recordKill(enemy: Enemy, ctx: CombatCtx, byPlayer = true): void {
     if (byPlayer) {
       // 弾丸命中による正式撃破のみカウント
       this.kills++;
-      this.hud.hint(`${ship.name} 撃破`);
+      this.hud.hint(`${enemy.name} 撃破`);
     } else {
       // 再突入・空力分解によるデスポーンは撃破に含めない
       this.losses++;
-      this.hud.hint(`${ship.name} 再突入により喪失`);
+      this.hud.hint(`${enemy.name} 再突入により喪失`);
     }
 
     // 残存数は destroyShip 呼び出しの集計(kills/losses)だけで求める — enemies 配列は
@@ -95,9 +99,9 @@ export class CombatSystem {
     this.hud.showEnd(
       true,
       `全 ${ctx.totalEnemies} 機撃破<br>` +
-        `ミッション時間 T+ ${Math.floor(ctx.simTime / 3600)}h ${Math.floor((ctx.simTime % 3600) / 60)}m ${Math.floor(ctx.simTime % 60)}s<br>` +
-        `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)` +
-        unlockNote,
+      `ミッション時間 T+ ${Math.floor(ctx.simTime / 3600)}h ${Math.floor((ctx.simTime % 3600) / 60)}m ${Math.floor(ctx.simTime % 60)}s<br>` +
+      `発射 ${this.shots} 発 / 命中 ${this.hits} 発 (命中率 ${acc}%)` +
+      unlockNote,
     );
   }
 }

@@ -6,16 +6,15 @@
 // game.ts を import しない — 依存は constructor 注入と各メソッド引数のみ。
 import { stepAttitude } from '../../physics/attitude';
 import { envAccelInto } from '../../physics/envaccel';
-import { ExtraAccel, R_EARTH, stepOrbitRK4 } from '../../physics/orbital';
-import { add, clone, len, v3 } from '../../physics/vec3';
+import { ExtraAccel, stepOrbitRK4 } from '../../physics/orbital';
+import { add, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { CombatCtx, CombatSystem } from './combat';
+import { CombatCtx } from './combat';
 import { HitCtx, HitSystem } from './hit';
-import { Bullet, Casing, DebrisPiece, MagPickup, OrbitEntity } from '../entities';
+import { Bullet, Casing, CheckLossCtx, DebrisPiece, MagPickup, OrbitEntity } from '../entities';
 import { Player } from '../player/player';
 import { Enemy } from '../enemy/enemy';
 import { EphemerisSystem } from '../ephemeris';
-import { Vec3 } from '../../physics/nbody/bodies';
 
 export interface SimulatorCtx {
   player: Player;
@@ -26,10 +25,6 @@ export interface SimulatorCtx {
 export interface SimulationAdvance {
   simTime: number;
   simDt: number;
-}
-
-export function altitudeOf(r: Vec3): number {
-  return len(r) - R_EARTH;
 }
 
 export class Simulator {
@@ -53,7 +48,6 @@ export class Simulator {
 
   constructor(
     private readonly ephemeris: EphemerisSystem,
-    private readonly combat: CombatSystem,
     private readonly hit: HitSystem,
   ) { }
 
@@ -176,57 +170,29 @@ export class Simulator {
 
   // ------------------------------------------------------------ 寿命管理
 
-  cleanup(combatCtx: CombatCtx, simTime: number): void {
-
-    // プレイヤーによる撃破（checkBulletHits -> applyHit で alive=falseにされている、はず）
-    this.prune(this.enemies,
-      (e) => !e.alive,
-      (e) => { this.combat.destroyShip(e, combatCtx, true); e.dispose(); },
-    );
-
-    // 再突入による破壊を除去
-    this.prune(this.enemies,
-      (e) => e.alive && altitudeOf(e.state.r) < C.REENTRY_ALT,
-      (e) => { this.combat.destroyShip(e, combatCtx, false); e.dispose(); },
-    );
-
-    // 撃破・喪失(alive=false)は destroyShip 経由でのみ起きる。ここでは配列からの
-    // 除去と scene からの後片付け(軌道線含む)のみを行う — 撃破数・勝敗判定は
-    // combat.ts が destroyShip 経由で自前集計するので、この配列を見に行かない。
-    this.prune(this.enemies, (e) => !e.alive, (e) => e.dispose());
-
-    this.prune(this.bullets,
-      (b) => !b.alive || simTime - b.bornSim > C.BULLET_LIFETIME || altitudeOf(b.state.r) < C.DEBRIS_REENTRY_ALT,
-      (b) => b.dispose(),
-    );
-
-    this.prune(this.plasmaBullets,
-      (pb) => !pb.alive || simTime - pb.bornSim > C.PLASMA_LIFETIME || altitudeOf(pb.state.r) < C.DEBRIS_REENTRY_ALT,
-      (pb) => pb.dispose(),
-    );
-
-    this.prune(this.casings,
-      (cs) => simTime - cs.bornSim > C.CASING_LIFETIME || altitudeOf(cs.state.r) < C.DEBRIS_REENTRY_ALT,
-      (cs) => cs.dispose(),
-    );
-
-    this.prune(this.debris,
-      (d) => altitudeOf(d.state.r) < C.DEBRIS_REENTRY_ALT,
-      (d) => d.dispose(),
-    );
-
-    // 取り込み・デスポーン判断(alive=false)は ammo-resupply.ts 側で行われる
-    this.prune(this.magPickups,
-      (mp) => !mp.alive || altitudeOf(mp.state.r) < C.DEBRIS_REENTRY_ALT,
-      (mp) => mp.dispose(),
-    );
+  // 不要になったものを除去する
+  cleanup(ctx: CheckLossCtx): void {
+    // 自滅要因をチェック。もし不要になっていたらalive=falseになる。
+    for (const e of this.enemies) e.checkLoss(ctx);
+    for (const b of this.bullets) b.checkLoss(ctx);
+    for (const pb of this.plasmaBullets) pb.checkLoss(ctx);
+    for (const cs of this.casings) cs.checkLoss(ctx);
+    for (const d of this.debris) d.checkLoss(ctx);
+    for (const mp of this.magPickups) mp.checkLoss(ctx);
+    // alive=false になったものを配列から除去して scene から片付ける(dispose)。
+    this.prune(this.enemies);
+    this.prune(this.bullets);
+    this.prune(this.plasmaBullets);
+    this.prune(this.casings);
+    this.prune(this.debris);
+    this.prune(this.magPickups);
   }
 
   // in-place フィルタ: 配列の参照はそのまま保つ(ctx スナップショット越しの参照を無効化しない)
-  private prune<T>(arr: T[], expired: (x: T) => boolean, remove: (x: T) => void): void {
+  private prune<T extends OrbitEntity>(arr: T[]): void {
     let w = 0;
     for (const x of arr) {
-      if (expired(x)) remove(x);
+      if (!x.alive) x.dispose();
       else arr[w++] = x;
     }
     arr.length = w;

@@ -137,7 +137,7 @@ export class Game {
   readonly combat = new CombatSystem(this.hud, this.sfx);
   // 弾の高度な衝突判定(トンネリング防止・被弾ダメージ)は combat/hit.ts の HitSystem に
   // 切り出し済み。撃破が発生したら CombatSystem.destroyShip を呼ぶ。
-  private readonly hitSystem = new HitSystem(this.sfx, this.combat);
+  private readonly hitSystem = new HitSystem(this.combat);
   // HUDマーカー(方向・敵/リード/AMMO/ノード/PIP/ボード)の同期は markers.ts の
   // MarkersSystem に切り出し済み。boardMarks(標的面通過点)もここが保持する
   // (combat/hit.ts の checkBoardCrossings が直接この配列へ push する)。
@@ -168,7 +168,7 @@ export class Game {
     this.input.onFirstGesture = () => this.sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
-    this.simulator = new Simulator(this.ephemeris, this.combat, this.hitSystem);
+    this.simulator = new Simulator(this.ephemeris, this.hitSystem);
     this.ammoResupply = new AmmoResupplySystem(
       this.hud,
       this.sfx,
@@ -465,6 +465,7 @@ export class Game {
         ctx.lostReason = reason;
       },
       setPhase: (p) => { this.phase = p; },
+      sfx: this.sfx,
       fx: this.effectsCtx(),
     };
     return ctx;
@@ -552,7 +553,7 @@ export class Game {
   // ------------------------------------------------------------- simulate
 
   private handlePostSimulation(dt: number, simDt: number): void {
-    this.player.checkLoss(dt, this.combat, this.combatCtx());
+    this.player.checkLoss({ dt, combat: this.combat, combatCtx: this.combatCtx() });
 
     this.ammoResupply.updateLogistics(this.simTime, this.stageDirector.stage, this.player);
     if (this.simSpeedManager.canResolvePhysicalCollisions) {
@@ -563,7 +564,7 @@ export class Game {
     this.updateAttitudes(Math.min(simDt, 0.12));
 
     // シミュレーション配列から不要なものを消去
-    this.simulator.cleanup(this.combatCtx(), this.simTime);
+    this.simulator.cleanup({ dt, combat: this.combat, combatCtx: this.combatCtx() });
 
     if (this.stageDirector.stage === -1 && this.phase === 'playing' && this.simSpeedManager.canEnemyFire) {
       const ctx = this.enemyAiCtx(this.simTime);

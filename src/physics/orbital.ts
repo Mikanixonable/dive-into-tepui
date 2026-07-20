@@ -11,6 +11,10 @@ export interface OrbitState {
   v: Vec3; // ECI 速度 [m/s]
 }
 
+export function altitudeOf(r: Vec3): number {
+  return len(r) - R_EARTH;
+}
+
 // 追加加速度(推力など)。RK4 の各ステージで現在の r, v を渡して評価する。
 // out が渡された場合、実装は out に書き込んで out を返してよい(アロケーション回避)。
 // out を無視して新規オブジェクトを返す実装も引き続き有効。
