@@ -3,6 +3,9 @@
 // フォーカス・スライダー)/ TrajectoryOverlay(予測軌道の描画)/ MapModeController
 // (有効フラグと開閉時の後始末)を private に保持し、外部(game.ts / camera-system.ts /
 // orbit-line-system.ts)はこのクラスのメソッドのみを呼ぶ — 4クラスへ個別に触れさせない。
+// シミュレーション速度そのものの管理は責務が異なるため SimSpeedManager が別途持ち、
+// ここではノード実行時刻への自動ワープの起点(startAutoWarpTo/cancelAutoWarp の
+// 呼び出しどころ)としてのみ参照する。
 //
 // PlannerCtx が要求する「現在状態」は getExternalState() で毎回引ける(Game 側の
 // simTime/player 状態は非同期な DOM イベント(ギズモドラッグ等)からも参照する必要が
@@ -13,12 +16,12 @@ import { Elements, elementsFromState } from '../../physics/orbital';
 import { sunAzimuth } from '../../physics/ephemeris';
 import { sampleAt } from '../../physics/predict';
 import { Vec3 } from '../../physics/vec3';
-import * as C from '../const';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Input, MouseDelta } from '../input';
 import { TouchControls } from '../touch';
 import { ProjectFn } from '../camera/projection';
+import { SimSpeedManager } from '../sim-speed-manager';
 import { MapPlanner, PlannerCtx } from './planner';
 import { MapView } from './mapview';
 import { TrajectoryOverlay } from './traj-overlay';
@@ -37,12 +40,11 @@ export class MapModeSystem {
   private readonly mapView: MapView;
   private readonly trajOverlay: TrajectoryOverlay;
   private readonly mapModeController: MapModeController;
-  private autoWarpUntil: number | null = null;
-  private warpIdx: number = 0;
 
   constructor(
     private readonly hud: Hud,
     private readonly sfx: Sfx,
+    private readonly simSpeedManager: SimSpeedManager,
     private readonly project: ProjectFn,
     private readonly getFineAttitude: () => boolean,
     private readonly getExternalState: () => MapModeExternalState,
@@ -96,7 +98,7 @@ export class MapModeSystem {
       onMenuWarpTo: (idx) => {
         const n = this.planner.planNodes[idx];
         if (!n) return;
-        this.autoWarpUntil = n.time;
+        this.simSpeedManager.startAutoWarpTo(n.time);
         this.hud.hint('指定時刻まで自動ワープ開始');
       },
       onMenuDelete: (idx) => {
@@ -124,10 +126,6 @@ export class MapModeSystem {
     };
   }
 
-  private clearAutoWarp(): void {
-    this.autoWarpUntil = null;
-  }
-
   // --------------------------------------------------------------- lifecycle
 
   get mapMode(): boolean {
@@ -149,7 +147,7 @@ export class MapModeSystem {
       this.planner.selectedNodeIdx = null;
       this.planner.clearActiveTarget();
       this.planner.trajDirty = true;
-      this.clearAutoWarp();
+      this.simSpeedManager.cancelAutoWarp();
       this.hud.hint('ノードを削除');
       return;
     }
@@ -158,48 +156,25 @@ export class MapModeSystem {
     this.planner.selectedNodeIdx = null;
     this.planner.clearActiveTarget();
     this.planner.trajDirty = true;
-    this.clearAutoWarp();
+    this.simSpeedManager.cancelAutoWarp();
     this.hud.hint('マニューバ計画を破棄');
   }
 
-  // ------------------------------------------------------------------ warp
-
-  warp(): number {
-    return C.WARP_LEVELS[this.warpIdx]!;
-  }
-
-  shiftWarp(step: number): void {
-    this.clearAutoWarp();
-    const next = this.warpIdx + step;
-    if (next < 0 || next >= C.WARP_LEVELS.length) return;
-    this.warpIdx = next;
-    this.sfx.warp();
-    this.hud.hint(`TIME WARP ×${this.warp()!}`);
-  }
-
-  updateAutoWarp(): void {
-    if (this.autoWarpUntil === null) return;
-    const tRem = this.autoWarpUntil - this.getExternalState().simTime;
-    if (tRem <= C.AUTOWARP_STOP) {
-      this.autoWarpUntil = null;    
-      this.hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
-      this.warpIdx = 0;
-    }
-    let idx = 0;
-    for (let i = 0; i < C.WARP_LEVELS.length; i++) {
-      if (C.WARP_LEVELS[i]! <= tRem / C.AUTOWARP_MARGIN) idx = i;
-    }
-    this.warpIdx = idx;
-  }
-
+  // [N] キー: 直近ノードの実行時刻までの自動ワープをトグルする(実際の速度管理は
+  // SimSpeedManager が持つ — ここではノードの有無/時刻の解決だけを担う)。
   toggleAutoWarpToFirstNode(phase: string): void {
     if (this.mapMode) return;
     if (this.planner.planNodes.length <= 0 || phase !== 'playing') {
       this.hud.hint('マニューバノードがありません ([M] で計画)');
       return;
     }
-    this.autoWarpUntil = this.autoWarpUntil !== null ? null : this.planner.firstNode()!.time;
-    this.hud.hint(this.autoWarpUntil !== null ? 'ノードへ自動ワープ開始' : '自動ワープ解除');
+    if (this.simSpeedManager.isAutoWarping) {
+      this.simSpeedManager.cancelAutoWarp();
+      this.hud.hint('自動ワープ解除');
+    } else {
+      this.simSpeedManager.startAutoWarpTo(this.planner.firstNode()!.time);
+      this.hud.hint('ノードへ自動ワープ開始');
+    }
   }
 
   // ---------------------------------------------------------------- camera
@@ -271,7 +246,7 @@ export class MapModeSystem {
   updateGuide(playerEl: Elements | null, playerAlive: boolean): void {
     const ctx = this.plannerCtx();
     const { achieved } = this.planner.updateGuide(ctx, ctx.playerR, ctx.playerV, playerEl, playerAlive, this.project);
-    if (achieved) this.clearAutoWarp();
+    if (achieved) this.simSpeedManager.cancelAutoWarp();
   }
 
   resolveDisplayTime(): number {

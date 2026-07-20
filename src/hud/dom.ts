@@ -59,7 +59,7 @@ const STYLE = `
   color: ${INK}; font-size: 15px; text-align: center;
   transition: opacity 1s; opacity: 0; line-height: 1.8;
 }
-#hud .warp-hot { color: ${ACCENT}; }
+#hud .sim-speed-hot { color: ${ACCENT}; }
 #hud .mode-tgt { color: ${ACCENT}; }
 .mk {
   position: absolute; transform: translate(-50%, -50%);
@@ -240,7 +240,7 @@ function buildInfoPanels(root: HTMLElement): void {
   status.innerHTML = `
     <h3>SHIP STATUS</h3>
     <div class="row"><span class="k">MET</span><span class="v" data-id="met"></span></div>
-    <div class="row"><span class="k">TIME WARP</span><span class="v" data-id="warp"></span></div>
+    <div class="row"><span class="k">TIME WARP</span><span class="v" data-id="sim-speed"></span></div>
 
     <div class="row"><span class="k">RCS制動 [T]</span><span class="v" data-id="rcs"></span></div>
     <div class="row"><span class="k">並進出力 [1-3]</span><span class="v" data-id="throttle"></span></div>

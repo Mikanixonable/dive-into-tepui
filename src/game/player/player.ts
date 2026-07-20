@@ -122,8 +122,8 @@ export class Player extends Ship {
     this.fire.updateBelt(dt, this.att, this.throttle.thrustAccelVec, this.alive);
   }
 
-  private canAct(warp: number, mapMode: boolean): boolean {
-    return warp <= C.MAX_PHYS_WARP && this.alive && !mapMode;
+  private canAct(simSpeed: number, mapMode: boolean): boolean {
+    return simSpeed <= C.MAX_PHYS_SIM_SPEED && this.alive && !mapMode;
   }
 
   // 毎フレームの HP 自然回復と、ユーザー入力に対する移動/発射の試行を一括で行う。
@@ -131,14 +131,14 @@ export class Player extends Ship {
   behave(params: {
     dt: number;
     input: Input;
-    warp: number;
+    simSpeed: number;
     mapMode: boolean;
     combat: CombatSystem;
     combatCtx: CombatCtx;
   }): PlayerActionState {
-    const { dt, input, warp, mapMode, combat, combatCtx } = params;
+    const { dt, input, simSpeed, mapMode, combat, combatCtx } = params;
     this.updateHpRegen(dt);
-    const canAct = this.canAct(warp, mapMode);
+    const canAct = this.canAct(simSpeed, mapMode);
     const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, mapMode, canAct, combat, combatCtx);
     if (justStartedFiring) this.throttle.fineAttitude = true;
     const thrustFn = this.throttle.updateThrustState(input, canAct, this.att, this.state);
