@@ -3,7 +3,7 @@ import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { ExtraAccel, MU_EARTH, OrbitState, R_EARTH } from '../../physics/orbital';
 import { Vec3, addScaled, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { BeltSection, Ship } from '../entities';
+import { Ship } from '../entities';
 import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
@@ -87,7 +87,7 @@ export class Player extends Ship {
     };
   }
 
-  updateHpRegen(dt: number): void {
+  private updateHpRegen(dt: number): void {
     if (!this.alive || this.hp <= 0 || this.hp >= this.maxHp) return;
     this.hp = Math.min(this.maxHp, this.hp + dt * C.HP_REGEN_RATE);
   }
@@ -122,20 +122,13 @@ export class Player extends Ship {
     this.fire.updateBelt(dt, this.att, this.throttle.thrustAccelVec, this.alive);
   }
 
-  // マガジンベルトの剛体接触(collision.ts)との受け渡し。
-  beltCollisionSections(dt: number): BeltSection[] {
-    return this.fire.collisionSections(dt, this.state.r, this.state.v, this.att.q);
-  }
-
-  applyBeltCollisions(dt: number): void {
-    this.fire.applyCollisionSections(dt, this.state.r, this.state.v, this.att.q);
-  }
-
   private canAct(warp: number, mapMode: boolean): boolean {
     return warp <= C.MAX_PHYS_WARP && this.alive && !mapMode;
   }
 
-  updateActionState(params: {
+  // 毎フレームの HP 自然回復と、ユーザー入力に対する移動/発射の試行を一括で行う。
+  // 実際の移動加速度の組み立ては PlayerThrottle、発砲・排莢の発注は PlayerFire が持つ。
+  behave(params: {
     dt: number;
     input: Input;
     warp: number;
@@ -144,8 +137,9 @@ export class Player extends Ship {
     combatCtx: CombatCtx;
   }): PlayerActionState {
     const { dt, input, warp, mapMode, combat, combatCtx } = params;
+    this.updateHpRegen(dt);
     const canAct = this.canAct(warp, mapMode);
-    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, warp, mapMode, combat, combatCtx);
+    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, mapMode, canAct, combat, combatCtx);
     if (justStartedFiring) this.throttle.fineAttitude = true;
     const thrustFn = this.throttle.updateThrustState(input, canAct, this.att, this.state);
     return { canAct, thrustFn };
@@ -189,11 +183,9 @@ export class Player extends Ship {
     }
   }
 
-  clearTransientState(): void {
+  // ポーズ中: 移動/発射の一時状態(推力可視化・射撃継続)を止める。
+  pause(): void {
     this.throttle.clearTransientState();
-  }
-
-  stopFiring(): void {
     this.fire.stopFiring();
   }
 

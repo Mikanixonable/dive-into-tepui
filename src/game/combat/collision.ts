@@ -19,11 +19,11 @@ export class CollisionPhysics {
     const beltActive = p.alive && dt > 1e-6;
     const entities = this.collectEntities(ctx);
     if (beltActive) {
-      entities.push(...p.beltCollisionSections(dt));
+      entities.push(...p.fire.belt.collisionSections(dt, p.state.r, p.state.v, p.att.q));
     }
     this.resolveCollisionPairs(entities, p, onPlayerCasingImpact);
     if (beltActive) {
-      p.applyBeltCollisions(dt);
+      p.fire.belt.applyCollisionSections(dt, p.state.r, p.state.v, p.att.q);
     }
   }
 
