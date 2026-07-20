@@ -32,7 +32,7 @@ import { HudProjection } from './camera/projection';
 import { AmmoResupplySystem } from './combat/ammo-resupply';
 import { MapModeSystem } from './map-mode/map-mode-system';
 import { Plan, PlanCtx } from './plan/plan';
-import { PlanGuide } from './plan/plan-guide';
+import { PlanGuide, plannedOrbitElements } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRect, PipRenderer } from './pip-renderer';
 import { Simulator, SimulatorCtx } from './combat/simulator';
@@ -665,6 +665,7 @@ export class Game {
 
   private syncRenderHud(dt: number, o: Vec3, pv: Vec3): void {
     const project = (rel: Vec3) => this.hudProjection.project(rel);
+    this.mapModeSystem.updateDisplay();
     const { playerEl, tgtEl } = this.orbitLineSystem.update({
       simTime: this.simTime,
       origin: o,
@@ -672,7 +673,8 @@ export class Game {
       player: this.player,
       target: this.targeter.autoTarget,
       enemies: this.simulator.enemies,
-      maneuver: this.mapModeSystem,
+      mapMode: this.mapMode,
+      plannedEl: this.mapMode ? null : plannedOrbitElements(this.plan, this.planCtx()),
       playerOrbitLine: this.playerOrbitLine,
       targetOrbitLine: this.targetOrbitLine,
       plannedOrbitLine: this.plannedOrbitLine,

@@ -27,21 +27,20 @@ positionをcloneするのはeffect.tsの責務とし、外部でいちいちclon
 ### sceneとhudとsfxの統合
 どうせこいつらは多方面で参照されるので、まとめて渡されるべきで、注入経路が多数に分岐しているべきではない
 
-### mapModeControllerとmapModeSystemの統合
-mapModeControllerはステートとしてenabledしか持っておらず、mapModeSystemからたらい回しにされているだけなので、責務のないモジュール。展開して統合する。
-mapModeSystemはやや肥大しているとはいえ、ここは切るべき境界ではない。
-
 ### gameとstageDirectorとcombat.tsの責務の分割
+stageDirectorの責務を整理する。stageDirectorはstageごとの処理の分岐を引き受けているはずだが、コードのパターンが一定していなくて保守性が悪い。というか過剰責務。
+
 ここまで整理したことで、実はstageDirectorがcombatと責務が近いことが見えてきた。また、game.ts内には依然として外部に委譲すべき処理が残っている。特に、game.ts内における敵配列の初期化やスポーンロジックをstageDirector.tsまたはcombat.tsに委譲したい。
 
-stageDirectorの責務を整理する。stageDirectorはstageごとの処理の分岐を引き受けているはずだが、コードのパターンが一定していなくて保守性が悪い。というか過剰責務。
+ステージごとの終了判定がcombat.tsに、ステージごとの初期化処理、更新処理がstageDirector.tsにありそう。ステージ種別ごとの分岐が分散しているのが良くない。
 また、game.ts内にも敵の生成処理があり、stageDirectorにも敵の生成処理があり、責務が重複している。
+敵の生成経路が、enemySpecテンプレートを経由するものとしないものがあって良くない。経由しない方がいいに決まっている。
 
-これは検討段階だが、
-- 敵の集団の生成に関するもの -> enemy/enemy-spawner.tsに委譲する
-- 個々の敵の生成に関すること -> enemy/enemy-generator.tsに委譲する
-- stageごとの特殊処理 -> stage-director.tsに残す。ただし、どのようなパターンの分岐があるのか注意深く観察する。一つの関数の挙動として抽象化は可能だろうか
-仮にこのように分類したとき、どのコードがどこに該当しそうか。責務境界があいまいになったり、どちらかの責務がスカスカになったり、どこかに集中したりするような個所は発生するか、検討してください
+敵の集団の生成に関するもの -> enemy/enemy-spawner.tsに委譲する
+個々の敵の生成に関すること -> enemy/enemy-generator.tsに委譲する
+ステージごとの分岐 -> stagedirectorがstageIndexを持って分岐するのをやめ、stageDataにステージごとの初期化、更新、終了処理を入れておくべきではないか？　それを短く書くためのサブルーチンが外部にあるべきで。
+
+stageDirectorはこれで責務がすべて抜けそう。
 
 ### cameraの管理　現状をよく調査する
 

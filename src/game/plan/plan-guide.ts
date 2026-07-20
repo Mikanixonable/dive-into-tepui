@@ -21,6 +21,17 @@ export function guideDurationSec(plan: Plan, ctx: PlanCtx): number {
   return Math.max(C.NODE_GUIDE_MIN_DURATION, first.time - ctx.simTime + C.NODE_GUIDE_DURATION_MARGIN);
 }
 
+// 戦闘ビューの計画軌道ライン(plannedOrbitLine)用: 直近ノードを実施した直後の
+// 軌道要素。噴射ガイド(PlanGuide.update)と同じ期間ポリシー(guideDurationSec)で
+// 予測を最新化する — マップの表示用予測期間(day/week/monthなど)とは意図的に別物。
+export function plannedOrbitElements(plan: Plan, ctx: PlanCtx): Elements | null {
+  const first = plan.firstNode();
+  if (!first) return null;
+  plan.maybeRefresh(ctx, guideDurationSec(plan, ctx));
+  const sample = plan.sampleAt(first.time);
+  return sample ? elementsFromState(sample.r, sample.v) : null;
+}
+
 export class PlanGuide {
   // 直近ノードの「実行目標」(実行後の目標位置・速度・軌道要素)。
   // 遠方(残り NODE_TARGET_FREEZE_S 超)では予測リフレッシュのたびに追従更新するが、
