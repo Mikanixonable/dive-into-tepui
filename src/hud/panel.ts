@@ -4,9 +4,8 @@
 // 必要な値をここで読み取る(game.ts は import しない — 型のみの参照)。
 import * as C from '../game/const';
 import { TEXT_DIM as INK_SOFT } from '../game/theme';
-import { Elements } from '../physics/orbital';
+import { altitudeOf, Elements } from '../physics/orbital';
 import { dot, len, sub } from '../physics/vec3';
-import { altitudeOf } from '../game/combat/simulator';
 import type { Game } from '../game/game';
 import { fmtDist, fmtSpeed, fmtTime } from './utils';
 
