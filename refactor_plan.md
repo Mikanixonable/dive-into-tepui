@@ -21,20 +21,10 @@ belt.ts
 - 各モジュールの疎結合化と責務の整理
 - ctx注入パターンの根絶。
 
-### combatの責務の分割（優先度高）
-気が付いたらcombatがマンモスクラスになっている……以下の方針で分割する。
-
-
-combatのdestroyShipを適切に解体する必要があります。この関数はshipの破壊処理のみならず、エフェクトの生成とゲームの終了処理まで行っているため、責務が過剰です。
-shipを破壊し、エフェクトを生成する部分：destroyEffect関数をShipに共通実装、あるいはEnemyとPlayerそれぞれに実装。破片の生成や効果音の発音などはそっちに。disposeと紛らわしいので、destroyEffectと命名する。
-破壊した敵を数える部分：combatが担当。従来のdestroyShipのうち、kill++としている部分や、結果の表示を行っている部分だけが残る
-機体喪失時のエフェクト処理（`destroyShip`） -> destroyEffect関数をShipに共通実装、あるいはEnemyとPlayerそれぞれに実装。
-敵の集計、勝敗判定こそがcombatの責務である。
-
-この分割の結果、combatCtxがモジュールに対して過剰な規模になっていることが明らかである。「便利なまとまり」とするのではなく、各モジュールが必要な情報だけを受け取るように改善する。
-
-### simSpeedへのcanAct移動
+### simSpeedへのcanAct移動 【完了】
 canPlayerThrustやcanPlayerFire、canEnemyFireなどに分けて、simSpeedの中で管理する。simSpeed自体を他のモジュールに渡して判定するのは良くない。
+
+→ `SimSpeedManager` に `canPlayerThrust`/`canPlayerFire`/`canEnemyFire`/`canResolvePhysicalCollisions` を追加。`player.ts` の `canAct(simSpeed, mapMode)` を廃止し `behave()` は `canPlayerThrust`/`canPlayerFire` を受け取って `alive`/`mapMode` とその場で合成するのみに変更。`game.ts` の `handlePostSimulation` も simSpeed 値を受け取らず `simSpeedManager` を直接参照するよう変更。`simulator.ts` の積分サブステップ判定(`simSpeed > MAX_PHYS_SIM_SPEED`)は行動可否ではなく数値積分上の判断なので対象外のまま。
 
 ### gameとstageDirectorの責務の分割
 初期化、敵のスポーンロジックをstageDirectorに委譲できる。
@@ -56,8 +46,15 @@ player.fireが地味に肥大化してきているので、責務の実態を検
 ammoEventの受け渡しの配線は遠回りに見える。consumeRoundをupdateFireStateにインライン展開してください。
 その後に、updateFireStateの適切な分割を再検討します。
 
+### combatとstageDirectorの責務境界の改善
+ここまで整理したことで、実はstageDirectorがcombatと責務が近いことが見えてくる。
+しかし今着手すると収拾がつかなくなるので、stageDirectorのコードが大幅に整理できてから着手すること。
+
 ### dom操作の分散（優先度低）
 touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散している。これが直接悪いとは言い切れないが…
+
+### hudPanelへのctx注入を、諦めてgame注入に置き換える。
+このモジュールは特殊で、ゲームのすべての状態のなかからhud側がチェリーピックした情報を表示している。ここは下手に巨大なctxを注入するよりも、gameを注入して、hud側で必要な情報を抽出する方が良い。そのために必要であればプロパティをpublicにしてしまっても構わない。
 
 ### この時点で重複実装、類似実装を再度検査し、適切に共通化する。
 重複実装の検査にLLMは役に立たないということが分かった。人力で頑張る…

@@ -60,8 +60,8 @@ export class PlayerThrottle {
     if (prevFiring && !nowFiring) this.fineAttitude = false;
   }
 
-  updateThrustState(input: Input, canAct: boolean, att: Attitude, state: OrbitState): ExtraAccel | null {
-    const thrustFn = canAct ? this.buildThrustAccel(input, att.q) : null;
+  updateThrustState(input: Input, canThrust: boolean, att: Attitude, state: OrbitState): ExtraAccel | null {
+    const thrustFn = canThrust ? this.buildThrustAccel(input, att.q) : null;
     this.sfx.setThrust(thrustFn !== null);
     if (!thrustFn) {
       this.thrustAccelVec = v3();

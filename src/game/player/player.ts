@@ -15,7 +15,6 @@ import { altitudeOf } from '../combat/simulator';
 import { ThermalSystem } from './thermal';
 
 export interface PlayerActionState {
-  canAct: boolean;
   thrustFn: ExtraAccel | null;
 }
 
@@ -118,28 +117,27 @@ export class Player extends Ship {
     this.fire.updateBelt(dt, this.att, this.throttle.thrustAccelVec, this.alive);
   }
 
-  private canAct(simSpeed: number, mapMode: boolean): boolean {
-    return simSpeed <= C.MAX_PHYS_SIM_SPEED && this.alive && !mapMode;
-  }
-
   // 毎フレームの HP 自然回復・押下エッジキー処理と、ユーザー入力に対する移動/発射の
   // 試行を一括で行う。実際の移動加速度の組み立ては PlayerThrottle、発砲・排莢の発注は
-  // PlayerFire が持つ。
+  // PlayerFire が持つ。canPlayerThrust/canPlayerFire(ワープ倍率による可否)は
+  // SimSpeedManager が既に判定した結果を受け取る — ここで simSpeed 値そのものを見ない。
   behave(params: {
     dt: number;
     input: Input;
-    simSpeed: number;
+    canPlayerThrust: boolean;
+    canPlayerFire: boolean;
     mapMode: boolean;
     combat: CombatSystem;
     fireCtx: FireCtx;
   }): PlayerActionState {
-    const { dt, input, simSpeed, mapMode, combat, fireCtx } = params;
+    const { dt, input, canPlayerThrust, canPlayerFire, mapMode, combat, fireCtx } = params;
     this.updateHpRegen(dt);
-    const canAct = this.canAct(simSpeed, mapMode);
-    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, mapMode, canAct, this, combat, fireCtx);
+    const canThrust = canPlayerThrust && this.alive && !mapMode;
+    const canFire = canPlayerFire && this.alive && !mapMode;
+    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, mapMode, canFire, this, combat, fireCtx);
     if (justStartedFiring) this.throttle.fineAttitude = true;
-    const thrustFn = this.throttle.updateThrustState(input, canAct, this.att, this.state);
-    return { canAct, thrustFn };
+    const thrustFn = this.throttle.updateThrustState(input, canThrust, this.att, this.state);
+    return { thrustFn };
   }
 
     // 押下エッジキーの処理し、担当外のキーを記録
