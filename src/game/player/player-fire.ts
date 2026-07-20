@@ -111,7 +111,7 @@ export class PlayerFire {
     // keyHeld は !mapMode を含意するため、alive にもかかわらず canAct が偽なのは
     // ワープ倍率超過が原因と判定できる。
     if (keyHeld && alive && !canAct) {
-      this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_WARP} 以下でのみ可能`);
+      this.hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能`);
     }
     const hasAmmo = this.hasAmmo();
     if (keyHeld && alive && !hasAmmo && !this.wasEmptyClick) {

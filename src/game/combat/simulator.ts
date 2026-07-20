@@ -100,14 +100,14 @@ export class Simulator {
   integrateSimulation(
     simTime: number,
     dt: number,
-    warp: number,
+    simSpeed: number,
     ctx: SimulatorCtx,
     hardCollision: boolean,
     doSubstep: boolean,
     playerAccel: ExtraAccel | null = null,
   ): SimulationAdvance {
-    const simDt = dt * (doSubstep ? warp : Math.min(warp, 4));
-    const nSub = doSubstep && warp > C.MAX_PHYS_WARP ? Math.min(64, Math.ceil(simDt / 20)) : 1;
+    const simDt = dt * (doSubstep ? simSpeed : Math.min(simSpeed, 4));
+    const nSub = doSubstep && simSpeed > C.MAX_PHYS_SIM_SPEED ? Math.min(64, Math.ceil(simDt / 20)) : 1;
     const subDt = simDt / nSub;
     let nextSimTime = simTime;
     for (let i = 0; i < nSub; i++) {

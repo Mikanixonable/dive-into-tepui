@@ -18,7 +18,7 @@ export interface HudPanelCtx {
   target: Enemy | null;
   touchControls: TouchControls | null;
   simTime: number;
-  warp: number;
+  simSpeed: number;
   paused: boolean;
   rcsDamp: boolean;
   throttleIdx: number;
@@ -39,7 +39,7 @@ export interface HudPanelCtx {
 
 interface StatsData {
   met: number;
-  warpLabel: string;
+  simSpeedLabel: string;
   paused: boolean;
   rcsDamp: boolean;
   throttleIdx: number;
@@ -100,7 +100,7 @@ export class HudPanels {
       ctx.touchControls?.setActive('KeyC', ctx.progradeHold);
       this.setStats({
         met: ctx.simTime,
-        warpLabel: `×${ctx.warp}`,
+        simSpeedLabel: `×${ctx.simSpeed}`,
         paused: ctx.paused,
         rcsDamp: ctx.rcsDamp,
         throttleIdx: ctx.throttleIdx,
@@ -183,10 +183,10 @@ export class HudPanels {
 
   private setStats(d: StatsData): void {
     this.setText('met', `T+ ${fmtTime(d.met)}`);
-    const warpEl = this.els.get('warp');
-    if (warpEl) {
-      warpEl.textContent = d.paused ? 'PAUSE' : d.warpLabel;
-      warpEl.classList.toggle('warp-hot', d.warpLabel !== '×1' || d.paused);
+    const simSpeedEl = this.els.get('sim-speed');
+    if (simSpeedEl) {
+      simSpeedEl.textContent = d.paused ? 'PAUSE' : d.simSpeedLabel;
+      simSpeedEl.classList.toggle('sim-speed-hot', d.simSpeedLabel !== '×1' || d.paused);
     }
 
     this.setText('rcs', d.rcsDamp ? 'ON' : 'OFF');
