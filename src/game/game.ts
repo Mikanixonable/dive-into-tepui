@@ -5,15 +5,7 @@
 // 描画は自機中心のフローティングオリジン(自機が常に (0,0,0))。
 import * as THREE from 'three/webgpu';
 import {
-  OrbitState,
-} from '../physics/orbital';
-import {
-  randomQuat,
-} from '../physics/attitude';
-import {
   Vec3,
-  randSym,
-  v3,
 } from '../physics/vec3';
 import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
@@ -28,6 +20,7 @@ import { CollisionPhysics } from './combat/collision';
 import { EffectsCtx, EffectsSystem, FlashEffect } from './effects-system';
 import { OrbitLineSystem } from './orbit-line-system';
 import { getStageDefinition, resolveStageInitData } from './stage-data';
+import { UnlockManager } from './unlock-manager';
 import { Targeter } from './combat/targeter';
 import { HudProjection } from './camera/projection';
 import { AmmoResupplySystem } from './combat/ammo-resupply';
@@ -45,7 +38,6 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { makeGlowTexture } from '../render/stars';
-import { buildEnemyShip } from '../render/ships';
 import { OrbitLine } from '../render/orbitline';
 import { EnvironmentScene } from '../render/environment-scene';
 
@@ -139,7 +131,8 @@ export class Game {
   // 発射・排莢・バレル交換の演出も PlayerFire が持つ(fireCtx 経由)。
   // 撃破の集計・勝敗判定(destroyShip)は combat/combat.ts の CombatSystem が持つ。
   // 発射カウンタ(shots/hits)・撃破カウンタ(kills)も CombatSystem が保持する。
-  readonly combat = new CombatSystem(this.hud, this.sfx);
+  private readonly unlockManager = new UnlockManager();
+  readonly combat = new CombatSystem(this.hud, this.sfx, this.unlockManager);
   // 弾の高度な衝突判定(トンネリング防止・被弾ダメージ)は combat/hit.ts の HitSystem に
   // 切り出し済み。撃破が発生したら CombatSystem.destroyShip を呼ぶ。
   private readonly hitSystem = new HitSystem(this.combat);
@@ -161,12 +154,7 @@ export class Game {
     this.scene = gs.scene;
     this.renderer = gs.renderer;
 
-    this.stageDirector = new StageDirector(
-      this.hud,
-      this.sfx,
-      stage,
-      (minDist?: number, maxDist?: number) => this.ammoResupply.spawnForPlayer(this.player, minDist, maxDist),
-    );
+    this.stageDirector = new StageDirector(stage);
 
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this.sfx.unlock();
@@ -198,9 +186,6 @@ export class Game {
     // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
     this.player = new Player(this.hud, this.sfx, this.scene, this.glowTex);
 
-    // --- 敵機配置 ---
-    this.spawnInitialEnemies(this.player.state);
-
     this.initStage();
   }
 
@@ -230,26 +215,6 @@ export class Game {
     this.scene.add(this.mapModeSystem.trajLineGroup);
   }
 
-  private spawnInitialEnemies(playerState: OrbitState): void {
-    for (const spec of this.stageDirector.makeEnemySpecs(playerState)) {
-      const enemy = new Enemy(
-        spec.name,
-        spec.state,
-        buildEnemyShip(spec.accent),
-        {
-          q: randomQuat(),
-          w: v3(randSym(0.12), randSym(0.12), randSym(0.12)),
-          inertia: v3(1, 1.1, 1.05),
-        },
-        spec.hp,
-        spec.accent,
-        undefined,
-        this.scene,
-      );
-      this.addEnemy(enemy, 0x565b63);
-    }
-  }
-
   // 敵の追加は Simulator への登録(配列)と軌道線の生成・scene 登録を常に対で行う。
   // 軌道線は enemy 自身に持たせる(orbit-line-system.ts が enemy.orbitLine を直接参照)。
   private addEnemy(enemy: Enemy, orbitLineColor: number): void {
@@ -258,16 +223,12 @@ export class Game {
     this.simulator.addEnemy(enemy);
   }
 
-  // ステージ別の初期弾薬・初期補給の配置と作戦目標のブリーフィング表示
+  // ステージ別の初期敵配置・初期弾薬・初期補給の配置と作戦目標のブリーフィング表示
+  // (ステージごとの分岐は stage-data.ts の StageDefinition.init が直接行う)。
   private initStage(): void {
-    const data = resolveStageInitData(this.stageDirector.stage, this.simulator.totalEnemiesSpawned);
-    const stageDef = getStageDefinition(this.stageDirector.stage);
+    const enemyCount = getStageDefinition(this.stageDirector.stage).init(this.stageCtx());
+    const data = resolveStageInitData(this.stageDirector.stage, enemyCount);
     this.player.initAmmo(data.magsLeft, data.roundsInMag);
-    if (stageDef.initAction === 'spawn-stage00-ammo') {
-      this.stageDirector.spawnStage00InitialAmmo(this.stageCtx());
-    } else if (stageDef.initAction === 'spawn-stage0-ammo') {
-      this.stageDirector.spawnStage0InitialAmmo();
-    }
     this.hud.toast(data.briefingHtml, 12000);
   }
 
@@ -384,7 +345,7 @@ export class Game {
         });
     }
 
-    this.stageDirector.update(dt, this.stageCtx());
+    getStageDefinition(this.stageDirector.stage).update(dt, this.stageCtx());
   }
 
   private handlePausedFrame(): void {
@@ -453,6 +414,11 @@ export class Game {
       magsLeft: this.player.magsLeft,
       roundsInMag: this.player.roundsInMag,
       setPhase: (p) => { this.phase = p; },
+      simTime: this.simTime,
+      hud: this.hud,
+      sfx: this.sfx,
+      ammoResupply: this.ammoResupply,
+      stageState: this.stageDirector,
     };
   }
 
@@ -559,7 +525,6 @@ export class Game {
   private handlePostSimulation(dt: number, simDt: number): void {
     this.player.checkLoss({ dt, combat: this.combat, combatCtx: this.combatCtx() });
 
-    this.ammoResupply.updateLogistics(this.simTime, this.stageDirector.stage, this.player);
     if (this.simSpeedManager.canResolvePhysicalCollisions) {
       this.collisionPhysics.resolve(dt, this.collisionCtx(), () => {
         this.sfx.clank();

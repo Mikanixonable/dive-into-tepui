@@ -205,8 +205,6 @@ export const PREDICT_REFRESH_INTERVAL_MS = 2000;
 export const AUTOWARP_MARGIN = 4;
 export const AUTOWARP_STOP = 20;
 
-export const STAGE1_CLEARED_KEY = 'tepui.stage1.cleared'; // localStorage キー
-
 // --- 第零ステージ(近接戦闘訓練) ---
 export const STAGE0_GROUP_ACCENTS = [0xff4a3d, 0x3dc6ff, 0x3dff8f, 0xffe23d, 0xbf3dff]; // 赤/青/緑/黄/紫
 export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];

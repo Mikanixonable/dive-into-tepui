@@ -102,8 +102,8 @@ export class HudPanels {
               maxHp: C.PLAYER_MAX_HP,
               msg:
                 game.stageDirector.stage === -1
-                  ? `サバイバル 第${game.stageDirector.stage00WaveCount}波`
-                  : `残り時間: ${Math.ceil(game.stageDirector.stage0TimeLeft)}秒`,
+                  ? `サバイバル 第${game.stageDirector.waveManager.waveCount}波`
+                  : `残り時間: ${Math.ceil(game.stageDirector.scoreAttackTimer.timeLeft)}秒`,
             }
             : null,
       });

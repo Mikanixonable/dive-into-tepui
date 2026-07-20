@@ -50,9 +50,11 @@ export class AmmoResupplySystem {
     this.hud.hint('付近の軌道に補給マガジンが投入された — ▣ AMMO マーカーへ接近して回収', 5000);
   }
 
-  updateLogistics(simTime: number, stage: number, player: Player): void {
+  // respawnOnDespawn: 遠方デスポーンした補給を同数投入し直すか。呼び出し元(stage-data.ts の
+  // 各ステージの update)がこの真偽値を直接渡す。
+  updateLogistics(simTime: number, player: Player, respawnOnDespawn = false): void {
     if (player.alive) this.absorbNearbyPickups(player);
-    this.despawnFarPickups(stage, player);
+    this.despawnFarPickups(player, respawnOnDespawn);
 
     if (simTime < this.resupplyCheckAt) return;
     this.resupplyCheckAt = simTime + C.RESUPPLY_CHECK_INTERVAL;
@@ -72,14 +74,15 @@ export class AmmoResupplySystem {
     }
   }
 
-  // 自機から離れすぎた補給はデスポーンし、ステージ00では同数を投入し直す
-  private despawnFarPickups(stage: number, player: Player): void {
+  // 自機から離れすぎた補給はデスポーンし、respawnOnDespawn なら同数を投入し直す
+  // (ループ中に respawn 分を割り込ませない — ループ終了後にまとめて処理する)。
+  private despawnFarPickups(player: Player, respawnOnDespawn: boolean): void {
     let respawn = 0;
     for (const mp of this.pickups) {
       if (!mp.alive) continue;
       if (len(sub(mp.state.r, player.state.r)) <= C.AMMO_DESPAWN_DIST) continue;
       mp.alive = false;
-      if (stage === -1) respawn++;
+      if (respawnOnDespawn) respawn++;
     }
     for (let i = 0; i < respawn; i++) {
       this.spawnForPlayer(player, C.STAGE00_AMMO_MIN_DIST, C.STAGE00_AMMO_MAX_DIST);

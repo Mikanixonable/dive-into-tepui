@@ -1,23 +1,18 @@
 import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
-import { STAGE1_CLEARED_KEY } from './game/const';
 import { DEFAULT_STAGE_INDEX, resolveForcedStageFromQuery, STAGE_DEFINITIONS } from './game/stage-data';
+import { UnlockManager } from './game/unlock-manager';
 import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './game/theme';
 
 // 低軌道シューティング: エントリポイント。
 // 物理はメインスレッドで毎フレーム積分する(単体エンティティの中心重力
 // RK4 は十分軽い)。src/physics/nbody/physics.worker.ts の N体ワーカーは
 // 将来のシスルナ(太陽-地球-月)フェーズ用に残してあり、現在は未使用。
-// ステージ選択画面。第二ステージは第一ステージクリア(localStorage)で解放。
+// ステージ選択画面。解放判定・クリア記録は unlock-manager.ts の UnlockManager に委ねる。
 function selectStage(): Promise<number> {
   return new Promise((resolve) => {
-    let unlocked = false;
-    try {
-      unlocked = localStorage.getItem(STAGE1_CLEARED_KEY) === '1';
-    } catch {
-      /* localStorage 不可の環境ではステージ1のみ */
-    }
+    const unlockManager = new UnlockManager();
     const SURFACE = SURFACE_OPAQUE;
     const div = document.createElement('div');
     div.style.cssText =
@@ -35,8 +30,7 @@ function selectStage(): Promise<number> {
     div.innerHTML =
       `<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
       '<div style="font-size:12px;color:#7d838c;margin-bottom:12px">ステージを選択 (キーまたはクリック)</div>';
-    const isEnabled = (requiresStage1Clear?: boolean): boolean => !requiresStage1Clear || unlocked;
-    const enabledByStage = new Map(STAGE_DEFINITIONS.map((stage) => [stage.index, isEnabled(stage.requiresStage1Clear)]));
+    const enabledByStage = new Map(STAGE_DEFINITIONS.map((stage) => [stage.index, unlockManager.isUnlocked(stage.index)]));
     for (const stage of STAGE_DEFINITIONS) {
       const enabled = enabledByStage.get(stage.index) ?? false;
       const sub = enabled ? stage.selectSub : stage.selectLockedSub ?? stage.selectSub;
