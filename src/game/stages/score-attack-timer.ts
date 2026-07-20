@@ -1,4 +1,5 @@
-// stage0(訓練ステージ)のスコアアタック残り時間を管理する。
+// stage0(訓練ステージ)のスコアアタック残り時間を管理する。Stage0 専用のヘルパーであり、
+// Stage0 インスタンスが自身のフィールドとして直接保持する。
 export class ScoreAttackTimer {
   timeLeft: number;
   constructor(initialTime: number) {

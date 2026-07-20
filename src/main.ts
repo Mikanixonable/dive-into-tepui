@@ -1,7 +1,7 @@
 import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
-import { DEFAULT_STAGE_INDEX, resolveForcedStageFromQuery, STAGE_DEFINITIONS } from './game/stage-data';
+import { DEFAULT_STAGE_INDEX, resolveForcedStageFromQuery, STAGE_DEFINITIONS } from './game/stages/stage-data';
 import { UnlockManager } from './game/unlock-manager';
 import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './game/theme';
 

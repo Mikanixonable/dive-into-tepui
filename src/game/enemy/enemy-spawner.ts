@@ -1,5 +1,5 @@
 // 敵集団の配置・分散を計算し、直接 Enemy を生成する。StageCtx は受け取らない
-// (ゲームの現在状態への登録 = ctx.addEnemy は呼び出し側の stage-data.ts が行う)。
+// (ゲームの現在状態への登録 = ctx.addEnemy は呼び出し側の各 Stage(stages/)が行う)。
 import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital';
 import { Vec3, add, clone, cross, len, norm, randPerp, randSym, scale, sub, v3 } from '../../physics/vec3';
