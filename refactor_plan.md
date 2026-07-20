@@ -21,11 +21,6 @@ belt.ts
 - 各モジュールの疎結合化と責務の整理
 - ctx注入パターンの根絶。
 
-### cameraの管理　現状をよく調査する
-Gameがcameraを保持してcameraSystemにctxとして渡しているけども、cameraSystemかchaseCameraが普通に持っておくべきじゃないか？
-実態調査
-　Game.cameraとGame.ActiveCameraは違って、Game.cameraはCombatCameraと呼ばれていて、mapModeの時にはactiveCameraはmapModeに応じてGame.cameraとmapMode.mapView.cameraで切り替わる。chase:ChaseCameraは、名前に反して、THREE.PerspectiveCameraは保持していない。Game.cameraを外部から受け取って更新している。
-
 ### playerにおけるたらいまわし配線を改善（優先度高）
 collisionSectionsとapplyCollisionSectionsをたらい回しにするだけのハンドラが存在する。そもそも関数名が何をしているのか分かりにくい。applyCollisionSectionsは、beltのVerlet物理演算を行う関数であるが、名前からは想像できない。だいたい公開する必要性があるのか？
 player.beltCollisionSections
@@ -54,11 +49,14 @@ spawnDebris, spawnFlashなどの比較的些細なエフェクトスポーン処
 
 この分割の結果、combatCtxがモジュールに対して過剰な規模になっていることが明らかである。「便利なまとまり」とするのではなく、各モジュールが必要な情報だけを受け取るように改善する。
 
-
-
 ### gameとstageDirectorの責務の分割
 初期化、敵のスポーンロジックをstageDirectorに委譲できる。
 stageDirectorはstageごとの処理の分岐を引き受けているはずだが、コードのパターンが一定していなくて保守性が悪い。
+
+### cameraの管理　現状をよく調査する
+Gameがcameraを保持してcameraSystemにctxとして渡しているけども、cameraSystemかchaseCameraが普通に持っておくべきじゃないか？
+実態調査
+　Game.cameraとGame.ActiveCameraは違って、Game.cameraはCombatCameraと呼ばれていて、mapModeの時にはactiveCameraはmapModeに応じてGame.cameraとmapMode.mapView.cameraで切り替わる。chase:ChaseCameraは、名前に反して、THREE.PerspectiveCameraは保持していない。Game.cameraを外部から受け取って更新している。
 
 ### render、update、sync系の関数の命名の不統一
 three.jsのrender関数は、すでに出来上がったsceneとcameraを受け取って描画するものである。その意味合いからすると、sceneの構築、更新を行う関数をrenderと呼ぶのは不適切である。論理データの更新を行う関数はupdate、メッシュなどをsceneに登録する関数をbuild、すでに登録されたメッシュなどの座標を論理データに整合させる関数をsyncと呼ぶことで統一する。renderは実際にthree.jsのrenderを呼んでいる関数に限定する。
