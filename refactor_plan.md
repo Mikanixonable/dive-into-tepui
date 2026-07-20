@@ -26,9 +26,6 @@ Gameがcameraを保持してcameraSystemにctxとして渡しているけども�
 targetをGameが保持しているが、Targteterが持っているlockedTargetと一致しているのであれば、それのgetterなどで情報を供給すべきだ。
 同様のパターンがほかにもありそう。ctx注入しているが、そもそもそこでしか使っていないものは、ctx注入を経由せず、そのモジュールがフィールドを持つべきだ。ctx注入パターンへの依存を最小化すべき。
 
-### simulatorとplayerの責務の分離
-simulatorにはplayerを委譲していないのだから、cleanupはplayerを渡して行うべきではない。
-
 ### gameのrenderとupdateの責務の分割
 renderFrameという関数がありながら、そこではpipの描画のみを行っていて、renderはupdateに含まれているのは実態と名前が一致していない。
 
@@ -50,9 +47,12 @@ applyBeltCollisions
 ### thermalって本当にgameが持つべき？
 Playerの温度を管理しているのなら、Playerが持つべきではないか？実態把握から
 
+### syncRenderEarthだのsyncRenderStarBodyだのは、syncRenderEnvironmentにまとめる。
+これはEnvironmentにひとまとめに実装し、Gamからたらい回しは最短に留めるべき
+
 ### beltとplayer.fireの責務境界
 collisionSectionsとapplyCollisionSectionsをたらい回しにするだけのハンドラが存在する。beltを公開して直接操作すべきだ。
-そもそも関数名が何をしているのか分かりにくい。pplyCollisionSectionsは、beltのVerlet物理演算を行う関数であるが、名前からは想像できない。だいたい公開する必要性があるのか？
+そもそも関数名が何をしているのか分かりにくい。applyCollisionSectionsは、beltのVerlet物理演算を行う関数であるが、名前からは想像できない。だいたい公開する必要性があるのか？
 
 combat/belt.tsをplayer/belt-physics.tsに移動、改名する。
 player.fireが直接beltGroupを持っているが、これは責務が良くない。belt.tsを新設し、責務を分割するべきか？
@@ -68,6 +68,7 @@ player.fireが直接beltGroupを持っているが、これは責務が良くな
 現在コードのいたるところで利用されているcontext注入パターンは、時間をかけて滅ぼすべきものである。必要な情報すべてを丸投げするというのは、必要な情報が少なくなるように責務を分割しなければならないことを隠蔽してしまう。徹底して排除するべき。
 
 ctx注入パターンはそもそも密結合を生む原因に見える。ctxをそのまま他のモジュールに受け渡したりして転用しているのは論外。
+Paramsと書かれているものも同様
 
 以下はあらかたのリファクタリングが済んでから行う。
 

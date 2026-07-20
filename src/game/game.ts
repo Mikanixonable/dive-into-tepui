@@ -566,19 +566,25 @@ export class Game {
     const o = this.player.state.r;
     const pv = this.player.state.v;
     const displayTime = this.mapModeSystem.resolveDisplayTime();
-    this.syncRenderEarth(dt, o, displayTime);
     const cam = this.syncRenderCamera(dt, o, pv);
-    this.syncRenderSkyBodies(displayTime, o, cam);
-    this.syncRenderLighting(o);
+    this.environment.syncRenderEnvironment({
+      dt,
+      origin: o,
+      displayTime,
+      camera: cam,
+      sunPhase0: this.ephemeris.sunPhase0,
+      moonPhase0: this.ephemeris.moonPhase0,
+      mapMode: this.mapMode,
+      mapCameraFar: this.mapModeSystem.mapCameraFar,
+      lit: this.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
+      placeCombatMoon: (moonMesh, c, moonRel, moonRadius, moonVisDist) =>
+        this.cameraSystem.placeCombatMoon(moonMesh, c, moonRel, moonRadius, moonVisDist),
+    });
     this.syncRenderThrust();
     this.syncRenderRcs();
     this.syncRenderDynamicObjects(dt, o, pv);
     this.syncRenderEffects(dt, o);
     this.syncRenderHud(dt, o, pv);
-  }
-
-  private syncRenderEarth(dt: number, o: Vec3, displayTime: number): void {
-    this.environment.updateEarth(dt, o, displayTime);
   }
 
   private syncRenderCamera(dt: number, o: Vec3, pv: Vec3): THREE.PerspectiveCamera {
@@ -598,25 +604,6 @@ export class Game {
       origin: o,
       playerVelocity: pv,
     });
-  }
-
-  private syncRenderSkyBodies(displayTime: number, o: Vec3, cam: THREE.PerspectiveCamera): void {
-    this.environment.updateSkyBodies(
-      displayTime,
-      o,
-      cam,
-      this.ephemeris.sunPhase0,
-      this.ephemeris.moonPhase0,
-      this.mapMode,
-      this.mapModeSystem.mapCameraFar,
-      (moonMesh, c, moonRel, moonRadius, moonVisDist) =>
-        this.cameraSystem.placeCombatMoon(moonMesh, c, moonRel, moonRadius, moonVisDist),
-    );
-  }
-
-  private syncRenderLighting(o: Vec3): void {
-    const lit = this.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o);
-    this.environment.updateLighting(lit);
   }
 
   private syncRenderThrust(): void {
