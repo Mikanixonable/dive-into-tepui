@@ -6,6 +6,7 @@ import { norm, v3, Vec3 } from '../../physics/vec3';
 import { MouseDelta } from '../input';
 import * as C from '../const';
 import { Hud } from '../../hud/hud';
+import { Sfx } from '../../audio/sfx';
 import { qRotate } from '../../physics/attitude';
 import { CameraUpdateCtx } from './camera-system';
 
@@ -32,9 +33,12 @@ export class ChaseCamera {
   private readonly sideV = new THREE.Vector3();
   private readonly offset = new THREE.Vector3();
 
-  toggleFollowAttitude(hud: Hud): void {
+  // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
+  constructor(private readonly _hud: Hud, _sfx: Sfx) {}
+
+  toggleFollowAttitude(): void {
     this.camFollowAttitude = !this.camFollowAttitude;
-    hud.hint(
+    this._hud.hint(
       `視点のRCS追従: ${this.camFollowAttitude ? 'ON (視点が機体姿勢に追従)' : 'OFF (軌道基準の独立視点)'
       }`,
     );

@@ -21,34 +21,34 @@ export class PlayerThrottle {
   private rotationHoldTime = 0;
 
   constructor(
-    private readonly hud: Hud,
-    private readonly sfx: Sfx,
+    private readonly _hud: Hud,
+    private readonly _sfx: Sfx,
   ) {}
 
   toggleRcsDamp(): void {
     this.rcsDamp = !this.rcsDamp;
-    this.hud.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
+    this._hud.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
   }
 
   enableProgradeReset(): void {
     this.progradeHold = true;
-    this.hud.hint('プログレード姿勢リセット(機首を進行方向へ)');
+    this._hud.hint('プログレード姿勢リセット(機首を進行方向へ)');
   }
 
   toggleFineAttitude(): void {
     this.fineAttitude = !this.fineAttitude;
-    this.hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
+    this._hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
   }
 
   toggleProgradeHold(): void {
     this.progradeHold = !this.progradeHold;
-    this.hud.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
+    this._hud.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
   }
 
   setThrottlePreset(idx: number): void {
     this.throttleIdx = idx;
     const labels = ['弱', '中', '強'] as const;
-    this.hud.hint(`並進出力: ${labels[idx]!} (${C.THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
+    this._hud.hint(`並進出力: ${labels[idx]!} (${C.THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
   }
 
   clearTransientState(): void {
@@ -62,7 +62,7 @@ export class PlayerThrottle {
 
   updateThrustState(input: Input, canThrust: boolean, att: Attitude, state: OrbitState): ExtraAccel | null {
     const thrustFn = canThrust ? this.buildThrustAccel(input, att.q) : null;
-    this.sfx.setThrust(thrustFn !== null);
+    this._sfx.setThrust(thrustFn !== null);
     if (!thrustFn) {
       this.thrustAccelVec = v3();
       this.thrustVizDir = null;

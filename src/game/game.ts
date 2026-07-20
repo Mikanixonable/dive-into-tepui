@@ -41,19 +41,19 @@ import { EnvironmentScene } from '../render/environment-scene';
 type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
 export class Game {
-  private readonly scene: THREE.Scene;
+  private readonly _scene: THREE.Scene;
   private readonly renderer: GameScene['renderer'];
 
   private readonly input: Input;
   // HudPanels が状態を直接参照するため public(下記 hud.panels.update 呼び出し参照)。
   touchControls: TouchControls | null = null;
-  private readonly hud = new Hud();
-  private readonly sfx = new Sfx();
+  private readonly _hud = new Hud();
+  private readonly _sfx = new Sfx();
   // 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する
   // (mapModeSystem のコンストラクタで MapCamera への参照を注入するため、
   // mapModeSystem より前に構築する必要がある)。panel.ts が chase.camFollowAttitude を
   // 読むため public(旧 readonly chase フィールドと同じ可視性)。
-  readonly cameraSystem = new CameraSystem(this.hud);
+  readonly cameraSystem = new CameraSystem(this._hud, this._sfx);
 
 
   readonly player: Player;
@@ -86,7 +86,7 @@ export class Game {
   //readonly stage: number;
 
   // シミュレーション速度(旧「ワープ」)の段階管理と、[N] キーによるノードへの自動ワープ
-  readonly simSpeedManager = new SimSpeedManager(this.hud, this.sfx);
+  readonly simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
   // 軌道計画(ノード列+予測キャッシュ)。マップモードの有無と無関係なデータで、
   // Game が所有し、表示・編集は mapModeSystem へ、実施(噴射ガイド)は planGuide へ
@@ -94,12 +94,12 @@ export class Game {
   private readonly plan = new Plan();
   // 直近ノードの噴射ガイド(戦闘ビューのみ、マップモード中は呼ばない — [M] で開いている
   // 間は WASDQE がΔv編集に使われるため)。
-  private readonly planGuide = new PlanGuide(this.hud, this.sfx);
+  private readonly planGuide = new PlanGuide(this._hud, this._sfx);
 
   // 軌道計画モード(map-mode/ フォルダの唯一の外部窓口)
   private readonly mapModeSystem = new MapModeSystem(
-    this.hud,
-    this.sfx,
+    this._hud,
+    this._sfx,
     this.simSpeedManager,
     this.plan,
     (rel: Vec3) => this.hudProjection.project(rel),
@@ -135,31 +135,35 @@ export class Game {
   // MarkersSystem に切り出し済み。boardMarks(標的面通過点)もここが保持する
   // (combat/hit.ts の checkBoardCrossings が直接この配列へ push する)。
   // ステータスパネルは hud.panels が担う。
-  private readonly markersSystem = new MarkersSystem(this.hud.markers);
+  private readonly markersSystem = new MarkersSystem(this._hud.markers);
   private readonly collisionPhysics = new CollisionPhysics();
-  private readonly effectsSystem = new EffectsSystem();
+  // scene(_scene)はコンストラクタ引数 gs 由来で field initializer の時点では未確定のため、
+  // このふたつはコンストラクタ本体で構築する(environment/player と同じ理由)。
+  private readonly effectsSystem: EffectsSystem;
   private readonly orbitLineSystem = new OrbitLineSystem();
-  readonly targeter = new Targeter(this.hud);
+  readonly targeter = new Targeter(this._hud, this._sfx);
   private readonly hudProjection = new HudProjection(() => this.cameraSystem.activeCamera);
   readonly simulator: Simulator;
-  private readonly pipRenderer = new PipRenderer();
+  private readonly pipRenderer: PipRenderer;
 
   constructor(gs: GameScene, stage = 1) {
-    this.scene = gs.scene;
+    this._scene = gs.scene;
     this.renderer = gs.renderer;
+    this.effectsSystem = new EffectsSystem(this._scene);
+    this.pipRenderer = new PipRenderer(this._scene);
 
     this.activeStage = getStageDefinition(stage);
 
     this.input = new Input(gs.renderer.domElement);
-    this.input.onFirstGesture = () => this.sfx.unlock();
+    this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
     this.simulator = new Simulator(this.ephemeris, this.hitSystem);
-    this.activeStage.setup(this.hud, this.sfx, this.scene, this.simulator);
+    this.activeStage.setup(this._hud, this._sfx, this._scene, this.simulator);
 
     // --- 環境 ---
     this.ephemeris.update(this.simTime);
-    this.environment = new EnvironmentScene(this.scene, this.ephemeris.sunDir, {
+    this.environment = new EnvironmentScene(this._scene, this.ephemeris.sunDir, {
       sunIntensity: C.SUN_INTENSITY,
       ambientIntensity: C.AMBIENT_INTENSITY,
       shadowMinSun: C.SHADOW_MIN_SUN,
@@ -169,42 +173,42 @@ export class Game {
     this.addOrbitLines();
 
     // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
-    this.player = new Player(this.hud, this.sfx, this.scene);
+    this.player = new Player(this._hud, this._sfx, this._scene);
 
     this.initStage();
   }
 
   private wireHudCallbacks(): void {
-    this.hud.setBgmState(this.sfx.isBgmEnabled());
-    this.hud.onBgmToggle = (on) => this.sfx.setBgmEnabled(on);
+    this._hud.setBgmState(this._sfx.isBgmEnabled());
+    this._hud.onBgmToggle = (on) => this._sfx.setBgmEnabled(on);
     // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
-    this.hud.onSettingsOpenChange = (open) => {
+    this._hud.onSettingsOpenChange = (open) => {
       this.paused = open;
     };
     // 「ゲームを中断してタイトル画面に戻る」— ?stage= クエリを落として選択画面へ
-    this.hud.onQuitToTitle = () => {
+    this._hud.onQuitToTitle = () => {
       location.assign(location.pathname);
     };
   }
 
   private addOrbitLines(): void {
-    this.scene.add(this.playerOrbitLine.line);
+    this._scene.add(this.playerOrbitLine.line);
     this.targetOrbitLine.line.renderOrder = 2;
-    this.scene.add(this.targetOrbitLine.line);
+    this._scene.add(this.targetOrbitLine.line);
     this.plannedOrbitLine.line.renderOrder = 3;
-    this.scene.add(this.plannedOrbitLine.line);
+    this._scene.add(this.plannedOrbitLine.line);
     this.geoOrbitLine.line.renderOrder = 0;
-    this.scene.add(this.geoOrbitLine.line);
+    this._scene.add(this.geoOrbitLine.line);
     this.moonOrbitLine.line.renderOrder = 0;
-    this.scene.add(this.moonOrbitLine.line);
-    this.scene.add(this.mapModeSystem.trajLineGroup);
+    this._scene.add(this.moonOrbitLine.line);
+    this._scene.add(this.mapModeSystem.trajLineGroup);
   }
 
   // 敵の追加は Simulator への登録(配列)と軌道線の生成・scene 登録を常に対で行う。
   // 軌道線は enemy 自身に持たせる(orbit-line-system.ts が enemy.orbitLine を直接参照)。
   private addEnemy(enemy: Enemy, orbitLineColor: number): void {
     enemy.orbitLine = new OrbitLine(orbitLineColor, 0.35);
-    this.scene.add(enemy.orbitLine.line);
+    this._scene.add(enemy.orbitLine.line);
     this.simulator.addEnemy(enemy);
   }
 
@@ -214,7 +218,7 @@ export class Game {
     const enemyCount = this.activeStage.init(this.stageCtx());
     const data = resolveStageInitData(this.activeStage, enemyCount);
     this.player.initAmmo(data.magsLeft, data.roundsInMag);
-    this.hud.toast(data.briefingHtml, 12000);
+    this._hud.toast(data.briefingHtml, 12000);
   }
 
   // Plan(軌道計画)の refresh() や PlanGuide が要求する「現在状態」のスナップショット。
@@ -325,7 +329,7 @@ export class Game {
 
   private handlePausedFrame(): void {
     this.lastSimDt = 0;
-    this.sfx.setThrust(false);
+    this._sfx.setThrust(false);
     this.player.pause();
     this.input.takeClicks();
     this.input.takeRightClicks();
@@ -343,7 +347,7 @@ export class Game {
     this.plan.clear();
     this.planGuide.clearActiveTarget();
     this.simSpeedManager.cancelAutoWarp();
-    this.hud.hint('マニューバ計画を破棄');
+    this._hud.hint('マニューバ計画を破棄');
   }
 
   private handleEdgeInput(): void {
@@ -356,7 +360,7 @@ export class Game {
 
   private handleEdgePress(code: string): void {
     switch (code) {
-      case 'KeyG': this.cameraSystem.chaseCamera.toggleFollowAttitude(this.hud); break;
+      case 'KeyG': this.cameraSystem.chaseCamera.toggleFollowAttitude(); break;
       case 'Comma': this.simSpeedManager.shift(-1); break;
       case 'Period': this.simSpeedManager.shift(1); break;
       case 'KeyM':
@@ -367,8 +371,8 @@ export class Game {
         break;
       case 'KeyN': this.mapModeSystem.toggleAutoWarpToFirstNode(this.phase, this.cameraSystem.mapMode); break;
       case 'KeyX': this.clearPlanByKey(); break;
-      case 'KeyH': this.hud.toggleHelp(); break;
-      case 'Escape': this.hud.toggleSettings(); break;
+      case 'KeyH': this._hud.toggleHelp(); break;
+      case 'Escape': this._hud.toggleSettings(); break;
       case 'KeyR': if (this.phase !== 'playing') location.reload(); break;
     }
   }
@@ -382,13 +386,10 @@ export class Game {
       enemies: this.simulator.enemies,
       totalEnemies: this.simulator.totalEnemiesSpawned,
       addEnemy: (enemy, orbitLineColor) => this.addEnemy(enemy, orbitLineColor),
-      scene: this.scene,
       magsLeft: this.player.magsLeft,
       roundsInMag: this.player.roundsInMag,
       setPhase: (p) => { this.phase = p; },
       simTime: this.simTime,
-      hud: this.hud,
-      sfx: this.sfx,
     };
   }
 
@@ -400,8 +401,6 @@ export class Game {
       totalEnemies: this.simulator.totalEnemiesSpawned,
       activeStage: this.activeStage,
       setPhase: (p) => { this.phase = p; },
-      hud: this.hud,
-      sfx: this.sfx,
       fx: this.effectsCtx(),
       unlockManager: this.unlockManager,
     };
@@ -412,7 +411,6 @@ export class Game {
   // 必要とする最小の受け皿。CombatCtx/FireCtx から共通して参照される。
   private effectsCtx(): EffectsCtx {
     return {
-      scene: this.scene,
       effects: this.effectsSystem.effects,
       addDebris: (piece) => this.simulator.addDebris(piece),
     };
@@ -422,7 +420,6 @@ export class Game {
   private fireCtx(): FireCtx {
     return {
       simTime: this.simTime,
-      scene: this.scene,
       zoomActive: this.cameraSystem.zoomActive,
       fx: this.effectsCtx(),
       addBullet: (bullet) => this.simulator.addBullet(bullet),
@@ -449,7 +446,6 @@ export class Game {
       simTime,
       player: this.player,
       enemies: this.simulator.enemies,
-      scene: this.scene,
       addPlasmaBullet: (bullet) => this.simulator.addPlasmaBullet(bullet),
     };
   }
@@ -493,7 +489,7 @@ export class Game {
 
     if (this.simSpeedManager.canResolvePhysicalCollisions) {
       this.collisionPhysics.resolve(dt, this.collisionCtx(), () => {
-        this.sfx.clank();
+        this._sfx.clank();
       });
     }
     this.updateAttitudes(Math.min(simDt, 0.12));
@@ -511,7 +507,7 @@ export class Game {
 
   private updateAttitudes(attDt: number): void {
     this.player.updateAttitude(this.input, this.cameraSystem.mapMode, attDt, () => {
-      this.hud.hint('進行方向ホールド解除(手動操作)');
+      this._hud.hint('進行方向ホールド解除(手動操作)');
     });
     this.simulator.stepCoastingAttitudes(attDt);
   }
@@ -564,7 +560,7 @@ export class Game {
   }
 
   private syncRenderRcs(): void {
-    this.sfx.setRcs(
+    this._sfx.setRcs(
       this.player.updateRcsEffects(
         this.input,
         this.cameraSystem,
@@ -586,7 +582,7 @@ export class Game {
   }
 
   private syncRenderEffects(dt: number, o: Vec3): void {
-    this.effectsSystem.updateFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera, this.scene);
+    this.effectsSystem.updateFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera);
   }
 
   private syncRenderHud(dt: number, o: Vec3, pv: Vec3): void {
@@ -613,14 +609,14 @@ export class Game {
     this.markersSystem.updateNodeMarkers(markerCtx, playerEl, tgtEl, project);
     this.markersSystem.updateBoardMarkers(markerCtx, dt, project);
     if (this.cameraSystem.mapMode) {
-      this.hud.markers.hide('burn');
+      this._hud.markers.hide('burn');
     } else {
       const { achieved } = this.planGuide.update(this.plan, this.planCtx(), o, pv, playerEl, this.player.alive, project);
       if (achieved) this.simSpeedManager.cancelAutoWarp();
     }
 
-    this.hud.panels.update(this, dt, playerEl, tgtEl);
-    this.hud.tick();
+    this._hud.panels.update(this, dt, playerEl, tgtEl);
+    this._hud.tick();
   }
 
   // ズームウィンドウ(PIP)のオーバーレイ更新。実処理は markers.ts へ委譲。
@@ -631,7 +627,7 @@ export class Game {
   public render(dtRaw: number): void {
     const dt = Math.min(dtRaw, 0.1);
     this.syncRender(dt);
-    this.pipRenderer.renderFrame(this.renderer, this.scene, {
+    this.pipRenderer.renderFrame(this.renderer, {
       firing: this.player.isFiring,
       mapMode: this.cameraSystem.mapMode,
       camera: this.cameraSystem.activeCamera,

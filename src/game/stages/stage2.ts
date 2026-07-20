@@ -31,12 +31,14 @@ export class Stage2 extends StageDefinition {
 
   init(ctx: StageCtx): number {
     const base = ctx.player.state;
-    const scene = ctx.scene;
-    ctx.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 2, 0xff4a3d, scene), 0x565b63);
-    ctx.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 2, 0xff7a2d, scene), 0x565b63);
-    ctx.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', 0.4, 2.6, 3, 0xe0409f, scene), 0x565b63);
-    ctx.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', 2.5, 0.9, 3, 0xbf3dff, scene), 0x565b63);
-    ctx.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', 4.6, 3.8, 3, 0xff2d6b, scene), 0x565b63);
+    const hud = this._hud;
+    const sfx = this._sfx;
+    const scene = this._scene;
+    ctx.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 2, 0xff4a3d, hud, sfx, scene), 0x565b63);
+    ctx.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 2, 0xff7a2d, hud, sfx, scene), 0x565b63);
+    ctx.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', 0.4, 2.6, 3, 0xe0409f, hud, sfx, scene), 0x565b63);
+    ctx.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', 2.5, 0.9, 3, 0xbf3dff, hud, sfx, scene), 0x565b63);
+    ctx.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', 4.6, 3.8, 3, 0xff2d6b, hud, sfx, scene), 0x565b63);
     return 5;
   }
 
