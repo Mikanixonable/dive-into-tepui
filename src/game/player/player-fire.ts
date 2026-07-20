@@ -9,7 +9,7 @@ import * as C from '../const';
 import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { BeltPhysics } from '../combat/belt';
+import { BeltPhysics } from './belt-physics';
 import { BeltSection } from '../entities';
 import { buildMagazineMesh, MAG_BELT_PITCH } from '../../render/ships';
 import { CombatCtx, CombatSystem } from '../combat/combat';

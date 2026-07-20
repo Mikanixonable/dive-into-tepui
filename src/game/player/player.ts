@@ -11,7 +11,7 @@ import { buildFlashMesh, buildPlayerShip, RCS_BLOCK_OFFSETS } from '../../render
 import { CombatCtx, CombatSystem } from '../combat/combat';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire } from './player-fire';
-import { altitudeOf } from '../simulator';
+import { altitudeOf } from '../combat/simulator';
 import { ThermalSystem } from './thermal';
 
 export interface PlayerActionState {

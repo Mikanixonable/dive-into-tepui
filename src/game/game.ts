@@ -25,14 +25,13 @@ import { HudPanelCtx } from '../hud/panel';
 import { CollisionPhysics } from './combat/collision';
 import { EffectsSystem, FlashEffect } from './effects-system';
 import { OrbitLineSystem } from './orbit-line-system';
-import { RenderDynamicsSystem } from './render-dynamics';
 import { getStageDefinition, resolveStageInitData } from './stage-data';
 import { Targeter } from './combat/targeter';
 import { HudProjection } from './camera/projection';
 import { AmmoResupplySystem } from './combat/ammo-resupply';
 import { MapModeSystem } from './map-mode/map-mode-system';
 import { PipRect, PipRenderer } from './pip-renderer';
-import { altitudeOf, Simulator, SimulatorCtx } from './simulator';
+import { altitudeOf, Simulator, SimulatorCtx } from './combat/simulator';
 import * as C from './const';
 import { Enemy } from './entities';
 import { Input } from './input';
@@ -133,7 +132,6 @@ export class Game {
   private readonly collisionPhysics = new CollisionPhysics();
   private readonly effectsSystem = new EffectsSystem();
   private readonly orbitLineSystem = new OrbitLineSystem();
-  private readonly renderDynamicsSystem = new RenderDynamicsSystem();
   private readonly cameraSystem = new CameraSystem();
   private readonly targeter = new Targeter(this.hud);
   private readonly hudProjection = new HudProjection(() => this.activeCamera);
@@ -618,20 +616,14 @@ export class Game {
   }
 
   private syncRenderDynamicObjects(dt: number, o: Vec3, pv: Vec3): void {
-    this.renderDynamicsSystem.render({
-      dt,
-      origin: o,
-      playerVelocity: pv,
-      player: this.player,
-      enemies: this.simulator.enemies,
-      bullets: this.simulator.bullets,
-      plasmaBullets: this.simulator.plasmaBullets,
-      casings: this.simulator.casings,
-      magPickups: this.simulator.magPickups,
-      debris: this.simulator.debris,
-      camera: this.camera,
-      zoomActive: this.zoomActive,
-    });
+    this.player.render(this.zoomActive);
+    for (const e of this.simulator.enemies) if (e.alive) e.syncTransform(o);
+    for (const b of this.simulator.bullets) b.syncBulletTransform(o, pv);
+    for (const pb of this.simulator.plasmaBullets) pb.syncBulletTransform(o, pv);
+    for (const cs of this.simulator.casings) cs.syncTransform(o);
+    for (const mp of this.simulator.magPickups) mp.syncTransform(o);
+    this.player.updateBelt(dt);
+    for (const d of this.simulator.debris) d.syncTransform(o);
   }
 
   private syncRenderEffects(dt: number, o: Vec3): void {
