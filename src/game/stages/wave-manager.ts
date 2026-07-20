@@ -2,6 +2,7 @@
 // Stage00 専用のヘルパーであり、Stage00 インスタンスが自身のフィールドとして直接保持する。
 import { len, sub } from '../../physics/vec3';
 import type { StageCtx } from './stage-definition';
+import type { AmmoResupplySystem } from '../combat/ammo-resupply';
 import { generateWave } from '../enemy/enemy-spawner';
 
 export interface WaveEncounterConfig {
@@ -24,8 +25,8 @@ export class WaveManager {
   }
 
   // 弾薬確保 → ウェーブ接近予告 → 波状攻撃、の3段階を直接遷移させる。数値設定は呼び出し側が渡す。
-  update(dt: number, ctx: StageCtx, config: WaveEncounterConfig): void {
-    ctx.ammoResupply.updateLogistics(ctx.simTime, ctx.player, config.respawnAmmoOnDespawn);
+  update(dt: number, ctx: StageCtx, ammoResupply: AmmoResupplySystem, config: WaveEncounterConfig): void {
+    ammoResupply.updateLogistics(ctx.simTime, ctx.player, config.respawnAmmoOnDespawn);
 
     if (ctx.phase !== 'playing') return;
     if (this.phase === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(ctx, config.spawnDelay);

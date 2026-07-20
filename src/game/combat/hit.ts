@@ -4,12 +4,12 @@ import { Vec3, addScaled, dot, lenSq, norm, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Bullet, Shooter, Ship } from '../entities';
 import { Enemy } from '../enemy/enemy';
-import { CombatCtx, CombatSystem } from './combat';
+import { CombatCtx } from '../stages/stage-definition';
 
 // checkBulletHits / checkBoardCrossings が必要とする、Game 側の現在状態のスナップショット。
-// 撃破が発生した場合の集計・勝敗判定は combat(CombatCtx 経由)に委ねる。
+// 撃破が発生した場合の集計・勝敗判定は combatCtx.activeStage(CombatCtx 経由)に委ねる。
 export interface HitCtx {
-  combat: CombatCtx;
+  combatCtx: CombatCtx;
   enemies: readonly Enemy[];
   target: Enemy | null;
   bullets: readonly Bullet[];
@@ -29,17 +29,13 @@ export interface HitInfo {
 }
 
 export class HitSystem {
-  constructor(
-    private readonly combat: CombatSystem,
-  ) { }
-
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
   // 発射弾がその面を自機側から通過した点をターゲット相対で記録する。
   // 次弾の照準修正の目安になるマーカーとして一定時間表示する。
   checkBoardCrossings(ctx: HitCtx): void {
     const tgt = ctx.target;
     if (!tgt || !tgt.alive) return;
-    const n = norm(sub(tgt.state.r, ctx.combat.player.state.r)); // 的の法線 = 視線方向
+    const n = norm(sub(tgt.state.r, ctx.combatCtx.player.state.r)); // 的の法線 = 視線方向
     if (lenSq(n) < 0.5) return;
 
     for (const b of ctx.bullets) {
@@ -58,7 +54,7 @@ export class HitSystem {
 
   // サブステップ間の相対運動を線分 vs 球でチェック(高速弾のトンネリング防止)
   checkBulletHits(ctx: HitCtx): void {
-    const player = ctx.combat.player;
+    const player = ctx.combatCtx.player;
 
     // enemyとbulletの判定
     for (const enemy of ctx.enemies) {
@@ -67,7 +63,7 @@ export class HitSystem {
 
         if (this.segmentHit(b, enemy)) {
           b.alive = false;
-          enemy.attacked({ pos: b.state.r, vel: enemy.state.v, kind: 'bullet', shooter: b.shooter }, this.combat, ctx.combat);
+          enemy.attacked({ pos: b.state.r, vel: enemy.state.v, kind: 'bullet', shooter: b.shooter }, ctx.combatCtx);
         }
       }
     }
@@ -75,21 +71,21 @@ export class HitSystem {
     // playerとbulletの判定（現状、通常弾はプレイヤーしか打たないので地球を一周するような場合のみ）
     for (const b of ctx.bullets) {
       if (!b.alive || !player.alive) continue;
-      if (ctx.combat.simTime - b.bornSim <= C.SELF_HIT_GRACE) continue; // 撃った直後は判定を無効化
+      if (ctx.combatCtx.simTime - b.bornSim <= C.SELF_HIT_GRACE) continue; // 撃った直後は判定を無効化
 
       if (this.segmentHit(b, player)) {
         b.alive = false;
-        player.attacked({ pos: b.state.r, vel: player.state.v, kind: 'bullet', shooter: b.shooter }, this.combat, ctx.combat);
+        player.attacked({ pos: b.state.r, vel: player.state.v, kind: 'bullet', shooter: b.shooter }, ctx.combatCtx);
       }
     }
 
     // playerとplasmaBulletの判定
     for (const pb of ctx.plasmaBullets) {
       if (!pb.alive || !player.alive) continue;
-      
+
       if (this.segmentHit(pb, player)) {
         pb.alive = false;
-        player.attacked({ pos: pb.state.r, vel: player.state.v, kind: 'plasma', shooter: pb.shooter }, this.combat, ctx.combat);
+        player.attacked({ pos: pb.state.r, vel: player.state.v, kind: 'plasma', shooter: pb.shooter }, ctx.combatCtx);
       }
     }
   }

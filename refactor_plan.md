@@ -22,12 +22,20 @@ belt.ts
 - ctx注入パターンの根絶。
 
 
-### stageDefinitionのクラス化、継承化
-現状単に関数値を持ったオブジェクトになっているが、ステージごとに共通の処理があるので、継承化して共通処理をまとめられないか？　またそれにより、外部にあるステージ関連処理もstageDefinitionの責務に寄せられないか？
+### 命名が悪い
+recordKillがkillCounter.recordLossとkillCounter.recordKillの両方に繋がっている。recordDeathとかの方がいい
+stageDefinition -> stage
+ammoResupply -> logistics
+combatCtx -> 存続の意義あるか？
 
-もうすこし便利なことができそう。固有のステートを追加で保持するとか（stageDirectorは同時に使われない二つのフィールドを持ったゴミクラスになっている）、gameのInitstageや、combatにあるcheckWin周りの呼び出しとかをstageDefinitionの責務に寄せるとか
 
-現状の配線を確認し、これが改善案になっているかを検討する。
+### Gameが直接持っているフィールドの整理
+GameのlostReasonって利用されている？　recordKilledで死因表示のために使われていた。
+stageが持つべきな気がするなぁ……　そもそも、死んでいないときから初期値を必要としているのは型の設計が悪い気がするなぁ……
+
+GameのzoomActiveはcameraSystemの責務では
+
+
 
 ### effectのcloneの有無の統一
 positionをcloneするのはeffect.tsの責務とし、外部でいちいちcloneしてから渡している箇所をやめる。

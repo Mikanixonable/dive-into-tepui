@@ -11,9 +11,8 @@ import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
 import { FireCtx } from './player/player-fire';
 import { CameraSystem } from './camera/camera-system';
-import { CombatCtx, CombatSystem } from './combat/combat';
 import { HitCtx, HitSystem } from './combat/hit';
-import { StageCtx, StageDefinition } from './stages/stage-definition';
+import { CombatCtx, StageCtx, StageDefinition } from './stages/stage-definition';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
 import { CollisionPhysics } from './combat/collision';
@@ -23,7 +22,6 @@ import { getStageDefinition, resolveStageInitData } from './stages/stage-data';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './combat/targeter';
 import { HudProjection } from './camera/projection';
-import { AmmoResupplySystem } from './combat/ammo-resupply';
 import { MapModeSystem } from './map-mode/map-mode-system';
 import { Plan, PlanCtx } from './plan/plan';
 import { PlanGuide, plannedOrbitElements } from './plan/plan-guide';
@@ -130,13 +128,12 @@ export class Game {
   // マガジンベルト(表示メッシュ + Verlet 物理)は弾薬状態に密結合なため
   // player/player-fire.ts の PlayerFire が所有する(this.player.updateBelt 等)。
   // 発射・排莢・バレル交換の演出も PlayerFire が持つ(fireCtx 経由)。
-  // 撃破の集計・勝敗判定(destroyShip)は combat/combat.ts の CombatSystem が持つ。
-  // 発射カウンタ(shots/hits)・撃破カウンタ(kills)も CombatSystem が保持する。
+  // 撃破の集計・勝敗判定・発射/命中/撃破カウンタは activeStage(StageDefinition)が持つ
+  // (killCounter フィールド、recordKill/recordKilled メソッド)。
   private readonly unlockManager = new UnlockManager();
-  readonly combat = new CombatSystem(this.hud, this.sfx, this.unlockManager);
   // 弾の高度な衝突判定(トンネリング防止・被弾ダメージ)は combat/hit.ts の HitSystem に
-  // 切り出し済み。撃破が発生したら CombatSystem.destroyShip を呼ぶ。
-  private readonly hitSystem = new HitSystem(this.combat);
+  // 切り出し済み。撃破が発生したら activeStage.recordKill を呼ぶ(ctx 経由、状態は持たない)。
+  private readonly hitSystem = new HitSystem();
   // HUDマーカー(方向・敵/リード/AMMO/ノード/PIP/ボード)の同期は markers.ts の
   // MarkersSystem に切り出し済み。boardMarks(標的面通過点)もここが保持する
   // (combat/hit.ts の checkBoardCrossings が直接この配列へ push する)。
@@ -147,7 +144,6 @@ export class Game {
   private readonly orbitLineSystem = new OrbitLineSystem();
   readonly targeter = new Targeter(this.hud);
   private readonly hudProjection = new HudProjection(() => this.activeCamera);
-  private readonly ammoResupply: AmmoResupplySystem;
   readonly simulator: Simulator;
   private readonly pipRenderer = new PipRenderer();
 
@@ -162,13 +158,7 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
     this.simulator = new Simulator(this.ephemeris, this.hitSystem);
-    this.ammoResupply = new AmmoResupplySystem(
-      this.hud,
-      this.sfx,
-      this.scene,
-      this.simulator.magPickups,
-      (mp) => this.simulator.addMagPickup(mp),
-    );
+    this.activeStage.setup(this.hud, this.sfx, this.scene, this.simulator);
 
     // 汎用発光テクスチャ
     this.glowTex = makeGlowTexture();
@@ -313,7 +303,7 @@ export class Game {
       canPlayerThrust: this.simSpeedManager.canPlayerThrust,
       canPlayerFire: this.simSpeedManager.canPlayerFire,
       mapMode: this.mapMode,
-      combat: this.combat,
+      killCounter: this.activeStage.killCounter,
       fireCtx: this.fireCtx(),
     });
     const playerAccel = this.simulator.buildPlayerAccel(action.thrustFn);
@@ -409,20 +399,16 @@ export class Game {
       totalEnemies: this.simulator.totalEnemiesSpawned,
       addEnemy: (enemy, orbitLineColor) => this.addEnemy(enemy, orbitLineColor),
       scene: this.scene,
-      shots: this.combat.shots,
-      hits: this.combat.hits,
-      kills: this.combat.kills,
       magsLeft: this.player.magsLeft,
       roundsInMag: this.player.roundsInMag,
       setPhase: (p) => { this.phase = p; },
       simTime: this.simTime,
       hud: this.hud,
       sfx: this.sfx,
-      ammoResupply: this.ammoResupply,
     };
   }
 
-  // CombatSystem.destroyShip(撃破の集計・勝敗判定)が必要とする、現在状態のスナップショット。
+  // Ship.attacked/checkLoss(被弾・自然喪失の判定)が必要とする、現在状態のスナップショット。
   private combatCtx(simTime = this.simTime): CombatCtx {
     const ctx: CombatCtx = {
       simTime,
@@ -435,8 +421,10 @@ export class Game {
         ctx.lostReason = reason;
       },
       setPhase: (p) => { this.phase = p; },
+      hud: this.hud,
       sfx: this.sfx,
       fx: this.effectsCtx(),
+      unlockManager: this.unlockManager,
     };
     return ctx;
   }
@@ -468,7 +456,7 @@ export class Game {
   // HitSystem(弾の衝突判定)が必要とする、現在状態のスナップショット。
   private hitCtx(simTime: number): HitCtx {
     return {
-      combat: this.combatCtx(simTime),
+      combatCtx: this.combatCtx(simTime),
       enemies: this.simulator.enemies,
       target: this.targeter.autoTarget,
       bullets: this.simulator.bullets,
@@ -523,7 +511,7 @@ export class Game {
   // ------------------------------------------------------------- simulate
 
   private handlePostSimulation(dt: number, simDt: number): void {
-    this.player.checkLoss({ dt, combat: this.combat, combatCtx: this.combatCtx() });
+    this.player.checkLoss({ dt, combatCtx: this.combatCtx() });
 
     if (this.simSpeedManager.canResolvePhysicalCollisions) {
       this.collisionPhysics.resolve(dt, this.collisionCtx(), () => {
@@ -533,7 +521,7 @@ export class Game {
     this.updateAttitudes(Math.min(simDt, 0.12));
 
     // シミュレーション配列から不要なものを消去
-    this.simulator.cleanup({ dt, combat: this.combat, combatCtx: this.combatCtx() });
+    this.simulator.cleanup({ dt, combatCtx: this.combatCtx() });
 
     if (this.activeStage.index === -1 && this.phase === 'playing' && this.simSpeedManager.canEnemyFire) {
       const ctx = this.enemyAiCtx(this.simTime);

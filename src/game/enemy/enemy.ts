@@ -10,7 +10,7 @@ import { solveLeadTime } from '../../physics/intercept';
 import { buildPlasmaMesh } from '../../render/ships';
 import { spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
 import type { Player } from '../player/player';
-import { CombatCtx, CombatSystem } from '../combat/combat';
+import { CombatCtx } from '../stages/stage-definition';
 import { HitInfo } from '../combat/hit';
 
 // 敵 AI(Enemy.behave)が必要とする、Game 側の現在状態のスナップショット。
@@ -76,12 +76,12 @@ export class Enemy extends Ship {
   }
 
   // 被弾によるダメージ・致死判定。
-  attacked(hit: HitInfo, combat: CombatSystem, combatCtx: CombatCtx): void {
+  attacked(hit: HitInfo, ctx: CombatCtx): void {
     if (!this.alive) return;
     if (hit.shooter === 'enemy') return; // 敵弾の被弾は無効化
-    const effectCtx = { sfx: combatCtx.sfx, fx: combatCtx.fx };
+    const effectCtx = { sfx: ctx.sfx, fx: ctx.fx };
 
-    combat.recordHit();
+    ctx.activeStage.killCounter.recordHit();
 
     this.hp -= C.ENEMY_HIT_DAMAGE;
     if (this.hp > 0) {
@@ -90,7 +90,7 @@ export class Enemy extends Ship {
     }
 
     this.alive = false;
-    combat.recordKill(this, combatCtx, true);
+    ctx.activeStage.recordKill(this, ctx, true);
     this.destroyEffect(effectCtx);
   }
 
@@ -100,7 +100,7 @@ export class Enemy extends Ship {
     if (altitudeOf(this.state.r) >= C.REENTRY_ALT) return;
     this.alive = false;
     this.destroyEffect({ sfx: ctx.combatCtx.sfx, fx: ctx.combatCtx.fx });
-    ctx.combat.recordKill(this, ctx.combatCtx, false);
+    ctx.combatCtx.activeStage.recordKill(this, ctx.combatCtx, false);
   }
 
   // 行動関数

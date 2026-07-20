@@ -8,7 +8,8 @@ import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildFlashMesh, buildPlayerShip, RCS_BLOCK_OFFSETS } from '../../render/ships';
-import { CombatCtx, CombatSystem } from '../combat/combat';
+import { CombatCtx } from '../stages/stage-definition';
+import { KillCounter } from '../combat/kill-counter';
 import { PlayerThrottle } from './player-throttle';
 import { FireCtx, PlayerFire } from './player-fire';
 import { Belt } from './belt';
@@ -133,14 +134,14 @@ export class Player extends Ship {
     canPlayerThrust: boolean;
     canPlayerFire: boolean;
     mapMode: boolean;
-    combat: CombatSystem;
+    killCounter: KillCounter;
     fireCtx: FireCtx;
   }): PlayerActionState {
-    const { dt, input, canPlayerThrust, canPlayerFire, mapMode, combat, fireCtx } = params;
+    const { dt, input, canPlayerThrust, canPlayerFire, mapMode, killCounter, fireCtx } = params;
     this.updateHpRegen(dt);
     const canThrust = canPlayerThrust && this.alive && !mapMode;
     const canFire = canPlayerFire && this.alive && !mapMode;
-    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, mapMode, canFire, this, combat, fireCtx);
+    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, mapMode, canFire, this, killCounter, fireCtx);
     if (justStartedFiring) this.throttle.fineAttitude = true;
     const thrustFn = this.throttle.updateThrustState(input, canThrust, this.att, this.state);
     return { thrustFn };
@@ -168,9 +169,9 @@ export class Player extends Ship {
   }
   
   // 被弾によるダメージ・致死判定。
-  attacked(hit: HitInfo, combat: CombatSystem, combatCtx: CombatCtx): void {
+  attacked(hit: HitInfo, ctx: CombatCtx): void {
     if (!this.alive) return;
-    const effectCtx = { sfx: combatCtx.sfx, fx: combatCtx.fx };
+    const effectCtx = { sfx: ctx.sfx, fx: ctx.fx };
 
     // todo: 弾種でダメージ分岐しないのか
     this.hp -= C.PLAYER_HIT_DAMAGE
@@ -178,10 +179,10 @@ export class Player extends Ship {
       this.hitEffect(effectCtx, hit);
       return;
     }
-    
+
     this.alive = false;
     const reason = hit.shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
-    combat.recordKilled(combatCtx, reason);
+    ctx.activeStage.recordKilled(ctx, reason);
     this.destroyEffect(effectCtx);
   }
 
@@ -198,7 +199,7 @@ export class Player extends Ship {
 
     this.alive = false;
     this.destroyEffect({ sfx: ctx.combatCtx.sfx, fx: ctx.combatCtx.fx });
-    ctx.combat.recordKilled(ctx.combatCtx, reason);
+    ctx.combatCtx.activeStage.recordKilled(ctx.combatCtx, reason);
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
