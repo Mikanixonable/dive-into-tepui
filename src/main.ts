@@ -115,7 +115,8 @@ function startAnimationLoop(game: Game, perf: PerfMeter): void {
     const t0 = perf.on ? performance.now() : 0;
     game.update(dt);
     const t1 = perf.on ? performance.now() : 0;
-    game.render(dt);
+    game.sync(Math.min(dt, 0.1));
+    game.render();
     if (perf.on) {
       const t2 = performance.now();
       perf.record(t1 - t0, t2 - t1, t2);

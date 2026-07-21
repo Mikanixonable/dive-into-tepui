@@ -250,7 +250,11 @@ export class Game {
       this.collisionPhysics.resolve(dt, this.player, this.simulator.allEntities(), () => this._sfx.clank());
     }
 
-    this.updateAttitudes(Math.min(simDt, 0.12));
+    this.player.updateAttitude(this.input, this.cameraSystem.mapMode, simDt, () => {
+      this._hud.hint('進行方向ホールド解除(手動操作)');
+    });
+    
+    this.simulator.stepCoastingAttitudes(simDt);
 
     this.simulator.cleanup(dt, this.simTime, this.activeStage);
 
@@ -319,16 +323,9 @@ export class Game {
     };
   }
 
-  private updateAttitudes(attDt: number): void {
-    this.player.updateAttitude(this.input, this.cameraSystem.mapMode, attDt, () => {
-      this._hud.hint('進行方向ホールド解除(手動操作)');
-    });
-    this.simulator.stepCoastingAttitudes(attDt);
-  }
-
   // ------------------------------------------------------------------ sync
 
-  private sync(dt: number): void {
+  sync(dt: number): void {
     const o = this.player.state.r;
     const pv = this.player.state.v;
     const displayTime = this.mapModeSystem.resolveDisplayTime(this.cameraSystem.mapMode);
@@ -398,12 +395,15 @@ export class Game {
     this._hud.tick();
   }
 
-  public render(dtRaw: number): void {
-    const dt = Math.min(dtRaw, 0.1);
-    this.sync(dt);
-    this.pipRenderer.renderFrame(this.renderer, {
-      firing: this.player.isFiring,
-      mapMode: this.cameraSystem.mapMode,
+  // ------------------------------------------------------------------ render
+
+  render(): void {
+    // 通常の全画面描画
+    this.renderer.render(this._scene, this.cameraSystem.activeCamera);
+
+    // PIP 描画
+    this.pipRenderer.renderPip(this.renderer, {
+      renderPip: this.player.isFiring && !this.cameraSystem.mapMode,
       camera: this.cameraSystem.activeCamera,
       playerShipObj: this.player.obj,
       setMuzzleFlashesVisible: (visible) => this.effects.setMuzzleFlashesVisible(visible),
