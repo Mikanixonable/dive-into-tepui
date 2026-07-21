@@ -86,18 +86,24 @@ export abstract class Ship extends OrbitEntity {
 // 弾を撃った主体
 export type Shooter = 'player' | 'enemy';
 
+// 自弾(normal)と敵プラズマ弾(plasma)を区別する種別。見た目・命中対象のルールが
+// type によって分岐する(hit.ts/player.ts/enemy.ts 参照)。
+export type BulletType = 'normal' | 'plasma';
+
 // 自弾と敵プラズマ弾の両方に使う。配列は射手(自機/敵)ごとに分けて保持し、
 // 命中ルールは配列単位で扱うが、寿命(lifetime)は生成時に渡された値を自身で持つ。
 export class Bullet extends OrbitEntity {
   bornSim: number;
   readonly shooter: Shooter;
+  readonly type: BulletType;
   private readonly lifetime: number;
 
-  constructor(state: OrbitState, obj: THREE.Object3D, bornSim: number, lifetime: number, shooter: Shooter, scene?: THREE.Scene) {
+  constructor(state: OrbitState, obj: THREE.Object3D, bornSim: number, lifetime: number, shooter: Shooter, type: BulletType, scene?: THREE.Scene) {
     super(state, obj, scene);
     this.bornSim = bornSim;
     this.lifetime = lifetime;
     this.shooter = shooter;
+    this.type = type;
   }
 
   checkLoss(ctx: CheckLossCtx): void {

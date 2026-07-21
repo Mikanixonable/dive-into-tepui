@@ -21,19 +21,6 @@ belt.ts
 - 各モジュールの疎結合化と責務の整理
 - ctx注入パターンの根絶。
 
-### attackedとhitEffectのhitInfo引数を Bullet | PlasmaBullet に置き換える
-弾種はinstanceOfで判定。effects-system.tsには変更なしで、spawnDebrisなどにはbulletもhitInfoでもなく、必要な速度ベクトルなどを個別に引数で渡す。
-変更箇所はplayer.tsとenemy.tsの二か所のはず。両方に対してこの変更を行う。
-
-### hitの当たり判定の類似実装部分のリファクタリング
-player/enemyとbullet/plasmaBulletだからこれで済んでいるが、このまま弾種を増やしたりすると組み合わせ爆発するので、bulletとplasmaBulletの配列を統合したい。
-
-第一段階として、正データであるsimulatorには手を加えず、hit.tsの中で、bulletとplasmaBulletを結合した配列を作り、統一的な処理をする。共通のBullet基底クラス…はあまり作りたくない。Bullet | PlasmaBulletのunion型で十分。hitInfoは、bullet/plasmaBulletのどちらかを受け取るようにする。
-現状三つあるループを、(Bullet | PlasmaBullet)[] と (Player | Enemy)[] の二重ループにまとめ、
-どのようにattackedを呼ぶか判定する必要があれば、instanceofで判定して分岐する。
-
-ここまで問題なく実装できたら、第二段階として、SimulatorのbulletとplasmaBulletの配列を統合する。addBulletやaddPlasmaBulletも統合される。
-
 ### 命名が悪い
 recordKillがkillCounter.recordLossとkillCounter.recordKillの両方に繋がっている。recordDeathとかの方がいい
 stageDefinition -> stage
@@ -51,10 +38,9 @@ three.jsのrender関数は、すでに出来上がったsceneとcameraを受け�
 
 EnvironmentSceneとEphemerisSystemは、扱うものは近いのに計算と描画なので分離されている。統合するのとしないのとどっちが良いか。EphemerisSystemを親として、EnvironmentSceneを子とするような構造化がいいのか？
 
-### dom操作の分散（優先度低）
-touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散している。これが直接悪いとは言い切れないが…
-
 ### この時点で重複実装、類似実装を再度検査し、適切に共通化する。
+## インコードコメントと、Claude の記憶更新
+
 重複実装の検査にLLMは役に立たないということが分かった。人力で頑張る…
 
 重複実装、類似実装
@@ -65,9 +51,10 @@ touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散してい�
 ## ctxの縮小と解体
 現在コードのいたるところで利用されているcontext注入パターンは、時間をかけて滅ぼすべきものである。必要な情報すべてを丸投げするというのは、必要な情報が少なくなるように責務を分割しなければならないことを隠蔽してしまう。徹底して排除するべき。
 
-ctx注入パターンはそもそも密結合を生む原因に見える。ctxをそのまま他のモジュールに受け渡したりして転用しているのは論外。Paramsと書かれているものも同様。
+### なぜ排除しなければならないか
+データ型は適切に構造化されているのが望ましい。適切な構造化とは、意味や責務と一致した構造である。場当たり的にまとめられたctxは、意味を不明瞭にするだけでなく、密結合が隠される原因になる。特に、ctxをそのまま他のモジュールに受け渡したりして転用しているのは論外。Paramsと書かれているものも同様。
 
-以下はあらかたのリファクタリングが済んでから行う。
+まずはctxパターンの利用実態とその分析をする。どの形のctxがどのモジュールでどのように利用されているかを調べる。
 
 ### ctx以外の方法でまとめられる情報はまとめて渡す。
 maoModeとactiveCameraはともにcameraSystemのフィールドであるが、これらをそれぞれctxに渡している場合、分解→結合の手間が増えているだけで、ctxデータとしても無駄にflattenされて肥大化た形になるので、このようなパターンは避ける。
@@ -111,3 +98,12 @@ ctxが微妙に重複し、微妙に異なるフィールドを持つ場合、�
 
 ## const.tsの解体（優先度低）
 一か所で使用されている定数はそのモジュールの責務である可能性が高い。モジュールの分割がある程度進み、責務が明確になった段階で、const.tsの解体を行う。
+
+## sfxとbgmの分離（優先度低）
+
+## hud、sfx注入パターンのなかで今後必要なくなる可能性が高いものを分離
+
+## エフェクトシステムをクラス化…？
+
+### dom操作の分散（優先度低）
+touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散している。これが直接悪いとは言い切れないが…
