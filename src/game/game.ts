@@ -12,7 +12,7 @@ import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
 import { HitCtx, HitSystem } from './orbit-entity/hit';
-import { StageCtx, Stage } from './stages/stage';
+import { Stage } from './stages/stage';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
 import { CollisionPhysics } from './orbit-entity/collision';
@@ -35,8 +35,6 @@ import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
 import { Bullet } from './orbit-entity/bullet';
-
-type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -89,7 +87,6 @@ export class Game {
     () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }),
   );
 
-  private phase: GamePhase = 'playing';
   // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定、stages/ 参照)。
   // 固有のランタイム状態(タイマー・ウェーブ管理等)もこれ自身が持つ。
   readonly activeStage: Stage;
@@ -133,7 +130,7 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
     this.simulator = new Simulator(this.ephemeris, this.hitSystem);
-    this.activeStage.setup(this._hud, this._sfx, this._scene, this.simulator, (p) => { this.phase = p; }, this.unlockManager, this.effects);
+    this.activeStage.setup(this._hud, this._sfx, this._scene, this.simulator, this.unlockManager, this.effects);
 
     // --- 環境 ---
     this.ephemeris.update(this.simTime);
@@ -167,10 +164,7 @@ export class Game {
   // ステージ別の初期敵配置・初期弾薬・初期補給の配置と作戦目標のブリーフィング表示
   // (ステージごとの分岐は activeStage.init が直接行う)。
   private initStage(): void {
-    const enemyCount = this.activeStage.init(this.player, (enemy) => {
-      this.simulator.addEnemy(enemy);
-      this.activeStage.scoreCounter.recordSpawnEnemy();
-    });
+    const enemyCount = this.activeStage.init(this.player, this.simulator);
     const data = resolveStageInitData(this.activeStage, enemyCount);
     this.player.initAmmo(data.magsLeft, data.roundsInMag);
     this._hud.toast(data.briefingHtml, 12000);
@@ -184,7 +178,7 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.cameraSystem.zoomActive = !this.cameraSystem.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
-    this.cameraSystem.mapMode = this.mapModeSystem.syncMapModeWithPhase(this.phase, this.touchControls, this.cameraSystem.mapMode);
+    this.cameraSystem.mapMode = this.mapModeSystem.syncMapModeWithPhase(this.activeStage.isPlaying, this.touchControls, this.cameraSystem.mapMode);
 
     this.handleFrame(dt);
 
@@ -192,13 +186,13 @@ export class Game {
   }
 
   private handleFrame(dt: number): void {
-    if (this.phase === "playing" && this.paused) {
+    if (this.activeStage.isPlaying && this.paused) {
       this.handlePausedFrame();
       return;
     }
     // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
     // 積分もサブステップなしの簡略版(integrateSimulation の hardCollision/doSubstep 引数)にする。
-    if (this.phase !== 'playing') {
+    if (!this.activeStage.isPlaying) {
       const advanced = this.simulator.integrateSimulation(
         this.simTime,
         dt,
@@ -261,7 +255,7 @@ export class Game {
       );
     }
 
-    this.activeStage.update(dt, this.stageCtx());
+    this.activeStage.update(dt, this.player, this.simulator, this.simTime);
   }
 
   private handlePausedFrame(): void {
@@ -299,34 +293,18 @@ export class Game {
       case 'Comma': this.simSpeedManager.shift(-1); break;
       case 'Period': this.simSpeedManager.shift(1); break;
       case 'KeyM':
-        this.cameraSystem.mapMode = this.mapModeSystem.toggleMap(this.phase, this.touchControls, this.cameraSystem.mapMode);
+        this.cameraSystem.mapMode = this.mapModeSystem.toggleMap(this.activeStage.isPlaying, this.touchControls, this.cameraSystem.mapMode);
         // マップを閉じた: 同じノードのままΔvだけ編集された可能性があり、
         // ノード時刻の一致だけでは検出できないため、噴射ガイドの凍結目標を作り直す。
         if (!this.cameraSystem.mapMode) this.planGuide.clearActiveTarget();
         break;
-      case 'KeyN': this.mapModeSystem.toggleAutoWarpToFirstNode(this.phase, this.cameraSystem.mapMode); break;
+      case 'KeyN': this.mapModeSystem.toggleAutoWarpToFirstNode(this.activeStage.isPlaying, this.cameraSystem.mapMode); break;
       case 'KeyX': this.clearPlanByKey(); break;
       case 'KeyH': this._hud.toggleHelp(); break;
       case 'Escape': this._hud.toggleSettings(); break;
-      case 'KeyR': if (this.phase !== 'playing') location.reload(); break;
+      case 'KeyR': if (!this.activeStage.isPlaying) location.reload(); break;
     }
   }
-
-  // activeStage.init/update に渡す、現在状態のスナップショット
-  // (敵の追加は addEnemy 経由、既存要素は参照渡しでミューテートされる)。
-  private stageCtx(): StageCtx {
-    return {
-      phase: this.phase,
-      player: this.player,
-      enemies: this.simulator.enemies,
-      addEnemy: (enemy) => {
-        this.simulator.addEnemy(enemy);
-        this.activeStage.scoreCounter.recordSpawnEnemy();
-      },
-      simTime: this.simTime,
-    };
-  }
-
 
   // HitSystem(弾の衝突判定)が必要とする、現在状態のスナップショット。
   private hitCtx(simTime: number): HitCtx {
@@ -375,7 +353,7 @@ export class Game {
 
     this.simulator.cleanup(dt, this.simTime, this.activeStage);
 
-    if (this.activeStage.index === -1 && this.phase === 'playing' && this.simSpeedManager.canEnemyFire) {
+    if (this.activeStage.index === -1 && this.activeStage.isPlaying && this.simSpeedManager.canEnemyFire) {
       for (const e of this.simulator.enemies) {
         if (e.alive) e.behave(dt, this.simTime, this.player, this.simulator);
       }
@@ -427,7 +405,7 @@ export class Game {
     this.player.sync(
       this.input,
       this.cameraSystem,
-      this.phase === 'playing',
+      this.activeStage.isPlaying,
       this.paused,
     );
     for (const e of this.simulator.allEntities()) {
