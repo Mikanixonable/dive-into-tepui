@@ -193,7 +193,9 @@ export class Game {
     }
     // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
     // 積分もサブステップなしの簡略版(integrateSimulation の hardCollision/doSubstep 引数)にする。
+    // behave が呼ばれなくなる分、勝敗確定時点の thrustFn が凍結され続けないよう明示的に消す。
     if (!this.activeStage.isPlaying) {
+      this.player.thrustFn = null;
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, 4);
       this.simulator.integrateSimulation(dt, simDt, this.player, this.activeStage, false, false);
       return;
@@ -206,8 +208,8 @@ export class Game {
     this.simSpeedManager.update(this.simulator.simTime);
     const simSpeed = this.simSpeedManager.simSpeed;
     const simDt = dt * simSpeed;
-    // プレイヤーの HP 回復・移動/発射の試行
-    const action = this.player.behave({
+    // プレイヤーの HP 回復・移動/発射の試行(this.player.thrustFn を書き換える)
+    this.player.behave({
       dt,
       input: this.input,
       simSpeed: this.simSpeedManager,
@@ -217,9 +219,8 @@ export class Game {
       zoomActive: this.cameraSystem.zoomActive,
       addBullet: (bullet) => this.simulator.addBullet(bullet),
     });
-    const playerAccel = this.simulator.buildPlayerAccel(action.thrustFn);
 
-    this.simulator.integrateSimulation(dt, simDt, this.player, this.activeStage, true, true, playerAccel);
+    this.simulator.integrateSimulation(dt, simDt, this.player, this.activeStage, true, true);
 
     this.player.checkLoss(dt, this.simulator.simTime, this.activeStage);
 

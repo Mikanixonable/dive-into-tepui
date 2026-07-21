@@ -83,8 +83,10 @@ export class Simulator {
 
   // ------------------------------------------------------------ 積分
 
-  buildPlayerAccel(thrustFn: ExtraAccel | null): ExtraAccel {
-    return thrustFn ? (r, v) => add(thrustFn(r, v), this.envShip(r, v)) : this.envShip;
+  // entity.thrustFn(既定 null = 無推力)と環境加速度を合成する。
+  private accelFor(entity: OrbitEntity, envAccel: ExtraAccel): ExtraAccel {
+    const { thrustFn } = entity;
+    return thrustFn ? (r, v) => add(thrustFn(r, v), envAccel(r, v)) : envAccel;
   }
 
   // simDt(このフレームで積算すべきシミュレーション時間)は game.ts が
@@ -97,12 +99,11 @@ export class Simulator {
     activeStage: Stage,
     hardCollision: boolean,
     doSubstep: boolean,
-    playerAccel: ExtraAccel | null = null,
   ): void {
     const nSub = doSubstep && simDt > dt * C.MAX_PHYS_SIM_SPEED ? Math.min(64, Math.ceil(simDt / 20)) : 1;
     const subDt = simDt / nSub;
     for (let i = 0; i < nSub; i++) {
-      this.simTime = this.simulationSubStep(this.simTime, subDt, player, playerAccel, hardCollision);
+      this.simTime = this.simulationSubStep(this.simTime, subDt, player, hardCollision);
       if (hardCollision) {
         this.hit.checkBulletHits(this.simTime, player, activeStage, this);
         this.targeter.markBoardCrossings(player, this);
@@ -116,13 +117,12 @@ export class Simulator {
     simTime: number,
     dt: number,
     player: Player,
-    playerAccel: ExtraAccel | null,
     trackPrevR: boolean,
   ): number {
     this.ephemeris.update(simTime);
     if (trackPrevR) player.prevR = clone(player.state.r);
-    if (playerAccel && player.alive) {
-      stepOrbitRK4(player.state, dt, playerAccel);
+    if (player.alive) {
+      stepOrbitRK4(player.state, dt, this.accelFor(player, this.envShip));
       player.thermal.updateThermal(dt, player.state.r, player.state.v);
     }
     this.stepWorldOrbits(dt, trackPrevR);
@@ -149,14 +149,14 @@ export class Simulator {
   private stepEntities(
     entities: OrbitEntity[],
     dt: number,
-    accel: ExtraAccel,
+    envAccel: ExtraAccel,
     options: { skipDead?: boolean; trackPrevR?: boolean; } = {},
   ): void {
     const { skipDead = false, trackPrevR = false } = options;
     for (const entity of entities) {
       if (skipDead && !entity.alive) continue;
       if (trackPrevR) entity.prevR = clone(entity.state.r);
-      stepOrbitRK4(entity.state, dt, accel);
+      stepOrbitRK4(entity.state, dt, this.accelFor(entity, envAccel));
     }
   }
 

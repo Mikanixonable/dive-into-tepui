@@ -1,6 +1,6 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { altitudeOf, OrbitState } from '../../physics/orbital';
+import { altitudeOf, ExtraAccel, OrbitState } from '../../physics/orbital';
 import { Attitude } from '../../physics/attitude';
 import { Vec3, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
@@ -25,6 +25,7 @@ export class OrbitEntity {
   alive = true;
   mass = 1; // 剛体接触の換算質量
   collideRadius?: number; // 剛体接触半径 [m]。未設定 = 剛体接触に参加しない
+  thrustFn: ExtraAccel | null = null;
   protected readonly scene?: THREE.Scene;
 
   constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
