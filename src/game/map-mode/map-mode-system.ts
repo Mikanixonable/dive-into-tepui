@@ -34,14 +34,6 @@ import { DisplayFrameFn, PlanDisplay } from '../plan/plan-display';
 import { MapCamera } from '../camera/map-camera';
 import { MapHud } from './map-hud';
 
-export interface MapModeExternalState {
-  simTime: number;
-  playerR: Vec3;
-  playerV: Vec3;
-  sunPhase0: number;
-  moonPhase0: number;
-}
-
 export class MapModeSystem {
   private readonly editor: PlanEditor;
   private readonly display: PlanDisplay;
@@ -56,7 +48,7 @@ export class MapModeSystem {
     private readonly project: ProjectFn,
     private readonly mapCamera: MapCamera,
     private readonly getFineAttitude: () => boolean,
-    private readonly getExternalState: () => MapModeExternalState,
+    private readonly getExternalState: () => PlanCtx,
   ) {
     this.editor = new PlanEditor(this._hud, this._sfx);
     this.display = new PlanDisplay(this._hud.markers);
@@ -99,11 +91,11 @@ export class MapModeSystem {
       onNodeDragMove: (idx, clientX, clientY) => {
         this.editor.closeMenu();
         const ctx = this.planCtx();
-        this.editor.dragNodeToNearestSample(this.plan, idx, clientX, clientY, ctx.playerR, this.toDisplayFrame(ctx), this.project);
+        this.editor.dragNodeToNearestSample(this.plan, idx, clientX, clientY, ctx.player.state.r, this.toDisplayFrame(ctx), this.project);
       },
       onNodeContextMenu: (clientX, clientY) => {
         const ctx = this.planCtx();
-        this.editor.handleMapRightClick(this.plan, clientX, clientY, ctx.playerR, this.toDisplayFrame(ctx), this.project, this.mapHud.labels);
+        this.editor.handleMapRightClick(this.plan, clientX, clientY, ctx.player.state.r, this.toDisplayFrame(ctx), this.project, this.mapHud.labels);
       },
       onAxisDrag: (axis, sign, deltaPx) => {
         this.editor.applyAxisDrag(this.plan, axis, sign, deltaPx, this.getFineAttitude());
@@ -225,7 +217,7 @@ export class MapModeSystem {
   // (hud への反映自体は editor 側が行う)。
   updateEditing(dt: number, input: Input): void {
     const ctx = this.planCtx();
-    this.editor.updateEditing(this.plan, dt, ctx.simTime, ctx.playerR, this.toDisplayFrame(ctx), input, this.project, {
+    this.editor.updateEditing(this.plan, dt, ctx.simTime, ctx.player.state.r, this.toDisplayFrame(ctx), input, this.project, {
       fineAttitude: this.getFineAttitude(),
       labels: this.mapHud.labels,
       toolbar: {
@@ -246,15 +238,14 @@ export class MapModeSystem {
       return;
     }
     const ctx = this.planCtx();
-    const origin = ctx.playerR;
+    const origin = ctx.player.state.r;
     this.display.update(this.plan, ctx, origin, this.mapCamera.frameRotating, this.mapCamera.sliderT, this.project);
     this.editor.updateGizmo(this.plan, origin, this.toDisplayFrame(ctx), this.project, this.mapCamera.dist);
     this.mapHud.updateLabels(
       origin,
       {
         simTime: ctx.simTime,
-        sunPhase0: ctx.sunPhase0,
-        moonPhase0: ctx.moonPhase0,
+        ephemeris: ctx.ephemeris,
         duration: this.display.predictDurationSec(ctx),
       },
       this.mapCamera.sliderT,

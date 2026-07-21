@@ -38,7 +38,7 @@ export class PlanDisplay {
   // 期間は plan-guide.ts の guideDurationSec が別途持つ)。
   predictDurationSec(ctx: PlanCtx): number {
     if (this.predictDurationKey === 'orbit') {
-      const el: Elements | null = elementsFromState(ctx.playerR, ctx.playerV);
+      const el: Elements | null = elementsFromState(ctx.player.state.r, ctx.player.state.v);
       if (el && isFinite(el.period) && el.period > 0) return el.period;
       return C.PREDICT_DUR_DAY; // 双曲線・放物線軌道では1日にフォールバック
     }
@@ -51,7 +51,7 @@ export class PlanDisplay {
   // (非回転系なら無変換)。plan-editor.ts のクリック判定・ドラッグも同じ変換を使う。
   toDisplayFrame(r: Vec3, t: number, ctx: PlanCtx, mapFrameRotating: boolean): Vec3 {
     if (!mapFrameRotating) return r;
-    const phi = this.trajYawRef - sunAzimuth(t, ctx.sunPhase0);
+    const phi = this.trajYawRef - sunAzimuth(t, ctx.ephemeris.sunPhase0);
     return rotateAxis(r, v3(0, 1, 0), phi);
   }
 
@@ -87,7 +87,7 @@ export class PlanDisplay {
     // ジオメトリと表示回転角(trajYawRef)を作り直す。
     if (plan.trajSamples !== this.lastSeenSamples) {
       this.lastSeenSamples = plan.trajSamples;
-      this.trajYawRef = mapFrameRotating ? sunAzimuth(ctx.simTime, ctx.sunPhase0) : 0;
+      this.trajYawRef = mapFrameRotating ? sunAzimuth(ctx.simTime, ctx.ephemeris.sunPhase0) : 0;
       this.rebuildGeometry(plan, ctx, mapFrameRotating);
     }
 

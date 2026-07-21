@@ -6,6 +6,7 @@ import { Vec3, sub } from '../../physics/vec3';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { ProjectFn } from '../camera/projection';
+import type { EphemerisSystem } from '../ephemeris';
 
 export interface MapLabel {
   id: string;
@@ -16,8 +17,7 @@ export interface MapLabel {
 // updateLabels() が必要とする、Game 側の現在状態のスナップショット。
 export interface MapHudCtx {
   simTime: number;
-  sunPhase0: number;
-  moonPhase0: number;
+  ephemeris: EphemerisSystem;
   duration: number; // predictDurationSec()
 }
 
@@ -31,10 +31,10 @@ export class MapHud {
   // HUD マーカーに反映する。sliderT > 0 の間はゴーストスライダーの表示時刻を使う。
   updateLabels(o: Vec3, ctx: MapHudCtx, sliderT: number, project: ProjectFn): void {
     const t = sliderT > 0 ? ctx.simTime + sliderT * ctx.duration : ctx.simTime;
-    const mPos = moonPosition(t, ctx.moonPhase0);
-    const sPos = sunPosition(t, ctx.sunPhase0);
-    const emL = emLagrangePoints(t, ctx.moonPhase0);
-    const seL = seLagrangePoints(t, ctx.sunPhase0);
+    const mPos = moonPosition(t, ctx.ephemeris.moonPhase0);
+    const sPos = sunPosition(t, ctx.ephemeris.sunPhase0);
+    const emL = emLagrangePoints(t, ctx.ephemeris.moonPhase0);
+    const seL = seLagrangePoints(t, ctx.ephemeris.sunPhase0);
 
     this.labels = [
       { id: 'earth', name: '地球', pos: { x: 0, y: 0, z: 0 } },
