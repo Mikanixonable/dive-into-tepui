@@ -16,20 +16,19 @@ import { HitCtx, HitSystem } from './orbit-entity/hit';
 import { StageCtx, Stage } from './stages/stage';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
-import { CollisionPhysics, CollisionPhysicsCtx } from './orbit-entity/collision';
+import { CollisionPhysics } from './orbit-entity/collision';
 import { EffectsSystem } from './effects-system';
 import { getStageDefinition, resolveStageInitData } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { HudProjection } from './camera/projection';
 import { MapModeSystem } from './map-mode/map-mode-system';
-import { Plan, PlanCtx } from './plan/plan';
+import { Plan } from './plan/plan';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRenderer } from './pip-renderer';
 import { Simulator, SimulatorCtx } from './orbit-entity/simulator';
 import * as C from './const';
-import { EnemyAiCtx } from './orbit-entity/enemy';
 import { Input } from './input';
 import { TouchControls } from './touch';
 import { Hud } from '../hud/hud';
@@ -88,7 +87,7 @@ export class Game {
     (rel: Vec3) => this.hudProjection.project(rel),
     this.cameraSystem.mapCamera,
     () => this.player.fineAttitude,
-    () => this.planCtx(),
+    () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }),
   );
 
   private phase: GamePhase = 'playing';
@@ -173,15 +172,6 @@ export class Game {
     const data = resolveStageInitData(this.activeStage, enemyCount);
     this.player.initAmmo(data.magsLeft, data.roundsInMag);
     this._hud.toast(data.briefingHtml, 12000);
-  }
-
-  // Plan(軌道計画)の refresh() や PlanGuide が要求する「現在状態」のスナップショット。
-  private planCtx(): PlanCtx {
-    return {
-      simTime: this.simTime,
-      player: this.player,
-      ephemeris: this.ephemeris,
-    };
   }
 
 
@@ -360,15 +350,6 @@ export class Game {
     };
   }
 
-  // Enemy.behave(敵 AI)が必要とする、現在状態のスナップショット。
-  private enemyAiCtx(simTime: number): EnemyAiCtx {
-    return {
-      simTime,
-      player: this.player,
-      simulator: this.simulator,
-    };
-  }
-
   // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
   private markerCtx(): MarkerCtx {
     return {
@@ -380,13 +361,6 @@ export class Game {
       mapLabelIds: this.mapModeSystem.mapLabelIds(),
       activeCamera: this.cameraSystem.activeCamera,
       simTime: this.simTime,
-    };
-  }
-
-  private collisionCtx(): CollisionPhysicsCtx {
-    return {
-      player: this.player,
-      entities: this.simulator.allEntities(),
     };
   }
 
@@ -411,7 +385,7 @@ export class Game {
     });
 
     if (this.simSpeedManager.canResolvePhysicalCollisions) {
-      this.collisionPhysics.resolve(dt, this.collisionCtx(), () => {
+      this.collisionPhysics.resolve(dt, this.player, this.simulator.allEntities(), () => {
         this._sfx.clank();
       });
     }
@@ -428,9 +402,8 @@ export class Game {
     });
 
     if (this.activeStage.index === -1 && this.phase === 'playing' && this.simSpeedManager.canEnemyFire) {
-      const ctx = this.enemyAiCtx(this.simTime);
       for (const e of this.simulator.enemies) {
-        if (e.alive) e.behave(dt, ctx);
+        if (e.alive) e.behave(dt, this.simTime, this.player, this.simulator);
       }
     }
   }
@@ -511,7 +484,7 @@ export class Game {
     const playerEl = this.syncEntityOrbitLines(o, pv, mapMode);
     const tgtEl = this.targeter.updateOrbitLine(o);
     this.ephemeris.updateReferenceLines(this.simTime, o, mapMode);
-    this.planGuide.updatePlannedLine(this.plan, this.planCtx(), o, mapMode);
+    this.planGuide.updatePlannedLine(this.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }, o, mapMode);
 
     const markerCtx = this.markerCtx();
     this.markersSystem.updateMarkers(markerCtx, pv, project);
@@ -520,7 +493,7 @@ export class Game {
     if (mapMode) {
       this._hud.markers.hide('burn');
     } else {
-      const { achieved } = this.planGuide.update(this.plan, this.planCtx(), o, pv, playerEl, this.player.alive, project);
+      const { achieved } = this.planGuide.update(this.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }, o, pv, playerEl, this.player.alive, project);
       if (achieved) this.simSpeedManager.cancelAutoWarp();
     }
 

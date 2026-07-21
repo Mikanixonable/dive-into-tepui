@@ -4,26 +4,21 @@ import { Vec3 } from '../../physics/vec3';
 import { BeltSection, DebrisPiece, OrbitEntity } from './entities';
 import { Player } from '../player/player';
 
-// player 以外の衝突参加エンティティは Simulator.collidableEntities() が一本化して渡す
-// (casings/debris の配列分割は Simulator 内部の上限管理の都合であり、ここでは扱わない)。
-export interface CollisionPhysicsCtx {
-  player: Player;
-  entities: OrbitEntity[];
-}
-
 const isCasing = (e: OrbitEntity): boolean => e instanceof DebrisPiece && e.kind === 'casing';
 
 export class CollisionPhysics {
-  resolve(dt: number, ctx: CollisionPhysicsCtx, onPlayerCasingImpact: () => void): void {
-    const p = ctx.player;
+  // entities は player 以外の衝突参加エンティティ(Simulator.allEntities() が一本化して渡す —
+  // casings/debris の配列分割は Simulator 内部の上限管理の都合であり、ここでは扱わない)。
+  resolve(dt: number, player: Player, entities: OrbitEntity[], onPlayerCasingImpact: () => void): void {
+    const p = player;
     const beltActive = p.alive && dt > 1e-6;
-    const entities = ctx.entities.filter(e => e.alive && e.collideRadius !== undefined);
-    if (p.alive) entities.push(p);
+    const participants = entities.filter(e => e.alive && e.collideRadius !== undefined);
+    if (p.alive) participants.push(p);
     // ベルト状態を読み込み、衝突計算後に書き戻す
     if (beltActive) {
-      entities.push(...p.belt.collisionSections(dt, p.state.r, p.state.v, p.att.q));
+      participants.push(...p.belt.collisionSections(dt, p.state.r, p.state.v, p.att.q));
     }
-    this.resolveCollisionPairs(entities, p, onPlayerCasingImpact);
+    this.resolveCollisionPairs(participants, p, onPlayerCasingImpact);
     if (beltActive) {
       p.belt.applyCollisionSections(dt, p.state.r, p.state.v, p.att.q);
     }

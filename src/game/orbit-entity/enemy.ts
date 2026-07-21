@@ -16,15 +16,6 @@ import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import type { Simulator } from './simulator';
 
-// 敵 AI(Enemy.behave)が必要とする、Game 側の現在状態のスナップショット。
-// player は参照渡し(state.r 等を読むだけでミューテートしない)。
-// scene は含めない — Enemy 自身が(Ship 経由で)自身の scene を私有している。
-export interface EnemyAiCtx {
-  simTime: number;
-  player: Player;
-  simulator: Simulator; // 同一集団の同時攻撃数カウント(enemies)・弾追加(addBullet)に使う
-}
-
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
 export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
 
@@ -120,32 +111,32 @@ export class Enemy extends Ship {
     ctx.activeStage.recordEnemyDeath(this, ctx, false);
   }
 
-  // 行動関数
-  behave(dt: number, ctx: EnemyAiCtx): void {
-    if (!ctx.player.alive) return;
-    const dist = len(sub(ctx.player.state.r, this.state.r));
+  // 行動関数(同一集団の同時攻撃数カウント・弾追加は simulator を使う)。
+  behave(dt: number, simTime: number, player: Player, simulator: Simulator): void {
+    if (!player.alive) return;
+    const dist = len(sub(player.state.r, this.state.r));
     if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
 
     if (this.burstLeft && this.burstLeft > 0) {
       this.burstDelay = (this.burstDelay ?? 0) - dt;
       if (this.burstDelay <= 0) {
-        this.firePlasma(ctx);
+        this.firePlasma(simTime, player, simulator);
         this.burstLeft--;
         this.burstDelay = C.ENEMY_BURST_INTERVAL;
       }
       return;
     }
 
-    if (this.lastFireSim === undefined) this.lastFireSim = ctx.simTime - Math.random() * C.ENEMY_FIRE_INTERVAL;
-    if (ctx.simTime - this.lastFireSim <= C.ENEMY_FIRE_INTERVAL) return;
-    this.lastFireSim = ctx.simTime;
+    if (this.lastFireSim === undefined) this.lastFireSim = simTime - Math.random() * C.ENEMY_FIRE_INTERVAL;
+    if (simTime - this.lastFireSim <= C.ENEMY_FIRE_INTERVAL) return;
+    this.lastFireSim = simTime;
 
-    const countInGroup = this.attackingCountInGroup(ctx.simulator.enemies);
+    const countInGroup = this.attackingCountInGroup(simulator.enemies);
     if (countInGroup >= C.ENEMY_MAX_ATTACKERS_PER_GROUP || Math.random() >= C.ENEMY_ATTACK_CHANCE) return;
     const counts = C.ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
     this.burstDelay = C.ENEMY_BURST_INTERVAL;
-    this.firePlasma(ctx);
+    this.firePlasma(simTime, player, simulator);
   }
 
   private attackingCountInGroup(enemies: readonly Enemy[]): number {
@@ -156,11 +147,11 @@ export class Enemy extends Ship {
     return n;
   }
 
-  private firePlasma(ctx: EnemyAiCtx): void {
+  private firePlasma(simTime: number, player: Player, simulator: Simulator): void {
     const r = this.state.r;
     const v = this.state.v;
-    const toPlayer = sub(ctx.player.state.r, r);
-    const relV = sub(ctx.player.state.v, v);
+    const toPlayer = sub(player.state.r, r);
+    const relV = sub(player.state.v, v);
 
     // 正確な見越し時間を計算
     let timeToHit = solveLeadTime(toPlayer, relV, C.PLASMA_BULLET_SPEED);
@@ -178,7 +169,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet({ r: clone(r), v: bV }, ctx.simTime, C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, this.accent);
+    const pb = new Bullet({ r: clone(r), v: bV }, simTime, C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, this.accent);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
@@ -188,6 +179,6 @@ export class Enemy extends Ship {
     );
     pb.obj.quaternion.setFromRotationMatrix(mz);
 
-    ctx.simulator.addBullet(pb);
+    simulator.addBullet(pb);
   }
 }

@@ -8,12 +8,6 @@ import * as C from '../const';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
 
-export interface PlanCtx {
-  simTime: number;
-  player: Player;
-  ephemeris: EphemerisSystem;
-}
-
 export class Plan {
   private _nodes: PlannedNode[] = [];
   private _trajSamples: TrajectorySample[] = [];
@@ -99,25 +93,25 @@ export class Plan {
   // dirty なら ~5Hz、そうでなければ2秒ごとに予測を再計算する(スロットリング)。
   // duration は呼び出し側が決める — マップモードの表示用と噴射ガイド用とで
   // 必要な予測範囲が異なるため。
-  maybeRefresh(ctx: PlanCtx, duration: number): void {
+  maybeRefresh(player: Player, ephemeris: EphemerisSystem, simTime: number, duration: number): void {
     const elapsed = performance.now() - this.lastRefreshMs;
     const threshold = this.dirty ? C.PREDICT_DIRTY_THROTTLE_MS : C.PREDICT_REFRESH_INTERVAL_MS;
     if (elapsed < threshold) return;
-    this.refresh(ctx, duration);
+    this.refresh(player, ephemeris, simTime, duration);
   }
 
-  private refresh(ctx: PlanCtx, duration: number): void {
+  private refresh(player: Player, ephemeris: EphemerisSystem, simTime: number, duration: number): void {
     if (duration <= 0) {
       this._trajSamples = [];
     } else {
       const opts: PredictOpts = {
-        sunPhase0: ctx.ephemeris.sunPhase0,
-        moonPhase0: ctx.ephemeris.moonPhase0,
+        sunPhase0: ephemeris.sunPhase0,
+        moonPhase0: ephemeris.moonPhase0,
         maxSamples: C.PREDICT_MAX_SAMPLES,
       };
       this._trajSamples = predictTrajectory(
-        { r: ctx.player.state.r, v: ctx.player.state.v },
-        ctx.simTime,
+        { r: player.state.r, v: player.state.v },
+        simTime,
         duration,
         this._nodes,
         opts,
