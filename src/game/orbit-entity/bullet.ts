@@ -39,7 +39,7 @@ export class Bullet extends OrbitEntity {
     checkLoss(ctx: CheckLossCtx): void {
         if (!this.alive) return;
         if (altitudeOf(this.state.r) < C.DEBRIS_REENTRY_ALT) { this.alive = false; return; }
-        if (ctx.combatCtx.simTime - this.bornSim > this.lifetime) this.alive = false;
+        if (ctx.simTime - this.bornSim > this.lifetime) this.alive = false;
     }
 
     // 姿勢を持たないため、att.q ではなく自機に対する相対速度方向を向く
