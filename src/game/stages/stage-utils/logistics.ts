@@ -5,7 +5,6 @@
 import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../physics/attitude';
 import { add, cross, len, lenSq, norm, randSym, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
-import { buildAmmo } from '../../../render/ships';
 import * as C from '../../const';
 import { Ammo } from '../../orbit-entity/entities';
 import { Hud } from '../../../hud/hud';
@@ -37,7 +36,6 @@ export class Logistics {
         r: rotateAxis(r, hHat, ang),
         v: add(rotateAxis(v, hHat, ang), randVec(1.5)),
       },
-      buildAmmo(),
       {
         q: randomQuat(),
         w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),

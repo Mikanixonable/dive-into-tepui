@@ -223,10 +223,7 @@ export class Game {
 
     this.handleFrame(dt);
 
-    this.pipRenderer.syncFineAttitude(
-      this.player.isFiring,
-      (prevFiring, nowFiring) => this.player.setFineAttitudeFromFiring(prevFiring, nowFiring),
-    );
+    this.player.updateFineAttitudeFromFiring();
   }
 
   private handleFrame(dt: number): void {
@@ -484,14 +481,14 @@ export class Game {
     this.simulator.stepCoastingAttitudes(attDt);
   }
 
-  // --------------------------------------------------------- render sync
+  // ------------------------------------------------------------------ sync
 
-  private syncRender(dt: number): void {
+  private sync(dt: number): void {
     const o = this.player.state.r;
     const pv = this.player.state.v;
     const displayTime = this.mapModeSystem.resolveDisplayTime(this.cameraSystem.mapMode);
-    const cam = this.syncRenderCamera(dt, o, pv);
-    this.environment.syncRenderEnvironment({
+    const cam = this.syncCamera(dt, o, pv);
+    this.environment.sync({
       dt,
       origin: o,
       displayTime,
@@ -502,14 +499,14 @@ export class Game {
       mapCameraFar: this.cameraSystem.mapCamera.camera.far,
       lit: this.cameraSystem.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
     });
-    this.syncRenderThrust();
-    this.syncRenderRcs();
-    this.syncRenderDynamicObjects(dt, o, pv);
-    this.syncRenderEffects(dt, o);
-    this.syncRenderHud(dt, o, pv);
+    this.syncThrustEffects();
+    this.syncRcsEffects();
+    this.syncDynamicObjects(dt, o, pv);
+    this.syncEffects(dt, o);
+    this.syncHud(dt, o, pv);
   }
 
-  private syncRenderCamera(dt: number, o: Vec3, pv: Vec3): THREE.PerspectiveCamera {
+  private syncCamera(dt: number, o: Vec3, pv: Vec3): THREE.PerspectiveCamera {
     const mouse = this.input.consumeMouse();
     const keyYaw = (this.input.down('ArrowLeft') ? 1 : 0) + (this.input.down('ArrowRight') ? -1 : 0);
     const keyPitch = (this.input.down('ArrowDown') ? 1 : 0) + (this.input.down('ArrowUp') ? -1 : 0);
@@ -527,13 +524,13 @@ export class Game {
     });
   }
 
-  private syncRenderThrust(): void {
-    this.player.renderThrustEffects(this.cameraSystem);
+  private syncThrustEffects(): void {
+    this.player.syncThrustEffects(this.cameraSystem);
   }
 
-  private syncRenderRcs(): void {
+  private syncRcsEffects(): void {
     this._sfx.setRcs(
-      this.player.updateRcsEffects(
+      this.player.syncRcsEffects(
         this.input,
         this.cameraSystem,
         this.phase === 'playing',
@@ -542,8 +539,8 @@ export class Game {
     );
   }
 
-  private syncRenderDynamicObjects(dt: number, o: Vec3, pv: Vec3): void {
-    this.player.render(this.cameraSystem.zoomActive);
+  private syncDynamicObjects(dt: number, o: Vec3, pv: Vec3): void {
+    this.player.syncTransformAtOrigin(this.cameraSystem.zoomActive);
     for (const e of this.simulator.enemies) if (e.alive) e.syncTransform(o);
     for (const b of this.simulator.bullets) b.syncBulletTransform(o, pv);
     for (const cs of this.simulator.casings) cs.syncTransform(o);
@@ -552,7 +549,7 @@ export class Game {
     for (const d of this.simulator.debris) d.syncTransform(o);
   }
 
-  private syncRenderEffects(dt: number, o: Vec3): void {
+  private syncEffects(dt: number, o: Vec3): void {
     this.effectsSystem.updateFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera);
   }
 
@@ -569,7 +566,7 @@ export class Game {
     return playerEl;
   }
 
-  private syncRenderHud(dt: number, o: Vec3, pv: Vec3): void {
+  private syncHud(dt: number, o: Vec3, pv: Vec3): void {
     const project = (rel: Vec3) => this.hudProjection.project(rel);
     this.mapModeSystem.updateDisplay(this.cameraSystem.mapMode);
 
@@ -601,7 +598,7 @@ export class Game {
 
   public render(dtRaw: number): void {
     const dt = Math.min(dtRaw, 0.1);
-    this.syncRender(dt);
+    this.sync(dt);
     this.pipRenderer.renderFrame(this.renderer, {
       firing: this.player.isFiring,
       mapMode: this.cameraSystem.mapMode,

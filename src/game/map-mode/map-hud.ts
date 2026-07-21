@@ -14,7 +14,7 @@ export interface MapLabel {
   pos: Vec3;
 }
 
-// drawLabels() が必要とする、Game 側の現在状態のスナップショット。
+// updateLabels() が必要とする、Game 側の現在状態のスナップショット。
 export interface MapHudCtx {
   simTime: number;
   sunPhase0: number;
@@ -29,8 +29,8 @@ export class MapHud {
   constructor(private readonly _hud: Hud, _sfx: Sfx) {}
 
   // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルを更新し、
-  // HUD マーカーとして描画する。sliderT > 0 の間はゴーストスライダーの表示時刻を使う。
-  drawLabels(o: Vec3, ctx: MapHudCtx, sliderT: number, project: ProjectFn): void {
+  // HUD マーカーに反映する。sliderT > 0 の間はゴーストスライダーの表示時刻を使う。
+  updateLabels(o: Vec3, ctx: MapHudCtx, sliderT: number, project: ProjectFn): void {
     const t = sliderT > 0 ? ctx.simTime + sliderT * ctx.duration : ctx.simTime;
     const mPos = moonPosition(t, ctx.moonPhase0);
     const sPos = sunPosition(t, ctx.sunPhase0);

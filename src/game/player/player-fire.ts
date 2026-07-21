@@ -12,13 +12,7 @@ import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Casing, DebrisPiece, Ship } from '../orbit-entity/entities';
 import { Bullet } from '../orbit-entity/bullet';
-import {
-  MUZZLE_OFFSETS,
-  buildBarrelMesh,
-  buildBulletMesh,
-  buildCasingMesh,
-  buildMagazineFrame,
-} from '../../render/ships';
+import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsCtx, spawnFlash } from '../effects-system';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
 
@@ -191,7 +185,6 @@ export class PlayerFire {
         r: addScaled(clone(muzzle), fwd, 1.5),
         v: addScaled(clone(ship.state.v), dir, C.MUZZLE_SPEED),
       },
-      buildBulletMesh(),
       ctx.simTime,
       C.BULLET_LIFETIME,
       'player',
@@ -214,7 +207,6 @@ export class PlayerFire {
           add(scale(right, -(0.5 + Math.random() * 0.3)), add(scale(up, randSym(0.2)), randVec(0.1))),
         ),
       },
-      buildCasingMesh(),
       {
         q: randomQuat(),
         w: v3(randSym(2.5), randSym(2.5), randSym(2.5)),
@@ -272,7 +264,7 @@ export class PlayerFire {
         r: add(ship.state.r, qRotate(ship.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
         v: add(ship.state.v, add(scale(down, 3.0), randVec(0.5))),
       },
-      buildBarrelMesh(),
+      { kind: 'barrel' },
       {
         q: { x: ship.att.q.x, y: ship.att.q.y, z: ship.att.q.z, w: ship.att.q.w },
         w: v3(randSym(2), randSym(2), randSym(2)),
@@ -294,7 +286,7 @@ export class PlayerFire {
         r: portWorld,
         v: add(ship.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
       },
-      buildMagazineFrame(),
+      { kind: 'magazineFrame' },
       {
         q: { x: ship.att.q.x, y: ship.att.q.y, z: ship.att.q.z, w: ship.att.q.w },
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),

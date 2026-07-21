@@ -254,7 +254,7 @@ export class MapModeSystem {
     const origin = ctx.playerR;
     this.display.update(this.plan, ctx, origin, this.mapCamera.frameRotating, this.mapCamera.sliderT, this.project);
     this.editor.updateGizmo(this.plan, origin, this.toDisplayFrame(ctx), this.project, this.mapCamera.dist);
-    this.mapHud.drawLabels(
+    this.mapHud.updateLabels(
       origin,
       {
         simTime: ctx.simTime,

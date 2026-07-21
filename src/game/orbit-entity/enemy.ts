@@ -7,7 +7,7 @@ import { altitudeOf, OrbitState } from '../../physics/orbital';
 import { OrbitLine } from '../../render/orbitline';
 import { add, clone, len, norm, randPerp, rotateAxis, scale, sub } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
-import { buildPlasmaMesh } from '../../render/ships';
+import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
 import { EffectsCtx, spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
@@ -23,6 +23,13 @@ export interface EnemyAiCtx {
   player: Player;
   enemies: readonly Enemy[]; // 同一集団の同時攻撃数カウントに使う
   addBullet(bullet: Bullet): void;
+}
+
+// Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
+export type EnemyShipKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
+
+function buildEnemyObj(shipKind: EnemyShipKind, accent: number): THREE.Object3D {
+  return shipKind.kind === 'stage0' ? buildStage0EnemyShip(accent, shipKind.typeIndex) : buildEnemyShip(accent);
 }
 
 export class Enemy extends Ship {
@@ -43,7 +50,7 @@ export class Enemy extends Ship {
   constructor(
     name: string,
     state: OrbitState,
-    obj: THREE.Object3D,
+    shipKind: EnemyShipKind,
     att: Attitude,
     hp: number,
     accent: number,
@@ -53,7 +60,7 @@ export class Enemy extends Ship {
     waveId?: number,
     scene?: THREE.Scene,
   ) {
-    super(name, state, obj, att, C.ENEMY_RADIUS, hp, scene);
+    super(name, state, buildEnemyObj(shipKind, accent), att, C.ENEMY_RADIUS, hp, scene);
     this._sfx = sfx;
     this.accent = accent;
     this.waveId = waveId;
@@ -171,7 +178,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet({ r: clone(r), v: bV }, buildPlasmaMesh(this.accent), ctx.simTime, C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene);
+    const pb = new Bullet({ r: clone(r), v: bV }, ctx.simTime, C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, this.accent);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(

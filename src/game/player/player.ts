@@ -44,6 +44,8 @@ export class Player extends Ship {
   // 受け取る(hud はフィールドとしては保持しない)。
   private readonly _sfx: Sfx;
   private readonly _scene: THREE.Scene;
+  // 発射キー解放の立ち下がりで姿勢微調整モードを解除するための、直前フレームの発射状態。
+  private prevFiring = false;
 
   // 高度420km・傾斜51.6°の円軌道に機首プログレードで初期配置する
   constructor(hud: Hud, sfx: Sfx, scene: THREE.Scene) {
@@ -258,8 +260,10 @@ export class Player extends Ship {
     this.fire.stopFiring();
   }
 
-  setFineAttitudeFromFiring(prevFiring: boolean, nowFiring: boolean): void {
-    this.throttle.setFineAttitudeFromFiring(prevFiring, nowFiring);
+  // 発射キー解放の立ち下がりで姿勢微調整モードを解除する(発射時は自動でONになるため)。
+  updateFineAttitudeFromFiring(): void {
+    this.throttle.setFineAttitudeFromFiring(this.prevFiring, this.isFiring);
+    this.prevFiring = this.isFiring;
   }
 
   updateAttitude(
@@ -280,16 +284,17 @@ export class Player extends Ship {
     );
   }
 
-  // -------------------------------------------------------------- 描画
+  // -------------------------------------------------------- 見た目(メッシュ)同期
 
-  // floating origin のため自機は常にワールド原点。ズーム中(PIP)は本体を隠す。
-  render(zoomActive: boolean): void {
+  // floating origin のため自機は常にワールド原点(基底 Ship.syncTransform とは signature が
+  // 異なる別メソッド — origin ではなくズーム中の可視性を受け取る)。ズーム中(PIP)は本体を隠す。
+  syncTransformAtOrigin(zoomActive: boolean): void {
     this.obj.position.set(0, 0, 0);
     this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
     this.obj.visible = this.alive && !zoomActive;
   }
 
-  renderThrustEffects(camera: CameraSystem): void {
+  syncThrustEffects(camera: CameraSystem): void {
     const dir = this.throttle.thrustVizDir;
     const showPlume = dir !== null && this.alive && !camera.zoomActive;
     this.plumeCore.visible = showPlume;
@@ -308,7 +313,7 @@ export class Player extends Ship {
     (this.plumeOuter.material as THREE.MeshBasicMaterial).opacity = 0.32 * flick;
   }
 
-  updateRcsEffects(
+  syncRcsEffects(
     input: Input,
     camera: CameraSystem,
     phasePlaying: boolean,
