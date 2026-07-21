@@ -5,18 +5,7 @@ import { Attitude } from '../../physics/attitude';
 import { Vec3, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
-import type { EffectsSystem } from '../effects-system';
-import type { UnlockManager } from '../unlock-manager';
 import { buildAmmo, buildBarrelMesh, buildCasingMesh, buildDebrisMesh, buildMagazineFrame } from '../../render/ships';
-
-export interface CheckLossCtx {
-  dt: number;
-  simTime: number;
-  activeStage: Stage;
-  setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
-  fx: EffectsSystem;
-  unlockManager: UnlockManager;
-}
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -53,7 +42,7 @@ export class OrbitEntity {
     this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 
-  checkLoss(_ctx: CheckLossCtx): void {
+  checkLoss(_dt: number, _simTime: number, _activeStage: Stage): void {
     if (!this.alive) return;
     if (altitudeOf(this.state.r) < C.DEBRIS_REENTRY_ALT) this.alive = false;
   }
@@ -128,11 +117,11 @@ export class DebrisPiece extends OrbitEntity {
 
   get kind(): DebrisKind['kind'] { return this.debrisKind.kind; }
 
-  checkLoss(ctx: CheckLossCtx): void {
-    super.checkLoss(ctx);
+  checkLoss(dt: number, simTime: number, activeStage: Stage): void {
+    super.checkLoss(dt, simTime, activeStage);
     if (!this.alive) return;
     // 薬莢のみ、寿命(CASING_LIFETIME)による消滅がある(他のデブリは大気突入のみ)。
-    if (this.debrisKind.kind === 'casing' && ctx.simTime - this.debrisKind.bornSim > C.CASING_LIFETIME) {
+    if (this.debrisKind.kind === 'casing' && simTime - this.debrisKind.bornSim > C.CASING_LIFETIME) {
       this.alive = false;
     }
   }

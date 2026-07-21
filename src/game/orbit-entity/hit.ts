@@ -6,19 +6,14 @@ import { Bullet } from './bullet';
 import { Enemy } from './enemy';
 import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
-import type { EffectsSystem } from '../effects-system';
-import type { UnlockManager } from '../unlock-manager';
 import type { Simulator } from './simulator';
 
 // checkBulletHits / checkBoardCrossings が必要とする、Game 側の現在状態のスナップショット。
-// 撃破が発生した場合の集計・勝敗判定は activeStage(CombatCtx 経由)に委ねる。
+// 撃破が発生した場合の集計・勝敗判定は activeStage(attacked() 経由)に委ねる。
 export interface HitCtx {
   simTime: number;
   player: Player;
   activeStage: Stage;
-  setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
-  fx: EffectsSystem;
-  unlockManager: UnlockManager;
   simulator: Simulator;
   target: Enemy | null;
   boardMarks: { off: Vec3; age: number; }[];
@@ -63,13 +58,7 @@ export class HitSystem {
 
         if (!this.segmentHit(p, target)) continue;
         p.alive = false;
-        target.attacked(p, {
-          simTime: ctx.simTime,
-          activeStage: ctx.activeStage,
-          setPhase: ctx.setPhase,
-          fx: ctx.fx,
-          unlockManager: ctx.unlockManager,
-        });
+        target.attacked(p, ctx.simTime, ctx.activeStage);
       }
     }
   }

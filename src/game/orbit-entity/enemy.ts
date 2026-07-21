@@ -1,7 +1,7 @@
 
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
-import { CheckLossCtx, Ship } from './entities';
+import { Ship } from './entities';
 import { Attitude } from '../../physics/attitude';
 import { altitudeOf, OrbitState } from '../../physics/orbital';
 import { OrbitLine } from '../../render/orbitline';
@@ -11,7 +11,7 @@ import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
 import { EffectsSystem } from '../effects-system';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
-import { CombatCtx } from '../stages/stage';
+import type { Stage } from '../stages/stage';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import type { Simulator } from './simulator';
@@ -37,6 +37,7 @@ export class Enemy extends Ship {
   // hud は現状 Enemy 自身のメソッドからは未使用だが、hud/sfx は必ず対で注入する方針のため
   // 受け取る(hud はフィールドとしては保持しない)。
   private readonly _sfx: Sfx;
+  private readonly _fx: EffectsSystem;
 
   constructor(
     name: string,
@@ -48,11 +49,13 @@ export class Enemy extends Ship {
     orbitLineColor: number,
     _hud: Hud,
     sfx: Sfx,
+    fx: EffectsSystem,
     waveId?: number,
     scene?: THREE.Scene,
   ) {
     super(name, state, buildEnemyObj(enemyKind, accent), att, C.ENEMY_RADIUS, hp, scene);
     this._sfx = sfx;
+    this._fx = fx;
     this.accent = accent;
     this.waveId = waveId;
     this.mass = 10000;
@@ -68,47 +71,47 @@ export class Enemy extends Ship {
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。attacked からのみ呼ばれる。
-  private hitEffect(fx: EffectsSystem, bullet: Bullet): void {
+  private hitEffect(bullet: Bullet): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
-      fx.spawnPlasmaFlash(bullet.state.r, this.state.v);
+      this._fx.spawnPlasmaFlash(bullet.state.r, this.state.v);
     } else {
-      fx.spawnBulletFlash(bullet.state.r, this.state.v);
+      this._fx.spawnBulletFlash(bullet.state.r, this.state.v);
     }
-    fx.scatterFragments(bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    this._fx.scatterFragments(bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
 
-  private destroyEffect(fx: EffectsSystem): void {
+  private destroyEffect(): void {
     this._sfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    fx.spawnShipDestroyEffect(this.state.r, this.state.v, C.ENEMY_SCALE, 0xff6a4a);
+    this._fx.spawnShipDestroyEffect(this.state.r, this.state.v, C.ENEMY_SCALE, 0xff6a4a);
   }
 
   // 被弾によるダメージ・致死判定。
-  attacked(bullet: Bullet, ctx: CombatCtx): void {
+  attacked(bullet: Bullet, simTime: number, activeStage: Stage): void {
     if (!this.alive) return;
     if (bullet.shooter === 'enemy') return; // 敵弾の被弾は無効化
 
-    ctx.activeStage.scoreCounter.recordHit();
+    activeStage.scoreCounter.recordHit();
 
     this.hp -= C.ENEMY_HIT_DAMAGE;
     if (this.hp > 0) {
-      this.hitEffect(ctx.fx, bullet);
+      this.hitEffect(bullet);
       return;
     }
 
     this.alive = false;
-    ctx.activeStage.recordEnemyDeath(this, ctx.setPhase, ctx.unlockManager, ctx.simTime, true);
-    this.destroyEffect(ctx.fx);
+    activeStage.recordEnemyDeath(this, simTime, true);
+    this.destroyEffect();
   }
 
   // 再突入による自然死。alive がすでに false なら何もしない(多重処理防止)。
-  checkLoss(ctx: CheckLossCtx): void {
+  checkLoss(_dt: number, simTime: number, activeStage: Stage): void {
     if (!this.alive) return;
     if (altitudeOf(this.state.r) >= C.REENTRY_ALT) return;
     this.alive = false;
-    this.destroyEffect(ctx.fx);
-    ctx.activeStage.recordEnemyDeath(this, ctx.setPhase, ctx.unlockManager, ctx.simTime, false);
+    this.destroyEffect();
+    activeStage.recordEnemyDeath(this, simTime, false);
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は simulator を使う)。

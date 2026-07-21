@@ -6,11 +6,12 @@ import { Vec3, add, clone, cross, len, norm, randPerp, randSym, scale, sub, v3 }
 import * as C from '../../const';
 import { Hud } from '../../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
+import type { EffectsSystem } from '../../effects-system';
 import { Enemy } from '../../orbit-entity/enemy';
 import { generateApproachingEnemy, generateDriftingEnemy } from './enemy-generator';
 
 // 色分けされた5グループ(各10機)を base 周囲5km以内に配置して直接生成する(訓練クラスタ)。
-export function generateCluster(base: OrbitState, hud: Hud, sfx: Sfx, scene: THREE.Scene): Enemy[] {
+export function generateCluster(base: OrbitState, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy[] {
   const vHat = norm(base.v);
   const rHat = norm(base.r);
   const hHat = norm(cross(base.r, base.v));
@@ -36,7 +37,7 @@ export function generateCluster(base: OrbitState, hud: Hud, sfx: Sfx, scene: THR
 
       const state: OrbitState = { r: add(base.r, off), v: clone(base.v) };
       const accent = C.STAGE0_GROUP_ACCENTS[gi]!;
-      enemies.push(generateDriftingEnemy(`${C.STAGE0_GROUP_LABELS[gi]}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
+      enemies.push(generateDriftingEnemy(`${C.STAGE0_GROUP_LABELS[gi]}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene));
     }
   }
   return enemies;
@@ -134,7 +135,7 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 }
 
 // サバイバル波状攻撃1波分を直接生成する(登録は呼び出し側)。
-export function generateWave(player: OrbitState, waveNumber: number, hud: Hud, sfx: Sfx, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: OrbitState, waveNumber: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const shipCount = C.STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * C.STAGE00_WAVE_SHIPS_PER_WAVE);
   const centerR = pickWaveCenter(player, waveNumber);
   const { approachDir, centerV } = makeFlybyVelocity(player, centerR, waveNumber);
@@ -147,7 +148,7 @@ export function generateWave(player: OrbitState, waveNumber: number, hud: Hud, s
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir);
     const state: OrbitState = { r: position, v: clone(centerV) };
-    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, accent, typeIndex, waveNumber, hud, sfx, scene));
+    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, accent, typeIndex, waveNumber, hud, sfx, fx, scene));
   }
   return enemies;
 }

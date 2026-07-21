@@ -8,11 +8,12 @@ import { ExtraAccel, stepOrbitRK4 } from '../../physics/orbital';
 import { add, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { HitCtx, HitSystem } from './hit';
-import { Ammo, CheckLossCtx, DebrisPiece, OrbitEntity } from './entities';
+import { Ammo, DebrisPiece, OrbitEntity } from './entities';
 import { Player } from '../player/player';
 import { Enemy } from './enemy';
 import { Bullet } from './bullet';
 import { EphemerisSystem } from '../ephemeris';
+import type { Stage } from '../stages/stage';
 
 export interface SimulatorCtx {
   player: Player;
@@ -165,13 +166,13 @@ export class Simulator {
   // ------------------------------------------------------------ 寿命管理
 
   // 不要になったものを除去する
-  cleanup(ctx: CheckLossCtx): void {
+  cleanup(dt: number, simTime: number, activeStage: Stage): void {
     // 自滅要因をチェック。もし不要になっていたらalive=falseになる。
-    for (const e of this.enemies) e.checkLoss(ctx);
-    for (const b of this.bullets) b.checkLoss(ctx);
-    for (const cs of this.casings) cs.checkLoss(ctx);
-    for (const d of this.debris) d.checkLoss(ctx);
-    for (const ammo of this.ammos) ammo.checkLoss(ctx);
+    for (const e of this.enemies) e.checkLoss(dt, simTime, activeStage);
+    for (const b of this.bullets) b.checkLoss(dt, simTime, activeStage);
+    for (const cs of this.casings) cs.checkLoss(dt, simTime, activeStage);
+    for (const d of this.debris) d.checkLoss(dt, simTime, activeStage);
+    for (const ammo of this.ammos) ammo.checkLoss(dt, simTime, activeStage);
     // alive=false になったものを配列から除去して scene から片付ける(dispose)。
     this.prune(this.enemies);
     this.prune(this.bullets);

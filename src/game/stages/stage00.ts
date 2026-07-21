@@ -9,6 +9,8 @@ import { Sfx } from '../../audio/sfx';
 import type { Simulator } from '../orbit-entity/simulator';
 import type { Player } from '../player/player';
 import type { Enemy } from '../orbit-entity/enemy';
+import type { UnlockManager } from '../unlock-manager';
+import type { EffectsSystem } from '../effects-system';
 
 export class Stage00 extends Stage {
   readonly index = -1 as const;
@@ -19,9 +21,17 @@ export class Stage00 extends Stage {
 
   private readonly waveManager = new WaveManager();
 
-  setup(hud: Hud, sfx: Sfx, scene: THREE.Scene, simulator: Simulator): void {
-    super.setup(hud, sfx, scene, simulator);
-    this.waveManager.setup(hud, sfx, scene);
+  setup(
+    hud: Hud,
+    sfx: Sfx,
+    scene: THREE.Scene,
+    simulator: Simulator,
+    setPhase: (phase: 'playing' | 'won' | 'lost' | 'timeup') => void,
+    unlockManager: UnlockManager,
+    fx: EffectsSystem,
+  ): void {
+    super.setup(hud, sfx, scene, simulator, setPhase, unlockManager, fx);
+    this.waveManager.setup(hud, sfx, scene, fx);
   }
 
   briefingHtml(): string {
