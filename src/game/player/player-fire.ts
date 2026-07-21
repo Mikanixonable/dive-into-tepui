@@ -194,6 +194,7 @@ export class PlayerFire {
       ctx.simTime,
       C.BULLET_LIFETIME,
       'player',
+      'normal',
       this._scene,
     );
     ctx.addBullet(bullet);

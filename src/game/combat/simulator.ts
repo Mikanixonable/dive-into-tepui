@@ -30,7 +30,6 @@ export interface SimulationAdvance {
 export class Simulator {
   readonly enemies: Enemy[] = [];
   readonly bullets: Bullet[] = [];
-  readonly plasmaBullets: Bullet[] = [];
   readonly casings: Casing[] = [];
   readonly debris: DebrisPiece[] = [];
   readonly magPickups: MagPickup[] = [];
@@ -62,11 +61,7 @@ export class Simulator {
   }
 
   addBullet(bullet: Bullet): void {
-    this.addCapped(this.bullets, bullet, C.MAX_BULLETS);
-  }
-
-  addPlasmaBullet(bullet: Bullet): void {
-    this.addCapped(this.plasmaBullets, bullet, C.MAX_BULLETS * 2);
+    this.addCapped(this.bullets, bullet, C.MAX_BULLETS * 3);
   }
 
   addCasing(casing: Casing): void {
@@ -148,7 +143,6 @@ export class Simulator {
   private stepWorldOrbits(dt: number, trackPrevR: boolean): void {
     this.stepEntities(this.enemies, dt, this.envShip, { skipDead: true, trackPrevR });
     this.stepEntities(this.bullets, dt, this.envBullet, { skipDead: true, trackPrevR });
-    this.stepEntities(this.plasmaBullets, dt, this.envBullet, { skipDead: true, trackPrevR });
     this.stepEntities(this.casings, dt, this.envSmall);
     this.stepEntities(this.debris, dt, this.envSmall);
     this.stepEntities(this.magPickups, dt, this.envSmall, { skipDead: true });
@@ -175,14 +169,12 @@ export class Simulator {
     // 自滅要因をチェック。もし不要になっていたらalive=falseになる。
     for (const e of this.enemies) e.checkLoss(ctx);
     for (const b of this.bullets) b.checkLoss(ctx);
-    for (const pb of this.plasmaBullets) pb.checkLoss(ctx);
     for (const cs of this.casings) cs.checkLoss(ctx);
     for (const d of this.debris) d.checkLoss(ctx);
     for (const mp of this.magPickups) mp.checkLoss(ctx);
     // alive=false になったものを配列から除去して scene から片付ける(dispose)。
     this.prune(this.enemies);
     this.prune(this.bullets);
-    this.prune(this.plasmaBullets);
     this.prune(this.casings);
     this.prune(this.debris);
     this.prune(this.magPickups);

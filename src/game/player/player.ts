@@ -3,7 +3,7 @@ import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { ExtraAccel, MU_EARTH, OrbitState, R_EARTH } from '../../physics/orbital';
 import { Vec3, addScaled, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { Ship } from '../entities';
+import { Bullet, Ship } from '../entities';
 import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
@@ -20,7 +20,6 @@ import { altitudeOf } from '../../physics/orbital';
 import { ThermalSystem } from './thermal';
 import { CheckLossCtx } from '../entities';
 import { EffectsCtx, spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
-import { HitInfo } from '../combat/hit';
 
 export interface PlayerActionState {
   thrustFn: ExtraAccel | null;
@@ -204,18 +203,18 @@ export class Player extends Ship {
   }
   
   // 被弾によるダメージ・致死判定。
-  attacked(hit: HitInfo, ctx: CombatCtx): void {
+  attacked(bullet: Bullet, ctx: CombatCtx): void {
     if (!this.alive) return;
 
     // todo: 弾種でダメージ分岐しないのか
     this.hp -= C.PLAYER_HIT_DAMAGE
     if (this.hp > 0) {
-      this.hitEffect(ctx.fx, hit);
+      this.hitEffect(ctx.fx, bullet);
       return;
     }
 
     this.alive = false;
-    const reason = hit.shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
+    const reason = bullet.shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
     ctx.activeStage.recordKilled(ctx, reason);
     this.destroyEffect(ctx.fx);
   }
@@ -237,14 +236,14 @@ export class Player extends Ship {
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
-  private hitEffect(fx: EffectsCtx, hit: HitInfo): void {
+  private hitEffect(fx: EffectsCtx, bullet: Bullet): void {
     this._sfx.hit();
-    if (hit.kind === 'plasma') {
-      spawnPlasmaFlash(this._scene, fx, hit.pos, hit.vel);
+    if (bullet.type === 'plasma') {
+      spawnPlasmaFlash(this._scene, fx, bullet.state.r, this.state.v);
     } else {
-      spawnBulletFlash(this._scene, fx, hit.pos, hit.vel);
+      spawnBulletFlash(this._scene, fx, bullet.state.r, this.state.v);
     }
-    spawnFragments(this._scene, fx, hit.pos, hit.vel, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    spawnFragments(this._scene, fx, bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
 
   private destroyEffect(fx: EffectsCtx): void {

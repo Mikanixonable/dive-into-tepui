@@ -64,7 +64,7 @@ export class Game {
   perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
     return {
       enemies: this.simulator.enemies.length,
-      bullets: this.simulator.bullets.length + this.simulator.plasmaBullets.length,
+      bullets: this.simulator.bullets.length,
       casings: this.simulator.casings.length,
       debris: this.simulator.debris.length,
     };
@@ -407,7 +407,6 @@ export class Game {
       enemies: this.simulator.enemies,
       target: this.targeter.autoTarget,
       bullets: this.simulator.bullets,
-      plasmaBullets: this.simulator.plasmaBullets,
       boardMarks: this.markersSystem.boardMarks,
     };
   }
@@ -418,7 +417,7 @@ export class Game {
       simTime,
       player: this.player,
       enemies: this.simulator.enemies,
-      addPlasmaBullet: (bullet) => this.simulator.addPlasmaBullet(bullet),
+      addBullet: (bullet) => this.simulator.addBullet(bullet),
     };
   }
 
@@ -546,7 +545,6 @@ export class Game {
     this.player.render(this.cameraSystem.zoomActive);
     for (const e of this.simulator.enemies) if (e.alive) e.syncTransform(o);
     for (const b of this.simulator.bullets) b.syncBulletTransform(o, pv);
-    for (const pb of this.simulator.plasmaBullets) pb.syncBulletTransform(o, pv);
     for (const cs of this.simulator.casings) cs.syncTransform(o);
     for (const mp of this.simulator.magPickups) mp.syncTransform(o);
     this.player.updateBelt(dt);
