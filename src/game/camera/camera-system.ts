@@ -4,7 +4,7 @@ import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { ChaseCamera } from './chase-camera';
 import { MapCamera } from './map-camera';
-import { MouseDelta } from '../input';
+import { Input } from '../input';
 import { Player } from '../player/player';
 
 export interface CameraUpdateCtx {
@@ -12,12 +12,9 @@ export interface CameraUpdateCtx {
   player: Player;
   sunAz: number;
   focusRel: Vec3; // MapCamera の注視点(origin 相対)。解決は map-mode-system.ts の責務。
-  mouse: MouseDelta;
-  keyYaw: number;
-  keyPitch: number;
+  input: Input;
   dt: number;
   origin: Vec3;
-  playerVelocity: Vec3;
 }
 
 // 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する。
@@ -40,11 +37,15 @@ export class CameraSystem {
   }
 
   updateActiveCamera(ctx: CameraUpdateCtx): THREE.PerspectiveCamera {
+    const keyYaw = (ctx.input.down('ArrowLeft') ? 1 : 0) + (ctx.input.down('ArrowRight') ? -1 : 0);
+    const keyPitch = (ctx.input.down('ArrowDown') ? 1 : 0) + (ctx.input.down('ArrowUp') ? -1 : 0);
+    const mouse = ctx.input.consumeMouse();
+
     if (this.mapMode) {
-      this.mapCamera.update(ctx.mouse, ctx.keyYaw, ctx.keyPitch, ctx.dt, ctx.focusRel, ctx.sunAz);
+      this.mapCamera.update(mouse, keyYaw, keyPitch, ctx.dt, ctx.focusRel, ctx.sunAz);
       return this.mapCamera.camera;
     }
-    this.chaseCamera.update(ctx);
+    this.chaseCamera.update(mouse, keyYaw, keyPitch, ctx.dt, ctx.origin, ctx.player, this.zoomActive);
     return this.chaseCamera.camera;
   }
 }
