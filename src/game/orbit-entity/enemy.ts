@@ -116,8 +116,8 @@ export class Enemy extends Ship {
     if (!this.alive) return;
     if (altitudeOf(this.state.r) >= C.REENTRY_ALT) return;
     this.alive = false;
-    this.destroyEffect(ctx.combatCtx.fx);
-    ctx.combatCtx.activeStage.recordEnemyDeath(this, ctx.combatCtx, false);
+    this.destroyEffect(ctx.fx);
+    ctx.activeStage.recordEnemyDeath(this, ctx, false);
   }
 
   // 行動関数

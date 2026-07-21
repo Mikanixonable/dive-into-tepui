@@ -4,12 +4,21 @@ import { altitudeOf, OrbitState } from '../../physics/orbital';
 import { Attitude } from '../../physics/attitude';
 import { Vec3, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import type { CombatCtx } from '../stages/stage';
+import type { Stage } from '../stages/stage';
+import type { Player } from '../player/player';
+import type { EffectsSystem } from '../effects-system';
+import type { UnlockManager } from '../unlock-manager';
 import { buildAmmo, buildBarrelMesh, buildCasingMesh, buildDebrisMesh, buildMagazineFrame } from '../../render/ships';
 
 export interface CheckLossCtx {
   dt: number;
-  combatCtx: CombatCtx;
+  simTime: number;
+  player: Player;
+  totalEnemies: number;
+  activeStage: Stage;
+  setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
+  fx: EffectsSystem;
+  unlockManager: UnlockManager;
 }
 
 const identityAttitude = (): Attitude => ({
@@ -126,7 +135,7 @@ export class DebrisPiece extends OrbitEntity {
     super.checkLoss(ctx);
     if (!this.alive) return;
     // 薬莢のみ、寿命(CASING_LIFETIME)による消滅がある(他のデブリは大気突入のみ)。
-    if (this.debrisKind.kind === 'casing' && ctx.combatCtx.simTime - this.debrisKind.bornSim > C.CASING_LIFETIME) {
+    if (this.debrisKind.kind === 'casing' && ctx.simTime - this.debrisKind.bornSim > C.CASING_LIFETIME) {
       this.alive = false;
     }
   }

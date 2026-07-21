@@ -5,15 +5,23 @@ import { Ship } from './entities';
 import { Bullet } from './bullet';
 import { Enemy } from './enemy';
 import { Player } from '../player/player';
-import { CombatCtx } from '../stages/stage';
+import type { Stage } from '../stages/stage';
+import type { EffectsSystem } from '../effects-system';
+import type { UnlockManager } from '../unlock-manager';
+import type { Simulator } from './simulator';
 
 // checkBulletHits / checkBoardCrossings が必要とする、Game 側の現在状態のスナップショット。
-// 撃破が発生した場合の集計・勝敗判定は combatCtx.activeStage(CombatCtx 経由)に委ねる。
+// 撃破が発生した場合の集計・勝敗判定は activeStage(CombatCtx 経由)に委ねる。
 export interface HitCtx {
-  combatCtx: CombatCtx;
-  enemies: readonly Enemy[];
+  simTime: number;
+  player: Player;
+  totalEnemies: number;
+  activeStage: Stage;
+  setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
+  fx: EffectsSystem;
+  unlockManager: UnlockManager;
+  simulator: Simulator;
   target: Enemy | null;
-  bullets: readonly Bullet[];
   boardMarks: { off: Vec3; age: number; }[];
 }
 
@@ -24,10 +32,10 @@ export class HitSystem {
   checkBoardCrossings(ctx: HitCtx): void {
     const tgt = ctx.target;
     if (!tgt || !tgt.alive) return;
-    const n = norm(sub(tgt.state.r, ctx.combatCtx.player.state.r)); // 的の法線 = 視線方向
+    const n = norm(sub(tgt.state.r, ctx.player.state.r)); // 的の法線 = 視線方向
     if (lenSq(n) < 0.5) return;
 
-    for (const b of ctx.bullets) {
+    for (const b of ctx.simulator.bullets) {
       if (b.type !== 'normal' || !b.alive) continue; // 的通過マーカーは通常弾のみ対象
       const d0 = dot(sub(b.prevR, tgt.state.r), n);
       const d1 = dot(sub(b.state.r, tgt.state.r), n);
@@ -43,21 +51,29 @@ export class HitSystem {
 
   // サブステップ間の相対運動を線分 vs 球でチェック(高速弾のトンネリング防止)
   checkBulletHits(ctx: HitCtx): void {
-    const player = ctx.combatCtx.player;
-    const targets: (Player | Enemy)[] = [player, ...ctx.enemies];
+    const player = ctx.player;
+    const targets: (Player | Enemy)[] = [player, ...ctx.simulator.enemies];
 
-    for (const p of ctx.bullets) {
+    for (const p of ctx.simulator.bullets) {
       for (const target of targets) {
         if (!p.alive || !target.alive) continue;
         // プラズマ弾は自機のみを狙う(敵機には当たらない)
         if (p.type === 'plasma' && target !== player) continue;
         // 通常弾とプレイヤーの判定は、撃った直後の自己ヒットを避けるため猶予を置く
         // (通常弾はプレイヤーしか撃たないので、弾が地球を一周して戻るような場合のみ発生する)
-        if (p.type === 'normal' && target === player && ctx.combatCtx.simTime - p.bornSim <= C.SELF_HIT_GRACE) continue;
+        if (p.type === 'normal' && target === player && ctx.simTime - p.bornSim <= C.SELF_HIT_GRACE) continue;
 
         if (!this.segmentHit(p, target)) continue;
         p.alive = false;
-        target.attacked(p, ctx.combatCtx);
+        target.attacked(p, {
+          simTime: ctx.simTime,
+          player: ctx.player,
+          totalEnemies: ctx.totalEnemies,
+          activeStage: ctx.activeStage,
+          setPhase: ctx.setPhase,
+          fx: ctx.fx,
+          unlockManager: ctx.unlockManager,
+        });
       }
     }
   }

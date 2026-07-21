@@ -367,10 +367,15 @@ export class Game {
   // HitSystem(弾の衝突判定)が必要とする、現在状態のスナップショット。
   private hitCtx(simTime: number): HitCtx {
     return {
-      combatCtx: this.combatCtx(simTime),
-      enemies: this.simulator.enemies,
+      simTime,
+      player: this.player,
+      totalEnemies: this.activeStage.scoreCounter.totalEnemiesSpawned,
+      activeStage: this.activeStage,
+      setPhase: (p) => { this.phase = p; },
+      fx: this.effects,
+      unlockManager: this.unlockManager,
+      simulator: this.simulator,
       target: this.targeter.autoTarget,
-      bullets: this.simulator.bullets,
       boardMarks: this.markersSystem.boardMarks,
     };
   }
@@ -417,7 +422,16 @@ export class Game {
   // ------------------------------------------------------------- simulate
 
   private handlePostSimulation(dt: number, simDt: number): void {
-    this.player.checkLoss({ dt, combatCtx: this.combatCtx() });
+    this.player.checkLoss({
+      dt,
+      simTime: this.simTime,
+      player: this.player,
+      totalEnemies: this.activeStage.scoreCounter.totalEnemiesSpawned,
+      activeStage: this.activeStage,
+      setPhase: (p) => { this.phase = p; },
+      fx: this.effects,
+      unlockManager: this.unlockManager,
+    });
 
     if (this.simSpeedManager.canResolvePhysicalCollisions) {
       this.collisionPhysics.resolve(dt, this.collisionCtx(), () => {
@@ -426,7 +440,16 @@ export class Game {
     }
     this.updateAttitudes(Math.min(simDt, 0.12));
 
-    this.simulator.cleanup({ dt, combatCtx: this.combatCtx() });
+    this.simulator.cleanup({
+      dt,
+      simTime: this.simTime,
+      player: this.player,
+      totalEnemies: this.activeStage.scoreCounter.totalEnemiesSpawned,
+      activeStage: this.activeStage,
+      setPhase: (p) => { this.phase = p; },
+      fx: this.effects,
+      unlockManager: this.unlockManager,
+    });
 
     if (this.activeStage.index === -1 && this.phase === 'playing' && this.simSpeedManager.canEnemyFire) {
       const ctx = this.enemyAiCtx(this.simTime);
