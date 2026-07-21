@@ -21,10 +21,6 @@ belt.ts
 - 各モジュールの疎結合化と責務の整理
 - ctx注入パターンの根絶。
 
-## beltのupdateとsyncの分離できるか、調査検討。
-syncはモデルの位置と向きの更新、updateは物理計算と論理データの更新。
-現状player.syncからupdateを呼んでしまっていて良くない。
-
 ## pip-windowのupdateとsyncの分離できるか、調査検討。
 その他にも全然updateとsyncの配線が整ってないとこある。
 
@@ -114,3 +110,7 @@ EnvironmentSceneとEphemerisSystemは、扱うものは近いのに計算と描�
 touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散している。これが直接悪いとは言い切れないが…
 
 ### rcsEffectやthrustEffectはplayer.thrustと実質的に密結合（重複実装）
+
+## beltのupdateとsyncの分離できるか
+beltPhysicsにbeltSection[]を「書き込む」という処理をしているが、ステートフルで良くない
+beltPhysicsからbeltSection[]への変換と逆変換ということにシ、逆変換においては新規オブジェクトとして作るべきでは？
