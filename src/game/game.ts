@@ -253,13 +253,12 @@ export class Game {
     }
     else {
       this.targeter.updateCombatTargeting(
-        {
-          player: this.player,
-          enemies: this.simulator.enemies,
-          input: this.input,
-          activeCamera: this.cameraSystem.activeCamera,
-          project: (rel) => this.hudProjection.project(rel),
-        });
+        this.player,
+        this.simulator.enemies,
+        this.input,
+        this.cameraSystem.activeCamera,
+        (rel) => this.hudProjection.project(rel),
+      );
     }
 
     this.activeStage.update(dt, this.stageCtx());
@@ -414,14 +413,14 @@ export class Game {
   }
 
   private syncCamera(dt: number, o: Vec3): THREE.PerspectiveCamera {
-    return this.cameraSystem.updateActiveCamera({
-      player: this.player,
-      sunAz: sunAzimuth(this.simTime, this.ephemeris.sunPhase0),
-      focusRel: this.mapModeSystem.focusRel(o),
-      input: this.input,
+    return this.cameraSystem.updateActiveCamera(
+      this.player,
+      sunAzimuth(this.simTime, this.ephemeris.sunPhase0),
+      this.mapModeSystem.focusRel(o),
+      this.input,
       dt,
-      origin: o,
-    });
+      o,
+    );
   }
 
   private syncDynamicObjects(o: Vec3, pv: Vec3): void {
