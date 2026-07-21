@@ -105,7 +105,7 @@ const {x, y, z} = result;
 
 1. 入れ子型のctxのflatten、その結果生じた重複の削除 — 対象: `HitCtx`、`CheckLossCtx`
 2. 重複、未使用フィールド、そもそも自分の責務下でアクセスできるもの（stageからみたtotalEnemyなど）の削除 — 対象: `CombatCtx`(`totalEnemies`)、`StageCtx`(`totalEnemies`/`magsLeft`/`roundsInMag`)、`SimulatorCtx`(未使用の`combatCtx`)、`StageWinCtx`(`scoreCounter`/`totalEnemies`)
-3. 分解→再結合型の除去 — 対象: `PlanCtx`(`playerR`/`playerV`/`sunPhase0`/`moonPhase0`)、`HitCtx`(`enemies`/`bullets`)、`EnemyAiCtx`(`enemies`/`addBullet`)、`MapHudCtx`(`simTime`/`sunPhase0`/`moonPhase0`)
+3. 分解→再結合パターンの除去 — 対象: `PlanCtx`(`playerR`/`playerV`/`sunPhase0`/`moonPhase0`)、`HitCtx`(`enemies`/`bullets`)、`EnemyAiCtx`(`enemies`/`addBullet`)、`MapHudCtx`(`simTime`/`sunPhase0`/`moonPhase0`)
 4. 軽微な（フィールド数3個程度）のctx型のファクトリ廃止、直接引数化 — 対象: `PlanCtx`、`EnemyAiCtx`、`MapHudCtx`、`CollisionPhysicsCtx`、`StageWinCtx`
 5. 利用範囲の小さい（ctxを渡されているが実際そのうち3個程度のフィールドしか見ていないもの）関数の直接引数化（呼び出し元で大型ctxをバラしてから、あるいはそもそもctxを経由せずに渡す） — 対象: MarkerSystemなど　ここはctx単位の作業ではなく関数単位の作業となるため作業単位は要調査。
 6. 転用、ファクトリの持ち回りの解消（高リスク、高い判断力を要する） — 対象: `CombatCtx`、`HitCtx`、`CheckLossCtx`、`StageCtx`(→`WaveManager`転用)、`SimulatorCtx`(`hitCtx`ファクトリ持ち回り)
