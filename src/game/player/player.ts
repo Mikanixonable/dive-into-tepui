@@ -83,7 +83,7 @@ export class Player extends Ship {
     };
   }
 
-  private updateHpRegen(dt: number): void {
+  private hpRegen(dt: number): void {
     if (!this.alive || this.hp <= 0 || this.hp >= this.maxHp) return;
     this.hp = Math.min(this.maxHp, this.hp + dt * C.HP_REGEN_RATE);
   }
@@ -109,9 +109,9 @@ export class Player extends Ship {
     this.fire.onPickup(mags);
   }
 
-  // マガジンベルトの毎フレーム更新(たわみ物理 + 表示メッシュ、弾薬状態に連動)。
-  updateBelt(dt: number): void {
-    this.belt.update(dt, this.fire.magsLeft, this.fire.roundsInMag, this.att, this.throttle.thrustAccelVec, this.alive);
+  // 毎フレームの論理更新(現状はマガジンベルトのたわみ物理のみ、弾薬状態に連動)。
+  update(dt: number): void {
+    this.belt.update(dt, this.fire.magsLeft, this.fire.roundsInMag, this.att, this.throttle.thrustAccelVec);
   }
 
   // 毎フレームの HP 自然回復・押下エッジキー処理と、ユーザー入力に対する移動/発射の
@@ -130,7 +130,7 @@ export class Player extends Ship {
     fireCtx: FireCtx;
   }): PlayerActionState {
     const { dt, input, canPlayerThrust, canPlayerFire, mapMode, scoreCounter, fireCtx } = params;
-    this.updateHpRegen(dt);
+    this.hpRegen(dt);
     if (mapMode) return this.behaveMapMode(dt);
     return this.behaveFlying(dt, input, canPlayerThrust, canPlayerFire, scoreCounter, fireCtx);
   }
@@ -263,7 +263,6 @@ export class Player extends Ship {
   // floating origin のため自機は常にワールド原点(基底 Ship.syncTransform とは signature が
   // 異なる別メソッド — origin ではなくズーム中の可視性を受け取る)。ズーム中(PIP)は本体を隠す。
   sync(
-    dt: number,
     input: Input,
     camera: CameraSystem,
     phasePlaying: boolean,
@@ -275,6 +274,6 @@ export class Player extends Ship {
 
     this.thrustEffects.sync(this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
     this.rcsEffects.sync(input, this.throttle.rcsDamp, this.att, this.alive, phasePlaying, paused, camera);
-    this.updateBelt(dt);
+    this.belt.sync(this.alive);
   }
 }
