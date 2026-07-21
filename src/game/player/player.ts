@@ -1,15 +1,14 @@
 import * as THREE from 'three/webgpu';
-import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
+import { Attitude, qFromForwardUp } from '../../physics/attitude';
 import { ExtraAccel, MU_EARTH, OrbitState, R_EARTH } from '../../physics/orbital';
-import { Vec3, addScaled, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
+import { Vec3, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Ship } from '../orbit-entity/entities';
 import { Bullet } from '../orbit-entity/bullet';
 import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { buildFlashMesh, buildPlayerShip, RCS_BLOCK_OFFSETS } from '../../render/ships';
-import { getGlowTexture } from '../../render/glow-texture';
+import { buildPlayerShip } from '../../render/ships';
 import { OrbitLine } from '../../render/orbitline';
 import type { CameraSystem } from '../camera/camera-system';
 import { CombatCtx } from '../stages/stage';
@@ -21,6 +20,8 @@ import { altitudeOf } from '../../physics/orbital';
 import { ThermalSystem } from './thermal';
 import { CheckLossCtx } from '../orbit-entity/entities';
 import { EffectsSystem } from '../effects-system';
+import { ThrustEffects } from './thrust-effects';
+import { RcsEffects } from './rcs-effects';
 
 export interface PlayerActionState {
   thrustFn: ExtraAccel | null;
@@ -34,9 +35,8 @@ export class Player extends Ship {
   readonly belt: Belt;
   readonly thermal: ThermalSystem;
 
-  private readonly plumeCore: THREE.Mesh;
-  private readonly plumeOuter: THREE.Mesh;
-  private readonly rcsPuffs: THREE.Mesh[] = []; // RCS ブロック位置の噴射パフ(4基)
+  private readonly thrustEffects: ThrustEffects;
+  private readonly rcsEffects: RcsEffects;
   // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
   readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55);
 
@@ -59,34 +59,10 @@ export class Player extends Ship {
     this.fire = new PlayerFire(hud, sfx, scene);
     this.belt = new Belt(this.obj);
     this.thermal = new ThermalSystem(hud, sfx);
+    this.thrustEffects = new ThrustEffects(scene);
+    this.rcsEffects = new RcsEffects(scene);
 
-    const plumes = this.buildThrustPlumes(scene);
-    this.plumeCore = plumes.core;
-    this.plumeOuter = plumes.outer;
-    this.buildRcsPuffs(scene);
     scene.add(this.orbitLine.line);
-  }
-
-  // マヌーバ噴射プルーム(推力方向の逆側に置く発光ビルボード 2 枚)
-  private buildThrustPlumes(scene: THREE.Scene): { core: THREE.Mesh; outer: THREE.Mesh; } {
-    const glowTex = getGlowTexture();
-    const core = buildFlashMesh(glowTex, 0xaee6ff);
-    const outer = buildFlashMesh(glowTex, 0x4f9fff);
-    core.visible = false;
-    outer.visible = false;
-    scene.add(core);
-    scene.add(outer);
-    return { core, outer };
-  }
-
-  // RCS パフ(機首側の 4 基のスラスタブロックに対応、ships.ts の配置と一致)
-  private buildRcsPuffs(scene: THREE.Scene): void {
-    for (let i = 0; i < 4; i++) {
-      const puff = buildFlashMesh(getGlowTexture(), 0xcfeaff);
-      puff.visible = false;
-      this.rcsPuffs.push(puff);
-      scene.add(puff);
-    }
   }
 
   private static makeInitialState(): OrbitState {
@@ -297,61 +273,8 @@ export class Player extends Ship {
     this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
     this.obj.visible = this.alive && !camera.zoomActive;
 
-    this.syncThrustEffects(camera);
-    this.syncRcsEffects(input, camera, phasePlaying, paused);
+    this.thrustEffects.sync(this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
+    this.rcsEffects.sync(input, this.throttle.rcsDamp, this.att, this.alive, phasePlaying, paused, camera);
     this.updateBelt(dt);
-  }
-
-  private syncThrustEffects(camera: CameraSystem): void {
-    const dir = this.throttle.thrustVizDir;
-    const showPlume = dir !== null && this.alive && !camera.zoomActive;
-    this.plumeCore.visible = showPlume;
-    this.plumeOuter.visible = showPlume;
-    if (!showPlume) return;
-    const d = dir!;
-    const flick = 0.8 + 0.2 * Math.random();
-    const sc = (1.5 + 2.5 * (this.throttle.throttleIdx / 3.0)) * flick;
-    this.plumeCore.position.set(-d.x * 3.4, -d.y * 3.4, -d.z * 3.4);
-    this.plumeCore.scale.setScalar(sc * 1.6);
-    this.plumeCore.quaternion.copy(camera.activeCamera.quaternion);
-    (this.plumeCore.material as THREE.MeshBasicMaterial).opacity = 0.85 * flick;
-    this.plumeOuter.position.set(-d.x * 5.6, -d.y * 5.6, -d.z * 5.6);
-    this.plumeOuter.scale.setScalar(sc * 3.6);
-    this.plumeOuter.quaternion.copy(camera.activeCamera.quaternion);
-    (this.plumeOuter.material as THREE.MeshBasicMaterial).opacity = 0.32 * flick;
-  }
-
-  private syncRcsEffects(
-    input: Input,
-    camera: CameraSystem,
-    phasePlaying: boolean,
-    paused: boolean,
-  ): boolean {
-    const tau = this.throttle.computeRcsTau(input, this.att.w, this.alive, phasePlaying, camera.mapMode);
-    const rotating = this.alive && phasePlaying && !paused && !camera.mapMode && lenSq(tau) > 0.01;
-    if (!rotating || camera.zoomActive) {
-      for (const p of this.rcsPuffs) p.visible = false;
-      return false;
-    }
-    const q = this.att.q;
-    for (let k = 0; k < 4; k++) {
-      const puff = this.rcsPuffs[k]!;
-      const ro = RCS_BLOCK_OFFSETS[k]!;
-      const rb = v3(ro.x, ro.y, ro.z);
-      const f = cross(tau, rb);
-      if (lenSq(f) < 0.2) {
-        puff.visible = false;
-        continue;
-      }
-      const exhaust = scale(norm(f), -1);
-      const flick = 0.6 + Math.random() * 0.4;
-      const pos = qRotate(q, addScaled(rb, exhaust, 0.55));
-      puff.position.set(pos.x, pos.y, pos.z);
-      puff.scale.setScalar(0.55 * flick);
-      puff.quaternion.copy(camera.activeCamera.quaternion);
-      (puff.material as THREE.MeshBasicMaterial).opacity = 0.75 * flick;
-      puff.visible = true;
-    }
-    return true;
   }
 }

@@ -1,8 +1,7 @@
 // プリミティブ組み合わせによるローポリ機体・弾・薬莢・デブリのメッシュ生成。
 // 機体の機首は +Z 方向。
 // ジオメトリ/マテリアルの構築自体は tools/export-models.mjs に移し、
-// src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む
-// (buildFlashMesh は実行時キャンバステクスチャに依存するため従来どおり手続き的)。
+// src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
 import * as THREE from 'three/webgpu';
 
 import playerData from '../assets/models/player.json';
@@ -412,22 +411,6 @@ export function buildDebrisMesh(accent: number, size: number, style?: string): T
   return buildGenericDebris(color, size, mat);
 }
 
-
-// カメラ方向を向く発光ビルボード(マズルフラッシュ・爆発)。
-// キャンバステクスチャによる実行時グロー生成のため、これのみ従来どおり手続き的。
-export function buildFlashMesh(texture: THREE.Texture, color: number): THREE.Mesh {
-  const mat = new THREE.MeshBasicMaterial({
-    map: texture,
-    color,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
-  m.frustumCulled = false;
-  m.renderOrder = 5;
-  return m;
-}
 
 // リロード時に放出される砲身（バレル）メッシュ
 // 砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + 赤熱グロー + ガスポート

@@ -5,8 +5,7 @@ import { R_MOON, moonPosition, sunPosition } from '../physics/ephemeris';
 import { SIDEREAL_DAY } from '../physics/orbital';
 import { Vec3, len, norm, scale, sub } from '../physics/vec3';
 import { createEarth, Earth } from './earth';
-import { MOON_VIS_DIST, SUN_DISTANCE, Sun, createMoon, createStars, createSun } from './stars';
-import { getGlowTexture } from './glow-texture';
+import { MOON_VIS_DIST, SUN_DISTANCE, SUN_VISUAL_SIZE, Sun, createMoon, createStars, createSun } from './stars';
 
 export interface EnvironmentLightingParams {
   sunIntensity: number;
@@ -43,8 +42,8 @@ export class EnvironmentScene {
   ) {
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     scene.add(this.ambient);
-    this.sun = createSun(getGlowTexture());
-    scene.add(this.sun.mesh);
+    this.sun = createSun();
+    scene.add(this.sun.billboard.mesh);
     this.sunLight = new THREE.DirectionalLight(0xfff4e0, lighting.sunIntensity);
     this.sunLight.position.set(sunDir0.x * 1e5, sunDir0.y * 1e5, sunDir0.z * 1e5);
     scene.add(this.sunLight);
@@ -83,12 +82,16 @@ export class EnvironmentScene {
     this.earth.setSunDir(sd.x, sd.y, sd.z);
     this.starsMesh.position.copy(cam.position);
     this.starsMesh.scale.setScalar(mapMode ? (mapCameraFar * 0.9) / 3.5e7 : 1.0);
-    this.sun.mesh.position.set(
-      cam.position.x + sd.x * SUN_DISTANCE,
-      cam.position.y + sd.y * SUN_DISTANCE,
-      cam.position.z + sd.z * SUN_DISTANCE,
+    this.sun.billboard.sync(
+      {
+        x: cam.position.x + sd.x * SUN_DISTANCE,
+        y: cam.position.y + sd.y * SUN_DISTANCE,
+        z: cam.position.z + sd.z * SUN_DISTANCE,
+      },
+      SUN_VISUAL_SIZE,
+      1,
+      cam.quaternion,
     );
-    this.sun.mesh.quaternion.copy(cam.quaternion);
     this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
     const visMoonPos = moonPosition(displayTime, moonPhase0);
     const moonRel = sub(visMoonPos, origin);
