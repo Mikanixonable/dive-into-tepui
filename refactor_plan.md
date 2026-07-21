@@ -21,15 +21,9 @@ belt.ts
 - 各モジュールの疎結合化と責務の整理
 - ctx注入パターンの根絶。
 
-## playerからThrustEffectsとRcsEffectの描画責務を分離
-それぞれクラスモジュール化し、モデル情報を保持、player情報を受けて更新関数を回す。
-各クラスのインスタンスをplayerに保持する。
-
-ビルボード描画という共通構造がある。探せばほかにもあるかも（glow-textureの利用箇所が怪しい）
-render配下に、billboardクラスを作成し、カメラ向きに平面を描画するという共通パターンをまとめる。ビルボードの描画は、各エフェクトクラスの責務とする。
-
 ## beltのupdateとsyncの分離できるか、調査検討。
-現状syncからupdateを呼んでいて良くない。
+syncはモデルの位置と向きの更新、updateは物理計算と論理データの更新。
+現状player.syncからupdateを呼んでしまっていて良くない。
 
 ## pip-windowのupdateとsyncの分離できるか、調査検討。
 その他にも全然updateとsyncの配線が整ってないとこある。
@@ -116,6 +110,7 @@ ctxが微妙に重複し、微妙に異なるフィールドを持つ場合、�
 
 EnvironmentSceneとEphemerisSystemは、扱うものは近いのに計算と描画なので分離されている。統合するのとしないのとどっちが良いか。EphemerisSystemを親として、EnvironmentSceneを子とするような構造化がいいのか？
 
-
 ### dom操作の分散（優先度低）
 touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散している。これが直接悪いとは言い切れないが…
+
+### rcsEffectやthrustEffectはplayer.thrustと実質的に密結合（重複実装）

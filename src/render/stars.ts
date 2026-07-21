@@ -3,10 +3,13 @@
 import * as THREE from 'three/webgpu';
 import starsTextureUrl from '../assets/8k_stars.jpg';
 import moonTextureUrl from '../assets/8k_moon.jpg';
+import { Billboard } from './billboard';
 
 const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
 export const SUN_DISTANCE = 4.2e7; // 太陽ビルボードの表示距離(方向のみ実天体暦に従う)
 export const MOON_VIS_DIST = 4.5e7; // 月メッシュの表示距離(角直径は実距離から毎フレーム換算)
+// 実太陽の視直径(約0.53°)よりやや大きめ + ハロー分
+export const SUN_VISUAL_SIZE = 2.4e6;
 
 export function createStars(): THREE.Mesh {
   const geo = new THREE.SphereGeometry(STAR_SHELL_RADIUS, 64, 64);
@@ -31,8 +34,7 @@ export function createStars(): THREE.Mesh {
 }
 
 export interface Sun {
-  mesh: THREE.Mesh;
-  dir: THREE.Vector3; // ワールド(ECI)での太陽方向(単位)
+  billboard: Billboard;
 }
 
 // 月: 単位球(半径1)を生成し、表示側で位置・スケールを毎フレーム設定する。
@@ -56,19 +58,6 @@ export function createMoon(): THREE.Mesh {
   return mesh;
 }
 
-export function createSun(glow: THREE.Texture): Sun {
-  const dir = new THREE.Vector3(0.82, 0.28, 0.5).normalize();
-  const mat = new THREE.MeshBasicMaterial({
-    map: glow,
-    color: 0xfff3d0,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  // 実太陽の視直径(約0.53°)よりやや大きめ + ハロー
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.4e6, 2.4e6), mat);
-  mesh.position.copy(dir).multiplyScalar(SUN_DISTANCE);
-  mesh.frustumCulled = false;
-  mesh.renderOrder = -9;
-  return { mesh, dir };
+export function createSun(): Sun {
+  return { billboard: new Billboard(0xfff3d0, -9) };
 }
