@@ -8,6 +8,7 @@ import type { Logistics } from './logistics';
 import { generateWave } from '../spawner/enemy-spawner';
 import { Hud } from '../../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
+import type { EffectsSystem } from '../../effects-system';
 
 export interface WaveEncounterConfig {
   spawnDelay: number; // 弾薬確保からウェーブ接近までの遅延
@@ -27,17 +28,19 @@ export class WaveManager {
   private _hud!: Hud;
   private _sfx!: Sfx;
   private _scene!: THREE.Scene;
+  private _fx!: EffectsSystem;
 
-  setup(hud: Hud, sfx: Sfx, scene: THREE.Scene): void {
+  setup(hud: Hud, sfx: Sfx, scene: THREE.Scene, fx: EffectsSystem): void {
     this._hud = hud;
     this._sfx = sfx;
     this._scene = scene;
+    this._fx = fx;
   }
 
   // 1波分の敵を生成してステージに登録する(配置計算・Enemy 生成は enemy-spawner.ts の責務)。
   spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this.waveCount;
-    const enemies = generateWave(player.state, wave, this._hud, this._sfx, this._scene, forcedPattern);
+    const enemies = generateWave(player.state, wave, this._hud, this._sfx, this._fx, this._scene, forcedPattern);
     for (const enemy of enemies) addEnemy(enemy);
   }
 

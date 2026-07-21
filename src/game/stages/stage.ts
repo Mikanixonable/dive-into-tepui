@@ -27,7 +27,6 @@ export interface StageCtx {
   player: Player;
   enemies: readonly Enemy[];
   addEnemy(enemy: Enemy): void;
-  setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
   simTime: number;
 }
 
@@ -35,18 +34,6 @@ export interface StageInitData {
   magsLeft: number;
   roundsInMag: number;
   briefingHtml: string;
-}
-
-// Ship.attacked/checkLoss(被弾・自然喪失の判定)が必要とする、Game 側の現在状態の
-// スナップショット。撃破・自機喪失の集計と勝敗判定への橋渡しは activeStage.recordEnemyDeath/
-// recordPlayerLost(このファイル内)に委ねる。hud/sfx は含めない — Ship 実装(Player/Enemy)も
-// Stage も、それぞれ自身の _hud/_sfx を私有する。
-export interface CombatCtx {
-  simTime: number;
-  activeStage: Stage;
-  setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
-  fx: EffectsSystem;
-  unlockManager: UnlockManager;
 }
 
 export abstract class Stage {
@@ -70,13 +57,32 @@ export abstract class Stage {
   protected _hud!: Hud;
   protected _sfx!: Sfx;
   protected _scene!: THREE.Scene;
+  // fx も hud/sfx/scene と同じく setup() での一度きりの注入。敵/自機の生成
+  // (spawner/enemy-generator.ts 等)にそのまま渡すため protected にする。
+  protected _fx!: EffectsSystem;
+  // setPhase/unlockManager も hud/sfx/scene と同じく setup() での一度きりの注入。
+  // recordEnemyDeath/recordPlayerLost が主な使い手だが、Stage0 のタイムアップ判定のように
+  // 派生クラスが直接 setPhase を呼びたいケースもあるため protected にする。
+  protected _setPhase!: (phase: 'playing' | 'won' | 'lost' | 'timeup') => void;
+  protected _unlockManager!: UnlockManager;
 
   // Game がステージ開始前に一度だけ呼ぶ(STAGE_DEFINITIONS はモジュール読み込み時に生成される
   // 静的シングルトンなので、Game 固有のリソースはコンストラクタではなくここで受け取る)。
-  setup(hud: Hud, sfx: Sfx, scene: THREE.Scene, simulator: Simulator): void {
+  setup(
+    hud: Hud,
+    sfx: Sfx,
+    scene: THREE.Scene,
+    simulator: Simulator,
+    setPhase: (phase: 'playing' | 'won' | 'lost' | 'timeup') => void,
+    unlockManager: UnlockManager,
+    fx: EffectsSystem,
+  ): void {
     this._hud = hud;
     this._sfx = sfx;
     this._scene = scene;
+    this._setPhase = setPhase;
+    this._unlockManager = unlockManager;
+    this._fx = fx;
     this.logistics = new Logistics(hud, sfx, scene, simulator.ammos, (ammo) => simulator.addAmmo(ammo));
   }
 
@@ -110,13 +116,7 @@ export abstract class Stage {
   // 撃破エフェクトは呼び出し元の Ship.attacked/checkLoss が既に済ませている — ここでは呼ばない)。
   // byPlayer: true = 弾丸命中による正式撃破(勝利判定を行う)
   //           false = 再突入・空力分解など物理的消滅(カウントのみ、勝利判定は起動しない)
-  recordEnemyDeath(
-    enemy: Enemy,
-    setPhase: (phase: 'playing' | 'won' | 'lost' | 'timeup') => void,
-    unlockManager: UnlockManager,
-    simTime: number,
-    byPlayer = true,
-  ): void {
+  recordEnemyDeath(enemy: Enemy, simTime: number, byPlayer = true): void {
     if (!byPlayer) {
       this.scoreCounter.recordEnemyLoss();
       this._hud.hint(`${enemy.name} 再突入により喪失`);
@@ -126,16 +126,16 @@ export abstract class Stage {
     this._hud.hint(`${enemy.name} 撃破`);
 
     if (this.checkWin()) {
-      setPhase('won');
-      unlockManager.reportClear(this.index, this._hud);
+      this._setPhase('won');
+      this._unlockManager.reportClear(this.index, this._hud);
       this.onWin(simTime);
     }
   }
 
   // 自機の被弾死・自然死(checkLoss)を集計する。原因ごとに文言が異なるため reason で
   // 明示的に渡す。
-  recordPlayerLost(setPhase: (phase: 'playing' | 'won' | 'lost' | 'timeup') => void, reason: string): void {
-    setPhase('lost');
+  recordPlayerLost(reason: string): void {
+    this._setPhase('lost');
     showResultScreen(this._hud, this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);
   }
 }

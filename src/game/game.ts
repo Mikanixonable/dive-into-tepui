@@ -133,7 +133,7 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
     this.simulator = new Simulator(this.ephemeris, this.hitSystem);
-    this.activeStage.setup(this._hud, this._sfx, this._scene, this.simulator);
+    this.activeStage.setup(this._hud, this._sfx, this._scene, this.simulator, (p) => { this.phase = p; }, this.unlockManager, this.effects);
 
     // --- 環境 ---
     this.ephemeris.update(this.simTime);
@@ -146,7 +146,7 @@ export class Game {
 
     this._scene.add(this.mapModeSystem.trajLineGroup);
 
-    this.player = new Player(this._hud, this._sfx, this._scene);
+    this.player = new Player(this._hud, this._sfx, this._scene, this.effects);
 
     this.initStage();
   }
@@ -229,7 +229,6 @@ export class Game {
       scoreCounter: this.activeStage.scoreCounter,
       simTime: this.simTime,
       zoomActive: this.cameraSystem.zoomActive,
-      fx: this.effects,
       addBullet: (bullet) => this.simulator.addBullet(bullet),
     });
     const playerAccel = this.simulator.buildPlayerAccel(action.thrustFn);
@@ -289,7 +288,7 @@ export class Game {
 
   private handleEdgeInput(): void {
     const presses = this.input.presses();
-    const unconsumedPresses = this.player.handleEdgeInput(presses, this.effects);
+    const unconsumedPresses = this.player.handleEdgeInput(presses);
     for (const code of unconsumedPresses) {
       this.handleEdgePress(code);
     }
@@ -325,7 +324,6 @@ export class Game {
         this.simulator.addEnemy(enemy);
         this.activeStage.scoreCounter.recordSpawnEnemy();
       },
-      setPhase: (p) => { this.phase = p; },
       simTime: this.simTime,
     };
   }
@@ -337,9 +335,6 @@ export class Game {
       simTime,
       player: this.player,
       activeStage: this.activeStage,
-      setPhase: (p) => { this.phase = p; },
-      fx: this.effects,
-      unlockManager: this.unlockManager,
       simulator: this.simulator,
       target: this.targeter.autoTarget,
       boardMarks: this.markersSystem.boardMarks,
@@ -370,14 +365,7 @@ export class Game {
   // ------------------------------------------------------------- simulate
 
   private handlePostSimulation(dt: number, simDt: number): void {
-    this.player.checkLoss({
-      dt,
-      simTime: this.simTime,
-      activeStage: this.activeStage,
-      setPhase: (p) => { this.phase = p; },
-      fx: this.effects,
-      unlockManager: this.unlockManager,
-    });
+    this.player.checkLoss(dt, this.simTime, this.activeStage);
 
     if (this.simSpeedManager.canResolvePhysicalCollisions) {
       this.collisionPhysics.resolve(dt, this.player, this.simulator.allEntities(), () => {
@@ -386,14 +374,7 @@ export class Game {
     }
     this.updateAttitudes(Math.min(simDt, 0.12));
 
-    this.simulator.cleanup({
-      dt,
-      simTime: this.simTime,
-      activeStage: this.activeStage,
-      setPhase: (p) => { this.phase = p; },
-      fx: this.effects,
-      unlockManager: this.unlockManager,
-    });
+    this.simulator.cleanup(dt, this.simTime, this.activeStage);
 
     if (this.activeStage.index === -1 && this.phase === 'playing' && this.simSpeedManager.canEnemyFire) {
       for (const e of this.simulator.enemies) {

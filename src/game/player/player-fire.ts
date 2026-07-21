@@ -29,6 +29,7 @@ export class PlayerFire {
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
     private readonly _scene: THREE.Scene,
+    private readonly _fx: EffectsSystem,
   ) { }
 
   get isFiring(): boolean { return this.wasFiring; }
@@ -87,7 +88,6 @@ export class PlayerFire {
     scoreCounter: ScoreCounter,
     simTime: number,
     zoomActive: boolean,
-    fx: EffectsSystem,
     addBullet: (bullet: Bullet) => void,
   ): boolean {
     const keyHeld = input.down('Space') || input.mouseFiring;
@@ -111,7 +111,7 @@ export class PlayerFire {
     this.wasFiring = wantFire;
     if (!wantFire) return justStartedFiring;
 
-    this.fireCycle(dt, justStartedFiring, ship, scoreCounter, simTime, zoomActive, fx, addBullet);
+    this.fireCycle(dt, justStartedFiring, ship, scoreCounter, simTime, zoomActive, addBullet);
     return justStartedFiring;
   }
 
@@ -139,7 +139,6 @@ export class PlayerFire {
     scoreCounter: ScoreCounter,
     simTime: number,
     zoomActive: boolean,
-    fx: EffectsSystem,
     addBullet: (bullet: Bullet) => void,
   ): void {
     if (justStartedFiring) {
@@ -149,7 +148,7 @@ export class PlayerFire {
     this.fireCooldown -= dt;
     if (this.fireCooldown > 0) return;
     this.fireCooldown = C.FIRE_INTERVAL;
-    this.fireGun(ship, scoreCounter, simTime, zoomActive, fx, addBullet);
+    this.fireGun(ship, scoreCounter, simTime, zoomActive, addBullet);
   }
 
   // ---------------------------------------------------------------- weapons
@@ -161,7 +160,6 @@ export class PlayerFire {
     scoreCounter: ScoreCounter,
     simTime: number,
     zoomActive: boolean,
-    fx: EffectsSystem,
     addBullet: (bullet: Bullet) => void,
   ): void {
     const fwd = qRotate(ship.att.q, v3(0, 0, 1));
@@ -174,13 +172,13 @@ export class PlayerFire {
     this.spawnBullet(ship, muzzle, fwd, simTime, addBullet);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv
     ship.state.v = addScaled(ship.state.v, fwd, -C.RECOIL_DV);
-    this.dropCasing(ship, muzzle, fx, simTime);
-    this.spawnMuzzleFlash(ship, muzzle, fwd, fx, zoomActive);
+    this.dropCasing(ship, muzzle, simTime);
+    this.spawnMuzzleFlash(ship, muzzle, fwd, zoomActive);
 
     scoreCounter.recordShot();
     this._sfx.fire();
 
-    this.consumeRound(ship, fx);
+    this.consumeRound(ship);
   }
 
   // 弾丸: 機首方向 + 散布界
@@ -202,10 +200,10 @@ export class PlayerFire {
 
   // 薬莢: 機体右側(-X)へ排出(左側(+X)はマガジンベルトの給弾があるため)。
   // 初速・回転とも抑え、ゆっくり漂いながら緩やかに回転する見た目にする。
-  private dropCasing(ship: Ship, muzzle: Vec3, fx: EffectsSystem, simTime: number): void {
+  private dropCasing(ship: Ship, muzzle: Vec3, simTime: number): void {
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const up = qRotate(ship.att.q, v3(0, 1, 0));
-    fx.spawnCasing(
+    this._fx.spawnCasing(
       {
         r: add(muzzle, scale(right, -1.4)),
         v: add(
@@ -224,8 +222,8 @@ export class PlayerFire {
 
   // マズルフラッシュ: 発射した側の砲口に出す
   // (ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
-  private spawnMuzzleFlash(ship: Ship, muzzle: Vec3, fwd: Vec3, fx: EffectsSystem, zoomActive: boolean): void {
-    fx.spawnFlash(
+  private spawnMuzzleFlash(ship: Ship, muzzle: Vec3, fwd: Vec3, zoomActive: boolean): void {
+    this._fx.spawnFlash(
       addScaled(muzzle, fwd, 1.2),
       ship.state.v,
       2.2,
@@ -239,29 +237,29 @@ export class PlayerFire {
 
   // 1発分の弾薬を消費する。マガジンを撃ち尽くした場合は外枠をデブリとして排出し、
   // バレルの残りマガジン数(magsLeftInBarrel)が尽きたらバレル交換(リロード)を発生させる。
-  private consumeRound(ship: Ship, fx: EffectsSystem): void {
+  private consumeRound(ship: Ship): void {
     this.roundsInMag--;
     if (this.roundsInMag > 0 || this.magsLeft <= 0) return;
     this.magsLeft--;
     this.roundsInMag = C.MAG_ROUNDS;
     this.magsLeftInBarrel--;
-    this.spawnEjectedMagazineFrame(ship, fx);
+    this.spawnEjectedMagazineFrame(ship);
     if (this.magsLeftInBarrel > 0) {
       this._sfx.magFeed();
       return;
     }
     this.magsLeftInBarrel = C.MAGS_PER_BARREL;
     this.reloadTimer = C.RELOAD_TIME;
-    this.dropBarrel(ship, fx);
+    this.dropBarrel(ship);
     this._sfx.playReload();
   }
 
   // リロード時(バレル交換)に円柱アイテムをデブリとして放出する。手動リロード
   // ([R]キー、player.ts の handleEdgePress)からも直接呼ばれるため public。
-  dropBarrel(ship: Ship, fx: EffectsSystem): void {
+  dropBarrel(ship: Ship): void {
     // 下方に少し勢いをつけて放出
     const down = qRotate(ship.att.q, v3(0, -1, 0));
-    fx.spawnBarrel(
+    this._fx.spawnBarrel(
       {
         r: add(ship.state.r, qRotate(ship.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
         v: add(ship.state.v, add(scale(down, 3.0), randVec(0.5))),
@@ -276,10 +274,10 @@ export class PlayerFire {
 
   // マガジン1個を撃ち尽くした瞬間、機体右側(-X、薬莢と同じ側)の位置から
   // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
-  private spawnEjectedMagazineFrame(ship: Ship, fx: EffectsSystem): void {
+  private spawnEjectedMagazineFrame(ship: Ship): void {
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const portWorld = add(ship.state.r, qRotate(ship.att.q, v3(-0.9, 0, 0)));
-    fx.spawnMagazineFrame(
+    this._fx.spawnMagazineFrame(
       {
         r: portWorld,
         v: add(ship.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
