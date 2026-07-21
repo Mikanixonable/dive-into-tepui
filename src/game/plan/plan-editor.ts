@@ -310,10 +310,10 @@ export class PlanEditor {
       toolbar: { durationKey: string; frameRotating: boolean; ghostLabel: string | null; focus: string };
     },
   ): void {
-    for (const c of input.takeClicks()) {
+    for (const c of input.clicks()) {
       this.handleMapClick(plan, c.x, c.y, o, toDisplayFrame, project);
     }
-    for (const rc of input.takeRightClicks()) {
+    for (const rc of input.rightClicks()) {
       this.handleMapRightClick(plan, rc.x, rc.y, o, toDisplayFrame, project, opts.labels);
     }
 

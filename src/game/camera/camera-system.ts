@@ -39,7 +39,7 @@ export class CameraSystem {
   updateActiveCamera(ctx: CameraUpdateCtx): THREE.PerspectiveCamera {
     const keyYaw = (ctx.input.down('ArrowLeft') ? 1 : 0) + (ctx.input.down('ArrowRight') ? -1 : 0);
     const keyPitch = (ctx.input.down('ArrowDown') ? 1 : 0) + (ctx.input.down('ArrowUp') ? -1 : 0);
-    const mouse = ctx.input.consumeMouse();
+    const mouse = ctx.input.mouse();
 
     if (this.mapMode) {
       this.mapCamera.update(mouse, keyYaw, keyPitch, ctx.dt, ctx.focusRel, ctx.sunAz);

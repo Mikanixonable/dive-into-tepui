@@ -11,7 +11,7 @@ import { add, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { CombatCtx } from '../stages/stage';
 import { HitCtx, HitSystem } from './hit';
-import { Ammo, Casing, CheckLossCtx, DebrisPiece, OrbitEntity } from './entities';
+import { Ammo, CheckLossCtx, DebrisPiece, OrbitEntity } from './entities';
 import { Player } from '../player/player';
 import { Enemy } from './enemy';
 import { Bullet } from './bullet';
@@ -31,13 +31,11 @@ export interface SimulationAdvance {
 export class Simulator {
   readonly enemies: Enemy[] = [];
   readonly bullets: Bullet[] = [];
-  readonly casings: Casing[] = [];
+  // casings/debris は DebrisPiece の kind によって振り分けられる別々の上限プール
+  // (薬莢は撃破デブリより大量・頻繁に出るため、上限を分けて管理する)。
+  readonly casings: DebrisPiece[] = [];
   readonly debris: DebrisPiece[] = [];
   readonly ammos: Ammo[] = [];
-  // 生成された累計数(prune で enemies 配列から消えても減らない)。
-  // 「何機中何機撃破」等の表示は enemies.length ではなくこちらを使う。
-  private totalEnemiesSpawnedValue = 0;
-  get totalEnemiesSpawned(): number { return this.totalEnemiesSpawnedValue; }
 
   private makeEnvAccel(bcInv: number): ExtraAccel {
     return (r, v, out) => envAccelInto(out ?? v3(), r, v, this.ephemeris.sunPos, this.ephemeris.moonPos, bcInv);
@@ -58,20 +56,15 @@ export class Simulator {
 
   addEnemy(enemy: Enemy): void {
     this.enemies.push(enemy);
-    this.totalEnemiesSpawnedValue++;
   }
 
   addBullet(bullet: Bullet): void {
     this.addCapped(this.bullets, bullet, C.MAX_BULLETS * 3);
   }
 
-  addCasing(casing: Casing): void {
-    this.addCapped(this.casings, casing, C.MAX_CASINGS);
-  }
-
   addDebris(piece: DebrisPiece): void {
-    this.debris.push(piece);
-    while (this.debris.length > C.MAX_DEBRIS) this.debris.shift()!.dispose();
+    if (piece.kind === 'casing') this.addCapped(this.casings, piece, C.MAX_CASINGS);
+    else this.addCapped(this.debris, piece, C.MAX_DEBRIS);
   }
 
   addAmmo(ammo: Ammo): void {
@@ -82,6 +75,16 @@ export class Simulator {
   private addCapped<T extends OrbitEntity>(arr: T[], entity: T, cap: number): void {
     arr.push(entity);
     if (arr.length > cap) arr.shift()!.dispose();
+  }
+
+  allEntities(): OrbitEntity[] {
+    return [
+      ...this.enemies,
+      ...this.bullets,
+      ...this.ammos,
+      ...this.casings,
+      ...this.debris
+    ];
   }
 
   // ------------------------------------------------------------ 積分

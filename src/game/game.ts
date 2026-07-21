@@ -16,9 +16,8 @@ import { HitCtx, HitSystem } from './orbit-entity/hit';
 import { CombatCtx, StageCtx, Stage } from './stages/stage';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
-import { CollisionPhysics } from './orbit-entity/collision';
-import { EffectsCtx } from './effects-system';
-import { FlashEffectManager } from './flash-effect-manager';
+import { CollisionPhysics, CollisionPhysicsCtx } from './orbit-entity/collision';
+import { EffectsSystem } from './effects-system';
 import { getStageDefinition, resolveStageInitData } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
@@ -37,6 +36,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
+import { Bullet } from './orbit-entity/bullet';
 
 type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
@@ -59,7 +59,7 @@ export class Game {
   readonly player: Player;
   // enemies / bullets / plasmaBullets / casings / debris の各エンティティ配列は
   // Simulator が所有する(this.simulator.enemies 等)。追加は simulator.addXxx 経由。
-  // フラッシュエフェクト配列(effects)は effectsSystem が所有する。
+  // フラッシュエフェクト配列(effects)は effects(EffectsSystem)が所有する。
 
   // ?perf=1 のデバッグ表示用エンティティ数(軽量化計画ステップ0)。挙動には影響しない。
   perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
@@ -84,7 +84,7 @@ export class Game {
   private readonly plan = new Plan();
   // 直近ノードの噴射ガイド(戦闘ビューのみ、マップモード中は呼ばない — [M] で開いている
   // 間は WASDQE がΔv編集に使われるため)。scene に計画軌道ラインを持つため
-  // コンストラクタ本体で構築する(effectsSystem 等と同じ理由)。
+  // コンストラクタ本体で構築する(effects 等と同じ理由)。
   private readonly planGuide: PlanGuide;
 
   // 軌道計画モード(map-mode/ フォルダの唯一の外部窓口)
@@ -129,9 +129,12 @@ export class Game {
   // ステータスパネルは hud.panels が担う。
   private readonly markersSystem = new MarkersSystem(this._hud.markers);
   private readonly collisionPhysics = new CollisionPhysics();
-  // scene(_scene)はコンストラクタ引数 gs 由来で field initializer の時点では未確定のため、
-  // これらはコンストラクタ本体で構築する(environment/player と同じ理由)。
-  private readonly effectsSystem: FlashEffectManager;
+  // フラッシュ・破片エフェクトのスポーン窓口(effects-system.ts)。scene への注入・
+  // FlashEffectManager の所有もここに一元化されており、Player/Enemy/PlayerFire は
+  // scene を持ち回さずに済む。scene(_scene)はコンストラクタ引数 gs 由来で field
+  // initializer の時点では未確定のため、コンストラクタ本体で構築する(environment/player
+  // と同じ理由)。
+  private readonly effects: EffectsSystem;
   readonly targeter: Targeter;
   private readonly hudProjection = new HudProjection(() => this.cameraSystem.activeCamera);
   readonly simulator: Simulator;
@@ -141,7 +144,7 @@ export class Game {
     this._scene = gs.scene;
     this.renderer = gs.renderer;
     this.ephemeris = new EphemerisSystem(this._scene);
-    this.effectsSystem = new FlashEffectManager(this._scene);
+    this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
     this.pipRenderer = new PipRenderer(this._scene);
     this.targeter = new Targeter(this._hud, this._sfx, this._scene);
     this.planGuide = new PlanGuide(this._hud, this._sfx, this._scene);
@@ -209,6 +212,7 @@ export class Game {
   // ---------------------------------------------------------------- update
 
   update(dtRaw: number): void {
+    this.input.update();
     const dt = Math.min(dtRaw, 0.1);
     this.cameraSystem.zoomActive = !this.cameraSystem.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
@@ -294,8 +298,6 @@ export class Game {
     this.lastSimDt = 0;
     this._sfx.setThrust(false);
     this.player.pause();
-    this.input.takeClicks();
-    this.input.takeRightClicks();
   }
 
   // [X] キー: マップモード中は選択中ノードのみ(mapModeSystem 側の責務)、
@@ -314,7 +316,7 @@ export class Game {
   }
 
   private handleEdgeInput(): void {
-    const presses = this.input.takePresses();
+    const presses = this.input.presses();
     const unconsumedPresses = this.player.handleEdgeInput(presses, this.fireCtx());
     for (const code of unconsumedPresses) {
       this.handleEdgePress(code);
@@ -347,8 +349,11 @@ export class Game {
       phase: this.phase,
       player: this.player,
       enemies: this.simulator.enemies,
-      totalEnemies: this.simulator.totalEnemiesSpawned,
-      addEnemy: (enemy) => this.simulator.addEnemy(enemy),
+      totalEnemies: this.activeStage.scoreCounter.totalEnemiesSpawned,
+      addEnemy: (enemy) => {
+        this.simulator.addEnemy(enemy);
+        this.activeStage.scoreCounter.recordSpawnEnemy();
+      },
       magsLeft: this.player.magsLeft,
       roundsInMag: this.player.roundsInMag,
       setPhase: (p) => { this.phase = p; },
@@ -361,22 +366,13 @@ export class Game {
     const ctx: CombatCtx = {
       simTime,
       player: this.player,
-      totalEnemies: this.simulator.totalEnemiesSpawned,
+      totalEnemies: this.activeStage.scoreCounter.totalEnemiesSpawned,
       activeStage: this.activeStage,
       setPhase: (p) => { this.phase = p; },
-      fx: this.effectsCtx(),
+      fx: this.effects,
       unlockManager: this.unlockManager,
     };
     return ctx;
-  }
-
-  // フラッシュ・破片のスポーン(effects-system.ts の spawnFlash/spawnFragments 等)が
-  // 必要とする最小の受け皿。CombatCtx/FireCtx から共通して参照される。
-  private effectsCtx(): EffectsCtx {
-    return {
-      flashEffects: this.effectsSystem,
-      addDebris: (piece) => this.simulator.addDebris(piece),
-    };
   }
 
   // PlayerFire の発射・排莢・バレル交換が必要とする、現在状態のスナップショット。
@@ -384,10 +380,8 @@ export class Game {
     return {
       simTime: this.simTime,
       zoomActive: this.cameraSystem.zoomActive,
-      fx: this.effectsCtx(),
+      fx: this.effects,
       addBullet: (bullet) => this.simulator.addBullet(bullet),
-      addCasing: (casing) => this.simulator.addCasing(casing),
-      addDebris: (piece) => this.simulator.addDebris(piece),
     };
   }
 
@@ -426,13 +420,10 @@ export class Game {
     };
   }
 
-  private collisionCtx() {
+  private collisionCtx(): CollisionPhysicsCtx {
     return {
       player: this.player,
-      enemies: this.simulator.enemies,
-      casings: this.simulator.casings,
-      ammos: this.simulator.ammos,
-      debris: this.simulator.debris,
+      entities: this.simulator.allEntities(),
     };
   }
 
@@ -493,7 +484,7 @@ export class Game {
       lit: this.cameraSystem.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
     });
     this.syncDynamicObjects(dt, o, pv);
-    this.effectsSystem.updateFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera);
+    this.effects.updateFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera);
     this.syncHud(dt, o, pv);
   }
 
@@ -517,13 +508,12 @@ export class Game {
       this.phase === 'playing',
       this.paused,
     );
-    for (const e of this.simulator.enemies) if (e.alive) e.syncTransform(o);
-    for (const b of this.simulator.bullets) b.syncBulletTransform(o, pv);
-    for (const cs of this.simulator.casings) cs.syncTransform(o);
-    for (const ammo of this.simulator.ammos) ammo.syncTransform(o);
-    for (const d of this.simulator.debris) d.syncTransform(o);
+    for (const e of this.simulator.allEntities()) {
+      // Bullet は自機のフローティングオリジン座標系で描画するため独自インターフェイス
+      if (e instanceof Bullet) e.syncBulletTransform(o, pv);
+      else e.syncTransform(o);
+    }
   }
-
   // 自機・敵の軌道線は各 entity 自身が持つ(Player/Enemy コンストラクタ参照)ため、
   // ここでは毎フレームの Elements 算出と update() 呼び出しだけを行う。
   private syncEntityOrbitLines(o: Vec3, pv: Vec3, mapMode: boolean): Elements | null {
@@ -570,7 +560,7 @@ export class Game {
       mapMode: this.cameraSystem.mapMode,
       camera: this.cameraSystem.activeCamera,
       playerShipObj: this.player.obj,
-      setMuzzleFlashesVisible: (visible) => this.effectsSystem.setMuzzleFlashesVisible(visible),
+      setMuzzleFlashesVisible: (visible) => this.effects.setMuzzleFlashesVisible(visible),
       updateOverlay: (rect) => this.markersSystem.updatePipOverlay(this.markerCtx(), rect),
     });
   }

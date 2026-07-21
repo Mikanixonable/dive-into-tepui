@@ -10,22 +10,19 @@ import * as C from '../const';
 import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { Casing, DebrisPiece, Ship } from '../orbit-entity/entities';
+import { Ship } from '../orbit-entity/entities';
 import { Bullet } from '../orbit-entity/bullet';
 import { MUZZLE_OFFSETS } from '../../render/ships';
-import { EffectsCtx, spawnFlash } from '../effects-system';
+import { EffectsSystem } from '../effects-system';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
 
 // fireGun / dropBarrel / spawnEjectedMagazineFrame が必要とする、Game 側の
-// 現在状態のスナップショット。fx はエフェクトのスポーンに必要な最小の受け皿
-// (effects-system.ts の EffectsCtx)。
+// 現在状態のスナップショット。
 export interface FireCtx {
   simTime: number;
   zoomActive: boolean;
-  fx: EffectsCtx;
+  fx: EffectsSystem;
   addBullet(bullet: Bullet): void;
-  addCasing(casing: Casing): void;
-  addDebris(piece: DebrisPiece): void;
 }
 
 export class PlayerFire {
@@ -199,7 +196,7 @@ export class PlayerFire {
   private dropCasing(ctx: FireCtx, ship: Ship, muzzle: Vec3): void {
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const up = qRotate(ship.att.q, v3(0, 1, 0));
-    const casing = new Casing(
+    ctx.fx.spawnCasing(
       {
         r: add(muzzle, scale(right, -1.4)),
         v: add(
@@ -213,16 +210,13 @@ export class PlayerFire {
         inertia: v3(1, 0.3, 1), // 円筒: 長軸まわりが小さい
       },
       ctx.simTime,
-      this._scene,
     );
-    ctx.addCasing(casing);
   }
 
   // マズルフラッシュ: 発射した側の砲口に出す
   // (ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
   private spawnMuzzleFlash(ctx: FireCtx, ship: Ship, muzzle: Vec3, fwd: Vec3): void {
-    spawnFlash(
-      ctx.fx,
+    ctx.fx.spawnFlash(
       addScaled(muzzle, fwd, 1.2),
       ship.state.v,
       2.2,
@@ -258,21 +252,17 @@ export class PlayerFire {
   dropBarrel(ctx: FireCtx, ship: Ship): void {
     // 下方に少し勢いをつけて放出
     const down = qRotate(ship.att.q, v3(0, -1, 0));
-    const piece = new DebrisPiece(
+    ctx.fx.spawnBarrel(
       {
         r: add(ship.state.r, qRotate(ship.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
         v: add(ship.state.v, add(scale(down, 3.0), randVec(0.5))),
       },
-      { kind: 'barrel' },
       {
         q: { x: ship.att.q.x, y: ship.att.q.y, z: ship.att.q.z, w: ship.att.q.w },
         w: v3(randSym(2), randSym(2), randSym(2)),
         inertia: v3(1, 0.2, 1), // 円柱
       },
-      0.8,
-      this._scene,
     );
-    ctx.addDebris(piece);
   }
 
   // マガジン1個を撃ち尽くした瞬間、機体右側(-X、薬莢と同じ側)の位置から
@@ -280,20 +270,16 @@ export class PlayerFire {
   private spawnEjectedMagazineFrame(ctx: FireCtx, ship: Ship): void {
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const portWorld = add(ship.state.r, qRotate(ship.att.q, v3(-0.9, 0, 0)));
-    const piece = new DebrisPiece(
+    ctx.fx.spawnMagazineFrame(
       {
         r: portWorld,
         v: add(ship.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
       },
-      { kind: 'magazineFrame' },
       {
         q: { x: ship.att.q.x, y: ship.att.q.y, z: ship.att.q.z, w: ship.att.q.w },
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },
-      C.EJECTED_MAG_PHYS_RADIUS,
-      this._scene,
     );
-    ctx.addDebris(piece);
   }
 }
