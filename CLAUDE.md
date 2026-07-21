@@ -8,6 +8,18 @@ A playable LEO (low Earth orbit) shooting game: TypeScript + Webpack + npm, Thre
 
 `dev.md` is explicitly marked as human-authored only ("この文書は人間のみが記入できる") — do not edit it. Read it for project context, but leave modifications to the user.
 
+### Naming: render / update / build / sync (no `draw`)
+
+Per-frame function names must reflect what they actually do, consistently across the codebase:
+
+- **`render`** — reserved for functions that literally call the three.js renderer's `render(scene, camera)`. A function that only constructs or mutates scene state is not a "render" function even if it runs during the render pass (e.g. `Player.syncTransformAtOrigin`/`syncThrustEffects`, `EnvironmentScene.sync`, `PipRenderer.renderFrame`).
+- **`update`** — advances or mutates logical/simulation data (not three.js mesh state directly).
+- **`build`** — registers new meshes/objects into the scene (construction, not per-frame).
+- **`sync`** — matches the transform/appearance of already-registered meshes (or HUD DOM elements) to logical data that was already computed elsewhere. Prefer plain `sync*` names; don't tack `Render` onto a sync method name (e.g. `syncCamera`, not `syncRenderCamera`) — it blurs the render/sync boundary this rule exists to keep clear.
+- **`draw`** is never used — rename on sight.
+
+When a per-frame flow is split into sub-functions (as in `game.ts`'s `sync()`/`update()`), keep the split's naming and responsibility boundaries consistent with the above — a class like `PipRenderer` should only contain actual render-pass code, not unrelated logical bookkeeping (state that merely happens to be read at render time still belongs with the system that owns that state, e.g. `Player`).
+
 ### Commands
 - `npm run dev` — start webpack-dev-server at http://localhost:8080
 - `npm run build` — production build to `dist/`

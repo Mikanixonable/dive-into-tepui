@@ -3,7 +3,7 @@ import { randomQuat } from '../physics/attitude';
 import { add, clone, randSym, randVec, v3, Vec3 } from '../physics/vec3';
 import * as C from './const';
 import { DebrisPiece } from './orbit-entity/entities';
-import { buildDebrisMesh, buildFlashMesh } from '../render/ships';
+import { buildFlashMesh } from '../render/ships';
 import { getGlowTexture } from '../render/glow-texture';
 import { FlashEffect } from './flash-effect-manager';
 
@@ -72,7 +72,7 @@ export function spawnFragments(
         r: add(origin, randVec(2.5)),
         v: add(baseVel, randVec(spread)),
       },
-      buildDebrisMesh(accent, size),
+      { kind: 'fragment', accent, size },
       {
         q: randomQuat(),
         w: v3(randSym(0.25), (1.4 + Math.random() * 1.2) * (Math.random() < 0.5 ? -1 : 1), randSym(0.25)),

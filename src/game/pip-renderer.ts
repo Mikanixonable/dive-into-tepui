@@ -19,18 +19,9 @@ export class PipRenderer {
   private readonly fwdVec = new THREE.Vector3();
   private readonly upVec = new THREE.Vector3();
   private readonly targetVec = new THREE.Vector3();
-  private prevFiring = false;
 
   constructor(private readonly _scene: THREE.Scene) {
     this.crosshair = this.createCrosshair();
-  }
-
-  syncFineAttitude(
-    firing: boolean,
-    setFineAttitudeFromFiring: (prevFiring: boolean, nowFiring: boolean) => void,
-  ): void {
-    setFineAttitudeFromFiring(this.prevFiring, firing);
-    this.prevFiring = firing;
   }
 
   renderFrame(renderer: WebGPURenderer, ctx: PipRenderCtx): void {

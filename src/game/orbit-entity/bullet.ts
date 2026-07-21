@@ -5,6 +5,7 @@ import { Vec3 } from '../../physics/vec3';
 import { CheckLossCtx } from './entities';
 import { altitudeOf } from '../../physics/orbital';
 import * as C from '../const';
+import { buildBulletMesh, buildPlasmaMesh } from '../../render/ships';
 
 
 const tmpVel = new THREE.Vector3();
@@ -26,8 +27,9 @@ export class Bullet extends OrbitEntity {
     readonly type: BulletType;
     private readonly lifetime: number;
 
-    constructor(state: OrbitState, obj: THREE.Object3D, bornSim: number, lifetime: number, shooter: Shooter, type: BulletType, scene?: THREE.Scene) {
-        super(state, obj, scene);
+    // accent: plasma 弾のみ使う発光色(未指定なら buildPlasmaMesh の既定色)。normal 弾では無視する。
+    constructor(state: OrbitState, bornSim: number, lifetime: number, shooter: Shooter, type: BulletType, scene?: THREE.Scene, accent?: number) {
+        super(state, type === 'plasma' ? buildPlasmaMesh(accent) : buildBulletMesh(), scene);
         this.bornSim = bornSim;
         this.lifetime = lifetime;
         this.shooter = shooter;
