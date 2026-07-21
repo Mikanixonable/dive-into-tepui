@@ -206,8 +206,8 @@ export class Player extends Ship {
     if (reason === null) return;
 
     this.alive = false;
-    this.destroyEffect(ctx.combatCtx.fx);
-    ctx.combatCtx.activeStage.recordPlayerLost(ctx.combatCtx, reason);
+    this.destroyEffect(ctx.fx);
+    ctx.activeStage.recordPlayerLost(ctx, reason);
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
