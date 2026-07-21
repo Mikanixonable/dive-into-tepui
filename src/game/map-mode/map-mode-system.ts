@@ -130,8 +130,8 @@ export class MapModeSystem {
 
   // --------------------------------------------------------------- lifecycle
 
-  toggleMap(phase: string, touchControls: TouchControls | null, mapMode: boolean): boolean {
-    if (phase !== 'playing') return mapMode;
+  toggleMap(isPlaying: boolean, touchControls: TouchControls | null, mapMode: boolean): boolean {
+    if (!isPlaying) return mapMode;
     if (!mapMode) {
       this.editor.selectedNodeIdx = null;
       // マップの表示用予測期間は戦闘ビューの噴射ガイド用期間と異なるため、
@@ -156,8 +156,8 @@ export class MapModeSystem {
     return false;
   }
 
-  syncMapModeWithPhase(phase: string, touchControls: TouchControls | null, mapMode: boolean): boolean {
-    if (phase !== 'playing' && mapMode) {
+  syncMapModeWithPhase(isPlaying: boolean, touchControls: TouchControls | null, mapMode: boolean): boolean {
+    if (!isPlaying && mapMode) {
       this._hud.setPlanPanel(null);
       this._hud.setMapToolbarVisible(false);
       this.editor.closeMenu();
@@ -184,10 +184,10 @@ export class MapModeSystem {
 
   // [N] キー: 直近ノードの実行時刻までの自動ワープをトグルする(実際の速度管理は
   // SimSpeedManager が持つ — ここではノードの有無/時刻の解決だけを担う)。
-  toggleAutoWarpToFirstNode(phase: string, mapMode: boolean): void {
+  toggleAutoWarpToFirstNode(isPlaying: boolean, mapMode: boolean): void {
     if (mapMode) return;
     const first = this.plan.firstNode();
-    if (!first || phase !== 'playing') {
+    if (!first || !isPlaying) {
       this._hud.hint('マニューバノードがありません ([M] で計画)');
       return;
     }

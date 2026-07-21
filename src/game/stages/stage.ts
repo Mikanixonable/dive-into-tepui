@@ -17,18 +17,7 @@ import type { Simulator } from '../orbit-entity/simulator';
 
 export type StageIndex = -1 | 0 | 1 | 2;
 
-// Stage の init/update に渡す、Game 側の現在状態のスナップショット(毎フレーム渡す)。
-// enemies は読み取り参照(要素の alive 等はミューテートしてよい)。
-// 敵の追加は addEnemy(Simulator への登録。軌道線は Enemy 自身がコンストラクタで生成済み)を通す。
-// hud/sfx/scene は含めない — Stage 自身が setup() で受け取り私有する(_hud/_sfx/_scene)ので、
-// 毎フレームの ctx 越しに受け渡す必要がない。
-export interface StageCtx {
-  phase: string;
-  player: Player;
-  enemies: readonly Enemy[];
-  addEnemy(enemy: Enemy): void;
-  simTime: number;
-}
+export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
 export interface StageInitData {
   magsLeft: number;
@@ -60,11 +49,15 @@ export abstract class Stage {
   // fx も hud/sfx/scene と同じく setup() での一度きりの注入。敵/自機の生成
   // (spawner/enemy-generator.ts 等)にそのまま渡すため protected にする。
   protected _fx!: EffectsSystem;
-  // setPhase/unlockManager も hud/sfx/scene と同じく setup() での一度きりの注入。
-  // recordEnemyDeath/recordPlayerLost が主な使い手だが、Stage0 のタイムアップ判定のように
-  // 派生クラスが直接 setPhase を呼びたいケースもあるため protected にする。
-  protected _setPhase!: (phase: 'playing' | 'won' | 'lost' | 'timeup') => void;
   protected _unlockManager!: UnlockManager;
+
+  // 勝敗/タイムアップの進行状況。Game はこれを読むだけの主体で、変更は Stage 自身
+  // (recordEnemyDeath/recordPlayerLost、Stage0 のタイムアップ判定)だけが行う。
+  private _phase: GamePhase = 'playing';
+  get phase(): GamePhase { return this._phase; }
+  // 外部(game.ts/map-mode-system.ts 等)の多くは playing か否かだけに関心があるため。
+  get isPlaying(): boolean { return this._phase === 'playing'; }
+  protected setPhase(phase: GamePhase): void { this._phase = phase; }
 
   // Game がステージ開始前に一度だけ呼ぶ(STAGE_DEFINITIONS はモジュール読み込み時に生成される
   // 静的シングルトンなので、Game 固有のリソースはコンストラクタではなくここで受け取る)。
@@ -73,17 +66,22 @@ export abstract class Stage {
     sfx: Sfx,
     scene: THREE.Scene,
     simulator: Simulator,
-    setPhase: (phase: 'playing' | 'won' | 'lost' | 'timeup') => void,
     unlockManager: UnlockManager,
     fx: EffectsSystem,
   ): void {
     this._hud = hud;
     this._sfx = sfx;
     this._scene = scene;
-    this._setPhase = setPhase;
     this._unlockManager = unlockManager;
     this._fx = fx;
+    this._phase = 'playing';
     this.logistics = new Logistics(hud, sfx, scene, simulator.ammos, (ammo) => simulator.addAmmo(ammo));
+  }
+
+  // 敵の生成登録(Simulator への追加 + 出撃数カウント)を一箇所にまとめる。
+  protected addEnemy(enemy: Enemy, simulator: Simulator): void {
+    simulator.addEnemy(enemy);
+    this.scoreCounter.recordSpawnEnemy();
   }
 
   // 省略時(既定実装)は常に解放。unlock-manager.ts が記録するクリア回数だけを条件式の引数
@@ -94,9 +92,9 @@ export abstract class Stage {
 
   abstract briefingHtml(enemyCount: number): string;
   // ステージ開始時の処理(初期敵配置・初期補給投入)。戻り値は初期敵数(ブリーフィング表示用)。
-  abstract init(player: Player, addEnemy: (enemy: Enemy) => void): number;
+  abstract init(player: Player, simulator: Simulator): number;
   // 毎フレームの処理(弾薬兵站・タイマー・ウェーブ生成など、このステージに必要な分だけ書く)。
-  abstract update(dt: number, ctx: StageCtx): void;
+  abstract update(dt: number, player: Player, simulator: Simulator, simTime: number): void;
 
   // 既定: 敵全機撃破で勝利(再突入等の自然損耗は losses を差し引くためだけに使う)。
   // 時間切れで終わるステージ(Stage0/Stage00)は false 固定・onWin no-op に override する。
@@ -126,7 +124,7 @@ export abstract class Stage {
     this._hud.hint(`${enemy.name} 撃破`);
 
     if (this.checkWin()) {
-      this._setPhase('won');
+      this.setPhase('won');
       this._unlockManager.reportClear(this.index, this._hud);
       this.onWin(simTime);
     }
@@ -135,7 +133,7 @@ export abstract class Stage {
   // 自機の被弾死・自然死(checkLoss)を集計する。原因ごとに文言が異なるため reason で
   // 明示的に渡す。
   recordPlayerLost(reason: string): void {
-    this._setPhase('lost');
+    this.setPhase('lost');
     showResultScreen(this._hud, this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);
   }
 }
