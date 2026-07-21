@@ -1,7 +1,10 @@
 // ステージ配列(STAGE_DEFINITIONS)の定義を責務とする。各ステージの振る舞い(init/update/
 // checkWin/onWin)は stage.ts の Stage を継承した Stage00/Stage0/Stage1/Stage2
 // (このフォルダ内の同名ファイル)が持つ — ここではインスタンス化と番号引きのみ行う。
-import { Stage, StageIndex, StageInitData } from './stage';
+import { Stage, StageIndex } from './stage';
+import type { Player } from '../player/player';
+import type { Simulator } from '../orbit-entity/simulator';
+import type { Hud } from '../../hud/hud';
 import { Stage00 } from './stage00';
 import { Stage0 } from './stage0';
 import { Stage1 } from './stage1';
@@ -22,12 +25,10 @@ export function getStageDefinition(stage: number): Stage {
   return STAGE_BY_INDEX.get(stage as StageIndex) ?? STAGE_BY_INDEX.get(DEFAULT_STAGE_INDEX)!;
 }
 
-export function resolveStageInitData(def: Stage, enemyCount: number): StageInitData {
-  return {
-    magsLeft: def.initialAmmo.magsLeft,
-    roundsInMag: def.initialAmmo.roundsInMag,
-    briefingHtml: def.briefingHtml(enemyCount),
-  };
+export function initStage(stage: Stage, player: Player, simulator: Simulator, hud: Hud) {
+    const enemyCount = stage.init(player, simulator);
+    player.initAmmo(stage.initialAmmo.magsLeft, stage.initialAmmo.roundsInMag);
+    hud.toast(stage.briefingHtml(enemyCount), 12000);
 }
 
 export function resolveForcedStageFromQuery(stageParam: string | null): StageIndex | null {
