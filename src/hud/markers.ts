@@ -8,7 +8,7 @@ import { Elements } from '../physics/orbital';
 import { qRotate } from '../physics/attitude';
 import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../physics/vec3';
 import * as C from '../game/const';
-import { Ammo, Ship } from '../game/orbit-entity/entities';
+import { Ammo } from '../game/orbit-entity/entities';
 import { Enemy } from '../game/orbit-entity/enemy';
 import { MarkerManager } from './markerManager';
 import { fmtMarkerDist } from './utils';
@@ -19,8 +19,8 @@ export type ProjectFn = (rel: Vec3) => { x: number; y: number; front: boolean };
 
 const tmpV2 = new THREE.Vector3();
 
-// updateMarkers / updateNodeMarkers / updateBoardMarkers / updatePipOverlay が
-// 必要とする、Game 側の現在状態のスナップショット。
+// updateMarkers が必要とする、Game 側の現在状態のスナップショット(内部で個々の
+// フィールドへ分解して各 private メソッドへ渡す)。
 // player / enemies / target / ammos は参照渡し(state.r 等を読むだけで
 // ミューテートしない)。boardMarks は MarkersSystem 自身が保持する(combat/hit.ts の
 // checkBoardCrossings が直接この配列へ push する)。
@@ -44,22 +44,23 @@ export class MarkersSystem {
   // 方向マーカー(プログレード/レトログレード/ノーマル/アンチノーマル/動径 in-out)・
   // 機首ボアサイト・敵/ターゲット/AMMO マーカー・視界外方位/リードマーカーを更新する。
   updateMarkers(ctx: MarkerCtx, pv: Vec3, project: ProjectFn): void {
-    const o = ctx.player.state.r;
+    const { mapMode, player, enemies, target, ammos, mapLabelIds } = ctx;
+    const o = player.state.r;
 
     // マップ/戦闘ビューの出し分け(方向マーカーは戦闘ビューのみ・自機マーカーはマップのみ)
-    this.updateMapModeMarkers(ctx, project);
+    this.updateMapModeMarkers(mapMode, mapLabelIds, project);
 
     // 軌道基準方向 (Navball の代わり)
-    if (!ctx.mapMode) this.updateOrbitalDirectionMarkers(ctx, o, pv, project);
+    if (!mapMode) this.updateOrbitalDirectionMarkers(target, o, pv, project);
 
     // 機首方向(ボアサイト)
-    this.updateBoresightMarker(ctx, project);
+    this.updateBoresightMarker(player, mapMode, project);
 
     // 敵マーカー
-    this.updateEnemyMarkers(ctx, o, project);
+    this.updateEnemyMarkers(enemies, target, o, project);
 
     // 補給のマーカー
-    this.updateAmmoMarkers(ctx, o, project);
+    this.updateAmmoMarkers(ammos, o, project);
 
     // リード(見越し)マーカーと、視界外敵機の方位マーカー
     this.updateLeadAndDirMarkers(ctx, o, pv, project);
@@ -71,8 +72,8 @@ export class MarkersSystem {
     this.markers.resolveCollisions();
   }
 
-  private updateMapModeMarkers(ctx: MarkerCtx, project: ProjectFn): void {
-    if (ctx.mapMode) {
+  private updateMapModeMarkers(mapMode: boolean, mapLabelIds: string[], project: ProjectFn): void {
+    if (mapMode) {
       this.markers.hide('pro');
       this.markers.hide('retro');
       this.markers.hide('nrm');
@@ -88,13 +89,13 @@ export class MarkersSystem {
       this.markers.set('self', 'mk-self', '▷', sp.x, sp.y, sp.front, 'PLAYER');
     } else {
       this.markers.hide('self');
-      for (const id of ctx.mapLabelIds) {
+      for (const id of mapLabelIds) {
         this.markers.hide(id);
       }
     }
   }
 
-  private updateOrbitalDirectionMarkers(ctx: MarkerCtx, o: Vec3, pv: Vec3, project: ProjectFn): void {
+  private updateOrbitalDirectionMarkers(target: Enemy | null, o: Vec3, pv: Vec3, project: ProjectFn): void {
     const proDir = norm(pv);
     const nrmDir = norm(cross(o, pv));
     const radDir = cross(proDir, nrmDir);
@@ -115,8 +116,8 @@ export class MarkersSystem {
     const radIn = project(scale(radDir, -DIST));
     this.markers.set('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'RADIAL IN [S]');
 
-    if (ctx.target) {
-      const tgtDir = norm(sub(ctx.target.state.r, o));
+    if (target) {
+      const tgtDir = norm(sub(target.state.r, o));
       const tmk = project(scale(tgtDir, DIST));
       this.markers.set('tgtdir', 'mk-tgtdir', '◇', tmk.x, tmk.y, tmk.front, '');
       const atmk = project(scale(tgtDir, -DIST));
@@ -127,9 +128,9 @@ export class MarkersSystem {
     }
   }
 
-  private updateBoresightMarker(ctx: MarkerCtx, project: ProjectFn): void {
-    if (ctx.player.alive && !ctx.mapMode) {
-      const fwd = qRotate(ctx.player.att.q, v3(0, 0, 1));
+  private updateBoresightMarker(player: Player, mapMode: boolean, project: ProjectFn): void {
+    if (player.alive && !mapMode) {
+      const fwd = qRotate(player.att.q, v3(0, 0, 1));
       const bs = project(scale(fwd, 5e4));
       this.markers.set('bore', 'mk-boresight', '┼', bs.x, bs.y, bs.front);
     } else {
@@ -139,12 +140,12 @@ export class MarkersSystem {
 
   // 画面上で近接する敵マーカーをクラスタ化し、代表(ターゲット優先→最近距離)だけに
   // まとめラベルを付ける。
-  private updateEnemyMarkers(ctx: MarkerCtx, o: Vec3, project: ProjectFn): void {
+  private updateEnemyMarkers(enemies: Enemy[], target: Enemy | null, o: Vec3, project: ProjectFn): void {
     const CLUSTER_RADIUS = 40;
-    const enemyMarkers: { i: number, e: Ship, p: {x:number, y:number, front:boolean}, dist: number, isTgt: boolean, groupHide: boolean, groupCount: number }[] = [];
+    const enemyMarkers: { i: number, e: Enemy, p: {x:number, y:number, front:boolean}, dist: number, isTgt: boolean, groupHide: boolean, groupCount: number }[] = [];
 
-    for (let i = 0; i < ctx.enemies.length; i++) {
-      const e = ctx.enemies[i]!;
+    for (let i = 0; i < enemies.length; i++) {
+      const e = enemies[i]!;
       const key = `e${i}`;
       if (!e.alive) {
         this.markers.hide(key);
@@ -153,7 +154,7 @@ export class MarkersSystem {
       const rel = sub(e.state.r, o);
       const p = project(rel);
       const dist = len(rel);
-      const isTgt = e === ctx.target;
+      const isTgt = e === target;
       enemyMarkers.push({ i, e, p, dist, isTgt, groupHide: false, groupCount: 1 });
     }
 
@@ -203,10 +204,10 @@ export class MarkersSystem {
     }
   }
 
-  private updateAmmoMarkers(ctx: MarkerCtx, o: Vec3, project: ProjectFn): void {
+  private updateAmmoMarkers(ammos: Ammo[], o: Vec3, project: ProjectFn): void {
     for (let i = 0; i < C.MAX_AMMO; i++) {
       const key = `mg${i}`;
-      const ammo = ctx.ammos[i];
+      const ammo = ammos[i];
       if (!ammo || !ammo.alive) {
         this.markers.hide(key);
         continue;
@@ -243,7 +244,7 @@ export class MarkersSystem {
         this.updateOffscreenDirMarker(enemy, p, cx, cy, hexColor);
 
         // LEAD マーカー (20秒履歴)
-        this.updateLeadMarker(ctx, enemy, relP, pv, hexColor, project);
+        this.updateLeadMarker(ctx.simTime, enemy, relP, pv, hexColor, project);
       }
     } else {
       for (const ship of ctx.enemies) {
@@ -281,7 +282,7 @@ export class MarkersSystem {
   }
 
   private updateLeadMarker(
-    ctx: MarkerCtx,
+    simTime: number,
     enemy: Enemy,
     relP: Vec3,
     pv: Vec3,
@@ -289,7 +290,7 @@ export class MarkersSystem {
     project: ProjectFn,
   ): void {
     let showLead = false;
-    if (enemy.lastTargetedSim !== undefined && (ctx.simTime - enemy.lastTargetedSim < 20)) {
+    if (enemy.lastTargetedSim !== undefined && (simTime - enemy.lastTargetedSim < 20)) {
       showLead = true;
     }
 
@@ -310,13 +311,13 @@ export class MarkersSystem {
 
   // ターゲットの軌道面との交線(相対昇交点・降交点)を自機の軌道上に表示する。
   // 面変更(ノーマル/アンチノーマル)burn を行うべき位置がひと目で分かる。
-  updateNodeMarkers(ctx: MarkerCtx, playerEl: Elements | null, tgtEl: Elements | null, project: ProjectFn): void {
+  updateNodeMarkers(player: Player, playerEl: Elements | null, tgtEl: Elements | null, project: ProjectFn): void {
     if (!playerEl || !tgtEl) {
       this.markers.hide('an');
       this.markers.hide('dn');
       return;
     }
-    const o = ctx.player.state.r;
+    const o = player.state.r;
     const lineDir = cross(playerEl.hHat, tgtEl.hHat);
     if (lenSq(lineDir) < 1e-6) {
       // 軌道面がほぼ一致 → 交線が定まらない
@@ -337,10 +338,9 @@ export class MarkersSystem {
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
-  updateBoardMarkers(ctx: MarkerCtx, dt: number, project: ProjectFn): void {
-    const tgt = ctx.target;
-    const o = ctx.player.state.r;
-    if (!tgt) this.boardMarks.length = 0;
+  updateBoardMarkers(target: Enemy | null, player: Player, dt: number, project: ProjectFn): void {
+    const o = player.state.r;
+    if (!target) this.boardMarks.length = 0;
     this.boardMarks = this.boardMarks.filter((m) => {
       m.age += dt;
       return m.age < C.BOARD_MARK_LIFETIME;
@@ -348,11 +348,11 @@ export class MarkersSystem {
     for (let i = 0; i < C.MAX_BOARD_MARKS; i++) {
       const key = `bh${i}`;
       const m = this.boardMarks[i];
-      if (!m || !tgt) {
+      if (!m || !target) {
         this.markers.hide(key);
         continue;
       }
-      const p = project(sub(add(tgt.state.r, m.off), o));
+      const p = project(sub(add(target.state.r, m.off), o));
       const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
       this.markers.set(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
     }
@@ -365,17 +365,21 @@ export class MarkersSystem {
   // (この段階でカメラは PIP 用の position/quaternion/fov/aspect に設定済みで、
   //  renderer.render() 済みなので matrixWorldInverse/projectionMatrix は最新のはず。
   //  念のため updateMatrixWorld() を呼んでから使う。)
-  updatePipOverlay(ctx: MarkerCtx, rect: { x: number; y: number; w: number; h: number } | null): void {
-    const tgt = ctx.target;
-    if (!rect || !tgt || !tgt.alive || !ctx.player.alive) {
+  updatePipOverlay(
+    target: Enemy | null,
+    player: Player,
+    activeCamera: THREE.PerspectiveCamera,
+    rect: { x: number; y: number; w: number; h: number } | null,
+  ): void {
+    if (!rect || !target || !target.alive || !player.alive) {
       this.markers.hide('pip-tgt');
       this.markers.hide('pip-lead');
       return;
     }
-    const cam = ctx.activeCamera;
+    const cam = activeCamera;
     cam.updateMatrixWorld();
-    const o = ctx.player.state.r;
-    const pv = ctx.player.state.v;
+    const o = player.state.r;
+    const pv = player.state.v;
 
     const projectPip = (rel: Vec3): { x: number; y: number; front: boolean } => {
       tmpV2.set(rel.x, rel.y, rel.z).applyMatrix4(cam.matrixWorldInverse);
@@ -390,13 +394,13 @@ export class MarkersSystem {
     const inRect = (p: { x: number; y: number; front: boolean }): boolean =>
       p.front && p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h;
 
-    const relP = sub(tgt.state.r, o);
+    const relP = sub(target.state.r, o);
     const p = projectPip(relP);
     // ラベル無し(''): resolveCollisions の押し退け対象から自然に除外される
     this.markers.set('pip-tgt', 'mk-target', '◇', p.x, p.y, inRect(p), '');
 
-    const hexColor = tgt.accent ? '#' + tgt.accent.toString(16).padStart(6, '0') : '#ff6a00';
-    const relV = sub(tgt.state.v, pv);
+    const hexColor = target.accent ? '#' + target.accent.toString(16).padStart(6, '0') : '#ff6a00';
+    const relV = sub(target.state.v, pv);
     const t = solveLeadTime(relP, relV, C.MUZZLE_SPEED);
     if (t !== null && t < 25) {
       const lead = addScaled(relP, relV, t);

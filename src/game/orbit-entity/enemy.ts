@@ -98,7 +98,7 @@ export class Enemy extends Ship {
     }
 
     this.alive = false;
-    ctx.activeStage.recordEnemyDeath(this, ctx, true);
+    ctx.activeStage.recordEnemyDeath(this, ctx.setPhase, ctx.unlockManager, ctx.simTime, true);
     this.destroyEffect(ctx.fx);
   }
 
@@ -108,7 +108,7 @@ export class Enemy extends Ship {
     if (altitudeOf(this.state.r) >= C.REENTRY_ALT) return;
     this.alive = false;
     this.destroyEffect(ctx.fx);
-    ctx.activeStage.recordEnemyDeath(this, ctx, false);
+    ctx.activeStage.recordEnemyDeath(this, ctx.setPhase, ctx.unlockManager, ctx.simTime, false);
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は simulator を使う)。

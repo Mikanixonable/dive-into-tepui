@@ -7,6 +7,8 @@ import { WaveManager } from './stage-utils/wave-manager';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import type { Simulator } from '../orbit-entity/simulator';
+import type { Player } from '../player/player';
+import type { Enemy } from '../orbit-entity/enemy';
 
 export class Stage00 extends Stage {
   readonly index = -1 as const;
@@ -31,16 +33,16 @@ export class Stage00 extends Stage {
     );
   }
 
-  init(ctx: StageCtx): number {
+  init(player: Player, addEnemy: (enemy: Enemy) => void): number {
     for (let i = 0; i < C.MAX_AMMO; i++) {
-      this.logistics.spawnForPlayer(ctx.player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
+      this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
     }
-    this.waveManager.spawnWave(ctx, 'random'); // 初期状態でもランダムに敵を配置する
+    this.waveManager.spawnWave(player, addEnemy, 'random'); // 初期状態でもランダムに敵を配置する
     return 0;
   }
 
   update(dt: number, ctx: StageCtx): void {
-    this.waveManager.update(dt, ctx, this.logistics, {
+    this.waveManager.update(dt, ctx.phase, ctx.player, ctx.enemies, ctx.addEnemy, ctx.simTime, this.logistics, {
       spawnDelay: C.STAGE00_SPAWN_DELAY,
       spawnInterval: C.STAGE00_SPAWN_INTERVAL,
       maxRange: C.STAGE00_MAX_RANGE,

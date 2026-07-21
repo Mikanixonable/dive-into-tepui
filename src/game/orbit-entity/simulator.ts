@@ -107,7 +107,7 @@ export class Simulator {
       if (hardCollision) {
         const hitCtx = ctx.hitCtx(nextSimTime);
         this.hit.checkBulletHits(hitCtx);
-        this.hit.checkBoardCrossings(hitCtx);
+        this.hit.checkBoardCrossings(hitCtx.target, hitCtx.player, hitCtx.simulator, hitCtx.boardMarks);
       }
     }
     if (!hardCollision) this.stepCoastingAttitudes(simDt);
