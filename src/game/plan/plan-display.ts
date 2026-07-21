@@ -4,7 +4,7 @@
 // 再計算までクリック判定と描画を一致させるため)ので、それを担う plan-editor.ts の
 // クリックピッキングも toDisplayFrame はここに委譲する — 二重に基準角を持つと
 // ずれが生じるため、正はここ一箇所のみ。
-// mapMode 中のみ意味を持つ(map-mode/ の外へは import されない)。
+// mapMode 中のみ意味を持つ。
 import { Elements, R_EARTH, elementsFromState } from '../../physics/orbital';
 import { sunAzimuth } from '../../physics/ephemeris';
 import { TrajectorySample } from '../../physics/predict';

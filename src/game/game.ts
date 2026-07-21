@@ -45,23 +45,18 @@ export class Game {
   private readonly renderer: GameScene['renderer'];
 
   private readonly input: Input;
-  // HudPanels が状態を直接参照するため public(下記 hud.panels.update 呼び出し参照)。
   touchControls: TouchControls | null = null;
   private readonly _hud = new Hud();
   private readonly _sfx = new Sfx();
-  // 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する
-  // (mapModeSystem のコンストラクタで MapCamera への参照を注入するため、
-  // mapModeSystem より前に構築する必要がある)。panel.ts が chase.camFollowAttitude を
-  // 読むため public(旧 readonly chase フィールドと同じ可視性)。
+  // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
+  // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/simulator/targeter 等)は
+  // public にする。mapModeSystem のコンストラクタで MapCamera への参照を注入するため、
+  // cameraSystem は mapModeSystem より前に構築する必要がある。
   readonly cameraSystem = new CameraSystem(this._hud, this._sfx);
 
-
   readonly player: Player;
-  // enemies / bullets / plasmaBullets / casings / debris の各エンティティ配列は
-  // Simulator が所有する(this.simulator.enemies 等)。追加は simulator.addXxx 経由。
-  // フラッシュエフェクト配列(effects)は effects(EffectsSystem)が所有する。
 
-  // ?perf=1 のデバッグ表示用エンティティ数(軽量化計画ステップ0)。挙動には影響しない。
+  // ?perf=1 のデバッグ表示用エンティティ数。
   perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
     return {
       enemies: this.simulator.enemies.length,
@@ -73,21 +68,18 @@ export class Game {
 
   private readonly environment: EnvironmentScene;
 
-  //readonly stage: number;
-
-  // シミュレーション速度(旧「ワープ」)の段階管理と、[N] キーによるノードへの自動ワープ
+  // シミュレーション速度(HUD ヒント・SFX 上は「ワープ」と呼ぶ、sfx.warp() 参照)の
+  // 段階管理と、[N] キーによるノードへの自動ワープ。
   readonly simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
   // 軌道計画(ノード列+予測キャッシュ)。マップモードの有無と無関係なデータで、
-  // Game が所有し、表示・編集は mapModeSystem へ、実施(噴射ガイド)は planGuide へ
-  // それぞれ「注入」する — plan-mode/plan.ts 参照。
+  // Game が所有し、表示・編集は mapModeSystem へ、実施(噴射ガイド)は planGuide へ注入する。
   private readonly plan = new Plan();
   // 直近ノードの噴射ガイド(戦闘ビューのみ、マップモード中は呼ばない — [M] で開いている
   // 間は WASDQE がΔv編集に使われるため)。scene に計画軌道ラインを持つため
   // コンストラクタ本体で構築する(effects 等と同じ理由)。
   private readonly planGuide: PlanGuide;
 
-  // 軌道計画モード(map-mode/ フォルダの唯一の外部窓口)
   private readonly mapModeSystem = new MapModeSystem(
     this._hud,
     this._sfx,
@@ -100,33 +92,20 @@ export class Game {
   );
 
   private phase: GamePhase = 'playing';
-  // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定)を持つインスタンス
-  // (stages/ 参照)。固有のランタイム状態(タイマー・ウェーブ管理等)もこれ自身が持つ。
+  // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定、stages/ 参照)。
+  // 固有のランタイム状態(タイマー・ウェーブ管理等)もこれ自身が持つ。
   readonly activeStage: Stage;
   simTime = 0;
   private lastSimDt = 0;
   paused = false;
 
-  //private zoomActive = false;
-
-  // 天体暦(太陽・月の位置と日照率)は ephemeris.ts に切り出し済み。マップモード専用の
-  // geo/moon 参照軌道線も scene 登録込みでここが持つため、コンストラクタ本体で構築する。
+  // 天体暦(太陽・月の位置と日照率)。マップモード専用の geo/moon 参照軌道線も
+  // scene 登録込みでここが持つため、コンストラクタ本体で構築する。
   private readonly ephemeris: EphemerisSystem;
 
-  // --- 弾薬・マガジン ---
-  // マガジンベルト(表示メッシュ + Verlet 物理)は弾薬状態に密結合なため
-  // Player が Belt/BeltPhysics として所有する(player.update/player.sync 経由)。
-  // 発射・排莢・バレル交換の演出は player/player-fire.ts の PlayerFire が持つ(fireCtx 経由)。
-  // 撃破の集計・勝敗判定・発射/命中/撃破カウンタは activeStage(StageDefinition)が持つ
-  // (scoreCounter フィールド、recordKill/recordKilled メソッド)。
   private readonly unlockManager = new UnlockManager();
-  // 弾の高度な衝突判定(トンネリング防止・被弾ダメージ)は combat/hit.ts の HitSystem に
-  // 切り出し済み。撃破が発生したら activeStage.recordKill を呼ぶ(ctx 経由、状態は持たない)。
   private readonly hitSystem = new HitSystem();
-  // HUDマーカー(方向・敵/リード/AMMO/ノード/PIP/ボード)の同期は markers.ts の
-  // MarkersSystem に切り出し済み。boardMarks(標的面通過点)もここが保持する
-  // (combat/hit.ts の checkBoardCrossings が直接この配列へ push する)。
-  // ステータスパネルは hud.panels が担う。
+  // boardMarks(標的面通過点の履歴)は hit.ts の checkBoardCrossings が直接この配列へ push する。
   private readonly markersSystem = new MarkersSystem(this._hud.markers);
   private readonly collisionPhysics = new CollisionPhysics();
   // フラッシュ・破片エフェクトのスポーン窓口(effects-system.ts)。scene への注入・
@@ -169,7 +148,6 @@ export class Game {
 
     this._scene.add(this.mapModeSystem.trajLineGroup);
 
-    // --- 自機: 高度420km・傾斜51.6°の円軌道 ---
     this.player = new Player(this._hud, this._sfx, this._scene);
 
     this.initStage();
@@ -189,7 +167,7 @@ export class Game {
   }
 
   // ステージ別の初期敵配置・初期弾薬・初期補給の配置と作戦目標のブリーフィング表示
-  // (ステージごとの分岐は stage-data.ts の StageDefinition.init が直接行う)。
+  // (ステージごとの分岐は activeStage.init が直接行う)。
   private initStage(): void {
     const enemyCount = this.activeStage.init(this.stageCtx());
     const data = resolveStageInitData(this.activeStage, enemyCount);
@@ -228,8 +206,8 @@ export class Game {
       this.handlePausedFrame();
       return;
     }
-    // ゲームオーバー以降等場合、シミュレーションは進めるが、プレイヤーのアクションは無効化する。
-    // シミュレーションも簡略化する
+    // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
+    // 積分もサブステップなしの簡略版(integrateSimulation の hardCollision/doSubstep 引数)にする。
     if (this.phase !== 'playing') {
       const advanced = this.simulator.integrateSimulation(
         this.simTime,
@@ -448,7 +426,6 @@ export class Game {
     }
     this.updateAttitudes(Math.min(simDt, 0.12));
 
-    // シミュレーション配列から不要なものを消去
     this.simulator.cleanup({ dt, combatCtx: this.combatCtx() });
 
     if (this.activeStage.index === -1 && this.phase === 'playing' && this.simSpeedManager.canEnemyFire) {

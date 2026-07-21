@@ -1,30 +1,25 @@
-// マップモード(軌道計画モード)folder の唯一の外部窓口。
+// マップモード(軌道計画モード)folder の唯一の外部窓口 — game.ts はこのクラスの
+// メソッドのみを呼び、PlanEditor/PlanDisplay/MapHud には直接触れない。
 // 軌道計画そのもの(Plan / plan-guide.ts の実施)はマップモードと無関係なデータ・
-// ロジックとして game/plan/ に独立して存在し、Game がここへ Plan を注入する
-// (このクラスは Plan を作らず、コンストラクタで受け取るだけ)。
-// PlanEditor(マップ上でのノード編集)/ PlanDisplay(マップ上での予測軌道・ゴースト
-// 表示)/ MapHud(フォーカス対象ラベルの算出・描画)を private に保持する。MapCamera
-// (マップカメラ・視点操作)はもはや
-// カメラ以外の責務を持たないため camera-system.ts の CameraSystem が所有し、このクラスは
-// コンストラクタで参照を受け取るだけ(生成しない・カメラ駆動もしない — 駆動は
-// CameraSystem.updateActiveCamera が直接呼ぶ)。frameRotating/pan/dist/sliderT は
-// 軌道計画編集(toDisplayFrame・ツールバー・ギズモ)がカメラの視点状態を読む必要が
-// あるための実質的な依存で、単なる薄い転送ではない。
-// フォーカス対象(focus: どのラベルを注視するかの文字列 ID)は MapCamera ではなく
-// このクラスが持つ — focus を変更する UI 操作(ツールバー・右クリメニュー)は
-// すべてここに集まるため、focus とその解決(focusRel: ラベル位置→フローティング
-// オリジン相対位置)は同じ場所にあるべきで、MapCamera は解決済みの Vec3 を受け取る
-// だけにする(ラベルという概念自体を知らない)。
-// 外部(game.ts)はこのクラスのメソッドのみを呼ぶ — PlanEditor/PlanDisplay/MapHud へ
-// 個別に触れさせない。
-// シミュレーション速度そのものの管理は責務が異なるため SimSpeedManager が別途持ち、
-// ここではノード実行時刻への自動ワープの起点(startAutoWarpTo/cancelAutoWarp の
-// 呼び出しどころ)としてのみ参照する。
+// ロジックとして game/plan/ に独立して存在し、Game がここへ Plan を注入する。
+// PlanEditor(マップ上でのノード編集)・PlanDisplay(予測軌道・ゴースト表示)・
+// MapHud(フォーカス対象ラベルの算出・描画)を private に保持する。
+// MapCamera(マップカメラ・視点操作)は camera-system.ts の CameraSystem が所有し、
+// このクラスはコンストラクタで参照を受け取るだけ(駆動は CameraSystem.updateActiveCamera
+// が直接呼ぶ)。frameRotating/pan/dist/sliderT は軌道計画編集(toDisplayFrame・
+// ツールバー・ギズモ)がカメラの視点状態を読むための実質的な依存で、単なる薄い転送ではない。
+// フォーカス対象(focus: どのラベルを注視するかの文字列 ID)はこのクラスが持つ —
+// focus を変更する UI 操作(ツールバー・右クリメニュー)はすべてここに集まるため、
+// focus とその解決(focusRel: ラベル位置→フローティングオリジン相対位置)は同じ場所に
+// あるべきで、MapCamera へは解決済みの Vec3 だけを渡す。
+// シミュレーション速度そのものの管理は SimSpeedManager が別途持ち、ここではノード
+// 実行時刻への自動ワープの起点(startAutoWarpTo/cancelAutoWarp の呼び出しどころ)
+// としてのみ参照する。
 //
-// PlanCtx が要求する「現在状態」は planCtx() で毎回引ける(Game 側の simTime/player
+// PlanCtx が要求する「現在状態」は planCtx() で毎回引ける。Game 側の simTime/player
 // 状態は非同期な DOM イベント(ギズモドラッグ等)からも参照する必要があるため、
-// コンストラクタ注入のコールバックとして持つ)。project も同様の理由で
-// コンストラクタ注入(カメラ依存のクロージャ)。
+// コンストラクタ注入のコールバックとして持つ。project も同様の理由でコンストラクタ
+// 注入(カメラ依存のクロージャ)。
 import * as THREE from 'three/webgpu';
 import { Vec3, sub, v3 } from '../../physics/vec3';
 import { Hud } from '../../hud/hud';
@@ -216,8 +211,8 @@ export class MapModeSystem {
   }
 
   // focus(地球中心 or ラベル ID)を解決し、フローティングオリジン(origin)相対の
-  // 位置として返す。CameraUpdateCtx.focusRel の供給元 — MapCamera 自身は focus という
-  // 文字列もラベルという概念も知らない。
+  // 位置として返す。CameraUpdateCtx.focusRel の供給元 — MapCamera へは解決済みの
+  // Vec3 だけを渡す。
   focusRel(origin: Vec3): Vec3 {
     const pos = this.focus === 'earth' ? v3(0, 0, 0) : this.mapHud.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
     return sub(pos, origin);

@@ -15,7 +15,7 @@ export class RcsEffects {
     for (const puff of this.puffs) scene.add(puff.mesh);
   }
 
-  // RCS パフの噴射方向(機体ローカル、body frame のトルク軸)。無回転なら null。
+  // RCS パフの噴射方向(機体ローカル、body frame のトルク軸)。無回転ならゼロベクトル。
   // ダンピングの符号反転を含め updateAttitude のトルク計算と同じ入力読み取りを行うが、
   // ここでは可視化のみで実際のトルクは適用しない。
   computeRcsTau(input: Input, rcsDamp: boolean, w: Vec3, alive: boolean, phasePlaying: boolean, mapMode: boolean): Vec3 {
