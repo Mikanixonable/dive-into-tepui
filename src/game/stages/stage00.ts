@@ -2,13 +2,12 @@
 // (撃破数では終わらないので checkWin/onWin は no-op に override する)。
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
-import { StageCtx, Stage } from './stage';
+import { Stage } from './stage';
 import { WaveManager } from './stage-utils/wave-manager';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import type { Simulator } from '../orbit-entity/simulator';
 import type { Player } from '../player/player';
-import type { Enemy } from '../orbit-entity/enemy';
 import type { UnlockManager } from '../unlock-manager';
 import type { EffectsSystem } from '../effects-system';
 
@@ -31,11 +30,10 @@ export class Stage00 extends Stage {
     sfx: Sfx,
     scene: THREE.Scene,
     simulator: Simulator,
-    setPhase: (phase: 'playing' | 'won' | 'lost' | 'timeup') => void,
     unlockManager: UnlockManager,
     fx: EffectsSystem,
   ): void {
-    super.setup(hud, sfx, scene, simulator, setPhase, unlockManager, fx);
+    super.setup(hud, sfx, scene, simulator, unlockManager, fx);
     this.waveManager.setup(hud, sfx, scene, fx);
   }
 
@@ -48,16 +46,25 @@ export class Stage00 extends Stage {
     );
   }
 
-  init(player: Player, addEnemy: (enemy: Enemy) => void): number {
+  init(player: Player, simulator: Simulator): number {
     for (let i = 0; i < C.MAX_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
     }
-    this.waveManager.spawnWave(player, addEnemy, 'random'); // 初期状態でもランダムに敵を配置する
+    // 初期状態でもランダムに敵を配置する
+    this.waveManager.spawnWave(player, (enemy) => this.addEnemy(enemy, simulator), 'random');
     return 0;
   }
 
-  update(dt: number, ctx: StageCtx): void {
-    this.waveManager.update(dt, ctx.phase, ctx.player, ctx.enemies, ctx.addEnemy, ctx.simTime, this.logistics);
+  update(dt: number, player: Player, simulator: Simulator, simTime: number): void {
+    this.waveManager.update(
+      dt,
+      this.isPlaying,
+      player,
+      simulator.enemies,
+      (enemy) => this.addEnemy(enemy, simulator),
+      simTime,
+      this.logistics,
+    );
   }
 
   checkWin(): boolean { return false; }

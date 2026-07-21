@@ -1,12 +1,12 @@
 // Stage 0: 訓練ステージ。近傍の色分けクラスタを制限時間内に何機撃墜できるかのスコアアタック
 // (タイムアップで終わる。撃破数では終わらないので checkWin/onWin は no-op に override する)。
 import * as C from '../const';
-import { StageCtx, Stage } from './stage';
+import { Stage } from './stage';
 import { showScoreAttackResultScreen } from '../result-screen';
 import { generateCluster } from './spawner/enemy-spawner';
 import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { Player } from '../player/player';
-import type { Enemy } from '../orbit-entity/enemy';
+import type { Simulator } from '../orbit-entity/simulator';
 
 export class Stage0 extends Stage {
   readonly index = 0 as const;
@@ -26,18 +26,18 @@ export class Stage0 extends Stage {
     );
   }
 
-  init(player: Player, addEnemy: (enemy: Enemy) => void): number {
+  init(player: Player, simulator: Simulator): number {
     for (let i = 0; i < C.STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
     }
     const enemies = generateCluster(player.state, this._hud, this._sfx, this._fx, this._scene);
-    for (const enemy of enemies) addEnemy(enemy);
+    for (const enemy of enemies) this.addEnemy(enemy, simulator);
     return enemies.length;
   }
 
-  update(dt: number, ctx: StageCtx): void {
-    this.logistics.updateLogistics(ctx.simTime, ctx.player);
-    if (this.timer.update(dt, this._setPhase)) {
+  update(dt: number, player: Player, _simulator: Simulator, simTime: number): void {
+    this.logistics.updateLogistics(simTime, player);
+    if (this.timer.update(dt, (phase) => this.setPhase(phase))) {
       showScoreAttackResultScreen(this._hud, this._sfx, this.scoreCounter, 'TIME UP');
     }
   }
