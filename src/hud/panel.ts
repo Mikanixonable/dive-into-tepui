@@ -73,7 +73,7 @@ export class HudPanels {
       game.touchControls?.setActive('KeyC', player.progradeHold);
       const hudSubStatus = game.activeStage.hudSubStatus();
       this.setStats({
-        met: game.simTime,
+        met: game.simulator.simTime,
         simSpeedLabel: `×${game.simSpeedManager.simSpeed}`,
         paused: game.paused,
         rcsDamp: player.rcsDamp,
