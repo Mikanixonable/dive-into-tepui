@@ -19,6 +19,7 @@ export class CollisionPhysics {
     const beltActive = p.alive && dt > 1e-6;
     const entities = ctx.entities.filter(e => e.alive && e.collideRadius !== undefined);
     if (p.alive) entities.push(p);
+    // ベルト状態を読み込み、衝突計算後に書き戻す
     if (beltActive) {
       entities.push(...p.belt.collisionSections(dt, p.state.r, p.state.v, p.att.q));
     }

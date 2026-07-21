@@ -115,8 +115,8 @@ export class Game {
 
   // --- 弾薬・マガジン ---
   // マガジンベルト(表示メッシュ + Verlet 物理)は弾薬状態に密結合なため
-  // player/player-fire.ts の PlayerFire が所有する(this.player.updateBelt 等)。
-  // 発射・排莢・バレル交換の演出も PlayerFire が持つ(fireCtx 経由)。
+  // Player が Belt/BeltPhysics として所有する(player.update/player.sync 経由)。
+  // 発射・排莢・バレル交換の演出は player/player-fire.ts の PlayerFire が持つ(fireCtx 経由)。
   // 撃破の集計・勝敗判定・発射/命中/撃破カウンタは activeStage(StageDefinition)が持つ
   // (scoreCounter フィールド、recordKill/recordKilled メソッド)。
   private readonly unlockManager = new UnlockManager();
@@ -276,6 +276,7 @@ export class Game {
     this.lastSimDt = advanced.simDt;
 
     this.handlePostSimulation(dt, simDt);
+    this.player.update(dt);
 
     if (this.cameraSystem.mapMode) {
       this.mapModeSystem.updateEditing(dt, this.input);
@@ -483,7 +484,7 @@ export class Game {
       mapCameraFar: this.cameraSystem.mapCamera.camera.far,
       lit: this.cameraSystem.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
     });
-    this.syncDynamicObjects(dt, o, pv);
+    this.syncDynamicObjects(o, pv);
     this.effects.updateFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera);
     this.syncHud(dt, o, pv);
   }
@@ -500,9 +501,8 @@ export class Game {
     });
   }
 
-  private syncDynamicObjects(dt: number, o: Vec3, pv: Vec3): void {
+  private syncDynamicObjects(o: Vec3, pv: Vec3): void {
     this.player.sync(
-      dt,
       this.input,
       this.cameraSystem,
       this.phase === 'playing',

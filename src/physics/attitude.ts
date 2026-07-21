@@ -1,7 +1,7 @@
 // 剛体姿勢力学: クォータニオン + 機体座標系角速度をオイラーの運動方程式で積分。
 // 非対称な慣性主軸を与えると中間軸まわりの回転が不安定化し、
 // ジャニベコフ効果(デブリの周期的な反転)が自然に現れる。
-import { Vec3, cross, lenSq, norm, v3 } from './vec3';
+import { Vec3, cross, dot, lenSq, norm, v3 } from './vec3';
 
 export interface Quat {
   x: number;
@@ -44,6 +44,27 @@ export function qFromAxisAngle(axis: Vec3, angle: number): Quat {
   const h = angle / 2;
   const s = Math.sin(h);
   return { x: axis.x * s, y: axis.y * s, z: axis.z * s, w: Math.cos(h) };
+}
+
+// 単位クォータニオンの逆(共役)
+export function qInvert(q: Quat): Quat {
+  return { x: -q.x, y: -q.y, z: -q.z, w: q.w };
+}
+
+// a を b へ重ねる最小回転(a, b は単位ベクトル)
+export function qFromUnitVectors(a: Vec3, b: Vec3): Quat {
+  const d = dot(a, b);
+  if (d > 1 - 1e-12) return { x: 0, y: 0, z: 0, w: 1 };
+  if (d < -1 + 1e-6) {
+    // ほぼ反平行: a と直交する任意軸まわりに 180° 回転
+    let axis = cross(v3(1, 0, 0), a);
+    if (lenSq(axis) < 1e-6) axis = cross(v3(0, 1, 0), a);
+    return qFromAxisAngle(norm(axis), Math.PI);
+  }
+  const axis = cross(a, b);
+  const s = Math.sqrt((1 + d) * 2);
+  const invs = 1 / s;
+  return { x: axis.x * invs, y: axis.y * invs, z: axis.z * invs, w: s * 0.5 };
 }
 
 // v_world = q ⊗ v ⊗ q*
