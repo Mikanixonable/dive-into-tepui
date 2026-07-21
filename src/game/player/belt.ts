@@ -6,7 +6,7 @@ import { Attitude, Quat } from '../../physics/attitude';
 import { Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import { MAG_BELT_PITCH, buildMagazineMesh } from '../../render/ships';
-import { BeltSection } from '../entities';
+import { BeltSection } from '../orbit-entity/entities';
 import { BeltPhysics } from './belt-physics';
 
 export class Belt {

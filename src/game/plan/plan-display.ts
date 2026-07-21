@@ -14,7 +14,7 @@ import { fmtMarkerDist } from '../../hud/utils';
 import { TrajLine } from '../../render/trajline';
 import { MarkerManager } from '../../hud/markerManager';
 import { ProjectFn } from '../camera/projection';
-import { Plan, PlanCtx } from '../plan/plan';
+import { Plan, PlanCtx } from './plan';
 
 export type PredictDurationKey = 'orbit' | 'day' | 'week' | 'month';
 

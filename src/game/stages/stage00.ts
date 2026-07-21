@@ -2,13 +2,13 @@
 // (撃破数では終わらないので checkWin/onWin は no-op に override する)。
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
-import { StageCtx, StageDefinition } from './stage-definition';
-import { WaveManager } from './wave-manager';
+import { StageCtx, Stage } from './stage';
+import { WaveManager } from './stage-utils/wave-manager';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import type { Simulator } from '../combat/simulator';
+import type { Simulator } from '../orbit-entity/simulator';
 
-export class Stage00 extends StageDefinition {
+export class Stage00 extends Stage {
   readonly index = -1 as const;
   readonly selectLabel = '[0] 無限耐久サバイバル (Stage 00)';
   readonly selectSub = '常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
@@ -32,19 +32,19 @@ export class Stage00 extends StageDefinition {
   }
 
   init(ctx: StageCtx): number {
-    for (let i = 0; i < C.MAX_MAG_PICKUPS; i++) {
-      this.ammoResupply.spawnForPlayer(ctx.player, C.STAGE00_AMMO_MIN_DIST, C.STAGE00_AMMO_MAX_DIST);
+    for (let i = 0; i < C.MAX_AMMO; i++) {
+      this.logistics.spawnForPlayer(ctx.player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
     }
     this.waveManager.spawnWave(ctx, 'random'); // 初期状態でもランダムに敵を配置する
     return 0;
   }
 
   update(dt: number, ctx: StageCtx): void {
-    this.waveManager.update(dt, ctx, this.ammoResupply, {
+    this.waveManager.update(dt, ctx, this.logistics, {
       spawnDelay: C.STAGE00_SPAWN_DELAY,
       spawnInterval: C.STAGE00_SPAWN_INTERVAL,
       maxRange: C.STAGE00_MAX_RANGE,
-      respawnAmmoOnDespawn: true,
+      respawnLogisticsOnDespawn: true,
     });
   }
 

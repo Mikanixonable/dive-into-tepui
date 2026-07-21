@@ -1,7 +1,7 @@
 
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
-import { Bullet, CheckLossCtx, Ship } from '../../game/entities';
+import { CheckLossCtx, Ship } from './entities';
 import { Attitude } from '../../physics/attitude';
 import { altitudeOf, OrbitState } from '../../physics/orbital';
 import { OrbitLine } from '../../render/orbitline';
@@ -9,8 +9,9 @@ import { add, clone, len, norm, randPerp, rotateAxis, scale, sub } from '../../p
 import { solveLeadTime } from '../../physics/intercept';
 import { buildPlasmaMesh } from '../../render/ships';
 import { EffectsCtx, spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
-import type { Player } from '../player/player';
-import { CombatCtx } from '../stages/stage-definition';
+import { Player } from '../player/player';
+import { Bullet } from './bullet';
+import { CombatCtx } from '../stages/stage';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 
@@ -90,7 +91,7 @@ export class Enemy extends Ship {
     if (!this.alive) return;
     if (bullet.shooter === 'enemy') return; // 敵弾の被弾は無効化
 
-    ctx.activeStage.killCounter.recordHit();
+    ctx.activeStage.scoreCounter.recordHit();
 
     this.hp -= C.ENEMY_HIT_DAMAGE;
     if (this.hp > 0) {
@@ -99,7 +100,7 @@ export class Enemy extends Ship {
     }
 
     this.alive = false;
-    ctx.activeStage.recordKill(this, ctx, true);
+    ctx.activeStage.recordEnemyDeath(this, ctx, true);
     this.destroyEffect(ctx.fx);
   }
 
@@ -109,7 +110,7 @@ export class Enemy extends Ship {
     if (altitudeOf(this.state.r) >= C.REENTRY_ALT) return;
     this.alive = false;
     this.destroyEffect(ctx.combatCtx.fx);
-    ctx.combatCtx.activeStage.recordKill(this, ctx.combatCtx, false);
+    ctx.combatCtx.activeStage.recordEnemyDeath(this, ctx.combatCtx, false);
   }
 
   // 行動関数

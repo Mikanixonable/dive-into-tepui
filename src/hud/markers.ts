@@ -8,8 +8,8 @@ import { Elements } from '../physics/orbital';
 import { qRotate } from '../physics/attitude';
 import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../physics/vec3';
 import * as C from '../game/const';
-import { MagPickup, Ship } from '../game/entities';
-import { Enemy } from '../game/enemy/enemy';
+import { Ammo, Ship } from '../game/orbit-entity/entities';
+import { Enemy } from '../game/orbit-entity/enemy';
 import { MarkerManager } from './markerManager';
 import { fmtMarkerDist } from './utils';
 import { Player } from '../game/player/player';
@@ -21,7 +21,7 @@ const tmpV2 = new THREE.Vector3();
 
 // updateMarkers / updateNodeMarkers / updateBoardMarkers / updatePipOverlay が
 // 必要とする、Game 側の現在状態のスナップショット。
-// player / enemies / target / magPickups は参照渡し(state.r 等を読むだけで
+// player / enemies / target / ammos は参照渡し(state.r 等を読むだけで
 // ミューテートしない)。boardMarks は MarkersSystem 自身が保持する(combat/hit.ts の
 // checkBoardCrossings が直接この配列へ push する)。
 export interface MarkerCtx {
@@ -29,7 +29,7 @@ export interface MarkerCtx {
   player: Player;
   enemies: Enemy[];
   target: Enemy | null;
-  magPickups: MagPickup[];
+  ammos: Ammo[];
   mapLabelIds: string[]; // マップモードのラベル(MapCamera.labels の id 一覧、非マップ時に隠す)
   activeCamera: THREE.PerspectiveCamera; // PIP オーバーレイ専用の投影に使う
   simTime: number;
@@ -58,8 +58,8 @@ export class MarkersSystem {
     // 敵マーカー
     this.updateEnemyMarkers(ctx, o, project);
 
-    // 補給マガジンのマーカー
-    this.updateMagPickupMarkers(ctx, o, project);
+    // 補給のマーカー
+    this.updateAmmoMarkers(ctx, o, project);
 
     // リード(見越し)マーカーと、視界外敵機の方位マーカー
     this.updateLeadAndDirMarkers(ctx, o, pv, project);
@@ -203,15 +203,15 @@ export class MarkersSystem {
     }
   }
 
-  private updateMagPickupMarkers(ctx: MarkerCtx, o: Vec3, project: ProjectFn): void {
-    for (let i = 0; i < C.MAX_MAG_PICKUPS; i++) {
+  private updateAmmoMarkers(ctx: MarkerCtx, o: Vec3, project: ProjectFn): void {
+    for (let i = 0; i < C.MAX_AMMO; i++) {
       const key = `mg${i}`;
-      const mp = ctx.magPickups[i];
-      if (!mp || !mp.alive) {
+      const ammo = ctx.ammos[i];
+      if (!ammo || !ammo.alive) {
         this.markers.hide(key);
         continue;
       }
-      const rel = sub(mp.state.r, o);
+      const rel = sub(ammo.state.r, o);
       const p = project(rel);
       const dist = len(rel);
       this.markers.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, `AMMO ${fmtMarkerDist(dist)}`);

@@ -1,14 +1,14 @@
 import * as THREE from 'three/webgpu';
-import { dot, norm, sub, v3, Vec3 } from '../../physics/vec3';
-import { Elements, elementsFromState } from '../../physics/orbital';
-import { OrbitLine } from '../../render/orbitline';
-import * as C from '../const';
-import { Enemy } from '../enemy/enemy';
-import { Player } from '../player/player';
-import { Hud } from '../../hud/hud';
-import { Sfx } from '../../audio/sfx';
-import { Input } from '../input';
-import { ProjectFn } from '../camera/projection';
+import { dot, norm, sub, v3, Vec3 } from '../physics/vec3';
+import { Elements, elementsFromState } from '../physics/orbital';
+import { OrbitLine } from '../render/orbitline';
+import * as C from './const';
+import { Enemy } from './orbit-entity/enemy';
+import { Player } from './player/player';
+import { Hud } from '../hud/hud';
+import { Sfx } from '../audio/sfx';
+import { Input } from './input';
+import { ProjectFn } from './camera/projection';
 
 export interface TargeterCtx {
   player: Player;

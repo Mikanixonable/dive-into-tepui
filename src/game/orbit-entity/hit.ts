@@ -2,10 +2,11 @@
 // game.ts を import しない — 依存は HitCtx 引数・コンストラクタ注入のみ。
 import { Vec3, addScaled, dot, lenSq, norm, sub } from '../../physics/vec3';
 import * as C from '../const';
-import { Bullet, Ship } from '../entities';
-import { Enemy } from '../enemy/enemy';
+import { Ship } from './entities';
+import { Bullet } from './bullet';
+import { Enemy } from './enemy';
 import { Player } from '../player/player';
-import { CombatCtx } from '../stages/stage-definition';
+import { CombatCtx } from '../stages/stage';
 
 // checkBulletHits / checkBoardCrossings が必要とする、Game 側の現在状態のスナップショット。
 // 撃破が発生した場合の集計・勝敗判定は combatCtx.activeStage(CombatCtx 経由)に委ねる。
