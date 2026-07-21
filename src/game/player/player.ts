@@ -14,7 +14,7 @@ import type { CameraSystem } from '../camera/camera-system';
 import { CombatCtx } from '../stages/stage';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
 import { PlayerThrottle } from './player-throttle';
-import { FireCtx, PlayerFire } from './player-fire';
+import { PlayerFire } from './player-fire';
 import { Belt } from './belt';
 import { altitudeOf } from '../../physics/orbital';
 import { ThermalSystem } from './thermal';
@@ -126,12 +126,15 @@ export class Player extends Ship {
     canPlayerFire: boolean;
     mapMode: boolean;
     scoreCounter: ScoreCounter;
-    fireCtx: FireCtx;
+    simTime: number;
+    zoomActive: boolean;
+    fx: EffectsSystem;
+    addBullet: (bullet: Bullet) => void;
   }): PlayerActionState {
-    const { dt, input, canPlayerThrust, canPlayerFire, mapMode, scoreCounter, fireCtx } = params;
+    const { dt, input, canPlayerThrust, canPlayerFire, mapMode, scoreCounter, simTime, zoomActive, fx, addBullet } = params;
     this.hpRegen(dt);
     if (mapMode) return this.behaveMapMode(dt);
-    return this.behaveFlying(dt, input, canPlayerThrust, canPlayerFire, scoreCounter, fireCtx);
+    return this.behaveFlying(dt, input, canPlayerThrust, canPlayerFire, scoreCounter, simTime, zoomActive, fx, addBullet);
   }
 
   // マップモード中: 移動/発射の入力は無効。装填(リロード)だけは戦闘可否に関わらず
@@ -147,22 +150,25 @@ export class Player extends Ship {
     canPlayerThrust: boolean,
     canPlayerFire: boolean,
     scoreCounter: ScoreCounter,
-    fireCtx: FireCtx,
+    simTime: number,
+    zoomActive: boolean,
+    fx: EffectsSystem,
+    addBullet: (bullet: Bullet) => void,
   ): PlayerActionState {
     const canThrust = canPlayerThrust && this.alive;
     const canFire = canPlayerFire && this.alive;
-    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, canFire, this, scoreCounter, fireCtx);
+    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, canFire, this, scoreCounter, simTime, zoomActive, fx, addBullet);
     if (justStartedFiring) this.throttle.fineAttitude = true;
     const thrustFn = this.throttle.updateThrustState(input, canThrust, this.att, this.state);
     return { thrustFn };
   }
 
   // 押下エッジキーの処理し、担当外のキーを記録
-  handleEdgeInput(presses: readonly string[], fireCtx: FireCtx): string[] {
-    return presses.filter((code) => !this.handleEdgePress(code, fireCtx));
+  handleEdgeInput(presses: readonly string[], fx: EffectsSystem): string[] {
+    return presses.filter((code) => !this.handleEdgePress(code, fx));
   }
 
-  private handleEdgePress(code: string, fireCtx: FireCtx): boolean {
+  private handleEdgePress(code: string, fx: EffectsSystem): boolean {
     switch (code) {
       case 'KeyT': this.throttle.toggleRcsDamp(); return true;
       case 'KeyF': this.throttle.enableProgradeReset(); return true;
@@ -172,7 +178,7 @@ export class Player extends Ship {
       case 'Digit2': this.throttle.setThrottlePreset(1); return true;
       case 'Digit3': this.throttle.setThrottlePreset(2); return true;
       case 'KeyR':
-        if (this.fire.manualReload()) this.fire.dropBarrel(fireCtx, this);
+        if (this.fire.manualReload()) this.fire.dropBarrel(this, fx);
         return true;
       default: return false;
     }
@@ -190,7 +196,7 @@ export class Player extends Ship {
 
     this.alive = false;
     const reason = bullet.shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
-    ctx.activeStage.recordPlayerLost(ctx, reason);
+    ctx.activeStage.recordPlayerLost(ctx.setPhase, reason);
     this.destroyEffect(ctx.fx);
   }
 
@@ -207,7 +213,7 @@ export class Player extends Ship {
 
     this.alive = false;
     this.destroyEffect(ctx.fx);
-    ctx.activeStage.recordPlayerLost(ctx, reason);
+    ctx.activeStage.recordPlayerLost(ctx.setPhase, reason);
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。

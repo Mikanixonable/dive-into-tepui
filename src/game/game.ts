@@ -10,7 +10,6 @@ import {
 import { Elements, elementsFromState } from '../physics/orbital';
 import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
-import { FireCtx } from './player/player-fire';
 import { CameraSystem } from './camera/camera-system';
 import { HitCtx, HitSystem } from './orbit-entity/hit';
 import { StageCtx, Stage } from './stages/stage';
@@ -168,7 +167,10 @@ export class Game {
   // ステージ別の初期敵配置・初期弾薬・初期補給の配置と作戦目標のブリーフィング表示
   // (ステージごとの分岐は activeStage.init が直接行う)。
   private initStage(): void {
-    const enemyCount = this.activeStage.init(this.stageCtx());
+    const enemyCount = this.activeStage.init(this.player, (enemy) => {
+      this.simulator.addEnemy(enemy);
+      this.activeStage.scoreCounter.recordSpawnEnemy();
+    });
     const data = resolveStageInitData(this.activeStage, enemyCount);
     this.player.initAmmo(data.magsLeft, data.roundsInMag);
     this._hud.toast(data.briefingHtml, 12000);
@@ -225,7 +227,10 @@ export class Game {
       canPlayerFire: this.simSpeedManager.canPlayerFire,
       mapMode: this.cameraSystem.mapMode,
       scoreCounter: this.activeStage.scoreCounter,
-      fireCtx: this.fireCtx(),
+      simTime: this.simTime,
+      zoomActive: this.cameraSystem.zoomActive,
+      fx: this.effects,
+      addBullet: (bullet) => this.simulator.addBullet(bullet),
     });
     const playerAccel = this.simulator.buildPlayerAccel(action.thrustFn);
 
@@ -284,7 +289,7 @@ export class Game {
 
   private handleEdgeInput(): void {
     const presses = this.input.presses();
-    const unconsumedPresses = this.player.handleEdgeInput(presses, this.fireCtx());
+    const unconsumedPresses = this.player.handleEdgeInput(presses, this.effects);
     for (const code of unconsumedPresses) {
       this.handleEdgePress(code);
     }
@@ -325,15 +330,6 @@ export class Game {
     };
   }
 
-  // PlayerFire の発射・排莢・バレル交換が必要とする、現在状態のスナップショット。
-  private fireCtx(): FireCtx {
-    return {
-      simTime: this.simTime,
-      zoomActive: this.cameraSystem.zoomActive,
-      fx: this.effects,
-      addBullet: (bullet) => this.simulator.addBullet(bullet),
-    };
-  }
 
   // HitSystem(弾の衝突判定)が必要とする、現在状態のスナップショット。
   private hitCtx(simTime: number): HitCtx {
@@ -377,7 +373,6 @@ export class Game {
     this.player.checkLoss({
       dt,
       simTime: this.simTime,
-      player: this.player,
       activeStage: this.activeStage,
       setPhase: (p) => { this.phase = p; },
       fx: this.effects,
@@ -394,7 +389,6 @@ export class Game {
     this.simulator.cleanup({
       dt,
       simTime: this.simTime,
-      player: this.player,
       activeStage: this.activeStage,
       setPhase: (p) => { this.phase = p; },
       fx: this.effects,
@@ -440,7 +434,6 @@ export class Game {
 
   private syncCamera(dt: number, o: Vec3): THREE.PerspectiveCamera {
     return this.cameraSystem.updateActiveCamera({
-      zoomActive: this.cameraSystem.zoomActive,
       player: this.player,
       sunAz: sunAzimuth(this.simTime, this.ephemeris.sunPhase0),
       focusRel: this.mapModeSystem.focusRel(o),
@@ -486,10 +479,9 @@ export class Game {
     this.ephemeris.updateReferenceLines(this.simTime, o, mapMode);
     this.planGuide.updatePlannedLine(this.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }, o, mapMode);
 
-    const markerCtx = this.markerCtx();
-    this.markersSystem.updateMarkers(markerCtx, pv, project);
-    this.markersSystem.updateNodeMarkers(markerCtx, playerEl, tgtEl, project);
-    this.markersSystem.updateBoardMarkers(markerCtx, dt, project);
+    this.markersSystem.updateMarkers(this.markerCtx(), pv, project);
+    this.markersSystem.updateNodeMarkers(this.player, playerEl, tgtEl, project);
+    this.markersSystem.updateBoardMarkers(this.targeter.autoTarget, this.player, dt, project);
     if (mapMode) {
       this._hud.markers.hide('burn');
     } else {
@@ -510,7 +502,7 @@ export class Game {
       camera: this.cameraSystem.activeCamera,
       playerShipObj: this.player.obj,
       setMuzzleFlashesVisible: (visible) => this.effects.setMuzzleFlashesVisible(visible),
-      updateOverlay: (rect) => this.markersSystem.updatePipOverlay(this.markerCtx(), rect),
+      updateOverlay: (rect) => this.markersSystem.updatePipOverlay(this.targeter.autoTarget, this.player, this.cameraSystem.activeCamera, rect),
     });
   }
 }

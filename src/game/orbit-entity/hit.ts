@@ -28,23 +28,22 @@ export class HitSystem {
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
   // 発射弾がその面を自機側から通過した点をターゲット相対で記録する。
   // 次弾の照準修正の目安になるマーカーとして一定時間表示する。
-  checkBoardCrossings(ctx: HitCtx): void {
-    const tgt = ctx.target;
-    if (!tgt || !tgt.alive) return;
-    const n = norm(sub(tgt.state.r, ctx.player.state.r)); // 的の法線 = 視線方向
+  checkBoardCrossings(target: Enemy | null, player: Player, simulator: Simulator, boardMarks: { off: Vec3; age: number; }[]): void {
+    if (!target || !target.alive) return;
+    const n = norm(sub(target.state.r, player.state.r)); // 的の法線 = 視線方向
     if (lenSq(n) < 0.5) return;
 
-    for (const b of ctx.simulator.bullets) {
+    for (const b of simulator.bullets) {
       if (b.type !== 'normal' || !b.alive) continue; // 的通過マーカーは通常弾のみ対象
-      const d0 = dot(sub(b.prevR, tgt.state.r), n);
-      const d1 = dot(sub(b.state.r, tgt.state.r), n);
+      const d0 = dot(sub(b.prevR, target.state.r), n);
+      const d1 = dot(sub(b.state.r, target.state.r), n);
       if (!(d0 < 0 && d1 >= 0)) continue; // 自機側 → 向こう側への通過のみ
       const t = d0 / (d0 - d1);
       const pos = addScaled(b.prevR, sub(b.state.r, b.prevR), t);
-      const off = sub(pos, tgt.state.r);
+      const off = sub(pos, target.state.r);
       if (lenSq(off) > C.BOARD_RADIUS * C.BOARD_RADIUS) continue; // 的から外れすぎ
-      ctx.boardMarks.push({ off, age: 0 });
-      if (ctx.boardMarks.length > C.MAX_BOARD_MARKS) ctx.boardMarks.shift();
+      boardMarks.push({ off, age: 0 });
+      if (boardMarks.length > C.MAX_BOARD_MARKS) boardMarks.shift();
     }
   }
 
@@ -66,7 +65,6 @@ export class HitSystem {
         p.alive = false;
         target.attacked(p, {
           simTime: ctx.simTime,
-          player: ctx.player,
           activeStage: ctx.activeStage,
           setPhase: ctx.setPhase,
           fx: ctx.fx,

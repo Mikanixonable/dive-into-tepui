@@ -8,6 +8,8 @@ import {
   generateEllipticEnemy,
   generatePhasedEnemy,
 } from './spawner/enemy-generator';
+import type { Player } from '../player/player';
+import type { Enemy } from '../orbit-entity/enemy';
 
 export class Stage1 extends Stage {
   readonly index = 1 as const;
@@ -24,16 +26,16 @@ export class Stage1 extends Stage {
     );
   }
 
-  init(ctx: StageCtx): number {
-    const base = ctx.player.state;
+  init(player: Player, addEnemy: (enemy: Enemy) => void): number {
+    const base = player.state;
     const hud = this._hud;
     const sfx = this._sfx;
     const scene = this._scene;
-    ctx.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 2, 0xff4a3d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
-    ctx.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 2, 0xff7a2d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
-    ctx.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 2, 0xe0409f, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
-    ctx.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 3, 0xbf3dff, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
-    ctx.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 3, 0xff2d6b, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
+    addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 2, 0xff4a3d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
+    addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 2, 0xff7a2d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
+    addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 2, 0xe0409f, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
+    addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 3, 0xbf3dff, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
+    addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 3, 0xff2d6b, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
     return 5;
   }
 

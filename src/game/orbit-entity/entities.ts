@@ -5,7 +5,6 @@ import { Attitude } from '../../physics/attitude';
 import { Vec3, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
-import type { Player } from '../player/player';
 import type { EffectsSystem } from '../effects-system';
 import type { UnlockManager } from '../unlock-manager';
 import { buildAmmo, buildBarrelMesh, buildCasingMesh, buildDebrisMesh, buildMagazineFrame } from '../../render/ships';
@@ -13,7 +12,6 @@ import { buildAmmo, buildBarrelMesh, buildCasingMesh, buildDebrisMesh, buildMaga
 export interface CheckLossCtx {
   dt: number;
   simTime: number;
-  player: Player;
   activeStage: Stage;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
   fx: EffectsSystem;

@@ -5,6 +5,8 @@ import { StageCtx, Stage } from './stage';
 import { showScoreAttackResultScreen } from '../result-screen';
 import { generateCluster } from './spawner/enemy-spawner';
 import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
+import type { Player } from '../player/player';
+import type { Enemy } from '../orbit-entity/enemy';
 
 export class Stage0 extends Stage {
   readonly index = 0 as const;
@@ -24,12 +26,12 @@ export class Stage0 extends Stage {
     );
   }
 
-  init(ctx: StageCtx): number {
+  init(player: Player, addEnemy: (enemy: Enemy) => void): number {
     for (let i = 0; i < C.STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
-      this.logistics.spawnForPlayer(ctx.player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
+      this.logistics.spawnForPlayer(player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
     }
-    const enemies = generateCluster(ctx.player.state, this._hud, this._sfx, this._scene);
-    for (const enemy of enemies) ctx.addEnemy(enemy);
+    const enemies = generateCluster(player.state, this._hud, this._sfx, this._scene);
+    for (const enemy of enemies) addEnemy(enemy);
     return enemies.length;
   }
 

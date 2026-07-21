@@ -108,6 +108,22 @@ const {x, y, z} = result;
 3. 分解→再結合パターンの除去 — 対象: `PlanCtx`(`playerR`/`playerV`/`sunPhase0`/`moonPhase0`)、`HitCtx`(`enemies`/`bullets`)、`EnemyAiCtx`(`enemies`/`addBullet`)、`MapHudCtx`(`simTime`/`sunPhase0`/`moonPhase0`)
 4. 軽微な（この時点でフィールド数3個程度）のctx型のファクトリ廃止、直接引数化 — 対象: `PlanCtx`、`EnemyAiCtx`、`MapHudCtx`、`CollisionPhysicsCtx`、`StageWinCtx`
 5. 利用範囲の小さい関数（ctxを渡されているが実際そのうち3個程度のフィールドしか見ていない関数）の直接引数化。呼び出し元で大型ctxをバラしてから、あるいはそもそもctxを経由せずに渡す。 — 対象: ここはctx単位の作業ではなく関数単位の作業となるため、作業単位は要調査。現存する何らかのctxを受け取っている関数を網羅的に調査する。
+   - **完了**。全10種のctx型を受け取る全関数を網羅調査し、以下を直接引数化した:
+     `HitSystem.checkBoardCrossings`(`target`/`player`/`simulator`/`boardMarks`)、
+     `Stage.recordEnemyDeath`/`recordPlayerLost`(`setPhase`/`unlockManager`/`simTime`。合わせて未使用の
+     `CombatCtx.player`/`CheckLossCtx.player`を削除)、`MarkersSystem`の私有メソッド9個(`updateMarkers`
+     内で`ctx`を一度だけ分割代入し、以降は個々のフィールドを渡す)、`Targeter.resolveAutoTarget`、
+     `PlayerFire`の全メソッド(`FireCtx`型・`game.ts#fireCtx()`ファクトリを完全廃止。`Player.behave`/
+     `handleEdgeInput`/`handleEdgePress`も連動して直接引数化)、`Stage.init`の全4override(`player`/
+     `addEnemy`の2引数に統一)、`WaveManager`の全7メソッド(`StageCtx`への依存を完全に外した)。
+     未使用だった`CameraUpdateCtx.zoomActive`も削除。
+   - **反例(要学習)**: `OrbitEntity.checkLoss`/`Bullet.checkLoss`/`DebrisPiece.checkLoss`/
+     `Player.checkLoss`を個別シグネチャ化(`checkLoss(simTime)`等)したところ、`collision.ts`の
+     `OrbitEntity[]`・`simulator.ts`の`allEntities()`/`stepEntities`が`checkLoss`を多態的に呼んでいる
+     ため型エラーになり、全て`checkLoss(ctx: CheckLossCtx)`の統一シグネチャに差し戻した。
+     「`Simulator.cleanup`内では具体型の配列ごとに個別に呼ばれているので多態性の制約はない」という
+     初期調査は不十分で、同じ基底型が別の場所(`collision.ts`)で多態的に使われていないかまで確認しないと
+     関数単位の直接引数化はできない。
 6. 転用、ファクトリの持ち回りの解消（高リスク、高い判断力を要する） — 対象: `CombatCtx`、`HitCtx`、`CheckLossCtx`、`StageCtx`(→`WaveManager`転用)、`SimulatorCtx`(`hitCtx`ファクトリ持ち回り)
 7. フィールド化の検討（実施しない可能性が高い。要相談） — 対象: `CombatCtx`(`player`/`activeStage`/`fx`/`unlockManager`)、`StageCtx`(`simulator`/`scoreCounter`)、`TargeterCtx`、`FireCtx`
 

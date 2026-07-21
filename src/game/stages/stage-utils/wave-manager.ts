@@ -2,7 +2,8 @@
 // Stage00 専用のヘルパーであり、Stage00 インスタンスが自身のフィールドとして直接保持する。
 import * as THREE from 'three/webgpu';
 import { len, sub } from '../../../physics/vec3';
-import type { StageCtx } from '../stage';
+import type { Player } from '../../player/player';
+import type { Enemy } from '../../orbit-entity/enemy';
 import type { Logistics } from './logistics';
 import { generateWave } from '../spawner/enemy-spawner';
 import { Hud } from '../../../hud/hud';
@@ -34,68 +35,84 @@ export class WaveManager {
   }
 
   // 1波分の敵を生成してステージに登録する(配置計算・Enemy 生成は enemy-spawner.ts の責務)。
-  spawnWave(ctx: StageCtx, forcedPattern?: 'linear' | 'random'): void {
+  spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this.waveCount;
-    const enemies = generateWave(ctx.player.state, wave, this._hud, this._sfx, this._scene, forcedPattern);
-    for (const enemy of enemies) ctx.addEnemy(enemy);
+    const enemies = generateWave(player.state, wave, this._hud, this._sfx, this._scene, forcedPattern);
+    for (const enemy of enemies) addEnemy(enemy);
   }
 
   // 弾薬確保 → ウェーブ接近予告 → 波状攻撃、の3段階を直接遷移させる。数値設定は呼び出し側が渡す。
-  update(dt: number, ctx: StageCtx, logistics: Logistics, config: WaveEncounterConfig): void {
-    logistics.updateLogistics(ctx.simTime, ctx.player, config.respawnLogisticsOnDespawn);
+  update(
+    dt: number,
+    phase: string,
+    player: Player,
+    enemies: readonly Enemy[],
+    addEnemy: (enemy: Enemy) => void,
+    simTime: number,
+    logistics: Logistics,
+    config: WaveEncounterConfig,
+  ): void {
+    logistics.updateLogistics(simTime, player, config.respawnLogisticsOnDespawn);
 
-    if (ctx.phase !== 'playing') return;
-    if (this.phase === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(ctx, config.spawnDelay);
-    if (this.phase === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, ctx, config.spawnInterval);
-    if (this.phase === 'active_combat') this.updateActiveCombatPhase(dt, ctx, config.maxRange, config.spawnInterval);
+    if (phase !== 'playing') return;
+    if (this.phase === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(player, config.spawnDelay);
+    if (this.phase === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, addEnemy, config.spawnInterval);
+    if (this.phase === 'active_combat') this.updateActiveCombatPhase(dt, enemies, player, addEnemy, config.maxRange, config.spawnInterval);
   }
 
   // 「弾薬確保待ち」フェーズ: 弾薬を入手したらウェーブ接近フェーズへ進める。
-  private updateWaitingForAmmoPhase(ctx: StageCtx, spawnDelay: number): void {
-    if (ctx.player.magsLeft <= 0 && ctx.player.roundsInMag <= 0) return;
+  private updateWaitingForAmmoPhase(player: Player, spawnDelay: number): void {
+    if (player.magsLeft <= 0 && player.roundsInMag <= 0) return;
     this.phase = 'spawning_enemies';
     this.spawnTimer = spawnDelay;
     this._hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
   }
 
   // 「ウェーブ接近予告」フェーズ: カウントダウン後に最初のウェーブを生成する。
-  private updateSpawningEnemiesPhase(dt: number, ctx: StageCtx, spawnInterval: number): void {
+  private updateSpawningEnemiesPhase(dt: number, player: Player, addEnemy: (enemy: Enemy) => void, spawnInterval: number): void {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
-    this.spawnWave(ctx);
+    this.spawnWave(player, addEnemy);
     this.phase = 'active_combat';
     this.spawnTimer = spawnInterval;
   }
 
   // 「交戦中」フェーズ: 圏外の敵を消しつつ、同時展開数の上限内で次のウェーブを送り込む。
-  private updateActiveCombatPhase(dt: number, ctx: StageCtx, maxRange: number, spawnInterval: number): void {
-    despawnOutOfRangeEnemies(ctx, maxRange);
-    const activeGroups = countActiveWaveGroups(ctx);
+  private updateActiveCombatPhase(
+    dt: number,
+    enemies: readonly Enemy[],
+    player: Player,
+    addEnemy: (enemy: Enemy) => void,
+    maxRange: number,
+    spawnInterval: number,
+  ): void {
+    despawnOutOfRangeEnemies(enemies, player, maxRange);
+    const activeGroups = countActiveWaveGroups(enemies);
     const limits = resolveWaveSpawnLimits(this.waveCount, activeGroups);
     if (activeGroups === 0) this.spawnTimer = 0;
     if (activeGroups >= limits.maxGroups || this.waveCount >= limits.allowedMaxWaveCount) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
-    this.spawnWave(ctx);
+    this.spawnWave(player, addEnemy);
     this.spawnTimer = spawnInterval;
     this._hud.toast(`波状攻撃 第${this.waveCount}波 接近中！`, 3000);
   }
 }
 
 // 自機から maxRange より離れた敵を交戦圏外として消す。
-function despawnOutOfRangeEnemies(ctx: StageCtx, maxRange: number): void {
-  for (const enemy of ctx.enemies) {
+function despawnOutOfRangeEnemies(enemies: readonly Enemy[], player: Player, maxRange: number): void {
+  for (const enemy of enemies) {
     if (!enemy.alive) continue;
-    if (len(sub(enemy.state.r, ctx.player.state.r)) <= maxRange) continue;
+    if (len(sub(enemy.state.r, player.state.r)) <= maxRange) continue;
     enemy.alive = false;
     enemy.dispose();
   }
 }
 
 // 生存中のウェーブ(waveId)がいくつ同時に交戦中かを数える。
-function countActiveWaveGroups(ctx: StageCtx): number {
+function countActiveWaveGroups(enemies: readonly Enemy[]): number {
   const activeWaves = new Set<number>();
-  for (const enemy of ctx.enemies) {
+  for (const enemy of enemies) {
     if (enemy.alive && enemy.waveId !== undefined) activeWaves.add(enemy.waveId);
   }
   return activeWaves.size;

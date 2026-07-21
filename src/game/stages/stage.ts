@@ -43,7 +43,6 @@ export interface StageInitData {
 // Stage も、それぞれ自身の _hud/_sfx を私有する。
 export interface CombatCtx {
   simTime: number;
-  player: Player;
   activeStage: Stage;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
   fx: EffectsSystem;
@@ -89,7 +88,7 @@ export abstract class Stage {
 
   abstract briefingHtml(enemyCount: number): string;
   // ステージ開始時の処理(初期敵配置・初期補給投入)。戻り値は初期敵数(ブリーフィング表示用)。
-  abstract init(ctx: StageCtx): number;
+  abstract init(player: Player, addEnemy: (enemy: Enemy) => void): number;
   // 毎フレームの処理(弾薬兵站・タイマー・ウェーブ生成など、このステージに必要な分だけ書く)。
   abstract update(dt: number, ctx: StageCtx): void;
 
@@ -111,7 +110,13 @@ export abstract class Stage {
   // 撃破エフェクトは呼び出し元の Ship.attacked/checkLoss が既に済ませている — ここでは呼ばない)。
   // byPlayer: true = 弾丸命中による正式撃破(勝利判定を行う)
   //           false = 再突入・空力分解など物理的消滅(カウントのみ、勝利判定は起動しない)
-  recordEnemyDeath(enemy: Enemy, ctx: CombatCtx, byPlayer = true): void {
+  recordEnemyDeath(
+    enemy: Enemy,
+    setPhase: (phase: 'playing' | 'won' | 'lost' | 'timeup') => void,
+    unlockManager: UnlockManager,
+    simTime: number,
+    byPlayer = true,
+  ): void {
     if (!byPlayer) {
       this.scoreCounter.recordEnemyLoss();
       this._hud.hint(`${enemy.name} 再突入により喪失`);
@@ -121,16 +126,16 @@ export abstract class Stage {
     this._hud.hint(`${enemy.name} 撃破`);
 
     if (this.checkWin()) {
-      ctx.setPhase('won');
-      ctx.unlockManager.reportClear(this.index, this._hud);
-      this.onWin(ctx.simTime);
+      setPhase('won');
+      unlockManager.reportClear(this.index, this._hud);
+      this.onWin(simTime);
     }
   }
 
   // 自機の被弾死・自然死(checkLoss)を集計する。原因ごとに文言が異なるため reason で
   // 明示的に渡す。
-  recordPlayerLost(ctx: CombatCtx, reason: string): void {
-    ctx.setPhase('lost');
+  recordPlayerLost(setPhase: (phase: 'playing' | 'won' | 'lost' | 'timeup') => void, reason: string): void {
+    setPhase('lost');
     showResultScreen(this._hud, this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);
   }
 }

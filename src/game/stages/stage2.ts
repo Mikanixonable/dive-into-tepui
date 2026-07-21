@@ -8,6 +8,8 @@ import {
   generateMolniyaEnemy,
   generatePhasedEnemy,
 } from './spawner/enemy-generator';
+import type { Player } from '../player/player';
+import type { Enemy } from '../orbit-entity/enemy';
 
 export class Stage2 extends Stage {
   readonly index = 2 as const;
@@ -29,16 +31,16 @@ export class Stage2 extends Stage {
     );
   }
 
-  init(ctx: StageCtx): number {
-    const base = ctx.player.state;
+  init(player: Player, addEnemy: (enemy: Enemy) => void): number {
+    const base = player.state;
     const hud = this._hud;
     const sfx = this._sfx;
     const scene = this._scene;
-    ctx.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 2, 0xff4a3d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
-    ctx.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 2, 0xff7a2d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
-    ctx.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', 0.4, 2.6, 3, 0xe0409f, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
-    ctx.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', 2.5, 0.9, 3, 0xbf3dff, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
-    ctx.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', 4.6, 3.8, 3, 0xff2d6b, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
+    addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 2, 0xff4a3d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
+    addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 2, 0xff7a2d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
+    addEnemy(generateMolniyaEnemy('MOLNIYA-γ', 0.4, 2.6, 3, 0xe0409f, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
+    addEnemy(generateMolniyaEnemy('MOLNIYA-δ', 2.5, 0.9, 3, 0xbf3dff, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
+    addEnemy(generateMolniyaEnemy('MOLNIYA-ε', 4.6, 3.8, 3, 0xff2d6b, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, scene));
     return 5;
   }
 
