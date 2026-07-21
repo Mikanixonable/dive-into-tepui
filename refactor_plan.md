@@ -19,9 +19,9 @@ barrelとmagとroundの階層関係が分かった方がいい
 
 ## オーケストレーション配線
 改善点を把握
-pip-rendererが名前に反して非pipのレンダリングを管理している。
 Game.updateのネストが無駄に深い。
-
+playerの行動が集約されていない。
+cameaのupadteがupdateなのかsyncなのか曖昧
 mapに関してはまだ読めていない
 
 

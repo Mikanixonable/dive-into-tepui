@@ -3,11 +3,10 @@ import { WebGPURenderer } from 'three/webgpu';
 import * as C from './const';
 import { ACCENT } from './theme';
 
-export type PipRect = { x: number; y: number; w: number; h: number };
+export type PipRect = { x: number; y: number; w: number; h: number; };
 
 export interface PipRenderCtx {
-  readonly firing: boolean;
-  readonly mapMode: boolean;
+  readonly renderPip: boolean;
   readonly camera: THREE.PerspectiveCamera;
   readonly playerShipObj: THREE.Object3D;
   setMuzzleFlashesVisible(visible: boolean): void;
@@ -16,6 +15,7 @@ export interface PipRenderCtx {
 
 export class PipRenderer {
   private readonly crosshair: HTMLDivElement;
+  private readonly pipCamera = new THREE.PerspectiveCamera();
   private readonly fwdVec = new THREE.Vector3();
   private readonly upVec = new THREE.Vector3();
   private readonly targetVec = new THREE.Vector3();
@@ -24,19 +24,25 @@ export class PipRenderer {
     this.crosshair = this.createCrosshair();
   }
 
-  renderFrame(renderer: WebGPURenderer, ctx: PipRenderCtx): void {
-    if (!ctx.firing || ctx.mapMode) {
-      this.crosshair.style.display = 'none';
-      ctx.updateOverlay(null);
-      renderer.render(this._scene, ctx.camera);
-      return;
-    }
-    this.renderCombatWithPip(renderer, ctx);
+  private setupPipCamera(pipW: number, pipH: number, pos: THREE.Vector3, att: THREE.Quaternion): void {
+    this.fwdVec.set(0, 0, 1).applyQuaternion(att);
+    this.upVec.set(0, 1, 0).applyQuaternion(att);
+    this.targetVec.copy(pos).add(this.fwdVec);
+    this.pipCamera.position.copy(pos);
+    this.pipCamera.up.copy(this.upVec);
+    this.pipCamera.lookAt(this.targetVec);
+    this.pipCamera.fov = C.ZOOM_FOV;
+    this.pipCamera.aspect = pipW / pipH;
+    this.pipCamera.updateProjectionMatrix();
   }
 
-  private renderCombatWithPip(renderer: WebGPURenderer, ctx: PipRenderCtx): void {
-    const scene = this._scene;
-    const cam = ctx.camera;
+  renderPip(renderer: WebGPURenderer, ctx: PipRenderCtx): void {
+    if (!ctx.renderPip) {
+      this.crosshair.style.display = 'none';
+      ctx.updateOverlay(null);
+      return;
+    }
+
     const w = window.innerWidth;
     const h = window.innerHeight;
 
@@ -48,48 +54,22 @@ export class PipRenderer {
     const pipY = padding;
     const rect = { x: pipX, y: pipY, w: pipW, h: pipH };
 
-    const originalAutoClear = renderer.autoClear;
-    const originalFov = cam.fov;
-    const originalAspect = cam.aspect;
-    const originalPos = cam.position.clone();
-    const originalQuat = cam.quaternion.clone();
+    this.setupPipCamera(pipW, pipH, ctx.playerShipObj.position, ctx.playerShipObj.quaternion);
+
     const originalPlayerVisible = ctx.playerShipObj.visible;
-
-    renderer.autoClear = false;
-    renderer.clear();
-    renderer.setViewport(0, 0, w, h);
-    renderer.setScissor(0, 0, w, h);
-    renderer.setScissorTest(true);
-    renderer.render(scene, cam);
-
-    this.fwdVec.set(0, 0, 1).applyQuaternion(ctx.playerShipObj.quaternion);
-    this.upVec.set(0, 1, 0).applyQuaternion(ctx.playerShipObj.quaternion);
-    this.targetVec.copy(ctx.playerShipObj.position).add(this.fwdVec);
-    cam.position.copy(ctx.playerShipObj.position);
-    cam.up.copy(this.upVec);
-    cam.lookAt(this.targetVec);
-    cam.fov = C.ZOOM_FOV;
-    cam.aspect = pipW / pipH;
-    cam.updateProjectionMatrix();
-
     ctx.playerShipObj.visible = false;
     ctx.setMuzzleFlashesVisible(false);
     try {
       renderer.setViewport(pipX, pipY, pipW, pipH);
       renderer.setScissor(pipX, pipY, pipW, pipH);
-      renderer.render(scene, cam);
+      renderer.setScissorTest(true);
+      renderer.render(this._scene, this.pipCamera);
       ctx.updateOverlay(rect);
     } finally {
       ctx.playerShipObj.visible = originalPlayerVisible;
       ctx.setMuzzleFlashesVisible(true);
-      cam.position.copy(originalPos);
-      cam.quaternion.copy(originalQuat);
-      cam.fov = originalFov;
-      cam.aspect = originalAspect;
-      cam.updateProjectionMatrix();
       renderer.setViewport(0, 0, w, h);
       renderer.setScissorTest(false);
-      renderer.autoClear = originalAutoClear;
     }
 
     this.crosshair.style.display = 'block';
