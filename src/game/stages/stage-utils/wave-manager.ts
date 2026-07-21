@@ -52,7 +52,7 @@ export class WaveManager {
 
   // 「弾薬確保待ち」フェーズ: 弾薬を入手したらウェーブ接近フェーズへ進める。
   private updateWaitingForAmmoPhase(ctx: StageCtx, spawnDelay: number): void {
-    if (ctx.magsLeft <= 0 && ctx.roundsInMag <= 0) return;
+    if (ctx.player.magsLeft <= 0 && ctx.player.roundsInMag <= 0) return;
     this.phase = 'spawning_enemies';
     this.spawnTimer = spawnDelay;
     this._hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);

@@ -14,7 +14,6 @@ export interface CheckLossCtx {
   dt: number;
   simTime: number;
   player: Player;
-  totalEnemies: number;
   activeStage: Stage;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
   fx: EffectsSystem;

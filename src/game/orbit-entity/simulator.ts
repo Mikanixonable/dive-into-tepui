@@ -7,7 +7,6 @@ import { envAccelInto } from '../../physics/envaccel';
 import { ExtraAccel, stepOrbitRK4 } from '../../physics/orbital';
 import { add, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import type { CombatCtx } from '../stages/stage';
 import { HitCtx, HitSystem } from './hit';
 import { Ammo, CheckLossCtx, DebrisPiece, OrbitEntity } from './entities';
 import { Player } from '../player/player';
@@ -17,7 +16,6 @@ import { EphemerisSystem } from '../ephemeris';
 
 export interface SimulatorCtx {
   player: Player;
-  combatCtx: (simTime: number) => CombatCtx;
   hitCtx: (simTime: number) => HitCtx;
 }
 
