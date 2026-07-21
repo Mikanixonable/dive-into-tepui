@@ -16,10 +16,10 @@
 // 実行時刻への自動ワープの起点(startAutoWarpTo/cancelAutoWarp の呼び出しどころ)
 // としてのみ参照する。
 //
-// PlanCtx が要求する「現在状態」は planCtx() で毎回引ける。Game 側の simTime/player
-// 状態は非同期な DOM イベント(ギズモドラッグ等)からも参照する必要があるため、
-// コンストラクタ注入のコールバックとして持つ。project も同様の理由でコンストラクタ
-// 注入(カメラ依存のクロージャ)。
+// Plan/PlanDisplay/PlanGuide が要求する「現在状態」は getExternalState() で毎回引ける。
+// Game 側の simTime/player 状態は非同期な DOM イベント(ギズモドラッグ等)からも参照する
+// 必要があるため、コンストラクタ注入のコールバックとして持つ。project も同様の理由で
+// コンストラクタ注入(カメラ依存のクロージャ)。
 import * as THREE from 'three/webgpu';
 import { Vec3, sub, v3 } from '../../physics/vec3';
 import { Hud } from '../../hud/hud';
@@ -28,11 +28,13 @@ import { Input } from '../input';
 import { TouchControls } from '../touch';
 import { ProjectFn } from '../camera/projection';
 import { SimSpeedManager } from '../sim-speed-manager';
-import { Plan, PlanCtx } from '../plan/plan';
+import { Plan } from '../plan/plan';
 import { PlanEditor } from '../plan/plan-editor';
 import { DisplayFrameFn, PlanDisplay } from '../plan/plan-display';
 import { MapCamera } from '../camera/map-camera';
 import { MapHud } from './map-hud';
+import type { Player } from '../player/player';
+import type { EphemerisSystem } from '../ephemeris';
 
 export class MapModeSystem {
   private readonly editor: PlanEditor;
@@ -48,7 +50,7 @@ export class MapModeSystem {
     private readonly project: ProjectFn,
     private readonly mapCamera: MapCamera,
     private readonly getFineAttitude: () => boolean,
-    private readonly getExternalState: () => PlanCtx,
+    private readonly getExternalState: () => { player: Player; ephemeris: EphemerisSystem; simTime: number },
   ) {
     this.editor = new PlanEditor(this._hud, this._sfx);
     this.display = new PlanDisplay(this._hud.markers);
@@ -90,12 +92,12 @@ export class MapModeSystem {
       },
       onNodeDragMove: (idx, clientX, clientY) => {
         this.editor.closeMenu();
-        const ctx = this.planCtx();
-        this.editor.dragNodeToNearestSample(this.plan, idx, clientX, clientY, ctx.player.state.r, this.toDisplayFrame(ctx), this.project);
+        const state = this.getExternalState();
+        this.editor.dragNodeToNearestSample(this.plan, idx, clientX, clientY, state.player.state.r, this.toDisplayFrame(state.ephemeris), this.project);
       },
       onNodeContextMenu: (clientX, clientY) => {
-        const ctx = this.planCtx();
-        this.editor.handleMapRightClick(this.plan, clientX, clientY, ctx.player.state.r, this.toDisplayFrame(ctx), this.project, this.mapHud.labels);
+        const state = this.getExternalState();
+        this.editor.handleMapRightClick(this.plan, clientX, clientY, state.player.state.r, this.toDisplayFrame(state.ephemeris), this.project, this.mapHud.labels);
       },
       onAxisDrag: (axis, sign, deltaPx) => {
         this.editor.applyAxisDrag(this.plan, axis, sign, deltaPx, this.getFineAttitude());
@@ -118,16 +120,12 @@ export class MapModeSystem {
     });
   }
 
-  private planCtx(): PlanCtx {
-    return this.getExternalState();
-  }
-
   // 太陽回転系表示込みの座標変換を、その正である PlanDisplay へ束縛して渡す。
   // plan-editor.ts のクリック判定・ドラッグ・ギズモ配置は必ずこの1つの変換を通す
   // ことで、描画(plan-display.ts)とずれないようにする。
-  private toDisplayFrame(ctx: PlanCtx): DisplayFrameFn {
+  private toDisplayFrame(ephemeris: EphemerisSystem): DisplayFrameFn {
     const rotating = this.mapCamera.frameRotating;
-    return (r: Vec3, t: number) => this.display.toDisplayFrame(r, t, ctx, rotating);
+    return (r: Vec3, t: number) => this.display.toDisplayFrame(r, t, ephemeris, rotating);
   }
 
   // --------------------------------------------------------------- lifecycle
@@ -216,14 +214,14 @@ export class MapModeSystem {
   // ツールバー表示は PlanDisplay/MapCamera 側の状態が要るため、ここで組み立てて渡す
   // (hud への反映自体は editor 側が行う)。
   updateEditing(dt: number, input: Input): void {
-    const ctx = this.planCtx();
-    this.editor.updateEditing(this.plan, dt, ctx.simTime, ctx.player.state.r, this.toDisplayFrame(ctx), input, this.project, {
+    const state = this.getExternalState();
+    this.editor.updateEditing(this.plan, dt, state.simTime, state.player.state.r, this.toDisplayFrame(state.ephemeris), input, this.project, {
       fineAttitude: this.getFineAttitude(),
       labels: this.mapHud.labels,
       toolbar: {
         durationKey: this.display.predictDurationKey,
         frameRotating: this.mapCamera.frameRotating,
-        ghostLabel: this.mapCamera.sliderT > 0 ? this.display.ghostLabel(this.plan, ctx, this.mapCamera.sliderT) : null,
+        ghostLabel: this.mapCamera.sliderT > 0 ? this.display.ghostLabel(this.plan, state.player, state.simTime, this.mapCamera.sliderT) : null,
         focus: this.focus,
       },
     });
@@ -237,26 +235,24 @@ export class MapModeSystem {
       this.editor.hideGizmo();
       return;
     }
-    const ctx = this.planCtx();
-    const origin = ctx.player.state.r;
-    this.display.update(this.plan, ctx, origin, this.mapCamera.frameRotating, this.mapCamera.sliderT, this.project);
-    this.editor.updateGizmo(this.plan, origin, this.toDisplayFrame(ctx), this.project, this.mapCamera.dist);
+    const state = this.getExternalState();
+    const origin = state.player.state.r;
+    this.display.update(this.plan, state, origin, this.mapCamera.frameRotating, this.mapCamera.sliderT, this.project);
+    this.editor.updateGizmo(this.plan, origin, this.toDisplayFrame(state.ephemeris), this.project, this.mapCamera.dist);
     this.mapHud.updateLabels(
       origin,
-      {
-        simTime: ctx.simTime,
-        ephemeris: ctx.ephemeris,
-        duration: this.display.predictDurationSec(ctx),
-      },
+      state.simTime,
+      state.ephemeris,
+      this.display.predictDurationSec(state.player),
       this.mapCamera.sliderT,
       this.project,
     );
   }
 
   resolveDisplayTime(mapMode: boolean): number {
-    const ctx = this.planCtx();
-    if (!mapMode || this.mapCamera.sliderT <= 0) return ctx.simTime;
-    return this.display.displayTime(ctx.simTime, this.display.predictDurationSec(ctx), this.mapCamera.sliderT);
+    const state = this.getExternalState();
+    if (!mapMode || this.mapCamera.sliderT <= 0) return state.simTime;
+    return this.display.displayTime(state.simTime, this.display.predictDurationSec(state.player), this.mapCamera.sliderT);
   }
 
   mapLabelIds(): string[] {
