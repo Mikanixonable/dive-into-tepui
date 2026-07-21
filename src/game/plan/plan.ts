@@ -1,7 +1,7 @@
 // 軌道計画(ノード列)とその数値予測キャッシュ。マップモードの有無に関わらず存在する
-// データ型で、マップモードの外にも import されない(逆に map-mode/ 側がこれを注入
-// されて表示・編集する)。ノードの追加・削除・並べ替えは必ずこのクラスのメソッド経由で
-// 行う — 呼び出し側が nodes 配列を直接 splice すると「同じ削除ロジックの重複」を招く。
+// データで、Game が所有し、表示・編集(map-mode/)や実施(plan-guide.ts)へ注入する。
+// ノードの追加・削除・並べ替えは必ずこのクラスのメソッド経由で行う — 呼び出し側が
+// nodes 配列を直接 splice すると「同じ削除ロジックの重複」を招く。
 import { PlannedNode, PredictOpts, TrajectorySample, predictTrajectory, sampleAt } from '../../physics/predict';
 import { Vec3, len } from '../../physics/vec3';
 import * as C from '../const';
@@ -26,7 +26,7 @@ export class Plan {
 
   // predictTrajectory() が最後に計算した予測サンプル列。配列そのものは refresh() の
   // たびに新しい参照へ差し替わるので、消費側は参照の変化を「予測が更新された」の
-  // 検出に使ってよい(map-mode/plan-display.ts の折れ線再構築トリガー等)。
+  // 検出に使ってよい(plan-display.ts の折れ線再構築トリガー等)。
   get trajSamples(): readonly TrajectorySample[] {
     return this._trajSamples;
   }
@@ -97,8 +97,8 @@ export class Plan {
   }
 
   // dirty なら ~5Hz、そうでなければ2秒ごとに予測を再計算する(スロットリング)。
-  // duration は呼び出し側が決める(マップモードの表示用と、噴射ガイド用とで
-  // 必要な予測範囲が異なるため — Plan 自身はどちらの用途かを知らない)。
+  // duration は呼び出し側が決める — マップモードの表示用と噴射ガイド用とで
+  // 必要な予測範囲が異なるため。
   maybeRefresh(ctx: PlanCtx, duration: number): void {
     const elapsed = performance.now() - this.lastRefreshMs;
     const threshold = this.dirty ? C.PREDICT_DIRTY_THROTTLE_MS : C.PREDICT_REFRESH_INTERVAL_MS;

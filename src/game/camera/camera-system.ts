@@ -18,9 +18,8 @@ export interface CameraUpdateCtx {
 }
 
 // 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する。
-// どちらも視点操作のみの責務のカメラで、このクラスが対称に内部保持する
-// (マップモードの有無・ラベル一覧など、カメラ外の状態は ctx 経由で受け取るだけで、
-// map-mode-system.ts を import しない)。
+// どちらも視点操作のみの責務のカメラで、このクラスが対称に内部保持する。
+// マップモードの有無・ラベル一覧など、カメラ外の状態は ctx 経由で受け取る。
 export class CameraSystem {
   readonly chaseCamera: ChaseCamera;
   readonly mapCamera: MapCamera;

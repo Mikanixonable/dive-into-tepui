@@ -1,5 +1,4 @@
 // 大気飛行の危険の監視: 自機の空力加熱/動圧と高度低下警告。
-// game.ts を import しない — 依存は constructor 注入(Hud/Sfx)と各メソッド引数のみ。
 import { R_EARTH } from '../../physics/orbital';
 import { airspeed } from '../../physics/envaccel';
 import { Vec3, len } from '../../physics/vec3';
@@ -9,7 +8,7 @@ import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 
 // checkThermalLimits の戻り値: 限界超過の種別。null なら超過なし。
-// 破壊(destroyShip の呼び出し)は combat.ts へのアクセスを持つ game.ts 側が行う。
+// 実際の破壊(alive=false・撃破エフェクト)は呼び出し元の Player.checkLoss が行う。
 export type ThermalLimit = 'heat' | 'dynpressure' | null;
 
 export class ThermalSystem {
@@ -51,7 +50,7 @@ export class ThermalSystem {
   }
 
   // 熱防御の飽和・空力破壊の判定と警告表示。限界超過時は種別を返すのみで、
-  // 実際の破壊(combat.destroyShip の呼び出し)は game.ts 側が行う。
+  // 実際の破壊は呼び出し元の Player.checkLoss が行う。
   checkThermalLimits(): ThermalLimit {
     if (this.hullTemp > C.MAX_HULL_TEMP) {
       return 'heat';

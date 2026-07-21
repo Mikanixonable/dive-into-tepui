@@ -109,15 +109,14 @@ export class Player extends Ship {
     this.fire.onPickup(mags);
   }
 
-  // 毎フレームの論理更新(現状はマガジンベルトのたわみ物理のみ、弾薬状態に連動)。
   update(dt: number): void {
     this.belt.update(dt, this.fire.magsLeft, this.fire.roundsInMag, this.att, this.throttle.thrustAccelVec);
   }
 
-  // 毎フレームの HP 自然回復・押下エッジキー処理と、ユーザー入力に対する移動/発射の
-  // 試行を一括で行う。実際の移動加速度の組み立ては PlayerThrottle、発砲・排莢の発注は
-  // PlayerFire が持つ。canPlayerThrust/canPlayerFire(ワープ倍率による可否)は
-  // SimSpeedManager が既に判定した結果を受け取る — ここで simSpeed 値そのものを見ない。
+  // 毎フレームの HP 自然回復と、ユーザー入力に対する移動/発射の試行を一括で行う。
+  // 実際の移動加速度の組み立ては PlayerThrottle、発砲・排莢の発注は PlayerFire が持つ。
+  // canPlayerThrust/canPlayerFire(ワープ倍率による可否)は SimSpeedManager が既に
+  // 判定した結果を受け取る — ここで simSpeed 値そのものを見ない。
   // マップモード中は移動/発射の入力そのものを行わない(装填だけは実時間で進行する
   // — behaveMapMode 参照)ため、通常時とは別関数に分ける。
   behave(params: {
@@ -183,7 +182,6 @@ export class Player extends Ship {
   attacked(bullet: Bullet, ctx: CombatCtx): void {
     if (!this.alive) return;
 
-    // todo: 弾種でダメージ分岐しないのか
     this.hp -= C.PLAYER_HIT_DAMAGE;
     if (this.hp > 0) {
       this.hitEffect(ctx.fx, bullet);

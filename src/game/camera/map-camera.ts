@@ -1,9 +1,7 @@
 // 軌道計画モード(マップモード)のカメラと視点操作: マップ地球中心カメラ・
 // 太陽回転系表示・未来スライダー。「マップモード中の視点」の担当で、mapMode 中のみ
 // 意味を持つ。フォーカス対象(文字列 focus とその解決)は map-mode-system.ts が持ち、
-// 解決済みの相対位置(focusRel)を引数で渡す — このクラスはラベルや focus という
-// 文字列を一切知らない。
-// game.ts を import しない — 依存はコンストラクタ注入(hud)・引数(Vec3/project等)のみ。
+// 解決済みの相対位置(focusRel)を引数で渡す。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
 import * as C from '../const';

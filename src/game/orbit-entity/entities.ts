@@ -125,7 +125,7 @@ export class DebrisPiece extends OrbitEntity {
   checkLoss(ctx: CheckLossCtx): void {
     super.checkLoss(ctx);
     if (!this.alive) return;
-    // 空薬莢だけ寿命判定がある。仕様？
+    // 薬莢のみ、寿命(CASING_LIFETIME)による消滅がある(他のデブリは大気突入のみ)。
     if (this.debrisKind.kind === 'casing' && ctx.combatCtx.simTime - this.debrisKind.bornSim > C.CASING_LIFETIME) {
       this.alive = false;
     }

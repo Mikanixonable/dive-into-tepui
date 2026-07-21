@@ -1,5 +1,4 @@
 // 弾の高度な衝突判定(トンネリング防止のセグメント衝突・被弾ダメージ・的通過マーカー)。
-// game.ts を import しない — 依存は HitCtx 引数・コンストラクタ注入のみ。
 import { Vec3, addScaled, dot, lenSq, norm, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Ship } from './entities';
@@ -53,7 +52,7 @@ export class HitSystem {
         // プラズマ弾は自機のみを狙う(敵機には当たらない)
         if (p.type === 'plasma' && target !== player) continue;
         // 通常弾とプレイヤーの判定は、撃った直後の自己ヒットを避けるため猶予を置く
-        // (現状、通常弾はプレイヤーしか撃たないので地球を一周するような場合のみ発生する)
+        // (通常弾はプレイヤーしか撃たないので、弾が地球を一周して戻るような場合のみ発生する)
         if (p.type === 'normal' && target === player && ctx.combatCtx.simTime - p.bornSim <= C.SELF_HIT_GRACE) continue;
 
         if (!this.segmentHit(p, target)) continue;

@@ -1,6 +1,5 @@
 // 発射・命中・撃破・自然喪失の集計(純粋なカウンタ)。勝利判定・通知・画面遷移といった
-// 副作用は持たない — それらは StageDefinition.recordKill/recordKilled(stage-definition.ts)
-// が担う。
+// 副作用は Stage.recordEnemyDeath/recordPlayerLost(stage.ts)が担う。
 export class ScoreCounter {
   shots = 0;
   hits = 0;

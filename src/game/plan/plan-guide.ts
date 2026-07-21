@@ -1,7 +1,7 @@
 // 軌道計画(Plan)の実施: 直近ノードの噴射ガイド表示・達成判定・ノード消化。
-// マップモードとは無関係 — game.ts がマップモードでない間だけ毎フレーム呼ぶ
-// (マップ編集中は WASDQE が Δv 編集に使われており、同時に噴射ガイドを出す意味が
-// ないため。呼び出しどころの判断は game.ts が持つ、このクラス自身は mapMode を知らない)。
+// game.ts がマップモードでない間だけ毎フレーム呼ぶ(マップ編集中は WASDQE が Δv
+// 編集に使われており、同時に噴射ガイドを出す意味がないため。呼び出しどころの
+// 判断は game.ts が持つ)。
 import * as THREE from 'three/webgpu';
 import { Elements, elementsFromState } from '../../physics/orbital';
 import { dvToWorld } from '../../physics/predict';
@@ -58,9 +58,8 @@ export class PlanGuide {
     this.activeTarget = null;
   }
 
-  // 計画軌道ラインを最新の予測に合わせる。mapMode 中は隠す。update()(噴射ガイド)
-  // とは異なり mapMode 中も含め毎フレーム呼んでよい(このクラス自身は mapMode を
-  // 知らないため、呼び出し側の game.ts が判定して渡す)。
+  // 計画軌道ラインを最新の予測に合わせる。mapMode 中は隠すが、update()(噴射ガイド)
+  // とは異なり mapMode 中も含め毎フレーム呼んでよい。
   updatePlannedLine(plan: Plan, ctx: PlanCtx, origin: Vec3, mapMode: boolean): void {
     this.plannedLine.update(mapMode ? null : plannedOrbitElements(plan, ctx), origin);
   }
