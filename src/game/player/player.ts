@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp } from '../../physics/attitude';
-import { ExtraAccel, MU_EARTH, OrbitState, R_EARTH } from '../../physics/orbital';
+import { MU_EARTH, OrbitState, R_EARTH } from '../../physics/orbital';
 import { Vec3, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Ship } from '../orbit-entity/entities';
@@ -22,10 +22,6 @@ import { EffectsSystem } from '../effects-system';
 import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
 import { SimSpeedManager } from '../sim-speed-manager';
-
-export interface PlayerActionState {
-  thrustFn: ExtraAccel | null;
-}
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
@@ -131,10 +127,13 @@ export class Player extends Ship {
     simTime: number;
     zoomActive: boolean;
     addBullet: (bullet: Bullet) => void;
-  }): PlayerActionState {
+  }): void {
     const { dt, input, simSpeed, mapMode, scoreCounter, simTime, zoomActive, addBullet } = params;
     // 死亡済み: 何もしない
-    if (!this.alive) return { thrustFn: null };
+    if (!this.alive) {
+      this.thrustFn = null;
+      return;
+    }
 
     this.hpRegen(dt);
 
@@ -142,14 +141,13 @@ export class Player extends Ship {
     // 実時間で進行し続けるため、PlayerFire にそれだけを進めさせる。
     if (mapMode) {
       this.fire.tickMapMode(dt);
-      return { thrustFn: null };
+      this.thrustFn = null;
+      return;
     }
 
     this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet);
 
-    const thrustFn = this.throttle.updateThrustState(input, simSpeed, this.att, this.state);
-
-    return { thrustFn };
+    this.thrustFn = this.throttle.updateThrustState(input, simSpeed, this.att, this.state);
   }
 
   toggleFineAttitude(): void {
