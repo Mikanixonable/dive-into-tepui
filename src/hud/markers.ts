@@ -1,12 +1,12 @@
 // HUD マーカー(スクリーン投影)の同期。方向マーカー・敵/リード/AMMO マーカー・
-// ターゲット面通過点(ボードマーク)・ノード(AN/DN)・ズーム PIP オーバーレイを担う。
+// ノード(AN/DN)・ズーム PIP オーバーレイを担う。
 // game.ts を import しない — 依存は MarkerCtx 引数・コンストラクタ注入(MarkerManager)のみ。
 // スクリーン投影(project)はアクティブカメラ依存のため game.ts 側の関数を呼び出し
 // 引数として受け取る(planner.ts の project 注入パターンに合わせる)。
 import * as THREE from 'three/webgpu';
 import { Elements } from '../physics/orbital';
 import { qRotate } from '../physics/attitude';
-import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../physics/vec3';
+import { Vec3, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../physics/vec3';
 import * as C from '../game/const';
 import { Ammo } from '../game/orbit-entity/entities';
 import { Enemy } from '../game/orbit-entity/enemy';
@@ -22,8 +22,7 @@ const tmpV2 = new THREE.Vector3();
 // updateMarkers が必要とする、Game 側の現在状態のスナップショット(内部で個々の
 // フィールドへ分解して各 private メソッドへ渡す)。
 // player / enemies / target / ammos は参照渡し(state.r 等を読むだけで
-// ミューテートしない)。boardMarks は MarkersSystem 自身が保持する(combat/hit.ts の
-// checkBoardCrossings が直接この配列へ push する)。
+// ミューテートしない)。
 export interface MarkerCtx {
   mapMode: boolean;
   player: Player;
@@ -36,9 +35,6 @@ export interface MarkerCtx {
 }
 
 export class MarkersSystem {
-  // ターゲット標的面の通過点(ターゲット相対オフセットで保持し、的に貼り付いて見せる)
-  boardMarks: { off: Vec3; age: number }[] = [];
-
   constructor(private readonly markers: MarkerManager) {}
 
   // 方向マーカー(プログレード/レトログレード/ノーマル/アンチノーマル/動径 in-out)・
@@ -335,27 +331,6 @@ export class MarkersSystem {
     const descP = project(sub(scale(d, -rDesc), o));
     this.markers.set('an', 'mk-node', '▲', ascP.x, ascP.y, ascP.front, 'AN');
     this.markers.set('dn', 'mk-node', '▽', descP.x, descP.y, descP.front, 'DN');
-  }
-
-  // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
-  updateBoardMarkers(target: Enemy | null, player: Player, dt: number, project: ProjectFn): void {
-    const o = player.state.r;
-    if (!target) this.boardMarks.length = 0;
-    this.boardMarks = this.boardMarks.filter((m) => {
-      m.age += dt;
-      return m.age < C.BOARD_MARK_LIFETIME;
-    });
-    for (let i = 0; i < C.MAX_BOARD_MARKS; i++) {
-      const key = `bh${i}`;
-      const m = this.boardMarks[i];
-      if (!m || !target) {
-        this.markers.hide(key);
-        continue;
-      }
-      const p = project(sub(add(target.state.r, m.off), o));
-      const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
-      this.markers.set(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
-    }
   }
 
   // ズームウィンドウ(PIP)のオーバーレイ: ターゲット菱形枠と LEAD マーカーを PIP の

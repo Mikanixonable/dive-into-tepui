@@ -11,7 +11,7 @@ import { Elements, elementsFromState } from '../physics/orbital';
 import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
-import { HitCtx, HitSystem } from './orbit-entity/hit';
+import { HitSystem } from './orbit-entity/hit';
 import { Stage } from './stages/stage';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
@@ -100,7 +100,6 @@ export class Game {
 
   private readonly unlockManager = new UnlockManager();
   private readonly hitSystem = new HitSystem();
-  // boardMarks(標的面通過点の履歴)は hit.ts の checkBoardCrossings が直接この配列へ push する。
   private readonly markersSystem = new MarkersSystem(this._hud.markers);
   private readonly collisionPhysics = new CollisionPhysics();
   // フラッシュ・破片エフェクトのスポーン窓口(effects-system.ts)。scene への注入・
@@ -129,7 +128,7 @@ export class Game {
     this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
-    this.simulator = new Simulator(this.ephemeris, this.hitSystem);
+    this.simulator = new Simulator(this.ephemeris, this.hitSystem, this.targeter);
     this.activeStage.setup(this._hud, this._sfx, this._scene, this.simulator, this.unlockManager, this.effects);
 
     // --- 環境 ---
@@ -197,7 +196,8 @@ export class Game {
         this.simTime,
         dt,
         this.simSpeedManager.simSpeed,
-        this.hitCtx(this.simTime),
+        this.player,
+        this.activeStage,
         false,
         false,
       );
@@ -231,7 +231,8 @@ export class Game {
       this.simTime,
       dt,
       simSpeed,
-      this.hitCtx(this.simTime),
+      this.player,
+      this.activeStage,
       true,
       true,
       playerAccel,
@@ -304,17 +305,6 @@ export class Game {
       case 'Escape': this._hud.toggleSettings(); break;
       case 'KeyR': if (!this.activeStage.isPlaying) location.reload(); break;
     }
-  }
-
-  // HitSystem(弾の衝突判定)が必要とする、現在状態のスナップショット。
-  private hitCtx(simTime: number): HitCtx {
-    return {
-      simTime,
-      player: this.player,
-      activeStage: this.activeStage,
-      target: this.targeter.autoTarget,
-      boardMarks: this.markersSystem.boardMarks,
-    };
   }
 
   // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
@@ -431,7 +421,7 @@ export class Game {
 
     this.markersSystem.updateMarkers(this.markerCtx(), pv, project);
     this.markersSystem.updateNodeMarkers(this.player, playerEl, tgtEl, project);
-    this.markersSystem.updateBoardMarkers(this.targeter.autoTarget, this.player, dt, project);
+    this.targeter.updateBoardMarkers(this.player, dt, project);
     if (mapMode) {
       this._hud.markers.hide('burn');
     } else {
