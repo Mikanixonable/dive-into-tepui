@@ -11,14 +11,13 @@ import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { OrbitLine } from '../../render/orbitline';
 import type { CameraSystem } from '../camera/camera-system';
-import { CombatCtx } from '../stages/stage';
+import type { Stage } from '../stages/stage';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire } from './player-fire';
 import { Belt } from './belt';
 import { altitudeOf } from '../../physics/orbital';
 import { ThermalSystem } from './thermal';
-import { CheckLossCtx } from '../orbit-entity/entities';
 import { EffectsSystem } from '../effects-system';
 import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
@@ -43,20 +42,22 @@ export class Player extends Ship {
   // hud は現状 Player 自身のメソッドからは未使用だが、hud/sfx は必ず対で注入する方針のため
   // 受け取る(hud はフィールドとしては保持しない)。
   private readonly _sfx: Sfx;
+  private readonly _fx: EffectsSystem;
   // 発射キー解放の立ち下がりで姿勢微調整モードを解除するための、直前フレームの発射状態。
   private prevFiring = false;
 
   // 高度420km・傾斜51.6°の円軌道に機首プログレードで初期配置する
-  constructor(hud: Hud, sfx: Sfx, scene: THREE.Scene) {
+  constructor(hud: Hud, sfx: Sfx, scene: THREE.Scene, fx: EffectsSystem) {
     const state = Player.makeInitialState();
     super('PLAYER', state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, scene);
     this._sfx = sfx;
+    this._fx = fx;
     this.mass = 1000;
     // 剛体接触は実機体サイズ。被弾判定半径(radius)を使うと排莢直後の薬莢を弾いてしまう
     this.collideRadius = C.PLAYER_HULL_RADIUS;
 
     this.throttle = new PlayerThrottle(hud, sfx);
-    this.fire = new PlayerFire(hud, sfx, scene);
+    this.fire = new PlayerFire(hud, sfx, scene, fx);
     this.belt = new Belt(this.obj);
     this.thermal = new ThermalSystem(hud, sfx);
     this.thrustEffects = new ThrustEffects(scene);
@@ -128,13 +129,12 @@ export class Player extends Ship {
     scoreCounter: ScoreCounter;
     simTime: number;
     zoomActive: boolean;
-    fx: EffectsSystem;
     addBullet: (bullet: Bullet) => void;
   }): PlayerActionState {
-    const { dt, input, canPlayerThrust, canPlayerFire, mapMode, scoreCounter, simTime, zoomActive, fx, addBullet } = params;
+    const { dt, input, canPlayerThrust, canPlayerFire, mapMode, scoreCounter, simTime, zoomActive, addBullet } = params;
     this.hpRegen(dt);
     if (mapMode) return this.behaveMapMode(dt);
-    return this.behaveFlying(dt, input, canPlayerThrust, canPlayerFire, scoreCounter, simTime, zoomActive, fx, addBullet);
+    return this.behaveFlying(dt, input, canPlayerThrust, canPlayerFire, scoreCounter, simTime, zoomActive, addBullet);
   }
 
   // マップモード中: 移動/発射の入力は無効。装填(リロード)だけは戦闘可否に関わらず
@@ -152,23 +152,22 @@ export class Player extends Ship {
     scoreCounter: ScoreCounter,
     simTime: number,
     zoomActive: boolean,
-    fx: EffectsSystem,
     addBullet: (bullet: Bullet) => void,
   ): PlayerActionState {
     const canThrust = canPlayerThrust && this.alive;
     const canFire = canPlayerFire && this.alive;
-    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, canFire, this, scoreCounter, simTime, zoomActive, fx, addBullet);
+    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, canFire, this, scoreCounter, simTime, zoomActive, addBullet);
     if (justStartedFiring) this.throttle.fineAttitude = true;
     const thrustFn = this.throttle.updateThrustState(input, canThrust, this.att, this.state);
     return { thrustFn };
   }
 
   // 押下エッジキーの処理し、担当外のキーを記録
-  handleEdgeInput(presses: readonly string[], fx: EffectsSystem): string[] {
-    return presses.filter((code) => !this.handleEdgePress(code, fx));
+  handleEdgeInput(presses: readonly string[]): string[] {
+    return presses.filter((code) => !this.handleEdgePress(code));
   }
 
-  private handleEdgePress(code: string, fx: EffectsSystem): boolean {
+  private handleEdgePress(code: string): boolean {
     switch (code) {
       case 'KeyT': this.throttle.toggleRcsDamp(); return true;
       case 'KeyF': this.throttle.enableProgradeReset(); return true;
@@ -178,32 +177,32 @@ export class Player extends Ship {
       case 'Digit2': this.throttle.setThrottlePreset(1); return true;
       case 'Digit3': this.throttle.setThrottlePreset(2); return true;
       case 'KeyR':
-        if (this.fire.manualReload()) this.fire.dropBarrel(this, fx);
+        if (this.fire.manualReload()) this.fire.dropBarrel(this);
         return true;
       default: return false;
     }
   }
 
   // 被弾によるダメージ・致死判定。
-  attacked(bullet: Bullet, ctx: CombatCtx): void {
+  attacked(bullet: Bullet, _simTime: number, activeStage: Stage): void {
     if (!this.alive) return;
 
     this.hp -= C.PLAYER_HIT_DAMAGE;
     if (this.hp > 0) {
-      this.hitEffect(ctx.fx, bullet);
+      this.hitEffect(bullet);
       return;
     }
 
     this.alive = false;
     const reason = bullet.shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
-    ctx.activeStage.recordPlayerLost(ctx.setPhase, reason);
-    this.destroyEffect(ctx.fx);
+    activeStage.recordPlayerLost(reason);
+    this.destroyEffect();
   }
 
   // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。
-  checkLoss(ctx: CheckLossCtx): void {
+  checkLoss(dt: number, _simTime: number, activeStage: Stage): void {
     if (!this.alive) return;
-    const limit = this.thermal.updateAltitudeAlarm(ctx.dt, this.alive, altitudeOf(this.state.r));
+    const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, altitudeOf(this.state.r));
 
     let reason: string | null = null;
     if (limit === 'heat') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
@@ -212,24 +211,24 @@ export class Player extends Ship {
     if (reason === null) return;
 
     this.alive = false;
-    this.destroyEffect(ctx.fx);
-    ctx.activeStage.recordPlayerLost(ctx.setPhase, reason);
+    this.destroyEffect();
+    activeStage.recordPlayerLost(reason);
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
-  private hitEffect(fx: EffectsSystem, bullet: Bullet): void {
+  private hitEffect(bullet: Bullet): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
-      fx.spawnPlasmaFlash(bullet.state.r, this.state.v);
+      this._fx.spawnPlasmaFlash(bullet.state.r, this.state.v);
     } else {
-      fx.spawnBulletFlash(bullet.state.r, this.state.v);
+      this._fx.spawnBulletFlash(bullet.state.r, this.state.v);
     }
-    fx.scatterFragments(bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    this._fx.scatterFragments(bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
 
-  private destroyEffect(fx: EffectsSystem): void {
+  private destroyEffect(): void {
     this._sfx.explosion();
-    fx.spawnShipDestroyEffect(this.state.r, this.state.v, 1, 0x9fd8e8);
+    this._fx.spawnShipDestroyEffect(this.state.r, this.state.v, 1, 0x9fd8e8);
   }
 
   // ポーズ中: 移動/発射の一時状態(推力可視化・射撃継続)を止める。

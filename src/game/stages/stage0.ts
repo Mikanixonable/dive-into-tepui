@@ -30,14 +30,14 @@ export class Stage0 extends Stage {
     for (let i = 0; i < C.STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
     }
-    const enemies = generateCluster(player.state, this._hud, this._sfx, this._scene);
+    const enemies = generateCluster(player.state, this._hud, this._sfx, this._fx, this._scene);
     for (const enemy of enemies) addEnemy(enemy);
     return enemies.length;
   }
 
   update(dt: number, ctx: StageCtx): void {
     this.logistics.updateLogistics(ctx.simTime, ctx.player);
-    if (this.timer.update(dt, ctx.setPhase)) {
+    if (this.timer.update(dt, this._setPhase)) {
       showScoreAttackResultScreen(this._hud, this._sfx, this.scoreCounter, 'TIME UP');
     }
   }
