@@ -14,6 +14,7 @@ import { Sfx } from '../../audio/sfx';
 import { showResultScreen, showWinScreen } from '../result-screen';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
 import type { Simulator } from '../orbit-entity/simulator';
+import { SimSpeedManager } from '../sim-speed-manager';
 
 export type StageIndex = -1 | 0 | 1 | 2;
 
@@ -84,6 +85,14 @@ export abstract class Stage {
     this.scoreCounter.recordSpawnEnemy();
   }
 
+  protected behaveAllEnemies(dt: number, player: Player, simulator: Simulator, simTime: number, simSpeed: SimSpeedManager): void {
+    if (simSpeed.canEnemyFire) {
+      for (const e of simulator.enemies) {
+        if (e.alive) e.behave(dt, simTime, player, simulator);
+      }
+    }
+  }
+
   // 省略時(既定実装)は常に解放。unlock-manager.ts が記録するクリア回数だけを条件式の引数
   // として渡す(localStorage 等の永続化には一切触れない)。
   isUnlocked(_clearCounts: ClearCounts): boolean {
@@ -94,7 +103,7 @@ export abstract class Stage {
   // ステージ開始時の処理(初期敵配置・初期補給投入)。戻り値は初期敵数(ブリーフィング表示用)。
   abstract init(player: Player, simulator: Simulator): number;
   // 毎フレームの処理(弾薬兵站・タイマー・ウェーブ生成など、このステージに必要な分だけ書く)。
-  abstract update(dt: number, player: Player, simulator: Simulator, simTime: number): void;
+  abstract update(dt: number, player: Player, simulator: Simulator, simTime: number, simSpeed: SimSpeedManager): void;
 
   // 既定: 敵全機撃破で勝利(再突入等の自然損耗は losses を差し引くためだけに使う)。
   // 時間切れで終わるステージ(Stage0/Stage00)は false 固定・onWin no-op に override する。

@@ -7,6 +7,7 @@ import { generateCluster } from './spawner/enemy-spawner';
 import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { Player } from '../player/player';
 import type { Simulator } from '../orbit-entity/simulator';
+import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage0 extends Stage {
   readonly index = 0 as const;
@@ -34,9 +35,11 @@ export class Stage0 extends Stage {
     for (const enemy of enemies) this.addEnemy(enemy, simulator);
     return enemies.length;
   }
+  update(dt: number, player: Player, simulator: Simulator, simTime: number, simSpeed: SimSpeedManager): void {    
+    if (!this.isPlaying) return;
+    
+    this.behaveAllEnemies(dt, player, simulator, simTime, simSpeed);
 
-  update(dt: number, player: Player, _simulator: Simulator, simTime: number): void {
-    this.logistics.updateLogistics(simTime, player);
     if (this.timer.update(dt, (phase) => this.setPhase(phase))) {
       showScoreAttackResultScreen(this._hud, this._sfx, this.scoreCounter, 'TIME UP');
     }

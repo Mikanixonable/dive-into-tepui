@@ -14,18 +14,20 @@ import { Bullet } from '../orbit-entity/bullet';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../effects-system';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
+import { SimSpeedManager } from '../sim-speed-manager';
+import { Player } from './player';
 
 export class PlayerFire {
-  fireCooldown = 0;
+  cooldown = 0;
   wasFiring = false;
   wasEmptyClick = false;
   roundsInMag = C.MAG_ROUNDS;
   magsLeft = C.INITIAL_MAGS - 1;
   magsLeftInBarrel = C.MAGS_PER_BARREL;
-  reloadTimer = 0;
   muzzleIdx = 0; // 縦二連砲口の交互発射用
-
+  
   constructor(
+    private readonly player: Player,
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
     private readonly _scene: THREE.Scene,
@@ -38,9 +40,8 @@ export class PlayerFire {
     this.magsLeft = magsLeft;
     this.roundsInMag = roundsInMag;
     this.magsLeftInBarrel = C.MAGS_PER_BARREL;
-    this.reloadTimer = 0;
+    this.cooldown = 0;
     this.wasEmptyClick = false;
-    this.fireCooldown = 0;
     this.wasFiring = false;
   }
 
@@ -54,18 +55,19 @@ export class PlayerFire {
   stopFiring(): void {
     this.wasFiring = false;
   }
-
+  
   manualReload(): boolean {
     const canReload =
-      this.reloadTimer <= 0 &&
+      this.cooldown <= 0 &&
       (this.roundsInMag < C.MAG_ROUNDS || this.magsLeftInBarrel < C.MAGS_PER_BARREL) &&
       this.magsLeft > 0;
     if (!canReload) return false;
     this.magsLeft--;
     this.roundsInMag = C.MAG_ROUNDS;
     this.magsLeftInBarrel = C.MAGS_PER_BARREL;
-    this.reloadTimer = C.RELOAD_TIME;
+    this.cooldown = C.RELOAD_TIME;
     this._sfx.playReload();
+    this.dropBarrel(this.player);
     return true;
   }
 
@@ -82,37 +84,34 @@ export class PlayerFire {
   updateFireState(
     dt: number,
     input: Input,
-    alive: boolean,
-    canFire: boolean,
-    ship: Ship,
     scoreCounter: ScoreCounter,
     simTime: number,
+    simSpeed: SimSpeedManager,
     zoomActive: boolean,
     addBullet: (bullet: Bullet) => void,
-  ): boolean {
+  ): void {
+    this.tickReloadTimer(dt);
+
     const keyHeld = input.down('Space') || input.mouseFiring;
-    if (keyHeld && alive && !canFire) {
+    if (!keyHeld) return;
+
+    if (!simSpeed.canPlayerFire) {
       this._hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能`);
+      return;
     }
+
     const hasAmmo = this.hasAmmo();
-    if (keyHeld && alive && !hasAmmo && !this.wasEmptyClick) {
-      this._sfx.emptyClick();
-      this._hud.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
+    if (!hasAmmo) {
+      if (!this.wasEmptyClick) {
+        this._sfx.emptyClick();
+        this._hud.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
+        this.wasEmptyClick = true;
+      }
+      return;
     }
-    this.wasEmptyClick = keyHeld && !hasAmmo;
+    this.wasEmptyClick = false;
 
-    if (this.tickReloadTimer(dt)) {
-      this.wasFiring = false;
-      return false;
-    }
-
-    const wantFire = keyHeld && hasAmmo && canFire;
-    const justStartedFiring = wantFire && !this.wasFiring;
-    this.wasFiring = wantFire;
-    if (!wantFire) return justStartedFiring;
-
-    this.fireCycle(dt, justStartedFiring, ship, scoreCounter, simTime, zoomActive, addBullet);
-    return justStartedFiring;
+    this.fireCycle(scoreCounter, simTime, zoomActive, addBullet);
   }
 
   // マップモード中: 発射入力は無効だが、装填(リロード)だけは戦闘可否に関わらず
@@ -123,32 +122,40 @@ export class PlayerFire {
     this.wasEmptyClick = false;
   }
 
-  private tickReloadTimer(dt: number): boolean {
-    if (this.reloadTimer <= 0) return false;
-    this.reloadTimer -= dt;
-    return true;
+  private tickReloadTimer(dt: number): void {
+    if (0 < this.cooldown)
+      this.cooldown -= dt;
   }
 
   // CoolDown 周期での連射管理: 発射開始時のスピンアップと、周期が満ちるごとの
   // fireGun 呼び出しのみを扱う(発射可否の判定は updateFireState、1発の演出・
   // 弾薬消費は fireGun の責務)。
   private fireCycle(
-    dt: number,
-    justStartedFiring: boolean,
-    ship: Ship,
     scoreCounter: ScoreCounter,
     simTime: number,
     zoomActive: boolean,
     addBullet: (bullet: Bullet) => void,
   ): void {
+    const justStartedFiring = !this.wasFiring;
+    this.wasFiring = true;
+
+    // 起動時のタイムラグ
     if (justStartedFiring) {
       this._sfx.spinUp();
-      this.fireCooldown = C.SPINUP_TIME;
+      this.cooldown = C.SPINUP_TIME;
+      return;
     }
-    this.fireCooldown -= dt;
-    if (this.fireCooldown > 0) return;
-    this.fireCooldown = C.FIRE_INTERVAL;
-    this.fireGun(ship, scoreCounter, simTime, zoomActive, addBullet);
+    
+    // 起動時及びクールダウン中は発射しない
+    if (0 < this.cooldown) {
+      return;
+    }
+
+    this.fireGun(scoreCounter, simTime, zoomActive, addBullet);
+    this.consumeRound(this.player);
+    this.cooldown = C.FIRE_INTERVAL;
+
+    return;
   }
 
   // ---------------------------------------------------------------- weapons
@@ -156,29 +163,26 @@ export class PlayerFire {
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、命中数とは独立な発射数を
   // 記録したのち、弾薬(マガジン/バレル)を消費する。
   private fireGun(
-    ship: Ship,
     scoreCounter: ScoreCounter,
     simTime: number,
     zoomActive: boolean,
     addBullet: (bullet: Bullet) => void,
   ): void {
-    const fwd = qRotate(ship.att.q, v3(0, 0, 1));
+    const fwd = qRotate(this.player.att.q, v3(0, 0, 1));
 
     // 縦二連の砲口から交互に発射する
     const mo = MUZZLE_OFFSETS[this.muzzleIdx]!;
     this.muzzleIdx = (this.muzzleIdx + 1) % MUZZLE_OFFSETS.length;
-    const muzzle = add(ship.state.r, qRotate(ship.att.q, v3(mo.x, mo.y, mo.z)));
+    const muzzle = add(this.player.state.r, qRotate(this.player.att.q, v3(mo.x, mo.y, mo.z)));
 
-    this.spawnBullet(ship, muzzle, fwd, simTime, addBullet);
+    this.spawnBullet(this.player, muzzle, fwd, simTime, addBullet);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv
-    ship.state.v = addScaled(ship.state.v, fwd, -C.RECOIL_DV);
-    this.dropCasing(ship, muzzle, simTime);
-    this.spawnMuzzleFlash(ship, muzzle, fwd, zoomActive);
+    this.player.state.v = addScaled(this.player.state.v, fwd, -C.RECOIL_DV);
+    this.dropCasing(this.player, muzzle, simTime);
+    this.spawnMuzzleFlash(this.player, muzzle, fwd, zoomActive);
 
     scoreCounter.recordShot();
     this._sfx.fire();
-
-    this.consumeRound(ship);
   }
 
   // 弾丸: 機首方向 + 散布界
@@ -239,17 +243,26 @@ export class PlayerFire {
   // バレルの残りマガジン数(magsLeftInBarrel)が尽きたらバレル交換(リロード)を発生させる。
   private consumeRound(ship: Ship): void {
     this.roundsInMag--;
-    if (this.roundsInMag > 0 || this.magsLeft <= 0) return;
+    if (this.roundsInMag > 0) return;
+
+    // 
+    if (this.magsLeft <= 0) return;
+
     this.magsLeft--;
     this.roundsInMag = C.MAG_ROUNDS;
     this.magsLeftInBarrel--;
     this.spawnEjectedMagazineFrame(ship);
+    
+    
+    // マガジンリロード
     if (this.magsLeftInBarrel > 0) {
       this._sfx.magFeed();
       return;
     }
+
+    // バレルリロード
     this.magsLeftInBarrel = C.MAGS_PER_BARREL;
-    this.reloadTimer = C.RELOAD_TIME;
+    this.cooldown = C.RELOAD_TIME;
     this.dropBarrel(ship);
     this._sfx.playReload();
   }

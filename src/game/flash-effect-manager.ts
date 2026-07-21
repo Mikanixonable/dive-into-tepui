@@ -26,7 +26,7 @@ export class FlashEffectManager {
     this._scene.add(fx.billboard.mesh);
   }
 
-  updateFlashEffects(
+  syncFlashEffects(
     dt: number,
     simDt: number,
     origin: Vec3,
