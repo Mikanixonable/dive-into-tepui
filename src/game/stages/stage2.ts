@@ -18,7 +18,7 @@ export class Stage2 extends Stage {
   readonly selectSub = '敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モード [M] での遷移が必須';
   readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
   readonly selectKeys = ['Digit2'];
-  readonly initialAmmo = { magsLeft: C.INITIAL_MAGS - 1, roundsInMag: C.MAG_ROUNDS };
+  readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
   isUnlocked(clearCounts: ClearCounts): boolean {
     return (clearCounts[1] ?? 0) > 0;

@@ -21,8 +21,8 @@ export type StageIndex = -1 | 0 | 1 | 2;
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
 export interface StageInitData {
-  magsLeft: number;
-  roundsInMag: number;
+  mags: number;
+  rounds: number;
   briefingHtml: string;
 }
 
@@ -32,7 +32,7 @@ export abstract class Stage {
   abstract readonly selectSub: string;
   readonly selectLockedSub?: string;
   abstract readonly selectKeys: string[];
-  abstract readonly initialAmmo: Pick<StageInitData, 'magsLeft' | 'roundsInMag'>;
+  abstract readonly initialAmmo: Pick<StageInitData, 'mags' | 'rounds'>;
 
   // 発射・命中・撃破の集計(全ステージ共通)。増減は ScoreCounter 自身のメソッドで行う。
   readonly scoreCounter = new scoreCounter();
