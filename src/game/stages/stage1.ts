@@ -17,7 +17,7 @@ export class Stage1 extends Stage {
   readonly selectLabel = '[1] 第一ステージ — LEO 戦域';
   readonly selectSub = '高度420kmの低軌道。敵5機はすべて近傍軌道に分布';
   readonly selectKeys = ['Digit1', 'Enter'];
-  readonly initialAmmo = { magsLeft: C.INITIAL_MAGS - 1, roundsInMag: C.MAG_ROUNDS };
+  readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
   briefingHtml(enemyCount: number): string {
     return (

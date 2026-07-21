@@ -17,7 +17,7 @@ export class Stage00 extends Stage {
   readonly selectLabel = '[0] 無限耐久サバイバル (Stage 00)';
   readonly selectSub = '常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
   readonly selectKeys = ['Digit0'];
-  readonly initialAmmo = { magsLeft: C.INITIAL_MAGS - 1, roundsInMag: C.MAG_ROUNDS };
+  readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
   private readonly waveManager = new WaveManager(
     C.STAGE00_SPAWN_DELAY,

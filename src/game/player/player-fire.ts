@@ -17,15 +17,18 @@ import { ScoreCounter } from '../stages/stage-utils/score-counter';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { Player } from './player';
 
+export type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
+
 export class PlayerFire {
+  rounds = C.MAG_ROUNDS;
+  mags = C.INITIAL_MAGS - 1;
+  barrel = C.MAGS_PER_BARREL;
+
   cooldown = 0;
   wasFiring = false;
   wasEmptyClick = false;
-  roundsInMag = C.MAG_ROUNDS;
-  magsLeft = C.INITIAL_MAGS - 1;
-  magsLeftInBarrel = C.MAGS_PER_BARREL;
   muzzleIdx = 0; // 縦二連砲口の交互発射用
-  
+
   constructor(
     private readonly player: Player,
     private readonly _hud: Hud,
@@ -36,43 +39,27 @@ export class PlayerFire {
 
   get isFiring(): boolean { return this.wasFiring; }
 
-  initAmmo(magsLeft: number, roundsInMag: number): void {
-    this.magsLeft = magsLeft;
-    this.roundsInMag = roundsInMag;
-    this.magsLeftInBarrel = C.MAGS_PER_BARREL;
+  get left(): boolean { return this.rounds > 0 || this.mags > 0; }
+
+  initAmmo(mags: number, rounds: number): void {
+    this.mags = mags;
+    this.rounds = rounds;
+    this.barrel = C.MAGS_PER_BARREL;
     this.cooldown = 0;
     this.wasEmptyClick = false;
     this.wasFiring = false;
   }
 
   onPickup(mags: number): void {
-    this.magsLeft += mags;
-    if (this.roundsInMag > 0) return;
-    this.magsLeft--;
-    this.roundsInMag = C.MAG_ROUNDS;
+    this.mags += mags;
+    if (this.rounds <= 0) { // 弾切れ状態だったならすぐにリロードする
+      this.mags--;
+      this.rounds = C.MAG_ROUNDS;
+    }
   }
 
   stopFiring(): void {
     this.wasFiring = false;
-  }
-  
-  manualReload(): boolean {
-    const canReload =
-      this.cooldown <= 0 &&
-      (this.roundsInMag < C.MAG_ROUNDS || this.magsLeftInBarrel < C.MAGS_PER_BARREL) &&
-      this.magsLeft > 0;
-    if (!canReload) return false;
-    this.magsLeft--;
-    this.roundsInMag = C.MAG_ROUNDS;
-    this.magsLeftInBarrel = C.MAGS_PER_BARREL;
-    this.cooldown = C.RELOAD_TIME;
-    this._sfx.playReload();
-    this.dropBarrel(this.player);
-    return true;
-  }
-
-  private hasAmmo(): boolean {
-    return this.roundsInMag > 0 || this.magsLeft > 0;
   }
 
   // 発砲入力を処理し、発射・排莢・リロードを行う。戻り値は「このフレームで発砲を
@@ -100,8 +87,7 @@ export class PlayerFire {
       return;
     }
 
-    const hasAmmo = this.hasAmmo();
-    if (!hasAmmo) {
+    if (!this.left) {
       if (!this.wasEmptyClick) {
         this._sfx.emptyClick();
         this._hud.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
@@ -109,7 +95,6 @@ export class PlayerFire {
       }
       return;
     }
-    this.wasEmptyClick = false;
 
     this.fireCycle(scoreCounter, simTime, zoomActive, addBullet);
   }
@@ -138,6 +123,7 @@ export class PlayerFire {
   ): void {
     const justStartedFiring = !this.wasFiring;
     this.wasFiring = true;
+    this.wasEmptyClick = false;
 
     // 起動時のタイムラグ
     if (justStartedFiring) {
@@ -145,20 +131,67 @@ export class PlayerFire {
       this.cooldown = C.SPINUP_TIME;
       return;
     }
-    
+
     // 起動時及びクールダウン中は発射しない
     if (0 < this.cooldown) {
       return;
     }
 
-    this.fireGun(scoreCounter, simTime, zoomActive, addBullet);
-    this.consumeRound(this.player);
-    this.cooldown = C.FIRE_INTERVAL;
+    const result = this.consume();
 
-    return;
+    this.fireGun(scoreCounter, simTime, zoomActive, addBullet);
+    switch (result) {
+      case 'empty':
+      case 'normal':
+        this.cooldown = C.FIRE_INTERVAL;
+        return;
+      case 'mag-reload':
+        this.spawnEjectedMagazineFrame(this.player);
+        this._sfx.magFeed();
+        this.cooldown = C.FIRE_INTERVAL;
+        return;
+      case 'barrel-reload':
+        this.spawnEjectedMagazineFrame(this.player);
+        this.cooldown = C.RELOAD_TIME;
+        this.dropBarrel(this.player);
+        this._sfx.playReload();
+        return;
+    }
   }
 
-  // ---------------------------------------------------------------- weapons
+  // 1発の消費を試みる。マガジンを撃ち尽くしたら次のマガジンへ(mag-reload)、
+  // バレル内の全マガジンを撃ち尽くしたらバレル交換(barrel-reload)を報告する。
+  consume(): ConsumeResult {
+    if (!this.left) return 'empty';
+
+    this.rounds--;
+    if (this.rounds > 0) return 'normal';
+    if (this.mags <= 0) return 'normal'; // 最後の1発を撃ち切った(次回から empty)
+
+    this.mags--;
+    this.rounds = C.MAG_ROUNDS;
+    this.barrel--;
+    if (this.barrel > 0) return 'mag-reload';
+
+    this.barrel = C.MAGS_PER_BARREL;
+    return 'barrel-reload';
+  }
+
+  manualReload(): boolean {
+    if (this.cooldown > 0) return false;
+
+    const canReload = this.mags > 0 && (this.rounds < C.MAG_ROUNDS || this.barrel < C.MAGS_PER_BARREL);
+    if (!canReload) return false;
+    this.mags--;
+    this.rounds = C.MAG_ROUNDS;
+    this.barrel = C.MAGS_PER_BARREL;
+    this.cooldown = C.RELOAD_TIME;
+    this._sfx.playReload();
+    this.dropBarrel(this.player);
+    return true;
+  }
+
+  // ---------------------------------------------------------------- entity管理
 
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、命中数とは独立な発射数を
   // 記録したのち、弾薬(マガジン/バレル)を消費する。
@@ -237,34 +270,6 @@ export class PlayerFire {
       zoomActive ? C.ZOOM_MUZZLE_FLASH_SCALE : 1,
       true, // マズルフラッシュ: PIP 描画時のみ非表示化の対象
     );
-  }
-
-  // 1発分の弾薬を消費する。マガジンを撃ち尽くした場合は外枠をデブリとして排出し、
-  // バレルの残りマガジン数(magsLeftInBarrel)が尽きたらバレル交換(リロード)を発生させる。
-  private consumeRound(ship: Ship): void {
-    this.roundsInMag--;
-    if (this.roundsInMag > 0) return;
-
-    // 
-    if (this.magsLeft <= 0) return;
-
-    this.magsLeft--;
-    this.roundsInMag = C.MAG_ROUNDS;
-    this.magsLeftInBarrel--;
-    this.spawnEjectedMagazineFrame(ship);
-    
-    
-    // マガジンリロード
-    if (this.magsLeftInBarrel > 0) {
-      this._sfx.magFeed();
-      return;
-    }
-
-    // バレルリロード
-    this.magsLeftInBarrel = C.MAGS_PER_BARREL;
-    this.cooldown = C.RELOAD_TIME;
-    this.dropBarrel(ship);
-    this._sfx.playReload();
   }
 
   // リロード時(バレル交換)に円柱アイテムをデブリとして放出する。手動リロード
