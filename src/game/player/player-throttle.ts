@@ -9,11 +9,11 @@ import * as C from '../const';
 import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
+import { SimSpeedManager } from '../sim-speed-manager';
 
 export class PlayerThrottle {
   rcsDamp = true;
   throttleIdx = C.THROTTLE_DEFAULT_IDX;
-  fineAttitude = false;
   progradeHold = true;
   thrustVizDir: Vec3 | null = null;
   thrustAccelVec: Vec3 = v3();
@@ -35,11 +35,6 @@ export class PlayerThrottle {
     this._hud.hint('プログレード姿勢リセット(機首を進行方向へ)');
   }
 
-  toggleFineAttitude(): void {
-    this.fineAttitude = !this.fineAttitude;
-    this._hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
-  }
-
   toggleProgradeHold(): void {
     this.progradeHold = !this.progradeHold;
     this._hud.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
@@ -56,18 +51,16 @@ export class PlayerThrottle {
     this.thrustAccelVec = v3();
   }
 
-  setFineAttitudeFromFiring(prevFiring: boolean, nowFiring: boolean): void {
-    if (prevFiring && !nowFiring) this.fineAttitude = false;
-  }
-
-  updateThrustState(input: Input, canThrust: boolean, att: Attitude, state: OrbitState): ExtraAccel | null {
-    const thrustFn = canThrust ? this.buildThrustAccel(input, att.q) : null;
-    this._sfx.setThrust(thrustFn !== null);
-    if (!thrustFn) {
+  updateThrustState(input: Input, simSpeed: SimSpeedManager, att: Attitude, state: OrbitState): ExtraAccel | null {
+    const thrustFn = this.buildThrustAccel(input, att.q);
+    if (!simSpeed.canPlayerThrust || !thrustFn) {
+      this._sfx.setThrust(false);
       this.thrustAccelVec = v3();
       this.thrustVizDir = null;
       return null;
     }
+
+    this._sfx.setThrust(true);
     this.thrustAccelVec = thrustFn(state.r, state.v);
     this.thrustVizDir = norm(this.thrustAccelVec);
     return thrustFn;
@@ -80,6 +73,7 @@ export class PlayerThrottle {
       (input.down('KeyW') || input.down('ControlLeft') || input.down('ControlRight') ? 1 : 0) +
       (input.down('KeyS') || input.down('ShiftLeft') || input.down('ShiftRight') ? -1 : 0);
     if (axX === 0 && axY === 0 && axZ === 0) return null;
+
     const thrustAccel = C.THROTTLE_LEVELS[this.throttleIdx]!;
     return (): Vec3 => {
       const dir = norm(v3(axX, axY, axZ));
@@ -94,6 +88,7 @@ export class PlayerThrottle {
     alive: boolean,
     input: Input,
     mapMode: boolean,
+    fineAttitude: boolean,
     attDt: number,
     onProgradeHoldReleased: () => void,
   ): void {
@@ -115,7 +110,7 @@ export class PlayerThrottle {
       C.RCS_MANUAL_OUTPUT_MIN +
       C.RCS_MANUAL_OUTPUT_RAMP *
       (Math.min(C.RCS_MANUAL_RAMP_TIME, this.rotationHoldTime) / C.RCS_MANUAL_RAMP_TIME);
-    const angScale = this.fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
+    const angScale = fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
     const maxAngAccel = C.MAX_ANG_ACCEL * angScale * rcsOutputFactor;
     const maxAngVel = C.MAX_ANG_VEL * angScale;
     const torque = v3(

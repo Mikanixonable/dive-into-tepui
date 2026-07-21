@@ -17,6 +17,21 @@ belt.ts
 - 各モジュールの疎結合化と責務の整理
 - ctx注入パターンの根絶。
 
+## todo
+inputを賢くする。consumeKey機能を付ける？
+
+enemyのbehaveはcanEnemyFireだけで制御されてしまっている。
+プレイヤーの姿勢角度調整モードの自動オンオフ
+プレイヤーのbehaveとhandleEdgeInputの分離？結合？updateの分離
+playerのfireのロジック 冗長すぎるまだまだ簡略化できそう。
+barrelとmagとroundの階層関係が分かった方がいい
+
+## 現状把握
+現状のコードを参照し、refactor_instruction.mdの責務分割の手順を実行し、調査結果を新規mdファイルに報告してください
+特に調査してほしいのが、markerCtxとmarkers.tsが密結合だがupdateMarkersを一括ファサードにするのをやめることで疎結合にできないか
+pip-rendererの独立性、map-mode-systemとplanとmap-cameraの結合関係。
+Game.ts内にいくつにも分散して書かれているper-frame処理の
+
 ## pip-windowのupdateとsyncの分離できるか、調査検討。
 その他にも全然updateとsyncの配線が整ってないとこある。
 
@@ -26,6 +41,9 @@ belt.ts
 不適切な責務（この処理はこの関数にあるべきでない。この関数はこのモジュールにあるべきでない）
 無駄なハンドリング（たらいまわしだけの一行関数など）
 不適切な命名
+
+markerCtxもこれ以上まとめるのは厳しいか？責務境界の方に問題がある可能性
+
 
 ## const.tsの解体（優先度低）
 一か所で使用されている定数はそのモジュールの責務である可能性が高い。モジュールの分割がある程度進み、責務が明確になった段階で、const.tsの解体を行う。
@@ -65,13 +83,3 @@ waveManagerが利用しているWaveEncounterConfigはupdateで毎回注入を�
 
 
 
-markerCtxもこれ以上まとめるのは厳しいか？責務境界の方に問題がある可能性
-
-simulatorCtxがhitCtxのファクトリを持ちまわっているのは意味があるのか？simTimeを受け取るタイプのファクトリのようだが、これは…？
-
-hitCtxは名前やコメントから想像されるhit判定が必要とするctxというよりもはるかに大きな情報を持っている。利用実態を調査
-
-stageCtxについては、enemyとaddEnemyが別で渡されていることphaseを受け取っていることが気になる。
-
-enemyとaddEnemyが別で渡されているが、これはsimuratorで受け取れば早いはず
-phase管理については、現状gameが持つべきかstageが持つべきか責務が曖昧になっている。setPhaseはstageにも共有しているのだから、stage側にこの責務を寄せてもいいかもしれない。それでstageがマンモスになったらまた分割すればいい。

@@ -47,7 +47,6 @@ export class WaveManager {
   // 弾薬確保 → ウェーブ接近予告 → 波状攻撃、の3段階を直接遷移させる。
   update(
     dt: number,
-    isPlaying: boolean,
     player: Player,
     enemies: readonly Enemy[],
     addEnemy: (enemy: Enemy) => void,
@@ -56,7 +55,6 @@ export class WaveManager {
   ): void {
     logistics.updateLogistics(simTime, player, this.respawnLogisticsOnDespawn);
 
-    if (!isPlaying) return;
     if (this.phase === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(player);
     if (this.phase === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, addEnemy);
     if (this.phase === 'active_combat') this.updateActiveCombatPhase(dt, enemies, player, addEnemy);

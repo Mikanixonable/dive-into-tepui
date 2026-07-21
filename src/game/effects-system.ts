@@ -21,8 +21,8 @@ export class EffectsSystem {
     this._flashEffects = new FlashEffectManager(_scene);
   }
 
-  updateFlashEffects(dt: number, simDt: number, origin: Vec3, activeCamera: THREE.PerspectiveCamera): void {
-    this._flashEffects.updateFlashEffects(dt, simDt, origin, activeCamera);
+  syncFlashEffects(dt: number, simDt: number, origin: Vec3, activeCamera: THREE.PerspectiveCamera): void {
+    this._flashEffects.syncFlashEffects(dt, simDt, origin, activeCamera);
   }
 
   setMuzzleFlashesVisible(visible: boolean): void {

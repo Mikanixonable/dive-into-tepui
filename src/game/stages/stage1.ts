@@ -10,6 +10,7 @@ import {
 } from './spawner/enemy-generator';
 import type { Player } from '../player/player';
 import type { Simulator } from '../orbit-entity/simulator';
+import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage1 extends Stage {
   readonly index = 1 as const;
@@ -39,8 +40,11 @@ export class Stage1 extends Stage {
     this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 3, 0xff2d6b, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), simulator);
     return 5;
   }
+  update(dt: number, player: Player, simulator: Simulator, simTime: number, simSpeed: SimSpeedManager): void {    
+    if (!this.isPlaying) return;
+    
+    this.behaveAllEnemies(dt, player, simulator, simTime, simSpeed);
 
-  update(_dt: number, player: Player, _simulator: Simulator, simTime: number): void {
     this.logistics.updateLogistics(simTime, player);
   }
 }

@@ -10,6 +10,7 @@ import type { Simulator } from '../orbit-entity/simulator';
 import type { Player } from '../player/player';
 import type { UnlockManager } from '../unlock-manager';
 import type { EffectsSystem } from '../effects-system';
+import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage00 extends Stage {
   readonly index = -1 as const;
@@ -55,10 +56,13 @@ export class Stage00 extends Stage {
     return 0;
   }
 
-  update(dt: number, player: Player, simulator: Simulator, simTime: number): void {
+  update(dt: number, player: Player, simulator: Simulator, simTime: number, simSpeed: SimSpeedManager): void {    
+    if (!this.isPlaying) return;
+    
+    this.behaveAllEnemies(dt, player, simulator, simTime, simSpeed);
+
     this.waveManager.update(
       dt,
-      this.isPlaying,
       player,
       simulator.enemies,
       (enemy) => this.addEnemy(enemy, simulator),

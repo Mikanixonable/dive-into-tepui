@@ -1,7 +1,8 @@
 // マップモード(軌道計画モード)folder の唯一の外部窓口 — game.ts はこのクラスの
 // メソッドのみを呼び、PlanEditor/PlanDisplay/MapHud には直接触れない。
-// 軌道計画そのもの(Plan / plan-guide.ts の実施)はマップモードと無関係なデータ・
-// ロジックとして game/plan/ に独立して存在し、Game がここへ Plan を注入する。
+// 軌道計画そのもの(Plan)はマップモードの開閉と無関係に存在し続けるデータだが、
+// 編集・保持ともここが唯一の場所であるため、このクラスが Plan インスタンスを直接
+// 所有する(plan-guide.ts での実施は Game が `mapModeSystem.plan` 経由で読む)。
 // PlanEditor(マップ上でのノード編集)・PlanDisplay(予測軌道・ゴースト表示)・
 // MapHud(フォーカス対象ラベルの算出・描画)を private に保持する。
 // MapCamera(マップカメラ・視点操作)は camera-system.ts の CameraSystem が所有し、
@@ -37,6 +38,7 @@ import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
 
 export class MapModeSystem {
+  readonly plan = new Plan();
   private readonly editor: PlanEditor;
   private readonly display: PlanDisplay;
   private readonly mapHud: MapHud;
@@ -46,11 +48,11 @@ export class MapModeSystem {
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
     private readonly simSpeedManager: SimSpeedManager,
-    private readonly plan: Plan,
     private readonly project: ProjectFn,
     private readonly mapCamera: MapCamera,
     private readonly getFineAttitude: () => boolean,
     private readonly getExternalState: () => { player: Player; ephemeris: EphemerisSystem; simTime: number },
+    private readonly onPlanCleared: () => void,
   ) {
     this.editor = new PlanEditor(this._hud, this._sfx);
     this.display = new PlanDisplay(this._hud.markers);
@@ -156,7 +158,7 @@ export class MapModeSystem {
     return false;
   }
 
-  syncMapModeWithPhase(isPlaying: boolean, touchControls: TouchControls | null, mapMode: boolean): boolean {
+  updateMapModeWithPhase(isPlaying: boolean, touchControls: TouchControls | null, mapMode: boolean): boolean {
     if (!isPlaying && mapMode) {
       this._hud.setPlanPanel(null);
       this._hud.setMapToolbarVisible(false);
@@ -167,11 +169,24 @@ export class MapModeSystem {
     return mapMode;
   }
 
+  // [X] キー: マップモード中は選択中ノードのみ、マップ外では計画全体を破棄する
+  // (Plan を持つのがここである以上、両ケースともここが受け持つ)。噴射ガイドの
+  // 凍結目標(planGuide.clearActiveTarget)は Game 側の状態のため、コールバックで通知する。
+  clearPlanByKey(mapMode: boolean): void {
+    if (mapMode) {
+      this.deleteSelectedNode();
+      return;
+    }
+    if (this.plan.nodes.length <= 0) return;
+    this.plan.clear();
+    this.onPlanCleared();
+    this.simSpeedManager.cancelAutoWarp();
+    this._hud.hint('マニューバ計画を破棄');
+  }
+
   // [X] キー(マップモード中のみ): 選択中ノードを削除する(どのノードかの解決は
-  // selectedNodeIdx を持つ PlanEditor 自身の責務)。マップ外での計画全破棄は
-  // Plan を直接持つ Game 側の責務(game.ts の handleEdgePress 参照 — マップモードと
-  // 無関係な操作のため、ここには置かない)。
-  deleteSelectedNode(): void {
+  // selectedNodeIdx を持つ PlanEditor 自身の責務)。
+  private deleteSelectedNode(): void {
     if (!this.editor.deleteSelected(this.plan)) return;
     this.notifyNodeDeleted();
   }
