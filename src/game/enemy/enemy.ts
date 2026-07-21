@@ -11,7 +11,6 @@ import { buildPlasmaMesh } from '../../render/ships';
 import { EffectsCtx, spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
 import type { Player } from '../player/player';
 import { CombatCtx } from '../stages/stage-definition';
-import { HitInfo } from '../combat/hit';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 
@@ -22,7 +21,7 @@ export interface EnemyAiCtx {
   simTime: number;
   player: Player;
   enemies: readonly Enemy[]; // 同一集団の同時攻撃数カウントに使う
-  addPlasmaBullet(bullet: Bullet): void;
+  addBullet(bullet: Bullet): void;
 }
 
 export class Enemy extends Ship {
@@ -70,14 +69,14 @@ export class Enemy extends Ship {
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。attacked からのみ呼ばれる。
-  private hitEffect(fx: EffectsCtx, hit: HitInfo): void {
+  private hitEffect(fx: EffectsCtx, bullet: Bullet): void {
     this._sfx.hit();
-    if (hit.kind === 'plasma') {
-      spawnPlasmaFlash(this.scene!, fx, hit.pos, hit.vel);
+    if (bullet.type === 'plasma') {
+      spawnPlasmaFlash(this.scene!, fx, bullet.state.r, this.state.v);
     } else {
-      spawnBulletFlash(this.scene!, fx, hit.pos, hit.vel);
+      spawnBulletFlash(this.scene!, fx, bullet.state.r, this.state.v);
     }
-    spawnFragments(this.scene!, fx, hit.pos, hit.vel, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    spawnFragments(this.scene!, fx, bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
 
   private destroyEffect(fx: EffectsCtx): void {
@@ -87,15 +86,15 @@ export class Enemy extends Ship {
   }
 
   // 被弾によるダメージ・致死判定。
-  attacked(hit: HitInfo, ctx: CombatCtx): void {
+  attacked(bullet: Bullet, ctx: CombatCtx): void {
     if (!this.alive) return;
-    if (hit.shooter === 'enemy') return; // 敵弾の被弾は無効化
+    if (bullet.shooter === 'enemy') return; // 敵弾の被弾は無効化
 
     ctx.activeStage.killCounter.recordHit();
 
     this.hp -= C.ENEMY_HIT_DAMAGE;
     if (this.hp > 0) {
-      this.hitEffect(ctx.fx, hit);
+      this.hitEffect(ctx.fx, bullet);
       return;
     }
 
@@ -171,7 +170,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet({ r: clone(r), v: bV }, buildPlasmaMesh(this.accent), ctx.simTime, C.PLASMA_LIFETIME, 'enemy', this.scene);
+    const pb = new Bullet({ r: clone(r), v: bV }, buildPlasmaMesh(this.accent), ctx.simTime, C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
@@ -181,6 +180,6 @@ export class Enemy extends Ship {
     );
     pb.obj.quaternion.setFromRotationMatrix(mz);
 
-    ctx.addPlasmaBullet(pb);
+    ctx.addBullet(pb);
   }
 }
