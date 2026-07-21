@@ -11,7 +11,7 @@ import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
 import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from '../map-mode/mapgizmo';
-import { ProjectFn } from '../camera/projection';
+import { ProjectFn } from '../camera/camera-system';
 import { MapLabel } from '../map-mode/map-hud';
 import { DisplayFrameFn } from './plan-display';
 import { Plan } from './plan';

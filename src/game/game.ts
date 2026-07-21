@@ -20,7 +20,6 @@ import { EffectsSystem } from './effects-system';
 import { getStageDefinition, initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
-import { HudProjection } from './camera/projection';
 import { MapModeSystem } from './map-mode/map-mode-system';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
@@ -79,7 +78,7 @@ export class Game {
     this._hud,
     this._sfx,
     this.simSpeedManager,
-    (rel: Vec3) => this.hudProjection.project(rel),
+    this.cameraSystem.activeCameraProjection,
     this.cameraSystem.mapCamera,
     () => this.player.fineAttitude,
     () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }),
@@ -106,7 +105,6 @@ export class Game {
   // と同じ理由)。
   private readonly effects: EffectsSystem;
   readonly targeter: Targeter;
-  private readonly hudProjection = new HudProjection(() => this.cameraSystem.activeCamera);
   readonly simulator: Simulator;
   private readonly pipRenderer: PipRenderer;
 
@@ -206,7 +204,7 @@ export class Game {
     // ステージの更新 (敵の行動・スポーン管理・スコア加算・勝敗判定を含む)
     this.activeStage.update(dt, this.player, this.simulator, this.simulator.simTime, this.simSpeedManager);
 
-    this.simSpeedManager.update(this.simulator.simTime);    
+    this.simSpeedManager.update(this.simulator.simTime);
     const simDt = dt * this.simSpeedManager.simSpeed;
     this.simulator.integrateSimulation(dt, simDt, this.player, this.activeStage, true, true);
     this.simulator.stepCoastingAttitudes(simDt);
@@ -229,7 +227,7 @@ export class Game {
         this.simulator.enemies,
         this.input,
         this.cameraSystem.activeCamera,
-        (rel) => this.hudProjection.project(rel),
+        this.cameraSystem.activeCameraProjection
       );
     }
   }
@@ -324,7 +322,7 @@ export class Game {
   }
 
   private syncHud(dt: number, o: Vec3, pv: Vec3): void {
-    const project = (rel: Vec3) => this.hudProjection.project(rel);
+    const project = this.cameraSystem.activeCameraProjection;
     this.mapModeSystem.updateDisplay(this.cameraSystem.mapMode);
 
     const mapMode = this.cameraSystem.mapMode;
