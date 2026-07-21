@@ -21,8 +21,8 @@ export class WaveManager {
   waveCount = 0;
 
   // Stage00 も静的シングルトンの一部として module 読み込み時に生成されるため、
-  // WaveManager もコンストラクタ注入ができない — StageDefinition.setup() と同じ理由・
-  // 同じパターンで、Stage00.setup() から一度だけ呼ばれる。
+  // WaveManager もコンストラクタ注入ができない — Stage.setup() と同じ理由・同じ
+  // パターンで、Stage00.setup() から一度だけ呼ばれる。
   private _hud!: Hud;
   private _sfx!: Sfx;
   private _scene!: THREE.Scene;
@@ -105,7 +105,7 @@ function countActiveWaveGroups(ctx: StageCtx): number {
 function resolveWaveSpawnLimits(waveCount: number, activeGroups: number): { maxGroups: number; allowedMaxWaveCount: number; } {
 
   switch (waveCount) {
-    case 0:   // 1-indexedだと思うけど念のため
+    case 0: // waveCount は spawnWave() で 1 から始まるが、念のため 0 も同じ扱いにする
     case 1:
       return { maxGroups: 1, allowedMaxWaveCount: 2 };
     case 2:

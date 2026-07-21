@@ -1,8 +1,7 @@
 // プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の
 // 演出もここで組み立てる(effects-system.ts のスポーン関数を直接呼び、命中数とは
 // 独立な「発射数」だけ ScoreCounter.recordShot() で集計する)。未使用弾のベルト
-// (表示メッシュ + たわみ物理)は belt.ts の Belt が持つ — Player が直接所有する
-// (PlayerFire はベルトの状態を参照しない)。
+// (表示メッシュ + たわみ物理)は belt.ts の Belt が持ち、Player が直接所有する。
 import * as THREE from 'three/webgpu';
 import { qRotate, randomQuat } from '../../physics/attitude';
 import { add, addScaled, clone, norm, randPerp, randSym, randVec, scale, v3, Vec3 } from '../../physics/vec3';

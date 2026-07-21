@@ -1,5 +1,5 @@
-// ステージ解放の判定・記録を一元管理する。stage-data.ts の StageDefinition は
-// isUnlocked(clearCounts) という条件式を持つだけで、localStorage には一切触れない。
+// ステージ解放の判定・記録を一元管理する。stages/stage.ts の Stage は
+// isUnlocked(clearCounts) という条件式を持つだけで、localStorage には触れない。
 import { ACCENT } from './theme';
 import { Hud } from '../hud/hud';
 import { STAGE_DEFINITIONS } from './stages/stage-dictionary';

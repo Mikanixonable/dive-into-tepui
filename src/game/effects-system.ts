@@ -69,7 +69,6 @@ export class EffectsSystem {
     this._addDebris(new DebrisPiece(state, kind, att, collideRadius, this._scene));
   }
 
-  // 破片を飛散させる
   scatterFragments(
     origin: Vec3,
     baseVel: Vec3,
@@ -103,7 +102,6 @@ export class EffectsSystem {
     this.scatterFragments(r, v, 11, accent, C.DESTROY_FRAG_SIZE_MIN * scale, C.DESTROY_FRAG_SIZE_MAX * scale, 2.8);
   }
 
-  // 撃破デブリ: 
   spawnFragment(state: OrbitState, att: Attitude, accent: number, size: number): void {
     this.spawnDebrisPiece(state, { kind: 'fragment', accent, size }, att);
   }

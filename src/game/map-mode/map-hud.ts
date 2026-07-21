@@ -1,7 +1,6 @@
 // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点等)ラベルの算出と
 // HUD マーカーへの反映。MapCamera から抽出 — 「どこにラベルがあるか」の担当で、
 // カメラの視点操作(MapCamera)とは責務を分離する。
-// game.ts を import しない — 依存はコンストラクタ注入(hud)・引数のみ。
 import { moonPosition, sunPosition, emLagrangePoints, seLagrangePoints } from '../../physics/ephemeris';
 import { Vec3, sub } from '../../physics/vec3';
 import { Hud } from '../../hud/hud';

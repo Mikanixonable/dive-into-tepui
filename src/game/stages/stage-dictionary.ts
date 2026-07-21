@@ -1,6 +1,6 @@
 // ステージ配列(STAGE_DEFINITIONS)の定義を責務とする。各ステージの振る舞い(init/update/
-// checkWin/onWin)は stage-definition.ts の StageDefinition を継承した Stage00/Stage0/Stage1/
-// Stage2(このフォルダ内の同名ファイル)が持つ — ここではインスタンス化と番号引きのみ行う。
+// checkWin/onWin)は stage.ts の Stage を継承した Stage00/Stage0/Stage1/Stage2
+// (このフォルダ内の同名ファイル)が持つ — ここではインスタンス化と番号引きのみ行う。
 import { Stage, StageIndex, StageInitData } from './stage';
 import { Stage00 } from './stage00';
 import { Stage0 } from './stage0';

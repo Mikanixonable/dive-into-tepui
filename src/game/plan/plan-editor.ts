@@ -1,9 +1,8 @@
 // マップモード上での軌道計画(Plan)の編集: クリックでのノード配置・ドラッグでの
 // 時刻移動・Δv アーム(mapgizmo.ts)ドラッグ・右クリックメニュー・選択状態・計画パネル
-// 表示への反映。ノードの実座標変換(太陽回転系表示)は plan-display.ts の
-// toDisplayFrame に委譲される(呼び出し側が渡す DisplayFrameFn 経由) — 表示と
-// クリック判定の基準角がずれないようにするため、このモジュール自身は保持しない。
-// mapMode 中のみ意味を持つ(map-mode/ の外へは import されない)。
+// 表示への反映。ノードの実座標変換(太陽回転系表示)は呼び出し側が渡す DisplayFrameFn
+// 経由で plan-display.ts の toDisplayFrame に委譲する — 表示とクリック判定の基準角が
+// ずれないよう、正はそちら一箇所のみに保つ。
 import { Elements, elementsFromState } from '../../physics/orbital';
 import { PlannedNode } from '../../physics/predict';
 import { Vec3, add, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
@@ -53,8 +52,8 @@ export class PlanEditor {
     this.mapGizmo.closeMenu();
   }
 
-  // ノード削除の唯一の実装(右クリメニュー・[X] キーの両方からここを呼ぶ — かつては
-  // planNodes.splice が2箇所に重複していた)。選択インデックスの繰り上げもここで行う。
+  // ノード削除の唯一の実装(右クリメニュー・[X] キーの両方からここを呼ぶ)。
+  // 選択インデックスの繰り上げもここで行う。
   deleteNode(plan: Plan, idx: number): void {
     if (!plan.nodes[idx]) return;
     plan.removeNode(idx);
@@ -125,8 +124,8 @@ export class PlanEditor {
   }
 
   // マップモードの右クリック処理: 既存ノードマーカー近傍(NODE_PICK_PX 以内)なら
-  // そのノードを選択してコンテキストメニューを開く。それ以外なら開いているメニューを閉じるだけ
-  // (右クリックの元の「即削除」動作はメニュー経由に置き換えた。[X] キーは従来どおり残す)。
+  // そのノードを選択してコンテキストメニューを開く。それ以外なら開いているメニューを閉じるだけ。
+  // ノード削除はこのメニュー経由([X] キーからも可能)。
   handleMapRightClick(
     plan: Plan,
     mx: number,
@@ -295,7 +294,7 @@ export class PlanEditor {
   // マップ表示中のノード編集(時間・物理は Game.simulate() 側で通常どおり進み続ける。
   // ここではクリックによるノード配置・選択、選択中ノードの Δv 調整、計画パネル・
   // ツールバーの表示を行う)。toolbar は PlanDisplay/MapCamera 側の状態のスナップ
-  // ショット(このクラス自身は持たない)— map-mode-system.ts が毎フレーム組み立てて渡す。
+  // ショットで、map-mode-system.ts が毎フレーム組み立てて渡す。
   updateEditing(
     plan: Plan,
     dt: number,
