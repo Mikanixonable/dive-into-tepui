@@ -17,6 +17,14 @@ belt.ts
 - 各モジュールの疎結合化と責務の整理
 - ctx注入パターンの根絶。
 
+## checkBoardCrossingsの配置換え
+これはHitSystemではなくTargeterの責務だ。
+さらに、boardMarksは現状MarkerSystemが持っているが、これもTargeterが持つべきだと思われる。updateBoardMarkersなど、targetたboardMarksに関連した関数も一緒にTargetterに移動する。
+
+この配置換えにより、hitCtxの中にtargetとboardMarksを含める必要がなくなる。
+markerCtxも適切に最小化されるはず。必要なくなった引数は削減していこう
+この移動の際、targeterの関数への情報の受け渡しは、ctx注入を使わず、通常引数として渡す。
+
 ## Ctxパターンの検査
 STOP_USING_CTX.mdの方針に従い、現時点でのctx利用パターンの問題点を列挙してください。
 

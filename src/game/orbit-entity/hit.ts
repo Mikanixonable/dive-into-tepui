@@ -14,7 +14,6 @@ export interface HitCtx {
   simTime: number;
   player: Player;
   activeStage: Stage;
-  simulator: Simulator;
   target: Enemy | null;
   boardMarks: { off: Vec3; age: number; }[];
 }
@@ -43,11 +42,11 @@ export class HitSystem {
   }
 
   // サブステップ間の相対運動を線分 vs 球でチェック(高速弾のトンネリング防止)
-  checkBulletHits(ctx: HitCtx): void {
+  checkBulletHits(ctx: HitCtx, simulator: Simulator): void {
     const player = ctx.player;
-    const targets: (Player | Enemy)[] = [player, ...ctx.simulator.enemies];
+    const targets: (Player | Enemy)[] = [player, ...simulator.enemies];
 
-    for (const p of ctx.simulator.bullets) {
+    for (const p of simulator.bullets) {
       for (const target of targets) {
         if (!p.alive || !target.alive) continue;
         // プラズマ弾は自機のみを狙う(敵機には当たらない)
