@@ -16,11 +16,6 @@ import { EphemerisSystem } from '../ephemeris';
 import type { Stage } from '../stages/stage';
 import type { Targeter } from '../targeter';
 
-export interface SimulationAdvance {
-  simTime: number;
-  simDt: number;
-}
-
 export class Simulator {
   readonly enemies: Enemy[] = [];
   readonly bullets: Bullet[] = [];
@@ -29,6 +24,11 @@ export class Simulator {
   readonly casings: DebrisPiece[] = [];
   readonly debris: DebrisPiece[] = [];
   readonly ammos: Ammo[] = [];
+
+  // シミュレーション時刻(ECI 時間の経過)。game.ts は simSpeedManager から simDt を
+  // 計算して渡す責務のみを持ち、その積算(simTime の保持・更新)はここが担う。
+  simTime = 0;
+  lastSimDt = 0;
 
   private makeEnvAccel(bcInv: number): ExtraAccel {
     return (r, v, out) => envAccelInto(out ?? v3(), r, v, this.ephemeris.sunPos, this.ephemeris.moonPos, bcInv);
@@ -87,29 +87,29 @@ export class Simulator {
     return thrustFn ? (r, v) => add(thrustFn(r, v), this.envShip(r, v)) : this.envShip;
   }
 
+  // simDt(このフレームで積算すべきシミュレーション時間)は game.ts が
+  // simSpeedManager から計算して渡す。ここでは受け取った simDt をサブステップに
+  // 分割して積分し、simTime/lastSimDt を自ら進めるだけ。
   integrateSimulation(
-    simTime: number,
     dt: number,
-    simSpeed: number,
+    simDt: number,
     player: Player,
     activeStage: Stage,
     hardCollision: boolean,
     doSubstep: boolean,
     playerAccel: ExtraAccel | null = null,
-  ): SimulationAdvance {
-    const simDt = dt * (doSubstep ? simSpeed : Math.min(simSpeed, 4));
-    const nSub = doSubstep && simSpeed > C.MAX_PHYS_SIM_SPEED ? Math.min(64, Math.ceil(simDt / 20)) : 1;
+  ): void {
+    const nSub = doSubstep && simDt > dt * C.MAX_PHYS_SIM_SPEED ? Math.min(64, Math.ceil(simDt / 20)) : 1;
     const subDt = simDt / nSub;
-    let nextSimTime = simTime;
     for (let i = 0; i < nSub; i++) {
-      nextSimTime = this.simulationSubStep(nextSimTime, subDt, player, playerAccel, hardCollision);
+      this.simTime = this.simulationSubStep(this.simTime, subDt, player, playerAccel, hardCollision);
       if (hardCollision) {
-        this.hit.checkBulletHits(nextSimTime, player, activeStage, this);
+        this.hit.checkBulletHits(this.simTime, player, activeStage, this);
         this.targeter.markBoardCrossings(player, this);
       }
     }
     if (!hardCollision) this.stepCoastingAttitudes(simDt);
-    return { simTime: nextSimTime, simDt };
+    this.lastSimDt = simDt;
   }
 
   private simulationSubStep(
@@ -163,13 +163,13 @@ export class Simulator {
   // ------------------------------------------------------------ 寿命管理
 
   // 不要になったものを除去する
-  cleanup(dt: number, simTime: number, activeStage: Stage): void {
+  cleanup(dt: number, activeStage: Stage): void {
     // 自滅要因をチェック。もし不要になっていたらalive=falseになる。
-    for (const e of this.enemies) e.checkLoss(dt, simTime, activeStage);
-    for (const b of this.bullets) b.checkLoss(dt, simTime, activeStage);
-    for (const cs of this.casings) cs.checkLoss(dt, simTime, activeStage);
-    for (const d of this.debris) d.checkLoss(dt, simTime, activeStage);
-    for (const ammo of this.ammos) ammo.checkLoss(dt, simTime, activeStage);
+    for (const e of this.enemies) e.checkLoss(dt, this.simTime, activeStage);
+    for (const b of this.bullets) b.checkLoss(dt, this.simTime, activeStage);
+    for (const cs of this.casings) cs.checkLoss(dt, this.simTime, activeStage);
+    for (const d of this.debris) d.checkLoss(dt, this.simTime, activeStage);
+    for (const ammo of this.ammos) ammo.checkLoss(dt, this.simTime, activeStage);
     // alive=false になったものを配列から除去して scene から片付ける(dispose)。
     this.prune(this.enemies);
     this.prune(this.bullets);
