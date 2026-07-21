@@ -22,7 +22,6 @@ import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { HudProjection } from './camera/projection';
 import { MapModeSystem } from './map-mode/map-mode-system';
-import { Plan } from './plan/plan';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRenderer } from './pip-renderer';
@@ -68,23 +67,23 @@ export class Game {
   // 段階管理と、[N] キーによるノードへの自動ワープ。
   readonly simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
-  // 軌道計画(ノード列+予測キャッシュ)。マップモードの有無と無関係なデータで、
-  // Game が所有し、表示・編集は mapModeSystem へ、実施(噴射ガイド)は planGuide へ注入する。
-  private readonly plan = new Plan();
   // 直近ノードの噴射ガイド(戦闘ビューのみ、マップモード中は呼ばない — [M] で開いている
   // 間は WASDQE がΔv編集に使われるため)。scene に計画軌道ラインを持つため
   // コンストラクタ本体で構築する(effects 等と同じ理由)。
   private readonly planGuide: PlanGuide;
 
+  // 軌道計画(ノード列+予測キャッシュ、Plan)は mapModeSystem が所有する。
+  // マップモードの有無と無関係なデータだが、編集・保持ともマップモード側にしか
+  // 出てこないため、実施(噴射ガイド=planGuide)へは mapModeSystem.plan 経由で注入する。
   private readonly mapModeSystem = new MapModeSystem(
     this._hud,
     this._sfx,
     this.simSpeedManager,
-    this.plan,
     (rel: Vec3) => this.hudProjection.project(rel),
     this.cameraSystem.mapCamera,
     () => this.player.fineAttitude,
     () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }),
+    () => this.planGuide.clearActiveTarget(),
   );
 
   // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定、stages/ 参照)。
@@ -177,11 +176,16 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.cameraSystem.zoomActive = !this.cameraSystem.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
-    this.cameraSystem.mapMode = this.mapModeSystem.syncMapModeWithPhase(this.activeStage.isPlaying, this.touchControls, this.cameraSystem.mapMode);
-
+    this.cameraSystem.mapMode = this.mapModeSystem.updateMapModeWithPhase(this.activeStage.isPlaying, this.touchControls, this.cameraSystem.mapMode);
     this.handleFrame(dt);
-
-    this.player.updateFineAttitudeFromFiring();
+    this.cameraSystem.updateActiveCamera(
+      this.player,
+      sunAzimuth(this.simTime, this.ephemeris.sunPhase0),
+      this.mapModeSystem.focusRel(this.player.state.r),
+      this.input,
+      dt,
+      this.player.state.r,
+    );
   }
 
   private handleFrame(dt: number): void {
@@ -217,8 +221,7 @@ export class Game {
     const action = this.player.behave({
       dt,
       input: this.input,
-      canPlayerThrust: this.simSpeedManager.canPlayerThrust,
-      canPlayerFire: this.simSpeedManager.canPlayerFire,
+      simSpeed: this.simSpeedManager,
       mapMode: this.cameraSystem.mapMode,
       scoreCounter: this.activeStage.scoreCounter,
       simTime: this.simTime,
@@ -240,7 +243,17 @@ export class Game {
     this.simTime = advanced.simTime;
     this.lastSimDt = advanced.simDt;
 
-    this.handlePostSimulation(dt, simDt);
+    this.player.checkLoss(dt, this.simTime, this.activeStage);
+
+    // 衝突判定
+    if (this.simSpeedManager.canResolvePhysicalCollisions) {
+      this.collisionPhysics.resolve(dt, this.player, this.simulator.allEntities(), () => this._sfx.clank());
+    }
+
+    this.updateAttitudes(Math.min(simDt, 0.12));
+
+    this.simulator.cleanup(dt, this.simTime, this.activeStage);
+
     this.player.update(dt);
 
     if (this.cameraSystem.mapMode) {
@@ -256,28 +269,13 @@ export class Game {
       );
     }
 
-    this.activeStage.update(dt, this.player, this.simulator, this.simTime);
+    this.activeStage.update(dt, this.player, this.simulator, this.simTime, this.simSpeedManager);
   }
 
   private handlePausedFrame(): void {
     this.lastSimDt = 0;
     this._sfx.setThrust(false);
     this.player.pause();
-  }
-
-  // [X] キー: マップモード中は選択中ノードのみ(mapModeSystem 側の責務)、
-  // マップ外では計画全体を破棄する。Plan を直接持つのは Game なので、
-  // 全破棄はここが受け持つ(mapModeSystem にマップ外の状態を持たせないため)。
-  private clearPlanByKey(): void {
-    if (this.cameraSystem.mapMode) {
-      this.mapModeSystem.deleteSelectedNode();
-      return;
-    }
-    if (this.plan.nodes.length <= 0) return;
-    this.plan.clear();
-    this.planGuide.clearActiveTarget();
-    this.simSpeedManager.cancelAutoWarp();
-    this._hud.hint('マニューバ計画を破棄');
   }
 
   private handleEdgeInput(): void {
@@ -300,7 +298,7 @@ export class Game {
         if (!this.cameraSystem.mapMode) this.planGuide.clearActiveTarget();
         break;
       case 'KeyN': this.mapModeSystem.toggleAutoWarpToFirstNode(this.activeStage.isPlaying, this.cameraSystem.mapMode); break;
-      case 'KeyX': this.clearPlanByKey(); break;
+      case 'KeyX': this.mapModeSystem.clearPlanByKey(this.cameraSystem.mapMode); break;
       case 'KeyH': this._hud.toggleHelp(); break;
       case 'Escape': this._hud.toggleSettings(); break;
       case 'KeyR': if (!this.activeStage.isPlaying) location.reload(); break;
@@ -321,27 +319,6 @@ export class Game {
     };
   }
 
-  // ------------------------------------------------------------- simulate
-
-  private handlePostSimulation(dt: number, simDt: number): void {
-    this.player.checkLoss(dt, this.simTime, this.activeStage);
-
-    if (this.simSpeedManager.canResolvePhysicalCollisions) {
-      this.collisionPhysics.resolve(dt, this.player, this.simulator.allEntities(), () => {
-        this._sfx.clank();
-      });
-    }
-    this.updateAttitudes(Math.min(simDt, 0.12));
-
-    this.simulator.cleanup(dt, this.simTime, this.activeStage);
-
-    if (this.activeStage.index === -1 && this.activeStage.isPlaying && this.simSpeedManager.canEnemyFire) {
-      for (const e of this.simulator.enemies) {
-        if (e.alive) e.behave(dt, this.simTime, this.player, this.simulator);
-      }
-    }
-  }
-
   private updateAttitudes(attDt: number): void {
     this.player.updateAttitude(this.input, this.cameraSystem.mapMode, attDt, () => {
       this._hud.hint('進行方向ホールド解除(手動操作)');
@@ -355,12 +332,11 @@ export class Game {
     const o = this.player.state.r;
     const pv = this.player.state.v;
     const displayTime = this.mapModeSystem.resolveDisplayTime(this.cameraSystem.mapMode);
-    const cam = this.syncCamera(dt, o);
     this.environment.sync({
       dt,
       origin: o,
       displayTime,
-      camera: cam,
+      camera: this.cameraSystem.activeCamera,
       sunPhase0: this.ephemeris.sunPhase0,
       moonPhase0: this.ephemeris.moonPhase0,
       mapMode: this.cameraSystem.mapMode,
@@ -368,19 +344,8 @@ export class Game {
       lit: this.cameraSystem.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
     });
     this.syncDynamicObjects(o, pv);
-    this.effects.updateFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera);
+    this.effects.syncFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera);
     this.syncHud(dt, o, pv);
-  }
-
-  private syncCamera(dt: number, o: Vec3): THREE.PerspectiveCamera {
-    return this.cameraSystem.updateActiveCamera(
-      this.player,
-      sunAzimuth(this.simTime, this.ephemeris.sunPhase0),
-      this.mapModeSystem.focusRel(o),
-      this.input,
-      dt,
-      o,
-    );
   }
 
   private syncDynamicObjects(o: Vec3, pv: Vec3): void {
@@ -417,7 +382,7 @@ export class Game {
     const playerEl = this.syncEntityOrbitLines(o, pv, mapMode);
     const tgtEl = this.targeter.updateOrbitLine(o);
     this.ephemeris.updateReferenceLines(this.simTime, o, mapMode);
-    this.planGuide.updatePlannedLine(this.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }, o, mapMode);
+    this.planGuide.updatePlannedLine(this.mapModeSystem.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }, o, mapMode);
 
     this.markersSystem.updateMarkers(this.markerCtx(), pv, project);
     this.markersSystem.updateNodeMarkers(this.player, playerEl, tgtEl, project);
@@ -425,7 +390,7 @@ export class Game {
     if (mapMode) {
       this._hud.markers.hide('burn');
     } else {
-      const { achieved } = this.planGuide.update(this.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }, o, pv, playerEl, this.player.alive, project);
+      const { achieved } = this.planGuide.update(this.mapModeSystem.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }, o, pv, playerEl, this.player.alive, project);
       if (achieved) this.simSpeedManager.cancelAutoWarp();
     }
 

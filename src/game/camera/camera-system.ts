@@ -31,16 +31,16 @@ export class CameraSystem {
     input: Input,
     dt: number,
     origin: Vec3,
-  ): THREE.PerspectiveCamera {
+  ): void {
     const keyYaw = (input.down('ArrowLeft') ? 1 : 0) + (input.down('ArrowRight') ? -1 : 0);
     const keyPitch = (input.down('ArrowDown') ? 1 : 0) + (input.down('ArrowUp') ? -1 : 0);
     const mouse = input.mouse();
 
     if (this.mapMode) {
       this.mapCamera.update(mouse, keyYaw, keyPitch, dt, focusRel, sunAz);
-      return this.mapCamera.camera;
     }
-    this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, origin, player, this.zoomActive);
-    return this.chaseCamera.camera;
+    else {
+      this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, origin, player, this.zoomActive);
+    }
   }
 }
