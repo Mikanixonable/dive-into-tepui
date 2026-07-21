@@ -179,10 +179,8 @@ export class Game {
   private planCtx(): PlanCtx {
     return {
       simTime: this.simTime,
-      playerR: this.player.state.r,
-      playerV: this.player.state.v,
-      sunPhase0: this.ephemeris.sunPhase0,
-      moonPhase0: this.ephemeris.moonPhase0,
+      player: this.player,
+      ephemeris: this.ephemeris,
     };
   }
 
@@ -367,8 +365,7 @@ export class Game {
     return {
       simTime,
       player: this.player,
-      enemies: this.simulator.enemies,
-      addBullet: (bullet) => this.simulator.addBullet(bullet),
+      simulator: this.simulator,
     };
   }
 

@@ -14,15 +14,15 @@ import { Bullet } from './bullet';
 import { CombatCtx } from '../stages/stage';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
+import type { Simulator } from './simulator';
 
 // 敵 AI(Enemy.behave)が必要とする、Game 側の現在状態のスナップショット。
-// player / enemies は参照渡し(state.r 等を読むだけでミューテートしない)。
+// player は参照渡し(state.r 等を読むだけでミューテートしない)。
 // scene は含めない — Enemy 自身が(Ship 経由で)自身の scene を私有している。
 export interface EnemyAiCtx {
   simTime: number;
   player: Player;
-  enemies: readonly Enemy[]; // 同一集団の同時攻撃数カウントに使う
-  addBullet(bullet: Bullet): void;
+  simulator: Simulator; // 同一集団の同時攻撃数カウント(enemies)・弾追加(addBullet)に使う
 }
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
@@ -140,7 +140,7 @@ export class Enemy extends Ship {
     if (ctx.simTime - this.lastFireSim <= C.ENEMY_FIRE_INTERVAL) return;
     this.lastFireSim = ctx.simTime;
 
-    const countInGroup = this.attackingCountInGroup(ctx.enemies);
+    const countInGroup = this.attackingCountInGroup(ctx.simulator.enemies);
     if (countInGroup >= C.ENEMY_MAX_ATTACKERS_PER_GROUP || Math.random() >= C.ENEMY_ATTACK_CHANCE) return;
     const counts = C.ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
@@ -188,6 +188,6 @@ export class Enemy extends Ship {
     );
     pb.obj.quaternion.setFromRotationMatrix(mz);
 
-    ctx.addBullet(pb);
+    ctx.simulator.addBullet(pb);
   }
 }
