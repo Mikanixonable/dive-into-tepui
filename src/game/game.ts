@@ -13,7 +13,7 @@ import { Player } from './player/player';
 import { FireCtx } from './player/player-fire';
 import { CameraSystem } from './camera/camera-system';
 import { HitCtx, HitSystem } from './orbit-entity/hit';
-import { CombatCtx, StageCtx, Stage } from './stages/stage';
+import { StageCtx, Stage } from './stages/stage';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
 import { CollisionPhysics, CollisionPhysicsCtx } from './orbit-entity/collision';
@@ -328,30 +328,13 @@ export class Game {
       phase: this.phase,
       player: this.player,
       enemies: this.simulator.enemies,
-      totalEnemies: this.activeStage.scoreCounter.totalEnemiesSpawned,
       addEnemy: (enemy) => {
         this.simulator.addEnemy(enemy);
         this.activeStage.scoreCounter.recordSpawnEnemy();
       },
-      magsLeft: this.player.magsLeft,
-      roundsInMag: this.player.roundsInMag,
       setPhase: (p) => { this.phase = p; },
       simTime: this.simTime,
     };
-  }
-
-  // Ship.attacked/checkLoss(被弾・自然喪失の判定)が必要とする、現在状態のスナップショット。
-  private combatCtx(simTime = this.simTime): CombatCtx {
-    const ctx: CombatCtx = {
-      simTime,
-      player: this.player,
-      totalEnemies: this.activeStage.scoreCounter.totalEnemiesSpawned,
-      activeStage: this.activeStage,
-      setPhase: (p) => { this.phase = p; },
-      fx: this.effects,
-      unlockManager: this.unlockManager,
-    };
-    return ctx;
   }
 
   // PlayerFire の発射・排莢・バレル交換が必要とする、現在状態のスナップショット。
@@ -369,7 +352,6 @@ export class Game {
     return {
       simTime,
       player: this.player,
-      totalEnemies: this.activeStage.scoreCounter.totalEnemiesSpawned,
       activeStage: this.activeStage,
       setPhase: (p) => { this.phase = p; },
       fx: this.effects,
@@ -414,7 +396,6 @@ export class Game {
   private simulatorCtx(): SimulatorCtx {
     return {
       player: this.player,
-      combatCtx: (simTime) => this.combatCtx(simTime),
       hitCtx: (simTime) => this.hitCtx(simTime),
     };
   }
@@ -426,7 +407,6 @@ export class Game {
       dt,
       simTime: this.simTime,
       player: this.player,
-      totalEnemies: this.activeStage.scoreCounter.totalEnemiesSpawned,
       activeStage: this.activeStage,
       setPhase: (p) => { this.phase = p; },
       fx: this.effects,
@@ -444,7 +424,6 @@ export class Game {
       dt,
       simTime: this.simTime,
       player: this.player,
-      totalEnemies: this.activeStage.scoreCounter.totalEnemiesSpawned,
       activeStage: this.activeStage,
       setPhase: (p) => { this.phase = p; },
       fx: this.effects,

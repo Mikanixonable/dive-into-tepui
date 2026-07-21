@@ -15,7 +15,6 @@ import type { Simulator } from './simulator';
 export interface HitCtx {
   simTime: number;
   player: Player;
-  totalEnemies: number;
   activeStage: Stage;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
   fx: EffectsSystem;
@@ -68,7 +67,6 @@ export class HitSystem {
         target.attacked(p, {
           simTime: ctx.simTime,
           player: ctx.player,
-          totalEnemies: ctx.totalEnemies,
           activeStage: ctx.activeStage,
           setPhase: ctx.setPhase,
           fx: ctx.fx,

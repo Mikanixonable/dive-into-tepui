@@ -18,8 +18,7 @@ import type { Simulator } from '../orbit-entity/simulator';
 export type StageIndex = -1 | 0 | 1 | 2;
 
 // Stage の init/update に渡す、Game 側の現在状態のスナップショット(毎フレーム渡す)。
-// enemies は読み取り参照(要素の alive 等はミューテートしてよいが、生成累計数の表示には
-// totalEnemies を使う — enemies は撃破された個体から prune されるため配列長は「残存数」)。
+// enemies は読み取り参照(要素の alive 等はミューテートしてよい)。
 // 敵の追加は addEnemy(Simulator への登録。軌道線は Enemy 自身がコンストラクタで生成済み)を通す。
 // hud/sfx/scene は含めない — Stage 自身が setup() で受け取り私有する(_hud/_sfx/_scene)ので、
 // 毎フレームの ctx 越しに受け渡す必要がない。
@@ -27,10 +26,7 @@ export interface StageCtx {
   phase: string;
   player: Player;
   enemies: readonly Enemy[];
-  totalEnemies: number;
   addEnemy(enemy: Enemy): void;
-  magsLeft: number;
-  roundsInMag: number;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
   simTime: number;
 }
@@ -48,7 +44,6 @@ export interface StageInitData {
 export interface CombatCtx {
   simTime: number;
   player: Player;
-  totalEnemies: number;
   activeStage: Stage;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
   fx: EffectsSystem;
@@ -57,8 +52,6 @@ export interface CombatCtx {
 
 // checkWin/onWin が必要とする最小の集計スナップショット。
 export interface StageWinCtx {
-  scoreCounter: scoreCounter;
-  totalEnemies: number;
   simTime: number;
 }
 
@@ -107,11 +100,11 @@ export abstract class Stage {
 
   // 既定: 敵全機撃破で勝利(再突入等の自然損耗は losses を差し引くためだけに使う)。
   // 時間切れで終わるステージ(Stage0/Stage00)は false 固定・onWin no-op に override する。
-  checkWin(ctx: StageWinCtx): boolean {
-    return ctx.totalEnemies - ctx.scoreCounter.kills - ctx.scoreCounter.losses <= 0;
+  checkWin(_ctx: StageWinCtx): boolean {
+    return this.scoreCounter.totalEnemiesSpawned - this.scoreCounter.kills - this.scoreCounter.losses <= 0;
   }
   onWin(ctx: StageWinCtx): void {
-    showWinScreen(this._hud, this._sfx, ctx);
+    showWinScreen(this._hud, this._sfx, this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, ctx.simTime);
   }
 
   // HUDステータスパネルの補助表示(サバイバル波数・残り時間など)。既定は非表示。
@@ -132,7 +125,7 @@ export abstract class Stage {
     this.scoreCounter.recordKill();
     this._hud.hint(`${enemy.name} 撃破`);
 
-    const winCtx: StageWinCtx = { scoreCounter: this.scoreCounter, totalEnemies: ctx.totalEnemies, simTime: ctx.simTime };
+    const winCtx: StageWinCtx = { simTime: ctx.simTime };
     if (this.checkWin(winCtx)) {
       ctx.setPhase('won');
       ctx.unlockManager.reportClear(this.index, this._hud);
@@ -144,6 +137,6 @@ export abstract class Stage {
   // 明示的に渡す。
   recordPlayerLost(ctx: CombatCtx, reason: string): void {
     ctx.setPhase('lost');
-    showResultScreen(this._hud, this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${ctx.totalEnemies} 機`);
+    showResultScreen(this._hud, this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);
   }
 }
