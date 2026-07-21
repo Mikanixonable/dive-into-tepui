@@ -1,25 +1,13 @@
 import * as THREE from 'three/webgpu';
 import { randomQuat } from '../physics/attitude';
-import { add, addScaled, clone, randSym, randVec, v3, Vec3 } from '../physics/vec3';
+import { add, clone, randSym, randVec, v3, Vec3 } from '../physics/vec3';
 import * as C from './const';
-import { DebrisPiece } from './entities';
+import { DebrisPiece } from './orbit-entity/entities';
 import { buildDebrisMesh, buildFlashMesh } from '../render/ships';
 import { getGlowTexture } from '../render/glow-texture';
+import { FlashEffect } from './flash-effect-manager';
 
 
-// 爆発・マズルフラッシュなどの一時エフェクト。
-// 軌道速度で流れないよう、発生源の速度で移流させる。
-export interface FlashEffect {
-  mesh: THREE.Mesh;
-  pos: Vec3;
-  vel: Vec3;
-  age: number;
-  duration: number;
-  size0: number;
-  size1: number;
-  peakOpacity: number; // 発生直後の最大不透明度倍率(ズーム中のマズルフラッシュ減光などに使う)
-  muzzle?: boolean; // マズルフラッシュのみ true。ズームウィンドウ(PIP)描画時はこれだけを非表示にする
-}
 
 // フラッシュ・破片の発生に必要な最小の受け皿(scene は呼び出し側が自身の _scene を
 // 明示的な引数として渡す — hud/sfx/scene をひとまとめに ctx 注入する経路は根絶する方針
@@ -105,33 +93,3 @@ export function spawnShipDestroyEffect(scene: THREE.Scene, ctx: EffectsCtx, r: V
   spawnFragments(scene, ctx, r, v, 11, accent, C.DEBRIS_SIZE_MIN * scale, C.DEBRIS_SIZE_MAX * scale, 2.8);
 }
 
-export class EffectsSystem {
-  effects: FlashEffect[] = [];
-
-  constructor(private readonly _scene: THREE.Scene) {}
-
-  updateFlashEffects(
-    dt: number,
-    simDt: number,
-    origin: Vec3,
-    activeCamera: THREE.PerspectiveCamera,
-  ): void {
-    this.effects = this.effects.filter((fx) => {
-      fx.age += dt;
-      if (fx.age >= fx.duration) {
-        this._scene.remove(fx.mesh);
-        (fx.mesh.material as THREE.Material).dispose();
-        fx.mesh.geometry.dispose();
-        return false;
-      }
-      fx.pos = addScaled(fx.pos, fx.vel, simDt);
-      const t = fx.age / fx.duration;
-      const size = fx.size0 + (fx.size1 - fx.size0) * Math.sqrt(t);
-      fx.mesh.position.set(fx.pos.x - origin.x, fx.pos.y - origin.y, fx.pos.z - origin.z);
-      fx.mesh.scale.setScalar(size);
-      fx.mesh.quaternion.copy(activeCamera.quaternion);
-      (fx.mesh.material as THREE.MeshBasicMaterial).opacity = fx.peakOpacity * (1 - t);
-      return true;
-    });
-  }
-}

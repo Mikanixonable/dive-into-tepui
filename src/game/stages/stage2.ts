@@ -1,15 +1,15 @@
 // Stage 2: 第二ステージ(モルニヤ戦域)。ステージ1クリアで解放(isUnlocked override)。
 // checkWin/onWin/hudSubStatus は基底クラスの既定(撃破数で勝利・HUD補助表示なし)のまま使う。
 import * as C from '../const';
-import { StageCtx, StageDefinition } from './stage-definition';
+import { StageCtx, Stage } from './stage';
 import type { ClearCounts } from '../unlock-manager';
 import {
   generateCoellipticEnemy,
   generateMolniyaEnemy,
   generatePhasedEnemy,
-} from '../enemy/enemy-generator';
+} from './spawner/enemy-generator';
 
-export class Stage2 extends StageDefinition {
+export class Stage2 extends Stage {
   readonly index = 2 as const;
   readonly selectLabel = '[2] 第二ステージ — モルニヤ戦域';
   readonly selectSub = '敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モード [M] での遷移が必須';
@@ -43,6 +43,6 @@ export class Stage2 extends StageDefinition {
   }
 
   update(_dt: number, ctx: StageCtx): void {
-    this.ammoResupply.updateLogistics(ctx.simTime, ctx.player);
+    this.logistics.updateLogistics(ctx.simTime, ctx.player);
   }
 }

@@ -3,7 +3,8 @@ import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { ExtraAccel, MU_EARTH, OrbitState, R_EARTH } from '../../physics/orbital';
 import { Vec3, addScaled, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { Bullet, Ship } from '../entities';
+import { Ship } from '../orbit-entity/entities';
+import { Bullet } from '../orbit-entity/bullet';
 import { Input } from '../input';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
@@ -11,14 +12,14 @@ import { buildFlashMesh, buildPlayerShip, RCS_BLOCK_OFFSETS } from '../../render
 import { getGlowTexture } from '../../render/glow-texture';
 import { OrbitLine } from '../../render/orbitline';
 import type { CameraSystem } from '../camera/camera-system';
-import { CombatCtx } from '../stages/stage-definition';
-import { KillCounter } from '../combat/kill-counter';
+import { CombatCtx } from '../stages/stage';
+import { ScoreCounter } from '../stages/stage-utils/score-counter';
 import { PlayerThrottle } from './player-throttle';
 import { FireCtx, PlayerFire } from './player-fire';
 import { Belt } from './belt';
 import { altitudeOf } from '../../physics/orbital';
 import { ThermalSystem } from './thermal';
-import { CheckLossCtx } from '../entities';
+import { CheckLossCtx } from '../orbit-entity/entities';
 import { EffectsCtx, spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
 
 export interface PlayerActionState {
@@ -149,13 +150,13 @@ export class Player extends Ship {
     canPlayerThrust: boolean;
     canPlayerFire: boolean;
     mapMode: boolean;
-    killCounter: KillCounter;
+    scoreCounter: ScoreCounter;
     fireCtx: FireCtx;
   }): PlayerActionState {
-    const { dt, input, canPlayerThrust, canPlayerFire, mapMode, killCounter, fireCtx } = params;
+    const { dt, input, canPlayerThrust, canPlayerFire, mapMode, scoreCounter, fireCtx } = params;
     this.updateHpRegen(dt);
     if (mapMode) return this.behaveMapMode(dt);
-    return this.behaveFlying(dt, input, canPlayerThrust, canPlayerFire, killCounter, fireCtx);
+    return this.behaveFlying(dt, input, canPlayerThrust, canPlayerFire, scoreCounter, fireCtx);
   }
 
   // マップモード中: 移動/発射の入力は無効。装填(リロード)だけは戦闘可否に関わらず
@@ -170,12 +171,12 @@ export class Player extends Ship {
     input: Input,
     canPlayerThrust: boolean,
     canPlayerFire: boolean,
-    killCounter: KillCounter,
+    scoreCounter: ScoreCounter,
     fireCtx: FireCtx,
   ): PlayerActionState {
     const canThrust = canPlayerThrust && this.alive;
     const canFire = canPlayerFire && this.alive;
-    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, canFire, this, killCounter, fireCtx);
+    const justStartedFiring = this.fire.updateFireState(dt, input, this.alive, canFire, this, scoreCounter, fireCtx);
     if (justStartedFiring) this.throttle.fineAttitude = true;
     const thrustFn = this.throttle.updateThrustState(input, canThrust, this.att, this.state);
     return { thrustFn };
@@ -215,7 +216,7 @@ export class Player extends Ship {
 
     this.alive = false;
     const reason = bullet.shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
-    ctx.activeStage.recordKilled(ctx, reason);
+    ctx.activeStage.recordPlayerLost(ctx, reason);
     this.destroyEffect(ctx.fx);
   }
 
@@ -232,7 +233,7 @@ export class Player extends Ship {
 
     this.alive = false;
     this.destroyEffect(ctx.combatCtx.fx);
-    ctx.combatCtx.activeStage.recordKilled(ctx.combatCtx, reason);
+    ctx.combatCtx.activeStage.recordPlayerLost(ctx.combatCtx, reason);
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。

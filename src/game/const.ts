@@ -94,15 +94,15 @@ export const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は�
 // 半分程度のマガジン数(=物理的に短いチェーン)で賄える。
 export const MAG_ROUNDS = 32; // 1 マガジンの装弾数
 export const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
-export const MAG_PICKUP_MAGS = 4; // 補給 1 個の取り込みで増えるマガジン数
-export const MAG_PICKUP_RADIUS = 100; // 取り込み距離 [m](ゲームプレイ上の吸収判定。物理サイズではない)
-export const MAG_PICKUP_PHYS_RADIUS = 1.3; // 補給マガジン束の物理接触用の半径 [m](見た目に近い実寸)
-export const AMMO_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入(5以下で発動)
-export const MAX_MAG_PICKUPS = 3; // 同時に存在する補給の最大数
-export const RESUPPLY_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
-export const AMMO_RESUPPLY_MIN_DIST = 1250; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
-export const AMMO_RESUPPLY_MAX_DIST = 2500; // 同上限 [m]
-export const AMMO_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
+export const AMMO_PICKUP_MAGS = 4; // 補給 1 個の取り込みで増えるマガジン数
+export const AMMO_PICKUP_RADIUS = 100; // 取り込み距離 [m](ゲームプレイ上の吸収判定。物理サイズではない)
+export const AMMO_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m](見た目に近い実寸)
+export const LOGISTICS_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入(5以下で発動)
+export const MAX_AMMO = 3; // 同時に存在する補給の最大数
+export const LOGISTICS_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
+export const LOGISTICS_MIN_DIST = 1250; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
+export const LOGISTICS_MAX_DIST = 2500; // 同上限 [m]
+export const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
 export const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
 export const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s](元の3.0の半分)
 export const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
@@ -213,9 +213,9 @@ export const STAGE0_PER_GROUP = 10; // グループあたりの機数
 export const STAGE0_ENEMY_HP = 1; // 一撃撃破の軽量機
 export const STAGE0_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]
 export const STAGE0_TIME_LIMIT = 30000; // 制限時間 [実秒]
-export const STAGE0_AMMO_PICKUPS = 4; // 開始時に浮かべておく補給マガジンの数
-export const STAGE0_AMMO_MIN_DIST = 300; // 補給の配置距離 [m](自機から)
-export const STAGE0_AMMO_MAX_DIST = 900;
+export const STAGE0_LOGISTICS_INITIAL_AMMO = 4; // 開始時に浮かべておく補給の数
+export const STAGE0_LOGISTICS_MIN_DIST = 300; // 補給の配置距離 [m](自機から)
+export const STAGE0_LOGISTICS_MAX_DIST = 900;
 // 5グループの配置: 各グループ中心を安全半径(STAGE0_MAX_RANGE * SAFE_RANGE_FACTOR)
 // の CENTER_DIST_MIN〜+RANGE の位置に置き、各機はそこから ALONG/NORMAL/RADIAL
 // 方向にランダムに散らす
@@ -229,8 +229,8 @@ export const STAGE0_JITTER_RADIAL = 350; // 各機の動径方向ばらつき [m
 
 // --- ステージ00(無限耐久サバイバル) ---
 export const STAGE00_MAX_RANGE = 15000; // 自機からの配置半径の上限(デスポーン距離) [m]
-export const STAGE00_AMMO_MIN_DIST = 50; // 補給の配置距離 [m](自機から)
-export const STAGE00_AMMO_MAX_DIST = 200;
+export const STAGE00_LOGISTICS_MIN_DIST = 50; // 補給の配置距離 [m](自機から)
+export const STAGE00_LOGISTICS_MAX_DIST = 200;
 export const STAGE00_SPAWN_DELAY = 10; // 弾取得からスポーンまでの遅延 [s]
 export const STAGE00_FORMATION_SPACING = 200; // 編隊の機体間隔 [m]
 export const STAGE00_ALT_OFFSET_MIN = -1000; // 自機よりどれくらい低くするか [m]

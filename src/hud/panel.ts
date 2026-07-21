@@ -93,8 +93,8 @@ export class HudPanels {
         period: playerEl ? playerEl.period : NaN,
         qdyn: thermal.qdyn,
         hullTemp: thermal.hullTemp,
-        shots: game.activeStage.killCounter.shots,
-        kills: game.activeStage.killCounter.kills,
+        shots: game.activeStage.scoreCounter.shots,
+        kills: game.activeStage.scoreCounter.kills,
         total: game.simulator.totalEnemiesSpawned,
         stage0State: hudSubStatus !== null ? { hp: player.hp, maxHp: C.PLAYER_MAX_HP, msg: hudSubStatus } : null,
       });

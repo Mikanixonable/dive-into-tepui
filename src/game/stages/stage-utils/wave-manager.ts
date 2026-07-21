@@ -1,18 +1,18 @@
 // stage00(無限耐久サバイバル)の波状攻撃: フェーズ遷移・ウェーブ数・ウェーブ生成を管理する。
 // Stage00 専用のヘルパーであり、Stage00 インスタンスが自身のフィールドとして直接保持する。
 import * as THREE from 'three/webgpu';
-import { len, sub } from '../../physics/vec3';
-import type { StageCtx } from './stage-definition';
-import type { AmmoResupplySystem } from '../combat/ammo-resupply';
-import { generateWave } from '../enemy/enemy-spawner';
-import { Hud } from '../../hud/hud';
-import { Sfx } from '../../audio/sfx';
+import { len, sub } from '../../../physics/vec3';
+import type { StageCtx } from '../stage';
+import type { Logistics } from './logistics';
+import { generateWave } from '../spawner/enemy-spawner';
+import { Hud } from '../../../hud/hud';
+import { Sfx } from '../../../audio/sfx';
 
 export interface WaveEncounterConfig {
   spawnDelay: number; // 弾薬確保からウェーブ接近までの遅延
   spawnInterval: number; // ウェーブ間隔
   maxRange: number; // これより離れた敵は交戦圏外として消える
-  respawnAmmoOnDespawn: boolean; // 遠方デスポーンした補給を同数投入し直すか
+  respawnLogisticsOnDespawn: boolean; // 遠方デスポーンした補給を同数投入し直すか
 }
 
 export class WaveManager {
@@ -41,8 +41,8 @@ export class WaveManager {
   }
 
   // 弾薬確保 → ウェーブ接近予告 → 波状攻撃、の3段階を直接遷移させる。数値設定は呼び出し側が渡す。
-  update(dt: number, ctx: StageCtx, ammoResupply: AmmoResupplySystem, config: WaveEncounterConfig): void {
-    ammoResupply.updateLogistics(ctx.simTime, ctx.player, config.respawnAmmoOnDespawn);
+  update(dt: number, ctx: StageCtx, logistics: Logistics, config: WaveEncounterConfig): void {
+    logistics.updateLogistics(ctx.simTime, ctx.player, config.respawnLogisticsOnDespawn);
 
     if (ctx.phase !== 'playing') return;
     if (this.phase === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(ctx, config.spawnDelay);

@@ -1,12 +1,12 @@
 // Stage 0: 訓練ステージ。近傍の色分けクラスタを制限時間内に何機撃墜できるかのスコアアタック
 // (タイムアップで終わる。撃破数では終わらないので checkWin/onWin は no-op に override する)。
 import * as C from '../const';
-import { StageCtx, StageDefinition } from './stage-definition';
+import { StageCtx, Stage } from './stage';
 import { showScoreAttackResultScreen } from '../result-screen';
-import { generateCluster } from '../enemy/enemy-spawner';
-import { ScoreAttackTimer } from './score-attack-timer';
+import { generateCluster } from './spawner/enemy-spawner';
+import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 
-export class Stage0 extends StageDefinition {
+export class Stage0 extends Stage {
   readonly index = 0 as const;
   readonly selectLabel = '[T] 訓練ステージ — 近接戦闘訓練 (Stage 0)';
   readonly selectSub = '常時選択可。5km以内に色分けされた敵集団 約50機、制限時間2分の撃墜数スコアアタック';
@@ -25,8 +25,8 @@ export class Stage0 extends StageDefinition {
   }
 
   init(ctx: StageCtx): number {
-    for (let i = 0; i < C.STAGE0_AMMO_PICKUPS; i++) {
-      this.ammoResupply.spawnForPlayer(ctx.player, C.STAGE0_AMMO_MIN_DIST, C.STAGE0_AMMO_MAX_DIST);
+    for (let i = 0; i < C.STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
+      this.logistics.spawnForPlayer(ctx.player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
     }
     const enemies = generateCluster(ctx.player.state, this._hud, this._sfx, this._scene);
     for (const enemy of enemies) ctx.addEnemy(enemy);
@@ -34,9 +34,9 @@ export class Stage0 extends StageDefinition {
   }
 
   update(dt: number, ctx: StageCtx): void {
-    this.ammoResupply.updateLogistics(ctx.simTime, ctx.player);
+    this.logistics.updateLogistics(ctx.simTime, ctx.player);
     if (this.timer.update(dt, ctx.setPhase)) {
-      showScoreAttackResultScreen(this._hud, this._sfx, this.killCounter, 'TIME UP');
+      showScoreAttackResultScreen(this._hud, this._sfx, this.scoreCounter, 'TIME UP');
     }
   }
 

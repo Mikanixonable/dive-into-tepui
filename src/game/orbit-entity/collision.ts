@@ -1,15 +1,15 @@
 // 剛体球どうしの接触解決(自機・敵機・薬莢・補給・デブリ・マガジンベルト)。
 // collideRadius を持つ OrbitEntity だけが参加し、state.r / state.v を直接補正する。
 import { Vec3 } from '../../physics/vec3';
-import { BeltSection, Casing, DebrisPiece, MagPickup, OrbitEntity } from '../entities';
-import { Enemy } from '../enemy/enemy';
+import { Ammo, BeltSection, Casing, DebrisPiece, OrbitEntity } from './entities';
+import { Enemy } from './enemy';
 import { Player } from '../player/player';
 
 export interface CollisionPhysicsCtx {
   player: Player;
   enemies: Enemy[];
   casings: Casing[];
-  magPickups: MagPickup[];
+  ammos: Ammo[];
   debris: DebrisPiece[];
 }
 
@@ -33,7 +33,7 @@ export class CollisionPhysics {
     if (ctx.player.alive) entities.push(ctx.player);
     for (const e of ctx.enemies) if (e.alive) entities.push(e);
     for (const c of ctx.casings) entities.push(c);
-    for (const m of ctx.magPickups) if (m.alive) entities.push(m);
+    for (const ammo of ctx.ammos) if (ammo.alive) entities.push(ammo);
     for (const d of ctx.debris) if (d.collideRadius !== undefined) entities.push(d);
     return entities;
   }

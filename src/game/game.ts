@@ -12,24 +12,25 @@ import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
 import { FireCtx } from './player/player-fire';
 import { CameraSystem } from './camera/camera-system';
-import { HitCtx, HitSystem } from './combat/hit';
-import { CombatCtx, StageCtx, StageDefinition } from './stages/stage-definition';
+import { HitCtx, HitSystem } from './orbit-entity/hit';
+import { CombatCtx, StageCtx, Stage } from './stages/stage';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
-import { CollisionPhysics } from './combat/collision';
-import { EffectsCtx, EffectsSystem } from './effects-system';
-import { getStageDefinition, resolveStageInitData } from './stages/stage-data';
+import { CollisionPhysics } from './orbit-entity/collision';
+import { EffectsCtx } from './effects-system';
+import { FlashEffectManager } from './flash-effect-manager';
+import { getStageDefinition, resolveStageInitData } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
-import { Targeter } from './combat/targeter';
+import { Targeter } from './targeter';
 import { HudProjection } from './camera/projection';
 import { MapModeSystem } from './map-mode/map-mode-system';
 import { Plan, PlanCtx } from './plan/plan';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRect, PipRenderer } from './pip-renderer';
-import { Simulator, SimulatorCtx } from './combat/simulator';
+import { Simulator, SimulatorCtx } from './orbit-entity/simulator';
 import * as C from './const';
-import { EnemyAiCtx } from './enemy/enemy';
+import { EnemyAiCtx } from './orbit-entity/enemy';
 import { Input } from './input';
 import { TouchControls } from './touch';
 import { Hud } from '../hud/hud';
@@ -101,7 +102,7 @@ export class Game {
   private phase: GamePhase = 'playing';
   // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定)を持つインスタンス
   // (stages/ 参照)。固有のランタイム状態(タイマー・ウェーブ管理等)もこれ自身が持つ。
-  readonly activeStage: StageDefinition;
+  readonly activeStage: Stage;
   simTime = 0;
   private lastSimDt = 0;
   paused = false;
@@ -117,7 +118,7 @@ export class Game {
   // player/player-fire.ts の PlayerFire が所有する(this.player.updateBelt 等)。
   // 発射・排莢・バレル交換の演出も PlayerFire が持つ(fireCtx 経由)。
   // 撃破の集計・勝敗判定・発射/命中/撃破カウンタは activeStage(StageDefinition)が持つ
-  // (killCounter フィールド、recordKill/recordKilled メソッド)。
+  // (scoreCounter フィールド、recordKill/recordKilled メソッド)。
   private readonly unlockManager = new UnlockManager();
   // 弾の高度な衝突判定(トンネリング防止・被弾ダメージ)は combat/hit.ts の HitSystem に
   // 切り出し済み。撃破が発生したら activeStage.recordKill を呼ぶ(ctx 経由、状態は持たない)。
@@ -130,7 +131,7 @@ export class Game {
   private readonly collisionPhysics = new CollisionPhysics();
   // scene(_scene)はコンストラクタ引数 gs 由来で field initializer の時点では未確定のため、
   // これらはコンストラクタ本体で構築する(environment/player と同じ理由)。
-  private readonly effectsSystem: EffectsSystem;
+  private readonly effectsSystem: FlashEffectManager;
   readonly targeter: Targeter;
   private readonly hudProjection = new HudProjection(() => this.cameraSystem.activeCamera);
   readonly simulator: Simulator;
@@ -140,7 +141,7 @@ export class Game {
     this._scene = gs.scene;
     this.renderer = gs.renderer;
     this.ephemeris = new EphemerisSystem(this._scene);
-    this.effectsSystem = new EffectsSystem(this._scene);
+    this.effectsSystem = new FlashEffectManager(this._scene);
     this.pipRenderer = new PipRenderer(this._scene);
     this.targeter = new Targeter(this._hud, this._sfx, this._scene);
     this.planGuide = new PlanGuide(this._hud, this._sfx, this._scene);
@@ -263,7 +264,7 @@ export class Game {
       canPlayerThrust: this.simSpeedManager.canPlayerThrust,
       canPlayerFire: this.simSpeedManager.canPlayerFire,
       mapMode: this.cameraSystem.mapMode,
-      killCounter: this.activeStage.killCounter,
+      scoreCounter: this.activeStage.scoreCounter,
       fireCtx: this.fireCtx(),
     });
     const playerAccel = this.simulator.buildPlayerAccel(action.thrustFn);
@@ -428,7 +429,7 @@ export class Game {
       player: this.player,
       enemies: this.simulator.enemies,
       target: this.targeter.autoTarget,
-      magPickups: this.simulator.magPickups,
+      ammos: this.simulator.ammos,
       mapLabelIds: this.mapModeSystem.mapLabelIds(),
       activeCamera: this.cameraSystem.activeCamera,
       simTime: this.simTime,
@@ -440,7 +441,7 @@ export class Game {
       player: this.player,
       enemies: this.simulator.enemies,
       casings: this.simulator.casings,
-      magPickups: this.simulator.magPickups,
+      ammos: this.simulator.ammos,
       debris: this.simulator.debris,
     };
   }
@@ -546,7 +547,7 @@ export class Game {
     for (const e of this.simulator.enemies) if (e.alive) e.syncTransform(o);
     for (const b of this.simulator.bullets) b.syncBulletTransform(o, pv);
     for (const cs of this.simulator.casings) cs.syncTransform(o);
-    for (const mp of this.simulator.magPickups) mp.syncTransform(o);
+    for (const ammo of this.simulator.ammos) ammo.syncTransform(o);
     this.player.updateBelt(dt);
     for (const d of this.simulator.debris) d.syncTransform(o);
   }

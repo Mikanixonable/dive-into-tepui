@@ -34,8 +34,8 @@ import { TouchControls } from '../touch';
 import { ProjectFn } from '../camera/projection';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { Plan, PlanCtx } from '../plan/plan';
-import { PlanEditor } from './plan-editor';
-import { DisplayFrameFn, PlanDisplay } from './plan-display';
+import { PlanEditor } from '../plan/plan-editor';
+import { DisplayFrameFn, PlanDisplay } from '../plan/plan-display';
 import { MapCamera } from '../camera/map-camera';
 import { MapHud } from './map-hud';
 

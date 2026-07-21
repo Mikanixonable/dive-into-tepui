@@ -11,11 +11,11 @@ import * as C from '../const';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
-import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from './mapgizmo';
+import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from '../map-mode/mapgizmo';
 import { ProjectFn } from '../camera/projection';
-import { MapLabel } from './map-hud';
+import { MapLabel } from '../map-mode/map-hud';
 import { DisplayFrameFn } from './plan-display';
-import { Plan } from '../plan/plan';
+import { Plan } from './plan';
 
 // mapGizmo のイベントを外部(MapModeSystem)のロジックへ橋渡しするためのコールバック束。
 // mapGizmo 自体は private のため、外部からのコールバック配線はこの一箇所を通す。

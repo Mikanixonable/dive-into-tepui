@@ -9,11 +9,12 @@ import { envAccelInto } from '../../physics/envaccel';
 import { ExtraAccel, stepOrbitRK4 } from '../../physics/orbital';
 import { add, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import type { CombatCtx } from '../stages/stage-definition';
+import type { CombatCtx } from '../stages/stage';
 import { HitCtx, HitSystem } from './hit';
-import { Bullet, Casing, CheckLossCtx, DebrisPiece, MagPickup, OrbitEntity } from '../entities';
+import { Ammo, Casing, CheckLossCtx, DebrisPiece, OrbitEntity } from './entities';
 import { Player } from '../player/player';
-import { Enemy } from '../enemy/enemy';
+import { Enemy } from './enemy';
+import { Bullet } from './bullet';
 import { EphemerisSystem } from '../ephemeris';
 
 export interface SimulatorCtx {
@@ -32,7 +33,7 @@ export class Simulator {
   readonly bullets: Bullet[] = [];
   readonly casings: Casing[] = [];
   readonly debris: DebrisPiece[] = [];
-  readonly magPickups: MagPickup[] = [];
+  readonly ammos: Ammo[] = [];
   // 生成された累計数(prune で enemies 配列から消えても減らない)。
   // 「何機中何機撃破」等の表示は enemies.length ではなくこちらを使う。
   private totalEnemiesSpawnedValue = 0;
@@ -73,8 +74,8 @@ export class Simulator {
     while (this.debris.length > C.MAX_DEBRIS) this.debris.shift()!.dispose();
   }
 
-  addMagPickup(pickup: MagPickup): void {
-    this.magPickups.push(pickup);
+  addAmmo(ammo: Ammo): void {
+    this.ammos.push(ammo);
   }
 
   // 上限超過時は最古の個体をシーンから外す(弾・薬莢のジオメトリは共有なので破棄しない)
@@ -137,7 +138,7 @@ export class Simulator {
     for (const e of this.enemies) if (e.alive) stepAttitude(e.att, v3(), attDt);
     for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
     for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
-    for (const mp of this.magPickups) if (mp.alive) stepAttitude(mp.att, v3(), attDt);
+    for (const ammo of this.ammos) if (ammo.alive) stepAttitude(ammo.att, v3(), attDt);
   }
 
   private stepWorldOrbits(dt: number, trackPrevR: boolean): void {
@@ -145,7 +146,7 @@ export class Simulator {
     this.stepEntities(this.bullets, dt, this.envBullet, { skipDead: true, trackPrevR });
     this.stepEntities(this.casings, dt, this.envSmall);
     this.stepEntities(this.debris, dt, this.envSmall);
-    this.stepEntities(this.magPickups, dt, this.envSmall, { skipDead: true });
+    this.stepEntities(this.ammos, dt, this.envSmall, { skipDead: true });
   }
 
   private stepEntities(
@@ -171,13 +172,13 @@ export class Simulator {
     for (const b of this.bullets) b.checkLoss(ctx);
     for (const cs of this.casings) cs.checkLoss(ctx);
     for (const d of this.debris) d.checkLoss(ctx);
-    for (const mp of this.magPickups) mp.checkLoss(ctx);
+    for (const ammo of this.ammos) ammo.checkLoss(ctx);
     // alive=false になったものを配列から除去して scene から片付ける(dispose)。
     this.prune(this.enemies);
     this.prune(this.bullets);
     this.prune(this.casings);
     this.prune(this.debris);
-    this.prune(this.magPickups);
+    this.prune(this.ammos);
   }
 
   // in-place フィルタ: 配列の参照はそのまま保つ(ctx スナップショット越しの参照を無効化しない)

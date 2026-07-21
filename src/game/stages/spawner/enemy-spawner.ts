@@ -1,12 +1,12 @@
 // 敵集団の配置・分散を計算し、直接 Enemy を生成する。StageCtx は受け取らない
 // (ゲームの現在状態への登録 = ctx.addEnemy は呼び出し側の各 Stage(stages/)が行う)。
 import * as THREE from 'three/webgpu';
-import { OrbitState } from '../../physics/orbital';
-import { Vec3, add, clone, cross, len, norm, randPerp, randSym, scale, sub, v3 } from '../../physics/vec3';
-import * as C from '../const';
-import { Hud } from '../../hud/hud';
-import { Sfx } from '../../audio/sfx';
-import { Enemy } from './enemy';
+import { OrbitState } from '../../../physics/orbital';
+import { Vec3, add, clone, cross, len, norm, randPerp, randSym, scale, sub, v3 } from '../../../physics/vec3';
+import * as C from '../../const';
+import { Hud } from '../../../hud/hud';
+import { Sfx } from '../../../audio/sfx';
+import { Enemy } from '../../orbit-entity/enemy';
 import { generateApproachingEnemy, generateDriftingEnemy } from './enemy-generator';
 
 // 色分けされた5グループ(各10機)を base 周囲5km以内に配置して直接生成する(訓練クラスタ)。
