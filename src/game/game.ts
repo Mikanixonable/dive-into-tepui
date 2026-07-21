@@ -17,7 +17,7 @@ import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkersSystem } from '../hud/markers';
 import { CollisionPhysics } from './orbit-entity/collision';
 import { EffectsSystem } from './effects-system';
-import { getStageDefinition, resolveStageInitData } from './stages/stage-dictionary';
+import { getStageDefinition, initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { HudProjection } from './camera/projection';
@@ -141,7 +141,7 @@ export class Game {
 
     this.player = new Player(this._hud, this._sfx, this._scene, this.effects);
 
-    this.initStage();
+    initStage(this.activeStage, this.player, this.simulator, this._hud);
   }
 
   private wireHudCallbacks(): void {
@@ -156,16 +156,6 @@ export class Game {
       location.assign(location.pathname);
     };
   }
-
-  // ステージ別の初期敵配置・初期弾薬・初期補給の配置と作戦目標のブリーフィング表示
-  // (ステージごとの分岐は activeStage.init が直接行う)。
-  private initStage(): void {
-    const enemyCount = this.activeStage.init(this.player, this.simulator);
-    const data = resolveStageInitData(this.activeStage, enemyCount);
-    this.player.initAmmo(data.magsLeft, data.roundsInMag);
-    this._hud.toast(data.briefingHtml, 12000);
-  }
-
 
   // ---------------------------------------------------------------- update
 
