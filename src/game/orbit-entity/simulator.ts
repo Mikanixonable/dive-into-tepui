@@ -15,11 +15,6 @@ import { Bullet } from './bullet';
 import { EphemerisSystem } from '../ephemeris';
 import type { Stage } from '../stages/stage';
 
-export interface SimulatorCtx {
-  player: Player;
-  hitCtx: (simTime: number) => HitCtx;
-}
-
 export interface SimulationAdvance {
   simTime: number;
   simDt: number;
@@ -94,7 +89,7 @@ export class Simulator {
     simTime: number,
     dt: number,
     simSpeed: number,
-    ctx: SimulatorCtx,
+    ctx: HitCtx,
     hardCollision: boolean,
     doSubstep: boolean,
     playerAccel: ExtraAccel | null = null,
@@ -106,9 +101,9 @@ export class Simulator {
     for (let i = 0; i < nSub; i++) {
       nextSimTime = this.simulationSubStep(nextSimTime, subDt, ctx.player, playerAccel, hardCollision);
       if (hardCollision) {
-        const hitCtx = ctx.hitCtx(nextSimTime);
-        this.hit.checkBulletHits(hitCtx);
-        this.hit.checkBoardCrossings(hitCtx.target, hitCtx.player, hitCtx.simulator, hitCtx.boardMarks);
+        const hitCtx: HitCtx = { ...ctx, simTime: nextSimTime };
+        this.hit.checkBulletHits(hitCtx, this);
+        this.hit.checkBoardCrossings(hitCtx.target, hitCtx.player, this, hitCtx.boardMarks);
       }
     }
     if (!hardCollision) this.stepCoastingAttitudes(simDt);

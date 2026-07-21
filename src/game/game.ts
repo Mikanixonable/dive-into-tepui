@@ -26,7 +26,7 @@ import { Plan } from './plan/plan';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRenderer } from './pip-renderer';
-import { Simulator, SimulatorCtx } from './orbit-entity/simulator';
+import { Simulator } from './orbit-entity/simulator';
 import * as C from './const';
 import { Input } from './input';
 import { TouchControls } from './touch';
@@ -197,7 +197,7 @@ export class Game {
         this.simTime,
         dt,
         this.simSpeedManager.simSpeed,
-        this.simulatorCtx(),
+        this.hitCtx(this.simTime),
         false,
         false,
       );
@@ -231,7 +231,7 @@ export class Game {
       this.simTime,
       dt,
       simSpeed,
-      this.simulatorCtx(),
+      this.hitCtx(this.simTime),
       true,
       true,
       playerAccel,
@@ -312,7 +312,6 @@ export class Game {
       simTime,
       player: this.player,
       activeStage: this.activeStage,
-      simulator: this.simulator,
       target: this.targeter.autoTarget,
       boardMarks: this.markersSystem.boardMarks,
     };
@@ -329,13 +328,6 @@ export class Game {
       mapLabelIds: this.mapModeSystem.mapLabelIds(),
       activeCamera: this.cameraSystem.activeCamera,
       simTime: this.simTime,
-    };
-  }
-
-  private simulatorCtx(): SimulatorCtx {
-    return {
-      player: this.player,
-      hitCtx: (simTime) => this.hitCtx(simTime),
     };
   }
 

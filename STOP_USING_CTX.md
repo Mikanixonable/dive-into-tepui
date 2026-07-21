@@ -111,27 +111,11 @@ const {x, y, z} = result;
 
 `combatCtx`/`fireCtx`/`enemyAiCtx`/`collisionCtx`/`planCtx`(冒頭の例で挙げた型そのもの)は現在のコードにはもう存在しない。特に `planCtx` は `getExternalState: () => ({ player, ephemeris, simTime })` という無名型のコールバックに置き換えられており、下記「概ね許容できる例」で扱う。残っているのは以下の7つの named `*Ctx` interface と、命名こそ `Params` だが同種の型1つ。
 
+#### 2. `HitCtx`(`src/game/orbit-entity/hit.ts`)　解消済み
 
-htiCtxのクロージャ受け渡しについて
+`HitCtx.simulator` フィールドを削除。`checkBulletHits`/`checkBoardCrossings` は `Simulator` から `this` を明示的な第2引数として受け取るようにした(`ctx.simulator.enemies` → `simulator.enemies`)。これで `HitCtx` は `SimulatorCtx` 経由のネストも自己参照も持たない、フィールド5個の素直なスナップショットになった。今後さらに `activeStage`/`target`/`boardMarks` の帰属先を見直してスリム化を進める余地はあるが、当面のネスト・転用問題は解消。
 
-#### 1. `SimulatorCtx`(`src/game/orbit-entity/simulator.ts`)— ctxを返すctxという入れ子
-
-- **フィールド**: 2 → 2(重複ソースはない。問題はフィールド数ではなく構造)
-- **利用パターン**: `game.ts` の `simulatorCtx()` が `{ player, hitCtx: (simTime) => this.hitCtx(simTime) }` を生成し、`Simulator.integrateSimulation` に渡す。内部で `ctx.hitCtx(nextSimTime)` を呼んで `HitCtx` を都度組み立てる。
-- **問題**: `hitCtx` フィールドは「別の ctx を組み立てるファクトリ関数」そのものであり、43行目の「ctxの入れ子を解消する」に反する変則パターン(直接ネストではなく、クロージャ越しのネスト)。しかも `ctx.hitCtx(nextSimTime)` が返す `HitCtx.simulator` は、呼び出し元である `Simulator` 自身への参照 — `Simulator` が `game.ts` を経由して自分自身を受け取る循環構造になっている。`this` で足りるはずの情報を、わざわざ `Game` を往復させて受け取っている。
-- **対応策**: `HitCtx` から `simulator` フィールドを削除し(下記参照)、`HitSystem.checkBulletHits`/`checkBoardCrossings` は `Simulator` 側から `this` を直接渡すようにする。そうすれば `SimulatorCtx` はもはや ctx 生成クロージャを持つ必要がなくなり、`hitCtx` を除いた身軽なスナップショット(あるいは通常引数)に置き換えられる。
-
-懸念点として、生成クロージャーをsimTimeではなくnextSimTimeで呼び出している点。通常のhitCtxでは事足りないのだろうか…→おそらくsimTimeがさし変わっている以外、hitCtxの挙動に変更点はなさそう
-
-
-#### 2. `HitCtx`(`src/game/orbit-entity/hit.ts`)
-
-- **フィールド**: 6 → 5(`simulator` を削除できる。理由は上記 `SimulatorCtx` 参照)
-- **利用パターン**: `checkBulletHits(ctx)` は ctx をまるごと使う。直後に呼ばれる `checkBoardCrossings` へは `hitCtx.target, hitCtx.player, hitCtx.simulator, hitCtx.boardMarks` と個別に再分解して渡している(`simulator.ts:109-111`)。1つの `HitCtx` オブジェクトが、2つの異なるメソッド(必要とするフィールド集合が異なる)に流用されている。
-- **問題**: `simulator` フィールドは常に呼び出し元(`Simulator.integrateSimulation`)自身と同一インスタンスであり、`ctx.simulator.enemies`/`ctx.simulator.bullets` として使われている箇所は `this.enemies`/`this.bullets` で置き換え可能。「毎回引数として受け取るのではなく、既に持っている情報を経由させている」という36節の逆パターン。
-- **対応策**: `simulator` を削除し、`checkBulletHits`/`checkBoardCrossings` は `Simulator` から `this` を明示的な引数として渡す(あるいは `HitSystem` のメソッドを `Simulator` のメソッドとして持たせることも検討)。2つのメソッドが要求するフィールド集合が違う以上、ctx を共有せず、それぞれに必要な引数だけを渡す形が素直。
-
-#### 3. `MarkerCtx`(`src/hud/markers.ts`)
+#### 3. `MarkerCtx`(`src/hud/markers.ts`)　保留
 
 - **フィールド**: 8 → 6(`activeCamera` を削除、`enemies`+`ammos` を `simulator` 1個にまとめられる)
 - **利用パターン**: `game.ts` の `markerCtx()` ファクトリが毎フレーム生成。`updateMarkers` 冒頭で `mapMode/player/enemies/target/ammos/mapLabelIds` は即座に分割代入され、各 private メソッドへ個別に渡される(模範的)。ただし `updateLeadAndDirMarkers(ctx, o, pv, project)` だけは ctx をまるごと転用している。
@@ -142,10 +126,7 @@ htiCtxのクロージャ受け渡しについて
 - **対応策**: 層境界がまだ定まっていない、最低限の対処で様子見。
 `activeCamera` を削除する。`enemies`/`ammos` は `simulator: Simulator` を渡す形にまとめるか(hud/ が game/orbit-entity/ の型に依存することになるので判断が要る)、現状維持のまま `simulator` を渡さない方針を明文化するかを検討する。`updateLeadAndDirMarkers` も他と同様に分解引数へ揃える。
 
-
-
-
-#### 4. `PipRenderCtx`(`src/game/pip-renderer.ts`)- 
+#### 4. `PipRenderCtx`(`src/game/pip-renderer.ts`)　保留
 
 - **フィールド**: 6 → 4(`firing`+`playerShipObj` は `this.player` から、`mapMode`+`camera` は `this.cameraSystem` からそれぞれ2フィールドずつ取り出されている)
 - **利用パターン**: `game.ts` の `render()` がインラインで構築(ファクトリ関数なし)。`renderFrame(ctx)` から private `renderCombatWithPip(ctx)` へ ctx をまるごと転送しているが、これは同一クラス内の1メソッド分割にすぎない。
