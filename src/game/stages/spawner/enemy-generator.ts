@@ -6,7 +6,6 @@ import * as THREE from 'three/webgpu';
 import { qFromForwardUp, randomQuat } from '../../../physics/attitude';
 import { MU_EARTH, OrbitState, R_EARTH, stateFromElements } from '../../../physics/orbital';
 import { cross, len, norm, randSym, rotateAxis, scale, v3 } from '../../../physics/vec3';
-import { buildEnemyShip, buildStage0EnemyShip } from '../../../render/ships';
 import { Hud } from '../../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import { Enemy } from '../../orbit-entity/enemy';
@@ -23,7 +22,7 @@ export function generateDriftingEnemy(name: string, state: OrbitState, hp: numbe
   return new Enemy(
     name,
     state,
-    buildEnemyShip(accent),
+    { kind: 'drifting' },
     {
       q: randomQuat(),
       w: v3(randSym(0.12), randSym(0.12), randSym(0.12)),
@@ -83,7 +82,7 @@ export function generateApproachingEnemy(
   return new Enemy(
     name,
     state,
-    buildStage0EnemyShip(accent, typeIndex),
+    { kind: 'stage0', typeIndex },
     {
       q: qFromForwardUp(state.v, state.r) ?? randomQuat(),
       w: v3(0, 0, 0),

@@ -5,6 +5,7 @@ import { Attitude } from '../../physics/attitude';
 import { Vec3, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { CombatCtx } from '../stages/stage';
+import { buildAmmo, buildBarrelMesh, buildCasingMesh, buildDebrisMesh, buildMagazineFrame } from '../../render/ships';
 
 export interface CheckLossCtx {
   dt: number;
@@ -82,8 +83,8 @@ export abstract class Ship extends OrbitEntity {
 export class Casing extends OrbitEntity {
   bornSim: number;
 
-  constructor(state: OrbitState, obj: THREE.Object3D, att: Attitude, bornSim: number, scene?: THREE.Scene) {
-    super(state, obj, scene, att);
+  constructor(state: OrbitState, att: Attitude, bornSim: number, scene?: THREE.Scene) {
+    super(state, buildCasingMesh(), scene, att);
     this.bornSim = bornSim;
     this.collideRadius = 0.2;
   }
@@ -97,17 +98,31 @@ export class Casing extends OrbitEntity {
 
 // 軌道上の補給(接近すると取り込んでベルトを延長できる)
 export class Ammo extends OrbitEntity {
-  constructor(state: OrbitState, obj: THREE.Object3D, att: Attitude, scene?: THREE.Scene) {
-    super(state, obj, scene, att);
+  constructor(state: OrbitState, att: Attitude, scene?: THREE.Scene) {
+    super(state, buildAmmo(), scene, att);
     this.mass = 50;
     this.collideRadius = C.AMMO_PHYS_RADIUS;
   }
 }
 
+// DebrisPiece の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
+export type DebrisKind =
+  | { kind: 'fragment'; accent: number; size: number }
+  | { kind: 'barrel' }
+  | { kind: 'magazineFrame' };
+
+function buildDebrisObj(debrisKind: DebrisKind): THREE.Object3D {
+  switch (debrisKind.kind) {
+    case 'fragment': return buildDebrisMesh(debrisKind.accent, debrisKind.size);
+    case 'barrel': return buildBarrelMesh();
+    case 'magazineFrame': return buildMagazineFrame();
+  }
+}
+
 // collideRadius 未設定の破片(爆発デブリ等)は剛体接触に参加せずすり抜ける。
 export class DebrisPiece extends OrbitEntity {
-  constructor(state: OrbitState, obj: THREE.Object3D, att: Attitude, collideRadius?: number, scene?: THREE.Scene) {
-    super(state, obj, scene, att);
+  constructor(state: OrbitState, debrisKind: DebrisKind, att: Attitude, collideRadius?: number, scene?: THREE.Scene) {
+    super(state, buildDebrisObj(debrisKind), scene, att);
     this.mass = C.EJECTED_MAG_MASS;
     this.collideRadius = collideRadius;
   }
