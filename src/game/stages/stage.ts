@@ -8,7 +8,7 @@ import { Enemy } from '../orbit-entity/enemy';
 import { Player } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter as scoreCounter } from './stage-utils/score-counter';
-import { EffectsCtx } from '../effects-system';
+import { EffectsSystem } from '../effects-system';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { showResultScreen, showWinScreen } from '../result-screen';
@@ -51,7 +51,7 @@ export interface CombatCtx {
   totalEnemies: number;
   activeStage: Stage;
   setPhase(phase: 'playing' | 'won' | 'lost' | 'timeup'): void;
-  fx: EffectsCtx;
+  fx: EffectsSystem;
   unlockManager: UnlockManager;
 }
 

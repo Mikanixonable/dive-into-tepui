@@ -8,7 +8,7 @@ import { OrbitLine } from '../../render/orbitline';
 import { add, clone, len, norm, randPerp, rotateAxis, scale, sub } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
-import { EffectsCtx, spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
+import { EffectsSystem } from '../effects-system';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
 import { CombatCtx } from '../stages/stage';
@@ -77,20 +77,20 @@ export class Enemy extends Ship {
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。attacked からのみ呼ばれる。
-  private hitEffect(fx: EffectsCtx, bullet: Bullet): void {
+  private hitEffect(fx: EffectsSystem, bullet: Bullet): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
-      spawnPlasmaFlash(fx, bullet.state.r, this.state.v);
+      fx.spawnPlasmaFlash(bullet.state.r, this.state.v);
     } else {
-      spawnBulletFlash(fx, bullet.state.r, this.state.v);
+      fx.spawnBulletFlash(bullet.state.r, this.state.v);
     }
-    spawnFragments(this.scene!, fx, bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    fx.scatterFragments(bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
 
-  private destroyEffect(fx: EffectsCtx): void {
+  private destroyEffect(fx: EffectsSystem): void {
     this._sfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    spawnShipDestroyEffect(this.scene!, fx, this.state.r, this.state.v, C.ENEMY_SCALE, 0xff6a4a);
+    fx.spawnShipDestroyEffect(this.state.r, this.state.v, C.ENEMY_SCALE, 0xff6a4a);
   }
 
   // 被弾によるダメージ・致死判定。

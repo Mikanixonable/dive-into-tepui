@@ -20,7 +20,7 @@ import { Belt } from './belt';
 import { altitudeOf } from '../../physics/orbital';
 import { ThermalSystem } from './thermal';
 import { CheckLossCtx } from '../orbit-entity/entities';
-import { EffectsCtx, spawnBulletFlash, spawnFragments, spawnPlasmaFlash, spawnShipDestroyEffect } from '../effects-system';
+import { EffectsSystem } from '../effects-system';
 
 export interface PlayerActionState {
   thrustFn: ExtraAccel | null;
@@ -43,7 +43,6 @@ export class Player extends Ship {
   // hud は現状 Player 自身のメソッドからは未使用だが、hud/sfx は必ず対で注入する方針のため
   // 受け取る(hud はフィールドとしては保持しない)。
   private readonly _sfx: Sfx;
-  private readonly _scene: THREE.Scene;
   // 発射キー解放の立ち下がりで姿勢微調整モードを解除するための、直前フレームの発射状態。
   private prevFiring = false;
 
@@ -52,7 +51,6 @@ export class Player extends Ship {
     const state = Player.makeInitialState();
     super('PLAYER', state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, scene);
     this._sfx = sfx;
-    this._scene = scene;
     this.mass = 1000;
     // 剛体接触は実機体サイズ。被弾判定半径(radius)を使うと排莢直後の薬莢を弾いてしまう
     this.collideRadius = C.PLAYER_HULL_RADIUS;
@@ -185,7 +183,7 @@ export class Player extends Ship {
   }
 
   // 押下エッジキーの処理し、担当外のキーを記録
-  handleEdgeInput(presses: string[], fireCtx: FireCtx): string[] {
+  handleEdgeInput(presses: readonly string[], fireCtx: FireCtx): string[] {
     return presses.filter((code) => !this.handleEdgePress(code, fireCtx));
   }
 
@@ -239,19 +237,19 @@ export class Player extends Ship {
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
-  private hitEffect(fx: EffectsCtx, bullet: Bullet): void {
+  private hitEffect(fx: EffectsSystem, bullet: Bullet): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
-      spawnPlasmaFlash(fx, bullet.state.r, this.state.v);
+      fx.spawnPlasmaFlash(bullet.state.r, this.state.v);
     } else {
-      spawnBulletFlash(fx, bullet.state.r, this.state.v);
+      fx.spawnBulletFlash(bullet.state.r, this.state.v);
     }
-    spawnFragments(this._scene, fx, bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    fx.scatterFragments(bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
 
-  private destroyEffect(fx: EffectsCtx): void {
+  private destroyEffect(fx: EffectsSystem): void {
     this._sfx.explosion();
-    spawnShipDestroyEffect(this._scene, fx, this.state.r, this.state.v, 1, 0x9fd8e8);
+    fx.spawnShipDestroyEffect(this.state.r, this.state.v, 1, 0x9fd8e8);
   }
 
   // ポーズ中: 移動/発射の一時状態(推力可視化・射撃継続)を止める。

@@ -108,7 +108,8 @@ export const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)の
 export const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
 export const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
 export const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの物理接触用の半径 [m]
-export const EJECTED_MAG_MASS = 20; // 同、物理接触用の質量(実質量ではなくゲーム内衝突用の値)
+export const BARREL_MASS = 20; // バレルの物理接触用の質量(実質量ではなくゲーム内衝突用の値)
+export const MAGAZINE_FRAME_MASS = 20; // 空マガジンの物理接触用の質量(同上)
 
 // マガジンチェーンの可動域: 各つなぎ目(リンク間接合部)で許容する最大折れ角。
 // ロール(チェーン軸まわりのねじれ)・ピッチ(上下方向の折れ)・ヨー(左右方向の折れ)
@@ -121,11 +122,10 @@ export const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する�
 // 各リンクを前後2点の中点(または根本側は固定方向の延長点)へわずかに
 // 引き寄せる、曲げ剛性の簡易近似(かすかな直線復元力)。外力が止むと
 export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
+export const CASING_MASS = 1; // 薬莢の物理接触用の質量(実物同様に軽い)
 export const MAX_BULLETS = 400;
 export const MAX_CASINGS = 260;
 export const MAX_DEBRIS = 160;
-export const DEBRIS_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限
-export const DEBRIS_SIZE_MAX = 6.0; // 撃破デブリの破片サイズ上限
 //export const CASING_CLANK_COOLDOWN = 0.07; // 薬莢-機体接触音のレート制限 [実 s]
 
 // --- 被弾・撃破エフェクト(フラッシュ/破片) ---
@@ -145,6 +145,8 @@ export const DESTROY_FLASH1_DURATION = 1.1; // [s]
 export const DESTROY_FLASH2_SIZE0 = 6; // 撃破時フラッシュ(外殻)のサイズ下限
 export const DESTROY_FLASH2_SIZE1 = 40;
 export const DESTROY_FLASH2_DURATION = 0.5; // [s]
+export const DESTROY_FRAG_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限。ENEMY_SCALE 倍される
+export const DESTROY_FRAG_SIZE_MAX = 6.0;
 
 export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096];
 export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)

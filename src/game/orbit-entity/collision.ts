@@ -1,23 +1,24 @@
 // 剛体球どうしの接触解決(自機・敵機・薬莢・補給・デブリ・マガジンベルト)。
 // collideRadius を持つ OrbitEntity だけが参加し、state.r / state.v を直接補正する。
 import { Vec3 } from '../../physics/vec3';
-import { Ammo, BeltSection, Casing, DebrisPiece, OrbitEntity } from './entities';
-import { Enemy } from './enemy';
+import { BeltSection, DebrisPiece, OrbitEntity } from './entities';
 import { Player } from '../player/player';
 
+// player 以外の衝突参加エンティティは Simulator.collidableEntities() が一本化して渡す
+// (casings/debris の配列分割は Simulator 内部の上限管理の都合であり、ここでは扱わない)。
 export interface CollisionPhysicsCtx {
   player: Player;
-  enemies: Enemy[];
-  casings: Casing[];
-  ammos: Ammo[];
-  debris: DebrisPiece[];
+  entities: OrbitEntity[];
 }
+
+const isCasing = (e: OrbitEntity): boolean => e instanceof DebrisPiece && e.kind === 'casing';
 
 export class CollisionPhysics {
   resolve(dt: number, ctx: CollisionPhysicsCtx, onPlayerCasingImpact: () => void): void {
     const p = ctx.player;
     const beltActive = p.alive && dt > 1e-6;
-    const entities = this.collectEntities(ctx);
+    const entities = ctx.entities.filter(e => e.alive && e.collideRadius !== undefined);
+    if (p.alive) entities.push(p);
     if (beltActive) {
       entities.push(...p.belt.collisionSections(dt, p.state.r, p.state.v, p.att.q));
     }
@@ -25,17 +26,6 @@ export class CollisionPhysics {
     if (beltActive) {
       p.belt.applyCollisionSections(dt, p.state.r, p.state.v, p.att.q);
     }
-  }
-
-  // 集めたエンティティはすべて collideRadius を持つ(デブリはここで選別する)
-  private collectEntities(ctx: CollisionPhysicsCtx): OrbitEntity[] {
-    const entities: OrbitEntity[] = [];
-    if (ctx.player.alive) entities.push(ctx.player);
-    for (const e of ctx.enemies) if (e.alive) entities.push(e);
-    for (const c of ctx.casings) entities.push(c);
-    for (const ammo of ctx.ammos) if (ammo.alive) entities.push(ammo);
-    for (const d of ctx.debris) if (d.collideRadius !== undefined) entities.push(d);
-    return entities;
   }
 
   private resolveCollisionPairs(
@@ -55,7 +45,7 @@ export class CollisionPhysics {
           a.state.r, a.state.v, a.mass, a.collideRadius!,
           b.state.r, b.state.v, b.mass, b.collideRadius!,
         );
-        if (impact && ((a === player && b instanceof Casing) || (b === player && a instanceof Casing))) {
+        if (impact && ((a === player && isCasing(b)) || (b === player && isCasing(a)))) {
           onPlayerCasingImpact();
         }
       }
