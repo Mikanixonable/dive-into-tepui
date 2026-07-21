@@ -10,14 +10,6 @@ import { Sfx } from '../audio/sfx';
 import { Input } from './input';
 import { ProjectFn } from './camera/projection';
 
-export interface TargeterCtx {
-  player: Player;
-  enemies: Enemy[];
-  input: Input;
-  activeCamera: THREE.PerspectiveCamera;
-  project: ProjectFn;
-}
-
 export class Targeter {
   private lockedTarget: Enemy | null = null;
   autoTarget: Enemy | null = null;
@@ -39,9 +31,15 @@ export class Targeter {
     return this.autoTarget && this.autoTarget.alive ? this.autoTarget : null;
   }
 
-  updateCombatTargeting(ctx: TargeterCtx): Enemy | null {
-    this.handleTargetLockByRightClick(ctx);
-    this.autoTarget = this.resolveAutoTarget(ctx.enemies, ctx.player, ctx.activeCamera);
+  updateCombatTargeting(
+    player: Player,
+    enemies: Enemy[],
+    input: Input,
+    activeCamera: THREE.PerspectiveCamera,
+    project: ProjectFn,
+  ): Enemy | null {
+    this.handleTargetLockByRightClick(input, enemies, player, project);
+    this.autoTarget = this.resolveAutoTarget(enemies, player, activeCamera);
     return this.autoTarget;
   }
 
@@ -53,15 +51,15 @@ export class Targeter {
     return tgtEl;
   }
 
-  private handleTargetLockByRightClick(ctx: TargeterCtx): void {
-    const rightClicks = ctx.input.rightClicks();
-    if (rightClicks.length <= 0 || !ctx.player.alive) return;
+  private handleTargetLockByRightClick(input: Input, enemies: Enemy[], player: Player, project: ProjectFn): void {
+    const rightClicks = input.rightClicks();
+    if (rightClicks.length <= 0 || !player.alive) return;
     const click = rightClicks[rightClicks.length - 1]!;
     let hit: Enemy | null = null;
     let minDistSq = C.TARGET_LOCK_PICK_PX_SQ;
-    for (const enemy of ctx.enemies) {
+    for (const enemy of enemies) {
       if (!enemy.alive) continue;
-      const p = ctx.project(sub(enemy.state.r, ctx.player.state.r));
+      const p = project(sub(enemy.state.r, player.state.r));
       if (!p.front) continue;
       const dx = p.x - click.x;
       const dy = p.y - click.y;

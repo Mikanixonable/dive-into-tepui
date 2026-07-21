@@ -135,20 +135,6 @@ const {x, y, z} = result;
 - **問題**: `simulator` フィールドは常に呼び出し元(`Simulator.integrateSimulation`)自身と同一インスタンスであり、`ctx.simulator.enemies`/`ctx.simulator.bullets` として使われている箇所は `this.enemies`/`this.bullets` で置き換え可能。「毎回引数として受け取るのではなく、既に持っている情報を経由させている」という36節の逆パターン。
 - **対応策**: `simulator` を削除し、`checkBulletHits`/`checkBoardCrossings` は `Simulator` から `this` を明示的な引数として渡す(あるいは `HitSystem` のメソッドを `Simulator` のメソッドとして持たせることも検討)。2つのメソッドが要求するフィールド集合が違う以上、ctx を共有せず、それぞれに必要な引数だけを渡す形が素直。
 
-#### 4. `TargeterCtx`(`src/game/targeter.ts`)
-
-- **フィールド**: 5 → 5(ソース重複はなし。`game.ts` 側はファクトリ関数を作らずインライン object literal で構築しており、この点は模範的)
-- **利用パターン**: `updateCombatTargeting(ctx)` → `handleTargetLockByRightClick(ctx)` には ctx をまるごと渡す一方、`resolveAutoTarget(ctx.enemies, ctx.player, ctx.activeCamera)` へは個別分解して渡す。同一クラス内で使い方が割れている。
-- **問題**: 深刻ではないが、62節の「複数の関数で同じctxを受け取ってはいけない」に軽く抵触する。`handleTargetLockByRightClick` が今後肥大化すると、どのフィールドが実際に必要なのか ctx を読まないと分からなくなる。
-- **対応策**: `handleTargetLockByRightClick` も `resolveAutoTarget` と同様に個別引数へ分解する(`input`, `player`, `enemies`, `project` の4つ)。
-
-#### 5. `CameraUpdateCtx`(`src/game/camera/camera-system.ts`)
-
-- **フィールド**: 6 → 6(重複ソースなし。`game.ts` の `syncCamera` がインラインで構築、ファクトリ関数なし)
-- **利用パターン**: `updateActiveCamera(ctx)` 1メソッドのみで使用し、`mapMode` 分岐の中で `mapCamera.update(...)`/`chaseCamera.update(...)` へそれぞれ必要な部分集合だけを個別引数として渡す。ctx をそのまま他へ転用してはいない。
-- **問題**: フィールド数がやや多いが、1メソッド内で完結し即座に分解されているため実害は小さい。強いて言えば `mapCamera` 用フィールド(`focusRel`, `sunAz`)と `chaseCamera` 用フィールド(`origin`, `player`)がほぼ排他的であり、ctx全体を1つの塊として扱う意義は薄い。
-- **対応策**: 優先度は低い。手を入れるなら `updateActiveCamera` を通常の6引数関数にしても実害はない(呼び出し側は1箇所のみ)。
-
 #### 6. `StageCtx`(`src/game/stages/stage.ts`)
 
 - **フィールド**: 5 → 5(重複ソースなし)

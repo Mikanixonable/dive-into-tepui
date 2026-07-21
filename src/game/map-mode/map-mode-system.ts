@@ -201,8 +201,8 @@ export class MapModeSystem {
   }
 
   // focus(地球中心 or ラベル ID)を解決し、フローティングオリジン(origin)相対の
-  // 位置として返す。CameraUpdateCtx.focusRel の供給元 — MapCamera へは解決済みの
-  // Vec3 だけを渡す。
+  // 位置として返す。CameraSystem.updateActiveCamera の focusRel 引数の供給元 —
+  // MapCamera へは解決済みの Vec3 だけを渡す。
   focusRel(origin: Vec3): Vec3 {
     const pos = this.focus === 'earth' ? v3(0, 0, 0) : this.mapHud.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
     return sub(pos, origin);

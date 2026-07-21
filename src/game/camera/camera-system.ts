@@ -7,18 +7,8 @@ import { MapCamera } from './map-camera';
 import { Input } from '../input';
 import { Player } from '../player/player';
 
-export interface CameraUpdateCtx {
-  player: Player;
-  sunAz: number;
-  focusRel: Vec3; // MapCamera の注視点(origin 相対)。解決は map-mode-system.ts の責務。
-  input: Input;
-  dt: number;
-  origin: Vec3;
-}
-
 // 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する。
 // どちらも視点操作のみの責務のカメラで、このクラスが対称に内部保持する。
-// マップモードの有無・ラベル一覧など、カメラ外の状態は ctx 経由で受け取る。
 export class CameraSystem {
   readonly chaseCamera: ChaseCamera;
   readonly mapCamera: MapCamera;
@@ -34,16 +24,23 @@ export class CameraSystem {
     return this.mapMode ? this.mapCamera.camera : this.chaseCamera.camera;
   }
 
-  updateActiveCamera(ctx: CameraUpdateCtx): THREE.PerspectiveCamera {
-    const keyYaw = (ctx.input.down('ArrowLeft') ? 1 : 0) + (ctx.input.down('ArrowRight') ? -1 : 0);
-    const keyPitch = (ctx.input.down('ArrowDown') ? 1 : 0) + (ctx.input.down('ArrowUp') ? -1 : 0);
-    const mouse = ctx.input.mouse();
+  updateActiveCamera(
+    player: Player,
+    sunAz: number,
+    focusRel: Vec3, // MapCamera の注視点(origin 相対)。解決は map-mode-system.ts の責務。
+    input: Input,
+    dt: number,
+    origin: Vec3,
+  ): THREE.PerspectiveCamera {
+    const keyYaw = (input.down('ArrowLeft') ? 1 : 0) + (input.down('ArrowRight') ? -1 : 0);
+    const keyPitch = (input.down('ArrowDown') ? 1 : 0) + (input.down('ArrowUp') ? -1 : 0);
+    const mouse = input.mouse();
 
     if (this.mapMode) {
-      this.mapCamera.update(mouse, keyYaw, keyPitch, ctx.dt, ctx.focusRel, ctx.sunAz);
+      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, focusRel, sunAz);
       return this.mapCamera.camera;
     }
-    this.chaseCamera.update(mouse, keyYaw, keyPitch, ctx.dt, ctx.origin, ctx.player, this.zoomActive);
+    this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, origin, player, this.zoomActive);
     return this.chaseCamera.camera;
   }
 }
