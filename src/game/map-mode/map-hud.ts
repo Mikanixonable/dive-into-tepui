@@ -14,13 +14,6 @@ export interface MapLabel {
   pos: Vec3;
 }
 
-// updateLabels() が必要とする、Game 側の現在状態のスナップショット。
-export interface MapHudCtx {
-  simTime: number;
-  ephemeris: EphemerisSystem;
-  duration: number; // predictDurationSec()
-}
-
 export class MapHud {
   labels: MapLabel[] = [];
 
@@ -29,12 +22,13 @@ export class MapHud {
 
   // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルを更新し、
   // HUD マーカーに反映する。sliderT > 0 の間はゴーストスライダーの表示時刻を使う。
-  updateLabels(o: Vec3, ctx: MapHudCtx, sliderT: number, project: ProjectFn): void {
-    const t = sliderT > 0 ? ctx.simTime + sliderT * ctx.duration : ctx.simTime;
-    const mPos = moonPosition(t, ctx.ephemeris.moonPhase0);
-    const sPos = sunPosition(t, ctx.ephemeris.sunPhase0);
-    const emL = emLagrangePoints(t, ctx.ephemeris.moonPhase0);
-    const seL = seLagrangePoints(t, ctx.ephemeris.sunPhase0);
+  // duration は predictDurationSec() の結果。
+  updateLabels(o: Vec3, simTime: number, ephemeris: EphemerisSystem, duration: number, sliderT: number, project: ProjectFn): void {
+    const t = sliderT > 0 ? simTime + sliderT * duration : simTime;
+    const mPos = moonPosition(t, ephemeris.moonPhase0);
+    const sPos = sunPosition(t, ephemeris.sunPhase0);
+    const emL = emLagrangePoints(t, ephemeris.moonPhase0);
+    const seL = seLagrangePoints(t, ephemeris.sunPhase0);
 
     this.labels = [
       { id: 'earth', name: '地球', pos: { x: 0, y: 0, z: 0 } },

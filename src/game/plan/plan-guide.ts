@@ -12,24 +12,26 @@ import { fmtSpeed } from '../../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import { OrbitLine } from '../../render/orbitline';
 import { ProjectFn } from '../camera/projection';
-import { Plan, PlanCtx } from './plan';
+import { Plan } from './plan';
+import type { Player } from '../player/player';
+import type { EphemerisSystem } from '../ephemeris';
 
 // 直近の未達成ノードをちょうど含む程度の短い予測期間(28日ぶんを毎回計算するのは
 // 無駄なコストになるため)。map-mode/map-mode-system.ts も同一フレーム内で
 // plannedOrbitLine 用に同じ予測を必要とするので、export して再利用させる。
-export function guideDurationSec(plan: Plan, ctx: PlanCtx): number {
+export function guideDurationSec(plan: Plan, simTime: number): number {
   const first = plan.firstNode();
   if (!first) return 0;
-  return Math.max(C.NODE_GUIDE_MIN_DURATION, first.time - ctx.simTime + C.NODE_GUIDE_DURATION_MARGIN);
+  return Math.max(C.NODE_GUIDE_MIN_DURATION, first.time - simTime + C.NODE_GUIDE_DURATION_MARGIN);
 }
 
 // 戦闘ビューの計画軌道ライン(plannedOrbitLine)用: 直近ノードを実施した直後の
 // 軌道要素。噴射ガイド(PlanGuide.update)と同じ期間ポリシー(guideDurationSec)で
 // 予測を最新化する — マップの表示用予測期間(day/week/monthなど)とは意図的に別物。
-export function plannedOrbitElements(plan: Plan, ctx: PlanCtx): Elements | null {
+export function plannedOrbitElements(plan: Plan, player: Player, ephemeris: EphemerisSystem, simTime: number): Elements | null {
   const first = plan.firstNode();
   if (!first) return null;
-  plan.maybeRefresh(ctx, guideDurationSec(plan, ctx));
+  plan.maybeRefresh(player, ephemeris, simTime, guideDurationSec(plan, simTime));
   const sample = plan.sampleAt(first.time);
   return sample ? elementsFromState(sample.r, sample.v) : null;
 }
@@ -60,13 +62,18 @@ export class PlanGuide {
 
   // 計画軌道ラインを最新の予測に合わせる。mapMode 中は隠すが、update()(噴射ガイド)
   // とは異なり mapMode 中も含め毎フレーム呼んでよい。
-  updatePlannedLine(plan: Plan, ctx: PlanCtx, origin: Vec3, mapMode: boolean): void {
-    this.plannedLine.update(mapMode ? null : plannedOrbitElements(plan, ctx), origin);
+  updatePlannedLine(
+    plan: Plan,
+    { player, ephemeris, simTime }: { player: Player; ephemeris: EphemerisSystem; simTime: number },
+    origin: Vec3,
+    mapMode: boolean,
+  ): void {
+    this.plannedLine.update(mapMode ? null : plannedOrbitElements(plan, player, ephemeris, simTime), origin);
   }
 
   update(
     plan: Plan,
-    ctx: PlanCtx,
+    { player, ephemeris, simTime }: { player: Player; ephemeris: EphemerisSystem; simTime: number },
     o: Vec3,
     pv: Vec3,
     playerEl: Elements | null,
@@ -81,10 +88,10 @@ export class PlanGuide {
       return { achieved: false };
     }
 
-    plan.maybeRefresh(ctx, guideDurationSec(plan, ctx));
+    plan.maybeRefresh(player, ephemeris, simTime, guideDurationSec(plan, simTime));
 
     // 実行目標の構築・追従・凍結(凍結の理由は activeTarget フィールドのコメント参照)。
-    const tRem = node.time - ctx.simTime;
+    const tRem = node.time - simTime;
     if (this.activeTarget && this.activeTarget.nodeTime !== node.time) this.activeTarget = null;
     if (!this.activeTarget || tRem > C.NODE_TARGET_FREEZE_S) {
       if (tRem > 0) {

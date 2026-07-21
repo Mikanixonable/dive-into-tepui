@@ -50,11 +50,6 @@ export interface CombatCtx {
   unlockManager: UnlockManager;
 }
 
-// checkWin/onWin が必要とする最小の集計スナップショット。
-export interface StageWinCtx {
-  simTime: number;
-}
-
 export abstract class Stage {
   abstract readonly index: StageIndex;
   abstract readonly selectLabel: string;
@@ -100,11 +95,11 @@ export abstract class Stage {
 
   // 既定: 敵全機撃破で勝利(再突入等の自然損耗は losses を差し引くためだけに使う)。
   // 時間切れで終わるステージ(Stage0/Stage00)は false 固定・onWin no-op に override する。
-  checkWin(_ctx: StageWinCtx): boolean {
+  checkWin(): boolean {
     return this.scoreCounter.totalEnemiesSpawned - this.scoreCounter.kills - this.scoreCounter.losses <= 0;
   }
-  onWin(ctx: StageWinCtx): void {
-    showWinScreen(this._hud, this._sfx, this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, ctx.simTime);
+  onWin(simTime: number): void {
+    showWinScreen(this._hud, this._sfx, this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, simTime);
   }
 
   // HUDステータスパネルの補助表示(サバイバル波数・残り時間など)。既定は非表示。
@@ -125,11 +120,10 @@ export abstract class Stage {
     this.scoreCounter.recordKill();
     this._hud.hint(`${enemy.name} 撃破`);
 
-    const winCtx: StageWinCtx = { simTime: ctx.simTime };
-    if (this.checkWin(winCtx)) {
+    if (this.checkWin()) {
       ctx.setPhase('won');
       ctx.unlockManager.reportClear(this.index, this._hud);
-      this.onWin(winCtx);
+      this.onWin(ctx.simTime);
     }
   }
 
