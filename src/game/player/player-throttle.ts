@@ -87,22 +87,6 @@ export class PlayerThrottle {
     };
   }
 
-  // RCS パフの噴射方向(機体ローカル、body frame のトルク軸)。無回転なら null。
-  // ダンピングの符号反転を含め updateAttitude のトルク計算と同じ入力読み取りを行うが、
-  // ここでは可視化のみで実際のトルクは適用しない。
-  computeRcsTau(input: Input, w: Vec3, alive: boolean, phasePlaying: boolean, mapMode: boolean): Vec3 {
-    let tauX = (input.down('KeyI') ? 1 : 0) + (input.down('KeyK') ? -1 : 0);
-    let tauY = (input.down('KeyL') ? 1 : 0) + (input.down('KeyJ') ? -1 : 0);
-    let tauZ = (input.down('KeyO') ? 1 : 0) + (input.down('KeyU') ? -1 : 0);
-    if (this.rcsDamp && alive && phasePlaying && !mapMode) {
-      const eps = C.RCS_DAMP_PUFF_EPS;
-      if (tauX === 0 && Math.abs(w.x) > eps) tauX = -Math.sign(w.x);
-      if (tauY === 0 && Math.abs(w.y) > eps) tauY = -Math.sign(w.y);
-      if (tauZ === 0 && Math.abs(w.z) > eps) tauZ = -Math.sign(w.z);
-    }
-    return v3(tauX, tauY, tauZ);
-  }
-
   updateAttitude(
     att: Attitude,
     r: Vec3,

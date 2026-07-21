@@ -4,8 +4,7 @@ import { OrbitState } from '../physics/orbital';
 import { add, clone, randSym, randVec, v3, Vec3 } from '../physics/vec3';
 import * as C from './const';
 import { DebrisKind, DebrisPiece } from './orbit-entity/entities';
-import { buildFlashMesh } from '../render/ships';
-import { getGlowTexture } from '../render/glow-texture';
+import { Billboard } from '../render/billboard';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
 
 // フラッシュ・破片エフェクトの発生源。scene への注入をここに一元化し、呼び出し側
@@ -58,8 +57,8 @@ export class EffectsSystem {
     peakOpacity = 1,
     muzzle = false,
   ): void {
-    const mesh = buildFlashMesh(getGlowTexture(), color);
-    const fx: FlashEffect = { mesh, pos: clone(pos), vel: clone(vel), age: 0, duration, size0, size1, peakOpacity, muzzle };
+    const billboard = new Billboard(color);
+    const fx: FlashEffect = { billboard, pos: clone(pos), vel: clone(vel), age: 0, duration, size0, size1, peakOpacity, muzzle };
     this._flashEffects.addFlash(fx);
   }
 
