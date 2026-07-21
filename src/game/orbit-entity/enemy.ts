@@ -26,10 +26,10 @@ export interface EnemyAiCtx {
 }
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
-export type EnemyShipKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
+export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
 
-function buildEnemyObj(shipKind: EnemyShipKind, accent: number): THREE.Object3D {
-  return shipKind.kind === 'stage0' ? buildStage0EnemyShip(accent, shipKind.typeIndex) : buildEnemyShip(accent);
+function buildEnemyObj(enemyKind: EnemyKind, accent: number): THREE.Object3D {
+  return enemyKind.kind === 'stage0' ? buildStage0EnemyShip(accent, enemyKind.typeIndex) : buildEnemyShip(accent);
 }
 
 export class Enemy extends Ship {
@@ -50,7 +50,7 @@ export class Enemy extends Ship {
   constructor(
     name: string,
     state: OrbitState,
-    shipKind: EnemyShipKind,
+    enemyKind: EnemyKind,
     att: Attitude,
     hp: number,
     accent: number,
@@ -60,7 +60,7 @@ export class Enemy extends Ship {
     waveId?: number,
     scene?: THREE.Scene,
   ) {
-    super(name, state, buildEnemyObj(shipKind, accent), att, C.ENEMY_RADIUS, hp, scene);
+    super(name, state, buildEnemyObj(enemyKind, accent), att, C.ENEMY_RADIUS, hp, scene);
     this._sfx = sfx;
     this.accent = accent;
     this.waveId = waveId;
@@ -80,9 +80,9 @@ export class Enemy extends Ship {
   private hitEffect(fx: EffectsCtx, bullet: Bullet): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
-      spawnPlasmaFlash(this.scene!, fx, bullet.state.r, this.state.v);
+      spawnPlasmaFlash(fx, bullet.state.r, this.state.v);
     } else {
-      spawnBulletFlash(this.scene!, fx, bullet.state.r, this.state.v);
+      spawnBulletFlash(fx, bullet.state.r, this.state.v);
     }
     spawnFragments(this.scene!, fx, bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }

@@ -27,7 +27,7 @@ import { MapModeSystem } from './map-mode/map-mode-system';
 import { Plan, PlanCtx } from './plan/plan';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
-import { PipRect, PipRenderer } from './pip-renderer';
+import { PipRenderer } from './pip-renderer';
 import { Simulator, SimulatorCtx } from './orbit-entity/simulator';
 import * as C from './const';
 import { EnemyAiCtx } from './orbit-entity/enemy';
@@ -205,13 +205,6 @@ export class Game {
     };
   }
 
-  // ズームウィンドウ(PIP)描画中、マズルフラッシュを非表示にする(pip-renderer.ts から
-  // playerShipObj.visible=false と同じタイミングで呼ばれる)。this.effects には被弾スパーク・
-  // 撃破爆発のフラッシュも入っているため、muzzle フラグ付きのものだけを切り替える
-  // (ズーム中でも敵側の命中・爆発の閃光は照準フィードバックとして見せたい)。
-  private setMuzzleFlashesVisible(v: boolean): void {
-    for (const fx of this.effectsSystem.effects) if (fx.muzzle) fx.mesh.visible = v;
-  }
 
   // ---------------------------------------------------------------- update
 
@@ -381,7 +374,7 @@ export class Game {
   // 必要とする最小の受け皿。CombatCtx/FireCtx から共通して参照される。
   private effectsCtx(): EffectsCtx {
     return {
-      effects: this.effectsSystem.effects,
+      flashEffects: this.effectsSystem,
       addDebris: (piece) => this.simulator.addDebris(piece),
     };
   }
@@ -487,7 +480,7 @@ export class Game {
     const o = this.player.state.r;
     const pv = this.player.state.v;
     const displayTime = this.mapModeSystem.resolveDisplayTime(this.cameraSystem.mapMode);
-    const cam = this.syncCamera(dt, o, pv);
+    const cam = this.syncCamera(dt, o);
     this.environment.sync({
       dt,
       origin: o,
@@ -499,58 +492,36 @@ export class Game {
       mapCameraFar: this.cameraSystem.mapCamera.camera.far,
       lit: this.cameraSystem.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
     });
-    this.syncThrustEffects();
-    this.syncRcsEffects();
     this.syncDynamicObjects(dt, o, pv);
-    this.syncEffects(dt, o);
+    this.effectsSystem.updateFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera);
     this.syncHud(dt, o, pv);
   }
 
-  private syncCamera(dt: number, o: Vec3, pv: Vec3): THREE.PerspectiveCamera {
-    const mouse = this.input.consumeMouse();
-    const keyYaw = (this.input.down('ArrowLeft') ? 1 : 0) + (this.input.down('ArrowRight') ? -1 : 0);
-    const keyPitch = (this.input.down('ArrowDown') ? 1 : 0) + (this.input.down('ArrowUp') ? -1 : 0);
+  private syncCamera(dt: number, o: Vec3): THREE.PerspectiveCamera {
     return this.cameraSystem.updateActiveCamera({
       zoomActive: this.cameraSystem.zoomActive,
       player: this.player,
       sunAz: sunAzimuth(this.simTime, this.ephemeris.sunPhase0),
       focusRel: this.mapModeSystem.focusRel(o),
-      mouse,
-      keyYaw,
-      keyPitch,
+      input: this.input,
       dt,
       origin: o,
-      playerVelocity: pv,
     });
   }
 
-  private syncThrustEffects(): void {
-    this.player.syncThrustEffects(this.cameraSystem);
-  }
-
-  private syncRcsEffects(): void {
-    this._sfx.setRcs(
-      this.player.syncRcsEffects(
-        this.input,
-        this.cameraSystem,
-        this.phase === 'playing',
-        this.paused,
-      ),
-    );
-  }
-
   private syncDynamicObjects(dt: number, o: Vec3, pv: Vec3): void {
-    this.player.syncTransformAtOrigin(this.cameraSystem.zoomActive);
+    this.player.sync(
+      dt,
+      this.input,
+      this.cameraSystem,
+      this.phase === 'playing',
+      this.paused,
+    );
     for (const e of this.simulator.enemies) if (e.alive) e.syncTransform(o);
     for (const b of this.simulator.bullets) b.syncBulletTransform(o, pv);
     for (const cs of this.simulator.casings) cs.syncTransform(o);
     for (const ammo of this.simulator.ammos) ammo.syncTransform(o);
-    this.player.updateBelt(dt);
     for (const d of this.simulator.debris) d.syncTransform(o);
-  }
-
-  private syncEffects(dt: number, o: Vec3): void {
-    this.effectsSystem.updateFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera);
   }
 
   // 自機・敵の軌道線は各 entity 自身が持つ(Player/Enemy コンストラクタ参照)ため、
@@ -591,11 +562,6 @@ export class Game {
     this._hud.tick();
   }
 
-  // ズームウィンドウ(PIP)のオーバーレイ更新。実処理は markers.ts へ委譲。
-  private updatePipOverlay(rect: PipRect | null): void {
-    this.markersSystem.updatePipOverlay(this.markerCtx(), rect);
-  }
-
   public render(dtRaw: number): void {
     const dt = Math.min(dtRaw, 0.1);
     this.sync(dt);
@@ -604,8 +570,8 @@ export class Game {
       mapMode: this.cameraSystem.mapMode,
       camera: this.cameraSystem.activeCamera,
       playerShipObj: this.player.obj,
-      setMuzzleFlashesVisible: (visible) => this.setMuzzleFlashesVisible(visible),
-      updateOverlay: (rect) => this.updatePipOverlay(rect),
+      setMuzzleFlashesVisible: (visible) => this.effectsSystem.setMuzzleFlashesVisible(visible),
+      updateOverlay: (rect) => this.markersSystem.updatePipOverlay(this.markerCtx(), rect),
     });
   }
 }

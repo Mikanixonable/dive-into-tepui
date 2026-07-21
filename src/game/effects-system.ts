@@ -5,7 +5,7 @@ import * as C from './const';
 import { DebrisPiece } from './orbit-entity/entities';
 import { buildFlashMesh } from '../render/ships';
 import { getGlowTexture } from '../render/glow-texture';
-import { FlashEffect } from './flash-effect-manager';
+import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
 
 
 
@@ -13,20 +13,20 @@ import { FlashEffect } from './flash-effect-manager';
 // 明示的な引数として渡す — hud/sfx/scene をひとまとめに ctx 注入する経路は根絶する方針
 // のため、ここには含めない)。
 export interface EffectsCtx {
-  effects: FlashEffect[];
+  flashEffects: FlashEffectManager;
   addDebris(piece: DebrisPiece): void;
 }
 
-export function spawnPlasmaFlash(scene: THREE.Scene, ctx: EffectsCtx, pos: Vec3, vel: Vec3): void {
-  spawnFlash(scene, ctx, pos, vel,
+export function spawnPlasmaFlash(ctx: EffectsCtx, pos: Vec3, vel: Vec3): void {
+  spawnFlash(ctx, pos, vel,
     C.PLASMA_HIT_FLASH_SIZE0,
     C.PLASMA_HIT_FLASH_SIZE1,
     C.PLASMA_HIT_FLASH_DURATION,
     0xffa0ff);
 }
 
-export function spawnBulletFlash(scene: THREE.Scene, ctx: EffectsCtx, pos: Vec3, vel: Vec3): void {
-  spawnFlash(scene, ctx, pos, vel,
+export function spawnBulletFlash(ctx: EffectsCtx, pos: Vec3, vel: Vec3): void {
+  spawnFlash(ctx, pos, vel,
     C.BULLET_HIT_FLASH_SIZE0,
     C.BULLET_HIT_FLASH_SIZE1,
     C.BULLET_HIT_FLASH_DURATION,
@@ -36,7 +36,6 @@ export function spawnBulletFlash(scene: THREE.Scene, ctx: EffectsCtx, pos: Vec3,
 // pos/vel は呼び出し元の生きたオブジェクト(entity の r/v など)を渡してよい。
 // 以後 fx が独立して動くよう、ここで clone して保持する。
 export function spawnFlash(
-  scene: THREE.Scene,
   ctx: EffectsCtx,
   pos: Vec3,
   vel: Vec3,
@@ -49,8 +48,7 @@ export function spawnFlash(
 ): void {
   const mesh = buildFlashMesh(getGlowTexture(), color);
   const fx: FlashEffect = { mesh, pos: clone(pos), vel: clone(vel), age: 0, duration, size0, size1, peakOpacity, muzzle };
-  ctx.effects.push(fx);
-  scene.add(mesh);
+  ctx.flashEffects.addFlash(fx);
 }
 
 // 破片を飛散させる共通処理(撃破デブリ・被弾の欠片)
@@ -88,8 +86,8 @@ export function spawnFragments(
 // 撃破デブリ: 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果。
 // 敵機は自機の ENEMY_SCALE 倍サイズなので、爆発・破片も見合った大きさにする(scale)。
 export function spawnShipDestroyEffect(scene: THREE.Scene, ctx: EffectsCtx, r: Vec3, v: Vec3, scale: number, accent: number): void {
-  spawnFlash(scene, ctx, r, v, C.DESTROY_FLASH1_SIZE0 * scale, C.DESTROY_FLASH1_SIZE1 * scale, C.DESTROY_FLASH1_DURATION, 0xffb36b);
-  spawnFlash(scene, ctx, r, v, C.DESTROY_FLASH2_SIZE0 * scale, C.DESTROY_FLASH2_SIZE1 * scale, C.DESTROY_FLASH2_DURATION, 0xfffbe8);
+  spawnFlash(ctx, r, v, C.DESTROY_FLASH1_SIZE0 * scale, C.DESTROY_FLASH1_SIZE1 * scale, C.DESTROY_FLASH1_DURATION, 0xffb36b);
+  spawnFlash(ctx, r, v, C.DESTROY_FLASH2_SIZE0 * scale, C.DESTROY_FLASH2_SIZE1 * scale, C.DESTROY_FLASH2_DURATION, 0xfffbe8);
   spawnFragments(scene, ctx, r, v, 11, accent, C.DEBRIS_SIZE_MIN * scale, C.DEBRIS_SIZE_MAX * scale, 2.8);
 }
 

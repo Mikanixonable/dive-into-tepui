@@ -222,7 +222,6 @@ export class PlayerFire {
   // (ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
   private spawnMuzzleFlash(ctx: FireCtx, ship: Ship, muzzle: Vec3, fwd: Vec3): void {
     spawnFlash(
-      this._scene,
       ctx.fx,
       addScaled(muzzle, fwd, 1.2),
       ship.state.v,
