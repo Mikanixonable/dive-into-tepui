@@ -5,7 +5,7 @@ import { moonPosition, sunPosition, emLagrangePoints, seLagrangePoints } from '.
 import { Vec3, sub } from '../../physics/vec3';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { ProjectFn } from '../camera/projection';
+import { ProjectFn } from '../camera/camera-system';
 import type { EphemerisSystem } from '../ephemeris';
 
 export interface MapLabel {

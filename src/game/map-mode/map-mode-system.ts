@@ -27,7 +27,7 @@ import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
 import { TouchControls } from '../touch';
-import { ProjectFn } from '../camera/projection';
+import { ProjectFn } from '../camera/camera-system';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { Plan } from '../plan/plan';
 import { PlanEditor } from '../plan/plan-editor';

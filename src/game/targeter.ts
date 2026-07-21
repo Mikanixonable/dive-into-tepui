@@ -9,7 +9,7 @@ import { Player } from './player/player';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
 import { Input } from './input';
-import { ProjectFn } from './camera/projection';
+import { ProjectFn } from './camera/camera-system';
 
 export class Targeter {
   private lockedTarget: Enemy | null = null;

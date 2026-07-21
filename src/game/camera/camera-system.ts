@@ -7,6 +7,10 @@ import { MapCamera } from './map-camera';
 import { Input } from '../input';
 import { Player } from '../player/player';
 
+const tmpV = new THREE.Vector3();
+
+export type ProjectFn = (rel: Vec3) => { x: number; y: number; front: boolean; };
+
 // 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する。
 // どちらも視点操作のみの責務のカメラで、このクラスが対称に内部保持する。
 export class CameraSystem {
@@ -42,5 +46,21 @@ export class CameraSystem {
     else {
       this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, origin, player, this.zoomActive);
     }
+  }
+
+
+  get activeCameraProjection(): ProjectFn {
+    return (rel: Vec3) => {
+      const cam = this.activeCamera;
+
+      tmpV.set(rel.x, rel.y, rel.z).applyMatrix4(cam.matrixWorldInverse);
+      const front = tmpV.z < 0;
+      tmpV.applyMatrix4(cam.projectionMatrix);
+      return {
+        x: (tmpV.x * 0.5 + 0.5) * window.innerWidth,
+        y: (-tmpV.y * 0.5 + 0.5) * window.innerHeight,
+        front,
+      };
+    };
   }
 }
