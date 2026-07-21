@@ -241,7 +241,7 @@ export class Player extends Ship {
       this.alive,
       input,
       mapMode,
-      this.fineAttitude,
+      this.fineAttitude || this.fire.isFiring,
       attDt,
       () => this._hud.hint('進行方向ホールド解除(手動操作)'),
     );
