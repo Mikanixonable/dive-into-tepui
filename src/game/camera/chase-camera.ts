@@ -8,7 +8,7 @@ import * as C from '../const';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { qRotate } from '../../physics/attitude';
-import { CameraUpdateCtx } from './camera-system';
+import { Player } from '../player/player';
 
 export class ChaseCamera {
   // 戦闘ビュー用のカメラ。near=2m なら地平線距離(~2,400km)での深度誤差も大気シェルの
@@ -44,30 +44,30 @@ export class ChaseCamera {
     );
   }
 
-  update(ctx: CameraUpdateCtx): void {
-    this.yaw -= ctx.keyYaw * C.CAM_KEY_YAW_RATE * ctx.dt;
+  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number, origin: Vec3, player: Player, zoomActive: boolean): void {
+    this.yaw -= keyYaw * C.CAM_KEY_YAW_RATE * dt;
     this.pitch = Math.max(-1.35, Math.min(1.35,
-      this.pitch + ctx.keyPitch * C.CAM_KEY_PITCH_RATE * ctx.dt
+      this.pitch + keyPitch * C.CAM_KEY_PITCH_RATE * dt
     ));
 
     // 速度方向を前方とする軌道基準フレームの up/fwd
-    const chaseFwd = norm(ctx.playerVelocity);
-    const chaseUp = norm(ctx.origin);
+    const chaseFwd = norm(player.state.v);
+    const chaseUp = norm(origin);
     // 姿勢基準フレームの前方向/上方向
-    const boreFwd = qRotate(ctx.player.att.q, v3(0, 0, 1));
-    const boreUp = qRotate(ctx.player.att.q, v3(0, 1, 0));
+    const boreFwd = qRotate(player.att.q, v3(0, 0, 1));
+    const boreUp = qRotate(player.att.q, v3(0, 1, 0));
 
-    if (!ctx.player.alive) {
-      this.updateChaseView(ctx.mouse, chaseUp, chaseFwd, ctx.dt);
+    if (!player.alive) {
+      this.updateChaseView(mouse, chaseUp, chaseFwd, dt);
     }
-    else if (ctx.zoomActive) {
-      this.updateGunsightView(boreFwd, boreUp, ctx.dt);
+    else if (zoomActive) {
+      this.updateGunsightView(boreFwd, boreUp, dt);
     }
     else if (this.camFollowAttitude) {
-      this.updateChaseView(ctx.mouse, boreUp, boreFwd, ctx.dt);
+      this.updateChaseView(mouse, boreUp, boreFwd, dt);
     }
     else {
-      this.updateChaseView(ctx.mouse, chaseUp, chaseFwd, ctx.dt);
+      this.updateChaseView(mouse, chaseUp, chaseFwd, dt);
     }
   }
 

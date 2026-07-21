@@ -223,6 +223,7 @@ export class Input {
     return c;
   }
 
+  // マウス移動量を取得(取得後クリア)。左ドラッグでの視点回転用。
   consumeMouse(): MouseDelta {
     const d = {
       dx: this.dx,

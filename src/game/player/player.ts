@@ -184,7 +184,7 @@ export class Player extends Ship {
     return { thrustFn };
   }
 
-    // 押下エッジキーの処理し、担当外のキーを記録
+  // 押下エッジキーの処理し、担当外のキーを記録
   handleEdgeInput(presses: string[], fireCtx: FireCtx): string[] {
     return presses.filter((code) => !this.handleEdgePress(code, fireCtx));
   }
@@ -204,13 +204,13 @@ export class Player extends Ship {
       default: return false;
     }
   }
-  
+
   // 被弾によるダメージ・致死判定。
   attacked(bullet: Bullet, ctx: CombatCtx): void {
     if (!this.alive) return;
 
     // todo: 弾種でダメージ分岐しないのか
-    this.hp -= C.PLAYER_HIT_DAMAGE
+    this.hp -= C.PLAYER_HIT_DAMAGE;
     if (this.hp > 0) {
       this.hitEffect(ctx.fx, bullet);
       return;
@@ -242,9 +242,9 @@ export class Player extends Ship {
   private hitEffect(fx: EffectsCtx, bullet: Bullet): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
-      spawnPlasmaFlash(this._scene, fx, bullet.state.r, this.state.v);
+      spawnPlasmaFlash(fx, bullet.state.r, this.state.v);
     } else {
-      spawnBulletFlash(this._scene, fx, bullet.state.r, this.state.v);
+      spawnBulletFlash(fx, bullet.state.r, this.state.v);
     }
     spawnFragments(this._scene, fx, bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
@@ -288,13 +288,23 @@ export class Player extends Ship {
 
   // floating origin のため自機は常にワールド原点(基底 Ship.syncTransform とは signature が
   // 異なる別メソッド — origin ではなくズーム中の可視性を受け取る)。ズーム中(PIP)は本体を隠す。
-  syncTransformAtOrigin(zoomActive: boolean): void {
+  sync(
+    dt: number,
+    input: Input,
+    camera: CameraSystem,
+    phasePlaying: boolean,
+    paused: boolean
+  ): void {
     this.obj.position.set(0, 0, 0);
     this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
-    this.obj.visible = this.alive && !zoomActive;
+    this.obj.visible = this.alive && !camera.zoomActive;
+
+    this.syncThrustEffects(camera);
+    this.syncRcsEffects(input, camera, phasePlaying, paused);
+    this.updateBelt(dt);
   }
 
-  syncThrustEffects(camera: CameraSystem): void {
+  private syncThrustEffects(camera: CameraSystem): void {
     const dir = this.throttle.thrustVizDir;
     const showPlume = dir !== null && this.alive && !camera.zoomActive;
     this.plumeCore.visible = showPlume;
@@ -313,7 +323,7 @@ export class Player extends Ship {
     (this.plumeOuter.material as THREE.MeshBasicMaterial).opacity = 0.32 * flick;
   }
 
-  syncRcsEffects(
+  private syncRcsEffects(
     input: Input,
     camera: CameraSystem,
     phasePlaying: boolean,
