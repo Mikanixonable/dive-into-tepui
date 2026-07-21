@@ -7,13 +7,14 @@ import { envAccelInto } from '../../physics/envaccel';
 import { ExtraAccel, stepOrbitRK4 } from '../../physics/orbital';
 import { add, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { HitCtx, HitSystem } from './hit';
+import { HitSystem } from './hit';
 import { Ammo, DebrisPiece, OrbitEntity } from './entities';
 import { Player } from '../player/player';
 import { Enemy } from './enemy';
 import { Bullet } from './bullet';
 import { EphemerisSystem } from '../ephemeris';
 import type { Stage } from '../stages/stage';
+import type { Targeter } from '../targeter';
 
 export interface SimulationAdvance {
   simTime: number;
@@ -39,6 +40,7 @@ export class Simulator {
   constructor(
     private readonly ephemeris: EphemerisSystem,
     private readonly hit: HitSystem,
+    private readonly targeter: Targeter,
   ) { }
 
   // ------------------------------------------------------------ 追加
@@ -89,7 +91,8 @@ export class Simulator {
     simTime: number,
     dt: number,
     simSpeed: number,
-    ctx: HitCtx,
+    player: Player,
+    activeStage: Stage,
     hardCollision: boolean,
     doSubstep: boolean,
     playerAccel: ExtraAccel | null = null,
@@ -99,11 +102,10 @@ export class Simulator {
     const subDt = simDt / nSub;
     let nextSimTime = simTime;
     for (let i = 0; i < nSub; i++) {
-      nextSimTime = this.simulationSubStep(nextSimTime, subDt, ctx.player, playerAccel, hardCollision);
+      nextSimTime = this.simulationSubStep(nextSimTime, subDt, player, playerAccel, hardCollision);
       if (hardCollision) {
-        const hitCtx: HitCtx = { ...ctx, simTime: nextSimTime };
-        this.hit.checkBulletHits(hitCtx, this);
-        this.hit.checkBoardCrossings(hitCtx.target, hitCtx.player, this, hitCtx.boardMarks);
+        this.hit.checkBulletHits(nextSimTime, player, activeStage, this);
+        this.targeter.markBoardCrossings(player, this);
       }
     }
     if (!hardCollision) this.stepCoastingAttitudes(simDt);

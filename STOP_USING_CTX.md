@@ -111,10 +111,6 @@ const {x, y, z} = result;
 
 `combatCtx`/`fireCtx`/`enemyAiCtx`/`collisionCtx`/`planCtx`(冒頭の例で挙げた型そのもの)は現在のコードにはもう存在しない。特に `planCtx` は `getExternalState: () => ({ player, ephemeris, simTime })` という無名型のコールバックに置き換えられており、下記「概ね許容できる例」で扱う。残っているのは以下の7つの named `*Ctx` interface と、命名こそ `Params` だが同種の型1つ。
 
-#### 2. `HitCtx`(`src/game/orbit-entity/hit.ts`)　解消済み
-
-`HitCtx.simulator` フィールドを削除。`checkBulletHits`/`checkBoardCrossings` は `Simulator` から `this` を明示的な第2引数として受け取るようにした(`ctx.simulator.enemies` → `simulator.enemies`)。これで `HitCtx` は `SimulatorCtx` 経由のネストも自己参照も持たない、フィールド5個の素直なスナップショットになった。今後さらに `activeStage`/`target`/`boardMarks` の帰属先を見直してスリム化を進める余地はあるが、当面のネスト・転用問題は解消。
-
 #### 3. `MarkerCtx`(`src/hud/markers.ts`)　保留
 
 - **フィールド**: 8 → 6(`activeCamera` を削除、`enemies`+`ammos` を `simulator` 1個にまとめられる)
