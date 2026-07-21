@@ -8,7 +8,6 @@ import { Input } from '../input';
 import { Player } from '../player/player';
 
 export interface CameraUpdateCtx {
-  zoomActive: boolean;
   player: Player;
   sunAz: number;
   focusRel: Vec3; // MapCamera の注視点(origin 相対)。解決は map-mode-system.ts の責務。

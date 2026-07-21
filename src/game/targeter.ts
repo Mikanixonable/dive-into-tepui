@@ -41,7 +41,7 @@ export class Targeter {
 
   updateCombatTargeting(ctx: TargeterCtx): Enemy | null {
     this.handleTargetLockByRightClick(ctx);
-    this.autoTarget = this.resolveAutoTarget(ctx);
+    this.autoTarget = this.resolveAutoTarget(ctx.enemies, ctx.player, ctx.activeCamera);
     return this.autoTarget;
   }
 
@@ -91,7 +91,7 @@ export class Targeter {
     this._hud.hint(`ターゲット固定: ${hit.name}`);
   }
 
-  private resolveAutoTarget(ctx: TargeterCtx): Enemy | null {
+  private resolveAutoTarget(enemies: Enemy[], player: Player, activeCamera: THREE.PerspectiveCamera): Enemy | null {
     if (this.lockedTarget && this.lockedTarget.alive) {
       return this.lockedTarget;
     }
@@ -99,11 +99,11 @@ export class Targeter {
     let bestTarget: Enemy | null = null;
     let bestDot = -1;
     const camFwdW = new THREE.Vector3();
-    ctx.activeCamera.getWorldDirection(camFwdW);
+    activeCamera.getWorldDirection(camFwdW);
     const camFwdVec = v3(camFwdW.x, camFwdW.y, camFwdW.z);
-    for (const enemy of ctx.enemies) {
+    for (const enemy of enemies) {
       if (!enemy.alive) continue;
-      const dir = norm(sub(enemy.state.r, ctx.player.state.r));
+      const dir = norm(sub(enemy.state.r, player.state.r));
       const d = dot(camFwdVec, dir);
       if (d > bestDot) {
         bestDot = d;
