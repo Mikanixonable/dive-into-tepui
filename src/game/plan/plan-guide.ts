@@ -11,7 +11,7 @@ import { Hud } from '../../hud/hud';
 import { fmtSpeed } from '../../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import { OrbitLine } from '../../render/orbitline';
-import { ProjectFn } from '../camera/projection';
+import { ProjectFn } from '../camera/camera-system';
 import { Plan } from './plan';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';

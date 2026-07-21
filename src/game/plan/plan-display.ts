@@ -13,7 +13,7 @@ import * as C from '../const';
 import { fmtMarkerDist } from '../../hud/utils';
 import { TrajLine } from '../../render/trajline';
 import { MarkerManager } from '../../hud/markerManager';
-import { ProjectFn } from '../camera/projection';
+import { ProjectFn } from '../camera/camera-system';
 import { Plan } from './plan';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
