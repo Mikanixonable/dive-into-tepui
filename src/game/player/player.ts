@@ -108,10 +108,6 @@ export class Player extends Ship {
     this.fire.onPickup(mags);
   }
 
-  update(dt: number): void {
-    this.belt.update(dt, this.fire.magsLeft, this.fire.roundsInMag, this.att, this.throttle.thrustAccelVec);
-  }
-
   // 毎フレームの HP 自然回復と、ユーザー入力に対する移動/発射の試行を一括で行う。
   // 実際の移動加速度の組み立ては PlayerThrottle、発砲・排莢の発注は PlayerFire が持つ。
   // canPlayerThrust/canPlayerFire(ワープ倍率による可否)は SimSpeedManager が既に
@@ -129,7 +125,12 @@ export class Player extends Ship {
     addBullet: (bullet: Bullet) => void;
   }): void {
     const { dt, input, simSpeed, mapMode, scoreCounter, simTime, zoomActive, addBullet } = params;
-    // 死亡済み: 何もしない
+
+    this.belt.update(dt, this.fire.magsLeft, this.fire.roundsInMag, this.att, this.throttle.thrustAccelVec);
+    this.handleEdgeInput(input);
+    this.updateAttitude(input, mapMode, dt * simSpeed.simSpeed);
+
+    // 死亡済み: 射撃、移動、hp回復はできない
     if (!this.alive) {
       this.thrustFn = null;
       return;
@@ -155,9 +156,12 @@ export class Player extends Ship {
     this._hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
   }
 
-  // 押下エッジキーの処理し、担当外のキーを記録
-  handleEdgeInput(presses: readonly string[]): string[] {
-    return presses.filter((code) => !this.handleEdgePress(code));
+  // 押下エッジキーのうち自機担当分を処理し、処理したキーを input から消費する
+  // (Game.ts 側の担当キーと重複しないようにするための簡易的な仕組み)。
+  private handleEdgeInput(input: Input): void {
+    for (const code of [...input.presses()]) {
+      if (this.handleEdgePress(code)) input.consumeKey(code);
+    }
   }
 
   private handleEdgePress(code: string): boolean {
@@ -229,12 +233,7 @@ export class Player extends Ship {
   }
 
 
-  updateAttitude(
-    input: Input,
-    mapMode: boolean,
-    attDt: number,
-    onProgradeHoldReleased: () => void,
-  ): void {
+  private updateAttitude(input: Input, mapMode: boolean, attDt: number): void {
     this.throttle.updateAttitude(
       this.att,
       this.state.r,
@@ -244,7 +243,7 @@ export class Player extends Ship {
       mapMode,
       this.fineAttitude,
       attDt,
-      onProgradeHoldReleased,
+      () => this._hud.hint('進行方向ホールド解除(手動操作)'),
     );
   }
 

@@ -201,13 +201,6 @@ export class Game {
       return;
     }
 
-    this.updateFrame(dt);
-  }
-
-  private updateFrame(dt: number): void {
-    this.simSpeedManager.update(this.simulator.simTime);
-    const simSpeed = this.simSpeedManager.simSpeed;
-    const simDt = dt * simSpeed;
     // プレイヤーの HP 回復・移動/発射の試行(this.player.thrustFn を書き換える)
     this.player.behave({
       dt,
@@ -220,24 +213,22 @@ export class Game {
       addBullet: (bullet) => this.simulator.addBullet(bullet),
     });
 
-    this.simulator.integrateSimulation(dt, simDt, this.player, this.activeStage, true, true);
+    // ステージの更新 (敵の行動・スポーン管理・スコア加算・勝敗判定を含む)
+    this.activeStage.update(dt, this.player, this.simulator, this.simulator.simTime, this.simSpeedManager);
 
-    this.player.checkLoss(dt, this.simulator.simTime, this.activeStage);
+    this.simSpeedManager.update(this.simulator.simTime);    
+    const simDt = dt * this.simSpeedManager.simSpeed;
+    this.simulator.integrateSimulation(dt, simDt, this.player, this.activeStage, true, true);
+    this.simulator.stepCoastingAttitudes(simDt);
 
     // 衝突判定
     if (this.simSpeedManager.canResolvePhysicalCollisions) {
       this.collisionPhysics.resolve(dt, this.player, this.simulator.allEntities(), () => this._sfx.clank());
     }
 
-    this.player.updateAttitude(this.input, this.cameraSystem.mapMode, simDt, () => {
-      this._hud.hint('進行方向ホールド解除(手動操作)');
-    });
-
-    this.simulator.stepCoastingAttitudes(simDt);
+    this.player.checkLoss(dt, this.simulator.simTime, this.activeStage);
 
     this.simulator.cleanup(dt, this.activeStage);
-
-    this.player.update(dt);
 
     if (this.cameraSystem.mapMode) {
       this.mapModeSystem.updateEditing(dt, this.input);
@@ -251,8 +242,6 @@ export class Game {
         (rel) => this.hudProjection.project(rel),
       );
     }
-
-    this.activeStage.update(dt, this.player, this.simulator, this.simulator.simTime, this.simSpeedManager);
   }
 
   private handlePausedFrame(): void {
@@ -262,9 +251,7 @@ export class Game {
   }
 
   private handleEdgeInput(): void {
-    const presses = this.input.presses();
-    const unconsumedPresses = this.player.handleEdgeInput(presses);
-    for (const code of unconsumedPresses) {
+    for (const code of this.input.presses()) {
       this.handleEdgePress(code);
     }
   }
@@ -312,12 +299,8 @@ export class Game {
       dt,
       origin: o,
       displayTime,
-      camera: this.cameraSystem.activeCamera,
-      sunPhase0: this.ephemeris.sunPhase0,
-      moonPhase0: this.ephemeris.moonPhase0,
-      mapMode: this.cameraSystem.mapMode,
-      mapCameraFar: this.cameraSystem.mapCamera.camera.far,
-      lit: this.cameraSystem.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
+      cameraSystem: this.cameraSystem,
+      ephemeris: this.ephemeris,
     });
     this.syncDynamicObjects(o, pv);
     this.effects.syncFlashEffects(dt, this.simulator.lastSimDt, o, this.cameraSystem.activeCamera);

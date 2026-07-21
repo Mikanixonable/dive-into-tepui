@@ -6,6 +6,8 @@ import { SIDEREAL_DAY } from '../physics/orbital';
 import { Vec3, len, norm, scale, sub } from '../physics/vec3';
 import { createEarth, Earth } from './earth';
 import { MOON_VIS_DIST, SUN_DISTANCE, SUN_VISUAL_SIZE, Sun, createMoon, createStars, createSun } from './stars';
+import { EphemerisSystem } from '../game/ephemeris';
+import { CameraSystem } from '../game/camera/camera-system';
 
 export interface EnvironmentLightingParams {
   sunIntensity: number;
@@ -18,12 +20,8 @@ export interface EnvironmentSyncParams {
   dt: number;
   origin: Vec3;
   displayTime: number;
-  camera: THREE.PerspectiveCamera;
-  sunPhase0: number;
-  moonPhase0: number;
-  mapMode: boolean;
-  mapCameraFar: number;
-  lit: number;
+  cameraSystem: CameraSystem;
+  ephemeris: EphemerisSystem;
 }
 
 export class EnvironmentScene {
@@ -56,9 +54,11 @@ export class EnvironmentScene {
   }
 
   sync(params: EnvironmentSyncParams): void {
-    const { dt, origin, displayTime, camera, sunPhase0, moonPhase0, mapMode, mapCameraFar, lit } = params;
+    const { dt, origin, displayTime, cameraSystem, ephemeris } = params;
     this.syncEarth(dt, origin, displayTime);
-    this.syncSkyBodies(displayTime, origin, camera, sunPhase0, moonPhase0, mapMode, mapCameraFar);
+    this.syncSkyBodies(displayTime, origin, ephemeris, cameraSystem);
+
+    const lit = cameraSystem.mapMode ? 1.0 : ephemeris.shadowLitFactor(origin);
     this.syncLighting(lit);
   }
 
@@ -71,17 +71,15 @@ export class EnvironmentScene {
   private syncSkyBodies(
     displayTime: number,
     origin: Vec3,
-    cam: THREE.PerspectiveCamera,
-    sunPhase0: number,
-    moonPhase0: number,
-    mapMode: boolean,
-    mapCameraFar: number,
+    ephemeris: EphemerisSystem,
+    cameraSystem: CameraSystem,
   ): void {
-    const visSunPos = sunPosition(displayTime, sunPhase0);
+    const visSunPos = sunPosition(displayTime, ephemeris.sunPhase0);
+    const cam = cameraSystem.activeCamera;
     const sd = norm(visSunPos);
     this.earth.setSunDir(sd.x, sd.y, sd.z);
     this.starsMesh.position.copy(cam.position);
-    this.starsMesh.scale.setScalar(mapMode ? (mapCameraFar * 0.9) / 3.5e7 : 1.0);
+    this.starsMesh.scale.setScalar(cameraSystem.mapMode ? (cameraSystem.mapCamera.camera.far * 0.9) / 3.5e7 : 1.0);
     this.sun.billboard.sync(
       {
         x: cam.position.x + sd.x * SUN_DISTANCE,
@@ -93,9 +91,9 @@ export class EnvironmentScene {
       cam.quaternion,
     );
     this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
-    const visMoonPos = moonPosition(displayTime, moonPhase0);
+    const visMoonPos = moonPosition(displayTime, ephemeris.moonPhase0);
     const moonRel = sub(visMoonPos, origin);
-    if (mapMode) {
+    if (cameraSystem.mapMode) {
       this.moonMesh.position.set(moonRel.x, moonRel.y, moonRel.z);
       this.moonMesh.scale.setScalar(R_MOON);
     } else {

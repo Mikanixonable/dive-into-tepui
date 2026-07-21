@@ -231,6 +231,13 @@ export class Input {
     return this.framePresses;
   }
 
+  // 呼び出したコードを今フレームの押下エッジから取り除く(押されていなかった扱いにする)。
+  // 複数箇所が同じキーを担当しうる場合に、片方が処理済みであることをもう片方へ伝える簡易手段。
+  consumeKey(code: string): void {
+    const i = this.framePresses.indexOf(code);
+    if (i !== -1) this.framePresses.splice(i, 1);
+  }
+
   // 今フレームの左クリック(ドラッグでない短い押下)位置。マップモードのノード配置用。
   clicks(): readonly { x: number; y: number }[] {
     return this.frameClicks;
