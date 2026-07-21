@@ -27,7 +27,7 @@ export function getStageDefinition(stage: number): Stage {
 
 export function initStage(stage: Stage, player: Player, simulator: Simulator, hud: Hud) {
     const enemyCount = stage.init(player, simulator);
-    player.initAmmo(stage.initialAmmo.magsLeft, stage.initialAmmo.roundsInMag);
+    player.initAmmo(stage.initialAmmo.mags, stage.initialAmmo.rounds);
     hud.toast(stage.briefingHtml(enemyCount), 12000);
 }
 

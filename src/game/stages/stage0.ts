@@ -14,7 +14,7 @@ export class Stage0 extends Stage {
   readonly selectLabel = '[T] 訓練ステージ — 近接戦闘訓練 (Stage 0)';
   readonly selectSub = '常時選択可。5km以内に色分けされた敵集団 約50機、制限時間2分の撃墜数スコアアタック';
   readonly selectKeys = ['KeyT'];
-  readonly initialAmmo = { magsLeft: 0, roundsInMag: 0 };
+  readonly initialAmmo = { mags: 0, rounds: 0 };
 
   private readonly timer = new ScoreAttackTimer(C.STAGE0_TIME_LIMIT);
 

@@ -94,14 +94,14 @@ export class Player extends Ship {
   get progradeHold(): boolean { return this.throttle.progradeHold; }
   get thrustVizDir(): Vec3 | null { return this.throttle.thrustVizDir; }
 
-  get roundsInMag(): number { return this.fire.roundsInMag; }
-  get magsLeft(): number { return this.fire.magsLeft; }
-  get magsLeftInBarrel(): number { return this.fire.magsLeftInBarrel; }
+  get roundsInMag(): number { return this.fire.rounds; }
+  get magsLeft(): number { return this.fire.mags; }
+  get magsLeftInBarrel(): number { return this.fire.barrel; }
   get reloadTimer(): number { return this.fire.cooldown; }
   get isFiring(): boolean { return this.fire.isFiring; }
 
-  initAmmo(magsLeft: number, roundsInMag: number): void {
-    this.fire.initAmmo(magsLeft, roundsInMag);
+  initAmmo(mags: number, rounds: number): void {
+    this.fire.initAmmo(mags, rounds);
   }
 
   onPickup(mags: number): void {
@@ -126,7 +126,7 @@ export class Player extends Ship {
   }): void {
     const { dt, input, simSpeed, mapMode, scoreCounter, simTime, zoomActive, addBullet } = params;
 
-    this.belt.update(dt, this.fire.magsLeft, this.fire.roundsInMag, this.att, this.throttle.thrustAccelVec);
+    this.belt.update(dt, this.fire.mags, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
     this.handleEdgeInput(input);
     this.updateAttitude(input, mapMode, dt * simSpeed.simSpeed);
 
