@@ -19,7 +19,12 @@ export class Stage00 extends Stage {
   readonly selectKeys = ['Digit0'];
   readonly initialAmmo = { magsLeft: C.INITIAL_MAGS - 1, roundsInMag: C.MAG_ROUNDS };
 
-  private readonly waveManager = new WaveManager();
+  private readonly waveManager = new WaveManager(
+    C.STAGE00_SPAWN_DELAY,
+    C.STAGE00_SPAWN_INTERVAL,
+    C.STAGE00_MAX_RANGE,
+    true,
+  );
 
   setup(
     hud: Hud,
@@ -52,12 +57,7 @@ export class Stage00 extends Stage {
   }
 
   update(dt: number, ctx: StageCtx): void {
-    this.waveManager.update(dt, ctx.phase, ctx.player, ctx.enemies, ctx.addEnemy, ctx.simTime, this.logistics, {
-      spawnDelay: C.STAGE00_SPAWN_DELAY,
-      spawnInterval: C.STAGE00_SPAWN_INTERVAL,
-      maxRange: C.STAGE00_MAX_RANGE,
-      respawnLogisticsOnDespawn: true,
-    });
+    this.waveManager.update(dt, ctx.phase, ctx.player, ctx.enemies, ctx.addEnemy, ctx.simTime, this.logistics);
   }
 
   checkWin(): boolean { return false; }
