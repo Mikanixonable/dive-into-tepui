@@ -1,8 +1,9 @@
-// キーボード・マウス入力の集約。押下中キーの参照と、
-// フレームごとに消費するエッジトリガ(押した瞬間)キューを提供する。
-// マウス: 左ボタン=視点ドラッグ(小さな動きならクリックとして扱う。
-// マップモードのノード配置に使う)、右ボタン=射撃(押下位置は takeRightClicks() で
-// 取得でき、マップモードのコンテキストメニュー呼び出しに使う)。
+// キーボード・マウス入力の集約。押下中キーの参照(down)に加え、
+// 1フレームぶんのエッジトリガ(押した瞬間のキー/クリック/マウス移動量)を
+// update() で確定させ、以後はそのスナップショットを副作用なしに何度でも
+// 読み出せる(presses/clicks/rightClicks/mouse)。update() は1フレームに
+// つき必ず1回、他の全ての読み出しより前に呼ぶこと(呼び出し元は main.ts の
+// rAF ループから呼ばれる Game.update() の先頭)。
 export interface MouseDelta {
   dx: number;
   dy: number;
@@ -13,22 +14,27 @@ export interface MouseDelta {
 
 const CLICK_MOVE_THRESHOLD = 6; // これ未満の累積移動量ならドラッグではなくクリック扱い
 
+const ZERO_MOUSE_DELTA: MouseDelta = { dx: 0, dy: 0, panDx: 0, panDy: 0, wheel: 0 };
+
 export class Input {
   private keys = new Set<string>();
-  private pressQueue: string[] = [];
+  // イベントハンドラが書き込む、次の update() 呼び出しまでの未確定分。
+  private pendingPresses: string[] = [];
+  private pendingClicks: { x: number; y: number }[] = [];
+  private pendingRightClicks: { x: number; y: number }[] = [];
   private dx = 0;
   private dy = 0;
   private panDx = 0;
   private panDy = 0;
   private wheel = 0;
+  // update() が確定させた、このフレーム分の読み出し専用スナップショット。
+  private framePresses: string[] = [];
+  private frameClicks: { x: number; y: number }[] = [];
+  private frameRightClicks: { x: number; y: number }[] = [];
+  private frameMouse: MouseDelta = ZERO_MOUSE_DELTA;
   private dragging = false;
   private panDragging = false;
   private dragMoved = 0;
-  private clicks: { x: number; y: number }[] = [];
-  // 右ボタン押下位置のキュー(マップモードのコンテキストメニュー呼び出し用)。
-  // 戦闘中は消費されず貯まっていかないよう、呼び出し側は毎フレーム drain する
-  // (takeClicks と同じ運用)。
-  private rightClicks: { x: number; y: number }[] = [];
   // タッチ用: アクティブポインタの座標(ピンチズーム判定に使う)
   private pointers = new Map<number, { x: number; y: number }>();
   private pinchDist = 0;
@@ -69,7 +75,7 @@ export class Input {
       ) {
         e.preventDefault();
       }
-      if (!e.repeat) this.pressQueue.push(e.code);
+      if (!e.repeat) this.pendingPresses.push(e.code);
       this.keys.add(e.code);
       this.fireGesture();
     });
@@ -106,7 +112,7 @@ export class Input {
       }
     } else if (e.button === 2) {
       this.mouseFiring = true;
-      this.rightClicks.push({ x: e.clientX, y: e.clientY });
+      this.pendingRightClicks.push({ x: e.clientX, y: e.clientY });
     } else if (e.button === 1) {
       // Map mode consumes this as a camera translation gesture. Keep it
       // separate from the left-drag orbit rotation delta.
@@ -145,7 +151,7 @@ export class Input {
     if (e.button === 0 || e.pointerType === 'touch') {
       this.pointers.delete(e.pointerId);
       if (this.dragging && this.dragMoved < CLICK_MOVE_THRESHOLD) {
-        this.clicks.push({ x: e.clientX, y: e.clientY });
+        this.pendingClicks.push({ x: e.clientX, y: e.clientY });
       }
       this.dragging = false;
       this.pinchDist = 0;
@@ -184,7 +190,7 @@ export class Input {
   setVirtualKey(code: string, down: boolean): void {
     this.fireGesture();
     if (down) {
-      if (!this.keys.has(code)) this.pressQueue.push(code);
+      if (!this.keys.has(code)) this.pendingPresses.push(code);
       this.keys.add(code);
     } else {
       this.keys.delete(code);
@@ -202,41 +208,41 @@ export class Input {
     return this.keys.has(code);
   }
 
-  // 押下エッジをまとめて取得(取得後クリア)
-  takePresses(): string[] {
-    const q = this.pressQueue;
-    this.pressQueue = [];
-    return q;
-  }
-
-  // 左クリック(ドラッグでない短い押下)位置をまとめて取得(取得後クリア)。マップモードのノード配置用。
-  takeClicks(): { x: number; y: number }[] {
-    const c = this.clicks;
-    this.clicks = [];
-    return c;
-  }
-
-  // 右ボタン押下位置をまとめて取得(取得後クリア)。マップモードのコンテキストメニュー呼び出し用。
-  takeRightClicks(): { x: number; y: number }[] {
-    const c = this.rightClicks;
-    this.rightClicks = [];
-    return c;
-  }
-
-  // マウス移動量を取得(取得後クリア)。左ドラッグでの視点回転用。
-  consumeMouse(): MouseDelta {
-    const d = {
-      dx: this.dx,
-      dy: this.dy,
-      panDx: this.panDx,
-      panDy: this.panDy,
-      wheel: this.wheel,
-    };
+  // フレームの先頭で1度だけ呼ぶ。イベントハンドラが溜めた未確定分を今フレームの
+  // スナップショットとして確定し、次フレーム分の蓄積をリセットする。
+  // 呼び出し後は presses/clicks/rightClicks/mouse を副作用なしに何度でも読める。
+  update(): void {
+    this.framePresses = this.pendingPresses;
+    this.frameClicks = this.pendingClicks;
+    this.frameRightClicks = this.pendingRightClicks;
+    this.frameMouse = { dx: this.dx, dy: this.dy, panDx: this.panDx, panDy: this.panDy, wheel: this.wheel };
+    this.pendingPresses = [];
+    this.pendingClicks = [];
+    this.pendingRightClicks = [];
     this.dx = 0;
     this.dy = 0;
     this.panDx = 0;
     this.panDy = 0;
     this.wheel = 0;
-    return d;
+  }
+
+  // 今フレームの押下エッジ。
+  presses(): readonly string[] {
+    return this.framePresses;
+  }
+
+  // 今フレームの左クリック(ドラッグでない短い押下)位置。マップモードのノード配置用。
+  clicks(): readonly { x: number; y: number }[] {
+    return this.frameClicks;
+  }
+
+  // 今フレームの右ボタン押下位置。マップモードのコンテキストメニュー呼び出し用。
+  rightClicks(): readonly { x: number; y: number }[] {
+    return this.frameRightClicks;
+  }
+
+  // 今フレームのマウス移動量。左ドラッグでの視点回転用。
+  mouse(): MouseDelta {
+    return this.frameMouse;
   }
 }

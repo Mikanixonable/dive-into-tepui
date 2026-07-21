@@ -40,7 +40,6 @@ export class Targeter {
   }
 
   updateCombatTargeting(ctx: TargeterCtx): Enemy | null {
-    ctx.input.takeClicks();
     this.handleTargetLockByRightClick(ctx);
     this.autoTarget = this.resolveAutoTarget(ctx);
     return this.autoTarget;
@@ -55,7 +54,7 @@ export class Targeter {
   }
 
   private handleTargetLockByRightClick(ctx: TargeterCtx): void {
-    const rightClicks = ctx.input.takeRightClicks();
+    const rightClicks = ctx.input.rightClicks();
     if (rightClicks.length <= 0 || !ctx.player.alive) return;
     const click = rightClicks[rightClicks.length - 1]!;
     let hit: Enemy | null = null;

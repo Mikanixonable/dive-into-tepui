@@ -95,7 +95,7 @@ export class HudPanels {
         hullTemp: thermal.hullTemp,
         shots: game.activeStage.scoreCounter.shots,
         kills: game.activeStage.scoreCounter.kills,
-        total: game.simulator.totalEnemiesSpawned,
+        total: game.activeStage.scoreCounter.totalEnemiesSpawned,
         stage0State: hudSubStatus !== null ? { hp: player.hp, maxHp: C.PLAYER_MAX_HP, msg: hudSubStatus } : null,
       });
 
