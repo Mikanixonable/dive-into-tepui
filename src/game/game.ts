@@ -82,15 +82,13 @@ export class Game {
     (rel: Vec3) => this.hudProjection.project(rel),
     this.cameraSystem.mapCamera,
     () => this.player.fineAttitude,
-    () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }),
+    () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }),
     () => this.planGuide.clearActiveTarget(),
   );
 
   // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定、stages/ 参照)。
   // 固有のランタイム状態(タイマー・ウェーブ管理等)もこれ自身が持つ。
   readonly activeStage: Stage;
-  simTime = 0;
-  private lastSimDt = 0;
   paused = false;
 
   // 天体暦(太陽・月の位置と日照率)。マップモード専用の geo/moon 参照軌道線も
@@ -131,7 +129,7 @@ export class Game {
     this.activeStage.setup(this._hud, this._sfx, this._scene, this.simulator, this.unlockManager, this.effects);
 
     // --- 環境 ---
-    this.ephemeris.update(this.simTime);
+    this.ephemeris.update(this.simulator.simTime);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris.sunDir, {
       sunIntensity: C.SUN_INTENSITY,
       ambientIntensity: C.AMBIENT_INTENSITY,
@@ -180,7 +178,7 @@ export class Game {
     this.handleFrame(dt);
     this.cameraSystem.updateActiveCamera(
       this.player,
-      sunAzimuth(this.simTime, this.ephemeris.sunPhase0),
+      sunAzimuth(this.simulator.simTime, this.ephemeris.sunPhase0),
       this.mapModeSystem.focusRel(this.player.state.r),
       this.input,
       dt,
@@ -196,17 +194,8 @@ export class Game {
     // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
     // 積分もサブステップなしの簡略版(integrateSimulation の hardCollision/doSubstep 引数)にする。
     if (!this.activeStage.isPlaying) {
-      const advanced = this.simulator.integrateSimulation(
-        this.simTime,
-        dt,
-        this.simSpeedManager.simSpeed,
-        this.player,
-        this.activeStage,
-        false,
-        false,
-      );
-      this.simTime = advanced.simTime;
-      this.lastSimDt = advanced.simDt;
+      const simDt = dt * Math.min(this.simSpeedManager.simSpeed, 4);
+      this.simulator.integrateSimulation(dt, simDt, this.player, this.activeStage, false, false);
       return;
     }
 
@@ -214,7 +203,7 @@ export class Game {
   }
 
   private updateFrame(dt: number): void {
-    this.simSpeedManager.update(this.simTime);
+    this.simSpeedManager.update(this.simulator.simTime);
     const simSpeed = this.simSpeedManager.simSpeed;
     const simDt = dt * simSpeed;
     // プレイヤーの HP 回復・移動/発射の試行
@@ -224,26 +213,15 @@ export class Game {
       simSpeed: this.simSpeedManager,
       mapMode: this.cameraSystem.mapMode,
       scoreCounter: this.activeStage.scoreCounter,
-      simTime: this.simTime,
+      simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
       addBullet: (bullet) => this.simulator.addBullet(bullet),
     });
     const playerAccel = this.simulator.buildPlayerAccel(action.thrustFn);
 
-    const advanced = this.simulator.integrateSimulation(
-      this.simTime,
-      dt,
-      simSpeed,
-      this.player,
-      this.activeStage,
-      true,
-      true,
-      playerAccel,
-    );
-    this.simTime = advanced.simTime;
-    this.lastSimDt = advanced.simDt;
+    this.simulator.integrateSimulation(dt, simDt, this.player, this.activeStage, true, true, playerAccel);
 
-    this.player.checkLoss(dt, this.simTime, this.activeStage);
+    this.player.checkLoss(dt, this.simulator.simTime, this.activeStage);
 
     // 衝突判定
     if (this.simSpeedManager.canResolvePhysicalCollisions) {
@@ -253,10 +231,10 @@ export class Game {
     this.player.updateAttitude(this.input, this.cameraSystem.mapMode, simDt, () => {
       this._hud.hint('進行方向ホールド解除(手動操作)');
     });
-    
+
     this.simulator.stepCoastingAttitudes(simDt);
 
-    this.simulator.cleanup(dt, this.simTime, this.activeStage);
+    this.simulator.cleanup(dt, this.activeStage);
 
     this.player.update(dt);
 
@@ -273,11 +251,11 @@ export class Game {
       );
     }
 
-    this.activeStage.update(dt, this.player, this.simulator, this.simTime, this.simSpeedManager);
+    this.activeStage.update(dt, this.player, this.simulator, this.simulator.simTime, this.simSpeedManager);
   }
 
   private handlePausedFrame(): void {
-    this.lastSimDt = 0;
+    this.simulator.lastSimDt = 0;
     this._sfx.setThrust(false);
     this.player.pause();
   }
@@ -319,7 +297,7 @@ export class Game {
       ammos: this.simulator.ammos,
       mapLabelIds: this.mapModeSystem.mapLabelIds(),
       activeCamera: this.cameraSystem.activeCamera,
-      simTime: this.simTime,
+      simTime: this.simulator.simTime,
     };
   }
 
@@ -341,7 +319,7 @@ export class Game {
       lit: this.cameraSystem.mapMode ? 1.0 : this.ephemeris.shadowLitFactor(o),
     });
     this.syncDynamicObjects(o, pv);
-    this.effects.syncFlashEffects(dt, this.lastSimDt, o, this.cameraSystem.activeCamera);
+    this.effects.syncFlashEffects(dt, this.simulator.lastSimDt, o, this.cameraSystem.activeCamera);
     this.syncHud(dt, o, pv);
   }
 
@@ -378,8 +356,8 @@ export class Game {
     const mapMode = this.cameraSystem.mapMode;
     const playerEl = this.syncEntityOrbitLines(o, pv, mapMode);
     const tgtEl = this.targeter.updateOrbitLine(o);
-    this.ephemeris.updateReferenceLines(this.simTime, o, mapMode);
-    this.planGuide.updatePlannedLine(this.mapModeSystem.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }, o, mapMode);
+    this.ephemeris.updateReferenceLines(this.simulator.simTime, o, mapMode);
+    this.planGuide.updatePlannedLine(this.mapModeSystem.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, mapMode);
 
     this.markersSystem.updateMarkers(this.markerCtx(), pv, project);
     this.markersSystem.updateNodeMarkers(this.player, playerEl, tgtEl, project);
@@ -387,7 +365,7 @@ export class Game {
     if (mapMode) {
       this._hud.markers.hide('burn');
     } else {
-      const { achieved } = this.planGuide.update(this.mapModeSystem.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simTime }, o, pv, playerEl, this.player.alive, project);
+      const { achieved } = this.planGuide.update(this.mapModeSystem.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, pv, playerEl, this.player.alive, project);
       if (achieved) this.simSpeedManager.cancelAutoWarp();
     }
 
