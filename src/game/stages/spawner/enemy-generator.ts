@@ -3,13 +3,13 @@
 // Enemy を得る。意図的に異なる2つの姿勢方針(無秩序に漂う/プログレードで接近する)を
 // この1ファイルに並べて置き、互いを見比べやすくする。
 import * as THREE from 'three/webgpu';
-import { qFromForwardUp, randomQuat } from '../../physics/attitude';
-import { MU_EARTH, OrbitState, R_EARTH, stateFromElements } from '../../physics/orbital';
-import { cross, len, norm, randSym, rotateAxis, scale, v3 } from '../../physics/vec3';
-import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
-import { Hud } from '../../hud/hud';
-import { Sfx } from '../../audio/sfx';
-import { Enemy } from './enemy';
+import { qFromForwardUp, randomQuat } from '../../../physics/attitude';
+import { MU_EARTH, OrbitState, R_EARTH, stateFromElements } from '../../../physics/orbital';
+import { cross, len, norm, randSym, rotateAxis, scale, v3 } from '../../../physics/vec3';
+import { buildEnemyShip, buildStage0EnemyShip } from '../../../render/ships';
+import { Hud } from '../../../hud/hud';
+import { Sfx } from '../../../audio/sfx';
+import { Enemy } from '../../orbit-entity/enemy';
 
 // 自機軌道(base)を dAlong だけ進めた位置の軌道状態(プリセット配置の共通基盤)。
 function phasedState(base: OrbitState, dAlong: number): OrbitState {

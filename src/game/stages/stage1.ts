@@ -1,15 +1,15 @@
 // Stage 1: 第一ステージ(LEO 戦域)。checkWin/onWin/hudSubStatus は基底クラスの既定
 // (撃破数で勝利・HUD補助表示なし)のまま使う。
 import * as C from '../const';
-import { StageCtx, StageDefinition } from './stage-definition';
+import { StageCtx, Stage } from './stage';
 import {
   generateCoellipticEnemy,
   generateCrossingEnemy,
   generateEllipticEnemy,
   generatePhasedEnemy,
-} from '../enemy/enemy-generator';
+} from './spawner/enemy-generator';
 
-export class Stage1 extends StageDefinition {
+export class Stage1 extends Stage {
   readonly index = 1 as const;
   readonly selectLabel = '[1] 第一ステージ — LEO 戦域';
   readonly selectSub = '高度420kmの低軌道。敵5機はすべて近傍軌道に分布';
@@ -38,6 +38,6 @@ export class Stage1 extends StageDefinition {
   }
 
   update(_dt: number, ctx: StageCtx): void {
-    this.ammoResupply.updateLogistics(ctx.simTime, ctx.player);
+    this.logistics.updateLogistics(ctx.simTime, ctx.player);
   }
 }

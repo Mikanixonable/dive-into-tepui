@@ -11,7 +11,7 @@ import stage0EnemyDataA from '../assets/models/stage0EnemyA.json';
 import stage0EnemyDataB from '../assets/models/stage0EnemyB.json';
 import stage0EnemyDataC from '../assets/models/stage0EnemyC.json';
 import magazineData from '../assets/models/magazine.json';
-import magPickupData from '../assets/models/magPickup.json';
+import ammoData from '../assets/models/ammo.json';
 import bulletData from '../assets/models/bullet.json';
 import plasmaData from '../assets/models/plasma.json';
 import casingData from '../assets/models/casing.json';
@@ -76,7 +76,7 @@ const parseStage0EnemyA = memoParse<THREE.Group>(stage0EnemyDataA);
 const parseStage0EnemyB = memoParse<THREE.Group>(stage0EnemyDataB);
 const parseStage0EnemyC = memoParse<THREE.Group>(stage0EnemyDataC);
 const parseMagazine = memoParse<THREE.Group>(magazineData);
-const parseMagPickup = memoParse<THREE.Group>(magPickupData);
+const parseAmmo = memoParse<THREE.Group>(ammoData);
 const parseBullet = memoParse<THREE.Mesh>(bulletData);
 const parsePlasma = memoParse<THREE.Mesh>(plasmaData);
 const parseCasing = memoParse<THREE.Mesh>(casingData);
@@ -104,12 +104,12 @@ export function buildMagazineFrame(): THREE.Group {
   return g;
 }
 
-// 軌道上に投入される補給マガジン: マガジン数個を束ねてビーコンを付けた漂流物。
+// 軌道上に投入される補給(ammo): マガジン数個を束ねてビーコンを付けた漂流物。
 // テンプレートは既定の count=4 で焼き出し済み。他の個数の呼び出しは現状ないが、
 // 念のため count が既定と異なる場合は都度組み立てる(マガジンサブメッシュは
 // buildMagazineMesh() 経由でテンプレートを再利用する)。
-export function buildMagPickup(count = 4): THREE.Group {
-  if (count === 4) return parseMagPickup();
+export function buildAmmo(count = 4): THREE.Group {
+  if (count === 4) return parseAmmo();
   const g = new THREE.Group();
   for (let i = 0; i < count; i++) {
     const mag = buildMagazineMesh();
