@@ -3,15 +3,15 @@
 // ノードの追加・削除・並べ替えは必ずこのクラスのメソッド経由で行う — 呼び出し側が
 // nodes 配列を直接 splice すると「同じ削除ロジックの重複」を招く。
 import { PlannedNode, PredictOpts, TrajectorySample, predictTrajectory, sampleAt } from '../../physics/predict';
-import { Vec3, len } from '../../physics/vec3';
+import { len } from '../../physics/vec3';
 import * as C from '../const';
+import type { Player } from '../player/player';
+import type { EphemerisSystem } from '../ephemeris';
 
 export interface PlanCtx {
   simTime: number;
-  playerR: Vec3;
-  playerV: Vec3;
-  sunPhase0: number;
-  moonPhase0: number;
+  player: Player;
+  ephemeris: EphemerisSystem;
 }
 
 export class Plan {
@@ -111,12 +111,12 @@ export class Plan {
       this._trajSamples = [];
     } else {
       const opts: PredictOpts = {
-        sunPhase0: ctx.sunPhase0,
-        moonPhase0: ctx.moonPhase0,
+        sunPhase0: ctx.ephemeris.sunPhase0,
+        moonPhase0: ctx.ephemeris.moonPhase0,
         maxSamples: C.PREDICT_MAX_SAMPLES,
       };
       this._trajSamples = predictTrajectory(
-        { r: ctx.playerR, v: ctx.playerV },
+        { r: ctx.player.state.r, v: ctx.player.state.v },
         ctx.simTime,
         duration,
         this._nodes,
