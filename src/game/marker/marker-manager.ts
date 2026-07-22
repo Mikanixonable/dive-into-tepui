@@ -11,7 +11,7 @@ function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLE
 }
 
 export class MarkerManager {
-  private markers = new Map<string, { root: HTMLElement; sym: HTMLElement; lbl: HTMLElement }>();
+  private markerDictionary = new Map<string, { root: HTMLElement; sym: HTMLElement; lbl: HTMLElement }>();
 
   // root: マーカー要素を追加する親(#hud)。svgOverlay: ラベル引き出し線を描く SVG。
   constructor(
@@ -32,13 +32,13 @@ export class MarkerManager {
     color?: string,
     rotationDeg?: number
   ): void {
-    let m = this.markers.get(key);
+    let m = this.markerDictionary.get(key);
     if (!m) {
       const root = el('div', `mk-${key}`, this.root, `mk ${cls}`);
       const symEl = el('span', `mk-${key}-s`, root, 'sym');
       const lblEl = el('span', `mk-${key}-l`, root, 'lbl');
       m = { root, sym: symEl, lbl: lblEl };
-      this.markers.set(key, m);
+      this.markerDictionary.set(key, m);
     }
     m.root.style.display = visible ? 'block' : 'none';
     if (!visible) return;
@@ -65,7 +65,7 @@ export class MarkerManager {
   }
 
   hide(key: string): void {
-    const m = this.markers.get(key);
+    const m = this.markerDictionary.get(key);
     if (m) m.root.style.display = 'none';
   }
 
@@ -73,7 +73,7 @@ export class MarkerManager {
     const active: { m: any; ox: number; oy: number; w: number; h: number; dx: number; dy: number }[] = [];
 
     // 1. Gather active markers and their estimated label bounding boxes
-    for (const m of this.markers.values()) {
+    for (const m of this.markerDictionary.values()) {
       if (m.root.style.display === 'none' || !m.lbl.textContent) {
         m.lbl.style.transform = 'translateX(-50%)';
         continue;

@@ -93,12 +93,12 @@ export class Targeter {
       const key = `bh${i}`;
       const m = this.boardMarks[i];
       if (!m || !target) {
-        this._hud.markers.hide(key);
+        this._hud.markerManager.hide(key);
         continue;
       }
       const p = project(sub(add(target.state.r, m.off), o));
       const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
-      this._hud.markers.set(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
+      this._hud.markerManager.set(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
     }
   }
 

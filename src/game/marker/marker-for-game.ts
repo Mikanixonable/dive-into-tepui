@@ -4,16 +4,16 @@
 // スクリーン投影(project)はアクティブカメラ依存のため game.ts 側の関数を呼び出し
 // 引数として受け取る(planner.ts の project 注入パターンに合わせる)。
 import * as THREE from 'three/webgpu';
-import { Elements } from '../physics/orbital';
-import { qRotate } from '../physics/attitude';
-import { Vec3, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../physics/vec3';
-import * as C from '../game/const';
-import { Ammo } from '../game/orbit-entity/entities';
-import { Enemy } from '../game/orbit-entity/enemy';
-import { MarkerManager } from './markerManager';
-import { fmtMarkerDist } from './utils';
-import { Player } from '../game/player/player';
-import { solveLeadTime } from '../physics/intercept';
+import { Elements } from '../../physics/orbital';
+import { qRotate } from '../../physics/attitude';
+import { Vec3, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
+import * as C from '../const';
+import { Ammo } from '../orbit-entity/entities';
+import { Enemy } from '../orbit-entity/enemy';
+import { MarkerManager } from './marker-manager';
+import { fmtMarkerDist } from '../../hud/utils';
+import { Player } from '../player/player';
+import { solveLeadTime } from '../../physics/intercept';
 
 export type ProjectFn = (rel: Vec3) => { x: number; y: number; front: boolean };
 
@@ -34,8 +34,8 @@ export interface MarkerCtx {
   simTime: number;
 }
 
-export class MarkersSystem {
-  constructor(private readonly markers: MarkerManager) {}
+export class MarkerForGame {
+  constructor(private readonly markerManager: MarkerManager) {}
 
   // 方向マーカー(プログレード/レトログレード/ノーマル/アンチノーマル/動径 in-out)・
   // 機首ボアサイト・敵/ターゲット/AMMO マーカー・視界外方位/リードマーカーを更新する。
@@ -62,31 +62,31 @@ export class MarkersSystem {
     this.updateLeadAndDirMarkers(ctx, o, pv, project);
 
     // 以前の単一リードマーカーのクリーンアップ
-    this.markers.hide('lead');
+    this.markerManager.hide('lead');
 
     // 重なったマーカーテキストを押し退けて線で繋ぐ
-    this.markers.resolveCollisions();
+    this.markerManager.resolveCollisions();
   }
 
   private updateMapModeMarkers(mapMode: boolean, mapLabelIds: string[], project: ProjectFn): void {
     if (mapMode) {
-      this.markers.hide('pro');
-      this.markers.hide('retro');
-      this.markers.hide('nrm');
-      this.markers.hide('anm');
-      this.markers.hide('radout');
-      this.markers.hide('radin');
-      this.markers.hide('tgtdir');
-      this.markers.hide('atgdir');
-      this.markers.hide('bore');
-      this.markers.hide('lead');
+      this.markerManager.hide('pro');
+      this.markerManager.hide('retro');
+      this.markerManager.hide('nrm');
+      this.markerManager.hide('anm');
+      this.markerManager.hide('radout');
+      this.markerManager.hide('radin');
+      this.markerManager.hide('tgtdir');
+      this.markerManager.hide('atgdir');
+      this.markerManager.hide('bore');
+      this.markerManager.hide('lead');
       // 自機位置マーカー
       const sp = project(v3());
-      this.markers.set('self', 'mk-self', '▷', sp.x, sp.y, sp.front, 'PLAYER');
+      this.markerManager.set('self', 'mk-self', '▷', sp.x, sp.y, sp.front, 'PLAYER');
     } else {
-      this.markers.hide('self');
+      this.markerManager.hide('self');
       for (const id of mapLabelIds) {
-        this.markers.hide(id);
+        this.markerManager.hide(id);
       }
     }
   }
@@ -98,29 +98,29 @@ export class MarkersSystem {
     const DIST = 5e4; // 遠方に投影して方向を示す
 
     const pro = project(scale(proDir, DIST));
-    this.markers.set('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PROGRADE [Q]');
+    this.markerManager.set('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PROGRADE [Q]');
     const ret = project(scale(proDir, -DIST));
-    this.markers.set('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RETROGRADE [E]');
+    this.markerManager.set('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RETROGRADE [E]');
 
     const nrm = project(scale(nrmDir, DIST));
-    this.markers.set('nrm', 'mk-nrm', '▲', nrm.x, nrm.y, nrm.front, 'NORMAL [A]');
+    this.markerManager.set('nrm', 'mk-nrm', '▲', nrm.x, nrm.y, nrm.front, 'NORMAL [A]');
     const anm = project(scale(nrmDir, -DIST));
-    this.markers.set('anm', 'mk-nrm', '▽', anm.x, anm.y, anm.front, 'ANTINORMAL [D]');
+    this.markerManager.set('anm', 'mk-nrm', '▽', anm.x, anm.y, anm.front, 'ANTINORMAL [D]');
 
     const radOut = project(scale(radDir, DIST));
-    this.markers.set('radout', 'mk-rad', '◎', radOut.x, radOut.y, radOut.front, 'RADIAL OUT [W]');
+    this.markerManager.set('radout', 'mk-rad', '◎', radOut.x, radOut.y, radOut.front, 'RADIAL OUT [W]');
     const radIn = project(scale(radDir, -DIST));
-    this.markers.set('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'RADIAL IN [S]');
+    this.markerManager.set('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'RADIAL IN [S]');
 
     if (target) {
       const tgtDir = norm(sub(target.state.r, o));
       const tmk = project(scale(tgtDir, DIST));
-      this.markers.set('tgtdir', 'mk-tgtdir', '◇', tmk.x, tmk.y, tmk.front, '');
+      this.markerManager.set('tgtdir', 'mk-tgtdir', '◇', tmk.x, tmk.y, tmk.front, '');
       const atmk = project(scale(tgtDir, -DIST));
-      this.markers.set('atgdir', 'mk-tgtdir', '◆', atmk.x, atmk.y, atmk.front, '');
+      this.markerManager.set('atgdir', 'mk-tgtdir', '◆', atmk.x, atmk.y, atmk.front, '');
     } else {
-      this.markers.hide('tgtdir');
-      this.markers.hide('atgdir');
+      this.markerManager.hide('tgtdir');
+      this.markerManager.hide('atgdir');
     }
   }
 
@@ -128,9 +128,9 @@ export class MarkersSystem {
     if (player.alive && !mapMode) {
       const fwd = qRotate(player.att.q, v3(0, 0, 1));
       const bs = project(scale(fwd, 5e4));
-      this.markers.set('bore', 'mk-boresight', '┼', bs.x, bs.y, bs.front);
+      this.markerManager.set('bore', 'mk-boresight', '┼', bs.x, bs.y, bs.front);
     } else {
-      this.markers.hide('bore');
+      this.markerManager.hide('bore');
     }
   }
 
@@ -144,7 +144,7 @@ export class MarkersSystem {
       const e = enemies[i]!;
       const key = `e${i}`;
       if (!e.alive) {
-        this.markers.hide(key);
+        this.markerManager.hide(key);
         continue;
       }
       const rel = sub(e.state.r, o);
@@ -196,7 +196,7 @@ export class MarkersSystem {
           text = `${m.e.name} ${fmtMarkerDist(m.dist)}`;
         }
       }
-      this.markers.set(key, m.isTgt ? 'mk-target' : 'mk-enemy', '◇', m.p.x, m.p.y, m.p.front, text);
+      this.markerManager.set(key, m.isTgt ? 'mk-target' : 'mk-enemy', '◇', m.p.x, m.p.y, m.p.front, text);
     }
   }
 
@@ -205,13 +205,13 @@ export class MarkersSystem {
       const key = `mg${i}`;
       const ammo = ammos[i];
       if (!ammo || !ammo.alive) {
-        this.markers.hide(key);
+        this.markerManager.hide(key);
         continue;
       }
       const rel = sub(ammo.state.r, o);
       const p = project(rel);
       const dist = len(rel);
-      this.markers.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, `AMMO ${fmtMarkerDist(dist)}`);
+      this.markerManager.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, `AMMO ${fmtMarkerDist(dist)}`);
     }
   }
 
@@ -222,8 +222,8 @@ export class MarkersSystem {
     if (!ctx.mapMode && ctx.player.alive) {
       for (const enemy of ctx.enemies) {
         if (!enemy.alive) {
-          this.markers.hide('lead-' + enemy.name);
-          this.markers.hide('dir-' + enemy.name);
+          this.markerManager.hide('lead-' + enemy.name);
+          this.markerManager.hide('dir-' + enemy.name);
           continue;
         }
 
@@ -244,8 +244,8 @@ export class MarkersSystem {
       }
     } else {
       for (const ship of ctx.enemies) {
-        this.markers.hide('lead-' + ship.name);
-        this.markers.hide('dir-' + ship.name);
+        this.markerManager.hide('lead-' + ship.name);
+        this.markerManager.hide('dir-' + ship.name);
       }
     }
   }
@@ -271,9 +271,9 @@ export class MarkersSystem {
       const my = cy + r * Math.sin(ang);
 
       const rotDeg = ang * 180 / Math.PI + 90; // '▲' faces UP initially, so add 90 deg
-      this.markers.set('dir-' + enemy.name, 'mk-dir', '▲', mx, my, true, '', 0.6, hexColor, rotDeg);
+      this.markerManager.set('dir-' + enemy.name, 'mk-dir', '▲', mx, my, true, '', 0.6, hexColor, rotDeg);
     } else {
-      this.markers.hide('dir-' + enemy.name);
+      this.markerManager.hide('dir-' + enemy.name);
     }
   }
 
@@ -296,12 +296,12 @@ export class MarkersSystem {
       if (t !== null && t < 25) {
         const lead = addScaled(relP, relV, t);
         const lp = project(lead);
-        this.markers.set('lead-' + enemy.name, 'mk-lead', '✛', lp.x, lp.y, lp.front, '', 1, hexColor);
+        this.markerManager.set('lead-' + enemy.name, 'mk-lead', '✛', lp.x, lp.y, lp.front, '', 1, hexColor);
       } else {
-        this.markers.hide('lead-' + enemy.name);
+        this.markerManager.hide('lead-' + enemy.name);
       }
     } else {
-      this.markers.hide('lead-' + enemy.name);
+      this.markerManager.hide('lead-' + enemy.name);
     }
   }
 
@@ -309,16 +309,16 @@ export class MarkersSystem {
   // 面変更(ノーマル/アンチノーマル)burn を行うべき位置がひと目で分かる。
   updateNodeMarkers(player: Player, playerEl: Elements | null, tgtEl: Elements | null, project: ProjectFn): void {
     if (!playerEl || !tgtEl) {
-      this.markers.hide('an');
-      this.markers.hide('dn');
+      this.markerManager.hide('an');
+      this.markerManager.hide('dn');
       return;
     }
     const o = player.state.r;
     const lineDir = cross(playerEl.hHat, tgtEl.hHat);
     if (lenSq(lineDir) < 1e-6) {
       // 軌道面がほぼ一致 → 交線が定まらない
-      this.markers.hide('an');
-      this.markers.hide('dn');
+      this.markerManager.hide('an');
+      this.markerManager.hide('dn');
       return;
     }
 
@@ -329,8 +329,8 @@ export class MarkersSystem {
 
     const ascP = project(sub(scale(d, rAsc), o));
     const descP = project(sub(scale(d, -rDesc), o));
-    this.markers.set('an', 'mk-node', '▲', ascP.x, ascP.y, ascP.front, 'AN');
-    this.markers.set('dn', 'mk-node', '▽', descP.x, descP.y, descP.front, 'DN');
+    this.markerManager.set('an', 'mk-node', '▲', ascP.x, ascP.y, ascP.front, 'AN');
+    this.markerManager.set('dn', 'mk-node', '▽', descP.x, descP.y, descP.front, 'DN');
   }
 
   // ズームウィンドウ(PIP)のオーバーレイ: ターゲット菱形枠と LEAD マーカーを PIP の
@@ -347,8 +347,8 @@ export class MarkersSystem {
     rect: { x: number; y: number; w: number; h: number } | null,
   ): void {
     if (!rect || !target || !target.alive || !player.alive) {
-      this.markers.hide('pip-tgt');
-      this.markers.hide('pip-lead');
+      this.markerManager.hide('pip-tgt');
+      this.markerManager.hide('pip-lead');
       return;
     }
     const cam = activeCamera;
@@ -372,7 +372,7 @@ export class MarkersSystem {
     const relP = sub(target.state.r, o);
     const p = projectPip(relP);
     // ラベル無し(''): resolveCollisions の押し退け対象から自然に除外される
-    this.markers.set('pip-tgt', 'mk-target', '◇', p.x, p.y, inRect(p), '');
+    this.markerManager.set('pip-tgt', 'mk-target', '◇', p.x, p.y, inRect(p), '');
 
     const hexColor = target.accent ? '#' + target.accent.toString(16).padStart(6, '0') : '#ff6a00';
     const relV = sub(target.state.v, pv);
@@ -380,9 +380,9 @@ export class MarkersSystem {
     if (t !== null && t < 25) {
       const lead = addScaled(relP, relV, t);
       const lp = projectPip(lead);
-      this.markers.set('pip-lead', 'mk-lead', '✛', lp.x, lp.y, inRect(lp), '', 1, hexColor);
+      this.markerManager.set('pip-lead', 'mk-lead', '✛', lp.x, lp.y, inRect(lp), '', 1, hexColor);
     } else {
-      this.markers.hide('pip-lead');
+      this.markerManager.hide('pip-lead');
     }
   }
 
