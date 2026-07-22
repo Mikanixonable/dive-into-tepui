@@ -9,20 +9,46 @@
 
 
 ## todo
-inputを賢くする。consumeKey機能を付ける？
 
 enemyのbehaveはcanEnemyFireだけで制御されてしまっている。
-プレイヤーの姿勢角度調整モードの自動オンオフ
-プレイヤーのbehaveとhandleEdgeInputの分離？結合？updateの分離
-playerのfireのロジック 冗長すぎるまだまだ簡略化できそう。
-barrelとmagとroundの階層関係が分かった方がいい
+playerのfireのロジック まだまだ簡略化できそう、修正もできそう。
+dtとsimDtの混在の是正
+姿勢制御を角加速度記憶、自動加算に分離したい
+
+## marker周りの可読性向上
+markerManagerとmarkerSystemはともに複数のmarkerを扱うモジュールになっている。
+
+MarkerForGameはMarkerManagerを包含し、用途を限定してる。
+MarkerManagerはMarkerForGameのほかにも各所で利用されている。
+
+各所で利用されているMarkermanagerのインスタンスは、_hud.markerManagerと同一であることが多そう。そもそも_hud.markerManagerを直接参照している箇所もあるみたいだ。例外はあるだろうか
+MarkerManagerをhudが持つのは正しい責務だろうか
+MarkerManagerはSVGで表示しているため、作るだけでは表示できず、親要素に結び付ける必要がある………？それはどこで実装されている？　にしてもHUDが持つべきじゃない気がするが…
+複数のインスタンスがあるとして、親要素は共通？
+
+方針としては、まずmarkerとhudを密結合にすべきでないので、Markermanagerの真インスタンスはhudに持たせるのではなく、Gameとかに持たせるべきだ。
+MarkerForGameが集約するんだかしないんだかはっきりしてほしい。たぶん集約しない方が今後のためになるだろうけど……
+
+---
+
+ここまでを踏まえて、MarkerManagerの利用パターンを調査してほしい。
+インスタンスは全部でいくつ作られるのか
+_hud.markerManager以外にインスタンスはあるのか
+SVGをdomtreeに紐づける実装はどこにあるのか
+hudとの責務結合強度はどの程度か。
+他の場所に置くとしたらどこに置くのがいいか
+
+MarkerForGameに集約するバターンと、各所が直接MarkerManagerに配線するよう分散するパターンと、どっちに統一すべきか
+分散する場合、どういった経路で参照共有注入すべきか
+
 
 ## オーケストレーション配線
 改善点を把握
 Game.updateのネストが無駄に深い。
-playerの行動が集約されていない。
 cameaのupadteがupdateなのかsyncなのか曖昧
 mapに関してはまだ読めていない
+
+mapModeSystem, hud, marker, planあたりはまだかなり責務境界がはっきりしていない。
 
 
 ## 責務把握
@@ -80,5 +106,6 @@ playerではなくship型で受け取ってるし
 
 waveManagerが利用しているWaveEncounterConfigはupdateで毎回注入を受けていますが、結局定数値です。これらの値をコンストラクタで受け取ってWaveManagerクラスのフィールドにすべきです。configにひとまとめにする必要もありません。
 
+inputを綺麗に書き直す
 
 

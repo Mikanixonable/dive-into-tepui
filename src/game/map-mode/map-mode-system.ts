@@ -55,7 +55,7 @@ export class MapModeSystem {
     private readonly onPlanCleared: () => void,
   ) {
     this.editor = new PlanEditor(this._hud, this._sfx);
-    this.display = new PlanDisplay(this._hud.markers);
+    this.display = new PlanDisplay(this._hud.markerManager);
     this.mapHud = new MapHud(this._hud, this._sfx);
     this.wireHudCallbacks();
     this.wireGizmoCallbacks();

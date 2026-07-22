@@ -82,8 +82,8 @@ export class PlanGuide {
   ): { achieved: boolean } {
     const node = plan.firstNode();
     if (!node || !playerAlive) {
-      this._hud.markers.hide('nd');
-      this._hud.markers.hide('burn');
+      this._hud.markerManager.hide('nd');
+      this._hud.markerManager.hide('burn');
       this._hud.setPlanPanel(null);
       return { achieved: false };
     }
@@ -113,8 +113,8 @@ export class PlanGuide {
     }
     const tgt = this.activeTarget;
     if (!tgt) {
-      this._hud.markers.hide('nd');
-      this._hud.markers.hide('burn');
+      this._hud.markerManager.hide('nd');
+      this._hud.markerManager.hide('burn');
       return { achieved: false };
     }
 
@@ -122,8 +122,8 @@ export class PlanGuide {
     if (playerEl && this.orbitClose(playerEl, tgt.targetEl)) {
       plan.consumeFirstNode();
       this.activeTarget = null;
-      this._hud.markers.hide('nd');
-      this._hud.markers.hide('burn');
+      this._hud.markerManager.hide('nd');
+      this._hud.markerManager.hide('burn');
       if (plan.nodes.length === 0) {
         this._hud.setPlanPanel(null);
         this._hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
@@ -141,13 +141,13 @@ export class PlanGuide {
         ? `T-${Math.floor(tRem / 60)}:${String(Math.floor(tRem % 60)).padStart(2, '0')}`
         : `T+${Math.floor(-tRem / 60)}:${String(Math.floor(-tRem % 60)).padStart(2, '0')}`;
     const more = plan.nodes.length > 1 ? ` (+${plan.nodes.length - 1})` : '';
-    this._hud.markers.set('nd', 'mk-mnode', '◆', p.x, p.y, p.front, `NODE ${tLabel}${more}`);
+    this._hud.markerManager.set('nd', 'mk-mnode', '◆', p.x, p.y, p.front, `NODE ${tLabel}${more}`);
 
     // 噴射ガイド: (凍結済みの)目標速度ベクトルとの差分方向へ加速する
     const dvRem = sub(tgt.vPlanned, pv);
     const mag = len(dvRem);
     const g = project(scale(norm(dvRem), 5e4));
-    this._hud.markers.set(
+    this._hud.markerManager.set(
       'burn',
       'mk-burn',
       '⬢',

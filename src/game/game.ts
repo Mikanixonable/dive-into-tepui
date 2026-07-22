@@ -14,7 +14,7 @@ import { CameraSystem } from './camera/camera-system';
 import { HitSystem } from './orbit-entity/hit';
 import { Stage } from './stages/stage';
 import { EphemerisSystem } from './ephemeris';
-import { MarkerCtx, MarkersSystem } from '../hud/markers';
+import { MarkerCtx, MarkerForGame } from './marker/marker-for-game';
 import { CollisionPhysics } from './orbit-entity/collision';
 import { EffectsSystem } from './effects-system';
 import { getStageDefinition, initStage } from './stages/stage-dictionary';
@@ -96,7 +96,7 @@ export class Game {
 
   private readonly unlockManager = new UnlockManager();
   private readonly hitSystem = new HitSystem();
-  private readonly markersSystem = new MarkersSystem(this._hud.markers);
+  private readonly markersSystem = new MarkerForGame(this._hud.markerManager);
   private readonly collisionPhysics = new CollisionPhysics();
   // フラッシュ・破片エフェクトのスポーン窓口(effects-system.ts)。scene への注入・
   // FlashEffectManager の所有もここに一元化されており、Player/Enemy/PlayerFire は
@@ -335,7 +335,7 @@ export class Game {
     this.markersSystem.updateNodeMarkers(this.player, playerEl, tgtEl, project);
     this.targeter.updateBoardMarkers(this.player, dt, project);
     if (mapMode) {
-      this._hud.markers.hide('burn');
+      this._hud.markerManager.hide('burn');
     } else {
       const { achieved } = this.planGuide.update(this.mapModeSystem.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, pv, playerEl, this.player.alive, project);
       if (achieved) this.simSpeedManager.cancelAutoWarp();

@@ -11,8 +11,8 @@ import { TrajectorySample } from '../../physics/predict';
 import { Vec3, len, rotateAxis, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { fmtMarkerDist } from '../../hud/utils';
-import { TrajLine } from '../../render/trajline';
-import { MarkerManager } from '../../hud/markerManager';
+import { TrajLine } from './trajline';
+import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn } from '../camera/camera-system';
 import { Plan } from './plan';
 import type { Player } from '../player/player';
@@ -34,7 +34,7 @@ export class PlanDisplay {
   private trajYawRef = 0;
   private lastSeenSamples: readonly TrajectorySample[] | null = null;
 
-  constructor(private readonly markers: MarkerManager) {}
+  constructor(private readonly markerManager: MarkerManager) {}
 
   // 選んだ期間だけ予測する(マップモードでの表示用— 戦闘ビューの噴射ガイド用の
   // 期間は plan-guide.ts の guideDurationSec が別途持つ)。
@@ -76,7 +76,7 @@ export class PlanDisplay {
 
   hide(): void {
     this.line.setVisible(false);
-    this.markers.hide('ghost');
+    this.markerManager.hide('ghost');
   }
 
   // 毎フレーム(マップモード中のみ呼ぶ): 予測を最新化し、折れ線・ゴーストマーカーを更新する。
@@ -101,18 +101,18 @@ export class PlanDisplay {
     }
 
     if (sliderT <= 0 || plan.trajSamples.length <= 0) {
-      this.markers.hide('ghost');
+      this.markerManager.hide('ghost');
       return;
     }
     const duration = this.predictDurationSec(player);
     const t = this.displayTime(simTime, duration, sliderT);
     const sample = plan.sampleAt(t);
     if (!sample) {
-      this.markers.hide('ghost');
+      this.markerManager.hide('ghost');
       return;
     }
     const p = project(sub(this.toDisplayFrame(sample.r, t, ephemeris, mapFrameRotating), origin));
-    this.markers.set('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.ghostLabel(plan, player, simTime, sliderT));
+    this.markerManager.set('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.ghostLabel(plan, player, simTime, sliderT));
   }
 
   private rebuildGeometry(plan: Plan, ephemeris: EphemerisSystem, mapFrameRotating: boolean): void {
