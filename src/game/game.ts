@@ -164,7 +164,7 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.cameraSystem.zoomActive = !this.cameraSystem.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
-    this.cameraSystem.mapMode = this.mapModeSystem.updateMapModeWithPhase(this.activeStage.isPlaying, this.touchControls, this.cameraSystem.mapMode);
+    this.mapModeSystem.updateMapModeWithPhase(this.activeStage.isPlaying, this.touchControls, this.cameraSystem);
     this.handleFrame(dt);
     this.cameraSystem.updateActiveCamera(
       this.player,
@@ -178,7 +178,9 @@ export class Game {
 
   private handleFrame(dt: number): void {
     if (this.activeStage.isPlaying && this.paused) {
-      this.handlePausedFrame();
+      this.simulator.lastSimDt = 0;
+      this._sfx.setThrust(false);
+      this.player.pause();
       return;
     }
     // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
@@ -234,12 +236,6 @@ export class Game {
     }
   }
 
-  private handlePausedFrame(): void {
-    this.simulator.lastSimDt = 0;
-    this._sfx.setThrust(false);
-    this.player.pause();
-  }
-
   private handleEdgeInput(): void {
     for (const code of this.input.presses()) {
       this.handleEdgePress(code);
@@ -252,7 +248,7 @@ export class Game {
       case 'Comma': this.simSpeedManager.shift(-1); break;
       case 'Period': this.simSpeedManager.shift(1); break;
       case 'KeyM':
-        this.cameraSystem.mapMode = this.mapModeSystem.toggleMap(this.activeStage.isPlaying, this.touchControls, this.cameraSystem.mapMode);
+        this.mapModeSystem.toggleMap(this.activeStage.isPlaying, this.touchControls, this.cameraSystem);
         // マップを閉じた: 同じノードのままΔvだけ編集された可能性があり、
         // ノード時刻の一致だけでは検出できないため、噴射ガイドの凍結目標を作り直す。
         if (!this.cameraSystem.mapMode) this.planGuide.clearActiveTarget();
