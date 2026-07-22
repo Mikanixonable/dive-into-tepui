@@ -13,13 +13,13 @@ export interface MapLabel {
   pos: Vec3;
 }
 
-export class MapHud {
+export class MapMarkers {
   labels: MapLabel[] = [];
 
   constructor(private readonly markerManager: MarkerManager) {}
 
   // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルを更新し、
-  // HUD マーカーに反映する。sliderT > 0 の間はゴーストスライダーの表示時刻を使う。
+  // マーカーに反映する。sliderT > 0 の間はゴーストスライダーの表示時刻を使う。
   // duration は predictDurationSec() の結果。
   updateLabels(o: Vec3, simTime: number, ephemeris: EphemerisSystem, duration: number, sliderT: number, project: ProjectFn): void {
     const t = sliderT > 0 ? simTime + sliderT * duration : simTime;
