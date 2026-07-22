@@ -7,13 +7,13 @@
 //   - hud/panel.ts         … ステータスパネル同期(panels として公開)
 import { ACCENT, TEXT as INK, TEXT_DIM as INK_SOFT } from '../game/theme';
 import { buildHudDom } from './dom';
-import { MarkerManager } from './markerManager';
+import { MarkerManager } from '../game/marker/marker-manager';
 import { HudPanels } from './panel';
 import { fmtDist, fmtTime } from './utils';
 
 export class Hud {
   private els: Map<string, HTMLElement>;
-  readonly markers: MarkerManager;
+  readonly markerManager: MarkerManager;
   readonly panels: HudPanels;
   private hintUntil = 0;
   private toastUntil = 0;
@@ -34,7 +34,7 @@ export class Hud {
   constructor() {
     const { root, svgOverlay, els } = buildHudDom(this);
     this.els = els;
-    this.markers = new MarkerManager(root, svgOverlay);
+    this.markerManager = new MarkerManager(root, svgOverlay);
     this.panels = new HudPanels(els);
   }
 

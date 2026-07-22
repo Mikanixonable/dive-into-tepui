@@ -47,9 +47,9 @@ export class MapHud {
       const wp = sub(lbl.pos, o);
       const p = project(wp);
       if (p && p.front) {
-        this._hud.markers.set(lbl.id, 'poi', '●', p.x, p.y, true, lbl.name);
+        this._hud.markerManager.set(lbl.id, 'poi', '●', p.x, p.y, true, lbl.name);
       } else {
-        this._hud.markers.set(lbl.id, 'poi', '●', 0, 0, false, lbl.name);
+        this._hud.markerManager.set(lbl.id, 'poi', '●', 0, 0, false, lbl.name);
       }
     }
   }

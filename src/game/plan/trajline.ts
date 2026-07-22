@@ -8,7 +8,7 @@
 // ジオメトリは refresh() を呼んだときだけ作り直す(毎フレームではない)。
 // 毎フレームは setOrigin() でフローティングオリジン補正の平行移動だけ行う。
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../physics/vec3';
+import { Vec3 } from '../../physics/vec3';
 
 const SEGMENT_COLORS = [0xbfc9d4, 0xffffff, 0xff6a00];
 
