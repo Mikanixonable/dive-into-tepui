@@ -4,7 +4,7 @@
 // 必要な値をここで読み取る(game.ts は import しない — 型のみの参照)。
 import * as C from '../game/const';
 import { TEXT_DIM as INK_SOFT } from '../game/theme';
-import { altitudeOf, Elements } from '../physics/orbital';
+import { altitudeOf } from '../physics/orbital';
 import { dot, len, sub } from '../physics/vec3';
 import type { Game } from '../game/game';
 import { fmtDist, fmtSpeed, fmtTime } from './utils';
@@ -58,9 +58,12 @@ export class HudPanels {
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
   // ステータスパネル(スタッツ・ターゲット情報・敵一覧)を一定周期で更新する。
-  update(game: Game, dt: number, playerEl: Elements | null, tgtEl: Elements | null): void {
+  update(game: Game, dt: number): void {
     const player = game.player;
     const tgt = game.targeter.autoTarget;
+    const playerEl = player.elements;
+    const tgtEl = tgt ? tgt.elements : null;
+
     this.hudTimer -= dt;
     if (this.hudTimer <= 0) {
       this.hudTimer = 0.1;
