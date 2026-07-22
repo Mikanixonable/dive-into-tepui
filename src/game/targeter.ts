@@ -1,6 +1,5 @@
 import * as THREE from 'three/webgpu';
 import { add, addScaled, dot, lenSq, norm, sub, v3, Vec3 } from '../physics/vec3';
-import { Elements, elementsFromState } from '../physics/orbital';
 import { OrbitLine } from '../render/orbitline';
 import * as C from './const';
 import { Enemy } from './orbit-entity/enemy';
@@ -10,6 +9,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
 import { Input } from './input';
 import { ProjectFn } from './camera/camera-system';
+import { MarkerManager } from './marker/marker-manager';
 
 export class Targeter {
   private lockedTarget: Enemy | null = null;
@@ -26,7 +26,7 @@ export class Targeter {
   readonly orbitLine = new OrbitLine(0xff6a00, 0.9);
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
-  constructor(private readonly _hud: Hud, _sfx: Sfx, scene: THREE.Scene) {
+  constructor(private readonly _hud: Hud, _sfx: Sfx, private readonly markerManager: MarkerManager, scene: THREE.Scene) {
     this.orbitLine.line.renderOrder = 2;
     scene.add(this.orbitLine.line);
   }
@@ -49,12 +49,11 @@ export class Targeter {
     return this.autoTarget;
   }
 
-  // ハイライト線を最新のターゲット状態に合わせ、HUD が必要とする Elements を返す。
-  updateOrbitLine(origin: Vec3): Elements | null {
+  // ハイライト線を最新のターゲット状態に合わせる。
+  updateOrbitLine(origin: Vec3): void{
     const tgt = this.aliveTarget;
-    const tgtEl = tgt ? elementsFromState(tgt.state.r, tgt.state.v) : null;
+    const tgtEl = tgt ? tgt.elements : null;
     this.orbitLine.update(tgtEl, origin);
-    return tgtEl;
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
@@ -93,12 +92,12 @@ export class Targeter {
       const key = `bh${i}`;
       const m = this.boardMarks[i];
       if (!m || !target) {
-        this._hud.markerManager.hide(key);
+        this.markerManager.hide(key);
         continue;
       }
       const p = project(sub(add(target.state.r, m.off), o));
       const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
-      this._hud.markerManager.set(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
+      this.markerManager.set(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
     }
   }
 

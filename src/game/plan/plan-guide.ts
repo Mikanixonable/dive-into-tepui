@@ -12,6 +12,7 @@ import { fmtSpeed } from '../../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import { OrbitLine } from '../../render/orbitline';
 import { ProjectFn } from '../camera/camera-system';
+import { MarkerManager } from '../marker/marker-manager';
 import { Plan } from './plan';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
@@ -49,7 +50,12 @@ export class PlanGuide {
   // 予測軌道ゴーストを別途表示する)。
   readonly plannedLine = new OrbitLine(0xffffff, 0.9);
 
-  constructor(private readonly _hud: Hud, private readonly _sfx: Sfx, scene: THREE.Scene) {
+  constructor(
+    private readonly _hud: Hud,
+    private readonly _sfx: Sfx,
+    private readonly markerManager: MarkerManager,
+    scene: THREE.Scene,
+  ) {
     this.plannedLine.line.renderOrder = 3;
     scene.add(this.plannedLine.line);
   }
@@ -82,8 +88,8 @@ export class PlanGuide {
   ): { achieved: boolean } {
     const node = plan.firstNode();
     if (!node || !playerAlive) {
-      this._hud.markerManager.hide('nd');
-      this._hud.markerManager.hide('burn');
+      this.markerManager.hide('nd');
+      this.markerManager.hide('burn');
       this._hud.setPlanPanel(null);
       return { achieved: false };
     }
@@ -113,8 +119,8 @@ export class PlanGuide {
     }
     const tgt = this.activeTarget;
     if (!tgt) {
-      this._hud.markerManager.hide('nd');
-      this._hud.markerManager.hide('burn');
+      this.markerManager.hide('nd');
+      this.markerManager.hide('burn');
       return { achieved: false };
     }
 
@@ -122,8 +128,8 @@ export class PlanGuide {
     if (playerEl && this.orbitClose(playerEl, tgt.targetEl)) {
       plan.consumeFirstNode();
       this.activeTarget = null;
-      this._hud.markerManager.hide('nd');
-      this._hud.markerManager.hide('burn');
+      this.markerManager.hide('nd');
+      this.markerManager.hide('burn');
       if (plan.nodes.length === 0) {
         this._hud.setPlanPanel(null);
         this._hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
@@ -141,13 +147,13 @@ export class PlanGuide {
         ? `T-${Math.floor(tRem / 60)}:${String(Math.floor(tRem % 60)).padStart(2, '0')}`
         : `T+${Math.floor(-tRem / 60)}:${String(Math.floor(-tRem % 60)).padStart(2, '0')}`;
     const more = plan.nodes.length > 1 ? ` (+${plan.nodes.length - 1})` : '';
-    this._hud.markerManager.set('nd', 'mk-mnode', '◆', p.x, p.y, p.front, `NODE ${tLabel}${more}`);
+    this.markerManager.set('nd', 'mk-mnode', '◆', p.x, p.y, p.front, `NODE ${tLabel}${more}`);
 
     // 噴射ガイド: (凍結済みの)目標速度ベクトルとの差分方向へ加速する
     const dvRem = sub(tgt.vPlanned, pv);
     const mag = len(dvRem);
     const g = project(scale(norm(dvRem), 5e4));
-    this._hud.markerManager.set(
+    this.markerManager.set(
       'burn',
       'mk-burn',
       '⬢',

@@ -7,7 +7,6 @@ import * as THREE from 'three/webgpu';
 import {
   Vec3,
 } from '../physics/vec3';
-import { Elements, elementsFromState } from '../physics/orbital';
 import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
@@ -15,6 +14,7 @@ import { HitSystem } from './orbit-entity/hit';
 import { Stage } from './stages/stage';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkerForGame } from './marker/marker-for-game';
+import { MarkerManager } from './marker/marker-manager';
 import { CollisionPhysics } from './orbit-entity/collision';
 import { EffectsSystem } from './effects-system';
 import { getStageDefinition, initStage } from './stages/stage-dictionary';
@@ -42,6 +42,7 @@ export class Game {
   touchControls: TouchControls | null = null;
   private readonly _hud = new Hud();
   private readonly _sfx = new Sfx();
+  private readonly markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
   // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
   // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/simulator/targeter 等)は
   // public にする。mapModeSystem のコンストラクタで MapCamera への参照を注入するため、
@@ -77,6 +78,7 @@ export class Game {
   private readonly mapModeSystem = new MapModeSystem(
     this._hud,
     this._sfx,
+    this.markerManager,
     this.simSpeedManager,
     this.cameraSystem.activeCameraProjection,
     this.cameraSystem.mapCamera,
@@ -96,7 +98,7 @@ export class Game {
 
   private readonly unlockManager = new UnlockManager();
   private readonly hitSystem = new HitSystem();
-  private readonly markersSystem = new MarkerForGame(this._hud.markerManager);
+  private readonly markersSystem = new MarkerForGame(this.markerManager);
   private readonly collisionPhysics = new CollisionPhysics();
   // フラッシュ・破片エフェクトのスポーン窓口(effects-system.ts)。scene への注入・
   // FlashEffectManager の所有もここに一元化されており、Player/Enemy/PlayerFire は
@@ -114,8 +116,8 @@ export class Game {
     this.ephemeris = new EphemerisSystem(this._scene);
     this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
     this.pipRenderer = new PipRenderer(this._scene);
-    this.targeter = new Targeter(this._hud, this._sfx, this._scene);
-    this.planGuide = new PlanGuide(this._hud, this._sfx, this._scene);
+    this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
+    this.planGuide = new PlanGuide(this._hud, this._sfx, this.markerManager, this._scene);
 
     this.activeStage = getStageDefinition(stage);
 
@@ -292,7 +294,12 @@ export class Game {
     });
     this.syncDynamicObjects(o, pv);
     this.effects.syncFlashEffects(dt, this.simulator.lastSimDt, o, this.cameraSystem.activeCamera);
-    this.syncHud(dt, o, pv);
+
+    this.syncEntityOrbitLines(o, this.cameraSystem.mapMode);
+    this.syncMarkers(dt, o, pv);
+
+    this._hud.panels.update(this, dt);
+    this._hud.tick();
   }
 
   private syncDynamicObjects(o: Vec3, pv: Vec3): void {
@@ -310,39 +317,35 @@ export class Game {
   }
   // 自機・敵の軌道線は各 entity 自身が持つ(Player/Enemy コンストラクタ参照)ため、
   // ここでは毎フレームの Elements 算出と update() 呼び出しだけを行う。
-  private syncEntityOrbitLines(o: Vec3, pv: Vec3, mapMode: boolean): Elements | null {
-    const playerEl = elementsFromState(o, pv);
+  private syncEntityOrbitLines(o: Vec3, mapMode: boolean): void {
+    const playerEl = this.player.elements;
     this.player.orbitLine.update(this.player.alive ? playerEl : null, o, this.player.thrustVizDir !== null, true);
     const tgt = this.targeter.aliveTarget;
     for (const enemy of this.simulator.enemies) {
       const showGray = mapMode && enemy.alive && enemy !== tgt;
-      enemy.orbitLine.update(showGray ? elementsFromState(enemy.state.r, enemy.state.v) : null, o);
+      enemy.orbitLine.update(showGray ? enemy.elements : null, o);
     }
-    return playerEl;
+    this.targeter.updateOrbitLine(o);
   }
 
-  private syncHud(dt: number, o: Vec3, pv: Vec3): void {
+  private syncMarkers(dt: number, o: Vec3, pv: Vec3): void {
     const project = this.cameraSystem.activeCameraProjection;
-    this.mapModeSystem.updateDisplay(this.cameraSystem.mapMode);
-
     const mapMode = this.cameraSystem.mapMode;
-    const playerEl = this.syncEntityOrbitLines(o, pv, mapMode);
-    const tgtEl = this.targeter.updateOrbitLine(o);
+
+    this.mapModeSystem.updateDisplay(mapMode);
+
     this.ephemeris.updateReferenceLines(this.simulator.simTime, o, mapMode);
     this.planGuide.updatePlannedLine(this.mapModeSystem.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, mapMode);
 
     this.markersSystem.updateMarkers(this.markerCtx(), pv, project);
-    this.markersSystem.updateNodeMarkers(this.player, playerEl, tgtEl, project);
+    this.markersSystem.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
     this.targeter.updateBoardMarkers(this.player, dt, project);
     if (mapMode) {
-      this._hud.markerManager.hide('burn');
+      this.markerManager.hide('burn');
     } else {
-      const { achieved } = this.planGuide.update(this.mapModeSystem.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, pv, playerEl, this.player.alive, project);
+      const { achieved } = this.planGuide.update(this.mapModeSystem.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, pv, this.player.elements, this.player.alive, project);
       if (achieved) this.simSpeedManager.cancelAutoWarp();
     }
-
-    this._hud.panels.update(this, dt, playerEl, tgtEl);
-    this._hud.tick();
   }
 
   // ------------------------------------------------------------------ render

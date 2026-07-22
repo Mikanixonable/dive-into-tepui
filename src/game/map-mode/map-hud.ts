@@ -3,9 +3,8 @@
 // カメラの視点操作(MapCamera)とは責務を分離する。
 import { moonPosition, sunPosition, emLagrangePoints, seLagrangePoints } from '../../physics/ephemeris';
 import { Vec3, sub } from '../../physics/vec3';
-import { Hud } from '../../hud/hud';
-import { Sfx } from '../../audio/sfx';
 import { ProjectFn } from '../camera/camera-system';
+import { MarkerManager } from '../marker/marker-manager';
 import type { EphemerisSystem } from '../ephemeris';
 
 export interface MapLabel {
@@ -17,8 +16,7 @@ export interface MapLabel {
 export class MapHud {
   labels: MapLabel[] = [];
 
-  // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
-  constructor(private readonly _hud: Hud, _sfx: Sfx) {}
+  constructor(private readonly markerManager: MarkerManager) {}
 
   // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルを更新し、
   // HUD マーカーに反映する。sliderT > 0 の間はゴーストスライダーの表示時刻を使う。
@@ -47,9 +45,9 @@ export class MapHud {
       const wp = sub(lbl.pos, o);
       const p = project(wp);
       if (p && p.front) {
-        this._hud.markerManager.set(lbl.id, 'poi', '●', p.x, p.y, true, lbl.name);
+        this.markerManager.set(lbl.id, 'poi', '●', p.x, p.y, true, lbl.name);
       } else {
-        this._hud.markerManager.set(lbl.id, 'poi', '●', 0, 0, false, lbl.name);
+        this.markerManager.set(lbl.id, 'poi', '●', 0, 0, false, lbl.name);
       }
     }
   }

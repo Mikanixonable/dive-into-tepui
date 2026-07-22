@@ -33,6 +33,7 @@ import { Plan } from '../plan/plan';
 import { PlanEditor } from '../plan/plan-editor';
 import { DisplayFrameFn, PlanDisplay } from '../plan/plan-display';
 import { MapCamera } from '../camera/map-camera';
+import { MarkerManager } from '../marker/marker-manager';
 import { MapHud } from './map-hud';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
@@ -47,6 +48,7 @@ export class MapModeSystem {
   constructor(
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
+    private readonly markerManager: MarkerManager,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly project: ProjectFn,
     private readonly mapCamera: MapCamera,
@@ -55,8 +57,8 @@ export class MapModeSystem {
     private readonly onPlanCleared: () => void,
   ) {
     this.editor = new PlanEditor(this._hud, this._sfx);
-    this.display = new PlanDisplay(this._hud.markerManager);
-    this.mapHud = new MapHud(this._hud, this._sfx);
+    this.display = new PlanDisplay(this.markerManager);
+    this.mapHud = new MapHud(this.markerManager);
     this.wireHudCallbacks();
     this.wireGizmoCallbacks();
   }

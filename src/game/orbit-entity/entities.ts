@@ -1,10 +1,11 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { altitudeOf, ExtraAccel, OrbitState } from '../../physics/orbital';
+import { altitudeOf, elementsFromState, ExtraAccel, OrbitState } from '../../physics/orbital';
 import { Attitude } from '../../physics/attitude';
 import { Vec3, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
+import type { Elements } from '../../physics/orbital';
 import { buildAmmo, buildBarrelMesh, buildCasingMesh, buildDebrisMesh, buildMagazineFrame } from '../../render/ships';
 
 const identityAttitude = (): Attitude => ({
@@ -50,6 +51,18 @@ export class OrbitEntity {
 
   dispose(): void {
     this.scene?.remove(this.obj);
+  }
+
+  // 軌道要素の計算の重複計算を防ぐメモ化（無駄に呼ぶと重そうなので）
+  private _elements: Elements | null | undefined = undefined;
+  get elements(): Elements | null {
+    if (this._elements !== undefined) return this._elements;
+    const el = elementsFromState(this.state.r, this.state.v);
+    this._elements = el;
+    return el;
+  }
+  clearMemo(): void {
+    this._elements = undefined;
   }
 }
 
