@@ -1,5 +1,5 @@
 // マップモード(軌道計画モード)folder の唯一の外部窓口 — game.ts はこのクラスの
-// メソッドのみを呼び、PlanEditor/PlanDisplay/MapHud には直接触れない。
+// メソッドのみを呼び、PlanEditor/PlanDisplay/Map-Markers には直接触れない。
 // 軌道計画そのもの(Plan)はマップモードの開閉と無関係に存在し続けるデータだが、
 // 編集・保持ともここが唯一の場所であるため、このクラスが Plan インスタンスを直接
 // 所有する(plan-guide.ts での実施は Game が `mapModeSystem.plan` 経由で読む)。
@@ -27,14 +27,14 @@ import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
 import { TouchControls } from '../touch';
-import { ProjectFn } from '../camera/camera-system';
+import { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { Plan } from '../plan/plan';
 import { PlanEditor } from '../plan/plan-editor';
 import { DisplayFrameFn, PlanDisplay } from '../plan/plan-display';
 import { MapCamera } from '../camera/map-camera';
 import { MarkerManager } from '../marker/marker-manager';
-import { MapHud } from './map-hud';
+import { MapMarkers } from './map-markers';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
 
@@ -42,7 +42,7 @@ export class MapModeSystem {
   readonly plan = new Plan();
   private readonly editor: PlanEditor;
   private readonly display: PlanDisplay;
-  private readonly mapHud: MapHud;
+  private readonly mapMarkers: MapMarkers;
   private focus: string = 'earth';
 
   constructor(
@@ -53,12 +53,12 @@ export class MapModeSystem {
     private readonly project: ProjectFn,
     private readonly mapCamera: MapCamera,
     private readonly getFineAttitude: () => boolean,
-    private readonly getExternalState: () => { player: Player; ephemeris: EphemerisSystem; simTime: number },
+    private readonly getExternalState: () => { player: Player; ephemeris: EphemerisSystem; simTime: number; },
     private readonly onPlanCleared: () => void,
   ) {
     this.editor = new PlanEditor(this._hud, this._sfx);
     this.display = new PlanDisplay(this.markerManager);
-    this.mapHud = new MapHud(this.markerManager);
+    this.mapMarkers = new MapMarkers(this.markerManager);
     this.wireHudCallbacks();
     this.wireGizmoCallbacks();
   }
@@ -101,7 +101,7 @@ export class MapModeSystem {
       },
       onNodeContextMenu: (clientX, clientY) => {
         const state = this.getExternalState();
-        this.editor.handleMapRightClick(this.plan, clientX, clientY, state.player.state.r, this.toDisplayFrame(state.ephemeris), this.project, this.mapHud.labels);
+        this.editor.handleMapRightClick(this.plan, clientX, clientY, state.player.state.r, this.toDisplayFrame(state.ephemeris), this.project, this.mapMarkers.labels);
       },
       onAxisDrag: (axis, sign, deltaPx) => {
         this.editor.applyAxisDrag(this.plan, axis, sign, deltaPx, this.getFineAttitude());
@@ -118,7 +118,7 @@ export class MapModeSystem {
       },
       onMenuFocus: (targetKey) => {
         this.focus = targetKey;
-        const lbl = this.mapHud.findLabel(targetKey);
+        const lbl = this.mapMarkers.findLabel(targetKey);
         if (lbl) this._hud.hint(`${lbl.name} にフォーカス`);
       },
     });
@@ -133,22 +133,20 @@ export class MapModeSystem {
   }
 
   // --------------------------------------------------------------- lifecycle
+  private openMap(touchControls: TouchControls | null): void {
+    this.editor.selectedNodeIdx = null;
+    // マップの表示用予測期間は戦闘ビューの噴射ガイド用期間と異なるため、
+    // 開いた直後は必ず作り直す(スロットリングで最大2秒待たされるのを避ける)。
+    this.plan.markDirty();
+    this._hud.setMapToolbarVisible(true);
+    touchControls?.setMapMode(true);
+    this._hud.hint(
+      '軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [M] で確定',
+      5000,
+    );
+  }
 
-  toggleMap(isPlaying: boolean, touchControls: TouchControls | null, mapMode: boolean): boolean {
-    if (!isPlaying) return mapMode;
-    if (!mapMode) {
-      this.editor.selectedNodeIdx = null;
-      // マップの表示用予測期間は戦闘ビューの噴射ガイド用期間と異なるため、
-      // 開いた直後は必ず作り直す(スロットリングで最大2秒待たされるのを避ける)。
-      this.plan.markDirty();
-      this._hud.setMapToolbarVisible(true);
-      touchControls?.setMapMode(true);
-      this._hud.hint(
-        '軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [M] で確定',
-        5000,
-      );
-      return true;
-    }
+  private closeMap(touchControls: TouchControls | null): void {
     this.editor.onMapClosed(this.plan);
     this._hud.setMapToolbarVisible(false);
     this._hud.setPlanPanel(null);
@@ -157,18 +155,32 @@ export class MapModeSystem {
     if (this.plan.nodes.length > 0) {
       this._hud.hint(`マニューバ計画 ${this.plan.nodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
     }
-    return false;
   }
 
-  updateMapModeWithPhase(isPlaying: boolean, touchControls: TouchControls | null, mapMode: boolean): boolean {
-    if (!isPlaying && mapMode) {
-      this._hud.setPlanPanel(null);
-      this._hud.setMapToolbarVisible(false);
-      this.editor.closeMenu();
-      touchControls?.setMapMode(false);
-      return false;
+  toggleMap(isPlaying: boolean, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
+    // ポーズ中、死亡後はマップモードを変更できない
+    if (!isPlaying) return;
+
+    if (!cameraSystem.mapMode) {
+      this.openMap(touchControls);
+      cameraSystem.mapMode = true;
+      return;
     }
-    return mapMode;
+    this.closeMap(touchControls);
+    cameraSystem.mapMode = false;
+    return;
+  }
+
+  // isPlayeingがfalseになったときに（死んだとき）にmapModeを終了する？
+  updateMapModeWithPhase(isPlaying: boolean, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
+    if (isPlaying || !cameraSystem.mapMode) return;
+
+    this._hud.setPlanPanel(null);
+    this._hud.setMapToolbarVisible(false);
+    this.editor.closeMenu();
+    touchControls?.setMapMode(false);
+    cameraSystem.mapMode = false;
+    return;
   }
 
   // [X] キー: マップモード中は選択中ノードのみ、マップ外では計画全体を破棄する
@@ -221,7 +233,7 @@ export class MapModeSystem {
   // 位置として返す。CameraSystem.updateActiveCamera の focusRel 引数の供給元 —
   // MapCamera へは解決済みの Vec3 だけを渡す。
   focusRel(origin: Vec3): Vec3 {
-    const pos = this.focus === 'earth' ? v3(0, 0, 0) : this.mapHud.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
+    const pos = this.focus === 'earth' ? v3(0, 0, 0) : this.mapMarkers.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
     return sub(pos, origin);
   }
 
@@ -234,7 +246,7 @@ export class MapModeSystem {
     const state = this.getExternalState();
     this.editor.updateEditing(this.plan, dt, state.simTime, state.player.state.r, this.toDisplayFrame(state.ephemeris), input, this.project, {
       fineAttitude: this.getFineAttitude(),
-      labels: this.mapHud.labels,
+      labels: this.mapMarkers.labels,
       toolbar: {
         durationKey: this.display.predictDurationKey,
         frameRotating: this.mapCamera.frameRotating,
@@ -256,7 +268,7 @@ export class MapModeSystem {
     const origin = state.player.state.r;
     this.display.update(this.plan, state, origin, this.mapCamera.frameRotating, this.mapCamera.sliderT, this.project);
     this.editor.updateGizmo(this.plan, origin, this.toDisplayFrame(state.ephemeris), this.project, this.mapCamera.dist);
-    this.mapHud.updateLabels(
+    this.mapMarkers.updateLabels(
       origin,
       state.simTime,
       state.ephemeris,
@@ -273,7 +285,7 @@ export class MapModeSystem {
   }
 
   mapLabelIds(): string[] {
-    return this.mapHud.labels.map((l) => l.id);
+    return this.mapMarkers.labels.map((l) => l.id);
   }
 
   get trajLineGroup(): THREE.Object3D {

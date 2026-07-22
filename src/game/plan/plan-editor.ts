@@ -10,9 +10,9 @@ import * as C from '../const';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
-import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from '../map-mode/mapgizmo';
+import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from '../map-mode/map-gizmo';
 import { ProjectFn } from '../camera/camera-system';
-import { MapLabel } from '../map-mode/map-hud';
+import { MapLabel } from '../map-mode/map-markers';
 import { DisplayFrameFn } from './plan-display';
 import { Plan } from './plan';
 

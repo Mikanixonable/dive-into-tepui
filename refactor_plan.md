@@ -33,6 +33,41 @@ markerForGameを分散させるうえで懸念がある。例えば敵のマー�
 方針としては、まずmarkerとhudを密結合にすべきでないので、Markermanagerの真インスタンスはhudに持たせるのではなく、Gameとかに持たせるべきだ。
 MarkerForGameが集約するんだかしないんだかはっきりしてほしい。たぶん集約しない方が今後のためになるだろうけど……
 
+## mapMode の配線
+マップモード、軌道計画モードの責務が広い。関連する仕様には
+
+- カメラを遠くに置いて表示する
+- プランを更新、編集する
+- simSpeedのの自動調整
+- マップモードを開いたり閉じたりする
+- マップGizmo(Hudの一種)を更新する
+- マップモード中でのみ見ることができるラベル（マーカー）を更新する
+
+などの責務があって、これが複数のファイル(map-mode-system.ts、plan-guide.ts、map-gismo.ts、map-camera.ts、game.tsなど)に混在している。ファイル数的には分割されているように見えるが、分割位置が悪い。
+
+mapModeSystemがマップモード関連のファサードになることになっていたが、それが自己目的化していて、他ファイルに切り出されたはずの責務をまだ持っている。simSpeedManagerやMapCameraは概念的にだいぶ遠いのに、その参照を共有されて保持して勝手に弄っている。しかも、cameraSystemが持ってるMapModeフラグを弄れないので、結局戻り値でGame.tsに返している。
+
+### 調査
+まず、SPEC.md、と実コードを参照して、先述の関連する仕様、挙動がほかにあるかを調査する（ここで関連するというのは、関数名で判断するのではなく、インスタンスの受け渡し方などから実質的な使用パターンを検証すること）。
+
+次に、それぞれの責務がどのファイルに存在するかを調べる。
+怪しいのは、mapCamera、plan/フォルダ以下、map-mode/フォルダ以下、mapCamera、simSpeedManager
+ファイル名から想像できる責務とに正しい責務をしている部分は問題ないが、より適切なファイルが存在する場合、行単位で責務外の処理を行っていないか注目する。
+
+### 改善案
+map-mode-toggler.tsを新設し、mapModeSystemからマップモードの開閉に関わる処理を移動する。plan、simSpeedmanager、mapCameraの参照が必要な部分は、都度引数として注入を受けるようにする。_hudやplan、editorが必要な部分も、引数で注入を受ける。map-mode-togglerはインスタンスを直接game.tsが持つ。
+cameraSystemがmapModeフラグを持っているが、これは影響範囲が広いので変更しない。mapModetogglerはapModeフラグを保持せず、与えられた参照からmapModeをトグルするだけである。
+
+mapModeSystemから、mapCameraの操作に関する部分を、map-camera.tsに移動する。
+
+
+## callback登録の密結合
+wireHudCallbackを解体したい……gameのwireHudCallbacksもそうだが、hudとの密結合があって配線が汚い。どうにかしたい……
+hudがそもそもマンモスクラスである可能性がある。要調査。
+
+（現状map-gizmoやpanelがそうであるように？）、hudを意味的まとまりごとにgameHud、mapHudなどに分割し、それぞれにwireCallbacks関数を持たせるのがよいかもしれない。
+
+
 ## orbitLineの配線が悪い
 軌道要素を再計算していたりする。
 
@@ -120,4 +155,4 @@ waveManagerが利用しているWaveEncounterConfigはupdateで毎回注入を�
 
 inputを綺麗に書き直す
 
-
+通常カメラのnearfarが未定義
