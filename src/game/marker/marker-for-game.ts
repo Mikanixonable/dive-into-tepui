@@ -4,11 +4,10 @@
 // スクリーン投影(project)はアクティブカメラ依存のため game.ts 側の関数を呼び出し
 // 引数として受け取る(planner.ts の project 注入パターンに合わせる)。
 import * as THREE from 'three/webgpu';
-import { Elements } from '../../physics/orbital';
 import { qRotate } from '../../physics/attitude';
 import { Vec3, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { Ammo } from '../orbit-entity/entities';
+import { Ammo, OrbitEntity } from '../orbit-entity/entities';
 import { Enemy } from '../orbit-entity/enemy';
 import { MarkerManager } from './marker-manager';
 import { fmtMarkerDist } from '../../hud/utils';
@@ -307,7 +306,10 @@ export class MarkerForGame {
 
   // ターゲットの軌道面との交線(相対昇交点・降交点)を自機の軌道上に表示する。
   // 面変更(ノーマル/アンチノーマル)burn を行うべき位置がひと目で分かる。
-  updateNodeMarkers(player: Player, playerEl: Elements | null, tgtEl: Elements | null, project: ProjectFn): void {
+  updateNodeMarkers(player: Player, tgt: OrbitEntity | null, project: ProjectFn): void {
+    const playerEl = player.elements;
+    const tgtEl = tgt?.elements ?? null;
+    
     if (!playerEl || !tgtEl) {
       this.markerManager.hide('an');
       this.markerManager.hide('dn');

@@ -1,19 +1,22 @@
 // DOM オーバーレイの HUD のシェル。トースト・ヒント・ヘルプ・設定(一時停止メニュー)・
 // 終了画面・計画パネル/マップツールバーを管理し、WebGPU キャンバスの上に重ねる。
+// マーカー表示(MarkerManager)は SVG オーバーレイを使う実装詳細に過ぎず、今後変わり得る一方、
+// 各所から多数のマーカーが参照される点は変わらないため、実体は Hud ではなく Game が持つ
+// (game.ts の markerManager フィールド)。Hud は DOM 構築で得た root/svgOverlay を
+// 公開するのみで、マーカーの内容には関与しない。
 //
 // 内部構成:
-//   - hud/dom.ts           … 静的 DOM/スタイル構築
-//   - hud/markerManager.ts … スクリーン投影マーカー管理(markers として公開)
-//   - hud/panel.ts         … ステータスパネル同期(panels として公開)
+//   - hud/dom.ts  … 静的 DOM/スタイル構築
+//   - hud/panel.ts … ステータスパネル同期(panels として公開)
 import { ACCENT, TEXT as INK, TEXT_DIM as INK_SOFT } from '../game/theme';
 import { buildHudDom } from './dom';
-import { MarkerManager } from '../game/marker/marker-manager';
 import { HudPanels } from './panel';
 import { fmtDist, fmtTime } from './utils';
 
 export class Hud {
   private els: Map<string, HTMLElement>;
-  readonly markerManager: MarkerManager;
+  readonly root: HTMLElement;
+  readonly svgOverlay: SVGSVGElement;
   readonly panels: HudPanels;
   private hintUntil = 0;
   private toastUntil = 0;
@@ -33,8 +36,9 @@ export class Hud {
 
   constructor() {
     const { root, svgOverlay, els } = buildHudDom(this);
+    this.root = root;
+    this.svgOverlay = svgOverlay;
     this.els = els;
-    this.markerManager = new MarkerManager(root, svgOverlay);
     this.panels = new HudPanels(els);
   }
 
