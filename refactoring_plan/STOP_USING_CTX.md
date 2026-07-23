@@ -133,5 +133,5 @@ const {x, y, z} = result;
 #### 許容できる例(参考)
 
 - `Player.behave(params: {...9 fields...})`(`src/game/player/player.ts`)— 76節の「例外的に許されるパターン」そのもの。匿名の引数内型注釈 + 即時分割代入 + 呼び出し側もインライン object literal。named 型もファクトリ関数も存在しない。
-- `MapModeSystem` に注入される `getExternalState: () => { player, ephemeris, simTime }`(`src/game/game.ts`/`src/game/map-mode/map-mode-system.ts`)— 冒頭の `PlanCtx` 例はこの形に解消済み。ただし `map-mode-system.ts:240` の `this.display.update(this.plan, state, ...)` は一度 `state` を変数に取ってからまるごと転送しており、受け手(`PlanDisplay.update`)側で即時分割代入されているとはいえ、事実上の無名ctxが暗黙に生き続けている点は軽く注意しておく価値がある。
+- `PlanSystem` に注入される `getExternalState: () => { player, ephemeris, simTime }`(`src/game/game.ts`/`src/game/map-mode/map-mode-system.ts`)— 冒頭の `PlanCtx` 例はこの形に解消済み。ただし `map-mode-system.ts:240` の `this.display.update(this.plan, state, ...)` は一度 `state` を変数に取ってからまるごと転送しており、受け手(`PlanDisplay.update`)側で即時分割代入されているとはいえ、事実上の無名ctxが暗黙に生き続けている点は軽く注意しておく価値がある。
 - `EnvironmentSyncParams`(`src/render/environment-scene.ts`)

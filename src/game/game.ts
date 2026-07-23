@@ -43,8 +43,8 @@ export class Game {
   private readonly markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
   // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
   // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/simulator/targeter 等)は
-  // public にする。mapModeSystem のコンストラクタで MapCamera・mapMarkers への参照を注入する
-  // ため、cameraSystem は mapModeSystem より前に構築する必要がある。
+  // public にする。planSystem のコンストラクタで MapCamera・mapMarkers への参照を注入する
+  // ため、cameraSystem は planSystem より前に構築する必要がある。
   // マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)とその選択 UI は
   // 「どこを注視するか」= mapCamera 寄りの責務なので cameraSystem が所有する。
   readonly cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager);
@@ -69,12 +69,12 @@ export class Game {
   // 間は WASDQE がΔv編集に使われるため)。scene に計画軌道ラインを持つため
   // コンストラクタ本体で構築する(effects 等と同じ理由)。
 
-  // 軌道計画(ノード列+予測キャッシュ、Plan)は mapModeSystem が所有する。
+  // 軌道計画(ノード列+予測キャッシュ、Plan)は planSystem が所有する。
   // マップモードの有無と無関係なデータだが、編集・保持ともマップモード側にしか
-  // 出てこないため、実施(噴射ガイド=planGuide)へは mapModeSystem.plan 経由で注入する。
+  // 出てこないため、実施(噴射ガイド=planGuide)へは planSystem.plan 経由で注入する。
   // scene(_scene)はコンストラクタ引数 gs 由来で field initializer の時点では
   // 未確定のため、コンストラクタ本体で構築する(effects 等と同じ理由)。
-  private readonly mapModeSystem: PlanSystem;
+  private readonly planSystem: PlanSystem;
   readonly mapModeToggler: MapModeToggler;
 
   // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定、stages/ 参照)。
@@ -108,7 +108,7 @@ export class Game {
     this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
     this.pipRenderer = new PipRenderer(this._scene);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
-    this.mapModeSystem = new PlanSystem(
+    this.planSystem = new PlanSystem(
       this._hud,
       this._sfx,
       this.markerManager,
@@ -121,7 +121,7 @@ export class Game {
       () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime })
     );
     // ノードハンドル直接右クリックは、canvas 右クリックと同じフォールバック調停に流す。
-    this.mapModeSystem.onNodeHandleRightClick = (x, y) => this.dispatchMapRightClick(x, y);
+    this.planSystem.onNodeHandleRightClick = (x, y) => this.dispatchMapRightClick(x, y);
     this.mapModeToggler = new MapModeToggler(this._hud);
 
     this.input = new Input(gs.renderer.domElement);
@@ -161,7 +161,7 @@ export class Game {
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
     this.handleEdgeInput();
-    this.mapModeToggler.update(this.activeStage.isPlaying, this.mapModeSystem, this.touchControls, this.cameraSystem);
+    this.mapModeToggler.update(this.activeStage.isPlaying, this.planSystem, this.touchControls, this.cameraSystem);
 
     // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
     // 積分もサブステップなしの簡略版(integrateSimulation の hardCollision/doSubstep 引数)にする。
@@ -221,7 +221,7 @@ export class Game {
 
     if (this.cameraSystem.mapMode) {
       this.dispatchMapPointer();
-      this.mapModeSystem.updateEditing(dt, this.input, this.player, this.simulator.simTime);
+      this.planSystem.updateEditing(dt, this.input, this.player, this.simulator.simTime);
     }
     else {
       this.targeter.updateCombatTargeting(this.player, this.simulator.enemies, this.input, this.cameraSystem);
@@ -235,7 +235,7 @@ export class Game {
   private dispatchMapPointer(): void {
     for (const c of this.input.clicks()) {
       this.cameraSystem.closeFocusMenu();
-      this.mapModeSystem.handleMapClick(c.x, c.y);
+      this.planSystem.handleMapClick(c.x, c.y);
     }
     for (const rc of this.input.rightClicks()) {
       this.dispatchMapRightClick(rc.x, rc.y);
@@ -243,7 +243,7 @@ export class Game {
   }
 
   private dispatchMapRightClick(x: number, y: number): void {
-    if (this.mapModeSystem.handleNodeRightClick(x, y)) this.cameraSystem.closeFocusMenu();
+    if (this.planSystem.handleNodeRightClick(x, y)) this.cameraSystem.closeFocusMenu();
     else this.cameraSystem.handleFocusRightClick(x, y, this.player.state.r);
   }
 
@@ -261,16 +261,16 @@ export class Game {
       case 'Comma': this.simSpeedManager.shift(-1); break;
       case 'Period': this.simSpeedManager.shift(1); break;
       case 'KeyM':
-        this.mapModeToggler.toggle(this.activeStage.isPlaying, this.mapModeSystem, this.touchControls, this.cameraSystem);
+        this.mapModeToggler.toggle(this.activeStage.isPlaying, this.planSystem, this.touchControls, this.cameraSystem);
         break;
       // マップモード外でのみ、 [N] キーで直近ノードへの自動ワープをトグルする。
       case 'KeyN':
         if (!this.cameraSystem.mapMode)
           this.simSpeedManager.toggleAutoWarpToFirstNode(
             this.activeStage.isPlaying,
-            this.mapModeSystem.editor.plan.firstNode());
+            this.planSystem.editor.plan.firstNode());
         break;
-      case 'KeyX': this.mapModeSystem.clearPlanByKey(this.cameraSystem.mapMode); break;
+      case 'KeyX': this.planSystem.clearPlanByKey(this.cameraSystem.mapMode); break;
       case 'KeyH': this._hud.toggleHelp(); break;
       case 'Escape': this._hud.toggleSettings(); break;
       case 'KeyR': if (!this.activeStage.isPlaying) location.reload(); break;
@@ -282,7 +282,7 @@ export class Game {
   sync(dt: number): void {
     const o = this.player.state.r;
     const pv = this.player.state.v;
-    const displayTime = this.mapModeSystem.display.resolveDisplayTime(this.cameraSystem.mapMode, this.player, this.simulator.simTime);
+    const displayTime = this.planSystem.display.resolveDisplayTime(this.cameraSystem.mapMode, this.player, this.simulator.simTime);
     this.environment.sync({
       dt,
       origin: o,
@@ -325,7 +325,7 @@ export class Game {
       enemies: this.simulator.enemies,
       target: this.targeter.autoTarget,
       ammos: this.simulator.ammos,
-      mapLabelIds: this.mapModeSystem.mapLabelIds(),
+      mapLabelIds: this.planSystem.mapLabelIds(),
       activeCamera: this.cameraSystem.activeCamera,
       simTime: this.simulator.simTime,
     };
@@ -335,7 +335,7 @@ export class Game {
     const project = this.cameraSystem.activeCameraProjection;
     const mapMode = this.cameraSystem.mapMode;
 
-    this.mapModeSystem.updateDisplay(mapMode, this.player, this.ephemeris, this.simulator.simTime);
+    this.planSystem.updateDisplay(mapMode, this.player, this.ephemeris, this.simulator.simTime);
 
     this.ephemeris.updateReferenceLines(this.simulator.simTime, o, mapMode);
 
@@ -345,7 +345,7 @@ export class Game {
     if (mapMode) {
       this.markerManager.hide('burn');
     } else {
-      this.mapModeSystem.guide.update(this.mapModeSystem.editor.plan, this.player, this.ephemeris, this.simulator.simTime, this.simSpeedManager, project);
+      this.planSystem.guide.update(this.planSystem.editor.plan, this.player, this.ephemeris, this.simulator.simTime, this.simSpeedManager, project);
     }
   }
 
