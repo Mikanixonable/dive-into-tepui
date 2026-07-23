@@ -20,7 +20,7 @@ import { EffectsSystem } from './effects-system';
 import { getStageDefinition, initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
-import { MapModeSystem } from './map-mode/map-mode-system';
+import { PlanSystem } from './plan/plan-system';
 import { MapMarkers } from './map-mode/map-markers';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRenderer } from './pip-renderer';
@@ -80,7 +80,7 @@ export class Game {
   // 出てこないため、実施(噴射ガイド=planGuide)へは mapModeSystem.plan 経由で注入する。
   // scene(_scene)はコンストラクタ引数 gs 由来で field initializer の時点では
   // 未確定のため、コンストラクタ本体で構築する(effects 等と同じ理由)。
-  private readonly mapModeSystem: MapModeSystem;
+  private readonly mapModeSystem: PlanSystem;
   readonly mapModeToggler: MapModeToggler;
 
   // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定、stages/ 参照)。
@@ -113,7 +113,7 @@ export class Game {
     this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
     this.pipRenderer = new PipRenderer(this._scene);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
-    this.mapModeSystem = new MapModeSystem(
+    this.mapModeSystem = new PlanSystem(
       this._hud,
       this._sfx,
       this.markerManager,
