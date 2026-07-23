@@ -1,7 +1,7 @@
 import { Hud } from "../../hud/hud";
 import { CameraSystem } from "../camera/camera-system";
 import { TouchControls } from "../touch";
-import { MapModeSystem } from "./map-mode-system";
+import { PlanSystem } from "../plan/plan-system";
 
 export class MapModeToggler {
   _hud: Hud;
@@ -10,7 +10,7 @@ export class MapModeToggler {
     this._hud = hud;
   }
   // --------------------------------------------------------------- toggler
-  private open(mapModeSystem: MapModeSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
+  private open(mapModeSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     mapModeSystem.editor.selectedNodeIdx = null;
 
     mapModeSystem.editor.plan.markDirty();
@@ -19,7 +19,7 @@ export class MapModeToggler {
     cameraSystem.mapMode = true;
   }
 
-  private close(mapModeSystem: MapModeSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
+  private close(mapModeSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     mapModeSystem.editor.onMapClosed();
     mapModeSystem.editor.closeMenu();
     this._hud.setPlanPanel(null);
@@ -29,7 +29,7 @@ export class MapModeToggler {
     mapModeSystem.guide.clearActiveTarget();
   }
 
-  toggle(isPlaying: boolean, mapModeSystem: MapModeSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
+  toggle(isPlaying: boolean, mapModeSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     // ポーズ中、死亡後はマップモードを変更できない
     if (!isPlaying) return;
 
@@ -51,7 +51,7 @@ export class MapModeToggler {
   }
 
   // isPlayeingがfalseになったときに（死んだとき）にmapModeを終了する
-  update(isPlaying: boolean, mapModeSystem: MapModeSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
+  update(isPlaying: boolean, mapModeSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     if (isPlaying || !cameraSystem.mapMode) return;
 
     this.close(mapModeSystem, touchControls, cameraSystem);

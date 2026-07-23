@@ -1,44 +1,23 @@
-// マップモード(軌道計画モード)folder の唯一の外部窓口 — game.ts はこのクラスの
-// メソッドのみを呼び、PlanEditor/PlanDisplay/MapMarkers には直接触れない。
-// 軌道計画そのもの(Plan)はマップモードの開閉と無関係に存在し続けるデータだが、
-// 編集・保持ともここが唯一の場所であるため、editor 経由で Plan インスタンスを直接
-// 所有する(plan-guide.ts での実施は Game が `mapModeSystem.editor.plan` 経由で読む)。
-// PlanEditor(マップ上でのノード編集)・PlanDisplay(予測軌道・ゴースト表示)を
-// それぞれ readonly で公開する(薄いラッパーを増やさず、Game が必要なメソッドを
-// 直接呼ぶ)。MapMarkers(フォーカス候補ラベルの算出・描画)は MapCamera も
-// フォーカス解決に必要とするため game.ts が構築し、両方へ注入される共有インスタンス。
-// MapCamera(マップカメラ・視点操作)は camera-system.ts の CameraSystem が所有し、
-// このクラスはコンストラクタで参照を受け取るだけ(駆動は CameraSystem.updateActiveCamera
-// が直接呼ぶ)。frameRotating/pan/dist は軌道計画編集(toDisplayFrame・ツールバー・
-// ギズモ)がカメラの視点状態を読むための実質的な依存で、単なる薄い転送ではない。
-// フォーカス対象(focus: どのラベルを注視するかの文字列 ID)とその解決(ラベル位置→
-// フローティングオリジン相対位置)は MapCamera 自身が持つ(MapMarkers を注入されて
-// 自力で解決する) — ここでは UI イベント(ツールバー・右クリメニュー)を
-// mapCamera.focus への代入へ橋渡しするだけ。
-//
-// Plan/PlanDisplay/PlanGuide が要求する「現在状態」は getExternalState() で毎回引ける。
-// Game 側の simTime/player 状態は非同期な DOM イベント(ギズモドラッグ等)からも参照する
-// 必要があるため、コンストラクタ注入のコールバックとして持つ。project も同様の理由で
-// コンストラクタ注入(カメラ依存のクロージャ)。
 import * as THREE from 'three/webgpu';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
 import { ProjectFn } from '../camera/camera-system';
 import { SimSpeedManager } from '../sim-speed-manager';
-import { PlanEditor } from '../plan/plan-editor';
-import { PlanDisplay } from '../plan/plan-display';
+import { PlanEditor } from './plan-editor';
+import { PlanDisplay } from './plan-display';
 import { MapCamera } from '../camera/map-camera';
 import { MarkerManager } from '../marker/marker-manager';
-import { MapMarkers } from './map-markers';
+import { MapMarkers } from '../map-mode/map-markers';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
-import { PlanGuide } from '../plan/plan-guide';
+import { PlanGuide } from './plan-guide';
 
-export class MapModeSystem {
+export class PlanSystem {
   readonly editor: PlanEditor;
   readonly display: PlanDisplay;
   readonly guide: PlanGuide;
+  // editMode: boolean = false; cameraSystem の mapMode フラグの意味の一部をこっちに移動したい。
 
   constructor(
     private readonly _hud: Hud,

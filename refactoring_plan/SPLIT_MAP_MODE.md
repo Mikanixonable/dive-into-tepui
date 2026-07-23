@@ -13,7 +13,7 @@
     - mapCamera
     - chaseCamera
   - mapModeToggler
-  - mapModesystem
+  - planSystem
     - planGuide
     - planDisplay
     - planEditor
