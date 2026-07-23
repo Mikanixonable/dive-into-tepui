@@ -1,3 +1,5 @@
+# outdated　必要になったら以下のプロンプトで再生成
+
 main.tsからgame.tsにper frameで呼び出している処理がupdateとrenderに分かれていて、そこからサブルーチン的に他のprivate関数を呼んでいるわけですが、これらの依存関係について調べて、木構造として教えてください。例えばmain/fooがgame.barとgame.braをこの順で呼び、game.barがgame.brabraを呼んでいるときは以下のような木構造として把握したい。
 
 - main/foo()
@@ -16,7 +18,7 @@ main.tsからgame.tsにper frameで呼び出している処理がupdateとrender
 
 いまは呼び出し順（コールスタック）の流れだけを追いたいので、引数の情報は省略してください。また、呼び出し順に対する影響が小さいもの（つまり、何らかの値を計算して返却することが主な責務になっている副作用のない関数）も除外します。
 
-結果はroot-dependency.mdに出してください
+結果はCALLSTACK.mdに出してください
 
 
 # per-frame 呼び出し依存木
