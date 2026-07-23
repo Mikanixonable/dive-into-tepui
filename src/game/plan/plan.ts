@@ -1,5 +1,5 @@
 // 軌道計画(ノード列)とその数値予測キャッシュ。マップモードの有無に関わらず存在する
-// データで、MapModeSystem が所有し、実施(plan-guide.ts)へは Game 経由で注入する。
+// データで、PlanSystem が所有し、実施(plan-guide.ts)へは Game 経由で注入する。
 // ノードの追加・削除・並べ替えは必ずこのクラスのメソッド経由で行う — 呼び出し側が
 // nodes 配列を直接 splice すると「同じ削除ロジックの重複」を招く。
 import { PlannedNode, PredictOpts, TrajectorySample, predictTrajectory, sampleAt } from '../../physics/predict';

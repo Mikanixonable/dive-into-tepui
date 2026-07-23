@@ -47,7 +47,7 @@ main.tsからgame.tsにper frameで呼び出している処理がupdateとrender
     - input.presses()
     - player.handleEdgeInput(presses)
     - handleEdgePress(code) // player側で未消費のキー1つにつき0〜1回
-  - mapModeSystem.updateMapModeWithPhase(isPlaying, touchControls, mapMode) → cameraSystem.mapMode に反映
+  - planSystem.updateMapModeWithPhase(isPlaying, touchControls, mapMode) → cameraSystem.mapMode に反映
     - hud.setPlanPanel(null) + hud.setMapToolbarVisible(false) + editor.closeMenu() + touchControls?.setMapMode(false) // !isPlaying && mapMode の場合のみ(ポーズ/ゲームオーバー中に地図を強制で閉じる)
   - handleFrame(dt)
     - handlePausedFrame() // activeStage.isPlaying && paused の場合のみ、以降は下のupdateFrameを実行せずreturn
@@ -88,7 +88,7 @@ main.tsからgame.tsにper frameで呼び出している処理がupdateとrender
         - simSpeedManager.cancelAutoWarp() // 常に(手動シフトで自動ワープを解除)
         - sfx.warp() // 上限/下限を超えない場合のみ
         - hud.hint('TIME WARP ×...') // 同上
-      - mapModeSystem.toggleMap(isPlaying, touchControls, mapMode) // KeyM
+      - planSystem.toggleMap(isPlaying, touchControls, mapMode) // KeyM
         - [開くとき: !mapMode]
           - editor.selectedNodeIdx = null (直接代入)
           - plan.markDirty()
@@ -105,11 +105,11 @@ main.tsからgame.tsにper frameで呼び出している処理がupdateとrender
           - touchControls?.setMapMode(false) // タッチデバイスのみ
           - hud.hint(...) // plan.nodes.length > 0 の場合のみ
         - planGuide.clearActiveTarget() // toggleMap呼び出し直後、閉じた(mapMode===false)場合のみ game.ts 側から追加で呼ぶ
-      - mapModeSystem.toggleAutoWarpToFirstNode(isPlaying, mapMode) // KeyN。mapMode中は即return
+      - planSystem.toggleAutoWarpToFirstNode(isPlaying, mapMode) // KeyN。mapMode中は即return
         - hud.hint('マニューバノードがありません…') // ノード無し or !isPlaying
         - simSpeedManager.cancelAutoWarp() + hud.hint('自動ワープ解除') // 既に自動ワープ中の場合
         - simSpeedManager.startAutoWarpTo(node.time) + hud.hint('ノードへ自動ワープ開始') // 未開始の場合
-      - mapModeSystem.clearPlanByKey(mapMode) // KeyX
+      - planSystem.clearPlanByKey(mapMode) // KeyX
         - [mapMode: 選択中ノードのみ削除]
           - editor.deleteSelected(plan) → plan.removeNode(idx) + editor.closeMenu() // 選択がある場合のみ
           - simSpeedManager.cancelAutoWarp() + hud.hint('ノードを削除') // 実際に削除できた場合のみ
@@ -120,7 +120,7 @@ main.tsからgame.tsにper frameで呼び出している処理がupdateとrender
       - hud.toggleHelp() // KeyH
       - hud.toggleSettings() // Escape
       - location.reload() // KeyR。!activeStage.isPlaying の場合のみ
-  - mapModeSystem.updateMapModeWithPhase(isPlaying, touchControls, mapMode) → cameraSystem.mapMode に反映
+  - planSystem.updateMapModeWithPhase(isPlaying, touchControls, mapMode) → cameraSystem.mapMode に反映
     - hud.setPlanPanel(null) + hud.setMapToolbarVisible(false) + editor.closeMenu() + touchControls?.setMapMode(false) // !isPlaying && mapMode の場合のみ(ポーズ/ゲームオーバー中に地図を強制で閉じる)
   - handleFrame(dt)
     - handlePausedFrame() // activeStage.isPlaying && paused の場合のみ、以降は下のupdateFrameを実行せずreturn
@@ -245,7 +245,7 @@ main.tsからgame.tsにper frameで呼び出している処理がupdateとrender
             - relaxDistanceConstraints() // 内部で6回反復
             - resetIfFolded() // ベルトが折れ込んでいる場合のみ内部でリセット
             - advanceOrientationConstraints(dt, att) // リンクごとに角度クランプ・ツイスト更新
-      - mapModeSystem.updateEditing(dt, input) // mapMode の場合のみ
+      - planSystem.updateEditing(dt, input) // mapMode の場合のみ
         - editor.updateEditing(plan, dt, simTime, origin, toDisplayFrame, input, project, opts)
           - handleMapClick(...) // input.clicks() の各クリックごと
             - mapGizmo.closeMenu()
@@ -335,7 +335,7 @@ main.tsからgame.tsにper frameで呼び出している処理がupdateとrender
         - fx.billboard.sync(...) // 有効なフラッシュエフェクトごと
         - scene.remove(fx.billboard.mesh) + fx.billboard.dispose() // 寿命切れのフラッシュエフェクトごと
     - syncHud(dt, o, pv)
-      - mapModeSystem.updateDisplay(mapMode)
+      - planSystem.updateDisplay(mapMode)
         - display.hide() + editor.hideGizmo() // !mapMode の場合のみ、以降スキップしてreturn
           - line.setVisible(false) + markers.hide('ghost')
           - mapGizmo.update([], null)
@@ -442,7 +442,7 @@ main.tsからgame.tsにper frameで呼び出している処理がupdateとrender
 
 ## 補足
 
-- `plan.maybeRefresh(...)` は `planGuide.updatePlannedLine()` と `planGuide.update()` の両方から同一引数で呼ばれるが、`Plan` 内部の壁時計スロットル(`PREDICT_DIRTY_THROTTLE_MS`/`PREDICT_REFRESH_INTERVAL_MS`)により、実際に `predictTrajectory()` が走るのは1フレームにつき最大1回。mapMode中は `mapModeSystem.updateDisplay()` → `PlanDisplay.update()` からのみ(別のdurationポリシーで)呼ばれる。
+- `plan.maybeRefresh(...)` は `planGuide.updatePlannedLine()` と `planGuide.update()` の両方から同一引数で呼ばれるが、`Plan` 内部の壁時計スロットル(`PREDICT_DIRTY_THROTTLE_MS`/`PREDICT_REFRESH_INTERVAL_MS`)により、実際に `predictTrajectory()` が走るのは1フレームにつき最大1回。mapMode中は `planSystem.updateDisplay()` → `PlanDisplay.update()` からのみ(別のdurationポリシーで)呼ばれる。
 - `simulator.integrateSimulation()` は毎フレーム呼ばれるが、`activeStage.isPlaying` の真偽で `hardCollision`/`doSubstep`/`playerAccel` の有無が切り替わる2つの呼び出しサイトがある(上記ツリーではどちらも展開して記載)。
 - 高ワープ時(`simSpeed > C.MAX_PHYS_SIM_SPEED`)は `simulationSubStep()` が1フレームに最大64回まで実行される。
 - `TouchControls` は per-frame の update メソッドを持たず、DOMイベント(`pointerdown`/`pointerup`)経由で `input.setVirtualKey()` を呼ぶだけなので、このツリーには独立ノードとして登場しない。

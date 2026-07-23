@@ -10,32 +10,32 @@ export class MapModeToggler {
     this._hud = hud;
   }
   
-  private open(mapModeSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
-    mapModeSystem.editor.selectedNodeIdx = null;
+  private open(planSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
+    planSystem.editor.selectedNodeIdx = null;
 
-    mapModeSystem.editor.plan.markDirty();
+    planSystem.editor.plan.markDirty();
     this._hud.setMapToolbarVisible(true);
     touchControls?.setMapMode(true);
     cameraSystem.mapMode = true;
   }
 
-  private close(mapModeSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
-    mapModeSystem.editor.onMapClosed();
-    mapModeSystem.editor.closeMenu();
+  private close(planSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
+    planSystem.editor.onMapClosed();
+    planSystem.editor.closeMenu();
     cameraSystem.closeFocusMenu();
     this._hud.setPlanPanel(null);
     this._hud.setMapToolbarVisible(false);
     touchControls?.setMapMode(false);
     cameraSystem.mapMode = false;
-    mapModeSystem.guide.clearActiveTarget();
+    planSystem.guide.clearActiveTarget();
   }
 
-  toggle(isPlaying: boolean, mapModeSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
+  toggle(isPlaying: boolean, planSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     // ポーズ中、死亡後はマップモードを変更できない
     if (!isPlaying) return;
 
     if (!cameraSystem.mapMode) {
-      this.open(mapModeSystem, touchControls, cameraSystem);
+      this.open(planSystem, touchControls, cameraSystem);
       this._hud.hint(
         '軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [M] で確定',
         5000,
@@ -43,19 +43,19 @@ export class MapModeToggler {
       return;
     }
     else {
-      this.close(mapModeSystem, touchControls, cameraSystem);
-      if (mapModeSystem.editor.plan.nodes.length > 0) {
-        this._hud.hint(`マニューバ計画 ${mapModeSystem.editor.plan.nodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
+      this.close(planSystem, touchControls, cameraSystem);
+      if (planSystem.editor.plan.nodes.length > 0) {
+        this._hud.hint(`マニューバ計画 ${planSystem.editor.plan.nodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
       }
     }
     return;
   }
 
   // isPlayeingがfalseになったときに（死んだとき）にmapModeを終了する
-  update(isPlaying: boolean, mapModeSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
+  update(isPlaying: boolean, planSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     if (isPlaying || !cameraSystem.mapMode) return;
 
-    this.close(mapModeSystem, touchControls, cameraSystem);
+    this.close(planSystem, touchControls, cameraSystem);
     return;
   }
 }
