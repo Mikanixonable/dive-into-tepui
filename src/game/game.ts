@@ -93,7 +93,7 @@ export class Game {
     () => this.planGuide.clearActiveTarget(),
   );
   readonly mapModeToggler = new MapModeToggler(
-    this.mapModeSystem.editor, this.mapModeSystem.plan, this._hud);
+    this.mapModeSystem.editor, this.mapModeSystem.editor.plan, this._hud);
 
   // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定、stages/ 参照)。
   // 固有のランタイム状態(タイマー・ウェーブ管理等)もこれ自身が持つ。
@@ -338,7 +338,7 @@ export class Game {
     this.mapModeSystem.updateDisplay(mapMode);
 
     this.ephemeris.updateReferenceLines(this.simulator.simTime, o, mapMode);
-    this.planGuide.updatePlannedLine(this.mapModeSystem.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, mapMode);
+    this.planGuide.updatePlannedLine(this.mapModeSystem.editor.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, mapMode);
 
     this.markersSystem.updateMarkers(this.markerCtx(), pv, project);
     this.markersSystem.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
@@ -346,7 +346,7 @@ export class Game {
     if (mapMode) {
       this.markerManager.hide('burn');
     } else {
-      const { achieved } = this.planGuide.update(this.mapModeSystem.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, pv, this.player.elements, this.player.alive, project);
+      const { achieved } = this.planGuide.update(this.mapModeSystem.editor.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, pv, this.player.elements, this.player.alive, project);
       if (achieved) this.simSpeedManager.cancelAutoWarp();
     }
   }
