@@ -101,7 +101,7 @@ export class Game {
   readonly simulator: Simulator;
   private readonly pipRenderer: PipRenderer;
 
-  constructor(gs: GameScene, stage = 1) {
+  constructor(gs: GameScene, stage = '1') {
     this._scene = gs.scene;
     this.renderer = gs.renderer;
     this.ephemeris = new EphemerisSystem(this._scene);
