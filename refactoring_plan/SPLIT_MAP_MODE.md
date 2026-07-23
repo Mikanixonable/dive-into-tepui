@@ -9,15 +9,21 @@
 
 現状
 - game
-  - planGuide
+  - cameraSystem
+    - mapCamera
+    - chaseCamera
+  - mapModeToggler
   - mapModesystem
+    - planGuide
     - planDisplay
     - planEditor
       - plan
 
+### mapModeTogglerにもmapModeフラグを持たせ、cameraSystemのmapModeフラグと別の情報供給源とする。cameraSystemがmapModeフラグを持っている
+前述の通り、現状のmapModeフラグは「広範囲視点モード」と「plan編集モード」の二つの意味が重なってしまったものである。cameraSystemが持つmapModeフラグは前者の責務に関するものに限定し、後者の責務に関してはmapModeTogglerが持つものとして分離したい。現在mapModeを参照している箇所のうち、視覚的な問題はcamera.mapModeを、挙動上の問題はmapToggler.mapModeのフラグを参照する？
 
-### mapModeTogglerじゃなくてcameraSystemがmapModeフラグを持っている
-修正したいが、影響範囲がデカい。playerなどはcameraを受け取ってmapModeを参照している。現在mapModeを参照している箇所のうち、視覚的な問題はcamera.mapModeを、挙動上の問題はmapTogglerのフラグを参照する…？
+影響範囲がデカいうえ、（現状潰れている情報を復元するという作業になるので）機械的に置き換えできないのが難しい。
+playerなどはcameraを受け取ってmapModeを参照している。
 
 プレイヤーの挙動に関しては……
 例えばbillboard描画はどちらのカメラにしても正常に動作すべきなのでactiveCameraから拾うべき。
@@ -25,23 +31,14 @@
 
 広範囲視点に関するものは、cameraSystemが持つ。
 
-### mapModeSystemとplan-editorの責務境界
-mapModeSystemがマップモード中の挙動だけ管理するというのが怪しくなってきていて、実態はマップモードについてはtogglerやcameraSystemに掃き出されたので、planに関するファサードになるべき。そうすると、plan-guideが逆に漏れていることになる。
-
 ### planDislayとmapCameraの責務境界
 mapmarkersの立ち位置も検討　こいつは実質的に、mapCameraのフォーカス先の候補
 bindDisplayFramenの立ち位置も要検討。こいつがカメラと一緒になっていれば解決する問題が多いんじゃないか？
 
+### mapModeからsimSpeedManagerへの介入（要検討）
+MapModeSystemはwireHudCallbacksからsimSpeedManagerの`startAutoWarpTo`を呼んでいるが、これは無駄なたらいまわしに見える。外部からmapGizmoのコールバック登録が、bindGizmoCallbacksの一か所にまとめられてしまっているのが良くない。このせいで、すべてのコールバックがMapModeSystemを経由してしまう。ほかのhudのコールバックについても類似の問題があるが、外部から直接コールバック登録をする経路がないと、集約された登録口がすべての窓口を必要とするために、却って密結合になる。
 
-## F. 噴射ガイドの凍結解除(planGuide.clearActiveTarget)が2つの別経路を持つ。
-- [X]キー: `MapModeSystem.clearPlanByKey` → コンストラクタ注入の`onPlanCleared`コールバック → `planGuide.clearActiveTarget()`
-- [M]キー: `game.ts`の`handleEdgePress`が`mapModeSystem.toggleMap(...)`の直後に`this.planGuide.clearActiveTarget()`を**mapModeSystemを介さず直接**呼ぶ(game.ts:254)
-
-同じ「Plan操作後にplanGuideの凍結目標を破棄する」後始末が、片方はコールバック経由、片方はgame.tsからの直接呼び出しという別の配線になっている。
-
-## mapModeからsimSpeedManagerへの介入（要検討）
-MapModeSystemはsimSpeedManagerの`startAutoWarpTo`/`cancelAutoWarp`という公開APIのみを呼んでいるが、そもそもmapModeの責務なのか？ plan-guideとかの責務である可能性はないか？
-mapModeを編集と表示の二軸に大きく分割するとしたときにどっちに属すか、を考えたい
+### 
 
 ### displayFrameFnをカメラに置くべきか（要検討）
 displayFrameFnなど、「カメラと整合したクリック座標変換」について、plan-displayとmap-cameraの責務境界を要検証。
