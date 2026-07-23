@@ -27,8 +27,7 @@ import { Vec3 } from '../../physics/vec3';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
-import { TouchControls } from '../touch';
-import { CameraSystem, ProjectFn } from '../camera/camera-system';
+import { ProjectFn } from '../camera/camera-system';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { Plan } from '../plan/plan';
 import { PlanEditor } from '../plan/plan-editor';
@@ -41,7 +40,7 @@ import type { EphemerisSystem } from '../ephemeris';
 
 export class MapModeSystem {
   readonly plan = new Plan();
-  private readonly editor: PlanEditor;
+  readonly editor: PlanEditor;
   private readonly display: PlanDisplay;
 
   constructor(
@@ -130,53 +129,7 @@ export class MapModeSystem {
     return (r: Vec3, t: number) => this.display.toDisplayFrame(r, t, ephemeris, rotating);
   }
 
-  // --------------------------------------------------------------- toggler
-  private openMap(touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
-    this.editor.selectedNodeIdx = null;
-
-    this.plan.markDirty();
-    this._hud.setMapToolbarVisible(true);
-    touchControls?.setMapMode(true);
-    cameraSystem.mapMode = true;
-  }
-
-  private closeMap(touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
-    this.editor.onMapClosed(this.plan);
-    this.editor.closeMenu();
-    this._hud.setPlanPanel(null);
-    this._hud.setMapToolbarVisible(false);
-    touchControls?.setMapMode(false);
-    cameraSystem.mapMode = false;
-  }
-
-  toggleMap(isPlaying: boolean, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
-    // ポーズ中、死亡後はマップモードを変更できない
-    if (!isPlaying) return;
-
-    if (!cameraSystem.mapMode) {
-      this.openMap(touchControls, cameraSystem);
-      this._hud.hint(
-        '軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [M] で確定',
-        5000,
-      );
-      return;
-    }
-    else {
-      this.closeMap(touchControls, cameraSystem);
-      if (this.plan.nodes.length > 0) {
-        this._hud.hint(`マニューバ計画 ${this.plan.nodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
-      }
-    }
-    return;
-  }
-
-  // isPlayeingがfalseになったときに（死んだとき）にmapModeを終了する？
-  updateMapModeWithPhase(isPlaying: boolean, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
-    if (isPlaying || !cameraSystem.mapMode) return;
-
-    this.closeMap(touchControls, cameraSystem);
-    return;
-  }
+  
 
   // --------------------------------------------------------------- input
 

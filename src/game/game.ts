@@ -34,6 +34,7 @@ import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
 import { Bullet } from './orbit-entity/bullet';
+import { MapModeToggler } from './map-mode/map-mode-toggler';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -53,7 +54,6 @@ export class Game {
   // public にする。mapModeSystem のコンストラクタで MapCamera への参照を注入するため、
   // cameraSystem は mapModeSystem より前に構築する必要がある。
   readonly cameraSystem = new CameraSystem(this._hud, this._sfx, this.mapMarkers);
-
   readonly player: Player;
 
   // ?perf=1 のデバッグ表示用エンティティ数。
@@ -92,6 +92,8 @@ export class Game {
     () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }),
     () => this.planGuide.clearActiveTarget(),
   );
+  readonly mapModeToggler = new MapModeToggler(
+    this.mapModeSystem.editor, this.mapModeSystem.plan, this._hud);
 
   // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定、stages/ 参照)。
   // 固有のランタイム状態(タイマー・ウェーブ管理等)もこれ自身が持つ。
@@ -168,11 +170,10 @@ export class Game {
   update(dtRaw: number): void {
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
-    this.cameraSystem.zoomActive = !this.cameraSystem.mapMode && this.input.down('KeyZ');
     this.handleEdgeInput();
-    this.mapModeSystem.updateMapModeWithPhase(this.activeStage.isPlaying, this.touchControls, this.cameraSystem);
+    this.mapModeToggler.update(this.activeStage.isPlaying, this.touchControls, this.cameraSystem);
     this.handleFrame(dt);
-    this.cameraSystem.updateActiveCamera(
+    this.cameraSystem.update(
       this.player,
       sunAzimuth(this.simulator.simTime, this.ephemeris.sunPhase0),
       this.input,
@@ -181,6 +182,7 @@ export class Game {
     );
   }
 
+  // todo: updateとの責務の違いが特にない。展開して切りなおしたい。
   private handleFrame(dt: number): void {
     if (this.activeStage.isPlaying && this.paused) {
       this.simulator.lastSimDt = 0;
@@ -253,7 +255,7 @@ export class Game {
       case 'Comma': this.simSpeedManager.shift(-1); break;
       case 'Period': this.simSpeedManager.shift(1); break;
       case 'KeyM':
-        this.mapModeSystem.toggleMap(this.activeStage.isPlaying, this.touchControls, this.cameraSystem);
+        this.mapModeToggler.toggle(this.activeStage.isPlaying, this.touchControls, this.cameraSystem);
         // マップを閉じた: 同じノードのままΔvだけ編集された可能性があり、
         // ノード時刻の一致だけでは検出できないため、噴射ガイドの凍結目標を作り直す。
         if (!this.cameraSystem.mapMode) this.planGuide.clearActiveTarget();

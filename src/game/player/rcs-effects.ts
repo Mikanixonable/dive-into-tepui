@@ -47,7 +47,6 @@ export class RcsEffects {
       for (const puff of this.puffs) puff.hide();
       return;
     }
-    const camQuat = camera.activeCamera.quaternion;
     for (let k = 0; k < 4; k++) {
       const puff = this.puffs[k]!;
       const ro = RCS_BLOCK_OFFSETS[k]!;
@@ -60,7 +59,7 @@ export class RcsEffects {
       const exhaust = scale(norm(f), -1);
       const flick = 0.6 + Math.random() * 0.4;
       const pos = qRotate(q, addScaled(rb, exhaust, 0.55));
-      puff.sync(pos, 0.55 * flick, 0.75 * flick, camQuat);
+      puff.sync(pos, 0.55 * flick, 0.75 * flick, camera.activeCamera.quaternion);
     }
   }
 }

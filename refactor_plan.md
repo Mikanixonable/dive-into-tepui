@@ -89,26 +89,16 @@ MapModeSystemはsimSpeedManagerの`startAutoWarpTo`/`cancelAutoWarp`という公
 
 これらを踏まえると、以下の改善案のうち「MapCameraへの操作をmap-camera.tsへ移動する」は、sliderT/frameRotatingについては誤り(そもそもMapCameraの責務ではない)。移動先はPlan/PlanDisplay側にすべき。
 
-### 改善点2 mapCameraの責務の結合の是正(依頼済み)
-sliderTは合意できたように、Plan/PlanDisplayの責務であり、mapCameraの責務ではない。mapCameraはカメラ視点の計算のみを行うべきである。plan-display.tsに移動する。
-
-focus（文字列）については、、MapCameraが持つべきである。さらに、解決に必要なmapMarkersの参照も注入する
-mapCamera.updateが引数でこれらを受け取らなきゃいけないのがおかしい。mapCameraが自力解決するべき問題。
-
-### 改善点1 togglerの切り出し
-map-mode-toggler.tsを新設し、mapModeSystemからマップモードの開閉に関わる処理を移動する。plan、simSpeedmanager、mapCameraの参照が必要な部分は、都度引数として注入を受けるようにする。_hudやplan、editorが必要な部分も、引数で注入を受ける。map-mode-togglerはインスタンスを直接game.tsが持つ。
-cameraSystemがmapModeフラグを持っているが、これは影響範囲が広いので変更しない。mapModetogglerはapModeフラグを保持せず、与えられた参照からmapModeをトグルするだけである。
-
-### 改善点3 markDirty管理をplan内に隠蔽
-外部でpublic編集→markDirtyを呼んでいる部分は、そのpublicFieldを管理しているクラスに適切なsetterを作るべきだ。
-
-
-
-### 追加検証
+### displayFrameFnをカメラに置くべきか
 displayFrameFnなど、「カメラと整合したクリック座標変換」について、plan-displayとmap-cameraの責務境界を要検証。
 
 - **displayFrameFn(PlanDisplay.toDisplayFrame)はCameraSystem/MapCameraへ移さない。** projectFnが`camera.matrixWorldInverse`/`projectionMatrix`という「カメラでなければ計算できない」値を使うのに対し、displayFrameFnはカメラ行列を一切使わず、核心データ`trajYawRef`(予測キャッシュ`trajSamples`の再計算タイミングに同期する基準角)はPlanDisplayの予測キャッシュのライフサイクルに従属する。移すとカメラがPlanの内部事情(予測再計算タイミング)を知る、現状と逆方向の依存が生まれる。実装はPlanDisplayに残し、facadeが`mapCamera.frameRotating`という1個のboolean経由で橋渡しする現状の形が妥当。
 
+### plan云々のmarkDirty管理をplan内に隠蔽
+外部でpublic編集→markDirtyを呼んでいる部分は、そのpublicFieldを管理しているクラスに適切なsetterを作るべきだ。
+
+### planの保持をeditorの責務にすべき？
+editorが最新のplan（currentPlan）を公開し、plan-guideとかはそれを参照するのが自然な実装。
 
 ## callback登録の密結合
 wireHudCallbackを解体したい……gameのwireHudCallbacksもそうだが、hudとの密結合があって配線が汚い。どうにかしたい……
@@ -117,15 +107,15 @@ hudがそもそもマンモスクラスである可能性がある。要調査�
 （現状map-gizmoやpanelがそうであるように？）、hudを意味的まとまりごとにgameHud、mapHudなどに分割し、それぞれにwireCallbacks関数を持たせるのがよいかもしれない。
 
 
-## orbitLineの配線が悪い
-軌道要素を再計算していたりする。
+## orbitLineの集約 vs 分散
+分散させるんだか集中させるんだかが曖昧。
 
-「副産物を返す関数」を作るべきじゃない。副作用のあるvoid型（成否をbooleanで返すくらいならよいが）の関数と、副作用がなく返り値が意味を持つ関数を分けるべき。
+生成した後から色を変えることに対応していないので、ターゲット切り替え時にはEnemyのorbitLineを非表示にして代わりにtargetを表示して…という処理になっている。orbitLineの描画ごとに色（マテリアル）を指定するようにすれば改善するのでは。
 
-orbitLineごとにlineBasicMaterialが再生成されている。
+orbitLineごとにlineBasicMaterialが再生成されている。パフォーマンスに悪い。外部がマテリアルを保持するべきなんだけどどこの責務にしたものか（gameが持つのは険しいからrender/内の定数参照？）
 
----
 
+### markerの集約 vs 分散
 ここまでを踏まえて、MarkerManagerの利用パターンを調査してほしい。
 
 インスタンスは全部でいくつ作られるのか
@@ -138,23 +128,11 @@ MarkerForGameに集約するバターンと、各所が直接MarkerManagerに配
 分散する場合、どういった経路で参照共有注入すべきか
 
 
-## オーケストレーション配線
-改善点を把握
-Game.updateのネストが無駄に深い。
-cameaのupadteがupdateなのかsyncなのか曖昧
-mapに関してはまだ読めていない
+### handleFrameとupdateの責務の違いが特にない。
 
-mapModeSystem, hud, marker, planあたりはまだかなり責務境界がはっきりしていない。
-
-
-## 責務把握
-現状のコードを参照し、refactor_instruction.mdの責務分割の手順を実行し、調査結果を新規mdファイルに報告してください
-特に調査してほしいのが、markerCtxとmarkers.tsが密結合だがupdateMarkersを一括ファサードにするのをやめることで疎結合にできないか
-pip-rendererの独立性、map-mode-systemとplanとmap-cameraの結合関係。
-Game.ts内にいくつにも分散して書かれているper-frame処理の
-
-## pip-windowのupdateとsyncの分離できるか、調査検討。
-その他にも全然updateとsyncの配線が整ってないとこある。
+### updateとsyncの分離が徹底されていない。
+updateは論理値の更新。syncはTHREE.jsのオブジェクトの更新。renderは描画のみ。
+カメラなどがupdateと同じ関数でTHREE.jsを更新してしまっている。
 
 ### この時点で重複実装、類似実装を再度検査し、適切に共通化する。
 重複実装、類似実装
@@ -165,14 +143,6 @@ Game.ts内にいくつにも分散して書かれているper-frame処理の
 
 markerCtxもこれ以上まとめるのは厳しいか？責務境界の方に問題がある可能性
 
-
-## const.tsの解体（優先度低）
-一か所で使用されている定数はそのモジュールの責務である可能性が高い。モジュールの分割がある程度進み、責務が明確になった段階で、const.tsの解体を行う。
-
-## hud、sfx注入パターンのなかで今後必要なくなる可能性が高いものを分離
-
-## sfxとbgmの分離（優先度低）
-
 ### 命名が悪い
 無駄にsystemとつけているものがある。意味があるか（system抜きの命名だと衝突するのか、systemと呼ばれているものに共通の性質はあるのか）調査
 
@@ -180,15 +150,6 @@ markerCtxもこれ以上まとめるのは厳しいか？責務境界の方に�
 各entityの責務であるべきかも。せめて、メッシュの生成、ロードはrender/の責務で、それを呼ぶのはentityの責務とするか（外部注入ではなく）
 
 EnvironmentSceneとEphemerisSystemは、扱うものは近いのに計算と描画なので分離されている。統合するのとしないのとどっちが良いか。EphemerisSystemを親として、EnvironmentSceneを子とするような構造化がいいのか？
-
-### dom操作の分散（優先度低）
-touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散している。これが直接悪いとは言い切れないが…
-
-### rcsEffectやthrustEffectはplayer.thrustと実質的に密結合（重複実装）
-
-## beltPhysicsとbeltSectionの変換処理の見直し
-beltPhysicsにbeltSection[]を「書き込む」という処理をしているが、ステートフルで良くない
-beltPhysicsからbeltSection[]への変換と逆変換ということにシ、逆変換においては新規オブジェクトとして作るべきでは？
 
 ## 不要なクロージャ注入
 ctxと似て、脱却すべきデザインパターンなのかもしれない。updateで注入するとしたら、デリゲートではなく、クラスメソッドを持つインスタンスを注入すべきではないか。（コンストラクタで注入するのは推奨しない。参照共有は壊れやすいため）
@@ -199,12 +160,32 @@ Ctx注入パターンと同様、このようなクロージャ解決も滅ぼ�
 getExternalStateとかダメそう
 
 
-updateFireStateの引数が多すぎる。
-playerではなくship型で受け取ってるし
+## 雑多な修正点
 
+### mapModeTogglerじゃなくてcameraSystemがmapModeフラグを持っている
+修正したいが、影響範囲がデカい。playerなどはcameraを受け取ってmapModeを参照している。現在mapModeを参照している箇所のうち、視覚的な問題はcamera.mapModeを、挙動上の問題はmapTogglerのフラグを参照する…？
 
-waveManagerが利用しているWaveEncounterConfigはupdateで毎回注入を受けていますが、結局定数値です。これらの値をコンストラクタで受け取ってWaveManagerクラスのフィールドにすべきです。configにひとまとめにする必要もありません。
+### hudの責務過多？
+まだよく読めていないが、パネルや情報のまとまりごとにモジュールを分割できないか？
 
-inputを綺麗に書き直す
+### rcsEffectのcomputeRcsTauとThrottleの重複実装。
+throttleが計算済みの出力を公開し、rcsEffectはそれを参照するだけにすべき。
 
-通常カメラのnearfarが未定義
+### beltPhysicsとbeltSectionの変換処理の見直し
+beltPhysicsにbeltSection[]を「書き込む」という処理をしていて、ステートフルで良くない（メモリ効率はいいかもしれないが気にするほどじゃないはず）
+beltPhysicsからbeltSection[]への変換と逆変換ということにシ、逆変換においては新規オブジェクトとして作るべきでは？
+
+### const.tsの解体（優先度低）
+一か所で使用されている定数はそのモジュールの責務である可能性が高い。モジュールの分割がある程度進み、責務が明確になった段階で、const.tsの解体を行う。
+
+### hud、sfx注入パターンのなかで今後必要なくなる可能性が高いものを分離
+
+### sfxとbgmの分離（優先度低）
+
+### 引数整理
+playerとplayer.status.rを両方受け取っているとか、そういう無駄をなくしたい。特に引数が多い奴。
+
+### inputを綺麗に書き直す
+
+### 通常カメラのnearfarが未定義
+適切な値を設定する
