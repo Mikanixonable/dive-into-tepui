@@ -5,7 +5,7 @@
 import { stepAttitude } from '../../physics/attitude';
 import { envAccelInto } from '../../physics/envaccel';
 import { ExtraAccel, stepOrbitRK4 } from '../../physics/orbital';
-import { add, clone, v3 } from '../../physics/vec3';
+import { add, clone, v3, Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import { HitSystem } from './hit';
 import { Ammo, DebrisPiece, OrbitEntity } from './entities';
@@ -14,7 +14,6 @@ import { Enemy } from './enemy';
 import { Bullet } from './bullet';
 import { EphemerisSystem } from '../ephemeris';
 import type { Stage } from '../stages/stage';
-import type { Targeter } from '../targeter';
 
 export class Simulator {
   readonly enemies: Enemy[] = [];
@@ -40,7 +39,6 @@ export class Simulator {
   constructor(
     private readonly ephemeris: EphemerisSystem,
     private readonly hit: HitSystem,
-    private readonly targeter: Targeter,
   ) { }
 
   // ------------------------------------------------------------ 追加
@@ -92,7 +90,7 @@ export class Simulator {
   // simDt(このフレームで積算すべきシミュレーション時間)は game.ts が
   // simSpeedManager から計算して渡す。ここでは受け取った simDt をサブステップに
   // 分割して積分し、simTime/lastSimDt を自ら進めるだけ。
-  integrateSimulation(
+  stepSimulation(
     dt: number,
     simDt: number,
     player: Player,
@@ -100,16 +98,18 @@ export class Simulator {
     hardCollision: boolean,
     doSubstep: boolean,
   ): void {
+    // 謎実装
     const nSub = doSubstep && simDt > dt * C.MAX_PHYS_SIM_SPEED ? Math.min(64, Math.ceil(simDt / 20)) : 1;
+
     const subDt = simDt / nSub;
     for (let i = 0; i < nSub; i++) {
       this.simTime = this.simulationSubStep(this.simTime, subDt, player, hardCollision);
       if (hardCollision) {
         this.hit.checkBulletHits(this.simTime, player, activeStage, this);
-        this.targeter.markBoardCrossings(player, this);
       }
     }
-    if (!hardCollision) this.stepCoastingAttitudes(simDt);
+
+    this.stepCoastingAttitudes(simDt);
     this.lastSimDt = simDt;
   }
 
@@ -120,44 +120,39 @@ export class Simulator {
     trackPrevR: boolean,
   ): number {
     this.ephemeris.update(simTime);
-    if (trackPrevR) player.prevR = clone(player.state.r);
-    if (player.alive) {
-      stepOrbitRK4(player.state, dt, this.accelFor(player, this.envShip));
-      player.thermal.updateThermal(dt, player.state.r, player.state.v);
-    }
-    this.stepWorldOrbits(dt, trackPrevR);
+    
+    this.stepEntity(player, dt, this.envShip, trackPrevR);
+    this.enemies.forEach(e => this.stepEntity(e, dt, this.envShip, trackPrevR));
+    this.bullets.forEach(b => this.stepEntity(b, dt, this.envBullet, trackPrevR));
+    this.casings.forEach(c => this.stepEntity(c, dt, this.envSmall, false));
+    this.debris.forEach(d => this.stepEntity(d, dt, this.envSmall, false));
+    this.ammos.forEach(a => this.stepEntity(a, dt, this.envSmall, false));
+    
+    player.thermal.updateThermal(dt, player.state.r, player.state.v);
+    
     return simTime + dt;
   }
 
+  private stepEntity(
+    entity: OrbitEntity,
+    dt: number,
+    envAccel: ExtraAccel,
+    trackPrevR: boolean = false,
+  ): void {
+    if (!entity.alive) return;
+    if (trackPrevR) entity.prevR = clone(entity.state.r);
+    stepOrbitRK4(entity.state, dt, this.accelFor(entity, envAccel));
+  }
+
+  // ------------------------------------------------------------ 回転運動
+  
   // 自由回転するエンティティの姿勢を進める(自機の姿勢は入力駆動なので game.ts 側)
-  stepCoastingAttitudes(simDt: number): void {
+  private stepCoastingAttitudes(simDt: number): void {
     const attDt = Math.min(simDt, 0.12);
     for (const e of this.enemies) if (e.alive) stepAttitude(e.att, v3(), attDt);
     for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
     for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
     for (const ammo of this.ammos) if (ammo.alive) stepAttitude(ammo.att, v3(), attDt);
-  }
-
-  private stepWorldOrbits(dt: number, trackPrevR: boolean): void {
-    this.stepEntities(this.enemies, dt, this.envShip, { skipDead: true, trackPrevR });
-    this.stepEntities(this.bullets, dt, this.envBullet, { skipDead: true, trackPrevR });
-    this.stepEntities(this.casings, dt, this.envSmall);
-    this.stepEntities(this.debris, dt, this.envSmall);
-    this.stepEntities(this.ammos, dt, this.envSmall, { skipDead: true });
-  }
-
-  private stepEntities(
-    entities: OrbitEntity[],
-    dt: number,
-    envAccel: ExtraAccel,
-    options: { skipDead?: boolean; trackPrevR?: boolean; } = {},
-  ): void {
-    const { skipDead = false, trackPrevR = false } = options;
-    for (const entity of entities) {
-      if (skipDead && !entity.alive) continue;
-      if (trackPrevR) entity.prevR = clone(entity.state.r);
-      stepOrbitRK4(entity.state, dt, this.accelFor(entity, envAccel));
-    }
   }
 
   // ------------------------------------------------------------ 寿命管理
@@ -186,5 +181,15 @@ export class Simulator {
       else arr[w++] = x;
     }
     arr.length = w;
+  }
+
+  // ------------------------------------------------------------ 描画同期
+  
+  sync(o: Vec3, pv: Vec3): void {
+    for (const e of this.allEntities()) {
+      // Bullet は自機のフローティングオリジン座標系で描画するため独自インターフェイス
+      if (e instanceof Bullet) e.syncBulletTransform(o, pv);
+      else e.syncTransform(o);
+    }
   }
 }

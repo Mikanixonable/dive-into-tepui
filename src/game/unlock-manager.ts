@@ -2,7 +2,7 @@
 // isUnlocked(clearCounts) という条件式を持つだけで、localStorage には触れない。
 import { ACCENT } from './theme';
 import { Hud } from '../hud/hud';
-import { STAGE_DEFINITIONS } from './stages/stage-dictionary';
+import { STAGES } from './stages/stage-dictionary';
 
 // ステージ index → クリア回数。将来の拡張(周回数によるアンロック等)を見越して、
 // 「クリアしたか否か」ではなく回数を記録する。
@@ -28,7 +28,7 @@ function saveClearCounts(counts: ClearCounts): void {
 }
 
 function isStageUnlocked(stage: number, counts: ClearCounts): boolean {
-  const def = STAGE_DEFINITIONS.find((s) => s.index === stage);
+  const def = STAGES.find((s) => s.index === stage);
   return def?.isUnlocked ? def.isUnlocked(counts) : true;
 }
 
@@ -41,7 +41,7 @@ export class UnlockManager {
 
   // ステージクリアを記録し、それによって新たに解放条件を満たしたステージがあれば toast で知らせる。
   reportClear(stage: number, hud: Hud): void {
-    const newlyUnlocked = STAGE_DEFINITIONS.filter((s) => !isStageUnlocked(s.index, this.clearCounts));
+    const newlyUnlocked = STAGES.filter((s) => !isStageUnlocked(s.index, this.clearCounts));
 
     this.clearCounts = { ...this.clearCounts, [stage]: (this.clearCounts[stage] ?? 0) + 1 };
     saveClearCounts(this.clearCounts);

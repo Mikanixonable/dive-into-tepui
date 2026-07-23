@@ -17,7 +17,7 @@ import { MarkerCtx, MarkerForGame } from './marker/marker-for-game';
 import { MarkerManager } from './marker/marker-manager';
 import { CollisionPhysics } from './orbit-entity/collision';
 import { EffectsSystem } from './effects-system';
-import { getStageDefinition, initStage } from './stages/stage-dictionary';
+import { getStage, initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanSystem } from './plan/plan-system';
@@ -25,14 +25,12 @@ import { MapMarkers } from './map-mode/map-markers';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRenderer } from './pip-renderer';
 import { Simulator } from './orbit-entity/simulator';
-import * as C from './const';
 import { Input } from './input';
 import { TouchControls } from './touch';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
-import { Bullet } from './orbit-entity/bullet';
 import { MapModeToggler } from './map-mode/map-mode-toggler';
 
 export class Game {
@@ -65,7 +63,6 @@ export class Game {
     };
   }
 
-  private readonly environment: EnvironmentScene;
 
   // シミュレーション速度(HUD ヒント・SFX 上は「ワープ」と呼ぶ、sfx.warp() 参照)の
   // 段階管理と、[N] キーによるノードへの自動ワープ。
@@ -91,6 +88,7 @@ export class Game {
   // 天体暦(太陽・月の位置と日照率)。マップモード専用の geo/moon 参照軌道線も
   // scene 登録込みでここが持つため、コンストラクタ本体で構築する。
   private readonly ephemeris: EphemerisSystem;
+  private readonly environment: EnvironmentScene;
 
   private readonly unlockManager = new UnlockManager();
   private readonly hitSystem = new HitSystem();
@@ -127,26 +125,20 @@ export class Game {
     );
     this.mapModeToggler = new MapModeToggler(this._hud);
 
-    this.activeStage = getStageDefinition(stage);
-
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
-    this.simulator = new Simulator(this.ephemeris, this.hitSystem, this.targeter);
-    this.activeStage.setup(this._hud, this._sfx, this._scene, this.simulator, this.unlockManager, this.effects);
 
-    // --- 環境 ---
+    this.simulator = new Simulator(this.ephemeris, this.hitSystem);
+
     this.ephemeris.update(this.simulator.simTime);
-    this.environment = new EnvironmentScene(this._scene, this.ephemeris.sunDir, {
-      sunIntensity: C.SUN_INTENSITY,
-      ambientIntensity: C.AMBIENT_INTENSITY,
-      shadowMinSun: C.SHADOW_MIN_SUN,
-      shadowMinAmbient: C.SHADOW_MIN_AMBIENT,
-    });
+    this.environment = new EnvironmentScene(this._scene, this.ephemeris.sunDir);
 
     this.player = new Player(this._hud, this._sfx, this._scene, this.effects);
 
+    this.activeStage = getStage(stage);
+    this.activeStage.setup(this._hud, this._sfx, this._scene, this.simulator, this.unlockManager, this.effects);
     initStage(this.activeStage, this.player, this.simulator, this._hud);
   }
 
@@ -163,42 +155,42 @@ export class Game {
     };
   }
 
-  // ---------------------------------------------------------------- update
+  // ------------------------------------------------------------ update
 
+  // per frameの論理値更新
   update(dtRaw: number): void {
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
     this.handleEdgeInput();
     this.mapModeToggler.update(this.activeStage.isPlaying, this.mapModeSystem, this.touchControls, this.cameraSystem);
-    this.handleFrame(dt);
-    this.cameraSystem.update(
-      this.player,
-      sunAzimuth(this.simulator.simTime, this.ephemeris.sunPhase0),
-      this.input,
-      dt,
-      this.player.state.r,
-    );
-  }
 
-  // todo: updateとの責務の違いが特にない。展開して切りなおしたい。
-  private handleFrame(dt: number): void {
-    if (this.activeStage.isPlaying && this.paused) {
-      this.simulator.lastSimDt = 0;
-      this._sfx.setThrust(false);
-      this.player.pause();
-      return;
-    }
     // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
     // 積分もサブステップなしの簡略版(integrateSimulation の hardCollision/doSubstep 引数)にする。
     // behave が呼ばれなくなる分、勝敗確定時点の thrustFn が凍結され続けないよう明示的に消す。
     if (!this.activeStage.isPlaying) {
       this.player.thrustFn = null;
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, 4);
-      this.simulator.integrateSimulation(dt, simDt, this.player, this.activeStage, false, false);
+      this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, false, false);
       return;
     }
 
-    // プレイヤーの HP 回復・移動/発射の試行(this.player.thrustFn を書き換える)
+    // ポーズ中の処理
+    if (this.paused) {
+      this.simulator.lastSimDt = 0;
+      this._sfx.setThrust(false);
+      this.player.pause();
+      return;
+    }
+
+    // カメラ更新
+    this.cameraSystem.update(
+      this.player,
+      sunAzimuth(this.simulator.simTime, this.ephemeris.sunPhase0),
+      this.input,
+      dt,
+    );
+
+    // プレイヤーの HP 回復・移動/発射の試行
     this.player.behave({
       dt,
       input: this.input,
@@ -215,13 +207,14 @@ export class Game {
 
     this.simSpeedManager.update(this.simulator.simTime);
     const simDt = dt * this.simSpeedManager.simSpeed;
-    this.simulator.integrateSimulation(dt, simDt, this.player, this.activeStage, true, true);
-    this.simulator.stepCoastingAttitudes(simDt);
+    this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, true, true);
 
     // 衝突判定
     if (this.simSpeedManager.canResolvePhysicalCollisions) {
       this.collisionPhysics.resolve(dt, this.player, this.simulator.allEntities(), () => this._sfx.clank());
     }
+
+    this.targeter.markBoardCrossings(this.player, this.simulator);
 
     this.player.checkLoss(dt, this.simulator.simTime, this.activeStage);
 
@@ -231,15 +224,11 @@ export class Game {
       this.mapModeSystem.updateEditing(dt, this.input, this.player, this.ephemeris, this.simulator.simTime);
     }
     else {
-      this.targeter.updateCombatTargeting(
-        this.player,
-        this.simulator.enemies,
-        this.input,
-        this.cameraSystem.activeCamera,
-        this.cameraSystem.activeCameraProjection
-      );
+      this.targeter.updateCombatTargeting(this.player, this.simulator.enemies, this.input, this.cameraSystem);
     }
   }
+
+  // --------------------------------------------------------------- input
 
   private handleEdgeInput(): void {
     for (const code of this.input.presses()) {
@@ -253,7 +242,7 @@ export class Game {
       case 'Comma': this.simSpeedManager.shift(-1); break;
       case 'Period': this.simSpeedManager.shift(1); break;
       case 'KeyM':
-        this.mapModeToggler.toggle(this.activeStage.isPlaying, this.mapModeSystem,this.touchControls, this.cameraSystem);
+        this.mapModeToggler.toggle(this.activeStage.isPlaying, this.mapModeSystem, this.touchControls, this.cameraSystem);
         break;
       // マップモード外でのみ、 [N] キーで直近ノードへの自動ワープをトグルする。
       case 'KeyN':
@@ -269,20 +258,6 @@ export class Game {
     }
   }
 
-  // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
-  private markerCtx(): MarkerCtx {
-    return {
-      mapMode: this.cameraSystem.mapMode,
-      player: this.player,
-      enemies: this.simulator.enemies,
-      target: this.targeter.autoTarget,
-      ammos: this.simulator.ammos,
-      mapLabelIds: this.mapModeSystem.mapLabelIds(),
-      activeCamera: this.cameraSystem.activeCamera,
-      simTime: this.simulator.simTime,
-    };
-  }
-
   // ------------------------------------------------------------------ sync
 
   sync(dt: number): void {
@@ -296,9 +271,13 @@ export class Game {
       cameraSystem: this.cameraSystem,
       ephemeris: this.ephemeris,
     });
-    this.syncDynamicObjects(o, pv);
-    this.effects.syncFlashEffects(dt, this.simulator.lastSimDt, o, this.cameraSystem.activeCamera);
+    
+    this.player.sync(this.input, this.cameraSystem, this.activeStage.isPlaying, this.paused);
 
+    this.simulator.sync(o, pv);
+
+    this.effects.syncFlashEffects(dt, this.simulator.lastSimDt, o, this.cameraSystem.activeCamera);
+    
     this.syncEntityOrbitLines(o, this.cameraSystem.mapMode);
     this.syncMarkers(dt, o, pv);
 
@@ -306,19 +285,6 @@ export class Game {
     this._hud.tick();
   }
 
-  private syncDynamicObjects(o: Vec3, pv: Vec3): void {
-    this.player.sync(
-      this.input,
-      this.cameraSystem,
-      this.activeStage.isPlaying,
-      this.paused,
-    );
-    for (const e of this.simulator.allEntities()) {
-      // Bullet は自機のフローティングオリジン座標系で描画するため独自インターフェイス
-      if (e instanceof Bullet) e.syncBulletTransform(o, pv);
-      else e.syncTransform(o);
-    }
-  }
   // 自機・敵の軌道線は各 entity 自身が持つ(Player/Enemy コンストラクタ参照)ため、
   // ここでは毎フレームの Elements 算出と update() 呼び出しだけを行う。
   private syncEntityOrbitLines(o: Vec3, mapMode: boolean): void {
@@ -330,6 +296,20 @@ export class Game {
       enemy.orbitLine.update(showGray ? enemy.elements : null, o);
     }
     this.targeter.updateOrbitLine(o);
+  }
+
+  // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
+  private markerCtx(): MarkerCtx {
+    return {
+      mapMode: this.cameraSystem.mapMode,
+      player: this.player,
+      enemies: this.simulator.enemies,
+      target: this.targeter.autoTarget,
+      ammos: this.simulator.ammos,
+      mapLabelIds: this.mapModeSystem.mapLabelIds(),
+      activeCamera: this.cameraSystem.activeCamera,
+      simTime: this.simulator.simTime,
+    };
   }
 
   private syncMarkers(dt: number, o: Vec3, pv: Vec3): void {
