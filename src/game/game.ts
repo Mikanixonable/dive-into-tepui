@@ -346,8 +346,7 @@ export class Game {
     if (mapMode) {
       this.markerManager.hide('burn');
     } else {
-      const { achieved } = this.mapModeSystem.guide.update(this.mapModeSystem.editor.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, pv, this.player.elements, this.player.alive, project);
-      if (achieved) this.simSpeedManager.cancelAutoWarp();
+      this.mapModeSystem.guide.update(this.mapModeSystem.editor.plan, this.player, this.ephemeris, this.simulator.simTime, this.simSpeedManager, project);
     }
   }
 

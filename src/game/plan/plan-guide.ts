@@ -16,6 +16,7 @@ import { MarkerManager } from '../marker/marker-manager';
 import { Plan } from './plan';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
+import { SimSpeedManager } from '../sim-speed-manager';
 
 // 直近の未達成ノードをちょうど含む程度の短い予測期間(28日ぶんを毎回計算するのは
 // 無駄なコストになるため)。map-mode/map-mode-system.ts も同一フレーム内で
@@ -79,19 +80,23 @@ export class PlanGuide {
 
   update(
     plan: Plan,
-    { player, ephemeris, simTime }: { player: Player; ephemeris: EphemerisSystem; simTime: number },
-    o: Vec3,
-    pv: Vec3,
-    playerEl: Elements | null,
-    playerAlive: boolean,
+    player: Player,
+    ephemeris: EphemerisSystem,
+    simTime: number,
+    simSpeedManager: SimSpeedManager,
     project: ProjectFn,
-  ): { achieved: boolean } {
+  ) {
+    const o = player.state.r;
+    const pv = player.state.v;
+    const playerEl = player.elements;
+    const playerAlive = player.alive;
+
     const node = plan.firstNode();
     if (!node || !playerAlive) {
       this.markerManager.hide('nd');
       this.markerManager.hide('burn');
       this._hud.setPlanPanel(null);
-      return { achieved: false };
+      return;
     }
 
     plan.maybeRefresh(player, ephemeris, simTime, guideDurationSec(plan, simTime));
@@ -121,12 +126,13 @@ export class PlanGuide {
     if (!tgt) {
       this.markerManager.hide('nd');
       this.markerManager.hide('burn');
-      return { achieved: false };
+      return;
     }
 
     // 達成判定: 現在軌道が(凍結済みの)ノード実行後の計画軌道に十分近い
     if (playerEl && this.orbitClose(playerEl, tgt.targetEl)) {
       plan.consumeFirstNode();
+      simSpeedManager.cancelAutoWarp();
       this.activeTarget = null;
       this.markerManager.hide('nd');
       this.markerManager.hide('burn');
@@ -137,7 +143,8 @@ export class PlanGuide {
         this._hud.hint(`✓ ノード達成 — 残り ${plan.nodes.length} 件`, 4000);
       }
       this._sfx.warp();
-      return { achieved: true };
+
+      return;
     }
 
     // ノード位置マーカー(カウントダウン付き)
@@ -162,7 +169,7 @@ export class PlanGuide {
       g.front,
       `BURN ${mag.toFixed(1)} m/s → ${fmtSpeed(len(tgt.vPlanned))}`,
     );
-    return { achieved: false };
+    return;
   }
 
   // 2 軌道の近さ判定(長半径・離心率・軌道面)
