@@ -1,7 +1,7 @@
 import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
-import { DEFAULT_STAGE_ID, resolveForcedStageFromQuery, STAGES } from './game/stages/stage-dictionary';
+import { DEFAULT_STAGE_ID, resolveStageFromId, STAGES } from './game/stages/stage-dictionary';
 import { UnlockManager } from './game/unlock-manager';
 import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './game/theme';
 
@@ -98,7 +98,7 @@ async function initScene(): Promise<GameScene> {
 // ?stage=00|0|1|2 で選択画面をスキップ(デバッグ・共有リンク用)。
 async function resolveStage(): Promise<string> {
   const stageParam = new URLSearchParams(location.search).get('stage');
-  const forced = resolveForcedStageFromQuery(stageParam);
+  const forced = resolveStageFromId(stageParam);
   if (forced !== null) return forced;
   const selected = await selectStage();
   return selected ?? DEFAULT_STAGE_ID;
@@ -115,8 +115,8 @@ function startAnimationLoop(game: Game, perf: PerfMeter): void {
     const t1 = perf.on ? performance.now() : 0;
     game.sync(Math.min(dt, 0.1));
     game.render();
+    const t2 = perf.on ? performance.now() : 0;
     if (perf.on) {
-      const t2 = performance.now();
       perf.record(t1 - t0, t2 - t1, t2);
     }
   }
