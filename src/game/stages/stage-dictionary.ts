@@ -1,7 +1,7 @@
 // ステージ配列(STAGE_DEFINITIONS)の定義を責務とする。各ステージの振る舞い(init/update/
 // checkWin/onWin)は stage.ts の Stage を継承した Stage00/Stage0/Stage1/Stage2
-// (このフォルダ内の同名ファイル)が持つ — ここではインスタンス化と番号引きのみ行う。
-import { Stage, StageIndex } from './stage';
+// (このフォルダ内の同名ファイル)が持つ — ここではインスタンス化と ID 引きのみ行う。
+import { Stage, StageId } from './stage';
 import type { Player } from '../player/player';
 import type { Simulator } from '../orbit-entity/simulator';
 import type { Hud } from '../../hud/hud';
@@ -10,7 +10,7 @@ import { Stage0 } from './stage0';
 import { Stage1 } from './stage1';
 import { Stage2 } from './stage2';
 
-export const DEFAULT_STAGE_INDEX: StageIndex = 1;
+export const DEFAULT_STAGE_ID: StageId = '1';
 
 export const STAGES: Stage[] = [
   new Stage00(),
@@ -19,10 +19,10 @@ export const STAGES: Stage[] = [
   new Stage2(),
 ];
 
-const STAGE_BY_INDEX = new Map<StageIndex, Stage>(STAGES.map((stage) => [stage.index, stage]));
+const STAGE_BY_ID = new Map<StageId, Stage>(STAGES.map((stage) => [stage.id, stage]));
 
-export function getStage(stage: number): Stage {
-  return STAGE_BY_INDEX.get(stage as StageIndex) ?? STAGE_BY_INDEX.get(DEFAULT_STAGE_INDEX)!;
+export function getStage(id: string): Stage {
+  return STAGE_BY_ID.get(id as StageId) ?? STAGE_BY_ID.get(DEFAULT_STAGE_ID)!;
 }
 
 export function initStage(stage: Stage, player: Player, simulator: Simulator, hud: Hud) {
@@ -31,9 +31,7 @@ export function initStage(stage: Stage, player: Player, simulator: Simulator, hu
     hud.toast(stage.briefingHtml(enemyCount), 12000);
 }
 
-export function resolveForcedStageFromQuery(stageParam: string | null): StageIndex | null {
+export function resolveForcedStageFromQuery(stageParam: string | null): StageId | null {
   if (stageParam === null) return null;
-  const forced = Number(stageParam);
-  const matched = STAGES.find((stage) => stage.index === forced);
-  return matched?.index ?? null;
+  return STAGES.find((stage) => stage.id === stageParam)?.id ?? null;
 }

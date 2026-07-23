@@ -1,7 +1,7 @@
 import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
-import { DEFAULT_STAGE_INDEX, resolveForcedStageFromQuery, STAGES } from './game/stages/stage-dictionary';
+import { DEFAULT_STAGE_ID, resolveForcedStageFromQuery, STAGES } from './game/stages/stage-dictionary';
 import { UnlockManager } from './game/unlock-manager';
 import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './game/theme';
 
@@ -10,7 +10,7 @@ import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './
 // RK4 は十分軽い)。src/physics/nbody/physics.worker.ts の N体ワーカーは
 // 将来のシスルナ(太陽-地球-月)フェーズ用に残してあり、現在は未使用。
 // ステージ選択画面。解放判定・クリア記録は unlock-manager.ts の UnlockManager に委ねる。
-function selectStage(): Promise<number> {
+function selectStage(): Promise<string> {
   return new Promise((resolve) => {
     const unlockManager = new UnlockManager();
     const SURFACE = SURFACE_OPAQUE;
@@ -30,26 +30,26 @@ function selectStage(): Promise<number> {
     div.innerHTML =
       `<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
       '<div style="font-size:12px;color:#7d838c;margin-bottom:12px">ステージを選択 (キーまたはクリック)</div>';
-    const enabledByStage = new Map(STAGES.map((stage) => [stage.index, unlockManager.isUnlocked(stage.index)]));
+    const enabledByStage = new Map(STAGES.map((stage) => [stage.id, unlockManager.isUnlocked(stage.id)]));
     for (const stage of STAGES) {
-      const enabled = enabledByStage.get(stage.index) ?? false;
+      const enabled = enabledByStage.get(stage.id) ?? false;
       const sub = enabled ? stage.selectSub : stage.selectLockedSub ?? stage.selectSub;
       const button = btn(stage.selectLabel, sub, enabled);
       div.appendChild(button);
-      if (enabled) button.addEventListener('click', () => done(stage.index));
+      if (enabled) button.addEventListener('click', () => done(stage.id));
     }
     document.body.appendChild(div);
 
-    const done = (stage: number) => {
+    const done = (stage: string) => {
       window.removeEventListener('keydown', onKey);
       div.remove();
       resolve(stage);
     };
     const onKey = (e: KeyboardEvent) => {
       for (const stage of STAGES) {
-        if (!(enabledByStage.get(stage.index) ?? false)) continue;
+        if (!(enabledByStage.get(stage.id) ?? false)) continue;
         if (!stage.selectKeys.includes(e.code)) continue;
-        done(stage.index);
+        done(stage.id);
         return;
       }
     };
@@ -95,15 +95,13 @@ async function initScene(): Promise<GameScene> {
   return gs;
 }
 
-// ?stage=0|1|2 で選択画面をスキップ(デバッグ・共有リンク用)。
-// パラメータ未指定時は get() が null を返すので、Number(null)=0 とは
-// 区別してステージ0への誤フォースを避ける。
-async function resolveStage(): Promise<number> {
+// ?stage=00|0|1|2 で選択画面をスキップ(デバッグ・共有リンク用)。
+async function resolveStage(): Promise<string> {
   const stageParam = new URLSearchParams(location.search).get('stage');
   const forced = resolveForcedStageFromQuery(stageParam);
   if (forced !== null) return forced;
   const selected = await selectStage();
-  return selected ?? DEFAULT_STAGE_INDEX;
+  return selected ?? DEFAULT_STAGE_ID;
 }
 
 function startAnimationLoop(game: Game, perf: PerfMeter): void {

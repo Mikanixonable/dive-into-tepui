@@ -16,7 +16,7 @@ import type { ClearCounts, UnlockManager } from '../unlock-manager';
 import type { Simulator } from '../orbit-entity/simulator';
 import { SimSpeedManager } from '../sim-speed-manager';
 
-export type StageIndex = -1 | 0 | 1 | 2;
+export type StageId = '00' | '0' | '1' | '2';
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
@@ -27,7 +27,7 @@ export interface StageInitData {
 }
 
 export abstract class Stage {
-  abstract readonly index: StageIndex;
+  abstract readonly id: StageId;
   abstract readonly selectLabel: string;
   abstract readonly selectSub: string;
   readonly selectLockedSub?: string;
@@ -134,7 +134,7 @@ export abstract class Stage {
 
     if (this.checkWin()) {
       this.setPhase('won');
-      this._unlockManager.reportClear(this.index, this._hud);
+      this._unlockManager.reportClear(this.id, this._hud);
       this.onWin(simTime);
     }
   }
