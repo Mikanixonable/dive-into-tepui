@@ -291,7 +291,7 @@ export class Game {
       ephemeris: this.ephemeris,
     });
     
-    this.player.sync(this.input, this.cameraSystem, this.activeStage.isPlaying, this.paused);
+    this.player.sync(this.cameraSystem, this.activeStage.isPlaying, this.paused);
 
     this.simulator.sync(o, pv);
 

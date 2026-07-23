@@ -72,9 +72,6 @@ update関数は所有物のupdateを、sync関数は所有物のsyncを呼ぶべ
 カメラなどが、THREE.jsオブジェクトを持っているにかかわらずsyncメソッドがなく、updateでTHREE.jsを更新してしまっている。
 その他にもupdateとsyncの片方しか存在しないモジュールは怪しい（一切THREE.jsを持たない、ゲーム上不可視のモジュールであればsync不要だが、そうでないときには必ず両方が存在するはず）
 
-## rcsEffectのcomputeRcsTauとThrottleの重複実装。
-throttleが計算済みの出力を公開し、rcsEffectはそれを参照するだけにすべき。
-
 ## hud、sfx注入パターンのなかで今後必要なくなる可能性が高いものを分離
 
 ## sfxとbgmの分離
