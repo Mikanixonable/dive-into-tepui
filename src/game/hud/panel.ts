@@ -2,11 +2,11 @@
 // hudPanel はゲームの全状態からチェリーピックして表示するのが責務そのものなので、
 // 他モジュールと違い ctx スナップショットを介さず Game を直接注入してもらい、
 // 必要な値をここで読み取る(game.ts は import しない — 型のみの参照)。
-import * as C from '../game/const';
-import { TEXT_DIM as INK_SOFT } from '../game/theme';
-import { altitudeOf } from '../physics/orbital';
-import { dot, len, sub } from '../physics/vec3';
-import type { Game } from '../game/game';
+import * as C from '../const';
+import { TEXT_DIM as INK_SOFT } from '../theme';
+import { altitudeOf } from '../../physics/orbital';
+import { dot, len, sub } from '../../physics/vec3';
+import type { Game } from '../game';
 import { fmtDist, fmtSpeed, fmtTime } from './utils';
 
 interface StatsData {

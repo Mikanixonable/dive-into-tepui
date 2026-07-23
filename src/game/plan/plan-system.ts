@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
-import { Hud } from '../../hud/hud';
+import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { Input } from '../input';
+import { Input } from '../input/input';
 import { ProjectFn } from '../camera/camera-system';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { PlanEditor } from './plan-editor';

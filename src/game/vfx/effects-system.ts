@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { Attitude, randomQuat } from '../physics/attitude';
-import { OrbitState } from '../physics/orbital';
-import { add, clone, randSym, randVec, v3, Vec3 } from '../physics/vec3';
-import * as C from './const';
-import { DebrisKind, DebrisPiece } from './orbit-entity/entities';
-import { Billboard } from '../render/billboard';
+import { Attitude, randomQuat } from '../../physics/attitude';
+import { OrbitState } from '../../physics/orbital';
+import { add, clone, randSym, randVec, v3, Vec3 } from '../../physics/vec3';
+import * as C from '../const';
+import { DebrisKind, DebrisPiece } from '../orbit-entity/entities';
+import { Billboard } from '../../render/billboard';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
 
 // フラッシュ・破片エフェクトの発生源。scene への注入をここに一元化し、呼び出し側

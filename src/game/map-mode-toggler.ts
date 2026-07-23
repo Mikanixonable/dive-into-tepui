@@ -1,7 +1,7 @@
-import { Hud } from "../../hud/hud";
-import { CameraSystem } from "../camera/camera-system";
-import { TouchControls } from "../touch";
-import { PlanSystem } from "../plan/plan-system";
+import { Hud } from "./hud/hud";
+import { CameraSystem } from "./camera/camera-system";
+import { TouchControls } from "./input/touch";
+import { PlanSystem } from "./plan/plan-system";
 
 export class MapModeToggler {
   _hud: Hud;

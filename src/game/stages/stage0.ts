@@ -2,7 +2,7 @@
 // (タイムアップで終わる。撃破数では終わらないので checkWin/onWin は no-op に override する)。
 import * as C from '../const';
 import { Stage } from './stage';
-import { showScoreAttackResultScreen } from '../result-screen';
+import { showScoreAttackResultScreen } from '../hud/result-screen';
 import { generateCluster } from './spawner/enemy-spawner';
 import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { Player } from '../player/player';

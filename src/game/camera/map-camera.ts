@@ -7,9 +7,9 @@
 import * as THREE from 'three/webgpu';
 import { Vec3, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { Hud } from '../../hud/hud';
+import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { MouseDelta } from '../input';
+import { MouseDelta } from '../input/input';
 import { MapMarkers } from './map-markers';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);

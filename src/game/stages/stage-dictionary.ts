@@ -4,7 +4,7 @@
 import { Stage, StageId } from './stage';
 import type { Player } from '../player/player';
 import type { Simulator } from '../orbit-entity/simulator';
-import type { Hud } from '../../hud/hud';
+import type { Hud } from '../hud/hud';
 import { Stage00 } from './stage00';
 import { Stage0 } from './stage0';
 import { Stage1 } from './stage1';

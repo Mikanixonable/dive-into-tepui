@@ -3,7 +3,7 @@
 // マップモードの計画データそのものには依存しない — どのノード時刻へ
 // 自動ワープするかは呼び出し側(game.ts / PlanSystem)が決めて渡す。
 import * as C from './const';
-import { Hud } from '../hud/hud';
+import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
 import { PlannedNode } from '../physics/predict';
 

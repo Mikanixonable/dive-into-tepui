@@ -3,9 +3,9 @@
 // 軌道運動とともにゆっくり共回転するため地球が常に足元に見える。
 import * as THREE from 'three/webgpu';
 import { norm, v3, Vec3 } from '../../physics/vec3';
-import { MouseDelta } from '../input';
+import { MouseDelta } from '../input/input';
 import * as C from '../const';
-import { Hud } from '../../hud/hud';
+import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { qRotate } from '../../physics/attitude';
 import { Player } from '../player/player';

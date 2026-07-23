@@ -8,11 +8,11 @@ import { OrbitLine } from '../../render/orbitline';
 import { add, clone, len, norm, randPerp, rotateAxis, scale, sub } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
-import { EffectsSystem } from '../effects-system';
+import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
 import type { Stage } from '../stages/stage';
-import { Hud } from '../../hud/hud';
+import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import type { Simulator } from './simulator';
 

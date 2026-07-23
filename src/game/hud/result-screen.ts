@@ -1,6 +1,6 @@
-import { Hud } from '../hud/hud';
-import { Sfx } from '../audio/sfx';
-import { ScoreCounter } from './stages/stage-utils/score-counter';
+import { Hud } from './hud';
+import { Sfx } from '../../audio/sfx';
+import { ScoreCounter } from '../stages/stage-utils/score-counter';
 
 // 終了画面表示の共通処理: BGM/推進音を止めてから HUD の結果画面を出す。
 // 勝利(won/timeup)・敗北(lost)いずれの結末もこれを通す。

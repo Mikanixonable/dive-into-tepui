@@ -4,9 +4,9 @@ import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../../physics/orbital';
 import { Vec3, add, clone, cross, len, norm, randPerp, randSym, scale, sub, v3 } from '../../../physics/vec3';
 import * as C from '../../const';
-import { Hud } from '../../../hud/hud';
+import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
-import type { EffectsSystem } from '../../effects-system';
+import type { EffectsSystem } from '../../vfx/effects-system';
 import { Enemy } from '../../orbit-entity/enemy';
 import { generateApproachingEnemy, generateDriftingEnemy } from './enemy-generator';
 
