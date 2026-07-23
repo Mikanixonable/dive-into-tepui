@@ -57,21 +57,25 @@ Physics runs on the main thread (per-entity central-gravity two-body integration
 - `collision.ts` — `CollisionPhysics`: rigid-sphere impulse resolution for casings/enemies/pickups/belt links (`resolve`, called once per `Game.update` — not per substep — and only below `MAX_PHYS_SIM_SPEED`).
 
 `src/game/camera/`:
-- `camera-system.ts` — `CameraSystem`: switches between `ChaseCamera`/`MapCamera` and exposes the active one; owns `mapMode`/`zoomActive`.
+- `camera-system.ts` — `CameraSystem`: switches between `ChaseCamera`/`MapCamera` and exposes the active one; owns `mapMode`/`zoomActive`. Also owns the map focus concern (= "where the map camera looks"): the `mapMarkers` label set and the `FocusGizmo` selection menu, wiring `onMenuFocus` to set `mapCamera.focus` and exposing `handleFocusRightClick`/`closeFocusMenu` for `game.ts` to drive.
 - `chase-camera.ts` — `ChaseCamera`: the combat third-person view (near=2/far=6e7), a togglable reference frame (`camFollowAttitude`: ship-attitude-relative vs. orbital-frame-relative, toggled by `[G]` via `toggleFollowAttitude`), and the `[Z]` gunsight zoom view.
-- `map-camera.ts` — `MapCamera`: the map-mode Earth-centered orbit camera (near=1e4/far=`MAP_CAMERA_FAR`), the sun-corotating-frame toggle, and the future-ghost slider position.
+- `map-camera.ts` — `MapCamera`: the map-mode Earth-centered orbit camera (near=1e4/far=`MAP_CAMERA_FAR`), the sun-corotating-frame toggle, and the future-ghost slider position; resolves `focus` (label id) to a world position via the injected `MapMarkers`.
+- `map-markers.ts` — `MapMarkers`: computes/projects the focusable-target labels (Earth/Moon/Sun/Lagrange points) and the label lookup (`findLabel`) used both for focus resolution and focus-menu picking. A mapCamera-side concern, owned by `CameraSystem`.
+- `focus-gizmo.ts` — `FocusGizmo`: the map-label focus-selection context menu (single responsibility: the focus targetKey + focus/cancel menu items). Uses the shared `map-mode/context-menu.ts`.
 - `projection.ts` — `HudProjection`: the sole screen-projection function (`project`); camera-dependent, so it's passed to consumers as a callback rather than imported directly.
 
-`src/game/map-mode/` — the `[M]` orbit-planning UI (`MapModeSystem` is the sole external entry point; `game.ts` never touches `PlanEditor`/`PlanDisplay`/`MapHud` directly):
-- `map-mode-system.ts` — `MapModeSystem`: wires `PlanEditor`/`PlanDisplay`/`MapHud` together, owns `focus` (which label the map camera looks at) and its resolution to a world position (`focusRel`), and is the toggle/lifecycle entry point (`toggleMap`, `updateEditing`, `updateDisplay`).
-- `mapgizmo.ts` — `MapGizmo`: the DOM pointer-events layer (node handles, Δv axis arms, right-click context menu) absolutely positioned over the canvas each frame; DOM/event handling only, no physics or coordinate math.
-- `map-hud.ts` — `MapHud`: computes and projects the focusable-target labels (Earth/Moon/Sun/Lagrange points).
+`src/game/map-mode/` — the `[M]` mode's cross-cutting bits that belong neither purely to the camera nor purely to the plan (the map-mode concept is being dissolved into those two concerns; `refactoring_plan/SPLIT_MAP_MODE.md` tracks it):
+- `map-mode-toggler.ts` — `MapModeToggler`: the `[M]` open/close lifecycle, the sole place that co-switches the camera-side flag (`cameraSystem.mapMode`) and plan-side editing state so they toggle together while staying logically independent.
+- `context-menu.ts` — `ContextMenu`: a generic screen-positioned popup menu (DOM/stopPropagation/click-dispatch centralized here). Shared by `plan/node-gizmo.ts` (node menu) and `camera/focus-gizmo.ts` (focus menu); kept in `map-mode/` as the neutral home since both a plan-side and a camera-side gizmo consume it. DOM/event handling only.
+
+  The node-vs-focus split: a right-click in map mode is first offered to the node gizmo (`PlanSystem.handleNodeRightClick`); only if **not** consumed by a node does `game.ts` fall through to `CameraSystem.handleFocusRightClick`. This one shared concern (who consumes the right-click) lives in `game.ts`'s `dispatchMapRightClick` — the two gizmos never reference each other.
 
 `src/game/plan/` — maneuver planning, independent of whether map-mode is open:
 - `plan.ts` — `Plan`: the node list and its trajectory-prediction cache (`trajSamples`, throttled `maybeRefresh`); the sole place nodes are added/removed/reordered.
 - `plan-guide.ts` — `PlanGuide`: the combat-view execution guide for the nearest node (◆NODE/⬢BURN markers, the frozen `activeTarget` — computed once and frozen inside `NODE_TARGET_FREEZE_S` so it doesn't keep receding as Δv is burned — and the `orbitClose` achievement check).
 - `plan-display.ts` — `PlanDisplay`: map-mode's predicted-trajectory polyline and future-ghost marker, plus the sun-corotating-frame coordinate transform (`toDisplayFrame`) that `plan-editor.ts` reuses for click-picking so display and hit-testing never drift apart.
-- `plan-editor.ts` — `PlanEditor`: map-mode node editing (click-to-place, drag-to-retime, `MapGizmo` Δv-arm drag, context menu) and the plan/toolbar HUD panel content.
+- `plan-editor.ts` — `PlanEditor`: map-mode node editing (click-to-place, drag-to-retime, `NodeGizmo` Δv-arm drag, node context menu) and the plan/toolbar HUD panel content. Owns the `NodeGizmo`; `PlanSystem.wireNodeGizmo` wires its callbacks directly (no bundled callback interface).
+- `node-gizmo.ts` — `NodeGizmo`: the maneuver-node DOM pointer-events layer — node handles + Δv axis arms + the node context menu (warp/delete). A plan concern; uses the shared `map-mode/context-menu.ts`.
 
 `src/game/stages/`:
 - `stage.ts` — `Stage`: the abstract per-stage contract (`init`/`update`/`checkWin`/`onWin`/`hudSubStatus`), the default kill-count win condition, and the shared `recordEnemyDeath`/`recordPlayerLost` result bookkeeping. Each concrete stage owns its own runtime state as instance fields.
@@ -86,7 +90,7 @@ Physics runs on the main thread (per-entity central-gravity two-body integration
 
 - `src/game/ephemeris.ts` — `EphemerisSystem`: sampled sun/moon ECI state (`update(simTime)`, math delegated to `physics/ephemeris.ts`) and Earth-shadow sunlight factor (`shadowLitFactor`); also owns the map-mode-only geo/moon reference orbit lines.
 - `src/game/sim-speed-manager.ts` — `SimSpeedManager`: the sim-speed stage (`SIM_SPEED_LEVELS`; shown to the player and referenced in SFX as "warp") and the `[N]`-key auto-warp-to-time behavior (`startAutoWarpTo`/`cancelAutoWarp`/`update`).
-- `src/game/theme.ts` — the sole definition source for the dark-theme color constants (`ACCENT`, `SURFACE`, `EDGE`, `TEXT`, ...), shared by `hud/`, `main.ts`, `mapgizmo.ts`, `touch.ts`.
+- `src/game/theme.ts` — the sole definition source for the dark-theme color constants (`ACCENT`, `SURFACE`, `EDGE`, `TEXT`, ...), shared by `hud/`, `main.ts`, `node-gizmo.ts`/`context-menu.ts`, `touch.ts`.
 - `src/game/targeter.ts` — `Targeter`: auto-target selection (closest to camera forward) and right-click target lock, plus the target's highlighted `OrbitLine`.
 - `src/game/effects-system.ts` / `flash-effect-manager.ts` — the flash/debris spawn API (`EffectsSystem`, the sole place `Player`/`Enemy`/`PlayerFire` reach to spawn VFX or add debris) and its per-frame flash lifetime/billboard update (`FlashEffectManager`).
 - `src/game/pip-renderer.ts` — `PipRenderer`: the picture-in-picture gunsight zoom window render pass (re-poses the camera, hides the player mesh/muzzle flashes, renders twice per frame); entirely internal to `Game.render`.
