@@ -33,10 +33,12 @@ import { MarkerManager } from '../marker/marker-manager';
 import { MapMarkers } from './map-markers';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
+import { PlanGuide } from '../plan/plan-guide';
 
 export class MapModeSystem {
   readonly editor: PlanEditor;
   readonly display: PlanDisplay;
+  readonly guide: PlanGuide;
 
   constructor(
     private readonly _hud: Hud,
@@ -49,9 +51,9 @@ export class MapModeSystem {
     scene: THREE.Scene,
     private readonly getFineAttitude: () => boolean,
     private readonly getExternalState: () => { player: Player; ephemeris: EphemerisSystem; simTime: number; },
-    onPlanCleared: () => void,
   ) {
-    this.editor = new PlanEditor(this._hud, this._sfx, this.simSpeedManager, onPlanCleared);
+    this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager, scene);
+    this.editor = new PlanEditor(this._hud, this._sfx, this.simSpeedManager);
     this.display = new PlanDisplay(this.markerManager, scene);
     this.wireHudCallbacks();
     this.wireGizmoCallbacks();
@@ -120,6 +122,11 @@ export class MapModeSystem {
     });
   }
 
+  clearPlanByKey(mapMode: boolean): void {
+    this.editor.clearPlanByKey(mapMode);
+    this.guide.clearActiveTarget();
+  }
+
   // --------------------------------------------------------------- per-frame
 
   // マップモードのノード編集入力(クリック配置・Δv調整・ツールバー/計画パネル反映)。
@@ -141,12 +148,15 @@ export class MapModeSystem {
   // マップ表示中(mapMode)のみ意味を持つ: 予測軌道の再計算・折れ線/ゴースト描画・
   // ギズモ座標更新・フォーカスラベル描画。閉じている間は表示物の後始末のみ行う。
   updateDisplay(mapMode: boolean, player: Player, ephemeris: EphemerisSystem, simTime: number): void {
+    const origin = player.state.r;
+    
+    this.guide.updatePlannedLine(this.editor.plan, { player: player, ephemeris: ephemeris, simTime: simTime }, origin, mapMode);
+
     if (!mapMode) {
       this.display.hide();
       this.editor.hideGizmo();
       return;
     }
-    const origin = player.state.r;
     this.display.update(this.editor.plan, {player, ephemeris, simTime}, origin, this.mapCamera.frameRotating, this.project);
     this.editor.updateGizmo(origin, this.display.bindDisplayFrame(ephemeris, this.mapCamera.frameRotating), this.project, this.mapCamera.dist);
     this.mapMarkers.updateLabels(

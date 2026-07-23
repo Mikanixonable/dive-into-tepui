@@ -22,7 +22,6 @@ import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { MapModeSystem } from './map-mode/map-mode-system';
 import { MapMarkers } from './map-mode/map-markers';
-import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRenderer } from './pip-renderer';
 import { Simulator } from './orbit-entity/simulator';
@@ -75,7 +74,6 @@ export class Game {
   // 直近ノードの噴射ガイド(戦闘ビューのみ、マップモード中は呼ばない — [M] で開いている
   // 間は WASDQE がΔv編集に使われるため)。scene に計画軌道ラインを持つため
   // コンストラクタ本体で構築する(effects 等と同じ理由)。
-  private readonly planGuide: PlanGuide;
 
   // 軌道計画(ノード列+予測キャッシュ、Plan)は mapModeSystem が所有する。
   // マップモードの有無と無関係なデータだが、編集・保持ともマップモード側にしか
@@ -115,7 +113,6 @@ export class Game {
     this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
     this.pipRenderer = new PipRenderer(this._scene);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
-    this.planGuide = new PlanGuide(this._hud, this._sfx, this.markerManager, this._scene);
     this.mapModeSystem = new MapModeSystem(
       this._hud,
       this._sfx,
@@ -126,11 +123,9 @@ export class Game {
       this.mapMarkers,
       this._scene,
       () => this.player.fineAttitude,
-      () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }),
-      () => this.planGuide.clearActiveTarget(),
+      () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime })
     );
-    this.mapModeToggler = new MapModeToggler(
-      this.mapModeSystem.editor, this.mapModeSystem.editor.plan, this._hud);
+    this.mapModeToggler = new MapModeToggler(this._hud);
 
     this.activeStage = getStageDefinition(stage);
 
@@ -174,7 +169,7 @@ export class Game {
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
     this.handleEdgeInput();
-    this.mapModeToggler.update(this.activeStage.isPlaying, this.touchControls, this.cameraSystem);
+    this.mapModeToggler.update(this.activeStage.isPlaying, this.mapModeSystem, this.touchControls, this.cameraSystem);
     this.handleFrame(dt);
     this.cameraSystem.update(
       this.player,
@@ -258,10 +253,7 @@ export class Game {
       case 'Comma': this.simSpeedManager.shift(-1); break;
       case 'Period': this.simSpeedManager.shift(1); break;
       case 'KeyM':
-        this.mapModeToggler.toggle(this.activeStage.isPlaying, this.touchControls, this.cameraSystem);
-        // マップを閉じた: 同じノードのままΔvだけ編集された可能性があり、
-        // ノード時刻の一致だけでは検出できないため、噴射ガイドの凍結目標を作り直す。
-        if (!this.cameraSystem.mapMode) this.planGuide.clearActiveTarget();
+        this.mapModeToggler.toggle(this.activeStage.isPlaying, this.mapModeSystem,this.touchControls, this.cameraSystem);
         break;
       // マップモード外でのみ、 [N] キーで直近ノードへの自動ワープをトグルする。
       case 'KeyN':
@@ -270,7 +262,7 @@ export class Game {
             this.activeStage.isPlaying,
             this.mapModeSystem.editor.plan.firstNode());
         break;
-      case 'KeyX': this.mapModeSystem.editor.clearPlanByKey(this.cameraSystem.mapMode); break;
+      case 'KeyX': this.mapModeSystem.clearPlanByKey(this.cameraSystem.mapMode); break;
       case 'KeyH': this._hud.toggleHelp(); break;
       case 'Escape': this._hud.toggleSettings(); break;
       case 'KeyR': if (!this.activeStage.isPlaying) location.reload(); break;
@@ -347,7 +339,6 @@ export class Game {
     this.mapModeSystem.updateDisplay(mapMode, this.player, this.ephemeris, this.simulator.simTime);
 
     this.ephemeris.updateReferenceLines(this.simulator.simTime, o, mapMode);
-    this.planGuide.updatePlannedLine(this.mapModeSystem.editor.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, mapMode);
 
     this.markersSystem.updateMarkers(this.markerCtx(), pv, project);
     this.markersSystem.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
@@ -355,7 +346,7 @@ export class Game {
     if (mapMode) {
       this.markerManager.hide('burn');
     } else {
-      const { achieved } = this.planGuide.update(this.mapModeSystem.editor.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, pv, this.player.elements, this.player.alive, project);
+      const { achieved } = this.mapModeSystem.guide.update(this.mapModeSystem.editor.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, pv, this.player.elements, this.player.alive, project);
       if (achieved) this.simSpeedManager.cancelAutoWarp();
     }
   }
