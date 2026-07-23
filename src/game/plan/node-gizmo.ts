@@ -9,7 +9,7 @@
 // (視点回転)へイベントが漏れないようにする。
 import * as C from '../const';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, TEXT as INK } from '../theme';
-import { ContextMenu } from '../map-mode/context-menu';
+import { ContextMenu } from '../hud/context-menu';
 
 // SURFACE/EDGE はこのファイル固有の不透明度を使うため、theme.ts とは別定数のまま保持する。
 const SURFACE = 'rgba(13, 15, 18, 0.85)';

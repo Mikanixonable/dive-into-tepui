@@ -2,8 +2,8 @@
 // Input.setVirtualKey へ物理キーボードと同じキーコードを流し込む。
 // 押しっぱなし系(並進・回転・射撃・ズーム)とエッジトリガ系(トグル類)を
 // 同じ仕組みで扱える。マウス+キーボード環境では生成しない。
-import { Input } from './input';
-import { ACCENT, ACCENT_RGB, TEXT_DIM } from './theme';
+import { Input } from '../input/input';
+import { ACCENT, ACCENT_RGB, TEXT_DIM } from '../theme';
 
 // SURFACE/EDGE はこのファイル固有の不透明度(0.66 / 0.14)を使うため、
 // theme.ts の SURFACE(0.82)/EDGE(0.09)とは別定数のまま保持する。

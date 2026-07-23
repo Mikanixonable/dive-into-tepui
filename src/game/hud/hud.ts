@@ -8,7 +8,7 @@
 // 内部構成:
 //   - hud/dom.ts  … 静的 DOM/スタイル構築
 //   - hud/panel.ts … ステータスパネル同期(panels として公開)
-import { ACCENT, TEXT as INK, TEXT_DIM as INK_SOFT } from '../game/theme';
+import { ACCENT, TEXT as INK, TEXT_DIM as INK_SOFT } from '../theme';
 import { buildHudDom } from './dom';
 import { HudPanels } from './panel';
 import { fmtDist, fmtTime } from './utils';

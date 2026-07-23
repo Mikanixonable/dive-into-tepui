@@ -10,7 +10,7 @@ import { Elements, R_EARTH, elementsFromState } from '../../physics/orbital';
 import { sunAzimuth } from '../../physics/ephemeris';
 import { Vec3, len, rotateAxis, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { fmtMarkerDist } from '../../hud/utils';
+import { fmtMarkerDist } from '../hud/utils';
 import { TrajLine } from './trajline';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn } from '../camera/camera-system';

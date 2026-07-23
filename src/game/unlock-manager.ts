@@ -1,7 +1,7 @@
 // ステージ解放の判定・記録を一元管理する。stages/stage.ts の Stage は
 // isUnlocked(clearCounts) という条件式を持つだけで、localStorage には触れない。
 import { ACCENT } from './theme';
-import { Hud } from '../hud/hud';
+import { Hud } from './hud/hud';
 import { StageId } from './stages/stage';
 import { STAGES } from './stages/stage-dictionary';
 

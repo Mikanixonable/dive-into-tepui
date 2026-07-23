@@ -6,9 +6,9 @@ import * as THREE from 'three/webgpu';
 import { qFromForwardUp, randomQuat } from '../../../physics/attitude';
 import { MU_EARTH, OrbitState, R_EARTH, stateFromElements } from '../../../physics/orbital';
 import { cross, len, norm, randSym, rotateAxis, scale, v3 } from '../../../physics/vec3';
-import { Hud } from '../../../hud/hud';
+import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
-import type { EffectsSystem } from '../../effects-system';
+import type { EffectsSystem } from '../../vfx/effects-system';
 import { Enemy } from '../../orbit-entity/enemy';
 
 // 自機軌道(base)を dAlong だけ進めた位置の軌道状態(プリセット配置の共通基盤)。

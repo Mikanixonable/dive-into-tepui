@@ -1,7 +1,7 @@
 // 爆発・マズルフラッシュなどの一時エフェクト。
 import * as THREE from "three/webgpu";
-import { Vec3, addScaled } from "../physics/vec3";
-import { Billboard } from "../render/billboard";
+import { Vec3, addScaled } from "../../physics/vec3";
+import { Billboard } from "../../render/billboard";
 
 // 軌道速度で流れないよう、発生源の速度で移流させる。
 export interface FlashEffect {

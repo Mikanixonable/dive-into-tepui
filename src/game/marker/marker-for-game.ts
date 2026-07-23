@@ -10,7 +10,7 @@ import * as C from '../const';
 import { Ammo, OrbitEntity } from '../orbit-entity/entities';
 import { Enemy } from '../orbit-entity/enemy';
 import { MarkerManager } from './marker-manager';
-import { fmtMarkerDist } from '../../hud/utils';
+import { fmtMarkerDist } from '../hud/utils';
 import { Player } from '../player/player';
 import { solveLeadTime } from '../../physics/intercept';
 
