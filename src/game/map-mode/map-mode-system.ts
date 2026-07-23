@@ -29,7 +29,6 @@ import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
 import { ProjectFn } from '../camera/camera-system';
 import { SimSpeedManager } from '../sim-speed-manager';
-import { Plan } from '../plan/plan';
 import { PlanEditor } from '../plan/plan-editor';
 import { DisplayFrameFn, PlanDisplay } from '../plan/plan-display';
 import { MapCamera } from '../camera/map-camera';
@@ -39,7 +38,7 @@ import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
 
 export class MapModeSystem {
-  readonly plan = new Plan();
+  //readonly plan = new Plan();
   readonly editor: PlanEditor;
   private readonly display: PlanDisplay;
 
@@ -65,12 +64,12 @@ export class MapModeSystem {
     this._hud.onDurationSelect = (key) => {
       if (key === 'orbit' || key === 'day' || key === 'week' || key === 'month') {
         this.display.predictDurationKey = key;
-        this.plan.markDirty();
+        this.editor.plan.markDirty();
       }
     };
     this._hud.onFrameToggle = () => {
       this.mapCamera.frameRotating = !this.mapCamera.frameRotating;
-      this.plan.markDirty();
+      this.editor.plan.markDirty();
     };
     this._hud.onMapFocusSelect = (focus) => {
       this.mapCamera.focus = focus;
@@ -94,23 +93,23 @@ export class MapModeSystem {
       onNodeDragMove: (idx, clientX, clientY) => {
         this.editor.closeMenu();
         const state = this.getExternalState();
-        this.editor.dragNodeToNearestSample(this.plan, idx, clientX, clientY, state.player.state.r, this.toDisplayFrame(state.ephemeris), this.project);
+        this.editor.dragNodeToNearestSample(idx, clientX, clientY, state.player.state.r, this.toDisplayFrame(state.ephemeris), this.project);
       },
       onNodeContextMenu: (clientX, clientY) => {
         const state = this.getExternalState();
-        this.editor.handleMapRightClick(this.plan, clientX, clientY, state.player.state.r, this.toDisplayFrame(state.ephemeris), this.project, this.mapMarkers.labels);
+        this.editor.handleMapRightClick(clientX, clientY, state.player.state.r, this.toDisplayFrame(state.ephemeris), this.project, this.mapMarkers.labels);
       },
       onAxisDrag: (axis, sign, deltaPx) => {
-        this.editor.applyAxisDrag(this.plan, axis, sign, deltaPx, this.getFineAttitude());
+        this.editor.applyAxisDrag(axis, sign, deltaPx, this.getFineAttitude());
       },
       onMenuWarpTo: (idx) => {
-        const n = this.plan.nodes[idx];
+        const n = this.editor.plan.nodes[idx];
         if (!n) return;
         this.simSpeedManager.startAutoWarpTo(n.time);
         this._hud.hint('指定時刻まで自動ワープ開始');
       },
       onMenuDelete: (idx) => {
-        this.editor.deleteNode(this.plan, idx);
+        this.editor.deleteNode(idx);
         this.notifyNodeDeleted();
       },
       onMenuFocus: (targetKey) => {
@@ -129,8 +128,6 @@ export class MapModeSystem {
     return (r: Vec3, t: number) => this.display.toDisplayFrame(r, t, ephemeris, rotating);
   }
 
-  
-
   // --------------------------------------------------------------- input
 
   // [X] キー: マップモード中は選択中ノードのみ、マップ外では計画全体を破棄する
@@ -141,8 +138,8 @@ export class MapModeSystem {
       this.deleteSelectedNode();
       return;
     }
-    if (this.plan.nodes.length <= 0) return;
-    this.plan.clear();
+    if (this.editor.plan.nodes.length <= 0) return;
+    this.editor.plan.clear();
     this.onPlanCleared();
     this.simSpeedManager.cancelAutoWarp();
     this._hud.hint('マニューバ計画を破棄');
@@ -151,7 +148,7 @@ export class MapModeSystem {
   // [X] キー(マップモード中のみ): 選択中ノードを削除する(どのノードかの解決は
   // selectedNodeIdx を持つ PlanEditor 自身の責務)。
   private deleteSelectedNode(): void {
-    if (!this.editor.deleteSelected(this.plan)) return;
+    if (!this.editor.deleteSelected()) return;
     this.notifyNodeDeleted();
   }
 
@@ -161,11 +158,10 @@ export class MapModeSystem {
     this._hud.hint('ノードを削除');
   }
 
-  // [N] キー: 直近ノードの実行時刻までの自動ワープをトグルする(実際の速度管理は
-  // SimSpeedManager が持つ — ここではノードの有無/時刻の解決だけを担う)。
+  // [N] キー: 直近ノードの実行時刻までの自動ワープをトグルする
   toggleAutoWarpToFirstNode(isPlaying: boolean, mapMode: boolean): void {
     if (mapMode) return;
-    const first = this.plan.firstNode();
+    const first = this.editor.plan.firstNode();
     if (!first || !isPlaying) {
       this._hud.hint('マニューバノードがありません ([M] で計画)');
       return;
@@ -186,13 +182,13 @@ export class MapModeSystem {
   // (hud への反映自体は editor 側が行う)。
   updateEditing(dt: number, input: Input): void {
     const state = this.getExternalState();
-    this.editor.updateEditing(this.plan, dt, state.simTime, state.player.state.r, this.toDisplayFrame(state.ephemeris), input, this.project, {
+    this.editor.updateEditing(dt, state.simTime, state.player.state.r, this.toDisplayFrame(state.ephemeris), input, this.project, {
       fineAttitude: this.getFineAttitude(),
       labels: this.mapMarkers.labels,
       toolbar: {
         durationKey: this.display.predictDurationKey,
         frameRotating: this.mapCamera.frameRotating,
-        ghostLabel: this.display.sliderT > 0 ? this.display.ghostLabel(this.plan, state.player, state.simTime) : null,
+        ghostLabel: this.display.sliderT > 0 ? this.display.ghostLabel(this.editor.plan, state.player, state.simTime) : null,
         focus: this.mapCamera.focus,
       },
     });
@@ -208,8 +204,8 @@ export class MapModeSystem {
     }
     const state = this.getExternalState();
     const origin = state.player.state.r;
-    this.display.update(this.plan, state, origin, this.mapCamera.frameRotating, this.project);
-    this.editor.updateGizmo(this.plan, origin, this.toDisplayFrame(state.ephemeris), this.project, this.mapCamera.dist);
+    this.display.update(this.editor.plan, state, origin, this.mapCamera.frameRotating, this.project);
+    this.editor.updateGizmo(origin, this.toDisplayFrame(state.ephemeris), this.project, this.mapCamera.dist);
     this.mapMarkers.updateLabels(
       origin,
       state.simTime,
