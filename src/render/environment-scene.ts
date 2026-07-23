@@ -8,6 +8,7 @@ import { createEarth, Earth } from './earth';
 import { MOON_VIS_DIST, SUN_DISTANCE, SUN_VISUAL_SIZE, Sun, createMoon, createStars, createSun } from './stars';
 import { EphemerisSystem } from '../game/ephemeris';
 import { CameraSystem } from '../game/camera/camera-system';
+import * as C from '../game/const';
 
 export interface EnvironmentLightingParams {
   sunIntensity: number;
@@ -36,13 +37,13 @@ export class EnvironmentScene {
   constructor(
     scene: THREE.Scene,
     sunDir0: Vec3,
-    private readonly lighting: EnvironmentLightingParams,
+    //private readonly lighting: EnvironmentLightingParams,
   ) {
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     scene.add(this.ambient);
     this.sun = createSun();
     scene.add(this.sun.billboard.mesh);
-    this.sunLight = new THREE.DirectionalLight(0xfff4e0, lighting.sunIntensity);
+    this.sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
     this.sunLight.position.set(sunDir0.x * 1e5, sunDir0.y * 1e5, sunDir0.z * 1e5);
     scene.add(this.sunLight);
     this.moonMesh = createMoon();
@@ -119,8 +120,7 @@ export class EnvironmentScene {
   }
 
   private syncLighting(lit: number): void {
-    const { sunIntensity, ambientIntensity, shadowMinSun, shadowMinAmbient } = this.lighting;
-    this.sunLight.intensity = sunIntensity * (shadowMinSun + (1 - shadowMinSun) * lit);
-    this.ambient.intensity = ambientIntensity * (shadowMinAmbient + (1 - shadowMinAmbient) * lit);
+    this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
+    this.ambient.intensity = C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
   }
 }

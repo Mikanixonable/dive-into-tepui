@@ -9,7 +9,7 @@ export class MapModeToggler {
   constructor(hud: Hud) {
     this._hud = hud;
   }
-  // --------------------------------------------------------------- toggler
+  
   private open(mapModeSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     mapModeSystem.editor.selectedNodeIdx = null;
 

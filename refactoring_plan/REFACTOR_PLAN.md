@@ -59,7 +59,7 @@ markerCtxやsetMapToolbarStateのtoolbarが該当。
 原則として通常引数に展開したいが、それで引数の数が膨大になる場合は暫定的に看過している（markerCtx）
 これはそもそもその関数の責務が広すぎるということなので構造的な問題がありそう。
 
-# 比較的小さく、機械的に小さいが確実に改善できること
+# 比較的小さく、機械的に作業できる、確実に改善できること
 
 ## updateとsyncの分離徹底
 updateは論理値の更新。syncはTHREE.jsのオブジェクトの更新やDOMの表示更新。renderはthree.jsの描画のみ。
@@ -70,8 +70,6 @@ update関数は所有物のupdateを、sync関数は所有物のsyncを呼ぶべ
 
 ## rcsEffectのcomputeRcsTauとThrottleの重複実装。
 throttleが計算済みの出力を公開し、rcsEffectはそれを参照するだけにすべき。
-
-## game.ts内の配線　handleFrameとupdateの責務の違いが特にない。
 
 ## hud、sfx注入パターンのなかで今後必要なくなる可能性が高いものを分離
 
@@ -85,9 +83,10 @@ playerとplayer.status.rを両方受け取っているとか、そういう無�
 ## inputを綺麗に書き直す
 
 ## 通常カメラのnearfarが未定義
-適切な値を設定する
+適切な値を決め、Cに定数値として記録。
 
-## enemyのbehaveがcanEnemyFireだけで制御されてしまっている。
+## enemyのbehaveの外側でcanEnemyFireで切られている
+内部で判断するべき
 
 ## playerのfireのロジック まだまだ簡略化できそう、修正もできそう。
 
@@ -99,6 +98,13 @@ playerとplayer.status.rを両方受け取っているとか、そういう無�
 ## mapmarkersの実装が変
 updatelabelsが呼ばれるれるまでlabelsが空。最初から入っていて、updateでは座標だけ更新されるべきだ
 
+## stagesのindex管理
+indexと言っているのに-1始まりで、ディクショナリーを作っているのが変。どうせディクショナリーを作るならID文字列で検索するべき。
+
+# 顕著なバグ修正
+
+## PIPを表示すると通常カメラもろとも壊れる
+pip-renderer.tsに問題がある
 
 # やる必要がない可能性があるもの、
 

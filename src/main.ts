@@ -1,7 +1,7 @@
 import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
-import { DEFAULT_STAGE_INDEX, resolveForcedStageFromQuery, STAGE_DEFINITIONS } from './game/stages/stage-dictionary';
+import { DEFAULT_STAGE_INDEX, resolveForcedStageFromQuery, STAGES } from './game/stages/stage-dictionary';
 import { UnlockManager } from './game/unlock-manager';
 import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './game/theme';
 
@@ -30,8 +30,8 @@ function selectStage(): Promise<number> {
     div.innerHTML =
       `<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
       '<div style="font-size:12px;color:#7d838c;margin-bottom:12px">ステージを選択 (キーまたはクリック)</div>';
-    const enabledByStage = new Map(STAGE_DEFINITIONS.map((stage) => [stage.index, unlockManager.isUnlocked(stage.index)]));
-    for (const stage of STAGE_DEFINITIONS) {
+    const enabledByStage = new Map(STAGES.map((stage) => [stage.index, unlockManager.isUnlocked(stage.index)]));
+    for (const stage of STAGES) {
       const enabled = enabledByStage.get(stage.index) ?? false;
       const sub = enabled ? stage.selectSub : stage.selectLockedSub ?? stage.selectSub;
       const button = btn(stage.selectLabel, sub, enabled);
@@ -46,7 +46,7 @@ function selectStage(): Promise<number> {
       resolve(stage);
     };
     const onKey = (e: KeyboardEvent) => {
-      for (const stage of STAGE_DEFINITIONS) {
+      for (const stage of STAGES) {
         if (!(enabledByStage.get(stage.index) ?? false)) continue;
         if (!stage.selectKeys.includes(e.code)) continue;
         done(stage.index);

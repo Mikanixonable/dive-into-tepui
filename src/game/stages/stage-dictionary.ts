@@ -12,16 +12,16 @@ import { Stage2 } from './stage2';
 
 export const DEFAULT_STAGE_INDEX: StageIndex = 1;
 
-export const STAGE_DEFINITIONS: Stage[] = [
+export const STAGES: Stage[] = [
   new Stage00(),
   new Stage0(),
   new Stage1(),
   new Stage2(),
 ];
 
-const STAGE_BY_INDEX = new Map<StageIndex, Stage>(STAGE_DEFINITIONS.map((stage) => [stage.index, stage]));
+const STAGE_BY_INDEX = new Map<StageIndex, Stage>(STAGES.map((stage) => [stage.index, stage]));
 
-export function getStageDefinition(stage: number): Stage {
+export function getStage(stage: number): Stage {
   return STAGE_BY_INDEX.get(stage as StageIndex) ?? STAGE_BY_INDEX.get(DEFAULT_STAGE_INDEX)!;
 }
 
@@ -34,6 +34,6 @@ export function initStage(stage: Stage, player: Player, simulator: Simulator, hu
 export function resolveForcedStageFromQuery(stageParam: string | null): StageIndex | null {
   if (stageParam === null) return null;
   const forced = Number(stageParam);
-  const matched = STAGE_DEFINITIONS.find((stage) => stage.index === forced);
+  const matched = STAGES.find((stage) => stage.index === forced);
   return matched?.index ?? null;
 }
