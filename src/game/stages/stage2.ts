@@ -13,7 +13,7 @@ import type { Simulator } from '../orbit-entity/simulator';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage2 extends Stage {
-  readonly index = 2 as const;
+  readonly id = '2' as const;
   readonly selectLabel = '[2] 第二ステージ — モルニヤ戦域';
   readonly selectSub = '敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モード [M] での遷移が必須';
   readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
@@ -21,7 +21,7 @@ export class Stage2 extends Stage {
   readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
   isUnlocked(clearCounts: ClearCounts): boolean {
-    return (clearCounts[1] ?? 0) > 0;
+    return (clearCounts['1'] ?? 0) > 0;
   }
 
   briefingHtml(enemyCount: number): string {
