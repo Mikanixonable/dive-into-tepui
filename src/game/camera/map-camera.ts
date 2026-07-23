@@ -12,6 +12,8 @@ import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input';
 import { MapMarkers } from './map-markers';
 
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+
 export class MapCamera {
   // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
   readonly camera: THREE.PerspectiveCamera;
@@ -24,6 +26,15 @@ export class MapCamera {
   frameRotating = false;
   // 注視対象のラベル ID('earth' またはラベル ID)。位置解決は resolveFocusRel が行う。
   focus = 'earth';
+
+  // update() が算出し sync() が camera へ反映する視点の数学状態(THREE.js には触れない)。
+  private readonly position = new THREE.Vector3();
+  private readonly lookTarget = new THREE.Vector3();
+  private aspect = window.innerWidth / window.innerHeight;
+  // パン(中ドラッグ平行移動)のピクセル→距離変換に使うカメラ基底の作業ベクトル。
+  private readonly right = new THREE.Vector3();
+  private readonly camUp = new THREE.Vector3();
+  private readonly viewDir = new THREE.Vector3();
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
   constructor(
@@ -73,38 +84,46 @@ export class MapCamera {
       Math.min(1.4, this.pitch + mouse.dy * 0.005 + keyPitch * C.CAM_KEY_PITCH_RATE * dt),
     );
     this.dist = Math.max(C.MAP_MIN_DIST, Math.min(C.MAP_MAX_DIST, this.dist * Math.exp(mouse.wheel * 0.0012)));
-    if (mouse.panDx !== 0 || mouse.panDy !== 0) {
-      // Convert pixels to map-world metres at the current target plane.
-      // The camera basis makes the gesture independent of orbit yaw/pitch.
-      this.camera.updateMatrixWorld();
-      const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).normalize();
-      const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1).normalize();
-      const metersPerPixel =
-        (2 * this.dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5))) /
-        Math.max(1, window.innerHeight);
-      this.pan.addScaledVector(right, -mouse.panDx * metersPerPixel);
-      this.pan.addScaledVector(up, mouse.panDy * metersPerPixel);
-    }
     const cp = Math.cos(this.pitch);
     // 太陽回転系表示: 太陽の実際の方位ドリフトぶんカメラ方位を追従させ、
     // 画面上で太陽方向がほぼ固定されて見えるようにする(予測サンプルの回転補正と
     // 組み合わせて、t=simTime では回転量ゼロで整合する)。
     const displayYaw = this.yaw + (this.frameRotating ? sunAz : 0);
+    // ターゲット → カメラ方向の単位ベクトル(pan を含まない — pan はカメラと注視点を
+    // 等しく平行移動させるため基底に影響しない)。
+    const offX = cp * Math.cos(displayYaw);
+    const offY = Math.sin(this.pitch);
+    const offZ = cp * Math.sin(displayYaw);
+    if (mouse.panDx !== 0 || mouse.panDy !== 0) {
+      // ピクセル → マップ世界メートル変換。THREE の lookAt(up=+Y) が作る基底と一致する
+      // カメラ右/上ベクトルを yaw/pitch から解析的に組み、軌道 yaw/pitch に依存させない。
+      this.viewDir.set(-offX, -offY, -offZ);
+      this.right.crossVectors(this.viewDir, WORLD_UP).normalize();
+      this.camUp.crossVectors(this.right, this.viewDir).normalize();
+      const metersPerPixel =
+        (2 * this.dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5))) /
+        Math.max(1, window.innerHeight);
+      this.pan.addScaledVector(this.right, -mouse.panDx * metersPerPixel);
+      this.pan.addScaledVector(this.camUp, mouse.panDy * metersPerPixel);
+    }
     const targetX = focusRel.x + this.pan.x;
     const targetY = focusRel.y + this.pan.y;
     const targetZ = focusRel.z + this.pan.z;
-    this.camera.position.set(
-      targetX + cp * Math.cos(displayYaw) * this.dist,
-      targetY + Math.sin(this.pitch) * this.dist,
-      targetZ + cp * Math.sin(displayYaw) * this.dist,
-    );
-    this.camera.up.set(0, 1, 0);
-    this.camera.lookAt(targetX, targetY, targetZ);
-    const aspect = window.innerWidth / window.innerHeight;
-    if (Math.abs(this.camera.aspect - aspect) > 1e-6) {
-      this.camera.aspect = aspect;
-      this.camera.updateProjectionMatrix();
+    this.position.set(targetX + offX * this.dist, targetY + offY * this.dist, targetZ + offZ * this.dist);
+    this.lookTarget.set(targetX, targetY, targetZ);
+    this.aspect = window.innerWidth / window.innerHeight;
+  }
+
+  // update() で算出した視点の数学状態を camera に反映する。
+  sync(): void {
+    const camera = this.camera;
+    camera.position.copy(this.position);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(this.lookTarget);
+    if (Math.abs(camera.aspect - this.aspect) > 1e-6) {
+      camera.aspect = this.aspect;
+      camera.updateProjectionMatrix();
     }
-    this.camera.updateMatrixWorld();
+    camera.updateMatrixWorld();
   }
 }

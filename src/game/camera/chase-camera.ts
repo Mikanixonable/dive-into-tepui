@@ -28,6 +28,12 @@ export class ChaseCamera {
   camFollowAttitude = true;
   private fov = C.BASE_FOV;
 
+  // update() が算出し sync() が camera へ反映する視点の数学状態(THREE.js には触れない)。
+  private readonly position = new THREE.Vector3();
+  private readonly upDir = new THREE.Vector3();
+  private readonly lookTarget = new THREE.Vector3();
+  private aspect = window.innerWidth / window.innerHeight;
+
   private readonly upV = new THREE.Vector3();
   private readonly fwdV = new THREE.Vector3();
   private readonly sideV = new THREE.Vector3();
@@ -58,23 +64,42 @@ export class ChaseCamera {
     const boreUp = qRotate(player.att.q, v3(0, 1, 0));
 
     if (!player.alive) {
-      this.updateChaseView(mouse, chaseUp, chaseFwd, dt);
+      this.computeChaseView(mouse, chaseUp, chaseFwd, dt);
     }
     else if (zoomActive) {
-      this.updateGunsightView(boreFwd, boreUp, dt);
+      this.computeGunsightView(boreFwd, boreUp, dt);
     }
     else if (this.camFollowAttitude) {
-      this.updateChaseView(mouse, boreUp, boreFwd, dt);
+      this.computeChaseView(mouse, boreUp, boreFwd, dt);
     }
     else {
-      this.updateChaseView(mouse, chaseUp, chaseFwd, dt);
+      this.computeChaseView(mouse, chaseUp, chaseFwd, dt);
     }
+  }
+
+  // update() で算出した視点の数学状態を camera に反映する。
+  sync(): void {
+    const camera = this.camera;
+    camera.position.copy(this.position);
+    camera.up.copy(this.upDir);
+    camera.lookAt(this.lookTarget);
+    let projectionDirty = false;
+    if (Math.abs(camera.aspect - this.aspect) > 1e-6) {
+      camera.aspect = this.aspect;
+      projectionDirty = true;
+    }
+    if (Math.abs(camera.fov - this.fov) > 1e-3) {
+      camera.fov = this.fov;
+      projectionDirty = true;
+    }
+    if (projectionDirty) camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
   }
 
   // 通常の三人称視点(マウスでyaw/pitch/distを操作、up/fwdの基準フレームは
   // 呼び出し側が決める — 機体姿勢基準か軌道基準かはCameraSystemの責務)。
-  private updateChaseView(mouse: MouseDelta, up: Vec3, fwd: Vec3, dt: number): void {
-    this.updateZoomFov(false, dt);
+  private computeChaseView(mouse: MouseDelta, up: Vec3, fwd: Vec3, dt: number): void {
+    this.computeZoomFov(false, dt);
 
     this.yaw -= mouse.dx * 0.005;
     this.pitch += mouse.dy * 0.005;
@@ -96,41 +121,28 @@ export class ChaseCamera {
       .addScaledVector(this.upV, Math.sin(this.pitch))
       .multiplyScalar(this.dist);
 
-    const camera = this.camera;
-    camera.position.copy(this.offset);
-    camera.up.copy(this.upV);
-    camera.lookAt(0, 0, 0);
-    camera.updateMatrixWorld();
+    this.position.copy(this.offset);
+    this.upDir.copy(this.upV);
+    this.lookTarget.set(0, 0, 0);
   }
 
   // 照準ズーム中: 三人称視点をやめ、機体位置(原点)から機首方向を狙う
   // 固定ガンサイト視点にする(画面中心 = 照準先、自機は呼び出し側で非表示にする)。
   // 姿勢操作(I/K/J/L)で狙いを付ける設計のため、マウスでの視点回転は行わない。
-  private updateGunsightView(boreFwd: Vec3, boreUp: Vec3, dt: number): void {
-    this.updateZoomFov(true, dt);
+  private computeGunsightView(boreFwd: Vec3, boreUp: Vec3, dt: number): void {
+    this.computeZoomFov(true, dt);
 
     this.fwdV.set(boreFwd.x, boreFwd.y, boreFwd.z).normalize();
     this.upV.set(boreUp.x, boreUp.y, boreUp.z).normalize();
-    const camera = this.camera;
-    camera.position.set(0, 0, 0);
-    camera.up.copy(this.upV);
-    camera.lookAt(this.fwdV.x * 1000, this.fwdV.y * 1000, this.fwdV.z * 1000);
-    camera.updateMatrixWorld();
+    this.position.set(0, 0, 0);
+    this.upDir.copy(this.upV);
+    this.lookTarget.set(this.fwdV.x * 1000, this.fwdV.y * 1000, this.fwdV.z * 1000);
   }
 
-  private updateZoomFov(zoomActive: boolean, dt: number): void {
-    const camera = this.camera;
-    const aspect = window.innerWidth / window.innerHeight;
-    let projectionDirty = Math.abs(camera.aspect - aspect) > 1e-6;
-    if (projectionDirty) camera.aspect = aspect;
-
+  private computeZoomFov(zoomActive: boolean, dt: number): void {
+    this.aspect = window.innerWidth / window.innerHeight;
     const targetFov = zoomActive ? C.ZOOM_FOV : C.BASE_FOV;
     const k = 1 - Math.exp(-C.ZOOM_LERP_RATE * dt);
     this.fov += (targetFov - this.fov) * k;
-    if (Math.abs(this.fov - camera.fov) > 1e-3) {
-      camera.fov = this.fov;
-      projectionDirty = true;
-    }
-    if (projectionDirty) camera.updateProjectionMatrix();
   }
 }
