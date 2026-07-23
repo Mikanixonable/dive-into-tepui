@@ -250,7 +250,6 @@ export class Player extends Ship {
   // floating origin のため自機は常にワールド原点(基底 Ship.syncTransform とは signature が
   // 異なる別メソッド — origin ではなくズーム中の可視性を受け取る)。ズーム中(PIP)は本体を隠す。
   sync(
-    input: Input,
     camera: CameraSystem,
     phasePlaying: boolean,
     paused: boolean
@@ -260,7 +259,7 @@ export class Player extends Ship {
     this.obj.visible = this.alive && !camera.zoomActive;
 
     this.thrustEffects.sync(this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
-    this.rcsEffects.sync(input, this.throttle.rcsDamp, this.att, this.alive, phasePlaying, paused, camera);
+    this.rcsEffects.sync(this.throttle.rcsTau, this.att, this.alive, phasePlaying, paused, camera);
     this.belt.sync(this.alive);
   }
 }

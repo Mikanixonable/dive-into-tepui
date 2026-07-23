@@ -17,6 +17,9 @@ export class PlayerThrottle {
   progradeHold = true;
   thrustVizDir: Vec3 | null = null;
   thrustAccelVec: Vec3 = v3();
+  // RCS パフの噴射方向(機体ローカル、body frame のトルク軸)。手動入力とダンピングの
+  // 符号を反映した単位符号ベクトルで、rcs-effects.ts が可視化にそのまま参照する。
+  rcsTau: Vec3 = v3();
 
   private rotationHoldTime = 0;
 
@@ -49,6 +52,7 @@ export class PlayerThrottle {
   clearTransientState(): void {
     this.thrustVizDir = null;
     this.thrustAccelVec = v3();
+    this.rcsTau = v3();
   }
 
   updateThrustState(input: Input, simSpeed: SimSpeedManager, att: Attitude, state: OrbitState): ExtraAccel | null {
@@ -92,12 +96,17 @@ export class PlayerThrottle {
     attDt: number,
     onProgradeHoldReleased: () => void,
   ): void {
-    if (!alive) return;
+    if (!alive) {
+      this.rcsTau = v3();
+      return;
+    }
     const inertia = att.inertia;
     const manual = mapMode ? 0 : 1;
     const inX = ((input.down('KeyI') ? 1 : 0) + (input.down('KeyK') ? -1 : 0)) * manual;
     const inY = ((input.down('KeyL') ? 1 : 0) + (input.down('KeyJ') ? -1 : 0)) * manual;
     const inZ = ((input.down('KeyO') ? 1 : 0) + (input.down('KeyU') ? -1 : 0)) * manual;
+
+    this.rcsTau = this.buildRcsTau(inX, inY, inZ, att.w, mapMode);
 
     const isRotating = inX !== 0 || inY !== 0 || inZ !== 0;
     this.rotationHoldTime = isRotating ? this.rotationHoldTime + attDt : 0;
@@ -132,6 +141,18 @@ export class PlayerThrottle {
     stepAttitude(att, torque, attDt);
     const wMag = len(att.w);
     if (wMag > maxAngVel) att.w = scale(att.w, maxAngVel / wMag);
+  }
+
+  // 手動回転入力に、RCS ダンピングの逆回転パフ(角速度を打ち消す向き)を加えた符号ベクトル。
+  private buildRcsTau(inX: number, inY: number, inZ: number, w: Vec3, mapMode: boolean): Vec3 {
+    const tau = v3(inX, inY, inZ);
+    if (this.rcsDamp && !mapMode) {
+      const eps = C.RCS_DAMP_PUFF_EPS;
+      if (inX === 0 && Math.abs(w.x) > eps) tau.x = -Math.sign(w.x);
+      if (inY === 0 && Math.abs(w.y) > eps) tau.y = -Math.sign(w.y);
+      if (inZ === 0 && Math.abs(w.z) > eps) tau.z = -Math.sign(w.z);
+    }
+    return tau;
   }
 
   private autoAlignTorque(desiredFwd: Vec3, desiredUp: Vec3, att: Attitude, inertia: Vec3): Vec3 {
