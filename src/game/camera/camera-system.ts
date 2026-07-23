@@ -1,14 +1,14 @@
 import * as THREE from 'three/webgpu';
 import { Vec3, sub } from '../../physics/vec3';
 import * as C from '../const';
-import { Hud } from '../../hud/hud';
+import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { ChaseCamera } from './chase-camera';
 import { MapCamera } from './map-camera';
 import { MapMarkers } from './map-markers';
 import { FocusGizmo } from './focus-gizmo';
 import { MarkerManager } from '../marker/marker-manager';
-import { Input } from '../input';
+import { Input } from '../input/input';
 import { Player } from '../player/player';
 
 const tmpV = new THREE.Vector3();

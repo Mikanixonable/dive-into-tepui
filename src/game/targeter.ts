@@ -5,9 +5,9 @@ import * as C from './const';
 import { Enemy } from './orbit-entity/enemy';
 import type { Simulator } from './orbit-entity/simulator';
 import { Player } from './player/player';
-import { Hud } from '../hud/hud';
+import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
-import { Input } from './input';
+import { Input } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import { MarkerManager } from './marker/marker-manager';
 

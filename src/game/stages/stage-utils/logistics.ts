@@ -7,7 +7,7 @@ import { randomQuat } from '../../../physics/attitude';
 import { add, cross, len, lenSq, norm, randSym, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
 import * as C from '../../const';
 import { Ammo } from '../../orbit-entity/entities';
-import { Hud } from '../../../hud/hud';
+import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import { Player } from '../../player/player';
 

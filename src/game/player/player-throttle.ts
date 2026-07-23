@@ -6,8 +6,8 @@ import { Attitude, qFromForwardUp, qRotate, stepAttitude } from '../../physics/a
 import { ExtraAccel, OrbitState } from '../../physics/orbital';
 import { Vec3, len, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { Input } from '../input';
-import { Hud } from '../../hud/hud';
+import { Input } from '../input/input';
+import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { SimSpeedManager } from '../sim-speed-manager';
 

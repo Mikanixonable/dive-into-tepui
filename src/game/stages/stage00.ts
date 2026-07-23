@@ -4,12 +4,12 @@ import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Stage } from './stage';
 import { WaveManager } from './stage-utils/wave-manager';
-import { Hud } from '../../hud/hud';
+import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import type { Simulator } from '../orbit-entity/simulator';
 import type { Player } from '../player/player';
 import type { UnlockManager } from '../unlock-manager';
-import type { EffectsSystem } from '../effects-system';
+import type { EffectsSystem } from '../vfx/effects-system';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage00 extends Stage {

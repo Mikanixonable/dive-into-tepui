@@ -6,9 +6,9 @@ import type { Player } from '../../player/player';
 import type { Enemy } from '../../orbit-entity/enemy';
 import type { Logistics } from './logistics';
 import { generateWave } from '../spawner/enemy-spawner';
-import { Hud } from '../../../hud/hud';
+import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
-import type { EffectsSystem } from '../../effects-system';
+import type { EffectsSystem } from '../../vfx/effects-system';
 
 export class WaveManager {
   phase: 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat' = 'waiting_for_ammo';

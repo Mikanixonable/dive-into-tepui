@@ -16,7 +16,7 @@ import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkerForGame } from './marker/marker-for-game';
 import { MarkerManager } from './marker/marker-manager';
 import { CollisionPhysics } from './orbit-entity/collision';
-import { EffectsSystem } from './effects-system';
+import { EffectsSystem } from './vfx/effects-system';
 import { getStage, initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
@@ -24,13 +24,13 @@ import { PlanSystem } from './plan/plan-system';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRenderer } from './pip-renderer';
 import { Simulator } from './orbit-entity/simulator';
-import { Input } from './input';
-import { TouchControls } from './touch';
-import { Hud } from '../hud/hud';
+import { Input } from './input/input';
+import { TouchControls } from './input/touch';
+import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
-import { MapModeToggler } from './map-mode/map-mode-toggler';
+import { MapModeToggler } from './map-mode-toggler';
 
 export class Game {
   private readonly _scene: THREE.Scene;
