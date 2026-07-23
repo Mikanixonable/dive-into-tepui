@@ -7,6 +7,8 @@ import { DebrisKind, DebrisPiece } from '../orbit-entity/entities';
 import { Billboard } from '../../render/billboard';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
 
+// FlashEffectとDebrisPieceの生成・管理を一元化するエフェクトシステム。ゲーム内のフラッシュ・破片はすべてここを経由する
+// FlashEffectはFlashEffectManagerが管理する。DebrisPieceはspawn系メソッドで生成されsimulatorに追加される
 // フラッシュ・破片エフェクトの発生源。scene への注入をここに一元化し、呼び出し側
 // (Player/Enemy/PlayerFire)は scene を持ち回さずに済む。フラッシュの毎フレーム更新・
 // 寿命管理(FlashEffectManager)もここが私有し、game.ts からは spawn 系メソッドと
