@@ -55,11 +55,11 @@ export class PlanEditor {
     this.deleteNode(this.selectedNodeIdx);
   }
 
-  // [X] キー: マップモード中は選択中ノードのみ、マップ外では計画全体を破棄する。
+  // [X] キー: 計画編集モード中は選択中ノードのみ、モード外では計画全体を破棄する。
   // 噴射ガイドの凍結目標(planGuide.clearActiveTarget)は Game 側の状態のため、
   // onPlanCleared コールバックで通知する。
-  clearPlanByKey(mapMode: boolean): void {
-    if (mapMode) {
+  clearPlanByKey(editMode: boolean): void {
+    if (editMode) {
       this.deleteSelected();
       return;
     }

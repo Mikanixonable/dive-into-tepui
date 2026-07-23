@@ -16,7 +16,9 @@ export class MapModeToggler {
     planSystem.editor.plan.markDirty();
     this._hud.setMapToolbarVisible(true);
     touchControls?.setMapMode(true);
+    // 独立した二つの責務(広範囲視点 / 計画編集)を同時に開く唯一の場所。
     cameraSystem.mapMode = true;
+    planSystem.editMode = true;
   }
 
   private close(planSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
@@ -27,6 +29,7 @@ export class MapModeToggler {
     this._hud.setMapToolbarVisible(false);
     touchControls?.setMapMode(false);
     cameraSystem.mapMode = false;
+    planSystem.editMode = false;
     planSystem.guide.clearActiveTarget();
   }
 

@@ -12,12 +12,13 @@
   - dispatchMapPointer / dispatchMapRightClick　OK(新設)　「node が消費しなかった右クリックだけ focus 選択へフォールする」調停を上層に集約。二つのギズモは互いを参照しない
   - mapModeToggler　OK　CameraとPlanを同期して開閉する唯一のモジュール（node/focus 両メニューの closeMenu もここが行う）
   - cameraSystem
-  　- mapMode(boolean)　NG！　「広範囲視点モード」と「plan編集モード」の二つの意味が重なったまま
+  　- mapMode(boolean)　OK(分離済)　「広範囲視点モード」の責務のみ。描画/視点側の判定に使う
     - mapCamera
     - chaseCamera
     - mapMarkers　OK(移設済)　フォーカス候補ラベル。planSystem から cameraSystem へ移した
     - focusGizmo　OK(分割済)　ラベルのフォーカス選択メニュー。onMenuFocus は cameraSystem 内で mapCamera.focus へ直結
   - planSystem
+    - editMode(boolean)　OK(新設)　「plan編集モード」の責務のみ。入力/挙動側の判定に使う
     - planGuide
     - planDisplay　Camera側に移動すべきか微妙なところ。要検討
     - planEditor
@@ -25,17 +26,6 @@
       - nodeGizmo　OK(分割済)　ノード編集ギズモ(ハンドル・Δvアーム・ノードメニュー)のみ
 
 （node-gizmo / focus-gizmo が共有する汎用ポップアップ context-menu は、plan・camera どちらの専有物でもないため中立地点の map-mode/ に残置。map-mode/ に残るのは map-mode-toggler と context-menu のみ）
-
-### cameraSystemのmapModeフラグが二つの責務を持っている。（未解決）
-planSystemのeditModeフラグを持たせ、cameraSystemのmapModeフラグとは別の情報供給源とする。これらは同一のbooleanを2か所で保持しているの*ではなく*、本来独立に切り替えても各モジュールには影響がないものを、*たまたま*mapModeTogglerが同期して切り替えている、という形にするべき。
-（現状 planSystem に `editMode` フラグはまだ無く、コメントのスタブが残っているだけ。）
-
-前述の通り、現状のmapModeフラグは「広範囲視点モード」と「plan編集モード」の二つの意味が重なってしまったものである。cameraSystemが持つmapModeフラグは前者の責務に関するものに限定し、後者の責務に関してはmapModeTogglerが持つものとして分離したい。現在mapModeを参照している箇所のうち、視覚的な問題はcamera.mapModeを、挙動上の問題はmapToggler.mapModeのフラグを参照する？
-
-影響範囲がデカいうえ、（現状潰れている情報を復元するという作業になるので）機械的に置き換えできないのが難しい。
-playerなどはcameraを受け取ってmapModeを参照しているが、その中にもどっちから拾うべきか個別の判断が必要だったりする。
-例えばbillboard描画はどちらのカメラにしても正常に動作すべきなのでactiveCameraから拾うべき。
-マップモード中は姿勢制御ができない？みたいな挙動になっているみたいだが、これはそもそも削除して問題ない挙動である可能性がある
 
 ### displayFrameFnをカメラに置くべきか（要検討）
 displayFrameFnなど、「カメラと整合したクリック座標変換」について、plan-displayとmap-cameraの責務境界を要検証。
