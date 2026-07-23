@@ -43,7 +43,6 @@ export class PlanEditor {
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
     private readonly simSpeedManager: SimSpeedManager,
-    private readonly onPlanCleared: () => void,
   ) {}
 
   // mapGizmo (private) のイベントを外部ロジックへ橋渡しする唯一の配線口。
@@ -89,7 +88,6 @@ export class PlanEditor {
     }
     if (this.plan.nodes.length <= 0) return;
     this.plan.clear();
-    this.onPlanCleared();
     this.simSpeedManager.cancelAutoWarp();
     this._hud.hint('マニューバ計画を破棄');
   }
