@@ -1,12 +1,15 @@
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3, sub } from '../../physics/vec3';
+import * as C from '../const';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { ChaseCamera } from './chase-camera';
 import { MapCamera } from './map-camera';
+import { MapMarkers } from './map-markers';
+import { FocusGizmo } from './focus-gizmo';
+import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input';
 import { Player } from '../player/player';
-import type { MapMarkers } from '../map-mode/map-markers';
 
 const tmpV = new THREE.Vector3();
 
@@ -14,15 +17,54 @@ export type ProjectFn = (rel: Vec3) => { x: number; y: number; front: boolean; }
 
 // 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する。
 // どちらも視点操作のみの責務のカメラで、このクラスが対称に内部保持する。
+// マップモードのフォーカス候補(mapMarkers)とその選択 UI(focusGizmo)は「どこを注視
+// するか」= mapCamera 寄りの責務なので、ここが所有する。フォーカス選択メニューの
+// ノードメニューとの排他(右クリックの取り合い)は上位(game.ts)が調停する。
 export class CameraSystem {
   readonly chaseCamera: ChaseCamera;
   readonly mapCamera: MapCamera;
+  readonly mapMarkers: MapMarkers;
+  private readonly focusGizmo = new FocusGizmo();
   mapMode = false;
   zoomActive = false;
 
-  constructor(hud: Hud, sfx: Sfx, mapMarkers: MapMarkers) {
-    this.chaseCamera = new ChaseCamera(hud, sfx);
-    this.mapCamera = new MapCamera(hud, sfx, mapMarkers);
+  constructor(
+    private readonly _hud: Hud,
+    sfx: Sfx,
+    markerManager: MarkerManager,
+  ) {
+    this.mapMarkers = new MapMarkers(markerManager);
+    this.chaseCamera = new ChaseCamera(_hud, sfx);
+    this.mapCamera = new MapCamera(_hud, sfx, this.mapMarkers);
+    this.focusGizmo.onMenuFocus = (targetKey) => {
+      this.mapCamera.focus = targetKey;
+      const lbl = this.mapMarkers.findLabel(targetKey);
+      if (lbl) this._hud.hint(`${lbl.name} にフォーカス`);
+    };
+  }
+
+  // マップラベル(フォーカス候補)を右クリックしたときの処理: 最寄りラベル(MAP_LABEL_PICK_PX
+  // 以内)があればフォーカス選択メニューを開き、無ければ閉じる。ノードに消費されなかった
+  // 右クリックのフォールバック先として game.ts から呼ばれる。
+  handleFocusRightClick(clientX: number, clientY: number, origin: Vec3): void {
+    const project = this.activeCameraProjection;
+    let bestKey: string | null = null;
+    let bestD = C.MAP_LABEL_PICK_PX * C.MAP_LABEL_PICK_PX;
+    for (const lbl of this.mapMarkers.labels) {
+      const p = project(sub(lbl.pos, origin));
+      if (!p.front) continue;
+      const d = (p.x - clientX) * (p.x - clientX) + (p.y - clientY) * (p.y - clientY);
+      if (d < bestD) {
+        bestD = d;
+        bestKey = lbl.id;
+      }
+    }
+    if (bestKey !== null) this.focusGizmo.openMenu(clientX, clientY, bestKey);
+    else this.focusGizmo.closeMenu();
+  }
+
+  closeFocusMenu(): void {
+    this.focusGizmo.closeMenu();
   }
 
   get activeCamera(): THREE.PerspectiveCamera {

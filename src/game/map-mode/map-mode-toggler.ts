@@ -22,6 +22,7 @@ export class MapModeToggler {
   private close(mapModeSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     mapModeSystem.editor.onMapClosed();
     mapModeSystem.editor.closeMenu();
+    cameraSystem.closeFocusMenu();
     this._hud.setPlanPanel(null);
     this._hud.setMapToolbarVisible(false);
     touchControls?.setMapMode(false);

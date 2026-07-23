@@ -21,7 +21,6 @@ import { getStage, initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanSystem } from './plan/plan-system';
-import { MapMarkers } from './map-mode/map-markers';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRenderer } from './pip-renderer';
 import { Simulator } from './orbit-entity/simulator';
@@ -42,15 +41,13 @@ export class Game {
   private readonly _hud = new Hud();
   private readonly _sfx = new Sfx();
   private readonly markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
-  // マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)。MapCamera が
-  // フォーカス解決(ラベル ID → 座標)に、mapModeSystem がラベル一覧の更新・右クリメニュー
-  // 候補に、それぞれ必要とするため game.ts が構築して両方へ注入する共有インスタンス。
-  private readonly mapMarkers = new MapMarkers(this.markerManager);
   // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
   // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/simulator/targeter 等)は
-  // public にする。mapModeSystem のコンストラクタで MapCamera への参照を注入するため、
-  // cameraSystem は mapModeSystem より前に構築する必要がある。
-  readonly cameraSystem = new CameraSystem(this._hud, this._sfx, this.mapMarkers);
+  // public にする。mapModeSystem のコンストラクタで MapCamera・mapMarkers への参照を注入する
+  // ため、cameraSystem は mapModeSystem より前に構築する必要がある。
+  // マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)とその選択 UI は
+  // 「どこを注視するか」= mapCamera 寄りの責務なので cameraSystem が所有する。
+  readonly cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager);
   readonly player: Player;
 
   // ?perf=1 のデバッグ表示用エンティティ数。
@@ -118,11 +115,13 @@ export class Game {
       this.simSpeedManager,
       this.cameraSystem.activeCameraProjection,
       this.cameraSystem.mapCamera,
-      this.mapMarkers,
+      this.cameraSystem.mapMarkers,
       this._scene,
       () => this.player.fineAttitude,
       () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime })
     );
+    // ノードハンドル直接右クリックは、canvas 右クリックと同じフォールバック調停に流す。
+    this.mapModeSystem.onNodeHandleRightClick = (x, y) => this.dispatchMapRightClick(x, y);
     this.mapModeToggler = new MapModeToggler(this._hud);
 
     this.input = new Input(gs.renderer.domElement);
@@ -221,11 +220,31 @@ export class Game {
     this.simulator.cleanup(dt, this.activeStage);
 
     if (this.cameraSystem.mapMode) {
-      this.mapModeSystem.updateEditing(dt, this.input, this.player, this.ephemeris, this.simulator.simTime);
+      this.dispatchMapPointer();
+      this.mapModeSystem.updateEditing(dt, this.input, this.player, this.simulator.simTime);
     }
     else {
       this.targeter.updateCombatTargeting(this.player, this.simulator.enemies, this.input, this.cameraSystem);
     }
+  }
+
+  // マップモードのポインタ操作を各サブシステムへ振り分ける。ノード編集(plan)と
+  // フォーカス選択(camera)は本来独立した責務で、共有するのは「右クリックの取り合い」
+  // だけ — ノードが消費しなかった右クリックだけをフォーカス選択へフォールバックさせる
+  // この調停をここ(上位)に集約し、各サブシステムは互いを知らずに済ませる。
+  private dispatchMapPointer(): void {
+    for (const c of this.input.clicks()) {
+      this.cameraSystem.closeFocusMenu();
+      this.mapModeSystem.handleMapClick(c.x, c.y);
+    }
+    for (const rc of this.input.rightClicks()) {
+      this.dispatchMapRightClick(rc.x, rc.y);
+    }
+  }
+
+  private dispatchMapRightClick(x: number, y: number): void {
+    if (this.mapModeSystem.handleNodeRightClick(x, y)) this.cameraSystem.closeFocusMenu();
+    else this.cameraSystem.handleFocusRightClick(x, y, this.player.state.r);
   }
 
   // --------------------------------------------------------------- input
