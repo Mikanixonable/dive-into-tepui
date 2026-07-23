@@ -1,7 +1,7 @@
 // 全ステージ共通の骨格。撃破数による勝利判定(checkWin/onWin)・常時解放(isUnlocked)・
 // HUD補助表示なし(hudSubStatus)を既定実装として持ち、必要なステージだけ override する。
 // ステージ固有のランタイム状態(タイマー・ウェーブ管理・撃破集計・弾薬兵站など)は各派生
-// クラス(stage00.ts等)や基底クラス自身がフィールドとして直接持つ — Game は STAGE_DEFINITIONS
+// クラス(stage00.ts等)や基底クラス自身がフィールドとして直接持つ — Game は STAGES
 // から得たこのインスタンス自身を activeStage として保持するだけでよい。
 import * as THREE from 'three/webgpu';
 import { Enemy } from '../orbit-entity/enemy';
@@ -40,7 +40,7 @@ export abstract class Stage {
   // 必要とするため、モジュール読み込み時ではなく setup() で構築する。
   protected logistics!: Logistics;
 
-  // setup() で受け取り私有する hud/sfx/scene(STAGE_DEFINITIONS はモジュール読み込み時に
+  // setup() で受け取り私有する hud/sfx/scene(STAGES はモジュール読み込み時に
   // 生成される静的シングルトンなので、コンストラクタ注入ができず setup() が代わりを担う
   // — これは一度きりの注入であり、毎フレームの ctx 越しの受け渡しではない)。
   // 派生クラス(stage0/1/2/00.ts)は毎フレームの init/update からこれを直接使ってよい。
@@ -60,7 +60,7 @@ export abstract class Stage {
   get isPlaying(): boolean { return this._phase === 'playing'; }
   protected setPhase(phase: GamePhase): void { this._phase = phase; }
 
-  // Game がステージ開始前に一度だけ呼ぶ(STAGE_DEFINITIONS はモジュール読み込み時に生成される
+  // Game がステージ開始前に一度だけ呼ぶ(STAGES はモジュール読み込み時に生成される
   // 静的シングルトンなので、Game 固有のリソースはコンストラクタではなくここで受け取る)。
   setup(
     hud: Hud,

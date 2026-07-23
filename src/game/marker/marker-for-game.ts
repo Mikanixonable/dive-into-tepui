@@ -33,6 +33,7 @@ export interface MarkerCtx {
   simTime: number;
 }
 
+// todo: 雑多クラスになっている。
 export class MarkerForGame {
   constructor(private readonly markerManager: MarkerManager) {}
 

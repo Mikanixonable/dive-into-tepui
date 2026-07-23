@@ -1,4 +1,4 @@
-// ステージ配列(STAGE_DEFINITIONS)の定義を責務とする。各ステージの振る舞い(init/update/
+// ステージ配列(STAGES)の定義を責務とする。各ステージの振る舞い(init/update/
 // checkWin/onWin)は stage.ts の Stage を継承した Stage00/Stage0/Stage1/Stage2
 // (このフォルダ内の同名ファイル)が持つ — ここではインスタンス化と ID 引きのみ行う。
 import { Stage, StageId } from './stage';
