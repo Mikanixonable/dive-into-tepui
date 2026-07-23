@@ -13,35 +13,51 @@ export interface MapLabel {
   pos: Vec3;
 }
 
+const LABEL_NAMES: Record<string, string> = {
+  earth: '地球',
+  moon: '月',
+  sun: '太陽',
+  'em-l1': '地球-月 L1',
+  'em-l2': '地球-月 L2',
+  'em-l3': '地球-月 L3',
+  'em-l4': '地球-月 L4',
+  'em-l5': '地球-月 L5',
+  'se-l1': '太陽-地球 L1',
+  'se-l2': '太陽-地球 L2',
+};
+
 export class MapMarkers {
-  labels: MapLabel[] = [];
+  readonly labels: MapLabel[] = Object.entries(LABEL_NAMES).map(([id, name]) => ({
+    id,
+    name,
+    pos: { x: 0, y: 0, z: 0 },
+  }));
 
   constructor(private readonly markerManager: MarkerManager) {}
 
-  // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルを更新し、
+  // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルの座標を更新し、
   // マーカーに反映する。sliderT > 0 の間はゴーストスライダーの表示時刻を使う。
   // duration は predictDurationSec() の結果。
   updateLabels(o: Vec3, simTime: number, ephemeris: EphemerisSystem, duration: number, sliderT: number, project: ProjectFn): void {
     const t = sliderT > 0 ? simTime + sliderT * duration : simTime;
-    const mPos = moonPosition(t, ephemeris.moonPhase0);
-    const sPos = sunPosition(t, ephemeris.sunPhase0);
     const emL = emLagrangePoints(t, ephemeris.moonPhase0);
     const seL = seLagrangePoints(t, ephemeris.sunPhase0);
 
-    this.labels = [
-      { id: 'earth', name: '地球', pos: { x: 0, y: 0, z: 0 } },
-      { id: 'moon', name: '月', pos: mPos },
-      { id: 'sun', name: '太陽', pos: sPos },
-      { id: 'em-l1', name: '地球-月 L1', pos: emL.L1 },
-      { id: 'em-l2', name: '地球-月 L2', pos: emL.L2 },
-      { id: 'em-l3', name: '地球-月 L3', pos: emL.L3 },
-      { id: 'em-l4', name: '地球-月 L4', pos: emL.L4 },
-      { id: 'em-l5', name: '地球-月 L5', pos: emL.L5 },
-      { id: 'se-l1', name: '太陽-地球 L1', pos: seL.L1 },
-      { id: 'se-l2', name: '太陽-地球 L2', pos: seL.L2 },
-    ];
+    const positions: Record<string, Vec3> = {
+      'earth': { x: 0, y: 0, z: 0 },
+      'moon': moonPosition(t, ephemeris.moonPhase0),
+      'sun': sunPosition(t, ephemeris.sunPhase0),
+      'em-l1': emL.L1,
+      'em-l2': emL.L2,
+      'em-l3': emL.L3,
+      'em-l4': emL.L4,
+      'em-l5': emL.L5,
+      'se-l1': seL.L1,
+      'se-l2': seL.L2,
+    };
 
     for (const lbl of this.labels) {
+      lbl.pos = positions[lbl.id]!;
       const wp = sub(lbl.pos, o);
       const p = project(wp);
       if (p && p.front) {
