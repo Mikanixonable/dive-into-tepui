@@ -30,6 +30,7 @@ export interface MapGizmoCallbacks {
 
 export class PlanEditor {
   selectedNodeIdx: number | null = null;
+  plan: Plan = new Plan();
 
   // マップモードの DOM ギズモ(ノードハンドル・Δv アーム・コンテキストメニュー)。
   // イベント配線は bindGizmoCallbacks() 経由のみ(外部に直接公開しない)。
@@ -54,9 +55,9 @@ export class PlanEditor {
 
   // ノード削除の唯一の実装(右クリメニュー・[X] キーの両方からここを呼ぶ)。
   // 選択インデックスの繰り上げもここで行う。
-  deleteNode(plan: Plan, idx: number): void {
-    if (!plan.nodes[idx]) return;
-    plan.removeNode(idx);
+  deleteNode(idx: number): void {
+    if (!this.plan.nodes[idx]) return;
+    this.plan.removeNode(idx);
     if (this.selectedNodeIdx === idx) this.selectedNodeIdx = null;
     else if (this.selectedNodeIdx !== null && this.selectedNodeIdx > idx) this.selectedNodeIdx--;
     this.closeMenu();
@@ -64,20 +65,19 @@ export class PlanEditor {
 
   // [X] キー(map-mode-system.ts)向け: 現在選択中のノードを削除する。選択が無ければ
   // 何もせず false を返す(呼び出し側はこれで警告表示等の要否を判断する)。
-  deleteSelected(plan: Plan): boolean {
+  deleteSelected(): boolean {
     if (this.selectedNodeIdx === null) return false;
-    this.deleteNode(plan, this.selectedNodeIdx);
+    this.deleteNode(this.selectedNodeIdx);
     return true;
   }
 
   nodeScreenPos(
-    plan: Plan,
     node: PlannedNode,
     o: Vec3,
     toDisplayFrame: DisplayFrameFn,
     project: ProjectFn,
   ): { x: number; y: number; front: boolean } | null {
-    const s = plan.sampleAt(node.time);
+    const s = this.plan.sampleAt(node.time);
     if (!s) return null;
     return project(sub(toDisplayFrame(s.r, node.time), o));
   }
@@ -85,12 +85,12 @@ export class PlanEditor {
   // マップ上のクリック処理: 既存ノードマーカー近傍なら選択、そうでなければ
   // 予測軌道(既存ノードの噴射も反映済みの折れ線)上の最近傍サンプル時刻に
   // 新規ノードを配置して選択する。
-  handleMapClick(plan: Plan, mx: number, my: number, o: Vec3, toDisplayFrame: DisplayFrameFn, project: ProjectFn): void {
+  handleMapClick(mx: number, my: number, o: Vec3, toDisplayFrame: DisplayFrameFn, project: ProjectFn): void {
     this.mapGizmo.closeMenu();
     let bestNodeIdx: number | null = null;
     let bestNodeD = C.NODE_PICK_PX * C.NODE_PICK_PX;
-    for (let i = 0; i < plan.nodes.length; i++) {
-      const p = this.nodeScreenPos(plan, plan.nodes[i]!, o, toDisplayFrame, project);
+    for (let i = 0; i < this.plan.nodes.length; i++) {
+      const p = this.nodeScreenPos(this.plan.nodes[i]!, o, toDisplayFrame, project);
       if (!p || !p.front) continue;
       const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
       if (d < bestNodeD) {
@@ -104,10 +104,10 @@ export class PlanEditor {
       return;
     }
 
-    if (plan.trajSamples.length < 2) return;
+    if (this.plan.trajSamples.length < 2) return;
     let bestT: number | null = null;
     let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
-    for (const s of plan.trajSamples) {
+    for (const s of this.plan.trajSamples) {
       const p = project(sub(toDisplayFrame(s.r, s.t), o));
       if (!p.front) continue;
       const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
@@ -117,7 +117,7 @@ export class PlanEditor {
       }
     }
     if (bestT !== null) {
-      const idx = plan.addNode({ time: bestT, dv: v3() });
+      const idx = this.plan.addNode({ time: bestT, dv: v3() });
       this.selectedNodeIdx = idx;
       this._sfx.warp();
     }
@@ -127,7 +127,6 @@ export class PlanEditor {
   // そのノードを選択してコンテキストメニューを開く。それ以外なら開いているメニューを閉じるだけ。
   // ノード削除はこのメニュー経由([X] キーからも可能)。
   handleMapRightClick(
-    plan: Plan,
     mx: number,
     my: number,
     o: Vec3,
@@ -137,8 +136,8 @@ export class PlanEditor {
   ): void {
     let bestIdx: number | null = null;
     let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
-    for (let i = 0; i < plan.nodes.length; i++) {
-      const p = this.nodeScreenPos(plan, plan.nodes[i]!, o, toDisplayFrame, project);
+    for (let i = 0; i < this.plan.nodes.length; i++) {
+      const p = this.nodeScreenPos(this.plan.nodes[i]!, o, toDisplayFrame, project);
       if (!p || !p.front) continue;
       const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
       if (d < bestD) {
@@ -173,7 +172,6 @@ export class PlanEditor {
   // ノードハンドルのドラッグ移動: ポインタ最寄りの予測サンプル時刻へノードを移動する
   // (handleMapClick の第二段(軌道クリック配置)と同じピッキング方式)。
   dragNodeToNearestSample(
-    plan: Plan,
     idx: number,
     clientX: number,
     clientY: number,
@@ -181,10 +179,10 @@ export class PlanEditor {
     toDisplayFrame: DisplayFrameFn,
     project: ProjectFn,
   ): void {
-    if (!plan.nodes[idx] || plan.trajSamples.length === 0) return;
+    if (!this.plan.nodes[idx] || this.plan.trajSamples.length === 0) return;
     let bestT: number | null = null;
     let bestD = Infinity;
-    for (const s of plan.trajSamples) {
+    for (const s of this.plan.trajSamples) {
       const p = project(sub(toDisplayFrame(s.r, s.t), o));
       if (!p.front) continue;
       const d = (p.x - clientX) * (p.x - clientX) + (p.y - clientY) * (p.y - clientY);
@@ -194,18 +192,18 @@ export class PlanEditor {
       }
     }
     if (bestT !== null) {
-      this.selectedNodeIdx = plan.setNodeTime(idx, bestT);
+      this.selectedNodeIdx = this.plan.setNodeTime(idx, bestT);
     }
   }
 
   // 選択中ノードの Δv アーム(mapgizmo.ts)ドラッグを Δv 成分の変更へ変換する。
   // axis: 0=プログレード(dv.x) 1=法線(dv.y) 2=動径(dv.z)。sign はハンドル自身の向き
   // (mapgizmo.ts の AxisHandleSpec 参照)。deltaPx はポインタ移動のハンドル方向への射影量。
-  applyAxisDrag(plan: Plan, axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
+  applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
     if (this.selectedNodeIdx === null) return;
     const rate = (fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) / 200;
     const d = deltaPx * sign * rate;
-    plan.adjustNodeDv(this.selectedNodeIdx, axis === 0 ? d : 0, axis === 1 ? d : 0, axis === 2 ? d : 0);
+    this.plan.adjustNodeDv(this.selectedNodeIdx, axis === 0 ? d : 0, axis === 1 ? d : 0, axis === 2 ? d : 0);
   }
 
   // 選択中ノードの Δv アーム 6 個(プログレード/レトログレード・ノーマル/アンチノーマル・
@@ -213,14 +211,13 @@ export class PlanEditor {
   // プログレード・軌道法線・動径アウト方向を求め、toDisplayFrame で表示座標系へ回転した
   // 上でノード位置との画面上の差分を取ることで、3D 回転行列を介さず画面方向を得る。
   computeAxisScreenDirs(
-    plan: Plan,
     node: PlannedNode,
     o: Vec3,
     toDisplayFrame: DisplayFrameFn,
     project: ProjectFn,
     mapDist: number,
   ): { pro: { x: number; y: number }; nrm: { x: number; y: number }; rad: { x: number; y: number } } | null {
-    const s = plan.sampleAt(node.time);
+    const s = this.plan.sampleAt(node.time);
     if (!s) return null;
     const pro = norm(s.v);
     const h = norm(cross(s.r, s.v));
@@ -268,22 +265,22 @@ export class PlanEditor {
 
   // 毎フレーム(マップモード中のみ呼ぶ): ノードハンドル群と、選択中ノードがあれば
   // Δv アーム 6 個(無ければ全破棄)を画面座標で更新する。
-  updateGizmo(plan: Plan, o: Vec3, toDisplayFrame: DisplayFrameFn, project: ProjectFn, mapDist: number): void {
+  updateGizmo(o: Vec3, toDisplayFrame: DisplayFrameFn, project: ProjectFn, mapDist: number): void {
     const nodeSpecs: NodeHandleSpec[] = [];
-    const limit = Math.min(plan.nodes.length, C.MAX_PLAN_NODE_MARKERS);
+    const limit = Math.min(this.plan.nodes.length, C.MAX_PLAN_NODE_MARKERS);
     for (let i = 0; i < limit; i++) {
-      const node = plan.nodes[i]!;
-      const p = this.nodeScreenPos(plan, node, o, toDisplayFrame, project);
+      const node = this.plan.nodes[i]!;
+      const p = this.nodeScreenPos(node, o, toDisplayFrame, project);
       if (!p || !p.front) continue;
       nodeSpecs.push({ idx: i, x: p.x, y: p.y, selected: i === this.selectedNodeIdx, dvMag: len(node.dv) });
     }
     let axisSpecs: AxisHandleSpec[] | null = null;
     if (this.selectedNodeIdx !== null) {
-      const node = plan.nodes[this.selectedNodeIdx];
+      const node = this.plan.nodes[this.selectedNodeIdx];
       if (node) {
-        const p = this.nodeScreenPos(plan, node, o, toDisplayFrame, project);
+        const p = this.nodeScreenPos(node, o, toDisplayFrame, project);
         if (p && p.front) {
-          const dirs = this.computeAxisScreenDirs(plan, node, o, toDisplayFrame, project, mapDist);
+          const dirs = this.computeAxisScreenDirs(node, o, toDisplayFrame, project, mapDist);
           if (dirs) axisSpecs = this.buildAxisHandles(p.x, p.y, dirs);
         }
       }
@@ -296,7 +293,6 @@ export class PlanEditor {
   // ツールバーの表示を行う)。toolbar は PlanDisplay/MapCamera 側の状態のスナップ
   // ショットで、map-mode-system.ts が毎フレーム組み立てて渡す。
   updateEditing(
-    plan: Plan,
     dt: number,
     simTime: number,
     o: Vec3,
@@ -310,24 +306,24 @@ export class PlanEditor {
     },
   ): void {
     for (const c of input.clicks()) {
-      this.handleMapClick(plan, c.x, c.y, o, toDisplayFrame, project);
+      this.handleMapClick(c.x, c.y, o, toDisplayFrame, project);
     }
     for (const rc of input.rightClicks()) {
-      this.handleMapRightClick(plan, rc.x, rc.y, o, toDisplayFrame, project, opts.labels);
+      this.handleMapRightClick(rc.x, rc.y, o, toDisplayFrame, project, opts.labels);
     }
 
     // Δv 調整(推進キーを流用、[V] で微調整)。選択中ノードがあるときのみ。
-    const selNode = this.selectedNodeIdx !== null ? plan.nodes[this.selectedNodeIdx] : undefined;
+    const selNode = this.selectedNodeIdx !== null ? this.plan.nodes[this.selectedNodeIdx] : undefined;
     if (selNode) {
       const i = input;
       const rate = (opts.fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) * dt;
       const dvx = ((i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0)) * rate;
       const dvy = ((i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0)) * rate;
       const dvz = ((i.down('KeyE') ? 1 : 0) + (i.down('KeyQ') ? -1 : 0)) * rate;
-      plan.adjustNodeDv(this.selectedNodeIdx!, dvx, dvy, dvz);
+      this.plan.adjustNodeDv(this.selectedNodeIdx!, dvx, dvy, dvz);
     }
 
-    const nodesInfo = plan.nodes.map((n, i) => ({
+    const nodesInfo = this.plan.nodes.map((n, i) => ({
       tRel: n.time - simTime,
       dvMag: len(n.dv),
       selected: i === this.selectedNodeIdx,
@@ -336,7 +332,7 @@ export class PlanEditor {
     let selEl: Elements | null = null;
     if (selNode) {
       selDv = selNode.dv;
-      const s = plan.sampleAt(selNode.time);
+      const s = this.plan.sampleAt(selNode.time);
       if (s) selEl = elementsFromState(s.r, s.v);
     }
     this._hud.setPlanPanel(this._hud.planHtml(nodesInfo, selDv, selEl));
@@ -350,8 +346,8 @@ export class PlanEditor {
 
   // マップモードを閉じる ([M] で確定) ときの後始末: Δv がほぼゼロのまま放置された
   // ノード(クリックしただけで調整しなかった等)を破棄する。
-  onMapClosed(plan: Plan): void {
-    plan.pruneNearZeroDv(C.NODE_MIN_DV);
+  onMapClosed(): void {
+    this.plan.pruneNearZeroDv(C.NODE_MIN_DV);
     this.selectedNodeIdx = null;
   }
 }
