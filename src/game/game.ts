@@ -80,20 +80,10 @@ export class Game {
   // 軌道計画(ノード列+予測キャッシュ、Plan)は mapModeSystem が所有する。
   // マップモードの有無と無関係なデータだが、編集・保持ともマップモード側にしか
   // 出てこないため、実施(噴射ガイド=planGuide)へは mapModeSystem.plan 経由で注入する。
-  private readonly mapModeSystem = new MapModeSystem(
-    this._hud,
-    this._sfx,
-    this.markerManager,
-    this.simSpeedManager,
-    this.cameraSystem.activeCameraProjection,
-    this.cameraSystem.mapCamera,
-    this.mapMarkers,
-    () => this.player.fineAttitude,
-    () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }),
-    () => this.planGuide.clearActiveTarget(),
-  );
-  readonly mapModeToggler = new MapModeToggler(
-    this.mapModeSystem.editor, this.mapModeSystem.editor.plan, this._hud);
+  // scene(_scene)はコンストラクタ引数 gs 由来で field initializer の時点では
+  // 未確定のため、コンストラクタ本体で構築する(effects 等と同じ理由)。
+  private readonly mapModeSystem: MapModeSystem;
+  readonly mapModeToggler: MapModeToggler;
 
   // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定、stages/ 参照)。
   // 固有のランタイム状態(タイマー・ウェーブ管理等)もこれ自身が持つ。
@@ -126,6 +116,21 @@ export class Game {
     this.pipRenderer = new PipRenderer(this._scene);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.planGuide = new PlanGuide(this._hud, this._sfx, this.markerManager, this._scene);
+    this.mapModeSystem = new MapModeSystem(
+      this._hud,
+      this._sfx,
+      this.markerManager,
+      this.simSpeedManager,
+      this.cameraSystem.activeCameraProjection,
+      this.cameraSystem.mapCamera,
+      this.mapMarkers,
+      this._scene,
+      () => this.player.fineAttitude,
+      () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }),
+      () => this.planGuide.clearActiveTarget(),
+    );
+    this.mapModeToggler = new MapModeToggler(
+      this.mapModeSystem.editor, this.mapModeSystem.editor.plan, this._hud);
 
     this.activeStage = getStageDefinition(stage);
 
@@ -144,8 +149,6 @@ export class Game {
       shadowMinSun: C.SHADOW_MIN_SUN,
       shadowMinAmbient: C.SHADOW_MIN_AMBIENT,
     });
-
-    this._scene.add(this.mapModeSystem.trajLineGroup);
 
     this.player = new Player(this._hud, this._sfx, this._scene, this.effects);
 
@@ -230,7 +233,7 @@ export class Game {
     this.simulator.cleanup(dt, this.activeStage);
 
     if (this.cameraSystem.mapMode) {
-      this.mapModeSystem.updateEditing(dt, this.input);
+      this.mapModeSystem.updateEditing(dt, this.input, this.player, this.ephemeris, this.simulator.simTime);
     }
     else {
       this.targeter.updateCombatTargeting(
@@ -260,8 +263,14 @@ export class Game {
         // ノード時刻の一致だけでは検出できないため、噴射ガイドの凍結目標を作り直す。
         if (!this.cameraSystem.mapMode) this.planGuide.clearActiveTarget();
         break;
-      case 'KeyN': this.mapModeSystem.toggleAutoWarpToFirstNode(this.activeStage.isPlaying, this.cameraSystem.mapMode); break;
-      case 'KeyX': this.mapModeSystem.clearPlanByKey(this.cameraSystem.mapMode); break;
+      // マップモード外でのみ、 [N] キーで直近ノードへの自動ワープをトグルする。
+      case 'KeyN':
+        if (!this.cameraSystem.mapMode)
+          this.simSpeedManager.toggleAutoWarpToFirstNode(
+            this.activeStage.isPlaying,
+            this.mapModeSystem.editor.plan.firstNode());
+        break;
+      case 'KeyX': this.mapModeSystem.editor.clearPlanByKey(this.cameraSystem.mapMode); break;
       case 'KeyH': this._hud.toggleHelp(); break;
       case 'Escape': this._hud.toggleSettings(); break;
       case 'KeyR': if (!this.activeStage.isPlaying) location.reload(); break;
@@ -287,7 +296,7 @@ export class Game {
   sync(dt: number): void {
     const o = this.player.state.r;
     const pv = this.player.state.v;
-    const displayTime = this.mapModeSystem.resolveDisplayTime(this.cameraSystem.mapMode);
+    const displayTime = this.mapModeSystem.display.resolveDisplayTime(this.cameraSystem.mapMode, this.player, this.simulator.simTime);
     this.environment.sync({
       dt,
       origin: o,
@@ -335,7 +344,7 @@ export class Game {
     const project = this.cameraSystem.activeCameraProjection;
     const mapMode = this.cameraSystem.mapMode;
 
-    this.mapModeSystem.updateDisplay(mapMode);
+    this.mapModeSystem.updateDisplay(mapMode, this.player, this.ephemeris, this.simulator.simTime);
 
     this.ephemeris.updateReferenceLines(this.simulator.simTime, o, mapMode);
     this.planGuide.updatePlannedLine(this.mapModeSystem.editor.plan, { player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }, o, mapMode);

@@ -96,6 +96,8 @@ playerとplayer.status.rを両方受け取っているとか、そういう無�
 ## 無駄なsystem命名、ファイル名とモジュール名の不一致
 無駄にsystemとつけているものがある。おそらく削っても問題ない
 
+## mapmarkersの実装が変
+updatelabelsが呼ばれるれるまでlabelsが空。最初から入っていて、updateでは座標だけ更新されるべきだ
 
 
 # やる必要がない可能性があるもの、
