@@ -31,7 +31,7 @@ export function initStage(stage: Stage, player: Player, simulator: Simulator, hu
     hud.toast(stage.briefingHtml(enemyCount), 12000);
 }
 
-export function resolveForcedStageFromQuery(stageParam: string | null): StageId | null {
+export function resolveStageFromId(stageParam: string | null): StageId | null {
   if (stageParam === null) return null;
   return STAGES.find((stage) => stage.id === stageParam)?.id ?? null;
 }
