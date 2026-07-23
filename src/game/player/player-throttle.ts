@@ -91,7 +91,7 @@ export class PlayerThrottle {
     v: Vec3,
     alive: boolean,
     input: Input,
-    mapMode: boolean,
+    editMode: boolean,
     fineAttitude: boolean,
     attDt: number,
     onProgradeHoldReleased: () => void,
@@ -101,12 +101,13 @@ export class PlayerThrottle {
       return;
     }
     const inertia = att.inertia;
-    const manual = mapMode ? 0 : 1;
+    // 計画編集モード中は手動姿勢入力を無効化する(WASDQE などが Δv 編集に振り替わるため)。
+    const manual = editMode ? 0 : 1;
     const inX = ((input.down('KeyI') ? 1 : 0) + (input.down('KeyK') ? -1 : 0)) * manual;
     const inY = ((input.down('KeyL') ? 1 : 0) + (input.down('KeyJ') ? -1 : 0)) * manual;
     const inZ = ((input.down('KeyO') ? 1 : 0) + (input.down('KeyU') ? -1 : 0)) * manual;
 
-    this.rcsTau = this.buildRcsTau(inX, inY, inZ, att.w, mapMode);
+    this.rcsTau = this.buildRcsTau(inX, inY, inZ, att.w, editMode);
 
     const isRotating = inX !== 0 || inY !== 0 || inZ !== 0;
     this.rotationHoldTime = isRotating ? this.rotationHoldTime + attDt : 0;
@@ -144,9 +145,9 @@ export class PlayerThrottle {
   }
 
   // 手動回転入力に、RCS ダンピングの逆回転パフ(角速度を打ち消す向き)を加えた符号ベクトル。
-  private buildRcsTau(inX: number, inY: number, inZ: number, w: Vec3, mapMode: boolean): Vec3 {
+  private buildRcsTau(inX: number, inY: number, inZ: number, w: Vec3, editMode: boolean): Vec3 {
     const tau = v3(inX, inY, inZ);
-    if (this.rcsDamp && !mapMode) {
+    if (this.rcsDamp && !editMode) {
       const eps = C.RCS_DAMP_PUFF_EPS;
       if (inX === 0 && Math.abs(w.x) > eps) tau.x = -Math.sign(w.x);
       if (inY === 0 && Math.abs(w.y) > eps) tau.y = -Math.sign(w.y);
