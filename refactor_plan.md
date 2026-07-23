@@ -54,11 +54,60 @@ mapModeSystemがマップモード関連のファサードになることにな�
 怪しいのは、mapCamera、plan/フォルダ以下、map-mode/フォルダ以下、mapCamera、simSpeedManager
 ファイル名から想像できる責務とに正しい責務をしている部分は問題ないが、より適切なファイルが存在する場合、行単位で責務外の処理を行っていないか注目する。
 
-### 改善案
+#### 調査結果(2026-07時点のコードを実査)
+
+SPEC.md 11章には「カメラ切替・軌道比較・ノード配置編集・確定実行・自動ワープ・達成判定」が書かれているのみで、コード側に現れている責務(Δv微調整のfineAttitude連動、太陽回転系表示、フォーカス対象選択など)はSPEC.mdに明文化されていない実装詳細。SPEC.mdからは新たな隠れ責務は見つからず、以下はすべて実コードの参照パターン(インスタンス保持・直接代入)から検証したもの。
+
+**A. plan.ts / plan-guide.ts / plan-editor.ts / map-gizmo.ts / map-markers.ts はファイル名どおりの責務にほぼ収まっている。**
+- `plan.ts`: ノード列+予測キャッシュの唯一の正データ。良好。
+- `plan-guide.ts`: 戦闘ビュー側の実施・達成判定。マップモードの有無に依存しない設計が徹底されており良好。
+- `map-gizmo.ts`: DOM/pointerイベントのみ。ゲームロジックへの依存なし。良好。
+- `map-markers.ts`: フォーカス候補ラベルの算出とMarkerManagerへの反映のみ。MapCameraへの参照を持たず、必要な値(origin/simTime/duration/sliderT)を毎回引数で受けるだけ — 後述Bと対照的に模範的な配線。
+
+**C. MapModeSystemがMapCamera/PlanDisplayのフィールドへ直接代入する「たらい回し」配線。**
+`wireHudCallbacks()`(map-mode-system.ts:66-88)の5つのコールバックのうち、`onMapViewReset`だけが`mapCamera.reset()`という正規メソッド経由。残り4つは
+- `onDurationSelect`: `this.display.predictDurationKey = key` に加えて `plan.markDirty()` を呼び出し側で毎回セットで書く
+- `onFrameToggle`: `this.mapCamera.frameRotating = !this.mapCamera.frameRotating` + `plan.markDirty()`
+- `onMapFocusSelect`: `this.mapCamera.pan.set(0, 0, 0)` (Vector3を直接操作)
+- `onSliderChange`: `this.mapCamera.sliderT = t`
+
+のように、他クラスのpublicフィールドへ直接代入している。MapCamera/PlanDisplay側にセッターが用意されておらず、「フィールド変更→整合性維持(markDirty)」のペアが呼び出し側(MapModeSystem)に暗黙で分散している — CLAUDE.mdの「複数箇所が一定の整合性を保つことが要求されるデータ」に該当。
+
+**D. 「ツールバーstate」の中継がplan-editor.tsを不必要に経由している。**
+`updateEditing()`(map-mode-system.ts:245-257)は `display.predictDurationKey` / `mapCamera.frameRotating` / `mapCamera.sliderT` / `this.focus` を1つの`toolbar`オブジェクトに組み立て、`PlanEditor.updateEditing`(plan-editor.ts:298-349)に渡す。PlanEditorはこのtoolbar引数の中身に一切関与せず、最後に`_hud.setMapToolbarState(...)`を呼ぶだけ(ノード編集ロジックとは無関係)。同様に`resolveDisplayTime()`(map-mode-system.ts:281-285)も`display.predictDurationSec`/`display.displayTime`を呼ぶだけの中継で、実体はPlanDisplayに置ける処理。いずれも「plan-editor.ts経由」「map-mode-system.ts内で完結」という配線上の理由でしかなく、Bの sliderT/frameRotating の置き場所が是正されれば、この中継自体が不要になる可能性が高い。
+
+
+
+**F. 噴射ガイドの凍結解除(planGuide.clearActiveTarget)が2つの別経路を持つ。**
+- [X]キー: `MapModeSystem.clearPlanByKey` → コンストラクタ注入の`onPlanCleared`コールバック → `planGuide.clearActiveTarget()`
+- [M]キー: `game.ts`の`handleEdgePress`が`mapModeSystem.toggleMap(...)`の直後に`this.planGuide.clearActiveTarget()`を**mapModeSystemを介さず直接**呼ぶ(game.ts:254)
+
+同じ「Plan操作後にplanGuideの凍結目標を破棄する」後始末が、片方はコールバック経由、片方はgame.tsからの直接呼び出しという別の配線になっている。
+
+**G. simSpeedManagerへの参照保持は、B/Cと比べれば軽微。**
+MapModeSystemはsimSpeedManagerの`startAutoWarpTo`/`cancelAutoWarp`という公開APIのみを呼んでおり(内部フィールドへの直接代入はない)、クラス冒頭のコメントでも「シミュレーション速度そのものの管理はSimSpeedManagerが別途持つ」と明記され、意図的にスコープを絞ってある。参照を持ち回している点は概念的な距離はあるものの、B(フィールド直接代入)ほど深刻ではない。
+
+これらを踏まえると、以下の改善案のうち「MapCameraへの操作をmap-camera.tsへ移動する」は、sliderT/frameRotatingについては誤り(そもそもMapCameraの責務ではない)。移動先はPlan/PlanDisplay側にすべき。
+
+### 改善点2 mapCameraの責務の結合の是正(依頼済み)
+sliderTは合意できたように、Plan/PlanDisplayの責務であり、mapCameraの責務ではない。mapCameraはカメラ視点の計算のみを行うべきである。plan-display.tsに移動する。
+
+focus（文字列）については、、MapCameraが持つべきである。さらに、解決に必要なmapMarkersの参照も注入する
+mapCamera.updateが引数でこれらを受け取らなきゃいけないのがおかしい。mapCameraが自力解決するべき問題。
+
+### 改善点1 togglerの切り出し
 map-mode-toggler.tsを新設し、mapModeSystemからマップモードの開閉に関わる処理を移動する。plan、simSpeedmanager、mapCameraの参照が必要な部分は、都度引数として注入を受けるようにする。_hudやplan、editorが必要な部分も、引数で注入を受ける。map-mode-togglerはインスタンスを直接game.tsが持つ。
 cameraSystemがmapModeフラグを持っているが、これは影響範囲が広いので変更しない。mapModetogglerはapModeフラグを保持せず、与えられた参照からmapModeをトグルするだけである。
 
-mapModeSystemから、mapCameraの操作に関する部分を、map-camera.tsに移動する。
+### 改善点3 markDirty管理をplan内に隠蔽
+外部でpublic編集→markDirtyを呼んでいる部分は、そのpublicFieldを管理しているクラスに適切なsetterを作るべきだ。
+
+
+
+### 追加検証
+displayFrameFnなど、「カメラと整合したクリック座標変換」について、plan-displayとmap-cameraの責務境界を要検証。
+
+- **displayFrameFn(PlanDisplay.toDisplayFrame)はCameraSystem/MapCameraへ移さない。** projectFnが`camera.matrixWorldInverse`/`projectionMatrix`という「カメラでなければ計算できない」値を使うのに対し、displayFrameFnはカメラ行列を一切使わず、核心データ`trajYawRef`(予測キャッシュ`trajSamples`の再計算タイミングに同期する基準角)はPlanDisplayの予測キャッシュのライフサイクルに従属する。移すとカメラがPlanの内部事情(予測再計算タイミング)を知る、現状と逆方向の依存が生まれる。実装はPlanDisplayに残し、facadeが`mapCamera.frameRotating`という1個のboolean経由で橋渡しする現状の形が妥当。
 
 
 ## callback登録の密結合
@@ -141,8 +190,11 @@ touch.tsやmapgismo.tsなど、hud以外の部分にdom操作が分散してい�
 beltPhysicsにbeltSection[]を「書き込む」という処理をしているが、ステートフルで良くない
 beltPhysicsからbeltSection[]への変換と逆変換ということにシ、逆変換においては新規オブジェクトとして作るべきでは？
 
-## 不要なデリゲート注入
-実はデリゲートもctxと似て、脱却すべきデザインパターンなのかもしれない。updateで注入するとしたら、デリゲートではなく、クラスメソッドを持つインスタンスを注入すべきではないか。（コンストラクタで注入するのは推奨しない。参照共有は壊れやすいため）
+## 不要なクロージャ注入
+ctxと似て、脱却すべきデザインパターンなのかもしれない。updateで注入するとしたら、デリゲートではなく、クラスメソッドを持つインスタンスを注入すべきではないか。（コンストラクタで注入するのは推奨しない。参照共有は壊れやすいため）
+
+**H. getExternalStateはctx注入パターンからの逸脱。**
+Ctx注入パターンと同様、このようなクロージャ解決も滅ぼすべきである。
 
 getExternalStateとかダメそう
 

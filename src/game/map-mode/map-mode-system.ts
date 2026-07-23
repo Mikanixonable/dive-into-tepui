@@ -1,18 +1,19 @@
 // マップモード(軌道計画モード)folder の唯一の外部窓口 — game.ts はこのクラスの
-// メソッドのみを呼び、PlanEditor/PlanDisplay/Map-Markers には直接触れない。
+// メソッドのみを呼び、PlanEditor/PlanDisplay/MapMarkers には直接触れない。
 // 軌道計画そのもの(Plan)はマップモードの開閉と無関係に存在し続けるデータだが、
 // 編集・保持ともここが唯一の場所であるため、このクラスが Plan インスタンスを直接
 // 所有する(plan-guide.ts での実施は Game が `mapModeSystem.plan` 経由で読む)。
-// PlanEditor(マップ上でのノード編集)・PlanDisplay(予測軌道・ゴースト表示)・
-// MapHud(フォーカス対象ラベルの算出・描画)を private に保持する。
+// PlanEditor(マップ上でのノード編集)・PlanDisplay(予測軌道・ゴースト表示)を
+// private に保持する。MapMarkers(フォーカス候補ラベルの算出・描画)は MapCamera も
+// フォーカス解決に必要とするため game.ts が構築し、両方へ注入される共有インスタンス。
 // MapCamera(マップカメラ・視点操作)は camera-system.ts の CameraSystem が所有し、
 // このクラスはコンストラクタで参照を受け取るだけ(駆動は CameraSystem.updateActiveCamera
-// が直接呼ぶ)。frameRotating/pan/dist/sliderT は軌道計画編集(toDisplayFrame・
-// ツールバー・ギズモ)がカメラの視点状態を読むための実質的な依存で、単なる薄い転送ではない。
-// フォーカス対象(focus: どのラベルを注視するかの文字列 ID)はこのクラスが持つ —
-// focus を変更する UI 操作(ツールバー・右クリメニュー)はすべてここに集まるため、
-// focus とその解決(focusRel: ラベル位置→フローティングオリジン相対位置)は同じ場所に
-// あるべきで、MapCamera へは解決済みの Vec3 だけを渡す。
+// が直接呼ぶ)。frameRotating/pan/dist は軌道計画編集(toDisplayFrame・ツールバー・
+// ギズモ)がカメラの視点状態を読むための実質的な依存で、単なる薄い転送ではない。
+// フォーカス対象(focus: どのラベルを注視するかの文字列 ID)とその解決(ラベル位置→
+// フローティングオリジン相対位置)は MapCamera 自身が持つ(MapMarkers を注入されて
+// 自力で解決する) — ここでは UI イベント(ツールバー・右クリメニュー)を
+// mapCamera.focus への代入へ橋渡しするだけ。
 // シミュレーション速度そのものの管理は SimSpeedManager が別途持ち、ここではノード
 // 実行時刻への自動ワープの起点(startAutoWarpTo/cancelAutoWarp の呼び出しどころ)
 // としてのみ参照する。
@@ -22,7 +23,7 @@
 // 必要があるため、コンストラクタ注入のコールバックとして持つ。project も同様の理由で
 // コンストラクタ注入(カメラ依存のクロージャ)。
 import * as THREE from 'three/webgpu';
-import { Vec3, sub, v3 } from '../../physics/vec3';
+import { Vec3 } from '../../physics/vec3';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
@@ -42,8 +43,6 @@ export class MapModeSystem {
   readonly plan = new Plan();
   private readonly editor: PlanEditor;
   private readonly display: PlanDisplay;
-  private readonly mapMarkers: MapMarkers;
-  private focus: string = 'earth';
 
   constructor(
     private readonly _hud: Hud,
@@ -52,13 +51,13 @@ export class MapModeSystem {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly project: ProjectFn,
     private readonly mapCamera: MapCamera,
+    private readonly mapMarkers: MapMarkers,
     private readonly getFineAttitude: () => boolean,
     private readonly getExternalState: () => { player: Player; ephemeris: EphemerisSystem; simTime: number; },
     private readonly onPlanCleared: () => void,
   ) {
     this.editor = new PlanEditor(this._hud, this._sfx);
     this.display = new PlanDisplay(this.markerManager);
-    this.mapMarkers = new MapMarkers(this.markerManager);
     this.wireHudCallbacks();
     this.wireGizmoCallbacks();
   }
@@ -75,15 +74,14 @@ export class MapModeSystem {
       this.plan.markDirty();
     };
     this._hud.onMapFocusSelect = (focus) => {
-      this.focus = focus;
+      this.mapCamera.focus = focus;
       this.mapCamera.pan.set(0, 0, 0);
     };
     this._hud.onMapViewReset = () => {
-      this.focus = 'earth';
       this.mapCamera.reset();
     };
     this._hud.onSliderChange = (t) => {
-      this.mapCamera.sliderT = t;
+      this.display.sliderT = t;
     };
   }
 
@@ -117,7 +115,7 @@ export class MapModeSystem {
         this.notifyNodeDeleted();
       },
       onMenuFocus: (targetKey) => {
-        this.focus = targetKey;
+        this.mapCamera.focus = targetKey;
         const lbl = this.mapMarkers.findLabel(targetKey);
         if (lbl) this._hud.hint(`${lbl.name} にフォーカス`);
       },
@@ -132,29 +130,23 @@ export class MapModeSystem {
     return (r: Vec3, t: number) => this.display.toDisplayFrame(r, t, ephemeris, rotating);
   }
 
-  // --------------------------------------------------------------- lifecycle
-  private openMap(touchControls: TouchControls | null): void {
+  // --------------------------------------------------------------- toggler
+  private openMap(touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     this.editor.selectedNodeIdx = null;
-    // マップの表示用予測期間は戦闘ビューの噴射ガイド用期間と異なるため、
-    // 開いた直後は必ず作り直す(スロットリングで最大2秒待たされるのを避ける)。
+
     this.plan.markDirty();
     this._hud.setMapToolbarVisible(true);
     touchControls?.setMapMode(true);
-    this._hud.hint(
-      '軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [M] で確定',
-      5000,
-    );
+    cameraSystem.mapMode = true;
   }
 
-  private closeMap(touchControls: TouchControls | null): void {
+  private closeMap(touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     this.editor.onMapClosed(this.plan);
-    this._hud.setMapToolbarVisible(false);
-    this._hud.setPlanPanel(null);
     this.editor.closeMenu();
+    this._hud.setPlanPanel(null);
+    this._hud.setMapToolbarVisible(false);
     touchControls?.setMapMode(false);
-    if (this.plan.nodes.length > 0) {
-      this._hud.hint(`マニューバ計画 ${this.plan.nodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
-    }
+    cameraSystem.mapMode = false;
   }
 
   toggleMap(isPlaying: boolean, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
@@ -162,12 +154,19 @@ export class MapModeSystem {
     if (!isPlaying) return;
 
     if (!cameraSystem.mapMode) {
-      this.openMap(touchControls);
-      cameraSystem.mapMode = true;
+      this.openMap(touchControls, cameraSystem);
+      this._hud.hint(
+        '軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [M] で確定',
+        5000,
+      );
       return;
     }
-    this.closeMap(touchControls);
-    cameraSystem.mapMode = false;
+    else {
+      this.closeMap(touchControls, cameraSystem);
+      if (this.plan.nodes.length > 0) {
+        this._hud.hint(`マニューバ計画 ${this.plan.nodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
+      }
+    }
     return;
   }
 
@@ -175,13 +174,11 @@ export class MapModeSystem {
   updateMapModeWithPhase(isPlaying: boolean, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     if (isPlaying || !cameraSystem.mapMode) return;
 
-    this._hud.setPlanPanel(null);
-    this._hud.setMapToolbarVisible(false);
-    this.editor.closeMenu();
-    touchControls?.setMapMode(false);
-    cameraSystem.mapMode = false;
+    this.closeMap(touchControls, cameraSystem);
     return;
   }
+
+  // --------------------------------------------------------------- input
 
   // [X] キー: マップモード中は選択中ノードのみ、マップ外では計画全体を破棄する
   // (Plan を持つのがここである以上、両ケースともここが受け持つ)。噴射ガイドの
@@ -229,14 +226,6 @@ export class MapModeSystem {
     }
   }
 
-  // focus(地球中心 or ラベル ID)を解決し、フローティングオリジン(origin)相対の
-  // 位置として返す。CameraSystem.updateActiveCamera の focusRel 引数の供給元 —
-  // MapCamera へは解決済みの Vec3 だけを渡す。
-  focusRel(origin: Vec3): Vec3 {
-    const pos = this.focus === 'earth' ? v3(0, 0, 0) : this.mapMarkers.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
-    return sub(pos, origin);
-  }
-
   // --------------------------------------------------------------- per-frame
 
   // マップモードのノード編集入力(クリック配置・Δv調整・ツールバー/計画パネル反映)。
@@ -250,8 +239,8 @@ export class MapModeSystem {
       toolbar: {
         durationKey: this.display.predictDurationKey,
         frameRotating: this.mapCamera.frameRotating,
-        ghostLabel: this.mapCamera.sliderT > 0 ? this.display.ghostLabel(this.plan, state.player, state.simTime, this.mapCamera.sliderT) : null,
-        focus: this.focus,
+        ghostLabel: this.display.sliderT > 0 ? this.display.ghostLabel(this.plan, state.player, state.simTime) : null,
+        focus: this.mapCamera.focus,
       },
     });
   }
@@ -266,22 +255,22 @@ export class MapModeSystem {
     }
     const state = this.getExternalState();
     const origin = state.player.state.r;
-    this.display.update(this.plan, state, origin, this.mapCamera.frameRotating, this.mapCamera.sliderT, this.project);
+    this.display.update(this.plan, state, origin, this.mapCamera.frameRotating, this.project);
     this.editor.updateGizmo(this.plan, origin, this.toDisplayFrame(state.ephemeris), this.project, this.mapCamera.dist);
     this.mapMarkers.updateLabels(
       origin,
       state.simTime,
       state.ephemeris,
       this.display.predictDurationSec(state.player),
-      this.mapCamera.sliderT,
+      this.display.sliderT,
       this.project,
     );
   }
 
   resolveDisplayTime(mapMode: boolean): number {
     const state = this.getExternalState();
-    if (!mapMode || this.mapCamera.sliderT <= 0) return state.simTime;
-    return this.display.displayTime(state.simTime, this.display.predictDurationSec(state.player), this.mapCamera.sliderT);
+    if (!mapMode || this.display.sliderT <= 0) return state.simTime;
+    return this.display.displayTime(state.simTime, this.display.predictDurationSec(state.player));
   }
 
   mapLabelIds(): string[] {
