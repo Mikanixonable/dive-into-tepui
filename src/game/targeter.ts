@@ -8,7 +8,7 @@ import { Player } from './player/player';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
 import { Input } from './input';
-import { ProjectFn } from './camera/camera-system';
+import { CameraSystem, ProjectFn } from './camera/camera-system';
 import { MarkerManager } from './marker/marker-manager';
 
 export class Targeter {
@@ -41,11 +41,10 @@ export class Targeter {
     player: Player,
     enemies: Enemy[],
     input: Input,
-    activeCamera: THREE.PerspectiveCamera,
-    project: ProjectFn,
+    cameraSystem: CameraSystem,
   ): Enemy | null {
-    this.handleTargetLockByRightClick(input, enemies, player, project);
-    this.autoTarget = this.resolveAutoTarget(enemies, player, activeCamera);
+    this.handleTargetLockByRightClick(input, enemies, player, cameraSystem.activeCameraProjection);
+    this.autoTarget = this.resolveAutoTarget(enemies, player, cameraSystem.activeCamera);
     return this.autoTarget;
   }
 
