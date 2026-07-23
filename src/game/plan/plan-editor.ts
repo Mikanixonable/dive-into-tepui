@@ -1,8 +1,10 @@
 // マップモード上での軌道計画(Plan)の編集: クリックでのノード配置・ドラッグでの
 // 時刻移動・Δv アーム(mapgizmo.ts)ドラッグ・右クリックメニュー・選択状態・計画パネル
-// 表示への反映。ノードの実座標変換(太陽回転系表示)は呼び出し側が渡す DisplayFrameFn
-// 経由で plan-display.ts の toDisplayFrame に委譲する — 表示とクリック判定の基準角が
-// ずれないよう、正はそちら一箇所のみに保つ。
+// 表示への反映、および [X] キー(ノード/計画削除)の実処理。ノードの実座標変換
+// (太陽回転系表示)は呼び出し側が渡す DisplayFrameFn 経由で plan-display.ts の
+// toDisplayFrame に委譲する — 表示とクリック判定の基準角がずれないよう、正はそちら
+// 一箇所のみに保つ。ノード削除時の自動ワープ解除(SimSpeedManager)・噴射ガイドの
+// 凍結目標クリア(onPlanCleared コールバック、Game 側の状態のため)はここが起点。
 import { Elements, elementsFromState } from '../../physics/orbital';
 import { PlannedNode } from '../../physics/predict';
 import { Vec3, add, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
@@ -15,6 +17,7 @@ import { ProjectFn } from '../camera/camera-system';
 import { MapLabel } from '../map-mode/map-markers';
 import { DisplayFrameFn } from './plan-display';
 import { Plan } from './plan';
+import { SimSpeedManager } from '../sim-speed-manager';
 
 // mapGizmo のイベントを外部(MapModeSystem)のロジックへ橋渡しするためのコールバック束。
 // mapGizmo 自体は private のため、外部からのコールバック配線はこの一箇所を通す。
@@ -36,7 +39,12 @@ export class PlanEditor {
   // イベント配線は bindGizmoCallbacks() 経由のみ(外部に直接公開しない)。
   private readonly mapGizmo = new MapGizmo();
 
-  constructor(private readonly _hud: Hud, private readonly _sfx: Sfx) {}
+  constructor(
+    private readonly _hud: Hud,
+    private readonly _sfx: Sfx,
+    private readonly simSpeedManager: SimSpeedManager,
+    private readonly onPlanCleared: () => void,
+  ) {}
 
   // mapGizmo (private) のイベントを外部ロジックへ橋渡しする唯一の配線口。
   bindGizmoCallbacks(cb: MapGizmoCallbacks): void {
@@ -54,21 +62,36 @@ export class PlanEditor {
   }
 
   // ノード削除の唯一の実装(右クリメニュー・[X] キーの両方からここを呼ぶ)。
-  // 選択インデックスの繰り上げもここで行う。
+  // 選択インデックスの繰り上げと、自動ワープ解除・ヒント表示もここで行う。
   deleteNode(idx: number): void {
     if (!this.plan.nodes[idx]) return;
     this.plan.removeNode(idx);
     if (this.selectedNodeIdx === idx) this.selectedNodeIdx = null;
     else if (this.selectedNodeIdx !== null && this.selectedNodeIdx > idx) this.selectedNodeIdx--;
     this.closeMenu();
+    this.simSpeedManager.cancelAutoWarp();
+    this._hud.hint('ノードを削除');
   }
 
-  // [X] キー(map-mode-system.ts)向け: 現在選択中のノードを削除する。選択が無ければ
-  // 何もせず false を返す(呼び出し側はこれで警告表示等の要否を判断する)。
-  deleteSelected(): boolean {
-    if (this.selectedNodeIdx === null) return false;
+  // [X] キー向け: 現在選択中のノードを削除する。選択が無ければ何もしない。
+  deleteSelected(): void {
+    if (this.selectedNodeIdx === null) return;
     this.deleteNode(this.selectedNodeIdx);
-    return true;
+  }
+
+  // [X] キー: マップモード中は選択中ノードのみ、マップ外では計画全体を破棄する。
+  // 噴射ガイドの凍結目標(planGuide.clearActiveTarget)は Game 側の状態のため、
+  // onPlanCleared コールバックで通知する。
+  clearPlanByKey(mapMode: boolean): void {
+    if (mapMode) {
+      this.deleteSelected();
+      return;
+    }
+    if (this.plan.nodes.length <= 0) return;
+    this.plan.clear();
+    this.onPlanCleared();
+    this.simSpeedManager.cancelAutoWarp();
+    this._hud.hint('マニューバ計画を破棄');
   }
 
   nodeScreenPos(

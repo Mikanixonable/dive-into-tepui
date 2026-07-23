@@ -5,6 +5,7 @@
 import * as C from './const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../audio/sfx';
+import { PlannedNode } from '../physics/predict';
 
 export class SimSpeedManager {
   private levelIdx = 0;
@@ -56,6 +57,22 @@ export class SimSpeedManager {
 
   cancelAutoWarp(): void {
     this.autoWarpUntil = null;
+  }
+
+  // [N] キー: 直近ノードの実行時刻までの自動ワープをトグルする(呼び出し側で
+  // マップモード中でないことを確認してから呼ぶ)。
+  toggleAutoWarpToFirstNode(isPlaying: boolean, firstNode: PlannedNode | undefined): void {
+    if (!firstNode || !isPlaying) {
+      this._hud.hint('マニューバノードがありません ([M] で計画)');
+      return;
+    }
+    if (this.isAutoWarping) {
+      this.cancelAutoWarp();
+      this._hud.hint('自動ワープ解除');
+    } else {
+      this.startAutoWarpTo(firstNode.time);
+      this._hud.hint('ノードへ自動ワープ開始');
+    }
   }
 
   // 残り時間に応じてシミュレーション速度を自動的に段階調整し、

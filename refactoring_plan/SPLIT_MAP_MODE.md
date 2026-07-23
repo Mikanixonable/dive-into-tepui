@@ -15,7 +15,6 @@
     - planEditor
       - plan
 
-## mapModeSystemが統合ファサードになるよう指示したが、それが完全に間違っていた。
 
 ### mapModeTogglerじゃなくてcameraSystemがmapModeフラグを持っている
 修正したいが、影響範囲がデカい。playerなどはcameraを受け取ってmapModeを参照している。現在mapModeを参照している箇所のうち、視覚的な問題はcamera.mapModeを、挙動上の問題はmapTogglerのフラグを参照する…？
@@ -27,7 +26,12 @@
 広範囲視点に関するものは、cameraSystemが持つ。
 
 ### mapModeSystemとplan-editorの責務境界
-たぶん分ける必要がない。まずは統合しても巨大モジュールにならないように責務外のものをきっちり排除し、将来的に統合すr
+mapModeSystemがマップモード中の挙動だけ管理するというのが怪しくなってきていて、実態はマップモードについてはtogglerやcameraSystemに掃き出されたので、planに関するファサードになるべき。そうすると、plan-guideが逆に漏れていることになる。
+
+### planDislayとmapCameraの責務境界
+mapmarkersの立ち位置も検討　こいつは実質的に、mapCameraのフォーカス先の候補
+bindDisplayFramenの立ち位置も要検討。こいつがカメラと一緒になっていれば解決する問題が多いんじゃないか？
+
 
 ## F. 噴射ガイドの凍結解除(planGuide.clearActiveTarget)が2つの別経路を持つ。
 - [X]キー: `MapModeSystem.clearPlanByKey` → コンストラクタ注入の`onPlanCleared`コールバック → `planGuide.clearActiveTarget()`
@@ -61,3 +65,7 @@ displayFrameFnなど、「カメラと整合したクリック座標変換」に
 これはCtx注入と同じ問題。本質的にはsplit-map-modeの問題ではない。
 
 `updateEditing()`(map-mode-system.ts:245-257)は `display.predictDurationKey` / `mapCamera.frameRotating` / `mapCamera.sliderT` / `this.focus` を1つの`toolbar`オブジェクトに組み立て、`PlanEditor.updateEditing`(plan-editor.ts:298-349)に渡す。PlanEditorはこのtoolbar引数の中身に一切関与せず、最後に`_hud.setMapToolbarState(...)`を呼ぶだけ(ノード編集ロジックとは無関係)。同様に`resolveDisplayTime()`(map-mode-system.ts:281-285)も`display.predictDurationSec`/`display.displayTime`を呼ぶだけの中継で、実体はPlanDisplayに置ける処理。いずれも「plan-editor.ts経由」「map-mode-system.ts内で完結」という配線上の理由でしかなく、Bの sliderT/frameRotating の置き場所が是正されれば、この中継自体が不要になる可能性が高い。
+
+
+## predictDurationSec(player: Player): numberの戻り値管理が密結合
+　仕様がまだよくわかってないがこいつが返すのはおかしい。
