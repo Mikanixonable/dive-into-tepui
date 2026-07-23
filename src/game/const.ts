@@ -175,7 +175,7 @@ export const NODE_GUIDE_MIN_DURATION = 60; // [s]
 export const NODE_GUIDE_DURATION_MARGIN = 120; // [s]
 export const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
 export const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
-// マップモードの DOM ギズモ(mapgizmo.ts): 選択中ノードの Δv アーム(6方向ハンドル)
+// マップモードの DOM ギズモ(node-gizmo.ts): 選択中ノードの Δv アーム(6方向ハンドル)
 export const NODE_GIZMO_HANDLE_PX = 42; // ノードからアームハンドルを離す距離 [px]
 export const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリック/ドラッグ判定しきい値 [px]
 // ノード実行目標の凍結しきい値 [s]: 残り時間がこれを切ったらバーン目標

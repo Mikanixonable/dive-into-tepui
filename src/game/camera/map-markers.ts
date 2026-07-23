@@ -3,7 +3,7 @@
 // カメラの視点操作(MapCamera)とは責務を分離する。
 import { moonPosition, sunPosition, emLagrangePoints, seLagrangePoints } from '../../physics/ephemeris';
 import { Vec3, sub } from '../../physics/vec3';
-import { ProjectFn } from '../camera/camera-system';
+import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import type { EphemerisSystem } from '../ephemeris';
 

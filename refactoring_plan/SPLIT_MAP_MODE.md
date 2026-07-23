@@ -9,21 +9,26 @@
 
 現状の責務構成
 - game
-  - mapModeToggler　OK　CameraとPlanの適切な動機を行う唯一のモジュール
+  - dispatchMapPointer / dispatchMapRightClick　OK(新設)　「node が消費しなかった右クリックだけ focus 選択へフォールする」調停を上層に集約。二つのギズモは互いを参照しない
+  - mapModeToggler　OK　CameraとPlanを同期して開閉する唯一のモジュール（node/focus 両メニューの closeMenu もここが行う）
   - cameraSystem
-  　- mapMode(boolean)　NG！　CameraとPlan両方を兼ねている！
+  　- mapMode(boolean)　NG！　「広範囲視点モード」と「plan編集モード」の二つの意味が重なったまま
     - mapCamera
     - chaseCamera
+    - mapMarkers　OK(移設済)　フォーカス候補ラベル。planSystem から cameraSystem へ移した
+    - focusGizmo　OK(分割済)　ラベルのフォーカス選択メニュー。onMenuFocus は cameraSystem 内で mapCamera.focus へ直結
   - planSystem
     - planGuide
     - planDisplay　Camera側に移動すべきか微妙なところ。要検討
     - planEditor
       - plan
-      - mapGizmo　　NG！　CameraとPlan両方を兼ねている！ 分割！！
-    - mapMarkers　　NG！　Camera側に移動するべき
+      - nodeGizmo　OK(分割済)　ノード編集ギズモ(ハンドル・Δvアーム・ノードメニュー)のみ
 
-### cameraSystemのmapModeフラグが二つの責務を持っている。
+（node-gizmo / focus-gizmo が共有する汎用ポップアップ context-menu は、plan・camera どちらの専有物でもないため中立地点の map-mode/ に残置。map-mode/ に残るのは map-mode-toggler と context-menu のみ）
+
+### cameraSystemのmapModeフラグが二つの責務を持っている。（未解決）
 planSystemのeditModeフラグを持たせ、cameraSystemのmapModeフラグとは別の情報供給源とする。これらは同一のbooleanを2か所で保持しているの*ではなく*、本来独立に切り替えても各モジュールには影響がないものを、*たまたま*mapModeTogglerが同期して切り替えている、という形にするべき。
+（現状 planSystem に `editMode` フラグはまだ無く、コメントのスタブが残っているだけ。）
 
 前述の通り、現状のmapModeフラグは「広範囲視点モード」と「plan編集モード」の二つの意味が重なってしまったものである。cameraSystemが持つmapModeフラグは前者の責務に関するものに限定し、後者の責務に関してはmapModeTogglerが持つものとして分離したい。現在mapModeを参照している箇所のうち、視覚的な問題はcamera.mapModeを、挙動上の問題はmapToggler.mapModeのフラグを参照する？
 
@@ -36,29 +41,25 @@ playerなどはcameraを受け取ってmapModeを参照しているが、その�
 displayFrameFnなど、「カメラと整合したクリック座標変換」について、plan-displayとmap-cameraの責務境界を要検証。
 **displayFrameFnの核心データが`trajYawRef`らしい。(予測キャッシュ`trajSamples`の再計算タイミングに同期する基準角)はPlanDisplayの予測キャッシュのライフサイクルに従属する。
 予測キャッシュ更新責務をtrajlineに移動したので、この辺の責務も要検証。
+（現状 planSystem に `frame()` ヘルパがあり、`display.bindDisplayFrame(ephemeris, mapCamera.frameRotating)` を毎回組み立てて nodeGizmo 系のピッキングに渡している。frameRotating は mapCamera、基準角は planDisplay に分散しており、この境界の整理が上記に直結する。）
 
-### mapGizmoの分割
-そもそもmapGizmoが酷すぎる、軌道計画ノードをクリックしたときの表示と、mapMarkerをクリックした時の表示は全く別のUIでありながら、同じクラスとして表現されている。mapMarkerはmapCameraのフォーカス先候補であり、mapCamera寄りの責務であるのに対し、ノードクリックした時の表示はplan側の責務であるため、これが一つのモジュールになっている限り疎結合化は達成できない。直ちに是正が必要。
-
-現状、openMenuのparamsによって二種のUIを切り替えている。そもそも別モジュールにして、呼び出し元であるplanEditorがどっちのUIを開くか選ぶという形であるべきだ。
-
-### mapMarkersの移動
-mapmarkersは、mapCameraのフォーカス先の候補であり、planというよりはmapCamera寄りの責務であるが、現状planSystemが持ってしまっている。
-
-### planDislayの移動
-bindDisplayFramenの立ち位置も要検討。こいつがカメラと一緒になっていれば解決する問題が多いんじゃないか？
+### planDisplayの移動（要検討）
+bindDisplayFrameの立ち位置も要検討。こいつがカメラと一緒になっていれば解決する問題が多いんじゃないか？
 
 
 ## その後に着手する細部
 
-### wireHudCallbacksの解体
-mapGizmoが密結合であることの影響として、wireHudCallbacksがごちゃごちゃになっているというのがある。
-上記の分割が適切に済んだ後、検査する
+### game.ts ↔ planSystem の右クリック中継（新規・残課題）
+ノードハンドルを DOM で直接右クリックした場合だけは canvas の右クリックとして拾えない（ハンドルが canvas の子ではなく pointerdown を stopPropagation するため）。このため nodeGizmo → `planSystem.onNodeHandleRightClick` → game.ts の `dispatchMapRightClick` という中継を通している。「node-vs-focus の調停を game.ts 一箇所に集約する」ためには妥当な配線だが、DOM イベントが planSystem を一段経由して上層まで往復する形にはなっている。cameraSystem.mapMode / planSystem.editMode の分離（上記）や、外部から直接コールバックを登録できる経路の整備が進めば、この中継の要否も再検討できる。
 
-たとえば、ここでplanSystemはwireHudCallbacksからsimSpeedManagerの`startAutoWarpTo`を呼んでいるが、これは無駄なたらいまわしに見える。外部からmapGizmoのコールバック登録が、bindGizmoCallbacksの一か所にまとめられてしまっているのが良くない。このせいで、すべてのコールバックがplanSystemを経由してしまう。ほかのhudのコールバックについても類似の問題があるが、外部から直接コールバック登録をする経路がないと、集約された登録口がすべての窓口を必要とするために、却って密結合になる。
+### wireHudCallbacksの解体（部分的に前進、未完）
+mapGizmo の密結合起因だった「bindGizmoCallbacks に全コールバックを束ねる」問題は解消済み。nodeGizmo のイベントは `planSystem.wireNodeGizmo()` が直接配線し、focusGizmo の onMenuFocus は cameraSystem が自前で配線するようになった（planSystem を経由しない）。
 
-### plan云々のmarkDirty管理をplan内に隠蔽
+一方 wireHudCallbacks 自体はまだ残っており、HUD 由来のコールバック（duration 選択・frame トグル・focus 選択・view リセット・slider）がすべて planSystem を窓口に集約されている。外部から直接コールバック登録する経路がないと、集約された登録口がすべての窓口を必要とするために却って密結合になる、という構図は未解決。たとえば onMapFocusSelect / onMapViewReset は本来 cameraSystem 寄りの操作であり、focusGizmo と同様に cameraSystem 側で直接受けられるはず。onMenuWarpTo が simSpeedManager.startAutoWarpTo を呼ぶ中継（wireNodeGizmo 内）も同種の無駄なたらいまわしに見える。
+
+### plan云々のmarkDirty管理をplan内に隠蔽（未解決）
 外部でpublic編集→markDirtyを呼んでいる部分は、そのpublicFieldを管理しているクラスに適切なsetterを作るべきだ。「フィールド変更→整合性維持(markDirty)」のペアが呼び出し側(planSystem)に暗黙で分散している — CLAUDE.mdの「複数箇所が一定の整合性を保つことが要求されるデータ」に該当。
+（現状 wireHudCallbacks 内で `display.predictDurationKey` 変更後や `mapCamera.frameRotating` トグル後に `editor.plan.markDirty()` を手で呼んでおり、依然として分散している。）
 
 そもそもmarkDirtyを使ったplanの再計算システムが変かも。メモ再計算の仕組み……
 
@@ -67,8 +68,8 @@ mapGizmoが密結合であることの影響として、wireHudCallbacksがご�
 
 これはCtx注入と同じ問題。本質的にはsplit-map-modeの問題ではない。
 
-`updateEditing()`(map-mode-system.ts:245-257)は `display.predictDurationKey` / `mapCamera.frameRotating` / `mapCamera.sliderT` / `this.focus` を1つの`toolbar`オブジェクトに組み立て、`PlanEditor.updateEditing`(plan-editor.ts:298-349)に渡す。PlanEditorはこのtoolbar引数の中身に一切関与せず、最後に`_hud.setMapToolbarState(...)`を呼ぶだけ(ノード編集ロジックとは無関係)。同様に`resolveDisplayTime()`(map-mode-system.ts:281-285)も`display.predictDurationSec`/`display.displayTime`を呼ぶだけの中継で、実体はPlanDisplayに置ける処理。いずれも「plan-editor.ts経由」「map-mode-system.ts内で完結」という配線上の理由でしかなく、Bの sliderT/frameRotating の置き場所が是正されれば、この中継自体が不要になる可能性が高い。
+`PlanSystem.updateEditing()`(plan-system.ts) は `display.predictDurationKey` / `mapCamera.frameRotating` / `display.sliderT`(→ghostLabel) / `mapCamera.focus` を1つの`toolbar`オブジェクトに組み立て、`PlanEditor.updateEditing`(plan-editor.ts) に渡す。PlanEditorはこのtoolbar引数の中身に一切関与せず、最後に`_hud.setMapToolbarState(...)`を呼ぶだけ(ノード編集ロジックとは無関係)。同様に `PlanDisplay.resolveDisplayTime()` も `predictDurationSec`/`displayTime` を呼ぶだけの中継。いずれも「plan-editor.ts経由」「plan-system.ts内で完結」という配線上の理由でしかなく、sliderT/frameRotating の置き場所が是正されれば、この中継自体が不要になる可能性が高い。
 
 
 ## predictDurationSec(player: Player): numberの戻り値管理が密結合
-　仕様がまだよくわかってないがこいつが返すのはおかしい。
+　仕様がまだよくわかってないがこいつが返すのはおかしい。（現状 planSystem.updateDisplay が `display.predictDurationSec(player)` の戻り値を mapMarkers.updateLabels に横流ししている。）

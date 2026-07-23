@@ -10,7 +10,7 @@ import * as C from '../const';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input';
-import { MapMarkers } from '../map-mode/map-markers';
+import { MapMarkers } from './map-markers';
 
 export class MapCamera {
   // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)

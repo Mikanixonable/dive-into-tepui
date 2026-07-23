@@ -94,7 +94,7 @@ export class TouchControls {
   }
 
   // マップモード(軌道計画)中は並進・回転・射撃・ズームのパッドを隠す
-  // (mapgizmo.ts の DOM ハンドルと画面下部で重なるため)。M/N/H 等の
+  // (node-gizmo.ts の DOM ハンドルと画面下部で重なるため)。M/N/H 等の
   // トグル系ボタンが並ぶ util 行はそのまま表示を続ける。
   setMapMode(active: boolean): void {
     for (const id of ['touch-pad-rot', 'touch-pad-move', 'touch-fire', 'touch-zoom']) {

@@ -1,63 +1,47 @@
-// 軌道計画モード(マップモード)の対話的 DOM レイヤ。
+// 軌道計画ノードの対話的 DOM レイヤ。ノードハンドル(ドラッグ円)・選択中ノードの
+// Δv アーム 6 個・ノードのコンテキストメニュー(ワープ/削除)を担当する。
 //
 // アーキテクチャ方針: キャンバス上でのヒットテストではなく、専用の
-// pointer-events:auto な DOM 要素を画面座標に絶対配置する。ゲーム側は毎フレーム
-// 画面座標を渡すだけで、このクラスは DOM 生成・pointer イベント処理・
+// pointer-events:auto な DOM 要素を画面座標に絶対配置する。呼び出し側(plan-editor)は
+// 毎フレーム画面座標を渡すだけで、このクラスは DOM 生成・pointer イベント処理・
 // コールバック発火だけを担当する。
-// #hud-maptool と同様、DOM 要素側の pointerdown で stopPropagation して
-// Input のキャンバスドラッグ(視点回転)へイベントが漏れないようにする。
+// DOM 要素側の pointerdown で stopPropagation して Input のキャンバスドラッグ
+// (視点回転)へイベントが漏れないようにする。
 import * as C from '../const';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, TEXT as INK } from '../theme';
+import { ContextMenu } from '../map-mode/context-menu';
 
-// SURFACE/EDGE はこのファイル固有の不透明度(0.85 / 0.16)を使うため、
-// theme.ts の SURFACE(0.82)/EDGE(0.09)とは別定数のまま保持する。
+// SURFACE/EDGE はこのファイル固有の不透明度を使うため、theme.ts とは別定数のまま保持する。
 const SURFACE = 'rgba(13, 15, 18, 0.85)';
 const EDGE = 'rgba(255, 255, 255, 0.16)';
 
-// z-index の方針: #hud(10)より下、キャンバス(0)より上の 9 に固定する。
-// #hud-settings・#hud-end 等のモーダルは #hud の子要素として #hud の
-// スタッキングコンテキスト内で描画されるため、9 なら常にそれらの下になる
-// (要件「上下どちらでもよいが決めて文書化する」への回答: #hud より下)。
-// #touch-ui は 11 (タッチパッド操作を最優先するため) なので、マップモード中は
-// Game 側が TouchControls.setMapMode(true) でパッド類を隠して重なりを避ける。
+// z-index は #hud(10)より下、キャンバス(0)より上の 9(context-menu.ts と同方針)。
 const STYLE = `
-#map-gizmo {
+#node-gizmo {
   position: fixed; inset: 0; pointer-events: none; z-index: 9;
   font-family: 'Consolas', 'Courier New', monospace; user-select: none;
   -webkit-user-select: none;
 }
-#map-gizmo .gz-node {
+#node-gizmo .gz-node {
   position: absolute; transform: translate(-50%, -50%);
   width: 22px; height: 22px; border-radius: 50%; touch-action: none;
   pointer-events: auto; cursor: grab;
   border: 2px solid ${ACCENT_SOFT}; background: rgba(${ACCENT_RGB}, 0.16);
 }
-#map-gizmo .gz-node.sel { border-color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.38); }
-#map-gizmo .gz-node .gz-lbl {
+#node-gizmo .gz-node.sel { border-color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.38); }
+#node-gizmo .gz-node .gz-lbl {
   position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
   font-size: 10px; color: ${INK}; white-space: nowrap;
   text-shadow: 0 0 4px #000, 0 0 2px #000;
 }
-#map-gizmo .gz-axis {
+#node-gizmo .gz-axis {
   position: absolute; transform: translate(-50%, -50%);
   min-width: 30px; padding: 2px 7px; text-align: center; touch-action: none;
   pointer-events: auto; cursor: grab;
   border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE};
   color: ${INK}; font-size: 10px; letter-spacing: 1px;
 }
-#map-gizmo .gz-axis:active { border-color: ${ACCENT}; color: ${ACCENT_SOFT}; }
-#map-gizmo .gz-menu {
-  position: absolute; display: none; min-width: 168px;
-  pointer-events: auto; background: ${SURFACE}; border: 1px solid ${EDGE};
-  border-radius: 4px; overflow: hidden; font-size: 12px;
-}
-#map-gizmo .gz-menu-item {
-  padding: 9px 14px; color: ${INK}; cursor: pointer; border-bottom: 1px solid ${EDGE};
-}
-#map-gizmo .gz-menu-item:last-child { border-bottom: none; }
-#map-gizmo .gz-menu-item:hover, #map-gizmo .gz-menu-item:active {
-  background: rgba(${ACCENT_RGB}, 0.18); color: ${ACCENT_SOFT};
-}
+#node-gizmo .gz-axis:active { border-color: ${ACCENT}; color: ${ACCENT_SOFT}; }
 `;
 
 export interface NodeHandleSpec {
@@ -87,36 +71,37 @@ interface NodeEntry {
   lbl: HTMLDivElement;
 }
 
-export class MapGizmo {
+let styleInjected = false;
+
+export class NodeGizmo {
   private readonly root: HTMLDivElement;
   private readonly nodeLayer: HTMLDivElement;
   private readonly axisLayer: HTMLDivElement;
-  private readonly menuEl: HTMLDivElement;
+  private readonly menu = new ContextMenu();
   private readonly nodeEls = new Map<number, NodeEntry>();
   private readonly axisEls: HTMLDivElement[] = [];
   private menuNodeIdx: number | null = null;
-  private menuTargetKey: string | null = null;
 
   // ノードハンドル: クリック=選択、ドラッグ=時刻移動、右クリック/右ボタン押下=コンテキストメニュー要求。
   onNodeSelect: ((idx: number) => void) | null = null;
   onNodeDragMove: ((idx: number, clientX: number, clientY: number) => void) | null = null;
-  onNodeDragEnd: (() => void) | null = null;
   onNodeContextMenu: ((clientX: number, clientY: number) => void) | null = null;
   // Δv アーム: ドラッグの度に、ハンドル自身の向きへの射影量(符号付き px)を渡す。
   onAxisDrag: ((axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number) => void) | null = null;
-  // コンテキストメニュー項目
+  // コンテキストメニュー項目(キャンセルはメニューを閉じるだけなのでコールバック不要)。
   onMenuWarpTo: ((idx: number) => void) | null = null;
   onMenuDelete: ((idx: number) => void) | null = null;
-  onMenuCancel: (() => void) | null = null;
-  onMenuFocus: ((targetKey: string) => void) | null = null;
 
   constructor() {
-    const style = document.createElement('style');
-    style.textContent = STYLE;
-    document.head.appendChild(style);
+    if (!styleInjected) {
+      styleInjected = true;
+      const style = document.createElement('style');
+      style.textContent = STYLE;
+      document.head.appendChild(style);
+    }
 
     this.root = document.createElement('div');
-    this.root.id = 'map-gizmo';
+    this.root.id = 'node-gizmo';
     document.body.appendChild(this.root);
 
     this.nodeLayer = document.createElement('div');
@@ -124,64 +109,26 @@ export class MapGizmo {
     this.axisLayer = document.createElement('div');
     this.root.appendChild(this.axisLayer);
 
-    this.menuEl = document.createElement('div');
-    this.menuEl.className = 'gz-menu';
-    this.menuEl.innerHTML = `
-      <div class="gz-menu-item" data-act="warp">この時刻まで自動ワープ</div>
-      <div class="gz-menu-item" data-act="delete">ノードを削除</div>
-      <div class="gz-menu-item" data-act="cancel">キャンセル</div>`;
-    this.root.appendChild(this.menuEl);
-    this.menuEl.addEventListener('pointerdown', (e) => e.stopPropagation());
-    this.menuEl.addEventListener('contextmenu', (e) => e.preventDefault());
-    this.bindMenuEvents();
+    this.menu.onSelect = (act) => {
+      const idx = this.menuNodeIdx;
+      this.menuNodeIdx = null;
+      if (act === 'warp' && idx !== null) this.onMenuWarpTo?.(idx);
+      else if (act === 'delete' && idx !== null) this.onMenuDelete?.(idx);
+    };
   }
 
-  private bindMenuEvents(): void {
-    this.menuEl.querySelectorAll<HTMLElement>('.gz-menu-item').forEach((item) => {
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const act = item.dataset['act'];
-        const idx = this.menuNodeIdx;
-        const tk = this.menuTargetKey;
-        this.closeMenu();
-        if (act === 'warp' && idx !== null) this.onMenuWarpTo?.(idx);
-        else if (act === 'delete' && idx !== null) this.onMenuDelete?.(idx);
-        else if (act === 'focus' && tk !== null) this.onMenuFocus?.(tk);
-        else if (act === 'cancel') this.onMenuCancel?.();
-      });
-    });
-  }
-
-  openMenu(clientX: number, clientY: number, params: { idx?: number; targetKey?: string }): void {
-    this.menuNodeIdx = params.idx ?? null;
-    this.menuTargetKey = params.targetKey ?? null;
-    
-    if (this.menuTargetKey !== null) {
-      this.menuEl.innerHTML = `
-        <div class="gz-menu-item" data-act="focus">フォーカスを移動</div>
-        <div class="gz-menu-item" data-act="cancel">キャンセル</div>`;
-    } else {
-      this.menuEl.innerHTML = `
-        <div class="gz-menu-item" data-act="warp">この時刻まで自動ワープ</div>
-        <div class="gz-menu-item" data-act="delete">ノードを削除</div>
-        <div class="gz-menu-item" data-act="cancel">キャンセル</div>`;
-    }
-    this.bindMenuEvents();
-
-    this.menuEl.style.left = `${clientX}px`;
-    this.menuEl.style.top = `${clientY}px`;
-    this.menuEl.style.display = 'block';
+  openMenu(clientX: number, clientY: number, idx: number): void {
+    this.menuNodeIdx = idx;
+    this.menu.open(clientX, clientY, [
+      { label: 'この時刻まで自動ワープ', act: 'warp' },
+      { label: 'ノードを削除', act: 'delete' },
+      { label: 'キャンセル', act: 'cancel' },
+    ]);
   }
 
   closeMenu(): void {
-    if (this.menuEl.style.display === 'none') return;
-    this.menuEl.style.display = 'none';
+    this.menu.close();
     this.menuNodeIdx = null;
-    this.menuTargetKey = null;
-  }
-
-  get menuIsOpen(): boolean {
-    return this.menuEl.style.display === 'block';
   }
 
   // 毎フレーム呼ぶ: ノードハンドル群(前フレームに存在したが今回無いものは破棄)と、
@@ -260,7 +207,6 @@ export class MapGizmo {
       if (!dragging) return;
       dragging = false;
       if (moved <= C.NODE_GIZMO_DRAG_THRESHOLD_PX) this.onNodeSelect?.(idx);
-      else this.onNodeDragEnd?.();
       try {
         el.releasePointerCapture(e.pointerId);
       } catch {

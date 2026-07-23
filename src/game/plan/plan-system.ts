@@ -8,7 +8,8 @@ import { PlanEditor } from './plan-editor';
 import { PlanDisplay } from './plan-display';
 import { MapCamera } from '../camera/map-camera';
 import { MarkerManager } from '../marker/marker-manager';
-import { MapMarkers } from '../map-mode/map-markers';
+import { MapMarkers } from '../camera/map-markers';
+import { DisplayFrameFn } from './plan-display';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
 import { PlanGuide } from './plan-guide';
@@ -35,8 +36,12 @@ export class PlanSystem {
     this.editor = new PlanEditor(this._hud, this._sfx, this.simSpeedManager);
     this.display = new PlanDisplay(this.markerManager, scene);
     this.wireHudCallbacks();
-    this.wireGizmoCallbacks();
+    this.wireNodeGizmo();
   }
+
+  // ノードハンドルを直接右クリックしたときの通知。実体は「その座標で右クリック消費を
+  // 試み、消費できたらフォーカスメニューを閉じる」調停で、上位(game.ts)が受け持つ。
+  onNodeHandleRightClick: ((clientX: number, clientY: number) => void) | null = null;
 
   private wireHudCallbacks(): void {
     this._hud.onDurationSelect = (key) => {
@@ -61,44 +66,50 @@ export class PlanSystem {
     };
   }
 
-  private wireGizmoCallbacks(): void {
-    this.editor.bindGizmoCallbacks({
-      onNodeSelect: (idx) => {
-        this.editor.selectedNodeIdx = idx;
-        this.editor.closeMenu();
-        this._sfx.warp();
-      },
-      onNodeDragMove: (idx, clientX, clientY) => {
-        this.editor.closeMenu();
-        const state = this.getExternalState();
-        this.editor.dragNodeToNearestSample(
-          idx, clientX, clientY, state.player.state.r,
-          this.display.bindDisplayFrame(state.ephemeris, this.mapCamera.frameRotating), this.project);
-      },
-      onNodeContextMenu: (clientX, clientY) => {
-        const state = this.getExternalState();
-        this.editor.handleMapRightClick(
-          clientX, clientY, state.player.state.r,
-          this.display.bindDisplayFrame(state.ephemeris, this.mapCamera.frameRotating), this.project, this.mapMarkers.labels);
-      },
-      onAxisDrag: (axis, sign, deltaPx) => {
-        this.editor.applyAxisDrag(axis, sign, deltaPx, this.getFineAttitude());
-      },
-      onMenuWarpTo: (idx) => {
-        const n = this.editor.plan.nodes[idx];
-        if (!n) return;
-        this.simSpeedManager.startAutoWarpTo(n.time);
-        this._hud.hint('指定時刻まで自動ワープ開始');
-      },
-      onMenuDelete: (idx) => {
-        this.editor.deleteNode(idx);
-      },
-      onMenuFocus: (targetKey) => {
-        this.mapCamera.focus = targetKey;
-        const lbl = this.mapMarkers.findLabel(targetKey);
-        if (lbl) this._hud.hint(`${lbl.name} にフォーカス`);
-      },
-    });
+  // ノードギズモ(ハンドル・Δv アーム・ノードメニュー)のイベントを直接配線する。
+  // どれもノード編集の責務なのでここで完結する(フォーカス選択は別責務で CameraSystem 側)。
+  private wireNodeGizmo(): void {
+    const g = this.editor.nodeGizmo;
+    g.onNodeSelect = (idx) => {
+      this.editor.selectedNodeIdx = idx;
+      this.editor.closeMenu();
+      this._sfx.warp();
+    };
+    g.onNodeDragMove = (idx, clientX, clientY) => {
+      this.editor.closeMenu();
+      const st = this.getExternalState();
+      this.editor.dragNodeToNearestSample(idx, clientX, clientY, st.player.state.r, this.frame(), this.project);
+    };
+    g.onNodeContextMenu = (clientX, clientY) => this.onNodeHandleRightClick?.(clientX, clientY);
+    g.onAxisDrag = (axis, sign, deltaPx) => {
+      this.editor.applyAxisDrag(axis, sign, deltaPx, this.getFineAttitude());
+    };
+    g.onMenuWarpTo = (idx) => {
+      const n = this.editor.plan.nodes[idx];
+      if (!n) return;
+      this.simSpeedManager.startAutoWarpTo(n.time);
+      this._hud.hint('指定時刻まで自動ワープ開始');
+    };
+    g.onMenuDelete = (idx) => {
+      this.editor.deleteNode(idx);
+    };
+  }
+
+  // 現在の外部状態から表示座標変換(太陽回転系対応)を組み立てる。ノードのピッキング/
+  // 配置と表示の基準角がずれないよう、正は plan-display.ts の toDisplayFrame 一箇所。
+  private frame(): DisplayFrameFn {
+    return this.display.bindDisplayFrame(this.getExternalState().ephemeris, this.mapCamera.frameRotating);
+  }
+
+  // マップ左クリック: 予測軌道上へノード配置、または既存ノード選択(plan-editor に委譲)。
+  handleMapClick(clientX: number, clientY: number): void {
+    this.editor.handleMapClick(clientX, clientY, this.getExternalState().player.state.r, this.frame(), this.project);
+  }
+
+  // マップ右クリック(ノード側): ノードに当たれば選択+メニューを開き true を返す。
+  // 外れたら false を返し、呼び出し側がフォーカス選択へフォールバックする。
+  handleNodeRightClick(clientX: number, clientY: number): boolean {
+    return this.editor.handleNodeRightClick(clientX, clientY, this.getExternalState().player.state.r, this.frame(), this.project);
   }
 
   clearPlanByKey(mapMode: boolean): void {
@@ -111,10 +122,9 @@ export class PlanSystem {
   // マップモードのノード編集入力(クリック配置・Δv調整・ツールバー/計画パネル反映)。
   // ツールバー表示は PlanDisplay/MapCamera 側の状態が要るため、ここで組み立てて渡す
   // (hud への反映自体は editor 側が行う)。
-  updateEditing(dt: number, input: Input, player: Player, ephemeris: EphemerisSystem, simTime: number): void {
-    this.editor.updateEditing(dt, simTime, player.state.r, this.display.bindDisplayFrame(ephemeris, this.mapCamera.frameRotating), input, this.project, {
+  updateEditing(dt: number, input: Input, player: Player, simTime: number): void {
+    this.editor.updateEditing(dt, simTime, input, {
       fineAttitude: this.getFineAttitude(),
-      labels: this.mapMarkers.labels,
       toolbar: {
         durationKey: this.display.predictDurationKey,
         frameRotating: this.mapCamera.frameRotating,

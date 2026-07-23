@@ -1,5 +1,5 @@
 // マップモード上での軌道計画(Plan)の編集: クリックでのノード配置・ドラッグでの
-// 時刻移動・Δv アーム(mapgizmo.ts)ドラッグ・右クリックメニュー・選択状態・計画パネル
+// 時刻移動・Δv アーム(node-gizmo.ts)ドラッグ・右クリックメニュー・選択状態・計画パネル
 // 表示への反映、および [X] キー(ノード/計画削除)の実処理。ノードの実座標変換
 // (太陽回転系表示)は呼び出し側が渡す DisplayFrameFn 経由で plan-display.ts の
 // toDisplayFrame に委譲する — 表示とクリック判定の基準角がずれないよう、正はそちら
@@ -12,32 +12,20 @@ import * as C from '../const';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input';
-import { AxisHandleSpec, MapGizmo, NodeHandleSpec } from '../map-mode/map-gizmo';
+import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { ProjectFn } from '../camera/camera-system';
-import { MapLabel } from '../map-mode/map-markers';
 import { DisplayFrameFn } from './plan-display';
 import { Plan } from './plan';
 import { SimSpeedManager } from '../sim-speed-manager';
-
-// mapGizmo のイベントを外部(MapModeSystem)のロジックへ橋渡しするためのコールバック束。
-// mapGizmo 自体は private のため、外部からのコールバック配線はこの一箇所を通す。
-export interface MapGizmoCallbacks {
-  onNodeSelect: (idx: number) => void;
-  onNodeDragMove: (idx: number, clientX: number, clientY: number) => void;
-  onNodeContextMenu: (clientX: number, clientY: number) => void;
-  onAxisDrag: (axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number) => void;
-  onMenuWarpTo: (idx: number) => void;
-  onMenuDelete: (idx: number) => void;
-  onMenuFocus: (targetKey: string) => void;
-}
 
 export class PlanEditor {
   selectedNodeIdx: number | null = null;
   plan: Plan = new Plan();
 
-  // マップモードの DOM ギズモ(ノードハンドル・Δv アーム・コンテキストメニュー)。
-  // イベント配線は bindGizmoCallbacks() 経由のみ(外部に直接公開しない)。
-  private readonly mapGizmo = new MapGizmo();
+  // ノード編集の DOM ギズモ(ハンドル・Δv アーム・ノードメニュー)。イベント配線は
+  // 所有者である PlanSystem が nodeGizmo に直接行う(フォーカス選択メニューは別責務で
+  // CameraSystem が持つ FocusGizmo 側)。
+  readonly nodeGizmo = new NodeGizmo();
 
   constructor(
     private readonly _hud: Hud,
@@ -45,19 +33,8 @@ export class PlanEditor {
     private readonly simSpeedManager: SimSpeedManager,
   ) {}
 
-  // mapGizmo (private) のイベントを外部ロジックへ橋渡しする唯一の配線口。
-  bindGizmoCallbacks(cb: MapGizmoCallbacks): void {
-    this.mapGizmo.onNodeSelect = cb.onNodeSelect;
-    this.mapGizmo.onNodeDragMove = cb.onNodeDragMove;
-    this.mapGizmo.onNodeContextMenu = cb.onNodeContextMenu;
-    this.mapGizmo.onAxisDrag = cb.onAxisDrag;
-    this.mapGizmo.onMenuWarpTo = cb.onMenuWarpTo;
-    this.mapGizmo.onMenuDelete = cb.onMenuDelete;
-    this.mapGizmo.onMenuFocus = cb.onMenuFocus;
-  }
-
   closeMenu(): void {
-    this.mapGizmo.closeMenu();
+    this.nodeGizmo.closeMenu();
   }
 
   // ノード削除の唯一の実装(右クリメニュー・[X] キーの両方からここを呼ぶ)。
@@ -107,7 +84,7 @@ export class PlanEditor {
   // 予測軌道(既存ノードの噴射も反映済みの折れ線)上の最近傍サンプル時刻に
   // 新規ノードを配置して選択する。
   handleMapClick(mx: number, my: number, o: Vec3, toDisplayFrame: DisplayFrameFn, project: ProjectFn): void {
-    this.mapGizmo.closeMenu();
+    this.closeMenu();
     let bestNodeIdx: number | null = null;
     let bestNodeD = C.NODE_PICK_PX * C.NODE_PICK_PX;
     for (let i = 0; i < this.plan.nodes.length; i++) {
@@ -144,17 +121,12 @@ export class PlanEditor {
     }
   }
 
-  // マップモードの右クリック処理: 既存ノードマーカー近傍(NODE_PICK_PX 以内)なら
-  // そのノードを選択してコンテキストメニューを開く。それ以外なら開いているメニューを閉じるだけ。
-  // ノード削除はこのメニュー経由([X] キーからも可能)。
-  handleMapRightClick(
-    mx: number,
-    my: number,
-    o: Vec3,
-    toDisplayFrame: DisplayFrameFn,
-    project: ProjectFn,
-    labels: MapLabel[],
-  ): void {
+  // マップモードの右クリック処理(ノード側): 既存ノードマーカー近傍(NODE_PICK_PX 以内)
+  // ならそのノードを選択してコンテキストメニューを開き true を返す(=右クリックを消費)。
+  // ノードに当たらなければノードメニューを閉じて false を返し、呼び出し側(game.ts)が
+  // フォーカス選択(CameraSystem)へフォールバックさせる。ノード削除はこのメニュー経由
+  // ([X] キーからも可能)。
+  handleNodeRightClick(mx: number, my: number, o: Vec3, toDisplayFrame: DisplayFrameFn, project: ProjectFn): boolean {
     let bestIdx: number | null = null;
     let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
     for (let i = 0; i < this.plan.nodes.length; i++) {
@@ -166,28 +138,13 @@ export class PlanEditor {
         bestIdx = i;
       }
     }
-
-    let bestTargetKey: string | null = null;
-    let bestTargetD = C.MAP_LABEL_PICK_PX * C.MAP_LABEL_PICK_PX;
-    for (const lbl of labels) {
-      const wp = sub(lbl.pos, o);
-      const p = project(wp);
-      if (!p || !p.front) continue;
-      const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
-      if (d < bestTargetD) {
-        bestTargetD = d;
-        bestTargetKey = lbl.id;
-      }
+    if (bestIdx === null) {
+      this.nodeGizmo.closeMenu();
+      return false;
     }
-
-    if (bestIdx !== null) {
-      this.selectedNodeIdx = bestIdx;
-      this.mapGizmo.openMenu(mx, my, { idx: bestIdx });
-    } else if (bestTargetKey !== null) {
-      this.mapGizmo.openMenu(mx, my, { targetKey: bestTargetKey });
-    } else {
-      this.mapGizmo.closeMenu();
-    }
+    this.selectedNodeIdx = bestIdx;
+    this.nodeGizmo.openMenu(mx, my, bestIdx);
+    return true;
   }
 
   // ノードハンドルのドラッグ移動: ポインタ最寄りの予測サンプル時刻へノードを移動する
@@ -217,9 +174,9 @@ export class PlanEditor {
     }
   }
 
-  // 選択中ノードの Δv アーム(mapgizmo.ts)ドラッグを Δv 成分の変更へ変換する。
+  // 選択中ノードの Δv アーム(node-gizmo.ts)ドラッグを Δv 成分の変更へ変換する。
   // axis: 0=プログレード(dv.x) 1=法線(dv.y) 2=動径(dv.z)。sign はハンドル自身の向き
-  // (mapgizmo.ts の AxisHandleSpec 参照)。deltaPx はポインタ移動のハンドル方向への射影量。
+  // (node-gizmo.ts の AxisHandleSpec 参照)。deltaPx はポインタ移動のハンドル方向への射影量。
   applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
     if (this.selectedNodeIdx === null) return;
     const rate = (fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) / 200;
@@ -281,7 +238,7 @@ export class PlanEditor {
   }
 
   hideGizmo(): void {
-    this.mapGizmo.update([], null);
+    this.nodeGizmo.update([], null);
   }
 
   // 毎フレーム(マップモード中のみ呼ぶ): ノードハンドル群と、選択中ノードがあれば
@@ -306,33 +263,22 @@ export class PlanEditor {
         }
       }
     }
-    this.mapGizmo.update(nodeSpecs, axisSpecs);
+    this.nodeGizmo.update(nodeSpecs, axisSpecs);
   }
 
   // マップ表示中のノード編集(時間・物理は Game.simulate() 側で通常どおり進み続ける。
-  // ここではクリックによるノード配置・選択、選択中ノードの Δv 調整、計画パネル・
-  // ツールバーの表示を行う)。toolbar は PlanDisplay/MapCamera 側の状態のスナップ
-  // ショットで、map-mode-system.ts が毎フレーム組み立てて渡す。
+  // ここでは選択中ノードの Δv 調整、計画パネル・ツールバーの表示を行う。クリック/右
+  // クリックによるノード配置・メニュー呼び出しは game.ts が dispatch する)。toolbar は
+  // PlanDisplay/MapCamera 側の状態のスナップショットで、PlanSystem が毎フレーム組み立てて渡す。
   updateEditing(
     dt: number,
     simTime: number,
-    o: Vec3,
-    toDisplayFrame: DisplayFrameFn,
     input: Input,
-    project: ProjectFn,
     opts: {
       fineAttitude: boolean;
-      labels: MapLabel[];
       toolbar: { durationKey: string; frameRotating: boolean; ghostLabel: string | null; focus: string };
     },
   ): void {
-    for (const c of input.clicks()) {
-      this.handleMapClick(c.x, c.y, o, toDisplayFrame, project);
-    }
-    for (const rc of input.rightClicks()) {
-      this.handleMapRightClick(rc.x, rc.y, o, toDisplayFrame, project, opts.labels);
-    }
-
     // Δv 調整(推進キーを流用、[V] で微調整)。選択中ノードがあるときのみ。
     const selNode = this.selectedNodeIdx !== null ? this.plan.nodes[this.selectedNodeIdx] : undefined;
     if (selNode) {
