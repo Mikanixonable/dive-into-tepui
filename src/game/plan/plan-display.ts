@@ -7,7 +7,6 @@
 // mapMode 中のみ意味を持つ。
 import { Elements, R_EARTH, elementsFromState } from '../../physics/orbital';
 import { sunAzimuth } from '../../physics/ephemeris';
-import { TrajectorySample } from '../../physics/predict';
 import { Vec3, len, rotateAxis, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { fmtMarkerDist } from '../../hud/utils';
@@ -28,11 +27,14 @@ export type DisplayFrameFn = (r: Vec3, t: number) => Vec3;
 export class PlanDisplay {
   readonly line = new TrajLine();
   predictDurationKey: PredictDurationKey = 'day';
+  // マップモードの未来ゴーストスライダー位置(0..1、0 でゴーストマーカー非表示)。
+  // カメラの視点計算には無関係な、予測表示側の状態のためここが正(MapCameraには置かない)。
+  sliderT = 0;
 
-  // 直近の refresh() 時点で固定した表示回転角。同じ trajSamples を指している間は
-  // クリック判定(plan-editor.ts)・描画とも同じ値を使う。
+  // 直近の折れ線再構築(line.sync() が予測更新を検出したタイミング)で固定した
+  // 表示回転角。同じ trajSamples を指している間はクリック判定(plan-editor.ts)・
+  // 描画とも同じ値を使う。
   private trajYawRef = 0;
-  private lastSeenSamples: readonly TrajectorySample[] | null = null;
 
   constructor(private readonly markerManager: MarkerManager) {}
 
@@ -57,14 +59,14 @@ export class PlanDisplay {
     return rotateAxis(r, v3(0, 1, 0), phi);
   }
 
-  displayTime(simTime: number, duration: number, sliderT: number): number {
-    return simTime + sliderT * duration;
+  displayTime(simTime: number, duration: number): number {
+    return simTime + this.sliderT * duration;
   }
 
   // 未来位置ゴースト(スライダー)のラベル文字列
-  ghostLabel(plan: Plan, player: Player, simTime: number, sliderT: number): string {
+  ghostLabel(plan: Plan, player: Player, simTime: number): string {
     const duration = this.predictDurationSec(player);
-    const t = this.displayTime(simTime, duration, sliderT);
+    const t = this.displayTime(simTime, duration);
     const s = plan.sampleAt(t);
     if (!s) return '';
     const tRel = t - simTime;
@@ -85,50 +87,35 @@ export class PlanDisplay {
     { player, ephemeris, simTime }: { player: Player; ephemeris: EphemerisSystem; simTime: number },
     origin: Vec3,
     mapFrameRotating: boolean,
-    sliderT: number,
     project: ProjectFn,
   ): void {
     this.line.setVisible(true);
     this.line.setOrigin(origin);
     plan.maybeRefresh(player, ephemeris, simTime, this.predictDurationSec(player));
 
-    // trajSamples の参照が変わった(=予測が再計算された)フレームでだけ、折れ線の
-    // ジオメトリと表示回転角(trajYawRef)を作り直す。
-    if (plan.trajSamples !== this.lastSeenSamples) {
-      this.lastSeenSamples = plan.trajSamples;
+    // 予測が再計算された(trajSamples の参照が変わった)フレームでだけ、line.sync()
+    // 内部で折れ線のジオメトリが作り直される。表示回転角(trajYawRef)はその
+    // タイミングにしか意味を持たないので、同じタイミングでここで固定する。
+    this.line.sync(plan.trajSamples, () => {
       this.trajYawRef = mapFrameRotating ? sunAzimuth(simTime, ephemeris.sunPhase0) : 0;
-      this.rebuildGeometry(plan, ephemeris, mapFrameRotating);
-    }
+      return {
+        nodeTimes: plan.nodes.map((n) => n.time),
+        toDisplayFrame: (r: Vec3, t: number) => this.toDisplayFrame(r, t, ephemeris, mapFrameRotating),
+      };
+    });
 
-    if (sliderT <= 0 || plan.trajSamples.length <= 0) {
+    if (this.sliderT <= 0 || plan.trajSamples.length <= 0) {
       this.markerManager.hide('ghost');
       return;
     }
     const duration = this.predictDurationSec(player);
-    const t = this.displayTime(simTime, duration, sliderT);
+    const t = this.displayTime(simTime, duration);
     const sample = plan.sampleAt(t);
     if (!sample) {
       this.markerManager.hide('ghost');
       return;
     }
     const p = project(sub(this.toDisplayFrame(sample.r, t, ephemeris, mapFrameRotating), origin));
-    this.markerManager.set('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.ghostLabel(plan, player, simTime, sliderT));
-  }
-
-  private rebuildGeometry(plan: Plan, ephemeris: EphemerisSystem, mapFrameRotating: boolean): void {
-    const nodeTimes = plan.nodes.map((n) => n.time);
-    const segments: Vec3[][] = [];
-    let segment: Vec3[] = [];
-    let nodeIdx = 0;
-    for (const sample of plan.trajSamples) {
-      segment.push(this.toDisplayFrame(sample.r, sample.t, ephemeris, mapFrameRotating));
-      if (nodeIdx < nodeTimes.length && sample.t >= nodeTimes[nodeIdx]! - 1e-6) {
-        segments.push(segment);
-        segment = [segment[segment.length - 1]!];
-        nodeIdx++;
-      }
-    }
-    if (segment.length > 1) segments.push(segment);
-    this.line.refresh(segments);
+    this.markerManager.set('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.ghostLabel(plan, player, simTime));
   }
 }

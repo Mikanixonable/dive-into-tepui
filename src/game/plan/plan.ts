@@ -20,7 +20,7 @@ export class Plan {
 
   // predictTrajectory() が最後に計算した予測サンプル列。配列そのものは refresh() の
   // たびに新しい参照へ差し替わるので、消費側は参照の変化を「予測が更新された」の
-  // 検出に使ってよい(plan-display.ts の折れ線再構築トリガー等)。
+  // 検出に使ってよい。
   get trajSamples(): readonly TrajectorySample[] {
     return this._trajSamples;
   }
