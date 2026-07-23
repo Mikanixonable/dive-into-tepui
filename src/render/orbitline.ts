@@ -49,7 +49,8 @@ export class OrbitLine {
 
   // 毎フレーム呼ぶ。origin = 自機の ECI 位置(フローティングオリジン)。
   // force = 要素が能動的に変化している間(推力中・ノード編集中)は true。
-  update(el: Elements | null, origin: Vec3, force = false, isPlayer = false): void {
+  // 呼び出し側が算出した Elements を THREE.Line ジオメトリ/位置へ反映するだけの sync。
+  sync(el: Elements | null, origin: Vec3, force = false, isPlayer = false): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.line.visible = false;
       this.snap = null;

@@ -38,7 +38,7 @@ export class MapMarkers {
   // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルの座標を更新し、
   // マーカーに反映する。sliderT > 0 の間はゴーストスライダーの表示時刻を使う。
   // duration は predictDurationSec() の結果。
-  updateLabels(o: Vec3, simTime: number, ephemeris: EphemerisSystem, duration: number, sliderT: number, project: ProjectFn): void {
+  syncLabels(o: Vec3, simTime: number, ephemeris: EphemerisSystem, duration: number, sliderT: number, project: ProjectFn): void {
     const t = sliderT > 0 ? simTime + sliderT * duration : simTime;
     const emL = emLagrangePoints(t, ephemeris.moonPhase0);
     const seL = seLagrangePoints(t, ephemeris.sunPhase0);

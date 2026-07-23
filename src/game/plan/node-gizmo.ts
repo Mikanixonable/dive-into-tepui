@@ -133,7 +133,7 @@ export class NodeGizmo {
 
   // 毎フレーム呼ぶ: ノードハンドル群(前フレームに存在したが今回無いものは破棄)と、
   // 選択中ノードがあれば Δv アーム 6 個(無ければ全破棄)を反映する。
-  update(nodes: NodeHandleSpec[], axes: AxisHandleSpec[] | null): void {
+  sync(nodes: NodeHandleSpec[], axes: AxisHandleSpec[] | null): void {
     const seen = new Set<number>();
     for (const n of nodes) {
       seen.add(n.idx);

@@ -69,13 +69,13 @@ export class PlanGuide {
 
   // 計画軌道ラインを最新の予測に合わせる。mapMode 中は隠すが、update()(噴射ガイド)
   // とは異なり mapMode 中も含め毎フレーム呼んでよい。
-  updatePlannedLine(
+  syncPlannedLine(
     plan: Plan,
     { player, ephemeris, simTime }: { player: Player; ephemeris: EphemerisSystem; simTime: number },
     origin: Vec3,
     mapMode: boolean,
   ): void {
-    this.plannedLine.update(mapMode ? null : plannedOrbitElements(plan, player, ephemeris, simTime), origin);
+    this.plannedLine.sync(mapMode ? null : plannedOrbitElements(plan, player, ephemeris, simTime), origin);
   }
 
   update(

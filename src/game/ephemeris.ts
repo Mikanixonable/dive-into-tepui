@@ -71,14 +71,14 @@ export class EphemerisSystem {
   }
 
   // マップモード中だけ geo/moon の参照線を表示する(戦闘ビューでは非表示)。
-  updateReferenceLines(simTime: number, origin: Vec3, mapMode: boolean): void {
+  syncReferenceLines(simTime: number, origin: Vec3, mapMode: boolean): void {
     if (!mapMode) {
-      this.geoLine.update(null, origin);
-      this.moonLine.update(null, origin);
+      this.geoLine.sync(null, origin);
+      this.moonLine.sync(null, origin);
       return;
     }
-    this.geoLine.update(GEO_ELEMENTS, origin, false, false);
-    this.moonLine.update(this.moonOrbitElements(simTime), origin, false, false);
+    this.geoLine.sync(GEO_ELEMENTS, origin, false, false);
+    this.moonLine.sync(this.moonOrbitElements(simTime), origin, false, false);
   }
 
   // 月の接触軌道要素(表示専用)。月自身は entity ではなく解析式のみを持つため、
