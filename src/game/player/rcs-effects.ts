@@ -24,7 +24,9 @@ export class RcsEffects {
     camera: CameraSystem,
   ): void {
     const q = att.q;
-    const rotating = alive && phasePlaying && !paused && !camera.mapMode && lenSq(tau) > 0.01;
+    // 計画編集モード中は PlayerThrottle が tau=0 を出すため、mapMode/editMode を見なくても
+    // ここは自然にパフ非表示になる(lenSq(tau) 判定で吸収される)。
+    const rotating = alive && phasePlaying && !paused && lenSq(tau) > 0.01;
     if (!rotating || camera.zoomActive) {
       for (const puff of this.puffs) puff.hide();
       return;

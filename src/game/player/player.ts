@@ -112,23 +112,23 @@ export class Player extends Ship {
   // 実際の移動加速度の組み立ては PlayerThrottle、発砲・排莢の発注は PlayerFire が持つ。
   // canPlayerThrust/canPlayerFire(ワープ倍率による可否)は SimSpeedManager が既に
   // 判定した結果を受け取る — ここで simSpeed 値そのものを見ない。
-  // マップモード中は移動/発射の入力そのものを行わない(装填だけは実時間で進行する
-  // — behaveMapMode 参照)ため、通常時とは別関数に分ける。
+  // 計画編集モード中は移動/発射・手動姿勢制御の入力そのものを行わない(WASDQE などが
+  // Δv 編集に振り替わるため)。装填だけは実時間で進行する。
   behave(params: {
     dt: number;
     input: Input;
     simSpeed: SimSpeedManager;
-    mapMode: boolean;
+    editMode: boolean;
     scoreCounter: ScoreCounter;
     simTime: number;
     zoomActive: boolean;
     addBullet: (bullet: Bullet) => void;
   }): void {
-    const { dt, input, simSpeed, mapMode, scoreCounter, simTime, zoomActive, addBullet } = params;
+    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, addBullet } = params;
 
     this.belt.update(dt, this.fire.mags, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
     this.handleEdgeInput(input);
-    this.updateAttitude(input, mapMode, dt * simSpeed.simSpeed);
+    this.updateAttitude(input, editMode, dt * simSpeed.simSpeed);
 
     // 死亡済み: 射撃、移動、hp回復はできない
     if (!this.alive) {
@@ -138,9 +138,9 @@ export class Player extends Ship {
 
     this.hpRegen(dt);
 
-    // マップモード中: 移動/発射の入力は無効。装填(リロード)だけは戦闘可否に関わらず
+    // 計画編集モード中: 移動/発射の入力は無効。装填(リロード)だけは戦闘可否に関わらず
     // 実時間で進行し続けるため、PlayerFire にそれだけを進めさせる。
-    if (mapMode) {
+    if (editMode) {
       this.fire.tickMapMode(dt);
       this.thrustFn = null;
       return;
@@ -233,14 +233,14 @@ export class Player extends Ship {
   }
 
 
-  private updateAttitude(input: Input, mapMode: boolean, attDt: number): void {
+  private updateAttitude(input: Input, editMode: boolean, attDt: number): void {
     this.throttle.updateAttitude(
       this.att,
       this.state.r,
       this.state.v,
       this.alive,
       input,
-      mapMode,
+      editMode,
       this.fineAttitude || this.fire.isFiring,
       attDt,
       () => this._hud.hint('進行方向ホールド解除(手動操作)'),

@@ -18,7 +18,11 @@ export class PlanSystem {
   readonly editor: PlanEditor;
   readonly display: PlanDisplay;
   readonly guide: PlanGuide;
-  // editMode: boolean = false; cameraSystem の mapMode フラグの意味の一部をこっちに移動したい。
+
+  // 軌道計画の編集モード(WASDQE などの操作系をΔv編集へ振り替え、ノード編集入力を有効化する)。
+  // cameraSystem.mapMode(広範囲視点)とは本来独立した責務で、たまたま MapModeToggler が
+  // 同時にトグルしているだけ。挙動・入力側の判定はこのフラグ、描画・視点側は mapMode を見る。
+  editMode = false;
 
   constructor(
     private readonly _hud: Hud,
@@ -112,8 +116,8 @@ export class PlanSystem {
     return this.editor.handleNodeRightClick(clientX, clientY, this.getExternalState().player.state.r, this.frame(), this.project);
   }
 
-  clearPlanByKey(mapMode: boolean): void {
-    this.editor.clearPlanByKey(mapMode);
+  clearPlanByKey(editMode: boolean): void {
+    this.editor.clearPlanByKey(editMode);
     this.guide.clearActiveTarget();
   }
 

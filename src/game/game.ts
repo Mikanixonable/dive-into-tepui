@@ -194,7 +194,7 @@ export class Game {
       dt,
       input: this.input,
       simSpeed: this.simSpeedManager,
-      mapMode: this.cameraSystem.mapMode,
+      editMode: this.planSystem.editMode,
       scoreCounter: this.activeStage.scoreCounter,
       simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
@@ -219,7 +219,7 @@ export class Game {
 
     this.simulator.cleanup(dt, this.activeStage);
 
-    if (this.cameraSystem.mapMode) {
+    if (this.planSystem.editMode) {
       this.dispatchMapPointer();
       this.planSystem.updateEditing(dt, this.input, this.player, this.simulator.simTime);
     }
@@ -263,14 +263,14 @@ export class Game {
       case 'KeyM':
         this.mapModeToggler.toggle(this.activeStage.isPlaying, this.planSystem, this.touchControls, this.cameraSystem);
         break;
-      // マップモード外でのみ、 [N] キーで直近ノードへの自動ワープをトグルする。
+      // 計画編集中は WASDQE などが Δv 編集に使われるため、[N] の自動ワープはその外でのみ働く。
       case 'KeyN':
-        if (!this.cameraSystem.mapMode)
+        if (!this.planSystem.editMode)
           this.simSpeedManager.toggleAutoWarpToFirstNode(
             this.activeStage.isPlaying,
             this.planSystem.editor.plan.firstNode());
         break;
-      case 'KeyX': this.planSystem.clearPlanByKey(this.cameraSystem.mapMode); break;
+      case 'KeyX': this.planSystem.clearPlanByKey(this.planSystem.editMode); break;
       case 'KeyH': this._hud.toggleHelp(); break;
       case 'Escape': this._hud.toggleSettings(); break;
       case 'KeyR': if (!this.activeStage.isPlaying) location.reload(); break;
