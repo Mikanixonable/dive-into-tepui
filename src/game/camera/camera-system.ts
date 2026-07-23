@@ -29,13 +29,15 @@ export class CameraSystem {
     return this.mapMode ? this.mapCamera.camera : this.chaseCamera.camera;
   }
 
-  updateActiveCamera(
+  update(
     player: Player,
     sunAz: number,
     input: Input,
     dt: number,
     origin: Vec3,
   ): void {
+    this.zoomActive = !this.mapMode && input.down('KeyZ');
+
     const keyYaw = (input.down('ArrowLeft') ? 1 : 0) + (input.down('ArrowRight') ? -1 : 0);
     const keyPitch = (input.down('ArrowDown') ? 1 : 0) + (input.down('ArrowUp') ? -1 : 0);
     const mouse = input.mouse();
