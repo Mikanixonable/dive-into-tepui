@@ -1,13 +1,16 @@
 // 軌道計画モード(マップモード)のカメラと視点操作: マップ地球中心カメラ・
-// 太陽回転系表示・未来スライダー。「マップモード中の視点」の担当で、mapMode 中のみ
-// 意味を持つ。フォーカス対象(文字列 focus とその解決)は map-mode-system.ts が持ち、
-// 解決済みの相対位置(focusRel)を引数で渡す。
+// 太陽回転系表示・フォーカス対象。「マップモード中の視点」の担当で、mapMode 中のみ
+// 意味を持つ。フォーカス対象(文字列 focus)はこのクラス自身が持ち、地球中心 or
+// ラベル位置への解決も MapMarkers を注入されて自力で行う(呼び出し側は「どこを見る
+// か」を一切知らずに済む)。未来ゴーストスライダー(sliderT)はカメラの視点計算に
+// 使われないため PlanDisplay 側の責務 — ここには置かない。
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input';
+import { MapMarkers } from '../map-mode/map-markers';
 
 export class MapCamera {
   // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
@@ -19,10 +22,15 @@ export class MapCamera {
   // camera and its target, so middle-drag is a true parallel translation.
   readonly pan = new THREE.Vector3();
   frameRotating = false;
-  sliderT = 0; // 0..1(0 でゴーストマーカー非表示)
+  // 注視対象のラベル ID('earth' またはラベル ID)。位置解決は resolveFocusRel が行う。
+  focus = 'earth';
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
-  constructor(private readonly _hud: Hud, _sfx: Sfx) {
+  constructor(
+    private readonly _hud: Hud,
+    _sfx: Sfx,
+    private readonly mapMarkers: MapMarkers,
+  ) {
     this.camera = new THREE.PerspectiveCamera(
       50,
       window.innerWidth / window.innerHeight,
@@ -36,21 +44,28 @@ export class MapCamera {
     this.pitch = 0.45;
     this.dist = 4.5e7;
     this.pan.set(0, 0, 0);
+    this.focus = 'earth';
     this._hud.hint('マップ視点をリセット');
   }
 
+  // focus('earth' またはラベル ID)をフローティングオリジン(origin)相対の位置へ解決する。
+  private resolveFocusRel(origin: Vec3): Vec3 {
+    const pos = this.focus === 'earth' ? v3(0, 0, 0) : this.mapMarkers.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
+    return sub(pos, origin);
+  }
+
   // 毎フレーム、マップカメラの位置・向きをマウス/矢印キー操作から更新する。
-  // focusRel: 注視点(地球中心 or フォーカス対象)のフローティングオリジン相対位置。
-  // どの対象を見るかの解決は呼び出し側(map-mode-system.ts)の責務。
+  // origin: フローティングオリジン(自機位置)。focus の解決に使う。
   // sunAz: 太陽回転系表示の追従角。
   update(
     mouse: MouseDelta,
     keyYaw: number,
     keyPitch: number,
     dt: number,
-    focusRel: Vec3,
+    origin: Vec3,
     sunAz: number,
   ): void {
+    const focusRel = this.resolveFocusRel(origin);
     // 戦闘ビューは yaw -= dx*0.005 なので、符号を反転させて左右の回転方向を揃える
     this.yaw += mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;
     this.pitch = Math.max(

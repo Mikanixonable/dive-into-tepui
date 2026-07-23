@@ -21,6 +21,7 @@ import { getStageDefinition, initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { MapModeSystem } from './map-mode/map-mode-system';
+import { MapMarkers } from './map-mode/map-markers';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRenderer } from './pip-renderer';
@@ -43,11 +44,15 @@ export class Game {
   private readonly _hud = new Hud();
   private readonly _sfx = new Sfx();
   private readonly markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
+  // マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)。MapCamera が
+  // フォーカス解決(ラベル ID → 座標)に、mapModeSystem がラベル一覧の更新・右クリメニュー
+  // 候補に、それぞれ必要とするため game.ts が構築して両方へ注入する共有インスタンス。
+  private readonly mapMarkers = new MapMarkers(this.markerManager);
   // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
   // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/simulator/targeter 等)は
   // public にする。mapModeSystem のコンストラクタで MapCamera への参照を注入するため、
   // cameraSystem は mapModeSystem より前に構築する必要がある。
-  readonly cameraSystem = new CameraSystem(this._hud, this._sfx);
+  readonly cameraSystem = new CameraSystem(this._hud, this._sfx, this.mapMarkers);
 
   readonly player: Player;
 
@@ -82,6 +87,7 @@ export class Game {
     this.simSpeedManager,
     this.cameraSystem.activeCameraProjection,
     this.cameraSystem.mapCamera,
+    this.mapMarkers,
     () => this.player.fineAttitude,
     () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime }),
     () => this.planGuide.clearActiveTarget(),
@@ -169,7 +175,6 @@ export class Game {
     this.cameraSystem.updateActiveCamera(
       this.player,
       sunAzimuth(this.simulator.simTime, this.ephemeris.sunPhase0),
-      this.mapModeSystem.focusRel(this.player.state.r),
       this.input,
       dt,
       this.player.state.r,

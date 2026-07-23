@@ -6,6 +6,7 @@ import { ChaseCamera } from './chase-camera';
 import { MapCamera } from './map-camera';
 import { Input } from '../input';
 import { Player } from '../player/player';
+import type { MapMarkers } from '../map-mode/map-markers';
 
 const tmpV = new THREE.Vector3();
 
@@ -19,9 +20,9 @@ export class CameraSystem {
   mapMode = false;
   zoomActive = false;
 
-  constructor(hud: Hud, sfx: Sfx) {
+  constructor(hud: Hud, sfx: Sfx, mapMarkers: MapMarkers) {
     this.chaseCamera = new ChaseCamera(hud, sfx);
-    this.mapCamera = new MapCamera(hud, sfx);
+    this.mapCamera = new MapCamera(hud, sfx, mapMarkers);
   }
 
   get activeCamera(): THREE.PerspectiveCamera {
@@ -31,7 +32,6 @@ export class CameraSystem {
   updateActiveCamera(
     player: Player,
     sunAz: number,
-    focusRel: Vec3, // MapCamera の注視点(origin 相対)。解決は map-mode-system.ts の責務。
     input: Input,
     dt: number,
     origin: Vec3,
@@ -41,7 +41,7 @@ export class CameraSystem {
     const mouse = input.mouse();
 
     if (this.mapMode) {
-      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, focusRel, sunAz);
+      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, origin, sunAz);
     }
     else {
       this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, origin, player, this.zoomActive);

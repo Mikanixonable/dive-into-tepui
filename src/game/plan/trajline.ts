@@ -5,27 +5,61 @@
 // 「まだ実行していない噴射(グレー)→最初のノード後(白)→2個目以降(オレンジ)」
 // の順に未来が明るくなる配色にする(既存の plannedOrbitLine の配色思想を踏襲)。
 //
-// ジオメトリは refresh() を呼んだときだけ作り直す(毎フレームではない)。
-// 毎フレームは setOrigin() でフローティングオリジン補正の平行移動だけ行う。
+// ジオメトリは sync() が trajSamples の参照変化(=予測が再計算された)を検出した
+// ときだけ作り直す(毎フレームではない)。毎フレームは setOrigin() でフローティング
+// オリジン補正の平行移動だけ行う。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
+import { TrajectorySample } from '../../physics/predict';
 
 const SEGMENT_COLORS = [0xbfc9d4, 0xffffff, 0xff6a00];
+
+// sync() が再構築時にだけ呼ぶファクトリ。再構築の瞬間にしか意味を持たない値
+// (表示回転基準角など)をこのタイミングで固定できるよう、遅延評価にしている。
+export type TrajLineRebuildContext = {
+  nodeTimes: readonly number[];
+  toDisplayFrame: (r: Vec3, t: number) => Vec3;
+};
 
 export class TrajLine {
   readonly group = new THREE.Group();
   private lines: THREE.Line[] = [];
   private geoms: THREE.BufferGeometry[] = [];
   private mats: THREE.LineBasicMaterial[] = [];
+  private lastSeenSamples: readonly TrajectorySample[] | null = null;
 
   constructor() {
     this.group.visible = false;
   }
 
-  // segments: ノードで区切られた ECI 座標列(地球中心座標、フローティングオリジン
-  // 補正前)の配列。各セグメントは前セグメント終端(ノード位置)を先頭に含めて
-  // 連続させること(色の切り替わり位置で線が途切れないように)。
-  refresh(segments: Vec3[][]): void {
+  // 毎フレーム呼ぶ: trajSamples の参照が前回から変わっていなければ何もしない。
+  // 変わっていれば(予測が再計算された)onRebuild() で表示座標変換とノード時刻を
+  // 取得し、ノードで区切った色分けセグメントを組み立ててジオメトリを作り直す。
+  sync(trajSamples: readonly TrajectorySample[], onRebuild: () => TrajLineRebuildContext): void {
+    if (trajSamples === this.lastSeenSamples) return;
+    this.lastSeenSamples = trajSamples;
+    const { nodeTimes, toDisplayFrame } = onRebuild();
+
+    const segments: Vec3[][] = [];
+    let segment: Vec3[] = [];
+    let nodeIdx = 0;
+    for (const sample of trajSamples) {
+      segment.push(toDisplayFrame(sample.r, sample.t));
+      if (nodeIdx < nodeTimes.length && sample.t >= nodeTimes[nodeIdx]! - 1e-6) {
+        segments.push(segment);
+        segment = [segment[segment.length - 1]!];
+        nodeIdx++;
+      }
+    }
+    if (segment.length > 1) segments.push(segment);
+
+    this.rebuild(segments);
+  }
+
+  // segments: ノードで区切られた表示座標列(フローティングオリジン補正前)の配列。
+  // 各セグメントは前セグメント終端(ノード位置)を先頭に含めて連続させること
+  // (色の切り替わり位置で線が途切れないように)。
+  private rebuild(segments: Vec3[][]): void {
     this.clear();
     for (let i = 0; i < segments.length; i++) {
       const pts = segments[i]!;
