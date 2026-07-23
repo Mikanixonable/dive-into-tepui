@@ -238,7 +238,7 @@ export class PlanEditor {
   }
 
   hideGizmo(): void {
-    this.nodeGizmo.update([], null);
+    this.nodeGizmo.sync([], null);
   }
 
   // 毎フレーム(マップモード中のみ呼ぶ): ノードハンドル群と、選択中ノードがあれば
@@ -263,7 +263,7 @@ export class PlanEditor {
         }
       }
     }
-    this.nodeGizmo.update(nodeSpecs, axisSpecs);
+    this.nodeGizmo.sync(nodeSpecs, axisSpecs);
   }
 
   // マップ表示中のノード編集(時間・物理は Game.simulate() 側で通常どおり進み続ける。

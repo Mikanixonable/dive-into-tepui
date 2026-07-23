@@ -143,16 +143,16 @@ export class PlanSystem {
   updateDisplay(mapMode: boolean, player: Player, ephemeris: EphemerisSystem, simTime: number): void {
     const origin = player.state.r;
     
-    this.guide.updatePlannedLine(this.editor.plan, { player: player, ephemeris: ephemeris, simTime: simTime }, origin, mapMode);
+    this.guide.syncPlannedLine(this.editor.plan, { player: player, ephemeris: ephemeris, simTime: simTime }, origin, mapMode);
 
     if (!mapMode) {
       this.display.hide();
       this.editor.hideGizmo();
       return;
     }
-    this.display.update(this.editor.plan, {player, ephemeris, simTime}, origin, this.mapCamera.frameRotating, this.project);
+    this.display.sync(this.editor.plan, {player, ephemeris, simTime}, origin, this.mapCamera.frameRotating, this.project);
     this.editor.updateGizmo(origin, this.display.bindDisplayFrame(ephemeris, this.mapCamera.frameRotating), this.project, this.mapCamera.dist);
-    this.mapMarkers.updateLabels(
+    this.mapMarkers.syncLabels(
       origin,
       simTime,
       ephemeris,

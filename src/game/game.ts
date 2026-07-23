@@ -282,6 +282,9 @@ export class Game {
   sync(dt: number): void {
     const o = this.player.state.r;
     const pv = this.player.state.v;
+    // カメラ姿勢を THREE.js に反映するのを最初に行う: environment.sync や
+    // マーカー投影(activeCameraProjection)がこのフレームのカメラ行列を読むため。
+    this.cameraSystem.sync();
     const displayTime = this.planSystem.display.resolveDisplayTime(this.cameraSystem.mapMode, this.player, this.simulator.simTime);
     this.environment.sync({
       dt,
@@ -308,13 +311,13 @@ export class Game {
   // ここでは毎フレームの Elements 算出と update() 呼び出しだけを行う。
   private syncEntityOrbitLines(o: Vec3, mapMode: boolean): void {
     const playerEl = this.player.elements;
-    this.player.orbitLine.update(this.player.alive ? playerEl : null, o, this.player.thrustVizDir !== null, true);
+    this.player.orbitLine.sync(this.player.alive ? playerEl : null, o, this.player.thrustVizDir !== null, true);
     const tgt = this.targeter.aliveTarget;
     for (const enemy of this.simulator.enemies) {
       const showGray = mapMode && enemy.alive && enemy !== tgt;
-      enemy.orbitLine.update(showGray ? enemy.elements : null, o);
+      enemy.orbitLine.sync(showGray ? enemy.elements : null, o);
     }
-    this.targeter.updateOrbitLine(o);
+    this.targeter.syncOrbitLine(o);
   }
 
   // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
@@ -337,11 +340,11 @@ export class Game {
 
     this.planSystem.updateDisplay(mapMode, this.player, this.ephemeris, this.simulator.simTime);
 
-    this.ephemeris.updateReferenceLines(this.simulator.simTime, o, mapMode);
+    this.ephemeris.syncReferenceLines(this.simulator.simTime, o, mapMode);
 
     this.markersSystem.updateMarkers(this.markerCtx(), pv, project);
     this.markersSystem.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
-    this.targeter.updateBoardMarkers(this.player, dt, project);
+    this.targeter.syncBoardMarkers(this.player, dt, project);
     if (mapMode) {
       this.markerManager.hide('burn');
     } else {

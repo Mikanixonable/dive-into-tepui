@@ -98,7 +98,7 @@ export class PlanDisplay {
   }
 
   // 毎フレーム(マップモード中のみ呼ぶ): 予測を最新化し、折れ線・ゴーストマーカーを更新する。
-  update(
+  sync(
     plan: Plan,
     { player, ephemeris, simTime }: { player: Player; ephemeris: EphemerisSystem; simTime: number },
     origin: Vec3,

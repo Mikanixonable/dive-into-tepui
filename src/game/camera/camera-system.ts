@@ -92,6 +92,14 @@ export class CameraSystem {
     }
   }
 
+  // update() が算出した視点の数学状態を、描画に使うアクティブカメラへ反映する。
+  // マーカー投影(activeCameraProjection)や environment-scene がこの THREE.js
+  // カメラ姿勢を読むため、game.sync() の先頭で(それらより先に)呼ぶ。
+  sync(): void {
+    if (this.mapMode) this.mapCamera.sync();
+    else this.chaseCamera.sync();
+  }
+
 
   get activeCameraProjection(): ProjectFn {
     return (rel: Vec3) => {

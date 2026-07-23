@@ -49,10 +49,10 @@ export class Targeter {
   }
 
   // ハイライト線を最新のターゲット状態に合わせる。
-  updateOrbitLine(origin: Vec3): void{
+  syncOrbitLine(origin: Vec3): void{
     const tgt = this.aliveTarget;
     const tgtEl = tgt ? tgt.elements : null;
-    this.orbitLine.update(tgtEl, origin);
+    this.orbitLine.sync(tgtEl, origin);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
@@ -79,7 +79,7 @@ export class Targeter {
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
-  updateBoardMarkers(player: Player, dt: number, project: ProjectFn): void {
+  syncBoardMarkers(player: Player, dt: number, project: ProjectFn): void {
     const target = this.autoTarget;
     const o = player.state.r;
     if (!target) this.boardMarks.length = 0;
