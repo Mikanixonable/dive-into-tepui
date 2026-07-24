@@ -1,11 +1,10 @@
 // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点等)ラベルの算出と
 // HUD マーカーへの反映。MapCamera から抽出 — 「どこにラベルがあるか」の担当で、
 // カメラの視点操作(MapCamera)とは責務を分離する。
-import { moonPosition, sunPosition, emLagrangePoints, seLagrangePoints } from '../../physics/ephemeris';
 import { Vec3, v3 } from '../../physics/vec3';
 import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
-import type { EphemerisSystem } from '../ephemeris';
+import type { Ephemeris } from '../../physics/ephemeris';
 
 export interface MapLabel {
   id: string;
@@ -38,15 +37,15 @@ export class MapMarkers {
   // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルの座標を更新し、
   // マーカーに反映する。sliderT > 0 の間はゴーストスライダーの表示時刻を使う。
   // duration は predictDurationSec() の結果。
-  syncLabels(simTime: number, ephemeris: EphemerisSystem, duration: number, sliderT: number, project: ProjectFn): void {
+  syncLabels(simTime: number, ephemeris: Ephemeris, duration: number, sliderT: number, project: ProjectFn): void {
     const t = sliderT > 0 ? simTime + sliderT * duration : simTime;
-    const emL = emLagrangePoints(t, ephemeris.moonPhase0);
-    const seL = seLagrangePoints(t, ephemeris.sunPhase0);
+    const emL = ephemeris.emLagrangeAt(t);
+    const seL = ephemeris.seLagrangeAt(t);
 
     const positions: Record<string, Vec3> = {
       'earth': v3(0, 0, 0),
-      'moon': moonPosition(t, ephemeris.moonPhase0),
-      'sun': sunPosition(t, ephemeris.sunPhase0),
+      'moon': ephemeris.moonPosAt(t),
+      'sun': ephemeris.sunPosAt(t),
       'em-l1': emL.L1,
       'em-l2': emL.L2,
       'em-l3': emL.L3,
