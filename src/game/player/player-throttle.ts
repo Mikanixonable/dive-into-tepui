@@ -2,7 +2,7 @@
 // 機体の位置・姿勢そのもの(OrbitState/Attitude)は player.ts が所有し、ここには
 // 呼び出しごとに引数として渡す — 正データの二重管理を避けるため。
 import * as THREE from 'three/webgpu';
-import { Attitude, qFromForwardUp, qRotate, stepAttitude } from '../../physics/attitude';
+import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { ExtraAccel, OrbitState } from '../../physics/orbital';
 import { Vec3, len, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
@@ -85,7 +85,9 @@ export class PlayerThrottle {
     };
   }
 
-  updateAttitude(
+  // 入力から機体座標系トルクを算出して返すだけ。姿勢積分(stepAttitude)は
+  // simulator が一元的に行う(entity.torque を毎フレーム書き込む経路に統一するため)。
+  updateTorque(
     att: Attitude,
     r: Vec3,
     v: Vec3,
@@ -95,10 +97,10 @@ export class PlayerThrottle {
     fineAttitude: boolean,
     attDt: number,
     onProgradeHoldReleased: () => void,
-  ): void {
+  ): Vec3 {
     if (!alive) {
       this.rcsTau = v3();
-      return;
+      return v3();
     }
     const inertia = att.inertia;
     // 計画編集モード中は手動姿勢入力を無効化する(WASDQE などが Δv 編集に振り替わるため)。
@@ -122,7 +124,6 @@ export class PlayerThrottle {
       (Math.min(C.RCS_MANUAL_RAMP_TIME, this.rotationHoldTime) / C.RCS_MANUAL_RAMP_TIME);
     const angScale = fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
     const maxAngAccel = C.MAX_ANG_ACCEL * angScale * rcsOutputFactor;
-    const maxAngVel = C.MAX_ANG_VEL * angScale;
     const torque = v3(
       inX * maxAngAccel * inertia.x,
       inY * maxAngAccel * inertia.y,
@@ -139,7 +140,18 @@ export class PlayerThrottle {
       if (inY === 0) torque.y -= C.RCS_DAMP_RATE * inertia.y * att.w.y;
       if (inZ === 0) torque.z -= C.RCS_DAMP_RATE * inertia.z * att.w.z;
     }
-    stepAttitude(att, torque, attDt);
+
+    // 本来は torque を積分した後の角速度を clamp すべきだが、積分後の角速度はまだここでは未知なので、
+    // 積分前の角速度を使って clamp する。積分後の角速度が clamp を超える場合は、次フレームでだいたい clamp される。
+    this.clampAngularVelocity(att, fineAttitude);
+
+    return torque;
+  }
+
+  // 手動回転の角速度上限(fineAttitude で縮小)。stepAttitude による姿勢積分後に
+  // 呼ばれる想定 — updateTorque はトルク算出のみに専念するため、ここで分離している。
+  private clampAngularVelocity(att: Attitude, fineAttitude: boolean): void {
+    const maxAngVel = C.MAX_ANG_VEL * (fineAttitude ? C.FINE_ATTITUDE_SCALE : 1);
     const wMag = len(att.w);
     if (wMag > maxAngVel) att.w = scale(att.w, maxAngVel / wMag);
   }

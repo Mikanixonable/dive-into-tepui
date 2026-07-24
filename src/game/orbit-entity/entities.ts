@@ -28,6 +28,9 @@ export class OrbitEntity {
   mass = 1; // 剛体接触の換算質量
   collideRadius?: number; // 剛体接触半径 [m]。未設定 = 剛体接触に参加しない
   thrustFn: ExtraAccel | null = null;
+  // 機体座標系トルク。回転制御を持つ entity(自機は PlayerThrottle)が毎フレーム
+  // 書き込み、simulator の stepAttitudes がまとめて積分する。既定ゼロ = 自由回転。
+  torque: Vec3 = v3();
   protected readonly scene?: THREE.Scene;
 
   constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {

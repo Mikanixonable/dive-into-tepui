@@ -66,7 +66,7 @@ markerCtxやsetMapToolbarStateのtoolbarが該当。
 
 
 
-## フローティングオリジン設計の一貫性　カメラ座標編
+## フローティングオリジン設計の一貫性とカメラ座標
 project関数とfoが合成されて使用されている箇所が多い。（もしそうなっていない箇所があったら挙動の方が壊れている可能性がある）
 
 project関数はTHREE.Vector3からスクリーン座標への変換を担い、内部的にTHREE.jsのカメラのトランスフォームを利用している。なので、foを経由してTHREE.Vector3に変換する必要がある。
@@ -74,9 +74,11 @@ project関数はTHREE.Vector3からスクリーン座標への変換を担い、
 しかし、実際にはVec3からスクリーン座標への変換は、カメラと物体の相対位置のみによって決定し、ここにfoは関係ない。つまり、THREE.jsのperspectiveCameraに依存せずにprojectを実装すると、
 その依存関係を解消し、Vec3上で完結させることができれば、
 
+
 ## pip用のカメラクラスを作る
 pip用のカメラはmapCameraやchaseCameraと異なりTHREE.perspectiveCameraがあるのみとなっているが、このせいでprojectFnなどのインターフェースが共通化できておらず、マーカー描画系のコードの再利用性が低くなっている。その辺のインフラはmapCameraやchaseCameraと共通で存在するべき。
 ちなみに現状のpipレンダラーの挙動は壊れている（pipが有効になるとメインカメラもろとも描画されなくなる）のでこの原因究明から
+
 
 ## 方向マーカーのインフラ
 3Dの方向系のマーカーは、
@@ -112,21 +114,10 @@ dispatchMapRightClickとかがGameに露出すべきじゃない。全体のイ�
 
 ## playerのfireのロジック まだまだ簡略化できそう、修正もできそう。
 
-## 姿勢制御を角加速度記憶、自動加算に分離したい
-Player.tsの姿勢制御の反映について、player-throttle.tsが直接stepAttitudeを呼んでいるが、
-enemyなどはsimulatorのstepCoastingAttitudeがstepAttitudeを呼んでいて、そこではトルクをゼロベクトル固定で更新している。
-これでは、enemyやその他のentityについて今後姿勢制御を追加したいとかなったときに、拡張性がない。
-thrustFnがフィールド保存→simulatorで繁栄という経路になっているように、torqueもフィールド保存→simulatorで反映される経路にするべきである。
-
-entityの共通フィールドとしてtorqueを保存し、stepAttitudeの呼び出しをsimulatorに一元化する。
-そして、playerはtorqueを更新するだけにすべきだ。playerThrottleのupdateAttitude関数をupdateTorque関数にリネームし、torqueを更新するだけにする。
-
-実装をよく見るとプレイヤーでだけwMagとかをみてatt.w（角速度？わからない）を制限している
-これに関しては処理順が変わってもいいので、torque出力、simulator更新の設計を優先してください。つまり、現状stepAttitude→att.w制限の順で処理されているが、att.w制限が先になっても構わない。
 
 ## torqueとtauの一元化？
-playerThrottleのtauとtorqueの関係を整理する。現在、tauはrcsEffectが参照するために出力していて、tauとtorqueが別の経路で計算されているが、よく見ると重複計算が多いし、そもそもほとんどの場合には（あるいは常に）定数倍などを除いて？一致すべきであるものであるように思える。現状の計算過程を整理して、torqueとtauにどのような対応関係があるのか整理し、torqueへの一元化を目指す。
-tauにautoAlignが算入されていないのとかはバグと考えられる。論理上のトルクと視覚的なrcsは一致していてほしい。
+playerThrottleのtauとtorqueの関係を整理する。現在、tauはrcsEffectが参照するために出力していて、tauとtorqueが別の経路で計算されているが、よく見ると重複計算が多いし、そもそもほとんどの場合には（あるいは常に）定数倍などを除いて？一致すべきであるものであるように思える。現状の計算過程を整理して、torqueとtauにどのような対応関係や例外があるのか整理し、torqueへの一元化を目指す。
+もし挙動上でautoAlignがtauに反映されていないように見えるが（詳細な論理関係は未検証だが）そういうのはバグと考えられる。原則、論理上のトルクと視覚的なrcsは一致していてほしい。
 rcsEffectはtauではなくtorqueを参照すればいいはずだ。
 
 ## 無駄なsystem命名、ファイル名とモジュール名の不一致
