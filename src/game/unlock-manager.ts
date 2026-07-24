@@ -3,7 +3,7 @@
 import { ACCENT } from './theme';
 import { Hud } from './hud/hud';
 import { StageId } from './stages/stage';
-import { STAGES } from './stages/stage-dictionary';
+import { STAGE_DEFINITIONS } from './stages/stage-dictionary';
 
 // ステージ ID → クリア回数。将来の拡張(周回数によるアンロック等)を見越して、
 // 「クリアしたか否か」ではなく回数を記録する。
@@ -29,7 +29,7 @@ function saveClearCounts(counts: ClearCounts): void {
 }
 
 function isStageUnlocked(stage: StageId, counts: ClearCounts): boolean {
-  const def = STAGES.find((s) => s.id === stage);
+  const def = STAGE_DEFINITIONS.find((s) => s.id === stage);
   return def?.isUnlocked ? def.isUnlocked(counts) : true;
 }
 
@@ -42,7 +42,7 @@ export class UnlockManager {
 
   // ステージクリアを記録し、それによって新たに解放条件を満たしたステージがあれば toast で知らせる。
   reportClear(stage: StageId, hud: Hud): void {
-    const newlyUnlocked = STAGES.filter((s) => !isStageUnlocked(s.id, this.clearCounts));
+    const newlyUnlocked = STAGE_DEFINITIONS.filter((s) => !isStageUnlocked(s.id, this.clearCounts));
 
     this.clearCounts = { ...this.clearCounts, [stage]: (this.clearCounts[stage] ?? 0) + 1 };
     saveClearCounts(this.clearCounts);

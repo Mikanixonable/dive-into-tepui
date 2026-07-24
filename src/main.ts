@@ -1,9 +1,10 @@
 import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
-import { DEFAULT_STAGE_ID, resolveStageFromId, STAGES } from './game/stages/stage-dictionary';
+import { DEFAULT_STAGE_ID, resolveStageFromId, STAGE_DEFINITIONS } from './game/stages/stage-dictionary';
 import { UnlockManager } from './game/unlock-manager';
 import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './game/theme';
+import { StageId } from './game/stages/stage';
 
 // 低軌道シューティング: エントリポイント。
 // 物理はメインスレッドで毎フレーム積分する(単体エンティティの中心重力
@@ -30,8 +31,8 @@ function selectStage(): Promise<string> {
     div.innerHTML =
       `<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
       '<div style="font-size:12px;color:#7d838c;margin-bottom:12px">ステージを選択 (キーまたはクリック)</div>';
-    const enabledByStage = new Map(STAGES.map((stage) => [stage.id, unlockManager.isUnlocked(stage.id)]));
-    for (const stage of STAGES) {
+    const enabledByStage = new Map(STAGE_DEFINITIONS.map((stage) => [stage.id, unlockManager.isUnlocked(stage.id)]));
+    for (const stage of STAGE_DEFINITIONS) {
       const enabled = enabledByStage.get(stage.id) ?? false;
       const sub = enabled ? stage.selectSub : stage.selectLockedSub ?? stage.selectSub;
       const button = btn(stage.selectLabel, sub, enabled);
@@ -46,7 +47,7 @@ function selectStage(): Promise<string> {
       resolve(stage);
     };
     const onKey = (e: KeyboardEvent) => {
-      for (const stage of STAGES) {
+      for (const stage of STAGE_DEFINITIONS) {
         if (!(enabledByStage.get(stage.id) ?? false)) continue;
         if (!stage.selectKeys.includes(e.code)) continue;
         done(stage.id);
@@ -130,8 +131,8 @@ async function main() {
   // レンダラ初期化
   const gs = await initScene();
   // ステージ決定とゲーム生成
-  const stage = await resolveStage();
-  const game = new Game(gs, stage);
+  const stageId = await resolveStage();
+  const game = new Game(gs, stageId as StageId);
   // パフォーマンス計測の DOM
   const perf = new PerfMeter(game);
   // rAF ループ開始
