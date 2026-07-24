@@ -18,3 +18,5 @@ THREE.sceneに反映されていれば、あとはrenderするだけで描画で
 
 ## ctx、context、opt、paramsなどといった引数は原則使わない。
 STOP_USING_CTX.mdを参照。
+
+## planSystemのeditModeとcameraSystemのmapMode、cameraSystemのcameraFrameとpredictSystemのframeなど、「たまたま」同時に切り替わるフラグは別個にする

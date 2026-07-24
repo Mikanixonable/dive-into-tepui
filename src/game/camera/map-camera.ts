@@ -13,6 +13,7 @@ import { MouseDelta } from '../input/input';
 import { MapMarkers } from './map-markers';
 import { FloatingOrigin } from '../floating-origin';
 import { ndcToScreen, projectToNdc, ViewFrame } from '../../physics/projection';
+import { Frame } from '../../physics/frame';
 import { ProjectFn } from './camera-system';
 
 const WORLD_UP = v3(0, 1, 0);
@@ -27,7 +28,8 @@ export class MapCamera {
   dist = 4.5e7;
   // ワールド距離(メートル)のパン変位。カメラと注視点へ等しく加えるので真の平行移動になる。
   pan: Vec3 = v3();
-  frameRotating = false;
+  // カメラ視点を固定する座標系(慣性系 / 太陽回転系)。太陽回転系では太陽方位に追従する。
+  cameraFrame: Frame = 'inertial';
   // 注視対象のラベル ID('earth' またはラベル ID)。位置解決は resolveFocus が行う。
   focus = 'earth';
 
@@ -104,7 +106,7 @@ export class MapCamera {
     // 太陽回転系表示: 太陽の実際の方位ドリフトぶんカメラ方位を追従させ、
     // 画面上で太陽方向がほぼ固定されて見えるようにする(予測サンプルの回転補正と
     // 組み合わせて、t=simTime では回転量ゼロで整合する)。
-    const displayYaw = this.yaw + (this.frameRotating ? sunAz : 0);
+    const displayYaw = this.yaw + (this.cameraFrame === 'sunRotating' ? sunAz : 0);
     // ターゲット → カメラ方向の単位ベクトル(pan を含まない — pan はカメラと注視点を
     // 等しく平行移動させるため基底に影響しない)。
     const off = v3(cp * Math.cos(displayYaw), Math.sin(this.pitch), cp * Math.sin(displayYaw));

@@ -58,8 +58,11 @@ export class PlanSystem {
         this.editor.plan.markDirty();
       }
     };
-    this._hud.onFrameToggle = () => {
-      this.mapCamera.frameRotating = !this.mapCamera.frameRotating;
+    this._hud.onFrameSelect = (frame) => {
+      // 予測軌道の座標系固定(predict)とカメラ視点の回転追従(mapCamera)は別責務だが、
+      // ユーザーからは一つの座標系選択なので、ここで両者へ同じ Frame を設定する。
+      this.predict.frame = frame;
+      this.mapCamera.cameraFrame = frame;
       this.editor.plan.markDirty();
     };
     this._hud.onMapFocusSelect = (focus) => {
@@ -105,7 +108,7 @@ export class PlanSystem {
   // 現在の外部状態から表示座標変換(太陽回転系対応)を組み立てる。ノードのピッキング/
   // 配置と表示の基準角がずれないよう、正は predict-system.ts の toDisplayFrame 一箇所。
   private frame(): DisplayFrameFn {
-    return this.predict.bindDisplayFrame(this.getEphemeris(), this.mapCamera.frameRotating);
+    return this.predict.bindDisplayFrame(this.getEphemeris());
   }
 
   // マップ左クリック: 予測軌道上へノード配置、または既存ノード選択(plan-editor に委譲)。
@@ -162,7 +165,7 @@ export class PlanSystem {
       fineAttitude: this.getFineAttitude(),
       toolbar: {
         durationKey: this.predict.predictDurationKey,
-        frameRotating: this.mapCamera.frameRotating,
+        frame: this.predict.frame,
         plannedPlayerLabel:
           this.predict.sliderT > 0
             ? this.predict.plannedPlayerLabel(this.editor.plan.trajSamples, orbitPeriod, simTime)
@@ -197,7 +200,6 @@ export class PlanSystem {
       ephemeris,
       simTime,
       fo,
-      this.mapCamera.frameRotating,
       this.project,
     );
     this.editor.updateGizmo(this.frame(), this.project, this.mapCamera.dist, this.nodeArrivings());
