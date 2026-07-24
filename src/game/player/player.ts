@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp } from '../../physics/attitude';
-import { MU_EARTH, OrbitState, R_EARTH } from '../../physics/orbital';
+import { MU_EARTH, OrbitState, R_EARTH, orbitState } from '../../physics/orbital';
 import { Vec3, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -70,10 +70,7 @@ export class Player extends Ship {
     const r0 = R_EARTH + C.INITIAL_ALT;
     const vCirc = Math.sqrt(MU_EARTH / r0);
     const inc = (C.INITIAL_INC_DEG * Math.PI) / 180;
-    return {
-      r: v3(r0, 0, 0),
-      v: v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)),
-    };
+    return orbitState(v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
   }
 
   private static progradeAttitude(state: OrbitState): Attitude {

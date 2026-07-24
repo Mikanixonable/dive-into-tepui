@@ -13,7 +13,7 @@
 //
 // 上流ノードを編集すると下流ノードの凍結状態は無効になるため、編集メソッドは編集ノード
 // より後(時刻が後)のノードを破棄する(千切れさせない = 削除。再スナップはしない)。
-import { OrbitState } from '../../physics/orbital';
+import { orbitState, OrbitState } from '../../physics/orbital';
 import { PlannedNode, TrajectorySample, sampleAt } from '../../physics/predict';
 import { Vec3, add, clone, v3 } from '../../physics/vec3';
 import * as C from '../const';
@@ -25,7 +25,7 @@ export interface PlanAnchor {
 
 export class Plan {
   private _nodes: PlannedNode[] = [];
-  private _anchor: PlanAnchor = { time: 0, state: { r: v3(), v: v3() } };
+  private _anchor: PlanAnchor = { time: 0, state: orbitState(v3(), v3()) };
   private _trajSamples: TrajectorySample[] = [];
   private dirty = true;
   private lastRefreshMs = -Infinity;
@@ -64,7 +64,7 @@ export class Plan {
   // なり、以降 predict は player.live 非依存になる。clear() で空へ戻すと追従を再開する。
   trackAnchor(time: number, state: OrbitState): void {
     if (this._nodes.length > 0) return;
-    this._anchor = { time, state: { r: clone(state.r), v: clone(state.v) } };
+    this._anchor = { time, state: orbitState(clone(state.r), clone(state.v)) };
     // アンカーが動いたら次の refresh で予測を引き直す(空プランナーの表示を現在位置へ)。
     this.dirty = true;
   }
@@ -113,7 +113,7 @@ export class Plan {
   applyNodeDv(idx: number, dvWorld: Vec3): void {
     const node = this._nodes[idx];
     if (!node || (dvWorld.x === 0 && dvWorld.y === 0 && dvWorld.z === 0)) return;
-    node.postState = { r: node.postState.r, v: add(node.postState.v, dvWorld) };
+    node.postState = orbitState(node.postState.r, add(node.postState.v, dvWorld));
     if (idx < this._nodes.length - 1) this._nodes.length = idx + 1;
     this.dirty = true;
   }

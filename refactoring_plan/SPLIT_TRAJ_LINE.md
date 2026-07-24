@@ -130,6 +130,7 @@ X が **持たない** もの: ノード概念・色分け（B-2）・RK4 予測
 ### frameRotating の帰属 ― 疎結合な二概念を分割（素案 §要調査への回答）
 現 `frameRotating`（map-camera 所有）は本来独立な二つ:
 - **① camera.fixOnRotatingFrame（カメラ側）**: カメラをどの座標系に固定するか（`displayYaw += sunAz(simTime)`）。慣性系に置かれたシーンを見る視点の問題。map-camera に残す。
+  回転系へ固定するときはカメラも `frame.ts` でカメラ座標を得る（軌道計算とは独立に、たまたま同じモジュールを参照するだけ）。
 - **② frameRotating（軌道側, enum）**: 予測軌道をどの座標系に固定して描くか。X の bake/un-bake（XX モジュール経由）に効く。predict-system が保持し B-1/X へ引数注入（暫定。将来はマネージャー化も）。
 
 ①②は疎結合。①は視点、②は個々の軌道物の固定先で、独立に選べる。現状は 1 ボタンで両方を同期トグルし、さらに②の un-bake に①/現在時刻の値を凍結で混ぜていた（`trajYawRef`）のが密結合の実体。
@@ -147,13 +148,13 @@ HUD の `onFrameToggle` は UX 既定として①②を同期トグルするだ�
 | `OrbitLine`（楕円全般） | **A / OrbitLine**（現状維持） |
 | `TrajLine.rebuild/clear/setOrigin/setVisible/dispose`（単色折れ線） | **X / SampledLine** |
 | `TrajLine.sync` のノード色分け（`SEGMENT_COLORS`） | **B-2** |
-| `predict-system.toDisplayFrame`（慣性↔回転の座標変換） | **XX モジュール**（順・逆、enum、branded）。X/picking が利用 |
+| `predict-system.toDisplayFrame`（慣性↔回転の座標変換） | **XX モジュール**（順・逆、enum、branded）。X（描画）が利用。クリック判定は B-2 が内部で利用（plan-editor は直接参照しない）。カメラも回転系固定時に利用（独立） |
 | `predict-system.trajYawRef`（un-bake を頂点へ凍結） | **X の毎フレーム `group.rotation.y = sunAz(simTime)`**（凍結せず剛体 un-bake で。§1-2） |
 | `predict-system.compute`（nodes なし・単 arc 相当） | **B-1** |
 | `predict-system.compute`（nodes 版） | **B-2**（B-1 の複数実行） |
 | 物理 `predictTrajectory`/`predictStepDt`/`envAccel(bcInv)` | **physics/predict**（B-1 が呼ぶ。抵抗をパラメータ化） |
 | `Plan.trajSamples`/`dirty`/`markDirty`/`maybeRefresh`/`lastRefreshMs` | **B-2 が司る多ノードキャッシュ**（plan 隣接。各 arc の B-1 が per-arc 保持、B-2 が集約） |
-| `plan-editor` picking（`nearestSample` 等）が読むサンプル | **B-2 のサンプルアクセサ**（plan 隣接） |
+| クリック判定（画面座標→最寄りサンプル/ノード） | **B-2 が提供**（内部で XX 変換 + `projection`）。plan-editor は結果を受け取るだけ（XX を参照しない） |
 | `bindDisplayFrame`/`DisplayFrameFn` | **XX モジュールの部分適用**（frame 固定） |
 | `predictDurationKey/Sec`, `sliderT`, `resolveDisplayTime`, `plannedPlayer`＋label | **predict-system**（現状維持） |
 | `frameRotating`（現 1 boolean） | **① `mapCamera.fixOnRotatingFrame`（カメラ）／② 軌道側 frame enum（predict→B-1/X）** に分割 |
@@ -171,15 +172,15 @@ HUD の `onFrameToggle` は UX 既定として①②を同期トグルするだ�
         │ B-2 が arc ごとに生成・所有             │ frame enum + 現在時刻を渡す
    B-2 (PlanTrajectory, plan隣接・多ノードキャッシュ) ──reads──► Plan(corners)
         ▲                                                   ▲
-        │ predict-system が [start,end] 供給・駆動           │ picking も XX を通して同じ変換 + mapCamera.projection
-  predict-system ──────► plannedPlayer / sliderT            plan-editor
+        │ predict-system が [start,end] 供給・駆動           │ plan-editor は B-2 にクリック判定を要求（B-2 が内部で XX + projection）
+  predict-system ──────► plannedPlayer / sliderT            plan-editor（XX/frame は参照しない）
 
-  カメラ側: mapCamera.fixOnRotatingFrame（① sunAz(simTime) の view 回転）は②の軌道 frame と疎結合。HUD ボタンが UX 既定として①②を同期トグル。
+  カメラ側: mapCamera.fixOnRotatingFrame（① sunAz(simTime) の view 回転）は②の軌道 frame と疎結合。回転系固定時はカメラも XX を参照してカメラ座標を得る（独立）。HUD ボタンが UX 既定として①②を同期トグル。
   シーンの他の描画物（地球・軌道線・自機…）は元から慣性系。X は自分の軌道メッシュだけを un-bake で慣性系へ戻して同じシーンに置き、カメラが（普通に）視点移動して描くだけ。
 ```
 
-- 一方向依存: predict-system → B-2 → B-1 → X → XX。X/XX は誰にも依存を返さない葉。
-- 描画（X の bake+un-bake）と picking（plan-editor）は同じ XX 変換 + 同じ `mapCamera.projection` を通るので画面上で一致する。
+- 一方向依存: predict-system → B-2 → B-1 → X → XX。X/XX は誰にも依存を返さない葉。カメラは独立に XX を参照しうる。
+- 描画（X）と クリック判定（B-2 が内部で同じ XX 変換 + 同じ `mapCamera.projection` を使う）が同じ基準を通るので画面上で一致する。plan-editor は B-2 の判定 API を呼ぶだけで XX/frame を知らない。
 - B-1 は plan を知らない（単体で敵機・デブリ予測に転用可能）。plan 用途では B-2 が束ねて plan の隣に置く。
 
 ---
@@ -211,12 +212,12 @@ HUD の `onFrameToggle` は UX 既定として①②を同期トグルするだ�
 - predict-system は B-2 を **駆動**（`[start,end]` 供給・表示トリガ。キャッシュ非所有）。`syncDisplay` を「B-2 の update + plannedPlayer マーカー」に縮小。`toDisplayFrame`/`trajYawRef`/`compute`/`TrajLine` を撤去。B-2 は picking 用サンプルアクセサを公開。
 
 ### Step 4 — 配線の付け替えと markDirty 掃除
-- plan-editor の picking（`nearestSample`/`nodeScreenPos`/`computeAxisScreenDirs`）を **XX 変換 + B-2 のサンプルアクセサ**へ。
-- plan-system `frame()` を XX の部分適用へ。`onFrameToggle` から `markDirty` 除去。`onDurationSelect` は B-2/B-1 のキャッシュキー更新へ。
+- クリック判定・ノード画面位置（`nearestSample`/`nodeScreenPos`/`computeAxisScreenDirs` 相当）を **B-2 側へ移す**（B-2 が XX 変換 + `projection` で画面判定を提供）。plan-editor はそれを呼ぶだけ（XX/frame は参照しない）。
+- `onFrameToggle` から `markDirty` 除去。`onDurationSelect` は B-2/B-1 のキャッシュキー更新へ。（現状 plan-system の `frame()`/`bindDisplayFrame` 経由の toDisplayFrame 注入は B-2 内製へ吸収されて消える。）
 - `plan.sampleAt` の消費者（predict-system の `plannedPlayer` 未来マーカー）を B-2/B-1 のサンプル参照へ差し替え。`TrajLine` 互換ラッパ削除。
 
 ### Step 5 — 最終検査（構造レビュー）
-- 依存が §3 のグラフどおりか（X/XX が葉、B-1 が plan 非依存の単体ユニット、B-2 が plan 隣接で多ノードキャッシュを司る、Plan が純 corners、picking と描画が XX を通る、3D シーンが常に慣性系）をコードで確認。
+- 依存が §3 のグラフどおりか（X/XX が葉、B-1 が plan 非依存の単体ユニット、B-2 が plan 隣接で多ノードキャッシュを司る、Plan が純 corners、描画とクリック判定がともに B-2 内の XX を通る（plan-editor は XX 非参照）、3D シーンが常に慣性系）をコードで確認。
 - 実行時目視: ①②個別トグルの見え方、time warp 中に描画・クリック判定がずれない、frameRotating トグルで RK4 が走らない・即時反映。
 
 ---
@@ -231,7 +232,7 @@ HUD の `onFrameToggle` は UX 既定として①②を同期トグルするだ�
 ### 5-2. `trajYawRef` を毎フレーム un-bake へ移す（凍結除去）と目視確認
 - 調査結果（§1-2）: un-bake（回転系→慣性系へ戻す `sunAz(T)`）は本来毎フレーム剛体回転なのに、`trajYawRef` として bake に凍結され RK4 スロットルでしか更新されず、2 秒鋸歯を生む（実害 sub-pixel〜~1.4px）。
 - 修正: bake は `toFrame`（頂点、(点列,frame) 変化時のみ）、un-bake は毎フレームの `group.rotation.y = sunAz(simTime)`（§2 X）。凍結が消え O(1)。**near-end が現在位置に一致する挙動は un-bake が担保するので不変**。
-- **不変条件**: 描画（bake 頂点 + un-bake group 回転）と picking（同じ XX 変換の合成）が同じ frame・同じ現在時刻から導出され、同じ `mapCamera.projection` を通ること。
+- **不変条件**: 描画（bake 頂点 + un-bake group 回転）と クリック判定（B-2 が同じ XX 変換の合成を使う）が同じ frame・同じ現在時刻から導出され、同じ `mapCamera.projection` を通ること。
 - 実装時に目視検証（Step 0 / 5）: time warp 中の描画・クリック判定のズレ無し、frameRotating トグルの即時反映。
 
 ### 5-3. B-1 の環境加速度パラメータの粒度

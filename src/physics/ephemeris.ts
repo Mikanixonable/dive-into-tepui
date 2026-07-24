@@ -21,6 +21,8 @@ const MOON_INC = (5.145 * Math.PI) / 180; // 白道の黄道に対する傾斜
 const COS_EPS = Math.cos(EPS);
 const SIN_EPS = Math.sin(EPS);
 
+export const SUN_ROTATING_POLE = v3(0, 1, 0); // 極(北極)軸。太陽回転系の回転軸。
+
 // 標準赤道座標 (X=春分点, Z=北極, 右手系) → ゲーム ECI (Y=北極)。
 // Xstd→X, Zstd→Y, Ystd→-Z(行列式 +1 の回転)。
 function stdToGame(xs: number, ys: number, zs: number): Vec3 {
@@ -46,6 +48,17 @@ export function sunPosition(t: number, phase0: number): Vec3 {
 export function sunAzimuth(t: number, phase0: number): number {
   const p = sunPosition(t, phase0);
   return Math.atan2(p.z, p.x);
+}
+
+// sunAzimuth の時間微分 [rad/s]。太陽回転系での速度変換(ω×r 項)に使う。
+// sunAz = atan2(−sin(lam)·cosEps, cos(lam)), lam = phase0 + 2π t/YEAR を解析微分すると
+// d(sunAz)/dt = −cosEps·lam' / (cos²lam + sin²lam·cos²Eps)。
+export function sunAzimuthRate(t: number, phase0: number): number {
+  const lam = phase0 + (2 * Math.PI * t) / YEAR;
+  const lamDot = (2 * Math.PI) / YEAR;
+  const cl = Math.cos(lam);
+  const sl = Math.sin(lam);
+  return (-COS_EPS * lamDot) / (cl * cl + sl * sl * COS_EPS * COS_EPS);
 }
 
 // 月の ECI 位置。phase0 は初期の軌道内位相 [rad]。
@@ -197,6 +210,9 @@ export class Ephemeris {
   }
   sunAzimuthAt(t: number): number {
     return sunAzimuth(t, this.sunPhase0);
+  }
+  sunAngularRateAt(t: number): number {
+    return sunAzimuthRate(t, this.sunPhase0);
   }
   emLagrangeAt(t: number): ReturnType<typeof emLagrangePoints> {
     return emLagrangePoints(t, this.moonPhase0);
