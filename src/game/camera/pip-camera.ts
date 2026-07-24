@@ -10,11 +10,10 @@ import { qRotate } from '../../physics/attitude';
 import * as C from '../const';
 import { Player } from '../player/player';
 import { FloatingOrigin } from '../floating-origin';
+import { ndcToScreen, projectToNdc, ViewFrame } from '../../physics/projection';
 import { ProjectFn } from './camera-system';
 
 export type PipRect = { x: number; y: number; w: number; h: number; };
-
-const tmpV = new THREE.Vector3();
 
 // PIP 窓のスクリーン矩形(右上、短辺の35%を基準にした固定レイアウト)。
 function computePipRect(): PipRect {
@@ -59,18 +58,15 @@ export class PipCamera {
   }
 
   // rect 内のピクセル座標へ投影する ProjectFn(全画面基準の CameraSystem.activeCameraProjection
-  // と同じ数式を rect のオフセット/スケールへ写像しただけ)。
+  // と同じ投影式を rect のオフセット/スケールへ写像しただけ)。
   get projection(): ProjectFn {
-    return (rel: THREE.Vector3) => {
-      const cam = this.camera;
-      tmpV.set(rel.x, rel.y, rel.z).applyMatrix4(cam.matrixWorldInverse);
-      const front = tmpV.z < 0;
-      tmpV.applyMatrix4(cam.projectionMatrix);
-      return {
-        x: this.rect.x + (tmpV.x * 0.5 + 0.5) * this.rect.w,
-        y: this.rect.y + (-tmpV.y * 0.5 + 0.5) * this.rect.h,
-        front,
-      };
+    const view: ViewFrame = {
+      position: this.position,
+      lookTarget: this.lookTarget,
+      up: this.upDir,
+      fovDeg: C.ZOOM_FOV,
+      aspect: this.rect.w / this.rect.h,
     };
+    return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), this.rect.w, this.rect.h, this.rect.x, this.rect.y);
   }
 }

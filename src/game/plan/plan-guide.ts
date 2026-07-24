@@ -81,7 +81,6 @@ export class PlanGuide {
 
   update(
     plan: Plan,
-    fo: FloatingOrigin,
     player: Player,
     ephemeris: EphemerisSystem,
     simTime: number,
@@ -151,7 +150,7 @@ export class PlanGuide {
     }
 
     // ノード位置マーカー(カウントダウン付き)
-    const p = project(fo.RtoThreeV3(tgt.rNode));
+    const p = project(tgt.rNode);
     const tLabel =
       tRem >= 0
         ? `T-${Math.floor(tRem / 60)}:${String(Math.floor(tRem % 60)).padStart(2, '0')}`
@@ -162,7 +161,7 @@ export class PlanGuide {
     // 噴射ガイド: (凍結済みの)目標速度ベクトルとの差分方向へ加速する
     const dvRem = sub(tgt.vPlanned, pv);
     const mag = len(dvRem);
-    const g = project(fo.RtoThreeV3(scale(norm(dvRem), 5e4)));
+    const g = project(scale(norm(dvRem), 5e4));
     this.markerManager.set(
       'burn',
       'mk-burn',

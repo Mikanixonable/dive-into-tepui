@@ -10,6 +10,8 @@ import { Sfx } from '../../audio/sfx';
 import { qRotate } from '../../physics/attitude';
 import { Player } from '../player/player';
 import { FloatingOrigin } from '../floating-origin';
+import { ndcToScreen, projectToNdc, ViewFrame } from '../../physics/projection';
+import { ProjectFn } from './camera-system';
 
 export class ChaseCamera {
   // 戦闘ビュー用のカメラ。near=2m なら地平線距離(~2,400km)での深度誤差も大気シェルの
@@ -97,6 +99,19 @@ export class ChaseCamera {
     }
     if (projectionDirty) camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
+  }
+
+  // update() が算出した視点状態から直接スクリーン投影する ProjectFn。THREE.js の
+  // カメラ行列にもフローティングオリジンにも依存しない(camera-system.ts のコメント参照)。
+  get projection(): ProjectFn {
+    const view: ViewFrame = {
+      position: this.position,
+      lookTarget: this.lookTarget,
+      up: this.upDir,
+      fovDeg: this.fov,
+      aspect: this.aspect,
+    };
+    return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), window.innerWidth, window.innerHeight);
   }
 
   // 通常の三人称視点(マウスでyaw/pitch/distを操作、up/fwdの基準フレームは

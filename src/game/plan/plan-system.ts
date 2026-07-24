@@ -35,7 +35,7 @@ export class PlanSystem {
     private readonly mapMarkers: MapMarkers,
     scene: THREE.Scene,
     private readonly getFineAttitude: () => boolean,
-    private readonly getExternalState: () => { floatingOrigin: FloatingOrigin; ephemeris: EphemerisSystem; simTime: number; },
+    private readonly getEphemeris: () => EphemerisSystem,
   ) {
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager, scene);
     this.editor = new PlanEditor(this._hud, this._sfx, this.simSpeedManager);
@@ -82,8 +82,7 @@ export class PlanSystem {
     };
     g.onNodeDragMove = (idx, clientX, clientY) => {
       this.editor.closeMenu();
-      const st = this.getExternalState();
-      this.editor.dragNodeToNearestSample(idx, clientX, clientY, st.floatingOrigin, this.frame(), this.project);
+      this.editor.dragNodeToNearestSample(idx, clientX, clientY, this.frame(), this.project);
     };
     g.onNodeContextMenu = (clientX, clientY) => this.onNodeHandleRightClick?.(clientX, clientY);
     g.onAxisDrag = (axis, sign, deltaPx) => {
@@ -103,18 +102,18 @@ export class PlanSystem {
   // 現在の外部状態から表示座標変換(太陽回転系対応)を組み立てる。ノードのピッキング/
   // 配置と表示の基準角がずれないよう、正は plan-display.ts の toDisplayFrame 一箇所。
   private frame(): DisplayFrameFn {
-    return this.display.bindDisplayFrame(this.getExternalState().ephemeris, this.mapCamera.frameRotating);
+    return this.display.bindDisplayFrame(this.getEphemeris(), this.mapCamera.frameRotating);
   }
 
   // マップ左クリック: 予測軌道上へノード配置、または既存ノード選択(plan-editor に委譲)。
   handleMapClick(clientX: number, clientY: number): void {
-    this.editor.handleMapClick(clientX, clientY, this.getExternalState().floatingOrigin, this.frame(), this.project);
+    this.editor.handleMapClick(clientX, clientY, this.frame(), this.project);
   }
 
   // マップ右クリック(ノード側): ノードに当たれば選択+メニューを開き true を返す。
   // 外れたら false を返し、呼び出し側がフォーカス選択へフォールバックする。
   handleNodeRightClick(clientX: number, clientY: number): boolean {
-    return this.editor.handleNodeRightClick(clientX, clientY, this.getExternalState().floatingOrigin, this.frame(), this.project);
+    return this.editor.handleNodeRightClick(clientX, clientY, this.frame(), this.project);
   }
 
   clearPlanByKey(editMode: boolean): void {
@@ -150,9 +149,8 @@ export class PlanSystem {
       return;
     }
     this.display.sync(this.editor.plan, player, ephemeris, simTime, fo, this.mapCamera.frameRotating, this.project);
-    this.editor.updateGizmo(fo, this.display.bindDisplayFrame(ephemeris, this.mapCamera.frameRotating), this.project, this.mapCamera.dist);
+    this.editor.updateGizmo(this.display.bindDisplayFrame(ephemeris, this.mapCamera.frameRotating), this.project, this.mapCamera.dist);
     this.mapMarkers.syncLabels(
-      fo,
       simTime,
       ephemeris,
       this.display.predictDurationSec(player),
