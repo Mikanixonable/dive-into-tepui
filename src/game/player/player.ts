@@ -129,7 +129,7 @@ export class Player extends Ship {
 
     this.belt.update(dt, this.fire.mags, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
     this.handleEdgeInput(input);
-    this.updateAttitude(input, editMode, dt * simSpeed.simSpeed);
+    this.updateTorque(input, editMode, dt * simSpeed.simSpeed);
 
     // 死亡済み: 射撃、移動、hp回復はできない
     if (!this.alive) {
@@ -234,8 +234,8 @@ export class Player extends Ship {
   }
 
 
-  private updateAttitude(input: Input, editMode: boolean, attDt: number): void {
-    this.throttle.updateAttitude(
+  private updateTorque(input: Input, editMode: boolean, attDt: number): void {
+    this.torque = this.throttle.updateTorque(
       this.att,
       this.state.r,
       this.state.v,

@@ -110,7 +110,7 @@ export class Simulator {
       }
     }
 
-    this.stepCoastingAttitudes(simDt);
+    this.stepAttitudes(simDt, player);
     this.lastSimDt = simDt;
   }
 
@@ -146,14 +146,17 @@ export class Simulator {
   }
 
   // ------------------------------------------------------------ 回転運動
-  
-  // 自由回転するエンティティの姿勢を進める(自機の姿勢は入力駆動なので game.ts 側)
-  private stepCoastingAttitudes(simDt: number): void {
+
+  // 全エンティティの姿勢を entity.torque に従って積分する(既定ゼロ = 自由回転)。
+  // 自機は PlayerThrottle が毎フレーム torque を書き込む(それ以外は既定ゼロのまま)。
+  private stepAttitudes(simDt: number, player: Player): void {
+    stepAttitude(player.att, player.torque, simDt);
+
     const attDt = Math.min(simDt, 0.12);
-    for (const e of this.enemies) if (e.alive) stepAttitude(e.att, v3(), attDt);
-    for (const cs of this.casings) stepAttitude(cs.att, v3(), attDt);
-    for (const d of this.debris) stepAttitude(d.att, v3(), attDt);
-    for (const ammo of this.ammos) if (ammo.alive) stepAttitude(ammo.att, v3(), attDt);
+    for (const e of this.enemies) if (e.alive) stepAttitude(e.att, e.torque, attDt);
+    for (const cs of this.casings) stepAttitude(cs.att, cs.torque, attDt);
+    for (const d of this.debris) stepAttitude(d.att, d.torque, attDt);
+    for (const ammo of this.ammos) if (ammo.alive) stepAttitude(ammo.att, ammo.torque, attDt);
   }
 
   // ------------------------------------------------------------ 寿命管理

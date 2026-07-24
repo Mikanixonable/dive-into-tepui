@@ -5,6 +5,7 @@
 // 描画は自機中心のフローティングオリジン(自機が常に (0,0,0))。
 import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
+import { v3 } from '../physics/vec3';
 import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
@@ -167,6 +168,7 @@ export class Game {
     // behave が呼ばれなくなる分、勝敗確定時点の thrustFn が凍結され続けないよう明示的に消す。
     if (!this.activeStage.isPlaying) {
       this.player.thrustFn = null;
+      this.player.torque = v3();
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, 4);
       this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, false, false);
       return;
