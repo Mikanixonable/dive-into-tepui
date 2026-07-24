@@ -5,7 +5,7 @@ import { Input } from '../input/input';
 import { ProjectFn } from '../camera/camera-system';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { PlanEditor } from './plan-editor';
-import { PredictSystem, DisplayFrameFn } from '../perdict/predict-system';
+import { PredictSystem, DisplayFrameFn } from '../predict/predict-system';
 import { MapCamera } from '../camera/map-camera';
 import { MarkerManager } from '../marker/marker-manager';
 import { MapMarkers } from '../camera/map-markers';
@@ -13,6 +13,10 @@ import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
 import { PlanGuide } from './plan-guide';
 import { FloatingOrigin } from '../floating-origin';
+import { OrbitState } from '../../physics/orbital';
+import { PredictOpts, arrivingStates } from '../../physics/predict';
+import { len, sub } from '../../physics/vec3';
+import * as C from '../const';
 
 export class PlanSystem {
   readonly editor: PlanEditor;
@@ -117,7 +121,36 @@ export class PlanSystem {
 
   clearPlanByKey(editMode: boolean): void {
     this.editor.clearPlanByKey(editMode);
-    this.guide.clearActiveTarget();
+  }
+
+  // 計画が空の間、予定 player の起点(アンカー)を現在の自機状態へ追従させる
+  // (最初のノードを置くと凍結される)。game.ts が毎フレーム(プレイ中)呼ぶ。
+  trackAnchor(player: Player, simTime: number): void {
+    this.editor.plan.trackAnchor(simTime, player.state);
+  }
+
+  // マップモードを閉じるときの後始末。Δv がほぼゼロのまま放置されたノード(クリック
+  // しただけで調整しなかった等)を破棄し、選択を解除する。Δv 導出に ephemeris が要る
+  // ため editor ではなくここで行う。
+  onMapClosed(): void {
+    const plan = this.editor.plan;
+    if (plan.nodes.length > 0) {
+      const arriving = this.nodeArrivings();
+      for (let i = plan.nodes.length - 1; i >= 0; i--) {
+        const arr = arriving[i];
+        if (arr && len(sub(plan.nodes[i]!.postState.v, arr.v)) < C.NODE_MIN_DV) plan.removeNode(i);
+      }
+    }
+    this.editor.onMapClosed();
+  }
+
+  // 各ノードの到達(噴射前)状態。editor の Δv 表示・onMapClosed の空ノード判定に使う。
+  // 予測計算に ephemeris が要るためここで導出して渡す(ノードは Δv を正データに持たない)。
+  private nodeArrivings(): OrbitState[] {
+    const plan = this.editor.plan;
+    const e = this.getEphemeris();
+    const opts: PredictOpts = { sunPhase0: e.sunPhase0, moonPhase0: e.moonPhase0, maxSamples: C.PREDICT_MAX_SAMPLES };
+    return arrivingStates(plan.anchor.state, plan.anchor.time, plan.nodes, opts);
   }
 
   // --------------------------------------------------------------- per-frame
@@ -126,12 +159,13 @@ export class PlanSystem {
   // ツールバー表示は predictSystem/MapCamera 側の状態が要るため、ここで組み立てて渡す
   // (hud への反映自体は editor 側が行う)。
   updateEditing(dt: number, input: Input, player: Player, simTime: number): void {
-    this.editor.updateEditing(dt, simTime, input, {
+    this.editor.updateEditing(dt, simTime, input, this.nodeArrivings(), {
       fineAttitude: this.getFineAttitude(),
       toolbar: {
         durationKey: this.predict.predictDurationKey,
         frameRotating: this.mapCamera.frameRotating,
-        ghostLabel: this.predict.sliderT > 0 ? this.predict.ghostLabel(this.editor.plan.trajSamples, player, simTime) : null,
+        plannedPlayerLabel:
+          this.predict.sliderT > 0 ? this.predict.plannedPlayerLabel(this.editor.plan.trajSamples, player, simTime) : null,
         focus: this.mapCamera.focus,
       },
     });
@@ -142,7 +176,7 @@ export class PlanSystem {
   // 予測の「計算+表示」は predictSystem、キャッシュは plan(隣接)、ギズモは editor と
   // 責務が分かれるので、ここは更新トリガと配線だけを担う。
   updateDisplay(mapMode: boolean, fo: FloatingOrigin, player: Player, ephemeris: EphemerisSystem, simTime: number): void {
-    this.guide.syncPlannedLine(this.editor.plan, this.predict, { player, ephemeris, simTime }, fo, mapMode);
+    this.guide.syncPlannedLine(this.editor.plan, fo, mapMode);
 
     if (!mapMode) {
       this.predict.hide();
@@ -151,8 +185,9 @@ export class PlanSystem {
     }
     const plan = this.editor.plan;
     const duration = this.predict.predictDurationSec(player);
-    // 予測キャッシュの更新トリガ(スロットルは Plan、予測計算は predictSystem)。
-    plan.maybeRefresh(() => this.predict.compute(player, ephemeris, simTime, plan.nodes, duration));
+    // 予測キャッシュの更新トリガ(スロットルは Plan、予測計算は predictSystem)。予測は
+    // frozen アンカー + 凍結ノードだけの純関数で、player.live には依存しない。
+    plan.maybeRefresh(() => this.predict.compute(plan.anchor, ephemeris, simTime, plan.nodes, duration));
     this.predict.syncDisplay(
       plan.trajSamples,
       plan.nodes.map((n) => n.time),
@@ -163,7 +198,7 @@ export class PlanSystem {
       this.mapCamera.frameRotating,
       this.project,
     );
-    this.editor.updateGizmo(this.frame(), this.project, this.mapCamera.dist);
+    this.editor.updateGizmo(this.frame(), this.project, this.mapCamera.dist, this.nodeArrivings());
     this.mapMarkers.syncLabels(simTime, ephemeris, duration, this.predict.sliderT, this.project);
   }
 

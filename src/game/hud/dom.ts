@@ -100,7 +100,7 @@ const STYLE = `
 #hud-maptool .mt-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
 #hud-maptool input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
 #hud-maptool .mt-sliderlabel { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; }
-.mk-ghost { color: #8fd0ff; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
+.mk-planned { color: #8fd0ff; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 .mk-poi { color: #8fd0ff; text-shadow: 0 0 4px #000; }
 .mk-poi .sym { font-size: 14px; }
 .mk-poi .lbl { font-size: 11px; margin-top: 4px; padding: 2px 4px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }

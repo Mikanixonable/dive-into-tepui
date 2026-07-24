@@ -1,10 +1,11 @@
 // 軌道計画(Plan)の「将来の軌道予測・未来状態表示」を担う独立責務。かつて mapMode に
 // 混在していた三責務(camera / plan編集 / 軌道予測)のうちの「軌道予測」に相当する。
 // この責務は二つに分かれる:
-//   ① 計算(compute): plan のノード列と(現状は)自機状態から未来の自機位置を数値予測する。
-//      ステートレスで、キャッシュは所有しない — 結果を貯めるのは Plan(隣接キャッシュ)側。
+//   ① 計算(compute): plan の frozen アンカー + 凍結ノードから未来の予定 player 位置を
+//      数値予測する。ステートレスかつ player.live 非依存(現在時刻というスカラは読むが
+//      自機の状態は読まない)。キャッシュは所有せず、結果を貯めるのは Plan(隣接)側。
 //   ② 未来表示: sliderT に応じた未来時刻の管理(displayTime/resolveDisplayTime)と、
-//      予測折れ線(TrajLine)・未来ゴーストマーカーの描画。
+//      予測折れ線(TrajLine)・予定 player マーカー(plannedPlayer)の描画。
 // 表示(syncDisplay)は Plan の隣接キャッシュを引数で受け取り、Plan を import しない。
 //
 // 「太陽回転系」表示の座標変換(toDisplayFrame)もここが正 — 予測の再計算(TrajLine の
@@ -12,13 +13,13 @@
 // plan-editor.ts のクリックピッキングも DisplayFrameFn 経由でここに委譲する(二重に基準角を
 // 持つとずれる)。mapMode 中のみ意味を持つ。
 import * as THREE from 'three/webgpu';
-import { R_EARTH } from '../../physics/orbital';
+import { OrbitState, R_EARTH } from '../../physics/orbital';
 import { sunAzimuth } from '../../physics/ephemeris';
 import { PlannedNode, PredictOpts, TrajectorySample, predictTrajectory, sampleAt } from '../../physics/predict';
 import { Vec3, len, rotateAxis, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { fmtMarkerDist } from '../hud/utils';
-import { TrajLine } from '../plan/trajline';
+import { TrajLine } from './trajline';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn } from '../camera/camera-system';
 import type { Player } from '../player/player';
@@ -48,23 +49,25 @@ export class PredictSystem {
     scene.add(this.line.group);
   }
 
-  // ノード列 + 現在の自機状態から未来の自機位置を数値予測する(ステートレス)。結果は
-  // Plan の隣接キャッシュへ呼び出し側が貯める — ここはキャッシュを持たない。
-  // (Step2 で自機状態依存を外し、frozen アンカー起点の純予測に置き換える予定。)
+  // frozen アンカー起点 + 凍結ノードから未来の予定 player 位置を数値予測する
+  // (ステートレス、player.live 非依存)。アンカーは過去でありうるので、「アンカー →
+  // 現在 nowTime + 表示期間」の全長を積分する(nowTime はスカラの時計であって
+  // player の状態ではない)。結果は Plan の隣接キャッシュへ呼び出し側が貯める。
   compute(
-    player: Player,
+    anchor: { time: number; state: OrbitState },
     ephemeris: EphemerisSystem,
-    simTime: number,
+    nowTime: number,
     nodes: readonly PlannedNode[],
-    duration: number,
+    displayDuration: number,
   ): TrajectorySample[] {
-    if (duration <= 0) return [];
+    const span = nowTime + displayDuration - anchor.time;
+    if (span <= 0) return [];
     const opts: PredictOpts = {
       sunPhase0: ephemeris.sunPhase0,
       moonPhase0: ephemeris.moonPhase0,
       maxSamples: C.PREDICT_MAX_SAMPLES,
     };
-    return predictTrajectory({ r: player.state.r, v: player.state.v }, simTime, duration, nodes, opts);
+    return predictTrajectory(anchor.state, anchor.time, span, nodes, opts);
   }
 
   // 選んだ期間だけ予測する(マップモードでの表示用— 戦闘ビューの噴射ガイド用の
@@ -105,9 +108,9 @@ export class PredictSystem {
     return this.displayTime(simTime, this.predictDurationSec(player));
   }
 
-  // 未来位置ゴースト(スライダー)のラベル文字列。予測サンプル列(Plan の隣接キャッシュ)を
-  // 引数で受け、時刻 t の高度・経過時間を表示する。
-  ghostLabel(cache: readonly TrajectorySample[], player: Player, simTime: number): string {
+  // 予定 player の未来位置(スライダー)のラベル文字列。予測サンプル列(Plan の隣接
+  // キャッシュ)を引数で受け、時刻 t の高度・経過時間を表示する。
+  plannedPlayerLabel(cache: readonly TrajectorySample[], player: Player, simTime: number): string {
     const duration = this.predictDurationSec(player);
     const t = this.displayTime(simTime, duration);
     const s = sampleAt(cache, t);
@@ -121,7 +124,7 @@ export class PredictSystem {
 
   hide(): void {
     this.line.setVisible(false);
-    this.markerManager.hide('ghost');
+    this.markerManager.hide('plannedPlayer');
   }
 
   // 毎フレーム(マップモード中のみ呼ぶ): Plan の隣接キャッシュ(cache)から折れ線・
@@ -152,23 +155,23 @@ export class PredictSystem {
     });
 
     if (this.sliderT <= 0 || cache.length <= 0) {
-      this.markerManager.hide('ghost');
+      this.markerManager.hide('plannedPlayer');
       return;
     }
     const duration = this.predictDurationSec(player);
     const t = this.displayTime(simTime, duration);
     const sample = sampleAt(cache, t);
     if (!sample) {
-      this.markerManager.hide('ghost');
+      this.markerManager.hide('plannedPlayer');
       return;
     }
     this.markerManager.setPosition(
-      'ghost',
-      'mk-ghost',
+      'plannedPlayer',
+      'mk-planned',
       '⬡',
       this.toDisplayFrame(sample.r, t, ephemeris, frameRotating),
       project,
-      this.ghostLabel(cache, player, simTime),
+      this.plannedPlayerLabel(cache, player, simTime),
     );
   }
 }
