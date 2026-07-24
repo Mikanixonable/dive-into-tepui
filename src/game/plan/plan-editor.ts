@@ -17,6 +17,7 @@ import { Input } from '../input/input';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { ProjectFn } from '../camera/camera-system';
 import { DisplayFrameFn } from '../predict/predict-system';
+import { Frame } from '../../physics/frame';
 import { Plan } from './plan';
 import { SimSpeedManager } from '../sim-speed-manager';
 
@@ -292,7 +293,7 @@ export class PlanEditor {
     arriving: readonly OrbitState[],
     opts: {
       fineAttitude: boolean;
-      toolbar: { durationKey: string; frameRotating: boolean; plannedPlayerLabel: string | null; focus: string };
+      toolbar: { durationKey: string; frame: Frame; plannedPlayerLabel: string | null; focus: string };
     },
   ): void {
     // Δv 調整(推進キーを流用、[V] で微調整)。選択中ノードがあるときのみ。実行後速度
@@ -326,7 +327,7 @@ export class PlanEditor {
     this._hud.setPlanPanel(this._hud.planHtml(nodesInfo, selDv, selEl));
     this._hud.setMapToolbarState(
       opts.toolbar.durationKey,
-      opts.toolbar.frameRotating,
+      opts.toolbar.frame,
       opts.toolbar.plannedPlayerLabel,
       opts.toolbar.focus,
     );

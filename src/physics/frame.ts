@@ -20,9 +20,16 @@ import { Ephemeris } from './ephemeris';
 import { add, cross, rotateAxis, scale, sub, v3, Vec3 } from './vec3';
 import { SUN_ROTATING_POLE } from './ephemeris';
 
-// 軌道トレースの描画に使う座標系。慣性系(ECI, 無変換)と回転系。将来 'moonRotating' 等を足せる。
+// 軌道トレースの描画に使う座標系。慣性系(ECI, 無変換)と回転系。将来 'moonRotating' 等は
+// この配列に足すだけでよい（Frame 型・isFrame・UI ボタンの検証がすべてここから派生する）。
 // 旧来の boolean（慣性=false / 太陽回転=true）を拡張に備えて列挙にしたもの。
-export type Frame = 'inertial' | 'sunRotating';
+export const FRAMES = ['inertial', 'sunRotating'] as const;
+export type Frame = (typeof FRAMES)[number];
+
+// 外部入力（DOM data 属性など）の文字列を Frame へ絞り込む型ガード。
+export function isFrame(s: string): s is Frame {
+  return (FRAMES as readonly string[]).includes(s);
+}
 
 // 慣性系(ECI)/回転系相対の OrbitState。デフォルトの OrbitState とは __frame の有無で非互換
 // にし（asInertial 経由でしか慣性系にできない）、取り違えを型で防ぐ（vec3.ts の Vec3 と同手法）。

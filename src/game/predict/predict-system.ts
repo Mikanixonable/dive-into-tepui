@@ -28,8 +28,8 @@ import { FloatingOrigin } from '../floating-origin';
 export type PredictDurationKey = 'orbit' | 'day' | 'week' | 'month';
 
 // plan-editor.ts のクリック判定・ドラッグへ渡す、太陽回転系表示込みの座標変換。
-// PredictSystem.toDisplayFrame を ephemeris/frameRotating で束縛したクロージャを
-// 型として共有する。
+// PredictSystem.toDisplayFrame を ephemeris で束縛したクロージャを型として共有する
+// (座標系は predictSystem.frame が持つ)。
 export type DisplayFrameFn = (r: Vec3, t: number) => Vec3;
 
 export class PredictSystem {
@@ -38,6 +38,8 @@ export class PredictSystem {
   // マップモードの未来ゴーストスライダー位置(0..1、0 でゴーストマーカー非表示)。
   // カメラの視点計算には無関係な、予測表示側の状態のためここが正(MapCamera には置かない)。
   sliderT = 0;
+  // 予測軌道を描画する座標系(慣性系 / 太陽回転系)。
+  frame: Frame = 'inertial';
 
   // 直近の折れ線再構築(line.sync() が予測更新を検出したタイミング)で固定した、
   // 回転系→慣性系へ戻す un-bake の基準時刻。同じ trajSamples を指している間は
@@ -80,15 +82,14 @@ export class PredictSystem {
   // ECI 座標 r(時刻 t のもの)をマップの「太陽回転系」表示用へ変換する(非回転系なら無変換)。
   // physics/frame.ts で「サンプル時刻 t で回転系へ bake → 基準時刻 trajRefTime で慣性系へ un-bake」
   // を合成する(正味 = t と基準時刻の太陽方位差ぶんの回転)。
-  private toDisplayFrame(r: Vec3, t: number, ephemeris: Ephemeris, frameRotating: boolean): Vec3 {
-    const frame: Frame = frameRotating ? 'sunRotating' : 'inertial';
-    return toInertialPos(frame, this.trajRefTime, toFramePos(frame, t, r, ephemeris), ephemeris);
+  private toDisplayFrame(r: Vec3, t: number, ephemeris: Ephemeris): Vec3 {
+    return toInertialPos(this.frame, this.trajRefTime, toFramePos(this.frame, t, r, ephemeris), ephemeris);
   }
 
   // 太陽回転系表示込みの座標変換を束縛したクロージャを返す。plan-editor.ts のクリック
   // 判定・ドラッグ・ギズモ配置は必ずこの1つの変換を通すことで、描画とずれないようにする。
-  bindDisplayFrame(ephemeris: Ephemeris, frameRotating: boolean): DisplayFrameFn {
-    return (r: Vec3, t: number) => this.toDisplayFrame(r, t, ephemeris, frameRotating);
+  bindDisplayFrame(ephemeris: Ephemeris): DisplayFrameFn {
+    return (r: Vec3, t: number) => this.toDisplayFrame(r, t, ephemeris);
   }
 
   private displayTime(simTime: number, duration: number): number {
@@ -131,7 +132,6 @@ export class PredictSystem {
     ephemeris: Ephemeris,
     simTime: number,
     fo: FloatingOrigin,
-    frameRotating: boolean,
     project: ProjectFn,
   ): void {
     this.line.setVisible(true);
@@ -144,7 +144,7 @@ export class PredictSystem {
       this.trajRefTime = simTime;
       return {
         nodeTimes,
-        toDisplayFrame: (r: Vec3, t: number) => this.toDisplayFrame(r, t, ephemeris, frameRotating),
+        toDisplayFrame: (r: Vec3, t: number) => this.toDisplayFrame(r, t, ephemeris),
       };
     });
 
@@ -163,7 +163,7 @@ export class PredictSystem {
       'plannedPlayer',
       'mk-planned',
       '⬡',
-      this.toDisplayFrame(sample.r, t, ephemeris, frameRotating),
+      this.toDisplayFrame(sample.r, t, ephemeris),
       project,
       this.plannedPlayerLabel(cache, orbitPeriod, simTime),
     );

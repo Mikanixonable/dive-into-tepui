@@ -3,6 +3,7 @@
 // イベントリスナーが参照するコールバックは HudDomHost 経由で呼び出し時に解決するため、
 // (呼び出し元の) Hud インスタンスをそのまま渡せる。
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT } from '../theme';
+import { Frame, isFrame } from '../../physics/frame';
 
 // デザイン方針: ダークテーマ。ニューモーフィズムは廃止し、モノトーン
 // (ほぼ無彩色のグレースケール)+ 彩度の高いオレンジ 1 色をアクセントに使う
@@ -201,7 +202,7 @@ export interface HudDomHost {
   onSettingsOpenChange: ((open: boolean) => void) | null;
   onQuitToTitle: (() => void) | null;
   onDurationSelect: ((key: string) => void) | null;
-  onFrameToggle: (() => void) | null;
+  onFrameSelect: ((frame: Frame) => void) | null;
   onMapFocusSelect: ((focus: string) => void) | null;
   onMapViewReset: (() => void) | null;
   onSliderChange: ((t: number) => void) | null;
@@ -294,7 +295,8 @@ function buildMapToolbar(root: HTMLElement, host: HudDomHost): void {
       <span class="mt-btn" data-dur="day">1日</span>
       <span class="mt-btn" data-dur="week">7日</span>
       <span class="mt-btn" data-dur="month">28日</span>
-      <span class="mt-btn" data-id="mt-frame">慣性系</span>
+      <span class="mt-btn" data-frame="inertial">慣性系</span>
+      <span class="mt-btn" data-frame="sunRotating">太陽回転系</span>
     </div>
     <div class="mt-row" data-id="mt-focus">
       <span class="mt-btn" data-focus="earth">地球中心</span>
@@ -310,11 +312,13 @@ function buildMapToolbar(root: HTMLElement, host: HudDomHost): void {
       if (host.onDurationSelect) host.onDurationSelect(btn.dataset['dur']!);
     });
   });
-  const frameBtn = mapTool.querySelector<HTMLElement>('[data-id="mt-frame"]')!;
-  frameBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-  frameBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (host.onFrameToggle) host.onFrameToggle();
+  mapTool.querySelectorAll<HTMLElement>('.mt-btn[data-frame]').forEach((btn) => {
+    btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const frame = btn.dataset['frame'];
+      if (frame && isFrame(frame)) host.onFrameSelect?.(frame);
+    });
   });
   mapTool.querySelectorAll<HTMLElement>('.mt-btn[data-focus]').forEach((btn) => {
     btn.addEventListener('pointerdown', (e) => e.stopPropagation());
