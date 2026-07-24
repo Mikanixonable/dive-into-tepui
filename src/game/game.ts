@@ -4,9 +4,7 @@
 // 座標系: ECI (慣性系)、Y軸 = 北極、単位 m / m/s。
 // 描画は自機中心のフローティングオリジン(自機が常に (0,0,0))。
 import * as THREE from 'three/webgpu';
-import {
-  Vec3,
-} from '../physics/vec3';
+import { FloatingOrigin } from './floating-origin';
 import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
@@ -35,7 +33,7 @@ import { MapModeToggler } from './map-mode-toggler';
 export class Game {
   private readonly _scene: THREE.Scene;
   private readonly renderer: GameScene['renderer'];
-
+  private floatingOrigin: FloatingOrigin;
   private readonly input: Input;
   touchControls: TouchControls | null = null;
   private readonly _hud = new Hud();
@@ -49,7 +47,6 @@ export class Game {
   // 「どこを注視するか」= mapCamera 寄りの責務なので cameraSystem が所有する。
   readonly cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager);
   readonly player: Player;
-
   // ?perf=1 のデバッグ表示用エンティティ数。
   perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
     return {
@@ -118,7 +115,7 @@ export class Game {
       this.cameraSystem.mapMarkers,
       this._scene,
       () => this.player.fineAttitude,
-      () => ({ player: this.player, ephemeris: this.ephemeris, simTime: this.simulator.simTime })
+      () => ({ floatingOrigin: this.floatingOrigin, ephemeris: this.ephemeris, simTime: this.simulator.simTime })
     );
     // ノードハンドル直接右クリックは、canvas 右クリックと同じフォールバック調停に流す。
     this.planSystem.onNodeHandleRightClick = (x, y) => this.dispatchMapRightClick(x, y);
@@ -139,6 +136,8 @@ export class Game {
     this.activeStage = getStage(stage);
     this.activeStage.setup(this._hud, this._sfx, this._scene, this.simulator, this.unlockManager, this.effects);
     initStage(this.activeStage, this.player, this.simulator, this._hud);
+
+    this.floatingOrigin = new FloatingOrigin(this.player.state.r, this.player.state.v);
   }
 
   private wireHudCallbacks(): void {
@@ -181,14 +180,6 @@ export class Game {
       return;
     }
 
-    // カメラ更新
-    this.cameraSystem.update(
-      this.player,
-      sunAzimuth(this.simulator.simTime, this.ephemeris.sunPhase0),
-      this.input,
-      dt,
-    );
-
     // プレイヤーの HP 回復・移動/発射の試行
     this.player.behave({
       dt,
@@ -219,12 +210,21 @@ export class Game {
 
     this.simulator.cleanup(dt, this.activeStage);
 
+    // カメラ更新は物理積分の後に行う: 追従カメラは自機を絶対 ECI 座標で追い、その基準は
+    // sync 時のフローティングオリジン(積分後の自機位置)と一致していなければならない。
+    this.cameraSystem.update(
+      this.player,
+      sunAzimuth(this.simulator.simTime, this.ephemeris.sunPhase0),
+      this.input,
+      dt,
+    );
+
     if (this.planSystem.editMode) {
       this.dispatchMapPointer();
       this.planSystem.updateEditing(dt, this.input, this.player, this.simulator.simTime);
     }
     else {
-      this.targeter.updateCombatTargeting(this.player, this.simulator.enemies, this.input, this.cameraSystem);
+      this.targeter.updateCombatTargeting(this.player, this.simulator.enemies, this.input, this.floatingOrigin, this.cameraSystem);
     }
   }
 
@@ -244,7 +244,7 @@ export class Game {
 
   private dispatchMapRightClick(x: number, y: number): void {
     if (this.planSystem.handleNodeRightClick(x, y)) this.cameraSystem.closeFocusMenu();
-    else this.cameraSystem.handleFocusRightClick(x, y, this.player.state.r);
+    else this.cameraSystem.handleFocusRightClick(x, y, this.floatingOrigin);
   }
 
   // --------------------------------------------------------------- input
@@ -280,28 +280,32 @@ export class Game {
   // ------------------------------------------------------------------ sync
 
   sync(dt: number): void {
-    const o = this.player.state.r;
-    const pv = this.player.state.v;
+    // 設定し、sync 系全体へ共通の基準として渡す。player.state とは意味論的に別物 —
+    // 将来この原点を別の点(カメラ座標など)へ差し替えても描画が破綻しないよう、
+    // 各 sync はこの fo だけを参照し player.state.r を描画原点として直接使わない。
+    this.floatingOrigin = new FloatingOrigin(this.player.state.r, this.player.state.v);
+
     // カメラ姿勢を THREE.js に反映するのを最初に行う: environment.sync や
     // マーカー投影(activeCameraProjection)がこのフレームのカメラ行列を読むため。
-    this.cameraSystem.sync();
+    this.cameraSystem.sync(this.floatingOrigin);
     const displayTime = this.planSystem.display.resolveDisplayTime(this.cameraSystem.mapMode, this.player, this.simulator.simTime);
     this.environment.sync({
       dt,
-      origin: o,
+      player: this.player,
+      floatingOrigin: this.floatingOrigin,
       displayTime,
       cameraSystem: this.cameraSystem,
       ephemeris: this.ephemeris,
     });
-    
-    this.player.sync(this.cameraSystem, this.activeStage.isPlaying, this.paused);
 
-    this.simulator.sync(o, pv);
+    this.player.syncPlayer(this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this.paused);
 
-    this.effects.syncFlashEffects(dt, this.simulator.lastSimDt, o, this.cameraSystem.activeCamera);
-    
-    this.syncEntityOrbitLines(o, this.cameraSystem.mapMode);
-    this.syncMarkers(dt, o, pv);
+    this.simulator.sync(this.floatingOrigin);
+
+    this.effects.syncFlashEffects(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
+
+    this.syncEntityOrbitLines(this.floatingOrigin, this.cameraSystem.mapMode);
+    this.syncMarkers(dt, this.floatingOrigin);
 
     this._hud.panels.update(this, dt);
     this._hud.tick();
@@ -309,15 +313,18 @@ export class Game {
 
   // 自機・敵の軌道線は各 entity 自身が持つ(Player/Enemy コンストラクタ参照)ため、
   // ここでは毎フレームの Elements 算出と update() 呼び出しだけを行う。
-  private syncEntityOrbitLines(o: Vec3, mapMode: boolean): void {
+  private syncEntityOrbitLines(fo: FloatingOrigin, mapMode: boolean): void {
     const playerEl = this.player.elements;
-    this.player.orbitLine.sync(this.player.alive ? playerEl : null, o, this.player.thrustVizDir !== null, true);
+    // 自機軌道線は「高精度で描きたい点」付近の頂点を密にする(focusPos)。本来これは
+    // フローティングオリジン(≒カメラ近傍、単精度でも破綻させたくない領域)であるべきだが、
+    // fo が微動するたびに軌道線を再生成すると破綻するため、妥協として自機位置を密点に渡す。
+    this.player.orbitLine.sync(this.player.alive ? playerEl : null, fo, this.player.thrustVizDir !== null, this.player.state.r);
     const tgt = this.targeter.aliveTarget;
     for (const enemy of this.simulator.enemies) {
       const showGray = mapMode && enemy.alive && enemy !== tgt;
-      enemy.orbitLine.sync(showGray ? enemy.elements : null, o);
+      enemy.orbitLine.sync(showGray ? enemy.elements : null, fo);
     }
-    this.targeter.syncOrbitLine(o);
+    this.targeter.syncOrbitLine(fo);
   }
 
   // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
@@ -334,21 +341,21 @@ export class Game {
     };
   }
 
-  private syncMarkers(dt: number, o: Vec3, pv: Vec3): void {
+  private syncMarkers(dt: number, fo: FloatingOrigin): void {
     const project = this.cameraSystem.activeCameraProjection;
     const mapMode = this.cameraSystem.mapMode;
 
-    this.planSystem.updateDisplay(mapMode, this.player, this.ephemeris, this.simulator.simTime);
+    this.planSystem.updateDisplay(mapMode, fo, this.player, this.ephemeris, this.simulator.simTime);
 
-    this.ephemeris.syncReferenceLines(this.simulator.simTime, o, mapMode);
+    this.ephemeris.syncReferenceLines(this.simulator.simTime, fo, mapMode);
 
-    this.markersSystem.updateMarkers(this.markerCtx(), pv, project);
-    this.markersSystem.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
-    this.targeter.syncBoardMarkers(this.player, dt, project);
+    this.markersSystem.updateMarkers(this.markerCtx(), fo, project);
+    this.markersSystem.updateNodeMarkers(fo, this.player, this.targeter.aliveTarget, project);
+    this.targeter.syncBoardMarkers(fo, dt, project);
     if (mapMode) {
       this.markerManager.hide('burn');
     } else {
-      this.planSystem.guide.update(this.planSystem.editor.plan, this.player, this.ephemeris, this.simulator.simTime, this.simSpeedManager, project);
+      this.planSystem.guide.update(this.planSystem.editor.plan, fo, this.player, this.ephemeris, this.simulator.simTime, this.simSpeedManager, project);
     }
   }
 

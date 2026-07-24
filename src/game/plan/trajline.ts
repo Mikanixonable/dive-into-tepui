@@ -9,8 +9,12 @@
 // ときだけ作り直す(毎フレームではない)。毎フレームは setOrigin() でフローティング
 // オリジン補正の平行移動だけ行う。
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3, v3 } from '../../physics/vec3';
 import { TrajectorySample } from '../../physics/predict';
+import { FloatingOrigin } from '../floating-origin';
+
+// 折れ線頂点は地球中心(ECI 原点)基準。group.position はその原点の描画フレーム位置。
+const EARTH_CENTER = v3(0, 0, 0);
 
 const SEGMENT_COLORS = [0xbfc9d4, 0xffffff, 0xff6a00];
 
@@ -100,8 +104,8 @@ export class TrajLine {
   }
 
   // 毎フレーム呼ぶ: フローティングオリジン補正(平行移動のみ)
-  setOrigin(origin: Vec3): void {
-    this.group.position.set(-origin.x, -origin.y, -origin.z);
+  setOrigin(fo: FloatingOrigin): void {
+    this.group.position.copy(fo.RtoThreeV3(EARTH_CENTER));
   }
 
   setVisible(v: boolean): void {

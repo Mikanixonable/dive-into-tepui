@@ -5,7 +5,8 @@
 import { stepAttitude } from '../../physics/attitude';
 import { envAccelInto } from '../../physics/envaccel';
 import { ExtraAccel, stepOrbitRK4 } from '../../physics/orbital';
-import { add, clone, v3, Vec3 } from '../../physics/vec3';
+import { add, clone, v3 } from '../../physics/vec3';
+import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { HitSystem } from './hit';
 import { Ammo, DebrisPiece, OrbitEntity } from './entities';
@@ -185,11 +186,7 @@ export class Simulator {
 
   // ------------------------------------------------------------ 描画同期
   
-  sync(o: Vec3, pv: Vec3): void {
-    for (const e of this.allEntities()) {
-      // Bullet は自機のフローティングオリジン座標系で描画するため独自インターフェイス
-      if (e instanceof Bullet) e.syncBulletTransform(o, pv);
-      else e.syncTransform(o);
-    }
+  sync(fo: FloatingOrigin): void {
+    this.allEntities().forEach(e => e.sync(fo));
   }
 }

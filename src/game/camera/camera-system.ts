@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import { Vec3, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
@@ -10,10 +9,12 @@ import { FocusGizmo } from './focus-gizmo';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
 import { Player } from '../player/player';
+import { FloatingOrigin } from '../floating-origin';
+import { Vec3 } from '../../physics/vec3';
 
 const tmpV = new THREE.Vector3();
 
-export type ProjectFn = (rel: Vec3) => { x: number; y: number; front: boolean; };
+export type ProjectFn = (rel: THREE.Vector3) => { x: number; y: number; front: boolean; };
 
 // 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する。
 // どちらも視点操作のみの責務のカメラで、このクラスが対称に内部保持する。
@@ -46,12 +47,12 @@ export class CameraSystem {
   // マップラベル(フォーカス候補)を右クリックしたときの処理: 最寄りラベル(MAP_LABEL_PICK_PX
   // 以内)があればフォーカス選択メニューを開き、無ければ閉じる。ノードに消費されなかった
   // 右クリックのフォールバック先として game.ts から呼ばれる。
-  handleFocusRightClick(clientX: number, clientY: number, origin: Vec3): void {
+  handleFocusRightClick(clientX: number, clientY: number, fo: FloatingOrigin): void {
     const project = this.activeCameraProjection;
     let bestKey: string | null = null;
     let bestD = C.MAP_LABEL_PICK_PX * C.MAP_LABEL_PICK_PX;
     for (const lbl of this.mapMarkers.labels) {
-      const p = project(sub(lbl.pos, origin));
+      const p = project(fo.RtoThreeV3(lbl.pos));
       if (!p.front) continue;
       const d = (p.x - clientX) * (p.x - clientX) + (p.y - clientY) * (p.y - clientY);
       if (d < bestD) {
@@ -71,6 +72,10 @@ export class CameraSystem {
     return this.mapMode ? this.mapCamera.camera : this.chaseCamera.camera;
   }
 
+  get activeCameraPos(): Vec3 {
+    return this.mapMode ? this.mapCamera.position : this.chaseCamera.position;
+  }
+
   update(
     player: Player,
     sunAz: number,
@@ -82,27 +87,27 @@ export class CameraSystem {
     const keyYaw = (input.down('ArrowLeft') ? 1 : 0) + (input.down('ArrowRight') ? -1 : 0);
     const keyPitch = (input.down('ArrowDown') ? 1 : 0) + (input.down('ArrowUp') ? -1 : 0);
     const mouse = input.mouse();
-    const origin = player.state.r;
 
     if (this.mapMode) {
-      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, origin, sunAz);
+      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, sunAz);
     }
     else {
-      this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, origin, player, this.zoomActive);
+      this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, player, this.zoomActive);
     }
   }
 
-  // update() が算出した視点の数学状態を、描画に使うアクティブカメラへ反映する。
-  // マーカー投影(activeCameraProjection)や environment-scene がこの THREE.js
-  // カメラ姿勢を読むため、game.sync() の先頭で(それらより先に)呼ぶ。
-  sync(): void {
-    if (this.mapMode) this.mapCamera.sync();
-    else this.chaseCamera.sync();
+  // update() が算出した絶対 ECI の視点状態を、フローティングオリジン(fo)で補正して
+  // 描画用のアクティブカメラへ反映する(平行移動のみ)。マーカー投影
+  // (activeCameraProjection)や environment-scene がこの THREE.js カメラ姿勢を読むため、
+  // game.sync() の先頭で(それらより先に)呼ぶ。
+  sync(fo: FloatingOrigin): void {
+    if (this.mapMode) this.mapCamera.sync(fo);
+    else this.chaseCamera.sync(fo);
   }
 
 
   get activeCameraProjection(): ProjectFn {
-    return (rel: Vec3) => {
+    return (rel: THREE.Vector3) => {
       const cam = this.activeCamera;
 
       tmpV.set(rel.x, rel.y, rel.z).applyMatrix4(cam.matrixWorldInverse);

@@ -3,12 +3,14 @@
 import * as THREE from 'three/webgpu';
 import { R_MOON, moonPosition, sunPosition } from '../physics/ephemeris';
 import { SIDEREAL_DAY } from '../physics/orbital';
-import { Vec3, len, norm, scale, sub } from '../physics/vec3';
+import { Vec3, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { createEarth, Earth } from './earth';
 import { MOON_VIS_DIST, SUN_DISTANCE, SUN_VISUAL_SIZE, Sun, createMoon, createStars, createSun } from './stars';
 import { EphemerisSystem } from '../game/ephemeris';
 import { CameraSystem } from '../game/camera/camera-system';
+import { FloatingOrigin } from '../game/floating-origin';
 import * as C from '../game/const';
+import { Player } from '../game/player/player';
 
 export interface EnvironmentLightingParams {
   sunIntensity: number;
@@ -19,11 +21,18 @@ export interface EnvironmentLightingParams {
 
 export interface EnvironmentSyncParams {
   dt: number;
-  origin: Vec3;
+  player: Player;
+  floatingOrigin: FloatingOrigin;
   displayTime: number;
   cameraSystem: CameraSystem;
   ephemeris: EphemerisSystem;
 }
+
+// 地球メッシュは地球中心(ECI 原点)基準。group.position はその原点の描画フレーム位置。
+const EARTH_CENTER = v3(0, 0, 0);
+
+// 太陽ビルボード位置(カメラ相対)の作業用 THREE.Vector3。毎フレームの再確保を避ける。
+const tmpSunPos = new THREE.Vector3();
 
 export class EnvironmentScene {
   readonly ambient: THREE.AmbientLight;
@@ -55,23 +64,24 @@ export class EnvironmentScene {
   }
 
   sync(params: EnvironmentSyncParams): void {
-    const { dt, origin, displayTime, cameraSystem, ephemeris } = params;
-    this.syncEarth(dt, origin, displayTime);
-    this.syncSkyBodies(displayTime, origin, ephemeris, cameraSystem);
+    const { dt, player, floatingOrigin, displayTime, cameraSystem, ephemeris } = params;
+    this.syncEarth(dt, floatingOrigin, displayTime);
+    this.syncSkyBodies(displayTime, floatingOrigin, ephemeris, cameraSystem);
 
-    const lit = cameraSystem.mapMode ? 1.0 : ephemeris.shadowLitFactor(origin);
+    // lifFactorは自機位置の日商度。物理的に正確ではない
+    const lit = cameraSystem.mapMode ? 1.0 : ephemeris.shadowLitFactor(player.state.r);
     this.syncLighting(lit);
   }
 
-  private syncEarth(dt: number, origin: Vec3, displayTime: number): void {
-    this.earth.group.position.set(-origin.x, -origin.y, -origin.z);
+  private syncEarth(dt: number, fo: FloatingOrigin, displayTime: number): void {
+    this.earth.group.position.copy(fo.RtoThreeV3(EARTH_CENTER));
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
     this.earth.tick(dt, displayTime);
   }
 
   private syncSkyBodies(
     displayTime: number,
-    origin: Vec3,
+    fo: FloatingOrigin,
     ephemeris: EphemerisSystem,
     cameraSystem: CameraSystem,
   ): void {
@@ -81,24 +91,26 @@ export class EnvironmentScene {
     this.earth.setSunDir(sd.x, sd.y, sd.z);
     this.starsMesh.position.copy(cam.position);
     this.starsMesh.scale.setScalar(cameraSystem.mapMode ? (cameraSystem.mapCamera.camera.far * 0.9) / 3.5e7 : 1.0);
+    // 太陽ビルボードはカメラ相対(空の遠景)。fo 由来の変換ではないので camera 位置基準で置く。
     this.sun.billboard.sync(
-      {
-        x: cam.position.x + sd.x * SUN_DISTANCE,
-        y: cam.position.y + sd.y * SUN_DISTANCE,
-        z: cam.position.z + sd.z * SUN_DISTANCE,
-      },
+      tmpSunPos.set(
+        cam.position.x + sd.x * SUN_DISTANCE,
+        cam.position.y + sd.y * SUN_DISTANCE,
+        cam.position.z + sd.z * SUN_DISTANCE,
+      ),
       SUN_VISUAL_SIZE,
       1,
       cam.quaternion,
     );
     this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
     const visMoonPos = moonPosition(displayTime, ephemeris.moonPhase0);
-    const moonRel = sub(visMoonPos, origin);
     if (cameraSystem.mapMode) {
-      this.moonMesh.position.set(moonRel.x, moonRel.y, moonRel.z);
+      // マップは実スケール: 月を実 ECI 位置(fo 経由)に置く。
+      this.moonMesh.position.copy(fo.RtoThreeV3(visMoonPos));
       this.moonMesh.scale.setScalar(R_MOON);
     } else {
-      this.placeCombatMoon(cam, moonRel, R_MOON, MOON_VIS_DIST);
+      // 戦闘視点はカメラ相対の表示距離。月の fo 相対ベクトルは方向・距離の算出に使う。
+      this.placeCombatMoon(cam, sub(visMoonPos, cameraSystem.activeCameraPos), R_MOON, MOON_VIS_DIST);
     }
     this.moonMesh.lookAt(
       this.moonMesh.position.x - visMoonPos.x,

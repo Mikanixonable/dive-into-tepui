@@ -75,11 +75,11 @@ export function qRotate(q: Quat, v: Vec3): Vec3 {
   const ty = 2 * (z * v.x - x * v.z);
   const tz = 2 * (x * v.y - y * v.x);
   // v + w*t + q_vec × t
-  return {
-    x: v.x + w * tx + (y * tz - z * ty),
-    y: v.y + w * ty + (z * tx - x * tz),
-    z: v.z + w * tz + (x * ty - y * tx),
-  };
+  return v3(
+    v.x + w * tx + (y * tz - z * ty),
+    v.y + w * ty + (z * tx - x * tz),
+    v.z + w * tz + (x * ty - y * tx),
+  );
 }
 
 // 機首方向(+Z)と上方向の基準(+Y)から姿勢クォータニオンを構築する。

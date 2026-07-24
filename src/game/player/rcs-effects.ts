@@ -1,10 +1,11 @@
 // RCS パフ(機首側の 4 基のスラスタブロックに対応、ships.ts の配置と一致)。
 import * as THREE from 'three/webgpu';
 import { Attitude, qRotate } from '../../physics/attitude';
-import { Vec3, addScaled, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
+import { Vec3, add, addScaled, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
 import { Billboard } from '../../render/billboard';
 import { RCS_BLOCK_OFFSETS } from '../../render/ships';
 import type { CameraSystem } from '../camera/camera-system';
+import { FloatingOrigin } from '../floating-origin';
 
 export class RcsEffects {
   private readonly puffs: Billboard[] = Array.from({ length: 4 }, () => new Billboard(0xcfeaff));
@@ -15,7 +16,11 @@ export class RcsEffects {
 
   // tau は PlayerThrottle が公開する RCS パフ噴射方向(機体ローカルの符号ベクトル)。
   // ここは可視化のみで、実際のトルク計算・入力読み取りは PlayerThrottle 側に集約されている。
+  // playerPos: 自機の絶対 ECI 位置。各パフはその位置を基準に、機体ローカルのスラスタ配置を
+  // 姿勢で回転させた変位を慣性座標で足し、末端で fo 経由で描画フレームへ変換する。
   sync(
+    fo: FloatingOrigin,
+    playerPos: Vec3,
     tau: Vec3,
     att: Attitude,
     alive: boolean,
@@ -43,7 +48,7 @@ export class RcsEffects {
       const exhaust = scale(norm(f), -1);
       const flick = 0.6 + Math.random() * 0.4;
       const pos = qRotate(q, addScaled(rb, exhaust, 0.55));
-      puff.sync(pos, 0.55 * flick, 0.75 * flick, camera.activeCamera.quaternion);
+      puff.sync(fo.RtoThreeV3(add(playerPos, pos)), 0.55 * flick, 0.75 * flick, camera.activeCamera.quaternion);
     }
   }
 }

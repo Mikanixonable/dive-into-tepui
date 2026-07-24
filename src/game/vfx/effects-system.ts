@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { Attitude, randomQuat } from '../../physics/attitude';
 import { OrbitState } from '../../physics/orbital';
 import { add, clone, randSym, randVec, v3, Vec3 } from '../../physics/vec3';
+import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { DebrisKind, DebrisPiece } from '../orbit-entity/entities';
 import { Billboard } from '../../render/billboard';
@@ -23,8 +24,8 @@ export class EffectsSystem {
     this._flashEffects = new FlashEffectManager(_scene);
   }
 
-  syncFlashEffects(dt: number, simDt: number, origin: Vec3, activeCamera: THREE.PerspectiveCamera): void {
-    this._flashEffects.syncFlashEffects(dt, simDt, origin, activeCamera);
+  syncFlashEffects(dt: number, simDt: number, fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera): void {
+    this._flashEffects.syncFlashEffects(dt, simDt, fo, activeCamera);
   }
 
   setMuzzleFlashesVisible(visible: boolean): void {

@@ -5,14 +5,15 @@
 // か」を一切知らずに済む)。未来ゴーストスライダー(sliderT)はカメラの視点計算に
 // 使われないため PlanDisplay 側の責務 — ここには置かない。
 import * as THREE from 'three/webgpu';
-import { Vec3, sub, v3 } from '../../physics/vec3';
+import { Vec3, add, addScaled, cross, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input/input';
 import { MapMarkers } from './map-markers';
+import { FloatingOrigin } from '../floating-origin';
 
-const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const WORLD_UP = v3(0, 1, 0);
 
 export class MapCamera {
   // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
@@ -20,21 +21,17 @@ export class MapCamera {
   yaw = 0.7;
   pitch = 0.45;
   dist = 4.5e7;
-  // Stored in the floating-origin render frame. It is applied to both the
-  // camera and its target, so middle-drag is a true parallel translation.
-  readonly pan = new THREE.Vector3();
+  // ワールド距離(メートル)のパン変位。カメラと注視点へ等しく加えるので真の平行移動になる。
+  pan: Vec3 = v3();
   frameRotating = false;
-  // 注視対象のラベル ID('earth' またはラベル ID)。位置解決は resolveFocusRel が行う。
+  // 注視対象のラベル ID('earth' またはラベル ID)。位置解決は resolveFocus が行う。
   focus = 'earth';
 
-  // update() が算出し sync() が camera へ反映する視点の数学状態(THREE.js には触れない)。
-  private readonly position = new THREE.Vector3();
-  private readonly lookTarget = new THREE.Vector3();
+  // update() が算出し sync() が camera へ反映する視点の数学状態。ビュー計算・保持は
+  // すべて慣性系(physics/vec3、絶対 ECI)で行い、THREE.js への変換は sync() が fo 経由で行う。
+  position: Vec3 = v3();
+  private lookTarget: Vec3 = v3();
   private aspect = window.innerWidth / window.innerHeight;
-  // パン(中ドラッグ平行移動)のピクセル→距離変換に使うカメラ基底の作業ベクトル。
-  private readonly right = new THREE.Vector3();
-  private readonly camUp = new THREE.Vector3();
-  private readonly viewDir = new THREE.Vector3();
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
   constructor(
@@ -54,29 +51,31 @@ export class MapCamera {
     this.yaw = 0.7;
     this.pitch = 0.45;
     this.dist = 4.5e7;
-    this.pan.set(0, 0, 0);
+    this.resetPan();
     this.focus = 'earth';
     this._hud.hint('マップ視点をリセット');
   }
 
-  // focus('earth' またはラベル ID)をフローティングオリジン(origin)相対の位置へ解決する。
-  private resolveFocusRel(origin: Vec3): Vec3 {
-    const pos = this.focus === 'earth' ? v3(0, 0, 0) : this.mapMarkers.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
-    return sub(pos, origin);
+  resetPan(): void {
+    this.pan = v3();
+  }
+
+  // focus('earth' またはラベル ID)を絶対 ECI 位置へ解決する(地球中心 = 原点)。
+  private resolveFocus(): Vec3 {
+    return this.focus === 'earth' ? v3(0, 0, 0) : this.mapMarkers.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
   }
 
   // 毎フレーム、マップカメラの位置・向きをマウス/矢印キー操作から更新する。
-  // origin: フローティングオリジン(自機位置)。focus の解決に使う。
+  // 地球中心の固定座標系カメラなので自機位置は受け取らない。
   // sunAz: 太陽回転系表示の追従角。
   update(
     mouse: MouseDelta,
     keyYaw: number,
     keyPitch: number,
     dt: number,
-    origin: Vec3,
     sunAz: number,
   ): void {
-    const focusRel = this.resolveFocusRel(origin);
+    const focus = this.resolveFocus();
     // 戦闘ビューは yaw -= dx*0.005 なので、符号を反転させて左右の回転方向を揃える
     this.yaw += mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;
     this.pitch = Math.max(
@@ -91,35 +90,31 @@ export class MapCamera {
     const displayYaw = this.yaw + (this.frameRotating ? sunAz : 0);
     // ターゲット → カメラ方向の単位ベクトル(pan を含まない — pan はカメラと注視点を
     // 等しく平行移動させるため基底に影響しない)。
-    const offX = cp * Math.cos(displayYaw);
-    const offY = Math.sin(this.pitch);
-    const offZ = cp * Math.sin(displayYaw);
+    const off = v3(cp * Math.cos(displayYaw), Math.sin(this.pitch), cp * Math.sin(displayYaw));
     if (mouse.panDx !== 0 || mouse.panDy !== 0) {
       // ピクセル → マップ世界メートル変換。THREE の lookAt(up=+Y) が作る基底と一致する
       // カメラ右/上ベクトルを yaw/pitch から解析的に組み、軌道 yaw/pitch に依存させない。
-      this.viewDir.set(-offX, -offY, -offZ);
-      this.right.crossVectors(this.viewDir, WORLD_UP).normalize();
-      this.camUp.crossVectors(this.right, this.viewDir).normalize();
+      const viewDir = scale(off, -1);
+      const right = norm(cross(viewDir, WORLD_UP));
+      const camUp = norm(cross(right, viewDir));
       const metersPerPixel =
         (2 * this.dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5))) /
         Math.max(1, window.innerHeight);
-      this.pan.addScaledVector(this.right, -mouse.panDx * metersPerPixel);
-      this.pan.addScaledVector(this.camUp, mouse.panDy * metersPerPixel);
+      this.pan = addScaled(this.pan, right, -mouse.panDx * metersPerPixel);
+      this.pan = addScaled(this.pan, camUp, mouse.panDy * metersPerPixel);
     }
-    const targetX = focusRel.x + this.pan.x;
-    const targetY = focusRel.y + this.pan.y;
-    const targetZ = focusRel.z + this.pan.z;
-    this.position.set(targetX + offX * this.dist, targetY + offY * this.dist, targetZ + offZ * this.dist);
-    this.lookTarget.set(targetX, targetY, targetZ);
+    const target = add(focus, this.pan);
+    this.position = addScaled(target, off, this.dist);
+    this.lookTarget = target;
     this.aspect = window.innerWidth / window.innerHeight;
   }
 
-  // update() で算出した視点の数学状態を camera に反映する。
-  sync(): void {
+  // update() で算出した絶対 ECI の視点状態を fo 経由で描画フレームへ変換して camera に反映する。
+  sync(fo: FloatingOrigin): void {
     const camera = this.camera;
-    camera.position.copy(this.position);
+    camera.position.copy(fo.RtoThreeV3(this.position));
     camera.up.set(0, 1, 0);
-    camera.lookAt(this.lookTarget);
+    camera.lookAt(fo.RtoThreeV3(this.lookTarget));
     if (Math.abs(camera.aspect - this.aspect) > 1e-6) {
       camera.aspect = this.aspect;
       camera.updateProjectionMatrix();

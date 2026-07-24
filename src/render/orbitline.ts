@@ -12,7 +12,11 @@
 //   推力中・ノード編集中は force=true で毎フレーム追従させる。
 import * as THREE from 'three/webgpu';
 import { Elements } from '../physics/orbital';
-import { Vec3 } from '../physics/vec3';
+import { Vec3, v3 } from '../physics/vec3';
+import { FloatingOrigin } from '../game/floating-origin';
+
+// 楕円頂点は地球中心(ECI 原点)基準。line.position はその原点の描画フレーム位置。
+const EARTH_CENTER = v3(0, 0, 0);
 
 // 離心近点角 E で一様サンプリング + 自機付近を密にする非線形マッピング。
 const POINT_COUNT = 2048;
@@ -47,10 +51,13 @@ export class OrbitLine {
     this.line.renderOrder = 1;
   }
 
-  // 毎フレーム呼ぶ。origin = 自機の ECI 位置(フローティングオリジン)。
+  // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン。
   // force = 要素が能動的に変化している間(推力中・ノード編集中)は true。
+  // focusPos = 指定すると、その ECI 点の付近に頂点を密に配置する。意味論的には「高精度で
+  // 描きたい点」= フローティングオリジン近傍だが、fo は微動でも動き再生成を頻発させるため、
+  // 呼び出し側は妥協として自機位置を渡す(自機軌道線用途)。fo とは別引数として区別する。
   // 呼び出し側が算出した Elements を THREE.Line ジオメトリ/位置へ反映するだけの sync。
-  sync(el: Elements | null, origin: Vec3, force = false, isPlayer = false): void {
+  sync(el: Elements | null, fo: FloatingOrigin, force = false, focusPos?: Vec3): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.line.visible = false;
       this.snap = null;
@@ -59,13 +66,13 @@ export class OrbitLine {
     this.line.visible = true;
     // フローティングオリジン補正は Object3D の平行移動だけで行う
     // (頂点は地球中心座標のまま触らない)
-    this.line.position.set(-origin.x, -origin.y, -origin.z);
+    this.line.position.copy(fo.RtoThreeV3(EARTH_CENTER));
 
     let focusE: number | undefined;
-    if (isPlayer) {
-      // origin は ECI における自機位置。軌道面内ローカル座標 (x, y)
-      const x = origin.x * el.pHat.x + origin.y * el.pHat.y + origin.z * el.pHat.z;
-      const y = origin.x * el.qHat.x + origin.y * el.qHat.y + origin.z * el.qHat.z;
+    if (focusPos) {
+      // focusPos の軌道面内ローカル座標 (x, y) から離心近点角を求める
+      const x = focusPos.x * el.pHat.x + focusPos.y * el.pHat.y + focusPos.z * el.pHat.z;
+      const y = focusPos.x * el.qHat.x + focusPos.y * el.qHat.y + focusPos.z * el.qHat.z;
       const b = el.a * Math.sqrt(1 - el.e * el.e);
       focusE = Math.atan2(y / b, x / el.a + el.e);
     }

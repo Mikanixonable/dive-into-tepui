@@ -3,7 +3,7 @@
 // ノードの追加・削除・並べ替えは必ずこのクラスのメソッド経由で行う — 呼び出し側が
 // nodes 配列を直接 splice すると「同じ削除ロジックの重複」を招く。
 import { PlannedNode, PredictOpts, TrajectorySample, predictTrajectory, sampleAt } from '../../physics/predict';
-import { len } from '../../physics/vec3';
+import { len, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
@@ -77,7 +77,7 @@ export class Plan {
   adjustNodeDv(idx: number, dx: number, dy: number, dz: number): void {
     const node = this._nodes[idx];
     if (!node || (dx === 0 && dy === 0 && dz === 0)) return;
-    node.dv = { x: node.dv.x + dx, y: node.dv.y + dy, z: node.dv.z + dz };
+    node.dv = v3(node.dv.x + dx, node.dv.y + dy, node.dv.z + dz);
     this.dirty = true;
   }
 

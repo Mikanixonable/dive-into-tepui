@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import { altitudeOf, elementsFromState, ExtraAccel, OrbitState } from '../../physics/orbital';
 import { Attitude } from '../../physics/attitude';
 import { Vec3, clone, v3 } from '../../physics/vec3';
+import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Elements } from '../../physics/orbital';
@@ -38,9 +39,9 @@ export class OrbitEntity {
     this.scene?.add(this.obj);
   }
 
-  // 毎フレームの描画位置・姿勢同期(floating origin: origin = 自機の ECI 位置)。
-  syncTransform(origin: Vec3): void {
-    this.obj.position.set(this.state.r.x - origin.x, this.state.r.y - origin.y, this.state.r.z - origin.z);
+  // 毎フレームの描画位置・姿勢同期。絶対 ECI 位置(state.r)を fo 経由で描画フレームへ変換する。
+  sync(fo: FloatingOrigin): void {
+    this.obj.position.copy(fo.RtoThreeV3(this.state.r));
     this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 

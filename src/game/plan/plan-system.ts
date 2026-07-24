@@ -13,6 +13,7 @@ import { DisplayFrameFn } from './plan-display';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
 import { PlanGuide } from './plan-guide';
+import { FloatingOrigin } from '../floating-origin';
 
 export class PlanSystem {
   readonly editor: PlanEditor;
@@ -34,7 +35,7 @@ export class PlanSystem {
     private readonly mapMarkers: MapMarkers,
     scene: THREE.Scene,
     private readonly getFineAttitude: () => boolean,
-    private readonly getExternalState: () => { player: Player; ephemeris: EphemerisSystem; simTime: number; },
+    private readonly getExternalState: () => { floatingOrigin: FloatingOrigin; ephemeris: EphemerisSystem; simTime: number; },
   ) {
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager, scene);
     this.editor = new PlanEditor(this._hud, this._sfx, this.simSpeedManager);
@@ -60,7 +61,7 @@ export class PlanSystem {
     };
     this._hud.onMapFocusSelect = (focus) => {
       this.mapCamera.focus = focus;
-      this.mapCamera.pan.set(0, 0, 0);
+      this.mapCamera.resetPan();
     };
     this._hud.onMapViewReset = () => {
       this.mapCamera.reset();
@@ -82,7 +83,7 @@ export class PlanSystem {
     g.onNodeDragMove = (idx, clientX, clientY) => {
       this.editor.closeMenu();
       const st = this.getExternalState();
-      this.editor.dragNodeToNearestSample(idx, clientX, clientY, st.player.state.r, this.frame(), this.project);
+      this.editor.dragNodeToNearestSample(idx, clientX, clientY, st.floatingOrigin, this.frame(), this.project);
     };
     g.onNodeContextMenu = (clientX, clientY) => this.onNodeHandleRightClick?.(clientX, clientY);
     g.onAxisDrag = (axis, sign, deltaPx) => {
@@ -107,13 +108,13 @@ export class PlanSystem {
 
   // マップ左クリック: 予測軌道上へノード配置、または既存ノード選択(plan-editor に委譲)。
   handleMapClick(clientX: number, clientY: number): void {
-    this.editor.handleMapClick(clientX, clientY, this.getExternalState().player.state.r, this.frame(), this.project);
+    this.editor.handleMapClick(clientX, clientY, this.getExternalState().floatingOrigin, this.frame(), this.project);
   }
 
   // マップ右クリック(ノード側): ノードに当たれば選択+メニューを開き true を返す。
   // 外れたら false を返し、呼び出し側がフォーカス選択へフォールバックする。
   handleNodeRightClick(clientX: number, clientY: number): boolean {
-    return this.editor.handleNodeRightClick(clientX, clientY, this.getExternalState().player.state.r, this.frame(), this.project);
+    return this.editor.handleNodeRightClick(clientX, clientY, this.getExternalState().floatingOrigin, this.frame(), this.project);
   }
 
   clearPlanByKey(editMode: boolean): void {
@@ -140,20 +141,18 @@ export class PlanSystem {
 
   // マップ表示中(mapMode)のみ意味を持つ: 予測軌道の再計算・折れ線/ゴースト描画・
   // ギズモ座標更新・フォーカスラベル描画。閉じている間は表示物の後始末のみ行う。
-  updateDisplay(mapMode: boolean, player: Player, ephemeris: EphemerisSystem, simTime: number): void {
-    const origin = player.state.r;
-    
-    this.guide.syncPlannedLine(this.editor.plan, { player: player, ephemeris: ephemeris, simTime: simTime }, origin, mapMode);
+  updateDisplay(mapMode: boolean, fo: FloatingOrigin, player: Player, ephemeris: EphemerisSystem, simTime: number): void {
+    this.guide.syncPlannedLine(this.editor.plan, { player: player, ephemeris: ephemeris, simTime: simTime }, fo, mapMode);
 
     if (!mapMode) {
       this.display.hide();
       this.editor.hideGizmo();
       return;
     }
-    this.display.sync(this.editor.plan, {player, ephemeris, simTime}, origin, this.mapCamera.frameRotating, this.project);
-    this.editor.updateGizmo(origin, this.display.bindDisplayFrame(ephemeris, this.mapCamera.frameRotating), this.project, this.mapCamera.dist);
+    this.display.sync(this.editor.plan, player, ephemeris, simTime, fo, this.mapCamera.frameRotating, this.project);
+    this.editor.updateGizmo(fo, this.display.bindDisplayFrame(ephemeris, this.mapCamera.frameRotating), this.project, this.mapCamera.dist);
     this.mapMarkers.syncLabels(
-      origin,
+      fo,
       simTime,
       ephemeris,
       this.display.predictDurationSec(player),

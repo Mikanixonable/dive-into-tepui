@@ -10,6 +10,7 @@ import { Sfx } from '../audio/sfx';
 import { Input } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import { MarkerManager } from './marker/marker-manager';
+import { FloatingOrigin } from './floating-origin';
 
 export class Targeter {
   private lockedTarget: Enemy | null = null;
@@ -41,18 +42,19 @@ export class Targeter {
     player: Player,
     enemies: Enemy[],
     input: Input,
+    floatingOrigin: FloatingOrigin,
     cameraSystem: CameraSystem,
   ): Enemy | null {
-    this.handleTargetLockByRightClick(input, enemies, player, cameraSystem.activeCameraProjection);
+    this.handleTargetLockByRightClick(input, enemies, player, floatingOrigin, cameraSystem.activeCameraProjection);
     this.autoTarget = this.resolveAutoTarget(enemies, player, cameraSystem.activeCamera);
     return this.autoTarget;
   }
 
   // ハイライト線を最新のターゲット状態に合わせる。
-  syncOrbitLine(origin: Vec3): void{
+  syncOrbitLine(fo: FloatingOrigin): void{
     const tgt = this.aliveTarget;
     const tgtEl = tgt ? tgt.elements : null;
-    this.orbitLine.sync(tgtEl, origin);
+    this.orbitLine.sync(tgtEl, fo);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
@@ -79,9 +81,8 @@ export class Targeter {
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
-  syncBoardMarkers(player: Player, dt: number, project: ProjectFn): void {
+  syncBoardMarkers(fo: FloatingOrigin, dt: number, project: ProjectFn): void {
     const target = this.autoTarget;
-    const o = player.state.r;
     if (!target) this.boardMarks.length = 0;
     this.boardMarks = this.boardMarks.filter((m) => {
       m.age += dt;
@@ -94,13 +95,13 @@ export class Targeter {
         this.markerManager.hide(key);
         continue;
       }
-      const p = project(sub(add(target.state.r, m.off), o));
+      const p = project(fo.RtoThreeV3(add(target.state.r, m.off)));
       const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
       this.markerManager.set(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
     }
   }
 
-  private handleTargetLockByRightClick(input: Input, enemies: Enemy[], player: Player, project: ProjectFn): void {
+  private handleTargetLockByRightClick(input: Input, enemies: Enemy[], player: Player, fo: FloatingOrigin, project: ProjectFn): void {
     const rightClicks = input.rightClicks();
     if (rightClicks.length <= 0 || !player.alive) return;
     const click = rightClicks[rightClicks.length - 1]!;
@@ -108,7 +109,7 @@ export class Targeter {
     let minDistSq = C.TARGET_LOCK_PICK_PX_SQ;
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
-      const p = project(sub(enemy.state.r, player.state.r));
+      const p = project(fo.RtoThreeV3(enemy.state.r));
       if (!p.front) continue;
       const dx = p.x - click.x;
       const dy = p.y - click.y;

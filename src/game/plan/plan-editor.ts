@@ -7,7 +7,7 @@
 // 凍結目標クリア(onPlanCleared コールバック、Game 側の状態のため)はここが起点。
 import { Elements, elementsFromState } from '../../physics/orbital';
 import { PlannedNode } from '../../physics/predict';
-import { Vec3, add, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
+import { Vec3, add, cross, len, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
@@ -17,6 +17,7 @@ import { ProjectFn } from '../camera/camera-system';
 import { DisplayFrameFn } from './plan-display';
 import { Plan } from './plan';
 import { SimSpeedManager } from '../sim-speed-manager';
+import { FloatingOrigin } from '../floating-origin';
 
 export class PlanEditor {
   selectedNodeIdx: number | null = null;
@@ -71,24 +72,24 @@ export class PlanEditor {
 
   nodeScreenPos(
     node: PlannedNode,
-    o: Vec3,
+    fo: FloatingOrigin,
     toDisplayFrame: DisplayFrameFn,
     project: ProjectFn,
   ): { x: number; y: number; front: boolean } | null {
     const s = this.plan.sampleAt(node.time);
     if (!s) return null;
-    return project(sub(toDisplayFrame(s.r, node.time), o));
+    return project(fo.RtoThreeV3(toDisplayFrame(s.r, node.time)));
   }
 
   // マップ上のクリック処理: 既存ノードマーカー近傍なら選択、そうでなければ
   // 予測軌道(既存ノードの噴射も反映済みの折れ線)上の最近傍サンプル時刻に
   // 新規ノードを配置して選択する。
-  handleMapClick(mx: number, my: number, o: Vec3, toDisplayFrame: DisplayFrameFn, project: ProjectFn): void {
+  handleMapClick(mx: number, my: number, fo: FloatingOrigin, toDisplayFrame: DisplayFrameFn, project: ProjectFn): void {
     this.closeMenu();
     let bestNodeIdx: number | null = null;
     let bestNodeD = C.NODE_PICK_PX * C.NODE_PICK_PX;
     for (let i = 0; i < this.plan.nodes.length; i++) {
-      const p = this.nodeScreenPos(this.plan.nodes[i]!, o, toDisplayFrame, project);
+      const p = this.nodeScreenPos(this.plan.nodes[i]!, fo, toDisplayFrame, project);
       if (!p || !p.front) continue;
       const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
       if (d < bestNodeD) {
@@ -106,7 +107,7 @@ export class PlanEditor {
     let bestT: number | null = null;
     let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
     for (const s of this.plan.trajSamples) {
-      const p = project(sub(toDisplayFrame(s.r, s.t), o));
+      const p = project(fo.RtoThreeV3(toDisplayFrame(s.r, s.t)));
       if (!p.front) continue;
       const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
       if (d < bestD) {
@@ -126,11 +127,11 @@ export class PlanEditor {
   // ノードに当たらなければノードメニューを閉じて false を返し、呼び出し側(game.ts)が
   // フォーカス選択(CameraSystem)へフォールバックさせる。ノード削除はこのメニュー経由
   // ([X] キーからも可能)。
-  handleNodeRightClick(mx: number, my: number, o: Vec3, toDisplayFrame: DisplayFrameFn, project: ProjectFn): boolean {
+  handleNodeRightClick(mx: number, my: number, fo: FloatingOrigin, toDisplayFrame: DisplayFrameFn, project: ProjectFn): boolean {
     let bestIdx: number | null = null;
     let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
     for (let i = 0; i < this.plan.nodes.length; i++) {
-      const p = this.nodeScreenPos(this.plan.nodes[i]!, o, toDisplayFrame, project);
+      const p = this.nodeScreenPos(this.plan.nodes[i]!, fo, toDisplayFrame, project);
       if (!p || !p.front) continue;
       const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
       if (d < bestD) {
@@ -153,7 +154,7 @@ export class PlanEditor {
     idx: number,
     clientX: number,
     clientY: number,
-    o: Vec3,
+    fo: FloatingOrigin,
     toDisplayFrame: DisplayFrameFn,
     project: ProjectFn,
   ): void {
@@ -161,7 +162,7 @@ export class PlanEditor {
     let bestT: number | null = null;
     let bestD = Infinity;
     for (const s of this.plan.trajSamples) {
-      const p = project(sub(toDisplayFrame(s.r, s.t), o));
+      const p = project(fo.RtoThreeV3(toDisplayFrame(s.r, s.t)));
       if (!p.front) continue;
       const d = (p.x - clientX) * (p.x - clientX) + (p.y - clientY) * (p.y - clientY);
       if (d < bestD) {
@@ -190,7 +191,7 @@ export class PlanEditor {
   // 上でノード位置との画面上の差分を取ることで、3D 回転行列を介さず画面方向を得る。
   computeAxisScreenDirs(
     node: PlannedNode,
-    o: Vec3,
+    fo: FloatingOrigin,
     toDisplayFrame: DisplayFrameFn,
     project: ProjectFn,
     mapDist: number,
@@ -201,9 +202,9 @@ export class PlanEditor {
     const h = norm(cross(s.r, s.v));
     const radOut = cross(pro, h);
     const L = mapDist * 0.05;
-    const p0 = project(sub(toDisplayFrame(s.r, node.time), o));
+    const p0 = project(fo.RtoThreeV3(toDisplayFrame(s.r, node.time)));
     const dirFor = (axisVec: Vec3): { x: number; y: number } => {
-      const p1 = project(sub(toDisplayFrame(add(s.r, scale(axisVec, L)), node.time), o));
+      const p1 = project(fo.RtoThreeV3(toDisplayFrame(add(s.r, scale(axisVec, L)), node.time)));
       const dx = p1.x - p0.x;
       const dy = p1.y - p0.y;
       const m = Math.hypot(dx, dy);
@@ -243,12 +244,12 @@ export class PlanEditor {
 
   // 毎フレーム(マップモード中のみ呼ぶ): ノードハンドル群と、選択中ノードがあれば
   // Δv アーム 6 個(無ければ全破棄)を画面座標で更新する。
-  updateGizmo(o: Vec3, toDisplayFrame: DisplayFrameFn, project: ProjectFn, mapDist: number): void {
+  updateGizmo(fo: FloatingOrigin, toDisplayFrame: DisplayFrameFn, project: ProjectFn, mapDist: number): void {
     const nodeSpecs: NodeHandleSpec[] = [];
     const limit = Math.min(this.plan.nodes.length, C.MAX_PLAN_NODE_MARKERS);
     for (let i = 0; i < limit; i++) {
       const node = this.plan.nodes[i]!;
-      const p = this.nodeScreenPos(node, o, toDisplayFrame, project);
+      const p = this.nodeScreenPos(node, fo, toDisplayFrame, project);
       if (!p || !p.front) continue;
       nodeSpecs.push({ idx: i, x: p.x, y: p.y, selected: i === this.selectedNodeIdx, dvMag: len(node.dv) });
     }
@@ -256,9 +257,9 @@ export class PlanEditor {
     if (this.selectedNodeIdx !== null) {
       const node = this.plan.nodes[this.selectedNodeIdx];
       if (node) {
-        const p = this.nodeScreenPos(node, o, toDisplayFrame, project);
+        const p = this.nodeScreenPos(node, fo, toDisplayFrame, project);
         if (p && p.front) {
-          const dirs = this.computeAxisScreenDirs(node, o, toDisplayFrame, project, mapDist);
+          const dirs = this.computeAxisScreenDirs(node, fo, toDisplayFrame, project, mapDist);
           if (dirs) axisSpecs = this.buildAxisHandles(p.x, p.y, dirs);
         }
       }

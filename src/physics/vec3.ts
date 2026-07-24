@@ -1,31 +1,31 @@
-export interface Vec3 {
+export type Vec3 = {
   x: number;
   y: number;
   z: number;
-}
+} & { readonly __tag: "Vec3" };
 
 export function v3(x = 0, y = 0, z = 0): Vec3 {
-  return { x, y, z };
+  return { x, y, z } as Vec3;
 }
 
 export function clone(a: Vec3): Vec3 {
-  return { x: a.x, y: a.y, z: a.z };
+  return { x: a.x, y: a.y, z: a.z } as Vec3;
 }
 
 export function add(a: Vec3, b: Vec3): Vec3 {
-  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z } as Vec3;
 }
 
 export function sub(a: Vec3, b: Vec3): Vec3 {
-  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z } as Vec3;
 }
 
 export function scale(a: Vec3, s: number): Vec3 {
-  return { x: a.x * s, y: a.y * s, z: a.z * s };
+  return { x: a.x * s, y: a.y * s, z: a.z * s } as Vec3;
 }
 
 export function addScaled(a: Vec3, b: Vec3, s: number): Vec3 {
-  return { x: a.x + b.x * s, y: a.y + b.y * s, z: a.z + b.z * s };
+  return { x: a.x + b.x * s, y: a.y + b.y * s, z: a.z + b.z * s } as Vec3;
 }
 
 export function dot(a: Vec3, b: Vec3): number {
@@ -37,7 +37,7 @@ export function cross(a: Vec3, b: Vec3): Vec3 {
     x: a.y * b.z - a.z * b.y,
     y: a.z * b.x - a.x * b.z,
     z: a.x * b.y - a.y * b.x,
-  };
+  } as Vec3;
 }
 
 export function lenSq(a: Vec3): number {
@@ -51,7 +51,7 @@ export function len(a: Vec3): number {
 // ゼロベクトル安全な正規化
 export function norm(a: Vec3): Vec3 {
   const l = len(a);
-  if (l < 1e-12) return { x: 0, y: 0, z: 0 };
+  if (l < 1e-12) return { x: 0, y: 0, z: 0 } as Vec3;
   return scale(a, 1 / l);
 }
 
@@ -85,6 +85,6 @@ export function rotateAxis(v: Vec3, axis: Vec3, angle: number): Vec3 {
     x: v.x * c + kxv.x * s + k.x * kdv * (1 - c),
     y: v.y * c + kxv.y * s + k.y * kdv * (1 - c),
     z: v.z * c + kxv.z * s + k.z * kdv * (1 - c),
-  };
+  } as Vec3;
 }
 
