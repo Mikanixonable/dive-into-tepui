@@ -92,10 +92,8 @@ export abstract class Stage {
   }
 
   protected behaveAllEnemies(dt: number, player: Player, simulator: Simulator, simTime: number, simSpeed: SimSpeedManager): void {
-    if (simSpeed.canEnemyFire) {
-      for (const e of simulator.enemies) {
-        if (e.alive) e.behave(dt, simTime, player, simulator);
-      }
+    for (const e of simulator.enemies) {
+      if (e.alive) e.behave(dt, simTime, player, simulator, simSpeed);
     }
   }
 
