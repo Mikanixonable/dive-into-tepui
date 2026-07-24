@@ -12,7 +12,7 @@
 ## 大型の問題
 
 ## mapModeの責務分離
-大規模な変更になるのでSPLIT_MAP_MODE.mdで考察
+大規模な変更になるのでSPLIT_MAP_MODE.mdおよびSPLIT_PREDICT_SYSTEM.mdで計画
 
 ## markerの集約 vs 分散
 markerManagerとmarkerSystemはともに複数のmarkerを扱うモジュールになっている。
