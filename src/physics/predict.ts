@@ -3,7 +3,7 @@
 // 大気抵抗は意図的に省略する(計画ツールであることに加え、高度200km以上では
 // 抵抗による軌道変化が予測期間(最大28日)に対して無視できるほど小さいため)。
 import { ExtraAccel, OrbitState, stepOrbitRK4 } from './orbital';
-import { moonPosition, sunPosition } from './ephemeris';
+import { Ephemeris } from './ephemeris';
 import { envAccelInto } from './envaccel';
 import { Vec3, clone, cross, len, norm, v3 } from './vec3';
 
@@ -21,12 +21,6 @@ export interface TrajectorySample {
   v: Vec3; // ECI 速度 [m/s]
 }
 
-export interface PredictOpts {
-  sunPhase0: number;
-  moonPhase0: number;
-  maxSamples?: number; // 保持するサンプル数の上限(既定 2000)
-}
-
 // 環境加速度(J2 + 月 + 太陽の第三体摂動のみ。bcInv = 0 で大気抵抗を省略)
 function envAccel(sunPos: Vec3, moonPos: Vec3): ExtraAccel {
   return (r: Vec3, v: Vec3, out?: Vec3): Vec3 =>
@@ -35,9 +29,9 @@ function envAccel(sunPos: Vec3, moonPos: Vec3): ExtraAccel {
 
 // state を dt だけ前進させる(中点 t+dt/2 の太陽・月位置で環境加速度を評価)。
 // predictTrajectory と arrivingStates が共有する 1 ステップ。
-function stepPredict(state: OrbitState, t: number, dt: number, opts: PredictOpts): void {
+function stepPredict(state: OrbitState, t: number, dt: number, ephemeris: Ephemeris): void {
   const mid = t + dt / 2;
-  const accel = envAccel(sunPosition(mid, opts.sunPhase0), moonPosition(mid, opts.moonPhase0));
+  const accel = envAccel(ephemeris.sunPosAt(mid), ephemeris.moonPosAt(mid));
   stepOrbitRK4(state, dt, accel);
 }
 
@@ -81,7 +75,8 @@ export function predictTrajectory(
   t0: number,
   duration: number,
   nodes: readonly PlannedNode[],
-  opts: PredictOpts,
+  ephemeris: Ephemeris,
+  maxSamplesOpt?: number, // 保持するサンプル数の上限(既定 2000)
 ): TrajectorySample[] {
   if (duration <= 0) return [{ t: t0, r: clone(state0.r), v: clone(state0.v) }];
 
@@ -89,7 +84,7 @@ export function predictTrajectory(
     .filter((n) => n.time > t0 && n.time <= t0 + duration)
     .slice()
     .sort((a, b) => a.time - b.time);
-  const maxSamples = Math.max(10, opts.maxSamples ?? 2000);
+  const maxSamples = Math.max(10, maxSamplesOpt ?? 2000);
   const tEnd = t0 + duration;
 
   let r = clone(state0.r);
@@ -117,7 +112,7 @@ export function predictTrajectory(
 
     if (dt > 1e-9) {
       const state = { r, v };
-      stepPredict(state, t, dt, opts);
+      stepPredict(state, t, dt, ephemeris);
       r = state.r;
       v = state.v;
       t += dt;
@@ -156,7 +151,7 @@ export function arrivingStates(
   state0: OrbitState,
   t0: number,
   nodes: readonly PlannedNode[],
-  opts: PredictOpts,
+  ephemeris: Ephemeris,
 ): OrbitState[] {
   const out: OrbitState[] = [];
   let r = clone(state0.r);
@@ -168,7 +163,7 @@ export function arrivingStates(
       const dt = Math.min(predictStepDt(len(r), targetT - t0), targetT - t);
       if (dt <= 1e-9) break;
       const state = { r, v };
-      stepPredict(state, t, dt, opts);
+      stepPredict(state, t, dt, ephemeris);
       r = state.r;
       v = state.v;
       t += dt;

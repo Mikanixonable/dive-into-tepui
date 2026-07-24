@@ -1,12 +1,12 @@
 // 環境(太陽・月・星・地球・環境光)の構築と毎フレーム更新。
 // game.ts のゲームプレイ定数(const.ts)には依存しない — 必要な値は呼び出し側から渡す。
 import * as THREE from 'three/webgpu';
-import { R_MOON, moonPosition, sunPosition } from '../physics/ephemeris';
-import { SIDEREAL_DAY } from '../physics/orbital';
-import { Vec3, len, norm, scale, sub, v3 } from '../physics/vec3';
+import { Ephemeris, R_MOON } from '../physics/ephemeris';
+import { Elements, R_EARTH, SIDEREAL_DAY, elementsFromState } from '../physics/orbital';
+import { Vec3, addScaled, dot, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { createEarth, Earth } from './earth';
+import { OrbitLine } from './orbitline';
 import { MOON_VIS_DIST, SUN_DISTANCE, SUN_VISUAL_SIZE, Sun, createMoon, createStars, createSun } from './stars';
-import { EphemerisSystem } from '../game/ephemeris';
 import { CameraSystem } from '../game/camera/camera-system';
 import { FloatingOrigin } from '../game/floating-origin';
 import * as C from '../game/const';
@@ -25,11 +25,24 @@ export interface EnvironmentSyncParams {
   floatingOrigin: FloatingOrigin;
   displayTime: number;
   cameraSystem: CameraSystem;
-  ephemeris: EphemerisSystem;
 }
 
 // 地球メッシュは地球中心(ECI 原点)基準。group.position はその原点の描画フレーム位置。
 const EARTH_CENTER = v3(0, 0, 0);
+
+// 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。
+const GEO_ELEMENTS: Elements = {
+  a: R_EARTH + 35786e3,
+  e: 1e-6,
+  p: R_EARTH + 35786e3,
+  incDeg: 0,
+  apAlt: 35786e3,
+  peAlt: 35786e3,
+  period: 86164,
+  hHat: v3(0, 1, 0),
+  pHat: v3(1, 0, 0),
+  qHat: v3(0, 0, -1),
+};
 
 // 太陽ビルボード位置(カメラ相対)の作業用 THREE.Vector3。毎フレームの再確保を避ける。
 const tmpSunPos = new THREE.Vector3();
@@ -41,19 +54,34 @@ export class EnvironmentScene {
   readonly starsMesh: THREE.Mesh;
   readonly moonMesh: THREE.Mesh;
   readonly earth: Earth;
+
+  // 天体暦(太陽・月の ECI 位置・太陽方向)を保持・所有する。太陽方向のライティング・
+  // 空の天体・参照軌道線がすべてここから引くため、環境描画とともにここが持つ。simTime に
+  // 沿った毎フレームのサンプリングは Simulator が積分の各サブステップで駆動する。
+  readonly ephemeris = new Ephemeris();
   private readonly earthPhase0 = Math.random() * Math.PI * 2;
+
+  // マップモード専用の参照軌道線(静止軌道高度の目盛り・月軌道)。どちらも天体暦の
+  // 状態から作られる表示なので、環境描画とともにここが所有する。
+  readonly geoLine = new OrbitLine(0x8b93a0, 0.2);
+  readonly moonLine = new OrbitLine(0xaab3c0, 0.2);
 
   constructor(
     scene: THREE.Scene,
-    sunDir0: Vec3,
     //private readonly lighting: EnvironmentLightingParams,
   ) {
+    this.ephemeris.update(0);
+    const sd0 = this.ephemeris.sunDir;
+    this.geoLine.line.renderOrder = 0;
+    this.moonLine.line.renderOrder = 0;
+    scene.add(this.geoLine.line);
+    scene.add(this.moonLine.line);
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     scene.add(this.ambient);
     this.sun = createSun();
     scene.add(this.sun.billboard.mesh);
     this.sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
-    this.sunLight.position.set(sunDir0.x * 1e5, sunDir0.y * 1e5, sunDir0.z * 1e5);
+    this.sunLight.position.set(sd0.x * 1e5, sd0.y * 1e5, sd0.z * 1e5);
     scene.add(this.sunLight);
     this.moonMesh = createMoon();
     scene.add(this.moonMesh);
@@ -64,13 +92,41 @@ export class EnvironmentScene {
   }
 
   sync(params: EnvironmentSyncParams): void {
-    const { dt, player, floatingOrigin, displayTime, cameraSystem, ephemeris } = params;
+    const { dt, player, floatingOrigin, displayTime, cameraSystem } = params;
     this.syncEarth(dt, floatingOrigin, displayTime);
-    this.syncSkyBodies(displayTime, floatingOrigin, ephemeris, cameraSystem);
+    this.syncSkyBodies(displayTime, floatingOrigin, cameraSystem);
 
-    // lifFactorは自機位置の日商度。物理的に正確ではない
-    const lit = cameraSystem.mapMode ? 1.0 : ephemeris.shadowLitFactor(player.state.r);
+    // lit は自機位置の日照率(円柱影の近似)。物理的に正確ではない。
+    const lit = cameraSystem.mapMode ? 1.0 : this.shadowLitFactor(player.state.r, this.ephemeris.sunDir);
     this.syncLighting(lit);
+  }
+
+  // マップモード中だけ geo/moon の参照線を表示する(戦闘ビューでは非表示)。
+  syncReferenceLines(simTime: number, fo: FloatingOrigin, mapMode: boolean): void {
+    if (!mapMode) {
+      this.geoLine.sync(null, fo);
+      this.moonLine.sync(null, fo);
+      return;
+    }
+    this.geoLine.sync(GEO_ELEMENTS, fo, false);
+    this.moonLine.sync(this.moonOrbitElements(simTime), fo, false);
+  }
+
+  // 自機位置の地表影(円柱近似 + 縁のぼかし)による日照率 0..1。
+  private shadowLitFactor(r: Vec3, sunDir: Vec3): number {
+    const along = dot(r, sunDir);
+    if (along >= 0) return 1; // 太陽側
+    const perp = len(addScaled(r, sunDir, -along));
+    return Math.min(1, Math.max(0, (perp - R_EARTH) / C.SHADOW_PENUMBRA));
+  }
+
+  // 月の接触軌道要素(表示専用)。月自身は entity ではなく解析式のみを持つため、
+  // 近接2点の位置を数値微分して疑似的な r, v を作り、他の軌道線と同じ経路に載せる。
+  private moonOrbitElements(simTime: number): Elements | null {
+    const dt = 10;
+    const r1 = this.ephemeris.moonPosAt(simTime);
+    const r2 = this.ephemeris.moonPosAt(simTime + dt);
+    return elementsFromState(r1, scale(sub(r2, r1), 1 / dt));
   }
 
   private syncEarth(dt: number, fo: FloatingOrigin, displayTime: number): void {
@@ -82,10 +138,9 @@ export class EnvironmentScene {
   private syncSkyBodies(
     displayTime: number,
     fo: FloatingOrigin,
-    ephemeris: EphemerisSystem,
     cameraSystem: CameraSystem,
   ): void {
-    const visSunPos = sunPosition(displayTime, ephemeris.sunPhase0);
+    const visSunPos = this.ephemeris.sunPosAt(displayTime);
     const cam = cameraSystem.activeCamera;
     const sd = norm(visSunPos);
     this.earth.setSunDir(sd.x, sd.y, sd.z);
@@ -103,7 +158,7 @@ export class EnvironmentScene {
       cam.quaternion,
     );
     this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
-    const visMoonPos = moonPosition(displayTime, ephemeris.moonPhase0);
+    const visMoonPos = this.ephemeris.moonPosAt(displayTime);
     if (cameraSystem.mapMode) {
       // マップは実スケール: 月を実 ECI 位置(fo 経由)に置く。
       this.moonMesh.position.copy(fo.RtoThreeV3(visMoonPos));

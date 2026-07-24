@@ -14,8 +14,7 @@
 // 持つとずれる)。mapMode 中のみ意味を持つ。
 import * as THREE from 'three/webgpu';
 import { OrbitState, R_EARTH } from '../../physics/orbital';
-import { sunAzimuth } from '../../physics/ephemeris';
-import { PlannedNode, PredictOpts, TrajectorySample, predictTrajectory, sampleAt } from '../../physics/predict';
+import { PlannedNode, TrajectorySample, predictTrajectory, sampleAt } from '../../physics/predict';
 import { Vec3, len, rotateAxis, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { fmtMarkerDist } from '../hud/utils';
@@ -23,7 +22,7 @@ import { TrajLine } from './trajline';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn } from '../camera/camera-system';
 import type { Player } from '../player/player';
-import type { EphemerisSystem } from '../ephemeris';
+import type { Ephemeris } from '../../physics/ephemeris';
 import { FloatingOrigin } from '../floating-origin';
 
 export type PredictDurationKey = 'orbit' | 'day' | 'week' | 'month';
@@ -55,19 +54,14 @@ export class PredictSystem {
   // player の状態ではない)。結果は Plan の隣接キャッシュへ呼び出し側が貯める。
   compute(
     anchor: { time: number; state: OrbitState },
-    ephemeris: EphemerisSystem,
+    ephemeris: Ephemeris,
     nowTime: number,
     nodes: readonly PlannedNode[],
     displayDuration: number,
   ): TrajectorySample[] {
     const span = nowTime + displayDuration - anchor.time;
     if (span <= 0) return [];
-    const opts: PredictOpts = {
-      sunPhase0: ephemeris.sunPhase0,
-      moonPhase0: ephemeris.moonPhase0,
-      maxSamples: C.PREDICT_MAX_SAMPLES,
-    };
-    return predictTrajectory(anchor.state, anchor.time, span, nodes, opts);
+    return predictTrajectory(anchor.state, anchor.time, span, nodes, ephemeris, C.PREDICT_MAX_SAMPLES);
   }
 
   // 選んだ期間だけ予測する(マップモードでの表示用— 戦闘ビューの噴射ガイド用の
@@ -85,15 +79,15 @@ export class PredictSystem {
 
   // ECI 座標 r(時刻 t のもの)をマップの「太陽回転系」表示用に回転させる
   // (非回転系なら無変換)。
-  private toDisplayFrame(r: Vec3, t: number, ephemeris: EphemerisSystem, frameRotating: boolean): Vec3 {
+  private toDisplayFrame(r: Vec3, t: number, ephemeris: Ephemeris, frameRotating: boolean): Vec3 {
     if (!frameRotating) return r;
-    const phi = this.trajYawRef - sunAzimuth(t, ephemeris.sunPhase0);
+    const phi = this.trajYawRef - ephemeris.sunAzimuthAt(t);
     return rotateAxis(r, v3(0, 1, 0), phi);
   }
 
   // 太陽回転系表示込みの座標変換を束縛したクロージャを返す。plan-editor.ts のクリック
   // 判定・ドラッグ・ギズモ配置は必ずこの1つの変換を通すことで、描画とずれないようにする。
-  bindDisplayFrame(ephemeris: EphemerisSystem, frameRotating: boolean): DisplayFrameFn {
+  bindDisplayFrame(ephemeris: Ephemeris, frameRotating: boolean): DisplayFrameFn {
     return (r: Vec3, t: number) => this.toDisplayFrame(r, t, ephemeris, frameRotating);
   }
 
@@ -134,7 +128,7 @@ export class PredictSystem {
     cache: readonly TrajectorySample[],
     nodeTimes: readonly number[],
     player: Player,
-    ephemeris: EphemerisSystem,
+    ephemeris: Ephemeris,
     simTime: number,
     fo: FloatingOrigin,
     frameRotating: boolean,
@@ -147,7 +141,7 @@ export class PredictSystem {
     // 折れ線のジオメトリが作り直される。表示回転角(trajYawRef)はそのタイミングにしか
     // 意味を持たないので、同じタイミングでここで固定する。
     this.line.sync(cache, () => {
-      this.trajYawRef = frameRotating ? sunAzimuth(simTime, ephemeris.sunPhase0) : 0;
+      this.trajYawRef = frameRotating ? ephemeris.sunAzimuthAt(simTime) : 0;
       return {
         nodeTimes,
         toDisplayFrame: (r: Vec3, t: number) => this.toDisplayFrame(r, t, ephemeris, frameRotating),

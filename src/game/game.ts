@@ -6,12 +6,10 @@
 import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
 import { v3 } from '../physics/vec3';
-import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
 import { HitSystem } from './orbit-entity/hit';
 import { Stage, StageId } from './stages/stage';
-import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkerForGame } from './marker/marker-for-game';
 import { MarkerManager } from './marker/marker-manager';
 import { CollisionPhysics } from './orbit-entity/collision';
@@ -80,9 +78,8 @@ export class Game {
   readonly activeStage: Stage;
   paused = false;
 
-  // 天体暦(太陽・月の位置と日照率)。マップモード専用の geo/moon 参照軌道線も
-  // scene 登録込みでここが持つため、コンストラクタ本体で構築する。
-  private readonly ephemeris: EphemerisSystem;
+  // 天体暦(太陽・月の位置と日照率)・空の天体・参照軌道線をまとめて所有する描画系。
+  // ephemeris インスタンスの保持もここ(environment.ephemeris)に集約する。
   private readonly environment: EnvironmentScene;
 
   private readonly unlockManager = new UnlockManager();
@@ -102,10 +99,11 @@ export class Game {
   constructor(gs: GameScene, stageId: StageId = '1') {
     this._scene = gs.scene;
     this.renderer = gs.renderer;
-    this.ephemeris = new EphemerisSystem(this._scene);
     this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
     this.pipRenderer = new PipRenderer(this._scene);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
+    // environment が ephemeris を所有するので、それに依存する simulator/planSystem より先に構築する。
+    this.environment = new EnvironmentScene(this._scene);
     this.planSystem = new PlanSystem(
       this._hud,
       this._sfx,
@@ -116,7 +114,7 @@ export class Game {
       this.cameraSystem.mapMarkers,
       this._scene,
       () => this.player.fineAttitude,
-      () => this.ephemeris,
+      () => this.environment.ephemeris,
     );
     // ノードハンドル直接右クリックは、canvas 右クリックと同じフォールバック調停に流す。
     this.planSystem.onNodeHandleRightClick = (x, y) => this.dispatchMapRightClick(x, y);
@@ -127,10 +125,7 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
 
-    this.simulator = new Simulator(this.ephemeris, this.hitSystem);
-
-    this.ephemeris.update(this.simulator.simTime);
-    this.environment = new EnvironmentScene(this._scene, this.ephemeris.sunDir);
+    this.simulator = new Simulator(this.environment.ephemeris, this.hitSystem);
 
     this.player = new Player(this._hud, this._sfx, this._scene, this.effects);
 
@@ -223,7 +218,7 @@ export class Game {
     // sync 時のフローティングオリジン(積分後の自機位置)と一致していなければならない。
     this.cameraSystem.update(
       this.player,
-      sunAzimuth(this.simulator.simTime, this.ephemeris.sunPhase0),
+      this.environment.ephemeris.sunAzimuthAt(this.simulator.simTime),
       this.input,
       dt,
     );
@@ -307,7 +302,6 @@ export class Game {
       floatingOrigin: this.floatingOrigin,
       displayTime,
       cameraSystem: this.cameraSystem,
-      ephemeris: this.ephemeris,
     });
 
     this.player.syncPlayer(this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this.paused);
@@ -356,9 +350,9 @@ export class Game {
     const project = this.cameraSystem.activeCameraProjection;
     const mapMode = this.cameraSystem.mapMode;
 
-    this.planSystem.updateDisplay(mapMode, fo, this.player, this.ephemeris, this.simulator.simTime);
+    this.planSystem.updateDisplay(mapMode, fo, this.player, this.environment.ephemeris, this.simulator.simTime);
 
-    this.ephemeris.syncReferenceLines(this.simulator.simTime, fo, mapMode);
+    this.environment.syncReferenceLines(this.simulator.simTime, fo, mapMode);
 
     this.markersSystem.updateMarkers(this.markerCtx(), project);
     this.markersSystem.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);

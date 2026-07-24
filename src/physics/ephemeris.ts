@@ -2,8 +2,9 @@
 // 太陽: 黄道面(赤道に対し 23.44° 傾斜)を 1 恒星年で公転。
 // 月: 黄道に対し 5.145° 傾いた円軌道を 1 恒星月で公転し、
 //     昇交点は 18.61 年周期で逆行歳差する(これが軌道傾斜角変化の源)。
-// THREE/DOM 非依存の純粋関数。
-import { Vec3, v3 } from './vec3';
+// THREE/DOM 非依存。位置の計算式は純関数、それを初期位相で束縛して simTime で
+// サンプルする状態は末尾の Ephemeris クラスが持つ。
+import { Vec3, norm, v3 } from './vec3';
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
 export const MU_MOON = 4.9048695e12;
@@ -148,6 +149,59 @@ export function seLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec
   
   const l1 = v3(sHat.x * rL, sHat.y * rL, sHat.z * rL); // towards Sun
   const l2 = v3(-sHat.x * rL, -sHat.y * rL, -sHat.z * rL); // away from Sun
-  
+
   return { L1: l1, L2: l2 };
+}
+
+// 天体暦の状態: 初期位相をゲームごとに固定し、simTime でサンプルした太陽・月の
+// ECI 位置と太陽方向を保持する。予測(predict.ts)・環境描画・マップ表示など
+// 「物理的な天体暦」だけを要する箇所は、位相を露出せずこのオブジェクトを共有する。
+export class Ephemeris {
+  private sunPosV: Vec3 = v3(SUN_DIST, 0, 0);
+  private moonPosV: Vec3 = v3(MOON_DIST, 0, 0);
+  private sunDirV: Vec3 = v3(1, 0, 0);
+
+  // sunPhase0 は昼(太陽が+X側)から始まるよう既定 0。moonPhase0 は既定でゲーム
+  // ごとの乱数。テストは決定的な位相を渡すためコンストラクタで上書きする。
+  constructor(
+    private readonly sunPhase0 = 0,
+    private readonly moonPhase0 = Math.random() * Math.PI * 2,
+  ) {}
+
+  get sunPos(): Vec3 {
+    return this.sunPosV;
+  }
+
+  get moonPos(): Vec3 {
+    return this.moonPosV;
+  }
+
+  // 太陽方向の単位ベクトル(ライティング・影判定用)
+  get sunDir(): Vec3 {
+    return this.sunDirV;
+  }
+
+  // simTime の太陽・月位置と太陽方向をサンプルして保持する。
+  update(simTime: number): void {
+    this.sunPosV = sunPosition(simTime, this.sunPhase0);
+    this.moonPosV = moonPosition(simTime, this.moonPhase0);
+    this.sunDirV = norm(this.sunPosV);
+  }
+
+  // 任意時刻のサンプリング(位相を束縛)。予測・マップ表示が表示時刻・将来時刻に使う。
+  sunPosAt(t: number): Vec3 {
+    return sunPosition(t, this.sunPhase0);
+  }
+  moonPosAt(t: number): Vec3 {
+    return moonPosition(t, this.moonPhase0);
+  }
+  sunAzimuthAt(t: number): number {
+    return sunAzimuth(t, this.sunPhase0);
+  }
+  emLagrangeAt(t: number): ReturnType<typeof emLagrangePoints> {
+    return emLagrangePoints(t, this.moonPhase0);
+  }
+  seLagrangeAt(t: number): ReturnType<typeof seLagrangePoints> {
+    return seLagrangePoints(t, this.sunPhase0);
+  }
 }

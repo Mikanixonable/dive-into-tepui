@@ -13,7 +13,7 @@ import { Ammo, DebrisPiece, OrbitEntity } from './entities';
 import { Player } from '../player/player';
 import { Enemy } from './enemy';
 import { Bullet } from './bullet';
-import { EphemerisSystem } from '../ephemeris';
+import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
 
 export class Simulator {
@@ -38,7 +38,7 @@ export class Simulator {
   private readonly envSmall = this.makeEnvAccel(C.SMALL_DEBRIS_BCINV);
 
   constructor(
-    private readonly ephemeris: EphemerisSystem,
+    private readonly ephemeris: Ephemeris,
     private readonly hit: HitSystem,
   ) { }
 
