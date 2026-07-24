@@ -12,12 +12,16 @@ import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input/input';
 import { MapMarkers } from './map-markers';
 import { FloatingOrigin } from '../floating-origin';
+import { ndcToScreen, projectToNdc, ViewFrame } from '../../physics/projection';
+import { ProjectFn } from './camera-system';
 
 const WORLD_UP = v3(0, 1, 0);
+const MAP_CAMERA_FOV = 50;
 
 export class MapCamera {
   // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
   readonly camera: THREE.PerspectiveCamera;
+  private readonly fov = MAP_CAMERA_FOV;
   yaw = 0.7;
   pitch = 0.45;
   dist = 4.5e7;
@@ -40,11 +44,24 @@ export class MapCamera {
     private readonly mapMarkers: MapMarkers,
   ) {
     this.camera = new THREE.PerspectiveCamera(
-      50,
+      MAP_CAMERA_FOV,
       window.innerWidth / window.innerHeight,
       1e4,
       C.MAP_CAMERA_FAR,
     );
+  }
+
+  // update() が算出した視点状態から直接スクリーン投影する ProjectFn。THREE.js の
+  // カメラ行列にもフローティングオリジンにも依存しない(camera-system.ts のコメント参照)。
+  get projection(): ProjectFn {
+    const view: ViewFrame = {
+      position: this.position,
+      lookTarget: this.lookTarget,
+      up: WORLD_UP,
+      fovDeg: this.fov,
+      aspect: this.aspect,
+    };
+    return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), window.innerWidth, window.innerHeight);
   }
 
   reset(): void {

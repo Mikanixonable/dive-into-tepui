@@ -12,10 +12,9 @@ import { Input } from '../input/input';
 import { Player } from '../player/player';
 import { FloatingOrigin } from '../floating-origin';
 import { Vec3 } from '../../physics/vec3';
+import { Projected } from '../../physics/projection';
 
-const tmpV = new THREE.Vector3();
-
-export type ProjectFn = (rel: THREE.Vector3) => { x: number; y: number; front: boolean; };
+export type ProjectFn = (worldPos: Vec3) => Projected;
 
 // 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する。
 // どちらも視点操作のみの責務のカメラで、このクラスが対称に内部保持する。
@@ -49,12 +48,12 @@ export class CameraSystem {
   // マップラベル(フォーカス候補)を右クリックしたときの処理: 最寄りラベル(MAP_LABEL_PICK_PX
   // 以内)があればフォーカス選択メニューを開き、無ければ閉じる。ノードに消費されなかった
   // 右クリックのフォールバック先として game.ts から呼ばれる。
-  handleFocusRightClick(clientX: number, clientY: number, fo: FloatingOrigin): void {
+  handleFocusRightClick(clientX: number, clientY: number): void {
     const project = this.activeCameraProjection;
     let bestKey: string | null = null;
     let bestD = C.MAP_LABEL_PICK_PX * C.MAP_LABEL_PICK_PX;
     for (const lbl of this.mapMarkers.labels) {
-      const p = project(fo.RtoThreeV3(lbl.pos));
+      const p = project(lbl.pos);
       if (!p.front) continue;
       const d = (p.x - clientX) * (p.x - clientX) + (p.y - clientY) * (p.y - clientY);
       if (d < bestD) {
@@ -111,17 +110,6 @@ export class CameraSystem {
 
 
   get activeCameraProjection(): ProjectFn {
-    return (rel: THREE.Vector3) => {
-      const cam = this.activeCamera;
-
-      tmpV.set(rel.x, rel.y, rel.z).applyMatrix4(cam.matrixWorldInverse);
-      const front = tmpV.z < 0;
-      tmpV.applyMatrix4(cam.projectionMatrix);
-      return {
-        x: (tmpV.x * 0.5 + 0.5) * window.innerWidth,
-        y: (-tmpV.y * 0.5 + 0.5) * window.innerHeight,
-        front,
-      };
-    };
+    return this.mapMode ? this.mapCamera.projection : this.chaseCamera.projection;
   }
 }
