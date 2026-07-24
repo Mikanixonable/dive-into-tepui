@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, randomQuat } from '../../physics/attitude';
-import { OrbitState } from '../../physics/orbital';
+import { OrbitState, orbitState } from '../../physics/orbital';
 import { add, clone, randSym, randVec, v3, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -84,10 +84,7 @@ export class EffectsSystem {
     // 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果。
     for (let i = 0; i < count; i++) {
       const size = sizeMin + Math.random() * (sizeMax - sizeMin);
-      const state = {
-        r: add(origin, randVec(2.5)),
-        v: add(baseVel, randVec(spread)),
-      };
+      const state = orbitState(add(origin, randVec(2.5)), add(baseVel, randVec(spread)));
       const att = {
         q: randomQuat(),
         w: v3(randSym(0.25), (1.4 + Math.random() * 1.2) * (Math.random() < 0.5 ? -1 : 1), randSym(0.25)),

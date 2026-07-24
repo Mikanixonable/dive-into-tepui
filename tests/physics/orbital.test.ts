@@ -10,6 +10,7 @@ import {
   R_EARTH,
   elementsFromState,
   j2Accel,
+  orbitState,
   positionOnOrbit,
   stateFromElements,
   stepOrbitRK4,
@@ -82,7 +83,7 @@ export function register(): void {
     const alt = 420e3;
     const r0 = R_EARTH + alt;
     const vCirc = Math.sqrt(MU_EARTH / r0);
-    const s = { r: v3(r0, 0, 0), v: v3(0, 0, vCirc) };
+    const s = orbitState(v3(r0, 0, 0), v3(0, 0, vCirc));
     const period = 2 * Math.PI * Math.sqrt((r0 * r0 * r0) / MU_EARTH);
     const e0 = 0.5 * vCirc * vCirc - MU_EARTH / r0;
 
@@ -114,7 +115,7 @@ export function register(): void {
     const inc = (incDeg * Math.PI) / 180;
     const a = R_EARTH + alt;
     const s0 = stateFromElements(a, 0, inc, 0, 0, 0);
-    const s = { r: { ...s0.r }, v: { ...s0.v } };
+    const s = orbitState({ ...s0.r }, { ...s0.v });
 
     const dt = 10;
     const totalDays = 5;

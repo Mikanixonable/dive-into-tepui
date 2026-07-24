@@ -2,7 +2,7 @@
 // THREE/DOM 非依存)。中心重力 + J2 + 月・太陽の第三体摂動で RK4 積分する。
 // 大気抵抗は意図的に省略する(計画ツールであることに加え、高度200km以上では
 // 抵抗による軌道変化が予測期間(最大28日)に対して無視できるほど小さいため)。
-import { ExtraAccel, OrbitState, stepOrbitRK4 } from './orbital';
+import { ExtraAccel, OrbitState, orbitState, stepOrbitRK4 } from './orbital';
 import { Ephemeris } from './ephemeris';
 import { envAccelInto } from './envaccel';
 import { Vec3, clone, cross, len, norm, v3 } from './vec3';
@@ -111,7 +111,7 @@ export function predictTrajectory(
     dt = Math.min(dt, tEnd - t);
 
     if (dt > 1e-9) {
-      const state = { r, v };
+      const state = orbitState(r, v);
       stepPredict(state, t, dt, ephemeris);
       r = state.r;
       v = state.v;
@@ -162,13 +162,13 @@ export function arrivingStates(
     while (t < targetT - 1e-6) {
       const dt = Math.min(predictStepDt(len(r), targetT - t0), targetT - t);
       if (dt <= 1e-9) break;
-      const state = { r, v };
+      const state = orbitState(r, v);
       stepPredict(state, t, dt, ephemeris);
       r = state.r;
       v = state.v;
       t += dt;
     }
-    out.push({ r: clone(r), v: clone(v) });
+    out.push(orbitState(clone(r), clone(v)));
     // 次アークはこのノードの postState から始まる。
     r = clone(nodes[i]!.postState.r);
     v = clone(nodes[i]!.postState.v);

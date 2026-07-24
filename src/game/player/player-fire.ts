@@ -4,6 +4,7 @@
 // (表示メッシュ + たわみ物理)は belt.ts の Belt が持ち、Player が直接所有する。
 import * as THREE from 'three/webgpu';
 import { qRotate, randomQuat } from '../../physics/attitude';
+import { orbitState } from '../../physics/orbital';
 import { add, addScaled, clone, norm, randPerp, randSym, randVec, scale, v3, Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input/input';
@@ -222,10 +223,10 @@ export class PlayerFire {
   private spawnBullet(ship: Ship, muzzle: Vec3, fwd: Vec3, simTime: number, addBullet: (bullet: Bullet) => void): void {
     const dir = norm(addScaled(fwd, randPerp(fwd), Math.abs(randSym(C.BULLET_SPREAD))));
     const bullet = new Bullet(
-      {
-        r: addScaled(clone(muzzle), fwd, 1.5),
-        v: addScaled(clone(ship.state.v), dir, C.MUZZLE_SPEED),
-      },
+      orbitState(
+        addScaled(clone(muzzle), fwd, 1.5),
+        addScaled(clone(ship.state.v), dir, C.MUZZLE_SPEED),
+      ),
       simTime,
       C.BULLET_LIFETIME,
       'player',
@@ -241,13 +242,13 @@ export class PlayerFire {
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const up = qRotate(ship.att.q, v3(0, 1, 0));
     this._fx.spawnCasing(
-      {
-        r: add(muzzle, scale(right, -1.4)),
-        v: add(
+      orbitState(
+        add(muzzle, scale(right, -1.4)),
+        add(
           ship.state.v,
           add(scale(right, -(0.5 + Math.random() * 0.3)), add(scale(up, randSym(0.2)), randVec(0.1))),
         ),
-      },
+      ),
       {
         q: randomQuat(),
         w: v3(randSym(2.5), randSym(2.5), randSym(2.5)),
@@ -278,10 +279,10 @@ export class PlayerFire {
     // 下方に少し勢いをつけて放出
     const down = qRotate(ship.att.q, v3(0, -1, 0));
     this._fx.spawnBarrel(
-      {
-        r: add(ship.state.r, qRotate(ship.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
-        v: add(ship.state.v, add(scale(down, 3.0), randVec(0.5))),
-      },
+      orbitState(
+        add(ship.state.r, qRotate(ship.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
+        add(ship.state.v, add(scale(down, 3.0), randVec(0.5))),
+      ),
       {
         q: { x: ship.att.q.x, y: ship.att.q.y, z: ship.att.q.z, w: ship.att.q.w },
         w: v3(randSym(2), randSym(2), randSym(2)),
@@ -296,10 +297,10 @@ export class PlayerFire {
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const portWorld = add(ship.state.r, qRotate(ship.att.q, v3(-0.9, 0, 0)));
     this._fx.spawnMagazineFrame(
-      {
-        r: portWorld,
-        v: add(ship.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
-      },
+      orbitState(
+        portWorld,
+        add(ship.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
+      ),
       {
         q: { x: ship.att.q.x, y: ship.att.q.y, z: ship.att.q.z, w: ship.att.q.w },
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),

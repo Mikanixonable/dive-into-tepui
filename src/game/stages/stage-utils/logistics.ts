@@ -7,6 +7,7 @@ import { randomQuat } from '../../../physics/attitude';
 import { add, cross, len, lenSq, norm, randSym, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
 import * as C from '../../const';
 import { Ammo } from '../../orbit-entity/entities';
+import { orbitState } from '../../../physics/orbital';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import { Player } from '../../player/player';
@@ -32,10 +33,10 @@ export class Logistics {
     const hHat = norm(cross(r, v));
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
     const ammo = new Ammo(
-      {
-        r: rotateAxis(r, hHat, ang),
-        v: add(rotateAxis(v, hHat, ang), randVec(1.5)),
-      },
+      orbitState(
+        rotateAxis(r, hHat, ang),
+        add(rotateAxis(v, hHat, ang), randVec(1.5)),
+      ),
       {
         q: randomQuat(),
         w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),

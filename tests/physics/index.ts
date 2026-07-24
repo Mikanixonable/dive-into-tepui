@@ -8,6 +8,7 @@ import { register as registerAtmosphere } from './atmosphere.test';
 import { register as registerEphemeris } from './ephemeris.test';
 import { register as registerProjection } from './projection.test';
 import { register as registerPredict } from './predict.test';
+import { register as registerFrame } from './frame.test';
 
 registerVec3();
 registerOrbital();
@@ -16,5 +17,6 @@ registerAtmosphere();
 registerEphemeris();
 registerProjection();
 registerPredict();
+registerFrame();
 
 runAll();
