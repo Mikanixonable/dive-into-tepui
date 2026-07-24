@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp } from '../../physics/attitude';
 import { MU_EARTH, OrbitState, R_EARTH } from '../../physics/orbital';
 import { Vec3, v3 } from '../../physics/vec3';
+import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Ship } from '../orbit-entity/entities';
 import { Bullet } from '../orbit-entity/bullet';
@@ -247,19 +248,23 @@ export class Player extends Ship {
     );
   }
 
-  // floating origin のため自機は常にワールド原点(基底 Ship.syncTransform とは signature が
-  // 異なる別メソッド — origin ではなくズーム中の可視性を受け取る)。ズーム中(PIP)は本体を隠す。
-  sync(
+  // 自機も他エンティティと同じく絶対 ECI 位置(state.r)を fo 経由で描画フレームへ変換する
+  // (基底 syncTransform とは signature が異なる別メソッド — camera/可視性も受け取る)。
+  // ズーム中(PIP)は本体を隠す。機体付随のエフェクト(プルーム/RCSパフ)には fo と自機
+  // 状態を渡し、慣性座標で位置を組んでから末端で fo 変換させる。
+  // 型シグネチャが異なるため、オーバーライドではなく別メソッドとして定義する。基底クラスのsyncは使わない
+  syncPlayer(
+    fo: FloatingOrigin,
     camera: CameraSystem,
     phasePlaying: boolean,
     paused: boolean
   ): void {
-    this.obj.position.set(0, 0, 0);
+    this.obj.position.copy(fo.RtoThreeV3(this.state.r));
     this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
     this.obj.visible = this.alive && !camera.zoomActive;
 
-    this.thrustEffects.sync(this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
-    this.rcsEffects.sync(this.throttle.rcsTau, this.att, this.alive, phasePlaying, paused, camera);
+    this.thrustEffects.sync(fo, this.state.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
+    this.rcsEffects.sync(fo, this.state.r, this.throttle.rcsTau, this.att, this.alive, phasePlaying, paused, camera);
     this.belt.sync(this.alive);
   }
 }

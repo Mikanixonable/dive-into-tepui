@@ -2,6 +2,7 @@
 import * as THREE from "three/webgpu";
 import { Vec3, addScaled } from "../../physics/vec3";
 import { Billboard } from "../../render/billboard";
+import { FloatingOrigin } from "../floating-origin";
 
 // 軌道速度で流れないよう、発生源の速度で移流させる。
 export interface FlashEffect {
@@ -29,7 +30,7 @@ export class FlashEffectManager {
   syncFlashEffects(
     dt: number,
     simDt: number,
-    origin: Vec3,
+    fo: FloatingOrigin,
     activeCamera: THREE.PerspectiveCamera,
   ): void {
     const camQuat = activeCamera.quaternion;
@@ -44,7 +45,7 @@ export class FlashEffectManager {
       const t = fx.age / fx.duration;
       const size = fx.size0 + (fx.size1 - fx.size0) * Math.sqrt(t);
       const opacity = fx.peakOpacity * (1 - t);
-      fx.billboard.sync({ x: fx.pos.x - origin.x, y: fx.pos.y - origin.y, z: fx.pos.z - origin.z }, size, opacity, camQuat);
+      fx.billboard.sync(fo.RtoThreeV3(fx.pos), size, opacity, camQuat);
       return true;
     });
   }

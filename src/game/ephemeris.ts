@@ -9,6 +9,7 @@ import { moonPosition, sunPosition } from '../physics/ephemeris';
 import { Elements, elementsFromState, R_EARTH } from '../physics/orbital';
 import { Vec3, addScaled, dot, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { OrbitLine } from '../render/orbitline';
+import { FloatingOrigin } from './floating-origin';
 import * as C from './const';
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。
@@ -71,14 +72,14 @@ export class EphemerisSystem {
   }
 
   // マップモード中だけ geo/moon の参照線を表示する(戦闘ビューでは非表示)。
-  syncReferenceLines(simTime: number, origin: Vec3, mapMode: boolean): void {
+  syncReferenceLines(simTime: number, fo: FloatingOrigin, mapMode: boolean): void {
     if (!mapMode) {
-      this.geoLine.sync(null, origin);
-      this.moonLine.sync(null, origin);
+      this.geoLine.sync(null, fo);
+      this.moonLine.sync(null, fo);
       return;
     }
-    this.geoLine.sync(GEO_ELEMENTS, origin, false, false);
-    this.moonLine.sync(this.moonOrbitElements(simTime), origin, false, false);
+    this.geoLine.sync(GEO_ELEMENTS, fo, false);
+    this.moonLine.sync(this.moonOrbitElements(simTime), fo, false);
   }
 
   // 月の接触軌道要素(表示専用)。月自身は entity ではなく解析式のみを持つため、

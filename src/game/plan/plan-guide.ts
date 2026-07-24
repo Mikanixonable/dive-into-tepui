@@ -17,6 +17,7 @@ import { Plan } from './plan';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
 import { SimSpeedManager } from '../sim-speed-manager';
+import { FloatingOrigin } from '../floating-origin';
 
 // 直近の未達成ノードをちょうど含む程度の短い予測期間(28日ぶんを毎回計算するのは
 // 無駄なコストになるため)。map-mode/map-mode-system.ts も同一フレーム内で
@@ -72,21 +73,23 @@ export class PlanGuide {
   syncPlannedLine(
     plan: Plan,
     { player, ephemeris, simTime }: { player: Player; ephemeris: EphemerisSystem; simTime: number },
-    origin: Vec3,
+    fo: FloatingOrigin,
     mapMode: boolean,
   ): void {
-    this.plannedLine.sync(mapMode ? null : plannedOrbitElements(plan, player, ephemeris, simTime), origin);
+    this.plannedLine.sync(mapMode ? null : plannedOrbitElements(plan, player, ephemeris, simTime), fo);
   }
 
   update(
     plan: Plan,
+    fo: FloatingOrigin,
     player: Player,
     ephemeris: EphemerisSystem,
     simTime: number,
     simSpeedManager: SimSpeedManager,
     project: ProjectFn,
   ) {
-    const o = player.state.r;
+    // pr = 自機 ECI 位置(物理量、Δv 合成用)。o = 投影原点(描画基準)。両者を区別する。
+    const pr = player.state.r;
     const pv = player.state.v;
     const playerEl = player.elements;
     const playerAlive = player.alive;
@@ -115,10 +118,10 @@ export class PlanGuide {
       } else if (!this.activeTarget) {
         // ノード時刻を過ぎているのに目標が無い(過去時刻へのノード配置など)。
         // 「今すぐ全Δvを噴射する」目標として現在状態から一度だけ構築・凍結する。
-        const vP = add(pv, dvToWorld(o, pv, node.dv));
-        const el = elementsFromState(o, vP);
+        const vP = add(pv, dvToWorld(pr, pv, node.dv));
+        const el = elementsFromState(pr, vP);
         if (el) {
-          this.activeTarget = { nodeTime: node.time, rNode: clone(o), vPlanned: vP, targetEl: el };
+          this.activeTarget = { nodeTime: node.time, rNode: clone(pr), vPlanned: vP, targetEl: el };
         }
       }
     }
@@ -148,7 +151,7 @@ export class PlanGuide {
     }
 
     // ノード位置マーカー(カウントダウン付き)
-    const p = project(sub(tgt.rNode, o));
+    const p = project(fo.RtoThreeV3(tgt.rNode));
     const tLabel =
       tRem >= 0
         ? `T-${Math.floor(tRem / 60)}:${String(Math.floor(tRem % 60)).padStart(2, '0')}`
@@ -159,7 +162,7 @@ export class PlanGuide {
     // 噴射ガイド: (凍結済みの)目標速度ベクトルとの差分方向へ加速する
     const dvRem = sub(tgt.vPlanned, pv);
     const mag = len(dvRem);
-    const g = project(scale(norm(dvRem), 5e4));
+    const g = project(fo.RtoThreeV3(scale(norm(dvRem), 5e4)));
     this.markerManager.set(
       'burn',
       'mk-burn',
