@@ -3,8 +3,7 @@
 // 表示への反映、および [X] キー(ノード/計画削除)の実処理。ノードの実座標変換
 // (太陽回転系表示)は呼び出し側が渡す DisplayFrameFn 経由で predict-system.ts の
 // toDisplayFrame に委譲する — 表示とクリック判定の基準角がずれないよう、正はそちら
-// 一箇所のみに保つ。ノード削除時の自動ワープ解除(SimSpeedManager)・噴射ガイドの
-// 凍結目標クリア(onPlanCleared コールバック、Game 側の状態のため)はここが起点。
+// 一箇所のみに保つ。ノード削除時の自動ワープ解除(SimSpeedManager)はここが起点。
 // ノード配置・リタイムのピッキングは plan の隣接キャッシュ(plan.trajSamples)を読む。
 // 空の計画時には自機状態を基準に計画する。
 // 計画が空でないときは自機状態は参照しない。逸脱した既存計画を持って editMode を開いた場合は現在状態に再ベースされない
@@ -59,8 +58,6 @@ export class PlanEditor {
   }
 
   // [X] キー: 計画編集モード中は選択中ノードのみ、モード外では計画全体を破棄する。
-  // 噴射ガイドの凍結目標(planGuide.clearActiveTarget)は Game 側の状態のため、
-  // onPlanCleared コールバックで通知する。
   clearPlanByKey(editMode: boolean): void {
     if (editMode) {
       this.deleteSelected();

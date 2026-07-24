@@ -21,7 +21,6 @@ import { fmtMarkerDist } from '../hud/utils';
 import { TrajLine } from './trajline';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn } from '../camera/camera-system';
-import type { Player } from '../player/player';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { FloatingOrigin } from '../floating-origin';
 
@@ -65,11 +64,11 @@ export class PredictSystem {
   }
 
   // 選んだ期間だけ予測する(マップモードでの表示用— 戦闘ビューの噴射ガイド用の
-  // 期間は plan-guide.ts の guideDurationSec が別途持つ)。
-  predictDurationSec(player: Player): number {
+  // 期間は plan-guide.ts の guideDurationSec が別途持つ)。'orbit' キーの周期は呼び出し
+  // 側が渡す(orbitPeriod)ため、predictSystem は player.live を読まない。
+  predictDurationSec(orbitPeriod: number | null): number {
     if (this.predictDurationKey === 'orbit') {
-      const el = player.elements;
-      if (el && isFinite(el.period) && el.period > 0) return el.period;
+      if (orbitPeriod !== null && isFinite(orbitPeriod) && orbitPeriod > 0) return orbitPeriod;
       return C.PREDICT_DUR_DAY; // 双曲線・放物線軌道では1日にフォールバック
     }
     if (this.predictDurationKey === 'week') return C.PREDICT_DUR_WEEK;
@@ -97,15 +96,15 @@ export class PredictSystem {
 
   // マップモードの未来ゴーストスライダーが有効な間だけ、環境(太陽・月)表示等に使う
   // 「未来の」simTime を返す。マップを閉じているか、スライダーが 0 のときは現在時刻のまま。
-  resolveDisplayTime(mapMode: boolean, player: Player, simTime: number): number {
+  resolveDisplayTime(mapMode: boolean, orbitPeriod: number | null, simTime: number): number {
     if (!mapMode || this.sliderT <= 0) return simTime;
-    return this.displayTime(simTime, this.predictDurationSec(player));
+    return this.displayTime(simTime, this.predictDurationSec(orbitPeriod));
   }
 
   // 予定 player の未来位置(スライダー)のラベル文字列。予測サンプル列(Plan の隣接
   // キャッシュ)を引数で受け、時刻 t の高度・経過時間を表示する。
-  plannedPlayerLabel(cache: readonly TrajectorySample[], player: Player, simTime: number): string {
-    const duration = this.predictDurationSec(player);
+  plannedPlayerLabel(cache: readonly TrajectorySample[], orbitPeriod: number | null, simTime: number): string {
+    const duration = this.predictDurationSec(orbitPeriod);
     const t = this.displayTime(simTime, duration);
     const s = sampleAt(cache, t);
     if (!s) return '';
@@ -127,7 +126,7 @@ export class PredictSystem {
   syncDisplay(
     cache: readonly TrajectorySample[],
     nodeTimes: readonly number[],
-    player: Player,
+    orbitPeriod: number | null,
     ephemeris: Ephemeris,
     simTime: number,
     fo: FloatingOrigin,
@@ -152,7 +151,7 @@ export class PredictSystem {
       this.markerManager.hide('plannedPlayer');
       return;
     }
-    const duration = this.predictDurationSec(player);
+    const duration = this.predictDurationSec(orbitPeriod);
     const t = this.displayTime(simTime, duration);
     const sample = sampleAt(cache, t);
     if (!sample) {
@@ -165,7 +164,7 @@ export class PredictSystem {
       '⬡',
       this.toDisplayFrame(sample.r, t, ephemeris, frameRotating),
       project,
-      this.plannedPlayerLabel(cache, player, simTime),
+      this.plannedPlayerLabel(cache, orbitPeriod, simTime),
     );
   }
 }
