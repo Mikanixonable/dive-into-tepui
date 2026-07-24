@@ -157,13 +157,16 @@ export class PlanSystem {
   // ツールバー表示は predictSystem/MapCamera 側の状態が要るため、ここで組み立てて渡す
   // (hud への反映自体は editor 側が行う)。
   updateEditing(dt: number, input: Input, player: Player, simTime: number): void {
+    const orbitPeriod = player.elements?.period ?? null;
     this.editor.updateEditing(dt, simTime, input, this.nodeArrivings(), {
       fineAttitude: this.getFineAttitude(),
       toolbar: {
         durationKey: this.predict.predictDurationKey,
         frameRotating: this.mapCamera.frameRotating,
         plannedPlayerLabel:
-          this.predict.sliderT > 0 ? this.predict.plannedPlayerLabel(this.editor.plan.trajSamples, player, simTime) : null,
+          this.predict.sliderT > 0
+            ? this.predict.plannedPlayerLabel(this.editor.plan.trajSamples, orbitPeriod, simTime)
+            : null,
         focus: this.mapCamera.focus,
       },
     });
@@ -182,14 +185,15 @@ export class PlanSystem {
       return;
     }
     const plan = this.editor.plan;
-    const duration = this.predict.predictDurationSec(player);
+    const orbitPeriod = player.elements?.period ?? null;
+    const duration = this.predict.predictDurationSec(orbitPeriod);
     // 予測キャッシュの更新トリガ(スロットルは Plan、予測計算は predictSystem)。予測は
     // frozen アンカー + 凍結ノードだけの純関数で、player.live には依存しない。
     plan.maybeRefresh(() => this.predict.compute(plan.anchor, ephemeris, simTime, plan.nodes, duration));
     this.predict.syncDisplay(
       plan.trajSamples,
       plan.nodes.map((n) => n.time),
-      player,
+      orbitPeriod,
       ephemeris,
       simTime,
       fo,

@@ -295,7 +295,11 @@ export class Game {
     // カメラ姿勢を THREE.js に反映するのを最初に行う: environment.sync や
     // マーカー投影(activeCameraProjection)がこのフレームのカメラ行列を読むため。
     this.cameraSystem.sync(this.floatingOrigin);
-    const displayTime = this.planSystem.predict.resolveDisplayTime(this.cameraSystem.mapMode, this.player, this.simulator.simTime);
+    const displayTime = this.planSystem.predict.resolveDisplayTime(
+      this.cameraSystem.mapMode,
+      this.player.elements?.period ?? null,
+      this.simulator.simTime,
+    );
     this.environment.sync({
       dt,
       player: this.player,
