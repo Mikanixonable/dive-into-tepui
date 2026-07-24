@@ -4,6 +4,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { ChaseCamera } from './chase-camera';
 import { MapCamera } from './map-camera';
+import { PipCamera } from './pip-camera';
 import { MapMarkers } from './map-markers';
 import { FocusGizmo } from './focus-gizmo';
 import { MarkerManager } from '../marker/marker-manager';
@@ -24,6 +25,7 @@ export type ProjectFn = (rel: THREE.Vector3) => { x: number; y: number; front: b
 export class CameraSystem {
   readonly chaseCamera: ChaseCamera;
   readonly mapCamera: MapCamera;
+  readonly pipCamera = new PipCamera();
   readonly mapMarkers: MapMarkers;
   private readonly focusGizmo = new FocusGizmo();
   mapMode = false;
@@ -94,6 +96,7 @@ export class CameraSystem {
     else {
       this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, player, this.zoomActive);
     }
+    this.pipCamera.update(player);
   }
 
   // update() が算出した絶対 ECI の視点状態を、フローティングオリジン(fo)で補正して
@@ -103,6 +106,7 @@ export class CameraSystem {
   sync(fo: FloatingOrigin): void {
     if (this.mapMode) this.mapCamera.sync(fo);
     else this.chaseCamera.sync(fo);
+    this.pipCamera.sync(fo);
   }
 
 

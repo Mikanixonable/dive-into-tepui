@@ -338,7 +338,6 @@ export class Game {
       target: this.targeter.autoTarget,
       ammos: this.simulator.ammos,
       mapLabelIds: this.planSystem.mapLabelIds(),
-      activeCamera: this.cameraSystem.activeCamera,
       simTime: this.simulator.simTime,
     };
   }
@@ -370,10 +369,12 @@ export class Game {
     // PIP 描画
     this.pipRenderer.renderPip(this.renderer, {
       renderPip: this.player.isFiring && !this.cameraSystem.mapMode,
-      camera: this.cameraSystem.activeCamera,
+      pipCamera: this.cameraSystem.pipCamera,
       playerShipObj: this.player.obj,
       setMuzzleFlashesVisible: (visible) => this.effects.setMuzzleFlashesVisible(visible),
-      updateOverlay: (rect) => this.markersSystem.updatePipOverlay(this.targeter.autoTarget, this.player, this.cameraSystem.activeCamera, rect),
+      updateOverlay: (rect) => this.markersSystem.updatePipOverlay(
+        this.targeter.autoTarget, this.player, this.floatingOrigin, this.cameraSystem.pipCamera.projection, rect,
+      ),
     });
   }
 }

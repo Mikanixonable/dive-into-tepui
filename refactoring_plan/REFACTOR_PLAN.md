@@ -67,18 +67,16 @@ markerCtxやsetMapToolbarStateのtoolbarが該当。
 
 
 ## フローティングオリジン設計の一貫性とカメラ座標
-project関数とfoが合成されて使用されている箇所が多い。（もしそうなっていない箇所があったら挙動の方が壊れている可能性がある）
+marker-for-game.tsでのマーカーを置く処理や、plan-editorなどで（？）3Dの物体とのクリック判定を取るときなどで、三次元座標のものをスクリーン座標に変換する処理があり、それを司るのがcamera-systemから供給されるprojection関数である。
+
+このとき、project関数とFloatingOriginのfo.RtoThreeV3が合成されて使用されている箇所が多い。（もしそうなっていない箇所があったら挙動の方が壊れている可能性があるが、型エラーが出ていないのでたぶん大丈夫だけど......）
 
 project関数はTHREE.Vector3からスクリーン座標への変換を担い、内部的にTHREE.jsのカメラのトランスフォームを利用している。なので、foを経由してTHREE.Vector3に変換する必要がある。
 
-しかし、実際にはVec3からスクリーン座標への変換は、カメラと物体の相対位置のみによって決定し、ここにfoは関係ない。つまり、THREE.jsのperspectiveCameraに依存せずにprojectを実装すると、
+しかし、実際にはVec3からスクリーン座標への変換は、カメラと物体の相対位置のみによって決定し、ここにfoは関係ない。つまり、THREE.jsのperspectiveCameraに依存せず、独自実装のprojectを実装することで、THREE.jsにもfloatingOriginにも依存せず、Vec3上で完結させることができる。
+
+そう考えると、floatingOriginをマーカー系の描画や、クリック判定などに渡しているのが無駄でありそう。
 その依存関係を解消し、Vec3上で完結させることができれば、
-
-
-## pip用のカメラクラスを作る
-pip用のカメラはmapCameraやchaseCameraと異なりTHREE.perspectiveCameraがあるのみとなっているが、このせいでprojectFnなどのインターフェースが共通化できておらず、マーカー描画系のコードの再利用性が低くなっている。その辺のインフラはmapCameraやchaseCameraと共通で存在するべき。
-ちなみに現状のpipレンダラーの挙動は壊れている（pipが有効になるとメインカメラもろとも描画されなくなる）のでこの原因究明から
-
 
 ## 方向マーカーのインフラ
 3Dの方向系のマーカーは、
