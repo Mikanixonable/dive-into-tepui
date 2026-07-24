@@ -6,9 +6,13 @@ export const MU_EARTH = 3.986004418e14; // 地球重力定数 [m^3/s^2]
 export const R_EARTH = 6.371e6; // 地球平均半径 [m]
 export const SIDEREAL_DAY = 86164.0905; // 恒星日 [s]
 
-export interface OrbitState {
+export type OrbitState = {
   r: Vec3; // ECI 位置 [m]
   v: Vec3; // ECI 速度 [m/s]
+} & { readonly __frame: 'inertial'; }
+
+export function orbitState(r: Vec3, v: Vec3): OrbitState {
+  return { r, v } as OrbitState;
 }
 
 export function altitudeOf(r: Vec3): number {
@@ -223,5 +227,5 @@ export function stateFromElements(
   return {
     r: addScaled(scale(pHat, r * Math.cos(nu)), qHat, r * Math.sin(nu)),
     v: addScaled(scale(pHat, -k * Math.sin(nu)), qHat, k * (e + Math.cos(nu))),
-  };
+  } as OrbitState;
 }

@@ -7,7 +7,7 @@
 // ノード配置・リタイムのピッキングは plan の隣接キャッシュ(plan.trajSamples)を読む。
 // 空の計画時には自機状態を基準に計画する。
 // 計画が空でないときは自機状態は参照しない。逸脱した既存計画を持って editMode を開いた場合は現在状態に再ベースされない
-import { Elements, OrbitState, elementsFromState } from '../../physics/orbital';
+import { Elements, OrbitState, elementsFromState, orbitState } from '../../physics/orbital';
 import { PlannedNode, TrajectorySample, dvToWorld } from '../../physics/predict';
 import { Vec3, add, clone, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
@@ -106,7 +106,7 @@ export class PlanEditor {
       // クリック点の予測サンプル状態を凍結してノードにする(初期 Δv = 0)。
       const idx = this.plan.addNode({
         time: sample.t,
-        postState: { r: clone(sample.r), v: clone(sample.v) },
+        postState: orbitState(clone(sample.r), clone(sample.v)),
       });
       this.selectedNodeIdx = idx;
       this._sfx.warp();
@@ -175,10 +175,7 @@ export class PlanEditor {
     if (!this.plan.nodes[idx]) return;
     const sample = this.nearestSample(clientX, clientY, toDisplayFrame, project, Infinity);
     if (sample) {
-      this.selectedNodeIdx = this.plan.retimeNode(idx, sample.t, {
-        r: clone(sample.r),
-        v: clone(sample.v),
-      });
+      this.selectedNodeIdx = this.plan.retimeNode(idx, sample.t, orbitState(clone(sample.r), clone(sample.v)));
     }
   }
 

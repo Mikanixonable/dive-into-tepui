@@ -103,3 +103,21 @@ predictDurationKeyとsliderTから算出したpredictDurationSecは、predictSys
 ### 現状のframeRotatingとmarkDirtyの参照範囲
 上記の分割によって、現状こいつらが担っている責務がカバーできるか。
 
+
+
+
+# trajLineのTODO
+CLAUDEくんがタメダメなのでTODOを整理する。
+
+## frame enumをカメラ用と軌道用で分離
+mapCameraだけがframeRotatingフラグを持っているのはフラグに意味が重複している。predictSystemにframeRotating:booleanを追加し、以降predict側で関係のものはpredictSystemから引数で受け渡す。
+mapCamera側では、mapCamera側にcameraRotatingフラグを残し、それを参照する。
+従来frameRotatingを切り替えていたplan-system.tsのonFrameToggleハンドラにおいては、この両者を同時に切り替える。
+
+## frameRotating:booleanフラグをframe:Frameに置き換え
+predictSystemのframeRotatingフラグをframe.tsのframe:Frame型に置き換え。受け渡し全体をbooleanではなくenumにする。
+mapCamera側のcameraRotatingフラグも同様にcameraFrame: Frame型に置き換える。
+
+## mapCameraの責務整理
+mapCameraがsunAzumithとframeRotatingを勝手に合成計算しているのを分離。ここはカメラ座標をinertialを含めたいずれかのframeに固定したいというのが本質的な責務なのだから、その固定したrelativeなカメラ座標を保持するべきで、その変換はすべてframe.tsを経由する。frameを変更するときには、いったんECI座標に戻してから新しいframeに変換する。
+ユーザー入力を受けてカメラ移動するときも同様にいったんnon-relativeな座標に戻す必要があるかも。ここは挙動を保つようにいい感じに。

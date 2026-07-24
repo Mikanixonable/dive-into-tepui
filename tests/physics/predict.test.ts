@@ -7,7 +7,7 @@
 // 整合の形で挙動を固定する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { MU_EARTH, R_EARTH } from '../../src/physics/orbital';
+import { MU_EARTH, R_EARTH, orbitState } from '../../src/physics/orbital';
 import {
   PlannedNode,
   arrivingStates,
@@ -25,7 +25,7 @@ const MAX_SAMPLES = 2000;
 function circularState() {
   const r0 = R_EARTH + 420e3;
   const vc = Math.sqrt(MU_EARTH / r0);
-  return { r: v3(r0, 0, 0), v: v3(0, vc, 0) };
+  return orbitState(v3(r0, 0, 0), v3(0, vc, 0));
 }
 
 export function register(): void {
@@ -46,7 +46,7 @@ export function register(): void {
     const nodeTime = 1500;
     // postState は「到達状態と明確に違う」速度(1.1倍)を与える。
     // predictTrajectory はノード時刻でこの状態へリセットするはず。
-    const post = { r: v3(R_EARTH + 420e3, 0, 0), v: scale(v3(0, Math.sqrt(MU_EARTH / (R_EARTH + 420e3)), 0), 1.1) };
+    const post = orbitState(v3(R_EARTH + 420e3, 0, 0), scale(v3(0, Math.sqrt(MU_EARTH / (R_EARTH + 420e3)), 0), 1.1));
     const node: PlannedNode = { time: nodeTime, postState: post };
     const samples = predictTrajectory(s0, 0, 3000, [node], EPHEMERIS, MAX_SAMPLES);
     // ノード時刻ちょうどのサンプル = リセット後(postState)。
@@ -61,7 +61,7 @@ export function register(): void {
     const nodeTime = 1500;
     // 1ノードのとき arriving[0] は postState に依存しない(上流のみで決まる)。
     // 適当な postState でよい。
-    const node: PlannedNode = { time: nodeTime, postState: { r: v3(R_EARTH + 420e3, 0, 0), v: v3(0, 0, 0) } };
+    const node: PlannedNode = { time: nodeTime, postState: orbitState(v3(R_EARTH + 420e3, 0, 0), v3(0, 0, 0)) };
     const arriving = arrivingStates(s0, 0, [node], EPHEMERIS);
     assert.equal(arriving.length, 1);
 

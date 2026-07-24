@@ -1,6 +1,6 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { altitudeOf, elementsFromState, ExtraAccel, OrbitState } from '../../physics/orbital';
+import { altitudeOf, elementsFromState, ExtraAccel, OrbitState, orbitState } from '../../physics/orbital';
 import { Attitude } from '../../physics/attitude';
 import { Vec3, clone, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
@@ -164,7 +164,7 @@ export class DebrisPiece extends OrbitEntity {
 // state(ワールド ECI)の相互変換も BeltPhysics 側が担う(belt.ts 参照)。
 export class BeltSection extends OrbitEntity {
   constructor(readonly beltIndex: number) {
-    super({ r: v3(), v: v3() }, new THREE.Object3D());
+    super(orbitState(v3(), v3()), new THREE.Object3D());
     this.mass = 5;
     this.collideRadius = 0.8;
   }
