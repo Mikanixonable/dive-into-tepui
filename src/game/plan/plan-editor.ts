@@ -1,10 +1,11 @@
 // マップモード上での軌道計画(Plan)の編集: クリックでのノード配置・ドラッグでの
 // 時刻移動・Δv アーム(node-gizmo.ts)ドラッグ・右クリックメニュー・選択状態・計画パネル
 // 表示への反映、および [X] キー(ノード/計画削除)の実処理。ノードの実座標変換
-// (太陽回転系表示)は呼び出し側が渡す DisplayFrameFn 経由で plan-display.ts の
+// (太陽回転系表示)は呼び出し側が渡す DisplayFrameFn 経由で predict-system.ts の
 // toDisplayFrame に委譲する — 表示とクリック判定の基準角がずれないよう、正はそちら
 // 一箇所のみに保つ。ノード削除時の自動ワープ解除(SimSpeedManager)・噴射ガイドの
 // 凍結目標クリア(onPlanCleared コールバック、Game 側の状態のため)はここが起点。
+// ノード配置・リタイムのピッキングは plan の隣接キャッシュ(plan.trajSamples)を読む。
 import { Elements, elementsFromState } from '../../physics/orbital';
 import { PlannedNode } from '../../physics/predict';
 import { Vec3, add, cross, len, norm, scale, v3 } from '../../physics/vec3';
@@ -14,7 +15,7 @@ import { Sfx } from '../../audio/sfx';
 import { Input } from '../input/input';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { ProjectFn } from '../camera/camera-system';
-import { DisplayFrameFn } from './plan-display';
+import { DisplayFrameFn } from '../perdict/predict-system';
 import { Plan } from './plan';
 import { SimSpeedManager } from '../sim-speed-manager';
 
@@ -266,7 +267,7 @@ export class PlanEditor {
   // マップ表示中のノード編集(時間・物理は Game.simulate() 側で通常どおり進み続ける。
   // ここでは選択中ノードの Δv 調整、計画パネル・ツールバーの表示を行う。クリック/右
   // クリックによるノード配置・メニュー呼び出しは game.ts が dispatch する)。toolbar は
-  // PlanDisplay/MapCamera 側の状態のスナップショットで、PlanSystem が毎フレーム組み立てて渡す。
+  // predictSystem/MapCamera 側の状態のスナップショットで、PlanSystem が毎フレーム組み立てて渡す。
   updateEditing(
     dt: number,
     simTime: number,

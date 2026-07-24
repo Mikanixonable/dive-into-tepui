@@ -194,6 +194,8 @@ node モデルは `{ time, dv }` のまま、責務の移設だけ行う。
 - 範囲: `plan/plan.ts`, `plan/plan-display.ts`(解体), `plan/plan-editor.ts`, `plan/plan-system.ts`,
   `plan/plan-guide.ts`, `plan/trajline.ts`, `game.ts`, 新 predictSystem。
 
+- predict-system.tsをpredictフォルダに移動しました。この後も、planとpredictの分離はフォルダ単位で行い、predict側に属するものはpredictフォルダに移動します。
+
 ### Step 2: ノードデータモデル変更（planGuide 脱 predict・凍結ハック除去・predict 脱 player.live）
 - `physics/predict.ts`: `PlannedNode` を `{ time, postState }` へ。`predictTrajectory` を
   plannedPlayerStart アンカー起点＋各ノードでリセット積分へ（player.live 非依存化）。

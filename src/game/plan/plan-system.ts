@@ -5,11 +5,10 @@ import { Input } from '../input/input';
 import { ProjectFn } from '../camera/camera-system';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { PlanEditor } from './plan-editor';
-import { PlanDisplay } from './plan-display';
+import { PredictSystem, DisplayFrameFn } from '../perdict/predict-system';
 import { MapCamera } from '../camera/map-camera';
 import { MarkerManager } from '../marker/marker-manager';
 import { MapMarkers } from '../camera/map-markers';
-import { DisplayFrameFn } from './plan-display';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
 import { PlanGuide } from './plan-guide';
@@ -17,7 +16,7 @@ import { FloatingOrigin } from '../floating-origin';
 
 export class PlanSystem {
   readonly editor: PlanEditor;
-  readonly display: PlanDisplay;
+  readonly predict: PredictSystem;
   readonly guide: PlanGuide;
 
   // 軌道計画の編集モード(WASDQE などの操作系をΔv編集へ振り替え、ノード編集入力を有効化する)。
@@ -39,7 +38,7 @@ export class PlanSystem {
   ) {
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager, scene);
     this.editor = new PlanEditor(this._hud, this._sfx, this.simSpeedManager);
-    this.display = new PlanDisplay(this.markerManager, scene);
+    this.predict = new PredictSystem(this.markerManager, scene);
     this.wireHudCallbacks();
     this.wireNodeGizmo();
   }
@@ -51,7 +50,7 @@ export class PlanSystem {
   private wireHudCallbacks(): void {
     this._hud.onDurationSelect = (key) => {
       if (key === 'orbit' || key === 'day' || key === 'week' || key === 'month') {
-        this.display.predictDurationKey = key;
+        this.predict.predictDurationKey = key;
         this.editor.plan.markDirty();
       }
     };
@@ -67,7 +66,7 @@ export class PlanSystem {
       this.mapCamera.reset();
     };
     this._hud.onSliderChange = (t) => {
-      this.display.sliderT = t;
+      this.predict.sliderT = t;
     };
   }
 
@@ -100,9 +99,9 @@ export class PlanSystem {
   }
 
   // 現在の外部状態から表示座標変換(太陽回転系対応)を組み立てる。ノードのピッキング/
-  // 配置と表示の基準角がずれないよう、正は plan-display.ts の toDisplayFrame 一箇所。
+  // 配置と表示の基準角がずれないよう、正は predict-system.ts の toDisplayFrame 一箇所。
   private frame(): DisplayFrameFn {
-    return this.display.bindDisplayFrame(this.getEphemeris(), this.mapCamera.frameRotating);
+    return this.predict.bindDisplayFrame(this.getEphemeris(), this.mapCamera.frameRotating);
   }
 
   // マップ左クリック: 予測軌道上へノード配置、または既存ノード選択(plan-editor に委譲)。
@@ -124,15 +123,15 @@ export class PlanSystem {
   // --------------------------------------------------------------- per-frame
 
   // マップモードのノード編集入力(クリック配置・Δv調整・ツールバー/計画パネル反映)。
-  // ツールバー表示は PlanDisplay/MapCamera 側の状態が要るため、ここで組み立てて渡す
+  // ツールバー表示は predictSystem/MapCamera 側の状態が要るため、ここで組み立てて渡す
   // (hud への反映自体は editor 側が行う)。
   updateEditing(dt: number, input: Input, player: Player, simTime: number): void {
     this.editor.updateEditing(dt, simTime, input, {
       fineAttitude: this.getFineAttitude(),
       toolbar: {
-        durationKey: this.display.predictDurationKey,
+        durationKey: this.predict.predictDurationKey,
         frameRotating: this.mapCamera.frameRotating,
-        ghostLabel: this.display.sliderT > 0 ? this.display.ghostLabel(this.editor.plan, player, simTime) : null,
+        ghostLabel: this.predict.sliderT > 0 ? this.predict.ghostLabel(this.editor.plan.trajSamples, player, simTime) : null,
         focus: this.mapCamera.focus,
       },
     });
@@ -140,23 +139,32 @@ export class PlanSystem {
 
   // マップ表示中(mapMode)のみ意味を持つ: 予測軌道の再計算・折れ線/ゴースト描画・
   // ギズモ座標更新・フォーカスラベル描画。閉じている間は表示物の後始末のみ行う。
+  // 予測の「計算+表示」は predictSystem、キャッシュは plan(隣接)、ギズモは editor と
+  // 責務が分かれるので、ここは更新トリガと配線だけを担う。
   updateDisplay(mapMode: boolean, fo: FloatingOrigin, player: Player, ephemeris: EphemerisSystem, simTime: number): void {
-    this.guide.syncPlannedLine(this.editor.plan, { player: player, ephemeris: ephemeris, simTime: simTime }, fo, mapMode);
+    this.guide.syncPlannedLine(this.editor.plan, this.predict, { player, ephemeris, simTime }, fo, mapMode);
 
     if (!mapMode) {
-      this.display.hide();
+      this.predict.hide();
       this.editor.hideGizmo();
       return;
     }
-    this.display.sync(this.editor.plan, player, ephemeris, simTime, fo, this.mapCamera.frameRotating, this.project);
-    this.editor.updateGizmo(this.display.bindDisplayFrame(ephemeris, this.mapCamera.frameRotating), this.project, this.mapCamera.dist);
-    this.mapMarkers.syncLabels(
-      simTime,
+    const plan = this.editor.plan;
+    const duration = this.predict.predictDurationSec(player);
+    // 予測キャッシュの更新トリガ(スロットルは Plan、予測計算は predictSystem)。
+    plan.maybeRefresh(() => this.predict.compute(player, ephemeris, simTime, plan.nodes, duration));
+    this.predict.syncDisplay(
+      plan.trajSamples,
+      plan.nodes.map((n) => n.time),
+      player,
       ephemeris,
-      this.display.predictDurationSec(player),
-      this.display.sliderT,
+      simTime,
+      fo,
+      this.mapCamera.frameRotating,
       this.project,
     );
+    this.editor.updateGizmo(this.frame(), this.project, this.mapCamera.dist);
+    this.mapMarkers.syncLabels(simTime, ephemeris, duration, this.predict.sliderT, this.project);
   }
 
   mapLabelIds(): string[] {

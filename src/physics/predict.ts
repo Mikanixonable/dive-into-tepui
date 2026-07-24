@@ -67,7 +67,7 @@ export function predictTrajectory(
   state0: OrbitState,
   t0: number,
   duration: number,
-  nodes: PlannedNode[],
+  nodes: readonly PlannedNode[],
   opts: PredictOpts,
 ): TrajectorySample[] {
   if (duration <= 0) return [{ t: t0, r: clone(state0.r), v: clone(state0.v) }];
@@ -137,7 +137,7 @@ export function predictTrajectory(
 // ノード直後の強制サンプルにより、ノード通過の瞬間だけ速度が不連続になる区間が
 // 生じ得るが、その区間は 1 ステップぶん(数〜数百秒)しかなく、計画ツールの
 // 表示・ワープ照準用途では実用上問題にならない。
-export function sampleAt(samples: TrajectorySample[], t: number): TrajectorySample | null {
+export function sampleAt(samples: readonly TrajectorySample[], t: number): TrajectorySample | null {
   if (samples.length === 0) return null;
   const first = samples[0]!;
   if (t <= first.t) return first;

@@ -14,6 +14,7 @@ import { OrbitLine } from '../../render/orbitline';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import { Plan } from './plan';
+import { PredictSystem } from '../perdict/predict-system';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
 import { SimSpeedManager } from '../sim-speed-manager';
@@ -31,10 +32,18 @@ export function guideDurationSec(plan: Plan, simTime: number): number {
 // 戦闘ビューの計画軌道ライン(plannedOrbitLine)用: 直近ノードを実施した直後の
 // 軌道要素。噴射ガイド(PlanGuide.update)と同じ期間ポリシー(guideDurationSec)で
 // 予測を最新化する — マップの表示用予測期間(day/week/monthなど)とは意図的に別物。
-export function plannedOrbitElements(plan: Plan, player: Player, ephemeris: EphemerisSystem, simTime: number): Elements | null {
+// Step1 では予測計算を predictSystem.compute に委譲しつつ、guide が予測に依存する構図は
+// 暫定的に残す(Step2 で直近ノードの凍結 postState を直読みして predict 依存を外す)。
+export function plannedOrbitElements(
+  plan: Plan,
+  predict: PredictSystem,
+  player: Player,
+  ephemeris: EphemerisSystem,
+  simTime: number,
+): Elements | null {
   const first = plan.firstNode();
   if (!first) return null;
-  plan.maybeRefresh(player, ephemeris, simTime, guideDurationSec(plan, simTime));
+  plan.maybeRefresh(() => predict.compute(player, ephemeris, simTime, plan.nodes, guideDurationSec(plan, simTime)));
   const sample = plan.sampleAt(first.time);
   return sample ? elementsFromState(sample.r, sample.v) : null;
 }
@@ -72,15 +81,17 @@ export class PlanGuide {
   // とは異なり mapMode 中も含め毎フレーム呼んでよい。
   syncPlannedLine(
     plan: Plan,
+    predict: PredictSystem,
     { player, ephemeris, simTime }: { player: Player; ephemeris: EphemerisSystem; simTime: number },
     fo: FloatingOrigin,
     mapMode: boolean,
   ): void {
-    this.plannedLine.sync(mapMode ? null : plannedOrbitElements(plan, player, ephemeris, simTime), fo);
+    this.plannedLine.sync(mapMode ? null : plannedOrbitElements(plan, predict, player, ephemeris, simTime), fo);
   }
 
   update(
     plan: Plan,
+    predict: PredictSystem,
     player: Player,
     ephemeris: EphemerisSystem,
     simTime: number,
@@ -101,7 +112,7 @@ export class PlanGuide {
       return;
     }
 
-    plan.maybeRefresh(player, ephemeris, simTime, guideDurationSec(plan, simTime));
+    plan.maybeRefresh(() => predict.compute(player, ephemeris, simTime, plan.nodes, guideDurationSec(plan, simTime)));
 
     // 実行目標の構築・追従・凍結(凍結の理由は activeTarget フィールドのコメント参照)。
     const tRem = node.time - simTime;
