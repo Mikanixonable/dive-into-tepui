@@ -27,7 +27,7 @@ function computePipRect(): PipRect {
 }
 
 export class PipCamera {
-  readonly camera = new THREE.PerspectiveCamera(C.ZOOM_FOV, 1, 2, 6e7);
+  readonly camera = new THREE.PerspectiveCamera(C.ZOOM_FOV, 1, C.COMBAT_CAMERA_NEAR, C.COMBAT_CAMERA_FAR);
   rect: PipRect = computePipRect();
 
   // update() が算出し sync() が camera へ反映する視点の数学状態(絶対 ECI)。

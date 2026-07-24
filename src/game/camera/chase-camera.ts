@@ -14,16 +14,15 @@ import { ndcToScreen, projectToNdc, ViewFrame } from '../../physics/projection';
 import { ProjectFn } from './camera-system';
 
 export class ChaseCamera {
-  // 戦闘ビュー用のカメラ。near=2m なら地平線距離(~2,400km)での深度誤差も大気シェルの
-  // 厚みより十分小さく、対数深度バッファなしで z-fighting を回避できる(far=6e7m は
-  // 星空シェルを含む)。window resize には追従せず、update() 呼び出し毎にアスペクト比を
-  // 自己補正する(このカメラは Game 構築時に生成されるため、resize イベントリスナーを
-  // 先に張れない — map-camera.ts の MapCamera と同じ方式)。
+  // 戦闘ビュー用のカメラ。near/far は const.ts の COMBAT_CAMERA_NEAR/FAR 参照。
+  // window resize には追従せず、update() 呼び出し毎にアスペクト比を自己補正する
+  // (このカメラは Game 構築時に生成されるため、resize イベントリスナーを先に張れない
+  // — map-camera.ts の MapCamera と同じ方式)。
   readonly camera = new THREE.PerspectiveCamera(
     C.BASE_FOV,
     window.innerWidth / window.innerHeight,
-    2,
-    6e7,
+    C.COMBAT_CAMERA_NEAR,
+    C.COMBAT_CAMERA_FAR,
   );
   yaw = 0; // 0 = 機体後方(プログレード側から見る)
   pitch = 0.3 - (10 * Math.PI) / 180; // 初期カメラ位置を5度低く
