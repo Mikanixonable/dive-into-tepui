@@ -4,6 +4,7 @@ import { Attitude, qRotate } from '../../physics/attitude';
 import { Vec3, add, addScaled, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
 import { Billboard } from '../../render/billboard';
 import { RCS_BLOCK_OFFSETS } from '../../render/ships';
+import * as C from '../const';
 import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 
@@ -14,14 +15,15 @@ export class RcsEffects {
     for (const puff of this.puffs) scene.add(puff.mesh);
   }
 
-  // tau は PlayerThrottle が公開する RCS パフ噴射方向(機体ローカルの符号ベクトル)。
-  // ここは可視化のみで、実際のトルク計算・入力読み取りは PlayerThrottle 側に集約されている。
+  // torque は PlayerThrottle が算出し stepAttitude に渡す実トルク(機体座標系)。
+  // 表示に必要なのは軸ごとの符号(どちら向きのパフを焚くか)だけなので、ここで
+  // 符号ベクトルへ逆算する — 視覚効果は論理更新(torque)の下流に位置させる。
   // playerPos: 自機の絶対 ECI 位置。各パフはその位置を基準に、機体ローカルのスラスタ配置を
   // 姿勢で回転させた変位を慣性座標で足し、末端で fo 経由で描画フレームへ変換する。
   sync(
     fo: FloatingOrigin,
     playerPos: Vec3,
-    tau: Vec3,
+    torque: Vec3,
     att: Attitude,
     alive: boolean,
     phasePlaying: boolean,
@@ -29,13 +31,12 @@ export class RcsEffects {
     camera: CameraSystem,
   ): void {
     const q = att.q;
-    // 計画編集モード中は PlayerThrottle が tau=0 を出すため、mapMode/editMode を見なくても
-    // ここは自然にパフ非表示になる(lenSq(tau) 判定で吸収される)。
-    const rotating = alive && phasePlaying && !paused && lenSq(tau) > 0.01;
+    const rotating = alive && phasePlaying && !paused && lenSq(torque) > C.RCS_PUFF_TORQUE_EPS * C.RCS_PUFF_TORQUE_EPS;
     if (!rotating || camera.zoomActive) {
       for (const puff of this.puffs) puff.hide();
       return;
     }
+    const tau = v3(Math.sign(torque.x), Math.sign(torque.y), Math.sign(torque.z));
     for (let k = 0; k < 4; k++) {
       const puff = this.puffs[k]!;
       const ro = RCS_BLOCK_OFFSETS[k]!;

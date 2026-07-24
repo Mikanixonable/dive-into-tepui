@@ -264,7 +264,7 @@ export class Player extends Ship {
     this.obj.visible = this.alive && !camera.zoomActive;
 
     this.thrustEffects.sync(fo, this.state.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
-    this.rcsEffects.sync(fo, this.state.r, this.throttle.rcsTau, this.att, this.alive, phasePlaying, paused, camera);
+    this.rcsEffects.sync(fo, this.state.r, this.torque, this.att, this.alive, phasePlaying, paused, camera);
     this.belt.sync(this.alive);
   }
 }
