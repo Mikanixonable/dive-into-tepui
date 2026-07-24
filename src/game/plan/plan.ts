@@ -2,11 +2,14 @@
 // データで、PlanSystem が所有し、実施(plan-guide.ts)へは Game 経由で注入する。
 // ノードの追加・削除・並べ替えは必ずこのクラスのメソッド経由で行う — 呼び出し側が
 // nodes 配列を直接 splice すると「同じ削除ロジックの重複」を招く。
-import { PlannedNode, PredictOpts, TrajectorySample, predictTrajectory, sampleAt } from '../../physics/predict';
+//
+// 予測(trajSamples)は正データではなく、ノード列と自機状態からの導出値。その計算
+// (RK4/ephemeris/期間ポリシー)は predict-system.ts が持ち、ここは結果を貯めるだけの
+// 隣接キャッシュ(passive leaf)に徹する — maybeRefresh は compute を注入で受け取り、
+// 予測の中身には関知しない。
+import { PlannedNode, TrajectorySample, sampleAt } from '../../physics/predict';
 import { len, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import type { Player } from '../player/player';
-import type { EphemerisSystem } from '../ephemeris';
 
 export class Plan {
   private _nodes: PlannedNode[] = [];
@@ -18,9 +21,8 @@ export class Plan {
     return this._nodes;
   }
 
-  // predictTrajectory() が最後に計算した予測サンプル列。配列そのものは refresh() の
-  // たびに新しい参照へ差し替わるので、消費側は参照の変化を「予測が更新された」の
-  // 検出に使ってよい。
+  // 最後に計算した予測サンプル列。配列そのものは maybeRefresh() のたびに新しい参照へ
+  // 差し替わるので、消費側は参照の変化を「予測が更新された」の検出に使ってよい。
   get trajSamples(): readonly TrajectorySample[] {
     return this._trajSamples;
   }
@@ -90,33 +92,18 @@ export class Plan {
     }
   }
 
-  // dirty なら ~5Hz、そうでなければ2秒ごとに予測を再計算する(スロットリング)。
-  // duration は呼び出し側が決める — マップモードの表示用と噴射ガイド用とで
-  // 必要な予測範囲が異なるため。
-  maybeRefresh(player: Player, ephemeris: EphemerisSystem, simTime: number, duration: number): void {
+  // 予測キャッシュを最新化する。実際の予測計算は呼び出し側が compute で注入する
+  // — Plan は「自分の持つキャッシュが古いか(スロットル)」と「結果の保管」だけを担う。
+  // dirty なら ~5Hz、そうでなければ2秒ごとに再計算する。
+  //
+  // duration ごとに異なる 2 消費者(マップ表示 / 噴射ガイド)が同じキャッシュを共有する
+  // 現状(結節点②)を、単一スロットルを共有することでモード切替時の挙動ごと保存する。
+  // この二重消費は Step2 で planGuide が predict 依存を外す際に解消予定。
+  maybeRefresh(compute: () => TrajectorySample[]): void {
     const elapsed = performance.now() - this.lastRefreshMs;
     const threshold = this.dirty ? C.PREDICT_DIRTY_THROTTLE_MS : C.PREDICT_REFRESH_INTERVAL_MS;
     if (elapsed < threshold) return;
-    this.refresh(player, ephemeris, simTime, duration);
-  }
-
-  private refresh(player: Player, ephemeris: EphemerisSystem, simTime: number, duration: number): void {
-    if (duration <= 0) {
-      this._trajSamples = [];
-    } else {
-      const opts: PredictOpts = {
-        sunPhase0: ephemeris.sunPhase0,
-        moonPhase0: ephemeris.moonPhase0,
-        maxSamples: C.PREDICT_MAX_SAMPLES,
-      };
-      this._trajSamples = predictTrajectory(
-        { r: player.state.r, v: player.state.v },
-        simTime,
-        duration,
-        this._nodes,
-        opts,
-      );
-    }
+    this._trajSamples = compute();
     this.dirty = false;
     this.lastRefreshMs = performance.now();
   }
