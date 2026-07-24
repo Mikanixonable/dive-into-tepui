@@ -51,7 +51,7 @@ export function initStage(
   return stage;
 }
 
-export function resolveStageFromId(stageParam: string | null): StageId | null {
-  if (stageParam === null) return null;
-  return STAGE_CLASSES.some((c) => c.id === stageParam) ? (stageParam as StageId) : null;
+// クエリパラメータ等、外部由来の未検証文字列を StageId に絞り込む型ガード。
+export function isStageId(value: string | null): value is StageId {
+  return STAGE_CLASSES.some((c) => c.id === value);
 }
