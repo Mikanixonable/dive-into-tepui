@@ -10,11 +10,11 @@ import { MapCamera } from '../camera/map-camera';
 import { MarkerManager } from '../marker/marker-manager';
 import { MapMarkers } from '../camera/map-markers';
 import type { Player } from '../player/player';
-import type { EphemerisSystem } from '../ephemeris';
+import type { Ephemeris } from '../../physics/ephemeris';
 import { PlanGuide } from './plan-guide';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitState } from '../../physics/orbital';
-import { PredictOpts, arrivingStates } from '../../physics/predict';
+import { arrivingStates } from '../../physics/predict';
 import { len, sub } from '../../physics/vec3';
 import * as C from '../const';
 
@@ -38,7 +38,7 @@ export class PlanSystem {
     private readonly mapMarkers: MapMarkers,
     scene: THREE.Scene,
     private readonly getFineAttitude: () => boolean,
-    private readonly getEphemeris: () => EphemerisSystem,
+    private readonly getEphemeris: () => Ephemeris,
   ) {
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager, scene);
     this.editor = new PlanEditor(this._hud, this._sfx, this.simSpeedManager);
@@ -148,9 +148,7 @@ export class PlanSystem {
   // 予測計算に ephemeris が要るためここで導出して渡す(ノードは Δv を正データに持たない)。
   private nodeArrivings(): OrbitState[] {
     const plan = this.editor.plan;
-    const e = this.getEphemeris();
-    const opts: PredictOpts = { sunPhase0: e.sunPhase0, moonPhase0: e.moonPhase0, maxSamples: C.PREDICT_MAX_SAMPLES };
-    return arrivingStates(plan.anchor.state, plan.anchor.time, plan.nodes, opts);
+    return arrivingStates(plan.anchor.state, plan.anchor.time, plan.nodes, this.getEphemeris());
   }
 
   // --------------------------------------------------------------- per-frame
@@ -175,7 +173,7 @@ export class PlanSystem {
   // ギズモ座標更新・フォーカスラベル描画。閉じている間は表示物の後始末のみ行う。
   // 予測の「計算+表示」は predictSystem、キャッシュは plan(隣接)、ギズモは editor と
   // 責務が分かれるので、ここは更新トリガと配線だけを担う。
-  updateDisplay(mapMode: boolean, fo: FloatingOrigin, player: Player, ephemeris: EphemerisSystem, simTime: number): void {
+  updateDisplay(mapMode: boolean, fo: FloatingOrigin, player: Player, ephemeris: Ephemeris, simTime: number): void {
     this.guide.syncPlannedLine(this.editor.plan, fo, mapMode);
 
     if (!mapMode) {
