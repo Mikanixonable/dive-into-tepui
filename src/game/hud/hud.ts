@@ -9,6 +9,7 @@
 //   - hud/dom.ts  … 静的 DOM/スタイル構築
 //   - hud/panel.ts … ステータスパネル同期(panels として公開)
 import { ACCENT, TEXT as INK, TEXT_DIM as INK_SOFT } from '../theme';
+import { Frame } from '../../physics/frame';
 import { buildHudDom } from './dom';
 import { HudPanels } from './panel';
 import { fmtDist, fmtTime } from './utils';
@@ -29,7 +30,7 @@ export class Hud {
   onQuitToTitle: (() => void) | null = null;
   // 軌道計画モードのマップツールバー(期間選択・スライダー・座標系トグル)
   onDurationSelect: ((key: string) => void) | null = null;
-  onFrameToggle: (() => void) | null = null;
+  onFrameSelect: ((frame: Frame) => void) | null = null;
   onMapFocusSelect: ((focus: string) => void) | null = null;
   onMapViewReset: (() => void) | null = null;
   onSliderChange: ((t: number) => void) | null = null;
@@ -105,11 +106,11 @@ export class Hud {
   }
 
   // durationKey: 選択中の期間ボタン('orbit'|'day'|'week'|'month')。
-  // frameRotating: 太陽回転系が有効か。sliderT: スライダー位置(0..1、変更なしなら省略)。
+  // frame: 選択中の表示座標系('inertial'|'sunRotating')。sliderT: スライダー位置(0..1、変更なしなら省略)。
   // sliderLabel: スライダーが 0 より大きいときに表示するラベル(T+ 表記・高度など)。
   setMapToolbarState(
     durationKey: string,
-    frameRotating: boolean,
+    frame: string,
     sliderLabel: string | null,
     focus: string = 'earth',
   ): void {
@@ -118,11 +119,9 @@ export class Hud {
     bar.querySelectorAll<HTMLElement>('.mt-btn[data-dur]').forEach((btn) => {
       btn.classList.toggle('on', btn.dataset['dur'] === durationKey);
     });
-    const frameBtn = bar.querySelector<HTMLElement>('[data-id="mt-frame"]');
-    if (frameBtn) {
-      frameBtn.textContent = frameRotating ? '太陽回転系' : '慣性系';
-      frameBtn.classList.toggle('on', frameRotating);
-    }
+    bar.querySelectorAll<HTMLElement>('.mt-btn[data-frame]').forEach((btn) => {
+      btn.classList.toggle('on', btn.dataset['frame'] === frame);
+    });
     bar.querySelectorAll<HTMLElement>('.mt-btn[data-focus]').forEach((btn) => {
       btn.classList.toggle('on', btn.dataset['focus'] === focus);
     });
