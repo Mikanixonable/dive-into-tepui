@@ -61,6 +61,14 @@ export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルク
 // 通常時の半分の出力で小刻みな姿勢調整を可能にする
 export const FINE_ATTITUDE_SCALE = 0.5;
 
+// 戦闘視点カメラ(ChaseCamera / PipCamera 共通)の near/far [m]。
+// near: LEO高度からの地平線距離(~2,400km)での深度誤差が大気シェルの厚みより
+// 十分小さくなり、対数深度バッファなしで z-fighting を回避できる値。
+// far: 星空シェル(STAR_SHELL_RADIUS=3.5e7)・太陽ビルボード(SUN_DISTANCE=4.2e7)・
+// 月表示距離(MOON_VIS_DIST=4.5e7、render/stars.ts)を余裕を持って内側に収める。
+export const COMBAT_CAMERA_NEAR = 2;
+export const COMBAT_CAMERA_FAR = 6e7;
+
 export const BASE_FOV = 55; // 通常時の垂直画角 [deg]
 export const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg]
 export const ZOOM_LERP_RATE = 9; // 画角遷移の追従速度 [1/s]
