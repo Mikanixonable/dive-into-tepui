@@ -5,12 +5,14 @@
 import { ExtraAccel, OrbitState, stepOrbitRK4 } from './orbital';
 import { moonPosition, sunPosition } from './ephemeris';
 import { envAccelInto } from './envaccel';
-import { Vec3, add, clone, cross, len, norm, v3 } from './vec3';
+import { Vec3, clone, cross, len, norm, v3 } from './vec3';
 
-// ノードでの Δv(現在の速度・位置から定義するローカル成分: x=プログレード, y=軌道法線(ノーマル), z=ラジアルアウト)。
+// 軌道計画の「曲がり角」= 実行時刻とその直後の絶対状態(r,v とも凍結)。相対 Δv では
+// なく実行後の状態そのものを正データとして持つ — r の再計算は予測依存かつ積分誤差を
+// 伴い、軽微な導出値ではないため。Δv は導出値(= postState.v − 到達時の速度)。
 export interface PlannedNode {
   time: number; // 実行時刻(絶対 simTime)[s]
-  dv: Vec3;
+  postState: OrbitState; // 実行(噴射)直後の絶対状態
 }
 
 export interface TrajectorySample {
@@ -29,6 +31,14 @@ export interface PredictOpts {
 function envAccel(sunPos: Vec3, moonPos: Vec3): ExtraAccel {
   return (r: Vec3, v: Vec3, out?: Vec3): Vec3 =>
     envAccelInto(out ?? v3(), r, v, sunPos, moonPos, 0);
+}
+
+// state を dt だけ前進させる(中点 t+dt/2 の太陽・月位置で環境加速度を評価)。
+// predictTrajectory と arrivingStates が共有する 1 ステップ。
+function stepPredict(state: OrbitState, t: number, dt: number, opts: PredictOpts): void {
+  const mid = t + dt / 2;
+  const accel = envAccel(sunPosition(mid, opts.sunPhase0), moonPosition(mid, opts.moonPhase0));
+  stepOrbitRK4(state, dt, accel);
 }
 
 // ノードの Δv(プログレード/ノーマル/ラジアルアウト)を、その時点の r, v から
@@ -59,10 +69,13 @@ export function predictStepDt(r: number, duration: number): number {
   return Math.max(5, Math.min(600, (r / 8e5) * coarsen));
 }
 
-// state0(t0 時点)から duration 秒ぶん、nodes の Δv を適宜適用しながら RK4 で
-// 数値予測する。サンプルは概ね maxSamples 個になるよう間引いて保持する
-// (低軌道でも 28日 = 数万ステップになり得るため、全ステップを保持すると
-// 描画・ピッキングのコストが無視できなくなる)。
+// アンカー(予定 player の起点 state0, t0)から duration 秒ぶん RK4 で数値予測する。
+// 各ノード時刻で状態を node.postState(実行後の絶対状態)へ**リセット**して継続する
+// — これにより予測は player.live に依存せず、各アークは自分の起点(アンカー or
+// 前ノードの postState)から独立に積分される。到達点と postState がずれている場合
+// (積分誤差・アンカー逸脱)、その不連続は折れ線に正直に現れる。
+// サンプルは概ね maxSamples 個になるよう間引いて保持する(低軌道でも 28日 = 数万
+// ステップになり得るため、全ステップ保持は描画・ピッキングのコストが無視できなくなる)。
 export function predictTrajectory(
   state0: OrbitState,
   t0: number,
@@ -103,10 +116,8 @@ export function predictTrajectory(
     dt = Math.min(dt, tEnd - t);
 
     if (dt > 1e-9) {
-      const mid = t + dt / 2;
-      const accel = envAccel(sunPosition(mid, opts.sunPhase0), moonPosition(mid, opts.moonPhase0));
       const state = { r, v };
-      stepOrbitRK4(state, dt, accel);
+      stepPredict(state, t, dt, opts);
       r = state.r;
       v = state.v;
       t += dt;
@@ -117,7 +128,11 @@ export function predictTrajectory(
 
     if (hitNode) {
       const node = sorted[nodeIdx]!;
-      v = add(v, dvToWorld(r, v, node.dv));
+      // 到達(噴射前)サンプル → 実行後の絶対状態へリセット → 実行後サンプル。
+      // 両者が異なれば折れ線に不連続(噴射・逸脱)として現れる。
+      samples.push({ t, r: clone(r), v: clone(v) });
+      r = clone(node.postState.r);
+      v = clone(node.postState.v);
       nodeIdx++;
       samples.push({ t, r: clone(r), v: clone(v) });
       sinceStore = 0;
@@ -131,6 +146,40 @@ export function predictTrajectory(
   }
 
   return samples;
+}
+
+// 各ノードに到達する直前(噴射前)の状態を 1 パスで求める。arc の起点はアンカー
+// (state0, t0)、以降は前ノードの postState。返り値[i] は nodes[i] の到達状態。
+// editor が Δv 表示(= node.postState.v − arriving[i].v)を導出するのに使う
+// (ノード自体は Δv を正データに持たず、postState だけを持つ)。
+export function arrivingStates(
+  state0: OrbitState,
+  t0: number,
+  nodes: readonly PlannedNode[],
+  opts: PredictOpts,
+): OrbitState[] {
+  const out: OrbitState[] = [];
+  let r = clone(state0.r);
+  let v = clone(state0.v);
+  let t = t0;
+  for (let i = 0; i < nodes.length; i++) {
+    const targetT = nodes[i]!.time;
+    while (t < targetT - 1e-6) {
+      const dt = Math.min(predictStepDt(len(r), targetT - t0), targetT - t);
+      if (dt <= 1e-9) break;
+      const state = { r, v };
+      stepPredict(state, t, dt, opts);
+      r = state.r;
+      v = state.v;
+      t += dt;
+    }
+    out.push({ r: clone(r), v: clone(v) });
+    // 次アークはこのノードの postState から始まる。
+    r = clone(nodes[i]!.postState.r);
+    v = clone(nodes[i]!.postState.v);
+    t = targetT;
+  }
+  return out;
 }
 
 // samples から時刻 t の状態を二分探索 + 線形補間で求める(範囲外は端にクランプ)。
