@@ -94,9 +94,8 @@ export class Targeter {
         this.markerManager.hide(key);
         continue;
       }
-      const p = project(add(target.state.r, m.off));
       const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
-      this.markerManager.set(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
+      this.markerManager.setPosition(key, 'mk-boardhit', '✦', add(target.state.r, m.off), project, '', 0.25 + 0.75 * fade);
     }
   }
 
