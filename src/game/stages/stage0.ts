@@ -10,7 +10,7 @@ import type { Simulator } from '../orbit-entity/simulator';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage0 extends Stage {
-  readonly id = '0' as const;
+  static readonly id = '0' as const;
   readonly selectLabel = '[T] 訓練ステージ — 近接戦闘訓練 (Stage 0)';
   readonly selectSub = '常時選択可。5km以内に色分けされた敵集団 約50機、制限時間2分の撃墜数スコアアタック';
   readonly selectKeys = ['KeyT'];

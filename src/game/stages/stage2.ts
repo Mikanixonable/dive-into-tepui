@@ -13,7 +13,7 @@ import type { Simulator } from '../orbit-entity/simulator';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage2 extends Stage {
-  readonly id = '2' as const;
+  static readonly id = '2' as const;
   readonly selectLabel = '[2] 第二ステージ — モルニヤ戦域';
   readonly selectSub = '敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モード [M] での遷移が必須';
   readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';

@@ -13,7 +13,7 @@ import type { Simulator } from '../orbit-entity/simulator';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage1 extends Stage {
-  readonly id = '1' as const;
+  static readonly id = '1' as const;
   readonly selectLabel = '[1] 第一ステージ — LEO 戦域';
   readonly selectSub = '高度420kmの低軌道。敵5機はすべて近傍軌道に分布';
   readonly selectKeys = ['Digit1', 'Enter'];

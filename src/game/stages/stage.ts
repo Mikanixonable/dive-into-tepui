@@ -1,8 +1,9 @@
 // 全ステージ共通の骨格。撃破数による勝利判定(checkWin/onWin)・常時解放(isUnlocked)・
 // HUD補助表示なし(hudSubStatus)を既定実装として持ち、必要なステージだけ override する。
 // ステージ固有のランタイム状態(タイマー・ウェーブ管理・撃破集計・弾薬兵站など)は各派生
-// クラス(stage00.ts等)や基底クラス自身がフィールドとして直接持つ — Game は STAGES
-// から得たこのインスタンス自身を activeStage として保持するだけでよい。
+// クラス(stage00.ts等)や基底クラス自身がフィールドとして直接持つ — Game は
+// stage-dictionary.ts の initStage() が新規 `new` したこのインスタンス自身を
+// activeStage として保持するだけでよい。
 import * as THREE from 'three/webgpu';
 import { Enemy } from '../orbit-entity/enemy';
 import { Player } from '../player/player';
@@ -27,7 +28,11 @@ export interface StageInitData {
 }
 
 export abstract class Stage {
-  abstract readonly id: StageId;
+  // id は各派生クラスが static readonly id で持つ(stage-dictionary.ts がインスタンス化前に
+  // ID で検索できるようにするため)。ここでは実行時に `this.id` で読めるよう橋渡しするだけ。
+  get id(): StageId {
+    return (this.constructor as unknown as { id: StageId }).id;
+  }
   abstract readonly selectLabel: string;
   abstract readonly selectSub: string;
   readonly selectLockedSub?: string;
@@ -40,9 +45,9 @@ export abstract class Stage {
   // 必要とするため、モジュール読み込み時ではなく setup() で構築する。
   protected logistics!: Logistics;
 
-  // setup() で受け取り私有する hud/sfx/scene(STAGES はモジュール読み込み時に
-  // 生成される静的シングルトンなので、コンストラクタ注入ができず setup() が代わりを担う
-  // — これは一度きりの注入であり、毎フレームの ctx 越しの受け渡しではない)。
+  // setup() で受け取り私有する hud/sfx/scene(インスタンス化はステージ ID だけを
+  // 持つ stage-dictionary.ts の initStage() 内で行うため、コンストラクタ注入ができず
+  // setup() が代わりを担う。これは一度きりの注入であり、毎フレームの ctx 越しの受け渡しではない)。
   // 派生クラス(stage0/1/2/00.ts)は毎フレームの init/update からこれを直接使ってよい。
   protected _hud!: Hud;
   protected _sfx!: Sfx;
@@ -60,8 +65,9 @@ export abstract class Stage {
   get isPlaying(): boolean { return this._phase === 'playing'; }
   protected setPhase(phase: GamePhase): void { this._phase = phase; }
 
-  // Game がステージ開始前に一度だけ呼ぶ(STAGES はモジュール読み込み時に生成される
-  // 静的シングルトンなので、Game 固有のリソースはコンストラクタではなくここで受け取る)。
+  // stage-dictionary.ts の initStage() がインスタンス生成直後に一度だけ呼ぶ
+  // (`new` の時点では Game 固有のリソースが揃っていないため、コンストラクタではなく
+  // ここで受け取る)。
   setup(
     hud: Hud,
     sfx: Sfx,

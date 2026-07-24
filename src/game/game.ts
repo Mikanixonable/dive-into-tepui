@@ -10,13 +10,13 @@ import { sunAzimuth } from '../physics/ephemeris';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
 import { HitSystem } from './orbit-entity/hit';
-import { Stage } from './stages/stage';
+import { Stage, StageId } from './stages/stage';
 import { EphemerisSystem } from './ephemeris';
 import { MarkerCtx, MarkerForGame } from './marker/marker-for-game';
 import { MarkerManager } from './marker/marker-manager';
 import { CollisionPhysics } from './orbit-entity/collision';
 import { EffectsSystem } from './vfx/effects-system';
-import { getStage, initStage } from './stages/stage-dictionary';
+import { initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanSystem } from './plan/plan-system';
@@ -99,7 +99,7 @@ export class Game {
   readonly simulator: Simulator;
   private readonly pipRenderer: PipRenderer;
 
-  constructor(gs: GameScene, stage = '1') {
+  constructor(gs: GameScene, stageId: StageId = '1') {
     this._scene = gs.scene;
     this.renderer = gs.renderer;
     this.ephemeris = new EphemerisSystem(this._scene);
@@ -134,9 +134,16 @@ export class Game {
 
     this.player = new Player(this._hud, this._sfx, this._scene, this.effects);
 
-    this.activeStage = getStage(stage);
-    this.activeStage.setup(this._hud, this._sfx, this._scene, this.simulator, this.unlockManager, this.effects);
-    initStage(this.activeStage, this.player, this.simulator, this._hud);
+    this.activeStage = initStage(
+      stageId,
+      this.player,
+      this.simulator,
+      this._hud,
+      this._sfx,
+      this._scene,
+      this.unlockManager,
+      this.effects,
+    );
 
     this.floatingOrigin = new FloatingOrigin(this.player.state.r, this.player.state.v);
   }
