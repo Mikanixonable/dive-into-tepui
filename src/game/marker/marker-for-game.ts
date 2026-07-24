@@ -3,7 +3,6 @@
 // game.ts を import しない — 依存は MarkerCtx 引数・コンストラクタ注入(MarkerManager)のみ。
 // スクリーン投影(project)はアクティブカメラ依存のため game.ts 側の関数を呼び出し
 // 引数として受け取る(planner.ts の project 注入パターンに合わせる)。
-import * as THREE from 'three/webgpu';
 import { qRotate } from '../../physics/attitude';
 import { Vec3, add, addScaled, cross, dot, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
@@ -15,8 +14,7 @@ import { Player } from '../player/player';
 import { solveLeadTime } from '../../physics/intercept';
 import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn } from '../camera/camera-system';
-
-const tmpV2 = new THREE.Vector3();
+import { PipRect } from '../camera/pip-camera';
 
 // updateMarkers が必要とする、Game 側の現在状態のスナップショット(内部で個々の
 // フィールドへ分解して各 private メソッドへ渡す)。
@@ -29,7 +27,6 @@ export interface MarkerCtx {
   target: Enemy | null;
   ammos: Ammo[];
   mapLabelIds: string[]; // マップモードのラベル(MapCamera.labels の id 一覧、非マップ時に隠す)
-  activeCamera: THREE.PerspectiveCamera; // PIP オーバーレイ専用の投影に使う
   simTime: number;
 }
 
@@ -341,44 +338,26 @@ export class MarkerForGame {
   }
 
   // ズームウィンドウ(PIP)のオーバーレイ: ターゲット菱形枠と LEAD マーカーを PIP の
-  // 矩形内に描く。main.ts が PIP 用に activeCamera を一時的にポーズして render() した
-  // 直後、カメラを元の位置・姿勢へ復元する前に rect を渡して呼ぶ。PIP を描画しない
-  // フレームでは rect=null で呼び、両マーカーを隠す。
-  // (この段階でカメラは PIP 用の position/quaternion/fov/aspect に設定済みで、
-  //  renderer.render() 済みなので matrixWorldInverse/projectionMatrix は最新のはず。
-  //  念のため updateMatrixWorld() を呼んでから使う。)
+  // 矩形内に描く。project は PipCamera.projection(rect 内のピクセル座標へ写像済み)を
+  // 渡す。PIP を描画しないフレームでは rect=null で呼び、両マーカーを隠す。
   updatePipOverlay(
     target: Enemy | null,
     player: Player,
-    activeCamera: THREE.PerspectiveCamera,
-    rect: { x: number; y: number; w: number; h: number } | null,
+    fo: FloatingOrigin,
+    project: ProjectFn,
+    rect: PipRect | null,
   ): void {
     if (!rect || !target || !target.alive || !player.alive) {
       this.markerManager.hide('pip-tgt');
       this.markerManager.hide('pip-lead');
       return;
     }
-    const cam = activeCamera;
-    cam.updateMatrixWorld();
-    // o = 投影原点(描画基準)。pv = 自機速度(物理量、リード計算用)。両者を区別する。
-    const pv = player.state.v;
-
-    const projectPip = (rel: Vec3): { x: number; y: number; front: boolean } => {
-      tmpV2.set(rel.x, rel.y, rel.z).applyMatrix4(cam.matrixWorldInverse);
-      const front = tmpV2.z < 0;
-      tmpV2.applyMatrix4(cam.projectionMatrix);
-      return {
-        x: rect.x + (tmpV2.x * 0.5 + 0.5) * rect.w,
-        y: rect.y + (-tmpV2.y * 0.5 + 0.5) * rect.h,
-        front,
-      };
-    };
     const inRect = (p: { x: number; y: number; front: boolean }): boolean =>
       p.front && p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h;
 
     const relP = sub(target.state.r, player.state.r);
-    const relV = sub(target.state.v, pv);
-    const p = projectPip(relP);
+    const relV = sub(target.state.v, player.state.v);
+    const p = project(fo.RtoThreeV3(target.state.r));
     const t = solveLeadTime(relP, relV, C.MUZZLE_SPEED);
 
     // ラベル無し(''): resolveCollisions の押し退け対象から自然に除外される
@@ -386,8 +365,8 @@ export class MarkerForGame {
 
     const hexColor = target.accent ? '#' + target.accent.toString(16).padStart(6, '0') : '#ff6a00';
     if (t !== null && t < 25) {
-      const lead = addScaled(relP, relV, t);
-      const lp = projectPip(lead);
+      const lead = addScaled(target.state.r, relV, t);
+      const lp = project(fo.RtoThreeV3(lead));
       this.markerManager.set('pip-lead', 'mk-lead', '✛', lp.x, lp.y, inRect(lp), '', 1, hexColor);
     } else {
       this.markerManager.hide('pip-lead');
