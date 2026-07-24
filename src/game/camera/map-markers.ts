@@ -2,7 +2,8 @@
 // HUD マーカーへの反映。MapCamera から抽出 — 「どこにラベルがあるか」の担当で、
 // カメラの視点操作(MapCamera)とは責務を分離する。
 import { moonPosition, sunPosition, emLagrangePoints, seLagrangePoints } from '../../physics/ephemeris';
-import { Vec3, sub } from '../../physics/vec3';
+import { Vec3, v3 } from '../../physics/vec3';
+import type { FloatingOrigin } from '../floating-origin';
 import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import type { EphemerisSystem } from '../ephemeris';
@@ -30,7 +31,7 @@ export class MapMarkers {
   readonly labels: MapLabel[] = Object.entries(LABEL_NAMES).map(([id, name]) => ({
     id,
     name,
-    pos: { x: 0, y: 0, z: 0 },
+    pos: v3(0, 0, 0),
   }));
 
   constructor(private readonly markerManager: MarkerManager) {}
@@ -38,13 +39,13 @@ export class MapMarkers {
   // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルの座標を更新し、
   // マーカーに反映する。sliderT > 0 の間はゴーストスライダーの表示時刻を使う。
   // duration は predictDurationSec() の結果。
-  syncLabels(o: Vec3, simTime: number, ephemeris: EphemerisSystem, duration: number, sliderT: number, project: ProjectFn): void {
+  syncLabels(fo: FloatingOrigin, simTime: number, ephemeris: EphemerisSystem, duration: number, sliderT: number, project: ProjectFn): void {
     const t = sliderT > 0 ? simTime + sliderT * duration : simTime;
     const emL = emLagrangePoints(t, ephemeris.moonPhase0);
     const seL = seLagrangePoints(t, ephemeris.sunPhase0);
 
     const positions: Record<string, Vec3> = {
-      'earth': { x: 0, y: 0, z: 0 },
+      'earth': v3(0, 0, 0),
       'moon': moonPosition(t, ephemeris.moonPhase0),
       'sun': sunPosition(t, ephemeris.sunPhase0),
       'em-l1': emL.L1,
@@ -58,7 +59,7 @@ export class MapMarkers {
 
     for (const lbl of this.labels) {
       lbl.pos = positions[lbl.id]!;
-      const wp = sub(lbl.pos, o);
+      const wp = fo.RtoThreeV3(lbl.pos);
       const p = project(wp);
       if (p && p.front) {
         this.markerManager.set(lbl.id, 'poi', '●', p.x, p.y, true, lbl.name);

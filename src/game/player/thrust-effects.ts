@@ -1,8 +1,9 @@
 // マヌーバ噴射プルーム: 推力方向の逆側に置く発光ビルボード 2 枚(コア+アウター)。
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3, addScaled } from '../../physics/vec3';
 import { Billboard } from '../../render/billboard';
 import type { CameraSystem } from '../camera/camera-system';
+import { FloatingOrigin } from '../floating-origin';
 
 export class ThrustEffects {
   private readonly core = new Billboard(0xaee6ff);
@@ -13,7 +14,9 @@ export class ThrustEffects {
     scene.add(this.outer.mesh);
   }
 
-  sync(dir: Vec3 | null, throttleIdx: number, alive: boolean, camera: CameraSystem): void {
+  // playerPos: 自機の絶対 ECI 位置。プルームはその位置を基準に推力の逆方向へ置き、
+  // 慣性座標で組んでから末端で fo 経由で描画フレームへ変換する。
+  sync(fo: FloatingOrigin, playerPos: Vec3, dir: Vec3 | null, throttleIdx: number, alive: boolean, camera: CameraSystem): void {
     const show = dir !== null && alive && !camera.zoomActive;
     if (!show) {
       this.core.hide();
@@ -24,7 +27,7 @@ export class ThrustEffects {
     const flick = 0.8 + 0.2 * Math.random();
     const sc = (1.5 + 2.5 * (throttleIdx / 3.0)) * flick;
     const camQuat = camera.activeCamera.quaternion;
-    this.core.sync({ x: -d.x * 3.4, y: -d.y * 3.4, z: -d.z * 3.4 }, sc * 1.6, 0.85 * flick, camQuat);
-    this.outer.sync({ x: -d.x * 5.6, y: -d.y * 5.6, z: -d.z * 5.6 }, sc * 3.6, 0.32 * flick, camQuat);
+    this.core.sync(fo.RtoThreeV3(addScaled(playerPos, d, -3.4)), sc * 1.6, 0.85 * flick, camQuat);
+    this.outer.sync(fo.RtoThreeV3(addScaled(playerPos, d, -5.6)), sc * 3.6, 0.32 * flick, camQuat);
   }
 }

@@ -8,7 +8,7 @@
 import * as THREE from 'three/webgpu';
 import { Elements, R_EARTH, elementsFromState } from '../../physics/orbital';
 import { sunAzimuth } from '../../physics/ephemeris';
-import { Vec3, len, rotateAxis, sub, v3 } from '../../physics/vec3';
+import { Vec3, len, rotateAxis, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { fmtMarkerDist } from '../hud/utils';
 import { TrajLine } from './trajline';
@@ -17,6 +17,7 @@ import { ProjectFn } from '../camera/camera-system';
 import { Plan } from './plan';
 import type { Player } from '../player/player';
 import type { EphemerisSystem } from '../ephemeris';
+import { FloatingOrigin } from '../floating-origin';
 
 export type PredictDurationKey = 'orbit' | 'day' | 'week' | 'month';
 
@@ -100,13 +101,15 @@ export class PlanDisplay {
   // 毎フレーム(マップモード中のみ呼ぶ): 予測を最新化し、折れ線・ゴーストマーカーを更新する。
   sync(
     plan: Plan,
-    { player, ephemeris, simTime }: { player: Player; ephemeris: EphemerisSystem; simTime: number },
-    origin: Vec3,
+    player: Player,
+    ephemeris: EphemerisSystem,
+    simTime: number,
+    fo: FloatingOrigin,
     mapFrameRotating: boolean,
     project: ProjectFn,
   ): void {
     this.line.setVisible(true);
-    this.line.setOrigin(origin);
+    this.line.setOrigin(fo);
     plan.maybeRefresh(player, ephemeris, simTime, this.predictDurationSec(player));
 
     // 予測が再計算された(trajSamples の参照が変わった)フレームでだけ、line.sync()
@@ -131,7 +134,7 @@ export class PlanDisplay {
       this.markerManager.hide('ghost');
       return;
     }
-    const p = project(sub(this.toDisplayFrame(sample.r, t, ephemeris, mapFrameRotating), origin));
+    const p = project(fo.RtoThreeV3(this.toDisplayFrame(sample.r, t, ephemeris, mapFrameRotating)));
     this.markerManager.set('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.ghostLabel(plan, player, simTime));
   }
 }

@@ -1,14 +1,13 @@
 import * as THREE from 'three/webgpu';
 import { OrbitEntity } from './entities';
 import { OrbitState } from '../../physics/orbital';
-import { Vec3 } from '../../physics/vec3';
+import { FloatingOrigin } from '../floating-origin';
 import type { Stage } from '../stages/stage';
 import { altitudeOf } from '../../physics/orbital';
 import * as C from '../const';
 import { buildBulletMesh, buildPlasmaMesh } from '../../render/ships';
 
 
-const tmpVel = new THREE.Vector3();
 const tmpQuat = new THREE.Quaternion();
 const zAxis = new THREE.Vector3(0, 0, 1);
 
@@ -42,17 +41,14 @@ export class Bullet extends OrbitEntity {
         if (simTime - this.bornSim > this.lifetime) this.alive = false;
     }
 
-    // 姿勢を持たないため、att.q ではなく自機に対する相対速度方向を向く
-    // (OrbitEntity.syncTransform とはシグネチャが異なるため、別名の独自メソッドにする)。
-    syncBulletTransform(origin: Vec3, playerVelocity: Vec3): void {
-        this.obj.position.set(this.state.r.x - origin.x, this.state.r.y - origin.y, this.state.r.z - origin.z);
-        tmpVel.set(
-            this.state.v.x - playerVelocity.x,
-            this.state.v.y - playerVelocity.y,
-            this.state.v.z - playerVelocity.z,
-        );
-        if (tmpVel.lengthSq() <= 1e-6) return;
-        tmpQuat.setFromUnitVectors(zAxis, tmpVel.normalize());
+    // 姿勢を持たないため、att.q ではなくフローティングオリジンに対する相対速度方向を
+    // 向く(モーションブラー的表現)。位置は toThreeVector3(r 差引)、向きは toThreeVelocity
+    // (v 差引)で描画フレームへ変換する
+    sync(fo: FloatingOrigin): void {
+        this.obj.position.copy(fo.RtoThreeV3(this.state.r));
+        const relVel = fo.VtoThreeV3(this.state.v);
+        if (relVel.lengthSq() <= 1e-6) return;
+        tmpQuat.setFromUnitVectors(zAxis, relVel.normalize());
         this.obj.quaternion.copy(tmpQuat);
     }
 }

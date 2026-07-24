@@ -2,13 +2,14 @@
 // 基準フレームは「上 = 動径方向(地球と反対)、前 = 速度方向」で、
 // 軌道運動とともにゆっくり共回転するため地球が常に足元に見える。
 import * as THREE from 'three/webgpu';
-import { norm, v3, Vec3 } from '../../physics/vec3';
+import { add, addScaled, clone, cross, dot, norm, scale, v3, Vec3 } from '../../physics/vec3';
 import { MouseDelta } from '../input/input';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { qRotate } from '../../physics/attitude';
 import { Player } from '../player/player';
+import { FloatingOrigin } from '../floating-origin';
 
 export class ChaseCamera {
   // 戦闘ビュー用のカメラ。near=2m なら地平線距離(~2,400km)での深度誤差も大気シェルの
@@ -28,16 +29,14 @@ export class ChaseCamera {
   camFollowAttitude = true;
   private fov = C.BASE_FOV;
 
-  // update() が算出し sync() が camera へ反映する視点の数学状態(THREE.js には触れない)。
-  private readonly position = new THREE.Vector3();
-  private readonly upDir = new THREE.Vector3();
-  private readonly lookTarget = new THREE.Vector3();
+  // update() が算出し sync() が camera へ反映する視点の数学状態。ビュー計算・保持は
+  // すべて慣性系(physics/vec3、絶対 ECI)で行い、THREE.js への変換は sync() が fo 経由で
+  // 行うだけ。update は物理積分の後に呼ばれるため、ここで参照する自機位置は fo.r と同一
+  // (=積分後)であり、絶対値保管でフレームずれは生じない。
+  position: Vec3 = v3();      // 絶対 ECI のカメラ位置
+  private upDir: Vec3 = v3(0, 1, 0);  // カメラ上方向(向き)
+  private lookTarget: Vec3 = v3();    // 絶対 ECI の注視点
   private aspect = window.innerWidth / window.innerHeight;
-
-  private readonly upV = new THREE.Vector3();
-  private readonly fwdV = new THREE.Vector3();
-  private readonly sideV = new THREE.Vector3();
-  private readonly offset = new THREE.Vector3();
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
   constructor(private readonly _hud: Hud, _sfx: Sfx) {}
@@ -50,7 +49,7 @@ export class ChaseCamera {
     );
   }
 
-  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number, origin: Vec3, player: Player, zoomActive: boolean): void {
+  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number, player: Player, zoomActive: boolean): void {
     this.yaw -= keyYaw * C.CAM_KEY_YAW_RATE * dt;
     this.pitch = Math.max(-1.35, Math.min(1.35,
       this.pitch + keyPitch * C.CAM_KEY_PITCH_RATE * dt
@@ -58,31 +57,35 @@ export class ChaseCamera {
 
     // 速度方向を前方とする軌道基準フレームの up/fwd
     const chaseFwd = norm(player.state.v);
-    const chaseUp = norm(origin);
+    const chaseUp = norm(player.state.r);
     // 姿勢基準フレームの前方向/上方向
     const boreFwd = qRotate(player.att.q, v3(0, 0, 1));
     const boreUp = qRotate(player.att.q, v3(0, 1, 0));
 
+    // 追従中心 = 自機の絶対 ECI 位置(update は積分後に呼ばれるので fo.r と一致する)。
+    const center = player.state.r;
+
     if (!player.alive) {
-      this.computeChaseView(mouse, chaseUp, chaseFwd, dt);
+      this.computeChaseView(mouse, chaseUp, chaseFwd, dt, center);
     }
     else if (zoomActive) {
-      this.computeGunsightView(boreFwd, boreUp, dt);
+      this.computeGunsightView(boreFwd, boreUp, dt, center);
     }
     else if (this.camFollowAttitude) {
-      this.computeChaseView(mouse, boreUp, boreFwd, dt);
+      this.computeChaseView(mouse, boreUp, boreFwd, dt, center);
     }
     else {
-      this.computeChaseView(mouse, chaseUp, chaseFwd, dt);
+      this.computeChaseView(mouse, chaseUp, chaseFwd, dt, center);
     }
   }
 
-  // update() で算出した視点の数学状態を camera に反映する。
-  sync(): void {
+  // update() で算出した絶対 ECI の視点状態を fo 経由で描画フレームへ変換して camera に
+  // 反映する(位置・注視点は toThreeVector3、上方向は向きなので変換せずそのまま)。
+  sync(fo: FloatingOrigin): void {
     const camera = this.camera;
-    camera.position.copy(this.position);
-    camera.up.copy(this.upDir);
-    camera.lookAt(this.lookTarget);
+    camera.position.copy(fo.RtoThreeV3(this.position));
+    camera.up.set(this.upDir.x, this.upDir.y, this.upDir.z);
+    camera.lookAt(fo.RtoThreeV3(this.lookTarget));
     let projectionDirty = false;
     if (Math.abs(camera.aspect - this.aspect) > 1e-6) {
       camera.aspect = this.aspect;
@@ -98,7 +101,7 @@ export class ChaseCamera {
 
   // 通常の三人称視点(マウスでyaw/pitch/distを操作、up/fwdの基準フレームは
   // 呼び出し側が決める — 機体姿勢基準か軌道基準かはCameraSystemの責務)。
-  private computeChaseView(mouse: MouseDelta, up: Vec3, fwd: Vec3, dt: number): void {
+  private computeChaseView(mouse: MouseDelta, up: Vec3, fwd: Vec3, dt: number, center: Vec3): void {
     this.computeZoomFov(false, dt);
 
     this.yaw -= mouse.dx * 0.005;
@@ -107,36 +110,30 @@ export class ChaseCamera {
     this.dist *= Math.exp(mouse.wheel * 0.0012);
     this.dist = Math.max(12, Math.min(8000, this.dist));
 
-    this.upV.set(up.x, up.y, up.z);
-    this.fwdV.set(fwd.x, fwd.y, fwd.z);
-    // 前方向を上方向と直交化
-    this.fwdV.addScaledVector(this.upV, -this.fwdV.dot(this.upV)).normalize();
-    this.sideV.crossVectors(this.fwdV, this.upV).normalize();
+    // 前方向を上方向と直交化した正規直交フレーム
+    const f = norm(addScaled(fwd, up, -dot(fwd, up)));
+    const side = norm(cross(f, up));
 
     const cp = Math.cos(this.pitch);
-    this.offset
-      .set(0, 0, 0)
-      .addScaledVector(this.fwdV, -cp * Math.cos(this.yaw))
-      .addScaledVector(this.sideV, cp * Math.sin(this.yaw))
-      .addScaledVector(this.upV, Math.sin(this.pitch))
-      .multiplyScalar(this.dist);
+    let off = scale(f, -cp * Math.cos(this.yaw));
+    off = addScaled(off, side, cp * Math.sin(this.yaw));
+    off = addScaled(off, up, Math.sin(this.pitch));
+    off = scale(off, this.dist);
 
-    this.position.copy(this.offset);
-    this.upDir.copy(this.upV);
-    this.lookTarget.set(0, 0, 0);
+    this.position = add(center, off);
+    this.upDir = up;
+    this.lookTarget = clone(center);
   }
 
   // 照準ズーム中: 三人称視点をやめ、機体位置(原点)から機首方向を狙う
   // 固定ガンサイト視点にする(画面中心 = 照準先、自機は呼び出し側で非表示にする)。
   // 姿勢操作(I/K/J/L)で狙いを付ける設計のため、マウスでの視点回転は行わない。
-  private computeGunsightView(boreFwd: Vec3, boreUp: Vec3, dt: number): void {
+  private computeGunsightView(boreFwd: Vec3, boreUp: Vec3, dt: number, center: Vec3): void {
     this.computeZoomFov(true, dt);
 
-    this.fwdV.set(boreFwd.x, boreFwd.y, boreFwd.z).normalize();
-    this.upV.set(boreUp.x, boreUp.y, boreUp.z).normalize();
-    this.position.set(0, 0, 0);
-    this.upDir.copy(this.upV);
-    this.lookTarget.set(this.fwdV.x * 1000, this.fwdV.y * 1000, this.fwdV.z * 1000);
+    this.position = clone(center);
+    this.upDir = norm(boreUp);
+    this.lookTarget = addScaled(center, norm(boreFwd), 1000);
   }
 
   private computeZoomFov(zoomActive: boolean, dt: number): void {

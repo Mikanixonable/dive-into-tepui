@@ -2,7 +2,6 @@
 // グローテクスチャで描く光点が共有する構造)。位置・スケール・不透明度の決定は
 // 各エフェクトクラスの責務とし、ここではそれらをカメラ正対の平面へ反映するだけに徹する。
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../physics/vec3';
 import { getGlowTexture } from './glow-texture';
 
 export class Billboard {
@@ -26,9 +25,11 @@ export class Billboard {
     this.mesh.visible = false;
   }
 
-  sync(position: Vec3, scale: number, opacity: number, cameraQuat: THREE.Quaternion): void {
+  // position は描画フレーム(フローティングオリジン補正済み)の THREE.Vector3。
+  // 慣性座標 → 描画フレームの変換は呼び出し側が fo 経由で済ませておくこと。
+  sync(position: THREE.Vector3, scale: number, opacity: number, cameraQuat: THREE.Quaternion): void {
     this.mesh.visible = true;
-    this.mesh.position.set(position.x, position.y, position.z);
+    this.mesh.position.copy(position);
     this.mesh.scale.setScalar(scale);
     this.mesh.quaternion.copy(cameraQuat);
     (this.mesh.material as THREE.MeshBasicMaterial).opacity = opacity;
