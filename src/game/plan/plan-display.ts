@@ -134,7 +134,7 @@ export class PlanDisplay {
       this.markerManager.hide('ghost');
       return;
     }
-    const p = project(fo.RtoThreeV3(this.toDisplayFrame(sample.r, t, ephemeris, mapFrameRotating)));
+    const p = project(this.toDisplayFrame(sample.r, t, ephemeris, mapFrameRotating));
     this.markerManager.set('ghost', 'mk-ghost', '⬡', p.x, p.y, p.front, this.ghostLabel(plan, player, simTime));
   }
 }

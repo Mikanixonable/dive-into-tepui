@@ -42,10 +42,9 @@ export class Targeter {
     player: Player,
     enemies: Enemy[],
     input: Input,
-    floatingOrigin: FloatingOrigin,
     cameraSystem: CameraSystem,
   ): Enemy | null {
-    this.handleTargetLockByRightClick(input, enemies, player, floatingOrigin, cameraSystem.activeCameraProjection);
+    this.handleTargetLockByRightClick(input, enemies, player, cameraSystem.activeCameraProjection);
     this.autoTarget = this.resolveAutoTarget(enemies, player, cameraSystem.activeCamera);
     return this.autoTarget;
   }
@@ -81,7 +80,7 @@ export class Targeter {
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
-  syncBoardMarkers(fo: FloatingOrigin, dt: number, project: ProjectFn): void {
+  syncBoardMarkers(dt: number, project: ProjectFn): void {
     const target = this.autoTarget;
     if (!target) this.boardMarks.length = 0;
     this.boardMarks = this.boardMarks.filter((m) => {
@@ -95,13 +94,13 @@ export class Targeter {
         this.markerManager.hide(key);
         continue;
       }
-      const p = project(fo.RtoThreeV3(add(target.state.r, m.off)));
+      const p = project(add(target.state.r, m.off));
       const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
       this.markerManager.set(key, 'mk-boardhit', '✦', p.x, p.y, p.front, '', 0.25 + 0.75 * fade);
     }
   }
 
-  private handleTargetLockByRightClick(input: Input, enemies: Enemy[], player: Player, fo: FloatingOrigin, project: ProjectFn): void {
+  private handleTargetLockByRightClick(input: Input, enemies: Enemy[], player: Player, project: ProjectFn): void {
     const rightClicks = input.rightClicks();
     if (rightClicks.length <= 0 || !player.alive) return;
     const click = rightClicks[rightClicks.length - 1]!;
@@ -109,7 +108,7 @@ export class Targeter {
     let minDistSq = C.TARGET_LOCK_PICK_PX_SQ;
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
-      const p = project(fo.RtoThreeV3(enemy.state.r));
+      const p = project(enemy.state.r);
       if (!p.front) continue;
       const dx = p.x - click.x;
       const dy = p.y - click.y;

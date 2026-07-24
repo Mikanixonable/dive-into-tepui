@@ -4,7 +4,7 @@
 // スクリーン投影(project)はアクティブカメラ依存のため game.ts 側の関数を呼び出し
 // 引数として受け取る(planner.ts の project 注入パターンに合わせる)。
 import { qRotate } from '../../physics/attitude';
-import { Vec3, add, addScaled, cross, dot, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
+import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Ammo, OrbitEntity } from '../orbit-entity/entities';
 import { Enemy } from '../orbit-entity/enemy';
@@ -12,7 +12,6 @@ import { MarkerManager } from './marker-manager';
 import { fmtMarkerDist } from '../hud/utils';
 import { Player } from '../player/player';
 import { solveLeadTime } from '../../physics/intercept';
-import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn } from '../camera/camera-system';
 import { PipRect } from '../camera/pip-camera';
 
@@ -36,26 +35,26 @@ export class MarkerForGame {
 
   // 方向マーカー(プログレード/レトログレード/ノーマル/アンチノーマル/動径 in-out)・
   // 機首ボアサイト・敵/ターゲット/AMMO マーカー・視界外方位/リードマーカーを更新する。
-  updateMarkers(ctx: MarkerCtx, fo: FloatingOrigin, project: ProjectFn): void {
+  updateMarkers(ctx: MarkerCtx, project: ProjectFn): void {
     const { mapMode, player, enemies, target, ammos, mapLabelIds } = ctx;
 
     // マップ/戦闘ビューの出し分け(方向マーカーは戦闘ビューのみ・自機マーカーはマップのみ)
-    this.updateMapModeMarkers(mapMode, mapLabelIds, player, fo, project);
+    this.updateMapModeMarkers(mapMode, mapLabelIds, player, project);
 
     // 軌道基準方向 (Navball の代わり)。角運動量は自機の物理位置から求める。
-    if (!mapMode) this.updateOrbitalDirectionMarkers(target, player, fo, project);
+    if (!mapMode) this.updateOrbitalDirectionMarkers(target, player, project);
 
     // 機首方向(ボアサイト)
-    this.updateBoresightMarker(player, mapMode, fo, project);
+    this.updateBoresightMarker(player, mapMode, project);
 
     // 敵マーカー
-    this.updateEnemyMarkers(enemies, target, fo, project);
+    this.updateEnemyMarkers(enemies, target, player, project);
 
     // 補給のマーカー
-    this.updateAmmoMarkers(ammos, fo, project);
+    this.updateAmmoMarkers(ammos, player, project);
 
     // リード(見越し)マーカーと、視界外敵機の方位マーカー
-    this.updateLeadAndDirMarkers(ctx, player, fo, project);
+    this.updateLeadAndDirMarkers(ctx, player, project);
 
     // 以前の単一リードマーカーのクリーンアップ
     this.markerManager.hide('lead');
@@ -64,7 +63,7 @@ export class MarkerForGame {
     this.markerManager.resolveCollisions();
   }
 
-  private updateMapModeMarkers(mapMode: boolean, mapLabelIds: string[], player: Player, fo: FloatingOrigin, project: ProjectFn): void {
+  private updateMapModeMarkers(mapMode: boolean, mapLabelIds: string[], player: Player, project: ProjectFn): void {
     if (mapMode) {
       this.markerManager.hide('pro');
       this.markerManager.hide('retro');
@@ -77,7 +76,7 @@ export class MarkerForGame {
       this.markerManager.hide('bore');
       this.markerManager.hide('lead');
       // 自機位置マーカー(自機の描画フレーム位置を投影)
-      const sp = project(fo.RtoThreeV3(player.state.r));
+      const sp = project(player.state.r);
       this.markerManager.set('self', 'mk-self', '▷', sp.x, sp.y, sp.front, 'PLAYER');
     } else {
       this.markerManager.hide('self');
@@ -89,7 +88,7 @@ export class MarkerForGame {
 
   // pr = 自機の ECI 位置(物理量)。方向マーカーは自機の軌道基準フレームを表すので、
   // 自機の位置を足してから投影すべき
-  private updateOrbitalDirectionMarkers(target: Enemy | null, player: Player, fo: FloatingOrigin, project: ProjectFn): void {
+  private updateOrbitalDirectionMarkers(target: Enemy | null, player: Player, project: ProjectFn): void {
     const pr = player.state.r;
     const pv = player.state.v;
     const proDir = norm(pv);
@@ -97,26 +96,26 @@ export class MarkerForGame {
     const radDir = cross(proDir, nrmDir);
     const DIST = 5e4; // 遠方に投影して方向を示す
 
-    const pro = project(fo.RtoThreeV3(add(pr, scale(proDir, DIST))));
+    const pro = project(add(pr, scale(proDir, DIST)));
     this.markerManager.set('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PROGRADE [Q]');
-    const ret = project(fo.RtoThreeV3(add(pr, scale(proDir, -DIST))));
+    const ret = project(add(pr, scale(proDir, -DIST)));
     this.markerManager.set('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RETROGRADE [E]');
 
-    const nrm = project(fo.RtoThreeV3(add(pr, scale(nrmDir, DIST))));
+    const nrm = project(add(pr, scale(nrmDir, DIST)));
     this.markerManager.set('nrm', 'mk-nrm', '▲', nrm.x, nrm.y, nrm.front, 'NORMAL [A]');
-    const anm = project(fo.RtoThreeV3(add(pr, scale(nrmDir, -DIST))));
+    const anm = project(add(pr, scale(nrmDir, -DIST)));
     this.markerManager.set('anm', 'mk-nrm', '▽', anm.x, anm.y, anm.front, 'ANTINORMAL [D]');
 
-    const radOut = project(fo.RtoThreeV3(add(pr, scale(radDir, DIST))));
+    const radOut = project(add(pr, scale(radDir, DIST)));
     this.markerManager.set('radout', 'mk-rad', '◎', radOut.x, radOut.y, radOut.front, 'RADIAL OUT [W]');
-    const radIn = project(fo.RtoThreeV3(add(pr, scale(radDir, -DIST))));
+    const radIn = project(add(pr, scale(radDir, -DIST)));
     this.markerManager.set('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'RADIAL IN [S]');
 
     if (target) {
       const tgtDir = norm(sub(target.state.r, pr));
-      const tmk = project(fo.RtoThreeV3(add(pr, scale(tgtDir, DIST))));
+      const tmk = project(add(pr, scale(tgtDir, DIST)));
       this.markerManager.set('tgtdir', 'mk-tgtdir', '◇', tmk.x, tmk.y, tmk.front, '');
-      const atmk = project(fo.RtoThreeV3(add(pr, scale(tgtDir, -DIST))));
+      const atmk = project(add(pr, scale(tgtDir, -DIST)));
       this.markerManager.set('atgdir', 'mk-tgtdir', '◆', atmk.x, atmk.y, atmk.front, '');
     } else {
       this.markerManager.hide('tgtdir');
@@ -124,10 +123,10 @@ export class MarkerForGame {
     }
   }
 
-  private updateBoresightMarker(player: Player, mapMode: boolean, fo: FloatingOrigin, project: ProjectFn): void {
+  private updateBoresightMarker(player: Player, mapMode: boolean, project: ProjectFn): void {
     if (player.alive && !mapMode) {
       const fwd = qRotate(player.att.q, v3(0, 0, 1));
-      const bs = project(fo.RtoThreeV3(add(player.state.r, scale(fwd, 5e4))));
+      const bs = project(add(player.state.r, scale(fwd, 5e4)));
       this.markerManager.set('bore', 'mk-boresight', '┼', bs.x, bs.y, bs.front);
     } else {
       this.markerManager.hide('bore');
@@ -136,7 +135,7 @@ export class MarkerForGame {
 
   // 画面上で近接する敵マーカーをクラスタ化し、代表(ターゲット優先→最近距離)だけに
   // まとめラベルを付ける。
-  private updateEnemyMarkers(enemies: Enemy[], target: Enemy | null, fo: FloatingOrigin, project: ProjectFn): void {
+  private updateEnemyMarkers(enemies: Enemy[], target: Enemy | null, player: Player, project: ProjectFn): void {
     const CLUSTER_RADIUS = 40;
     const enemyMarkers: { i: number, e: Enemy, p: {x:number, y:number, front:boolean}, dist: number, isTgt: boolean, groupHide: boolean, groupCount: number }[] = [];
 
@@ -147,9 +146,8 @@ export class MarkerForGame {
         this.markerManager.hide(key);
         continue;
       }
-      const rel = fo.RtoThreeV3(e.state.r);
-      const p = project(rel);
-      const dist = rel.length();
+      const p = project(e.state.r);
+      const dist = len(sub(e.state.r, player.state.r));
       const isTgt = e === target;
       enemyMarkers.push({ i, e, p, dist, isTgt, groupHide: false, groupCount: 1 });
     }
@@ -200,7 +198,7 @@ export class MarkerForGame {
     }
   }
 
-  private updateAmmoMarkers(ammos: Ammo[], fo: FloatingOrigin, project: ProjectFn): void {
+  private updateAmmoMarkers(ammos: Ammo[], player: Player, project: ProjectFn): void {
     for (let i = 0; i < C.MAX_AMMO; i++) {
       const key = `mg${i}`;
       const ammo = ammos[i];
@@ -208,14 +206,13 @@ export class MarkerForGame {
         this.markerManager.hide(key);
         continue;
       }
-      const rel = fo.RtoThreeV3(ammo.state.r);
-      const p = project(rel);
-      const dist = rel.length();
+      const p = project(ammo.state.r);
+      const dist = len(sub(ammo.state.r, player.state.r));
       this.markerManager.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, `AMMO ${fmtMarkerDist(dist)}`);
     }
   }
 
-  private updateLeadAndDirMarkers(ctx: MarkerCtx, player: Player, fo: FloatingOrigin, project: ProjectFn): void {
+  private updateLeadAndDirMarkers(ctx: MarkerCtx, player: Player, project: ProjectFn): void {
     const cx = window.innerWidth / 2;
     const cy = window.innerHeight / 2;
 
@@ -234,7 +231,7 @@ export class MarkerForGame {
 
         const relP = sub(enemy.state.r, player.state.r);
         const relV = sub(enemy.state.v, player.state.v);
-        const p = project(fo.RtoThreeV3(enemy.state.r));
+        const p = project(enemy.state.r);
 
         const hexColor = enemy.accent ? '#' + enemy.accent.toString(16).padStart(6, '0') : '#ff6a00';
 
@@ -242,7 +239,7 @@ export class MarkerForGame {
         this.updateOffscreenDirMarker(enemy, p, cx, cy, hexColor);
 
         // LEAD マーカー (20秒履歴)
-        this.updateLeadMarker(ctx.simTime, enemy, relP, relV, hexColor, fo, project);
+        this.updateLeadMarker(ctx.simTime, enemy, relP, relV, hexColor, project);
       }
     } else {
       for (const ship of ctx.enemies) {
@@ -285,7 +282,6 @@ export class MarkerForGame {
     relP: Vec3,
     relV: Vec3,
     hexColor: string,
-    fo: FloatingOrigin,
     project: ProjectFn,
   ): void {
     let showLead = false;
@@ -297,7 +293,7 @@ export class MarkerForGame {
       const t = solveLeadTime(relP, relV, C.MUZZLE_SPEED);
       if (t !== null && t < 25) {
         const lead = addScaled(relP, relV, t);
-        const lp = project(fo.RtoThreeV3(lead));
+        const lp = project(lead);
         this.markerManager.set('lead-' + enemy.name, 'mk-lead', '✛', lp.x, lp.y, lp.front, '', 1, hexColor);
       } else {
         this.markerManager.hide('lead-' + enemy.name);
@@ -309,7 +305,7 @@ export class MarkerForGame {
 
   // ターゲットの軌道面との交線(相対昇交点・降交点)を自機の軌道上に表示する。
   // 面変更(ノーマル/アンチノーマル)burn を行うべき位置がひと目で分かる。
-  updateNodeMarkers(fo: FloatingOrigin, player: Player, tgt: OrbitEntity | null, project: ProjectFn): void {
+  updateNodeMarkers(player: Player, tgt: OrbitEntity | null, project: ProjectFn): void {
     const playerEl = player.elements;
     const tgtEl = tgt?.elements ?? null;
 
@@ -331,8 +327,8 @@ export class MarkerForGame {
     const rAsc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc));
     const rDesc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc + Math.PI));
 
-    const ascP = project(fo.RtoThreeV3(scale(d, rAsc)));
-    const descP = project(fo.RtoThreeV3(scale(d, -rDesc)));
+    const ascP = project(scale(d, rAsc));
+    const descP = project(scale(d, -rDesc));
     this.markerManager.set('an', 'mk-node', '▲', ascP.x, ascP.y, ascP.front, 'AN');
     this.markerManager.set('dn', 'mk-node', '▽', descP.x, descP.y, descP.front, 'DN');
   }
@@ -343,7 +339,6 @@ export class MarkerForGame {
   updatePipOverlay(
     target: Enemy | null,
     player: Player,
-    fo: FloatingOrigin,
     project: ProjectFn,
     rect: PipRect | null,
   ): void {
@@ -357,7 +352,7 @@ export class MarkerForGame {
 
     const relP = sub(target.state.r, player.state.r);
     const relV = sub(target.state.v, player.state.v);
-    const p = project(fo.RtoThreeV3(target.state.r));
+    const p = project(target.state.r);
     const t = solveLeadTime(relP, relV, C.MUZZLE_SPEED);
 
     // ラベル無し(''): resolveCollisions の押し退け対象から自然に除外される
@@ -366,7 +361,7 @@ export class MarkerForGame {
     const hexColor = target.accent ? '#' + target.accent.toString(16).padStart(6, '0') : '#ff6a00';
     if (t !== null && t < 25) {
       const lead = addScaled(target.state.r, relV, t);
-      const lp = project(fo.RtoThreeV3(lead));
+      const lp = project(lead);
       this.markerManager.set('pip-lead', 'mk-lead', '✛', lp.x, lp.y, inRect(lp), '', 1, hexColor);
     } else {
       this.markerManager.hide('pip-lead');

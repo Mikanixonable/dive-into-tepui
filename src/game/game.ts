@@ -116,7 +116,7 @@ export class Game {
       this.cameraSystem.mapMarkers,
       this._scene,
       () => this.player.fineAttitude,
-      () => ({ floatingOrigin: this.floatingOrigin, ephemeris: this.ephemeris, simTime: this.simulator.simTime })
+      () => this.ephemeris,
     );
     // ノードハンドル直接右クリックは、canvas 右クリックと同じフォールバック調停に流す。
     this.planSystem.onNodeHandleRightClick = (x, y) => this.dispatchMapRightClick(x, y);
@@ -226,7 +226,7 @@ export class Game {
       this.planSystem.updateEditing(dt, this.input, this.player, this.simulator.simTime);
     }
     else {
-      this.targeter.updateCombatTargeting(this.player, this.simulator.enemies, this.input, this.floatingOrigin, this.cameraSystem);
+      this.targeter.updateCombatTargeting(this.player, this.simulator.enemies, this.input, this.cameraSystem);
     }
   }
 
@@ -246,7 +246,7 @@ export class Game {
 
   private dispatchMapRightClick(x: number, y: number): void {
     if (this.planSystem.handleNodeRightClick(x, y)) this.cameraSystem.closeFocusMenu();
-    else this.cameraSystem.handleFocusRightClick(x, y, this.floatingOrigin);
+    else this.cameraSystem.handleFocusRightClick(x, y);
   }
 
   // --------------------------------------------------------------- input
@@ -350,13 +350,13 @@ export class Game {
 
     this.ephemeris.syncReferenceLines(this.simulator.simTime, fo, mapMode);
 
-    this.markersSystem.updateMarkers(this.markerCtx(), fo, project);
-    this.markersSystem.updateNodeMarkers(fo, this.player, this.targeter.aliveTarget, project);
-    this.targeter.syncBoardMarkers(fo, dt, project);
+    this.markersSystem.updateMarkers(this.markerCtx(), project);
+    this.markersSystem.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
+    this.targeter.syncBoardMarkers(dt, project);
     if (mapMode) {
       this.markerManager.hide('burn');
     } else {
-      this.planSystem.guide.update(this.planSystem.editor.plan, fo, this.player, this.ephemeris, this.simulator.simTime, this.simSpeedManager, project);
+      this.planSystem.guide.update(this.planSystem.editor.plan, this.player, this.ephemeris, this.simulator.simTime, this.simSpeedManager, project);
     }
   }
 
@@ -373,7 +373,7 @@ export class Game {
       playerShipObj: this.player.obj,
       setMuzzleFlashesVisible: (visible) => this.effects.setMuzzleFlashesVisible(visible),
       updateOverlay: (rect) => this.markersSystem.updatePipOverlay(
-        this.targeter.autoTarget, this.player, this.floatingOrigin, this.cameraSystem.pipCamera.projection, rect,
+        this.targeter.autoTarget, this.player, this.cameraSystem.pipCamera.projection, rect,
       ),
     });
   }
