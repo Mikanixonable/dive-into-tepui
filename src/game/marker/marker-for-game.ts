@@ -4,7 +4,7 @@
 // スクリーン投影(project)はアクティブカメラ依存のため game.ts 側の関数を呼び出し
 // 引数として受け取る(planner.ts の project 注入パターンに合わせる)。
 import { qRotate } from '../../physics/attitude';
-import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
+import { Vec3, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Ammo, OrbitEntity } from '../orbit-entity/entities';
 import { Enemy } from '../orbit-entity/enemy';
@@ -76,8 +76,7 @@ export class MarkerForGame {
       this.markerManager.hide('bore');
       this.markerManager.hide('lead');
       // 自機位置マーカー(自機の描画フレーム位置を投影)
-      const sp = project(player.state.r);
-      this.markerManager.set('self', 'mk-self', '▷', sp.x, sp.y, sp.front, 'PLAYER');
+      this.markerManager.setPosition('self', 'mk-self', '▷', player.state.r, project, 'PLAYER');
     } else {
       this.markerManager.hide('self');
       for (const id of mapLabelIds) {
@@ -87,36 +86,27 @@ export class MarkerForGame {
   }
 
   // pr = 自機の ECI 位置(物理量)。方向マーカーは自機の軌道基準フレームを表すので、
-  // 自機の位置を足してから投影すべき
+  // 自機の位置を原点として MarkerManager.setDirection に渡す。
   private updateOrbitalDirectionMarkers(target: Enemy | null, player: Player, project: ProjectFn): void {
     const pr = player.state.r;
     const pv = player.state.v;
     const proDir = norm(pv);
     const nrmDir = norm(cross(pr, pv));
     const radDir = cross(proDir, nrmDir);
-    const DIST = 5e4; // 遠方に投影して方向を示す
 
-    const pro = project(add(pr, scale(proDir, DIST)));
-    this.markerManager.set('pro', 'mk-pro', '⊙', pro.x, pro.y, pro.front, 'PROGRADE [Q]');
-    const ret = project(add(pr, scale(proDir, -DIST)));
-    this.markerManager.set('retro', 'mk-retro', '⊗', ret.x, ret.y, ret.front, 'RETROGRADE [E]');
+    this.markerManager.setDirection('pro', 'mk-pro', '⊙', pr, proDir, project, 'PROGRADE [Q]');
+    this.markerManager.setDirection('retro', 'mk-retro', '⊗', pr, scale(proDir, -1), project, 'RETROGRADE [E]');
 
-    const nrm = project(add(pr, scale(nrmDir, DIST)));
-    this.markerManager.set('nrm', 'mk-nrm', '▲', nrm.x, nrm.y, nrm.front, 'NORMAL [A]');
-    const anm = project(add(pr, scale(nrmDir, -DIST)));
-    this.markerManager.set('anm', 'mk-nrm', '▽', anm.x, anm.y, anm.front, 'ANTINORMAL [D]');
+    this.markerManager.setDirection('nrm', 'mk-nrm', '▲', pr, nrmDir, project, 'NORMAL [A]');
+    this.markerManager.setDirection('anm', 'mk-nrm', '▽', pr, scale(nrmDir, -1), project, 'ANTINORMAL [D]');
 
-    const radOut = project(add(pr, scale(radDir, DIST)));
-    this.markerManager.set('radout', 'mk-rad', '◎', radOut.x, radOut.y, radOut.front, 'RADIAL OUT [W]');
-    const radIn = project(add(pr, scale(radDir, -DIST)));
-    this.markerManager.set('radin', 'mk-rad', '◉', radIn.x, radIn.y, radIn.front, 'RADIAL IN [S]');
+    this.markerManager.setDirection('radout', 'mk-rad', '◎', pr, radDir, project, 'RADIAL OUT [W]');
+    this.markerManager.setDirection('radin', 'mk-rad', '◉', pr, scale(radDir, -1), project, 'RADIAL IN [S]');
 
     if (target) {
       const tgtDir = norm(sub(target.state.r, pr));
-      const tmk = project(add(pr, scale(tgtDir, DIST)));
-      this.markerManager.set('tgtdir', 'mk-tgtdir', '◇', tmk.x, tmk.y, tmk.front, '');
-      const atmk = project(add(pr, scale(tgtDir, -DIST)));
-      this.markerManager.set('atgdir', 'mk-tgtdir', '◆', atmk.x, atmk.y, atmk.front, '');
+      this.markerManager.setDirection('tgtdir', 'mk-tgtdir', '◇', pr, tgtDir, project);
+      this.markerManager.setDirection('atgdir', 'mk-tgtdir', '◆', pr, scale(tgtDir, -1), project);
     } else {
       this.markerManager.hide('tgtdir');
       this.markerManager.hide('atgdir');
@@ -126,8 +116,7 @@ export class MarkerForGame {
   private updateBoresightMarker(player: Player, mapMode: boolean, project: ProjectFn): void {
     if (player.alive && !mapMode) {
       const fwd = qRotate(player.att.q, v3(0, 0, 1));
-      const bs = project(add(player.state.r, scale(fwd, 5e4)));
-      this.markerManager.set('bore', 'mk-boresight', '┼', bs.x, bs.y, bs.front);
+      this.markerManager.setDirection('bore', 'mk-boresight', '┼', player.state.r, fwd, project);
     } else {
       this.markerManager.hide('bore');
     }
@@ -206,9 +195,8 @@ export class MarkerForGame {
         this.markerManager.hide(key);
         continue;
       }
-      const p = project(ammo.state.r);
       const dist = len(sub(ammo.state.r, player.state.r));
-      this.markerManager.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, `AMMO ${fmtMarkerDist(dist)}`);
+      this.markerManager.setPosition(key, 'mk-ammo', '▣', ammo.state.r, project, `AMMO ${fmtMarkerDist(dist)}`);
     }
   }
 
@@ -292,9 +280,9 @@ export class MarkerForGame {
     if (showLead) {
       const t = solveLeadTime(relP, relV, C.MUZZLE_SPEED);
       if (t !== null && t < 25) {
-        const lead = addScaled(relP, relV, t);
-        const lp = project(lead);
-        this.markerManager.set('lead-' + enemy.name, 'mk-lead', '✛', lp.x, lp.y, lp.front, '', 1, hexColor);
+        // リードの計算これで合っているのか不明　要検証？
+        const lead = addScaled(enemy.state.r, relV, t);
+        this.markerManager.setPosition('lead-' + enemy.name, 'mk-lead', '✛', lead, project, '', 1, hexColor);
       } else {
         this.markerManager.hide('lead-' + enemy.name);
       }
@@ -327,10 +315,8 @@ export class MarkerForGame {
     const rAsc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc));
     const rDesc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc + Math.PI));
 
-    const ascP = project(scale(d, rAsc));
-    const descP = project(scale(d, -rDesc));
-    this.markerManager.set('an', 'mk-node', '▲', ascP.x, ascP.y, ascP.front, 'AN');
-    this.markerManager.set('dn', 'mk-node', '▽', descP.x, descP.y, descP.front, 'DN');
+    this.markerManager.setPosition('an', 'mk-node', '▲', scale(d, rAsc), project, 'AN');
+    this.markerManager.setPosition('dn', 'mk-node', '▽', scale(d, -rDesc), project, 'DN');
   }
 
   // ズームウィンドウ(PIP)のオーバーレイ: ターゲット菱形枠と LEAD マーカーを PIP の

@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import { Elements, elementsFromState } from '../../physics/orbital';
 import { dvToWorld } from '../../physics/predict';
-import { Vec3, add, clone, dot, len, norm, scale, sub } from '../../physics/vec3';
+import { Vec3, add, clone, dot, len, norm, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { fmtSpeed } from '../hud/utils';
@@ -150,25 +150,23 @@ export class PlanGuide {
     }
 
     // ノード位置マーカー(カウントダウン付き)
-    const p = project(tgt.rNode);
     const tLabel =
       tRem >= 0
         ? `T-${Math.floor(tRem / 60)}:${String(Math.floor(tRem % 60)).padStart(2, '0')}`
         : `T+${Math.floor(-tRem / 60)}:${String(Math.floor(-tRem % 60)).padStart(2, '0')}`;
     const more = plan.nodes.length > 1 ? ` (+${plan.nodes.length - 1})` : '';
-    this.markerManager.set('nd', 'mk-mnode', '◆', p.x, p.y, p.front, `NODE ${tLabel}${more}`);
+    this.markerManager.setPosition('nd', 'mk-mnode', '◆', tgt.rNode, project, `NODE ${tLabel}${more}`);
 
     // 噴射ガイド: (凍結済みの)目標速度ベクトルとの差分方向へ加速する
     const dvRem = sub(tgt.vPlanned, pv);
     const mag = len(dvRem);
-    const g = project(scale(norm(dvRem), 5e4));
-    this.markerManager.set(
+    this.markerManager.setDirection(
       'burn',
       'mk-burn',
       '⬢',
-      g.x,
-      g.y,
-      g.front,
+      pr,
+      norm(dvRem),
+      project,
       `BURN ${mag.toFixed(1)} m/s → ${fmtSpeed(len(tgt.vPlanned))}`,
     );
     return;

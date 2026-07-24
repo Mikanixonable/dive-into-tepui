@@ -58,12 +58,7 @@ export class MapMarkers {
 
     for (const lbl of this.labels) {
       lbl.pos = positions[lbl.id]!;
-      const p = project(lbl.pos);
-      if (p && p.front) {
-        this.markerManager.set(lbl.id, 'poi', '●', p.x, p.y, true, lbl.name);
-      } else {
-        this.markerManager.set(lbl.id, 'poi', '●', 0, 0, false, lbl.name);
-      }
+      this.markerManager.setPosition(lbl.id, 'poi', '●', lbl.pos, project, lbl.name);
     }
   }
 

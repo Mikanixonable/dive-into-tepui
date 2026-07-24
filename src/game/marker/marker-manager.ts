@@ -1,6 +1,16 @@
 // HUD のスクリーン投影マーカー管理。マーカー DOM 要素の生成・更新と、
 // ラベル衝突回避のための SVG 引き出し線描画を担う。利用側は Hud.markers から
 // 直接 set/hide/resolveCollisions を呼ぶ(Hud を経由した委譲はしない)。
+//
+// setPosition/setDirection は、3D空間上の「位置」「方向」を示すマーカーの
+// 投影手順(project → set)を一元化したもの。camera-system.ts が MarkerManager に
+// 依存しているため、ProjectFn 型を直接 import せず同形の関数型で受ける
+// (循環 import を避ける)。
+import { Vec3, addScaled } from '../../physics/vec3';
+import { Projected } from '../../physics/projection';
+import * as C from '../const';
+
+type ProjectFn = (worldPos: Vec3) => Projected;
 
 function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLElement {
   const e = document.createElement(tag);
@@ -62,6 +72,41 @@ export class MarkerManager {
     } else {
       m.sym.style.transform = 'translate(-50%, -50%)'; // default translation for sym
     }
+  }
+
+  // 3D空間上の「位置」を示すマーカー(敵機・補給・ノードなど、実在の座標そのもの)。
+  // worldPos を project して set するだけの手順を一元化する。
+  setPosition(
+    key: string,
+    cls: string,
+    sym: string,
+    worldPos: Vec3,
+    project: ProjectFn,
+    label = '',
+    opacity = 1,
+    color?: string,
+    rotationDeg?: number,
+  ): void {
+    const p = project(worldPos);
+    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg);
+  }
+
+  // 3D空間上の「方向」を示すマーカー(プログレード/ボアサイト/BURN など、実在の位置を
+  // 持たない)。origin から dir(単位ベクトル)方向へ MARKER_DIR_DIST だけ離れた仮想点を
+  // 投影する。origin は自機位置で統一する。
+  setDirection(
+    key: string,
+    cls: string,
+    sym: string,
+    origin: Vec3,
+    dir: Vec3,
+    project: ProjectFn,
+    label = '',
+    opacity = 1,
+    color?: string,
+    rotationDeg?: number,
+  ): void {
+    this.setPosition(key, cls, sym, addScaled(origin, dir, C.MARKER_DIR_DIST), project, label, opacity, color, rotationDeg);
   }
 
   hide(key: string): void {

@@ -159,6 +159,9 @@ export const ENEMY_ORBIT_LINE_COLOR = 0x565b63; // 敵軌道線の既定色(個�
 export const INITIAL_ALT = 420e3; // 自機初期高度 [m]
 export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
 
+// --- HUD 方向マーカー(marker-manager.ts の MarkerManager.setDirection) ---
+export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想距離 [m](実在の位置ではなく方向のみを示す)
+
 // --- 軌道計画モード([M]) ---
 export const MAP_MIN_DIST = 9e6; // マップカメラ距離 [m]
 // 月軌道(平均距離 3.844e8m)全体+マージンが収まるまでカメラを引けるようにする
