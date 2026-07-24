@@ -22,7 +22,7 @@ export class MapModeToggler {
   }
 
   private close(planSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
-    planSystem.editor.onMapClosed();
+    planSystem.onMapClosed();
     planSystem.editor.closeMenu();
     cameraSystem.closeFocusMenu();
     this._hud.setPlanPanel(null);
@@ -30,7 +30,6 @@ export class MapModeToggler {
     touchControls?.setMapMode(false);
     cameraSystem.mapMode = false;
     planSystem.editMode = false;
-    planSystem.guide.clearActiveTarget();
   }
 
   toggle(isPlaying: boolean, planSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {

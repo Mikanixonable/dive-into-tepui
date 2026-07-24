@@ -228,6 +228,9 @@ export class Game {
       dt,
     );
 
+    // 計画が空の間、予定 player の起点を現在状態へ追従させる(最初のノードで凍結)。
+    this.planSystem.trackAnchor(this.player, this.simulator.simTime);
+
     if (this.planSystem.editMode) {
       this.dispatchMapPointer();
       this.planSystem.updateEditing(dt, this.input, this.player, this.simulator.simTime);
@@ -363,7 +366,7 @@ export class Game {
     if (mapMode) {
       this.markerManager.hide('burn');
     } else {
-      this.planSystem.guide.update(this.planSystem.editor.plan, this.planSystem.predict, this.player, this.ephemeris, this.simulator.simTime, this.simSpeedManager, project);
+      this.planSystem.guide.update(this.planSystem.editor.plan, this.player, this.simulator.simTime, this.simSpeedManager, project);
     }
   }
 
