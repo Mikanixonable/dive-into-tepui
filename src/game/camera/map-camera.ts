@@ -3,7 +3,7 @@
 // 意味を持つ。フォーカス対象(文字列 focus)はこのクラス自身が持ち、地球中心 or
 // ラベル位置への解決も MapMarkers を注入されて自力で行う(呼び出し側は「どこを見る
 // か」を一切知らずに済む)。未来ゴーストスライダー(sliderT)はカメラの視点計算に
-// 使われないため PlanDisplay 側の責務 — ここには置かない。
+// 使われないため predictSystem 側の責務 — ここには置かない。
 import * as THREE from 'three/webgpu';
 import { Vec3, add, addScaled, cross, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
