@@ -267,7 +267,7 @@ main.tsからgame.tsにper frameで呼び出している処理がupdateとrender
         - (this.autoTarget を再計算して代入。計算自体は純粋関数)
       - activeStage.update(dt, player, simulator, simTime, simSpeedManager) // 具体ステージへディスパッチ
         - behaveAllEnemies(dt, player, simulator, simTime, simSpeed) // 全ステージ共通の先頭処理
-          - enemy.behave(dt, simTime, player, simulator) // 生存中の敵ごと、かつ simSpeed.canEnemyFire の場合のみ
+          - enemy.behave(dt, simTime, player, simulator, simSpeed) // 生存中の敵ごと(simSpeed.canEnemyFire の判定は behave 内部)
             - firePlasma(simTime, player, simulator) // バースト継続中でburstDelayが0を切った場合、または新規攻撃判定が成立した場合
               - new Bullet(...) + simulator.addBullet(pb)
         - [Stage0(訓練スコアアタック)] timer.update(dt, onTimeUp)

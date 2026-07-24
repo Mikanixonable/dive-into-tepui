@@ -15,6 +15,7 @@ import type { Stage } from '../stages/stage';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import type { Simulator } from './simulator';
+import type { SimSpeedManager } from '../sim-speed-manager';
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
 export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
@@ -115,8 +116,9 @@ export class Enemy extends Ship {
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は simulator を使う)。
-  behave(dt: number, simTime: number, player: Player, simulator: Simulator): void {
+  behave(dt: number, simTime: number, player: Player, simulator: Simulator, simSpeed: SimSpeedManager): void {
     if (!player.alive) return;
+    if (!simSpeed.canEnemyFire) return;
     const dist = len(sub(player.state.r, this.state.r));
     if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
 
