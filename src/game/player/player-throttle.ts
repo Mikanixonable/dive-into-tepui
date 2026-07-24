@@ -17,9 +17,6 @@ export class PlayerThrottle {
   progradeHold = true;
   thrustVizDir: Vec3 | null = null;
   thrustAccelVec: Vec3 = v3();
-  // RCS パフの噴射方向(機体ローカル、body frame のトルク軸)。手動入力とダンピングの
-  // 符号を反映した単位符号ベクトルで、rcs-effects.ts が可視化にそのまま参照する。
-  rcsTau: Vec3 = v3();
 
   private rotationHoldTime = 0;
 
@@ -52,7 +49,6 @@ export class PlayerThrottle {
   clearTransientState(): void {
     this.thrustVizDir = null;
     this.thrustAccelVec = v3();
-    this.rcsTau = v3();
   }
 
   updateThrustState(input: Input, simSpeed: SimSpeedManager, att: Attitude, state: OrbitState): ExtraAccel | null {
@@ -98,18 +94,13 @@ export class PlayerThrottle {
     attDt: number,
     onProgradeHoldReleased: () => void,
   ): Vec3 {
-    if (!alive) {
-      this.rcsTau = v3();
-      return v3();
-    }
+    if (!alive) return v3();
     const inertia = att.inertia;
     // 計画編集モード中は手動姿勢入力を無効化する(WASDQE などが Δv 編集に振り替わるため)。
     const manual = editMode ? 0 : 1;
     const inX = ((input.down('KeyI') ? 1 : 0) + (input.down('KeyK') ? -1 : 0)) * manual;
     const inY = ((input.down('KeyL') ? 1 : 0) + (input.down('KeyJ') ? -1 : 0)) * manual;
     const inZ = ((input.down('KeyO') ? 1 : 0) + (input.down('KeyU') ? -1 : 0)) * manual;
-
-    this.rcsTau = this.buildRcsTau(inX, inY, inZ, att.w, editMode);
 
     const isRotating = inX !== 0 || inY !== 0 || inZ !== 0;
     this.rotationHoldTime = isRotating ? this.rotationHoldTime + attDt : 0;
@@ -154,18 +145,6 @@ export class PlayerThrottle {
     const maxAngVel = C.MAX_ANG_VEL * (fineAttitude ? C.FINE_ATTITUDE_SCALE : 1);
     const wMag = len(att.w);
     if (wMag > maxAngVel) att.w = scale(att.w, maxAngVel / wMag);
-  }
-
-  // 手動回転入力に、RCS ダンピングの逆回転パフ(角速度を打ち消す向き)を加えた符号ベクトル。
-  private buildRcsTau(inX: number, inY: number, inZ: number, w: Vec3, editMode: boolean): Vec3 {
-    const tau = v3(inX, inY, inZ);
-    if (this.rcsDamp && !editMode) {
-      const eps = C.RCS_DAMP_PUFF_EPS;
-      if (inX === 0 && Math.abs(w.x) > eps) tau.x = -Math.sign(w.x);
-      if (inY === 0 && Math.abs(w.y) > eps) tau.y = -Math.sign(w.y);
-      if (inZ === 0 && Math.abs(w.z) > eps) tau.z = -Math.sign(w.z);
-    }
-    return tau;
   }
 
   private autoAlignTorque(desiredFwd: Vec3, desiredUp: Vec3, att: Attitude, inertia: Vec3): Vec3 {
