@@ -6,10 +6,13 @@
 // の順に未来が明るくなる配色にする(既存の plannedOrbitLine の配色思想を踏襲)。
 //
 // ジオメトリは sync() が trajSamples の参照変化(=予測が再計算された)を検出した
-// ときだけ作り直す(毎フレームではない)。毎フレームは setOrigin() でフローティング
-// オリジン補正の平行移動だけ行う。
+// ときだけ作り直す。各頂点は frame(慣性系/太陽回転系)相対座標へ bake する(点ごとに角が
+// 違う非剛体変形)。毎フレームは syncTransform() が剛体 un-bake(group クォータニオン)と
+// フローティングオリジン補正(group 平行移動)だけを行う。
 import * as THREE from 'three/webgpu';
 import { Vec3, v3 } from '../../physics/vec3';
+import { Quat } from '../../physics/attitude';
+import { RelativeVec3 } from '../../physics/frame';
 import { TrajectorySample } from '../../physics/predict';
 import { FloatingOrigin } from '../floating-origin';
 
@@ -22,7 +25,8 @@ const SEGMENT_COLORS = [0xbfc9d4, 0xffffff, 0xff6a00];
 // (表示回転基準角など)をこのタイミングで固定できるよう、遅延評価にしている。
 export type TrajLineRebuildContext = {
   nodeTimes: readonly number[];
-  toDisplayFrame: (r: Vec3, t: number) => Vec3;
+  // 慣性系サンプル(r, t)を frame 相対座標(頂点)へ焼く。un-bake は syncTransform で剛体回転。
+  bake: (r: Vec3, t: number) => RelativeVec3;
 };
 
 export class TrajLine {
@@ -42,13 +46,13 @@ export class TrajLine {
   sync(trajSamples: readonly TrajectorySample[], onRebuild: () => TrajLineRebuildContext): void {
     if (trajSamples === this.lastSeenSamples) return;
     this.lastSeenSamples = trajSamples;
-    const { nodeTimes, toDisplayFrame } = onRebuild();
+    const { nodeTimes, bake } = onRebuild();
 
-    const segments: Vec3[][] = [];
-    let segment: Vec3[] = [];
+    const segments: RelativeVec3[][] = [];
+    let segment: RelativeVec3[] = [];
     let nodeIdx = 0;
     for (const sample of trajSamples) {
-      segment.push(toDisplayFrame(sample.r, sample.t));
+      segment.push(bake(sample.r, sample.t));
       if (nodeIdx < nodeTimes.length && sample.t >= nodeTimes[nodeIdx]! - 1e-6) {
         segments.push(segment);
         segment = [segment[segment.length - 1]!];
@@ -60,10 +64,10 @@ export class TrajLine {
     this.rebuild(segments);
   }
 
-  // segments: ノードで区切られた表示座標列(フローティングオリジン補正前)の配列。
+  // segments: ノードで区切られた frame 相対座標列(un-bake・フローティングオリジン補正前)の配列。
   // 各セグメントは前セグメント終端(ノード位置)を先頭に含めて連続させること
   // (色の切り替わり位置で線が途切れないように)。
-  private rebuild(segments: Vec3[][]): void {
+  private rebuild(segments: RelativeVec3[][]): void {
     this.clear();
     for (let i = 0; i < segments.length; i++) {
       const pts = segments[i]!;
@@ -103,8 +107,11 @@ export class TrajLine {
     this.geoms = [];
   }
 
-  // 毎フレーム呼ぶ: フローティングオリジン補正(平行移動のみ)
-  setOrigin(fo: FloatingOrigin): void {
+  // 毎フレーム呼ぶ: 剛体 un-bake(頂点は frame 相対に bake 済みなので group 回転で慣性系へ戻す)
+  // + フローティングオリジン補正(group 位置で ECI 原点を描画フレームへ移す)。THREE の合成は
+  // world = position + quaternion·vertex なので、原点まわりの un-bake 回転 → 平行移動の順で正しい。
+  syncTransform(fo: FloatingOrigin, unbake: Quat): void {
+    this.group.quaternion.set(unbake.x, unbake.y, unbake.z, unbake.w);
     this.group.position.copy(fo.RtoThreeV3(EARTH_CENTER));
   }
 
