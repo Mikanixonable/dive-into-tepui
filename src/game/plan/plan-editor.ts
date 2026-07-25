@@ -21,7 +21,9 @@ import { Vec3, add, clone, cross, len, norm, scale, sub, v3 } from '../../physic
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
+import { ACCENT, TEXT, TEXT_DIM } from '../theme';
 import { Hud } from '../hud/hud';
+import { fmtDist, fmtTime } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input/input';
 import { ProjectFn } from '../camera/camera-system';
@@ -47,6 +49,11 @@ export class PlanEditor {
   // 予測折れ線 + per-arc キャッシュ(B-2)。編集対象なので editor が所有・駆動する。
   readonly traj: PlanTrajectory;
 
+  // 計画パネル(HUD 左下 "MANEUVER PLAN")。表示内容はノード編集の産物なので editor が所有する。
+  // CSS(#hud-plan)は hud/dom.ts の STYLE に一元管理されている。
+  private readonly planPanel: HTMLElement;
+  private readonly planBody: HTMLElement;
+
   // ノードハンドルを直接右クリックしたときの通知。実体は「その座標で右クリック消費を試み、
   // 消費できたらフォーカスメニューを閉じる」調停で、上位(game.ts)が受け持つ。
   onNodeHandleRightClick: ((clientX: number, clientY: number) => void) | null = null;
@@ -61,6 +68,13 @@ export class PlanEditor {
     private readonly getFineAttitude: () => boolean,
   ) {
     this.traj = new PlanTrajectory(scene, project);
+    this.planPanel = document.createElement('div');
+    this.planPanel.id = 'hud-plan';
+    this.planPanel.className = 'panel';
+    this.planPanel.innerHTML = `<h3>MANEUVER PLAN [M]</h3><div data-id="planbody"></div>`;
+    this.planPanel.style.display = 'none';
+    this._hud.root.appendChild(this.planPanel);
+    this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
     this.wireNodeGizmo();
   }
 
@@ -353,7 +367,24 @@ export class PlanEditor {
         selEl = elementsFromState(node.postState.r, node.postState.v);
       }
     }
-    this._hud.setPlanPanel(this._hud.planHtml(nodesInfo, selDv, selEl));
+    this.renderPanel(nodesInfo, selDv, selEl);
+  }
+
+  // 計画パネルの内容を更新して表示する。nodes は時刻順のノード一覧(選択中のみ selected=true)、
+  // selDv/selEl は選択中ノードの Δv 成分と噴射後の軌道要素(未選択なら null)。
+  private renderPanel(
+    nodes: { tRel: number; dvMag: number; selected: boolean }[],
+    selDv: Vec3 | null,
+    selEl: Elements | null,
+  ): void {
+    const html = planPanelHtml(nodes, selDv, selEl);
+    this.planPanel.style.display = 'block';
+    if (this.planBody.innerHTML !== html) this.planBody.innerHTML = html;
+  }
+
+  // 計画パネルを隠す。パネル表示はマップ編集中のみで、書き手/隠し手は editor に一本化されている。
+  hidePanel(): void {
+    this.planPanel.style.display = 'none';
   }
 
   // 毎フレーム(sync 時)呼ぶ。マップ表示中は予測折れ線とノードギズモを駆動し、非表示中は
@@ -376,6 +407,7 @@ export class PlanEditor {
   // (クリックしただけで調整しなかった等)を破棄し、選択を解除する。Δv 導出に ephemeris が
   // 要るためここで行う。
   onMapClosed(): void {
+    this.hidePanel();
     if (this.plan.nodes.length > 0) {
       const arriving = this.nodeArrivings();
       for (let i = this.plan.nodes.length - 1; i >= 0; i--) {
@@ -385,4 +417,45 @@ export class PlanEditor {
     }
     this.selectedNodeIdx = null;
   }
+}
+
+// 計画パネルの定型 HTML(複数ノード対応)。近地点が大気圏内(<120km)なら警告を添える。
+function planPanelHtml(
+  nodes: { tRel: number; dvMag: number; selected: boolean }[],
+  selDv: Vec3 | null,
+  selEl: Elements | null,
+): string {
+  const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  let s = '';
+  if (nodes.length === 0) {
+    s += `<div style="color:${TEXT_DIM}">予測軌道(グレー)をクリックしてマニューバノードを配置</div>`;
+  } else {
+    s += nodes
+      .map((n, i) => {
+        const sign = n.tRel >= 0 ? 'T-' : 'T+';
+        return `<div class="row"><span class="k">${n.selected ? '▶ ' : '◆ '}NODE${i + 1} ${sign}${fmtTime(Math.abs(n.tRel))}</span><span class="v">${n.dvMag.toFixed(1)} m/s</span></div>`;
+      })
+      .join('');
+  }
+  if (selDv) {
+    s +=
+      `<div style="margin-top:4px;color:${TEXT};font-size:11px;letter-spacing:1px">選択中ノードの Δv</div>` +
+      row('Δv PRO [W/S]', `${selDv.x.toFixed(1)} m/s`) +
+      row('Δv NRM [A/D]', `${selDv.y.toFixed(1)} m/s`) +
+      row('Δv RAD [E/Q]', `${selDv.z.toFixed(1)} m/s`) +
+      row('合計 Δv', `${Math.hypot(selDv.x, selDv.y, selDv.z).toFixed(1)} m/s`);
+  }
+  if (selEl) {
+    s +=
+      `<div style="margin-top:4px;color:${TEXT};font-size:11px;letter-spacing:1px">噴射後の軌道</div>` +
+      row('遠地点 AP', fmtDist(selEl.apAlt)) +
+      row('近地点 PE', fmtDist(selEl.peAlt)) +
+      row('傾斜角 INC', isFinite(selEl.incDeg) ? `${selEl.incDeg.toFixed(2)}°` : '---') +
+      row('周期 PRD', fmtTime(selEl.period));
+    if (isFinite(selEl.peAlt) && selEl.peAlt < 120e3) {
+      s += `<div style="color:${ACCENT};margin-top:2px">⚠ 近地点が大気圏内</div>`;
+    }
+  }
+  s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/W/S・A/D・Q/E] Δv調整 [右クリック] メニュー(自動ワープ/削除) [X] 選択ノード削除 [V] 微調整 [M] 確定して戻る(時間は進み続ける)</div>`;
+  return s;
 }

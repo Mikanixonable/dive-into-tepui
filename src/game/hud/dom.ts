@@ -3,7 +3,6 @@
 // イベントリスナーが参照するコールバックは HudDomHost 経由で呼び出し時に解決するため、
 // (呼び出し元の) Hud インスタンスをそのまま渡せる。
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT } from '../theme';
-import { Frame, isFrame } from '../../physics/frame';
 
 // デザイン方針: ダークテーマ。ニューモーフィズムは廃止し、モノトーン
 // (ほぼ無彩色のグレースケール)+ 彩度の高いオレンジ 1 色をアクセントに使う
@@ -193,23 +192,6 @@ function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLE
   return e;
 }
 
-// DOM 構築が発火するイベントが呼び出し時に参照するコールバック/メソッド群。
-// 呼び出し元の Hud インスタンスをそのまま渡せば、代入順序に関わらず
-// クリック時点の最新のコールバックが呼ばれる(元の constructor 内 this 参照と同じ挙動)。
-export interface HudDomHost {
-  getBgmOn(): boolean;
-  onBgmToggle: ((on: boolean) => void) | null;
-  onSettingsOpenChange: ((open: boolean) => void) | null;
-  onQuitToTitle: (() => void) | null;
-  onDurationSelect: ((key: string) => void) | null;
-  onFrameSelect: ((frame: Frame) => void) | null;
-  onMapFocusSelect: ((focus: string) => void) | null;
-  onMapViewReset: (() => void) | null;
-  onSliderChange: ((t: number) => void) | null;
-  toggleSettings(force?: boolean): void;
-  setBgmState(on: boolean): void;
-}
-
 export interface HudDomRefs {
   root: HTMLElement;
   svgOverlay: SVGSVGElement;
@@ -280,97 +262,9 @@ function buildControlsBar(root: HTMLElement): void {
     'Space/右クリック:射撃 &nbsp;左ドラッグ/矢印キー:視点 &nbsp;中ドラッグ:マップ平行移動 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
 }
 
-function buildPlanPanel(root: HTMLElement): void {
-  const plan = el('div', 'hud-plan', root, 'panel');
-  plan.innerHTML = `<h3>MANEUVER PLAN [M]</h3><div data-id="planbody"></div>`;
-  plan.style.display = 'none';
-}
-
-// マップモードのツールバー(予測期間・座標系・フォーカス・未来位置スライダー)
-function buildMapToolbar(root: HTMLElement, host: HudDomHost): void {
-  const mapTool = el('div', 'hud-maptool', root, 'panel');
-  mapTool.innerHTML = `
-    <div class="mt-row" data-id="mt-duration">
-      <span class="mt-btn" data-dur="orbit">1周回</span>
-      <span class="mt-btn" data-dur="day">1日</span>
-      <span class="mt-btn" data-dur="week">7日</span>
-      <span class="mt-btn" data-dur="month">28日</span>
-      <span class="mt-btn" data-frame="inertial">慣性系</span>
-      <span class="mt-btn" data-frame="sunRotating">太陽回転系</span>
-    </div>
-    <div class="mt-row" data-id="mt-focus">
-      <span class="mt-btn" data-focus="earth">地球中心</span>
-      <span class="mt-btn" data-focus="moon">月中心</span>
-      <span class="mt-btn" data-id="mt-reset">視点リセット</span>
-    </div>
-    <input type="range" data-id="mt-slider" min="0" max="1000" value="0" />
-    <div class="mt-sliderlabel" data-id="mt-sliderlabel">スライダーで未来位置を確認</div>`;
-  mapTool.querySelectorAll<HTMLElement>('.mt-btn[data-dur]').forEach((btn) => {
-    btn.addEventListener('pointerdown', (e) => e.stopPropagation());
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (host.onDurationSelect) host.onDurationSelect(btn.dataset['dur']!);
-    });
-  });
-  mapTool.querySelectorAll<HTMLElement>('.mt-btn[data-frame]').forEach((btn) => {
-    btn.addEventListener('pointerdown', (e) => e.stopPropagation());
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const frame = btn.dataset['frame'];
-      if (frame && isFrame(frame)) host.onFrameSelect?.(frame);
-    });
-  });
-  mapTool.querySelectorAll<HTMLElement>('.mt-btn[data-focus]').forEach((btn) => {
-    btn.addEventListener('pointerdown', (e) => e.stopPropagation());
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const focus = btn.dataset['focus'];
-      if (focus) host.onMapFocusSelect?.(focus);
-    });
-  });
-  const resetBtn = mapTool.querySelector<HTMLElement>('[data-id="mt-reset"]')!;
-  resetBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-  resetBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    host.onMapViewReset?.();
-  });
-  const slider = mapTool.querySelector<HTMLInputElement>('[data-id="mt-slider"]')!;
-  slider.addEventListener('pointerdown', (e) => e.stopPropagation());
-  slider.addEventListener('input', () => {
-    if (host.onSliderChange) host.onSliderChange(Number(slider.value) / 1000);
-  });
-}
-
 function buildStage0Panel(root: HTMLElement): void {
   const stage0 = el('div', 'hud-stage0', root, 'panel');
   stage0.innerHTML = `<div class="t" data-id="stage0hp"></div><div class="k"><span data-id="stage0phase"></span><br>撃墜 <span data-id="stage0kills"></span></div>`;
-}
-
-function buildGearButton(root: HTMLElement, host: HudDomHost): void {
-  const gear = el('div', 'hud-gear', root);
-  gear.textContent = '⚙';
-  gear.addEventListener('click', () => host.toggleSettings());
-}
-
-// 一時停止 / 設定パネル(BGM トグル・タイトルへ戻る・閉じる)
-function buildSettingsPanel(root: HTMLElement, host: HudDomHost): void {
-  const settings = el('div', 'hud-settings', root, 'panel');
-  settings.innerHTML = `
-    <h3>一時停止 / 設定</h3>
-    <div class="srow"><span class="k">BGM</span><span class="stoggle" data-id="bgmtoggle">ON</span></div>
-    <div class="squit" data-id="settingsquit">ゲームを中断してタイトル画面に戻る</div>
-    <div class="sclose" data-id="settingsclose">[閉じる]</div>`;
-  settings.querySelector<HTMLElement>('[data-id="bgmtoggle"]')!.addEventListener('click', () => {
-    const on = !host.getBgmOn();
-    host.setBgmState(on);
-    if (host.onBgmToggle) host.onBgmToggle(on);
-  });
-  settings.querySelector<HTMLElement>('[data-id="settingsquit"]')!.addEventListener('click', () => {
-    host.onQuitToTitle?.();
-  });
-  settings.querySelector<HTMLElement>('[data-id="settingsclose"]')!.addEventListener('click', () =>
-    host.toggleSettings(false),
-  );
 }
 
 function buildHelpPanel(root: HTMLElement): void {
@@ -424,18 +318,16 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
 }
 
 // 旧 Hud constructor 本体だった静的 DOM/スタイル構築。document.body に直接要素を追加する。
-export function buildHudDom(host: HudDomHost): HudDomRefs {
+// 計画パネル(#hud-plan)・マップツールバー(#hud-maptool)・設定パネル/ギア(#hud-settings/#hud-gear)は
+// それぞれ PlanEditor / MapToolbar / SettingsPanel が自分で root へ構築する(それらの CSS はこの STYLE に含む)。
+export function buildHudDom(): HudDomRefs {
   injectStyle();
   const root = el('div', 'hud', document.body);
   const svgOverlay = buildSvgOverlay(root);
 
   buildInfoPanels(root);
   buildControlsBar(root);
-  buildPlanPanel(root);
-  buildMapToolbar(root, host);
   buildStage0Panel(root);
-  buildGearButton(root, host);
-  buildSettingsPanel(root, host);
 
   el('div', 'hud-hint', root);
   el('div', 'hud-toast', root);

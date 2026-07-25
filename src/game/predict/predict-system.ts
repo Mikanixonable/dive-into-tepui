@@ -15,7 +15,7 @@ import * as C from '../const';
 import { fmtMarkerDist } from '../hud/utils';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn } from '../camera/camera-system';
-import { Hud } from '../hud/hud';
+import { MapToolbar } from '../hud/map-toolbar';
 
 export type PredictDurationKey = 'orbit' | 'day' | 'week' | 'month';
 
@@ -31,9 +31,9 @@ export class PredictSystem {
   // カメラの視点計算には無関係な、予測表示側の状態のためここが正(MapCamera には置かない)。
   sliderT = 0;
 
-  constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
-    // スライダー位置は純粋に予測表示側の状態なので、この HUD 配線はここが持つ。
-    this._hud.onSliderChange = (t) => {
+  constructor(private readonly mapToolbar: MapToolbar, private readonly markerManager: MarkerManager) {
+    // スライダー位置は純粋に予測表示側の状態なので、この配線はここが持つ。
+    this.mapToolbar.onSliderChange = (t) => {
       this.sliderT = t;
     };
   }
@@ -114,6 +114,6 @@ export class PredictSystem {
   // 使う B-2 の sampleAt も注入で受ける。game.ts が editMode 中に毎フレーム呼ぶ。
   syncToolbar(frame: Frame, focus: string, sampleAt: SampleAtFn, orbitPeriod: number | null, simTime: number): void {
     const label = this.sliderT > 0 ? this.plannedPlayerLabel(sampleAt, orbitPeriod, simTime) : null;
-    this._hud.setMapToolbarState(this.predictDurationKey, frame, label, focus);
+    this.mapToolbar.setState(this.predictDurationKey, frame, label, focus);
   }
 }
