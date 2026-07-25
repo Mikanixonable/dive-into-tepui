@@ -26,6 +26,8 @@ import { Simulator } from './orbit-entity/simulator';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { Hud } from './hud/hud';
+import { MapToolbar } from './hud/map-toolbar';
+import { SettingsPanel } from './hud/settings-panel';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
@@ -40,6 +42,11 @@ export class Game {
   touchControls: TouchControls | null = null;
   private readonly _hud = new Hud();
   private readonly _sfx = new Sfx();
+  // 設定(一時停止メニュー)とマップツールバーは Hud から切り出した専用モジュール。いずれも
+  // _hud.root へ自分で DOM を構築するため _hud より後に置く(mapToolbar は cameraSystem/predict へ
+  // 注入する先より前に確定させる必要があるためここで構築する)。
+  private readonly mapToolbar = new MapToolbar(this._hud.root);
+  private readonly settingsPanel = new SettingsPanel(this._hud.root);
   private readonly markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
   // 太陽・月の天体暦(状態を持たない純サンプラ)。environment/simulator/cameraSystem/
   // editor がこの単一インスタンスを共有参照する。cameraSystem など field initializer で
@@ -51,7 +58,7 @@ export class Game {
   // 座標系トグル)の HUD 配線を張るため、_hud より後に構築する(field 順で保証)。
   // マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)とその選択 UI は
   // 「どこを注視するか」= mapCamera 寄りの責務なので cameraSystem が所有する。
-  readonly cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager, this.ephemeris);
+  readonly cameraSystem = new CameraSystem(this._hud, this.mapToolbar, this._sfx, this.markerManager, this.ephemeris);
   readonly player: Player;
   // ?perf=1 のデバッグ表示用エンティティ数。
   perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
@@ -109,7 +116,7 @@ export class Game {
     this.pipRenderer = new PipRenderer(this._scene);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
-    this.predict = new PredictSystem(this._hud, this.markerManager);
+    this.predict = new PredictSystem(this.mapToolbar, this.markerManager);
     this.editor = new PlanEditor(
       this._hud,
       this._sfx,
@@ -122,7 +129,7 @@ export class Game {
     // ノードハンドル直接右クリックは、canvas 右クリックと同じフォールバック調停に流す。
     this.editor.onNodeHandleRightClick = (x, y) => this.dispatchMapRightClick(x, y);
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager, this._scene);
-    this.mapModeToggler = new MapModeToggler(this._hud);
+    this.mapModeToggler = new MapModeToggler(this._hud, this.mapToolbar);
 
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
@@ -148,20 +155,20 @@ export class Game {
   }
 
   private wireHudCallbacks(): void {
-    this._hud.setBgmState(this._sfx.isBgmEnabled());
-    this._hud.onBgmToggle = (on) => this._sfx.setBgmEnabled(on);
+    this.settingsPanel.setBgmState(this._sfx.isBgmEnabled());
+    this.settingsPanel.onBgmToggle = (on) => this._sfx.setBgmEnabled(on);
     // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
-    this._hud.onSettingsOpenChange = (open) => {
+    this.settingsPanel.onSettingsOpenChange = (open) => {
       this.paused = open;
     };
     // 「ゲームを中断してタイトル画面に戻る」— ?stage= クエリを落として選択画面へ
-    this._hud.onQuitToTitle = () => {
+    this.settingsPanel.onQuitToTitle = () => {
       location.assign(location.pathname);
     };
     // 表示期間の選択は predict(期間状態)と editor(予測折れ線キャッシュ)にまたがる横断的操作
     // なので、オーケストレータの game が両者へ配線する(他のツールバー配線は predict/cameraSystem
     // が自前で持つ)。期間の非連続な変化は窓の滑りと区別できないため即時再計算を明示する。
-    this._hud.onDurationSelect = (key) => {
+    this.mapToolbar.onDurationSelect = (key) => {
       if (key === 'orbit' || key === 'day' || key === 'week' || key === 'month') {
         this.predict.predictDurationKey = key;
         this.editor.traj.invalidate();
@@ -301,7 +308,7 @@ export class Game {
         break;
       case 'KeyX': this.editor.clearPlanByKey(); break;
       case 'KeyH': this._hud.toggleHelp(); break;
-      case 'Escape': this._hud.toggleSettings(); break;
+      case 'Escape': this.settingsPanel.toggle(); break;
       case 'KeyR': if (!this.activeStage.isPlaying) location.reload(); break;
     }
   }

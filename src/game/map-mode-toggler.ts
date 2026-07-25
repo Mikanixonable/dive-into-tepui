@@ -1,19 +1,16 @@
 import { Hud } from "./hud/hud";
+import { MapToolbar } from "./hud/map-toolbar";
 import { CameraSystem } from "./camera/camera-system";
 import { TouchControls } from "./input/touch";
 import { PlanEditor } from "./plan/plan-editor";
 
 export class MapModeToggler {
-  _hud: Hud;
-
-  constructor(hud: Hud) {
-    this._hud = hud;
-  }
+  constructor(private readonly _hud: Hud, private readonly mapToolbar: MapToolbar) {}
 
   private open(editor: PlanEditor, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     editor.selectedNodeIdx = null;
 
-    this._hud.setMapToolbarVisible(true);
+    this.mapToolbar.setVisible(true);
     touchControls?.setMapMode(true);
     // 独立した二つの責務(広範囲視点 / 計画編集)を同時に開く唯一の場所。
     cameraSystem.mapMode = true;
@@ -24,8 +21,7 @@ export class MapModeToggler {
     editor.onMapClosed();
     editor.closeMenu();
     cameraSystem.closeFocusMenu();
-    this._hud.setPlanPanel(null);
-    this._hud.setMapToolbarVisible(false);
+    this.mapToolbar.setVisible(false);
     touchControls?.setMapMode(false);
     cameraSystem.mapMode = false;
     editor.editMode = false;

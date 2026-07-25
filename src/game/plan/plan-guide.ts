@@ -55,7 +55,6 @@ export class PlanGuide {
     if (!node || !player.alive) {
       this.markerManager.hide('nd');
       this.markerManager.hide('burn');
-      this._hud.setPlanPanel(null);
       return;
     }
 
@@ -71,7 +70,6 @@ export class PlanGuide {
       this.markerManager.hide('nd');
       this.markerManager.hide('burn');
       if (plan.nodes.length === 0) {
-        this._hud.setPlanPanel(null);
         this._hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
       } else {
         this._hud.hint(`✓ ノード達成 — 残り ${plan.nodes.length} 件`, 4000);
