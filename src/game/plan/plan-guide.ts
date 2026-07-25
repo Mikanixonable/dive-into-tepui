@@ -6,42 +6,23 @@
 // Step2: 直近ノードの凍結された実行後状態(絶対状態)を直接読む。予測(predict)・
 // 予測キャッシュ・activeTarget 凍結ハックには依存しない — 目標は最初から frozen な
 // 正データなので、噴射中に目標が逃げる問題自体が起きない。
-import * as THREE from 'three/webgpu';
 import { Elements, elementsFromState } from '../../physics/orbital';
 import { dot, len, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { fmtSpeed } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
-import { OrbitLine } from '../../render/orbitline';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import { Plan } from './plan';
 import type { Player } from '../player/player';
 import { SimSpeedManager } from '../sim-speed-manager';
-import { FloatingOrigin } from '../floating-origin';
-
 export class PlanGuide {
-  // 戦闘ビューの計画軌道ライン(白)。マップモード中は非表示(マップ側は trajLine が
-  // 予測軌道ゴーストを別途表示する)。
-  readonly plannedLine = new OrbitLine(0xffffff, 0.9);
-
   constructor(
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
     private readonly markerManager: MarkerManager,
-    scene: THREE.Scene,
   ) {
-    this.plannedLine.line.renderOrder = 3;
-    scene.add(this.plannedLine.line);
-  }
-
-  // 計画軌道ライン = 直近ノード実行後の軌道(その状態の軌道要素)。mapMode 中は隠すが、
-  // update()(噴射ガイド)とは異なり mapMode 中も含め毎フレーム呼んでよい。
-  syncPlannedLine(plan: Plan, fo: FloatingOrigin, mapMode: boolean): void {
-    const node = plan.firstNode();
-    const el = !mapMode && node ? elementsFromState(node.r, node.v) : null;
-    this.plannedLine.sync(el, fo);
   }
 
   update(
