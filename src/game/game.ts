@@ -40,25 +40,27 @@ export class Game {
   private floatingOrigin: FloatingOrigin;
   private readonly input: Input;
   touchControls: TouchControls | null = null;
-  private readonly _hud = new Hud();
-  private readonly _sfx = new Sfx();
-  // 設定(一時停止メニュー)とマップツールバーは Hud から切り出した専用モジュール。いずれも
-  // _hud.root へ自分で DOM を構築するため _hud より後に置く(mapToolbar は cameraSystem/predict へ
-  // 注入する先より前に確定させる必要があるためここで構築する)。
-  private readonly mapToolbar = new MapToolbar(this._hud.root);
-  private readonly settingsPanel = new SettingsPanel(this._hud.root);
-  private readonly markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
+  // hud/sfx/settingsPanel はタイトル画面でも使うため main.ts が生成して注入する(Game は所有せず
+  // 参照共有するだけ)。注入である以上コンストラクタ引数でしか確定しないため、これらに依存する
+  // 下記フィールドは(scene 依存のフィールドと同様に)field initializer ではなくコンストラクタ
+  // 本体で組み立てる。
+  private readonly _hud: Hud;
+  private readonly _sfx: Sfx;
+  private readonly settingsPanel: SettingsPanel;
+  // マップツールバーは Hud から切り出した専用モジュールで、_hud.root へ自分で DOM を構築する。
+  private readonly mapToolbar: MapToolbar;
+  private readonly markerManager: MarkerManager;
   // 太陽・月の天体暦(状態を持たない純サンプラ)。environment/simulator/cameraSystem/
-  // editor がこの単一インスタンスを共有参照する。cameraSystem など field initializer で
-  // 注入する先より前に確定させる必要があるため、ここで最初に構築する。
+  // editor がこの単一インスタンスを共有参照する。cameraSystem など後続の構築より前に
+  // 確定させる必要があるため、依存を持たないこれは field initializer のままでよい。
   private readonly ephemeris = new Ephemeris();
   // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
   // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/simulator/targeter 等)は
   // public にする。cameraSystem は自身のコンストラクタでマップツールバー(フォーカス・視点リセット・
-  // 座標系トグル)の HUD 配線を張るため、_hud より後に構築する(field 順で保証)。
+  // 座標系トグル)の HUD 配線を張るため、mapToolbar より後に構築する(コンストラクタ本体の順序で保証)。
   // マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)とその選択 UI は
   // 「どこを注視するか」= mapCamera 寄りの責務なので cameraSystem が所有する。
-  readonly cameraSystem = new CameraSystem(this._hud, this.mapToolbar, this._sfx, this.markerManager, this.ephemeris);
+  readonly cameraSystem: CameraSystem;
   readonly player: Player;
   // ?perf=1 のデバッグ表示用エンティティ数。
   perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
@@ -73,7 +75,7 @@ export class Game {
 
   // シミュレーション速度(HUD ヒント・SFX 上は「ワープ」と呼ぶ、sfx.warp() 参照)の
   // 段階管理と、[N] キーによるノードへの自動ワープ。
-  readonly simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
+  readonly simSpeedManager: SimSpeedManager;
 
   // 軌道計画まわりの三系統。かつて PlanSystem が束ねていたが、たらい回しを排して game が直接
   // 保持する: editor(ノード列 Plan・予測折れ線キャッシュ traj・編集モード editMode・ノード
@@ -89,7 +91,17 @@ export class Game {
   // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定、stages/ 参照)。
   // 固有のランタイム状態(タイマー・ウェーブ管理等)もこれ自身が持つ。
   readonly activeStage: Stage;
-  paused = false;
+  // 唯一の書き換え口は pause()/resume()。SettingsPanel.onSettingsOpenChange の配線は
+  // main.ts の役目(settingsPanel を所有するのが main.ts のため)。
+  private _isPaused = false;
+  get isPaused(): boolean { return this._isPaused; }
+  pause(): void {
+    this.simulator.lastSimDt = 0;
+    this._sfx.setThrust(false);
+    this.player.pause();
+    this._isPaused = true;
+  }
+  resume(): void { this._isPaused = false; }
 
   // 空の天体・地球・環境光・参照軌道線をまとめて所有する描画系。天体暦は上の ephemeris を
   // 共有参照する(所有はしない)。
@@ -97,7 +109,7 @@ export class Game {
 
   private readonly unlockManager = new UnlockManager();
   private readonly hitSystem = new HitSystem();
-  private readonly markersSystem = new MarkerForGame(this.markerManager);
+  private readonly markersSystem: MarkerForGame;
   private readonly collisionPhysics = new CollisionPhysics();
   // フラッシュ・破片エフェクトのスポーン窓口(effects-system.ts)。scene への注入・
   // FlashEffectManager の所有もここに一元化されており、Player/Enemy/PlayerFire は
@@ -109,9 +121,25 @@ export class Game {
   readonly simulator: Simulator;
   private readonly pipRenderer: PipRenderer;
 
-  constructor(gs: GameScene, stageId: StageId = '1') {
+  constructor(
+    gs: GameScene,
+    stageId: StageId,
+    hud: Hud,
+    sfx: Sfx,
+    settingsPanel: SettingsPanel,
+  ) {
     this._scene = gs.scene;
     this.renderer = gs.renderer;
+    this._hud = hud;
+    this._sfx = sfx;
+    this.settingsPanel = settingsPanel;
+
+    this.mapToolbar = new MapToolbar(this._hud.root);
+    this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
+    this.markersSystem = new MarkerForGame(this.markerManager);
+    this.cameraSystem = new CameraSystem(this._hud, this.mapToolbar, this._sfx, this.markerManager, this.ephemeris);
+    this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
+
     this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
     this.pipRenderer = new PipRenderer(this._scene);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
@@ -134,7 +162,7 @@ export class Game {
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
-    this.wireHudCallbacks();
+    this.wireDurationSelect();
 
     this.simulator = new Simulator(this.ephemeris, this.hitSystem);
 
@@ -154,20 +182,10 @@ export class Game {
     this.floatingOrigin = new FloatingOrigin(this.player.state.r, this.player.state.v);
   }
 
-  private wireHudCallbacks(): void {
-    this.settingsPanel.setBgmState(this._sfx.isBgmEnabled());
-    this.settingsPanel.onBgmToggle = (on) => this._sfx.setBgmEnabled(on);
-    // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
-    this.settingsPanel.onSettingsOpenChange = (open) => {
-      this.paused = open;
-    };
-    // 「ゲームを中断してタイトル画面に戻る」— ?stage= クエリを落として選択画面へ
-    this.settingsPanel.onQuitToTitle = () => {
-      location.assign(location.pathname);
-    };
-    // 表示期間の選択は predict(期間状態)と editor(予測折れ線キャッシュ)にまたがる横断的操作
-    // なので、オーケストレータの game が両者へ配線する(他のツールバー配線は predict/cameraSystem
-    // が自前で持つ)。期間の非連続な変化は窓の滑りと区別できないため即時再計算を明示する。
+  // 表示期間の選択は predict(期間状態)と editor(予測折れ線キャッシュ)にまたがる横断的操作なので、
+  // オーケストレータの game が両者へ配線する(他のツールバー配線は predict/cameraSystem が自前で
+  // 持つ)。設定パネル(BGM・一時停止・タイトルへ戻る)の配線は settingsPanel を所有する main.ts の役目。
+  private wireDurationSelect(): void {
     this.mapToolbar.onDurationSelect = (key) => {
       if (key === 'orbit' || key === 'day' || key === 'week' || key === 'month') {
         this.predict.predictDurationKey = key;
@@ -197,12 +215,7 @@ export class Game {
     }
 
     // ポーズ中の処理
-    if (this.paused) {
-      this.simulator.lastSimDt = 0;
-      this._sfx.setThrust(false);
-      this.player.pause();
-      return;
-    }
+    if (this._isPaused) { return; }
 
     // プレイヤーの HP 回復・移動/発射の試行
     this.player.behave({
@@ -337,7 +350,7 @@ export class Game {
       cameraSystem: this.cameraSystem,
     });
 
-    this.player.syncPlayer(this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this.paused);
+    this.player.syncPlayer(this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused);
 
     this.simulator.sync(this.floatingOrigin);
 

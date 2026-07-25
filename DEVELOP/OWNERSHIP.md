@@ -23,16 +23,16 @@
 ```
 main.ts
 ├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
+├── Hud                  ... initHud() でタイトル(ステージ選択)画面より前に生成、Game へ参照を渡す
+│   └── HudPanels        (buildHudDom が作った要素索引を共有)
+├── Sfx                  ... 同上
+├── SettingsPanel        ... 同上。DOM は Hud.root 配下。onSettingsOpenChange を Game.pause()/resume() へ配線
 ├── PerfMeter            (?perf=1 の DOM 表示。Game を PerfCountSource として参照するだけ)
 └── Game
     ├── FloatingOrigin       ... sync ごとに作り直す使い捨て
     ├── Input
     ├── TouchControls?       ... タッチデバイスのみ
-    ├── Hud
-    │   └── HudPanels        (buildHudDom が作った要素索引を共有)
-    ├── Sfx
     ├── MapToolbar           ... DOM は Hud.root 配下、所有は Game
-    ├── SettingsPanel        ... 同上
     ├── MarkerManager        ... DOM の親は Hud.root / Hud.svgOverlay、所有は Game
     ├── Ephemeris            ... 状態を持たない純サンプラ。各所へ参照共有する単一インスタンス
     ├── CameraSystem
@@ -106,7 +106,8 @@ main.ts
 | 対象 | 所有者 | 参照する側 |
 | --- | --- | --- |
 | `THREE.Scene` / `WebGPURenderer` | `GameScene`(main.ts) | Game・各描画物を持つクラス |
-| `Hud` / `Sfx` | Game | ほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
+| `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
+| `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
 | `MarkerManager` | Game | MarkerForGame・Targeter・PlanGuide・PredictSystem・MapMarkers |
 | `Ephemeris` | Game | EnvironmentScene・Simulator・MapCamera・PlanEditor・PlanTrajectory |
 | `MapToolbar` | Game | CameraSystem(視点側の配線)・PredictSystem(表示期間側の配線) |
