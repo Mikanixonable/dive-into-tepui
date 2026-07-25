@@ -8,15 +8,17 @@
 //      予測折れ線(TrajLine)・予定 player マーカー(plannedPlayer)の描画。
 // 表示(syncDisplay)は Plan の隣接キャッシュを引数で受け取り、Plan を import しない。
 //
-// 「太陽回転系」表示の座標変換は physics/frame.ts へ委譲する(toDisplayFrame が bake/un-bake で
-// 束ねる)。un-bake の基準時刻(trajRefTime)は予測の再計算(TrajLine のジオメトリ再構築)と同じ
-// タイミングで固定する。plan-editor.ts のクリックピッキングも DisplayFrameFn 経由でこの変換を
-// 共有する(二重に基準を持つとずれる)。mapMode 中のみ意味を持つ。
+// 「太陽回転系」表示の座標変換は physics/frame.ts へ委譲する。描画は二段変換で、bake(頂点を
+// frame 相対へ、TrajLine が再構築時のみ)と un-bake(現在時刻 simTime で慣性系へ戻す剛体回転、
+// TrajLine が毎フレーム group クォータニオンで)に分かれる。un-bake の基準時刻は常に現在
+// (unbakeTime = simTime)で、旧来の再構築時凍結(trajRefTime)はしない。plan-editor.ts のクリック
+// ピッキングも DisplayFrameFn(= bake + un-bake の合成)経由で同じ現在時刻を共有し、描画とずれ
+// ない(二重に基準を持たない)。mapMode 中のみ意味を持つ。
 import * as THREE from 'three/webgpu';
 import { OrbitState, R_EARTH } from '../../physics/orbital';
 import { PlannedNode, TrajectorySample, predictTrajectory, sampleAt } from '../../physics/predict';
 import { Vec3, len } from '../../physics/vec3';
-import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
+import { Frame, toFramePos, toInertialPos, toInertialQuat } from '../../physics/frame';
 import * as C from '../const';
 import { fmtMarkerDist } from '../hud/utils';
 import { TrajLine } from './trajline';
@@ -41,10 +43,10 @@ export class PredictSystem {
   // 予測軌道を描画する座標系(慣性系 / 太陽回転系)。
   frame: Frame = 'inertial';
 
-  // 直近の折れ線再構築(line.sync() が予測更新を検出したタイミング)で固定した、
-  // 回転系→慣性系へ戻す un-bake の基準時刻。同じ trajSamples を指している間は
-  // クリック判定(plan-editor.ts)・描画とも同じ値を使う。
-  private trajRefTime = 0;
+  // 回転系→慣性系へ戻す un-bake の基準時刻。常に現在時刻(simTime)を指し、syncDisplay() が
+  // 毎フレーム更新する。描画メッシュは同じ simTime の剛体回転(group クォータニオン)で un-bake
+  // されるので、クリック判定(plan-editor.ts)の toDisplayFrame もこの値を使えば描画とずれない。
+  private unbakeTime = 0;
 
   constructor(private readonly markerManager: MarkerManager, scene: THREE.Scene) {
     scene.add(this.line.group);
@@ -79,11 +81,12 @@ export class PredictSystem {
     return C.PREDICT_DUR_DAY;
   }
 
-  // ECI 座標 r(時刻 t のもの)をマップの「太陽回転系」表示用へ変換する(非回転系なら無変換)。
-  // physics/frame.ts で「サンプル時刻 t で回転系へ bake → 基準時刻 trajRefTime で慣性系へ un-bake」
-  // を合成する(正味 = t と基準時刻の太陽方位差ぶんの回転)。
+  // ECI 座標 r(時刻 t のもの)をマップの「太陽回転系」表示位置へ変換する(非回転系なら無変換)。
+  // physics/frame.ts で「サンプル時刻 t で回転系へ bake → 現在時刻 unbakeTime で慣性系へ un-bake」
+  // を合成する(正味 = t と現在時刻の太陽方位差ぶんの回転)。描画メッシュの bake 頂点 + 毎フレーム
+  // group un-bake と同じ現在時刻を使うので、クリック判定・ゴーストマーカーが描画とずれない。
   private toDisplayFrame(r: Vec3, t: number, ephemeris: Ephemeris): Vec3 {
-    return toInertialPos(this.frame, this.trajRefTime, toFramePos(this.frame, t, r, ephemeris), ephemeris);
+    return toInertialPos(this.frame, this.unbakeTime, toFramePos(this.frame, t, r, ephemeris), ephemeris);
   }
 
   // 太陽回転系表示込みの座標変換を束縛したクロージャを返す。plan-editor.ts のクリック
@@ -135,18 +138,18 @@ export class PredictSystem {
     project: ProjectFn,
   ): void {
     this.line.setVisible(true);
-    this.line.setOrigin(fo);
 
-    // 予測が再計算された(cache の参照が変わった)フレームでだけ、line.sync() 内部で
-    // 折れ線のジオメトリが作り直される。un-bake の基準時刻(trajRefTime)はそのタイミング
-    // にしか意味を持たないので、同じタイミングでここで固定する。
-    this.line.sync(cache, () => {
-      this.trajRefTime = simTime;
-      return {
-        nodeTimes,
-        toDisplayFrame: (r: Vec3, t: number) => this.toDisplayFrame(r, t, ephemeris),
-      };
-    });
+    // un-bake は毎フレームの剛体回転。基準時刻は常に現在(simTime)で、group クォータニオンへ与える。
+    // クリック判定用の toDisplayFrame も同じ unbakeTime を参照するので描画とずれない。
+    this.unbakeTime = simTime;
+    this.line.syncTransform(fo, toInertialQuat(this.frame, simTime, ephemeris));
+
+    // 予測が再計算された(cache の参照が変わった)フレームでだけ、line.sync() 内部で頂点を
+    // frame 相対座標へ bake し直す(非剛体)。un-bake は上の group 回転が毎フレーム担う。
+    this.line.sync(cache, () => ({
+      nodeTimes,
+      bake: (r: Vec3, t: number) => toFramePos(this.frame, t, r, ephemeris),
+    }));
 
     if (this.sliderT <= 0 || cache.length <= 0) {
       this.markerManager.hide('plannedPlayer');

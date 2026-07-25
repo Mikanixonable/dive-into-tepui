@@ -3,7 +3,8 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Ephemeris, SUN_ROTATING_POLE } from '../../src/physics/ephemeris';
-import { toFramePos, toFrameState, toInertialPos, toInertialState } from '../../src/physics/frame';
+import { toFramePos, toFrameState, toInertialPos, toInertialQuat, toInertialState } from '../../src/physics/frame';
+import { qRotate } from '../../src/physics/attitude';
 import { OrbitState, orbitState } from '../../src/physics/orbital';
 import { Vec3, addScaled, len, rotateAxis, scale, sub, v3 } from '../../src/physics/vec3';
 
@@ -60,6 +61,23 @@ export function register(): void {
     const vAnalytic = toFrameState('sunRotating', t0, s, eph).v;
     // ω×r 項(~1.4 m/s)を落とすと数 m/s ずれる。有限差分自体は 1e-3 m/s より高精度。
     assert.ok(len(sub(vFd, vAnalytic)) < 1e-2, `v mismatch: ${JSON.stringify(vFd)} vs ${JSON.stringify(vAnalytic)}`);
+  });
+
+  test('frame: inertial の un-bake クォータニオンは恒等', () => {
+    const q = toInertialQuat('inertial', 12345, eph);
+    assert.deepEqual(q, { x: 0, y: 0, z: 0, w: 1 });
+  });
+
+  test('frame: un-bake クォータニオン回転は toInertialPos と一致（メッシュ剛体 un-bake ≡ ピッキング）', () => {
+    // 描画: 頂点は toFramePos で bake → メッシュ全体を toInertialQuat で剛体回転。
+    // ピッキング: toInertialPos が位置単位で un-bake。両者が一致しないと描画とクリック判定がずれる。
+    const s = state();
+    const tSample = YEAR / 5;
+    const tNow = YEAR / 4;
+    const baked = toFramePos('sunRotating', tSample, s.r, eph);
+    const viaQuat = qRotate(toInertialQuat('sunRotating', tNow, eph), v3(baked.x, baked.y, baked.z));
+    const viaPos = toInertialPos('sunRotating', tNow, baked, eph);
+    assert.ok(close(viaQuat, viaPos), `quat: ${JSON.stringify(viaQuat)} vs pos: ${JSON.stringify(viaPos)}`);
   });
 
   test('frame: bake(t) + un-bake(T) の位置合成は 回転 sunAz(T)−sunAz(t)（旧挙動の正味変換）', () => {
