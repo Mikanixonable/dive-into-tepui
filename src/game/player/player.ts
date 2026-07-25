@@ -264,5 +264,10 @@ export class Player extends Ship {
     this.thrustEffects.sync(fo, this.state.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
     this.rcsEffects.sync(fo, this.state.r, this.torque, this.att, this.alive, phasePlaying, paused, camera);
     this.belt.sync(this.alive);
+
+    // 自機軌道線は「高精度で描きたい点」付近の頂点を密にする(focusPos)。本来これは
+    // フローティングオリジン(≒カメラ近傍、単精度でも破綻させたくない領域)であるべきだが、
+    // fo が微動するたびに軌道線を再生成すると破綻するため、妥協として自機位置を密点に渡す。
+    this.orbitLine.sync(this.alive ? this.elements : null, fo, this.thrustVizDir !== null, this.state.r);
   }
 }

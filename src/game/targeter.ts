@@ -19,7 +19,7 @@ export class Targeter {
   // ターゲット標的面(自機の方を向いた仮想の的)の通過点(ターゲット相対オフセットで
   // 保持し、的に貼り付いて見せる)。markBoardCrossings が push し、updateBoardMarkers
   // が寿命管理と描画を行う。
-  boardMarks: { off: Vec3; age: number }[] = [];
+  boardMarks: { off: Vec3; age: number; }[] = [];
 
   // ターゲット軌道のハイライト線(オレンジ)。自機軌道とほぼ重なるケースが多い
   // (近傍ランデブー狙いのため)。埋もれて見えなくならないよう強い不透明度にし、
@@ -49,13 +49,6 @@ export class Targeter {
     return this.autoTarget;
   }
 
-  // ハイライト線を最新のターゲット状態に合わせる。
-  syncOrbitLine(fo: FloatingOrigin): void{
-    const tgt = this.aliveTarget;
-    const tgtEl = tgt ? tgt.elements : null;
-    this.orbitLine.sync(tgtEl, fo);
-  }
-
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
   // 発射弾がその面を自機側から通過した点をターゲット相対で記録する。
   // 次弾の照準修正の目安になるマーカーとして一定時間表示する。
@@ -80,8 +73,25 @@ export class Targeter {
     }
   }
 
+  sync(dt: number, fo: FloatingOrigin, enemies: Enemy[], mapMode: boolean, project: ProjectFn): void {
+    this.syncOrbitLine(fo, enemies, mapMode);
+    this.syncBoardMarkers(dt, project);
+  }
+
+  // ハイライト線を最新のターゲット状態に合わせる。
+  private syncOrbitLine(fo: FloatingOrigin, enemies: Enemy[], mapMode: boolean): void {
+    const tgt = this.aliveTarget;
+    for (const enemy of enemies) {
+      const showGray = mapMode && enemy.alive && enemy !== tgt;
+      enemy.orbitLine.sync(showGray ? enemy.elements : null, fo);
+    }
+
+    const tgtEl = tgt ? tgt.elements : null;
+    this.orbitLine.sync(tgtEl, fo);
+  }
+
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
-  syncBoardMarkers(dt: number, project: ProjectFn): void {
+  private syncBoardMarkers(dt: number, project: ProjectFn): void {
     const target = this.autoTarget;
     if (!target) this.boardMarks.length = 0;
     this.boardMarks = this.boardMarks.filter((m) => {
