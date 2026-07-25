@@ -83,14 +83,14 @@ export function register(): void {
     const alt = 420e3;
     const r0 = R_EARTH + alt;
     const vCirc = Math.sqrt(MU_EARTH / r0);
-    const s = orbitState(v3(r0, 0, 0), v3(0, 0, vCirc));
+    let s = orbitState(v3(r0, 0, 0), v3(0, 0, vCirc));
     const period = 2 * Math.PI * Math.sqrt((r0 * r0 * r0) / MU_EARTH);
     const e0 = 0.5 * vCirc * vCirc - MU_EARTH / r0;
 
     const dt = 1; // 1秒刻み
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
-      stepOrbitRK4(s, dt);
+      s = stepOrbitRK4(s, dt);
     }
 
     const rMag = len(s.r);
@@ -114,15 +114,14 @@ export function register(): void {
     const incDeg = 51.6;
     const inc = (incDeg * Math.PI) / 180;
     const a = R_EARTH + alt;
-    const s0 = stateFromElements(a, 0, inc, 0, 0, 0);
-    const s = orbitState({ ...s0.r }, { ...s0.v });
+    let s = stateFromElements(a, 0, inc, 0, 0, 0);
 
     const dt = 10;
     const totalDays = 5;
     const totalSeconds = totalDays * 86400;
     const steps = Math.round(totalSeconds / dt);
     for (let i = 0; i < steps; i++) {
-      stepOrbitRK4(s, dt, (r) => j2Accel(r));
+      s = stepOrbitRK4(s, dt, (r) => j2Accel(r));
     }
 
     const el = elementsFromState(s.r, s.v) as Elements;

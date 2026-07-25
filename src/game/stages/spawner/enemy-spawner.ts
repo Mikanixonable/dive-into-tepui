@@ -2,7 +2,7 @@
 // (Simulator への登録は呼び出し側の各 Stage(stages/)が Stage.addEnemy 経由で行う)。
 import * as THREE from 'three/webgpu';
 import { OrbitState, orbitState } from '../../../physics/orbital';
-import { Vec3, add, clone, cross, len, norm, randPerp, randSym, scale, sub, v3 } from '../../../physics/vec3';
+import { Vec3, add, cross, len, norm, randPerp, randSym, scale, sub, v3 } from '../../../physics/vec3';
 import * as C from '../../const';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
@@ -35,7 +35,7 @@ export function generateCluster(base: OrbitState, hud: Hud, sfx: Sfx, fx: Effect
       const offLen = len(off);
       if (offLen > safeRange) off = scale(off, safeRange / offLen);
 
-      const state: OrbitState = orbitState(add(base.r, off), clone(base.v));
+      const state: OrbitState = orbitState(add(base.r, off), base.v);
       const accent = C.STAGE0_GROUP_ACCENTS[gi]!;
       enemies.push(generateDriftingEnemy(`${C.STAGE0_GROUP_LABELS[gi]}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene));
     }
@@ -147,7 +147,7 @@ export function generateWave(player: OrbitState, waveNumber: number, hud: Hud, s
   for (let i = 0; i < shipCount; i++) {
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir);
-    const state: OrbitState = orbitState(position, clone(centerV));
+    const state: OrbitState = orbitState(position, centerV);
     enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, accent, typeIndex, waveNumber, hud, sfx, fx, scene));
   }
   return enemies;

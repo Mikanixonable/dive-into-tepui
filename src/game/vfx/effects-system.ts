@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, randomQuat } from '../../physics/attitude';
 import { OrbitState, orbitState } from '../../physics/orbital';
-import { add, clone, randSym, randVec, v3, Vec3 } from '../../physics/vec3';
+import { add, randSym, randVec, v3, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { DebrisKind, DebrisPiece } from '../orbit-entity/entities';
@@ -61,7 +61,7 @@ export class EffectsSystem {
     muzzle = false,
   ): void {
     const billboard = new Billboard(color);
-    const fx: FlashEffect = { billboard, pos: clone(pos), vel: clone(vel), age: 0, duration, size0, size1, peakOpacity, muzzle };
+    const fx: FlashEffect = { billboard, pos, vel, age: 0, duration, size0, size1, peakOpacity, muzzle };
     this._flashEffects.addFlash(fx);
   }
 

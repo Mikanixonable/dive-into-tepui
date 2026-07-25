@@ -2,7 +2,7 @@
 // 基準フレームは「上 = 動径方向(地球と反対)、前 = 速度方向」で、
 // 軌道運動とともにゆっくり共回転するため地球が常に足元に見える。
 import * as THREE from 'three/webgpu';
-import { add, addScaled, clone, cross, dot, norm, scale, v3, Vec3 } from '../../physics/vec3';
+import { add, addScaled, cross, dot, norm, scale, v3, Vec3 } from '../../physics/vec3';
 import { MouseDelta } from '../input/input';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
@@ -136,7 +136,7 @@ export class ChaseCamera {
 
     this.position = add(center, off);
     this.upDir = up;
-    this.lookTarget = clone(center);
+    this.lookTarget = center;
   }
 
   // 照準ズーム中: 三人称視点をやめ、機体位置(原点)から機首方向を狙う
@@ -145,7 +145,7 @@ export class ChaseCamera {
   private computeGunsightView(boreFwd: Vec3, boreUp: Vec3, dt: number, center: Vec3): void {
     this.computeZoomFov(true, dt);
 
-    this.position = clone(center);
+    this.position = center;
     this.upDir = norm(boreUp);
     this.lookTarget = addScaled(center, norm(boreFwd), 1000);
   }

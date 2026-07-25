@@ -68,9 +68,6 @@ predictOptはephemerisにできる。無駄な分解→合体パターン。
 FloatingOriginは、3D描画において、GPUが巨大な数値を単精度で扱うことによる描画は端を防ぐための措置で、CPU側で事前に平行移動して自機、カメラ付近の浮動小数精度を高めるためのものである。
 
 
-## 積分軌道表示系の切り出し
-現状trajLineと密結合だが…要詳細計画
-
 
 # 比較的小さく、機械的に作業できる、確実に改善できること
 
@@ -92,14 +89,19 @@ dispatchMapRightClickとかがGameに露出すべきじゃない。全体のイ�
 pip上でもマーカーって適切に動作しますよね　するのであれば、crosshairは中心（視線方向）に固定したマーカーとして表現できるし、表現すべきだ
 
 
-## clearMemoが不到達（最優先）
-OrbitEntityのmemoがクリアされていないのは明確なバグ。
-simulatorでclearするべきと提案があったが、それは整合性保持義務の漏洩に該当する。そうではなく、orbitentity内で整合性を取るべき（整合性保持義務を漏洩すべきでない）なので、OrbitStateのsetterがmemoをクリアするのが自然。
+## prevRの保持が拡張と整合性保持責務の隠蔽
 
-しかし、現状の実装だとstepOrbitRK4が参照共有により勝手にOrbitStateの中身を書き換えてしまうから、OrbitEntityからはそれを検出できなくてまずい。
+まず、prevRをsimulatorが更新しているのは整合性保持責務の漏洩。setterが更新すべき。
 
-orbitStateやvec3のような基礎データ型はimmutable化し、stepOrbitRK4がはorbitStateを勝手に書き換えるのではなく、orbitStateを返す関数にするのが自然。physicsフォルダ内は純粋に保つべきという方針とも合致。
-このimmutable化によってエラーが出るであろう箇所は、stepOrbitRK4と同様に、参照共有によって回っていて危なっかしい箇所と考えられる。そのような箇所を全て是正。
+trackPrevRフラグによってprevRを記録するかどうかを切り替えているが、これはパフォーマンス上の理由に過ぎないとみられる。さすがに計算済みの値を保持する程度ではパフォーマンスは変わらない。整合性のほうが重要。
+
+
+## prevRの保持の拡張
+実は、将来的に、過去の軌跡をレンダリングする可能性が示唆されている。そのため、prevRをhistory: {simTime: number, state: OrbitState} []に強化した形でデータを記録したい。
+
+ちなみに、{simTime: number, state: OrbitState}はTrajectorySampleと本質的に同一の情報量を持っている。同一の情報量を持つ型を複数作るべきでない。
+OrbitStateにsimTimeを持たせるか、{simTime: number, state: OrbitState}を汎用Sample型としてphysicsにおいてpredictとentity(simulator)の互換性を持たせるかすべき。
+
 
 
 # 本質的なバグ懸念
@@ -110,7 +112,10 @@ LEAD表示の不具合　LEADマーカーは「その方向に撃ったら対応
 
 planのaddNode, removeNodeは下流nodeを破棄すべき（下流を最小変更で整合させる実装は高難度。今はやらない）
 
+playerの並進入力が機体基準ではなく軌道基準になっている可能性がある？
+
 :marker-for-game.ts の方向マーカーラベルが旧キー割り当て(PROGRADE [Q]、RADIAL OUT [W] …)のまま残っています。勝手に直していません
+
 
 # やる必要がない可能性があるもの、
 
@@ -134,10 +139,15 @@ EnvironmentSceneとEphemerisSystemは、扱うものは近いのに計算と描�
 実質的な挙動は変わらないが将来的な堅牢性が変わる
 
 ### シミュレーションと予測器のアルゴリズムの再利用
-難しそう…
+predictが空気抵抗を計算していない。predictは弾体衝突やthrottle、エンティティごとの相互作用を考慮しなくていいが、空気抵抗、摂動は計算してほしい。そこまでやるとsimulatorとの責務重複が大きいので何とかしたい。
+
+simulatorのスナップショットを取って先行させる…？　これはthrottleや衝突などによって実entityとずれたときにすべてが再計算になるからパフォーマンスが悪い。ダメ。
+
+要検討
 
 
 ## 将来的な追加機能
 
 ### 計画軌道からの逸脱警告
 計画軌道を固定し、自機がノードと無関係に計画から逸脱（勝手にthrustした、あるいは曲がり角でthrustしなかった、あるいは蓄積誤差）した場合、警告し「軌道へ戻る／計画破棄」を問う。
+

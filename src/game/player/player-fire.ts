@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import { qRotate, randomQuat } from '../../physics/attitude';
 import { orbitState } from '../../physics/orbital';
-import { add, addScaled, clone, norm, randPerp, randSym, randVec, scale, v3, Vec3 } from '../../physics/vec3';
+import { add, addScaled, norm, randPerp, randSym, randVec, scale, v3, Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input/input';
 import { Hud } from '../hud/hud';
@@ -211,7 +211,7 @@ export class PlayerFire {
 
     this.spawnBullet(this.player, muzzle, fwd, simTime, addBullet);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv
-    this.player.state.v = addScaled(this.player.state.v, fwd, -C.RECOIL_DV);
+    this.player.state = orbitState(this.player.state.r, addScaled(this.player.state.v, fwd, -C.RECOIL_DV));
     this.dropCasing(this.player, muzzle, simTime);
     this.spawnMuzzleFlash(this.player, muzzle, fwd, zoomActive);
 
@@ -224,8 +224,8 @@ export class PlayerFire {
     const dir = norm(addScaled(fwd, randPerp(fwd), Math.abs(randSym(C.BULLET_SPREAD))));
     const bullet = new Bullet(
       orbitState(
-        addScaled(clone(muzzle), fwd, 1.5),
-        addScaled(clone(ship.state.v), dir, C.MUZZLE_SPEED),
+        addScaled(muzzle, fwd, 1.5),
+        addScaled(ship.state.v, dir, C.MUZZLE_SPEED),
       ),
       simTime,
       C.BULLET_LIFETIME,

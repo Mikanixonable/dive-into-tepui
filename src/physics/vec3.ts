@@ -1,15 +1,14 @@
+// Vec3 は不変。生成後に成分を書き換えてはならず、演算はすべて新しい Vec3 を返す。
+// 参照を共有したまま中身を書き換えると、保持側(OrbitEntity など)が変化を検知
+// できなくなるため、この不変性が整合性の前提になっている。
 export type Vec3 = {
-  x: number;
-  y: number;
-  z: number;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
 } & { readonly __tag: "Vec3" };
 
 export function v3(x = 0, y = 0, z = 0): Vec3 {
   return { x, y, z } as Vec3;
-}
-
-export function clone(a: Vec3): Vec3 {
-  return { x: a.x, y: a.y, z: a.z } as Vec3;
 }
 
 export function add(a: Vec3, b: Vec3): Vec3 {

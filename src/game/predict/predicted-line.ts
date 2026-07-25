@@ -17,7 +17,7 @@
 import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital';
 import { TrajectorySample, predictTrajectory } from '../../physics/predict';
-import { Vec3, clone } from '../../physics/vec3';
+import { Vec3 } from '../../physics/vec3';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { FloatingOrigin } from '../floating-origin';
@@ -70,7 +70,7 @@ export class PredictedLine {
       const throttle = edited ? C.PREDICT_DIRTY_THROTTLE_MS : C.PREDICT_REFRESH_INTERVAL_MS;
       if (force || now - this.lastComputeMs >= throttle) {
         this.samples = predictTrajectory(state0, start, Math.max(0, end - start), ephemeris, maxSamples);
-        this.key = { state0: { r: clone(state0.r), v: clone(state0.v) }, start, end, maxSamples };
+        this.key = { state0, start, end, maxSamples };
         this.lastComputeMs = now;
       }
     }

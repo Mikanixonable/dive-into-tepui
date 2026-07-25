@@ -17,7 +17,7 @@ import * as THREE from 'three/webgpu';
 import { Elements, OrbitState, elementsFromState, orbitState } from '../../physics/orbital';
 import { dvToWorld, propagateState } from '../../physics/predict';
 import { Projected } from '../../physics/projection';
-import { Vec3, add, clone, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
+import { Vec3, add, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
@@ -187,7 +187,7 @@ export class PlanEditor {
       // クリック点の予測サンプル状態を凍結してノードにする(初期 Δv = 0)。
       const idx = this.plan.addNode({
         time: sample.t,
-        postState: orbitState(clone(sample.r), clone(sample.v)),
+        postState: orbitState(sample.r, sample.v),
       });
       this.selectedNodeIdx = idx;
       this._sfx.warp();
@@ -227,7 +227,7 @@ export class PlanEditor {
     if (!this.plan.nodes[idx]) return;
     const sample = this.traj.nearestSample(clientX, clientY, Infinity);
     if (sample) {
-      this.selectedNodeIdx = this.plan.retimeNode(idx, sample.t, orbitState(clone(sample.r), clone(sample.v)));
+      this.selectedNodeIdx = this.plan.retimeNode(idx, sample.t, orbitState(sample.r, sample.v));
     }
   }
 

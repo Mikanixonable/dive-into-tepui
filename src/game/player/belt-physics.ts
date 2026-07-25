@@ -2,7 +2,8 @@
 // 算術モジュール。three には一切依存せず、position/orientation は physics/vec3・
 // physics/attitude の Vec3/Quat のみで表現する(THREE への変換・メッシュ反映は belt.ts の責務)。
 import { Attitude, Quat, qFromUnitVectors, qInvert, qMul, qRotate } from '../../physics/attitude';
-import { Vec3, add, addScaled, clone, cross, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
+import { orbitState } from '../../physics/orbital';
+import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
 import { MAG_BELT_PITCH } from '../../render/ships';
 import * as C from '../const';
 import { BeltSection } from '../orbit-entity/entities';
@@ -57,7 +58,7 @@ export class BeltPhysics {
     const vel = sub(last, lastPrev); // 前のノードの速度ベクトルを引き継いで自然に延長
     const newLast = v3(last.x + vel.x + MAG_BELT_PITCH, last.y + vel.y, last.z + vel.z);
     this.beltPos[n - 1] = newLast;
-    this.beltPrevPos[n - 1] = clone(newLast); // 新末尾は追加直後は速度ゼロ
+    this.beltPrevPos[n - 1] = (newLast); // 新末尾は追加直後は速度ゼロ
     this.beltTwist[n - 1] = this.beltTwist[n - 2]!;
   }
 
@@ -99,14 +100,14 @@ export class BeltPhysics {
     for (let i = 0; i < this.linkCount; i++) {
       const p = v3(0.9 + (i + 1) * MAG_BELT_PITCH, 0, 0);
       this.beltPos.push(p);
-      this.beltPrevPos.push(clone(p));
+      this.beltPrevPos.push((p));
       this.beltTwist.push(0);
     }
   }
 
   private estimateAngularAccel(w: Vec3, invDt: number): void {
     this.angularAccel = v3((w.x - this.prevBodyW.x) * invDt, (w.y - this.prevBodyW.y) * invDt, (w.z - this.prevBodyW.z) * invDt);
-    this.prevBodyW = clone(w);
+    this.prevBodyW = (w);
   }
 
   private integrateVerlet(dt: number, w: Vec3, aThrustBody: Vec3): void {
@@ -146,7 +147,7 @@ export class BeltPhysics {
     // 接合部は常に垂直のまま、リンク1以降だけが自由に揺れる。
     const root = v3(this.anchor.x + MAG_BELT_PITCH, this.anchor.y, this.anchor.z);
     this.beltPos[0] = root;
-    this.beltPrevPos[0] = clone(root);
+    this.beltPrevPos[0] = (root);
   }
 
   // 数回反復して各リンク間隔を MAG_BELT_PITCH に収束させる
@@ -183,7 +184,7 @@ export class BeltPhysics {
     for (let i = 0; i < n; i++) {
       const p = v3(root.x + i * MAG_BELT_PITCH, root.y, root.z);
       this.beltPos[i] = p;
-      this.beltPrevPos[i] = clone(p);
+      this.beltPrevPos[i] = (p);
       this.beltTwist[i] = 0;
     }
   }
@@ -281,10 +282,9 @@ export class BeltPhysics {
     for (const s of this.sections) {
       const bp = this.beltPos[s.beltIndex]!;
       const bpPrev = this.beltPrevPos[s.beltIndex]!;
-      s.state.r = add(baseR, qRotate(q, bp));
-      s.state.v = add(
-        baseV,
-        qRotate(q, v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt)),
+      s.state = orbitState(
+        add(baseR, qRotate(q, bp)),
+        add(baseV, qRotate(q, v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt))),
       );
     }
     return this.sections;

@@ -172,7 +172,7 @@ main.ts
 
 | 対象 | 正体 | 無効化の契機 |
 | --- | --- | --- |
-| `OrbitEntity.elements` | `state` からの軌道要素のメモ化 | `clearMemo()` |
+| `OrbitEntity.elements` | `state` からの軌道要素のメモ化 | `state` setter(差し替えのたび自動) |
 | `OrbitLine.snap` / 頂点配列 | 楕円ジオメトリの再生成判定用スナップショット | 要素ドリフト・`force`・初回 |
 | `PredictedLine.samples` / `.key` | 予測 RK4 の結果と入力スナップショット | 入力変化 + スロットル、`force` |
 | `PlanTrajectory.arcs` / `.frame` / `.unbakeTime` | 毎フレーム再構築される表示文脈 | `update()` 毎 |
@@ -182,9 +182,14 @@ main.ts
 | `Player` の各 getter(`rcsDamp` / `magsLeft` 等) | throttle/fire への転送 | — |
 | `MapMarkers.labels[].pos` | 天体暦から毎フレーム再計算 | `syncLabels()` 毎 |
 
-### 既知の不整合
+### 基礎データ型の不変性(整合性の前提)
 
-- `OrbitEntity.clearMemo()` が **どこからも呼ばれていない**(`src/` 全体で定義箇所のみ)。
-  `elements` は初回アクセス時の値をインスタンス寿命の間ずっと返すため、自機・敵の軌道要素表示や
-  軌道線・AN/DN マーカーは初回フレームの値で固定される。積分後に無効化する呼び出しが必要
-  (`Simulator.stepSimulation` の末尾が自然な位置)。
+`Vec3` / `OrbitState` / `Quat` / `Attitude` は **不変**。値を進めるときは中身を書き換えず、
+新しいオブジェクトを作って差し替える(`stepOrbitRK4` は新しい `OrbitState` を、`stepAttitude` は
+新しい `Attitude` を返す)。これは最適化ではなく整合性の前提で、`OrbitEntity.state` の setter が
+軌道要素メモを破棄できるのは「state が差し替え以外では変化しない」からである。参照を共有したまま
+中身を書き換えると保持側が変化を検知できず、メモが黙って腐る。
+
+例外はない。`physics/` 配下は全て純関数で、`*Into` のような out 引数版も、モジュール内スクラッチも
+持たない(アロケーション回避として一度導入したが、不変性と引き換えるほどの効果がないため撤去した。
+実測値は `軽量化計画.md` の A-1 を参照)。

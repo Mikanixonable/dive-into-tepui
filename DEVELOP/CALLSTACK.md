@@ -100,7 +100,7 @@
     - throttle.updateTorque() → player.torque へ代入。!alive なら即ゼロ
       - onProgradeHoldReleased() → hud.hint() // ホールド中に手動回転入力があった場合のみ
       - autoAlignTorque() // ホールド中 かつ 手動回転入力なしの場合のみ
-      - clampAngularVelocity() // 常に(角速度上限)
+    - throttle.clampAngularVelocity() → player.att へ代入 // 常に(角速度上限)
     - [!player.alive] thrustFn = null して return
     - hpRegen()
     - [editor.editMode] fire.tickMapMode() → tickReloadTimer() / thrustFn = null して return
@@ -147,7 +147,8 @@
     - hud.hint() // 実行点に接近して自動ワープを解除したフレームのみ
   - simulator.stepSimulation(hardCollision=true, doSubstep=true)
     - simulationSubStep() ×1〜64 // ワープ倍率が MAX_PHYS_SIM_SPEED を超えるとサブステップが増える
-      - stepEntity(player) → stepOrbitRK4() // player.alive のみ。thrustFn + 環境加速度
+      - stepEntity(player) → stepOrbitRK4() → entity.state へ代入(= 軌道要素メモ破棄)
+        // player.alive のみ。thrustFn + 環境加速度
       - stepEntity() // 敵・弾・薬莢・デブリ・補給それぞれ、個体ごと
       - player.thermal.updateThermal()
     - hit.checkBulletHits() // サブステップごと(hardCollision=true のため)
@@ -165,11 +166,11 @@
           - hitEffect() // hp>0
           - activeStage.recordPlayerLost() → showResultScreen() // hp<=0
           - destroyEffect() // hp<=0
-    - stepAttitudes() → stepAttitude() // 自機・敵・薬莢・デブリ・補給それぞれ
+    - stepAttitudes() → stepAttitude() → entity.att へ代入 // 自機・敵・薬莢・デブリ・補給それぞれ
   - collisionPhysics.resolve() // simSpeedManager.canResolvePhysicalCollisions のみ(高ワープ時はスキップ)
     - player.belt.collisionSections() // player.alive && dt>1e-6
     - resolveCollisionPairs()
-      - resolveCollisionPair() // 貫入している衝突ペアごと
+      - resolveCollisionPair() → 双方の state へ代入 // 貫入している衝突ペアごと
       - onPlayerCasingImpact() → sfx.clank() // 自機-薬莢の接触時のみ
     - player.belt.applyCollisionSections() // player.alive && dt>1e-6
   - targeter.markBoardCrossings() // ターゲットが存在する場合のみ
