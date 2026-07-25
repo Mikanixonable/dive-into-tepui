@@ -67,11 +67,12 @@ export class Targeter {
 
     for (const b of simulator.bullets) {
       if (b.type !== 'normal' || !b.alive) continue; // 的通過マーカーは通常弾のみ対象
-      const d0 = dot(sub(b.prevR, target.state.r), n);
+      const prevR = b.prevState.r;
+      const d0 = dot(sub(prevR, target.state.r), n);
       const d1 = dot(sub(b.state.r, target.state.r), n);
       if (!(d0 < 0 && d1 >= 0)) continue; // 自機側 → 向こう側への通過のみ
       const t = d0 / (d0 - d1);
-      const pos = addScaled(b.prevR, sub(b.state.r, b.prevR), t);
+      const pos = addScaled(prevR, sub(b.state.r, prevR), t);
       const off = sub(pos, target.state.r);
       if (lenSq(off) > C.BOARD_RADIUS * C.BOARD_RADIUS) continue; // 的から外れすぎ
       this.boardMarks.push({ off, age: 0 });

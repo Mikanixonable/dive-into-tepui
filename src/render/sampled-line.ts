@@ -11,16 +11,16 @@
 // THREE の合成は world = position + quaternion·vertex なので、原点まわりの un-bake 回転 →
 // 平行移動の順で正しい。
 import * as THREE from 'three/webgpu';
-import { Vec3, v3 } from '../physics/vec3';
-import { orbitState } from '../physics/orbital';
+import { v3 } from '../physics/vec3';
+import { OrbitState } from '../physics/orbital';
 import { Frame, toFrameState, toInertialQuat } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from '../game/floating-origin';
 
-// 折れ線の1点: ある絶対時刻 t における ECI の状態(位置 r + 速度 v)。predict.ts の
-// TrajectorySample({t,r,v})をそのまま渡せる。bake は位置 r だけを使うが、速度 v も frame 相対へ
-// 変換される — 将来のエルミート補間(頂点間を速度で滑らかに繋ぐ)の接線として供給しておく。
-export type LineSample = { r: Vec3; v: Vec3; t: number };
+// 折れ線の1点は時刻付き状態ベクトル(OrbitState)そのもの — 予測点列(predict.ts の
+// predictTrajectory)もエンティティの履歴(orbit-entity/entities.ts)も同じ型なのでそのまま渡せる。
+// bake は位置 r だけを使うが、速度 v も frame 相対へ変換される — 将来のエルミート補間
+// (頂点間を速度で滑らかに繋ぐ)の接線として供給しておく。
 
 // 頂点は地球中心(ECI 原点)基準の frame 相対座標。line.position はその原点の描画フレーム位置。
 const EARTH_CENTER = v3(0, 0, 0);
@@ -29,7 +29,7 @@ export class SampledLine {
   readonly line: THREE.Line;
   private geom = new THREE.BufferGeometry();
   private readonly mat: THREE.LineBasicMaterial;
-  private lastSamples: readonly LineSample[] | null = null;
+  private lastSamples: readonly OrbitState[] | null = null;
   private lastFrame: Frame | null = null;
   private wantVisible = true;
 
@@ -42,16 +42,15 @@ export class SampledLine {
   }
 
   // (点列, frame)が前回から変わったときだけ、頂点を frame 相対座標へ bake し直す(非剛体)。
-  syncGeometry(samples: readonly LineSample[], frame: Frame, ephemeris: Ephemeris): void {
+  syncGeometry(samples: readonly OrbitState[], frame: Frame, ephemeris: Ephemeris): void {
     if (samples === this.lastSamples && frame === this.lastFrame) return;
     this.lastSamples = samples;
     this.lastFrame = frame;
     const arr = new Float32Array(samples.length * 3);
     for (let i = 0; i < samples.length; i++) {
-      const s = samples[i]!;
       // OrbitState 全体を frame 相対へ変換する。頂点には位置 rel.r だけを焼く。速度 rel.v は
       // エルミート補間用の接線だが、補間未実装の現状は使わない(実装時にここで保持して密にする)。
-      const rel = toFrameState(frame, s.t, orbitState(s.r, s.v), ephemeris);
+      const rel = toFrameState(frame, samples[i]!, ephemeris);
       arr[i * 3] = rel.r.x;
       arr[i * 3 + 1] = rel.r.y;
       arr[i * 3 + 2] = rel.r.z;

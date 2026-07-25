@@ -6,15 +6,19 @@ export const MU_EARTH = 3.986004418e14; // 地球重力定数 [m^3/s^2]
 export const R_EARTH = 6.371e6; // 地球平均半径 [m]
 export const SIDEREAL_DAY = 86164.0905; // 恒星日 [s]
 
-// 不変。位置・速度を進めるときは新しい OrbitState を作って差し替える
-// (参照を共有したまま書き換えると、保持側が変化を検知できなくなるため)。
+// ある時刻における位置・速度(エポック付き状態ベクトル)。不変で、進めるときは新しい
+// OrbitState を作って差し替える(参照を共有したまま書き換えると、保持側が変化を検知
+// できなくなるため)。t を state 自身が持つので「状態」と「その時刻」が引数として
+// 分かれて食い違うことがない — 予測点列(predict.ts)もエンティティの履歴
+// (orbit-entity/entities.ts)も同じこの型で表す。
 export type OrbitState = {
+  readonly t: number; // 絶対 simTime [s]
   readonly r: Vec3; // ECI 位置 [m]
   readonly v: Vec3; // ECI 速度 [m/s]
 } & { readonly __frame: 'inertial'; }
 
-export function orbitState(r: Vec3, v: Vec3): OrbitState {
-  return { r, v } as OrbitState;
+export function orbitState(t: number, r: Vec3, v: Vec3): OrbitState {
+  return { t, r, v } as OrbitState;
 }
 
 export function altitudeOf(r: Vec3): number {
@@ -72,7 +76,7 @@ function rk4Sum(base: Vec3, k1: Vec3, k2: Vec3, k3: Vec3, k4: Vec3, h6: number):
 }
 
 // 単一エンティティの RK4 1ステップ(中心重力 + 追加加速度)。
-// 入力 s は書き換えず、進めた新しい OrbitState を返す。
+// 入力 s は書き換えず、時刻も dt だけ進めた新しい OrbitState を返す。
 export function stepOrbitRK4(s: OrbitState, dt: number, extra?: ExtraAccel): OrbitState {
   const r0 = s.r;
   const v0 = s.v;
@@ -88,7 +92,7 @@ export function stepOrbitRK4(s: OrbitState, dt: number, extra?: ExtraAccel): Orb
   const kv4 = accel(addScaled(r0, kr3, dt), kr4, extra);
 
   const h6 = dt / 6;
-  return orbitState(rk4Sum(r0, kr1, kr2, kr3, kr4, h6), rk4Sum(v0, kv1, kv2, kv3, kv4, h6));
+  return orbitState(s.t + dt, rk4Sum(r0, kr1, kr2, kr3, kr4, h6), rk4Sum(v0, kv1, kv2, kv3, kv4, h6));
 }
 
 export interface Elements {
@@ -170,8 +174,9 @@ export function velocityOnOrbit(el: Elements, nu: number): Vec3 {
   return addScaled(scale(el.pHat, -k * Math.sin(nu)), el.qHat, k * (el.e + Math.cos(nu)));
 }
 
-// 古典的軌道要素 → 状態ベクトル(Y = 北極)。角度はすべて [rad]。
+// 古典的軌道要素 → 時刻 t の状態ベクトル(Y = 北極)。角度はすべて [rad]。
 export function stateFromElements(
+  t: number,
   a: number,
   e: number,
   inc: number,
@@ -187,8 +192,9 @@ export function stateFromElements(
   const p = a * (1 - e * e);
   const r = p / (1 + e * Math.cos(nu));
   const k = Math.sqrt(MU_EARTH / p);
-  return {
-    r: addScaled(scale(pHat, r * Math.cos(nu)), qHat, r * Math.sin(nu)),
-    v: addScaled(scale(pHat, -k * Math.sin(nu)), qHat, k * (e + Math.cos(nu))),
-  } as OrbitState;
+  return orbitState(
+    t,
+    addScaled(scale(pHat, r * Math.cos(nu)), qHat, r * Math.sin(nu)),
+    addScaled(scale(pHat, -k * Math.sin(nu)), qHat, k * (e + Math.cos(nu))),
+  );
 }

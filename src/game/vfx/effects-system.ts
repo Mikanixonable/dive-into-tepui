@@ -72,7 +72,9 @@ export class EffectsSystem {
     this._addDebris(new DebrisPiece(state, kind, att, collideRadius, this._scene));
   }
 
+  // t は発生時刻(破片 state のエポック)。破壊された entity の state.t をそのまま渡す。
   scatterFragments(
+    t: number,
     origin: Vec3,
     baseVel: Vec3,
     count: number,
@@ -84,7 +86,7 @@ export class EffectsSystem {
     // 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果。
     for (let i = 0; i < count; i++) {
       const size = sizeMin + Math.random() * (sizeMax - sizeMin);
-      const state = orbitState(add(origin, randVec(2.5)), add(baseVel, randVec(spread)));
+      const state = orbitState(t, add(origin, randVec(2.5)), add(baseVel, randVec(spread)));
       const att = {
         q: randomQuat(),
         w: v3(randSym(0.25), (1.4 + Math.random() * 1.2) * (Math.random() < 0.5 ? -1 : 1), randSym(0.25)),
@@ -96,10 +98,11 @@ export class EffectsSystem {
 
   // 撃破デブリ: 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果。
   // 敵機は自機の ENEMY_SCALE 倍サイズなので、爆発・破片も見合った大きさにする(scale)。
-  spawnShipDestroyEffect(r: Vec3, v: Vec3, scale: number, accent: number): void {
+  spawnShipDestroyEffect(state: OrbitState, scale: number, accent: number): void {
+    const { t, r, v } = state;
     this.spawnFlash(r, v, C.DESTROY_FLASH1_SIZE0 * scale, C.DESTROY_FLASH1_SIZE1 * scale, C.DESTROY_FLASH1_DURATION, 0xffb36b);
     this.spawnFlash(r, v, C.DESTROY_FLASH2_SIZE0 * scale, C.DESTROY_FLASH2_SIZE1 * scale, C.DESTROY_FLASH2_DURATION, 0xfffbe8);
-    this.scatterFragments(r, v, 11, accent, C.DESTROY_FRAG_SIZE_MIN * scale, C.DESTROY_FRAG_SIZE_MAX * scale, 2.8);
+    this.scatterFragments(t, r, v, 11, accent, C.DESTROY_FRAG_SIZE_MIN * scale, C.DESTROY_FRAG_SIZE_MAX * scale, 2.8);
   }
 
   spawnFragment(state: OrbitState, att: Attitude, accent: number, size: number): void {

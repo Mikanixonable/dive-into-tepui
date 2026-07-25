@@ -31,7 +31,7 @@ export class HitSystem {
   }
 
   private segmentHit(b: Bullet, ship: Ship): boolean {
-    const a = sub(b.prevR, ship.prevR);
+    const a = sub(b.prevState.r, ship.prevState.r);
     const bb = sub(b.state.r, ship.state.r);
     const d = sub(bb, a);
     const dd = lenSq(d);

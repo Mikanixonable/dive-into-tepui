@@ -14,7 +14,7 @@
 // 計画が空でないときは自機状態は参照しない。逸脱した既存計画を持って editMode を開いた場合は
 // 現在状態に再ベースされない。
 import * as THREE from 'three/webgpu';
-import { Elements, OrbitState, elementsFromState, orbitState } from '../../physics/orbital';
+import { Elements, OrbitState, elementsFromState } from '../../physics/orbital';
 import { dvToWorld, propagateState } from '../../physics/predict';
 import { Projected } from '../../physics/projection';
 import { Vec3, add, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
@@ -29,7 +29,7 @@ import { Input } from '../input/input';
 import { ProjectFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
-import { Plan, PlannedNode } from './plan';
+import { Plan } from './plan';
 import { PlanTrajectory } from './plan-trajectory';
 import { SimSpeedManager } from '../sim-speed-manager';
 
@@ -98,7 +98,7 @@ export class PlanEditor {
     g.onMenuWarpTo = (idx) => {
       const n = this.plan.nodes[idx];
       if (!n) return;
-      this.simSpeedManager.startAutoWarpTo(n.time);
+      this.simSpeedManager.startAutoWarpTo(n.t);
       this._hud.hint('指定時刻まで自動ワープ開始');
     };
     g.onMenuDelete = (idx) => {
@@ -111,12 +111,10 @@ export class PlanEditor {
   // ephemeris が要るためここで導出する(ノードは Δv を正データに持たず postState だけを持つ)。
   private nodeArrivings(): OrbitState[] {
     const out: OrbitState[] = [];
-    let state = this.plan.anchor.state;
-    let t = this.plan.anchor.time;
+    let state = this.plan.anchor;
     for (const node of this.plan.nodes) {
-      out.push(propagateState(state, t, node.time, this.ephemeris));
-      state = node.postState;
-      t = node.time;
+      out.push(propagateState(state, node.t, this.ephemeris));
+      state = node;
     }
     return out;
   }
@@ -155,9 +153,9 @@ export class PlanEditor {
     this._hud.hint('マニューバ計画を破棄');
   }
 
-  // ノードの画面位置は凍結された実行後位置(postState.r)から B-2 の表示座標変換で求める。
-  private nodeScreenPos(node: PlannedNode): Projected {
-    return this.traj.projectPoint(node.postState.r, node.time);
+  // ノードの画面位置は凍結された実行後位置(node.r)から B-2 の表示座標変換で求める。
+  private nodeScreenPos(node: OrbitState): Projected {
+    return this.traj.projectPoint(node.r, node.t);
   }
 
   // マップ上のクリック処理: 既存ノードマーカー近傍なら選択、そうでなければ
@@ -184,12 +182,8 @@ export class PlanEditor {
 
     const sample = this.traj.nearestSample(mx, my, C.NODE_PICK_PX);
     if (sample) {
-      // クリック点の予測サンプル状態を凍結してノードにする(初期 Δv = 0)。
-      const idx = this.plan.addNode({
-        time: sample.t,
-        postState: orbitState(sample.r, sample.v),
-      });
-      this.selectedNodeIdx = idx;
+      // クリック点の予測サンプル状態(時刻込み)をそのまま凍結してノードにする(初期 Δv = 0)。
+      this.selectedNodeIdx = this.plan.addNode(sample);
       this._sfx.warp();
     }
   }
@@ -227,7 +221,7 @@ export class PlanEditor {
     if (!this.plan.nodes[idx]) return;
     const sample = this.traj.nearestSample(clientX, clientY, Infinity);
     if (sample) {
-      this.selectedNodeIdx = this.plan.retimeNode(idx, sample.t, orbitState(sample.r, sample.v));
+      this.selectedNodeIdx = this.plan.retimeNode(idx, sample);
     }
   }
 
@@ -241,7 +235,7 @@ export class PlanEditor {
     const rate = (fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) / 200;
     const d = deltaPx * sign * rate;
     const local = v3(axis === 0 ? d : 0, axis === 1 ? d : 0, axis === 2 ? d : 0);
-    this.plan.applyNodeDv(this.selectedNodeIdx, dvToWorld(node.postState.r, node.postState.v, local));
+    this.plan.applyNodeDv(this.selectedNodeIdx, dvToWorld(node.r, node.v, local));
   }
 
   // 選択中ノードの Δv アーム 6 個(プログレード/レトログレード・ノーマル/アンチノーマル・
@@ -249,17 +243,17 @@ export class PlanEditor {
   // プログレード・軌道法線・動径アウト方向を求め、B-2 の projectPoint で表示座標系へ回転した
   // 上でノード位置との画面上の差分を取ることで、3D 回転行列を介さず画面方向を得る。
   private computeAxisScreenDirs(
-    node: PlannedNode,
+    node: OrbitState,
     mapDist: number,
   ): { pro: { x: number; y: number }; nrm: { x: number; y: number }; rad: { x: number; y: number } } {
-    const { r, v } = node.postState;
+    const { r, v } = node;
     const pro = norm(v);
     const h = norm(cross(r, v));
     const radOut = cross(pro, h);
     const L = mapDist * 0.05;
-    const p0 = this.traj.projectPoint(r, node.time);
+    const p0 = this.traj.projectPoint(r, node.t);
     const dirFor = (axisVec: Vec3): { x: number; y: number } => {
-      const p1 = this.traj.projectPoint(add(r, scale(axisVec, L)), node.time);
+      const p1 = this.traj.projectPoint(add(r, scale(axisVec, L)), node.t);
       const dx = p1.x - p0.x;
       const dy = p1.y - p0.y;
       const m = Math.hypot(dx, dy);
@@ -298,12 +292,12 @@ export class PlanEditor {
   }
 
   // ノード i の Δv(= 実行後速度 − 到達時速度)。到達状態 arriving[i] は nodeArrivings() が
-  // predict で導出した値。ノードは Δv を正データに持たず postState だけを持つため。
+  // predict で導出した値。ノードは Δv を正データに持たず実行後状態だけを持つため。
   // 表示専用(ハンドルラベル・計画パネル)。
   private nodeDv(i: number, arriving: readonly OrbitState[]): Vec3 {
     const node = this.plan.nodes[i];
     const arr = arriving[i];
-    return node && arr ? sub(node.postState.v, arr.v) : v3();
+    return node && arr ? sub(node.v, arr.v) : v3();
   }
 
   // 毎フレーム(マップ表示中のみ呼ぶ): ノードハンドル群と、選択中ノードがあれば
@@ -350,11 +344,11 @@ export class PlanEditor {
         ((i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0)) * rate,
         ((i.down('KeyE') ? 1 : 0) + (i.down('KeyQ') ? -1 : 0)) * rate,
       );
-      this.plan.applyNodeDv(this.selectedNodeIdx!, dvToWorld(selNode.postState.r, selNode.postState.v, local));
+      this.plan.applyNodeDv(this.selectedNodeIdx!, dvToWorld(selNode.r, selNode.v, local));
     }
 
     const nodesInfo = this.plan.nodes.map((n, i) => ({
-      tRel: n.time - simTime,
+      tRel: n.t - simTime,
       dvMag: len(this.nodeDv(i, arriving)),
       selected: i === this.selectedNodeIdx,
     }));
@@ -364,7 +358,7 @@ export class PlanEditor {
       const node = this.plan.nodes[this.selectedNodeIdx];
       if (node) {
         selDv = this.nodeDv(this.selectedNodeIdx, arriving);
-        selEl = elementsFromState(node.postState.r, node.postState.v);
+        selEl = elementsFromState(node.r, node.v);
       }
     }
     this.renderPanel(nodesInfo, selDv, selEl);
@@ -412,7 +406,7 @@ export class PlanEditor {
       const arriving = this.nodeArrivings();
       for (let i = this.plan.nodes.length - 1; i >= 0; i--) {
         const arr = arriving[i];
-        if (arr && len(sub(this.plan.nodes[i]!.postState.v, arr.v)) < C.NODE_MIN_DV) this.plan.removeNode(i);
+        if (arr && len(sub(this.plan.nodes[i]!.v, arr.v)) < C.NODE_MIN_DV) this.plan.removeNode(i);
       }
     }
     this.selectedNodeIdx = null;

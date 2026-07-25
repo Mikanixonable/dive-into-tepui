@@ -17,7 +17,7 @@
 // 通すので描画とクリック判定が画面上でずれない(§5-4)。
 import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital';
-import { TrajectorySample, sampleAt } from '../../physics/predict';
+import { sampleAt } from '../../physics/predict';
 import { Vec3, v3 } from '../../physics/vec3';
 import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -25,15 +25,14 @@ import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn } from '../camera/camera-system';
 import { PredictedLine } from '../predict/predicted-line';
-import { PlanAnchor, PlannedNode } from './plan';
 
 // セグメント色: [未実行の噴射前=グレー, 最初のノード後=白, 2個目以降=オレンジ]。
 const SEGMENT_COLORS = [0xbfc9d4, 0xffffff, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
 const arcOpacity = (i: number): number => (i === 0 ? 0.55 : 0.85);
 
-// 分解された 1 arc: 初期状態と描画区間 [start, end](絶対 simTime)。
-type Arc = { state0: OrbitState; start: number; end: number };
+// 分解された 1 arc: 初期状態(開始時刻は state0.t)と描画終了時刻 end(絶対 simTime)。
+type Arc = { state0: OrbitState; end: number };
 
 export class PlanTrajectory {
   readonly group = new THREE.Group();
@@ -55,8 +54,8 @@ export class PlanTrajectory {
 
   // 毎フレーム(マップモード中)呼ぶ。Plan の corners を arc へ分解し、各 arc の B-1 を駆動する。
   update(
-    anchor: PlanAnchor,
-    nodes: readonly PlannedNode[],
+    anchor: OrbitState,
+    nodes: readonly OrbitState[],
     displayEnd: number,
     ephemeris: Ephemeris,
     frame: Frame,
@@ -73,7 +72,7 @@ export class PlanTrajectory {
       const arc = this.arcs[i]!;
       const line = this.lineAt(i);
       line.setVisible(true);
-      line.update(arc.state0, arc.start, arc.end, ephemeris, frame, currentTime, fo, undefined, force);
+      line.update(arc.state0, arc.end, ephemeris, frame, currentTime, fo, undefined, force);
     }
     // 余った B-1(ノードが減った)は隠す。プールは維持して再利用する。
     for (let i = this.arcs.length; i < this.lines.length; i++) this.lines[i]!.setVisible(false);
@@ -88,7 +87,7 @@ export class PlanTrajectory {
 
   // 時刻 t の予測状態。ghost マーカー(predict-system)が未来位置を得るのに使う。
   // t を含む arc を選び、その arc の per-arc サンプル列を線形補間する。
-  sampleAt(t: number): TrajectorySample | null {
+  sampleAt(t: number): OrbitState | null {
     if (this.arcs.length === 0) return null;
     for (let i = 0; i < this.arcs.length; i++) {
       if (t <= this.arcs[i]!.end || i === this.arcs.length - 1) {
@@ -114,8 +113,8 @@ export class PlanTrajectory {
 
   // 画面ポインタ最寄りの予測サンプル(maxPx 以内、無ければ null)。描画と同じ per-arc サンプルを
   // 同じ projectPoint で投影して探すので、クリック配置・リタイムが描画とずれない。
-  nearestSample(mx: number, my: number, maxPx: number): TrajectorySample | null {
-    let best: TrajectorySample | null = null;
+  nearestSample(mx: number, my: number, maxPx: number): OrbitState | null {
+    let best: OrbitState | null = null;
     let bestD = maxPx * maxPx;
     for (let i = 0; i < this.arcs.length; i++) {
       for (const s of this.lines[i]!.samplesRef()) {
@@ -148,18 +147,16 @@ export class PlanTrajectory {
 }
 
 // Plan の corners を arc 列へ分解する。arc i = [前境界時刻, min(次ノード時刻, end)] を前境界
-// 状態(アンカー or 前ノード postState)から自由伝播。表示 end を超える arc は end で打ち切る。
-function buildArcs(anchor: PlanAnchor, nodes: readonly PlannedNode[], end: number): Arc[] {
+// 状態(アンカー or 前ノードの実行後状態)から自由伝播。表示 end を超える arc は end で打ち切る。
+function buildArcs(anchor: OrbitState, nodes: readonly OrbitState[], end: number): Arc[] {
   const arcs: Arc[] = [];
-  let t = anchor.time;
-  let state0 = anchor.state;
+  let state0 = anchor;
   for (const node of nodes) {
-    if (t >= end) break;
-    const arcEnd = Math.min(node.time, end);
-    if (arcEnd > t) arcs.push({ state0, start: t, end: arcEnd });
-    t = node.time;
-    state0 = node.postState;
+    if (state0.t >= end) break;
+    const arcEnd = Math.min(node.t, end);
+    if (arcEnd > state0.t) arcs.push({ state0, end: arcEnd });
+    state0 = node;
   }
-  if (t < end) arcs.push({ state0, start: t, end });
+  if (state0.t < end) arcs.push({ state0, end });
   return arcs;
 }

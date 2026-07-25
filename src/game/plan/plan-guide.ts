@@ -3,7 +3,7 @@
 // 編集に使われており、同時に噴射ガイドを出す意味がないため。呼び出しどころの
 // 判断は game.ts が持つ)。
 //
-// Step2: 直近ノードの凍結 postState(実行後の絶対状態)を直接読む。予測(predict)・
+// Step2: 直近ノードの凍結された実行後状態(絶対状態)を直接読む。予測(predict)・
 // 予測キャッシュ・activeTarget 凍結ハックには依存しない — 目標は最初から frozen な
 // 正データなので、噴射中に目標が逃げる問題自体が起きない。
 import * as THREE from 'three/webgpu';
@@ -36,11 +36,11 @@ export class PlanGuide {
     scene.add(this.plannedLine.line);
   }
 
-  // 計画軌道ライン = 直近ノード実行後の軌道(postState の軌道要素)。mapMode 中は隠すが、
+  // 計画軌道ライン = 直近ノード実行後の軌道(その状態の軌道要素)。mapMode 中は隠すが、
   // update()(噴射ガイド)とは異なり mapMode 中も含め毎フレーム呼んでよい。
   syncPlannedLine(plan: Plan, fo: FloatingOrigin, mapMode: boolean): void {
     const node = plan.firstNode();
-    const el = !mapMode && node ? elementsFromState(node.postState.r, node.postState.v) : null;
+    const el = !mapMode && node ? elementsFromState(node.r, node.v) : null;
     this.plannedLine.sync(el, fo);
   }
 
@@ -59,8 +59,7 @@ export class PlanGuide {
     }
 
     // 目標 = 直近ノードの凍結された実行後状態(位置・速度・軌道要素)。
-    const post = node.postState;
-    const targetEl = elementsFromState(post.r, post.v);
+    const targetEl = elementsFromState(node.r, node.v);
     const playerEl = player.elements;
 
     // 達成判定: 現在軌道がノード実行後の計画軌道に十分近い
@@ -79,16 +78,16 @@ export class PlanGuide {
     }
 
     // ノード位置マーカー(カウントダウン付き)
-    const tRem = node.time - simTime;
+    const tRem = node.t - simTime;
     const tLabel =
       tRem >= 0
         ? `T-${Math.floor(tRem / 60)}:${String(Math.floor(tRem % 60)).padStart(2, '0')}`
         : `T+${Math.floor(-tRem / 60)}:${String(Math.floor(-tRem % 60)).padStart(2, '0')}`;
     const more = plan.nodes.length > 1 ? ` (+${plan.nodes.length - 1})` : '';
-    this.markerManager.setPosition('nd', 'mk-mnode', '◆', post.r, project, `NODE ${tLabel}${more}`);
+    this.markerManager.setPosition('nd', 'mk-mnode', '◆', node.r, project, `NODE ${tLabel}${more}`);
 
-    // 噴射ガイド: 目標速度ベクトル(postState.v)との差分方向へ加速する
-    const dvRem = sub(post.v, player.state.v);
+    // 噴射ガイド: 目標速度ベクトル(ノードの実行後速度)との差分方向へ加速する
+    const dvRem = sub(node.v, player.state.v);
     const mag = len(dvRem);
     this.markerManager.setDirection(
       'burn',
@@ -97,7 +96,7 @@ export class PlanGuide {
       player.state.r,
       norm(dvRem),
       project,
-      `BURN ${mag.toFixed(1)} m/s → ${fmtSpeed(len(post.v))}`,
+      `BURN ${mag.toFixed(1)} m/s → ${fmtSpeed(len(node.v))}`,
     );
   }
 

@@ -16,22 +16,19 @@
 // 合わせて足す — 現consumerに不要な一般化をここで先取りしない。
 import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital';
-import { TrajectorySample, predictTrajectory } from '../../physics/predict';
-import { Vec3 } from '../../physics/vec3';
+import { predictTrajectory } from '../../physics/predict';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { FloatingOrigin } from '../floating-origin';
 import { SampledLine } from '../../render/sampled-line';
 import * as C from '../const';
 
-// 再計算判定に使う、前回計算時の入力スナップショット。state0 は比較用に r,v だけ控える
-// (慣性系ブランドは持たない素の値でよい)。
-type StateSnapshot = { r: Vec3; v: Vec3 };
-type ComputeKey = { state0: StateSnapshot; start: number; end: number; maxSamples: number };
+// 再計算判定に使う、前回計算時の入力スナップショット。
+type ComputeKey = { state0: OrbitState; end: number; maxSamples: number };
 
 export class PredictedLine {
   private readonly sampled: SampledLine;
-  private samples: TrajectorySample[] = [];
+  private samples: OrbitState[] = [];
   private key: ComputeKey | null = null;
   private lastComputeMs = -Infinity;
 
@@ -50,7 +47,6 @@ export class PredictedLine {
   // 非連続な end 変化を呼び出し側が明示的に反映させたいとき)。
   update(
     state0: OrbitState,
-    start: number,
     end: number,
     ephemeris: Ephemeris,
     frame: Frame,
@@ -59,18 +55,16 @@ export class PredictedLine {
     maxSamples = C.PREDICT_MAX_SAMPLES,
     force = false,
   ): void {
-    const edited =
-      this.key === null ||
-      !sameState(state0, this.key.state0) ||
-      start !== this.key.start ||
-      maxSamples !== this.key.maxSamples;
+    // OrbitState は不変で「変化 = 別インスタンスへの差し替え」なので、参照比較で編集を検出できる
+    // (開始時刻も state0.t に含まれる)。
+    const edited = this.key === null || state0 !== this.key.state0 || maxSamples !== this.key.maxSamples;
     const windowMoved = this.key === null || end !== this.key.end;
     if (force || edited || windowMoved) {
       const now = performance.now();
       const throttle = edited ? C.PREDICT_DIRTY_THROTTLE_MS : C.PREDICT_REFRESH_INTERVAL_MS;
       if (force || now - this.lastComputeMs >= throttle) {
-        this.samples = predictTrajectory(state0, start, Math.max(0, end - start), ephemeris, maxSamples);
-        this.key = { state0, start, end, maxSamples };
+        this.samples = predictTrajectory(state0, Math.max(0, end - state0.t), ephemeris, maxSamples);
+        this.key = { state0, end, maxSamples };
         this.lastComputeMs = now;
       }
     }
@@ -80,7 +74,7 @@ export class PredictedLine {
   }
 
   // 予測点列の参照。B-2 の多ノード集約・クリック判定(ピッキング)が読む。
-  samplesRef(): readonly TrajectorySample[] {
+  samplesRef(): readonly OrbitState[] {
     return this.samples;
   }
 
@@ -91,11 +85,4 @@ export class PredictedLine {
   dispose(): void {
     this.sampled.dispose();
   }
-}
-
-function sameState(a: StateSnapshot, b: StateSnapshot): boolean {
-  return (
-    a.r.x === b.r.x && a.r.y === b.r.y && a.r.z === b.r.z &&
-    a.v.x === b.v.x && a.v.y === b.v.y && a.v.z === b.v.z
-  );
 }

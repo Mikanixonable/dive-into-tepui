@@ -5,7 +5,7 @@
 import * as C from './const';
 import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
-import { PlannedNode } from './plan/plan';
+import { OrbitState } from '../physics/orbital';
 
 export class SimSpeedManager {
   private levelIdx = 0;
@@ -61,7 +61,7 @@ export class SimSpeedManager {
 
   // [N] キー: 直近ノードの実行時刻までの自動ワープをトグルする(呼び出し側で
   // マップモード中でないことを確認してから呼ぶ)。
-  toggleAutoWarpToFirstNode(isPlaying: boolean, firstNode: PlannedNode | undefined): void {
+  toggleAutoWarpToFirstNode(isPlaying: boolean, firstNode: OrbitState | undefined): void {
     if (!firstNode || !isPlaying) {
       this._hud.hint('マニューバノードがありません ([M] で計画)');
       return;
@@ -70,7 +70,7 @@ export class SimSpeedManager {
       this.cancelAutoWarp();
       this._hud.hint('自動ワープ解除');
     } else {
-      this.startAutoWarpTo(firstNode.time);
+      this.startAutoWarpTo(firstNode.t);
       this._hud.hint('ノードへ自動ワープ開始');
     }
   }
