@@ -121,7 +121,8 @@ main.ts
 
 | 状態 | 正本の所有者 | 備考 |
 | --- | --- | --- |
-| 自機の位置・速度 (ECI) | `Player.state` | 書き換えるのは RK4 積分(Simulator)・反動(PlayerFire)・接触(CollisionPhysics) |
+| 自機の位置・速度・エポック (ECI) | `Player.state` | 書き換えるのは RK4 積分(Simulator)・反動(PlayerFire)・接触(CollisionPhysics) |
+| エンティティの過去 state 列 | `OrbitEntity.history` | 記録するのは `state` の setter だけ。件数上限は `historyLength`(既定 0、Ship/Bullet は 1) |
 | 自機の姿勢・角速度 | `Player.att` | 積分は Simulator.stepAttitudes に一元化 |
 | 機体座標系トルク | `Player.torque` | 毎フレーム PlayerThrottle の戻り値で上書きされる |
 | 推力加速度関数 | `Player.thrustFn` | 同上。無推力なら null |
@@ -134,7 +135,7 @@ main.ts
 | エンティティ配列(敵/弾/薬莢/デブリ/補給) | `Simulator` | 追加は `addXxx` 経由。上限管理もここ |
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
 | ワープ段・自動ワープ目標時刻 | `SimSpeedManager` | 閾値判定(canPlayerFire 等)もここの getter が唯一 |
-| マニューバ計画(ノード列・アンカー) | `Plan` | 所有は PlanEditor。ノードは Δv ではなく実行後状態を持つ |
+| マニューバ計画(ノード列・アンカー) | `Plan` | 所有は PlanEditor。ノード・アンカーとも 1 個の `OrbitState`(実行時刻 = `t`、Δv は導出値) |
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNodeIdx` / `.editMode` | |
 | 予測表示期間・未来ゴーストスライダー | `PredictSystem` | |
 | マップ視点(注視点相対オフセット・パン)・表示座標系・フォーカス | `MapCamera` | 予測折れ線の座標系もこれを読む |
@@ -173,6 +174,7 @@ main.ts
 | 対象 | 正体 | 無効化の契機 |
 | --- | --- | --- |
 | `OrbitEntity.elements` | `state` からの軌道要素のメモ化 | `state` setter(差し替えのたび自動) |
+| `OrbitEntity.prevState` | `history` 末尾(無ければ現 state)の読み出し | `history` に従う |
 | `OrbitLine.snap` / 頂点配列 | 楕円ジオメトリの再生成判定用スナップショット | 要素ドリフト・`force`・初回 |
 | `PredictedLine.samples` / `.key` | 予測 RK4 の結果と入力スナップショット | 入力変化 + スロットル、`force` |
 | `PlanTrajectory.arcs` / `.frame` / `.unbakeTime` | 毎フレーム再構築される表示文脈 | `update()` 毎 |
@@ -187,8 +189,13 @@ main.ts
 `Vec3` / `OrbitState` / `Quat` / `Attitude` は **不変**。値を進めるときは中身を書き換えず、
 新しいオブジェクトを作って差し替える(`stepOrbitRK4` は新しい `OrbitState` を、`stepAttitude` は
 新しい `Attitude` を返す)。これは最適化ではなく整合性の前提で、`OrbitEntity.state` の setter が
-軌道要素メモを破棄できるのは「state が差し替え以外では変化しない」からである。参照を共有したまま
-中身を書き換えると保持側が変化を検知できず、メモが黙って腐る。
+軌道要素メモを破棄し、差し替え前の state を `history` へ送れるのは「state が差し替え以外では
+変化しない」からである。参照を共有したまま中身を書き換えると保持側が変化を検知できず、メモが
+黙って腐り、履歴も取り落とす。
+
+`OrbitState` は `{t, r, v}`(エポック付き状態ベクトル)で、**予測点列・エンティティ履歴・計画ノードは
+すべてこの 1 型で表す**。同じ情報量の型を複数持たない(旧 `TrajectorySample` / `LineSample` /
+`PlannedNode.time` はここへ統合済み)ため、「状態」と「その時刻」が別々に渡されて食い違うことがない。
 
 例外はない。`physics/` 配下は全て純関数で、`*Into` のような out 引数版も、モジュール内スクラッチも
 持たない(アロケーション回避として一度導入したが、不変性と引き換えるほどの効果がないため撤去した。

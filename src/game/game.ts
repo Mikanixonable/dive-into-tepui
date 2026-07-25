@@ -244,7 +244,7 @@ export class Game {
     );
 
     // 計画が空の間、予定 player の起点を現在状態へ追従させる(最初のノードで凍結)。
-    this.editor.plan.trackAnchor(this.simulator.simTime, this.player.state);
+    this.editor.plan.trackAnchor(this.player.state);
 
     if (this.editor.editMode) {
       this.dispatchMapPointer();

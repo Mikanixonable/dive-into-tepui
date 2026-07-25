@@ -34,6 +34,7 @@ export class Logistics {
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
     const ammo = new Ammo(
       orbitState(
+        player.state.t,
         rotateAxis(r, hHat, ang),
         add(rotateAxis(v, hHat, ang), randVec(1.5)),
       ),

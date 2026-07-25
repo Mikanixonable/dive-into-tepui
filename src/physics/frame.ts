@@ -86,32 +86,34 @@ export function toInertialPos(frame: Frame, t: number, pos: RelativeVec3, epheme
   }
 }
 
-// 慣性系 → Frame 相対（順変換, bake）。時刻 t は変換対象サンプルの絶対時刻。
+// 慣性系 → Frame 相対（順変換, bake）。変換時刻は state 自身が持つ絶対時刻 s.t。
 // 回転系速度は v_rel = R(−θ)v − ω×r_rel（ω = frameRate·frameAxis）。
-export function toFrameState(frame: Frame, t: number, s: OrbitState, ephemeris: Ephemeris): RelativeOrbitState {
+export function toFrameState(frame: Frame, s: OrbitState, ephemeris: Ephemeris): RelativeOrbitState {
   switch (frame) {
     case 'inertial':
       return { r: s.r, v: s.v } as RelativeOrbitState;
     case 'sunRotating':
-      const a = ephemeris.sunAzimuthAt(t);
-      const omega = scale(SUN_ROTATING_POLE, ephemeris.sunAngularRateAt(t));
+      const a = ephemeris.sunAzimuthAt(s.t);
+      const omega = scale(SUN_ROTATING_POLE, ephemeris.sunAngularRateAt(s.t));
       const r = rotateAxis(s.r, SUN_ROTATING_POLE, -a);
       const v = sub(rotateAxis(s.v, SUN_ROTATING_POLE, -a), cross(omega, r));
       return { r, v } as RelativeOrbitState;
   }
 }
 
-// Frame 相対 → 慣性系（逆変換, un-bake）。時刻 t は描画時刻（un-bake なら現在の simTime）。
+// Frame 相対 → 慣性系（逆変換, un-bake）。時刻 t は描画時刻（un-bake なら現在の simTime）で、
+// 復元された OrbitState のエポックにもなる（RelativeOrbitState は時刻を持たない — bake 時刻と
+// un-bake 時刻は別物なので、どちらを持たせても取り違えを招く）。
 // 慣性系速度は v = R(+θ)v_rel + ω×r（toFrame の逆）。
 export function toInertialState(frame: Frame, t: number, s: RelativeOrbitState, ephemeris: Ephemeris): OrbitState {
   switch (frame) {
     case 'inertial':
-      return { r: s.r, v: s.v } as OrbitState;
+      return orbitState(t, s.r, s.v);
     case 'sunRotating':
       const a = ephemeris.sunAzimuthAt(t);
       const omega = scale(SUN_ROTATING_POLE, ephemeris.sunAngularRateAt(t));
       const r = rotateAxis(s.r, SUN_ROTATING_POLE, a);
       const v = add(rotateAxis(s.v, SUN_ROTATING_POLE, a), cross(omega, r));
-      return orbitState(r, v);
+      return orbitState(t, r, v);
   }
 }

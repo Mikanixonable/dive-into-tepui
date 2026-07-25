@@ -20,17 +20,34 @@ const identityAttitude = (): Attitude => ({
 // scene を渡したものは自身で scene.add/remove を行う(渡さない場合は描画に
 // 参加しない内部専用エンティティ — 例: BeltSection)。
 export class OrbitEntity {
-  // state は不変な OrbitState の差し替えでのみ更新する。setter が軌道要素メモを
-  // 破棄することで「state と elements が食い違わない」保証をこのクラス内で完結させる
-  // (OrbitState/Vec3 が不変であることが前提 — 中身を書き換えられると検知できない)。
+  // state は不変な OrbitState の差し替えでのみ更新する。setter が軌道要素メモを破棄し、
+  // 差し替え前の state を履歴へ送ることで「state と elements/history が食い違わない」保証を
+  // このクラス内で完結させる(OrbitState/Vec3 が不変であることが前提 — 中身を書き換えられると
+  // 検知できない)。履歴の更新を外部(積分器)に任せると、この保証が破れる。
   private _state: OrbitState;
   get state(): OrbitState { return this._state; }
   set state(s: OrbitState) {
+    if (this.historyLength > 0) {
+      this._history.push(this._state);
+      if (this._history.length > this.historyLength) this._history.shift();
+    }
     this._state = s;
     this._elements = undefined;
   }
 
-  prevR: Vec3; // 直前サブステップの位置(弾との衝突判定用)
+  // 保持する過去 state の件数。0(既定) = 記録しない。1 = 直前の state だけ(弾の線分衝突判定・
+  // 標的面通過判定に必要な最小限)。過去軌跡を描くならその点数まで増やす。件数を entity 種別
+  // ごとに絞るのは、薬莢・破片のように大量に存在するものの履歴でメモリを食い潰さないため。
+  protected readonly historyLength: number = 0;
+  private readonly _history: OrbitState[] = [];
+
+  // 古い順の過去 state 列(最大 historyLength 件)。時刻付きなので SampledLine へそのまま渡せる。
+  get history(): readonly OrbitState[] { return this._history; }
+
+  // 直前の state。履歴を持たない/まだ 1 度も進んでいない場合は現在の state を返す
+  // (線分衝突判定が退化して点判定になるだけで、破綻はしない)。
+  get prevState(): OrbitState { return this._history[this._history.length - 1] ?? this._state; }
+
   att: Attitude;
   obj: THREE.Object3D;
   alive = true;
@@ -44,7 +61,6 @@ export class OrbitEntity {
 
   constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
     this._state = state;
-    this.prevR = state.r;
     this.att = att;
     this.obj = obj;
     this.scene = scene;
@@ -77,6 +93,9 @@ export class OrbitEntity {
 }
 
 export abstract class Ship extends OrbitEntity {
+  // 弾との線分衝突判定(hit.ts)が直前サブステップ位置を読むので 1 件だけ保持する。
+  protected readonly historyLength = 1;
+
   name: string;
   radius: number; // 被弾判定半径 [m](剛体接触の collideRadius とは別)
   hp: number;
@@ -170,7 +189,7 @@ export class DebrisPiece extends OrbitEntity {
 // state(ワールド ECI)の相互変換も BeltPhysics 側が担う(belt.ts 参照)。
 export class BeltSection extends OrbitEntity {
   constructor(readonly beltIndex: number) {
-    super(orbitState(v3(), v3()), new THREE.Object3D());
+    super(orbitState(0, v3(), v3()), new THREE.Object3D());
     this.mass = 5;
     this.collideRadius = 0.8;
   }

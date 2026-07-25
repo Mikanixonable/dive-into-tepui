@@ -20,14 +20,14 @@ const MAX_SAMPLES = 2000;
 function circularState() {
   const r0 = R_EARTH + 420e3;
   const vc = Math.sqrt(MU_EARTH / r0);
-  return orbitState(v3(r0, 0, 0), v3(0, vc, 0));
+  return orbitState(0, v3(r0, 0, 0), v3(0, vc, 0));
 }
 
 export function register(): void {
   test('predict: trajectory stays a bounded orbit (radius near-constant)', () => {
     const s0 = circularState();
     const r0 = len(s0.r);
-    const samples = predictTrajectory(s0, 0, 3000, EPHEMERIS, MAX_SAMPLES);
+    const samples = predictTrajectory(s0, 3000, EPHEMERIS, MAX_SAMPLES);
     assert.ok(samples.length > 2, 'expected multiple samples');
     // 円軌道なので全サンプルの動径は初期値付近に留まる。J2(赤道扁平)と第三体で
     // 0.1〜数% 程度は変動するので、暴走しない範囲を実測基準で緩く固定する。
@@ -39,12 +39,13 @@ export function register(): void {
   test('predict: propagateState matches the free-propagation endpoint', () => {
     const s0 = circularState();
     const targetT = 1500;
-    const arriving = propagateState(s0, 0, targetT, EPHEMERIS);
+    const arriving = propagateState(s0, targetT, EPHEMERIS);
 
     // 同じ刻み系列で targetT まで積分した終端(predictTrajectory)と一致するはず。
-    const free = predictTrajectory(s0, 0, targetT, EPHEMERIS, MAX_SAMPLES);
+    const free = predictTrajectory(s0, targetT, EPHEMERIS, MAX_SAMPLES);
     const end = free[free.length - 1]!;
     assert.ok(Math.abs(end.t - targetT) < 1e-6, 'free propagation should end at targetT');
+    assert.ok(Math.abs(arriving.t - targetT) < 1e-6, 'propagateState should end at targetT');
     assert.ok(len(sub(arriving.r, end.r)) < 1e-6, 'arriving position should match free propagation');
     assert.ok(len(sub(arriving.v, end.v)) < 1e-9, 'arriving velocity should match free propagation');
   });
@@ -53,13 +54,13 @@ export function register(): void {
     const s0 = circularState();
     const r0 = { ...s0.r };
     const v0 = { ...s0.v };
-    propagateState(s0, 0, 1500, EPHEMERIS);
+    propagateState(s0, 1500, EPHEMERIS);
     assert.ok(len(sub(s0.r, r0)) === 0 && len(sub(s0.v, v0)) === 0, 'input state must not be mutated');
   });
 
   test('predict: sampleAt interpolates within the trajectory', () => {
     const s0 = circularState();
-    const samples = predictTrajectory(s0, 0, 3000, EPHEMERIS, MAX_SAMPLES);
+    const samples = predictTrajectory(s0, 3000, EPHEMERIS, MAX_SAMPLES);
     const mid = sampleAt(samples, 1500);
     assert.ok(mid, 'expected a sample at t=1500');
     assert.ok(Math.abs(mid!.t - 1500) < 1e-6, 'sampleAt should return the requested time');

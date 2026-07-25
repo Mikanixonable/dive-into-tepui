@@ -99,6 +99,10 @@ mapMode の三分割（camera / plan編集 / 軌道予測）のうち、camera �
 ## 3. 理想的な変更後の状態
 
 ### データモデル
+（後日の型統合により、下記の `{time, state}` 対はすべて 1 個の `OrbitState`(= `{t, r, v}`) に集約された。
+`TrajectorySample` は廃止され `OrbitState` に統一。キャッシュの置き場も「Plan 隣接の 1 本」ではなく
+`PredictedLine` が arc ごとに持つ形に落ち着いている。以下は当時の設計案として残す。）
+
 ```
 Plan (planSystem 所有, passive leaf)
   plannedPlayerStart: { time, state: OrbitState }    // frozen な起点アンカー(=予定 player の初期状態)

@@ -74,15 +74,15 @@ export class CollisionPhysics {
 
     const vn = (vB.x - vA.x) * nx + (vB.y - vA.y) * ny + (vB.z - vA.z) * nz;
     if (vn >= 0) {
-      a.state = orbitState(rA2, vA);
-      b.state = orbitState(rB2, vB);
+      a.state = orbitState(a.state.t, rA2, vA);
+      b.state = orbitState(b.state.t, rB2, vB);
       return false;
     }
     const j = -((1 + restitution) * vn) / invM;
     const jA = j * invMa;
     const jB = j * invMb;
-    a.state = orbitState(rA2, v3(vA.x - nx * jA, vA.y - ny * jA, vA.z - nz * jA));
-    b.state = orbitState(rB2, v3(vB.x + nx * jB, vB.y + ny * jB, vB.z + nz * jB));
+    a.state = orbitState(a.state.t, rA2, v3(vA.x - nx * jA, vA.y - ny * jA, vA.z - nz * jA));
+    b.state = orbitState(b.state.t, rB2, v3(vB.x + nx * jB, vB.y + ny * jB, vB.z + nz * jB));
     return true;
   }
 }

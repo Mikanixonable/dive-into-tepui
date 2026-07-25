@@ -7,8 +7,7 @@
 //      import しない。mapMode 中のみ意味を持つ。
 //   ③ マップツールバーの表示反映(期間・座標系・スライダーラベル・フォーカス)。
 // 予測軌道を描く座標系(frame)は camera が所有し(MapCamera.cameraFrame)、ここは読むだけ。
-import { R_EARTH } from '../../physics/orbital';
-import { TrajectorySample } from '../../physics/predict';
+import { OrbitState, R_EARTH } from '../../physics/orbital';
 import { Vec3, len } from '../../physics/vec3';
 import { Frame } from '../../physics/frame';
 import * as C from '../const';
@@ -20,7 +19,7 @@ import { MapToolbar } from '../hud/map-toolbar';
 export type PredictDurationKey = 'orbit' | 'day' | 'week' | 'month';
 
 // 時刻 → 予測サンプルのアクセサ(B-2 の sampleAt を束縛して渡す)。
-export type SampleAtFn = (t: number) => TrajectorySample | null;
+export type SampleAtFn = (t: number) => OrbitState | null;
 
 // ワールド点(時刻 t の r)を表示座標系(太陽回転系対応)へ変換する(B-2 の toDisplay を渡す)。
 export type ToDisplayFn = (r: Vec3, t: number) => Vec3;
