@@ -2,7 +2,7 @@
 // onSelect(act) を発火して自動で閉じる。node-gizmo / focus-gizmo が項目内容だけを
 // 差し替えて共有する — メニューの見た目・pointer/contextmenu 抑制・クリック配線は
 // ここ一箇所に集約する。
-// #hud-maptool と同様、pointerdown で stopPropagation して Input のキャンバスドラッグ
+// hud/buttons.ts と同様、pointerdown で stopPropagation して Input のキャンバスドラッグ
 // (視点回転)へイベントが漏れないようにする。
 import { ACCENT_RGB, ACCENT_SOFT, TEXT as INK } from '../theme';
 

@@ -44,7 +44,6 @@
       - mapModeToggler.toggle() // KeyM。!activeStage.isPlaying なら即 return
         - [開く: !cameraSystem.mapMode]
           - editor.selectedNodeIdx = null
-          - mapToolbar.setVisible(true)
           - touchControls?.setMapMode(true) // タッチデバイスのみ
           - cameraSystem.mapMode = true / editor.editMode = true // 独立2責務を同時に立てる唯一の箇所
           - hud.hint()
@@ -54,7 +53,6 @@
             - plan.removeNode() // Δv が NODE_MIN_DV 未満のノードごと
           - editor.closeMenu() → nodeGizmo.closeMenu()
           - cameraSystem.closeFocusMenu() → focusGizmo.closeMenu()
-          - mapToolbar.setVisible(false)
           - touchControls?.setMapMode(false)
           - cameraSystem.mapMode = false / editor.editMode = false
           - hud.hint() // plan.nodes.length > 0 のみ
@@ -207,7 +205,6 @@
     - editor.updateEditing()
       - plan.applyNodeDv() // ノード選択中 かつ WASDQE 入力がある場合のみ実効
       - renderPanel() // 計画パネル(MANEUVER PLAN)の HTML 更新
-    - predict.syncToolbar() → mapToolbar.setState()
   - [!editor.editMode] targeter.updateCombatTargeting()
     - handleTargetLockByRightClick() // input.rightClicks() があり player.alive のみ
       - toggleLockedTarget() + hud.hint() // 右クリックが敵に当たった場合
@@ -224,6 +221,7 @@
     - mapCamera.sync() // mapMode のみ
     - chaseCamera.sync() // !mapMode のみ
     - pipCamera.sync() // 常に
+    - mapViewPanel.setVisible(mapMode) + setFocus()/setFrame() // MAP VIEW パネル。点灯反映は mapMode のみ
   - environment.sync()
     - syncEarth() → earth.group.position / earth.setRotation() / earth.tick()
     - syncSkyBodies()
@@ -237,6 +235,8 @@
     - thrustEffects.sync() → core/outer の sync() or hide()
     - rcsEffects.sync() → puff の sync() or hide() ×4
     - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出
+  - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
+  - activeStage.syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示
   - simulator.sync() → entity.sync() // 全エンティティごと(Bullet は速度方向を向く別実装)
   - effects.syncFlashEffects() → flashEffectManager.syncFlashEffects()
     - billboard.sync() // 有効なフラッシュごと
@@ -258,9 +258,11 @@
         - line.setVisible(false) // arc が減って余った B-1 ごと
       - updateGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
     - [mapMode]
-      - predict.syncGhost() → markerManager.setPosition('plannedPlayer') or hide()
+      - predict.sync()
+        - syncGhost() → markerManager.setPosition('plannedPlayer') or hide()
+        - panel.setVisible(true) / setDuration() / setFrame() / setSliderLabel() // PREDICT パネル
       - cameraSystem.syncMapLabels() → mapMarkers.syncLabels() → markerManager.setPosition() // ラベルごと
-    - [!mapMode] predict.hide() → markerManager.hide('plannedPlayer')
+    - [!mapMode] predict.hide() → markerManager.hide('plannedPlayer') + panel.setVisible(false)
     - environment.syncReferenceLines() → geoLine.sync() + moonLine.sync() // !mapMode では両方 null 渡しで非表示
     - markersSystem.updateMarkers()
       - updateMapModeMarkers() // mapMode なら方向系を隠して 'self' を出す、!mapMode なら逆
@@ -279,7 +281,6 @@
       - [達成] plan.consumeFirstNode() + simSpeedManager.cancelAutoWarp() + hide + hud.hint() + sfx.warp()
       - [未達成] markerManager.setPosition('nd') + setDirection('burn')
   - hud.panels.update(game, dt) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
-    - touchControls?.setActive() ×3 // タッチデバイスのみ
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
   - hud.tick() // ヒント/トーストのフェードアウト
@@ -325,7 +326,7 @@
   `hit.checkBulletHits()` と `targeter.markBoardCrossings()` が読む「直前サブステップ位置」
   (`entity.prevState.r`)はこれで供給される。
 - **`TouchControls` は per-frame の update を持たない**。DOM の pointer イベントから
-  `input.setVirtualKey()` を呼ぶだけなので、この木には独立ノードとして現れない
-  (`hud.panels.update` からのトグル点灯 `setActive` のみが per-frame の接点)。
+  `input.setVirtualKey()` を呼ぶだけで、per-frame の接点は `game.sync` からの
+  `syncModeButtons()`(トグル点灯)だけ。
 - **`Ephemeris` は per-frame の状態更新を持たない**(純サンプラ)。各所が `*At(t)` を呼ぶだけなので
   更新順序の制約が無い。

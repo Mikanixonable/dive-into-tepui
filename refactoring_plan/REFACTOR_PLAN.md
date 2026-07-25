@@ -35,16 +35,80 @@ markerForGameを分散させるうえでの懸念。
 
 orbitLineごとにlineBasicMaterialが再生成されている。パフォーマンスに悪い。外部がマテリアルを保持するべきなんだけどどこの責務にしたものか（gameが持つのは険しいからrender/内の定数参照？）
 
-## toolbarの解体
-toolbarやmapToolbar関連のデータの取り回しにアンチパターン（情報をまとめて受け渡すなど）が多い問題について考察。
-現在、predictSystemとmapCameraの二つのモジュールの両方を操作するなんでもGUIになっていて、そのせいで二つのモジュールを完全に疎結合にできていない（syncToolbarがmapCameraの状態を受け取っているなど）GUIを変えてでもいいので分離しよう。
-cameraFrameとpredictSystemのframeを用法同時に切り替えている点についても、ユーザーが独立に設定できるようにしてしまおう。カメラのGUIとpredictのGUIが視覚的に分離していた方が操作性が良い。
+## GUIの所有者ずれ（toolbar解体の続き）
 
-一般化すると以下のようなことが言えます。
-predictにしてもplanEditorにしてもその他のモジュールにしても、自身の挙動・状態に関するGUIは原則自身で管理し、外部からの配線を最小化したい。そのためにGUIが変更されても構わない。
-大幅なリファクタリング前のGUIを維持しようということが歴史的しがらみになっていて、リファクタリングが最適化されていない。モジュールをまたぐようなGUI要素について、ある程度整理が進んだ現在のモジュール設計に照らし合わせて、このモジュール構成に対して自然なGUIを設計しなおす。
+mapToolbar の解体は完了（REFATOR_FIXED.md 参照）。適用した原則:
 
-まずToolbarから着手して解体、歴史的経緯を排して再設計し、次に、その経験を踏まえて、同様の問題を抱えた箇所がないか、洗い出しをしてください。
+> **GUI は、そのGUIが書き換える状態の所有者が持つ。所有者が1つに定まらないGUIは、GUIの方を分割する。**
+> 表示・非表示も所有者が自分の sync で押し出す。GUIの見た目を維持することを制約にしない。
+
+同じ病理（1つのGUIが複数モジュールの状態を映す／書き換えるため、状態が持ち回される）が残っている箇所。
+上から順に、影響が大きい。
+
+### A. HudPanels が `Game` を丸ごと受け取る — 最大の同型事例【当面保留】
+`hud/panel.ts` の `HudPanels.update(game, dt)` は player / targeter / simulator / simSpeedManager /
+activeStage / cameraSystem から chery-pick して4パネルを更新する。mapToolbar と同じ構造だが、
+**全情報を集約表示することそのものに価値がある**GUIなので、Game を読むこと自体は問題としない。
+分割すると、GUIクラスではなくゲームオブジェクトを担うのが責務である Player などに表示責務が
+乗ってしまい、そちらの肥大化の方が高くつく。B/C（他モジュールを操作していた分）の切り離しは済んで
+いるので、残りは「表示専用のまま Game を読む」形で許容する。
+
+以下は将来もし着手するときの分割の当たり（現時点では実施しない）:
+- SHIP STATUS の RCS制動・並進出力・微調整・進行方向ホールド・弾薬 → **Player** 所有。
+- ORBIT（高度・速度・AP/PE・傾斜角・周期・動圧・機体温度）→ **Player**（軌道要素と thermal の所有者）。
+- TARGET → **Targeter** 所有（ターゲット選択の所有者がその表示も持つ）。
+- CONTACTS（敵一覧）→ **Simulator/Stage** 側。
+- MET / TIME WARP / 視点のRCS追従 は所有者が別（simulator / simSpeedManager / chaseCamera）。
+  **ここでGUIの方を切り直す** — 「SHIP STATUS」に混ざっている他所有者の行を、別の小パネルへ分けるか、
+  所有者側のパネルへ移す。今回 toolbar で学んだのはまさにこの判断。
+
+### B. panel.ts が touchControls のボタン点灯を面倒見ている → 是正済み
+`TouchControls.syncModeButtons(rcsDamp, fineAttitude, progradeHold)` を新設し、game.sync が呼ぶ。
+どのキーがどのモードのボタンかを知るのはボタンを組み立てた touch.ts なので、そのマッピングはそちらに
+閉じ、呼び出し側は現在値だけを渡す。`setActive` は private 化。panel.ts は表示専用になった。
+
+### C. `#hud-stage0` — ステージ固有GUIが共有 dom.ts にある → 是正済み
+`stages/stage-utils/stage-status-panel.ts` の `StageStatusPanel` を新設し、`Stage` が setup() で
+構築・`syncStatusPanel(player)` で駆動する（PlanEditor の計画パネル、PredictSystem の PREDICT
+パネルと同じ形）。id は `#hud-stagestatus` へ改名（stage00 でも使うため）。`HudPanels` からは
+`stage0State` を削除。DOM 書き換えは内容が変わったフレームだけに絞る。
+
+### D. help / controls バー — 全モジュールのキー割り当てを1箇所で列挙している
+`hud/dom.ts` の `buildHelpPanel` / `buildControlsBar` は、各モジュールが実際に読んでいるキーを人手で
+転記した表。**実際にドリフトしている**:
+- help 表の並進行が `W/S`↔`Q/E` 逆、CTRL/SHIFT の注記も逆の行に付いていた（今回修正済み。
+  `buildControlsBar` の方は正しかった＝同じファイル内で矛盾していた）。
+- help 表の「方向マーカー」行が旧割り当て（`Q/E (PRO/RET)` …）のまま。
+- `marker/marker-for-game.ts` の方向マーカーラベルも旧割り当てのまま（既知の項目）。
+
+構造的な解: キー割り当てとその説明文を、そのキーを読むモジュール側に置き、help はそれを集めて表を
+組む（列挙を書かない）。ヘルプ表は「各モジュールが申告した操作の一覧」になる。
+
+### E. game.handleEdgePress — 入力側の同じ問題
+GUIではなく入力での同型。すでに別項に挙がっているが、原則は同じ:「入力もGUIも、状態の所有者が
+自分で受ける」。`Player.handleEdgePress` + `input.consumeKey()` がすでに正しい形の実例なので、
+それを他モジュールへ広げる（simSpeedManager・editor・mapModeToggler・cameraSystem）。
+D の解（キーの定義を所有者へ）とこれは同じ作業になる。
+
+### F. MarkerForGame / MarkerCtx — マーカーという媒体での同じ病理
+別項「markerの集約 vs 分散」と同じ話。GUI（DOMパネル）で答えが出た原則を、そのままマーカーへ
+適用できるかが論点。適用できるなら「マーカーは、その位置を決める状態の所有者が置く」になる。
+
+### 例外として扱ってよいもの
+- `SettingsPanel`（BGM・一時停止・タイトルへ戻る）… **複数モジュールにまたがることが本質**の
+  GUIなので、所有者を main.ts に置いたままでよい。`[Esc]` の配線が game.handleEdgePress にある点だけ
+  E と同じ問題。
+- `Hud.hint()` / `toast()` … 共有サービス（sfx と同型）。所有者の議論の対象外。
+- `hud/context-menu.ts`・`hud/buttons.ts` … DOMとイベントだけを担う共有部品。状態を持たないので
+  「所有者」を問う必要がない。この形は積極的に増やしてよい。
+
+
+B,Cを是正（小さな責務移動）← 完了
+inputとEを是正（inputロジック変更）
+F は実現可能性を判断してから
+Dはキーマッピングを実装するまで保留
+Aは当面保留
+
 
 ## 不要なクロージャ注入
 ctxと似て、脱却すべきデザインパターン。クロージャの利用の問題と改善は3種類ある
@@ -180,3 +244,15 @@ predictが本当に延長分だけ計算しているか？
 
 ## mapカメラにしてもchase cameraにしても、オイラー角実装になっているからジンバルロックがあって操作性が悪い。
 クオータニオン実装にしたいが、クオータニオンだとupVecを固定できないため、ロール回転自由度が出てしまう。どうしよう
+
+## predictSystemの拡張
+predictSystemは以下のようなものを予測し、スライダーに応じて表示する。
+- planに従った場合のplayerの未来（高精度）
+- targetの未来（高精度）
+- 全ての敵、ammo、bulletの未来（低精度）
+- デブリの未来は予測しない。
+なお、現時点でExtraAccelを計算していないのは不整合。
+現在は単にplanを表示するだけのたらい回しクラスに見えるが、将来これらを追加するときに共通ファサードになり、
+
+
+touchControlsとinputの責務整理

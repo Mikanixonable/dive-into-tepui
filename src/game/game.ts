@@ -26,7 +26,6 @@ import { Simulator } from './orbit-entity/simulator';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { Hud } from './hud/hud';
-import { MapToolbar } from './hud/map-toolbar';
 import { SettingsPanel } from './hud/settings-panel';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
@@ -47,8 +46,6 @@ export class Game {
   private readonly _hud: Hud;
   private readonly _sfx: Sfx;
   private readonly settingsPanel: SettingsPanel;
-  // マップツールバーは Hud から切り出した専用モジュールで、_hud.root へ自分で DOM を構築する。
-  private readonly mapToolbar: MapToolbar;
   private readonly markerManager: MarkerManager;
   // 太陽・月の天体暦(状態を持たない純サンプラ)。environment/simulator/cameraSystem/
   // editor がこの単一インスタンスを共有参照する。cameraSystem など後続の構築より前に
@@ -56,10 +53,9 @@ export class Game {
   private readonly ephemeris = new Ephemeris();
   // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
   // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/simulator/targeter 等)は
-  // public にする。cameraSystem は自身のコンストラクタでマップツールバー(フォーカス・視点リセット・
-  // 座標系トグル)の HUD 配線を張るため、mapToolbar より後に構築する(コンストラクタ本体の順序で保証)。
-  // マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)とその選択 UI は
-  // 「どこを注視するか」= mapCamera 寄りの責務なので cameraSystem が所有する。
+  // public にする。マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)と
+  // その選択 UI(視点パネル・ラベル右クリックメニュー)は「どこを注視するか」= mapCamera 寄りの
+  // 責務なので cameraSystem が所有し、その HUD 配線も cameraSystem 自身が張る。
   readonly cameraSystem: CameraSystem;
   readonly player: Player;
   // ?perf=1 のデバッグ表示用エンティティ数。
@@ -79,8 +75,9 @@ export class Game {
 
   // 軌道計画まわりの三系統。かつて PlanSystem が束ねていたが、たらい回しを排して game が直接
   // 保持する: editor(ノード列 Plan・予測折れ線キャッシュ traj・編集モード editMode・ノード
-  // 編集入力)、predict(未来表示 = ゴースト・ツールバー・表示期間)、guide(戦闘ビューの噴射
-  // ガイド。マップモード中は呼ばない — [M] で開いている間は WASDQE がΔv編集に使われるため)。
+  // 編集入力)、predict(未来表示 = ゴースト・表示期間・予測軌道の表示座標系と、その操作パネル)、
+  // guide(戦闘ビューの噴射ガイド。マップモード中は呼ばない — [M] で開いている間は WASDQE が
+  // Δv編集に使われるため)。
   // editor/guide は scene を要し、editor は cameraSystem の projection を要するため、いずれも
   // コンストラクタ本体で構築する(effects 等と同じ理由)。
   private readonly editor: PlanEditor;
@@ -134,17 +131,16 @@ export class Game {
     this._sfx = sfx;
     this.settingsPanel = settingsPanel;
 
-    this.mapToolbar = new MapToolbar(this._hud.root);
     this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
     this.markersSystem = new MarkerForGame(this.markerManager);
-    this.cameraSystem = new CameraSystem(this._hud, this.mapToolbar, this._sfx, this.markerManager, this.ephemeris);
+    this.cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager, this.ephemeris);
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
     this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
     this.pipRenderer = new PipRenderer(this._scene);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
-    this.predict = new PredictSystem(this.mapToolbar, this.markerManager);
+    this.predict = new PredictSystem(this._hud.root, this.markerManager);
     this.editor = new PlanEditor(
       this._hud,
       this._sfx,
@@ -156,13 +152,15 @@ export class Game {
     );
     // ノードハンドル直接右クリックは、canvas 右クリックと同じフォールバック調停に流す。
     this.editor.onNodeHandleRightClick = (x, y) => this.dispatchMapRightClick(x, y);
+    // 表示期間は predict の状態、予測折れ線のキャッシュは editor の持ち物なので、両者に
+    // またがるこの一本だけをオーケストレータが配線する(期間を変えた瞬間に引き直させる)。
+    this.predict.onDurationChange = () => this.editor.traj.invalidate();
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager, this._scene);
-    this.mapModeToggler = new MapModeToggler(this._hud, this.mapToolbar);
+    this.mapModeToggler = new MapModeToggler(this._hud);
 
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
-    this.wireDurationSelect();
 
     this.simulator = new Simulator(this.ephemeris, this.hitSystem);
 
@@ -180,18 +178,6 @@ export class Game {
     );
 
     this.floatingOrigin = new FloatingOrigin(this.player.state.r, this.player.state.v);
-  }
-
-  // 表示期間の選択は predict(期間状態)と editor(予測折れ線キャッシュ)にまたがる横断的操作なので、
-  // オーケストレータの game が両者へ配線する(他のツールバー配線は predict/cameraSystem が自前で
-  // 持つ)。設定パネル(BGM・一時停止・タイトルへ戻る)の配線は settingsPanel を所有する main.ts の役目。
-  private wireDurationSelect(): void {
-    this.mapToolbar.onDurationSelect = (key) => {
-      if (key === 'orbit' || key === 'day' || key === 'week' || key === 'month') {
-        this.predict.predictDurationKey = key;
-        this.editor.traj.invalidate();
-      }
-    };
   }
 
   // ------------------------------------------------------------ update
@@ -262,15 +248,6 @@ export class Game {
     if (this.editor.editMode) {
       this.dispatchMapPointer();
       this.editor.updateEditing(dt, this.simulator.simTime, this.input);
-      // ツールバー(期間・座標系・スライダー・フォーカス)は predict/camera 側の状態。predict が
-      // 反映するが、camera の frame/focus と B-2 の sampleAt は game が渡す。
-      this.predict.syncToolbar(
-        this.cameraSystem.mapCamera.cameraFrame,
-        this.cameraSystem.mapCamera.focus,
-        (t) => this.editor.traj.sampleAt(t),
-        this.player.elements?.period ?? null,
-        this.simulator.simTime,
-      );
     }
     else {
       this.targeter.updateCombatTargeting(this.player, this.simulator.enemies, this.input, this.cameraSystem);
@@ -351,13 +328,17 @@ export class Game {
     });
 
     this.player.syncPlayer(this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused);
+    // 自機のモード状態を映す先が2つある(HUD ステータスパネルとタッチUIのトグルボタン)。
+    // どちらも表示側なので、状態の所有者から見て対称になるようここで両方へ渡す。
+    this.touchControls?.syncModeButtons(this.player.rcsDamp, this.player.fineAttitude, this.player.progradeHold);
+    this.activeStage.syncStatusPanel(this.player);
 
     this.simulator.sync(this.floatingOrigin);
 
     this.effects.syncFlashEffects(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
 
     this.syncEntityOrbitLines(this.floatingOrigin, this.cameraSystem.mapMode);
-    this.syncMarkers(dt, this.floatingOrigin);
+    this.syncMarkers(dt, this.floatingOrigin, displayTime);
 
     this._hud.panels.update(this, dt);
     this._hud.tick();
@@ -392,25 +373,24 @@ export class Game {
     };
   }
 
-  private syncMarkers(dt: number, fo: FloatingOrigin): void {
+  private syncMarkers(dt: number, fo: FloatingOrigin, displayTime: number): void {
     const project = this.cameraSystem.activeCameraProjection;
     const mapMode = this.cameraSystem.mapMode;
     const simTime = this.simulator.simTime;
     const orbitPeriod = this.player.elements?.period ?? null;
-    const duration = this.predict.predictDurationSec(orbitPeriod);
 
     // 戦闘ビューの計画軌道ライン(mapMode 中は隠すが毎フレーム呼ぶ)。
     this.guide.syncPlannedLine(this.editor.plan, fo, mapMode);
-    // 予測折れ線とノードギズモは editor が自分の traj/gizmo を駆動 or 後始末する。表示座標系
-    // (frame)とギズモの画面基準(mapDist)は camera 側の状態なので game が渡す。
+    // 予測折れ線とノードギズモは editor が自分の traj/gizmo を駆動 or 後始末する。表示期間と
+    // 表示座標系(frame)は predict 側、ギズモの画面基準(mapDist)は camera 側の状態で game が渡す。
     this.editor.syncDisplay(
-      mapMode, fo, simTime, duration,
-      this.cameraSystem.mapCamera.cameraFrame, this.cameraSystem.mapCamera.dist,
+      mapMode, fo, simTime, this.predict.durationSec(orbitPeriod),
+      this.predict.trajectoryFrame, this.cameraSystem.mapCamera.dist,
     );
     if (mapMode) {
-      // 未来ゴースト(predict)は B-2 の sampleAt/toDisplay を、マップラベル(camera)は表示期間を受ける。
-      this.predict.syncGhost((t) => this.editor.traj.sampleAt(t), (r, t) => this.editor.traj.toDisplay(r, t), orbitPeriod, simTime, project);
-      this.cameraSystem.syncMapLabels(simTime, this.ephemeris, duration, this.predict.sliderT);
+      // 未来ゴースト(predict)は B-2 の sampleAt/toDisplay を、マップラベル(camera)は表示時刻を受ける。
+      this.predict.sync((t) => this.editor.traj.sampleAt(t), (r, t) => this.editor.traj.toDisplay(r, t), orbitPeriod, simTime, project);
+      this.cameraSystem.syncMapLabels(displayTime);
     } else {
       this.predict.hide();
     }

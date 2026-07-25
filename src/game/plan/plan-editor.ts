@@ -329,8 +329,6 @@ export class PlanEditor {
   // マップ表示中のノード編集ロジック(game.ts が editMode 中に毎フレーム呼ぶ。時間・物理は
   // Game.update() 側で通常どおり進み続ける)。選択中ノードの Δv 調整と計画パネルの反映を行う。
   // クリック/右クリックによるノード配置・メニュー呼び出しは game.ts が dispatch する。
-  // ツールバー(期間・座標系・スライダー・フォーカス)は predict/camera 側の状態なので
-  // predictSystem が別途反映する — editor は経由しない。
   updateEditing(dt: number, simTime: number, input: Input): void {
     const arriving = this.nodeArrivings();
     // Δv 調整(推進キーを流用、[V] で微調整)。選択中ノードがあるときのみ。実行後速度
@@ -382,8 +380,9 @@ export class PlanEditor {
   }
 
   // 毎フレーム(sync 時)呼ぶ。マップ表示中は予測折れ線とノードギズモを駆動し、非表示中は
-  // 後始末する。予測折れ線の frame(表示座標系)・mapDist(ギズモの画面基準)は camera 側の
-  // 状態で、game が渡す。予測の未来ゴースト(predict)・マップラベル(camera)は game が別途駆動する。
+  // 後始末する。duration(表示期間)と frame(予測軌道の表示座標系)は predict 側、mapDist
+  // (ギズモの画面基準)は camera 側の状態で、いずれも game が渡す。予測の未来ゴースト
+  // (predict)・マップラベル(camera)は game が別途駆動する。
   syncDisplay(mapMode: boolean, fo: FloatingOrigin, simTime: number, duration: number, frame: Frame, mapDist: number): void {
     if (!mapMode) {
       this.traj.setVisible(false);

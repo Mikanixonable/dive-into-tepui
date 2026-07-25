@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
-import { MapToolbar } from '../hud/map-toolbar';
 import { Sfx } from '../../audio/sfx';
 import { ChaseCamera } from './chase-camera';
 import { MapCamera } from './map-camera';
+import { MapViewPanel } from './map-view-panel';
 import { PipCamera } from './pip-camera';
 import { MapMarkers } from './map-markers';
 import { FocusGizmo } from './focus-gizmo';
@@ -19,10 +19,14 @@ import type { Ephemeris } from '../../physics/ephemeris';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 
+// マップ視点パネルに常用のフォーカス先として並べるラベル ID。残りのラベル(ラグランジュ点など)へは
+// ラベル右クリックのメニュー(FocusGizmo)からフォーカスする。
+const PANEL_FOCUS_IDS = ['earth', 'moon', 'sun'] as const;
+
 // 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する。
 // どちらも視点操作のみの責務のカメラで、このクラスが対称に内部保持する。
-// マップモードのフォーカス候補(mapMarkers)とその選択 UI(focusGizmo)は「どこを注視
-// するか」= mapCamera 寄りの責務なので、ここが所有する。フォーカス選択メニューの
+// マップモードのフォーカス候補(mapMarkers)とその選択 UI(focusGizmo / mapViewPanel)は
+// 「どこを注視するか」= mapCamera 寄りの責務なので、ここが所有する。フォーカス選択メニューの
 // ノードメニューとの排他(右クリックの取り合い)は上位(game.ts)が調停する。
 export class CameraSystem {
   readonly chaseCamera: ChaseCamera;
@@ -30,17 +34,19 @@ export class CameraSystem {
   readonly pipCamera = new PipCamera();
   readonly mapMarkers: MapMarkers;
   private readonly focusGizmo = new FocusGizmo();
+  // マップ視点の操作パネル(注視対象・視点の座標系・視点リセット)。映すのも受けるのも
+  // mapCamera の状態だけなので、この HUD 配線はここに閉じる。
+  private readonly mapViewPanel: MapViewPanel;
   mapMode = false;
   zoomActive = false;
 
   constructor(
     private readonly _hud: Hud,
-    mapToolbar: MapToolbar,
     sfx: Sfx,
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
   ) {
-    this.mapMarkers = new MapMarkers(markerManager);
+    this.mapMarkers = new MapMarkers(markerManager, ephemeris);
     this.chaseCamera = new ChaseCamera(_hud, sfx);
     this.mapCamera = new MapCamera(_hud, sfx, this.mapMarkers, ephemeris);
     this.focusGizmo.onMenuFocus = (targetKey) => {
@@ -48,23 +54,23 @@ export class CameraSystem {
       const lbl = this.mapMarkers.findLabel(targetKey);
       if (lbl) this._hud.hint(`${lbl.name} にフォーカス`);
     };
-    // マップツールバーのうち視点側の操作(フォーカス選択・視点リセット・表示座標系トグル)は
-    // camera 側の状態なので、この HUD 配線はここが持つ。cameraFrame は予測折れ線の描画座標系も
-    // 兼ねるが正データは MapCamera が一手に持ち、predict はそれを読むだけ。
-    mapToolbar.onMapFocusSelect = (focus) => {
+    this.mapViewPanel = new MapViewPanel(_hud.root, PANEL_FOCUS_IDS.map(
+      (id) => [id, this.mapMarkers.findLabel(id)?.name ?? id] as const,
+    ));
+    this.mapViewPanel.onFocusSelect = (focus) => {
       this.mapCamera.focus = focus;
       this.mapCamera.resetPan();
     };
-    mapToolbar.onMapViewReset = () => this.mapCamera.reset();
-    mapToolbar.onFrameSelect = (frame: Frame) => {
+    this.mapViewPanel.onViewReset = () => this.mapCamera.reset();
+    this.mapViewPanel.onFrameSelect = (frame: Frame) => {
       this.mapCamera.cameraFrame = frame;
     };
   }
 
   // マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)の座標を更新し
-  // マーカーへ反映する。表示期間 duration とスライダー sliderT は predict 側の状態で game が渡す。
-  syncMapLabels(simTime: number, ephemeris: Ephemeris, duration: number, sliderT: number): void {
-    this.mapMarkers.syncLabels(simTime, ephemeris, duration, sliderT, this.activeCameraProjection);
+  // マーカーへ反映する。displayTime は未来ゴーストスライダーを織り込んだ表示時刻で game が渡す。
+  syncMapLabels(displayTime: number): void {
+    this.mapMarkers.syncLabels(displayTime, this.activeCameraProjection);
   }
 
   mapLabelIds(): string[] {
@@ -132,6 +138,14 @@ export class CameraSystem {
     if (this.mapMode) this.mapCamera.sync(fo);
     else this.chaseCamera.sync(fo);
     this.pipCamera.sync(fo);
+    // 視点パネルはマップモード中だけ表示し、点灯状態を mapCamera の現状へ揃える。フォーカスは
+    // ラベル右クリックからも、座標系はリセットからも変わるので、変化点ごとの通知ではなく
+    // 毎フレームここで押し出す(同値なら DOM は変わらない)。
+    this.mapViewPanel.setVisible(this.mapMode);
+    if (this.mapMode) {
+      this.mapViewPanel.setFocus(this.mapCamera.focus);
+      this.mapViewPanel.setFrame(this.mapCamera.cameraFrame);
+    }
   }
 
 
