@@ -1,19 +1,14 @@
-// マップモードの複数ノード・時間ベース軌道計画のための数値予測(純粋関数、
-// THREE/DOM 非依存)。中心重力 + J2 + 月・太陽の第三体摂動で RK4 積分する。
-// 大気抵抗は意図的に省略する(計画ツールであることに加え、高度200km以上では
-// 抵抗による軌道変化が予測期間(最大28日)に対して無視できるほど小さいため)。
+// 時間ベース軌道の数値予測プリミティブ(純粋関数、THREE/DOM 非依存)。中心重力 + J2 +
+// 月・太陽の第三体摂動で RK4 積分する。大気抵抗は意図的に省略する(計画ツールであることに
+// 加え、高度200km以上では抵抗による軌道変化が予測期間(最大28日)に対して無視できるほど
+// 小さいため)。
+//
+// 扱うのは単一 arc の自由伝播だけ — マニューバノードによる区間分割は知らない。それは
+// plan 側の責務で、plan-editor / plan-trajectory がノード境界ごとにこのプリミティブを呼ぶ。
 import { ExtraAccel, OrbitState, orbitState, stepOrbitRK4 } from './orbital';
 import { Ephemeris } from './ephemeris';
 import { envAccelInto } from './envaccel';
 import { Vec3, clone, cross, len, norm, v3 } from './vec3';
-
-// 軌道計画の「曲がり角」= 実行時刻とその直後の絶対状態(r,v とも凍結)。相対 Δv では
-// なく実行後の状態そのものを正データとして持つ — r の再計算は予測依存かつ積分誤差を
-// 伴い、軽微な導出値ではないため。Δv は導出値(= postState.v − 到達時の速度)。
-export interface PlannedNode {
-  time: number; // 実行時刻(絶対 simTime)[s]
-  postState: OrbitState; // 実行(噴射)直後の絶対状態
-}
 
 export interface TrajectorySample {
   t: number; // 絶対 simTime [s]
@@ -28,7 +23,7 @@ function envAccel(sunPos: Vec3, moonPos: Vec3): ExtraAccel {
 }
 
 // state を dt だけ前進させる(中点 t+dt/2 の太陽・月位置で環境加速度を評価)。
-// predictTrajectory と arrivingStates が共有する 1 ステップ。
+// predictTrajectory と propagateState が共有する 1 ステップ。
 function stepPredict(state: OrbitState, t: number, dt: number, ephemeris: Ephemeris): void {
   const mid = t + dt / 2;
   const accel = envAccel(ephemeris.sunPosAt(mid), ephemeris.moonPosAt(mid));
@@ -63,79 +58,42 @@ export function predictStepDt(r: number, duration: number): number {
   return Math.max(5, Math.min(600, (r / 8e5) * coarsen));
 }
 
-// アンカー(予定 player の起点 state0, t0)から duration 秒ぶん RK4 で数値予測する。
-// 各ノード時刻で状態を node.postState(実行後の絶対状態)へ**リセット**して継続する
-// — これにより予測は player.live に依存せず、各アークは自分の起点(アンカー or
-// 前ノードの postState)から独立に積分される。到達点と postState がずれている場合
-// (積分誤差・アンカー逸脱)、その不連続は折れ線に正直に現れる。
-// サンプルは概ね maxSamples 個になるよう間引いて保持する(低軌道でも 28日 = 数万
-// ステップになり得るため、全ステップ保持は描画・ピッキングのコストが無視できなくなる)。
+// state0(時刻 t0)から duration 秒ぶん、大気抵抗なしで自由伝播した軌道点列を RK4 で
+// 数値予測する。サンプルは概ね maxSamples 個になるよう間引いて保持する(低軌道でも
+// 28日 = 数万ステップになり得るため、全ステップ保持は描画・ピッキングのコストが無視
+// できなくなる)。マニューバノードによる区間分割は行わない — 呼び出し側(plan)が
+// arc ごとにこの関数を呼ぶ。
 export function predictTrajectory(
   state0: OrbitState,
   t0: number,
   duration: number,
-  nodes: readonly PlannedNode[],
   ephemeris: Ephemeris,
   maxSamplesOpt?: number, // 保持するサンプル数の上限(既定 2000)
 ): TrajectorySample[] {
   if (duration <= 0) return [{ t: t0, r: clone(state0.r), v: clone(state0.v) }];
 
-  const sorted = nodes
-    .filter((n) => n.time > t0 && n.time <= t0 + duration)
-    .slice()
-    .sort((a, b) => a.time - b.time);
   const maxSamples = Math.max(10, maxSamplesOpt ?? 2000);
   const tEnd = t0 + duration;
-
-  let r = clone(state0.r);
-  let v = clone(state0.v);
+  const state = orbitState(clone(state0.r), clone(state0.v));
   let t = t0;
-  let nodeIdx = 0;
 
   // 平均刻み幅からステップ総数を概算し、間引き間隔を決める(2回積分せずに済むよう
   // 開始時の動径から見積もる。動径が大きく変わる軌道(高楕円等)では粗い見積もりに
   // なるが、間引きは表示密度の問題でしかないため実用上問題ない)。
-  const estSteps = Math.max(1, Math.ceil(duration / predictStepDt(len(r), duration)));
+  const estSteps = Math.max(1, Math.ceil(duration / predictStepDt(len(state.r), duration)));
   const storeEvery = Math.max(1, Math.floor(estSteps / maxSamples));
 
-  const samples: TrajectorySample[] = [{ t, r: clone(r), v: clone(v) }];
+  const samples: TrajectorySample[] = [{ t, r: clone(state.r), v: clone(state.v) }];
   let sinceStore = 0;
 
   while (t < tEnd - 1e-6) {
-    let dt = predictStepDt(len(r), duration);
-    let hitNode = false;
-    if (nodeIdx < sorted.length && sorted[nodeIdx]!.time - t <= dt) {
-      dt = Math.max(0, sorted[nodeIdx]!.time - t);
-      hitNode = true;
-    }
-    dt = Math.min(dt, tEnd - t);
-
-    if (dt > 1e-9) {
-      const state = orbitState(r, v);
-      stepPredict(state, t, dt, ephemeris);
-      r = state.r;
-      v = state.v;
-      t += dt;
-      sinceStore++;
-    } else if (hitNode) {
-      t = sorted[nodeIdx]!.time;
-    }
-
-    if (hitNode) {
-      const node = sorted[nodeIdx]!;
-      // 到達(噴射前)サンプル → 実行後の絶対状態へリセット → 実行後サンプル。
-      // 両者が異なれば折れ線に不連続(噴射・逸脱)として現れる。
-      samples.push({ t, r: clone(r), v: clone(v) });
-      r = clone(node.postState.r);
-      v = clone(node.postState.v);
-      nodeIdx++;
-      samples.push({ t, r: clone(r), v: clone(v) });
-      sinceStore = 0;
-      continue;
-    }
-
+    const dt = Math.min(predictStepDt(len(state.r), duration), tEnd - t);
+    if (dt <= 1e-9) break;
+    stepPredict(state, t, dt, ephemeris);
+    t += dt;
+    sinceStore++;
     if (sinceStore >= storeEvery || t >= tEnd - 1e-9) {
-      samples.push({ t, r: clone(r), v: clone(v) });
+      samples.push({ t, r: clone(state.r), v: clone(state.v) });
       sinceStore = 0;
     }
   }
@@ -143,38 +101,24 @@ export function predictTrajectory(
   return samples;
 }
 
-// 各ノードに到達する直前(噴射前)の状態を 1 パスで求める。arc の起点はアンカー
-// (state0, t0)、以降は前ノードの postState。返り値[i] は nodes[i] の到達状態。
-// editor が Δv 表示(= node.postState.v − arriving[i].v)を導出するのに使う
-// (ノード自体は Δv を正データに持たず、postState だけを持つ)。
-export function arrivingStates(
+// state0(時刻 t0)を targetT まで自由伝播した最終状態だけを返す(サンプルは保持しない)。
+// plan がノード到達直前(噴射前)の状態 = Δv 導出の基準を得るのに使う。predictTrajectory と
+// 同じ刻み系列で積分するので、両者の終端は一致する。
+export function propagateState(
   state0: OrbitState,
   t0: number,
-  nodes: readonly PlannedNode[],
+  targetT: number,
   ephemeris: Ephemeris,
-): OrbitState[] {
-  const out: OrbitState[] = [];
-  let r = clone(state0.r);
-  let v = clone(state0.v);
+): OrbitState {
+  const state = orbitState(clone(state0.r), clone(state0.v));
   let t = t0;
-  for (let i = 0; i < nodes.length; i++) {
-    const targetT = nodes[i]!.time;
-    while (t < targetT - 1e-6) {
-      const dt = Math.min(predictStepDt(len(r), targetT - t0), targetT - t);
-      if (dt <= 1e-9) break;
-      const state = orbitState(r, v);
-      stepPredict(state, t, dt, ephemeris);
-      r = state.r;
-      v = state.v;
-      t += dt;
-    }
-    out.push(orbitState(clone(r), clone(v)));
-    // 次アークはこのノードの postState から始まる。
-    r = clone(nodes[i]!.postState.r);
-    v = clone(nodes[i]!.postState.v);
-    t = targetT;
+  while (t < targetT - 1e-6) {
+    const dt = Math.min(predictStepDt(len(state.r), targetT - t0), targetT - t);
+    if (dt <= 1e-9) break;
+    stepPredict(state, t, dt, ephemeris);
+    t += dt;
   }
-  return out;
+  return state;
 }
 
 // samples から時刻 t の状態を二分探索 + 線形補間で求める(範囲外は端にクランプ)。

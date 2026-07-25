@@ -5,7 +5,7 @@
 import * as C from './const';
 import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
-import { PlannedNode } from '../physics/predict';
+import { PlannedNode } from './plan/plan';
 
 export class SimSpeedManager {
   private levelIdx = 0;

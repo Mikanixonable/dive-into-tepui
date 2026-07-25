@@ -16,16 +16,13 @@
 // 合わせて足す — 現consumerに不要な一般化をここで先取りしない。
 import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital';
-import { PlannedNode, TrajectorySample, predictTrajectory } from '../../physics/predict';
+import { TrajectorySample, predictTrajectory } from '../../physics/predict';
 import { Vec3, clone } from '../../physics/vec3';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { FloatingOrigin } from '../floating-origin';
 import { SampledLine } from '../../render/sampled-line';
 import * as C from '../const';
-
-// 単 arc = ノードなし。共有の空配列で predictTrajectory へ渡す(再確保を避ける)。
-const NO_NODES: readonly PlannedNode[] = [];
 
 // 再計算判定に使う、前回計算時の入力スナップショット。state0 は比較用に r,v だけ控える
 // (慣性系ブランドは持たない素の値でよい)。
@@ -72,7 +69,7 @@ export class PredictedLine {
       const now = performance.now();
       const throttle = edited ? C.PREDICT_DIRTY_THROTTLE_MS : C.PREDICT_REFRESH_INTERVAL_MS;
       if (force || now - this.lastComputeMs >= throttle) {
-        this.samples = predictTrajectory(state0, start, Math.max(0, end - start), NO_NODES, ephemeris, maxSamples);
+        this.samples = predictTrajectory(state0, start, Math.max(0, end - start), ephemeris, maxSamples);
         this.key = { state0: { r: clone(state0.r), v: clone(state0.v) }, start, end, maxSamples };
         this.lastComputeMs = now;
       }
