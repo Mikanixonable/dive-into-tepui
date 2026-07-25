@@ -27,6 +27,7 @@ import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
+import { Ephemeris } from '../physics/ephemeris';
 import { MapModeToggler } from './map-mode-toggler';
 
 export class Game {
@@ -38,13 +39,17 @@ export class Game {
   private readonly _hud = new Hud();
   private readonly _sfx = new Sfx();
   private readonly markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
+  // 太陽・月の天体暦(状態を持たない純サンプラ)。environment/simulator/cameraSystem/
+  // planSystem がこの単一インスタンスを共有参照する。cameraSystem など field initializer で
+  // 注入する先より前に確定させる必要があるため、ここで最初に構築する。
+  private readonly ephemeris = new Ephemeris();
   // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
   // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/simulator/targeter 等)は
   // public にする。planSystem のコンストラクタで MapCamera・mapMarkers への参照を注入する
   // ため、cameraSystem は planSystem より前に構築する必要がある。
   // マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)とその選択 UI は
   // 「どこを注視するか」= mapCamera 寄りの責務なので cameraSystem が所有する。
-  readonly cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager);
+  readonly cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager, this.ephemeris);
   readonly player: Player;
   // ?perf=1 のデバッグ表示用エンティティ数。
   perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
@@ -78,8 +83,8 @@ export class Game {
   readonly activeStage: Stage;
   paused = false;
 
-  // 天体暦(太陽・月の位置と日照率)・空の天体・参照軌道線をまとめて所有する描画系。
-  // ephemeris インスタンスの保持もここ(environment.ephemeris)に集約する。
+  // 空の天体・地球・環境光・参照軌道線をまとめて所有する描画系。天体暦は上の ephemeris を
+  // 共有参照する(所有はしない)。
   private readonly environment: EnvironmentScene;
 
   private readonly unlockManager = new UnlockManager();
@@ -102,8 +107,7 @@ export class Game {
     this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
     this.pipRenderer = new PipRenderer(this._scene);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
-    // environment が ephemeris を所有するので、それに依存する simulator/planSystem より先に構築する。
-    this.environment = new EnvironmentScene(this._scene);
+    this.environment = new EnvironmentScene(this._scene, this.ephemeris);
     this.planSystem = new PlanSystem(
       this._hud,
       this._sfx,
@@ -114,7 +118,7 @@ export class Game {
       this.cameraSystem.mapMarkers,
       this._scene,
       () => this.player.fineAttitude,
-      () => this.environment.ephemeris,
+      this.ephemeris,
     );
     // ノードハンドル直接右クリックは、canvas 右クリックと同じフォールバック調停に流す。
     this.planSystem.onNodeHandleRightClick = (x, y) => this.dispatchMapRightClick(x, y);
@@ -125,7 +129,7 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.wireHudCallbacks();
 
-    this.simulator = new Simulator(this.environment.ephemeris, this.hitSystem);
+    this.simulator = new Simulator(this.ephemeris, this.hitSystem);
 
     this.player = new Player(this._hud, this._sfx, this._scene, this.effects);
 
@@ -218,7 +222,7 @@ export class Game {
     // sync 時のフローティングオリジン(積分後の自機位置)と一致していなければならない。
     this.cameraSystem.update(
       this.player,
-      this.environment.ephemeris.sunAzimuthAt(this.simulator.simTime),
+      this.simulator.simTime,
       this.input,
       dt,
     );
@@ -354,7 +358,7 @@ export class Game {
     const project = this.cameraSystem.activeCameraProjection;
     const mapMode = this.cameraSystem.mapMode;
 
-    this.planSystem.updateDisplay(mapMode, fo, this.player, this.environment.ephemeris, this.simulator.simTime);
+    this.planSystem.updateDisplay(mapMode, fo, this.player, this.ephemeris, this.simulator.simTime);
 
     this.environment.syncReferenceLines(this.simulator.simTime, fo, mapMode);
 

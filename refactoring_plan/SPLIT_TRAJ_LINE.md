@@ -194,7 +194,6 @@ HUD の `onFrameToggle` は UX 既定として①②を同期トグルするだ�
 - 現 `frameRotating`（map-camera）を **① `mapCamera.fixOnRotatingFrame`（カメラ側）／② 軌道側 frame enum** へ分割。HUD `onFrameToggle` は UX 既定として両者を同期トグル。
 - `predict-system.toDisplayFrame`/`bindDisplayFrame` を XX の部分適用へ差し替え。**bake は `toFrame`（頂点）、un-bake は毎フレームの `group.rotation.y`（`toInertial` の回転 = `sunAz(simTime)`）に移し、`trajYawRef` の凍結を除去。**
 - ※ 挙動: §1-2 の 2 秒鋸歯・トグル一過性破綻が消える（改善）。near-end が現在位置に一致する挙動は維持（un-bake がそれを担保）。定常表示は実質不変。
-- 目視検証（verify skill）: ①②を個別トグルした見え方、time warp 中に描画・picking がずれないこと、frameRotating トグルの即時反映。
 
 ### Step 1 — X（SampledLine）を新設
 - `TrajLine` の汎用部（`rebuild`/`clear`/`setOrigin`/`setVisible`/`dispose`）を `src/render/sampled-line.ts` へ移し **単色化**。

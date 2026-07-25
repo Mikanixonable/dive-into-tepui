@@ -13,6 +13,7 @@ import { Player } from '../player/player';
 import { FloatingOrigin } from '../floating-origin';
 import { Vec3 } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
+import type { Ephemeris } from '../../physics/ephemeris';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 
@@ -34,10 +35,11 @@ export class CameraSystem {
     private readonly _hud: Hud,
     sfx: Sfx,
     markerManager: MarkerManager,
+    ephemeris: Ephemeris,
   ) {
     this.mapMarkers = new MapMarkers(markerManager);
     this.chaseCamera = new ChaseCamera(_hud, sfx);
-    this.mapCamera = new MapCamera(_hud, sfx, this.mapMarkers);
+    this.mapCamera = new MapCamera(_hud, sfx, this.mapMarkers, ephemeris);
     this.focusGizmo.onMenuFocus = (targetKey) => {
       this.mapCamera.focus = targetKey;
       const lbl = this.mapMarkers.findLabel(targetKey);
@@ -79,7 +81,7 @@ export class CameraSystem {
 
   update(
     player: Player,
-    sunAz: number,
+    simTime: number,
     input: Input,
     dt: number,
   ): void {
@@ -90,7 +92,7 @@ export class CameraSystem {
     const mouse = input.mouse();
 
     if (this.mapMode) {
-      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, sunAz);
+      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, simTime);
     }
     else {
       this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, player, this.zoomActive);
