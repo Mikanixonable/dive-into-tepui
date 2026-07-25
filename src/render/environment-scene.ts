@@ -97,10 +97,12 @@ export class EnvironmentScene {
     // lit は自機位置の日照率(円柱影の近似)。物理的に正確ではない。
     const lit = cameraSystem.mapMode ? 1.0 : this.shadowLitFactor(player.state.r, this.ephemeris.sunDirAt(displayTime));
     this.syncLighting(lit);
+
+    this.syncReferenceLines(displayTime, floatingOrigin, cameraSystem.mapMode);
   }
 
   // マップモード中だけ geo/moon の参照線を表示する(戦闘ビューでは非表示)。
-  syncReferenceLines(simTime: number, fo: FloatingOrigin, mapMode: boolean): void {
+  private syncReferenceLines(simTime: number, fo: FloatingOrigin, mapMode: boolean): void {
     if (!mapMode) {
       this.geoLine.sync(null, fo);
       this.moonLine.sync(null, fo);

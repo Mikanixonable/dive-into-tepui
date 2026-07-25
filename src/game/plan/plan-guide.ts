@@ -30,8 +30,14 @@ export class PlanGuide {
     player: Player,
     simTime: number,
     simSpeedManager: SimSpeedManager,
+    editMode: boolean,
     project: ProjectFn,
   ) {
+    if (editMode) {
+      this.markerManager.hide('burn');
+      return;
+    }
+
     const node = plan.firstNode();
     if (!node || !player.alive) {
       this.markerManager.hide('nd');

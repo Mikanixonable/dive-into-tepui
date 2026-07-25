@@ -97,8 +97,13 @@ export class PredictSystem {
     toDisplay: ToDisplayFn,
     orbitPeriod: number | null,
     simTime: number,
+    mapMode: boolean,
     project: ProjectFn,
   ): void {
+    if (!mapMode) { // TODO: mapModeじゃないと思う。
+      this.hide();
+      return;
+    }
     this.syncGhost(sampleAt, toDisplay, orbitPeriod, simTime, project);
     this.panel.setVisible(true);
     this.panel.setDuration(this.durationKey);

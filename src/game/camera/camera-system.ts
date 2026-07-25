@@ -67,13 +67,7 @@ export class CameraSystem {
       this.mapCamera.cameraFrame = frame;
     };
   }
-
-  // マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)の座標を更新し
-  // マーカーへ反映する。displayTime は未来ゴーストスライダーを織り込んだ表示時刻で game が渡す。
-  syncMapLabels(displayTime: number): void {
-    this.mapMarkers.syncLabels(displayTime, this.activeCameraProjection);
-  }
-
+  
   mapLabelIds(): string[] {
     return this.mapMarkers.labels.map((l) => l.id);
   }
@@ -143,7 +137,7 @@ export class CameraSystem {
   // 描画用のアクティブカメラへ反映する(平行移動のみ)。マーカー投影
   // (activeCameraProjection)や environment-scene がこの THREE.js カメラ姿勢を読むため、
   // game.sync() の先頭で(それらより先に)呼ぶ。
-  sync(fo: FloatingOrigin): void {
+  sync(fo: FloatingOrigin, displayTime: number): void {
     if (this.mapMode) this.mapCamera.sync(fo);
     else this.chaseCamera.sync(fo);
     this.pipCamera.sync(fo);
@@ -154,6 +148,7 @@ export class CameraSystem {
     if (this.mapMode) {
       this.mapViewPanel.setFocus(this.mapCamera.focus);
       this.mapViewPanel.setFrame(this.mapCamera.cameraFrame);
+      this.mapMarkers.syncLabels(displayTime, this.activeCameraProjection);
     }
   }
 

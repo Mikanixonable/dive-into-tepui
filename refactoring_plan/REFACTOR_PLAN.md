@@ -46,28 +46,27 @@ THREE系のバッファが作れていない？　心なしかFPSも全体的に
 
 ## 大型のリファクタリング問題
 
-## game.syncMarkersや、MarkerForGameの解体
-MarkerForGameが集約しているがために、「場当たり的な引数オブジェクト」に該当するmarkerCtxが生えていて、良くない。
-syncMarkersが雑多な事項を直接実装していて、Gameへの責務量出が甚だしい。個別のモジュールのsyncに移動すべき。
-（> 
+## MarkerForGameの解体
+MarkerForGameが集約しているがために、「場当たり的な引数オブジェクト」に該当するmarkerCtxが生えていて、良くない。markerForGameのためにGameが様々な情報を明け渡していて、責務量出が甚だしい。個別のモジュールのsyncに移動すべき。
 
-マーカーについては、原則として、各オブジェクトに自分のマーカーを管理する責務を持たせるべき。
-GUI（DOMパネル）と同様にマーカーの管理責任を各オブジェクトで自己管理するよう分配できるか適用できるかが論点。
-適用できるなら「マーカーは、その位置を決める状態の所有者が置く」になる。
-各オブジェクトのsyncを呼べばmarkerも更新されるようにする。syncとsyncMarkerを両方公開するべきではない。
+マーカーについては、原則として、各オブジェクトに自分のマーカーを管理する責務を持たせるべき。predictのghostMarkerなどはそうしている。各オブジェクトのsyncを呼ぶだけで、ばmarkerも更新されるようにする。syncとsyncMarkerを両方公開するべきではない。
 
-playerの位置や向きはplayerに、targetの位置を表示するマーカーはtargeterに、分散すべき。(playerの責務がやや増えてきてはいる。増えてきたら下位に委譲すべき)
+各モジュールのsyncの引数には、たいていの場合projectが増えることとなる。（現在floatingOriginを引数にしているのと同様に）。entityの基底syncからこれを一貫すべき。
+
+playerの位置や向きに依存するものはplayerに、targetの位置を表示するマーカーはtargeterに、分散すべき。(playerの責務がやや増えてきてはいる。増えてきたら下位に委譲すべき)
 
 例外として、Enemyの表示がある。これに関しては、「距離が近い複数をまとめる」という処理になっていて、これは単独のEnemyでは決定できない。しかし、この「集団を一つのmarkerにまとめる」という処理自体が、一つのモジュールを立てるに足る責務であり、そのモジュールはmarkerForGameのようななんでも屋さんであってはいけない。
-
 また、将来的に、Enemy以外についても「まとめる」という処理をしたくなるかもしれないから、再利用性の高い「まとめる」モジュールを作るのが良いだろう。
 
-1. Enemyに限らず使える、GroupedMarkersを作り、markerForGameの一部責務を分散する。
-2. enemymarkers:GroupedMarkersをgameに置き、gameからsyncを呼ぶだけで済むようにする。
-2. markerForGameに残った責務と、game.syncMarkersが持っている責務を、各オブジェクトのsyncに分散する。
-3. Gameには各オブジェクト（およびのsync）のsyncを呼ぶ親syncのみを残し、個別事象には関与しない。
+また、LEADマーカーは、playerとenemyの両方に依存している。これは…EnemyともTargetterとも本質的に違う責務で、今後更新の可能性が高いので、専用モジュールに切り出す。
 
-現状、syncmarkersの持っている処理の中に、markerと関係ないものも含まれている。
+1. Enemyに限らず使える、GroupedMarkersを作り、markerForGameの一部責務を分散する。
+3. LEADマーカー専用のモジュールLeadMarkersを作り、markerForGameの一部責務を分散する。
+2. enemymarkers:GroupedMarkersやleadMarkers:LeadMarkersをgameに置き、gameからsyncを呼ぶだけで済むようにする。
+4. markerForGameに残った責務を、各オブジェクトのsyncに分散する。個別のオブジェクトがsyncと別にsyncMarker的な関数を持っている場合、syncMarkerを公開するのをやめ、syncから呼び出す。
+5. Gameには各オブジェクト（およびGroupMarkersのsync）のsyncを呼ぶ親syncのみを残す。
+
+これで雑多モジュールであるMarkerForGameを解体できるはず。
 
 ## markerManagerの実装問題（挙動修正を含む）
 マーカーの表示位置が微妙にずれる
@@ -164,6 +163,12 @@ hud、sfx注入パターンのなかで今後必要なくなる可能性が高�
 
 ## hideGizmoを継続して呼ぶ必要ある？
 
+## cameraSystemのmapModeとpredictのdisplayTimeが相互に依存している
+そもそも別のモジュールなので、フラグが同一視されている問題がまずい。、疎結合にすべきだ（カメラがマップモードかどうかにかかわらず、未来視できるようにするのは…うーん）
+
+とりあえず、未来視を禁止するフラグとマップモードフラグが同一視されているのがまずいので、predict側に「現在を強制=未来視を禁止」フラグを持たせ、mapModeTogglerがcameraSystem.mapModeとセットで切り替える。
+
+predict.syncはmapModeによって処理を打ち切っているが、mapModeフラグを見過ぎている。どっちかというと「未来を表示しているかどうか」や、「planが空でないか（planが空ならplayerの計画位置と現在位置が同じなので、未来視の表示は不要）」や、あるいは「playerの計画位置と現在位置が十分近いか」などで判定すべきじゃないか。
 
 
 # 将来的な追加機能、UX改善

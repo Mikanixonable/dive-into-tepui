@@ -284,12 +284,14 @@ export class Game {
 
     // カメラ姿勢を THREE.js に反映するのを最初に行う: environment.sync や
     // マーカー投影(activeCameraProjection)がこのフレームのカメラ行列を読むため。
-    this.cameraSystem.sync(this.floatingOrigin);
     const displayTime = this.predict.resolveDisplayTime(
       this.cameraSystem.mapMode,
       this.player.elements?.period ?? null,
       this.simulator.simTime,
     );
+
+    this.cameraSystem.sync(this.floatingOrigin, displayTime);
+
     this.environment.sync({
       dt,
       player: this.player,
@@ -302,10 +304,18 @@ export class Game {
 
     this.simulator.sync(this.floatingOrigin);
 
-    this.effects.syncFlashEffects(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
-    
+    this.effects.sync(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
+
     this.targeter.sync(dt, this.floatingOrigin, this.simulator.enemies, this.cameraSystem.mapMode, this.cameraSystem.activeCameraProjection);
-    this.syncMarkers(this.floatingOrigin, displayTime);
+
+    const simTime = this.simulator.simTime;
+    const orbitPeriod = this.player.elements?.period ?? null;
+    const predictDuration = this.predict.durationSec(orbitPeriod);
+
+    this.editor.sync(
+      this.floatingOrigin, simTime, predictDuration,
+      this.predict.trajectoryFrame, this.cameraSystem.mapCamera.dist,
+    );
 
     // 自機のモード状態を映す先が2つある(HUD ステータスパネルとタッチUIのトグルボタン)。
     // どちらも表示側なので、状態の所有者から見て対称になるようここで両方へ渡す。
@@ -314,6 +324,24 @@ export class Game {
 
     this._hud.panels.update(this, dt);
     this._hud.tick();
+
+    const project = this.cameraSystem.activeCameraProjection;
+    const mapMode = this.cameraSystem.mapMode;
+
+    // 未来ゴースト(predict)は B-2 の sampleAt/toDisplay を、マップラベル(camera)は表示時刻を受ける。
+    this.predict.sync(
+      (t) => this.editor.traj.sampleAt(t),
+      (r, t) => this.editor.traj.toDisplay(r, t),
+      orbitPeriod,
+      simTime,
+      mapMode,
+      project);
+
+    this.MarkerForGame.updateMarkers(this.markerCtx(), project);
+    this.MarkerForGame.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
+
+    this.guide.update(this.editor.plan, this.player, simTime, this.simSpeedManager, this.editor.editMode, project);
+
   }
 
   // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
@@ -327,37 +355,6 @@ export class Game {
       mapLabelIds: this.cameraSystem.mapLabelIds(),
       simTime: this.simulator.simTime,
     };
-  }
-
-  private syncMarkers(fo: FloatingOrigin, displayTime: number): void {
-    const project = this.cameraSystem.activeCameraProjection;
-    const mapMode = this.cameraSystem.mapMode;
-    const simTime = this.simulator.simTime;
-    const orbitPeriod = this.player.elements?.period ?? null;
-
-    // 予測折れ線とノードギズモは editor が自分の traj/gizmo を駆動 or 後始末する。表示期間と
-    // 表示座標系(frame)は predict 側、ギズモの画面基準(mapDist)は camera 側の状態で game が渡す。
-    this.editor.syncDisplay(
-      mapMode, fo, simTime, this.predict.durationSec(orbitPeriod),
-      this.predict.trajectoryFrame, this.cameraSystem.mapCamera.dist,
-    );
-    if (mapMode) {
-      // 未来ゴースト(predict)は B-2 の sampleAt/toDisplay を、マップラベル(camera)は表示時刻を受ける。
-      this.predict.sync((t) => this.editor.traj.sampleAt(t), (r, t) => this.editor.traj.toDisplay(r, t), orbitPeriod, simTime, project);
-      this.cameraSystem.syncMapLabels(displayTime);
-    } else {
-      this.predict.hide();
-    }
-
-    this.environment.syncReferenceLines(simTime, fo, mapMode);
-
-    this.MarkerForGame.updateMarkers(this.markerCtx(), project);
-    this.MarkerForGame.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
-    if (mapMode) {
-      this.markerManager.hide('burn');
-    } else {
-      this.guide.update(this.editor.plan, this.player, simTime, this.simSpeedManager, project);
-    }
   }
 
   // ------------------------------------------------------------------ render
@@ -379,7 +376,7 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ debug
-  
+
   // ?perf=1 のデバッグ表示用エンティティ数。
   perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
     return {

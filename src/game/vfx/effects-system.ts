@@ -24,7 +24,8 @@ export class EffectsSystem {
     this._flashEffects = new FlashEffectManager(_scene);
   }
 
-  syncFlashEffects(dt: number, simDt: number, fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera): void {
+  sync(dt: number, simDt: number, fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera): void {
+    // debrisはsimulatorが管理するので、syncもそちらが行い、こちらではsimulatorの責務外になるflashEffectsのみ更新する
     this._flashEffects.syncFlashEffects(dt, simDt, fo, activeCamera);
   }
 
