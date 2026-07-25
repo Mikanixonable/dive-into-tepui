@@ -16,6 +16,9 @@ import { Bullet } from './bullet';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
 
+type EnvAccel = (r: Vec3, v: Vec3, sunPos: Vec3, moonPos: Vec3, out?: Vec3) => Vec3;
+
+
 export class Simulator {
   readonly enemies: Enemy[] = [];
   readonly bullets: Bullet[] = [];
@@ -29,17 +32,6 @@ export class Simulator {
   // 計算して渡す責務のみを持ち、その積算(simTime の保持・更新)はここが担う。
   simTime = 0;
   lastSimDt = 0;
-
-  // 各サブステップ開始時にサンプルする太陽・月の ECI 位置。env accel は RK4 の各段で
-  // この固定値を参照する(サブステップ内では第三体の位置を動かさない従来の挙動)。
-  private sunPosNow: Vec3 = v3();
-  private moonPosNow: Vec3 = v3();
-  private makeEnvAccel(bcInv: number): ExtraAccel {
-    return (r, v, out) => envAccelInto(out ?? v3(), r, v, this.sunPosNow, this.moonPosNow, bcInv);
-  }
-  private readonly envShip = this.makeEnvAccel(C.SHIP_BCINV);
-  private readonly envBullet = this.makeEnvAccel(C.BULLET_BCINV);
-  private readonly envSmall = this.makeEnvAccel(C.SMALL_DEBRIS_BCINV);
 
   constructor(
     private readonly ephemeris: Ephemeris,
@@ -86,10 +78,19 @@ export class Simulator {
 
   // ------------------------------------------------------------ 積分
 
+
+  private makeEnvAccel(bcInv: number): EnvAccel {
+    return (r, v, sunPos, moonPos, out) => envAccelInto(out ?? v3(), r, v, sunPos, moonPos, bcInv);
+  }
+  private readonly envShip = this.makeEnvAccel(C.SHIP_BCINV);
+  private readonly envBullet = this.makeEnvAccel(C.BULLET_BCINV);
+  private readonly envSmall = this.makeEnvAccel(C.SMALL_DEBRIS_BCINV);
+
   // entity.thrustFn(既定 null = 無推力)と環境加速度を合成する。
-  private accelFor(entity: OrbitEntity, envAccel: ExtraAccel): ExtraAccel {
+  private makeExtraAccel(entity: OrbitEntity, sunPos: Vec3, moonPos: Vec3, envAccel: EnvAccel): ExtraAccel {
     const { thrustFn } = entity;
-    return thrustFn ? (r, v) => add(thrustFn(r, v), envAccel(r, v)) : envAccel;
+    return thrustFn ? (r, v) => add(thrustFn(r, v), envAccel(r, v, sunPos, moonPos))
+     : (r, v) => envAccel(r, v, sunPos, moonPos);
   }
 
   // simDt(このフレームで積算すべきシミュレーション時間)は game.ts が
@@ -124,15 +125,15 @@ export class Simulator {
     player: Player,
     trackPrevR: boolean,
   ): number {
-    this.sunPosNow = this.ephemeris.sunPosAt(simTime);
-    this.moonPosNow = this.ephemeris.moonPosAt(simTime);
+    const sunPos = this.ephemeris.sunPosAt(simTime);
+    const moonPos = this.ephemeris.moonPosAt(simTime);
 
-    this.stepEntity(player, dt, this.envShip, trackPrevR);
-    this.enemies.forEach(e => this.stepEntity(e, dt, this.envShip, trackPrevR));
-    this.bullets.forEach(b => this.stepEntity(b, dt, this.envBullet, trackPrevR));
-    this.casings.forEach(c => this.stepEntity(c, dt, this.envSmall, false));
-    this.debris.forEach(d => this.stepEntity(d, dt, this.envSmall, false));
-    this.ammos.forEach(a => this.stepEntity(a, dt, this.envSmall, false));
+    this.stepEntity(player, dt, sunPos, moonPos, this.envShip, trackPrevR);
+    this.enemies.forEach(e => this.stepEntity(e, dt, sunPos, moonPos, this.envShip, trackPrevR));
+    this.bullets.forEach(b => this.stepEntity(b, dt, sunPos, moonPos, this.envBullet, trackPrevR));
+    this.casings.forEach(c => this.stepEntity(c, dt, sunPos, moonPos, this.envSmall, false));
+    this.debris.forEach(d => this.stepEntity(d, dt, sunPos, moonPos, this.envSmall, false));
+    this.ammos.forEach(a => this.stepEntity(a, dt, sunPos, moonPos, this.envSmall, false));
     
     player.thermal.updateThermal(dt, player.state.r, player.state.v);
     
@@ -142,12 +143,14 @@ export class Simulator {
   private stepEntity(
     entity: OrbitEntity,
     dt: number,
-    envAccel: ExtraAccel,
+    sunPos: Vec3,
+    moonPos: Vec3,
+    envAccel: EnvAccel,
     trackPrevR: boolean = false,
   ): void {
     if (!entity.alive) return;
     if (trackPrevR) entity.prevR = clone(entity.state.r);
-    stepOrbitRK4(entity.state, dt, this.accelFor(entity, envAccel));
+    stepOrbitRK4(entity.state, dt, this.makeExtraAccel(entity, sunPos, moonPos, envAccel));
   }
 
   // ------------------------------------------------------------ 回転運動
