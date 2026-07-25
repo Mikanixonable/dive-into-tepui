@@ -115,7 +115,7 @@ export abstract class Stage {
     return this.scoreCounter.totalEnemiesSpawned - this.scoreCounter.kills - this.scoreCounter.losses <= 0;
   }
   onWin(simTime: number): void {
-    showWinScreen(this._hud, this._sfx, this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, simTime);
+    showWinScreen(this._sfx, this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, simTime);
   }
 
   // HUDステータスパネルの補助表示(サバイバル波数・残り時間など)。既定は非表示。
@@ -147,6 +147,6 @@ export abstract class Stage {
   // 明示的に渡す。
   recordPlayerLost(reason: string): void {
     this.setPhase('lost');
-    showResultScreen(this._hud, this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);
+    showResultScreen(this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);
   }
 }

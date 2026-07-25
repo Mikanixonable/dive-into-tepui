@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
+import { MapToolbar } from '../hud/map-toolbar';
 import { Sfx } from '../../audio/sfx';
 import { ChaseCamera } from './chase-camera';
 import { MapCamera } from './map-camera';
@@ -34,6 +35,7 @@ export class CameraSystem {
 
   constructor(
     private readonly _hud: Hud,
+    mapToolbar: MapToolbar,
     sfx: Sfx,
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
@@ -49,12 +51,12 @@ export class CameraSystem {
     // マップツールバーのうち視点側の操作(フォーカス選択・視点リセット・表示座標系トグル)は
     // camera 側の状態なので、この HUD 配線はここが持つ。cameraFrame は予測折れ線の描画座標系も
     // 兼ねるが正データは MapCamera が一手に持ち、predict はそれを読むだけ。
-    this._hud.onMapFocusSelect = (focus) => {
+    mapToolbar.onMapFocusSelect = (focus) => {
       this.mapCamera.focus = focus;
       this.mapCamera.resetPan();
     };
-    this._hud.onMapViewReset = () => this.mapCamera.reset();
-    this._hud.onFrameSelect = (frame: Frame) => {
+    mapToolbar.onMapViewReset = () => this.mapCamera.reset();
+    mapToolbar.onFrameSelect = (frame: Frame) => {
       this.mapCamera.cameraFrame = frame;
     };
   }
