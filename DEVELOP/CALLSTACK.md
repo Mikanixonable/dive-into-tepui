@@ -68,7 +68,7 @@
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
       - hud.toggleHelp() // KeyH
       - settingsPanel.toggle() // Escape
-        - onSettingsOpenChange → game.paused に同期(ギア/[閉じる]クリック経路も同じ)
+        - onSettingsOpenChange → game.pause()/game.resume() に同期(main.ts が配線。ギア/[閉じる]クリック経路も同じ)
       - location.reload() // KeyR かつ !activeStage.isPlaying
   - mapModeToggler.update()
     - close(...) // !isPlaying && cameraSystem.mapMode のみ(死亡/終了時にマップを強制的に閉じる)
@@ -77,10 +77,7 @@
     - simulator.stepSimulation(hardCollision=false, doSubstep=false) // simSpeed は ×4 で打ち止め
       - simulationSubStep() ×1 → stepEntity() エンティティごと + player.thermal.updateThermal()
       - stepAttitudes()
-  - [game.paused] 以降を実行せず return するポーズ経路
-    - simulator.lastSimDt = 0
-    - sfx.setThrust(false)
-    - player.pause() → throttle.clearTransientState() + fire.stopFiring()
+  - [game.isPaused] 以降を実行せず return するポーズ経路
   - player.behave()
     - belt.update()
       - physics.shiftBeltNodes() // リロードで給弾量が巻き戻ったフレームのみ
