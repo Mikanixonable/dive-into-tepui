@@ -9,6 +9,7 @@ import { Enemy } from '../orbit-entity/enemy';
 import { Player } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter as scoreCounter } from './stage-utils/score-counter';
+import { StageStatusPanel } from './stage-utils/stage-status-panel';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
@@ -44,6 +45,9 @@ export abstract class Stage {
   // 補給マガジンの兵站(全ステージ共通)。Game 固有のリソース(hud/sfx/scene/simulator)を
   // 必要とするため、モジュール読み込み時ではなく setup() で構築する。
   protected logistics!: Logistics;
+  // ステージ状況パネル(HP・補助メッセージ・撃墜数)。表示内容を決めるのがステージ自身
+  // (hudSubStatus)なので、パネルもステージが持つ。logistics と同じく setup() で構築する。
+  private statusPanel!: StageStatusPanel;
 
   // setup() で受け取り私有する hud/sfx/scene(インスタンス化はステージ ID だけを
   // 持つ stage-dictionary.ts の initStage() 内で行うため、コンストラクタ注入ができず
@@ -83,6 +87,17 @@ export abstract class Stage {
     this._fx = fx;
     this._phase = 'playing';
     this.logistics = new Logistics(hud, sfx, scene, simulator.ammos, (ammo) => simulator.addAmmo(ammo));
+    this.statusPanel = new StageStatusPanel(hud.root);
+  }
+
+  // 毎フレーム(sync 時)呼ぶ。hudSubStatus() を返すステージでだけ状況パネルを表示する。
+  syncStatusPanel(player: Player): void {
+    const message = this.hudSubStatus();
+    if (message === null) {
+      this.statusPanel.hide();
+      return;
+    }
+    this.statusPanel.sync(player.hp, player.maxHp, message, this.scoreCounter.kills);
   }
 
   // 敵の生成登録(Simulator への追加 + 出撃数カウント)を一箇所にまとめる。
