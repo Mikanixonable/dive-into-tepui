@@ -38,7 +38,7 @@ export class PlanSystem {
     private readonly mapMarkers: MapMarkers,
     scene: THREE.Scene,
     private readonly getFineAttitude: () => boolean,
-    private readonly getEphemeris: () => Ephemeris,
+    private readonly ephemeris: Ephemeris,
   ) {
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager, scene);
     this.editor = new PlanEditor(this._hud, this._sfx, this.simSpeedManager);
@@ -108,7 +108,7 @@ export class PlanSystem {
   // 現在の外部状態から表示座標変換(太陽回転系対応)を組み立てる。ノードのピッキング/
   // 配置と表示の基準角がずれないよう、正は predict-system.ts の toDisplayFrame 一箇所。
   private frame(): DisplayFrameFn {
-    return this.predict.bindDisplayFrame(this.getEphemeris());
+    return this.predict.bindDisplayFrame(this.ephemeris);
   }
 
   // マップ左クリック: 予測軌道上へノード配置、または既存ノード選択(plan-editor に委譲)。
@@ -151,7 +151,7 @@ export class PlanSystem {
   // 予測計算に ephemeris が要るためここで導出して渡す(ノードは Δv を正データに持たない)。
   private nodeArrivings(): OrbitState[] {
     const plan = this.editor.plan;
-    return arrivingStates(plan.anchor.state, plan.anchor.time, plan.nodes, this.getEphemeris());
+    return arrivingStates(plan.anchor.state, plan.anchor.time, plan.nodes, this.ephemeris);
   }
 
   // --------------------------------------------------------------- per-frame

@@ -5,7 +5,7 @@
 import { stepAttitude } from '../../physics/attitude';
 import { envAccelInto } from '../../physics/envaccel';
 import { ExtraAccel, stepOrbitRK4 } from '../../physics/orbital';
-import { add, clone, v3 } from '../../physics/vec3';
+import { add, clone, v3, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { HitSystem } from './hit';
@@ -30,8 +30,12 @@ export class Simulator {
   simTime = 0;
   lastSimDt = 0;
 
+  // 各サブステップ開始時にサンプルする太陽・月の ECI 位置。env accel は RK4 の各段で
+  // この固定値を参照する(サブステップ内では第三体の位置を動かさない従来の挙動)。
+  private sunPosNow: Vec3 = v3();
+  private moonPosNow: Vec3 = v3();
   private makeEnvAccel(bcInv: number): ExtraAccel {
-    return (r, v, out) => envAccelInto(out ?? v3(), r, v, this.ephemeris.sunPos, this.ephemeris.moonPos, bcInv);
+    return (r, v, out) => envAccelInto(out ?? v3(), r, v, this.sunPosNow, this.moonPosNow, bcInv);
   }
   private readonly envShip = this.makeEnvAccel(C.SHIP_BCINV);
   private readonly envBullet = this.makeEnvAccel(C.BULLET_BCINV);
@@ -120,8 +124,9 @@ export class Simulator {
     player: Player,
     trackPrevR: boolean,
   ): number {
-    this.ephemeris.update(simTime);
-    
+    this.sunPosNow = this.ephemeris.sunPosAt(simTime);
+    this.moonPosNow = this.ephemeris.moonPosAt(simTime);
+
     this.stepEntity(player, dt, this.envShip, trackPrevR);
     this.enemies.forEach(e => this.stepEntity(e, dt, this.envShip, trackPrevR));
     this.bullets.forEach(b => this.stepEntity(b, dt, this.envBullet, trackPrevR));

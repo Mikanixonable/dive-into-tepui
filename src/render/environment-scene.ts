@@ -55,10 +55,6 @@ export class EnvironmentScene {
   readonly moonMesh: THREE.Mesh;
   readonly earth: Earth;
 
-  // 天体暦(太陽・月の ECI 位置・太陽方向)を保持・所有する。太陽方向のライティング・
-  // 空の天体・参照軌道線がすべてここから引くため、環境描画とともにここが持つ。simTime に
-  // 沿った毎フレームのサンプリングは Simulator が積分の各サブステップで駆動する。
-  readonly ephemeris = new Ephemeris();
   private readonly earthPhase0 = Math.random() * Math.PI * 2;
 
   // マップモード専用の参照軌道線(静止軌道高度の目盛り・月軌道)。どちらも天体暦の
@@ -66,12 +62,14 @@ export class EnvironmentScene {
   readonly geoLine = new OrbitLine(0x8b93a0, 0.2);
   readonly moonLine = new OrbitLine(0xaab3c0, 0.2);
 
+  // 太陽方向のライティング・空の天体・参照軌道線がすべて ephemeris から引く。天体暦は
+  // ゲーム側が所有する単一インスタンスを共有参照する(状態を持たない純サンプラ)。
   constructor(
     scene: THREE.Scene,
+    private readonly ephemeris: Ephemeris,
     //private readonly lighting: EnvironmentLightingParams,
   ) {
-    this.ephemeris.update(0);
-    const sd0 = this.ephemeris.sunDir;
+    const sd0 = this.ephemeris.sunDirAt(0);
     this.geoLine.line.renderOrder = 0;
     this.moonLine.line.renderOrder = 0;
     scene.add(this.geoLine.line);
@@ -97,7 +95,7 @@ export class EnvironmentScene {
     this.syncSkyBodies(displayTime, floatingOrigin, cameraSystem);
 
     // lit は自機位置の日照率(円柱影の近似)。物理的に正確ではない。
-    const lit = cameraSystem.mapMode ? 1.0 : this.shadowLitFactor(player.state.r, this.ephemeris.sunDir);
+    const lit = cameraSystem.mapMode ? 1.0 : this.shadowLitFactor(player.state.r, this.ephemeris.sunDirAt(displayTime));
     this.syncLighting(lit);
   }
 
