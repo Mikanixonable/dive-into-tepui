@@ -54,10 +54,6 @@ export class PlanEditor {
   private readonly planPanel: HTMLElement;
   private readonly planBody: HTMLElement;
 
-  // ノードハンドルを直接右クリックしたときの通知。実体は「その座標で右クリック消費を試み、
-  // 消費できたらフォーカスメニューを閉じる」調停で、上位(game.ts)が受け持つ。
-  onNodeHandleRightClick: ((clientX: number, clientY: number) => void) | null = null;
-
   constructor(
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
@@ -91,7 +87,8 @@ export class PlanEditor {
       this.closeMenu();
       this.dragNodeToNearestSample(idx, clientX, clientY);
     };
-    g.onNodeContextMenu = (clientX, clientY) => this.onNodeHandleRightClick?.(clientX, clientY);
+    // ハンドル直上の右クリックは必ずそのノードに当たるので、キャンバス右クリックと同じ処理へ流す。
+    g.onNodeContextMenu = (clientX, clientY) => { this.handleNodeRightClick(clientX, clientY); };
     g.onAxisDrag = (axis, sign, deltaPx) => {
       this.applyAxisDrag(axis, sign, deltaPx, this.getFineAttitude());
     };
@@ -141,8 +138,24 @@ export class PlanEditor {
     this.deleteNode(this.selectedNodeIdx);
   }
 
+  // [X] は編集モードの内外どちらでも意味を持つ(編集中は選択ノード削除、戦闘ビューでは計画破棄)
+  // ので、マップの開閉に関わらず毎フレーム受ける。
+  handleInput(input: Input): void {
+    if (input.takeKey('KeyX')) this.clearPlanByKey();
+  }
+
+  // マップ編集中のポインタ操作。右クリックはノードに当たったものだけ消費し(外したものは
+  // フォーカス選択へ回す)、左クリックはノードの選択/配置として消費する。
+  handleMapPointer(input: Input): void {
+    input.takeRightClicks((p) => this.handleNodeRightClick(p.x, p.y));
+    input.takeClicks((p) => {
+      this.handleMapClick(p.x, p.y);
+      return true;
+    });
+  }
+
   // [X] キー: 計画編集モード中は選択中ノードのみ、モード外では計画全体を破棄する。
-  clearPlanByKey(): void {
+  private clearPlanByKey(): void {
     if (this.editMode) {
       this.deleteSelected();
       return;
@@ -161,8 +174,7 @@ export class PlanEditor {
   // マップ上のクリック処理: 既存ノードマーカー近傍なら選択、そうでなければ
   // 予測軌道(既存ノードの噴射も反映済みの折れ線)上の最近傍サンプル時刻に
   // 新規ノードを配置して選択する。画面判定は B-2(traj)へ委譲する。
-  handleMapClick(mx: number, my: number): void {
-    this.closeMenu();
+  private handleMapClick(mx: number, my: number): void {
     let bestNodeIdx: number | null = null;
     let bestNodeD = C.NODE_PICK_PX * C.NODE_PICK_PX;
     for (let i = 0; i < this.plan.nodes.length; i++) {
@@ -190,10 +202,9 @@ export class PlanEditor {
 
   // マップモードの右クリック処理(ノード側): 既存ノードマーカー近傍(NODE_PICK_PX 以内)
   // ならそのノードを選択してコンテキストメニューを開き true を返す(=右クリックを消費)。
-  // ノードに当たらなければノードメニューを閉じて false を返し、呼び出し側(game.ts)が
-  // フォーカス選択(CameraSystem)へフォールバックさせる。ノード削除はこのメニュー経由
-  // ([X] キーからも可能)。
-  handleNodeRightClick(mx: number, my: number): boolean {
+  // 外したときは false を返し、その右クリックはフォーカス選択(CameraSystem)へ回る。
+  // ノード削除はこのメニュー経由([X] キーからも可能)。
+  private handleNodeRightClick(mx: number, my: number): boolean {
     let bestIdx: number | null = null;
     let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
     for (let i = 0; i < this.plan.nodes.length; i++) {
@@ -205,10 +216,7 @@ export class PlanEditor {
         bestIdx = i;
       }
     }
-    if (bestIdx === null) {
-      this.nodeGizmo.closeMenu();
-      return false;
-    }
+    if (bestIdx === null) return false;
     this.selectedNodeIdx = bestIdx;
     this.nodeGizmo.openMenu(mx, my, bestIdx);
     return true;

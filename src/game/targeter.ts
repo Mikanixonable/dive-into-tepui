@@ -7,7 +7,7 @@ import type { Simulator } from './orbit-entity/simulator';
 import { Player } from './player/player';
 import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
-import { Input } from './input/input';
+import { Input, PointerPoint } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import { MarkerManager } from './marker/marker-manager';
 import { FloatingOrigin } from './floating-origin';
@@ -100,10 +100,17 @@ export class Targeter {
     }
   }
 
+  // 戦闘ビューの右クリックは射撃と兼用なので、敵に当たったかどうかに関わらずここで消費する
+  // (マップ編集中はこの経路自体が呼ばれず、右クリックはノード/フォーカスへ回る)。
   private handleTargetLockByRightClick(input: Input, enemies: Enemy[], player: Player, project: ProjectFn): void {
-    const rightClicks = input.rightClicks();
-    if (rightClicks.length <= 0 || !player.alive) return;
-    const click = rightClicks[rightClicks.length - 1]!;
+    if (!player.alive) return;
+    input.takeRightClicks((click) => {
+      this.pickTargetAt(click, enemies, project);
+      return true;
+    });
+  }
+
+  private pickTargetAt(click: PointerPoint, enemies: Enemy[], project: ProjectFn): void {
     let hit: Enemy | null = null;
     let minDistSq = C.TARGET_LOCK_PICK_PX_SQ;
     for (const enemy of enemies) {

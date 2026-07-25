@@ -4,6 +4,7 @@
 import { Hud } from "./hud/hud";
 import { CameraSystem } from "./camera/camera-system";
 import { TouchControls } from "./input/touch";
+import type { Input } from "./input/input";
 import { PlanEditor } from "./plan/plan-editor";
 
 export class MapModeToggler {
@@ -27,7 +28,19 @@ export class MapModeToggler {
     editor.editMode = false;
   }
 
-  toggle(isPlaying: boolean, editor: PlanEditor, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
+  // 毎フレーム呼ぶ。[M] の開閉を受け、決着後は開いたままにならないよう閉じる。
+  update(
+    input: Input,
+    isPlaying: boolean,
+    editor: PlanEditor,
+    touchControls: TouchControls | null,
+    cameraSystem: CameraSystem,
+  ): void {
+    if (input.takeKey('KeyM')) this.toggle(isPlaying, editor, touchControls, cameraSystem);
+    if (!isPlaying && cameraSystem.mapMode) this.close(editor, touchControls, cameraSystem);
+  }
+
+  private toggle(isPlaying: boolean, editor: PlanEditor, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     // ポーズ中、死亡後はマップモードを変更できない
     if (!isPlaying) return;
 
@@ -45,14 +58,6 @@ export class MapModeToggler {
         this._hud.hint(`マニューバ計画 ${editor.plan.nodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
       }
     }
-    return;
-  }
-
-  // isPlayeingがfalseになったときに（死んだとき）にmapModeを終了する
-  update(isPlaying: boolean, editor: PlanEditor, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
-    if (isPlaying || !cameraSystem.mapMode) return;
-
-    this.close(editor, touchControls, cameraSystem);
     return;
   }
 }

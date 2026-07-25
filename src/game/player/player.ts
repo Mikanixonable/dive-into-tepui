@@ -154,12 +154,10 @@ export class Player extends Ship {
     this._hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
   }
 
-  // 押下エッジキーのうち自機担当分を処理し、処理したキーを input から消費する
-  // (Game.ts 側の担当キーと重複しないようにするための簡易的な仕組み)。
+  // 押下エッジキーのうち自機担当分を処理する(処理したキーは input が消費し、
+  // 後から受ける側には届かない)。
   private handleEdgeInput(input: Input): void {
-    for (const code of [...input.presses()]) {
-      if (this.handleEdgePress(code)) input.consumeKey(code);
-    }
+    input.takeKeys((code) => this.handleEdgePress(code));
   }
 
   private handleEdgePress(code: string): boolean {
