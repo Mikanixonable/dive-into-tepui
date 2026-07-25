@@ -20,18 +20,30 @@ import { ProjectFn } from './camera-system';
 const WORLD_UP = v3(0, 1, 0);
 const MAP_CAMERA_FOV = 50;
 
+// 初期視点(注視点まわりの方位角・仰角・距離)。offset_r の初期値の組み立てにだけ使う。
+const INIT_YAW = 0.7;
+const INIT_PITCH = 0.45;
+const INIT_DIST = 4.5e7;
+
+// 注視点 → カメラの相対位置ベクトルを、方位角・仰角・距離から組む。回転軸 Y まわりの
+// 方位 yaw と、そこからの仰角 pitch。update()/初期化の両方で使う純粋関数。
+function sphericalOffset(yaw: number, pitch: number, dist: number): Vec3 {
+  const cp = Math.cos(pitch);
+  return scale(v3(cp * Math.cos(yaw), Math.sin(pitch), cp * Math.sin(yaw)), dist);
+}
+
 export class MapCamera {
   // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
   readonly camera: THREE.PerspectiveCamera;
   private readonly fov = MAP_CAMERA_FOV;
-  // yaw/pitch/dist/pan は cameraFrame 相対のカメラ座標(注視点まわりの方位角・仰角・距離・
-  // パン変位)。この相対座標を「固定」して保持するのがこのクラスの本質的な責務で、慣性系(ECI)
-  // への変換は update() が frame.ts 経由で行う(sunAz などの合成はここでは一切しない)。
-  yaw = 0.7;
-  pitch = 0.45;
-  dist = 4.5e7;
-  // cameraFrame 相対のパン変位 [m]。カメラと注視点へ等しく加えるので真の平行移動になる。
-  pan: Vec3 = v3();
+
+  // このクラスの正データは cameraFrame 相対で持つ 2 つのベクトルだけ。回転系に「固定」される
+  // (回転系の回転に自動追従する)のはこれらが相対座標だから。慣性系(ECI)への変換は frame.ts
+  // が一手に引き受け、このクラスは brand を自分で付け外ししない(as を書けば型安全は壊れる)。
+  //   offset_r … 注視点 → カメラの相対位置ベクトル(方位・仰角・距離を兼ねる)
+  //   pan_r    … focus → 注視点のパン変位。カメラと注視点へ等しく効くので真の平行移動になる
+  private offset_r: RelativeVec3;
+  private pan_r: RelativeVec3;
   // カメラ視点を固定する座標系(慣性系 / 太陽回転系)。切替は set cameraFrame 経由で、
   // そのとき相対座標を新 Frame へ入れ直す。plan-system はこのセッターに代入するだけ。
   private _cameraFrame: Frame = 'inertial';
@@ -40,7 +52,7 @@ export class MapCamera {
   // 注視対象のラベル ID('earth' またはラベル ID)。位置解決は resolveFocus が行う。
   focus = 'earth';
 
-  // update() が cameraFrame 相対座標から算出し sync() が camera へ反映する、絶対 ECI の視点状態。
+  // update() が相対の正データから算出し sync() が camera へ反映する、絶対 ECI の視点状態。
   position: Vec3 = v3();
   private lookTarget: Vec3 = v3();
   private aspect = window.innerWidth / window.innerHeight;
@@ -58,6 +70,15 @@ export class MapCamera {
       1e4,
       C.MAP_CAMERA_FAR,
     );
+    // 初期 Frame は 'inertial' なので toFramePos は恒等変換。ここで brand の付与も frame.ts に任せる。
+    this.offset_r = toFramePos(this._cameraFrame, 0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST), this.ephemeris);
+    this.pan_r = toFramePos(this._cameraFrame, 0, v3(), this.ephemeris);
+  }
+
+  // 外部(node-gizmo のスクリーンサイズ基準)が参照する注視点 → カメラ距離。長さは回転で不変なので
+  // 相対座標の成分からそのまま測れる。
+  get dist(): number {
+    return Math.hypot(this.offset_r.x, this.offset_r.y, this.offset_r.z);
   }
 
   // update() が算出した視点状態から直接スクリーン投影する ProjectFn。THREE.js の
@@ -74,16 +95,14 @@ export class MapCamera {
   }
 
   reset(): void {
-    this.yaw = 0.7;
-    this.pitch = 0.45;
-    this.dist = 4.5e7;
+    this.offset_r = toFramePos(this._cameraFrame, this.simTime, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST), this.ephemeris);
     this.resetPan();
     this.focus = 'earth';
     this._hud.hint('マップ視点をリセット');
   }
 
   resetPan(): void {
-    this.pan = v3();
+    this.pan_r = toFramePos(this._cameraFrame, this.simTime, v3(), this.ephemeris);
   }
 
   // focus('earth' またはラベル ID)を絶対 ECI 位置へ解決する(地球中心 = 原点)。
@@ -91,43 +110,28 @@ export class MapCamera {
     return this.focus === 'earth' ? v3(0, 0, 0) : this.mapMarkers.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
   }
 
-  // cameraFrame 相対の方位角・仰角から、注視点 → カメラ方向の単位ベクトル(相対座標)を組む。
-  private offsetDir(): Vec3 {
-    const cp = Math.cos(this.pitch);
-    return v3(cp * Math.cos(this.yaw), Math.sin(this.pitch), cp * Math.sin(this.yaw));
-  }
-
-  // map-camera は yaw/pitch/pan を「相対座標の Vec3」として扱い、frame.ts 境界でだけ
-  // relative/inertial の brand を付け外しする(両者は同じ数値表現で、変換の実体は frame.ts)。
-  // 時刻はキャッシュした simTime、天体暦は注入された ephemeris(共有参照)から取る。
-  private toEci(rel: Vec3, frame: Frame): Vec3 {
-    return toInertialPos(frame, this.simTime, rel as unknown as RelativeVec3, this.ephemeris);
-  }
-  private toRel(eci: Vec3, frame: Frame): Vec3 {
-    return toFramePos(frame, this.simTime, eci, this.ephemeris) as unknown as Vec3;
-  }
-
   get cameraFrame(): Frame {
     return this._cameraFrame;
   }
 
-  // 座標系を切り替える。保持している相対座標(pan・注視方向)を「一度 ECI へ戻してから
-  // 新 Frame へ」入れ直すので、切替の瞬間にカメラ視点(ECI)は跳ばず、以後は新 Frame に固定
-  // されて追従する。方位差のぶんだけ yaw が変わる(仰角 pitch は回転軸=Y のまわりなので不変
-  // だが、汎用に frame.ts の往復から導出する)。plan-system はこのセッターに代入するだけ。
+  // 座標系を切り替える。正データ(offset_r・pan_r)を「一度 ECI へ戻してから新 Frame へ」入れ
+  // 直すので、切替の瞬間にカメラ視点(ECI)は跳ばず、以後は新 Frame に固定されて追従する。
+  // frame.ts の往復だけで済み、方位・仰角を自前で解き直す必要はない。plan-system はこのセッター
+  // に代入するだけ。
   set cameraFrame(frame: Frame) {
     const from = this._cameraFrame;
     if (frame === from) return;
-    this.pan = this.toRel(this.toEci(this.pan, from), frame);
-    const dir = this.toRel(this.toEci(this.offsetDir(), from), frame);
-    this.yaw = Math.atan2(dir.z, dir.x);
-    this.pitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));
+    const offEci = toInertialPos(from, this.simTime, this.offset_r, this.ephemeris);
+    const panEci = toInertialPos(from, this.simTime, this.pan_r, this.ephemeris);
+    this.offset_r = toFramePos(frame, this.simTime, offEci, this.ephemeris);
+    this.pan_r = toFramePos(frame, this.simTime, panEci, this.ephemeris);
     this._cameraFrame = frame;
   }
 
-  // 毎フレーム、マップカメラの位置・向きをマウス/矢印キー操作から更新する。
-  // 地球中心の固定座標系カメラなので自機位置は受け取らない。yaw/pitch/pan は cameraFrame
-  // 相対で持ち、最後に position/lookTarget を frame.ts 経由で絶対 ECI へ変換する。
+  // 毎フレーム、マップカメラの位置・向きをマウス/矢印キー操作から更新する。地球中心の固定
+  // 座標系カメラなので自機位置は受け取らない。正データ(offset_r・pan_r)を frame.ts で ECI へ
+  // 戻し、操作を通常の Vec3 空間で加えてから、結果を frame.ts で正データへ焼き戻す。この往復に
+  // 挟まれた操作部は brand を意識しないただの Vec3 計算になる。
   update(
     mouse: MouseDelta,
     keyYaw: number,
@@ -137,33 +141,38 @@ export class MapCamera {
   ): void {
     this.simTime = simTime;
     const focus = this.resolveFocus();
-    // 戦闘ビューは yaw -= dx*0.005 なので、符号を反転させて左右の回転方向を揃える
-    this.yaw += mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;
-    this.pitch = Math.max(
-      -1.4,
-      Math.min(1.4, this.pitch + mouse.dy * 0.005 + keyPitch * C.CAM_KEY_PITCH_RATE * dt),
-    );
-    this.dist = Math.max(C.MAP_MIN_DIST, Math.min(C.MAP_MAX_DIST, this.dist * Math.exp(mouse.wheel * 0.0012)));
-    // 注視点 → カメラ方向の単位ベクトル(相対座標。pan を含まない — pan はカメラと注視点を
-    // 等しく平行移動させるため基底に影響しない)。
-    const off = this.offsetDir();
+    // 正データを現在時刻の ECI へ戻す。以降の操作はすべてこの Vec3 に対して行う。
+    let offEci = toInertialPos(this._cameraFrame, simTime, this.offset_r, this.ephemeris);
+    let panEci = toInertialPos(this._cameraFrame, simTime, this.pan_r, this.ephemeris);
+
+    // 方位・仰角・距離を offEci から解いて操作を加え、組み直す。回転軸は Y なので仰角 pitch は
+    // frame と ECI で不変(offEci.y の成分はどちらでも同じ)。戦闘ビューは yaw -= dx*0.005 なので
+    // 符号を反転させて左右の回転方向を揃える。
+    const dist = Math.max(C.MAP_MIN_DIST, Math.min(C.MAP_MAX_DIST, this.dist * Math.exp(mouse.wheel * 0.0012)));
+    const dir = norm(offEci);
+    const yaw = Math.atan2(dir.z, dir.x) + mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;
+    const pitch = Math.max(-1.4, Math.min(1.4,
+      Math.asin(Math.max(-1, Math.min(1, dir.y))) + mouse.dy * 0.005 + keyPitch * C.CAM_KEY_PITCH_RATE * dt,
+    ));
+    offEci = sphericalOffset(yaw, pitch, dist);
+
     if (mouse.panDx !== 0 || mouse.panDy !== 0) {
       // ピクセル → マップ世界メートル変換。THREE の lookAt(up=+Y) が作る基底と一致する
-      // カメラ右/上ベクトルを yaw/pitch から解析的に組む(相対座標のまま累積する — 回転軸=Y の
-      // まわりで WORLD_UP は不変なので、ECI への変換は最後の toEci にまとめられる)。
-      const viewDir = scale(off, -1);
+      // カメラ右/上ベクトルを注視方向から組み、pan(カメラと注視点を等しく動かす真の平行移動)へ加える。
+      const viewDir = scale(norm(offEci), -1);
       const right = norm(cross(viewDir, WORLD_UP));
       const camUp = norm(cross(right, viewDir));
       const metersPerPixel =
-        (2 * this.dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5))) /
-        Math.max(1, window.innerHeight);
-      this.pan = addScaled(this.pan, right, -mouse.panDx * metersPerPixel);
-      this.pan = addScaled(this.pan, camUp, mouse.panDy * metersPerPixel);
+        (2 * dist * Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5))) / Math.max(1, window.innerHeight);
+      panEci = addScaled(panEci, right, -mouse.panDx * metersPerPixel);
+      panEci = addScaled(panEci, camUp, mouse.panDy * metersPerPixel);
     }
-    // 相対座標(pan、カメラ位置)を frame.ts 経由で ECI へ戻し、ECI の focus に足す。
-    const camRel = addScaled(this.pan, off, this.dist);
-    this.position = add(focus, this.toEci(camRel, this._cameraFrame));
-    this.lookTarget = add(focus, this.toEci(this.pan, this._cameraFrame));
+
+    // ECI で視点を確定し、操作結果を正データ(cameraFrame 相対)へ焼き戻す。
+    this.lookTarget = add(focus, panEci);
+    this.position = add(this.lookTarget, offEci);
+    this.offset_r = toFramePos(this._cameraFrame, simTime, offEci, this.ephemeris);
+    this.pan_r = toFramePos(this._cameraFrame, simTime, panEci, this.ephemeris);
     this.aspect = window.innerWidth / window.innerHeight;
   }
 
