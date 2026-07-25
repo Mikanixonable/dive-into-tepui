@@ -13,7 +13,6 @@ export class MapModeToggler {
   private open(planSystem: PlanSystem, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     planSystem.editor.selectedNodeIdx = null;
 
-    planSystem.editor.plan.markDirty();
     this._hud.setMapToolbarVisible(true);
     touchControls?.setMapMode(true);
     // 独立した二つの責務(広範囲視点 / 計画編集)を同時に開く唯一の場所。

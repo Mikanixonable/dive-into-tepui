@@ -1,10 +1,10 @@
-// 点列(時刻付き位置)を1本の単色折れ線として描く汎用描画基盤。OrbitLine(解析的な楕円)の
+// 点列(時刻付き OrbitState)を1本の単色折れ線として描く汎用描画基盤。OrbitLine(解析的な楕円)の
 // 兄弟で、こちらは数値予測軌道・履歴軌道など「任意の点列」を折れ線化する共通土台になる。
 //
 // 座標変換は physics/frame.ts へ委譲する二段構え:
-//  - bake(点列 or frame が変わったときだけ, syncGeometry): 各サンプル(r_i, t_i)を frame 相対
-//    座標へ焼き込む(toFramePos)。点ごとに回転角が違う非剛体変形なので頂点バッファを作り直す
-//    (慣性系なら無変換)。
+//  - bake(点列 or frame が変わったときだけ, syncGeometry): 各サンプルの OrbitState を frame 相対へ
+//    変換し(toFrameState)、頂点には位置 r だけを焼く(速度 v は将来のエルミート補間用)。点ごとに
+//    回転角が違う非剛体変形なので頂点バッファを作り直す(慣性系なら無変換)。
 //  - un-bake(毎フレーム, syncTransform): 現在時刻 T の剛体回転(toInertialQuat)を line.quaternion
 //    として与え、frame 相対頂点を慣性系へ戻す。全頂点一律なので O(1)。
 //  - フローティングオリジン補正(毎フレーム): line.position = 地球中心の描画フレーム位置。
@@ -12,12 +12,15 @@
 // 平行移動の順で正しい。
 import * as THREE from 'three/webgpu';
 import { Vec3, v3 } from '../physics/vec3';
-import { Frame, toFramePos, toInertialQuat } from '../physics/frame';
+import { orbitState } from '../physics/orbital';
+import { Frame, toFrameState, toInertialQuat } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from '../game/floating-origin';
 
-// 折れ線の1点: ある絶対時刻 t における ECI 位置 r。predict.ts の TrajectorySample はそのまま渡せる。
-export type LineSample = { r: Vec3; t: number };
+// 折れ線の1点: ある絶対時刻 t における ECI の状態(位置 r + 速度 v)。predict.ts の
+// TrajectorySample({t,r,v})をそのまま渡せる。bake は位置 r だけを使うが、速度 v も frame 相対へ
+// 変換される — 将来のエルミート補間(頂点間を速度で滑らかに繋ぐ)の接線として供給しておく。
+export type LineSample = { r: Vec3; v: Vec3; t: number };
 
 // 頂点は地球中心(ECI 原点)基準の frame 相対座標。line.position はその原点の描画フレーム位置。
 const EARTH_CENTER = v3(0, 0, 0);
@@ -46,10 +49,12 @@ export class SampledLine {
     const arr = new Float32Array(samples.length * 3);
     for (let i = 0; i < samples.length; i++) {
       const s = samples[i]!;
-      const p = toFramePos(frame, s.t, s.r, ephemeris);
-      arr[i * 3] = p.x;
-      arr[i * 3 + 1] = p.y;
-      arr[i * 3 + 2] = p.z;
+      // OrbitState 全体を frame 相対へ変換する。頂点には位置 rel.r だけを焼く。速度 rel.v は
+      // エルミート補間用の接線だが、補間未実装の現状は使わない(実装時にここで保持して密にする)。
+      const rel = toFrameState(frame, s.t, orbitState(s.r, s.v), ephemeris);
+      arr[i * 3] = rel.r.x;
+      arr[i * 3 + 1] = rel.r.y;
+      arr[i * 3 + 2] = rel.r.z;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
