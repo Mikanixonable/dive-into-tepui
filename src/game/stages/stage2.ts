@@ -2,6 +2,7 @@
 // checkWin/onWin/hudSubStatus は基底クラスの既定(撃破数で勝利・HUD補助表示なし)のまま使う。
 import * as C from '../const';
 import { Stage } from './stage';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { ClearCounts } from '../unlock-manager';
 import {
   generateCoellipticEnemy,
@@ -15,7 +16,7 @@ import { SimSpeedManager } from '../sim-speed-manager';
 export class Stage2 extends Stage {
   static readonly id = '2' as const;
   readonly selectLabel = '[2] 第二ステージ — モルニヤ戦域';
-  readonly selectSub = '敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モード [M] での遷移が必須';
+  readonly selectSub = `敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モード [${K.mapMode.label}] での遷移が必須`;
   readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
   readonly selectKeys = ['Digit2'];
   readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
@@ -27,8 +28,8 @@ export class Stage2 extends Stage {
   briefingHtml(enemyCount: number): string {
     return (
       `<b>作戦目標: 敵機 ${enemyCount} 機を全機撃破せよ</b><br>` +
-      '敵の一部はモルニヤ級の高楕円軌道上にいる — [M] 軌道計画モードで遷移を計画せよ<br>' +
-      '[H] キーで操作方法を表示'
+      `敵の一部はモルニヤ級の高楕円軌道上にいる — [${K.mapMode.label}] 軌道計画モードで遷移を計画せよ<br>` +
+      `[${K.help.label}] キーで操作方法を表示`
     );
   }
 

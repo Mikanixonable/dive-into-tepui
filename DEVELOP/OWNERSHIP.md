@@ -169,10 +169,16 @@ main.ts
 - **マップモードの操作パネル**は状態の所有者ごとに分かれる。`MapViewPanel` は CameraSystem が、
   `PredictPanel` は PredictSystem が所有し、自分の状態だけを映して自分の状態だけを受け取る。
   表示・非表示も各所有者が毎フレームの sync で押し出す(MapModeToggler は関与しない)。
-- **キー割り当ての正本は各担当モジュール**。`game.ts` が持つのは「どのモジュールに先に配るか」という
-  順序だけで、キーと処理の対応表はどこにも集約されていない(`SettingsPanel`=Esc / `Hud`=H /
-  `Stage`=R / `SimSpeedManager`=,・.・N / `MapModeToggler`=M / `PlanEditor`=X / `CameraSystem`=G・Z・矢印 /
-  `Player`=T・F・V・C・1-3・R・並進・回転)。
+- **キー割り当ての正本は `input/key-mapping.ts` の `KEY_MAPPING`、キーの処理の正本は各担当モジュール**。
+  どのキーがどの操作かは KEY_MAPPING(コード + 表示名)だけが持ち、入力を読む側(`Input.down` /
+  `Input.takeKey` は `KeyBinding` を受ける)と説明を出す側(ヘルプ表・操作バー・タッチパッド・
+  ステージ briefing・結果画面)は両方ともそれを参照する。どの操作を誰が処理するかは各モジュールに
+  閉じたままで(`SettingsPanel`=pauseMenu / `Hud`=help / `Stage`=restart /
+  `SimSpeedManager`=warpSlower・warpFaster・autoWarpToNode / `MapModeToggler`=mapMode /
+  `PlanEditor`=deleteNode・dv* / `CameraSystem`=followAttitudeToggle・gunsightZoom・camera* /
+  `Player`=rcsDampToggle・progradeReset・fineAttitudeToggle・progradeHoldToggle・throttle*・reload・thrust*・pitch/yaw/roll)、
+  `game.ts` が持つのは「どのモジュールに先に配るか」という順序だけ。
+  ステージ選択画面のキー(`Stage.selectKeys`)はステージ定義側のデータなので KEY_MAPPING には含めない。
 - **`HudPanels` は表示専用**。Game を丸ごと読んで自分の4パネルへ書くだけで、他モジュールの状態や
   DOM は操作しない。ステージ固有の状況パネルは `Stage`(`StageStatusPanel`)、タッチUIのトグル点灯は
   `TouchControls.syncModeButtons()` が担当し、いずれも game.sync が自機/ステージの状態を渡す。
