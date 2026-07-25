@@ -64,7 +64,6 @@ main.ts
     ├── PredictSystem
     │   └── PredictPanel               ... DOM は Hud.root 配下。期間/予測座標系/未来位置スライダー
     ├── PlanGuide
-    │   └── OrbitLine                  ... 計画軌道ライン(白)
     ├── MapModeToggler                 ... 状態を持たない(所有物なし)
     ├── Stage (activeStage)            ... initStage() が毎回 new する
     │   ├── ScoreCounter

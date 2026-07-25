@@ -137,7 +137,7 @@ export class Game {
     // 表示期間は predict の状態、予測折れ線のキャッシュは editor の持ち物なので、両者に
     // またがるこの一本だけをオーケストレータが配線する(期間を変えた瞬間に引き直させる)。
     this.predict.onDurationChange = () => this.editor.traj.invalidate();
-    this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager, this._scene);
+    this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
     this.mapModeToggler = new MapModeToggler(this._hud);
 
     this.input = new Input(gs.renderer.domElement);
@@ -335,8 +335,6 @@ export class Game {
     const simTime = this.simulator.simTime;
     const orbitPeriod = this.player.elements?.period ?? null;
 
-    // 戦闘ビューの計画軌道ライン(mapMode 中は隠すが毎フレーム呼ぶ)。
-    this.guide.syncPlannedLine(this.editor.plan, fo, mapMode);
     // 予測折れ線とノードギズモは editor が自分の traj/gizmo を駆動 or 後始末する。表示期間と
     // 表示座標系(frame)は predict 側、ギズモの画面基準(mapDist)は camera 側の状態で game が渡す。
     this.editor.syncDisplay(

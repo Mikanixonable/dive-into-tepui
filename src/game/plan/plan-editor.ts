@@ -254,14 +254,14 @@ export class PlanEditor {
   private computeAxisScreenDirs(
     node: OrbitState,
     mapDist: number,
-  ): { pro: { x: number; y: number }; nrm: { x: number; y: number }; rad: { x: number; y: number } } {
+  ): { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; } {
     const { r, v } = node;
     const pro = norm(v);
     const h = norm(cross(r, v));
     const radOut = cross(pro, h);
     const L = mapDist * 0.05;
     const p0 = this.traj.projectPoint(r, node.t);
-    const dirFor = (axisVec: Vec3): { x: number; y: number } => {
+    const dirFor = (axisVec: Vec3): { x: number; y: number; } => {
       const p1 = this.traj.projectPoint(add(r, scale(axisVec, L)), node.t);
       const dx = p1.x - p0.x;
       const dy = p1.y - p0.y;
@@ -274,10 +274,10 @@ export class PlanEditor {
   private buildAxisHandles(
     nx: number,
     ny: number,
-    dirs: { pro: { x: number; y: number }; nrm: { x: number; y: number }; rad: { x: number; y: number } },
+    dirs: { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; },
   ): AxisHandleSpec[] {
     const R = C.NODE_GIZMO_HANDLE_PX;
-    const mk = (axis: 0 | 1 | 2, sign: 1 | -1, d: { x: number; y: number }, label: string): AxisHandleSpec => ({
+    const mk = (axis: 0 | 1 | 2, sign: 1 | -1, d: { x: number; y: number; }, label: string): AxisHandleSpec => ({
       axis,
       sign,
       x: nx + d.x * R * sign,
@@ -374,7 +374,7 @@ export class PlanEditor {
   // 計画パネルの内容を更新して表示する。nodes は時刻順のノード一覧(選択中のみ selected=true)、
   // selDv/selEl は選択中ノードの Δv 成分と噴射後の軌道要素(未選択なら null)。
   private renderPanel(
-    nodes: { tRel: number; dvMag: number; selected: boolean }[],
+    nodes: { tRel: number; dvMag: number; selected: boolean; }[],
     selDv: Vec3 | null,
     selEl: Elements | null,
   ): void {
@@ -393,16 +393,16 @@ export class PlanEditor {
   // (ギズモの画面基準)は camera 側の状態で、いずれも game が渡す。予測の未来ゴースト
   // (predict)・マップラベル(camera)は game が別途駆動する。
   syncDisplay(mapMode: boolean, fo: FloatingOrigin, simTime: number, duration: number, frame: Frame, mapDist: number): void {
-    if (!mapMode) {
-      this.traj.setVisible(false);
-      this.hideGizmo();
-      return;
-    }
-    this.traj.setVisible(true);
     // 予測折れ線: B-2 が corners を arc へ分解し、各 arc の B-1 が per-arc に予測・キャッシュ・描画する。
     // 予測は frozen アンカー + 凍結ノードだけの純関数で、player.live には依存しない。
     this.traj.update(this.plan.anchor, this.plan.nodes, simTime + duration, this.ephemeris, frame, simTime, fo);
-    this.updateGizmo(mapDist);
+
+    if (mapMode) {
+      this.updateGizmo(mapDist);
+    }
+    else {
+      this.hideGizmo();
+    }
   }
 
   // マップモードを閉じる ([M] で確定) ときの後始末: Δv がほぼゼロのまま放置されたノード
@@ -423,7 +423,7 @@ export class PlanEditor {
 
 // 計画パネルの定型 HTML(複数ノード対応)。近地点が大気圏内(<120km)なら警告を添える。
 function planPanelHtml(
-  nodes: { tRel: number; dvMag: number; selected: boolean }[],
+  nodes: { tRel: number; dvMag: number; selected: boolean; }[],
   selDv: Vec3 | null,
   selEl: Elements | null,
 ): string {
