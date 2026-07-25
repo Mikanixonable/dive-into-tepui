@@ -392,12 +392,12 @@ export class PlanEditor {
   // 後始末する。duration(表示期間)と frame(予測軌道の表示座標系)は predict 側、mapDist
   // (ギズモの画面基準)は camera 側の状態で、いずれも game が渡す。予測の未来ゴースト
   // (predict)・マップラベル(camera)は game が別途駆動する。
-  syncDisplay(mapMode: boolean, fo: FloatingOrigin, simTime: number, duration: number, frame: Frame, mapDist: number): void {
+  sync(fo: FloatingOrigin, simTime: number, duration: number, frame: Frame, mapDist: number): void {
     // 予測折れ線: B-2 が corners を arc へ分解し、各 arc の B-1 が per-arc に予測・キャッシュ・描画する。
     // 予測は frozen アンカー + 凍結ノードだけの純関数で、player.live には依存しない。
     this.traj.update(this.plan.anchor, this.plan.nodes, simTime + duration, this.ephemeris, frame, simTime, fo);
 
-    if (mapMode) {
+    if (this.editMode) {
       this.updateGizmo(mapDist);
     }
     else {
