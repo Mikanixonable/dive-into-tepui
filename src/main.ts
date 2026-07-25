@@ -3,6 +3,9 @@ import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
 import { resolveStageSelection } from './game/stages/stage-select';
 import { ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './game/theme';
+import { Hud } from './game/hud/hud';
+import { SettingsPanel } from './game/hud/settings-panel';
+import { Sfx } from './audio/sfx';
 
 // 低軌道シューティング: エントリポイント。
 // 物理はメインスレッドで毎フレーム積分する(単体エンティティの中心重力
@@ -69,12 +72,34 @@ function startAnimationLoop(game: Game, perf: PerfMeter): void {
   });
 }
 
+// hud/sfx はタイトル(ステージ選択)画面の時点から使えるべきなので、Game より先に main.ts が
+// 生成して所有し、Game には参照として渡す。settingsPanel も同様に main.ts が所有し、開閉に
+// 応じた一時停止の反映(game.pause()/game.resume())も持ち主である main.ts がここで配線する。
+function initHud(): { hud: Hud; sfx: Sfx; settingsPanel: SettingsPanel } {
+  const hud = new Hud();
+  const sfx = new Sfx();
+  const settingsPanel = new SettingsPanel(hud.root);
+  settingsPanel.setBgmState(sfx.isBgmEnabled());
+  settingsPanel.onBgmToggle = (on) => sfx.setBgmEnabled(on);
+  // 「ゲームを中断してタイトル画面に戻る」— ?stage= クエリを落として選択画面へ
+  settingsPanel.onQuitToTitle = () => {
+    location.assign(location.pathname);
+  };
+  return { hud, sfx, settingsPanel };
+}
+
 async function main() {
   // レンダラ初期化
   const gs = await initScene();
+  const { hud, sfx, settingsPanel } = initHud();
   // ステージ決定とゲーム生成
   const stageId = await resolveStageSelection();
-  const game = new Game(gs, stageId);
+  const game = new Game(gs, stageId, hud, sfx, settingsPanel);
+  // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
+  settingsPanel.onSettingsOpenChange = (open) => {
+    if (open) game.pause();
+    else game.resume();
+  };
   // パフォーマンス計測の DOM
   const perf = new PerfMeter(game);
   // rAF ループ開始

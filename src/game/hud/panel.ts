@@ -78,7 +78,7 @@ export class HudPanels {
       this.setStats({
         met: game.simulator.simTime,
         simSpeedLabel: `×${game.simSpeedManager.simSpeed}`,
-        paused: game.paused,
+        paused: game.isPaused,
         rcsDamp: player.rcsDamp,
         throttleIdx: player.throttleIdx,
         fineAttitude: player.fineAttitude,
