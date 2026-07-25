@@ -19,6 +19,7 @@ import { OrbitState, orbitState } from './orbital';
 import { Ephemeris } from './ephemeris';
 import { add, cross, rotateAxis, scale, sub, v3, Vec3 } from './vec3';
 import { SUN_ROTATING_POLE } from './ephemeris';
+import { Quat, qFromAxisAngle } from './attitude';
 
 // 軌道トレースの描画に使う座標系。慣性系(ECI, 無変換)と回転系。将来 'moonRotating' 等は
 // この配列に足すだけでよい（Frame 型・isFrame・UI ボタンの検証がすべてここから派生する）。
@@ -54,6 +55,21 @@ export function toFramePos(frame: Frame, t: number, pos: Vec3, ephemeris: Epheme
       const a = ephemeris.sunAzimuthAt(t);
       const r = rotateAxis(pos, SUN_ROTATING_POLE, -a);
       return { x: r.x, y: r.y, z: r.z } as RelativeVec3;
+  }
+}
+
+// Frame 相対 → 慣性系へ戻す剛体回転（un-bake）をクォータニオンで返す。SampledLine は
+// bake 済み頂点（Frame 相対座標）を持つメッシュ全体を、毎フレーム group 回転として
+// これで慣性系へ戻す。回転軸は Frame ごとに異なりうる（太陽回転系は極 Y、将来の月回転系は
+// 白道法線など）ため group.rotation.y のような特定軸決め打ちにはできず、frameAxis まわりの
+// 回転を Quat で供給する。toInertialPos（位置単位）と同一の回転を剛体メッシュへ一括適用する版。
+// THREE 非依存の Quat を返し、描画側が group.quaternion に set する。
+export function toInertialQuat(frame: Frame, t: number, ephemeris: Ephemeris): Quat {
+  switch (frame) {
+    case 'inertial':
+      return { x: 0, y: 0, z: 0, w: 1 };
+    case 'sunRotating':
+      return qFromAxisAngle(SUN_ROTATING_POLE, ephemeris.sunAzimuthAt(t));
   }
 }
 
