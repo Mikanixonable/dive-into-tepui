@@ -6,7 +6,7 @@
 // 投影手順(project → set)を一元化したもの。camera-system.ts が MarkerManager に
 // 依存しているため、ProjectFn 型を直接 import せず同形の関数型で受ける
 // (循環 import を避ける)。
-import { Vec3, addScaled } from '../../physics/vec3';
+import { Vec3, addScaled, norm } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
 import * as C from '../const';
 
@@ -106,7 +106,7 @@ export class MarkerManager {
     color?: string,
     rotationDeg?: number,
   ): void {
-    this.setPosition(key, cls, sym, addScaled(origin, dir, C.MARKER_DIR_DIST), project, label, opacity, color, rotationDeg);
+    this.setPosition(key, cls, sym, addScaled(origin, norm(dir), C.MARKER_DIR_DIST), project, label, opacity, color, rotationDeg);
   }
 
   hide(key: string): void {

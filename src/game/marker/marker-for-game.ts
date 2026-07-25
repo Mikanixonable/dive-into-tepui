@@ -31,7 +31,7 @@ export interface MarkerCtx {
 
 // todo: 雑多クラスになっている。
 export class MarkerForGame {
-  constructor(private readonly markerManager: MarkerManager) {}
+  constructor(private readonly markerManager: MarkerManager) { }
 
   // 方向マーカー(プログレード/レトログレード/ノーマル/アンチノーマル/動径 in-out)・
   // 機首ボアサイト・敵/ターゲット/AMMO マーカー・視界外方位/リードマーカーを更新する。
@@ -90,8 +90,9 @@ export class MarkerForGame {
   private updateOrbitalDirectionMarkers(target: Enemy | null, player: Player, project: ProjectFn): void {
     const pr = player.state.r;
     const pv = player.state.v;
-    const proDir = norm(pv);
-    const nrmDir = norm(cross(pr, pv));
+
+    const proDir = pv;
+    const nrmDir = cross(pr, pv);
     const radDir = cross(proDir, nrmDir);
 
     this.markerManager.setDirection('pro', 'mk-pro', '⊙', pr, proDir, project, 'PROGRADE [Q]');
@@ -126,7 +127,7 @@ export class MarkerForGame {
   // まとめラベルを付ける。
   private updateEnemyMarkers(enemies: Enemy[], target: Enemy | null, player: Player, project: ProjectFn): void {
     const CLUSTER_RADIUS = 40;
-    const enemyMarkers: { i: number, e: Enemy, p: {x:number, y:number, front:boolean}, dist: number, isTgt: boolean, groupHide: boolean, groupCount: number }[] = [];
+    const enemyMarkers: { i: number, e: Enemy, p: { x: number, y: number, front: boolean; }, dist: number, isTgt: boolean, groupHide: boolean, groupCount: number; }[] = [];
 
     for (let i = 0; i < enemies.length; i++) {
       const e = enemies[i]!;
@@ -204,42 +205,42 @@ export class MarkerForGame {
     const cx = window.innerWidth / 2;
     const cy = window.innerHeight / 2;
 
-    if (!ctx.mapMode && player.alive) {
+    if (ctx.mapMode || !player.alive) {
       for (const enemy of ctx.enemies) {
-        if (!enemy.alive) {
-          this.markerManager.hide('lead-' + enemy.name);
-          this.markerManager.hide('dir-' + enemy.name);
-          continue;
-        }
-
-        // Target tracking for LEAD (keep showing for ~20s)
-        if (enemy === ctx.target) {
-          enemy.lastTargetedSim = ctx.simTime;
-        }
-
-        const relP = sub(enemy.state.r, player.state.r);
-        const relV = sub(enemy.state.v, player.state.v);
-        const p = project(enemy.state.r);
-
-        const hexColor = enemy.accent ? '#' + enemy.accent.toString(16).padStart(6, '0') : '#ff6a00';
-
-        // 方位マーカー (視界外)
-        this.updateOffscreenDirMarker(enemy, p, cx, cy, hexColor);
-
-        // LEAD マーカー (20秒履歴)
-        this.updateLeadMarker(ctx.simTime, enemy, relP, relV, hexColor, project);
+        this.markerManager.hide('lead-' + enemy.name);
+        this.markerManager.hide('dir-' + enemy.name);
       }
-    } else {
-      for (const ship of ctx.enemies) {
-        this.markerManager.hide('lead-' + ship.name);
-        this.markerManager.hide('dir-' + ship.name);
+    }
+
+    for (const enemy of ctx.enemies) {
+      if (!enemy.alive) {
+        this.markerManager.hide('lead-' + enemy.name);
+        this.markerManager.hide('dir-' + enemy.name);
+        continue;
       }
+
+      // Target tracking for LEAD (keep showing for ~20s)
+      if (enemy === ctx.target) {
+        enemy.lastTargetedSim = ctx.simTime;
+      }
+
+      const relP = sub(enemy.state.r, player.state.r);
+      const relV = sub(enemy.state.v, player.state.v);
+      const p = project(enemy.state.r);
+
+      const hexColor = enemy.accent ? '#' + enemy.accent.toString(16).padStart(6, '0') : '#ff6a00';
+
+      // 方位マーカー (視界外)
+      this.updateOffscreenDirMarker(enemy, p, cx, cy, hexColor);
+
+      // LEAD マーカー (20秒履歴)
+      this.updateLeadMarker(ctx.simTime, enemy, relP, relV, hexColor, project);
     }
   }
 
   private updateOffscreenDirMarker(
     enemy: Enemy,
-    p: { x: number; y: number; front: boolean },
+    p: { x: number; y: number; front: boolean; },
     cx: number,
     cy: number,
     hexColor: string,
@@ -333,7 +334,7 @@ export class MarkerForGame {
       this.markerManager.hide('pip-lead');
       return;
     }
-    const inRect = (p: { x: number; y: number; front: boolean }): boolean =>
+    const inRect = (p: { x: number; y: number; front: boolean; }): boolean =>
       p.front && p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h;
 
     const relP = sub(target.state.r, player.state.r);
