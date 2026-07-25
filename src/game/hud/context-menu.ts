@@ -56,6 +56,17 @@ export class ContextMenu {
     document.body.appendChild(this.el);
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
+    // メニュー外への押下で自分を閉じる。キャプチャ段階で拾うので、途中の要素
+    // (ノードハンドル等)が stopPropagation していても届く。これにより「別のメニューを
+    // 閉じる」配線を持ち主同士が張り合う必要がなくなる。
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (e.target instanceof Node && this.el.contains(e.target)) return;
+        this.close();
+      },
+      true,
+    );
   }
 
   open(clientX: number, clientY: number, items: MenuItem[]): void {

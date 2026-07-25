@@ -155,7 +155,7 @@ main.ts
 | 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | |
 | 地球自転の初期位相 | `EnvironmentScene.earthPhase0` | |
 | 太陽・月の初期位相 | `Ephemeris` | それ以外の状態は持たない(時刻を引数に取る純サンプラ) |
-| 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ |
+| 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
 | 敵 AI の実行時状態(最終発砲時刻・バースト残数・最終ロック時刻) | `Enemy` | |
 
 ### 正本が分かれていることに意味がある組み合わせ
@@ -169,6 +169,10 @@ main.ts
 - **マップモードの操作パネル**は状態の所有者ごとに分かれる。`MapViewPanel` は CameraSystem が、
   `PredictPanel` は PredictSystem が所有し、自分の状態だけを映して自分の状態だけを受け取る。
   表示・非表示も各所有者が毎フレームの sync で押し出す(MapModeToggler は関与しない)。
+- **キー割り当ての正本は各担当モジュール**。`game.ts` が持つのは「どのモジュールに先に配るか」という
+  順序だけで、キーと処理の対応表はどこにも集約されていない(`SettingsPanel`=Esc / `Hud`=H /
+  `Stage`=R / `SimSpeedManager`=,・.・N / `MapModeToggler`=M / `PlanEditor`=X / `CameraSystem`=G・Z・矢印 /
+  `Player`=T・F・V・C・1-3・R・並進・回転)。
 - **`HudPanels` は表示専用**。Game を丸ごと読んで自分の4パネルへ書くだけで、他モジュールの状態や
   DOM は操作しない。ステージ固有の状況パネルは `Stage`(`StageStatusPanel`)、タッチUIのトグル点灯は
   `TouchControls.syncModeButtons()` が担当し、いずれも game.sync が自機/ステージの状態を渡す。

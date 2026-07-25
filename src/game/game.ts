@@ -150,8 +150,6 @@ export class Game {
       this.cameraSystem.activeCameraProjection,
       () => this.player.fineAttitude,
     );
-    // ノードハンドル直接右クリックは、canvas 右クリックと同じフォールバック調停に流す。
-    this.editor.onNodeHandleRightClick = (x, y) => this.dispatchMapRightClick(x, y);
     // 表示期間は predict の状態、予測折れ線のキャッシュは editor の持ち物なので、両者に
     // またがるこの一本だけをオーケストレータが配線する(期間を変えた瞬間に引き直させる)。
     this.predict.onDurationChange = () => this.editor.traj.invalidate();
@@ -186,8 +184,7 @@ export class Game {
   update(dtRaw: number): void {
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
-    this.handleEdgeInput();
-    this.mapModeToggler.update(this.activeStage.isPlaying, this.editor, this.touchControls, this.cameraSystem);
+    this.handleInput();
 
     // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
     // 積分もサブステップなしの簡略版(integrateSimulation の hardCollision/doSubstep 引数)にする。
@@ -246,7 +243,10 @@ export class Game {
     this.editor.plan.trackAnchor(this.player.state);
 
     if (this.editor.editMode) {
-      this.dispatchMapPointer();
+      // 右クリックはノード(メニュー)を先に試し、外したぶんだけフォーカス選択へ回る。
+      // 二つのギズモは互いを知らず、優先順位はこの呼び出し順だけで決まる。
+      this.editor.handleMapPointer(this.input);
+      this.cameraSystem.handleMapPointer(this.input);
       this.editor.updateEditing(dt, this.simulator.simTime, this.input);
     }
     else {
@@ -254,53 +254,30 @@ export class Game {
     }
   }
 
-  // マップモードのポインタ操作を各サブシステムへ振り分ける。ノード編集(plan)と
-  // フォーカス選択(camera)は本来独立した責務で、共有するのは「右クリックの取り合い」
-  // だけ — ノードが消費しなかった右クリックだけをフォーカス選択へフォールバックさせる
-  // この調停をここ(上位)に集約し、各サブシステムは互いを知らずに済ませる。
-  private dispatchMapPointer(): void {
-    for (const c of this.input.clicks()) {
-      this.cameraSystem.closeFocusMenu();
-      this.editor.handleMapClick(c.x, c.y);
-    }
-    for (const rc of this.input.rightClicks()) {
-      this.dispatchMapRightClick(rc.x, rc.y);
-    }
-  }
-
-  private dispatchMapRightClick(x: number, y: number): void {
-    if (this.editor.handleNodeRightClick(x, y)) this.cameraSystem.closeFocusMenu();
-    else this.cameraSystem.handleFocusRightClick(x, y);
-  }
-
   // --------------------------------------------------------------- input
 
-  private handleEdgeInput(): void {
-    for (const code of this.input.presses()) {
-      this.handleEdgePress(code);
-    }
-  }
-
-  private handleEdgePress(code: string): void {
-    switch (code) {
-      case 'KeyG': this.cameraSystem.chaseCamera.toggleFollowAttitude(); break;
-      case 'Comma': this.simSpeedManager.shift(-1); break;
-      case 'Period': this.simSpeedManager.shift(1); break;
-      case 'KeyM':
-        this.mapModeToggler.toggle(this.activeStage.isPlaying, this.editor, this.touchControls, this.cameraSystem);
-        break;
-      // 計画編集中は WASDQE などが Δv 編集に使われるため、[N] の自動ワープはその外でのみ働く。
-      case 'KeyN':
-        if (!this.editor.editMode)
-          this.simSpeedManager.toggleAutoWarpToFirstNode(
-            this.activeStage.isPlaying,
-            this.editor.plan.firstNode());
-        break;
-      case 'KeyX': this.editor.clearPlanByKey(); break;
-      case 'KeyH': this._hud.toggleHelp(); break;
-      case 'Escape': this.settingsPanel.toggle(); break;
-      case 'KeyR': if (!this.activeStage.isPlaying) location.reload(); break;
-    }
+  // 入力エッジを担当モジュールへ先着順で配る。どのキー/クリックが何をするかは各モジュールが
+  // 持ち、ここが決めるのは**優先順位 = 呼ぶ順序**だけ。処理したモジュールが input から
+  // そのイベントを消費するので、後ろのモジュールには届かない。
+  //
+  // ここで配るのは、決着後・ポーズ中も効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・
+  // 計画破棄)。プレイ中のみ効く操作は、それぞれの持ち主の毎フレーム処理が input を受けて
+  // 自分で拾う(Player.behave / CameraSystem.update / PlanEditor.handleMapPointer /
+  // Targeter.updateCombatTargeting)。
+  private handleInput(): void {
+    this.settingsPanel.handleInput(this.input);
+    this._hud.handleInput(this.input);
+    this.activeStage.handleInput(this.input);
+    this.simSpeedManager.handleInput(
+      this.input,
+      this.activeStage.isPlaying,
+      this.editor.editMode,
+      this.editor.plan.firstNode(),
+    );
+    this.mapModeToggler.update(
+      this.input, this.activeStage.isPlaying, this.editor, this.touchControls, this.cameraSystem,
+    );
+    this.editor.handleInput(this.input);
   }
 
   // ------------------------------------------------------------------ sync
