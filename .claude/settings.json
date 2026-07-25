@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/remind-develop-docs.mjs\" 2>/dev/null || true",
+            "statusMessage": "DEVELOP/ 文書の同期チェック",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
