@@ -8,7 +8,7 @@
 // 正データなので、噴射中に目標が逃げる問題自体が起きない。
 import * as THREE from 'three/webgpu';
 import { Elements, elementsFromState } from '../../physics/orbital';
-import { dot, len, norm, sub } from '../../physics/vec3';
+import { dot, len, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { fmtSpeed } from '../hud/utils';
@@ -94,7 +94,7 @@ export class PlanGuide {
       'mk-burn',
       '⬢',
       player.state.r,
-      norm(dvRem),
+      dvRem,
       project,
       `BURN ${mag.toFixed(1)} m/s → ${fmtSpeed(len(node.v))}`,
     );
