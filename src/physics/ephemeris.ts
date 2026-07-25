@@ -166,14 +166,10 @@ export function seLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec
   return { L1: l1, L2: l2 };
 }
 
-// 天体暦の状態: 初期位相をゲームごとに固定し、simTime でサンプルした太陽・月の
-// ECI 位置と太陽方向を保持する。予測(predict.ts)・環境描画・マップ表示など
-// 「物理的な天体暦」だけを要する箇所は、位相を露出せずこのオブジェクトを共有する。
+// 天体暦: 初期位相をゲームごとに固定し、任意の simTime で太陽・月の ECI 位置・
+// 太陽方向を計算して返す(状態は持たない純粋なサンプラ)。予測(predict.ts)・環境描画・
+// マップ表示など「物理的な天体暦」だけを要する箇所は、位相を露出せずこのオブジェクトを共有する。
 export class Ephemeris {
-  private sunPosV: Vec3 = v3(SUN_DIST, 0, 0);
-  private moonPosV: Vec3 = v3(MOON_DIST, 0, 0);
-  private sunDirV: Vec3 = v3(1, 0, 0);
-
   // sunPhase0 は昼(太陽が+X側)から始まるよう既定 0。moonPhase0 は既定でゲーム
   // ごとの乱数。テストは決定的な位相を渡すためコンストラクタで上書きする。
   constructor(
@@ -181,32 +177,16 @@ export class Ephemeris {
     private readonly moonPhase0 = Math.random() * Math.PI * 2,
   ) {}
 
-  get sunPos(): Vec3 {
-    return this.sunPosV;
-  }
-
-  get moonPos(): Vec3 {
-    return this.moonPosV;
-  }
-
-  // 太陽方向の単位ベクトル(ライティング・影判定用)
-  get sunDir(): Vec3 {
-    return this.sunDirV;
-  }
-
-  // simTime の太陽・月位置と太陽方向をサンプルして保持する。
-  update(simTime: number): void {
-    this.sunPosV = sunPosition(simTime, this.sunPhase0);
-    this.moonPosV = moonPosition(simTime, this.moonPhase0);
-    this.sunDirV = norm(this.sunPosV);
-  }
-
-  // 任意時刻のサンプリング(位相を束縛)。予測・マップ表示が表示時刻・将来時刻に使う。
+  // 任意時刻のサンプリング(初期位相を束縛)。呼び出しごとに計算する — キャッシュは持たない。
   sunPosAt(t: number): Vec3 {
     return sunPosition(t, this.sunPhase0);
   }
   moonPosAt(t: number): Vec3 {
     return moonPosition(t, this.moonPhase0);
+  }
+  // 太陽方向の単位ベクトル(ライティング・影判定用)。
+  sunDirAt(t: number): Vec3 {
+    return norm(sunPosition(t, this.sunPhase0));
   }
   sunAzimuthAt(t: number): number {
     return sunAzimuth(t, this.sunPhase0);
