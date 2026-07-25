@@ -70,7 +70,7 @@ export class Player extends Ship {
     const r0 = R_EARTH + C.INITIAL_ALT;
     const vCirc = Math.sqrt(MU_EARTH / r0);
     const inc = (C.INITIAL_INC_DEG * Math.PI) / 180;
-    return orbitState(v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
+    return orbitState(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
   }
 
   private static progradeAttitude(state: OrbitState): Attitude {
@@ -216,12 +216,12 @@ export class Player extends Ship {
     } else {
       this._fx.spawnBulletFlash(bullet.state.r, this.state.v);
     }
-    this._fx.scatterFragments(bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    this._fx.scatterFragments(this.state.t, bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
 
   private destroyEffect(): void {
     this._sfx.explosion();
-    this._fx.spawnShipDestroyEffect(this.state.r, this.state.v, 1, 0x9fd8e8);
+    this._fx.spawnShipDestroyEffect(this.state, 1, 0x9fd8e8);
   }
 
   // ポーズ中: 移動/発射の一時状態(推力可視化・射撃継続)を止める。

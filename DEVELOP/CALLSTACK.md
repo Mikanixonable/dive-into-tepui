@@ -147,7 +147,7 @@
     - hud.hint() // 実行点に接近して自動ワープを解除したフレームのみ
   - simulator.stepSimulation(hardCollision=true, doSubstep=true)
     - simulationSubStep() ×1〜64 // ワープ倍率が MAX_PHYS_SIM_SPEED を超えるとサブステップが増える
-      - stepEntity(player) → stepOrbitRK4() → entity.state へ代入(= 軌道要素メモ破棄)
+      - stepEntity(player) → stepOrbitRK4() → entity.state へ代入(setter が軌道要素メモ破棄 + history 記録)
         // player.alive のみ。thrustFn + 環境加速度
       - stepEntity() // 敵・弾・薬莢・デブリ・補給それぞれ、個体ごと
       - player.thermal.updateThermal()
@@ -323,6 +323,10 @@
   `canResolvePhysicalCollisions` が false になるため丸ごとスキップされる。
 - **予測 RK4 の再計算頻度**は `PredictedLine` が per-arc に持つ入力変化検出 + スロットルで決まる。
   マップモード中でも大半のフレームは `sampled.syncTransform()`(O(1) の剛体変換)だけで済む。
+- **過去 state の記録は `OrbitEntity.state` の setter が行う**ので、この木には独立ノードとして現れない。
+  `stepEntity()` / `resolveCollisionPair()` / 反動など、state へ代入するすべての経路が記録契機になる。
+  `hit.checkBulletHits()` と `targeter.markBoardCrossings()` が読む「直前サブステップ位置」
+  (`entity.prevState.r`)はこれで供給される。
 - **`TouchControls` は per-frame の update を持たない**。DOM の pointer イベントから
   `input.setVirtualKey()` を呼ぶだけなので、この木には独立ノードとして現れない
   (`hud.panels.update` からのトグル点灯 `setActive` のみが per-frame の接点)。

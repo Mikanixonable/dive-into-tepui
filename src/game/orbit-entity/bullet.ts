@@ -21,15 +21,19 @@ export type BulletType = 'normal' | 'plasma';
 // 自弾と敵プラズマ弾の両方に使う。配列は射手(自機/敵)ごとに分けて保持し、
 // 命中ルールは配列単位で扱うが、寿命(lifetime)は生成時に渡された値を自身で持つ。
 export class Bullet extends OrbitEntity {
-    bornSim: number;
+    // 弾は移動が速く、線分衝突判定(hit.ts)・標的面通過判定(targeter.ts)が直前サブステップ位置を
+    // 読むので 1 件だけ保持する。
+    protected readonly historyLength = 1;
+
+    readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
     readonly shooter: Shooter;
     readonly type: BulletType;
     private readonly lifetime: number;
 
     // accent: plasma 弾のみ使う発光色(未指定なら buildPlasmaMesh の既定色)。normal 弾では無視する。
-    constructor(state: OrbitState, bornSim: number, lifetime: number, shooter: Shooter, type: BulletType, scene?: THREE.Scene, accent?: number) {
+    constructor(state: OrbitState, lifetime: number, shooter: Shooter, type: BulletType, scene?: THREE.Scene, accent?: number) {
         super(state, type === 'plasma' ? buildPlasmaMesh(accent) : buildBulletMesh(), scene);
-        this.bornSim = bornSim;
+        this.bornSim = state.t;
         this.lifetime = lifetime;
         this.shooter = shooter;
         this.type = type;

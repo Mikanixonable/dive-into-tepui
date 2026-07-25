@@ -101,7 +101,7 @@ export class Simulator {
 
     const subDt = simDt / nSub;
     for (let i = 0; i < nSub; i++) {
-      this.simTime = this.simulationSubStep(this.simTime, subDt, player, hardCollision);
+      this.simTime = this.simulationSubStep(this.simTime, subDt, player);
       if (hardCollision) {
         this.hit.checkBulletHits(this.simTime, player, activeStage, this);
       }
@@ -115,33 +115,31 @@ export class Simulator {
     simTime: number,
     dt: number,
     player: Player,
-    trackPrevR: boolean,
   ): number {
     const sunPos = this.ephemeris.sunPosAt(simTime);
     const moonPos = this.ephemeris.moonPosAt(simTime);
 
-    this.stepEntity(player, dt, sunPos, moonPos, C.SHIP_BCINV, trackPrevR);
-    this.enemies.forEach(e => this.stepEntity(e, dt, sunPos, moonPos, C.SHIP_BCINV, trackPrevR));
-    this.bullets.forEach(b => this.stepEntity(b, dt, sunPos, moonPos, C.BULLET_BCINV, trackPrevR));
-    this.casings.forEach(c => this.stepEntity(c, dt, sunPos, moonPos, C.SMALL_DEBRIS_BCINV, false));
-    this.debris.forEach(d => this.stepEntity(d, dt, sunPos, moonPos, C.SMALL_DEBRIS_BCINV, false));
-    this.ammos.forEach(a => this.stepEntity(a, dt, sunPos, moonPos, C.SMALL_DEBRIS_BCINV, false));
-    
+    this.stepEntity(player, dt, sunPos, moonPos, C.SHIP_BCINV);
+    this.enemies.forEach(e => this.stepEntity(e, dt, sunPos, moonPos, C.SHIP_BCINV));
+    this.bullets.forEach(b => this.stepEntity(b, dt, sunPos, moonPos, C.BULLET_BCINV));
+    this.casings.forEach(c => this.stepEntity(c, dt, sunPos, moonPos, C.SMALL_DEBRIS_BCINV));
+    this.debris.forEach(d => this.stepEntity(d, dt, sunPos, moonPos, C.SMALL_DEBRIS_BCINV));
+    this.ammos.forEach(a => this.stepEntity(a, dt, sunPos, moonPos, C.SMALL_DEBRIS_BCINV));
+
     player.thermal.updateThermal(dt, player.state.r, player.state.v);
-    
+
     return simTime + dt;
   }
 
+  // 過去 state の記録は entity 自身(state の setter)が行う。積分器は state を差し替えるだけ。
   private stepEntity(
     entity: OrbitEntity,
     dt: number,
     sunPos: Vec3,
     moonPos: Vec3,
     bcInv: number,
-    trackPrevR: boolean = false,
   ): void {
     if (!entity.alive) return;
-    if (trackPrevR) entity.prevR = entity.state.r;
     entity.state = stepOrbitRK4(entity.state, dt, this.makeExtraAccel(entity, sunPos, moonPos, bcInv));
   }
 

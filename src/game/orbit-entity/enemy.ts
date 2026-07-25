@@ -79,13 +79,13 @@ export class Enemy extends Ship {
     } else {
       this._fx.spawnBulletFlash(bullet.state.r, this.state.v);
     }
-    this._fx.scatterFragments(bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    this._fx.scatterFragments(this.state.t, bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
 
   private destroyEffect(): void {
     this._sfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    this._fx.spawnShipDestroyEffect(this.state.r, this.state.v, C.ENEMY_SCALE, 0xff6a4a);
+    this._fx.spawnShipDestroyEffect(this.state, C.ENEMY_SCALE, 0xff6a4a);
   }
 
   // 被弾によるダメージ・致死判定。
@@ -174,7 +174,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(orbitState(r, bV), simTime, C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, this.accent);
+    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, this.accent);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(

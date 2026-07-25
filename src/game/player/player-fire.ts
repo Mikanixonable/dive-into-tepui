@@ -210,8 +210,12 @@ export class PlayerFire {
     const muzzle = add(this.player.state.r, qRotate(this.player.att.q, v3(mo.x, mo.y, mo.z)));
 
     this.spawnBullet(this.player, muzzle, fwd, simTime, addBullet);
-    // 反動(運動量保存の風味): 発射方向と逆に微小 Δv
-    this.player.state = orbitState(this.player.state.r, addScaled(this.player.state.v, fwd, -C.RECOIL_DV));
+    // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
+    this.player.state = orbitState(
+      this.player.state.t,
+      this.player.state.r,
+      addScaled(this.player.state.v, fwd, -C.RECOIL_DV),
+    );
     this.dropCasing(this.player, muzzle, simTime);
     this.spawnMuzzleFlash(this.player, muzzle, fwd, zoomActive);
 
@@ -224,10 +228,10 @@ export class PlayerFire {
     const dir = norm(addScaled(fwd, randPerp(fwd), Math.abs(randSym(C.BULLET_SPREAD))));
     const bullet = new Bullet(
       orbitState(
+        simTime,
         addScaled(muzzle, fwd, 1.5),
         addScaled(ship.state.v, dir, C.MUZZLE_SPEED),
       ),
-      simTime,
       C.BULLET_LIFETIME,
       'player',
       'normal',
@@ -243,6 +247,7 @@ export class PlayerFire {
     const up = qRotate(ship.att.q, v3(0, 1, 0));
     this._fx.spawnCasing(
       orbitState(
+        simTime,
         add(muzzle, scale(right, -1.4)),
         add(
           ship.state.v,
@@ -280,6 +285,7 @@ export class PlayerFire {
     const down = qRotate(ship.att.q, v3(0, -1, 0));
     this._fx.spawnBarrel(
       orbitState(
+        ship.state.t,
         add(ship.state.r, qRotate(ship.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
         add(ship.state.v, add(scale(down, 3.0), randVec(0.5))),
       ),
@@ -298,6 +304,7 @@ export class PlayerFire {
     const portWorld = add(ship.state.r, qRotate(ship.att.q, v3(-0.9, 0, 0)));
     this._fx.spawnMagazineFrame(
       orbitState(
+        ship.state.t,
         portWorld,
         add(ship.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
       ),

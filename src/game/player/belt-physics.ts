@@ -283,6 +283,7 @@ export class BeltPhysics {
       const bp = this.beltPos[s.beltIndex]!;
       const bpPrev = this.beltPrevPos[s.beltIndex]!;
       s.state = orbitState(
+        s.state.t,
         add(baseR, qRotate(q, bp)),
         add(baseV, qRotate(q, v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt))),
       );

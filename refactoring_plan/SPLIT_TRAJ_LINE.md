@@ -58,8 +58,11 @@
   位置版 `toFramePos` から **`toFrameState`（OrbitState を frame 相対へ変換）へ切替**。頂点には位置 `rel.r`
   だけを焼き、速度 `rel.v` は将来のエルミート補間の接線として供給（現状は未使用、実装時にここで保持して密にする）。
   → `toFrameState` / `RelativeOrbitState` / `sunAngularRateAt` が本番で使用中になった。
+  （後日の型統合で `LineSample` は削除。`OrbitState` が `{t,r,v}` になったので `syncGeometry` は
+  `readonly OrbitState[]` を直接受ける。予測点列も entity の履歴も同じ型でそのまま渡せる。）
 - 予測点列 `TrajectorySample`（`{t,r,v}`）は元から v を持ち B-1 経由で sampled-line まで届いていた
   （型 `{r,t}` と bake が捨てていただけ）。B-1/B-2/predict/plan-editor は無改変。
+  （`TrajectorySample` も後日 `OrbitState` へ統合され、型としては消滅した。）
 - **位置は不変**: `toFrameState(...).r` は `toFramePos(...)` と一致（[frame.test.ts](../tests/physics/frame.test.ts)
   の「sunRotating の位置は −sunAz(t) の回転（state・pos が一致）」が保証）。頂点はビット一致で描画は無変化。
 - **残る唯一の Hermite フック**: `toInertialState`（速度の un-bake）は、エルミートが接線を慣性系へ戻して
@@ -79,8 +82,9 @@ plan-system が直接 HUD へ書けば editor から `Frame` import も消え、
 
 A/XX/X/B-1/B-2 の構造化までが範囲。以下は範囲外:
 
-- **C — 履歴軌道**: X があれば容易。現状 `prevR`（[entities.ts](../src/game/orbit-entity/entities.ts)）は 1 個前だけを
-  衝突判定用に保持。OrbitEntity ごとに履歴長を可変にしたリングバッファ（デブリ=0、弾=1、自機/敵=一定長）を足し X で描く。
+- **C — 履歴軌道**: 下地は実装済み。`OrbitEntity.history`（[entities.ts](../src/game/orbit-entity/entities.ts)）が
+  過去 `OrbitState` を `historyLength` 件まで保持し（デブリ=0、弾/自機/敵=1）、記録は `state` の setter が行う。
+  残るのは自機/敵の `historyLength` を伸ばし、`history` をそのまま X（SampledLine）へ渡すだけ。
 - **エルミート補間**: X に解像度パラメータ（解像度=1 で折れ線、上げると滑らか）を足し、bake で得た
   frame 相対速度 `rel.v` を接線に使う。順変換（`toFrameState`）と v の供給は配線済み（レビュー #1）。
   残るは syncGeometry での `rel.v` 保持＋頂点密化と、接線 un-bake の `toInertialState` 接続だけ。

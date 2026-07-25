@@ -5,22 +5,16 @@
 //
 // 扱うのは単一 arc の自由伝播だけ — マニューバノードによる区間分割は知らない。それは
 // plan 側の責務で、plan-editor / plan-trajectory がノード境界ごとにこのプリミティブを呼ぶ。
-import { OrbitState, stepOrbitRK4 } from './orbital';
+import { OrbitState, orbitState, stepOrbitRK4 } from './orbital';
 import { Ephemeris } from './ephemeris';
 import { envAccel } from './envaccel';
-import { Vec3, cross, len, norm, v3 } from './vec3';
-
-export interface TrajectorySample {
-  t: number; // 絶対 simTime [s]
-  r: Vec3; // ECI 位置 [m]
-  v: Vec3; // ECI 速度 [m/s]
-}
+import { Vec3, cross, norm, len, v3 } from './vec3';
 
 // state を dt だけ前進させた新しい state を返す(中点 t+dt/2 の太陽・月位置で
 // 環境加速度を評価)。predictTrajectory と propagateState が共有する 1 ステップ。
 // bcInv = 0 = 大気抵抗なし(このモジュール冒頭の注記のとおり意図的)。
-function stepPredict(state: OrbitState, t: number, dt: number, ephemeris: Ephemeris): OrbitState {
-  const mid = t + dt / 2;
+function stepPredict(state: OrbitState, dt: number, ephemeris: Ephemeris): OrbitState {
+  const mid = state.t + dt / 2;
   const sunPos = ephemeris.sunPosAt(mid);
   const moonPos = ephemeris.moonPosAt(mid);
   return stepOrbitRK4(state, dt, (r, v) => envAccel(r, v, sunPos, moonPos, 0));
@@ -54,24 +48,22 @@ export function predictStepDt(r: number, duration: number): number {
   return Math.max(5, Math.min(600, (r / 8e5) * coarsen));
 }
 
-// state0(時刻 t0)から duration 秒ぶん、大気抵抗なしで自由伝播した軌道点列を RK4 で
-// 数値予測する。サンプルは概ね maxSamples 個になるよう間引いて保持する(低軌道でも
-// 28日 = 数万ステップになり得るため、全ステップ保持は描画・ピッキングのコストが無視
-// できなくなる)。マニューバノードによる区間分割は行わない — 呼び出し側(plan)が
+// state0 からその時刻(state0.t)を起点に duration 秒ぶん、大気抵抗なしで自由伝播した
+// 軌道点列を RK4 で数値予測する。サンプルは概ね maxSamples 個になるよう間引いて保持する
+// (低軌道でも 28日 = 数万ステップになり得るため、全ステップ保持は描画・ピッキングの
+// コストが無視できなくなる)。マニューバノードによる区間分割は行わない — 呼び出し側(plan)が
 // arc ごとにこの関数を呼ぶ。
 export function predictTrajectory(
   state0: OrbitState,
-  t0: number,
   duration: number,
   ephemeris: Ephemeris,
   maxSamplesOpt?: number, // 保持するサンプル数の上限(既定 2000)
-): TrajectorySample[] {
-  if (duration <= 0) return [{ t: t0, r: state0.r, v: state0.v }];
+): OrbitState[] {
+  if (duration <= 0) return [state0];
 
   const maxSamples = Math.max(10, maxSamplesOpt ?? 2000);
-  const tEnd = t0 + duration;
+  const tEnd = state0.t + duration;
   let state = state0;
-  let t = t0;
 
   // 平均刻み幅からステップ総数を概算し、間引き間隔を決める(2回積分せずに済むよう
   // 開始時の動径から見積もる。動径が大きく変わる軌道(高楕円等)では粗い見積もりに
@@ -79,17 +71,16 @@ export function predictTrajectory(
   const estSteps = Math.max(1, Math.ceil(duration / predictStepDt(len(state.r), duration)));
   const storeEvery = Math.max(1, Math.floor(estSteps / maxSamples));
 
-  const samples: TrajectorySample[] = [{ t, r: state.r, v: state.v }];
+  const samples: OrbitState[] = [state0];
   let sinceStore = 0;
 
-  while (t < tEnd - 1e-6) {
-    const dt = Math.min(predictStepDt(len(state.r), duration), tEnd - t);
+  while (state.t < tEnd - 1e-6) {
+    const dt = Math.min(predictStepDt(len(state.r), duration), tEnd - state.t);
     if (dt <= 1e-9) break;
-    state = stepPredict(state, t, dt, ephemeris);
-    t += dt;
+    state = stepPredict(state, dt, ephemeris);
     sinceStore++;
-    if (sinceStore >= storeEvery || t >= tEnd - 1e-9) {
-      samples.push({ t, r: state.r, v: state.v });
+    if (sinceStore >= storeEvery || state.t >= tEnd - 1e-9) {
+      samples.push(state);
       sinceStore = 0;
     }
   }
@@ -97,22 +88,20 @@ export function predictTrajectory(
   return samples;
 }
 
-// state0(時刻 t0)を targetT まで自由伝播した最終状態だけを返す(サンプルは保持しない)。
+// state0 を targetT まで自由伝播した最終状態だけを返す(サンプルは保持しない)。
 // plan がノード到達直前(噴射前)の状態 = Δv 導出の基準を得るのに使う。predictTrajectory と
 // 同じ刻み系列で積分するので、両者の終端は一致する。
 export function propagateState(
   state0: OrbitState,
-  t0: number,
   targetT: number,
   ephemeris: Ephemeris,
 ): OrbitState {
+  const duration = targetT - state0.t;
   let state = state0;
-  let t = t0;
-  while (t < targetT - 1e-6) {
-    const dt = Math.min(predictStepDt(len(state.r), targetT - t0), targetT - t);
+  while (state.t < targetT - 1e-6) {
+    const dt = Math.min(predictStepDt(len(state.r), duration), targetT - state.t);
     if (dt <= 1e-9) break;
-    state = stepPredict(state, t, dt, ephemeris);
-    t += dt;
+    state = stepPredict(state, dt, ephemeris);
   }
   return state;
 }
@@ -121,7 +110,7 @@ export function propagateState(
 // ノード直後の強制サンプルにより、ノード通過の瞬間だけ速度が不連続になる区間が
 // 生じ得るが、その区間は 1 ステップぶん(数〜数百秒)しかなく、計画ツールの
 // 表示・ワープ照準用途では実用上問題にならない。
-export function sampleAt(samples: readonly TrajectorySample[], t: number): TrajectorySample | null {
+export function sampleAt(samples: readonly OrbitState[], t: number): OrbitState | null {
   if (samples.length === 0) return null;
   const first = samples[0]!;
   if (t <= first.t) return first;
@@ -139,9 +128,9 @@ export function sampleAt(samples: readonly TrajectorySample[], t: number): Traje
   const b = samples[hi]!;
   const span = b.t - a.t;
   const f = span > 1e-9 ? (t - a.t) / span : 0;
-  return {
+  return orbitState(
     t,
-    r: v3(a.r.x + (b.r.x - a.r.x) * f, a.r.y + (b.r.y - a.r.y) * f, a.r.z + (b.r.z - a.r.z) * f),
-    v: v3(a.v.x + (b.v.x - a.v.x) * f, a.v.y + (b.v.y - a.v.y) * f, a.v.z + (b.v.z - a.v.z) * f),
-  };
+    v3(a.r.x + (b.r.x - a.r.x) * f, a.r.y + (b.r.y - a.r.y) * f, a.r.z + (b.r.z - a.r.z) * f),
+    v3(a.v.x + (b.v.x - a.v.x) * f, a.v.y + (b.v.y - a.v.y) * f, a.v.z + (b.v.z - a.v.z) * f),
+  );
 }
