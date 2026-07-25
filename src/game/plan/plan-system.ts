@@ -5,7 +5,8 @@ import { Input } from '../input/input';
 import { ProjectFn } from '../camera/camera-system';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { PlanEditor } from './plan-editor';
-import { PredictSystem, DisplayFrameFn } from '../predict/predict-system';
+import { PlanTrajectory } from './plan-trajectory';
+import { PredictSystem } from '../predict/predict-system';
 import { MapCamera } from '../camera/map-camera';
 import { MarkerManager } from '../marker/marker-manager';
 import { MapMarkers } from '../camera/map-markers';
@@ -22,6 +23,8 @@ export class PlanSystem {
   readonly editor: PlanEditor;
   readonly predict: PredictSystem;
   readonly guide: PlanGuide;
+  // 予測軌道の描画 + per-arc キャッシュ(plan 隣接, B-2)。Plan の corners を arc へ分解して描く。
+  readonly traj: PlanTrajectory;
 
   // 軌道計画の編集モード(WASDQE などの操作系をΔv編集へ振り替え、ノード編集入力を有効化する)。
   // cameraSystem.mapMode(広範囲視点)とは本来独立した責務で、たまたま MapModeToggler が
@@ -42,7 +45,8 @@ export class PlanSystem {
   ) {
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager, scene);
     this.editor = new PlanEditor(this._hud, this._sfx, this.simSpeedManager);
-    this.predict = new PredictSystem(this.markerManager, scene);
+    this.predict = new PredictSystem(this.markerManager);
+    this.traj = new PlanTrajectory(scene, this.project);
     this.wireHudCallbacks();
     this.wireNodeGizmo();
   }
@@ -55,15 +59,16 @@ export class PlanSystem {
     this._hud.onDurationSelect = (key) => {
       if (key === 'orbit' || key === 'day' || key === 'week' || key === 'month') {
         this.predict.predictDurationKey = key;
-        this.editor.plan.markDirty();
+        // 表示期間の非連続な変化は、窓の滑り(2s スロットル)と区別できないので即時反映を明示する。
+        this.traj.invalidate();
       }
     };
     this._hud.onFrameSelect = (frame) => {
       // 予測軌道の座標系固定(predict)とカメラ視点の回転追従(mapCamera)は別責務だが、
       // ユーザーからは一つの座標系選択なので、ここで両者へ同じ Frame を設定する。
+      // 座標系トグルは B-2 の bake やり直し(RK4 不要)で即反映されるため markDirty は要らない。
       this.predict.frame = frame;
       this.mapCamera.cameraFrame = frame;
-      this.editor.plan.markDirty();
     };
     this._hud.onMapFocusSelect = (focus) => {
       this.mapCamera.focus = focus;
@@ -88,7 +93,7 @@ export class PlanSystem {
     };
     g.onNodeDragMove = (idx, clientX, clientY) => {
       this.editor.closeMenu();
-      this.editor.dragNodeToNearestSample(idx, clientX, clientY, this.frame(), this.project);
+      this.editor.dragNodeToNearestSample(idx, clientX, clientY, this.traj);
     };
     g.onNodeContextMenu = (clientX, clientY) => this.onNodeHandleRightClick?.(clientX, clientY);
     g.onAxisDrag = (axis, sign, deltaPx) => {
@@ -105,21 +110,16 @@ export class PlanSystem {
     };
   }
 
-  // 現在の外部状態から表示座標変換(太陽回転系対応)を組み立てる。ノードのピッキング/
-  // 配置と表示の基準角がずれないよう、正は predict-system.ts の toDisplayFrame 一箇所。
-  private frame(): DisplayFrameFn {
-    return this.predict.bindDisplayFrame(this.ephemeris);
-  }
-
   // マップ左クリック: 予測軌道上へノード配置、または既存ノード選択(plan-editor に委譲)。
+  // クリック判定は B-2(traj)が描画と同じ変換で行う。
   handleMapClick(clientX: number, clientY: number): void {
-    this.editor.handleMapClick(clientX, clientY, this.frame(), this.project);
+    this.editor.handleMapClick(clientX, clientY, this.traj);
   }
 
   // マップ右クリック(ノード側): ノードに当たれば選択+メニューを開き true を返す。
   // 外れたら false を返し、呼び出し側がフォーカス選択へフォールバックする。
   handleNodeRightClick(clientX: number, clientY: number): boolean {
-    return this.editor.handleNodeRightClick(clientX, clientY, this.frame(), this.project);
+    return this.editor.handleNodeRightClick(clientX, clientY, this.traj);
   }
 
   clearPlanByKey(editMode: boolean): void {
@@ -168,7 +168,7 @@ export class PlanSystem {
         frame: this.predict.frame,
         plannedPlayerLabel:
           this.predict.sliderT > 0
-            ? this.predict.plannedPlayerLabel(this.editor.plan.trajSamples, orbitPeriod, simTime)
+            ? this.predict.plannedPlayerLabel((t) => this.traj.sampleAt(t), orbitPeriod, simTime)
             : null,
         focus: this.mapCamera.focus,
       },
@@ -183,6 +183,7 @@ export class PlanSystem {
     this.guide.syncPlannedLine(this.editor.plan, fo, mapMode);
 
     if (!mapMode) {
+      this.traj.setVisible(false);
       this.predict.hide();
       this.editor.hideGizmo();
       return;
@@ -190,19 +191,13 @@ export class PlanSystem {
     const plan = this.editor.plan;
     const orbitPeriod = player.elements?.period ?? null;
     const duration = this.predict.predictDurationSec(orbitPeriod);
-    // 予測キャッシュの更新トリガ(スロットルは Plan、予測計算は predictSystem)。予測は
-    // frozen アンカー + 凍結ノードだけの純関数で、player.live には依存しない。
-    plan.maybeRefresh(() => this.predict.compute(plan.anchor, ephemeris, simTime, plan.nodes, duration));
-    this.predict.syncDisplay(
-      plan.trajSamples,
-      plan.nodes.map((n) => n.time),
-      orbitPeriod,
-      ephemeris,
-      simTime,
-      fo,
-      this.project,
-    );
-    this.editor.updateGizmo(this.frame(), this.project, this.mapCamera.dist, this.nodeArrivings());
+    // 予測折れ線: B-2 が corners を arc へ分解し、各 arc の B-1 が per-arc に予測・キャッシュ・描画する。
+    // 予測は frozen アンカー + 凍結ノードだけの純関数で、player.live には依存しない。
+    this.traj.setVisible(true);
+    this.traj.update(plan.anchor, plan.nodes, simTime + duration, ephemeris, this.predict.frame, simTime, fo);
+    // 未来ゴーストは predict-system が B-2 の sampleAt(未来位置) と toDisplay(表示座標変換) を引いて表示する。
+    this.predict.syncGhost((t) => this.traj.sampleAt(t), (r, t) => this.traj.toDisplay(r, t), orbitPeriod, simTime, this.project);
+    this.editor.updateGizmo(this.traj, this.mapCamera.dist, this.nodeArrivings());
     this.mapMarkers.syncLabels(simTime, ephemeris, duration, this.predict.sliderT, this.project);
   }
 
