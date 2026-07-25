@@ -5,6 +5,7 @@ import { Hud } from "./hud/hud";
 import { CameraSystem } from "./camera/camera-system";
 import { TouchControls } from "./input/touch";
 import type { Input } from "./input/input";
+import { KEY_MAPPING as K } from "./input/key-mapping";
 import { PlanEditor } from "./plan/plan-editor";
 
 export class MapModeToggler {
@@ -36,7 +37,7 @@ export class MapModeToggler {
     touchControls: TouchControls | null,
     cameraSystem: CameraSystem,
   ): void {
-    if (input.takeKey('KeyM')) this.toggle(isPlaying, editor, touchControls, cameraSystem);
+    if (input.takeKey(K.mapMode)) this.toggle(isPlaying, editor, touchControls, cameraSystem);
     if (!isPlaying && cameraSystem.mapMode) this.close(editor, touchControls, cameraSystem);
   }
 
@@ -47,7 +48,7 @@ export class MapModeToggler {
     if (!cameraSystem.mapMode) {
       this.open(editor, touchControls, cameraSystem);
       this._hud.hint(
-        '軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [M] で確定',
+        `軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [${K.mapMode.label}] で確定`,
         5000,
       );
       return;
@@ -55,7 +56,7 @@ export class MapModeToggler {
     else {
       this.close(editor, touchControls, cameraSystem);
       if (editor.plan.nodes.length > 0) {
-        this._hud.hint(`マニューバ計画 ${editor.plan.nodes.length} 件確定 — [N] で直近ノードへ自動ワープ`, 4500);
+        this._hud.hint(`マニューバ計画 ${editor.plan.nodes.length} 件確定 — [${K.autoWarpToNode.label}] で直近ノードへ自動ワープ`, 4500);
       }
     }
     return;

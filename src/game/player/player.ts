@@ -7,6 +7,7 @@ import * as C from '../const';
 import { Ship } from '../orbit-entity/entities';
 import { Bullet } from '../orbit-entity/bullet';
 import { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
@@ -162,14 +163,14 @@ export class Player extends Ship {
 
   private handleEdgePress(code: string): boolean {
     switch (code) {
-      case 'KeyT': this.throttle.toggleRcsDamp(); return true;
-      case 'KeyF': this.throttle.enableProgradeReset(); return true;
-      case 'KeyV': this.toggleFineAttitude(); return true;
-      case 'KeyC': this.throttle.toggleProgradeHold(); return true;
-      case 'Digit1': this.throttle.setThrottlePreset(0); return true;
-      case 'Digit2': this.throttle.setThrottlePreset(1); return true;
-      case 'Digit3': this.throttle.setThrottlePreset(2); return true;
-      case 'KeyR': return this.fire.manualReload(); // マニュアルリロードに成功した場合のみ、keyを消費する
+      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
+      case K.progradeReset.code: this.throttle.enableProgradeReset(); return true;
+      case K.fineAttitudeToggle.code: this.toggleFineAttitude(); return true;
+      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(); return true;
+      case K.throttleLow.code: this.throttle.setThrottlePreset(0); return true;
+      case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
+      case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
+      case K.reload.code: return this.fire.manualReload(); // マニュアルリロードに成功した場合のみ、keyを消費する
       default: return false;
     }
   }

@@ -7,6 +7,11 @@
 // takeRightClicks に渡した handler が true を返したイベントはキューから取り除かれ、後から
 // 呼ぶモジュールには届かない。これにより「そのキー/クリックが何をするか」は担当モジュール側に
 // 閉じ、オーケストレータ(game.ts)は**呼ぶ順序 = 優先順位**だけを決めればよくなる。
+//
+// 読み出しは KeyBinding(key-mapping.ts)で指定する。生のキーコードを受けるのは
+// ブラウザイベントを受け取るこのクラスの内部だけ。
+import { CTRL_GUARD_KEYS, KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
+
 export interface MouseDelta {
   dx: number;
   dy: number;
@@ -22,6 +27,14 @@ export interface PointerPoint {
 }
 
 const CLICK_MOVE_THRESHOLD = 6; // これ未満の累積移動量ならドラッグではなくクリック扱い
+
+// どの操作にも割り当てていないが、押されるとフォーカスが移動してゲームが操作不能に
+// なるため既定動作だけ止めるキー。
+const FOCUS_GUARD_CODE = 'Tab';
+
+function matchesCode(key: KeyBinding, code: string): boolean {
+  return key.code === code || (key.altCodes?.includes(code) ?? false);
+}
 
 const ZERO_MOUSE_DELTA: MouseDelta = { dx: 0, dy: 0, panDx: 0, panDy: 0, wheel: 0 };
 
@@ -62,26 +75,12 @@ export class Input {
 
   private attachKeyboardListeners(): void {
     window.addEventListener('keydown', (e) => {
-      // Tab のフォーカス移動と Space スクロール、矢印キーでのページスクロールを抑止
-      if (
-        e.code === 'Tab' ||
-        e.code === 'Space' ||
-        e.code === 'Period' ||
-        e.code === 'Comma' ||
-        e.code === 'ArrowLeft' ||
-        e.code === 'ArrowRight' ||
-        e.code === 'ArrowUp' ||
-        e.code === 'ArrowDown'
-      ) {
+      // Space スクロール・矢印キーのページスクロールと、割り当ての無い Tab による
+      // フォーカス移動(ゲームが操作不能になる)を抑止する
+      if (e.code === FOCUS_GUARD_CODE || SCROLL_GUARD_KEYS.some((k) => matchesCode(k, e.code))) {
         e.preventDefault();
       }
-      // CTRL=前進のキー割り当てがブラウザの Ctrl+S(保存)・Ctrl+R(リロード)等と
-      // 衝突するのを防ぐ(Ctrl+W/T/N や Ctrl+数字はブラウザが予約しており
-      // JSからは抑止できないため許容する)
-      if (
-        e.ctrlKey &&
-        (e.code === 'KeyS' || e.code === 'KeyD' || e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyR')
-      ) {
+      if (e.ctrlKey && CTRL_GUARD_KEYS.some((k) => k.code === e.code)) {
         e.preventDefault();
       }
       if (!e.repeat) this.pendingPresses.push(e.code);
@@ -196,13 +195,13 @@ export class Input {
 
   // タッチ UI などからの仮想キー入力。物理キーボードと同じ扱いで
   // 押下中セットとエッジトリガキューへ反映する。
-  setVirtualKey(code: string, down: boolean): void {
+  setVirtualKey(key: KeyBinding, down: boolean): void {
     this.fireGesture();
     if (down) {
-      if (!this.keys.has(code)) this.pendingPresses.push(code);
-      this.keys.add(code);
+      if (!this.keys.has(key.code)) this.pendingPresses.push(key.code);
+      this.keys.add(key.code);
     } else {
-      this.keys.delete(code);
+      this.keys.delete(key.code);
     }
   }
 
@@ -213,8 +212,8 @@ export class Input {
     }
   }
 
-  down(code: string): boolean {
-    return this.keys.has(code);
+  down(key: KeyBinding): boolean {
+    return this.keys.has(key.code) || (key.altCodes?.some((c) => this.keys.has(c)) ?? false);
   }
 
   // フレームの先頭で1度だけ呼ぶ。イベントハンドラが溜めた未確定分を今フレームの
@@ -235,20 +234,22 @@ export class Input {
     this.wheel = 0;
   }
 
-  // 今フレームの押下エッジに code があれば消費して true を返す。担当キーが1つだけの
+  // 今フレームの押下エッジに key があれば消費して true を返す。担当キーが1つだけの
   // モジュール向け。
-  takeKey(code: string): boolean {
-    const i = this.framePresses.indexOf(code);
+  takeKey(key: KeyBinding): boolean {
+    const i = this.framePresses.findIndex((code) => matchesCode(key, code));
     if (i === -1) return false;
     this.framePresses.splice(i, 1);
     return true;
   }
 
   // 今フレームの未消費の押下エッジを順に渡し、handler が true を返したものを消費する。
-  // 担当キーが複数あるモジュール向け。
+  // 消費するかどうかを処理の成否で決めたいモジュール向け(自機のマニュアル装填など)。
   takeKeys(handler: (code: string) => boolean): void {
     for (const code of [...this.framePresses]) {
-      if (handler(code)) this.takeKey(code);
+      if (!handler(code)) continue;
+      const i = this.framePresses.indexOf(code);
+      if (i !== -1) this.framePresses.splice(i, 1);
     }
   }
 

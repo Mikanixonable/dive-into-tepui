@@ -35,102 +35,10 @@ markerForGameを分散させるうえでの懸念。
 
 orbitLineごとにlineBasicMaterialが再生成されている。パフォーマンスに悪い。外部がマテリアルを保持するべきなんだけどどこの責務にしたものか（gameが持つのは険しいからrender/内の定数参照？）
 
-## GUIの所有者ずれ（toolbar解体の続き）
-
-mapToolbar の解体は完了（REFATOR_FIXED.md 参照）。適用した原則:
-
-> **GUI は、そのGUIが書き換える状態の所有者が持つ。所有者が1つに定まらないGUIは、GUIの方を分割する。**
-> 表示・非表示も所有者が自分の sync で押し出す。GUIの見た目を維持することを制約にしない。
-
-同じ病理（1つのGUIが複数モジュールの状態を映す／書き換えるため、状態が持ち回される）が残っている箇所。
-上から順に、影響が大きい。
-
-### A. HudPanels が `Game` を丸ごと受け取る — 最大の同型事例【当面保留】
-`hud/panel.ts` の `HudPanels.update(game, dt)` は player / targeter / simulator / simSpeedManager /
-activeStage / cameraSystem から chery-pick して4パネルを更新する。mapToolbar と同じ構造だが、
-**全情報を集約表示することそのものに価値がある**GUIなので、Game を読むこと自体は問題としない。
-分割すると、GUIクラスではなくゲームオブジェクトを担うのが責務である Player などに表示責務が
-乗ってしまい、そちらの肥大化の方が高くつく。B/C（他モジュールを操作していた分）の切り離しは済んで
-いるので、残りは「表示専用のまま Game を読む」形で許容する。
-
-以下は将来もし着手するときの分割の当たり（現時点では実施しない）:
-- SHIP STATUS の RCS制動・並進出力・微調整・進行方向ホールド・弾薬 → **Player** 所有。
-- ORBIT（高度・速度・AP/PE・傾斜角・周期・動圧・機体温度）→ **Player**（軌道要素と thermal の所有者）。
-- TARGET → **Targeter** 所有（ターゲット選択の所有者がその表示も持つ）。
-- CONTACTS（敵一覧）→ **Simulator/Stage** 側。
-- MET / TIME WARP / 視点のRCS追従 は所有者が別（simulator / simSpeedManager / chaseCamera）。
-  **ここでGUIの方を切り直す** — 「SHIP STATUS」に混ざっている他所有者の行を、別の小パネルへ分けるか、
-  所有者側のパネルへ移す。今回 toolbar で学んだのはまさにこの判断。
-
-### B. panel.ts が touchControls のボタン点灯を面倒見ている → 是正済み
-`TouchControls.syncModeButtons(rcsDamp, fineAttitude, progradeHold)` を新設し、game.sync が呼ぶ。
-どのキーがどのモードのボタンかを知るのはボタンを組み立てた touch.ts なので、そのマッピングはそちらに
-閉じ、呼び出し側は現在値だけを渡す。`setActive` は private 化。panel.ts は表示専用になった。
-
-### C. `#hud-stage0` — ステージ固有GUIが共有 dom.ts にある → 是正済み
-`stages/stage-utils/stage-status-panel.ts` の `StageStatusPanel` を新設し、`Stage` が setup() で
-構築・`syncStatusPanel(player)` で駆動する（PlanEditor の計画パネル、PredictSystem の PREDICT
-パネルと同じ形）。id は `#hud-stagestatus` へ改名（stage00 でも使うため）。`HudPanels` からは
-`stage0State` を削除。DOM 書き換えは内容が変わったフレームだけに絞る。
-
-### D. help / controls バー — 全モジュールのキー割り当てを1箇所で列挙している
-`hud/dom.ts` の `buildHelpPanel` / `buildControlsBar` は、各モジュールが実際に読んでいるキーを人手で
-転記した表。**実際にドリフトしている**:
-- help 表の並進行が `W/S`↔`Q/E` 逆、CTRL/SHIFT の注記も逆の行に付いていた（今回修正済み。
-  `buildControlsBar` の方は正しかった＝同じファイル内で矛盾していた）。
-- help 表の「方向マーカー」行が旧割り当て（`Q/E (PRO/RET)` …）のまま。
-- `marker/marker-for-game.ts` の方向マーカーラベルも旧割り当てのまま（既知の項目）。
-
-構造的な解: キー割り当てとその説明文を、そのキーを読むモジュール側に置き、help はそれを集めて表を
-組む（列挙を書かない）。ヘルプ表は「各モジュールが申告した操作の一覧」になる。
-
-### E. game.handleEdgePress — 入力側の同じ問題 → 是正済み
-`Input` を**先着順の消費**モデルにした（`takeKey` / `takeKeys` / `takeClicks` / `takeRightClicks`。
-handler が true を返したイベントはキューから消え、後続モジュールには届かない）。`presses()` /
-`clicks()` / `rightClicks()` / `consumeKey()` は廃止。
-
-`game.handleEdgePress` の switch は解体し、`handleInput()` が担当モジュールへ順に配るだけになった。
-**キーと処理の対応表はもうどこにも集約されていない** — game が決めるのは優先順位（呼ぶ順序）だけ。
-
-- 決着後・ポーズ中も効く操作: `SettingsPanel`(Esc) → `Hud`(H) → `Stage`(R) →
-  `SimSpeedManager`(,・.・N) → `MapModeToggler`(M) → `PlanEditor`(X)
-- プレイ中のみ効く操作は各自の毎フレーム処理が拾う: `Player.behave`(T/F/V/C/1-3/R) →
-  `CameraSystem.update`(G/Z/矢印) → `PlanEditor.handleMapPointer` → `CameraSystem.handleMapPointer`
-  → `Targeter.updateCombatTargeting`
-
-ポインタも同じモデルに乗せ、`dispatchMapPointer` / `dispatchMapRightClick` /
-`PlanEditor.onNodeHandleRightClick` は消滅した。「ノードが取らなかった右クリックだけがフォーカス
-選択へ回る」という調停は、**editor → camera の呼び出し順そのもの**になった。
-
-副産物: 「別のメニューを閉じる」ための相互配線が要らなくなった。`ContextMenu` がキャプチャ段階の
-document pointerdown で自分を閉じるようにしたので、NodeGizmo と FocusGizmo は互いを知らない。
-
-**先着順で済まなかった箇所は無し。** 唯一の注意点は「決着後・ポーズ中も効くべきキー」と
-「プレイ中のみのキー」で呼び出し位置が分かれること（game.update の early return を挟む）で、
-これは優先順位ではなく実行条件の問題なので、そのまま2群に分けた。
-
-副産物のバグ修正: [R] 再出撃が `location.reload()` だったため、選択画面から入った場合（URL に
-`?stage=` が無い）に**選択画面へ戻ってしまい、再出撃にならなかった**。`Stage.restart()` が
-`?stage=<自分のID>` へ遷移するようにして修正（consume 優先度の問題ではなかった）。
 
 ### F. MarkerForGame / MarkerCtx — マーカーという媒体での同じ病理
 別項「markerの集約 vs 分散」と同じ話。GUI（DOMパネル）で答えが出た原則を、そのままマーカーへ
 適用できるかが論点。適用できるなら「マーカーは、その位置を決める状態の所有者が置く」になる。
-
-### 例外として扱ってよいもの
-- `SettingsPanel`（BGM・一時停止・タイトルへ戻る）… **複数モジュールにまたがることが本質**の
-  GUIなので、所有者を main.ts に置いたままでよい。`[Esc]` の配線が game.handleEdgePress にある点だけ
-  E と同じ問題。
-- `Hud.hint()` / `toast()` … 共有サービス（sfx と同型）。所有者の議論の対象外。
-- `hud/context-menu.ts`・`hud/buttons.ts` … DOMとイベントだけを担う共有部品。状態を持たないので
-  「所有者」を問う必要がない。この形は積極的に増やしてよい。
-
-
-B,Cを是正（小さな責務移動）← 完了
-inputとEを是正（inputロジック変更）← 完了
-F は実現可能性を判断してから
-Dはキーマッピングを実装するまで保留
-Aは当面保留
 
 
 ## 不要なクロージャ注入
@@ -158,11 +66,6 @@ FloatingOriginは、3D描画において、GPUが巨大な数値を単精度で�
 
 
 # 比較的小さく、機械的に作業できる、確実に改善できること
-
-## gameのhandleEdgePressが何でも屋さんになってる / inputを綺麗に書き直す
-→ 上の **E** で是正済み（先着順の consume モデル、`dispatchMap*` の解体、[R] 再出撃の修正）。
-「後から処理するものを優先 consume したい」ケースは現時点では出ておらず、優先度フラグや
-優先度ロジックの導入は不要だった。必要になったらここに追記する。
 
 ## game.tsにおいて、field順で初期化を行っているところは安全でないので、コンストラクタで初期化するようにする。
 
@@ -207,7 +110,7 @@ THREEキャンバスの上に2Dで文字やSVG描画をすることが可能か�
 既に疎結合化されているので、変更範囲はほとんどmakrer-manager.tsに限られるはず。
 
 
-# やる必要がない可能性があるもの、
+# やる必要がない可能性があるもの
 
 ## pipのcrossHairのマーカー化
 pip上でもマーカーって適切に動作しますよね　するのであれば、crosshairは中心（視線方向）に固定したマーカーとして表現できるし、表現すべきだ
@@ -234,6 +137,12 @@ EnvironmentSceneとEphemerisSystemは、扱うものは近いのに計算と描�
 
 ## plan-displayがcameraModeを見る実装が適切か要検討
 実質的な挙動は変わらないが将来的な堅牢性が変わる
+
+## touchControlsとinput、playerの責務整理
+ホールドとトグルの管理がplayerに漏れている。
+トグルフラグをplayerがhandleEdgeInputで切り替えて、それをtouchControlに反映するという流れになっていて、配線が大回り。
+案としては、KEY_MAPPING側がキーと連動したトグル管理をKEY_MAPPINGに委ねることだが……
+しかし、すべてのトグル管理をKEY_MAPPINGに預ける必要はないし、預かる必要もない（cameraSystem.mapModeのトグルなどはそれが自助すべき）問題視されているのは、touchControlsのボタン点灯で参照されているもののみ………つまり過剰実装になる可能性が高い。
 
 ## シミュレーションと予測器のアルゴリズムの再利用
 predictが空気抵抗を計算していない。predictは弾体衝突やthrottle、エンティティごとの相互作用を考慮しなくていいが、空気抵抗、摂動は計算してほしい。そこまでやるとsimulatorとの責務重複が大きいかもしれない。
@@ -270,7 +179,6 @@ predictSystemは以下のようなものを予測し、スライダーに応じ�
 
 ## キーコンフィグ機能
 
-## touchControlsとinputの責務整理
 
 ## 再出撃サイクルの是正
 ブラウザリロードで再出撃するのは雑すぎる。ページ内で再出撃できるようにする。

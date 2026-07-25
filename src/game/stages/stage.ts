@@ -17,6 +17,7 @@ import { showResultScreen, showWinScreen } from '../hud/result-screen';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
 import type { Simulator } from '../orbit-entity/simulator';
 import type { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export type StageId = '00' | '0' | '1' | '2';
@@ -96,7 +97,7 @@ export abstract class Stage {
   // Player のマニュアル装填に渡す。
   handleInput(input: Input): void {
     if (this.isPlaying) return;
-    if (input.takeKey('KeyR')) this.restart();
+    if (input.takeKey(K.restart)) this.restart();
   }
 
   // 同じステージで出撃し直す。選択画面から入ったときは URL にステージ指定が無いため、

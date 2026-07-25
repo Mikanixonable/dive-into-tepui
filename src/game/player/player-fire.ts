@@ -8,6 +8,7 @@ import { orbitState } from '../../physics/orbital';
 import { add, addScaled, norm, randPerp, randSym, randVec, scale, v3, Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Ship } from '../orbit-entity/entities';
@@ -80,7 +81,7 @@ export class PlayerFire {
   ): void {
     this.tickReloadTimer(dt);
 
-    const keyHeld = input.down('Space') || input.mouseFiring;
+    const keyHeld = input.down(K.fire) || input.mouseFiring;
     if (!keyHeld) return;
 
     if (!simSpeed.canPlayerFire) {

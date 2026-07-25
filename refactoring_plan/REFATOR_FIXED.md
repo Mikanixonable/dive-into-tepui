@@ -19,34 +19,36 @@ THREE.sceneに反映されていれば、あとはrenderするだけで描画で
 ## ctx、context、opt、paramsなどといった引数は原則使わない。
 STOP_USING_CTX.mdを参照。
 
-## planSystemのeditModeとcameraSystemのmapMode、cameraSystemのcameraFrameとpredictSystemのframeなど、「たまたま」同時に切り替わるフラグは別個にする
+## 「たまたま」同時に切り替わるフラグは別個にする
+過去に同一視されていた例は以下のようなものがある。これらは、一つのフラグによって本質的に異なる多数の挙動が切り替わるものであり、責務の疎結合を妨げる。「たまたま」一致しているものは別個のフラグに分離する。
+- planSystemのeditModeとcameraSystemのmapMode
+- cameraSystemのcameraFrameとpredictSystemのframe
 
-## GUIは状態の所有者が持つ（toolbarの解体）
-mapToolbar（predictSystemとmapCameraの両方を操作するなんでもGUI）を解体し、状態の所有者ごとに2枚のパネルへ分割した。
+## GUIの所有者
+> **GUI は、そのGUIが書き換える状態の所有者が持つ。所有者が1つに定まらないGUIは、GUIの方を分割する。**
+> 表示・非表示も所有者が自分の sync で押し出す。
+> GUIの見た目を維持することを制約にしない。
 
-- `PredictPanel`（`#hud-predict`、画面下中央）… PredictSystem が所有。期間・予測軌道の座標系・未来位置スライダー。
-- `MapViewPanel`（`#hud-mapview`、画面左上）… CameraSystem が所有。注視対象・視点の座標系・視点リセット。
-- ボタンの実装は `hud/buttons.ts`（`SegmentedControl` / `hudButton`）に共通化。`hud/context-menu.ts` と同じ「DOMとイベントだけを担う共有部品」の位置づけ。
+### 例外として扱ってよいもの
+- `SettingsPanel`（BGM・一時停止・タイトルへ戻る）… **複数モジュールにまたがることが本質**の
+  GUIなので、所有者を main.ts に置いたままでよい。`[Esc]` の配線が game.handleEdgePress にある点だけ
+  E と同じ問題。
+- `Hud.hint()` / `toast()` … 共有サービス（sfx と同型）。所有者の議論の対象外。
+- `hud/context-menu.ts`・`hud/buttons.ts` … DOMとイベントだけを担う共有部品。状態を持たないので
+  「所有者」を問う必要がない。この形は積極的に増やしてよい。
+- HudPanels が `Game` を丸ごと受け取る — 最大の問題ではあるが、当面保留
+`hud/panel.ts` の `HudPanels.update(game, dt)` は player / targeter / simulator / simSpeedManager /
+activeStage / cameraSystem から chery-pick して4パネルを更新する。mapToolbar と同じ構造だが、
+**全情報を集約表示することそのものに価値がある**GUIなので、Game を読むこと自体は問題としない。
+分割すると、GUIクラスではなくゲームオブジェクトを担うのが責務である Player などに表示責務が
+乗ってしまい、そちらの肥大化の方が高くつく。B/C（他モジュールを操作していた分）の切り離しは済んで
+いるので、残りは「表示専用のまま Game を読む」形で許容する。
 
-これに伴い、`cameraFrame`（視点を固定する座標系）と `trajectoryFrame`（予測軌道を描く座標系）をユーザーが独立に選べるようにした。
-
-得られた原則:
-
-1. **GUIは、そのGUIが書き換える状態の所有者が持つ。** 所有者が1つに定まらないGUIは、GUIの方を分割する。
-2. パネルの表示・非表示も所有者の毎フレーム sync で押し出す。モード切替器（MapModeToggler）が各パネルを知る必要はない。
-3. 「表示している値」を外から受け取って描くだけのパネルは、その値の所有者を外に晒す。`setState(a, b, c, d)` のような位置引数の詰め合わせは、その兆候。
-
-## 入力は先着順の consume で配る（キー割り当ての一元表を持たない）
-`Input` のエッジトリガ（キー・左クリック・右クリック）は `takeKey` / `takeKeys` / `takeClicks` /
-`takeRightClicks` で配る。handler が true を返したイベントはキューから取り除かれ、後から呼ばれる
-モジュールには届かない。
-
-これにより、**「どのキー/クリックが何をするか」は担当モジュール側に閉じ、オーケストレータが持つのは
-呼ぶ順序 = 優先順位だけ**になる。GUI で得た「状態の所有者がGUIを持つ」と同じ原則の入力版。
-
-- 決着後・ポーズ中も効くキーと、プレイ中のみ効くキーは、`game.update` の early return を挟んで
-  呼び出し位置が分かれる。これは優先順位ではなく実行条件の違いなので2群に分けてよい。
-- 「A が取らなかったら B」という調停は、A → B の呼び出し順そのもので表現する。専用の調停関数
-  （旧 `dispatchMapRightClick`）は不要。
-- メニューの「外側クリックで閉じる」は、メニュー自身がキャプチャ段階の document pointerdown で
-  自分を閉じる。複数のメニューが互いを閉じ合う配線を持ってはいけない。
+以下は将来もし着手するときの分割の当たり（現時点では実施しない）:
+- SHIP STATUS の RCS制動・並進出力・微調整・進行方向ホールド・弾薬 → **Player** 所有。
+- ORBIT（高度・速度・AP/PE・傾斜角・周期・動圧・機体温度）→ **Player**（軌道要素と thermal の所有者）。
+- TARGET → **Targeter** 所有（ターゲット選択の所有者がその表示も持つ）。
+- CONTACTS（敵一覧）→ **Simulator/Stage** 側。
+- MET / TIME WARP / 視点のRCS追従 は所有者が別（simulator / simSpeedManager / chaseCamera）。
+  **ここでGUIの方を切り直す** — 「SHIP STATUS」に混ざっている他所有者の行を、別の小パネルへ分けるか、
+  所有者側のパネルへ移す。今回 toolbar で学んだのはまさにこの判断。

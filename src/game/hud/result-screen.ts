@@ -1,4 +1,5 @@
 import { Sfx } from '../../audio/sfx';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
 
 // 終了画面(#hud-end)の表示。コンテナは hud/dom.ts が構築し、内容はここが直接操作する。
@@ -12,8 +13,8 @@ function showEnd(win: boolean, detailHtml: string, title?: string): void {
   e.innerHTML = `
     <h1>${title ?? (win ? 'MISSION COMPLETE' : 'SHIP LOST')}</h1>
     <div class="detail">${detailHtml}</div>
-    <div class="restart">[R] キーまたはタップで再出撃</div>`;
-  e.onclick = () => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyR' }));
+    <div class="restart">[${K.restart.label}] キーまたはタップで再出撃</div>`;
+  e.onclick = () => window.dispatchEvent(new KeyboardEvent('keydown', { code: K.restart.code }));
 }
 
 // 終了画面表示の共通処理: BGM/推進音を止めてから結果画面を出す。

@@ -13,6 +13,7 @@
 import { buildHudDom } from './dom';
 import { HudPanels } from './panel';
 import type { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 
 export class Hud {
   readonly root: HTMLElement;
@@ -46,7 +47,7 @@ export class Hud {
 
   // ヘルプ表の開閉は [H]。表を持っているのがこの Hud なので、キーもここで受ける。
   handleInput(input: Input): void {
-    if (input.takeKey('KeyH')) this.toggleHelp();
+    if (input.takeKey(K.help)) this.toggleHelp();
   }
 
   private toggleHelp(): void {

@@ -2,6 +2,7 @@
 // (撃破数で勝利・HUD補助表示なし)のまま使う。
 import * as C from '../const';
 import { Stage } from './stage';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import {
   generateCoellipticEnemy,
   generateCrossingEnemy,
@@ -22,8 +23,8 @@ export class Stage1 extends Stage {
   briefingHtml(enemyCount: number): string {
     return (
       `<b>作戦目標: 敵機 ${enemyCount} 機を全機撃破せよ</b><br>` +
-      '[Tab] ターゲット選択 → [F] ターゲット基準推進で接近 → [,/.] タイムワープで会合を短縮<br>' +
-      '[H] キーで操作方法を表示'
+      `敵を右クリックでターゲット固定 → 機首を向けて並進で接近 → [${K.warpSlower.label}]/[${K.warpFaster.label}] タイムワープで会合を短縮<br>` +
+      `[${K.help.label}] キーで操作方法を表示`
     );
   }
 

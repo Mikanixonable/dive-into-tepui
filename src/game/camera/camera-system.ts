@@ -10,6 +10,7 @@ import { MapMarkers } from './map-markers';
 import { FocusGizmo } from './focus-gizmo';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Player } from '../player/player';
 import { FloatingOrigin } from '../floating-origin';
 import { Vec3 } from '../../physics/vec3';
@@ -122,11 +123,11 @@ export class CameraSystem {
     dt: number,
   ): void {
     // [G] 追従基準の切替はカメラ自身の状態なので、視点更新と同じ場所で受ける。
-    if (input.takeKey('KeyG')) this.chaseCamera.toggleFollowAttitude();
-    this.zoomActive = !this.mapMode && input.down('KeyZ');
+    if (input.takeKey(K.followAttitudeToggle)) this.chaseCamera.toggleFollowAttitude();
+    this.zoomActive = !this.mapMode && input.down(K.gunsightZoom);
 
-    const keyYaw = (input.down('ArrowLeft') ? 1 : 0) + (input.down('ArrowRight') ? -1 : 0);
-    const keyPitch = (input.down('ArrowDown') ? 1 : 0) + (input.down('ArrowUp') ? -1 : 0);
+    const keyYaw = (input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0);
+    const keyPitch = (input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0);
     const mouse = input.mouse();
 
     if (this.mapMode) {

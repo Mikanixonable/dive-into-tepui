@@ -7,6 +7,7 @@ import { ExtraAccel, OrbitState } from '../../physics/orbital';
 import { Vec3, add, len, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { SimSpeedManager } from '../sim-speed-manager';
@@ -67,11 +68,9 @@ export class PlayerThrottle {
   }
 
   private buildThrustAccel(input: Input, q: Attitude['q']): ExtraAccel | null {
-    const axX = (input.down('KeyA') ? 1 : 0) + (input.down('KeyD') ? -1 : 0);
-    const axY = (input.down('KeyQ') ? 1 : 0) + (input.down('KeyE') ? -1 : 0);
-    const axZ =
-      (input.down('KeyW') || input.down('ControlLeft') || input.down('ControlRight') ? 1 : 0) +
-      (input.down('KeyS') || input.down('ShiftLeft') || input.down('ShiftRight') ? -1 : 0);
+    const axX = (input.down(K.thrustLeft) ? 1 : 0) + (input.down(K.thrustRight) ? -1 : 0);
+    const axY = (input.down(K.thrustUp) ? 1 : 0) + (input.down(K.thrustDown) ? -1 : 0);
+    const axZ = (input.down(K.thrustForward) ? 1 : 0) + (input.down(K.thrustBackward) ? -1 : 0);
     if (axX === 0 && axY === 0 && axZ === 0) return null;
 
     const thrustAccel = C.THROTTLE_LEVELS[this.throttleIdx]!;
@@ -98,9 +97,9 @@ export class PlayerThrottle {
     const inertia = att.inertia;
     // 計画編集モード中は手動姿勢入力を無効化する(WASDQE などが Δv 編集に振り替わるため)。
     const manual = editMode ? 0 : 1;
-    const inX = ((input.down('KeyI') ? 1 : 0) + (input.down('KeyK') ? -1 : 0)) * manual;
-    const inY = ((input.down('KeyL') ? 1 : 0) + (input.down('KeyJ') ? -1 : 0)) * manual;
-    const inZ = ((input.down('KeyO') ? 1 : 0) + (input.down('KeyU') ? -1 : 0)) * manual;
+    const inX = ((input.down(K.pitchDown) ? 1 : 0) + (input.down(K.pitchUp) ? -1 : 0)) * manual;
+    const inY = ((input.down(K.yawLeft) ? 1 : 0) + (input.down(K.yawRight) ? -1 : 0)) * manual;
+    const inZ = ((input.down(K.rollRight) ? 1 : 0) + (input.down(K.rollLeft) ? -1 : 0)) * manual;
 
     const isRotating = inX !== 0 || inY !== 0 || inZ !== 0;
     this.rotationHoldTime = isRotating ? this.rotationHoldTime + attDt : 0;

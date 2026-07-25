@@ -2,7 +2,14 @@
 // 副作用(document への要素追加・スタイル注入)は残るが、状態は持たない。
 // イベントリスナーが参照するコールバックは HudDomHost 経由で呼び出し時に解決するため、
 // (呼び出し元の) Hud インスタンスをそのまま渡せる。
+import * as C from '../const';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT } from '../theme';
+
+// 操作説明に出すキー名は key-mapping.ts の label だけから組む(ここには書かない)。
+const rotationLabels = [K.pitchDown, K.pitchUp, K.yawRight, K.yawLeft, K.rollLeft, K.rollRight]
+  .map((k) => k.label).join('/');
+const throttleLabels = [K.throttleLow, K.throttleMid, K.throttleHigh].map((k) => k.label).join(' / ');
 
 // デザイン方針: ダークテーマ。ニューモーフィズムは廃止し、モノトーン
 // (ほぼ無彩色のグレースケール)+ 彩度の高いオレンジ 1 色をアクセントに使う
@@ -230,11 +237,11 @@ function buildInfoPanels(root: HTMLElement): void {
     <div class="row"><span class="k">MET</span><span class="v" data-id="met"></span></div>
     <div class="row"><span class="k">TIME WARP</span><span class="v" data-id="sim-speed"></span></div>
 
-    <div class="row"><span class="k">RCS制動 [T]</span><span class="v" data-id="rcs"></span></div>
-    <div class="row"><span class="k">並進出力 [1-3]</span><span class="v" data-id="throttle"></span></div>
-    <div class="row"><span class="k">微調整 [V]</span><span class="v" data-id="fine"></span></div>
-    <div class="row"><span class="k">進行方向ホールド [C]</span><span class="v" data-id="prohold"></span></div>
-    <div class="row"><span class="k">視点のRCS追従 [G]</span><span class="v" data-id="camfollow"></span></div>
+    <div class="row"><span class="k">RCS制動 [${K.rcsDampToggle.label}]</span><span class="v" data-id="rcs"></span></div>
+    <div class="row"><span class="k">並進出力 [${K.throttleLow.label}-${K.throttleHigh.label}]</span><span class="v" data-id="throttle"></span></div>
+    <div class="row"><span class="k">微調整 [${K.fineAttitudeToggle.label}]</span><span class="v" data-id="fine"></span></div>
+    <div class="row"><span class="k">進行方向ホールド [${K.progradeHoldToggle.label}]</span><span class="v" data-id="prohold"></span></div>
+    <div class="row"><span class="k">視点のRCS追従 [${K.followAttitudeToggle.label}]</span><span class="v" data-id="camfollow"></span></div>
     <div class="row"><span class="k">弾薬 AMMO</span><span class="v" data-id="ammo"></span></div>`;
 
   const orbit = el('div', 'hud-orbit', root, 'panel');
@@ -262,50 +269,67 @@ function buildInfoPanels(root: HTMLElement): void {
 
 function buildControlsBar(root: HTMLElement): void {
   const controls = el('div', 'hud-controls', root);
-  controls.innerHTML =
-    'W/S(またはCTRL/SHIFT):前後 &nbsp;Q/E:上下 &nbsp;A/D:左右 &nbsp;I/K/J/L/U/O:回転 &nbsp;1/2/3:並進出力 &nbsp;T:RCS制動 &nbsp;F:プログレードリセット &nbsp;C:進行方向ホールド &nbsp;G:視点のRCS追従 &nbsp;M:軌道計画 &nbsp;N:ノードへワープ &nbsp;Z:ズーム &nbsp;' +
-    'Space/右クリック:射撃 &nbsp;左ドラッグ/矢印キー:視点 &nbsp;中ドラッグ:マップ平行移動 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
+  controls.innerHTML = [
+    `${K.thrustForward.label}/${K.thrustBackward.label}(または${K.thrustForward.altLabel}/${K.thrustBackward.altLabel}):前後`,
+    `${K.thrustUp.label}/${K.thrustDown.label}:上下`,
+    `${K.thrustLeft.label}/${K.thrustRight.label}:左右`,
+    `${rotationLabels}:回転`,
+    `${throttleLabels}:並進出力`,
+    `${K.rcsDampToggle.label}:RCS制動`,
+    `${K.progradeReset.label}:プログレードリセット`,
+    `${K.progradeHoldToggle.label}:進行方向ホールド`,
+    `${K.followAttitudeToggle.label}:視点のRCS追従`,
+    `${K.mapMode.label}:軌道計画`,
+    `${K.autoWarpToNode.label}:ノードへワープ`,
+    `${K.gunsightZoom.label}:ズーム`,
+    `${K.fire.label}/右クリック:射撃`,
+    '左ドラッグ/矢印キー:視点',
+    '中ドラッグ:マップ平行移動',
+    `${K.warpSlower.label}/${K.warpFaster.label}:ワープ`,
+    `[${K.help.label}]:ヘルプ`,
+  ].join(' &nbsp;');
 }
 
 function buildHelpPanel(root: HTMLElement): void {
   const help = el('div', 'hud-help', root, 'panel');
   help.innerHTML = `
-    <h3>操作方法 [H で閉じる]</h3>
+    <h3>操作方法 [${K.help.label} で閉じる]</h3>
     <table>
-      <tr><td class="key">W / S (または CTRL / SHIFT)</td><td>並進 (前 / 後)</td></tr>
-      <tr><td class="key">Q / E</td><td>並進 (上 / 下)</td></tr>
-      <tr><td class="key">A / D</td><td>並進 (左 / 右)</td></tr>
-      <tr><td class="key">I / K</td><td>ピッチ (機首下げ / 上げ)</td></tr>
-      <tr><td class="key">J / L</td><td>ヨー (右 / 左)</td></tr>
-      <tr><td class="key">O / U</td><td>ロール (右 / 左)</td></tr>
-      <tr><td class="key">T</td><td>RCS 回転制動 ON/OFF</td></tr>
-      <tr><td class="key">F</td><td>プログレード姿勢リセット (機首を進行方向へ即座に向ける)</td></tr>
-      <tr><td class="key">1 / 2 / 3</td><td>並進出力の切替 (弱 / 中 / 強)。W/S・A/D・Q/E の並進 6 方向に共通で適用される</td></tr>
-      <tr><td class="key">V</td><td>姿勢微調整モード ON/OFF (角加速度・角速度を絞って小刻みに操作)</td></tr>
-      <tr><td class="key">C</td><td>進行方向ホールド ON/OFF (機首をプログレード方向へ自動で向け続ける。手動回転で解除)</td></tr>
-      <tr><td class="key">G</td><td>視点のRCS追従 ON/OFF (既定 ON: 視点が機体姿勢を基準に回転し、RCS操作と一体的に動く。OFF で従来の軌道基準の独立視点に戻る)</td></tr>
-      <tr><td class="key">Z (長押し)</td><td>照準ズーム (機首方向を画面中心に拡大表示、自機は非表示になる)</td></tr>
+      <tr><td class="key">${K.thrustForward.label} / ${K.thrustBackward.label} (または ${K.thrustForward.altLabel} / ${K.thrustBackward.altLabel})</td><td>並進 (前 / 後)</td></tr>
+      <tr><td class="key">${K.thrustUp.label} / ${K.thrustDown.label}</td><td>並進 (上 / 下)</td></tr>
+      <tr><td class="key">${K.thrustLeft.label} / ${K.thrustRight.label}</td><td>並進 (左 / 右)</td></tr>
+      <tr><td class="key">${K.pitchDown.label} / ${K.pitchUp.label}</td><td>ピッチ (機首下げ / 上げ)</td></tr>
+      <tr><td class="key">${K.yawRight.label} / ${K.yawLeft.label}</td><td>ヨー (右 / 左)</td></tr>
+      <tr><td class="key">${K.rollRight.label} / ${K.rollLeft.label}</td><td>ロール (右 / 左)</td></tr>
+      <tr><td class="key">${K.rcsDampToggle.label}</td><td>RCS 回転制動 ON/OFF</td></tr>
+      <tr><td class="key">${K.progradeReset.label}</td><td>プログレード姿勢リセット (機首を進行方向へ即座に向ける)</td></tr>
+      <tr><td class="key">${throttleLabels}</td><td>並進出力の切替 (弱 / 中 / 強)。並進 6 方向に共通で適用される</td></tr>
+      <tr><td class="key">${K.fineAttitudeToggle.label}</td><td>姿勢微調整モード ON/OFF (角加速度・角速度を絞って小刻みに操作)</td></tr>
+      <tr><td class="key">${K.progradeHoldToggle.label}</td><td>進行方向ホールド ON/OFF (機首をプログレード方向へ自動で向け続ける。手動回転で解除)</td></tr>
+      <tr><td class="key">${K.followAttitudeToggle.label}</td><td>視点のRCS追従 ON/OFF (既定 ON: 視点が機体姿勢を基準に回転し、RCS操作と一体的に動く。OFF で軌道基準の独立視点になる)</td></tr>
+      <tr><td class="key">${K.gunsightZoom.label} (長押し)</td><td>照準ズーム (機首方向を画面中心に拡大表示、自機は非表示になる)</td></tr>
       <tr><td class="key">右クリック (敵)</td><td>敵をターゲット固定 / 解除 (固定中はターゲット名が画面右上に表示される)</td></tr>
       <tr><td class="key">▲AN / ▽DN マーカー</td><td>自機軌道とターゲット軌道面の交点。面変更(ノーマル/アンチノーマル)burn の目安位置</td></tr>
       <tr><td class="key">✦ マーカー</td><td>ターゲット位置に自機側を向けた仮想標的面を弾が通過した点。次弾の照準修正の目安</td></tr>
-      <tr><td class="key">方向マーカー</td><td>Q/E (PRO/RET), A/D (NRM/ANM), W/S (OUT/IN) 方向を示すマーカー</td></tr>
-      <tr><td class="key">M</td><td>軌道計画モード。地球中心ビューで数値予測した軌道(折れ線)をクリックしてノードを複数配置でき、再度 M で確定(時間は進み続けるのでワープも可)</td></tr>
+      <tr><td class="key">方向マーカー</td><td>軌道基準の6方向 (PRO/RET・NRM/ANM・OUT/IN) を示すマーカー。並進は機体基準なので、この6方向へ加速するには機首をマーカーへ向ける</td></tr>
+      <tr><td class="key">${K.mapMode.label}</td><td>軌道計画モード。地球中心ビューで数値予測した軌道(折れ線)をクリックしてノードを複数配置でき、再度 ${K.mapMode.label} で確定(時間は進み続けるのでワープも可)</td></tr>
       <tr><td class="key">ノードのドラッグ</td><td>ノード上の丸ハンドルをドラッグすると、ポインタに最も近い軌道上の時刻へノードを移動する(小さな動きはドラッグでなくクリック=選択として扱う)</td></tr>
-      <tr><td class="key">Δv 矢印ハンドル</td><td>選択中ノードの周囲に PRO/RET・NRM/ANM・OUT/IN の6ハンドルを表示。ドラッグした向きに応じて対応する Δv 成分を増減する(マップモード中のみ W/S・A/D・Q/E キーでも同じ成分を調整可能、[V] で微調整)</td></tr>
+      <tr><td class="key">Δv 矢印ハンドル</td><td>選択中ノードの周囲に PRO/RET・NRM/ANM・OUT/IN の6ハンドルを表示。ドラッグした向きに応じて対応する Δv 成分を増減する(マップモード中のみ ${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label} キーでも同じ成分を調整可能、[${K.fineAttitudeToggle.label}] で微調整)</td></tr>
       <tr><td class="key">PREDICT パネル</td><td>マップモード下部。期間 = 予測を描く長さ(1周回は現在の周期、双曲線等では1日にフォールバック)、軌道 = 予測軌道を描く座標系、スライダー = 期間内の任意の時刻へゴースト位置(⬡)を表示(0で非表示)</td></tr>
       <tr><td class="key">MAP VIEW パネル</td><td>マップモード左上。注視 = カメラの注視対象(それ以外の天体・ラグランジュ点はラベルを右クリック)、視点 = カメラを固定する座標系、視点リセット = 距離と向きを初期値へ戻す</td></tr>
       <tr><td class="key">慣性系/太陽回転系</td><td>予測軌道とカメラの座標系はそれぞれ独立に選べる。太陽回転系では太陽方向が画面上でほぼ固定される(遷移計画の目安)</td></tr>
-      <tr><td class="key">N</td><td>直近のマニューバノードへ自動タイムワープ(実行点の直前で自動解除)</td></tr>
+      <tr><td class="key">${K.autoWarpToNode.label}</td><td>直近のマニューバノードへ自動タイムワープ(実行点の直前で自動解除)</td></tr>
       <tr><td class="key">右クリック</td><td>マップモード中、ノード近傍で右クリックするとコンテキストメニュー(この時刻まで自動ワープ / ノードを削除 / キャンセル)を開く。ノードが無い位置での右クリックや、開いたメニュー外への右クリックは閉じるだけ</td></tr>
-      <tr><td class="key">X</td><td>マップモード中は選択中のノードを削除(右クリックメニューのフォールバック)、戦闘ビューでは計画全体を破棄</td></tr>
+      <tr><td class="key">${K.deleteNode.label}</td><td>マップモード中は選択中のノードを削除(右クリックメニューのフォールバック)、戦闘ビューでは計画全体を破棄</td></tr>
       <tr><td class="key">◆/▶NODE / ⬢BURN</td><td>直近のマニューバ実行点(▶は選択中)と噴射ガイド。BURN の方向へ加速し、噴射後の計画軌道に十分近づくとそのノードを達成として次のノードへ進む</td></tr>
       <tr><td class="key">オレンジの軌道線</td><td>ターゲットの軌道(自機軌道とほぼ重なる場合は上に重ねて描画)</td></tr>
-      <tr><td class="key">弾薬 / ▣ AMMO</td><td>16発でマガジン1連を消費(右舷のベルトから自動給弾)。残弾が少なくなると付近の軌道に補給が投入されるので、▣ マーカーへ接近して回収</td></tr>
-      <tr><td class="key">Space / 右クリック</td><td>機関砲発射 (ワープ×4以下)。撃ち始めは起動音とともに一瞬遅れて連射開始</td></tr>
-      <tr><td class="key">, / .</td><td>タイムワープ 減 / 増</td></tr>
+      <tr><td class="key">弾薬 / ▣ AMMO</td><td>${C.MAG_ROUNDS}発でマガジン1連を消費(右舷のベルトから自動給弾)。残弾が少なくなると付近の軌道に補給が投入されるので、▣ マーカーへ接近して回収</td></tr>
+      <tr><td class="key">${K.reload.label}</td><td>マニュアル装填(残弾のあるマガジンを捨てて新しい1連を装填)。決着後は同じステージで再出撃</td></tr>
+      <tr><td class="key">${K.fire.label} / 右クリック</td><td>機関砲発射 (ワープ×${C.MAX_PHYS_SIM_SPEED}以下)。撃ち始めは起動音とともに一瞬遅れて連射開始</td></tr>
+      <tr><td class="key">${K.warpSlower.label} / ${K.warpFaster.label}</td><td>タイムワープ 減 / 増</td></tr>
       <tr><td class="key">左ドラッグ / ホイール</td><td>カメラ回転 / 距離ズーム</td></tr>
-      <tr><td class="key">矢印キー</td><td>マウスの代わりにキーボードで視点回転</td></tr>
-      <tr><td class="key">Esc / ⚙</td><td>一時停止メニュー (設定 / タイトルへ戻る)</td></tr>
+      <tr><td class="key">矢印キー (${K.cameraYawLeft.label}${K.cameraYawRight.label}${K.cameraPitchUp.label}${K.cameraPitchDown.label})</td><td>マウスの代わりにキーボードで視点回転</td></tr>
+      <tr><td class="key">${K.pauseMenu.label} / ⚙</td><td>一時停止メニュー (設定 / タイトルへ戻る)</td></tr>
     </table>`;
 }
 

@@ -26,6 +26,7 @@ import { Hud } from '../hud/hud';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ProjectFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
@@ -67,7 +68,7 @@ export class PlanEditor {
     this.planPanel = document.createElement('div');
     this.planPanel.id = 'hud-plan';
     this.planPanel.className = 'panel';
-    this.planPanel.innerHTML = `<h3>MANEUVER PLAN [M]</h3><div data-id="planbody"></div>`;
+    this.planPanel.innerHTML = `<h3>MANEUVER PLAN [${K.mapMode.label}]</h3><div data-id="planbody"></div>`;
     this.planPanel.style.display = 'none';
     this._hud.root.appendChild(this.planPanel);
     this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
@@ -141,7 +142,7 @@ export class PlanEditor {
   // [X] は編集モードの内外どちらでも意味を持つ(編集中は選択ノード削除、戦闘ビューでは計画破棄)
   // ので、マップの開閉に関わらず毎フレーム受ける。
   handleInput(input: Input): void {
-    if (input.takeKey('KeyX')) this.clearPlanByKey();
+    if (input.takeKey(K.deleteNode)) this.clearPlanByKey();
   }
 
   // マップ編集中のポインタ操作。右クリックはノードに当たったものだけ消費し(外したものは
@@ -346,9 +347,9 @@ export class PlanEditor {
       const i = input;
       const rate = (this.getFineAttitude() ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) * dt;
       const local = v3(
-        ((i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0)) * rate,
-        ((i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0)) * rate,
-        ((i.down('KeyE') ? 1 : 0) + (i.down('KeyQ') ? -1 : 0)) * rate,
+        ((i.down(K.dvPrograde) ? 1 : 0) + (i.down(K.dvRetrograde) ? -1 : 0)) * rate,
+        ((i.down(K.dvNormal) ? 1 : 0) + (i.down(K.dvAntinormal) ? -1 : 0)) * rate,
+        ((i.down(K.dvRadialOut) ? 1 : 0) + (i.down(K.dvRadialIn) ? -1 : 0)) * rate,
       );
       this.plan.applyNodeDv(this.selectedNodeIdx!, dvToWorld(selNode.r, selNode.v, local));
     }
@@ -457,6 +458,8 @@ function planPanelHtml(
       s += `<div style="color:${ACCENT};margin-top:2px">⚠ 近地点が大気圏内</div>`;
     }
   }
-  s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/W/S・A/D・Q/E] Δv調整 [右クリック] メニュー(自動ワープ/削除) [X] 選択ノード削除 [V] 微調整 [M] 確定して戻る(時間は進み続ける)</div>`;
+  const dvKeys =
+    `${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label}`;
+  s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/${dvKeys}] Δv調整 [右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.mapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
   return s;
 }

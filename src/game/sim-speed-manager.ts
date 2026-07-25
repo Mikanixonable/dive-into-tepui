@@ -7,6 +7,7 @@ import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
 import { OrbitState } from '../physics/orbital';
 import type { Input } from './input/input';
+import { KEY_MAPPING as K } from './input/key-mapping';
 
 export class SimSpeedManager {
   private levelIdx = 0;
@@ -65,15 +66,15 @@ export class SimSpeedManager {
   // ワープ操作は決着後・ポーズ中も効くべきなので、game はこれをそれらの early return より
   // 前に呼ぶ(自動ワープの段階調整そのものは update() が行う)。
   handleInput(input: Input, isPlaying: boolean, editMode: boolean, firstNode: OrbitState | undefined): void {
-    if (input.takeKey('Comma')) this.shift(-1);
-    if (input.takeKey('Period')) this.shift(1);
-    if (!editMode && input.takeKey('KeyN')) this.toggleAutoWarpToFirstNode(isPlaying, firstNode);
+    if (input.takeKey(K.warpSlower)) this.shift(-1);
+    if (input.takeKey(K.warpFaster)) this.shift(1);
+    if (!editMode && input.takeKey(K.autoWarpToNode)) this.toggleAutoWarpToFirstNode(isPlaying, firstNode);
   }
 
   // 直近ノードの実行時刻までの自動ワープをトグルする。
   toggleAutoWarpToFirstNode(isPlaying: boolean, firstNode: OrbitState | undefined): void {
     if (!firstNode || !isPlaying) {
-      this._hud.hint('マニューバノードがありません ([M] で計画)');
+      this._hud.hint(`マニューバノードがありません ([${K.mapMode.label}] で計画)`);
       return;
     }
     if (this.isAutoWarping) {
