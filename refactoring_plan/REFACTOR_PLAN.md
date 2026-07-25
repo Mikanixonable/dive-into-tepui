@@ -84,11 +84,34 @@ activeStage / cameraSystem から chery-pick して4パネルを更新する。m
 構造的な解: キー割り当てとその説明文を、そのキーを読むモジュール側に置き、help はそれを集めて表を
 組む（列挙を書かない）。ヘルプ表は「各モジュールが申告した操作の一覧」になる。
 
-### E. game.handleEdgePress — 入力側の同じ問題
-GUIではなく入力での同型。すでに別項に挙がっているが、原則は同じ:「入力もGUIも、状態の所有者が
-自分で受ける」。`Player.handleEdgePress` + `input.consumeKey()` がすでに正しい形の実例なので、
-それを他モジュールへ広げる（simSpeedManager・editor・mapModeToggler・cameraSystem）。
-D の解（キーの定義を所有者へ）とこれは同じ作業になる。
+### E. game.handleEdgePress — 入力側の同じ問題 → 是正済み
+`Input` を**先着順の消費**モデルにした（`takeKey` / `takeKeys` / `takeClicks` / `takeRightClicks`。
+handler が true を返したイベントはキューから消え、後続モジュールには届かない）。`presses()` /
+`clicks()` / `rightClicks()` / `consumeKey()` は廃止。
+
+`game.handleEdgePress` の switch は解体し、`handleInput()` が担当モジュールへ順に配るだけになった。
+**キーと処理の対応表はもうどこにも集約されていない** — game が決めるのは優先順位（呼ぶ順序）だけ。
+
+- 決着後・ポーズ中も効く操作: `SettingsPanel`(Esc) → `Hud`(H) → `Stage`(R) →
+  `SimSpeedManager`(,・.・N) → `MapModeToggler`(M) → `PlanEditor`(X)
+- プレイ中のみ効く操作は各自の毎フレーム処理が拾う: `Player.behave`(T/F/V/C/1-3/R) →
+  `CameraSystem.update`(G/Z/矢印) → `PlanEditor.handleMapPointer` → `CameraSystem.handleMapPointer`
+  → `Targeter.updateCombatTargeting`
+
+ポインタも同じモデルに乗せ、`dispatchMapPointer` / `dispatchMapRightClick` /
+`PlanEditor.onNodeHandleRightClick` は消滅した。「ノードが取らなかった右クリックだけがフォーカス
+選択へ回る」という調停は、**editor → camera の呼び出し順そのもの**になった。
+
+副産物: 「別のメニューを閉じる」ための相互配線が要らなくなった。`ContextMenu` がキャプチャ段階の
+document pointerdown で自分を閉じるようにしたので、NodeGizmo と FocusGizmo は互いを知らない。
+
+**先着順で済まなかった箇所は無し。** 唯一の注意点は「決着後・ポーズ中も効くべきキー」と
+「プレイ中のみのキー」で呼び出し位置が分かれること（game.update の early return を挟む）で、
+これは優先順位ではなく実行条件の問題なので、そのまま2群に分けた。
+
+副産物のバグ修正: [R] 再出撃が `location.reload()` だったため、選択画面から入った場合（URL に
+`?stage=` が無い）に**選択画面へ戻ってしまい、再出撃にならなかった**。`Stage.restart()` が
+`?stage=<自分のID>` へ遷移するようにして修正（consume 優先度の問題ではなかった）。
 
 ### F. MarkerForGame / MarkerCtx — マーカーという媒体での同じ病理
 別項「markerの集約 vs 分散」と同じ話。GUI（DOMパネル）で答えが出た原則を、そのままマーカーへ
@@ -104,7 +127,7 @@ D の解（キーの定義を所有者へ）とこれは同じ作業になる。
 
 
 B,Cを是正（小さな責務移動）← 完了
-inputとEを是正（inputロジック変更）
+inputとEを是正（inputロジック変更）← 完了
 F は実現可能性を判断してから
 Dはキーマッピングを実装するまで保留
 Aは当面保留
@@ -136,19 +159,10 @@ FloatingOriginは、3D描画において、GPUが巨大な数値を単精度で�
 
 # 比較的小さく、機械的に作業できる、確実に改善できること
 
-## gameのhandleEdgePressが何でも屋さんになってる
-各managerモジュールにupdate関数を作り（すでにあるならそれでいい）、そこにinputを渡して自己解決してもらう。
-
-## inputを綺麗に書き直す
-dispatchMapRightClickとかがGameに露出すべきじゃない。全体のイベントシステムを何とかしたい。
-
-要するに、すでに反応したものが二重に処理されないことが目的なので、inputのclickにもkey同様のconsume処理を追加し、先着順で先に食った方が処理する形にすれば、下層は自己解決できる。
-先着順で済まないときには要調整……呼び出し順を変更できない理由があるときは報告すること。
-
-暫定的に、後から処理するもので優先的にconsumeしたいものがあるかどうかをフラグとして伝播する対処になる（それで過剰に複雑になる場所があるかを調べたい）
-将来的にはinputに優先度ロジックを導入する
-
-現状、Rキーで再出撃（ブラウザリロードという雑な実装だが…）できていなさそう。inputのconsume優先度の問題？
+## gameのhandleEdgePressが何でも屋さんになってる / inputを綺麗に書き直す
+→ 上の **E** で是正済み（先着順の consume モデル、`dispatchMap*` の解体、[R] 再出撃の修正）。
+「後から処理するものを優先 consume したい」ケースは現時点では出ておらず、優先度フラグや
+優先度ロジックの導入は不要だった。必要になったらここに追記する。
 
 ## game.tsにおいて、field順で初期化を行っているところは安全でないので、コンストラクタで初期化するようにする。
 
@@ -254,5 +268,12 @@ predictSystemは以下のようなものを予測し、スライダーに応じ�
 なお、現時点でExtraAccelを計算していないのは不整合。
 現在は単にplanを表示するだけのたらい回しクラスに見えるが、将来これらを追加するときに共通ファサードになり、
 
+## キーコンフィグ機能
 
-touchControlsとinputの責務整理
+## touchControlsとinputの責務整理
+
+## 再出撃サイクルの是正
+ブラウザリロードで再出撃するのは雑すぎる。ページ内で再出撃できるようにする。
+再出撃サイクル自体はmainの責務にしたいが、Game内のプレイヤー死亡状態を知る必要がある
+Gameから再出撃リクエストをmainに送り、mainで再生成する形になるかもしれない。
+gameからステージセレクトに戻る画面遷移経路とかも普通にあるべきだ。

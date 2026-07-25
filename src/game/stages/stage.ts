@@ -16,6 +16,7 @@ import { Sfx } from '../../audio/sfx';
 import { showResultScreen, showWinScreen } from '../hud/result-screen';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
 import type { Simulator } from '../orbit-entity/simulator';
+import type { Input } from '../input/input';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export type StageId = '00' | '0' | '1' | '2';
@@ -88,6 +89,21 @@ export abstract class Stage {
     this._phase = 'playing';
     this.logistics = new Logistics(hud, sfx, scene, simulator.ammos, (ammo) => simulator.addAmmo(ammo));
     this.statusPanel = new StageStatusPanel(hud.root);
+  }
+
+  // 決着後の [R] = 再出撃。「[R] キーまたはタップで再出撃」と案内する結果画面を出すのが
+  // この Stage なので、その案内に応えるキーもここで受ける。プレイ中の [R] は素通しして
+  // Player のマニュアル装填に渡す。
+  handleInput(input: Input): void {
+    if (this.isPlaying) return;
+    if (input.takeKey('KeyR')) this.restart();
+  }
+
+  // 同じステージで出撃し直す。選択画面から入ったときは URL にステージ指定が無いため、
+  // 自分の ID を明示して読み込み直す(素のリロードだと選択画面へ戻ってしまう)。
+  // 履歴を増やさないよう replace で遷移する。
+  private restart(): void {
+    location.replace(`${location.pathname}?stage=${this.id}`);
   }
 
   // 毎フレーム(sync 時)呼ぶ。hudSubStatus() を返すステージでだけ状況パネルを表示する。

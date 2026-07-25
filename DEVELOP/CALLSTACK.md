@@ -34,14 +34,21 @@
 
 - game.update(dtRaw)
   - input.update() // pending キュー(キー/クリック/マウス)を今フレーム分に確定し、次フレーム用にクリア
-  - handleEdgeInput()
-    - handleEdgePress(code) // input.presses() のキーごと。player 側の担当キーはここでは扱わない
-      - cameraSystem.chaseCamera.toggleFollowAttitude() // KeyG
-        - hud.hint()
-      - simSpeedManager.shift(-1|+1) // Comma / Period
+  - handleInput() // 担当モジュールへ先着順に配る。処理した側が input からそのキーを消費する
+    - settingsPanel.handleInput() // Escape → toggle() → onSettingsOpenChange → game.pause()/resume()
+    - hud.handleInput() // KeyH → toggleHelp()
+    - activeStage.handleInput() // KeyR。isPlaying なら素通し(Player の装填へ回る)
+      - restart() → location.replace(`?stage=<id>`) // 決着後のみ。同じステージで出撃し直す
+    - simSpeedManager.handleInput()
+      - shift(-1|+1) // Comma / Period
         - cancelAutoWarp() // 常に(手動シフトは自動ワープを解除する)
         - sfx.warp() + hud.hint() // 上限/下限を超えない場合のみ
-      - mapModeToggler.toggle() // KeyM。!activeStage.isPlaying なら即 return
+      - toggleAutoWarpToFirstNode() // KeyN。editor.editMode 中は受け取らない
+        - hud.hint() // ノード無し or !isPlaying
+        - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
+        - startAutoWarpTo() + hud.hint() // 未開始
+    - mapModeToggler.update()
+      - toggle() // KeyM。!activeStage.isPlaying なら即 return
         - [開く: !cameraSystem.mapMode]
           - editor.selectedNodeIdx = null
           - touchControls?.setMapMode(true) // タッチデバイスのみ
@@ -56,20 +63,12 @@
           - touchControls?.setMapMode(false)
           - cameraSystem.mapMode = false / editor.editMode = false
           - hud.hint() // plan.nodes.length > 0 のみ
-      - simSpeedManager.toggleAutoWarpToFirstNode() // KeyN。editor.editMode 中は呼ばない
-        - hud.hint() // ノード無し or !isPlaying
-        - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
-        - startAutoWarpTo() + hud.hint() // 未開始
-      - editor.clearPlanByKey() // KeyX
+      - close(...) // !isPlaying && cameraSystem.mapMode のみ(死亡/終了時にマップを強制的に閉じる)
+    - editor.handleInput()
+      - clearPlanByKey() // KeyX
         - [editMode] deleteSelected() → deleteNode()
           - plan.removeNode() / closeMenu() / simSpeedManager.cancelAutoWarp() / hud.hint()
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
-      - hud.toggleHelp() // KeyH
-      - settingsPanel.toggle() // Escape
-        - onSettingsOpenChange → game.pause()/game.resume() に同期(main.ts が配線。ギア/[閉じる]クリック経路も同じ)
-      - location.reload() // KeyR かつ !activeStage.isPlaying
-  - mapModeToggler.update()
-    - close(...) // !isPlaying && cameraSystem.mapMode のみ(死亡/終了時にマップを強制的に閉じる)
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
     - player.thrustFn = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
     - simulator.stepSimulation(hardCollision=false, doSubstep=false) // simSpeed は ×4 で打ち止め
@@ -182,6 +181,7 @@
         - scoreCounter.recordEnemyLoss() + hud.hint()
     - prune() ×5 → entity.dispose() // alive=false の個体ごと(scene から除去、必要なら geometry も破棄)
   - cameraSystem.update() // 物理積分の後に呼ぶ(追従カメラの基準を積分後の自機位置に合わせるため)
+    - chaseCamera.toggleFollowAttitude() // KeyG。カメラ自身の状態なのでここで消費する
     - zoomActive = !mapMode && KeyZ 押下
     - mapCamera.update() // cameraSystem.mapMode のみ
     - chaseCamera.update() // !mapMode のみ
@@ -190,23 +190,19 @@
     - pipCamera.update() // 常に(PIP を描かないフレームも視点計算はする)
   - editor.plan.trackAnchor() // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
   - [editor.editMode] 計画編集モード
-    - dispatchMapPointer()
-      - cameraSystem.closeFocusMenu() + editor.handleMapClick() // input.clicks() のクリックごと
-        - closeMenu()
+    - editor.handleMapPointer() // 右クリック → 左クリックの順に受ける
+      - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
+        - nodeGizmo.openMenu() + selectedNodeIdx = idx // ヒット時。true を返して消費
+      - handleMapClick() // 左クリックごと。常に消費する
         - selectedNodeIdx = idx + sfx.warp() // 既存ノードをヒットした場合
         - traj.nearestSample() → plan.addNode() + sfx.warp() // 予測軌道上をヒットした場合
-      - dispatchMapRightClick() // input.rightClicks() の右クリックごと
-        - editor.handleNodeRightClick() // 先にノードへ提示する
-          - nodeGizmo.openMenu() + cameraSystem.closeFocusMenu() // ノードをヒット(= 右クリック消費)
-          - nodeGizmo.closeMenu() // ヒットせず false を返す
-        - cameraSystem.handleFocusRightClick() // ノードに消費されなかった場合のみ
-          - focusGizmo.openMenu() // MAP_LABEL_PICK_PX 以内にラベルがある場合
-          - focusGizmo.closeMenu() // ない場合
+    - cameraSystem.handleMapPointer() // ノードに消費されずに残った右クリックだけが届く
+      - handleFocusRightClick() → focusGizmo.openMenu() // MAP_LABEL_PICK_PX 以内にラベルがある場合のみ消費
     - editor.updateEditing()
       - plan.applyNodeDv() // ノード選択中 かつ WASDQE 入力がある場合のみ実効
       - renderPanel() // 計画パネル(MANEUVER PLAN)の HTML 更新
   - [!editor.editMode] targeter.updateCombatTargeting()
-    - handleTargetLockByRightClick() // input.rightClicks() があり player.alive のみ
+    - handleTargetLockByRightClick() // player.alive のみ。右クリックは当否に関わらず消費する
       - toggleLockedTarget() + hud.hint() // 右クリックが敵に当たった場合
       - hud.hint() // 外れ、かつ既にロックがあった場合(ロック解除)
     - autoTarget を再計算して代入

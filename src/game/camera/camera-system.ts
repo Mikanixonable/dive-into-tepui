@@ -77,10 +77,15 @@ export class CameraSystem {
     return this.mapMarkers.labels.map((l) => l.id);
   }
 
-  // マップラベル(フォーカス候補)を右クリックしたときの処理: 最寄りラベル(MAP_LABEL_PICK_PX
-  // 以内)があればフォーカス選択メニューを開き、無ければ閉じる。ノードに消費されなかった
-  // 右クリックのフォールバック先として game.ts から呼ばれる。
-  handleFocusRightClick(clientX: number, clientY: number): void {
+  // マップ編集中のポインタ操作。ノードに消費されずに残った右クリックだけがここへ来るので、
+  // 最寄りラベルがあればフォーカス選択メニューを開いて消費する。
+  handleMapPointer(input: Input): void {
+    input.takeRightClicks((p) => this.handleFocusRightClick(p.x, p.y));
+  }
+
+  // マップラベル(フォーカス候補)の右クリック: 最寄りラベル(MAP_LABEL_PICK_PX 以内)が
+  // あればフォーカス選択メニューを開いて true を返す。
+  private handleFocusRightClick(clientX: number, clientY: number): boolean {
     const project = this.activeCameraProjection;
     let bestKey: string | null = null;
     let bestD = C.MAP_LABEL_PICK_PX * C.MAP_LABEL_PICK_PX;
@@ -93,8 +98,9 @@ export class CameraSystem {
         bestKey = lbl.id;
       }
     }
-    if (bestKey !== null) this.focusGizmo.openMenu(clientX, clientY, bestKey);
-    else this.focusGizmo.closeMenu();
+    if (bestKey === null) return false;
+    this.focusGizmo.openMenu(clientX, clientY, bestKey);
+    return true;
   }
 
   closeFocusMenu(): void {
@@ -115,6 +121,8 @@ export class CameraSystem {
     input: Input,
     dt: number,
   ): void {
+    // [G] 追従基準の切替はカメラ自身の状態なので、視点更新と同じ場所で受ける。
+    if (input.takeKey('KeyG')) this.chaseCamera.toggleFollowAttitude();
     this.zoomActive = !this.mapMode && input.down('KeyZ');
 
     const keyYaw = (input.down('ArrowLeft') ? 1 : 0) + (input.down('ArrowRight') ? -1 : 0);

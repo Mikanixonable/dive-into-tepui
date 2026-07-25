@@ -12,6 +12,7 @@
 //   - hud/panel.ts … ステータスパネル同期(panels として公開)
 import { buildHudDom } from './dom';
 import { HudPanels } from './panel';
+import type { Input } from '../input/input';
 
 export class Hud {
   readonly root: HTMLElement;
@@ -43,7 +44,12 @@ export class Hud {
     this.toastUntil = performance.now() + durationMs;
   }
 
-  toggleHelp(): void {
+  // ヘルプ表の開閉は [H]。表を持っているのがこの Hud なので、キーもここで受ける。
+  handleInput(input: Input): void {
+    if (input.takeKey('KeyH')) this.toggleHelp();
+  }
+
+  private toggleHelp(): void {
     const e = document.getElementById('hud-help');
     if (e) e.style.display = e.style.display === 'block' ? 'none' : 'block';
   }

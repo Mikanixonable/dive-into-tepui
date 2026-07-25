@@ -3,6 +3,7 @@
 // ⚙ギアクリック・[閉じる]クリック・[Esc]キーいずれの経路で開閉しても toggle() を通るので、
 // onSettingsOpenChange 経由でゲーム側の一時停止フラグを漏れなく同期できる。
 // CSS(#hud-gear / #hud-settings)は hud/dom.ts の STYLE に一元管理されている。
+import type { Input } from '../input/input';
 
 export class SettingsPanel {
   private readonly panel: HTMLElement;
@@ -45,6 +46,12 @@ export class SettingsPanel {
     this.panel.querySelector<HTMLElement>('[data-id="settingsclose"]')!.addEventListener('click', () =>
       this.toggle(false),
     );
+  }
+
+  // 一時停止メニューの開閉は [Esc]。⚙ギア・[閉じる]と同じ toggle() を通すので、
+  // どの経路でも onSettingsOpenChange が発火する。
+  handleInput(input: Input): void {
+    if (input.takeKey('Escape')) this.toggle();
   }
 
   // 設定パネルの開閉。force を渡すとその状態に固定する。

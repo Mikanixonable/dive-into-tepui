@@ -96,13 +96,12 @@ const STYLE = `
   border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
 }
 #hud .hud-seg .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
-#hud-predict {
-  display: none; bottom: 40px; left: 50%; transform: translateX(-50%); width: 330px;
-  pointer-events: auto;
-}
+/* マップモードの2パネルは画面左上に縦積みする。下段は情報パネル群と操作説明で埋まっており、
+   マップ操作はそれらと独立に置きたいため。 */
+#hud-mapview { display: none; top: 12px; left: 12px; width: 292px; pointer-events: auto; }
+#hud-predict { display: none; top: 166px; left: 12px; width: 292px; pointer-events: auto; }
 #hud-predict input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
 #hud-predict .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
-#hud-mapview { display: none; top: 12px; left: 12px; width: 250px; pointer-events: auto; }
 .mk-planned { color: #8fd0ff; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 .mk-poi { color: #8fd0ff; text-shadow: 0 0 4px #000; }
 .mk-poi .sym { font-size: 14px; }
@@ -176,9 +175,9 @@ const STYLE = `
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
   #hud-plan { bottom: 216px; left: 8px; min-width: 210px; max-width: 60vw; }
-  /* マップモードの2パネルは画面下部(タッチパッド)を避け、左列に縦積みして重ねる */
+  /* マップモードの2パネルは狭幅では #hud-status に重ねる(計画中は艦状態より優先) */
   #hud-mapview { top: 8px; left: 8px; width: 186px; }
-  #hud-predict { bottom: auto; top: 138px; left: 8px; transform: none; width: 186px; }
+  #hud-predict { top: 146px; left: 8px; width: 186px; }
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
