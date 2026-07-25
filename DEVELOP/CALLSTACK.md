@@ -242,7 +242,6 @@
     - enemy.orbitLine.sync() // 敵ごと。mapMode かつ生存かつ非ターゲットのときだけ表示
     - targeter.syncOrbitLine() → orbitLine.sync()
   - syncMarkers()
-    - guide.syncPlannedLine() → plannedLine.sync() // mapMode 中は非表示にするが呼び出し自体は毎フレーム
     - editor.syncDisplay()
       - [!mapMode] traj.setVisible(false) + hideGizmo() → nodeGizmo.sync([], null) して return
       - traj.setVisible(true)
