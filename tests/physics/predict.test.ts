@@ -1,21 +1,16 @@
 // predict.ts の回帰テスト。
-// - predictTrajectory はアンカー起点で積分し、各ノード時刻で状態を postState へ
-//   リセットして継続する(相対 Δv を積むのではなく、実行後の絶対状態へ差し替える)。
-// - arrivingStates は各ノードに到達する直前(噴射前)の状態を求める。ノードが1個で
-//   その arc 長 = 予測期間のとき、ノード無し予測の終端状態と一致するはず(同一積分)。
+// - predictTrajectory は state0 起点で単一 arc を自由伝播し、軌道点列を返す。
+// - propagateState は targetT までの終端状態だけを返す。同じ刻み系列で積分するので、
+//   predictTrajectory を targetT まで回した終端と一致するはず(自己整合)。
+// マニューバノードによる区間分割は plan 側の責務なので、ここでは扱わない。
 // 数値予測の絶対値そのものは実測基準(RK4 の刻み・間引きに依存)なので、往復・自己
 // 整合の形で挙動を固定する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { MU_EARTH, R_EARTH, orbitState } from '../../src/physics/orbital';
-import {
-  PlannedNode,
-  arrivingStates,
-  predictTrajectory,
-  sampleAt,
-} from '../../src/physics/predict';
+import { predictTrajectory, propagateState, sampleAt } from '../../src/physics/predict';
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { len, scale, sub, v3 } from '../../src/physics/vec3';
+import { len, sub, v3 } from '../../src/physics/vec3';
 
 // 決定的な位相(既定の moonPhase0 は乱数なので明示指定する)。
 const EPHEMERIS = new Ephemeris(0, 0);
@@ -29,10 +24,10 @@ function circularState() {
 }
 
 export function register(): void {
-  test('predict: no-node trajectory stays a bounded orbit (radius near-constant)', () => {
+  test('predict: trajectory stays a bounded orbit (radius near-constant)', () => {
     const s0 = circularState();
     const r0 = len(s0.r);
-    const samples = predictTrajectory(s0, 0, 3000, [], EPHEMERIS, MAX_SAMPLES);
+    const samples = predictTrajectory(s0, 0, 3000, EPHEMERIS, MAX_SAMPLES);
     assert.ok(samples.length > 2, 'expected multiple samples');
     // 円軌道なので全サンプルの動径は初期値付近に留まる。J2(赤道扁平)と第三体で
     // 0.1〜数% 程度は変動するので、暴走しない範囲を実測基準で緩く固定する。
@@ -41,47 +36,34 @@ export function register(): void {
     }
   });
 
-  test('predict: state is reset to node.postState at the node time', () => {
+  test('predict: propagateState matches the free-propagation endpoint', () => {
     const s0 = circularState();
-    const nodeTime = 1500;
-    // postState は「到達状態と明確に違う」速度(1.1倍)を与える。
-    // predictTrajectory はノード時刻でこの状態へリセットするはず。
-    const post = orbitState(v3(R_EARTH + 420e3, 0, 0), scale(v3(0, Math.sqrt(MU_EARTH / (R_EARTH + 420e3)), 0), 1.1));
-    const node: PlannedNode = { time: nodeTime, postState: post };
-    const samples = predictTrajectory(s0, 0, 3000, [node], EPHEMERIS, MAX_SAMPLES);
-    // ノード時刻ちょうどのサンプル = リセット後(postState)。
-    const at = sampleAt(samples, nodeTime);
-    assert.ok(at, 'expected a sample at the node time');
-    assert.ok(len(sub(at!.r, post.r)) < 1, 'post-node position should equal postState.r');
-    assert.ok(len(sub(at!.v, post.v)) < 1e-6, 'post-node velocity should equal postState.v');
-  });
+    const targetT = 1500;
+    const arriving = propagateState(s0, 0, targetT, EPHEMERIS);
 
-  test('predict: arrivingStates matches free propagation to the node time (single node)', () => {
-    const s0 = circularState();
-    const nodeTime = 1500;
-    // 1ノードのとき arriving[0] は postState に依存しない(上流のみで決まる)。
-    // 適当な postState でよい。
-    const node: PlannedNode = { time: nodeTime, postState: orbitState(v3(R_EARTH + 420e3, 0, 0), v3(0, 0, 0)) };
-    const arriving = arrivingStates(s0, 0, [node], EPHEMERIS);
-    assert.equal(arriving.length, 1);
-
-    // ノード無しで nodeTime まで積分した終端(同一の刻み系列)と一致するはず。
-    const free = predictTrajectory(s0, 0, nodeTime, [], EPHEMERIS, MAX_SAMPLES);
+    // 同じ刻み系列で targetT まで積分した終端(predictTrajectory)と一致するはず。
+    const free = predictTrajectory(s0, 0, targetT, EPHEMERIS, MAX_SAMPLES);
     const end = free[free.length - 1]!;
-    assert.ok(Math.abs(end.t - nodeTime) < 1e-6, 'free propagation should end at node time');
-    assert.ok(len(sub(arriving[0]!.r, end.r)) < 1e-6, 'arriving position should match free propagation');
-    assert.ok(len(sub(arriving[0]!.v, end.v)) < 1e-9, 'arriving velocity should match free propagation');
+    assert.ok(Math.abs(end.t - targetT) < 1e-6, 'free propagation should end at targetT');
+    assert.ok(len(sub(arriving.r, end.r)) < 1e-6, 'arriving position should match free propagation');
+    assert.ok(len(sub(arriving.v, end.v)) < 1e-9, 'arriving velocity should match free propagation');
   });
 
-  test('predict: zero-Δv node (postState = arriving) leaves the orbit continuous', () => {
+  test('predict: propagateState leaves the input state unmutated', () => {
     const s0 = circularState();
-    const nodeTime = 1500;
-    const arriving = arrivingStates(s0, 0, [{ time: nodeTime, postState: s0 }], EPHEMERIS)[0]!;
-    // Δv=0 のノード(postState = 到達状態)。ノード前後で状態が連続するはず。
-    const node: PlannedNode = { time: nodeTime, postState: arriving };
-    const samples = predictTrajectory(s0, 0, 3000, [node], EPHEMERIS, MAX_SAMPLES);
-    const at = sampleAt(samples, nodeTime);
-    assert.ok(at, 'expected a sample at node time');
-    assert.ok(len(sub(at!.v, arriving.v)) < 1e-6, 'zero-Δv node should not jump velocity');
+    const r0 = { ...s0.r };
+    const v0 = { ...s0.v };
+    propagateState(s0, 0, 1500, EPHEMERIS);
+    assert.ok(len(sub(s0.r, r0)) === 0 && len(sub(s0.v, v0)) === 0, 'input state must not be mutated');
+  });
+
+  test('predict: sampleAt interpolates within the trajectory', () => {
+    const s0 = circularState();
+    const samples = predictTrajectory(s0, 0, 3000, EPHEMERIS, MAX_SAMPLES);
+    const mid = sampleAt(samples, 1500);
+    assert.ok(mid, 'expected a sample at t=1500');
+    assert.ok(Math.abs(mid!.t - 1500) < 1e-6, 'sampleAt should return the requested time');
+    // 補間点も円軌道の動径付近に留まる。
+    assert.ok(Math.abs(len(mid!.r) - len(s0.r)) / len(s0.r) < 1e-2, 'interpolated radius stays bounded');
   });
 }

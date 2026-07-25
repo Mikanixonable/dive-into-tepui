@@ -15,7 +15,7 @@
 // 現在状態に再ベースされない。
 import * as THREE from 'three/webgpu';
 import { Elements, OrbitState, elementsFromState, orbitState } from '../../physics/orbital';
-import { PlannedNode, arrivingStates, dvToWorld } from '../../physics/predict';
+import { dvToWorld, propagateState } from '../../physics/predict';
 import { Projected } from '../../physics/projection';
 import { Vec3, add, clone, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
 import { Frame } from '../../physics/frame';
@@ -27,7 +27,7 @@ import { Input } from '../input/input';
 import { ProjectFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
-import { Plan } from './plan';
+import { Plan, PlannedNode } from './plan';
 import { PlanTrajectory } from './plan-trajectory';
 import { SimSpeedManager } from '../sim-speed-manager';
 
@@ -92,10 +92,19 @@ export class PlanEditor {
     };
   }
 
-  // 各ノードの到達(噴射前)状態。Δv 表示・空ノード判定に使う。予測計算に ephemeris が要るため
-  // ここで導出する(ノードは Δv を正データに持たず postState だけを持つ)。
+  // 各ノードの到達(噴射前)状態。Δv 表示・空ノード判定に使う。arc をアンカー → 各ノード
+  // 境界の順に自由伝播して求める(arc の起点はアンカー、以降は前ノードの postState)。予測計算に
+  // ephemeris が要るためここで導出する(ノードは Δv を正データに持たず postState だけを持つ)。
   private nodeArrivings(): OrbitState[] {
-    return arrivingStates(this.plan.anchor.state, this.plan.anchor.time, this.plan.nodes, this.ephemeris);
+    const out: OrbitState[] = [];
+    let state = this.plan.anchor.state;
+    let t = this.plan.anchor.time;
+    for (const node of this.plan.nodes) {
+      out.push(propagateState(state, t, node.time, this.ephemeris));
+      state = node.postState;
+      t = node.time;
+    }
+    return out;
   }
 
   closeMenu(): void {

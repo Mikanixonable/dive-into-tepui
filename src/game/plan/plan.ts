@@ -13,8 +13,15 @@
 // 上流ノードを編集すると下流ノードの凍結状態は無効になるため、編集メソッドは編集ノード
 // より後(時刻が後)のノードを破棄する(千切れさせない = 削除。再スナップはしない)。
 import { orbitState, OrbitState } from '../../physics/orbital';
-import { PlannedNode } from '../../physics/predict';
 import { Vec3, add, clone, v3 } from '../../physics/vec3';
+
+// 軌道計画の「曲がり角」= 実行時刻とその直後の絶対状態(r,v とも凍結)。相対 Δv では
+// なく実行後の状態そのものを正データとして持つ — r の再計算は予測依存かつ積分誤差を
+// 伴い、軽微な導出値ではないため。Δv は導出値(= postState.v − 到達時の速度)。
+export interface PlannedNode {
+  time: number; // 実行時刻(絶対 simTime)[s]
+  postState: OrbitState; // 実行(噴射)直後の絶対状態
+}
 
 export interface PlanAnchor {
   time: number;

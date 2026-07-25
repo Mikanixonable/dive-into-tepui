@@ -17,7 +17,7 @@
 // 通すので描画とクリック判定が画面上でずれない(§5-4)。
 import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital';
-import { PlannedNode, TrajectorySample, sampleAt } from '../../physics/predict';
+import { TrajectorySample, sampleAt } from '../../physics/predict';
 import { Vec3, v3 } from '../../physics/vec3';
 import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -25,7 +25,7 @@ import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn } from '../camera/camera-system';
 import { PredictedLine } from '../predict/predicted-line';
-import { PlanAnchor } from './plan';
+import { PlanAnchor, PlannedNode } from './plan';
 
 // セグメント色: [未実行の噴射前=グレー, 最初のノード後=白, 2個目以降=オレンジ]。
 const SEGMENT_COLORS = [0xbfc9d4, 0xffffff, 0xff6a00];
