@@ -1,11 +1,12 @@
 // 軌道計画(Plan)の「未来表示」を担う薄いオーケストレータ。かつて mapMode に混在していた
 // 三責務(camera / plan編集 / 軌道予測)のうちの「軌道予測」に相当する。予測折れ線の描画・
-// キャッシュ・表示座標変換・クリック判定は plan 隣接の PlanTrajectory(B-2)へ移り、ここは:
+// キャッシュ・表示座標変換・クリック判定は editor 所有の PlanTrajectory(B-2)へ移り、ここは:
 //   ① 表示期間: sliderT / displayTime / resolveDisplayTime と predictDurationKey→秒の解決。
-//   ② 予測軌道を描く座標系(frame)の状態保持(HUD トグルが設定、plan-system が B-2 へ渡す)。
-//   ③ 未来ゴースト: sliderT に応じた未来時刻の予定 player 位置マーカー(plannedPlayer)の表示。
+//   ② 未来ゴースト: sliderT に応じた未来時刻の予定 player 位置マーカー(plannedPlayer)の表示。
 //      サンプル(sampleAt)と表示座標変換(toDisplay)は B-2 のものを注入で受け取り、Plan も B-2 も
 //      import しない。mapMode 中のみ意味を持つ。
+//   ③ マップツールバーの表示反映(期間・座標系・スライダーラベル・フォーカス)。
+// 予測軌道を描く座標系(frame)は camera が所有し(MapCamera.cameraFrame)、ここは読むだけ。
 import { R_EARTH } from '../../physics/orbital';
 import { TrajectorySample } from '../../physics/predict';
 import { Vec3, len } from '../../physics/vec3';
@@ -14,6 +15,7 @@ import * as C from '../const';
 import { fmtMarkerDist } from '../hud/utils';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn } from '../camera/camera-system';
+import { Hud } from '../hud/hud';
 
 export type PredictDurationKey = 'orbit' | 'day' | 'week' | 'month';
 
@@ -28,10 +30,13 @@ export class PredictSystem {
   // マップモードの未来ゴーストスライダー位置(0..1、0 でゴーストマーカー非表示)。
   // カメラの視点計算には無関係な、予測表示側の状態のためここが正(MapCamera には置かない)。
   sliderT = 0;
-  // 予測軌道を描画する座標系(慣性系 / 太陽回転系)。plan-system が B-2 の描画・ghost へ渡す。
-  frame: Frame = 'inertial';
 
-  constructor(private readonly markerManager: MarkerManager) {}
+  constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
+    // スライダー位置は純粋に予測表示側の状態なので、この HUD 配線はここが持つ。
+    this._hud.onSliderChange = (t) => {
+      this.sliderT = t;
+    };
+  }
 
   // 選んだ期間だけ予測する(マップモードでの表示用— 戦闘ビューの噴射ガイド用の
   // 期間は plan-guide.ts の guideDurationSec が別途持つ)。'orbit' キーの周期は呼び出し
@@ -102,5 +107,13 @@ export class PredictSystem {
       project,
       this.plannedPlayerLabel(sampleAt, orbitPeriod, simTime),
     );
+  }
+
+  // マップツールバー(期間ボタン・座標系トグル・スライダーラベル・フォーカス)を HUD へ反映する。
+  // frame(表示座標系)と focus は camera 側の状態で game が渡す。plannedPlayerLabel の算出に
+  // 使う B-2 の sampleAt も注入で受ける。game.ts が editMode 中に毎フレーム呼ぶ。
+  syncToolbar(frame: Frame, focus: string, sampleAt: SampleAtFn, orbitPeriod: number | null, simTime: number): void {
+    const label = this.sliderT > 0 ? this.plannedPlayerLabel(sampleAt, orbitPeriod, simTime) : null;
+    this._hud.setMapToolbarState(this.predictDurationKey, frame, label, focus);
   }
 }

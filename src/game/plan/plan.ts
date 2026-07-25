@@ -1,5 +1,5 @@
 // 軌道計画(ノード列)とその起点アンカー = 純 corners データ。マップモードの有無に
-// 関わらず存在するデータで、PlanSystem が所有し、実施(plan-guide.ts)へは Game 経由で
+// 関わらず存在するデータで、PlanEditor が所有し、実施(plan-guide.ts)へは Game 経由で
 // 注入する。ノードの追加・削除・並べ替え・編集は必ずこのクラスのメソッド経由で行う。
 // 予測軌道の計算・キャッシュは持たない — それは plan 隣接の PlanTrajectory(B-2)と各 arc の
 // PredictedLine(B-1)が per-arc に司る(入力変化検出でノード編集を吸収するので dirty フラグは不要)。
