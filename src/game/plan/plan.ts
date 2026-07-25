@@ -13,7 +13,7 @@
 // 上流ノードを編集すると下流ノードの凍結状態は無効になるため、編集メソッドは編集ノード
 // より後(時刻が後)のノードを破棄する(千切れさせない = 削除。再スナップはしない)。
 import { orbitState, OrbitState } from '../../physics/orbital';
-import { Vec3, add, clone, v3 } from '../../physics/vec3';
+import { Vec3, add, v3 } from '../../physics/vec3';
 
 // 軌道計画の「曲がり角」= 実行時刻とその直後の絶対状態(r,v とも凍結)。相対 Δv では
 // なく実行後の状態そのものを正データとして持つ — r の再計算は予測依存かつ積分誤差を
@@ -50,7 +50,7 @@ export class Plan {
   // なり、以降 predict は player.live 非依存になる。clear() で空へ戻すと追従を再開する。
   trackAnchor(time: number, state: OrbitState): void {
     if (this._nodes.length > 0) return;
-    this._anchor = { time, state: orbitState(clone(state.r), clone(state.v)) };
+    this._anchor = { time, state };
   }
 
   addNode(node: PlannedNode): number {

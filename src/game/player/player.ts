@@ -232,6 +232,7 @@ export class Player extends Ship {
 
 
   private updateTorque(input: Input, editMode: boolean, attDt: number): void {
+    const fine = this.fineAttitude || this.fire.isFiring;
     this.torque = this.throttle.updateTorque(
       this.att,
       this.state.r,
@@ -239,10 +240,11 @@ export class Player extends Ship {
       this.alive,
       input,
       editMode,
-      this.fineAttitude || this.fire.isFiring,
+      fine,
       attDt,
       () => this._hud.hint('進行方向ホールド解除(手動操作)'),
     );
+    this.att = this.throttle.clampAngularVelocity(this.att, fine);
   }
 
   // 自機も他エンティティと同じく絶対 ECI 位置(state.r)を fo 経由で描画フレームへ変換する

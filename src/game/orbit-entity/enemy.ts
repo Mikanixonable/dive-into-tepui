@@ -5,7 +5,7 @@ import { Ship } from './entities';
 import { Attitude } from '../../physics/attitude';
 import { altitudeOf, OrbitState, orbitState } from '../../physics/orbital';
 import { OrbitLine } from '../../render/orbitline';
-import { add, clone, len, norm, randPerp, rotateAxis, scale, sub } from '../../physics/vec3';
+import { add, len, norm, randPerp, rotateAxis, scale, sub } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
@@ -174,7 +174,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(orbitState(clone(r), bV), simTime, C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, this.accent);
+    const pb = new Bullet(orbitState(r, bV), simTime, C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, this.accent);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(

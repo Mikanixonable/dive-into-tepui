@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { ExtraAccel, OrbitState } from '../../physics/orbital';
-import { Vec3, len, norm, scale, v3 } from '../../physics/vec3';
+import { Vec3, add, len, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input/input';
 import { Hud } from '../hud/hud';
@@ -115,36 +115,34 @@ export class PlayerThrottle {
       (Math.min(C.RCS_MANUAL_RAMP_TIME, this.rotationHoldTime) / C.RCS_MANUAL_RAMP_TIME);
     const angScale = fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
     const maxAngAccel = C.MAX_ANG_ACCEL * angScale * rcsOutputFactor;
-    const torque = v3(
+    const manualTorque = v3(
       inX * maxAngAccel * inertia.x,
       inY * maxAngAccel * inertia.y,
       inZ * maxAngAccel * inertia.z,
     );
 
     if (this.progradeHold && inX === 0 && inY === 0 && inZ === 0) {
-      const auto = this.autoAlignTorque(v, r, att, inertia);
-      torque.x += auto.x;
-      torque.y += auto.y;
-      torque.z += auto.z;
-    } else if (this.rcsDamp) {
-      if (inX === 0) torque.x -= C.RCS_DAMP_RATE * inertia.x * att.w.x;
-      if (inY === 0) torque.y -= C.RCS_DAMP_RATE * inertia.y * att.w.y;
-      if (inZ === 0) torque.z -= C.RCS_DAMP_RATE * inertia.z * att.w.z;
+      return add(manualTorque, this.autoAlignTorque(v, r, att, inertia));
     }
-
-    // 本来は torque を積分した後の角速度を clamp すべきだが、積分後の角速度はまだここでは未知なので、
-    // 積分前の角速度を使って clamp する。積分後の角速度が clamp を超える場合は、次フレームでだいたい clamp される。
-    this.clampAngularVelocity(att, fineAttitude);
-
-    return torque;
+    if (this.rcsDamp) {
+      return v3(
+        manualTorque.x - (inX === 0 ? C.RCS_DAMP_RATE * inertia.x * att.w.x : 0),
+        manualTorque.y - (inY === 0 ? C.RCS_DAMP_RATE * inertia.y * att.w.y : 0),
+        manualTorque.z - (inZ === 0 ? C.RCS_DAMP_RATE * inertia.z * att.w.z : 0),
+      );
+    }
+    return manualTorque;
   }
 
-  // 手動回転の角速度上限(fineAttitude で縮小)。stepAttitude による姿勢積分後に
-  // 呼ばれる想定 — updateTorque はトルク算出のみに専念するため、ここで分離している。
-  private clampAngularVelocity(att: Attitude, fineAttitude: boolean): void {
+  // 手動回転の角速度上限(fineAttitude で縮小)を掛けた Attitude を返す。
+  // 本来は torque を積分した後の角速度を clamp すべきだが、積分後の角速度は
+  // このフレームではまだ未知なので、積分前の角速度を使って clamp する
+  // (積分後の角速度が clamp を超える場合は、次フレームでだいたい clamp される)。
+  clampAngularVelocity(att: Attitude, fineAttitude: boolean): Attitude {
     const maxAngVel = C.MAX_ANG_VEL * (fineAttitude ? C.FINE_ATTITUDE_SCALE : 1);
     const wMag = len(att.w);
-    if (wMag > maxAngVel) att.w = scale(att.w, maxAngVel / wMag);
+    if (wMag <= maxAngVel) return att;
+    return { ...att, w: scale(att.w, maxAngVel / wMag) };
   }
 
   private autoAlignTorque(desiredFwd: Vec3, desiredUp: Vec3, att: Attitude, inertia: Vec3): Vec3 {
