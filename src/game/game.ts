@@ -299,36 +299,21 @@ export class Game {
     });
 
     this.player.syncPlayer(this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused);
+
+    this.simulator.sync(this.floatingOrigin);
+
+    this.effects.syncFlashEffects(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
+    
+    this.targeter.sync(dt, this.floatingOrigin, this.simulator.enemies, this.cameraSystem.mapMode, this.cameraSystem.activeCameraProjection);
+    this.syncMarkers(this.floatingOrigin, displayTime);
+
     // 自機のモード状態を映す先が2つある(HUD ステータスパネルとタッチUIのトグルボタン)。
     // どちらも表示側なので、状態の所有者から見て対称になるようここで両方へ渡す。
     this.touchControls?.syncModeButtons(this.player.rcsDamp, this.player.fineAttitude, this.player.progradeHold);
     this.activeStage.syncStatusPanel(this.player);
 
-    this.simulator.sync(this.floatingOrigin);
-
-    this.effects.syncFlashEffects(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
-
-    this.syncEntityOrbitLines(this.floatingOrigin, this.cameraSystem.mapMode);
-    this.syncMarkers(dt, this.floatingOrigin, displayTime);
-
     this._hud.panels.update(this, dt);
     this._hud.tick();
-  }
-
-  // 自機・敵の軌道線は各 entity 自身が持つ(Player/Enemy コンストラクタ参照)ため、
-  // ここでは毎フレームの Elements 算出と update() 呼び出しだけを行う。
-  private syncEntityOrbitLines(fo: FloatingOrigin, mapMode: boolean): void {
-    const playerEl = this.player.elements;
-    // 自機軌道線は「高精度で描きたい点」付近の頂点を密にする(focusPos)。本来これは
-    // フローティングオリジン(≒カメラ近傍、単精度でも破綻させたくない領域)であるべきだが、
-    // fo が微動するたびに軌道線を再生成すると破綻するため、妥協として自機位置を密点に渡す。
-    this.player.orbitLine.sync(this.player.alive ? playerEl : null, fo, this.player.thrustVizDir !== null, this.player.state.r);
-    const tgt = this.targeter.aliveTarget;
-    for (const enemy of this.simulator.enemies) {
-      const showGray = mapMode && enemy.alive && enemy !== tgt;
-      enemy.orbitLine.sync(showGray ? enemy.elements : null, fo);
-    }
-    this.targeter.syncOrbitLine(fo);
   }
 
   // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
@@ -344,7 +329,7 @@ export class Game {
     };
   }
 
-  private syncMarkers(dt: number, fo: FloatingOrigin, displayTime: number): void {
+  private syncMarkers(fo: FloatingOrigin, displayTime: number): void {
     const project = this.cameraSystem.activeCameraProjection;
     const mapMode = this.cameraSystem.mapMode;
     const simTime = this.simulator.simTime;
@@ -370,7 +355,6 @@ export class Game {
 
     this.MarkerForGame.updateMarkers(this.markerCtx(), project);
     this.MarkerForGame.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
-    this.targeter.syncBoardMarkers(dt, project);
     if (mapMode) {
       this.markerManager.hide('burn');
     } else {
