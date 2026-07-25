@@ -1,22 +1,32 @@
 // マップモード上での軌道計画(Plan)の編集: クリックでのノード配置・ドラッグでの
 // 時刻移動・Δv アーム(node-gizmo.ts)ドラッグ・右クリックメニュー・選択状態・計画パネル
 // 表示への反映、および [X] キー(ノード/計画削除)の実処理。ノードの画面座標・最寄りサンプルの
-// 画面判定は B-2(PlanTrajectory)へ委譲する — `traj.projectPoint(r, t)`(ワールド点→表示座標系→
+// 画面判定は所有する PlanTrajectory(B-2)へ委譲する — `traj.projectPoint(r, t)`(ワールド点→表示座標系→
 // 画面)と `traj.nearestSample(mx, my, maxPx)` を呼ぶだけで、座標系(frame)や physics/frame.ts(XX)
-// を直接参照しない。描画と同じ変換を通すので表示とクリック判定がずれない。plan-editor はキャッシュも
-// 座標変換も持たず、ノード編集ロジックに純化する。ノード削除時の自動ワープ解除(SimSpeedManager)は
-// ここが起点。空の計画時には自機状態を基準に計画する。
-// 計画が空でないときは自機状態は参照しない。逸脱した既存計画を持って editMode を開いた場合は現在状態に再ベースされない
+// を直接参照しない。描画と同じ変換を通すので表示とクリック判定がずれない。
+//
+// 責務: ノード編集ロジック本体に加え、その編集対象である予測折れ線キャッシュ(traj)と
+// 編集モードフラグ(editMode)、ノードギズモのイベント配線(wireNodeGizmo)も所有する。予測の
+// 未来表示(ゴースト・ツールバー)は predictSystem、マップラベルは cameraSystem の責務で、それらは
+// game が別途駆動する — editor はそれらを経由しない。
+//
+// 計画が空の間は自機状態を基準に計画する(plan.trackAnchor は game が毎フレーム呼ぶ)。
+// 計画が空でないときは自機状態は参照しない。逸脱した既存計画を持って editMode を開いた場合は
+// 現在状態に再ベースされない。
+import * as THREE from 'three/webgpu';
 import { Elements, OrbitState, elementsFromState, orbitState } from '../../physics/orbital';
-import { PlannedNode, dvToWorld } from '../../physics/predict';
+import { PlannedNode, arrivingStates, dvToWorld } from '../../physics/predict';
 import { Projected } from '../../physics/projection';
 import { Vec3, add, clone, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
+import { Frame } from '../../physics/frame';
+import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input/input';
+import { ProjectFn } from '../camera/camera-system';
+import { FloatingOrigin } from '../floating-origin';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
-import { Frame } from '../../physics/frame';
 import { Plan } from './plan';
 import { PlanTrajectory } from './plan-trajectory';
 import { SimSpeedManager } from '../sim-speed-manager';
@@ -25,16 +35,68 @@ export class PlanEditor {
   selectedNodeIdx: number | null = null;
   plan: Plan = new Plan();
 
-  // ノード編集の DOM ギズモ(ハンドル・Δv アーム・ノードメニュー)。イベント配線は
-  // 所有者である PlanSystem が nodeGizmo に直接行う(フォーカス選択メニューは別責務で
-  // CameraSystem が持つ FocusGizmo 側)。
+  // 軌道計画の編集モード(WASDQE などの操作系をΔv編集へ振り替え、ノード編集入力を有効化する)。
+  // cameraSystem.mapMode(広範囲視点)とは本来独立した責務で、たまたま MapModeToggler が
+  // 同時にトグルしているだけ。挙動・入力側の判定はこのフラグ、描画・視点側は mapMode を見る。
+  editMode = false;
+
+  // ノード編集の DOM ギズモ(ハンドル・Δv アーム・ノードメニュー)。イベントは wireNodeGizmo で
+  // 自身が配線する(フォーカス選択メニューは別責務で CameraSystem が持つ FocusGizmo 側)。
   readonly nodeGizmo = new NodeGizmo();
+
+  // 予測折れ線 + per-arc キャッシュ(B-2)。編集対象なので editor が所有・駆動する。
+  readonly traj: PlanTrajectory;
+
+  // ノードハンドルを直接右クリックしたときの通知。実体は「その座標で右クリック消費を試み、
+  // 消費できたらフォーカスメニューを閉じる」調停で、上位(game.ts)が受け持つ。
+  onNodeHandleRightClick: ((clientX: number, clientY: number) => void) | null = null;
 
   constructor(
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
     private readonly simSpeedManager: SimSpeedManager,
-  ) {}
+    private readonly ephemeris: Ephemeris,
+    scene: THREE.Scene,
+    project: ProjectFn,
+    private readonly getFineAttitude: () => boolean,
+  ) {
+    this.traj = new PlanTrajectory(scene, project);
+    this.wireNodeGizmo();
+  }
+
+  // ノードギズモ(ハンドル・Δv アーム・ノードメニュー)のイベントを配線する。どれもノード編集の
+  // 責務なのでここで完結する(フォーカス選択は別責務で CameraSystem 側)。
+  private wireNodeGizmo(): void {
+    const g = this.nodeGizmo;
+    g.onNodeSelect = (idx) => {
+      this.selectedNodeIdx = idx;
+      this.closeMenu();
+      this._sfx.warp();
+    };
+    g.onNodeDragMove = (idx, clientX, clientY) => {
+      this.closeMenu();
+      this.dragNodeToNearestSample(idx, clientX, clientY);
+    };
+    g.onNodeContextMenu = (clientX, clientY) => this.onNodeHandleRightClick?.(clientX, clientY);
+    g.onAxisDrag = (axis, sign, deltaPx) => {
+      this.applyAxisDrag(axis, sign, deltaPx, this.getFineAttitude());
+    };
+    g.onMenuWarpTo = (idx) => {
+      const n = this.plan.nodes[idx];
+      if (!n) return;
+      this.simSpeedManager.startAutoWarpTo(n.time);
+      this._hud.hint('指定時刻まで自動ワープ開始');
+    };
+    g.onMenuDelete = (idx) => {
+      this.deleteNode(idx);
+    };
+  }
+
+  // 各ノードの到達(噴射前)状態。Δv 表示・空ノード判定に使う。予測計算に ephemeris が要るため
+  // ここで導出する(ノードは Δv を正データに持たず postState だけを持つ)。
+  private nodeArrivings(): OrbitState[] {
+    return arrivingStates(this.plan.anchor.state, this.plan.anchor.time, this.plan.nodes, this.ephemeris);
+  }
 
   closeMenu(): void {
     this.nodeGizmo.closeMenu();
@@ -59,8 +121,8 @@ export class PlanEditor {
   }
 
   // [X] キー: 計画編集モード中は選択中ノードのみ、モード外では計画全体を破棄する。
-  clearPlanByKey(editMode: boolean): void {
-    if (editMode) {
+  clearPlanByKey(): void {
+    if (this.editMode) {
       this.deleteSelected();
       return;
     }
@@ -71,19 +133,19 @@ export class PlanEditor {
   }
 
   // ノードの画面位置は凍結された実行後位置(postState.r)から B-2 の表示座標変換で求める。
-  nodeScreenPos(node: PlannedNode, traj: PlanTrajectory): Projected {
-    return traj.projectPoint(node.postState.r, node.time);
+  private nodeScreenPos(node: PlannedNode): Projected {
+    return this.traj.projectPoint(node.postState.r, node.time);
   }
 
   // マップ上のクリック処理: 既存ノードマーカー近傍なら選択、そうでなければ
   // 予測軌道(既存ノードの噴射も反映済みの折れ線)上の最近傍サンプル時刻に
   // 新規ノードを配置して選択する。画面判定は B-2(traj)へ委譲する。
-  handleMapClick(mx: number, my: number, traj: PlanTrajectory): void {
+  handleMapClick(mx: number, my: number): void {
     this.closeMenu();
     let bestNodeIdx: number | null = null;
     let bestNodeD = C.NODE_PICK_PX * C.NODE_PICK_PX;
     for (let i = 0; i < this.plan.nodes.length; i++) {
-      const p = this.nodeScreenPos(this.plan.nodes[i]!, traj);
+      const p = this.nodeScreenPos(this.plan.nodes[i]!);
       if (!p.front) continue;
       const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
       if (d < bestNodeD) {
@@ -97,7 +159,7 @@ export class PlanEditor {
       return;
     }
 
-    const sample = traj.nearestSample(mx, my, C.NODE_PICK_PX);
+    const sample = this.traj.nearestSample(mx, my, C.NODE_PICK_PX);
     if (sample) {
       // クリック点の予測サンプル状態を凍結してノードにする(初期 Δv = 0)。
       const idx = this.plan.addNode({
@@ -114,11 +176,11 @@ export class PlanEditor {
   // ノードに当たらなければノードメニューを閉じて false を返し、呼び出し側(game.ts)が
   // フォーカス選択(CameraSystem)へフォールバックさせる。ノード削除はこのメニュー経由
   // ([X] キーからも可能)。
-  handleNodeRightClick(mx: number, my: number, traj: PlanTrajectory): boolean {
+  handleNodeRightClick(mx: number, my: number): boolean {
     let bestIdx: number | null = null;
     let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
     for (let i = 0; i < this.plan.nodes.length; i++) {
-      const p = this.nodeScreenPos(this.plan.nodes[i]!, traj);
+      const p = this.nodeScreenPos(this.plan.nodes[i]!);
       if (!p.front) continue;
       const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
       if (d < bestD) {
@@ -138,9 +200,9 @@ export class PlanEditor {
   // ノードハンドルのドラッグ移動: ポインタ最寄りの予測サンプルへノードをリタイムする
   // (handleMapClick の軌道クリック配置と同じピッキング)。凍結 ▸ 再スナップなので、
   // ノードの Δv はリセットされ、下流ノードは破棄される(plan.retimeNode)。
-  dragNodeToNearestSample(idx: number, clientX: number, clientY: number, traj: PlanTrajectory): void {
+  private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
     if (!this.plan.nodes[idx]) return;
-    const sample = traj.nearestSample(clientX, clientY, Infinity);
+    const sample = this.traj.nearestSample(clientX, clientY, Infinity);
     if (sample) {
       this.selectedNodeIdx = this.plan.retimeNode(idx, sample.t, orbitState(clone(sample.r), clone(sample.v)));
     }
@@ -149,7 +211,7 @@ export class PlanEditor {
   // 選択中ノードの Δv アーム(node-gizmo.ts)ドラッグを実行後速度(postState.v)の変更へ
   // 変換する。axis: 0=プログレード 1=法線 2=動径。sign はハンドル自身の向き
   // (node-gizmo.ts の AxisHandleSpec 参照)。deltaPx はポインタ移動のハンドル方向への射影量。
-  applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
+  private applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
     if (this.selectedNodeIdx === null) return;
     const node = this.plan.nodes[this.selectedNodeIdx];
     if (!node) return;
@@ -163,9 +225,8 @@ export class PlanEditor {
   // アウト/イン)の画面方向を求める。ノードの実行後状態(postState)からその時点の
   // プログレード・軌道法線・動径アウト方向を求め、B-2 の projectPoint で表示座標系へ回転した
   // 上でノード位置との画面上の差分を取ることで、3D 回転行列を介さず画面方向を得る。
-  computeAxisScreenDirs(
+  private computeAxisScreenDirs(
     node: PlannedNode,
-    traj: PlanTrajectory,
     mapDist: number,
   ): { pro: { x: number; y: number }; nrm: { x: number; y: number }; rad: { x: number; y: number } } {
     const { r, v } = node.postState;
@@ -173,9 +234,9 @@ export class PlanEditor {
     const h = norm(cross(r, v));
     const radOut = cross(pro, h);
     const L = mapDist * 0.05;
-    const p0 = traj.projectPoint(r, node.time);
+    const p0 = this.traj.projectPoint(r, node.time);
     const dirFor = (axisVec: Vec3): { x: number; y: number } => {
-      const p1 = traj.projectPoint(add(r, scale(axisVec, L)), node.time);
+      const p1 = this.traj.projectPoint(add(r, scale(axisVec, L)), node.time);
       const dx = p1.x - p0.x;
       const dy = p1.y - p0.y;
       const m = Math.hypot(dx, dy);
@@ -209,27 +270,28 @@ export class PlanEditor {
     ];
   }
 
-  hideGizmo(): void {
+  private hideGizmo(): void {
     this.nodeGizmo.sync([], null);
   }
 
-  // ノード i の Δv(= 実行後速度 − 到達時速度)。到達状態 arriving[i] は呼び出し側
-  // (PlanSystem、ephemeris を持つ)が predict で導出して渡す — ノードは Δv を正データに
-  // 持たず postState だけを持つため。表示専用(ハンドルラベル・計画パネル)。
+  // ノード i の Δv(= 実行後速度 − 到達時速度)。到達状態 arriving[i] は nodeArrivings() が
+  // predict で導出した値。ノードは Δv を正データに持たず postState だけを持つため。
+  // 表示専用(ハンドルラベル・計画パネル)。
   private nodeDv(i: number, arriving: readonly OrbitState[]): Vec3 {
     const node = this.plan.nodes[i];
     const arr = arriving[i];
     return node && arr ? sub(node.postState.v, arr.v) : v3();
   }
 
-  // 毎フレーム(マップモード中のみ呼ぶ): ノードハンドル群と、選択中ノードがあれば
+  // 毎フレーム(マップ表示中のみ呼ぶ): ノードハンドル群と、選択中ノードがあれば
   // Δv アーム 6 個(無ければ全破棄)を画面座標で更新する。
-  updateGizmo(traj: PlanTrajectory, mapDist: number, arriving: readonly OrbitState[]): void {
+  private updateGizmo(mapDist: number): void {
+    const arriving = this.nodeArrivings();
     const nodeSpecs: NodeHandleSpec[] = [];
     const limit = Math.min(this.plan.nodes.length, C.MAX_PLAN_NODE_MARKERS);
     for (let i = 0; i < limit; i++) {
       const node = this.plan.nodes[i]!;
-      const p = this.nodeScreenPos(node, traj);
+      const p = this.nodeScreenPos(node);
       if (!p.front) continue;
       nodeSpecs.push({ idx: i, x: p.x, y: p.y, selected: i === this.selectedNodeIdx, dvMag: len(this.nodeDv(i, arriving)) });
     }
@@ -237,9 +299,9 @@ export class PlanEditor {
     if (this.selectedNodeIdx !== null) {
       const node = this.plan.nodes[this.selectedNodeIdx];
       if (node) {
-        const p = this.nodeScreenPos(node, traj);
+        const p = this.nodeScreenPos(node);
         if (p.front) {
-          const dirs = this.computeAxisScreenDirs(node, traj, mapDist);
+          const dirs = this.computeAxisScreenDirs(node, mapDist);
           axisSpecs = this.buildAxisHandles(p.x, p.y, dirs);
         }
       }
@@ -247,26 +309,19 @@ export class PlanEditor {
     this.nodeGizmo.sync(nodeSpecs, axisSpecs);
   }
 
-  // マップ表示中のノード編集(時間・物理は Game.simulate() 側で通常どおり進み続ける。
-  // ここでは選択中ノードの Δv 調整、計画パネル・ツールバーの表示を行う。クリック/右
-  // クリックによるノード配置・メニュー呼び出しは game.ts が dispatch する)。toolbar は
-  // predictSystem/MapCamera 側の状態のスナップショットで、PlanSystem が毎フレーム組み立てて渡す。
-  updateEditing(
-    dt: number,
-    simTime: number,
-    input: Input,
-    arriving: readonly OrbitState[],
-    opts: {
-      fineAttitude: boolean;
-      toolbar: { durationKey: string; frame: Frame; plannedPlayerLabel: string | null; focus: string };
-    },
-  ): void {
+  // マップ表示中のノード編集ロジック(game.ts が editMode 中に毎フレーム呼ぶ。時間・物理は
+  // Game.update() 側で通常どおり進み続ける)。選択中ノードの Δv 調整と計画パネルの反映を行う。
+  // クリック/右クリックによるノード配置・メニュー呼び出しは game.ts が dispatch する。
+  // ツールバー(期間・座標系・スライダー・フォーカス)は predict/camera 側の状態なので
+  // predictSystem が別途反映する — editor は経由しない。
+  updateEditing(dt: number, simTime: number, input: Input): void {
+    const arriving = this.nodeArrivings();
     // Δv 調整(推進キーを流用、[V] で微調整)。選択中ノードがあるときのみ。実行後速度
     // (postState.v)を pro/nrm/rad → world で変更する(下流ノードは applyNodeDv が破棄)。
     const selNode = this.selectedNodeIdx !== null ? this.plan.nodes[this.selectedNodeIdx] : undefined;
     if (selNode) {
       const i = input;
-      const rate = (opts.fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) * dt;
+      const rate = (this.getFineAttitude() ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) * dt;
       const local = v3(
         ((i.down('KeyW') ? 1 : 0) + (i.down('KeyS') ? -1 : 0)) * rate,
         ((i.down('KeyA') ? 1 : 0) + (i.down('KeyD') ? -1 : 0)) * rate,
@@ -290,17 +345,35 @@ export class PlanEditor {
       }
     }
     this._hud.setPlanPanel(this._hud.planHtml(nodesInfo, selDv, selEl));
-    this._hud.setMapToolbarState(
-      opts.toolbar.durationKey,
-      opts.toolbar.frame,
-      opts.toolbar.plannedPlayerLabel,
-      opts.toolbar.focus,
-    );
   }
 
-  // マップモードを閉じる ([M] で確定) ときの後始末: 選択を解除する。Δv がほぼゼロの
-  // まま放置されたノードの破棄(要 ephemeris で Δv 導出)は PlanSystem.onMapClosed が行う。
+  // 毎フレーム(sync 時)呼ぶ。マップ表示中は予測折れ線とノードギズモを駆動し、非表示中は
+  // 後始末する。予測折れ線の frame(表示座標系)・mapDist(ギズモの画面基準)は camera 側の
+  // 状態で、game が渡す。予測の未来ゴースト(predict)・マップラベル(camera)は game が別途駆動する。
+  syncDisplay(mapMode: boolean, fo: FloatingOrigin, simTime: number, duration: number, frame: Frame, mapDist: number): void {
+    if (!mapMode) {
+      this.traj.setVisible(false);
+      this.hideGizmo();
+      return;
+    }
+    this.traj.setVisible(true);
+    // 予測折れ線: B-2 が corners を arc へ分解し、各 arc の B-1 が per-arc に予測・キャッシュ・描画する。
+    // 予測は frozen アンカー + 凍結ノードだけの純関数で、player.live には依存しない。
+    this.traj.update(this.plan.anchor, this.plan.nodes, simTime + duration, this.ephemeris, frame, simTime, fo);
+    this.updateGizmo(mapDist);
+  }
+
+  // マップモードを閉じる ([M] で確定) ときの後始末: Δv がほぼゼロのまま放置されたノード
+  // (クリックしただけで調整しなかった等)を破棄し、選択を解除する。Δv 導出に ephemeris が
+  // 要るためここで行う。
   onMapClosed(): void {
+    if (this.plan.nodes.length > 0) {
+      const arriving = this.nodeArrivings();
+      for (let i = this.plan.nodes.length - 1; i >= 0; i--) {
+        const arr = arriving[i];
+        if (arr && len(sub(this.plan.nodes[i]!.postState.v, arr.v)) < C.NODE_MIN_DV) this.plan.removeNode(i);
+      }
+    }
     this.selectedNodeIdx = null;
   }
 }

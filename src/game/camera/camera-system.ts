@@ -13,6 +13,7 @@ import { Player } from '../player/player';
 import { FloatingOrigin } from '../floating-origin';
 import { Vec3 } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
+import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
@@ -45,6 +46,27 @@ export class CameraSystem {
       const lbl = this.mapMarkers.findLabel(targetKey);
       if (lbl) this._hud.hint(`${lbl.name} にフォーカス`);
     };
+    // マップツールバーのうち視点側の操作(フォーカス選択・視点リセット・表示座標系トグル)は
+    // camera 側の状態なので、この HUD 配線はここが持つ。cameraFrame は予測折れ線の描画座標系も
+    // 兼ねるが正データは MapCamera が一手に持ち、predict はそれを読むだけ。
+    this._hud.onMapFocusSelect = (focus) => {
+      this.mapCamera.focus = focus;
+      this.mapCamera.resetPan();
+    };
+    this._hud.onMapViewReset = () => this.mapCamera.reset();
+    this._hud.onFrameSelect = (frame: Frame) => {
+      this.mapCamera.cameraFrame = frame;
+    };
+  }
+
+  // マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)の座標を更新し
+  // マーカーへ反映する。表示期間 duration とスライダー sliderT は predict 側の状態で game が渡す。
+  syncMapLabels(simTime: number, ephemeris: Ephemeris, duration: number, sliderT: number): void {
+    this.mapMarkers.syncLabels(simTime, ephemeris, duration, sliderT, this.activeCameraProjection);
+  }
+
+  mapLabelIds(): string[] {
+    return this.mapMarkers.labels.map((l) => l.id);
   }
 
   // マップラベル(フォーカス候補)を右クリックしたときの処理: 最寄りラベル(MAP_LABEL_PICK_PX

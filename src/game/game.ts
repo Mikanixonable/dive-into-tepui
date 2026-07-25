@@ -17,7 +17,9 @@ import { EffectsSystem } from './vfx/effects-system';
 import { initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
-import { PlanSystem } from './plan/plan-system';
+import { PlanEditor } from './plan/plan-editor';
+import { PredictSystem } from './predict/predict-system';
+import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { PipRenderer } from './pip-renderer';
 import { Simulator } from './orbit-entity/simulator';
@@ -40,13 +42,13 @@ export class Game {
   private readonly _sfx = new Sfx();
   private readonly markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
   // 太陽・月の天体暦(状態を持たない純サンプラ)。environment/simulator/cameraSystem/
-  // planSystem がこの単一インスタンスを共有参照する。cameraSystem など field initializer で
+  // editor がこの単一インスタンスを共有参照する。cameraSystem など field initializer で
   // 注入する先より前に確定させる必要があるため、ここで最初に構築する。
   private readonly ephemeris = new Ephemeris();
   // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
   // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/simulator/targeter 等)は
-  // public にする。planSystem のコンストラクタで MapCamera・mapMarkers への参照を注入する
-  // ため、cameraSystem は planSystem より前に構築する必要がある。
+  // public にする。cameraSystem は自身のコンストラクタでマップツールバー(フォーカス・視点リセット・
+  // 座標系トグル)の HUD 配線を張るため、_hud より後に構築する(field 順で保証)。
   // マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)とその選択 UI は
   // 「どこを注視するか」= mapCamera 寄りの責務なので cameraSystem が所有する。
   readonly cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager, this.ephemeris);
@@ -66,16 +68,15 @@ export class Game {
   // 段階管理と、[N] キーによるノードへの自動ワープ。
   readonly simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
-  // 直近ノードの噴射ガイド(戦闘ビューのみ、マップモード中は呼ばない — [M] で開いている
-  // 間は WASDQE がΔv編集に使われるため)。scene に計画軌道ラインを持つため
+  // 軌道計画まわりの三系統。かつて PlanSystem が束ねていたが、たらい回しを排して game が直接
+  // 保持する: editor(ノード列 Plan・予測折れ線キャッシュ traj・編集モード editMode・ノード
+  // 編集入力)、predict(未来表示 = ゴースト・ツールバー・表示期間)、guide(戦闘ビューの噴射
+  // ガイド。マップモード中は呼ばない — [M] で開いている間は WASDQE がΔv編集に使われるため)。
+  // editor/guide は scene を要し、editor は cameraSystem の projection を要するため、いずれも
   // コンストラクタ本体で構築する(effects 等と同じ理由)。
-
-  // 軌道計画(ノード列+予測キャッシュ、Plan)は planSystem が所有する。
-  // マップモードの有無と無関係なデータだが、編集・保持ともマップモード側にしか
-  // 出てこないため、実施(噴射ガイド=planGuide)へは planSystem.plan 経由で注入する。
-  // scene(_scene)はコンストラクタ引数 gs 由来で field initializer の時点では
-  // 未確定のため、コンストラクタ本体で構築する(effects 等と同じ理由)。
-  private readonly planSystem: PlanSystem;
+  private readonly editor: PlanEditor;
+  private readonly predict: PredictSystem;
+  private readonly guide: PlanGuide;
   readonly mapModeToggler: MapModeToggler;
 
   // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定、stages/ 参照)。
@@ -108,20 +109,19 @@ export class Game {
     this.pipRenderer = new PipRenderer(this._scene);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
-    this.planSystem = new PlanSystem(
+    this.predict = new PredictSystem(this._hud, this.markerManager);
+    this.editor = new PlanEditor(
       this._hud,
       this._sfx,
-      this.markerManager,
       this.simSpeedManager,
-      this.cameraSystem.activeCameraProjection,
-      this.cameraSystem.mapCamera,
-      this.cameraSystem.mapMarkers,
-      this._scene,
-      () => this.player.fineAttitude,
       this.ephemeris,
+      this._scene,
+      this.cameraSystem.activeCameraProjection,
+      () => this.player.fineAttitude,
     );
     // ノードハンドル直接右クリックは、canvas 右クリックと同じフォールバック調停に流す。
-    this.planSystem.onNodeHandleRightClick = (x, y) => this.dispatchMapRightClick(x, y);
+    this.editor.onNodeHandleRightClick = (x, y) => this.dispatchMapRightClick(x, y);
+    this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager, this._scene);
     this.mapModeToggler = new MapModeToggler(this._hud);
 
     this.input = new Input(gs.renderer.domElement);
@@ -158,6 +158,15 @@ export class Game {
     this._hud.onQuitToTitle = () => {
       location.assign(location.pathname);
     };
+    // 表示期間の選択は predict(期間状態)と editor(予測折れ線キャッシュ)にまたがる横断的操作
+    // なので、オーケストレータの game が両者へ配線する(他のツールバー配線は predict/cameraSystem
+    // が自前で持つ)。期間の非連続な変化は窓の滑りと区別できないため即時再計算を明示する。
+    this._hud.onDurationSelect = (key) => {
+      if (key === 'orbit' || key === 'day' || key === 'week' || key === 'month') {
+        this.predict.predictDurationKey = key;
+        this.editor.traj.invalidate();
+      }
+    };
   }
 
   // ------------------------------------------------------------ update
@@ -167,7 +176,7 @@ export class Game {
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
     this.handleEdgeInput();
-    this.mapModeToggler.update(this.activeStage.isPlaying, this.planSystem, this.touchControls, this.cameraSystem);
+    this.mapModeToggler.update(this.activeStage.isPlaying, this.editor, this.touchControls, this.cameraSystem);
 
     // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
     // 積分もサブステップなしの簡略版(integrateSimulation の hardCollision/doSubstep 引数)にする。
@@ -193,7 +202,7 @@ export class Game {
       dt,
       input: this.input,
       simSpeed: this.simSpeedManager,
-      editMode: this.planSystem.editMode,
+      editMode: this.editor.editMode,
       scoreCounter: this.activeStage.scoreCounter,
       simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
@@ -228,11 +237,20 @@ export class Game {
     );
 
     // 計画が空の間、予定 player の起点を現在状態へ追従させる(最初のノードで凍結)。
-    this.planSystem.trackAnchor(this.player, this.simulator.simTime);
+    this.editor.plan.trackAnchor(this.simulator.simTime, this.player.state);
 
-    if (this.planSystem.editMode) {
+    if (this.editor.editMode) {
       this.dispatchMapPointer();
-      this.planSystem.updateEditing(dt, this.input, this.player, this.simulator.simTime);
+      this.editor.updateEditing(dt, this.simulator.simTime, this.input);
+      // ツールバー(期間・座標系・スライダー・フォーカス)は predict/camera 側の状態。predict が
+      // 反映するが、camera の frame/focus と B-2 の sampleAt は game が渡す。
+      this.predict.syncToolbar(
+        this.cameraSystem.mapCamera.cameraFrame,
+        this.cameraSystem.mapCamera.focus,
+        (t) => this.editor.traj.sampleAt(t),
+        this.player.elements?.period ?? null,
+        this.simulator.simTime,
+      );
     }
     else {
       this.targeter.updateCombatTargeting(this.player, this.simulator.enemies, this.input, this.cameraSystem);
@@ -246,7 +264,7 @@ export class Game {
   private dispatchMapPointer(): void {
     for (const c of this.input.clicks()) {
       this.cameraSystem.closeFocusMenu();
-      this.planSystem.handleMapClick(c.x, c.y);
+      this.editor.handleMapClick(c.x, c.y);
     }
     for (const rc of this.input.rightClicks()) {
       this.dispatchMapRightClick(rc.x, rc.y);
@@ -254,7 +272,7 @@ export class Game {
   }
 
   private dispatchMapRightClick(x: number, y: number): void {
-    if (this.planSystem.handleNodeRightClick(x, y)) this.cameraSystem.closeFocusMenu();
+    if (this.editor.handleNodeRightClick(x, y)) this.cameraSystem.closeFocusMenu();
     else this.cameraSystem.handleFocusRightClick(x, y);
   }
 
@@ -272,16 +290,16 @@ export class Game {
       case 'Comma': this.simSpeedManager.shift(-1); break;
       case 'Period': this.simSpeedManager.shift(1); break;
       case 'KeyM':
-        this.mapModeToggler.toggle(this.activeStage.isPlaying, this.planSystem, this.touchControls, this.cameraSystem);
+        this.mapModeToggler.toggle(this.activeStage.isPlaying, this.editor, this.touchControls, this.cameraSystem);
         break;
       // 計画編集中は WASDQE などが Δv 編集に使われるため、[N] の自動ワープはその外でのみ働く。
       case 'KeyN':
-        if (!this.planSystem.editMode)
+        if (!this.editor.editMode)
           this.simSpeedManager.toggleAutoWarpToFirstNode(
             this.activeStage.isPlaying,
-            this.planSystem.editor.plan.firstNode());
+            this.editor.plan.firstNode());
         break;
-      case 'KeyX': this.planSystem.clearPlanByKey(this.planSystem.editMode); break;
+      case 'KeyX': this.editor.clearPlanByKey(); break;
       case 'KeyH': this._hud.toggleHelp(); break;
       case 'Escape': this._hud.toggleSettings(); break;
       case 'KeyR': if (!this.activeStage.isPlaying) location.reload(); break;
@@ -299,7 +317,7 @@ export class Game {
     // カメラ姿勢を THREE.js に反映するのを最初に行う: environment.sync や
     // マーカー投影(activeCameraProjection)がこのフレームのカメラ行列を読むため。
     this.cameraSystem.sync(this.floatingOrigin);
-    const displayTime = this.planSystem.predict.resolveDisplayTime(
+    const displayTime = this.predict.resolveDisplayTime(
       this.cameraSystem.mapMode,
       this.player.elements?.period ?? null,
       this.simulator.simTime,
@@ -349,7 +367,7 @@ export class Game {
       enemies: this.simulator.enemies,
       target: this.targeter.autoTarget,
       ammos: this.simulator.ammos,
-      mapLabelIds: this.planSystem.mapLabelIds(),
+      mapLabelIds: this.cameraSystem.mapLabelIds(),
       simTime: this.simulator.simTime,
     };
   }
@@ -357,10 +375,27 @@ export class Game {
   private syncMarkers(dt: number, fo: FloatingOrigin): void {
     const project = this.cameraSystem.activeCameraProjection;
     const mapMode = this.cameraSystem.mapMode;
+    const simTime = this.simulator.simTime;
+    const orbitPeriod = this.player.elements?.period ?? null;
+    const duration = this.predict.predictDurationSec(orbitPeriod);
 
-    this.planSystem.updateDisplay(mapMode, fo, this.player, this.ephemeris, this.simulator.simTime);
+    // 戦闘ビューの計画軌道ライン(mapMode 中は隠すが毎フレーム呼ぶ)。
+    this.guide.syncPlannedLine(this.editor.plan, fo, mapMode);
+    // 予測折れ線とノードギズモは editor が自分の traj/gizmo を駆動 or 後始末する。表示座標系
+    // (frame)とギズモの画面基準(mapDist)は camera 側の状態なので game が渡す。
+    this.editor.syncDisplay(
+      mapMode, fo, simTime, duration,
+      this.cameraSystem.mapCamera.cameraFrame, this.cameraSystem.mapCamera.dist,
+    );
+    if (mapMode) {
+      // 未来ゴースト(predict)は B-2 の sampleAt/toDisplay を、マップラベル(camera)は表示期間を受ける。
+      this.predict.syncGhost((t) => this.editor.traj.sampleAt(t), (r, t) => this.editor.traj.toDisplay(r, t), orbitPeriod, simTime, project);
+      this.cameraSystem.syncMapLabels(simTime, this.ephemeris, duration, this.predict.sliderT);
+    } else {
+      this.predict.hide();
+    }
 
-    this.environment.syncReferenceLines(this.simulator.simTime, fo, mapMode);
+    this.environment.syncReferenceLines(simTime, fo, mapMode);
 
     this.markersSystem.updateMarkers(this.markerCtx(), project);
     this.markersSystem.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
@@ -368,7 +403,7 @@ export class Game {
     if (mapMode) {
       this.markerManager.hide('burn');
     } else {
-      this.planSystem.guide.update(this.planSystem.editor.plan, this.player, this.simulator.simTime, this.simSpeedManager, project);
+      this.guide.update(this.editor.plan, this.player, simTime, this.simSpeedManager, project);
     }
   }
 

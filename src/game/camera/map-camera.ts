@@ -45,7 +45,7 @@ export class MapCamera {
   private offset_r: RelativeVec3;
   private pan_r: RelativeVec3;
   // カメラ視点を固定する座標系(慣性系 / 太陽回転系)。切替は set cameraFrame 経由で、
-  // そのとき相対座標を新 Frame へ入れ直す。plan-system はこのセッターに代入するだけ。
+  // そのとき相対座標を新 Frame へ入れ直す。cameraSystem はこのセッター(onFrameSelect)に代入するだけ。
   private _cameraFrame: Frame = 'inertial';
   // update() が受け取った最新の simTime。set cameraFrame が座標変換に使うためキャッシュする。
   private simTime = 0;
@@ -116,8 +116,8 @@ export class MapCamera {
 
   // 座標系を切り替える。正データ(offset_r・pan_r)を「一度 ECI へ戻してから新 Frame へ」入れ
   // 直すので、切替の瞬間にカメラ視点(ECI)は跳ばず、以後は新 Frame に固定されて追従する。
-  // frame.ts の往復だけで済み、方位・仰角を自前で解き直す必要はない。plan-system はこのセッター
-  // に代入するだけ。
+  // frame.ts の往復だけで済み、方位・仰角を自前で解き直す必要はない。cameraSystem はこのセッター
+  // (onFrameSelect)に代入するだけ。
   set cameraFrame(frame: Frame) {
     const from = this._cameraFrame;
     if (frame === from) return;
