@@ -1,12 +1,22 @@
 import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
-import { resolveStageSelection } from './game/stages/stage-select';
 import { ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './game/theme';
 import { Hud } from './game/hud/hud';
 import { SettingsPanel } from './game/hud/settings-panel';
 import { Sfx } from './audio/sfx';
+import { UnlockManager } from './game/unlock-manager';
+import { StageId } from './game/stages/stage';
+import { isStageId } from './game/stages/stage-dictionary';
+import { selectStage } from './game/stages/stage-select';
 
+
+// ?stage=00|0|1|2 で選択画面をスキップ(デバッグ・共有リンク用)。指定が無い/不正なら選択画面を出す。
+export async function resolveStageSelection(unlockManager: UnlockManager): Promise<StageId> {
+  const stageParam = new URLSearchParams(location.search).get('stage');
+  if (isStageId(stageParam)) return stageParam;
+  return selectStage(unlockManager);
+}
 // 低軌道シューティング: エントリポイント。
 // 物理はメインスレッドで毎フレーム積分する(単体エンティティの中心重力
 // RK4 は十分軽い)。src/physics/nbody/physics.worker.ts の N体ワーカーは
@@ -89,12 +99,13 @@ function initHud(): { hud: Hud; sfx: Sfx; settingsPanel: SettingsPanel } {
 }
 
 async function main() {
+  const unlockmanager = new UnlockManager();
   // レンダラ初期化
   const gs = await initScene();
   const { hud, sfx, settingsPanel } = initHud();
   // ステージ決定とゲーム生成
-  const stageId = await resolveStageSelection();
-  const game = new Game(gs, stageId, hud, sfx, settingsPanel);
+  const stageId = await resolveStageSelection(unlockmanager);
+  const game = new Game(gs, stageId, hud, sfx, settingsPanel, unlockmanager);
   // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
   settingsPanel.onSettingsOpenChange = (open) => {
     if (open) game.pause();

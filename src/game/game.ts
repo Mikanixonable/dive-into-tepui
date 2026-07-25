@@ -8,11 +8,9 @@ import { FloatingOrigin } from './floating-origin';
 import { v3 } from '../physics/vec3';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
-import { HitSystem } from './orbit-entity/hit';
 import { Stage, StageId } from './stages/stage';
 import { MarkerCtx, MarkerForGame } from './marker/marker-for-game';
 import { MarkerManager } from './marker/marker-manager';
-import { CollisionPhysics } from './orbit-entity/collision';
 import { EffectsSystem } from './vfx/effects-system';
 import { initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
@@ -50,7 +48,7 @@ export class Game {
   // 太陽・月の天体暦(状態を持たない純サンプラ)。environment/simulator/cameraSystem/
   // editor がこの単一インスタンスを共有参照する。cameraSystem など後続の構築より前に
   // 確定させる必要があるため、依存を持たないこれは field initializer のままでよい。
-  private readonly ephemeris = new Ephemeris();
+  private readonly ephemeris: Ephemeris;
   // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
   // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/simulator/targeter 等)は
   // public にする。マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)と
@@ -58,16 +56,6 @@ export class Game {
   // 責務なので cameraSystem が所有し、その HUD 配線も cameraSystem 自身が張る。
   readonly cameraSystem: CameraSystem;
   readonly player: Player;
-  // ?perf=1 のデバッグ表示用エンティティ数。
-  perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
-    return {
-      enemies: this.simulator.enemies.length,
-      bullets: this.simulator.bullets.length,
-      casings: this.simulator.casings.length,
-      debris: this.simulator.debris.length,
-    };
-  }
-
 
   // シミュレーション速度(HUD ヒント・SFX 上は「ワープ」と呼ぶ、sfx.warp() 参照)の
   // 段階管理と、[N] キーによるノードへの自動ワープ。
@@ -92,22 +80,13 @@ export class Game {
   // main.ts の役目(settingsPanel を所有するのが main.ts のため)。
   private _isPaused = false;
   get isPaused(): boolean { return this._isPaused; }
-  pause(): void {
-    this.simulator.lastSimDt = 0;
-    this._sfx.setThrust(false);
-    this.player.pause();
-    this._isPaused = true;
-  }
-  resume(): void { this._isPaused = false; }
 
   // 空の天体・地球・環境光・参照軌道線をまとめて所有する描画系。天体暦は上の ephemeris を
   // 共有参照する(所有はしない)。
   private readonly environment: EnvironmentScene;
 
-  private readonly unlockManager = new UnlockManager();
-  private readonly hitSystem = new HitSystem();
-  private readonly markersSystem: MarkerForGame;
-  private readonly collisionPhysics = new CollisionPhysics();
+  private readonly unlockManager: UnlockManager;
+  private readonly MarkerForGame: MarkerForGame;
   // フラッシュ・破片エフェクトのスポーン窓口(effects-system.ts)。scene への注入・
   // FlashEffectManager の所有もここに一元化されており、Player/Enemy/PlayerFire は
   // scene を持ち回さずに済む。scene(_scene)はコンストラクタ引数 gs 由来で field
@@ -124,15 +103,19 @@ export class Game {
     hud: Hud,
     sfx: Sfx,
     settingsPanel: SettingsPanel,
+    unlockManager: UnlockManager,
   ) {
     this._scene = gs.scene;
     this.renderer = gs.renderer;
     this._hud = hud;
     this._sfx = sfx;
     this.settingsPanel = settingsPanel;
+    this.unlockManager = unlockManager;
+
+    this.ephemeris = new Ephemeris();
 
     this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
-    this.markersSystem = new MarkerForGame(this.markerManager);
+    this.MarkerForGame = new MarkerForGame(this.markerManager); // 解体すべき
     this.cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager, this.ephemeris);
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
@@ -150,6 +133,7 @@ export class Game {
       this.cameraSystem.activeCameraProjection,
       () => this.player.fineAttitude,
     );
+
     // 表示期間は predict の状態、予測折れ線のキャッシュは editor の持ち物なので、両者に
     // またがるこの一本だけをオーケストレータが配線する(期間を変えた瞬間に引き直させる)。
     this.predict.onDurationChange = () => this.editor.traj.invalidate();
@@ -160,7 +144,7 @@ export class Game {
     this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
 
-    this.simulator = new Simulator(this.ephemeris, this.hitSystem);
+    this.simulator = new Simulator(this.ephemeris, this._sfx);
 
     this.player = new Player(this._hud, this._sfx, this._scene, this.effects);
 
@@ -178,6 +162,17 @@ export class Game {
     this.floatingOrigin = new FloatingOrigin(this.player.state.r, this.player.state.v);
   }
 
+  // ------------------------------------------------------------------ lifecycle
+
+  pause(): void {
+    this.simulator.lastSimDt = 0;
+    this._sfx.setThrust(false);
+    this.player.pause();
+    this._isPaused = true;
+  }
+
+  resume(): void { this._isPaused = false; }
+
   // ------------------------------------------------------------ update
 
   // per frameの論理値更新
@@ -193,7 +188,7 @@ export class Game {
       this.player.thrustFn = null;
       this.player.torque = v3();
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, 4);
-      this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, false, false);
+      this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, false, false, false);
       return;
     }
 
@@ -217,12 +212,11 @@ export class Game {
 
     this.simSpeedManager.update(this.simulator.simTime);
     const simDt = dt * this.simSpeedManager.simSpeed;
-    this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, true, true);
-
-    // 衝突判定
-    if (this.simSpeedManager.canResolvePhysicalCollisions) {
-      this.collisionPhysics.resolve(dt, this.player, this.simulator.allEntities(), () => this._sfx.clank());
-    }
+    this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage,
+      true, // bulletCollision
+      this.simSpeedManager.canResolvePhysicalCollisions, // resolveCollision
+      true, // doSubstep 
+    );
 
     this.targeter.markBoardCrossings(this.player, this.simulator);
 
@@ -374,8 +368,8 @@ export class Game {
 
     this.environment.syncReferenceLines(simTime, fo, mapMode);
 
-    this.markersSystem.updateMarkers(this.markerCtx(), project);
-    this.markersSystem.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
+    this.MarkerForGame.updateMarkers(this.markerCtx(), project);
+    this.MarkerForGame.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
     this.targeter.syncBoardMarkers(dt, project);
     if (mapMode) {
       this.markerManager.hide('burn');
@@ -396,9 +390,21 @@ export class Game {
       pipCamera: this.cameraSystem.pipCamera,
       playerShipObj: this.player.obj,
       setMuzzleFlashesVisible: (visible) => this.effects.setMuzzleFlashesVisible(visible),
-      updateOverlay: (rect) => this.markersSystem.updatePipOverlay(
+      updateOverlay: (rect) => this.MarkerForGame.updatePipOverlay(
         this.targeter.autoTarget, this.player, this.cameraSystem.pipCamera.projection, rect,
       ),
     });
+  }
+
+  // ------------------------------------------------------------------ debug
+  
+  // ?perf=1 のデバッグ表示用エンティティ数。
+  perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
+    return {
+      enemies: this.simulator.enemies.length,
+      bullets: this.simulator.bullets.length,
+      casings: this.simulator.casings.length,
+      debris: this.simulator.debris.length,
+    };
   }
 }

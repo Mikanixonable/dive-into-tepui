@@ -22,12 +22,13 @@
 
 ```
 main.ts
-├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
+├── UnlockManager
 ├── Hud                  ... initHud() でタイトル(ステージ選択)画面より前に生成、Game へ参照を渡す
 │   └── HudPanels        (buildHudDom が作った要素索引を共有)
 ├── Sfx                  ... 同上
 ├── SettingsPanel        ... 同上。DOM は Hud.root 配下。onSettingsOpenChange を Game.pause()/resume() へ配線
 ├── PerfMeter            (?perf=1 の DOM 表示。Game を PerfCountSource として参照するだけ)
+├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
 └── Game
     ├── FloatingOrigin       ... sync ごとに作り直す使い捨て
     ├── Input
@@ -74,16 +75,15 @@ main.ts
     ├── EnvironmentScene
     │   ├── Earth / Sun / DirectionalLight / AmbientLight / stars / moon メッシュ
     │   └── OrbitLine ×2               ... geoLine / moonLine(マップ参照線)
-    ├── UnlockManager
-    ├── HitSystem
     ├── MarkerForGame
-    ├── CollisionPhysics
     ├── EffectsSystem
     │   └── FlashEffectManager
     │       └── FlashEffect[]          ... 各々 Billboard を持つ
     ├── Targeter
     │   └── OrbitLine                  ... ターゲット軌道線(オレンジ)
     ├── Simulator
+    │   ├── HitSystem
+    │   ├── CollisionPhysics
     │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
     │   ├── Bullet[]
     │   ├── DebrisPiece[] (casings)
@@ -116,6 +116,7 @@ main.ts
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
 | `Simulator.ammos` | Simulator | Logistics(読み取り + `addAmmo` 経由の追加のみ) |
 | `Player` / `Simulator` / `Stage` | Game | 毎フレームの引数として相互に渡される |
+| `UnlockManager` | main.ts | ステージセレクト画面と、各Stage（クリア後画面判定のため） |
 
 ---
 
