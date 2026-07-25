@@ -5,10 +5,10 @@
 //
 // 扱うのは単一 arc の自由伝播だけ — マニューバノードによる区間分割は知らない。それは
 // plan 側の責務で、plan-editor / plan-trajectory がノード境界ごとにこのプリミティブを呼ぶ。
-import { ExtraAccel, OrbitState, orbitState, stepOrbitRK4 } from './orbital';
+import { OrbitState, stepOrbitRK4 } from './orbital';
 import { Ephemeris } from './ephemeris';
-import { envAccelInto } from './envaccel';
-import { Vec3, clone, cross, len, norm, v3 } from './vec3';
+import { envAccel } from './envaccel';
+import { Vec3, cross, len, norm, v3 } from './vec3';
 
 export interface TrajectorySample {
   t: number; // 絶対 simTime [s]
@@ -16,18 +16,14 @@ export interface TrajectorySample {
   v: Vec3; // ECI 速度 [m/s]
 }
 
-// 環境加速度(J2 + 月 + 太陽の第三体摂動のみ。bcInv = 0 で大気抵抗を省略)
-function envAccel(sunPos: Vec3, moonPos: Vec3): ExtraAccel {
-  return (r: Vec3, v: Vec3, out?: Vec3): Vec3 =>
-    envAccelInto(out ?? v3(), r, v, sunPos, moonPos, 0);
-}
-
-// state を dt だけ前進させる(中点 t+dt/2 の太陽・月位置で環境加速度を評価)。
-// predictTrajectory と propagateState が共有する 1 ステップ。
-function stepPredict(state: OrbitState, t: number, dt: number, ephemeris: Ephemeris): void {
+// state を dt だけ前進させた新しい state を返す(中点 t+dt/2 の太陽・月位置で
+// 環境加速度を評価)。predictTrajectory と propagateState が共有する 1 ステップ。
+// bcInv = 0 = 大気抵抗なし(このモジュール冒頭の注記のとおり意図的)。
+function stepPredict(state: OrbitState, t: number, dt: number, ephemeris: Ephemeris): OrbitState {
   const mid = t + dt / 2;
-  const accel = envAccel(ephemeris.sunPosAt(mid), ephemeris.moonPosAt(mid));
-  stepOrbitRK4(state, dt, accel);
+  const sunPos = ephemeris.sunPosAt(mid);
+  const moonPos = ephemeris.moonPosAt(mid);
+  return stepOrbitRK4(state, dt, (r, v) => envAccel(r, v, sunPos, moonPos, 0));
 }
 
 // ノードの Δv(プログレード/ノーマル/ラジアルアウト)を、その時点の r, v から
@@ -70,11 +66,11 @@ export function predictTrajectory(
   ephemeris: Ephemeris,
   maxSamplesOpt?: number, // 保持するサンプル数の上限(既定 2000)
 ): TrajectorySample[] {
-  if (duration <= 0) return [{ t: t0, r: clone(state0.r), v: clone(state0.v) }];
+  if (duration <= 0) return [{ t: t0, r: state0.r, v: state0.v }];
 
   const maxSamples = Math.max(10, maxSamplesOpt ?? 2000);
   const tEnd = t0 + duration;
-  const state = orbitState(clone(state0.r), clone(state0.v));
+  let state = state0;
   let t = t0;
 
   // 平均刻み幅からステップ総数を概算し、間引き間隔を決める(2回積分せずに済むよう
@@ -83,17 +79,17 @@ export function predictTrajectory(
   const estSteps = Math.max(1, Math.ceil(duration / predictStepDt(len(state.r), duration)));
   const storeEvery = Math.max(1, Math.floor(estSteps / maxSamples));
 
-  const samples: TrajectorySample[] = [{ t, r: clone(state.r), v: clone(state.v) }];
+  const samples: TrajectorySample[] = [{ t, r: state.r, v: state.v }];
   let sinceStore = 0;
 
   while (t < tEnd - 1e-6) {
     const dt = Math.min(predictStepDt(len(state.r), duration), tEnd - t);
     if (dt <= 1e-9) break;
-    stepPredict(state, t, dt, ephemeris);
+    state = stepPredict(state, t, dt, ephemeris);
     t += dt;
     sinceStore++;
     if (sinceStore >= storeEvery || t >= tEnd - 1e-9) {
-      samples.push({ t, r: clone(state.r), v: clone(state.v) });
+      samples.push({ t, r: state.r, v: state.v });
       sinceStore = 0;
     }
   }
@@ -110,12 +106,12 @@ export function propagateState(
   targetT: number,
   ephemeris: Ephemeris,
 ): OrbitState {
-  const state = orbitState(clone(state0.r), clone(state0.v));
+  let state = state0;
   let t = t0;
   while (t < targetT - 1e-6) {
     const dt = Math.min(predictStepDt(len(state.r), targetT - t0), targetT - t);
     if (dt <= 1e-9) break;
-    stepPredict(state, t, dt, ephemeris);
+    state = stepPredict(state, t, dt, ephemeris);
     t += dt;
   }
   return state;

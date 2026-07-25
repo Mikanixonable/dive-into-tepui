@@ -3,9 +3,9 @@
 // Enemy.behave が担い、追加は addXxx 経由で行う。scene への add/remove は各 entity
 // 自身の責務(entities.ts)なので、Simulator は配列管理・上限管理・寿命判定に専念する。
 import { stepAttitude } from '../../physics/attitude';
-import { envAccelInto } from '../../physics/envaccel';
+import { envAccel } from '../../physics/envaccel';
 import { ExtraAccel, stepOrbitRK4 } from '../../physics/orbital';
-import { add, clone, v3, Vec3 } from '../../physics/vec3';
+import { add, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { HitSystem } from './hit';
@@ -15,8 +15,6 @@ import { Enemy } from './enemy';
 import { Bullet } from './bullet';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
-
-type EnvAccel = (r: Vec3, v: Vec3, sunPos: Vec3, moonPos: Vec3, out?: Vec3) => Vec3;
 
 
 export class Simulator {
@@ -79,18 +77,12 @@ export class Simulator {
   // ------------------------------------------------------------ 積分
 
 
-  private makeEnvAccel(bcInv: number): EnvAccel {
-    return (r, v, sunPos, moonPos, out) => envAccelInto(out ?? v3(), r, v, sunPos, moonPos, bcInv);
-  }
-  private readonly envShip = this.makeEnvAccel(C.SHIP_BCINV);
-  private readonly envBullet = this.makeEnvAccel(C.BULLET_BCINV);
-  private readonly envSmall = this.makeEnvAccel(C.SMALL_DEBRIS_BCINV);
-
   // entity.thrustFn(既定 null = 無推力)と環境加速度を合成する。
-  private makeExtraAccel(entity: OrbitEntity, sunPos: Vec3, moonPos: Vec3, envAccel: EnvAccel): ExtraAccel {
+  // bcInv は弾道係数の逆数で、エンティティの種別(機体/弾/小デブリ)ごとに呼び出し側が選ぶ。
+  private makeExtraAccel(entity: OrbitEntity, sunPos: Vec3, moonPos: Vec3, bcInv: number): ExtraAccel {
     const { thrustFn } = entity;
-    return thrustFn ? (r, v) => add(thrustFn(r, v), envAccel(r, v, sunPos, moonPos))
-     : (r, v) => envAccel(r, v, sunPos, moonPos);
+    return thrustFn ? (r, v) => add(thrustFn(r, v), envAccel(r, v, sunPos, moonPos, bcInv))
+     : (r, v) => envAccel(r, v, sunPos, moonPos, bcInv);
   }
 
   // simDt(このフレームで積算すべきシミュレーション時間)は game.ts が
@@ -128,12 +120,12 @@ export class Simulator {
     const sunPos = this.ephemeris.sunPosAt(simTime);
     const moonPos = this.ephemeris.moonPosAt(simTime);
 
-    this.stepEntity(player, dt, sunPos, moonPos, this.envShip, trackPrevR);
-    this.enemies.forEach(e => this.stepEntity(e, dt, sunPos, moonPos, this.envShip, trackPrevR));
-    this.bullets.forEach(b => this.stepEntity(b, dt, sunPos, moonPos, this.envBullet, trackPrevR));
-    this.casings.forEach(c => this.stepEntity(c, dt, sunPos, moonPos, this.envSmall, false));
-    this.debris.forEach(d => this.stepEntity(d, dt, sunPos, moonPos, this.envSmall, false));
-    this.ammos.forEach(a => this.stepEntity(a, dt, sunPos, moonPos, this.envSmall, false));
+    this.stepEntity(player, dt, sunPos, moonPos, C.SHIP_BCINV, trackPrevR);
+    this.enemies.forEach(e => this.stepEntity(e, dt, sunPos, moonPos, C.SHIP_BCINV, trackPrevR));
+    this.bullets.forEach(b => this.stepEntity(b, dt, sunPos, moonPos, C.BULLET_BCINV, trackPrevR));
+    this.casings.forEach(c => this.stepEntity(c, dt, sunPos, moonPos, C.SMALL_DEBRIS_BCINV, false));
+    this.debris.forEach(d => this.stepEntity(d, dt, sunPos, moonPos, C.SMALL_DEBRIS_BCINV, false));
+    this.ammos.forEach(a => this.stepEntity(a, dt, sunPos, moonPos, C.SMALL_DEBRIS_BCINV, false));
     
     player.thermal.updateThermal(dt, player.state.r, player.state.v);
     
@@ -145,12 +137,12 @@ export class Simulator {
     dt: number,
     sunPos: Vec3,
     moonPos: Vec3,
-    envAccel: EnvAccel,
+    bcInv: number,
     trackPrevR: boolean = false,
   ): void {
     if (!entity.alive) return;
-    if (trackPrevR) entity.prevR = clone(entity.state.r);
-    stepOrbitRK4(entity.state, dt, this.makeExtraAccel(entity, sunPos, moonPos, envAccel));
+    if (trackPrevR) entity.prevR = entity.state.r;
+    entity.state = stepOrbitRK4(entity.state, dt, this.makeExtraAccel(entity, sunPos, moonPos, bcInv));
   }
 
   // ------------------------------------------------------------ 回転運動
@@ -158,13 +150,13 @@ export class Simulator {
   // 全エンティティの姿勢を entity.torque に従って積分する(既定ゼロ = 自由回転)。
   // 自機は PlayerThrottle が毎フレーム torque を書き込む(それ以外は既定ゼロのまま)。
   private stepAttitudes(simDt: number, player: Player): void {
-    stepAttitude(player.att, player.torque, simDt);
+    player.att = stepAttitude(player.att, player.torque, simDt);
 
     const attDt = Math.min(simDt, 0.12);
-    for (const e of this.enemies) if (e.alive) stepAttitude(e.att, e.torque, attDt);
-    for (const cs of this.casings) stepAttitude(cs.att, cs.torque, attDt);
-    for (const d of this.debris) stepAttitude(d.att, d.torque, attDt);
-    for (const ammo of this.ammos) if (ammo.alive) stepAttitude(ammo.att, ammo.torque, attDt);
+    for (const e of this.enemies) if (e.alive) e.att = stepAttitude(e.att, e.torque, attDt);
+    for (const cs of this.casings) cs.att = stepAttitude(cs.att, cs.torque, attDt);
+    for (const d of this.debris) d.att = stepAttitude(d.att, d.torque, attDt);
+    for (const ammo of this.ammos) if (ammo.alive) ammo.att = stepAttitude(ammo.att, ammo.torque, attDt);
   }
 
   // ------------------------------------------------------------ 寿命管理

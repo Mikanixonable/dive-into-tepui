@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { altitudeOf, elementsFromState, ExtraAccel, OrbitState, orbitState } from '../../physics/orbital';
 import { Attitude } from '../../physics/attitude';
-import { Vec3, clone, v3 } from '../../physics/vec3';
+import { Vec3, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
@@ -20,7 +20,16 @@ const identityAttitude = (): Attitude => ({
 // scene を渡したものは自身で scene.add/remove を行う(渡さない場合は描画に
 // 参加しない内部専用エンティティ — 例: BeltSection)。
 export class OrbitEntity {
-  state: OrbitState;
+  // state は不変な OrbitState の差し替えでのみ更新する。setter が軌道要素メモを
+  // 破棄することで「state と elements が食い違わない」保証をこのクラス内で完結させる
+  // (OrbitState/Vec3 が不変であることが前提 — 中身を書き換えられると検知できない)。
+  private _state: OrbitState;
+  get state(): OrbitState { return this._state; }
+  set state(s: OrbitState) {
+    this._state = s;
+    this._elements = undefined;
+  }
+
   prevR: Vec3; // 直前サブステップの位置(弾との衝突判定用)
   att: Attitude;
   obj: THREE.Object3D;
@@ -34,8 +43,8 @@ export class OrbitEntity {
   protected readonly scene?: THREE.Scene;
 
   constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
-    this.state = state;
-    this.prevR = clone(state.r);
+    this._state = state;
+    this.prevR = state.r;
     this.att = att;
     this.obj = obj;
     this.scene = scene;
@@ -57,16 +66,13 @@ export class OrbitEntity {
     this.scene?.remove(this.obj);
   }
 
-  // 軌道要素の計算の重複計算を防ぐメモ化（無駄に呼ぶと重そうなので）
+  // 軌道要素の計算の重複計算を防ぐメモ化(state の setter が破棄する)
   private _elements: Elements | null | undefined = undefined;
   get elements(): Elements | null {
     if (this._elements !== undefined) return this._elements;
-    const el = elementsFromState(this.state.r, this.state.v);
+    const el = elementsFromState(this._state.r, this._state.v);
     this._elements = el;
     return el;
-  }
-  clearMemo(): void {
-    this._elements = undefined;
   }
 }
 
