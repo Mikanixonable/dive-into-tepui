@@ -15,6 +15,8 @@ import { Enemy } from './enemy';
 import { Bullet } from './bullet';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
+import { CollisionPhysics } from './collision';
+import { Sfx } from '../../audio/sfx';
 
 
 export class Simulator {
@@ -26,6 +28,9 @@ export class Simulator {
   readonly debris: DebrisPiece[] = [];
   readonly ammos: Ammo[] = [];
 
+  readonly hitSystem: HitSystem;
+  readonly collisionPhysics: CollisionPhysics;
+
   // シミュレーション時刻(ECI 時間の経過)。game.ts は simSpeedManager から simDt を
   // 計算して渡す責務のみを持ち、その積算(simTime の保持・更新)はここが担う。
   simTime = 0;
@@ -33,8 +38,11 @@ export class Simulator {
 
   constructor(
     private readonly ephemeris: Ephemeris,
-    private readonly hit: HitSystem,
-  ) { }
+    private readonly _sfx: Sfx,
+  ) {
+    this.hitSystem = new HitSystem();
+    this.collisionPhysics = new CollisionPhysics();
+  }
 
   // ------------------------------------------------------------ 追加
   // 配列への追加はここを通す(上限管理まで面倒を見る)。scene への登録は
@@ -93,7 +101,8 @@ export class Simulator {
     simDt: number,
     player: Player,
     activeStage: Stage,
-    hardCollision: boolean,
+    bulletCollision: boolean,
+    resolveCollision: boolean,
     doSubstep: boolean,
   ): void {
     // 謎実装
@@ -102,9 +111,13 @@ export class Simulator {
     const subDt = simDt / nSub;
     for (let i = 0; i < nSub; i++) {
       this.simTime = this.simulationSubStep(this.simTime, subDt, player);
-      if (hardCollision) {
-        this.hit.checkBulletHits(this.simTime, player, activeStage, this);
+      if (bulletCollision) {
+        this.hitSystem.checkBulletHits(this.simTime, player, activeStage, this);
       }
+    }
+
+    if (resolveCollision) {
+      this.collisionPhysics.resolve(dt, player, this.allEntities(), () => this._sfx.clank());
     }
 
     this.stepAttitudes(simDt, player);
