@@ -87,6 +87,8 @@ export class MarkerForGame {
 
   // pr = 自機の ECI 位置(物理量)。方向マーカーは自機の軌道基準フレームを表すので、
   // 自機の位置を原点として MarkerManager.setDirection に渡す。
+  // ラベルにキー名は載せない — 戦闘ビューの並進は機体基準で、この6方向に対応するキーは無い
+  // (対応するのはマップモードの Δv 編集キーで、そちらでは方向マーカーを出さない)。
   private updateOrbitalDirectionMarkers(target: Enemy | null, player: Player, project: ProjectFn): void {
     const pr = player.state.r;
     const pv = player.state.v;
@@ -95,14 +97,14 @@ export class MarkerForGame {
     const nrmDir = cross(pr, pv);
     const radDir = cross(proDir, nrmDir);
 
-    this.markerManager.setDirection('pro', 'mk-pro', '⊙', pr, proDir, project, 'PROGRADE [Q]');
-    this.markerManager.setDirection('retro', 'mk-retro', '⊗', pr, scale(proDir, -1), project, 'RETROGRADE [E]');
+    this.markerManager.setDirection('pro', 'mk-pro', '⊙', pr, proDir, project, 'PROGRADE');
+    this.markerManager.setDirection('retro', 'mk-retro', '⊗', pr, scale(proDir, -1), project, 'RETROGRADE');
 
-    this.markerManager.setDirection('nrm', 'mk-nrm', '▲', pr, nrmDir, project, 'NORMAL [A]');
-    this.markerManager.setDirection('anm', 'mk-nrm', '▽', pr, scale(nrmDir, -1), project, 'ANTINORMAL [D]');
+    this.markerManager.setDirection('nrm', 'mk-nrm', '▲', pr, nrmDir, project, 'NORMAL');
+    this.markerManager.setDirection('anm', 'mk-nrm', '▽', pr, scale(nrmDir, -1), project, 'ANTINORMAL');
 
-    this.markerManager.setDirection('radout', 'mk-rad', '◎', pr, radDir, project, 'RADIAL OUT [W]');
-    this.markerManager.setDirection('radin', 'mk-rad', '◉', pr, scale(radDir, -1), project, 'RADIAL IN [S]');
+    this.markerManager.setDirection('radout', 'mk-rad', '◎', pr, radDir, project, 'RADIAL OUT');
+    this.markerManager.setDirection('radin', 'mk-rad', '◉', pr, scale(radDir, -1), project, 'RADIAL IN');
 
     if (target) {
       const tgtDir = norm(sub(target.state.r, pr));

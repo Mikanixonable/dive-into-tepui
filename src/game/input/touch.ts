@@ -3,6 +3,7 @@
 // 押しっぱなし系(並進・回転・射撃・ズーム)とエッジトリガ系(トグル類)を
 // 同じ仕組みで扱える。マウス+キーボード環境では生成しない。
 import { Input } from '../input/input';
+import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { ACCENT, ACCENT_RGB, TEXT_DIM } from '../theme';
 
 // SURFACE/EDGE はこのファイル固有の不透明度(0.66 / 0.14)を使うため、
@@ -73,7 +74,7 @@ const STYLE = `
 `;
 
 interface Btn {
-  code: string;
+  key: KeyBinding;
   glyph: string;
   label: string;
 }
@@ -81,7 +82,7 @@ interface Btn {
 export class TouchControls {
   // ON/OFF 状態を反映させるトグル系ボタン(制動・微動・ホールド等)。
   // タップの押下フィードバック(.held)とは独立に、実際のモード状態で光らせる。
-  private readonly toggleButtons = new Map<string, HTMLElement>();
+  private readonly toggleButtons = new Map<KeyBinding, HTMLElement>();
 
   static isTouchDevice(): boolean {
     return navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
@@ -92,13 +93,13 @@ export class TouchControls {
   // 呼び出し側は現在値だけを渡す。進行方向ホールドは手動回転でも解除されるため、
   // トグル操作の瞬間ではなく毎フレーム反映する。
   syncModeButtons(rcsDamp: boolean, fineAttitude: boolean, progradeHold: boolean): void {
-    this.setActive('KeyT', rcsDamp);
-    this.setActive('KeyV', fineAttitude);
-    this.setActive('KeyC', progradeHold);
+    this.setActive(K.rcsDampToggle, rcsDamp);
+    this.setActive(K.fineAttitudeToggle, fineAttitude);
+    this.setActive(K.progradeHoldToggle, progradeHold);
   }
 
-  private setActive(code: string, on: boolean): void {
-    this.toggleButtons.get(code)?.classList.toggle('on', on);
+  private setActive(key: KeyBinding, on: boolean): void {
+    this.toggleButtons.get(key)?.classList.toggle('on', on);
   }
 
   // マップモード(軌道計画)中は並進・回転・射撃・ズームのパッドを隠す
@@ -120,7 +121,7 @@ export class TouchControls {
     // 姿勢まわりのモード切替(制動・微動)
     this.buildModeColumn(root);
     // 射撃
-    this.makeButton(root, { code: 'Space', glyph: 'FIRE', label: '' }, 'touch-fire');
+    this.makeButton(root, { key: K.fire, glyph: 'FIRE', label: '' }, 'touch-fire');
     // ズームトグル
     this.buildZoomToggle(root);
     // トグル・ワープ等の util 行
@@ -147,18 +148,18 @@ export class TouchControls {
       ev.preventDefault();
       e.setPointerCapture(ev.pointerId);
       e.classList.add('held');
-      this.input.setVirtualKey(b.code, true);
+      this.input.setVirtualKey(b.key, true);
     };
     const up = () => {
       e.classList.remove('held');
-      this.input.setVirtualKey(b.code, false);
+      this.input.setVirtualKey(b.key, false);
     };
     e.addEventListener('pointerdown', down);
     e.addEventListener('pointerup', up);
     e.addEventListener('pointercancel', up);
     e.addEventListener('contextmenu', (ev) => ev.preventDefault());
     parent.appendChild(e);
-    if (isToggle) this.toggleButtons.set(b.code, e);
+    if (isToggle) this.toggleButtons.set(b.key, e);
     return e;
   }
 
@@ -173,24 +174,24 @@ export class TouchControls {
   // 並進 (RCS): 上段 = 上/前/下, 下段 = 左/後/右
   private buildTranslationPad(root: HTMLElement): void {
     this.makePad(root, 'touch-pad-move', [
-      { code: 'KeyQ', glyph: '▲', label: '上' },
-      { code: 'KeyW', glyph: '●', label: '前' },
-      { code: 'KeyE', glyph: '▼', label: '下' },
-      { code: 'KeyA', glyph: '◀', label: '左' },
-      { code: 'KeyS', glyph: '○', label: '後' },
-      { code: 'KeyD', glyph: '▶', label: '右' },
+      { key: K.thrustUp, glyph: '▲', label: '上' },
+      { key: K.thrustForward, glyph: '●', label: '前' },
+      { key: K.thrustDown, glyph: '▼', label: '下' },
+      { key: K.thrustLeft, glyph: '◀', label: '左' },
+      { key: K.thrustBackward, glyph: '○', label: '後' },
+      { key: K.thrustRight, glyph: '▶', label: '右' },
     ]);
   }
 
   // 回転: 上段 = ロール左/ピッチ下げ/ロール右, 下段 = ヨー左/ピッチ上げ/ヨー右
   private buildRotationPad(root: HTMLElement): void {
     this.makePad(root, 'touch-pad-rot', [
-      { code: 'KeyU', glyph: '⟲', label: 'ロール' },
-      { code: 'KeyI', glyph: '↓', label: '機首下げ' },
-      { code: 'KeyO', glyph: '⟳', label: 'ロール' },
-      { code: 'KeyJ', glyph: '→', label: 'ヨー' },
-      { code: 'KeyK', glyph: '↑', label: '機首上げ' },
-      { code: 'KeyL', glyph: '←', label: 'ヨー' },
+      { key: K.rollLeft, glyph: '⟲', label: 'ロール' },
+      { key: K.pitchDown, glyph: '↓', label: '機首下げ' },
+      { key: K.rollRight, glyph: '⟳', label: 'ロール' },
+      { key: K.yawRight, glyph: '→', label: 'ヨー' },
+      { key: K.pitchUp, glyph: '↑', label: '機首上げ' },
+      { key: K.yawLeft, glyph: '←', label: 'ヨー' },
     ]);
   }
 
@@ -201,8 +202,8 @@ export class TouchControls {
     modeCol.id = 'touch-mode-col';
     modeCol.className = 'mini-col';
     root.appendChild(modeCol);
-    this.makeButton(modeCol, { code: 'KeyT', glyph: 'T', label: '制動' }, '', true);
-    this.makeButton(modeCol, { code: 'KeyV', glyph: 'V', label: '微動' }, '', true);
+    this.makeButton(modeCol, { key: K.rcsDampToggle, glyph: K.rcsDampToggle.label, label: '制動' }, '', true);
+    this.makeButton(modeCol, { key: K.fineAttitudeToggle, glyph: K.fineAttitudeToggle.label, label: '微動' }, '', true);
   }
 
   // ズームは長押しでなく ON/OFF トグル(タップのたびに切り替え、指を離しても保持)
@@ -216,7 +217,7 @@ export class TouchControls {
       ev.preventDefault();
       zoomOn = !zoomOn;
       zoomBtn.classList.toggle('held', zoomOn);
-      this.input.setVirtualKey('KeyZ', zoomOn);
+      this.input.setVirtualKey(K.gunsightZoom, zoomOn);
     });
     zoomBtn.addEventListener('contextmenu', (ev) => ev.preventDefault());
     root.appendChild(zoomBtn);
@@ -227,16 +228,15 @@ export class TouchControls {
     util.id = 'touch-util';
     root.appendChild(util);
     for (const b of [
-      { code: 'Tab', glyph: 'TGT', label: '切替' },
-      { code: 'Comma', glyph: '«', label: 'warp' },
-      { code: 'Period', glyph: '»', label: 'warp' },
-      { code: 'KeyM', glyph: 'M', label: '計画' },
-      { code: 'KeyN', glyph: 'N', label: 'ノードへ' },
-      { code: 'KeyH', glyph: 'H', label: 'ヘルプ' },
+      { key: K.warpSlower, glyph: '«', label: 'warp' },
+      { key: K.warpFaster, glyph: '»', label: 'warp' },
+      { key: K.mapMode, glyph: K.mapMode.label, label: '計画' },
+      { key: K.autoWarpToNode, glyph: K.autoWarpToNode.label, label: 'ノードへ' },
+      { key: K.help, glyph: K.help.label, label: 'ヘルプ' },
     ]) {
       this.makeButton(util, b);
     }
     // 進行方向ホールドも ON/OFF 表示を反映するトグルボタンとして登録する
-    this.makeButton(util, { code: 'KeyC', glyph: 'C', label: 'ホールド' }, '', true);
+    this.makeButton(util, { key: K.progradeHoldToggle, glyph: K.progradeHoldToggle.label, label: 'ホールド' }, '', true);
   }
 }

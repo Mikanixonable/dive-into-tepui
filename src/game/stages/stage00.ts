@@ -3,6 +3,7 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Stage } from './stage';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { WaveManager } from './stage-utils/wave-manager';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
@@ -43,7 +44,7 @@ export class Stage00 extends Stage {
       '<b>サバイバル任務: 弾薬を回収し、無限の敵から生き残れ！</b><br>' +
       '敵は次々と波状攻撃を仕掛けてくる。<br>' +
       '補給マガジンが近くに浮いている — 弾切れ時は回収せよ<br>' +
-      '[H] キーで操作方法を表示'
+      `[${K.help.label}] キーで操作方法を表示`
     );
   }
 

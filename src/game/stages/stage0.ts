@@ -2,6 +2,7 @@
 // (タイムアップで終わる。撃破数では終わらないので checkWin/onWin は no-op に override する)。
 import * as C from '../const';
 import { Stage } from './stage';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { showScoreAttackResultScreen } from '../hud/result-screen';
 import { generateCluster } from './spawner/enemy-spawner';
 import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
@@ -21,9 +22,9 @@ export class Stage0 extends Stage {
   briefingHtml(): string {
     return (
       `<b>訓練ステージ: 制限時間 ${Math.floor(C.STAGE0_TIME_LIMIT / 60)}分で何機撃墜できるか</b><br>` +
-      '周囲5km以内の色分けされた集団を撃墜せよ — RCS並進(WSADQE)と回転(IKJLUO)の練習に最適<br>' +
+      '周囲5km以内の色分けされた集団を撃墜せよ — RCS の並進と回転の練習に最適<br>' +
       '補給マガジンが近くに浮いている — 弾切れ時は回収せよ<br>' +
-      '[H] キーで操作方法を表示'
+      `[${K.help.label}] キーで操作方法を表示`
     );
   }
 
