@@ -87,9 +87,17 @@ export class TouchControls {
     return navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
   }
 
-  // ゲーム側のモード状態(RCS制動・微調整・進行方向ホールド等)が変化した際に
-  // 呼び、対応するボタンの ON/OFF 表示を同期する。該当ボタンが無ければ何もしない。
-  setActive(code: string, on: boolean): void {
+  // 毎フレーム(sync 時)呼ぶ。トグル系ボタンの点灯を実際のモード状態へ合わせる。
+  // どのキーがどのモードのボタンかを知っているのはボタンを組み立てたこのクラスなので、
+  // 呼び出し側は現在値だけを渡す。進行方向ホールドは手動回転でも解除されるため、
+  // トグル操作の瞬間ではなく毎フレーム反映する。
+  syncModeButtons(rcsDamp: boolean, fineAttitude: boolean, progradeHold: boolean): void {
+    this.setActive('KeyT', rcsDamp);
+    this.setActive('KeyV', fineAttitude);
+    this.setActive('KeyC', progradeHold);
+  }
+
+  private setActive(code: string, on: boolean): void {
     this.toggleButtons.get(code)?.classList.toggle('on', on);
   }
 

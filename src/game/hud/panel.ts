@@ -2,6 +2,7 @@
 // hudPanel はゲームの全状態からチェリーピックして表示するのが責務そのものなので、
 // 他モジュールと違い ctx スナップショットを介さず Game を直接注入してもらい、
 // 必要な値をここで読み取る(game.ts は import しない — 型のみの参照)。
+// 読み取って自分のパネルへ書くだけの表示専用で、他モジュールの状態や DOM は操作しない。
 import * as C from '../const';
 import { TEXT_DIM as INK_SOFT } from '../theme';
 import { altitudeOf } from '../../physics/orbital';
@@ -33,7 +34,6 @@ interface StatsData {
   shots: number;
   kills: number;
   total: number;
-  stage0State: { hp: number; maxHp: number; msg: string } | null;
 }
 
 interface TargetData {
@@ -68,13 +68,6 @@ export class HudPanels {
     if (this.hudTimer <= 0) {
       this.hudTimer = 0.1;
       const thermal = player.thermal;
-      // タッチUIのトグルボタン(制動・微動・ホールド)の点灯状態を実際のモードに同期する。
-      // progradeHold は手動回転で自動解除されることもあるため、専用のトグル時だけでなく
-      // ここで毎回反映しておく。
-      game.touchControls?.setActive('KeyT', player.rcsDamp);
-      game.touchControls?.setActive('KeyV', player.fineAttitude);
-      game.touchControls?.setActive('KeyC', player.progradeHold);
-      const hudSubStatus = game.activeStage.hudSubStatus();
       this.setStats({
         met: game.simulator.simTime,
         simSpeedLabel: `×${game.simSpeedManager.simSpeed}`,
@@ -99,7 +92,6 @@ export class HudPanels {
         shots: game.activeStage.scoreCounter.shots,
         kills: game.activeStage.scoreCounter.kills,
         total: game.activeStage.scoreCounter.totalEnemiesSpawned,
-        stage0State: hudSubStatus !== null ? { hp: player.hp, maxHp: C.PLAYER_MAX_HP, msg: hudSubStatus } : null,
       });
 
       if (tgt) {
@@ -209,24 +201,6 @@ export class HudPanels {
       tEl.classList.toggle('warn-hot', d.hullTemp > 0.7 * C.MAX_HULL_TEMP);
     }
     this.setText('count', `${d.total - d.kills}/${d.total}`);
-
-    const stage0El = document.getElementById('hud-stage0');
-    if (stage0El) {
-      if (d.stage0State !== null) {
-        stage0El.style.display = 'block';
-        const hpEl = this.els.get('stage0hp');
-        if (hpEl) {
-          const { hp, maxHp } = d.stage0State;
-          const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
-          hpEl.innerHTML = `HP: ${Math.floor(hp)} / ${maxHp} <div style="display:inline-block; width:120px; height:10px; border:1px solid #aaa; background:#222; vertical-align:middle; margin-left:8px;"><div style="width:${pct}%; height:100%; background:${hp <= maxHp * 0.3 ? '#ff4a3d' : '#4de8ff'}; transition:width 0.2s;"></div></div>`;
-          hpEl.classList.toggle('warn', hp <= maxHp * 0.3);
-        }
-        this.setText('stage0phase', d.stage0State.msg);
-        this.setText('stage0kills', `${d.kills}`);
-      } else {
-        stage0El.style.display = 'none';
-      }
-    }
   }
 
   private setTarget(t: TargetData | null): void {

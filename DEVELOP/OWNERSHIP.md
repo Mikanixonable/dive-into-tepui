@@ -32,7 +32,6 @@ main.ts
     ├── FloatingOrigin       ... sync ごとに作り直す使い捨て
     ├── Input
     ├── TouchControls?       ... タッチデバイスのみ
-    ├── MapToolbar           ... DOM は Hud.root 配下、所有は Game
     ├── MarkerManager        ... DOM の親は Hud.root / Hud.svgOverlay、所有は Game
     ├── Ephemeris            ... 状態を持たない純サンプラ。各所へ参照共有する単一インスタンス
     ├── CameraSystem
@@ -40,6 +39,7 @@ main.ts
     │   ├── MapCamera
     │   ├── PipCamera
     │   ├── MapMarkers
+    │   ├── MapViewPanel               ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
     │   └── FocusGizmo
     │       └── ContextMenu
     ├── Player               (extends Ship / OrbitEntity)
@@ -61,12 +61,14 @@ main.ts
     │   │   └── ContextMenu
     │   └── 計画パネル DOM
     ├── PredictSystem
+    │   └── PredictPanel               ... DOM は Hud.root 配下。期間/予測座標系/未来位置スライダー
     ├── PlanGuide
     │   └── OrbitLine                  ... 計画軌道ライン(白)
     ├── MapModeToggler                 ... 状態を持たない(所有物なし)
     ├── Stage (activeStage)            ... initStage() が毎回 new する
     │   ├── ScoreCounter
     │   ├── Logistics
+    │   ├── StageStatusPanel           ... DOM は Hud.root 配下。HP/補助メッセージ/撃墜数
     │   ├── ScoreAttackTimer           ... Stage0 のみ
     │   └── WaveManager                ... Stage00 のみ
     ├── EnvironmentScene
@@ -109,8 +111,7 @@ main.ts
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
 | `MarkerManager` | Game | MarkerForGame・Targeter・PlanGuide・PredictSystem・MapMarkers |
-| `Ephemeris` | Game | EnvironmentScene・Simulator・MapCamera・PlanEditor・PlanTrajectory |
-| `MapToolbar` | Game | CameraSystem(視点側の配線)・PredictSystem(表示期間側の配線) |
+| `Ephemeris` | Game | EnvironmentScene・Simulator・MapCamera・MapMarkers・PlanEditor・PlanTrajectory |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
 | `Simulator.ammos` | Simulator | Logistics(読み取り + `addAmmo` 経由の追加のみ) |
@@ -163,7 +164,14 @@ main.ts
   `MapModeToggler` だけで、描画・視点側は mapMode を、入力・挙動側は editMode を見る。
 - **`FloatingOrigin.r` と `Player.state.r`** は現状同じ値だが意味論的に別物。sync 系は必ず fo を参照し、
   `player.state.r` を描画原点として直接使わない。
-- **`MapCamera.cameraFrame`** は表示座標系の唯一の正本。PredictSystem/PlanTrajectory は読むだけ。
+- **`MapCamera.cameraFrame`(視点を固定する座標系)と `PredictSystem.trajectoryFrame`(予測折れ線を
+  描く座標系)** は別の正本で、ユーザーが独立に選ぶ。PlanTrajectory が受け取るのは後者だけ。
+- **マップモードの操作パネル**は状態の所有者ごとに分かれる。`MapViewPanel` は CameraSystem が、
+  `PredictPanel` は PredictSystem が所有し、自分の状態だけを映して自分の状態だけを受け取る。
+  表示・非表示も各所有者が毎フレームの sync で押し出す(MapModeToggler は関与しない)。
+- **`HudPanels` は表示専用**。Game を丸ごと読んで自分の4パネルへ書くだけで、他モジュールの状態や
+  DOM は操作しない。ステージ固有の状況パネルは `Stage`(`StageStatusPanel`)、タッチUIのトグル点灯は
+  `TouchControls.syncModeButtons()` が担当し、いずれも game.sync が自機/ステージの状態を渡す。
 
 ---
 

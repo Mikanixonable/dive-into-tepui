@@ -88,18 +88,21 @@ const STYLE = `
 #hud-plan {
   position: absolute; bottom: 40px; left: 12px; min-width: 280px;
 }
-#hud-maptool {
-  display: none; position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
-  min-width: 320px; pointer-events: auto; text-align: center;
-}
-#hud-maptool .mt-row { display: flex; justify-content: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
-#hud-maptool .mt-btn {
-  pointer-events: auto; cursor: pointer; padding: 4px 12px; font-size: 11px;
+/* hud/buttons.ts のボタン部品。マップモードの2パネル(#hud-predict / #hud-mapview)が共有する */
+#hud .hud-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+#hud .hud-seg .seg-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 28px; }
+#hud .hud-seg .seg-btn {
+  pointer-events: auto; cursor: pointer; padding: 3px 10px; font-size: 11px;
   border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
 }
-#hud-maptool .mt-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
-#hud-maptool input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
-#hud-maptool .mt-sliderlabel { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; }
+#hud .hud-seg .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud-predict {
+  display: none; bottom: 40px; left: 50%; transform: translateX(-50%); width: 330px;
+  pointer-events: auto;
+}
+#hud-predict input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
+#hud-predict .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
+#hud-mapview { display: none; top: 12px; left: 12px; width: 250px; pointer-events: auto; }
 .mk-planned { color: #8fd0ff; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 .mk-poi { color: #8fd0ff; text-shadow: 0 0 4px #000; }
 .mk-poi .sym { font-size: 14px; }
@@ -130,13 +133,13 @@ const STYLE = `
   background: ${SURFACE}; border: 1px solid ${EDGE};
   display: flex; align-items: center; justify-content: center; font-size: 15px; color: ${INK_SOFT};
 }
-#hud-stage0 {
-  position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
-  display: none; text-align: center; min-width: 170px; padding: 8px 16px;
+#hud-stagestatus {
+  top: 50px; left: 50%; transform: translateX(-50%);
+  text-align: center; min-width: 170px; padding: 8px 16px;
 }
-#hud-stage0 .t { font-size: 22px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
-#hud-stage0 .t.warn { color: ${ACCENT}; }
-#hud-stage0 .k { font-size: 11px; color: ${INK_SOFT}; margin-top: 2px; }
+#hud-stagestatus .t { font-size: 22px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
+#hud-stagestatus .t.warn { color: ${ACCENT}; }
+#hud-stagestatus .k { font-size: 11px; color: ${INK_SOFT}; margin-top: 2px; }
 #hud-settings {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   display: none; min-width: 260px; pointer-events: auto;
@@ -173,14 +176,17 @@ const STYLE = `
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
   #hud-plan { bottom: 216px; left: 8px; min-width: 210px; max-width: 60vw; }
+  /* マップモードの2パネルは画面下部(タッチパッド)を避け、左列に縦積みして重ねる */
+  #hud-mapview { top: 8px; left: 8px; width: 186px; }
+  #hud-predict { bottom: auto; top: 138px; left: 8px; transform: none; width: 186px; }
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
   #navball { width: 100px !important; height: 100px !important; bottom: 130px !important; }
   #hud-gear { top: 8px; width: 26px; height: 26px; font-size: 13px; }
   #hud-settings { min-width: 0; width: 78vw; }
-  #hud-stage0 { top: 42px; min-width: 130px; padding: 6px 10px; }
-  #hud-stage0 .t { font-size: 17px; }
+  #hud-stagestatus { top: 42px; min-width: 130px; padding: 6px 10px; }
+  #hud-stagestatus .t { font-size: 17px; }
 }
 `;
 
@@ -262,25 +268,20 @@ function buildControlsBar(root: HTMLElement): void {
     'Space/右クリック:射撃 &nbsp;左ドラッグ/矢印キー:視点 &nbsp;中ドラッグ:マップ平行移動 &nbsp;,/.:ワープ &nbsp;[H]:ヘルプ';
 }
 
-function buildStage0Panel(root: HTMLElement): void {
-  const stage0 = el('div', 'hud-stage0', root, 'panel');
-  stage0.innerHTML = `<div class="t" data-id="stage0hp"></div><div class="k"><span data-id="stage0phase"></span><br>撃墜 <span data-id="stage0kills"></span></div>`;
-}
-
 function buildHelpPanel(root: HTMLElement): void {
   const help = el('div', 'hud-help', root, 'panel');
   help.innerHTML = `
     <h3>操作方法 [H で閉じる]</h3>
     <table>
-      <tr><td class="key">Q / E (または CTRL / SHIFT)</td><td>並進 (前 / 後)</td></tr>
-      <tr><td class="key">W / S</td><td>並進 (上 / 下)</td></tr>
+      <tr><td class="key">W / S (または CTRL / SHIFT)</td><td>並進 (前 / 後)</td></tr>
+      <tr><td class="key">Q / E</td><td>並進 (上 / 下)</td></tr>
       <tr><td class="key">A / D</td><td>並進 (左 / 右)</td></tr>
       <tr><td class="key">I / K</td><td>ピッチ (機首下げ / 上げ)</td></tr>
       <tr><td class="key">J / L</td><td>ヨー (右 / 左)</td></tr>
       <tr><td class="key">O / U</td><td>ロール (右 / 左)</td></tr>
       <tr><td class="key">T</td><td>RCS 回転制動 ON/OFF</td></tr>
       <tr><td class="key">F</td><td>プログレード姿勢リセット (機首を進行方向へ即座に向ける)</td></tr>
-      <tr><td class="key">1 / 2 / 3</td><td>並進出力の切替 (弱 / 中 / 強)。W/S/A/D の並進 4 方向に共通で適用される</td></tr>
+      <tr><td class="key">1 / 2 / 3</td><td>並進出力の切替 (弱 / 中 / 強)。W/S・A/D・Q/E の並進 6 方向に共通で適用される</td></tr>
       <tr><td class="key">V</td><td>姿勢微調整モード ON/OFF (角加速度・角速度を絞って小刻みに操作)</td></tr>
       <tr><td class="key">C</td><td>進行方向ホールド ON/OFF (機首をプログレード方向へ自動で向け続ける。手動回転で解除)</td></tr>
       <tr><td class="key">G</td><td>視点のRCS追従 ON/OFF (既定 ON: 視点が機体姿勢を基準に回転し、RCS操作と一体的に動く。OFF で従来の軌道基準の独立視点に戻る)</td></tr>
@@ -292,9 +293,9 @@ function buildHelpPanel(root: HTMLElement): void {
       <tr><td class="key">M</td><td>軌道計画モード。地球中心ビューで数値予測した軌道(折れ線)をクリックしてノードを複数配置でき、再度 M で確定(時間は進み続けるのでワープも可)</td></tr>
       <tr><td class="key">ノードのドラッグ</td><td>ノード上の丸ハンドルをドラッグすると、ポインタに最も近い軌道上の時刻へノードを移動する(小さな動きはドラッグでなくクリック=選択として扱う)</td></tr>
       <tr><td class="key">Δv 矢印ハンドル</td><td>選択中ノードの周囲に PRO/RET・NRM/ANM・OUT/IN の6ハンドルを表示。ドラッグした向きに応じて対応する Δv 成分を増減する(マップモード中のみ W/S・A/D・Q/E キーでも同じ成分を調整可能、[V] で微調整)</td></tr>
-      <tr><td class="key">1周回/1日/7日/28日</td><td>マップモード下部のボタンで予測期間を切替(1周回は現在の周期、双曲線等では1日にフォールバック)</td></tr>
-      <tr><td class="key">スライダー</td><td>予測期間内の任意の時刻へゴースト位置(⬡)を表示(0で非表示)</td></tr>
-      <tr><td class="key">慣性系/太陽回転系</td><td>マップモードの表示座標系を切替。太陽回転系では太陽方向が画面上でほぼ固定される(遷移計画の目安)</td></tr>
+      <tr><td class="key">PREDICT パネル</td><td>マップモード下部。期間 = 予測を描く長さ(1周回は現在の周期、双曲線等では1日にフォールバック)、軌道 = 予測軌道を描く座標系、スライダー = 期間内の任意の時刻へゴースト位置(⬡)を表示(0で非表示)</td></tr>
+      <tr><td class="key">MAP VIEW パネル</td><td>マップモード左上。注視 = カメラの注視対象(それ以外の天体・ラグランジュ点はラベルを右クリック)、視点 = カメラを固定する座標系、視点リセット = 距離と向きを初期値へ戻す</td></tr>
+      <tr><td class="key">慣性系/太陽回転系</td><td>予測軌道とカメラの座標系はそれぞれ独立に選べる。太陽回転系では太陽方向が画面上でほぼ固定される(遷移計画の目安)</td></tr>
       <tr><td class="key">N</td><td>直近のマニューバノードへ自動タイムワープ(実行点の直前で自動解除)</td></tr>
       <tr><td class="key">右クリック</td><td>マップモード中、ノード近傍で右クリックするとコンテキストメニュー(この時刻まで自動ワープ / ノードを削除 / キャンセル)を開く。ノードが無い位置での右クリックや、開いたメニュー外への右クリックは閉じるだけ</td></tr>
       <tr><td class="key">X</td><td>マップモード中は選択中のノードを削除(右クリックメニューのフォールバック)、戦闘ビューでは計画全体を破棄</td></tr>
@@ -317,9 +318,11 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   return els;
 }
 
-// 旧 Hud constructor 本体だった静的 DOM/スタイル構築。document.body に直接要素を追加する。
-// 計画パネル(#hud-plan)・マップツールバー(#hud-maptool)・設定パネル/ギア(#hud-settings/#hud-gear)は
-// それぞれ PlanEditor / MapToolbar / SettingsPanel が自分で root へ構築する(それらの CSS はこの STYLE に含む)。
+// HUD の静的 DOM/スタイル構築。document.body に直接要素を追加する。
+// 計画パネル(#hud-plan)・予測パネル(#hud-predict)・マップ視点パネル(#hud-mapview)・
+// ステージ状況パネル(#hud-stagestatus)・設定パネル/ギア(#hud-settings/#hud-gear)は、それぞれ
+// PlanEditor / PredictSystem / CameraSystem / Stage / SettingsPanel が自分で root へ構築する
+// (それらの CSS はこの STYLE に含む)。
 export function buildHudDom(): HudDomRefs {
   injectStyle();
   const root = el('div', 'hud', document.body);
@@ -327,7 +330,6 @@ export function buildHudDom(): HudDomRefs {
 
   buildInfoPanels(root);
   buildControlsBar(root);
-  buildStage0Panel(root);
 
   el('div', 'hud-hint', root);
   el('div', 'hud-toast', root);

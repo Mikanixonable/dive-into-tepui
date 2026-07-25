@@ -1,16 +1,17 @@
+// マップモードの開閉。視点側(cameraSystem.mapMode)と計画編集側(editor.editMode)という
+// 独立した二つのフラグを同時に切り替える唯一の場所。マップモード中だけ現れる操作パネルは
+// それぞれの所有者(CameraSystem / PredictSystem)が自分の毎フレーム sync で出し入れする。
 import { Hud } from "./hud/hud";
-import { MapToolbar } from "./hud/map-toolbar";
 import { CameraSystem } from "./camera/camera-system";
 import { TouchControls } from "./input/touch";
 import { PlanEditor } from "./plan/plan-editor";
 
 export class MapModeToggler {
-  constructor(private readonly _hud: Hud, private readonly mapToolbar: MapToolbar) {}
+  constructor(private readonly _hud: Hud) {}
 
   private open(editor: PlanEditor, touchControls: TouchControls | null, cameraSystem: CameraSystem): void {
     editor.selectedNodeIdx = null;
 
-    this.mapToolbar.setVisible(true);
     touchControls?.setMapMode(true);
     // 独立した二つの責務(広範囲視点 / 計画編集)を同時に開く唯一の場所。
     cameraSystem.mapMode = true;
@@ -21,7 +22,6 @@ export class MapModeToggler {
     editor.onMapClosed();
     editor.closeMenu();
     cameraSystem.closeFocusMenu();
-    this.mapToolbar.setVisible(false);
     touchControls?.setMapMode(false);
     cameraSystem.mapMode = false;
     editor.editMode = false;

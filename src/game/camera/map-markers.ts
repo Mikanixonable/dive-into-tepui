@@ -32,13 +32,12 @@ export class MapMarkers {
     pos: v3(0, 0, 0),
   }));
 
-  constructor(private readonly markerManager: MarkerManager) {}
+  constructor(private readonly markerManager: MarkerManager, private readonly ephemeris: Ephemeris) {}
 
-  // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルの座標を更新し、
-  // マーカーに反映する。sliderT > 0 の間はゴーストスライダーの表示時刻を使う。
-  // duration は predictDurationSec() の結果。
-  syncLabels(simTime: number, ephemeris: Ephemeris, duration: number, sliderT: number, project: ProjectFn): void {
-    const t = sliderT > 0 ? simTime + sliderT * duration : simTime;
+  // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルの座標を
+  // 表示時刻 t(未来ゴーストスライダーを織り込んだ時刻)で更新し、マーカーに反映する。
+  syncLabels(t: number, project: ProjectFn): void {
+    const ephemeris = this.ephemeris;
     const emL = ephemeris.emLagrangeAt(t);
     const seL = ephemeris.seLagrangeAt(t);
 
