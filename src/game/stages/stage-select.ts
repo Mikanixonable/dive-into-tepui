@@ -1,14 +1,13 @@
 // ステージ選択の外部化。main.ts はどのステージが選ばれたかだけを知ればよく、
 // クエリパラメータでの強制指定・選択画面 GUI の実装はここに閉じる。
 import { StageId } from './stage';
-import { isStageId, STAGE_DEFINITIONS } from './stage-dictionary';
+import { STAGE_DEFINITIONS } from './stage-dictionary';
 import { UnlockManager } from '../unlock-manager';
 import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from '../theme';
 
 // ステージ選択画面。解放判定・クリア記録は unlock-manager.ts の UnlockManager に委ねる。
-function selectStage(): Promise<StageId> {
+export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
   return new Promise((resolve) => {
-    const unlockManager = new UnlockManager();
     const SURFACE = SURFACE_OPAQUE;
     const div = document.createElement('div');
     div.style.cssText =
@@ -51,11 +50,4 @@ function selectStage(): Promise<StageId> {
     };
     window.addEventListener('keydown', onKey);
   });
-}
-
-// ?stage=00|0|1|2 で選択画面をスキップ(デバッグ・共有リンク用)。指定が無い/不正なら選択画面を出す。
-export async function resolveStageSelection(): Promise<StageId> {
-  const stageParam = new URLSearchParams(location.search).get('stage');
-  if (isStageId(stageParam)) return stageParam;
-  return selectStage();
 }
