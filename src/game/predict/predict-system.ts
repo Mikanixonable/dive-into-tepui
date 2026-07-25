@@ -10,7 +10,7 @@
 //
 // 「太陽回転系」表示の座標変換は physics/frame.ts へ委譲する。描画は二段変換で、bake(頂点を
 // frame 相対へ、TrajLine が再構築時のみ)と un-bake(現在時刻 simTime で慣性系へ戻す剛体回転、
-// TrajLine が毎フレーム group クォータニオンで)に分かれる。un-bake の基準時刻は常に現在
+// TrajLine が毎フレーム SampledLine セグメントへ委譲)に分かれる。un-bake の基準時刻は常に現在
 // (unbakeTime = simTime)で、旧来の再構築時凍結(trajRefTime)はしない。plan-editor.ts のクリック
 // ピッキングも DisplayFrameFn(= bake + un-bake の合成)経由で同じ現在時刻を共有し、描画とずれ
 // ない(二重に基準を持たない)。mapMode 中のみ意味を持つ。
@@ -18,7 +18,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitState, R_EARTH } from '../../physics/orbital';
 import { PlannedNode, TrajectorySample, predictTrajectory, sampleAt } from '../../physics/predict';
 import { Vec3, len } from '../../physics/vec3';
-import { Frame, toFramePos, toInertialPos, toInertialQuat } from '../../physics/frame';
+import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
 import * as C from '../const';
 import { fmtMarkerDist } from '../hud/utils';
 import { TrajLine } from './trajline';
@@ -139,17 +139,14 @@ export class PredictSystem {
   ): void {
     this.line.setVisible(true);
 
-    // un-bake は毎フレームの剛体回転。基準時刻は常に現在(simTime)で、group クォータニオンへ与える。
-    // クリック判定用の toDisplayFrame も同じ unbakeTime を参照するので描画とずれない。
-    this.unbakeTime = simTime;
-    this.line.syncTransform(fo, toInertialQuat(this.frame, simTime, ephemeris));
+    // 予測が再計算された(cache の参照が変わった)フレームでだけ、TrajLine が頂点を frame 相対
+    // 座標へ bake し直す(非剛体)。un-bake は下の syncTransform が毎フレーム担う。
+    this.line.syncGeometry(cache, this.frame, ephemeris, nodeTimes);
 
-    // 予測が再計算された(cache の参照が変わった)フレームでだけ、line.sync() 内部で頂点を
-    // frame 相対座標へ bake し直す(非剛体)。un-bake は上の group 回転が毎フレーム担う。
-    this.line.sync(cache, () => ({
-      nodeTimes,
-      bake: (r: Vec3, t: number) => toFramePos(this.frame, t, r, ephemeris),
-    }));
+    // un-bake は毎フレームの剛体回転。基準時刻は常に現在(simTime)。クリック判定用の
+    // toDisplayFrame も同じ unbakeTime を参照するので描画とずれない。
+    this.unbakeTime = simTime;
+    this.line.syncTransform(this.frame, simTime, ephemeris, fo);
 
     if (this.sliderT <= 0 || cache.length <= 0) {
       this.markerManager.hide('plannedPlayer');
