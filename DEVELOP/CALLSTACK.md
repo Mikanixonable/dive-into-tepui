@@ -123,19 +123,18 @@
     - [Stage0 訓練スコアアタック] logistics.updateLogistics(respawnOnDespawn=false)
     - [Stage0 訓練スコアアタック] timer.update()
       - setPhase('timeup') + showScoreAttackResultScreen() // 制限時間到達フレームのみ
-    - [Stage00 無限サバイバル] waveManager.update()
-      - logistics.updateLogistics(respawnOnDespawn=true)
-        - absorbNearbyAmmo() // player.alive のみ
-          - player.onPickup() + sfx.pickup() + hud.hint() // 範囲内の補給ごと
-        - despawnFarAmmo()
-          - spawnForPlayer() // 遠方消滅した数だけ再投入
-        - spawnForPlayer() // LOGISTICS_CHECK_INTERVAL ごと、かつ低弾薬・上限未満のみ
-      - updateWaitingForAmmoPhase() → hud.toast() // 弾薬確保でフェーズ遷移した時のみ
-      - updateSpawningEnemiesPhase() → spawnWave() // カウントダウン満了時のみ
-      - updateActiveCombatPhase()
-        - despawnOutOfRangeEnemies() // 圏外の敵ごと(alive=false + dispose())
-        - spawnWave() + hud.toast() // 間隔・同時展開上限を満たす場合のみ
-        - spawnWave: generateWave() → addEnemy() → simulator.addEnemy() + scoreCounter.recordSpawnEnemy()
+    - [Stage00 無限サバイバル] logistics.updateLogistics(respawnOnDespawn=true)
+      - absorbNearbyAmmo() // player.alive のみ
+        - player.onPickup() + sfx.pickup() + hud.hint() // 範囲内の補給ごと
+      - despawnFarAmmo()
+        - spawnForPlayer() // 遠方消滅した数だけ再投入
+      - spawnForPlayer() // LOGISTICS_CHECK_INTERVAL ごと、かつ低弾薬・上限未満のみ
+    - [Stage00 無限サバイバル] updateWaitingForAmmoPhase() → hud.toast() // 弾薬確保でフェーズ遷移した時のみ
+    - [Stage00 無限サバイバル] updateSpawningEnemiesPhase() → spawnWave() // カウントダウン満了時のみ
+    - [Stage00 無限サバイバル] updateActiveCombatPhase()
+      - despawnOutOfRangeEnemies() // 圏外の敵ごと(alive=false + dispose())
+      - spawnWave() + hud.toast() // 間隔・同時展開上限を満たす場合のみ
+      - spawnWave: generateWave() → addEnemy() → simulator.addEnemy() + scoreCounter.recordSpawnEnemy()
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(respawnOnDespawn=false)
   - simSpeedManager.update() // 自動ワープ中のみ実効
     - hud.hint() // 実行点に接近して自動ワープを解除したフレームのみ
