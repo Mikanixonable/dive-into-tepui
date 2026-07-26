@@ -275,7 +275,6 @@ export class PlayerFire {
       0.07,
       0xfff0b8,
       zoomActive ? C.ZOOM_MUZZLE_FLASH_SCALE : 1,
-      true, // マズルフラッシュ: PIP 描画時のみ非表示化の対象
     );
   }
 
