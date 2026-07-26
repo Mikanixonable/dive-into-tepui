@@ -13,7 +13,7 @@ import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
 // フラッシュ・破片エフェクトの発生源。scene への注入をここに一元化し、呼び出し側
 // (Player/Enemy/PlayerFire)は scene を持ち回さずに済む。フラッシュの毎フレーム更新・
 // 寿命管理(FlashEffectManager)もここが私有し、game.ts からは spawn 系メソッドと
-// 同じ窓口(updateFlashEffects/setMuzzleFlashesVisible)経由でのみ触る。
+// 同じ窓口(sync)経由でのみ触る。
 export class EffectsSystem {
   private readonly _flashEffects: FlashEffectManager;
 
@@ -27,10 +27,6 @@ export class EffectsSystem {
   sync(dt: number, simDt: number, fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera): void {
     // debrisはsimulatorが管理するので、syncもそちらが行い、こちらではsimulatorの責務外になるflashEffectsのみ更新する
     this._flashEffects.syncFlashEffects(dt, simDt, fo, activeCamera);
-  }
-
-  setMuzzleFlashesVisible(visible: boolean): void {
-    this._flashEffects.setMuzzleFlashesVisible(visible);
   }
 
   spawnPlasmaFlash(pos: Vec3, vel: Vec3): void {
@@ -59,10 +55,9 @@ export class EffectsSystem {
     duration: number,
     color: number,
     peakOpacity = 1,
-    muzzle = false,
   ): void {
     const billboard = new Billboard(color);
-    const fx: FlashEffect = { billboard, pos, vel, age: 0, duration, size0, size1, peakOpacity, muzzle };
+    const fx: FlashEffect = { billboard, pos, vel, age: 0, duration, size0, size1, peakOpacity };
     this._flashEffects.addFlash(fx);
   }
 

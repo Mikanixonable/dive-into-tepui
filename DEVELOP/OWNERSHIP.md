@@ -38,7 +38,6 @@ main.ts
     ├── CameraSystem
     │   ├── ChaseCamera
     │   ├── MapCamera
-    │   ├── PipCamera
     │   ├── MapMarkers
     │   ├── MapViewPanel               ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
     │   └── FocusGizmo
@@ -89,8 +88,6 @@ main.ts
     │   ├── DebrisPiece[] (casings)
     │   ├── DebrisPiece[] (debris)
     │   └── Ammo[]
-    └── PipRenderer                    ... PIP の描画パス
-        └── PipOverlay                 ... 窓に重ねるクロスヘア・ターゲット枠・見越し点
 ```
 
 木に現れないインスタンス:
@@ -111,7 +108,7 @@ main.ts
 | `THREE.Scene` / `WebGPURenderer` | `GameScene`(main.ts) | Game・各描画物を持つクラス |
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
-| `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・PlayerMarkers・Targeter・Logistics・MapMarkers・PlanGuide・PredictSystem・PipRenderer→PipOverlay) |
+| `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・PlayerMarkers・Targeter・Logistics・MapMarkers・PlanGuide・PredictSystem) |
 | `Ephemeris` | Game | EnvironmentScene・Simulator・MapCamera・MapMarkers・PlanEditor・PredictSystem |
 | `PlanTrajectory` | PredictSystem | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ) |
 | `Plan` | PlanEditor | PredictSystem(`sync` の引数で毎フレーム)・PlanGuide(同)|
@@ -148,7 +145,6 @@ main.ts
 | マップ視点(注視点相対オフセット・パン)・表示座標系・フォーカス | `MapCamera` | 予測折れ線の座標系もこれを読む |
 | 戦闘視点(yaw/pitch/dist・姿勢追従フラグ) | `ChaseCamera` | |
 | マップモード表示・照準ズーム | `CameraSystem.mapMode` / `.zoomActive` | |
-| PIP 矩形 | `PipCamera.rect` | |
 | ターゲットロック・自動ターゲット・的通過マーク | `Targeter` | |
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
 | 発射数・命中数・撃破数・出撃数 | `ScoreCounter` | 所有は Stage |
@@ -191,13 +187,10 @@ main.ts
   `TouchControls.syncModeButtons()` が担当し、いずれも game.sync が自機/ステージの状態を渡す。
 - **HUD マーカーは対象の持ち主が出す**。自機由来(方向/ボアサイト/マップ上の自機)は `PlayerMarkers`、
   ターゲット由来(方位・相対 AN/DN・的通過マーク)は `Targeter`、補給は `Logistics`、天体ラベルは
-  `MapMarkers`、ノード/BURN は `PlanGuide`、未来ゴーストは `PredictSystem`、PIP 窓の中身
-  (クロスヘア・ターゲット枠・見越し点)は `PipRenderer` が持つ `PipOverlay`。Game が直接持つのは
+  `MapMarkers`、ノード/BURN は `PlanGuide`、未来ゴーストは `PredictSystem`。Game が直接持つのは
   **1つの対象では決められない2つだけ** — `GroupedMarkers`(画面上のまとめ)と `LeadMarkers`(自機と敵の
   両方に依存)。`Enemy` は自分の見た目とラベルを `markerItem()` で渡すだけで、まとめの判断には
   関与しない。
-- **`Game.pipActive`(= `player.isFiring && !mapMode`)が PIP 表示可否の唯一の判定**。`PipRenderer` は
-  sync(オーバーレイ)と render(描画パス)の両方でこれを引数として受け取り、自分では判定しない。
 
 ---
 

@@ -21,7 +21,6 @@ import { PlanEditor } from './plan/plan-editor';
 import { PredictSystem } from './predict/predict-system';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
-import { PipRenderer } from './pip-renderer';
 import { Simulator } from './orbit-entity/simulator';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
@@ -93,7 +92,7 @@ export class Game {
   // 単独のオブジェクトでは決められないマーカー群。敵マーカーは「画面上で近接するものを
   // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とするので、いずれも
   // 当事者ではなくここが持つ。それ以外のマーカーは、それぞれの持ち主(Player/Targeter/
-  // Logistics/FocusMarkers/PlanGuide/PredictSystem、PIP 窓の分は PipRenderer)の sync が
+  // Logistics/FocusMarkers/PlanGuide/PredictSystem)の sync が
   // 自分で出す。
   private readonly enemyMarkers: GroupedMarkers;
   private readonly leadMarkers: LeadMarkers;
@@ -105,7 +104,6 @@ export class Game {
   private readonly effects: EffectsSystem;
   readonly targeter: Targeter;
   readonly simulator: Simulator;
-  private readonly pipRenderer: PipRenderer;
   // シミュレーション状態の非有限値(NaN/Infinity)を最初に検出したフェーズごと報告する見張り。
   // 汚染は描画の暗転・敵の「再突入」誤表示・接触音の鳴りっぱなしなど別の顔で表面化するため、
   // 発生した瞬間に記録する(nan-watchdog.ts の冒頭コメント参照)。
@@ -135,7 +133,6 @@ export class Game {
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
     this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
-    this.pipRenderer = new PipRenderer(this._scene, this.markerManager);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
     this.predict = new PredictSystem(this._hud.root, this.markerManager, this.ephemeris, this._scene);
@@ -302,12 +299,6 @@ export class Game {
 
   // ------------------------------------------------------------------ sync
 
-  // このフレームに PIP(照準ズーム窓)を出すか。sync 側(窓に重ねるマーカー)と render 側
-  // (描画パス)が必ず一致していなければならないので、判定はここだけに置いて両方へ渡す。
-  private get pipActive(): boolean {
-    return this.player.isFiring && !this.cameraSystem.overviewMode;
-  }
-
   sync(dt: number): void {
     // 設定し、sync 系全体へ共通の基準として渡す。player.state とは意味論的に別物 —
     // 将来この原点を別の点(カメラ座標など)へ差し替えても描画が破綻しないよう、
@@ -354,7 +345,6 @@ export class Game {
       project,
     );
     this.leadMarkers.sync(this.player, aliveEnemies, target, simTime, overviewMode, project);
-    this.pipRenderer.sync(this.pipActive, this.player, target, this.cameraSystem.pipCamera);
 
     // 予測折れ線(と未来ゴースト・PREDICT パネル)は predict が駆動する。ノードギズモの画面座標は
     // その表示座標変換を通すので、editor.sync はこの後に呼ぶ。
@@ -379,16 +369,7 @@ export class Game {
   // ------------------------------------------------------------------ render
 
   render(): void {
-    // 通常の全画面描画
     this.renderer.render(this._scene, this.cameraSystem.activeCamera);
-
-    // PIP 描画(窓に重ねるマーカーは sync 中に pipRenderer.sync が済ませている)
-    this.pipRenderer.renderPip(this.renderer, {
-      renderPip: this.pipActive,
-      pipCamera: this.cameraSystem.pipCamera,
-      playerShipObj: this.player.obj,
-      setMuzzleFlashesVisible: (visible) => this.effects.setMuzzleFlashesVisible(visible),
-    });
   }
 
   // ------------------------------------------------------------------ debug
