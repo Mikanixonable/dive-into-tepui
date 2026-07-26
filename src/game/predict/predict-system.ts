@@ -6,7 +6,7 @@
 //      とは独立で、「軌道の形をどの座標系で見るか」と「視点をどの座標系に固定するか」を別々に選べる。
 //   ③ 未来ゴースト: sliderT に応じた未来時刻の予定 player 位置マーカー(plannedPlayer)の表示。
 //      サンプル(sampleAt)と表示座標変換(toDisplay)は B-2 のものを注入で受け取り、Plan も B-2 も
-//      import しない。mapMode 中のみ意味を持つ。
+//      import しない。
 //   ④ 操作パネル(PredictPanel)の所有。映すのも受けるのも上記 ①〜③ の predict 自身の状態だけ。
 import { OrbitState, R_EARTH } from '../../physics/orbital';
 import { Vec3, len } from '../../physics/vec3';
@@ -26,6 +26,21 @@ export type SampleAtFn = (t: number) => OrbitState | null;
 export type ToDisplayFn = (r: Vec3, t: number) => Vec3;
 
 export class PredictSystem {
+  private _forceCurrent = false; // 未来表示を禁止するフラグ。mapMode とは独立
+  get forceCurrent(): boolean {
+    return this._forceCurrent;
+  }
+  set forceCurrent(v: boolean) {
+    this._forceCurrent = v;
+    /* 
+    if (v) {
+      // 強制的に未来表示を禁止するべきだ。
+      this.sliderT = 0; 
+      // panelのスライダーも強制的に0にする。いまは配線がないから保留。
+    }
+    */
+  }
+
   durationKey: PredictDurationKey = 'day';
   // 予測折れ線を描く表示座標系。PlanTrajectory はこれを毎フレーム受け取って bake/un-bake する。
   trajectoryFrame: Frame = 'inertial';
@@ -71,8 +86,8 @@ export class PredictSystem {
 
   // マップモードの未来ゴーストスライダーが有効な間だけ、環境(太陽・月)表示やマップラベルに使う
   // 「未来の」simTime を返す。マップを閉じているか、スライダーが原点にあるときは現在時刻のまま。
-  resolveDisplayTime(mapMode: boolean, orbitPeriod: number | null, simTime: number): number {
-    if (!mapMode || this.sliderT <= 0) return simTime;
+  resolveDisplayTime(orbitPeriod: number | null, simTime: number): number {
+    if (this.forceCurrent || this.sliderT <= 0) return simTime;
     return this.displayTime(simTime, this.durationSec(orbitPeriod));
   }
 
@@ -97,10 +112,9 @@ export class PredictSystem {
     toDisplay: ToDisplayFn,
     orbitPeriod: number | null,
     simTime: number,
-    mapMode: boolean,
     project: ProjectFn,
   ): void {
-    if (!mapMode) { // TODO: mapModeじゃないと思う。
+    if (this.forceCurrent) {
       this.hide();
       return;
     }
