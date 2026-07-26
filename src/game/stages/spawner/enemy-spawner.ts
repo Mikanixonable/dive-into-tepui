@@ -43,23 +43,19 @@ export function generateCluster(base: OrbitState, hud: Hud, sfx: Sfx, fx: Effect
   return enemies;
 }
 
-// ウェーブ出現位置: 自機の後方/前方/上方/側方いずれか(第1波は必ず後方)
+// ウェーブ出現位置: 自機と同じ高度の水平方向(全方位)にランダムな距離で配置
 function pickWaveCenter(player: OrbitState, wave: number): Vec3 {
-  const types = ['behind', 'front', 'above', 'side'];
-  const type = wave === 1 ? 'behind' : types[Math.floor(Math.random() * types.length)];
-
   const dist = C.STAGE00_SPAWN_DIST_MIN + Math.random() * (C.STAGE00_SPAWN_DIST_MAX - C.STAGE00_SPAWN_DIST_MIN);
-  const r0 = player.r;
-  const hHat = norm(cross(r0, player.v));
-  const rHat = norm(r0);
-  const vHat = cross(hHat, rHat);
-
-  const dr = (Math.random() - 0.5) * C.STAGE00_PLACEMENT_JITTER;
-  if (type === 'behind') return add(r0, add(scale(vHat, -dist), scale(rHat, dr)));
-  if (type === 'front') return add(r0, add(scale(vHat, dist), scale(rHat, dr)));
-  if (type === 'above') return add(r0, add(scale(rHat, dist), scale(vHat, dr)));
-  const sideSign = Math.random() < 0.5 ? 1 : -1; // side
-  return add(r0, add(scale(hHat, dist * sideSign), scale(rHat, dr)));
+  
+  // 第1波は必ず後方(速度ベクトルと逆向き)に出現させる。それ以降はランダムな水平方向。
+  let dir: Vec3;
+  if (wave === 1) {
+    dir = norm(scale(player.v, -1));
+  } else {
+    dir = randPerp(player.r);
+  }
+  
+  return add(player.r, scale(dir, dist));
 }
 
 // フライバイ初速: 1000m ~ 2000m の範囲ですれ違うようにターゲット位置をずらし、
@@ -114,7 +110,7 @@ function makeSubGroupHexes(baseHex: number): number[] {
   return subGroups;
 }
 
-// 隊列内の各機の配置位置(高度を少し下げるオフセット込み)
+// 隊列内の各機の配置位置(高度を少し下げるオフセット込み・大気圏突入防止のクランプあり)
 function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: number, centerR: Vec3, approachDir: Vec3): Vec3 {
   let pos: Vec3;
   if (pattern === 'linear') {
@@ -131,7 +127,15 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 
   // 高度を少し下げる (200m~1km)
   const altDrop = C.STAGE00_ALT_OFFSET_MIN + Math.random() * (C.STAGE00_ALT_OFFSET_MAX - C.STAGE00_ALT_OFFSET_MIN);
-  return add(pos, scale(norm(pos), altDrop));
+  const droppedPos = add(pos, scale(norm(pos), altDrop));
+
+  // 安全装置: どんなに低くても高度90km未満(大気圏+10km)には出現させない
+  const safeAlt = C.REENTRY_ALT + 10e3;
+  const currentAlt = len(droppedPos) - C.R_EARTH;
+  if (currentAlt < safeAlt) {
+    return scale(norm(droppedPos), C.R_EARTH + safeAlt);
+  }
+  return droppedPos;
 }
 
 // サバイバル波状攻撃1波分を直接生成する(登録は呼び出し側)。
