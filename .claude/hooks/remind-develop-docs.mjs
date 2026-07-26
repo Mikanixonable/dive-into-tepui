@@ -24,7 +24,9 @@ process.stdin.on('end', () => {
     '- クラスの new 位置・状態(フィールド)の所有・参照共有・キャッシュが動いたか → DEVELOP/OWNERSHIP.md\n' +
     '- プレイヤーから見える挙動・数値が変わったか → DEVELOP/SPEC.md\n' +
     '手順は .claude/skills/develop-docs/SKILL.md(/develop-docs)。更新は同じ変更セットに含める。' +
-    '不要と判断した場合はその理由を述べること。';
+    '不要と判断した場合はその理由を述べること。\n' +
+    '責務配置の判断を新たに下した/変えたなら .claude/skills/refactor-fixed/SKILL.md も書き換える' +
+    '(追記でなく全体を整合させる)。';
 
   process.stdout.write(
     JSON.stringify({
