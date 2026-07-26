@@ -18,11 +18,11 @@ export class CollisionPhysics {
     if (p.alive) participants.push(p);
     // ベルト状態を読み込み、衝突計算後に書き戻す
     if (beltActive) {
-      participants.push(...p.belt.collisionSections(dt, p.state.r, p.state.v, p.att.q));
+      participants.push(...p.belt.collisionSections(dt, p.state.r, p.state.v, p.att));
     }
     this.resolveCollisionPairs(participants, p, onPlayerCasingImpact);
     if (beltActive) {
-      p.belt.applyCollisionSections(dt, p.state.r, p.state.v, p.att.q);
+      p.belt.applyCollisionSections(dt, p.state.r, p.state.v, p.att);
     }
   }
 
