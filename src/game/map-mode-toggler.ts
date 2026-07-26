@@ -55,11 +55,11 @@ export class MapModeToggler {
       return;
     }
 
-    if (input.takeKey(K.mapMode)) { // 入力があったとき
+    if (input.takeKey(K.toggleMapMode)) { // 入力があったとき
       if (!cameraSystem.mapMode) { // 閉じていたら開く
         this.open(editor, touchControls, cameraSystem, predict);
         this._hud.hint(
-          `軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [${K.mapMode.label}] で確定`,
+          `軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [${K.toggleMapMode.label}] で確定`,
           5000,
         );
       }
