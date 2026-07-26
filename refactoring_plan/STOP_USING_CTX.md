@@ -113,7 +113,7 @@ const {x, y, z} = result;
 
 #### 3. `MarkerCtx`(`src/game/marker/marker-for-game.ts`)　解消済み
 
-`MarkerForGame` ごと解体した(REFACTOR_PLAN.md「MarkerForGameの解体」)。ctx が生えていた原因は、
+`MarkerForGame` ごと解体した。ctx が生えていた原因は、
 マーカーの管理を1モジュールに集約したせいで「マーカーを出すのに必要な状態」が全部そこへ集まって
 きたことなので、**ctx の形を整えるのではなくマーカーの責務を各持ち主へ返す**ことで消した。
 

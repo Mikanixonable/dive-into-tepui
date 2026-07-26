@@ -2,6 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 作業のルール
+
+- **全体像はコードではなく文書から掴む。** 「どこで何が起きているか」「誰が状態を持つか」「いつ走るか」
+  は `DEVELOP/OWNERSHIP.md` / `DEVELOP/CALLSTACK.md` / `DEVELOP/SPEC.md` / この CLAUDE.md が一次情報。
+  当たりを付けてから必要なファイルだけを読む。手順は `.claude/skills/overview/SKILL.md`(`/overview`)。
+- **検証は変更箇所に対応させる。** 既定は `npm run typecheck` のみで、これは常に走らせる。
+  `npm run test:physics` は `src/physics/` を触ったときだけ。ヘッドレス実行検証(`/verify`)は
+  ユーザーが実行時の動作確認を明示的に求めたときだけ。変更と無関係な検証に時間を使わない。
+- **リファクタリングの判断基準は `/refactor`(一般方針)と `/refactor-fixed`(このプロジェクトで確定済みの
+  責務境界)。** 責務配置の判断を新たに下した/変えたら、`.claude/skills/refactor-fixed/SKILL.md` を
+  同じ変更セットで書き換える(追記ではなく、全体が整合するように書き直す。古い判断は残さない)。
+- **改名は痕跡を残さない。** コードにも文書にも歴史的経緯を書かない。「旧」「former」「previously」
+  「〜だった」の類は禁止。互換用の旧名エイリアスも残さず、旧名は全文検索して 0 件にする。
+- **共通化するかどうかは、参照箇所の数ではなく「今後も使う可能性があるか」で決める。** これはコード
+  からは判別できないので、`DEVELOP/SPEC.md`「実装される可能性のある機能」節を見て、決まらなければ
+  ユーザーに問う。ユーザーが可能性に言及したものは同節へ記録する。
+- **`refactoring_plan/refactoring_todo.md` は todo リスト。** 経緯は残さず、完了した項目は消す
+  (そこで下した責務配置の判断は消す前に `/refactor-fixed` へ移す)。
+
 ## 設計文書 — 更新は義務
 
 **`src/` を変更したら、同じ変更セットの中で下記の文書も更新する。**「あとでまとめて」は禁止。
@@ -19,7 +38,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 役割の切り分け: この CLAUDE.md は**散文の解説**(責務と理由)、DEVELOP/ の2文書は**機械的な事実**
 (順序と所有)。両者が食い違ったら **DEVELOP/ を正とし、CLAUDE.md を直す。**
-リファクタリングの計画・進捗は `refactoring_plan/` を参照する(こちらも CLAUDE.md より新しい)。
+リファクタリングのやることリストは `refactoring_plan/refactoring_todo.md`、論点ごとの現況は同フォルダの
+各文書を参照する(こちらも CLAUDE.md より新しい)。
 
 ## Current state
 
@@ -59,7 +79,7 @@ Physics runs on the main thread (per-entity central-gravity two-body integration
 
 `src/game/` is an orchestrator (`game.ts`) plus subfolders grouped by concern: `player/` (player ship state), `orbit-entity/` (the shared entity base classes and their passive simulation), `camera/`, `plan/` (maneuver planning, independent of whether the map is open), `predict/` (future-trajectory display), `stages/` (per-stage behavior), `hud/` (DOM overlay), `marker/` (screen-projected markers), `vfx/`, and `input/`.
 
-**`*Ctx` snapshot objects are a rejected pattern here** — don't add new ones and don't widen the survivors. Almost all of them have been expanded into explicit arguments or shared references; what remains is `EnvironmentSyncParams` (`render/environment-scene.ts`), `PipRenderCtx` (`pip-renderer.ts`), and `Player.behave`'s parameter object. `refactoring_plan/STOP_USING_CTX.md` and `refactoring_plan/REFACTOR_PLAN.md` are the live status of that work — trust them over this file.
+**`*Ctx` snapshot objects are a rejected pattern here** — don't add new ones and don't widen the survivors. Almost all of them have been expanded into explicit arguments or shared references; what remains is `EnvironmentSyncParams` (`render/environment-scene.ts`), `PipRenderCtx` (`pip-renderer.ts`), and `Player.behave`'s parameter object. `refactoring_plan/STOP_USING_CTX.md` (plus the open items in `refactoring_plan/refactoring_todo.md`) is the live status of that work — trust it over this file.
 
 - `src/main.ts` — entry point: WebGPU scene init (`initScene`, with a `showLoading` overlay while the WebGPU pipeline compiles), stage resolution (`resolveStageSelection` in `stages/stage-select.ts`), an error overlay fallback, and the rAF loop (`startAnimationLoop`) driving `Game.update` → `Game.sync` → `Game.render` plus the optional `PerfMeter`. It also owns `Hud`/`Sfx`/`SettingsPanel` (`initHud`) — these are constructed before `Game` (and before the stage-select screen) because the title/select screen needs them too, so `Game` receives them as constructor arguments rather than constructing them itself. `main.ts` wires `SettingsPanel.onSettingsOpenChange` to `Game.pause()`/`Game.resume()` (the settings menu's open/close is the only driver of the pause state), `onBgmToggle` to `Sfx.setBgmEnabled`, and `onQuitToTitle` to reload without `?stage=`.
 - `src/perf-meter.ts` — `PerfMeter`: `?perf=1` debug overlay (frame time split between update/sync+render, entity counts via `Game.perfCounts()`, JS heap). Owned by `main.ts`, not by `Game`.
