@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { add, addScaled, dot, lenSq, norm, sub, v3, Vec3 } from '../physics/vec3';
+import { add, addScaled, cross, dot, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
 import { OrbitLine } from '../render/orbitline';
 import * as C from './const';
 import { Enemy } from './orbit-entity/enemy';
@@ -73,9 +73,13 @@ export class Targeter {
     }
   }
 
-  sync(dt: number, fo: FloatingOrigin, enemies: Enemy[], mapMode: boolean, project: ProjectFn): void {
+  // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー・相対 AN/DN)をまとめて
+  // 更新する。ターゲットの選定を持つのがここなので、その表示もここに閉じる。
+  sync(dt: number, fo: FloatingOrigin, player: Player, enemies: Enemy[], mapMode: boolean, project: ProjectFn): void {
     this.syncOrbitLine(fo, enemies, mapMode);
     this.syncBoardMarkers(dt, project);
+    this.syncTargetDirMarkers(player, mapMode, project);
+    this.syncNodeMarkers(player, project);
   }
 
   // ハイライト線を最新のターゲット状態に合わせる。
@@ -108,6 +112,43 @@ export class Targeter {
       const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
       this.markerManager.setPosition(key, 'mk-boardhit', '✦', add(target.state.r, m.off), project, '', 0.25 + 0.75 * fade);
     }
+  }
+
+  // ターゲット/その反対方向を指す方向マーカー(戦闘ビューのみ)。自機の軌道基準方向マーカー
+  // (player-markers.ts)と同じ扱いで、自機位置を原点に置く。
+  private syncTargetDirMarkers(player: Player, mapMode: boolean, project: ProjectFn): void {
+    const tgt = this.aliveTarget;
+    if (mapMode || !tgt) {
+      this.markerManager.hide('tgtdir');
+      this.markerManager.hide('atgdir');
+      return;
+    }
+    const tgtDir = norm(sub(tgt.state.r, player.state.r));
+    this.markerManager.setDirection('tgtdir', 'mk-tgtdir', '◇', player.state.r, tgtDir, project);
+    this.markerManager.setDirection('atgdir', 'mk-tgtdir', '◆', player.state.r, scale(tgtDir, -1), project);
+  }
+
+  // ターゲットの軌道面との交線(相対昇交点・降交点)を自機の軌道上に表示する。
+  // 面変更(ノーマル/アンチノーマル)burn を行うべき位置がひと目で分かる。
+  private syncNodeMarkers(player: Player, project: ProjectFn): void {
+    const playerEl = player.elements;
+    const tgtEl = this.aliveTarget?.elements ?? null;
+
+    const lineDir = playerEl && tgtEl ? cross(playerEl.hHat, tgtEl.hHat) : null;
+    // lenSq が極小 = 軌道面がほぼ一致 → 交線が定まらない
+    if (!playerEl || !lineDir || lenSq(lineDir) < 1e-6) {
+      this.markerManager.hide('an');
+      this.markerManager.hide('dn');
+      return;
+    }
+
+    const d = norm(lineDir);
+    const thAsc = Math.atan2(dot(d, playerEl.qHat), dot(d, playerEl.pHat));
+    const rAsc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc));
+    const rDesc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc + Math.PI));
+
+    this.markerManager.setPosition('an', 'mk-node', '▲', scale(d, rAsc), project, 'AN');
+    this.markerManager.setPosition('dn', 'mk-node', '▽', scale(d, -rDesc), project, 'DN');
   }
 
   // 戦闘ビューの右クリックは射撃と兼用なので、敵に当たったかどうかに関わらずここで消費する

@@ -60,6 +60,11 @@ export class MapMarkers {
     }
   }
 
+  // マップモードを抜けたときの後始末(戦闘ビューには天体ラベルを出さない)。
+  hideLabels(): void {
+    for (const lbl of this.labels) this.markerManager.hide(lbl.id);
+  }
+
   findLabel(id: string): MapLabel | undefined {
     return this.labels.find((l) => l.id === id);
   }

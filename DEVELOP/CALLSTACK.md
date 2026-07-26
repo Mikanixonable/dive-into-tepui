@@ -217,6 +217,9 @@
     - chaseCamera.sync() // !mapMode のみ
     - pipCamera.sync() // 常に
     - mapViewPanel.setVisible(mapMode) + setFocus()/setFrame() // MAP VIEW パネル。点灯反映は mapMode のみ
+    - mapMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。mapMode のみ
+    - mapMarkers.hideLabels() // !mapMode のみ
+  - project / mapMode / simTime / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
   - environment.sync()
     - syncEarth() → earth.group.position / earth.setRotation() / earth.tick()
     - syncSkyBodies()
@@ -225,59 +228,68 @@
       - placeCombatMoon() // !mapMode(カメラ相対の圧縮距離)
       - moonMesh.lookAt() // 常に
     - syncLighting() // 自機位置の日照率で sunLight/ambient の強度を上書き
+    - syncReferenceLines() → geoLine.sync() + moonLine.sync() // !mapMode では両方 null 渡しで非表示
   - player.syncPlayer()
     - obj の position / quaternion / visible
     - thrustEffects.sync() → core/outer の sync() or hide()
     - rcsEffects.sync() → puff の sync() or hide() ×4
     - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出
-  - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
-  - activeStage.syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示
+    - markers.sync() // 自機由来の HUD マーカー。呼び出し側から見えるのは syncPlayer だけ
+      - [mapMode] 戦闘用7キーを hide + markerManager.setPosition('self')
+      - [!mapMode] hide('self') + syncOrbitalDirections() // pro/retro/nrm/anm/radout/radin
+      - [!mapMode] syncBoresight() → setDirection('bore') or hide('bore') // player.alive で分岐
+    - orbitLine.sync() → regenerate() // 要素が閾値以上ドリフト or 推力中(force) or 初回のみ
   - simulator.sync() → entity.sync() // 全エンティティごと(Bullet は速度方向を向く別実装)
-  - effects.syncFlashEffects() → flashEffectManager.syncFlashEffects()
+  - effects.sync() → flashEffectManager.syncFlashEffects()
     - billboard.sync() // 有効なフラッシュごと
     - scene.remove() + billboard.dispose() // 寿命切れのフラッシュごと
-  - syncEntityOrbitLines()
-    - player.orbitLine.sync() → regenerate() // 要素が閾値以上ドリフト or 推力中(force) or 初回のみ
-    - enemy.orbitLine.sync() // 敵ごと。mapMode かつ生存かつ非ターゲットのときだけ表示
-    - targeter.syncOrbitLine() → orbitLine.sync()
-  - syncMarkers()
-    - editor.syncDisplay()
-      - [!mapMode] traj.setVisible(false) + hideGizmo() → nodeGizmo.sync([], null) して return
-      - traj.setVisible(true)
-      - traj.update() // corners を arc へ分解し、arc ごとに PredictedLine を駆動
-        - line.update() // arc ごと
-          - predictTrajectory() // 入力変化 + スロットル(または force)を満たしたときのみ(重い RK4)
-          - sampled.syncGeometry() // 点列 or frame が変わったときのみ頂点を bake
-          - sampled.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
-        - line.setVisible(false) // arc が減って余った B-1 ごと
-      - updateGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
-    - [mapMode]
-      - predict.sync()
-        - syncGhost() → markerManager.setPosition('plannedPlayer') or hide()
-        - panel.setVisible(true) / setDuration() / setFrame() / setSliderLabel() // PREDICT パネル
-      - cameraSystem.syncMapLabels() → mapMarkers.syncLabels() → markerManager.setPosition() // ラベルごと
-    - [!mapMode] predict.hide() → markerManager.hide('plannedPlayer') + panel.setVisible(false)
-    - environment.syncReferenceLines() → geoLine.sync() + moonLine.sync() // !mapMode では両方 null 渡しで非表示
-    - markersSystem.updateMarkers()
-      - updateMapModeMarkers() // mapMode なら方向系を隠して 'self' を出す、!mapMode なら逆
-      - updateOrbitalDirectionMarkers() // !mapMode のみ。pro/retro/nrm/anm/radout/radin + tgtdir/atgdir
-      - updateBoresightMarker()
-      - updateEnemyMarkers() // 敵ごと(画面上で近接する敵はクラスタ化して代表だけラベル表示)
-      - updateAmmoMarkers() // 補給スロットごと
-      - updateLeadAndDirMarkers() // 敵ごとに画面外方位マーカーと LEAD マーカー
-      - markerManager.hide('lead') // 旧単一 LEAD キーの後始末
-      - markerManager.resolveCollisions() // ラベル衝突緩和 + SVG 引き出し線の再描画
-    - markersSystem.updateNodeMarkers() // 相対 AN/DN。要素が無い/軌道面がほぼ一致なら hide
-    - targeter.syncBoardMarkers() // 的通過マークの寿命更新と表示
-    - markerManager.hide('burn') // mapMode のみ
-    - guide.update() // !mapMode のみ
-      - markerManager.hide('nd'/'burn') // ノード無し or !player.alive で return
-      - [達成] plan.consumeFirstNode() + simSpeedManager.cancelAutoWarp() + hide + hud.hint() + sfx.warp()
-      - [未達成] markerManager.setPosition('nd') + setDirection('burn')
+  - targeter.sync() // ターゲットに紐づく表示物をまとめて
+    - syncOrbitLine()
+      - enemy.orbitLine.sync() // 敵ごと。mapMode かつ生存かつ非ターゲットのときだけ表示
+      - orbitLine.sync() // ターゲット軌道線(オレンジ)
+    - syncBoardMarkers() // 的通過マークの寿命更新と表示(スロットごと)
+    - syncTargetDirMarkers() // ◇/◆ tgtdir/atgdir。mapMode or ターゲット無しなら hide
+    - syncNodeMarkers() // 相対 AN/DN。要素が無い/軌道面がほぼ一致なら hide
+  - enemyMarkers.sync() // 生存中の敵の markerItem() 集合を受ける(まとめは1体では決まらない)
+    - groupNearby() // 画面上で近接するものをクラスタ化し、代表以外のラベルを落とす
+    - markerManager.set() + syncBearing() // 対象ごと。画面外なら画面端の方位マーカー▲へ
+    - retire() // 前フレームに出したキーのうち集合から消えたものを hide
+  - leadMarkers.sync() // 敵ごとの LEAD マーカー。mapMode or !player.alive なら全 hide して return
+    - trackTargeted() // 最終ロック時刻を生存中の敵ぶんだけ作り直す
+    - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある敵ごと
+  - pipRenderer.sync() → overlay.sync() // PIP 窓に重ねるマーカー(描画パス自体は render 側)
+    - syncCrosshair() → markerManager.set('pip-crosshair') or hide() // 窓中心。active で分岐
+    - syncTargetMarkers()
+      - markerManager.set('pip-tgt'/'pip-lead') // active かつ有効ターゲットあり
+      - markerManager.hide('pip-tgt'/'pip-lead') // それ以外
+    // active = game.pipActive(= player.isFiring && !mapMode)。render 側と同じ値を受ける
+  - editor.sync() → syncDisplay()
+    - [!mapMode] traj.setVisible(false) + hideGizmo() → nodeGizmo.sync([], null) して return
+    - traj.setVisible(true)
+    - traj.update() // corners を arc へ分解し、arc ごとに PredictedLine を駆動
+      - line.update() // arc ごと
+        - predictTrajectory() // 入力変化 + スロットル(または force)を満たしたときのみ(重い RK4)
+        - sampled.syncGeometry() // 点列 or frame が変わったときのみ頂点を bake
+        - sampled.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
+      - line.setVisible(false) // arc が減って余った B-1 ごと
+    - updateGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
+  - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
+  - activeStage.sync()
+    - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示
+    - logistics.syncMarkers() → markerManager.setPosition('mg<i>') or hide() // 補給スロットごと
   - hud.panels.update(game, dt) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
   - hud.tick() // ヒント/トーストのフェードアウト
+  - predict.sync() // forceCurrent なら hide() だけして return
+    - syncGhost() → markerManager.setPosition('plannedPlayer') or hide()
+    - panel.setVisible(true) / setDuration() / setFrame() / setSliderLabel() // PREDICT パネル
+  - guide.update()
+    - markerManager.hide('burn') // editMode で return
+    - markerManager.hide('nd'/'burn') // ノード無し or !player.alive で return
+    - [達成] plan.consumeFirstNode() + simSpeedManager.cancelAutoWarp() + hide + hud.hint() + sfx.warp()
+    - [未達成] markerManager.setPosition('nd') + setDirection('burn')
+  - markerManager.resolveCollisions() // ラベル衝突緩和 + SVG 引き出し線の再描画。全マーカーが出揃った後に一度だけ
 
 ---
 
@@ -285,21 +297,15 @@
 
 - game.render()
   - renderer.render(scene, cameraSystem.activeCamera) // 通常の全画面描画
-  - pipRenderer.renderPip()
-    - [!renderPip = 非発砲中 or mapMode]
-      - crosshair を非表示
-      - updateOverlay(null) → markersSystem.updatePipOverlay() → markerManager.hide('pip-tgt'/'pip-lead')
-    - [renderPip = player.isFiring && !mapMode]
+  - pipRenderer.renderPip() // 窓に重ねるマーカーは sync 中の pipRenderer.sync() が済ませている
+    - [!renderPip] 何もせず return
+    - [renderPip = game.pipActive。sync に渡したものと同じ値]
       - playerShipObj.visible = false
       - setMuzzleFlashesVisible(false) → effects → billboard.mesh.visible = false // muzzle フラグ付きのみ
       - renderer.autoClearColor = false // 2度目の render で全画面の描画結果を消さないため
       - setViewport() / setScissor() / setScissorTest(true)
       - renderer.render(scene, pipCamera.camera) // PIP 矩形への2度目の描画パス
-      - updateOverlay(rect) → markersSystem.updatePipOverlay()
-        - markerManager.set('pip-tgt') // 有効なターゲットがある場合
-        - markerManager.set('pip-lead') or hide() // 有効なリード解(t<25s)の有無で分岐
       - (finally) visible / setMuzzleFlashesVisible(true) / viewport / scissor / autoClearColor を復元
-      - crosshair を表示して PIP 中心へ配置
 
 ---
 
@@ -324,3 +330,11 @@
   `syncModeButtons()`(トグル点灯)だけ。
 - **`Ephemeris` は per-frame の状態更新を持たない**(純サンプラ)。各所が `*At(t)` を呼ぶだけなので
   更新順序の制約が無い。
+- **HUD マーカーは持ち主の `sync` が自分で出す**。`game.sync` に並ぶのは「1つの対象では決められない」
+  ものだけ(`enemyMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存)で、残りは
+  `player.syncPlayer` / `targeter.sync` / `activeStage.sync` / `cameraSystem.sync` / `predict.sync` /
+  `guide.update` / `pipRenderer.sync` の中にある。**`markerManager.resolveCollisions()` だけは全マーカーが
+  出揃った後に一度だけ**呼ぶ必要があるため `game.sync` の末尾に置く。
+- **PIP を出すか否かの判定は `game.pipActive` 1箇所だけ**。`game.sync` の `pipRenderer.sync()` と
+  `game.render` の `renderPip()` へ同じ値を渡す。`PipRenderer` 側で再判定しないのは、マーカーを置く
+  フェーズと描画パスが食い違うと窓の無い場所にクロスヘアが残るため。

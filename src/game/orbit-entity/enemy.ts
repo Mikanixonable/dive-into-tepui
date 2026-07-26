@@ -5,8 +5,10 @@ import { Ship } from './entities';
 import { Attitude } from '../../physics/attitude';
 import { altitudeOf, OrbitState, orbitState } from '../../physics/orbital';
 import { OrbitLine } from '../../render/orbitline';
-import { add, len, norm, randPerp, rotateAxis, scale, sub } from '../../physics/vec3';
+import { add, len, norm, randPerp, rotateAxis, scale, sub, Vec3 } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
+import { fmtMarkerDist } from '../hud/utils';
+import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
@@ -30,7 +32,6 @@ export class Enemy extends Ship {
   readonly orbitLine: OrbitLine;
 
   // 実行時状態(遅延初期化)。未設定 = まだその状態に入っていない
-  lastTargetedSim?: number; // 最後にロックオンされた時刻。LEAD マーカー表示の履歴
   lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
   burstLeft?: number; // バースト射撃の残弾
   burstDelay?: number; // 次のバースト弾までの残り時間
@@ -69,6 +70,28 @@ export class Enemy extends Ship {
   dispose(): void {
     super.dispose();
     this.scene?.remove(this.orbitLine.line);
+  }
+
+  // 個体色の CSS 表記。方位マーカー・LEAD マーカーの着色に使う。
+  get accentColor(): string {
+    return '#' + this.accent.toString(16).padStart(6, '0');
+  }
+
+  // 画面マーカー集合(GroupedMarkers)へ渡す自分の見た目とラベル。近接する敵をまとめる
+  // 判断は集合側の責務なので、ここでは「まとめられたら代表になりたい度」を priority で示す
+  // だけにする(ターゲット最優先、次いで近い順)。
+  markerItem(isTarget: boolean, viewerPos: Vec3): GroupedMarkerItem {
+    const dist = len(sub(this.state.r, viewerPos));
+    return {
+      key: `enemy-${this.name}`,
+      cls: isTarget ? 'mk-target' : 'mk-enemy',
+      sym: '◇',
+      pos: this.state.r,
+      priority: isTarget ? Infinity : -dist,
+      name: this.name,
+      detail: fmtMarkerDist(dist),
+      bearingColor: this.accentColor,
+    };
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。attacked からのみ呼ばれる。

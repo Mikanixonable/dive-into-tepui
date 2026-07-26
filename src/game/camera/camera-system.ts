@@ -67,10 +67,6 @@ export class CameraSystem {
       this.mapCamera.cameraFrame = frame;
     };
   }
-  
-  mapLabelIds(): string[] {
-    return this.mapMarkers.labels.map((l) => l.id);
-  }
 
   // マップ編集中のポインタ操作。ノードに消費されずに残った右クリックだけがここへ来るので、
   // 最寄りラベルがあればフォーカス選択メニューを開いて消費する。
@@ -149,6 +145,8 @@ export class CameraSystem {
       this.mapViewPanel.setFocus(this.mapCamera.focus);
       this.mapViewPanel.setFrame(this.mapCamera.cameraFrame);
       this.mapMarkers.syncLabels(displayTime, this.activeCameraProjection);
+    } else {
+      this.mapMarkers.hideLabels();
     }
   }
 

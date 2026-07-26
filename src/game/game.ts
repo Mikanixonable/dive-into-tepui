@@ -5,12 +5,14 @@
 // 描画は自機中心のフローティングオリジン(自機が常に (0,0,0))。
 import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
+import * as C from './const';
 import { v3 } from '../physics/vec3';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageId } from './stages/stage';
-import { MarkerCtx, MarkerForGame } from './marker/marker-for-game';
 import { MarkerManager } from './marker/marker-manager';
+import { GroupedMarkers } from './marker/grouped-markers';
+import { LeadMarkers } from './marker/lead-markers';
 import { EffectsSystem } from './vfx/effects-system';
 import { initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
@@ -86,7 +88,14 @@ export class Game {
   private readonly environment: EnvironmentScene;
 
   private readonly unlockManager: UnlockManager;
-  private readonly MarkerForGame: MarkerForGame;
+
+  // 単独のオブジェクトでは決められないマーカー群。敵マーカーは「画面上で近接するものを
+  // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とするので、いずれも
+  // 当事者ではなくここが持つ。それ以外のマーカーは、それぞれの持ち主(Player/Targeter/
+  // Logistics/MapMarkers/PlanGuide/PredictSystem、PIP 窓の分は PipRenderer)の sync が
+  // 自分で出す。
+  private readonly enemyMarkers: GroupedMarkers;
+  private readonly leadMarkers: LeadMarkers;
   // フラッシュ・破片エフェクトのスポーン窓口(effects-system.ts)。scene への注入・
   // FlashEffectManager の所有もここに一元化されており、Player/Enemy/PlayerFire は
   // scene を持ち回さずに済む。scene(_scene)はコンストラクタ引数 gs 由来で field
@@ -115,12 +124,13 @@ export class Game {
     this.ephemeris = new Ephemeris();
 
     this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
-    this.MarkerForGame = new MarkerForGame(this.markerManager); // 解体すべき
+    this.enemyMarkers = new GroupedMarkers(this.markerManager, C.MARKER_CLUSTER_PX);
+    this.leadMarkers = new LeadMarkers(this.markerManager);
     this.cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager, this.ephemeris);
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
     this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
-    this.pipRenderer = new PipRenderer(this._scene);
+    this.pipRenderer = new PipRenderer(this._scene, this.markerManager);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
     this.predict = new PredictSystem(this._hud.root, this.markerManager);
@@ -146,7 +156,7 @@ export class Game {
 
     this.simulator = new Simulator(this.ephemeris, this._sfx);
 
-    this.player = new Player(this._hud, this._sfx, this._scene, this.effects);
+    this.player = new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager);
 
     this.activeStage = initStage(
       stageId,
@@ -157,6 +167,7 @@ export class Game {
       this._scene,
       this.unlockManager,
       this.effects,
+      this.markerManager,
     );
 
     this.floatingOrigin = new FloatingOrigin(this.player.state.r, this.player.state.v);
@@ -276,6 +287,12 @@ export class Game {
 
   // ------------------------------------------------------------------ sync
 
+  // このフレームに PIP(照準ズーム窓)を出すか。sync 側(窓に重ねるマーカー)と render 側
+  // (描画パス)が必ず一致していなければならないので、判定はここだけに置いて両方へ渡す。
+  private get pipActive(): boolean {
+    return this.player.isFiring && !this.cameraSystem.mapMode;
+  }
+
   sync(dt: number): void {
     // 設定し、sync 系全体へ共通の基準として渡す。player.state とは意味論的に別物 —
     // 将来この原点を別の点(カメラ座標など)へ差し替えても描画が破綻しないよう、
@@ -291,6 +308,13 @@ export class Game {
 
     this.cameraSystem.sync(this.floatingOrigin, displayTime);
 
+    // マーカーを出す側はどれもアクティブカメラの投影を必要とする(fo と同じく、
+    // sync 系へ共通で配る基準)。
+    const project = this.cameraSystem.activeCameraProjection;
+    const mapMode = this.cameraSystem.mapMode;
+    const simTime = this.simulator.simTime;
+    const target = this.targeter.aliveTarget;
+
     this.environment.sync({
       dt,
       player: this.player,
@@ -305,9 +329,18 @@ export class Game {
 
     this.effects.sync(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
 
-    this.targeter.sync(dt, this.floatingOrigin, this.simulator.enemies, this.cameraSystem.mapMode, this.cameraSystem.activeCameraProjection);
+    this.targeter.sync(dt, this.floatingOrigin, this.player, this.simulator.enemies, mapMode, project);
 
-    const simTime = this.simulator.simTime;
+    // 敵マーカーだけは敵1体では決められない(画面上で近接するものをまとめる)ため、
+    // 各 Enemy が用意した表示内容を集合として GroupedMarkers へ渡す。
+    const aliveEnemies = this.simulator.enemies.filter((enemy) => enemy.alive);
+    this.enemyMarkers.sync(
+      aliveEnemies.map((enemy) => enemy.markerItem(enemy === target, this.player.state.r)),
+      project,
+    );
+    this.leadMarkers.sync(this.player, aliveEnemies, target, simTime, mapMode, project);
+    this.pipRenderer.sync(this.pipActive, this.player, target, this.cameraSystem.pipCamera);
+
     const orbitPeriod = this.player.elements?.period ?? null;
     const predictDuration = this.predict.durationSec(orbitPeriod);
 
@@ -319,12 +352,10 @@ export class Game {
     // 自機のモード状態を映す先が2つある(HUD ステータスパネルとタッチUIのトグルボタン)。
     // どちらも表示側なので、状態の所有者から見て対称になるようここで両方へ渡す。
     this.touchControls?.syncModeButtons(this.player.rcsDamp, this.player.fineAttitude, this.player.progradeHold);
-    this.activeStage.syncStatusPanel(this.player);
+    this.activeStage.sync(this.player, project);
 
     this._hud.panels.update(this, dt);
     this._hud.tick();
-
-    const project = this.cameraSystem.activeCameraProjection;
 
     // 未来ゴースト(predict)は B-2 の sampleAt/toDisplay を、マップラベル(camera)は表示時刻を受ける。
     this.predict.sync(
@@ -334,24 +365,11 @@ export class Game {
       simTime,
       project);
 
-    this.MarkerForGame.updateMarkers(this.markerCtx(), project);
-    this.MarkerForGame.updateNodeMarkers(this.player, this.targeter.aliveTarget, project);
-
     this.guide.update(this.editor.plan, this.player, simTime, this.simSpeedManager, this.editor.editMode, project);
 
-  }
-
-  // MarkersSystem の各メソッド呼び出しに渡す、現在状態のスナップショット。
-  private markerCtx(): MarkerCtx {
-    return {
-      mapMode: this.cameraSystem.mapMode,
-      player: this.player,
-      enemies: this.simulator.enemies,
-      target: this.targeter.autoTarget,
-      ammos: this.simulator.ammos,
-      mapLabelIds: this.cameraSystem.mapLabelIds(),
-      simTime: this.simulator.simTime,
-    };
+    // 重なったラベルを押し退けて引き出し線で繋ぐ最終処理。このフレームのマーカーが
+    // 出揃った後でなければならないので、sync の最後に置く。
+    this.markerManager.resolveCollisions();
   }
 
   // ------------------------------------------------------------------ render
@@ -360,15 +378,12 @@ export class Game {
     // 通常の全画面描画
     this.renderer.render(this._scene, this.cameraSystem.activeCamera);
 
-    // PIP 描画
+    // PIP 描画(窓に重ねるマーカーは sync 中に pipRenderer.sync が済ませている)
     this.pipRenderer.renderPip(this.renderer, {
-      renderPip: this.player.isFiring && !this.cameraSystem.mapMode,
+      renderPip: this.pipActive,
       pipCamera: this.cameraSystem.pipCamera,
       playerShipObj: this.player.obj,
       setMuzzleFlashesVisible: (visible) => this.effects.setMuzzleFlashesVisible(visible),
-      updateOverlay: (rect) => this.MarkerForGame.updatePipOverlay(
-        this.targeter.autoTarget, this.player, this.cameraSystem.pipCamera.projection, rect,
-      ),
     });
   }
 
