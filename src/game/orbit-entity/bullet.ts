@@ -20,6 +20,14 @@ export type BulletType = 'normal' | 'plasma';
 
 // 自弾と敵プラズマ弾の両方に使う。配列は射手(自機/敵)ごとに分けて保持し、
 // 命中ルールは配列単位で扱うが、寿命(lifetime)は生成時に渡された値を自身で持つ。
+// dispose() は基底の OrbitEntity.dispose()(scene.remove のみ)をそのまま使う。
+// buildBulletMesh/buildPlasmaMesh(render/ships.ts)のハロー用 geometry/material は
+// モジュールスコープ(通常弾)または accent 値ごと(プラズマ弾。取りうる値は少数)に
+// キャッシュされた共有インスタンスであり、本体側も memoParseShared() 由来で
+// geometry/material を参照共有している(発射後に個体ごとの色/不透明度変更は行わない)。
+// つまり Bullet.obj 配下に「この弾だけが所有する」GPU リソースは存在しないため、
+// traverse して dispose するとまだ生きている他の弾から共有リソースを奪ってしまう
+// (BUG_REPORT.md B1 参照)。
 export class Bullet extends OrbitEntity {
     // 弾は移動が速く、線分衝突判定(hit.ts)・標的面通過判定(targeter.ts)が直前サブステップ位置を
     // 読むので 1 件だけ保持する。
