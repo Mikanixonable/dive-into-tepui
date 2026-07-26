@@ -16,6 +16,10 @@
 // 計画が空の間は自機状態を基準に計画する(plan.trackAnchor は game が毎フレーム呼ぶ)。
 // 計画が空でないときは自機状態は参照しない。逸脱した既存計画を持って editMode を開いた場合は
 // 現在状態に再ベースされない。
+//
+// 選択中ノードの正本は selectedNodeId(Plan が発行する ID)であり、index ではない。
+// consumeFirstNode() 等で plan.nodes が配列として動いても ID は不変なので選択がずれない。
+// selectedNodeIdx は互換のための getter/setter で、内部では ID 経由で index を都度解決する。
 import { Elements, OrbitState, elementsFromState } from '../../physics/orbital';
 import { dvToWorld, propagateState } from '../../physics/predict';
 import { Projected } from '../../physics/projection';
@@ -34,7 +38,20 @@ import { PlanTrajectory } from '../predict/plan-trajectory';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class PlanEditor {
-  selectedNodeIdx: number | null = null;
+  // 選択中ノードの正本(Plan が発行する ID)。plan.nodes の並び替え・削除に追随するため
+  // index ではなく ID で持つ。
+  private selectedNodeId: number | null = null;
+
+  // 既存コードとの互換のための index ビュー。読み書きとも ID 経由で解決するので、
+  // plan.nodes の配列操作(consumeFirstNode 等)を挟んでも選択がずれない。
+  get selectedNodeIdx(): number | null {
+    return this.selectedNodeId === null ? null : this.plan.indexOfNodeId(this.selectedNodeId);
+  }
+
+  set selectedNodeIdx(idx: number | null) {
+    this.selectedNodeId = idx === null ? null : this.plan.nodeIdAt(idx);
+  }
+
   plan: Plan = new Plan();
 
   // 軌道計画の編集モード(WASDQE などの操作系をΔv編集へ振り替え、ノード編集入力を有効化する)。
@@ -119,12 +136,16 @@ export class PlanEditor {
   }
 
   // ノード削除の唯一の実装(右クリメニュー・[X] キーの両方からここを呼ぶ)。
-  // 選択インデックスの繰り上げと、自動ワープ解除・ヒント表示もここで行う。
+  // 選択の解除と、自動ワープ解除・ヒント表示もここで行う。
   deleteNode(idx: number): void {
     if (!this.plan.nodes[idx]) return;
+    // 「削除対象が選択中だったか」は削除の前に確定させる。削除後に比べると、後続ノードが
+    // 繰り上がって同じ index を占めるため、別のノードを選択中でも一致してしまう。
+    const deletingSelected = this.selectedNodeIdx === idx;
     this.plan.removeNode(idx);
-    if (this.selectedNodeIdx === idx) this.selectedNodeIdx = null;
-    else if (this.selectedNodeIdx !== null && this.selectedNodeIdx > idx) this.selectedNodeIdx--;
+    // 残ったノードの選択は ID がそのまま追跡するので index の手動補正は不要
+    // (selectedNodeIdx の getter が現在の index を都度解決する)。
+    if (deletingSelected) this.selectedNodeIdx = null;
     this.closeMenu();
     this.simSpeedManager.cancelAutoWarp();
     this._hud.hint('ノードを削除');

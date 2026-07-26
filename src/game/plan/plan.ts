@@ -14,11 +14,20 @@
 //
 // 上流ノードを編集すると下流ノードの凍結状態は無効になるため、編集メソッドは編集ノード
 // より後(時刻が後)のノードを破棄する(千切れさせない = 削除。再スナップはしない)。
+//
+// 「どのノードが選択中か」という選択状態そのものは持たない(それは PlanEditor の責務)。
+// ただし配列の並び替え・削除に耐えられるよう、ノードには 1 対 1 で単調増加の内部 ID を
+// 割り当てて公開する(nodeIdAt/indexOfNodeId)。選択の正本を index ではなく ID で持てば、
+// consumeFirstNode() などで配列が動いても選択がずれない。
 import { orbitState, OrbitState } from '../../physics/orbital';
 import { Vec3, add, v3 } from '../../physics/vec3';
 
 export class Plan {
   private _nodes: OrbitState[] = [];
+  // _nodes と同じ並び・同じ長さを保つ ID 列。ノードの状態を差し替えるだけの編集
+  // (retimeNode/applyNodeDv)では ID を変えない = 同じスロットは同じノードとみなす。
+  private _nodeIds: number[] = [];
+  private nextNodeId = 1;
   private _anchor: OrbitState = orbitState(0, v3(), v3());
 
   get nodes(): readonly OrbitState[] {
@@ -43,43 +52,72 @@ export class Plan {
   }
 
   addNode(postState: OrbitState): number {
+    const id = this.nextNodeId++;
     this._nodes.push(postState);
-    this._nodes.sort((a, b) => a.t - b.t);
+    this._nodeIds.push(id);
+    this.sortByTime();
     return this._nodes.indexOf(postState);
   }
 
   removeNode(idx: number): void {
     if (!this._nodes[idx]) return;
     this._nodes.splice(idx, 1);
+    this._nodeIds.splice(idx, 1);
   }
 
   // 直近ノード(達成済み)を1件消費する。plan-guide.ts の達成判定からのみ呼ぶ。
   consumeFirstNode(): void {
     this._nodes.shift();
+    this._nodeIds.shift();
   }
 
   clear(): void {
     if (this._nodes.length === 0) return;
     this._nodes = [];
+    this._nodeIds = [];
   }
 
   // ノードを新しい実行後状態(時刻込み)へ移す(リタイム)。時刻順に再ソートし、移動後の
-  // ノードより下流を破棄する。戻り値は再ソート後の index。
+  // ノードより下流を破棄する。戻り値は再ソート後の index。スロット(=ID)は変えない。
   retimeNode(idx: number, postState: OrbitState): number {
     if (!this._nodes[idx]) return idx;
     this._nodes[idx] = postState;
-    this._nodes.sort((a, b) => a.t - b.t);
+    this.sortByTime();
     const newIdx = this._nodes.indexOf(postState);
     this._nodes.length = newIdx + 1; // 下流ノードを破棄(千切れさせない = 削除)
+    this._nodeIds.length = newIdx + 1;
     return newIdx;
   }
 
   // 選択中ノードの実行後速度へワールド Δv を加える(pro/nrm/rad → world の変換は editor)。
-  // 上流編集なので下流ノードを破棄する。
+  // 上流編集なので下流ノードを破棄する。スロット(=ID)は変えない。
   applyNodeDv(idx: number, dvWorld: Vec3): void {
     const node = this._nodes[idx];
     if (!node || (dvWorld.x === 0 && dvWorld.y === 0 && dvWorld.z === 0)) return;
     this._nodes[idx] = orbitState(node.t, node.r, add(node.v, dvWorld));
-    if (idx < this._nodes.length - 1) this._nodes.length = idx + 1;
+    if (idx < this._nodes.length - 1) {
+      this._nodes.length = idx + 1;
+      this._nodeIds.length = idx + 1;
+    }
+  }
+
+  // idx 番目のノードの ID(選択状態の正本として editor が保持する)。範囲外なら null。
+  nodeIdAt(idx: number): number | null {
+    return idx >= 0 && idx < this._nodeIds.length ? this._nodeIds[idx]! : null;
+  }
+
+  // ID から現在の index を逆引きする(配列の並び替え・削除後も選択を追跡できる)。
+  // 該当ノードが既に消えていれば null。
+  indexOfNodeId(id: number): number | null {
+    const idx = this._nodeIds.indexOf(id);
+    return idx >= 0 ? idx : null;
+  }
+
+  // _nodes を時刻順に整列し、_nodeIds を同じ並び替えに追随させる(ペアで動かす)。
+  private sortByTime(): void {
+    const order = this._nodes.map((_, i) => i);
+    order.sort((a, b) => this._nodes[a]!.t - this._nodes[b]!.t);
+    this._nodes = order.map((i) => this._nodes[i]!);
+    this._nodeIds = order.map((i) => this._nodeIds[i]!);
   }
 }
