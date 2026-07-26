@@ -75,6 +75,7 @@
       - simulationSubStep() ×1 → stepEntity() エンティティごと + player.thermal.updateThermal()
       - stepAttitudes()
   - [game.isPaused] 以降を実行せず return するポーズ経路
+  - nanWatchdog.checkPlayer('frameStart') // 検出済みなら何もしない
   - player.behave()
     - belt.update()
       - physics.shiftBeltNodes() // リロードで給弾量が巻き戻ったフレームのみ
@@ -117,6 +118,7 @@
     - throttle.updateThrustState() → player.thrustFn へ代入
       - sfx.setThrust(false) // 推力入力なし or !canPlayerThrust
       - sfx.setThrust(true) // 推力あり
+  - nanWatchdog.checkPlayer('player.behave')
   - activeStage.update() // 具体ステージへディスパッチ。!isPlaying なら即 return
     - behaveAllEnemies() // 全ステージ共通の先頭処理
       - enemy.behave() // 生存中の敵ごと(canEnemyFire・距離・バースト状態の判定は behave 内部)
@@ -138,6 +140,7 @@
       - spawnWave: generateWave() → addEnemy() → simulator.addEnemy() + scoreCounter.recordSpawnEnemy()
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(respawnOnDespawn=false)
+  - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効
     - hud.hint() // 実行点に接近して自動ワープを解除したフレームのみ
   - simulator.stepSimulation(hardCollision=true, doSubstep=true)
@@ -168,6 +171,7 @@
       - resolveCollisionPair() → 双方の state へ代入 // 貫入している衝突ペアごと
       - onPlayerCasingImpact() → sfx.clank() // 自機-薬莢の接触時のみ
     - player.belt.applyCollisionSections() // player.alive && dt>1e-6
+  - nanWatchdog.checkAll('simulator.stepSimulation') // 全エンティティ走査。検出済みなら何もしない
   - targeter.markBoardCrossings() // ターゲットが存在する場合のみ
     - boardMarks.push() // 通常弾が的の面を自機側から通過した場合のみ
   - player.checkLoss() // !player.alive なら即 return
@@ -176,7 +180,7 @@
       - checkThermalLimits() → hud.hint() // 熱/動圧が危険域に入った初回のみ
     - destroyEffect() → sfx.explosion() + fx.spawnShipDestroyEffect() // 限界超過 or 高度不足のみ
     - activeStage.recordPlayerLost() // 同上
-  - simulator.cleanup()
+  - simulator.cleanup() // checkLoss には自機位置を渡す(弾は距離で消える)
     - checkLoss() // 敵・弾・薬莢・デブリ・補給の各個体ごと(既定は alive=false 代入のみ)
       - [Enemy.checkLoss] destroyEffect() + activeStage.recordEnemyDeath(byPlayer=false) // 再突入時のみ
         - scoreCounter.recordEnemyLoss() + hud.hint()
@@ -188,7 +192,6 @@
     - chaseCamera.update() // !mapMode のみ
       - computeGunsightView() // player.alive && zoomActive
       - computeChaseView() // それ以外(!alive / 姿勢追従 / 軌道基準の3経路)
-    - pipCamera.update() // 常に(PIP を描かないフレームも視点計算はする)
   - editor.plan.trackAnchor() // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
   - [editor.editMode] 計画編集モード
     - editor.handleMapPointer() // 右クリック → 左クリックの順に受ける
@@ -218,7 +221,6 @@
   - cameraSystem.sync() // 最初に呼ぶ: environment.sync とマーカー投影が今フレームのカメラ行列を読む
     - mapCamera.sync() // mapMode のみ
     - chaseCamera.sync() // !mapMode のみ
-    - pipCamera.sync() // 常に
     - mapViewPanel.setVisible(mapMode) + setFocus()/setFrame() // MAP VIEW パネル。点灯反映は mapMode のみ
     - mapMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。mapMode のみ
     - mapMarkers.hideLabels() // !mapMode のみ
@@ -260,12 +262,6 @@
   - leadMarkers.sync() // 敵ごとの LEAD マーカー。mapMode or !player.alive なら全 hide して return
     - trackTargeted() // 最終ロック時刻を生存中の敵ぶんだけ作り直す
     - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある敵ごと
-  - pipRenderer.sync() → overlay.sync() // PIP 窓に重ねるマーカー(描画パス自体は render 側)
-    - syncCrosshair() → markerManager.set('pip-crosshair') or hide() // 窓中心。active で分岐
-    - syncTargetMarkers()
-      - markerManager.set('pip-tgt'/'pip-lead') // active かつ有効ターゲットあり
-      - markerManager.hide('pip-tgt'/'pip-lead') // それ以外
-    // active = game.pipActive(= player.isFiring && !mapMode)。render 側と同じ値を受ける
   - predict.sync(plan, ...) // forceCurrent(マップ外)なら hide() = 折れ線/ゴースト/パネルを隠して return
     - traj.setVisible(true)
     - traj.update() // corners を arc へ分解し、arc ごとに PredictedLine を駆動。表示文脈(frame/un-bake 時刻/投影)もここで更新
@@ -300,15 +296,6 @@
 
 - game.render()
   - renderer.render(scene, cameraSystem.activeCamera) // 通常の全画面描画
-  - pipRenderer.renderPip() // 窓に重ねるマーカーは sync 中の pipRenderer.sync() が済ませている
-    - [!renderPip] 何もせず return
-    - [renderPip = game.pipActive。sync に渡したものと同じ値]
-      - playerShipObj.visible = false
-      - setMuzzleFlashesVisible(false) → effects → billboard.mesh.visible = false // muzzle フラグ付きのみ
-      - renderer.autoClearColor = false // 2度目の render で全画面の描画結果を消さないため
-      - setViewport() / setScissor() / setScissorTest(true)
-      - renderer.render(scene, pipCamera.camera) // PIP 矩形への2度目の描画パス
-      - (finally) visible / setMuzzleFlashesVisible(true) / viewport / scissor / autoClearColor を復元
 
 ---
 
@@ -316,7 +303,7 @@
 
 - **`update` / `sync` / `render` の三分割は main.ts のループが決めている。** `Game.update` は論理状態のみ
   (THREE.js オブジェクトに触らない)、`Game.sync` は fo を作って既存メッシュ・DOM へ反映するだけ、
-  `Game.render` は renderer.render を2回まで呼ぶだけ、という切り分けになっている。
+  `Game.render` は renderer.render を呼ぶだけ、という切り分けになっている。
 - **カメラ更新は `Game.update` の末尾**(物理積分の後)にある。`sync` で作るフローティングオリジンは
   積分後の自機位置なので、追従カメラの基準もそこに合わせる必要がある。
 - **高ワープ時**(`simSpeed > MAX_PHYS_SIM_SPEED`)は `simulationSubStep()` が1フレームに最大64回走り、
@@ -336,8 +323,5 @@
 - **HUD マーカーは持ち主の `sync` が自分で出す**。`game.sync` に並ぶのは「1つの対象では決められない」
   ものだけ(`enemyMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存)で、残りは
   `player.syncPlayer` / `targeter.sync` / `activeStage.sync` / `cameraSystem.sync` / `predict.sync` /
-  `guide.update` / `pipRenderer.sync` の中にある。**`markerManager.resolveCollisions()` だけは全マーカーが
+  `guide.update` の中にある。**`markerManager.resolveCollisions()` だけは全マーカーが
   出揃った後に一度だけ**呼ぶ必要があるため `game.sync` の末尾に置く。
-- **PIP を出すか否かの判定は `game.pipActive` 1箇所だけ**。`game.sync` の `pipRenderer.sync()` と
-  `game.render` の `renderPip()` へ同じ値を渡す。`PipRenderer` 側で再判定しないのは、マーカーを置く
-  フェーズと描画パスが食い違うと窓の無い場所にクロスヘアが残るため。
