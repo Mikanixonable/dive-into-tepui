@@ -49,6 +49,7 @@
         - startAutoWarpTo() + hud.hint() // 未開始
     - mapModeToggler.update()
       - close(...) // !isPlaying && cameraSystem.mapMode のみ(死亡/終了時にマップを強制的に閉じる)
+      - [ポーズ中] 何もせず return // [M] は消費もしない。開いていたマップはそのまま維持する
       - [開く: !cameraSystem.mapMode]
         - editor.selectedNodeIdx = null
         - touchControls?.setMapMode(true) // タッチデバイスのみ
@@ -140,7 +141,7 @@
   - simSpeedManager.update() // 自動ワープ中のみ実効
     - hud.hint() // 実行点に接近して自動ワープを解除したフレームのみ
   - simulator.stepSimulation(hardCollision=true, doSubstep=true)
-    - simulationSubStep() ×1〜64 // ワープ倍率が MAX_PHYS_SIM_SPEED を超えるとサブステップが増える
+    - simulationSubStep() ×1〜SUBSTEP_MAX_COUNT // 分割数は simDt / SUBSTEP_MAX_DT のみで決まる(実 fps に依存しない)
       - stepEntity(player) → stepOrbitRK4() → entity.state へ代入(setter が軌道要素メモ破棄 + history 記録)
         // player.alive のみ。thrustFn + 環境加速度
       - stepEntity() // 敵・弾・薬莢・デブリ・補給それぞれ、個体ごと
