@@ -7,11 +7,15 @@ import { RCS_BLOCK_OFFSETS } from '../../render/ships';
 import * as C from '../const';
 import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
+import { Sfx } from '../../audio/sfx';
 
 export class RcsEffects {
   private readonly puffs: Billboard[] = Array.from({ length: 4 }, () => new Billboard(0xcfeaff));
 
-  constructor(scene: THREE.Scene) {
+  constructor(
+    scene: THREE.Scene,
+    private readonly _sfx: Sfx,
+  ) {
     for (const puff of this.puffs) scene.add(puff.mesh);
   }
 
@@ -32,6 +36,7 @@ export class RcsEffects {
   ): void {
     const q = att.q;
     const rotating = alive && phasePlaying && !paused && lenSq(torque) > C.RCS_PUFF_TORQUE_EPS * C.RCS_PUFF_TORQUE_EPS;
+    this._sfx.setRcs(rotating);
     if (!rotating || camera.zoomActive) {
       for (const puff of this.puffs) puff.hide();
       return;

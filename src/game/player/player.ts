@@ -66,7 +66,7 @@ export class Player extends Ship {
     this.belt = new Belt(this.obj);
     this.thermal = new ThermalSystem(_hud, _sfx);
     this.thrustEffects = new ThrustEffects(_scene);
-    this.rcsEffects = new RcsEffects(_scene);
+    this.rcsEffects = new RcsEffects(_scene, _sfx);
     this.markers = new PlayerMarkers(markerManager);
 
     _scene.add(this.orbitLine.line);

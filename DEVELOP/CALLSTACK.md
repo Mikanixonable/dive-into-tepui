@@ -234,7 +234,7 @@
   - player.syncPlayer()
     - obj の position / quaternion / visible
     - thrustEffects.sync() → core/outer の sync() or hide()
-    - rcsEffects.sync() → puff の sync() or hide() ×4
+    - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4
     - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出
     - markers.sync() // 自機由来の HUD マーカー。呼び出し側から見えるのは syncPlayer だけ
       - [mapMode] 戦闘用7キーを hide + markerManager.setPosition('self')
