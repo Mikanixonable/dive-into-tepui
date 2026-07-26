@@ -149,16 +149,31 @@ export function trueAnomalyAt(el: Elements, r: Vec3): number {
   return Math.atan2(dot(r, el.qHat), dot(r, el.pHat));
 }
 
-// 近点通過からの経過時間 [s](ケプラー方程式、[-T/2, T/2])
+// 近点通過からの経過時間 [s]。
+// 楕円(e < 1): ケプラー方程式、[-T/2, T/2]。
+// 双曲線(e >= 1): 双曲線ケプラー方程式。tan(nu/2) が漸近線を超える(その真近点角に
+// 到達しない)場合は有限の到達時刻が存在しないため NaN を返す。
 export function timeSincePeriapsis(el: Elements, nu: number): number {
-  const E = 2 * Math.atan2(Math.sqrt(1 - el.e) * Math.sin(nu / 2), Math.sqrt(1 + el.e) * Math.cos(nu / 2));
-  const M = E - el.e * Math.sin(E);
-  return M / Math.sqrt(MU_EARTH / (el.a * el.a * el.a));
+  if (el.e < 1) {
+    const E = 2 * Math.atan2(Math.sqrt(1 - el.e) * Math.sin(nu / 2), Math.sqrt(1 + el.e) * Math.cos(nu / 2));
+    const M = E - el.e * Math.sin(E);
+    return M / Math.sqrt(MU_EARTH / (el.a * el.a * el.a));
+  }
+
+  // 双曲線離心近点角 H = 2 * atanh( sqrt((e-1)/(e+1)) * tan(nu/2) )
+  const x = Math.sqrt((el.e - 1) / (el.e + 1)) * Math.tan(nu / 2);
+  if (Math.abs(x) >= 1) return NaN; // 漸近線を超えており、その nu には到達しない
+  const H = 2 * Math.atanh(x);
+  const M = el.e * Math.sinh(H) - H; // 双曲線ケプラー方程式
+  return M / Math.sqrt(MU_EARTH / (-el.a * -el.a * -el.a)); // a < 0 なので -a > 0
 }
 
-// 真近点角 nu0 → nu1 への飛行時間 [s](順行方向、[0, T))
+// 真近点角 nu0 → nu1 への飛行時間 [s]。
+// 楕円(e < 1、周期あり): 順行方向に周期で畳んで [0, T) に正規化する。
+// 双曲線(e >= 1、周期なし): 畳まず単純差分をそのまま返す。
 export function tofBetween(el: Elements, nu0: number, nu1: number): number {
   const t = timeSincePeriapsis(el, nu1) - timeSincePeriapsis(el, nu0);
+  if (el.e >= 1) return t;
   return ((t % el.period) + el.period) % el.period;
 }
 

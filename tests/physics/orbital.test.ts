@@ -75,6 +75,40 @@ export function register(): void {
     assert.equal(timeSincePeriapsis(el, 0), 0);
   });
 
+  test('orbital: timeSincePeriapsis on a hyperbolic orbit (e >= 1)', () => {
+    // 近地点高度 500km、離心率 1.5 の双曲線軌道。
+    const rp = R_EARTH + 500e3;
+    const e = 1.5;
+    const a = rp / (1 - e); // 双曲線なので a < 0
+    const s0 = stateFromElements(0, a, e, 0.3, 0, 0, 0); // nu=0 = 近点
+    const el = elementsFromState(s0.r, s0.v) as Elements;
+    assert.ok(el.e >= 1, `orbit should be hyperbolic: e=${el.e}`);
+    assert.ok(el.a < 0, `hyperbolic a should be negative: a=${el.a}`);
+
+    // 近点通過時刻はゼロ
+    assert.equal(timeSincePeriapsis(el, 0), 0);
+
+    // nu > 0 で正、nu < 0 で負、かつ符号対称
+    const tPlus = timeSincePeriapsis(el, 0.5);
+    const tMinus = timeSincePeriapsis(el, -0.5);
+    assert.ok(tPlus > 0, `t(nu>0) should be positive: ${tPlus}`);
+    assert.ok(tMinus < 0, `t(nu<0) should be negative: ${tMinus}`);
+    assert.ok(Math.abs(tPlus + tMinus) < 1e-6, `t(-nu) should equal -t(nu): ${tPlus} vs ${tMinus}`);
+    assert.ok(Number.isFinite(tPlus) && Number.isFinite(tMinus), 'result should be finite, not NaN (regression for the pre-fix NaN bug)');
+
+    // 単調増加
+    const nus = [-1.5, -1.0, -0.5, 0, 0.5, 1.0, 1.5];
+    const ts = nus.map((nu) => timeSincePeriapsis(el, nu));
+    for (let i = 1; i < ts.length; i++) {
+      assert.ok(ts[i] > ts[i - 1], `timeSincePeriapsis should be monotonically increasing: ${ts}`);
+    }
+
+    // 漸近線を越える nu(真近点角が漸近線角度 acos(-1/e) を超える)では到達時刻が存在せず NaN
+    const nuAsymptote = Math.acos(-1 / el.e);
+    const nuBeyond = nuAsymptote + 0.1;
+    assert.ok(Number.isNaN(timeSincePeriapsis(el, nuBeyond)), 'beyond the asymptote, no finite arrival time exists (NaN)');
+  });
+
   test('orbital: stepOrbitRK4 circular orbit — 1 period position/energy error (measured, pinned)', () => {
     // 420km 円軌道、無摂動(中心重力のみ)。理論上は閉軌道に戻るはずだが、
     // 固定ステップ RK4 の打ち切り誤差が蓄積する。現状の実装でどの程度かを
