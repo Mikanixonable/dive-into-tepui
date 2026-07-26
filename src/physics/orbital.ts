@@ -1,6 +1,6 @@
 // 地球中心の二体問題 + 任意の追加加速度(推力など)の RK4 積分と、
 // 状態ベクトル → 軌道要素の変換。THREE/DOM 非依存の純粋関数群。
-import { Vec3, add, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
+import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
 
 export const MU_EARTH = 3.986004418e14; // 地球重力定数 [m^3/s^2]
 export const R_EARTH = 6.371e6; // 地球平均半径 [m]
@@ -25,8 +25,9 @@ export function altitudeOf(r: Vec3): number {
   return len(r) - R_EARTH;
 }
 
-// 追加加速度(推力など)。RK4 の各ステージで現在の r, v を渡して評価する。
-export type ExtraAccel = (r: Vec3, v: Vec3) => Vec3;
+export interface IAccelProvider {
+  computeExtraAccel(rx: number, ry: number, rz: number, vx: number, vy: number, vz: number, out: {x: number, y: number, z: number}): void;
+}
 
 export const J2_EARTH = 1.08262668e-3; // 地球扁平の J2 項
 export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
@@ -59,40 +60,71 @@ export function thirdBodyAccel(r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
   );
 }
 
-// 中心重力 + extra の加速度
-function accel(r: Vec3, v: Vec3, extra?: ExtraAccel): Vec3 {
-  const d = len(r);
-  const g = scale(r, -MU_EARTH / (d * d * d));
-  return extra ? add(g, extra(r, v)) : g;
-}
-
-// 4段の重み付き平均 (k1 + 2k2 + 2k3 + k4)/6 を base に加える(RK4 の総和)
-function rk4Sum(base: Vec3, k1: Vec3, k2: Vec3, k3: Vec3, k4: Vec3, h6: number): Vec3 {
-  return v3(
-    base.x + h6 * (k1.x + k4.x + 2 * (k2.x + k3.x)),
-    base.y + h6 * (k1.y + k4.y + 2 * (k2.y + k3.y)),
-    base.z + h6 * (k1.z + k4.z + 2 * (k2.z + k3.z)),
-  );
-}
-
 // 単一エンティティの RK4 1ステップ(中心重力 + 追加加速度)。
 // 入力 s は書き換えず、時刻も dt だけ進めた新しい OrbitState を返す。
-export function stepOrbitRK4(s: OrbitState, dt: number, extra?: ExtraAccel): OrbitState {
-  const r0 = s.r;
-  const v0 = s.v;
+export function stepOrbitRK4(s: OrbitState, dt: number, extra?: IAccelProvider): OrbitState {
+  const r0x = s.r.x, r0y = s.r.y, r0z = s.r.z;
+  const v0x = s.v.x, v0y = s.v.y, v0z = s.v.z;
   const h2 = dt / 2;
-  // 各ステージの変化率: kr = ṙ = v(位置側)、kv = v̇ = a(速度側)
-  const kr1 = v0;
-  const kv1 = accel(r0, v0, extra);
-  const kr2 = addScaled(v0, kv1, h2);
-  const kv2 = accel(addScaled(r0, kr1, h2), kr2, extra);
-  const kr3 = addScaled(v0, kv2, h2);
-  const kv3 = accel(addScaled(r0, kr2, h2), kr3, extra);
-  const kr4 = addScaled(v0, kv3, dt);
-  const kv4 = accel(addScaled(r0, kr3, dt), kr4, extra);
-
   const h6 = dt / 6;
-  return orbitState(s.t + dt, rk4Sum(r0, kr1, kr2, kr3, kr4, h6), rk4Sum(v0, kv1, kv2, kv3, kv4, h6));
+
+  const out = { x: 0, y: 0, z: 0 };
+  const outA = { ax: 0, ay: 0, az: 0 };
+
+  const computeA = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => {
+    const d2 = rx * rx + ry * ry + rz * rz;
+    const d = Math.sqrt(d2);
+    const k = -MU_EARTH / (d2 * d);
+    outA.ax = rx * k;
+    outA.ay = ry * k;
+    outA.az = rz * k;
+    if (extra) {
+      extra.computeExtraAccel(rx, ry, rz, vx, vy, vz, out);
+      outA.ax += out.x;
+      outA.ay += out.y;
+      outA.az += out.z;
+    }
+  };
+
+  // k1
+  const kr1x = v0x, kr1y = v0y, kr1z = v0z;
+  computeA(r0x, r0y, r0z, v0x, v0y, v0z);
+  const kv1x = outA.ax, kv1y = outA.ay, kv1z = outA.az;
+
+  // k2
+  const r2x = r0x + kr1x * h2, r2y = r0y + kr1y * h2, r2z = r0z + kr1z * h2;
+  const v2x = v0x + kv1x * h2, v2y = v0y + kv1y * h2, v2z = v0z + kv1z * h2;
+  const kr2x = v2x, kr2y = v2y, kr2z = v2z;
+  computeA(r2x, r2y, r2z, v2x, v2y, v2z);
+  const kv2x = outA.ax, kv2y = outA.ay, kv2z = outA.az;
+
+  // k3
+  const r3x = r0x + kr2x * h2, r3y = r0y + kr2y * h2, r3z = r0z + kr2z * h2;
+  const v3x = v0x + kv2x * h2, v3y = v0y + kv2y * h2, v3z = v0z + kv2z * h2;
+  const kr3x = v3x, kr3y = v3y, kr3z = v3z;
+  computeA(r3x, r3y, r3z, v3x, v3y, v3z);
+  const kv3x = outA.ax, kv3y = outA.ay, kv3z = outA.az;
+
+  // k4
+  const r4x = r0x + kr3x * dt, r4y = r0y + kr3y * dt, r4z = r0z + kr3z * dt;
+  const v4x = v0x + kv3x * dt, v4y = v0y + kv3y * dt, v4z = v0z + kv3z * dt;
+  const kr4x = v4x, kr4y = v4y, kr4z = v4z;
+  computeA(r4x, r4y, r4z, v4x, v4y, v4z);
+  const kv4x = outA.ax, kv4y = outA.ay, kv4z = outA.az;
+
+  return orbitState(
+    s.t + dt,
+    v3(
+      r0x + h6 * (kr1x + kr4x + 2 * (kr2x + kr3x)),
+      r0y + h6 * (kr1y + kr4y + 2 * (kr2y + kr3y)),
+      r0z + h6 * (kr1z + kr4z + 2 * (kr2z + kr3z))
+    ),
+    v3(
+      v0x + h6 * (kv1x + kv4x + 2 * (kv2x + kv3x)),
+      v0y + h6 * (kv1y + kv4y + 2 * (kv2y + kv3y)),
+      v0z + h6 * (kv1z + kv4z + 2 * (kv2z + kv3z))
+    )
+  );
 }
 
 export interface Elements {
