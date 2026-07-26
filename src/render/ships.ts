@@ -4,6 +4,18 @@
 // src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
 import * as THREE from 'three/webgpu';
 
+function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
+  const clone = geo.clone();
+  for (const key in clone.attributes) {
+    const attr = clone.attributes[key];
+    if (attr) clone.attributes[key] = attr.clone();
+  }
+  if (clone.index) {
+    clone.index = clone.index.clone();
+  }
+  return clone;
+}
+
 import playerData from '../assets/models/player.json';
 import enemyData from '../assets/models/enemy.json';
 import stage0EnemyDataA from '../assets/models/stage0EnemyA.json';
@@ -47,15 +59,17 @@ const loader = new THREE.ObjectLoader();
 // そうした用途のテンプレートは clone のたびに traverse してマテリアルを
 // 複製し直す。ここで扱うテンプレート自体は opacity 等を実行時に書き換えない
 // ものばかりだが、将来の変更に備えて一律で安全側(非共有)にしておく。
-function cloneIndependent<T extends THREE.Object3D>(template: T): T {
+export function cloneIndependent<T extends THREE.Object3D>(template: T): T {
   const clone = template.clone(true) as T;
   clone.traverse((child) => {
     const mesh = child as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    if (Array.isArray(mesh.material)) {
-      mesh.material = mesh.material.map((m) => m.clone());
-    } else if (mesh.material) {
-      mesh.material = (mesh.material as THREE.Material).clone();
+    if (mesh.isMesh && mesh.material) {
+      if (Array.isArray(mesh.material)) {
+        mesh.material = mesh.material.map((m) => m.clone());
+      } else {
+        mesh.material = mesh.material.clone();
+      }
+      mesh.userData.ownsMaterial = true;
     }
   });
   return clone;
@@ -111,6 +125,8 @@ export function buildMagazineMesh(): THREE.Group {
 // 右舷排出口の常設表示・排出デブリの両方で使う。
 export function buildMagazineFrame(): THREE.Group {
   const g = parseMagazine();
+  // `parseMagazine` clones materials via `cloneIndependent`, so `ownsMaterial` is true on all children.
+  // Geometries are shared.
   for (const child of [...g.children]) {
     if ((child as THREE.Mesh).userData?.['role'] === 'round') g.remove(child);
   }
@@ -121,6 +137,9 @@ export function buildMagazineFrame(): THREE.Group {
 // テンプレートは既定の count=4 で焼き出し済み。他の個数の呼び出しは現状ないが、
 // 念のため count が既定と異なる場合は都度組み立てる(マガジンサブメッシュは
 // buildMagazineMesh() 経由でテンプレートを再利用する)。
+let ammoBeaconGeom: THREE.OctahedronGeometry | null = null;
+let ammoBeaconMat: THREE.MeshBasicMaterial | null = null;
+
 export function buildAmmo(count = 4): THREE.Group {
   if (count === 4) return parseAmmo();
   const g = new THREE.Group();
@@ -129,10 +148,10 @@ export function buildAmmo(count = 4): THREE.Group {
     mag.position.y = (i - (count - 1) / 2) * (MAG_THICKNESS + 0.12);
     g.add(mag);
   }
-  const beacon = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.35, 0),
-    new THREE.MeshBasicMaterial({ color: 0x4de8ff }),
-  );
+  if (!ammoBeaconGeom) ammoBeaconGeom = new THREE.OctahedronGeometry(0.35, 0);
+  if (!ammoBeaconMat) ammoBeaconMat = new THREE.MeshBasicMaterial({ color: 0x4de8ff });
+  
+  const beacon = new THREE.Mesh(ammoBeaconGeom, ammoBeaconMat.clone());
   beacon.position.y = (count / 2) * (MAG_THICKNESS + 0.12) + 0.4;
   g.add(beacon);
   return g;
@@ -268,8 +287,9 @@ export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Group {
 export function buildCasingMesh(): THREE.Mesh {
   const mesh = parseCasing();
   // 薬莢の全長(Y軸)を2倍にする
-  mesh.geometry = mesh.geometry.clone();
+  mesh.geometry = deepCloneGeometry(mesh.geometry);
   mesh.geometry.scale(1, 2, 1);
+  mesh.userData.ownsGeometry = true;
   return mesh;
 }
 
@@ -279,6 +299,13 @@ export function buildCasingMesh(): THREE.Mesh {
 // style 引数によって敵種別の固有形状を生成する。
 
 type DebrisMaterial = (opts?: { roughness?: number; metalness?: number; flatShading?: boolean }) => THREE.MeshStandardMaterial;
+
+// ジオメトリ・マテリアルの所有権をマークするヘルパー
+function withDispose(mesh: THREE.Mesh, ownsGeom = true, ownsMat = true): THREE.Mesh {
+  mesh.userData.ownsGeometry = ownsGeom;
+  mesh.userData.ownsMaterial = ownsMat;
+  return mesh;
+}
 
 // 頂点を index 順に写像して法線を再計算する(乱数を使う写像でも呼び出し順が保たれる)
 function displaceVertices(geo: THREE.BufferGeometry, map: (x: number, y: number, z: number) => [number, number, number]): void {
@@ -296,12 +323,12 @@ function buildMechDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
   if (kind === 0) {
     // T字断面の構造桁材: 垂直に交差する 2 本の矩形桁を結合(ここでは近似としてBoxで包んだGroup)
     const g2 = new THREE.Group();
-    const m1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1, 0.12), mat({ roughness: 0.50, metalness: 0.60 }));
+    const m1 = withDispose(new THREE.Mesh(new THREE.BoxGeometry(0.12, 1, 0.12), mat({ roughness: 0.50, metalness: 0.60 })));
     g2.add(m1);
-    const m2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.12, 0.12), mat({ roughness: 0.50, metalness: 0.60 }));
+    const m2 = withDispose(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.12, 0.12), mat({ roughness: 0.50, metalness: 0.60 })));
     m2.position.y = 0.40;
     g2.add(m2);
-    const wrapper = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), mat());
+    const wrapper = withDispose(new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), mat()));
     wrapper.add(g2);
     wrapper.scale.setScalar(size);
     return wrapper;
@@ -316,19 +343,19 @@ function buildMechDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
       const scale2 = 1 + Math.max(0, toothAmt) * 0.5;
       return [x * scale2, y, z * scale2];
     });
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.45, metalness: 0.70 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.45, metalness: 0.70 })));
     mesh.scale.setScalar(size);
     return mesh;
   } else if (kind === 2) {
     // 歪んだ外板
     const geo = new THREE.BoxGeometry(1, 0.08, 0.6);
     displaceVertices(geo, (x, y, z) => [x + (Math.random() - 0.5) * 0.2, y, z + (Math.random() - 0.5) * 0.15]);
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.60, metalness: 0.55 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.60, metalness: 0.55 })));
     mesh.scale.set(size * (1.2 + Math.random()), size * 0.9, size * (0.8 + Math.random() * 0.6));
     return mesh;
   } else {
     const geo = new THREE.TorusGeometry(0.5, 0.12, 4, 8, Math.PI * (0.6 + Math.random() * 1.2));
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.40, metalness: 0.75 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.40, metalness: 0.75 })));
     mesh.scale.setScalar(size);
     return mesh;
   }
@@ -342,19 +369,19 @@ function buildCrystalDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
       new THREE.Vector2(0.5, 0.5), new THREE.Vector2(0, 1),
     ];
     const geo = new THREE.LatheGeometry(profile, 6);
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.20, metalness: 0.10 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.20, metalness: 0.10 })));
     mesh.scale.set(size * (0.2 + Math.random() * 0.2), size * (0.6 + Math.random() * 0.6), size * (0.2 + Math.random() * 0.2));
     return mesh;
   } else if (kind === 1) {
     const geo = new THREE.OctahedronGeometry(1, 0);
     displaceVertices(geo, (x, y, z) => [x * (0.6 + Math.random() * 0.8), y * (0.7 + Math.random() * 0.6), z * (0.6 + Math.random() * 0.8)]);
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.15, metalness: 0.10 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.15, metalness: 0.10 })));
     mesh.scale.setScalar(size);
     return mesh;
   } else {
     const geo = new THREE.CylinderGeometry(0.8, 0, 0.3, 5);
     displaceVertices(geo, (x, y, z) => [x * (0.8 + Math.random() * 0.6), y * (0.8 + Math.random() * 0.6), z * 1.5]);
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.25, metalness: 0.10 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.25, metalness: 0.10 })));
     mesh.scale.setScalar(size);
     return mesh;
   }
@@ -365,18 +392,18 @@ function buildRingDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
   if (kind === 0) {
     const arc = Math.PI * (0.4 + Math.random() * 1.2);
     const geo = new THREE.TorusGeometry(1, 0.18, 4, 10, arc);
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.50, metalness: 0.60 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.50, metalness: 0.60 })));
     mesh.scale.setScalar(size);
     return mesh;
   } else if (kind === 1) {
     const geo = new THREE.CylinderGeometry(1, 1, 0.08, 8, 1);
     displaceVertices(geo, (x, y, z) => [x + (Math.random() - 0.5) * 0.25, y, z + (Math.random() - 0.5) * 0.25]);
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.45, metalness: 0.65 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.45, metalness: 0.65 })));
     mesh.scale.set(size * (0.8 + Math.random() * 0.6), size * 0.6, size * (0.8 + Math.random() * 0.6));
     return mesh;
   } else {
     const geo = new THREE.CylinderGeometry(0.7, 0.7, 0.40, 8, 1, true);
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.40, metalness: 0.70, flatShading: false }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.40, metalness: 0.70, flatShading: false })));
     mesh.scale.setScalar(size);
     return mesh;
   }
@@ -386,18 +413,18 @@ function buildSpikeDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
   const kind = Math.floor(Math.random() * 3);
   if (kind === 0) {
     const geo = new THREE.ConeGeometry(0.35, 1 + Math.random() * 0.8, 5, 1);
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.30, metalness: 0.55 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.30, metalness: 0.55 })));
     mesh.scale.set(size, size * (1.5 + Math.random()), size);
     return mesh;
   } else if (kind === 1) {
     const geo = new THREE.CylinderGeometry(0.2, 0.8, 1, 4);
     displaceVertices(geo, (x, y, z) => [x * (0.5 + Math.random() * 0.8), y, z * (0.5 + Math.random() * 0.8)]);
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.35, metalness: 0.50 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.35, metalness: 0.50 })));
     mesh.scale.setScalar(size);
     return mesh;
   } else {
     const geo = new THREE.CylinderGeometry(0.08, 0.02, 1, 5, 1);
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.35, metalness: 0.50 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.35, metalness: 0.50 })));
     mesh.scale.set(size * 0.8, size * (3.0 + Math.random() * 2.0), size * 0.8);
     return mesh;
   }
@@ -407,7 +434,8 @@ function buildGenericDebris(color: number, size: number, mat: DebrisMaterial): T
   const kind = Math.random();
   if (kind < 0.22) {
     const mesh = parseDebrisChunk();
-    mesh.geometry = mesh.geometry.clone();
+    mesh.geometry = deepCloneGeometry(mesh.geometry); // deep cloned to prevent WebGPU buffer dispose issues!
+    mesh.userData.ownsGeometry = true;
     displaceVertices(mesh.geometry, (x, y, z) => [x * (0.5 + Math.random() * 1.2), y * (0.5 + Math.random() * 1.2), z * (0.4 + Math.random() * 1.6)]);
     mesh.scale.setScalar(size);
     (mesh.material as THREE.MeshStandardMaterial).color.set(color);
@@ -425,18 +453,18 @@ function buildGenericDebris(color: number, size: number, mat: DebrisMaterial): T
   } else if (kind < 0.72) {
     const geo = new THREE.OctahedronGeometry(1, 0);
     displaceVertices(geo, (x, y, z) => [x * (0.5 + Math.random() * 1.0), y * (0.5 + Math.random() * 1.0), z * (0.7 + Math.random() * 0.9)]);
-    const mesh = new THREE.Mesh(geo, mat());
+    const mesh = withDispose(new THREE.Mesh(geo, mat()));
     mesh.scale.setScalar(size);
     return mesh;
   } else if (kind < 0.86) {
     const geo = new THREE.BoxGeometry(1, 1, 1);
     displaceVertices(geo, (x, y, z) => [x + (Math.random() - 0.5) * 0.35, y + (Math.random() - 0.5) * 0.35, z * 0.12]);
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.70, metalness: 0.35 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.70, metalness: 0.35 })));
     mesh.scale.set(size * (1.2 + Math.random() * 1.0), size * (1.2 + Math.random() * 1.0), size * 0.12);
     return mesh;
   } else {
     const geo = new THREE.BoxGeometry(0.15, 1, 0.15);
-    const mesh = new THREE.Mesh(geo, mat({ roughness: 0.55, metalness: 0.55 }));
+    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.55, metalness: 0.55 })));
     mesh.scale.set(size * (0.8 + Math.random() * 0.4), size * (2.0 + Math.random() * 1.6), size * (0.8 + Math.random() * 0.4));
     return mesh;
   }
