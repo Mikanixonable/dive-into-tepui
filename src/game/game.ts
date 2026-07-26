@@ -269,7 +269,7 @@ export class Game {
       this.editor.plan.firstNode(),
     );
     this.mapModeToggler.update(
-      this.input, this.activeStage.isPlaying, this.editor, this.touchControls, this.cameraSystem,
+      this.input, this.activeStage.isPlaying, this.editor, this.touchControls, this.cameraSystem, this.predict
     );
     this.editor.handleInput(this.input);
   }
@@ -285,7 +285,6 @@ export class Game {
     // カメラ姿勢を THREE.js に反映するのを最初に行う: environment.sync や
     // マーカー投影(activeCameraProjection)がこのフレームのカメラ行列を読むため。
     const displayTime = this.predict.resolveDisplayTime(
-      this.cameraSystem.mapMode,
       this.player.elements?.period ?? null,
       this.simulator.simTime,
     );
@@ -326,7 +325,6 @@ export class Game {
     this._hud.tick();
 
     const project = this.cameraSystem.activeCameraProjection;
-    const mapMode = this.cameraSystem.mapMode;
 
     // 未来ゴースト(predict)は B-2 の sampleAt/toDisplay を、マップラベル(camera)は表示時刻を受ける。
     this.predict.sync(
@@ -334,7 +332,6 @@ export class Game {
       (r, t) => this.editor.traj.toDisplay(r, t),
       orbitPeriod,
       simTime,
-      mapMode,
       project);
 
     this.MarkerForGame.updateMarkers(this.markerCtx(), project);
