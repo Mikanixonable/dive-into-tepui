@@ -31,16 +31,30 @@ export class CollisionPhysics {
     player: Player,
     onPlayerCasingImpact: () => void,
   ): void {
+    // O(n²) の総当たりは実測でボトルネックではない(sim フェーズ 2.7ms 程度)ため、
+    // 空間分割などのアルゴリズム変更は行わない。ここでは1ペアあたりの定数コストのみを
+    // 削減する: instanceof 判定・isCasing 判定・配列アクセスをループ前に一度だけ計算しておく。
+    const n = entities.length;
+    const isBelt = new Array<boolean>(n);
+    const isCasingFlag = new Array<boolean>(n);
+    for (let k = 0; k < n; k++) {
+      const e = entities[k]!;
+      isBelt[k] = e instanceof BeltSection;
+      isCasingFlag[k] = isCasing(e);
+    }
     for (let i = 0; i < entities.length; i++) {
+      const a = entities[i]!;
+      const aBelt = isBelt[i]!;
+      const aIsPlayer = a === player;
+      const aCasing = isCasingFlag[i]!;
       for (let j = i + 1; j < entities.length; j++) {
-        const a = entities[i]!;
         const b = entities[j]!;
-        const aBelt = a instanceof BeltSection;
-        const bBelt = b instanceof BeltSection;
+        const bBelt = isBelt[j]!;
         if (aBelt && bBelt) continue;
-        if ((a === player && bBelt) || (b === player && aBelt)) continue;
+        const bIsPlayer = b === player;
+        if ((aIsPlayer && bBelt) || (bIsPlayer && aBelt)) continue;
         const impact = this.resolveCollisionPair(a, b);
-        if (impact && ((a === player && isCasing(b)) || (b === player && isCasing(a)))) {
+        if (impact && ((aIsPlayer && isCasingFlag[j]!) || (bIsPlayer && aCasing))) {
           onPlayerCasingImpact();
         }
       }
