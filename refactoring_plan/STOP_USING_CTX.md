@@ -109,18 +109,20 @@ const {x, y, z} = result;
 
 ### Ctx型ごとの評価(深刻度順)
 
-`combatCtx`/`fireCtx`/`enemyAiCtx`/`collisionCtx`/`planCtx`(冒頭の例で挙げた型そのもの)は現在のコードにはもう存在しない。特に `planCtx` は `getExternalState: () => ({ player, ephemeris, simTime })` という無名型のコールバックに置き換えられており、下記「概ね許容できる例」で扱う。残っているのは以下の7つの named `*Ctx` interface と、命名こそ `Params` だが同種の型1つ。
+`combatCtx`/`fireCtx`/`enemyAiCtx`/`collisionCtx`/`planCtx`(冒頭の例で挙げた型そのもの)は現在のコードにはもう存在しない。特に `planCtx` は `getExternalState: () => ({ player, ephemeris, simTime })` という無名型のコールバックに置き換えられており、下記「概ね許容できる例」で扱う。`MarkerCtx` も `MarkerForGame` の解体に伴って消滅した。残っているのは下記の named `*Ctx` interface と、命名こそ `Params` だが同種の型1つ。
 
-#### 3. `MarkerCtx`(`src/hud/markers.ts`)　保留
+#### 3. `MarkerCtx`(`src/game/marker/marker-for-game.ts`)　解消済み
 
-- **フィールド**: 8 → 6(`activeCamera` を削除、`enemies`+`ammos` を `simulator` 1個にまとめられる)
-- **利用パターン**: `game.ts` の `markerCtx()` ファクトリが毎フレーム生成。`updateMarkers` 冒頭で `mapMode/player/enemies/target/ammos/mapLabelIds` は即座に分割代入され、各 private メソッドへ個別に渡される(模範的)。ただし `updateLeadAndDirMarkers(ctx, o, pv, project)` だけは ctx をまるごと転用している。
-- **問題**:
-  - `activeCamera` フィールドが**完全にデッドコード**。コメントには「PIP オーバーレイ専用の投影に使う」とあるが、実際の `updatePipOverlay` は `ctx` を受け取らず `activeCamera` を独立した引数として個別に受け取っている(`game.ts:486`)。`markers.ts` 内で `ctx.activeCamera` を読んでいる箇所は存在しない。存在しない用途のためにフィールドが残っている典型例。
-  - `this.simulator.enemies` と `this.simulator.ammos` が同じ `this.simulator` から2フィールド取り出されており、13行目のルール(同一ソースから複数フィールドを取るなら分解しない)に反する。
-  - 8個中1メソッドだけ ctx をまるごと受け取る(`updateLeadAndDirMarkers`)のは、他の private メソッドが徹底して分解引数を使っているのと一貫しない。
-- **対応策**: 層境界がまだ定まっていない、最低限の対処で様子見。
-`activeCamera` を削除する。`enemies`/`ammos` は `simulator: Simulator` を渡す形にまとめるか(hud/ が game/orbit-entity/ の型に依存することになるので判断が要る)、現状維持のまま `simulator` を渡さない方針を明文化するかを検討する。`updateLeadAndDirMarkers` も他と同様に分解引数へ揃える。
+`MarkerForGame` ごと解体した(REFACTOR_PLAN.md「MarkerForGameの解体」)。ctx が生えていた原因は、
+マーカーの管理を1モジュールに集約したせいで「マーカーを出すのに必要な状態」が全部そこへ集まって
+きたことなので、**ctx の形を整えるのではなくマーカーの責務を各持ち主へ返す**ことで消した。
+
+- 自機由来 → `player/player-markers.ts`(`Player.syncPlayer` が駆動)
+- ターゲット由来(方位・相対 AN/DN)→ `targeter.ts`
+- 補給 → `stages/stage-utils/logistics.ts`(`Stage.sync` が駆動)
+- 天体ラベルの表示/非表示 → `camera/map-markers.ts`
+- 1体では決まらない3つだけ Game 直下: `marker/grouped-markers.ts`(まとめ)・
+  `marker/lead-markers.ts`(自機と敵の両依存)・`marker/pip-overlay.ts`(別投影)
 
 #### 4. `PipRenderCtx`(`src/game/pip-renderer.ts`)　保留
 

@@ -23,6 +23,8 @@ import { ThermalSystem } from './thermal';
 import { EffectsSystem } from '../vfx/effects-system';
 import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
+import { PlayerMarkers } from './player-markers';
+import { MarkerManager } from '../marker/marker-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
@@ -35,6 +37,8 @@ export class Player extends Ship {
 
   private readonly thrustEffects: ThrustEffects;
   private readonly rcsEffects: RcsEffects;
+  // 自機の位置・姿勢から決まる HUD マーカー(方向マーカー・ボアサイト・マップ上の自機位置)。
+  private readonly markers: PlayerMarkers;
   // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
   readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55);
 
@@ -47,7 +51,7 @@ export class Player extends Ship {
 
   // 高度420km・傾斜51.6°の円軌道に機首プログレードで初期配置する
   constructor(
-    _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem) {
+    _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager) {
     const state = Player.makeInitialState();
     super('PLAYER', state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, _scene);
     this._hud = _hud;
@@ -63,6 +67,7 @@ export class Player extends Ship {
     this.thermal = new ThermalSystem(_hud, _sfx);
     this.thrustEffects = new ThrustEffects(_scene);
     this.rcsEffects = new RcsEffects(_scene);
+    this.markers = new PlayerMarkers(markerManager);
 
     _scene.add(this.orbitLine.line);
   }
@@ -246,10 +251,10 @@ export class Player extends Ship {
     this.att = this.throttle.clampAngularVelocity(this.att, fine);
   }
 
-  // 自機も他エンティティと同じく絶対 ECI 位置(state.r)を fo 経由で描画フレームへ変換する
-  // (基底 syncTransform とは signature が異なる別メソッド — camera/可視性も受け取る)。
+  // 自機も他エンティティと同じく絶対 ECI 位置(state.r)を fo 経由で描画フレームへ変換する。
   // ズーム中(PIP)は本体を隠す。機体付随のエフェクト(プルーム/RCSパフ)には fo と自機
-  // 状態を渡し、慣性座標で位置を組んでから末端で fo 変換させる。
+  // 状態を渡し、慣性座標で位置を組んでから末端で fo 変換させる。自機由来の HUD マーカーも
+  // ここから同期するので、呼び出し側が別途 syncMarker 相当を呼ぶ必要は無い。
   // 型シグネチャが異なるため、オーバーライドではなく別メソッドとして定義する。基底クラスのsyncは使わない
   syncPlayer(
     fo: FloatingOrigin,
@@ -264,6 +269,7 @@ export class Player extends Ship {
     this.thrustEffects.sync(fo, this.state.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
     this.rcsEffects.sync(fo, this.state.r, this.torque, this.att, this.alive, phasePlaying, paused, camera);
     this.belt.sync(this.alive);
+    this.markers.sync(this.state, this.att, this.alive, camera.mapMode, camera.activeCameraProjection);
 
     // 自機軌道線は「高精度で描きたい点」付近の頂点を密にする(focusPos)。本来これは
     // フローティングオリジン(≒カメラ近傍、単精度でも破綻させたくない領域)であるべきだが、

@@ -1,6 +1,7 @@
-// HUD のスクリーン投影マーカー管理。マーカー DOM 要素の生成・更新と、
-// ラベル衝突回避のための SVG 引き出し線描画を担う。利用側は Hud.markers から
-// 直接 set/hide/resolveCollisions を呼ぶ(Hud を経由した委譲はしない)。
+// HUD のスクリーン投影マーカー管理(表示機構のみ。何をどこに出すかは各マーカーの持ち主が
+// 決める)。マーカー DOM 要素の生成・更新と、ラベル衝突回避のための SVG 引き出し線描画を担う。
+// Game が所有し、マーカーを出す各モジュールへ参照を配る。resolveCollisions は全マーカーが
+// 出揃った後に一度だけ呼ぶ必要があるため、game.sync の最後で呼ばれる。
 //
 // setPosition/setDirection は、3D空間上の「位置」「方向」を示すマーカーの
 // 投影手順(project → set)を一元化したもの。camera-system.ts が MarkerManager に

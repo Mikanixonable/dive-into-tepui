@@ -13,17 +13,14 @@
 
 
 
-## skills整備（やってないこと）
-
-変更箇所と関係ないphysicsテストやverifyスキルを行っている。やめてほしい。typecheckは常に行ってほしいが
-全体像を把握したいときは、いきなりコードを読みに行くのではなく、OWNERSHIP, CALLSTACKを有効活用してほしい。
-refactor-instuctions.md（一般論的なリファクタリング方針）や、REFACTOR_FIXED.md（今回のプロジェクト個別に決定した紛らわしい責務分割方針）はリポジトリに置いてても意味なくて、contextに置かないと守ってくれない。skill化する。
-リネームするときにはコメントを含め歴史的経緯を残さない。「旧」などを書くのも禁止
+## skills整備（やってない）
 
 # 本質的なバグ懸念
 
 ## LEAD表示の不具合　そもそも見えてないかも。
 LEADマーカーは「その方向に撃ったら対応する敵に当たるはず」を表す方向マーカーらしいが、現在は位置マーカー（markerManager.setPosition）として実装されていておかしい。これはリファクタリングによるエンバグの可能性が高い。本来の挙動の確認が必要。
+（見越し点の算出は `physics/intercept.ts` の `leadPoint`、表示は `marker/lead-markers.ts` に集約済み。
+算出式はMarkerForGame解体時点の実装をそのまま移しただけなので、この項の検証はまだ済んでいない。）
 
 ## 編集画面におけるノードクリックが未検証。したがって、plan系の機能が全体的に視覚的に検証できていない。
 まず状態の切り分け、デバッグのために、planが入力された状態から
@@ -45,28 +42,6 @@ THREE系のバッファが作れていない？　心なしかFPSも全体的に
 
 
 ## 大型のリファクタリング問題
-
-## MarkerForGameの解体
-MarkerForGameが下手にマーカーの管理を集約しているがために、「場当たり的な引数オブジェクト」に該当するmarkerCtxが生えていて、良くない。markerForGameのためにGameが様々な情報を明け渡していて、責務量出が甚だしい。個別のモジュールのsyncに移動すべき。
-
-マーカーについては、原則として、各オブジェクトに自分のマーカーを管理する責務を持たせるべき。predictのghostMarkerなどはそうしている。各オブジェクトのsyncを呼ぶだけで、ばmarkerも更新されるようにする。syncとsyncMarkerを両方公開するべきではない。
-
-各モジュールのsyncの引数には、たいていの場合projectが増えることとなる。（現在floatingOriginを引数にしているのと同様に）。entityの基底syncからこれを一貫すべき。
-
-playerの位置や向きに依存するものはplayerに、targetの位置を表示するマーカーはtargeterに、分散すべき。(playerの責務がやや増えてきてはいる。増えてきたら下位に委譲すべき)
-
-例外として、Enemyの表示がある。これに関しては、「距離が近い複数をまとめる」という処理になっていて、これは単独のEnemyでは決定できない。しかし、この「集団を一つのmarkerにまとめる」という処理自体が、一つのモジュールを立てるに足る責務であり、そのモジュールはmarkerForGameのようななんでも屋さんであってはいけない。
-また、将来的に、Enemy以外についても「まとめる」という処理をしたくなるかもしれないから、再利用性の高い「まとめる」モジュールを作るのが良いだろう。
-
-また、LEADマーカーは、playerとenemyの両方に依存している。これは…EnemyともTargetterとも本質的に違う責務で、今後更新の可能性が高いので、専用モジュールに切り出す。
-
-1. Enemyに限らず使える、GroupedMarkersを作り、markerForGameの一部責務を分散する。
-3. LEADマーカー専用のモジュールLeadMarkersを作り、markerForGameの一部責務を分散する。
-2. enemymarkers:GroupedMarkersやleadMarkers:LeadMarkersをgameに置き、gameからsyncを呼ぶだけで済むようにする。
-4. markerForGameに残った責務を、各オブジェクトのsyncに分散する。個別のオブジェクトがsyncと別にsyncMarker的な関数を持っている場合、syncMarkerを公開するのをやめ、syncから呼び出す。
-5. Gameには各オブジェクト（およびGroupMarkersのsync）のsyncを呼ぶ親syncのみを残す。
-
-これで雑多モジュールであるMarkerForGameを解体できるはず。
 
 ## markerManagerの実装問題（挙動修正を含む）
 マーカーの表示位置が微妙にずれる
@@ -113,9 +88,6 @@ orbitLineごとにlineBasicMaterialが再生成されていて、これは描画
 
 # やる必要がない可能性があるもの
 
-## pipのcrossHairのマーカー化
-pip上でもマーカーって適切に動作しますよね　するのであれば、crosshairは中心（視線方向）に固定したマーカーとして表現できるし、表現すべきだ
-
 ## sfxとbgmの分離
 audioが結構長いモジュールになっている。
 BGM（機械生成音楽）の長大な実装が直接sfxに書かれているのが問題。
@@ -147,12 +119,15 @@ simulatorのスナップショットを取って先行させる…？　これ�
 逆に、predictだけを高速化に徹底させるならweb-workerに切り出すのが良い。
 
 ## this.predict.syncの引数がキモい
-不要なクロージャ注入に見える。PlanTrajectory（planに従った予測キャッシュ）の配置を再検討すべき
+これは不要なクロージャ注入に見えるので避けたい。
+
+PlanTrajectory（planに従った予測キャッシュ）の配置を再検討する。依存関係は以下の二つ
 - editorからはクリック判定が欲しいのと、planを更新したら一緒にキャッシュも更新したい。
 - predictからは、軌道線やプレイヤーの未来マーカーのために必要。
-predict側の方が近いので、PlanTrajectoryはpredict側に置いた方がいいかも…？　クリック判定や更新通知の配線が必要になる……
 
-しかし、planとpredictに関してはUXがまだまだ悪く（そもそもplanにおいてクリック判定するところがバグってて検証できてすらいない）、このリファクタはその整備の後でよいと思われる。
+predict側の方がTrajの責任に近いので、PlanTrajectoryはpredict側に置く。クリック判定や更新通知は、edtorのupdateの引数にplanSystemを参照渡しすることで何とかする。
+
+planのクリック判定についてはもとからバグっているのでverifyは不要。typecheckだけしてほしい。
 
 ## 引数整理
 参照されていない引数を減らしていきたい

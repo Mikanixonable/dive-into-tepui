@@ -1,29 +1,35 @@
+// PIP(発砲中の照準ズーム窓)一式: 2度目の描画パスと、窓に重ねるマーカー(PipOverlay)。
+// 「このフレームに PIP を出すか」の判定は game が持ち、sync と renderPip の両方へ同じ値が
+// 渡ってくる(ここで再判定しない — 判定が二重化すると sync とパスが食い違う)。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
-import { ACCENT } from './theme';
 import { PipCamera } from './camera/pip-camera';
+import { MarkerManager } from './marker/marker-manager';
+import { PipOverlay } from './marker/pip-overlay';
+import type { Enemy } from './orbit-entity/enemy';
+import type { Player } from './player/player';
 
 export interface PipRenderCtx {
   readonly renderPip: boolean;
   readonly pipCamera: PipCamera;
   readonly playerShipObj: THREE.Object3D;
   setMuzzleFlashesVisible(visible: boolean): void;
-  updateOverlay(rect: PipCamera['rect'] | null): void;
 }
 
 export class PipRenderer {
-  private readonly crosshair: HTMLDivElement;
+  private readonly overlay: PipOverlay;
 
-  constructor(private readonly _scene: THREE.Scene) {
-    this.crosshair = this.createCrosshair();
+  constructor(private readonly _scene: THREE.Scene, markerManager: MarkerManager) {
+    this.overlay = new PipOverlay(markerManager);
+  }
+
+  // 窓に重ねるマーカーは DOM なので、描画パスではなく sync フェーズで置く。
+  sync(active: boolean, player: Player, target: Enemy | null, pipCamera: PipCamera): void {
+    this.overlay.sync(active, player, target, pipCamera);
   }
 
   renderPip(renderer: WebGPURenderer, ctx: PipRenderCtx): void {
-    if (!ctx.renderPip) {
-      this.crosshair.style.display = 'none';
-      ctx.updateOverlay(null);
-      return;
-    }
+    if (!ctx.renderPip) return;
 
     const { x, y, w, h } = ctx.pipCamera.rect;
 
@@ -42,7 +48,6 @@ export class PipRenderer {
       renderer.setScissor(x, y, w, h);
       renderer.setScissorTest(true);
       renderer.render(this._scene, ctx.pipCamera.camera);
-      ctx.updateOverlay(ctx.pipCamera.rect);
     } finally {
       ctx.playerShipObj.visible = originalPlayerVisible;
       ctx.setMuzzleFlashesVisible(true);
@@ -50,25 +55,5 @@ export class PipRenderer {
       renderer.setScissorTest(false);
       renderer.autoClearColor = originalAutoClearColor;
     }
-
-    this.crosshair.style.display = 'block';
-    this.crosshair.style.left = x + w * 0.5 + 'px';
-    this.crosshair.style.top = y + h * 0.5 + 'px';
-  }
-
-  private createCrosshair(): HTMLDivElement {
-    const pipCrosshair = document.createElement('div');
-    pipCrosshair.id = 'pip-crosshair';
-    pipCrosshair.style.position = 'fixed';
-    pipCrosshair.style.pointerEvents = 'none';
-    pipCrosshair.style.color = ACCENT;
-    pipCrosshair.style.fontSize = '24px';
-    pipCrosshair.style.fontFamily = 'sans-serif';
-    pipCrosshair.innerText = '+';
-    pipCrosshair.style.transform = 'translate(-50%, -50%)';
-    pipCrosshair.style.zIndex = '1000';
-    pipCrosshair.style.display = 'none';
-    document.body.appendChild(pipCrosshair);
-    return pipCrosshair;
   }
 }
