@@ -11,6 +11,7 @@ declare module 'three/webgpu' {
     setSize(width: number, height: number, updateStyle?: boolean): void;
     render(scene: import('three').Scene, camera: import('three').Camera): void;
     autoClear: boolean;
+    autoClearColor: boolean;
     clear(): void;
     setViewport(x: number, y: number, width: number, height: number): void;
     setScissor(x: number, y: number, width: number, height: number): void;

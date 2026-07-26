@@ -55,11 +55,19 @@ export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
 export const RCS_MANUAL_OUTPUT_MIN = 0.3;
 export const RCS_MANUAL_OUTPUT_RAMP = 1.0;
 export const RCS_MANUAL_RAMP_TIME = 3.0; // [s]
-export const RCS_DAMP_PUFF_EPS = 0.04; // RCS制動パフ/音を出す角速度しきい値 [rad/s]
+export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
 
 // 微調整モード([V]キーでトグル、射撃中は自動でON): 角加速度・角速度上限を絞り、
 // 通常時の半分の出力で小刻みな姿勢調整を可能にする
 export const FINE_ATTITUDE_SCALE = 0.5;
+
+// 戦闘視点カメラ(ChaseCamera / PipCamera 共通)の near/far [m]。
+// near: LEO高度からの地平線距離(~2,400km)での深度誤差が大気シェルの厚みより
+// 十分小さくなり、対数深度バッファなしで z-fighting を回避できる値。
+// far: 星空シェル(STAR_SHELL_RADIUS=3.5e7)・太陽ビルボード(SUN_DISTANCE=4.2e7)・
+// 月表示距離(MOON_VIS_DIST=4.5e7、render/stars.ts)を余裕を持って内側に収める。
+export const COMBAT_CAMERA_NEAR = 2;
+export const COMBAT_CAMERA_FAR = 6e7;
 
 export const BASE_FOV = 55; // 通常時の垂直画角 [deg]
 export const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg]
@@ -77,7 +85,7 @@ export const PROGRADE_HOLD_KD = 2.6; // 角速度に対する減衰ゲイン
 
 export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
 export const FIRE_INTERVAL = 0.06; // 発射間隔 [s] 
-export const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s] (元の0.3の半分)
+export const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
 export const BULLET_SPREAD = 0.002; // 散布界 [rad]
 export const BULLET_LIFETIME = 240; // [sim s]
 export const RECOIL_DV = 0.04; // 反動 [m/s]
@@ -94,20 +102,22 @@ export const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は�
 // 半分程度のマガジン数(=物理的に短いチェーン)で賄える。
 export const MAG_ROUNDS = 32; // 1 マガジンの装弾数
 export const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
-export const MAG_PICKUP_MAGS = 4; // 補給 1 個の取り込みで増えるマガジン数
-export const MAG_PICKUP_RADIUS = 100; // 取り込み距離 [m](ゲームプレイ上の吸収判定。物理サイズではない)
-export const MAG_PICKUP_PHYS_RADIUS = 1.3; // 補給マガジン束の物理接触用の半径 [m](見た目に近い実寸)
-export const AMMO_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入(5以下で発動)
-export const MAX_MAG_PICKUPS = 3; // 同時に存在する補給の最大数
-export const RESUPPLY_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
-export const AMMO_RESUPPLY_MIN_DIST = 1250; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
-export const AMMO_RESUPPLY_MAX_DIST = 2500; // 同上限 [m]
-export const AMMO_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
+export const AMMO_PICKUP_MAGS = 4; // 補給 1 個の取り込みで増えるマガジン数
+export const AMMO_PICKUP_RADIUS = 100; // 取り込み距離 [m](ゲームプレイ上の吸収判定。物理サイズではない)
+export const AMMO_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m](見た目に近い実寸)
+export const LOGISTICS_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
+export const MAX_AMMO = 3; // 同時に存在する補給の最大数
+export const LOGISTICS_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
+export const LOGISTICS_MIN_DIST = 1250; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
+export const LOGISTICS_MAX_DIST = 2500; // 同上限 [m]
+export const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
 export const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
-export const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s](元の3.0の半分)
+export const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s]
+export const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
 export const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
 export const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの物理接触用の半径 [m]
-export const EJECTED_MAG_MASS = 20; // 同、物理接触用の質量(実質量ではなくゲーム内衝突用の値)
+export const BARREL_MASS = 20; // バレルの物理接触用の質量(実質量ではなくゲーム内衝突用の値)
+export const MAGAZINE_FRAME_MASS = 20; // 空マガジンの物理接触用の質量(同上)
 
 // マガジンチェーンの可動域: 各つなぎ目(リンク間接合部)で許容する最大折れ角。
 // ロール(チェーン軸まわりのねじれ)・ピッチ(上下方向の折れ)・ヨー(左右方向の折れ)
@@ -117,15 +127,11 @@ export const MAG_CHAIN_MAX_PITCH_DEG = 30; // ピッチ上限(上下方向の折
 export const MAG_CHAIN_MAX_YAW_DEG = 10;   // ヨー上限(左右方向の折れ)
 export const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
 export const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
-// 各リンクを前後2点の中点(または根本側は固定方向の延長点)へわずかに
-// 引き寄せる、曲げ剛性の簡易近似(かすかな直線復元力)。外力が止むと
 export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
+export const CASING_MASS = 1; // 薬莢の物理接触用の質量(実物同様に軽い)
 export const MAX_BULLETS = 400;
 export const MAX_CASINGS = 260;
 export const MAX_DEBRIS = 160;
-export const DEBRIS_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限
-export const DEBRIS_SIZE_MAX = 6.0; // 撃破デブリの破片サイズ上限
-export const CASING_CLANK_COOLDOWN = 0.07; // 薬莢-機体接触音のレート制限 [実 s]
 
 // --- 被弾・撃破エフェクト(フラッシュ/破片) ---
 export const BULLET_HIT_FLASH_SIZE0 = 1.5;
@@ -144,44 +150,44 @@ export const DESTROY_FLASH1_DURATION = 1.1; // [s]
 export const DESTROY_FLASH2_SIZE0 = 6; // 撃破時フラッシュ(外殻)のサイズ下限
 export const DESTROY_FLASH2_SIZE1 = 40;
 export const DESTROY_FLASH2_DURATION = 0.5; // [s]
+export const DESTROY_FRAG_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限。ENEMY_SCALE 倍される
+export const DESTROY_FRAG_SIZE_MAX = 6.0;
 
-export const WARP_LEVELS = [1, 4, 16, 64, 256, 1024, 4096];
-export const MAX_PHYS_WARP = 4; // 推進・射撃が可能な最大タイムワープ
+export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096];
+export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
 
 export const PLAYER_RADIUS = 5; // 被弾(弾丸ヒット)判定 [m]。実機体より大きめの当たり判定
 export const PLAYER_HULL_RADIUS = 2.6; // 薬莢・破片等との物理接触に使う実寸に近い半径 [m]。
 // PLAYER_RADIUS(被弾判定、余裕を持たせた大きめの値)をそのまま物理接触に使うと、
 // 砲口(機体中心から距離約2.9m)で生まれた薬莢が生成直後に弾き飛ばされてしまう。
-export const ENEMY_RADIUS = 180; // 視認性を高めるため従来比 10 倍の大型機体、さらに2倍
+export const ENEMY_RADIUS = 180; // 視認性のため実機体よりかなり大きい当たり判定
 export const ENEMY_SCALE = 20; // buildEnemyShip() の見た目メッシュに掛けるスケール
+export const ENEMY_ORBIT_LINE_COLOR = 0x565b63; // 敵軌道線の既定色(個体色 accent とは独立)
 
 export const INITIAL_ALT = 420e3; // 自機初期高度 [m]
 export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
 
+// --- HUD マーカー ---
+export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想距離 [m](実在の位置ではなく方向のみを示す)
+export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
+export const LEAD_HOLD_SEC = 20; // ターゲットを外した後も LEAD マーカーを出し続ける時間 [s]
+export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
+
 // --- 軌道計画モード([M]) ---
-export const MAP_MIN_DIST = 9e6; // マップカメラ距離 [m]
+export const OVERVIEW_CAMERA_MIN_DIST = 9e6; // 広範囲視点カメラの注視点までの距離 [m]
 // 月軌道(平均距離 3.844e8m)全体+マージンが収まるまでカメラを引けるようにする
 // 太陽地球系のラグランジュ点 L1/L2 (約1.5e9m) が視界に収まるように上限を拡大。
-export const MAP_MAX_DIST = 4.5e9;
-export const MAP_CAMERA_FAR = 1.5e10; // マップカメラの far(MAP_MAX_DIST + 十分な余裕)
+export const OVERVIEW_CAMERA_MAX_DIST = 4.5e9;
+export const OVERVIEW_CAMERA_FAR = 1.5e10; // 広範囲視点カメラの far(OVERVIEW_CAMERA_MAX_DIST + 十分な余裕)
 export const NODE_DV_RATE = 30; // Δv 調整速度 [m/s per 実秒]
 export const NODE_DV_RATE_FINE = 2.5; // 微調整モード時
 export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
-export const MAP_LABEL_PICK_PX = 20; // マップラベル(ラグランジュ点等)のクリック判定許容距離 [px]
-// 戦闘ビューのBURNガイド軌道: 直近ノードの実行時刻の少し先まで予測を描く。
-// 最短でも NODE_GUIDE_MIN_DURATION 秒ぶん、ノード時刻より NODE_GUIDE_DURATION_MARGIN 秒先まで
-export const NODE_GUIDE_MIN_DURATION = 60; // [s]
-export const NODE_GUIDE_DURATION_MARGIN = 120; // [s]
+export const FOCUS_LABEL_PICK_PX = 20; // 注視候補ラベル(ラグランジュ点等)のクリック判定許容距離 [px]
 export const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
 export const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
-// マップモードの DOM ギズモ(mapgizmo.ts): 選択中ノードの Δv アーム(6方向ハンドル)
+// マップモードの DOM ギズモ(node-gizmo.ts): 選択中ノードの Δv アーム(6方向ハンドル)
 export const NODE_GIZMO_HANDLE_PX = 42; // ノードからアームハンドルを離す距離 [px]
 export const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリック/ドラッグ判定しきい値 [px]
-// ノード実行目標の凍結しきい値 [s]: 残り時間がこれを切ったらバーン目標
-// (実行後の目標速度・目標軌道要素)を固定し、以降の予測リフレッシュでは
-// 更新しない。目標を毎回「現在状態+全Δv」で再計算すると、噴射するほど
-// 目標が先へ逃げていく(残Δvが減らない)ため、実噴射前に凍結する必要がある。
-export const NODE_TARGET_FREEZE_S = 30;
 // マニューバ達成判定(計画軌道への接近許容)
 export const NODE_TOL_SMA = 0.02; // 長半径の相対誤差
 export const NODE_TOL_ECC = 0.02; // 離心率差
@@ -197,14 +203,12 @@ export const PREDICT_MAX_SAMPLES = 2000; // 保持する予測サンプル数の
 // 「現在の軌道」自体がドリフトしていくため)。
 export const PREDICT_DIRTY_THROTTLE_MS = 200;
 export const PREDICT_REFRESH_INTERVAL_MS = 2000;
-// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大ワープを選び、STOP 秒前に解除。
-// ワープ段は 4 倍刻み(1/4/16/64/256/1024/4096)なので、1 段降りるごとに
-// 実時間で約 MARGIN×0.75 秒かかる計算になる。全体(最大ワープから解除まで)を
-// 概ね20実秒以内に収めるよう、以前の15から大きく下げてある。
+// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
+// 速度段は 4 倍刻み(1/4/16/64/256/1024/4096)なので、1 段降りるごとに
+// 実時間で約 MARGIN×0.75 秒かかる計算になる。全体(最大速度から解除まで)を
+// 概ね20実秒以内に収める値。
 export const AUTOWARP_MARGIN = 4;
 export const AUTOWARP_STOP = 20;
-
-export const STAGE1_CLEARED_KEY = 'tepui.stage1.cleared'; // localStorage キー
 
 // --- 第零ステージ(近接戦闘訓練) ---
 export const STAGE0_GROUP_ACCENTS = [0xff4a3d, 0x3dc6ff, 0x3dff8f, 0xffe23d, 0xbf3dff]; // 赤/青/緑/黄/紫
@@ -213,9 +217,9 @@ export const STAGE0_PER_GROUP = 10; // グループあたりの機数
 export const STAGE0_ENEMY_HP = 1; // 一撃撃破の軽量機
 export const STAGE0_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]
 export const STAGE0_TIME_LIMIT = 30000; // 制限時間 [実秒]
-export const STAGE0_AMMO_PICKUPS = 4; // 開始時に浮かべておく補給マガジンの数
-export const STAGE0_AMMO_MIN_DIST = 300; // 補給の配置距離 [m](自機から)
-export const STAGE0_AMMO_MAX_DIST = 900;
+export const STAGE0_LOGISTICS_INITIAL_AMMO = 4; // 開始時に浮かべておく補給の数
+export const STAGE0_LOGISTICS_MIN_DIST = 300; // 補給の配置距離 [m](自機から)
+export const STAGE0_LOGISTICS_MAX_DIST = 900;
 // 5グループの配置: 各グループ中心を安全半径(STAGE0_MAX_RANGE * SAFE_RANGE_FACTOR)
 // の CENTER_DIST_MIN〜+RANGE の位置に置き、各機はそこから ALONG/NORMAL/RADIAL
 // 方向にランダムに散らす
@@ -229,14 +233,14 @@ export const STAGE0_JITTER_RADIAL = 350; // 各機の動径方向ばらつき [m
 
 // --- ステージ00(無限耐久サバイバル) ---
 export const STAGE00_MAX_RANGE = 15000; // 自機からの配置半径の上限(デスポーン距離) [m]
-export const STAGE00_AMMO_MIN_DIST = 50; // 補給の配置距離 [m](自機から)
-export const STAGE00_AMMO_MAX_DIST = 200;
+export const STAGE00_LOGISTICS_MIN_DIST = 50; // 補給の配置距離 [m](自機から)
+export const STAGE00_LOGISTICS_MAX_DIST = 200;
 export const STAGE00_SPAWN_DELAY = 10; // 弾取得からスポーンまでの遅延 [s]
 export const STAGE00_FORMATION_SPACING = 200; // 編隊の機体間隔 [m]
 export const STAGE00_ALT_OFFSET_MIN = -1000; // 自機よりどれくらい低くするか [m]
 export const STAGE00_ALT_OFFSET_MAX = -200;
 export const STAGE00_SPAWN_INTERVAL = 30.0; // 波状攻撃の間隔 [s]
-export const STAGE00_SPAWN_DIST_MIN = 10000; // 敵集団のスポーン距離(従来比2倍)
+export const STAGE00_SPAWN_DIST_MIN = 10000; // 敵集団のスポーン距離
 export const STAGE00_SPAWN_DIST_MAX = 14000;
 export const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
 export const STAGE00_WAVE_BASE_SHIPS = 5; // 第1波の機数
@@ -253,7 +257,7 @@ export const PLAYER_HIT_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ�
 export const ENEMY_HIT_DAMAGE = 1; // 敵機が被弾した際のダメージ [HP]
 export const PLASMA_BULLET_SPEED = 800 * 2 / 3; // MUZZLE_SPEED の約 2/3
 export const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
-export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s] (3倍に増加)
+export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
 export const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]
 export const ENEMY_AI_MIN_RANGE = 50; // これより近いと射撃しない(至近距離) [m]
 export const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 同一集団内で同時に攻撃する最大機数

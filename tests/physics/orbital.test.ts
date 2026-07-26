@@ -10,6 +10,7 @@ import {
   R_EARTH,
   elementsFromState,
   j2Accel,
+  orbitState,
   positionOnOrbit,
   stateFromElements,
   stepOrbitRK4,
@@ -28,7 +29,7 @@ export function register(): void {
     const raan = 0.7;
     const argp = 1.1;
     const nu = 2.3;
-    const s = stateFromElements(a, e, inc, raan, argp, nu);
+    const s = stateFromElements(0, a, e, inc, raan, argp, nu);
     const el = elementsFromState(s.r, s.v);
     assert.ok(el, 'elementsFromState should not be null for a bound elliptical orbit');
     const elx = el as Elements;
@@ -44,7 +45,7 @@ export function register(): void {
     const a = R_EARTH + 800e3;
     const e = 0.02;
     const inc = (28 * Math.PI) / 180;
-    const s0 = stateFromElements(a, e, inc, 0.3, 0.5, 0.9);
+    const s0 = stateFromElements(0, a, e, inc, 0.3, 0.5, 0.9);
     const el = elementsFromState(s0.r, s0.v) as Elements;
     const nu = trueAnomalyAt(el, s0.r);
     assert.ok(Math.abs(nu - 0.9) < 1e-7, `trueAnomalyAt recovers nu: ${nu}`);
@@ -56,7 +57,7 @@ export function register(): void {
 
   test('orbital: tofBetween(nu, nu) == 0 and tofBetween is period-periodic', () => {
     const a = R_EARTH + 500e3;
-    const s0 = stateFromElements(a, 0.01, 0.9, 0, 0, 0);
+    const s0 = stateFromElements(0, a, 0.01, 0.9, 0, 0, 0);
     const el = elementsFromState(s0.r, s0.v) as Elements;
     assert.equal(tofBetween(el, 1.2, 1.2), 0);
     const tHalf = tofBetween(el, 0, Math.PI);
@@ -69,7 +70,7 @@ export function register(): void {
 
   test('orbital: timeSincePeriapsis(nu=0) == 0', () => {
     const a = R_EARTH + 500e3;
-    const s0 = stateFromElements(a, 0.1, 0.5, 0, 0, 0);
+    const s0 = stateFromElements(0, a, 0.1, 0.5, 0, 0, 0);
     const el = elementsFromState(s0.r, s0.v) as Elements;
     assert.equal(timeSincePeriapsis(el, 0), 0);
   });
@@ -82,14 +83,14 @@ export function register(): void {
     const alt = 420e3;
     const r0 = R_EARTH + alt;
     const vCirc = Math.sqrt(MU_EARTH / r0);
-    const s = { r: v3(r0, 0, 0), v: v3(0, 0, vCirc) };
+    let s = orbitState(0, v3(r0, 0, 0), v3(0, 0, vCirc));
     const period = 2 * Math.PI * Math.sqrt((r0 * r0 * r0) / MU_EARTH);
     const e0 = 0.5 * vCirc * vCirc - MU_EARTH / r0;
 
     const dt = 1; // 1秒刻み
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
-      stepOrbitRK4(s, dt);
+      s = stepOrbitRK4(s, dt);
     }
 
     const rMag = len(s.r);
@@ -103,6 +104,8 @@ export function register(): void {
     // (数値環境差を吸収する回帰テストであり、理論的な精度保証ではない)。
     assert.ok(posErr < 1e-3, `measured position error after 1 period: ${posErr}`);
     assert.ok(energyErr < 1e-3, `measured energy error after 1 period: ${energyErr}`);
+    // state はエポックも持つ: 1 ステップ = dt だけ時刻も進む。
+    assert.ok(Math.abs(s.t - steps * dt) < 1e-9, `epoch should advance with the integration: ${s.t}`);
   });
 
   test('orbital: j2Accel RAAN regression rate at 420km/51.6deg ~= -5deg/day (measured)', () => {
@@ -113,15 +116,14 @@ export function register(): void {
     const incDeg = 51.6;
     const inc = (incDeg * Math.PI) / 180;
     const a = R_EARTH + alt;
-    const s0 = stateFromElements(a, 0, inc, 0, 0, 0);
-    const s = { r: { ...s0.r }, v: { ...s0.v } };
+    let s = stateFromElements(0, a, 0, inc, 0, 0, 0);
 
     const dt = 10;
     const totalDays = 5;
     const totalSeconds = totalDays * 86400;
     const steps = Math.round(totalSeconds / dt);
     for (let i = 0; i < steps; i++) {
-      stepOrbitRK4(s, dt, (r) => j2Accel(r));
+      s = stepOrbitRK4(s, dt, (r) => j2Accel(r));
     }
 
     const el = elementsFromState(s.r, s.v) as Elements;
