@@ -70,6 +70,7 @@ export class Enemy extends Ship {
   dispose(): void {
     super.dispose();
     this.scene?.remove(this.orbitLine.line);
+    this.orbitLine.dispose();
   }
 
   // 個体色の CSS 表記。方位マーカー・LEAD マーカーの着色に使う。

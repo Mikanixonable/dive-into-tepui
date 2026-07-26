@@ -140,4 +140,11 @@ export class OrbitLine {
     };
     this.lastRegen = performance.now();
   }
+
+  // geometry/material を破棄する。このインスタンス固有(コンストラクタで new した)ため、
+  // 他の OrbitLine インスタンスと共有していない — 呼び出し後は再利用不可。
+  dispose(): void {
+    this.line.geometry.dispose();
+    (this.line.material as THREE.Material).dispose();
+  }
 }
