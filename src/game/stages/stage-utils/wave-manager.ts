@@ -97,8 +97,9 @@ function despawnOutOfRangeEnemies(enemies: readonly Enemy[], player: Player, max
   for (const enemy of enemies) {
     if (!enemy.alive) continue;
     if (len(sub(enemy.state.r, player.state.r)) <= maxRange) continue;
+    // dispose は呼ばない — simulator.cleanup() の prune() が alive=false を見て回収する
+    // (contract は simulator.ts 参照)。ここで自前 dispose すると二重解放になる。
     enemy.alive = false;
-    enemy.dispose();
   }
 }
 
