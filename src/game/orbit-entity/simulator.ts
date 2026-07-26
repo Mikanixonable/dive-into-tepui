@@ -1,5 +1,7 @@
 // エンティティ配列の所有と、その受動的な更新(軌道積分・慣性姿勢・寿命管理)。
 // 描画同期や能動的な更新(AI・発射・スポーン判断)は game.ts / 各 Stage(stages/)/
+// Enemy.behave が担い、追加は addXxx 経由で行う。scene への add/remove は各 entity
+// 自身の責務(entities.ts)なので、Simulator は配列管理・上限管理・寿命判定に専念する。
 import { stepAttitude } from '../../physics/attitude';
 import { IAccelProvider, stepOrbitRK4 } from '../../physics/orbital';
 import { Vec3 } from '../../physics/vec3';
