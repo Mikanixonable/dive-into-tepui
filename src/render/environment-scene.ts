@@ -95,15 +95,15 @@ export class EnvironmentScene {
     this.syncSkyBodies(displayTime, floatingOrigin, cameraSystem);
 
     // lit は自機位置の日照率(円柱影の近似)。物理的に正確ではない。
-    const lit = cameraSystem.mapMode ? 1.0 : this.shadowLitFactor(player.state.r, this.ephemeris.sunDirAt(displayTime));
+    const lit = cameraSystem.overviewMode ? 1.0 : this.shadowLitFactor(player.state.r, this.ephemeris.sunDirAt(displayTime));
     this.syncLighting(lit);
 
-    this.syncReferenceLines(displayTime, floatingOrigin, cameraSystem.mapMode);
+    this.syncReferenceLines(displayTime, floatingOrigin, cameraSystem.overviewMode);
   }
 
-  // マップモード中だけ geo/moon の参照線を表示する(戦闘ビューでは非表示)。
-  private syncReferenceLines(simTime: number, fo: FloatingOrigin, mapMode: boolean): void {
-    if (!mapMode) {
+  // 広範囲視点のときだけ geo/moon の参照線を表示する(戦闘ビューでは非表示)。
+  private syncReferenceLines(simTime: number, fo: FloatingOrigin, overviewMode: boolean): void {
+    if (!overviewMode) {
       this.geoLine.sync(null, fo);
       this.moonLine.sync(null, fo);
       return;
@@ -145,7 +145,8 @@ export class EnvironmentScene {
     const sd = norm(visSunPos);
     this.earth.setSunDir(sd.x, sd.y, sd.z);
     this.starsMesh.position.copy(cam.position);
-    this.starsMesh.scale.setScalar(cameraSystem.mapMode ? (cameraSystem.mapCamera.camera.far * 0.9) / 3.5e7 : 1.0);
+    this.starsMesh.scale.setScalar(
+      cameraSystem.overviewMode ? (cameraSystem.overviewCamera.camera.far * 0.9) / 3.5e7 : 1.0);
     // 太陽ビルボードはカメラ相対(空の遠景)。fo 由来の変換ではないので camera 位置基準で置く。
     this.sun.billboard.sync(
       tmpSunPos.set(
@@ -159,8 +160,8 @@ export class EnvironmentScene {
     );
     this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
     const visMoonPos = this.ephemeris.moonPosAt(displayTime);
-    if (cameraSystem.mapMode) {
-      // マップは実スケール: 月を実 ECI 位置(fo 経由)に置く。
+    if (cameraSystem.overviewMode) {
+      // 広範囲視点は実スケール: 月を実 ECI 位置(fo 経由)に置く。
       this.moonMesh.position.copy(fo.RtoThreeV3(visMoonPos));
       this.moonMesh.scale.setScalar(R_MOON);
     } else {

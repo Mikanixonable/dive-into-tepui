@@ -1,7 +1,7 @@
 // 発砲中に表示するピクチャーインピクチャー(照準ズーム窓)用のカメラ。
 // 視点自体は ChaseCamera のガンサイト視点(機首固定、姿勢基準)と同じだが、画面全体では
 // なく右上の小矩形(rect)へ独立して描画するため、専用の THREE.PerspectiveCamera を持つ。
-// ChaseCamera/MapCamera と同じ update(論理座標を絶対 ECI で算出)/sync(fo 経由で THREE.js
+// ChaseCamera/OverviewCamera と同じ update(論理座標を絶対 ECI で算出)/sync(fo 経由で THREE.js
 // へ反映)の分離に揃えることで、マーカー投影(ProjectFn)などのインフラを共有できる。
 // 実際の renderer.render() 呼び出しは PipRenderer の責務であり、ここでは行わない。
 import * as THREE from 'three/webgpu';

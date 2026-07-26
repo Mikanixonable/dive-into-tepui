@@ -1,5 +1,5 @@
 // 自機の位置・姿勢だけから決まる HUD マーカー。戦闘ビューでは軌道基準の方向マーカー
-// (Navball の代わり)と機首ボアサイト、マップビューでは自機位置マーカーを出す。
+// (Navball の代わり)と機首ボアサイト、広範囲視点では自機位置マーカーを出す。
 // Player が所有し、Player.syncPlayer から呼ばれる。
 import { Attitude, qRotate } from '../../physics/attitude';
 import { OrbitState } from '../../physics/orbital';
@@ -7,14 +7,14 @@ import { cross, scale, v3 } from '../../physics/vec3';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 
-// 戦闘ビュー専用のマーカー(マップビューではまとめて隠す)。
+// 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;
 
 export class PlayerMarkers {
   constructor(private readonly markerManager: MarkerManager) { }
 
-  sync(state: OrbitState, att: Attitude, alive: boolean, mapMode: boolean, project: ProjectFn): void {
-    if (mapMode) {
+  sync(state: OrbitState, att: Attitude, alive: boolean, overviewMode: boolean, project: ProjectFn): void {
+    if (overviewMode) {
       for (const key of COMBAT_KEYS) this.markerManager.hide(key);
       this.markerManager.setPosition('self', 'mk-self', '▷', state.r, project, 'PLAYER');
       return;

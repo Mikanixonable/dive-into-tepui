@@ -1,7 +1,7 @@
-// 軌道計画モード(マップモード)のカメラと視点操作: マップ地球中心カメラ・
-// 太陽回転系表示・フォーカス対象。「マップモード中の視点」の担当で、mapMode 中のみ
+// 軌道計画モード(マップモード)のカメラと視点操作: 地球中心の広範囲視点カメラ・
+// 太陽回転系表示・フォーカス対象。「マップモード中の視点」の担当で、overviewMode 中のみ
 // 意味を持つ。フォーカス対象(文字列 focus)はこのクラス自身が持ち、地球中心 or
-// ラベル位置への解決も MapMarkers を注入されて自力で行う(呼び出し側は「どこを見る
+// ラベル位置への解決も FocusMarkers を注入されて自力で行う(呼び出し側は「どこを見る
 // か」を一切知らずに済む)。未来ゴーストスライダー(sliderT)はカメラの視点計算に
 // 使われないため predictSystem 側の責務 — ここには置かない。
 import * as THREE from 'three/webgpu';
@@ -10,7 +10,7 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input/input';
-import { MapMarkers } from './map-markers';
+import { FocusMarkers } from './focus-markers';
 import { FloatingOrigin } from '../floating-origin';
 import { ndcToScreen, projectToNdc, ViewFrame } from '../../physics/projection';
 import { Frame, RelativeVec3, toFramePos, toInertialPos } from '../../physics/frame';
@@ -18,7 +18,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { ProjectFn } from './camera-system';
 
 const WORLD_UP = v3(0, 1, 0);
-const MAP_CAMERA_FOV = 50;
+const OVERVIEW_CAMERA_FOV = 50;
 
 // 初期視点(注視点まわりの方位角・仰角・距離)。offset_r の初期値の組み立てにだけ使う。
 const INIT_YAW = 0.7;
@@ -32,10 +32,10 @@ function sphericalOffset(yaw: number, pitch: number, dist: number): Vec3 {
   return scale(v3(cp * Math.cos(yaw), Math.sin(pitch), cp * Math.sin(yaw)), dist);
 }
 
-export class MapCamera {
+export class OverviewCamera {
   // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
   readonly camera: THREE.PerspectiveCamera;
-  private readonly fov = MAP_CAMERA_FOV;
+  private readonly fov = OVERVIEW_CAMERA_FOV;
 
   // このクラスの正データは cameraFrame 相対で持つ 2 つのベクトルだけ。回転系に「固定」される
   // (回転系の回転に自動追従する)のはこれらが相対座標だから。慣性系(ECI)への変換は frame.ts
@@ -62,14 +62,14 @@ export class MapCamera {
   constructor(
     private readonly _hud: Hud,
     _sfx: Sfx,
-    private readonly mapMarkers: MapMarkers,
+    private readonly focusMarkers: FocusMarkers,
     private readonly ephemeris: Ephemeris,
   ) {
     this.camera = new THREE.PerspectiveCamera(
-      MAP_CAMERA_FOV,
+      OVERVIEW_CAMERA_FOV,
       window.innerWidth / window.innerHeight,
       1e4,
-      C.MAP_CAMERA_FAR,
+      C.OVERVIEW_CAMERA_FAR,
     );
     // 初期 Frame は 'inertial' なので toFramePos は恒等変換。ここで brand の付与も frame.ts に任せる。
     this.offset_r = toFramePos(this._cameraFrame, 0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST), this.ephemeris);
@@ -108,7 +108,7 @@ export class MapCamera {
 
   // focus('earth' またはラベル ID)を絶対 ECI 位置へ解決する(地球中心 = 原点)。
   private resolveFocus(): Vec3 {
-    return this.focus === 'earth' ? v3(0, 0, 0) : this.mapMarkers.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
+    return this.focus === 'earth' ? v3(0, 0, 0) : this.focusMarkers.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
   }
 
   get cameraFrame(): Frame {
@@ -128,7 +128,7 @@ export class MapCamera {
     this._cameraFrame = frame;
   }
 
-  // 毎フレーム、マップカメラの位置・向きをマウス/矢印キー操作から更新する。地球中心の固定
+  // 毎フレーム、カメラの位置・向きをマウス/矢印キー操作から更新する。地球中心の固定
   // 座標系カメラなので自機位置は受け取らない。正データ(offset_r・pan_r)を frame.ts で ECI へ
   // 戻し、操作を通常の Vec3 空間で加えてから、結果を frame.ts で正データへ焼き戻す。この往復に
   // 挟まれた操作部は brand を意識しないただの Vec3 計算になる。
@@ -148,7 +148,8 @@ export class MapCamera {
     // 方位・仰角・距離を offEci から解いて操作を加え、組み直す。回転軸は Y なので仰角 pitch は
     // frame と ECI で不変(offEci.y の成分はどちらでも同じ)。戦闘ビューは yaw -= dx*0.005 なので
     // 符号を反転させて左右の回転方向を揃える。
-    const dist = Math.max(C.MAP_MIN_DIST, Math.min(C.MAP_MAX_DIST, this.dist * Math.exp(mouse.wheel * 0.0012)));
+    const dist = Math.max(C.OVERVIEW_CAMERA_MIN_DIST,
+      Math.min(C.OVERVIEW_CAMERA_MAX_DIST, this.dist * Math.exp(mouse.wheel * 0.0012)));
     const dir = norm(offEci);
     const yaw = Math.atan2(dir.z, dir.x) + mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;
     const pitch = Math.max(-1.4, Math.min(1.4,
@@ -157,7 +158,7 @@ export class MapCamera {
     offEci = sphericalOffset(yaw, pitch, dist);
 
     if (mouse.panDx !== 0 || mouse.panDy !== 0) {
-      // ピクセル → マップ世界メートル変換。THREE の lookAt(up=+Y) が作る基底と一致する
+      // ピクセル → 世界メートル変換。THREE の lookAt(up=+Y) が作る基底と一致する
       // カメラ右/上ベクトルを注視方向から組み、pan(カメラと注視点を等しく動かす真の平行移動)へ加える。
       const viewDir = scale(norm(offEci), -1);
       const right = norm(cross(viewDir, WORLD_UP));

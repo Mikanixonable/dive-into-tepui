@@ -25,10 +25,10 @@ export class LeadMarkers {
     enemies: readonly Enemy[],
     target: Enemy | null,
     simTime: number,
-    mapMode: boolean,
+    overviewMode: boolean,
     project: ProjectFn,
   ): void {
-    if (mapMode || !player.alive) {
+    if (overviewMode || !player.alive) {
       this.lastTargeted.clear();
       this.retire([]);
       return;

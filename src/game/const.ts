@@ -174,15 +174,15 @@ export const LEAD_HOLD_SEC = 20; // ターゲットを外した後も LEAD マ�
 export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
 // --- 軌道計画モード([M]) ---
-export const MAP_MIN_DIST = 9e6; // マップカメラ距離 [m]
+export const OVERVIEW_CAMERA_MIN_DIST = 9e6; // 広範囲視点カメラの注視点までの距離 [m]
 // 月軌道(平均距離 3.844e8m)全体+マージンが収まるまでカメラを引けるようにする
 // 太陽地球系のラグランジュ点 L1/L2 (約1.5e9m) が視界に収まるように上限を拡大。
-export const MAP_MAX_DIST = 4.5e9;
-export const MAP_CAMERA_FAR = 1.5e10; // マップカメラの far(MAP_MAX_DIST + 十分な余裕)
+export const OVERVIEW_CAMERA_MAX_DIST = 4.5e9;
+export const OVERVIEW_CAMERA_FAR = 1.5e10; // 広範囲視点カメラの far(OVERVIEW_CAMERA_MAX_DIST + 十分な余裕)
 export const NODE_DV_RATE = 30; // Δv 調整速度 [m/s per 実秒]
 export const NODE_DV_RATE_FINE = 2.5; // 微調整モード時
 export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
-export const MAP_LABEL_PICK_PX = 20; // マップラベル(ラグランジュ点等)のクリック判定許容距離 [px]
+export const FOCUS_LABEL_PICK_PX = 20; // 注視候補ラベル(ラグランジュ点等)のクリック判定許容距離 [px]
 export const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
 export const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
 // マップモードの DOM ギズモ(node-gizmo.ts): 選択中ノードの Δv アーム(6方向ハンドル)

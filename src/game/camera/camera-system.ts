@@ -3,10 +3,10 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { ChaseCamera } from './chase-camera';
-import { MapCamera } from './map-camera';
-import { MapViewPanel } from './map-view-panel';
+import { OverviewCamera } from './overview-camera';
+import { OverviewCameraPanel } from './overview-camera-panel';
 import { PipCamera } from './pip-camera';
-import { MapMarkers } from './map-markers';
+import { FocusMarkers } from './focus-markers';
 import { FocusGizmo } from './focus-gizmo';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
@@ -20,25 +20,27 @@ import type { Ephemeris } from '../../physics/ephemeris';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 
-// マップ視点パネルに常用のフォーカス先として並べるラベル ID。残りのラベル(ラグランジュ点など)へは
-// ラベル右クリックのメニュー(FocusGizmo)からフォーカスする。
+// 広範囲視点の操作パネルに常用のフォーカス先として並べるラベル ID。残りのラベル(ラグランジュ点
+// など)へはラベル右クリックのメニュー(FocusGizmo)からフォーカスする。
 const PANEL_FOCUS_IDS = ['earth', 'moon', 'sun'] as const;
 
-// 戦闘ビュー(ChaseCamera)とマップビュー(MapCamera)を切り替えて駆動する。
+// 戦闘ビュー(ChaseCamera)と広範囲視点(OverviewCamera)を切り替えて駆動する。
 // どちらも視点操作のみの責務のカメラで、このクラスが対称に内部保持する。
-// マップモードのフォーカス候補(mapMarkers)とその選択 UI(focusGizmo / mapViewPanel)は
-// 「どこを注視するか」= mapCamera 寄りの責務なので、ここが所有する。フォーカス選択メニューの
+// フォーカス候補(focusMarkers)とその選択 UI(focusGizmo / overviewCameraPanel)は
+// 「どこを注視するか」= overviewCamera 寄りの責務なので、ここが所有する。フォーカス選択メニューの
 // ノードメニューとの排他(右クリックの取り合い)は上位(game.ts)が調停する。
 export class CameraSystem {
   readonly chaseCamera: ChaseCamera;
-  readonly mapCamera: MapCamera;
+  readonly overviewCamera: OverviewCamera;
   readonly pipCamera = new PipCamera();
-  readonly mapMarkers: MapMarkers;
+  readonly focusMarkers: FocusMarkers;
   private readonly focusGizmo = new FocusGizmo();
-  // マップ視点の操作パネル(注視対象・視点の座標系・視点リセット)。映すのも受けるのも
-  // mapCamera の状態だけなので、この HUD 配線はここに閉じる。
-  private readonly mapViewPanel: MapViewPanel;
-  mapMode = false;
+  // 広範囲視点の操作パネル(注視対象・視点の座標系・視点リセット)。映すのも受けるのも
+  // overviewCamera の状態だけなので、この HUD 配線はここに閉じる。
+  private readonly overviewCameraPanel: OverviewCameraPanel;
+  // 広範囲視点に切り替わっているか。マップモード全体の正本は MapModeToggler.mapMode で、
+  // これはその影響先の一つ(視点・描画側の判定に使う)。
+  overviewMode = false;
   zoomActive = false;
 
   constructor(
@@ -47,24 +49,24 @@ export class CameraSystem {
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
   ) {
-    this.mapMarkers = new MapMarkers(markerManager, ephemeris);
+    this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
     this.chaseCamera = new ChaseCamera(_hud, sfx);
-    this.mapCamera = new MapCamera(_hud, sfx, this.mapMarkers, ephemeris);
+    this.overviewCamera = new OverviewCamera(_hud, sfx, this.focusMarkers, ephemeris);
     this.focusGizmo.onMenuFocus = (targetKey) => {
-      this.mapCamera.focus = targetKey;
-      const lbl = this.mapMarkers.findLabel(targetKey);
+      this.overviewCamera.focus = targetKey;
+      const lbl = this.focusMarkers.findLabel(targetKey);
       if (lbl) this._hud.hint(`${lbl.name} にフォーカス`);
     };
-    this.mapViewPanel = new MapViewPanel(_hud.root, PANEL_FOCUS_IDS.map(
-      (id) => [id, this.mapMarkers.findLabel(id)?.name ?? id] as const,
+    this.overviewCameraPanel = new OverviewCameraPanel(_hud.root, PANEL_FOCUS_IDS.map(
+      (id) => [id, this.focusMarkers.findLabel(id)?.name ?? id] as const,
     ));
-    this.mapViewPanel.onFocusSelect = (focus) => {
-      this.mapCamera.focus = focus;
-      this.mapCamera.resetPan();
+    this.overviewCameraPanel.onFocusSelect = (focus) => {
+      this.overviewCamera.focus = focus;
+      this.overviewCamera.resetPan();
     };
-    this.mapViewPanel.onViewReset = () => this.mapCamera.reset();
-    this.mapViewPanel.onFrameSelect = (frame: Frame) => {
-      this.mapCamera.cameraFrame = frame;
+    this.overviewCameraPanel.onViewReset = () => this.overviewCamera.reset();
+    this.overviewCameraPanel.onFrameSelect = (frame: Frame) => {
+      this.overviewCamera.cameraFrame = frame;
     };
   }
 
@@ -74,13 +76,13 @@ export class CameraSystem {
     input.takeRightClicks((p) => this.handleFocusRightClick(p.x, p.y));
   }
 
-  // マップラベル(フォーカス候補)の右クリック: 最寄りラベル(MAP_LABEL_PICK_PX 以内)が
+  // フォーカス候補ラベルの右クリック: 最寄りラベル(FOCUS_LABEL_PICK_PX 以内)が
   // あればフォーカス選択メニューを開いて true を返す。
   private handleFocusRightClick(clientX: number, clientY: number): boolean {
     const project = this.activeCameraProjection;
     let bestKey: string | null = null;
-    let bestD = C.MAP_LABEL_PICK_PX * C.MAP_LABEL_PICK_PX;
-    for (const lbl of this.mapMarkers.labels) {
+    let bestD = C.FOCUS_LABEL_PICK_PX * C.FOCUS_LABEL_PICK_PX;
+    for (const lbl of this.focusMarkers.labels) {
       const p = project(lbl.pos);
       if (!p.front) continue;
       const d = (p.x - clientX) * (p.x - clientX) + (p.y - clientY) * (p.y - clientY);
@@ -99,11 +101,11 @@ export class CameraSystem {
   }
 
   get activeCamera(): THREE.PerspectiveCamera {
-    return this.mapMode ? this.mapCamera.camera : this.chaseCamera.camera;
+    return this.overviewMode ? this.overviewCamera.camera : this.chaseCamera.camera;
   }
 
   get activeCameraPos(): Vec3 {
-    return this.mapMode ? this.mapCamera.position : this.chaseCamera.position;
+    return this.overviewMode ? this.overviewCamera.position : this.chaseCamera.position;
   }
 
   update(
@@ -114,14 +116,14 @@ export class CameraSystem {
   ): void {
     // [G] 追従基準の切替はカメラ自身の状態なので、視点更新と同じ場所で受ける。
     if (input.takeKey(K.followAttitudeToggle)) this.chaseCamera.toggleFollowAttitude();
-    this.zoomActive = !this.mapMode && input.down(K.gunsightZoom);
+    this.zoomActive = !this.overviewMode && input.down(K.gunsightZoom);
 
     const keyYaw = (input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0);
     const keyPitch = (input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0);
     const mouse = input.mouse();
 
-    if (this.mapMode) {
-      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, simTime);
+    if (this.overviewMode) {
+      this.overviewCamera.update(mouse, keyYaw, keyPitch, dt, simTime);
     }
     else {
       this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, player, this.zoomActive);
@@ -134,24 +136,24 @@ export class CameraSystem {
   // (activeCameraProjection)や environment-scene がこの THREE.js カメラ姿勢を読むため、
   // game.sync() の先頭で(それらより先に)呼ぶ。
   sync(fo: FloatingOrigin, displayTime: number): void {
-    if (this.mapMode) this.mapCamera.sync(fo);
+    if (this.overviewMode) this.overviewCamera.sync(fo);
     else this.chaseCamera.sync(fo);
     this.pipCamera.sync(fo);
-    // 視点パネルはマップモード中だけ表示し、点灯状態を mapCamera の現状へ揃える。フォーカスは
+    // 視点パネルは広範囲視点中だけ表示し、点灯状態を overviewCamera の現状へ揃える。フォーカスは
     // ラベル右クリックからも、座標系はリセットからも変わるので、変化点ごとの通知ではなく
     // 毎フレームここで押し出す(同値なら DOM は変わらない)。
-    this.mapViewPanel.setVisible(this.mapMode);
-    if (this.mapMode) {
-      this.mapViewPanel.setFocus(this.mapCamera.focus);
-      this.mapViewPanel.setFrame(this.mapCamera.cameraFrame);
-      this.mapMarkers.syncLabels(displayTime, this.activeCameraProjection);
+    this.overviewCameraPanel.setVisible(this.overviewMode);
+    if (this.overviewMode) {
+      this.overviewCameraPanel.setFocus(this.overviewCamera.focus);
+      this.overviewCameraPanel.setFrame(this.overviewCamera.cameraFrame);
+      this.focusMarkers.syncLabels(displayTime, this.activeCameraProjection);
     } else {
-      this.mapMarkers.hideLabels();
+      this.focusMarkers.hideLabels();
     }
   }
 
 
   get activeCameraProjection(): ProjectFn {
-    return this.mapMode ? this.mapCamera.projection : this.chaseCamera.projection;
+    return this.overviewMode ? this.overviewCamera.projection : this.chaseCamera.projection;
   }
 }

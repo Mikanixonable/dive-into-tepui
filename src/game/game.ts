@@ -53,8 +53,8 @@ export class Game {
   private readonly ephemeris: Ephemeris;
   // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
   // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/simulator/targeter 等)は
-  // public にする。マップモードのフォーカス候補ラベル(地球・月・太陽・ラグランジュ点)と
-  // その選択 UI(視点パネル・ラベル右クリックメニュー)は「どこを注視するか」= mapCamera 寄りの
+  // public にする。フォーカス候補ラベル(地球・月・太陽・ラグランジュ点)とその選択 UI
+  // (視点パネル・ラベル右クリックメニュー)は「どこを注視するか」= overviewCamera 寄りの
   // 責務なので cameraSystem が所有し、その HUD 配線も cameraSystem 自身が張る。
   readonly cameraSystem: CameraSystem;
   readonly player: Player;
@@ -92,7 +92,7 @@ export class Game {
   // 単独のオブジェクトでは決められないマーカー群。敵マーカーは「画面上で近接するものを
   // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とするので、いずれも
   // 当事者ではなくここが持つ。それ以外のマーカーは、それぞれの持ち主(Player/Targeter/
-  // Logistics/MapMarkers/PlanGuide/PredictSystem、PIP 窓の分は PipRenderer)の sync が
+  // Logistics/FocusMarkers/PlanGuide/PredictSystem、PIP 窓の分は PipRenderer)の sync が
   // 自分で出す。
   private readonly enemyMarkers: GroupedMarkers;
   private readonly leadMarkers: LeadMarkers;
@@ -287,7 +287,7 @@ export class Game {
   // このフレームに PIP(照準ズーム窓)を出すか。sync 側(窓に重ねるマーカー)と render 側
   // (描画パス)が必ず一致していなければならないので、判定はここだけに置いて両方へ渡す。
   private get pipActive(): boolean {
-    return this.player.isFiring && !this.cameraSystem.mapMode;
+    return this.player.isFiring && !this.cameraSystem.overviewMode;
   }
 
   sync(dt: number): void {
@@ -308,7 +308,7 @@ export class Game {
     // マーカーを出す側はどれもアクティブカメラの投影を必要とする(fo と同じく、
     // sync 系へ共通で配る基準)。
     const project = this.cameraSystem.activeCameraProjection;
-    const mapMode = this.cameraSystem.mapMode;
+    const overviewMode = this.cameraSystem.overviewMode;
     const simTime = this.simulator.simTime;
     const target = this.targeter.aliveTarget;
 
@@ -326,7 +326,7 @@ export class Game {
 
     this.effects.sync(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
 
-    this.targeter.sync(dt, this.floatingOrigin, this.player, this.simulator.enemies, mapMode, project);
+    this.targeter.sync(dt, this.floatingOrigin, this.player, this.simulator.enemies, overviewMode, project);
 
     // 敵マーカーだけは敵1体では決められない(画面上で近接するものをまとめる)ため、
     // 各 Enemy が用意した表示内容を集合として GroupedMarkers へ渡す。
@@ -335,13 +335,13 @@ export class Game {
       aliveEnemies.map((enemy) => enemy.markerItem(enemy === target, this.player.state.r)),
       project,
     );
-    this.leadMarkers.sync(this.player, aliveEnemies, target, simTime, mapMode, project);
+    this.leadMarkers.sync(this.player, aliveEnemies, target, simTime, overviewMode, project);
     this.pipRenderer.sync(this.pipActive, this.player, target, this.cameraSystem.pipCamera);
 
     // 予測折れ線(と未来ゴースト・PREDICT パネル)は predict が駆動する。ノードギズモの画面座標は
     // その表示座標変換を通すので、editor.sync はこの後に呼ぶ。
     this.predict.sync(this.editor.plan, orbitPeriod, simTime, this.floatingOrigin, project);
-    this.editor.sync(this.cameraSystem.mapCamera.dist);
+    this.editor.sync(this.cameraSystem.overviewCamera.dist);
 
     // 自機のモード状態を映す先が2つある(HUD ステータスパネルとタッチUIのトグルボタン)。
     // どちらも表示側なので、状態の所有者から見て対称になるようここで両方へ渡す。

@@ -17,7 +17,7 @@ export class ChaseCamera {
   // 戦闘ビュー用のカメラ。near/far は const.ts の COMBAT_CAMERA_NEAR/FAR 参照。
   // window resize には追従せず、update() 呼び出し毎にアスペクト比を自己補正する
   // (このカメラは Game 構築時に生成されるため、resize イベントリスナーを先に張れない
-  // — map-camera.ts の MapCamera と同じ方式)。
+  // — overview-camera.ts の OverviewCamera と同じ方式)。
   readonly camera = new THREE.PerspectiveCamera(
     C.BASE_FOV,
     window.innerWidth / window.innerHeight,
