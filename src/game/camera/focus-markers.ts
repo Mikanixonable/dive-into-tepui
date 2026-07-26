@@ -1,12 +1,12 @@
 // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点等)ラベルの算出と
-// HUD マーカーへの反映。MapCamera から抽出 — 「どこにラベルがあるか」の担当で、
-// カメラの視点操作(MapCamera)とは責務を分離する。
+// HUD マーカーへの反映。「どこにラベルがあるか」の担当で、カメラの視点操作
+// (OverviewCamera)とは責務を分離する。
 import { Vec3, v3 } from '../../physics/vec3';
 import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 
-export interface MapLabel {
+export interface FocusLabel {
   id: string;
   name: string;
   pos: Vec3;
@@ -25,8 +25,8 @@ const LABEL_NAMES: Record<string, string> = {
   'se-l2': '太陽-地球 L2',
 };
 
-export class MapMarkers {
-  readonly labels: MapLabel[] = Object.entries(LABEL_NAMES).map(([id, name]) => ({
+export class FocusMarkers {
+  readonly labels: FocusLabel[] = Object.entries(LABEL_NAMES).map(([id, name]) => ({
     id,
     name,
     pos: v3(0, 0, 0),
@@ -65,7 +65,7 @@ export class MapMarkers {
     for (const lbl of this.labels) this.markerManager.hide(lbl.id);
   }
 
-  findLabel(id: string): MapLabel | undefined {
+  findLabel(id: string): FocusLabel | undefined {
     return this.labels.find((l) => l.id === id);
   }
 }

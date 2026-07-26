@@ -75,18 +75,18 @@ export class Targeter {
 
   // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー・相対 AN/DN)をまとめて
   // 更新する。ターゲットの選定を持つのがここなので、その表示もここに閉じる。
-  sync(dt: number, fo: FloatingOrigin, player: Player, enemies: Enemy[], mapMode: boolean, project: ProjectFn): void {
-    this.syncOrbitLine(fo, enemies, mapMode);
+  sync(dt: number, fo: FloatingOrigin, player: Player, enemies: Enemy[], overviewMode: boolean, project: ProjectFn): void {
+    this.syncOrbitLine(fo, enemies, overviewMode);
     this.syncBoardMarkers(dt, project);
-    this.syncTargetDirMarkers(player, mapMode, project);
+    this.syncTargetDirMarkers(player, overviewMode, project);
     this.syncNodeMarkers(player, project);
   }
 
   // ハイライト線を最新のターゲット状態に合わせる。
-  private syncOrbitLine(fo: FloatingOrigin, enemies: Enemy[], mapMode: boolean): void {
+  private syncOrbitLine(fo: FloatingOrigin, enemies: Enemy[], overviewMode: boolean): void {
     const tgt = this.aliveTarget;
     for (const enemy of enemies) {
-      const showGray = mapMode && enemy.alive && enemy !== tgt;
+      const showGray = overviewMode && enemy.alive && enemy !== tgt;
       enemy.orbitLine.sync(showGray ? enemy.elements : null, fo);
     }
 
@@ -116,9 +116,9 @@ export class Targeter {
 
   // ターゲット/その反対方向を指す方向マーカー(戦闘ビューのみ)。自機の軌道基準方向マーカー
   // (player-markers.ts)と同じ扱いで、自機位置を原点に置く。
-  private syncTargetDirMarkers(player: Player, mapMode: boolean, project: ProjectFn): void {
+  private syncTargetDirMarkers(player: Player, overviewMode: boolean, project: ProjectFn): void {
     const tgt = this.aliveTarget;
-    if (mapMode || !tgt) {
+    if (overviewMode || !tgt) {
       this.markerManager.hide('tgtdir');
       this.markerManager.hide('atgdir');
       return;
