@@ -83,11 +83,11 @@ export class Belt {
     }
   }
 
-  collisionSections(dt: number, baseR: Vec3, baseV: Vec3, q: Quat): BeltSection[] {
-    return this.physics.collisionSections(dt, baseR, baseV, q);
+  collisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
+    return this.physics.collisionSections(dt, baseR, baseV, att);
   }
 
-  applyCollisionSections(dt: number, baseR: Vec3, baseV: Vec3, q: Quat): void {
-    this.physics.applyCollisionSections(dt, baseR, baseV, q);
+  applyCollisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
+    this.physics.applyCollisionSections(dt, baseR, baseV, att);
   }
 }
