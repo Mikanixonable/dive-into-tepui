@@ -212,6 +212,7 @@
 
 - game.sync(dt)
   - floatingOrigin = new FloatingOrigin(player.state.r, player.state.v) // 以降の sync 系はこの fo だけを参照する
+  - orbitPeriod / displayTime を確定 // predict.resolveDisplayTime(): 未来ゴーストのスライダーが立っている間だけ先の時刻
   - cameraSystem.sync() // 最初に呼ぶ: environment.sync とマーカー投影が今フレームのカメラ行列を読む
     - mapCamera.sync() // mapMode のみ
     - chaseCamera.sync() // !mapMode のみ
@@ -263,16 +264,19 @@
       - markerManager.set('pip-tgt'/'pip-lead') // active かつ有効ターゲットあり
       - markerManager.hide('pip-tgt'/'pip-lead') // それ以外
     // active = game.pipActive(= player.isFiring && !mapMode)。render 側と同じ値を受ける
-  - editor.sync() → syncDisplay()
-    - [!mapMode] traj.setVisible(false) + hideGizmo() → nodeGizmo.sync([], null) して return
+  - predict.sync(plan, ...) // forceCurrent(マップ外)なら hide() = 折れ線/ゴースト/パネルを隠して return
     - traj.setVisible(true)
-    - traj.update() // corners を arc へ分解し、arc ごとに PredictedLine を駆動
+    - traj.update() // corners を arc へ分解し、arc ごとに PredictedLine を駆動。表示文脈(frame/un-bake 時刻/投影)もここで更新
       - line.update() // arc ごと
         - predictTrajectory() // 入力変化 + スロットル(または force)を満たしたときのみ(重い RK4)
         - sampled.syncGeometry() // 点列 or frame が変わったときのみ頂点を bake
         - sampled.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
       - line.setVisible(false) // arc が減って余った B-1 ごと
-    - updateGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
+    - syncGhost() → markerManager.setPosition('plannedPlayer') or hide()
+    - panel.setVisible(true) / setDuration() / setFrame() / setSliderLabel() // PREDICT パネル
+  - editor.sync() // predict.sync の後: ノードの画面座標は traj の今フレームの表示文脈を通す
+    - [!editMode] hideGizmo() → nodeGizmo.sync([], null)
+    - [editMode] updateGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync()
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示
@@ -281,9 +285,6 @@
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
   - hud.tick() // ヒント/トーストのフェードアウト
-  - predict.sync() // forceCurrent なら hide() だけして return
-    - syncGhost() → markerManager.setPosition('plannedPlayer') or hide()
-    - panel.setVisible(true) / setDuration() / setFrame() / setSliderLabel() // PREDICT パネル
   - guide.update()
     - markerManager.hide('burn') // editMode で return
     - markerManager.hide('nd'/'burn') // ノード無し or !player.alive で return

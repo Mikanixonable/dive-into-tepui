@@ -20,9 +20,9 @@
 | **XX** | [physics/frame.ts](../src/physics/frame.ts) | 慣性系⇄回転系変換。Frame enum + branded 型。THREE 非依存の葉 |
 | **X** | [render/sampled-line.ts](../src/render/sampled-line.ts) `SampledLine` | 点列(時刻付き OrbitState)→単色折れ線。bake(OrbitState を toFrameState で frame 相対化し位置 r を頂点へ) + un-bake(毎フレーム剛体回転) + floating origin |
 | **B-1** | [predict/predicted-line.ts](../src/game/predict/predicted-line.ts) `PredictedLine` | arc 単位の再利用ユニット（plan 非依存）。入力変化検出 + 2 段スロットル |
-| **B-2** | [plan/plan-trajectory.ts](../src/game/plan/plan-trajectory.ts) `PlanTrajectory` | plan 隣接。corners→arc 分解、多ノードキャッシュ集約、picking/ghost 変換 |
+| **B-2** | [predict/plan-trajectory.ts](../src/game/predict/plan-trajectory.ts) `PlanTrajectory` | corners→arc 分解、多ノードキャッシュ集約、picking/ghost 変換。所有は predict 側 |
 | — | [plan/plan.ts](../src/game/plan/plan.ts) `Plan` | **純 corners**（dirty/markDirty/maybeRefresh/trajSamples 全撤去） |
-| — | [predict/predict-system.ts](../src/game/predict/predict-system.ts) | 薄いオーケストレータ（期間解決 + frame 状態 + ghost）。B-2/Plan を import せず注入で受ける |
+| — | [predict/predict-system.ts](../src/game/predict/predict-system.ts) | 期間解決 + frame 状態 + ghost + B-2 の所有・駆動。plan は `sync` の引数で参照渡し（クロージャ注入なし） |
 
 **依存方向（確認済み）**: predict-system → B-2 → B-1 → X → XX。一方向で X/XX が葉。
 
