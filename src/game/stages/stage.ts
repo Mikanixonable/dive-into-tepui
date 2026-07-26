@@ -166,12 +166,13 @@ export abstract class Stage {
 
   // 撃破(自然喪失を含む)を集計し、勝利条件判定・解放記録への橋渡しを行う(alive 遷移・
   // 撃破エフェクトは呼び出し元の Ship.attacked/checkLoss が既に済ませている — ここでは呼ばない)。
-  // byPlayer: true = 弾丸命中による正式撃破(勝利判定を行う)
-  //           false = 再突入・空力分解など物理的消滅(カウントのみ、勝利判定は起動しない)
-  recordEnemyDeath(enemy: Enemy, simTime: number, byPlayer = true): void {
-    if (!byPlayer) {
+  //           'reentry' = 再突入など物理的消滅(カウントのみ、勝利判定は起動しない)
+  //           'despawn' = 交戦圏外への離脱(カウントのみ、勝利判定は起動しない)
+  recordEnemyDeath(enemy: Enemy, simTime: number, cause: 'killed' | 'reentry' | 'despawn' = 'killed'): void {
+    if (cause !== 'killed') {
       this.scoreCounter.recordEnemyLoss();
-      this._hud.hint(`${enemy.name} 再突入により喪失`);
+      const reasonText = cause === 'reentry' ? '再突入により喪失' : '交戦圏を離脱';
+      this._hud.hint(`${enemy.name} ${reasonText}`);
       return;
     }
     this.scoreCounter.recordKill();

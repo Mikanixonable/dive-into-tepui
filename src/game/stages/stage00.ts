@@ -71,6 +71,7 @@ export class Stage00 extends Stage {
       (enemy) => this.addEnemy(enemy, simulator),
       simTime,
       this.logistics,
+      this,
     );
   }
 

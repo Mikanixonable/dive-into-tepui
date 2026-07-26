@@ -9,6 +9,7 @@ import { generateWave } from '../spawner/enemy-spawner';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
+import type { Stage } from '../stage';
 
 export class WaveManager {
   phase: 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat' = 'waiting_for_ammo';
@@ -52,12 +53,13 @@ export class WaveManager {
     addEnemy: (enemy: Enemy) => void,
     simTime: number,
     logistics: Logistics,
+    activeStage: Stage,
   ): void {
     logistics.updateLogistics(simTime, player, this.respawnLogisticsOnDespawn);
 
     if (this.phase === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(player);
     if (this.phase === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, addEnemy);
-    if (this.phase === 'active_combat') this.updateActiveCombatPhase(dt, enemies, player, addEnemy);
+    if (this.phase === 'active_combat') this.updateActiveCombatPhase(dt, enemies, player, addEnemy, simTime, activeStage);
   }
 
   // 「弾薬確保待ち」フェーズ: 弾薬を入手したらウェーブ接近フェーズへ進める。
@@ -78,8 +80,8 @@ export class WaveManager {
   }
 
   // 「交戦中」フェーズ: 圏外の敵を消しつつ、同時展開数の上限内で次のウェーブを送り込む。
-  private updateActiveCombatPhase(dt: number, enemies: readonly Enemy[], player: Player, addEnemy: (enemy: Enemy) => void): void {
-    despawnOutOfRangeEnemies(enemies, player, this.maxRange);
+  private updateActiveCombatPhase(dt: number, enemies: readonly Enemy[], player: Player, addEnemy: (enemy: Enemy) => void, simTime: number, activeStage: Stage): void {
+    despawnOutOfRangeEnemies(enemies, player, this.maxRange, simTime, activeStage);
     const activeGroups = countActiveWaveGroups(enemies);
     const limits = resolveWaveSpawnLimits(this.waveCount, activeGroups);
     if (activeGroups === 0) {
@@ -96,13 +98,11 @@ export class WaveManager {
 }
 
 // 自機から maxRange より離れた敵を交戦圏外として消す。
-function despawnOutOfRangeEnemies(enemies: readonly Enemy[], player: Player, maxRange: number): void {
+function despawnOutOfRangeEnemies(enemies: readonly Enemy[], player: Player, maxRange: number, simTime: number, activeStage: Stage): void {
   for (const enemy of enemies) {
     if (!enemy.alive) continue;
     if (len(sub(enemy.state.r, player.state.r)) <= maxRange) continue;
-    // dispose は呼ばない — simulator.cleanup() の prune() が alive=false を見て回収する
-    // (contract は simulator.ts 参照)。ここで自前 dispose すると二重解放になる。
-    enemy.alive = false;
+    enemy.despawn(simTime, activeStage);
   }
 }
 

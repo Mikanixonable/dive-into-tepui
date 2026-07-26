@@ -126,8 +126,15 @@ export class Enemy extends Ship {
     }
 
     this.alive = false;
-    activeStage.recordEnemyDeath(this, simTime, true);
+    activeStage.recordEnemyDeath(this, simTime, 'killed');
     this.destroyEffect();
+  }
+
+  // 交戦圏外への離脱によるデスポーン。
+  despawn(simTime: number, activeStage: Stage): void {
+    if (!this.alive) return;
+    this.alive = false;
+    activeStage.recordEnemyDeath(this, simTime, 'despawn');
   }
 
   // 再突入による自然死。alive がすでに false なら何もしない(多重処理防止)。
@@ -136,7 +143,7 @@ export class Enemy extends Ship {
     if (altitudeOf(this.state.r) >= C.REENTRY_ALT) return;
     this.alive = false;
     this.destroyEffect();
-    activeStage.recordEnemyDeath(this, simTime, false);
+    activeStage.recordEnemyDeath(this, simTime, 'reentry');
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は simulator を使う)。
