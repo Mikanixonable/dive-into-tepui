@@ -69,6 +69,20 @@ function memoParse<T extends THREE.Object3D>(data: object): () => T {
   };
 }
 
+// 弾(bullet/plasma)専用: 大量発射されるため、geometry/material をクローンせず
+// Object3D 階層だけ複製して共有する(THREE の Object3D.clone(true) は既定で
+// geometry/material を参照共有するので、cloneIndependent と違い追加の
+// .clone() は行わない)。弾本体のマテリアルは発射後に書き換えられないので
+// 個体ごとの独立コピーは不要 — これにより毎発の生成で新規 GPU リソースが
+// 増え続けるリークを防ぐ(BUG_REPORT.md B1)。
+function memoParseShared<T extends THREE.Object3D>(data: object): () => T {
+  let cached: T | null = null;
+  return () => {
+    if (!cached) cached = loader.parse(data) as T;
+    return cached.clone(true) as T;
+  };
+}
+
 const parsePlayer = memoParse<THREE.Group>(playerData);
 const parseEnemy = memoParse<THREE.Group>(enemyData);
 const parseStage0EnemyA = memoParse<THREE.Group>(stage0EnemyDataA);
@@ -76,8 +90,8 @@ const parseStage0EnemyB = memoParse<THREE.Group>(stage0EnemyDataB);
 const parseStage0EnemyC = memoParse<THREE.Group>(stage0EnemyDataC);
 const parseMagazine = memoParse<THREE.Group>(magazineData);
 const parseAmmo = memoParse<THREE.Group>(ammoData);
-const parseBullet = memoParse<THREE.Mesh>(bulletData);
-const parsePlasma = memoParse<THREE.Mesh>(plasmaData);
+const parseBullet = memoParseShared<THREE.Mesh>(bulletData);
+const parsePlasma = memoParseShared<THREE.Mesh>(plasmaData);
 const parseCasing = memoParse<THREE.Mesh>(casingData);
 const parseDebrisChunk = memoParse<THREE.Mesh>(debrisChunkData);
 const parseDebrisPanel = memoParse<THREE.Mesh>(debrisPanelData);
@@ -157,21 +171,31 @@ export function buildStage0EnemyShip(accent = 0x3dc6ff, typeIndex = 0): THREE.Gr
   return g;
 }
 
+// 弾のハロー(光芒)はモジュールスコープで 1 個だけ生成して全弾で共有する
+// (毎発生成すると GPU リソースが撃つたびにリークする — BUG_REPORT.md B1)。
+// 色・形状は固定なので個体ごとの独立コピーは不要。
+let bulletHaloGeom: THREE.CylinderGeometry | null = null;
+let bulletHaloMat: THREE.MeshBasicMaterial | null = null;
+
 export function buildBulletMesh(): THREE.Group {
   const m = parseBullet();
   m.frustumCulled = false;
 
   // 敵のプラズマ弾と同様、自機の弾丸にも光芒(半透明の加算合成ハロー)を付ける
-  const haloMat = new THREE.MeshBasicMaterial({
-    color: 0xffc86e,
-    transparent: true,
-    opacity: 0.35,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  const haloGeom = new THREE.CylinderGeometry(0.5, 0.5, 7, 8);
-  haloGeom.rotateX(Math.PI / 2); // 進行方向(Z軸)に合わせる
-  const halo = new THREE.Mesh(haloGeom, haloMat);
+  if (!bulletHaloGeom) {
+    bulletHaloGeom = new THREE.CylinderGeometry(0.5, 0.5, 7, 8);
+    bulletHaloGeom.rotateX(Math.PI / 2); // 進行方向(Z軸)に合わせる
+  }
+  if (!bulletHaloMat) {
+    bulletHaloMat = new THREE.MeshBasicMaterial({
+      color: 0xffc86e,
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+  }
+  const halo = new THREE.Mesh(bulletHaloGeom, bulletHaloMat);
 
   const g = new THREE.Group();
   g.add(m);
@@ -181,38 +205,60 @@ export function buildBulletMesh(): THREE.Group {
 
 let plasmaGeomFixed = false;
 
+// プラズマ弾の本体色は敵の accent(所属グループの識別色。取りうる値は
+// STAGE0_GROUP_ACCENTS 等ごく少数)ごとに決まり、発射後に書き換わることはない。
+// そのため accent 値ごとにマテリアルを 1 個だけキャッシュして全弾で共有する
+// (毎発 clone/生成すると GPU リソースが撃つたびにリークする — BUG_REPORT.md B1)。
+// ハロー用ジオメトリは色に依存しないため単一インスタンスを共有し、
+// ハロー用マテリアルのみ accent ごとにキャッシュする。
+const plasmaBodyMatByAccent = new Map<number, THREE.MeshBasicMaterial>();
+const plasmaHaloMatByAccent = new Map<number, THREE.MeshBasicMaterial>();
+let plasmaHaloGeom: THREE.CylinderGeometry | null = null;
+
 export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Group {
   const m = parsePlasma();
   if (!plasmaGeomFixed) {
     // plasma.json (CylinderGeometry) は toJSON() がコンストラクタ引数のみを保存する
     // 仕様のため、export-models.mjs 側で焼き込んだ rotateX() 補正がロード時に失われ、
     // 円柱の長さ軸が既定の Y のままになる(下の halo は毎回ランタイムで rotateX() し
-    // ているので正しく Z 軸に揃う)。memoParse は geometry を clone しないため全インス
-    // タンスがこの共有ジオメトリを参照する。一度だけ補正を掛け直す(毎回だと累積回転
-    // してしまう)。
+    // ているので正しく Z 軸に揃う)。memoParseShared は geometry を clone しないため
+    // 全インスタンスがこの共有ジオメトリを参照する。一度だけ補正を掛け直す
+    // (毎回だと累積回転してしまう)。
     m.geometry.rotateX(Math.PI / 2);
     plasmaGeomFixed = true;
   }
-  const mat = m.material as THREE.MeshBasicMaterial;
-  mat.color.set(accent);
-  mat.blending = THREE.AdditiveBlending;
+  let bodyMat = plasmaBodyMatByAccent.get(accent);
+  if (!bodyMat) {
+    // テンプレートのマテリアルを accent ごとに 1 度だけ複製し、以後はキャッシュを使い回す
+    bodyMat = (m.material as THREE.MeshBasicMaterial).clone();
+    bodyMat.color.set(accent);
+    bodyMat.blending = THREE.AdditiveBlending;
+    plasmaBodyMatByAccent.set(accent, bodyMat);
+  }
+  m.material = bodyMat;
   m.frustumCulled = false;
-  
+
   // スケールを大きくして視認性を上げる
   m.scale.set(1.5, 1.5, 1.5);
-  
+
   // 弾の発光は弾本体と同じく円柱状にして
-  const haloMat = new THREE.MeshBasicMaterial({
-    color: accent,
-    transparent: true,
-    opacity: 0.35,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false
-  });
-  const haloGeom = new THREE.CylinderGeometry(1.5, 1.5, 16, 8);
-  haloGeom.rotateX(Math.PI / 2); // 進行方向(Z軸)に合わせる
-  const halo = new THREE.Mesh(haloGeom, haloMat);
-  
+  if (!plasmaHaloGeom) {
+    plasmaHaloGeom = new THREE.CylinderGeometry(1.5, 1.5, 16, 8);
+    plasmaHaloGeom.rotateX(Math.PI / 2); // 進行方向(Z軸)に合わせる
+  }
+  let haloMat = plasmaHaloMatByAccent.get(accent);
+  if (!haloMat) {
+    haloMat = new THREE.MeshBasicMaterial({
+      color: accent,
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    plasmaHaloMatByAccent.set(accent, haloMat);
+  }
+  const halo = new THREE.Mesh(plasmaHaloGeom, haloMat);
+
   const g = new THREE.Group();
   g.add(m);
   g.add(halo);
