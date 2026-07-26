@@ -1,6 +1,6 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const TerserPlugin = require('minimizer-webpack-plugin');
+const { EsbuildPlugin } = require('esbuild-loader');
 
 module.exports = {
   entry: './src/main.ts',
@@ -11,7 +11,10 @@ module.exports = {
     rules: [
       {
         test: /\.ts$/,
-        use: 'ts-loader',
+        loader: 'esbuild-loader',
+        options: {
+          target: 'es2015'
+        },
         exclude: /node_modules/,
       },
       {
@@ -35,12 +38,9 @@ module.exports = {
       // 本番ビルドのみ両者が食い違い、getMaterialNodeClass() が null を返して
       // 全マテリアルが照明モデルを持たない素の NodeMaterial にフォールバックする
       // (地球が陰影のない白色で発光して見えるバグの原因)。クラス名を残して回避する。
-      new TerserPlugin({
-        terserOptions: {
-          compress: { passes: 2 },
-          keep_classnames: true,
-          keep_fnames: true,
-        },
+      new EsbuildPlugin({
+        target: 'es2015',
+        keepNames: true,
       }),
     ],
   },
