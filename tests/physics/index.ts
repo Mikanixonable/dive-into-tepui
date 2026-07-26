@@ -6,11 +6,17 @@ import { register as registerOrbital } from './orbital.test';
 import { register as registerAttitude } from './attitude.test';
 import { register as registerAtmosphere } from './atmosphere.test';
 import { register as registerEphemeris } from './ephemeris.test';
+import { register as registerProjection } from './projection.test';
+import { register as registerPredict } from './predict.test';
+import { register as registerFrame } from './frame.test';
 
 registerVec3();
 registerOrbital();
 registerAttitude();
 registerAtmosphere();
 registerEphemeris();
+registerProjection();
+registerPredict();
+registerFrame();
 
 runAll();
