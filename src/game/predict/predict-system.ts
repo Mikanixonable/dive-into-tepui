@@ -1,63 +1,71 @@
-// 軌道計画(Plan)の「未来表示」を担う薄いオーケストレータ。mapMode の三責務
-// (camera / plan編集 / 軌道予測)のうちの「軌道予測」に相当する。予測折れ線の描画・
-// キャッシュ・表示座標変換・クリック判定は editor 所有の PlanTrajectory(B-2)が担い、ここは:
+// 軌道計画(Plan)の「未来表示」を担うオーケストレータ。mapMode の三責務
+// (camera / plan編集 / 軌道予測)のうちの「軌道予測」に相当する。担うのは:
 //   ① 表示期間: sliderT / displayTime / resolveDisplayTime と durationKey→秒の解決。
 //   ② 予測軌道を描く表示座標系 trajectoryFrame。カメラを固定する座標系(MapCamera.cameraFrame)
 //      とは独立で、「軌道の形をどの座標系で見るか」と「視点をどの座標系に固定するか」を別々に選べる。
-//   ③ 未来ゴースト: sliderT に応じた未来時刻の予定 player 位置マーカー(plannedPlayer)の表示。
-//      サンプル(sampleAt)と表示座標変換(toDisplay)は B-2 のものを注入で受け取り、Plan も B-2 も
-//      import しない。
-//   ④ 操作パネル(PredictPanel)の所有。映すのも受けるのも上記 ①〜③ の predict 自身の状態だけ。
-import { OrbitState, R_EARTH } from '../../physics/orbital';
-import { Vec3, len } from '../../physics/vec3';
+//   ③ 予測折れ線 PlanTrajectory(B-2)の所有と駆動。①②はどちらもこれへ流し込む値なので、
+//      予測キャッシュ・表示座標変換・画面判定を持つ B-2 はここが持つのが自然。編集側
+//      (PlanEditor)へは B-2 のインスタンスを参照共有し、画面判定だけを使わせる。
+//   ④ 未来ゴースト: sliderT に応じた未来時刻の予定 player 位置マーカー(plannedPlayer)の表示。
+//   ⑤ 操作パネル(PredictPanel)の所有。映すのも受けるのも上記 ①〜④ の predict 自身の状態だけ。
+import * as THREE from 'three/webgpu';
+import { R_EARTH } from '../../physics/orbital';
+import { len } from '../../physics/vec3';
 import { Frame } from '../../physics/frame';
+import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { fmtMarkerDist } from '../hud/utils';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn } from '../camera/camera-system';
+import { FloatingOrigin } from '../floating-origin';
+import { Plan } from '../plan/plan';
+import { PlanTrajectory } from './plan-trajectory';
 import { PredictPanel } from './predict-panel';
 
 export type PredictDurationKey = 'orbit' | 'day' | 'week' | 'month';
 
-// 時刻 → 予測サンプルのアクセサ(B-2 の sampleAt を束縛して渡す)。
-export type SampleAtFn = (t: number) => OrbitState | null;
-
-// ワールド点(時刻 t の r)を表示座標系(太陽回転系対応)へ変換する(B-2 の toDisplay を渡す)。
-export type ToDisplayFn = (r: Vec3, t: number) => Vec3;
-
 export class PredictSystem {
-  private _forceCurrent = false; // 未来表示を禁止するフラグ。mapMode とは独立
+  // 未来表示を禁止するフラグ。mapMode とは独立(初期値 = 戦闘ビューなので禁止)。
+  private _forceCurrent = true;
   get forceCurrent(): boolean {
     return this._forceCurrent;
   }
   set forceCurrent(v: boolean) {
     this._forceCurrent = v;
-    /* 
+    /*
     if (v) {
       // 強制的に未来表示を禁止するべきだ。
-      this.sliderT = 0; 
+      this.sliderT = 0;
       // panelのスライダーも強制的に0にする。いまは配線がないから保留。
     }
     */
   }
 
   durationKey: PredictDurationKey = 'day';
-  // 予測折れ線を描く表示座標系。PlanTrajectory はこれを毎フレーム受け取って bake/un-bake する。
+  // 予測折れ線を描く表示座標系。毎フレーム PlanTrajectory へ渡して bake/un-bake させる。
   trajectoryFrame: Frame = 'inertial';
   // マップモードの未来ゴーストスライダー位置(0..1、0 でゴーストマーカー非表示)。
   // カメラの視点計算には無関係な、予測表示側の状態のためここが正(MapCamera には置かない)。
   sliderT = 0;
-  // 表示期間が変わったときの通知。予測キャッシュをその場で引き直す(スロットル待ちを挟まない)
-  // ために game が PlanTrajectory へ配線する。
-  onDurationChange: (() => void) | null = null;
+
+  // 多ノード予測折れ線 + per-arc キャッシュ(B-2)。編集側の PlanEditor は画面判定
+  // (projectPoint / nearestSample)のためにこの参照を共有する。
+  readonly traj: PlanTrajectory;
 
   private readonly panel: PredictPanel;
 
-  constructor(hudRoot: HTMLElement, private readonly markerManager: MarkerManager) {
+  constructor(
+    hudRoot: HTMLElement,
+    private readonly markerManager: MarkerManager,
+    private readonly ephemeris: Ephemeris,
+    scene: THREE.Scene,
+  ) {
+    this.traj = new PlanTrajectory(scene);
     this.panel = new PredictPanel(hudRoot);
     this.panel.onDurationSelect = (key) => {
       this.durationKey = key;
-      this.onDurationChange?.();
+      // 表示期間が変わった瞬間に引き直す(窓の滑りと区別できないのでスロットル待ちを挟まない)。
+      this.traj.invalidate();
     };
     this.panel.onFrameSelect = (frame) => {
       this.trajectoryFrame = frame;
@@ -91,61 +99,38 @@ export class PredictSystem {
     return this.displayTime(simTime, this.durationSec(orbitPeriod));
   }
 
-  // 予定 player の未来位置(スライダー)のラベル文字列。B-2 の sampleAt を受け、時刻 t の
-  // 高度・経過時間を表示する。
-  plannedPlayerLabel(sampleAt: SampleAtFn, orbitPeriod: number | null, simTime: number): string {
-    const t = this.displayTime(simTime, this.durationSec(orbitPeriod));
-    const s = sampleAt(t);
-    if (!s) return '';
-    const tRel = t - simTime;
-    const alt = len(s.r) - R_EARTH;
-    const h = Math.floor(tRel / 3600);
-    const m = Math.floor((tRel % 3600) / 60);
-    return `T+${h}h${String(m).padStart(2, '0')}m 高度 ${fmtMarkerDist(alt, 0)}`;
-  }
-
-  // 毎フレーム(マップモード中のみ呼ぶ): 未来ゴーストマーカーと操作パネルを更新する。
-  // 折れ線の描画・表示座標変換は B-2(PlanTrajectory)が担うので、ここは未来位置の sampleAt と
-  // 表示座標変換 toDisplay を注入で受け取り、マーカーを置くだけ。
-  sync(
-    sampleAt: SampleAtFn,
-    toDisplay: ToDisplayFn,
-    orbitPeriod: number | null,
-    simTime: number,
-    project: ProjectFn,
-  ): void {
+  // 毎フレーム呼ぶ。マップモード中(未来表示が許される間)は予測折れ線・未来ゴーストマーカー・
+  // 操作パネルを駆動し、それ以外では後始末する。予測は plan の corners(frozen アンカー +
+  // 凍結ノード)だけの純関数で、player.live には依存しない。
+  sync(plan: Plan, orbitPeriod: number | null, simTime: number, fo: FloatingOrigin, project: ProjectFn): void {
     if (this.forceCurrent) {
       this.hide();
       return;
     }
-    this.syncGhost(sampleAt, toDisplay, orbitPeriod, simTime, project);
+    const duration = this.durationSec(orbitPeriod);
+    this.traj.setVisible(true);
+    this.traj.update(plan, simTime + duration, this.ephemeris, this.trajectoryFrame, simTime, fo, project);
+    this.syncGhost(duration, simTime, project);
     this.panel.setVisible(true);
     this.panel.setDuration(this.durationKey);
     this.panel.setFrame(this.trajectoryFrame);
-    this.panel.setSliderLabel(
-      this.sliderT > 0 ? this.plannedPlayerLabel(sampleAt, orbitPeriod, simTime) : null,
-    );
+    this.panel.setSliderLabel(this.sliderT > 0 ? this.plannedPlayerLabel(duration, simTime) : null);
   }
 
-  // マップモード外の後始末: ゴーストマーカーと操作パネルを隠す。
+  // マップモード外の後始末: 予測折れ線・ゴーストマーカー・操作パネルを隠す。
   hide(): void {
+    this.traj.setVisible(false);
     this.markerManager.hide('plannedPlayer');
     this.panel.setVisible(false);
   }
 
-  private syncGhost(
-    sampleAt: SampleAtFn,
-    toDisplay: ToDisplayFn,
-    orbitPeriod: number | null,
-    simTime: number,
-    project: ProjectFn,
-  ): void {
+  private syncGhost(duration: number, simTime: number, project: ProjectFn): void {
     if (this.sliderT <= 0) {
       this.markerManager.hide('plannedPlayer');
       return;
     }
-    const t = this.displayTime(simTime, this.durationSec(orbitPeriod));
-    const sample = sampleAt(t);
+    const t = this.displayTime(simTime, duration);
+    const sample = this.traj.sampleAt(t);
     if (!sample) {
       this.markerManager.hide('plannedPlayer');
       return;
@@ -154,9 +139,21 @@ export class PredictSystem {
       'plannedPlayer',
       'mk-planned',
       '⬡',
-      toDisplay(sample.r, t),
+      this.traj.toDisplay(sample.r, t),
       project,
-      this.plannedPlayerLabel(sampleAt, orbitPeriod, simTime),
+      this.plannedPlayerLabel(duration, simTime),
     );
+  }
+
+  // 予定 player の未来位置(スライダー)のラベル文字列。時刻 t の高度・経過時間を表示する。
+  private plannedPlayerLabel(duration: number, simTime: number): string {
+    const t = this.displayTime(simTime, duration);
+    const s = this.traj.sampleAt(t);
+    if (!s) return '';
+    const tRel = t - simTime;
+    const alt = len(s.r) - R_EARTH;
+    const h = Math.floor(tRel / 3600);
+    const m = Math.floor((tRel % 3600) / 60);
+    return `T+${h}h${String(m).padStart(2, '0')}m 高度 ${fmtMarkerDist(alt, 0)}`;
   }
 }

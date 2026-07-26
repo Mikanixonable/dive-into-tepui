@@ -118,17 +118,6 @@ predictが空気抵抗を計算していない。predictは弾体衝突やthrott
 simulatorのスナップショットを取って先行させる…？　これはthrottleや衝突などによって実entityとずれたときにすべてが再計算になるからパフォーマンスが悪い。ダメ。
 逆に、predictだけを高速化に徹底させるならweb-workerに切り出すのが良い。
 
-## this.predict.syncの引数がキモい
-これは不要なクロージャ注入に見えるので避けたい。
-
-PlanTrajectory（planに従った予測キャッシュ）の配置を再検討する。依存関係は以下の二つ
-- editorからはクリック判定が欲しいのと、planを更新したら一緒にキャッシュも更新したい。
-- predictからは、軌道線やプレイヤーの未来マーカーのために必要。
-
-predict側の方がTrajの責任に近いので、PlanTrajectoryはpredict側に置く。クリック判定や更新通知は、edtorのupdateの引数にplanSystemを参照渡しすることで何とかする。
-
-planのクリック判定についてはもとからバグっているのでverifyは不要。typecheckだけしてほしい。
-
 ## 引数整理
 参照されていない引数を減らしていきたい
 hud、sfx注入パターンのなかで今後必要なくなる可能性が高いものを分離。
