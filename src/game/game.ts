@@ -32,6 +32,7 @@ import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
 import { Ephemeris } from '../physics/ephemeris';
 import { MapModeToggler } from './map-mode-toggler';
+import { NanWatchdog } from './nan-watchdog';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -105,6 +106,10 @@ export class Game {
   readonly targeter: Targeter;
   readonly simulator: Simulator;
   private readonly pipRenderer: PipRenderer;
+  // シミュレーション状態の非有限値(NaN/Infinity)を最初に検出したフェーズごと報告する見張り。
+  // 汚染は描画の暗転・敵の「再突入」誤表示・接触音の鳴りっぱなしなど別の顔で表面化するため、
+  // 発生した瞬間に記録する(nan-watchdog.ts の冒頭コメント参照)。
+  private readonly nanWatchdog: NanWatchdog;
 
   constructor(
     gs: GameScene,
@@ -167,6 +172,8 @@ export class Game {
       this.markerManager,
     );
 
+    this.nanWatchdog = new NanWatchdog(this._hud);
+
     this.floatingOrigin = new FloatingOrigin(this.player.state.r, this.player.state.v);
   }
 
@@ -203,6 +210,8 @@ export class Game {
     // ポーズ中の処理
     if (this._isPaused) { return; }
 
+    this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+
     // プレイヤーの HP 回復・移動/発射の試行
     this.player.behave({
       dt,
@@ -215,8 +224,12 @@ export class Game {
       addBullet: (bullet) => this.simulator.addBullet(bullet),
     });
 
+    this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+
     // ステージの更新 (敵の行動・スポーン管理・スコア加算・勝敗判定を含む)
     this.activeStage.update(dt, this.player, this.simulator, this.simulator.simTime, this.simSpeedManager);
+
+    this.nanWatchdog.checkPlayer('activeStage.update', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
 
     this.simSpeedManager.update(this.simulator.simTime);
     const simDt = dt * this.simSpeedManager.simSpeed;
@@ -225,6 +238,10 @@ export class Game {
       this.simSpeedManager.canResolvePhysicalCollisions, // resolveCollision
       true, // doSubstep 
     );
+
+    // 積分・弾命中・剛体接触・姿勢積分をまとめて通過した直後。全エンティティを走査する
+    // (自機より先に薬莢や破片が壊れ、接触を通じて自機へ伝播することがあるため)。
+    this.nanWatchdog.checkAll('simulator.stepSimulation', this.player, this.simulator, dt, simDt);
 
     this.targeter.markBoardCrossings(this.player, this.simulator);
 
