@@ -91,8 +91,6 @@ const STYLE = `
 .mk-burn { color: ${ACCENT}; text-shadow: 0 0 8px rgba(${ACCENT_RGB}, 0.7); }
 .mk-self { color: #dfe3e8; }
 .mk-ammo { color: ${ACCENT_SOFT}; text-shadow: 0 0 6px rgba(255,144,64,0.6), 0 0 3px #000; }
-.mk-pip-crosshair { color: ${ACCENT}; }
-.mk-pip-crosshair .sym { font-size: 24px; }
 #hud .warn-hot { color: ${ACCENT}; }
 #hud-plan {
   position: absolute; bottom: 40px; left: 12px; min-width: 280px;
