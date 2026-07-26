@@ -136,7 +136,7 @@ export class Player extends Ship {
 
     // 死亡済み: 射撃、移動、hp回復はできない
     if (!this.alive) {
-      this.thrustFn = null;
+      this.thrust = null;
       return;
     }
 
@@ -146,13 +146,13 @@ export class Player extends Ship {
     // 実時間で進行し続けるため、PlayerFire にそれだけを進めさせる。
     if (editMode) {
       this.fire.tickMapMode(dt);
-      this.thrustFn = null;
+      this.thrust = null;
       return;
     }
 
     this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet);
 
-    this.thrustFn = this.throttle.updateThrustState(input, simSpeed, this.att, this.state);
+    this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att);
   }
 
   toggleFineAttitude(): void {

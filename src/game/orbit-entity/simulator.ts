@@ -1,11 +1,8 @@
 // エンティティ配列の所有と、その受動的な更新(軌道積分・慣性姿勢・寿命管理)。
 // 描画同期や能動的な更新(AI・発射・スポーン判断)は game.ts / 各 Stage(stages/)/
-// Enemy.behave が担い、追加は addXxx 経由で行う。scene への add/remove は各 entity
-// 自身の責務(entities.ts)なので、Simulator は配列管理・上限管理・寿命判定に専念する。
 import { stepAttitude } from '../../physics/attitude';
-import { envAccel } from '../../physics/envaccel';
-import { ExtraAccel, stepOrbitRK4 } from '../../physics/orbital';
-import { add, Vec3 } from '../../physics/vec3';
+import { IAccelProvider, stepOrbitRK4 } from '../../physics/orbital';
+import { Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { HitSystem } from './hit';
@@ -18,8 +15,9 @@ import type { Stage } from '../stages/stage';
 import { CollisionPhysics } from './collision';
 import { Sfx } from '../../audio/sfx';
 
+import { envAccelScalar } from '../../physics/envaccel';
 
-export class Simulator {
+export class Simulator implements IAccelProvider {
   readonly enemies: Enemy[] = [];
   readonly bullets: Bullet[] = [];
   // casings/debris は DebrisPiece の kind によって振り分けられる別々の上限プール
@@ -84,13 +82,18 @@ export class Simulator {
 
   // ------------------------------------------------------------ 積分
 
+  private activeSunPos!: Vec3;
+  private activeMoonPos!: Vec3;
+  private activeBcInv!: number;
+  private activeThrust: Vec3 | null = null;
 
-  // entity.thrustFn(既定 null = 無推力)と環境加速度を合成する。
-  // bcInv は弾道係数の逆数で、エンティティの種別(機体/弾/小デブリ)ごとに呼び出し側が選ぶ。
-  private makeExtraAccel(entity: OrbitEntity, sunPos: Vec3, moonPos: Vec3, bcInv: number): ExtraAccel {
-    const { thrustFn } = entity;
-    return thrustFn ? (r, v) => add(thrustFn(r, v), envAccel(r, v, sunPos, moonPos, bcInv))
-     : (r, v) => envAccel(r, v, sunPos, moonPos, bcInv);
+  computeExtraAccel(rx: number, ry: number, rz: number, vx: number, vy: number, vz: number, out: { x: number; y: number; z: number; }): void {
+    envAccelScalar(rx, ry, rz, vx, vy, vz, this.activeSunPos, this.activeMoonPos, this.activeBcInv, out);
+    if (this.activeThrust) {
+      out.x += this.activeThrust.x;
+      out.y += this.activeThrust.y;
+      out.z += this.activeThrust.z;
+    }
   }
 
   // simDt(このフレームで積算すべきシミュレーション時間)は game.ts が
@@ -158,7 +161,11 @@ export class Simulator {
     bcInv: number,
   ): void {
     if (!entity.alive) return;
-    entity.state = stepOrbitRK4(entity.state, dt, this.makeExtraAccel(entity, sunPos, moonPos, bcInv));
+    this.activeSunPos = sunPos;
+    this.activeMoonPos = moonPos;
+    this.activeBcInv = bcInv;
+    this.activeThrust = entity.thrust;
+    entity.state = stepOrbitRK4(entity.state, dt, this);
   }
 
   // ------------------------------------------------------------ 回転運動

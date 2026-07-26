@@ -1,6 +1,6 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { altitudeOf, elementsFromState, ExtraAccel, OrbitState, orbitState } from '../../physics/orbital';
+import { altitudeOf, elementsFromState, OrbitState, orbitState } from '../../physics/orbital';
 import { Attitude } from '../../physics/attitude';
 import { Vec3, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
@@ -53,7 +53,7 @@ export class OrbitEntity {
   alive = true;
   mass = 1; // 剛体接触の換算質量
   collideRadius?: number; // 剛体接触半径 [m]。未設定 = 剛体接触に参加しない
-  thrustFn: ExtraAccel | null = null;
+  thrust: Vec3 | null = null;
   // 機体座標系トルク。回転制御を持つ entity(自機は PlayerThrottle)が毎フレーム
   // 書き込み、simulator の stepAttitudes がまとめて積分する。既定ゼロ = 自由回転。
   torque: Vec3 = v3();

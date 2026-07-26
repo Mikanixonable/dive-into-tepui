@@ -3,7 +3,6 @@
 // 呼び出しごとに引数として渡す — 正データの二重管理を避けるため。
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
-import { ExtraAccel, OrbitState } from '../../physics/orbital';
 import { Vec3, add, len, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input/input';
@@ -52,9 +51,9 @@ export class PlayerThrottle {
     this.thrustAccelVec = v3();
   }
 
-  updateThrustState(input: Input, simSpeed: SimSpeedManager, att: Attitude, state: OrbitState): ExtraAccel | null {
-    const thrustFn = this.buildThrustAccel(input, att.q);
-    if (!simSpeed.canPlayerThrust || !thrustFn) {
+  updateThrustState(input: Input, simSpeed: SimSpeedManager, att: Attitude): Vec3 | null {
+    const thrust = this.buildThrust(input, att.q);
+    if (!simSpeed.canPlayerThrust || !thrust) {
       this._sfx.setThrust(false);
       this.thrustAccelVec = v3();
       this.thrustVizDir = null;
@@ -62,22 +61,20 @@ export class PlayerThrottle {
     }
 
     this._sfx.setThrust(true);
-    this.thrustAccelVec = thrustFn(state.r, state.v);
+    this.thrustAccelVec = thrust;
     this.thrustVizDir = norm(this.thrustAccelVec);
-    return thrustFn;
+    return thrust;
   }
 
-  private buildThrustAccel(input: Input, q: Attitude['q']): ExtraAccel | null {
+  private buildThrust(input: Input, q: Attitude['q']): Vec3 | null {
     const axX = (input.down(K.thrustLeft) ? 1 : 0) + (input.down(K.thrustRight) ? -1 : 0);
     const axY = (input.down(K.thrustUp) ? 1 : 0) + (input.down(K.thrustDown) ? -1 : 0);
     const axZ = (input.down(K.thrustForward) ? 1 : 0) + (input.down(K.thrustBackward) ? -1 : 0);
     if (axX === 0 && axY === 0 && axZ === 0) return null;
 
     const thrustAccel = C.THROTTLE_LEVELS[this.throttleIdx]!;
-    return (): Vec3 => {
-      const dir = norm(v3(axX, axY, axZ));
-      return qRotate(q, scale(dir, thrustAccel));
-    };
+    const dir = norm(v3(axX, axY, axZ));
+    return qRotate(q, scale(dir, thrustAccel));
   }
 
   // 入力から機体座標系トルクを算出して返すだけ。姿勢積分(stepAttitude)は
