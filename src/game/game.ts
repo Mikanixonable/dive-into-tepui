@@ -277,7 +277,8 @@ export class Game {
       this.editor.plan.firstNode(),
     );
     this.mapModeToggler.update(
-      this.input, this.activeStage.isPlaying, this.editor, this.touchControls, this.cameraSystem, this.predict
+      this.input, this.activeStage.isPlaying, this._isPaused,
+      this.editor, this.touchControls, this.cameraSystem, this.predict
     );
     this.editor.handleInput(this.input);
   }

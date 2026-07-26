@@ -52,21 +52,27 @@ export class MapModeToggler {
   }
 
   // 毎フレーム呼ぶ。[M] の開閉を受け、決着後は開いたままにならないよう閉じる。
+  // ポーズ中は [M] の入力そのものを無視する(キーも消費しない)が、既に開いているマップを
+  // 強制的に閉じることはしない — ポーズ解除後は開いていた状態のまま戻る。
   update(
     input: Input,
     isPlaying: boolean,
+    isPaused: boolean,
     editor: PlanEditor,
     touchControls: TouchControls | null,
     cameraSystem: CameraSystem,
     predict: PredictSystem,
   ): void {
-    // ポーズ中、死亡後はマップモードを開けない
+    // 決着後はマップモードを開けない(既に開いていれば閉じる)
     if (!isPlaying) {
       if (this._mapMode) { // 開いていたら閉じる
         this.close(editor, touchControls, cameraSystem, predict);
       }
       return;
     }
+
+    // ポーズ中は [M] を無視する(開いている/閉じているどちらの状態も維持する)
+    if (isPaused) return;
 
     if (input.takeKey(K.toggleMapMode)) { // 入力があったとき
       if (!this._mapMode) { // 閉じていたら開く
