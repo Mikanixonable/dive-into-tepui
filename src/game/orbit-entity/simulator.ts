@@ -178,13 +178,14 @@ export class Simulator {
   // ------------------------------------------------------------ 寿命管理
 
   // 不要になったものを除去する
-  cleanup(dt: number, activeStage: Stage): void {
+  // playerPos は弾の「自機から離れすぎたら消す」判定に使う(bullet.ts 参照)。
+  cleanup(dt: number, activeStage: Stage, playerPos: Vec3): void {
     // 自滅要因をチェック。もし不要になっていたらalive=falseになる。
-    for (const e of this.enemies) e.checkLoss(dt, this.simTime, activeStage);
-    for (const b of this.bullets) b.checkLoss(dt, this.simTime, activeStage);
-    for (const cs of this.casings) cs.checkLoss(dt, this.simTime, activeStage);
-    for (const d of this.debris) d.checkLoss(dt, this.simTime, activeStage);
-    for (const ammo of this.ammos) ammo.checkLoss(dt, this.simTime, activeStage);
+    for (const e of this.enemies) e.checkLoss(dt, this.simTime, activeStage, playerPos);
+    for (const b of this.bullets) b.checkLoss(dt, this.simTime, activeStage, playerPos);
+    for (const cs of this.casings) cs.checkLoss(dt, this.simTime, activeStage, playerPos);
+    for (const d of this.debris) d.checkLoss(dt, this.simTime, activeStage, playerPos);
+    for (const ammo of this.ammos) ammo.checkLoss(dt, this.simTime, activeStage, playerPos);
     // alive=false になったものを配列から除去して scene から片付ける(dispose)。
     this.prune(this.enemies);
     this.prune(this.bullets);

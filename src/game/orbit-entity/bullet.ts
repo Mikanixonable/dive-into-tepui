@@ -4,6 +4,7 @@ import { OrbitState } from '../../physics/orbital';
 import { FloatingOrigin } from '../floating-origin';
 import type { Stage } from '../stages/stage';
 import { altitudeOf } from '../../physics/orbital';
+import { Vec3, lenSq, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { buildBulletMesh, buildPlasmaMesh } from '../../render/ships';
 
@@ -47,9 +48,12 @@ export class Bullet extends OrbitEntity {
         this.type = type;
     }
 
-    checkLoss(_dt: number, simTime: number, _activeStage: Stage): void {
+    // 消滅条件は「自機から離れすぎた」が主で、寿命は保険(const.ts の BULLET_MAX_DIST 参照)。
+    // 自機位置を受け取るのはこの派生だけだが、基底の checkLoss で一律に渡している。
+    checkLoss(_dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3): void {
         if (!this.alive) return;
         if (altitudeOf(this.state.r) < C.DEBRIS_REENTRY_ALT) { this.alive = false; return; }
+        if (lenSq(sub(this.state.r, playerPos)) > C.BULLET_MAX_DIST * C.BULLET_MAX_DIST) { this.alive = false; return; }
         if (simTime - this.bornSim > this.lifetime) this.alive = false;
     }
 
