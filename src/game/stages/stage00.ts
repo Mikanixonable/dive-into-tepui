@@ -13,8 +13,8 @@ import type { Hud } from '../hud/hud';
 import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import { SimSpeedManager } from '../sim-speed-manager';
-import { OrbitState, orbitState } from '../../physics/orbital';
-import { Vec3, add, len, norm, randPerp, scale, sub, v3 } from '../../physics/vec3';
+import { OrbitState, elementsFromState, orbitState } from '../../physics/orbital';
+import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../physics/vec3';
 import { generateApproachingEnemy } from './spawner/enemy-generator';
 
 export class Stage00 extends Stage {
@@ -139,12 +139,13 @@ function resolveWaveSpawnLimits(waveCount: number, activeGroups: number): { maxG
 function pickWaveCenter(player: OrbitState, wave: number): Vec3 {
   const dist = C.STAGE00_SPAWN_DIST_MIN + Math.random() * (C.STAGE00_SPAWN_DIST_MAX - C.STAGE00_SPAWN_DIST_MIN);
 
-  // 第1波は必ず後方(速度ベクトルと逆向き)に出現させる。それ以降はランダムな水平方向。
+  // 第1波は必ず後方(速度ベクトルと逆向き)に出現させる。それ以降はランダムな水平方向
+  // (randPerp は単位ベクトルを要求するので、位置ベクトルは norm を通して渡す)。
   let dir: Vec3;
   if (wave === 1) {
     dir = norm(scale(player.v, -1));
   } else {
-    dir = randPerp(player.r);
+    dir = randPerp(norm(player.r));
   }
 
   return add(player.r, scale(dir, dist));
@@ -159,10 +160,39 @@ function makeFlybyVelocity(player: OrbitState, centerR: Vec3, wave: number): { a
   const targetPos = add(player.r, scale(missPerp, missDist));
 
   const approachDir = norm(sub(targetPos, centerR));
-  const flybySpeed = C.STAGE00_FLYBY_SPEED + (wave - 1) * C.STAGE00_FLYBY_SPEED_RAMP; // ウェーブが進むと少し速くなる
+  // ウェーブが進むと少し速くなる。ステージ00は無限に続くので、上限を掛けないと相対速度が
+  // 際限なく上がって Δv だけで敵の軌道を壊してしまう(近地点の保証は limitFlybyDv が別途行う)。
+  const flybySpeed = Math.min(
+    C.STAGE00_FLYBY_SPEED + (wave - 1) * C.STAGE00_FLYBY_SPEED_RAMP,
+    C.STAGE00_FLYBY_SPEED_MAX,
+  );
   const perpDir = randPerp(approachDir);
   const spread = scale(perpDir, Math.random() * C.STAGE00_FLYBY_LATERAL_SPREAD);
   return { approachDir, centerV: add(player.v, add(scale(approachDir, flybySpeed), spread)) };
+}
+
+// フライパスの Δv は自機の軌道速度に直接加算されるため、大きすぎると出現した瞬間に
+// 近地点を大気圏下(ときには地中)まで引き下げてしまい、敵が出現直後に再突入で消える。
+// ここで「近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らない」ことを保証する。
+// 方向(どちらから飛んでくるか = 演出)は変えず、大きさだけを二分探索で縮める。
+// 自機自身が既に低い軌道にいて Δv = 0 でも安全高度を割る場合は、自機と同じ速度(Δv = 0)を返す。
+function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3): Vec3 {
+  const minPeAlt = C.REENTRY_ALT + C.STAGE00_MIN_PERIGEE_MARGIN;
+  const safe = (v: Vec3): boolean => {
+    const el = elementsFromState(centerR, v);
+    return el !== null && el.peAlt >= minPeAlt;
+  };
+  if (safe(centerV)) return centerV;
+
+  const dv = sub(centerV, playerV);
+  let lo = 0; // 常に「安全と判定済み(または Δv=0)」側
+  let hi = 1; // 常に「危険と判定済み」側
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (safe(addScaled(playerV, dv, mid))) lo = mid;
+    else hi = mid;
+  }
+  return addScaled(playerV, dv, lo);
 }
 
 // 基調色: アースカラー7割 / 寒色系2割 / アクセントカラー1割
@@ -221,7 +251,8 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
   const altDrop = C.STAGE00_ALT_OFFSET_MIN + Math.random() * (C.STAGE00_ALT_OFFSET_MAX - C.STAGE00_ALT_OFFSET_MIN);
   const droppedPos = add(pos, scale(norm(pos), altDrop));
 
-  // 安全装置: どんなに低くても高度90km未満(大気圏+10km)には出現させない
+  // 安全装置(その1): 出現した瞬間の高度が 90km(大気圏+10km)未満にならないようにする。
+  // これは位置だけの保証であり、軌道の近地点を保証するのは limitFlybyDv(速度側)の役目。
   const safeAlt = C.REENTRY_ALT + 10e3;
   const currentAlt = len(droppedPos) - C.R_EARTH;
   if (currentAlt < safeAlt) {
@@ -235,7 +266,9 @@ function generateWave(player: OrbitState, waveNumber: number, hud: Hud, sfx: Sfx
   const calculatedCount = C.STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * C.STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, C.STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);
-  const { approachDir, centerV } = makeFlybyVelocity(player, centerR, waveNumber);
+  const { approachDir, centerV: rawCenterV } = makeFlybyVelocity(player, centerR, waveNumber);
+  // 隊列は centerR から数 km の範囲に散るだけなので、波の中心で近地点を保証すれば全機が安全側に入る。
+  const centerV = limitFlybyDv(player.v, centerR, rawCenterV);
   const subGroups = makeSubGroupHexes(pickWaveBaseHex());
   const typeIndex = Math.floor(Math.random() * 3);
   const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');

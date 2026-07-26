@@ -250,6 +250,13 @@ export const STAGE00_PLACEMENT_JITTER = 1000; // 編隊配置の位置ばらつ�
 export const STAGE00_FLYBY_MISS_DIST_MIN = 1000; // フライパスのすれ違い距離下限 [m]
 export const STAGE00_FLYBY_MISS_DIST_RANGE = 1000; // 同、上限までの幅 [m]
 export const STAGE00_FLYBY_SPEED_RAMP = 10; // 波が進むごとのフライパス速度増加 [m/s]
+// フライパス速度の上限 [m/s]。ステージ00は無限に続き波数に上限がないため、これが無いと
+// 相対速度が際限なく上がり、フライパスの Δv だけで敵の軌道が壊れる(近地点が地中に落ちる)。
+// 400 m/s なら 30km の交戦圏を約75秒で通過する — 演出として十分速く、軌道も壊れない。
+export const STAGE00_FLYBY_SPEED_MAX = 400.0;
+// 敵の軌道が保つべき近地点高度の余裕 [m](大気圏突入高度 REENTRY_ALT に加算する)。
+// スポーン時の Δv はこの高度を割らない範囲まで縮められる(stage00.ts の limitFlybyDv)。
+export const STAGE00_MIN_PERIGEE_MARGIN = 40e3;
 export const STAGE00_FLYBY_LATERAL_SPREAD = 20; // フライパス初速の横ブレ最大 [m/s]
 
 export const PLAYER_MAX_HP = 1000;

@@ -64,7 +64,11 @@ export function randVec(amp: number): Vec3 {
   return v3(randSym(amp), randSym(amp), randSym(amp));
 }
 
-// fwd に直交するランダム単位ベクトル(散布界用)
+// fwd に直交するランダム単位ベクトル(散布界用)。
+// 【契約】fwd は単位ベクトルであること。射影 r - fwd(r·fwd) は |fwd| = 1 を前提にしており、
+// 長いベクトル(位置ベクトル等)を渡すと第2項が第1項を飲み込んで、直交どころか ±fwd 方向が
+// 返る。呼び出し側で norm() を通すこと(ここで norm() しないのは、全呼び出しが既に正規化済みの
+// 方向ベクトルを渡しており、毎回の平方根が無駄になるため)。
 export function randPerp(fwd: Vec3): Vec3 {
   for (;;) {
     const r = randVec(1);
