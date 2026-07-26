@@ -64,12 +64,12 @@ export class Game {
   readonly simSpeedManager: SimSpeedManager;
 
   // 軌道計画まわりの三系統。かつて PlanSystem が束ねていたが、たらい回しを排して game が直接
-  // 保持する: editor(ノード列 Plan・予測折れ線キャッシュ traj・編集モード editMode・ノード
-  // 編集入力)、predict(未来表示 = ゴースト・表示期間・予測軌道の表示座標系と、その操作パネル)、
+  // 保持する: editor(ノード列 Plan・編集モード editMode・ノード編集入力)、predict(未来表示 =
+  // 予測折れ線 traj・ゴースト・表示期間・予測軌道の表示座標系と、その操作パネル)、
   // guide(戦闘ビューの噴射ガイド。マップモード中は呼ばない — [M] で開いている間は WASDQE が
   // Δv編集に使われるため)。
-  // editor/guide は scene を要し、editor は cameraSystem の projection を要するため、いずれも
-  // コンストラクタ本体で構築する(effects 等と同じ理由)。
+  // predict は scene を要し、editor は predict の traj を要するため、この順にコンストラクタ
+  // 本体で構築する(effects 等と同じ理由)。
   private readonly editor: PlanEditor;
   private readonly predict: PredictSystem;
   private readonly guide: PlanGuide;
@@ -133,20 +133,17 @@ export class Game {
     this.pipRenderer = new PipRenderer(this._scene, this.markerManager);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
-    this.predict = new PredictSystem(this._hud.root, this.markerManager);
+    this.predict = new PredictSystem(this._hud.root, this.markerManager, this.ephemeris, this._scene);
+    // 予測折れ線(traj)の所有は predict 側。editor はノードの画面判定にそれを参照共有する。
     this.editor = new PlanEditor(
       this._hud,
       this._sfx,
       this.simSpeedManager,
       this.ephemeris,
-      this._scene,
-      this.cameraSystem.activeCameraProjection,
+      this.predict.traj,
       () => this.player.fineAttitude,
     );
 
-    // 表示期間は predict の状態、予測折れ線のキャッシュは editor の持ち物なので、両者に
-    // またがるこの一本だけをオーケストレータが配線する(期間を変えた瞬間に引き直させる)。
-    this.predict.onDurationChange = () => this.editor.traj.invalidate();
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
     this.mapModeToggler = new MapModeToggler(this._hud);
 
@@ -299,13 +296,13 @@ export class Game {
     // 各 sync はこの fo だけを参照し player.state.r を描画原点として直接使わない。
     this.floatingOrigin = new FloatingOrigin(this.player.state.r, this.player.state.v);
 
+    // 表示時刻(未来ゴーストのスライダー位置ぶん先取りした simTime)と、その解決に要る
+    // 現在の周期。周期は予測の表示期間('1周回')でも使うので一度だけ求める。
+    const orbitPeriod = this.player.elements?.period ?? null;
+    const displayTime = this.predict.resolveDisplayTime(orbitPeriod, this.simulator.simTime);
+
     // カメラ姿勢を THREE.js に反映するのを最初に行う: environment.sync や
     // マーカー投影(activeCameraProjection)がこのフレームのカメラ行列を読むため。
-    const displayTime = this.predict.resolveDisplayTime(
-      this.player.elements?.period ?? null,
-      this.simulator.simTime,
-    );
-
     this.cameraSystem.sync(this.floatingOrigin, displayTime);
 
     // マーカーを出す側はどれもアクティブカメラの投影を必要とする(fo と同じく、
@@ -341,13 +338,10 @@ export class Game {
     this.leadMarkers.sync(this.player, aliveEnemies, target, simTime, mapMode, project);
     this.pipRenderer.sync(this.pipActive, this.player, target, this.cameraSystem.pipCamera);
 
-    const orbitPeriod = this.player.elements?.period ?? null;
-    const predictDuration = this.predict.durationSec(orbitPeriod);
-
-    this.editor.sync(
-      this.floatingOrigin, simTime, predictDuration,
-      this.predict.trajectoryFrame, this.cameraSystem.mapCamera.dist,
-    );
+    // 予測折れ線(と未来ゴースト・PREDICT パネル)は predict が駆動する。ノードギズモの画面座標は
+    // その表示座標変換を通すので、editor.sync はこの後に呼ぶ。
+    this.predict.sync(this.editor.plan, orbitPeriod, simTime, this.floatingOrigin, project);
+    this.editor.sync(this.cameraSystem.mapCamera.dist);
 
     // 自機のモード状態を映す先が2つある(HUD ステータスパネルとタッチUIのトグルボタン)。
     // どちらも表示側なので、状態の所有者から見て対称になるようここで両方へ渡す。
@@ -356,14 +350,6 @@ export class Game {
 
     this._hud.panels.update(this, dt);
     this._hud.tick();
-
-    // 未来ゴースト(predict)は B-2 の sampleAt/toDisplay を、マップラベル(camera)は表示時刻を受ける。
-    this.predict.sync(
-      (t) => this.editor.traj.sampleAt(t),
-      (r, t) => this.editor.traj.toDisplay(r, t),
-      orbitPeriod,
-      simTime,
-      project);
 
     this.guide.update(this.editor.plan, this.player, simTime, this.simSpeedManager, this.editor.editMode, project);
 

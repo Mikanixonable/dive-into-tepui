@@ -1,24 +1,25 @@
 // マップモード上での軌道計画(Plan)の編集: クリックでのノード配置・ドラッグでの
 // 時刻移動・Δv アーム(node-gizmo.ts)ドラッグ・右クリックメニュー・選択状態・計画パネル
 // 表示への反映、および [X] キー(ノード/計画削除)の実処理。ノードの画面座標・最寄りサンプルの
-// 画面判定は所有する PlanTrajectory(B-2)へ委譲する — `traj.projectPoint(r, t)`(ワールド点→表示座標系→
+// 画面判定は PlanTrajectory(B-2)へ委譲する — `traj.projectPoint(r, t)`(ワールド点→表示座標系→
 // 画面)と `traj.nearestSample(mx, my, maxPx)` を呼ぶだけで、座標系(frame)や physics/frame.ts(XX)
 // を直接参照しない。描画と同じ変換を通すので表示とクリック判定がずれない。
 //
-// 責務: ノード編集ロジック本体に加え、その編集対象である予測折れ線キャッシュ(traj)と
-// 編集モードフラグ(editMode)、ノードギズモのイベント配線(wireNodeGizmo)も所有する。予測の
-// 未来表示(ゴースト・ツールバー)は predictSystem、マップラベルは cameraSystem の責務で、それらは
-// game が別途駆動する — editor はそれらを経由しない。
+// その B-2 を所有・駆動するのは predict 側(PredictSystem)で、ここは参照を共有するだけ。
+// ノードのドラッグ・右クリックは DOM イベント発火時点で画面判定を要するため、毎フレームの
+// 引数ではなくコンストラクタで受けた参照を保持する。
+//
+// 責務: ノード編集ロジック本体に加え、編集モードフラグ(editMode)とノードギズモのイベント配線
+// (wireNodeGizmo)を所有する。予測の未来表示(折れ線・ゴースト・ツールバー)は predictSystem、
+// マップラベルは cameraSystem の責務で、それらは game が別途駆動する — editor は経由しない。
 //
 // 計画が空の間は自機状態を基準に計画する(plan.trackAnchor は game が毎フレーム呼ぶ)。
 // 計画が空でないときは自機状態は参照しない。逸脱した既存計画を持って editMode を開いた場合は
 // 現在状態に再ベースされない。
-import * as THREE from 'three/webgpu';
 import { Elements, OrbitState, elementsFromState } from '../../physics/orbital';
 import { dvToWorld, propagateState } from '../../physics/predict';
 import { Projected } from '../../physics/projection';
 import { Vec3, add, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
-import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { ACCENT, TEXT, TEXT_DIM } from '../theme';
@@ -27,11 +28,9 @@ import { fmtDist, fmtTime } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { ProjectFn } from '../camera/camera-system';
-import { FloatingOrigin } from '../floating-origin';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { Plan } from './plan';
-import { PlanTrajectory } from './plan-trajectory';
+import { PlanTrajectory } from '../predict/plan-trajectory';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class PlanEditor {
@@ -47,9 +46,6 @@ export class PlanEditor {
   // 自身が配線する(フォーカス選択メニューは別責務で CameraSystem が持つ FocusGizmo 側)。
   readonly nodeGizmo = new NodeGizmo();
 
-  // 予測折れ線 + per-arc キャッシュ(B-2)。編集対象なので editor が所有・駆動する。
-  readonly traj: PlanTrajectory;
-
   // 計画パネル(HUD 左下 "MANEUVER PLAN")。表示内容はノード編集の産物なので editor が所有する。
   // CSS(#hud-plan)は hud/dom.ts の STYLE に一元管理されている。
   private readonly planPanel: HTMLElement;
@@ -60,11 +56,11 @@ export class PlanEditor {
     private readonly _sfx: Sfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
-    scene: THREE.Scene,
-    project: ProjectFn,
+    // 予測折れ線 + per-arc キャッシュ(B-2)。所有は PredictSystem 側で、ここは画面判定
+    // (projectPoint / nearestSample)のために参照を共有する。
+    private readonly traj: PlanTrajectory,
     private readonly getFineAttitude: () => boolean,
   ) {
-    this.traj = new PlanTrajectory(scene, project);
     this.planPanel = document.createElement('div');
     this.planPanel.id = 'hud-plan';
     this.planPanel.className = 'panel';
@@ -388,15 +384,10 @@ export class PlanEditor {
     this.planPanel.style.display = 'none';
   }
 
-  // 毎フレーム(sync 時)呼ぶ。マップ表示中は予測折れ線とノードギズモを駆動し、非表示中は
-  // 後始末する。duration(表示期間)と frame(予測軌道の表示座標系)は predict 側、mapDist
-  // (ギズモの画面基準)は camera 側の状態で、いずれも game が渡す。予測の未来ゴースト
-  // (predict)・マップラベル(camera)は game が別途駆動する。
-  sync(fo: FloatingOrigin, simTime: number, duration: number, frame: Frame, mapDist: number): void {
-    // 予測折れ線: B-2 が corners を arc へ分解し、各 arc の B-1 が per-arc に予測・キャッシュ・描画する。
-    // 予測は frozen アンカー + 凍結ノードだけの純関数で、player.live には依存しない。
-    this.traj.update(this.plan.anchor, this.plan.nodes, simTime + duration, this.ephemeris, frame, simTime, fo);
-
+  // 毎フレーム(sync 時)呼ぶ。マップ編集中はノードギズモを画面座標へ更新し、それ以外では
+  // 後始末する。mapDist(ギズモの画面基準)は camera 側の状態で game が渡す。ノード位置の
+  // 画面判定に使う B-2 は、このフレームぶんの駆動を PredictSystem.sync が先に済ませている。
+  sync(mapDist: number): void {
     if (this.editMode) {
       this.updateGizmo(mapDist);
     }

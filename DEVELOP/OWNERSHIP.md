@@ -57,15 +57,15 @@ main.ts
     │   ├── PlayerMarkers              ... 方向マーカー・ボアサイト・マップ上の自機位置
     │   └── OrbitLine                  ... 自機軌道線
     ├── SimSpeedManager
+    ├── PredictSystem
+    │   ├── PlanTrajectory             ... 予測折れ線 + per-arc キャッシュ + 画面判定
+    │   │   └── PredictedLine[]        ... arc ごと。各々 SampledLine を持つ
+    │   └── PredictPanel               ... DOM は Hud.root 配下。期間/予測座標系/未来位置スライダー
     ├── PlanEditor
     │   ├── Plan                       ... ノード列 + アンカー(計画の正本)
-    │   ├── PlanTrajectory
-    │   │   └── PredictedLine[]        ... arc ごと。各々 SampledLine を持つ
     │   ├── NodeGizmo
     │   │   └── ContextMenu
     │   └── 計画パネル DOM
-    ├── PredictSystem
-    │   └── PredictPanel               ... DOM は Hud.root 配下。期間/予測座標系/未来位置スライダー
     ├── PlanGuide
     ├── MapModeToggler                 ... 状態を持たない(所有物なし)
     ├── Stage (activeStage)            ... initStage() が毎回 new する
@@ -113,7 +113,9 @@ main.ts
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
 | `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・PlayerMarkers・Targeter・Logistics・MapMarkers・PlanGuide・PredictSystem・PipRenderer→PipOverlay) |
-| `Ephemeris` | Game | EnvironmentScene・Simulator・MapCamera・MapMarkers・PlanEditor・PlanTrajectory |
+| `Ephemeris` | Game | EnvironmentScene・Simulator・MapCamera・MapMarkers・PlanEditor・PredictSystem |
+| `PlanTrajectory` | PredictSystem | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ) |
+| `Plan` | PlanEditor | PredictSystem(`sync` の引数で毎フレーム)・PlanGuide(同)|
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
 | `Simulator.ammos` | Simulator | Logistics(読み取り + `addAmmo` 経由の追加のみ) |
@@ -210,7 +212,7 @@ main.ts
 | `OrbitEntity.prevState` | `history` 末尾(無ければ現 state)の読み出し | `history` に従う |
 | `OrbitLine.snap` / 頂点配列 | 楕円ジオメトリの再生成判定用スナップショット | 要素ドリフト・`force`・初回 |
 | `PredictedLine.samples` / `.key` | 予測 RK4 の結果と入力スナップショット | 入力変化 + スロットル、`force` |
-| `PlanTrajectory.arcs` / `.frame` / `.unbakeTime` | 毎フレーム再構築される表示文脈 | `update()` 毎 |
+| `PlanTrajectory.arcs` / `.frame` / `.unbakeTime` / `.project` | 毎フレーム再構築される表示文脈(画面判定もこれを使う) | `update()` 毎 |
 | `SampledLine.lastSamples` / `.lastFrame` | bake 済み頂点の入力スナップショット | 点列 or frame の変化 |
 | `PlanEditor.nodeArrivings()` / `nodeDv()` | ノード到達状態と Δv の導出値(表示専用) | 呼ぶたび再計算 |
 | `PlayerThrottle.thrustVizDir` / `.thrustAccelVec` | 推力の表示・ベルト物理向け派生値 | 毎フレーム上書き |
