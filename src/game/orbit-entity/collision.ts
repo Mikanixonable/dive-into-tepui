@@ -71,6 +71,11 @@ export class CollisionPhysics {
     const dz = rB.z - rA.z;
     const distSq = dx * dx + dy * dy + dz * dz;
     const minD = a.collideRadius! + b.collideRadius!;
+    // 非有限値(NaN/Infinity)は比較で必ず false になるため、ガードしないと
+    // 「常に接触している」と判定され、毎フレーム反発と衝突音が発生し、しかも
+    // 相手側まで NaN に汚染してしまう(自機が巻き込まれると描画が全滅する)。
+    // 汚染そのものの検出・報告は nan-watchdog.ts の役目で、ここでは伝播を止めるだけ。
+    if (!Number.isFinite(distSq)) return false;
     if (distSq <= 0 || distSq >= minD * minD) return false;
     const dist = Math.sqrt(distSq);
     const nx = dx / dist;
