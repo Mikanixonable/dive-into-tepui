@@ -5,6 +5,8 @@ import {
   MOON_DIST,
   SUN_DIST,
   moonPosition,
+  sunAzimuth,
+  sunAzimuthRate,
   sunPosition,
 } from '../../src/physics/ephemeris';
 import { len } from '../../src/physics/vec3';
@@ -38,6 +40,20 @@ export function register(): void {
       const relDev = Math.abs(d - MOON_DIST) / MOON_DIST;
       // e=0.0549 -> r ranges roughly within +-6% of mean distance
       assert.ok(relDev < 0.07, `moon distance deviation at t=${t}: ${relDev}`);
+    }
+  });
+
+  test('ephemeris: sunAzimuthRate matches central finite difference of sunAzimuth', () => {
+    const phase0 = 0.3;
+    const dt = 60;
+    // branch cut(±π)を避けた時刻で比較
+    for (const t of [0, YEAR / 8, YEAR / 4, (3 * YEAR) / 8]) {
+      const fd = (sunAzimuth(t + dt, phase0) - sunAzimuth(t - dt, phase0)) / (2 * dt);
+      const analytic = sunAzimuthRate(t, phase0);
+      assert.ok(
+        Math.abs(fd - analytic) <= 1e-5 * Math.abs(analytic),
+        `rate at t=${t}: analytic ${analytic} vs fd ${fd}`,
+      );
     }
   });
 

@@ -2,8 +2,9 @@
 // 太陽: 黄道面(赤道に対し 23.44° 傾斜)を 1 恒星年で公転。
 // 月: 黄道に対し 5.145° 傾いた円軌道を 1 恒星月で公転し、
 //     昇交点は 18.61 年周期で逆行歳差する(これが軌道傾斜角変化の源)。
-// THREE/DOM 非依存の純粋関数。
-import { Vec3, v3 } from './vec3';
+// THREE/DOM 非依存。位置の計算式は純関数、それを初期位相で束縛して simTime で
+// サンプルする状態は末尾の Ephemeris クラスが持つ。
+import { Vec3, norm, v3 } from './vec3';
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
 export const MU_MOON = 4.9048695e12;
@@ -19,6 +20,8 @@ const MOON_INC = (5.145 * Math.PI) / 180; // 白道の黄道に対する傾斜
 
 const COS_EPS = Math.cos(EPS);
 const SIN_EPS = Math.sin(EPS);
+
+export const SUN_ROTATING_POLE = v3(0, 1, 0); // 極(北極)軸。太陽回転系の回転軸。
 
 // 標準赤道座標 (X=春分点, Z=北極, 右手系) → ゲーム ECI (Y=北極)。
 // Xstd→X, Zstd→Y, Ystd→-Z(行列式 +1 の回転)。
@@ -45,6 +48,17 @@ export function sunPosition(t: number, phase0: number): Vec3 {
 export function sunAzimuth(t: number, phase0: number): number {
   const p = sunPosition(t, phase0);
   return Math.atan2(p.z, p.x);
+}
+
+// sunAzimuth の時間微分 [rad/s]。太陽回転系での速度変換(ω×r 項)に使う。
+// sunAz = atan2(−sin(lam)·cosEps, cos(lam)), lam = phase0 + 2π t/YEAR を解析微分すると
+// d(sunAz)/dt = −cosEps·lam' / (cos²lam + sin²lam·cos²Eps)。
+export function sunAzimuthRate(t: number, phase0: number): number {
+  const lam = phase0 + (2 * Math.PI * t) / YEAR;
+  const lamDot = (2 * Math.PI) / YEAR;
+  const cl = Math.cos(lam);
+  const sl = Math.sin(lam);
+  return (-COS_EPS * lamDot) / (cl * cl + sl * sl * COS_EPS * COS_EPS);
 }
 
 // 月の ECI 位置。phase0 は初期の軌道内位相 [rad]。
@@ -148,6 +162,42 @@ export function seLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec
   
   const l1 = v3(sHat.x * rL, sHat.y * rL, sHat.z * rL); // towards Sun
   const l2 = v3(-sHat.x * rL, -sHat.y * rL, -sHat.z * rL); // away from Sun
-  
+
   return { L1: l1, L2: l2 };
+}
+
+// 天体暦: 初期位相をゲームごとに固定し、任意の simTime で太陽・月の ECI 位置・
+// 太陽方向を計算して返す(状態は持たない純粋なサンプラ)。予測(predict.ts)・環境描画・
+// マップ表示など「物理的な天体暦」だけを要する箇所は、位相を露出せずこのオブジェクトを共有する。
+export class Ephemeris {
+  // sunPhase0 は昼(太陽が+X側)から始まるよう既定 0。moonPhase0 は既定でゲーム
+  // ごとの乱数。テストは決定的な位相を渡すためコンストラクタで上書きする。
+  constructor(
+    private readonly sunPhase0 = 0,
+    private readonly moonPhase0 = Math.random() * Math.PI * 2,
+  ) {}
+
+  // 任意時刻のサンプリング(初期位相を束縛)。呼び出しごとに計算する — キャッシュは持たない。
+  sunPosAt(t: number): Vec3 {
+    return sunPosition(t, this.sunPhase0);
+  }
+  moonPosAt(t: number): Vec3 {
+    return moonPosition(t, this.moonPhase0);
+  }
+  // 太陽方向の単位ベクトル(ライティング・影判定用)。
+  sunDirAt(t: number): Vec3 {
+    return norm(sunPosition(t, this.sunPhase0));
+  }
+  sunAzimuthAt(t: number): number {
+    return sunAzimuth(t, this.sunPhase0);
+  }
+  sunAngularRateAt(t: number): number {
+    return sunAzimuthRate(t, this.sunPhase0);
+  }
+  emLagrangeAt(t: number): ReturnType<typeof emLagrangePoints> {
+    return emLagrangePoints(t, this.moonPhase0);
+  }
+  seLagrangeAt(t: number): ReturnType<typeof seLagrangePoints> {
+    return seLagrangePoints(t, this.sunPhase0);
+  }
 }
