@@ -11,6 +11,7 @@ import type { Simulator } from '../orbit-entity/simulator';
 import type { Player } from '../player/player';
 import type { UnlockManager } from '../unlock-manager';
 import type { EffectsSystem } from '../vfx/effects-system';
+import type { MarkerManager } from '../marker/marker-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage00 extends Stage {
@@ -34,8 +35,9 @@ export class Stage00 extends Stage {
     simulator: Simulator,
     unlockManager: UnlockManager,
     fx: EffectsSystem,
+    markerManager: MarkerManager,
   ): void {
-    super.setup(hud, sfx, scene, simulator, unlockManager, fx);
+    super.setup(hud, sfx, scene, simulator, unlockManager, fx, markerManager);
     this.waveManager.setup(hud, sfx, scene, fx);
   }
 

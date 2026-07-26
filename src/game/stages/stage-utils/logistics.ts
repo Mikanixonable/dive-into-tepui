@@ -1,6 +1,6 @@
-// 補給(ammo)の兵站ロジック(能動的な判断のみ): 投入の判断・生成、自機の接近による
-// 取り込み、遠距離デスポーンの判断。配列の所有と軌道積分・姿勢・実削除は Simulator 側
-// (ammos は Simulator 所有の配列への読み取り参照で、追加は addAmmo 経由、
+// 補給(ammo)の兵站: 投入の判断・生成、自機の接近による取り込み、遠距離デスポーンの
+// 判断と、回収先を示す ▣ AMMO マーカーの表示。配列の所有と軌道積分・姿勢・実削除は
+// Simulator 側(ammos は Simulator 所有の配列への読み取り参照で、追加は addAmmo 経由、
 // 破壊は alive = false を立てるだけで simulator.cleanup が回収する)。
 import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../physics/attitude';
@@ -11,6 +11,9 @@ import { orbitState } from '../../../physics/orbital';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import { Player } from '../../player/player';
+import { ProjectFn } from '../../camera/camera-system';
+import { MarkerManager } from '../../marker/marker-manager';
+import { fmtMarkerDist } from '../../hud/utils';
 
 export class Logistics {
   private resupplyCheckAt = 0;
@@ -21,6 +24,7 @@ export class Logistics {
     private readonly _scene: THREE.Scene,
     private readonly ammos: readonly Ammo[],
     private readonly addAmmo: (ammo: Ammo) => void,
+    private readonly markerManager: MarkerManager,
   ) {}
 
   spawnForPlayer(
@@ -60,6 +64,21 @@ export class Logistics {
     this.resupplyCheckAt = simTime + C.LOGISTICS_CHECK_INTERVAL;
     if (player.magsLeft < C.LOGISTICS_LOW_MAGS && this.ammos.length < C.MAX_AMMO) {
       this.spawnForPlayer(player);
+    }
+  }
+
+  // ▣ AMMO マーカー: 回収へ向かうべき補給の位置と距離を示す。同時存在数が MAX_AMMO で
+  // 頭打ちなのでマーカーキーもその枠で固定し、空き枠は隠す。
+  syncMarkers(player: Player, project: ProjectFn): void {
+    for (let i = 0; i < C.MAX_AMMO; i++) {
+      const key = `mg${i}`;
+      const ammo = this.ammos[i];
+      if (!ammo || !ammo.alive) {
+        this.markerManager.hide(key);
+        continue;
+      }
+      const dist = len(sub(ammo.state.r, player.state.r));
+      this.markerManager.setPosition(key, 'mk-ammo', '▣', ammo.state.r, project, `AMMO ${fmtMarkerDist(dist)}`);
     }
   }
 

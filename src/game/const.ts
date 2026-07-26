@@ -167,8 +167,11 @@ export const ENEMY_ORBIT_LINE_COLOR = 0x565b63; // 敵軌道線の既定色(個�
 export const INITIAL_ALT = 420e3; // 自機初期高度 [m]
 export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
 
-// --- HUD 方向マーカー(marker-manager.ts の MarkerManager.setDirection) ---
+// --- HUD マーカー ---
 export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想距離 [m](実在の位置ではなく方向のみを示す)
+export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
+export const LEAD_HOLD_SEC = 20; // ターゲットを外した後も LEAD マーカーを出し続ける時間 [s]
+export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
 // --- 軌道計画モード([M]) ---
 export const MAP_MIN_DIST = 9e6; // マップカメラ距離 [m]

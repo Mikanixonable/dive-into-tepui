@@ -43,6 +43,8 @@ main.ts
     │   ├── MapViewPanel               ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
     │   └── FocusGizmo
     │       └── ContextMenu
+    ├── GroupedMarkers (enemyMarkers)  ... 画面上で近接する敵マーカーのまとめ + 画面外方位マーカー
+    ├── LeadMarkers                    ... 敵ごとの LEAD マーカーと最終ロック時刻
     ├── Player               (extends Ship / OrbitEntity)
     │   ├── PlayerThrottle
     │   ├── PlayerFire
@@ -52,6 +54,7 @@ main.ts
     │   ├── ThermalSystem
     │   ├── ThrustEffects → Billboard ×2
     │   ├── RcsEffects    → Billboard ×4
+    │   ├── PlayerMarkers              ... 方向マーカー・ボアサイト・マップ上の自機位置
     │   └── OrbitLine                  ... 自機軌道線
     ├── SimSpeedManager
     ├── PlanEditor
@@ -67,14 +70,13 @@ main.ts
     ├── MapModeToggler                 ... 状態を持たない(所有物なし)
     ├── Stage (activeStage)            ... initStage() が毎回 new する
     │   ├── ScoreCounter
-    │   ├── Logistics
+    │   ├── Logistics                  ... 補給の投入判断と ▣ AMMO マーカー
     │   ├── StageStatusPanel           ... DOM は Hud.root 配下。HP/補助メッセージ/撃墜数
     │   ├── ScoreAttackTimer           ... Stage0 のみ
     │   └── WaveManager                ... Stage00 のみ
     ├── EnvironmentScene
     │   ├── Earth / Sun / DirectionalLight / AmbientLight / stars / moon メッシュ
     │   └── OrbitLine ×2               ... geoLine / moonLine(マップ参照線)
-    ├── MarkerForGame
     ├── EffectsSystem
     │   └── FlashEffectManager
     │       └── FlashEffect[]          ... 各々 Billboard を持つ
@@ -88,7 +90,8 @@ main.ts
     │   ├── DebrisPiece[] (casings)
     │   ├── DebrisPiece[] (debris)
     │   └── Ammo[]
-    └── PipRenderer                    ... PIP クロスヘア DOM
+    └── PipRenderer                    ... PIP の描画パス
+        └── PipOverlay                 ... 窓に重ねるクロスヘア・ターゲット枠・見越し点
 ```
 
 木に現れないインスタンス:
@@ -109,7 +112,7 @@ main.ts
 | `THREE.Scene` / `WebGPURenderer` | `GameScene`(main.ts) | Game・各描画物を持つクラス |
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
-| `MarkerManager` | Game | MarkerForGame・Targeter・PlanGuide・PredictSystem・MapMarkers |
+| `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・PlayerMarkers・Targeter・Logistics・MapMarkers・PlanGuide・PredictSystem・PipRenderer→PipOverlay) |
 | `Ephemeris` | Game | EnvironmentScene・Simulator・MapCamera・MapMarkers・PlanEditor・PlanTrajectory |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
@@ -156,7 +159,9 @@ main.ts
 | 地球自転の初期位相 | `EnvironmentScene.earthPhase0` | |
 | 太陽・月の初期位相 | `Ephemeris` | それ以外の状態は持たない(時刻を引数に取る純サンプラ) |
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
-| 敵 AI の実行時状態(最終発砲時刻・バースト残数・最終ロック時刻) | `Enemy` | |
+| 敵 AI の実行時状態(最終発砲時刻・バースト残数) | `Enemy` | |
+| LEAD マーカーの表示履歴(敵ごとの最終ロック時刻) | `LeadMarkers` | 表示専用の状態なので Enemy には置かない。毎フレーム生存中の敵ぶんだけ作り直す |
+| マーカー DOM 要素のプール | `MarkerManager` | キーで索引。`GroupedMarkers`/`LeadMarkers` は自分が前フレームに出したキーを覚えていて、集合から消えたものを hide する |
 
 ### 正本が分かれていることに意味がある組み合わせ
 
@@ -182,6 +187,15 @@ main.ts
 - **`HudPanels` は表示専用**。Game を丸ごと読んで自分の4パネルへ書くだけで、他モジュールの状態や
   DOM は操作しない。ステージ固有の状況パネルは `Stage`(`StageStatusPanel`)、タッチUIのトグル点灯は
   `TouchControls.syncModeButtons()` が担当し、いずれも game.sync が自機/ステージの状態を渡す。
+- **HUD マーカーは対象の持ち主が出す**。自機由来(方向/ボアサイト/マップ上の自機)は `PlayerMarkers`、
+  ターゲット由来(方位・相対 AN/DN・的通過マーク)は `Targeter`、補給は `Logistics`、天体ラベルは
+  `MapMarkers`、ノード/BURN は `PlanGuide`、未来ゴーストは `PredictSystem`、PIP 窓の中身
+  (クロスヘア・ターゲット枠・見越し点)は `PipRenderer` が持つ `PipOverlay`。Game が直接持つのは
+  **1つの対象では決められない2つだけ** — `GroupedMarkers`(画面上のまとめ)と `LeadMarkers`(自機と敵の
+  両方に依存)。`Enemy` は自分の見た目とラベルを `markerItem()` で渡すだけで、まとめの判断には
+  関与しない。
+- **`Game.pipActive`(= `player.isFiring && !mapMode`)が PIP 表示可否の唯一の判定**。`PipRenderer` は
+  sync(オーバーレイ)と render(描画パス)の両方でこれを引数として受け取り、自分では判定しない。
 
 ---
 

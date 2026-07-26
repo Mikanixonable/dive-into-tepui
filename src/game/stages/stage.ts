@@ -19,6 +19,8 @@ import type { Simulator } from '../orbit-entity/simulator';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SimSpeedManager } from '../sim-speed-manager';
+import type { ProjectFn } from '../camera/camera-system';
+import type { MarkerManager } from '../marker/marker-manager';
 
 export type StageId = '00' | '0' | '1' | '2';
 
@@ -81,6 +83,7 @@ export abstract class Stage {
     simulator: Simulator,
     unlockManager: UnlockManager,
     fx: EffectsSystem,
+    markerManager: MarkerManager,
   ): void {
     this._hud = hud;
     this._sfx = sfx;
@@ -88,7 +91,7 @@ export abstract class Stage {
     this._unlockManager = unlockManager;
     this._fx = fx;
     this._phase = 'playing';
-    this.logistics = new Logistics(hud, sfx, scene, simulator.ammos, (ammo) => simulator.addAmmo(ammo));
+    this.logistics = new Logistics(hud, sfx, scene, simulator.ammos, (ammo) => simulator.addAmmo(ammo), markerManager);
     this.statusPanel = new StageStatusPanel(hud.root);
   }
 
@@ -107,8 +110,14 @@ export abstract class Stage {
     location.replace(`${location.pathname}?stage=${this.id}`);
   }
 
-  // 毎フレーム(sync 時)呼ぶ。hudSubStatus() を返すステージでだけ状況パネルを表示する。
-  syncStatusPanel(player: Player): void {
+  // 毎フレーム(sync 時)呼ぶ、ステージ所有の表示物の同期。
+  sync(player: Player, project: ProjectFn): void {
+    this.syncStatusPanel(player);
+    this.logistics.syncMarkers(player, project);
+  }
+
+  // hudSubStatus() を返すステージでだけ状況パネルを表示する。
+  private syncStatusPanel(player: Player): void {
     const message = this.hudSubStatus();
     if (message === null) {
       this.statusPanel.hide();
