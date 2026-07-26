@@ -61,7 +61,7 @@ export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルク
 // 通常時の半分の出力で小刻みな姿勢調整を可能にする
 export const FINE_ATTITUDE_SCALE = 0.5;
 
-// 戦闘視点カメラ(ChaseCamera / PipCamera 共通)の near/far [m]。
+// 戦闘視点カメラ(ChaseCamera)の near/far [m]。
 // near: LEO高度からの地平線距離(~2,400km)での深度誤差が大気シェルの厚みより
 // 十分小さくなり、対数深度バッファなしで z-fighting を回避できる値。
 // far: 星空シェル(STAR_SHELL_RADIUS=3.5e7)・太陽ビルボード(SUN_DISTANCE=4.2e7)・
@@ -87,7 +87,13 @@ export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
 export const FIRE_INTERVAL = 0.06; // 発射間隔 [s] 
 export const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
 export const BULLET_SPREAD = 0.002; // 散布界 [rad]
-export const BULLET_LIFETIME = 240; // [sim s]
+// 弾の消滅は距離が主、寿命は保険。自機から BULLET_MAX_DIST 以上離れた弾は、もう当たる相手が
+// いないので消す(自機の目の前で消えないよう、交戦圏 STAGE00_MAX_RANGE と同じ距離を採る)。
+// 弾は1発ずつ独立したメッシュ = ドローコールなので、生存数が描画コストに直結する:
+// 初速 1000 m/s なら 30km を約30秒で抜けるため、連射しても生存数はその範囲に収まる。
+// 寿命は「自機とほぼ同じ軌道に乗ってしまい、いつまでも離れない弾」を最終的に片付けるための保険。
+export const BULLET_MAX_DIST = 30e3; // 自機からこれ以上離れた弾を消す [m]
+export const BULLET_LIFETIME = 240; // 保険としての寿命 [sim s]
 export const RECOIL_DV = 0.04; // 反動 [m/s]
 export const SELF_HIT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
 

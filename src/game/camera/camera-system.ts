@@ -5,7 +5,6 @@ import { Sfx } from '../../audio/sfx';
 import { ChaseCamera } from './chase-camera';
 import { OverviewCamera } from './overview-camera';
 import { OverviewCameraPanel } from './overview-camera-panel';
-import { PipCamera } from './pip-camera';
 import { FocusMarkers } from './focus-markers';
 import { FocusGizmo } from './focus-gizmo';
 import { MarkerManager } from '../marker/marker-manager';
@@ -32,7 +31,6 @@ const PANEL_FOCUS_IDS = ['earth', 'moon', 'sun'] as const;
 export class CameraSystem {
   readonly chaseCamera: ChaseCamera;
   readonly overviewCamera: OverviewCamera;
-  readonly pipCamera = new PipCamera();
   readonly focusMarkers: FocusMarkers;
   private readonly focusGizmo = new FocusGizmo();
   // 広範囲視点の操作パネル(注視対象・視点の座標系・視点リセット)。映すのも受けるのも
@@ -128,7 +126,6 @@ export class CameraSystem {
     else {
       this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, player, this.zoomActive);
     }
-    this.pipCamera.update(player);
   }
 
   // update() が算出した絶対 ECI の視点状態を、フローティングオリジン(fo)で補正して
@@ -138,7 +135,6 @@ export class CameraSystem {
   sync(fo: FloatingOrigin, displayTime: number): void {
     if (this.overviewMode) this.overviewCamera.sync(fo);
     else this.chaseCamera.sync(fo);
-    this.pipCamera.sync(fo);
     // 視点パネルは広範囲視点中だけ表示し、点灯状態を overviewCamera の現状へ揃える。フォーカスは
     // ラベル右クリックからも、座標系はリセットからも変わるので、変化点ごとの通知ではなく
     // 毎フレームここで押し出す(同値なら DOM は変わらない)。
