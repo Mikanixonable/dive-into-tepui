@@ -7,17 +7,25 @@
 // plan 側の責務で、plan-editor / plan-trajectory がノード境界ごとにこのプリミティブを呼ぶ。
 import { OrbitState, orbitState, stepOrbitRK4 } from './orbital';
 import { Ephemeris } from './ephemeris';
-import { envAccel } from './envaccel';
+import { envAccelScalar } from './envaccel';
 import { Vec3, cross, norm, len, v3 } from './vec3';
+
+const predictProvider = {
+  sunPos: v3(),
+  moonPos: v3(),
+  computeExtraAccel(rx: number, ry: number, rz: number, vx: number, vy: number, vz: number, out: { x: number; y: number; z: number; }): void {
+    envAccelScalar(rx, ry, rz, vx, vy, vz, this.sunPos, this.moonPos, 0, out);
+  }
+};
 
 // state を dt だけ前進させた新しい state を返す(中点 t+dt/2 の太陽・月位置で
 // 環境加速度を評価)。predictTrajectory と propagateState が共有する 1 ステップ。
 // bcInv = 0 = 大気抵抗なし(このモジュール冒頭の注記のとおり意図的)。
 function stepPredict(state: OrbitState, dt: number, ephemeris: Ephemeris): OrbitState {
   const mid = state.t + dt / 2;
-  const sunPos = ephemeris.sunPosAt(mid);
-  const moonPos = ephemeris.moonPosAt(mid);
-  return stepOrbitRK4(state, dt, (r, v) => envAccel(r, v, sunPos, moonPos, 0));
+  predictProvider.sunPos = ephemeris.sunPosAt(mid);
+  predictProvider.moonPos = ephemeris.moonPosAt(mid);
+  return stepOrbitRK4(state, dt, predictProvider);
 }
 
 // ノードの Δv(プログレード/ノーマル/ラジアルアウト)を、その時点の r, v から

@@ -157,7 +157,14 @@ export function register(): void {
     const totalSeconds = totalDays * 86400;
     const steps = Math.round(totalSeconds / dt);
     for (let i = 0; i < steps; i++) {
-      s = stepOrbitRK4(s, dt, (r) => j2Accel(r));
+      s = stepOrbitRK4(s, dt, {
+        computeExtraAccel(rx: number, ry: number, rz: number, vx: number, vy: number, vz: number, out: { x: number; y: number; z: number; }): void {
+          const j2 = j2Accel(v3(rx, ry, rz));
+          out.x = j2.x;
+          out.y = j2.y;
+          out.z = j2.z;
+        }
+      });
     }
 
     const el = elementsFromState(s.r, s.v) as Elements;
