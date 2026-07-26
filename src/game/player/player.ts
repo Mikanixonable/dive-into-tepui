@@ -197,7 +197,7 @@ export class Player extends Ship {
   }
 
   // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。
-  checkLoss(dt: number, _simTime: number, activeStage: Stage): void {
+  checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3): void {
     if (!this.alive) return;
     const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, altitudeOf(this.state.r));
 
@@ -252,7 +252,7 @@ export class Player extends Ship {
   }
 
   // 自機も他エンティティと同じく絶対 ECI 位置(state.r)を fo 経由で描画フレームへ変換する。
-  // ズーム中(PIP)は本体を隠す。機体付随のエフェクト(プルーム/RCSパフ)には fo と自機
+  // ズーム中は本体を隠す。機体付随のエフェクト(プルーム/RCSパフ)には fo と自機
   // 状態を渡し、慣性座標で位置を組んでから末端で fo 変換させる。自機由来の HUD マーカーも
   // ここから同期するので、呼び出し側が別途 syncMarker 相当を呼ぶ必要は無い。
   // 型シグネチャが異なるため、オーバーライドではなく別メソッドとして定義する。基底クラスのsyncは使わない
