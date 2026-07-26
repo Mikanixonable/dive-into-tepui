@@ -1,0 +1,9 @@
+# ./memos
+
+実装計画などのmdファイルをまとめたディレクトリ
+
+./docs はビルド用に使われているためmemosと命名
+(githubpagesの都合でrootかdocsしかビルド元として利用できない)
+
+## ./refactoring_plan
+hedaluさんが2026-07-20から行ってくれたリファクタリングの計画
