@@ -197,7 +197,7 @@ export class Player extends Ship {
   }
 
   // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。
-  checkLoss(dt: number, _simTime: number, activeStage: Stage): void {
+  checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3): void {
     if (!this.alive) return;
     const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, altitudeOf(this.state.r));
 

@@ -228,9 +228,9 @@ export class Game {
 
     this.targeter.markBoardCrossings(this.player, this.simulator);
 
-    this.player.checkLoss(dt, this.simulator.simTime, this.activeStage);
+    this.player.checkLoss(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
 
-    this.simulator.cleanup(dt, this.activeStage);
+    this.simulator.cleanup(dt, this.activeStage, this.player.state.r);
 
     // カメラ更新は物理積分の後に行う: 追従カメラは自機を絶対 ECI 座標で追い、その基準は
     // sync 時のフローティングオリジン(積分後の自機位置)と一致していなければならない。

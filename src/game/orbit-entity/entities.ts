@@ -73,7 +73,9 @@ export class OrbitEntity {
     this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 
-  checkLoss(_dt: number, _simTime: number, _activeStage: Stage): void {
+  // playerPos は「自機からの距離」で消える種別(弾)のために一律で渡す引数。
+  // 使わない派生が多数だが、消滅条件はエンティティ自身の責務なので判定はここに置く。
+  checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3): void {
     if (!this.alive) return;
     if (altitudeOf(this.state.r) < C.DEBRIS_REENTRY_ALT) this.alive = false;
   }
@@ -180,8 +182,8 @@ export class DebrisPiece extends OrbitEntity {
 
   get kind(): DebrisKind['kind'] { return this.debrisKind.kind; }
 
-  checkLoss(dt: number, simTime: number, activeStage: Stage): void {
-    super.checkLoss(dt, simTime, activeStage);
+  checkLoss(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3): void {
+    super.checkLoss(dt, simTime, activeStage, playerPos);
     if (!this.alive) return;
     // 薬莢のみ、寿命(CASING_LIFETIME)による消滅がある(他のデブリは大気突入のみ)。
     if (this.debrisKind.kind === 'casing' && simTime - this.debrisKind.bornSim > C.CASING_LIFETIME) {
