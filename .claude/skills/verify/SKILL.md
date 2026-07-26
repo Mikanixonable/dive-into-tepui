@@ -1,9 +1,12 @@
 ---
 name: verify
-description: ヘッドレス Chrome + CDP でゲームを起動・駆動し、実行時例外とエンティティ数を観測する手順
+description: ヘッドレス Chrome + CDP でゲームを起動・駆動し、実行時例外とエンティティ数を観測する手順。ユーザーが実行時の動作確認を明示的に求めたときだけ使う
 ---
 
 # ゲームの実行時検証
+
+**起動条件: ユーザーが実行時の動作確認・再現確認を明示的に求めたときだけ実行する。** コード変更の
+既定の検証は `npm run typecheck` のみ(`src/physics/` を触ったときは `npm run test:physics` も)。
 
 1. `npm run dev` をバックグラウンド起動(http://localhost:8080、初回コンパイル ~30s)。
 2. ヘッドレス Chrome を CDP 付きで起動し、WebSocket 経由で駆動する(puppeteer 不要。Node 20+ の
