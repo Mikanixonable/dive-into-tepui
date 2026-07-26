@@ -68,7 +68,7 @@ export class PlanEditor {
     this.planPanel = document.createElement('div');
     this.planPanel.id = 'hud-plan';
     this.planPanel.className = 'panel';
-    this.planPanel.innerHTML = `<h3>MANEUVER PLAN [${K.mapMode.label}]</h3><div data-id="planbody"></div>`;
+    this.planPanel.innerHTML = `<h3>MANEUVER PLAN [${K.toggleMapMode.label}]</h3><div data-id="planbody"></div>`;
     this.planPanel.style.display = 'none';
     this._hud.root.appendChild(this.planPanel);
     this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
@@ -460,6 +460,6 @@ function planPanelHtml(
   }
   const dvKeys =
     `${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label}`;
-  s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/${dvKeys}] Δv調整 [右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.mapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
+  s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/${dvKeys}] Δv調整 [右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
   return s;
 }

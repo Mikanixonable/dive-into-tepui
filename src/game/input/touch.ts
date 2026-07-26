@@ -230,7 +230,7 @@ export class TouchControls {
     for (const b of [
       { key: K.warpSlower, glyph: '«', label: 'warp' },
       { key: K.warpFaster, glyph: '»', label: 'warp' },
-      { key: K.mapMode, glyph: K.mapMode.label, label: '計画' },
+      { key: K.toggleMapMode, glyph: K.toggleMapMode.label, label: '計画' },
       { key: K.autoWarpToNode, glyph: K.autoWarpToNode.label, label: 'ノードへ' },
       { key: K.help, glyph: K.help.label, label: 'ヘルプ' },
     ]) {

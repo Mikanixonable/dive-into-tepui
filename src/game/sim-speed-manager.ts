@@ -74,7 +74,7 @@ export class SimSpeedManager {
   // 直近ノードの実行時刻までの自動ワープをトグルする。
   toggleAutoWarpToFirstNode(isPlaying: boolean, firstNode: OrbitState | undefined): void {
     if (!firstNode || !isPlaying) {
-      this._hud.hint(`マニューバノードがありません ([${K.mapMode.label}] で計画)`);
+      this._hud.hint(`マニューバノードがありません ([${K.toggleMapMode.label}] で計画)`);
       return;
     }
     if (this.isAutoWarping) {
