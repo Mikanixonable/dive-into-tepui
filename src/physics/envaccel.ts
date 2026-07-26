@@ -2,7 +2,7 @@
 // 第三体(潮汐)摂動。ゲーム本体(orbit-entity/simulator.ts)と軌道計画の数値予測
 // (physics/predict.ts)が同じ力の列挙を共有するための唯一の定義箇所。
 // THREE/DOM 非依存の純関数。
-import { R_EARTH, SIDEREAL_DAY, j2Accel, thirdBodyAccel } from './orbital';
+import { J2_EARTH, MU_EARTH, R_EARTH, R_EARTH_EQ, SIDEREAL_DAY, j2Accel, thirdBodyAccel } from './orbital';
 import { MU_MOON, MU_SUN } from './ephemeris';
 import { atmosphericDensity } from './atmosphere';
 import { Vec3, add, len, v3 } from './vec3';
@@ -33,6 +33,8 @@ export function envAccel(r: Vec3, v: Vec3, sunPos: Vec3, moonPos: Vec3, bcInv: n
 }
 
 // スカラー計算版。大量のオブジェクト生成を避けるための最適化版。
+// 注意: モジュールスコープの状態は持たないが、呼び出し元（predictProvider 等）が
+// ミュータブル singleton 経由で使う場合は再入不可。
 export function envAccelScalar(
   rx: number, ry: number, rz: number,
   vx: number, vy: number, vz: number,
@@ -41,10 +43,13 @@ export function envAccelScalar(
 ): void {
   out.x = 0; out.y = 0; out.z = 0;
 
+  // r² と |r| は Drag・J2 の両方で使うので先に求める。
+  const r2 = rx * rx + ry * ry + rz * rz;
+  const rl = Math.sqrt(r2);
+
   // Drag
   if (bcInv > 0) {
-    const rMag = Math.sqrt(rx * rx + ry * ry + rz * rz);
-    const rho = atmosphericDensity(rMag - R_EARTH);
+    const rho = atmosphericDensity(rl - R_EARTH);
     if (rho >= 1e-15) {
       const vrx = vx - EARTH_OMEGA * rz;
       const vry = vy;
@@ -57,9 +62,7 @@ export function envAccelScalar(
   }
 
   // J2
-  const r2 = rx * rx + ry * ry + rz * rz;
-  const rl = Math.sqrt(r2);
-  const k = (-1.5 * 1.08262668e-3 * 3.986004418e14 * 6.378137e6 * 6.378137e6) / (r2 * r2 * rl);
+  const k = (-1.5 * J2_EARTH * MU_EARTH * R_EARTH_EQ * R_EARTH_EQ) / (r2 * r2 * rl);
   const f = (5 * ry * ry) / r2;
   out.x += k * rx * (1 - f);
   out.y += k * ry * (3 - f);
