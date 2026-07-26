@@ -156,6 +156,9 @@ export const DESTROY_FRAG_SIZE_MAX = 6.0;
 export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096];
 export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
 
+export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simulator.stepSimulation のサブステップ分割数の算出に使う)
+export const SUBSTEP_MAX_COUNT = 64; // 1フレームあたりのサブステップ数上限(高倍率ワープ時に計算量が爆発しないための歯止め)
+
 export const PLAYER_RADIUS = 5; // 被弾(弾丸ヒット)判定 [m]。実機体より大きめの当たり判定
 export const PLAYER_HULL_RADIUS = 2.6; // 薬莢・破片等との物理接触に使う実寸に近い半径 [m]。
 // PLAYER_RADIUS(被弾判定、余裕を持たせた大きめの値)をそのまま物理接触に使うと、
