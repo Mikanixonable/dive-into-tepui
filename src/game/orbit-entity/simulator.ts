@@ -105,8 +105,13 @@ export class Simulator {
     resolveCollision: boolean,
     doSubstep: boolean,
   ): void {
-    // 謎実装
-    const nSub = doSubstep && simDt > dt * C.MAX_PHYS_SIM_SPEED ? Math.min(64, Math.ceil(simDt / 20)) : 1;
+    // サブステップ数はこのフレームで進めるシミュレーション時間 simDt のみから決める
+    // (実フレーム時間 dt を条件に含めると、同じワープ倍率でも fps によって積分の刻みが
+    // 変わってしまう)。1サブステップを SUBSTEP_MAX_DT 秒以下に保ちつつ、
+    // SUBSTEP_MAX_COUNT で上限を設けてワープ最大時に1フレームの計算量が爆発しないようにする。
+    const nSub = doSubstep
+      ? Math.min(C.SUBSTEP_MAX_COUNT, Math.max(1, Math.ceil(simDt / C.SUBSTEP_MAX_DT)))
+      : 1;
 
     const subDt = simDt / nSub;
     for (let i = 0; i < nSub; i++) {
