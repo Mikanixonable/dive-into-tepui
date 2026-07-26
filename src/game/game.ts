@@ -189,6 +189,10 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.handleInput();
 
+    if (Number.isNaN(this.player.state.r.x)) {
+        throw new Error(`NaN detected in player.state.r! v=${JSON.stringify(this.player.state.v)}`);
+    }
+
     // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
     // 積分もサブステップなしの簡略版(integrateSimulation の hardCollision/doSubstep 引数)にする。
     // behave が呼ばれなくなる分、勝敗確定時点の thrustFn が凍結され続けないよう明示的に消す。
