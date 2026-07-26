@@ -83,20 +83,20 @@ export class CollisionPhysics {
     const pCorr = (pen / invM) * 0.8;
     const cA = pCorr * invMa;
     const cB = pCorr * invMb;
-    const rA2 = v3(rA.x - nx * cA, rA.y - ny * cA, rA.z - nz * cA);
-    const rB2 = v3(rB.x + nx * cB, rB.y + ny * cB, rB.z + nz * cB);
+    const rA2x = rA.x - nx * cA, rA2y = rA.y - ny * cA, rA2z = rA.z - nz * cA;
+    const rB2x = rB.x + nx * cB, rB2y = rB.y + ny * cB, rB2z = rB.z + nz * cB;
 
     const vn = (vB.x - vA.x) * nx + (vB.y - vA.y) * ny + (vB.z - vA.z) * nz;
     if (vn >= 0) {
-      a.state = orbitState(a.state.t, rA2, vA);
-      b.state = orbitState(b.state.t, rB2, vB);
+      a.state = orbitState(a.state.t, v3(rA2x, rA2y, rA2z), vA);
+      b.state = orbitState(b.state.t, v3(rB2x, rB2y, rB2z), vB);
       return false;
     }
     const j = -((1 + restitution) * vn) / invM;
     const jA = j * invMa;
     const jB = j * invMb;
-    a.state = orbitState(a.state.t, rA2, v3(vA.x - nx * jA, vA.y - ny * jA, vA.z - nz * jA));
-    b.state = orbitState(b.state.t, rB2, v3(vB.x + nx * jB, vB.y + ny * jB, vB.z + nz * jB));
+    a.state = orbitState(a.state.t, v3(rA2x, rA2y, rA2z), v3(vA.x - nx * jA, vA.y - ny * jA, vA.z - nz * jA));
+    b.state = orbitState(b.state.t, v3(rB2x, rB2y, rB2z), v3(vB.x + nx * jB, vB.y + ny * jB, vB.z + nz * jB));
     return true;
   }
 }

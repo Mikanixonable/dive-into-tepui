@@ -31,3 +31,53 @@ export function envAccel(r: Vec3, v: Vec3, sunPos: Vec3, moonPos: Vec3, bcInv: n
   const moon = thirdBodyAccel(r, moonPos, MU_MOON);
   return add(add(add(drag, j2), sun), moon);
 }
+
+// スカラー計算版。大量のオブジェクト生成を避けるための最適化版。
+export function envAccelScalar(
+  rx: number, ry: number, rz: number,
+  vx: number, vy: number, vz: number,
+  sunPos: Vec3, moonPos: Vec3, bcInv: number,
+  out: { x: number, y: number, z: number }
+): void {
+  out.x = 0; out.y = 0; out.z = 0;
+
+  // Drag
+  if (bcInv > 0) {
+    const rMag = Math.sqrt(rx * rx + ry * ry + rz * rz);
+    const rho = atmosphericDensity(rMag - R_EARTH);
+    if (rho >= 1e-15) {
+      const vrx = vx - EARTH_OMEGA * rz;
+      const vry = vy;
+      const vrz = vz + EARTH_OMEGA * rx;
+      const k = -0.5 * rho * Math.sqrt(vrx * vrx + vry * vry + vrz * vrz) * bcInv;
+      out.x += vrx * k;
+      out.y += vry * k;
+      out.z += vrz * k;
+    }
+  }
+
+  // J2
+  const r2 = rx * rx + ry * ry + rz * rz;
+  const rl = Math.sqrt(r2);
+  const k = (-1.5 * 1.08262668e-3 * 3.986004418e14 * 6.378137e6 * 6.378137e6) / (r2 * r2 * rl);
+  const f = (5 * ry * ry) / r2;
+  out.x += k * rx * (1 - f);
+  out.y += k * ry * (3 - f);
+  out.z += k * rz * (1 - f);
+
+  // Third Body (Sun)
+  const sdx = sunPos.x - rx, sdy = sunPos.y - ry, sdz = sunPos.z - rz;
+  const sd3 = Math.pow(sdx * sdx + sdy * sdy + sdz * sdz, 1.5);
+  const sb3 = Math.pow(sunPos.x * sunPos.x + sunPos.y * sunPos.y + sunPos.z * sunPos.z, 1.5);
+  out.x += (MU_SUN * sdx) / sd3 - (MU_SUN * sunPos.x) / sb3;
+  out.y += (MU_SUN * sdy) / sd3 - (MU_SUN * sunPos.y) / sb3;
+  out.z += (MU_SUN * sdz) / sd3 - (MU_SUN * sunPos.z) / sb3;
+
+  // Third Body (Moon)
+  const mdx = moonPos.x - rx, mdy = moonPos.y - ry, mdz = moonPos.z - rz;
+  const md3 = Math.pow(mdx * mdx + mdy * mdy + mdz * mdz, 1.5);
+  const mb3 = Math.pow(moonPos.x * moonPos.x + moonPos.y * moonPos.y + moonPos.z * moonPos.z, 1.5);
+  out.x += (MU_MOON * mdx) / md3 - (MU_MOON * moonPos.x) / mb3;
+  out.y += (MU_MOON * mdy) / md3 - (MU_MOON * moonPos.y) / mb3;
+  out.z += (MU_MOON * mdz) / md3 - (MU_MOON * moonPos.z) / mb3;
+}

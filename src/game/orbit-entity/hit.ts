@@ -1,5 +1,5 @@
 // 弾の高度な衝突判定(トンネリング防止のセグメント衝突・被弾ダメージ)。
-import { addScaled, dot, lenSq, sub } from '../../physics/vec3';
+
 import * as C from '../const';
 import { Ship } from './entities';
 import { Bullet } from './bullet';
@@ -31,12 +31,30 @@ export class HitSystem {
   }
 
   private segmentHit(b: Bullet, ship: Ship): boolean {
-    const a = sub(b.prevState.r, ship.prevState.r);
-    const bb = sub(b.state.r, ship.state.r);
-    const d = sub(bb, a);
-    const dd = lenSq(d);
-    const t = dd > 1e-9 ? Math.max(0, Math.min(1, -dot(a, d) / dd)) : 0;
-    const closest = addScaled(a, d, t);
-    return lenSq(closest) <= ship.radius * ship.radius;
+    const bpr = b.prevState.r;
+    const spr = ship.prevState.r;
+    const ax = bpr.x - spr.x;
+    const ay = bpr.y - spr.y;
+    const az = bpr.z - spr.z;
+
+    const br = b.state.r;
+    const sr = ship.state.r;
+    const bbx = br.x - sr.x;
+    const bby = br.y - sr.y;
+    const bbz = br.z - sr.z;
+
+    const dx = bbx - ax;
+    const dy = bby - ay;
+    const dz = bbz - az;
+
+    const dd = dx * dx + dy * dy + dz * dz;
+    const a_dot_d = ax * dx + ay * dy + az * dz;
+    const t = dd > 1e-9 ? Math.max(0, Math.min(1, -a_dot_d / dd)) : 0;
+
+    const cx = ax + dx * t;
+    const cy = ay + dy * t;
+    const cz = az + dz * t;
+
+    return cx * cx + cy * cy + cz * cz <= ship.radius * ship.radius;
   }
 }
