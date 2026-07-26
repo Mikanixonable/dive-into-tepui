@@ -138,7 +138,7 @@ export class Enemy extends Ship {
   }
 
   // 再突入による自然死。alive がすでに false なら何もしない(多重処理防止)。
-  checkLoss(_dt: number, simTime: number, activeStage: Stage): void {
+  checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3): void {
     if (!this.alive) return;
     if (altitudeOf(this.state.r) >= C.REENTRY_ALT) return;
     this.alive = false;
