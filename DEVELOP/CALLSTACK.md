@@ -75,6 +75,7 @@
       - simulationSubStep() ×1 → stepEntity() エンティティごと + player.thermal.updateThermal()
       - stepAttitudes()
   - [game.isPaused] 以降を実行せず return するポーズ経路
+  - nanWatchdog.checkPlayer('frameStart') // 検出済みなら何もしない
   - player.behave()
     - belt.update()
       - physics.shiftBeltNodes() // リロードで給弾量が巻き戻ったフレームのみ
@@ -117,6 +118,7 @@
     - throttle.updateThrustState() → player.thrustFn へ代入
       - sfx.setThrust(false) // 推力入力なし or !canPlayerThrust
       - sfx.setThrust(true) // 推力あり
+  - nanWatchdog.checkPlayer('player.behave')
   - activeStage.update() // 具体ステージへディスパッチ。!isPlaying なら即 return
     - behaveAllEnemies() // 全ステージ共通の先頭処理
       - enemy.behave() // 生存中の敵ごと(canEnemyFire・距離・バースト状態の判定は behave 内部)
@@ -138,6 +140,7 @@
       - spawnWave: generateWave() → addEnemy() → simulator.addEnemy() + scoreCounter.recordSpawnEnemy()
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(respawnOnDespawn=false)
+  - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効
     - hud.hint() // 実行点に接近して自動ワープを解除したフレームのみ
   - simulator.stepSimulation(hardCollision=true, doSubstep=true)
@@ -168,6 +171,7 @@
       - resolveCollisionPair() → 双方の state へ代入 // 貫入している衝突ペアごと
       - onPlayerCasingImpact() → sfx.clank() // 自機-薬莢の接触時のみ
     - player.belt.applyCollisionSections() // player.alive && dt>1e-6
+  - nanWatchdog.checkAll('simulator.stepSimulation') // 全エンティティ走査。検出済みなら何もしない
   - targeter.markBoardCrossings() // ターゲットが存在する場合のみ
     - boardMarks.push() // 通常弾が的の面を自機側から通過した場合のみ
   - player.checkLoss() // !player.alive なら即 return
