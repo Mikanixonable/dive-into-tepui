@@ -18,12 +18,6 @@ export async function createGameScene(canvas: HTMLCanvasElement): Promise<GameSc
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   await renderer.init();
-  const device = (renderer as any).backend?.device;
-  if (device) {
-    device.lost.then((info: any) => {
-      console.error('WebGPU Device Lost!', info);
-    });
-  }
 
   const resize = () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
