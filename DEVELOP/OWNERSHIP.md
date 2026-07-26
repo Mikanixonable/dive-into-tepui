@@ -72,8 +72,7 @@ main.ts
     │   ├── ScoreCounter
     │   ├── Logistics                  ... 補給の投入判断と ▣ AMMO マーカー
     │   ├── StageStatusPanel           ... DOM は Hud.root 配下。HP/補助メッセージ/撃墜数
-    │   ├── ScoreAttackTimer           ... Stage0 のみ
-    │   └── WaveManager                ... Stage00 のみ
+    │   └── ScoreAttackTimer           ... Stage0 のみ(Stage00 の波状攻撃フェーズ・波数は Stage00 自身のフィールド)
     ├── EnvironmentScene
     │   ├── Earth / Sun / DirectionalLight / AmbientLight / stars / moon メッシュ
     │   └── OrbitLine ×2               ... geoLine / moonLine(マップ参照線)
@@ -153,7 +152,7 @@ main.ts
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
 | 発射数・命中数・撃破数・出撃数 | `ScoreCounter` | 所有は Stage |
 | 補給の投入間隔タイマー | `Logistics` | |
-| ウェーブフェーズ・波数 | `WaveManager`(Stage00) | |
+| ウェーブフェーズ・波数 | `Stage00`(自身のフィールド) | |
 | 残り時間 | `ScoreAttackTimer`(Stage0) | |
 | ステージクリア回数 | **localStorage**(`tepui.clearCounts`) | UnlockManager はその読み書き窓口。インスタンスは正本ではない |
 | ポーズ | `Game.paused` | 唯一の駆動源は `SettingsPanel.onSettingsOpenChange` |

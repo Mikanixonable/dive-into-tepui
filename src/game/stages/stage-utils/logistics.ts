@@ -55,7 +55,7 @@ export class Logistics {
   }
 
   // respawnOnDespawn: 遠方デスポーンした補給を同数投入し直すか。呼び出し元(各 Stage の
-  // update、stages/wave-manager.ts 経由)がこの真偽値を直接渡す。
+  // update)がこの真偽値を直接渡す。
   updateLogistics(simTime: number, player: Player, respawnOnDespawn = false): void {
     if (player.alive) this.absorbNearbyAmmo(player);
     this.despawnFarAmmo(player, respawnOnDespawn);

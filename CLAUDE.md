@@ -140,9 +140,8 @@ Screen projection itself is **not** in `camera/`: `physics/projection.ts` holds 
 - `stage-utils/logistics.ts` — `Logistics`: ammo-pickup spawn/pickup/despawn logic plus the ▣ AMMO markers that point at them (`syncMarkers`, driven from `Stage.sync`), shared by all stages via `Stage.setup`.
 - `stage-utils/score-counter.ts` — `ScoreCounter`: pure shot/hit/kill/loss tallies; result side effects (notifications, win/lose) live on `Stage`.
 - `stage-utils/score-attack-timer.ts` — `ScoreAttackTimer`: stage0's countdown.
-- `stage-utils/wave-manager.ts` — `WaveManager`: stage00's wait-for-ammo → wave-approach → active-combat phase machine.
 - `spawner/enemy-generator.ts` — builds individual `Enemy`s from orbital-element/phasing parameters (phased/coelliptic/crossing/elliptic/Molniya presets).
-- `spawner/enemy-spawner.ts` — builds enemy *groups* (stage0's training cluster, stage00's wave formations) by calling `enemy-generator.ts` repeatedly.
+- `spawner/enemy-spawner.ts` — builds enemy *groups* by calling `enemy-generator.ts` repeatedly; only `generateCluster` (stage0's training cluster) remains here — stage00's wait-for-ammo → wave-approach → active-combat phase machine and its wave-formation generation live directly in `stage00.ts` (they're used nowhere else, so there's no shared abstraction to keep separate).
 
 - `src/game/sim-speed-manager.ts` — `SimSpeedManager`: the sim-speed stage (`SIM_SPEED_LEVELS`; shown to the player and referenced in SFX as "warp"), the `[N]`-key auto-warp-to-node behavior (`toggleAutoWarpToFirstNode`/`startAutoWarpTo`/`cancelAutoWarp`/`update`), and the **`can*` predicates** (`canPlayerThrust`/`canPlayerFire`/`canEnemyFire`/`canResolvePhysicalCollisions`) — callers ask these instead of comparing `simSpeed` against `MAX_PHYS_SIM_SPEED` themselves.
 - `src/game/theme.ts` — the sole definition source for the dark-theme color constants (`ACCENT`, `SURFACE`, `EDGE`, `TEXT`, ...), shared by `hud/`, `main.ts`, `plan/node-gizmo.ts`, `input/touch.ts`.
