@@ -62,19 +62,41 @@ async function initScene(): Promise<GameScene> {
 
 function startAnimationLoop(game: Game, perf: PerfMeter): void {
   let lastTime = performance.now();
+  let crashed = false;
   function animate(now: number) {
-    requestAnimationFrame(animate);
+    if (crashed) return;
     const dt = (now - lastTime) / 1000;
     lastTime = now;
     const t0 = perf.on ? performance.now() : 0;
-    game.update(dt);
+
+    try {
+      game.update(dt);
+    } catch (err) {
+      crashed = true;
+      console.error('Fatal error in game.update:', err);
+    }
+
     const t1 = perf.on ? performance.now() : 0;
-    game.sync(Math.min(dt, 0.1));
-    game.render();
+
+    try {
+      if (!crashed) game.sync(Math.min(dt, 0.1));
+    } catch (err) {
+      crashed = true;
+      console.error('Fatal error in game.sync:', err);
+    }
+
+    try {
+      if (!crashed) game.render();
+    } catch (err) {
+      crashed = true;
+      console.error('Fatal error in game.render:', err);
+    }
+
     const t2 = perf.on ? performance.now() : 0;
-    if (perf.on) {
+    if (perf.on && !crashed) {
       perf.record(t1 - t0, t2 - t1, t2);
     }
+    if (!crashed) requestAnimationFrame(animate);
   }
   requestAnimationFrame((now) => {
     lastTime = now;
