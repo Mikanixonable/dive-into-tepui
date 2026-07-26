@@ -176,7 +176,7 @@
       - checkThermalLimits() → hud.hint() // 熱/動圧が危険域に入った初回のみ
     - destroyEffect() → sfx.explosion() + fx.spawnShipDestroyEffect() // 限界超過 or 高度不足のみ
     - activeStage.recordPlayerLost() // 同上
-  - simulator.cleanup()
+  - simulator.cleanup() // checkLoss には自機位置を渡す(弾は距離で消える)
     - checkLoss() // 敵・弾・薬莢・デブリ・補給の各個体ごと(既定は alive=false 代入のみ)
       - [Enemy.checkLoss] destroyEffect() + activeStage.recordEnemyDeath(byPlayer=false) // 再突入時のみ
         - scoreCounter.recordEnemyLoss() + hud.hint()
