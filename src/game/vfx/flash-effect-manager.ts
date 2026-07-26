@@ -14,7 +14,6 @@ export interface FlashEffect {
   size0: number;
   size1: number;
   peakOpacity: number; // 発生直後の最大不透明度倍率(ズーム中のマズルフラッシュ減光などに使う)
-  muzzle?: boolean; // マズルフラッシュのみ true。ズームウィンドウ(PIP)描画時はこれだけを非表示にする
 }
 
 export class FlashEffectManager {
@@ -50,11 +49,4 @@ export class FlashEffectManager {
     });
   }
 
-  // ズームウィンドウ(PIP)描画中、マズルフラッシュを非表示にする(pip-renderer.ts から
-  // playerShipObj.visible=false と同じタイミングで呼ばれる)。this.effects には被弾スパーク・
-  // 撃破爆発のフラッシュも入っているため、muzzle フラグ付きのものだけを切り替える
-  // (ズーム中でも敵側の命中・爆発の閃光は照準フィードバックとして見せたい)。
-  setMuzzleFlashesVisible(v: boolean): void {
-    for (const fx of this.effects) if (fx.muzzle) fx.billboard.mesh.visible = v;
-  }
 }

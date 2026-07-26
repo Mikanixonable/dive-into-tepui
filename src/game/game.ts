@@ -21,7 +21,6 @@ import { PlanEditor } from './plan/plan-editor';
 import { PredictSystem } from './predict/predict-system';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
-import { PipRenderer } from './pip-renderer';
 import { Simulator } from './orbit-entity/simulator';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
@@ -32,6 +31,7 @@ import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
 import { Ephemeris } from '../physics/ephemeris';
 import { MapModeToggler } from './map-mode-toggler';
+import { NanWatchdog } from './nan-watchdog';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -92,7 +92,7 @@ export class Game {
   // 単独のオブジェクトでは決められないマーカー群。敵マーカーは「画面上で近接するものを
   // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とするので、いずれも
   // 当事者ではなくここが持つ。それ以外のマーカーは、それぞれの持ち主(Player/Targeter/
-  // Logistics/FocusMarkers/PlanGuide/PredictSystem、PIP 窓の分は PipRenderer)の sync が
+  // Logistics/FocusMarkers/PlanGuide/PredictSystem)の sync が
   // 自分で出す。
   private readonly enemyMarkers: GroupedMarkers;
   private readonly leadMarkers: LeadMarkers;
@@ -104,7 +104,10 @@ export class Game {
   private readonly effects: EffectsSystem;
   readonly targeter: Targeter;
   readonly simulator: Simulator;
-  private readonly pipRenderer: PipRenderer;
+  // シミュレーション状態の非有限値(NaN/Infinity)を最初に検出したフェーズごと報告する見張り。
+  // 汚染は描画の暗転・敵の「再突入」誤表示・接触音の鳴りっぱなしなど別の顔で表面化するため、
+  // 発生した瞬間に記録する(nan-watchdog.ts の冒頭コメント参照)。
+  private readonly nanWatchdog: NanWatchdog;
 
   constructor(
     gs: GameScene,
@@ -130,7 +133,6 @@ export class Game {
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
     this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
-    this.pipRenderer = new PipRenderer(this._scene, this.markerManager);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
     this.predict = new PredictSystem(this._hud.root, this.markerManager, this.ephemeris, this._scene);
@@ -166,6 +168,8 @@ export class Game {
       this.effects,
       this.markerManager,
     );
+
+    this.nanWatchdog = new NanWatchdog(this._hud);
 
     this.floatingOrigin = new FloatingOrigin(this.player.state.r, this.player.state.v);
   }
@@ -203,6 +207,8 @@ export class Game {
     // ポーズ中の処理
     if (this._isPaused) { return; }
 
+    this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+
     // プレイヤーの HP 回復・移動/発射の試行
     this.player.behave({
       dt,
@@ -215,8 +221,12 @@ export class Game {
       addBullet: (bullet) => this.simulator.addBullet(bullet),
     });
 
+    this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+
     // ステージの更新 (敵の行動・スポーン管理・スコア加算・勝敗判定を含む)
     this.activeStage.update(dt, this.player, this.simulator, this.simulator.simTime, this.simSpeedManager);
+
+    this.nanWatchdog.checkPlayer('activeStage.update', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
 
     this.simSpeedManager.update(this.simulator.simTime);
     const simDt = dt * this.simSpeedManager.simSpeed;
@@ -226,11 +236,15 @@ export class Game {
       true, // doSubstep 
     );
 
+    // 積分・弾命中・剛体接触・姿勢積分をまとめて通過した直後。全エンティティを走査する
+    // (自機より先に薬莢や破片が壊れ、接触を通じて自機へ伝播することがあるため)。
+    this.nanWatchdog.checkAll('simulator.stepSimulation', this.player, this.simulator, dt, simDt);
+
     this.targeter.markBoardCrossings(this.player, this.simulator);
 
-    this.player.checkLoss(dt, this.simulator.simTime, this.activeStage);
+    this.player.checkLoss(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
 
-    this.simulator.cleanup(dt, this.activeStage);
+    this.simulator.cleanup(dt, this.activeStage, this.player.state.r);
 
     // カメラ更新は物理積分の後に行う: 追従カメラは自機を絶対 ECI 座標で追い、その基準は
     // sync 時のフローティングオリジン(積分後の自機位置)と一致していなければならない。
@@ -285,12 +299,6 @@ export class Game {
 
   // ------------------------------------------------------------------ sync
 
-  // このフレームに PIP(照準ズーム窓)を出すか。sync 側(窓に重ねるマーカー)と render 側
-  // (描画パス)が必ず一致していなければならないので、判定はここだけに置いて両方へ渡す。
-  private get pipActive(): boolean {
-    return this.player.isFiring && !this.cameraSystem.overviewMode;
-  }
-
   sync(dt: number): void {
     // 設定し、sync 系全体へ共通の基準として渡す。player.state とは意味論的に別物 —
     // 将来この原点を別の点(カメラ座標など)へ差し替えても描画が破綻しないよう、
@@ -337,7 +345,6 @@ export class Game {
       project,
     );
     this.leadMarkers.sync(this.player, aliveEnemies, target, simTime, overviewMode, project);
-    this.pipRenderer.sync(this.pipActive, this.player, target, this.cameraSystem.pipCamera);
 
     // 予測折れ線(と未来ゴースト・PREDICT パネル)は predict が駆動する。ノードギズモの画面座標は
     // その表示座標変換を通すので、editor.sync はこの後に呼ぶ。
@@ -362,16 +369,7 @@ export class Game {
   // ------------------------------------------------------------------ render
 
   render(): void {
-    // 通常の全画面描画
     this.renderer.render(this._scene, this.cameraSystem.activeCamera);
-
-    // PIP 描画(窓に重ねるマーカーは sync 中に pipRenderer.sync が済ませている)
-    this.pipRenderer.renderPip(this.renderer, {
-      renderPip: this.pipActive,
-      pipCamera: this.cameraSystem.pipCamera,
-      playerShipObj: this.player.obj,
-      setMuzzleFlashesVisible: (visible) => this.effects.setMuzzleFlashesVisible(visible),
-    });
   }
 
   // ------------------------------------------------------------------ debug
