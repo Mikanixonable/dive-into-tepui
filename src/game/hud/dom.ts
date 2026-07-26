@@ -97,7 +97,7 @@ const STYLE = `
 #hud-plan {
   position: absolute; bottom: 40px; left: 12px; min-width: 280px;
 }
-/* hud/buttons.ts のボタン部品。マップモードの2パネル(#hud-predict / #hud-mapview)が共有する */
+/* hud/buttons.ts のボタン部品。マップモードの2パネル(#hud-predict / #hud-overview-camera)が共有する */
 #hud .hud-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 #hud .hud-seg .seg-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 28px; }
 #hud .hud-seg .seg-btn {
@@ -107,7 +107,7 @@ const STYLE = `
 #hud .hud-seg .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
 /* マップモードの2パネルは画面左上に縦積みする。下段は情報パネル群と操作説明で埋まっており、
    マップ操作はそれらと独立に置きたいため。 */
-#hud-mapview { display: none; top: 12px; left: 12px; width: 292px; pointer-events: auto; }
+#hud-overview-camera { display: none; top: 12px; left: 12px; width: 292px; pointer-events: auto; }
 #hud-predict { display: none; top: 166px; left: 12px; width: 292px; pointer-events: auto; }
 #hud-predict input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
 #hud-predict .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
@@ -185,7 +185,7 @@ const STYLE = `
   #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
   #hud-plan { bottom: 216px; left: 8px; min-width: 210px; max-width: 60vw; }
   /* マップモードの2パネルは狭幅では #hud-status に重ねる(計画中は艦状態より優先) */
-  #hud-mapview { top: 8px; left: 8px; width: 186px; }
+  #hud-overview-camera { top: 8px; left: 8px; width: 186px; }
   #hud-predict { top: 146px; left: 8px; width: 186px; }
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
@@ -344,7 +344,7 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
 }
 
 // HUD の静的 DOM/スタイル構築。document.body に直接要素を追加する。
-// 計画パネル(#hud-plan)・予測パネル(#hud-predict)・マップ視点パネル(#hud-mapview)・
+// 計画パネル(#hud-plan)・予測パネル(#hud-predict)・広範囲視点パネル(#hud-overview-camera)・
 // ステージ状況パネル(#hud-stagestatus)・設定パネル/ギア(#hud-settings/#hud-gear)は、それぞれ
 // PlanEditor / PredictSystem / CameraSystem / Stage / SettingsPanel が自分で root へ構築する
 // (それらの CSS はこの STYLE に含む)。

@@ -38,8 +38,9 @@ export class PlanEditor {
   plan: Plan = new Plan();
 
   // 軌道計画の編集モード(WASDQE などの操作系をΔv編集へ振り替え、ノード編集入力を有効化する)。
-  // cameraSystem.mapMode(広範囲視点)とは本来独立した責務で、たまたま MapModeToggler が
-  // 同時にトグルしているだけ。挙動・入力側の判定はこのフラグ、描画・視点側は mapMode を見る。
+  // cameraSystem.overviewMode(広範囲視点)とは本来独立した責務で、マップモードの正本
+  // (MapModeToggler.mapMode)が両方を同時に切り替えているだけ。挙動・入力側の判定はこの
+  // フラグ、描画・視点側は overviewMode を見る。
   editMode = false;
 
   // ノード編集の DOM ギズモ(ハンドル・Δv アーム・ノードメニュー)。イベントは wireNodeGizmo で

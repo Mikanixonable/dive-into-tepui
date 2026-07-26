@@ -1,7 +1,7 @@
 // 軌道計画(Plan)の「未来表示」を担うオーケストレータ。mapMode の三責務
 // (camera / plan編集 / 軌道予測)のうちの「軌道予測」に相当する。担うのは:
 //   ① 表示期間: sliderT / displayTime / resolveDisplayTime と durationKey→秒の解決。
-//   ② 予測軌道を描く表示座標系 trajectoryFrame。カメラを固定する座標系(MapCamera.cameraFrame)
+//   ② 予測軌道を描く表示座標系 trajectoryFrame。カメラを固定する座標系(OverviewCamera.cameraFrame)
 //      とは独立で、「軌道の形をどの座標系で見るか」と「視点をどの座標系に固定するか」を別々に選べる。
 //   ③ 予測折れ線 PlanTrajectory(B-2)の所有と駆動。①②はどちらもこれへ流し込む値なので、
 //      予測キャッシュ・表示座標変換・画面判定を持つ B-2 はここが持つのが自然。編集側
@@ -25,7 +25,8 @@ import { PredictPanel } from './predict-panel';
 export type PredictDurationKey = 'orbit' | 'day' | 'week' | 'month';
 
 export class PredictSystem {
-  // 未来表示を禁止するフラグ。mapMode とは独立(初期値 = 戦闘ビューなので禁止)。
+  // 未来表示を禁止するフラグ。マップモードの正本(MapModeToggler.mapMode)が切り替える
+  // 影響先の一つで、視点や編集モードとは独立した責務(初期値 = 戦闘ビューなので禁止)。
   private _forceCurrent = true;
   get forceCurrent(): boolean {
     return this._forceCurrent;
@@ -45,7 +46,7 @@ export class PredictSystem {
   // 予測折れ線を描く表示座標系。毎フレーム PlanTrajectory へ渡して bake/un-bake させる。
   trajectoryFrame: Frame = 'inertial';
   // マップモードの未来ゴーストスライダー位置(0..1、0 でゴーストマーカー非表示)。
-  // カメラの視点計算には無関係な、予測表示側の状態のためここが正(MapCamera には置かない)。
+  // カメラの視点計算には無関係な、予測表示側の状態のためここが正(OverviewCamera には置かない)。
   sliderT = 0;
 
   // 多ノード予測折れ線 + per-arc キャッシュ(B-2)。編集側の PlanEditor は画面判定
