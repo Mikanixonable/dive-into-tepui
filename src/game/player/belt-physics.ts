@@ -274,7 +274,7 @@ export class BeltPhysics {
   // 衝突がなければこの往復は恒等変換になり、Verlet 状態は変化しない。
   private readonly sections: BeltSection[] = [];
 
-  collisionSections(dt: number, baseR: Vec3, baseV: Vec3, q: Quat): BeltSection[] {
+  collisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     while (this.sections.length < this.beltPos.length) {
       this.sections.push(new BeltSection(this.sections.length));
     }
@@ -282,25 +282,32 @@ export class BeltPhysics {
     for (const s of this.sections) {
       const bp = this.beltPos[s.beltIndex]!;
       const bpPrev = this.beltPrevPos[s.beltIndex]!;
+      const v_verlet = v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt);
+      const v_tangential = cross(att.w, bp);
+      const v_body_total = add(v_verlet, v_tangential);
+
       s.state = orbitState(
         s.state.t,
-        add(baseR, qRotate(q, bp)),
-        add(baseV, qRotate(q, v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt))),
+        add(baseR, qRotate(att.q, bp)),
+        add(baseV, qRotate(att.q, v_body_total)),
       );
     }
     return this.sections;
   }
 
-  applyCollisionSections(dt: number, baseR: Vec3, baseV: Vec3, q: Quat): void {
-    const qInv = qInvert(q);
+  applyCollisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
+    const qInv = qInvert(att.q);
     for (const s of this.sections) {
       const bpLocal = qRotate(qInv, sub(s.state.r, baseR));
-      const bvLocal = qRotate(qInv, sub(s.state.v, baseV));
+      const v_body_total = qRotate(qInv, sub(s.state.v, baseV));
+      const v_tangential = cross(att.w, bpLocal);
+      const v_verlet = sub(v_body_total, v_tangential);
+
       this.beltPos[s.beltIndex] = bpLocal;
       this.beltPrevPos[s.beltIndex] = v3(
-        bpLocal.x - bvLocal.x * dt,
-        bpLocal.y - bvLocal.y * dt,
-        bpLocal.z - bvLocal.z * dt,
+        bpLocal.x - v_verlet.x * dt,
+        bpLocal.y - v_verlet.y * dt,
+        bpLocal.z - v_verlet.z * dt,
       );
     }
   }
