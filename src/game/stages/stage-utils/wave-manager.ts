@@ -82,7 +82,10 @@ export class WaveManager {
     despawnOutOfRangeEnemies(enemies, player, this.maxRange);
     const activeGroups = countActiveWaveGroups(enemies);
     const limits = resolveWaveSpawnLimits(this.waveCount, activeGroups);
-    if (activeGroups === 0) this.spawnTimer = 0;
+    if (activeGroups === 0) {
+      // 全滅または画面外へ離脱した場合でも、瞬時に次が湧き続ける無限ループを防ぐため最低2秒は待つ
+      this.spawnTimer = Math.min(this.spawnTimer, 2.0);
+    }
     if (activeGroups >= limits.maxGroups || this.waveCount >= limits.allowedMaxWaveCount) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
