@@ -279,3 +279,129 @@ simulator.ts のコメント上の契約は「`alive=false` にすれば cleanup
 4. **バッチ4（設計整理・任意）**: B6（選択インデックスの正本一本化）。
 5. **判断待ち**: B8（ポーズ中の [M] を許可するか）、B9/B10（実測してから）、B11/B12。
    これらは仕様判断が絡むので、実装前に方針を決めること。
+
+---
+
+# 追加調査（2026-07-26 第2回）
+
+B1〜B5 の修正コミット（`75b7d80` / `3ce6e83` / `23bb5db` / `ab133eb`）投入後、
+「敵を撃破すると『(敵名) 再突入により喪失』が出てブラックアウト、音が鳴り続ける」
+（Stage0 / Stage00 の両方）という報告について調査した結果。
+
+## B13.【致命】`DebrisPiece.dispose()` が共有ジオメトリを破棄する
+
+**確信度: 高（実コードを直接確認済み）**。B1 と同じ「共有リソースの誤破棄」パターンだが、
+**B1 とは別の未修正バグ**。今回の症状の主因と考えられる。
+
+**メカニズム**:
+
+`cloneIndependent()`（`src/render/ships.ts:50-62`）は**マテリアルだけを clone し、
+geometry はテンプレートと共有したまま**返す（コメントにも明記されている意図的な設計）。
+
+```ts
+function cloneIndependent<T extends THREE.Object3D>(template: T): T {
+  const clone = template.clone(true) as T;
+  clone.traverse((child) => {
+    ...
+    mesh.material = (mesh.material as THREE.Material).clone();  // material のみ
+  });
+  return clone;   // geometry は cached テンプレートと同一インスタンス
+}
+```
+
+ところが `DebrisPiece.dispose()`（`src/game/orbit-entity/entities.ts:175-184`）は
+traverse して見つけた mesh の geometry を**無条件に破棄する**:
+
+```ts
+dispose(): void {
+  super.dispose();
+  this.obj.traverse((child) => {
+    ...
+    mesh.geometry.dispose();          // ← 共有テンプレートの geometry を破棄
+    ...
+  });
+}
+```
+
+安全な経路と危険な経路が混在している:
+
+| 生成関数 | geometry | 安全性 |
+|---|---|---|
+| `buildCasingMesh`（ships.ts:271） | `mesh.geometry.clone()` 済み | **安全** |
+| `buildGenericDebris` の chunk 分岐（ships.ts:410） | `mesh.geometry.clone()` 済み | **安全** |
+| `buildGenericDebris` の **panel 分岐**（ships.ts:416付近） | clone なし＝**テンプレート共有** | **危険** |
+| `buildGenericDebris` の **rod 分岐**（ships.ts:421付近） | clone なし＝**テンプレート共有** | **危険** |
+| `buildMagazineFrame`（ships.ts:112-118） | `parseMagazine()` をそのまま＝**共有** | **危険** |
+
+**なぜ致命的か（一度で全滅する）**:
+`memoParse` はテンプレートを**モジュールスコープにキャッシュして使い回す**ため、
+panel 型デブリが 1 個 dispose された瞬間に `parseDebrisPanel` のテンプレート geometry が死ぬ。
+すると **画面上の他の panel 型デブリ全部**に加えて、**以後生成されるすべての panel 型デブリ**も
+破棄済みバッファを参照する。復旧不能な一方向の破壊で、WebGPU が破棄済みバッファに触って
+device lost → ブラックアウトに至る。
+
+`buildMagazineFrame` はさらに深刻で、`parseMagazine()` のテンプレートは
+**自機の弾薬ベルト表示メッシュ（`buildMagazineMesh`）と同じもの**を共有している。
+排出された空マガジンのデブリが 1 個 dispose されると、**自機のベルト表示が巻き添えで壊れる**。
+
+**症状との対応**:
+- 撃破時は `scatterFragments(..., 11, ...)`（`vfx/effects-system.ts:106`）で 11 個の破片を一気に生成し、
+  `MAX_DEBRIS = 160`（const.ts:134）の上限を押し上げる。上限超過時の
+  `addCapped` の `arr.shift()!.dispose()`（simulator.ts:70-73）が最初の1個を破棄した瞬間に発火する。
+  → 「**撃破した瞬間に**落ちる」「Stage00 では**1分程度経過後**（デブリが上限に達するまでの時間）」に符合。
+- デブリの再突入・寿命切れによる dispose でも同様に発火する。
+
+**修正方針（どちらか。前者を推奨）**:
+1. `buildGenericDebris` の panel / rod 分岐と `buildMagazineFrame` でも、
+   chunk 分岐や `buildCasingMesh` と同様に `mesh.geometry = mesh.geometry.clone()` して個体化する。
+2. または `DebrisPiece.dispose()` 側で「このインスタンスが所有する geometry か」を
+   フラグ等で判定してから破棄する（`Bullet` / `Enemy` が採る「共有リソースは traverse dispose しない」方針に揃える）。
+
+**再発防止**: `cloneIndependent` が material のみ複製する仕様に対し、
+`DebrisPiece` だけが geometry まで破棄するという非対称が根本原因。
+「誰がそのリソースを所有しているか」をコードで表現する（所有フラグ、あるいは
+生成側で必ず clone を済ませる規約）のが望ましい。
+
+## B14.【高】rAF ループに例外ハンドリングがない
+
+**確信度: 高**。`src/main.ts:63-83` の `animate()` は先頭で `requestAnimationFrame(animate)` を
+予約してから `game.update` / `sync` / `render` を呼ぶため、**例外が出てもループは止まらず、
+毎フレーム同じ例外を投げ続ける**。描画だけが壊れた状態で回り続ける。
+
+これが B13 のクラッシュを「**ブラックアウトしたまま音が鳴り続ける**」という症状に変換している:
+- WebAudio はメインループと独立したオーディオクロックで駆動されるため、描画が壊れても音は止まらない
+- 「連射音が不規則」「RCS 噴射音が断続的」= 例外の発生位置がフレームごとに前後し、
+  `sfx.fire()` / `setRcs(true/false)` の呼ばれ方が一貫しなくなるため
+- 「リロードが重い」= WebGPU device lost からの回復にページ全体の再初期化が必要なため
+
+**修正方針**: `animate()` を try/catch で囲み、例外時は `console.error` に加えて
+ループ停止・エラーオーバーレイ表示・SFX 全停止を行う。
+根本原因（B13）を直すのが本筋だが、**今後同種の事故の原因究明を容易にするため防御としても入れるべき**。
+
+## 否定できた仮説（再調査の無駄を省くための記録）
+
+- **「撃破した敵自身に再突入判定が走る」→ 否定。**
+  `Enemy.attacked()` と `Enemy.checkLoss()` は両方とも冒頭に `if (!this.alive) return;` ガードを持ち
+  （enemy.ts:117, :135）、`attacked()` は撃破時に**即座に** `alive = false` を立ててから
+  `recordEnemyDeath(this, simTime, true)` を呼ぶ（enemy.ts:128-129）。
+  同フレームで後から走る `simulator.cleanup()` の `checkLoss` ループ（simulator.ts:178）は
+  即 return するため、再突入分岐（stage.ts:172-174）には構造上到達できない。
+- **「dispose 後に state が NaN / 0 になって高度計算が壊れる」→ 否定。**
+  `dispose()`（enemy.ts:70-74, entities.ts:81-83）は scene からの除去とリソース破棄のみで
+  `state` を一切変更しない。`prune()` は配列から除去した**後**に `dispose()` するので、
+  除去済みの敵に `checkLoss` が再度走ることもない（simulator.ts:184-199）。
+- したがって「(敵名) 再突入により喪失」は**別の敵が自然に再突入したメッセージ**であり、
+  ブラックアウトと同時刻に起きたために同一事象に見えていたと考えられる。
+  B13 が発火するのはデブリが蓄積した時点＝プレイ開始から一定時間後で、
+  Stage0 / Stage00 の敵が高度低下で自然再突入し始める時間帯と重なる。
+
+## 前回の4コミット（B1〜B5）のリグレッション判定
+
+**リグレッションは見つからなかった。** 4コミットはいずれも本レポートの推奨方針どおりに実装されている。
+ただし **B1 の修正で「約72秒でのブラックアウト」が解消され、プレイがそれ以上継続できるようになった結果、
+B13（デブリ蓄積後に発火）が初めて表面化するようになった**可能性が高い。
+
+**要確認**: 今回の報告が **4コミット投入前のプレイ**によるものである可能性がある
+（`memos/dev.md` の記述時刻と修正コミットの時刻が同日）。
+再ビルドした現行版で再現するかどうかを先に確認すること。
+再現する場合は B13 が主因、再現しない場合でも B13 のコード欠陥自体は実在するので修正は必要。
