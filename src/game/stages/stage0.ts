@@ -41,6 +41,8 @@ export class Stage0 extends Stage {
     
     this.behaveAllEnemies(dt, player, simulator, simTime, simSpeed);
 
+    this.logistics.updateLogistics(simTime, player);
+
     if (this.timer.update(dt, (phase) => this.setPhase(phase))) {
       showScoreAttackResultScreen(this._sfx, this.scoreCounter, 'TIME UP');
     }

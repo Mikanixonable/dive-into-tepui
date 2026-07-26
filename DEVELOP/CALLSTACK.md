@@ -120,6 +120,7 @@
     - behaveAllEnemies() // 全ステージ共通の先頭処理
       - enemy.behave() // 生存中の敵ごと(canEnemyFire・距離・バースト状態の判定は behave 内部)
         - firePlasma() → simulator.addBullet()
+    - [Stage0 訓練スコアアタック] logistics.updateLogistics(respawnOnDespawn=false)
     - [Stage0 訓練スコアアタック] timer.update()
       - setPhase('timeup') + showScoreAttackResultScreen() // 制限時間到達フレームのみ
     - [Stage00 無限サバイバル] waveManager.update()
