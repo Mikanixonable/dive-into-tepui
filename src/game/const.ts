@@ -232,7 +232,7 @@ export const STAGE0_JITTER_NORMAL = 500; // 各機の軌道面法線方向ばら
 export const STAGE0_JITTER_RADIAL = 350; // 各機の動径方向ばらつき [m]
 
 // --- ステージ00(無限耐久サバイバル) ---
-export const STAGE00_MAX_RANGE = 15000; // 自機からの配置半径の上限(デスポーン距離) [m]
+export const STAGE00_MAX_RANGE = 30000; // 自機からの配置半径の上限(デスポーン距離) [m]
 export const STAGE00_LOGISTICS_MIN_DIST = 50; // 補給の配置距離 [m](自機から)
 export const STAGE00_LOGISTICS_MAX_DIST = 200;
 export const STAGE00_SPAWN_DELAY = 10; // 弾取得からスポーンまでの遅延 [s]
@@ -245,6 +245,7 @@ export const STAGE00_SPAWN_DIST_MAX = 14000;
 export const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
 export const STAGE00_WAVE_BASE_SHIPS = 5; // 第1波の機数
 export const STAGE00_WAVE_SHIPS_PER_WAVE = 2; // 波が進むごとに増える機数
+export const STAGE00_WAVE_MAX_SHIPS = 30; // 1ウェーブの最大機数上限
 export const STAGE00_PLACEMENT_JITTER = 1000; // 編隊配置の位置ばらつき [m]
 export const STAGE00_FLYBY_MISS_DIST_MIN = 1000; // フライパスのすれ違い距離下限 [m]
 export const STAGE00_FLYBY_MISS_DIST_RANGE = 1000; // 同、上限までの幅 [m]
