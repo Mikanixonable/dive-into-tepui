@@ -60,7 +60,7 @@ export const KEY_MAPPING = {
   autoWarpToNode: { code: 'KeyN', label: 'N' },
 
   // 軌道計画(マップモード)。Δv 編集は並進キーの流用だが、意味が違うので別エントリ。
-  mapMode: { code: 'KeyM', label: 'M' },
+  toggleMapMode: { code: 'KeyM', label: 'M' },
   deleteNode: { code: 'KeyX', label: 'X' },
   dvPrograde: { code: 'KeyW', label: 'W' },
   dvRetrograde: { code: 'KeyS', label: 'S' },

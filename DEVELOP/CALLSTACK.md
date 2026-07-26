@@ -48,22 +48,21 @@
         - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
         - startAutoWarpTo() + hud.hint() // 未開始
     - mapModeToggler.update()
-      - toggle() // KeyM。!activeStage.isPlaying なら即 return
-        - [開く: !cameraSystem.mapMode]
-          - editor.selectedNodeIdx = null
-          - touchControls?.setMapMode(true) // タッチデバイスのみ
-          - cameraSystem.mapMode = true / editor.editMode = true // 独立2責務を同時に立てる唯一の箇所
-          - hud.hint()
-        - [閉じる: cameraSystem.mapMode]
-          - editor.onMapClosed()
-            - hidePanel()
-            - plan.removeNode() // Δv が NODE_MIN_DV 未満のノードごと
-          - editor.closeMenu() → nodeGizmo.closeMenu()
-          - cameraSystem.closeFocusMenu() → focusGizmo.closeMenu()
-          - touchControls?.setMapMode(false)
-          - cameraSystem.mapMode = false / editor.editMode = false
-          - hud.hint() // plan.nodes.length > 0 のみ
       - close(...) // !isPlaying && cameraSystem.mapMode のみ(死亡/終了時にマップを強制的に閉じる)
+      - [開く: !cameraSystem.mapMode]
+        - editor.selectedNodeIdx = null
+        - touchControls?.setMapMode(true) // タッチデバイスのみ
+        - cameraSystem.mapMode = true / editor.editMode = true // 独立2責務を同時に立てる唯一の箇所
+        - hud.hint()
+      - [閉じる: cameraSystem.mapMode]
+        - editor.onMapClosed()
+          - hidePanel()
+          - plan.removeNode() // Δv が NODE_MIN_DV 未満のノードごと
+        - editor.closeMenu() → nodeGizmo.closeMenu()
+        - cameraSystem.closeFocusMenu() → focusGizmo.closeMenu()
+        - touchControls?.setMapMode(false)
+        - cameraSystem.mapMode = false / editor.editMode = false
+        - hud.hint() // plan.nodes.length > 0 のみ
     - editor.handleInput()
       - clearPlanByKey() // KeyX
         - [editMode] deleteSelected() → deleteNode()
