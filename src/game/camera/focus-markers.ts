@@ -56,7 +56,7 @@ export class FocusMarkers {
 
     for (const lbl of this.labels) {
       lbl.pos = positions[lbl.id]!;
-      this.markerManager.setPosition(lbl.id, 'poi', '●', lbl.pos, project, lbl.name);
+      this.markerManager.setPosition(lbl.id, 'mk-poi', '●', lbl.pos, project, lbl.name);
     }
   }
 

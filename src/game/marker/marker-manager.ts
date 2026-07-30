@@ -67,12 +67,9 @@ export class MarkerManager {
       m.root.style.textShadow = '';
     }
 
-    if (rotationDeg !== undefined) {
-      m.sym.style.transform = `translate(-50%, -50%) rotate(${rotationDeg}deg)`;
-      m.sym.style.display = 'inline-block';
-    } else {
-      m.sym.style.transform = 'translate(-50%, -50%)'; // default translation for sym
-    }
+    // シンボルの中心合わせは CSS が持つ(.mk 枠が投影点に中心揃え、.sym は inset:0 の
+    // flex 中央寄せ)。ここで平行移動を足すと二重にかかって像からずれるので、回転だけを扱う。
+    m.sym.style.transform = rotationDeg !== undefined ? `rotate(${rotationDeg}deg)` : '';
   }
 
   // 3D空間上の「位置」を示すマーカー(敵機・補給・ノードなど、実在の座標そのもの)。
