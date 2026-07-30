@@ -66,4 +66,29 @@ export function register(): void {
     // 変化はごく小さい(距離で1%未満)。
     assert.ok(Math.abs(d0 - d1) / d0 < 0.01, `distance drift over 1 month: ${d0} vs ${d1}`);
   });
+
+  test('ephemeris: moonPosition の黄経は恒星月の平均運動で進む(歳差ぶんの遅速がない)', () => {
+    // 平均黄経は 2π t / MOON_PERIOD で進み、実際の黄経との差は中心差(最大 ~2e = 6.3°)の
+    // 振動だけになるはず。昇交点・近地点の歳差を平均黄経に混ぜると、この差が年オーダーで
+    // 単調に開いていく(1年で -19° 級)ため、長期の時間加速で月とラグランジュ点が実位置から外れる。
+    const maxCenterDeg = (2 * 0.0549 * 180) / Math.PI + 0.5; // 中心差の振幅 + 余裕
+    for (const days of [27.321661, 365.25, 3652.5]) {
+      const t = days * 86400;
+      const mean = (2 * Math.PI * t) / MOON_PERIOD;
+      let lon = eclipticLongitude(moonPosition(t, 0));
+      lon += 2 * Math.PI * Math.round((mean - lon) / (2 * Math.PI)); // mean に最も近い分枝へ
+      const errDeg = ((lon - mean) * 180) / Math.PI;
+      assert.ok(Math.abs(errDeg) < maxCenterDeg, `黄経の平均運動からのずれ (t=${days}日): ${errDeg}°`);
+    }
+  });
+}
+
+// ゲーム ECI(Y=北極)の位置から黄経を取り出す。stdToGame の逆変換で標準赤道座標へ戻し、
+// 黄道傾斜ぶん回してから黄道面内の偏角を測る。
+function eclipticLongitude(p: { x: number; y: number; z: number }): number {
+  const EPS = (23.439291 * Math.PI) / 180;
+  const xs = p.x;
+  const ys = -p.z;
+  const zs = p.y;
+  return Math.atan2(ys * Math.cos(EPS) + zs * Math.sin(EPS), xs);
 }

@@ -61,25 +61,27 @@ export function sunAzimuthRate(t: number, phase0: number): number {
   return (-COS_EPS * lamDot) / (cl * cl + sl * sl * COS_EPS * COS_EPS);
 }
 
-// 月の ECI 位置。phase0 は初期の軌道内位相 [rad]。
+// 月の ECI 位置。phase0 は初期の平均黄経 [rad]。
+// 角度はすべて「黄経」(黄道上の固定方向から測った角)で組み立て、最後に軌道面内の角
+// (昇交点からの緯度引数 u)へ落とす。昇交点・近地点はどちらも歳差するので、平均黄経 L を
+// 直接 u として使うと公転が歳差ぶんだけ遅速し、月の位置が長期に大きくずれる。
 export function moonPosition(t: number, phase0: number): Vec3 {
-  // 昇交点黄経(逆行)
-  const node = -(2 * Math.PI * t) / NODE_PERIOD; 
-  // 近地点の移動周期(約8.85年、順行)
+  // 昇交点黄経(逆行、18.61 年)と近地点黄経(順行、約 8.85 年)。
+  const node = -(2 * Math.PI * t) / NODE_PERIOD;
   const PERIGEE_PERIOD = 8.85 * 365.25 * 86400;
-  const omega = (2 * Math.PI * t) / PERIGEE_PERIOD;
-  
-  // 平均近点角 M
-  const L = phase0 + (2 * Math.PI * t) / MOON_PERIOD; 
-  const M = L - omega;
-  
+  const lonPerigee = (2 * Math.PI * t) / PERIGEE_PERIOD;
+
+  // 平均黄経 L は恒星月で 1 周する。平均近点角 M はそこから近地点黄経を引いたもの。
+  const L = phase0 + (2 * Math.PI * t) / MOON_PERIOD;
+  const M = L - lonPerigee;
+
   // 中心差(Equation of the center)による真近点角 ν の近似 (e = 0.0549)
   const e = 0.0549;
   const nu = M + (2 * e - 0.25 * e * e * e) * Math.sin(M) + 1.25 * e * e * Math.sin(2 * M);
-  
-  // 昇交点からの真の引数 u
-  const u = nu + omega;
-  
+
+  // 昇交点からの緯度引数 u = 近地点引数(= 近地点黄経 − 昇交点黄経)+ 真近点角
+  const u = nu + (lonPerigee - node);
+
   // 軌道半径 r
   const a = MOON_DIST;
   const r = a * (1 - e * e) / (1 + e * Math.cos(nu));
