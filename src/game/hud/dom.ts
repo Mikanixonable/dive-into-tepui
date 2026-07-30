@@ -24,6 +24,25 @@ const STYLE = `
   color: ${INK}; user-select: none; z-index: 10;
   font-size: 13px;
 }
+/* --- 重なり順 ---------------------------------------------------------------
+   #hud 自身が z-index:10 で1つの重なりコンテキストを作るので、以下の値は #hud の
+   子同士の前後関係だけを決める(外側の #touch-ui / ノードギズモ / コンテキストメニューは
+   #hud より下)。z-index を書かない子は 0 相当で、同値どうしは DOM 順で後勝ちになる —
+   マーカーは実行中に生成されてパネル群より後ろに追加されるため、明示しないと
+   ESC メニューや終了画面の上に出てしまう。段は上位から:
+     4 システムウィンドウ(最上位) … ESC メニュー
+     3 システムウィンドウ(中位)   … 終了画面・ヘルプ
+     2 ゲームウィンドウ(モーダル的な案内) … トースト・ヒント
+     1 ゲームウィンドウ(常設パネル) … 情報パネル群・マップ操作パネル・操作説明・ギア
+     0 ゲーム内世界 UI … スクリーン投影マーカーとその引き出し線
+   システムウィンドウはゲームの進行を扱いゲーム内世界とは無関係なので、ゲームウィンドウと
+   ゲーム内世界 UI のすべてより上に出す。 */
+#hud .mk { z-index: 0; }
+#hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
+#hud-plan, #hud-predict, #hud-overview-camera, #hud-stagestatus, #hud-gear { z-index: 1; }
+#hud-toast, #hud-hint { z-index: 2; }
+#hud-end, #hud-help { z-index: 3; }
+#hud-settings { z-index: 4; }
 #hud .panel {
   position: absolute; background: ${SURFACE};
   border: 1px solid ${EDGE}; border-radius: 4px;
@@ -224,7 +243,9 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   svgOverlay.style.width = '100%';
   svgOverlay.style.height = '100%';
   svgOverlay.style.pointerEvents = 'none';
-  svgOverlay.style.zIndex = '-1';
+  // マーカーと同じ最下段(STYLE の重なり順を参照)。root へ最初に追加されるので、
+  // 同値のマーカーより後ろ = 引き出し線がマーカーの下に描かれる。
+  svgOverlay.style.zIndex = '0';
   root.appendChild(svgOverlay);
   return svgOverlay;
 }
