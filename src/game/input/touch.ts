@@ -12,8 +12,11 @@ const SURFACE = 'rgba(13, 15, 18, 0.66)';
 const EDGE = 'rgba(255, 255, 255, 0.14)';
 
 const STYLE = `
+/* z-index は #hud(10)より下の 9。仮想パッドはゲーム内世界を操作する UI なので、
+   システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より上に出してはいけない
+   — 重なり順の全体方針は hud/dom.ts の STYLE を参照。 */
 #touch-ui {
-  position: fixed; inset: 0; pointer-events: none; z-index: 11;
+  position: fixed; inset: 0; pointer-events: none; z-index: 9;
   font-family: 'Consolas', 'Courier New', monospace; user-select: none;
   -webkit-user-select: none;
 }
