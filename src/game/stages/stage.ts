@@ -15,7 +15,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { showResultScreen, showWinScreen } from '../hud/result-screen';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
-import type { EntityManager } from '../game-entity/entity-manager';
+import type { EntityManager } from '../simulation/entity-manager';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SimSpeedManager } from '../sim-speed-manager';
