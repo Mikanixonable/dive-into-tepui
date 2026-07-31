@@ -34,6 +34,7 @@ export class OrbitLine {
   private snap: { a: number; e: number; hHat: Vec3; pHat: Vec3; focusE?: number } | null = null;
   private lastRegen = 0;
 
+  // バッファジオメトリと LineBasicMaterial を組み立てる。
   constructor(color: number, opacity = 0.5) {
     this.positions = new Float32Array((POINT_COUNT + 1) * 3);
     const geo = new THREE.BufferGeometry();
@@ -82,6 +83,7 @@ export class OrbitLine {
     }
   }
 
+  // 現在の要素が直近のスナップショットから許容誤差を超えて変化していれば true(要再生成)。
   private needsRegen(el: Elements, force: boolean, focusE?: number): boolean {
     if (!this.snap) return true;
     const now = performance.now();
@@ -106,6 +108,7 @@ export class OrbitLine {
     return false;
   }
 
+  // 軌道要素から楕円頂点を計算し直してジオメトリへ反映し、再生成時点のスナップショットを取る。
   private regenerate(el: Elements, focusE?: number): void {
     const b = el.a * Math.sqrt(1 - el.e * el.e);
     for (let i = 0; i < POINT_COUNT; i++) {

@@ -20,6 +20,7 @@ export class DisplayTimePanel {
   private readonly slider: HTMLInputElement;
   private readonly sliderLabel: HTMLElement;
 
+  // PREDICT パネルの DOM を組み立て、root へ追加する。
   constructor(root: HTMLElement) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-displaytime';
@@ -29,9 +30,11 @@ export class DisplayTimePanel {
     title.textContent = 'PREDICT';
     this.panel.appendChild(title);
 
+    // 期間選択(1周回/1日/7日/28日)
     this.duration = new SegmentedControl('期間', DURATIONS, (key) => this.onDurationSelect?.(key));
     this.panel.appendChild(this.duration.element);
 
+    // 未来ゴーストスライダー
     this.slider = document.createElement('input');
     this.slider.type = 'range';
     this.slider.min = '0';
@@ -48,10 +51,12 @@ export class DisplayTimePanel {
     root.appendChild(this.panel);
   }
 
+  // パネル全体の表示/非表示を切り替える。
   setVisible(visible: boolean): void {
     this.panel.style.display = visible ? 'block' : 'none';
   }
 
+  // 期間選択の選択状態を key に合わせる。
   setDuration(key: PredictDurationKey): void {
     this.duration.setSelected(key);
   }

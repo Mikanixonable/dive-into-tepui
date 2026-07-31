@@ -10,12 +10,14 @@ export class Ammo extends GameEntity {
   protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
   readonly predictDuration = C.PREDICT_DURATION;
 
+  // 補給メッシュを組み立て、質量と衝突半径を設定する。
   constructor(state: OrbitState, att: Attitude, scene?: THREE.Scene) {
     super(state, buildAmmo(), scene, att);
     this.mass = 50;
     this.collideRadius = C.AMMO_PHYS_RADIUS;
   }
 
+  // メッシュのマテリアルも解放する。
   dispose(): void {
     super.dispose();
     this.obj.traverse((child) => {

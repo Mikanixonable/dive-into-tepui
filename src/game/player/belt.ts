@@ -14,6 +14,7 @@ export class Belt {
   private feed = 0;
   private visibleCount = 0;
 
+  // リンクメッシュを playerObj の子として並べ、たわみ物理を初期化する。
   constructor(playerObj: THREE.Object3D) {
     const group = new THREE.Group();
     for (let i = 0; i < C.BELT_MAX_VISIBLE; i++) {
@@ -45,6 +46,7 @@ export class Belt {
     this.physics.update(dt, att, thrustAccelVec, this.feed);
   }
 
+  // 物理演算で求めた各リンクの位置・向きをメッシュへ反映する。
   sync(alive: boolean): void {
     const { beltPos, beltTwist, anchor } = this.physics;
     let prevPoint = anchor;
@@ -53,9 +55,11 @@ export class Belt {
       const link = this.links[i]!;
       link.visible = alive && i < this.visibleCount;
 
+      // 表示位置は前後端の中点
       const pos = beltPos[i]!;
       link.position.set((prevPoint.x + pos.x) / 2, (prevPoint.y + pos.y) / 2, (prevPoint.z + pos.z) / 2);
 
+      // 前リンクの+Xから接線方向への回転で曲げ姿勢を求める
       const dir = sub(pos, prevPoint);
       const segLen = len(dir);
       let bendQ = prevQ;
@@ -65,6 +69,7 @@ export class Belt {
         bendQ = qMul(qFromUnitVectors(localX, dirUnit), prevQ);
       }
 
+      // ロールを掛け合わせて最終姿勢にする
       const twistQ = qFromAxisAngle(X_AXIS, beltTwist[i]!);
       const q = qMul(bendQ, twistQ);
       link.quaternion.set(q.x, q.y, q.z, q.w);
@@ -74,10 +79,12 @@ export class Belt {
     }
   }
 
+  // 各リンクの体軸座標を ECI 絶対状態に変換し、衝突判定用の BeltSection として返す。
   collisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     return this.physics.collisionSections(dt, baseR, baseV, att);
   }
 
+  // 衝突解決後の ECI 状態を体軸座標へ戻し、たわみ物理へ反映する。
   applyCollisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
     this.physics.applyCollisionSections(dt, baseR, baseV, att);
   }

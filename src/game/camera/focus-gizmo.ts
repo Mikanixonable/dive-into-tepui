@@ -8,6 +8,7 @@ export class FocusGizmo {
 
   onMenuFocus: ((targetKey: string) => void) | null = null;
 
+  // メニューの選択結果を保持中の targetKey へのフォーカス移動に結びつける。
   constructor() {
     this.menu.onSelect = (act) => {
       const tk = this.targetKey;
@@ -16,6 +17,7 @@ export class FocusGizmo {
     };
   }
 
+  // targetKey をフォーカス候補として保持し、指定座標にメニューを開く。
   openMenu(clientX: number, clientY: number, targetKey: string): void {
     this.targetKey = targetKey;
     this.menu.open(clientX, clientY, [
@@ -24,6 +26,7 @@ export class FocusGizmo {
     ]);
   }
 
+  // メニューを閉じ、保持中のフォーカス候補を破棄する。
   closeMenu(): void {
     this.menu.close();
     this.targetKey = null;

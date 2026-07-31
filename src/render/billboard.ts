@@ -7,7 +7,9 @@ import { getGlowTexture } from './glow-texture';
 export class Billboard {
   readonly mesh: THREE.Mesh;
 
+  // 指定色の発光平面を非表示状態で組み立てる。
   constructor(color: number, renderOrder = 5) {
+    // 加算ブレンドのグローマテリアル
     const mat = new THREE.MeshBasicMaterial({
       map: getGlowTexture(),
       color,
@@ -15,12 +17,14 @@ export class Billboard {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
+    // 1x1 平面メッシュとして生成し、sync で毎フレームスケール/位置を与える
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = renderOrder;
     this.mesh.visible = false;
   }
 
+  // 平面を非表示にする。
   hide(): void {
     this.mesh.visible = false;
   }
@@ -35,6 +39,7 @@ export class Billboard {
     (this.mesh.material as THREE.MeshBasicMaterial).opacity = opacity;
   }
 
+  // ジオメトリ・マテリアルを破棄する。
   dispose(): void {
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();
