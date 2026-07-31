@@ -230,6 +230,7 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
 
 // 常設の情報パネル(SHIP STATUS/ORBIT/TARGET/CONTACTS)を組む。
 function buildInfoPanels(root: HTMLElement): void {
+
   // SHIP STATUS パネル
   const status = el('div', 'hud-status', root, 'panel');
   status.innerHTML = `
