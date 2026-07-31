@@ -10,7 +10,7 @@
 | --- | --- |
 | `src/game/player/belt-physics.ts` (`BeltPhysics`) | Vec3/Quat だけの算術。節点位置 `beltPos` / 前フレーム位置 `beltPrevPos` / ねじれ角 `beltTwist` / 根本アンカー `anchor` を持つ |
 | `src/game/player/belt.ts` (`Belt`) | リンクメッシュ(`THREE.Group` × `BELT_MAX_VISIBLE`)の所有、給弾進み `feed` と可視リンク数 `visibleCount` の導出、物理結果からの姿勢導出とメッシュ反映 |
-| `src/render/ships.ts` | `buildMagazineMesh()`(4×8=32 発が見えるケージ)、`MAG_BELT_PITCH = MAG_WIDTH + 0.18` |
+| `src/render/ships.ts` | `buildMagazineMesh()`(4×8=32 発が見えるケージ。原点は平たい直方体 X 4.0 × Y 1.0 × Z 3.0 の中心)、`MAG_BELT_PITCH = MAG_WIDTH + 0.18`、給弾口の位置 `MAG_BELT_ANCHOR_X` |
 | `src/game/orbit-entity/entities.ts` (`BeltSection`) | 剛体接触用プロキシ。`mass = 5`, `collideRadius = 0.8` |
 
 `Belt` は `Player` が所有(`player.ts:66` で `new Belt(this.obj)`)。リンク群は
@@ -59,11 +59,11 @@ a = -a_thrust - α×r - ω×(ω×r) - 2ω×v
 
 処理順:
 
-1. `initNodesOnce` — 初回のみ `x = 0.9 + (i+1)*PITCH` の直線に配置、twist は 0。
+1. `initNodesOnce` — 初回のみ `x = MAG_BELT_ANCHOR_X + (i+1)*PITCH` の直線に配置、twist は 0。
 2. `estimateAngularAccel` — `α = (w - prevW)/dt`。
 3. `integrateVerlet` — 積分刻みは `h = min(dt, 0.05)` にクランプ、減衰 `damping = 0.95`。
    コリオリ項の速度換算は `h` ではなく実 `dt` を使う(`inv2Dt = 2/dt`)。
-4. `pinRootToAnchor(feed)` — `anchor = (0.9 - feed*PITCH, 0, 0)`。リンク0は
+4. `pinRootToAnchor(feed)` — `anchor = (MAG_BELT_ANCHOR_X - feed*PITCH, 0, 0)`。リンク0は
    `anchor + PITCH·+X` に**毎フレーム強制**し、`beltPrevPos[0]` も同値にして
    速度を殺す。よって根本の継手は常に機体に垂直で、揺れるのはリンク1以降だけ。
 5. `relaxDistanceConstraints` — 6反復の position-based dynamics。リンク間隔を
@@ -100,8 +100,12 @@ a = -a_thrust - α×r - ω×(ω×r) - 2ω×v
 
 ## 姿勢導出とメッシュ反映(`Belt.sync`)
 
-リンク `i` のメッシュは `position = prevPoint`(= 前の節点、リンク0はアンカー)、
-つまり節点は**リンクの手前端**を表す。向きは平行移動(parallel transport):
+**節点は継手(マガジンの端面)を表す。** マガジンは前後2節点の間に架かる剛体棒なので、
+メッシュ原点(平たい直方体の中心)は `position = (prevPoint + beltPos[i]) / 2`
+—— 線分の中点 —— に置く(`prevPoint` は前の節点、リンク0はアンカー)。
+こうすると曲げたときに各マガジンは隣とは共有する端面を軸に回る。
+節点間隔 `MAG_BELT_PITCH = 4.18` に対し箱の長さ `MAG_WIDTH = 4.0` なので、
+端面と継手の間には片側 0.09 の逃げがある。向きは平行移動(parallel transport):
 
 ```
 bendQ = qFromUnitVectors(qRotate(prevQ, +X), dirUnit) * prevQ
@@ -132,7 +136,8 @@ q     = bendQ * qFromAxisAngle(+X, beltTwist[i])
 | --- | --- | --- |
 | `MAG_ROUNDS` | 32 | 1マガジンの装弾数。`feed` の分母 |
 | `BELT_MAX_VISIBLE` | 18 | リンクメッシュ数 = 物理節点数 |
-| `MAG_BELT_PITCH` | `MAG_WIDTH + 0.18` | 距離拘束の目標長。角度クランプの書き戻し長にも使う |
+| `MAG_BELT_PITCH` | `MAG_WIDTH + 0.18` | 継手の間隔 = 距離拘束の目標長。角度クランプの書き戻し長にも使う |
+| `MAG_BELT_ANCHOR_X` | −1.19 | 給弾口(= 先頭マガジンの機体側の端面)の X 位置 |
 | `MAG_CHAIN_MAX_PITCH_DEG` / `_YAW_DEG` / `_ROLL_DEG` | 30 / 10 / 15 | 継手の角度上限 |
 | `MAG_CHAIN_ROLL_GAIN` / `_ROLL_RATE` | 0.6 / 3.5 | ねじれの発生量と追従速度 |
 | `BeltSection.mass` / `collideRadius` | 5 / 0.8 | 接触プロキシの物理諸元 |
