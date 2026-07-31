@@ -82,12 +82,13 @@ export class GroupedMarkers {
     return count > 1 ? `${item.name} x${count} ${item.detail}` : `${item.name} ${item.detail}`;
   }
 
+  // key は対象(敵)ごとに一意で増え続けるため hide ではなく remove で DOM ごと片付ける。
   private retire(keys: readonly string[]): void {
     const kept = new Set(keys);
     for (const key of this.shownKeys) {
       if (kept.has(key)) continue;
-      this.markerManager.hide(key);
-      this.markerManager.hide(bearingKey(key));
+      this.markerManager.remove(key);
+      this.markerManager.remove(bearingKey(key));
     }
     this.shownKeys = keys;
   }
