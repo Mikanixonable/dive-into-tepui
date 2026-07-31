@@ -16,19 +16,6 @@
 このファイルは **todo リスト**であり、経緯を残す場所ではない。完了した項目は消す。
 
 
-# リネームにエージェント用ドキュメントを合わせる。
-src/において、以下のリネームを行った。これに合わせてドキュメントを更新する。
-
-1. `Map`の乱用をやめ、改名
-「フラグとしての」cameraSystem.mapModeをcamera.overviewModeに
-MapCameraをOverviewCameraに
-MapMarkersをFocusMarkersに
-MapViewPanelをOverviewCameraPanelに
-それぞれ改名する。インスタンス変数名やファイル名、文書中の言及も含めて、歴史的経緯が残らないようにリネームしてください。
-ただし、MapModeTogglerや、UI上の「マップモード」、mapModeTogglerがトグルしている全体状態のことを指す「マップモード」記述は改名しない。区別のための改名だからこれは残す。
-mapModeTogglerは自立したmapModeフラグを持つ。
-
-
 # 本質的なバグ懸念
 
 ## LEAD表示の不具合　そもそも見えてないかも。
