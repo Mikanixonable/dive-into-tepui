@@ -5,12 +5,11 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 export class SettingsPanel {
   private readonly panel: HTMLElement;
   private readonly gear: HTMLElement;
-  private readonly bgmToggle: HTMLElement;
-  private bgmOn = true;
+
 
   onSettingsOpenChange: ((open: boolean) => void) | null = null;
   onQuitToTitle: (() => void) | null = null;
-  onBgmToggle: ((on: boolean) => void) | null = null;
+  onBgmVolumeChange: ((vol: number) => void) | null = null;
 
   // ⚙ ボタンとパネル DOM を組み立て、開閉・BGM トグル・タイトルへ戻るのイベントを配線する。
   constructor(root: HTMLElement) {
@@ -27,17 +26,16 @@ export class SettingsPanel {
     this.panel.className = 'panel';
     this.panel.innerHTML = `
       <h3>一時停止 / 設定</h3>
-      <div class="srow"><span class="k">BGM</span><span class="stoggle" data-id="bgmtoggle">ON</span></div>
+      <div class="srow"><span class="k">BGM Vol</span><input type="range" data-id="bgmslider" min="0" max="1" step="0.05" value="1" style="flex:1; margin-left: 10px; cursor: pointer; accent-color: #ff6a00;"></div>
       <div class="squit" data-id="settingsquit">ゲームを中断してタイトル画面に戻る</div>
       <div class="sclose" data-id="settingsclose">[閉じる]</div>`;
     root.appendChild(this.panel);
 
-    // BGM トグル
-    this.bgmToggle = this.panel.querySelector<HTMLElement>('[data-id="bgmtoggle"]')!;
-    this.bgmToggle.addEventListener('click', () => {
-      const on = !this.bgmOn;
-      this.setBgmState(on);
-      this.onBgmToggle?.(on);
+    // BGM スライダー
+    const bgmSlider = this.panel.querySelector<HTMLInputElement>('[data-id="bgmslider"]')!;
+    bgmSlider.addEventListener('input', () => {
+      const vol = parseFloat(bgmSlider.value);
+      this.onBgmVolumeChange?.(vol);
     });
     // タイトルへ戻る
     this.panel.querySelector<HTMLElement>('[data-id="settingsquit"]')!.addEventListener('click', () => {
@@ -63,10 +61,11 @@ export class SettingsPanel {
     this.onSettingsOpenChange?.(show);
   }
 
-  // BGM トグルの表示を on の状態に合わせて更新する。
-  setBgmState(on: boolean): void {
-    this.bgmOn = on;
-    this.bgmToggle.textContent = on ? 'ON' : 'OFF';
-    this.bgmToggle.classList.toggle('on', on);
+  // BGM スライダーの表示を更新する。
+  setBgmVolume(vol: number): void {
+    const bgmSlider = this.panel.querySelector<HTMLInputElement>('[data-id="bgmslider"]')!;
+    if (bgmSlider) {
+      bgmSlider.value = vol.toString();
+    }
   }
 }
