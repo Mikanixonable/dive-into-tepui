@@ -100,8 +100,12 @@ CLAUDE.md の「Naming: render / update / build / sync」節が正本。
 
 マーカーも同じ原則で扱う。**マーカーは対象の持ち主が自分の `sync` の中で出す**(`syncMarker` を
 別途公開しない)。対象が1つに定まらないマーカーだけが `marker/` に置かれる — 集合全体を見ないと
-決まらない `GroupedMarkers`、自機と敵の両方に依存する `LeadMarkers`、PIP 窓の中身で所有が
-`PipRenderer` にある `PipOverlay`。
+決まらない `GroupedMarkers` と、自機と敵の両方に依存する `LeadMarkers` の2つ。
+
+**「どう置くか」は `MarkerManager` の側**に集める。投影して置く(`setPosition`)・方向を仮想距離へ
+飛ばして置く(`setDirection`)・画面外の対象を画面端の円周へ回して置く(`setBearing`)はいずれも
+表示機構であって、対象の持ち主ごとに書き直すものではない。持ち主が決めるのは「何を・どの記号で
+出すか」だけ(敵は塗りの ▲、補給は塗り抜きの △、というように記号で区別する)。
 
 ### 例外として扱ってよいもの
 

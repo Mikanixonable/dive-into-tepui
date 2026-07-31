@@ -1,7 +1,8 @@
 // 多数の対象を「画面上のマーカー集合」として破綻なく並べる表示器。対象の種類には
 // 依存せず、投影後のスクリーン座標だけを見て
 //   ① 画面上で近接するものを 1 つの代表にまとめる(代表以外はラベルを落とす)
-//   ② 画面外へ出たものは画面端の方位マーカー(▲)に置き換える
+//   ② 画面外へ出たものは画面端の方位マーカー(▲)に置き換える(置き方そのものは
+//      MarkerManager.setBearing の担当で、ここは対象ごとに呼ぶだけ)
 // を行う。どちらも「対象 1 体では決められない = 集合の側の責務」であり、逆に対象ごとの
 // 見た目とラベル内容(GroupedMarkerItem)は対象自身が用意する。
 import { Vec3 } from '../../physics/vec3';
@@ -19,9 +20,6 @@ export interface GroupedMarkerItem {
   detail: string; // ラベル末尾の付随情報(距離など)
   bearingColor: string; // 画面外方位マーカーの色
 }
-
-// 画面外方位マーカーを置く円の半径(画面短辺の半分に対する比)。
-const BEARING_RING_RATIO = 0.8;
 
 const bearingKey = (key: string): string => `${key}-bearing`;
 
@@ -49,12 +47,11 @@ export class GroupedMarkers {
     );
     this.groupNearby(placed);
 
-    const cx = window.innerWidth / 2;
-    const cy = window.innerHeight / 2;
     for (const m of placed) {
       const label = m.labeled ? this.label(m.item, m.count) : '';
       this.markerManager.set(m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label);
-      this.syncBearing(m.item, m.p, cx, cy);
+      // 画面外(背面を含む)の対象は、画面端の ▲ で方位だけを示す。
+      this.markerManager.setBearing(bearingKey(m.item.key), 'mk-dir', '▲', m.p, '', 0.6, m.item.bearingColor);
     }
 
     this.retire(items.map((item) => item.key));
@@ -83,25 +80,6 @@ export class GroupedMarkers {
 
   private label(item: GroupedMarkerItem, count: number): string {
     return count > 1 ? `${item.name} x${count} ${item.detail}` : `${item.name} ${item.detail}`;
-  }
-
-  // 画面外(背面を含む)の対象は、画面中心から見た方位を画面端の ▲ で示す。
-  private syncBearing(item: GroupedMarkerItem, p: Projected, cx: number, cy: number): void {
-    const onScreen = p.front && p.x >= 0 && p.x <= window.innerWidth && p.y >= 0 && p.y <= window.innerHeight;
-    if (onScreen) {
-      this.markerManager.hide(bearingKey(item.key));
-      return;
-    }
-    // 背面の対象は投影が反転しているので、方位も反転させる
-    const sign = p.front ? 1 : -1;
-    const ang = Math.atan2(sign * (p.y - cy), sign * (p.x - cx));
-    const ring = Math.min(cx, cy) * BEARING_RING_RATIO;
-    this.markerManager.set(
-      bearingKey(item.key), 'mk-dir', '▲',
-      cx + ring * Math.cos(ang), cy + ring * Math.sin(ang), true,
-      '', 0.6, item.bearingColor,
-      (ang * 180) / Math.PI + 90, // '▲' は上向きなので方位角に 90° 足して回す
-    );
   }
 
   private retire(keys: readonly string[]): void {

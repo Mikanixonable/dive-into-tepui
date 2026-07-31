@@ -263,7 +263,7 @@
     - syncNodeMarkers() // 相対 AN/DN。要素が無い/軌道面がほぼ一致なら hide
   - enemyMarkers.sync() // 生存中の敵の markerItem() 集合を受ける(まとめは1体では決まらない)
     - groupNearby() // 画面上で近接するものをクラスタ化し、代表以外のラベルを落とす
-    - markerManager.set() + syncBearing() // 対象ごと。画面外なら画面端の方位マーカー▲へ
+    - markerManager.set() + markerManager.setBearing() // 対象ごと。画面外なら画面端の方位マーカー▲へ
     - retire() // 前フレームに出したキーのうち集合から消えたものを hide
   - leadMarkers.sync() // 敵ごとの LEAD マーカー。overviewMode or !player.alive なら全 hide して return
     - trackTargeted() // 最終ロック時刻を生存中の敵ぶんだけ作り直す
@@ -284,7 +284,7 @@
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync()
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示
-    - logistics.syncMarkers() → markerManager.setPosition('mg<i>') or hide() // 補給スロットごと
+    - logistics.syncMarkers() → markerManager.set('mg<i>') + setBearing('mg<i>-bearing') or hide() // 補給スロットごと
   - hud.panels.update(game, dt) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
