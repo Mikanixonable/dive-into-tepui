@@ -71,9 +71,10 @@
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
     - player.thrust = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
-    - simulator.stepSimulation(bulletCollision=false, resolveCollision=false, doSubstep=false) // simSpeed は ×4 で打ち止め
+    - simulator.stepSimulation(bulletCollision=false, resolveCollision=false, doSubstep=false) // simSpeed は ×MAX_PHYS_SIM_SPEED で打ち止め
       - simulationSubStep() ×1 → stepEntity() エンティティごと + player.thermal.updateThermal()
       - stepAttitudes()
+    - cameraSystem.update() // 決着後も追従を続ける(sync は止まらないため、飛ばすと視点が絶対 ECI に取り残される)
   - [game.isPaused] 以降を実行せず return するポーズ経路
   - nanWatchdog.checkPlayer('frameStart') // 検出済みなら何もしない
   - player.behave()
@@ -135,7 +136,7 @@
     - [Stage00 無限サバイバル] updateWaitingForAmmoPhase() → hud.toast() // 弾薬確保でフェーズ遷移した時のみ
     - [Stage00 無限サバイバル] updateSpawningEnemiesPhase() → spawnWave() // カウントダウン満了時のみ
     - [Stage00 無限サバイバル] updateActiveCombatPhase()
-      - despawnOutOfRangeEnemies() // 圏外の敵ごと(alive=false + dispose())
+      - despawnOutOfRangeEnemies() → enemy.despawn() // 圏外の敵ごと(alive=false + recordEnemyDeath(cause='despawn'))
       - spawnWave() + hud.toast() // 間隔・同時展開上限を満たす場合のみ
       - spawnWave: generateWave() → addEnemy() → simulator.addEnemy() + scoreCounter.recordSpawnEnemy()
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
@@ -157,7 +158,7 @@
           - scoreCounter.recordHit()
           - hitEffect() // 被弾後も hp>0
             - sfx.hit() / fx.spawnPlasmaFlash() or fx.spawnBulletFlash() / fx.scatterFragments()
-          - activeStage.recordEnemyDeath(byPlayer=true) // hp<=0
+          - activeStage.recordEnemyDeath(cause='killed') // hp<=0
             - scoreCounter.recordKill() + hud.hint()
             - unlockManager.reportClear() // checkWin() が true になった場合のみ
             - onWin() → showWinScreen() // 同上(Stage0/00 は no-op override)
@@ -185,8 +186,10 @@
     - activeStage.recordPlayerLost() // 同上
   - simulator.cleanup() // checkLoss には自機位置を渡す(弾は距離で消える)
     - checkLoss() // 敵・弾・薬莢・デブリ・補給の各個体ごと(既定は alive=false 代入のみ)
-      - [Enemy.checkLoss] destroyEffect() + activeStage.recordEnemyDeath(byPlayer=false) // 再突入時のみ
+      - [Enemy.checkLoss] destroyEffect() + activeStage.recordEnemyDeath(cause='reentry') // 再突入時のみ
         - scoreCounter.recordEnemyLoss() + hud.hint()
+        - unlockManager.reportClear() + onWin() // 撃破と同じく checkWin() が true になった場合のみ
+          // (最後の1機が自然損耗で消えた場合もここで決着する)
     - prune() ×5 → entity.dispose() // alive=false の個体ごと(scene から除去、必要なら geometry も破棄)
   - cameraSystem.update() // 物理積分の後に呼ぶ(追従カメラの基準を積分後の自機位置に合わせるため)
     - chaseCamera.toggleFollowAttitude() // K.followAttitudeToggle。カメラ自身の状態なのでここで消費する
