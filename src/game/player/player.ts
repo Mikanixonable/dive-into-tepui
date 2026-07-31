@@ -4,8 +4,8 @@ import { MU_EARTH, OrbitState, R_EARTH, orbitState } from '../../physics/orbital
 import { Vec3, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
-import { Ship } from '../orbit-entity/entities';
-import { Bullet } from '../orbit-entity/bullet';
+import { Ship } from '../game-entity/ship';
+import { Bullet } from '../game-entity/bullet';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
@@ -155,6 +155,12 @@ export class Player extends Ship {
     this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet);
 
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att);
+    // 推力が入った瞬間に予測を破棄する。噴射は継続的で Δv も大きく、しかもプレイヤー
+    // 自身の操作なので、結果が即座に反映されないと UX が悪い(距離判定 = resyncPrediction を
+    // 待つと数フレーム〜数秒の遅れになる)。thrust の setter にしないのは意図的 — 将来 Enemy が
+    // 推力を持ったとき、自機と違って即座にはリセットしない(他機の予測にその要求はない)という
+    // 余地を残すため、いまは自機の操作経路にだけ置く。
+    if (this.thrust !== null) this.invalidatePrediction();
   }
 
   toggleFineAttitude(): void {
@@ -262,16 +268,24 @@ export class Player extends Ship {
     fo: FloatingOrigin,
     camera: CameraSystem,
     phasePlaying: boolean,
-    paused: boolean
+    paused: boolean,
+    displayTime: number,
   ): void {
-    this.obj.position.copy(fo.RtoThreeV3(this.state.r));
-    this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
-    this.obj.visible = this.alive && !camera.zoomActive;
+    // 機体メッシュと ▷ self マーカーだけが displayState(未来ゴースト表示中は将来位置)基準。
+    // 推力プルーム・RCS パフ・ベルト・軌道線は実機体の物理そのものの表示なので、現在状態
+    // (this.state)のまま — マップ表示では機体は実質不可視 5m なので、実際に効くのは
+    // ▷ マーカーだけになる(better_predict.md Step 4)。
+    const displayState = this.displayState(displayTime);
+    this.obj.visible = displayState !== null && this.alive && !camera.zoomActive;
+    if (displayState !== null) {
+      this.obj.position.copy(fo.RtoThreeV3(displayState.r));
+      this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+    }
 
     this.thrustEffects.sync(fo, this.state.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
     this.rcsEffects.sync(fo, this.state.r, this.torque, this.att, this.alive, phasePlaying, paused, camera);
     this.belt.sync(this.alive);
-    this.markers.sync(this.state, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection);
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection);
 
     // 自機軌道線は「高精度で描きたい点」付近の頂点を密にする(focusPos)。本来これは
     // フローティングオリジン(≒カメラ近傍、単精度でも破綻させたくない領域)であるべきだが、

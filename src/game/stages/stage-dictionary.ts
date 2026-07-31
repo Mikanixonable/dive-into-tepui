@@ -8,7 +8,7 @@
 import * as THREE from 'three/webgpu';
 import { Stage, StageId } from './stage';
 import type { Player } from '../player/player';
-import type { Simulator } from '../orbit-entity/simulator';
+import type { EntityManager } from '../simulation/entity-manager';
 import type { Hud } from '../hud/hud';
 import type { Sfx } from '../../audio/sfx';
 import type { UnlockManager } from '../unlock-manager';
@@ -36,7 +36,7 @@ export const STAGE_DEFINITIONS: readonly Stage[] = STAGE_CLASSES.map((StageClass
 export function initStage(
   stageId: StageId,
   player: Player,
-  simulator: Simulator,
+  entities: EntityManager,
   hud: Hud,
   sfx: Sfx,
   scene: THREE.Scene,
@@ -46,8 +46,8 @@ export function initStage(
 ): Stage {
   const StageClass = STAGE_CLASSES.find((c) => c.id === stageId) ?? STAGE_CLASSES.find((c) => c.id === DEFAULT_STAGE_ID)!;
   const stage = new StageClass();
-  stage.setup(hud, sfx, scene, simulator, unlockManager, fx, markerManager);
-  const enemyCount = stage.init(player, simulator);
+  stage.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager);
+  const enemyCount = stage.init(player, entities);
   player.initAmmo(stage.initialAmmo.mags, stage.initialAmmo.rounds);
   hud.toast(stage.briefingHtml(enemyCount), 12000);
   return stage;

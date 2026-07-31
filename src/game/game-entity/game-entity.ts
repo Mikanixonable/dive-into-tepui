@@ -1,0 +1,151 @@
+// ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
+import * as THREE from 'three/webgpu';
+import { altitudeOf, Elements, OrbitState } from '../../physics/orbital';
+import { Attitude } from '../../physics/attitude';
+import { OrbitEntity } from '../../physics/orbit-entity';
+import { StateQueue } from '../../physics/state-queue';
+import type { Ephemeris } from '../../physics/ephemeris';
+import { Vec3, len, sub, v3 } from '../../physics/vec3';
+import { FloatingOrigin } from '../floating-origin';
+import * as C from '../const';
+import type { Stage } from '../stages/stage';
+
+const identityAttitude = (): Attitude => ({
+  q: { x: 0, y: 0, z: 0, w: 1 },
+  w: v3(),
+  inertia: v3(1, 1, 1),
+});
+
+// 軌道上を運動するゲーム内エンティティの基底。状態列の保持・前進・時刻引きは current
+// (OrbitEntity)へ委ね、ここは mesh・HP・生死・姿勢・AI といったゲーム側の付帯情報と、
+// 種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。collideRadius を持つものだけが
+// 剛体接触に参加し、scene を渡したものだけが自身を scene へ add/remove する。
+export class GameEntity {
+  readonly current: OrbitEntity;
+
+  get state(): OrbitState { return this.current.state; }
+  // 不連続な差し替え専用の口(剛体接触・反動など)。
+  set state(s: OrbitState) { this.current.reset(s); }
+  get prevState(): OrbitState { return this.current.prevState; }
+  get history(): StateQueue { return this.current.history; }
+  get elements(): Elements | null { return this.current.elements; }
+
+  att: Attitude;
+  obj: THREE.Object3D;
+  alive = true;
+  mass = 1; // 剛体接触の換算質量
+  collideRadius?: number; // 剛体接触半径 [m]。未設定 = 剛体接触に参加しない
+  thrust: Vec3 | null = null;
+  // 機体座標系トルク。既定ゼロ = 自由回転。
+  torque: Vec3 = v3();
+  // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。
+  protected readonly bcInv: number = 0;
+  // 過去列の保持時間 [s]。既定 0 = 記録しない。
+  protected readonly historyDuration: number = 0;
+  // 予測する未来の長さ [s]。既定 0 = 予測しない。
+  readonly predictDuration: number = 0;
+  protected readonly scene?: THREE.Scene;
+
+  // 未来の予測列。predictDuration = 0 のクラスでは生成されない。
+  private _predicted: OrbitEntity | null = null;
+  get predicted(): OrbitEntity | null { return this._predicted; }
+  // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。
+  private truncated = false;
+
+  constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
+    this.current = new OrbitEntity(state);
+    this.att = att;
+    this.obj = obj;
+    this.scene = scene;
+    this.scene?.add(this.obj);
+  }
+
+  // 過去列へ積む最小間隔 [s]。1周あたり PREDICT_SAMPLES_PER_REV 点になるよう軌道周期から
+  // 求め、周期が取れない場合(双曲線軌道など)は SHIP_HISTORY_DURATION 基準へ落とす。
+  protected sampleInterval(): number {
+    const period = this.elements?.period;
+    if (period !== undefined && period !== null && isFinite(period) && period > 0) {
+      return period / C.PREDICT_SAMPLES_PER_REV;
+    }
+    return C.SHIP_HISTORY_DURATION / C.PREDICT_SAMPLES_PER_REV;
+  }
+
+  // 中心重力 + 環境加速度(大気抵抗・J2・第三体摂動)+ 自身の推力で 1 ステップ積分する。
+  stepSim(dt: number, sunPos: Vec3, moonPos: Vec3): void {
+    if (!this.alive) return;
+    this.current.step(dt, sunPos, moonPos, this.bcInv, this.thrust, this.sampleInterval(), this.historyDuration);
+  }
+
+  // 予測列を破棄する。次フレーム以降、通常の予算配分の中で伸び直す。
+  invalidatePrediction(): void {
+    this._predicted = null;
+  }
+
+  // predicted.at(simTime) と実状態のずれが tolerance を超えていたら(または保持区間外で
+  // at が null なら)予測列を破棄する。反動・剛体接触・積分差はすべてこれで拾う。
+  resyncPrediction(simTime: number, tolerance: number): void {
+    if (this._predicted === null) return;
+    const predictedState = this._predicted.at(simTime);
+    if (predictedState === null || len(sub(predictedState.r, this.state.r)) > tolerance) {
+      this.invalidatePrediction();
+    }
+  }
+
+  // 予測列の先端を、呼び出し側が決めた dt ぶん1ステップだけ伸ばし、伸ばせたら true を返す。
+  // 伸ばせないとき(predictDuration=0・推力中・打ち切り済み・ホライズン超過)は何もせず false。
+  // predicted が無ければ現在状態を種に生成する。
+  stepPrediction(ephemeris: Ephemeris, simTime: number, dt: number): boolean {
+    if (this.predictDuration <= 0) return false;
+    // 自由飛行前提の予測は噴射中に成立しないので、推力がかかっている間は伸ばさない。
+    if (this.thrust !== null) return false;
+    if (this._predicted === null) {
+      this._predicted = new OrbitEntity(this.current.state);
+      this.truncated = false;
+    }
+    if (this.truncated) return false;
+    const p = this._predicted;
+    // dtを足しても予測長に届かないときだけ予測を進める。
+    if (p.state.t + dt > simTime + this.predictDuration + 1e-6) return false;
+
+    const mid = p.state.t + dt / 2;
+    const sunPos = ephemeris.sunPosAt(mid);
+    const moonPos = ephemeris.moonPosAt(mid);
+    p.step(dt, sunPos, moonPos, this.bcInv, null, this.sampleInterval(), this.predictDuration);
+
+    // 有限チェック
+    const { r, v } = p.state;
+    const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
+      && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+    if (!finite || altitudeOf(r) < C.REENTRY_ALT) this.truncated = true;
+
+    return true;
+  }
+
+  // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。
+  displayState(t: number): OrbitState | null {
+    return t <= this.current.state.t ? this.current.at(t) : (this._predicted?.at(t) ?? null);
+  }
+
+  // 毎フレームの描画位置・姿勢同期。displayTime の状態を fo 経由で描画フレームへ移し、
+  // その状態が無ければ非表示にする。
+  sync(fo: FloatingOrigin, displayTime: number): void {
+    const s = this.displayState(displayTime);
+    if (s === null) {
+      this.obj.visible = false;
+      return;
+    }
+    this.obj.visible = true;
+    this.obj.position.copy(fo.RtoThreeV3(s.r));
+    this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+  }
+
+  // playerPos は「自機からの距離」で消える種別(弾)のために一律で渡す。
+  checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3): void {
+    if (!this.alive) return;
+    if (altitudeOf(this.state.r) < C.DEBRIS_REENTRY_ALT) this.alive = false;
+  }
+
+  dispose(): void {
+    this.scene?.remove(this.obj);
+  }
+}

@@ -39,7 +39,7 @@ const STYLE = `
    ゲーム内世界 UI のすべてより上に出す。 */
 #hud .mk { z-index: 0; }
 #hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
-#hud-plan, #hud-predict, #hud-overview-camera, #hud-stagestatus, #hud-gear { z-index: 1; }
+#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear { z-index: 1; }
 #hud-toast, #hud-hint { z-index: 2; }
 #hud-end, #hud-help { z-index: 3; }
 #hud-settings { z-index: 4; }
@@ -114,7 +114,7 @@ const STYLE = `
 #hud-plan {
   position: absolute; bottom: 40px; left: 12px; min-width: 280px;
 }
-/* hud/buttons.ts のボタン部品。マップモードの2パネル(#hud-predict / #hud-overview-camera)が共有する */
+/* hud/buttons.ts のボタン部品。マップモードの3パネル(#hud-displaytime / #hud-trajframe / #hud-overview-camera)が共有する */
 #hud .hud-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 #hud .hud-seg .seg-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 28px; }
 #hud .hud-seg .seg-btn {
@@ -122,12 +122,13 @@ const STYLE = `
   border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
 }
 #hud .hud-seg .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
-/* マップモードの2パネルは画面左上に縦積みする。下段は情報パネル群と操作説明で埋まっており、
+/* マップモードの3パネルは画面左上に縦積みする。下段は情報パネル群と操作説明で埋まっており、
    マップ操作はそれらと独立に置きたいため。 */
 #hud-overview-camera { display: none; top: 12px; left: 12px; width: 292px; pointer-events: auto; }
-#hud-predict { display: none; top: 166px; left: 12px; width: 292px; pointer-events: auto; }
-#hud-predict input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
-#hud-predict .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
+#hud-displaytime { display: none; top: 166px; left: 12px; width: 292px; pointer-events: auto; }
+#hud-displaytime input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
+#hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
+#hud-trajframe { display: none; top: 296px; left: 12px; width: 292px; pointer-events: auto; }
 .mk-planned { color: #8fd0ff; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 .mk-poi { color: #8fd0ff; text-shadow: 0 0 4px #000; }
 .mk-poi .sym { font-size: 14px; }
@@ -201,9 +202,10 @@ const STYLE = `
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
   #hud-plan { bottom: 216px; left: 8px; min-width: 210px; max-width: 60vw; }
-  /* マップモードの2パネルは狭幅では #hud-status に重ねる(計画中は艦状態より優先) */
+  /* マップモードの3パネルは狭幅では #hud-status に重ねる(計画中は艦状態より優先) */
   #hud-overview-camera { top: 8px; left: 8px; width: 186px; }
-  #hud-predict { top: 146px; left: 8px; width: 186px; }
+  #hud-displaytime { top: 146px; left: 8px; width: 186px; }
+  #hud-trajframe { top: 246px; left: 8px; width: 186px; }
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
@@ -363,10 +365,11 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
 }
 
 // HUD の静的 DOM/スタイル構築。document.body に直接要素を追加する。
-// 計画パネル(#hud-plan)・予測パネル(#hud-predict)・広範囲視点パネル(#hud-overview-camera)・
-// ステージ状況パネル(#hud-stagestatus)・設定パネル/ギア(#hud-settings/#hud-gear)は、それぞれ
-// PlanEditor / PredictSystem / CameraSystem / Stage / SettingsPanel が自分で root へ構築する
-// (それらの CSS はこの STYLE に含む)。
+// 計画パネル(#hud-plan)・計画の未来表示パネル(#hud-trajframe)・未来表示の時刻パネル
+// (#hud-displaytime)・広範囲視点パネル(#hud-overview-camera)・ステージ状況パネル
+// (#hud-stagestatus)・設定パネル/ギア(#hud-settings/#hud-gear)は、それぞれ
+// PlanEditor(が所有する PlanDisplay)/ DisplayTimeManager / CameraSystem / Stage /
+// SettingsPanel が自分で root へ構築する(それらの CSS はこの STYLE に含む)。
 export function buildHudDom(): HudDomRefs {
   injectStyle();
   const root = el('div', 'hud', document.body);
