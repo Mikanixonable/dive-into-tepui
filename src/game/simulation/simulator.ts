@@ -2,6 +2,7 @@
 import { stepAttitude } from '../../physics/attitude';
 import * as C from '../const';
 import { HitSystem } from './hit';
+import { EffectsSystem } from '../vfx/effects-system';
 import { EntityManager } from './entity-manager';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
@@ -21,8 +22,9 @@ export class Simulator {
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
     private readonly _sfx: Sfx,
+    private readonly fx: EffectsSystem,
   ) {
-    this.hitSystem = new HitSystem();
+    this.hitSystem = new HitSystem(this.fx, this._sfx);
     this.collisionPhysics = new CollisionPhysics();
   }
 

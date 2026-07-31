@@ -14,8 +14,8 @@ import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage2 extends Stage {
   static readonly id = '2' as const;
-  readonly selectLabel = '[2] 第二ステージ — モルニヤ戦域';
-  readonly selectSub = `敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モード [${K.toggleMapMode.label}] での遷移が必須`;
+  readonly selectLabel = 'Stage 2';
+  readonly selectSub = '【第二ステージ: モルニヤ戦域】 敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モードでの遷移が必須';
   readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
   readonly selectKeys = ['Digit2'];
   readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
