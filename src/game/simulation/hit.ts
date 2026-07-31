@@ -1,9 +1,9 @@
 // 弾の高度な衝突判定(トンネリング防止のセグメント衝突・被弾ダメージ)。
 
 import * as C from '../const';
-import { Ship } from './game-entity';
-import { Bullet } from './bullet';
-import { Enemy } from './enemy';
+import { Ship } from '../game-entity/ship';
+import { Bullet } from '../game-entity/bullet';
+import { Enemy } from '../game-entity/enemy';
 import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { EntityManager } from './entity-manager';

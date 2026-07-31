@@ -4,10 +4,10 @@ import { OrbitState, orbitState } from '../../physics/orbital';
 import { add, randSym, randVec, v3, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
-import { DebrisKind, DebrisPiece } from '../game-entity/game-entity';
+import { DebrisKind, DebrisPiece } from '../game-entity/debris-piece';
 import { Billboard } from '../../render/billboard';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
-import type { EntityManager } from '../game-entity/entity-manager';
+import type { EntityManager } from '../simulation/entity-manager';
 
 // FlashEffectとDebrisPieceの生成・管理を一元化するエフェクトシステム。ゲーム内のフラッシュ・破片はすべてここを経由する
 // FlashEffectはFlashEffectManagerが管理する。DebrisPieceはspawn系メソッドで生成されentitiesに追加される

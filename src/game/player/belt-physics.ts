@@ -1,12 +1,14 @@
 // マガジンベルトの物理演算(Verlet 積分 + 距離拘束によるチェーンのたわみ・ねじれ)専用の
-// 算術モジュール。three には一切依存せず、position/orientation は physics/vec3・
-// physics/attitude の Vec3/Quat のみで表現する(THREE への変換・メッシュ反映は belt.ts の責務)。
+// 算術モジュール。position/orientation は physics/vec3・physics/attitude の Vec3/Quat のみで
+// 表現する(THREE への変換・メッシュ反映は belt.ts の責務)。下記の BeltSection だけは
+// GameEntity の要求上 THREE.Object3D を1つ必要とするが、描画には使わない。
+import * as THREE from 'three/webgpu';
 import { Attitude, Quat, qFromUnitVectors, qInvert, qMul, qRotate } from '../../physics/attitude';
 import { orbitState } from '../../physics/orbital';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
 import { MAG_BELT_PITCH } from '../../render/ships';
 import * as C from '../const';
-import { BeltSection } from '../game-entity/game-entity';
+import { GameEntity } from '../game-entity/game-entity';
 
 // ベルトが機体座標系でたわみなく伸びる基準方向(不変)。belt.ts の姿勢導出でも
 // 同じ基準を使うためエクスポートする。
@@ -15,6 +17,17 @@ const IDENTITY_Q: Quat = { x: 0, y: 0, z: 0, w: 1 }; // アンカー(機体)側�
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
+}
+
+// マガジンベルトのリンク節点を剛体接触に参加させるためのプロキシ。BeltPhysics が生成・保持し、
+// 機体座標系の Verlet 状態(beltPos/beltPrevPos)と state(ワールド ECI)の相互変換も
+// BeltPhysics 側が担う(利用範囲がベルト内部に閉じるため、他の GameEntity 派生と違いここで定義する)。
+export class BeltSection extends GameEntity {
+  constructor(readonly beltIndex: number) {
+    super(orbitState(0, v3(), v3()), new THREE.Object3D());
+    this.mass = 5;
+    this.collideRadius = 0.8;
+  }
 }
 
 export class BeltPhysics {
