@@ -107,7 +107,7 @@ export class NodeGizmo {
   openMenu(clientX: number, clientY: number, idx: number): void {
     this.menuNodeIdx = idx;
     this.menu.open(clientX, clientY, [
-      { label: 'この時刻まで自動ワープ', act: 'warp' },
+      { label: 'この時刻まで時間を加速', act: 'warp' },
       { label: 'ノードを削除', act: 'delete' },
       { label: 'キャンセル', act: 'cancel' },
     ]);

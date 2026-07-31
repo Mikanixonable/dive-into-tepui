@@ -4544,7 +4544,7 @@ heap ${(n.usedJSHeapSize/1048576).toFixed(1)} MB`:""),this.simMs=0,this.renderMs
 `;function Kr(a,e,t,i=""){const n=document.createElement(a);return n.id=e,i&&(n.className=i),t.appendChild(n),n}h(Kr,"dom_el");function N0e(){const a=document.createElement("style");a.textContent=R0e,document.head.appendChild(a)}h(N0e,"injectStyle");function P0e(a){const e=document.createElementNS("http://www.w3.org/2000/svg","svg");return e.style.position="absolute",e.style.inset="0",e.style.width="100%",e.style.height="100%",e.style.pointerEvents="none",e.style.zIndex="0",a.appendChild(e),e}h(P0e,"buildSvgOverlay");function I0e(a){const e=Kr("div","hud-status",a,"panel");e.innerHTML=`
     <h3>SHIP STATUS</h3>
     <div class="row"><span class="k">MET</span><span class="v" data-id="met"></span></div>
-    <div class="row"><span class="k">TIME WARP</span><span class="v" data-id="sim-speed"></span></div>
+    <div class="row"><span class="k">時間加速</span><span class="v" data-id="sim-speed"></span></div>
 
     <div class="row"><span class="k">RCS\u5236\u52D5 [${V.rcsDampToggle.label}]</span><span class="v" data-id="rcs"></span></div>
     <div class="row"><span class="k">\u4E26\u9032\u51FA\u529B [${V.throttleLow.label}-${V.throttleHigh.label}]</span><span class="v" data-id="throttle"></span></div>

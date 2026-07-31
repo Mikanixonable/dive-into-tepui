@@ -283,9 +283,11 @@ export function buildCasingMesh(): THREE.Mesh {
   mesh.geometry = deepCloneGeometry(mesh.geometry);
   mesh.geometry.scale(1, 2, 1);
   mesh.userData.ownsGeometry = true;
-  // 薬莢の色を銅色に変更
+  // 薬莢の色を銅色（赤みのあるメタリック）に変更
   mesh.material = (mesh.material as THREE.MeshStandardMaterial).clone();
-  (mesh.material as THREE.MeshStandardMaterial).color.setHex(0xb87333);
+  (mesh.material as THREE.MeshStandardMaterial).color.setHex(0xc85a17);
+  (mesh.material as THREE.MeshStandardMaterial).metalness = 0.8;
+  (mesh.material as THREE.MeshStandardMaterial).roughness = 0.3;
   mesh.userData.ownsMaterial = true;
   return mesh;
 }
