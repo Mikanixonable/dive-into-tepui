@@ -7,7 +7,6 @@
 // ?debugLines=1 のときだけ有効(PerfMeter の ?perf=1 と同じ、URL パラメータで自己完結する
 // デバッグ表示のパターン)。無効時は SampledLine を1本も作らない。
 import * as THREE from 'three/webgpu';
-import { OrbitState } from '../physics/orbital';
 import { Frame } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from './floating-origin';
@@ -38,7 +37,9 @@ export class DebugHistoryLine {
         this.scene.add(line.line);
         this.lines.set(entity, line);
       }
-      const samples = this.buildSamples(entity);
+      // 過去列 → 現在状態 → 未来列(あれば)の順に連結する。sampleInterval を current/predicted で
+      // 共有しているため、現在時刻の点で密度が揃って連続する。
+      const samples = [...entity.current.samplesOldestFirst(), ...(entity.predicted?.samplesOldestFirst() ?? [])];
       line.syncGeometry(samples, frame, ephemeris);
       line.syncTransform(frame, simTime, ephemeris, fo);
       line.setVisible(true);
@@ -50,14 +51,5 @@ export class DebugHistoryLine {
       line.dispose();
       this.lines.delete(entity);
     }
-  }
-
-  // 過去列 → 現在状態 → 未来列(あれば)の順に連結する。sampleInterval を current/predicted で
-  // 共有しているため、現在時刻の点で密度が揃って連続する(better_predict.md §3-2)。
-  private buildSamples(entity: GameEntity): OrbitState[] {
-    const samples = [...entity.history.toArrayOldestFirst(), entity.state];
-    const predicted = entity.predicted;
-    if (predicted) samples.push(...predicted.history.toArrayOldestFirst(), predicted.state);
-    return samples;
   }
 }

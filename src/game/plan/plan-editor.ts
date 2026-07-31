@@ -1,10 +1,10 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と計画パネルへの反映。
 // 未来表示(予測折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
 import type * as THREE from 'three/webgpu';
-import { Elements, OrbitState, elementsFromState } from '../../physics/orbital';
-import { dvToWorld, propagateState } from '../../physics/predict';
+import { Elements, OrbitState, elementsFromState, fromOrbitalAxes, orbitalAxes } from '../../physics/orbital';
+import { propagateState } from '../../physics/predict';
 import { Projected } from '../../physics/projection';
-import { Vec3, add, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
+import { Vec3, add, len, scale, sub, v3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { ACCENT, TEXT, TEXT_DIM } from '../theme';
@@ -226,7 +226,7 @@ export class PlanEditor {
     const rate = (fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) / 200;
     const d = deltaPx * sign * rate;
     const local = v3(axis === 0 ? d : 0, axis === 1 ? d : 0, axis === 2 ? d : 0);
-    this.plan.applyNodeDv(this.selectedNodeIdx, dvToWorld(node.r, node.v, local));
+    this.plan.applyNodeDv(this.selectedNodeIdx, fromOrbitalAxes(node, local));
   }
 
   // Δv アーム 6 個の画面方向をノード位置と微小先の投影差分から求める。
@@ -234,11 +234,8 @@ export class PlanEditor {
     node: OrbitState,
     mapDist: number,
   ): { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; } {
-    // prograde/normal/radial-out の単位ベクトルを組む
-    const { r, v } = node;
-    const pro = norm(v);
-    const h = norm(cross(r, v));
-    const radOut = cross(pro, h);
+    const { r } = node;
+    const { pro, nrm, radOut } = orbitalAxes(node);
     const L = mapDist * 0.05;
     const p0 = this.planDisplay.traj.projectPoint(r, node.t);
     // 軸方向へわずかに動かした点との投影差分から、画面上の単位方向ベクトルを求める。
@@ -249,7 +246,7 @@ export class PlanEditor {
       const m = Math.hypot(dx, dy);
       return m > 1e-6 ? { x: dx / m, y: dy / m } : { x: 0, y: -1 };
     };
-    return { pro: dirFor(pro), nrm: dirFor(h), rad: dirFor(radOut) };
+    return { pro: dirFor(pro), nrm: dirFor(nrm), rad: dirFor(radOut) };
   }
 
   // ノード周囲に PRO/RET・NRM/ANM・OUT/IN 6 方向の Δv アームハンドル仕様を配置する。
@@ -331,7 +328,7 @@ export class PlanEditor {
         ((i.down(K.dvNormal) ? 1 : 0) + (i.down(K.dvAntinormal) ? -1 : 0)) * rate,
         ((i.down(K.dvRadialOut) ? 1 : 0) + (i.down(K.dvRadialIn) ? -1 : 0)) * rate,
       );
-      this.plan.applyNodeDv(this.selectedNodeIdx!, dvToWorld(selNode.r, selNode.v, local));
+      this.plan.applyNodeDv(this.selectedNodeIdx!, fromOrbitalAxes(selNode, local));
     }
 
     // パネル表示用のノード一覧を組む

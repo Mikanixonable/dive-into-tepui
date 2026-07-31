@@ -1,8 +1,8 @@
 // 自機の位置・姿勢だけから決まる HUD マーカー。戦闘ビューでは軌道基準の方向マーカーと
 // 機首ボアサイト、広範囲視点では自機位置マーカーを出す。
 import { Attitude, qRotate } from '../../physics/attitude';
-import { OrbitState } from '../../physics/orbital';
-import { cross, scale, v3 } from '../../physics/vec3';
+import { OrbitState, orbitalAxes } from '../../physics/orbital';
+import { scale, v3 } from '../../physics/vec3';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 
@@ -28,11 +28,8 @@ export class PlayerMarkers {
 
   // prograde/retrograde/normal/antinormal/radial in-out の6方向マーカーを配置する。
   private syncOrbitalDirections(state: OrbitState, project: ProjectFn): void {
-    // 軌道基準の3方向(進行・法線・動径)を求める
     const pr = state.r;
-    const proDir = state.v;
-    const nrmDir = cross(pr, state.v);
-    const radDir = cross(proDir, nrmDir);
+    const { pro: proDir, nrm: nrmDir, radOut: radDir } = orbitalAxes(state);
 
     this.markerManager.setDirection('pro', 'mk-pro', '⊙', pr, proDir, project, 'PROGRADE');
     this.markerManager.setDirection('retro', 'mk-retro', '⊗', pr, scale(proDir, -1), project, 'RETROGRADE');
