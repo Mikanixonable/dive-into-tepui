@@ -83,8 +83,9 @@
       - physics.update()
         - initNodesOnce() // 初回のみ
         - estimateAngularAccel() / integrateVerlet() / pinRootToAnchor() / relaxDistanceConstraints()
-        - resetIfFolded() // ベルトが折れ込んでいる場合のみ内部リセット
+        - resetIfFolded() // ベルトが折れ込んでいる/非有限値を含む場合のみ内部リセット
         - advanceOrientationConstraints() // リンクごとに角度クランプ・ツイスト更新
+        - resetIfFolded() // 角度クランプ後にもう一度検査する(非有限値の固着防止)
     - handleEdgeInput() → handleEdgePress() // 処理したキーは input.consumeKey() で消費する
       - throttle.toggleRcsDamp() // K.rcsDampToggle
       - throttle.enableProgradeReset() // K.progradeReset

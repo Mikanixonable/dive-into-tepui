@@ -92,6 +92,11 @@ export class BeltPhysics {
 
     // つなぎ目のピッチ/ヨークランプ(節点位置を補正)とロールねじれの積分
     this.advanceOrientationConstraints(dt, att);
+
+    // 最後にもう一度、絡まり(非有限値を含む)を検査して整列し直す。非有限値は
+    // 距離拘束・絡まり判定の比較が軒並み false になって素通りするため、ここで
+    // 拾わないと以後ずっと NaN のまま固着し、リンクが描画されなくなる。
+    this.resetIfFolded();
   }
 
   private initNodesOnce(): void {
@@ -174,22 +179,30 @@ export class BeltPhysics {
   }
 
   // 互いに隣接していないリンク同士の距離が近すぎる場合は絡まっていると見なし、
-  // 根本(beltPos[0])から +X 方向の直線に整列し直す。
+  // アンカーから +X 方向の直線(initNodesOnce と同じ配置)に整列し直す。
+  // 整列の起点にアンカーを使うのは、節点が非有限になっている場合でも必ず
+  // 有限の配置へ復帰させるため(beltPos[0] を起点にすると NaN が伝播する)。
   private resetIfFolded(): void {
     const n = this.linkCount;
     const minSq = (MAG_BELT_PITCH * 0.5) * (MAG_BELT_PITCH * 0.5);
     if (!this.isFolded(n, minSq)) return;
 
-    const root = this.beltPos[0]!;
     for (let i = 0; i < n; i++) {
-      const p = v3(root.x + i * MAG_BELT_PITCH, root.y, root.z);
+      const p = v3(this.anchor.x + (i + 1) * MAG_BELT_PITCH, this.anchor.y, this.anchor.z);
       this.beltPos[i] = p;
-      this.beltPrevPos[i] = (p);
+      this.beltPrevPos[i] = p;
       this.beltTwist[i] = 0;
     }
   }
 
+  // 非有限値(NaN/Infinity)を含む場合も「絡まり」と同じ扱いで整列し直す対象とする。
+  // 非有限値は距離拘束の `dist < 1e-6` も下の `lenSq(...) < minSq` も false になって
+  // 素通りするため、明示的に検査しないと復帰する手段が一つも無くなる。
   private isFolded(n: number, minSq: number): boolean {
+    for (let i = 0; i < n; i++) {
+      const p = this.beltPos[i]!;
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return true;
+    }
     for (let i = 0; i < n - 2; i++) {
       for (let j = i + 2; j < n; j++) {
         if (lenSq(sub(this.beltPos[i]!, this.beltPos[j]!)) < minSq) return true;
@@ -216,15 +229,18 @@ export class BeltPhysics {
 
     for (let i = 0; i < this.linkCount; i++) {
       const rawDir = sub(this.beltPos[i]!, prevPoint);
-      const segLen = len(rawDir); // このリンクの実長(距離拘束で ≒ MAG_BELT_PITCH)
+      const segLen = len(rawDir); // 方向を取り出すためだけの実長
       let bendQ = prevQ;
       if (segLen > 1e-6) {
         const clampedDir = this.clampDirectionToPrevFrame(scale(rawDir, 1 / segLen), prevQ, tanMaxPitch, tanMaxYaw);
 
-        // クランプ後の方向を「前点 + クランプ済み方向 × 元の長さ」として書き戻し、
+        // クランプ後の方向を「前点 + クランプ済み方向 × MAG_BELT_PITCH」として書き戻し、
         // 物理とビジュアルを一致させる(次フレームの Verlet 積分にも反映)。
+        // 長さに実長ではなく距離拘束の目標長を使うのは、prevPoint がこのループ内で
+        // 既に補正済みの節点だから — 補正で伸びた実長をそのまま採用すると、誤差が
+        // リンクを下るごとに掛け算で増幅し、数フレームで Infinity/NaN へ発散する。
         // 【重要】beltPrevPos も同量だけ平行移動して Verlet の速度 (pos - prevPos) を保つ。
-        const newPos = addScaled(prevPoint, clampedDir, segLen);
+        const newPos = addScaled(prevPoint, clampedDir, MAG_BELT_PITCH);
         const oldPos = this.beltPos[i]!;
         this.beltPrevPos[i] = add(this.beltPrevPos[i]!, sub(newPos, oldPos));
         this.beltPos[i] = newPos;
