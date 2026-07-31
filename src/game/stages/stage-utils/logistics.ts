@@ -69,16 +69,23 @@ export class Logistics {
 
   // ▣ AMMO マーカー: 回収へ向かうべき補給の位置と距離を示す。同時存在数が MAX_AMMO で
   // 頭打ちなのでマーカーキーもその枠で固定し、空き枠は隠す。
+  // 画面外にあるあいだは実位置を指せないので、代わりに画面端へ方位マーカー △ を出す
+  // (敵の ▲ と同じ機構・同じ位置付けで、塗りを抜いた記号で区別する)。補給は取りに行く
+  // 対象なので、方位マーカー側にも距離ラベルを載せる。
   syncMarkers(player: Player, project: ProjectFn): void {
     for (let i = 0; i < C.MAX_AMMO; i++) {
       const key = `mg${i}`;
+      const bearing = `${key}-bearing`;
       const ammo = this.ammos[i];
       if (!ammo || !ammo.alive) {
         this.markerManager.hide(key);
+        this.markerManager.hide(bearing);
         continue;
       }
-      const dist = len(sub(ammo.state.r, player.state.r));
-      this.markerManager.setPosition(key, 'mk-ammo', '▣', ammo.state.r, project, `AMMO ${fmtMarkerDist(dist)}`);
+      const label = `AMMO ${fmtMarkerDist(len(sub(ammo.state.r, player.state.r)))}`;
+      const p = project(ammo.state.r);
+      this.markerManager.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, label);
+      this.markerManager.setBearing(bearing, 'mk-ammo', '△', p, label, 0.9);
     }
   }
 
