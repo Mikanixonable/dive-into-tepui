@@ -526,7 +526,6 @@ export function buildDebrisMesh(accent: number, size: number, style?: string): T
 
 // リロード時に放出される砲身（バレル）メッシュ
 // 砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + 赤熱グロー + ガスポート
-// 全径 ×0.7 でスリム化
 export function buildBarrelMesh(): THREE.Group {
   const g = new THREE.Group();
   const S = 0.7; // 直径スケール係数
