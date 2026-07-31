@@ -1,21 +1,23 @@
-// 素案 B-2: 軌道計画(Plan)の多ノード予測軌道を描く、predict 側の描画ユニット。
-// Plan の corners(frozen アンカー + 凍結ノード)を arc へ分解し、arc ごとに 1 本の
-// PredictedLine(素案 B-1)を生成・所有して描く(B-1 の複数実行)。「まだ実行していない
-// 噴射(グレー)→最初のノード後(白)→2個目以降(オレンジ)」の色分けはここが担う。
+// 軌道計画(Plan)の多ノード予測軌道を描く、plan 側の描画ユニット。Plan の corners(frozen
+// アンカー + 凍結ノード)を arc へ分解し、arc ごとに 1 本の PredictedLine を生成・所有して
+// 描く。「まだ実行していない噴射(グレー)→最初のノード後(白)→2個目以降(オレンジ)」の
+// 色分けはここが担う。
 //
 // arc の分解: [アンカー時刻 → node0 → node1 → … → 表示 end]。arc i は前境界(アンカー or
 // 前ノードの postState)を初期状態に、次ノード時刻(最後は表示 end)まで自由伝播する。ノードは
-// 速度不連続(Δv)で位置は連続なので、arc はノード位置で視覚的に繋がる(§0-5「途切れてよい」)。
+// 速度不連続(Δv)で位置は連続なので、arc はノード位置で視覚的に繋がる。
 //
-// キャッシュは各 arc の B-1 が per-arc に持つ(入力変化検出 + スロットル)。ノードを編集すると
-// その下流 arc の初期状態だけが変わり、上流 arc は再計算されない — 旧来の「1フラグ dirty で
-// 全軌道を引き直す」より無駄が少ない。B-2 は arc の増減に応じて B-1 プールを伸縮させるだけ。
+// キャッシュは各 arc の PredictedLine が per-arc に持つ(入力変化検出 + スロットル)。ノードを
+// 編集するとその下流 arc の初期状態だけが変わり、上流 arc は再計算されない — 旧来の
+// 「1フラグ dirty で全軌道を引き直す」より無駄が少ない。arc の増減に応じて PredictedLine
+// プールを伸縮させるだけ。
 //
-// 所有者は PredictSystem(未来表示の責務)で、駆動も PredictSystem.sync が行う。編集側の
-// PlanEditor はこのインスタンスを参照共有し、画面判定(projectPoint / nearestSample)だけを使う。
-// 描画メッシュと同じ表示座標変換(bake/un-bake)+ 同じカメラ投影を通すので、描画とクリック判定が
-// 画面上でずれない(§5-4)。表示文脈(frame / un-bake 基準時刻 / カメラ投影)は毎フレーム update が
-// 更新する — 画面判定はポインタイベント時、つまり直前フレームの文脈で行われる。
+// 所有者は PlanDisplay(plan-display.ts)で、駆動も PlanDisplay.sync が行う。編集側の
+// PlanEditor はこのインスタンス(planDisplay.traj)を参照共有し、画面判定(projectPoint /
+// nearestSample)だけを使う。描画メッシュと同じ表示座標変換(bake/un-bake)+ 同じカメラ投影を
+// 通すので、描画とクリック判定が画面上でずれない。表示文脈(frame / un-bake 基準時刻 /
+// カメラ投影)は毎フレーム update が更新する — 画面判定はポインタイベント時、つまり直前
+// フレームの文脈で行われる。
 import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital';
 import { sampleAt } from '../../physics/predict';
@@ -25,7 +27,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn } from '../camera/camera-system';
-import { Plan } from '../plan/plan';
+import { Plan } from './plan';
 import { PredictedLine } from './predicted-line';
 
 // セグメント色: [未実行の噴射前=グレー, 最初のノード後=白, 2個目以降=オレンジ]。
@@ -58,7 +60,7 @@ export class PlanTrajectory {
     scene.add(this.group);
   }
 
-  // 毎フレーム(マップモード中)呼ぶ。Plan の corners を arc へ分解し、各 arc の B-1 を駆動する。
+  // 毎フレーム(マップモード中)呼ぶ。Plan の corners を arc へ分解し、各 arc の PredictedLine を駆動する。
   update(
     plan: Plan,
     displayEnd: number,
@@ -81,17 +83,17 @@ export class PlanTrajectory {
       line.setVisible(true);
       line.update(arc.state0, arc.end, ephemeris, frame, currentTime, fo, undefined, force);
     }
-    // 余った B-1(ノードが減った)は隠す。プールは維持して再利用する。
+    // 余った PredictedLine(ノードが減った)は隠す。プールは維持して再利用する。
     for (let i = this.arcs.length; i < this.lines.length; i++) this.lines[i]!.setVisible(false);
   }
 
   // 表示期間切替など、窓の滑り以外の理由で次フレームに全 arc を再計算させる(スロットル無視)。
-  // Plan の corners は変わらない — これは表示キャッシュ側の関心なので B-2 に閉じる。
+  // Plan の corners は変わらない — これは表示キャッシュ側の関心なのでここに閉じる。
   invalidate(): void {
     this.forceNext = true;
   }
 
-  // 時刻 t の予測状態。ghost マーカー(predict-system)が未来位置を得るのに使う。
+  // 時刻 t の予測状態。ghost マーカー(PlanDisplay)が未来位置を得るのに使う。
   // t を含む arc を選び、その arc の per-arc サンプル列を線形補間する。
   sampleAt(t: number): OrbitState | null {
     if (this.arcs.length === 0) return null;
@@ -112,7 +114,7 @@ export class PlanTrajectory {
   }
 
   // 表示座標系での画面投影(= toDisplay → カメラ投影)。plan-editor のノード画面位置・Δv アーム
-  // 方向の算出に使う(plan-editor は frame/XX を知らずこの 1 箇所を通す)。
+  // 方向の算出に使う(plan-editor は frame を知らずこの 1 箇所を通す)。
   projectPoint(r: Vec3, t: number): Projected {
     if (!this.project) return OFFSCREEN;
     return this.project(this.toDisplay(r, t));
@@ -141,7 +143,7 @@ export class PlanTrajectory {
     this.group.visible = v;
   }
 
-  // arc i 用の B-1 を得る。足りなければプールを伸ばす。色はインデックスで一意なので再利用でも正しい。
+  // arc i 用の PredictedLine を得る。足りなければプールを伸ばす。色はインデックスで一意なので再利用でも正しい。
   private lineAt(i: number): PredictedLine {
     while (this.lines.length <= i) {
       const idx = this.lines.length;

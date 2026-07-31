@@ -1,7 +1,7 @@
 
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
-import { Ship } from './entities';
+import { Ship } from './ship';
 import { Attitude } from '../../physics/attitude';
 import { altitudeOf, OrbitState, orbitState } from '../../physics/orbital';
 import { OrbitLine } from '../../render/orbitline';
@@ -16,7 +16,7 @@ import { Bullet } from './bullet';
 import type { Stage } from '../stages/stage';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import type { Simulator } from './simulator';
+import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
@@ -80,14 +80,16 @@ export class Enemy extends Ship {
 
   // 画面マーカー集合(GroupedMarkers)へ渡す自分の見た目とラベル。近接する敵をまとめる
   // 判断は集合側の責務なので、ここでは「まとめられたら代表になりたい度」を priority で示す
-  // だけにする(ターゲット最優先、次いで近い順)。
-  markerItem(isTarget: boolean, viewerPos: Vec3): GroupedMarkerItem {
-    const dist = len(sub(this.state.r, viewerPos));
+  // だけにする(ターゲット最優先、次いで近い順)。pos は呼び出し側(Game.sync)が
+  // displayState から渡す — 機体メッシュと同じ表示時刻の位置を使わないと、未来ゴースト表示中に
+  // 「機体は未来位置、◇マーカーは現在位置」で明確に壊れて見える(better_predict.md Step 4)。
+  markerItem(isTarget: boolean, viewerPos: Vec3, pos: Vec3): GroupedMarkerItem {
+    const dist = len(sub(pos, viewerPos));
     return {
       key: `enemy-${this.name}`,
       cls: isTarget ? 'mk-target' : 'mk-enemy',
       sym: '◇',
-      pos: this.state.r,
+      pos,
       priority: isTarget ? Infinity : -dist,
       name: this.name,
       detail: fmtMarkerDist(dist),
@@ -146,8 +148,8 @@ export class Enemy extends Ship {
     activeStage.recordEnemyDeath(this, simTime, 'reentry');
   }
 
-  // 行動関数(同一集団の同時攻撃数カウント・弾追加は simulator を使う)。
-  behave(dt: number, simTime: number, player: Player, simulator: Simulator, simSpeed: SimSpeedManager): void {
+  // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
+  behave(dt: number, simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager): void {
     if (!player.alive) return;
     if (!simSpeed.canEnemyFire) return;
     const dist = len(sub(player.state.r, this.state.r));
@@ -156,7 +158,7 @@ export class Enemy extends Ship {
     if (this.burstLeft && this.burstLeft > 0) {
       this.burstDelay = (this.burstDelay ?? 0) - dt;
       if (this.burstDelay <= 0) {
-        this.firePlasma(simTime, player, simulator);
+        this.firePlasma(simTime, player, entities);
         this.burstLeft--;
         this.burstDelay = C.ENEMY_BURST_INTERVAL;
       }
@@ -167,12 +169,12 @@ export class Enemy extends Ship {
     if (simTime - this.lastFireSim <= C.ENEMY_FIRE_INTERVAL) return;
     this.lastFireSim = simTime;
 
-    const countInGroup = this.attackingCountInGroup(simulator.enemies);
+    const countInGroup = this.attackingCountInGroup(entities.enemies);
     if (countInGroup >= C.ENEMY_MAX_ATTACKERS_PER_GROUP || Math.random() >= C.ENEMY_ATTACK_CHANCE) return;
     const counts = C.ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
     this.burstDelay = C.ENEMY_BURST_INTERVAL;
-    this.firePlasma(simTime, player, simulator);
+    this.firePlasma(simTime, player, entities);
   }
 
   private attackingCountInGroup(enemies: readonly Enemy[]): number {
@@ -183,7 +185,7 @@ export class Enemy extends Ship {
     return n;
   }
 
-  private firePlasma(simTime: number, player: Player, simulator: Simulator): void {
+  private firePlasma(simTime: number, player: Player, entities: EntityManager): void {
     const r = this.state.r;
     const v = this.state.v;
     const toPlayer = sub(player.state.r, r);
@@ -215,6 +217,6 @@ export class Enemy extends Ship {
     );
     pb.obj.quaternion.setFromRotationMatrix(mz);
 
-    simulator.addBullet(pb);
+    entities.addBullet(pb);
   }
 }

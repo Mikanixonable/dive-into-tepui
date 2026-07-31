@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/remind-develop-docs.mjs\" 2>/dev/null || true",
-            "statusMessage": "DEVELOP/ 文書の同期チェック",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/remind-after-src-edit.mjs\" 2>/dev/null || true",
+            "statusMessage": "コメント方針・DEVELOP/ 文書のチェック",
             "timeout": 10
           }
         ]
