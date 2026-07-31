@@ -9,7 +9,7 @@ import type { Stage } from '../stages/stage';
 import type { EntityManager } from './entity-manager';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { Sfx } from '../../audio/sfx';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3, v3 } from '../../physics/vec3';
 
 export class HitSystem {
   constructor(private readonly fx: EffectsSystem, private readonly sfx: Sfx) {}
@@ -47,11 +47,11 @@ export class HitSystem {
 
         if (distSq <= target.radius * target.radius) {
           p.alive = false;
-          const hitR = {
-            x: target.state.r.x + res.cx,
-            y: target.state.r.y + res.cy,
-            z: target.state.r.z + res.cz,
-          };
+          const hitR = v3(
+            target.state.r.x + res.cx,
+            target.state.r.y + res.cy,
+            target.state.r.z + res.cz,
+          );
           target.attacked(p, simTime, activeStage, hitR);
           hitSomething = true;
           break; // この弾は消滅した
@@ -66,11 +66,11 @@ export class HitSystem {
         const res = this.segmentDistSq(p, target.prevState.r, target.state.r);
         if (res.distSq <= target.collideRadius! * target.collideRadius!) {
           p.alive = false;
-          const hitR = {
-            x: target.state.r.x + res.cx,
-            y: target.state.r.y + res.cy,
-            z: target.state.r.z + res.cz,
-          };
+          const hitR = v3(
+            target.state.r.x + res.cx,
+            target.state.r.y + res.cy,
+            target.state.r.z + res.cz,
+          );
           // ガスのようなエフェクトを発生
           this.fx.spawnGasPuff(hitR, target.state.v);
           break; // この弾は消滅した

@@ -38,7 +38,7 @@ function eclToGame(xe: number, ye: number, ze: number): Vec3 {
 export function sunPosition(t: number, phase0: number): Vec3 {
   const lam = phase0 + (2 * Math.PI * t) / YEAR;
   const p = eclToGame(Math.cos(lam), Math.sin(lam), 0);
-  return { x: p.x * SUN_DIST, y: p.y * SUN_DIST, z: p.z * SUN_DIST };
+  return v3(p.x * SUN_DIST, p.y * SUN_DIST, p.z * SUN_DIST);
 }
 
 // 太陽の光度や反射を利用した射撃の散布界スケールを計算する
