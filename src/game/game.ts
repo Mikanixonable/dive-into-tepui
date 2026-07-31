@@ -23,6 +23,7 @@ import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { EntityManager } from './game-entity/entity-manager';
 import { Simulator } from './game-entity/simulator';
+import { Predictor } from './game-entity/predictor';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { Hud } from './hud/hud';
@@ -108,6 +109,10 @@ export class Game {
   // simulator が持ち、この配列への参照を受け取って回す。
   readonly entities: EntityManager;
   readonly simulator: Simulator;
+  // 全 GameEntity の予測列(predicted)をフレーム予算内でなるはやに伸ばす。表示にはまだ
+  // 使わない(better_predict.md Step 4 で displayTime 経由の表示が乗る)が、予測そのものは
+  // 視点・モードと無関係に常時進む(entities.cleanup の後に呼ぶ理由は predictor.ts 参照)。
+  private readonly predictor: Predictor;
   // シミュレーション状態の非有限値(NaN/Infinity)を最初に検出したフェーズごと報告する見張り。
   // 汚染は描画の暗転・敵の「再突入」誤表示・接触音の鳴りっぱなしなど別の顔で表面化するため、
   // 発生した瞬間に記録する(nan-watchdog.ts の冒頭コメント参照)。
@@ -165,6 +170,7 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, this._sfx);
+    this.predictor = new Predictor(this.entities, this.ephemeris);
 
     this.player = new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager);
 
@@ -256,6 +262,10 @@ export class Game {
     this.player.checkLoss(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
 
     this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
+
+    // 予測は表示とは独立に常時進む(視点・モードによる条件分岐は持たない)。cleanup の後に
+    // 呼ぶのは、死んだ個体を予測しないため、かつ積分後の実状態と突き合わせるため。
+    this.predictor.update(this.simulator.simTime, this.player);
 
     // カメラ更新は物理積分の後に行う: 追従カメラは自機を絶対 ECI 座標で追い、その基準は
     // sync 時のフローティングオリジン(積分後の自機位置)と一致していなければならない。

@@ -213,9 +213,13 @@ export const PREDICT_MAX_SAMPLES = 2000; // 保持する予測サンプル数の
 export const PREDICT_DIRTY_THROTTLE_MS = 200;
 export const PREDICT_REFRESH_INTERVAL_MS = 2000;
 
-// --- エンティティの過去状態列(physics/orbit-entity.ts の OrbitEntity.history) ---
+// --- エンティティの過去・未来状態列(physics/orbit-entity.ts の OrbitEntity.history/Predictor) ---
 export const PREDICT_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
 export const SHIP_HISTORY_DURATION = 5580; // Ship の過去列の保持時間 [s]。LEO(420km)の公転周期に近似
+export const PREDICT_DURATION = 3 * 3600; // 予測する未来の長さ [s](LEO で約2周回)
+export const PREDICT_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
+export const PREDICT_MIN_STEP_DT = SUBSTEP_MAX_DT; // 予測刻みの下限(本体シミュレーションより細かくする理由がないため同じ値)
+export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 // 速度段は 4 倍刻み(1/4/16/64/256/1024/4096)なので、1 段降りるごとに
 // 実時間で約 MARGIN×0.75 秒かかる計算になる。全体(最大速度から解除まで)を

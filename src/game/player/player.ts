@@ -153,6 +153,12 @@ export class Player extends Ship {
     this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet);
 
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att);
+    // 推力が入った瞬間に予測を破棄する。噴射は継続的で Δv も大きく、しかもプレイヤー
+    // 自身の操作なので、結果が即座に反映されないと UX が悪い(距離判定 = resyncPrediction を
+    // 待つと数フレーム〜数秒の遅れになる)。thrust の setter にしないのは意図的 — 将来 Enemy が
+    // 推力を持ったとき、自機と違って即座にはリセットしない(他機の予測にその要求はない)という
+    // 余地を残すため、いまは自機の操作経路にだけ置く。
+    if (this.thrust !== null) this.invalidatePrediction();
   }
 
   toggleFineAttitude(): void {
