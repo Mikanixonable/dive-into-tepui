@@ -53,7 +53,7 @@
       - [開く: !cameraSystem.overviewMode]
         - editor.selectedNodeIdx = null // 内部では selectedNodeId(Plan 発行の ID)を消す
         - touchControls?.setMapMode(true) // タッチデバイスのみ
-        - cameraSystem.overviewMode = true / editor.editMode = true // 独立2責務を同時に立てる唯一の箇所
+        - cameraSystem.overviewMode = true / editor.editMode = true / displayTimeManager.forceCurrent = false // 独立3責務を同時に立てる唯一の箇所
         - hud.hint()
       - [閉じる: cameraSystem.overviewMode]
         - editor.onMapClosed()
@@ -62,7 +62,7 @@
         - editor.closeMenu() → nodeGizmo.closeMenu()
         - cameraSystem.closeFocusMenu() → focusGizmo.closeMenu()
         - touchControls?.setMapMode(false)
-        - cameraSystem.overviewMode = false / editor.editMode = false
+        - cameraSystem.overviewMode = false / editor.editMode = false / displayTimeManager.forceCurrent = true
         - hud.hint() // plan.nodes.length > 0 のみ
     - editor.handleInput()
       - clearPlanByKey() // K.deleteNode
@@ -73,10 +73,10 @@
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
     - player.thrust = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
     - simulator.stepSimulation(bulletCollision=false, resolveCollision=false, doSubstep=false) // simSpeed は ×MAX_PHYS_SIM_SPEED で打ち止め
-      - simulationSubStep() ×1 → stepEntity() エンティティごと + player.thermal.updateThermal()
+      - simulationSubStep() ×1 → entity.stepSim() エンティティごと + player.thermal.updateThermal()
       - stepAttitudes()
     - nanWatchdog.checkAll('stepSimulation(決着後)') // 通常経路と同じく積分の直後に一度
-    - simulator.cleanup() // 決着後もワープで時間は進むので、通常経路と同じ位置で回収する
+    - entities.cleanup() // 決着後もワープで時間は進むので、通常経路と同じ位置で回収する
       // Enemy.checkLoss 経由で recordEnemyDeath(cause='reentry') が走り得るが、勝利遷移は
       // isPlaying でガードされているので決着後に上書きされることはない
     - cameraSystem.update() // 決着後も追従を続ける(sync は止まらないため、飛ばすと視点が絶対 ECI に取り残される)
@@ -87,9 +87,7 @@
       - physics.update()
         - initNodesOnce() // 初回のみ
         - estimateAngularAccel() / integrateVerlet() / pinRootToAnchor() / relaxDistanceConstraints()
-        - resetIfFolded() // ベルトが折れ込んでいる/非有限値を含む場合のみ内部リセット
         - advanceOrientationConstraints() // リンクごとに角度クランプ・ツイスト更新
-        - resetIfFolded() // 角度クランプ後にもう一度検査する(非有限値の固着防止)
     - handleEdgeInput() → handleEdgePress() // 処理したキーは input.consumeKey() で消費する
       - throttle.toggleRcsDamp() // K.rcsDampToggle
       - throttle.enableProgradeReset() // K.progradeReset
@@ -113,7 +111,7 @@
         - sfx.spinUp() // 発射開始フレームのみ(このフレームは fireGun まで進まない)
         - consume() // 弾薬状態の更新。戻り値で以下の分岐が決まる
         - fireGun() // クールダウン明けのみ
-          - spawnBullet() → simulator.addBullet()
+          - spawnBullet() → entities.addBullet()
           - player.state.v に反動 Δv
           - dropCasing() → fx.spawnCasing()
           - spawnMuzzleFlash() → fx.spawnFlash()
@@ -124,11 +122,12 @@
     - throttle.updateThrustState() → player.thrust へ代入
       - sfx.setThrust(false) // 推力入力なし or !canPlayerThrust
       - sfx.setThrust(true) // 推力あり
+    - invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
   - nanWatchdog.checkPlayer('player.behave')
   - activeStage.update() // 具体ステージへディスパッチ。!isPlaying なら即 return
     - behaveAllEnemies() // 全ステージ共通の先頭処理
       - enemy.behave() // 生存中の敵ごと(canEnemyFire・距離・バースト状態の判定は behave 内部)
-        - firePlasma() → simulator.addBullet()
+        - firePlasma() → entities.addBullet()
     - [Stage0 訓練スコアアタック] logistics.updateLogistics(respawnOnDespawn=false)
     - [Stage0 訓練スコアアタック] timer.update()
       - setPhase('timeup') + showScoreAttackResultScreen() // 制限時間到達フレームのみ
@@ -143,7 +142,7 @@
     - [Stage00 無限サバイバル] updateActiveCombatPhase()
       - despawnOutOfRangeEnemies() → enemy.despawn() // 圏外の敵ごと(alive=false + recordEnemyDeath(cause='despawn'))
       - spawnWave() + hud.toast() // 間隔・同時展開上限を満たす場合のみ
-      - spawnWave: generateWave() → addEnemy() → simulator.addEnemy() + scoreCounter.recordSpawnEnemy()
+      - spawnWave: generateWave() → addEnemy() → entities.addEnemy() + scoreCounter.recordSpawnEnemy()
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(respawnOnDespawn=false)
   - nanWatchdog.checkPlayer('activeStage.update')
@@ -153,9 +152,9 @@
     // 弾命中・剛体接触・姿勢積分はいずれもこの中。simulator が hitSystem / collisionPhysics を所有する
     - [サブステップごと] ×1〜SUBSTEP_MAX_COUNT // 分割数は simDt / SUBSTEP_MAX_DT のみで決まる(実 fps に依存しない)
       - simulationSubStep()
-        - stepEntity(player) → stepOrbitRK4() → entity.state へ代入(setter が軌道要素メモ破棄 + history 記録)
-          // player.alive のみ。entity.thrust + 環境加速度
-        - stepEntity() // 敵・弾・薬莢・デブリ・補給それぞれ、個体ごと
+        - player.stepSim() → stepEnvRK4() → current.step()(軌道要素メモ破棄 + history 記録)
+          // player.alive のみ。自身の thrust + envAccel(bcInv)
+        - entity.stepSim() // 敵・弾・薬莢・デブリ・補給それぞれ、個体ごと。alive のみ実行
         - player.thermal.updateThermal()
       - hitSystem.checkBulletHits() // bulletCollision=true のときだけ。サブステップごと
       - target.attacked() // 弾が命中した対象ごと
@@ -189,13 +188,20 @@
       - checkThermalLimits() → hud.hint() // 熱/動圧が危険域に入った初回のみ
     - destroyEffect() → sfx.explosion() + fx.spawnShipDestroyEffect() // 限界超過 or 高度不足のみ
     - activeStage.recordPlayerLost() // 同上
-  - simulator.cleanup() // checkLoss には自機位置を渡す(弾は距離で消える)
+  - entities.cleanup() // simulator.simTime と自機位置を渡す(弾は距離で消える)
     - checkLoss() // 敵・弾・薬莢・デブリ・補給の各個体ごと(既定は alive=false 代入のみ)
       - [Enemy.checkLoss] destroyEffect() + activeStage.recordEnemyDeath(cause='reentry') // 再突入時のみ
         - scoreCounter.recordEnemyLoss() + hud.hint()
         - unlockManager.reportClear() + onWin() // 撃破と同じく checkWin() が true になった場合のみ
           // (最後の1機が自然損耗で消えた場合もここで決着する)
     - prune() ×5 → entity.dispose() // alive=false の個体ごと(scene から除去、必要なら geometry も破棄)
+  - predictor.update() // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。視点/モードによる分岐なし
+    - resyncPrediction() // player + entities.all() の全対象、毎フレーム無条件(§3-4 (a) の距離判定)
+      - invalidatePrediction() // predicted.at(simTime) が実位置から PREDICT_RESET_DIST を超えて乖離、または区間外のときのみ
+    - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を自機優先で消費。ループも dt の決定(predictStepDt)も Predictor 側が持つ(stepSim に対する simulationSubStep と同じ分担)
+      - player.stepPrediction(dt) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt を都度計算し直しながら1ステップずつ繰り返し呼ぶ
+        - predicted.step() // 1ステップごとに ephemeris を中点サンプル
+    - advanceBudget(entity, ...) // 残り予算をカーソル位置から1周ぶん配る。entity.stepPrediction() が最初から false(predictDuration=0/推力中/truncated)なら消費 0 で次へ即進む
   - cameraSystem.update() // 物理積分の後に呼ぶ(追従カメラの基準を積分後の自機位置に合わせるため)
     - chaseCamera.toggleFollowAttitude() // K.followAttitudeToggle。カメラ自身の状態なのでここで消費する
     - zoomActive = !overviewMode && K.gunsightZoom 押下
@@ -209,8 +215,8 @@
       - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
         - nodeGizmo.openMenu() + selectedNodeId = ヒットしたノードの ID // ヒット時。true を返して消費
       - handleMapClick() // 左クリックごと。常に消費する
-        - selectedNodeId = ヒットしたノードの ID + sfx.warp() // 既存ノードをヒットした場合
-        - traj.nearestSample() → plan.addNode() + sfx.warp() // 予測軌道上をヒットした場合
+        - selectedNodeIdx = idx + sfx.warp() // 既存ノードをヒットした場合。正本は ID(setter が解決する)
+        - planDisplay.traj.nearestSample() → plan.addNode() + sfx.warp() // 予測軌道上をヒットした場合
     - cameraSystem.handleMapPointer() // ノードに消費されずに残った右クリックだけが届く
       - handleFocusRightClick() → focusGizmo.openMenu() // FOCUS_LABEL_PICK_PX 以内にラベルがある場合のみ消費
     - editor.updateEditing()
@@ -228,11 +234,11 @@
 
 - game.sync(dt)
   - floatingOrigin = new FloatingOrigin(player.state.r, player.state.v) // 以降の sync 系はこの fo だけを参照する
-  - orbitPeriod / displayTime を確定 // predict.resolveDisplayTime(): 未来ゴーストのスライダーが立っている間だけ先の時刻
+  - orbitPeriod / displayTime を確定 // displayTimeManager.resolveDisplayTime(): 未来ゴーストのスライダーが立っている間だけ先の時刻
   - cameraSystem.sync() // 最初に呼ぶ: environment.sync とマーカー投影が今フレームのカメラ行列を読む
     - overviewCamera.sync() // overviewMode のみ
     - chaseCamera.sync() // !overviewMode のみ
-    - overviewCameraPanel.setVisible(overviewMode) + setFocus()/setFrame() // 視点パネル。点灯反映は overviewMode のみ
+    - overviewCameraPanel.setVisible(overviewMode) + setFocus()/setFrame() // MAP VIEW パネル。点灯反映は overviewMode のみ
     - focusMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。overviewMode のみ
     - focusMarkers.hideLabels() // !overviewMode のみ
   - project / overviewMode / simTime / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
@@ -245,17 +251,19 @@
       - moonMesh.lookAt() // 常に
     - syncLighting() // 自機位置の日照率で sunLight/ambient の強度を上書き
     - syncReferenceLines() → geoLine.sync() + moonLine.sync() // !overviewMode では両方 null 渡しで非表示
-  - player.syncPlayer()
-    - obj の position / quaternion / visible
-    - thrustEffects.sync() → core/outer の sync() or hide()
-    - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4
-    - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出
-    - markers.sync() // 自機由来の HUD マーカー。呼び出し側から見えるのは syncPlayer だけ
-      - [overviewMode] 戦闘用7キーを hide + markerManager.setPosition('self')
-      - [!overviewMode] hide('self') + syncOrbitalDirections() // pro/retro/nrm/anm/radout/radin
-      - [!overviewMode] syncBoresight() → setDirection('bore') or hide('bore') // player.alive で分岐
-    - orbitLine.sync() → regenerate() // 要素が閾値以上ドリフト or 推力中(force) or 初回のみ
-  - simulator.sync() → entity.sync() // 全エンティティごと(Bullet は速度方向を向く別実装)
+  - player.syncPlayer(displayTime)
+    - displayState(displayTime) // current.at または predicted.at。null なら obj.visible=false のみで以下は現在状態のまま
+    - obj の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)
+    - thrustEffects.sync() → core/outer の sync() or hide() // 実機体の現在状態(this.state)のまま
+    - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4 // 同上
+    - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出。同上
+    - markers.sync(currentState, displayState) // 自機由来の HUD マーカー。呼び出し側から見えるのは syncPlayer だけ
+      - [overviewMode] 戦闘用7キーを hide + displayState があれば markerManager.setPosition('self') / 無ければ hide('self')
+      - [!overviewMode] hide('self') + syncOrbitalDirections(currentState) // pro/retro/nrm/anm/radout/radin。常に現在状態
+      - [!overviewMode] syncBoresight(currentState) → setDirection('bore') or hide('bore') // player.alive で分岐。常に現在状態
+    - orbitLine.sync() → regenerate() // 要素が閾値以上ドリフト or 推力中(force) or 初回のみ。現在状態基準(要素は時刻に依らない)
+  - entities.sync(displayTime) → entity.sync(displayTime) // 全エンティティごと(Bullet は速度方向を向く別実装)。
+    displayState が null(predictDuration=0 の種別が未来表示中、または予測期間超過)なら visible=false
   - effects.sync() → flashEffectManager.syncFlashEffects()
     - billboard.sync() // 有効なフラッシュごと
     - scene.remove() + billboard.dispose() // 寿命切れのフラッシュごと
@@ -266,31 +274,36 @@
     - syncBoardMarkers() // 的通過マークの寿命更新と表示(スロットごと)
     - syncTargetDirMarkers() // ◇/◆ tgtdir/atgdir。overviewMode or ターゲット無しなら hide
     - syncNodeMarkers() // 相対 AN/DN。要素が無い/軌道面がほぼ一致なら hide
-  - enemyMarkers.sync() // 生存中の敵の markerItem() 集合を受ける(まとめは1体では決まらない)
+  - [敵ごと] displayState(displayTime) → markerItem(isTarget, viewerPos, pos) // displayState が null の敵はここで除外(マーカーごと落とす)
+  - enemyMarkers.sync() // 生存かつ displayState を持つ敵の markerItem() 集合を受ける(まとめは1体では決まらない)
     - groupNearby() // 画面上で近接するものをクラスタ化し、代表以外のラベルを落とす
     - markerManager.set() + markerManager.setBearing() // 対象ごと。画面外なら画面端の方位マーカー▲へ
     - retire() // 前フレームに出したキーのうち集合から消えたものを remove(敵ごとに増えるキーなので DOM ごと捨てる)
   - leadMarkers.sync() // 敵ごとの LEAD マーカー。overviewMode or !player.alive なら全 remove して return
     - trackTargeted() // 最終ロック時刻を生存中の敵ぶんだけ作り直す
     - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある敵ごと
-  - predict.sync(plan, ...) // forceCurrent(マップ外)なら hide() = 折れ線/ゴースト/パネルを隠して return
-    - traj.setVisible(true)
-    - traj.update() // corners を arc へ分解し、arc ごとに PredictedLine を駆動。表示文脈(frame/un-bake 時刻/投影)もここで更新
-      - line.update() // arc ごと
-        - predictTrajectory() // 入力変化 + スロットル(または force)を満たしたときのみ(重い RK4)
-        - sampled.syncGeometry() // 点列 or frame が変わったときのみ頂点を bake
-        - sampled.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
-      - line.setVisible(false) // arc が減って余った B-1 ごと
-    - syncGhost() → markerManager.setPosition('plannedPlayer') or hide()
-    - panel.setVisible(true) / setDuration() / setFrame() / setSliderLabel() // PREDICT パネル
-  - editor.sync() // predict.sync の後: ノードの画面座標は traj の今フレームの表示文脈を通す
-    - [!editMode] hideGizmo() → nodeGizmo.sync([], null)
+  - displayTimeManager.sync(orbitPeriod) // PREDICT パネル(期間/未来位置スライダー)の表示/内容を押し出すだけ
+    - panel.setVisible(!forceCurrent) / setDuration() / setSliderLabel() // ラベルは自己完結の "T+" 表記のみ
+  - editor.sync(mapDist, displayEnd, simTime, displayTime, fo, project)
+    - [editMode] planDisplay.sync(plan, displayEnd, simTime, displayTime, fo, project)
+      - traj.setVisible(true)
+      - traj.update() // corners を arc へ分解し、arc ごとに PredictedLine を駆動。表示文脈(frame/un-bake 時刻/投影)もここで更新
+        - line.update() // arc ごと
+          - predictTrajectory() // 入力変化 + スロットル(または force)を満たしたときのみ(重い RK4)
+          - sampled.syncGeometry() // 点列 or frame が変わったときのみ頂点を bake
+          - sampled.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
+        - line.setVisible(false) // arc が減って余った PredictedLine ごと
+      - syncGhost() → markerManager.setPosition('plannedPlayer') or hide() // displayTime <= simTime なら hide
+      - panel.setVisible(true) / setSelected() // TRAJECTORY パネル(表示座標系)
     - [editMode] updateGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
+      // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は traj の今フレームの表示文脈を通す
+    - [!editMode] planDisplay.hide() + hideGizmo() → nodeGizmo.sync([], null)
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
-  - activeStage.sync()
+  - activeStage.sync(displayTime)
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示
-    - logistics.syncMarkers() → markerManager.set('mg<i>') + setBearing('mg<i>-bearing') // 生存中の補給ごと(i = 生存配列の添字)
-      - hide() // 前フレームより生存数が減ったぶんの、余った添字だけ
+    - logistics.syncMarkers(displayTime) → ammo.displayState(displayTime) → markerManager.set('mg<i>') + setBearing('mg<i>-bearing')
+      // マーカーを出せる補給ごと(i = 生存かつ displayState が非 null な個体だけを詰めた配列の添字)
+      - hide() // 前フレームよりその数が減ったぶんの、余った添字だけ
   - hud.panels.update(game, dt) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
@@ -300,6 +313,8 @@
     - markerManager.hide('nd'/'burn') // ノード無し or !player.alive で return
     - [達成] plan.consumeFirstNode() + simSpeedManager.cancelAutoWarp() + hide + hud.hint() + sfx.warp()
     - [未達成] markerManager.setPosition('nd') + setDirection('burn')
+  - debugHistoryLine.sync() // ?debugLines=1 のときのみ実効。対象(既定: 自機+ターゲット)ごとに
+    history/predicted.history を1本の SampledLine へ bake + un-bake
   - markerManager.resolveCollisions() // ラベル衝突緩和 + SVG 引き出し線の再描画。全マーカーが出揃った後に一度だけ
 
 ---
@@ -324,10 +339,12 @@
   `stepSimulation` の中で丸ごとスキップされる。
 - **予測 RK4 の再計算頻度**は `PredictedLine` が per-arc に持つ入力変化検出 + スロットルで決まる。
   マップモード中でも大半のフレームは `sampled.syncTransform()`(O(1) の剛体変換)だけで済む。
-- **過去 state の記録は `OrbitEntity.state` の setter が行う**ので、この木には独立ノードとして現れない。
-  `stepEntity()` / `resolveCollisionPair()` / 反動など、state へ代入するすべての経路が記録契機になる。
-  `hitSystem.checkBulletHits()` と `targeter.markBoardCrossings()` が読む「直前サブステップ位置」
-  (`entity.prevState.r`)はこれで供給される。
+- **過去 state の記録・prevState の更新は `physics/orbit-entity.ts` の `OrbitEntity`(`GameEntity.current`)の
+  `step`/`reset` が行う**ので、この木には独立ノードとして現れない。`entity.stepSim()` /
+  `resolveCollisionPair()` / 反動など、state へ代入するすべての経路が記録契機になる
+  (前者は `current.step` 経由、後者は `current.reset` 経由)。`hitSystem.checkBulletHits()` と
+  `targeter.markBoardCrossings()` が読む「直前サブステップ位置」(`entity.prevState.r`)は
+  history の間引き対象とは別フィールドなので、`historyDuration = 0` の弾でも常に供給される。
 - **`TouchControls` は per-frame の update を持たない**。DOM の pointer イベントから
   `input.setVirtualKey()` を呼ぶだけで、per-frame の接点は `game.sync` からの
   `syncModeButtons()`(トグル点灯)だけ。
@@ -335,6 +352,6 @@
   更新順序の制約が無い。
 - **HUD マーカーは持ち主の `sync` が自分で出す**。`game.sync` に並ぶのは「1つの対象では決められない」
   ものだけ(`enemyMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存)で、残りは
-  `player.syncPlayer` / `targeter.sync` / `activeStage.sync` / `cameraSystem.sync` / `predict.sync` /
+  `player.syncPlayer` / `targeter.sync` / `activeStage.sync` / `cameraSystem.sync` / `editor.sync`(→ `planDisplay`) /
   `guide.update` の中にある。**`markerManager.resolveCollisions()` だけは全マーカーが
   出揃った後に一度だけ**呼ぶ必要があるため `game.sync` の末尾に置く。

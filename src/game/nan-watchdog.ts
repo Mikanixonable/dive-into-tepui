@@ -13,15 +13,15 @@
 // 一度検出したら以後は何もしない(ログの洪水と、汚染後の無意味な検査を避ける)。
 import { Hud } from './hud/hud';
 import { Player } from './player/player';
-import { OrbitEntity } from './orbit-entity/entities';
-import { Simulator } from './orbit-entity/simulator';
+import { GameEntity } from './game-entity/game-entity';
+import { EntityManager } from './simulation/entity-manager';
 import { Vec3 } from '../physics/vec3';
 
 function finiteVec(v: Vec3): boolean {
   return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
 }
 
-function describe(entity: OrbitEntity): string {
+function describe(entity: GameEntity): string {
   const { r, v } = entity.state;
   return `r=(${r.x},${r.y},${r.z}) v=(${v.x},${v.y},${v.z})`;
 }
@@ -49,11 +49,11 @@ export class NanWatchdog {
   // 全エンティティを走査する重い検査。自機より先に汚染されるのは他のエンティティ
   // (薬莢・破片・弾)であることが多く、それが接触を通じて自機へ伝播する。
   // フレームにつき一度だけ呼ぶこと。
-  checkAll(phase: string, player: Player, simulator: Simulator, dt: number, simDt: number): void {
+  checkAll(phase: string, player: Player, entities: EntityManager, simTime: number, dt: number, simDt: number): void {
     if (this.tripped) return;
-    this.checkPlayer(phase, player, simulator.simTime, dt, simDt);
+    this.checkPlayer(phase, player, simTime, dt, simDt);
     if (this.tripped) return;
-    for (const e of simulator.allEntities()) {
+    for (const e of entities.all()) {
       if (finiteVec(e.state.r) && finiteVec(e.state.v)) continue;
       this.trip(phase, `${e.constructor.name} ${describe(e)}`, dt, simDt);
       return;

@@ -123,7 +123,7 @@ export class HudPanels {
     this.listTimer -= dt;
     if (this.listTimer <= 0) {
       this.listTimer = 0.25;
-      const rows = game.simulator.enemies
+      const rows = game.entities.enemies
         .filter((e) => e.alive)
         .map((e) => ({
           name: e.name,

@@ -6,7 +6,7 @@ export class ScoreCounter {
   kills = 0;
   // 非プレイヤー起因の喪失数(再突入・空力分解等)。勝利判定の残存数計算にのみ使う。
   losses = 0;
-  // 生成された敵の累計数(撃破されて Simulator.enemies から消えても減らない)。
+  // 生成された敵の累計数(撃破されて EntityManager.enemies から消えても減らない)。
   totalEnemiesSpawned = 0;
 
   recordShot(): void { this.shots++; } // プレイヤーが弾を発射した

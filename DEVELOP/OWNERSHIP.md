@@ -39,12 +39,12 @@ main.ts
     │   ├── ChaseCamera
     │   ├── OverviewCamera
     │   ├── FocusMarkers
-    │   ├── OverviewCameraPanel               ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
+    │   ├── OverviewCameraPanel        ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
     │   └── FocusGizmo
     │       └── ContextMenu
     ├── GroupedMarkers (enemyMarkers)  ... 画面上で近接する敵マーカーのまとめ + 画面外方位マーカー
     ├── LeadMarkers                    ... 敵ごとの LEAD マーカーと最終ロック時刻
-    ├── Player               (extends Ship / OrbitEntity)
+    ├── Player               (extends Ship / GameEntity)
     │   ├── PlayerThrottle
     │   ├── PlayerFire
     │   ├── Belt
@@ -56,12 +56,14 @@ main.ts
     │   ├── PlayerMarkers              ... 方向マーカー・ボアサイト・マップ上の自機位置
     │   └── OrbitLine                  ... 自機軌道線
     ├── SimSpeedManager
-    ├── PredictSystem
-    │   ├── PlanTrajectory             ... 予測折れ線 + per-arc キャッシュ + 画面判定
-    │   │   └── PredictedLine[]        ... arc ごと。各々 SampledLine を持つ
-    │   └── PredictPanel               ... DOM は Hud.root 配下。期間/予測座標系/未来位置スライダー
+    ├── DisplayTimeManager             ... 「いつを見るか」(表示期間・未来ゴーストスライダー)
+    │   └── DisplayTimePanel           ... DOM は Hud.root 配下。期間/未来位置スライダー
     ├── PlanEditor
     │   ├── Plan                       ... ノード列 + アンカー(計画の正本)
+    │   ├── PlanDisplay                ... 計画の未来表示(「見えるとき何を見せるか」)
+    │   │   ├── PlanTrajectory         ... 予測折れ線 + per-arc キャッシュ + 画面判定
+    │   │   │   └── PredictedLine[]    ... arc ごと。各々 SampledLine を持つ
+    │   │   └── TRAJECTORY パネル DOM   ... 表示座標系(frame)の SegmentedControl 1 個のみ
     │   ├── NodeGizmo
     │   │   └── ContextMenu
     │   └── 計画パネル DOM
@@ -80,18 +82,27 @@ main.ts
     │       └── FlashEffect[]          ... 各々 Billboard を持つ
     ├── Targeter
     │   └── OrbitLine                  ... ターゲット軌道線(オレンジ)
-    ├── Simulator
-    │   ├── HitSystem
-    │   ├── CollisionPhysics
+    ├── EntityManager                  ... エンティティ配列の保持のみ。simTime は持たない
     │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
     │   ├── Bullet[]
     │   ├── DebrisPiece[] (casings)
     │   ├── DebrisPiece[] (debris)
     │   └── Ammo[]
+    ├── Simulator                      ... 実シミュレーション。EntityManager の参照を受け取って回すだけ(所有しない)
+    │   ├── HitSystem
+    │   └── CollisionPhysics
+    └── Predictor                      ... 予測列の駆動。EntityManager の参照を受け取って回すだけ(所有しない)。
+                                            状態はラウンドロビンのカーソルのみ
 ```
 
 木に現れないインスタンス:
 
+- 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・Ammo[]・BeltSection[] — 木の
+  どのノードも例外なく)は `physics/orbit-entity.ts` の `OrbitEntity` を1本、フィールド名
+  `current` で保持する(state/history/prevState/elements の正本)。GameEntity ごとに繰り返さず
+  ここに一括で記す。`predictDuration > 0` の GameEntity(Ship・Ammo のみ)は、`Predictor` が
+  `stepPrediction` を呼んだ時点で2本目の `OrbitEntity` を `predicted` として追加で持つ
+  (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。
 - `STAGE_DEFINITIONS`(stage-dictionary.ts のモジュールスコープ)… 選択画面のラベル・解放条件を読む
   ためだけの `Stage` インスタンス列。`setup()`/`init()` は呼ばれず、プレイに使う `activeStage` とは別物。
 - `stage-select.ts` の `UnlockManager` … 選択画面用に別途 `new` される。正本は localStorage なので
@@ -108,15 +119,16 @@ main.ts
 | `THREE.Scene` / `WebGPURenderer` | `GameScene`(main.ts) | Game・各描画物を持つクラス |
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
-| `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・PlayerMarkers・Targeter・Logistics・FocusMarkers・PlanGuide・PredictSystem) |
-| `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・PlanEditor・PredictSystem |
-| `PlanTrajectory` | PredictSystem | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ) |
-| `Plan` | PlanEditor | PredictSystem(`sync` の引数で毎フレーム)・PlanGuide(同)|
+| `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・PlayerMarkers・Targeter・Logistics・FocusMarkers・PlanGuide・PlanDisplay) |
+| `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・PlanEditor(→PlanDisplay) |
+| `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・HitSystem・CollisionPhysics・Targeter・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx` 経由の追加のみ) |
+| `PlanTrajectory` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.traj` 経由) |
+| `Plan` | PlanEditor | PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)|
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
-| `Simulator.ammos` | Simulator | Logistics(読み取り + `addAmmo` 経由の追加のみ) |
-| `Player` / `Simulator` / `Stage` | Game | 毎フレームの引数として相互に渡される |
+| `Player` / `Simulator` / `EntityManager` / `Stage` | Game | 毎フレームの引数として相互に渡される |
 | `UnlockManager` | main.ts | ステージセレクト画面と、各Stage（クリア後画面判定のため） |
+| `DisplayTimeManager.onDurationChange`(コールバック) | Game が配線 | `editor.planDisplay.traj.invalidate()` を呼ぶ。所有者が違う(DisplayTimeManager は Game 直属、PlanDisplay は PlanEditor 所有)ため Game が繋ぐ唯一の場所 |
 
 ---
 
@@ -125,27 +137,29 @@ main.ts
 | 状態 | 正本の所有者 | 備考 |
 | --- | --- | --- |
 | 自機の位置・速度・エポック (ECI) | `Player.state` | 書き換えるのは RK4 積分(Simulator)・反動(PlayerFire)・接触(CollisionPhysics) |
-| エンティティの過去 state 列 | `OrbitEntity.history` | 記録するのは `state` の setter だけ。件数上限は `historyLength`(既定 0、Ship/Bullet は 1) |
+| エンティティの過去 state 列(`StateQueue`) | `GameEntity.history`(→ `current.history`) | 記録するのは `OrbitEntity.step` だけ。時間窓は `historyDuration`(既定 0、Ship のみ `SHIP_HISTORY_DURATION`)、間引き間隔は `sampleInterval()`(軌道周期ベース)で `cleanup` に渡す |
 | 自機の姿勢・角速度 | `Player.att` | 積分は Simulator.stepAttitudes に一元化 |
 | 機体座標系トルク | `Player.torque` | 毎フレーム PlayerThrottle の戻り値で上書きされる |
-| 推力加速度ベクトル | `Player.thrust`(`OrbitEntity.thrust`) | 同上。無推力なら null |
-| HP / 生存 | `Ship.hp` / `OrbitEntity.alive` | 死亡は `alive = false` のみ。除去は Simulator.cleanup |
+| 推力加速度 | `GameEntity.thrust` | 自機は `PlayerThrottle.updateThrustState` の戻り値で毎フレーム上書き。無推力なら null |
+| HP / 生存 | `Ship.hp` / `GameEntity.alive` | 死亡は `alive = false` のみ。除去は EntityManager.cleanup |
 | RCS 制動・スロットル段・ホールド | `PlayerThrottle` | |
 | 姿勢微調整モード | `Player.fineAttitude` | |
 | 残弾・マガジン・バレル・装填タイマー | `PlayerFire` | |
 | ベルトのたわみ(節点位置・ツイスト) | `BeltPhysics` | 表示用リンク変換は Belt が毎フレーム導出 |
 | 外殻温度・動圧・高度警告 | `ThermalSystem` | 破壊判定そのものは `Player.checkLoss` |
-| エンティティ配列(敵/弾/薬莢/デブリ/補給) | `Simulator` | 追加は `addXxx` 経由。上限管理もここ |
+| エンティティ配列(敵/弾/薬莢/デブリ/補給) | `EntityManager` | 追加は `addXxx` 経由。上限管理もここ。`Simulator` は参照を受け取って回すだけで配列を持たない |
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
+| 予測ラウンドロビンのカーソル | `Predictor.cursor` | 唯一の状態。`EntityManager.all()` のインデックスとして毎フレーム進む |
 | ワープ段・自動ワープ目標時刻 | `SimSpeedManager` | 閾値判定(canPlayerFire 等)もここの getter が唯一 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
 | マニューバ計画(ノード列・アンカー) | `Plan` | 所有は PlanEditor。ノード・アンカーとも 1 個の `OrbitState`(実行時刻 = `t`、Δv は導出値)。各ノードに 1 対 1 の内部 ID を発行する(`nodeIdAt`/`indexOfNodeId`) |
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNodeId` / `.editMode` | 選択は index ではなく Plan 発行の ID で持つ(`consumeFirstNode` 等で配列が動いてもずれない)。`selectedNodeIdx` は ID から都度解決する index ビュー |
-| 予測表示期間・未来ゴーストスライダー | `PredictSystem` | |
-| 広範囲視点(注視点相対オフセット・パン)・表示座標系・フォーカス | `OverviewCamera` | 予測折れ線の座標系もこれを読む |
+| 予測表示期間・未来ゴーストスライダー・未来表示の禁止(forceCurrent) | `DisplayTimeManager` | |
+| 予測折れ線を描く表示座標系(trajectoryFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本 |
+| マップ視点(注視点相対オフセット・パン)・表示座標系・フォーカス | `OverviewCamera` | |
 | 戦闘視点(yaw/pitch/dist・姿勢追従フラグ) | `ChaseCamera` | |
-| マップモードの開閉 | `MapModeToggler.mapMode` | 影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `PredictSystem.forceCurrent` / タッチUI)を一斉に切り替える |
-| 広範囲視点表示・照準ズーム | `CameraSystem.overviewMode` / `.zoomActive` | overviewMode は上の影響先。描画・視点側の分岐はこれを見る |
+| マップモードの開閉 | `MapModeToggler.mapMode` | 影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayTimeManager.forceCurrent` / タッチUI)を一斉に切り替える |
+| マップモード表示・照準ズーム | `CameraSystem.overviewMode` / `.zoomActive` | overviewMode は上の影響先。描画・視点側の分岐はこれを見る |
 | ターゲットロック・自動ターゲット・的通過マーク | `Targeter` | |
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
 | 発射数・命中数・撃破数・出撃数 | `ScoreCounter` | 所有は Stage |
@@ -164,16 +178,18 @@ main.ts
 
 ### 正本が分かれていることに意味がある組み合わせ
 
-- **`CameraSystem.overviewMode`(視点)と `PlanEditor.editMode`(操作系)** は別の正本。同時に切り替えるのは
-  `MapModeToggler` だけで、描画・視点側は overviewMode を、入力・挙動側は editMode を見る。
-  「マップモードが開いているか」そのものの正本は第三の値 `MapModeToggler.mapMode` で、上の二つ
-  (と `PredictSystem.forceCurrent`・タッチUI)はその影響先。
+- **`CameraSystem.overviewMode`(視点)・`PlanEditor.editMode`(操作系)・`DisplayTimeManager.forceCurrent`
+  (未来表示の禁止)** は3つとも別の正本。同時に切り替えるのは `MapModeToggler` だけで、描画・視点側は
+  overviewMode を、入力・挙動側は editMode を、未来表示の可否は forceCurrent を見る。
+  「マップモードが開いているか」そのものの正本は第四の値 `MapModeToggler.mapMode` で、上の三つ
+  (とタッチUI)はその影響先。
 - **`FloatingOrigin.r` と `Player.state.r`** は現状同じ値だが意味論的に別物。sync 系は必ず fo を参照し、
   `player.state.r` を描画原点として直接使わない。
-- **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `PredictSystem.trajectoryFrame`(予測折れ線を
+- **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `PlanDisplay.trajectoryFrame`(予測折れ線を
   描く座標系)** は別の正本で、ユーザーが独立に選ぶ。PlanTrajectory が受け取るのは後者だけ。
 - **マップモードの操作パネル**は状態の所有者ごとに分かれる。`OverviewCameraPanel` は CameraSystem が、
-  `PredictPanel` は PredictSystem が所有し、自分の状態だけを映して自分の状態だけを受け取る。
+  `DisplayTimePanel`(期間・未来位置スライダー)は DisplayTimeManager が、TRAJECTORY パネル(表示座標系)
+  は PlanDisplay(PlanEditor 所有)が持ち、それぞれ自分の状態だけを映して自分の状態だけを受け取る。
   表示・非表示も各所有者が毎フレームの sync で押し出す(MapModeToggler は関与しない)。
 - **キー割り当ての正本は `input/key-mapping.ts` の `KEY_MAPPING`、キーの処理の正本は各担当モジュール**。
   どのキーがどの操作かは KEY_MAPPING(コード + 表示名)だけが持ち、入力を読む側(`Input.down` /
@@ -190,7 +206,7 @@ main.ts
   `TouchControls.syncModeButtons()` が担当し、いずれも game.sync が自機/ステージの状態を渡す。
 - **HUD マーカーは対象の持ち主が出す**。自機由来(方向/ボアサイト/マップ上の自機)は `PlayerMarkers`、
   ターゲット由来(方位・相対 AN/DN・的通過マーク)は `Targeter`、補給は `Logistics`、天体ラベルは
-  `FocusMarkers`、ノード/BURN は `PlanGuide`、未来ゴーストは `PredictSystem`。Game が直接持つのは
+  `FocusMarkers`、ノード/BURN は `PlanGuide`、未来ゴーストは `PlanDisplay`。Game が直接持つのは
   **1つの対象では決められない2つだけ** — `GroupedMarkers`(画面上のまとめ)と `LeadMarkers`(自機と敵の
   両方に依存)。`Enemy` は自分の見た目とラベルを `markerItem()` で渡すだけで、まとめの判断には
   関与しない。
@@ -204,12 +220,14 @@ main.ts
 
 | 対象 | 正体 | 無効化の契機 |
 | --- | --- | --- |
-| `OrbitEntity.elements` | `state` からの軌道要素のメモ化 | `state` setter(差し替えのたび自動) |
-| `OrbitEntity.prevState` | `history` 末尾(無ければ現 state)の読み出し | `history` に従う |
+| `GameEntity.elements`(→ `current.elements`) | `state` からの軌道要素のメモ化 | `current.step`/`.reset`(差し替えのたび自動) |
+| `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(`history` とは別) | `step`/`reset` のたび更新 |
+| `GameEntity.predicted` | `current.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictDuration = 0` のクラスでは常に null) | `resyncPrediction` の距離判定(§3-4 (a))、または `Player.behave` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
 | `OrbitLine.snap` / 頂点配列 | 楕円ジオメトリの再生成判定用スナップショット | 要素ドリフト・`force`・初回 |
 | `PredictedLine.samples` / `.key` | 予測 RK4 の結果と入力スナップショット | 入力変化 + スロットル、`force` |
 | `PlanTrajectory.arcs` / `.frame` / `.unbakeTime` / `.project` | 毎フレーム再構築される表示文脈(画面判定もこれを使う) | `update()` 毎 |
 | `SampledLine.lastSamples` / `.lastFrame` | bake 済み頂点の入力スナップショット | 点列 or frame の変化 |
+| `DebugHistoryLine.lines`(`Map<GameEntity, SampledLine>`) | 対象ごとの `SampledLine` インスタンスのプール(`?debugLines=1` のみ実体化) | 対象集合(`sync` の引数)から外れたエンティティぶんを毎フレーム破棄 |
 | `PlanEditor.nodeArrivings()` / `nodeDv()` | ノード到達状態と Δv の導出値(表示専用) | 呼ぶたび再計算 |
 | `PlayerThrottle.thrustVizDir` / `.thrustAccelVec` | 推力の表示・ベルト物理向け派生値 | 毎フレーム上書き |
 | `Player` の各 getter(`rcsDamp` / `magsLeft` 等) | throttle/fire への転送 | — |
@@ -219,21 +237,17 @@ main.ts
 
 `Vec3` / `OrbitState` / `Quat` / `Attitude` は **不変**。値を進めるときは中身を書き換えず、
 新しいオブジェクトを作って差し替える(`stepOrbitRK4` は新しい `OrbitState` を、`stepAttitude` は
-新しい `Attitude` を返す)。これは最適化ではなく整合性の前提で、`OrbitEntity.state` の setter が
-軌道要素メモを破棄し、差し替え前の state を `history` へ送れるのは「state が差し替え以外では
-変化しない」からである。参照を共有したまま中身を書き換えると保持側が変化を検知できず、メモが
-黙って腐り、履歴も取り落とす。
+新しい `Attitude` を返す)。これは最適化ではなく整合性の前提で、`physics/orbit-entity.ts` の
+`OrbitEntity`(`GameEntity.current`)が `step`/`reset` のたび軌道要素メモを破棄し、差し替え前の
+state を条件付きで `history` へ送れるのは「state が差し替え以外では変化しない」からである。
+参照を共有したまま中身を書き換えると保持側が変化を検知できず、メモが黙って腐り、履歴も取り落とす。
 
 `OrbitState` は `{t, r, v}`(エポック付き状態ベクトル)で、**予測点列・エンティティ履歴・計画ノードは
 すべてこの 1 型で表す**。同じ情報量の型を複数持たない(旧 `TrajectorySample` / `LineSample` /
 `PlannedNode.time` はここへ統合済み)ため、「状態」と「その時刻」が別々に渡されて食い違うことがない。
 
-例外は **RK4 の環境加速度評価だけ**。ここは1エンティティ1サブステップあたり4回走るため、
-`orbital.ts` の `IAccelProvider`(`computeExtraAccel(rx,ry,rz,vx,vy,vz,out)`)を通してスカラーと
-呼び出し側所有の `out` でやり取りし、オブジェクトを返さない。実装は `Simulator` 自身
-(`activeSunPos`/`activeMoonPos`/`activeBcInv`/`activeThrust` を private フィールドへ仕込んでから
-`stepOrbitRK4` へ自分を渡す)と、`predict.ts` のモジュールスコープ `predictProvider` の2つ。
-**どちらもミュータブルな singleton なので再入不可** — 仕込みと `stepOrbitRK4` の呼び出しの間に
-別エンティティの積分を挟んではならない。この例外は加速度評価に閉じており、`physics/` の他の場所へ
-ミュータブルなスクラッチを持ち込む根拠にはならない(不変性を取り戻した経緯と実測値は
-`memos/mikanixonable/軽量化計画.md` の A-1 を参照)。
+**例外はない。** RK4 の環境加速度評価も `envaccel.ts` の `envAccel` が `Vec3` を返す純粋関数で、
+`stepOrbitRK4` はそれを `ExtraAccelFn` として受け取る。ミュータブルなスクラッチや `out` 引数を
+持つ変種は `physics/` のどこにも置かない(その形を撤去した経緯と実測値は
+`memos/mikanixonable/軽量化計画.md` の A-1 を参照)。エンティティ数が増えて効くようになったときの
+答えは物理 LOD(同 B-1)であって、ミュータブルなスクラッチの再導入ではない。

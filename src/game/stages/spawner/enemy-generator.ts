@@ -9,7 +9,7 @@ import { cross, len, norm, randSym, rotateAxis, scale, v3 } from '../../../physi
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy } from '../../orbit-entity/enemy';
+import { Enemy } from '../../game-entity/enemy';
 
 // 自機軌道(base)を dAlong だけ進めた位置の軌道状態(プリセット配置の共通基盤)。
 function phasedState(base: OrbitState, dAlong: number): OrbitState {

@@ -59,7 +59,7 @@ git diff --stat HEAD -- src/
 
 対象の文書を読み捨てて、以下のプロンプトを自分自身へ課して書き直す。読む範囲は
 `src/main.ts` と `src/game/game.ts` を起点に、そこから per-frame で辿れる全モジュール
-(`player/` `camera/` `plan/` `predict/` `orbit-entity/` `stages/` `marker/` `hud/` `vfx/`
+(`player/` `camera/` `plan/` `game-entity/` `simulation/` `stages/` `marker/` `hud/` `vfx/`
 `input/` `render/environment-scene.ts` など)。**推測で書かず、必ずファイルを読む。**
 
 ### CALLSTACK.md 再生成プロンプト
@@ -125,8 +125,8 @@ CLAUDE.md は全面再生成せず、**節ごとに実装と突き合わせて�
 >    `plan-editor.ts` の `updateEditing` を**実際に読んで**キー割り当てを確定させる。
 >    数値を引くときは `const.ts` の現在値を確認する。
 > 5. 「Not yet implemented」の記述が本当に未実装かを確認する。
-> 6. 旧実装との対比(「以前は〜だった」)・否定形の羅列は書かない(`/refactor` のコメント方針に
->    従う)。ただし「なぜこの値/構造なのか」の理由は残す。
+> 6. 旧実装との対比(「以前は〜だった」)・否定形の羅列は書かない(`/comment` の方針に従う)。
+>    ただし「なぜこの値/構造なのか」の理由は残す。
 >
 > コード側に見つけた不整合(古いラベル文字列・呼ばれない関数など)は勝手に直さず、文書に
 > 「既知の不整合」として書いて報告せよ。

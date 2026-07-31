@@ -5,7 +5,7 @@
 // stage-dictionary.ts の initStage() が新規 `new` したこのインスタンス自身を
 // activeStage として保持するだけでよい。
 import * as THREE from 'three/webgpu';
-import { Enemy } from '../orbit-entity/enemy';
+import { Enemy } from '../game-entity/enemy';
 import { Player } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter as scoreCounter } from './stage-utils/score-counter';
@@ -15,7 +15,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { showResultScreen, showWinScreen } from '../hud/result-screen';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
-import type { Simulator } from '../orbit-entity/simulator';
+import type { EntityManager } from '../simulation/entity-manager';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SimSpeedManager } from '../sim-speed-manager';
@@ -80,7 +80,7 @@ export abstract class Stage {
     hud: Hud,
     sfx: Sfx,
     scene: THREE.Scene,
-    simulator: Simulator,
+    entities: EntityManager,
     unlockManager: UnlockManager,
     fx: EffectsSystem,
     markerManager: MarkerManager,
@@ -91,7 +91,7 @@ export abstract class Stage {
     this._unlockManager = unlockManager;
     this._fx = fx;
     this._phase = 'playing';
-    this.logistics = new Logistics(hud, sfx, scene, simulator.ammos, (ammo) => simulator.addAmmo(ammo), markerManager);
+    this.logistics = new Logistics(hud, sfx, scene, entities, markerManager);
     this.statusPanel = new StageStatusPanel(hud.root);
   }
 
@@ -110,10 +110,11 @@ export abstract class Stage {
     location.replace(`${location.pathname}?stage=${this.id}`);
   }
 
-  // 毎フレーム(sync 時)呼ぶ、ステージ所有の表示物の同期。
-  sync(player: Player, project: ProjectFn): void {
+  // 毎フレーム(sync 時)呼ぶ、ステージ所有の表示物の同期。displayTime は ▣ AMMO マーカーを
+  // 補給のメッシュ位置(displayState 基準)と揃えるために Logistics へそのまま渡す。
+  sync(player: Player, project: ProjectFn, displayTime: number): void {
     this.syncStatusPanel(player);
-    this.logistics.syncMarkers(player, project);
+    this.logistics.syncMarkers(player, project, displayTime);
   }
 
   // hudSubStatus() を返すステージでだけ状況パネルを表示する。
@@ -126,15 +127,15 @@ export abstract class Stage {
     this.statusPanel.sync(player.hp, player.maxHp, message, this.scoreCounter.kills);
   }
 
-  // 敵の生成登録(Simulator への追加 + 出撃数カウント)を一箇所にまとめる。
-  protected addEnemy(enemy: Enemy, simulator: Simulator): void {
-    simulator.addEnemy(enemy);
+  // 敵の生成登録(EntityManager への追加 + 出撃数カウント)を一箇所にまとめる。
+  protected addEnemy(enemy: Enemy, entities: EntityManager): void {
+    entities.addEnemy(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }
 
-  protected behaveAllEnemies(dt: number, player: Player, simulator: Simulator, simTime: number, simSpeed: SimSpeedManager): void {
-    for (const e of simulator.enemies) {
-      if (e.alive) e.behave(dt, simTime, player, simulator, simSpeed);
+  protected behaveAllEnemies(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+    for (const e of entities.enemies) {
+      if (e.alive) e.behave(dt, simTime, player, entities, simSpeed);
     }
   }
 
@@ -146,9 +147,9 @@ export abstract class Stage {
 
   abstract briefingHtml(enemyCount: number): string;
   // ステージ開始時の処理(初期敵配置・初期補給投入)。戻り値は初期敵数(ブリーフィング表示用)。
-  abstract init(player: Player, simulator: Simulator): number;
+  abstract init(player: Player, entities: EntityManager): number;
   // 毎フレームの処理(弾薬兵站・タイマー・ウェーブ生成など、このステージに必要な分だけ書く)。
-  abstract update(dt: number, player: Player, simulator: Simulator, simTime: number, simSpeed: SimSpeedManager): void;
+  abstract update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
 
   // 既定: 敵全機撃破で勝利(再突入等の自然損耗は losses を差し引くためだけに使う)。
   // 時間切れで終わるステージ(Stage0/Stage00)は false 固定・onWin no-op に override する。

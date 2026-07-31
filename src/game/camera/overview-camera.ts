@@ -45,7 +45,7 @@ export class OverviewCamera {
   private offset_r: RelativeVec3;
   private pan_r: RelativeVec3;
   // カメラ視点を固定する座標系(慣性系 / 太陽回転系)。予測軌道を描く座標系
-  // (PredictSystem.trajectoryFrame)とは独立で、ユーザーが別々に選べる。切替は set cameraFrame
+  // (PlanDisplay.trajectoryFrame)とは独立で、ユーザーが別々に選べる。切替は set cameraFrame
   // 経由で、そのとき相対座標を新 Frame へ入れ直す。cameraSystem はこのセッターに代入するだけ。
   private _cameraFrame: Frame = 'inertial';
   // update() が受け取った最新の simTime。set cameraFrame が座標変換に使うためキャッシュする。

@@ -40,9 +40,8 @@ export const AMBIENT_INTENSITY = 0.25; // 環境光の基準強度
 export const SHADOW_MIN_SUN = 0.04; // 影の中に残す太陽光の割合(星明かり・地球照ぶん)
 export const SHADOW_MIN_AMBIENT = 0.35; // 影の中に残す環境光の割合
 
-// 並進推力(WSADQE の全 6 方向、前後左右上下を問わず共通)出力 3 段階 [m/s^2]。
-// [1]/[2]/[3] キーで切替。並進とエンジンは統合されており、方向キーが押されて
-// いる間だけ、選択中の段の加速度がその方向へ出る(常時噴射のカットオフ段はない)。
+// 並進推力(WSADQE の全 6 方向で共通)の出力 3 段階 [m/s^2]。[1]/[2]/[3] キーで切替、
+// 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。
 export const THROTTLE_LEVELS = [5.0, 20.0, 100.0];//エンジン出力、スロットル
 export const THROTTLE_DEFAULT_IDX = 1;
 
@@ -50,22 +49,18 @@ export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
 export const MAX_ANG_VEL = 1.6; // 手動回転の角速度上限 [rad/s]
 export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
 
-// 手動回転RCSの出力ランプ: 長押し開始時は RCS_MANUAL_OUTPUT_MIN、
-// RCS_MANUAL_RAMP_TIME 秒かけて (MIN + RAMP) まで段階的に増加する
+// 手動回転RCSの出力ランプ: 押し始めは MIN、RAMP_TIME 秒かけて (MIN + RAMP) まで増加する
 export const RCS_MANUAL_OUTPUT_MIN = 0.3;
 export const RCS_MANUAL_OUTPUT_RAMP = 1.0;
 export const RCS_MANUAL_RAMP_TIME = 3.0; // [s]
 export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
 
-// 微調整モード([V]キーでトグル、射撃中は自動でON): 角加速度・角速度上限を絞り、
-// 通常時の半分の出力で小刻みな姿勢調整を可能にする
+// 微調整モード([V]キーでトグル、射撃中は自動でON)で角加速度・角速度上限に掛ける倍率
 export const FINE_ATTITUDE_SCALE = 0.5;
 
-// 戦闘視点カメラ(ChaseCamera)の near/far [m]。
-// near: LEO高度からの地平線距離(~2,400km)での深度誤差が大気シェルの厚みより
-// 十分小さくなり、対数深度バッファなしで z-fighting を回避できる値。
-// far: 星空シェル(STAR_SHELL_RADIUS=3.5e7)・太陽ビルボード(SUN_DISTANCE=4.2e7)・
-// 月表示距離(MOON_VIS_DIST=4.5e7、render/stars.ts)を余裕を持って内側に収める。
+// 戦闘視点カメラの near/far [m]。near は LEO 高度からの地平線距離(~2,400km)での深度誤差が
+// 十分小さく、対数深度バッファなしで z-fighting を避けられる値。far は星空シェル・
+// 太陽ビルボード・月表示距離を余裕を持って内側に収める。
 export const COMBAT_CAMERA_NEAR = 2;
 export const COMBAT_CAMERA_FAR = 6e7;
 
@@ -74,8 +69,7 @@ export const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg
 export const ZOOM_LERP_RATE = 9; // 画角遷移の追従速度 [1/s]
 export const ZOOM_MUZZLE_FLASH_SCALE = 0.02; // ズーム中のマズルフラッシュ最大不透明度倍率(完全には消さない)
 
-// キーボードでの視点回転(矢印キー)[rad/s]。マウスドラッグと同じ感覚になるよう
-// yaw は 0.005 rad/px 換算に合わせた速度を割り当てる。
+// キーボードでの視点回転(矢印キー)[rad/s]。マウスドラッグ(0.005 rad/px)と同じ感覚になる値。
 export const CAM_KEY_YAW_RATE = 1.4;
 export const CAM_KEY_PITCH_RATE = 1.0;
 
@@ -87,11 +81,8 @@ export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
 export const FIRE_INTERVAL = 0.06; // 発射間隔 [s] 
 export const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
 export const BULLET_SPREAD = 0.002; // 散布界 [rad]
-// 弾の消滅は距離が主、寿命は保険。自機から BULLET_MAX_DIST 以上離れた弾は、もう当たる相手が
-// いないので消す(自機の目の前で消えないよう、交戦圏 STAGE00_MAX_RANGE と同じ距離を採る)。
-// 弾は1発ずつ独立したメッシュ = ドローコールなので、生存数が描画コストに直結する:
-// 初速 1000 m/s なら 30km を約30秒で抜けるため、連射しても生存数はその範囲に収まる。
-// 寿命は「自機とほぼ同じ軌道に乗ってしまい、いつまでも離れない弾」を最終的に片付けるための保険。
+// 弾の消滅は距離が主、寿命は保険。弾は1発ずつ独立したドローコールなので生存数が描画コストへ
+// 直結する。自機の目の前で消えないよう、交戦圏 STAGE00_MAX_RANGE と同じ距離を採る。
 export const BULLET_MAX_DIST = 30e3; // 自機からこれ以上離れた弾を消す [m]
 export const BULLET_LIFETIME = 240; // 保険としての寿命 [sim s]
 export const RECOIL_DV = 0.04; // 反動 [m/s]
@@ -104,8 +95,6 @@ export const MAX_BOARD_MARKS = 1;
 export const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)
 
 // --- 弾薬・マガジン ---
-// マガジンの厚みを倍にしたぶん装弾数も倍(32発)にしたので、同程度の総弾薬量を
-// 半分程度のマガジン数(=物理的に短いチェーン)で賄える。
 export const MAG_ROUNDS = 32; // 1 マガジンの装弾数
 export const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
 export const AMMO_PICKUP_MAGS = 4; // 補給 1 個の取り込みで増えるマガジン数
@@ -125,9 +114,8 @@ export const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの
 export const BARREL_MASS = 20; // バレルの物理接触用の質量(実質量ではなくゲーム内衝突用の値)
 export const MAGAZINE_FRAME_MASS = 20; // 空マガジンの物理接触用の質量(同上)
 
-// マガジンチェーン(ベルト)の可動域: 各つなぎ目(リンク間接合部)で許容する最大折れ角。
-// ロール(チェーン軸まわりのねじれ)・ピッチ(上下方向の折れ)・ヨー(左右方向の折れ)
-// をそれぞれ独立に制限する。いずれも隣接リンク間の相対角度 [deg]。
+// マガジンチェーン(ベルト)の可動域: 各つなぎ目で許容する最大折れ角。ロール・ピッチ・ヨーを
+// それぞれ独立に制限する。いずれも隣接リンク間の相対角度 [deg]。
 export const MAG_CHAIN_MAX_ROLL_DEG = 15;  // ロール上限
 export const MAG_CHAIN_MAX_PITCH_DEG = 45; // ピッチ上限(上下方向の折れ)
 export const MAG_CHAIN_MAX_YAW_DEG = 15;   // ヨー上限(左右方向の折れ)
@@ -186,8 +174,7 @@ export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見�
 
 // --- 軌道計画モード([M]) ---
 export const OVERVIEW_CAMERA_MIN_DIST = 9e6; // 広範囲視点カメラの注視点までの距離 [m]
-// 月軌道(平均距離 3.844e8m)全体+マージンが収まるまでカメラを引けるようにする
-// 太陽地球系のラグランジュ点 L1/L2 (約1.5e9m) が視界に収まるように上限を拡大。
+// 太陽地球系のラグランジュ点 L1/L2(約1.5e9m)まで視界に収められる引きの上限。
 export const OVERVIEW_CAMERA_MAX_DIST = 4.5e9;
 export const OVERVIEW_CAMERA_FAR = 1.5e10; // 広範囲視点カメラの far(OVERVIEW_CAMERA_MAX_DIST + 十分な余裕)
 export const NODE_DV_RATE = 30; // Δv 調整速度 [m/s per 実秒]
@@ -209,15 +196,20 @@ export const PREDICT_DUR_DAY = 86400; // 1日
 export const PREDICT_DUR_WEEK = 7 * 86400; // 7日
 export const PREDICT_DUR_MONTH = 28 * 86400; // 28日
 export const PREDICT_MAX_SAMPLES = 2000; // 保持する予測サンプル数の上限
-// 予測の再計算頻度: ノード追加・削除・Δv変更・期間/系変更時は最短でこの間隔(高頻度キー
-// 操作を約5Hzに間引く)、それ以外は変化がなくてもこの間隔ごとに再計算する(摂動により
-// 「現在の軌道」自体がドリフトしていくため)。
+// 予測の再計算頻度: 編集操作に対しては最短でこの間隔(高頻度キー操作を約5Hzに間引く)、
+// 変化がなくても摂動で軌道自体がドリフトするのでこの間隔ごとに再計算する。
 export const PREDICT_DIRTY_THROTTLE_MS = 200;
 export const PREDICT_REFRESH_INTERVAL_MS = 2000;
+
+// --- エンティティの過去・未来状態列(physics/orbit-entity.ts の OrbitEntity.history/Predictor) ---
+export const PREDICT_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
+export const SHIP_HISTORY_DURATION = 5580; // Ship の過去列の保持時間 [s]。LEO(420km)の公転周期に近似
+export const PREDICT_DURATION = 3 * 3600; // 予測する未来の長さ [s](LEO で約2周回)
+export const PREDICT_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
+export const PREDICT_MIN_STEP_DT = SUBSTEP_MAX_DT; // 予測刻みの下限(本体シミュレーションより細かくする理由がないため同じ値)
+export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
-// 速度段は 4 倍刻み(1/4/16/64/256/1024/4096)なので、1 段降りるごとに
-// 実時間で約 MARGIN×0.75 秒かかる計算になる。全体(最大速度から解除まで)を
-// 概ね20実秒以内に収める値。
+// 最大速度から解除までが概ね20実秒に収まる値。
 export const AUTOWARP_MARGIN = 4;
 export const AUTOWARP_STOP = 20;
 

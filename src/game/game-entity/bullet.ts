@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { OrbitEntity } from './entities';
+import { GameEntity } from './game-entity';
 import { OrbitState } from '../../physics/orbital';
 import { FloatingOrigin } from '../floating-origin';
 import type { Stage } from '../stages/stage';
@@ -19,10 +19,10 @@ export type Shooter = 'player' | 'enemy';
 // type によって分岐する(hit.ts/player.ts/enemy.ts 参照)。
 export type BulletType = 'normal' | 'plasma';
 
-// 自弾と敵プラズマ弾の両方に使う。Simulator.bullets という単一配列に保持され、
+// 自弾と敵プラズマ弾の両方に使う。EntityManager.bullets という単一配列に保持され、
 // 命中ルール(hit.ts)は各弾が持つ type/shooter を見て分岐する。寿命(lifetime)は
 // 生成時に渡された値を自身で持つ。
-// dispose() は基底の OrbitEntity.dispose()(scene.remove のみ)をそのまま使う。
+// dispose() は基底の GameEntity.dispose()(scene.remove のみ)をそのまま使う。
 // buildBulletMesh/buildPlasmaMesh(render/ships.ts)のハロー用 geometry/material は
 // モジュールスコープ(通常弾)または accent 値ごと(プラズマ弾。取りうる値は少数)に
 // キャッシュされた共有インスタンスであり、本体側も memoParseShared() 由来で
@@ -30,10 +30,11 @@ export type BulletType = 'normal' | 'plasma';
 // つまり Bullet.obj 配下に「この弾だけが所有する」GPU リソースは存在しないため、
 // traverse して dispose するとまだ生きている他の弾から共有リソースを奪ってしまう
 // (BUG_REPORT.md B1 参照)。
-export class Bullet extends OrbitEntity {
-    // 弾は移動が速く、線分衝突判定(hit.ts)・標的面通過判定(targeter.ts)が直前サブステップ位置を
-    // 読むので 1 件だけ保持する。
-    protected readonly historyLength = 1;
+export class Bullet extends GameEntity {
+    // prevState(直前サブステップ位置。hit.ts の線分衝突判定・targeter.ts の標的面通過判定が
+    // 読む)は GameEntity 側で常時追跡されるので、ここでは historyDuration を上げる必要はない
+    // (既定 0 のまま = 過去列は記録しない)。
+    protected readonly bcInv = C.BULLET_BCINV;
 
     readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
     readonly shooter: Shooter;
@@ -60,10 +61,18 @@ export class Bullet extends OrbitEntity {
 
     // 姿勢を持たないため、att.q ではなくフローティングオリジンに対する相対速度方向を
     // 向く(モーションブラー的表現)。位置は toThreeVector3(r 差引)、向きは toThreeVelocity
-    // (v 差引)で描画フレームへ変換する
-    sync(fo: FloatingOrigin): void {
-        this.obj.position.copy(fo.RtoThreeV3(this.state.r));
-        const relVel = fo.VtoThreeV3(this.state.v);
+    // (v 差引)で描画フレームへ変換する。弾は predictDuration = 0 なので、displayTime が
+    // 未来を指す間(マップの未来ゴースト表示中)は displayState が常に null になり非表示になる
+    // (寿命が数秒の弾を未来表示の対象にする意味がないため — better_predict.md Step 4)。
+    sync(fo: FloatingOrigin, displayTime: number): void {
+        const s = this.displayState(displayTime);
+        if (s === null) {
+            this.obj.visible = false;
+            return;
+        }
+        this.obj.visible = true;
+        this.obj.position.copy(fo.RtoThreeV3(s.r));
+        const relVel = fo.VtoThreeV3(s.v);
         if (relVel.lengthSq() <= 1e-6) return;
         tmpQuat.setFromUnitVectors(zAxis, relVel.normalize());
         this.obj.quaternion.copy(tmpQuat);
