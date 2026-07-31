@@ -64,12 +64,12 @@ export class PlayerFire {
     this.wasFiring = false;
   }
 
-  // 発砲入力を処理し、発射・排莢・リロードを行う。戻り値は「このフレームで発砲を
-  // 新規開始したか」— fineAttitude の有効化は移動系(PlayerThrottle)の責務なので、
-  // 呼び出し元(Player)へ判定だけ返す。canFire(ワープ倍率・生死を合成した
-  // 「発射可能か」)は Player が一元的に判定して渡す — ここではワープ値そのものは
-  // 扱わない。マップモード中はそもそも呼ばれない(Player.behaveMapMode → tickMapMode
-  // 参照)。ship は発射位置・反動・排莢の基準になる自機の位置・姿勢(Player 自身)。
+  // 発砲入力を処理し、発射・排莢・リロードを行う。fineAttitude の有効化は移動系
+  // (PlayerThrottle)の責務なので、ここでは扱わない。ワープ倍率による発射可否は
+  // 受け取った simSpeed(SimSpeedManager)の canPlayerFire を自分で見て判定する。
+  // マップモード中は Player.behave の editMode 分岐が tickMapMode を呼んで
+  // こちらは呼ばれない。ship は発射位置・反動・排莢の基準になる自機の位置・姿勢
+  // (Player 自身)。
   updateFireState(
     dt: number,
     input: Input,
@@ -82,7 +82,13 @@ export class PlayerFire {
     this.tickReloadTimer(dt);
 
     const keyHeld = input.down(K.fire) || input.mouseFiring;
-    if (!keyHeld) return;
+    if (!keyHeld) {
+      // トリガーを離した時点で連射状態を畳む: wasFiring を立てたままにすると
+      // fineAttitude(微調整出力)が恒久的に有効なままになり、次にトリガーを
+      // 引いたときもスピンアップ演出(justStartedFiring)が起きなくなる。
+      this.wasFiring = false;
+      return;
+    }
 
     if (!simSpeed.canPlayerFire) {
       this._hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能`);
@@ -196,7 +202,8 @@ export class PlayerFire {
   // ---------------------------------------------------------------- entity管理
 
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、命中数とは独立な発射数を
-  // 記録したのち、弾薬(マガジン/バレル)を消費する。
+  // 記録する。弾薬(マガジン/バレル)の消費は呼び出し元 fireCycle が consume() で
+  // これより先に済ませている。
   private fireGun(
     scoreCounter: ScoreCounter,
     simTime: number,
@@ -241,7 +248,7 @@ export class PlayerFire {
     addBullet(bullet);
   }
 
-  // 薬莢: 機体右側(-X)へ排出(左側(+X)はマガジンベルトの給弾があるため)。
+  // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。
   // 初速・回転とも抑え、ゆっくり漂いながら緩やかに回転する見た目にする。
   private dropCasing(ship: Ship, muzzle: Vec3, simTime: number): void {
     const right = qRotate(ship.att.q, v3(1, 0, 0));
@@ -297,7 +304,7 @@ export class PlayerFire {
     );
   }
 
-  // マガジン1個を撃ち尽くした瞬間、機体右側(-X、薬莢と同じ側)の位置から
+  // マガジン1個を撃ち尽くした瞬間、-X 側(薬莢と同じ側)の位置から
   // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
   private spawnEjectedMagazineFrame(ship: Ship): void {
     const right = qRotate(ship.att.q, v3(1, 0, 0));

@@ -32,7 +32,7 @@
   別フィールドにし、HUD `onFrameSelect` が UX 既定として同期トグルするだけ。`markDirty` 呼び出しは消滅
   （bake やり直しは X が (点列,frame) 変化として自己検出）。
 - **XX が描画とカメラの共有インフラに**: 当初「カメラもたまたま同じモジュールを参照する **だけ**」と書いた
-  独立利用が実際に成立。[map-camera.ts](../src/game/camera/map-camera.ts) は相対座標（`RelativeVec3`）を
+  独立利用が実際に成立。[overview-camera.ts](../src/game/camera/overview-camera.ts) は相対座標（`RelativeVec3`）を
   正データに持ち、ECI への変換を frame.ts へ一任している（brand の付け外しをカメラ側でしない）。
 - **描画・ghost・クリック判定が単一変換を通る**: すべて B-2 の `toDisplay`/`projectPoint`/`nearestSample`
   経由。plan-editor は frame/XX を座標変換で参照しない。picking が走査する列と SampledLine が bake する列は

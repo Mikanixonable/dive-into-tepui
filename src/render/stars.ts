@@ -51,10 +51,9 @@ export function createMoon(): THREE.Mesh {
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false;
-  // 地球側に常に同じ面を向ける(自転周期と公転周期が同期している)
-  // 今回はゲーム上の座標系(ECI)で特別な自転を与えなくても常に同じ面が見えるか?
-  // 常に原点(地球)を向くようにするには毎フレーム lookAt(0,0,0) を呼ぶか、
-  // とりあえず初期状態のままとする(元のコードでも固定メッシュ)
+  // 潮汐固定(自転周期 = 公転周期)なので、地球側へ常に同じ面を向ける。その向き付けは
+  // 毎フレーム EnvironmentScene.syncSkyBodies が lookAt で行うため、ここでは自転を
+  // 与えず向きの定まっていないメッシュを返す。
   return mesh;
 }
 
