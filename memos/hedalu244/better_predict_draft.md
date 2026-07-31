@@ -1,0 +1,46 @@
+このファイルは人間だけが読み書きする。CodinAgentはこのファイルを編集しない。
+
+現状、軌道予測がプレイヤーの軌道計画と暦天体のみに実装されていて、変（表示時間を進めると天体暦が進むのに、敵などは将来状態に動かなくて、変）
+全entityの将来を予測するアーキテクチャが必要
+
+しかし、毎フレームに何百フレーム先まですべてを予測すると、いくら予測精度を落としてもパフォーマンスに支障が出る。予測軌道はそもそも正確に予測できていれば/外乱要因がなければ、その通りに軌道をたどるはずだから、毎フレーム更新するのは無駄が多い。
+そこで、予測軌道を各フレームに分散してシミュレーションする。
+
+## 実装手順
+
+1. 現状継承ツリーとして肥大してしまっているOrbitEntityから、予測列のために再利用する部分を切り出し
+現状orbitEntityと呼ばれているものをgameEntityと改名。新規にOrbitEntityクラスを作り、gameEntityからstate、history、stepを切り出す。thrustやinvbc、historyLengthなどは、gameEntity種別に固有のものであるから、stepの引数とする。gameEntityはcurrentEntity :OrbitEntityインスタンスを一つ持つ。
+stepSimは一旦たらいまわし関数としてgameEntityに残す。
+
+2. 予測システムの追加
+GameEntityにcurrentEntity: OrbitEntityに加え、predictedEntityを追加。readonly: predictDurationを追加。
+stepSimと別に、stepPredict関数を作る。これは、simTime+predictDurationを超えない限りにおいて、各エンティティのpredictを毎フレームpredictDt（simDtの定数倍）によって進める。
+このpredictは空気抵抗などもちゃんと計算する（physics/predictが摂動要因を考慮していないのが嘘）
+stepSim関数において、
+- predictEntityのhistory .at(simTime)がcurrentEntity.stateと乖離した際や、プレイヤーがthrustした際には、perdictEntityをcurrentEntity.stateによってリセット。
+
+3. predictの配線
+simulatorからstepPredict関数を呼ぶ経路を追加。predictについては、衝突判定などは行わないし、substepもある程度粗くて構わない。
+predictのhistoryは、過去の情報を保持する必要がないから、適切にcleanup。
+軽量化のため、debriなどはpredict自体を行わない。上手いこと分岐して切る。
+
+4. 表示系の刷新
+predictから供給される表示時間ですべてを表示する
+gameモジュールにおいて、predictSystemから表示時刻（displayTime？）を取得し、各entityのsync系に回す。
+各entiyのsyncは適切に、現在時刻とcurrentState.state.tを比較し、現在であればそれを、過去であればhistoryを、未来であればpredictを表示。
+
+まだ予測されていない領域や破棄されたhistoryについては……将来的には対応すべきだが、いったん非表示で対応。
+
+なお、軌道計画と自機の軌道予測は別物。両方表示する。
+
+5. 計画軌道まわりのリファクタリング
+計画軌道キャッシュやSampledLineをSateQueueを使って適切に再実装
+predictSystemは表示時間の供給GUIを司る。これと計画軌道キャッシュの保持、表示責務は別の責務なので、planDisplayモジュールを作って分離。
+
+6. historyとpredictの表示
+history列とpredict列を、その気になれば線として描画できるようにインフラを整えたい。これはSampledLineと同様、どの回転系でbakeするかの問題が付きまとう。
+SampledLineを再利用できたらそれが早い。
+
+
+## 現時点では実現が困難と思われる
+- predictとcurrentは乖離した際に、リセット再計算ではなくpredictEntity.history全体に修正項をかける感じで補正したいが……物理的に正しい実装が厳しそう
