@@ -9,6 +9,7 @@ import { register as registerEphemeris } from './ephemeris.test';
 import { register as registerProjection } from './projection.test';
 import { register as registerPredict } from './predict.test';
 import { register as registerFrame } from './frame.test';
+import { register as registerDeque } from './deque.test';
 
 registerVec3();
 registerOrbital();
@@ -18,5 +19,6 @@ registerEphemeris();
 registerProjection();
 registerPredict();
 registerFrame();
+registerDeque();
 
 runAll();
