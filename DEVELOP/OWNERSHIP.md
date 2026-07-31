@@ -37,9 +37,9 @@ main.ts
     ├── Ephemeris            ... 状態を持たない純サンプラ。各所へ参照共有する単一インスタンス
     ├── CameraSystem
     │   ├── ChaseCamera
-    │   ├── MapCamera
-    │   ├── MapMarkers
-    │   ├── MapViewPanel               ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
+    │   ├── OverviewCamera
+    │   ├── FocusMarkers
+    │   ├── OverviewCameraPanel               ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
     │   └── FocusGizmo
     │       └── ContextMenu
     ├── GroupedMarkers (enemyMarkers)  ... 画面上で近接する敵マーカーのまとめ + 画面外方位マーカー
@@ -66,7 +66,7 @@ main.ts
     │   │   └── ContextMenu
     │   └── 計画パネル DOM
     ├── PlanGuide
-    ├── MapModeToggler                 ... 状態を持たない(所有物なし)
+    ├── MapModeToggler                 ... 所有物なし(マップ開閉フラグ mapMode だけを持つ)
     ├── Stage (activeStage)            ... initStage() が毎回 new する
     │   ├── ScoreCounter
     │   ├── Logistics                  ... 補給の投入判断と ▣ AMMO マーカー
@@ -108,8 +108,8 @@ main.ts
 | `THREE.Scene` / `WebGPURenderer` | `GameScene`(main.ts) | Game・各描画物を持つクラス |
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
-| `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・PlayerMarkers・Targeter・Logistics・MapMarkers・PlanGuide・PredictSystem) |
-| `Ephemeris` | Game | EnvironmentScene・Simulator・MapCamera・MapMarkers・PlanEditor・PredictSystem |
+| `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・PlayerMarkers・Targeter・Logistics・FocusMarkers・PlanGuide・PredictSystem) |
+| `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・PlanEditor・PredictSystem |
 | `PlanTrajectory` | PredictSystem | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ) |
 | `Plan` | PlanEditor | PredictSystem(`sync` の引数で毎フレーム)・PlanGuide(同)|
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
@@ -128,7 +128,7 @@ main.ts
 | エンティティの過去 state 列 | `OrbitEntity.history` | 記録するのは `state` の setter だけ。件数上限は `historyLength`(既定 0、Ship/Bullet は 1) |
 | 自機の姿勢・角速度 | `Player.att` | 積分は Simulator.stepAttitudes に一元化 |
 | 機体座標系トルク | `Player.torque` | 毎フレーム PlayerThrottle の戻り値で上書きされる |
-| 推力加速度関数 | `Player.thrustFn` | 同上。無推力なら null |
+| 推力加速度ベクトル | `Player.thrust`(`OrbitEntity.thrust`) | 同上。無推力なら null |
 | HP / 生存 | `Ship.hp` / `OrbitEntity.alive` | 死亡は `alive = false` のみ。除去は Simulator.cleanup |
 | RCS 制動・スロットル段・ホールド | `PlayerThrottle` | |
 | 姿勢微調整モード | `Player.fineAttitude` | |
@@ -142,9 +142,10 @@ main.ts
 | マニューバ計画(ノード列・アンカー) | `Plan` | 所有は PlanEditor。ノード・アンカーとも 1 個の `OrbitState`(実行時刻 = `t`、Δv は導出値)。各ノードに 1 対 1 の内部 ID を発行する(`nodeIdAt`/`indexOfNodeId`) |
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNodeId` / `.editMode` | 選択は index ではなく Plan 発行の ID で持つ(`consumeFirstNode` 等で配列が動いてもずれない)。`selectedNodeIdx` は ID から都度解決する index ビュー |
 | 予測表示期間・未来ゴーストスライダー | `PredictSystem` | |
-| マップ視点(注視点相対オフセット・パン)・表示座標系・フォーカス | `MapCamera` | 予測折れ線の座標系もこれを読む |
+| 広範囲視点(注視点相対オフセット・パン)・表示座標系・フォーカス | `OverviewCamera` | 予測折れ線の座標系もこれを読む |
 | 戦闘視点(yaw/pitch/dist・姿勢追従フラグ) | `ChaseCamera` | |
-| マップモード表示・照準ズーム | `CameraSystem.mapMode` / `.zoomActive` | |
+| マップモードの開閉 | `MapModeToggler.mapMode` | 影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `PredictSystem.forceCurrent` / タッチUI)を一斉に切り替える |
+| 広範囲視点表示・照準ズーム | `CameraSystem.overviewMode` / `.zoomActive` | overviewMode は上の影響先。描画・視点側の分岐はこれを見る |
 | ターゲットロック・自動ターゲット・的通過マーク | `Targeter` | |
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
 | 発射数・命中数・撃破数・出撃数 | `ScoreCounter` | 所有は Stage |
@@ -163,13 +164,15 @@ main.ts
 
 ### 正本が分かれていることに意味がある組み合わせ
 
-- **`CameraSystem.mapMode`(視点)と `PlanEditor.editMode`(操作系)** は別の正本。同時に切り替えるのは
-  `MapModeToggler` だけで、描画・視点側は mapMode を、入力・挙動側は editMode を見る。
+- **`CameraSystem.overviewMode`(視点)と `PlanEditor.editMode`(操作系)** は別の正本。同時に切り替えるのは
+  `MapModeToggler` だけで、描画・視点側は overviewMode を、入力・挙動側は editMode を見る。
+  「マップモードが開いているか」そのものの正本は第三の値 `MapModeToggler.mapMode` で、上の二つ
+  (と `PredictSystem.forceCurrent`・タッチUI)はその影響先。
 - **`FloatingOrigin.r` と `Player.state.r`** は現状同じ値だが意味論的に別物。sync 系は必ず fo を参照し、
   `player.state.r` を描画原点として直接使わない。
-- **`MapCamera.cameraFrame`(視点を固定する座標系)と `PredictSystem.trajectoryFrame`(予測折れ線を
+- **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `PredictSystem.trajectoryFrame`(予測折れ線を
   描く座標系)** は別の正本で、ユーザーが独立に選ぶ。PlanTrajectory が受け取るのは後者だけ。
-- **マップモードの操作パネル**は状態の所有者ごとに分かれる。`MapViewPanel` は CameraSystem が、
+- **マップモードの操作パネル**は状態の所有者ごとに分かれる。`OverviewCameraPanel` は CameraSystem が、
   `PredictPanel` は PredictSystem が所有し、自分の状態だけを映して自分の状態だけを受け取る。
   表示・非表示も各所有者が毎フレームの sync で押し出す(MapModeToggler は関与しない)。
 - **キー割り当ての正本は `input/key-mapping.ts` の `KEY_MAPPING`、キーの処理の正本は各担当モジュール**。
@@ -177,7 +180,7 @@ main.ts
   `Input.takeKey` は `KeyBinding` を受ける)と説明を出す側(ヘルプ表・操作バー・タッチパッド・
   ステージ briefing・結果画面)は両方ともそれを参照する。どの操作を誰が処理するかは各モジュールに
   閉じたままで(`SettingsPanel`=pauseMenu / `Hud`=help / `Stage`=restart /
-  `SimSpeedManager`=warpSlower・warpFaster・autoWarpToNode / `MapModeToggler`=mapMode /
+  `SimSpeedManager`=warpSlower・warpFaster・autoWarpToNode / `MapModeToggler`=toggleMapMode /
   `PlanEditor`=deleteNode・dv* / `CameraSystem`=followAttitudeToggle・gunsightZoom・camera* /
   `Player`=rcsDampToggle・progradeReset・fineAttitudeToggle・progradeHoldToggle・throttle*・reload・thrust*・pitch/yaw/roll)、
   `game.ts` が持つのは「どのモジュールに先に配るか」という順序だけ。
@@ -187,7 +190,7 @@ main.ts
   `TouchControls.syncModeButtons()` が担当し、いずれも game.sync が自機/ステージの状態を渡す。
 - **HUD マーカーは対象の持ち主が出す**。自機由来(方向/ボアサイト/マップ上の自機)は `PlayerMarkers`、
   ターゲット由来(方位・相対 AN/DN・的通過マーク)は `Targeter`、補給は `Logistics`、天体ラベルは
-  `MapMarkers`、ノード/BURN は `PlanGuide`、未来ゴーストは `PredictSystem`。Game が直接持つのは
+  `FocusMarkers`、ノード/BURN は `PlanGuide`、未来ゴーストは `PredictSystem`。Game が直接持つのは
   **1つの対象では決められない2つだけ** — `GroupedMarkers`(画面上のまとめ)と `LeadMarkers`(自機と敵の
   両方に依存)。`Enemy` は自分の見た目とラベルを `markerItem()` で渡すだけで、まとめの判断には
   関与しない。
@@ -210,7 +213,7 @@ main.ts
 | `PlanEditor.nodeArrivings()` / `nodeDv()` | ノード到達状態と Δv の導出値(表示専用) | 呼ぶたび再計算 |
 | `PlayerThrottle.thrustVizDir` / `.thrustAccelVec` | 推力の表示・ベルト物理向け派生値 | 毎フレーム上書き |
 | `Player` の各 getter(`rcsDamp` / `magsLeft` 等) | throttle/fire への転送 | — |
-| `MapMarkers.labels[].pos` | 天体暦から毎フレーム再計算 | `syncLabels()` 毎 |
+| `FocusMarkers.labels[].pos` | 天体暦から毎フレーム再計算 | `syncLabels()` 毎 |
 
 ### 基礎データ型の不変性(整合性の前提)
 
@@ -225,6 +228,12 @@ main.ts
 すべてこの 1 型で表す**。同じ情報量の型を複数持たない(旧 `TrajectorySample` / `LineSample` /
 `PlannedNode.time` はここへ統合済み)ため、「状態」と「その時刻」が別々に渡されて食い違うことがない。
 
-例外はない。`physics/` 配下は全て純関数で、`*Into` のような out 引数版も、モジュール内スクラッチも
-持たない(アロケーション回避として一度導入したが、不変性と引き換えるほどの効果がないため撤去した。
-実測値は `軽量化計画.md` の A-1 を参照)。
+例外は **RK4 の環境加速度評価だけ**。ここは1エンティティ1サブステップあたり4回走るため、
+`orbital.ts` の `IAccelProvider`(`computeExtraAccel(rx,ry,rz,vx,vy,vz,out)`)を通してスカラーと
+呼び出し側所有の `out` でやり取りし、オブジェクトを返さない。実装は `Simulator` 自身
+(`activeSunPos`/`activeMoonPos`/`activeBcInv`/`activeThrust` を private フィールドへ仕込んでから
+`stepOrbitRK4` へ自分を渡す)と、`predict.ts` のモジュールスコープ `predictProvider` の2つ。
+**どちらもミュータブルな singleton なので再入不可** — 仕込みと `stepOrbitRK4` の呼び出しの間に
+別エンティティの積分を挟んではならない。この例外は加速度評価に閉じており、`physics/` の他の場所へ
+ミュータブルなスクラッチを持ち込む根拠にはならない(不変性を取り戻した経緯と実測値は
+`memos/mikanixonable/軽量化計画.md` の A-1 を参照)。
