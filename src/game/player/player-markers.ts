@@ -1,6 +1,5 @@
-// 自機の位置・姿勢だけから決まる HUD マーカー。戦闘ビューでは軌道基準の方向マーカー
-// (Navball の代わり)と機首ボアサイト、広範囲視点では自機位置マーカーを出す。
-// Player が所有し、Player.syncPlayer から呼ばれる。
+// 自機の位置・姿勢だけから決まる HUD マーカー。戦闘ビューでは軌道基準の方向マーカーと
+// 機首ボアサイト、広範囲視点では自機位置マーカーを出す。
 import { Attitude, qRotate } from '../../physics/attitude';
 import { OrbitState } from '../../physics/orbital';
 import { cross, scale, v3 } from '../../physics/vec3';
@@ -13,9 +12,8 @@ const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as
 export class PlayerMarkers {
   constructor(private readonly markerManager: MarkerManager) { }
 
-  // currentState は常に「いま」の自機状態(戦闘ビューの方向マーカー・ボアサイトはこれだけを
-  // 見る — 軌道基準フレームは未来ゴーストと無関係)。displayState はスライダー位置の状態
-  // (null なら予測期間超過)で、▷ マーカーだけがこちらを見る。
+  // currentState: 現在の自機状態(方向マーカー・ボアサイト用)。
+  // displayState: スライダー位置の状態(null なら予測期間超過)、▷ マーカー用。
   sync(currentState: OrbitState, displayState: OrbitState | null, att: Attitude, alive: boolean, overviewMode: boolean, project: ProjectFn): void {
     if (overviewMode) {
       for (const key of COMBAT_KEYS) this.markerManager.hide(key);
@@ -28,9 +26,6 @@ export class PlayerMarkers {
     this.syncBoresight(currentState, att, alive, project);
   }
 
-  // 方向マーカーは自機の軌道基準フレームを表すので、自機位置を原点として setDirection に渡す。
-  // ラベルにキー名は載せない — 戦闘ビューの並進は機体基準で、この6方向に対応するキーは無い
-  // (対応するのはマップモードの Δv 編集キーで、そちらでは方向マーカーを出さない)。
   private syncOrbitalDirections(state: OrbitState, project: ProjectFn): void {
     const pr = state.r;
     const proDir = state.v;

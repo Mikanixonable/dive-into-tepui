@@ -24,20 +24,15 @@ export type ProjectFn = (worldPos: Vec3) => Projected;
 const PANEL_FOCUS_IDS = ['earth', 'moon', 'sun'] as const;
 
 // 戦闘ビュー(ChaseCamera)と広範囲視点(OverviewCamera)を切り替えて駆動する。
-// どちらも視点操作のみの責務のカメラで、このクラスが対称に内部保持する。
-// フォーカス候補(focusMarkers)とその選択 UI(focusGizmo / overviewCameraPanel)は
-// 「どこを注視するか」= overviewCamera 寄りの責務なので、ここが所有する。フォーカス選択メニューの
-// ノードメニューとの排他(右クリックの取り合い)は上位(game.ts)が調停する。
+// フォーカス候補(focusMarkers)とその選択 UI(focusGizmo / overviewCameraPanel)も所有する。
 export class CameraSystem {
   readonly chaseCamera: ChaseCamera;
   readonly overviewCamera: OverviewCamera;
   readonly focusMarkers: FocusMarkers;
   private readonly focusGizmo = new FocusGizmo();
-  // 広範囲視点の操作パネル(注視対象・視点の座標系・視点リセット)。映すのも受けるのも
-  // overviewCamera の状態だけなので、この HUD 配線はここに閉じる。
+  // 広範囲視点の操作パネル(注視対象・視点の座標系・視点リセット)。
   private readonly overviewCameraPanel: OverviewCameraPanel;
-  // 広範囲視点に切り替わっているか。マップモード全体の正本は MapModeToggler.mapMode で、
-  // これはその影響先の一つ(視点・描画側の判定に使う)。
+  // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
   overviewMode = false;
   zoomActive = false;
 
@@ -68,14 +63,12 @@ export class CameraSystem {
     };
   }
 
-  // マップ編集中のポインタ操作。ノードに消費されずに残った右クリックだけがここへ来るので、
-  // 最寄りラベルがあればフォーカス選択メニューを開いて消費する。
+  // マップ編集中のポインタ操作。最寄りラベルがあればフォーカス選択メニューを開いて消費する。
   handleMapPointer(input: Input): void {
     input.takeRightClicks((p) => this.handleFocusRightClick(p.x, p.y));
   }
 
-  // フォーカス候補ラベルの右クリック: 最寄りラベル(FOCUS_LABEL_PICK_PX 以内)が
-  // あればフォーカス選択メニューを開いて true を返す。
+  // 最寄りラベル(FOCUS_LABEL_PICK_PX 以内)があればフォーカス選択メニューを開いて true を返す。
   private handleFocusRightClick(clientX: number, clientY: number): boolean {
     const project = this.activeCameraProjection;
     let bestKey: string | null = null;
@@ -112,7 +105,6 @@ export class CameraSystem {
     input: Input,
     dt: number,
   ): void {
-    // [G] 追従基準の切替はカメラ自身の状態なので、視点更新と同じ場所で受ける。
     if (input.takeKey(K.followAttitudeToggle)) this.chaseCamera.toggleFollowAttitude();
     this.zoomActive = !this.overviewMode && input.down(K.gunsightZoom);
 
@@ -128,16 +120,10 @@ export class CameraSystem {
     }
   }
 
-  // update() が算出した絶対 ECI の視点状態を、フローティングオリジン(fo)で補正して
-  // 描画用のアクティブカメラへ反映する(平行移動のみ)。マーカー投影
-  // (activeCameraProjection)や environment-scene がこの THREE.js カメラ姿勢を読むため、
-  // game.sync() の先頭で(それらより先に)呼ぶ。
+  // 視点状態をフローティングオリジン(fo)で補正してアクティブカメラへ反映する。
   sync(fo: FloatingOrigin, displayTime: number): void {
     if (this.overviewMode) this.overviewCamera.sync(fo);
     else this.chaseCamera.sync(fo);
-    // 視点パネルは広範囲視点中だけ表示し、点灯状態を overviewCamera の現状へ揃える。フォーカスは
-    // ラベル右クリックからも、座標系はリセットからも変わるので、変化点ごとの通知ではなく
-    // 毎フレームここで押し出す(同値なら DOM は変わらない)。
     this.overviewCameraPanel.setVisible(this.overviewMode);
     if (this.overviewMode) {
       this.overviewCameraPanel.setFocus(this.overviewCamera.focus);

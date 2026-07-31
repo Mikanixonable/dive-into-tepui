@@ -1,5 +1,4 @@
-// Stage 1: 第一ステージ(LEO 戦域)。checkWin/onWin/hudSubStatus は基底クラスの既定
-// (撃破数で勝利・HUD補助表示なし)のまま使う。
+// Stage 1: 第一ステージ(LEO 戦域)。
 import * as C from '../const';
 import { Stage } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';

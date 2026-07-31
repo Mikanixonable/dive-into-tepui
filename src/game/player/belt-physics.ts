@@ -1,5 +1,4 @@
 // マガジンベルトの物理演算(Verlet 積分 + 距離拘束によるチェーンのたわみ・ねじれ)。
-// 位置・姿勢は Vec3/Quat のみで表現する。
 import * as THREE from 'three/webgpu';
 import { Attitude, Quat, qFromUnitVectors, qInvert, qMul, qRotate } from '../../physics/attitude';
 import { orbitState } from '../../physics/orbital';
@@ -16,7 +15,7 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
-// ベルトのリンク節点を剛体接触に参加させるためのプロキシ。描画には参加しない。
+// ベルトのリンク節点を剛体接触に参加させるためのプロキシ。
 export class BeltSection extends GameEntity {
   constructor(readonly beltIndex: number) {
     super(orbitState(0, v3(), v3()), new THREE.Object3D());
@@ -34,7 +33,7 @@ export class BeltPhysics {
   readonly beltTwist: number[] = [];
 
   private prevBodyW = v3(); // 前フレームの機体角速度(ベルト物理の角加速度推定用)
-  private angularAccel = v3(); // 推定した機体角加速度(update() 内で使い回す)
+  private angularAccel = v3();
   // 給弾進みに応じて動く根本の固定点(機体座標系)。
   anchor: Vec3 = v3(MAG_BELT_ANCHOR_X, 0, 0);
 
@@ -126,8 +125,6 @@ export class BeltPhysics {
   private pinRootToAnchor(beltFeed: number): void {
     this.anchor = v3(MAG_BELT_ANCHOR_X - beltFeed * MAG_BELT_PITCH, 0, 0);
 
-    // 根本は揺動物理を経由させず、アンカーから固定距離・固定方向へ毎フレーム強制する
-    // (速度もゼロにして慣性ドリフトを止める)。揺れるのはリンク1以降だけになる。
     const root = v3(this.anchor.x + MAG_BELT_PITCH, this.anchor.y, this.anchor.z);
     this.beltPos[0] = root;
     this.beltPrevPos[0] = (root);
@@ -145,8 +142,7 @@ export class BeltPhysics {
         if (dist < 1e-6) continue;
         const corr = scale(delta, (dist - MAG_BELT_PITCH) / dist);
         if (i <= 1) {
-          // i===0: 参照点はアンカー(固定)。i===1: 参照点は根本(beltPos[0]、
-          // 常に垂直固定)。どちらも a 側は動かさず b 側だけ補正する。
+          // 参照点(アンカーまたは根本)は固定なので b 側だけ補正する。
           this.beltPos[i] = sub(b, corr);
         } else {
           this.beltPos[i] = addScaled(b, corr, -0.5);
@@ -175,9 +171,7 @@ export class BeltPhysics {
       if (segLen > 1e-6) {
         const clampedDir = this.clampDirectionToPrevFrame(scale(rawDir, 1 / segLen), prevQ, tanMaxPitch, tanMaxYaw);
 
-        // 長さに実長ではなく距離拘束の目標長を使う: prevPoint はこのループで既に補正済みなので、
-        // 補正で伸びた実長を採用すると誤差がリンクを下るごとに増幅し、数フレームで NaN へ発散する。
-        // beltPrevPos も同量だけ平行移動して Verlet の速度 (pos - prevPos) を保つ。
+        // 実長ではなく目標長 MAG_BELT_PITCH を使う: 実長は補正済み prevPoint からの誤差を増幅して NaN へ発散する。
         const newPos = addScaled(prevPoint, clampedDir, MAG_BELT_PITCH);
         const oldPos = this.beltPos[i]!;
         this.beltPrevPos[i] = add(this.beltPrevPos[i]!, sub(newPos, oldPos));
@@ -216,9 +210,6 @@ export class BeltPhysics {
     return this.beltTwist[i]!;
   }
 
-  // ---- 剛体接触との受け渡し -------------------------------
-  // 機体座標系の Verlet 状態をワールド ECI の BeltSection へ変換して渡し、解決後に
-  // applyCollisionSections で逆変換して書き戻す。
   private readonly sections: BeltSection[] = [];
 
   collisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
