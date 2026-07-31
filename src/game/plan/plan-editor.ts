@@ -2,7 +2,6 @@
 // 未来表示(予測折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
 import type * as THREE from 'three/webgpu';
 import { Elements, OrbitState, elementsFromState, fromOrbitalAxes, orbitalAxes } from '../../physics/orbital';
-import { propagateState } from '../../physics/predict';
 import { Projected } from '../../physics/projection';
 import { Vec3, add, len, scale, sub, v3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -50,7 +49,7 @@ export class PlanEditor {
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
     private readonly simSpeedManager: SimSpeedManager,
-    private readonly ephemeris: Ephemeris,
+    ephemeris: Ephemeris,
     scene: THREE.Scene,
     markerManager: MarkerManager,
     private readonly getFineAttitude: () => boolean,
@@ -93,17 +92,6 @@ export class PlanEditor {
     g.onMenuDelete = (idx) => {
       this.deleteNode(idx);
     };
-  }
-
-  // アンカーから各ノードへ順に伝播し、各ノードの到達時点(噴射直前)の状態を返す。
-  private nodeArrivings(): OrbitState[] {
-    const out: OrbitState[] = [];
-    let state = this.plan.anchor;
-    for (const node of this.plan.nodes) {
-      out.push(propagateState(state, node.t, this.ephemeris));
-      state = node;
-    }
-    return out;
   }
 
   // ノードのコンテキストメニューを閉じる。
@@ -282,7 +270,7 @@ export class PlanEditor {
   }
 
   // i 番目のノードの Δv(噴射後速度 − 到達時点速度)を返す。
-  private nodeDv(i: number, arriving: readonly OrbitState[]): Vec3 {
+  private nodeDv(i: number, arriving: readonly (OrbitState | null)[]): Vec3 {
     const node = this.plan.nodes[i];
     const arr = arriving[i];
     return node && arr ? sub(node.v, arr.v) : v3();
@@ -290,7 +278,7 @@ export class PlanEditor {
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
   private updateGizmo(mapDist: number): void {
-    const arriving = this.nodeArrivings();
+    const arriving = this.planDisplay.traj.arrivalStates();
     const nodeSpecs: NodeHandleSpec[] = [];
     const limit = Math.min(this.plan.nodes.length, C.MAX_PLAN_NODE_MARKERS);
     // 各ノードの画面座標とラベルを組む
@@ -317,7 +305,7 @@ export class PlanEditor {
 
   // WASDQE の押下量から選択中ノードの Δv を加算し、計画パネルの表示データを組み立てる。
   updateEditing(dt: number, simTime: number, input: Input): void {
-    const arriving = this.nodeArrivings();
+    const arriving = this.planDisplay.traj.arrivalStates();
     const selNode = this.selectedNodeIdx !== null ? this.plan.nodes[this.selectedNodeIdx] : undefined;
     // 選択中ノードへ prograde/normal/radial 方向の Δv を加算
     if (selNode) {
@@ -389,7 +377,7 @@ export class PlanEditor {
   onMapClosed(): void {
     this.hidePanel();
     if (this.plan.nodes.length > 0) {
-      const arriving = this.nodeArrivings();
+      const arriving = this.planDisplay.traj.arrivalStates();
       for (let i = this.plan.nodes.length - 1; i >= 0; i--) {
         const arr = arriving[i];
         if (arr && len(sub(this.plan.nodes[i]!.v, arr.v)) < C.NODE_MIN_DV) this.plan.removeNode(i);
