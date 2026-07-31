@@ -7,7 +7,7 @@ import { showScoreAttackResultScreen } from '../hud/result-screen';
 import { generateCluster } from './spawner/enemy-spawner';
 import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { Player } from '../player/player';
-import type { Simulator } from '../orbit-entity/simulator';
+import type { EntityManager } from '../orbit-entity/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage0 extends Stage {
@@ -28,18 +28,18 @@ export class Stage0 extends Stage {
     );
   }
 
-  init(player: Player, simulator: Simulator): number {
+  init(player: Player, entities: EntityManager): number {
     for (let i = 0; i < C.STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
     }
     const enemies = generateCluster(player.state, this._hud, this._sfx, this._fx, this._scene);
-    for (const enemy of enemies) this.addEnemy(enemy, simulator);
+    for (const enemy of enemies) this.addEnemy(enemy, entities);
     return enemies.length;
   }
-  update(dt: number, player: Player, simulator: Simulator, simTime: number, simSpeed: SimSpeedManager): void {    
+  update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!this.isPlaying) return;
-    
-    this.behaveAllEnemies(dt, player, simulator, simTime, simSpeed);
+
+    this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
 
     this.logistics.updateLogistics(simTime, player);
 
