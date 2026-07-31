@@ -24,6 +24,8 @@ export class PlanTrajectory {
   // 先頭 activeCount 本がこのフレームの区間に対応する(色は index で決まるので使い回す)。
   private arcs: PlanArc[] = [];
   private activeCount = 0;
+  // 先頭 nodeCount 本がノードで終わる区間(= 各ノードの到達状態を持つ)。
+  private nodeCount = 0;
   private frame: Frame = 'inertial';
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
@@ -54,16 +56,24 @@ export class PlanTrajectory {
     const segments = buildSegments(plan.anchor, plan.nodes, displayEnd);
     const force = this.forceNext;
     this.forceNext = false;
-    // 各区間に対応する PlanArc を更新する
+    // 各区間に対応する PlanArc を更新する。末尾区間だけが表示窓の終端で切れる。
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       const arc = this.arcAt(i);
       arc.setVisible(true);
-      arc.update(seg.state0, seg.end, ephemeris, frame, currentTime, fo, force);
+      arc.update(seg.state0, seg.end, i >= plan.nodes.length, ephemeris, frame, currentTime, fo, force);
     }
     // 区間数が減った分の余った arc を隠す
     for (let i = segments.length; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
     this.activeCount = segments.length;
+    this.nodeCount = plan.nodes.length;
+  }
+
+  // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
+  arrivalStates(): (OrbitState | null)[] {
+    const out: (OrbitState | null)[] = [];
+    for (let i = 0; i < this.nodeCount; i++) out.push(this.arcs[i]?.endState() ?? null);
+    return out;
   }
 
   // 次フレームに全 arc を強制再計算させる(表示期間切替など窓の滑り以外の変化時)。
@@ -128,18 +138,17 @@ export class PlanTrajectory {
   }
 }
 
-// anchor を起点に nodes を順にたどり、end までを区切った区間列を返す。
+// anchor を起点に nodes を順にたどり、end までを区切った区間列を返す。先頭 nodes.length 本は
+// 必ずノードで終わる — 表示期間を縮めても各ノードの到達状態が得られるよう、end で打ち切らない。
 function buildSegments(anchor: OrbitState, nodes: readonly OrbitState[], end: number): Segment[] {
   const segments: Segment[] = [];
   let state0 = anchor;
   // ノードを1つずつ経由点として区間を切り出す
   for (const node of nodes) {
-    if (state0.t >= end) break;
-    const segEnd = Math.min(node.t, end);
-    if (segEnd > state0.t) segments.push({ state0, end: segEnd });
+    segments.push({ state0, end: node.t });
     state0 = node;
   }
-  // 最後のノードから end までを最終区間とする
+  // 最後のノードから表示終端までを最終区間とする
   if (state0.t < end) segments.push({ state0, end });
   return segments;
 }
