@@ -148,11 +148,15 @@ export class EnvironmentScene {
     this.starsMesh.scale.setScalar(
       cameraSystem.overviewMode ? (cameraSystem.overviewCamera.camera.far * 0.9) / 3.5e7 : 1.0);
     // 太陽ビルボードはカメラ相対(空の遠景)。fo 由来の変換ではないので camera 位置基準で置く。
+    // 方向は地心方向 sd ではなく「カメラから見た太陽の方向」を使う: 広範囲視点はカメラが
+    // 地球から最大 4.5e9 m 離れるため、地心方向で置くと視差ぶん(最大 1.7°)実位置からずれ、
+    // 実 ECI 位置に置かれる太陽ラベルと像が合わなくなる。
+    const sdCam = norm(sub(visSunPos, cameraSystem.activeCameraPos));
     this.sun.billboard.sync(
       tmpSunPos.set(
-        cam.position.x + sd.x * SUN_DISTANCE,
-        cam.position.y + sd.y * SUN_DISTANCE,
-        cam.position.z + sd.z * SUN_DISTANCE,
+        cam.position.x + sdCam.x * SUN_DISTANCE,
+        cam.position.y + sdCam.y * SUN_DISTANCE,
+        cam.position.z + sdCam.z * SUN_DISTANCE,
       ),
       SUN_VISUAL_SIZE,
       1,
