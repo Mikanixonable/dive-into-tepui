@@ -46,10 +46,12 @@ export class Player extends Ship {
   private readonly _sfx: Sfx;
   private readonly _fx: EffectsSystem;
 
-  // 姿勢角微調整モード　射撃立ち上がりで有効化し、立下りで無効化する
+  // 姿勢角微調整モード。切り替えるのは [V] キー(toggleFineAttitude)だけで、射撃では
+  // 変化しない。射撃中も微調整が効くのは、updateTorque がこのフラグと fire.isFiring を
+  // その場で合成するため。
   fineAttitude = false;
 
-  // 高度420km・傾斜51.6°の円軌道に機首プログレードで初期配置する
+  // 高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の円軌道に機首プログレードで初期配置する
   constructor(
     _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager) {
     const state = Player.makeInitialState();
