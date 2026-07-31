@@ -1,7 +1,5 @@
-// マップモード上での軌道計画(Plan)の編集: ノードの配置・時刻移動・Δv 調整・選択・削除と、
-// 計画パネルへの反映。ノードの画面座標と最寄りサンプルの画面判定は planDisplay.traj へ委譲し、
-// 描画と同じ変換を通すので表示とクリック判定がずれない。
-// 未来表示(予測折れ線・ゴースト)は同じ計画の一部として PlanDisplay を所有・駆動する。
+// 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と計画パネルへの反映。
+// 未来表示(予測折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
 import type * as THREE from 'three/webgpu';
 import { Elements, OrbitState, elementsFromState } from '../../physics/orbital';
 import { dvToWorld, propagateState } from '../../physics/predict';
@@ -24,7 +22,6 @@ import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class PlanEditor {
-  // 選択中ノードの正本。plan.nodes の並び替え・削除に追随するため index ではなく ID で持つ。
   private selectedNodeId: number | null = null;
 
   get selectedNodeIdx(): number | null {
@@ -39,13 +36,10 @@ export class PlanEditor {
 
   readonly planDisplay: PlanDisplay;
 
-  // 軌道計画の編集モード(WASDQE などの操作系をΔv編集へ振り替え、ノード編集入力を有効化する)。
   editMode = false;
 
-  // ノード編集の DOM ギズモ(ハンドル・Δv アーム・ノードメニュー)。
   readonly nodeGizmo = new NodeGizmo();
 
-  // 計画パネル(HUD 左下 "MANEUVER PLAN")。
   private readonly planPanel: HTMLElement;
   private readonly planBody: HTMLElement;
 
@@ -81,7 +75,6 @@ export class PlanEditor {
       this.closeMenu();
       this.dragNodeToNearestSample(idx, clientX, clientY);
     };
-    // ハンドル直上の右クリックは必ずそのノードに当たるので、キャンバス右クリックと同じ処理へ流す。
     g.onNodeContextMenu = (clientX, clientY) => { this.handleNodeRightClick(clientX, clientY); };
     g.onAxisDrag = (axis, sign, deltaPx) => {
       this.applyAxisDrag(axis, sign, deltaPx, this.getFineAttitude());
@@ -97,8 +90,6 @@ export class PlanEditor {
     };
   }
 
-  // 各ノードの到達(噴射前)状態。ノードは Δv ではなく実行後状態を持つので、
-  // Δv 表示・空ノード判定はこの状態との差として導く。
   private nodeArrivings(): OrbitState[] {
     const out: OrbitState[] = [];
     let state = this.plan.anchor;
@@ -113,11 +104,9 @@ export class PlanEditor {
     this.nodeGizmo.closeMenu();
   }
 
-  // ノードを削除し、選択と自動ワープを解除する。
   deleteNode(idx: number): void {
     if (!this.plan.nodes[idx]) return;
-    // 削除の前に確定させる: 削除後は後続ノードが繰り上がって同じ index を占めるため、
-    // 別のノードを選択中でも一致してしまう。
+    // 削除前に確定: 削除後は後続ノードが繰り上がり idx が別ノードを指す。
     const deletingSelected = this.selectedNodeIdx === idx;
     this.plan.removeNode(idx);
     if (deletingSelected) this.selectedNodeIdx = null;
@@ -131,12 +120,10 @@ export class PlanEditor {
     this.deleteNode(this.selectedNodeIdx);
   }
 
-  // [X] は編集モードの内外どちらでも意味を持つので、マップの開閉に関わらず受ける。
   handleInput(input: Input): void {
     if (input.takeKey(K.deleteNode)) this.clearPlanByKey();
   }
 
-  // マップ編集中のポインタ操作。右クリックはノードに当たったものだけ消費する(外れは後続へ回る)。
   handleMapPointer(input: Input): void {
     input.takeRightClicks((p) => this.handleNodeRightClick(p.x, p.y));
     input.takeClicks((p) => {
@@ -160,7 +147,6 @@ export class PlanEditor {
     return this.planDisplay.traj.projectPoint(node.r, node.t);
   }
 
-  // 既存ノード近傍なら選択、そうでなければ予測軌道上の最近傍サンプル時刻に新規ノードを配置する。
   private handleMapClick(mx: number, my: number): void {
     let bestNodeIdx: number | null = null;
     let bestNodeD = C.NODE_PICK_PX * C.NODE_PICK_PX;
@@ -181,14 +167,12 @@ export class PlanEditor {
 
     const sample = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX);
     if (sample) {
-      // クリック点の予測サンプル状態(時刻込み)をそのまま凍結してノードにする(初期 Δv = 0)。
       this.selectedNodeIdx = this.plan.addNode(sample);
       this._sfx.warp();
     }
   }
 
-  // 既存ノード近傍(NODE_PICK_PX 以内)ならそれを選択してメニューを開き、右クリックを
-  // 消費したことを true で返す。外したときは false。
+  // 既存ノード近傍ならそれを選択してコンテキストメニューを開き true を返す。外れは false。
   private handleNodeRightClick(mx: number, my: number): boolean {
     let bestIdx: number | null = null;
     let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
@@ -207,7 +191,6 @@ export class PlanEditor {
     return true;
   }
 
-  // ポインタ最寄りの予測サンプルへノードをリタイムする。
   private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
     if (!this.plan.nodes[idx]) return;
     const sample = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity);
@@ -216,8 +199,6 @@ export class PlanEditor {
     }
   }
 
-  // Δv アームのドラッグを実行後速度の変更へ変換する。axis: 0=プログレード 1=法線 2=動径、
-  // sign はハンドル自身の向き、deltaPx はポインタ移動のハンドル方向への射影量。
   private applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
     if (this.selectedNodeIdx === null) return;
     const node = this.plan.nodes[this.selectedNodeIdx];
@@ -228,8 +209,7 @@ export class PlanEditor {
     this.plan.applyNodeDv(this.selectedNodeIdx, dvToWorld(node.r, node.v, local));
   }
 
-  // Δv アーム 6 個(プログレード・ノーマル・動径の正負)の画面方向。ノード位置とその微小先を
-  // それぞれ投影した差分を取ることで、3D 回転行列を介さず求める。
+  // Δv アーム 6 個の画面方向をノード位置と微小先の投影差分から求める。
   private computeAxisScreenDirs(
     node: OrbitState,
     mapDist: number,
@@ -279,14 +259,12 @@ export class PlanEditor {
     this.nodeGizmo.sync([], null);
   }
 
-  // ノード i の Δv(= 実行後速度 − 到達時速度)。arriving は nodeArrivings() の結果。
   private nodeDv(i: number, arriving: readonly OrbitState[]): Vec3 {
     const node = this.plan.nodes[i];
     const arr = arriving[i];
     return node && arr ? sub(node.v, arr.v) : v3();
   }
 
-  // ノードハンドル群と、選択中ノードの Δv アーム 6 個を画面座標で更新する。
   private updateGizmo(mapDist: number): void {
     const arriving = this.nodeArrivings();
     const nodeSpecs: NodeHandleSpec[] = [];
@@ -311,10 +289,8 @@ export class PlanEditor {
     this.nodeGizmo.sync(nodeSpecs, axisSpecs);
   }
 
-  // 選択中ノードの Δv 調整と、計画パネルへの反映。
   updateEditing(dt: number, simTime: number, input: Input): void {
     const arriving = this.nodeArrivings();
-    // Δv 調整は推進キーを流用し、[V] で微調整に切り替える。
     const selNode = this.selectedNodeIdx !== null ? this.plan.nodes[this.selectedNodeIdx] : undefined;
     if (selNode) {
       const i = input;
@@ -344,7 +320,6 @@ export class PlanEditor {
     this.renderPanel(nodesInfo, selDv, selEl);
   }
 
-  // 計画パネルの内容を更新して表示する。
   private renderPanel(
     nodes: { tRel: number; dvMag: number; selected: boolean; }[],
     selDv: Vec3 | null,
@@ -359,8 +334,6 @@ export class PlanEditor {
     this.planPanel.style.display = 'none';
   }
 
-  // 毎フレーム呼ぶ。planDisplay の駆動を先に済ませてからノードギズモを更新する —
-  // ノード位置の画面判定がこのフレームぶんの表示座標変換を通すため。
   sync(
     mapDist: number,
     displayEnd: number,
@@ -379,7 +352,6 @@ export class PlanEditor {
     }
   }
 
-  // マップを閉じるときの後始末: Δv がほぼゼロのまま放置されたノードを破棄し、選択を解除する。
   onMapClosed(): void {
     this.hidePanel();
     if (this.plan.nodes.length > 0) {

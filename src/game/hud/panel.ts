@@ -1,8 +1,4 @@
 // HUD ステータスパネル(スタッツ・ターゲット情報・敵一覧)の同期。
-// hudPanel はゲームの全状態からチェリーピックして表示するのが責務そのものなので、
-// 他モジュールと違い ctx スナップショットを介さず Game を直接注入してもらい、
-// 必要な値をここで読み取る(game.ts は import しない — 型のみの参照)。
-// 読み取って自分のパネルへ書くだけの表示専用で、他モジュールの状態や DOM は操作しない。
 import * as C from '../const';
 import { TEXT_DIM as INK_SOFT } from '../theme';
 import { altitudeOf } from '../../physics/orbital';
@@ -54,10 +50,8 @@ export class HudPanels {
   private hudTimer = 0;
   private listTimer = 0;
 
-  // els: buildHudDom が構築した名前付き HUD 要素の索引(Hud と共有)。
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
-  // ステータスパネル(スタッツ・ターゲット情報・敵一覧)を一定周期で更新する。
   update(game: Game, dt: number): void {
     const player = game.player;
     const tgt = game.targeter.autoTarget;

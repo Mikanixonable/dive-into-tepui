@@ -16,10 +16,7 @@ import { ndcToScreen, projectToNdc, ViewFrame } from '../../physics/projection';
 import { ProjectFn } from './camera-system';
 
 export class ChaseCamera {
-  // 戦闘ビュー用のカメラ。near/far は const.ts の COMBAT_CAMERA_NEAR/FAR 参照。
-  // window resize には追従せず、update() 呼び出し毎にアスペクト比を自己補正する
-  // (このカメラは Game 構築時に生成されるため、resize イベントリスナーを先に張れない
-  // — overview-camera.ts の OverviewCamera と同じ方式)。
+  // 戦闘ビュー用のカメラ。アスペクト比は update() 毎に自己補正する。
   readonly camera = new THREE.PerspectiveCamera(
     C.BASE_FOV,
     window.innerWidth / window.innerHeight,
@@ -32,16 +29,11 @@ export class ChaseCamera {
   camFollowAttitude = true;
   private fov = C.BASE_FOV;
 
-  // update() が算出し sync() が camera へ反映する視点の数学状態。ビュー計算・保持は
-  // すべて慣性系(physics/vec3、絶対 ECI)で行い、THREE.js への変換は sync() が fo 経由で
-  // 行うだけ。update は物理積分の後に呼ばれるため、ここで参照する自機位置は fo.r と同一
-  // (=積分後)であり、絶対値保管でフレームずれは生じない。
   position: Vec3 = v3();      // 絶対 ECI のカメラ位置
   private upDir: Vec3 = v3(0, 1, 0);  // カメラ上方向(向き)
   private lookTarget: Vec3 = v3();    // 絶対 ECI の注視点
   private aspect = window.innerWidth / window.innerHeight;
 
-  // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
   constructor(private readonly _hud: Hud, _sfx: Sfx) {}
 
   toggleFollowAttitude(): void {
@@ -65,7 +57,6 @@ export class ChaseCamera {
     const boreFwd = qRotate(player.att.q, v3(0, 0, 1));
     const boreUp = qRotate(player.att.q, v3(0, 1, 0));
 
-    // 追従中心 = 自機の絶対 ECI 位置(update は積分後に呼ばれるので fo.r と一致する)。
     const center = player.state.r;
 
     if (!player.alive) {
@@ -82,8 +73,6 @@ export class ChaseCamera {
     }
   }
 
-  // update() で算出した絶対 ECI の視点状態を fo 経由で描画フレームへ変換して camera に
-  // 反映する(位置・注視点は toThreeVector3、上方向は向きなので変換せずそのまま)。
   sync(fo: FloatingOrigin): void {
     const camera = this.camera;
     camera.position.copy(fo.RtoThreeV3(this.position));
@@ -102,8 +91,7 @@ export class ChaseCamera {
     camera.updateMatrixWorld();
   }
 
-  // update() が算出した視点状態から直接スクリーン投影する ProjectFn。THREE.js の
-  // カメラ行列にもフローティングオリジンにも依存しない(camera-system.ts のコメント参照)。
+  // THREE.js カメラ行列やフローティングオリジンに依存しないスクリーン投影関数。
   get projection(): ProjectFn {
     const view: ViewFrame = {
       position: this.position,
@@ -115,8 +103,7 @@ export class ChaseCamera {
     return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), window.innerWidth, window.innerHeight);
   }
 
-  // 通常の三人称視点(マウスでyaw/pitch/distを操作、up/fwdの基準フレームは
-  // 呼び出し側が決める — 機体姿勢基準か軌道基準かはCameraSystemの責務)。
+  // 通常の三人称視点(マウスで yaw/pitch/dist を操作)。up/fwd の基準フレームは引数で受け取る。
   private computeChaseView(mouse: MouseDelta, up: Vec3, fwd: Vec3, dt: number, center: Vec3): void {
     this.computeZoomFov(false, dt);
 
@@ -126,7 +113,6 @@ export class ChaseCamera {
     this.dist *= Math.exp(mouse.wheel * 0.0012);
     this.dist = Math.max(12, Math.min(8000, this.dist));
 
-    // 前方向を上方向と直交化した正規直交フレーム
     const f = norm(addScaled(fwd, up, -dot(fwd, up)));
     const side = norm(cross(f, up));
 
@@ -141,9 +127,7 @@ export class ChaseCamera {
     this.lookTarget = center;
   }
 
-  // 照準ズーム中: 三人称視点をやめ、機体位置(原点)から機首方向を狙う
-  // 固定ガンサイト視点にする(画面中心 = 照準先、自機は呼び出し側で非表示にする)。
-  // 姿勢操作(I/K/J/L)で狙いを付ける設計のため、マウスでの視点回転は行わない。
+  // 照準ズーム中: 機体位置から機首方向を狙う固定ガンサイト視点(画面中心 = 照準先)。
   private computeGunsightView(boreFwd: Vec3, boreUp: Vec3, dt: number, center: Vec3): void {
     this.computeZoomFov(true, dt);
 

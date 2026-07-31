@@ -1,7 +1,4 @@
-// プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の
-// 演出もここで組み立てる(effects-system.ts のスポーン関数を直接呼び、命中数とは
-// 独立な「発射数」だけ ScoreCounter.recordShot() で集計する)。未使用弾のベルト
-// (表示メッシュ + たわみ物理)は belt.ts の Belt が持ち、Player が直接所有する。
+// プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の演出もここで組み立てる。
 import * as THREE from 'three/webgpu';
 import { qRotate, randomQuat } from '../../physics/attitude';
 import { orbitState } from '../../physics/orbital';
@@ -64,12 +61,6 @@ export class PlayerFire {
     this.wasFiring = false;
   }
 
-  // 発砲入力を処理し、発射・排莢・リロードを行う。fineAttitude の有効化は移動系
-  // (PlayerThrottle)の責務なので、ここでは扱わない。ワープ倍率による発射可否は
-  // 受け取った simSpeed(SimSpeedManager)の canPlayerFire を自分で見て判定する。
-  // マップモード中は Player.behave の editMode 分岐が tickMapMode を呼んで
-  // こちらは呼ばれない。ship は発射位置・反動・排莢の基準になる自機の位置・姿勢
-  // (Player 自身)。
   updateFireState(
     dt: number,
     input: Input,
@@ -107,8 +98,7 @@ export class PlayerFire {
     this.fireCycle(scoreCounter, simTime, zoomActive, addBullet);
   }
 
-  // マップモード中: 発射入力は無効だが、装填(リロード)だけは戦闘可否に関わらず
-  // 実時間で進行する(時間ワープ中でも装填サイクルは現実時間で完了する)。
+  // マップモード中: リロードタイマーだけを進める。
   tickMapMode(dt: number): void {
     this.tickReloadTimer(dt);
     this.wasFiring = false;
@@ -120,9 +110,6 @@ export class PlayerFire {
       this.cooldown -= dt;
   }
 
-  // CoolDown 周期での連射管理: 発射開始時のスピンアップと、周期が満ちるごとの
-  // fireGun 呼び出しのみを扱う(発射可否の判定は updateFireState、1発の演出・
-  // 弾薬消費は fireGun の責務)。
   private fireCycle(
     scoreCounter: ScoreCounter,
     simTime: number,
@@ -201,9 +188,7 @@ export class PlayerFire {
 
   // ---------------------------------------------------------------- entity管理
 
-  // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、命中数とは独立な発射数を
-  // 記録する。弾薬(マガジン/バレル)の消費は呼び出し元 fireCycle が consume() で
-  // これより先に済ませている。
+  // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、発射数を記録する。
   private fireGun(
     scoreCounter: ScoreCounter,
     simTime: number,
@@ -285,8 +270,7 @@ export class PlayerFire {
     );
   }
 
-  // リロード時(バレル交換)に円柱アイテムをデブリとして放出する。手動リロード
-  // ([R]キー、player.ts の handleEdgePress)からも直接呼ばれるため public。
+  // バレル交換時に円柱アイテムをデブリとして放出する。
   dropBarrel(ship: Ship): void {
     // 下方に少し勢いをつけて放出
     const down = qRotate(ship.att.q, v3(0, -1, 0));

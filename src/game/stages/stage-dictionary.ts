@@ -1,10 +1,4 @@
-// ステージ一覧の定義を責務とする。各ステージの振る舞い(init/update/checkWin/onWin)
-// は stage.ts の Stage を継承した Stage00/Stage0/Stage1/Stage2(このフォルダ内の
-// 同名ファイル)が持つ — ここではコンストラクタの列挙と ID 引きのみ行う。
-//
-// id は各クラスの static readonly id で持たせているので、ID 検索はインスタンス化せずに
-// 行える。実際のプレイに使うインスタンスは initStage() が呼ばれるたびに新規 `new` する
-// ので、同じインスタンスに setup()/init() を 2 回以上呼んで使い回すことはない。
+// ステージ一覧の定義: コンストラクタ列挙・ID引き・initStage によるステージ初期化。
 import * as THREE from 'three/webgpu';
 import { Stage, StageId } from './stage';
 import type { Player } from '../player/player';
@@ -28,11 +22,10 @@ interface StageClass {
 
 const STAGE_CLASSES: readonly StageClass[] = [Stage00, Stage0, Stage1, Stage2];
 
-// 選択画面のラベル・解放判定など、setup()/init() を呼ばない読み取り専用の一覧。
+// 選択画面のラベル・解放判定用の読み取り専用一覧。
 export const STAGE_DEFINITIONS: readonly Stage[] = STAGE_CLASSES.map((StageClass) => new StageClass());
 
-// id からステージを新規生成し、setup/init まで済ませて返す(Game がステージ開始時に
-// 一度だけ呼ぶ)。
+// id からステージを新規生成し、setup/init まで済ませて返す。
 export function initStage(
   stageId: StageId,
   player: Player,

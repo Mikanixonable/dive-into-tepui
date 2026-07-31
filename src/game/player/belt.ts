@@ -1,7 +1,4 @@
-// マガジンベルトの表示メッシュ(機体への追加、各リンクの Group)を管理する。
-// たわみ・ねじれの物理演算そのものは belt-physics.ts の BeltPhysics(算術専用、
-// メッシュを持たない)に委譲し、このファイルは物理の結果(beltPos/beltTwist/anchor)
-// から各リンクの位置・向きを導出してメッシュへ反映するモデル管理の責務を持つ。
+// マガジンベルトの表示メッシュを管理する。物理演算結果から各リンクの位置・向きを導出してメッシュへ反映する。
 import * as THREE from 'three/webgpu';
 import { Attitude, Quat, qFromAxisAngle, qFromUnitVectors, qMul, qRotate } from '../../physics/attitude';
 import { Vec3, len, scale, sub } from '../../physics/vec3';
@@ -29,8 +26,7 @@ export class Belt {
     this.physics = new BeltPhysics(this.links.length);
   }
 
-  // 見えているリンク数と、たわみアンカーの給弾進み(beltFeed)を弾薬状態から
-  // 導出し、たわみ物理(BeltPhysics)を進める。メッシュへの反映は sync() が行う。
+  // 見えているリンク数と給弾進み(beltFeed)を弾薬状態から導出し、たわみ物理を進める。
   update(
     dt: number,
     magsLeft: number,
@@ -49,11 +45,6 @@ export class Belt {
     this.physics.update(dt, att, thrustAccelVec, this.feed);
   }
 
-  // 確定済みの物理状態(BeltPhysics.beltPos/beltTwist、three 非依存の Vec3/Quat)から
-  // 各リンクの位置・向きを導出し、THREE.Object3D へ反映する。各節点は継手(マガジンの
-  // 端面)を表すので、マガジン自体は前後2節点の間に架かる剛体棒であり、原点(箱の中心)
-  // はその中点に置く。向きは「平行移動(parallel transport)」で求める: 前リンクの姿勢を
-  // 基準に、その進行方向(ローカル+X)を新しい節点方向へ向ける最小回転だけを加える。
   sync(alive: boolean): void {
     const { beltPos, beltTwist, anchor } = this.physics;
     let prevPoint = anchor;

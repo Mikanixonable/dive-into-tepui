@@ -1,23 +1,5 @@
-// 軌道計画(Plan)の多ノード予測軌道を描く、plan 側の描画ユニット。Plan の corners(frozen
-// アンカー + 凍結ノード)を arc へ分解し、arc ごとに 1 本の PredictedLine を生成・所有して
-// 描く。「まだ実行していない噴射(グレー)→最初のノード後(白)→2個目以降(オレンジ)」の
-// 色分けはここが担う。
-//
-// arc の分解: [アンカー時刻 → node0 → node1 → … → 表示 end]。arc i は前境界(アンカー or
-// 前ノードの postState)を初期状態に、次ノード時刻(最後は表示 end)まで自由伝播する。ノードは
-// 速度不連続(Δv)で位置は連続なので、arc はノード位置で視覚的に繋がる。
-//
-// キャッシュは各 arc の PredictedLine が per-arc に持つ(入力変化検出 + スロットル)。ノードを
-// 編集するとその下流 arc の初期状態だけが変わり、上流 arc は再計算されない — 旧来の
-// 「1フラグ dirty で全軌道を引き直す」より無駄が少ない。arc の増減に応じて PredictedLine
-// プールを伸縮させるだけ。
-//
-// 所有者は PlanDisplay(plan-display.ts)で、駆動も PlanDisplay.sync が行う。編集側の
-// PlanEditor はこのインスタンス(planDisplay.traj)を参照共有し、画面判定(projectPoint /
-// nearestSample)だけを使う。描画メッシュと同じ表示座標変換(bake/un-bake)+ 同じカメラ投影を
-// 通すので、描画とクリック判定が画面上でずれない。表示文脈(frame / un-bake 基準時刻 /
-// カメラ投影)は毎フレーム update が更新する — 画面判定はポインタイベント時、つまり直前
-// フレームの文脈で行われる。
+// 軌道計画の多ノード予測軌道を arc 単位で描く。Plan の corners を arc へ分解し、
+// arc ごとに PredictedLine を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital';
 import { sampleAt } from '../../physics/predict';
@@ -30,29 +12,22 @@ import { ProjectFn } from '../camera/camera-system';
 import { Plan } from './plan';
 import { PredictedLine } from './predicted-line';
 
-// セグメント色: [未実行の噴射前=グレー, 最初のノード後=白, 2個目以降=オレンジ]。
 const SEGMENT_COLORS = [0xbfc9d4, 0xffffff, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
 const arcOpacity = (i: number): number => (i === 0 ? 0.55 : 0.85);
 
-// 画面外を表す投影結果。update 前(まだ一度も駆動されていない)の画面判定に返す。
 const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
 
-// 分解された 1 arc: 初期状態(開始時刻は state0.t)と描画終了時刻 end(絶対 simTime)。
 type Arc = { state0: OrbitState; end: number };
 
 export class PlanTrajectory {
   readonly group = new THREE.Group();
   private lines: PredictedLine[] = [];
-  // 現在有効な arc の [start, end]。sampleAt が時刻から arc を選ぶのに使う。
   private arcs: Arc[] = [];
-  // 表示座標変換(bake/un-bake)と画面投影の文脈。update が毎フレーム保存し、picking/ghost が
-  // 描画と同じ frame・同じ現在時刻(un-bake 基準)・同じカメラで判定するために参照する。
   private frame: Frame = 'inertial';
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
-  // 表示期間切替など、窓の滑り以外の理由で次フレームに全 arc を強制再計算するフラグ。
   private forceNext = false;
 
   constructor(scene: THREE.Scene) {
@@ -60,7 +35,6 @@ export class PlanTrajectory {
     scene.add(this.group);
   }
 
-  // 毎フレーム(マップモード中)呼ぶ。Plan の corners を arc へ分解し、各 arc の PredictedLine を駆動する。
   update(
     plan: Plan,
     displayEnd: number,
@@ -83,18 +57,14 @@ export class PlanTrajectory {
       line.setVisible(true);
       line.update(arc.state0, arc.end, ephemeris, frame, currentTime, fo, undefined, force);
     }
-    // 余った PredictedLine(ノードが減った)は隠す。プールは維持して再利用する。
     for (let i = this.arcs.length; i < this.lines.length; i++) this.lines[i]!.setVisible(false);
   }
 
-  // 表示期間切替など、窓の滑り以外の理由で次フレームに全 arc を再計算させる(スロットル無視)。
-  // Plan の corners は変わらない — これは表示キャッシュ側の関心なのでここに閉じる。
+  // 次フレームに全 arc を強制再計算させる(表示期間切替など窓の滑り以外の変化時)。
   invalidate(): void {
     this.forceNext = true;
   }
 
-  // 時刻 t の予測状態。ghost マーカー(PlanDisplay)が未来位置を得るのに使う。
-  // t を含む arc を選び、その arc の per-arc サンプル列を線形補間する。
   sampleAt(t: number): OrbitState | null {
     if (this.arcs.length === 0) return null;
     for (let i = 0; i < this.arcs.length; i++) {
@@ -105,23 +75,17 @@ export class PlanTrajectory {
     return null;
   }
 
-  // ワールド点(時刻 t の r)を現在の表示座標系(frame + 現在時刻 unbakeTime)へ変換する。
-  // 描画メッシュの bake(サンプル時刻 t) + un-bake(現在時刻)と同じ合成なので、ghost/クリック判定が
-  // 描画とずれない。慣性系なら無変換。update 前(ephemeris 未設定)は慣性系扱い。
   toDisplay(r: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(r.x, r.y, r.z);
     return toInertialPos(this.frame, this.unbakeTime, toFramePos(this.frame, t, r, this.ephemeris), this.ephemeris);
   }
 
-  // 表示座標系での画面投影(= toDisplay → カメラ投影)。plan-editor のノード画面位置・Δv アーム
-  // 方向の算出に使う(plan-editor は frame を知らずこの 1 箇所を通す)。
   projectPoint(r: Vec3, t: number): Projected {
     if (!this.project) return OFFSCREEN;
     return this.project(this.toDisplay(r, t));
   }
 
-  // 画面ポインタ最寄りの予測サンプル(maxPx 以内、無ければ null)。描画と同じ per-arc サンプルを
-  // 同じ projectPoint で投影して探すので、クリック配置・リタイムが描画とずれない。
+  // 画面座標に最も近い予測サンプル(maxPx 以内)。なければ null。
   nearestSample(mx: number, my: number, maxPx: number): OrbitState | null {
     let best: OrbitState | null = null;
     let bestD = maxPx * maxPx;
@@ -143,7 +107,6 @@ export class PlanTrajectory {
     this.group.visible = v;
   }
 
-  // arc i 用の PredictedLine を得る。足りなければプールを伸ばす。色はインデックスで一意なので再利用でも正しい。
   private lineAt(i: number): PredictedLine {
     while (this.lines.length <= i) {
       const idx = this.lines.length;
@@ -155,8 +118,6 @@ export class PlanTrajectory {
   }
 }
 
-// Plan の corners を arc 列へ分解する。arc i = [前境界時刻, min(次ノード時刻, end)] を前境界
-// 状態(アンカー or 前ノードの実行後状態)から自由伝播。表示 end を超える arc は end で打ち切る。
 function buildArcs(anchor: OrbitState, nodes: readonly OrbitState[], end: number): Arc[] {
   const arcs: Arc[] = [];
   let state0 = anchor;

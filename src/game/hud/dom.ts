@@ -1,20 +1,11 @@
-// HUD の静的 DOM 構築(innerHTML/スタイル組み立て)。
-// 副作用(document への要素追加・スタイル注入)は残るが、状態は持たない。
-// イベントリスナーが参照するコールバックは HudDomHost 経由で呼び出し時に解決するため、
-// (呼び出し元の) Hud インスタンスをそのまま渡せる。
+// HUD の静的 DOM/スタイル構築。
 import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT } from '../theme';
 
-// 操作説明に出すキー名は key-mapping.ts の label だけから組む(ここには書かない)。
 const rotationLabels = [K.pitchDown, K.pitchUp, K.yawRight, K.yawLeft, K.rollLeft, K.rollRight]
   .map((k) => k.label).join('/');
 const throttleLabels = [K.throttleLow, K.throttleMid, K.throttleHigh].map((k) => k.label).join(' / ');
-
-// デザイン方針: ダークテーマ。ニューモーフィズムは廃止し、モノトーン
-// (ほぼ無彩色のグレースケール)+ 彩度の高いオレンジ 1 色をアクセントに使う
-// フラットなパネルにする。スクリーン投影マーカーもモノトーンに揃え、
-// 「注目すべきもの」(ターゲット・リード・マニューバ・補給)だけをオレンジで示す。
 
 const STYLE = `
 #hud, #hud * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -24,19 +15,8 @@ const STYLE = `
   color: ${INK}; user-select: none; z-index: 10;
   font-size: 13px;
 }
-/* --- 重なり順 ---------------------------------------------------------------
-   #hud 自身が z-index:10 で1つの重なりコンテキストを作るので、以下の値は #hud の
-   子同士の前後関係だけを決める(外側の #touch-ui / ノードギズモ / コンテキストメニューは
-   #hud より下)。z-index を書かない子は 0 相当で、同値どうしは DOM 順で後勝ちになる —
-   マーカーは実行中に生成されてパネル群より後ろに追加されるため、明示しないと
-   ESC メニューや終了画面の上に出てしまう。段は上位から:
-     4 システムウィンドウ(最上位) … ESC メニュー
-     3 システムウィンドウ(中位)   … 終了画面・ヘルプ
-     2 ゲームウィンドウ(モーダル的な案内) … トースト・ヒント
-     1 ゲームウィンドウ(常設パネル) … 情報パネル群・マップ操作パネル・操作説明・ギア
-     0 ゲーム内世界 UI … スクリーン投影マーカーとその引き出し線
-   システムウィンドウはゲームの進行を扱いゲーム内世界とは無関係なので、ゲームウィンドウと
-   ゲーム内世界 UI のすべてより上に出す。 */
+/* --- 重なり順: マーカーは実行時に DOM 末尾へ追加されるため z-index を明示しないとパネルの上に出る。
+     0=マーカー  1=常設パネル  2=トースト・ヒント  3=終了画面・ヘルプ  4=ESC メニュー */
 #hud .mk { z-index: 0; }
 #hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
 #hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear { z-index: 1; }
@@ -114,7 +94,6 @@ const STYLE = `
 #hud-plan {
   position: absolute; bottom: 40px; left: 12px; min-width: 280px;
 }
-/* hud/buttons.ts のボタン部品。マップモードの3パネル(#hud-displaytime / #hud-trajframe / #hud-overview-camera)が共有する */
 #hud .hud-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 #hud .hud-seg .seg-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 28px; }
 #hud .hud-seg .seg-btn {
@@ -122,8 +101,6 @@ const STYLE = `
   border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
 }
 #hud .hud-seg .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
-/* マップモードの3パネルは画面左上に縦積みする。下段は情報パネル群と操作説明で埋まっており、
-   マップ操作はそれらと独立に置きたいため。 */
 #hud-overview-camera { display: none; top: 12px; left: 12px; width: 292px; pointer-events: auto; }
 #hud-displaytime { display: none; top: 166px; left: 12px; width: 292px; pointer-events: auto; }
 #hud-displaytime input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
@@ -202,7 +179,6 @@ const STYLE = `
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
   #hud-plan { bottom: 216px; left: 8px; min-width: 210px; max-width: 60vw; }
-  /* マップモードの3パネルは狭幅では #hud-status に重ねる(計画中は艦状態より優先) */
   #hud-overview-camera { top: 8px; left: 8px; width: 186px; }
   #hud-displaytime { top: 146px; left: 8px; width: 186px; }
   #hud-trajframe { top: 246px; left: 8px; width: 186px; }
@@ -237,7 +213,6 @@ function injectStyle(): void {
   document.head.appendChild(style);
 }
 
-// マーカーのリーダーライン描画用 SVG レイヤー
 function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   const svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svgOverlay.style.position = 'absolute';
@@ -245,14 +220,11 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   svgOverlay.style.width = '100%';
   svgOverlay.style.height = '100%';
   svgOverlay.style.pointerEvents = 'none';
-  // マーカーと同じ最下段(STYLE の重なり順を参照)。root へ最初に追加されるので、
-  // 同値のマーカーより後ろ = 引き出し線がマーカーの下に描かれる。
   svgOverlay.style.zIndex = '0';
   root.appendChild(svgOverlay);
   return svgOverlay;
 }
 
-// ステータス・軌道・ターゲット・敵一覧の 4 パネル
 function buildInfoPanels(root: HTMLElement): void {
   const status = el('div', 'hud-status', root, 'panel');
   status.innerHTML = `
@@ -364,12 +336,6 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   return els;
 }
 
-// HUD の静的 DOM/スタイル構築。document.body に直接要素を追加する。
-// 計画パネル(#hud-plan)・計画の未来表示パネル(#hud-trajframe)・未来表示の時刻パネル
-// (#hud-displaytime)・広範囲視点パネル(#hud-overview-camera)・ステージ状況パネル
-// (#hud-stagestatus)・設定パネル/ギア(#hud-settings/#hud-gear)は、それぞれ
-// PlanEditor(が所有する PlanDisplay)/ DisplayTimeManager / CameraSystem / Stage /
-// SettingsPanel が自分で root へ構築する(それらの CSS はこの STYLE に含む)。
 export function buildHudDom(): HudDomRefs {
   injectStyle();
   const root = el('div', 'hud', document.body);

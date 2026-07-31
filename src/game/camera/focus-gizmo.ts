@@ -1,7 +1,5 @@
-// フォーカス候補ラベル(Earth/Moon/Sun/ラグランジュ点)を右クリックしたときの、フォーカス先
-// 選択コンテキストメニュー。overviewCamera のフォーカス候補に対する UI であり、ノード編集
-// (node-gizmo)とは無関係な別責務。フォーカス対象(targetKey)の保持と、フォーカス用
-// メニュー項目の定義だけを担う。
+// フォーカス候補ラベル(Earth/Moon/Sun/ラグランジュ点)を右クリックしたときの
+// フォーカス先選択コンテキストメニュー。
 import { ContextMenu } from '../hud/context-menu';
 
 export class FocusGizmo {

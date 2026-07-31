@@ -1,5 +1,4 @@
-// HUD 表示用の数値整形。パネル向け(単位の前に空白、fmtDist/fmtSpeed/fmtTime)と
-// スクリーンマーカー向けコンパクト表記(fmtMarkerDist)の2系統をここに集約する。
+// HUD 表示用の数値整形。
 
 // パネル用距離表記(例: "420 m" / "1.23 km" / "1.50 Mm")
 export function fmtDist(m: number): string {
@@ -9,7 +8,7 @@ export function fmtDist(m: number): string {
   return `${m.toFixed(0)} m`;
 }
 
-// マーカーラベル用コンパクト距離表記(例: "420m" / "2.2km"、kmDecimals で桁数を調整)
+// マーカーラベル用コンパクト距離表記(例: "420m" / "2.2km")
 export function fmtMarkerDist(m: number, kmDecimals = 1): string {
   return m >= 1000 ? `${(m / 1000).toFixed(kmDecimals)}km` : `${m.toFixed(0)}m`;
 }

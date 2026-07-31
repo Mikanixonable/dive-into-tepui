@@ -1,11 +1,4 @@
-// 軌道計画(Plan)の実施: 直近ノードの噴射ガイド表示・達成判定・ノード消化。
-// game.ts がマップモードでない間だけ毎フレーム呼ぶ(マップ編集中は WASDQE が Δv
-// 編集に使われており、同時に噴射ガイドを出す意味がないため。呼び出しどころの
-// 判断は game.ts が持つ)。
-//
-// Step2: 直近ノードの凍結された実行後状態(絶対状態)を直接読む。予測(predict)・
-// 予測キャッシュ・activeTarget 凍結ハックには依存しない — 目標は最初から frozen な
-// 正データなので、噴射中に目標が逃げる問題自体が起きない。
+// 直近ノードの噴射ガイド表示・達成判定・ノード消化。
 import { Elements, elementsFromState } from '../../physics/orbital';
 import { dot, len, sub } from '../../physics/vec3';
 import * as C from '../const';
@@ -45,11 +38,9 @@ export class PlanGuide {
       return;
     }
 
-    // 目標 = 直近ノードの凍結された実行後状態(位置・速度・軌道要素)。
     const targetEl = elementsFromState(node.r, node.v);
     const playerEl = player.elements;
 
-    // 達成判定: 現在軌道がノード実行後の計画軌道に十分近い
     if (playerEl && targetEl && this.orbitClose(playerEl, targetEl)) {
       plan.consumeFirstNode();
       simSpeedManager.cancelAutoWarp();
@@ -64,7 +55,6 @@ export class PlanGuide {
       return;
     }
 
-    // ノード位置マーカー(カウントダウン付き)
     const tRem = node.t - simTime;
     const tLabel =
       tRem >= 0
@@ -73,7 +63,6 @@ export class PlanGuide {
     const more = plan.nodes.length > 1 ? ` (+${plan.nodes.length - 1})` : '';
     this.markerManager.setPosition('nd', 'mk-mnode', '◆', node.r, project, `NODE ${tLabel}${more}`);
 
-    // 噴射ガイド: 目標速度ベクトル(ノードの実行後速度)との差分方向へ加速する
     const dvRem = sub(node.v, player.state.v);
     const mag = len(dvRem);
     this.markerManager.setDirection(

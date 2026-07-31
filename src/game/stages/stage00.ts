@@ -1,7 +1,4 @@
-// Stage 00: 無限耐久サバイバル。弾薬確保後、波状攻撃が自機破壊まで無限に続く
-// (撃破数では終わらないので checkWin/onWin は no-op に override する)。
-// 波状攻撃の出現ロジック(フェーズ遷移・ウェーブ数・敵配置)はこのステージでしか使わないため、
-// 共通化はせずこのファイルに集約する。
+// Stage 00: 無限耐久サバイバル。弾薬確保後、波状攻撃が自機破壊まで無限に続く。
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Stage } from './stage';
@@ -59,20 +56,18 @@ export class Stage00 extends Stage {
   }
 
   checkWin(): boolean { return false; }
-  onWin(): void { /* no-op: このステージは撃破数では終わらない */ }
+  onWin(): void { }
 
   hudSubStatus(): string {
     return `サバイバル 第${this.waveCount}波`;
   }
 
-  // 1波分の敵を生成してステージに登録する(配置計算は generateWave が行う)。
   private spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this.waveCount;
     const enemies = generateWave(player.state, wave, this._hud, this._sfx, this._fx, this._scene, forcedPattern);
     for (const enemy of enemies) addEnemy(enemy);
   }
 
-  // 「弾薬確保待ち」フェーズ: 弾薬を入手したらウェーブ接近フェーズへ進める。
   private updateWaitingForAmmoPhase(player: Player): void {
     if (player.magsLeft <= 0 && player.roundsInMag <= 0) return;
     this.waveState = 'spawning_enemies';
@@ -80,7 +75,6 @@ export class Stage00 extends Stage {
     this._hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
   }
 
-  // 「ウェーブ接近予告」フェーズ: カウントダウン後に最初のウェーブを生成する。
   private updateSpawningEnemiesPhase(dt: number, player: Player, entities: EntityManager): void {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
@@ -89,7 +83,6 @@ export class Stage00 extends Stage {
     this.spawnTimer = C.STAGE00_SPAWN_INTERVAL;
   }
 
-  // 「交戦中」フェーズ: 圏外の敵を消しつつ、同時展開数の上限内で次のウェーブを送り込む。
   private updateActiveCombatPhase(dt: number, player: Player, entities: EntityManager, simTime: number): void {
     despawnOutOfRangeEnemies(entities.enemies, player, C.STAGE00_MAX_RANGE, simTime, this);
     const activeGroups = countActiveWaveGroups(entities.enemies);
@@ -127,8 +120,7 @@ function countActiveWaveGroups(enemies: readonly Enemy[]): number {
 
 // ウェーブ数が進むほど同時展開数の上限を引き上げていく。
 function resolveWaveSpawnLimits(waveCount: number, activeGroups: number): { maxGroups: number; allowedMaxWaveCount: number; } {
-  // waveCount は spawnWave() で 1 から始まるが、念のため 0 も同じ扱いにする
-  if (waveCount <= 1) return { maxGroups: 1, allowedMaxWaveCount: 2 };
+    if (waveCount <= 1) return { maxGroups: 1, allowedMaxWaveCount: 2 };
   if (waveCount === 2) return activeGroups > 0 ? { maxGroups: 1, allowedMaxWaveCount: 2 } : { maxGroups: 2, allowedMaxWaveCount: 4 };
   if (waveCount === 3) return { maxGroups: 2, allowedMaxWaveCount: 4 };
   if (waveCount === 4) return activeGroups > 0 ? { maxGroups: 2, allowedMaxWaveCount: 4 } : { maxGroups: 3, allowedMaxWaveCount: Infinity };
@@ -139,8 +131,7 @@ function resolveWaveSpawnLimits(waveCount: number, activeGroups: number): { maxG
 function pickWaveCenter(player: OrbitState, wave: number): Vec3 {
   const dist = C.STAGE00_SPAWN_DIST_MIN + Math.random() * (C.STAGE00_SPAWN_DIST_MAX - C.STAGE00_SPAWN_DIST_MIN);
 
-  // 第1波は必ず後方(速度ベクトルと逆向き)に出現させる。それ以降はランダムな水平方向
-  // (randPerp は単位ベクトルを要求するので、位置ベクトルは norm を通して渡す)。
+  // 第1波は必ず後方(速度ベクトルと逆向き)に出現させる。
   let dir: Vec3;
   if (wave === 1) {
     dir = norm(scale(player.v, -1));
@@ -151,8 +142,6 @@ function pickWaveCenter(player: OrbitState, wave: number): Vec3 {
   return add(player.r, scale(dir, dist));
 }
 
-// フライバイ初速: 1000m ~ 2000m の範囲ですれ違うようにターゲット位置をずらし、
-// 敵の初速度 = 自機の速度 + 接近速度 + わずかな横ブレ とする
 function makeFlybyVelocity(player: OrbitState, centerR: Vec3, wave: number): { approachDir: Vec3; centerV: Vec3 } {
   const missDist = C.STAGE00_FLYBY_MISS_DIST_MIN + Math.random() * C.STAGE00_FLYBY_MISS_DIST_RANGE;
   const directDir = norm(sub(player.r, centerR));
@@ -160,8 +149,7 @@ function makeFlybyVelocity(player: OrbitState, centerR: Vec3, wave: number): { a
   const targetPos = add(player.r, scale(missPerp, missDist));
 
   const approachDir = norm(sub(targetPos, centerR));
-  // ウェーブが進むと少し速くなる。ステージ00は無限に続くので、上限を掛けないと相対速度が
-  // 際限なく上がって Δv だけで敵の軌道を壊してしまう(近地点の保証は limitFlybyDv が別途行う)。
+  // ウェーブが進むほど接近速度を上げるが、上限を設けないと Δv が軌道を破壊する。
   const flybySpeed = Math.min(
     C.STAGE00_FLYBY_SPEED + (wave - 1) * C.STAGE00_FLYBY_SPEED_RAMP,
     C.STAGE00_FLYBY_SPEED_MAX,
@@ -171,11 +159,7 @@ function makeFlybyVelocity(player: OrbitState, centerR: Vec3, wave: number): { a
   return { approachDir, centerV: add(player.v, add(scale(approachDir, flybySpeed), spread)) };
 }
 
-// フライパスの Δv は自機の軌道速度に直接加算されるため、大きすぎると出現した瞬間に
-// 近地点を大気圏下(ときには地中)まで引き下げてしまい、敵が出現直後に再突入で消える。
-// ここで「近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らない」ことを保証する。
-// 方向(どちらから飛んでくるか = 演出)は変えず、大きさだけを二分探索で縮める。
-// 自機自身が既に低い軌道にいて Δv = 0 でも安全高度を割る場合は、自機と同じ速度(Δv = 0)を返す。
+// 近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らないよう Δv の大きさを二分探索で縮める。
 function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3): Vec3 {
   const minPeAlt = C.REENTRY_ALT + C.STAGE00_MIN_PERIGEE_MARGIN;
   const safe = (v: Vec3): boolean => {
@@ -185,8 +169,8 @@ function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3): Vec3 {
   if (safe(centerV)) return centerV;
 
   const dv = sub(centerV, playerV);
-  let lo = 0; // 常に「安全と判定済み(または Δv=0)」側
-  let hi = 1; // 常に「危険と判定済み」側
+  let lo = 0;
+  let hi = 1;
   for (let i = 0; i < 24; i++) {
     const mid = (lo + hi) / 2;
     if (safe(addScaled(playerV, dv, mid))) lo = mid;
@@ -210,7 +194,6 @@ function pickWaveBaseHex(): number {
   return accentColors[Math.floor(Math.random() * accentColors.length)]!;
 }
 
-// 個体を2~4のサブグループに分け、色相・彩度・明度をわずかにずらす
 function makeSubGroupHexes(baseHex: number): number[] {
   const baseColor = new THREE.Color(baseHex);
   const hsl = { h: 0, s: 0, l: 0 };
@@ -232,27 +215,22 @@ function makeSubGroupHexes(baseHex: number): number[] {
   return subGroups;
 }
 
-// 隊列内の各機の配置位置(高度を少し下げるオフセット込み・大気圏突入防止のクランプあり)
 function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: number, centerR: Vec3, approachDir: Vec3): Vec3 {
   let pos: Vec3;
   if (pattern === 'linear') {
-    // 隊列は接近方向に対して後方へ直列に並べる。直線状のものも少しランダムに配置
     const offset = (i - (shipCount - 1) / 2) * C.STAGE00_FORMATION_SPACING;
     const jitter = scale(randPerp(approachDir), (Math.random() - 0.5) * 200);
     pos = add(centerR, add(scale(approachDir, -offset), jitter));
   } else {
-    // ランダムな球状の配置
     const randDir = norm(v3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5));
     const randDist = Math.random() * C.STAGE00_FORMATION_SPACING * (shipCount / 2);
     pos = add(centerR, scale(randDir, randDist));
   }
 
-  // 高度を少し下げる (200m~1km)
   const altDrop = C.STAGE00_ALT_OFFSET_MIN + Math.random() * (C.STAGE00_ALT_OFFSET_MAX - C.STAGE00_ALT_OFFSET_MIN);
   const droppedPos = add(pos, scale(norm(pos), altDrop));
 
-  // 安全装置(その1): 出現した瞬間の高度が 90km(大気圏+10km)未満にならないようにする。
-  // これは位置だけの保証であり、軌道の近地点を保証するのは limitFlybyDv(速度側)の役目。
+  // 出現高度が大気圏上限(+10km)を下回らないようにクランプする。
   const safeAlt = C.REENTRY_ALT + 10e3;
   const currentAlt = len(droppedPos) - C.R_EARTH;
   if (currentAlt < safeAlt) {
@@ -261,13 +239,11 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
   return droppedPos;
 }
 
-// サバイバル波状攻撃1波分を直接生成する(登録は呼び出し側)。
 function generateWave(player: OrbitState, waveNumber: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = C.STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * C.STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, C.STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);
   const { approachDir, centerV: rawCenterV } = makeFlybyVelocity(player, centerR, waveNumber);
-  // 隊列は centerR から数 km の範囲に散るだけなので、波の中心で近地点を保証すれば全機が安全側に入る。
   const centerV = limitFlybyDv(player.v, centerR, rawCenterV);
   const subGroups = makeSubGroupHexes(pickWaveBaseHex());
   const typeIndex = Math.floor(Math.random() * 3);

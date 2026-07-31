@@ -1,7 +1,4 @@
-// 補給(ammo)の兵站: 投入の判断・生成、自機の接近による取り込み、遠距離デスポーンの
-// 判断と、回収先を示す ▣ AMMO マーカーの表示。配列の所有と軌道積分・姿勢・実削除は
-// EntityManager 側(ammos は EntityManager 所有の配列への読み取り参照で、追加は
-// entities.addAmmo 経由、破壊は alive = false を立てるだけで entities.cleanup が回収する)。
+// 補給(ammo)の投入・取り込み・デスポーンと、▣ AMMO マーカーの表示。
 import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../physics/attitude';
 import { add, cross, len, lenSq, norm, randSym, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
@@ -18,8 +15,6 @@ import type { EntityManager } from '../../simulation/entity-manager';
 
 export class Logistics {
   private resupplyCheckAt = 0;
-  // 前フレームに syncMarkers が出したマーカー数。生存数が減ったとき、余った
-  // 添字のキーを隠すために覚えておく(キーの種類は同時存在数の最大値で頭打ちになる)。
   private lastMarkerCount = 0;
 
   constructor(
@@ -30,10 +25,6 @@ export class Logistics {
     private readonly markerManager: MarkerManager,
   ) {}
 
-  // 上限判定はここでは行わない。MAX_AMMO は「定期投入が維持しようとする数」であって
-  // ハード上限ではなく、Stage0 の初期配置は STAGE0_LOGISTICS_INITIAL_AMMO(> MAX_AMMO)
-  // 個をこの関数で意図的に並べるため、ここで弾くと初期配置数が狂う。上限は呼び出し側
-  // (updateLogistics/despawnFarAmmo)が liveAmmoCount() を見て判断する。
   spawnForPlayer(
     player: Player,
     minDist = C.LOGISTICS_MIN_DIST,
@@ -61,8 +52,6 @@ export class Logistics {
     this._hud.hint('付近の軌道に補給が投入された — ▣ AMMO マーカーへ接近して回収', 5000);
   }
 
-  // respawnOnDespawn: 遠方デスポーンした補給を同数投入し直すか。呼び出し元(各 Stage の
-  // update)がこの真偽値を直接渡す。
   updateLogistics(simTime: number, player: Player, respawnOnDespawn = false): void {
     if (player.alive) this.absorbNearbyAmmo(player);
     this.despawnFarAmmo(player, respawnOnDespawn);
@@ -74,24 +63,12 @@ export class Logistics {
     }
   }
 
-  // ammos は EntityManager が cleanup/prune で後から詰めて消すため、alive=false のまま
-  // 配列に残る個体が混ざる。上限判定は必ずこれ経由で行い、ammos.length を直接見ない。
   private liveAmmoCount(): number {
     let count = 0;
     for (const ammo of this.entities.ammos) if (ammo.alive) count++;
     return count;
   }
 
-  // ▣ AMMO マーカー: 回収へ向かうべき補給の位置と距離を示す。表示位置は displayState
-  // (未来ゴースト表示中は将来位置)を使う — Ammo のメッシュ自体も displayState 基準で
-  // 動くので、揃えないと「機体は未来位置、マーカーは現在位置」で壊れて見える
-  // (Enemy.markerItem と同じ理由)。マーカーを出せる補給(生存していて、かつ表示時刻の
-  // 位置が求まる = 予測期間内)だけを詰めた配列に番号を振ってキーにするので、alive=false の
-  // まま残る個体や予測期間を超えた個体を挟んでも欠番にならない。前フレームより数が減った回
-  // だけ、余った添字のキーを隠す(lastMarkerCount で前回数を覚えておく — キーの種類は
-  // 同時存在数の最大値で頭打ち)。画面外にあるあいだは実位置を指せないので、代わりに画面端へ
-  // 方位マーカー △ を出す(敵の ▲ と同じ機構・同じ位置付けで、塗りを抜いた記号で区別する)。
-  // 補給は取りに行く対象なので、方位マーカー側にも距離ラベルを載せる。
   syncMarkers(player: Player, project: ProjectFn, displayTime: number): void {
     const shown = this.entities.ammos.flatMap((ammo) => {
       const pos = ammo.alive ? ammo.displayState(displayTime)?.r : undefined;
@@ -124,11 +101,6 @@ export class Logistics {
     }
   }
 
-  // 自機から離れすぎた補給はデスポーンし、respawnOnDespawn なら同数を投入し直す
-  // (ループ中に respawn 分を割り込ませない — ループ終了後にまとめて処理する)。
-  // 直前のループで alive = false にした個体がまだ ammos に残っているため、投入し直す
-  // ループは liveAmmoCount() を都度更新しながら MAX_AMMO で打ち切る(ammos.length は
-  // 死んだ個体を含むので使えない)。
   private despawnFarAmmo(player: Player, respawnOnDespawn: boolean): void {
     let respawn = 0;
     for (const ammo of this.entities.ammos) {

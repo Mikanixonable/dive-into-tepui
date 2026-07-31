@@ -36,8 +36,6 @@ export class Enemy extends Ship {
   burstLeft?: number; // バースト射撃の残弾
   burstDelay?: number; // 次のバースト弾までの残り時間
 
-  // hud は現状 Enemy 自身のメソッドからは未使用だが、hud/sfx は必ず対で注入する方針のため
-  // 受け取る(hud はフィールドとしては保持しない)。
   private readonly _sfx: Sfx;
   private readonly _fx: EffectsSystem;
 
@@ -78,11 +76,7 @@ export class Enemy extends Ship {
     return '#' + this.accent.toString(16).padStart(6, '0');
   }
 
-  // 画面マーカー集合(GroupedMarkers)へ渡す自分の見た目とラベル。近接する敵をまとめる
-  // 判断は集合側の責務なので、ここでは「まとめられたら代表になりたい度」を priority で示す
-  // だけにする(ターゲット最優先、次いで近い順)。pos は呼び出し側(Game.sync)が
-  // displayState から渡す — 機体メッシュと同じ表示時刻の位置を使わないと、未来ゴースト表示中に
-  // 「機体は未来位置、◇マーカーは現在位置」で明確に壊れて見える(better_predict.md Step 4)。
+  // pos は機体メッシュと同じ表示時刻の位置(displayState 経由)を使う。
   markerItem(isTarget: boolean, viewerPos: Vec3, pos: Vec3): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     return {
@@ -97,7 +91,7 @@ export class Enemy extends Ship {
     };
   }
 
-  // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。attacked からのみ呼ばれる。
+  // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
   private hitEffect(bullet: Bullet): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
