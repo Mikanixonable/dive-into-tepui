@@ -45,9 +45,10 @@ export class Simulator implements IAccelProvider {
   }
 
   // ------------------------------------------------------------ 追加
-  // 配列への追加はここを通す(上限管理まで面倒を見る)。scene への登録は
-  // entity 自身のコンストラクタが既に済ませている。破壊は alive = false に
-  // すれば cleanup が回収するので、削除関数は持たない。
+  // 配列への追加はここを通す。上限管理があるのは大量・頻繁に出る bullets/casings/debris
+  // (addCapped 経由)だけで、enemies/ammos は無制限。scene への登録は entity 自身の
+  // コンストラクタが既に済ませている。破壊は alive = false にすれば cleanup が回収するので、
+  // 削除関数は持たない。
 
   addEnemy(enemy: Enemy): void {
     this.enemies.push(enemy);
