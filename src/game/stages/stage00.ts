@@ -16,8 +16,8 @@ import { generateApproachingEnemy } from './spawner/enemy-generator';
 
 export class Stage00 extends Stage {
   static readonly id = '00' as const;
-  readonly selectLabel = '[0] 無限耐久サバイバル (Stage 00)';
-  readonly selectSub = '常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
+  readonly selectLabel = 'stage 00';
+  readonly selectSub = '【無限耐久サバイバル】 常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
   readonly selectKeys = ['Digit0'];
   readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
@@ -128,7 +128,7 @@ function countActiveWaveGroups(enemies: readonly Enemy[]): number {
 
 // ウェーブ数が進むほど同時展開数の上限を引き上げていく。
 function resolveWaveSpawnLimits(waveCount: number, activeGroups: number): { maxGroups: number; allowedMaxWaveCount: number; } {
-    if (waveCount <= 1) return { maxGroups: 1, allowedMaxWaveCount: 2 };
+  if (waveCount <= 1) return { maxGroups: 1, allowedMaxWaveCount: 2 };
   if (waveCount === 2) return activeGroups > 0 ? { maxGroups: 1, allowedMaxWaveCount: 2 } : { maxGroups: 2, allowedMaxWaveCount: 4 };
   if (waveCount === 3) return { maxGroups: 2, allowedMaxWaveCount: 4 };
   if (waveCount === 4) return activeGroups > 0 ? { maxGroups: 2, allowedMaxWaveCount: 4 } : { maxGroups: 3, allowedMaxWaveCount: Infinity };
