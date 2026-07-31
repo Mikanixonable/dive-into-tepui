@@ -5,7 +5,6 @@ import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
-import { predictStepDt } from '../../physics/predict';
 import { len } from '../../physics/vec3';
 
 export class Predictor {
@@ -39,7 +38,7 @@ export class Predictor {
   }
 
   // budgetSteps を上限に、1体ぶんの予測列を GameEntity.stepPrediction で1ステップずつ伸ばし、
-  // 消費したステップ数を返す。刻み幅(predictStepDt)は毎ステップ、現在の予測先端の動径から
+  // 消費したステップ数を返す。刻み幅(stepDtForRadius)は毎ステップ、現在の予測先端の動径から
   // 求め直す(先端がまだ無ければ現在状態の動径で代用 — 生成直後は current.state を種にするので
   // 同じ値になる)。ここが「刻み幅を決めてから1ステップぶん渡す」側、entity 側は「渡された dt で
   // 実際に1ステップ進めるか判断する」側 — stepSim に対する simulationSubStep と同じ分担。
@@ -48,10 +47,15 @@ export class Predictor {
     let consumed = 0;
     while (consumed < budgetSteps) {
       const tipR = e.predicted?.state.r ?? e.state.r;
-      const dt = Math.max(C.PREDICT_MIN_STEP_DT, predictStepDt(len(tipR), e.predictDuration));
+      const dt = Math.max(C.PREDICT_MIN_STEP_DT, stepDtForRadius(len(tipR)));
       if (!e.stepPrediction(this.ephemeris, simTime, dt)) break;
       consumed++;
     }
     return consumed;
   }
+}
+
+// 動径から刻み幅を決める(低軌道では細かく、遠方では粗く)。LEO(~6.8e6m)で約8.5s。
+function stepDtForRadius(r: number): number {
+  return Math.max(5, Math.min(600, r / 8e5));
 }
