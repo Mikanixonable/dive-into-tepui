@@ -408,14 +408,12 @@ export class Sfx {
     this.tone(1500 + Math.random() * 500, 0.08, 0.15, 'triangle');
   }
 
-  // 撃破通知音。宇宙では音が伝わらないため、爆発音ではなく上昇する電子音列にしている。
+  // 撃破爆発音
   explosion(): void {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime;
-    this.toneAt(1200, t, 0.08, 0.08, 'square', this.ctx.destination, 0.01);
-    this.toneAt(1500, t + 0.1, 0.08, 0.08, 'square', this.ctx.destination, 0.01);
-    this.toneAt(1800, t + 0.2, 0.08, 0.08, 'square', this.ctx.destination, 0.01);
-    this.toneAt(2200, t + 0.3, 0.12, 0.08, 'square', this.ctx.destination, 0.01);
+    this.noiseBurst(0.5, 'lowpass', 200, 0.6);
+    this.noiseBurst(0.3, 'bandpass', 600, 0.4);
+    this.tone(50, 0.4, 0.5, 'square');
   }
 
   // 時間warp切替音。

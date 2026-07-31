@@ -208,11 +208,25 @@ export class Enemy extends Ship {
     // 散布界を非常に小さくして、正確に狙う
     const perp = randPerp(aimDir);
     const spreadAng = (Math.random() * C.PLASMA_SPREAD_DEG * Math.PI) / 180;
+// 赤系の弾色バリエーション (ワインレッド 〜 ウォームオレンジ)
+const ENEMY_BULLET_COLORS = [
+  0x722f37, // Wine red
+  0x8b0000, // Dark red
+  0xb22222, // Firebrick
+  0xdc143c, // Crimson
+  0xff0000, // Red
+  0xff4500, // Orange red
+  0xff7f50, // Coral
+  0xff8c00, // Dark orange
+  0xffa500, // Warm orange
+];
+
     const actualAim = rotateAxis(aimDir, perp, spreadAng);
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, this.accent);
+    const bulletColor = ENEMY_BULLET_COLORS[Math.floor(Math.random() * ENEMY_BULLET_COLORS.length)]!;
+    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, bulletColor);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
