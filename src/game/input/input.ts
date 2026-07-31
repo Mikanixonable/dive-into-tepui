@@ -1,15 +1,7 @@
 // キーボード・マウス入力の集約。押下中キーの参照(down)に加え、
 // 1フレームぶんのエッジトリガ(押した瞬間のキー/クリック/右クリック/マウス移動量)を
-// update() で確定させる。update() は1フレームにつき必ず1回、他の全ての読み出しより前に
-// 呼ぶこと(呼び出し元は main.ts の rAF ループから呼ばれる Game.update() の先頭)。
-//
-// エッジトリガの配り方は**先着順の消費**モデル: takeKey / takeKeys / takeClicks /
-// takeRightClicks に渡した handler が true を返したイベントはキューから取り除かれ、後から
-// 呼ぶモジュールには届かない。これにより「そのキー/クリックが何をするか」は担当モジュール側に
-// 閉じ、オーケストレータ(game.ts)は**呼ぶ順序 = 優先順位**だけを決めればよくなる。
-//
-// 読み出しは KeyBinding(key-mapping.ts)で指定する。生のキーコードを受けるのは
-// ブラウザイベントを受け取るこのクラスの内部だけ。
+// update() で確定させる。エッジトリガは先着順の消費モデルで、
+// take* の handler が true を返したイベントはキューから取り除かれる。
 import { CTRL_GUARD_KEYS, KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
 
 export interface MouseDelta {
@@ -40,7 +32,6 @@ const ZERO_MOUSE_DELTA: MouseDelta = { dx: 0, dy: 0, panDx: 0, panDy: 0, wheel: 
 
 export class Input {
   private keys = new Set<string>();
-  // イベントハンドラが書き込む、次の update() 呼び出しまでの未確定分。
   private pendingPresses: string[] = [];
   private pendingClicks: PointerPoint[] = [];
   private pendingRightClicks: PointerPoint[] = [];
@@ -49,7 +40,6 @@ export class Input {
   private panDx = 0;
   private panDy = 0;
   private wheel = 0;
-  // update() が確定させた、このフレーム分の読み出し専用スナップショット。
   private framePresses: string[] = [];
   private frameClicks: PointerPoint[] = [];
   private frameRightClicks: PointerPoint[] = [];
@@ -65,11 +55,8 @@ export class Input {
   private gestureFired = false;
 
   constructor(target: HTMLElement) {
-    // キーボード(押下中セット + エッジトリガキュー)
     this.attachKeyboardListeners();
-    // ポインタ(左ドラッグ/クリック・右射撃・中パン・ピンチ)
     this.attachPointerListeners(target);
-    // ホイールズーム
     this.attachWheelListener(target);
   }
 
@@ -223,7 +210,6 @@ export class Input {
 
   // フレームの先頭で1度だけ呼ぶ。イベントハンドラが溜めた未確定分を今フレームの
   // スナップショットとして確定し、次フレーム分の蓄積をリセットする。
-  // 呼び出し後は presses/clicks/rightClicks/mouse を副作用なしに何度でも読める。
   update(): void {
     this.framePresses = this.pendingPresses;
     this.frameClicks = this.pendingClicks;
@@ -239,8 +225,7 @@ export class Input {
     this.wheel = 0;
   }
 
-  // 今フレームの押下エッジに key があれば消費して true を返す。担当キーが1つだけの
-  // モジュール向け。
+  // 今フレームの押下エッジに key があれば消費して true を返す。
   takeKey(key: KeyBinding): boolean {
     const i = this.framePresses.findIndex((code) => matchesCode(key, code));
     if (i === -1) return false;
@@ -249,7 +234,6 @@ export class Input {
   }
 
   // 今フレームの未消費の押下エッジを順に渡し、handler が true を返したものを消費する。
-  // 消費するかどうかを処理の成否で決めたいモジュール向け(自機のマニュアル装填など)。
   takeKeys(handler: (code: string) => boolean): void {
     for (const code of [...this.framePresses]) {
       if (!handler(code)) continue;
@@ -258,26 +242,21 @@ export class Input {
     }
   }
 
-  // 今フレームの未消費の左クリック(ドラッグでない短い押下)を順に渡し、handler が true を
-  // 返したものを消費する。マップモードのノード配置などが使う。
+  // 今フレームの未消費の左クリック(ドラッグでない短い押下)を順に渡し、handler が true を返したものを消費する。
   takeClicks(handler: (point: PointerPoint) => boolean): void {
     takeFrom(this.frameClicks, handler);
   }
 
   // 今フレームの未消費の右ボタン押下を順に渡し、handler が true を返したものを消費する。
-  // ノードメニュー → フォーカス選択、戦闘ビューのターゲット固定などが順に受け取る。
   takeRightClicks(handler: (point: PointerPoint) => boolean): void {
     takeFrom(this.frameRightClicks, handler);
   }
 
-  // 今フレームのマウス移動量。左ドラッグでの視点回転用。
   mouse(): MouseDelta {
     return this.frameMouse;
   }
 }
 
-// キューを走査し、handler が処理した(true を返した)要素だけを取り除く。
-// 走査中に取り除くのでコピーを回す。
 function takeFrom(queue: PointerPoint[], handler: (point: PointerPoint) => boolean): void {
   for (const point of [...queue]) {
     if (!handler(point)) continue;

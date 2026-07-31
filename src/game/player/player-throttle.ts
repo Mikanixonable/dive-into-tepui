@@ -1,6 +1,4 @@
 // プレイヤーの並進スロットル・姿勢制御(RCS)・プログレードホールド。
-// 機体の位置・姿勢そのもの(OrbitState/Attitude)は player.ts が所有し、ここには
-// 呼び出しごとに引数として渡す — 正データの二重管理を避けるため。
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { Vec3, add, len, norm, scale, v3 } from '../../physics/vec3';
@@ -77,8 +75,6 @@ export class PlayerThrottle {
     return qRotate(q, scale(dir, thrustAccel));
   }
 
-  // 入力から機体座標系トルクを算出して返すだけ。姿勢積分(stepAttitude)は
-  // simulator が一元的に行う(entity.torque を毎フレーム書き込む経路に統一するため)。
   updateTorque(
     att: Attitude,
     r: Vec3,
@@ -92,7 +88,6 @@ export class PlayerThrottle {
   ): Vec3 {
     if (!alive) return v3();
     const inertia = att.inertia;
-    // 計画編集モード中は手動姿勢入力を無効化する(WASDQE などが Δv 編集に振り替わるため)。
     const manual = editMode ? 0 : 1;
     const inX = ((input.down(K.pitchDown) ? 1 : 0) + (input.down(K.pitchUp) ? -1 : 0)) * manual;
     const inY = ((input.down(K.yawLeft) ? 1 : 0) + (input.down(K.yawRight) ? -1 : 0)) * manual;

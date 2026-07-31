@@ -1,5 +1,4 @@
-// Stage 0: 訓練ステージ。近傍の色分けクラスタを制限時間内に何機撃墜できるかのスコアアタック
-// (タイムアップで終わる。撃破数では終わらないので checkWin/onWin は no-op に override する)。
+// Stage 0: 近傍の色分けクラスタを制限時間内に何機撃墜できるかのスコアアタック。タイムアップで終了。
 import * as C from '../const';
 import { Stage } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -54,8 +53,8 @@ export class Stage0 extends Stage {
     }
   }
 
-  checkWin(): boolean { return false; } // 終了は update 内のタイムアップ判定
-  onWin(): void { /* no-op: このステージは撃破数では終わらない */ }
+  checkWin(): boolean { return false; }
+  onWin(): void { }
 
   hudSubStatus(): string {
     return `残り時間: ${Math.ceil(this.timer.timeLeft)}秒`;

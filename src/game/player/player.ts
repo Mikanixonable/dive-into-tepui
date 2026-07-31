@@ -37,7 +37,6 @@ export class Player extends Ship {
 
   private readonly thrustEffects: ThrustEffects;
   private readonly rcsEffects: RcsEffects;
-  // 自機の位置・姿勢から決まる HUD マーカー(方向マーカー・ボアサイト・マップ上の自機位置)。
   private readonly markers: PlayerMarkers;
   // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
   readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55);
@@ -46,9 +45,6 @@ export class Player extends Ship {
   private readonly _sfx: Sfx;
   private readonly _fx: EffectsSystem;
 
-  // 姿勢角微調整モード。切り替えるのは [V] キー(toggleFineAttitude)だけで、射撃では
-  // 変化しない。射撃中も微調整が効くのは、updateTorque がこのフラグと fire.isFiring を
-  // その場で合成するため。
   fineAttitude = false;
 
   // 高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の円軌道に機首プログレードで初期配置する
@@ -115,11 +111,6 @@ export class Player extends Ship {
   }
 
   // 毎フレームの HP 自然回復と、ユーザー入力に対する移動/発射の試行を一括で行う。
-  // 実際の移動加速度の組み立ては PlayerThrottle、発砲・排莢の発注は PlayerFire が持つ。
-  // canPlayerThrust/canPlayerFire(ワープ倍率による可否)は SimSpeedManager が既に
-  // 判定した結果を受け取る — ここで simSpeed 値そのものを見ない。
-  // 計画編集モード中は移動/発射・手動姿勢制御の入力そのものを行わない(WASDQE などが
-  // Δv 編集に振り替わるため)。装填だけは実時間で進行する。
   behave(params: {
     dt: number;
     input: Input;
@@ -144,8 +135,6 @@ export class Player extends Ship {
 
     this.hpRegen(dt);
 
-    // 計画編集モード中: 移動/発射の入力は無効。装填(リロード)だけは戦闘可否に関わらず
-    // 実時間で進行し続けるため、PlayerFire にそれだけを進めさせる。
     if (editMode) {
       this.fire.tickMapMode(dt);
       this.thrust = null;
@@ -155,11 +144,7 @@ export class Player extends Ship {
     this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet);
 
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att);
-    // 推力が入った瞬間に予測を破棄する。噴射は継続的で Δv も大きく、しかもプレイヤー
-    // 自身の操作なので、結果が即座に反映されないと UX が悪い(距離判定 = resyncPrediction を
-    // 待つと数フレーム〜数秒の遅れになる)。thrust の setter にしないのは意図的 — 将来 Enemy が
-    // 推力を持ったとき、自機と違って即座にはリセットしない(他機の予測にその要求はない)という
-    // 余地を残すため、いまは自機の操作経路にだけ置く。
+    // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
     if (this.thrust !== null) this.invalidatePrediction();
   }
 
@@ -168,8 +153,6 @@ export class Player extends Ship {
     this._hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
   }
 
-  // 押下エッジキーのうち自機担当分を処理する(処理したキーは input が消費し、
-  // 後から受ける側には届かない)。
   private handleEdgeInput(input: Input): void {
     input.takeKeys((code) => this.handleEdgePress(code));
   }
@@ -259,11 +242,6 @@ export class Player extends Ship {
     this.att = this.throttle.clampAngularVelocity(this.att, fine);
   }
 
-  // 自機も他エンティティと同じく絶対 ECI 位置(state.r)を fo 経由で描画フレームへ変換する。
-  // ズーム中は本体を隠す。機体付随のエフェクト(プルーム/RCSパフ)には fo と自機
-  // 状態を渡し、慣性座標で位置を組んでから末端で fo 変換させる。自機由来の HUD マーカーも
-  // ここから同期するので、呼び出し側が別途 syncMarker 相当を呼ぶ必要は無い。
-  // 型シグネチャが異なるため、オーバーライドではなく別メソッドとして定義する。基底クラスのsyncは使わない
   syncPlayer(
     fo: FloatingOrigin,
     camera: CameraSystem,
@@ -271,10 +249,6 @@ export class Player extends Ship {
     paused: boolean,
     displayTime: number,
   ): void {
-    // 機体メッシュと ▷ self マーカーだけが displayState(未来ゴースト表示中は将来位置)基準。
-    // 推力プルーム・RCS パフ・ベルト・軌道線は実機体の物理そのものの表示なので、現在状態
-    // (this.state)のまま — マップ表示では機体は実質不可視 5m なので、実際に効くのは
-    // ▷ マーカーだけになる(better_predict.md Step 4)。
     const displayState = this.displayState(displayTime);
     this.obj.visible = displayState !== null && this.alive && !camera.zoomActive;
     if (displayState !== null) {
@@ -287,9 +261,6 @@ export class Player extends Ship {
     this.belt.sync(this.alive);
     this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection);
 
-    // 自機軌道線は「高精度で描きたい点」付近の頂点を密にする(focusPos)。本来これは
-    // フローティングオリジン(≒カメラ近傍、単精度でも破綻させたくない領域)であるべきだが、
-    // fo が微動するたびに軌道線を再生成すると破綻するため、妥協として自機位置を密点に渡す。
     this.orbitLine.sync(this.alive ? this.elements : null, fo, this.thrustVizDir !== null, this.state.r);
   }
 }

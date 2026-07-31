@@ -1,21 +1,12 @@
-// 軌道計画ノードの対話的 DOM レイヤ。ノードハンドル(ドラッグ円)・選択中ノードの
-// Δv アーム 6 個・ノードのコンテキストメニュー(ワープ/削除)を担当する。
-//
-// アーキテクチャ方針: キャンバス上でのヒットテストではなく、専用の
-// pointer-events:auto な DOM 要素を画面座標に絶対配置する。呼び出し側(plan-editor)は
-// 毎フレーム画面座標を渡すだけで、このクラスは DOM 生成・pointer イベント処理・
-// コールバック発火だけを担当する。
-// DOM 要素側の pointerdown で stopPropagation して Input のキャンバスドラッグ
-// (視点回転)へイベントが漏れないようにする。
+// 軌道計画ノードの対話的 DOM レイヤ。ノードハンドル・Δv アーム・コンテキストメニューを
+// 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
 import * as C from '../const';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, TEXT as INK } from '../theme';
 import { ContextMenu } from '../hud/context-menu';
 
-// SURFACE/EDGE はこのファイル固有の不透明度を使うため、theme.ts とは別定数のまま保持する。
 const SURFACE = 'rgba(13, 15, 18, 0.85)';
 const EDGE = 'rgba(255, 255, 255, 0.16)';
 
-// z-index は #hud(10)より下、キャンバス(0)より上の 9(context-menu.ts と同方針)。
 const STYLE = `
 #node-gizmo {
   position: fixed; inset: 0; pointer-events: none; z-index: 9;
@@ -52,10 +43,6 @@ export interface NodeHandleSpec {
   dvMag: number;
 }
 
-// axis: 0=プログレード軸(dv.x) 1=法線軸(dv.y) 2=動径軸(dv.z)。
-// sign: このハンドル自身の向きが正規の軸の正方向と同じなら+1、逆なら-1
-// (例: PRO=+1 / RET=-1、いずれも dv の同じ成分を操作する)。
-// dirx/diry: ノードからこのハンドルへ向かう単位方向(スクリーン座標)。
 export interface AxisHandleSpec {
   axis: 0 | 1 | 2;
   sign: 1 | -1;
@@ -82,13 +69,10 @@ export class NodeGizmo {
   private readonly axisEls: HTMLDivElement[] = [];
   private menuNodeIdx: number | null = null;
 
-  // ノードハンドル: クリック=選択、ドラッグ=時刻移動、右クリック/右ボタン押下=コンテキストメニュー要求。
   onNodeSelect: ((idx: number) => void) | null = null;
   onNodeDragMove: ((idx: number, clientX: number, clientY: number) => void) | null = null;
   onNodeContextMenu: ((clientX: number, clientY: number) => void) | null = null;
-  // Δv アーム: ドラッグの度に、ハンドル自身の向きへの射影量(符号付き px)を渡す。
   onAxisDrag: ((axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number) => void) | null = null;
-  // コンテキストメニュー項目(キャンセルはメニューを閉じるだけなのでコールバック不要)。
   onMenuWarpTo: ((idx: number) => void) | null = null;
   onMenuDelete: ((idx: number) => void) | null = null;
 
@@ -131,8 +115,6 @@ export class NodeGizmo {
     this.menuNodeIdx = null;
   }
 
-  // 毎フレーム呼ぶ: ノードハンドル群(前フレームに存在したが今回無いものは破棄)と、
-  // 選択中ノードがあれば Δv アーム 6 個(無ければ全破棄)を反映する。
   sync(nodes: NodeHandleSpec[], axes: AxisHandleSpec[] | null): void {
     const seen = new Set<number>();
     for (const n of nodes) {

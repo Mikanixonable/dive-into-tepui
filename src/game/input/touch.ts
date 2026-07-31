@@ -12,9 +12,7 @@ const SURFACE = 'rgba(13, 15, 18, 0.66)';
 const EDGE = 'rgba(255, 255, 255, 0.14)';
 
 const STYLE = `
-/* z-index は #hud(10)より下の 9。仮想パッドはゲーム内世界を操作する UI なので、
-   システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より上に出してはいけない
-   — 重なり順の全体方針は hud/dom.ts の STYLE を参照。 */
+/* z-index 9: システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より下に置く */
 #touch-ui {
   position: fixed; inset: 0; pointer-events: none; z-index: 9;
   font-family: 'Consolas', 'Courier New', monospace; user-select: none;
@@ -83,18 +81,14 @@ interface Btn {
 }
 
 export class TouchControls {
-  // ON/OFF 状態を反映させるトグル系ボタン(制動・微動・ホールド等)。
-  // タップの押下フィードバック(.held)とは独立に、実際のモード状態で光らせる。
+  // トグル系ボタン: タップの押下フィードバック(.held)とは独立に実際のモード状態で光らせる。
   private readonly toggleButtons = new Map<KeyBinding, HTMLElement>();
 
   static isTouchDevice(): boolean {
     return navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
   }
 
-  // 毎フレーム(sync 時)呼ぶ。トグル系ボタンの点灯を実際のモード状態へ合わせる。
-  // どのキーがどのモードのボタンかを知っているのはボタンを組み立てたこのクラスなので、
-  // 呼び出し側は現在値だけを渡す。進行方向ホールドは手動回転でも解除されるため、
-  // トグル操作の瞬間ではなく毎フレーム反映する。
+  // トグル系ボタンの点灯を実際のモード状態へ合わせる。毎フレーム呼ぶ。
   syncModeButtons(rcsDamp: boolean, fineAttitude: boolean, progradeHold: boolean): void {
     this.setActive(K.rcsDampToggle, rcsDamp);
     this.setActive(K.fineAttitudeToggle, fineAttitude);
@@ -105,9 +99,7 @@ export class TouchControls {
     this.toggleButtons.get(key)?.classList.toggle('on', on);
   }
 
-  // マップモード(軌道計画)中は並進・回転・射撃・ズームのパッドを隠す
-  // (node-gizmo.ts の DOM ハンドルと画面下部で重なるため)。M/N/H 等の
-  // トグル系ボタンが並ぶ util 行はそのまま表示を続ける。
+  // マップモード中は並進・回転・射撃・ズームのパッドを隠す。
   setMapMode(active: boolean): void {
     for (const id of ['touch-pad-rot', 'touch-pad-move', 'touch-fire', 'touch-zoom']) {
       const e = document.getElementById(id);
@@ -117,17 +109,11 @@ export class TouchControls {
 
   constructor(private readonly input: Input) {
     const root = this.buildRoot();
-    // 並進 (RCS)
     this.buildTranslationPad(root);
-    // 回転
     this.buildRotationPad(root);
-    // 姿勢まわりのモード切替(制動・微動)
     this.buildModeColumn(root);
-    // 射撃
     this.makeButton(root, { key: K.fire, glyph: 'FIRE', label: '' }, 'touch-fire');
-    // ズームトグル
     this.buildZoomToggle(root);
-    // トグル・ワープ等の util 行
     this.buildUtilRow(root);
   }
 
@@ -174,7 +160,6 @@ export class TouchControls {
     for (const b of btns) this.makeButton(pad, b);
   }
 
-  // 並進 (RCS): 上段 = 上/前/下, 下段 = 左/後/右
   private buildTranslationPad(root: HTMLElement): void {
     this.makePad(root, 'touch-pad-move', [
       { key: K.thrustUp, glyph: '▲', label: '上' },
@@ -186,7 +171,6 @@ export class TouchControls {
     ]);
   }
 
-  // 回転: 上段 = ロール左/ピッチ下げ/ロール右, 下段 = ヨー左/ピッチ上げ/ヨー右
   private buildRotationPad(root: HTMLElement): void {
     this.makePad(root, 'touch-pad-rot', [
       { key: K.rollLeft, glyph: '⟲', label: 'ロール' },
@@ -198,8 +182,6 @@ export class TouchControls {
     ]);
   }
 
-  // 姿勢制御パッドのすぐ近くに、姿勢まわりのモード切替(制動・微動)をまとめる。
-  // ON の間は色が変わる(タップの瞬間だけ光る .held とは別に .on を常時反映)。
   private buildModeColumn(root: HTMLElement): void {
     const modeCol = document.createElement('div');
     modeCol.id = 'touch-mode-col';
@@ -239,7 +221,6 @@ export class TouchControls {
     ]) {
       this.makeButton(util, b);
     }
-    // 進行方向ホールドも ON/OFF 表示を反映するトグルボタンとして登録する
     this.makeButton(util, { key: K.progradeHoldToggle, glyph: K.progradeHoldToggle.label, label: 'ホールド' }, '', true);
   }
 }
