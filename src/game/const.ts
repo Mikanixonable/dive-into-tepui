@@ -227,7 +227,9 @@ export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
 export const STAGE0_PER_GROUP = 10; // グループあたりの機数
 export const STAGE0_ENEMY_HP = 1; // 一撃撃破の軽量機
 export const STAGE0_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]
-export const STAGE0_TIME_LIMIT = 30000; // 制限時間 [実秒]
+// 制限時間 [実秒]。選択画面の説明(stage0.ts の selectSub)とブリーフィングはこの値から
+// 生成されるので、変更すればどちらも自動的に追随する。
+export const STAGE0_TIME_LIMIT = 120;
 export const STAGE0_LOGISTICS_INITIAL_AMMO = 4; // 開始時に浮かべておく補給の数
 export const STAGE0_LOGISTICS_MIN_DIST = 300; // 補給の配置距離 [m](自機から)
 export const STAGE0_LOGISTICS_MAX_DIST = 900;
@@ -274,7 +276,7 @@ export const PLAYER_MAX_HP = 1000;
 export const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 export const PLAYER_HIT_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
 export const ENEMY_HIT_DAMAGE = 1; // 敵機が被弾した際のダメージ [HP]
-export const PLASMA_BULLET_SPEED = 800 * 2 / 3; // MUZZLE_SPEED の約 2/3
+export const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
 export const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
 export const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]

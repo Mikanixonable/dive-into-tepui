@@ -95,6 +95,10 @@ export class SimSpeedManager {
       this.autoWarpUntil = null;
       this._hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
       this.levelIdx = 0;
+      // ここで return せずループへ落ちると、解除した直後の tRem からもう一度
+      // 段を再計算してしまい、×1 に戻したばかりの levelIdx を同じフレームで
+      // 上書きしてしまう。
+      return;
     }
     let idx = 0;
     for (let i = 0; i < C.SIM_SPEED_LEVELS.length; i++) {

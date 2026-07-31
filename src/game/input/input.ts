@@ -121,6 +121,11 @@ export class Input {
     } else if (e.button === 2) {
       this.mouseFiring = true;
       this.pendingRightClicks.push({ x: e.clientX, y: e.clientY });
+      // 捕捉しないと、押したままポインタが pointer-events: auto な HUD 要素
+      // (⚙ ギアボタン等)の上へ移動して離されたとき pointerup がキャンバスへ
+      // 届かず、mouseFiring が true のまま残って撃ちっぱなしになる。捕捉は
+      // pointerup で自動解除されるので明示的な解除は不要。
+      target.setPointerCapture(e.pointerId);
     } else if (e.button === 1) {
       // Map mode consumes this as a camera translation gesture. Keep it
       // separate from the left-drag orbit rotation delta.
