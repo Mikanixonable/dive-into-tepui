@@ -36,6 +36,13 @@ export class ChaseCamera {
 
   constructor(private readonly _hud: Hud, _sfx: Sfx) {}
 
+  // 視点を初期状態にリセットする
+  reset(): void {
+    this.yaw = 0;
+    this.pitch = 0.3 - (10 * Math.PI) / 180;
+    this.dist = 38;
+  }
+
   // 視点の基準フレーム(機体姿勢基準 ⇔ 軌道基準)を切り替える。
   toggleFollowAttitude(): void {
     this.camFollowAttitude = !this.camFollowAttitude;

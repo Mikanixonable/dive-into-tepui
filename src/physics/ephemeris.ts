@@ -38,7 +38,31 @@ function eclToGame(xe: number, ye: number, ze: number): Vec3 {
 export function sunPosition(t: number, phase0: number): Vec3 {
   const lam = phase0 + (2 * Math.PI * t) / YEAR;
   const p = eclToGame(Math.cos(lam), Math.sin(lam), 0);
-  return v3(p.x * SUN_DIST, p.y * SUN_DIST, p.z * SUN_DIST);
+  return { x: p.x * SUN_DIST, y: p.y * SUN_DIST, z: p.z * SUN_DIST };
+}
+
+// 太陽の光度や反射を利用した射撃の散布界スケールを計算する
+export function getSunDispersionScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
+  // 地球の影に入っているか判定 (簡易円柱モデル)
+  const along = pos.x * sunDir.x + pos.y * sunDir.y + pos.z * sunDir.z;
+  if (along < 0) {
+    const px = pos.x - sunDir.x * along;
+    const py = pos.y - sunDir.y * along;
+    const pz = pos.z - sunDir.z * along;
+    const perpSq = px * px + py * py + pz * pz;
+    if (perpSq < 6378137 * 6378137) {
+      return 1.0; // 影の中では影響なし
+    }
+  }
+
+  const dotSun = aimDir.x * sunDir.x + aimDir.y * sunDir.y + aimDir.z * sunDir.z;
+  const angle = Math.acos(Math.max(-1, Math.min(1, dotSun))) * 180 / Math.PI;
+
+  if (angle <= 5) return 2.0;
+  if (angle <= 30) return 1.0 + (30 - angle) / 25;
+  if (angle >= 160) return 0.5;
+  if (angle >= 130) return 1.0 - (angle - 130) / 30 * 0.5;
+  return 1.0;
 }
 
 // 太陽方向の ECI 上での「方位角」(Y軸=極を軸としたXZ平面への射影の偏角)。

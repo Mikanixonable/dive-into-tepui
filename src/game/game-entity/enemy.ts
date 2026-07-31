@@ -10,6 +10,7 @@ import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
+import { getSunDispersionScale, sunPosition } from '../../physics/ephemeris';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
@@ -97,14 +98,14 @@ export class Enemy extends Ship {
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
-  private hitEffect(bullet: Bullet): void {
+  private hitEffect(bullet: Bullet, hitR: Vec3): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(bullet.state.r, this.state.v);
+      this._fx.spawnPlasmaFlash(hitR, this.state.v);
     } else {
-      this._fx.spawnBulletFlash(bullet.state.r, this.state.v);
+      this._fx.spawnBulletFlash(hitR, this.state.v);
     }
-    this._fx.scatterFragments(this.state.t, bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
+    this._fx.spawnGasPuff(hitR, this.state.v);
   }
 
   // 撃破時の爆発音・エフェクトを発生させる。
@@ -115,7 +116,7 @@ export class Enemy extends Ship {
   }
 
   // 被弾によるダメージ・致死判定。
-  attacked(bullet: Bullet, simTime: number, activeStage: Stage): void {
+  attacked(bullet: Bullet, simTime: number, activeStage: Stage, hitR: Vec3): void {
     if (!this.alive) return;
     if (bullet.shooter === 'enemy') return; // 敵弾の被弾は無効化
 
@@ -123,7 +124,7 @@ export class Enemy extends Ship {
 
     this.hp -= C.ENEMY_HIT_DAMAGE;
     if (this.hp > 0) {
-      this.hitEffect(bullet);
+      this.hitEffect(bullet, hitR);
       return;
     }
 
@@ -205,14 +206,20 @@ export class Enemy extends Ship {
     const predictedRelPos = add(toPlayer, scale(relV, timeToHit));
     const aimDir = norm(predictedRelPos);
 
-    // 散布界を非常に小さくして、正確に狙う
+    const sunDir = norm(sunPosition(simTime, 0));
+    const scaleFactor = getSunDispersionScale(r, aimDir, sunDir);
+
+    // 散布界をスケール適用
     const perp = randPerp(aimDir);
-    const spreadAng = (Math.random() * C.PLASMA_SPREAD_DEG * Math.PI) / 180;
+    const spreadAng = (Math.random() * C.PLASMA_SPREAD_DEG * scaleFactor * Math.PI) / 180;
+// 濃い赤色
+const ENEMY_BULLET_COLOR = 0x8b0000;
+
     const actualAim = rotateAxis(aimDir, perp, spreadAng);
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, this.accent);
+    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, ENEMY_BULLET_COLOR);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
