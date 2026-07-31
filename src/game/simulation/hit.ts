@@ -48,9 +48,9 @@ export class HitSystem {
         if (distSq <= target.radius * target.radius) {
           p.alive = false;
           const hitR = {
-            x: p.prevState.r.x + res.t * (p.state.r.x - p.prevState.r.x),
-            y: p.prevState.r.y + res.t * (p.state.r.y - p.prevState.r.y),
-            z: p.prevState.r.z + res.t * (p.state.r.z - p.prevState.r.z),
+            x: target.state.r.x + res.cx,
+            y: target.state.r.y + res.cy,
+            z: target.state.r.z + res.cz,
           };
           target.attacked(p, simTime, activeStage, hitR);
           hitSomething = true;
@@ -67,20 +67,20 @@ export class HitSystem {
         if (res.distSq <= target.collideRadius! * target.collideRadius!) {
           p.alive = false;
           const hitR = {
-            x: p.prevState.r.x + res.t * (p.state.r.x - p.prevState.r.x),
-            y: p.prevState.r.y + res.t * (p.state.r.y - p.prevState.r.y),
-            z: p.prevState.r.z + res.t * (p.state.r.z - p.prevState.r.z),
+            x: target.state.r.x + res.cx,
+            y: target.state.r.y + res.cy,
+            z: target.state.r.z + res.cz,
           };
           // ガスのようなエフェクトを発生
-          this.fx.spawnGasPuff(hitR, p.state.v);
+          this.fx.spawnGasPuff(hitR, target.state.v);
           break; // この弾は消滅した
         }
       }
     }
   }
 
-  // 前フレームから今フレームまでの弾と目標の相対移動を線分近似し、目標の最近接点までの距離の2乗と、線分上の割合 t を返す。
-  private segmentDistSq(b: Bullet, prevTargetR: Vec3, targetR: Vec3): { distSq: number; t: number } {
+  // 前フレームから今フレームまでの弾と目標の相対移動を線分近似し、目標の最近接点までの距離の2乗と、線分上の割合 t、相対位置 cx, cy, cz を返す。
+  private segmentDistSq(b: Bullet, prevTargetR: Vec3, targetR: Vec3): { distSq: number; t: number; cx: number; cy: number; cz: number } {
     // 前フレーム時点の、目標基準の弾の相対位置
     const bpr = b.prevState.r;
     const ax = bpr.x - prevTargetR.x;
@@ -107,6 +107,6 @@ export class HitSystem {
     const cy = ay + dy * t;
     const cz = az + dz * t;
 
-    return { distSq: cx * cx + cy * cy + cz * cz, t };
+    return { distSq: cx * cx + cy * cy + cz * cz, t, cx, cy, cz };
   }
 }
