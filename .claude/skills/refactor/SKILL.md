@@ -11,7 +11,7 @@ description: リファクタリングの判断基準と手順(モジュール化
    そこに答えがある論点は蒸し返さず、それに従う。
 2. `DEVELOP/OWNERSHIP.md`(状態の正本・保持木)と `DEVELOP/CALLSTACK.md`(per-frame 呼び出し順)。
    全体像はコードではなくこの2つから掴む(手順は `.claude/skills/overview/SKILL.md` = `/overview`)。
-3. `refactoring_plan/` — `refactoring_todo.md`(やることリスト)と、論点ごとの現況
+3. `memos/refactoring_plan/` — `refactoring_todo.md`(やることリスト)と、論点ごとの現況
    (`STOP_USING_CTX.md` などの `*.md`)。CLAUDE.md より新しい。
 
 ## 基本原則
@@ -73,7 +73,7 @@ per-frame 関数の `render` / `update` / `build` / `sync` の使い分けは CL
 **改名は痕跡を残さず完全に置き換える。** 歴史的経緯はコードとコメントの責務ではない
 (必要なら git history が持っている)。
 
-- 旧名が 0 件になるまで消す: `grep -rn "<旧名>" src DEVELOP CLAUDE.md .claude refactoring_plan`
+- 旧名が 0 件になるまで消す: `grep -rn "<旧名>" src DEVELOP CLAUDE.md .claude memos`
 - **「旧」「former」「previously」「〜だった」「(旧 xxx)」と書くのは禁止。** コメント・文書には
   新しい姿だけを記述する。何を何に変えたかは、コードではなく変更セットの報告文に書く。
 - 互換のための旧名エイリアス・ラッパー・再エクスポートを残さない。呼び出し側を全部直す。
@@ -182,7 +182,7 @@ per-frame 関数の `render` / `update` / `build` / `sync` の使い分けは CL
 判断の結果は `/refactor-fixed` の「一般化しないと決めたもの」へ書く(そこに既に載っている論点は
 再検討しない)。
 
-## `refactoring_plan/refactoring_todo.md` の扱い
+## `memos/refactoring_plan/refactoring_todo.md` の扱い
 
 **これは todo リストであり、経緯を追う場所ではない。**
 
