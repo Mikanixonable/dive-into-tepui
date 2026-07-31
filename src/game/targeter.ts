@@ -96,7 +96,9 @@ export class Targeter {
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
   private syncBoardMarkers(dt: number, project: ProjectFn): void {
-    const target = this.autoTarget;
+    // 記録側の markBoardCrossings と同じ aliveTarget を見る: autoTarget のままだと
+    // 撃破後も死亡個体の凍結位置を基準に ✦ を描き続けてしまう。
+    const target = this.aliveTarget;
     if (!target) this.boardMarks.length = 0;
     this.boardMarks = this.boardMarks.filter((m) => {
       m.age += dt;

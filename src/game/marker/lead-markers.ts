@@ -56,10 +56,14 @@ export class LeadMarkers {
     return tracked;
   }
 
+  // key は敵ごとに一意で増え続けるため hide ではなく remove で DOM ごと片付ける。
+  // マップモード突入・自機喪失のたびに sync が retire([]) を呼んで全消去するが、
+  // マーカーの生成自体はマップの開閉ごとに一度きりで毎フレームではないため、
+  // 戦闘ビューへ戻った際の再生成コストは無視できる。
   private retire(keys: readonly string[]): void {
     const kept = new Set(keys);
     for (const key of this.shownKeys) {
-      if (!kept.has(key)) this.markerManager.hide(key);
+      if (!kept.has(key)) this.markerManager.remove(key);
     }
     this.shownKeys = keys;
   }
