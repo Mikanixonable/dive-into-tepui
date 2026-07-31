@@ -140,9 +140,21 @@ export class MarkerManager {
     );
   }
 
+  // hide と remove の使い分け:
+  // hide   = キーが有限で使い回すマーカー(方向マーカー・補給スロットなど)。
+  //          要素を消さずプールに残し、次に出すときの再生成コストを省く。
+  // remove = 対象ごとにキーが増え続けるマーカー(敵・LEAD など)。対象が消えたら
+  //          要素ごと捨てないと DOM とラベル衝突判定の走査対象が単調増加する。
   hide(key: string): void {
     const m = this.markerDictionary.get(key);
     if (m) m.root.style.display = 'none';
+  }
+
+  remove(key: string): void {
+    const m = this.markerDictionary.get(key);
+    if (!m) return;
+    m.root.remove();
+    this.markerDictionary.delete(key);
   }
 
   resolveCollisions(): void {

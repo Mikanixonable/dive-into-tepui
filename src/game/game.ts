@@ -194,6 +194,10 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.handleInput();
 
+    // ポーズ中の処理。handleInput は上で呼んだあとなので、決着後・ポーズ中でも
+    // Esc やヘルプなど「常時効くべき」操作(handleInput の守備範囲)はここより前に効く。
+    if (this._isPaused) { return; }
+
     // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
     // 積分もサブステップなしの簡略版(stepSimulation の bulletCollision/resolveCollision/doSubstep 引数)にする。
     // behave が呼ばれなくなる分、勝敗確定時点の thrust が凍結され続けないよう明示的に消す。
@@ -202,14 +206,16 @@ export class Game {
       this.player.torque = v3();
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
       this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, false, false, false);
+      // この経路も積分後に全エンティティを一度だけ検査する(通常経路と同じ理由)。
+      this.nanWatchdog.checkAll('stepSimulation(決着後)', this.player, this.simulator, dt, simDt);
+      // 決着後もタイムワープで時間は進むので、alive=false のまま残り続けないよう cleanup も
+      // 通常経路と同じ位置(積分の直後・カメラ更新の前)で呼ぶ。
+      this.simulator.cleanup(dt, this.activeStage, this.player.state.r);
       // 決着後もカメラは追従させる。sync は止まらないので、ここで update を飛ばすと視点だけが
       // 絶対 ECI に取り残され、原点(自機)が軌道速度で遠ざかって残骸が即座にフレームアウトする。
       this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt);
       return;
     }
-
-    // ポーズ中の処理
-    if (this._isPaused) { return; }
 
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
 
