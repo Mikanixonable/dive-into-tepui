@@ -98,7 +98,7 @@ export abstract class Stage {
       this.statusPanel.hide();
       return;
     }
-    this.statusPanel.sync(player.hp, player.maxHp, message, this.scoreCounter.kills);
+    this.statusPanel.sync(player.hp, player.maxHp, message, this.scoreCounter.kills, player.throttleIdx);
   }
 
   // 敵を entities へ登録し、出撃数をスコアへ記録する。
