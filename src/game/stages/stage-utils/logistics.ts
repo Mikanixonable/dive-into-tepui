@@ -1,7 +1,7 @@
 // 補給(ammo)の兵站: 投入の判断・生成、自機の接近による取り込み、遠距離デスポーンの
 // 判断と、回収先を示す ▣ AMMO マーカーの表示。配列の所有と軌道積分・姿勢・実削除は
-// Simulator 側(ammos は Simulator 所有の配列への読み取り参照で、追加は addAmmo 経由、
-// 破壊は alive = false を立てるだけで simulator.cleanup が回収する)。
+// EntityManager 側(ammos は EntityManager 所有の配列への読み取り参照で、追加は
+// entities.addAmmo 経由、破壊は alive = false を立てるだけで entities.cleanup が回収する)。
 import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../physics/attitude';
 import { add, cross, len, lenSq, norm, randSym, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
@@ -14,6 +14,7 @@ import { Player } from '../../player/player';
 import { ProjectFn } from '../../camera/camera-system';
 import { MarkerManager } from '../../marker/marker-manager';
 import { fmtMarkerDist } from '../../hud/utils';
+import type { EntityManager } from '../../orbit-entity/entity-manager';
 
 export class Logistics {
   private resupplyCheckAt = 0;
@@ -22,8 +23,7 @@ export class Logistics {
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
     private readonly _scene: THREE.Scene,
-    private readonly ammos: readonly Ammo[],
-    private readonly addAmmo: (ammo: Ammo) => void,
+    private readonly entities: EntityManager,
     private readonly markerManager: MarkerManager,
   ) {}
 
@@ -49,7 +49,7 @@ export class Logistics {
       },
       this._scene,
     );
-    this.addAmmo(ammo);
+    this.entities.addAmmo(ammo);
     this._sfx.warp();
     this._hud.hint('付近の軌道に補給が投入された — ▣ AMMO マーカーへ接近して回収', 5000);
   }
@@ -62,7 +62,7 @@ export class Logistics {
 
     if (simTime < this.resupplyCheckAt) return;
     this.resupplyCheckAt = simTime + C.LOGISTICS_CHECK_INTERVAL;
-    if (player.magsLeft < C.LOGISTICS_LOW_MAGS && this.ammos.length < C.MAX_AMMO) {
+    if (player.magsLeft < C.LOGISTICS_LOW_MAGS && this.entities.ammos.length < C.MAX_AMMO) {
       this.spawnForPlayer(player);
     }
   }
@@ -72,7 +72,7 @@ export class Logistics {
   syncMarkers(player: Player, project: ProjectFn): void {
     for (let i = 0; i < C.MAX_AMMO; i++) {
       const key = `mg${i}`;
-      const ammo = this.ammos[i];
+      const ammo = this.entities.ammos[i];
       if (!ammo || !ammo.alive) {
         this.markerManager.hide(key);
         continue;
@@ -83,7 +83,7 @@ export class Logistics {
   }
 
   private absorbNearbyAmmo(player: Player): void {
-    for (const ammo of this.ammos) {
+    for (const ammo of this.entities.ammos) {
       if (!ammo.alive) continue;
       if (lenSq(sub(ammo.state.r, player.state.r)) >= C.AMMO_PICKUP_RADIUS * C.AMMO_PICKUP_RADIUS) continue;
       ammo.alive = false;
@@ -97,7 +97,7 @@ export class Logistics {
   // (ループ中に respawn 分を割り込ませない — ループ終了後にまとめて処理する)。
   private despawnFarAmmo(player: Player, respawnOnDespawn: boolean): void {
     let respawn = 0;
-    for (const ammo of this.ammos) {
+    for (const ammo of this.entities.ammos) {
       if (!ammo.alive) continue;
       if (len(sub(ammo.state.r, player.state.r)) <= C.LOGISTICS_DESPAWN_DIST) continue;
       ammo.alive = false;
