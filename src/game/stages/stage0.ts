@@ -7,7 +7,7 @@ import { showScoreAttackResultScreen } from '../hud/result-screen';
 import { generateCluster } from './spawner/enemy-spawner';
 import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { Player } from '../player/player';
-import type { EntityManager } from '../orbit-entity/entity-manager';
+import type { EntityManager } from '../game-entity/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage0 extends Stage {

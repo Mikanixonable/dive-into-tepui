@@ -1,17 +1,17 @@
 // 剛体球どうしの接触解決(自機・敵機・薬莢・補給・デブリ・マガジンベルト)。
-// collideRadius を持つ OrbitEntity だけが参加し、めり込み補正と反発の結果を
+// collideRadius を持つ GameEntity だけが参加し、めり込み補正と反発の結果を
 // 新しい OrbitState として双方に差し替える。
 import { orbitState } from '../../physics/orbital';
 import { v3 } from '../../physics/vec3';
-import { BeltSection, DebrisPiece, OrbitEntity } from './entities';
+import { BeltSection, DebrisPiece, GameEntity } from './game-entity';
 import { Player } from '../player/player';
 
-const isCasing = (e: OrbitEntity): boolean => e instanceof DebrisPiece && e.kind === 'casing';
+const isCasing = (e: GameEntity): boolean => e instanceof DebrisPiece && e.kind === 'casing';
 
 export class CollisionPhysics {
   // entities は player 以外の衝突参加エンティティ(EntityManager.all() が一本化して渡す —
   // casings/debris の配列分割は EntityManager 内部の上限管理の都合であり、ここでは扱わない)。
-  resolve(dt: number, player: Player, entities: OrbitEntity[], onPlayerCasingImpact: () => void): void {
+  resolve(dt: number, player: Player, entities: GameEntity[], onPlayerCasingImpact: () => void): void {
     const p = player;
     const beltActive = p.alive && dt > 1e-6;
     const participants = entities.filter(e => e.alive && e.collideRadius !== undefined);
@@ -27,7 +27,7 @@ export class CollisionPhysics {
   }
 
   private resolveCollisionPairs(
-    entities: OrbitEntity[],
+    entities: GameEntity[],
     player: Player,
     onPlayerCasingImpact: () => void,
   ): void {
@@ -63,7 +63,7 @@ export class CollisionPhysics {
 
   // 接触していれば a/b の state を補正後の値へ差し替え、実際に反発したかを返す。
   // (めり込み補正だけ行い離反中で反発しなかった場合は false — 薬莢衝突音の発火条件)
-  private resolveCollisionPair(a: OrbitEntity, b: OrbitEntity, restitution = 0.4): boolean {
+  private resolveCollisionPair(a: GameEntity, b: GameEntity, restitution = 0.4): boolean {
     const rA = a.state.r, vA = a.state.v;
     const rB = b.state.r, vB = b.state.v;
     const dx = rB.x - rA.x;
