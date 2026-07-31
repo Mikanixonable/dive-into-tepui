@@ -10,7 +10,7 @@ import {
   generatePhasedEnemy,
 } from './spawner/enemy-generator';
 import type { Player } from '../player/player';
-import type { EntityManager } from '../game-entity/entity-manager';
+import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage2 extends Stage {

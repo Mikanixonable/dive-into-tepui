@@ -82,14 +82,6 @@ renderにphysicsのvec3を持ってきてほしくない（floatingOrigin補正�
 逆に、これらの条件を守る限りにおいて、gameフォルダを極力スリム化したい。純粋状態だけであればphysicsに、描画問題はrenderに移したい。
 
 
-## フォルダ整理
-フォルダ整理をします。simulator、predictor、hit、collisionをgame/simurationフォルダに移動。
-game-entity.tsに、基底クラスと継承クラスがすべて書き込まれている。bulletやenemyがそうであるように、ファイルを分割する
-belt-sectionは利用範囲が狭いため、belt-physicsに記述を移動。それ以外はgame/game-entity/フォルダ内に各ファイルを作成。
-import文や、ドキュメント内の言及もすべて更新してください。単純な移動やファイル名の変更は、Gitが追跡できるようにリネームしてください。
-
-
-
 ## コメント方針の是正
 全体的にコメントの質が冗長な方向に劣化しています。
 

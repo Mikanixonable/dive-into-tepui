@@ -11,7 +11,7 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { Ship } from '../game-entity/game-entity';
+import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
