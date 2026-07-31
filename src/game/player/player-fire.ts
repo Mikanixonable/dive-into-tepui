@@ -82,7 +82,13 @@ export class PlayerFire {
     this.tickReloadTimer(dt);
 
     const keyHeld = input.down(K.fire) || input.mouseFiring;
-    if (!keyHeld) return;
+    if (!keyHeld) {
+      // トリガーを離した時点で連射状態を畳む: wasFiring を立てたままにすると
+      // fineAttitude(微調整出力)が恒久的に有効なままになり、次にトリガーを
+      // 引いたときもスピンアップ演出(justStartedFiring)が起きなくなる。
+      this.wasFiring = false;
+      return;
+    }
 
     if (!simSpeed.canPlayerFire) {
       this._hud.hint(`射撃・推進はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能`);
