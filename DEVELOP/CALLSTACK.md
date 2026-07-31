@@ -241,17 +241,19 @@
       - moonMesh.lookAt() // 常に
     - syncLighting() // 自機位置の日照率で sunLight/ambient の強度を上書き
     - syncReferenceLines() → geoLine.sync() + moonLine.sync() // !overviewMode では両方 null 渡しで非表示
-  - player.syncPlayer()
-    - obj の position / quaternion / visible
-    - thrustEffects.sync() → core/outer の sync() or hide()
-    - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4
-    - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出
-    - markers.sync() // 自機由来の HUD マーカー。呼び出し側から見えるのは syncPlayer だけ
-      - [overviewMode] 戦闘用7キーを hide + markerManager.setPosition('self')
-      - [!overviewMode] hide('self') + syncOrbitalDirections() // pro/retro/nrm/anm/radout/radin
-      - [!overviewMode] syncBoresight() → setDirection('bore') or hide('bore') // player.alive で分岐
-    - orbitLine.sync() → regenerate() // 要素が閾値以上ドリフト or 推力中(force) or 初回のみ
-  - entities.sync() → entity.sync() // 全エンティティごと(Bullet は速度方向を向く別実装)
+  - player.syncPlayer(displayTime)
+    - displayState(displayTime) // current.at または predicted.at。null なら obj.visible=false のみで以下は現在状態のまま
+    - obj の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)
+    - thrustEffects.sync() → core/outer の sync() or hide() // 実機体の現在状態(this.state)のまま
+    - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4 // 同上
+    - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出。同上
+    - markers.sync(currentState, displayState) // 自機由来の HUD マーカー。呼び出し側から見えるのは syncPlayer だけ
+      - [overviewMode] 戦闘用7キーを hide + displayState があれば markerManager.setPosition('self') / 無ければ hide('self')
+      - [!overviewMode] hide('self') + syncOrbitalDirections(currentState) // pro/retro/nrm/anm/radout/radin。常に現在状態
+      - [!overviewMode] syncBoresight(currentState) → setDirection('bore') or hide('bore') // player.alive で分岐。常に現在状態
+    - orbitLine.sync() → regenerate() // 要素が閾値以上ドリフト or 推力中(force) or 初回のみ。現在状態基準(要素は時刻に依らない)
+  - entities.sync(displayTime) → entity.sync(displayTime) // 全エンティティごと(Bullet は速度方向を向く別実装)。
+    displayState が null(predictDuration=0 の種別が未来表示中、または予測期間超過)なら visible=false
   - effects.sync() → flashEffectManager.syncFlashEffects()
     - billboard.sync() // 有効なフラッシュごと
     - scene.remove() + billboard.dispose() // 寿命切れのフラッシュごと
@@ -262,7 +264,8 @@
     - syncBoardMarkers() // 的通過マークの寿命更新と表示(スロットごと)
     - syncTargetDirMarkers() // ◇/◆ tgtdir/atgdir。overviewMode or ターゲット無しなら hide
     - syncNodeMarkers() // 相対 AN/DN。要素が無い/軌道面がほぼ一致なら hide
-  - enemyMarkers.sync() // 生存中の敵の markerItem() 集合を受ける(まとめは1体では決まらない)
+  - [敵ごと] displayState(displayTime) → markerItem(isTarget, viewerPos, pos) // displayState が null の敵はここで除外(マーカーごと落とす)
+  - enemyMarkers.sync() // 生存かつ displayState を持つ敵の markerItem() 集合を受ける(まとめは1体では決まらない)
     - groupNearby() // 画面上で近接するものをクラスタ化し、代表以外のラベルを落とす
     - markerManager.set() + syncBearing() // 対象ごと。画面外なら画面端の方位マーカー▲へ
     - retire() // 前フレームに出したキーのうち集合から消えたものを hide
@@ -286,9 +289,9 @@
       // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は traj の今フレームの表示文脈を通す
     - [!editMode] planDisplay.hide() + hideGizmo() → nodeGizmo.sync([], null)
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
-  - activeStage.sync()
+  - activeStage.sync(displayTime)
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示
-    - logistics.syncMarkers() → markerManager.setPosition('mg<i>') or hide() // 補給スロットごと
+    - logistics.syncMarkers(displayTime) → ammo.displayState(displayTime) → markerManager.setPosition('mg<i>') or hide() // 補給スロットごと。displayState が null なら hide
   - hud.panels.update(game, dt) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル

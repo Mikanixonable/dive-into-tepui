@@ -80,14 +80,16 @@ export class Enemy extends Ship {
 
   // 画面マーカー集合(GroupedMarkers)へ渡す自分の見た目とラベル。近接する敵をまとめる
   // 判断は集合側の責務なので、ここでは「まとめられたら代表になりたい度」を priority で示す
-  // だけにする(ターゲット最優先、次いで近い順)。
-  markerItem(isTarget: boolean, viewerPos: Vec3): GroupedMarkerItem {
-    const dist = len(sub(this.state.r, viewerPos));
+  // だけにする(ターゲット最優先、次いで近い順)。pos は呼び出し側(Game.sync)が
+  // displayState から渡す — 機体メッシュと同じ表示時刻の位置を使わないと、未来ゴースト表示中に
+  // 「機体は未来位置、◇マーカーは現在位置」で明確に壊れて見える(better_predict.md Step 4)。
+  markerItem(isTarget: boolean, viewerPos: Vec3, pos: Vec3): GroupedMarkerItem {
+    const dist = len(sub(pos, viewerPos));
     return {
       key: `enemy-${this.name}`,
       cls: isTarget ? 'mk-target' : 'mk-enemy',
       sym: '◇',
-      pos: this.state.r,
+      pos,
       priority: isTarget ? Infinity : -dist,
       name: this.name,
       detail: fmtMarkerDist(dist),
