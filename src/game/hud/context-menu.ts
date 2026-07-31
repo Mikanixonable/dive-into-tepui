@@ -1,6 +1,6 @@
 // 画面座標に絶対配置する汎用コンテキストメニュー。右クリックで開き、項目クリックで
 // onSelect(act) を発火して自動で閉じる。
-import { ACCENT_RGB, ACCENT_SOFT, TEXT as INK } from '../theme';
+import { ACCENT_RGB, ACCENT_SOFT, TEXT as INK, FONT } from '../theme';
 
 const SURFACE = 'rgba(13, 15, 18, 0.85)';
 const EDGE = 'rgba(255, 255, 255, 0.16)';
@@ -10,7 +10,7 @@ const STYLE = `
   position: fixed; display: none; min-width: 168px; z-index: 9;
   pointer-events: auto; background: ${SURFACE}; border: 1px solid ${EDGE};
   border-radius: 4px; overflow: hidden; font-size: 12px;
-  font-family: 'Consolas', 'Courier New', monospace; user-select: none;
+  font-family: ${FONT}; user-select: none;
   -webkit-user-select: none;
 }
 .ctx-menu-item {
