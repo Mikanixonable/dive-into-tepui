@@ -1,6 +1,5 @@
 // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点等)ラベルの算出と
-// HUD マーカーへの反映。「どこにラベルがあるか」の担当で、カメラの視点操作
-// (OverviewCamera)とは責務を分離する。
+// HUD マーカーへの反映。
 import { Vec3, v3 } from '../../physics/vec3';
 import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
@@ -34,8 +33,7 @@ export class FocusMarkers {
 
   constructor(private readonly markerManager: MarkerManager, private readonly ephemeris: Ephemeris) {}
 
-  // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点など)ラベルの座標を
-  // 表示時刻 t(未来ゴーストスライダーを織り込んだ時刻)で更新し、マーカーに反映する。
+  // 表示時刻 t でラベル座標を更新し、マーカーに反映する。
   syncLabels(t: number, project: ProjectFn): void {
     const ephemeris = this.ephemeris;
     const emL = ephemeris.emLagrangeAt(t);

@@ -1,7 +1,4 @@
-// 広範囲視点の操作パネル(注視対象・カメラを固定する座標系・視点リセット)。CameraSystem が
-// 所有し、映すのも受けるのも overviewCamera の状態だけに閉じる。注視対象の表示名は FocusMarkers
-// のラベル名をそのまま受け取るので、名前の定義はここに重複しない。
-// CSS(#hud-overview-camera)は hud/dom.ts の STYLE に一元管理されている。
+// 広範囲視点の操作パネル(注視対象・カメラを固定する座標系・視点リセット)。
 import { Frame } from '../../physics/frame';
 import { SegmentedControl, hudButton } from '../hud/buttons';
 
@@ -19,8 +16,7 @@ export class OverviewCameraPanel {
   private readonly focus: SegmentedControl<string>;
   private readonly frame: SegmentedControl<Frame>;
 
-  // focusItems は [ラベル ID, 表示名] の並び。全ラベルへのフォーカスは右クリックメニュー
-  // (FocusGizmo)が担うので、ここには常用の数個だけを渡す。
+  // focusItems は [ラベル ID, 表示名] の並び。常用の数個だけを渡す。
   constructor(root: HTMLElement, focusItems: readonly (readonly [string, string])[]) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-overview-camera';

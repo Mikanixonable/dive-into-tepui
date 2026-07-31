@@ -1,7 +1,4 @@
-// 未来表示の操作パネル(表示期間・未来ゴーストスライダー)。DisplayTimeManager が所有し、
-// 映すのも受けるのも自分の状態(durationKey/sliderT)だけに閉じる。予測軌道の表示座標系は
-// PlanDisplay 側の別パネル(plan/plan-display.ts)が持つ。
-// CSS(#hud-displaytime)は hud/dom.ts の STYLE に一元管理されている。
+// 未来表示の操作パネル(表示期間・未来ゴーストスライダー)。
 import { SegmentedControl } from './hud/buttons';
 import type { PredictDurationKey } from './display-time-manager';
 

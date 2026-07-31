@@ -16,10 +16,8 @@ const identityAttitude = (): Attitude => ({
   inertia: v3(1, 1, 1),
 });
 
-// 軌道上を運動するゲーム内エンティティの基底。状態列の保持・前進・時刻引きは current
-// (OrbitEntity)へ委ね、ここは mesh・HP・生死・姿勢・AI といったゲーム側の付帯情報と、
-// 種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。collideRadius を持つものだけが
-// 剛体接触に参加し、scene を渡したものだけが自身を scene へ add/remove する。
+// 軌道上を運動するゲーム内エンティティの基底。mesh・HP・生死・姿勢・AI といったゲーム側の
+// 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
 export class GameEntity {
   readonly current: OrbitEntity;
 
@@ -46,7 +44,7 @@ export class GameEntity {
   readonly predictDuration: number = 0;
   protected readonly scene?: THREE.Scene;
 
-  // 未来の予測列。predictDuration = 0 のクラスでは生成されない。
+  // 未来の予測列。
   private _predicted: OrbitEntity | null = null;
   get predicted(): OrbitEntity | null { return this._predicted; }
   // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。
@@ -60,8 +58,7 @@ export class GameEntity {
     this.scene?.add(this.obj);
   }
 
-  // 過去列へ積む最小間隔 [s]。1周あたり PREDICT_SAMPLES_PER_REV 点になるよう軌道周期から
-  // 求め、周期が取れない場合(双曲線軌道など)は SHIP_HISTORY_DURATION 基準へ落とす。
+  // 過去列へ積む最小間隔 [s]。
   protected sampleInterval(): number {
     const period = this.elements?.period;
     if (period !== undefined && period !== null && isFinite(period) && period > 0) {
@@ -76,13 +73,12 @@ export class GameEntity {
     this.current.step(dt, sunPos, moonPos, this.bcInv, this.thrust, this.sampleInterval(), this.historyDuration);
   }
 
-  // 予測列を破棄する。次フレーム以降、通常の予算配分の中で伸び直す。
+  // 予測列を破棄する。
   invalidatePrediction(): void {
     this._predicted = null;
   }
 
-  // predicted.at(simTime) と実状態のずれが tolerance を超えていたら(または保持区間外で
-  // at が null なら)予測列を破棄する。反動・剛体接触・積分差はすべてこれで拾う。
+  // 実状態との位置ずれが tolerance を超えていたら予測列を破棄する。
   resyncPrediction(simTime: number, tolerance: number): void {
     if (this._predicted === null) return;
     const predictedState = this._predicted.at(simTime);
@@ -91,9 +87,7 @@ export class GameEntity {
     }
   }
 
-  // 予測列の先端を、呼び出し側が決めた dt ぶん1ステップだけ伸ばし、伸ばせたら true を返す。
-  // 伸ばせないとき(predictDuration=0・推力中・打ち切り済み・ホライズン超過)は何もせず false。
-  // predicted が無ければ現在状態を種に生成する。
+  // 予測列の先端を dt ぶん1ステップ伸ばす。伸ばせなかったら false。
   stepPrediction(ephemeris: Ephemeris, simTime: number, dt: number): boolean {
     if (this.predictDuration <= 0) return false;
     // 自由飛行前提の予測は噴射中に成立しないので、推力がかかっている間は伸ばさない。
@@ -104,7 +98,6 @@ export class GameEntity {
     }
     if (this.truncated) return false;
     const p = this._predicted;
-    // dtを足しても予測長に届かないときだけ予測を進める。
     if (p.state.t + dt > simTime + this.predictDuration + 1e-6) return false;
 
     const mid = p.state.t + dt / 2;
@@ -126,8 +119,7 @@ export class GameEntity {
     return t <= this.current.state.t ? this.current.at(t) : (this._predicted?.at(t) ?? null);
   }
 
-  // 毎フレームの描画位置・姿勢同期。displayTime の状態を fo 経由で描画フレームへ移し、
-  // その状態が無ければ非表示にする。
+  // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
   sync(fo: FloatingOrigin, displayTime: number): void {
     const s = this.displayState(displayTime);
     if (s === null) {

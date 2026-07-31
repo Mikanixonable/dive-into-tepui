@@ -1,19 +1,10 @@
 // 画面座標に絶対配置する汎用コンテキストメニュー。右クリックで開き、項目クリックで
-// onSelect(act) を発火して自動で閉じる。node-gizmo / focus-gizmo が項目内容だけを
-// 差し替えて共有する — メニューの見た目・pointer/contextmenu 抑制・クリック配線は
-// ここ一箇所に集約する。
-// hud/buttons.ts と同様、pointerdown で stopPropagation して Input のキャンバスドラッグ
-// (視点回転)へイベントが漏れないようにする。
+// onSelect(act) を発火して自動で閉じる。
 import { ACCENT_RGB, ACCENT_SOFT, TEXT as INK } from '../theme';
 
-// SURFACE/EDGE はこのファイル固有の不透明度(0.85 / 0.16)を使うため、
-// theme.ts の SURFACE(0.82)/EDGE(0.09)とは別定数のまま保持する。
 const SURFACE = 'rgba(13, 15, 18, 0.85)';
 const EDGE = 'rgba(255, 255, 255, 0.16)';
 
-// z-index の方針: #hud(10)より下、キャンバス(0)より上の 9 に固定する。
-// #hud-settings・#hud-end 等のモーダルは #hud の子要素として描画されるため、
-// 9 なら常にそれらの下になる。
 const STYLE = `
 .ctx-menu {
   position: fixed; display: none; min-width: 168px; z-index: 9;
@@ -56,9 +47,7 @@ export class ContextMenu {
     document.body.appendChild(this.el);
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
-    // メニュー外への押下で自分を閉じる。キャプチャ段階で拾うので、途中の要素
-    // (ノードハンドル等)が stopPropagation していても届く。これにより「別のメニューを
-    // 閉じる」配線を持ち主同士が張り合う必要がなくなる。
+    // キャプチャ段階で拾うことで、途中の要素が stopPropagation していても届く。
     document.addEventListener(
       'pointerdown',
       (e) => {

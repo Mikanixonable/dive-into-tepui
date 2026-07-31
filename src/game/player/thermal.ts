@@ -8,7 +8,6 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 
 // checkThermalLimits の戻り値: 限界超過の種別。null なら超過なし。
-// 実際の破壊(alive=false・撃破エフェクト)は呼び出し元の Player.checkLoss が行う。
 export type ThermalLimit = 'heat' | 'dynpressure' | null;
 
 export class ThermalSystem {
@@ -49,8 +48,7 @@ export class ThermalSystem {
     );
   }
 
-  // 熱防御の飽和・空力破壊の判定と警告表示。限界超過時は種別を返すのみで、
-  // 実際の破壊は呼び出し元の Player.checkLoss が行う。
+  // 熱防御の飽和・空力破壊を判定し、限界超過の種別を返す。
   checkThermalLimits(): ThermalLimit {
     if (this.hullTemp > C.MAX_HULL_TEMP) {
       return 'heat';

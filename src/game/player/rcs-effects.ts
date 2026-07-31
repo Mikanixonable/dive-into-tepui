@@ -19,11 +19,6 @@ export class RcsEffects {
     for (const puff of this.puffs) scene.add(puff.mesh);
   }
 
-  // torque は PlayerThrottle が算出し stepAttitude に渡す実トルク(機体座標系)。
-  // 表示に必要なのは軸ごとの符号(どちら向きのパフを焚くか)だけなので、ここで
-  // 符号ベクトルへ逆算する — 視覚効果は論理更新(torque)の下流に位置させる。
-  // playerPos: 自機の絶対 ECI 位置。各パフはその位置を基準に、機体ローカルのスラスタ配置を
-  // 姿勢で回転させた変位を慣性座標で足し、末端で fo 経由で描画フレームへ変換する。
   sync(
     fo: FloatingOrigin,
     playerPos: Vec3,

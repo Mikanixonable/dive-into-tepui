@@ -1,9 +1,5 @@
-// 全 GameEntity の予測列(predicted)を、フレームあたりの予算内でなるはやに伸ばす。EntityManager
-// の参照を受け取ってその配列を更新する点は Simulator と同じパターン(EntityManager から見て
-// 「実シミュレーション」と「予測」は対称な2人目の更新者 — better_predict.md §3-5)。持つ状態は
-// ラウンドロビンのカーソルだけ。どの列が短いか(新規スポーンなのか、破棄されたばかりなのか)を
-// 区別しない — 区別しないからこそ、破棄がいくら起きてもこのクラスのフレーム時間はスパイクしない
-// (短い予算をなるはやで使い切るだけで、リソースが足りなければ後回しになる)。
+// 全 GameEntity の予測列(predicted)をフレームあたりの予算内でラウンドロビンに伸ばす。
+// 予測列の長短を問わず一律に扱うため、破棄が多発してもフレーム時間がスパイクしない。
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
@@ -13,7 +9,6 @@ import { predictStepDt } from '../../physics/predict';
 import { len } from '../../physics/vec3';
 
 export class Predictor {
-  // 次フレームにどのエンティティから予算を配り始めるか(EntityManager.all() のインデックス)。
   private cursor = 0;
 
   constructor(
