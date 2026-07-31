@@ -4,8 +4,8 @@ import { MU_EARTH, OrbitState, R_EARTH, orbitState } from '../../physics/orbital
 import { Vec3, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
-import { Ship } from '../orbit-entity/entities';
-import { Bullet } from '../orbit-entity/bullet';
+import { Ship } from '../game-entity/game-entity';
+import { Bullet } from '../game-entity/bullet';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';

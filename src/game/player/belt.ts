@@ -7,7 +7,7 @@ import { Attitude, Quat, qFromAxisAngle, qFromUnitVectors, qMul, qRotate } from 
 import { Vec3, len, scale, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { MAG_BELT_PITCH, buildMagazineMesh } from '../../render/ships';
-import { BeltSection } from '../orbit-entity/entities';
+import { BeltSection } from '../game-entity/game-entity';
 import { BeltPhysics, X_AXIS } from './belt-physics';
 
 const IDENTITY_Q: Quat = { x: 0, y: 0, z: 0, w: 1 };

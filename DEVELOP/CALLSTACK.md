@@ -314,10 +314,12 @@
   `canResolvePhysicalCollisions` が false になるため丸ごとスキップされる。
 - **予測 RK4 の再計算頻度**は `PredictedLine` が per-arc に持つ入力変化検出 + スロットルで決まる。
   マップモード中でも大半のフレームは `sampled.syncTransform()`(O(1) の剛体変換)だけで済む。
-- **過去 state の記録は `OrbitEntity.state` の setter が行う**ので、この木には独立ノードとして現れない。
-  `entity.stepSim()` / `resolveCollisionPair()` / 反動など、state へ代入するすべての経路が記録契機になる。
-  `hit.checkBulletHits()` と `targeter.markBoardCrossings()` が読む「直前サブステップ位置」
-  (`entity.prevState.r`)はこれで供給される。
+- **過去 state の記録・prevState の更新は `physics/orbit-entity.ts` の `OrbitEntity`(`GameEntity.current`)の
+  `step`/`reset` が行う**ので、この木には独立ノードとして現れない。`entity.stepSim()` /
+  `resolveCollisionPair()` / 反動など、state へ代入するすべての経路が記録契機になる
+  (前者は `current.step` 経由、後者は `current.reset` 経由)。`hit.checkBulletHits()` と
+  `targeter.markBoardCrossings()` が読む「直前サブステップ位置」(`entity.prevState.r`)は
+  history の間引き対象とは別フィールドなので、`historyDuration = 0` の弾でも常に供給される。
 - **`TouchControls` は per-frame の update を持たない**。DOM の pointer イベントから
   `input.setVirtualKey()` を呼ぶだけで、per-frame の接点は `game.sync` からの
   `syncModeButtons()`(トグル点灯)だけ。

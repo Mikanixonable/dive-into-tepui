@@ -6,7 +6,7 @@ import { orbitState } from '../../physics/orbital';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
 import { MAG_BELT_PITCH } from '../../render/ships';
 import * as C from '../const';
-import { BeltSection } from '../orbit-entity/entities';
+import { BeltSection } from '../game-entity/game-entity';
 
 // ベルトが機体座標系でたわみなく伸びる基準方向(不変)。belt.ts の姿勢導出でも
 // 同じ基準を使うためエクスポートする。

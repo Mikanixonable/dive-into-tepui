@@ -4,10 +4,10 @@ import { OrbitState, orbitState } from '../../physics/orbital';
 import { add, randSym, randVec, v3, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
-import { DebrisKind, DebrisPiece } from '../orbit-entity/entities';
+import { DebrisKind, DebrisPiece } from '../game-entity/game-entity';
 import { Billboard } from '../../render/billboard';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
-import type { EntityManager } from '../orbit-entity/entity-manager';
+import type { EntityManager } from '../game-entity/entity-manager';
 
 // FlashEffectとDebrisPieceの生成・管理を一元化するエフェクトシステム。ゲーム内のフラッシュ・破片はすべてここを経由する
 // FlashEffectはFlashEffectManagerが管理する。DebrisPieceはspawn系メソッドで生成されentitiesに追加される
@@ -64,7 +64,7 @@ export class EffectsSystem {
 
   // DebrisPiece を組み立てて追加する共通処理。fragment/barrel/magazineFrame/casing の
   // 各 spawnXxx はすべてこれの薄いラッパー — kind ごとの見た目・寿命判定の違いは
-  // DebrisPiece/DebrisKind(entities.ts)側の責務。
+  // DebrisPiece/DebrisKind(game-entity.ts)側の責務。
   private spawnDebrisPiece(state: OrbitState, kind: DebrisKind, att: Attitude, collideRadius?: number): void {
     this.entities.addDebris(new DebrisPiece(state, kind, att, collideRadius, this._scene));
   }

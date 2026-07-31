@@ -5,7 +5,7 @@
 // stage-dictionary.ts の initStage() が新規 `new` したこのインスタンス自身を
 // activeStage として保持するだけでよい。
 import * as THREE from 'three/webgpu';
-import { Enemy } from '../orbit-entity/enemy';
+import { Enemy } from '../game-entity/enemy';
 import { Player } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter as scoreCounter } from './stage-utils/score-counter';
@@ -15,7 +15,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { showResultScreen, showWinScreen } from '../hud/result-screen';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
-import type { EntityManager } from '../orbit-entity/entity-manager';
+import type { EntityManager } from '../game-entity/entity-manager';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SimSpeedManager } from '../sim-speed-manager';

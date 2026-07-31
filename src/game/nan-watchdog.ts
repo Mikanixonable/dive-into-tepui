@@ -13,15 +13,15 @@
 // 一度検出したら以後は何もしない(ログの洪水と、汚染後の無意味な検査を避ける)。
 import { Hud } from './hud/hud';
 import { Player } from './player/player';
-import { OrbitEntity } from './orbit-entity/entities';
-import { EntityManager } from './orbit-entity/entity-manager';
+import { GameEntity } from './game-entity/game-entity';
+import { EntityManager } from './game-entity/entity-manager';
 import { Vec3 } from '../physics/vec3';
 
 function finiteVec(v: Vec3): boolean {
   return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
 }
 
-function describe(entity: OrbitEntity): string {
+function describe(entity: GameEntity): string {
   const { r, v } = entity.state;
   return `r=(${r.x},${r.y},${r.z}) v=(${v.x},${v.y},${v.z})`;
 }
