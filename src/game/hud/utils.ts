@@ -13,6 +13,7 @@ export function fmtMarkerDist(m: number, kmDecimals = 1): string {
   return m >= 1000 ? `${(m / 1000).toFixed(kmDecimals)}km` : `${m.toFixed(0)}m`;
 }
 
+// パネル用速度表記(例: "7.80 km/s" / "12.3 m/s")
 export function fmtSpeed(ms: number): string {
   if (!isFinite(ms)) return '---';
   if (Math.abs(ms) >= 1000) return `${(ms / 1000).toFixed(2)} km/s`;

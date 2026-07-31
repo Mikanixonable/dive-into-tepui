@@ -25,15 +25,18 @@ export class Logistics {
     private readonly markerManager: MarkerManager,
   ) {}
 
+  // 自機の軌道上、minDist〜maxDist 先の位相に補給を1個投入する。
   spawnForPlayer(
     player: Player,
     minDist = C.LOGISTICS_MIN_DIST,
     maxDist = C.LOGISTICS_MAX_DIST,
   ): void {
+    // 自機の軌道面内で minDist〜maxDist 先に相当する角度だけ位相をずらす
     const r = player.state.r;
     const v = player.state.v;
     const hHat = norm(cross(r, v));
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
+    // ずらした位置・速度と、ランダムな姿勢で補給エンティティを作る
     const ammo = new Ammo(
       orbitState(
         player.state.t,
@@ -47,11 +50,13 @@ export class Logistics {
       },
       this._scene,
     );
+    // 投入して演出とヒントを出す
     this.entities.addAmmo(ammo);
     this._sfx.warp();
     this._hud.hint('付近の軌道に補給が投入された — ▣ AMMO マーカーへ接近して回収', 5000);
   }
 
+  // 近傍の補給を回収し、遠方のものをデスポーンし、残弾が少なければ定期的に新規投入する。
   updateLogistics(simTime: number, player: Player, respawnOnDespawn = false): void {
     if (player.alive) this.absorbNearbyAmmo(player);
     this.despawnFarAmmo(player, respawnOnDespawn);
@@ -63,13 +68,16 @@ export class Logistics {
     }
   }
 
+  // 生存中の補給の数を返す。
   private liveAmmoCount(): number {
     let count = 0;
     for (const ammo of this.entities.ammos) if (ammo.alive) count++;
     return count;
   }
 
+  // 生存中の補給へ ▣ マーカー(画面外なら△の方位矢印)を同期する。
   syncMarkers(player: Player, project: ProjectFn, displayTime: number): void {
+    // 表示時刻における生存中ピックアップの位置一覧
     const shown = this.entities.ammos.flatMap((ammo) => {
       const pos = ammo.alive ? ammo.displayState(displayTime)?.r : undefined;
       return pos ? [pos] : [];
@@ -82,6 +90,7 @@ export class Logistics {
       this.markerManager.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, label);
       this.markerManager.setBearing(bearing, 'mk-ammo', '△', p, label, 0.9);
     }
+    // 前フレームより件数が減った分のマーカーを隠す
     for (let i = shown.length; i < this.lastMarkerCount; i++) {
       const key = `mg${i}`;
       this.markerManager.hide(key);
@@ -90,6 +99,7 @@ export class Logistics {
     this.lastMarkerCount = shown.length;
   }
 
+  // 回収半径内の生存中補給を吸収し、ベルトへ弾を追加する。
   private absorbNearbyAmmo(player: Player): void {
     for (const ammo of this.entities.ammos) {
       if (!ammo.alive) continue;
@@ -101,8 +111,10 @@ export class Logistics {
     }
   }
 
+  // デスポーン距離を超えた生存中補給を消し、respawnOnDespawn が真なら同数を再投入する。
   private despawnFarAmmo(player: Player, respawnOnDespawn: boolean): void {
     let respawn = 0;
+    // デスポーン距離を超えた分を消し、再投入すべき数を数える
     for (const ammo of this.entities.ammos) {
       if (!ammo.alive) continue;
       if (len(sub(ammo.state.r, player.state.r)) <= C.LOGISTICS_DESPAWN_DIST) continue;
@@ -110,6 +122,7 @@ export class Logistics {
       if (respawnOnDespawn) respawn++;
     }
     if (!respawnOnDespawn) return;
+    // 消えた分だけ新たに投入する
     let count = this.liveAmmoCount();
     for (let i = 0; i < respawn && count < C.MAX_AMMO; i++) {
       this.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);

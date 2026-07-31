@@ -20,10 +20,12 @@ export class Stage2 extends Stage {
   readonly selectKeys = ['Digit2'];
   readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
+  // 第一ステージのクリア実績があれば解放。
   isUnlocked(clearCounts: ClearCounts): boolean {
     return (clearCounts['1'] ?? 0) > 0;
   }
 
+  // 作戦目標と操作方法を示すブリーフィング文面を組む。
   briefingHtml(enemyCount: number): string {
     return (
       `<b>作戦目標: 敵機 ${enemyCount} 機を全機撃破せよ</b><br>` +
@@ -32,19 +34,23 @@ export class Stage2 extends Stage {
     );
   }
 
+  // 通常軌道の敵とモルニヤ級軌道の敵を混成配置する。
   init(player: Player, entities: EntityManager): number {
     const base = player.state;
     const hud = this._hud;
     const sfx = this._sfx;
     const fx = this._fx;
     const scene = this._scene;
+    // 通常軌道の敵
     this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 2, 0xff4a3d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
     this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 2, 0xff7a2d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
+    // モルニヤ級の高楕円軌道の敵
     this.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base.t, 0.4, 2.6, 3, 0xe0409f, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
     this.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base.t, 2.5, 0.9, 3, 0xbf3dff, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
     this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 3, 0xff2d6b, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
     return 5;
   }
+  // 敵の行動と補給品の湧きを進める。
   update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!this.isPlaying) return;
 

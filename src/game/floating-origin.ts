@@ -11,6 +11,7 @@ export class FloatingOrigin {
   private readonly  r: Vec3;
   private readonly v: Vec3;
 
+  // r/v を今フレームの原点・速度基準として固定する。
   constructor(r: Vec3, v: Vec3) {
     this.r = r;
     this.v = v;

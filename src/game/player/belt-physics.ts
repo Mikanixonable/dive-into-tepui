@@ -11,12 +11,14 @@ import { GameEntity } from '../game-entity/game-entity';
 export const X_AXIS: Vec3 = v3(1, 0, 0);
 const IDENTITY_Q: Quat = { x: 0, y: 0, z: 0, w: 1 }; // アンカー(機体)側の基準姿勢
 
+// v を [lo, hi] にクランプする。
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
 // ベルトのリンク節点を剛体接触に参加させるためのプロキシ。
 export class BeltSection extends GameEntity {
+  // 節点インデックス beltIndex に対応するプロキシを生成する。
   constructor(readonly beltIndex: number) {
     super(orbitState(0, v3(), v3()), new THREE.Object3D());
     this.mass = 5;
@@ -39,6 +41,7 @@ export class BeltPhysics {
 
   constructor(private readonly linkCount: number) {}
 
+  // リンクを1つ手前へ詰め、末尾に新しいリンクを継ぎ足す。
   shiftBeltNodes(): void {
     const n = this.linkCount;
     if (n < 2) return;
@@ -78,6 +81,7 @@ export class BeltPhysics {
     this.advanceOrientationConstraints(dt, att);
   }
 
+  // 初回のみ、節点をアンカーから等間隔に並べて初期化する。
   private initNodesOnce(): void {
     if (this.beltInit) return;
     this.beltInit = true;
@@ -89,11 +93,13 @@ export class BeltPhysics {
     }
   }
 
+  // 前フレームとの角速度差から角加速度を推定する。
   private estimateAngularAccel(w: Vec3, invDt: number): void {
     this.angularAccel = v3((w.x - this.prevBodyW.x) * invDt, (w.y - this.prevBodyW.y) * invDt, (w.z - this.prevBodyW.z) * invDt);
     this.prevBodyW = (w);
   }
 
+  // 各節点の位置を擬似力込みで Verlet 積分する。
   private integrateVerlet(dt: number, w: Vec3, aThrustBody: Vec3): void {
     const h = Math.min(dt, 0.05); // 積分刻みの上限(大きな dt でのはみ出し防止)
     const damping = 0.95; // 慣性を維持するため減衰を弱める
@@ -212,7 +218,10 @@ export class BeltPhysics {
 
   private readonly sections: BeltSection[] = [];
 
+  // 各節点の機体座標系での位置・速度をワールド OrbitState に変換し、衝突判定用の
+  // プロキシ配列を返す。
   collisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
+    // プロキシを節点数まで拡張する
     while (this.sections.length < this.beltPos.length) {
       this.sections.push(new BeltSection(this.sections.length));
     }
@@ -220,10 +229,12 @@ export class BeltPhysics {
     for (const s of this.sections) {
       const bp = this.beltPos[s.beltIndex]!;
       const bpPrev = this.beltPrevPos[s.beltIndex]!;
+      // 機体座標系での速度: Verlet変位による速度 + 機体回転による接線速度
       const v_verlet = v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt);
       const v_tangential = cross(att.w, bp);
       const v_body_total = add(v_verlet, v_tangential);
 
+      // ワールド座標系へ変換する
       s.state = orbitState(
         s.state.t,
         add(baseR, qRotate(att.q, bp)),
@@ -233,14 +244,17 @@ export class BeltPhysics {
     return this.sections;
   }
 
+  // 衝突解決後のワールド状態を機体座標系の節点位置・速度へ書き戻す。
   applyCollisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
     const qInv = qInvert(att.q);
     for (const s of this.sections) {
+      // ワールド座標系から機体座標系へ変換する
       const bpLocal = qRotate(qInv, sub(s.state.r, baseR));
       const v_body_total = qRotate(qInv, sub(s.state.v, baseV));
       const v_tangential = cross(att.w, bpLocal);
       const v_verlet = sub(v_body_total, v_tangential);
 
+      // Verlet 積分と整合する前フレーム位置へ戻す
       this.beltPos[s.beltIndex] = bpLocal;
       this.beltPrevPos[s.beltIndex] = v3(
         bpLocal.x - v_verlet.x * dt,

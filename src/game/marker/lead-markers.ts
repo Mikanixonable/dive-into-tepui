@@ -35,6 +35,7 @@ export class LeadMarkers {
     }
     this.lastTargeted = this.trackTargeted(enemies, target, simTime);
 
+    // ロックが有効な敵だけリード点を求めてマーカーを置く
     const shownKeys: string[] = [];
     for (const enemy of enemies) {
       const lockedAt = this.lastTargeted.get(enemy);
@@ -47,6 +48,7 @@ export class LeadMarkers {
     this.retire(shownKeys);
   }
 
+  // 敵ごとのロック時刻を引き継ぎつつ、target は simTime で新たにロックしたものとして返す。
   private trackTargeted(enemies: readonly Enemy[], target: Enemy | null, simTime: number): Map<Enemy, number> {
     const tracked = new Map<Enemy, number>();
     for (const enemy of enemies) {

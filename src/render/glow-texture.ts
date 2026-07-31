@@ -4,6 +4,7 @@ import * as THREE from 'three';
 // canvas 生成 + GPU アップロードが繰り返されるので、単一インスタンスをキャッシュして使い回す。
 let glowTexture: THREE.CanvasTexture | null = null;
 
+// キャッシュ済みならそれを返し、なければ生成してキャッシュする。
 export function getGlowTexture(): THREE.CanvasTexture {
   if (glowTexture) return glowTexture;
   const size = 128;
@@ -11,6 +12,7 @@ export function getGlowTexture(): THREE.CanvasTexture {
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
+  // 中心が不透明・周辺が透明な放射グラデーションを敷く
   const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   g.addColorStop(0, 'rgba(255,255,255,1)');
   g.addColorStop(0.25, 'rgba(255,255,255,0.85)');

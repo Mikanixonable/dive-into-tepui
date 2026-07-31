@@ -40,6 +40,7 @@ export class PlayerFire {
 
   get left(): boolean { return this.rounds > 0 || this.mags > 0; }
 
+  // 弾薬状態を指定のマガジン数・残弾数にリセットする。
   initAmmo(mags: number, rounds: number): void {
     this.mags = mags;
     this.rounds = rounds;
@@ -49,6 +50,7 @@ export class PlayerFire {
     this.wasFiring = false;
   }
 
+  // 拾ったマガジン数を加算する。弾切れ中なら即座に1マガジンを装填する。
   onPickup(mags: number): void {
     this.mags += mags;
     if (this.rounds <= 0) { // 弾切れ状態だったならすぐにリロードする
@@ -57,10 +59,12 @@ export class PlayerFire {
     }
   }
 
+  // 発射状態を強制的に解除する。
   stopFiring(): void {
     this.wasFiring = false;
   }
 
+  // 発射入力を1フレーム分処理する。トリガーが引かれ、ワープ速度・弾薬が許せば発射する。
   updateFireState(
     dt: number,
     input: Input,
@@ -105,11 +109,13 @@ export class PlayerFire {
     this.wasEmptyClick = false;
   }
 
+  // クールダウンタイマーを dt だけ減らす。
   private tickReloadTimer(dt: number): void {
     if (0 < this.cooldown)
       this.cooldown -= dt;
   }
 
+  // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
   private fireCycle(
     scoreCounter: ScoreCounter,
     simTime: number,
@@ -159,10 +165,12 @@ export class PlayerFire {
   consume(): ConsumeResult {
     if (!this.left) return 'empty';
 
+    // マガジンに弾が残っていれば1発消費するだけ
     this.rounds--;
     if (this.rounds > 0) return 'normal';
     if (this.mags <= 0) return 'normal'; // 最後の1発を撃ち切った(次回から empty)
 
+    // マガジンを撃ち尽くしたので次のマガジンへ
     this.mags--;
     this.rounds = C.MAG_ROUNDS;
     this.barrel--;
@@ -172,9 +180,11 @@ export class PlayerFire {
     return 'barrel-reload';
   }
 
+  // 手動リロードを試みる。開始できたら true。
   manualReload(): boolean {
     if (this.cooldown > 0) return false;
 
+    // 予備マガジンがあり、かつ実際に補充の余地があるときだけリロードする
     const canReload = this.mags > 0 && (this.rounds < C.MAG_ROUNDS || this.barrel < C.MAGS_PER_BARREL);
     if (!canReload) return false;
     this.mags--;
@@ -218,6 +228,7 @@ export class PlayerFire {
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(ship: Ship, muzzle: Vec3, fwd: Vec3, simTime: number, addBullet: (bullet: Bullet) => void): void {
+    // 機首方向に散布角を加えた発射方向
     const dir = norm(addScaled(fwd, randPerp(fwd), Math.abs(randSym(C.BULLET_SPREAD))));
     const bullet = new Bullet(
       orbitState(
@@ -236,6 +247,7 @@ export class PlayerFire {
   // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。
   // 初速・回転とも抑え、ゆっくり漂いながら緩やかに回転する見た目にする。
   private dropCasing(ship: Ship, muzzle: Vec3, simTime: number): void {
+    // 機体姿勢基準の左右・上方向
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const up = qRotate(ship.att.q, v3(0, 1, 0));
     this._fx.spawnCasing(
@@ -291,6 +303,7 @@ export class PlayerFire {
   // マガジン1個を撃ち尽くした瞬間、-X 側(薬莢と同じ側)の位置から
   // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
   private spawnEjectedMagazineFrame(ship: Ship): void {
+    // 排出ポートの位置と初速
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const portWorld = add(ship.state.r, qRotate(ship.att.q, v3(-0.9, 0, 0)));
     this._fx.spawnMagazineFrame(

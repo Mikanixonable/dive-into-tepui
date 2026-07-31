@@ -11,6 +11,7 @@ export type ClearCounts = Readonly<Record<string, number>>;
 
 const STORAGE_KEY = 'tepui.clearCounts';
 
+// localStorage からクリア回数を読み込む。取得できなければ空を返す。
 function loadClearCounts(): Record<string, number> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -20,6 +21,7 @@ function loadClearCounts(): Record<string, number> {
   }
 }
 
+// クリア回数を localStorage へ保存する。
 function saveClearCounts(counts: ClearCounts): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(counts));
@@ -28,6 +30,7 @@ function saveClearCounts(counts: ClearCounts): void {
   }
 }
 
+// stage の解放条件を counts から判定する。条件が定義されていなければ常に解放。
 function isStageUnlocked(stage: StageId, counts: ClearCounts): boolean {
   const def = STAGE_DEFINITIONS.find((s) => s.id === stage);
   return def?.isUnlocked ? def.isUnlocked(counts) : true;
@@ -36,6 +39,7 @@ function isStageUnlocked(stage: StageId, counts: ClearCounts): boolean {
 export class UnlockManager {
   private clearCounts = loadClearCounts();
 
+  // stage が解放済みかどうかを返す。
   isUnlocked(stage: StageId): boolean {
     return isStageUnlocked(stage, this.clearCounts);
   }

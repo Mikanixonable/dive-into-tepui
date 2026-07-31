@@ -4,6 +4,7 @@
 // src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
 import * as THREE from 'three/webgpu';
 
+// BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
   const clone = geo.clone();
   for (const key in clone.attributes) {
@@ -65,6 +66,7 @@ const loader = new THREE.ObjectLoader();
 // ものばかりだが、将来の変更に備えて一律で安全側(非共有)にしておく。
 export function cloneIndependent<T extends THREE.Object3D>(template: T): T {
   const clone = template.clone(true) as T;
+  // 各メッシュのマテリアルを独立に複製する
   clone.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (mesh.isMesh && mesh.material) {
@@ -79,6 +81,7 @@ export function cloneIndependent<T extends THREE.Object3D>(template: T): T {
   return clone;
 }
 
+// data を初回だけパースしてキャッシュし、以後は cloneIndependent で複製を返すビルダーを作る。
 function memoParse<T extends THREE.Object3D>(data: object): () => T {
   let cached: T | null = null;
   return () => {
@@ -115,10 +118,12 @@ const parseDebrisChunk = memoParse<THREE.Mesh>(debrisChunkData);
 const parseDebrisPanel = memoParse<THREE.Mesh>(debrisPanelData);
 const parseDebrisRod = memoParse<THREE.Mesh>(debrisRodData);
 
+// 自機のメッシュを生成する。
 export function buildPlayerShip(): THREE.Group {
   return parsePlayer();
 }
 
+// マガジンリンク1個分のメッシュを生成する。
 export function buildMagazineMesh(): THREE.Group {
   return parseMagazine();
 }
@@ -129,8 +134,6 @@ export function buildMagazineMesh(): THREE.Group {
 // 右舷排出口の常設表示・排出デブリの両方で使う。
 export function buildMagazineFrame(): THREE.Group {
   const g = parseMagazine();
-  // `parseMagazine` clones materials via `cloneIndependent`, so `ownsMaterial` is true on all children.
-  // Geometries are shared.
   for (const child of [...g.children]) {
     if ((child as THREE.Mesh).userData?.['role'] === 'round') g.remove(child);
   }
@@ -144,9 +147,11 @@ export function buildMagazineFrame(): THREE.Group {
 let ammoBeaconGeom: THREE.OctahedronGeometry | null = null;
 let ammoBeaconMat: THREE.MeshBasicMaterial | null = null;
 
+// 軌道上補給物のメッシュを生成する。count はマガジン本数(既定 4 はテンプレートを再利用)。
 export function buildAmmo(count = 4): THREE.Group {
   if (count === 4) return parseAmmo();
   const g = new THREE.Group();
+  // マガジンを count 本、縦一列に並べる
   for (let i = 0; i < count; i++) {
     const mag = buildMagazineMesh();
     mag.position.y = (i - (count - 1) / 2) * (MAG_THICKNESS + 0.12);
@@ -154,7 +159,8 @@ export function buildAmmo(count = 4): THREE.Group {
   }
   if (!ammoBeaconGeom) ammoBeaconGeom = new THREE.OctahedronGeometry(0.35, 0);
   if (!ammoBeaconMat) ammoBeaconMat = new THREE.MeshBasicMaterial({ color: 0x4de8ff });
-  
+
+  // 先端にビーコンを追加する
   const beacon = new THREE.Mesh(ammoBeaconGeom, ammoBeaconMat.clone());
   beacon.position.y = (count / 2) * (MAG_THICKNESS + 0.12) + 0.4;
   g.add(beacon);
@@ -166,6 +172,7 @@ export function buildAmmo(count = 4): THREE.Group {
 // おり、これを目印にアクセントカラーへ塗り替える。
 export function buildEnemyShip(accent = 0xff4a3d): THREE.Group {
   const g = parseEnemy();
+  // accent ロールが付いたマテリアルだけ塗り替える
   g.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -177,12 +184,15 @@ export function buildEnemyShip(accent = 0xff4a3d): THREE.Group {
   return g;
 }
 
+// stage0 敵機のメッシュを typeIndex(0〜2)の機体テンプレートから生成し、accent 色に塗り替える。
 export function buildStage0EnemyShip(accent = 0x3dc6ff, typeIndex = 0): THREE.Group {
   let g: THREE.Group;
+  // typeIndex で機体テンプレートを選ぶ
   if (typeIndex === 1) g = parseStage0EnemyB();
   else if (typeIndex === 2) g = parseStage0EnemyC();
   else g = parseStage0EnemyA();
-  
+
+  // accent ロールが付いたマテリアルだけ塗り替える
   g.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -200,6 +210,7 @@ export function buildStage0EnemyShip(accent = 0x3dc6ff, typeIndex = 0): THREE.Gr
 let bulletHaloGeom: THREE.CylinderGeometry | null = null;
 let bulletHaloMat: THREE.MeshBasicMaterial | null = null;
 
+// 自機弾のメッシュ(本体+ハロー)を生成する。ハロー用ジオメトリ/マテリアルは全弾で共有する。
 export function buildBulletMesh(): THREE.Group {
   const m = parseBullet();
   m.frustumCulled = false;
@@ -238,6 +249,7 @@ const plasmaBodyMatByAccent = new Map<number, THREE.MeshBasicMaterial>();
 const plasmaHaloMatByAccent = new Map<number, THREE.MeshBasicMaterial>();
 let plasmaHaloGeom: THREE.CylinderGeometry | null = null;
 
+// 敵プラズマ弾のメッシュ(本体+ハロー)を accent 色で生成する。マテリアルは accent ごとに共有キャッシュする。
 export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Group {
   const m = parsePlasma();
   if (!plasmaGeomFixed) {
@@ -288,6 +300,7 @@ export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Group {
   return g;
 }
 
+// 薬莢メッシュを生成する。全長を通常の2倍にスケールした専用ジオメトリを持たせる。
 export function buildCasingMesh(): THREE.Mesh {
   const mesh = parseCasing();
   // 薬莢の全長(Y軸)を2倍にする
@@ -322,6 +335,7 @@ function displaceVertices(geo: THREE.BufferGeometry, map: (x: number, y: number,
   geo.computeVertexNormals();
 }
 
+// デブリ形状 'mech' のバリエーションをランダムに1つ生成する。
 function buildMechDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
   const kind = Math.floor(Math.random() * 4);
   if (kind === 0) {
@@ -365,9 +379,11 @@ function buildMechDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
   }
 }
 
+// デブリ形状 'crystal' のバリエーションをランダムに1つ生成する。
 function buildCrystalDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
   const kind = Math.floor(Math.random() * 3);
   if (kind === 0) {
+    // 柱状の結晶
     const profile = [
       new THREE.Vector2(0, -1), new THREE.Vector2(0.5, -0.5), new THREE.Vector2(0.55, 0),
       new THREE.Vector2(0.5, 0.5), new THREE.Vector2(0, 1),
@@ -377,12 +393,14 @@ function buildCrystalDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
     mesh.scale.set(size * (0.2 + Math.random() * 0.2), size * (0.6 + Math.random() * 0.6), size * (0.2 + Math.random() * 0.2));
     return mesh;
   } else if (kind === 1) {
+    // 歪んだ八面体
     const geo = new THREE.OctahedronGeometry(1, 0);
     displaceVertices(geo, (x, y, z) => [x * (0.6 + Math.random() * 0.8), y * (0.7 + Math.random() * 0.6), z * (0.6 + Math.random() * 0.8)]);
     const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.15, metalness: 0.10 })));
     mesh.scale.setScalar(size);
     return mesh;
   } else {
+    // 円錐状の結晶片
     const geo = new THREE.CylinderGeometry(0.8, 0, 0.3, 5);
     displaceVertices(geo, (x, y, z) => [x * (0.8 + Math.random() * 0.6), y * (0.8 + Math.random() * 0.6), z * 1.5]);
     const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.25, metalness: 0.10 })));
@@ -391,21 +409,25 @@ function buildCrystalDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
   }
 }
 
+// デブリ形状 'ring' のバリエーションをランダムに1つ生成する。
 function buildRingDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
   const kind = Math.floor(Math.random() * 3);
   if (kind === 0) {
+    // 円弧状のリング
     const arc = Math.PI * (0.4 + Math.random() * 1.2);
     const geo = new THREE.TorusGeometry(1, 0.18, 4, 10, arc);
     const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.50, metalness: 0.60 })));
     mesh.scale.setScalar(size);
     return mesh;
   } else if (kind === 1) {
+    // 歪んだ円盤
     const geo = new THREE.CylinderGeometry(1, 1, 0.08, 8, 1);
     displaceVertices(geo, (x, y, z) => [x + (Math.random() - 0.5) * 0.25, y, z + (Math.random() - 0.5) * 0.25]);
     const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.45, metalness: 0.65 })));
     mesh.scale.set(size * (0.8 + Math.random() * 0.6), size * 0.6, size * (0.8 + Math.random() * 0.6));
     return mesh;
   } else {
+    // 筒状のバンド
     const geo = new THREE.CylinderGeometry(0.7, 0.7, 0.40, 8, 1, true);
     const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.40, metalness: 0.70, flatShading: false })));
     mesh.scale.setScalar(size);
@@ -413,20 +435,24 @@ function buildRingDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
   }
 }
 
+// デブリ形状 'spike' のバリエーションをランダムに1つ生成する。
 function buildSpikeDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
   const kind = Math.floor(Math.random() * 3);
   if (kind === 0) {
+    // 円錐状の棘
     const geo = new THREE.ConeGeometry(0.35, 1 + Math.random() * 0.8, 5, 1);
     const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.30, metalness: 0.55 })));
     mesh.scale.set(size, size * (1.5 + Math.random()), size);
     return mesh;
   } else if (kind === 1) {
+    // 歪んだ筒
     const geo = new THREE.CylinderGeometry(0.2, 0.8, 1, 4);
     displaceVertices(geo, (x, y, z) => [x * (0.5 + Math.random() * 0.8), y, z * (0.5 + Math.random() * 0.8)]);
     const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.35, metalness: 0.50 })));
     mesh.scale.setScalar(size);
     return mesh;
   } else {
+    // 細長い針
     const geo = new THREE.CylinderGeometry(0.08, 0.02, 1, 5, 1);
     const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.35, metalness: 0.50 })));
     mesh.scale.set(size * 0.8, size * (3.0 + Math.random() * 2.0), size * 0.8);
@@ -434,9 +460,11 @@ function buildSpikeDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
   }
 }
 
+// 汎用デブリ形状をランダムに1つ生成する。color は非破片(dark)判定込みの表示色。
 function buildGenericDebris(color: number, size: number, mat: DebrisMaterial): THREE.Mesh {
   const kind = Math.random();
   if (kind < 0.22) {
+    // 破損した外殻チャンク
     const mesh = parseDebrisChunk();
     mesh.geometry = deepCloneGeometry(mesh.geometry); // deep cloned to prevent WebGPU buffer dispose issues!
     mesh.userData.ownsGeometry = true;
@@ -445,28 +473,33 @@ function buildGenericDebris(color: number, size: number, mat: DebrisMaterial): T
     (mesh.material as THREE.MeshStandardMaterial).color.set(color);
     return mesh;
   } else if (kind < 0.42) {
+    // 平板パネル
     const mesh = parseDebrisPanel();
     mesh.scale.set(size * (1.5 + Math.random() * 1.2), size * (0.06 + Math.random() * 0.08), size * (0.7 + Math.random() * 0.8));
     (mesh.material as THREE.MeshStandardMaterial).color.set(color);
     return mesh;
   } else if (kind < 0.58) {
+    // 構造ロッド
     const mesh = parseDebrisRod();
     mesh.scale.set(size * (0.8 + Math.random() * 0.4), size * (2.2 + Math.random() * 1.4), size * (0.8 + Math.random() * 0.4));
     (mesh.material as THREE.MeshStandardMaterial).color.set(color);
     return mesh;
   } else if (kind < 0.72) {
+    // 歪んだ八面体
     const geo = new THREE.OctahedronGeometry(1, 0);
     displaceVertices(geo, (x, y, z) => [x * (0.5 + Math.random() * 1.0), y * (0.5 + Math.random() * 1.0), z * (0.7 + Math.random() * 0.9)]);
     const mesh = withDispose(new THREE.Mesh(geo, mat()));
     mesh.scale.setScalar(size);
     return mesh;
   } else if (kind < 0.86) {
+    // 薄い歪んだ板
     const geo = new THREE.BoxGeometry(1, 1, 1);
     displaceVertices(geo, (x, y, z) => [x + (Math.random() - 0.5) * 0.35, y + (Math.random() - 0.5) * 0.35, z * 0.12]);
     const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.70, metalness: 0.35 })));
     mesh.scale.set(size * (1.2 + Math.random() * 1.0), size * (1.2 + Math.random() * 1.0), size * 0.12);
     return mesh;
   } else {
+    // 細い棒材
     const geo = new THREE.BoxGeometry(0.15, 1, 0.15);
     const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.55, metalness: 0.55 })));
     mesh.scale.set(size * (0.8 + Math.random() * 0.4), size * (2.0 + Math.random() * 1.6), size * (0.8 + Math.random() * 0.4));
@@ -474,6 +507,7 @@ function buildGenericDebris(color: number, size: number, mat: DebrisMaterial): T
   }
 }
 
+// style に応じたデブリメッシュを1つ生成する(未指定時は汎用形状)。
 export function buildDebrisMesh(accent: number, size: number, style?: string): THREE.Mesh {
   const dark = Math.random() < 0.30;
   const color = dark ? 0x2e3340 : accent;

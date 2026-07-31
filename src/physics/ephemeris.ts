@@ -100,7 +100,7 @@ export function moonPosition(t: number, phase0: number): Vec3 {
   return v3(p.x * r, p.y * r, p.z * r);
 }
 
-// Earth-Moon L-points (calculated from Earth center in ECI)
+// 地球-月系のラグランジュ点を ECI [m] で返す。
 export function emLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec3, L3: Vec3, L4: Vec3, L5: Vec3 } {
   const mPos = moonPosition(t, phase0);
   const R = Math.sqrt(mPos.x * mPos.x + mPos.y * mPos.y + mPos.z * mPos.z);
@@ -114,14 +114,14 @@ export function emLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec
   const l2 = v3(mPos.x * rL2 / R, mPos.y * rL2 / R, mPos.z * rL2 / R);
   const l3 = v3(mPos.x * rL3 / R, mPos.y * rL3 / R, mPos.z * rL3 / R);
 
-  // L4/L5 are 60 degrees ahead/behind the Moon in its orbit plane
+  // L4/L5 は月軌道面内で月の前後 60°
   const node = -(2 * Math.PI * t) / NODE_PERIOD;
   const ci = Math.cos(MOON_INC);
   const si = Math.sin(MOON_INC);
   const cn = Math.cos(node);
   const sn = Math.sin(node);
   
-  // Orbit normal in ecliptic
+  // 黄道座標での軌道法線
   const nxe = sn * si;
   const nye = -cn * si;
   const nze = ci;
@@ -151,19 +151,17 @@ export function emLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec
   return { L1: l1, L2: l2, L3: l3, L4: l4, L5: l5 };
 }
 
-// Sun-Earth L-points (calculated from Earth center in ECI)
-// Note: Earth is at origin in ECI. The Sun is at `sunPosition`.
-// L1 is between Sun and Earth. L2 is past Earth.
+// 太陽-地球系のラグランジュ点を ECI [m] で返す。L1 は太陽側、L2 は反太陽側。
 export function seLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec3 } {
   const sPos = sunPosition(t, phase0);
   const D = SUN_DIST;
   const mu = 3.986004418e14 / MU_SUN;
   
-  const rL = D * Math.pow(mu / 3, 1/3); // distance from Earth
+  const rL = D * Math.pow(mu / 3, 1/3); // 地球からの距離 [m]
   const sHat = v3(sPos.x / D, sPos.y / D, sPos.z / D);
   
-  const l1 = v3(sHat.x * rL, sHat.y * rL, sHat.z * rL); // towards Sun
-  const l2 = v3(-sHat.x * rL, -sHat.y * rL, -sHat.z * rL); // away from Sun
+  const l1 = v3(sHat.x * rL, sHat.y * rL, sHat.z * rL); // 太陽方向
+  const l2 = v3(-sHat.x * rL, -sHat.y * rL, -sHat.z * rL); // 反太陽方向
 
   return { L1: l1, L2: l2 };
 }
@@ -183,6 +181,7 @@ export class Ephemeris {
   sunPosAt(t: number): Vec3 {
     return sunPosition(t, this.sunPhase0);
   }
+  // 指定時刻の月の ECI 位置。
   moonPosAt(t: number): Vec3 {
     return moonPosition(t, this.moonPhase0);
   }
@@ -190,15 +189,19 @@ export class Ephemeris {
   sunDirAt(t: number): Vec3 {
     return norm(sunPosition(t, this.sunPhase0));
   }
+  // 指定時刻の太陽方向の方位角 [rad]。
   sunAzimuthAt(t: number): number {
     return sunAzimuth(t, this.sunPhase0);
   }
+  // sunAzimuthAt の時間微分 [rad/s]。
   sunAngularRateAt(t: number): number {
     return sunAzimuthRate(t, this.sunPhase0);
   }
+  // 指定時刻の地球-月ラグランジュ点(L1-L5)。
   emLagrangeAt(t: number): ReturnType<typeof emLagrangePoints> {
     return emLagrangePoints(t, this.moonPhase0);
   }
+  // 指定時刻の太陽-地球ラグランジュ点(L1-L2)。
   seLagrangeAt(t: number): ReturnType<typeof seLagrangePoints> {
     return seLagrangePoints(t, this.sunPhase0);
   }

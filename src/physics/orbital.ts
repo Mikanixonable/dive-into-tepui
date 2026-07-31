@@ -17,10 +17,12 @@ export type OrbitState = {
   readonly v: Vec3; // ECI 速度 [m/s]
 } & { readonly __frame: 'inertial'; }
 
+// OrbitState を組み立てる唯一の入口。
 export function orbitState(t: number, r: Vec3, v: Vec3): OrbitState {
   return { t, r, v } as OrbitState;
 }
 
+// 位置ベクトルから海抜高度を返す。
 export function altitudeOf(r: Vec3): number {
   return len(r) - R_EARTH;
 }
@@ -85,6 +87,7 @@ export function j2Accel(r: Vec3): Vec3 {
 // 第三体(太陽・月)の潮汐摂動: 機体への直接引力から地球中心への引力を
 // 差し引いた差分加速度。a = μ[(ρ/|ρ|³) - (r_b/|r_b|³)], ρ = r_b - r。
 export function thirdBodyAccel(r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
+  // ρ = bodyPos - r
   const dx = bodyPos.x - r.x;
   const dy = bodyPos.y - r.y;
   const dz = bodyPos.z - r.z;
@@ -93,6 +96,7 @@ export function thirdBodyAccel(r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
     bodyPos.x * bodyPos.x + bodyPos.y * bodyPos.y + bodyPos.z * bodyPos.z,
     1.5,
   );
+  // μ(ρ/|ρ|³ − r_b/|r_b|³)
   return v3(
     (mu * dx) / d3 - (mu * bodyPos.x) / b3,
     (mu * dy) / d3 - (mu * bodyPos.y) / b3,
@@ -110,13 +114,16 @@ export function stepOrbitRK4(s: OrbitState, dt: number, extraAccel?: ExtraAccelF
 
   const outA = { ax: 0, ay: 0, az: 0 };
 
+  // 位置・速度から加速度(中心重力 + 追加加速度)を求め、outA に書き込む。
   const computeA = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => {
+    // 中心重力加速度
     const d2 = rx * rx + ry * ry + rz * rz;
     const d = Math.sqrt(d2);
     const k = -MU_EARTH / (d2 * d);
     outA.ax = rx * k;
     outA.ay = ry * k;
     outA.az = rz * k;
+    // 追加加速度を合算
     if (extraAccel) {
       const a = extraAccel(rx, ry, rz, vx, vy, vz);
       outA.ax += a.x;
@@ -179,6 +186,7 @@ export interface Elements {
   hHat: Vec3; // 軌道面法線
 }
 
+// 位置・速度から古典軌道要素を求める。半径・角運動量が縮退している場合は null。
 export function elementsFromState(r: Vec3, v: Vec3): Elements | null {
   const rMag = len(r);
   if (rMag < 1) return null;
@@ -271,10 +279,12 @@ export function stateFromElements(
   nu: number,
 ): OrbitState {
   const Y = v3(0, 1, 0);
+  // 軌道面の基底を昇交点・傾斜角・近点引数の順に組み立てる
   const node = rotateAxis(v3(1, 0, 0), Y, raan); // 昇交点方向
   const hHat = rotateAxis(Y, node, inc); // 軌道面法線
   const pHat = rotateAxis(node, hHat, argp); // 近点方向
   const qHat = cross(hHat, pHat);
+  // 真近点角 nu における位置半径
   const p = a * (1 - e * e);
   const r = p / (1 + e * Math.cos(nu));
   const k = Math.sqrt(MU_EARTH / p);
