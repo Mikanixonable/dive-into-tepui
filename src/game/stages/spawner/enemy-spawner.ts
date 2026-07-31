@@ -7,7 +7,7 @@ import * as C from '../../const';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy } from '../../orbit-entity/enemy';
+import { Enemy } from '../../game-entity/enemy';
 import { generateDriftingEnemy } from './enemy-generator';
 
 // 色分けされた5グループ(各10機)を base 周囲5km以内に配置して直接生成する(訓練クラスタ)。

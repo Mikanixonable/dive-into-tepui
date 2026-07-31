@@ -21,8 +21,8 @@ import { PlanEditor } from './plan/plan-editor';
 import { DisplayTimeManager } from './display-time-manager';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
-import { EntityManager } from './orbit-entity/entity-manager';
-import { Simulator } from './orbit-entity/simulator';
+import { EntityManager } from './game-entity/entity-manager';
+import { Simulator } from './game-entity/simulator';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { Hud } from './hud/hud';
@@ -104,7 +104,7 @@ export class Game {
   readonly targeter: Targeter;
   // エンティティ配列(敵・弾・薬莢・デブリ・補給)の保持・追加・上限管理・寿命回収・描画同期。
   // Stage・Enemy.behave・HitSystem・Targeter・Logistics・EffectsSystem・NanWatchdog へ
-  // 参照共有される唯一の窓口(entities.ts 参照)。実シミュレーション(積分・命中・接触・姿勢)は
+  // 参照共有される唯一の窓口(game-entity/entity-manager.ts 参照)。実シミュレーション(積分・命中・接触・姿勢)は
   // simulator が持ち、この配列への参照を受け取って回す。
   readonly entities: EntityManager;
   readonly simulator: Simulator;
