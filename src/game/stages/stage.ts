@@ -180,7 +180,10 @@ export abstract class Stage {
       this._hud.hint(`${enemy.name} ${cause === 'reentry' ? '再突入により喪失' : '交戦圏を離脱'}`);
     }
 
-    if (this.checkWin()) {
+    // 決着後もタイムワープでシミュレーションは進み続け、その簡略更新経路でも cleanup を
+    // 通すため、自機が撃墜されて敗北が確定したあとに残っていた敵が再突入で消える、といった
+    // 自然損耗でもここへ来る。isPlaying でガードしないと、敗北のあとから勝利判定が上書きしてしまう。
+    if (this.isPlaying && this.checkWin()) {
       this.setPhase('won');
       this._unlockManager.reportClear(this.id, this._hud);
       this.onWin(simTime);
