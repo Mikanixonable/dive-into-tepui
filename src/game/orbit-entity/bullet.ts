@@ -19,8 +19,9 @@ export type Shooter = 'player' | 'enemy';
 // type によって分岐する(hit.ts/player.ts/enemy.ts 参照)。
 export type BulletType = 'normal' | 'plasma';
 
-// 自弾と敵プラズマ弾の両方に使う。配列は射手(自機/敵)ごとに分けて保持し、
-// 命中ルールは配列単位で扱うが、寿命(lifetime)は生成時に渡された値を自身で持つ。
+// 自弾と敵プラズマ弾の両方に使う。Simulator.bullets という単一配列に保持され、
+// 命中ルール(hit.ts)は各弾が持つ type/shooter を見て分岐する。寿命(lifetime)は
+// 生成時に渡された値を自身で持つ。
 // dispose() は基底の OrbitEntity.dispose()(scene.remove のみ)をそのまま使う。
 // buildBulletMesh/buildPlasmaMesh(render/ships.ts)のハロー用 geometry/material は
 // モジュールスコープ(通常弾)または accent 値ごと(プラズマ弾。取りうる値は少数)に
