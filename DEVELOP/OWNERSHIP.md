@@ -37,9 +37,9 @@ main.ts
     ├── Ephemeris            ... 状態を持たない純サンプラ。各所へ参照共有する単一インスタンス
     ├── CameraSystem
     │   ├── ChaseCamera
-    │   ├── MapCamera
-    │   ├── MapMarkers
-    │   ├── MapViewPanel               ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
+    │   ├── OverviewCamera
+    │   ├── FocusMarkers
+    │   ├── OverviewCameraPanel        ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
     │   └── FocusGizmo
     │       └── ContextMenu
     ├── GroupedMarkers (enemyMarkers)  ... 画面上で近接する敵マーカーのまとめ + 画面外方位マーカー
@@ -56,12 +56,14 @@ main.ts
     │   ├── PlayerMarkers              ... 方向マーカー・ボアサイト・マップ上の自機位置
     │   └── OrbitLine                  ... 自機軌道線
     ├── SimSpeedManager
-    ├── PredictSystem
-    │   ├── PlanTrajectory             ... 予測折れ線 + per-arc キャッシュ + 画面判定
-    │   │   └── PredictedLine[]        ... arc ごと。各々 SampledLine を持つ
-    │   └── PredictPanel               ... DOM は Hud.root 配下。期間/予測座標系/未来位置スライダー
+    ├── DisplayTimeManager             ... 「いつを見るか」(表示期間・未来ゴーストスライダー)
+    │   └── DisplayTimePanel           ... DOM は Hud.root 配下。期間/未来位置スライダー
     ├── PlanEditor
     │   ├── Plan                       ... ノード列 + アンカー(計画の正本)
+    │   ├── PlanDisplay                ... 計画の未来表示(「見えるとき何を見せるか」)
+    │   │   ├── PlanTrajectory         ... 予測折れ線 + per-arc キャッシュ + 画面判定
+    │   │   │   └── PredictedLine[]    ... arc ごと。各々 SampledLine を持つ
+    │   │   └── TRAJECTORY パネル DOM   ... 表示座標系(frame)の SegmentedControl 1 個のみ
     │   ├── NodeGizmo
     │   │   └── ContextMenu
     │   └── 計画パネル DOM
@@ -80,14 +82,15 @@ main.ts
     │       └── FlashEffect[]          ... 各々 Billboard を持つ
     ├── Targeter
     │   └── OrbitLine                  ... ターゲット軌道線(オレンジ)
-    ├── Simulator
-    │   ├── HitSystem
-    │   ├── CollisionPhysics
+    ├── EntityManager                  ... エンティティ配列の保持のみ。simTime は持たない
     │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
     │   ├── Bullet[]
     │   ├── DebrisPiece[] (casings)
     │   ├── DebrisPiece[] (debris)
     │   └── Ammo[]
+    └── Simulator                      ... 実シミュレーション。EntityManager の参照を受け取って回すだけ(所有しない)
+        ├── HitSystem
+        └── CollisionPhysics
 ```
 
 木に現れないインスタンス:
@@ -108,15 +111,16 @@ main.ts
 | `THREE.Scene` / `WebGPURenderer` | `GameScene`(main.ts) | Game・各描画物を持つクラス |
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
-| `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・PlayerMarkers・Targeter・Logistics・MapMarkers・PlanGuide・PredictSystem) |
-| `Ephemeris` | Game | EnvironmentScene・Simulator・MapCamera・MapMarkers・PlanEditor・PredictSystem |
-| `PlanTrajectory` | PredictSystem | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ) |
-| `Plan` | PlanEditor | PredictSystem(`sync` の引数で毎フレーム)・PlanGuide(同)|
+| `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・PlayerMarkers・Targeter・Logistics・FocusMarkers・PlanGuide・PlanDisplay) |
+| `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・PlanEditor(→PlanDisplay) |
+| `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・HitSystem・CollisionPhysics・Targeter・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx` 経由の追加のみ) |
+| `PlanTrajectory` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.traj` 経由) |
+| `Plan` | PlanEditor | PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)|
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
-| `Simulator.ammos` | Simulator | Logistics(読み取り + `addAmmo` 経由の追加のみ) |
-| `Player` / `Simulator` / `Stage` | Game | 毎フレームの引数として相互に渡される |
+| `Player` / `Simulator` / `EntityManager` / `Stage` | Game | 毎フレームの引数として相互に渡される |
 | `UnlockManager` | main.ts | ステージセレクト画面と、各Stage（クリア後画面判定のため） |
+| `DisplayTimeManager.onDurationChange`(コールバック) | Game が配線 | `editor.planDisplay.traj.invalidate()` を呼ぶ。所有者が違う(DisplayTimeManager は Game 直属、PlanDisplay は PlanEditor 所有)ため Game が繋ぐ唯一の場所 |
 
 ---
 
@@ -129,22 +133,23 @@ main.ts
 | 自機の姿勢・角速度 | `Player.att` | 積分は Simulator.stepAttitudes に一元化 |
 | 機体座標系トルク | `Player.torque` | 毎フレーム PlayerThrottle の戻り値で上書きされる |
 | 推力加速度 | `OrbitEntity.thrust` | 自機は `PlayerThrottle.updateThrustState` の戻り値で毎フレーム上書き。無推力なら null |
-| HP / 生存 | `Ship.hp` / `OrbitEntity.alive` | 死亡は `alive = false` のみ。除去は Simulator.cleanup |
+| HP / 生存 | `Ship.hp` / `OrbitEntity.alive` | 死亡は `alive = false` のみ。除去は EntityManager.cleanup |
 | RCS 制動・スロットル段・ホールド | `PlayerThrottle` | |
 | 姿勢微調整モード | `Player.fineAttitude` | |
 | 残弾・マガジン・バレル・装填タイマー | `PlayerFire` | |
 | ベルトのたわみ(節点位置・ツイスト) | `BeltPhysics` | 表示用リンク変換は Belt が毎フレーム導出 |
 | 外殻温度・動圧・高度警告 | `ThermalSystem` | 破壊判定そのものは `Player.checkLoss` |
-| エンティティ配列(敵/弾/薬莢/デブリ/補給) | `Simulator` | 追加は `addXxx` 経由。上限管理もここ |
+| エンティティ配列(敵/弾/薬莢/デブリ/補給) | `EntityManager` | 追加は `addXxx` 経由。上限管理もここ。`Simulator` は参照を受け取って回すだけで配列を持たない |
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
 | ワープ段・自動ワープ目標時刻 | `SimSpeedManager` | 閾値判定(canPlayerFire 等)もここの getter が唯一 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
 | マニューバ計画(ノード列・アンカー) | `Plan` | 所有は PlanEditor。ノード・アンカーとも 1 個の `OrbitState`(実行時刻 = `t`、Δv は導出値)。各ノードに 1 対 1 の内部 ID を発行する(`nodeIdAt`/`indexOfNodeId`) |
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNodeId` / `.editMode` | 選択は index ではなく Plan 発行の ID で持つ(`consumeFirstNode` 等で配列が動いてもずれない)。`selectedNodeIdx` は ID から都度解決する index ビュー |
-| 予測表示期間・未来ゴーストスライダー | `PredictSystem` | |
-| マップ視点(注視点相対オフセット・パン)・表示座標系・フォーカス | `MapCamera` | 予測折れ線の座標系もこれを読む |
+| 予測表示期間・未来ゴーストスライダー・未来表示の禁止(forceCurrent) | `DisplayTimeManager` | |
+| 予測折れ線を描く表示座標系(trajectoryFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本 |
+| マップ視点(注視点相対オフセット・パン)・表示座標系・フォーカス | `OverviewCamera` | |
 | 戦闘視点(yaw/pitch/dist・姿勢追従フラグ) | `ChaseCamera` | |
-| マップモード表示・照準ズーム | `CameraSystem.mapMode` / `.zoomActive` | |
+| マップモード表示・照準ズーム | `CameraSystem.overviewMode` / `.zoomActive` | |
 | ターゲットロック・自動ターゲット・的通過マーク | `Targeter` | |
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
 | 発射数・命中数・撃破数・出撃数 | `ScoreCounter` | 所有は Stage |
@@ -163,14 +168,16 @@ main.ts
 
 ### 正本が分かれていることに意味がある組み合わせ
 
-- **`CameraSystem.mapMode`(視点)と `PlanEditor.editMode`(操作系)** は別の正本。同時に切り替えるのは
-  `MapModeToggler` だけで、描画・視点側は mapMode を、入力・挙動側は editMode を見る。
+- **`CameraSystem.overviewMode`(視点)・`PlanEditor.editMode`(操作系)・`DisplayTimeManager.forceCurrent`
+  (未来表示の禁止)** は3つとも別の正本。同時に切り替えるのは `MapModeToggler` だけで、描画・視点側は
+  overviewMode を、入力・挙動側は editMode を、未来表示の可否は forceCurrent を見る。
 - **`FloatingOrigin.r` と `Player.state.r`** は現状同じ値だが意味論的に別物。sync 系は必ず fo を参照し、
   `player.state.r` を描画原点として直接使わない。
-- **`MapCamera.cameraFrame`(視点を固定する座標系)と `PredictSystem.trajectoryFrame`(予測折れ線を
+- **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `PlanDisplay.trajectoryFrame`(予測折れ線を
   描く座標系)** は別の正本で、ユーザーが独立に選ぶ。PlanTrajectory が受け取るのは後者だけ。
-- **マップモードの操作パネル**は状態の所有者ごとに分かれる。`MapViewPanel` は CameraSystem が、
-  `PredictPanel` は PredictSystem が所有し、自分の状態だけを映して自分の状態だけを受け取る。
+- **マップモードの操作パネル**は状態の所有者ごとに分かれる。`OverviewCameraPanel` は CameraSystem が、
+  `DisplayTimePanel`(期間・未来位置スライダー)は DisplayTimeManager が、TRAJECTORY パネル(表示座標系)
+  は PlanDisplay(PlanEditor 所有)が持ち、それぞれ自分の状態だけを映して自分の状態だけを受け取る。
   表示・非表示も各所有者が毎フレームの sync で押し出す(MapModeToggler は関与しない)。
 - **キー割り当ての正本は `input/key-mapping.ts` の `KEY_MAPPING`、キーの処理の正本は各担当モジュール**。
   どのキーがどの操作かは KEY_MAPPING(コード + 表示名)だけが持ち、入力を読む側(`Input.down` /
@@ -187,7 +194,7 @@ main.ts
   `TouchControls.syncModeButtons()` が担当し、いずれも game.sync が自機/ステージの状態を渡す。
 - **HUD マーカーは対象の持ち主が出す**。自機由来(方向/ボアサイト/マップ上の自機)は `PlayerMarkers`、
   ターゲット由来(方位・相対 AN/DN・的通過マーク)は `Targeter`、補給は `Logistics`、天体ラベルは
-  `MapMarkers`、ノード/BURN は `PlanGuide`、未来ゴーストは `PredictSystem`。Game が直接持つのは
+  `FocusMarkers`、ノード/BURN は `PlanGuide`、未来ゴーストは `PlanDisplay`。Game が直接持つのは
   **1つの対象では決められない2つだけ** — `GroupedMarkers`(画面上のまとめ)と `LeadMarkers`(自機と敵の
   両方に依存)。`Enemy` は自分の見た目とラベルを `markerItem()` で渡すだけで、まとめの判断には
   関与しない。
@@ -210,7 +217,7 @@ main.ts
 | `PlanEditor.nodeArrivings()` / `nodeDv()` | ノード到達状態と Δv の導出値(表示専用) | 呼ぶたび再計算 |
 | `PlayerThrottle.thrustVizDir` / `.thrustAccelVec` | 推力の表示・ベルト物理向け派生値 | 毎フレーム上書き |
 | `Player` の各 getter(`rcsDamp` / `magsLeft` 等) | throttle/fire への転送 | — |
-| `MapMarkers.labels[].pos` | 天体暦から毎フレーム再計算 | `syncLabels()` 毎 |
+| `FocusMarkers.labels[].pos` | 天体暦から毎フレーム再計算 | `syncLabels()` 毎 |
 
 ### 基礎データ型の不変性(整合性の前提)
 

@@ -1,30 +1,17 @@
-// エンティティ配列の所有と、その受動的な更新(軌道積分・慣性姿勢・寿命管理)。
-// 描画同期や能動的な更新(AI・発射・スポーン判断)は game.ts / 各 Stage(stages/)/
-// Enemy.behave が担い、追加は addXxx 経由で行う。scene への add/remove は各 entity
-// 自身の責務(entities.ts)なので、Simulator は配列管理・上限管理・寿命判定に専念する。
+// 実シミュレーションの更新(軌道積分・弾命中・剛体接触・慣性姿勢積分)。対象のエンティティ配列は
+// 持たず、EntityManager の参照を受け取って回す(配列の保持・追加・上限管理・寿命回収は
+// EntityManager の責務)。simTime/lastSimDt の保持もここ。Game だけが参照する。
 import { stepAttitude } from '../../physics/attitude';
-import { Vec3 } from '../../physics/vec3';
-import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { HitSystem } from './hit';
-import { Ammo, DebrisPiece, OrbitEntity } from './entities';
+import { EntityManager } from './entity-manager';
 import { Player } from '../player/player';
-import { Enemy } from './enemy';
-import { Bullet } from './bullet';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
 import { CollisionPhysics } from './collision';
 import { Sfx } from '../../audio/sfx';
 
 export class Simulator {
-  readonly enemies: Enemy[] = [];
-  readonly bullets: Bullet[] = [];
-  // casings/debris は DebrisPiece の kind によって振り分けられる別々の上限プール
-  // (薬莢は撃破デブリより大量・頻繁に出るため、上限を分けて管理する)。
-  readonly casings: DebrisPiece[] = [];
-  readonly debris: DebrisPiece[] = [];
-  readonly ammos: Ammo[] = [];
-
   readonly hitSystem: HitSystem;
   readonly collisionPhysics: CollisionPhysics;
 
@@ -34,49 +21,12 @@ export class Simulator {
   lastSimDt = 0;
 
   constructor(
+    private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
     private readonly _sfx: Sfx,
   ) {
     this.hitSystem = new HitSystem();
     this.collisionPhysics = new CollisionPhysics();
-  }
-
-  // ------------------------------------------------------------ 追加
-  // 配列への追加はここを通す(上限管理まで面倒を見る)。scene への登録は
-  // entity 自身のコンストラクタが既に済ませている。破壊は alive = false に
-  // すれば cleanup が回収するので、削除関数は持たない。
-
-  addEnemy(enemy: Enemy): void {
-    this.enemies.push(enemy);
-  }
-
-  addBullet(bullet: Bullet): void {
-    this.addCapped(this.bullets, bullet, C.MAX_BULLETS * 3);
-  }
-
-  addDebris(piece: DebrisPiece): void {
-    if (piece.kind === 'casing') this.addCapped(this.casings, piece, C.MAX_CASINGS);
-    else this.addCapped(this.debris, piece, C.MAX_DEBRIS);
-  }
-
-  addAmmo(ammo: Ammo): void {
-    this.ammos.push(ammo);
-  }
-
-  // 上限超過時は最古の個体をシーンから外す(弾・薬莢のジオメトリは共有なので破棄しない)
-  private addCapped<T extends OrbitEntity>(arr: T[], entity: T, cap: number): void {
-    arr.push(entity);
-    if (arr.length > cap) arr.shift()!.dispose();
-  }
-
-  allEntities(): OrbitEntity[] {
-    return [
-      ...this.enemies,
-      ...this.bullets,
-      ...this.ammos,
-      ...this.casings,
-      ...this.debris
-    ];
   }
 
   // ------------------------------------------------------------ 積分
@@ -105,12 +55,12 @@ export class Simulator {
     for (let i = 0; i < nSub; i++) {
       this.simTime = this.simulationSubStep(this.simTime, subDt, player);
       if (bulletCollision) {
-        this.hitSystem.checkBulletHits(this.simTime, player, activeStage, this);
+        this.hitSystem.checkBulletHits(this.simTime, player, activeStage, this.entities);
       }
     }
 
     if (resolveCollision) {
-      this.collisionPhysics.resolve(dt, player, this.allEntities(), () => this._sfx.clank());
+      this.collisionPhysics.resolve(dt, player, this.entities.all(), () => this._sfx.clank());
     }
 
     this.stepAttitudes(simDt, player);
@@ -128,11 +78,11 @@ export class Simulator {
     const moonPos = this.ephemeris.moonPosAt(simTime);
 
     player.stepSim(dt, sunPos, moonPos);
-    for (const e of this.enemies) e.stepSim(dt, sunPos, moonPos);
-    for (const b of this.bullets) b.stepSim(dt, sunPos, moonPos);
-    for (const c of this.casings) c.stepSim(dt, sunPos, moonPos);
-    for (const d of this.debris) d.stepSim(dt, sunPos, moonPos);
-    for (const a of this.ammos) a.stepSim(dt, sunPos, moonPos);
+    for (const e of this.entities.enemies) e.stepSim(dt, sunPos, moonPos);
+    for (const b of this.entities.bullets) b.stepSim(dt, sunPos, moonPos);
+    for (const c of this.entities.casings) c.stepSim(dt, sunPos, moonPos);
+    for (const d of this.entities.debris) d.stepSim(dt, sunPos, moonPos);
+    for (const a of this.entities.ammos) a.stepSim(dt, sunPos, moonPos);
 
     player.thermal.updateThermal(dt, player.state.r, player.state.v);
 
@@ -147,44 +97,9 @@ export class Simulator {
     player.att = stepAttitude(player.att, player.torque, simDt);
 
     const attDt = Math.min(simDt, 0.12);
-    for (const e of this.enemies) if (e.alive) e.att = stepAttitude(e.att, e.torque, attDt);
-    for (const cs of this.casings) cs.att = stepAttitude(cs.att, cs.torque, attDt);
-    for (const d of this.debris) d.att = stepAttitude(d.att, d.torque, attDt);
-    for (const ammo of this.ammos) if (ammo.alive) ammo.att = stepAttitude(ammo.att, ammo.torque, attDt);
-  }
-
-  // ------------------------------------------------------------ 寿命管理
-
-  // 不要になったものを除去する
-  // playerPos は弾の「自機から離れすぎたら消す」判定に使う(bullet.ts 参照)。
-  cleanup(dt: number, activeStage: Stage, playerPos: Vec3): void {
-    // 自滅要因をチェック。もし不要になっていたらalive=falseになる。
-    for (const e of this.enemies) e.checkLoss(dt, this.simTime, activeStage, playerPos);
-    for (const b of this.bullets) b.checkLoss(dt, this.simTime, activeStage, playerPos);
-    for (const cs of this.casings) cs.checkLoss(dt, this.simTime, activeStage, playerPos);
-    for (const d of this.debris) d.checkLoss(dt, this.simTime, activeStage, playerPos);
-    for (const ammo of this.ammos) ammo.checkLoss(dt, this.simTime, activeStage, playerPos);
-    // alive=false になったものを配列から除去して scene から片付ける(dispose)。
-    this.prune(this.enemies);
-    this.prune(this.bullets);
-    this.prune(this.casings);
-    this.prune(this.debris);
-    this.prune(this.ammos);
-  }
-
-  // in-place フィルタ: 配列の参照はそのまま保つ(ctx スナップショット越しの参照を無効化しない)
-  private prune<T extends OrbitEntity>(arr: T[]): void {
-    let w = 0;
-    for (const x of arr) {
-      if (!x.alive) x.dispose();
-      else arr[w++] = x;
-    }
-    arr.length = w;
-  }
-
-  // ------------------------------------------------------------ 描画同期
-  
-  sync(fo: FloatingOrigin): void {
-    this.allEntities().forEach(e => e.sync(fo));
+    for (const e of this.entities.enemies) if (e.alive) e.att = stepAttitude(e.att, e.torque, attDt);
+    for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, attDt);
+    for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, attDt);
+    for (const ammo of this.entities.ammos) if (ammo.alive) ammo.att = stepAttitude(ammo.att, ammo.torque, attDt);
   }
 }

@@ -1,5 +1,5 @@
 // 訓練クラスタ(stage0)の敵集団の配置・分散を計算し、直接 Enemy を生成する。
-// (Simulator への登録は呼び出し側の Stage0 が Stage.addEnemy 経由で行う)。
+// (EntityManager への登録は呼び出し側の Stage0 が Stage.addEnemy 経由で行う)。
 import * as THREE from 'three/webgpu';
 import { OrbitState, orbitState } from '../../../physics/orbital';
 import { add, cross, len, norm, randSym, scale } from '../../../physics/vec3';

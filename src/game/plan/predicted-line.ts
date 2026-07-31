@@ -1,10 +1,10 @@
-// 素案 B-1: 指定期間の数値予測軌道を1本の折れ線として描く、arc 単位の再利用ユニット。
+// 指定期間の数値予測軌道を1本の折れ線として描く、arc 単位の再利用ユニット。
 // 初期状態(OrbitState)と描画区間 [start, end](絶対 simTime)を受け取り、RK4 で将来軌道点列を
-// 予測(physics/predict の predictTrajectory)して、その描画は SampledLine(素案 X)へ委譲する。
+// 予測(physics/predict の predictTrajectory)して、その描画は SampledLine へ委譲する。
 //
-// 「単 arc」= ノードを持たない自由伝播。plan の多ノード予測は Step 3 で B-2(PlanTrajectory)が
-// arc ごとにこの B-1 を生成・所有して束ねる。B-1 自身は plan を知らないので、将来は敵機・デブリ
-// の将来軌道予測にもそのまま転用できる(その用途は §6 の作業範囲外)。
+// 「単 arc」= ノードを持たない自由伝播。plan の多ノード予測は PlanTrajectory が arc ごとに
+// このユニットを生成・所有して束ねる。このユニット自身は plan を知らないので、将来は敵機・
+// デブリの将来軌道予測にもそのまま転用できる(その用途は現時点では未実装)。
 //
 // キャッシュ: 予測 RK4 は毎フレーム引き直すには重いので、自分の入力(初期状態・区間・サンプル数)
 // の変化を検出してスロットル付きで再計算する — 初期状態/開始時刻が変わった(編集)ときは短間隔、
@@ -12,8 +12,8 @@
 // bake し直し、un-bake(剛体回転)とフローティングオリジン補正は毎フレーム SampledLine が行う。
 //
 // 環境加速度: 現状は plan 予測と同じく大気抵抗なし(predictTrajectory の bcInv=0 固定)。減衰軌道
-// (敵機・デブリ)向けの弾道係数パラメータ化は、その実利用が入るとき(§5-3/§6)に predict.ts 側と
-// 合わせて足す — 現consumerに不要な一般化をここで先取りしない。
+// (敵機・デブリ)向けの弾道係数パラメータ化は、その実利用が入るとき(better_predict.md Step 1)に
+// predict.ts 側と合わせて足す — 現consumerに不要な一般化をここで先取りしない。
 import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital';
 import { predictTrajectory } from '../../physics/predict';
@@ -73,7 +73,7 @@ export class PredictedLine {
     this.sampled.syncTransform(frame, currentTime, ephemeris, fo);
   }
 
-  // 予測点列の参照。B-2 の多ノード集約・クリック判定(ピッキング)が読む。
+  // 予測点列の参照。PlanTrajectory の多ノード集約・クリック判定(ピッキング)が読む。
   samplesRef(): readonly OrbitState[] {
     return this.samples;
   }

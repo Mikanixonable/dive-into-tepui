@@ -9,8 +9,8 @@ import { Player } from '../player/player';
 const isCasing = (e: OrbitEntity): boolean => e instanceof DebrisPiece && e.kind === 'casing';
 
 export class CollisionPhysics {
-  // entities は player 以外の衝突参加エンティティ(Simulator.allEntities() が一本化して渡す —
-  // casings/debris の配列分割は Simulator 内部の上限管理の都合であり、ここでは扱わない)。
+  // entities は player 以外の衝突参加エンティティ(EntityManager.all() が一本化して渡す —
+  // casings/debris の配列分割は EntityManager 内部の上限管理の都合であり、ここでは扱わない)。
   resolve(dt: number, player: Player, entities: OrbitEntity[], onPlayerCasingImpact: () => void): void {
     const p = player;
     const beltActive = p.alive && dt > 1e-6;

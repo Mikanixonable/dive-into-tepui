@@ -1,7 +1,8 @@
 // DOM オーバーレイの HUD のシェル。トースト・ヒント・ヘルプの表示と、WebGPU キャンバスの上に
 // 重ねる root/svgOverlay の公開・ステータスパネル同期(panels)の合成のみを担う。
-// 設定(一時停止メニュー)・予測パネル・マップ視点パネル・計画パネル・終了画面は、それぞれ
-// SettingsPanel / PredictSystem / CameraSystem / PlanEditor / result-screen.ts が自分で所有する。
+// 設定(一時停止メニュー)・未来表示パネル・マップ視点パネル・計画パネル・終了画面は、それぞれ
+// SettingsPanel / DisplayTimeManager・PlanEditor(が所有する PlanDisplay) / CameraSystem /
+// PlanEditor / result-screen.ts が自分で所有する。
 // マーカー表示(MarkerManager)は SVG オーバーレイを使う実装詳細に過ぎず、今後変わり得る一方、
 // 各所から多数のマーカーが参照される点は変わらないため、実体は Hud ではなく Game が持つ
 // (game.ts の markerManager フィールド)。Hud は DOM 構築で得た root/svgOverlay を

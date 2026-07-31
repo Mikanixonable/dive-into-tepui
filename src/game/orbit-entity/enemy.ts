@@ -16,7 +16,7 @@ import { Bullet } from './bullet';
 import type { Stage } from '../stages/stage';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import type { Simulator } from './simulator';
+import type { EntityManager } from './entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
@@ -146,8 +146,8 @@ export class Enemy extends Ship {
     activeStage.recordEnemyDeath(this, simTime, 'reentry');
   }
 
-  // 行動関数(同一集団の同時攻撃数カウント・弾追加は simulator を使う)。
-  behave(dt: number, simTime: number, player: Player, simulator: Simulator, simSpeed: SimSpeedManager): void {
+  // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
+  behave(dt: number, simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager): void {
     if (!player.alive) return;
     if (!simSpeed.canEnemyFire) return;
     const dist = len(sub(player.state.r, this.state.r));
@@ -156,7 +156,7 @@ export class Enemy extends Ship {
     if (this.burstLeft && this.burstLeft > 0) {
       this.burstDelay = (this.burstDelay ?? 0) - dt;
       if (this.burstDelay <= 0) {
-        this.firePlasma(simTime, player, simulator);
+        this.firePlasma(simTime, player, entities);
         this.burstLeft--;
         this.burstDelay = C.ENEMY_BURST_INTERVAL;
       }
@@ -167,12 +167,12 @@ export class Enemy extends Ship {
     if (simTime - this.lastFireSim <= C.ENEMY_FIRE_INTERVAL) return;
     this.lastFireSim = simTime;
 
-    const countInGroup = this.attackingCountInGroup(simulator.enemies);
+    const countInGroup = this.attackingCountInGroup(entities.enemies);
     if (countInGroup >= C.ENEMY_MAX_ATTACKERS_PER_GROUP || Math.random() >= C.ENEMY_ATTACK_CHANCE) return;
     const counts = C.ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
     this.burstDelay = C.ENEMY_BURST_INTERVAL;
-    this.firePlasma(simTime, player, simulator);
+    this.firePlasma(simTime, player, entities);
   }
 
   private attackingCountInGroup(enemies: readonly Enemy[]): number {
@@ -183,7 +183,7 @@ export class Enemy extends Ship {
     return n;
   }
 
-  private firePlasma(simTime: number, player: Player, simulator: Simulator): void {
+  private firePlasma(simTime: number, player: Player, entities: EntityManager): void {
     const r = this.state.r;
     const v = this.state.v;
     const toPlayer = sub(player.state.r, r);
@@ -215,6 +215,6 @@ export class Enemy extends Ship {
     );
     pb.obj.quaternion.setFromRotationMatrix(mz);
 
-    simulator.addBullet(pb);
+    entities.addBullet(pb);
   }
 }

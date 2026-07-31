@@ -48,21 +48,21 @@
         - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
         - startAutoWarpTo() + hud.hint() // 未開始
     - mapModeToggler.update()
-      - close(...) // !isPlaying && cameraSystem.mapMode のみ(死亡/終了時にマップを強制的に閉じる)
+      - close(...) // !isPlaying && cameraSystem.overviewMode のみ(死亡/終了時にマップを強制的に閉じる)
       - [ポーズ中] 何もせず return // [M] は消費もしない。開いていたマップはそのまま維持する
-      - [開く: !cameraSystem.mapMode]
+      - [開く: !cameraSystem.overviewMode]
         - editor.selectedNodeIdx = null
         - touchControls?.setMapMode(true) // タッチデバイスのみ
-        - cameraSystem.mapMode = true / editor.editMode = true // 独立2責務を同時に立てる唯一の箇所
+        - cameraSystem.overviewMode = true / editor.editMode = true / displayTimeManager.forceCurrent = false // 独立3責務を同時に立てる唯一の箇所
         - hud.hint()
-      - [閉じる: cameraSystem.mapMode]
+      - [閉じる: cameraSystem.overviewMode]
         - editor.onMapClosed()
           - hidePanel()
           - plan.removeNode() // Δv が NODE_MIN_DV 未満のノードごと
         - editor.closeMenu() → nodeGizmo.closeMenu()
         - cameraSystem.closeFocusMenu() → focusGizmo.closeMenu()
         - touchControls?.setMapMode(false)
-        - cameraSystem.mapMode = false / editor.editMode = false
+        - cameraSystem.overviewMode = false / editor.editMode = false / displayTimeManager.forceCurrent = true
         - hud.hint() // plan.nodes.length > 0 のみ
     - editor.handleInput()
       - clearPlanByKey() // KeyX
@@ -107,7 +107,7 @@
         - sfx.spinUp() // 発射開始フレームのみ(このフレームは fireGun まで進まない)
         - consume() // 弾薬状態の更新。戻り値で以下の分岐が決まる
         - fireGun() // クールダウン明けのみ
-          - spawnBullet() → simulator.addBullet()
+          - spawnBullet() → entities.addBullet()
           - player.state.v に反動 Δv
           - dropCasing() → fx.spawnCasing()
           - spawnMuzzleFlash() → fx.spawnFlash()
@@ -122,7 +122,7 @@
   - activeStage.update() // 具体ステージへディスパッチ。!isPlaying なら即 return
     - behaveAllEnemies() // 全ステージ共通の先頭処理
       - enemy.behave() // 生存中の敵ごと(canEnemyFire・距離・バースト状態の判定は behave 内部)
-        - firePlasma() → simulator.addBullet()
+        - firePlasma() → entities.addBullet()
     - [Stage0 訓練スコアアタック] logistics.updateLogistics(respawnOnDespawn=false)
     - [Stage0 訓練スコアアタック] timer.update()
       - setPhase('timeup') + showScoreAttackResultScreen() // 制限時間到達フレームのみ
@@ -137,7 +137,7 @@
     - [Stage00 無限サバイバル] updateActiveCombatPhase()
       - despawnOutOfRangeEnemies() // 圏外の敵ごと(alive=false + dispose())
       - spawnWave() + hud.toast() // 間隔・同時展開上限を満たす場合のみ
-      - spawnWave: generateWave() → addEnemy() → simulator.addEnemy() + scoreCounter.recordSpawnEnemy()
+      - spawnWave: generateWave() → addEnemy() → entities.addEnemy() + scoreCounter.recordSpawnEnemy()
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(respawnOnDespawn=false)
   - nanWatchdog.checkPlayer('activeStage.update')
@@ -180,16 +180,16 @@
       - checkThermalLimits() → hud.hint() // 熱/動圧が危険域に入った初回のみ
     - destroyEffect() → sfx.explosion() + fx.spawnShipDestroyEffect() // 限界超過 or 高度不足のみ
     - activeStage.recordPlayerLost() // 同上
-  - simulator.cleanup() // checkLoss には自機位置を渡す(弾は距離で消える)
+  - entities.cleanup() // simulator.simTime と自機位置を渡す(弾は距離で消える)
     - checkLoss() // 敵・弾・薬莢・デブリ・補給の各個体ごと(既定は alive=false 代入のみ)
       - [Enemy.checkLoss] destroyEffect() + activeStage.recordEnemyDeath(byPlayer=false) // 再突入時のみ
         - scoreCounter.recordEnemyLoss() + hud.hint()
     - prune() ×5 → entity.dispose() // alive=false の個体ごと(scene から除去、必要なら geometry も破棄)
   - cameraSystem.update() // 物理積分の後に呼ぶ(追従カメラの基準を積分後の自機位置に合わせるため)
     - chaseCamera.toggleFollowAttitude() // KeyG。カメラ自身の状態なのでここで消費する
-    - zoomActive = !mapMode && KeyZ 押下
-    - mapCamera.update() // cameraSystem.mapMode のみ
-    - chaseCamera.update() // !mapMode のみ
+    - zoomActive = !overviewMode && KeyZ 押下
+    - overviewCamera.update() // cameraSystem.overviewMode のみ
+    - chaseCamera.update() // !overviewMode のみ
       - computeGunsightView() // player.alive && zoomActive
       - computeChaseView() // それ以外(!alive / 姿勢追従 / 軌道基準の3経路)
   - editor.plan.trackAnchor() // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
@@ -199,7 +199,7 @@
         - nodeGizmo.openMenu() + selectedNodeIdx = idx // ヒット時。true を返して消費
       - handleMapClick() // 左クリックごと。常に消費する
         - selectedNodeIdx = idx + sfx.warp() // 既存ノードをヒットした場合
-        - traj.nearestSample() → plan.addNode() + sfx.warp() // 予測軌道上をヒットした場合
+        - planDisplay.traj.nearestSample() → plan.addNode() + sfx.warp() // 予測軌道上をヒットした場合
     - cameraSystem.handleMapPointer() // ノードに消費されずに残った右クリックだけが届く
       - handleFocusRightClick() → focusGizmo.openMenu() // MAP_LABEL_PICK_PX 以内にラベルがある場合のみ消費
     - editor.updateEditing()
@@ -217,64 +217,67 @@
 
 - game.sync(dt)
   - floatingOrigin = new FloatingOrigin(player.state.r, player.state.v) // 以降の sync 系はこの fo だけを参照する
-  - orbitPeriod / displayTime を確定 // predict.resolveDisplayTime(): 未来ゴーストのスライダーが立っている間だけ先の時刻
+  - orbitPeriod / displayTime を確定 // displayTimeManager.resolveDisplayTime(): 未来ゴーストのスライダーが立っている間だけ先の時刻
   - cameraSystem.sync() // 最初に呼ぶ: environment.sync とマーカー投影が今フレームのカメラ行列を読む
-    - mapCamera.sync() // mapMode のみ
-    - chaseCamera.sync() // !mapMode のみ
-    - mapViewPanel.setVisible(mapMode) + setFocus()/setFrame() // MAP VIEW パネル。点灯反映は mapMode のみ
-    - mapMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。mapMode のみ
-    - mapMarkers.hideLabels() // !mapMode のみ
-  - project / mapMode / simTime / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
+    - overviewCamera.sync() // overviewMode のみ
+    - chaseCamera.sync() // !overviewMode のみ
+    - overviewCameraPanel.setVisible(overviewMode) + setFocus()/setFrame() // MAP VIEW パネル。点灯反映は overviewMode のみ
+    - focusMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。overviewMode のみ
+    - focusMarkers.hideLabels() // !overviewMode のみ
+  - project / overviewMode / simTime / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
   - environment.sync()
     - syncEarth() → earth.group.position / earth.setRotation() / earth.tick()
     - syncSkyBodies()
       - earth.setSunDir() / starsMesh の位置・スケール / sun.billboard.sync() / sunLight.position
-      - moonMesh を実 ECI 位置へ配置 // mapMode(実スケール表示)
-      - placeCombatMoon() // !mapMode(カメラ相対の圧縮距離)
+      - moonMesh を実 ECI 位置へ配置 // overviewMode(実スケール表示)
+      - placeCombatMoon() // !overviewMode(カメラ相対の圧縮距離)
       - moonMesh.lookAt() // 常に
     - syncLighting() // 自機位置の日照率で sunLight/ambient の強度を上書き
-    - syncReferenceLines() → geoLine.sync() + moonLine.sync() // !mapMode では両方 null 渡しで非表示
+    - syncReferenceLines() → geoLine.sync() + moonLine.sync() // !overviewMode では両方 null 渡しで非表示
   - player.syncPlayer()
     - obj の position / quaternion / visible
     - thrustEffects.sync() → core/outer の sync() or hide()
     - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4
     - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出
     - markers.sync() // 自機由来の HUD マーカー。呼び出し側から見えるのは syncPlayer だけ
-      - [mapMode] 戦闘用7キーを hide + markerManager.setPosition('self')
-      - [!mapMode] hide('self') + syncOrbitalDirections() // pro/retro/nrm/anm/radout/radin
-      - [!mapMode] syncBoresight() → setDirection('bore') or hide('bore') // player.alive で分岐
+      - [overviewMode] 戦闘用7キーを hide + markerManager.setPosition('self')
+      - [!overviewMode] hide('self') + syncOrbitalDirections() // pro/retro/nrm/anm/radout/radin
+      - [!overviewMode] syncBoresight() → setDirection('bore') or hide('bore') // player.alive で分岐
     - orbitLine.sync() → regenerate() // 要素が閾値以上ドリフト or 推力中(force) or 初回のみ
-  - simulator.sync() → entity.sync() // 全エンティティごと(Bullet は速度方向を向く別実装)
+  - entities.sync() → entity.sync() // 全エンティティごと(Bullet は速度方向を向く別実装)
   - effects.sync() → flashEffectManager.syncFlashEffects()
     - billboard.sync() // 有効なフラッシュごと
     - scene.remove() + billboard.dispose() // 寿命切れのフラッシュごと
   - targeter.sync() // ターゲットに紐づく表示物をまとめて
     - syncOrbitLine()
-      - enemy.orbitLine.sync() // 敵ごと。mapMode かつ生存かつ非ターゲットのときだけ表示
+      - enemy.orbitLine.sync() // 敵ごと。overviewMode かつ生存かつ非ターゲットのときだけ表示
       - orbitLine.sync() // ターゲット軌道線(オレンジ)
     - syncBoardMarkers() // 的通過マークの寿命更新と表示(スロットごと)
-    - syncTargetDirMarkers() // ◇/◆ tgtdir/atgdir。mapMode or ターゲット無しなら hide
+    - syncTargetDirMarkers() // ◇/◆ tgtdir/atgdir。overviewMode or ターゲット無しなら hide
     - syncNodeMarkers() // 相対 AN/DN。要素が無い/軌道面がほぼ一致なら hide
   - enemyMarkers.sync() // 生存中の敵の markerItem() 集合を受ける(まとめは1体では決まらない)
     - groupNearby() // 画面上で近接するものをクラスタ化し、代表以外のラベルを落とす
     - markerManager.set() + syncBearing() // 対象ごと。画面外なら画面端の方位マーカー▲へ
     - retire() // 前フレームに出したキーのうち集合から消えたものを hide
-  - leadMarkers.sync() // 敵ごとの LEAD マーカー。mapMode or !player.alive なら全 hide して return
+  - leadMarkers.sync() // 敵ごとの LEAD マーカー。overviewMode or !player.alive なら全 hide して return
     - trackTargeted() // 最終ロック時刻を生存中の敵ぶんだけ作り直す
     - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある敵ごと
-  - predict.sync(plan, ...) // forceCurrent(マップ外)なら hide() = 折れ線/ゴースト/パネルを隠して return
-    - traj.setVisible(true)
-    - traj.update() // corners を arc へ分解し、arc ごとに PredictedLine を駆動。表示文脈(frame/un-bake 時刻/投影)もここで更新
-      - line.update() // arc ごと
-        - predictTrajectory() // 入力変化 + スロットル(または force)を満たしたときのみ(重い RK4)
-        - sampled.syncGeometry() // 点列 or frame が変わったときのみ頂点を bake
-        - sampled.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
-      - line.setVisible(false) // arc が減って余った B-1 ごと
-    - syncGhost() → markerManager.setPosition('plannedPlayer') or hide()
-    - panel.setVisible(true) / setDuration() / setFrame() / setSliderLabel() // PREDICT パネル
-  - editor.sync() // predict.sync の後: ノードの画面座標は traj の今フレームの表示文脈を通す
-    - [!editMode] hideGizmo() → nodeGizmo.sync([], null)
+  - displayTimeManager.sync(orbitPeriod) // PREDICT パネル(期間/未来位置スライダー)の表示/内容を押し出すだけ
+    - panel.setVisible(!forceCurrent) / setDuration() / setSliderLabel() // ラベルは自己完結の "T+" 表記のみ
+  - editor.sync(mapDist, displayEnd, simTime, displayTime, fo, project)
+    - [editMode] planDisplay.sync(plan, displayEnd, simTime, displayTime, fo, project)
+      - traj.setVisible(true)
+      - traj.update() // corners を arc へ分解し、arc ごとに PredictedLine を駆動。表示文脈(frame/un-bake 時刻/投影)もここで更新
+        - line.update() // arc ごと
+          - predictTrajectory() // 入力変化 + スロットル(または force)を満たしたときのみ(重い RK4)
+          - sampled.syncGeometry() // 点列 or frame が変わったときのみ頂点を bake
+          - sampled.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
+        - line.setVisible(false) // arc が減って余った PredictedLine ごと
+      - syncGhost() → markerManager.setPosition('plannedPlayer') or hide() // displayTime <= simTime なら hide
+      - panel.setVisible(true) / setSelected() // TRAJECTORY パネル(表示座標系)
     - [editMode] updateGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
+      // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は traj の今フレームの表示文脈を通す
+    - [!editMode] planDisplay.hide() + hideGizmo() → nodeGizmo.sync([], null)
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync()
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示
@@ -322,6 +325,6 @@
   更新順序の制約が無い。
 - **HUD マーカーは持ち主の `sync` が自分で出す**。`game.sync` に並ぶのは「1つの対象では決められない」
   ものだけ(`enemyMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存)で、残りは
-  `player.syncPlayer` / `targeter.sync` / `activeStage.sync` / `cameraSystem.sync` / `predict.sync` /
+  `player.syncPlayer` / `targeter.sync` / `activeStage.sync` / `cameraSystem.sync` / `editor.sync`(→ `planDisplay`) /
   `guide.update` の中にある。**`markerManager.resolveCollisions()` だけは全マーカーが
   出揃った後に一度だけ**呼ぶ必要があるため `game.sync` の末尾に置く。
