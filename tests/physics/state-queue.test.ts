@@ -61,14 +61,24 @@ export function register(): void {
     assert.equal(q.at(10)!.r.x, 10);
   });
 
-  test('state-queue: cleanup drops samples older than maxAge while keeping at least minCount', () => {
+  test('state-queue: cleanup drops samples older than maxAge, keeping one boundary sample for at()', () => {
     const q = new StateQueue();
     for (const t of [0, 10, 30, 60, 90]) q.push(stateAt(t));
-    q.cleanup(50, 2); // cutoff = 90 - 50 = 40 → 30 以下が対象、ただし minCount=2 は死守
-    assert.equal(q.size, 2);
+    q.cleanup(50, 2); // cutoff = 90 - 50 = 40 → 60,90 は cutoff 以上、30 は境界補間用に 1 件だけ残す
+    assert.equal(q.size, 3);
     assert.equal(q.at(90)!.r.x, 90);
     assert.equal(q.at(60)!.r.x, 60);
-    assert.equal(q.at(30), null);
+    assert.equal(q.at(30)!.r.x, 30);
+    assert.equal(q.at(40)!.r.x, 40); // 30〜60 の補間で cutoff ちょうども引ける
+    assert.equal(q.at(10), null); // 30 より古いものは削除済み
+  });
+
+  test('state-queue: cleanup(0, ...) keeps only samples at-or-after the newest time', () => {
+    const q = new StateQueue();
+    for (const t of [0, 10, 30]) q.push(stateAt(t));
+    q.cleanup(0, 1); // maxAge=0 は境界補間用の追加保持をしない
+    assert.equal(q.size, 1);
+    assert.equal(q.at(30)!.r.x, 30);
   });
 
   test('state-queue: cleanup keeps everything when nothing exceeds maxAge', () => {
