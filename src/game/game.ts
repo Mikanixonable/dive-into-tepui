@@ -18,9 +18,10 @@ import { initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
-import { PredictSystem } from './predict/predict-system';
+import { DisplayTimeManager } from './display-time-manager';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
+import { EntityManager } from './orbit-entity/entity-manager';
 import { Simulator } from './orbit-entity/simulator';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
@@ -52,7 +53,7 @@ export class Game {
   // 確定させる必要があるため、依存を持たないこれは field initializer のままでよい。
   private readonly ephemeris: Ephemeris;
   // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
-  // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/simulator/targeter 等)は
+  // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/entities/targeter 等)は
   // public にする。フォーカス候補ラベル(地球・月・太陽・ラグランジュ点)とその選択 UI
   // (視点パネル・ラベル右クリックメニュー)は「どこを注視するか」= overviewCamera 寄りの
   // 責務なので cameraSystem が所有し、その HUD 配線も cameraSystem 自身が張る。
@@ -64,14 +65,12 @@ export class Game {
   readonly simSpeedManager: SimSpeedManager;
 
   // 軌道計画まわりの三系統。かつて PlanSystem が束ねていたが、たらい回しを排して game が直接
-  // 保持する: editor(ノード列 Plan・編集モード editMode・ノード編集入力)、predict(未来表示 =
-  // 予測折れ線 traj・ゴースト・表示期間・予測軌道の表示座標系と、その操作パネル)、
-  // guide(戦闘ビューの噴射ガイド。マップモード中は呼ばない — [M] で開いている間は WASDQE が
-  // Δv編集に使われるため)。
-  // predict は scene を要し、editor は predict の traj を要するため、この順にコンストラクタ
-  // 本体で構築する(effects 等と同じ理由)。
+  // 保持する: editor(ノード列 Plan・編集モード editMode・ノード編集入力・未来表示 = 予測折れ線
+  // traj・ゴースト・その表示座標系パネルを持つ PlanDisplay)、displayTimeManager(「いつを見るか」
+  // = 表示期間・未来ゴーストスライダーとその操作パネル)、guide(戦闘ビューの噴射ガイド。
+  // マップモード中は呼ばない — [M] で開いている間は WASDQE が Δv編集に使われるため)。
   private readonly editor: PlanEditor;
-  private readonly predict: PredictSystem;
+  private readonly displayTimeManager: DisplayTimeManager;
   private readonly guide: PlanGuide;
   readonly mapModeToggler: MapModeToggler;
 
@@ -92,7 +91,7 @@ export class Game {
   // 単独のオブジェクトでは決められないマーカー群。敵マーカーは「画面上で近接するものを
   // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とするので、いずれも
   // 当事者ではなくここが持つ。それ以外のマーカーは、それぞれの持ち主(Player/Targeter/
-  // Logistics/FocusMarkers/PlanGuide/PredictSystem)の sync が
+  // Logistics/FocusMarkers/PlanGuide/PlanDisplay)の sync が
   // 自分で出す。
   private readonly enemyMarkers: GroupedMarkers;
   private readonly leadMarkers: LeadMarkers;
@@ -103,6 +102,11 @@ export class Game {
   // と同じ理由)。
   private readonly effects: EffectsSystem;
   readonly targeter: Targeter;
+  // エンティティ配列(敵・弾・薬莢・デブリ・補給)の保持・追加・上限管理・寿命回収・描画同期。
+  // Stage・Enemy.behave・HitSystem・Targeter・Logistics・EffectsSystem・NanWatchdog へ
+  // 参照共有される唯一の窓口(entities.ts 参照)。実シミュレーション(積分・命中・接触・姿勢)は
+  // simulator が持ち、この配列への参照を受け取って回す。
+  readonly entities: EntityManager;
   readonly simulator: Simulator;
   // シミュレーション状態の非有限値(NaN/Infinity)を最初に検出したフェーズごと報告する見張り。
   // 汚染は描画の暗転・敵の「再突入」誤表示・接触音の鳴りっぱなしなど別の顔で表面化するため、
@@ -132,19 +136,26 @@ export class Game {
     this.cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager, this.ephemeris);
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
-    this.effects = new EffectsSystem(this._scene, (piece) => this.simulator.addDebris(piece));
+    // 配列に依存を持たないので、それを要する effects/simulator/stage より先に構築できる
+    // (旧 Simulator 分割前は effects がこの参照をクロージャ越しに遅延取得する必要があった)。
+    this.entities = new EntityManager();
+    this.effects = new EffectsSystem(this._scene, this.entities);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
-    this.predict = new PredictSystem(this._hud.root, this.markerManager, this.ephemeris, this._scene);
-    // 予測折れ線(traj)の所有は predict 側。editor はノードの画面判定にそれを参照共有する。
+    this.displayTimeManager = new DisplayTimeManager(this._hud.root);
+    // PlanEditor は自身の PlanDisplay を構築するため scene/markerManager を要する。
     this.editor = new PlanEditor(
       this._hud,
       this._sfx,
       this.simSpeedManager,
       this.ephemeris,
-      this.predict.traj,
+      this._scene,
+      this.markerManager,
       () => this.player.fineAttitude,
     );
+    // 表示期間が非連続に変わった瞬間(duration 切替)を予測折れ線側へ伝える。持ち主が違う
+    // (displayTimeManager は Game 直属、planDisplay.traj は PlanEditor 所有)ので配線は Game が行う。
+    this.displayTimeManager.onDurationChange = () => this.editor.planDisplay.traj.invalidate();
 
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
     this.mapModeToggler = new MapModeToggler(this._hud);
@@ -153,14 +164,14 @@ export class Game {
     this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
 
-    this.simulator = new Simulator(this.ephemeris, this._sfx);
+    this.simulator = new Simulator(this.entities, this.ephemeris, this._sfx);
 
     this.player = new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager);
 
     this.activeStage = initStage(
       stageId,
       this.player,
-      this.simulator,
+      this.entities,
       this._hud,
       this._sfx,
       this._scene,
@@ -218,13 +229,13 @@ export class Game {
       scoreCounter: this.activeStage.scoreCounter,
       simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
-      addBullet: (bullet) => this.simulator.addBullet(bullet),
+      addBullet: (bullet) => this.entities.addBullet(bullet),
     });
 
     this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
 
     // ステージの更新 (敵の行動・スポーン管理・スコア加算・勝敗判定を含む)
-    this.activeStage.update(dt, this.player, this.simulator, this.simulator.simTime, this.simSpeedManager);
+    this.activeStage.update(dt, this.player, this.entities, this.simulator.simTime, this.simSpeedManager);
 
     this.nanWatchdog.checkPlayer('activeStage.update', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
 
@@ -238,13 +249,13 @@ export class Game {
 
     // 積分・弾命中・剛体接触・姿勢積分をまとめて通過した直後。全エンティティを走査する
     // (自機より先に薬莢や破片が壊れ、接触を通じて自機へ伝播することがあるため)。
-    this.nanWatchdog.checkAll('simulator.stepSimulation', this.player, this.simulator, dt, simDt);
+    this.nanWatchdog.checkAll('simulator.stepSimulation', this.player, this.entities, this.simulator.simTime, dt, simDt);
 
-    this.targeter.markBoardCrossings(this.player, this.simulator);
+    this.targeter.markBoardCrossings(this.player, this.entities);
 
     this.player.checkLoss(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
 
-    this.simulator.cleanup(dt, this.activeStage, this.player.state.r);
+    this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
 
     // カメラ更新は物理積分の後に行う: 追従カメラは自機を絶対 ECI 座標で追い、その基準は
     // sync 時のフローティングオリジン(積分後の自機位置)と一致していなければならない。
@@ -266,7 +277,7 @@ export class Game {
       this.editor.updateEditing(dt, this.simulator.simTime, this.input);
     }
     else {
-      this.targeter.updateCombatTargeting(this.player, this.simulator.enemies, this.input, this.cameraSystem);
+      this.targeter.updateCombatTargeting(this.player, this.entities.enemies, this.input, this.cameraSystem);
     }
   }
 
@@ -292,7 +303,7 @@ export class Game {
     );
     this.mapModeToggler.update(
       this.input, this.activeStage.isPlaying, this._isPaused,
-      this.editor, this.touchControls, this.cameraSystem, this.predict
+      this.editor, this.touchControls, this.cameraSystem, this.displayTimeManager
     );
     this.editor.handleInput(this.input);
   }
@@ -308,7 +319,7 @@ export class Game {
     // 表示時刻(未来ゴーストのスライダー位置ぶん先取りした simTime)と、その解決に要る
     // 現在の周期。周期は予測の表示期間('1周回')でも使うので一度だけ求める。
     const orbitPeriod = this.player.elements?.period ?? null;
-    const displayTime = this.predict.resolveDisplayTime(orbitPeriod, this.simulator.simTime);
+    const displayTime = this.displayTimeManager.resolveDisplayTime(orbitPeriod, this.simulator.simTime);
 
     // カメラ姿勢を THREE.js に反映するのを最初に行う: environment.sync や
     // マーカー投影(activeCameraProjection)がこのフレームのカメラ行列を読むため。
@@ -331,25 +342,27 @@ export class Game {
 
     this.player.syncPlayer(this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused);
 
-    this.simulator.sync(this.floatingOrigin);
+    this.entities.sync(this.floatingOrigin);
 
     this.effects.sync(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
 
-    this.targeter.sync(dt, this.floatingOrigin, this.player, this.simulator.enemies, overviewMode, project);
+    this.targeter.sync(dt, this.floatingOrigin, this.player, this.entities.enemies, overviewMode, project);
 
     // 敵マーカーだけは敵1体では決められない(画面上で近接するものをまとめる)ため、
     // 各 Enemy が用意した表示内容を集合として GroupedMarkers へ渡す。
-    const aliveEnemies = this.simulator.enemies.filter((enemy) => enemy.alive);
+    const aliveEnemies = this.entities.enemies.filter((enemy) => enemy.alive);
     this.enemyMarkers.sync(
       aliveEnemies.map((enemy) => enemy.markerItem(enemy === target, this.player.state.r)),
       project,
     );
     this.leadMarkers.sync(this.player, aliveEnemies, target, simTime, overviewMode, project);
 
-    // 予測折れ線(と未来ゴースト・PREDICT パネル)は predict が駆動する。ノードギズモの画面座標は
-    // その表示座標変換を通すので、editor.sync はこの後に呼ぶ。
-    this.predict.sync(this.editor.plan, orbitPeriod, simTime, this.floatingOrigin, project);
-    this.editor.sync(this.cameraSystem.overviewCamera.dist);
+    // 「いつを見るか」(期間・スライダー)のパネルは displayTimeManager 自身が駆動する。
+    // 予測折れ線(と未来ゴースト・その表示座標系パネル)は editor が所有する planDisplay が
+    // 駆動する — ノードギズモの画面座標はその表示座標変換を通すので、この呼び出しに畳み込む。
+    this.displayTimeManager.sync(orbitPeriod);
+    const displayEnd = simTime + this.displayTimeManager.durationSec(orbitPeriod);
+    this.editor.sync(this.cameraSystem.overviewCamera.dist, displayEnd, simTime, displayTime, this.floatingOrigin, project);
 
     // 自機のモード状態を映す先が2つある(HUD ステータスパネルとタッチUIのトグルボタン)。
     // どちらも表示側なので、状態の所有者から見て対称になるようここで両方へ渡す。
@@ -377,10 +390,10 @@ export class Game {
   // ?perf=1 のデバッグ表示用エンティティ数。
   perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
     return {
-      enemies: this.simulator.enemies.length,
-      bullets: this.simulator.bullets.length,
-      casings: this.simulator.casings.length,
-      debris: this.simulator.debris.length,
+      enemies: this.entities.enemies.length,
+      bullets: this.entities.bullets.length,
+      casings: this.entities.casings.length,
+      debris: this.entities.debris.length,
     };
   }
 }

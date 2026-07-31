@@ -6,15 +6,15 @@ import { Bullet } from './bullet';
 import { Enemy } from './enemy';
 import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
-import type { Simulator } from './simulator';
+import type { EntityManager } from './entity-manager';
 
 export class HitSystem {
   // 撃破が発生した場合の集計・勝敗判定は activeStage(attacked() 経由)に委ねる。
   // サブステップ間の相対運動を線分 vs 球でチェック(高速弾のトンネリング防止)
-  checkBulletHits(simTime: number, player: Player, activeStage: Stage, simulator: Simulator): void {
-    const targets: (Player | Enemy)[] = [player, ...simulator.enemies];
+  checkBulletHits(simTime: number, player: Player, activeStage: Stage, entities: EntityManager): void {
+    const targets: (Player | Enemy)[] = [player, ...entities.enemies];
 
-    for (const p of simulator.bullets) {
+    for (const p of entities.bullets) {
       for (const target of targets) {
         if (!p.alive || !target.alive) continue;
         // プラズマ弾は自機のみを狙う(敵機には当たらない)
