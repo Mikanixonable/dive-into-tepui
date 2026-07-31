@@ -1,17 +1,19 @@
 // マップモード上での軌道計画(Plan)の編集: クリックでのノード配置・ドラッグでの
 // 時刻移動・Δv アーム(node-gizmo.ts)ドラッグ・右クリックメニュー・選択状態・計画パネル
 // 表示への反映、および [X] キー(ノード/計画削除)の実処理。ノードの画面座標・最寄りサンプルの
-// 画面判定は PlanTrajectory(B-2)へ委譲する — `traj.projectPoint(r, t)`(ワールド点→表示座標系→
-// 画面)と `traj.nearestSample(mx, my, maxPx)` を呼ぶだけで、座標系(frame)や physics/frame.ts(XX)
-// を直接参照しない。描画と同じ変換を通すので表示とクリック判定がずれない。
+// 画面判定は planDisplay.traj(PlanTrajectory)へ委譲する — `traj.projectPoint(r, t)`(ワールド点→
+// 表示座標系→画面)と `traj.nearestSample(mx, my, maxPx)` を呼ぶだけで、座標系(frame)や
+// physics/frame.ts を直接参照しない。描画と同じ変換を通すので表示とクリック判定がずれない。
 //
-// その B-2 を所有・駆動するのは predict 側(PredictSystem)で、ここは参照を共有するだけ。
-// ノードのドラッグ・右クリックは DOM イベント発火時点で画面判定を要するため、毎フレームの
-// 引数ではなくコンストラクタで受けた参照を保持する。
+// 未来表示(予測折れ線・ゴースト・その表示座標系パネル)は同じ計画の一部として PlanDisplay
+// (plan-display.ts)にまとめ、ここが所有・駆動する。「いつを見るか」(表示期間・スライダー)は
+// DisplayTimeManager の責務で、game.ts がその解決値を毎フレーム sync の引数として渡す。
+// ノードのドラッグ・右クリックは DOM イベント発火時点で画面判定を要するため、traj への参照は
+// 毎フレームの引数ではなく PlanDisplay 経由で保持する。
 //
-// 責務: ノード編集ロジック本体に加え、編集モードフラグ(editMode)とノードギズモのイベント配線
-// (wireNodeGizmo)を所有する。予測の未来表示(折れ線・ゴースト・ツールバー)は predictSystem、
-// マップラベルは cameraSystem の責務で、それらは game が別途駆動する — editor は経由しない。
+// 責務: ノード編集ロジック本体・編集モードフラグ(editMode)・ノードギズモのイベント配線
+// (wireNodeGizmo)に加え、未来表示(PlanDisplay)を所有する。マップラベルは cameraSystem の
+// 責務で、game が別途駆動する — editor は経由しない。
 //
 // 計画が空の間は自機状態を基準に計画する(plan.trackAnchor は game が毎フレーム呼ぶ)。
 // 計画が空でないときは自機状態は参照しない。逸脱した既存計画を持って editMode を開いた場合は
@@ -20,6 +22,7 @@
 // 選択中ノードの正本は selectedNodeId(Plan が発行する ID)であり、index ではない。
 // consumeFirstNode() 等で plan.nodes が配列として動いても ID は不変なので選択がずれない。
 // selectedNodeIdx は互換のための getter/setter で、内部では ID 経由で index を都度解決する。
+import type * as THREE from 'three/webgpu';
 import { Elements, OrbitState, elementsFromState } from '../../physics/orbital';
 import { dvToWorld, propagateState } from '../../physics/predict';
 import { Projected } from '../../physics/projection';
@@ -30,11 +33,14 @@ import { ACCENT, TEXT, TEXT_DIM } from '../theme';
 import { Hud } from '../hud/hud';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
+import type { MarkerManager } from '../marker/marker-manager';
+import type { FloatingOrigin } from '../floating-origin';
+import type { ProjectFn } from '../camera/camera-system';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { Plan } from './plan';
-import { PlanTrajectory } from '../predict/plan-trajectory';
+import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class PlanEditor {
@@ -53,6 +59,10 @@ export class PlanEditor {
   }
 
   plan: Plan = new Plan();
+
+  // 未来表示(予測折れ線・ゴースト・その表示座標系パネル)。ここが所有・駆動する
+  // (上のコメント参照)。scene/markerManager/ephemeris を要するのでコンストラクタ本体で構築する。
+  readonly planDisplay: PlanDisplay;
 
   // 軌道計画の編集モード(WASDQE などの操作系をΔv編集へ振り替え、ノード編集入力を有効化する)。
   // cameraSystem.overviewMode(広範囲視点)とは本来独立した責務で、マップモードの正本
@@ -74,11 +84,12 @@ export class PlanEditor {
     private readonly _sfx: Sfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
-    // 予測折れ線 + per-arc キャッシュ(B-2)。所有は PredictSystem 側で、ここは画面判定
-    // (projectPoint / nearestSample)のために参照を共有する。
-    private readonly traj: PlanTrajectory,
+    scene: THREE.Scene,
+    markerManager: MarkerManager,
     private readonly getFineAttitude: () => boolean,
   ) {
+    this.planDisplay = new PlanDisplay(scene, this._hud.root, markerManager, ephemeris);
+
     this.planPanel = document.createElement('div');
     this.planPanel.id = 'hud-plan';
     this.planPanel.className = 'panel';
@@ -185,14 +196,14 @@ export class PlanEditor {
     this._hud.hint('マニューバ計画を破棄');
   }
 
-  // ノードの画面位置は凍結された実行後位置(node.r)から B-2 の表示座標変換で求める。
+  // ノードの画面位置は凍結された実行後位置(node.r)から planDisplay.traj の表示座標変換で求める。
   private nodeScreenPos(node: OrbitState): Projected {
-    return this.traj.projectPoint(node.r, node.t);
+    return this.planDisplay.traj.projectPoint(node.r, node.t);
   }
 
   // マップ上のクリック処理: 既存ノードマーカー近傍なら選択、そうでなければ
   // 予測軌道(既存ノードの噴射も反映済みの折れ線)上の最近傍サンプル時刻に
-  // 新規ノードを配置して選択する。画面判定は B-2(traj)へ委譲する。
+  // 新規ノードを配置して選択する。画面判定は planDisplay.traj へ委譲する。
   private handleMapClick(mx: number, my: number): void {
     let bestNodeIdx: number | null = null;
     let bestNodeD = C.NODE_PICK_PX * C.NODE_PICK_PX;
@@ -211,7 +222,7 @@ export class PlanEditor {
       return;
     }
 
-    const sample = this.traj.nearestSample(mx, my, C.NODE_PICK_PX);
+    const sample = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX);
     if (sample) {
       // クリック点の予測サンプル状態(時刻込み)をそのまま凍結してノードにする(初期 Δv = 0)。
       this.selectedNodeIdx = this.plan.addNode(sample);
@@ -246,7 +257,7 @@ export class PlanEditor {
   // ノードの Δv はリセットされ、下流ノードは破棄される(plan.retimeNode)。
   private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
     if (!this.plan.nodes[idx]) return;
-    const sample = this.traj.nearestSample(clientX, clientY, Infinity);
+    const sample = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity);
     if (sample) {
       this.selectedNodeIdx = this.plan.retimeNode(idx, sample);
     }
@@ -267,7 +278,7 @@ export class PlanEditor {
 
   // 選択中ノードの Δv アーム 6 個(プログレード/レトログレード・ノーマル/アンチノーマル・
   // アウト/イン)の画面方向を求める。ノードの実行後状態(postState)からその時点の
-  // プログレード・軌道法線・動径アウト方向を求め、B-2 の projectPoint で表示座標系へ回転した
+  // プログレード・軌道法線・動径アウト方向を求め、planDisplay.traj の projectPoint で表示座標系へ回転した
   // 上でノード位置との画面上の差分を取ることで、3D 回転行列を介さず画面方向を得る。
   private computeAxisScreenDirs(
     node: OrbitState,
@@ -278,9 +289,9 @@ export class PlanEditor {
     const h = norm(cross(r, v));
     const radOut = cross(pro, h);
     const L = mapDist * 0.05;
-    const p0 = this.traj.projectPoint(r, node.t);
+    const p0 = this.planDisplay.traj.projectPoint(r, node.t);
     const dirFor = (axisVec: Vec3): { x: number; y: number; } => {
-      const p1 = this.traj.projectPoint(add(r, scale(axisVec, L)), node.t);
+      const p1 = this.planDisplay.traj.projectPoint(add(r, scale(axisVec, L)), node.t);
       const dx = p1.x - p0.x;
       const dy = p1.y - p0.y;
       const m = Math.hypot(dx, dy);
@@ -406,14 +417,25 @@ export class PlanEditor {
     this.planPanel.style.display = 'none';
   }
 
-  // 毎フレーム(sync 時)呼ぶ。マップ編集中はノードギズモを画面座標へ更新し、それ以外では
-  // 後始末する。mapDist(ギズモの画面基準)は camera 側の状態で game が渡す。ノード位置の
-  // 画面判定に使う B-2 は、このフレームぶんの駆動を PredictSystem.sync が先に済ませている。
-  sync(mapDist: number): void {
+  // 毎フレーム呼ぶ。マップ編集中は未来表示(planDisplay)を駆動してからノードギズモを画面座標へ
+  // 更新し、それ以外では両方とも後始末する。ノード位置の画面判定は planDisplay.traj のこの
+  // フレームぶんの駆動を先に済ませてから行う必要があるため、この呼び出し順を守る。
+  // mapDist(ギズモの画面基準)は camera 側の状態、displayEnd/simTime/displayTime は
+  // DisplayTimeManager の解決値で、いずれも game が引数として渡す。
+  sync(
+    mapDist: number,
+    displayEnd: number,
+    simTime: number,
+    displayTime: number,
+    fo: FloatingOrigin,
+    project: ProjectFn,
+  ): void {
     if (this.editMode) {
+      this.planDisplay.sync(this.plan, displayEnd, simTime, displayTime, fo, project);
       this.updateGizmo(mapDist);
     }
     else {
+      this.planDisplay.hide();
       this.hideGizmo();
     }
   }
