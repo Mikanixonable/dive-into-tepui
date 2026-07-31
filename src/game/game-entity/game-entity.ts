@@ -4,7 +4,6 @@ import { altitudeOf, Elements, OrbitState, orbitState } from '../../physics/orbi
 import { Attitude } from '../../physics/attitude';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { StateQueue } from '../../physics/state-queue';
-import { predictStepDt } from '../../physics/predict';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
@@ -54,7 +53,8 @@ export class GameEntity {
   // 予測する未来の長さ [s]。既定 0 = 予測しない(弾・薬莢・デブリ・BeltSection)。
   // Ship・Ammo だけ PREDICT_DURATION を持つ。DisplayTimeManager(「いつを見るか」)とは
   // 無関係な、エンティティ種別ごとの定数 — 表示側は予測の挙動に一切影響しない。
-  protected readonly predictDuration: number = 0;
+  // public: Predictor が次ステップの刻み幅(predictStepDt)を求めるのに読む。
+  readonly predictDuration: number = 0;
   protected readonly scene?: THREE.Scene;
 
   // 未来の予測列。predictDuration = 0 のクラスでは生成されない(null のまま)。
@@ -62,7 +62,7 @@ export class GameEntity {
   // 構造・操作(step/at)はまったく同じ(better_predict.md §3-1)。
   private _predicted: OrbitEntity | null = null;
   get predicted(): OrbitEntity | null { return this._predicted; }
-  // 積分中に再突入高度を割った、または非有限値が出て打ち切られたか。advancePrediction が
+  // 積分中に再突入高度を割った、または非有限値が出て打ち切られたか。stepPrediction が
   // 新規に predicted を生成する時点で下ろす(= 作り直せば必ずもう一度試す)。
   private truncated = false;
 
@@ -113,44 +113,41 @@ export class GameEntity {
     }
   }
 
-  // 予測列の先端を最大 budgetSteps ステップぶん伸ばし、消費したステップ数を返す
-  // (予算の会計は呼び出し側 = Predictor が行う)。predicted が無ければ現在状態を種に生成する。
-  advancePrediction(ephemeris: Ephemeris, budgetSteps: number, simTime: number): number {
-    if (this.predictDuration <= 0) return 0;
+  // 予測列の先端を dt 秒ぶん1ステップだけ RK4 で伸ばし、伸ばせたら true を返す(stepSim と対になる
+  // 「自種別のパラメータを揃えて1ステップ進める」責務)。dt は呼び出し側(Predictor)が
+  // predictStepDt から決めて渡す — 何回呼ぶか(予算)・刻み幅の決定は Predictor 側、渡された dt で
+  // 実際に1ステップ進めるかどうかはこちら側、という stepSim に対する simulationSubStep と同じ分担。
+  // 伸ばせなければ(predictDuration=0・推力中・打ち切り済み・ホライズン超過のいずれか)何もせず
+  // false を返す。predicted が無ければ現在状態を種に生成する。
+  stepPrediction(ephemeris: Ephemeris, simTime: number, dt: number): boolean {
+    if (this.predictDuration <= 0) return false;
     // 推力がかかっている間は伸ばさない: 自由飛行前提の予測は噴射中に成立せず、どうせ
     // Player.behave が即座に invalidatePrediction() するので、伸ばしても無駄になる。
-    if (this.thrust !== null) return 0;
+    if (this.thrust !== null) return false;
     if (this._predicted === null) {
       this._predicted = new OrbitEntity(this.current.state);
       this.truncated = false; // 生成時に下ろす
     }
-    if (this.truncated) return 0;
+    if (this.truncated) return false;
 
     const p = this._predicted;
     const horizon = simTime + this.predictDuration;
-    const interval = this.sampleInterval();
-    let consumed = 0;
-    while (consumed < budgetSteps && p.state.t < horizon - 1e-6) {
-      const dt = Math.min(
-        Math.max(C.PREDICT_MIN_STEP_DT, predictStepDt(len(p.state.r), this.predictDuration)),
-        horizon - p.state.t,
-      );
-      if (dt <= 1e-9) break;
-      const mid = p.state.t + dt / 2;
-      const sunPos = ephemeris.sunPosAt(mid);
-      const moonPos = ephemeris.moonPosAt(mid);
-      p.step(dt, sunPos, moonPos, this.bcInv, null, interval, this.predictDuration);
-      consumed++;
+    // dt を切り詰めて horizon ちょうどに着地させない: 切り詰めるとその1ステップだけ刻みが変わり、
+    // 「horizon に追いついているかどうかで予測の解像度が変わる」という不自然な挙動になる。
+    // 超えるなら素通しして false を返し、先端は horizon の一歩手前で止まる。
+    if (p.state.t + dt > horizon + 1e-6) return false;
 
-      const { r, v } = p.state;
-      const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
-        && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-      if (!finite || altitudeOf(r) < C.REENTRY_ALT) {
-        this.truncated = true;
-        break;
-      }
-    }
-    return consumed;
+    const mid = p.state.t + dt / 2;
+    const sunPos = ephemeris.sunPosAt(mid);
+    const moonPos = ephemeris.moonPosAt(mid);
+    p.step(dt, sunPos, moonPos, this.bcInv, null, this.sampleInterval(), this.predictDuration);
+
+    const { r, v } = p.state;
+    const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
+      && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+    if (!finite || altitudeOf(r) < C.REENTRY_ALT) this.truncated = true;
+
+    return true;
   }
 
   // 表示時刻 t の状態。過去(t <= state.t)は current.at、未来は predicted.at に委ねる —
@@ -189,7 +186,7 @@ export class GameEntity {
 export abstract class Ship extends GameEntity {
   protected readonly bcInv = C.SHIP_BCINV;
   protected readonly historyDuration = C.SHIP_HISTORY_DURATION;
-  protected readonly predictDuration = C.PREDICT_DURATION;
+  readonly predictDuration = C.PREDICT_DURATION;
 
   name: string;
   radius: number; // 被弾判定半径 [m](剛体接触の collideRadius とは別)
@@ -226,7 +223,7 @@ export abstract class Ship extends GameEntity {
 // 軌道上の補給(接近すると取り込んでベルトを延長できる)
 export class Ammo extends GameEntity {
   protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
-  protected readonly predictDuration = C.PREDICT_DURATION;
+  readonly predictDuration = C.PREDICT_DURATION;
 
   constructor(state: OrbitState, att: Attitude, scene?: THREE.Scene) {
     super(state, buildAmmo(), scene, att);

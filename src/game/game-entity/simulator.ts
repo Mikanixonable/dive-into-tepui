@@ -68,14 +68,17 @@ export class Simulator {
   }
 
   // 各 entity の積分そのもの(中心重力 + 環境加速度 + 推力)は entity.stepSim の責務。
-  // ここは太陽・月位置を今サブステップぶんだけ求め、全配列へ配って回るだけ。
+  // ここは太陽・月位置をこのサブステップの中点で1回だけ求め(predict.ts の stepPredict /
+  // GameEntity.stepPrediction と同じサンプリング方針 — 太陽・月は SUBSTEP_MAX_DT=20s の間に
+  // 実質動かないので、RK4 の4段それぞれで引き直しても差は出ない)、全配列へ配って回るだけ。
   private simulationSubStep(
     simTime: number,
     dt: number,
     player: Player,
   ): number {
-    const sunPos = this.ephemeris.sunPosAt(simTime);
-    const moonPos = this.ephemeris.moonPosAt(simTime);
+    const mid = simTime + dt / 2;
+    const sunPos = this.ephemeris.sunPosAt(mid);
+    const moonPos = this.ephemeris.moonPosAt(mid);
 
     player.stepSim(dt, sunPos, moonPos);
     for (const e of this.entities.enemies) e.stepSim(dt, sunPos, moonPos);
