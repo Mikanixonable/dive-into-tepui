@@ -1,24 +1,24 @@
-// 時間ベース軌道の数値予測プリミティブ(純粋関数、THREE/DOM 非依存)。中心重力 + J2 +
-// 月・太陽の第三体摂動で RK4 積分する。大気抵抗は意図的に省略する(計画ツールであることに
-// 加え、高度200km以上では抵抗による軌道変化が予測期間(最大28日)に対して無視できるほど
-// 小さいため)。
+// 時間ベース軌道の数値予測プリミティブ(純粋関数、THREE/DOM 非依存)。中心重力 + envAccel
+// (大気抵抗 + J2 + 月・太陽の第三体摂動)で RK4 積分する(1ステップの合成は
+// envaccel.ts の stepEnvRK4 をゲーム本体の実シミュレーションと共有する)。大気抵抗は
+// bcInv 引数で指定し、既定値は 0(= 抵抗なし)。計画予測にも抵抗を入れるかは挙動変更を
+// 伴う判断なので、既定を変えるのは別途行う(better_predict.md §6)。
 //
 // 扱うのは単一 arc の自由伝播だけ — マニューバノードによる区間分割は知らない。それは
 // plan 側の責務で、plan-editor / plan-trajectory がノード境界ごとにこのプリミティブを呼ぶ。
-import { OrbitState, orbitState, stepOrbitRK4 } from './orbital';
+import { OrbitState, orbitState } from './orbital';
 import { Ephemeris } from './ephemeris';
-import { envAccel } from './envaccel';
+import { stepEnvRK4 } from './envaccel';
 import { Vec3, cross, norm, len, v3 } from './vec3';
 
 // state を dt だけ前進させた新しい state を返す(中点 t+dt/2 の太陽・月位置で
 // 環境加速度を評価)。predictTrajectory と propagateState が共有する 1 ステップ。
-// bcInv = 0 = 大気抵抗なし(このモジュール冒頭の注記のとおり意図的)。
-function stepPredict(state: OrbitState, dt: number, ephemeris: Ephemeris): OrbitState {
+// 推力は計画予測に存在しないので常に null。
+function stepPredict(state: OrbitState, dt: number, ephemeris: Ephemeris, bcInv: number): OrbitState {
   const mid = state.t + dt / 2;
   const sunPos = ephemeris.sunPosAt(mid);
   const moonPos = ephemeris.moonPosAt(mid);
-  return stepOrbitRK4(state, dt, (rx, ry, rz, vx, vy, vz) =>
-    envAccel(v3(rx, ry, rz), v3(vx, vy, vz), sunPos, moonPos, 0));
+  return stepEnvRK4(state, dt, sunPos, moonPos, bcInv, null);
 }
 
 // ノードの Δv(プログレード/ノーマル/ラジアルアウト)を、その時点の r, v から
@@ -59,6 +59,7 @@ export function predictTrajectory(
   duration: number,
   ephemeris: Ephemeris,
   maxSamplesOpt?: number, // 保持するサンプル数の上限(既定 2000)
+  bcInv = 0, // 弾道係数の逆数 Cd·A/m(既定 0 = 大気抵抗なし)
 ): OrbitState[] {
   if (duration <= 0) return [state0];
 
@@ -78,7 +79,7 @@ export function predictTrajectory(
   while (state.t < tEnd - 1e-6) {
     const dt = Math.min(predictStepDt(len(state.r), duration), tEnd - state.t);
     if (dt <= 1e-9) break;
-    state = stepPredict(state, dt, ephemeris);
+    state = stepPredict(state, dt, ephemeris, bcInv);
     sinceStore++;
     if (sinceStore >= storeEvery || state.t >= tEnd - 1e-9) {
       samples.push(state);
@@ -96,13 +97,14 @@ export function propagateState(
   state0: OrbitState,
   targetT: number,
   ephemeris: Ephemeris,
+  bcInv = 0, // 弾道係数の逆数 Cd·A/m(既定 0 = 大気抵抗なし)
 ): OrbitState {
   const duration = targetT - state0.t;
   let state = state0;
   while (state.t < targetT - 1e-6) {
     const dt = Math.min(predictStepDt(len(state.r), duration), targetT - state.t);
     if (dt <= 1e-9) break;
-    state = stepPredict(state, dt, ephemeris);
+    state = stepPredict(state, dt, ephemeris, bcInv);
   }
   return state;
 }

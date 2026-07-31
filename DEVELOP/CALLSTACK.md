@@ -145,7 +145,7 @@
     - hud.hint() // 実行点に接近して自動ワープを解除したフレームのみ
   - simulator.stepSimulation(hardCollision=true, doSubstep=true)
     - simulationSubStep() ×1〜SUBSTEP_MAX_COUNT // 分割数は simDt / SUBSTEP_MAX_DT のみで決まる(実 fps に依存しない)
-      - player.stepSim() → stepOrbitRK4() → entity.state へ代入(setter が軌道要素メモ破棄 + history 記録)
+      - player.stepSim() → stepEnvRK4() → entity.state へ代入(setter が軌道要素メモ破棄 + history 記録)
         // player.alive のみ。自身の thrust + envAccel(bcInv)
       - entity.stepSim() // 敵・弾・薬莢・デブリ・補給それぞれ、個体ごと。alive のみ実行
       - player.thermal.updateThermal()

@@ -1,9 +1,9 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { altitudeOf, elementsFromState, OrbitState, orbitState, stepOrbitRK4 } from '../../physics/orbital';
+import { altitudeOf, elementsFromState, OrbitState, orbitState } from '../../physics/orbital';
 import { Attitude } from '../../physics/attitude';
-import { Vec3, add, v3 } from '../../physics/vec3';
-import { envAccel } from '../../physics/envaccel';
+import { Vec3, v3 } from '../../physics/vec3';
+import { stepEnvRK4 } from '../../physics/envaccel';
 import { StateQueue } from '../../physics/state-queue';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -75,11 +75,7 @@ export class OrbitEntity {
   // 死亡済みの entity は積分しない。
   stepSim(dt: number, sunPos: Vec3, moonPos: Vec3): void {
     if (!this.alive) return;
-    const { thrust, bcInv } = this;
-    this.state = stepOrbitRK4(this.state, dt, (rx, ry, rz, vx, vy, vz) => {
-      const accel = envAccel(v3(rx, ry, rz), v3(vx, vy, vz), sunPos, moonPos, bcInv);
-      return thrust ? add(accel, thrust) : accel;
-    });
+    this.state = stepEnvRK4(this.state, dt, sunPos, moonPos, this.bcInv, this.thrust);
   }
 
   // 毎フレームの描画位置・姿勢同期。絶対 ECI 位置(state.r)を fo 経由で描画フレームへ変換する。
