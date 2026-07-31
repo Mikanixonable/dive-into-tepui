@@ -24,6 +24,7 @@ export class Sfx {
   private currentTrackIdx = 0;
   private bgmTrackStartTime = 0;
 
+  // 保存済みの BGM ON/OFF 設定を読み込む。
   constructor() {
     try {
       const saved = localStorage.getItem(BGM_ENABLED_KEY);
@@ -33,6 +34,7 @@ export class Sfx {
     }
   }
 
+  // BGM が有効かどうかを返す。
   isBgmEnabled(): boolean {
     return this.bgmEnabled;
   }
@@ -50,6 +52,7 @@ export class Sfx {
     else this.stopBgm();
   }
 
+  // 初回ユーザー操作で呼ぶ。AudioContext を生成し、スラスタ/RCS のループ音源を用意して BGM を開始する。
   unlock(): void {
     if (this.ctx) return;
     try {
@@ -102,18 +105,21 @@ export class Sfx {
   private startBgm(): void {
     if (!this.ctx || this.bgmTimer) return;
     const ctx = this.ctx;
+    // マスターゲインをフェードインさせながら生成する
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, ctx.currentTime);
     g.gain.exponentialRampToValueAtTime(1, ctx.currentTime + 4); // フェードイン
     g.connect(ctx.destination);
     this.bgmGain = g;
     this.bgmNextTime = ctx.currentTime + 0.15;
+    // 曲をランダムに選び、スケジューラを起動する
     this.bgmTrackStartTime = ctx.currentTime;
     this.currentTrackIdx = Math.floor(Math.random() * BGM_TRACKS.length);
     this.bgmStep = 0;
     this.bgmTimer = setInterval(() => this.pumpBgm(), 120);
   }
 
+  // BGM を fadeSec 秒かけてフェードアウトし、停止する。
   stopBgm(fadeSec = 2.5): void {
     if (this.bgmTimer) {
       clearInterval(this.bgmTimer);
@@ -124,6 +130,7 @@ export class Sfx {
     }
   }
 
+  // 先読み時間の範囲までステップを刻み進める。一定時間おきに曲を切り替える。
   private pumpBgm(): void {
     if (!this.ctx || !this.bgmGain) return;
 
@@ -149,6 +156,7 @@ export class Sfx {
     }
   }
 
+  // ステップ番号 step に対応する声部A/B・パッド・ドローン・煌めきの音を時刻 t にスケジュールする。
   private scheduleBgmStep(step: number, t: number, track: BgmTrack): void {
     const g = this.bgmGain!;
 
@@ -168,10 +176,12 @@ export class Sfx {
     const getFreq = (idx: number, trans: number, oct: number) => {
       let absoluteIdx = idx + trans;
       let octShift = oct;
+      // 音階の上端を超えたらオクターブを上げて折り返す
       while (absoluteIdx >= track.scale.length) {
         absoluteIdx -= track.scale.length;
         octShift++;
       }
+      // 下端を下回ったらオクターブを下げて折り返す
       while (absoluteIdx < 0) {
         absoluteIdx += track.scale.length;
         octShift--;
@@ -228,6 +238,7 @@ export class Sfx {
     const osc = this.ctx.createOscillator();
     osc.type = type;
     osc.frequency.value = freq;
+    // 立ち上がり~減衰のゲイン包絡を組む
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(0.0001, t);
     gain.gain.linearRampToValueAtTime(volume, t + attack);
@@ -238,6 +249,7 @@ export class Sfx {
   }
 
 
+  // 共有ノイズバッファをフィルタ・減衰させ、短いバースト音として鳴らす。
   private noiseBurst(duration: number, filterType: BiquadFilterType, freq: number, volume: number): void {
     if (!this.ctx || !this.noiseBuf) return;
     const ctx = this.ctx;
@@ -247,6 +259,7 @@ export class Sfx {
     const filter = ctx.createBiquadFilter();
     filter.type = filterType;
     filter.frequency.value = freq;
+    // 音量を指数的に減衰させながら発音する
     const gain = ctx.createGain();
     const t = ctx.currentTime;
     gain.gain.setValueAtTime(volume, t);
@@ -255,12 +268,14 @@ export class Sfx {
     src.start(t, Math.random() * 0.5, duration + 0.05);
   }
 
+  // 指定音高のトーンを、即時発音・指数減衰で単発鳴らす。
   private tone(freq: number, duration: number, volume: number, type: OscillatorType = 'sine'): void {
     if (!this.ctx) return;
     const ctx = this.ctx;
     const osc = ctx.createOscillator();
     osc.type = type;
     osc.frequency.value = freq;
+    // 音量を指数的に減衰させながら発音する
     const gain = ctx.createGain();
     const t = ctx.currentTime;
     gain.gain.setValueAtTime(volume, t);
@@ -388,12 +403,13 @@ export class Sfx {
     this.noiseBurst(0.02, 'highpass', 4000, 0.03);
   }
 
+  // 被弾音。
   hit(): void {
     this.tone(1500 + Math.random() * 500, 0.08, 0.15, 'triangle');
   }
 
+  // 撃破通知音。宇宙では音が伝わらないため、爆発音ではなく上昇する電子音列にしている。
   explosion(): void {
-    // 宇宙での爆発音の代わりに、戦闘システムが検知した撃破通知(ピロっという複数音)
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     this.toneAt(1200, t, 0.08, 0.08, 'square', this.ctx.destination, 0.01);
@@ -402,6 +418,7 @@ export class Sfx {
     this.toneAt(2200, t + 0.3, 0.12, 0.08, 'square', this.ctx.destination, 0.01);
   }
 
+  // 時間warp切替音。
   warp(): void {
     this.tone(660, 0.06, 0.08, 'sine');
   }
@@ -412,12 +429,14 @@ export class Sfx {
     this.tone(415.3, 0.16, 0.07, 'square'); // わずかに不協和にして警報らしいうなりを出す
   }
 
+  // メインエンジンのループ音量をなめらかに on/off する。
   setThrust(on: boolean): void {
     if (!this.ctx || !this.thrustGain) return;
     const target = on ? 0.1 : 0;
     this.thrustGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.04);
   }
 
+  // RCS スラスタのループ音量をなめらかに on/off する。
   setRcs(on: boolean): void {
     if (!this.ctx || !this.rcsGain) return;
     this.rcsGain.gain.setTargetAtTime(on ? 0.015 : 0, this.ctx.currentTime, 0.03);

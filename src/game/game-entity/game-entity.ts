@@ -50,6 +50,7 @@ export class GameEntity {
   // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。
   private truncated = false;
 
+  // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
   constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
     this.current = new OrbitEntity(state);
     this.att = att;
@@ -137,6 +138,7 @@ export class GameEntity {
     if (altitudeOf(this.state.r) < C.DEBRIS_REENTRY_ALT) this.alive = false;
   }
 
+  // メッシュを scene から取り除く。
   dispose(): void {
     this.scene?.remove(this.obj);
   }

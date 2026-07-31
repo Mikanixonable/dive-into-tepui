@@ -6,6 +6,7 @@ import { ScoreCounter } from '../stages/stage-utils/score-counter';
 function showEnd(win: boolean, detailHtml: string, title?: string): void {
   const e = document.getElementById('hud-end');
   if (!e) return;
+  // 勝敗に応じたスタイルで表示する
   e.className = win ? 'win' : 'lose';
   e.style.display = 'flex';
   e.style.pointerEvents = 'auto';
@@ -13,15 +14,18 @@ function showEnd(win: boolean, detailHtml: string, title?: string): void {
     <h1>${title ?? (win ? 'MISSION COMPLETE' : 'SHIP LOST')}</h1>
     <div class="detail">${detailHtml}</div>
     <div class="restart">[${K.restart.label}] キーまたはタップで再出撃</div>`;
+  // クリック/タップを再出撃キーの押下として扱う
   e.onclick = () => window.dispatchEvent(new KeyboardEvent('keydown', { code: K.restart.code }));
 }
 
+// エンジン音・BGM を止めた上で結果画面を表示する。
 export function showResultScreen(sfx: Sfx, win: boolean, detailHtml: string, title?: string): void {
   sfx.setThrust(false);
   sfx.stopBgm();
   showEnd(win, detailHtml, title);
 }
 
+// 撃破数・所要時間・命中率をまとめた勝利画面を表示する。
 export function showWinScreen(sfx: Sfx, scoreCounter: ScoreCounter, totalEnemies: number, simTime: number, title?: string): void {
   const { shots, hits } = scoreCounter;
   const acc = shots > 0 ? ((hits / shots) * 100).toFixed(1) : '0.0';
@@ -33,6 +37,7 @@ export function showWinScreen(sfx: Sfx, scoreCounter: ScoreCounter, totalEnemies
   showResultScreen(sfx, true, detailHtml, title);
 }
 
+// 撃墜数・命中率をまとめたスコアアタック結果画面を表示する。
 export function showScoreAttackResultScreen(sfx: Sfx, scoreCounter: ScoreCounter, title?: string): void {
   const { shots, hits, kills } = scoreCounter;
   const acc = shots > 0 ? ((hits / shots) * 100).toFixed(1) : '0.0';

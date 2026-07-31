@@ -70,6 +70,7 @@ export class Player extends Ship {
     _scene.add(this.orbitLine.line);
   }
 
+  // 高度 INITIAL_ALT、傾斜角 INITIAL_INC_DEG の円軌道状態を返す。
   private static makeInitialState(): OrbitState {
     const r0 = R_EARTH + C.INITIAL_ALT;
     const vCirc = Math.sqrt(MU_EARTH / r0);
@@ -77,6 +78,7 @@ export class Player extends Ship {
     return orbitState(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
   }
 
+  // state の速度方向を機首、位置方向を上として姿勢を組む。
   private static progradeAttitude(state: OrbitState): Attitude {
     return {
       q: qFromForwardUp(state.v, state.r) ?? { x: 0, y: 0, z: 0, w: 1 },
@@ -85,6 +87,7 @@ export class Player extends Ship {
     };
   }
 
+  // HP を HP_REGEN_RATE で maxHp まで自然回復させる。
   private hpRegen(dt: number): void {
     if (!this.alive || this.hp <= 0 || this.hp >= this.maxHp) return;
     this.hp = Math.min(this.maxHp, this.hp + dt * C.HP_REGEN_RATE);
@@ -102,10 +105,12 @@ export class Player extends Ship {
   get reloadTimer(): number { return this.fire.cooldown; }
   get isFiring(): boolean { return this.fire.isFiring; }
 
+  // 初期弾数(マグ数・装填ラウンド数)を設定する。
   initAmmo(mags: number, rounds: number): void {
     this.fire.initAmmo(mags, rounds);
   }
 
+  // 弾薬ピックアップで得たマグ数を加算する。
   onPickup(mags: number): void {
     this.fire.onPickup(mags);
   }
@@ -148,15 +153,18 @@ export class Player extends Ship {
     if (this.thrust !== null) this.invalidatePrediction();
   }
 
+  // 姿勢微調整モードの ON/OFF を切り替える。
   toggleFineAttitude(): void {
     this.fineAttitude = !this.fineAttitude;
     this._hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
   }
 
+  // 自機側のキー(RCS減衰・プログレード・スロットル等)を1フレーム分消費する。
   private handleEdgeInput(input: Input): void {
     input.takeKeys((code) => this.handleEdgePress(code));
   }
 
+  // 自機側キー1個を処理する。処理したキーは true を返し input.takeKeys に消費させる。
   private handleEdgePress(code: string): boolean {
     switch (code) {
       case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
@@ -166,7 +174,8 @@ export class Player extends Ship {
       case K.throttleLow.code: this.throttle.setThrottlePreset(0); return true;
       case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
       case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
-      case K.reload.code: return this.fire.manualReload(); // マニュアルリロードに成功した場合のみ、keyを消費する
+      // マニュアルリロードに成功した場合だけキーを消費する
+      case K.reload.code: return this.fire.manualReload();
       default: return false;
     }
   }
@@ -177,10 +186,12 @@ export class Player extends Ship {
 
     this.hp -= C.PLAYER_HIT_DAMAGE;
     if (this.hp > 0) {
+      // 生存していれば被弾エフェクトのみ
       this.hitEffect(bullet);
       return;
     }
 
+    // HP が尽きたら破壊
     this.alive = false;
     const reason = bullet.shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
     activeStage.recordPlayerLost(reason);
@@ -192,6 +203,7 @@ export class Player extends Ship {
     if (!this.alive) return;
     const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, altitudeOf(this.state.r));
 
+    // 熱・動圧・高度いずれかの限界超過を喪失理由として判定する
     let reason: string | null = null;
     if (limit === 'heat') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
     else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
@@ -214,6 +226,7 @@ export class Player extends Ship {
     this._fx.scatterFragments(this.state.t, bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
 
+  // 機体喪失時の爆発音・爆発エフェクトを発生させる。
   private destroyEffect(): void {
     this._sfx.explosion();
     this._fx.spawnShipDestroyEffect(this.state, 1, 0x9fd8e8);
@@ -226,7 +239,9 @@ export class Player extends Ship {
   }
 
 
+  // 入力から機体座標系トルクを求めて this.torque へ反映し、角速度をクランプする。
   private updateTorque(input: Input, editMode: boolean, attDt: number): void {
+    // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this.fineAttitude || this.fire.isFiring;
     this.torque = this.throttle.updateTorque(
       this.att,
@@ -242,6 +257,7 @@ export class Player extends Ship {
     this.att = this.throttle.clampAngularVelocity(this.att, fine);
   }
 
+  // 自機のメッシュ・エフェクト・ベルト・マーカー・軌道線を displayTime の状態へ同期する。
   syncPlayer(
     fo: FloatingOrigin,
     camera: CameraSystem,
@@ -249,6 +265,7 @@ export class Player extends Ship {
     paused: boolean,
     displayTime: number,
   ): void {
+    // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
     this.obj.visible = displayState !== null && this.alive && !camera.zoomActive;
     if (displayState !== null) {
@@ -256,9 +273,11 @@ export class Player extends Ship {
       this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
     }
 
+    // 推力/RCS エフェクトとベルト
     this.thrustEffects.sync(fo, this.state.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
     this.rcsEffects.sync(fo, this.state.r, this.torque, this.att, this.alive, phasePlaying, paused, camera);
     this.belt.sync(this.alive);
+    // マーカーと軌道線
     this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection);
 
     this.orbitLine.sync(this.alive ? this.elements : null, fo, this.thrustVizDir !== null, this.state.r);

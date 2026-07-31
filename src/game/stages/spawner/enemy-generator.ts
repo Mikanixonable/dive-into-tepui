@@ -25,6 +25,7 @@ export function generateDriftingEnemy(name: string, state: OrbitState, hp: numbe
     state,
     { kind: 'drifting' },
     {
+      // ランダムな姿勢・角速度を与える
       q: randomQuat(),
       w: v3(randSym(0.12), randSym(0.12), randSym(0.12)),
       inertia: v3(1, 1.1, 1.05),
@@ -40,10 +41,12 @@ export function generateDriftingEnemy(name: string, state: OrbitState, hp: numbe
   );
 }
 
+// base から dAlong だけ進んだ位置に漂う敵を生成する。
 export function generatePhasedEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
   return generateDriftingEnemy(name, phasedState(base, dAlong), hp, accent, orbitLineColor, hud, sfx, fx, scene);
 }
 
+// base から dAlong だけ進め、高度を altitudeOffset ぶんずらした円軌道上に敵を生成する。
 export function generateCoellipticEnemy(
   name: string, base: OrbitState, dAlong: number, altitudeOffset: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
@@ -57,12 +60,14 @@ export function generateCoellipticEnemy(
   return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, hud, sfx, fx, scene);
 }
 
+// base から dAlong だけ進め、軌道面をわずかに傾けた交差軌道上に敵を生成する。
 export function generateCrossingEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
   const phased = phasedState(base, dAlong);
   const state: OrbitState = orbitState(phased.t, phased.r, rotateAxis(phased.v, norm(phased.r), (0.4 * Math.PI) / 180));
   return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, hud, sfx, fx, scene);
 }
 
+// base から dAlong だけ進め、速度を増して離心軌道上に敵を生成する。
 export function generateEllipticEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
   const phased = phasedState(base, dAlong);
   const state: OrbitState = orbitState(phased.t, phased.r, scale(phased.v, 1.006));
@@ -89,6 +94,7 @@ export function generateApproachingEnemy(
     state,
     { kind: 'stage0', typeIndex },
     {
+      // 機首をプログレードへ向ける
       q: qFromForwardUp(state.v, state.r) ?? randomQuat(),
       w: v3(0, 0, 0),
       inertia: v3(1, 1, 1),

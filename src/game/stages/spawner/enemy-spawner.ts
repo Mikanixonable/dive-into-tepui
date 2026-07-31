@@ -19,6 +19,7 @@ export function generateCluster(base: OrbitState, hud: Hud, sfx: Sfx, fx: Effect
   const safeRange = C.STAGE0_MAX_RANGE * C.STAGE0_SAFE_RANGE_FACTOR; // マージンを残して確実に5km以内に収める
   const enemies: Enemy[] = [];
 
+  // グループごとの中心位置を、進行方向-法線平面の円周上に配置する。
   for (let gi = 0; gi < groupCount; gi++) {
     const theta = (gi / groupCount) * Math.PI * 2;
     const centerDist = safeRange * (C.STAGE0_GROUP_CENTER_DIST_MIN + Math.random() * C.STAGE0_GROUP_CENTER_DIST_RANGE);
@@ -26,6 +27,7 @@ export function generateCluster(base: OrbitState, hud: Hud, sfx: Sfx, fx: Effect
     const cNormal = Math.sin(theta) * centerDist;
     const cRadial = randSym(safeRange * C.STAGE0_GROUP_RADIAL_FACTOR);
 
+    // グループ中心へ個体ごとのジッターを加え、safeRange を超えたらクランプする。
     for (let i = 0; i < C.STAGE0_PER_GROUP; i++) {
       const jAlong = cAlong + randSym(C.STAGE0_JITTER_ALONG);
       const jNormal = cNormal + randSym(C.STAGE0_JITTER_NORMAL);

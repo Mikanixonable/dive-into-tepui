@@ -24,6 +24,7 @@ export class Stage0 extends Stage {
 
   private readonly timer = new ScoreAttackTimer(C.STAGE0_TIME_LIMIT);
 
+  // ステージ開始時のブリーフィング文言を返す。
   briefingHtml(): string {
     return (
       `<b>訓練ステージ: 制限時間 ${stage0TimeLimitMinutes()}分で何機撃墜できるか</b><br>` +
@@ -33,6 +34,7 @@ export class Stage0 extends Stage {
     );
   }
 
+  // 初期補給と敵クラスタを配置し、生成した敵数を返す。
   init(player: Player, entities: EntityManager): number {
     for (let i = 0; i < C.STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
@@ -41,6 +43,7 @@ export class Stage0 extends Stage {
     for (const enemy of enemies) this.addEnemy(enemy, entities);
     return enemies.length;
   }
+  // 敵の行動・補給・制限時間を1フレーム分進める。
   update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!this.isPlaying) return;
 
@@ -56,6 +59,7 @@ export class Stage0 extends Stage {
   checkWin(): boolean { return false; }
   onWin(): void { }
 
+  // 残り時間を HUD 表示用の文字列で返す。
   hudSubStatus(): string {
     return `残り時間: ${Math.ceil(this.timer.timeLeft)}秒`;
   }

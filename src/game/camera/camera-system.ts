@@ -36,20 +36,24 @@ export class CameraSystem {
   overviewMode = false;
   zoomActive = false;
 
+  // 両カメラとフォーカス候補ラベル、フォーカス選択 UI を構築し、パネルの選択操作を配線する。
   constructor(
     private readonly _hud: Hud,
     sfx: Sfx,
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
   ) {
+    // 両カメラとフォーカス候補ラベル
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
     this.chaseCamera = new ChaseCamera(_hud, sfx);
     this.overviewCamera = new OverviewCamera(_hud, sfx, this.focusMarkers, ephemeris);
+    // ラベル右クリックメニューでのフォーカス選択
     this.focusGizmo.onMenuFocus = (targetKey) => {
       this.overviewCamera.focus = targetKey;
       const lbl = this.focusMarkers.findLabel(targetKey);
       if (lbl) this._hud.hint(`${lbl.name} にフォーカス`);
     };
+    // 広範囲視点の操作パネルと各操作のコールバック
     this.overviewCameraPanel = new OverviewCameraPanel(_hud.root, PANEL_FOCUS_IDS.map(
       (id) => [id, this.focusMarkers.findLabel(id)?.name ?? id] as const,
     ));
@@ -70,6 +74,7 @@ export class CameraSystem {
 
   // 最寄りラベル(FOCUS_LABEL_PICK_PX 以内)があればフォーカス選択メニューを開いて true を返す。
   private handleFocusRightClick(clientX: number, clientY: number): boolean {
+    // 全ラベルとの画面距離を比較し最も近いものを選ぶ
     const project = this.activeCameraProjection;
     let bestKey: string | null = null;
     let bestD = C.FOCUS_LABEL_PICK_PX * C.FOCUS_LABEL_PICK_PX;
@@ -82,32 +87,39 @@ export class CameraSystem {
         bestKey = lbl.id;
       }
     }
+    // 見つかればメニューを開く
     if (bestKey === null) return false;
     this.focusGizmo.openMenu(clientX, clientY, bestKey);
     return true;
   }
 
+  // フォーカス選択メニューを閉じる。
   closeFocusMenu(): void {
     this.focusGizmo.closeMenu();
   }
 
+  // 現在アクティブなカメラ(広範囲視点/戦闘追従視点)を返す。
   get activeCamera(): THREE.PerspectiveCamera {
     return this.overviewMode ? this.overviewCamera.camera : this.chaseCamera.camera;
   }
 
+  // アクティブカメラの位置を返す。
   get activeCameraPos(): Vec3 {
     return this.overviewMode ? this.overviewCamera.position : this.chaseCamera.position;
   }
 
+  // 入力からカメラの向き・ズームを更新する。overviewMode に応じてどちらか一方のカメラだけを駆動する。
   update(
     player: Player,
     simTime: number,
     input: Input,
     dt: number,
   ): void {
+    // 追従視点トグルとズーム状態
     if (input.takeKey(K.followAttitudeToggle)) this.chaseCamera.toggleFollowAttitude();
     this.zoomActive = !this.overviewMode && input.down(K.gunsightZoom);
 
+    // キー/マウスによる旋回入力をまとめる
     const keyYaw = (input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0);
     const keyPitch = (input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0);
     const mouse = input.mouse();
@@ -124,6 +136,7 @@ export class CameraSystem {
   sync(fo: FloatingOrigin, displayTime: number): void {
     if (this.overviewMode) this.overviewCamera.sync(fo);
     else this.chaseCamera.sync(fo);
+    // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
     if (this.overviewMode) {
       this.overviewCameraPanel.setFocus(this.overviewCamera.focus);
@@ -135,6 +148,7 @@ export class CameraSystem {
   }
 
 
+  // アクティブカメラの画面投影関数を返す。
   get activeCameraProjection(): ProjectFn {
     return this.overviewMode ? this.overviewCamera.projection : this.chaseCamera.projection;
   }

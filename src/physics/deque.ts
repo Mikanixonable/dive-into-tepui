@@ -4,6 +4,7 @@ export class Deque<T> {
     private start = 0;
     private size_ = 0;
 
+    // 初期容量(2の冪に切り上げ)でバッファを確保する。
     constructor(capacity = 8) {
         capacity = Math.max(2, 1 << Math.ceil(Math.log2(capacity)));
         this.buffer = new Array(capacity);
@@ -19,10 +20,12 @@ export class Deque<T> {
         return this.size_ === 0;
     }
 
+    // 現在のバッファの長さ(要素数ではなく確保済みの容量)
     private get capacity() {
         return this.buffer.length;
     }
 
+    // 末尾要素の次の論理インデックス
     private get end() {
         return this.start + this.size_;
     }
@@ -48,6 +51,7 @@ export class Deque<T> {
         this.start = 0;
     }
 
+    // 左端を0とする論理インデックス i の要素を返す。範囲外なら例外。
     at(i: number): T {
         if (i < 0 || i >= this.size_)
             throw new RangeError();
@@ -55,14 +59,17 @@ export class Deque<T> {
         return this.buffer[this.index(this.start + i)]!;
     }
 
+    // 左端の要素を返す。空なら例外。
     peekLeft(): T {
         return this.at(0);
     }
 
+    // 右端の要素を返す。空なら例外。
     peekRight(): T {
         return this.at(this.size_ - 1);
     }
 
+    // 左端に要素を追加する。
     pushLeft(value: T) {
         this.ensureCapacity();
 
@@ -71,6 +78,7 @@ export class Deque<T> {
         this.size_++;
     }
 
+    // 右端に要素を追加する。
     pushRight(value: T) {
         this.ensureCapacity();
 
@@ -78,6 +86,7 @@ export class Deque<T> {
         this.size_++;
     }
 
+    // 左端の要素を取り除いて返す。空なら例外。
     popLeft(): T {
         if (this.empty)
             throw new RangeError();
@@ -93,6 +102,7 @@ export class Deque<T> {
         return value;
     }
 
+    // 右端の要素を取り除いて返す。空なら例外。
     popRight(): T {
         if (this.empty)
             throw new RangeError();

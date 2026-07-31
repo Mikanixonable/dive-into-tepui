@@ -23,6 +23,7 @@ const STYLE = `
 `;
 
 let styleInjected = false;
+// メニューのスタイルシートを document.head へ一度だけ挿入する。
 function ensureStyle(): void {
   if (styleInjected) return;
   styleInjected = true;
@@ -40,6 +41,7 @@ export class ContextMenu {
   private readonly el: HTMLDivElement;
   onSelect: ((act: string) => void) | null = null;
 
+  // メニュー要素を DOM に追加する。要素外へのポインタ操作で自動的に閉じる。
   constructor() {
     ensureStyle();
     this.el = document.createElement('div');
@@ -58,10 +60,13 @@ export class ContextMenu {
     );
   }
 
+  // items を項目として描画し、指定した画面座標に開く。項目クリックで onSelect(act) を発火して閉じる。
   open(clientX: number, clientY: number, items: MenuItem[]): void {
+    // 項目 DOM を組み立てる
     this.el.innerHTML = items
       .map((it) => `<div class="ctx-menu-item" data-act="${it.act}">${it.label}</div>`)
       .join('');
+    // クリックされた項目の act を通知して閉じる
     this.el.querySelectorAll<HTMLElement>('.ctx-menu-item').forEach((item) => {
       item.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -70,11 +75,13 @@ export class ContextMenu {
         this.onSelect?.(act);
       });
     });
+    // 指定座標に表示する
     this.el.style.left = `${clientX}px`;
     this.el.style.top = `${clientY}px`;
     this.el.style.display = 'block';
   }
 
+  // メニューを閉じる。
   close(): void {
     this.el.style.display = 'none';
   }

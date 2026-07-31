@@ -14,6 +14,7 @@ export abstract class Ship extends GameEntity {
   hp: number;
   maxHp: number;
 
+  // 名前・当たり判定半径・HP を初期化し、基底の状態/メッシュ/姿勢を構築する。
   constructor(
     name: string,
     state: OrbitState,
@@ -30,6 +31,7 @@ export abstract class Ship extends GameEntity {
     this.maxHp = hp;
   }
 
+  // メッシュ配下のマテリアルを含めて破棄する。
   dispose(): void {
     super.dispose();
     this.obj.traverse((child) => {

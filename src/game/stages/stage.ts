@@ -29,6 +29,7 @@ export interface StageInitData {
 }
 
 export abstract class Stage {
+  // サブクラスが持つ static id を返す。
   get id(): StageId {
     return (this.constructor as unknown as { id: StageId }).id;
   }
@@ -84,11 +85,13 @@ export abstract class Stage {
     location.replace(`${location.pathname}?stage=${this.id}`);
   }
 
+  // ステータスパネルとロジスティクスのマーカーを同期する。
   sync(player: Player, project: ProjectFn, displayTime: number): void {
     this.syncStatusPanel(player);
     this.logistics.syncMarkers(player, project, displayTime);
   }
 
+  // hudSubStatus() が null ならパネルを隠し、文字列なら HP・スコアとともに表示する。
   private syncStatusPanel(player: Player): void {
     const message = this.hudSubStatus();
     if (message === null) {
@@ -98,17 +101,20 @@ export abstract class Stage {
     this.statusPanel.sync(player.hp, player.maxHp, message, this.scoreCounter.kills);
   }
 
+  // 敵を entities へ登録し、出撃数をスコアへ記録する。
   protected addEnemy(enemy: Enemy, entities: EntityManager): void {
     entities.addEnemy(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }
 
+  // 生存中の敵全てに AI 行動を1フレーム分実行させる。
   protected behaveAllEnemies(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     for (const e of entities.enemies) {
       if (e.alive) e.behave(dt, simTime, player, entities, simSpeed);
     }
   }
 
+  // このステージが解放済みかどうかをクリア回数から判定する。既定では常に解放。
   isUnlocked(_clearCounts: ClearCounts): boolean {
     return true;
   }
@@ -118,13 +124,16 @@ export abstract class Stage {
   abstract init(player: Player, entities: EntityManager): number;
   abstract update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
 
+  // 残存敵数が 0 以下なら勝利。
   checkWin(): boolean {
     return this.scoreCounter.totalEnemiesSpawned - this.scoreCounter.kills - this.scoreCounter.losses <= 0;
   }
+  // 勝利画面を表示する。
   onWin(simTime: number): void {
     showWinScreen(this._sfx, this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, simTime);
   }
 
+  // ステータスパネルに表示する補助メッセージ。既定では非表示(null)。
   hudSubStatus(): string | null {
     return null;
   }
@@ -147,6 +156,7 @@ export abstract class Stage {
     }
   }
 
+  // 敗北を記録し、reason を添えて敗北画面を表示する。
   recordPlayerLost(reason: string): void {
     this.setPhase('lost');
     showResultScreen(this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);

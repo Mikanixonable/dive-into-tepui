@@ -26,7 +26,9 @@ export class PlayerMarkers {
     this.syncBoresight(currentState, att, alive, project);
   }
 
+  // prograde/retrograde/normal/antinormal/radial in-out の6方向マーカーを配置する。
   private syncOrbitalDirections(state: OrbitState, project: ProjectFn): void {
+    // 軌道基準の3方向(進行・法線・動径)を求める
     const pr = state.r;
     const proDir = state.v;
     const nrmDir = cross(pr, state.v);
@@ -42,6 +44,7 @@ export class PlayerMarkers {
     this.markerManager.setDirection('radin', 'mk-rad', '◉', pr, scale(radDir, -1), project, 'RADIAL IN');
   }
 
+  // 機首方向にボアサイトマーカーを置く。機体が死亡していれば隠す。
   private syncBoresight(state: OrbitState, att: Attitude, alive: boolean, project: ProjectFn): void {
     if (!alive) {
       this.markerManager.hide('bore');

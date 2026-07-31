@@ -18,6 +18,7 @@ import type { EntityManager } from '../simulation/entity-manager';
 export class EffectsSystem {
   private readonly _flashEffects: FlashEffectManager;
 
+  // scene への注入元と、破片の追加先となる entities を受け取る。
   constructor(
     private readonly _scene: THREE.Scene,
     private readonly entities: EntityManager,
@@ -25,11 +26,13 @@ export class EffectsSystem {
     this._flashEffects = new FlashEffectManager(_scene);
   }
 
+  // フラッシュ群の寿命・見た目を1フレーム分更新する。
   sync(dt: number, simDt: number, fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera): void {
     // debrisはentitiesが管理するので、syncもそちらが行い、こちらではentitiesの責務外になるflashEffectsのみ更新する
     this._flashEffects.syncFlashEffects(dt, simDt, fo, activeCamera);
   }
 
+  // プラズマ弾命中フラッシュを生成する。
   spawnPlasmaFlash(pos: Vec3, vel: Vec3): void {
     this.spawnFlash(pos, vel,
       C.PLASMA_HIT_FLASH_SIZE0,
@@ -38,6 +41,7 @@ export class EffectsSystem {
       0xffa0ff);
   }
 
+  // 実弾命中フラッシュを生成する。
   spawnBulletFlash(pos: Vec3, vel: Vec3): void {
     this.spawnFlash(pos, vel,
       C.BULLET_HIT_FLASH_SIZE0,
@@ -103,6 +107,7 @@ export class EffectsSystem {
     this.scatterFragments(t, r, v, 11, accent, C.DESTROY_FRAG_SIZE_MIN * scale, C.DESTROY_FRAG_SIZE_MAX * scale, 2.8);
   }
 
+  // 破壊片1個を生成する。
   spawnFragment(state: OrbitState, att: Attitude, accent: number, size: number): void {
     this.spawnDebrisPiece(state, { kind: 'fragment', accent, size }, att);
   }

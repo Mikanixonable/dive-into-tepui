@@ -30,11 +30,13 @@ export class PlanTrajectory {
   private project: ProjectFn | null = null;
   private forceNext = false;
 
+  // group をシーンへ登録する(初期状態は非表示)。
   constructor(scene: THREE.Scene) {
     this.group.visible = false;
     scene.add(this.group);
   }
 
+  // plan/displayEnd から arc 列を組み直し、各 arc の PredictedLine を更新する。
   update(
     plan: Plan,
     displayEnd: number,
@@ -48,15 +50,18 @@ export class PlanTrajectory {
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
     this.project = project;
+    // anchor→node…→displayEnd を arc に分解する
     this.arcs = buildArcs(plan.anchor, plan.nodes, displayEnd);
     const force = this.forceNext;
     this.forceNext = false;
+    // 各 arc に対応する PredictedLine を更新する
     for (let i = 0; i < this.arcs.length; i++) {
       const arc = this.arcs[i]!;
       const line = this.lineAt(i);
       line.setVisible(true);
       line.update(arc.state0, arc.end, ephemeris, frame, currentTime, fo, undefined, force);
     }
+    // arc 数が減った分の余った line を隠す
     for (let i = this.arcs.length; i < this.lines.length; i++) this.lines[i]!.setVisible(false);
   }
 
@@ -65,6 +70,7 @@ export class PlanTrajectory {
     this.forceNext = true;
   }
 
+  // 時刻 t を含む arc から補間したサンプルを返す。arc がなければ null。
   sampleAt(t: number): OrbitState | null {
     if (this.arcs.length === 0) return null;
     for (let i = 0; i < this.arcs.length; i++) {
@@ -75,11 +81,13 @@ export class PlanTrajectory {
     return null;
   }
 
+  // 時刻 t のサンプル位置 r を、現在の表示座標(ECI)へ変換する。
   toDisplay(r: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(r.x, r.y, r.z);
     return toInertialPos(this.frame, this.unbakeTime, toFramePos(this.frame, t, r, this.ephemeris), this.ephemeris);
   }
 
+  // 時刻 t のサンプル位置 r をスクリーン座標へ投影する。
   projectPoint(r: Vec3, t: number): Projected {
     if (!this.project) return OFFSCREEN;
     return this.project(this.toDisplay(r, t));
@@ -89,6 +97,7 @@ export class PlanTrajectory {
   nearestSample(mx: number, my: number, maxPx: number): OrbitState | null {
     let best: OrbitState | null = null;
     let bestD = maxPx * maxPx;
+    // 全 arc の全サンプルを画面座標へ投影し、最も近いものを選ぶ
     for (let i = 0; i < this.arcs.length; i++) {
       for (const s of this.lines[i]!.samplesRef()) {
         const p = this.projectPoint(s.r, s.t);
@@ -103,10 +112,12 @@ export class PlanTrajectory {
     return best;
   }
 
+  // group 全体の表示/非表示を切り替える。
   setVisible(v: boolean): void {
     this.group.visible = v;
   }
 
+  // i 番目の arc に対応する PredictedLine を返す(なければ生成して group へ追加する)。
   private lineAt(i: number): PredictedLine {
     while (this.lines.length <= i) {
       const idx = this.lines.length;
@@ -118,15 +129,18 @@ export class PlanTrajectory {
   }
 }
 
+// anchor を起点に nodes を順にたどり、end までを区切った arc(区間)列を返す。
 function buildArcs(anchor: OrbitState, nodes: readonly OrbitState[], end: number): Arc[] {
   const arcs: Arc[] = [];
   let state0 = anchor;
+  // ノードを1つずつ経由点として区間を切り出す
   for (const node of nodes) {
     if (state0.t >= end) break;
     const arcEnd = Math.min(node.t, end);
     if (arcEnd > state0.t) arcs.push({ state0, end: arcEnd });
     state0 = node;
   }
+  // 最後のノードから end までを最終 arc とする
   if (state0.t < end) arcs.push({ state0, end });
   return arcs;
 }

@@ -39,6 +39,7 @@ export class FocusMarkers {
     const emL = ephemeris.emLagrangeAt(t);
     const seL = ephemeris.seLagrangeAt(t);
 
+    // 各ラベルの座標を求める
     const positions: Record<string, Vec3> = {
       'earth': v3(0, 0, 0),
       'moon': ephemeris.moonPosAt(t),
@@ -52,6 +53,7 @@ export class FocusMarkers {
       'se-l2': seL.L2,
     };
 
+    // 求めた座標をラベルとマーカーへ反映する
     for (const lbl of this.labels) {
       lbl.pos = positions[lbl.id]!;
       this.markerManager.setPosition(lbl.id, 'mk-poi', '●', lbl.pos, project, lbl.name);
@@ -63,6 +65,7 @@ export class FocusMarkers {
     for (const lbl of this.labels) this.markerManager.hide(lbl.id);
   }
 
+  // id に対応するラベルを返す。存在しなければ undefined。
   findLabel(id: string): FocusLabel | undefined {
     return this.labels.find((l) => l.id === id);
   }

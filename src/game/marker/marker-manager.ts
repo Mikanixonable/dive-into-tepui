@@ -13,6 +13,7 @@ import * as C from '../const';
 
 type ProjectFn = (worldPos: Vec3) => Projected;
 
+// 指定タグの要素を作って id/class を設定し、parent へ追加して返す。
 function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLElement {
   const e = document.createElement(tag);
   e.id = id;
@@ -150,6 +151,7 @@ export class MarkerManager {
     if (m) m.root.style.display = 'none';
   }
 
+  // マーカーを DOM ごと削除する。
   remove(key: string): void {
     const m = this.markerDictionary.get(key);
     if (!m) return;
@@ -157,10 +159,11 @@ export class MarkerManager {
     this.markerDictionary.delete(key);
   }
 
+  // 全マーカーのラベルどうしの重なりを緩和し、ずらした分だけ引き出し線を描く。
   resolveCollisions(): void {
     const active: { m: any; ox: number; oy: number; w: number; h: number; dx: number; dy: number }[] = [];
 
-    // 1. Gather active markers and their estimated label bounding boxes
+    // 表示中のマーカーと、そのラベルの推定矩形を集める
     for (const m of this.markerDictionary.values()) {
       if (m.root.style.display === 'none' || !m.lbl.textContent) {
         m.lbl.style.transform = 'translateX(-50%)';
@@ -173,14 +176,14 @@ export class MarkerManager {
       const y = parseFloat(yStr);
 
       const textLen = m.lbl.textContent.length;
-      const w = textLen * 6.5 + 4; // approx width
+      const w = textLen * 6.5 + 4; // 概算幅 [px]
       const h = 14;
 
-      // Default label center is 12px + h/2 below the symbol center (x, y)
+      // ラベル中心の既定位置は、シンボル中心 (x, y) の 12px + h/2 下
       active.push({ m, ox: x, oy: y + 12 + h / 2, w, h, dx: 0, dy: 0 });
     }
 
-    // 2. Simple relaxation to push overlapping labels apart
+    // 重なったラベルどうしを反発させて緩和する
     const ITER = 5;
     for (let iter = 0; iter < ITER; iter++) {
       for (let i = 0; i < active.length; i++) {
@@ -212,7 +215,7 @@ export class MarkerManager {
       }
     }
 
-    // 3. Apply positions and draw SVG lines
+    // ずらした位置を反映し、シンボルとの引き出し線を引く
     this.svgOverlay.innerHTML = '';
     for (const a of active) {
       if (Math.abs(a.dx) > 1 || Math.abs(a.dy) > 1) {

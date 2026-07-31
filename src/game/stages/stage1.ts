@@ -19,6 +19,7 @@ export class Stage1 extends Stage {
   readonly selectKeys = ['Digit1', 'Enter'];
   readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
+  // 開始ブリーフィングの HTML を組み立てる。
   briefingHtml(enemyCount: number): string {
     return (
       `<b>作戦目標: 敵機 ${enemyCount} 機を全機撃破せよ</b><br>` +
@@ -27,12 +28,14 @@ export class Stage1 extends Stage {
     );
   }
 
+  // 5機の敵を初期配置し、敵数を返す。
   init(player: Player, entities: EntityManager): number {
     const base = player.state;
     const hud = this._hud;
     const sfx = this._sfx;
     const fx = this._fx;
     const scene = this._scene;
+    // 各種軌道パターンの敵を配置する
     this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 2, 0xff4a3d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
     this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 2, 0xff7a2d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
     this.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 2, 0xe0409f, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
@@ -40,6 +43,7 @@ export class Stage1 extends Stage {
     this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 3, 0xff2d6b, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
     return 5;
   }
+  // 1フレーム分、敵の行動と補給ロジスティクスを進める。
   update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!this.isPlaying) return;
 

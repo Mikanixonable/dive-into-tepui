@@ -59,6 +59,7 @@ export class GroupedMarkers {
 
   // 画面手前にあるものだけをクラスタ化し、優先度が最大のものを代表に据える。
   private groupNearby(placed: readonly PlacedItem[]): void {
+    // 画面座標が近いものを同じグループへまとめる
     const groups: PlacedItem[][] = [];
     for (const m of placed) {
       if (!m.p.front) continue;
@@ -66,6 +67,7 @@ export class GroupedMarkers {
       if (near) near.push(m);
       else groups.push([m]);
     }
+    // グループ内は優先度最大を代表にし、残りはラベルを落とす
     for (const g of groups) {
       if (g.length <= 1) continue;
       g.sort((a, b) => b.item.priority - a.item.priority);
@@ -74,10 +76,12 @@ export class GroupedMarkers {
     }
   }
 
+  // a と b がクラスタ化する距離内にあるか判定する。
   private isNear(a: Projected, b: Projected): boolean {
     return Math.hypot(a.x - b.x, a.y - b.y) < this.clusterRadiusPx;
   }
 
+  // 代表のラベル文字列を組み立てる。count > 1 のときは "xN" を付ける。
   private label(item: GroupedMarkerItem, count: number): string {
     return count > 1 ? `${item.name} x${count} ${item.detail}` : `${item.name} ${item.detail}`;
   }

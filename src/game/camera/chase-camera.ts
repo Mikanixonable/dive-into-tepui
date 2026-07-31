@@ -36,6 +36,7 @@ export class ChaseCamera {
 
   constructor(private readonly _hud: Hud, _sfx: Sfx) {}
 
+  // 視点の基準フレーム(機体姿勢基準 ⇔ 軌道基準)を切り替える。
   toggleFollowAttitude(): void {
     this.camFollowAttitude = !this.camFollowAttitude;
     this._hud.hint(
@@ -44,6 +45,7 @@ export class ChaseCamera {
     );
   }
 
+  // 現在のモード(通常/ズーム/機体死亡)に応じた視点を計算する。
   update(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number, player: Player, zoomActive: boolean): void {
     this.yaw -= keyYaw * C.CAM_KEY_YAW_RATE * dt;
     this.pitch = Math.max(-1.35, Math.min(1.35,
@@ -73,11 +75,13 @@ export class ChaseCamera {
     }
   }
 
+  // 論理カメラの状態を THREE.PerspectiveCamera へ反映する。
   sync(fo: FloatingOrigin): void {
     const camera = this.camera;
     camera.position.copy(fo.RtoThreeV3(this.position));
     camera.up.set(this.upDir.x, this.upDir.y, this.upDir.z);
     camera.lookAt(fo.RtoThreeV3(this.lookTarget));
+    // アスペクト比・FOV が変わったときだけ投影行列を再計算する
     let projectionDirty = false;
     if (Math.abs(camera.aspect - this.aspect) > 1e-6) {
       camera.aspect = this.aspect;
@@ -107,15 +111,18 @@ export class ChaseCamera {
   private computeChaseView(mouse: MouseDelta, up: Vec3, fwd: Vec3, dt: number, center: Vec3): void {
     this.computeZoomFov(false, dt);
 
+    // マウス入力から yaw/pitch/距離を更新
     this.yaw -= mouse.dx * 0.005;
     this.pitch += mouse.dy * 0.005;
     this.pitch = Math.max(-1.35, Math.min(1.35, this.pitch));
     this.dist *= Math.exp(mouse.wheel * 0.0012);
     this.dist = Math.max(12, Math.min(8000, this.dist));
 
+    // fwd を up と直交する成分だけに正規化し、基準フレームを組む
     const f = norm(addScaled(fwd, up, -dot(fwd, up)));
     const side = norm(cross(f, up));
 
+    // 球面座標(yaw/pitch/dist)からオフセットベクトルを組む
     const cp = Math.cos(this.pitch);
     let off = scale(f, -cp * Math.cos(this.yaw));
     off = addScaled(off, side, cp * Math.sin(this.yaw));
@@ -136,6 +143,7 @@ export class ChaseCamera {
     this.lookTarget = addScaled(center, norm(boreFwd), 1000);
   }
 
+  // アスペクト比を最新化し、FOV をズーム有無の目標値へ指数的に近づける。
   private computeZoomFov(zoomActive: boolean, dt: number): void {
     this.aspect = window.innerWidth / window.innerHeight;
     const targetFov = zoomActive ? C.ZOOM_FOV : C.BASE_FOV;

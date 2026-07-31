@@ -28,6 +28,7 @@ export class CollisionPhysics {
     }
   }
 
+  // 全ペアの接触を解決する。自機と薬莢が衝突したら onPlayerCasingImpact を呼ぶ。
   private resolveCollisionPairs(
     entities: GameEntity[],
     player: Player,

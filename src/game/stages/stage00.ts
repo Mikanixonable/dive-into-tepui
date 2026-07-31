@@ -25,6 +25,7 @@ export class Stage00 extends Stage {
   private spawnTimer = 0;
   private waveCount = 0;
 
+  // ミッション概要のブリーフィング文(HTML)を返す。
   briefingHtml(): string {
     return (
       '<b>サバイバル任務: 弾薬を回収し、無限の敵から生き残れ！</b><br>' +
@@ -34,6 +35,7 @@ export class Stage00 extends Stage {
     );
   }
 
+  // 弾薬ピックアップと初期の敵ウェーブを配置する。
   init(player: Player, entities: EntityManager): number {
     for (let i = 0; i < C.MAX_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
@@ -43,6 +45,7 @@ export class Stage00 extends Stage {
     return 0;
   }
 
+  // 敵の行動・補給の更新を行い、現在の waveState に応じたフェーズ処理へ分岐する。
   update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!this.isPlaying) return;
 
@@ -58,16 +61,19 @@ export class Stage00 extends Stage {
   checkWin(): boolean { return false; }
   onWin(): void { }
 
+  // HUD に表示する現在のウェーブ数の文言を返す。
   hudSubStatus(): string {
     return `サバイバル 第${this.waveCount}波`;
   }
 
+  // ウェーブ番号を進め、敵を生成して addEnemy 経由でエンティティ管理に登録する。
   private spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this.waveCount;
     const enemies = generateWave(player.state, wave, this._hud, this._sfx, this._fx, this._scene, forcedPattern);
     for (const enemy of enemies) addEnemy(enemy);
   }
 
+  // 自機が弾薬を確保するまで待ち、確保でき次第 spawning_enemies フェーズへ進める。
   private updateWaitingForAmmoPhase(player: Player): void {
     if (player.magsLeft <= 0 && player.roundsInMag <= 0) return;
     this.waveState = 'spawning_enemies';
@@ -75,6 +81,7 @@ export class Stage00 extends Stage {
     this._hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
   }
 
+  // 遅延タイマーが尽きたら最初のウェーブを湧かせ、active_combat フェーズへ進める。
   private updateSpawningEnemiesPhase(dt: number, player: Player, entities: EntityManager): void {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
@@ -83,6 +90,7 @@ export class Stage00 extends Stage {
     this.spawnTimer = C.STAGE00_SPAWN_INTERVAL;
   }
 
+  // 交戦圏外の敵を消し、同時展開数の上限内でタイマーに従い次のウェーブを湧かせる。
   private updateActiveCombatPhase(dt: number, player: Player, entities: EntityManager, simTime: number): void {
     despawnOutOfRangeEnemies(entities.enemies, player, C.STAGE00_MAX_RANGE, simTime, this);
     const activeGroups = countActiveWaveGroups(entities.enemies);
@@ -142,6 +150,7 @@ function pickWaveCenter(player: OrbitState, wave: number): Vec3 {
   return add(player.r, scale(dir, dist));
 }
 
+// ウェーブ中心が自機の近傍を通過するフライバイの接近方向と速度を求める。
 function makeFlybyVelocity(player: OrbitState, centerR: Vec3, wave: number): { approachDir: Vec3; centerV: Vec3 } {
   const missDist = C.STAGE00_FLYBY_MISS_DIST_MIN + Math.random() * C.STAGE00_FLYBY_MISS_DIST_RANGE;
   const directDir = norm(sub(player.r, centerR));
@@ -162,12 +171,14 @@ function makeFlybyVelocity(player: OrbitState, centerR: Vec3, wave: number): { a
 // 近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らないよう Δv の大きさを二分探索で縮める。
 function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3): Vec3 {
   const minPeAlt = C.REENTRY_ALT + C.STAGE00_MIN_PERIGEE_MARGIN;
+  // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
     const el = elementsFromState(centerR, v);
     return el !== null && el.peAlt >= minPeAlt;
   };
   if (safe(centerV)) return centerV;
 
+  // Δv の倍率を二分探索で縮め、安全な範囲に収める
   const dv = sub(centerV, playerV);
   let lo = 0;
   let hi = 1;
@@ -182,18 +193,22 @@ function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3): Vec3 {
 // 基調色: アースカラー7割 / 寒色系2割 / アクセントカラー1割
 function pickWaveBaseHex(): number {
   const randCol = Math.random();
+  // アースカラー帯
   if (randCol < 0.7) {
     const earthColors = [0xc2b280, 0x808080, 0xb2beb5, 0x8b4513, 0xc3b091, 0x556b2f, 0x8f9779, 0x5f9ea0];
     return earthColors[Math.floor(Math.random() * earthColors.length)]!;
   }
+  // 寒色系帯
   if (randCol < 0.9) {
     const coolColors = [0x722f37, 0x8a2be2, 0x0000ff, 0x00ffff, 0x40e0d0, 0x008000, 0x9acd32];
     return coolColors[Math.floor(Math.random() * coolColors.length)]!;
   }
+  // アクセントカラー帯
   const accentColors = [0xffa500, 0xffc0cb, 0xff0000, 0xffffff];
   return accentColors[Math.floor(Math.random() * accentColors.length)]!;
 }
 
+// 基調色から HSL をずらした複数の準拠色(部隊内の識別カラー)を生成する。
 function makeSubGroupHexes(baseHex: number): number[] {
   const baseColor = new THREE.Color(baseHex);
   const hsl = { h: 0, s: 0, l: 0 };
@@ -202,6 +217,7 @@ function makeSubGroupHexes(baseHex: number): number[] {
   const subGroupCount = 2 + Math.floor(Math.random() * 3);
   const subGroups: number[] = [];
   for (let i = 0; i < subGroupCount; i++) {
+    // 色相/彩度/明度をそれぞれ小さくランダムに揺らす
     const hOffset = (Math.random() - 0.5) * 0.12;
     const sOffset = (Math.random() - 0.5) * 0.35;
     const lOffset = (Math.random() - 0.5) * 0.25;
@@ -215,6 +231,7 @@ function makeSubGroupHexes(baseHex: number): number[] {
   return subGroups;
 }
 
+// ウェーブ中心を基準に、パターンに応じた個別の艦の初期位置を求める。
 function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: number, centerR: Vec3, approachDir: Vec3): Vec3 {
   let pos: Vec3;
   if (pattern === 'linear') {
@@ -239,6 +256,7 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
   return droppedPos;
 }
 
+// ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
 function generateWave(player: OrbitState, waveNumber: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = C.STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * C.STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, C.STAGE00_WAVE_MAX_SHIPS);
@@ -249,6 +267,7 @@ function generateWave(player: OrbitState, waveNumber: number, hud: Hud, sfx: Sfx
   const typeIndex = Math.floor(Math.random() * 3);
   const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');
 
+  // 隻数分、位置と識別カラーを割り当てて敵艦を生成する
   const enemies: Enemy[] = [];
   for (let i = 0; i < shipCount; i++) {
     const accent = subGroups[i % subGroups.length]!;

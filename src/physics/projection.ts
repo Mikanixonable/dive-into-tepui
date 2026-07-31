@@ -16,16 +16,19 @@ export interface ViewFrame {
 
 // worldPos を NDC([-1,1] 、+Y が上)へ投影する。front = カメラの前方(near/far 非依存)。
 export function projectToNdc(view: ViewFrame, worldPos: Vec3): Projected {
+  // up を再直交化してカメラ基底(forward/right/camUp)を組む
   const forward = norm(sub(view.lookTarget, view.position));
   const right = norm(cross(forward, view.up));
   const camUp = cross(right, forward);
 
+  // カメラ視点座標系へ変換
   const rel = sub(worldPos, view.position);
   const viewX = dot(rel, right);
   const viewY = dot(rel, camUp);
   const viewZ = -dot(rel, forward);
   const front = viewZ < 0;
 
+  // 透視除算で NDC へ
   const tanHalfFov = Math.tan((view.fovDeg * Math.PI) / 360);
   const ndcX = viewX / (view.aspect * tanHalfFov * -viewZ);
   const ndcY = viewY / (tanHalfFov * -viewZ);

@@ -14,6 +14,7 @@ export type DebrisKind =
   | { kind: 'magazineFrame'; }
   | { kind: 'casing'; bornSim: number; };
 
+// DebrisKind の種別に応じたメッシュを構築する。
 function buildDebrisObj(debrisKind: DebrisKind): THREE.Object3D {
   switch (debrisKind.kind) {
     case 'fragment': return buildDebrisMesh(debrisKind.accent, debrisKind.size);
@@ -26,6 +27,7 @@ function buildDebrisObj(debrisKind: DebrisKind): THREE.Object3D {
 export class DebrisPiece extends GameEntity {
   protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
 
+  // DebrisKind に応じたメッシュ・質量で初期化する。collideRadius は fragment 以外の当たり判定半径になる。
   constructor(state: OrbitState, readonly debrisKind: DebrisKind, att: Attitude, collideRadius?: number, scene?: THREE.Scene) {
     super(state, buildDebrisObj(debrisKind), scene, att);
     this.collideRadius = debrisKind.kind === 'fragment' ? undefined : collideRadius;
@@ -39,6 +41,7 @@ export class DebrisPiece extends GameEntity {
 
   get kind(): DebrisKind['kind'] { return this.debrisKind.kind; }
 
+  // 再突入判定に加え、薬莢は寿命超過でも alive を落とす。
   checkLoss(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3): void {
     super.checkLoss(dt, simTime, activeStage, playerPos);
     if (!this.alive) return;
@@ -48,11 +51,13 @@ export class DebrisPiece extends GameEntity {
     }
   }
 
+  // シーンからの除去に加え、自身が所有するジオメトリ・マテリアルを解放する。
   dispose(): void {
     super.dispose();
     this.obj.traverse((child) => {
       const mesh = child as THREE.Mesh;
       if (!mesh.isMesh) return;
+      // 共有ジオメトリを解放しないよう、所有権フラグが立つものだけ処理する。
       if (mesh.userData.ownsGeometry && mesh.geometry) {
         mesh.geometry.dispose();
       }

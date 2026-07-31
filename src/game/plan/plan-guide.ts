@@ -18,6 +18,8 @@ export class PlanGuide {
   ) {
   }
 
+  // 編集モードでなければ最近接ノードの NODE/BURN マーカーを表示し、目標軌道へ
+  // 十分近づいたらそのノードを消化する。
   update(
     plan: Plan,
     player: Player,
@@ -41,6 +43,7 @@ export class PlanGuide {
     const targetEl = elementsFromState(node.r, node.v);
     const playerEl = player.elements;
 
+    // 目標軌道との近さが許容誤差内に収まったらノード達成として消化する。
     if (playerEl && targetEl && this.orbitClose(playerEl, targetEl)) {
       plan.consumeFirstNode();
       simSpeedManager.cancelAutoWarp();
@@ -55,6 +58,7 @@ export class PlanGuide {
       return;
     }
 
+    // NODE マーカー: ノードまでの残り時間を表示する。
     const tRem = node.t - simTime;
     const tLabel =
       tRem >= 0
@@ -63,6 +67,7 @@ export class PlanGuide {
     const more = plan.nodes.length > 1 ? ` (+${plan.nodes.length - 1})` : '';
     this.markerManager.setPosition('nd', 'mk-mnode', '◆', node.r, project, `NODE ${tLabel}${more}`);
 
+    // BURN マーカー: 目標速度との差分ベクトルを噴射方向として表示する。
     const dvRem = sub(node.v, player.state.v);
     const mag = len(dvRem);
     this.markerManager.setDirection(

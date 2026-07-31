@@ -30,13 +30,16 @@ export class HitSystem {
     }
   }
 
+  // 前フレームから今フレームまでの弾と目標の相対移動を線分近似し、目標の半径以内を通過したかを判定する。
   private segmentHit(b: Bullet, ship: Ship): boolean {
+    // 前フレーム時点の、目標基準の弾の相対位置
     const bpr = b.prevState.r;
     const spr = ship.prevState.r;
     const ax = bpr.x - spr.x;
     const ay = bpr.y - spr.y;
     const az = bpr.z - spr.z;
 
+    // 今フレーム時点の相対位置と、前フレームからの相対移動ベクトル
     const br = b.state.r;
     const sr = ship.state.r;
     const bbx = br.x - sr.x;
@@ -47,10 +50,12 @@ export class HitSystem {
     const dy = bby - ay;
     const dz = bbz - az;
 
+    // 相対移動の線分上で目標に最も近づく点の媒介変数 t を求める(0〜1にクランプ)
     const dd = dx * dx + dy * dy + dz * dz;
     const a_dot_d = ax * dx + ay * dy + az * dz;
     const t = dd > 1e-9 ? Math.max(0, Math.min(1, -a_dot_d / dd)) : 0;
 
+    // 最近接点が目標半径以内かどうかで命中を判定する
     const cx = ax + dx * t;
     const cy = ay + dy * t;
     const cz = az + dz * t;

@@ -45,6 +45,7 @@ export class OverviewCamera {
   private lookTarget: Vec3 = v3();
   private aspect = window.innerWidth / window.innerHeight;
 
+  // THREE.PerspectiveCamera と初期視点(offset_r/pan_r)を組む。
   constructor(
     private readonly _hud: Hud,
     _sfx: Sfx,
@@ -61,6 +62,7 @@ export class OverviewCamera {
     this.pan_r = toFramePos(this._cameraFrame, 0, v3(), this.ephemeris);
   }
 
+  // 注視点からカメラまでの距離を返す。
   get dist(): number {
     return Math.hypot(this.offset_r.x, this.offset_r.y, this.offset_r.z);
   }
@@ -77,6 +79,7 @@ export class OverviewCamera {
     return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), window.innerWidth, window.innerHeight);
   }
 
+  // 視点・パン・フォーカスを初期状態に戻す。
   reset(): void {
     this.offset_r = toFramePos(this._cameraFrame, this.simTime, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST), this.ephemeris);
     this.resetPan();
@@ -84,14 +87,17 @@ export class OverviewCamera {
     this._hud.hint('マップ視点をリセット');
   }
 
+  // パン変位をゼロに戻す。
   resetPan(): void {
     this.pan_r = toFramePos(this._cameraFrame, this.simTime, v3(), this.ephemeris);
   }
 
+  // 現在のフォーカス対象の ECI 位置を返す。'earth' なら原点。
   private resolveFocus(): Vec3 {
     return this.focus === 'earth' ? v3(0, 0, 0) : this.focusMarkers.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
   }
 
+  // 現在視点を固定している座標系を返す。
   get cameraFrame(): Frame {
     return this._cameraFrame;
   }
@@ -107,6 +113,7 @@ export class OverviewCamera {
     this._cameraFrame = frame;
   }
 
+  // マウス/キー入力から視点(position/lookTarget)を1フレーム分更新する。
   update(
     mouse: MouseDelta,
     keyYaw: number,
@@ -119,6 +126,7 @@ export class OverviewCamera {
     let offEci = toInertialPos(this._cameraFrame, simTime, this.offset_r, this.ephemeris);
     let panEci = toInertialPos(this._cameraFrame, simTime, this.pan_r, this.ephemeris);
 
+    // ホイール/ドラッグから距離・方位角・仰角を更新する
     const dist = Math.max(C.OVERVIEW_CAMERA_MIN_DIST,
       Math.min(C.OVERVIEW_CAMERA_MAX_DIST, this.dist * Math.exp(mouse.wheel * 0.0012)));
     const dir = norm(offEci);
@@ -128,6 +136,7 @@ export class OverviewCamera {
     ));
     offEci = sphericalOffset(yaw, pitch, dist);
 
+    // 中ボタンドラッグ/2本指ドラッグでパン変位を更新する
     if (mouse.panDx !== 0 || mouse.panDy !== 0) {
       const viewDir = scale(norm(offEci), -1);
       const right = norm(cross(viewDir, WORLD_UP));
@@ -138,6 +147,7 @@ export class OverviewCamera {
       panEci = addScaled(panEci, camUp, mouse.panDy * metersPerPixel);
     }
 
+    // フォーカス+パン+視点オフセットから実位置を組み立てる
     this.lookTarget = add(focus, panEci);
     this.position = add(this.lookTarget, offEci);
     this.offset_r = toFramePos(this._cameraFrame, simTime, offEci, this.ephemeris);
@@ -145,6 +155,7 @@ export class OverviewCamera {
     this.aspect = window.innerWidth / window.innerHeight;
   }
 
+  // fo を介して position/lookTarget を THREE.PerspectiveCamera へ反映する。
   sync(fo: FloatingOrigin): void {
     const camera = this.camera;
     camera.position.copy(fo.RtoThreeV3(this.position));

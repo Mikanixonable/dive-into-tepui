@@ -14,6 +14,7 @@ export class StageStatusPanel {
   private lastHpHtml = '';
   private lastBodyHtml = '';
 
+  // 非表示状態のパネル DOM を組み立てて root に追加する
   constructor(root: HTMLElement) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-stagestatus';
@@ -27,6 +28,7 @@ export class StageStatusPanel {
 
   // 毎フレーム(sync 時)呼ぶ。DOM の書き換えは内容が変わったフレームだけに絞る。
   sync(hp: number, maxHp: number, message: string, kills: number): void {
+    // HP バーは内容が変わったフレームだけ書き換える
     const low = hp <= maxHp * LOW_HP_RATIO;
     const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
     const hpHtml =
@@ -39,6 +41,7 @@ export class StageStatusPanel {
     }
     this.hpRow.classList.toggle('warn', low);
 
+    // ステージからの補助メッセージと撃墜数
     const bodyHtml = `${message}<br>撃墜 ${kills}`;
     if (this.lastBodyHtml !== bodyHtml) {
       this.body.innerHTML = bodyHtml;
@@ -47,6 +50,7 @@ export class StageStatusPanel {
     this.panel.style.display = 'block';
   }
 
+  // パネル DOM を非表示にする
   hide(): void {
     this.panel.style.display = 'none';
   }

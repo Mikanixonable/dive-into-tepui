@@ -7,30 +7,37 @@ export type Vec3 = {
   readonly z: number;
 } & { readonly __tag: "Vec3" };
 
+// Vec3 を構築する唯一の手段(オブジェクトリテラルを直接 Vec3 として扱わないこと)。
 export function v3(x = 0, y = 0, z = 0): Vec3 {
   return { x, y, z } as Vec3;
 }
 
+// a + b
 export function add(a: Vec3, b: Vec3): Vec3 {
   return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z } as Vec3;
 }
 
+// a - b
 export function sub(a: Vec3, b: Vec3): Vec3 {
   return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z } as Vec3;
 }
 
+// a を s 倍したベクトル
 export function scale(a: Vec3, s: number): Vec3 {
   return { x: a.x * s, y: a.y * s, z: a.z * s } as Vec3;
 }
 
+// a + b * s
 export function addScaled(a: Vec3, b: Vec3, s: number): Vec3 {
   return { x: a.x + b.x * s, y: a.y + b.y * s, z: a.z + b.z * s } as Vec3;
 }
 
+// 内積
 export function dot(a: Vec3, b: Vec3): number {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
+// 外積 a × b
 export function cross(a: Vec3, b: Vec3): Vec3 {
   return {
     x: a.y * b.z - a.z * b.y,
@@ -39,10 +46,12 @@ export function cross(a: Vec3, b: Vec3): Vec3 {
   } as Vec3;
 }
 
+// 長さの2乗
 export function lenSq(a: Vec3): number {
   return a.x * a.x + a.y * a.y + a.z * a.z;
 }
 
+// 長さ
 export function len(a: Vec3): number {
   return Math.sqrt(lenSq(a));
 }
@@ -84,6 +93,7 @@ export function rotateAxis(v: Vec3, axis: Vec3, angle: number): Vec3 {
   const k = axis;
   const kxv = cross(k, v);
   const kdv = dot(k, v);
+  // v' = v·cosθ + (k×v)·sinθ + k(k·v)(1-cosθ)
   return {
     x: v.x * c + kxv.x * s + k.x * kdv * (1 - c),
     y: v.y * c + kxv.y * s + k.y * kdv * (1 - c),

@@ -18,6 +18,7 @@ export class DisplayTimeManager {
 
   private readonly panel: DisplayTimePanel;
 
+  // 操作パネルを構築し、期間選択・スライダー操作の反映先を自身にする。
   constructor(hudRoot: HTMLElement) {
     this.panel = new DisplayTimePanel(hudRoot);
     this.panel.onDurationSelect = (key) => {

@@ -61,10 +61,12 @@ export class EnvironmentScene {
     private readonly ephemeris: Ephemeris,
   ) {
     const sd0 = this.ephemeris.sunDirAt(0);
+    // マップ専用の参照軌道線をシーンへ追加する。
     this.geoLine.line.renderOrder = 0;
     this.moonLine.line.renderOrder = 0;
     scene.add(this.geoLine.line);
     scene.add(this.moonLine.line);
+    // 光源と天体メッシュを構築してシーンへ追加する。
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     scene.add(this.ambient);
     this.sun = createSun();
@@ -80,6 +82,7 @@ export class EnvironmentScene {
     scene.add(this.earth.group);
   }
 
+  // 地球・空の天体・照明・参照線を、この1フレームの表示状態に同期する。
   sync(params: EnvironmentSyncParams): void {
     const { dt, player, floatingOrigin, displayTime, cameraSystem } = params;
     this.syncEarth(dt, floatingOrigin, displayTime);
@@ -120,12 +123,14 @@ export class EnvironmentScene {
     return elementsFromState(r1, scale(sub(r2, r1), 1 / dt));
   }
 
+  // 地球の位置・自転角・表面アニメーションを表示時刻に同期する。
   private syncEarth(dt: number, fo: FloatingOrigin, displayTime: number): void {
     this.earth.group.position.copy(fo.RtoThreeV3(EARTH_CENTER));
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
     this.earth.tick(dt, displayTime);
   }
 
+  // 太陽・月・星の見た目位置とライティング方向を、表示時刻とカメラに応じて同期する。
   private syncSkyBodies(
     displayTime: number,
     fo: FloatingOrigin,
@@ -182,6 +187,7 @@ export class EnvironmentScene {
     this.moonMesh.scale.setScalar(moonVisDist * (moonRadius / moonDist));
   }
 
+  // 日照率 lit(0..1)に応じて太陽光・環境光の強度を落とす。
   private syncLighting(lit: number): void {
     this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
     this.ambient.intensity = C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);

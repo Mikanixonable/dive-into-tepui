@@ -33,6 +33,7 @@ const ATMO_RIM_SCALE_H = 90e3;
 type SunDirUniform = ReturnType<typeof uniform>;
 type EarthCenterUniform = ReturnType<typeof uniform>;
 
+// 雲・夕焼け・大気のもやを合成した地表メッシュを組む。
 function buildSurface(sunDir: SunDirUniform): THREE.Mesh {
   // インデックス付き球ジオメトリ + スムーズシェーディング。
   // 1024×768 分割で高解像度化
@@ -132,6 +133,7 @@ function buildAurora(sign: 1 | -1, geomSeed: number, colorSeed: number, radiusOf
   const colors = new Float32Array((SEG + 1) * (V_SEG + 1) * 3);
   const indices: number[] = [];
 
+  // phase に応じてカーテンの各頂点の位置・色を計算し、positions/colors に書き込む。
   const update = (phase: number) => {
     const sPhase = geomSeed + phase;
     const cPhase = colorSeed + phase;
@@ -208,6 +210,7 @@ export interface Earth {
   tick(dt: number, simTime: number): void; // オーロラの明滅アニメーション、大気シェーダの地球中心uniform更新
 }
 
+// 地表・オーロラ・大気リム光をまとめた Earth を組み立てる。
 export function createEarth(): Earth {
   const group = new THREE.Group();
   const spin = new THREE.Group();
@@ -234,12 +237,15 @@ export function createEarth(): Earth {
   let auroraPhase = 0;
   return {
     group,
+    // 自転角(ラジアン)を設定する。
     setRotation(angleRad: number) {
       spin.rotation.y = angleRad;
     },
+    // 太陽方向ベクトルを設定する。
     setSunDir(x: number, y: number, z: number) {
       (sunDir.value as THREE.Vector3).set(x, y, z);
     },
+    // 地球中心位置と、オーロラの明滅・波打ちを simTime に応じて進める。
     tick(_dt: number, simTime: number) {
       (earthCenter.value as THREE.Vector3).copy(group.position);
 

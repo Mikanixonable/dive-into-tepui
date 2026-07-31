@@ -18,6 +18,7 @@ export class OverviewCameraPanel {
 
   // focusItems は [ラベル ID, 表示名] の並び。常用の数個だけを渡す。
   constructor(root: HTMLElement, focusItems: readonly (readonly [string, string])[]) {
+    // パネル本体とタイトル
     this.panel = document.createElement('div');
     this.panel.id = 'hud-overview-camera';
     this.panel.className = 'panel';
@@ -26,11 +27,13 @@ export class OverviewCameraPanel {
     title.textContent = 'MAP VIEW';
     this.panel.appendChild(title);
 
+    // 注視対象と視点座標系の選択コントロール
     this.focus = new SegmentedControl('注視', focusItems, (id) => this.onFocusSelect?.(id));
     this.frame = new SegmentedControl('視点', FRAMES, (frame) => this.onFrameSelect?.(frame));
     this.panel.appendChild(this.focus.element);
     this.panel.appendChild(this.frame.element);
 
+    // 視点リセットボタン
     const resetRow = document.createElement('div');
     resetRow.className = 'hud-seg';
     resetRow.appendChild(hudButton('視点リセット', () => this.onViewReset?.()));
@@ -39,14 +42,17 @@ export class OverviewCameraPanel {
     root.appendChild(this.panel);
   }
 
+  // パネルの表示/非表示を切り替える。
   setVisible(visible: boolean): void {
     this.panel.style.display = visible ? 'block' : 'none';
   }
 
+  // 注視対象の選択表示を更新する。
   setFocus(focus: string): void {
     this.focus.setSelected(focus);
   }
 
+  // 視点座標系の選択表示を更新する。
   setFrame(frame: Frame): void {
     this.frame.setSelected(frame);
   }

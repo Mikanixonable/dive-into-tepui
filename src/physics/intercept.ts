@@ -5,19 +5,23 @@ import { OrbitState } from './orbital';
 
 // |relP + relV t| = s t を満たす最小の正の t
 export function solveLeadTime(relP: Vec3, relV: Vec3, s: number): number | null {
+  // |relP + relV t|² = s² t² を t についての二次方程式として係数を求める
   const a = lenSq(relV) - s * s;
   const b = 2 * dot(relP, relV);
   const c = lenSq(relP);
+  // 二次の係数がほぼ0なら一次方程式として解く
   if (Math.abs(a) < 1e-6) {
     if (Math.abs(b) < 1e-9) return null;
     const t = -c / b;
     return t > 0 ? t : null;
   }
+  // 判別式が負なら実数解が無い
   const disc = b * b - 4 * a * c;
   if (disc < 0) return null;
   const sq = Math.sqrt(disc);
   const t1 = (-b - sq) / (2 * a);
   const t2 = (-b + sq) / (2 * a);
+  // 正の解のうち最小のものを採用する
   let best: number | null = null;
   for (const t of [t1, t2]) {
     if (t > 0 && (best === null || t < best)) best = t;

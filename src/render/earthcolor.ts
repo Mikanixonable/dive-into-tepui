@@ -14,11 +14,14 @@ function hash3(x: number, y: number, z: number): number {
   return s - Math.floor(s);
 }
 
+// smoothstep 補間カーブ(3t² − 2t³)
 function smooth(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
+// 3D 値ノイズ。周囲8格子点のハッシュ値を smooth 補間して返す(0〜1 程度)。
 function valueNoise(x: number, y: number, z: number): number {
+  // 格子座標と補間係数
   const ix = Math.floor(x);
   const iy = Math.floor(y);
   const iz = Math.floor(z);
@@ -26,6 +29,7 @@ function valueNoise(x: number, y: number, z: number): number {
   const fy = smooth(y - iy);
   const fz = smooth(z - iz);
 
+  // 8隅のハッシュ値を重み付け加算(trilinear 補間)
   let result = 0;
   for (let dz = 0; dz <= 1; dz++) {
     for (let dy = 0; dy <= 1; dy++) {
@@ -38,6 +42,7 @@ function valueNoise(x: number, y: number, z: number): number {
   return result;
 }
 
+// valueNoise を octaves 重ねた fBm ノイズを返す(値はおよそ [0, 1))。
 function fbm(x: number, y: number, z: number, octaves: number): number {
   let sum = 0;
   let amp = 0.5;
@@ -50,10 +55,12 @@ function fbm(x: number, y: number, z: number, octaves: number): number {
   return sum; // おおよそ [0, 1)
 }
 
+// [0, 1] にクランプする
 function clamp01(t: number): number {
   return t < 0 ? 0 : t > 1 ? 1 : t;
 }
 
+// t を a→b の範囲で 0→1 に正規化し、smooth で滑らかに補間する
 function smoothstep(a: number, b: number, t: number): number {
   return smooth(clamp01((t - a) / (b - a)));
 }
@@ -66,6 +73,7 @@ function srgbChannelToLinear(c: number): number {
   return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }
 
+// 0xRRGGBB 形式の sRGB 値をリニア RGB へ変換する
 function hexToLinear(hex: number): RGB {
   return {
     r: srgbChannelToLinear(((hex >> 16) & 0xff) / 255),
@@ -86,14 +94,17 @@ const LAND_ROCK = hexToLinear(0x7d766a);
 const SNOW = hexToLinear(0xf2f6fc);
 const CLOUD_WHITE = hexToLinear(0xf8fafd);
 
+// RGB の線形補間
 function lerpRGB(a: RGB, b: RGB, t: number): RGB {
   return { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t };
 }
 
+// RGB の各成分を t 倍する
 function mulScalar(c: RGB, t: number): RGB {
   return { r: c.r * t, g: c.g * t, b: c.b * t };
 }
 
+// 大小2スケールの fBm を合成した雲量(0〜1)を返す
 function cloudCover(px: number, py: number, pz: number): number {
   const cloudBase = fbm(px * 2.3 + 51.7, py * 2.3, pz * 2.3, 5);
   const cloudWisp = fbm(px * 6.1 + 13.9, py * 6.1, pz * 6.1, 3);

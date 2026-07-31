@@ -72,6 +72,7 @@ export class Game {
   private readonly nanWatchdog: NanWatchdog;
   private readonly debugHistoryLine: DebugHistoryLine;
 
+  // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
   constructor(
     gs: GameScene,
     stageId: StageId,
@@ -244,6 +245,7 @@ export class Game {
   // どのキー/クリックが何をするかは各モジュールが持つ。ここで配るのは、決着後・ポーズ中も
   // 効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・計画破棄)。
   private handleInput(): void {
+    // 上から下へ優先順位順に呼ぶ。
     this.settingsPanel.handleInput(this.input);
     this._hud.handleInput(this.input);
     this.activeStage.handleInput(this.input);

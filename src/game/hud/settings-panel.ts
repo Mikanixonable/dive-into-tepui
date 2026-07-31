@@ -12,13 +12,16 @@ export class SettingsPanel {
   onQuitToTitle: (() => void) | null = null;
   onBgmToggle: ((on: boolean) => void) | null = null;
 
+  // ⚙ ボタンとパネル DOM を組み立て、開閉・BGM トグル・タイトルへ戻るのイベントを配線する。
   constructor(root: HTMLElement) {
+    // ⚙ ボタン
     this.gear = document.createElement('div');
     this.gear.id = 'hud-gear';
     this.gear.textContent = '⚙';
     this.gear.addEventListener('click', () => this.toggle());
     root.appendChild(this.gear);
 
+    // パネル本体
     this.panel = document.createElement('div');
     this.panel.id = 'hud-settings';
     this.panel.className = 'panel';
@@ -29,24 +32,29 @@ export class SettingsPanel {
       <div class="sclose" data-id="settingsclose">[閉じる]</div>`;
     root.appendChild(this.panel);
 
+    // BGM トグル
     this.bgmToggle = this.panel.querySelector<HTMLElement>('[data-id="bgmtoggle"]')!;
     this.bgmToggle.addEventListener('click', () => {
       const on = !this.bgmOn;
       this.setBgmState(on);
       this.onBgmToggle?.(on);
     });
+    // タイトルへ戻る
     this.panel.querySelector<HTMLElement>('[data-id="settingsquit"]')!.addEventListener('click', () => {
       this.onQuitToTitle?.();
     });
+    // 閉じる
     this.panel.querySelector<HTMLElement>('[data-id="settingsclose"]')!.addEventListener('click', () =>
       this.toggle(false),
     );
   }
 
+  // 一時停止メニューを開くキー入力を処理する。
   handleInput(input: Input): void {
     if (input.takeKey(K.pauseMenu)) this.toggle();
   }
 
+  // パネルの開閉を切り替える。force を渡すと開閉状態を明示的に指定する。
   toggle(force?: boolean): void {
     const wasOpen = this.panel.style.display === 'block';
     const show = force !== undefined ? force : !wasOpen;
@@ -55,6 +63,7 @@ export class SettingsPanel {
     this.onSettingsOpenChange?.(show);
   }
 
+  // BGM トグルの表示を on の状態に合わせて更新する。
   setBgmState(on: boolean): void {
     this.bgmOn = on;
     this.bgmToggle.textContent = on ? 'ON' : 'OFF';

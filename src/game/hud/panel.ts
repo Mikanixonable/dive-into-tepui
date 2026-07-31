@@ -52,12 +52,14 @@ export class HudPanels {
 
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
+  // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
   update(game: Game, dt: number): void {
     const player = game.player;
     const tgt = game.targeter.autoTarget;
     const playerEl = player.elements;
     const tgtEl = tgt ? tgt.elements : null;
 
+    // スタッツパネルを一定間隔で更新
     this.hudTimer -= dt;
     if (this.hudTimer <= 0) {
       this.hudTimer = 0.1;
@@ -92,6 +94,7 @@ export class HudPanels {
         const relP = sub(tgt.state.r, player.state.r);
         const relV = sub(tgt.state.v, player.state.v);
         const dist = len(relP);
+        // 自機軌道面とターゲット軌道面のなす角
         const relIncDeg =
           playerEl && tgtEl
             ? (Math.acos(Math.max(-1, Math.min(1, dot(playerEl.hHat, tgtEl.hHat)))) * 180) / Math.PI
@@ -114,6 +117,7 @@ export class HudPanels {
       }
     }
 
+    // 敵一覧パネルはさらに緩い間隔で更新
     this.listTimer -= dt;
     if (this.listTimer <= 0) {
       this.listTimer = 0.25;
@@ -129,11 +133,13 @@ export class HudPanels {
     }
   }
 
+  // id 要素のテキストを、変化があるときだけ書き換える
   private setText(id: string, text: string): void {
     const e = this.els.get(id);
     if (e && e.textContent !== text) e.textContent = text;
   }
 
+  // スタッツパネル各項目のテキストと警告表示を書き換える
   private setStats(d: StatsData): void {
     this.setText('met', `T+ ${fmtTime(d.met)}`);
     const simSpeedEl = this.els.get('sim-speed');
@@ -163,6 +169,7 @@ export class HudPanels {
       proholdEl.textContent = d.progradeHold ? 'ON' : 'OFF';
       proholdEl.classList.toggle('mode-tgt', d.progradeHold);
     }
+    // 残弾/リロード中の表示
     const ammoEl = this.els.get('ammo');
     if (ammoEl) {
       if (d.reloadTimer > 0) {
@@ -184,6 +191,7 @@ export class HudPanels {
     this.setText('pe', fmtDist(d.peAlt));
     this.setText('inc', `${d.incDeg.toFixed(2)}°`);
     this.setText('prd', fmtTime(d.period));
+    // 動圧・機体温度は閾値超過で警告表示にする
     const qEl = this.els.get('qdyn');
     if (qEl) {
       qEl.textContent = d.qdyn >= 10 ? `${(d.qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
@@ -197,6 +205,7 @@ export class HudPanels {
     this.setText('count', `${d.total - d.kills}/${d.total}`);
   }
 
+  // ターゲットパネルの本文を書き換える。t が null ならプレースホルダ表示にする。
   private setTarget(t: TargetData | null): void {
     const body = this.els.get('tgtbody');
     if (!body) return;
@@ -207,6 +216,7 @@ export class HudPanels {
       return;
     }
     if (title) title.textContent = t.name;
+    // 距離・速度・軌道要素・相対傾斜角を一覧表示
     body.innerHTML = `
       <div class="row"><span class="k">距離</span><span class="v">${fmtDist(t.dist)}</span></div>
       <div class="row"><span class="k">接近速度</span><span class="v">${fmtSpeed(t.closing)}</span></div>
@@ -219,9 +229,11 @@ export class HudPanels {
       <div class="row"><span class="k">相対傾斜 [AN/DN]</span><span class="v">${isFinite(t.relIncDeg) ? t.relIncDeg.toFixed(2) + '°' : '---'}</span></div>`;
   }
 
+  // 敵一覧パネルの本文を、距離順の行として書き換える
   private setEnemyList(rows: { name: string; dist: number; targeted: boolean }[]): void {
     const list = this.els.get('elist');
     if (!list) return;
+    // 残存する敵がいなければプレースホルダ表示にする
     if (rows.length === 0) {
       list.innerHTML = `<div style="color:${INK_SOFT}">残存目標なし</div>`;
       return;

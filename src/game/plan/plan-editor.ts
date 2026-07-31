@@ -24,10 +24,12 @@ import { SimSpeedManager } from '../sim-speed-manager';
 export class PlanEditor {
   private selectedNodeId: number | null = null;
 
+  // 選択中ノードの現在の index。内部は ID で保持しているため、上流ノードの削除で繰り上がっても正しいノードを指す。
   get selectedNodeIdx(): number | null {
     return this.selectedNodeId === null ? null : this.plan.indexOfNodeId(this.selectedNodeId);
   }
 
+  // 選択するノードを index で指定する。null で選択解除。
   set selectedNodeIdx(idx: number | null) {
     this.selectedNodeId = idx === null ? null : this.plan.nodeIdAt(idx);
   }
@@ -43,6 +45,7 @@ export class PlanEditor {
   private readonly planPanel: HTMLElement;
   private readonly planBody: HTMLElement;
 
+  // 計画パネルの DOM を組み立て、ノードギズモのコールバックを配線する。
   constructor(
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
@@ -64,6 +67,7 @@ export class PlanEditor {
     this.wireNodeGizmo();
   }
 
+  // NodeGizmo の各種コールバックを配線する。
   private wireNodeGizmo(): void {
     const g = this.nodeGizmo;
     g.onNodeSelect = (idx) => {
@@ -79,6 +83,7 @@ export class PlanEditor {
     g.onAxisDrag = (axis, sign, deltaPx) => {
       this.applyAxisDrag(axis, sign, deltaPx, this.getFineAttitude());
     };
+    // 指定ノードの時刻まで自動ワープを開始する
     g.onMenuWarpTo = (idx) => {
       const n = this.plan.nodes[idx];
       if (!n) return;
@@ -90,6 +95,7 @@ export class PlanEditor {
     };
   }
 
+  // アンカーから各ノードへ順に伝播し、各ノードの到達時点(噴射直前)の状態を返す。
   private nodeArrivings(): OrbitState[] {
     const out: OrbitState[] = [];
     let state = this.plan.anchor;
@@ -100,10 +106,12 @@ export class PlanEditor {
     return out;
   }
 
+  // ノードのコンテキストメニューを閉じる。
   closeMenu(): void {
     this.nodeGizmo.closeMenu();
   }
 
+  // idx 番目のノードを削除する。
   deleteNode(idx: number): void {
     if (!this.plan.nodes[idx]) return;
     // 削除前に確定: 削除後は後続ノードが繰り上がり idx が別ノードを指す。
@@ -115,15 +123,18 @@ export class PlanEditor {
     this._hud.hint('ノードを削除');
   }
 
+  // 選択中のノードを削除する。
   deleteSelected(): void {
     if (this.selectedNodeIdx === null) return;
     this.deleteNode(this.selectedNodeIdx);
   }
 
+  // 選択ノード削除キーの入力を処理する。
   handleInput(input: Input): void {
     if (input.takeKey(K.deleteNode)) this.clearPlanByKey();
   }
 
+  // マップ上のクリック・右クリックをノード選択/配置とコンテキストメニューへ振り分ける。
   handleMapPointer(input: Input): void {
     input.takeRightClicks((p) => this.handleNodeRightClick(p.x, p.y));
     input.takeClicks((p) => {
@@ -132,6 +143,7 @@ export class PlanEditor {
     });
   }
 
+  // 編集中は選択ノードを削除し、そうでなければ計画全体を破棄する。
   private clearPlanByKey(): void {
     if (this.editMode) {
       this.deleteSelected();
@@ -143,11 +155,14 @@ export class PlanEditor {
     this._hud.hint('マニューバ計画を破棄');
   }
 
+  // ノードの画面座標を投影する。
   private nodeScreenPos(node: OrbitState): Projected {
     return this.planDisplay.traj.projectPoint(node.r, node.t);
   }
 
+  // クリック位置に最も近い既存ノードを選択する。ヒットしなければ予測軌道上の最寄り点へ新規ノードを配置する。
   private handleMapClick(mx: number, my: number): void {
+    // 画面距離が最小の既存ノードを探す
     let bestNodeIdx: number | null = null;
     let bestNodeD = C.NODE_PICK_PX * C.NODE_PICK_PX;
     for (let i = 0; i < this.plan.nodes.length; i++) {
@@ -165,6 +180,7 @@ export class PlanEditor {
       return;
     }
 
+    // 見つからなければ予測軌道上の最寄り点にノードを配置
     const sample = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX);
     if (sample) {
       this.selectedNodeIdx = this.plan.addNode(sample);
@@ -174,6 +190,7 @@ export class PlanEditor {
 
   // 既存ノード近傍ならそれを選択してコンテキストメニューを開き true を返す。外れは false。
   private handleNodeRightClick(mx: number, my: number): boolean {
+    // 画面距離が最小の既存ノードを探す
     let bestIdx: number | null = null;
     let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
     for (let i = 0; i < this.plan.nodes.length; i++) {
@@ -186,11 +203,13 @@ export class PlanEditor {
       }
     }
     if (bestIdx === null) return false;
+    // 見つかればそれを選択してメニューを開く
     this.selectedNodeIdx = bestIdx;
     this.nodeGizmo.openMenu(mx, my, bestIdx);
     return true;
   }
 
+  // ドラッグ中のノードを最寄りの予測軌道サンプル時刻へ移動する。
   private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
     if (!this.plan.nodes[idx]) return;
     const sample = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity);
@@ -199,6 +218,7 @@ export class PlanEditor {
     }
   }
 
+  // Δv アームのドラッグ量を選択中ノードの Δv へ加算する。
   private applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
     if (this.selectedNodeIdx === null) return;
     const node = this.plan.nodes[this.selectedNodeIdx];
@@ -214,12 +234,14 @@ export class PlanEditor {
     node: OrbitState,
     mapDist: number,
   ): { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; } {
+    // prograde/normal/radial-out の単位ベクトルを組む
     const { r, v } = node;
     const pro = norm(v);
     const h = norm(cross(r, v));
     const radOut = cross(pro, h);
     const L = mapDist * 0.05;
     const p0 = this.planDisplay.traj.projectPoint(r, node.t);
+    // 軸方向へわずかに動かした点との投影差分から、画面上の単位方向ベクトルを求める。
     const dirFor = (axisVec: Vec3): { x: number; y: number; } => {
       const p1 = this.planDisplay.traj.projectPoint(add(r, scale(axisVec, L)), node.t);
       const dx = p1.x - p0.x;
@@ -230,12 +252,14 @@ export class PlanEditor {
     return { pro: dirFor(pro), nrm: dirFor(h), rad: dirFor(radOut) };
   }
 
+  // ノード周囲に PRO/RET・NRM/ANM・OUT/IN 6 方向の Δv アームハンドル仕様を配置する。
   private buildAxisHandles(
     nx: number,
     ny: number,
     dirs: { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; },
   ): AxisHandleSpec[] {
     const R = C.NODE_GIZMO_HANDLE_PX;
+    // 軸・符号・画面方向からハンドル1個分の位置とラベルを組む
     const mk = (axis: 0 | 1 | 2, sign: 1 | -1, d: { x: number; y: number; }, label: string): AxisHandleSpec => ({
       axis,
       sign,
@@ -255,26 +279,31 @@ export class PlanEditor {
     ];
   }
 
+  // ノードギズモを非表示にする。
   private hideGizmo(): void {
     this.nodeGizmo.sync([], null);
   }
 
+  // i 番目のノードの Δv(噴射後速度 − 到達時点速度)を返す。
   private nodeDv(i: number, arriving: readonly OrbitState[]): Vec3 {
     const node = this.plan.nodes[i];
     const arr = arriving[i];
     return node && arr ? sub(node.v, arr.v) : v3();
   }
 
+  // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
   private updateGizmo(mapDist: number): void {
     const arriving = this.nodeArrivings();
     const nodeSpecs: NodeHandleSpec[] = [];
     const limit = Math.min(this.plan.nodes.length, C.MAX_PLAN_NODE_MARKERS);
+    // 各ノードの画面座標とラベルを組む
     for (let i = 0; i < limit; i++) {
       const node = this.plan.nodes[i]!;
       const p = this.nodeScreenPos(node);
       if (!p.front) continue;
       nodeSpecs.push({ idx: i, x: p.x, y: p.y, selected: i === this.selectedNodeIdx, dvMag: len(this.nodeDv(i, arriving)) });
     }
+    // 選択中ノードがあれば Δv アームも組む
     let axisSpecs: AxisHandleSpec[] | null = null;
     if (this.selectedNodeIdx !== null) {
       const node = this.plan.nodes[this.selectedNodeIdx];
@@ -289,9 +318,11 @@ export class PlanEditor {
     this.nodeGizmo.sync(nodeSpecs, axisSpecs);
   }
 
+  // WASDQE の押下量から選択中ノードの Δv を加算し、計画パネルの表示データを組み立てる。
   updateEditing(dt: number, simTime: number, input: Input): void {
     const arriving = this.nodeArrivings();
     const selNode = this.selectedNodeIdx !== null ? this.plan.nodes[this.selectedNodeIdx] : undefined;
+    // 選択中ノードへ prograde/normal/radial 方向の Δv を加算
     if (selNode) {
       const i = input;
       const rate = (this.getFineAttitude() ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) * dt;
@@ -303,11 +334,13 @@ export class PlanEditor {
       this.plan.applyNodeDv(this.selectedNodeIdx!, dvToWorld(selNode.r, selNode.v, local));
     }
 
+    // パネル表示用のノード一覧を組む
     const nodesInfo = this.plan.nodes.map((n, i) => ({
       tRel: n.t - simTime,
       dvMag: len(this.nodeDv(i, arriving)),
       selected: i === this.selectedNodeIdx,
     }));
+    // 選択中ノードの Δv と噴射後軌道要素を求める
     let selDv: Vec3 | null = null;
     let selEl: Elements | null = null;
     if (this.selectedNodeIdx !== null) {
@@ -320,6 +353,7 @@ export class PlanEditor {
     this.renderPanel(nodesInfo, selDv, selEl);
   }
 
+  // 計画パネルの HTML を差分更新する。
   private renderPanel(
     nodes: { tRel: number; dvMag: number; selected: boolean; }[],
     selDv: Vec3 | null,
@@ -330,10 +364,12 @@ export class PlanEditor {
     if (this.planBody.innerHTML !== html) this.planBody.innerHTML = html;
   }
 
+  // 計画パネルを非表示にする。
   hidePanel(): void {
     this.planPanel.style.display = 'none';
   }
 
+  // editMode 中は計画の未来表示とノードギズモを同期し、そうでなければ両方隠す。
   sync(
     mapDist: number,
     displayEnd: number,
@@ -352,6 +388,7 @@ export class PlanEditor {
     }
   }
 
+  // パネルを隠し、実質 Δv がゼロの末尾ノードを間引いて計画を整理する。
   onMapClosed(): void {
     this.hidePanel();
     if (this.plan.nodes.length > 0) {
@@ -373,6 +410,7 @@ function planPanelHtml(
 ): string {
   const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   let s = '';
+  // ノード一覧、無ければ配置案内
   if (nodes.length === 0) {
     s += `<div style="color:${TEXT_DIM}">予測軌道(グレー)をクリックしてマニューバノードを配置</div>`;
   } else {
@@ -383,6 +421,7 @@ function planPanelHtml(
       })
       .join('');
   }
+  // 選択中ノードの Δv 内訳
   if (selDv) {
     s +=
       `<div style="margin-top:4px;color:${TEXT};font-size:11px;letter-spacing:1px">選択中ノードの Δv</div>` +
@@ -391,6 +430,7 @@ function planPanelHtml(
       row('Δv RAD [E/Q]', `${selDv.z.toFixed(1)} m/s`) +
       row('合計 Δv', `${Math.hypot(selDv.x, selDv.y, selDv.z).toFixed(1)} m/s`);
   }
+  // 噴射後の軌道要素、近地点が大気圏内なら警告
   if (selEl) {
     s +=
       `<div style="margin-top:4px;color:${TEXT};font-size:11px;letter-spacing:1px">噴射後の軌道</div>` +
@@ -402,6 +442,7 @@ function planPanelHtml(
       s += `<div style="color:${ACCENT};margin-top:2px">⚠ 近地点が大気圏内</div>`;
     }
   }
+  // 操作キーのヒント
   const dvKeys =
     `${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label}`;
   s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/${dvKeys}] Δv調整 [右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;

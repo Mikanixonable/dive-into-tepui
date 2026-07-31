@@ -17,6 +17,7 @@ export interface Attitude {
   readonly inertia: Vec3; // 主慣性モーメント(対角、相対値でよい)
 }
 
+// クォータニオンの積 a ⊗ b を返す。
 export function qMul(a: Quat, b: Quat): Quat {
   return {
     x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
@@ -26,12 +27,14 @@ export function qMul(a: Quat, b: Quat): Quat {
   };
 }
 
+// クォータニオンを単位長へ正規化する。ノルムがほぼ0なら単位クォータニオンを返す。
 export function qNormalize(q: Quat): Quat {
   const l = Math.sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
   if (l < 1e-12) return { x: 0, y: 0, z: 0, w: 1 };
   return { x: q.x / l, y: q.y / l, z: q.z / l, w: q.w / l };
 }
 
+// 軸 axis(単位ベクトル)まわりに angle [rad] 回転するクォータニオンを作る。
 export function qFromAxisAngle(axis: Vec3, angle: number): Quat {
   const h = angle / 2;
   const s = Math.sin(h);
@@ -104,6 +107,7 @@ export function qFromForwardUp(fwd: Vec3, up: Vec3): Quat | null {
   return { x: (m02 + m20) / s, y: (m12 + m21) / s, z: 0.25 * s, w: (m10 - m01) / s };
 }
 
+// 一様分布のランダムな回転クォータニオンを返す。rand は [0,1) の乱数生成器。
 export function randomQuat(rand: () => number = Math.random): Quat {
   // Shoemake の一様ランダム回転
   const u1 = rand();
@@ -131,6 +135,7 @@ function eulerRates(I: Vec3, w: Vec3, tq: Vec3): Vec3 {
   );
 }
 
+// 主慣性モーメント I と角速度 w から回転運動エネルギーを求める。
 function kineticEnergy(I: Vec3, w: Vec3): number {
   return 0.5 * (I.x * w.x * w.x + I.y * w.y * w.y + I.z * w.z * w.z);
 }

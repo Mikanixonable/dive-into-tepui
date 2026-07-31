@@ -20,6 +20,7 @@ function computeAccelerations(bodies: Body[]): Vec3[] {
       const dist = Math.sqrt(distSq);
       const forceScale = G / (distSq * dist);
 
+      // 万有引力による加速度を両者に反対向きへ加算する
       accelerations[i] = addScaled(accelerations[i]!, v3(dx, dy, dz), forceScale * bj.mass);
       accelerations[j] = addScaled(accelerations[j]!, v3(-dx, -dy, -dz), forceScale * bi.mass);
     }
@@ -27,6 +28,7 @@ function computeAccelerations(bodies: Body[]): Vec3[] {
   return accelerations;
 }
 
+// 現在の天体配列から各天体の速度・加速度(微分)を求める。
 function derive(bodies: Body[]): Derivative {
   const accelerations = computeAccelerations(bodies);
   return bodies.map((body, i) => ({
@@ -35,6 +37,7 @@ function derive(bodies: Body[]): Derivative {
   }));
 }
 
+// 微分 derivative を dt 分だけ適用した天体配列を返す。
 function applyStep(bodies: Body[], derivative: Derivative, dt: number): Body[] {
   return bodies.map((body, i) => ({
     ...body,
@@ -46,6 +49,7 @@ function applyStep(bodies: Body[], derivative: Derivative, dt: number): Body[] {
 // 4次のルンゲ=クッタ法 (RK4) による1ステップ積分。
 // タイムワープ時の刻み幅制御は呼び出し側で dt を小さく分割して対応する。
 export function stepRK4(bodies: Body[], dt: number): Body[] {
+  // RK4 の4段階の微分を順に求める
   const k1 = derive(bodies);
   const b2 = applyStep(bodies, k1, dt / 2);
   const k2 = derive(b2);
@@ -54,6 +58,7 @@ export function stepRK4(bodies: Body[], dt: number): Body[] {
   const b4 = applyStep(bodies, k3, dt);
   const k4 = derive(b4);
 
+  // 4段階の微分を加重平均して位置・速度を進める
   return bodies.map((body, i) => {
     const v = add(
       addScaled(addScaled(k1[i]!.velocity, k2[i]!.velocity, 2), k3[i]!.velocity, 2),

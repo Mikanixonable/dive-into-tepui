@@ -47,6 +47,7 @@ export class Bullet extends GameEntity {
 
     // 姿勢を持たないため、att.q ではなくフローティングオリジンに対する相対速度方向を向く。
     sync(fo: FloatingOrigin, displayTime: number): void {
+        // 表示できる時刻の範囲外なら非表示にする
         const s = this.displayState(displayTime);
         if (s === null) {
             this.obj.visible = false;
@@ -54,6 +55,7 @@ export class Bullet extends GameEntity {
         }
         this.obj.visible = true;
         this.obj.position.copy(fo.RtoThreeV3(s.r));
+        // 相対速度方向へ機体を向ける
         const relVel = fo.VtoThreeV3(s.v);
         if (relVel.lengthSq() <= 1e-6) return;
         tmpQuat.setFromUnitVectors(zAxis, relVel.normalize());

@@ -193,6 +193,7 @@ const STYLE = `
 }
 `;
 
+// 指定タグ・id・class の要素を作り、parent に追加して返す。
 function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLElement {
   const e = document.createElement(tag);
   e.id = id;
@@ -207,12 +208,14 @@ export interface HudDomRefs {
   els: Map<string, HTMLElement>;
 }
 
+// STYLE の CSS を <head> に注入する。
 function injectStyle(): void {
   const style = document.createElement('style');
   style.textContent = STYLE;
   document.head.appendChild(style);
 }
 
+// マーカーのリード線を描く SVG オーバーレイを作る。
 function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   const svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svgOverlay.style.position = 'absolute';
@@ -225,7 +228,9 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   return svgOverlay;
 }
 
+// 常設の情報パネル(SHIP STATUS/ORBIT/TARGET/CONTACTS)を組む。
 function buildInfoPanels(root: HTMLElement): void {
+  // SHIP STATUS パネル
   const status = el('div', 'hud-status', root, 'panel');
   status.innerHTML = `
     <h3>SHIP STATUS</h3>
@@ -239,6 +244,7 @@ function buildInfoPanels(root: HTMLElement): void {
     <div class="row"><span class="k">視点のRCS追従 [${K.followAttitudeToggle.label}]</span><span class="v" data-id="camfollow"></span></div>
     <div class="row"><span class="k">弾薬 AMMO</span><span class="v" data-id="ammo"></span></div>`;
 
+  // ORBIT パネル
   const orbit = el('div', 'hud-orbit', root, 'panel');
   orbit.innerHTML = `
     <h3>ORBIT</h3>
@@ -251,19 +257,23 @@ function buildInfoPanels(root: HTMLElement): void {
     <div class="row"><span class="k">動圧 Q</span><span class="v" data-id="qdyn"></span></div>
     <div class="row"><span class="k">機体温度</span><span class="v" data-id="temp"></span></div>`;
 
+  // TARGET パネル
   const target = el('div', 'hud-target', root, 'panel');
   target.innerHTML = `
     <h3 data-id="tgtname">TARGET</h3>
     <div data-id="tgtbody"></div>`;
 
+  // CONTACTS パネル
   const enemies = el('div', 'hud-enemies', root, 'panel');
   enemies.innerHTML = `
     <h3>CONTACTS <span data-id="count"></span></h3>
     <div data-id="elist"></div>`;
 }
 
+// 画面下部の常設操作ヒントバーを組む。
 function buildControlsBar(root: HTMLElement): void {
   const controls = el('div', 'hud-controls', root);
+  // 主要キー割り当てを1行のテキストとして並べる。
   controls.innerHTML = [
     `${K.thrustForward.label}/${K.thrustBackward.label}(または${K.thrustForward.altLabel}/${K.thrustBackward.altLabel}):前後`,
     `${K.thrustUp.label}/${K.thrustDown.label}:上下`,
@@ -285,8 +295,10 @@ function buildControlsBar(root: HTMLElement): void {
   ].join(' &nbsp;');
 }
 
+// 全操作の説明表([H]で開閉するヘルプパネル)を組む。
 function buildHelpPanel(root: HTMLElement): void {
   const help = el('div', 'hud-help', root, 'panel');
+  // キーと説明を1行ずつ対応させた表。
   help.innerHTML = `
     <h3>操作方法 [${K.help.label} で閉じる]</h3>
     <table>
@@ -328,6 +340,7 @@ function buildHelpPanel(root: HTMLElement): void {
     </table>`;
 }
 
+// data-id 属性を持つ要素を、その id をキーにした Map にまとめて返す。
 function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   const els = new Map<string, HTMLElement>();
   root.querySelectorAll<HTMLElement>('[data-id]').forEach((e) => {
@@ -336,11 +349,13 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   return els;
 }
 
+// HUD のスタイル・各パネル・SVG オーバーレイを一括構築し、DOM 参照をまとめて返す。
 export function buildHudDom(): HudDomRefs {
   injectStyle();
   const root = el('div', 'hud', document.body);
   const svgOverlay = buildSvgOverlay(root);
 
+  // 常設パネル群を組む。
   buildInfoPanels(root);
   buildControlsBar(root);
 

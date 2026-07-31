@@ -18,10 +18,12 @@ export class SimSpeedManager {
     private readonly _sfx: Sfx,
   ) {}
 
+  // 現在のワープ倍率。
   get simSpeed(): number {
     return C.SIM_SPEED_LEVELS[this.levelIdx]!;
   }
 
+  // 自動ワープ中かどうか。
   get isAutoWarping(): boolean {
     return this.autoWarpUntil !== null;
   }
@@ -32,18 +34,22 @@ export class SimSpeedManager {
     return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
   }
 
+  // 現在のワープ倍率で自機の射撃が有効かどうか。
   get canPlayerFire(): boolean {
     return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
   }
 
+  // 現在のワープ倍率で敵の射撃が有効かどうか。
   get canEnemyFire(): boolean {
     return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
   }
 
+  // 現在のワープ倍率で剛体衝突を解決してよいかどうか。
   get canResolvePhysicalCollisions(): boolean {
     return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
   }
 
+  // ワープ段を step 分だけ変更する。上下限を超える変更は無視する。
   shift(step: number): void {
     this.cancelAutoWarp();
     const next = this.levelIdx + step;
@@ -53,10 +59,12 @@ export class SimSpeedManager {
     this._hud.hint(`TIME WARP ×${this.simSpeed}`);
   }
 
+  // 指定した simTime まで自動ワープする状態にする。
   startAutoWarpTo(time: number): void {
     this.autoWarpUntil = time;
   }
 
+  // 自動ワープを解除する。
   cancelAutoWarp(): void {
     this.autoWarpUntil = null;
   }
@@ -73,10 +81,12 @@ export class SimSpeedManager {
 
   // 直近ノードの実行時刻までの自動ワープをトグルする。
   toggleAutoWarpToFirstNode(isPlaying: boolean, firstNode: OrbitState | undefined): void {
+    // ノードがなければ計画を促す通知だけ出す
     if (!firstNode || !isPlaying) {
       this._hud.hint(`マニューバノードがありません ([${K.toggleMapMode.label}] で計画)`);
       return;
     }
+    // 自動ワープ中なら解除、そうでなければノードの時刻まで開始する
     if (this.isAutoWarping) {
       this.cancelAutoWarp();
       this._hud.hint('自動ワープ解除');

@@ -16,6 +16,7 @@ export class Simulator {
   simTime = 0;
   lastSimDt = 0;
 
+  // hitSystem/collisionPhysics を構築する。entities/ephemeris/sfx は参照として保持する。
   constructor(
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
@@ -25,6 +26,7 @@ export class Simulator {
     this.collisionPhysics = new CollisionPhysics();
   }
 
+  // dt 分のシミュレーションを進める。simDt をサブステップに分割して積分し、弾命中判定・剛体接触・姿勢積分を行う。
   stepSimulation(
     dt: number,
     simDt: number,
@@ -55,15 +57,18 @@ export class Simulator {
     this.lastSimDt = simDt;
   }
 
+  // 全エンティティを dt だけ積分する。積分後の simTime を返す。
   private simulationSubStep(
     simTime: number,
     dt: number,
     player: Player,
   ): number {
+    // サブステップ中点の太陽/月位置を1回だけ求めて全エンティティで共有する
     const mid = simTime + dt / 2;
     const sunPos = this.ephemeris.sunPosAt(mid);
     const moonPos = this.ephemeris.moonPosAt(mid);
 
+    // 各エンティティを積分する
     player.stepSim(dt, sunPos, moonPos);
     for (const e of this.entities.enemies) e.stepSim(dt, sunPos, moonPos);
     for (const b of this.entities.bullets) b.stepSim(dt, sunPos, moonPos);
@@ -76,6 +81,7 @@ export class Simulator {
     return simTime + dt;
   }
 
+  // 全エンティティの姿勢をそれぞれのトルクから積分する。
   private stepAttitudes(simDt: number, player: Player): void {
     player.att = stepAttitude(player.att, player.torque, simDt);
 

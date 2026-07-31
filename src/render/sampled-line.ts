@@ -33,6 +33,7 @@ export class SampledLine {
   private lastFrame: Frame | null = null;
   private wantVisible = true;
 
+  // 単色の折れ線マテリアル・ジオメトリを構築する。
   constructor(color: number, opacity = 0.85, renderOrder = 2) {
     this.mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
     this.line = new THREE.Line(this.geom, this.mat);
@@ -71,6 +72,7 @@ export class SampledLine {
     this.line.position.copy(fo.RtoThreeV3(EARTH_CENTER));
   }
 
+  // 表示を要求する。頂点数が2未満の間は実際には隠れたままになる。
   setVisible(v: boolean): void {
     this.wantVisible = v;
     this.applyVisible();
@@ -81,6 +83,7 @@ export class SampledLine {
     this.line.visible = this.wantVisible && (this.lastSamples?.length ?? 0) >= 2;
   }
 
+  // ジオメトリ・マテリアルを解放する。
   dispose(): void {
     this.geom.dispose();
     this.mat.dispose();

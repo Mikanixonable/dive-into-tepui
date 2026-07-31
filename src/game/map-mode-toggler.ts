@@ -18,6 +18,7 @@ export class MapModeToggler {
 
   constructor(private readonly _hud: Hud) { }
 
+  // マップを開く。選択中ノードをクリアしてから mapMode をオンにする。
   private open(
     editor: PlanEditor,
     touchControls: TouchControls | null,
@@ -27,6 +28,7 @@ export class MapModeToggler {
     this.setMapMode(true, editor, touchControls, cameraSystem, displayTimeManager);
   }
 
+  // マップを閉じる。計画編集側の後始末(ノード整理・メニュー閉じ)をしてから mapMode をオフにする。
   private close(
     editor: PlanEditor,
     touchControls: TouchControls | null,

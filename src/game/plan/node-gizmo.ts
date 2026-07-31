@@ -76,6 +76,7 @@ export class NodeGizmo {
   onMenuWarpTo: ((idx: number) => void) | null = null;
   onMenuDelete: ((idx: number) => void) | null = null;
 
+  // DOM レイヤとコンテキストメニューを構築する。
   constructor() {
     if (!styleInjected) {
       styleInjected = true;
@@ -93,6 +94,7 @@ export class NodeGizmo {
     this.axisLayer = document.createElement('div');
     this.root.appendChild(this.axisLayer);
 
+    // メニュー選択を対応するノード操作コールバックへ橋渡しする。
     this.menu.onSelect = (act) => {
       const idx = this.menuNodeIdx;
       this.menuNodeIdx = null;
@@ -101,6 +103,7 @@ export class NodeGizmo {
     };
   }
 
+  // 指定ノードに対するコンテキストメニューを開く。
   openMenu(clientX: number, clientY: number, idx: number): void {
     this.menuNodeIdx = idx;
     this.menu.open(clientX, clientY, [
@@ -110,13 +113,16 @@ export class NodeGizmo {
     ]);
   }
 
+  // コンテキストメニューを閉じる。
   closeMenu(): void {
     this.menu.close();
     this.menuNodeIdx = null;
   }
 
+  // ノードハンドル・Δv アームの DOM を渡された仕様に同期する。仕様に無くなった要素は破棄する。
   sync(nodes: NodeHandleSpec[], axes: AxisHandleSpec[] | null): void {
     const seen = new Set<number>();
+    // ノードハンドルを仕様に合わせて追加・更新する。
     for (const n of nodes) {
       seen.add(n.idx);
       let entry = this.nodeEls.get(n.idx);
@@ -136,6 +142,7 @@ export class NodeGizmo {
       }
     }
 
+    // Δv アームの要素数を仕様に合わせて増減し、位置・向きを更新する。
     const count = axes?.length ?? 0;
     while (this.axisEls.length > count) {
       this.axisEls.pop()!.remove();
@@ -158,6 +165,8 @@ export class NodeGizmo {
     }
   }
 
+  // ノードハンドルの DOM を作り、ドラッグ移動・クリック選択・右クリックメニューの
+  // イベント処理を配線して返す。
   private createNodeEl(idx: number): NodeEntry {
     const el = document.createElement('div');
     el.className = 'gz-node';
@@ -185,6 +194,7 @@ export class NodeGizmo {
       moved += Math.abs(e.movementX) + Math.abs(e.movementY);
       if (moved > C.NODE_GIZMO_DRAG_THRESHOLD_PX) this.onNodeDragMove?.(idx, e.clientX, e.clientY);
     });
+    // ドラッグ量が閾値以下ならクリックとみなしてノード選択を発火する。
     const end = (e: PointerEvent): void => {
       if (!dragging) return;
       dragging = false;
@@ -201,6 +211,8 @@ export class NodeGizmo {
     return { el, lbl };
   }
 
+  // Δv アームハンドルの DOM を作り、軸方向へのドラッグ量を通知するイベント処理を
+  // 配線して返す。
   private createAxisEl(): HTMLDivElement {
     const el = document.createElement('div');
     el.className = 'gz-axis';
@@ -230,6 +242,7 @@ export class NodeGizmo {
       const proj = dx * dirx + dy * diry;
       this.onAxisDrag?.(axis, sign, proj);
     });
+    // ドラッグ終了時にポインタキャプチャを解放する。
     const end = (e: PointerEvent): void => {
       dragging = false;
       try {

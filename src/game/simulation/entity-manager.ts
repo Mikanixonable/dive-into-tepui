@@ -16,28 +16,34 @@ export class EntityManager {
   readonly debris: DebrisPiece[] = [];
   readonly ammos: Ammo[] = [];
 
+  // 敵を登録する。
   addEnemy(enemy: Enemy): void {
     this.enemies.push(enemy);
   }
 
+  // 弾を登録する。上限を超えた分は古いものから破棄する。
   addBullet(bullet: Bullet): void {
     this.addCapped(this.bullets, bullet, C.MAX_BULLETS * 3);
   }
 
+  // 破片を種別(薬莢/その他)ごとの配列へ登録する。上限を超えた分は古いものから破棄する。
   addDebris(piece: DebrisPiece): void {
     if (piece.kind === 'casing') this.addCapped(this.casings, piece, C.MAX_CASINGS);
     else this.addCapped(this.debris, piece, C.MAX_DEBRIS);
   }
 
+  // 弾薬ピックアップを登録する。
   addAmmo(ammo: Ammo): void {
     this.ammos.push(ammo);
   }
 
+  // 配列へ追加し、cap を超えたら先頭(最古)を1件破棄する。
   private addCapped<T extends GameEntity>(arr: T[], entity: T, cap: number): void {
     arr.push(entity);
     if (arr.length > cap) arr.shift()!.dispose();
   }
 
+  // 保持する全エンティティを1つの配列にまとめて返す。
   all(): GameEntity[] {
     return [
       ...this.enemies,
@@ -48,12 +54,15 @@ export class EntityManager {
     ];
   }
 
+  // 各配列の寿命判定を行い、死亡したエンティティを破棄・除去する。
   cleanup(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3): void {
+    // 生存判定
     for (const e of this.enemies) e.checkLoss(dt, simTime, activeStage, playerPos);
     for (const b of this.bullets) b.checkLoss(dt, simTime, activeStage, playerPos);
     for (const cs of this.casings) cs.checkLoss(dt, simTime, activeStage, playerPos);
     for (const d of this.debris) d.checkLoss(dt, simTime, activeStage, playerPos);
     for (const ammo of this.ammos) ammo.checkLoss(dt, simTime, activeStage, playerPos);
+    // 死亡分を配列から除去
     this.prune(this.enemies);
     this.prune(this.bullets);
     this.prune(this.casings);
@@ -71,6 +80,7 @@ export class EntityManager {
     arr.length = w;
   }
 
+  // 保持する全エンティティのメッシュを displayTime 時点の状態に同期する。
   sync(fo: FloatingOrigin, displayTime: number): void {
     this.all().forEach(e => e.sync(fo, displayTime));
   }

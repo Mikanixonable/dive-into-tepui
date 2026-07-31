@@ -84,6 +84,7 @@ export class TouchControls {
   // トグル系ボタン: タップの押下フィードバック(.held)とは独立に実際のモード状態で光らせる。
   private readonly toggleButtons = new Map<KeyBinding, HTMLElement>();
 
+  // 現在の端末がタッチ操作に対応しているかを返す。
   static isTouchDevice(): boolean {
     return navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
   }
@@ -95,6 +96,7 @@ export class TouchControls {
     this.setActive(K.progradeHoldToggle, progradeHold);
   }
 
+  // key に対応するトグルボタンの点灯状態を on に合わせる。
   private setActive(key: KeyBinding, on: boolean): void {
     this.toggleButtons.get(key)?.classList.toggle('on', on);
   }
@@ -107,6 +109,7 @@ export class TouchControls {
     }
   }
 
+  // 仮想パッド一式の DOM を組み立てる。
   constructor(private readonly input: Input) {
     const root = this.buildRoot();
     this.buildTranslationPad(root);
@@ -117,6 +120,7 @@ export class TouchControls {
     this.buildUtilRow(root);
   }
 
+  // スタイルシートと仮想パッドのルート要素を document へ追加し、ルート要素を返す。
   private buildRoot(): HTMLElement {
     const style = document.createElement('style');
     style.textContent = STYLE;
@@ -128,17 +132,21 @@ export class TouchControls {
     return root;
   }
 
+  // b.key を押しっぱなし操作するボタンを1つ組み立てて parent へ追加する。
+  // isToggle なら toggleButtons に登録し、syncModeButtons の点灯対象にする。
   private makeButton(parent: HTMLElement, b: Btn, id = '', isToggle = false): HTMLElement {
     const e = document.createElement('div');
     e.className = 'tbtn';
     if (id) e.id = id;
     e.innerHTML = `<span class="g">${b.glyph}</span>${b.label ? `<span class="l">${b.label}</span>` : ''}`;
+    // 押下中は仮想キーを ON にし続ける
     const down = (ev: PointerEvent) => {
       ev.preventDefault();
       e.setPointerCapture(ev.pointerId);
       e.classList.add('held');
       this.input.setVirtualKey(b.key, true);
     };
+    // 指を離したら仮想キーを OFF に戻す
     const up = () => {
       e.classList.remove('held');
       this.input.setVirtualKey(b.key, false);
@@ -152,6 +160,7 @@ export class TouchControls {
     return e;
   }
 
+  // btns を並べた1つのパッドを id で root へ追加する。
   private makePad(root: HTMLElement, id: string, btns: Btn[]): void {
     const pad = document.createElement('div');
     pad.id = id;
@@ -160,6 +169,7 @@ export class TouchControls {
     for (const b of btns) this.makeButton(pad, b);
   }
 
+  // 並進6方向のパッドを組み立てる。
   private buildTranslationPad(root: HTMLElement): void {
     this.makePad(root, 'touch-pad-move', [
       { key: K.thrustUp, glyph: '▲', label: '上' },
@@ -171,6 +181,7 @@ export class TouchControls {
     ]);
   }
 
+  // 回転3軸のパッドを組み立てる。
   private buildRotationPad(root: HTMLElement): void {
     this.makePad(root, 'touch-pad-rot', [
       { key: K.rollLeft, glyph: '⟲', label: 'ロール' },
@@ -182,6 +193,7 @@ export class TouchControls {
     ]);
   }
 
+  // 制動・微動のトグルボタン列を組み立てる。
   private buildModeColumn(root: HTMLElement): void {
     const modeCol = document.createElement('div');
     modeCol.id = 'touch-mode-col';
@@ -198,6 +210,7 @@ export class TouchControls {
     zoomBtn.className = 'tbtn';
     zoomBtn.innerHTML = `<span class="g">ZOOM</span>`;
     let zoomOn = false;
+    // タップのたびに ON/OFF を反転させる
     zoomBtn.addEventListener('pointerdown', (ev) => {
       ev.preventDefault();
       zoomOn = !zoomOn;
@@ -208,6 +221,7 @@ export class TouchControls {
     root.appendChild(zoomBtn);
   }
 
+  // warp・マップ・ヘルプ等の雑多なボタンを1列に組み立てる。
   private buildUtilRow(root: HTMLElement): void {
     const util = document.createElement('div');
     util.id = 'touch-util';
@@ -221,6 +235,7 @@ export class TouchControls {
     ]) {
       this.makeButton(util, b);
     }
+    // ホールドはトグルボタンとして登録する
     this.makeButton(util, { key: K.progradeHoldToggle, glyph: K.progradeHoldToggle.label, label: 'ホールド' }, '', true);
   }
 }

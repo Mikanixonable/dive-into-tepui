@@ -20,6 +20,7 @@ export class DebugHistoryLine {
   readonly enabled: boolean;
   private readonly lines = new Map<GameEntity, SampledLine>();
 
+  // ?debugLines=1 の指定を読み取り enabled を確定する。
   constructor(private readonly scene: THREE.Scene) {
     this.enabled = new URLSearchParams(location.search).get('debugLines') === '1';
   }

@@ -4,6 +4,7 @@ import { STAGE_DEFINITIONS } from './stage-dictionary';
 import { UnlockManager } from '../unlock-manager';
 import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from '../theme';
 
+// ステージ選択画面を表示し、選ばれた StageId で解決される Promise を返す。
 export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
   return new Promise((resolve) => {
     const SURFACE = SURFACE_OPAQUE;
@@ -11,6 +12,7 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
     div.style.cssText =
       'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
       `gap:18px;color:${TEXT};background:${BG};font-family:Consolas,monospace;z-index:100;text-align:center`;
+    // 1ステージ分のボタン要素を組み立てる。ロック中は薄く表示しクリック不可にする。
     const btn = (label: string, sub: string, enabled: boolean) => {
       const b = document.createElement('div');
       b.style.cssText =
@@ -23,6 +25,7 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
     div.innerHTML =
       `<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
       '<div style="font-size:12px;color:#7d838c;margin-bottom:12px">ステージを選択 (キーまたはクリック)</div>';
+    // 解放状況ごとにボタンを並べる
     const enabledByStage = new Map(STAGE_DEFINITIONS.map((stage) => [stage.id, unlockManager.isUnlocked(stage.id)]));
     for (const stage of STAGE_DEFINITIONS) {
       const enabled = enabledByStage.get(stage.id) ?? false;
@@ -33,11 +36,13 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
     }
     document.body.appendChild(div);
 
+    // 選択確定: 画面を片付けて Promise を解決する
     const done = (stage: StageId) => {
       window.removeEventListener('keydown', onKey);
       div.remove();
       resolve(stage);
     };
+    // 解放済みステージのショートカットキーにマッチしたら選択確定する
     const onKey = (e: KeyboardEvent) => {
       for (const stage of STAGE_DEFINITIONS) {
         if (!(enabledByStage.get(stage.id) ?? false)) continue;

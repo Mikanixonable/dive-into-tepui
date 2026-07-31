@@ -1,6 +1,7 @@
 // スコアアタックの残り時間を管理する。
 export class ScoreAttackTimer {
   timeLeft: number;
+  // 残り時間を initialTime [s] で開始する。
   constructor(initialTime: number) {
     this.timeLeft = initialTime;
   }

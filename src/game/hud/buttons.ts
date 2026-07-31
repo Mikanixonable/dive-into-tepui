@@ -22,10 +22,12 @@ export class SegmentedControl<T extends string> {
   constructor(title: string, items: readonly (readonly [T, string])[], onSelect: (value: T) => void) {
     this.element = document.createElement('div');
     this.element.className = 'hud-seg';
+    // 見出し
     const heading = document.createElement('span');
     heading.className = 'seg-title';
     heading.textContent = title;
     this.element.appendChild(heading);
+    // 各項目をボタン化して並べる
     for (const [value, label] of items) {
       const btn = hudButton(label, () => onSelect(value));
       this.element.appendChild(btn);

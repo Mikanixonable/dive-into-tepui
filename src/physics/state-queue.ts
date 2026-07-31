@@ -7,6 +7,7 @@ import { Deque } from './deque';
 export class StateQueue {
   private readonly deque: Deque<OrbitState>;
 
+  // capacity 件分の内部バッファを確保して空のキューを作る。
   constructor(capacity = 8) {
     this.deque = new Deque<OrbitState>(capacity);
   }
@@ -31,6 +32,7 @@ export class StateQueue {
     return lo;
   }
 
+  // 最新サンプルとして1件積む。時刻が既存の最新以下なら、その時刻以降を破棄してから積み直す。
   push(state: OrbitState): void {
     if (this.deque.empty || state.t > this.deque.peekLeft().t) {
       this.deque.pushLeft(state);
