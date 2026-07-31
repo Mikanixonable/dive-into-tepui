@@ -243,20 +243,16 @@ let plasmaGeomFixed = false;
 // STAGE0_GROUP_ACCENTS 等ごく少数)ごとに決まり、発射後に書き換わることはない。
 // そのため accent 値ごとにマテリアルを 1 個だけキャッシュして全弾で共有する
 // (毎発 clone/生成すると GPU リソースが撃つたびにリークする — BUG_REPORT.md B1)。
-// ハロー用ジオメトリは色に依存しないため単一インスタンスを共有し、
-// ハロー用マテリアルのみ accent ごとにキャッシュする。
 const plasmaBodyMatByAccent = new Map<number, THREE.MeshBasicMaterial>();
-const plasmaHaloMatByAccent = new Map<number, THREE.MeshBasicMaterial>();
-let plasmaHaloGeom: THREE.CylinderGeometry | null = null;
 
-// 敵プラズマ弾のメッシュ(本体+ハロー)を accent 色で生成する。マテリアルは accent ごとに共有キャッシュする。
-export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Group {
+// 敵プラズマ弾のメッシュ(本体のみ)を accent 色で生成する。マテリアルは accent ごとに共有キャッシュする。
+export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Mesh {
   const m = parsePlasma();
   if (!plasmaGeomFixed) {
     // plasma.json (CylinderGeometry) は toJSON() がコンストラクタ引数のみを保存する
     // 仕様のため、export-models.mjs 側で焼き込んだ rotateX() 補正がロード時に失われ、
-    // 円柱の長さ軸が既定の Y のままになる(下の halo は毎回ランタイムで rotateX() し
-    // ているので正しく Z 軸に揃う)。memoParseShared は geometry を clone しないため
+    // 円柱の長さ軸が既定の Y のままになる。
+    // memoParseShared は geometry を clone しないため
     // 全インスタンスがこの共有ジオメトリを参照する。一度だけ補正を掛け直す
     // (毎回だと累積回転してしまう)。
     m.geometry.rotateX(Math.PI / 2);
@@ -264,10 +260,11 @@ export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Group {
   }
   let bodyMat = plasmaBodyMatByAccent.get(accent);
   if (!bodyMat) {
-    // テンプレートのマテリアルを accent ごとに 1 度だけ複製し、以後はキャッシュを使い回す
     bodyMat = (m.material as THREE.MeshBasicMaterial).clone();
     bodyMat.color.set(accent);
-    bodyMat.blending = THREE.AdditiveBlending;
+    // 不透明にするため AdditiveBlending は設定しない
+    bodyMat.transparent = false;
+    bodyMat.opacity = 1.0;
     plasmaBodyMatByAccent.set(accent, bodyMat);
   }
   m.material = bodyMat;
@@ -276,28 +273,7 @@ export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Group {
   // スケールを大きくして視認性を上げる
   m.scale.set(1.5, 1.5, 1.5);
 
-  // 弾の発光は弾本体と同じく円柱状にして
-  if (!plasmaHaloGeom) {
-    plasmaHaloGeom = new THREE.CylinderGeometry(1.5, 1.5, 16, 8);
-    plasmaHaloGeom.rotateX(Math.PI / 2); // 進行方向(Z軸)に合わせる
-  }
-  let haloMat = plasmaHaloMatByAccent.get(accent);
-  if (!haloMat) {
-    haloMat = new THREE.MeshBasicMaterial({
-      color: accent,
-      transparent: true,
-      opacity: 0.35,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    plasmaHaloMatByAccent.set(accent, haloMat);
-  }
-  const halo = new THREE.Mesh(plasmaHaloGeom, haloMat);
-
-  const g = new THREE.Group();
-  g.add(m);
-  g.add(halo);
-  return g;
+  return m;
 }
 
 // 薬莢メッシュを生成する。全長を通常の2倍にスケールした専用ジオメトリを持たせる。
@@ -307,6 +283,12 @@ export function buildCasingMesh(): THREE.Mesh {
   mesh.geometry = deepCloneGeometry(mesh.geometry);
   mesh.geometry.scale(1, 2, 1);
   mesh.userData.ownsGeometry = true;
+  // 薬莢の色を銅色（赤みのあるメタリック）に変更
+  mesh.material = (mesh.material as THREE.MeshStandardMaterial).clone();
+  (mesh.material as THREE.MeshStandardMaterial).color.setHex(0xFF9F5E);
+  (mesh.material as THREE.MeshStandardMaterial).metalness = 0.8;
+  (mesh.material as THREE.MeshStandardMaterial).roughness = 0.3;
+  mesh.userData.ownsMaterial = true;
   return mesh;
 }
 
