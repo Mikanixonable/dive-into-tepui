@@ -3,7 +3,9 @@
 // 新しい OrbitState として双方に差し替える。
 import { orbitState } from '../../physics/orbital';
 import { v3 } from '../../physics/vec3';
-import { BeltSection, DebrisPiece, GameEntity } from './game-entity';
+import { GameEntity } from '../game-entity/game-entity';
+import { DebrisPiece } from '../game-entity/debris-piece';
+import { BeltSection } from '../player/belt-physics';
 import { Player } from '../player/player';
 
 const isCasing = (e: GameEntity): boolean => e instanceof DebrisPiece && e.kind === 'casing';

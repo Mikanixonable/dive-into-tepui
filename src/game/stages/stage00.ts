@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Stage } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import type { EntityManager } from '../game-entity/entity-manager';
+import type { EntityManager } from '../simulation/entity-manager';
 import type { Player } from '../player/player';
 import type { Enemy } from '../game-entity/enemy';
 import type { Hud } from '../hud/hud';

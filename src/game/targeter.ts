@@ -3,7 +3,7 @@ import { add, addScaled, cross, dot, lenSq, norm, scale, sub, v3, Vec3 } from '.
 import { OrbitLine } from '../render/orbitline';
 import * as C from './const';
 import { Enemy } from './game-entity/enemy';
-import type { EntityManager } from './game-entity/entity-manager';
+import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
 import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';

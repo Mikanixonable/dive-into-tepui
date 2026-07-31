@@ -14,7 +14,7 @@
 import { Hud } from './hud/hud';
 import { Player } from './player/player';
 import { GameEntity } from './game-entity/game-entity';
-import { EntityManager } from './game-entity/entity-manager';
+import { EntityManager } from './simulation/entity-manager';
 import { Vec3 } from '../physics/vec3';
 
 function finiteVec(v: Vec3): boolean {

@@ -6,7 +6,7 @@
 // (短い予算をなるはやで使い切るだけで、リソースが足りなければ後回しになる)。
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
-import { GameEntity } from './game-entity';
+import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
 import { predictStepDt } from '../../physics/predict';

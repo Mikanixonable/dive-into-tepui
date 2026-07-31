@@ -5,9 +5,11 @@
 import { Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
-import { Ammo, DebrisPiece, GameEntity } from './game-entity';
-import { Enemy } from './enemy';
-import { Bullet } from './bullet';
+import { GameEntity } from '../game-entity/game-entity';
+import { Ammo } from '../game-entity/ammo';
+import { DebrisPiece } from '../game-entity/debris-piece';
+import { Enemy } from '../game-entity/enemy';
+import { Bullet } from '../game-entity/bullet';
 import type { Stage } from '../stages/stage';
 
 export class EntityManager {

@@ -1,7 +1,7 @@
 
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
-import { Ship } from './game-entity';
+import { Ship } from './ship';
 import { Attitude } from '../../physics/attitude';
 import { altitudeOf, OrbitState, orbitState } from '../../physics/orbital';
 import { OrbitLine } from '../../render/orbitline';
@@ -16,7 +16,7 @@ import { Bullet } from './bullet';
 import type { Stage } from '../stages/stage';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import type { EntityManager } from './entity-manager';
+import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
