@@ -16,8 +16,8 @@ description: 実装の全体像・影響範囲を掴む手順。「どこで何�
 | いつ・どの順で・どんな条件で走るのか(per-frame) | `DEVELOP/CALLSTACK.md` |
 | 本来どう振舞うべきなのか(仕様・数値・操作) / 今後実装される可能性があるか | `DEVELOP/SPEC.md` |
 | なぜその責務配置なのか / このモジュールは何者か | `CLAUDE.md` の Architecture・Controls |
-| これから直すことになっている問題 / 進行中のリファクタリングの現況 | `refactoring_plan/refactoring_todo.md`、同フォルダの各文書、`/refactor-fixed` |
-| 設計の方向性・未実装の構想 | `dev.md`(人間専用。**読むだけ、編集しない**) |
+| これから直すことになっている問題 / 進行中のリファクタリングの現況 | `memos/refactoring_plan/refactoring_todo.md`、同フォルダの各文書、`/refactor-fixed` |
+| 設計の方向性・未実装の構想 | `memos/mikanixonable/dev.md`(人間専用。**読むだけ、編集しない**) |
 
 `DEVELOP/README.md` がこの対応表の元。CALLSTACK / OWNERSHIP は**機械的な事実**(順序と所有)、
 CLAUDE.md は**散文の解説**(責務と理由)。
