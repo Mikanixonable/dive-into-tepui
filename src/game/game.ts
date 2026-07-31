@@ -120,7 +120,7 @@ export class Game {
     this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
 
-    this.simulator = new Simulator(this.entities, this.ephemeris, this._sfx);
+    this.simulator = new Simulator(this.entities, this.ephemeris, this._sfx, this.effects);
     this.predictor = new Predictor(this.entities, this.ephemeris);
 
     this.player = new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager);

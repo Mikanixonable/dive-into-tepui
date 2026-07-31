@@ -14,8 +14,8 @@ import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage1 extends Stage {
   static readonly id = '1' as const;
-  readonly selectLabel = '[1] 第一ステージ — LEO 戦域';
-  readonly selectSub = '高度420kmの低軌道。敵5機はすべて近傍軌道に分布';
+  readonly selectLabel = 'stage 1';
+  readonly selectSub = '【第一ステージ: LEO戦域】 高度420kmの低軌道。敵5機はすべて近傍軌道に分布';
   readonly selectKeys = ['Digit1', 'Enter'];
   readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
@@ -23,7 +23,7 @@ export class Stage1 extends Stage {
   briefingHtml(enemyCount: number): string {
     return (
       `<b>作戦目標: 敵機 ${enemyCount} 機を全機撃破せよ</b><br>` +
-      `敵を右クリックでターゲット固定 → 機首を向けて並進で接近 → [${K.warpSlower.label}]/[${K.warpFaster.label}] タイムワープで会合を短縮<br>` +
+      `敵を右クリックでターゲット固定 → 機首を向けて並進で接近 → [${K.warpSlower.label}]/[${K.warpFaster.label}] 時間加速で会合を短縮<br>` +
       `[${K.help.label}] キーで操作方法を表示`
     );
   }

@@ -50,6 +50,13 @@ export class EffectsSystem {
       0xffe2a0);
   }
 
+  // ガスのような気体が放出されるエフェクト（被弾時やデブリ命中時用）
+  spawnGasPuff(pos: Vec3, vel: Vec3): void {
+    // 灰色の低透明度のビルボードを2つ重ねてガスっぽさを出す
+    this.spawnFlash(pos, vel, 1.0, 8.0, 0.45, 0xaaaaaa, 0.3);
+    this.spawnFlash(pos, vel, 0.5, 6.0, 0.35, 0xffffff, 0.4);
+  }
+
   // pos/vel は呼び出し元の生きたオブジェクト(entity の r/v など)をそのまま渡してよい。
   // Vec3 は不変(physics/vec3.ts)なので clone せずに保持でき、呼び出し元がその後
   // 別の Vec3 に差し替えても fx が参照する値は変わらない。
@@ -104,7 +111,8 @@ export class EffectsSystem {
     const { t, r, v } = state;
     this.spawnFlash(r, v, C.DESTROY_FLASH1_SIZE0 * scale, C.DESTROY_FLASH1_SIZE1 * scale, C.DESTROY_FLASH1_DURATION, 0xffb36b);
     this.spawnFlash(r, v, C.DESTROY_FLASH2_SIZE0 * scale, C.DESTROY_FLASH2_SIZE1 * scale, C.DESTROY_FLASH2_DURATION, 0xfffbe8);
-    this.scatterFragments(t, r, v, 11, accent, C.DESTROY_FRAG_SIZE_MIN * scale, C.DESTROY_FRAG_SIZE_MAX * scale, 2.8);
+    // 破片のサイズを 1/3 に縮小し、拡散の初速(spread)を大きくして散らせる
+    this.scatterFragments(t, r, v, 11, accent, (C.DESTROY_FRAG_SIZE_MIN * scale) / 3, (C.DESTROY_FRAG_SIZE_MAX * scale) / 3, 20.0);
   }
 
   // 破壊片1個を生成する。
