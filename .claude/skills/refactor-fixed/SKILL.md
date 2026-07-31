@@ -49,6 +49,28 @@ CPU 側で事前に平行移動して自機・カメラ付近の浮動小数精�
 `build`(シーンへの登録)と `render`(実際に `renderer.render` を呼ぶもの)を含めた命名規則は
 CLAUDE.md の「Naming: render / update / build / sync」節が正本。
 
+## 時刻付き状態列の積分・記録・引き当ては `OrbitEntity` に一本化する
+
+「1ステップ進めながら、間引いたサンプルを残し、任意時刻を引く」操作の実装は
+`physics/orbit-entity.ts` の `OrbitEntity` ただ一つ。**第二の実装を書かない。**
+向きにも用途にも依存しない — 過去列(`GameEntity.current`)・未来列(`GameEntity.predicted`)・
+計画の予測区間(`plan/plan-arc.ts`)がすべて同じ `step` / `at` / `samplesOldestFirst` を使う。
+
+- 間引きの粒度は `sampleInterval`、保持範囲は `keepDuration` で呼び出し側が指定する。
+- 折れ線へ渡す点列は `samplesOldestFirst()` から取る。`history` と `state` を呼び出し側で
+  継ぎ合わせない(「history は state より古い」という不変条件は `OrbitEntity` の持ち物)。
+
+### 積分の刻み幅は `step` の呼び出し側が決める
+
+`OrbitEntity` は刻み幅を決めない。渡された `dt` で1ステップ進めるだけ。
+**用途の違う呼び出し側どうしで刻み幅のポリシーを共通化しない** — 精度と計算量の折り合いは
+用途ごとに違い、共通化すると片方の都合がもう片方を縛る。
+
+- `Predictor`(全エンティティ・3時間・フレーム予算で漸進) → `predictor.ts` の `stepDtForRadius`
+- `PlanArc`(自機のみ・最長28日・変化時に一括) → `plan-arc.ts` の `stepDt`(表示期間で粗くする)
+
+`Simulator` のサブステップ分割も同じ分担で、`GameEntity.stepSim` は渡された `dt` に従うだけ。
+
 ## ctx・context・opt・params といった引数は原則使わない
 
 場当たり的なオブジェクト引数は禁止。明示的な引数か、事前に共有した参照で渡す。

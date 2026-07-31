@@ -198,7 +198,7 @@
   - predictor.update() // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。視点/モードによる分岐なし
     - resyncPrediction() // player + entities.all() の全対象、毎フレーム無条件(§3-4 (a) の距離判定)
       - invalidatePrediction() // predicted.at(simTime) が実位置から PREDICT_RESET_DIST を超えて乖離、または区間外のときのみ
-    - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を自機優先で消費。ループも dt の決定(predictStepDt)も Predictor 側が持つ(stepSim に対する simulationSubStep と同じ分担)
+    - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を自機優先で消費。ループも dt の決定(stepDtForRadius)も Predictor 側が持つ(stepSim に対する simulationSubStep と同じ分担)
       - player.stepPrediction(dt) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt を都度計算し直しながら1ステップずつ繰り返し呼ぶ
         - predicted.step() // 1ステップごとに ephemeris を中点サンプル
     - advanceBudget(entity, ...) // 残り予算をカーソル位置から1周ぶん配る。entity.stepPrediction() が最初から false(predictDuration=0/推力中/truncated)なら消費 0 で次へ即進む
@@ -287,12 +287,13 @@
   - editor.sync(mapDist, displayEnd, simTime, displayTime, fo, project)
     - [editMode] planDisplay.sync(plan, displayEnd, simTime, displayTime, fo, project)
       - traj.setVisible(true)
-      - traj.update() // corners を arc へ分解し、arc ごとに PredictedLine を駆動。表示文脈(frame/un-bake 時刻/投影)もここで更新
-        - line.update() // arc ごと
-          - predictTrajectory() // 入力変化 + スロットル(または force)を満たしたときのみ(重い RK4)
+      - traj.update() // plan の corners を区間(segment)へ分解し、区間ごとに PlanArc を駆動。表示文脈(frame/un-bake 時刻/投影)もここで更新
+        - arc.setVisible(true) // 区間ごと
+        - arc.update() // 区間ごと
+          - integrate() // (state0, end) の変化 + スロットル(または force)を満たしたときのみ。OrbitEntity で state0 から end まで RK4 積分し直す(重い)
           - sampled.syncGeometry() // 点列 or frame が変わったときのみ頂点を bake
           - sampled.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
-        - line.setVisible(false) // arc が減って余った PredictedLine ごと
+        - arc.setVisible(false) // 区間が減って余った PlanArc ごと
       - syncGhost() → markerManager.setPosition('plannedPlayer') or hide() // displayTime <= simTime なら hide
       - panel.setVisible(true) / setSelected() // TRAJECTORY パネル(表示座標系)
     - [editMode] updateGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
@@ -337,8 +338,11 @@
   `hitSystem.checkBulletHits()` もその回数呼ばれる。一方 `collisionPhysics.resolve()` は
   `canResolvePhysicalCollisions` が false になり `resolveCollision=false` で渡るため、
   `stepSimulation` の中で丸ごとスキップされる。
-- **予測 RK4 の再計算頻度**は `PredictedLine` が per-arc に持つ入力変化検出 + スロットルで決まる。
-  マップモード中でも大半のフレームは `sampled.syncTransform()`(O(1) の剛体変換)だけで済む。
+- **予測 RK4 の再計算頻度**は `PlanArc` が per-arc に持つ `(state0, end)` の変化検出 + スロットルで決まる。
+  末尾区間(`endFollowsWindow=true`)が `state0` 不変のまま表示窓の終端だけ滑る場合は
+  `PREDICT_REFRESH_INTERVAL_MS`(2000ms)、それ以外(ノード編集・区間の増減など)は
+  `PREDICT_DIRTY_THROTTLE_MS`(200ms)。マップモード中でも大半のフレームは
+  `sampled.syncTransform()`(O(1) の剛体変換)だけで済む。
 - **過去 state の記録・prevState の更新は `physics/orbit-entity.ts` の `OrbitEntity`(`GameEntity.current`)の
   `step`/`reset` が行う**ので、この木には独立ノードとして現れない。`entity.stepSim()` /
   `resolveCollisionPair()` / 反動など、state へ代入するすべての経路が記録契機になる
