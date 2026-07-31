@@ -68,8 +68,11 @@ export class Logistics {
   }
 
   // ▣ AMMO マーカー: 回収へ向かうべき補給の位置と距離を示す。同時存在数が MAX_AMMO で
-  // 頭打ちなのでマーカーキーもその枠で固定し、空き枠は隠す。
-  syncMarkers(player: Player, project: ProjectFn): void {
+  // 頭打ちなのでマーカーキーもその枠で固定し、空き枠は隠す。displayState(未来ゴースト表示中は
+  // 将来位置)を使う — Ammo のメッシュ自体も displayState 基準で動くので揃えないと
+  // 「機体は未来位置、マーカーは現在位置」で壊れて見える(better_predict.md Step 4、
+  // Enemy.markerItem と同じ理由)。予測期間を超えた補給はマーカーごと落とす。
+  syncMarkers(player: Player, project: ProjectFn, displayTime: number): void {
     for (let i = 0; i < C.MAX_AMMO; i++) {
       const key = `mg${i}`;
       const ammo = this.entities.ammos[i];
@@ -77,8 +80,13 @@ export class Logistics {
         this.markerManager.hide(key);
         continue;
       }
-      const dist = len(sub(ammo.state.r, player.state.r));
-      this.markerManager.setPosition(key, 'mk-ammo', '▣', ammo.state.r, project, `AMMO ${fmtMarkerDist(dist)}`);
+      const pos = ammo.displayState(displayTime)?.r;
+      if (!pos) {
+        this.markerManager.hide(key);
+        continue;
+      }
+      const dist = len(sub(pos, player.state.r));
+      this.markerManager.setPosition(key, 'mk-ammo', '▣', pos, project, `AMMO ${fmtMarkerDist(dist)}`);
     }
   }
 
