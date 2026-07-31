@@ -179,6 +179,8 @@ export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
 // --- HUD マーカー ---
 export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想距離 [m](実在の位置ではなく方向のみを示す)
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
+// 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
+export const MARKER_BEARING_RING_RATIO = 0.8;
 export const LEAD_HOLD_SEC = 20; // ターゲットを外した後も LEAD マーカーを出し続ける時間 [s]
 export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
