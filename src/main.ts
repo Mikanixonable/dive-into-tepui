@@ -1,3 +1,5 @@
+// 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
+// rAF ループ(Game.update → sync → render の駆動)を統括する。
 import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
@@ -17,10 +19,6 @@ export async function resolveStageSelection(unlockManager: UnlockManager): Promi
   if (isStageId(stageParam)) return stageParam;
   return selectStage(unlockManager);
 }
-// 低軌道シューティング: エントリポイント。
-// 物理はメインスレッドで毎フレーム積分する(単体エンティティの中心重力
-// RK4 は十分軽い)。src/physics/nbody/physics.worker.ts の N体ワーカーは
-// 将来のシスルナ(太陽-地球-月)フェーズ用に残してあり、現在は未使用。
 
 // WebGPU 初期化(シェーダーコンパイル等でしばらく無反応になり得る)の間に表示する
 // ローディング画面。createGameScene() の await が解決するまでは canvas が

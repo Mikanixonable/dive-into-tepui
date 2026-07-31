@@ -1,15 +1,6 @@
-// 軌道楕円の表示。頂点を毎フレーム「自機相対座標」で書き直す方式だと、(1) osculating
-// 要素の微小なゆらぎで楕円が毎フレーム作り直されて振動して見える、(2) 大きな座標を
-// Float32 頂点へ毎フレーム再量子化することでガタつく、という 2 つの問題が生じる。
-// そのため:
-//
-// - 頂点は地球中心(ECI)座標で一度だけ生成し、毎フレームは
-//   line.position = -origin(フローティングオリジン補正)を動かすだけ。
-//   楕円の焦点は常に地球中心に一致し、フレーム間で形が揺れない。
-// - ジオメトリの再生成は軌道要素が実際に変化したとき(閾値超過)だけ行う。
-//   J2 や第三体摂動による osculating 要素の微小なゆらぎでは再生成しない。
-//   推力中・ノード編集中の force=true も、最短再生成間隔 REGEN_MIN_INTERVAL_MS
-//   (120ms)より短い間隔では再生成させない。
+// Elements から軌道楕円を描画する。頂点は地球中心(ECI)座標のまま保持し、フローティング
+// オリジンによる Object3D 平行移動だけで動かす。ジオメトリの再生成は軌道要素が閾値を
+// 超えて変化したときだけ行う。
 import * as THREE from 'three/webgpu';
 import { Elements } from '../physics/orbital';
 import { Vec3, v3 } from '../physics/vec3';
@@ -52,12 +43,9 @@ export class OrbitLine {
     this.line.renderOrder = 1;
   }
 
-  // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン。
-  // force = 要素が能動的に変化している間(推力中・ノード編集中)は true。
-  // focusPos = 指定すると、その ECI 点の付近に頂点を密に配置する。意味論的には「高精度で
-  // 描きたい点」= フローティングオリジン近傍だが、fo は微動でも動き再生成を頻発させるため、
-  // 呼び出し側は妥協として自機位置を渡す(自機軌道線用途)。fo とは別引数として区別する。
-  // 呼び出し側が算出した Elements を THREE.Line ジオメトリ/位置へ反映するだけの sync。
+  // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン。force = 要素が能動的に変化している
+  // 間(推力中・ノード編集中)は true。focusPos = 指定すると、その ECI 点の付近に頂点を
+  // 密に配置する。
   sync(el: Elements | null, fo: FloatingOrigin, force = false, focusPos?: Vec3): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.line.visible = false;
@@ -65,12 +53,15 @@ export class OrbitLine {
       return;
     }
     this.line.visible = true;
-    // フローティングオリジン補正は Object3D の平行移動だけで行う
-    // (頂点は地球中心座標のまま触らない)
+    // 頂点を自機相対座標で毎フレーム書き直すと、osculating 要素の微小なゆらぎで楕円が
+    // 振動して見える。頂点は地球中心座標のまま固定し、平行移動だけで動かすことで避ける。
     this.line.position.copy(fo.RtoThreeV3(EARTH_CENTER));
 
     let focusE: number | undefined;
     if (focusPos) {
+      // 要調査: 密に配置したいのは本来フローティングオリジン(fo)近傍だが、fo は微動でも
+      // 動いて再生成を頻発させるため、呼び出し側は代わりに自機位置を渡している。fo からの
+      // 乖離が大きい場面では密配置が実際の描画中心とずれる可能性がある。
       // focusPos の軌道面内ローカル座標 (x, y) から離心近点角を求める
       const x = focusPos.x * el.pHat.x + focusPos.y * el.pHat.y + focusPos.z * el.pHat.z;
       const y = focusPos.x * el.qHat.x + focusPos.y * el.qHat.y + focusPos.z * el.qHat.z;
