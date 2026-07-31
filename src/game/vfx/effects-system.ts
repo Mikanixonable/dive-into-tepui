@@ -53,8 +53,8 @@ export class EffectsSystem {
   // ガスのような気体が放出されるエフェクト（被弾時やデブリ命中時用）
   spawnGasPuff(pos: Vec3, vel: Vec3): void {
     // 灰色の低透明度のビルボードを2つ重ねてガスっぽさを出す
-    this.spawnFlash(pos, vel, 2.0, 16.0, 0.45, 0xaaaaaa, 0.3);
-    this.spawnFlash(pos, vel, 1.0, 12.0, 0.35, 0xffffff, 0.4);
+    this.spawnFlash(pos, vel, 1.0, 8.0, 0.45, 0xaaaaaa, 0.3);
+    this.spawnFlash(pos, vel, 0.5, 6.0, 0.35, 0xffffff, 0.4);
   }
 
   // pos/vel は呼び出し元の生きたオブジェクト(entity の r/v など)をそのまま渡してよい。
