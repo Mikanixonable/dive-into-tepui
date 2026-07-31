@@ -135,7 +135,7 @@
       - absorbNearbyAmmo() // player.alive のみ
         - player.onPickup() + sfx.pickup() + hud.hint() // 範囲内の補給ごと
       - despawnFarAmmo()
-        - spawnForPlayer() // 遠方消滅した数だけ再投入
+        - spawnForPlayer() // 遠方消滅した数だけ再投入。生存数が MAX_AMMO に達したら打ち切る
       - spawnForPlayer() // LOGISTICS_CHECK_INTERVAL ごと、かつ低弾薬・上限未満のみ
     - [Stage00 無限サバイバル] updateWaitingForAmmoPhase() → hud.toast() // 弾薬確保でフェーズ遷移した時のみ
     - [Stage00 無限サバイバル] updateSpawningEnemiesPhase() → spawnWave() // カウントダウン満了時のみ
@@ -288,7 +288,8 @@
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync()
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示
-    - logistics.syncMarkers() → markerManager.set('mg<i>') + setBearing('mg<i>-bearing') or hide() // 補給スロットごと
+    - logistics.syncMarkers() → markerManager.set('mg<i>') + setBearing('mg<i>-bearing') // 生存中の補給ごと(i = 生存配列の添字)
+      - hide() // 前フレームより生存数が減ったぶんの、余った添字だけ
   - hud.panels.update(game, dt) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
