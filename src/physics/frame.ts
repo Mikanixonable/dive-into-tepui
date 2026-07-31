@@ -93,6 +93,7 @@ export function toFrameState(frame: Frame, s: OrbitState, ephemeris: Ephemeris):
     case 'inertial':
       return { r: s.r, v: s.v } as RelativeOrbitState;
     case 'sunRotating':
+      // 太陽方位角ぶん逆回転し、回転系の角速度分を速度から差し引く
       const a = ephemeris.sunAzimuthAt(s.t);
       const omega = scale(SUN_ROTATING_POLE, ephemeris.sunAngularRateAt(s.t));
       const r = rotateAxis(s.r, SUN_ROTATING_POLE, -a);
@@ -110,6 +111,7 @@ export function toInertialState(frame: Frame, t: number, s: RelativeOrbitState, 
     case 'inertial':
       return orbitState(t, s.r, s.v);
     case 'sunRotating':
+      // 太陽方位角ぶん正回転で戻し、回転系の角速度分を速度に足し戻す
       const a = ephemeris.sunAzimuthAt(t);
       const omega = scale(SUN_ROTATING_POLE, ephemeris.sunAngularRateAt(t));
       const r = rotateAxis(s.r, SUN_ROTATING_POLE, a);

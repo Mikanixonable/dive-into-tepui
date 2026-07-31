@@ -21,6 +21,7 @@ export class OrbitEntity {
   private readonly _history = new StateQueue();
   private _elements: Elements | null | undefined = undefined;
 
+  // state・prevState をともに初期状態で始める。
   constructor(state: OrbitState) {
     this._state = state;
     this._prevState = state;
@@ -54,6 +55,7 @@ export class OrbitEntity {
   ): void {
     const prev = this._state;
     const next = stepEnvRK4(prev, dt, sunPos, moonPos, bcInv, thrust);
+    // 間引き済み history への記録
     if (keepDuration > 0) {
       const newest = this._history.newest;
       if (newest === null || prev.t - newest.t >= sampleInterval) {
@@ -61,6 +63,7 @@ export class OrbitEntity {
         this._history.cleanup(keepDuration, 2);
       }
     }
+    // 積分結果を確定し、要素キャッシュを無効化する
     this._prevState = prev;
     this._state = next;
     this._elements = undefined;

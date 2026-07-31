@@ -11,6 +11,7 @@ export const MOON_VIS_DIST = 4.5e7; // 月メッシュの表示距離(角直径�
 // 実太陽の視直径(約0.53°)よりやや大きめ + ハロー分
 export const SUN_VISUAL_SIZE = 2.4e6;
 
+// 星空の球殻メッシュを構築する。
 export function createStars(): THREE.Mesh {
   const geo = new THREE.SphereGeometry(STAR_SHELL_RADIUS, 64, 64);
   const texture = new THREE.TextureLoader().load(starsTextureUrl);
@@ -57,6 +58,7 @@ export function createMoon(): THREE.Mesh {
   return mesh;
 }
 
+// 太陽ビルボードを構築する。
 export function createSun(): Sun {
   return { billboard: new Billboard(0xfff3d0, -9) };
 }

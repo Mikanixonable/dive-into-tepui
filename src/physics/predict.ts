@@ -115,11 +115,13 @@ export function propagateState(
 // 表示・ワープ照準用途では実用上問題にならない。
 export function sampleAt(samples: readonly OrbitState[], t: number): OrbitState | null {
   if (samples.length === 0) return null;
+  // 範囲外は端の値にクランプする
   const first = samples[0]!;
   if (t <= first.t) return first;
   const last = samples[samples.length - 1]!;
   if (t >= last.t) return last;
 
+  // t を挟む2点を二分探索で見つける
   let lo = 0;
   let hi = samples.length - 1;
   while (hi - lo > 1) {
@@ -131,6 +133,7 @@ export function sampleAt(samples: readonly OrbitState[], t: number): OrbitState 
   const b = samples[hi]!;
   const span = b.t - a.t;
   const f = span > 1e-9 ? (t - a.t) / span : 0;
+  // 見つけた2点の間を線形補間する
   return orbitState(
     t,
     v3(a.r.x + (b.r.x - a.r.x) * f, a.r.y + (b.r.y - a.r.y) * f, a.r.z + (b.r.z - a.r.z) * f),

@@ -21,11 +21,13 @@ export class FlashEffectManager {
 
   constructor(private readonly _scene: THREE.Scene) {}
 
+  // フラッシュエフェクトを追加し、そのビルボードメッシュをシーンへ登録する。
   addFlash(fx: FlashEffect): void {
     this.effects.push(fx);
     this._scene.add(fx.billboard.mesh);
   }
 
+  // 経過時間を進め、寿命切れのエフェクトを破棄しつつ生存中のものをカメラへ同期する。
   syncFlashEffects(
     dt: number,
     simDt: number,
@@ -35,11 +37,13 @@ export class FlashEffectManager {
     const camQuat = activeCamera.quaternion;
     this.effects = this.effects.filter((fx) => {
       fx.age += dt;
+      // 寿命切れなら破棄する
       if (fx.age >= fx.duration) {
         this._scene.remove(fx.billboard.mesh);
         fx.billboard.dispose();
         return false;
       }
+      // 位置・サイズ・不透明度を経過時間に応じて更新する
       fx.pos = addScaled(fx.pos, fx.vel, simDt);
       const t = fx.age / fx.duration;
       const size = fx.size0 + (fx.size1 - fx.size0) * Math.sqrt(t);

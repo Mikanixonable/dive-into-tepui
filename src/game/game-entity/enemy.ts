@@ -22,6 +22,7 @@ import type { SimSpeedManager } from '../sim-speed-manager';
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
 export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
 
+// enemyKind の種別に応じたメッシュを組む。
 function buildEnemyObj(enemyKind: EnemyKind, accent: number): THREE.Object3D {
   return enemyKind.kind === 'stage0' ? buildStage0EnemyShip(accent, enemyKind.typeIndex) : buildEnemyShip(accent);
 }
@@ -39,6 +40,7 @@ export class Enemy extends Ship {
   private readonly _sfx: Sfx;
   private readonly _fx: EffectsSystem;
 
+  // enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
   constructor(
     name: string,
     state: OrbitState,
@@ -61,10 +63,12 @@ export class Enemy extends Ship {
     this.mass = 10000;
     this.collideRadius = C.ENEMY_RADIUS;
     this.obj.scale.setScalar(C.ENEMY_SCALE);
+    // 自身の軌道線を作ってシーンへ登録する
     this.orbitLine = new OrbitLine(orbitLineColor, 0.35);
     scene?.add(this.orbitLine.line);
   }
 
+  // メッシュと軌道線をシーンから取り除く。
   dispose(): void {
     super.dispose();
     this.scene?.remove(this.orbitLine.line);
@@ -78,6 +82,7 @@ export class Enemy extends Ship {
 
   // pos は機体メッシュと同じ表示時刻の位置(displayState 経由)を使う。
   markerItem(isTarget: boolean, viewerPos: Vec3, pos: Vec3): GroupedMarkerItem {
+    // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
     return {
       key: `enemy-${this.name}`,
@@ -102,6 +107,7 @@ export class Enemy extends Ship {
     this._fx.scatterFragments(this.state.t, bullet.state.r, this.state.v, C.HIT_FRAG_COUNT, 0x6a7078, C.HIT_FRAG_SIZE_MIN, C.HIT_FRAG_SIZE_MAX, C.HIT_FRAG_SPEED);
   }
 
+  // 撃破時の爆発音・エフェクトを発生させる。
   private destroyEffect(): void {
     this._sfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
@@ -121,6 +127,7 @@ export class Enemy extends Ship {
       return;
     }
 
+    // HP が尽きたので撃破処理へ
     this.alive = false;
     activeStage.recordEnemyDeath(this, simTime, 'killed');
     this.destroyEffect();
@@ -149,6 +156,7 @@ export class Enemy extends Ship {
     const dist = len(sub(player.state.r, this.state.r));
     if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
 
+    // バースト継続中なら次弾のタイミングだけ見る
     if (this.burstLeft && this.burstLeft > 0) {
       this.burstDelay = (this.burstDelay ?? 0) - dt;
       if (this.burstDelay <= 0) {
@@ -163,6 +171,7 @@ export class Enemy extends Ship {
     if (simTime - this.lastFireSim <= C.ENEMY_FIRE_INTERVAL) return;
     this.lastFireSim = simTime;
 
+    // 新規バーストを始めるかどうかを抽選する
     const countInGroup = this.attackingCountInGroup(entities.enemies);
     if (countInGroup >= C.ENEMY_MAX_ATTACKERS_PER_GROUP || Math.random() >= C.ENEMY_ATTACK_CHANCE) return;
     const counts = C.ENEMY_BURST_COUNTS;
@@ -171,6 +180,7 @@ export class Enemy extends Ship {
     this.firePlasma(simTime, player, entities);
   }
 
+  // enemies のうち、自分と同じ accent でバースト射撃中の個体数を数える。
   private attackingCountInGroup(enemies: readonly Enemy[]): number {
     let n = 0;
     for (const e of enemies) {
@@ -179,6 +189,7 @@ export class Enemy extends Ship {
     return n;
   }
 
+  // player へ向けた見越し射撃でプラズマ弾を1発生成し、entities に追加する。
   private firePlasma(simTime: number, player: Player, entities: EntityManager): void {
     const r = this.state.r;
     const v = this.state.v;
