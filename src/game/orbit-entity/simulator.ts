@@ -3,7 +3,6 @@
 // Enemy.behave が担い、追加は addXxx 経由で行う。scene への add/remove は各 entity
 // 自身の責務(entities.ts)なので、Simulator は配列管理・上限管理・寿命判定に専念する。
 import { stepAttitude } from '../../physics/attitude';
-import { IAccelProvider, stepOrbitRK4 } from '../../physics/orbital';
 import { Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -17,9 +16,7 @@ import type { Stage } from '../stages/stage';
 import { CollisionPhysics } from './collision';
 import { Sfx } from '../../audio/sfx';
 
-import { envAccelScalar } from '../../physics/envaccel';
-
-export class Simulator implements IAccelProvider {
+export class Simulator {
   readonly enemies: Enemy[] = [];
   readonly bullets: Bullet[] = [];
   // casings/debris は DebrisPiece の kind によって振り分けられる別々の上限プール
@@ -84,20 +81,6 @@ export class Simulator implements IAccelProvider {
 
   // ------------------------------------------------------------ 積分
 
-  private activeSunPos!: Vec3;
-  private activeMoonPos!: Vec3;
-  private activeBcInv!: number;
-  private activeThrust: Vec3 | null = null;
-
-  computeExtraAccel(rx: number, ry: number, rz: number, vx: number, vy: number, vz: number, out: { x: number; y: number; z: number; }): void {
-    envAccelScalar(rx, ry, rz, vx, vy, vz, this.activeSunPos, this.activeMoonPos, this.activeBcInv, out);
-    if (this.activeThrust) {
-      out.x += this.activeThrust.x;
-      out.y += this.activeThrust.y;
-      out.z += this.activeThrust.z;
-    }
-  }
-
   // simDt(このフレームで積算すべきシミュレーション時間)は game.ts が
   // simSpeedManager から計算して渡す。ここでは受け取った simDt をサブステップに
   // 分割して積分し、simTime/lastSimDt を自ら進めるだけ。
@@ -134,6 +117,8 @@ export class Simulator implements IAccelProvider {
     this.lastSimDt = simDt;
   }
 
+  // 各 entity の積分そのもの(中心重力 + 環境加速度 + 推力)は entity.stepSim の責務。
+  // ここは太陽・月位置を今サブステップぶんだけ求め、全配列へ配って回るだけ。
   private simulationSubStep(
     simTime: number,
     dt: number,
@@ -142,32 +127,16 @@ export class Simulator implements IAccelProvider {
     const sunPos = this.ephemeris.sunPosAt(simTime);
     const moonPos = this.ephemeris.moonPosAt(simTime);
 
-    this.stepEntity(player, dt, sunPos, moonPos, C.SHIP_BCINV);
-    this.enemies.forEach(e => this.stepEntity(e, dt, sunPos, moonPos, C.SHIP_BCINV));
-    this.bullets.forEach(b => this.stepEntity(b, dt, sunPos, moonPos, C.BULLET_BCINV));
-    this.casings.forEach(c => this.stepEntity(c, dt, sunPos, moonPos, C.SMALL_DEBRIS_BCINV));
-    this.debris.forEach(d => this.stepEntity(d, dt, sunPos, moonPos, C.SMALL_DEBRIS_BCINV));
-    this.ammos.forEach(a => this.stepEntity(a, dt, sunPos, moonPos, C.SMALL_DEBRIS_BCINV));
+    player.stepSim(dt, sunPos, moonPos);
+    for (const e of this.enemies) e.stepSim(dt, sunPos, moonPos);
+    for (const b of this.bullets) b.stepSim(dt, sunPos, moonPos);
+    for (const c of this.casings) c.stepSim(dt, sunPos, moonPos);
+    for (const d of this.debris) d.stepSim(dt, sunPos, moonPos);
+    for (const a of this.ammos) a.stepSim(dt, sunPos, moonPos);
 
     player.thermal.updateThermal(dt, player.state.r, player.state.v);
 
     return simTime + dt;
-  }
-
-  // 過去 state の記録は entity 自身(state の setter)が行う。積分器は state を差し替えるだけ。
-  private stepEntity(
-    entity: OrbitEntity,
-    dt: number,
-    sunPos: Vec3,
-    moonPos: Vec3,
-    bcInv: number,
-  ): void {
-    if (!entity.alive) return;
-    this.activeSunPos = sunPos;
-    this.activeMoonPos = moonPos;
-    this.activeBcInv = bcInv;
-    this.activeThrust = entity.thrust;
-    entity.state = stepOrbitRK4(entity.state, dt, this);
   }
 
   // ------------------------------------------------------------ 回転運動
