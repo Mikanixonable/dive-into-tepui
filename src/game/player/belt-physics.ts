@@ -87,16 +87,8 @@ export class BeltPhysics {
     this.pinRootToAnchor(beltFeed);
     this.relaxDistanceConstraints();
 
-    // マガジンチェーンが折りたたまれて重なっているかの判定とリセット
-    this.resetIfFolded();
-
     // つなぎ目のピッチ/ヨークランプ(節点位置を補正)とロールねじれの積分
     this.advanceOrientationConstraints(dt, att);
-
-    // 最後にもう一度、絡まり(非有限値を含む)を検査して整列し直す。非有限値は
-    // 距離拘束・絡まり判定の比較が軒並み false になって素通りするため、ここで
-    // 拾わないと以後ずっと NaN のまま固着し、リンクが描画されなくなる。
-    this.resetIfFolded();
   }
 
   private initNodesOnce(): void {
@@ -176,39 +168,6 @@ export class BeltPhysics {
         }
       }
     }
-  }
-
-  // 互いに隣接していないリンク同士の距離が近すぎる場合は絡まっていると見なし、
-  // アンカーから +X 方向の直線(initNodesOnce と同じ配置)に整列し直す。
-  // 整列の起点にアンカーを使うのは、節点が非有限になっている場合でも必ず
-  // 有限の配置へ復帰させるため(beltPos[0] を起点にすると NaN が伝播する)。
-  private resetIfFolded(): void {
-    const n = this.linkCount;
-    const minSq = (MAG_BELT_PITCH * 0.5) * (MAG_BELT_PITCH * 0.5);
-    if (!this.isFolded(n, minSq)) return;
-
-    for (let i = 0; i < n; i++) {
-      const p = v3(this.anchor.x + (i + 1) * MAG_BELT_PITCH, this.anchor.y, this.anchor.z);
-      this.beltPos[i] = p;
-      this.beltPrevPos[i] = p;
-      this.beltTwist[i] = 0;
-    }
-  }
-
-  // 非有限値(NaN/Infinity)を含む場合も「絡まり」と同じ扱いで整列し直す対象とする。
-  // 非有限値は距離拘束の `dist < 1e-6` も下の `lenSq(...) < minSq` も false になって
-  // 素通りするため、明示的に検査しないと復帰する手段が一つも無くなる。
-  private isFolded(n: number, minSq: number): boolean {
-    for (let i = 0; i < n; i++) {
-      const p = this.beltPos[i]!;
-      if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return true;
-    }
-    for (let i = 0; i < n - 2; i++) {
-      for (let j = i + 2; j < n; j++) {
-        if (lenSq(sub(this.beltPos[i]!, this.beltPos[j]!)) < minSq) return true;
-      }
-    }
-    return false;
   }
 
   // つなぎ目ごとに許容するピッチ/ヨーの角度上限を tan クランプで適用し、
