@@ -40,12 +40,18 @@ export class StateQueue {
     this.deque.pushLeft(state);
   }
 
-  // 最新サンプルから maxAge 秒より古いものを、minCount 件を下回らない範囲で削除する。
+  // 呼び出し後も at(newest.t - maxAge) が参照できること、かつ minCount 件以上が残っている
+  // ことを保証しながら、それ以外の古いサンプルを削除する。
   cleanup(maxAge: number, minCount: number): void {
     if (this.deque.empty) return;
+    if (maxAge === 0) {
+      this.deque.deleteRightN(Math.max(0, this.deque.size - minCount));
+      return;
+    }
     const cutoff = this.deque.peekLeft().t - maxAge;
     const idx = this.bisect(cutoff);
-    this.deque.deleteRightN(Math.max(0, this.deque.size - Math.max(idx, minCount)));
+    const keep = Math.min(this.deque.size, idx + 1);
+    this.deque.deleteRightN(Math.max(0, this.deque.size - Math.max(keep, minCount)));
   }
 
   // 直近 n 件までに切り詰める(古い順から捨てる)。
