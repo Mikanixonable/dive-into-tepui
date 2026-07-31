@@ -1,8 +1,6 @@
 // HUD パネル共通のボタン部品。値を排他選択する SegmentedControl と、単発実行の hudButton。
-// 見た目(.hud-seg / .seg-btn)は hud/dom.ts の STYLE に一元管理されている。
-// context-menu.ts と同じく DOM とイベント処理だけを担い、押された値の意味づけは所有するパネルが行う。
 
-// 単発の実行ボタン。キャンバス側のドラッグ操作へ pointerdown が抜けるのを止める。
+// 単発の実行ボタン。
 export function hudButton(label: string, onClick: () => void): HTMLElement {
   const btn = document.createElement('span');
   btn.className = 'seg-btn';

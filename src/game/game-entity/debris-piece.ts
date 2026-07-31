@@ -7,8 +7,7 @@ import type { Stage } from '../stages/stage';
 import { buildBarrelMesh, buildCasingMesh, buildDebrisMesh, buildMagazineFrame } from '../../render/ships';
 import { GameEntity } from './game-entity';
 
-// DebrisPiece の見た目・振る舞いの種別。どの build を呼ぶか、寿命判定に何が
-// 要るかをコンストラクタ/checkLoss 内部で選ぶための判別用。
+// DebrisPiece の見た目・振る舞いの種別。
 export type DebrisKind =
   | { kind: 'fragment'; accent: number; size: number; }
   | { kind: 'barrel'; }
@@ -24,7 +23,6 @@ function buildDebrisObj(debrisKind: DebrisKind): THREE.Object3D {
   }
 }
 
-// collideRadius 未設定の破片(爆発デブリ等)は剛体接触に参加せずすり抜ける。
 export class DebrisPiece extends GameEntity {
   protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
 
@@ -35,7 +33,6 @@ export class DebrisPiece extends GameEntity {
       case 'barrel': this.mass = C.BARREL_MASS; break;
       case 'magazineFrame': this.mass = C.MAGAZINE_FRAME_MASS; break;
       case 'casing': this.mass = C.CASING_MASS; break;
-      // fragmentはcollideRadius未設定であるから、衝突判定に算入せず、massは意味を持たない
       case 'fragment': this.mass = 0; break;
     }
   }
@@ -51,9 +48,6 @@ export class DebrisPiece extends GameEntity {
     }
   }
 
-  // d.obj は単一 Mesh(通常の破片)の場合と、複数子メッシュを持つ Group
-  // (排出された空マガジンのフレーム等)の場合がある。traverse して
-  // 見つかった Mesh すべてのジオメトリ・マテリアルを破棄する。
   dispose(): void {
     super.dispose();
     this.obj.traverse((child) => {

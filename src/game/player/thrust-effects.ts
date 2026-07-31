@@ -14,8 +14,6 @@ export class ThrustEffects {
     scene.add(this.outer.mesh);
   }
 
-  // playerPos: 自機の絶対 ECI 位置。プルームはその位置を基準に推力の逆方向へ置き、
-  // 慣性座標で組んでから末端で fo 経由で描画フレームへ変換する。
   sync(fo: FloatingOrigin, playerPos: Vec3, dir: Vec3 | null, throttleIdx: number, alive: boolean, camera: CameraSystem): void {
     const show = dir !== null && alive && !camera.zoomActive;
     if (!show) {
