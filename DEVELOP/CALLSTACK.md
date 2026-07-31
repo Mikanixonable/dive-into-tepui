@@ -70,9 +70,9 @@
           - plan.removeNode() / closeMenu() / simSpeedManager.cancelAutoWarp() / hud.hint()
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
-    - player.thrustFn = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
+    - player.thrust = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
     - simulator.stepSimulation(hardCollision=false, doSubstep=false) // simSpeed は ×4 で打ち止め
-      - simulationSubStep() ×1 → stepEntity() エンティティごと + player.thermal.updateThermal()
+      - simulationSubStep() ×1 → entity.stepSim() エンティティごと + player.thermal.updateThermal()
       - stepAttitudes()
   - [game.isPaused] 以降を実行せず return するポーズ経路
   - nanWatchdog.checkPlayer('frameStart') // 検出済みなら何もしない
@@ -96,9 +96,9 @@
       - onProgradeHoldReleased() → hud.hint() // ホールド中に手動回転入力があった場合のみ
       - autoAlignTorque() // ホールド中 かつ 手動回転入力なしの場合のみ
     - throttle.clampAngularVelocity() → player.att へ代入 // 常に(角速度上限)
-    - [!player.alive] thrustFn = null して return
+    - [!player.alive] thrust = null して return
     - hpRegen()
-    - [editor.editMode] fire.tickMapMode() → tickReloadTimer() / thrustFn = null して return
+    - [editor.editMode] fire.tickMapMode() → tickReloadTimer() / thrust = null して return
     - fire.updateFireState()
       - tickReloadTimer()
       - hud.hint() // 発射キー押下中 かつ !simSpeed.canPlayerFire
@@ -115,7 +115,7 @@
           - sfx.fire()
         - spawnEjectedMagazineFrame() + sfx.magFeed() // 'mag-reload'
         - spawnEjectedMagazineFrame() + dropBarrel() + sfx.playReload() // 'barrel-reload'
-    - throttle.updateThrustState() → player.thrustFn へ代入
+    - throttle.updateThrustState() → player.thrust へ代入
       - sfx.setThrust(false) // 推力入力なし or !canPlayerThrust
       - sfx.setThrust(true) // 推力あり
   - nanWatchdog.checkPlayer('player.behave')
@@ -145,9 +145,9 @@
     - hud.hint() // 実行点に接近して自動ワープを解除したフレームのみ
   - simulator.stepSimulation(hardCollision=true, doSubstep=true)
     - simulationSubStep() ×1〜SUBSTEP_MAX_COUNT // 分割数は simDt / SUBSTEP_MAX_DT のみで決まる(実 fps に依存しない)
-      - stepEntity(player) → stepOrbitRK4() → entity.state へ代入(setter が軌道要素メモ破棄 + history 記録)
-        // player.alive のみ。thrustFn + 環境加速度
-      - stepEntity() // 敵・弾・薬莢・デブリ・補給それぞれ、個体ごと
+      - player.stepSim() → stepOrbitRK4() → entity.state へ代入(setter が軌道要素メモ破棄 + history 記録)
+        // player.alive のみ。自身の thrust + envAccel(bcInv)
+      - entity.stepSim() // 敵・弾・薬莢・デブリ・補給それぞれ、個体ごと。alive のみ実行
       - player.thermal.updateThermal()
     - hit.checkBulletHits() // サブステップごと(hardCollision=true のため)
       - target.attacked() // 弾が命中した対象ごと
@@ -312,7 +312,7 @@
 - **予測 RK4 の再計算頻度**は `PredictedLine` が per-arc に持つ入力変化検出 + スロットルで決まる。
   マップモード中でも大半のフレームは `sampled.syncTransform()`(O(1) の剛体変換)だけで済む。
 - **過去 state の記録は `OrbitEntity.state` の setter が行う**ので、この木には独立ノードとして現れない。
-  `stepEntity()` / `resolveCollisionPair()` / 反動など、state へ代入するすべての経路が記録契機になる。
+  `entity.stepSim()` / `resolveCollisionPair()` / 反動など、state へ代入するすべての経路が記録契機になる。
   `hit.checkBulletHits()` と `targeter.markBoardCrossings()` が読む「直前サブステップ位置」
   (`entity.prevState.r`)はこれで供給される。
 - **`TouchControls` は per-frame の update を持たない**。DOM の pointer イベントから
