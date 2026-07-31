@@ -1,7 +1,7 @@
 // 軌道計画ノードの対話的 DOM レイヤ。ノードハンドル・Δv アーム・コンテキストメニューを
 // 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
 import * as C from '../const';
-import { ACCENT, ACCENT_SOFT, ACCENT_RGB, TEXT as INK } from '../theme';
+import { ACCENT, ACCENT_SOFT, ACCENT_RGB, TEXT as INK, FONT } from '../theme';
 import { ContextMenu } from '../hud/context-menu';
 
 const SURFACE = 'rgba(13, 15, 18, 0.85)';
@@ -10,7 +10,7 @@ const EDGE = 'rgba(255, 255, 255, 0.16)';
 const STYLE = `
 #node-gizmo {
   position: fixed; inset: 0; pointer-events: none; z-index: 9;
-  font-family: 'Consolas', 'Courier New', monospace; user-select: none;
+  font-family: ${FONT}; user-select: none;
   -webkit-user-select: none;
 }
 #node-gizmo .gz-node {
@@ -107,7 +107,7 @@ export class NodeGizmo {
   openMenu(clientX: number, clientY: number, idx: number): void {
     this.menuNodeIdx = idx;
     this.menu.open(clientX, clientY, [
-      { label: 'この時刻まで自動ワープ', act: 'warp' },
+      { label: 'この時刻まで時間を加速', act: 'warp' },
       { label: 'ノードを削除', act: 'delete' },
       { label: 'キャンセル', act: 'cancel' },
     ]);
