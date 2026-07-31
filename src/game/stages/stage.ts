@@ -165,21 +165,26 @@ export abstract class Stage {
     return null;
   }
 
-  // 撃破(自然喪失を含む)を集計し、勝利条件判定・解放記録への橋渡しを行う(alive 遷移・
+  // 敵が1機減ったことを集計し、勝利条件判定・解放記録への橋渡しを行う(alive 遷移・
   // 撃破エフェクトは呼び出し元の Ship.attacked/checkLoss が既に済ませている — ここでは呼ばない)。
-  //           'reentry' = 再突入など物理的消滅(カウントのみ、勝利判定は起動しない)
-  //           'despawn' = 交戦圏外への離脱(カウントのみ、勝利判定は起動しない)
+  //           'killed'  = 自機による撃破(撃破数に加算)
+  //           'reentry' = 再突入など物理的消滅(自然損耗に加算)
+  //           'despawn' = 交戦圏外への離脱(同上)
+  // 原因によらず勝利判定を通す: 既定の checkWin() は「残存機が居ないこと」を撃破数と自然損耗の
+  // 両方から見るので、最後の1機が再突入で消えた場合もそこで決着させないと終了できなくなる。
   recordEnemyDeath(enemy: Enemy, simTime: number, cause: 'killed' | 'reentry' | 'despawn' = 'killed'): void {
-    if (cause !== 'killed') {
+    if (cause === 'killed') {
+      this.scoreCounter.recordKill();
+      this._hud.hint(`${enemy.name} 撃破`);
+    } else {
       this.scoreCounter.recordEnemyLoss();
-      const reasonText = cause === 'reentry' ? '再突入により喪失' : '交戦圏を離脱';
-      this._hud.hint(`${enemy.name} ${reasonText}`);
-      return;
+      this._hud.hint(`${enemy.name} ${cause === 'reentry' ? '再突入により喪失' : '交戦圏を離脱'}`);
     }
-    this.scoreCounter.recordKill();
-    this._hud.hint(`${enemy.name} 撃破`);
 
-    if (this.checkWin()) {
+    // 決着後もタイムワープでシミュレーションは進み続け、その簡略更新経路でも cleanup を
+    // 通すため、自機が撃墜されて敗北が確定したあとに残っていた敵が再突入で消える、といった
+    // 自然損耗でもここへ来る。isPlaying でガードしないと、敗北のあとから勝利判定が上書きしてしまう。
+    if (this.isPlaying && this.checkWin()) {
       this.setPhase('won');
       this._unlockManager.reportClear(this.id, this._hud);
       this.onWin(simTime);

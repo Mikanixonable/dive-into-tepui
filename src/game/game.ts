@@ -1,5 +1,6 @@
-// ゲーム全体のオーケストレーション: エンティティ管理、物理積分、
-// 入力 → 推力/トルク変換、衝突判定、勝敗判定、描画同期。
+// ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの
+// 呼び出し順序の決定を担う。物理積分・衝突判定は Simulator、勝敗判定は Stage、
+// 入力 → 推力/トルクへの変換は Player が持ち、Game 自身はそれらの状態を持たない。
 //
 // 座標系: ECI (慣性系)、Y軸 = 北極、単位 m / m/s。
 // 描画は自機中心のフローティングオリジン(自機が常に (0,0,0))。
@@ -66,8 +67,8 @@ export class Game {
   // 段階管理と、[N] キーによるノードへの自動ワープ。
   readonly simSpeedManager: SimSpeedManager;
 
-  // 軌道計画まわりの三系統。かつて PlanSystem が束ねていたが、たらい回しを排して game が直接
-  // 保持する: editor(ノード列 Plan・編集モード editMode・ノード編集入力・未来表示 = 予測折れ線
+  // 軌道計画まわりの三系統を game が直接保持する:
+  // editor(ノード列 Plan・編集モード editMode・ノード編集入力・未来表示 = 予測折れ線
   // traj・ゴースト・その表示座標系パネルを持つ PlanDisplay)、displayTimeManager(「いつを見るか」
   // = 表示期間・未来ゴーストスライダーとその操作パネル)、guide(戦闘ビューの噴射ガイド。
   // マップモード中は呼ばない — [M] で開いている間は WASDQE が Δv編集に使われるため)。
@@ -215,19 +216,28 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.handleInput();
 
+    // ポーズ中の処理。handleInput は上で呼んだあとなので、決着後・ポーズ中でも
+    // Esc やヘルプなど「常時効くべき」操作(handleInput の守備範囲)はここより前に効く。
+    if (this._isPaused) { return; }
+
     // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
-    // 積分もサブステップなしの簡略版(integrateSimulation の hardCollision/doSubstep 引数)にする。
+    // 積分もサブステップなしの簡略版(stepSimulation の bulletCollision/resolveCollision/doSubstep 引数)にする。
     // behave が呼ばれなくなる分、勝敗確定時点の thrust が凍結され続けないよう明示的に消す。
     if (!this.activeStage.isPlaying) {
       this.player.thrust = null;
       this.player.torque = v3();
-      const simDt = dt * Math.min(this.simSpeedManager.simSpeed, 4);
+      const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
       this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, false, false, false);
+      // この経路も積分後に全エンティティを一度だけ検査する(通常経路と同じ理由)。
+      this.nanWatchdog.checkAll('stepSimulation(決着後)', this.player, this.entities, this.simulator.simTime, dt, simDt);
+      // 決着後もタイムワープで時間は進むので、alive=false のまま残り続けないよう cleanup も
+      // 通常経路と同じ位置(積分の直後・カメラ更新の前)で呼ぶ。
+      this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
+      // 決着後もカメラは追従させる。sync は止まらないので、ここで update を飛ばすと視点だけが
+      // 絶対 ECI に取り残され、原点(自機)が軌道速度で遠ざかって残骸が即座にフレームアウトする。
+      this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt);
       return;
     }
-
-    // ポーズ中の処理
-    if (this._isPaused) { return; }
 
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
 

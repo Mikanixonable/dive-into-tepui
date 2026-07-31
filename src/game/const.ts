@@ -125,12 +125,12 @@ export const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの
 export const BARREL_MASS = 20; // バレルの物理接触用の質量(実質量ではなくゲーム内衝突用の値)
 export const MAGAZINE_FRAME_MASS = 20; // 空マガジンの物理接触用の質量(同上)
 
-// マガジンチェーンの可動域: 各つなぎ目(リンク間接合部)で許容する最大折れ角。
+// マガジンチェーン(ベルト)の可動域: 各つなぎ目(リンク間接合部)で許容する最大折れ角。
 // ロール(チェーン軸まわりのねじれ)・ピッチ(上下方向の折れ)・ヨー(左右方向の折れ)
 // をそれぞれ独立に制限する。いずれも隣接リンク間の相対角度 [deg]。
 export const MAG_CHAIN_MAX_ROLL_DEG = 15;  // ロール上限
-export const MAG_CHAIN_MAX_PITCH_DEG = 30; // ピッチ上限(上下方向の折れ)
-export const MAG_CHAIN_MAX_YAW_DEG = 10;   // ヨー上限(左右方向の折れ)
+export const MAG_CHAIN_MAX_PITCH_DEG = 45; // ピッチ上限(上下方向の折れ)
+export const MAG_CHAIN_MAX_YAW_DEG = 15;   // ヨー上限(左右方向の折れ)
 export const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
 export const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
 export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
@@ -179,6 +179,8 @@ export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
 // --- HUD マーカー ---
 export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想距離 [m](実在の位置ではなく方向のみを示す)
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
+// 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
+export const MARKER_BEARING_RING_RATIO = 0.8;
 export const LEAD_HOLD_SEC = 20; // ターゲットを外した後も LEAD マーカーを出し続ける時間 [s]
 export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
@@ -233,7 +235,9 @@ export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
 export const STAGE0_PER_GROUP = 10; // グループあたりの機数
 export const STAGE0_ENEMY_HP = 1; // 一撃撃破の軽量機
 export const STAGE0_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]
-export const STAGE0_TIME_LIMIT = 30000; // 制限時間 [実秒]
+// 制限時間 [実秒]。選択画面の説明(stage0.ts の selectSub)とブリーフィングはこの値から
+// 生成されるので、変更すればどちらも自動的に追随する。
+export const STAGE0_TIME_LIMIT = 120;
 export const STAGE0_LOGISTICS_INITIAL_AMMO = 4; // 開始時に浮かべておく補給の数
 export const STAGE0_LOGISTICS_MIN_DIST = 300; // 補給の配置距離 [m](自機から)
 export const STAGE0_LOGISTICS_MAX_DIST = 900;
@@ -280,7 +284,7 @@ export const PLAYER_MAX_HP = 1000;
 export const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 export const PLAYER_HIT_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
 export const ENEMY_HIT_DAMAGE = 1; // 敵機が被弾した際のダメージ [HP]
-export const PLASMA_BULLET_SPEED = 800 * 2 / 3; // MUZZLE_SPEED の約 2/3
+export const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
 export const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
 export const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]

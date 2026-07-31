@@ -5,8 +5,8 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, Quat, qFromUnitVectors, qInvert, qMul, qRotate } from '../../physics/attitude';
 import { orbitState } from '../../physics/orbital';
-import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
-import { MAG_BELT_PITCH } from '../../render/ships';
+import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
+import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
 
@@ -48,7 +48,7 @@ export class BeltPhysics {
   private prevBodyW = v3(); // 前フレームの機体角速度(ベルト物理の角加速度推定用)
   private angularAccel = v3(); // 推定した機体角加速度(update() 内で使い回す)
   // 給弾進みに応じて動く根本の固定点(機体座標系)。belt.ts が姿勢導出の起点として読む。
-  anchor: Vec3 = v3(0.9, 0, 0);
+  anchor: Vec3 = v3(MAG_BELT_ANCHOR_X, 0, 0);
 
   constructor(private readonly linkCount: number) {}
 
@@ -100,9 +100,6 @@ export class BeltPhysics {
     this.pinRootToAnchor(beltFeed);
     this.relaxDistanceConstraints();
 
-    // マガジンチェーンが折りたたまれて重なっているかの判定とリセット
-    this.resetIfFolded();
-
     // つなぎ目のピッチ/ヨークランプ(節点位置を補正)とロールねじれの積分
     this.advanceOrientationConstraints(dt, att);
   }
@@ -111,7 +108,7 @@ export class BeltPhysics {
     if (this.beltInit) return;
     this.beltInit = true;
     for (let i = 0; i < this.linkCount; i++) {
-      const p = v3(0.9 + (i + 1) * MAG_BELT_PITCH, 0, 0);
+      const p = v3(MAG_BELT_ANCHOR_X + (i + 1) * MAG_BELT_PITCH, 0, 0);
       this.beltPos.push(p);
       this.beltPrevPos.push((p));
       this.beltTwist.push(0);
@@ -152,7 +149,7 @@ export class BeltPhysics {
 
   // アンカーを給弾進みに応じて更新し、根本(リンク0)を固定する
   private pinRootToAnchor(beltFeed: number): void {
-    this.anchor = v3(0.9 - beltFeed * MAG_BELT_PITCH, 0, 0);
+    this.anchor = v3(MAG_BELT_ANCHOR_X - beltFeed * MAG_BELT_PITCH, 0, 0);
 
     // 根本(リンク0)は常に機体に対して垂直(ローカル+X方向)になるよう、
     // 揺動物理を経由させずアンカーから固定距離・固定方向の位置に毎フレーム
@@ -186,31 +183,6 @@ export class BeltPhysics {
     }
   }
 
-  // 互いに隣接していないリンク同士の距離が近すぎる場合は絡まっていると見なし、
-  // 根本(beltPos[0])から +X 方向の直線に整列し直す。
-  private resetIfFolded(): void {
-    const n = this.linkCount;
-    const minSq = (MAG_BELT_PITCH * 0.5) * (MAG_BELT_PITCH * 0.5);
-    if (!this.isFolded(n, minSq)) return;
-
-    const root = this.beltPos[0]!;
-    for (let i = 0; i < n; i++) {
-      const p = v3(root.x + i * MAG_BELT_PITCH, root.y, root.z);
-      this.beltPos[i] = p;
-      this.beltPrevPos[i] = (p);
-      this.beltTwist[i] = 0;
-    }
-  }
-
-  private isFolded(n: number, minSq: number): boolean {
-    for (let i = 0; i < n - 2; i++) {
-      for (let j = i + 2; j < n; j++) {
-        if (lenSq(sub(this.beltPos[i]!, this.beltPos[j]!)) < minSq) return true;
-      }
-    }
-    return false;
-  }
-
   // つなぎ目ごとに許容するピッチ/ヨーの角度上限を tan クランプで適用し、
   // クランプ後の方向を beltPos/beltPrevPos へ書き戻す(節点位置そのものを補正する
   // ————— よって物理状態の更新であり、update() 側の責務)。曲げ量を求める
@@ -220,8 +192,8 @@ export class BeltPhysics {
   private advanceOrientationConstraints(dt: number, att: Attitude): void {
     const maxRoll = (C.MAG_CHAIN_MAX_ROLL_DEG * Math.PI) / 180;
     // tan(最大角度) = ローカル座標系での横ずれ/前進量の上限
-    const tanMaxPitch = Math.tan((C.MAG_CHAIN_MAX_PITCH_DEG * Math.PI) / 180);
-    const tanMaxYaw = Math.tan((C.MAG_CHAIN_MAX_YAW_DEG * Math.PI) / 180);
+    const tanMaxPitch = Math.tan((C.MAG_CHAIN_MAX_YAW_DEG * Math.PI) / 180);
+    const tanMaxYaw = Math.tan((C.MAG_CHAIN_MAX_PITCH_DEG * Math.PI) / 180);
     const rollLerp = Math.min(1, dt * C.MAG_CHAIN_ROLL_RATE);
     let prevPoint = this.anchor;
     let prevQ: Quat = IDENTITY_Q; // アンカー(機体)側の基準姿勢: ベルトは+X方向へ伸びる
@@ -229,15 +201,18 @@ export class BeltPhysics {
 
     for (let i = 0; i < this.linkCount; i++) {
       const rawDir = sub(this.beltPos[i]!, prevPoint);
-      const segLen = len(rawDir); // このリンクの実長(距離拘束で ≒ MAG_BELT_PITCH)
+      const segLen = len(rawDir); // 方向を取り出すためだけの実長
       let bendQ = prevQ;
       if (segLen > 1e-6) {
         const clampedDir = this.clampDirectionToPrevFrame(scale(rawDir, 1 / segLen), prevQ, tanMaxPitch, tanMaxYaw);
 
-        // クランプ後の方向を「前点 + クランプ済み方向 × 元の長さ」として書き戻し、
+        // クランプ後の方向を「前点 + クランプ済み方向 × MAG_BELT_PITCH」として書き戻し、
         // 物理とビジュアルを一致させる(次フレームの Verlet 積分にも反映)。
+        // 長さに実長ではなく距離拘束の目標長を使うのは、prevPoint がこのループ内で
+        // 既に補正済みの節点だから — 補正で伸びた実長をそのまま採用すると、誤差が
+        // リンクを下るごとに掛け算で増幅し、数フレームで Infinity/NaN へ発散する。
         // 【重要】beltPrevPos も同量だけ平行移動して Verlet の速度 (pos - prevPos) を保つ。
-        const newPos = addScaled(prevPoint, clampedDir, segLen);
+        const newPos = addScaled(prevPoint, clampedDir, MAG_BELT_PITCH);
         const oldPos = this.beltPos[i]!;
         this.beltPrevPos[i] = add(this.beltPrevPos[i]!, sub(newPos, oldPos));
         this.beltPos[i] = newPos;

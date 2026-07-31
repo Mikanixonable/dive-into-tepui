@@ -51,6 +51,10 @@ export const MAG_THICKNESS = 1.0;
 export const MAG_WIDTH = MAG_THICKNESS * 4; // ベルト方向(X)
 export const MAG_BELT_PITCH = MAG_WIDTH + 0.18; // 連結間隔
 
+// ベルトが機体へ入っていく給弾口の位置(機体座標系 X)。ベルトの節点は継手(マガジンの端面)
+// を表すので、これは先頭マガジンの機体側の端面 ——「マガジンが機体に飲み込まれる点」—— にあたる。
+export const MAG_BELT_ANCHOR_X = -1.19;
+
 const loader = new THREE.ObjectLoader();
 
 // クローン時、THREE の Object3D.clone(true) は同じ parse から得た

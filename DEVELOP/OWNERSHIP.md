@@ -68,7 +68,7 @@ main.ts
     │   │   └── ContextMenu
     │   └── 計画パネル DOM
     ├── PlanGuide
-    ├── MapModeToggler                 ... 状態を持たない(所有物なし)
+    ├── MapModeToggler                 ... 所有物なし(マップ開閉フラグ mapMode だけを持つ)
     ├── Stage (activeStage)            ... initStage() が毎回 new する
     │   ├── ScoreCounter
     │   ├── Logistics                  ... 補給の投入判断と ▣ AMMO マーカー
@@ -158,7 +158,8 @@ main.ts
 | 予測折れ線を描く表示座標系(trajectoryFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本 |
 | マップ視点(注視点相対オフセット・パン)・表示座標系・フォーカス | `OverviewCamera` | |
 | 戦闘視点(yaw/pitch/dist・姿勢追従フラグ) | `ChaseCamera` | |
-| マップモード表示・照準ズーム | `CameraSystem.overviewMode` / `.zoomActive` | |
+| マップモードの開閉 | `MapModeToggler.mapMode` | 影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayTimeManager.forceCurrent` / タッチUI)を一斉に切り替える |
+| マップモード表示・照準ズーム | `CameraSystem.overviewMode` / `.zoomActive` | overviewMode は上の影響先。描画・視点側の分岐はこれを見る |
 | ターゲットロック・自動ターゲット・的通過マーク | `Targeter` | |
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
 | 発射数・命中数・撃破数・出撃数 | `ScoreCounter` | 所有は Stage |
@@ -180,6 +181,8 @@ main.ts
 - **`CameraSystem.overviewMode`(視点)・`PlanEditor.editMode`(操作系)・`DisplayTimeManager.forceCurrent`
   (未来表示の禁止)** は3つとも別の正本。同時に切り替えるのは `MapModeToggler` だけで、描画・視点側は
   overviewMode を、入力・挙動側は editMode を、未来表示の可否は forceCurrent を見る。
+  「マップモードが開いているか」そのものの正本は第四の値 `MapModeToggler.mapMode` で、上の三つ
+  (とタッチUI)はその影響先。
 - **`FloatingOrigin.r` と `Player.state.r`** は現状同じ値だが意味論的に別物。sync 系は必ず fo を参照し、
   `player.state.r` を描画原点として直接使わない。
 - **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `PlanDisplay.trajectoryFrame`(予測折れ線を
@@ -193,7 +196,7 @@ main.ts
   `Input.takeKey` は `KeyBinding` を受ける)と説明を出す側(ヘルプ表・操作バー・タッチパッド・
   ステージ briefing・結果画面)は両方ともそれを参照する。どの操作を誰が処理するかは各モジュールに
   閉じたままで(`SettingsPanel`=pauseMenu / `Hud`=help / `Stage`=restart /
-  `SimSpeedManager`=warpSlower・warpFaster・autoWarpToNode / `MapModeToggler`=mapMode /
+  `SimSpeedManager`=warpSlower・warpFaster・autoWarpToNode / `MapModeToggler`=toggleMapMode /
   `PlanEditor`=deleteNode・dv* / `CameraSystem`=followAttitudeToggle・gunsightZoom・camera* /
   `Player`=rcsDampToggle・progradeReset・fineAttitudeToggle・progradeHoldToggle・throttle*・reload・thrust*・pitch/yaw/roll)、
   `game.ts` が持つのは「どのモジュールに先に配るか」という順序だけ。
@@ -243,6 +246,8 @@ state を条件付きで `history` へ送れるのは「state が差し替え以
 すべてこの 1 型で表す**。同じ情報量の型を複数持たない(旧 `TrajectorySample` / `LineSample` /
 `PlannedNode.time` はここへ統合済み)ため、「状態」と「その時刻」が別々に渡されて食い違うことがない。
 
-例外はない。`physics/` 配下は全て純関数で、`*Into` のような out 引数版も、モジュール内スクラッチも
-持たない(アロケーション回避として一度導入したが、不変性と引き換えるほどの効果がないため撤去した。
-実測値は `軽量化計画.md` の A-1 を参照)。
+**例外はない。** RK4 の環境加速度評価も `envaccel.ts` の `envAccel` が `Vec3` を返す純粋関数で、
+`stepOrbitRK4` はそれを `ExtraAccelFn` として受け取る。ミュータブルなスクラッチや `out` 引数を
+持つ変種は `physics/` のどこにも置かない(その形を撤去した経緯と実測値は
+`memos/mikanixonable/軽量化計画.md` の A-1 を参照)。エンティティ数が増えて効くようになったときの
+答えは物理 LOD(同 B-1)であって、ミュータブルなスクラッチの再導入ではない。

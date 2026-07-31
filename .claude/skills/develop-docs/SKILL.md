@@ -19,7 +19,7 @@ description: 設計文書(CLAUDE.md / DEVELOP の CALLSTACK.md・OWNERSHIP.md・
 同じ内容を両方に書き写すのではなく、この役割どおりに書き分ける。食い違いを見つけたら
 DEVELOP/ を正として CLAUDE.md を直す。
 
-`dev.md` は人間専用。**絶対に編集しない。**
+`memos/mikanixonable/dev.md` は人間専用。**絶対に編集しない。**
 
 ## 1. まず差分を見て、更新対象を決める
 
@@ -59,7 +59,7 @@ git diff --stat HEAD -- src/
 
 対象の文書を読み捨てて、以下のプロンプトを自分自身へ課して書き直す。読む範囲は
 `src/main.ts` と `src/game/game.ts` を起点に、そこから per-frame で辿れる全モジュール
-(`player/` `camera/` `plan/` `predict/` `orbit-entity/` `stages/` `marker/` `hud/` `vfx/`
+(`player/` `camera/` `plan/` `game-entity/` `simulation/` `stages/` `marker/` `hud/` `vfx/`
 `input/` `render/environment-scene.ts` など)。**推測で書かず、必ずファイルを読む。**
 
 ### CALLSTACK.md 再生成プロンプト
@@ -76,7 +76,7 @@ git diff --stat HEAD -- src/
 > ```
 >
 > 原則、per frame にちょうど一度だけ呼ぶもの、複数箇所から参照されていない関数についての調査だが、
-> mapMode・phase・paused などによって分岐する部分(per frame の呼び出し回数が 0 回から 1 回に
+> overviewMode・phase・paused などによって分岐する部分(per frame の呼び出し回数が 0 回から 1 回に
 > なるもの)があれば、呼び出し条件を `// 条件` として付記せよ。多少簡略化されていても構わない。
 >
 > 調査対象は `main.ts` と `game.ts` だけでなく、そこから呼び出されている player・camera・plan・

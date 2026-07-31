@@ -18,6 +18,9 @@ import type { EntityManager } from '../../simulation/entity-manager';
 
 export class Logistics {
   private resupplyCheckAt = 0;
+  // 前フレームに syncMarkers が出したマーカー数。生存数が減ったとき、余った
+  // 添字のキーを隠すために覚えておく(キーの種類は同時存在数の最大値で頭打ちになる)。
+  private lastMarkerCount = 0;
 
   constructor(
     private readonly _hud: Hud,
@@ -27,6 +30,10 @@ export class Logistics {
     private readonly markerManager: MarkerManager,
   ) {}
 
+  // 上限判定はここでは行わない。MAX_AMMO は「定期投入が維持しようとする数」であって
+  // ハード上限ではなく、Stage0 の初期配置は STAGE0_LOGISTICS_INITIAL_AMMO(> MAX_AMMO)
+  // 個をこの関数で意図的に並べるため、ここで弾くと初期配置数が狂う。上限は呼び出し側
+  // (updateLogistics/despawnFarAmmo)が liveAmmoCount() を見て判断する。
   spawnForPlayer(
     player: Player,
     minDist = C.LOGISTICS_MIN_DIST,
@@ -62,32 +69,48 @@ export class Logistics {
 
     if (simTime < this.resupplyCheckAt) return;
     this.resupplyCheckAt = simTime + C.LOGISTICS_CHECK_INTERVAL;
-    if (player.magsLeft < C.LOGISTICS_LOW_MAGS && this.entities.ammos.length < C.MAX_AMMO) {
+    if (player.magsLeft < C.LOGISTICS_LOW_MAGS && this.liveAmmoCount() < C.MAX_AMMO) {
       this.spawnForPlayer(player);
     }
   }
 
-  // ▣ AMMO マーカー: 回収へ向かうべき補給の位置と距離を示す。同時存在数が MAX_AMMO で
-  // 頭打ちなのでマーカーキーもその枠で固定し、空き枠は隠す。displayState(未来ゴースト表示中は
-  // 将来位置)を使う — Ammo のメッシュ自体も displayState 基準で動くので揃えないと
-  // 「機体は未来位置、マーカーは現在位置」で壊れて見える(better_predict.md Step 4、
-  // Enemy.markerItem と同じ理由)。予測期間を超えた補給はマーカーごと落とす。
+  // ammos は EntityManager が cleanup/prune で後から詰めて消すため、alive=false のまま
+  // 配列に残る個体が混ざる。上限判定は必ずこれ経由で行い、ammos.length を直接見ない。
+  private liveAmmoCount(): number {
+    let count = 0;
+    for (const ammo of this.entities.ammos) if (ammo.alive) count++;
+    return count;
+  }
+
+  // ▣ AMMO マーカー: 回収へ向かうべき補給の位置と距離を示す。表示位置は displayState
+  // (未来ゴースト表示中は将来位置)を使う — Ammo のメッシュ自体も displayState 基準で
+  // 動くので、揃えないと「機体は未来位置、マーカーは現在位置」で壊れて見える
+  // (Enemy.markerItem と同じ理由)。マーカーを出せる補給(生存していて、かつ表示時刻の
+  // 位置が求まる = 予測期間内)だけを詰めた配列に番号を振ってキーにするので、alive=false の
+  // まま残る個体や予測期間を超えた個体を挟んでも欠番にならない。前フレームより数が減った回
+  // だけ、余った添字のキーを隠す(lastMarkerCount で前回数を覚えておく — キーの種類は
+  // 同時存在数の最大値で頭打ち)。画面外にあるあいだは実位置を指せないので、代わりに画面端へ
+  // 方位マーカー △ を出す(敵の ▲ と同じ機構・同じ位置付けで、塗りを抜いた記号で区別する)。
+  // 補給は取りに行く対象なので、方位マーカー側にも距離ラベルを載せる。
   syncMarkers(player: Player, project: ProjectFn, displayTime: number): void {
-    for (let i = 0; i < C.MAX_AMMO; i++) {
+    const shown = this.entities.ammos.flatMap((ammo) => {
+      const pos = ammo.alive ? ammo.displayState(displayTime)?.r : undefined;
+      return pos ? [pos] : [];
+    });
+    for (const [i, pos] of shown.entries()) {
       const key = `mg${i}`;
-      const ammo = this.entities.ammos[i];
-      if (!ammo || !ammo.alive) {
-        this.markerManager.hide(key);
-        continue;
-      }
-      const pos = ammo.displayState(displayTime)?.r;
-      if (!pos) {
-        this.markerManager.hide(key);
-        continue;
-      }
-      const dist = len(sub(pos, player.state.r));
-      this.markerManager.setPosition(key, 'mk-ammo', '▣', pos, project, `AMMO ${fmtMarkerDist(dist)}`);
+      const bearing = `${key}-bearing`;
+      const label = `AMMO ${fmtMarkerDist(len(sub(pos, player.state.r)))}`;
+      const p = project(pos);
+      this.markerManager.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, label);
+      this.markerManager.setBearing(bearing, 'mk-ammo', '△', p, label, 0.9);
     }
+    for (let i = shown.length; i < this.lastMarkerCount; i++) {
+      const key = `mg${i}`;
+      this.markerManager.hide(key);
+      this.markerManager.hide(`${key}-bearing`);
+    }
+    this.lastMarkerCount = shown.length;
   }
 
   private absorbNearbyAmmo(player: Player): void {
@@ -103,6 +126,9 @@ export class Logistics {
 
   // 自機から離れすぎた補給はデスポーンし、respawnOnDespawn なら同数を投入し直す
   // (ループ中に respawn 分を割り込ませない — ループ終了後にまとめて処理する)。
+  // 直前のループで alive = false にした個体がまだ ammos に残っているため、投入し直す
+  // ループは liveAmmoCount() を都度更新しながら MAX_AMMO で打ち切る(ammos.length は
+  // 死んだ個体を含むので使えない)。
   private despawnFarAmmo(player: Player, respawnOnDespawn: boolean): void {
     let respawn = 0;
     for (const ammo of this.entities.ammos) {
@@ -111,8 +137,11 @@ export class Logistics {
       ammo.alive = false;
       if (respawnOnDespawn) respawn++;
     }
-    for (let i = 0; i < respawn; i++) {
+    if (!respawnOnDespawn) return;
+    let count = this.liveAmmoCount();
+    for (let i = 0; i < respawn && count < C.MAX_AMMO; i++) {
       this.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
+      count++;
     }
   }
 }
