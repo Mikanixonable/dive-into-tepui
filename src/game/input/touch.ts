@@ -227,8 +227,8 @@ export class TouchControls {
     util.id = 'touch-util';
     root.appendChild(util);
     for (const b of [
-      { key: K.warpSlower, glyph: '«', label: 'warp' },
-      { key: K.warpFaster, glyph: '»', label: 'warp' },
+      { key: K.warpSlower, glyph: '«', label: '時間減速' },
+      { key: K.warpFaster, glyph: '»', label: '時間加速' },
       { key: K.toggleMapMode, glyph: K.toggleMapMode.label, label: '計画' },
       { key: K.autoWarpToNode, glyph: K.autoWarpToNode.label, label: 'ノードへ' },
       { key: K.help, glyph: K.help.label, label: 'ヘルプ' },

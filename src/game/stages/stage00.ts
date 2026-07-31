@@ -16,8 +16,8 @@ import { generateApproachingEnemy } from './spawner/enemy-generator';
 
 export class Stage00 extends Stage {
   static readonly id = '00' as const;
-  readonly selectLabel = '[0] 無限耐久サバイバル (Stage 00)';
-  readonly selectSub = '常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
+  readonly selectLabel = 'Stage 00';
+  readonly selectSub = '【無限耐久サバイバル】 常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
   readonly selectKeys = ['Digit0'];
   readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
