@@ -118,6 +118,7 @@
     - throttle.updateThrustState() → player.thrust へ代入
       - sfx.setThrust(false) // 推力入力なし or !canPlayerThrust
       - sfx.setThrust(true) // 推力あり
+    - invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
   - nanWatchdog.checkPlayer('player.behave')
   - activeStage.update() // 具体ステージへディスパッチ。!isPlaying なら即 return
     - behaveAllEnemies() // 全ステージ共通の先頭処理
@@ -185,6 +186,12 @@
       - [Enemy.checkLoss] destroyEffect() + activeStage.recordEnemyDeath(byPlayer=false) // 再突入時のみ
         - scoreCounter.recordEnemyLoss() + hud.hint()
     - prune() ×5 → entity.dispose() // alive=false の個体ごと(scene から除去、必要なら geometry も破棄)
+  - predictor.update() // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。視点/モードによる分岐なし
+    - resyncPrediction() // player + entities.all() の全対象、毎フレーム無条件(§3-4 (a) の距離判定)
+      - invalidatePrediction() // predicted.at(simTime) が実位置から PREDICT_RESET_DIST を超えて乖離、または区間外のときのみ
+    - player.advancePrediction() // 予算 PREDICT_STEP_BUDGET を自機優先で消費
+      - predicted.step() // ホライズンに達する or 予算が尽きるまで、1ステップごとに ephemeris をサンプル
+    - entity.advancePrediction() // 残り予算をカーソル位置から1周ぶん配る。消費 0(predictDuration=0/推力中/truncated)なら次へ即進む
   - cameraSystem.update() // 物理積分の後に呼ぶ(追従カメラの基準を積分後の自機位置に合わせるため)
     - chaseCamera.toggleFollowAttitude() // KeyG。カメラ自身の状態なのでここで消費する
     - zoomActive = !overviewMode && KeyZ 押下
