@@ -9,9 +9,11 @@ import {
   MU_EARTH,
   R_EARTH,
   elementsFromState,
+  fromOrbitalAxes,
   hermiteInterpolate,
   j2Accel,
   orbitState,
+  orbitalAxes,
   positionOnOrbit,
   stateFromElements,
   stepOrbitRK4,
@@ -20,7 +22,7 @@ import {
   trueAnomalyAt,
   velocityOnOrbit,
 } from '../../src/physics/orbital';
-import { len, sub, v3 } from '../../src/physics/vec3';
+import { dot, len, norm, sub, v3 } from '../../src/physics/vec3';
 
 export function register(): void {
   test('orbital: stateFromElements <-> elementsFromState round trip (machine precision)', () => {
@@ -226,6 +228,75 @@ export function register(): void {
     assert.ok(
       Math.abs(ratePerDay - expected) < Math.abs(expected) * tolFrac,
       `RAAN regression rate: ${ratePerDay} deg/day (expected ~${expected} +-${tolFrac * 100}%)`,
+    );
+  });
+
+  test('orbital: orbitalAxes returns an orthonormal basis', () => {
+    const a = R_EARTH + 700e3;
+    const s = stateFromElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3);
+    const { pro, nrm, radOut } = orbitalAxes(s);
+    const tol = 1e-9;
+    assert.ok(Math.abs(len(pro) - 1) < tol, `|pro| should be 1: ${len(pro)}`);
+    assert.ok(Math.abs(len(nrm) - 1) < tol, `|nrm| should be 1: ${len(nrm)}`);
+    assert.ok(Math.abs(len(radOut) - 1) < tol, `|radOut| should be 1: ${len(radOut)}`);
+    assert.ok(Math.abs(dot(pro, nrm)) < tol, `pro should be orthogonal to nrm: ${dot(pro, nrm)}`);
+    assert.ok(Math.abs(dot(nrm, radOut)) < tol, `nrm should be orthogonal to radOut: ${dot(nrm, radOut)}`);
+    assert.ok(Math.abs(dot(radOut, pro)) < tol, `radOut should be orthogonal to pro: ${dot(radOut, pro)}`);
+  });
+
+  test('orbital: orbitalAxes.radOut matches r-hat on a circular orbit (r perp v)', () => {
+    const a = R_EARTH + 420e3;
+    const s = stateFromElements(0, a, 0, (51.6 * Math.PI) / 180, 0.2, 0, 0.7);
+    const rHat = norm(s.r);
+    const { radOut } = orbitalAxes(s);
+    assert.ok(
+      len(sub(radOut, rHat)) < 1e-9,
+      `radOut should coincide with r-hat on a circular orbit: ${len(sub(radOut, rHat))}`,
+    );
+  });
+
+  test('orbital: orbitalAxes.radOut diverges from r-hat on an eccentric orbit but stays orthonormal', () => {
+    // e=0.3, nu=1.0(近点でも遠点でもない): dot(r,v) = r*k*e*sin(nu) が非ゼロになり、
+    // radOut(進行方向に直交な面内ベクトル)が r-hat から傾く条件になる。
+    const a = R_EARTH + 700e3;
+    const s = stateFromElements(0, a, 0.3, (30 * Math.PI) / 180, 0, 0, 1.0);
+    const { pro, nrm, radOut } = orbitalAxes(s);
+    const rHat = norm(s.r);
+    const divergence = len(sub(radOut, rHat));
+    assert.ok(
+      divergence > 1e-3,
+      `radOut should diverge from r-hat on an eccentric orbit: ${divergence}`,
+    );
+
+    const tol = 1e-9;
+    assert.ok(
+      Math.abs(len(pro) - 1) < tol && Math.abs(len(nrm) - 1) < tol && Math.abs(len(radOut) - 1) < tol,
+      'axes should remain unit length even off r-hat',
+    );
+    assert.ok(
+      Math.abs(dot(pro, nrm)) < tol && Math.abs(dot(nrm, radOut)) < tol && Math.abs(dot(radOut, pro)) < tol,
+      'axes should remain mutually orthogonal even off r-hat',
+    );
+  });
+
+  test('orbital: fromOrbitalAxes maps the unit axis vectors to pro/nrm/radOut', () => {
+    const a = R_EARTH + 700e3;
+    const s = stateFromElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3);
+    const { pro, nrm, radOut } = orbitalAxes(s);
+    const tol = 1e-9;
+    assert.ok(len(sub(fromOrbitalAxes(s, v3(1, 0, 0)), pro)) < tol, 'x=1 should map to pro');
+    assert.ok(len(sub(fromOrbitalAxes(s, v3(0, 1, 0)), nrm)) < tol, 'y=1 should map to nrm');
+    assert.ok(len(sub(fromOrbitalAxes(s, v3(0, 0, 1)), radOut)) < tol, 'z=1 should map to radOut');
+  });
+
+  test('orbital: fromOrbitalAxes preserves vector length (orthonormal change of basis)', () => {
+    const a = R_EARTH + 700e3;
+    const s = stateFromElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3);
+    const x = v3(0.3, -0.5, 0.8);
+    const mapped = fromOrbitalAxes(s, x);
+    assert.ok(
+      Math.abs(len(mapped) - len(x)) < 1e-9,
+      `length should be preserved by an orthonormal basis: ${len(mapped)} vs ${len(x)}`,
     );
   });
 }

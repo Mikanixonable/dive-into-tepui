@@ -106,4 +106,36 @@ export function register(): void {
     assert.equal(e.at(e.state.t), e.state);
     assert.equal(e.at(e.state.t + 1), null);
   });
+
+  test('orbit-entity: samplesOldestFirst is ordered oldest-to-newest and ends at state', () => {
+    const e = new OrbitEntity(circularState());
+    const dt = 10;
+    const sampleInterval = 10; // 毎ステップ記録
+    for (let i = 0; i < 20; i++) {
+      e.step(dt, SUN_POS, MOON_POS, 0, null, sampleInterval, 1e6);
+    }
+    const samples = e.samplesOldestFirst();
+    for (let i = 1; i < samples.length; i++) {
+      assert.ok(
+        samples[i]!.t > samples[i - 1]!.t,
+        `samples should be strictly ascending: ${samples.map((s) => s.t)}`,
+      );
+    }
+    assert.equal(samples[samples.length - 1], e.state, 'the last sample should be the current state itself');
+  });
+
+  test('orbit-entity: samplesOldestFirst is just [state] when history is empty', () => {
+    const fresh = new OrbitEntity(circularState());
+    const freshSamples = fresh.samplesOldestFirst();
+    assert.equal(freshSamples.length, 1);
+    assert.equal(freshSamples[0], fresh.state);
+
+    const noHistory = new OrbitEntity(circularState());
+    for (let i = 0; i < 10; i++) {
+      noHistory.step(1, SUN_POS, MOON_POS, 0, null, 1, 0); // keepDuration=0 なので history は空のまま
+    }
+    const noHistorySamples = noHistory.samplesOldestFirst();
+    assert.equal(noHistorySamples.length, 1);
+    assert.equal(noHistorySamples[0], noHistory.state);
+  });
 }

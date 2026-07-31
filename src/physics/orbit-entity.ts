@@ -79,6 +79,13 @@ export class OrbitEntity {
     this._elements = undefined;
   }
 
+  // 保持区間(history の最古 〜 state)を古い順に並べた1本の列。
+  samplesOldestFirst(): OrbitState[] {
+    const out = this._history.toArrayOldestFirst();
+    out.push(this._state);
+    return out;
+  }
+
   // 保持区間内(history の最古 〜 state)の任意時刻の状態。区間外は null。
   // history が空なら t === state.t のときだけ state を返す。history の最新サンプルより
   // 新しければ state との間を、それ以前は history 自身の補間を使う — 列と state をまたぐ
