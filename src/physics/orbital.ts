@@ -27,6 +27,32 @@ export function altitudeOf(r: Vec3): number {
   return len(r) - R_EARTH;
 }
 
+// 軌道基底: 進行方向・軌道面法線・面内で進行方向に直交する向きからなる正規直交系。
+// radOut が動径外向き r̂ と一致するのは r⊥v のとき(円軌道)だけで、離心軌道では
+// 動径から傾く — マーカーの RADIAL OUT/IN や Δv の OUT/IN はこの軸を指す。
+export type OrbitalAxes = {
+  readonly pro: Vec3; // 進行方向
+  readonly nrm: Vec3; // 軌道面法線
+  readonly radOut: Vec3; // 面内・進行方向に直交(外向き)
+};
+
+// 状態ベクトルから軌道基底を組む。速度または角運動量が縮退していると各軸は NaN になる。
+export function orbitalAxes(s: OrbitState): OrbitalAxes {
+  const pro = norm(s.v);
+  const nrm = norm(cross(s.r, s.v));
+  return { pro, nrm, radOut: cross(pro, nrm) };
+}
+
+// 軌道基底で表したベクトル(x=pro, y=nrm, z=radOut 成分)をワールド ECI へ変換する。
+export function fromOrbitalAxes(s: OrbitState, x: Vec3): Vec3 {
+  const { pro, nrm, radOut } = orbitalAxes(s);
+  return v3(
+    pro.x * x.x + nrm.x * x.y + radOut.x * x.z,
+    pro.y * x.x + nrm.y * x.y + radOut.y * x.z,
+    pro.z * x.x + nrm.z * x.y + radOut.z * x.z,
+  );
+}
+
 // 2状態間の3次エルミート補間。両端の位置を通り、両端の速度を接線とする3次多項式で
 // 時刻 t の位置を、その微分で速度を求める(粗いサンプル列でも軌道を滑らかに再現できる)。
 // a.t > b.t(逆順)でも同じ多項式が定まるので、順序は問わない。
