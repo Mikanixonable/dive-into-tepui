@@ -1,8 +1,10 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { altitudeOf, elementsFromState, OrbitState, orbitState } from '../../physics/orbital';
+import { altitudeOf, elementsFromState, OrbitState, orbitState, stepOrbitRK4 } from '../../physics/orbital';
 import { Attitude } from '../../physics/attitude';
-import { Vec3, v3 } from '../../physics/vec3';
+import { Vec3, add, v3 } from '../../physics/vec3';
+import { envAccel } from '../../physics/envaccel';
+import { StateQueue } from '../../physics/state-queue';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
@@ -29,7 +31,7 @@ export class OrbitEntity {
   set state(s: OrbitState) {
     if (this.historyLength > 0) {
       this._history.push(this._state);
-      if (this._history.length > this.historyLength) this._history.shift();
+      this._history.capCount(this.historyLength);
     }
     this._state = s;
     this._elements = undefined;
@@ -39,14 +41,14 @@ export class OrbitEntity {
   // 標的面通過判定に必要な最小限)。過去軌跡を描くならその点数まで増やす。件数を entity 種別
   // ごとに絞るのは、薬莢・破片のように大量に存在するものの履歴でメモリを食い潰さないため。
   protected readonly historyLength: number = 0;
-  private readonly _history: OrbitState[] = [];
+  private readonly _history = new StateQueue();
 
-  // 古い順の過去 state 列(最大 historyLength 件)。時刻付きなので SampledLine へそのまま渡せる。
-  get history(): readonly OrbitState[] { return this._history; }
+  // 過去 state 列(最大 historyLength 件)を保持する StateQueue。
+  get history(): StateQueue { return this._history; }
 
   // 直前の state。履歴を持たない/まだ 1 度も進んでいない場合は現在の state を返す
   // (線分衝突判定が退化して点判定になるだけで、破綻はしない)。
-  get prevState(): OrbitState { return this._history[this._history.length - 1] ?? this._state; }
+  get prevState(): OrbitState { return this._history.newest ?? this._state; }
 
   att: Attitude;
   obj: THREE.Object3D;
@@ -57,6 +59,8 @@ export class OrbitEntity {
   // 機体座標系トルク。回転制御を持つ entity(自機は PlayerThrottle)が毎フレーム
   // 書き込み、simulator の stepAttitudes がまとめて積分する。既定ゼロ = 自由回転。
   torque: Vec3 = v3();
+  // 弾道係数の逆数 Cd·A/m。stepSim の大気抵抗評価に使う自身のプロパティ(既定 0 = 抵抗なし)。
+  protected readonly bcInv: number = 0;
   protected readonly scene?: THREE.Scene;
 
   constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
@@ -65,6 +69,17 @@ export class OrbitEntity {
     this.obj = obj;
     this.scene = scene;
     this.scene?.add(this.obj);
+  }
+
+  // 中心重力 + 環境加速度(大気抵抗・J2・第三体摂動)+ 自身の推力で 1 ステップ RK4 積分する。
+  // 死亡済みの entity は積分しない。
+  stepSim(dt: number, sunPos: Vec3, moonPos: Vec3): void {
+    if (!this.alive) return;
+    const { thrust, bcInv } = this;
+    this.state = stepOrbitRK4(this.state, dt, (rx, ry, rz, vx, vy, vz) => {
+      const accel = envAccel(v3(rx, ry, rz), v3(vx, vy, vz), sunPos, moonPos, bcInv);
+      return thrust ? add(accel, thrust) : accel;
+    });
   }
 
   // 毎フレームの描画位置・姿勢同期。絶対 ECI 位置(state.r)を fo 経由で描画フレームへ変換する。
@@ -97,6 +112,7 @@ export class OrbitEntity {
 export abstract class Ship extends OrbitEntity {
   // 弾との線分衝突判定(hit.ts)が直前サブステップ位置を読むので 1 件だけ保持する。
   protected readonly historyLength = 1;
+  protected readonly bcInv = C.SHIP_BCINV;
 
   name: string;
   radius: number; // 被弾判定半径 [m](剛体接触の collideRadius とは別)
@@ -132,6 +148,8 @@ export abstract class Ship extends OrbitEntity {
 
 // 軌道上の補給(接近すると取り込んでベルトを延長できる)
 export class Ammo extends OrbitEntity {
+  protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
+
   constructor(state: OrbitState, att: Attitude, scene?: THREE.Scene) {
     super(state, buildAmmo(), scene, att);
     this.mass = 50;
@@ -168,6 +186,8 @@ function buildDebrisObj(debrisKind: DebrisKind): THREE.Object3D {
 
 // collideRadius 未設定の破片(爆発デブリ等)は剛体接触に参加せずすり抜ける。
 export class DebrisPiece extends OrbitEntity {
+  protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
+
   constructor(state: OrbitState, readonly debrisKind: DebrisKind, att: Attitude, collideRadius?: number, scene?: THREE.Scene) {
     super(state, buildDebrisObj(debrisKind), scene, att);
     this.collideRadius = debrisKind.kind === 'fragment' ? undefined : collideRadius;

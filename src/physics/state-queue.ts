@@ -14,6 +14,9 @@ export class StateQueue {
   get size(): number { return this.deque.size; }
   get empty(): boolean { return this.deque.empty; }
 
+  // 最新サンプル(補間しない生の値)。空なら null。
+  get newest(): OrbitState | null { return this.deque.empty ? null : this.deque.peekLeft(); }
+
   // t 未満に落ちる最初のインデックスを二分探索で返す([0, size])。先頭から見て
   // 「t 以上のもの」がちょうどこの件数だけ並んでいる、という契約だけで push の
   // 重複区間削除・cleanup の寿命境界・at の補間区間探索のすべてを賄う。
@@ -43,6 +46,11 @@ export class StateQueue {
     const cutoff = this.deque.peekLeft().t - maxAge;
     const idx = this.bisect(cutoff);
     this.deque.deleteRightN(Math.max(0, this.deque.size - Math.max(idx, minCount)));
+  }
+
+  // 直近 n 件までに切り詰める(古い順から捨てる)。
+  capCount(n: number): void {
+    if (this.deque.size > n) this.deque.deleteRightN(this.deque.size - n);
   }
 
   // 時刻 t のエルミート補間済み OrbitState。保持範囲(最古 〜 最新)の外は null。

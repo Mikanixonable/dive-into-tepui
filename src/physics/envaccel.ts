@@ -2,7 +2,7 @@
 // 第三体(潮汐)摂動。ゲーム本体(orbit-entity/simulator.ts)と軌道計画の数値予測
 // (physics/predict.ts)が同じ力の列挙を共有するための唯一の定義箇所。
 // THREE/DOM 非依存の純関数。
-import { J2_EARTH, MU_EARTH, R_EARTH, R_EARTH_EQ, SIDEREAL_DAY, j2Accel, thirdBodyAccel } from './orbital';
+import { R_EARTH, SIDEREAL_DAY, j2Accel, thirdBodyAccel } from './orbital';
 import { MU_MOON, MU_SUN } from './ephemeris';
 import { atmosphericDensity } from './atmosphere';
 import { Vec3, add, len, v3 } from './vec3';
@@ -30,57 +30,4 @@ export function envAccel(r: Vec3, v: Vec3, sunPos: Vec3, moonPos: Vec3, bcInv: n
   const sun = thirdBodyAccel(r, sunPos, MU_SUN);
   const moon = thirdBodyAccel(r, moonPos, MU_MOON);
   return add(add(add(drag, j2), sun), moon);
-}
-
-// スカラー計算版。大量のオブジェクト生成を避けるための最適化版。
-// 注意: モジュールスコープの状態は持たないが、呼び出し元（predictProvider 等）が
-// ミュータブル singleton 経由で使う場合は再入不可。
-export function envAccelScalar(
-  rx: number, ry: number, rz: number,
-  vx: number, vy: number, vz: number,
-  sunPos: Vec3, moonPos: Vec3, bcInv: number,
-  out: { x: number, y: number, z: number }
-): void {
-  out.x = 0; out.y = 0; out.z = 0;
-
-  // r² と |r| は Drag・J2 の両方で使うので先に求める。
-  const r2 = rx * rx + ry * ry + rz * rz;
-  const rl = Math.sqrt(r2);
-
-  // Drag
-  if (bcInv > 0) {
-    const rho = atmosphericDensity(rl - R_EARTH);
-    if (rho >= 1e-15) {
-      const vrx = vx - EARTH_OMEGA * rz;
-      const vry = vy;
-      const vrz = vz + EARTH_OMEGA * rx;
-      const k = -0.5 * rho * Math.sqrt(vrx * vrx + vry * vry + vrz * vrz) * bcInv;
-      out.x += vrx * k;
-      out.y += vry * k;
-      out.z += vrz * k;
-    }
-  }
-
-  // J2
-  const k = (-1.5 * J2_EARTH * MU_EARTH * R_EARTH_EQ * R_EARTH_EQ) / (r2 * r2 * rl);
-  const f = (5 * ry * ry) / r2;
-  out.x += k * rx * (1 - f);
-  out.y += k * ry * (3 - f);
-  out.z += k * rz * (1 - f);
-
-  // Third Body (Sun)
-  const sdx = sunPos.x - rx, sdy = sunPos.y - ry, sdz = sunPos.z - rz;
-  const sd3 = Math.pow(sdx * sdx + sdy * sdy + sdz * sdz, 1.5);
-  const sb3 = Math.pow(sunPos.x * sunPos.x + sunPos.y * sunPos.y + sunPos.z * sunPos.z, 1.5);
-  out.x += (MU_SUN * sdx) / sd3 - (MU_SUN * sunPos.x) / sb3;
-  out.y += (MU_SUN * sdy) / sd3 - (MU_SUN * sunPos.y) / sb3;
-  out.z += (MU_SUN * sdz) / sd3 - (MU_SUN * sunPos.z) / sb3;
-
-  // Third Body (Moon)
-  const mdx = moonPos.x - rx, mdy = moonPos.y - ry, mdz = moonPos.z - rz;
-  const md3 = Math.pow(mdx * mdx + mdy * mdy + mdz * mdz, 1.5);
-  const mb3 = Math.pow(moonPos.x * moonPos.x + moonPos.y * moonPos.y + moonPos.z * moonPos.z, 1.5);
-  out.x += (MU_MOON * mdx) / md3 - (MU_MOON * moonPos.x) / mb3;
-  out.y += (MU_MOON * mdy) / md3 - (MU_MOON * moonPos.y) / mb3;
-  out.z += (MU_MOON * mdz) / md3 - (MU_MOON * moonPos.z) / mb3;
 }

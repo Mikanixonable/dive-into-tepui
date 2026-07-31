@@ -33,6 +33,7 @@ export class Bullet extends OrbitEntity {
     // 弾は移動が速く、線分衝突判定(hit.ts)・標的面通過判定(targeter.ts)が直前サブステップ位置を
     // 読むので 1 件だけ保持する。
     protected readonly historyLength = 1;
+    protected readonly bcInv = C.BULLET_BCINV;
 
     readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
     readonly shooter: Shooter;

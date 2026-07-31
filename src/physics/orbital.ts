@@ -65,9 +65,9 @@ export function hermiteInterpolate(
   );
 }
 
-export interface IAccelProvider {
-  computeExtraAccel(rx: number, ry: number, rz: number, vx: number, vy: number, vz: number, out: {x: number, y: number, z: number}): void;
-}
+// 追加加速度(推力・大気抵抗・J2・第三体摂動など)を状態の関数として渡すためのコールバック。
+// RK4 の各中間段(k1〜k4)ごとに呼ばれる。
+export type ExtraAccelFn = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => Vec3;
 
 export const J2_EARTH = 1.08262668e-3; // 地球扁平の J2 項
 export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
@@ -102,13 +102,12 @@ export function thirdBodyAccel(r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
 
 // 単一エンティティの RK4 1ステップ(中心重力 + 追加加速度)。
 // 入力 s は書き換えず、時刻も dt だけ進めた新しい OrbitState を返す。
-export function stepOrbitRK4(s: OrbitState, dt: number, extra?: IAccelProvider): OrbitState {
+export function stepOrbitRK4(s: OrbitState, dt: number, extraAccel?: ExtraAccelFn): OrbitState {
   const r0x = s.r.x, r0y = s.r.y, r0z = s.r.z;
   const v0x = s.v.x, v0y = s.v.y, v0z = s.v.z;
   const h2 = dt / 2;
   const h6 = dt / 6;
 
-  const out = { x: 0, y: 0, z: 0 };
   const outA = { ax: 0, ay: 0, az: 0 };
 
   const computeA = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => {
@@ -118,11 +117,11 @@ export function stepOrbitRK4(s: OrbitState, dt: number, extra?: IAccelProvider):
     outA.ax = rx * k;
     outA.ay = ry * k;
     outA.az = rz * k;
-    if (extra) {
-      extra.computeExtraAccel(rx, ry, rz, vx, vy, vz, out);
-      outA.ax += out.x;
-      outA.ay += out.y;
-      outA.az += out.z;
+    if (extraAccel) {
+      const a = extraAccel(rx, ry, rz, vx, vy, vz);
+      outA.ax += a.x;
+      outA.ay += a.y;
+      outA.az += a.z;
     }
   };
 
