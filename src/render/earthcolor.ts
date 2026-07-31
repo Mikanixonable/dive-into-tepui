@@ -1,8 +1,6 @@
 // 地表色(fBm ノイズによる大陸・バイオーム・雲)の純粋関数群。
 // THREE 依存なし: tools/export-earth-texture.mjs から TypeScript コンパイラ API 経由で
 // 直接 import され、テクスチャ焼き込みの唯一の情報源として使われる。
-// (以前はこのロジックが src/render/earth.ts の中で球ジオメトリの頂点色として
-// 毎起動時に評価されていたが、静的な PNG テクスチャに置き換えたためここへ移設した。)
 
 export interface RGB {
   r: number;
@@ -60,12 +58,10 @@ function smoothstep(a: number, b: number, t: number): number {
   return smooth(clamp01((t - a) / (b - a)));
 }
 
-// hex パレット → リニア RGB。旧実装の new THREE.Color(hex) は色管理により
-// sRGB→リニア変換してから頂点色(リニア空間)として使っていたので、それと
-// 同一のパイプラインになるよう、ここでも定数をリニアへデコードしてから
-// lerp 等の合成を行う(surfaceColor の出力はリニア。ツール側が最後に
-// sRGB へエンコードして PNG に書き、実行時は SRGBColorSpace 指定でデコード
-// されるため、往復してシェーディング入力が旧実装と一致する)。
+// hex パレット → リニア RGB。lerp 等の色合成はリニア空間で行う必要があるため、
+// 定数もここで先にリニアへデコードしてから使う(surfaceColor の出力はリニア。
+// ツール側が最後に sRGB へエンコードして PNG に書き、実行時は SRGBColorSpace
+// 指定でデコードされるため、往復してもシェーディング入力はリニア空間のまま一致する)。
 function srgbChannelToLinear(c: number): number {
   return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }

@@ -45,8 +45,9 @@ export class EffectsSystem {
       0xffe2a0);
   }
 
-  // pos/vel は呼び出し元の生きたオブジェクト(entity の r/v など)を渡してよい。
-  // 以後 fx が独立して動くよう、ここで clone して保持する。
+  // pos/vel は呼び出し元の生きたオブジェクト(entity の r/v など)をそのまま渡してよい。
+  // Vec3 は不変(physics/vec3.ts)なので clone せずに保持でき、呼び出し元がその後
+  // 別の Vec3 に差し替えても fx が参照する値は変わらない。
   spawnFlash(
     pos: Vec3,
     vel: Vec3,

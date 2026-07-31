@@ -86,8 +86,7 @@ export class PlanTrajectory {
   }
 
   // 表示期間切替など、窓の滑り以外の理由で次フレームに全 arc を再計算させる(スロットル無視)。
-  // Plan の corners は変わらない — これは表示キャッシュ側の関心なので B-2 に閉じる(旧 markDirty
-  // が Plan(正データ)にあったのは責務漏れ)。
+  // Plan の corners は変わらない — これは表示キャッシュ側の関心なので B-2 に閉じる。
   invalidate(): void {
     this.forceNext = true;
   }

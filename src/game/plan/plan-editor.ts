@@ -2,7 +2,7 @@
 // 時刻移動・Δv アーム(node-gizmo.ts)ドラッグ・右クリックメニュー・選択状態・計画パネル
 // 表示への反映、および [X] キー(ノード/計画削除)の実処理。ノードの画面座標・最寄りサンプルの
 // 画面判定は PlanTrajectory(B-2)へ委譲する — `traj.projectPoint(r, t)`(ワールド点→表示座標系→
-// 画面)と `traj.nearestSample(mx, my, maxPx)` を呼ぶだけで、座標系(frame)や physics/frame.ts(XX)
+// 画面)と `traj.nearestSample(mx, my, maxPx)` を呼ぶだけで、座標系(frame)や physics/frame.ts
 // を直接参照しない。描画と同じ変換を通すので表示とクリック判定がずれない。
 //
 // その B-2 を所有・駆動するのは predict 側(PredictSystem)で、ここは参照を共有するだけ。
