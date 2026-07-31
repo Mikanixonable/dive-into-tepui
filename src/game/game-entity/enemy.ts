@@ -1,7 +1,7 @@
 
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
-import { Ship } from './entities';
+import { Ship } from './game-entity';
 import { Attitude } from '../../physics/attitude';
 import { altitudeOf, OrbitState, orbitState } from '../../physics/orbital';
 import { OrbitLine } from '../../render/orbitline';

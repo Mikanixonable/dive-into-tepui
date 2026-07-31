@@ -6,7 +6,7 @@ import * as C from '../const';
 import { leadPoint } from '../../physics/intercept';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from './marker-manager';
-import type { Enemy } from '../orbit-entity/enemy';
+import type { Enemy } from '../game-entity/enemy';
 import type { Player } from '../player/player';
 
 const markerKey = (enemy: Enemy): string => `lead-${enemy.name}`;

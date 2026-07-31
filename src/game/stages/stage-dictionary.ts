@@ -8,7 +8,7 @@
 import * as THREE from 'three/webgpu';
 import { Stage, StageId } from './stage';
 import type { Player } from '../player/player';
-import type { EntityManager } from '../orbit-entity/entity-manager';
+import type { EntityManager } from '../game-entity/entity-manager';
 import type { Hud } from '../hud/hud';
 import type { Sfx } from '../../audio/sfx';
 import type { UnlockManager } from '../unlock-manager';

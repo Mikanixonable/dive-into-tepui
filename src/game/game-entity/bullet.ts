@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { OrbitEntity } from './entities';
+import { GameEntity } from './game-entity';
 import { OrbitState } from '../../physics/orbital';
 import { FloatingOrigin } from '../floating-origin';
 import type { Stage } from '../stages/stage';
@@ -21,7 +21,7 @@ export type BulletType = 'normal' | 'plasma';
 
 // 自弾と敵プラズマ弾の両方に使う。配列は射手(自機/敵)ごとに分けて保持し、
 // 命中ルールは配列単位で扱うが、寿命(lifetime)は生成時に渡された値を自身で持つ。
-// dispose() は基底の OrbitEntity.dispose()(scene.remove のみ)をそのまま使う。
+// dispose() は基底の GameEntity.dispose()(scene.remove のみ)をそのまま使う。
 // buildBulletMesh/buildPlasmaMesh(render/ships.ts)のハロー用 geometry/material は
 // モジュールスコープ(通常弾)または accent 値ごと(プラズマ弾。取りうる値は少数)に
 // キャッシュされた共有インスタンスであり、本体側も memoParseShared() 由来で
@@ -29,10 +29,10 @@ export type BulletType = 'normal' | 'plasma';
 // つまり Bullet.obj 配下に「この弾だけが所有する」GPU リソースは存在しないため、
 // traverse して dispose するとまだ生きている他の弾から共有リソースを奪ってしまう
 // (BUG_REPORT.md B1 参照)。
-export class Bullet extends OrbitEntity {
-    // 弾は移動が速く、線分衝突判定(hit.ts)・標的面通過判定(targeter.ts)が直前サブステップ位置を
-    // 読むので 1 件だけ保持する。
-    protected readonly historyLength = 1;
+export class Bullet extends GameEntity {
+    // prevState(直前サブステップ位置。hit.ts の線分衝突判定・targeter.ts の標的面通過判定が
+    // 読む)は GameEntity 側で常時追跡されるので、ここでは historyDuration を上げる必要はない
+    // (既定 0 のまま = 過去列は記録しない)。
     protected readonly bcInv = C.BULLET_BCINV;
 
     readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
