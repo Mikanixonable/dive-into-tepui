@@ -12,6 +12,7 @@ import { register as registerEnvaccel } from './envaccel.test';
 import { register as registerFrame } from './frame.test';
 import { register as registerDeque } from './deque.test';
 import { register as registerStateQueue } from './state-queue.test';
+import { register as registerOrbitEntity } from './orbit-entity.test';
 
 registerVec3();
 registerOrbital();
@@ -24,5 +25,6 @@ registerEnvaccel();
 registerFrame();
 registerDeque();
 registerStateQueue();
+registerOrbitEntity();
 
 runAll();

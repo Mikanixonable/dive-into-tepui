@@ -5,7 +5,7 @@
 import { Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
-import { Ammo, DebrisPiece, OrbitEntity } from './entities';
+import { Ammo, DebrisPiece, GameEntity } from './game-entity';
 import { Enemy } from './enemy';
 import { Bullet } from './bullet';
 import type { Stage } from '../stages/stage';
@@ -41,12 +41,12 @@ export class EntityManager {
   }
 
   // 上限超過時は最古の個体をシーンから外す(弾・薬莢のジオメトリは共有なので破棄しない)
-  private addCapped<T extends OrbitEntity>(arr: T[], entity: T, cap: number): void {
+  private addCapped<T extends GameEntity>(arr: T[], entity: T, cap: number): void {
     arr.push(entity);
     if (arr.length > cap) arr.shift()!.dispose();
   }
 
-  all(): OrbitEntity[] {
+  all(): GameEntity[] {
     return [
       ...this.enemies,
       ...this.bullets,
@@ -73,7 +73,7 @@ export class EntityManager {
   }
 
   // in-place フィルタ: 配列の参照はそのまま保つ(ctx スナップショット越しの参照を無効化しない)
-  private prune<T extends OrbitEntity>(arr: T[]): void {
+  private prune<T extends GameEntity>(arr: T[]): void {
     let w = 0;
     for (const x of arr) {
       if (!x.alive) x.dispose();

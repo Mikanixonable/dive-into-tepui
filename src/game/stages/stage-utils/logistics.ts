@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../physics/attitude';
 import { add, cross, len, lenSq, norm, randSym, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
 import * as C from '../../const';
-import { Ammo } from '../../orbit-entity/entities';
+import { Ammo } from '../../game-entity/game-entity';
 import { orbitState } from '../../../physics/orbital';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
@@ -14,7 +14,7 @@ import { Player } from '../../player/player';
 import { ProjectFn } from '../../camera/camera-system';
 import { MarkerManager } from '../../marker/marker-manager';
 import { fmtMarkerDist } from '../../hud/utils';
-import type { EntityManager } from '../../orbit-entity/entity-manager';
+import type { EntityManager } from '../../game-entity/entity-manager';
 
 export class Logistics {
   private resupplyCheckAt = 0;
