@@ -1,6 +1,6 @@
 # コードベース全体レビュー — 修正すべき点の一覧
 
-調査日: 2026-07-31 / 調査時点: ブランチ `workspace3` `da67e8f` / 最終更新: `3dcf0e5` 時点
+調査日: 2026-07-31 / 調査時点: ブランチ `workspace3` `da67e8f` / 最終更新: `75e9652` 時点
 調査方法: `DEVELOP/{CALLSTACK,OWNERSHIP}.md` と CLAUDE.md で当たりを付けたのち、
 `src/` の主要モジュール(game/ 全域・physics/ 全域・render/ 主要・player/・stages/・plan/・predict/)を読解。
 **この文書は未解決の項目だけを載せる。直したものは消す。**「実機確認」を経ていない項目には確信度を併記した。
@@ -13,28 +13,20 @@
 `memos/refactoring_plan/refactoring_todo.md` に既出の項目は、**本書で新たに具体的な位置と根拠を
 特定できたものだけ**を再掲する(重複箇所には既出と明記した)。
 
-> 削除済み(対応コミット): **A3・A4**(`70826c4`)/ **A7・D1〜D6・E7**(`86f260b`)。
-> A7 は「force を毎フレーム追従させる」というコメントの方を実装(120ms スロットル)へ合わせた —
-> スロットルは要素ゆらぎでの再生成を止めるために置かれたもので、噴射中に 8Hz で追従すること自体は
-> 意図どおりと判断したため。番号は当時のまま欠番にしてある。
+> **A(挙動のバグ)は全 12 件が解消済みなので、章ごと削除した。** 対応コミット:
+> A3・A4 `70826c4` / A7・D1〜D6・E7 `86f260b` / A1 `664e4f5` / A2 `609df65` / A10 `d397a4a` /
+> A5・A6 `7d9fdb2` / A11 `7078bdb` / A8 `d837287` / A9 `ec3f156` / A12 `75e9652`。
+> A7 は実装ではなくコメントの方を実装(120ms スロットル)へ合わせて解決した。
+> **残りはいずれも「今すぐ壊れている」ものではなく、設計の逸脱・性能・文書の問題**である。
+> B〜E の番号は当時のまま欠番にしてある。
 
 ---
 
 ## 0. 優先度サマリ
 
-### A. 挙動のバグ(プレイに影響する)
+### A. 挙動のバグ
 
-| # | 内容 | 深刻度 | 確信度 | 修正難度 |
-|---|---|---|---|---|
-| **A1** | トリガーを離しても `wasFiring` が false に戻らない → 姿勢微調整が永続 ON・スピンアップ音が二度と鳴らない | **高** | 高 | 極小 |
-| **A2** | 自動ワープ解除に `return` が無く、同フレームで速度段が ×4 に上書きされる | 中 | 高 | 極小 |
-| **A5** | `STAGE0_TIME_LIMIT = 30000`(8時間20分)。選択画面は「2分」、ブリーフィングは「500分」と表示 | 中 | 高 | 極小 |
-| **A6** | `PLASMA_BULLET_SPEED` が `800*2/3` のままで `MUZZLE_SPEED=1000` に追従していない | 低 | 高 | 極小 |
-| **A8** | 決着後の簡略経路で `cleanup` / NaN 監視が走らず、ポーズより前に置かれている | 低 | 高 | 小 |
-| **A9** | `MarkerManager` がマーカー要素を削除しないため DOM が単調増加(Stage00 で顕著) | 中 | 高 | 中 |
-| **A10** | 的通過マークが死亡ターゲット基準で描かれ続ける(`autoTarget` と `aliveTarget` の不一致) | 低 | 高 | 極小 |
-| **A11** | 右ドラッグ中にポインタが HUD 要素へ移ると `mouseFiring` が解除されず撃ちっぱなしになり得る | 低 | 中 | 小 |
-| **A12** | 補給の再投入が `MAX_AMMO` を超え得る / ▣ マーカーは配列先頭 3 件しか見ない | 低 | 高 | 小 |
+**なし(全件解消)。**
 
 ### B. 責務・規約の逸脱
 
@@ -67,166 +59,16 @@
 
 ### D. 文書と実装の乖離
 
-D7〜D9(§4)。コード中のコメントの乖離は解消済みで、残っているのは
-**SPEC.md の棚卸し(D10)**・調査レポートの陳腐化(D7)・定数名(D9)。
+D7〜D10(§3)。コード中のコメントの乖離は解消済みで、残っているのは
+**SPEC.md の棚卸し(D10)**・調査レポートの陳腐化(D7)・未記載の制約(D8)・定数名(D9)。
 
 ### E. 命名・重複・小さな整理
 
-E1〜E6, E8〜E13(§5)。
+E1〜E6, E8〜E13(§4)。
 
 ---
 
-## 1. 挙動のバグ
-
-### A1. 【高】トリガーを離しても `wasFiring` が false に戻らない
-
-**位置**: `src/game/player/player-fire.ts:82-102`
-
-```ts
-updateFireState(...): void {
-  this.tickReloadTimer(dt);
-  const keyHeld = input.down(K.fire) || input.mouseFiring;
-  if (!keyHeld) return;          // ← ここで抜けるが wasFiring は true のまま
-  ...
-}
-```
-
-`wasFiring = false` を書くのは `stopFiring()`(ポーズ時のみ)・`tickMapMode()`(マップモード中)・
-`initAmmo()` の 3 箇所だけで、**戦闘中にトリガーを離す経路にリセットが無い**。
-
-**影響**:
-
-1. `Player.updateTorque` の `const fine = this.fineAttitude || this.fire.isFiring;`
-   (`src/game/player/player.ts`)が一度撃つと恒久的に true になり、
-   **姿勢制御が `FINE_ATTITUDE_SCALE = 0.5` に固定される**。CLAUDE.md は
-   「releasing the trigger restores full authority with no edge-tracking state」と
-   明記しているので、仕様に対する明確な違反。
-2. `fireCycle` の `justStartedFiring` が二度と true にならず、
-   **`sfx.spinUp()` と `SPINUP_TIME` の立ち上がり遅延が初回しか発生しない**
-   (CIWS モチーフの演出が実質死んでいる)。
-3. HUD の微調整モード表示(`panel.ts` の `fine`)は `player.fineAttitude` を見ているので、
-   **表示は OFF なのに実際は微調整が効いている**という食い違いも起きる。
-
-**対処**: `updateFireState` の `!keyHeld` 分岐で `this.wasFiring = false;`(必要なら
-`wasEmptyClick = false` も)を立ててから return する。
-
-### A2. 【中】自動ワープ解除に `return` が無い
-
-**位置**: `src/game/sim-speed-manager.ts:91-104`
-
-```ts
-update(simTime: number): void {
-  if (this.autoWarpUntil === null) return;
-  const tRem = this.autoWarpUntil - simTime;
-  if (tRem <= C.AUTOWARP_STOP) {
-    this.autoWarpUntil = null;
-    this._hud.hint('マニューバ実行点に接近 — ...');
-    this.levelIdx = 0;          // ← ×1 へ戻したつもり
-  }
-  let idx = 0;
-  for (...) if (SIM_SPEED_LEVELS[i] <= tRem / C.AUTOWARP_MARGIN) idx = i;
-  this.levelIdx = idx;          // ← 直後に上書きされる
-}
-```
-
-解除分岐から抜けずにループへ落ちるため、`levelIdx = 0` は同じフレームで潰される。
-`AUTOWARP_STOP = 20`・`AUTOWARP_MARGIN = 4` なので tRem が 16〜20 秒なら
-`tRem/4` が 4〜5 → **×4 が選ばれたまま自動ワープが終了する**。
-以後 `autoWarpUntil === null` で早期 return するので、×4 のまま固定される。
-
-**対処**: `levelIdx = 0` の直後に `return;` を足す。
-
-### A5. 【中】Stage0 の制限時間が説明と 250 倍ずれている
-
-**位置**: `src/game/const.ts` の `STAGE0_TIME_LIMIT` / `src/game/stages/stage0.ts:16,24`
-
-```ts
-export const STAGE0_TIME_LIMIT = 30000; // 制限時間 [実秒]
-```
-
-- 選択画面の説明 `selectSub`: 「制限時間2分の撃墜数スコアアタック」
-- ブリーフィング: `Math.floor(30000 / 60)` → 「制限時間 **500分**」
-
-デバッグ用に伸ばしたまま戻っていない可能性が高い。3 箇所の食い違いを 1 つの値へ揃える
-(2 分なら `120`)。**どの値が正なのかは設計判断なので、直す前に決める必要がある。**
-`selectSub` 側もリテラルではなく定数から生成すべき(E11 参照)。
-
-### A6. 【低】プラズマ弾速が定数の変更に追従していない
-
-**位置**: `src/game/const.ts` の `PLASMA_BULLET_SPEED`
-
-```ts
-export const PLASMA_BULLET_SPEED = 800 * 2 / 3; // MUZZLE_SPEED の約 2/3
-```
-
-`MUZZLE_SPEED = 1000` なので、コメントどおりなら 666.7 のはずが 533.3 になっている。
-`MUZZLE_SPEED * 2 / 3` と書けば二度とずれない(弾速が上がるので、敵の命中率が変わる点は要確認)。
-
-### A8. 【低】決着後の簡略経路の抜け
-
-**位置**: `src/game/game.ts` の `!activeStage.isPlaying` 分岐
-
-- `simulator.cleanup()` を呼ばないので、決着後は `alive=false` の個体が配列に残り続け、
-  再突入した弾・薬莢も回収されない(決着後もワープで時間は進められる)。
-- `nanWatchdog` も走らないので、この経路で状態が壊れても検出されない。
-- **`isPaused` の判定より前にあるため、決着後はポーズ中でもシミュレーションが進む**。
-  ポーズの意味論としては一貫していない。
-
-### A9. 【中】`MarkerManager` がマーカー要素を削除しない
-
-**位置**: `src/game/marker/marker-manager.ts` の `markerDictionary` / `hide()`
-
-`markerDictionary` は `set()` で追加されるだけで、`hide()` は `display:none` にするのみ。
-削除 API が存在しない。キーが有限のマーカー(`pro`/`bore`/`mg0..2`/`nd` など)は問題ないが、
-**対象ごとに一意なキーを持つもの**は増える一方になる:
-
-- `enemy-<name>` と `enemy-<name>-bearing`(`grouped-markers.ts`)
-- `lead-<name>`(`lead-markers.ts`)
-
-Stage00 は敵名が `W<波>-<番号>` で無限に増えるため、**1 機あたり div 3 個 + span 6 個**が
-永久に DOM へ残る。数百波では数千要素になり、`resolveCollisions()` が
-`markerDictionary.values()` を全走査する(§C4)ため CPU 側も比例して重くなる。
-
-**対処**: `retire()` から呼べる `remove(key)` を追加し、`GroupedMarkers`/`LeadMarkers` は
-hide ではなく remove する。既出の「マーカーを DOM でなく canvas で描く」検討
-(`refactoring_todo.md`)とは独立に、今の実装のままでも直せる。
-
-### A10. 【低】的通過マークが死亡ターゲット基準で残る
-
-**位置**: `src/game/targeter.ts` の `markBoardCrossings`(記録側)と `syncBoardMarkers`(表示側)
-
-記録は `this.aliveTarget`、表示は `this.autoTarget` を見ている。ターゲットが撃破されると
-`aliveTarget` は null になるが `autoTarget` は死亡個体を指したままなので、
-`syncBoardMarkers` は消滅した敵の凍結位置を基準に ✦ を描き続ける
-(`markerManager.setPosition(..., add(target.state.r, m.off), ...)`)。
-表示側も `aliveTarget` を見るように揃える。
-
-### A11. 【低】右ドラッグ中に `mouseFiring` が解除されない可能性
-
-**位置**: `src/game/input/input.ts` の `onPointerDown` / `onPointerUp`
-
-右ボタン押下時は `setPointerCapture` していない(左=0 と中=1 だけ捕捉している)ため、
-押したままポインタが `pointer-events: auto` の HUD 要素(⚙ ギア `#hud-gear` など)へ入ると
-`pointerup` がキャンバスに届かず、`mouseFiring` が true のまま残る。
-以後トリガーを押していなくても撃ち続ける。`window` 側の `pointerup`/`blur` で保険を張るか、
-button===2 でも capture するのが素直。
-
-### A12. 【低】補給数の上限が投入経路によって守られない
-
-**位置**: `src/game/stages/stage-utils/logistics.ts` の `despawnFarAmmo` / `syncMarkers`
-
-- `despawnFarAmmo` の再投入ループは `ammos.length < C.MAX_AMMO` を確認せず、
-  デスポーン数と同数を無条件に投入する(`updateLogistics` の定期投入だけが上限を見ている)。
-- `Stage00.init` も `MAX_AMMO` 回まわして初期配置する一方、`syncMarkers` は
-  `this.ammos[i]`(i < MAX_AMMO)しか見ない。**配列は Simulator 所有で prune により詰められる**
-  ため、上限を超えた瞬間だけでなく順序が変わったときも「マーカーの出ない補給」が生じる。
-
-**対処**: マーカーは `ammos.slice(0, MAX_AMMO)` ではなく「生存している ammo を距離順に N 件」など
-配列位置に依存しない選び方にし、投入は 1 箇所(`spawnForPlayer` の内側)で上限を守る。
-
----
-
-## 2. 責務・規約の逸脱
+## 1. 責務・規約の逸脱
 
 ### B1. `floating-origin.ts` が `'three'` から import している
 
@@ -359,7 +201,7 @@ pause(): void { this.simulator.lastSimDt = 0; ... }
 
 ---
 
-## 3. パフォーマンス
+## 2. パフォーマンス
 
 ### C1. 【大】`nodeArrivings()` が毎フレーム 2 回フル RK4 伝播する
 
@@ -420,10 +262,10 @@ const targets: (Player | Enemy)[] = [player, ...simulator.enemies];  // 毎サ�
 **位置**: `src/game/marker/marker-manager.ts` の `resolveCollisions()`
 
 - `svgOverlay.innerHTML = ''` → 全 SVG 子要素の破棄と再生成を毎フレーム。
-- ラベル緩和が O(n²) × 5 反復。
+- ラベル緩和が O(n²) × 5 反復。走査対象は `markerDictionary` の全エントリで、
+  表示中かどうかに関わらずまず全部を見る。
 - 位置を `parseFloat(m.root.style.left)` で**DOM の文字列から読み戻している**
   (`set()` で `toFixed(1)` して書いた値をパースし直す)。数値をそのまま保持すればよい。
-- A9 の DOM 蓄積により n が単調増加するので、時間とともに悪化する。
 
 `refactoring_todo.md` の「マーカーの表示位置が微妙にずれる」の原因候補として、
 この `toFixed(1)` 往復と、ラベル幅の推定 `textLen * 6.5 + 4` が挙がる
@@ -458,7 +300,7 @@ GPU バッファの生成・破棄が消える。
 
 ---
 
-## 4. 文書と実装の乖離
+## 3. 文書と実装の乖離
 
 | # | 位置 | 内容 |
 |---|---|---|
@@ -469,7 +311,7 @@ GPU バッファの生成・破棄が消える。
 
 ---
 
-## 5. 命名・重複・小さな整理
+## 4. 命名・重複・小さな整理
 
 | # | 位置 | 内容 |
 |---|---|---|
@@ -482,19 +324,18 @@ GPU バッファの生成・破棄が消える。
 | **E8** | `render/scene.ts` | `GameScene.resize` を返しているが `main.ts` は使っていない(内部で `addEventListener` 済み)。未使用の公開 API。また `setPixelRatio` が初期化時のみで、ウィンドウ間移動・ズーム時に追従しない |
 | **E9** | 各所 | 使われない引数・戻り値: `Player.checkLoss(_dt, _simTime, _activeStage, _playerPos)` は `_playerPos` に **自分自身の `state.r` を渡されている**(`game.ts`)。`Targeter.updateCombatTargeting` の戻り値は捨てられている。`Enemy` コンストラクタの `_hud` は「対で注入する方針」のため受けるだけ — 方針自体は `refactoring_todo.md`「引数整理」で見直し対象 |
 | **E10** | `game.ts` の `perfCounts()` | `ammos` が無い。`?perf=1` でエンティティ数を見るときに補給だけ勘定から漏れる |
-| **E11** | 各所 | const.ts に無いマジックナンバー: `plan-editor.ts` の `/ 200`(px→Δv 換算)、`effects-system.ts` の `11`(破片数)と `2.8`(拡散)、`collision.ts` の `restitution = 0.4` と `0.8`(めり込み補正係数)、`chase-camera.ts` の `12`/`8000`(距離クランプ)、`stage0.ts` の「5km以内」「2分」(定数と二重管理) |
+| **E11** | 各所 | const.ts に無いマジックナンバー: `plan-editor.ts` の `/ 200`(px→Δv 換算)、`effects-system.ts` の `11`(破片数)と `2.8`(拡散)、`collision.ts` の `restitution = 0.4` と `0.8`(めり込み補正係数)、`chase-camera.ts` の `12`/`8000`(距離クランプ) |
 | **E12** | `plan.ts` の `addNode` / `retimeNode` | `this._nodes.indexOf(postState)` で**オブジェクト参照一致**に頼って挿入位置を求めている。同一参照の `OrbitState` を 2 度渡すと壊れる。`sortByTime` が返す順序から直接求められる |
 | **E13** | `player-fire.ts` の `manualReload` | 空マガジンフレームを排出しないが、自動の `'barrel-reload'`(`fireCycle`)は排出する。同じ「バレル交換」で演出が非対称 |
 
 ---
 
-## 6. 補足: 既出項目のうち、位置を特定できたもの
+## 5. 補足: 既出項目のうち、位置を特定できたもの
 
 `refactoring_todo.md` に列挙済みだが本調査で具体化できたものを対応付けておく。
 
 | todo の項目 | 本書の該当 |
 |---|---|
-| markerManager のメモリリーク懸念 | **A9**(リークは実在。`enemy-*`/`lead-*` キーが増え続ける) |
 | マーカーの表示位置が微妙にずれる | **C4**(`toFixed(1)` の DOM 往復とラベル幅推定が候補。全角文字で顕著になるはず) |
 | predict が本当に延長分だけ計算しているか | **C1**(折れ線側は入力変化検出付きで妥当。重いのは `nodeArrivings` の無キャッシュ伝播) |
 | hit/collision を spatial hash に | **C3**(その前にサブステップ内の定数コストを削るほうが効く) |
@@ -505,14 +346,11 @@ GPU バッファの生成・破棄が消える。
 
 ---
 
-## 7. 着手順の提案
+## 6. 着手順の提案
 
-1. **A1 → A2**(いずれも数行。プレイ体験に直結。A1 は仕様違反でもある)
-2. **A5 / A6**(定数の整合。A5 は「制限時間を何分にするか」を先に決める)
-3. **C1**(マップモードのフレームレートに最も効く)
-4. **A9 + C4**(マーカー機構。DOM 削除 API の追加が本体)
-5. **B1 / B3 / B4 / B5**(規約違反の解消。B4 は削除するだけ)
-6. **D10**(SPEC §14 の棚卸し。実装済み項目の申告が誤っている)
-
-§5 の E 群は、上記のいずれかを触るついでに同じ変更セットへ入れるのが効率的
-(E2 は C1 と、E5 は C4 と、E6 は C6 と同じファイル)。
+1. **C1**(マップモードのフレームレートに最も効く。E2 も同じファイル)
+2. **B1 / B3 / B4 / B5**(規約違反の解消。B4 は削除するだけ、B1 は import 元の付け替えだけ)
+3. **C2 / C3**(毎フレームの割り当てとサブステップ内の定数コスト。アルゴリズム変更の前段)
+4. **D10**(SPEC §14 の棚卸し。実装済み項目の申告が誤っている)
+5. **C4 / C5 / C7**(DOM・GPU バッファの作り直しをやめる)
+6. **B10 / E3 / E4 / E5 / E6**(重複と規約違反の掃除。触るファイルのついでに)
