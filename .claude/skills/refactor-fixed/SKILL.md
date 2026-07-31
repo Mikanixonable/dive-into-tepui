@@ -52,7 +52,7 @@ CLAUDE.md の「Naming: render / update / build / sync」節が正本。
 ## ctx・context・opt・params といった引数は原則使わない
 
 場当たり的なオブジェクト引数は禁止。明示的な引数か、事前に共有した参照で渡す。
-現況と残っている例外は `memos/refactoring_plan/STOP_USING_CTX.md`。
+現況と残っている例外は `memos/hedalu244/refactoring_plan/STOP_USING_CTX.md`。
 
 ## 渡すのはクロージャではなくオブジェクトの参照
 
@@ -73,9 +73,9 @@ CLAUDE.md の「Naming: render / update / build / sync」節が正本。
 「たまたま」一致しているだけのものは別個のフラグに分離し、同時に切り替える必要があるなら、
 **切り替える側(トグラー)を一箇所に置いて両方を書き換える。**
 
-- `PlanEditor.editMode`(入力・編集の可否)と `CameraSystem.overviewMode`(視点・描画)
-  → 同時トグルは `MapModeToggler` の責務。
-- `OverviewCamera.cameraFrame`(視点が固定される座標系)と `PredictSystem.trajectoryFrame`
+- `PlanEditor.editMode`(入力・編集の可否)・`CameraSystem.overviewMode`(視点・描画)・
+  `DisplayTimeManager.forceCurrent`(未来表示の可否) → 同時トグルは `MapModeToggler` の責務。
+- `OverviewCamera.cameraFrame`(視点が固定される座標系)と `PlanDisplay.trajectoryFrame`
   (予測線を描く座標系) → プレイヤーが独立に選ぶ別々の値。
 
 ## 一般化しないと決めたもの

@@ -2,8 +2,8 @@ import * as THREE from 'three/webgpu';
 import { add, addScaled, cross, dot, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
 import { OrbitLine } from '../render/orbitline';
 import * as C from './const';
-import { Enemy } from './orbit-entity/enemy';
-import type { Simulator } from './orbit-entity/simulator';
+import { Enemy } from './game-entity/enemy';
+import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
 import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
@@ -52,13 +52,13 @@ export class Targeter {
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
   // 発射弾がその面を自機側から通過した点をターゲット相対で記録する。
   // 次弾の照準修正の目安になるマーカーとして一定時間表示する。
-  markBoardCrossings(player: Player, simulator: Simulator): void {
+  markBoardCrossings(player: Player, entities: EntityManager): void {
     const target = this.aliveTarget;
     if (!target) return;
     const n = norm(sub(target.state.r, player.state.r)); // 的の法線 = 視線方向
     if (lenSq(n) < 0.5) return;
 
-    for (const b of simulator.bullets) {
+    for (const b of entities.bullets) {
       if (b.type !== 'normal' || !b.alive) continue; // 的通過マーカーは通常弾のみ対象
       const prevR = b.prevState.r;
       const d0 = dot(sub(prevR, target.state.r), n);

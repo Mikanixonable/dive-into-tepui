@@ -9,6 +9,7 @@ import {
   MU_EARTH,
   R_EARTH,
   elementsFromState,
+  hermiteInterpolate,
   j2Accel,
   orbitState,
   positionOnOrbit,
@@ -142,6 +143,51 @@ export function register(): void {
     assert.ok(Math.abs(s.t - steps * dt) < 1e-9, `epoch should advance with the integration: ${s.t}`);
   });
 
+  test('orbital: hermiteInterpolate reproduces the endpoints and beats linear interpolation', () => {
+    // 420km 円軌道を RK4 で 300 秒(周期の約 1/18)進め、その両端から中間時刻を補間する。
+    const r0 = R_EARTH + 420e3;
+    const vCirc = Math.sqrt(MU_EARTH / r0);
+    const a = orbitState(0, v3(r0, 0, 0), v3(0, 0, vCirc));
+    const span = 300;
+    let b = a;
+    for (let i = 0; i < span; i++) b = stepOrbitRK4(b, 1);
+
+    // 両端では入力そのもの(エルミートの定義どおり位置・速度とも一致する)
+    const at0 = hermiteInterpolate(a, b, a.t);
+    const at1 = hermiteInterpolate(a, b, b.t);
+    assert.ok(len(sub(at0.r, a.r)) < 1e-6 && len(sub(at0.v, a.v)) < 1e-9, 'endpoint t=a.t');
+    assert.ok(len(sub(at1.r, b.r)) < 1e-6 && len(sub(at1.v, b.v)) < 1e-9, 'endpoint t=b.t');
+
+    // 中間時刻: 真値(同じ RK4 で積分した状態)との誤差が線形補間より桁違いに小さい
+    let truth = a;
+    for (let i = 0; i < span / 2; i++) truth = stepOrbitRK4(truth, 1);
+    const herm = hermiteInterpolate(a, b, truth.t);
+    const linear = v3(
+      (a.r.x + b.r.x) / 2, (a.r.y + b.r.y) / 2, (a.r.z + b.r.z) / 2,
+    );
+    const hermErr = len(sub(herm.r, truth.r));
+    const linErr = len(sub(linear, truth.r));
+    assert.ok(hermErr < linErr / 100, `hermite ${hermErr} m vs linear ${linErr} m`);
+
+    // 逆順(a.t > b.t)でも同じ多項式
+    const rev = hermiteInterpolate(b, a, truth.t);
+    assert.ok(len(sub(rev.r, herm.r)) < 1e-6, 'argument order should not matter');
+  });
+
+  test('orbital: hermiteInterpolate rejects out-of-range t unless extrapolation is allowed', () => {
+    const a = orbitState(100, v3(R_EARTH + 420e3, 0, 0), v3(0, 0, 7660));
+    const b = orbitState(200, v3(R_EARTH + 420e3, 0, 766e3), v3(-880, 0, 7610));
+
+    assert.throws(() => hermiteInterpolate(a, b, 250), /区間/, 'past the end');
+    assert.throws(() => hermiteInterpolate(a, b, 50), /区間/, 'before the start');
+    // 同時刻の2点は(外挿を許しても)補間できない
+    assert.throws(() => hermiteInterpolate(a, orbitState(a.t, b.r, b.v), a.t, true), /同時刻/);
+
+    const out = hermiteInterpolate(a, b, 250, true);
+    assert.equal(out.t, 250);
+    assert.ok(Number.isFinite(len(out.r)) && Number.isFinite(len(out.v)), 'extrapolation stays finite');
+  });
+
   test('orbital: j2Accel RAAN regression rate at 420km/51.6deg ~= -5deg/day (measured)', () => {
     // J2 のみを追加加速度として与え、円軌道を長時間積分して RAAN のドリフト率を測る。
     // 標準的な太陽同期軌道の式(dRAAN/dt ~ -5deg/day at 51.6°/420km LEO)との一致は
@@ -157,14 +203,7 @@ export function register(): void {
     const totalSeconds = totalDays * 86400;
     const steps = Math.round(totalSeconds / dt);
     for (let i = 0; i < steps; i++) {
-      s = stepOrbitRK4(s, dt, {
-        computeExtraAccel(rx: number, ry: number, rz: number, vx: number, vy: number, vz: number, out: { x: number; y: number; z: number; }): void {
-          const j2 = j2Accel(v3(rx, ry, rz));
-          out.x = j2.x;
-          out.y = j2.y;
-          out.z = j2.z;
-        }
-      });
+      s = stepOrbitRK4(s, dt, (rx, ry, rz) => j2Accel(v3(rx, ry, rz)));
     }
 
     const el = elementsFromState(s.r, s.v) as Elements;

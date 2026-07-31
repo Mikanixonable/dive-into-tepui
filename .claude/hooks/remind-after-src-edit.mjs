@@ -1,5 +1,6 @@
-// PostToolUse フック: src/**/*.ts を編集したら DEVELOP/ の設計文書の更新義務を思い出させる。
-// 判定だけを行い、実際の更新内容は .claude/skills/develop-docs/SKILL.md に従う。
+// PostToolUse フック: src/**/*.ts を編集したときの義務(コメント方針の自己点検・設計文書の同期)を
+// 思い出させる。判定だけを行い、実際の基準は .claude/skills/comment/SKILL.md と
+// .claude/skills/develop-docs/SKILL.md に従う。
 // jq が無い環境(Git Bash)でも動くよう node で書いている。
 
 let raw = '';
@@ -18,7 +19,13 @@ process.stdin.on('end', () => {
   if (!/(^|\/)src\/.*\.ts$/.test(posix)) process.exit(0);
 
   const message =
-    `${posix} を変更した。設計文書の同期が必要か判定せよ:\n` +
+    `${posix} を変更した。\n` +
+    '【コメントの自己点検】いま書いた/残したコメントを .claude/skills/comment/SKILL.md(/comment)の\n' +
+    '基準で見直せ。大原則は「そのモジュールの責務外に言及しない」。「どう実装しているか」\n' +
+    '「なにをしないか(否定形)」「誰が使うか」「以前どうだったか」「何を変えたか」「検討メモへの参照」\n' +
+    'は消す。残すのは「なにをするか」「どう使うか」と、相当に非自明な実装の理由だけ\n' +
+    '(モジュール5行/関数3行/関数内1行が目安)。\n' +
+    '【設計文書の同期】必要か判定せよ:\n' +
     '- ファイルの場所・名前・責務・公開メソッド名・キー割り当てが動いたか → CLAUDE.md(旧名を grep して残骸を消す)\n' +
     '- per-frame の呼び出し(追加・削除・改名・順序・実行条件)が動いたか → DEVELOP/CALLSTACK.md\n' +
     '- クラスの new 位置・状態(フィールド)の所有・参照共有・キャッシュが動いたか → DEVELOP/OWNERSHIP.md\n' +
