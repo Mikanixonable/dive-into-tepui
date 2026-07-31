@@ -101,7 +101,7 @@ main.ts
   どのノードも例外なく)は `physics/orbit-entity.ts` の `OrbitEntity` を1本、フィールド名
   `current` で保持する(state/history/prevState/elements の正本)。GameEntity ごとに繰り返さず
   ここに一括で記す。`predictDuration > 0` の GameEntity(Ship・Ammo のみ)は、`Predictor` が
-  `advancePrediction` を呼んだ時点で2本目の `OrbitEntity` を `predicted` として追加で持つ
+  `stepPrediction` を呼んだ時点で2本目の `OrbitEntity` を `predicted` として追加で持つ
   (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。
 - `STAGE_DEFINITIONS`(stage-dictionary.ts のモジュールスコープ)… 選択画面のラベル・解放条件を読む
   ためだけの `Stage` インスタンス列。`setup()`/`init()` は呼ばれず、プレイに使う `activeStage` とは別物。
