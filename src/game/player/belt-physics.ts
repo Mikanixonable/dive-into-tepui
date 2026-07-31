@@ -4,7 +4,7 @@
 import { Attitude, Quat, qFromUnitVectors, qInvert, qMul, qRotate } from '../../physics/attitude';
 import { orbitState } from '../../physics/orbital';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
-import { MAG_BELT_PITCH } from '../../render/ships';
+import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
 import * as C from '../const';
 import { BeltSection } from '../orbit-entity/entities';
 
@@ -35,7 +35,7 @@ export class BeltPhysics {
   private prevBodyW = v3(); // 前フレームの機体角速度(ベルト物理の角加速度推定用)
   private angularAccel = v3(); // 推定した機体角加速度(update() 内で使い回す)
   // 給弾進みに応じて動く根本の固定点(機体座標系)。belt.ts が姿勢導出の起点として読む。
-  anchor: Vec3 = v3(0.9, 0, 0);
+  anchor: Vec3 = v3(MAG_BELT_ANCHOR_X, 0, 0);
 
   constructor(private readonly linkCount: number) {}
 
@@ -103,7 +103,7 @@ export class BeltPhysics {
     if (this.beltInit) return;
     this.beltInit = true;
     for (let i = 0; i < this.linkCount; i++) {
-      const p = v3(0.9 + (i + 1) * MAG_BELT_PITCH, 0, 0);
+      const p = v3(MAG_BELT_ANCHOR_X + (i + 1) * MAG_BELT_PITCH, 0, 0);
       this.beltPos.push(p);
       this.beltPrevPos.push((p));
       this.beltTwist.push(0);
@@ -144,7 +144,7 @@ export class BeltPhysics {
 
   // アンカーを給弾進みに応じて更新し、根本(リンク0)を固定する
   private pinRootToAnchor(beltFeed: number): void {
-    this.anchor = v3(0.9 - beltFeed * MAG_BELT_PITCH, 0, 0);
+    this.anchor = v3(MAG_BELT_ANCHOR_X - beltFeed * MAG_BELT_PITCH, 0, 0);
 
     // 根本(リンク0)は常に機体に対して垂直(ローカル+X方向)になるよう、
     // 揺動物理を経由させずアンカーから固定距離・固定方向の位置に毎フレーム

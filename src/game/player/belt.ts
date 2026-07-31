@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import { Attitude, Quat, qFromAxisAngle, qFromUnitVectors, qMul, qRotate } from '../../physics/attitude';
 import { Vec3, len, scale, sub } from '../../physics/vec3';
 import * as C from '../const';
-import { MAG_BELT_PITCH, buildMagazineMesh } from '../../render/ships';
+import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH, buildMagazineMesh } from '../../render/ships';
 import { BeltSection } from '../orbit-entity/entities';
 import { BeltPhysics, X_AXIS } from './belt-physics';
 
@@ -22,7 +22,7 @@ export class Belt {
     const group = new THREE.Group();
     for (let i = 0; i < C.BELT_MAX_VISIBLE; i++) {
       const link = buildMagazineMesh();
-      link.position.x = 0.9 + i * MAG_BELT_PITCH;
+      link.position.x = MAG_BELT_ANCHOR_X + (i + 0.5) * MAG_BELT_PITCH;
       group.add(link);
       this.links.push(link);
     }
@@ -51,9 +51,10 @@ export class Belt {
   }
 
   // 確定済みの物理状態(BeltPhysics.beltPos/beltTwist、three 非依存の Vec3/Quat)から
-  // 各リンクの位置・向きを導出し、THREE.Object3D へ反映する。位置は「平行移動
-  // (parallel transport)」で求める: 前リンクの姿勢を基準に、その進行方向
-  // (ローカル+X)を新しい節点方向へ向ける最小回転だけを加える。
+  // 各リンクの位置・向きを導出し、THREE.Object3D へ反映する。各節点は継手(マガジンの
+  // 端面)を表すので、マガジン自体は前後2節点の間に架かる剛体棒であり、原点(箱の中心)
+  // はその中点に置く。向きは「平行移動(parallel transport)」で求める: 前リンクの姿勢を
+  // 基準に、その進行方向(ローカル+X)を新しい節点方向へ向ける最小回転だけを加える。
   sync(alive: boolean): void {
     const { beltPos, beltTwist, anchor } = this.physics;
     let prevPoint = anchor;
@@ -63,7 +64,7 @@ export class Belt {
       link.visible = alive && i < this.visibleCount;
 
       const pos = beltPos[i]!;
-      link.position.set(prevPoint.x, prevPoint.y, prevPoint.z);
+      link.position.set((prevPoint.x + pos.x) / 2, (prevPoint.y + pos.y) / 2, (prevPoint.z + pos.z) / 2);
 
       const dir = sub(pos, prevPoint);
       const segLen = len(dir);
