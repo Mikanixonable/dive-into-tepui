@@ -65,6 +65,14 @@ export class StateQueue {
     this.deque.deleteLeftN(this.bisect(t));
   }
 
+  // 保持しているサンプルを古い順(= 内部の降順と逆順)の配列で返す。折れ線描画
+  // (render/sampled-line.ts の SampledLine.syncGeometry)は時系列順の配列を要求するため。
+  toArrayOldestFirst(): OrbitState[] {
+    const out: OrbitState[] = new Array(this.deque.size);
+    for (let i = 0; i < this.deque.size; i++) out[i] = this.deque.at(this.deque.size - 1 - i);
+    return out;
+  }
+
   // 時刻 t のエルミート補間済み OrbitState。保持範囲(最古 〜 最新)の外は null。
   at(t: number): OrbitState | null {
     if (this.deque.empty) return null;
