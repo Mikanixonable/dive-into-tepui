@@ -10,6 +10,7 @@ import { register as registerProjection } from './projection.test';
 import { register as registerPredict } from './predict.test';
 import { register as registerFrame } from './frame.test';
 import { register as registerDeque } from './deque.test';
+import { register as registerStateQueue } from './state-queue.test';
 
 registerVec3();
 registerOrbital();
@@ -20,5 +21,6 @@ registerProjection();
 registerPredict();
 registerFrame();
 registerDeque();
+registerStateQueue();
 
 runAll();
