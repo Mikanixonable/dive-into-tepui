@@ -104,4 +104,12 @@ export function register(): void {
     q.discardFrom(100);
     assert.equal(q.size, 2);
   });
+
+  test('state-queue: toArrayOldestFirst returns samples oldest-to-newest', () => {
+    const q = new StateQueue();
+    assert.deepEqual(q.toArrayOldestFirst(), []);
+    for (const t of [0, 10, 20, 30]) q.push(stateAt(t));
+    const arr = q.toArrayOldestFirst();
+    assert.deepEqual(arr.map((s) => s.t), [0, 10, 20, 30]);
+  });
 }
