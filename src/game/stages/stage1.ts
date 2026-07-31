@@ -10,7 +10,7 @@ import {
   generatePhasedEnemy,
 } from './spawner/enemy-generator';
 import type { Player } from '../player/player';
-import type { Simulator } from '../orbit-entity/simulator';
+import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class Stage1 extends Stage {
@@ -28,23 +28,23 @@ export class Stage1 extends Stage {
     );
   }
 
-  init(player: Player, simulator: Simulator): number {
+  init(player: Player, entities: EntityManager): number {
     const base = player.state;
     const hud = this._hud;
     const sfx = this._sfx;
     const fx = this._fx;
     const scene = this._scene;
-    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 2, 0xff4a3d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), simulator);
-    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 2, 0xff7a2d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), simulator);
-    this.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 2, 0xe0409f, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), simulator);
-    this.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 3, 0xbf3dff, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), simulator);
-    this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 3, 0xff2d6b, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), simulator);
+    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 2, 0xff4a3d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
+    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 2, 0xff7a2d, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
+    this.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 2, 0xe0409f, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
+    this.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 3, 0xbf3dff, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
+    this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 3, 0xff2d6b, C.ENEMY_ORBIT_LINE_COLOR, hud, sfx, fx, scene), entities);
     return 5;
   }
-  update(dt: number, player: Player, simulator: Simulator, simTime: number, simSpeed: SimSpeedManager): void {    
+  update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!this.isPlaying) return;
-    
-    this.behaveAllEnemies(dt, player, simulator, simTime, simSpeed);
+
+    this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
 
     this.logistics.updateLogistics(simTime, player);
   }

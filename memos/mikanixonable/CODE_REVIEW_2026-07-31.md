@@ -10,7 +10,7 @@
 
 既存の `BUG_REPORT.md` / `MEMORY_LEAK.md`(2026-07-26)で指摘された dispose 系リークは、
 現在のコードでは修正済みであることを確認した(本書では重複して挙げない)。
-`memos/refactoring_plan/refactoring_todo.md` に既出の項目は、**本書で新たに具体的な位置と根拠を
+`memos/hedalu244/refactoring_plan/refactoring_todo.md` に既出の項目は、**本書で新たに具体的な位置と根拠を
 特定できたものだけ**を再掲する(重複箇所には既出と明記した)。
 
 > **A(挙動のバグ)は全 12 件が解消済みなので、章ごと削除した。** 対応コミット:

@@ -6,9 +6,9 @@ import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Stage } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import type { Simulator } from '../orbit-entity/simulator';
+import type { EntityManager } from '../simulation/entity-manager';
 import type { Player } from '../player/player';
-import type { Enemy } from '../orbit-entity/enemy';
+import type { Enemy } from '../game-entity/enemy';
 import type { Hud } from '../hud/hud';
 import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
@@ -37,25 +37,25 @@ export class Stage00 extends Stage {
     );
   }
 
-  init(player: Player, simulator: Simulator): number {
+  init(player: Player, entities: EntityManager): number {
     for (let i = 0; i < C.MAX_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
     }
     // 初期状態でもランダムに敵を配置する
-    this.spawnWave(player, (enemy) => this.addEnemy(enemy, simulator), 'random');
+    this.spawnWave(player, (enemy) => this.addEnemy(enemy, entities), 'random');
     return 0;
   }
 
-  update(dt: number, player: Player, simulator: Simulator, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!this.isPlaying) return;
 
-    this.behaveAllEnemies(dt, player, simulator, simTime, simSpeed);
+    this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
 
     this.logistics.updateLogistics(simTime, player, true);
 
     if (this.waveState === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(player);
-    if (this.waveState === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, simulator);
-    if (this.waveState === 'active_combat') this.updateActiveCombatPhase(dt, player, simulator, simTime);
+    if (this.waveState === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, entities);
+    if (this.waveState === 'active_combat') this.updateActiveCombatPhase(dt, player, entities, simTime);
   }
 
   checkWin(): boolean { return false; }
@@ -81,18 +81,18 @@ export class Stage00 extends Stage {
   }
 
   // 「ウェーブ接近予告」フェーズ: カウントダウン後に最初のウェーブを生成する。
-  private updateSpawningEnemiesPhase(dt: number, player: Player, simulator: Simulator): void {
+  private updateSpawningEnemiesPhase(dt: number, player: Player, entities: EntityManager): void {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
-    this.spawnWave(player, (enemy) => this.addEnemy(enemy, simulator));
+    this.spawnWave(player, (enemy) => this.addEnemy(enemy, entities));
     this.waveState = 'active_combat';
     this.spawnTimer = C.STAGE00_SPAWN_INTERVAL;
   }
 
   // 「交戦中」フェーズ: 圏外の敵を消しつつ、同時展開数の上限内で次のウェーブを送り込む。
-  private updateActiveCombatPhase(dt: number, player: Player, simulator: Simulator, simTime: number): void {
-    despawnOutOfRangeEnemies(simulator.enemies, player, C.STAGE00_MAX_RANGE, simTime, this);
-    const activeGroups = countActiveWaveGroups(simulator.enemies);
+  private updateActiveCombatPhase(dt: number, player: Player, entities: EntityManager, simTime: number): void {
+    despawnOutOfRangeEnemies(entities.enemies, player, C.STAGE00_MAX_RANGE, simTime, this);
+    const activeGroups = countActiveWaveGroups(entities.enemies);
     const limits = resolveWaveSpawnLimits(this.waveCount, activeGroups);
     if (activeGroups === 0) {
       // 全滅または画面外へ離脱した場合でも、瞬時に次が湧き続ける無限ループを防ぐため最低2秒は待つ
@@ -101,7 +101,7 @@ export class Stage00 extends Stage {
     if (activeGroups >= limits.maxGroups || this.waveCount >= limits.allowedMaxWaveCount) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
-    this.spawnWave(player, (enemy) => this.addEnemy(enemy, simulator));
+    this.spawnWave(player, (enemy) => this.addEnemy(enemy, entities));
     this.spawnTimer = C.STAGE00_SPAWN_INTERVAL;
     this._hud.toast(`波状攻撃 第${this.waveCount}波 接近中！`, 3000);
   }
