@@ -1,8 +1,7 @@
-// 軌道計画の多ノード予測軌道を arc 単位で描く。Plan の corners を arc へ分解し、
-// arc ごとに PredictedLine を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
+// 軌道計画の多ノード予測軌道を arc 単位で描く。Plan の corners を区間へ分解し、
+// 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital';
-import { sampleAt } from '../../physics/predict';
 import { Vec3, v3 } from '../../physics/vec3';
 import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -10,7 +9,7 @@ import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn } from '../camera/camera-system';
 import { Plan } from './plan';
-import { PredictedLine } from './predicted-line';
+import { PlanArc } from './plan-arc';
 
 const SEGMENT_COLORS = [0xbfc9d4, 0xffffff, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
@@ -18,12 +17,13 @@ const arcOpacity = (i: number): number => (i === 0 ? 0.55 : 0.85);
 
 const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
 
-type Arc = { state0: OrbitState; end: number };
+type Segment = { state0: OrbitState; end: number };
 
 export class PlanTrajectory {
   readonly group = new THREE.Group();
-  private lines: PredictedLine[] = [];
-  private arcs: Arc[] = [];
+  // 先頭 activeCount 本がこのフレームの区間に対応する(色は index で決まるので使い回す)。
+  private arcs: PlanArc[] = [];
+  private activeCount = 0;
   private frame: Frame = 'inertial';
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
@@ -36,7 +36,7 @@ export class PlanTrajectory {
     scene.add(this.group);
   }
 
-  // plan/displayEnd から arc 列を組み直し、各 arc の PredictedLine を更新する。
+  // plan/displayEnd から区間列を組み直し、各区間の PlanArc を更新する。
   update(
     plan: Plan,
     displayEnd: number,
@@ -50,19 +50,20 @@ export class PlanTrajectory {
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
     this.project = project;
-    // anchor→node…→displayEnd を arc に分解する
-    this.arcs = buildArcs(plan.anchor, plan.nodes, displayEnd);
+    // anchor→node…→displayEnd を区間に分解する
+    const segments = buildSegments(plan.anchor, plan.nodes, displayEnd);
     const force = this.forceNext;
     this.forceNext = false;
-    // 各 arc に対応する PredictedLine を更新する
-    for (let i = 0; i < this.arcs.length; i++) {
-      const arc = this.arcs[i]!;
-      const line = this.lineAt(i);
-      line.setVisible(true);
-      line.update(arc.state0, arc.end, ephemeris, frame, currentTime, fo, undefined, force);
+    // 各区間に対応する PlanArc を更新する
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]!;
+      const arc = this.arcAt(i);
+      arc.setVisible(true);
+      arc.update(seg.state0, seg.end, ephemeris, frame, currentTime, fo, force);
     }
-    // arc 数が減った分の余った line を隠す
-    for (let i = this.arcs.length; i < this.lines.length; i++) this.lines[i]!.setVisible(false);
+    // 区間数が減った分の余った arc を隠す
+    for (let i = segments.length; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
+    this.activeCount = segments.length;
   }
 
   // 次フレームに全 arc を強制再計算させる(表示期間切替など窓の滑り以外の変化時)。
@@ -70,13 +71,11 @@ export class PlanTrajectory {
     this.forceNext = true;
   }
 
-  // 時刻 t を含む arc から補間したサンプルを返す。arc がなければ null。
+  // 時刻 t を保持区間に含む最初の arc から補間した状態を返す。どの arc の外でも null。
   sampleAt(t: number): OrbitState | null {
-    if (this.arcs.length === 0) return null;
-    for (let i = 0; i < this.arcs.length; i++) {
-      if (t <= this.arcs[i]!.end || i === this.arcs.length - 1) {
-        return sampleAt(this.lines[i]!.samplesRef(), t);
-      }
+    for (let i = 0; i < this.activeCount; i++) {
+      const s = this.arcs[i]!.at(t);
+      if (s) return s;
     }
     return null;
   }
@@ -98,8 +97,8 @@ export class PlanTrajectory {
     let best: OrbitState | null = null;
     let bestD = maxPx * maxPx;
     // 全 arc の全サンプルを画面座標へ投影し、最も近いものを選ぶ
-    for (let i = 0; i < this.arcs.length; i++) {
-      for (const s of this.lines[i]!.samplesRef()) {
+    for (let i = 0; i < this.activeCount; i++) {
+      for (const s of this.arcs[i]!.samplesRef()) {
         const p = this.projectPoint(s.r, s.t);
         if (!p.front) continue;
         const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
@@ -117,30 +116,30 @@ export class PlanTrajectory {
     this.group.visible = v;
   }
 
-  // i 番目の arc に対応する PredictedLine を返す(なければ生成して group へ追加する)。
-  private lineAt(i: number): PredictedLine {
-    while (this.lines.length <= i) {
-      const idx = this.lines.length;
-      const line = new PredictedLine(arcColor(idx), arcOpacity(idx), 2);
-      this.lines.push(line);
-      this.group.add(line.object3d);
+  // i 番目の PlanArc を返す(なければ生成して group へ追加する)。
+  private arcAt(i: number): PlanArc {
+    while (this.arcs.length <= i) {
+      const idx = this.arcs.length;
+      const arc = new PlanArc(arcColor(idx), arcOpacity(idx), 2);
+      this.arcs.push(arc);
+      this.group.add(arc.object3d);
     }
-    return this.lines[i]!;
+    return this.arcs[i]!;
   }
 }
 
-// anchor を起点に nodes を順にたどり、end までを区切った arc(区間)列を返す。
-function buildArcs(anchor: OrbitState, nodes: readonly OrbitState[], end: number): Arc[] {
-  const arcs: Arc[] = [];
+// anchor を起点に nodes を順にたどり、end までを区切った区間列を返す。
+function buildSegments(anchor: OrbitState, nodes: readonly OrbitState[], end: number): Segment[] {
+  const segments: Segment[] = [];
   let state0 = anchor;
   // ノードを1つずつ経由点として区間を切り出す
   for (const node of nodes) {
     if (state0.t >= end) break;
-    const arcEnd = Math.min(node.t, end);
-    if (arcEnd > state0.t) arcs.push({ state0, end: arcEnd });
+    const segEnd = Math.min(node.t, end);
+    if (segEnd > state0.t) segments.push({ state0, end: segEnd });
     state0 = node;
   }
-  // 最後のノードから end までを最終 arc とする
-  if (state0.t < end) arcs.push({ state0, end });
-  return arcs;
+  // 最後のノードから end までを最終区間とする
+  if (state0.t < end) segments.push({ state0, end });
+  return segments;
 }
