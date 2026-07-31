@@ -104,7 +104,8 @@ export class EffectsSystem {
     const { t, r, v } = state;
     this.spawnFlash(r, v, C.DESTROY_FLASH1_SIZE0 * scale, C.DESTROY_FLASH1_SIZE1 * scale, C.DESTROY_FLASH1_DURATION, 0xffb36b);
     this.spawnFlash(r, v, C.DESTROY_FLASH2_SIZE0 * scale, C.DESTROY_FLASH2_SIZE1 * scale, C.DESTROY_FLASH2_DURATION, 0xfffbe8);
-    this.scatterFragments(t, r, v, 11, accent, C.DESTROY_FRAG_SIZE_MIN * scale, C.DESTROY_FRAG_SIZE_MAX * scale, 2.8);
+    // 破片のサイズを 1/3 に縮小し、拡散の初速(spread)を大きくして散らせる
+    this.scatterFragments(t, r, v, 11, accent, (C.DESTROY_FRAG_SIZE_MIN * scale) / 3, (C.DESTROY_FRAG_SIZE_MAX * scale) / 3, 20.0);
   }
 
   // 破壊片1個を生成する。
