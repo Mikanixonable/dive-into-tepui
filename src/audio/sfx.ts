@@ -411,9 +411,24 @@ export class Sfx {
   // 撃破爆発音
   explosion(): void {
     if (!this.ctx) return;
-    this.noiseBurst(0.5, 'lowpass', 200, 0.6);
-    this.noiseBurst(0.3, 'bandpass', 600, 0.4);
-    this.tone(50, 0.4, 0.5, 'square');
+    const t = this.ctx.currentTime;
+    // 鈍い破裂音
+    this.noiseBurst(0.2, 'lowpass', 150, 0.8);
+    this.noiseBurst(0.1, 'lowpass', 400, 0.5);
+    
+    // 短い低音のキックのような成分
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(120, t);
+    osc.frequency.exponentialRampToValueAtTime(30, t + 0.15);
+    
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.8, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+    
+    osc.connect(gain).connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.2);
   }
 
   // 時間warp切替音。
