@@ -1,7 +1,7 @@
 // HUD の静的 DOM/スタイル構築。
 import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { ACCENT, ACCENT_SOFT, ACCENT_RGB, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT } from '../theme';
+import { ACCENT, ACCENT_SOFT, ACCENT_RGB, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
 
 const rotationLabels = [K.pitchDown, K.pitchUp, K.yawRight, K.yawLeft, K.rollLeft, K.rollRight]
   .map((k) => k.label).join('/');
@@ -11,7 +11,7 @@ const STYLE = `
 #hud, #hud * { box-sizing: border-box; margin: 0; padding: 0; }
 #hud {
   position: fixed; inset: 0; pointer-events: none; overflow: hidden;
-  font-family: 'Consolas', 'Courier New', monospace;
+  font-family: ${FONT};
   color: ${INK}; user-select: none; z-index: 10;
   font-size: 13px;
 }

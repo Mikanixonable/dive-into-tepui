@@ -4,7 +4,7 @@
 // 同じ仕組みで扱える。マウス+キーボード環境では生成しない。
 import { Input } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
-import { ACCENT, ACCENT_RGB, TEXT_DIM } from '../theme';
+import { ACCENT, ACCENT_RGB, TEXT_DIM, FONT } from '../theme';
 
 // SURFACE/EDGE はこのファイル固有の不透明度(0.66 / 0.14)を使うため、
 // theme.ts の SURFACE(0.82)/EDGE(0.09)とは別定数のまま保持する。
@@ -15,7 +15,7 @@ const STYLE = `
 /* z-index 9: システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より下に置く */
 #touch-ui {
   position: fixed; inset: 0; pointer-events: none; z-index: 9;
-  font-family: 'Consolas', 'Courier New', monospace; user-select: none;
+  font-family: ${FONT}; user-select: none;
   -webkit-user-select: none;
 }
 #touch-ui .tbtn {

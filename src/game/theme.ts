@@ -9,3 +9,4 @@ export const EDGE = 'rgba(255, 255, 255, 0.09)';
 export const BG = '#08090c';
 export const TEXT = '#e6e8eb';
 export const TEXT_DIM = '#7d838c';
+export const FONT = "'VT323', Consolas, 'Courier New', monospace";
