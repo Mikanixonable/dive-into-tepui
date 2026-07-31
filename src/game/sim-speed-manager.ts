@@ -16,7 +16,7 @@ export class SimSpeedManager {
   constructor(
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
-  ) {}
+  ) { }
 
   // 現在のワープ倍率。
   get simSpeed(): number {
@@ -56,7 +56,7 @@ export class SimSpeedManager {
     if (next < 0 || next >= C.SIM_SPEED_LEVELS.length) return;
     this.levelIdx = next;
     this._sfx.warp();
-    this._hud.hint(`TIME WARP ×${this.simSpeed}`);
+    this._hud.hint(`時間加速 ×${this.simSpeed}`);
   }
 
   // 指定した simTime まで自動ワープする状態にする。
