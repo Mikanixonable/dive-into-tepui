@@ -69,13 +69,17 @@
         - [editMode] deleteSelected() → deleteNode()
           - plan.removeNode() / closeMenu() / simSpeedManager.cancelAutoWarp() / hud.hint()
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
+  - [game.isPaused] 以降を実行せず return するポーズ経路 // 決着後の簡略経路より前。ポーズ中は決着後も完全に止まる
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
     - player.thrust = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
     - simulator.stepSimulation(bulletCollision=false, resolveCollision=false, doSubstep=false) // simSpeed は ×MAX_PHYS_SIM_SPEED で打ち止め
       - simulationSubStep() ×1 → stepEntity() エンティティごと + player.thermal.updateThermal()
       - stepAttitudes()
+    - nanWatchdog.checkAll('stepSimulation(決着後)') // 通常経路と同じく積分の直後に一度
+    - simulator.cleanup() // 決着後もワープで時間は進むので、通常経路と同じ位置で回収する
+      // Enemy.checkLoss 経由で recordEnemyDeath(cause='reentry') が走り得るが、勝利遷移は
+      // isPlaying でガードされているので決着後に上書きされることはない
     - cameraSystem.update() // 決着後も追従を続ける(sync は止まらないため、飛ばすと視点が絶対 ECI に取り残される)
-  - [game.isPaused] 以降を実行せず return するポーズ経路
   - nanWatchdog.checkPlayer('frameStart') // 検出済みなら何もしない
   - player.behave()
     - belt.update()
@@ -160,7 +164,7 @@
             - sfx.hit() / fx.spawnPlasmaFlash() or fx.spawnBulletFlash() / fx.scatterFragments()
           - activeStage.recordEnemyDeath(cause='killed') // hp<=0
             - scoreCounter.recordKill() + hud.hint()
-            - unlockManager.reportClear() // checkWin() が true になった場合のみ
+            - unlockManager.reportClear() // isPlaying かつ checkWin() が true になった場合のみ
             - onWin() → showWinScreen() // 同上(Stage0/00 は no-op override)
           - destroyEffect() → sfx.explosion() + fx.spawnShipDestroyEffect() // hp<=0
         - [Player.attacked]
