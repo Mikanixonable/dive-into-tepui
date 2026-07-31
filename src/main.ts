@@ -1,3 +1,5 @@
+import '@fontsource/jetbrains-mono';
+import '@sarap422/font-hackgen';
 import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
@@ -33,7 +35,7 @@ function showLoading(): () => void {
     'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
     `gap:14px;color:${TEXT};background:${BG};font-family:${FONT};z-index:200;text-align:center`;
   div.innerHTML =
-    `<div style="font-size:22px;letter-spacing:6px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
+    `<div style="font-size:22px;letter-spacing:6px;color:${ACCENT}">Dive into Tepui</div>` +
     `<div style="width:40px;height:40px;border-radius:50%;border:3px solid ${SURFACE};` +
     `border-top-color:${ACCENT};animation:tepui-spin 0.9s linear infinite"></div>` +
     `<div style="font-size:12px;color:${TEXT_DIM}">初期化中(WebGPU)…</div>`;

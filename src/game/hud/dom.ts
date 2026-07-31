@@ -137,10 +137,10 @@ const STYLE = `
   display: flex; align-items: center; justify-content: center; font-size: 15px; color: ${INK_SOFT};
 }
 #hud-stagestatus {
-  top: 50px; left: 50%; transform: translateX(-50%);
+  top: 60px; left: 50%; transform: translateX(-50%);
   text-align: center; min-width: 170px; padding: 8px 16px;
 }
-#hud-stagestatus .t { font-size: 22px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
+#hud-stagestatus .t { font-size: 16px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
 #hud-stagestatus .t.warn { color: ${ACCENT}; }
 #hud-stagestatus .k { font-size: 11px; color: ${INK_SOFT}; margin-top: 2px; }
 #hud-settings {
@@ -188,8 +188,8 @@ const STYLE = `
   #navball { width: 100px !important; height: 100px !important; bottom: 130px !important; }
   #hud-gear { top: 8px; width: 26px; height: 26px; font-size: 13px; }
   #hud-settings { min-width: 0; width: 78vw; }
-  #hud-stagestatus { top: 42px; min-width: 130px; padding: 6px 10px; }
-  #hud-stagestatus .t { font-size: 17px; }
+  #hud-stagestatus { top: 52px; min-width: 130px; padding: 6px 10px; }
+  #hud-stagestatus .t { font-size: 14px; }
 }
 `;
 
@@ -236,7 +236,7 @@ function buildInfoPanels(root: HTMLElement): void {
   status.innerHTML = `
     <h3>SHIP STATUS</h3>
     <div class="row"><span class="k">MET</span><span class="v" data-id="met"></span></div>
-    <div class="row"><span class="k">TIME WARP</span><span class="v" data-id="sim-speed"></span></div>
+    <div class="row"><span class="k">時間加速</span><span class="v" data-id="sim-speed"></span></div>
 
     <div class="row"><span class="k">RCS制動 [${K.rcsDampToggle.label}]</span><span class="v" data-id="rcs"></span></div>
     <div class="row"><span class="k">並進出力 [${K.throttleLow.label}-${K.throttleHigh.label}]</span><span class="v" data-id="throttle"></span></div>
@@ -286,12 +286,12 @@ function buildControlsBar(root: HTMLElement): void {
     `${K.progradeHoldToggle.label}:進行方向ホールド`,
     `${K.followAttitudeToggle.label}:視点のRCS追従`,
     `${K.toggleMapMode.label}:軌道計画`,
-    `${K.autoWarpToNode.label}:ノードへワープ`,
+    `${K.autoWarpToNode.label}:ノードへ時間を加速`,
     `${K.gunsightZoom.label}:ズーム`,
     `${K.fire.label}/右クリック:射撃`,
     '左ドラッグ/矢印キー:視点',
     '中ドラッグ:マップ平行移動',
-    `${K.warpSlower.label}/${K.warpFaster.label}:ワープ`,
+    `${K.warpSlower.label}/${K.warpFaster.label}:時間加速`,
     `[${K.help.label}]:ヘルプ`,
   ].join(' &nbsp;');
 }
@@ -326,7 +326,7 @@ function buildHelpPanel(root: HTMLElement): void {
       <tr><td class="key">PREDICT パネル</td><td>マップモード下部。期間 = 予測を描く長さ(1周回は現在の周期、双曲線等では1日にフォールバック)、軌道 = 予測軌道を描く座標系、スライダー = 期間内の任意の時刻へゴースト位置(⬡)を表示(0で非表示)</td></tr>
       <tr><td class="key">MAP VIEW パネル</td><td>マップモード左上。注視 = カメラの注視対象(それ以外の天体・ラグランジュ点はラベルを右クリック)、視点 = カメラを固定する座標系、視点リセット = 距離と向きを初期値へ戻す</td></tr>
       <tr><td class="key">慣性系/太陽回転系</td><td>予測軌道とカメラの座標系はそれぞれ独立に選べる。太陽回転系では太陽方向が画面上でほぼ固定される(遷移計画の目安)</td></tr>
-      <tr><td class="key">${K.autoWarpToNode.label}</td><td>直近のマニューバノードへ自動タイムワープ(実行点の直前で自動解除)</td></tr>
+      <tr><td class="key">${K.autoWarpToNode.label}</td><td>直近のマニューバノードへ時間を自動加速(実行点の直前で自動解除)</td></tr>
       <tr><td class="key">右クリック</td><td>マップモード中、ノード近傍で右クリックするとコンテキストメニュー(この時刻まで自動ワープ / ノードを削除 / キャンセル)を開く。ノードが無い位置での右クリックや、開いたメニュー外への右クリックは閉じるだけ</td></tr>
       <tr><td class="key">${K.deleteNode.label}</td><td>マップモード中は選択中のノードを削除(右クリックメニューのフォールバック)、戦闘ビューでは計画全体を破棄</td></tr>
       <tr><td class="key">◆/▶NODE / ⬢BURN</td><td>直近のマニューバ実行点(▶は選択中)と噴射ガイド。BURN の方向へ加速し、噴射後の計画軌道に十分近づくとそのノードを達成として次のノードへ進む</td></tr>
@@ -334,7 +334,7 @@ function buildHelpPanel(root: HTMLElement): void {
       <tr><td class="key">弾薬 / ▣ AMMO</td><td>${C.MAG_ROUNDS}発でマガジン1連を消費(右舷のベルトから自動給弾)。残弾が少なくなると付近の軌道に補給が投入されるので、▣ マーカーへ接近して回収</td></tr>
       <tr><td class="key">${K.reload.label}</td><td>マニュアル装填(残弾のあるマガジンを捨てて新しい1連を装填)。決着後は同じステージで再出撃</td></tr>
       <tr><td class="key">${K.fire.label} / 右クリック</td><td>機関砲発射 (ワープ×${C.MAX_PHYS_SIM_SPEED}以下)。撃ち始めは起動音とともに一瞬遅れて連射開始</td></tr>
-      <tr><td class="key">${K.warpSlower.label} / ${K.warpFaster.label}</td><td>タイムワープ 減 / 増</td></tr>
+      <tr><td class="key">${K.warpSlower.label} / ${K.warpFaster.label}</td><td>時間加速 減 / 増</td></tr>
       <tr><td class="key">左ドラッグ / ホイール</td><td>カメラ回転 / 距離ズーム</td></tr>
       <tr><td class="key">矢印キー (${K.cameraYawLeft.label}${K.cameraYawRight.label}${K.cameraPitchUp.label}${K.cameraPitchDown.label})</td><td>マウスの代わりにキーボードで視点回転</td></tr>
       <tr><td class="key">${K.pauseMenu.label} / ⚙</td><td>一時停止メニュー (設定 / タイトルへ戻る)</td></tr>

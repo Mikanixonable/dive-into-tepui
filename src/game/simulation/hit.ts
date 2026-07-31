@@ -33,7 +33,8 @@ export class HitSystem {
         // 通常弾とプレイヤーの判定は、撃った直後の自己ヒットを避けるため猶予を置く
         if (p.type === 'normal' && target === player && simTime - p.bornSim <= C.SELF_HIT_GRACE) continue;
 
-        const distSq = this.segmentDistSq(p, target.prevState.r, target.state.r);
+        const res = this.segmentDistSq(p, target.prevState.r, target.state.r);
+        const distSq = res.distSq;
 
         // 敵プラズマ弾がプレイヤーの至近を通過した場合に音を鳴らす
         if (p.type === 'plasma' && target === player && !p.passedClose) {
@@ -46,7 +47,12 @@ export class HitSystem {
 
         if (distSq <= target.radius * target.radius) {
           p.alive = false;
-          target.attacked(p, simTime, activeStage);
+          const hitR = {
+            x: p.prevState.r.x + res.t * (p.state.r.x - p.prevState.r.x),
+            y: p.prevState.r.y + res.t * (p.state.r.y - p.prevState.r.y),
+            z: p.prevState.r.z + res.t * (p.state.r.z - p.prevState.r.z),
+          };
+          target.attacked(p, simTime, activeStage, hitR);
           hitSomething = true;
           break; // この弾は消滅した
         }
@@ -57,19 +63,24 @@ export class HitSystem {
       // 2. デブリ(薬莢・マガジン)への命中判定
       for (const target of debrisTargets) {
         if (!p.alive || !target.alive) continue;
-        const distSq = this.segmentDistSq(p, target.prevState.r, target.state.r);
-        if (distSq <= target.collideRadius! * target.collideRadius!) {
+        const res = this.segmentDistSq(p, target.prevState.r, target.state.r);
+        if (res.distSq <= target.collideRadius! * target.collideRadius!) {
           p.alive = false;
+          const hitR = {
+            x: p.prevState.r.x + res.t * (p.state.r.x - p.prevState.r.x),
+            y: p.prevState.r.y + res.t * (p.state.r.y - p.prevState.r.y),
+            z: p.prevState.r.z + res.t * (p.state.r.z - p.prevState.r.z),
+          };
           // ガスのようなエフェクトを発生
-          this.fx.spawnGasPuff(p.state.r, p.state.v);
+          this.fx.spawnGasPuff(hitR, p.state.v);
           break; // この弾は消滅した
         }
       }
     }
   }
 
-  // 前フレームから今フレームまでの弾と目標の相対移動を線分近似し、目標の最近接点までの距離の2乗を返す。
-  private segmentDistSq(b: Bullet, prevTargetR: Vec3, targetR: Vec3): number {
+  // 前フレームから今フレームまでの弾と目標の相対移動を線分近似し、目標の最近接点までの距離の2乗と、線分上の割合 t を返す。
+  private segmentDistSq(b: Bullet, prevTargetR: Vec3, targetR: Vec3): { distSq: number; t: number } {
     // 前フレーム時点の、目標基準の弾の相対位置
     const bpr = b.prevState.r;
     const ax = bpr.x - prevTargetR.x;
@@ -96,6 +107,6 @@ export class HitSystem {
     const cy = ay + dy * t;
     const cz = az + dz * t;
 
-    return cx * cx + cy * cy + cz * cz;
+    return { distSq: cx * cx + cy * cy + cz * cz, t };
   }
 }

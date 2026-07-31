@@ -29,8 +29,7 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
       `<div style="background:${TEXT}"></div><div style="background:${ACCENT};grid-column:span 2"></div><div style="background:${TEXT}"></div>` +
       `<div style="background:${ACCENT}"></div><div style="background:${TEXT}"></div><div style="background:${TEXT};grid-column:span 2"></div>` +
       '</div>' +
-      `<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
-      '<div style="font-size:12px;color:#7d838c;margin-bottom:12px">ステージを選択 (キーまたはクリック)</div>';
+      `<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">Dive into Tepui</div>`
     // 解放状況ごとにボタンを並べる
     const enabledByStage = new Map(STAGE_DEFINITIONS.map((stage) => [stage.id, unlockManager.isUnlocked(stage.id)]));
     for (const stage of STAGE_DEFINITIONS) {

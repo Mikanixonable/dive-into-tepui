@@ -14,7 +14,7 @@ const stage0TimeLimitMinutes = (): number => Math.floor(C.STAGE0_TIME_LIMIT / 60
 
 export class Stage0 extends Stage {
   static readonly id = '0' as const;
-  readonly selectLabel = 'Stage 0';
+  readonly selectLabel = 'stage 0';
   readonly selectSub =
     `【近接戦闘訓練】 常時選択可。${C.STAGE0_MAX_RANGE / 1000}km以内に色分けされた敵集団 ` +
     `約${C.STAGE0_PER_GROUP * C.STAGE0_GROUP_ACCENTS.length}機、` +
