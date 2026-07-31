@@ -9,14 +9,17 @@ export class Plan {
   private nextNodeId = 1;
   private _anchor: OrbitState = orbitState(0, v3(), v3());
 
+  // ノード列を実行時刻順で返す。
   get nodes(): readonly OrbitState[] {
     return this._nodes;
   }
 
+  // 計画の起点状態を返す。
   get anchor(): OrbitState {
     return this._anchor;
   }
 
+  // 最初に実行されるノードを返す。ノードが無ければ undefined。
   firstNode(): OrbitState | undefined {
     return this._nodes[0];
   }
@@ -27,6 +30,7 @@ export class Plan {
     this._anchor = state;
   }
 
+  // 噴射直後の絶対状態としてノードを追加し、時刻順にソートした後の index を返す。
   addNode(postState: OrbitState): number {
     const id = this.nextNodeId++;
     this._nodes.push(postState);
@@ -35,17 +39,20 @@ export class Plan {
     return this._nodes.indexOf(postState);
   }
 
+  // idx 番目のノードを削除する。範囲外なら何もしない。
   removeNode(idx: number): void {
     if (!this._nodes[idx]) return;
     this._nodes.splice(idx, 1);
     this._nodeIds.splice(idx, 1);
   }
 
+  // 最初のノードを実行済みとして取り除く。
   consumeFirstNode(): void {
     this._nodes.shift();
     this._nodeIds.shift();
   }
 
+  // 全ノードを削除する。
   clear(): void {
     if (this._nodes.length === 0) return;
     this._nodes = [];
@@ -85,6 +92,7 @@ export class Plan {
     return idx >= 0 ? idx : null;
   }
 
+  // ノードと ID の対応を保ったまま、両配列を実行時刻順に並べ替える。
   private sortByTime(): void {
     const order = this._nodes.map((_, i) => i);
     order.sort((a, b) => this._nodes[a]!.t - this._nodes[b]!.t);

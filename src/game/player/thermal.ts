@@ -32,10 +32,12 @@ export class ThermalSystem {
   // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の
   // Sutton–Graves 近似 q̇ = k·√(ρ/Rn)·v³、冷却はステファン・ボルツマン放射。
   updateThermal(dtSub: number, r: Vec3, v: Vec3): void {
+    // 大気密度・対気速度から動圧を求める
     const rho = atmosphericDensity(len(r) - R_EARTH);
     const vr = airspeed(r, v);
     const s = len(vr);
     this.qdyn = 0.5 * rho * s * s;
+    // よどみ点加熱とステファン・ボルツマン冷却を合算し外殻温度を積分する
     const qdot = C.SG_CONST * Math.sqrt(rho / C.NOSE_RADIUS) * s * s * s;
     const cool =
       C.HULL_EMISS *
@@ -56,6 +58,7 @@ export class ThermalSystem {
     if (this.qdyn > C.MAX_DYN_PRESSURE) {
       return 'dynpressure';
     }
+    // 危険域(70%/50%)に入ったら1回だけ警告する
     const hot = this.hullTemp > 0.7 * C.MAX_HULL_TEMP || this.qdyn > 0.5 * C.MAX_DYN_PRESSURE;
     if (hot && !this.heatWarned) {
       this.heatWarned = true;

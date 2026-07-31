@@ -38,6 +38,7 @@ export class Targeter {
     return this.autoTarget && this.autoTarget.alive ? this.autoTarget : null;
   }
 
+  // 右クリックによるターゲットロックとオートターゲット選定を行い、現在のターゲットを返す。
   updateCombatTargeting(
     player: Player,
     enemies: Enemy[],
@@ -58,6 +59,7 @@ export class Targeter {
     const n = norm(sub(target.state.r, player.state.r)); // 的の法線 = 視線方向
     if (lenSq(n) < 0.5) return;
 
+    // 各弾について、前フレームと今フレームの位置が的面をどちら向きに跨いだかを見る。
     for (const b of entities.bullets) {
       if (b.type !== 'normal' || !b.alive) continue; // 的通過マーカーは通常弾のみ対象
       const prevR = b.prevState.r;
@@ -163,9 +165,12 @@ export class Targeter {
     });
   }
 
+  // クリック位置の許容半径内で画面上最も近い敵をロック対象に切り替える。
+  // 命中がなければ既存のロックを解除する。
   private pickTargetAt(click: PointerPoint, enemies: Enemy[], project: ProjectFn): void {
     let hit: Enemy | null = null;
     let minDistSq = C.TARGET_LOCK_PICK_PX_SQ;
+    // 画面座標に射影し、クリック位置との距離が最小の生存敵を探す。
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
       const p = project(enemy.state.r);
@@ -188,6 +193,7 @@ export class Targeter {
     }
   }
 
+  // 指定した敵をロック対象にする。既にロック中の敵と同じならロックを解除する。
   private toggleLockedTarget(hit: Enemy): void {
     if (this.lockedTarget === hit) {
       this.lockedTarget = null;
@@ -198,6 +204,7 @@ export class Targeter {
     this._hud.hint(`ターゲット固定: ${hit.name}`);
   }
 
+  // ロック中の生存敵があればそれを返す。なければカメラ正面方向に最も近い生存敵を返す。
   private resolveAutoTarget(enemies: Enemy[], player: Player, activeCamera: THREE.PerspectiveCamera): Enemy | null {
     if (this.lockedTarget && this.lockedTarget.alive) {
       return this.lockedTarget;
@@ -208,6 +215,7 @@ export class Targeter {
     const camFwdW = new THREE.Vector3();
     activeCamera.getWorldDirection(camFwdW);
     const camFwdVec = v3(camFwdW.x, camFwdW.y, camFwdW.z);
+    // カメラ前方ベクトルとの内積が最大の敵(=画面中心に最も近い敵)を選ぶ。
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
       const dir = norm(sub(enemy.state.r, player.state.r));

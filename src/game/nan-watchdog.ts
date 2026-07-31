@@ -17,10 +17,12 @@ import { GameEntity } from './game-entity/game-entity';
 import { EntityManager } from './simulation/entity-manager';
 import { Vec3 } from '../physics/vec3';
 
+// 全成分が有限値かどうかを返す。
 function finiteVec(v: Vec3): boolean {
   return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
 }
 
+// エンティティの位置・速度を報告文言用の文字列にする。
 function describe(entity: GameEntity): string {
   const { r, v } = entity.state;
   return `r=(${r.x},${r.y},${r.z}) v=(${v.x},${v.y},${v.z})`;
@@ -60,6 +62,7 @@ export class NanWatchdog {
     }
   }
 
+  // 検出結果をコンソールと HUD トーストへ報告し、以後の検査を止める。
   private trip(phase: string, detail: string, dt: number, simDt: number): void {
     this.tripped = true;
     const message = `シミュレーション状態が壊れました(NaN/Infinity)。phase=${phase} dt=${dt} simDt=${simDt} — ${detail}`;

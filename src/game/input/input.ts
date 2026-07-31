@@ -24,6 +24,7 @@ const CLICK_MOVE_THRESHOLD = 6; // これ未満の累積移動量ならドラッ
 // なるため既定動作だけ止めるキー。
 const FOCUS_GUARD_CODE = 'Tab';
 
+// code がこのキー割り当てに一致するか(altCodes も含めて)判定する。
 function matchesCode(key: KeyBinding, code: string): boolean {
   return key.code === code || (key.altCodes?.includes(code) ?? false);
 }
@@ -54,12 +55,14 @@ export class Input {
   onFirstGesture: (() => void) | null = null;
   private gestureFired = false;
 
+  // キーボード・ポインタ・ホイールのイベントリスナーを登録する。
   constructor(target: HTMLElement) {
     this.attachKeyboardListeners();
     this.attachPointerListeners(target);
     this.attachWheelListener(target);
   }
 
+  // キーボードイベントを購読し、押下エッジと押下中セットを更新する。
   private attachKeyboardListeners(): void {
     window.addEventListener('keydown', (e) => {
       // Space スクロール・矢印キーのページスクロールと、割り当ての無い Tab による
@@ -83,6 +86,7 @@ export class Input {
     });
   }
 
+  // target のポインタイベントを購読する。
   private attachPointerListeners(target: HTMLElement): void {
     target.addEventListener('contextmenu', (e) => e.preventDefault());
     target.style.touchAction = 'none'; // ブラウザのスクロール/ピンチを奪う
@@ -92,6 +96,7 @@ export class Input {
     target.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
   }
 
+  // 左ボタンはドラッグ/ピンチ開始、右ボタンは発砲開始、中ボタンはパン開始として扱う。
   private onPointerDown(target: HTMLElement, e: PointerEvent): void {
     this.fireGesture();
     if (e.button === 0) {
@@ -114,14 +119,14 @@ export class Input {
       // pointerup で自動解除されるので明示的な解除は不要。
       target.setPointerCapture(e.pointerId);
     } else if (e.button === 1) {
-      // Map mode consumes this as a camera translation gesture. Keep it
-      // separate from the left-drag orbit rotation delta.
+      // 中ボタンの既定動作(オートスクロール)を抑止する。
       e.preventDefault();
       this.panDragging = true;
       target.setPointerCapture(e.pointerId);
     }
   }
 
+  // アクティブなジェスチャ(ピンチ/パン/ドラッグ)に応じて移動量を積算する。
   private onPointerMove(e: PointerEvent): void {
     const p = this.pointers.get(e.pointerId);
     if (p) {
@@ -147,6 +152,7 @@ export class Input {
     }
   }
 
+  // ドラッグ量が閾値未満ならクリックとして記録し、各ジェスチャを終了する。
   private onPointerUp(e: PointerEvent): void {
     if (e.button === 0 || e.pointerType === 'touch') {
       this.pointers.delete(e.pointerId);
@@ -156,10 +162,12 @@ export class Input {
       this.dragging = false;
       this.pinchDist = 0;
     }
+    // 右ボタン解放で発砲停止、中ボタン解放でパン終了
     if (e.button === 2) this.mouseFiring = false;
     if (e.button === 1) this.panDragging = false;
   }
 
+  // ポインタ消失時に全ジェスチャ状態をリセットする。
   private onPointerCancel(e: PointerEvent): void {
     this.pointers.delete(e.pointerId);
     this.dragging = false;
@@ -168,6 +176,7 @@ export class Input {
     this.pinchDist = 0;
   }
 
+  // ホイール操作を wheel 量として積算する。
   private attachWheelListener(target: HTMLElement): void {
     target.addEventListener(
       'wheel',
@@ -179,6 +188,7 @@ export class Input {
     );
   }
 
+  // アクティブな2点間の距離を返す。
   private currentPinchDist(): number {
     const [a, b] = [...this.pointers.values()];
     if (!a || !b) return 0;
@@ -197,6 +207,7 @@ export class Input {
     }
   }
 
+  // 初回のユーザー操作で一度だけ onFirstGesture を呼ぶ。
   private fireGesture(): void {
     if (!this.gestureFired && this.onFirstGesture) {
       this.gestureFired = true;
@@ -204,6 +215,7 @@ export class Input {
     }
   }
 
+  // key が現在押下中か返す。
   down(key: KeyBinding): boolean {
     return this.keys.has(key.code) || (key.altCodes?.some((c) => this.keys.has(c)) ?? false);
   }
@@ -211,10 +223,12 @@ export class Input {
   // フレームの先頭で1度だけ呼ぶ。イベントハンドラが溜めた未確定分を今フレームの
   // スナップショットとして確定し、次フレーム分の蓄積をリセットする。
   update(): void {
+    // 蓄積分を今フレームのスナップショットとして確定
     this.framePresses = this.pendingPresses;
     this.frameClicks = this.pendingClicks;
     this.frameRightClicks = this.pendingRightClicks;
     this.frameMouse = { dx: this.dx, dy: this.dy, panDx: this.panDx, panDy: this.panDy, wheel: this.wheel };
+    // 次フレーム分の蓄積をリセット
     this.pendingPresses = [];
     this.pendingClicks = [];
     this.pendingRightClicks = [];
@@ -252,11 +266,13 @@ export class Input {
     takeFrom(this.frameRightClicks, handler);
   }
 
+  // 今フレームのマウス移動量・パン量・ホイール量を返す。
   mouse(): MouseDelta {
     return this.frameMouse;
   }
 }
 
+// queue から handler が true を返した要素を取り除きながら順に渡す。
 function takeFrom(queue: PointerPoint[], handler: (point: PointerPoint) => boolean): void {
   for (const point of [...queue]) {
     if (!handler(point)) continue;
