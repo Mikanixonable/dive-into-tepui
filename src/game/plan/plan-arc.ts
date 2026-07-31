@@ -112,8 +112,10 @@ export class PlanArc {
     this.truncated = false;
 
     while (entity.state.t < end - EPOCH_EPS) {
+      // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
       const dt = Math.min(stepDt(len(entity.state.r), duration), end - entity.state.t);
       if (dt <= 1e-9) break;
+      // 環境加速度は区間の中点の太陽・月位置で評価する
       const mid = entity.state.t + dt / 2;
       const sunPos = ephemeris.sunPosAt(mid);
       const moonPos = ephemeris.moonPosAt(mid);
