@@ -191,7 +191,7 @@ export const NODE_TOL_SMA = 0.02; // 長半径の相対誤差
 export const NODE_TOL_ECC = 0.02; // 離心率差
 export const NODE_TOL_PLANE_DEG = 2.0; // 軌道面の角度差 [deg]
 
-// --- 数値予測(軌道計画モードのポリライン、predict.ts) ---
+// --- 数値予測(軌道計画モードのポリライン、plan/plan-arc.ts) ---
 export const PREDICT_DUR_DAY = 86400; // 1日
 export const PREDICT_DUR_WEEK = 7 * 86400; // 7日
 export const PREDICT_DUR_MONTH = 28 * 86400; // 28日

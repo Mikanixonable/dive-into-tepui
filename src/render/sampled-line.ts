@@ -17,8 +17,8 @@ import { Frame, toFrameState, toInertialQuat } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from '../game/floating-origin';
 
-// 折れ線の1点は時刻付き状態ベクトル(OrbitState)そのもの — 予測点列(predict.ts の
-// predictTrajectory)もエンティティの履歴(game-entity/game-entity.ts)も同じ型なのでそのまま渡せる。
+// 折れ線の1点は時刻付き状態ベクトル(OrbitState)そのもの — 予測点列もエンティティの履歴も
+// 同じ型なのでそのまま渡せる。
 // bake は位置 r だけを使うが、速度 v も frame 相対へ変換される — 将来のエルミート補間
 // (頂点間を速度で滑らかに繋ぐ)の接線として供給しておく。
 

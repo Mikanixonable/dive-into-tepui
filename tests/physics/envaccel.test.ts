@@ -1,7 +1,5 @@
-// envaccel.ts の回帰テスト。stepEnvRK4 はゲーム本体(OrbitEntity.stepSim)と軌道計画の
-// 数値予測(predict.ts の stepPredict)が共有する唯一の 1 ステップ実装(better_predict.md
-// Step 1)。bcInv=0/thrust=null が、旧来それぞれの呼び出し側に個別に書かれていた
-// 「stepOrbitRK4 に envAccel を渡す」合成と一致することを確認する。
+// envaccel.ts の回帰テスト。stepEnvRK4 は OrbitEntity.step が使う唯一の 1 ステップ実装で、
+// bcInv=0/thrust=null が「stepOrbitRK4 に envAccel を渡す」合成と一致することを確認する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { MU_EARTH, R_EARTH, orbitState, stepOrbitRK4 } from '../../src/physics/orbital';

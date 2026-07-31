@@ -191,7 +191,7 @@ export function seLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec
 }
 
 // 天体暦: 初期位相をゲームごとに固定し、任意の simTime で太陽・月の ECI 位置・
-// 太陽方向を計算して返す(状態は持たない純粋なサンプラ)。予測(predict.ts)・環境描画・
+// 太陽方向を計算して返す(状態は持たない純粋なサンプラ)。軌道予測・環境描画・
 // マップ表示など「物理的な天体暦」だけを要する箇所は、位相を露出せずこのオブジェクトを共有する。
 export class Ephemeris {
   // sunPhase0 は昼(太陽が+X側)から始まるよう既定 0。moonPhase0 は既定でゲーム
