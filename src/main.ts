@@ -1,9 +1,11 @@
+import '@fontsource/jetbrains-mono';
+import '@sarap422/font-hackgen';
 // 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
 // rAF ループ(Game.update → sync → render の駆動)を統括する。
 import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
-import { ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from './game/theme';
+import { ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT } from './game/theme';
 import { Hud } from './game/hud/hud';
 import { SettingsPanel } from './game/hud/settings-panel';
 import { Sfx } from './audio/sfx';
@@ -29,9 +31,9 @@ function showLoading(): () => void {
   const div = document.createElement('div');
   div.style.cssText =
     'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-    `gap:14px;color:${TEXT};background:${BG};font-family:Consolas,monospace;z-index:200;text-align:center`;
+    `gap:14px;color:${TEXT};background:${BG};font-family:${FONT};z-index:200;text-align:center`;
   div.innerHTML =
-    `<div style="font-size:22px;letter-spacing:6px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
+    `<div style="font-size:22px;letter-spacing:6px;color:${ACCENT}">Dive into Tepui</div>` +
     `<div style="width:40px;height:40px;border-radius:50%;border:3px solid ${SURFACE};` +
     `border-top-color:${ACCENT};animation:tepui-spin 0.9s linear infinite"></div>` +
     `<div style="font-size:12px;color:${TEXT_DIM}">初期化中(WebGPU)…</div>`;
@@ -98,8 +100,8 @@ function initHud(): { hud: Hud; sfx: Sfx; settingsPanel: SettingsPanel } {
   const hud = new Hud();
   const sfx = new Sfx();
   const settingsPanel = new SettingsPanel(hud.root);
-  settingsPanel.setBgmState(sfx.isBgmEnabled());
-  settingsPanel.onBgmToggle = (on) => sfx.setBgmEnabled(on);
+  settingsPanel.setBgmVolume(sfx.getBgmVolume());
+  settingsPanel.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
   // 「ゲームを中断してタイトル画面に戻る」— ?stage= クエリを落として選択画面へ
   settingsPanel.onQuitToTitle = () => {
     location.assign(location.pathname);
@@ -133,7 +135,7 @@ main().catch((err) => {
   const div = document.createElement('div');
   div.style.cssText =
     'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
-    `color:${TEXT};background:${BG};font-family:monospace;font-size:16px;text-align:center;line-height:2`;
+    `color:${TEXT};background:${BG};font-family:${FONT};font-size:16px;text-align:center;line-height:2`;
   div.innerHTML =
     `<div style="background:${SURFACE_OPAQUE};border:1px solid ${EDGE};border-radius:4px;padding:22px 32px">` +
     `<span style="color:${ACCENT}">WebGPU の初期化に失敗しました。</span><br>` +

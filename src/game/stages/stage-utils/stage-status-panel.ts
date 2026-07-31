@@ -6,6 +6,7 @@
 const BAR_LOW = '#ff4a3d';
 const BAR_OK = '#4de8ff';
 const LOW_HP_RATIO = 0.3;
+import * as C from '../../const';
 
 export class StageStatusPanel {
   private readonly panel: HTMLElement;
@@ -27,14 +28,18 @@ export class StageStatusPanel {
   }
 
   // 毎フレーム(sync 時)呼ぶ。DOM の書き換えは内容が変わったフレームだけに絞る。
-  sync(hp: number, maxHp: number, message: string, kills: number): void {
+  sync(hp: number, maxHp: number, message: string, kills: number, throttleIdx: number): void {
     // HP バーは内容が変わったフレームだけ書き換える
     const low = hp <= maxHp * LOW_HP_RATIO;
     const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+    const throttleLabels = ['弱', '中', '強'];
+    const throttleText = `エンジン出力: ${throttleLabels[throttleIdx]} (${C.THROTTLE_LEVELS[throttleIdx]!.toFixed(1)} m/s²)`;
+
     const hpHtml =
-      `HP: ${Math.floor(hp)} / ${maxHp} ` +
+      `磁気装甲: ${Math.floor(hp)} / ${maxHp} ` +
       `<div style="display:inline-block; width:120px; height:10px; border:1px solid #aaa; background:#222; vertical-align:middle; margin-left:8px;">` +
-      `<div style="width:${pct}%; height:100%; background:${low ? BAR_LOW : BAR_OK}; transition:width 0.2s;"></div></div>`;
+      `<div style="width:${pct}%; height:100%; background:${low ? BAR_LOW : BAR_OK}; transition:width 0.2s;"></div></div>` +
+      `<div style="font-size: 13px; color: #dfe3e8; margin-top: 4px;">${throttleText}</div>`;
     if (this.lastHpHtml !== hpHtml) {
       this.hpRow.innerHTML = hpHtml;
       this.lastHpHtml = hpHtml;

@@ -26,6 +26,7 @@ export class Bullet extends GameEntity {
     readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
     readonly shooter: Shooter;
     readonly type: BulletType;
+    passedClose: boolean = false; // 至近を通過したかどうかのフラグ
     private readonly lifetime: number;
 
     // accent: plasma 弾のみ使う発光色(未指定なら buildPlasmaMesh の既定色)。normal 弾では無視する。

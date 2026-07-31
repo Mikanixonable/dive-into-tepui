@@ -10,6 +10,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
+import { getSunDispersionScale, sunPosition } from '../../physics/ephemeris';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
@@ -228,8 +229,11 @@ export class PlayerFire {
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(ship: Ship, muzzle: Vec3, fwd: Vec3, simTime: number, addBullet: (bullet: Bullet) => void): void {
+    const sunDir = norm(sunPosition(simTime, 0));
+    const scale = getSunDispersionScale(muzzle, fwd, sunDir);
     // 機首方向に散布角を加えた発射方向
-    const dir = norm(addScaled(fwd, randPerp(fwd), Math.abs(randSym(C.BULLET_SPREAD))));
+    const spread = Math.abs(randSym(C.BULLET_SPREAD)) * scale;
+    const dir = norm(addScaled(fwd, randPerp(fwd), spread));
     const bullet = new Bullet(
       orbitState(
         simTime,
