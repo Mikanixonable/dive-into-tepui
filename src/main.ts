@@ -100,8 +100,8 @@ function initHud(): { hud: Hud; sfx: Sfx; settingsPanel: SettingsPanel } {
   const hud = new Hud();
   const sfx = new Sfx();
   const settingsPanel = new SettingsPanel(hud.root);
-  settingsPanel.setBgmState(sfx.isBgmEnabled());
-  settingsPanel.onBgmToggle = (on) => sfx.setBgmEnabled(on);
+  settingsPanel.setBgmVolume(sfx.getBgmVolume());
+  settingsPanel.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
   // 「ゲームを中断してタイトル画面に戻る」— ?stage= クエリを落として選択画面へ
   settingsPanel.onQuitToTitle = () => {
     location.assign(location.pathname);

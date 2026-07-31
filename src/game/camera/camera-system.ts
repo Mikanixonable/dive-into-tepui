@@ -119,6 +119,13 @@ export class CameraSystem {
     if (input.takeKey(K.followAttitudeToggle)) this.chaseCamera.toggleFollowAttitude();
     this.zoomActive = !this.overviewMode && input.down(K.gunsightZoom);
 
+    // 中クリックで視点リセット
+    input.takeMiddleClicks(() => {
+      if (this.overviewMode) this.overviewCamera.reset();
+      else this.chaseCamera.reset();
+      return true;
+    });
+
     // キー/マウスによる旋回入力をまとめる
     const keyYaw = (input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0);
     const keyPitch = (input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0);

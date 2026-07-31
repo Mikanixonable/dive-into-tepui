@@ -14,6 +14,7 @@ export interface FlashEffect {
   size0: number;
   size1: number;
   peakOpacity: number; // 発生直後の最大不透明度倍率(ズーム中のマズルフラッシュ減光などに使う)
+  initialized?: boolean; // 初回フレームをスキップするためのフラグ
 }
 
 export class FlashEffectManager {
@@ -43,8 +44,11 @@ export class FlashEffectManager {
         fx.billboard.dispose();
         return false;
       }
-      // 位置・サイズ・不透明度を経過時間に応じて更新する
-      fx.pos = addScaled(fx.pos, fx.vel, simDt);
+      // 生成されたフレームでは、初期位置が既に最新のシミュレーション後座標なので移流させない。
+      if (fx.initialized) {
+        fx.pos = addScaled(fx.pos, fx.vel, simDt);
+      }
+      fx.initialized = true;
       const t = fx.age / fx.duration;
       const size = fx.size0 + (fx.size1 - fx.size0) * Math.sqrt(t);
       const opacity = fx.peakOpacity * (1 - t);

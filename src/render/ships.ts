@@ -260,10 +260,11 @@ export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Mesh {
   }
   let bodyMat = plasmaBodyMatByAccent.get(accent);
   if (!bodyMat) {
-    // テンプレートのマテリアルを accent ごとに 1 度だけ複製し、以後はキャッシュを使い回す
     bodyMat = (m.material as THREE.MeshBasicMaterial).clone();
     bodyMat.color.set(accent);
     // 不透明にするため AdditiveBlending は設定しない
+    bodyMat.transparent = false;
+    bodyMat.opacity = 1.0;
     plasmaBodyMatByAccent.set(accent, bodyMat);
   }
   m.material = bodyMat;
@@ -282,6 +283,10 @@ export function buildCasingMesh(): THREE.Mesh {
   mesh.geometry = deepCloneGeometry(mesh.geometry);
   mesh.geometry.scale(1, 2, 1);
   mesh.userData.ownsGeometry = true;
+  // 薬莢の色を銅色に変更
+  mesh.material = (mesh.material as THREE.MeshStandardMaterial).clone();
+  (mesh.material as THREE.MeshStandardMaterial).color.setHex(0xb87333);
+  mesh.userData.ownsMaterial = true;
   return mesh;
 }
 

@@ -16,13 +16,19 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
     const btn = (label: string, sub: string, enabled: boolean) => {
       const b = document.createElement('div');
       b.style.cssText =
-        `min-width:min(420px, 88vw);max-width:92vw;padding:16px 24px;background:${SURFACE};` +
-        `border:1px solid ${enabled ? `rgba(${ACCENT_RGB}, 0.4)` : EDGE};border-radius:4px;` +
-        `line-height:1.7;${enabled ? 'cursor:pointer' : 'opacity:0.45'}`;
-      b.innerHTML = `<div style="font-size:17px;letter-spacing:3px;color:${enabled ? ACCENT : TEXT_DIM}">${label}</div><div style="font-size:12px;color:${TEXT_DIM}">${sub}</div>`;
+        `width: 420px; max-width: 92vw; box-sizing: border-box; padding: 16px 24px; background: ${SURFACE};` +
+        `border: 1px solid ${enabled ? `rgba(${ACCENT_RGB}, 0.4)` : EDGE}; border-radius: 4px;` +
+        `line-height: 1.7; ${enabled ? 'cursor: pointer' : 'opacity: 0.45'}`;
+      b.innerHTML = `<div style="font-size:22px;letter-spacing:3px;color:${enabled ? ACCENT : TEXT_DIM}">${label}</div><div style="font-size:12px;color:${TEXT_DIM}">${sub}</div>`;
       return b;
     };
     div.innerHTML =
+      '<div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:2px;width:32px;height:32px;margin-bottom:8px;">' +
+      `<div style="background:${ACCENT};grid-column:span 2;grid-row:span 2"></div><div style="background:${TEXT}"></div><div style="background:${TEXT}"></div>` +
+      `<div style="background:${TEXT}"></div><div style="background:${ACCENT}"></div>` +
+      `<div style="background:${TEXT}"></div><div style="background:${ACCENT};grid-column:span 2"></div><div style="background:${TEXT}"></div>` +
+      `<div style="background:${ACCENT}"></div><div style="background:${TEXT}"></div><div style="background:${TEXT};grid-column:span 2"></div>` +
+      '</div>' +
       `<div style="font-size:26px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">DIVE INTO TEPUI</div>` +
       '<div style="font-size:12px;color:#7d838c;margin-bottom:12px">ステージを選択 (キーまたはクリック)</div>';
     // 解放状況ごとにボタンを並べる
