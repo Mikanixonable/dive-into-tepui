@@ -199,8 +199,11 @@ export class Game {
     if (!this.activeStage.isPlaying) {
       this.player.thrust = null;
       this.player.torque = v3();
-      const simDt = dt * Math.min(this.simSpeedManager.simSpeed, 4);
+      const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
       this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, false, false, false);
+      // 決着後もカメラは追従させる。sync は止まらないので、ここで update を飛ばすと視点だけが
+      // 絶対 ECI に取り残され、原点(自機)が軌道速度で遠ざかって残骸が即座にフレームアウトする。
+      this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt);
       return;
     }
 
