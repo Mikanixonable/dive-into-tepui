@@ -120,9 +120,9 @@ const {x, y, z} = result;
 - 自機由来 → `player/player-markers.ts`(`Player.syncPlayer` が駆動)
 - ターゲット由来(方位・相対 AN/DN)→ `targeter.ts`
 - 補給 → `stages/stage-utils/logistics.ts`(`Stage.sync` が駆動)
-- 天体ラベルの表示/非表示 → `camera/map-markers.ts`
-- 1体では決まらない3つだけ Game 直下: `marker/grouped-markers.ts`(まとめ)・
-  `marker/lead-markers.ts`(自機と敵の両依存)・`marker/pip-overlay.ts`(別投影)
+- 天体ラベルの表示/非表示 → `camera/focus-markers.ts`
+- 1体では決まらない2つだけ Game 直下: `marker/grouped-markers.ts`(まとめ)・
+  `marker/lead-markers.ts`(自機と敵の両依存)
 
 #### 4. `PipRenderCtx`(`src/game/pip-renderer.ts`)　保留
 

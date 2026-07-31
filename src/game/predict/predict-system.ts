@@ -33,13 +33,6 @@ export class PredictSystem {
   }
   set forceCurrent(v: boolean) {
     this._forceCurrent = v;
-    /*
-    if (v) {
-      // 強制的に未来表示を禁止するべきだ。
-      this.sliderT = 0;
-      // panelのスライダーも強制的に0にする。いまは配線がないから保留。
-    }
-    */
   }
 
   durationKey: PredictDurationKey = 'day';
