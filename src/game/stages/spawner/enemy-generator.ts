@@ -4,8 +4,8 @@
 // この1ファイルに並べて置き、互いを見比べやすくする。
 import * as THREE from 'three/webgpu';
 import { qFromForwardUp, randomQuat } from '../../../physics/attitude';
-import { MU_EARTH, OrbitState, R_EARTH, orbitState, stateFromElements } from '../../../physics/orbital';
-import { cross, len, norm, randSym, rotateAxis, scale, v3 } from '../../../physics/vec3';
+import { MU_EARTH, OrbitState, R_EARTH, orbitState, orbitalAxes, stateFromElements } from '../../../physics/orbital';
+import { len, norm, randSym, rotateAxis, scale, v3 } from '../../../physics/vec3';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
@@ -13,7 +13,7 @@ import { Enemy } from '../../game-entity/enemy';
 
 // 自機軌道(base)を dAlong だけ進めた位置の軌道状態(プリセット配置の共通基盤)。
 function phasedState(base: OrbitState, dAlong: number): OrbitState {
-  const hHat = norm(cross(base.r, base.v));
+  const hHat = orbitalAxes(base).nrm;
   const ang = dAlong / len(base.r);
   return orbitState(base.t, rotateAxis(base.r, hHat, ang), rotateAxis(base.v, hHat, ang));
 }
