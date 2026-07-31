@@ -1,6 +1,8 @@
-// 自機を画面中心に置く三人称軌道カメラ。
-// 基準フレームは「上 = 動径方向(地球と反対)、前 = 速度方向」で、
-// 軌道運動とともにゆっくり共回転するため地球が常に足元に見える。
+// 自機を画面中心に置く三人称軌道カメラ。update() は毎フレーム両方の基準フレームを
+// 算出し、camFollowAttitude で切り替える: 既定値の true では機体姿勢基準
+// (上 = 機体 +Y、前 = 機体 +Z)を使うため、I/K/J/L/U/O での回転がそのままカメラへ
+// 反映される。false にすると軌道基準(上 = 動径方向(地球と反対)、前 = 速度方向)に
+// なり、軌道運動とともにゆっくり共回転するため地球が常に足元に見える。
 import * as THREE from 'three/webgpu';
 import { add, addScaled, cross, dot, norm, scale, v3, Vec3 } from '../../physics/vec3';
 import { MouseDelta } from '../input/input';

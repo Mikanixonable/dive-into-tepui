@@ -107,9 +107,54 @@ export class MarkerManager {
     this.setPosition(key, cls, sym, addScaled(origin, norm(dir), C.MARKER_DIR_DIST), project, label, opacity, color, rotationDeg);
   }
 
+  // 画面外(背面を含む)の対象を、画面中心から見た方位として画面端の円周上に置く。
+  // 画面内に居るあいだは隠す — 実位置を指す setPosition と対で使い、そちらが front=false や
+  // 画面外へ出て見えなくなったぶんを補う。
+  // sym は**上向きの記号**を渡すこと(方位角に 90° 足して回すため)。
+  setBearing(
+    key: string,
+    cls: string,
+    sym: string,
+    p: Projected,
+    label = '',
+    opacity = 0.6,
+    color?: string,
+  ): void {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (p.front && p.x >= 0 && p.x <= w && p.y >= 0 && p.y <= h) {
+      this.hide(key);
+      return;
+    }
+    const cx = w / 2;
+    const cy = h / 2;
+    // 背面の対象は投影が反転しているので、方位も反転させる
+    const sign = p.front ? 1 : -1;
+    const ang = Math.atan2(sign * (p.y - cy), sign * (p.x - cx));
+    const ring = Math.min(cx, cy) * C.MARKER_BEARING_RING_RATIO;
+    this.set(
+      key, cls, sym,
+      cx + ring * Math.cos(ang), cy + ring * Math.sin(ang), true,
+      label, opacity, color,
+      (ang * 180) / Math.PI + 90,
+    );
+  }
+
+  // hide と remove の使い分け:
+  // hide   = キーが有限で使い回すマーカー(方向マーカー・補給スロットなど)。
+  //          要素を消さずプールに残し、次に出すときの再生成コストを省く。
+  // remove = 対象ごとにキーが増え続けるマーカー(敵・LEAD など)。対象が消えたら
+  //          要素ごと捨てないと DOM とラベル衝突判定の走査対象が単調増加する。
   hide(key: string): void {
     const m = this.markerDictionary.get(key);
     if (m) m.root.style.display = 'none';
+  }
+
+  remove(key: string): void {
+    const m = this.markerDictionary.get(key);
+    if (!m) return;
+    m.root.remove();
+    this.markerDictionary.delete(key);
   }
 
   resolveCollisions(): void {
