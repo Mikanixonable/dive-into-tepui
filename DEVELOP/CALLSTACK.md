@@ -301,6 +301,8 @@
     - markerManager.hide('nd'/'burn') // ノード無し or !player.alive で return
     - [達成] plan.consumeFirstNode() + simSpeedManager.cancelAutoWarp() + hide + hud.hint() + sfx.warp()
     - [未達成] markerManager.setPosition('nd') + setDirection('burn')
+  - debugHistoryLine.sync() // ?debugLines=1 のときのみ実効。対象(既定: 自機+ターゲット)ごとに
+    history/predicted.history を1本の SampledLine へ bake + un-bake
   - markerManager.resolveCollisions() // ラベル衝突緩和 + SVG 引き出し線の再描画。全マーカーが出揃った後に一度だけ
 
 ---

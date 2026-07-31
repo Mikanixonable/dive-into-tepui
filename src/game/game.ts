@@ -34,6 +34,7 @@ import { EnvironmentScene } from '../render/environment-scene';
 import { Ephemeris } from '../physics/ephemeris';
 import { MapModeToggler } from './map-mode-toggler';
 import { NanWatchdog } from './nan-watchdog';
+import { DebugHistoryLine } from './debug-history-line';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -109,14 +110,17 @@ export class Game {
   // simulator が持ち、この配列への参照を受け取って回す。
   readonly entities: EntityManager;
   readonly simulator: Simulator;
-  // 全 GameEntity の予測列(predicted)をフレーム予算内でなるはやに伸ばす。表示にはまだ
-  // 使わない(better_predict.md Step 4 で displayTime 経由の表示が乗る)が、予測そのものは
-  // 視点・モードと無関係に常時進む(entities.cleanup の後に呼ぶ理由は predictor.ts 参照)。
+  // 全 GameEntity の予測列(predicted)をフレーム予算内でなるはやに伸ばす。視点・モードと
+  // 無関係に常時進み、表示(displayState 経由)はその副産物として乗る
+  // (entities.cleanup の後に呼ぶ理由は predictor.ts 参照)。
   private readonly predictor: Predictor;
   // シミュレーション状態の非有限値(NaN/Infinity)を最初に検出したフェーズごと報告する見張り。
   // 汚染は描画の暗転・敵の「再突入」誤表示・接触音の鳴りっぱなしなど別の顔で表面化するため、
   // 発生した瞬間に記録する(nan-watchdog.ts の冒頭コメント参照)。
   private readonly nanWatchdog: NanWatchdog;
+  // 過去列・未来列のデバッグ表示(?debugLines=1)。対象の集合(既定: 自機+ターゲット)は
+  // 毎フレーム game.sync が渡す — エンティティ自身に線を持たせない理由は debug-history-line.ts 参照。
+  private readonly debugHistoryLine: DebugHistoryLine;
 
   constructor(
     gs: GameScene,
@@ -187,6 +191,7 @@ export class Game {
     );
 
     this.nanWatchdog = new NanWatchdog(this._hud);
+    this.debugHistoryLine = new DebugHistoryLine(this._scene);
 
     this.floatingOrigin = new FloatingOrigin(this.player.state.r, this.player.state.v);
   }
@@ -387,6 +392,11 @@ export class Game {
     this._hud.tick();
 
     this.guide.update(this.editor.plan, this.player, simTime, this.simSpeedManager, this.editor.editMode, project);
+
+    // 過去列・未来列のデバッグ表示(?debugLines=1 のときのみ実体を持つ)。既定の対象は自機と
+    // 現在のターゲット。視点・モードとは無関係に常時 sync する(予測自体がそうであるように)。
+    const debugTargets = target ? [this.player, target] : [this.player];
+    this.debugHistoryLine.sync(debugTargets, this.editor.planDisplay.trajectoryFrame, simTime, this.ephemeris, this.floatingOrigin);
 
     // 重なったラベルを押し退けて引き出し線で繋ぐ最終処理。このフレームのマーカーが
     // 出揃った後でなければならないので、sync の最後に置く。
