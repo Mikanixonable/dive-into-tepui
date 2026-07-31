@@ -9,7 +9,7 @@
 // 作曲データ(音階/パターン/パッド/拍長)は複数曲用意し、5分ごとに切り替える
 import { BGM_TRACKS, BgmTrack } from './bgm-tracks';
 
-const BGM_ENABLED_KEY = 'tepui.settings.bgm'; // localStorage キー
+const BGM_VOL_KEY = 'tepui.settings.bgm_vol'; // localStorage キー
 
 export class Sfx {
   private ctx: AudioContext | null = null;
@@ -20,36 +20,38 @@ export class Sfx {
   private bgmTimer: ReturnType<typeof setInterval> | null = null;
   private bgmNextTime = 0;
   private bgmStep = 0;
-  private bgmEnabled = true;
+  private bgmVolume = 1;
   private currentTrackIdx = 0;
   private bgmTrackStartTime = 0;
 
   // 保存済みの BGM ON/OFF 設定を読み込む。
   constructor() {
     try {
-      const saved = localStorage.getItem(BGM_ENABLED_KEY);
-      if (saved !== null) this.bgmEnabled = saved === '1';
+      const saved = localStorage.getItem(BGM_VOL_KEY);
+      if (saved !== null) this.bgmVolume = parseFloat(saved);
     } catch {
       /* localStorage 不可の環境では既定値(ON)のまま */
     }
   }
 
-  // BGM が有効かどうかを返す。
-  isBgmEnabled(): boolean {
-    return this.bgmEnabled;
+  // BGM 音量を取得する。
+  getBgmVolume(): number {
+    return this.bgmVolume;
   }
 
-  // 設定画面からの BGM ON/OFF 切替。unlock() 前でも呼べる(値だけ保存し、
-  // unlock() 時にそれを見て再生を開始する)。
-  setBgmEnabled(on: boolean): void {
-    this.bgmEnabled = on;
+  // 設定画面からの BGM 音量変更。
+  setBgmVolume(vol: number): void {
+    this.bgmVolume = vol;
     try {
-      localStorage.setItem(BGM_ENABLED_KEY, on ? '1' : '0');
+      localStorage.setItem(BGM_VOL_KEY, vol.toString());
     } catch {
-      /* 保存できなくても再生の ON/OFF 自体は反映する */
+      /* 保存できなくても再生自体は反映する */
     }
-    if (on) this.startBgm();
-    else this.stopBgm();
+    if (this.ctx && this.bgmGain && this.bgmTimer) {
+      this.bgmGain.gain.setTargetAtTime(Math.max(0.0001, vol), this.ctx.currentTime, 0.1);
+    } else if (vol > 0 && !this.bgmTimer) {
+      this.startBgm();
+    }
   }
 
   // 初回ユーザー操作で呼ぶ。AudioContext を生成し、スラスタ/RCS のループ音源を用意して BGM を開始する。
@@ -96,7 +98,7 @@ export class Sfx {
     rcsSrc.start();
     this.rcsGain = rcsG;
 
-    if (this.bgmEnabled) this.startBgm();
+    if (this.bgmVolume > 0) this.startBgm();
   }
 
   // ------------------------------------------------------------------ BGM
@@ -108,7 +110,7 @@ export class Sfx {
     // マスターゲインをフェードインさせながら生成する
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(1, ctx.currentTime + 4); // フェードイン
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, this.bgmVolume), ctx.currentTime + 4); // フェードイン
     g.connect(ctx.destination);
     this.bgmGain = g;
     this.bgmNextTime = ctx.currentTime + 0.15;
@@ -403,19 +405,78 @@ export class Sfx {
     this.noiseBurst(0.02, 'highpass', 4000, 0.03);
   }
 
-  // 被弾音。
-  hit(): void {
-    this.tone(1500 + Math.random() * 500, 0.08, 0.15, 'triangle');
+  // 弾が至近を通過したときの「ヴン」という磁気干渉音
+  magneticInterference(): void {
+    if (!this.ctx || !this.noiseBuf) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = 80; // 低い周波数
+    
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    // フィルターの周波数を時間変化させて「ヴン」という動きを出す
+    filter.frequency.setValueAtTime(100, t);
+    filter.frequency.exponentialRampToValueAtTime(400, t + 0.1);
+    filter.frequency.exponentialRampToValueAtTime(100, t + 0.3);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.01, t);
+    gain.gain.linearRampToValueAtTime(0.3, t + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+
+    osc.connect(filter).connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.45);
   }
 
-  // 撃破通知音。宇宙では音が伝わらないため、爆発音ではなく上昇する電子音列にしている。
+  // 被弾音。熱で蒸発するような「シュー」という音
+  hit(): void {
+    if (!this.ctx || !this.noiseBuf) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    src.playbackRate.value = 1.0 + Math.random() * 0.2;
+    
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 3000 + Math.random() * 1000;
+    filter.Q.value = 1.5;
+    
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    
+    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.start(t);
+    src.stop(t + 0.35);
+  }
+
+  // 撃破爆発音
   explosion(): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    this.toneAt(1200, t, 0.08, 0.08, 'square', this.ctx.destination, 0.01);
-    this.toneAt(1500, t + 0.1, 0.08, 0.08, 'square', this.ctx.destination, 0.01);
-    this.toneAt(1800, t + 0.2, 0.08, 0.08, 'square', this.ctx.destination, 0.01);
-    this.toneAt(2200, t + 0.3, 0.12, 0.08, 'square', this.ctx.destination, 0.01);
+    // 鈍い破裂音
+    this.noiseBurst(0.2, 'lowpass', 150, 0.8);
+    this.noiseBurst(0.1, 'lowpass', 400, 0.5);
+    
+    // 短い低音のキックのような成分
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(120, t);
+    osc.frequency.exponentialRampToValueAtTime(30, t + 0.15);
+    
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.8, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+    
+    osc.connect(gain).connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.2);
   }
 
   // 時間warp切替音。
