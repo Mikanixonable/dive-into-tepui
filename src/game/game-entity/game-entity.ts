@@ -153,9 +153,24 @@ export class GameEntity {
     return consumed;
   }
 
-  // 毎フレームの描画位置・姿勢同期。絶対 ECI 位置(state.r)を fo 経由で描画フレームへ変換する。
-  sync(fo: FloatingOrigin): void {
-    this.obj.position.copy(fo.RtoThreeV3(this.state.r));
+  // 表示時刻 t の状態。過去(t <= state.t)は current.at、未来は predicted.at に委ねる —
+  // 分岐はこの境界を選ぶだけで、過去・未来をまたぐ補間の継ぎ目は OrbitEntity.at 側に閉じている。
+  // 予測を持たない(predicted が無い)/予測期間を超えた時刻は null。
+  displayState(t: number): OrbitState | null {
+    return t <= this.current.state.t ? this.current.at(t) : (this._predicted?.at(t) ?? null);
+  }
+
+  // 毎フレームの描画位置・姿勢同期。displayTime の状態(過去/未来含む)を fo 経由で描画
+  // フレームへ変換する。戦闘ビューは常に displayTime === state.t を通るので挙動は変わらない。
+  // displayState が無ければ(予測を持たない種別が未来表示中、または予測期間超過)非表示にする。
+  sync(fo: FloatingOrigin, displayTime: number): void {
+    const s = this.displayState(displayTime);
+    if (s === null) {
+      this.obj.visible = false;
+      return;
+    }
+    this.obj.visible = true;
+    this.obj.position.copy(fo.RtoThreeV3(s.r));
     this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 

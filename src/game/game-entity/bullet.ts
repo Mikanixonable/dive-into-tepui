@@ -60,10 +60,18 @@ export class Bullet extends GameEntity {
 
     // 姿勢を持たないため、att.q ではなくフローティングオリジンに対する相対速度方向を
     // 向く(モーションブラー的表現)。位置は toThreeVector3(r 差引)、向きは toThreeVelocity
-    // (v 差引)で描画フレームへ変換する
-    sync(fo: FloatingOrigin): void {
-        this.obj.position.copy(fo.RtoThreeV3(this.state.r));
-        const relVel = fo.VtoThreeV3(this.state.v);
+    // (v 差引)で描画フレームへ変換する。弾は predictDuration = 0 なので、displayTime が
+    // 未来を指す間(マップの未来ゴースト表示中)は displayState が常に null になり非表示になる
+    // (寿命が数秒の弾を未来表示の対象にする意味がないため — better_predict.md Step 4)。
+    sync(fo: FloatingOrigin, displayTime: number): void {
+        const s = this.displayState(displayTime);
+        if (s === null) {
+            this.obj.visible = false;
+            return;
+        }
+        this.obj.visible = true;
+        this.obj.position.copy(fo.RtoThreeV3(s.r));
+        const relVel = fo.VtoThreeV3(s.v);
         if (relVel.lengthSq() <= 1e-6) return;
         tmpQuat.setFromUnitVectors(zAxis, relVel.normalize());
         this.obj.quaternion.copy(tmpQuat);

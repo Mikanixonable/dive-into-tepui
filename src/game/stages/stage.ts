@@ -110,10 +110,11 @@ export abstract class Stage {
     location.replace(`${location.pathname}?stage=${this.id}`);
   }
 
-  // 毎フレーム(sync 時)呼ぶ、ステージ所有の表示物の同期。
-  sync(player: Player, project: ProjectFn): void {
+  // 毎フレーム(sync 時)呼ぶ、ステージ所有の表示物の同期。displayTime は ▣ AMMO マーカーを
+  // 補給のメッシュ位置(displayState 基準)と揃えるために Logistics へそのまま渡す。
+  sync(player: Player, project: ProjectFn, displayTime: number): void {
     this.syncStatusPanel(player);
-    this.logistics.syncMarkers(player, project);
+    this.logistics.syncMarkers(player, project, displayTime);
   }
 
   // hudSubStatus() を返すステージでだけ状況パネルを表示する。

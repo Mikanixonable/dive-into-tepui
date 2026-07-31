@@ -11,7 +11,7 @@ import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageId } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
-import { GroupedMarkers } from './marker/grouped-markers';
+import { GroupedMarkers, GroupedMarkerItem } from './marker/grouped-markers';
 import { LeadMarkers } from './marker/lead-markers';
 import { EffectsSystem } from './vfx/effects-system';
 import { initStage } from './stages/stage-dictionary';
@@ -350,21 +350,25 @@ export class Game {
       cameraSystem: this.cameraSystem,
     });
 
-    this.player.syncPlayer(this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused);
+    this.player.syncPlayer(this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused, displayTime);
 
-    this.entities.sync(this.floatingOrigin);
+    this.entities.sync(this.floatingOrigin, displayTime);
 
     this.effects.sync(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
 
     this.targeter.sync(dt, this.floatingOrigin, this.player, this.entities.enemies, overviewMode, project);
 
     // 敵マーカーだけは敵1体では決められない(画面上で近接するものをまとめる)ため、
-    // 各 Enemy が用意した表示内容を集合として GroupedMarkers へ渡す。
+    // 各 Enemy が用意した表示内容を集合として GroupedMarkers へ渡す。表示位置は displayState
+    // (未来ゴースト表示中は将来位置)——機体メッシュ(entities.sync)と揃えないと「機体は未来位置、
+    // ◇マーカーは現在位置」で壊れて見える。予測期間を超えて displayState が null の敵はマーカーごと落とす。
     const aliveEnemies = this.entities.enemies.filter((enemy) => enemy.alive);
-    this.enemyMarkers.sync(
-      aliveEnemies.map((enemy) => enemy.markerItem(enemy === target, this.player.state.r)),
-      project,
-    );
+    const enemyMarkerItems: GroupedMarkerItem[] = [];
+    for (const enemy of aliveEnemies) {
+      const pos = enemy.displayState(displayTime)?.r;
+      if (pos) enemyMarkerItems.push(enemy.markerItem(enemy === target, this.player.state.r, pos));
+    }
+    this.enemyMarkers.sync(enemyMarkerItems, project);
     this.leadMarkers.sync(this.player, aliveEnemies, target, simTime, overviewMode, project);
 
     // 「いつを見るか」(期間・スライダー)のパネルは displayTimeManager 自身が駆動する。
@@ -377,7 +381,7 @@ export class Game {
     // 自機のモード状態を映す先が2つある(HUD ステータスパネルとタッチUIのトグルボタン)。
     // どちらも表示側なので、状態の所有者から見て対称になるようここで両方へ渡す。
     this.touchControls?.syncModeButtons(this.player.rcsDamp, this.player.fineAttitude, this.player.progradeHold);
-    this.activeStage.sync(this.player, project);
+    this.activeStage.sync(this.player, project, displayTime);
 
     this._hud.panels.update(this, dt);
     this._hud.tick();

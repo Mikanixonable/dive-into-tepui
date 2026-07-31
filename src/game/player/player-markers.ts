@@ -13,15 +13,19 @@ const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as
 export class PlayerMarkers {
   constructor(private readonly markerManager: MarkerManager) { }
 
-  sync(state: OrbitState, att: Attitude, alive: boolean, overviewMode: boolean, project: ProjectFn): void {
+  // currentState は常に「いま」の自機状態(戦闘ビューの方向マーカー・ボアサイトはこれだけを
+  // 見る — 軌道基準フレームは未来ゴーストと無関係)。displayState はスライダー位置の状態
+  // (null なら予測期間超過)で、▷ マーカーだけがこちらを見る。
+  sync(currentState: OrbitState, displayState: OrbitState | null, att: Attitude, alive: boolean, overviewMode: boolean, project: ProjectFn): void {
     if (overviewMode) {
       for (const key of COMBAT_KEYS) this.markerManager.hide(key);
-      this.markerManager.setPosition('self', 'mk-self', '▷', state.r, project, 'PLAYER');
+      if (displayState) this.markerManager.setPosition('self', 'mk-self', '▷', displayState.r, project, 'PLAYER');
+      else this.markerManager.hide('self');
       return;
     }
     this.markerManager.hide('self');
-    this.syncOrbitalDirections(state, project);
-    this.syncBoresight(state, att, alive, project);
+    this.syncOrbitalDirections(currentState, project);
+    this.syncBoresight(currentState, att, alive, project);
   }
 
   // 方向マーカーは自機の軌道基準フレームを表すので、自機位置を原点として setDirection に渡す。

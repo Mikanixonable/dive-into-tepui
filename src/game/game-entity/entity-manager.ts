@@ -82,7 +82,7 @@ export class EntityManager {
     arr.length = w;
   }
 
-  sync(fo: FloatingOrigin): void {
-    this.all().forEach(e => e.sync(fo));
+  sync(fo: FloatingOrigin, displayTime: number): void {
+    this.all().forEach(e => e.sync(fo, displayTime));
   }
 }

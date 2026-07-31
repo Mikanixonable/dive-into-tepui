@@ -266,16 +266,24 @@ export class Player extends Ship {
     fo: FloatingOrigin,
     camera: CameraSystem,
     phasePlaying: boolean,
-    paused: boolean
+    paused: boolean,
+    displayTime: number,
   ): void {
-    this.obj.position.copy(fo.RtoThreeV3(this.state.r));
-    this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
-    this.obj.visible = this.alive && !camera.zoomActive;
+    // 機体メッシュと ▷ self マーカーだけが displayState(未来ゴースト表示中は将来位置)基準。
+    // 推力プルーム・RCS パフ・ベルト・軌道線は実機体の物理そのものの表示なので、現在状態
+    // (this.state)のまま — マップ表示では機体は実質不可視 5m なので、実際に効くのは
+    // ▷ マーカーだけになる(better_predict.md Step 4)。
+    const displayState = this.displayState(displayTime);
+    this.obj.visible = displayState !== null && this.alive && !camera.zoomActive;
+    if (displayState !== null) {
+      this.obj.position.copy(fo.RtoThreeV3(displayState.r));
+      this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+    }
 
     this.thrustEffects.sync(fo, this.state.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
     this.rcsEffects.sync(fo, this.state.r, this.torque, this.att, this.alive, phasePlaying, paused, camera);
     this.belt.sync(this.alive);
-    this.markers.sync(this.state, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection);
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection);
 
     // 自機軌道線は「高精度で描きたい点」付近の頂点を密にする(focusPos)。本来これは
     // フローティングオリジン(≒カメラ近傍、単精度でも破綻させたくない領域)であるべきだが、
