@@ -1,5 +1,4 @@
 // 環境(太陽・月・星・地球・環境光)の構築と毎フレーム更新。
-// game.ts のゲームプレイ定数(const.ts)には依存しない — 必要な値は呼び出し側から渡す。
 import * as THREE from 'three/webgpu';
 import { Ephemeris, R_MOON } from '../physics/ephemeris';
 import { Elements, R_EARTH, SIDEREAL_DAY, elementsFromState } from '../physics/orbital';
@@ -11,13 +10,6 @@ import { CameraSystem } from '../game/camera/camera-system';
 import { FloatingOrigin } from '../game/floating-origin';
 import * as C from '../game/const';
 import { Player } from '../game/player/player';
-
-export interface EnvironmentLightingParams {
-  sunIntensity: number;
-  ambientIntensity: number;
-  shadowMinSun: number;
-  shadowMinAmbient: number;
-}
 
 export interface EnvironmentSyncParams {
   dt: number;
@@ -67,7 +59,6 @@ export class EnvironmentScene {
   constructor(
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
-    //private readonly lighting: EnvironmentLightingParams,
   ) {
     const sd0 = this.ephemeris.sunDirAt(0);
     this.geoLine.line.renderOrder = 0;
