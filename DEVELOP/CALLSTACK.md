@@ -189,9 +189,10 @@
   - predictor.update() // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。視点/モードによる分岐なし
     - resyncPrediction() // player + entities.all() の全対象、毎フレーム無条件(§3-4 (a) の距離判定)
       - invalidatePrediction() // predicted.at(simTime) が実位置から PREDICT_RESET_DIST を超えて乖離、または区間外のときのみ
-    - player.advancePrediction() // 予算 PREDICT_STEP_BUDGET を自機優先で消費
-      - predicted.step() // ホライズンに達する or 予算が尽きるまで、1ステップごとに ephemeris をサンプル
-    - entity.advancePrediction() // 残り予算をカーソル位置から1周ぶん配る。消費 0(predictDuration=0/推力中/truncated)なら次へ即進む
+    - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を自機優先で消費。ループも dt の決定(predictStepDt)も Predictor 側が持つ(stepSim に対する simulationSubStep と同じ分担)
+      - player.stepPrediction(dt) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt を都度計算し直しながら1ステップずつ繰り返し呼ぶ
+        - predicted.step() // 1ステップごとに ephemeris を中点サンプル
+    - advanceBudget(entity, ...) // 残り予算をカーソル位置から1周ぶん配る。entity.stepPrediction() が最初から false(predictDuration=0/推力中/truncated)なら消費 0 で次へ即進む
   - cameraSystem.update() // 物理積分の後に呼ぶ(追従カメラの基準を積分後の自機位置に合わせるため)
     - chaseCamera.toggleFollowAttitude() // KeyG。カメラ自身の状態なのでここで消費する
     - zoomActive = !overviewMode && KeyZ 押下
