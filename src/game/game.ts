@@ -1,9 +1,4 @@
-// ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの
-// 呼び出し順序の決定を担う。物理積分・衝突判定は Simulator、勝敗判定は Stage、
-// 入力 → 推力/トルクへの変換は Player が持ち、Game 自身はそれらの状態を持たない。
-//
-// 座標系: ECI (慣性系)、Y軸 = 北極、単位 m / m/s。
-// 描画は自機中心のフローティングオリジン(自機が常に (0,0,0))。
+// ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
 import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
 import * as C from './const';
@@ -43,84 +38,38 @@ export class Game {
   private floatingOrigin: FloatingOrigin;
   private readonly input: Input;
   touchControls: TouchControls | null = null;
-  // hud/sfx/settingsPanel はタイトル画面でも使うため main.ts が生成して注入する(Game は所有せず
-  // 参照共有するだけ)。注入である以上コンストラクタ引数でしか確定しないため、これらに依存する
-  // 下記フィールドは(scene 依存のフィールドと同様に)field initializer ではなくコンストラクタ
-  // 本体で組み立てる。
   private readonly _hud: Hud;
   private readonly _sfx: Sfx;
   private readonly settingsPanel: SettingsPanel;
   private readonly markerManager: MarkerManager;
-  // 太陽・月の天体暦(状態を持たない純サンプラ)。environment/simulator/cameraSystem/
-  // editor がこの単一インスタンスを共有参照する。cameraSystem など後続の構築より前に
-  // 確定させる必要があるため、依存を持たないこれは field initializer のままでよい。
   private readonly ephemeris: Ephemeris;
-  // hud.panels.update(this, ...) が Game インスタンスをまるごと受け取って状態を直接読むため、
-  // panel.ts から参照されるフィールド(cameraSystem/player/activeStage/entities/targeter 等)は
-  // public にする。フォーカス候補ラベル(地球・月・太陽・ラグランジュ点)とその選択 UI
-  // (視点パネル・ラベル右クリックメニュー)は「どこを注視するか」= overviewCamera 寄りの
-  // 責務なので cameraSystem が所有し、その HUD 配線も cameraSystem 自身が張る。
   readonly cameraSystem: CameraSystem;
   readonly player: Player;
-
-  // シミュレーション速度(HUD ヒント・SFX 上は「ワープ」と呼ぶ、sfx.warp() 参照)の
-  // 段階管理と、[N] キーによるノードへの自動ワープ。
   readonly simSpeedManager: SimSpeedManager;
 
-  // 軌道計画まわりの三系統を game が直接保持する:
-  // editor(ノード列 Plan・編集モード editMode・ノード編集入力・未来表示 = 予測折れ線
-  // traj・ゴースト・その表示座標系パネルを持つ PlanDisplay)、displayTimeManager(「いつを見るか」
-  // = 表示期間・未来ゴーストスライダーとその操作パネル)、guide(戦闘ビューの噴射ガイド。
-  // マップモード中は呼ばない — [M] で開いている間は WASDQE が Δv編集に使われるため)。
   private readonly editor: PlanEditor;
   private readonly displayTimeManager: DisplayTimeManager;
   private readonly guide: PlanGuide;
   readonly mapModeToggler: MapModeToggler;
 
-  // 選択されたステージの振る舞い(初期化・毎フレーム処理・勝敗判定、stages/ 参照)。
-  // 固有のランタイム状態(タイマー・ウェーブ管理等)もこれ自身が持つ。
   readonly activeStage: Stage;
-  // 唯一の書き換え口は pause()/resume()。SettingsPanel.onSettingsOpenChange の配線は
-  // main.ts の役目(settingsPanel を所有するのが main.ts のため)。
   private _isPaused = false;
   get isPaused(): boolean { return this._isPaused; }
 
-  // 空の天体・地球・環境光・参照軌道線をまとめて所有する描画系。天体暦は上の ephemeris を
-  // 共有参照する(所有はしない)。
   private readonly environment: EnvironmentScene;
 
   private readonly unlockManager: UnlockManager;
 
   // 単独のオブジェクトでは決められないマーカー群。敵マーカーは「画面上で近接するものを
-  // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とするので、いずれも
-  // 当事者ではなくここが持つ。それ以外のマーカーは、それぞれの持ち主(Player/Targeter/
-  // Logistics/FocusMarkers/PlanGuide/PlanDisplay)の sync が
-  // 自分で出す。
+  // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とする。
   private readonly enemyMarkers: GroupedMarkers;
   private readonly leadMarkers: LeadMarkers;
-  // フラッシュ・破片エフェクトのスポーン窓口(effects-system.ts)。scene への注入・
-  // FlashEffectManager の所有もここに一元化されており、Player/Enemy/PlayerFire は
-  // scene を持ち回さずに済む。scene(_scene)はコンストラクタ引数 gs 由来で field
-  // initializer の時点では未確定のため、コンストラクタ本体で構築する(environment/player
-  // と同じ理由)。
   private readonly effects: EffectsSystem;
   readonly targeter: Targeter;
-  // エンティティ配列(敵・弾・薬莢・デブリ・補給)の保持・追加・上限管理・寿命回収・描画同期。
-  // Stage・Enemy.behave・HitSystem・Targeter・Logistics・EffectsSystem・NanWatchdog へ
-  // 参照共有される唯一の窓口(simulation/entity-manager.ts 参照)。実シミュレーション(積分・命中・接触・姿勢)は
-  // simulator が持ち、この配列への参照を受け取って回す。
   readonly entities: EntityManager;
   readonly simulator: Simulator;
-  // 全 GameEntity の予測列(predicted)をフレーム予算内でなるはやに伸ばす。視点・モードと
-  // 無関係に常時進み、表示(displayState 経由)はその副産物として乗る
-  // (entities.cleanup の後に呼ぶ理由は predictor.ts 参照)。
   private readonly predictor: Predictor;
-  // シミュレーション状態の非有限値(NaN/Infinity)を最初に検出したフェーズごと報告する見張り。
-  // 汚染は描画の暗転・敵の「再突入」誤表示・接触音の鳴りっぱなしなど別の顔で表面化するため、
-  // 発生した瞬間に記録する(nan-watchdog.ts の冒頭コメント参照)。
   private readonly nanWatchdog: NanWatchdog;
-  // 過去列・未来列のデバッグ表示(?debugLines=1)。対象の集合(既定: 自機+ターゲット)は
-  // 毎フレーム game.sync が渡す — エンティティ自身に線を持たせない理由は debug-history-line.ts 参照。
   private readonly debugHistoryLine: DebugHistoryLine;
 
   constructor(
@@ -146,14 +95,11 @@ export class Game {
     this.cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager, this.ephemeris);
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
-    // 配列に依存を持たないので、それを要する effects/simulator/stage より先に構築できる
-    // (旧 Simulator 分割前は effects がこの参照をクロージャ越しに遅延取得する必要があった)。
     this.entities = new EntityManager();
     this.effects = new EffectsSystem(this._scene, this.entities);
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
     this.displayTimeManager = new DisplayTimeManager(this._hud.root);
-    // PlanEditor は自身の PlanDisplay を構築するため scene/markerManager を要する。
     this.editor = new PlanEditor(
       this._hud,
       this._sfx,
@@ -163,8 +109,7 @@ export class Game {
       this.markerManager,
       () => this.player.fineAttitude,
     );
-    // 表示期間が非連続に変わった瞬間(duration 切替)を予測折れ線側へ伝える。持ち主が違う
-    // (displayTimeManager は Game 直属、planDisplay.traj は PlanEditor 所有)ので配線は Game が行う。
+    // 表示期間の非連続な切り替えは、予測折れ線の通常のスロットルを待たせず即座に作り直す。
     this.displayTimeManager.onDurationChange = () => this.editor.planDisplay.traj.invalidate();
 
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
@@ -210,38 +155,30 @@ export class Game {
 
   // ------------------------------------------------------------ update
 
-  // per frameの論理値更新
   update(dtRaw: number): void {
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
     this.handleInput();
 
-    // ポーズ中の処理。handleInput は上で呼んだあとなので、決着後・ポーズ中でも
-    // Esc やヘルプなど「常時効くべき」操作(handleInput の守備範囲)はここより前に効く。
+    // handleInput より後に置く: ポーズ中も Esc・ヘルプなどは効かせる。
     if (this._isPaused) { return; }
 
-    // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
-    // 積分もサブステップなしの簡略版(stepSimulation の bulletCollision/resolveCollision/doSubstep 引数)にする。
-    // behave が呼ばれなくなる分、勝敗確定時点の thrust が凍結され続けないよう明示的に消す。
+    // behave が呼ばれなくなるので、決着時点の thrust が凍結され続けないよう明示的に消す。
     if (!this.activeStage.isPlaying) {
       this.player.thrust = null;
       this.player.torque = v3();
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
       this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, false, false, false);
-      // この経路も積分後に全エンティティを一度だけ検査する(通常経路と同じ理由)。
       this.nanWatchdog.checkAll('stepSimulation(決着後)', this.player, this.entities, this.simulator.simTime, dt, simDt);
-      // 決着後もタイムワープで時間は進むので、alive=false のまま残り続けないよう cleanup も
-      // 通常経路と同じ位置(積分の直後・カメラ更新の前)で呼ぶ。
       this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
-      // 決着後もカメラは追従させる。sync は止まらないので、ここで update を飛ばすと視点だけが
-      // 絶対 ECI に取り残され、原点(自機)が軌道速度で遠ざかって残骸が即座にフレームアウトする。
+      // 決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
+      // 軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする。
       this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt);
       return;
     }
 
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
 
-    // プレイヤーの HP 回復・移動/発射の試行
     this.player.behave({
       dt,
       input: this.input,
@@ -255,7 +192,6 @@ export class Game {
 
     this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
 
-    // ステージの更新 (敵の行動・スポーン管理・スコア加算・勝敗判定を含む)
     this.activeStage.update(dt, this.player, this.entities, this.simulator.simTime, this.simSpeedManager);
 
     this.nanWatchdog.checkPlayer('activeStage.update', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
@@ -268,8 +204,7 @@ export class Game {
       true, // doSubstep 
     );
 
-    // 積分・弾命中・剛体接触・姿勢積分をまとめて通過した直後。全エンティティを走査する
-    // (自機より先に薬莢や破片が壊れ、接触を通じて自機へ伝播することがあるため)。
+    // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
     this.nanWatchdog.checkAll('simulator.stepSimulation', this.player, this.entities, this.simulator.simTime, dt, simDt);
 
     this.targeter.markBoardCrossings(this.player, this.entities);
@@ -278,12 +213,11 @@ export class Game {
 
     this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
 
-    // 予測は表示とは独立に常時進む(視点・モードによる条件分岐は持たない)。cleanup の後に
-    // 呼ぶのは、死んだ個体を予測しないため、かつ積分後の実状態と突き合わせるため。
+    // cleanup の後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせるため。
     this.predictor.update(this.simulator.simTime, this.player);
 
-    // カメラ更新は物理積分の後に行う: 追従カメラは自機を絶対 ECI 座標で追い、その基準は
-    // sync 時のフローティングオリジン(積分後の自機位置)と一致していなければならない。
+    // 物理積分の後に行う: 追従カメラの基準は sync 時のフローティングオリジン
+    // (積分後の自機位置)と一致していなければならない。
     this.cameraSystem.update(
       this.player,
       this.simulator.simTime,
@@ -291,12 +225,10 @@ export class Game {
       dt,
     );
 
-    // 計画が空の間、予定 player の起点を現在状態へ追従させる(最初のノードで凍結)。
     this.editor.plan.trackAnchor(this.player.state);
 
     if (this.editor.editMode) {
-      // 右クリックはノード(メニュー)を先に試し、外したぶんだけフォーカス選択へ回る。
-      // 二つのギズモは互いを知らず、優先順位はこの呼び出し順だけで決まる。
+      // 右クリックはノードを先に試し、外したぶんだけフォーカス選択へ回る(優先順位はこの順序だけ)。
       this.editor.handleMapPointer(this.input);
       this.cameraSystem.handleMapPointer(this.input);
       this.editor.updateEditing(dt, this.simulator.simTime, this.input);
@@ -308,14 +240,9 @@ export class Game {
 
   // --------------------------------------------------------------- input
 
-  // 入力エッジを担当モジュールへ先着順で配る。どのキー/クリックが何をするかは各モジュールが
-  // 持ち、ここが決めるのは**優先順位 = 呼ぶ順序**だけ。処理したモジュールが input から
-  // そのイベントを消費するので、後ろのモジュールには届かない。
-  //
-  // ここで配るのは、決着後・ポーズ中も効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・
-  // 計画破棄)。プレイ中のみ効く操作は、それぞれの持ち主の毎フレーム処理が input を受けて
-  // 自分で拾う(Player.behave / CameraSystem.update / PlanEditor.handleMapPointer /
-  // Targeter.updateCombatTargeting)。
+  // 入力エッジを担当モジュールへ先着順で配る。決めるのは優先順位 = 呼ぶ順序だけで、
+  // どのキー/クリックが何をするかは各モジュールが持つ。ここで配るのは、決着後・ポーズ中も
+  // 効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・計画破棄)。
   private handleInput(): void {
     this.settingsPanel.handleInput(this.input);
     this._hud.handleInput(this.input);
@@ -336,22 +263,15 @@ export class Game {
   // ------------------------------------------------------------------ sync
 
   sync(dt: number): void {
-    // 設定し、sync 系全体へ共通の基準として渡す。player.state とは意味論的に別物 —
-    // 将来この原点を別の点(カメラ座標など)へ差し替えても描画が破綻しないよう、
-    // 各 sync はこの fo だけを参照し player.state.r を描画原点として直接使わない。
     this.floatingOrigin = new FloatingOrigin(this.player.state.r, this.player.state.v);
 
-    // 表示時刻(未来ゴーストのスライダー位置ぶん先取りした simTime)と、その解決に要る
-    // 現在の周期。周期は予測の表示期間('1周回')でも使うので一度だけ求める。
+    // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const orbitPeriod = this.player.elements?.period ?? null;
     const displayTime = this.displayTimeManager.resolveDisplayTime(orbitPeriod, this.simulator.simTime);
 
-    // カメラ姿勢を THREE.js に反映するのを最初に行う: environment.sync や
-    // マーカー投影(activeCameraProjection)がこのフレームのカメラ行列を読むため。
+    // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
     this.cameraSystem.sync(this.floatingOrigin, displayTime);
 
-    // マーカーを出す側はどれもアクティブカメラの投影を必要とする(fo と同じく、
-    // sync 系へ共通で配る基準)。
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
     const simTime = this.simulator.simTime;
@@ -373,10 +293,8 @@ export class Game {
 
     this.targeter.sync(dt, this.floatingOrigin, this.player, this.entities.enemies, overviewMode, project);
 
-    // 敵マーカーだけは敵1体では決められない(画面上で近接するものをまとめる)ため、
-    // 各 Enemy が用意した表示内容を集合として GroupedMarkers へ渡す。表示位置は displayState
-    // (未来ゴースト表示中は将来位置)——機体メッシュ(entities.sync)と揃えないと「機体は未来位置、
-    // ◇マーカーは現在位置」で壊れて見える。予測期間を超えて displayState が null の敵はマーカーごと落とす。
+    // 敵マーカーは1体では決められない(画面上で近接するものをまとめる)ので集合として渡す。
+    // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
     const aliveEnemies = this.entities.enemies.filter((enemy) => enemy.alive);
     const enemyMarkerItems: GroupedMarkerItem[] = [];
     for (const enemy of aliveEnemies) {
@@ -386,15 +304,10 @@ export class Game {
     this.enemyMarkers.sync(enemyMarkerItems, project);
     this.leadMarkers.sync(this.player, aliveEnemies, target, simTime, overviewMode, project);
 
-    // 「いつを見るか」(期間・スライダー)のパネルは displayTimeManager 自身が駆動する。
-    // 予測折れ線(と未来ゴースト・その表示座標系パネル)は editor が所有する planDisplay が
-    // 駆動する — ノードギズモの画面座標はその表示座標変換を通すので、この呼び出しに畳み込む。
     this.displayTimeManager.sync(orbitPeriod);
     const displayEnd = simTime + this.displayTimeManager.durationSec(orbitPeriod);
     this.editor.sync(this.cameraSystem.overviewCamera.dist, displayEnd, simTime, displayTime, this.floatingOrigin, project);
 
-    // 自機のモード状態を映す先が2つある(HUD ステータスパネルとタッチUIのトグルボタン)。
-    // どちらも表示側なので、状態の所有者から見て対称になるようここで両方へ渡す。
     this.touchControls?.syncModeButtons(this.player.rcsDamp, this.player.fineAttitude, this.player.progradeHold);
     this.activeStage.sync(this.player, project, displayTime);
 
@@ -403,13 +316,10 @@ export class Game {
 
     this.guide.update(this.editor.plan, this.player, simTime, this.simSpeedManager, this.editor.editMode, project);
 
-    // 過去列・未来列のデバッグ表示(?debugLines=1 のときのみ実体を持つ)。既定の対象は自機と
-    // 現在のターゲット。視点・モードとは無関係に常時 sync する(予測自体がそうであるように)。
     const debugTargets = target ? [this.player, target] : [this.player];
     this.debugHistoryLine.sync(debugTargets, this.editor.planDisplay.trajectoryFrame, simTime, this.ephemeris, this.floatingOrigin);
 
-    // 重なったラベルを押し退けて引き出し線で繋ぐ最終処理。このフレームのマーカーが
-    // 出揃った後でなければならないので、sync の最後に置く。
+    // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions();
   }
 
