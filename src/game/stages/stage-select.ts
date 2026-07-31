@@ -2,7 +2,7 @@
 import { StageId } from './stage';
 import { STAGE_DEFINITIONS } from './stage-dictionary';
 import { UnlockManager } from '../unlock-manager';
-import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM } from '../theme';
+import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT } from '../theme';
 
 // ステージ選択画面を表示し、選ばれた StageId で解決される Promise を返す。
 export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
@@ -11,7 +11,7 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
     const div = document.createElement('div');
     div.style.cssText =
       'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-      `gap:18px;color:${TEXT};background:${BG};font-family:Consolas,monospace;z-index:100;text-align:center`;
+      `gap:18px;color:${TEXT};background:${BG};font-family:${FONT};z-index:100;text-align:center`;
     // 1ステージ分のボタン要素を組み立てる。ロック中は薄く表示しクリック不可にする。
     const btn = (label: string, sub: string, enabled: boolean) => {
       const b = document.createElement('div');
