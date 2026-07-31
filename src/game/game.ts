@@ -194,7 +194,7 @@ export class Game {
     this.handleInput();
 
     // ゲームオーバー後もシミュレーションは進めるが、プレイヤーの入力は無効化し、
-    // 積分もサブステップなしの簡略版(integrateSimulation の hardCollision/doSubstep 引数)にする。
+    // 積分もサブステップなしの簡略版(stepSimulation の bulletCollision/resolveCollision/doSubstep 引数)にする。
     // behave が呼ばれなくなる分、勝敗確定時点の thrust が凍結され続けないよう明示的に消す。
     if (!this.activeStage.isPlaying) {
       this.player.thrust = null;
