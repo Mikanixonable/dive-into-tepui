@@ -169,8 +169,10 @@ const STYLE = `
 }
 #hud-stagestatus .radiator-btn .label {
   position: relative; z-index: 1; color: ${INK}; font-size: 10px; line-height: 1.5;
-  text-shadow: 0 0 3px #000, 0 0 3px #000;
+  text-shadow: 0 0 3px #000, 0 0 3px #000; transition: color 0.2s;
 }
+#hud-stagestatus .radiator-btn.on { border-color: ${ACCENT}; }
+#hud-stagestatus .radiator-btn.on .label { color: ${ACCENT}; }
 #hud-settings {
   position: absolute; bottom: 40px; top: auto; left: 50%; transform: translateX(-50%);
   display: none; min-width: 260px; pointer-events: auto;
@@ -336,7 +338,7 @@ function buildHelpPanel(root: HTMLElement): void {
       <tr><td class="key">${throttleLabels}</td><td>並進出力の切替 (弱 / 中 / 強)。並進 6 方向に共通で適用される</td></tr>
       <tr><td class="key">${K.fineAttitudeToggle.label}</td><td>姿勢微調整モード ON/OFF (角加速度・角速度を絞って小刻みに操作)</td></tr>
       <tr><td class="key">${K.progradeHoldToggle.label}</td><td>進行方向ホールド ON/OFF (機首をプログレード方向へ自動で向け続ける。手動回転で解除)</td></tr>
-      <tr><td class="key">${K.radiatorDeployUp.label} / ${K.radiatorDeployDown.label}</td><td>ラジエーター展開/収納 (上 / 下)</td></tr>
+      <tr><td class="key">${K.radiatorDeployLeft.label} / ${K.radiatorDeployRight.label}</td><td>ラジエーター展開/収納 (左 / 右)</td></tr>
       <tr><td class="key">${K.followAttitudeToggle.label}</td><td>視点のRCS追従 ON/OFF (既定 ON: 視点が機体姿勢を基準に回転し、RCS操作と一体的に動く。OFF で軌道基準の独立視点になる)</td></tr>
       <tr><td class="key">${K.gunsightZoom.label} (長押し)</td><td>照準ズーム (機首方向を画面中心に拡大表示、自機は非表示になる)</td></tr>
       <tr><td class="key">右クリック (敵)</td><td>敵をターゲット固定 / 解除 (固定中はターゲット名が画面右上に表示される)</td></tr>
