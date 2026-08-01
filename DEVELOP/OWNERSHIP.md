@@ -53,6 +53,7 @@ main.ts
     │   │   └── BeltPhysics
     │   │       └── BeltSection[]      ... 剛体接触用プロキシ
     │   ├── ThermalSystem
+    │   ├── RadiatorSystem             ... 放熱板2枚の展開度・健全度。ヒンジ Group は Player.obj 配下を名前で参照
     │   ├── ThrustEffects → Billboard ×2
     │   ├── RcsEffects    → Billboard ×4
     │   ├── PlayerMarkers              ... 方向マーカー・ボアサイト・マップ上の自機位置
@@ -149,6 +150,7 @@ main.ts
 | 残弾・マガジン・バレル・装填タイマー | `PlayerFire` | |
 | ベルトのたわみ(節点位置・ツイスト) | `BeltPhysics` | 表示用リンク変換は Belt が毎フレーム導出 |
 | 外殻温度・動圧・高度警告 | `ThermalSystem` | 破壊判定そのものは `Player.checkLoss` |
+| 放熱板の展開度・健全度 | `RadiatorSystem` | 温度は持たない。放熱面積と太陽入射を `ThermalSystem.setRadiatorLoad` へ渡すのは `Player` |
 | エンティティ配列(敵/弾/薬莢/デブリ/補給) | `EntityManager` | 追加は `addXxx` 経由。上限管理もここ。`Simulator` は参照を受け取って回すだけで配列を持たない |
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
 | 予測ラウンドロビンのカーソル | `Predictor.cursor` | 唯一の状態。`EntityManager.all()` のインデックスとして毎フレーム進む |
