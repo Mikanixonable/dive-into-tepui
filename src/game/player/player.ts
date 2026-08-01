@@ -27,7 +27,8 @@ import { ReentryEffects } from './reentry-effects';
 import { PlayerMarkers } from './player-markers';
 import { MarkerManager } from '../marker/marker-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
-import { RadiatorSystem } from './radiator';
+import { RadiatorSide, RadiatorSystem } from './radiator';
+import { PowerSystem } from './power';
 import { Ephemeris, sunlitFactor } from '../../physics/ephemeris';
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
@@ -38,6 +39,7 @@ export class Player extends Ship {
   readonly belt: Belt;
   readonly thermal: ThermalSystem;
   readonly radiator: RadiatorSystem;
+  readonly power: PowerSystem;
 
   private readonly thrustEffects: ThrustEffects;
   private readonly rcsEffects: RcsEffects;
@@ -69,6 +71,7 @@ export class Player extends Ship {
     this.belt = new Belt(this.obj);
     this.thermal = new ThermalSystem(_hud, _sfx);
     this.radiator = new RadiatorSystem(this.obj);
+    this.power = new PowerSystem();
     this.thrustEffects = new ThrustEffects(_scene);
     this.rcsEffects = new RcsEffects(_scene, _sfx);
     this.reentryEffects = new ReentryEffects(_scene);
@@ -143,12 +146,14 @@ export class Player extends Ship {
     this.updateTorque(input, editMode, dt * simSpeed.simSpeed);
 
     this.radiator.update(dt);
-    const sunlit = sunlitFactor(this.state.r, ephemeris.sunDirAt(simTime), C.SHADOW_PENUMBRA);
+    const sunDir = ephemeris.sunDirAt(simTime);
+    const sunlit = sunlitFactor(this.state.r, sunDir, C.SHADOW_PENUMBRA);
     this.thermal.setRadiatorLoad(
       this.radiator.radiatingArea(),
-      this.radiator.solarLoad(sunlit, ephemeris.sunDirAt(simTime), this.att),
+      this.radiator.solarLoad(sunlit, sunDir, this.att),
     );
     this.radius = this.radiator.hitRadius();
+    this.power.update(dt, sunlit, sunDir, this.att);
 
     // 死亡済み: 射撃、移動、hp回復はできない
     if (!this.alive) {
@@ -202,7 +207,9 @@ export class Player extends Ship {
   attacked(bullet: Bullet, _simTime: number, activeStage: Stage, hitR: Vec3): void {
     if (!this.alive) return;
 
-    this.radiator.damageFromHit(hitR, this.state.r, this.att);
+    this.thermal.addImpactHeat();
+    const brokenSide = this.radiator.damageFromHit(hitR, this.state.r, this.att);
+    if (brokenSide !== null) this.radiatorBreakEffect(brokenSide);
     this.hp -= C.PLAYER_HIT_DAMAGE;
     if (this.hp > 0) {
       // 生存していれば被弾エフェクトのみ
@@ -266,6 +273,13 @@ export class Player extends Ship {
   private destroyEffect(): void {
     this._sfx.explosion();
     this._fx.spawnShipDestroyEffect(this.state, 1, C.COLOR_PLAYER_DESTROY_FRAG);
+  }
+
+  // ラジエーターが全損した瞬間の破片エフェクトを、そのパネル先端付近から発生させる。
+  private radiatorBreakEffect(side: RadiatorSide): void {
+    this._sfx.hit();
+    const tipR = this.radiator.tipWorldPosition(side, this.state.r, this.att);
+    this._fx.scatterFragments(this.state.t, tipR, this.state.v, 4, C.COLOR_PLAYER_DESTROY_FRAG, C.DESTROY_FRAG_SIZE_MIN, C.DESTROY_FRAG_SIZE_MAX, 8.0);
   }
 
   // ポーズ中: 移動/発射の一時状態(推力可視化・射撃継続)を止める。
