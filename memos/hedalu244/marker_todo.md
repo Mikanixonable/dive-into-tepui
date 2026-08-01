@@ -16,8 +16,9 @@ THREEキャンバスの上に2Dで文字やSVG描画をすることが可能か�
 
 ## marker周りの責務漏洩
 markerはそれを表示するオブジェクトが持つべき、という原則があったはずだが、全然守られていない。
+GameEntityに重ねて表示するマーカーを、GameEntity側が持つという形で一本化したい。syncやdisplayTimeの問題も一挙に解決するはず。
 
-ammoのmarkerがammoではなくlogisticsが管理している。これはパターンを崩すのでダメ。
+例えば、ammoのmarkerがammoではなくlogisticsが管理している。これはパターンを崩すのでダメ。
 
 groupedmarkerの責務がgame.syncやenemy.markerItemに漏洩している。
 まず、enemyのmarkerはplayerやammoと同様、単にmarkerを持っていてそれを更新するという形であるべき。GroupedMarkerItemを返す関数が実装されているべきではなく、enemyはそのmarkerがそのまま表示されるのか、groupedされて表示されるのかを知るべきではない。

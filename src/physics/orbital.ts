@@ -27,6 +27,12 @@ export function altitudeOf(r: Vec3): number {
   return len(r) - R_EARTH;
 }
 
+// 長半径 a の楕円軌道の公転周期 [s]。動径をそのまま渡せば、その高度を回る円軌道の周期
+// (= その場の軌道運動の時間スケール)になる。
+export function keplerPeriod(a: number): number {
+  return 2 * Math.PI * Math.sqrt((a * a * a) / MU_EARTH);
+}
+
 // 軌道基底: 進行方向・軌道面法線・面内で進行方向に直交する向きからなる正規直交系。
 // radOut が動径外向き r̂ と一致するのは r⊥v のとき(円軌道)だけで、離心軌道では
 // 動径から傾く — マーカーの RADIAL OUT/IN や Δv の OUT/IN はこの軸を指す。
@@ -240,7 +246,7 @@ export function elementsFromState(r: Vec3, v: Vec3): Elements | null {
     incDeg,
     apAlt: elliptic ? a * (1 + e) - R_EARTH : NaN,
     peAlt: p / (1 + e) - R_EARTH,
-    period: elliptic ? 2 * Math.PI * Math.sqrt((a * a * a) / MU_EARTH) : NaN,
+    period: elliptic ? keplerPeriod(a) : NaN,
     pHat,
     qHat,
     hHat,
