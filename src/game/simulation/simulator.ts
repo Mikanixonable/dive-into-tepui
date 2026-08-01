@@ -74,6 +74,9 @@ export class Simulator {
     for (const c of this.entities.casings) c.stepSim(dt, this.ephemeris);
     for (const d of this.entities.debris) d.stepSim(dt, this.ephemeris);
     for (const a of this.entities.ammos) a.stepSim(dt, this.ephemeris);
+    // player と同一インスタンスのクリエイティブ艦(アクティブ艦)は上の player.stepSim で
+    // 既に積分済みなので、二重積分を避けてここでは飛ばす。
+    for (const s of this.entities.creativeShips) if (s !== player) s.stepSim(dt, this.ephemeris);
 
     player.thermal.updateThermal(dt, player.state.r, player.state.v);
 
@@ -89,5 +92,6 @@ export class Simulator {
     for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, attDt);
     for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, attDt);
     for (const ammo of this.entities.ammos) if (ammo.alive) ammo.att = stepAttitude(ammo.att, ammo.torque, attDt);
+    for (const s of this.entities.creativeShips) if (s.alive && s !== player) s.att = stepAttitude(s.att, s.torque, attDt);
   }
 }

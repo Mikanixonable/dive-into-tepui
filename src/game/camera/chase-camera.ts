@@ -29,8 +29,14 @@ export class ChaseCamera {
 
   constructor(
     private readonly _hud: Hud,
-    private readonly player: Player,
+    private player: Player,
   ) { }
+
+  // 追従先の艦を差し替える(アクティブ艦の切替)。姿勢基準の rot はそのまま新しい艦の姿勢に対する
+  // 相対値として使い回す。
+  setPlayer(player: Player): void {
+    this.player = player;
+  }
 
   // 視点の基準フレーム(機体姿勢基準 true ⇔ ワールド基準 false)。書き換え時に rot を読み替える。
   get camFollowAttitude(): boolean {
