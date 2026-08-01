@@ -104,6 +104,7 @@
     - thermal.setRadiatorLoad(radiator.radiatingArea(), radiator.solarLoad())
       // このフレームの全サブステップの updateThermal がこの値を使う
     - player.radius = radiator.hitRadius() // 展開度に応じて被弾判定が広がる
+    - power.update() // sunlit/sunDir は radiator と共有。THREE には触れない
     - [!player.alive] player.thrust = null して return
     - hpRegen()
     - [editor.editMode] fire.tickMapMode() → tickReloadTimer() / player.thrust = null して return
@@ -172,6 +173,8 @@
             - onWin() → showWinScreen() // 同上(Stage0/00 は no-op override)
           - destroyEffect() → sfx.explosion() + fx.spawnShipDestroyEffect() // hp<=0
         - [Player.attacked]
+          - thermal.addImpactHeat() // 常に
+          - radiator.damageFromHit() → radiatorBreakEffect() // このフレームで新たに全損したパネルがあれば
           - hitEffect() // hp>0
           - activeStage.recordPlayerLost() → showResultScreen() // hp<=0
           - destroyEffect() // hp<=0
