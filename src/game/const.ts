@@ -242,6 +242,9 @@ export const PLAN_ARC_MAX_STEPS = 20000;
 // 変化がなくても摂動で軌道自体がドリフトするのでこの間隔ごとに再計算する。
 export const PREDICT_DIRTY_THROTTLE_MS = 200;
 export const PREDICT_REFRESH_INTERVAL_MS = 2000;
+// 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率の下限。これ未満は円に近く
+// アプシスの方向が数値的に不定になるので両方隠す。
+export const APSIS_MIN_ECC = 0.01;
 
 // --- エンティティの過去・未来状態列(physics/orbit-entity.ts の OrbitEntity.history/Predictor) ---
 export const PREDICT_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
