@@ -237,6 +237,10 @@ export class Ephemeris {
   moonOrbitRotationAt(t: number): FrameRotation {
     return moonOrbitRotation(t, this.moonPhase0);
   }
+  // 指定時刻の白道(月の公転面)法線。
+  moonOrbitNormalAt(t: number): Vec3 {
+    return moonOrbitNormal(t, this.moonPhase0);
+  }
   // 指定時刻の地球-月ラグランジュ点(L1-L5)。
   emLagrangeAt(t: number): LagrangePoints {
     return emLagrangePoints(t, this.moonPhase0);
