@@ -53,8 +53,11 @@ main.ts
     │   │   └── BeltPhysics
     │   │       └── BeltSection[]      ... 剛体接触用プロキシ
     │   ├── ThermalSystem
+    │   ├── RadiatorSystem             ... 放熱板2枚の展開度・損耗度。ヒンジ Group は Player.obj 配下を名前で参照
+    │   ├── PowerSystem                ... 太陽電池の蓄電量。パネル法線は機体固定 (0,1,0)、可動部なし
     │   ├── ThrustEffects → Billboard ×2
     │   ├── RcsEffects    → Billboard ×4
+    │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
     │   ├── PlayerMarkers              ... 方向マーカー・ボアサイト・マップ上の自機位置
     │   └── OrbitLine                  ... 自機軌道線
     ├── SimSpeedManager
@@ -148,6 +151,8 @@ main.ts
 | 残弾・マガジン・バレル・装填タイマー | `PlayerFire` | |
 | ベルトのたわみ(節点位置・ツイスト) | `BeltPhysics` | 表示用リンク変換は Belt が毎フレーム導出 |
 | 外殻温度・動圧・高度警告 | `ThermalSystem` | 破壊判定そのものは `Player.checkLoss` |
+| 放熱板の展開度・損耗度 | `RadiatorSystem` | 温度は持たない。放熱面積と太陽入射を `ThermalSystem.setRadiatorLoad` へ渡すのは `Player` |
+| 太陽電池の蓄電量 | `PowerSystem` | メッシュ操作なし(パネルは固定)。`sync()` を持たない |
 | エンティティ配列(敵/弾/薬莢/デブリ/補給) | `EntityManager` | 追加は `addXxx` 経由。上限管理もここ。`Simulator` は参照を受け取って回すだけで配列を持たない |
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
 | 予測ラウンドロビンのカーソル | `Predictor.cursor` | 唯一の状態。`EntityManager.all()` のインデックスとして毎フレーム進む |

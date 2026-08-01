@@ -1,8 +1,8 @@
 // 環境(太陽・月・星・地球・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
-import { Ephemeris, R_MOON } from '../physics/ephemeris';
+import { Ephemeris, R_MOON, sunlitFactor } from '../physics/ephemeris';
 import { Elements, R_EARTH, SIDEREAL_DAY, elementsFromState } from '../physics/orbital';
-import { Vec3, addScaled, dot, len, norm, scale, sub, v3 } from '../physics/vec3';
+import { Vec3, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { createEarth, Earth } from './earth';
 import { OrbitLine } from './orbitline';
 import { MOON_VIS_DIST, SUN_DISTANCE, SUN_VISUAL_SIZE, Sun, createMoon, createStars, createSun } from './stars';
@@ -89,7 +89,7 @@ export class EnvironmentScene {
     this.syncSkyBodies(displayTime, floatingOrigin, cameraSystem);
 
     // lit は自機位置の日照率(円柱影の近似)。物理的に正確ではない。
-    const lit = cameraSystem.overviewMode ? 1.0 : this.shadowLitFactor(player.state.r, this.ephemeris.sunDirAt(displayTime));
+    const lit = cameraSystem.overviewMode ? 1.0 : sunlitFactor(player.state.r, this.ephemeris.sunDirAt(displayTime), C.SHADOW_PENUMBRA);
     this.syncLighting(lit);
 
     this.syncReferenceLines(displayTime, floatingOrigin, cameraSystem.overviewMode);
@@ -104,14 +104,6 @@ export class EnvironmentScene {
     }
     this.geoLine.sync(GEO_ELEMENTS, fo, false);
     this.moonLine.sync(this.moonOrbitElements(simTime), fo, false);
-  }
-
-  // 自機位置の地表影(円柱近似 + 縁のぼかし)による日照率 0..1。
-  private shadowLitFactor(r: Vec3, sunDir: Vec3): number {
-    const along = dot(r, sunDir);
-    if (along >= 0) return 1; // 太陽側
-    const perp = len(addScaled(r, sunDir, -along));
-    return Math.min(1, Math.max(0, (perp - R_EARTH) / C.SHADOW_PENUMBRA));
   }
 
   // 月の接触軌道要素(表示専用)。月自身は entity ではなく解析式のみを持つため、

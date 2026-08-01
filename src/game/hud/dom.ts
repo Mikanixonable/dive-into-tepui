@@ -3,8 +3,7 @@ import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
 
-const rotationLabels = [K.pitchDown, K.pitchUp, K.yawRight, K.yawLeft, K.rollLeft, K.rollRight]
-  .map((k) => k.label).join('/');
+
 const throttleLabels = [K.throttleLow, K.throttleMid, K.throttleHigh].map((k) => k.label).join(' / ');
 
 const STYLE = `
@@ -36,22 +35,18 @@ const STYLE = `
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
 #hud .row .k { color: ${INK_SOFT}; }
 #hud .row .v { color: ${INK}; min-width: 90px; text-align: right; }
-#hud-status { bottom: 44px; left: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
+#hud-status { bottom: 12px; left: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-status h3 { font-size: 8.8px; }
-#hud-orbit { bottom: 44px; left: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
+#hud-orbit { bottom: 12px; left: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-orbit h3 { font-size: 8.8px; }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
-#hud-target { bottom: 44px; right: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
+#hud-target { bottom: 12px; right: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-target h3 { font-size: 8.8px; }
-#hud-enemies { bottom: 44px; right: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
+#hud-enemies { bottom: 12px; right: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
 #hud-enemies .erow.tgt { color: ${ACCENT}; }
-#hud-controls {
-  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
-  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px; padding: 6px 18px;
-  color: ${INK_SOFT}; font-size: 11px; text-align: center; white-space: nowrap;
-}
+
 #hud-hint {
   position: absolute; bottom: 200px; left: 50%; transform: translateX(-50%);
   background: ${SURFACE}; border: 1px solid rgba(${ACCENT_RGB}, 0.35); border-radius: 4px;
@@ -59,6 +54,16 @@ const STYLE = `
   color: ${ACCENT_SOFT}; font-size: 14px;
   transition: opacity 0.4s; opacity: 0; text-align: center;
 }
+#hud-chase-reset {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  pointer-events: auto; cursor: pointer;
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; justify-content: center; align-items: center;
+  padding: 0;
+  border: 1px solid ${EDGE}; background: ${SURFACE}; color: ${INK_SOFT};
+  z-index: 1;
+}
+#hud-chase-reset:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
 #hud-toast {
   position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
   background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px; padding: 14px 26px;
@@ -74,41 +79,54 @@ const STYLE = `
 }
 .mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; line-height: 1; }
 .mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: 10px; margin-top: 2px; letter-spacing: 1px; }
-.mk-boresight { color: #dfe3e8; font-size: 18px; }
+.mk-boresight { color: ${C.COLOR_MARKER_BORESIGHT}; font-size: 18px; }
 .mk-target { color: ${ACCENT}; }
 .mk-enemy { color: rgba(230, 232, 235, 0.35); }
 .mk-lead { color: ${ACCENT}; }
-.mk-pro { color: #cfd6dd; }
-.mk-retro { color: #cfd6dd; }
-.mk-nrm { color: #d08cff; }
-.mk-rad { color: #7de8ff; }
-.mk-tgtdir { color: #ff7ab0; }
-.mk-node { color: #8b93a0; }
-.mk-boardhit { color: #ffffff; text-shadow: 0 0 5px rgba(255,255,255,0.9), 0 0 10px rgba(255,255,255,0.45); }
+.mk-pro { color: ${C.COLOR_MARKER_PROGRADE}; }
+.mk-retro { color: ${C.COLOR_MARKER_PROGRADE}; }
+.mk-nrm { color: ${C.COLOR_MARKER_NORMAL}; }
+.mk-rad { color: ${C.COLOR_MARKER_RADIAL}; }
+.mk-tgtdir { color: ${C.COLOR_MARKER_TGTDIR}; }
+.mk-node { color: ${C.COLOR_MARKER_NODE}; }
+.mk-boardhit { color: ${C.COLOR_MARKER_BOARDHIT}; text-shadow: 0 0 5px rgba(255,255,255,0.9), 0 0 10px rgba(255,255,255,0.45); }
 .mk-boardhit .sym { font-size: 8px; }
 .mk-mnode { color: ${ACCENT_SOFT}; }
 .mk-burn { color: ${ACCENT}; text-shadow: 0 0 8px rgba(${ACCENT_RGB}, 0.7); }
-.mk-self { color: #dfe3e8; }
+.mk-self { color: ${C.COLOR_MARKER_SELF}; }
 .mk-ammo { color: ${ACCENT_SOFT}; text-shadow: 0 0 6px rgba(255,144,64,0.6), 0 0 3px #000; }
 #hud .warn-hot { color: ${ACCENT}; }
 #hud-plan {
-  position: absolute; bottom: 40px; left: 12px; min-width: 280px;
+  position: absolute; top: 12px; right: 12px; left: auto; bottom: auto; min-width: 90px; width: 33vw; max-width: 300px;
 }
 #hud .hud-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 #hud .hud-seg .seg-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 28px; }
-#hud .hud-seg .seg-btn {
+#hud .seg-btn {
   pointer-events: auto; cursor: pointer; padding: 3px 10px; font-size: 11px;
   border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
 }
-#hud .hud-seg .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud .hud-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+#hud .hud-toggle .toggle-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; }
+#hud .hud-toggle .toggle-track {
+  pointer-events: auto; cursor: pointer; position: relative; display: inline-block;
+  width: 34px; height: 18px; border-radius: 9px; border: 1px solid ${EDGE};
+  background: ${SURFACE}; transition: border-color 0.15s, background 0.15s;
+}
+#hud .hud-toggle .toggle-track.on { border-color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.25); }
+#hud .hud-toggle .toggle-knob {
+  position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+  background: ${INK_SOFT}; transition: left 0.15s, background 0.15s;
+}
+#hud .hud-toggle .toggle-track.on .toggle-knob { left: 18px; background: ${ACCENT}; }
 #hud-overview-camera { display: none; top: 12px; left: 12px; width: 292px; pointer-events: auto; }
 #hud-displaytime { display: none; top: 166px; left: 12px; width: 292px; pointer-events: auto; }
 #hud-displaytime input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
 #hud-trajframe { display: none; top: 296px; left: 12px; width: 292px; pointer-events: auto; }
-.mk-planned { color: #8fd0ff; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
-.mk-poi { color: #8fd0ff; text-shadow: 0 0 4px #000; }
-.mk-poi .sym { font-size: 14px; }
+.mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
+.mk-poi { color: #ffffff; text-shadow: 0 0 4px #000; }
+.mk-poi .sym { font-size: 5px; }
 .mk-poi .lbl { font-size: 11px; margin-top: 4px; padding: 2px 4px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
@@ -130,21 +148,33 @@ const STYLE = `
 #hud-help table { border-collapse: collapse; width: 100%; }
 #hud-help td { padding: 3px 10px; color: ${INK}; }
 #hud-help td.key { color: ${ACCENT_SOFT}; text-align: right; white-space: nowrap; }
-#hud-gear {
-  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-  width: 30px; height: 30px; border-radius: 50%; pointer-events: auto; cursor: pointer;
-  background: ${SURFACE}; border: 1px solid ${EDGE};
-  display: flex; align-items: center; justify-content: center; font-size: 15px; color: ${INK_SOFT};
-}
+
 #hud-stagestatus {
-  top: 60px; left: 50%; transform: translateX(-50%);
-  text-align: center; min-width: 170px; padding: 8px 16px;
+  top: 12px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: flex-start; gap: 22px;
+  text-align: left; min-width: 480px; padding: 8px 16px;
 }
-#hud-stagestatus .t { font-size: 16px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
+#hud-stagestatus .t { font-size: 11px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
 #hud-stagestatus .t.warn { color: ${ACCENT}; }
-#hud-stagestatus .k { font-size: 11px; color: ${INK_SOFT}; margin-top: 2px; }
+#hud-stagestatus .k { font-size: 11px; color: ${INK_SOFT}; line-height: 1.8; white-space: nowrap; }
+#hud-stagestatus .k-widgets:not(:empty) { margin-top: 6px; }
+#hud-stagestatus .radiators { display: flex; flex-direction: column; gap: 6px; }
+#hud-stagestatus .radiator-btn {
+  pointer-events: auto; cursor: pointer; position: relative; overflow: hidden;
+  width: 132px; padding: 4px 8px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: ${SURFACE}; text-align: left;
+}
+#hud-stagestatus .radiator-btn .fill {
+  position: absolute; inset: 0; z-index: 0; transition: width 0.2s, background 0.2s;
+}
+#hud-stagestatus .radiator-btn .label {
+  position: relative; z-index: 1; color: ${INK}; font-size: 10px; line-height: 1.5;
+  text-shadow: 0 0 3px #000, 0 0 3px #000; transition: color 0.2s;
+}
+#hud-stagestatus .radiator-btn.on { border-color: ${ACCENT}; }
+#hud-stagestatus .radiator-btn.on .label { color: ${ACCENT}; }
 #hud-settings {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  position: absolute; bottom: 40px; top: auto; left: 50%; transform: translateX(-50%);
   display: none; min-width: 260px; pointer-events: auto;
 }
 #hud-settings .srow {
@@ -178,7 +208,7 @@ const STYLE = `
   #hud-controls { display: none; }
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
-  #hud-plan { bottom: 216px; left: 8px; min-width: 210px; max-width: 60vw; }
+  #hud-plan { top: 8px; right: 8px; left: auto; bottom: auto; min-width: 210px; max-width: 60vw; }
   #hud-overview-camera { top: 8px; left: 8px; width: 186px; }
   #hud-displaytime { top: 146px; left: 8px; width: 186px; }
   #hud-trajframe { top: 246px; left: 8px; width: 186px; }
@@ -186,10 +216,11 @@ const STYLE = `
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
   #navball { width: 100px !important; height: 100px !important; bottom: 130px !important; }
-  #hud-gear { top: 8px; width: 26px; height: 26px; font-size: 13px; }
   #hud-settings { min-width: 0; width: 78vw; }
-  #hud-stagestatus { top: 52px; min-width: 130px; padding: 6px 10px; }
+  #hud-stagestatus { top: 8px; min-width: 130px; padding: 6px 10px; }
   #hud-stagestatus .t { font-size: 14px; }
+  #hud-chase-reset { bottom: 12px; width: 28px; height: 28px; }
+  #hud-chase-reset svg { width: 14px; height: 14px; }
 }
 `;
 
@@ -271,29 +302,11 @@ function buildInfoPanels(root: HTMLElement): void {
     <div data-id="elist"></div>`;
 }
 
-// 画面下部の常設操作ヒントバーを組む。
-function buildControlsBar(root: HTMLElement): void {
-  const controls = el('div', 'hud-controls', root);
-  // 主要キー割り当てを1行のテキストとして並べる。
-  controls.innerHTML = [
-    `${K.thrustForward.label}/${K.thrustBackward.label}(または${K.thrustForward.altLabel}/${K.thrustBackward.altLabel}):前後`,
-    `${K.thrustUp.label}/${K.thrustDown.label}:上下`,
-    `${K.thrustLeft.label}/${K.thrustRight.label}:左右`,
-    `${rotationLabels}:回転`,
-    `${throttleLabels}:並進出力`,
-    `${K.rcsDampToggle.label}:RCS制動`,
-    `${K.progradeReset.label}:プログレードリセット`,
-    `${K.progradeHoldToggle.label}:進行方向ホールド`,
-    `${K.followAttitudeToggle.label}:視点のRCS追従`,
-    `${K.toggleMapMode.label}:軌道計画`,
-    `${K.autoWarpToNode.label}:ノードへ時間を加速`,
-    `${K.gunsightZoom.label}:ズーム`,
-    `${K.fire.label}/右クリック:射撃`,
-    '左ドラッグ/矢印キー:視点',
-    '中ドラッグ:マップ平行移動',
-    `${K.warpSlower.label}/${K.warpFaster.label}:時間加速`,
-    `[${K.help.label}]:ヘルプ`,
-  ].join(' &nbsp;');
+// 視点リセットボタン（以前は controlsBar と一緒だったが、単独で追加）
+function buildChaseReset(root: HTMLElement): void {
+  const chaseReset = el('div', 'hud-chase-reset', root);
+  chaseReset.dataset.id = 'chase-reset';
+  chaseReset.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>`;
 }
 
 // 全操作の説明表([H]で開閉するヘルプパネル)を組む。
@@ -303,17 +316,29 @@ function buildHelpPanel(root: HTMLElement): void {
   help.innerHTML = `
     <h3>操作方法 [${K.help.label} で閉じる]</h3>
     <table>
-      <tr><td class="key">${K.thrustForward.label} / ${K.thrustBackward.label} (または ${K.thrustForward.altLabel} / ${K.thrustBackward.altLabel})</td><td>並進 (前 / 後)</td></tr>
-      <tr><td class="key">${K.thrustUp.label} / ${K.thrustDown.label}</td><td>並進 (上 / 下)</td></tr>
-      <tr><td class="key">${K.thrustLeft.label} / ${K.thrustRight.label}</td><td>並進 (左 / 右)</td></tr>
-      <tr><td class="key">${K.pitchDown.label} / ${K.pitchUp.label}</td><td>ピッチ (機首下げ / 上げ)</td></tr>
-      <tr><td class="key">${K.yawRight.label} / ${K.yawLeft.label}</td><td>ヨー (右 / 左)</td></tr>
-      <tr><td class="key">${K.rollRight.label} / ${K.rollLeft.label}</td><td>ロール (右 / 左)</td></tr>
+      <tr><td class="key">
+        <div style="display:inline-block; text-align:center; line-height:1.2; font-family:monospace; margin-right:8px; vertical-align:middle;">
+          <div>W</div><div>A S D</div>
+        </div>
+        / 
+        <div style="display:inline-block; text-align:center; line-height:1.2; font-family:monospace; margin-left:8px; vertical-align:middle;">
+          <div>↑</div><div>← ↓ →</div>
+        </div>
+      </td><td>並進 (前 / 後 / 左 / 右 / 上 / 下)<br><span style="font-size:10px; color:${INK_SOFT};">※ 上下は Q/E</span></td></tr>
+      <tr><td class="key">
+        <div style="display:inline-block; text-align:center; line-height:1.2; font-family:monospace; vertical-align:middle;">
+          <div>I</div><div>J K L</div>
+        </div>
+        <div style="display:inline-block; text-align:center; line-height:1.2; font-family:monospace; margin-left:8px; vertical-align:middle;">
+          <div>U O</div>
+        </div>
+      </td><td>回転 (ピッチ / ヨー / ロール)</td></tr>
       <tr><td class="key">${K.rcsDampToggle.label}</td><td>RCS 回転制動 ON/OFF</td></tr>
       <tr><td class="key">${K.progradeReset.label}</td><td>プログレード姿勢リセット (機首を進行方向へ即座に向ける)</td></tr>
       <tr><td class="key">${throttleLabels}</td><td>並進出力の切替 (弱 / 中 / 強)。並進 6 方向に共通で適用される</td></tr>
       <tr><td class="key">${K.fineAttitudeToggle.label}</td><td>姿勢微調整モード ON/OFF (角加速度・角速度を絞って小刻みに操作)</td></tr>
       <tr><td class="key">${K.progradeHoldToggle.label}</td><td>進行方向ホールド ON/OFF (機首をプログレード方向へ自動で向け続ける。手動回転で解除)</td></tr>
+      <tr><td class="key">${K.radiatorDeployLeft.label} / ${K.radiatorDeployRight.label}</td><td>ラジエーター展開/収納 (左 / 右)</td></tr>
       <tr><td class="key">${K.followAttitudeToggle.label}</td><td>視点のRCS追従 ON/OFF (既定 ON: 視点が機体姿勢を基準に回転し、RCS操作と一体的に動く。OFF で軌道基準の独立視点になる)</td></tr>
       <tr><td class="key">${K.gunsightZoom.label} (長押し)</td><td>照準ズーム (機首方向を画面中心に拡大表示、自機は非表示になる)</td></tr>
       <tr><td class="key">右クリック (敵)</td><td>敵をターゲット固定 / 解除 (固定中はターゲット名が画面右上に表示される)</td></tr>
@@ -338,7 +363,7 @@ function buildHelpPanel(root: HTMLElement): void {
       <tr><td class="key">${K.warpSlower.label} / ${K.warpFaster.label}</td><td>時間加速 減 / 増</td></tr>
       <tr><td class="key">左ドラッグ / ホイール</td><td>カメラ回転 / 距離ズーム</td></tr>
       <tr><td class="key">矢印キー (${K.cameraYawLeft.label}${K.cameraYawRight.label}${K.cameraPitchUp.label}${K.cameraPitchDown.label})</td><td>マウスの代わりにキーボードで視点回転</td></tr>
-      <tr><td class="key">${K.pauseMenu.label} / ⚙</td><td>一時停止メニュー (設定 / タイトルへ戻る)</td></tr>
+      <tr><td class="key">${K.pauseMenu.label}</td><td>一時停止メニュー (設定 / タイトルへ戻る)</td></tr>
     </table>`;
 }
 
@@ -359,7 +384,7 @@ export function buildHudDom(): HudDomRefs {
 
   // 常設パネル群を組む。
   buildInfoPanels(root);
-  buildControlsBar(root);
+  buildChaseReset(root);
 
   el('div', 'hud-hint', root);
   el('div', 'hud-toast', root);

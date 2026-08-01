@@ -174,43 +174,106 @@ function buildPlayerShip() {
     }
   }
 
-  // === 太陽電池パネル(大型・フレーム格子付き) ===
+  // === 太陽電池パドル (展開式・蛇腹6折り) ===
+  const SOLAR_FOLD_COUNT = 6;
+  const SOLAR_LENGTH = 2.4;
+  const SOLAR_SEG = SOLAR_LENGTH / SOLAR_FOLD_COUNT; 
+  const SOLAR_WIDTH = 1.5;
+  const SOLAR_STACK_NUDGE = 0.012;
   const panelMat   = std(0x1a3a8c, { metalness: 0.38, roughness: 0.52 });
   const panelFrame = std(0x7a838f, { metalness: 0.68, roughness: 0.33 });
-
+  
   for (const side of [-1, 1]) {
-    // パネル面
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.055, 1.5), panelMat);
-    panel.position.set(side * 2.62, 0.52, -2.20);
-    g.add(panel);
+    const baseName = side > 0 ? 'solarUp' : 'solarDown';
+    const hinge = new THREE.Group();
+    hinge.name = baseName;
+    // 胴体側面から伸びる (x = ±1.17, y = 0.52, z = -1.80)
+    hinge.position.set(side * 1.17, 0.52, -1.80);
+    g.add(hinge);
 
-    // 外枠(上下 2 本)
-    for (const fz of [-0.76, 0.76]) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(2.50, 0.10, 0.07), panelFrame);
-      bar.position.set(side * 2.62, 0.52, -2.20 + fz);
-      g.add(bar);
-    }
-    // 外枠(左右 2 本)
-    for (const fx of [-1.26, 1.26]) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.10, 1.60), panelFrame);
-      bar.position.set(side * 2.62 + fx * side, 0.52, -2.20);
-      g.add(bar);
-    }
-    // 内部格子(縦 2 本)
-    for (const dx of [-0.54, 0.54]) {
-      const div = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 1.48), panelFrame);
-      div.position.set(side * 2.62 + dx * side, 0.52, -2.20);
-      g.add(div);
-    }
+    let parent = hinge;
+    for (let i = 0; i < SOLAR_FOLD_COUNT; i++) {
+      const fold = new THREE.Group();
+      fold.name = `${baseName}Fold${i}`;
+      if (i > 0) fold.position.set(side * SOLAR_SEG, 0, 0);
+      parent.add(fold);
 
-    // パネル接続ストラット
-    const strut = new THREE.Mesh(new THREE.BoxGeometry(1.30, 0.10, 0.10), panelFrame);
-    strut.position.set(side * 1.78, 0.52, -2.20);
-    g.add(strut);
-    // 補強ブラケット(Z方向)
-    const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.10, 1.50), panelFrame);
-    bracket.position.set(side * 1.18, 0.52, -2.20);
-    g.add(bracket);
+      // パネル面 (幅をZ方向に、長さをX方向のセグメントとして配置)
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(SOLAR_SEG, 0.02, SOLAR_WIDTH - 0.1), panelMat);
+      panel.position.set(side * SOLAR_SEG / 2, 0, i * SOLAR_STACK_NUDGE);
+      fold.add(panel);
+
+      // 外枠(上下Z辺)
+      for (const fz of [-SOLAR_WIDTH/2 + 0.05, SOLAR_WIDTH/2 - 0.05]) {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(SOLAR_SEG, 0.04, 0.1), panelFrame);
+        bar.position.set(side * SOLAR_SEG / 2, 0, i * SOLAR_STACK_NUDGE + fz);
+        fold.add(bar);
+      }
+      
+      // 内部格子(X辺) - 端点と中央
+      for (const fx of [0, SOLAR_SEG/2, SOLAR_SEG]) {
+        const div = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, SOLAR_WIDTH), panelFrame);
+        div.position.set(side * fx, 0, i * SOLAR_STACK_NUDGE);
+        fold.add(div);
+      }
+
+      parent = fold;
+    }
+  }
+
+  // === 展開式ラジエーター(機体側面・太陽電池パドル下に1枚ずつ、蛇腹6折り) ===
+  // 1折りはハル幅と揃えた 2.3×2.3 の正方形。折り目 Group を入れ子にし、
+  // 各折り目の rotation.y だけで蛇腹全体の伸縮を表現できるようにする
+  // (src/game/player/radiator.ts の sync が毎フレーム書き込む)。
+  // 折り目名 `${radiatorUp/Down}Fold${i}` は src/render/ships.ts の radiatorFoldName と一致させる。
+  // ヒンジは太陽電池パネル(x=±2.62, y=0.52, z=-2.20)の直下・機体側面に取り付ける
+  // (up が +X 側、down が -X 側。名称は上下のまま維持)。y=0.30 はパネル下端(y≈0.4925)や
+  // パネル接続ストラット/ブラケット(y≈0.47〜0.57)と、蛇腹の骨格張り出し(±0.12)を含めても
+  // 干渉しない値。回転軸は Y、伸びる方向はローカル X(up は +X、down は -X)、
+  // 放熱面の薄い軸(法線)はローカル Z — 全開でパネル法線が太陽電池パネル(法線 +Y)と
+  // 垂直になり、前後方向から見て面積が最大に見える。
+  const radiatorMat = std(0xdde3ea, { metalness: 0.15, roughness: 0.8 });
+  const radiatorSkeletonMat = std(0x3a4048, { metalness: 0.5, roughness: 0.55 });
+  const RADIATOR_FOLD_COUNT = 6;
+  const RADIATOR_SEG = (2.3 * 4) / RADIATOR_FOLD_COUNT; // 全長を変えない
+  const RADIATOR_WIDTH = 2.3 / 4; // 大きさを1/4に
+  const RADIATOR_STACK_NUDGE = 0.012; // 収納時に折り目同士が同一平面へ重なる際の Z ファイティング回避
+  const RADIATOR_SKELETON_OFFSET = 0.04; // 骨格を放熱面の反対側へ張り出す量
+
+  for (const sx of [1, -1]) {
+    const hinge = new THREE.Group();
+    const baseName = sx > 0 ? 'radiatorUp' : 'radiatorDown';
+    hinge.name = baseName;
+    // 機体側面に張り付くように x=1.17、はみ出さないよう上下中心より少し下 y=-0.20
+    // マガジンと干渉しないよう z=-1.80 へ移動
+    hinge.position.set(sx * 1.17, -0.20, -1.80);
+    g.add(hinge);
+
+    let parent = hinge;
+    for (let i = 0; i < RADIATOR_FOLD_COUNT; i++) {
+      const fold = new THREE.Group();
+      fold.name = `${baseName}Fold${i}`;
+      // 次の折り目は側面の外向き(up:+X、down:-X)へローカル X で積み重なる。
+      if (i > 0) fold.position.set(sx * RADIATOR_SEG, 0, 0);
+      parent.add(fold);
+
+      // 放熱面: 回転中心(折り目)がセグメントの根元に来るよう、板は半分先(次の折り目と同じ向き)へずらす。
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEG, RADIATOR_WIDTH, 0.04), radiatorMat);
+      panel.position.set(sx * RADIATOR_SEG / 2, 0, i * RADIATOR_STACK_NUDGE);
+      fold.add(panel);
+
+      // 骨格: 放熱面と逆位相(偶数折りは +Z、奇数折りは -Z)に張り出す細材2本。
+      const skeletonZ = (i % 2 === 0 ? 1 : -1) * RADIATOR_SKELETON_OFFSET;
+      for (const wy of [-1, 1]) {
+        // 骨格が板の端に来るように移動
+        const rodY = wy * (RADIATOR_WIDTH / 2 - 0.04);
+        const rod = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEG, 0.08, 0.08), radiatorSkeletonMat);
+        rod.position.set(sx * RADIATOR_SEG / 2, rodY, skeletonZ);
+        fold.add(rod);
+      }
+
+      parent = fold;
+    }
   }
 
   // === 並進RCS ノズル(前進RCSの他に、左右 +X/-X 方向と上下 +Y/-Y 方向を追加) ===
@@ -316,8 +379,8 @@ function buildPlayerShip() {
 
 // ------------------------------------------------------------- マガジン
 const MAG_THICKNESS = 1.0;
-const MAG_WIDTH = MAG_THICKNESS * 4;
-const MAG_DEPTH = MAG_THICKNESS * 3;
+const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3);
+const MAG_DEPTH = MAG_THICKNESS * 3 * (2 / 3);
 const MAG_ROWS = 4;
 const MAG_COLS = 8;
 
@@ -498,20 +561,21 @@ function buildBulletMesh() {
 
 // ------------------------------------------------------------- 薬莢
 // CIWS 艦砲弾薬をモチーフにしたボトルネック Lathe 形状。
-// セグメント数 8(約半分)に削減。直径を 0.7 倍にしてスリムに。
+// セグメント数 8(約半分)に削減。直径を 0.7 倍にしてスリムに、全長を 2/3 倍に短縮。
 const CASING_SCALE = 0.7;
+const CASING_LENGTH_SCALE = 2 / 3;
 const casingProfile = [
-  new THREE.Vector2(0.000 * CASING_SCALE, -0.56),  // 内底(中心)
-  new THREE.Vector2(0.330 * CASING_SCALE, -0.56),  // リム底面
-  new THREE.Vector2(0.330 * CASING_SCALE, -0.47),  // リム側面
-  new THREE.Vector2(0.230 * CASING_SCALE, -0.47),  // エクストラクターグルーブ底
-  new THREE.Vector2(0.230 * CASING_SCALE, -0.38),  // グルーブ上端
-  new THREE.Vector2(0.305 * CASING_SCALE, -0.35),  // ボディ径に戻る
-  new THREE.Vector2(0.300 * CASING_SCALE,  0.18),  // ボディ
-  new THREE.Vector2(0.175 * CASING_SCALE,  0.34),  // ショルダー
-  new THREE.Vector2(0.148 * CASING_SCALE,  0.42),  // ネック
-  new THREE.Vector2(0.148 * CASING_SCALE,  0.54),  // ネック先端
-  new THREE.Vector2(0.115 * CASING_SCALE,  0.54),  // マウス内径
+  new THREE.Vector2(0.000 * CASING_SCALE, -0.56 * CASING_LENGTH_SCALE),  // 内底(中心)
+  new THREE.Vector2(0.330 * CASING_SCALE, -0.56 * CASING_LENGTH_SCALE),  // リム底面
+  new THREE.Vector2(0.330 * CASING_SCALE, -0.47 * CASING_LENGTH_SCALE),  // リム側面
+  new THREE.Vector2(0.230 * CASING_SCALE, -0.47 * CASING_LENGTH_SCALE),  // エクストラクターグルーブ底
+  new THREE.Vector2(0.230 * CASING_SCALE, -0.38 * CASING_LENGTH_SCALE),  // グルーブ上端
+  new THREE.Vector2(0.305 * CASING_SCALE, -0.35 * CASING_LENGTH_SCALE),  // ボディ径に戻る
+  new THREE.Vector2(0.300 * CASING_SCALE,  0.18 * CASING_LENGTH_SCALE),  // ボディ
+  new THREE.Vector2(0.175 * CASING_SCALE,  0.34 * CASING_LENGTH_SCALE),  // ショルダー
+  new THREE.Vector2(0.148 * CASING_SCALE,  0.42 * CASING_LENGTH_SCALE),  // ネック
+  new THREE.Vector2(0.148 * CASING_SCALE,  0.54 * CASING_LENGTH_SCALE),  // ネック先端
+  new THREE.Vector2(0.115 * CASING_SCALE,  0.54 * CASING_LENGTH_SCALE),  // マウス内径
 ];
 
 function buildCasingMesh() {
