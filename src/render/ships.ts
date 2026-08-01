@@ -3,6 +3,7 @@
 // ジオメトリ/マテリアルの構築自体は tools/export-models.mjs に移し、
 // src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
 import * as THREE from 'three/webgpu';
+import * as C from '../game/const';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -170,7 +171,7 @@ export function buildAmmo(count = 4): THREE.Group {
 // 敵機: テンプレートはプレースホルダの基本色で焼き出されている。
 // フィン(finMat)とランプ(lampMat)は userData.role === 'accent' が付与されて
 // おり、これを目印にアクセントカラーへ塗り替える。
-export function buildEnemyShip(accent = 0xff4a3d): THREE.Group {
+export function buildEnemyShip(accent: string | number = 0xff4a3d): THREE.Group {
   const g = parseEnemy();
   // accent ロールが付いたマテリアルだけ塗り替える
   g.traverse((child) => {
@@ -185,7 +186,7 @@ export function buildEnemyShip(accent = 0xff4a3d): THREE.Group {
 }
 
 // stage0 敵機のメッシュを typeIndex(0〜2)の機体テンプレートから生成し、accent 色に塗り替える。
-export function buildStage0EnemyShip(accent = 0x3dc6ff, typeIndex = 0): THREE.Group {
+export function buildStage0EnemyShip(accent: string | number = 0x3dc6ff, typeIndex = 0): THREE.Group {
   let g: THREE.Group;
   // typeIndex で機体テンプレートを選ぶ
   if (typeIndex === 1) g = parseStage0EnemyB();
@@ -238,15 +239,10 @@ export function buildBulletMesh(): THREE.Group {
 }
 
 let plasmaGeomFixed = false;
+let plasmaBodyMat: THREE.MeshBasicMaterial | null = null;
 
-// プラズマ弾の本体色は敵の accent(所属グループの識別色。取りうる値は
-// STAGE0_GROUP_ACCENTS 等ごく少数)ごとに決まり、発射後に書き換わることはない。
-// そのため accent 値ごとにマテリアルを 1 個だけキャッシュして全弾で共有する
-// (毎発 clone/生成すると GPU リソースが撃つたびにリークする — BUG_REPORT.md B1)。
-const plasmaBodyMatByAccent = new Map<number, THREE.MeshBasicMaterial>();
-
-// 敵プラズマ弾のメッシュ(本体のみ)を accent 色で生成する。マテリアルは accent ごとに共有キャッシュする。
-export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Mesh {
+// 敵プラズマ弾のメッシュ(本体のみ)を生成する。マテリアルは1つキャッシュして全弾で共有する。
+export function buildPlasmaMesh(): THREE.Mesh {
   const m = parsePlasma();
   if (!plasmaGeomFixed) {
     // plasma.json (CylinderGeometry) は toJSON() がコンストラクタ引数のみを保存する
@@ -258,16 +254,14 @@ export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Mesh {
     m.geometry.rotateX(Math.PI / 2);
     plasmaGeomFixed = true;
   }
-  let bodyMat = plasmaBodyMatByAccent.get(accent);
-  if (!bodyMat) {
-    bodyMat = (m.material as THREE.MeshBasicMaterial).clone();
-    bodyMat.color.set(accent);
+  if (!plasmaBodyMat) {
+    plasmaBodyMat = (m.material as THREE.MeshBasicMaterial).clone();
+    plasmaBodyMat.color.set(C.ENEMY_PLASMA_COLOR);
     // 不透明にするため AdditiveBlending は設定しない
-    bodyMat.transparent = false;
-    bodyMat.opacity = 1.0;
-    plasmaBodyMatByAccent.set(accent, bodyMat);
+    plasmaBodyMat.transparent = false;
+    plasmaBodyMat.opacity = 1.0;
   }
-  m.material = bodyMat;
+  m.material = plasmaBodyMat;
   m.frustumCulled = false;
 
   // スケールを大きくして視認性を上げる
@@ -443,7 +437,7 @@ function buildSpikeDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
 }
 
 // 汎用デブリ形状をランダムに1つ生成する。color は非破片(dark)判定込みの表示色。
-function buildGenericDebris(color: number, size: number, mat: DebrisMaterial): THREE.Mesh {
+function buildGenericDebris(color: string | number, size: number, mat: DebrisMaterial): THREE.Mesh {
   const kind = Math.random();
   if (kind < 0.22) {
     // 破損した外殻チャンク
@@ -490,9 +484,9 @@ function buildGenericDebris(color: number, size: number, mat: DebrisMaterial): T
 }
 
 // style に応じたデブリメッシュを1つ生成する(未指定時は汎用形状)。
-export function buildDebrisMesh(accent: number, size: number, style?: string): THREE.Mesh {
+export function buildDebrisMesh(accent: string | number, size: number, style?: string): THREE.Mesh {
   const dark = Math.random() < 0.30;
-  const color = dark ? 0x2e3340 : accent;
+  const color = dark ? "#2e3340" : accent;
 
   const mat: DebrisMaterial = (opts) =>
     new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.65, metalness: 0.30, ...opts });
