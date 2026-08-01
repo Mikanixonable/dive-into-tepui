@@ -19,7 +19,7 @@ function phasedState(base: OrbitState, dAlong: number): OrbitState {
 }
 
 // 無秩序に漂う敵(訓練クラスタ・通常ステージのプリセット敵の生成本体): ランダム姿勢+角速度。
-export function generateDriftingEnemy(name: string, state: OrbitState, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+export function generateDriftingEnemy(name: string, state: OrbitState, hp: number, accent: string | number, orbitLineColor: string | number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
   return new Enemy(
     name,
     state,
@@ -42,13 +42,13 @@ export function generateDriftingEnemy(name: string, state: OrbitState, hp: numbe
 }
 
 // base から dAlong だけ進んだ位置に漂う敵を生成する。
-export function generatePhasedEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+export function generatePhasedEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: string | number, orbitLineColor: string | number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
   return generateDriftingEnemy(name, phasedState(base, dAlong), hp, accent, orbitLineColor, hud, sfx, fx, scene);
 }
 
 // base から dAlong だけ進め、高度を altitudeOffset ぶんずらした円軌道上に敵を生成する。
 export function generateCoellipticEnemy(
-  name: string, base: OrbitState, dAlong: number, altitudeOffset: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene,
+  name: string, base: OrbitState, dAlong: number, altitudeOffset: number, hp: number, accent: string | number, orbitLineColor: string | number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   const phased = phasedState(base, dAlong);
   const altitude = len(base.r) + altitudeOffset;
@@ -61,14 +61,18 @@ export function generateCoellipticEnemy(
 }
 
 // base から dAlong だけ進め、軌道面をわずかに傾けた交差軌道上に敵を生成する。
-export function generateCrossingEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+export function generateCrossingEnemy(
+  name: string, base: OrbitState, dAlong: number, hp: number, accent: string | number, orbitLineColor: string | number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene,
+): Enemy {
   const phased = phasedState(base, dAlong);
   const state: OrbitState = orbitState(phased.t, phased.r, rotateAxis(phased.v, norm(phased.r), (0.4 * Math.PI) / 180));
   return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, hud, sfx, fx, scene);
 }
 
 // base から dAlong だけ進め、速度を増して離心軌道上に敵を生成する。
-export function generateEllipticEnemy(name: string, base: OrbitState, dAlong: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+export function generateEllipticEnemy(
+  name: string, base: OrbitState, dAlong: number, hp: number, accent: string | number, orbitLineColor: string | number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene,
+): Enemy {
   const phased = phasedState(base, dAlong);
   const state: OrbitState = orbitState(phased.t, phased.r, scale(phased.v, 1.006));
   return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, hud, sfx, fx, scene);
@@ -76,7 +80,9 @@ export function generateEllipticEnemy(name: string, base: OrbitState, dAlong: nu
 
 // t = 生成時刻(state のエポック)。他のプリセットが base(自機状態)から引き継ぐのに対し、
 // この軌道は自機と無関係に軌道要素から作るので、時刻だけ呼び出し側から受け取る。
-export function generateMolniyaEnemy(name: string, t: number, raan: number, nu: number, hp: number, accent: number, orbitLineColor: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+export function generateMolniyaEnemy(
+  name: string, t: number, raan: number, nu: number, hp: number, accent: string | number, orbitLineColor: string | number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene,
+): Enemy {
   const rp = R_EARTH + 1200e3;
   const ra = R_EARTH + 39400e3;
   const a = (rp + ra) / 2;

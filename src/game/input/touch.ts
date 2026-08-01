@@ -5,6 +5,7 @@
 import { Input } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { ACCENT, ACCENT_RGB, TEXT_DIM, FONT } from '../theme';
+import * as C from '../const';
 
 // SURFACE/EDGE はこのファイル固有の不透明度(0.66 / 0.14)を使うため、
 // theme.ts の SURFACE(0.82)/EDGE(0.09)とは別定数のまま保持する。
@@ -22,14 +23,14 @@ const STYLE = `
   pointer-events: auto; touch-action: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 8px;
-  color: #cfd6dd; line-height: 1.1;
+  color: ${C.COLORS.TOUCH_TEXT}; line-height: 1.1;
 }
 #touch-ui .tbtn .g { font-size: 16px; }
 #touch-ui .tbtn .l { font-size: 9px; color: ${TEXT_DIM}; margin-top: 1px; }
-#touch-ui .tbtn.held { background: rgba(${ACCENT_RGB}, 0.28); border-color: ${ACCENT}; color: #fff; }
+#touch-ui .tbtn.held { background: rgba(${ACCENT_RGB}, 0.28); border-color: ${ACCENT}; color: ${C.COLORS.TOUCH_ACTIVE_TEXT}; }
 /* .on: 押下中かどうかに関わらず、モードが実際に ON の間ずっと点灯させる
    (制動・微動・ホールドなどのトグル系ボタン向け。.held と見た目は同じでよい) */
-#touch-ui .tbtn.on { background: rgba(${ACCENT_RGB}, 0.28); border-color: ${ACCENT}; color: #fff; }
+#touch-ui .tbtn.on { background: rgba(${ACCENT_RGB}, 0.28); border-color: ${ACCENT}; color: ${C.COLORS.TOUCH_ACTIVE_TEXT}; }
 #touch-ui .mini-col {
   position: absolute; display: grid; gap: 6px; grid-template-rows: repeat(2, 52px);
 }
