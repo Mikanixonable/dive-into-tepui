@@ -130,7 +130,6 @@ main.ts
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
 | `Player` / `Simulator` / `EntityManager` / `Stage` | Game | 毎フレームの引数として相互に渡される |
 | `UnlockManager` | main.ts | ステージセレクト画面と、各Stage（クリア後画面判定のため） |
-| `DisplayTimeManager.onDurationChange`(コールバック) | Game が配線 | `editor.planDisplay.traj.invalidate()` を呼ぶ。所有者が違う(DisplayTimeManager は Game 直属、PlanDisplay は PlanEditor 所有)ため Game が繋ぐ唯一の場所 |
 
 ---
 
