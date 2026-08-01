@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
-import { ChaseCamera } from './chase-camera';
+import { CombatCameraSystem } from './combat-camera-system';
 import { OverviewCamera } from './overview-camera';
 import { OverviewCameraPanel } from './overview-camera-panel';
 import { FocusMarkers } from './focus-markers';
@@ -13,20 +13,44 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Player } from '../player/player';
 import { FloatingOrigin } from '../floating-origin';
 import { Vec3 } from '../../physics/vec3';
-import { Projected } from '../../physics/projection';
+import { ndcToScreen, Projected, projectToNdc, ViewFrame } from '../../physics/projection';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 
+// 論理カメラの状態(ViewFrame)を THREE.PerspectiveCamera へ反映する。
+function syncCameraToViewFrame(camera: THREE.PerspectiveCamera, view: ViewFrame, fo: FloatingOrigin): void {
+  camera.position.copy(fo.RtoThreeV3(view.position));
+  camera.up.set(view.up.x, view.up.y, view.up.z);
+  camera.lookAt(fo.RtoThreeV3(view.lookTarget));
+  // アスペクト比・FOV が変わったときだけ投影行列を再計算する
+  let projectionDirty = false;
+  if (Math.abs(camera.aspect - view.aspect) > 1e-6) {
+    camera.aspect = view.aspect;
+    projectionDirty = true;
+  }
+  if (Math.abs(camera.fov - view.fovDeg) > 1e-3) {
+    camera.fov = view.fovDeg;
+    projectionDirty = true;
+  }
+  if (projectionDirty) camera.updateProjectionMatrix();
+  camera.updateMatrixWorld();
+}
+
+// THREE.js カメラ行列やフローティングオリジンに依存しないスクリーン投影関数を組む。
+function projectionFromView(view: ViewFrame): ProjectFn {
+  return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), window.innerWidth, window.innerHeight);
+}
+
 // 広範囲視点の操作パネルに常用のフォーカス先として並べるラベル ID。残りのラベル(ラグランジュ点
 // など)へはラベル右クリックのメニュー(FocusGizmo)からフォーカスする。
 const PANEL_FOCUS_IDS = ['earth', 'moon', 'sun'] as const;
 
-// 戦闘ビュー(ChaseCamera)と広範囲視点(OverviewCamera)を切り替えて駆動する。
+// 戦闘ビュー(CombatCameraSystem)と広範囲視点(OverviewCamera)を切り替えて駆動する。
 // フォーカス候補(focusMarkers)とその選択 UI(focusGizmo / overviewCameraPanel)も所有する。
 export class CameraSystem {
-  readonly chaseCamera: ChaseCamera;
+  readonly combatCamera: CombatCameraSystem;
   readonly overviewCamera: OverviewCamera;
   readonly focusMarkers: FocusMarkers;
   private readonly focusGizmo = new FocusGizmo();
@@ -34,7 +58,6 @@ export class CameraSystem {
   private readonly overviewCameraPanel: OverviewCameraPanel;
   // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
   overviewMode = false;
-  zoomActive = false;
 
   // sync() で毎フレーム参照する DOM 要素をコンストラクタ時にキャッシュする。
   private readonly _elStatus: HTMLElement | null;
@@ -47,10 +70,11 @@ export class CameraSystem {
     sfx: Sfx,
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
+    player: Player,
   ) {
     // 両カメラとフォーカス候補ラベル
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
-    this.chaseCamera = new ChaseCamera(_hud, sfx);
+    this.combatCamera = new CombatCameraSystem(_hud, sfx, player);
     this.overviewCamera = new OverviewCamera(_hud, sfx, this.focusMarkers, ephemeris);
     // ラベル右クリックメニューでのフォーカス選択
     this.focusGizmo.onMenuFocus = (targetKey) => {
@@ -121,12 +145,17 @@ export class CameraSystem {
 
   // 現在アクティブなカメラ(広範囲視点/戦闘追従視点)を返す。
   get activeCamera(): THREE.PerspectiveCamera {
-    return this.overviewMode ? this.overviewCamera.camera : this.chaseCamera.camera;
+    return this.overviewMode ? this.overviewCamera.camera : this.combatCamera.camera;
   }
 
   // アクティブカメラの位置を返す。
   get activeCameraPos(): Vec3 {
-    return this.overviewMode ? this.overviewCamera.position : this.chaseCamera.position;
+    return this.overviewMode ? this.overviewCamera.view.position : this.combatCamera.view.position;
+  }
+
+  // 戦闘ビューでズーム視点(照準ズーム)が有効かどうか。広範囲視点では常に false。
+  get zoomActive(): boolean {
+    return !this.overviewMode && this.combatCamera.zoomActive;
   }
 
   // 入力からカメラの向き・ズームを更新する。overviewMode に応じてどちらか一方のカメラだけを駆動する。
@@ -136,14 +165,13 @@ export class CameraSystem {
     input: Input,
     dt: number,
   ): void {
-    // 追従視点トグルとズーム状態
-    if (input.takeKey(K.followAttitudeToggle)) this.chaseCamera.toggleFollowAttitude();
-    this.zoomActive = !this.overviewMode && input.down(K.gunsightZoom);
+    // 追従視点トグル
+    if (input.takeKey(K.followAttitudeToggle)) this.combatCamera.toggleFollowAttitude();
 
     // 中クリックで視点リセット
     input.takeMiddleClicks(() => {
       if (this.overviewMode) this.overviewCamera.reset();
-      else this.chaseCamera.reset();
+      else this.combatCamera.reset();
       return true;
     });
 
@@ -157,14 +185,14 @@ export class CameraSystem {
       this.overviewCamera.update(mouse, keyYaw, keyPitch, dt, simTime);
     }
     else {
-      this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, player, this.zoomActive);
+      this.combatCamera.update(mouse, keyYaw, keyPitch, dt, player, input);
     }
   }
 
   // 視点状態をフローティングオリジン(fo)で補正してアクティブカメラへ反映する。
   sync(fo: FloatingOrigin, displayTime: number): void {
-    if (this.overviewMode) this.overviewCamera.sync(fo);
-    else this.chaseCamera.sync(fo);
+    const active = this.overviewMode ? this.overviewCamera : this.combatCamera;
+    syncCameraToViewFrame(active.camera, active.view, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
     
@@ -182,9 +210,8 @@ export class CameraSystem {
     }
   }
 
-
   // アクティブカメラの画面投影関数を返す。
   get activeCameraProjection(): ProjectFn {
-    return this.overviewMode ? this.overviewCamera.projection : this.chaseCamera.projection;
+    return projectionFromView(this.overviewMode ? this.overviewCamera.view : this.combatCamera.view);
   }
 }

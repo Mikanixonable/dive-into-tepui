@@ -1,10 +1,12 @@
-// 太陽・月の簡易天体暦(円軌道近似)。座標系はゲームの ECI(Y軸 = 北極)。
+// 太陽・月の解析天体暦。座標系はゲームの ECI(Y軸 = 北極)。
 // 太陽: 黄道面(赤道に対し 23.44° 傾斜)を 1 恒星年で公転。
-// 月: 黄道に対し 5.145° 傾いた円軌道を 1 恒星月で公転し、
-//     昇交点は 18.61 年周期で逆行歳差する(これが軌道傾斜角変化の源)。
+// 月: 黄道に対し 5.145° 傾いた白道上の楕円軌道(e = 0.0549)を 1 恒星月で公転し、
+//     昇交点は 18.61 年周期で逆行歳差、近地点は 8.85 年周期で順行歳差する
+//     (昇交点歳差が軌道傾斜角変化の源)。
 // THREE/DOM 非依存。位置の計算式は純関数、それを初期位相で束縛して simTime で
 // サンプルする状態は末尾の Ephemeris クラスが持つ。
-import { Vec3, norm, v3 } from './vec3';
+import { Quat, qFromAxisAngle, qMul } from './attitude';
+import { Vec3, addScaled, norm, scale, v3 } from './vec3';
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
 export const MU_MOON = 4.9048695e12;
@@ -15,29 +17,45 @@ export const R_MOON = 1.7374e6; // 月半径 [m]
 const YEAR = 365.25636 * 86400; // 恒星年 [s]
 const MOON_PERIOD = 27.321661 * 86400; // 恒星月 [s]
 const NODE_PERIOD = 18.612958 * 365.25 * 86400; // 月の昇交点歳差周期 [s]
+const PERIGEE_PERIOD = 8.85 * 365.25 * 86400; // 月の近地点歳差周期 [s]
+const MOON_ECC = 0.0549; // 月軌道の離心率
 const EPS = (23.439291 * Math.PI) / 180; // 黄道傾斜角
 const MOON_INC = (5.145 * Math.PI) / 180; // 白道の黄道に対する傾斜
 
 const COS_EPS = Math.cos(EPS);
 const SIN_EPS = Math.sin(EPS);
+const COS_MOON_INC = Math.cos(MOON_INC);
+const SIN_MOON_INC = Math.sin(MOON_INC);
 
 export const SUN_ROTATING_POLE = v3(0, 1, 0); // 極(北極)軸。太陽回転系の回転軸。
 
-// 標準赤道座標 (X=春分点, Z=北極, 右手系) → ゲーム ECI (Y=北極)。
+// 天体に固定した回転基準系の、ECI に対する姿勢 q と角速度 omega [rad/s](ECI 成分)。
+// 回転軸が一定とは限らないので、軸と回転角の対ではなくこの対で扱う。
+export type FrameRotation = { q: Quat; omega: Vec3 };
+
+// 標準赤道座標 (X=春分点, Z=北極, 右手系) →  ECI (Y=北極)。
 // Xstd→X, Zstd→Y, Ystd→-Z(行列式 +1 の回転)。
-function stdToGame(xs: number, ys: number, zs: number): Vec3 {
+function stdToEci(xs: number, ys: number, zs: number): Vec3 {
   return v3(xs, zs, -ys);
 }
 
-// 黄道座標 (xe,ye 黄道面内, ze 黄道北極) → 標準赤道座標 → ゲーム ECI
-function eclToGame(xe: number, ye: number, ze: number): Vec3 {
-  return stdToGame(xe, ye * COS_EPS - ze * SIN_EPS, ye * SIN_EPS + ze * COS_EPS);
+// 黄道座標 (xe,ye 黄道面内, ze 黄道北極) → 標準赤道座標 →  ECI
+function eclToEci(xe: number, ye: number, ze: number): Vec3 {
+  return stdToEci(xe, ye * COS_EPS - ze * SIN_EPS, ye * SIN_EPS + ze * COS_EPS);
 }
+
+// 黄道座標系の基底軸(成分は黄道座標での値)。
+const ECL_VERNAL = v3(1, 0, 0); // 春分点方向
+const ECL_POLE = v3(0, 0, 1); // 黄道北極
+const ECL_POLE_ECI = eclToEci(0, 0, 1); // 黄道北極をゲーム ECI で表したもの
+// eclToGame と同一の回転をクォータニオンで表したもの。春分点(X)まわりに EPS − 90° 回すと
+// 黄道基底がゲーム ECI 基底へ重なる。
+const Q_ECL_TO_GAME = qFromAxisAngle(ECL_VERNAL, EPS - Math.PI / 2);
 
 // 太陽の ECI 位置(地心から見た太陽)。phase0 は初期黄経 [rad]。
 export function sunPosition(t: number, phase0: number): Vec3 {
   const lam = phase0 + (2 * Math.PI * t) / YEAR;
-  const p = eclToGame(Math.cos(lam), Math.sin(lam), 0);
+  const p = eclToEci(Math.cos(lam), Math.sin(lam), 0);
   return v3(p.x * SUN_DIST, p.y * SUN_DIST, p.z * SUN_DIST);
 }
 
@@ -74,7 +92,7 @@ export function sunAzimuth(t: number, phase0: number): number {
   return Math.atan2(p.z, p.x);
 }
 
-// sunAzimuth の時間微分 [rad/s]。太陽回転系での速度変換(ω×r 項)に使う。
+// sunAzimuth の時間微分 [rad/s]。
 // sunAz = atan2(−sin(lam)·cosEps, cos(lam)), lam = phase0 + 2π t/YEAR を解析微分すると
 // d(sunAz)/dt = −cosEps·lam' / (cos²lam + sin²lam·cos²Eps)。
 export function sunAzimuthRate(t: number, phase0: number): number {
@@ -85,43 +103,81 @@ export function sunAzimuthRate(t: number, phase0: number): number {
   return (-COS_EPS * lamDot) / (cl * cl + sl * sl * COS_EPS * COS_EPS);
 }
 
-// 月の ECI 位置。phase0 は初期の平均黄経 [rad]。
+// 太陽の見かけの公転に固定した回転基準系(極軸まわりに太陽の方位角ぶん回した系)。
+// 黄道傾斜(23.44°)ぶん太陽は極軸まわりの純回転からずれるが、この近似での年周期のドリフトは
+// 表示上ごく僅か。
+export function sunOrbitRotation(t: number, phase0: number): FrameRotation {
+  return {
+    q: qFromAxisAngle(SUN_ROTATING_POLE, sunAzimuth(t, phase0)),
+    omega: scale(SUN_ROTATING_POLE, sunAzimuthRate(t, phase0)),
+  };
+}
+
+// 月の軌道角(昇交点黄経 node、真近点角 nu、昇交点からの緯度引数 u)とその時間微分 [rad/s]。
+// phase0 は初期の平均黄経 [rad]。
 // 角度はすべて「黄経」(黄道上の固定方向から測った角)で組み立て、最後に軌道面内の角
 // (昇交点からの緯度引数 u)へ落とす。昇交点・近地点はどちらも歳差するので、平均黄経 L を
 // 直接 u として使うと公転が歳差ぶんだけ遅速し、月の位置が長期に大きくずれる。
-export function moonPosition(t: number, phase0: number): Vec3 {
+function moonAngles(t: number, phase0: number): {
+  node: number; nodeRate: number; nu: number; u: number; uRate: number;
+} {
   // 昇交点黄経(逆行、18.61 年)と近地点黄経(順行、約 8.85 年)。
   const node = -(2 * Math.PI * t) / NODE_PERIOD;
-  const PERIGEE_PERIOD = 8.85 * 365.25 * 86400;
+  const nodeRate = -(2 * Math.PI) / NODE_PERIOD;
   const lonPerigee = (2 * Math.PI * t) / PERIGEE_PERIOD;
+  const perigeeRate = (2 * Math.PI) / PERIGEE_PERIOD;
 
   // 平均黄経 L は恒星月で 1 周する。平均近点角 M はそこから近地点黄経を引いたもの。
-  const L = phase0 + (2 * Math.PI * t) / MOON_PERIOD;
-  const M = L - lonPerigee;
+  const M = phase0 + (2 * Math.PI * t) / MOON_PERIOD - lonPerigee;
+  const mRate = (2 * Math.PI) / MOON_PERIOD - perigeeRate;
 
-  // 中心差(Equation of the center)による真近点角 ν の近似 (e = 0.0549)
-  const e = 0.0549;
-  const nu = M + (2 * e - 0.25 * e * e * e) * Math.sin(M) + 1.25 * e * e * Math.sin(2 * M);
+  // 中心差(Equation of the center)による真近点角 ν の近似と、その解析微分。
+  const e = MOON_ECC;
+  const c1 = 2 * e - 0.25 * e * e * e;
+  const c2 = 1.25 * e * e;
+  const nu = M + c1 * Math.sin(M) + c2 * Math.sin(2 * M);
+  const nuRate = mRate * (1 + c1 * Math.cos(M) + 2 * c2 * Math.cos(2 * M));
 
   // 昇交点からの緯度引数 u = 近地点引数(= 近地点黄経 − 昇交点黄経)+ 真近点角
-  const u = nu + (lonPerigee - node);
+  return { node, nodeRate, nu, u: nu + (lonPerigee - node), uRate: nuRate + (perigeeRate - nodeRate) };
+}
 
-  // 軌道半径 r
-  const a = MOON_DIST;
-  const r = a * (1 - e * e) / (1 + e * Math.cos(nu));
+// 月の ECI 位置。phase0 は初期の平均黄経 [rad]。
+export function moonPosition(t: number, phase0: number): Vec3 {
+  const { node, nu, u } = moonAngles(t, phase0);
+  const r = (MOON_DIST * (1 - MOON_ECC * MOON_ECC)) / (1 + MOON_ECC * Math.cos(nu));
 
   const cu = Math.cos(u);
   const su = Math.sin(u);
   const cn = Math.cos(node);
   const sn = Math.sin(node);
-  const ci = Math.cos(MOON_INC);
-  const si = Math.sin(MOON_INC);
   // 軌道面 → 黄道面(標準的な Ω, i 回転)
-  const xe = cn * cu - sn * su * ci;
-  const ye = sn * cu + cn * su * ci;
-  const ze = su * si;
-  const p = eclToGame(xe, ye, ze);
+  const xe = cn * cu - sn * su * COS_MOON_INC;
+  const ye = sn * cu + cn * su * COS_MOON_INC;
+  const ze = su * SIN_MOON_INC;
+  const p = eclToEci(xe, ye, ze);
   return v3(p.x * r, p.y * r, p.z * r);
+}
+
+// 白道(月の公転面)の法線(単位ベクトル、ECI)。黄道面(見かけの太陽の公転面)に対し
+// 5.145° 傾き、その昇交点が 18.61 年周期で逆行するので、向きは時刻とともに変わる。
+export function moonOrbitNormal(t: number, phase0: number): Vec3 {
+  const { node } = moonAngles(t, phase0);
+  return eclToEci(Math.sin(node) * SIN_MOON_INC, -Math.cos(node) * SIN_MOON_INC, COS_MOON_INC);
+}
+
+// 月の公転に固定した回転基準系(x̂ = 地心から見た月の方向、ẑ = 白道法線)。
+// 白道の昇交点が歳差するため回転軸は一つに固定できず、omega は「黄道極まわりの昇交点歳差」と
+// 「白道法線まわりの公転」の和になる。
+export function moonOrbitRotation(t: number, phase0: number): FrameRotation {
+  const { node, nodeRate, u, uRate } = moonAngles(t, phase0);
+  // 黄道座標での基底 Rz(Ω)·Rx(i)·Rz(u) を組み、ゲーム ECI へ移す。
+  const q = qMul(Q_ECL_TO_GAME, qMul(
+    qFromAxisAngle(ECL_POLE, node),
+    qMul(qFromAxisAngle(ECL_VERNAL, MOON_INC), qFromAxisAngle(ECL_POLE, u)),
+  ));
+  const omega = addScaled(scale(ECL_POLE_ECI, nodeRate), moonOrbitNormal(t, phase0), uRate);
+  return { q, omega };
 }
 
 // 地球-月系のラグランジュ点を ECI [m] で返す。
@@ -139,18 +195,7 @@ export function emLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec
   const l3 = v3(mPos.x * rL3 / R, mPos.y * rL3 / R, mPos.z * rL3 / R);
 
   // L4/L5 は月軌道面内で月の前後 60°
-  const node = -(2 * Math.PI * t) / NODE_PERIOD;
-  const ci = Math.cos(MOON_INC);
-  const si = Math.sin(MOON_INC);
-  const cn = Math.cos(node);
-  const sn = Math.sin(node);
-  
-  // 黄道座標での軌道法線
-  const nxe = sn * si;
-  const nye = -cn * si;
-  const nze = ci;
-  const nHat = eclToGame(nxe, nye, nze);
-  
+  const nHat = moonOrbitNormal(t, phase0);
   const mHat = v3(mPos.x / R, mPos.y / R, mPos.z / R);
   const tHat = v3(
     nHat.y * mHat.z - nHat.z * mHat.y,
@@ -213,13 +258,13 @@ export class Ephemeris {
   sunDirAt(t: number): Vec3 {
     return norm(sunPosition(t, this.sunPhase0));
   }
-  // 指定時刻の太陽方向の方位角 [rad]。
-  sunAzimuthAt(t: number): number {
-    return sunAzimuth(t, this.sunPhase0);
+  // 指定時刻の、太陽の見かけの公転に固定した回転基準系。
+  sunOrbitRotationAt(t: number): FrameRotation {
+    return sunOrbitRotation(t, this.sunPhase0);
   }
-  // sunAzimuthAt の時間微分 [rad/s]。
-  sunAngularRateAt(t: number): number {
-    return sunAzimuthRate(t, this.sunPhase0);
+  // 指定時刻の、月の公転に固定した回転基準系。
+  moonOrbitRotationAt(t: number): FrameRotation {
+    return moonOrbitRotation(t, this.moonPhase0);
   }
   // 指定時刻の地球-月ラグランジュ点(L1-L5)。
   emLagrangeAt(t: number): ReturnType<typeof emLagrangePoints> {
