@@ -32,9 +32,7 @@ export const REENTRY_GLOW_MIN_Q = 200; // 燃焼エフェクトが出始める�
 export const REENTRY_GLOW_FULL_Q = 2e4; // 燃焼エフェクトが最大強度になる動圧 [Pa]
 
 // --- 射撃による発熱 ---
-// 1発あたりの投入熱量 [J]。冷態から連射しっぱなしにすると 2 マガジン(64発)前後で
-// MAX_HULL_TEMP に到達する量。
-export const GUN_HEAT_PER_ROUND = 5.5e6;
+export const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりの投入熱量 [J]
 
 // --- ラジエーター(上下2枚、個別展開) ---
 export const RADIATOR_PANEL_AREA = 42; // 1枚の放熱面積 [m^2](2.3 × 2.3 m の蛇腹 4 折りの両面ぶん)
@@ -44,10 +42,10 @@ export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
 export const RADIATOR_HIT_WEAR_PER_HIT = 0.02; // 被弾1発で増える損耗度(1.0 = 全損。50発で全損)
 export const RADIATOR_HITTABLE_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
-export const RADIATOR_EFFICIENCY_MULT = 10; // 放熱面積(RADIATOR_PANEL_AREA)に掛ける性能係数
+export const RADIATOR_EFFICIENCY_MULT = 1; // 放熱面積(RADIATOR_PANEL_AREA)に掛ける性能係数
 
 // --- 被弾による発熱 ---
-export const BULLET_IMPACT_HEAT = 3.0e6; // 自機が被弾1発あたりに受ける熱量 [J]
+export const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受ける熱量 [J]
 
 // --- 太陽電池による発電 ---
 export const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
