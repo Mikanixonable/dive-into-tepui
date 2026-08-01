@@ -17,9 +17,9 @@ export type RadiatorSide = 'up' | 'down';
 // 方向ベクトルが完全に打ち消し合い、4折りが同一の 2.3×2.3 の正方形へ重なる。
 const STOW_TILT = Math.PI / 2;
 
-// side の展開軸方向(ヒンジ局所 +Z を ±X へ倒す基準角)。up は +X、down は -X へ展開する。
-function sideBase(side: RadiatorSide): number {
-  return side === 'up' ? Math.PI / 2 : -Math.PI / 2;
+// side の展開方向の符号。up は +X、down は -X へ伸びる。
+function sideSign(side: RadiatorSide): number {
+  return side === 'up' ? 1 : -1;
 }
 
 class Panel {
@@ -67,17 +67,16 @@ export class RadiatorSystem {
   }
 
   // 偶数折り目/奇数折り目それぞれの、ヒンジ基準での累積回転角。sync がメッシュへ書く
-  // 相対回転と solarLoad が法線計算に使う絶対角を同一の (base, psi) から導く共有点。
-  // down は even/odd の psi 符号を up と逆にする: 揃えないと蛇腹の伸長方向(X)が
-  // ヒンジの内側(機体側)へ食い込む(base の符号反転と psi の加減が噛み合わさるため)。
+  // 相対回転と solarLoad が法線計算に使う絶対角を同一の psi から導く共有点。
+  // 展開方向(モデル側の折り目オフセット)は side ごとに符号が付くので、回転角自体は
+  // side に依らず ±psi で揃えられる。
   private foldThetas(side: RadiatorSide): { even: number; odd: number } {
-    const base = sideBase(side);
+    const sign = sideSign(side);
     const psi = this.tilt(this.panels[side].deploy);
-    const sign = side === 'up' ? 1 : -1;
-    return { even: base - sign * psi, odd: base + sign * psi };
+    return { even: sign * psi, odd: -sign * psi };
   }
 
-  // 各折り目 Group の rotation.x(親からの相対回転)を展開角へ同期し、全損したパネルの
+  // 各折り目 Group の rotation.y(親からの相対回転)を展開角へ同期し、全損したパネルの
   // 蛇腹を非表示にする。
   sync(): void {
     for (const side of ['up', 'down'] as const) {

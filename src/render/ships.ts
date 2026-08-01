@@ -53,8 +53,9 @@ export const RADIATOR_OBJECT_NAMES = { up: 'radiatorUp', down: 'radiatorDown' } 
 // 蛇腹1折りの一辺(ハル幅と揃える) [m]。tools/export-models.mjs の RADIATOR_SEG と一致させる。
 export const RADIATOR_SEGMENT_LENGTH = 2.3;
 
-// 全開時、各折りが展開軸(±X)から傾く角度。
-export const RADIATOR_DEPLOY_TILT = 20 * Math.PI / 180;
+// 全開時、各折りが展開軸から残す傾き。0 だと折り目の判別が数値的に不安定になるため、
+// 蛇腹の折り畳みが解消された1枚の板とみなせるごく小さい値を残す。
+export const RADIATOR_DEPLOY_TILT = 0.01 * Math.PI / 180;
 
 // ラジエーター折り目 Group 名(ヒンジ Group の子孫として入れ子)。
 // tools/export-models.mjs の命名(`${radiatorUp/Down}Fold${i}`)と一致させる。
@@ -63,25 +64,21 @@ export function radiatorFoldName(side: 'up' | 'down', fold: number): string {
 }
 
 // ラジエーター1枚を全開にしたときの機体中心からの最遠点 [m]。
-// ヒンジ (±2.62, 0.30, -2.20) を基点に、展開軸(ヒンジ局所+Z)から Y軸回転で
-// ±RADIATOR_DEPLOY_TILT ずつ交互に振れる各折り目の方向ベクトルを RADIATOR_FOLD_COUNT
-// 個ぶん積算して先端位置を求め、Y軸回転では不変でなくなった最終折り目のローカル+X
-// (半幅方向)も同じ回転で振らせたコーナーまでの距離を機体中心から測る。
+// ヒンジ (2.62, 0.30, -2.20) を基点に、伸びる方向(折り目ローカル+X)が ±RADIATOR_DEPLOY_TILT
+// ずつ交互に振れながら Y軸回転で運ばれる各折りの変位を RADIATOR_FOLD_COUNT 個ぶん積算して
+// 先端位置を求める。パネルの半幅方向(ローカル+Y)は Y軸回転で向きが変わらないので、
+// コーナーまでの距離はそのまま加算するだけでよい。
 function computeRadiatorTipDistance(): number {
-  const base = Math.PI / 2;
   let x = 2.62;
   const y = 0.30;
   let z = -2.20;
-  let theta = base;
   for (let i = 0; i < C.RADIATOR_FOLD_COUNT; i++) {
-    theta = base + (i % 2 === 0 ? -RADIATOR_DEPLOY_TILT : RADIATOR_DEPLOY_TILT);
-    x += Math.sin(theta) * RADIATOR_SEGMENT_LENGTH;
-    z += Math.cos(theta) * RADIATOR_SEGMENT_LENGTH;
+    const theta = i % 2 === 0 ? RADIATOR_DEPLOY_TILT : -RADIATOR_DEPLOY_TILT;
+    x += Math.cos(theta) * RADIATOR_SEGMENT_LENGTH;
+    z -= Math.sin(theta) * RADIATOR_SEGMENT_LENGTH;
   }
-  const halfWidth = RADIATOR_SEGMENT_LENGTH / 2;
-  const cornerX = x + halfWidth * Math.cos(theta);
-  const cornerZ = z - halfWidth * Math.sin(theta);
-  return Math.sqrt(cornerX * cornerX + y * y + cornerZ * cornerZ);
+  const cornerY = y + RADIATOR_SEGMENT_LENGTH / 2;
+  return Math.sqrt(x * x + cornerY * cornerY + z * z);
 }
 export const RADIATOR_TIP_DISTANCE = computeRadiatorTipDistance();
 
