@@ -131,9 +131,13 @@ export const MAX_DEBRIS = 160;
 export const BULLET_HIT_FLASH_SIZE0 = 1.5;
 export const BULLET_HIT_FLASH_SIZE1 = 6;
 export const BULLET_HIT_FLASH_DURATION = 0.25; // [s]
+export const BULLET_HIT_FLASH_COLOR = "#ffe2a0";
 export const PLASMA_HIT_FLASH_SIZE0 = 2;
 export const PLASMA_HIT_FLASH_SIZE1 = 8;
 export const PLASMA_HIT_FLASH_DURATION = 0.3; // [s]
+export const PLASMA_HIT_FLASH_COLOR = "#ffa0ff";
+export const GAS_PUFF_COLOR1 = "#aaaaaa";
+export const GAS_PUFF_COLOR2 = "#ffffff";
 export const HIT_FRAG_COUNT = 3; // 被弾時に飛散させる欠片の数
 export const HIT_FRAG_SIZE_MIN = 0.18;
 export const HIT_FRAG_SIZE_MAX = 0.5;
@@ -141,11 +145,15 @@ export const HIT_FRAG_SPEED = 5.5; // [m/s]
 export const DESTROY_FLASH1_SIZE0 = 10; // 撃破時フラッシュ(芯)のサイズ下限。ENEMY_SCALE 倍される
 export const DESTROY_FLASH1_SIZE1 = 110;
 export const DESTROY_FLASH1_DURATION = 1.1; // [s]
+export const DESTROY_FLASH1_COLOR = "#ffb36b";
 export const DESTROY_FLASH2_SIZE0 = 6; // 撃破時フラッシュ(外殻)のサイズ下限
 export const DESTROY_FLASH2_SIZE1 = 40;
 export const DESTROY_FLASH2_DURATION = 0.5; // [s]
+export const DESTROY_FLASH2_COLOR = "#fffbe8";
 export const DESTROY_FRAG_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限。ENEMY_SCALE 倍される
 export const DESTROY_FRAG_SIZE_MAX = 6.0;
+export const PLAYER_DESTROY_FRAG_COLOR = "#9fd8e8";
+export const ENEMY_DESTROY_FRAG_COLOR = "#ff6a4a";
 
 export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096];
 export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
@@ -159,7 +167,7 @@ export const PLAYER_HULL_RADIUS = 2.6; // 薬莢・破片等との物理接触�
 // 砲口(機体中心から距離約2.9m)で生まれた薬莢が生成直後に弾き飛ばされてしまう。
 export const ENEMY_RADIUS = 180; // 視認性のため実機体よりかなり大きい当たり判定
 export const ENEMY_SCALE = 20; // buildEnemyShip() の見た目メッシュに掛けるスケール
-export const ENEMY_ORBIT_LINE_COLOR = 0x565b63; // 敵軌道線の既定色(個体色 accent とは独立)
+export const ENEMY_ORBIT_LINE_COLOR = "#565b63"; // 敵軌道線の既定色(個体色 accent とは独立)
 
 export const INITIAL_ALT = 420e3; // 自機初期高度 [m]
 export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
@@ -214,7 +222,7 @@ export const AUTOWARP_MARGIN = 4;
 export const AUTOWARP_STOP = 20;
 
 // --- 第零ステージ(近接戦闘訓練) ---
-export const STAGE0_GROUP_ACCENTS = [0xff4a3d, 0x3dc6ff, 0x3dff8f, 0xffe23d, 0xbf3dff]; // 赤/青/緑/黄/紫
+export const STAGE0_GROUP_ACCENTS = ["#ff4a3d", "#3dc6ff", "#3dff8f", "#ffe23d", "#bf3dff"]; // 赤/青/緑/黄/紫
 export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
 export const STAGE0_PER_GROUP = 10; // グループあたりの機数
 export const STAGE0_ENEMY_HP = 1; // 一撃撃破の軽量機
@@ -268,6 +276,7 @@ export const PLAYER_MAX_HP = 1000;
 export const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 export const PLAYER_HIT_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
 export const ENEMY_HIT_DAMAGE = 1; // 敵機が被弾した際のダメージ [HP]
+export const ENEMY_PLASMA_COLOR = "#ffa0ff"; // 敵プラズマ弾の色
 export const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
 export const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]

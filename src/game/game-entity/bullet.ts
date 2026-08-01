@@ -30,8 +30,8 @@ export class Bullet extends GameEntity {
     private readonly lifetime: number;
 
     // accent: plasma 弾のみ使う発光色(未指定なら buildPlasmaMesh の既定色)。normal 弾では無視する。
-    constructor(state: OrbitState, lifetime: number, shooter: Shooter, type: BulletType, scene?: THREE.Scene, accent?: number) {
-        super(state, type === 'plasma' ? buildPlasmaMesh(accent) : buildBulletMesh(), scene);
+    constructor(state: OrbitState, lifetime: number, shooter: Shooter, type: BulletType, scene?: THREE.Scene) {
+        super(state, type === 'plasma' ? buildPlasmaMesh() : buildBulletMesh(), scene);
         this.bornSim = state.t;
         this.lifetime = lifetime;
         this.shooter = shooter;
