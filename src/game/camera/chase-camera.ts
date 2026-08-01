@@ -1,7 +1,7 @@
 // 自機を中心とした三人称軌道視点。姿勢は単位クオータニオン(rot)と距離(dist)だけで持つ。
 // rot の意味は camFollowAttitude で切り替わる: true なら機体姿勢に対する相対姿勢、false なら
 // ワールド(ECI)に対する絶対姿勢。切り替え時は player の姿勢クオータニオンを掛け/割って読み替える。
-import { add, addScaled, cross, len, norm, scale, v3 } from '../../physics/vec3';
+import { add, addScaled, cross, len, norm, scale, v3, Vec3 } from '../../physics/vec3';
 import { MouseDelta } from '../input/input';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
@@ -17,6 +17,7 @@ export class ChaseCamera {
   private rot: Quat = DEFAULT_ROT;
   dist = DEFAULT_DIST;
   private _camFollowAttitude = true;
+  private panEci: Vec3 = v3(0, 0, 0);
 
   view: ViewFrame = {
     position: v3(),
@@ -46,6 +47,7 @@ export class ChaseCamera {
   reset(): void {
     this.rot = DEFAULT_ROT;
     this.dist = DEFAULT_DIST;
+    this.panEci = v3(0, 0, 0);
   }
 
   // 視点の基準フレームを切り替える。
@@ -82,13 +84,22 @@ export class ChaseCamera {
     this.dist *= Math.exp(mouse.wheel * 0.0012);
     this.dist = Math.max(12, Math.min(8000, this.dist));
 
+    // 中ボタンドラッグ等によるパン変位
+    if (mouse.panDx !== 0 || mouse.panDy !== 0) {
+      const fovRad = (C.BASE_FOV * Math.PI) / 180;
+      const metersPerPixel = (2 * this.dist * Math.tan(fovRad * 0.5)) / Math.max(1, window.innerHeight);
+      this.panEci = addScaled(this.panEci, right, -mouse.panDx * metersPerPixel);
+      this.panEci = addScaled(this.panEci, up, mouse.panDy * metersPerPixel);
+    }
+
     this.rot = this._camFollowAttitude ? qNormalize(qMul(qInvert(this.player.att.q), q)) : q;
 
     const center = this.player.state.r;
+    const lookTarget = add(center, this.panEci);
     this.view = {
-      position: add(center, scale(qRotate(q, v3(0, 0, -1)), this.dist)),
+      position: add(lookTarget, scale(qRotate(q, v3(0, 0, -1)), this.dist)),
       up: qRotate(q, v3(0, 1, 0)),
-      lookTarget: center,
+      lookTarget: lookTarget,
       fovDeg: C.BASE_FOV,
       aspect: window.innerWidth / window.innerHeight,
     };
