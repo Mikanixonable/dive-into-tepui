@@ -3,8 +3,7 @@ import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
 
-const rotationLabels = [K.pitchDown, K.pitchUp, K.yawRight, K.yawLeft, K.rollLeft, K.rollRight]
-  .map((k) => k.label).join('/');
+
 const throttleLabels = [K.throttleLow, K.throttleMid, K.throttleHigh].map((k) => k.label).join(' / ');
 
 const STYLE = `
@@ -36,22 +35,18 @@ const STYLE = `
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
 #hud .row .k { color: ${INK_SOFT}; }
 #hud .row .v { color: ${INK}; min-width: 90px; text-align: right; }
-#hud-status { bottom: 44px; left: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
+#hud-status { bottom: 12px; left: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-status h3 { font-size: 8.8px; }
-#hud-orbit { bottom: 44px; left: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
+#hud-orbit { bottom: 12px; left: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-orbit h3 { font-size: 8.8px; }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
-#hud-target { bottom: 44px; right: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
+#hud-target { bottom: 12px; right: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-target h3 { font-size: 8.8px; }
-#hud-enemies { bottom: 44px; right: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
+#hud-enemies { bottom: 12px; right: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
 #hud-enemies .erow.tgt { color: ${ACCENT}; }
-#hud-controls {
-  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
-  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px; padding: 6px 18px;
-  color: ${INK_SOFT}; font-size: 11px; text-align: center; white-space: nowrap;
-}
+
 #hud-hint {
   position: absolute; bottom: 200px; left: 50%; transform: translateX(-50%);
   background: ${SURFACE}; border: 1px solid rgba(${ACCENT_RGB}, 0.35); border-radius: 4px;
@@ -60,9 +55,11 @@ const STYLE = `
   transition: opacity 0.4s; opacity: 0; text-align: center;
 }
 #hud-chase-reset {
-  position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%);
-  pointer-events: auto; cursor: pointer; padding: 4px 16px; font-size: 11px;
-  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  pointer-events: auto; cursor: pointer;
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; justify-content: center; align-items: center; font-size: 16px;
+  border: 1px solid ${EDGE}; background: ${SURFACE}; color: ${INK_SOFT};
   z-index: 1;
 }
 #hud-chase-reset:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
@@ -197,7 +194,7 @@ const STYLE = `
   #hud-settings { min-width: 0; width: 78vw; }
   #hud-stagestatus { top: 8px; min-width: 130px; padding: 6px 10px; }
   #hud-stagestatus .t { font-size: 14px; }
-  #hud-chase-reset { bottom: 36px; padding: 3px 12px; font-size: 10px; }
+  #hud-chase-reset { bottom: 12px; width: 28px; height: 28px; font-size: 14px; }
 }
 `;
 
@@ -279,32 +276,11 @@ function buildInfoPanels(root: HTMLElement): void {
     <div data-id="elist"></div>`;
 }
 
-// 画面下部の常設操作ヒントバーを組む。
-function buildControlsBar(root: HTMLElement): void {
-  const controls = el('div', 'hud-controls', root);
-  // 主要キー割り当てを1行のテキストとして並べる。
-  controls.innerHTML = [
-    `${K.thrustForward.label}/${K.thrustBackward.label}(または${K.thrustForward.altLabel}/${K.thrustBackward.altLabel}):前後`,
-    `${K.thrustUp.label}/${K.thrustDown.label}:上下`,
-    `${K.thrustLeft.label}/${K.thrustRight.label}:左右`,
-    `${rotationLabels}:回転`,
-    `${throttleLabels}:並進出力`,
-    `${K.rcsDampToggle.label}:RCS制動`,
-    `${K.progradeReset.label}:プログレードリセット`,
-    `${K.progradeHoldToggle.label}:進行方向ホールド`,
-    `${K.followAttitudeToggle.label}:視点のRCS追従`,
-    `${K.toggleMapMode.label}:軌道計画`,
-    `${K.autoWarpToNode.label}:ノードへ時間を加速`,
-    `${K.gunsightZoom.label}:ズーム`,
-    `${K.fire.label}/右クリック:射撃`,
-    '左ドラッグ/矢印キー:視点',
-    '中ドラッグ:マップ平行移動',
-    `${K.warpSlower.label}/${K.warpFaster.label}:時間加速`,
-    `[${K.help.label}]:ヘルプ`,
-  ].join(' &nbsp;');
+// 視点リセットボタン（以前は controlsBar と一緒だったが、単独で追加）
+function buildChaseReset(root: HTMLElement): void {
   const chaseReset = el('div', 'hud-chase-reset', root);
   chaseReset.dataset.id = 'chase-reset';
-  chaseReset.textContent = '視点リセット';
+  chaseReset.textContent = '↺';
 }
 
 // 全操作の説明表([H]で開閉するヘルプパネル)を組む。
@@ -314,12 +290,23 @@ function buildHelpPanel(root: HTMLElement): void {
   help.innerHTML = `
     <h3>操作方法 [${K.help.label} で閉じる]</h3>
     <table>
-      <tr><td class="key">${K.thrustForward.label} / ${K.thrustBackward.label} (または ${K.thrustForward.altLabel} / ${K.thrustBackward.altLabel})</td><td>並進 (前 / 後)</td></tr>
-      <tr><td class="key">${K.thrustUp.label} / ${K.thrustDown.label}</td><td>並進 (上 / 下)</td></tr>
-      <tr><td class="key">${K.thrustLeft.label} / ${K.thrustRight.label}</td><td>並進 (左 / 右)</td></tr>
-      <tr><td class="key">${K.pitchDown.label} / ${K.pitchUp.label}</td><td>ピッチ (機首下げ / 上げ)</td></tr>
-      <tr><td class="key">${K.yawRight.label} / ${K.yawLeft.label}</td><td>ヨー (右 / 左)</td></tr>
-      <tr><td class="key">${K.rollRight.label} / ${K.rollLeft.label}</td><td>ロール (右 / 左)</td></tr>
+      <tr><td class="key">
+        <div style="display:inline-block; text-align:center; line-height:1.2; font-family:monospace; margin-right:8px; vertical-align:middle;">
+          <div>W</div><div>A S D</div>
+        </div>
+        / 
+        <div style="display:inline-block; text-align:center; line-height:1.2; font-family:monospace; margin-left:8px; vertical-align:middle;">
+          <div>↑</div><div>← ↓ →</div>
+        </div>
+      </td><td>並進 (前 / 後 / 左 / 右 / 上 / 下)<br><span style="font-size:10px; color:${INK_SOFT};">※ 上下は Q/E</span></td></tr>
+      <tr><td class="key">
+        <div style="display:inline-block; text-align:center; line-height:1.2; font-family:monospace; vertical-align:middle;">
+          <div>I</div><div>J K L</div>
+        </div>
+        <div style="display:inline-block; text-align:center; line-height:1.2; font-family:monospace; margin-left:8px; vertical-align:middle;">
+          <div>U O</div>
+        </div>
+      </td><td>回転 (ピッチ / ヨー / ロール)</td></tr>
       <tr><td class="key">${K.rcsDampToggle.label}</td><td>RCS 回転制動 ON/OFF</td></tr>
       <tr><td class="key">${K.progradeReset.label}</td><td>プログレード姿勢リセット (機首を進行方向へ即座に向ける)</td></tr>
       <tr><td class="key">${throttleLabels}</td><td>並進出力の切替 (弱 / 中 / 強)。並進 6 方向に共通で適用される</td></tr>
@@ -369,7 +356,7 @@ export function buildHudDom(): HudDomRefs {
 
   // 常設パネル群を組む。
   buildInfoPanels(root);
-  buildControlsBar(root);
+  buildChaseReset(root);
 
   el('div', 'hud-hint', root);
   el('div', 'hud-toast', root);
