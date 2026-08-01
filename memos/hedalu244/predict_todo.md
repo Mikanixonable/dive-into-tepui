@@ -1,15 +1,4 @@
 
-## SampledLine のエルミート細分化
-折れ線の頂点密度は `OrbitEntity.sampleInterval` で決まり、28日表示では
-`duration / PREDICT_MAX_SAMPLES` ≈ 1210s、LEO の周期 5580s に対して1周あたり約5点しかなく
-多角形に見える。`syncGeometry` は既に `toFrameState` で速度も frame 相対へ変換していて接線が
-揃っているので、頂点間を `hermiteInterpolate` で細分すれば解消する。
-
-これが入ると「多角形に見えないように刻み幅を細かくする」というアドホックな調整が不要になり、
-`plan-arc.ts` の `stepDt` から表示期間による粗化倍率(`coarsen`)を落とせる。刻み幅は積分精度
-だけで決めればよくなる。
-
-
 ## 計画予測の一括再計算をやめるか
 
 `PlanArc`(`game/plan/plan-arc.ts`)は `(state0, end)` が変わると区間全体を一括で
@@ -23,6 +12,9 @@
 再実装時は「予算の再分配は `Predictor` 側の都合であり、計画側は利用箇所も都合も異なるので
 共通化しない」と判断して見送った。**実測でスパイクが問題になった場合にのみ再検討する。**
 その際も `Predictor` との共通化ではなく、計画側に独立した予算配分を持たせる形になる。
+
+## predictor.ts の stepDtForRadius の調整
+視覚的、UX的な判断が必要
 
 ## ephemerisのメモ化
 OrbitEntityの積分に関して、ephemerisではなく呼び出し側で計算されたsunPosAtとmoonPosAtを外部から受け取っているが、これはsimulatorが複数のentityに関して同一時刻で連続して呼び出す際の、無駄な再計算防止責務をsimulatorが担っていることになっている。
