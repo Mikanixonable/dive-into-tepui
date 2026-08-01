@@ -46,27 +46,20 @@ export class PlanArc {
   }
 
   // 起点・終端の変化を検出してスロットル付きで再積分し、折れ線を現在の表示状態へ同期する。
-  // endFollowsWindow は end が表示窓の終端(毎フレーム滑る)か、計画の角(編集時だけ動く)かの別。
-  // force=true でスロットルを無視して即再積分する(窓の滑りと区別できない非連続な end 変化時)。
   update(
     state0: OrbitState,
     end: number,
-    endFollowsWindow: boolean,
     ephemeris: Ephemeris,
     frame: Frame,
     currentTime: number,
     fo: FloatingOrigin,
-    force = false,
   ): void {
     // 積分結果は (state0, end) だけで決まるので、変化したときにだけ回す。編集操作は
-    // 高頻度なのでスロットルで間引き、毎フレーム滑る窓の終端はさらに長い間隔に落とす。
-    const startEdited = this.key === null || state0 !== this.key.state0;
-    const endMoved = this.key === null || end !== this.key.end;
-    if (force || startEdited || endMoved) {
-      const slidOnly = !startEdited && endFollowsWindow;
-      const throttle = slidOnly ? C.PREDICT_REFRESH_INTERVAL_MS : C.PREDICT_DIRTY_THROTTLE_MS;
+    // 高頻度なのでスロットルで間引く。
+    const changed = this.key === null || state0 !== this.key.state0 || end !== this.key.end;
+    if (changed) {
       const now = performance.now();
-      if (force || now - this.lastComputeMs >= throttle) {
+      if (now - this.lastComputeMs >= C.PREDICT_DIRTY_THROTTLE_MS) {
         this.integrate(state0, end, ephemeris);
         this.key = { state0, end };
         this.lastComputeMs = now;
