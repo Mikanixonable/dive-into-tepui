@@ -16,6 +16,8 @@ export class ThermalSystem {
   qdyn = 0;
   private heatWarned = false;
   private pendingGunHeat = 0; // 未反映の射撃投入熱量 [J]
+  private radiatorArea = 0; // ラジエーターによる追加放熱面積 [m^2]
+  private radiatorSolarLoad = 0; // ラジエーターが受ける太陽入射 [W]
 
   // --- 高度警告(EMA平滑化)状態 ---
   private altEma = NaN; // 高度の指数移動平均(離心率によるふらつきを均す)
@@ -35,6 +37,13 @@ export class ThermalSystem {
     this.pendingGunHeat += rounds * C.GUN_HEAT_PER_ROUND;
   }
 
+  // 今フレームのラジエーター放熱面積 [m^2] と太陽入射 [W] を設定する。次の updateThermal
+  // (このフレームの全サブステップ)で使われる。
+  setRadiatorLoad(area: number, solarLoad: number): void {
+    this.radiatorArea = area;
+    this.radiatorSolarLoad = solarLoad;
+  }
+
   // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の
   // Sutton–Graves 近似 q̇ = k·√(ρ/Rn)·v³、冷却はステファン・ボルツマン放射。
   updateThermal(dtSub: number, r: Vec3, v: Vec3): void {
@@ -48,14 +57,14 @@ export class ThermalSystem {
     const cool =
       C.HULL_EMISS *
       C.STEFAN_BOLTZMANN *
-      C.RAD_AREA *
+      (C.RAD_AREA + this.radiatorArea) *
       (Math.pow(C.ENV_TEMP, 4) - Math.pow(this.hullTemp, 4));
     // 射撃発熱はサブステップ回数・dtSub に依存しない量として貯めてあるので、
     // 空力加熱と違い dtSub を掛けずに一度だけ温度へ変換する
     this.hullTemp = Math.max(
       C.HULL_TEMP_FLOOR,
       this.hullTemp +
-        ((qdot * C.HEAT_ABSORB_AREA + cool) / C.HEAT_CAPACITY) * dtSub +
+        ((qdot * C.HEAT_ABSORB_AREA + cool + this.radiatorSolarLoad) / C.HEAT_CAPACITY) * dtSub +
         this.pendingGunHeat / C.HEAT_CAPACITY,
     );
     this.pendingGunHeat = 0;

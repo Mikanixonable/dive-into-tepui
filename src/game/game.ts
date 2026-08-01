@@ -204,6 +204,7 @@ export class Game {
       scoreCounter: this.activeStage.scoreCounter,
       simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
+      ephemeris: this.ephemeris,
       addBullet: (bullet) => this.entities.addBullet(bullet),
     });
 
