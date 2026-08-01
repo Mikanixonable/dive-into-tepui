@@ -69,7 +69,11 @@ export class CameraSystem {
     if (chaseResetBtn) {
       chaseResetBtn.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
-        this.chaseCamera.reset();
+        if (this.overviewMode) {
+          this.overviewCamera.reset();
+        } else {
+          this.chaseCamera.reset();
+        }
       });
     }
   }
@@ -133,6 +137,7 @@ export class CameraSystem {
       return true;
     });
 
+
     // キー/マウスによる旋回入力をまとめる
     const keyYaw = (input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0);
     const keyPitch = (input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0);
@@ -153,7 +158,7 @@ export class CameraSystem {
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
     
-    const ids = ['hud-chase-reset', 'hud-status', 'hud-stagestatus'];
+    const ids = ['hud-status', 'hud-stagestatus'];
     for (const id of ids) {
       const el = document.getElementById(id);
       if (el) el.style.display = this.overviewMode ? 'none' : '';
