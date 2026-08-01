@@ -163,6 +163,11 @@ export class Game {
 
     // handleInput より後に置く: ポーズ中も Esc・ヘルプなどは効かせる。
     if (this._isPaused) {
+      if (this.editor.editMode) {
+        this.editor.handleMapPointer(this.input);
+        this.cameraSystem.handleMapPointer(this.input);
+        this.editor.updateEditing(dt, this.simulator.simTime, this.input);
+      }
       this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt);
       return;
     }
@@ -314,7 +319,7 @@ export class Game {
     this.editor.sync(this.cameraSystem.overviewCamera.dist, displayEnd, simTime, displayTime, this.floatingOrigin, project);
 
     this.touchControls?.syncModeButtons(this.player.rcsDamp, this.player.fineAttitude, this.player.progradeHold);
-    this.activeStage.sync(this.player, project, displayTime);
+    this.activeStage.sync(this.player, project, displayTime, overviewMode);
 
     this._hud.panels.update(this, dt);
     this._hud.tick();

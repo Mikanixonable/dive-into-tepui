@@ -60,7 +60,7 @@ export class MapModeToggler {
   update(
     input: Input,
     isPlaying: boolean,
-    isPaused: boolean,
+    _isPaused: boolean,
     editor: PlanEditor,
     touchControls: TouchControls | null,
     cameraSystem: CameraSystem,
@@ -74,8 +74,7 @@ export class MapModeToggler {
       return;
     }
 
-    // ポーズ中は [M] を無視する(開いている/閉じているどちらの状態も維持する)
-    if (isPaused) return;
+    // ポーズ中も [M] でマップビューの切り替えを許可する
 
     if (input.takeKey(K.toggleMapMode)) { // 入力があったとき
       if (!this._mapMode) { // 閉じていたら開く

@@ -63,7 +63,7 @@ export class Stage00 extends Stage {
 
   // HUD に表示する現在のウェーブ数の文言を返す。
   hudSubStatus(): string {
-    return `サバイバル 第${this.waveCount}波`;
+    return `第${this.waveCount}波`;
   }
 
   // ウェーブ番号を進め、敵を生成して addEnemy 経由でエンティティ管理に登録する。

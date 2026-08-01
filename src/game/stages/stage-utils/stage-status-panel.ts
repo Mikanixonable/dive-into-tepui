@@ -30,14 +30,19 @@ export class StageStatusPanel {
     const low = hp <= maxHp * LOW_HP_RATIO;
     const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
     const throttleLabels = ['弱', '中', '強'];
-    const throttleText = `エンジン出力: ${throttleLabels[throttleIdx]} (${C.THROTTLE_LEVELS[throttleIdx]!.toFixed(1)} m/s²)`;
+    const throttleVal = C.THROTTLE_LEVELS[throttleIdx];
+    const throttlePct = ((throttleIdx + 1) / 3) * 100;
+    const throttleText = `${throttleLabels[throttleIdx]} (${throttleVal!.toFixed(1)} m/s²)`;
 
     const hpHtml =
       `磁気装甲 ` +
       `<div style="display:inline-block; position:relative; width:120px; height:12px; background:${C.COLOR_HUD_BAR_BG}; vertical-align:middle; margin-left:8px;">` +
       `<div style="width:${pct}%; height:100%; background:${low ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
       `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${Math.floor(hp)} / ${maxHp}</div></div>` +
-      `<div style="font-size: 13px; color: ${C.COLOR_HUD_TEXT_MUTED}; margin-top: 4px;">${throttleText}</div>`;
+      `<br><span style="display:inline-block; margin-top:4px;">エンジン出力 ` +
+      `<div style="display:inline-block; position:relative; width:120px; height:12px; background:${C.COLOR_HUD_BAR_BG}; vertical-align:middle; margin-left:8px;">` +
+      `<div style="width:${throttlePct}%; height:100%; background:${C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
+      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${throttleText}</div></div></span>`;
     if (this.lastHpHtml !== hpHtml) {
       this.hpRow.innerHTML = hpHtml;
       this.lastHpHtml = hpHtml;
@@ -45,7 +50,7 @@ export class StageStatusPanel {
     this.hpRow.classList.toggle('warn', low);
 
     // ステージからの補助メッセージと撃墜数
-    const bodyHtml = `${message}<br>撃墜 ${kills}`;
+    const bodyHtml = message ? `${message} &nbsp;|&nbsp; 撃墜 ${kills}` : `撃墜 ${kills}`;
     if (this.lastBodyHtml !== bodyHtml) {
       this.body.innerHTML = bodyHtml;
       this.lastBodyHtml = bodyHtml;

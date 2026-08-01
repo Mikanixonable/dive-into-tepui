@@ -97,7 +97,7 @@ const STYLE = `
 .mk-ammo { color: ${ACCENT_SOFT}; text-shadow: 0 0 6px rgba(255,144,64,0.6), 0 0 3px #000; }
 #hud .warn-hot { color: ${ACCENT}; }
 #hud-plan {
-  position: absolute; top: 12px; right: 12px; left: auto; bottom: auto; min-width: 280px;
+  position: absolute; top: 12px; right: 12px; left: auto; bottom: auto; min-width: 90px; width: 33vw; max-width: 300px;
 }
 #hud .hud-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 #hud .hud-seg .seg-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 28px; }
@@ -135,17 +135,12 @@ const STYLE = `
 #hud-help table { border-collapse: collapse; width: 100%; }
 #hud-help td { padding: 3px 10px; color: ${INK}; }
 #hud-help td.key { color: ${ACCENT_SOFT}; text-align: right; white-space: nowrap; }
-#hud-gear {
-  position: absolute; top: 12px; left: calc(50% + 120px); transform: none;
-  width: 30px; height: 30px; border-radius: 50%; pointer-events: auto; cursor: pointer;
-  background: ${SURFACE}; border: 1px solid ${EDGE};
-  display: flex; align-items: center; justify-content: center; font-size: 15px; color: ${INK_SOFT};
-}
+
 #hud-stagestatus {
   top: 12px; left: 50%; transform: translateX(-50%);
   text-align: center; min-width: 170px; padding: 8px 16px;
 }
-#hud-stagestatus .t { font-size: 16px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
+#hud-stagestatus .t { font-size: 11px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
 #hud-stagestatus .t.warn { color: ${ACCENT}; }
 #hud-stagestatus .k { font-size: 11px; color: ${INK_SOFT}; margin-top: 2px; }
 #hud-settings {
@@ -191,7 +186,6 @@ const STYLE = `
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
   #navball { width: 100px !important; height: 100px !important; bottom: 130px !important; }
-  #hud-gear { top: 8px; width: 26px; height: 26px; font-size: 13px; left: calc(50% + 90px); transform: none; }
   #hud-settings { min-width: 0; width: 78vw; }
   #hud-stagestatus { top: 8px; min-width: 130px; padding: 6px 10px; }
   #hud-stagestatus .t { font-size: 14px; }
@@ -337,7 +331,7 @@ function buildHelpPanel(root: HTMLElement): void {
       <tr><td class="key">${K.warpSlower.label} / ${K.warpFaster.label}</td><td>時間加速 減 / 増</td></tr>
       <tr><td class="key">左ドラッグ / ホイール</td><td>カメラ回転 / 距離ズーム</td></tr>
       <tr><td class="key">矢印キー (${K.cameraYawLeft.label}${K.cameraYawRight.label}${K.cameraPitchUp.label}${K.cameraPitchDown.label})</td><td>マウスの代わりにキーボードで視点回転</td></tr>
-      <tr><td class="key">${K.pauseMenu.label} / ⚙</td><td>一時停止メニュー (設定 / タイトルへ戻る)</td></tr>
+      <tr><td class="key">${K.pauseMenu.label}</td><td>一時停止メニュー (設定 / タイトルへ戻る)</td></tr>
     </table>`;
 }
 

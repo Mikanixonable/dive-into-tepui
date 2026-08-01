@@ -5,7 +5,6 @@ import * as C from '../const';
 
 export class SettingsPanel {
   private readonly panel: HTMLElement;
-  private readonly gear: HTMLElement;
 
 
   onSettingsOpenChange: ((open: boolean) => void) | null = null;
@@ -14,12 +13,6 @@ export class SettingsPanel {
 
   // ⚙ ボタンとパネル DOM を組み立て、開閉・BGM トグル・タイトルへ戻るのイベントを配線する。
   constructor(root: HTMLElement) {
-    // ⚙ ボタン
-    this.gear = document.createElement('div');
-    this.gear.id = 'hud-gear';
-    this.gear.textContent = '⚙';
-    this.gear.addEventListener('click', () => this.toggle());
-    root.appendChild(this.gear);
 
     // パネル本体
     this.panel = document.createElement('div');
