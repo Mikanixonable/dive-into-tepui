@@ -250,6 +250,9 @@ export class Game {
       dt,
     );
 
+    // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
+    this.guide.update(this.editor.plan, this.player, this.simulator.simTime, this.editor.editMode);
+
     this.editor.plan.trackAnchor(this.player.state);
 
     if (this.editor.editMode) {
@@ -339,7 +342,7 @@ export class Game {
     this._hud.panels.update(this, dt);
     this._hud.tick();
 
-    this.guide.update(this.editor.plan, this.player, simTime, this.simSpeedManager, this.editor.editMode, project);
+    this.guide.sync(this.editor.plan, this.player, simTime, this.editor.editMode, project);
 
     const debugTargets = target ? [this.player, target] : [this.player];
     this.debugHistoryLine.sync(debugTargets, this.editor.planDisplay.trajectoryFrame, simTime, this.ephemeris, this.floatingOrigin);

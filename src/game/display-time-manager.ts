@@ -10,7 +10,7 @@ export class DisplayTimeManager {
   forceCurrent = true;
 
   durationKey: DisplayDurationKey = 'day';
-  // マップモードの未来ゴーストスライダー位置(0..1、0 でゴースト非表示)。
+  // マップモードの未来ゴーストスライダー位置(0..1、0 で現在時刻)。
   sliderT = 0;
 
   private readonly panel: DisplayTimePanel;
