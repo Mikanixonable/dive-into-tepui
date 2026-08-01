@@ -1,40 +1,31 @@
-// 自機を画面中心に置く三人称軌道カメラ。update() は毎フレーム両方の基準フレームを
-// 算出し、camFollowAttitude で切り替える: 既定値の true では機体姿勢基準
-// (上 = 機体 +Y、前 = 機体 +Z)を使うため、I/K/J/L/U/O での回転がそのままカメラへ
-// 反映される。false にすると軌道基準(上 = 動径方向(地球と反対)、前 = 速度方向)に
-// なり、軌道運動とともにゆっくり共回転するため地球が常に足元に見える。
-import * as THREE from 'three/webgpu';
-import { add, addScaled, cross, dot, norm, scale, v3, Vec3 } from '../../physics/vec3';
+// 自機を中心とした三人称軌道カメラ。yaw/pitch/dist の球面座標に加え、基準フレームの
+// 切り替え(camFollowAttitude: 機体姿勢基準 ⇔ 軌道基準)も自身の状態として持つ。
+import { add, addScaled, cross, dot, norm, scale, v3 } from '../../physics/vec3';
 import { MouseDelta } from '../input/input';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
-import { Sfx } from '../../audio/sfx';
 import { qRotate } from '../../physics/attitude';
 import { Player } from '../player/player';
-import { FloatingOrigin } from '../floating-origin';
-import { ndcToScreen, projectToNdc, ViewFrame } from '../../physics/projection';
-import { ProjectFn } from './camera-system';
+import { ViewFrame } from '../../physics/projection';
 
 export class ChaseCamera {
-  // 戦闘ビュー用のカメラ。アスペクト比は update() 毎に自己補正する。
-  readonly camera = new THREE.PerspectiveCamera(
-    C.BASE_FOV,
-    window.innerWidth / window.innerHeight,
-    C.COMBAT_CAMERA_NEAR,
-    C.COMBAT_CAMERA_FAR,
-  );
-  yaw = 0; // 0 = 機体後方(プログレード側から見る)
+  yaw = 0; // 0 = 基準フレームの後方(プログレード側)から見る
   pitch = 0.3 - (10 * Math.PI) / 180; // 初期カメラ位置を5度低く
   dist = 38;
+  // 既定値 true: 機体姿勢基準(上 = 機体 +Y、前 = 機体 +Z)を使うため、I/K/J/L/U/O での
+  // 回転がそのままカメラへ反映される。false では軌道基準(上 = 動径方向(地球と反対)、
+  // 前 = 速度方向)になり、軌道運動とともにゆっくり共回転するため地球が常に足元に見える。
+  // 機体が死亡している間は姿勢自体が意味を持たないため、値によらず軌道基準を使う。
   camFollowAttitude = true;
-  private fov = C.BASE_FOV;
+  view: ViewFrame = {
+    position: v3(),
+    up: v3(0, 1, 0),
+    lookTarget: v3(),
+    fovDeg: C.BASE_FOV,
+    aspect: window.innerWidth / window.innerHeight,
+  };
 
-  position: Vec3 = v3();      // 絶対 ECI のカメラ位置
-  private upDir: Vec3 = v3(0, 1, 0);  // カメラ上方向(向き)
-  private lookTarget: Vec3 = v3();    // 絶対 ECI の注視点
-  private aspect = window.innerWidth / window.innerHeight;
-
-  constructor(private readonly _hud: Hud, _sfx: Sfx) {}
+  constructor(private readonly _hud: Hud) {}
 
   // 視点を初期状態にリセットする
   reset(): void {
@@ -52,78 +43,26 @@ export class ChaseCamera {
     );
   }
 
-  // 現在のモード(通常/ズーム/機体死亡)に応じた視点を計算する。
-  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number, player: Player, zoomActive: boolean): void {
+  // キー/マウス入力から yaw/pitch/dist を更新し、player の状態から基準フレームを選んで視点を view へ書き戻す。
+  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number, player: Player): void {
     this.yaw -= keyYaw * C.CAM_KEY_YAW_RATE * dt;
-    this.pitch = Math.max(-1.35, Math.min(1.35,
-      this.pitch + keyPitch * C.CAM_KEY_PITCH_RATE * dt
-    ));
+    this.pitch = Math.max(-1.35, Math.min(1.35, this.pitch + keyPitch * C.CAM_KEY_PITCH_RATE * dt));
 
-    // 速度方向を前方とする軌道基準フレームの up/fwd
-    const chaseFwd = norm(player.state.v);
-    const chaseUp = norm(player.state.r);
-    // 姿勢基準フレームの前方向/上方向
-    const boreFwd = qRotate(player.att.q, v3(0, 0, 1));
-    const boreUp = qRotate(player.att.q, v3(0, 1, 0));
-
-    const center = player.state.r;
-
-    if (!player.alive) {
-      this.computeChaseView(mouse, chaseUp, chaseFwd, dt, center);
-    }
-    else if (zoomActive) {
-      this.computeGunsightView(boreFwd, boreUp, dt, center);
-    }
-    else if (this.camFollowAttitude) {
-      this.computeChaseView(mouse, boreUp, boreFwd, dt, center);
-    }
-    else {
-      this.computeChaseView(mouse, chaseUp, chaseFwd, dt, center);
-    }
-  }
-
-  // 論理カメラの状態を THREE.PerspectiveCamera へ反映する。
-  sync(fo: FloatingOrigin): void {
-    const camera = this.camera;
-    camera.position.copy(fo.RtoThreeV3(this.position));
-    camera.up.set(this.upDir.x, this.upDir.y, this.upDir.z);
-    camera.lookAt(fo.RtoThreeV3(this.lookTarget));
-    // アスペクト比・FOV が変わったときだけ投影行列を再計算する
-    let projectionDirty = false;
-    if (Math.abs(camera.aspect - this.aspect) > 1e-6) {
-      camera.aspect = this.aspect;
-      projectionDirty = true;
-    }
-    if (Math.abs(camera.fov - this.fov) > 1e-3) {
-      camera.fov = this.fov;
-      projectionDirty = true;
-    }
-    if (projectionDirty) camera.updateProjectionMatrix();
-    camera.updateMatrixWorld();
-  }
-
-  // THREE.js カメラ行列やフローティングオリジンに依存しないスクリーン投影関数。
-  get projection(): ProjectFn {
-    const view: ViewFrame = {
-      position: this.position,
-      lookTarget: this.lookTarget,
-      up: this.upDir,
-      fovDeg: this.fov,
-      aspect: this.aspect,
-    };
-    return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), window.innerWidth, window.innerHeight);
-  }
-
-  // 通常の三人称視点(マウスで yaw/pitch/dist を操作)。up/fwd の基準フレームは引数で受け取る。
-  private computeChaseView(mouse: MouseDelta, up: Vec3, fwd: Vec3, dt: number, center: Vec3): void {
-    this.computeZoomFov(false, dt);
-
-    // マウス入力から yaw/pitch/距離を更新
     this.yaw -= mouse.dx * 0.005;
     this.pitch += mouse.dy * 0.005;
     this.pitch = Math.max(-1.35, Math.min(1.35, this.pitch));
     this.dist *= Math.exp(mouse.wheel * 0.0012);
     this.dist = Math.max(12, Math.min(8000, this.dist));
+
+    // 速度方向を前方とする軌道基準フレームの up/fwd
+    let up = norm(player.state.r);
+    let fwd = norm(player.state.v);
+    if (this.camFollowAttitude && player.alive) {
+      // 姿勢基準フレームの前方向/上方向
+      fwd = qRotate(player.att.q, v3(0, 0, 1));
+      up = qRotate(player.att.q, v3(0, 1, 0));
+    }
+    const center = player.state.r;
 
     // fwd を up と直交する成分だけに正規化し、基準フレームを組む
     const f = norm(addScaled(fwd, up, -dot(fwd, up)));
@@ -136,25 +75,13 @@ export class ChaseCamera {
     off = addScaled(off, up, Math.sin(this.pitch));
     off = scale(off, this.dist);
 
-    this.position = add(center, off);
-    this.upDir = up;
-    this.lookTarget = center;
-  }
-
-  // 照準ズーム中: 機体位置から機首方向を狙う固定ガンサイト視点(画面中心 = 照準先)。
-  private computeGunsightView(boreFwd: Vec3, boreUp: Vec3, dt: number, center: Vec3): void {
-    this.computeZoomFov(true, dt);
-
-    this.position = center;
-    this.upDir = norm(boreUp);
-    this.lookTarget = addScaled(center, norm(boreFwd), 1000);
-  }
-
-  // アスペクト比を最新化し、FOV をズーム有無の目標値へ指数的に近づける。
-  private computeZoomFov(zoomActive: boolean, dt: number): void {
-    this.aspect = window.innerWidth / window.innerHeight;
-    const targetFov = zoomActive ? C.ZOOM_FOV : C.BASE_FOV;
-    const k = 1 - Math.exp(-C.ZOOM_LERP_RATE * dt);
-    this.fov += (targetFov - this.fov) * k;
+    this.view = {
+      position: add(center, off),
+      up,
+      lookTarget: center,
+      fovDeg: C.BASE_FOV,
+      aspect: window.innerWidth / window.innerHeight,
+    };
   }
 }
+

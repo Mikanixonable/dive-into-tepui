@@ -49,6 +49,16 @@ CPU 側で事前に平行移動して自機・カメラ付近の浮動小数精�
 `build`(シーンへの登録)と `render`(実際に `renderer.render` を呼ぶもの)を含めた命名規則は
 CLAUDE.md の「Naming: render / update / build / sync」節が正本。
 
+### `game/camera/` の各カメラは `view: ViewFrame` を持ち、THREE への反映は `CameraSystem` に一元化する
+
+`ChaseCamera`/`GunsightCamera`/`CombatCameraSystem`/`OverviewCamera` はいずれも `update` で
+`physics/projection.ts` の `ViewFrame` を計算し、**返り値ではなく自身の `view` フィールドへ書き戻す**
+(状態を更新しつつ副産物を返す関数を作らないという `/refactor` の TypeScript 規則そのもの)。
+`view` を `THREE.PerspectiveCamera` へ反映する処理(`syncCameraToViewFrame`)と `ProjectFn` を組む処理
+(`projectionFromView`)は `camera-system.ts` の module-private 関数として一箇所にあり、**`CameraSystem`
+だけがこれらを呼ぶ** — 個々のカメラは自分の `sync`/`projection` を持たない。カメラ種別が増えても
+「`view` を持つ」以外の追加の約束事を必要としないための境界。
+
 ## 時刻付き状態列の積分・記録・引き当ては `OrbitEntity` に一本化する
 
 「1ステップ進めながら、間引いたサンプルを残し、任意時刻を引く」操作の実装は
