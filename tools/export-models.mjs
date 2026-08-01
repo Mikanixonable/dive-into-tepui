@@ -221,7 +221,9 @@ function buildPlayerShip() {
   // ヒンジは太陽電池パネル(x=±2.62, y=0.52, z=-2.20)の直下・機体側面に取り付ける
   // (up が +X 側、down が -X 側。名称は上下のまま維持)。y=0.30 はパネル下端(y≈0.4925)や
   // パネル接続ストラット/ブラケット(y≈0.47〜0.57)と、蛇腹の骨格張り出し(±0.12)を含めても
-  // 干渉しない値。
+  // 干渉しない値。回転軸は Y、伸びる方向はローカル X(up は +X、down は -X)、
+  // 放熱面の薄い軸(法線)はローカル Z — 全開でパネル法線が太陽電池パネル(法線 +Y)と
+  // 垂直になり、前後方向から見て面積が最大に見える。
   const radiatorMat = std(0xdde3ea, { metalness: 0.15, roughness: 0.8 });
   const radiatorSkeletonMat = std(0x3a4048, { metalness: 0.5, roughness: 0.55 });
   const RADIATOR_SEG = 2.3;
@@ -240,19 +242,20 @@ function buildPlayerShip() {
     for (let i = 0; i < RADIATOR_FOLD_COUNT; i++) {
       const fold = new THREE.Group();
       fold.name = `${baseName}Fold${i}`;
-      if (i > 0) fold.position.set(0, 0, RADIATOR_SEG);
+      // 次の折り目は側面の外向き(up:+X、down:-X)へローカル X で積み重なる。
+      if (i > 0) fold.position.set(sx * RADIATOR_SEG, 0, 0);
       parent.add(fold);
 
-      // 放熱面: 回転中心(折り目)がセグメントの根元に来るよう、板は半分先へずらす。
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEG, 0.04, RADIATOR_SEG), radiatorMat);
-      panel.position.set(0, i * RADIATOR_STACK_NUDGE, RADIATOR_SEG / 2);
+      // 放熱面: 回転中心(折り目)がセグメントの根元に来るよう、板は半分先(次の折り目と同じ向き)へずらす。
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEG, RADIATOR_SEG, 0.04), radiatorMat);
+      panel.position.set(sx * RADIATOR_SEG / 2, 0, i * RADIATOR_STACK_NUDGE);
       fold.add(panel);
 
-      // 骨格: 放熱面と逆位相(偶数折りは +Y、奇数折りは -Y)に張り出す細材2本。
-      const skeletonY = (i % 2 === 0 ? 1 : -1) * RADIATOR_SKELETON_OFFSET;
-      for (const sx of [-1, 1]) {
-        const rod = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, RADIATOR_SEG), radiatorSkeletonMat);
-        rod.position.set(sx * 1.0, skeletonY, RADIATOR_SEG / 2);
+      // 骨格: 放熱面と逆位相(偶数折りは +Z、奇数折りは -Z)に張り出す細材2本。
+      const skeletonZ = (i % 2 === 0 ? 1 : -1) * RADIATOR_SKELETON_OFFSET;
+      for (const wy of [-1, 1]) {
+        const rod = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEG, 0.08, 0.08), radiatorSkeletonMat);
+        rod.position.set(sx * RADIATOR_SEG / 2, wy * 1.0, skeletonZ);
         fold.add(rod);
       }
 
