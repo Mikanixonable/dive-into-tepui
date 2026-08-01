@@ -1,6 +1,6 @@
 ---
 name: refactor-fixed
-description: このプロジェクトで確定済みの責務境界(独自Vec3とTHREE.Vector3、physics/render/game、update と sync、ctx引数の禁止、たまたま同時に切り替わるフラグの分離、GUI・マーカーの所有者)。責務の置き場所を判断するときに必ず読み、新しい判断を下したらこのファイル自体を書き換える
+description: このプロジェクトで確定済みの責務境界(独自Vec3とTHREE.Vector3、physics/render/game、update と sync、plan と predict の使い分け、ctx引数の禁止、たまたま同時に切り替わるフラグの分離、GUI・マーカーの所有者)。責務の置き場所を判断するときに必ず読み、新しい判断を下したらこのファイル自体を書き換える
 ---
 
 # 確定済みの責務境界
@@ -69,12 +69,26 @@ CLAUDE.md の「Naming: render / update / build / sync」節が正本。
 だけがこれらを呼ぶ** — 個々のカメラは自分の `sync`/`projection` を持たない。カメラ種別が増えても
 「`view` を持つ」以外の追加の約束事を必要としないための境界。
 
+## `plan` と `predict` は別の語として使い分ける
+
+未来の軌道を扱う系統が2つあるので、語を固定する。混ぜると、どちらの未来の話をしているのか
+識別子から判別できなくなる。
+
+- **`plan`(計画軌道)** … 自機の軌道計画。プレイヤーがマニューバノードを置いて組み立てた
+  意図そのもので、`game/plan/` 配下が担う。
+- **`predict`(予測軌道)** … 全 `GameEntity` について、現在の状態のまま自由飛行した未来。
+  `Predictor` と `GameEntity.predicted` が担う。
+
+計画側の識別子・コメント・パネル文言に `predict` /「予測」を使わない(`PLAN_ARC_*` のような
+定数名も含む)。逆に予測側を「計画」と呼ばない。どちらでもない「いつの状態を表示するか」は
+`display`(`DisplayTimeManager` / `DISPLAY_DUR_*`)で表す。
+
 ## 時刻付き状態列の積分・記録・引き当ては `OrbitEntity` に一本化する
 
 「1ステップ進めながら、間引いたサンプルを残し、任意時刻を引く」操作の実装は
 `physics/orbit-entity.ts` の `OrbitEntity` ただ一つ。**第二の実装を書かない。**
-向きにも用途にも依存しない — 過去列(`GameEntity.current`)・未来列(`GameEntity.predicted`)・
-計画の予測区間(`plan/plan-arc.ts`)がすべて同じ `step` / `at` / `samplesOldestFirst` を使う。
+向きにも用途にも依存しない — 過去列(`GameEntity.current`)・予測列(`GameEntity.predicted`)・
+計画軌道の区間(`plan/plan-arc.ts`)がすべて同じ `step` / `at` / `samplesOldestFirst` を使う。
 
 - 間引きの粒度は `sampleInterval`、保持範囲は `keepDuration` で呼び出し側が指定する。
 - 折れ線へ渡す点列は `samplesOldestFirst()` から取る。`history` と `state` を呼び出し側で
@@ -87,7 +101,7 @@ CLAUDE.md の「Naming: render / update / build / sync」節が正本。
 用途ごとに違い、共通化すると片方の都合がもう片方を縛る。
 
 - `Predictor`(全エンティティ・3時間・フレーム予算で漸進) → `predictor.ts` の `stepDtForRadius`
-- `PlanArc`(自機のみ・最長28日・変化時に一括) → `plan-arc.ts` の `stepDt`(表示期間で粗くする)
+- `PlanArc`(自機のみ・区間ごとに一括) → `plan-arc.ts` の `stepDt`(動径の円軌道周期を等分する)
 
 `Simulator` のサブステップ分割も同じ分担で、`GameEntity.stepSim` は渡された `dt` に従うだけ。
 
