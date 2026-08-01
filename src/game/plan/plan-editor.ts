@@ -1,7 +1,7 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と計画パネルへの反映。
 // 未来表示(計画折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
 import type * as THREE from 'three/webgpu';
-import { Elements, OrbitState, elementsFromState, fromOrbitalAxes, orbitState, orbitalAxes } from '../../physics/orbital';
+import { Elements, OrbitState, elementsFromState, fromOrbitalAxes, orbitalAxes } from '../../physics/orbital';
 import { Projected } from '../../physics/projection';
 import { Vec3, add, len, scale, sub, v3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -64,7 +64,6 @@ export class PlanEditor {
     this._hud.root.appendChild(this.planPanel);
     this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
     this.wireNodeGizmo();
-    this.addDebugNode();
   }
 
   // NodeGizmo の各種コールバックを配線する。
@@ -355,11 +354,6 @@ export class PlanEditor {
     this.planPanel.style.display = 'none';
   }
 
-  // デバッグ用のノードを1つ置く。
-  private addDebugNode(): void {
-    this.plan.addNode(orbitState(0, v3(0, 0, 6.8e6), v3(7656, 0, 0)));
-  }
-
   // editMode 中は計画の未来表示とノードギズモを同期し、そうでなければ両方隠す。
   sync(
     mapDist: number,
@@ -435,6 +429,6 @@ function planPanelHtml(
   // 操作キーのヒント
   const dvKeys =
     `${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label}`;
-  s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/${dvKeys}] Δv調整 [右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
+  s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/${dvKeys}] Δv調整 <br>[右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
   return s;
 }
