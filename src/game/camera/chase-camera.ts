@@ -23,9 +23,10 @@ export class ChaseCamera {
     C.COMBAT_CAMERA_NEAR,
     C.COMBAT_CAMERA_FAR,
   );
-  yaw = 0; // 0 = 機体後方(プログレード側から見る)
-  pitch = 0.3 - (10 * Math.PI) / 180; // 初期カメラ位置を5度低く
-  dist = 38;
+  private yaw = 0;
+  private pitch = 0.3 - (10 * Math.PI) / 180;
+  private dist = 38;
+  private panEci: Vec3 = v3(0, 0, 0);
   camFollowAttitude = true;
   private fov = C.BASE_FOV;
 
@@ -41,6 +42,7 @@ export class ChaseCamera {
     this.yaw = 0;
     this.pitch = 0.3 - (10 * Math.PI) / 180;
     this.dist = 38;
+    this.panEci = v3(0, 0, 0);
   }
 
   // 視点の基準フレーム(機体姿勢基準 ⇔ 軌道基準)を切り替える。
@@ -136,9 +138,20 @@ export class ChaseCamera {
     off = addScaled(off, up, Math.sin(this.pitch));
     off = scale(off, this.dist);
 
-    this.position = add(center, off);
+    // 中ボタンドラッグ/2本指ドラッグでパン変位を更新する
+    if (mouse.panDx !== 0 || mouse.panDy !== 0) {
+      const viewDir = scale(off, -1);
+      const right = norm(cross(viewDir, up));
+      const camUp = norm(cross(right, viewDir));
+      const metersPerPixel =
+        (2 * this.dist * Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5))) / Math.max(1, window.innerHeight);
+      this.panEci = addScaled(this.panEci, right, -mouse.panDx * metersPerPixel);
+      this.panEci = addScaled(this.panEci, camUp, mouse.panDy * metersPerPixel);
+    }
+
+    this.lookTarget = add(center, this.panEci);
+    this.position = add(this.lookTarget, off);
     this.upDir = up;
-    this.lookTarget = center;
   }
 
   // 照準ズーム中: 機体位置から機首方向を狙う固定ガンサイト視点(画面中心 = 照準先)。

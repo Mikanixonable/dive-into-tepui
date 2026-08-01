@@ -306,6 +306,6 @@ export const COLOR_DESTROY_FLASH_2 = '#fffbe8';
 export const COLOR_PLAYER_DESTROY_FRAG = '#9fd8e8';
 export const COLOR_ENEMY_DESTROY_FRAG = '#ff6a4a';
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
-export const COLOR_ENEMY_PLASMA = '#ffa0ff';
+export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
 export const COLOR_SHIP_DARK_HULL = '#2e3340';
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
