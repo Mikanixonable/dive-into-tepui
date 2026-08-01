@@ -2,9 +2,6 @@
 // 表示内容がステージごとに決まるので Stage が所有し、hudSubStatus() を返すステージでだけ現れる。
 // CSS(#hud-stagestatus)は hud/dom.ts の STYLE に一元管理されている。
 
-// HP バーの色。残量警告(30% 以下)で赤へ切り替える。
-const BAR_LOW = '#ff4a3d';
-const BAR_OK = '#ff6a00';
 const LOW_HP_RATIO = 0.3;
 import * as C from '../../const';
 
@@ -37,9 +34,9 @@ export class StageStatusPanel {
 
     const hpHtml =
       `磁気装甲: ${Math.floor(hp)} / ${maxHp} ` +
-      `<div style="display:inline-block; width:120px; height:10px; background:#222; vertical-align:middle; margin-left:8px;">` +
-      `<div style="width:${pct}%; height:100%; background:${low ? BAR_LOW : BAR_OK}; transition:width 0.2s;"></div></div>` +
-      `<div style="font-size: 13px; color: #dfe3e8; margin-top: 4px;">${throttleText}</div>`;
+      `<div style="display:inline-block; width:120px; height:10px; background:${C.COLORS.HUD_BAR_BG}; vertical-align:middle; margin-left:8px;">` +
+      `<div style="width:${pct}%; height:100%; background:${low ? C.COLORS.HUD_HP_LOW : C.COLORS.HUD_HP_OK}; transition:width 0.2s;"></div></div>` +
+      `<div style="font-size: 13px; color: ${C.COLORS.HUD_TEXT_MUTED}; margin-top: 4px;">${throttleText}</div>`;
     if (this.lastHpHtml !== hpHtml) {
       this.hpRow.innerHTML = hpHtml;
       this.lastHpHtml = hpHtml;
