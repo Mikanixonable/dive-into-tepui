@@ -13,7 +13,7 @@
 ## 使えるようになったデバッグ手段
 
 - **`?stage=practice`** — 敵の出ない軌道操作練習ステージ。選択画面からは `[P]`。
-- **`PlanEditor.addDebugPlan()`**(`plan-editor.ts:356`)— コンストラクタから1度だけ呼ばれ、
+- **`PlanEditor.addDebugNode()`**(`plan-editor.ts:359`)— コンストラクタから1度だけ呼ばれ、
   高度約 430km の円軌道上に t=0 のノードを1つ置く。マップを開いた時点で計画が入っている。
   不要になったら関数とコンストラクタからの呼び出しの2行を消せばよい。
   - 挙動の注意: ノードが最初からあるので `Plan.trackAnchor` がアンカーを更新せず、
@@ -26,6 +26,17 @@
     - ハンドルは出るが折れ線だけ出ない → `PlanArc.integrate` / `SampledLine`
 
 ---
+
+## 0. 【修正済み】`SampledLine` の頂点更新が GPU に届いていなかった ★これが本命だった
+
+`SampledLine.syncGeometry` は再構築のたびに `new THREE.BufferGeometry()` を作って
+`line.geometry` ごと差し替え、古い方を `dispose()` していた。three.js の `RenderObject` は
+生成時のジオメトリと position 属性をキャッシュするので、**差し替えは拾われず最初の頂点を
+描き続ける**。再積分もサンプル生成も走っているのに線だけ固まる、という症状の正体。
+
+正しく動いていた `OrbitLine` と同じ「バッファは生成時に1度だけ確保し、書き込んで
+`needsUpdate` を立て、本数は `setDrawRange` で変える」形へ統一した。**属性の差し替えも
+同じ罠を踏む**ので、容量は `MAX_VERTICES` 固定にしてある。
 
 ## 1. rAF ループは例外1回で永久に停止する ★最有力
 
@@ -134,8 +145,6 @@ if (sample) this.selectedNodeIdx = this.plan.retimeNode(idx, sample);
 | 1ヶ月 | 約 46,500 |
 
 **「1ヶ月」表示では 200ms ごとに 200ms 級の再積分**が走り、実質フリーズする。
-同時に `SampledLine.syncGeometry` が毎回 `BufferGeometry` を作り直して dispose する
-(`sampled-line.ts:76-80`)。
 `PREDICT_MAX_SAMPLES = 2000` は**サンプルの間引き**にしか効かず、積分ステップ数は減らない。
 
 なお `Predictor` / `GameEntity.stepPrediction` 側は「先端を1歩ずつ伸ばす」インクリメンタル

@@ -178,8 +178,8 @@ export const OVERVIEW_CAMERA_MIN_DIST = 9e6; // 広範囲視点カメラの注�
 // 太陽地球系のラグランジュ点 L1/L2(約1.5e9m)まで視界に収められる引きの上限。
 export const OVERVIEW_CAMERA_MAX_DIST = 4.5e9;
 export const OVERVIEW_CAMERA_FAR = 1.5e10; // 広範囲視点カメラの far(OVERVIEW_CAMERA_MAX_DIST + 十分な余裕)
-export const NODE_DV_RATE = 30; // Δv 調整速度 [m/s per 実秒]
-export const NODE_DV_RATE_FINE = 2.5; // 微調整モード時
+export const NODE_DV_RATE = 300; // Δv 調整速度 [m/s per 実秒]
+export const NODE_DV_RATE_FINE = 30; // 微調整モード時
 export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 export const FOCUS_LABEL_PICK_PX = 20; // 注視候補ラベル(ラグランジュ点等)のクリック判定許容距離 [px]
 export const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
@@ -197,10 +197,10 @@ export const PREDICT_DUR_DAY = 86400; // 1日
 export const PREDICT_DUR_WEEK = 7 * 86400; // 7日
 export const PREDICT_DUR_MONTH = 28 * 86400; // 28日
 export const PREDICT_MAX_SAMPLES = 2000; // 保持する予測サンプル数の上限
-// 予測の再計算頻度: 編集操作に対しては最短でこの間隔(高頻度キー操作を約5Hzに間引く)、
-// 変化がなくても摂動で軌道自体がドリフトするのでこの間隔ごとに再計算する。
+// 予測軌道を再計算する最短間隔。編集操作は高頻度なのでここまで間引く(約5Hz)。
 export const PREDICT_DIRTY_THROTTLE_MS = 200;
-export const PREDICT_REFRESH_INTERVAL_MS = 2000;
+// 周期を持たない軌道(双曲線・放物線)で、末尾区間を伸ばす長さ [s]。
+export const APERIODIC_ARC_DURATION = PREDICT_DUR_DAY;
 
 // --- エンティティの過去・未来状態列(physics/orbit-entity.ts の OrbitEntity.history/Predictor) ---
 export const PREDICT_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)

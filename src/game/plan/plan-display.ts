@@ -47,9 +47,9 @@ export class PlanDisplay {
   }
 
   // 予測折れ線・ゴーストマーカー・TRAJECTORY パネルを現在のプラン/表示時刻に同期する。
-  sync(plan: Plan, displayEnd: number, simTime: number, displayTime: number, fo: FloatingOrigin, project: ProjectFn): void {
+  sync(plan: Plan, simTime: number, displayTime: number, fo: FloatingOrigin, project: ProjectFn): void {
     this.traj.setVisible(true);
-    this.traj.update(plan, displayEnd, this.ephemeris, this.trajectoryFrame, simTime, fo, project);
+    this.traj.update(plan, this.ephemeris, this.trajectoryFrame, simTime, fo, project);
     this.syncGhost(displayTime, simTime, project);
     this.panel.style.display = 'block';
     this.frame.setSelected(this.trajectoryFrame);

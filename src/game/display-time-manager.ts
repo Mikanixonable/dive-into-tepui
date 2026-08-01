@@ -13,9 +13,6 @@ export class DisplayTimeManager {
   // マップモードの未来ゴーストスライダー位置(0..1、0 でゴースト非表示)。
   sliderT = 0;
 
-  // 表示期間の非連続な切替を通知するコールバック。
-  onDurationChange: (() => void) | null = null;
-
   private readonly panel: DisplayTimePanel;
 
   // 操作パネルを構築し、期間選択・スライダー操作の反映先を自身にする。
@@ -23,7 +20,6 @@ export class DisplayTimeManager {
     this.panel = new DisplayTimePanel(hudRoot);
     this.panel.onDurationSelect = (key) => {
       this.durationKey = key;
-      this.onDurationChange?.();
     };
     this.panel.onSliderChange = (t) => {
       this.sliderT = t;

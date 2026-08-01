@@ -1,13 +1,14 @@
 // 軌道計画の多ノード予測軌道を arc 単位で描く。Plan の corners を区間へ分解し、
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
-import { OrbitState } from '../../physics/orbital';
+import { OrbitState, elementsFromState } from '../../physics/orbital';
 import { Vec3, v3 } from '../../physics/vec3';
 import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn } from '../camera/camera-system';
+import * as C from '../const';
 import { Plan } from './plan';
 import { PlanArc } from './plan-arc';
 
@@ -30,7 +31,6 @@ export class PlanTrajectory {
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
-  private forceNext = false;
 
   // group をシーンへ登録する(初期状態は非表示)。
   constructor(scene: THREE.Scene) {
@@ -38,10 +38,9 @@ export class PlanTrajectory {
     scene.add(this.group);
   }
 
-  // plan/displayEnd から区間列を組み直し、各区間の PlanArc を更新する。
+  // plan から区間列を組み直し、各区間の PlanArc を更新する。
   update(
     plan: Plan,
-    displayEnd: number,
     ephemeris: Ephemeris,
     frame: Frame,
     currentTime: number,
@@ -52,16 +51,14 @@ export class PlanTrajectory {
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
     this.project = project;
-    // anchor→node…→displayEnd を区間に分解する
-    const segments = buildSegments(plan.anchor, plan.nodes, displayEnd);
-    const force = this.forceNext;
-    this.forceNext = false;
-    // 各区間に対応する PlanArc を更新する。末尾区間だけが表示窓の終端で切れる。
+    // anchor→node…→末尾区間に分解する
+    const segments = buildSegments(plan.anchor, plan.nodes);
+    // 各区間に対応する PlanArc を更新する。
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       const arc = this.arcAt(i);
       arc.setVisible(true);
-      arc.update(seg.state0, seg.end, i >= plan.nodes.length, ephemeris, frame, currentTime, fo, force);
+      arc.update(seg.state0, seg.end, ephemeris, frame, currentTime, fo);
     }
     // 区間数が減った分の余った arc を隠す
     for (let i = segments.length; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
@@ -74,11 +71,6 @@ export class PlanTrajectory {
     const out: (OrbitState | null)[] = [];
     for (let i = 0; i < this.nodeCount; i++) out.push(this.arcs[i]?.endState() ?? null);
     return out;
-  }
-
-  // 次フレームに全 arc を強制再計算させる(表示期間切替など窓の滑り以外の変化時)。
-  invalidate(): void {
-    this.forceNext = true;
   }
 
   // 時刻 t を保持区間に含む最初の arc から補間した状態を返す。どの arc の外でも null。
@@ -138,9 +130,9 @@ export class PlanTrajectory {
   }
 }
 
-// anchor を起点に nodes を順にたどり、end までを区切った区間列を返す。先頭 nodes.length 本は
-// 必ずノードで終わる — 表示期間を縮めても各ノードの到達状態が得られるよう、end で打ち切らない。
-function buildSegments(anchor: OrbitState, nodes: readonly OrbitState[], end: number): Segment[] {
+// anchor を起点に nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
+// 末尾の1本は起点の解析軌道1周期ぶん伸びる。
+function buildSegments(anchor: OrbitState, nodes: readonly OrbitState[]): Segment[] {
   const segments: Segment[] = [];
   let state0 = anchor;
   // ノードを1つずつ経由点として区間を切り出す
@@ -148,7 +140,13 @@ function buildSegments(anchor: OrbitState, nodes: readonly OrbitState[], end: nu
     segments.push({ state0, end: node.t });
     state0 = node;
   }
-  // 最後のノードから表示終端までを最終区間とする
-  if (state0.t < end) segments.push({ state0, end });
+  // 最後のノード(無ければ anchor)から1周期ぶんを末尾区間とする
+  segments.push({ state0, end: state0.t + orbitPeriodOf(state0) });
   return segments;
+}
+
+// 状態の解析軌道1周期。周期を持たない軌道(双曲線・放物線)では APERIODIC_ARC_DURATION。
+function orbitPeriodOf(state: OrbitState): number {
+  const period = elementsFromState(state.r, state.v)?.period;
+  return period !== undefined && isFinite(period) && period > 0 ? period : C.APERIODIC_ARC_DURATION;
 }

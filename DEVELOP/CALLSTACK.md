@@ -285,10 +285,11 @@
     - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある敵ごと
   - displayTimeManager.sync(orbitPeriod) // PREDICT パネル(期間/未来位置スライダー)の表示/内容を押し出すだけ
     - panel.setVisible(!forceCurrent) / setDuration() / setSliderLabel() // ラベルは自己完結の "T+" 表記のみ
-  - editor.sync(mapDist, displayEnd, simTime, displayTime, fo, project)
-    - [editMode] planDisplay.sync(plan, displayEnd, simTime, displayTime, fo, project)
+  - editor.sync(mapDist, simTime, displayTime, fo, project)
+    - [editMode] planDisplay.sync(plan, simTime, displayTime, fo, project)
       - traj.setVisible(true)
       - traj.update() // plan の corners を区間(segment)へ分解し、区間ごとに PlanArc を駆動。表示文脈(frame/un-bake 時刻/投影)もここで更新
+        // 区間の終端はノードの t。末尾区間だけは起点の解析軌道1周期ぶん(orbitPeriodOf)
         - arc.setVisible(true) // 区間ごと
         - arc.update() // 区間ごと
           - integrate() // (state0, end) の変化 + スロットル(または force)を満たしたときのみ。OrbitEntity で state0 から end まで RK4 積分し直す(重い)
@@ -339,11 +340,11 @@
   `hitSystem.checkBulletHits()` もその回数呼ばれる。一方 `collisionPhysics.resolve()` は
   `canResolvePhysicalCollisions` が false になり `resolveCollision=false` で渡るため、
   `stepSimulation` の中で丸ごとスキップされる。
-- **予測 RK4 の再計算頻度**は `PlanArc` が per-arc に持つ `(state0, end)` の変化検出 + スロットルで決まる。
-  末尾区間(`endFollowsWindow=true`)が `state0` 不変のまま表示窓の終端だけ滑る場合は
-  `PREDICT_REFRESH_INTERVAL_MS`(2000ms)、それ以外(ノード編集・区間の増減など)は
-  `PREDICT_DIRTY_THROTTLE_MS`(200ms)。マップモード中でも大半のフレームは
-  `sampled.syncTransform()`(O(1) の剛体変換)だけで済む。
+- **予測 RK4 の再計算頻度**は `PlanArc` が per-arc に持つ `(state0, end)` の変化検出 +
+  `PREDICT_DIRTY_THROTTLE_MS`(200ms)のスロットルで決まる。`(state0, end)` はどちらも計画の
+  編集でしか動かない(計画が空のあいだだけ、anchor が自機に追従するので毎フレーム動く)ので、
+  ノードを置いた後は編集していないフレームでは一切再積分されない。マップモード中でも大半の
+  フレームは `sampled.syncTransform()`(O(1) の剛体変換)だけで済む。
 - **過去 state の記録・prevState の更新は `physics/orbit-entity.ts` の `OrbitEntity`(`GameEntity.current`)の
   `step`/`reset` が行う**ので、この木には独立ノードとして現れない。`entity.stepSim()` /
   `resolveCollisionPair()` / 反動など、state へ代入するすべての経路が記録契機になる
