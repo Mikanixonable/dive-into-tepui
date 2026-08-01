@@ -33,7 +33,6 @@ export class PlanArc {
   // 再突入高度割れ・非有限で積分を打ち切ったか。
   private truncated = false;
   private key: ComputeKey | null = null;
-  private lastComputeMs = -Infinity;
 
   // 描画色・不透明度・renderOrder を指定して線を用意する。
   constructor(color: number, opacity = 0.85, renderOrder = 2) {
@@ -54,16 +53,11 @@ export class PlanArc {
     currentTime: number,
     fo: FloatingOrigin,
   ): void {
-    // 積分結果は (state0, end) だけで決まるので、変化したときにだけ回す。編集操作は
-    // 高頻度なのでスロットルで間引く。
+    // 積分結果は (state0, end) だけで決まるので、変化したときにだけ回す。
     const changed = this.key === null || state0 !== this.key.state0 || end !== this.key.end;
     if (changed) {
-      const now = performance.now();
-      if (now - this.lastComputeMs >= C.PLAN_ARC_THROTTLE_MS) {
-        this.integrate(state0, end, ephemeris);
-        this.key = { state0, end };
-        this.lastComputeMs = now;
-      }
+      this.integrate(state0, end, ephemeris);
+      this.key = { state0, end };
     }
     this.sampled.syncGeometry(this.samples, frame, ephemeris);
     this.sampled.syncTransform(frame, currentTime, ephemeris, fo);
