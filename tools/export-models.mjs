@@ -226,16 +226,18 @@ function buildPlayerShip() {
   // 垂直になり、前後方向から見て面積が最大に見える。
   const radiatorMat = std(0xdde3ea, { metalness: 0.15, roughness: 0.8 });
   const radiatorSkeletonMat = std(0x3a4048, { metalness: 0.5, roughness: 0.55 });
-  const RADIATOR_SEG = 2.3;
-  const RADIATOR_FOLD_COUNT = 4;
+  const RADIATOR_FOLD_COUNT = 6;
+  const RADIATOR_SEG = (2.3 * 4) / RADIATOR_FOLD_COUNT; // 全長を変えない
+  const RADIATOR_WIDTH = 2.3 / 4; // 大きさを1/4に
   const RADIATOR_STACK_NUDGE = 0.012; // 収納時に折り目同士が同一平面へ重なる際の Z ファイティング回避
-  const RADIATOR_SKELETON_OFFSET = 0.12; // 骨格を放熱面の反対側へ張り出す量
+  const RADIATOR_SKELETON_OFFSET = 0.04; // 骨格を放熱面の反対側へ張り出す量
 
   for (const sx of [1, -1]) {
     const hinge = new THREE.Group();
     const baseName = sx > 0 ? 'radiatorUp' : 'radiatorDown';
     hinge.name = baseName;
-    hinge.position.set(sx * 2.62, 0.30, -2.20);
+    // 機体側面に張り付くように x=1.17 へ移動
+    hinge.position.set(sx * 1.17, 0.30, -2.20);
     g.add(hinge);
 
     let parent = hinge;
@@ -247,15 +249,17 @@ function buildPlayerShip() {
       parent.add(fold);
 
       // 放熱面: 回転中心(折り目)がセグメントの根元に来るよう、板は半分先(次の折り目と同じ向き)へずらす。
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEG, RADIATOR_SEG, 0.04), radiatorMat);
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEG, RADIATOR_WIDTH, 0.04), radiatorMat);
       panel.position.set(sx * RADIATOR_SEG / 2, 0, i * RADIATOR_STACK_NUDGE);
       fold.add(panel);
 
       // 骨格: 放熱面と逆位相(偶数折りは +Z、奇数折りは -Z)に張り出す細材2本。
       const skeletonZ = (i % 2 === 0 ? 1 : -1) * RADIATOR_SKELETON_OFFSET;
       for (const wy of [-1, 1]) {
+        // 骨格が板の端に来るように移動
+        const rodY = wy * (RADIATOR_WIDTH / 2 - 0.04);
         const rod = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEG, 0.08, 0.08), radiatorSkeletonMat);
-        rod.position.set(sx * RADIATOR_SEG / 2, wy * 1.0, skeletonZ);
+        rod.position.set(sx * RADIATOR_SEG / 2, rodY, skeletonZ);
         fold.add(rod);
       }
 
