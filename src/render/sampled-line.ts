@@ -3,27 +3,36 @@
 //
 // 座標変換は physics/frame.ts へ委譲する二段構え:
 //  - bake(点列 or frame が変わったときだけ, syncGeometry): 各サンプルの OrbitState を frame 相対へ
-//    変換し(toFrameState)、頂点には位置 r だけを焼く(速度 v は将来のエルミート補間用)。点ごとに
-//    回転角が違う非剛体変形なので頂点バッファを作り直す(慣性系なら無変換)。
+//    変換し(toFrameState)、位置と速度からエルミート細分した頂点を焼く。点ごとに回転角が違う
+//    非剛体変形なので頂点バッファを作り直す(慣性系なら無変換)。
 //  - un-bake(毎フレーム, syncTransform): 現在時刻 T の剛体回転(toInertialQuat)を line.quaternion
 //    として与え、frame 相対頂点を慣性系へ戻す。全頂点一律なので O(1)。
 //  - フローティングオリジン補正(毎フレーム): line.position = 地球中心の描画フレーム位置。
 // THREE の合成は world = position + quaternion·vertex なので、原点まわりの un-bake 回転 →
 // 平行移動の順で正しい。
 import * as THREE from 'three/webgpu';
-import { v3 } from '../physics/vec3';
-import { OrbitState } from '../physics/orbital';
+import { dot, len, v3 } from '../physics/vec3';
+import { OrbitState, hermiteInterpolate, orbitState } from '../physics/orbital';
 import { Frame, toFrameState, toInertialQuat } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from '../game/floating-origin';
 
-// 折れ線の1点は時刻付き状態ベクトル(OrbitState)そのもの — 予測点列もエンティティの履歴も
-// 同じ型なのでそのまま渡せる。
-// bake は位置 r だけを使うが、速度 v も frame 相対へ変換される — 将来のエルミート補間
-// (頂点間を速度で滑らかに繋ぐ)の接線として供給しておく。
-
 // 頂点は地球中心(ECI 原点)基準の frame 相対座標。line.position はその原点の描画フレーム位置。
 const EARTH_CENTER = v3(0, 0, 0);
+
+// 1辺あたりに許す接線の折れ角。隣り合う辺の向きがこの角度以下でしか変わらなければ、弦に対する
+// 曲線の膨らみの割合も角度だけで決まる(≈ 角度/8)ので、滑らかさがズーム率に依らない。
+const MAX_EDGE_TURN = (5 * Math.PI) / 180;
+
+// 区間 a→b を近似する弦の本数。両端の接線がなす角を MAX_EDGE_TURN ごとに割る。
+// 時刻が同じ/速度が消えている区間は曲線が定まらないので分割しない。
+function chordCount(a: OrbitState, b: OrbitState): number {
+  const speedA = len(a.v);
+  const speedB = len(b.v);
+  if (a.t === b.t || speedA === 0 || speedB === 0) return 1;
+  const turn = Math.acos(Math.max(-1, Math.min(1, dot(a.v, b.v) / (speedA * speedB))));
+  return Math.max(1, Math.ceil(turn / MAX_EDGE_TURN));
+}
 
 export class SampledLine {
   readonly line: THREE.Line;
@@ -47,17 +56,25 @@ export class SampledLine {
     if (samples === this.lastSamples && frame === this.lastFrame) return;
     this.lastSamples = samples;
     this.lastFrame = frame;
-    const arr = new Float32Array(samples.length * 3);
-    for (let i = 0; i < samples.length; i++) {
-      // OrbitState 全体を frame 相対へ変換する。頂点には位置 rel.r だけを焼く。速度 rel.v は
-      // エルミート補間用の接線だが、補間未実装の現状は使わない(実装時にここで保持して密にする)。
-      const rel = toFrameState(frame, samples[i]!, ephemeris);
-      arr[i * 3] = rel.r.x;
-      arr[i * 3 + 1] = rel.r.y;
-      arr[i * 3 + 2] = rel.r.z;
+    const verts: number[] = [];
+    let prev: OrbitState | null = null;
+    for (const sample of samples) {
+      // hermiteInterpolate は座標系に依らない (時刻, 位置, 接線) の多項式なので、frame 相対の
+      // 位置と速度をそのまま OrbitState に詰めて渡す(この慣性系ブランドは関数の外へ出ない)。
+      const rel = toFrameState(frame, sample, ephemeris);
+      const baked = orbitState(sample.t, rel.r, rel.v);
+      if (prev !== null) {
+        const chords = chordCount(prev, baked);
+        for (let k = 1; k < chords; k++) {
+          const { r } = hermiteInterpolate(prev, baked, prev.t + (baked.t - prev.t) * (k / chords));
+          verts.push(r.x, r.y, r.z);
+        }
+      }
+      verts.push(baked.r.x, baked.r.y, baked.r.z);
+      prev = baked;
     }
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
     this.geom.dispose();
     this.geom = geo;
     this.line.geometry = geo;
