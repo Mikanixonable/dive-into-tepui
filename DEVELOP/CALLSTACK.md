@@ -152,7 +152,7 @@
     // 弾命中・剛体接触・姿勢積分はいずれもこの中。simulator が hitSystem / collisionPhysics を所有する
     - [サブステップごと] ×1〜SUBSTEP_MAX_COUNT // 分割数は simDt / SUBSTEP_MAX_DT のみで決まる(実 fps に依存しない)
       - simulationSubStep()
-        - player.stepSim() → stepEnvRK4() → current.step()(軌道要素メモ破棄 + history 記録)
+        - player.stepSim() → current.step() → stepEnvRK4()(軌道要素メモ破棄 + history 記録)
           // player.alive のみ。自身の thrust + envAccel(bcInv)
         - entity.stepSim() // 敵・弾・薬莢・デブリ・補給それぞれ、個体ごと。alive のみ実行
         - player.thermal.updateThermal()
@@ -352,8 +352,10 @@
 - **`TouchControls` は per-frame の update を持たない**。DOM の pointer イベントから
   `input.setVirtualKey()` を呼ぶだけで、per-frame の接点は `game.sync` からの
   `syncModeButtons()`(トグル点灯)だけ。
-- **`Ephemeris` は per-frame の状態更新を持たない**(純サンプラ)。各所が `*At(t)` を呼ぶだけなので
-  更新順序の制約が無い。
+- **`Ephemeris` は per-frame の状態更新を持たない**。各所が `*At(t)` を呼ぶだけなので更新順序の
+  制約が無い。`sunPosAt`/`moonPosAt` は直近に引いた時刻と結果を持つが、返す `Vec3` が不変なので
+  呼び出し側からは毎回計算するのと区別できない(1サブステップ内では全エンティティが同じ時刻を
+  引くので、これで再計算がほぼ消える)。
 - **HUD マーカーは持ち主の `sync` が自分で出す**。`game.sync` に並ぶのは「1つの対象では決められない」
   ものだけ(`enemyMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存)で、残りは
   `player.syncPlayer` / `targeter.sync` / `activeStage.sync` / `cameraSystem.sync` / `editor.sync`(→ `planDisplay`) /
