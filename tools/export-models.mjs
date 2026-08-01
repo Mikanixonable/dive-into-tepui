@@ -213,6 +213,26 @@ function buildPlayerShip() {
     g.add(bracket);
   }
 
+  // === 展開式ラジエーター(上下1枚ずつ、機体X軸ヒンジで後方へ折り畳み) ===
+  const radiatorMat = std(0xdde3ea, { metalness: 0.15, roughness: 0.8 });
+  const radiatorFinMat = std(0xc2c9d2, { metalness: 0.15, roughness: 0.8 });
+  for (const sy of [1, -1]) {
+    const hinge = new THREE.Group();
+    hinge.name = sy > 0 ? 'radiatorUp' : 'radiatorDown';
+    hinge.position.set(0, sy * 1.3, -0.6);
+    g.add(hinge);
+
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(6.0, 0.06, 5.5), radiatorMat);
+    panel.position.set(0, 0, -2.75);
+    hinge.add(panel);
+
+    for (const fz of [-1.1, -2.2, -3.3, -4.4]) {
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.03, 0.12), radiatorFinMat);
+      fin.position.set(0, 0.045, fz);
+      hinge.add(fin);
+    }
+  }
+
   // === 並進RCS ノズル(前進RCSの他に、左右 +X/-X 方向と上下 +Y/-Y 方向を追加) ===
   const rcsMat      = std(0x9aa3ad, { metalness: 0.52 });
   const rcsNozzMat  = std(0xb5bfc9, { metalness: 0.72, roughness: 0.28 });
