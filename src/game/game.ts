@@ -6,7 +6,9 @@ import { v3 } from '../physics/vec3';
 import { Player } from './player/player';
 import { Enemy } from './game-entity/enemy';
 import { CameraSystem } from './camera/camera-system';
-import { Stage, StageId } from './stages/stage';
+import { Stage } from './stages/stage';
+import { CreativeStage } from './stages/creative-stage';
+import { LaunchSelection } from './game-mode';
 import { MarkerManager } from './marker/marker-manager';
 import { GroupedMarkers, GroupedMarkerItem } from './marker/grouped-markers';
 import { LeadMarkers } from './marker/lead-markers';
@@ -28,7 +30,6 @@ import { SettingsPanel } from './hud/settings-panel';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
-import { CelestialGridVisibility } from '../render/celestial-grid';
 import { Ephemeris } from '../physics/ephemeris';
 import { MapModeToggler } from './map-mode-toggler';
 import { NanWatchdog } from './nan-watchdog';
@@ -36,6 +37,7 @@ import { DebugHistoryLine } from './debug-history-line';
 import { MapContextGizmo, MapMenuItem } from './map-context-gizmo';
 import { MapPickable, pickNearest } from './map-pick';
 import { NavTarget } from './nav-target';
+import { Navball } from './navball/navball';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -63,12 +65,7 @@ export class Game {
   get isPaused(): boolean { return this._isPaused; }
 
   private readonly environment: EnvironmentScene;
-
-  // 天球グリッド6トグルの現在保持者。navball ウィンドウ実装後はそちらへ移る想定。
-  celestialGridVisibility: CelestialGridVisibility = {
-    eclipticPlane: false, eclipticPole: false, eclipticGrid: false,
-    equatorPlane: false, equatorPole: false, equatorGrid: false,
-  };
+  private readonly navball: Navball;
 
   private readonly unlockManager: UnlockManager;
 
@@ -88,7 +85,7 @@ export class Game {
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
   constructor(
     gs: GameScene,
-    stageId: StageId,
+    launch: LaunchSelection,
     hud: Hud,
     sfx: Sfx,
     settingsPanel: SettingsPanel,
@@ -122,6 +119,7 @@ export class Game {
 
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
+    this.navball = new Navball(this._hud.root);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
     this.displayTimeManager = new DisplayTimeManager(this._hud.root);
     this.editor = new PlanEditor(
@@ -137,7 +135,9 @@ export class Game {
     this.displayTimeManager.onDurationChange = () => this.editor.planDisplay.traj.invalidate();
 
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
-    this.mapModeToggler = new MapModeToggler(this._hud);
+    // クリエイティブモードはマップから始まる。
+    this.mapModeToggler = new MapModeToggler(this._hud, launch.mode === 'creative');
+    this.mapModeToggler.applyInitialState(this.editor, this.cameraSystem, this.displayTimeManager);
     this.mapContextGizmo = new MapContextGizmo();
     this.mapContextGizmo.onSelect = (act, target) => {
       if (act === 'focus') {
@@ -160,21 +160,29 @@ export class Game {
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
+    this.touchControls?.setMapMode(this.mapModeToggler.mapMode);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, this._sfx, this.effects);
     this.predictor = new Predictor(this.entities, this.ephemeris);
 
-    this.activeStage = initStage(
-      stageId,
-      this.player,
-      this.entities,
-      this._hud,
-      this._sfx,
-      this._scene,
-      this.unlockManager,
-      this.effects,
-      this.markerManager,
-    );
+    if (launch.mode === 'stage') {
+      this.activeStage = initStage(
+        launch.stage,
+        this.player,
+        this.entities,
+        this._hud,
+        this._sfx,
+        this._scene,
+        this.unlockManager,
+        this.effects,
+        this.markerManager,
+      );
+    } else {
+      const creativeStage = new CreativeStage();
+      creativeStage.setup(this._hud, this._sfx, this._scene, this.entities, this.unlockManager, this.effects, this.markerManager);
+      creativeStage.init(this.player, this.entities);
+      this.activeStage = creativeStage;
+    }
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.debugHistoryLine = new DebugHistoryLine(this._scene);
@@ -318,8 +326,10 @@ export class Game {
       this.editor.editMode,
       this.editor.plan.firstNode(),
     );
+    // アクティブ艦の概念は未実装。恒常的に true を渡し、艦切替実装側でここを差し替える。
+    const canToggleView = true;
     this.mapModeToggler.update(
-      this.input, this.activeStage.isPlaying, this._isPaused,
+      this.input, this.activeStage.isPlaying, this._isPaused, canToggleView,
       this.editor, this.touchControls, this.cameraSystem, this.displayTimeManager,
       this.mapContextGizmo,
     );
@@ -413,7 +423,7 @@ export class Game {
       floatingOrigin: this.floatingOrigin,
       displayTime,
       cameraSystem: this.cameraSystem,
-      celestialGridVisibility: this.celestialGridVisibility,
+      celestialGridVisibility: this.navball.gridVisibility,
     });
 
     this.player.syncPlayer(this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused, displayTime);
@@ -424,6 +434,7 @@ export class Game {
 
     this.targeter.sync(dt, this.floatingOrigin, this.player, this.entities.enemies, overviewMode, project);
     this.navTarget.sync(project);
+    this.navball.sync(this.player.state, this.player.att, this.player.alive, target?.state ?? null);
 
     // 敵マーカーは1体では決められない(画面上で近接するものをまとめる)ので集合として渡す。
     // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
