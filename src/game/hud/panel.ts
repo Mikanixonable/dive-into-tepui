@@ -221,7 +221,7 @@ export class HudPanels {
       <div class="row"><span class="k">距離</span><span class="v">${fmtDist(t.dist)}</span></div>
       <div class="row"><span class="k">接近速度</span><span class="v">${fmtSpeed(t.closing)}</span></div>
       <div class="row"><span class="k">相対速度</span><span class="v">${fmtSpeed(t.relSpeed)}</span></div>
-      <div class="row"><span class="k">磁気装甲</span><span class="v">${Math.floor(t.hp)} / ${t.maxHp} <div style="display:inline-block; width:100px; height:8px; background:${C.COLOR_HUD_BAR_BG}; vertical-align:middle; margin-left:4px;"><div style="width:${Math.max(0, Math.min(100, (t.hp / t.maxHp) * 100))}%; height:100%; background:${t.hp <= t.maxHp * 0.3 ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div></div></span></div>
+      <div class="row"><span class="k">磁気装甲</span><span class="v"><div style="display:inline-block; position:relative; width:120px; height:12px; background:${C.COLOR_HUD_BAR_BG}; vertical-align:middle; margin-left:4px;"><div style="width:${Math.max(0, Math.min(100, (t.hp / t.maxHp) * 100))}%; height:100%; background:${t.hp <= t.maxHp * 0.3 ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div><div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${Math.floor(t.hp)} / ${t.maxHp}</div></div></span></div>
       <div class="row"><span class="k">遠地点 AP</span><span class="v">${fmtDist(t.apAlt)}</span></div>
       <div class="row"><span class="k">近地点 PE</span><span class="v">${fmtDist(t.peAlt)}</span></div>
       <div class="row"><span class="k">傾斜角 INC</span><span class="v">${isFinite(t.incDeg) ? t.incDeg.toFixed(2) + '°' : '---'}</span></div>
