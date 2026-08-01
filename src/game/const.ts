@@ -220,6 +220,11 @@ export const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリ
 export const NODE_TOL_SMA = 0.02; // 長半径の相対誤差
 export const NODE_TOL_ECC = 0.02; // 離心率差
 export const NODE_TOL_PLANE_DEG = 2.0; // 軌道面の角度差 [deg]
+// ノード実行時刻の何秒前から「実行の窓」とみなすか [s]。噴射準備の通知・達成判定の開始・
+// 自動ワープの解除がこの1点を共有する。
+export const NODE_APPROACH_LEAD = 20;
+// 実行時刻をこれだけ過ぎたノードは計画から落とす [s]。多少の遅れなら噴射できる猶予。
+export const NODE_EXPIRE_GRACE = 60;
 
 // --- 未来表示の時刻(display-time-manager.ts のスライダー) ---
 export const DISPLAY_DUR_DAY = 86400; // 1日
@@ -238,10 +243,9 @@ export const PREDICT_DURATION = 3 * 3600; // 予測する未来の長さ [s](LEO
 export const PREDICT_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
 export const PREDICT_MIN_STEP_DT = SUBSTEP_MAX_DT; // 予測刻みの下限(本体シミュレーションより細かくする理由がないため同じ値)
 export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
-// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
+// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選ぶ。
 // 最大速度から解除までが概ね20実秒に収まる値。
 export const AUTOWARP_MARGIN = 4;
-export const AUTOWARP_STOP = 20;
 
 // --- 第零ステージ(近接戦闘訓練) ---
 export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
