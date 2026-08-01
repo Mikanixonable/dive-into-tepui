@@ -218,7 +218,7 @@
         - nodeGizmo.openMenu() + selectedNodeId = ヒットしたノードの ID // ヒット時。true を返して消費
       - handleMapClick() // 左クリックごと。常に消費する
         - selectedNodeIdx = idx + sfx.warp() // 既存ノードをヒットした場合。正本は ID(setter が解決する)
-        - planDisplay.traj.nearestSample() → plan.addNode() + sfx.warp() // 予測軌道上をヒットした場合
+        - planDisplay.traj.nearestSample() → plan.addNode() + sfx.warp() // 計画軌道上をヒットした場合
     - cameraSystem.handleMapPointer() // ノードに消費されずに残った右クリックだけが届く
       - handleFocusRightClick() → focusGizmo.openMenu() // FOCUS_LABEL_PICK_PX 以内にラベルがある場合のみ消費
     - editor.updateEditing()
@@ -340,8 +340,8 @@
   `hitSystem.checkBulletHits()` もその回数呼ばれる。一方 `collisionPhysics.resolve()` は
   `canResolvePhysicalCollisions` が false になり `resolveCollision=false` で渡るため、
   `stepSimulation` の中で丸ごとスキップされる。
-- **予測 RK4 の再計算頻度**は `PlanArc` が per-arc に持つ `(state0, end)` の変化検出 +
-  `PREDICT_DIRTY_THROTTLE_MS`(200ms)のスロットルで決まる。`(state0, end)` はどちらも計画の
+- **計画軌道 RK4 の再計算頻度**は `PlanArc` が per-arc に持つ `(state0, end)` の変化検出 +
+  `PLAN_ARC_THROTTLE_MS`(200ms)のスロットルで決まる。`(state0, end)` はどちらも計画の
   編集でしか動かない(計画が空のあいだだけ、anchor が自機に追従するので毎フレーム動く)ので、
   ノードを置いた後は編集していないフレームでは一切再積分されない。マップモード中でも大半の
   フレームは `sampled.syncTransform()`(O(1) の剛体変換)だけで済む。

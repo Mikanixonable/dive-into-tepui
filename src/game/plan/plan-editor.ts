@@ -1,5 +1,5 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と計画パネルへの反映。
-// 未来表示(予測折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
+// 未来表示(計画折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
 import type * as THREE from 'three/webgpu';
 import { Elements, OrbitState, elementsFromState, fromOrbitalAxes, orbitState, orbitalAxes } from '../../physics/orbital';
 import { Projected } from '../../physics/projection';
@@ -149,7 +149,7 @@ export class PlanEditor {
     return this.planDisplay.traj.projectPoint(node.r, node.t);
   }
 
-  // クリック位置に最も近い既存ノードを選択する。ヒットしなければ予測軌道上の最寄り点へ新規ノードを配置する。
+  // クリック位置に最も近い既存ノードを選択する。ヒットしなければ計画軌道上の最寄り点へ新規ノードを配置する。
   private handleMapClick(mx: number, my: number): void {
     // 画面距離が最小の既存ノードを探す
     let bestNodeIdx: number | null = null;
@@ -169,7 +169,7 @@ export class PlanEditor {
       return;
     }
 
-    // 見つからなければ予測軌道上の最寄り点にノードを配置
+    // 見つからなければ計画軌道上の最寄り点にノードを配置
     const sample = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX);
     if (sample) {
       this.selectedNodeIdx = this.plan.addNode(sample);
@@ -198,7 +198,7 @@ export class PlanEditor {
     return true;
   }
 
-  // ドラッグ中のノードを最寄りの予測軌道サンプル時刻へ移動する。
+  // ドラッグ中のノードを最寄りの計画軌道サンプル時刻へ移動する。
   private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
     if (!this.plan.nodes[idx]) return;
     const sample = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity);
@@ -402,7 +402,7 @@ function planPanelHtml(
   let s = '';
   // ノード一覧、無ければ配置案内
   if (nodes.length === 0) {
-    s += `<div style="color:${TEXT_DIM}">予測軌道(グレー)をクリックしてマニューバノードを配置</div>`;
+    s += `<div style="color:${TEXT_DIM}">計画軌道(グレー)をクリックしてマニューバノードを配置</div>`;
   } else {
     s += nodes
       .map((n, i) => {

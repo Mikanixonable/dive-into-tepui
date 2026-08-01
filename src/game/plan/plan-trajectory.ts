@@ -1,4 +1,4 @@
-// 軌道計画の多ノード予測軌道を arc 単位で描く。Plan の corners を区間へ分解し、
+// 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { OrbitState, elementsFromState } from '../../physics/orbital';
@@ -94,7 +94,7 @@ export class PlanTrajectory {
     return this.project(this.toDisplay(r, t));
   }
 
-  // 画面座標に最も近い予測サンプル(maxPx 以内)。なければ null。
+  // 画面座標に最も近い計画軌道のサンプル(maxPx 以内)。なければ null。
   nearestSample(mx: number, my: number, maxPx: number): OrbitState | null {
     let best: OrbitState | null = null;
     let bestD = maxPx * maxPx;

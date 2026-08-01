@@ -1,5 +1,5 @@
 // 軌道計画(ノード列)とその起点アンカー。ノードは噴射直後の絶対 OrbitState として凍結し、
-// Δv は導出値。上流ノードを編集すると下流を破棄する。予測軌道の計算・キャッシュは持たない。
+// Δv は導出値。上流ノードを編集すると下流を破棄する。計画軌道の計算・キャッシュは持たない。
 import { orbitState, OrbitState } from '../../physics/orbital';
 import { Vec3, add, v3 } from '../../physics/vec3';
 

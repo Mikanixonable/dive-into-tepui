@@ -59,7 +59,7 @@ export class PlanArc {
     const changed = this.key === null || state0 !== this.key.state0 || end !== this.key.end;
     if (changed) {
       const now = performance.now();
-      if (now - this.lastComputeMs >= C.PREDICT_DIRTY_THROTTLE_MS) {
+      if (now - this.lastComputeMs >= C.PLAN_ARC_THROTTLE_MS) {
         this.integrate(state0, end, ephemeris);
         this.key = { state0, end };
         this.lastComputeMs = now;
@@ -103,7 +103,7 @@ export class PlanArc {
   private integrate(state0: OrbitState, end: number, ephemeris: Ephemeris): void {
     const duration = Math.max(0, end - state0.t);
     const entity = new OrbitEntity(state0);
-    const sampleInterval = duration / C.PREDICT_MAX_SAMPLES;
+    const sampleInterval = duration / C.PLAN_ARC_MAX_SAMPLES;
     this.truncated = false;
 
     while (entity.state.t < end - EPOCH_EPS) {
