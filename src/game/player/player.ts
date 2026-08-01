@@ -71,7 +71,7 @@ export class Player extends Ship {
     this.belt = new Belt(this.obj);
     this.thermal = new ThermalSystem(_hud, _sfx);
     this.radiator = new RadiatorSystem(this.obj);
-    this.power = new PowerSystem();
+    this.power = new PowerSystem(this.obj);
     this.thrustEffects = new ThrustEffects(_scene);
     this.rcsEffects = new RcsEffects(_scene, _sfx);
     this.reentryEffects = new ReentryEffects(_scene);
@@ -153,8 +153,7 @@ export class Player extends Ship {
       this.radiator.solarLoad(sunlit, sunDir, this.att),
     );
     this.radius = this.radiator.hitRadius();
-    const deployMult = (this.radiator.deployOf('up') + this.radiator.deployOf('down')) / 2;
-    this.power.update(dt, sunlit, sunDir, this.att, deployMult);
+    this.power.update(dt, sunlit, sunDir, this.att);
 
     // 死亡済み: 射撃、移動、hp回復はできない
     if (!this.alive) {
@@ -200,6 +199,8 @@ export class Player extends Ship {
       case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
       case K.radiatorDeployUp.code: this.radiator.toggle('up'); return true;
       case K.radiatorDeployDown.code: this.radiator.toggle('down'); return true;
+      case K.solarDeployUp.code: this.power.toggle('up'); return true;
+      case K.solarDeployDown.code: this.power.toggle('down'); return true;
       // マニュアルリロードに成功した場合だけキーを消費する
       case K.reload.code: return this.fire.manualReload();
       default: return false;
@@ -331,6 +332,7 @@ export class Player extends Ship {
     this.reentryEffects.sync(fo, this.state.r, this.state.v, this.thermal.qdyn, this.alive, camera);
     this.belt.sync(this.alive);
     this.radiator.sync();
+    this.power.sync();
     // マーカーと軌道線
     this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection);
 
