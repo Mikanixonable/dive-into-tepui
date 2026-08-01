@@ -105,6 +105,11 @@ export class CameraSystem {
     this._elOrbit = document.getElementById('hud-orbit');
   }
 
+  // アクティブ艦の切替を戦闘ビューの追従カメラへ伝える。
+  setActivePlayer(player: Player): void {
+    this.combatCamera.setActivePlayer(player);
+  }
+
   // 画面座標 (clientX, clientY) 付近の被選択物を candidates から選ぶ。圏外なら null。
   pickFocusCandidate(clientX: number, clientY: number, candidates: readonly MapPickable[]): MapPickable | null {
     return pickNearest(candidates, clientX, clientY, this.activeCameraProjection, C.MAP_PICK_PX_SQ);
