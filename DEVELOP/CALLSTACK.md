@@ -60,7 +60,7 @@
           - hidePanel()
           - plan.removeNode() // Δv が NODE_MIN_DV 未満のノードごと
         - editor.closeMenu() → nodeGizmo.closeMenu()
-        - cameraSystem.closeFocusMenu() → focusGizmo.closeMenu()
+        - mapContextGizmo.closeMenu()
         - touchControls?.setMapMode(false)
         - cameraSystem.overviewMode = false / editor.editMode = false / displayTimeManager.forceCurrent = true
         - hud.hint() // plan.nodes.length > 0 のみ
@@ -230,10 +230,12 @@
       - handleMapClick() // 左クリックごと。常に消費する
         - selectedNodeIdx = idx + sfx.warp() // 既存ノードをヒットした場合。正本は ID(setter が解決する)
         - planDisplay.traj.nearestSample() → plan.addNode() + sfx.warp() // 予測軌道上をヒットした場合
-    - cameraSystem.handleMapPointer() // ノードに消費されずに残った右クリックだけが届く
-      - handleFocusRightClick() → focusGizmo.openMenu() // FOCUS_LABEL_PICK_PX 以内にラベルがある場合のみ消費
+    - game.handleMapContextMenu() // ノードに消費されずに残った右クリックだけが届く
+      - cameraSystem.pickFocusCandidate() // MAP_PICK_PX_SQ 以内のフォーカス候補ラベルを最寄りで拾う
+      - mapContextGizmo.openMenu() // 拾えた場合のみ消費。選択結果は mapContextGizmo.onSelect(act, target) → overviewCamera.focus 代入
     - editor.updateEditing()
-      - plan.applyNodeDv() // ノード選択中 かつ WASDQE 入力がある場合のみ実効
+      - applyHeldDv() ×6方向 // WASDQE または dvButtons(長押しボタン)が held の間、ホールド秒数からランプするレートで dt 秒分を積分
+      - applyDv() // nodeGizmo.latch がある間、ラッチ超過量に比例したレートで dt 秒分を積分(アームドラッグが DV_DRAG_LATCH_PX を超えて入る)
       - renderPanel() // 計画パネル(MANEUVER PLAN)の HTML 更新
   - [!editor.editMode] targeter.updateCombatTargeting()
     - handleTargetLockByRightClick() // player.alive のみ。右クリックは当否に関わらず消費する
@@ -263,6 +265,7 @@
       - moonMesh.lookAt() // 常に
     - syncLighting() // 自機位置の日照率で sunLight/ambient の強度を上書き
     - syncReferenceLines() → geoLine.sync() + moonLine.sync() // !overviewMode では両方 null 渡しで非表示
+    - celestialGrid.sync() // game.celestialGridVisibility の6トグルと overviewMode に応じたスケールを反映
   - player.syncPlayer(displayTime)
     - displayState(displayTime) // current.at または predicted.at。null なら obj.visible=false のみで以下は現在状態のまま
     - obj の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)
