@@ -52,6 +52,7 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
     // 解放状況ごとにボタンを並べる
     const enabledByStage = new Map(STAGE_DEFINITIONS.map((stage) => [stage.id, unlockManager.isUnlocked(stage.id)]));
     for (const stage of STAGE_DEFINITIONS) {
+      if (stage.hiddenFromSelect) continue;
       const enabled = enabledByStage.get(stage.id) ?? false;
       const sub = enabled ? stage.selectSub : stage.selectLockedSub ?? stage.selectSub;
       const button = btn(stage.selectLabel, sub, enabled);
@@ -60,10 +61,19 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
     }
     document.body.appendChild(div);
 
+    // 隅の控えめなリンクからデバッグステージへ移動できる。
+    const debugLink = document.createElement('div');
+    debugLink.textContent = 'debug stage';
+    debugLink.style.cssText =
+      `position: fixed; bottom: 10px; right: 14px; font-size: 11px; color: ${TEXT_DIM}; cursor: pointer;`;
+    debugLink.addEventListener('click', () => done('debug'));
+    document.body.appendChild(debugLink);
+
     // 選択確定: 画面を片付けて Promise を解決する
     const done = (stage: StageId) => {
       window.removeEventListener('keydown', onKey);
       div.remove();
+      debugLink.remove();
       resolve(stage);
     };
     // 解放済みステージのショートカットキーにマッチしたら選択確定する
