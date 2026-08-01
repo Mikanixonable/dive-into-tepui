@@ -1,4 +1,4 @@
-// 大気飛行の危険の監視: 自機の空力加熱/動圧と高度低下警告。
+// 自機の熱収支(空力加熱・射撃発熱・放射冷却)と動圧・高度低下の監視。
 import { R_EARTH } from '../../physics/orbital';
 import { airspeed } from '../../physics/envaccel';
 import { Vec3, len } from '../../physics/vec3';
@@ -8,13 +8,17 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 
 // checkThermalLimits の戻り値: 限界超過の種別。null なら超過なし。
-export type ThermalLimit = 'heat' | 'dynpressure' | null;
+// heat-aero: 空力加熱による飽和。heat-internal: 射撃発熱など大気のない状況での飽和。
+export type ThermalLimit = 'heat-aero' | 'heat-internal' | 'dynpressure' | null;
 
 export class ThermalSystem {
   // --- 自機の熱・動圧状態 ---
   hullTemp = C.HULL_START_TEMP;
   qdyn = 0;
   private heatWarned = false;
+  private pendingHeat = 0; // 射撃・被弾など未反映の投入熱量 [J]
+  private radiatorArea = 0; // ラジエーターによる追加放熱面積 [m^2]
+  private radiatorSolarLoad = 0; // ラジエーターが受ける太陽入射 [W]
 
   // --- 高度警告(EMA平滑化)状態 ---
   private altEma = NaN; // 高度の指数移動平均(離心率によるふらつきを均す)
@@ -29,6 +33,23 @@ export class ThermalSystem {
     private readonly _sfx: Sfx,
   ) {}
 
+  // 発砲 rounds 発ぶんの投入熱量を次の updateThermal 呼び出しへ持ち越す。
+  addGunHeat(rounds: number): void {
+    this.pendingHeat += rounds * C.GUN_HEAT_PER_ROUND;
+  }
+
+  // 被弾1発ぶんの投入熱量を次の updateThermal 呼び出しへ持ち越す。
+  addImpactHeat(): void {
+    this.pendingHeat += C.BULLET_IMPACT_HEAT;
+  }
+
+  // 今フレームのラジエーター放熱面積 [m^2] と太陽入射 [W] を設定する。次の updateThermal
+  // (このフレームの全サブステップ)で使われる。
+  setRadiatorLoad(area: number, solarLoad: number): void {
+    this.radiatorArea = area;
+    this.radiatorSolarLoad = solarLoad;
+  }
+
   // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の
   // Sutton–Graves 近似 q̇ = k·√(ρ/Rn)·v³、冷却はステファン・ボルツマン放射。
   updateThermal(dtSub: number, r: Vec3, v: Vec3): void {
@@ -42,18 +63,24 @@ export class ThermalSystem {
     const cool =
       C.HULL_EMISS *
       C.STEFAN_BOLTZMANN *
-      C.RAD_AREA *
+      (C.RAD_AREA + this.radiatorArea) *
       (Math.pow(C.ENV_TEMP, 4) - Math.pow(this.hullTemp, 4));
+    // 射撃・被弾の発熱はサブステップ回数・dtSub に依存しない量として貯めてあるので、
+    // 空力加熱と違い dtSub を掛けずに一度だけ温度へ変換する
     this.hullTemp = Math.max(
       C.HULL_TEMP_FLOOR,
-      this.hullTemp + ((qdot * C.HEAT_ABSORB_AREA + cool) / C.HEAT_CAPACITY) * dtSub,
+      this.hullTemp +
+        ((qdot * C.HEAT_ABSORB_AREA + cool + this.radiatorSolarLoad) / C.HEAT_CAPACITY) * dtSub +
+        this.pendingHeat / C.HEAT_CAPACITY,
     );
+    this.pendingHeat = 0;
   }
 
   // 熱防御の飽和・空力破壊を判定し、限界超過の種別を返す。
   checkThermalLimits(): ThermalLimit {
     if (this.hullTemp > C.MAX_HULL_TEMP) {
-      return 'heat';
+      // 動圧の有無を大気の有無の指標として使い、加熱源(空力/射撃)を出し分ける
+      return this.qdyn >= C.REENTRY_GLOW_MIN_Q ? 'heat-aero' : 'heat-internal';
     }
     if (this.qdyn > C.MAX_DYN_PRESSURE) {
       return 'dynpressure';
@@ -63,6 +90,7 @@ export class ThermalSystem {
     if (hot && !this.heatWarned) {
       this.heatWarned = true;
       this._hud.hint('警告: 空力加熱・動圧が危険域 — 高度を上げよ', 4000);
+      this._sfx.altAlarm();
     } else if (!hot && this.hullTemp < 0.6 * C.MAX_HULL_TEMP) {
       this.heatWarned = false;
     }

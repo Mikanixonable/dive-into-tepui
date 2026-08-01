@@ -8,7 +8,7 @@ export class Billboard {
   readonly mesh: THREE.Mesh;
 
   // 指定色の発光平面を非表示状態で組み立てる。
-  constructor(color: number, renderOrder = 5) {
+  constructor(color: string | number, renderOrder = 5) {
     // 加算ブレンドのグローマテリアル
     const mat = new THREE.MeshBasicMaterial({
       map: getGlowTexture(),
