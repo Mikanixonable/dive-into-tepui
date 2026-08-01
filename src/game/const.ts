@@ -64,8 +64,12 @@ export const THROTTLE_LEVELS = [5.0, 20.0, 100.0];//エンジン出力、スロ�
 export const THROTTLE_DEFAULT_IDX = 1;
 
 export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
-export const MAX_ANG_VEL = 1.6; // 手動回転の角速度上限 [rad/s]
 export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
+
+// 自機の主慣性モーメント(相対値、3軸とも異なる非対称形にしてジャニベコフ効果を起こす)
+export const PLAYER_INERTIA_PITCH = 1.0; // ピッチ軸(X)。3軸中の中間値 = 不安定軸
+export const PLAYER_INERTIA_YAW = 1.6; // ヨー軸(Y)
+export const PLAYER_INERTIA_ROLL = 0.5; // ロール軸(Z、機体前後)。細長い形状に見合って最小
 
 // 手動回転RCSの出力ランプ: 押し始めは MIN、RAMP_TIME 秒かけて (MIN + RAMP) まで増加する
 export const RCS_MANUAL_OUTPUT_MIN = 0.3;
@@ -73,7 +77,7 @@ export const RCS_MANUAL_OUTPUT_RAMP = 1.0;
 export const RCS_MANUAL_RAMP_TIME = 3.0; // [s]
 export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
 
-// 微調整モード([V]キーでトグル、射撃中は自動でON)で角加速度・角速度上限に掛ける倍率
+// 微調整モード([V]キーでトグル、射撃中は自動でON)で角加速度に掛ける倍率
 export const FINE_ATTITUDE_SCALE = 0.5;
 
 // 戦闘視点カメラの near/far [m]。near は LEO 高度からの地平線距離(~2,400km)での深度誤差が

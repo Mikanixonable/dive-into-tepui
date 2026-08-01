@@ -99,7 +99,6 @@
     - throttle.updateTorque() → player.torque へ代入。!alive なら即ゼロ
       - onProgradeHoldReleased() → hud.hint() // ホールド中に手動回転入力があった場合のみ
       - autoAlignTorque() // ホールド中 かつ 手動回転入力なしの場合のみ
-    - throttle.clampAngularVelocity() → player.att へ代入 // 常に(角速度上限)
     - radiator.update() // 展開度のみ。THREE には触れない
     - sunlitFactor() // 地球影による日照率
     - thermal.setRadiatorLoad(radiator.radiatingArea(), radiator.solarLoad())

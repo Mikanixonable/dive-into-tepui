@@ -90,7 +90,9 @@ export class Player extends Ship {
     return {
       q: qFromForwardUp(state.v, state.r) ?? { x: 0, y: 0, z: 0, w: 1 },
       w: v3(),
-      inertia: v3(1, 1, 1),
+      // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
+      // 起こるようにする。ロール軸(機体前後方向)は細長い形状に見合って最小にする。
+      inertia: v3(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL),
     };
   }
 
@@ -288,7 +290,6 @@ export class Player extends Ship {
       attDt,
       () => this._hud.hint('進行方向ホールド解除(手動操作)'),
     );
-    this.att = this.throttle.clampAngularVelocity(this.att, fine);
   }
 
   // 自機のメッシュ・エフェクト・ベルト・マーカー・軌道線を displayTime の状態へ同期する。
