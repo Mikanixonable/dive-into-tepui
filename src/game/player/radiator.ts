@@ -57,6 +57,9 @@ export class RadiatorSystem {
       const p = this.panels[side];
       if (p.deploy < p.deployTarget) p.deploy = Math.min(p.deployTarget, p.deploy + step);
       else if (p.deploy > p.deployTarget) p.deploy = Math.max(p.deployTarget, p.deploy - step);
+
+      // 耐久率(wear)を少しずつ回復させる
+      if (p.wear > 0) p.wear = Math.max(0, p.wear - C.RADIATOR_WEAR_RECOVERY * dt);
     }
   }
 

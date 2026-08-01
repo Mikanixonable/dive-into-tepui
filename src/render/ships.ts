@@ -50,12 +50,13 @@ export const RCS_BLOCK_OFFSETS: { x: number; y: number; z: number }[] = [
 // ラジエーターのヒンジ Group 名(機体座標系)。getObjectByName() で引く。
 export const RADIATOR_OBJECT_NAMES = { up: 'radiatorUp', down: 'radiatorDown' } as const;
 
-// 蛇腹1折りの一辺(ハル幅と揃える) [m]。tools/export-models.mjs の RADIATOR_SEG と一致させる。
-export const RADIATOR_SEGMENT_LENGTH = 2.3;
+// 蛇腹1折りの一辺 [m]。tools/export-models.mjs と一致させる。
+export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / 6;
 
 // 全開時、各折りが展開軸から残す傾き。0 だと折り目の判別が数値的に不安定になるため、
 // 蛇腹の折り畳みが解消された1枚の板とみなせるごく小さい値を残す。
-export const RADIATOR_DEPLOY_TILT = 0.01 * Math.PI / 180;
+// (要望により、完全な平らではなく15度程度折りたたまれた状態を残す)
+export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
 
 // ラジエーター折り目 Group 名(ヒンジ Group の子孫として入れ子)。
 // tools/export-models.mjs の命名(`${radiatorUp/Down}Fold${i}`)と一致させる。
