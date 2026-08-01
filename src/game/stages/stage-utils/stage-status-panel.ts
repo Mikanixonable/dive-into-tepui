@@ -1,13 +1,14 @@
-// ステージ固有の状況表示パネル(自機の装甲・エンジン出力・温度・ラジエーター・ステージからの補助メッセージ・撃墜数)。
+// ステージ固有の状況表示パネル(自機の装甲・エンジン出力・温度・電力・ラジエーター・ステージからの補助メッセージ・撃墜数)。
 // 表示内容がステージごとに決まるので Stage が所有し、hudSubStatus() を返すステージでだけ現れる。
 // CSS(#hud-stagestatus)は hud/dom.ts の STYLE に一元管理されている。
 
 const LOW_HP_RATIO = 0.3;
-const RADIATOR_LOW_INTEGRITY = 0.5;
+const RADIATOR_HIGH_WEAR = 0.5;
 import * as C from '../../const';
 import type { Player } from '../../player/player';
 import type { RadiatorSide } from '../../player/radiator';
 import { hudButton } from '../../hud/buttons';
+import { ACCENT } from '../../theme';
 
 const BAR_WIDTH = 160;
 const BAR_HEIGHT = 12;
@@ -18,6 +19,7 @@ interface RadiatorRowDom {
   readonly button: HTMLElement;
   lastText: string;
   lastButtonLabel: string;
+  lastButtonOn: boolean;
 }
 
 export class StageStatusPanel {
@@ -101,29 +103,35 @@ export class StageStatusPanel {
 
     grid.appendChild(cell);
 
-    return { bar, text, button, lastText: '', lastButtonLabel: '展開' };
+    return { bar, text, button, lastText: '', lastButtonLabel: '展開', lastButtonOn: false };
   }
 
-  // row の表示を side の展開度・健全度へ合わせる。文字列は値が動いたときだけ書き換える。
+  // row の表示を side の展開度・損耗度へ合わせる。文字列は値が動いたときだけ書き換える。
   private syncRadiatorRow(row: RadiatorRowDom, side: RadiatorSide, radiator: Player['radiator']): void {
     const deploy = radiator.deployOf(side);
     const deployPct = Math.round(deploy * 100);
-    const integrityPct = Math.round(radiator.integrityOf(side) * 100);
-    const low = integrityPct < RADIATOR_LOW_INTEGRITY * 100;
+    const wearPct = Math.round(radiator.wearOf(side) * 100);
+    const highWear = wearPct > RADIATOR_HIGH_WEAR * 100;
 
     row.bar.style.width = `${deployPct}%`;
-    row.bar.style.background = low ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK;
+    row.bar.style.background = highWear ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK;
 
-    const text = `展開${deployPct}% / 健全${integrityPct}%`;
+    const text = `展開${deployPct}% / 損耗${wearPct}%`;
     if (row.lastText !== text) {
       row.text.textContent = text;
       row.lastText = text;
     }
 
-    const buttonLabel = deploy >= 0.5 ? '収納' : '展開';
+    const buttonOn = deploy >= 0.5;
+    const buttonLabel = buttonOn ? '収納' : '展開';
     if (row.lastButtonLabel !== buttonLabel) {
       row.button.textContent = buttonLabel;
       row.lastButtonLabel = buttonLabel;
+    }
+    if (row.lastButtonOn !== buttonOn) {
+      row.button.style.borderColor = buttonOn ? ACCENT : '';
+      row.button.style.color = buttonOn ? ACCENT : '';
+      row.lastButtonOn = buttonOn;
     }
   }
 
@@ -142,6 +150,7 @@ export class StageStatusPanel {
     const temp = Math.round(player.thermal.hullTemp);
     const tempHigh = temp > 0.7 * C.MAX_HULL_TEMP;
     const tempPct = Math.max(0, Math.min(100, (temp / C.MAX_HULL_TEMP) * 100));
+    const chargePct = Math.max(0, Math.min(100, player.power.chargeRatio * 100));
 
     const hpHtml =
       `<div style="display:grid; grid-template-columns:auto 1fr; gap:4px 8px; align-items:center;">` +
@@ -156,7 +165,11 @@ export class StageStatusPanel {
       `<span>温度</span>` +
       `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
       `<div style="width:${tempPct}%; height:100%; background:${tempHigh ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
-      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${temp} K</div></div>` +
+      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${temp} / ${C.MAX_HULL_TEMP} K</div></div>` +
+      `<span>電力</span>` +
+      `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
+      `<div style="width:${chargePct}%; height:100%; background:${C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
+      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${Math.round(chargePct)}%</div></div>` +
       `</div>`;
     if (this.lastHpHtml !== hpHtml) {
       this.hpRow.innerHTML = hpHtml;

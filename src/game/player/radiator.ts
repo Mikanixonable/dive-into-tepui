@@ -1,4 +1,4 @@
-// 自機の展開式ラジエーター: 上下2枚それぞれの展開度・健全度を持ち、
+// 自機の展開式ラジエーター: 上下2枚それぞれの展開度・損耗度を持ち、
 // 今フレームの放熱面積と太陽入射を答える。機体温度そのものは知らない
 // (温度の4乗則を持つのは ThermalSystem のみ)。
 import * as THREE from 'three/webgpu';
@@ -25,7 +25,7 @@ function sideBase(side: RadiatorSide): number {
 class Panel {
   deployTarget: 0 | 1 = 0;
   deploy = 0;
-  integrity = 1;
+  wear = 0;
 }
 
 export class RadiatorSystem {
@@ -77,23 +77,26 @@ export class RadiatorSystem {
     return { even: base - sign * psi, odd: base + sign * psi };
   }
 
-  // 各折り目 Group の rotation.x(親からの相対回転)を展開角へ同期する。
+  // 各折り目 Group の rotation.x(親からの相対回転)を展開角へ同期し、全損したパネルの
+  // 蛇腹を非表示にする。
   sync(): void {
     for (const side of ['up', 'down'] as const) {
       const { even, odd } = this.foldThetas(side);
       const folds = this.folds[side];
+      const broken = this.panels[side].wear >= 1;
       for (let i = 0; i < folds.length; i++) {
         const fold = folds[i];
         if (!fold) continue;
         fold.rotation.x = i === 0 ? even : (i % 2 === 1 ? odd - even : even - odd);
+        fold.visible = !broken;
       }
     }
   }
 
-  // side の有効な放熱面積 [m^2]。展開度と健全度で目減りする。
+  // side の有効な放熱面積 [m^2]。展開度と損耗度で目減りする。
   private panelArea(side: RadiatorSide): number {
     const p = this.panels[side];
-    return C.RADIATOR_PANEL_AREA * p.deploy * p.integrity;
+    return C.RADIATOR_PANEL_AREA * C.RADIATOR_EFFICIENCY_MULT * p.deploy * (1 - p.wear);
   }
 
   // 放熱に使える面積 [m^2]。
@@ -127,19 +130,32 @@ export class RadiatorSystem {
     return C.PLAYER_RADIUS + (RADIATOR_TIP_DISTANCE - C.PLAYER_RADIUS) * maxDeploy;
   }
 
-  // 被弾位置から上下どちらのパネルへの命中かを判定し、健全度を減らす(回復はしない)。
-  damageFromHit(hitR: Vec3, shipR: Vec3, att: Attitude): void {
+  // 被弾位置から上下どちらのパネルへの命中かを判定し、損耗度を増やす(回復はしない)。
+  // このフレームで新たに全損に達したら、その side を返す(既に全損していたら null)。
+  damageFromHit(hitR: Vec3, shipR: Vec3, att: Attitude): RadiatorSide | null {
     const worldOffset = sub(hitR, shipR);
     const bodyOffset = qRotate(qInvert(att.q), worldOffset);
-    if (len(bodyOffset) <= C.PLAYER_HULL_RADIUS) return;
+    if (len(bodyOffset) <= C.PLAYER_HULL_RADIUS) return null;
 
     const side: RadiatorSide = bodyOffset.y >= 0 ? 'up' : 'down';
     const p = this.panels[side];
-    if (p.deploy < C.RADIATOR_HITTABLE_DEPLOY) return;
-    p.integrity = Math.max(0, p.integrity - C.RADIATOR_HIT_INTEGRITY_LOSS);
+    if (p.deploy < C.RADIATOR_HITTABLE_DEPLOY) return null;
+    if (p.wear >= 1) return null;
+    p.wear = Math.min(1, p.wear + C.RADIATOR_HIT_WEAR_PER_HIT);
+    return p.wear >= 1 ? side : null;
+  }
+
+  // side の蛇腹の先端付近の world 座標を shipR 基準の Vec3 で返す。sync() 後の状態を前提にする。
+  tipWorldPosition(side: RadiatorSide, shipR: Vec3, _att: Attitude): Vec3 {
+    const fold = this.folds[side][this.folds[side].length - 1];
+    if (!fold) return shipR;
+    fold.updateWorldMatrix(true, false);
+    const worldPos = new THREE.Vector3();
+    fold.getWorldPosition(worldPos);
+    return v3(shipR.x + worldPos.x, shipR.y + worldPos.y, shipR.z + worldPos.z);
   }
 
   // HUD 表示用。
   deployOf(side: RadiatorSide): number { return this.panels[side].deploy; }
-  integrityOf(side: RadiatorSide): number { return this.panels[side].integrity; }
+  wearOf(side: RadiatorSide): number { return this.panels[side].wear; }
 }

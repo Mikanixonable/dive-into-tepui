@@ -42,8 +42,17 @@ export const RADIATOR_FOLD_COUNT = 4; // 蛇腹の折り数(1枚あたり)
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
-export const RADIATOR_HIT_INTEGRITY_LOSS = 0.2; // 被弾1発で失う健全度(1.0 = 無傷)
+export const RADIATOR_HIT_WEAR_PER_HIT = 0.02; // 被弾1発で増える損耗度(1.0 = 全損。50発で全損)
 export const RADIATOR_HITTABLE_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
+export const RADIATOR_EFFICIENCY_MULT = 10; // 放熱面積(RADIATOR_PANEL_AREA)に掛ける性能係数
+
+// --- 被弾による発熱 ---
+export const BULLET_IMPACT_HEAT = 3.0e6; // 自機が被弾1発あたりに受ける熱量 [J]
+
+// --- 太陽電池による発電 ---
+export const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
+export const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
+export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
 
 // --- 高度低下警告(EMA平滑化) ---
 export const ALT_EMA_TIME_CONST = 3; // 高度・降下率EMAの時定数 [s]

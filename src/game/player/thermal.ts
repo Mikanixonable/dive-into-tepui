@@ -16,7 +16,7 @@ export class ThermalSystem {
   hullTemp = C.HULL_START_TEMP;
   qdyn = 0;
   private heatWarned = false;
-  private pendingGunHeat = 0; // 未反映の射撃投入熱量 [J]
+  private pendingHeat = 0; // 射撃・被弾など未反映の投入熱量 [J]
   private radiatorArea = 0; // ラジエーターによる追加放熱面積 [m^2]
   private radiatorSolarLoad = 0; // ラジエーターが受ける太陽入射 [W]
 
@@ -35,7 +35,12 @@ export class ThermalSystem {
 
   // 発砲 rounds 発ぶんの投入熱量を次の updateThermal 呼び出しへ持ち越す。
   addGunHeat(rounds: number): void {
-    this.pendingGunHeat += rounds * C.GUN_HEAT_PER_ROUND;
+    this.pendingHeat += rounds * C.GUN_HEAT_PER_ROUND;
+  }
+
+  // 被弾1発ぶんの投入熱量を次の updateThermal 呼び出しへ持ち越す。
+  addImpactHeat(): void {
+    this.pendingHeat += C.BULLET_IMPACT_HEAT;
   }
 
   // 今フレームのラジエーター放熱面積 [m^2] と太陽入射 [W] を設定する。次の updateThermal
@@ -60,15 +65,15 @@ export class ThermalSystem {
       C.STEFAN_BOLTZMANN *
       (C.RAD_AREA + this.radiatorArea) *
       (Math.pow(C.ENV_TEMP, 4) - Math.pow(this.hullTemp, 4));
-    // 射撃発熱はサブステップ回数・dtSub に依存しない量として貯めてあるので、
+    // 射撃・被弾の発熱はサブステップ回数・dtSub に依存しない量として貯めてあるので、
     // 空力加熱と違い dtSub を掛けずに一度だけ温度へ変換する
     this.hullTemp = Math.max(
       C.HULL_TEMP_FLOOR,
       this.hullTemp +
         ((qdot * C.HEAT_ABSORB_AREA + cool + this.radiatorSolarLoad) / C.HEAT_CAPACITY) * dtSub +
-        this.pendingGunHeat / C.HEAT_CAPACITY,
+        this.pendingHeat / C.HEAT_CAPACITY,
     );
-    this.pendingGunHeat = 0;
+    this.pendingHeat = 0;
   }
 
   // 熱防御の飽和・空力破壊を判定し、限界超過の種別を返す。
