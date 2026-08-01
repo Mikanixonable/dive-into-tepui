@@ -49,6 +49,7 @@ export class Input {
   private frameMouse: MouseDelta = ZERO_MOUSE_DELTA;
   private dragging = false;
   private panDragging = false;
+  private panDragMoved = 0;
   private dragMoved = 0;
   // タッチ用: アクティブポインタの座標(ピンチズーム判定に使う)
   private pointers = new Map<number, { x: number; y: number }>();
@@ -124,6 +125,7 @@ export class Input {
       // 中ボタンの既定動作(オートスクロール)を抑止する。
       e.preventDefault();
       this.panDragging = true;
+      this.panDragMoved = 0;
       target.setPointerCapture(e.pointerId);
     }
   }
@@ -145,6 +147,7 @@ export class Input {
     if (this.panDragging) {
       this.panDx += e.movementX;
       this.panDy += e.movementY;
+      this.panDragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
       return;
     }
     if (this.dragging) {
@@ -166,7 +169,7 @@ export class Input {
     }
     // 中ボタンが押されてドラッグ移動量が少なければ中クリックとして記録
     if (e.button === 1) {
-      if (this.panDragging && this.panDx * this.panDx + this.panDy * this.panDy < CLICK_MOVE_THRESHOLD * CLICK_MOVE_THRESHOLD) {
+      if (this.panDragging && this.panDragMoved < CLICK_MOVE_THRESHOLD) {
         this.pendingMiddleClicks.push({ x: e.clientX, y: e.clientY });
       }
       this.panDragging = false;
