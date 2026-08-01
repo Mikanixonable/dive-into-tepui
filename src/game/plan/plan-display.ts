@@ -1,4 +1,4 @@
-// 軌道計画の未来表示: 予測折れ線(PlanTrajectory)の駆動、表示座標系(trajectoryFrame)、
+// 軌道計画の未来表示: 計画折れ線(PlanTrajectory)の駆動、表示座標系(trajectoryFrame)、
 // 未来ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../../physics/orbital';
@@ -22,14 +22,13 @@ export class PlanDisplay {
   private readonly panel: HTMLElement;
   private readonly frame: SegmentedControl<Frame>;
 
-  // 予測折れ線(PlanTrajectory)と TRAJECTORY パネルの DOM を構築する。
+  // 計画折れ線(PlanTrajectory)と TRAJECTORY パネルの DOM を構築する。
   constructor(
     scene: THREE.Scene,
     hudRoot: HTMLElement,
     private readonly markerManager: MarkerManager,
     private readonly ephemeris: Ephemeris,
   ) {
-    // 予測折れ線を構築する
     this.traj = new PlanTrajectory(scene);
 
     // TRAJECTORY パネルの DOM を組み立てる
@@ -46,7 +45,7 @@ export class PlanDisplay {
     hudRoot.appendChild(this.panel);
   }
 
-  // 予測折れ線・ゴーストマーカー・TRAJECTORY パネルを現在のプラン/表示時刻に同期する。
+  // 計画折れ線・ゴーストマーカー・TRAJECTORY パネルを現在のプラン/表示時刻に同期する。
   sync(plan: Plan, simTime: number, displayTime: number, fo: FloatingOrigin, project: ProjectFn): void {
     this.traj.setVisible(true);
     this.traj.update(plan, this.ephemeris, this.trajectoryFrame, simTime, fo, project);
@@ -55,28 +54,28 @@ export class PlanDisplay {
     this.frame.setSelected(this.trajectoryFrame);
   }
 
-  // 予測折れ線・ゴーストマーカー・TRAJECTORY パネルを非表示にする。
+  // 計画折れ線・ゴーストマーカー・TRAJECTORY パネルを非表示にする。
   hide(): void {
     this.traj.setVisible(false);
     this.markerManager.hide('plannedPlayer');
     this.panel.style.display = 'none';
   }
 
-  // ⬡ ゴーストマーカーを displayTime の予測位置に同期する。表示時刻が現在以前、
-  // または折れ線の予測範囲外なら隠す。
+  // ⬡ ゴーストマーカーを displayTime の計画位置に同期する。表示時刻が現在以前、
+  // または折れ線の届く範囲外なら隠す。
   private syncGhost(displayTime: number, simTime: number, project: ProjectFn): void {
     // 現在時刻以前はゴーストを出さない
     if (displayTime <= simTime) {
       this.markerManager.hide('plannedPlayer');
       return;
     }
-    // 折れ線の予測範囲外なら隠す
+    // 折れ線の届く範囲外なら隠す
     const sample = this.traj.sampleAt(displayTime);
     if (!sample) {
       this.markerManager.hide('plannedPlayer');
       return;
     }
-    // 予測位置にマーカーを置く
+    // 計画位置にマーカーを置く
     this.markerManager.setPosition(
       'plannedPlayer',
       'mk-planned',
