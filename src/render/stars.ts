@@ -5,7 +5,7 @@ import starsTextureUrl from '../assets/8k_stars.jpg';
 import moonTextureUrl from '../assets/8k_moon.jpg';
 import { Billboard } from './billboard';
 
-const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
+export const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
 export const SUN_DISTANCE = 4.2e7; // 太陽ビルボードの表示距離(方向のみ実天体暦に従う)
 export const MOON_VIS_DIST = 4.5e7; // 月メッシュの表示距離(角直径は実距離から毎フレーム換算)
 // 実太陽の視直径(約0.53°)よりやや大きめ + ハロー分

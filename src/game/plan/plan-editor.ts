@@ -8,6 +8,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { ACCENT, TEXT, TEXT_DIM } from '../theme';
 import { Hud } from '../hud/hud';
+import { HudHoldButton } from '../hud/buttons';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import type { MarkerManager } from '../marker/marker-manager';
@@ -19,6 +20,38 @@ import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { Plan } from './plan';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
+
+interface DvButtons {
+  readonly pro: HudHoldButton;
+  readonly ret: HudHoldButton;
+  readonly nrm: HudHoldButton;
+  readonly anm: HudHoldButton;
+  readonly out: HudHoldButton;
+  readonly in: HudHoldButton;
+}
+
+// prograde/retrograde/normal/antinormal/radial out/in の長押しボタン6個を組み立てる。
+function buildDvButtons(): { row: HTMLElement; buttons: DvButtons; } {
+  const row = document.createElement('div');
+  row.className = 'hud-seg';
+  const mk = (dir: string, key: string): HudHoldButton => new HudHoldButton(`${dir} [${key}]`);
+  const buttons: DvButtons = {
+    pro: mk('PRO', K.dvPrograde.label),
+    ret: mk('RET', K.dvRetrograde.label),
+    nrm: mk('NRM', K.dvNormal.label),
+    anm: mk('ANM', K.dvAntinormal.label),
+    out: mk('OUT', K.dvRadialOut.label),
+    in: mk('IN', K.dvRadialIn.label),
+  };
+  for (const b of Object.values(buttons)) row.appendChild(b.element);
+  return { row, buttons };
+}
+
+// ホールド継続時間 [s] から Δv 加算レートを指数的に求める。押し始めは細かく、長押しで粗くなる。
+function rampedDvRate(heldSec: number): number {
+  const t = Math.min(heldSec / C.DV_RATE_RAMP_SEC, 1);
+  return C.DV_RATE_MIN * (C.DV_RATE_MAX / C.DV_RATE_MIN) ** t;
+}
 
 export class PlanEditor {
   private selectedNodeId: number | null = null;
@@ -40,6 +73,10 @@ export class PlanEditor {
   editMode = false;
 
   readonly nodeGizmo = new NodeGizmo();
+
+  private readonly dvButtons = buildDvButtons();
+  // 6 方向それぞれのホールド継続時間 [s]。index は axis*2 + (sign<0 ? 1 : 0)。
+  private readonly dvHoldTime: number[] = [0, 0, 0, 0, 0, 0];
 
   private readonly planPanel: HTMLElement;
   private readonly planBody: HTMLElement;
@@ -63,6 +100,7 @@ export class PlanEditor {
     this.planPanel.style.display = 'none';
     this._hud.root.appendChild(this.planPanel);
     this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
+    this.planPanel.appendChild(this.dvButtons.row);
     this.wireNodeGizmo();
   }
 
@@ -206,15 +244,34 @@ export class PlanEditor {
     }
   }
 
-  // Δv アームのドラッグ量を選択中ノードの Δv へ加算する。
-  private applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
-    if (this.selectedNodeIdx === null) return;
+  // 選択中ノードの axis 方向(sign 込み)へ amount [m/s] の Δv を加算する。ドラッグ・ラッチ・
+  // キー/ボタンホールドはすべてここを経由し、加算量の求め方だけがそれぞれ異なる。
+  private applyDv(axis: 0 | 1 | 2, sign: 1 | -1, amount: number): void {
+    if (this.selectedNodeIdx === null || amount === 0) return;
     const node = this.plan.nodes[this.selectedNodeIdx];
     if (!node) return;
-    const rate = (fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) / 200;
-    const d = deltaPx * sign * rate;
+    const d = amount * sign;
     const local = v3(axis === 0 ? d : 0, axis === 1 ? d : 0, axis === 2 ? d : 0);
     this.plan.applyNodeDv(this.selectedNodeIdx, fromOrbitalAxes(node, local));
+  }
+
+  // Δv アームのラッチ前ドラッグ量を選択中ノードの Δv へ加算する。
+  private applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
+    const rate = (fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) / 200;
+    this.applyDv(axis, sign, deltaPx * rate);
+  }
+
+  // axis/sign 方向のキー/ボタンが held の間ホールド時間を積み上げ、そのレートで dt 秒分の
+  // Δv を加算する。held が false ならホールド時間をリセットするだけで加算はしない。
+  private applyHeldDv(axis: 0 | 1 | 2, sign: 1 | -1, held: boolean, dt: number, fineAttitude: boolean): void {
+    const idx = axis * 2 + (sign < 0 ? 1 : 0);
+    if (!held) {
+      this.dvHoldTime[idx] = 0;
+      return;
+    }
+    this.dvHoldTime[idx] = (this.dvHoldTime[idx] ?? 0) + dt;
+    const fineScale = fineAttitude ? C.NODE_DV_RATE_FINE / C.NODE_DV_RATE : 1;
+    this.applyDv(axis, sign, rampedDvRate(this.dvHoldTime[idx]!) * fineScale * dt);
   }
 
   // Δv アーム 6 個の画面方向をノード位置と微小先の投影差分から求める。
@@ -303,20 +360,25 @@ export class PlanEditor {
     this.nodeGizmo.sync(nodeSpecs, axisSpecs);
   }
 
-  // WASDQE の押下量から選択中ノードの Δv を加算し、計画パネルの表示データを組み立てる。
+  // WASDQE キー・長押しボタン・Δv アームのラッチドラッグから選択中ノードの Δv を加算し、
+  // 計画パネルの表示データを組み立てる。
   updateEditing(dt: number, simTime: number, input: Input): void {
     const arriving = this.planDisplay.traj.arrivalStates();
-    const selNode = this.selectedNodeIdx !== null ? this.plan.nodes[this.selectedNodeIdx] : undefined;
-    // 選択中ノードへ prograde/normal/radial 方向の Δv を加算
-    if (selNode) {
-      const i = input;
-      const rate = (this.getFineAttitude() ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) * dt;
-      const local = v3(
-        ((i.down(K.dvPrograde) ? 1 : 0) + (i.down(K.dvRetrograde) ? -1 : 0)) * rate,
-        ((i.down(K.dvNormal) ? 1 : 0) + (i.down(K.dvAntinormal) ? -1 : 0)) * rate,
-        ((i.down(K.dvRadialOut) ? 1 : 0) + (i.down(K.dvRadialIn) ? -1 : 0)) * rate,
-      );
-      this.plan.applyNodeDv(this.selectedNodeIdx!, fromOrbitalAxes(selNode, local));
+    const fine = this.getFineAttitude();
+    const b = this.dvButtons.buttons;
+    this.applyHeldDv(0, 1, input.down(K.dvPrograde) || b.pro.isHeld, dt, fine);
+    this.applyHeldDv(0, -1, input.down(K.dvRetrograde) || b.ret.isHeld, dt, fine);
+    this.applyHeldDv(1, 1, input.down(K.dvNormal) || b.nrm.isHeld, dt, fine);
+    this.applyHeldDv(1, -1, input.down(K.dvAntinormal) || b.anm.isHeld, dt, fine);
+    this.applyHeldDv(2, 1, input.down(K.dvRadialOut) || b.out.isHeld, dt, fine);
+    this.applyHeldDv(2, -1, input.down(K.dvRadialIn) || b.in.isHeld, dt, fine);
+
+    // ラッチ中の Δv アームは、閾値超過量に比例したレートで dt 秒分を加算し続ける。
+    const latch = this.nodeGizmo.latch;
+    if (latch) {
+      const fineScale = fine ? C.NODE_DV_RATE_FINE / C.NODE_DV_RATE : 1;
+      const rate = Math.min(latch.excessPx * C.DV_LATCH_RATE_PER_PX, C.DV_RATE_MAX) * fineScale;
+      this.applyDv(latch.axis, latch.sign, rate * dt);
     }
 
     // パネル表示用のノード一覧を組む
@@ -430,6 +492,6 @@ function planPanelHtml(
   // 操作キーのヒント
   const dvKeys =
     `${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label}`;
-  s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/${dvKeys}] Δv調整 [右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
+  s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/${dvKeys}/パネルのボタン] 長押しでΔv調整、ハンドルは大きくドラッグし続けると加速 [右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
   return s;
 }

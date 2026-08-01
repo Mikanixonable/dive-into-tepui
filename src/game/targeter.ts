@@ -11,6 +11,7 @@ import { Input, PointerPoint } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import { MarkerManager } from './marker/marker-manager';
 import { FloatingOrigin } from './floating-origin';
+import { MapPickable, pickNearest } from './map-pick';
 
 export class Targeter {
   private lockedTarget: Enemy | null = null;
@@ -168,23 +169,12 @@ export class Targeter {
   // クリック位置の許容半径内で画面上最も近い敵をロック対象に切り替える。
   // 命中がなければ既存のロックを解除する。
   private pickTargetAt(click: PointerPoint, enemies: Enemy[], project: ProjectFn): void {
-    let hit: Enemy | null = null;
-    let minDistSq = C.TARGET_LOCK_PICK_PX_SQ;
-    // 画面座標に射影し、クリック位置との距離が最小の生存敵を探す。
-    for (const enemy of enemies) {
-      if (!enemy.alive) continue;
-      const p = project(enemy.state.r);
-      if (!p.front) continue;
-      const dx = p.x - click.x;
-      const dy = p.y - click.y;
-      const distSq = dx * dx + dy * dy;
-      if (distSq < minDistSq) {
-        minDistSq = distSq;
-        hit = enemy;
-      }
-    }
+    const pickables: (MapPickable & { readonly enemy: Enemy; })[] = enemies
+      .filter((enemy) => enemy.alive)
+      .map((enemy) => ({ id: enemy.name, name: enemy.name, pos: enemy.state.r, kind: 'ship', enemy }));
+    const hit = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);
     if (hit) {
-      this.toggleLockedTarget(hit);
+      this.toggleLockedTarget(hit.enemy);
       return;
     }
     if (this.lockedTarget !== null) {

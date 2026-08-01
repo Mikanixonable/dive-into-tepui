@@ -41,6 +41,40 @@ export class SegmentedControl<T extends string> {
   }
 }
 
+// 押している間 isHeld が true になるボタン。呼び出し側がゲームループから毎フレーム isHeld を
+// 読み、押している間だけ処理を続ける形で使う。
+export class HudHoldButton {
+  readonly element: HTMLElement;
+  private held = false;
+
+  get isHeld(): boolean {
+    return this.held;
+  }
+
+  // label はボタンの表示文字列。
+  constructor(label: string) {
+    this.element = document.createElement('span');
+    this.element.className = 'seg-btn hold-btn';
+    this.element.textContent = label;
+    this.element.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.held = true;
+      this.element.setPointerCapture(e.pointerId);
+    });
+    const release = (e: PointerEvent): void => {
+      this.held = false;
+      try {
+        this.element.releasePointerCapture(e.pointerId);
+      } catch {
+        /* すでに解放済みなら無視 */
+      }
+    };
+    this.element.addEventListener('pointerup', release);
+    this.element.addEventListener('pointercancel', release);
+    this.element.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+}
+
 // 見出し + ON/OFF を切り替えるトグルスイッチ。
 export class HudToggle {
   readonly element: HTMLElement;

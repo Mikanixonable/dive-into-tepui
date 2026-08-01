@@ -9,6 +9,7 @@ export interface FocusLabel {
   id: string;
   name: string;
   pos: Vec3;
+  kind: 'body';
 }
 
 const LABEL_NAMES: Record<string, string> = {
@@ -32,6 +33,7 @@ export class FocusMarkers {
     id,
     name,
     pos: v3(0, 0, 0),
+    kind: 'body',
   }));
 
   constructor(private readonly markerManager: MarkerManager, private readonly ephemeris: Ephemeris) {}

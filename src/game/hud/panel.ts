@@ -4,11 +4,15 @@ import { TEXT_DIM as INK_SOFT } from '../theme';
 import { altitudeOf } from '../../physics/orbital';
 import { dot, len, sub } from '../../physics/vec3';
 import type { Game } from '../game';
-import { fmtDist, fmtSpeed, fmtTime } from './utils';
+import { fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
+
+// simTime=0 に対応する絶対時刻 [unix s]。HUD の現在日時表示にのみ使う。
+const SIM_EPOCH_SEC = Date.parse(C.SIM_EPOCH_UTC) / 1000;
 
 interface StatsData {
   met: number;
   simSpeedLabel: string;
+  autoWarpRealRemain: number | null;
   paused: boolean;
   rcsDamp: boolean;
   throttleIdx: number;
@@ -67,6 +71,7 @@ export class HudPanels {
       this.setStats({
         met: game.simulator.simTime,
         simSpeedLabel: `×${game.simSpeedManager.simSpeed}`,
+        autoWarpRealRemain: game.simSpeedManager.estimatedRealSecondsToWarpEnd(game.simulator.simTime),
         paused: game.isPaused,
         rcsDamp: player.rcsDamp,
         throttleIdx: player.throttleIdx,
@@ -141,10 +146,11 @@ export class HudPanels {
 
   // スタッツパネル各項目のテキストと警告表示を書き換える
   private setStats(d: StatsData): void {
-    this.setText('met', `T+ ${fmtTime(d.met)}`);
+    this.setText('met', `${fmtDateTime(SIM_EPOCH_SEC + d.met)} / T+ ${fmtTime(d.met)}`);
     const simSpeedEl = this.els.get('sim-speed');
     if (simSpeedEl) {
-      simSpeedEl.textContent = d.paused ? 'PAUSE' : d.simSpeedLabel;
+      const warpRemain = d.autoWarpRealRemain !== null ? ` (残り ${fmtTime(d.autoWarpRealRemain)})` : '';
+      simSpeedEl.textContent = d.paused ? 'PAUSE' : `${d.simSpeedLabel}${warpRemain}`;
       simSpeedEl.classList.toggle('sim-speed-hot', d.simSpeedLabel !== '×1' || d.paused);
     }
 

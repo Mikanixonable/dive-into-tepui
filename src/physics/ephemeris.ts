@@ -49,7 +49,7 @@ const ECL_POLE = v3(0, 0, 1); // 黄道北極
 const ECL_POLE_ECI = eclToEci(0, 0, 1); // 黄道北極を ECI で表したもの
 // eclToEci と同一の回転をクォータニオンで表したもの。春分点(X)まわりに EPS − 90° 回すと
 // 黄道基底が ECI 基底へ重なる。
-const Q_ECL_TO_ECI = qFromAxisAngle(ECL_VERNAL, EPS - Math.PI / 2);
+export const Q_ECL_TO_ECI = qFromAxisAngle(ECL_VERNAL, EPS - Math.PI / 2);
 
 // 太陽の黄経とその変化率 [rad], [rad/s]。phase0 は初期黄経。円軌道近似なので変化率は一定。
 function sunAngles(t: number, phase0: number): { lam: number; lamRate: number } {
