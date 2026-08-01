@@ -16,16 +16,33 @@ export const SMALL_DEBRIS_BCINV = 8e-3; // 薬莢・破片
 // --- 空力加熱・構造限界(自機のみ) ---
 export const SG_CONST = 1.7415e-4; // Sutton–Graves 定数(地球) [kg^0.5/m]
 export const NOSE_RADIUS = 0.6; // 機首曲率半径 [m]
-export const HEAT_ABSORB_AREA = 4; // よどみ点熱流束を受ける実効面積 [m^2]
-export const RAD_AREA = 70; // 放射冷却面積 [m^2]
+export const HEAT_ABSORB_AREA = 0.9; // よどみ点熱流束を受ける実効面積 [m^2]
+export const RAD_AREA = 70; // ハル自体の放射冷却面積 [m^2]
 export const HULL_EMISS = 0.85; // 放射率
 export const STEFAN_BOLTZMANN = 5.670374419e-8; // [W/m^2/K^4]
-export const HEAT_CAPACITY = 1.5e6; // 外殻の熱容量 [J/K]
+export const HEAT_CAPACITY = 3.4e5; // 外殻の熱容量 [J/K]
 export const ENV_TEMP = 255; // 放射平衡の環境温度 [K]
 export const HULL_START_TEMP = 273; // 初期機体温度 [K]
 export const MAX_HULL_TEMP = 1300; // 超過で熱防御飽和 → 機体喪失 [K]
 export const MAX_DYN_PRESSURE = 35e3; // 超過で空力破壊 [Pa]
 export const HULL_TEMP_FLOOR = 120; // 放射冷却で下がりきる機体温度の下限 [K]
+
+// --- 再突入の燃焼エフェクト ---
+export const REENTRY_GLOW_MIN_Q = 200; // 燃焼エフェクトが出始める動圧 [Pa]
+export const REENTRY_GLOW_FULL_Q = 2e4; // 燃焼エフェクトが最大強度になる動圧 [Pa]
+
+// --- 射撃による発熱 ---
+// 1発あたりの投入熱量 [J]。冷態から連射しっぱなしにすると 2 マガジン(64発)前後で
+// MAX_HULL_TEMP に到達する量。
+export const GUN_HEAT_PER_ROUND = 5.5e6;
+
+// --- ラジエーター(上下2枚、個別展開) ---
+export const RADIATOR_PANEL_AREA = 99; // 1枚の放熱面積 [m^2](パネル寸法の両面ぶん)
+export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
+export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
+export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
+export const RADIATOR_HIT_INTEGRITY_LOSS = 0.2; // 被弾1発で失う健全度(1.0 = 無傷)
+export const RADIATOR_HITTABLE_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
 
 // --- 高度低下警告(EMA平滑化) ---
 export const ALT_EMA_TIME_CONST = 3; // 高度・降下率EMAの時定数 [s]
@@ -155,6 +172,7 @@ export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simu
 export const SUBSTEP_MAX_COUNT = 64; // 1フレームあたりのサブステップ数上限(高倍率ワープ時に計算量が爆発しないための歯止め)
 
 export const PLAYER_RADIUS = 5; // 被弾(弾丸ヒット)判定 [m]。実機体より大きめの当たり判定
+export const PLAYER_RADIUS_RADIATOR_FULL = 12; // ラジエーター全開時の被弾判定 [m]。展開度に応じて PLAYER_RADIUS から線形に広がる
 export const PLAYER_HULL_RADIUS = 2.6; // 薬莢・破片等との物理接触に使う実寸に近い半径 [m]。
 // PLAYER_RADIUS(被弾判定、余裕を持たせた大きめの値)をそのまま物理接触に使うと、
 // 砲口(機体中心から距離約2.9m)で生まれた薬莢が生成直後に弾き飛ばされてしまう。
@@ -267,6 +285,10 @@ export const PLAYER_MAX_HP = 1000;
 export const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 export const PLAYER_HIT_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
 export const ENEMY_HIT_DAMAGE = 1; // 敵機が被弾した際のダメージ [HP]
+
+// --- 高速接触による装甲ダメージ(自機⇔敵機) ---
+export const COLLISION_DAMAGE_MIN_SPEED = 50; // これ未満の接触速度では無傷 [m/s]
+export const COLLISION_DAMAGE_FULL_SPEED = 500; // この接触速度で装甲を最大値ぶん失う [m/s]
 export const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
 export const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
