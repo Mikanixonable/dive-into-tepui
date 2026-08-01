@@ -33,9 +33,10 @@ export class StageStatusPanel {
     const throttleText = `エンジン出力: ${throttleLabels[throttleIdx]} (${C.THROTTLE_LEVELS[throttleIdx]!.toFixed(1)} m/s²)`;
 
     const hpHtml =
-      `磁気装甲: ${Math.floor(hp)} / ${maxHp} ` +
-      `<div style="display:inline-block; width:120px; height:10px; background:${C.COLOR_HUD_BAR_BG}; vertical-align:middle; margin-left:8px;">` +
-      `<div style="width:${pct}%; height:100%; background:${low ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div></div>` +
+      `磁気装甲 ` +
+      `<div style="display:inline-block; position:relative; width:120px; height:12px; background:${C.COLOR_HUD_BAR_BG}; vertical-align:middle; margin-left:8px;">` +
+      `<div style="width:${pct}%; height:100%; background:${low ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
+      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${Math.floor(hp)} / ${maxHp}</div></div>` +
       `<div style="font-size: 13px; color: ${C.COLOR_HUD_TEXT_MUTED}; margin-top: 4px;">${throttleText}</div>`;
     if (this.lastHpHtml !== hpHtml) {
       this.hpRow.innerHTML = hpHtml;

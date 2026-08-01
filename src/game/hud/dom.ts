@@ -97,7 +97,7 @@ const STYLE = `
 .mk-ammo { color: ${ACCENT_SOFT}; text-shadow: 0 0 6px rgba(255,144,64,0.6), 0 0 3px #000; }
 #hud .warn-hot { color: ${ACCENT}; }
 #hud-plan {
-  position: absolute; bottom: 40px; left: 12px; min-width: 280px;
+  position: absolute; top: 12px; right: 12px; left: auto; bottom: auto; min-width: 280px;
 }
 #hud .hud-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 #hud .hud-seg .seg-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 28px; }
@@ -112,8 +112,8 @@ const STYLE = `
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
 #hud-trajframe { display: none; top: 296px; left: 12px; width: 292px; pointer-events: auto; }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
-.mk-poi { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 4px #000; }
-.mk-poi .sym { font-size: 14px; }
+.mk-poi { color: #ffffff; text-shadow: 0 0 4px #000; }
+.mk-poi .sym { font-size: 5px; }
 .mk-poi .lbl { font-size: 11px; margin-top: 4px; padding: 2px 4px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
@@ -149,7 +149,7 @@ const STYLE = `
 #hud-stagestatus .t.warn { color: ${ACCENT}; }
 #hud-stagestatus .k { font-size: 11px; color: ${INK_SOFT}; margin-top: 2px; }
 #hud-settings {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  position: absolute; bottom: 40px; top: auto; left: 50%; transform: translateX(-50%);
   display: none; min-width: 260px; pointer-events: auto;
 }
 #hud-settings .srow {
@@ -183,7 +183,7 @@ const STYLE = `
   #hud-controls { display: none; }
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
-  #hud-plan { bottom: 216px; left: 8px; min-width: 210px; max-width: 60vw; }
+  #hud-plan { top: 8px; right: 8px; left: auto; bottom: auto; min-width: 210px; max-width: 60vw; }
   #hud-overview-camera { top: 8px; left: 8px; width: 186px; }
   #hud-displaytime { top: 146px; left: 8px; width: 186px; }
   #hud-trajframe { top: 246px; left: 8px; width: 186px; }
