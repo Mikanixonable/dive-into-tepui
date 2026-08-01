@@ -7,7 +7,7 @@
 // サンプルする状態は末尾の Ephemeris クラスが持つ。
 import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
 import { MU_EARTH, R_EARTH } from './orbital';
-import { Vec3, addScaled, dot, len, norm, scale, v3 } from './vec3';
+import { Vec3, addScaled, dot, len, norm, scale, sub, v3 } from './vec3';
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
 export const MU_MOON = 4.9048695e12;
@@ -22,6 +22,7 @@ const PERIGEE_PERIOD = 8.85 * 365.25 * 86400; // 月の近地点歳差周期 [s]
 const MOON_ECC = 0.0549; // 月軌道の離心率
 const EPS = (23.439291 * Math.PI) / 180; // 黄道傾斜角
 const MOON_INC = (5.145 * Math.PI) / 180; // 白道の黄道に対する傾斜
+const MOON_VEL_DT = 1; // moonVelAt の中心差分の半刻み [s]
 
 const COS_EPS = Math.cos(EPS);
 const SIN_EPS = Math.sin(EPS);
@@ -224,6 +225,12 @@ export class Ephemeris {
       this.moonMemoT = t;
     }
     return this.moonMemoPos;
+  }
+  // 指定時刻の月の ECI 速度。位置の中心差分(±MOON_VEL_DT)で求める — 月の速度の解析式は
+  // 持たず、moonPosAt と別の実装を重複させない。
+  moonVelAt(t: number): Vec3 {
+    const h = MOON_VEL_DT;
+    return scale(sub(moonPosition(t + h, this.moonPhase0), moonPosition(t - h, this.moonPhase0)), 1 / (2 * h));
   }
   // 太陽方向の単位ベクトル(ライティング・影判定用)。
   sunDirAt(t: number): Vec3 {

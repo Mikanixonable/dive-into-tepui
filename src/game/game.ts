@@ -188,7 +188,7 @@ export class Game {
     } else {
       const creativeStage = new CreativeStage();
       creativeStage.setup(this._hud, this._sfx, this._scene, this.entities, this.unlockManager, this.effects, this.markerManager);
-      creativeStage.setupCreative(this.markerManager);
+      creativeStage.setupCreative(this.markerManager, this.ephemeris);
       creativeStage.init(this.player, this.entities);
       this.activeStage = creativeStage;
     }

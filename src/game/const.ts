@@ -4,6 +4,13 @@ export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/orbital';
 // クリエイティブモードで配置できる CreativeShip の上限隻数。
 export const CREATIVE_MAX_SHIPS = 8;
 
+// クリエイティブモードのラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
+// 地球-月系と太陽-地球系は主天体間距離が3桁近く違うため、系ごとに妥当なオーダーを別々に持つ。
+export const CREATIVE_HALO_AX_EARTHMOON_KM = 8000;
+export const CREATIVE_HALO_AZ_EARTHMOON_KM = 5000;
+export const CREATIVE_HALO_AX_SUNEARTH_KM = 200000;
+export const CREATIVE_HALO_AZ_SUNEARTH_KM = 120000;
+
 export const REENTRY_ALT = 80e3; // 敵機はこれ以下で大気圏突入・焼失 [m](熱モデルなしの簡易処理)
 export const PLAYER_MIN_ALT = 45e3; // 自機の構造限界高度 [m](通常は加熱・動圧で先に喪失する)
 export const DEBRIS_REENTRY_ALT = 95e3; // 弾・薬莢・破片の消滅高度 [m]
