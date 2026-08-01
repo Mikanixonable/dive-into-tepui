@@ -52,6 +52,8 @@ export class Enemy extends Ship {
   lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
   burstLeft?: number; // バースト射撃の残弾
   burstDelay?: number; // 次のバースト弾までの残り時間
+  // false の間はこの機体が射撃を行わない。移動・AI の他の判定には影響しない。
+  fireEnabled = true;
 
   private readonly _sfx: Sfx;
   private readonly _fx: EffectsSystem;
@@ -186,6 +188,7 @@ export class Enemy extends Ship {
   behave(dt: number, simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager): void {
     if (!player.alive) return;
     if (!simSpeed.canEnemyFire) return;
+    if (!this.fireEnabled) return;
     const dist = len(sub(player.state.r, this.state.r));
     if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
 

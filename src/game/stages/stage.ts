@@ -18,7 +18,7 @@ import { SimSpeedManager } from '../sim-speed-manager';
 import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from '../marker/marker-manager';
 
-export type StageId = '00' | '0' | '1' | '2';
+export type StageId = '00' | '0' | '1' | '2' | 'debug';
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
@@ -36,6 +36,8 @@ export abstract class Stage {
   abstract readonly selectLabel: string;
   abstract readonly selectSub: string;
   readonly selectLockedSub?: string;
+  // タイトルのステージ選択ボタン列に並べない。
+  readonly hiddenFromSelect: boolean = false;
   abstract readonly selectKeys: string[];
   abstract readonly initialAmmo: Pick<StageInitData, 'mags' | 'rounds'>;
 
