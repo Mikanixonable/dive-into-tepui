@@ -1,6 +1,6 @@
 // 広範囲視点の操作パネル(注視対象・カメラを固定する座標系・視点リセット)。
 import { Frame } from '../../physics/frame';
-import { SegmentedControl, hudButton } from '../hud/buttons';
+import { SegmentedControl } from '../hud/buttons';
 
 const FRAMES: readonly (readonly [Frame, string])[] = [
   ['inertial', '慣性系'],
@@ -33,11 +33,7 @@ export class OverviewCameraPanel {
     this.panel.appendChild(this.focus.element);
     this.panel.appendChild(this.frame.element);
 
-    // 視点リセットボタン
-    const resetRow = document.createElement('div');
-    resetRow.className = 'hud-seg';
-    resetRow.appendChild(hudButton('視点リセット', () => this.onViewReset?.()));
-    this.panel.appendChild(resetRow);
+
 
     root.appendChild(this.panel);
   }
