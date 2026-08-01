@@ -1,5 +1,5 @@
-// 軌道計画の未来表示: 計画折れ線(PlanTrajectory)の駆動、表示座標系(trajectoryFrame)、
-// 未来ゴースト(⬡ plannedPlayer マーカー)。
+// 軌道計画の姿の表示: 計画折れ線(PlanTrajectory)の駆動、表示座標系(trajectoryFrame)、
+// 表示時刻の計画上の自機位置ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../../physics/orbital';
 import { Vec3, len } from '../../physics/vec3';
@@ -69,15 +69,8 @@ export class PlanDisplay {
     this.panel.style.display = 'none';
   }
 
-  // ⬡ ゴーストマーカーを displayTime の計画位置に同期する。表示時刻が現在以前、
-  // または折れ線の届く範囲外なら隠す。
+  // ⬡ ゴーストマーカーを displayTime の計画位置に同期する。折れ線の届く範囲外なら隠す。
   private syncGhost(displayTime: number, simTime: number, project: ProjectFn): void {
-    // 現在時刻以前はゴーストを出さない
-    if (displayTime <= simTime) {
-      this.markerManager.hide('plannedPlayer');
-      return;
-    }
-    // 折れ線の届く範囲外なら隠す
     const sample = this.traj.sampleAt(displayTime);
     if (!sample) {
       this.markerManager.hide('plannedPlayer');
@@ -94,10 +87,12 @@ export class PlanDisplay {
     );
   }
 
-  // ゴーストマーカーのラベル文字列(経過時間+高度)を組み立てる。
+  // ゴーストマーカーのラベル文字列(経過時間+高度)を組み立てる。現在時刻のゴーストは
+  // 計画どおりに飛べていれば自機に重なるので、経過時間を添えず高度だけを出す。
   private plannedPlayerLabel(displayTime: number, simTime: number, r: Vec3): string {
     const tRel = displayTime - simTime;
     const alt = len(r) - R_EARTH;
+    if (tRel <= 0) return `計画位置 高度 ${fmtMarkerDist(alt, 0)}`;
     const h = Math.floor(tRel / 3600);
     const m = Math.floor((tRel % 3600) / 60);
     return `T+${h}h${String(m).padStart(2, '0')}m 高度 ${fmtMarkerDist(alt, 0)}`;
