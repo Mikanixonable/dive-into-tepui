@@ -100,6 +100,11 @@
       - onProgradeHoldReleased() → hud.hint() // ホールド中に手動回転入力があった場合のみ
       - autoAlignTorque() // ホールド中 かつ 手動回転入力なしの場合のみ
     - throttle.clampAngularVelocity() → player.att へ代入 // 常に(角速度上限)
+    - radiator.update() // 展開度のみ。THREE には触れない
+    - sunlitFactor() // 地球影による日照率
+    - thermal.setRadiatorLoad(radiator.radiatingArea(), radiator.solarLoad())
+      // このフレームの全サブステップの updateThermal がこの値を使う
+    - player.radius = radiator.hitRadius() // 展開度に応じて被弾判定が広がる
     - [!player.alive] player.thrust = null して return
     - hpRegen()
     - [editor.editMode] fire.tickMapMode() → tickReloadTimer() / player.thrust = null して return
@@ -262,6 +267,7 @@
     - thrustEffects.sync() → core/outer の sync() or hide() // 実機体の現在状態(this.state)のまま
     - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4 // 同上
     - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出。同上
+    - radiator.sync() // ヒンジ Group の rotation.x へ展開角を書く
     - markers.sync(currentState, displayState) // 自機由来の HUD マーカー。呼び出し側から見えるのは syncPlayer だけ
       - [overviewMode] 戦闘用7キーを hide + displayState があれば markerManager.setPosition('self') / 無ければ hide('self')
       - [!overviewMode] hide('self') + syncOrbitalDirections(currentState) // pro/retro/nrm/anm/radout/radin。常に現在状態
