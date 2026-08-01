@@ -23,9 +23,6 @@ import type { SimSpeedManager } from '../sim-speed-manager';
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
 export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
 
-// 濃い赤色
-const ENEMY_BULLET_COLOR = 0x8b0000;
-
 // 太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
 // 順光では締まる。難易度調整のための経験則であって物理計算ではない。
 // pos が地球の影(簡易円柱モデル)に入っていれば太陽光が届かないので倍率は 1。
@@ -42,12 +39,12 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 }
 
 // enemyKind の種別に応じたメッシュを組む。
-function buildEnemyObj(enemyKind: EnemyKind, accent: number): THREE.Object3D {
+function buildEnemyObj(enemyKind: EnemyKind, accent: string | number): THREE.Object3D {
   return enemyKind.kind === 'stage0' ? buildStage0EnemyShip(accent, enemyKind.typeIndex) : buildEnemyShip(accent);
 }
 
 export class Enemy extends Ship {
-  accent: number; // マーカー色・集団識別。全敵が保持する
+  accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
   readonly orbitLine: OrbitLine;
 
@@ -55,6 +52,8 @@ export class Enemy extends Ship {
   lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
   burstLeft?: number; // バースト射撃の残弾
   burstDelay?: number; // 次のバースト弾までの残り時間
+  // false の間はこの機体が射撃を行わない。移動・AI の他の判定には影響しない。
+  fireEnabled = true;
 
   private readonly _sfx: Sfx;
   private readonly _fx: EffectsSystem;
@@ -66,8 +65,8 @@ export class Enemy extends Ship {
     enemyKind: EnemyKind,
     att: Attitude,
     hp: number,
-    accent: number,
-    orbitLineColor: number,
+    accent: string | number,
+    orbitLineColor: string | number,
     _hud: Hud,
     sfx: Sfx,
     fx: EffectsSystem,
@@ -96,6 +95,7 @@ export class Enemy extends Ship {
 
   // 個体色の CSS 表記。方位マーカー・LEAD マーカーの着色に使う。
   get accentColor(): string {
+    if (typeof this.accent === 'string') return this.accent;
     return '#' + this.accent.toString(16).padStart(6, '0');
   }
 
@@ -130,7 +130,7 @@ export class Enemy extends Ship {
   private destroyEffect(): void {
     this._sfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    this._fx.spawnShipDestroyEffect(this.state, C.ENEMY_SCALE, 0xff6a4a);
+    this._fx.spawnShipDestroyEffect(this.state, C.ENEMY_SCALE, C.COLOR_ENEMY_DESTROY_FRAG);
   }
 
   // 被弾によるダメージ・致死判定。
@@ -147,6 +147,22 @@ export class Enemy extends Ship {
     }
 
     // HP が尽きたので撃破処理へ
+    this.alive = false;
+    activeStage.recordEnemyDeath(this, simTime, 'killed');
+    this.destroyEffect();
+  }
+
+  // 自機との高速接触によるダメージ・致死判定。speed は接触時の相対速度 [m/s]。
+  collidedAtSpeed(speed: number, simTime: number, activeStage: Stage): void {
+    if (!this.alive) return;
+
+    if (!this.applyCollisionDamage(speed)) return;
+    if (this.hp > 0) {
+      this._sfx.clank();
+      this._fx.spawnGasPuff(this.state.r, this.state.v);
+      return;
+    }
+
     this.alive = false;
     activeStage.recordEnemyDeath(this, simTime, 'killed');
     this.destroyEffect();
@@ -172,6 +188,7 @@ export class Enemy extends Ship {
   behave(dt: number, simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager): void {
     if (!player.alive) return;
     if (!simSpeed.canEnemyFire) return;
+    if (!this.fireEnabled) return;
     const dist = len(sub(player.state.r, this.state.r));
     if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
 
@@ -234,7 +251,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, ENEMY_BULLET_COLOR);
+    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
