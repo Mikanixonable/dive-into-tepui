@@ -1,11 +1,25 @@
 // 軌道計画(ノード列)とその起点アンカー。ノードは噴射直後の絶対 OrbitState として凍結し、
 // Δv は導出値。上流ノードを編集すると下流を破棄する。計画軌道の計算・キャッシュは持たない。
-import { orbitState, OrbitState } from '../../physics/orbital';
+import { elementsFromState, orbitState, OrbitState } from '../../physics/orbital';
 import { Vec3, add, v3 } from '../../physics/vec3';
+import * as C from '../const';
 
 interface Node {
   state: OrbitState;
   id: number;
+}
+
+// 計画の1区間が受け持てる時間長 = 起点状態の解析軌道1周期。周期を持たない軌道(双曲線・
+// 放物線)では APERIODIC_ARC_DURATION。
+export function orbitPeriodOf(state: OrbitState): number {
+  const period = elementsFromState(state.r, state.v)?.period;
+  return period !== undefined && isFinite(period) && period > 0 ? period : C.APERIODIC_ARC_DURATION;
+}
+
+// ノードを置ける実行時刻の範囲。
+export interface TimeRange {
+  min: number;
+  max: number;
 }
 
 export class Plan {
@@ -23,6 +37,7 @@ export class Plan {
     return this._anchor;
   }
 
+  // idx より後ろのノードをすべて捨てる。
   private deleteFollowingNodes(idx: number): void {
     if (idx < this._nodes.length - 1) {
       this._nodes.length = idx + 1;
@@ -51,11 +66,10 @@ export class Plan {
     return idx;
   }
 
-  // idx 番目のノードを削除する。範囲外なら何もしない。
+  // idx 番目のノードを下流ノードごと削除する。範囲外なら何もしない。
   removeNode(idx: number): void {
     if (!this._nodes[idx]) return;
-    this._nodes.splice(idx, 1);
-    this.deleteFollowingNodes(idx);
+    this._nodes.length = idx;
     this.debugLogNodes();
   }
 
@@ -72,16 +86,20 @@ export class Plan {
     this.debugLogNodes();
   }
 
-  // ノードを新しい実行後状態へ移し時刻順に再ソート。下流ノードを破棄し、新 index を返す。
-  retimeNode(idx: number, postState: OrbitState): number {
-    if (!this._nodes[idx]) return idx;
-    const id = this._nodes[idx].id;
-    this._nodes[idx] = {state: postState, id};
-    this.sortByTime();
-    const newIdx = this._nodes.findIndex(node => node.id === id);
-    this._nodes.length = newIdx + 1;
+  // idx 番目のノードを置ける実行時刻の範囲。直前の状態(前のノード、無ければアンカー)の時刻から
+  // その軌道1周期ぶんまで。これを超えると区間が自分自身に重なり、折れ線上の1点が何周目の
+  // どこなのかを指し分けられなくなる。
+  nodeTimeRange(idx: number): TimeRange {
+    const prev = this._nodes[idx - 1]?.state ?? this._anchor;
+    return { min: prev.t, max: prev.t + orbitPeriodOf(prev) };
+  }
+
+  // ノードを新しい実行後状態へ移し、下流ノードを破棄する。時刻は nodeTimeRange の範囲内であること。
+  retimeNode(idx: number, postState: OrbitState): void {
+    if (!this._nodes[idx]) return;
+    this.deleteFollowingNodes(idx);
+    this._nodes[idx]!.state = postState;
     this.debugLogNodes();
-    return newIdx;
   }
 
   // 選択中ノードの実行後速度へワールド Δv を加え、下流ノードを破棄する。
