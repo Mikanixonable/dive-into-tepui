@@ -98,6 +98,7 @@ export class Game {
     this.effects = new EffectsSystem(this._scene, this.entities);
     this.player = new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager);
 
+    // Player より後に生成する: 追従カメラは自機を参照として直接持つ(遅延解決しない)。
     this.cameraSystem = new CameraSystem(
       this._hud,
       this._sfx,
@@ -119,9 +120,6 @@ export class Game {
       this.markerManager,
       () => this.player.fineAttitude,
     );
-    // 表示期間の非連続な切り替えは、予測折れ線の通常のスロットルを待たせず即座に作り直す。
-    this.displayTimeManager.onDurationChange = () => this.editor.planDisplay.traj.invalidate();
-
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
     this.mapModeToggler = new MapModeToggler(this._hud);
 
@@ -314,8 +312,7 @@ export class Game {
     this.leadMarkers.sync(this.player, aliveEnemies, target, simTime, overviewMode, project);
 
     this.displayTimeManager.sync(orbitPeriod);
-    const displayEnd = simTime + this.displayTimeManager.durationSec(orbitPeriod);
-    this.editor.sync(this.cameraSystem.overviewCamera.dist, displayEnd, simTime, displayTime, this.floatingOrigin, project);
+    this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, displayTime, this.floatingOrigin, project);
 
     this.touchControls?.syncModeButtons(this.player.rcsDamp, this.player.fineAttitude, this.player.progradeHold);
     this.activeStage.sync(this.player, project, displayTime);
