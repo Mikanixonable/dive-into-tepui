@@ -278,6 +278,7 @@ export const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
 // 色管理 (Colors)
 export const COLOR_ACCENT = '#ff6a00';
+export const COLOR_ACCENT_RGB = '255, 106, 0'; // COLOR_ACCENT の RGB 成分（色変更時は必ず両方を同期すること）
 export const COLOR_ACCENT_SOFT = '#ff9040';
 export const COLOR_BG = '#08090c';
 export const COLOR_TEXT = '#e6e8eb';
