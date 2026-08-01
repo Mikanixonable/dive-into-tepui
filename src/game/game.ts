@@ -93,11 +93,20 @@ export class Game {
     this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
     this.enemyMarkers = new GroupedMarkers(this.markerManager, C.MARKER_CLUSTER_PX);
     this.leadMarkers = new LeadMarkers(this.markerManager);
-    this.cameraSystem = new CameraSystem(this._hud, this._sfx, this.markerManager, this.ephemeris);
-    this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
     this.entities = new EntityManager();
     this.effects = new EffectsSystem(this._scene, this.entities);
+    this.player = new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager);
+
+    this.cameraSystem = new CameraSystem(
+      this._hud,
+      this._sfx,
+      this.markerManager,
+      this.ephemeris,
+      this.player,
+    );
+    this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
+
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
     this.displayTimeManager = new DisplayTimeManager(this._hud.root);
@@ -122,8 +131,6 @@ export class Game {
 
     this.simulator = new Simulator(this.entities, this.ephemeris, this._sfx, this.effects);
     this.predictor = new Predictor(this.entities, this.ephemeris);
-
-    this.player = new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager);
 
     this.activeStage = initStage(
       stageId,

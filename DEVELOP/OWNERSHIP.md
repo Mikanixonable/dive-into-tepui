@@ -36,7 +36,9 @@ main.ts
     ├── MarkerManager        ... DOM の親は Hud.root / Hud.svgOverlay、所有は Game
     ├── Ephemeris            ... 状態を持たない純サンプラ。各所へ参照共有する単一インスタンス
     ├── CameraSystem
-    │   ├── ChaseCamera
+    │   ├── CombatCameraSystem
+    │   │   ├── ChaseCamera
+    │   │   └── GunsightCamera
     │   ├── OverviewCamera
     │   ├── FocusMarkers
     │   ├── OverviewCameraPanel        ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
@@ -156,10 +158,10 @@ main.ts
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNodeId` / `.editMode` | 選択は index ではなく Plan 発行の ID で持つ(`consumeFirstNode` 等で配列が動いてもずれない)。`selectedNodeIdx` は ID から都度解決する index ビュー |
 | 予測表示期間・未来ゴーストスライダー・未来表示の禁止(forceCurrent) | `DisplayTimeManager` | |
 | 予測折れ線を描く表示座標系(trajectoryFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本 |
-| マップ視点(注視点相対オフセット・パン)・表示座標系・フォーカス | `OverviewCamera` | |
-| 戦闘視点(yaw/pitch/dist・姿勢追従フラグ) | `ChaseCamera` | |
+| マップ視点(注視点相対オフセット・パン)・表示座標系・フォーカス・ViewFrame | `OverviewCamera` | `view: ViewFrame` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `view` を読むだけで自分では持たない |
+| 戦闘視点(ViewFrame: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
 | マップモードの開閉 | `MapModeToggler.mapMode` | 影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayTimeManager.forceCurrent` / タッチUI)を一斉に切り替える |
-| マップモード表示・照準ズーム | `CameraSystem.overviewMode` / `.zoomActive` | overviewMode は上の影響先。描画・視点側の分岐はこれを見る |
+| マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
 | ターゲットロック・自動ターゲット・的通過マーク | `Targeter` | |
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
 | 発射数・命中数・撃破数・出撃数 | `ScoreCounter` | 所有は Stage |
