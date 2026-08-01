@@ -282,7 +282,7 @@ export class PlayerFire {
       {
         q: randomQuat(),
         w: v3(randSym(2.5), randSym(2.5), randSym(2.5)),
-        inertia: v3(1, 0.3, 1), // 円筒: 長軸まわりが小さい
+        inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
       simTime,
     );
