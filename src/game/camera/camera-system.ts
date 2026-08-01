@@ -156,7 +156,7 @@ export class CameraSystem {
     
     const chaseResetBtn = document.getElementById('hud-chase-reset');
     if (chaseResetBtn) {
-      chaseResetBtn.style.display = this.overviewMode ? 'none' : 'block';
+      chaseResetBtn.style.display = this.overviewMode ? 'none' : '';
     }
     if (this.overviewMode) {
       this.overviewCameraPanel.setFocus(this.overviewCamera.focus);
