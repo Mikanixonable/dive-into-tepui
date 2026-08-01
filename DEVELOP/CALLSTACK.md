@@ -208,7 +208,7 @@
     - combatCamera.update() // !overviewMode のみ
       - zoomActive = K.gunsightZoom 押下 // combatCamera 自身のフィールドへ書く(overviewMode 中はこの update 自体が呼ばれないため更新されない — CameraSystem.zoomActive の !overviewMode ガードが読み替えを担保する)
       - gunsightCamera.update() // player.alive && zoomActive。結果を自身の view へ書く
-      - chaseCamera.update() // それ以外。camFollowAttitude && player.alive で姿勢基準、それ以外は軌道基準の up/fwd を自身で選ぶ。結果を自身の view へ書く
+      - chaseCamera.update() // それ以外。camFollowAttitude && player.alive のときだけ player.att.q を rot に合成し、鍵/ドラッグ入力を回転として適用。結果を自身の view へ書く
       - 選ばれた view.fovDeg から combatCamera 自身の view.fovDeg を指数補間
   - editor.plan.trackAnchor() // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
   - [editor.editMode] 計画編集モード
