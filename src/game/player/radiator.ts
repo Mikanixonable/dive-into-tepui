@@ -4,16 +4,23 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromAxisAngle, qInvert, qRotate } from '../../physics/attitude';
 import { Vec3, dot, len, sub, v3 } from '../../physics/vec3';
-import { RADIATOR_OBJECT_NAMES, RADIATOR_TIP_DISTANCE } from '../../render/ships';
+import {
+  RADIATOR_DEPLOY_TILT,
+  RADIATOR_TIP_DISTANCE,
+  radiatorFoldName,
+} from '../../render/ships';
 import * as C from '../const';
 
 export type RadiatorSide = 'up' | 'down';
 
-// ヒンジローカルの面法線(収納時、rotation.x = 0 での向き)。
-const LOCAL_NORMAL: Record<RadiatorSide, Vec3> = {
-  up: v3(0, 1, 0),
-  down: v3(0, -1, 0),
-};
+// 収納時(deploy=0)の折り角。展開軸から ±90° で交互に折ると、隣り合う折り目の
+// 方向ベクトルが完全に打ち消し合い、4折りが同一の 2.3×2.3 の正方形へ重なる。
+const STOW_TILT = Math.PI / 2;
+
+// side の展開軸方向(ヒンジ局所 +Z を ±Y へ倒す基準角)。up は +Y、down は -Y へ展開する。
+function sideBase(side: RadiatorSide): number {
+  return side === 'up' ? -Math.PI / 2 : Math.PI / 2;
+}
 
 class Panel {
   deployTarget: 0 | 1 = 0;
@@ -23,14 +30,18 @@ class Panel {
 
 export class RadiatorSystem {
   private readonly panels: Record<RadiatorSide, Panel> = { up: new Panel(), down: new Panel() };
-  private readonly hinges: Record<RadiatorSide, THREE.Object3D>;
+  private readonly folds: Record<RadiatorSide, THREE.Object3D[]>;
 
-  // shipObj は自機メッシュ。上下のヒンジ Group を名前で解決して保持する。
+  // shipObj は自機メッシュ。上下それぞれ、ヒンジ Group の子孫から折り目 Group を
+  // RADIATOR_FOLD_COUNT 個解決して保持する。
   constructor(shipObj: THREE.Object3D) {
-    const up = shipObj.getObjectByName(RADIATOR_OBJECT_NAMES.up);
-    const down = shipObj.getObjectByName(RADIATOR_OBJECT_NAMES.down);
-    if (!up || !down) throw new Error('radiator hinge objects not found in ship model');
-    this.hinges = { up, down };
+    const collect = (side: RadiatorSide): THREE.Object3D[] => {
+      const found = Array.from({ length: C.RADIATOR_FOLD_COUNT }, (_, i) =>
+        shipObj.getObjectByName(radiatorFoldName(side, i)));
+      if (found.some((f) => !f)) throw new Error('radiator fold objects not found in ship model');
+      return found as THREE.Object3D[];
+    };
+    this.folds = { up: collect('up'), down: collect('down') };
   }
 
   // side の展開/収納を切り替える。
@@ -49,17 +60,30 @@ export class RadiatorSystem {
     }
   }
 
-  // side のヒンジ角(rotation.x)を返す。sync がメッシュへ書く角度と solarLoad が法線計算に
-  // 使う角度を同一にするための共有点。up/down で符号が逆(全開時に互いに反対の Y へ立ち上がる)。
-  private hingeAngle(side: RadiatorSide): number {
-    const sign = side === 'up' ? 1 : -1;
-    return sign * (Math.PI / 2) * this.panels[side].deploy;
+  // 展開度から折り角(展開軸からの傾き)を返す。deploy=0 で STOW_TILT、deploy=1 で
+  // RADIATOR_DEPLOY_TILT へ線形補間する。
+  private tilt(deploy: number): number {
+    return STOW_TILT + (RADIATOR_DEPLOY_TILT - STOW_TILT) * deploy;
   }
 
-  // ヒンジ Group の rotation.x を展開角へ同期する。
+  // 偶数折り目/奇数折り目それぞれの、ヒンジ基準での累積回転角。sync がメッシュへ書く
+  // 相対回転と solarLoad が法線計算に使う絶対角を同一の (base, psi) から導く共有点。
+  private foldThetas(side: RadiatorSide): { even: number; odd: number } {
+    const base = sideBase(side);
+    const psi = this.tilt(this.panels[side].deploy);
+    return { even: base - psi, odd: base + psi };
+  }
+
+  // 各折り目 Group の rotation.x(親からの相対回転)を展開角へ同期する。
   sync(): void {
     for (const side of ['up', 'down'] as const) {
-      this.hinges[side].rotation.x = this.hingeAngle(side);
+      const { even, odd } = this.foldThetas(side);
+      const folds = this.folds[side];
+      for (let i = 0; i < folds.length; i++) {
+        const fold = folds[i];
+        if (!fold) continue;
+        fold.rotation.x = i === 0 ? even : (i % 2 === 1 ? odd - even : even - odd);
+      }
     }
   }
 
@@ -74,21 +98,23 @@ export class RadiatorSystem {
     return this.panelArea('up') + this.panelArea('down');
   }
 
-  // side の面法線(world 座標、単位ベクトル)。
-  private worldNormal(side: RadiatorSide, att: Attitude): Vec3 {
-    const hingeQ = qFromAxisAngle(v3(1, 0, 0), this.hingeAngle(side));
-    const bodyNormal = qRotate(hingeQ, LOCAL_NORMAL[side]);
+  // theta で折れた放熱面の法線(world 座標、単位ベクトル)。
+  private worldNormal(theta: number, att: Attitude): Vec3 {
+    const foldQ = qFromAxisAngle(v3(1, 0, 0), theta);
+    const bodyNormal = qRotate(foldQ, v3(0, 1, 0));
     return qRotate(att.q, bodyNormal);
   }
 
   // 日照面が受け取る太陽入射 [W]。sunlit は sunlitFactor の戻り値(0..1)、
-  // sunDir は太陽方向の単位ベクトル(world)。
+  // sunDir は太陽方向の単位ベクトル(world)。蛇腹は偶数/奇数折りで法線が異なるため、
+  // 面積を半分ずつ割り当てて2方向ぶんを合算する。
   solarLoad(sunlit: number, sunDir: Vec3, att: Attitude): number {
     return (['up', 'down'] as const).reduce((sum, side) => {
-      const area = this.panelArea(side);
-      const normal = this.worldNormal(side, att);
-      const cosIncidence = Math.abs(dot(normal, sunDir));
-      return sum + C.SOLAR_CONSTANT * C.RADIATOR_SOLAR_ABSORB * area * cosIncidence * sunlit;
+      const halfArea = this.panelArea(side) / 2;
+      const { even, odd } = this.foldThetas(side);
+      const cosEven = Math.abs(dot(this.worldNormal(even, att), sunDir));
+      const cosOdd = Math.abs(dot(this.worldNormal(odd, att), sunDir));
+      return sum + C.SOLAR_CONSTANT * C.RADIATOR_SOLAR_ABSORB * halfArea * (cosEven + cosOdd) * sunlit;
     }, 0);
   }
 
