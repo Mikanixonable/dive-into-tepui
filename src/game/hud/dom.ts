@@ -59,6 +59,13 @@ const STYLE = `
   color: ${ACCENT_SOFT}; font-size: 14px;
   transition: opacity 0.4s; opacity: 0; text-align: center;
 }
+#hud-chase-reset {
+  position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%);
+  pointer-events: auto; cursor: pointer; padding: 4px 16px; font-size: 11px;
+  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
+  z-index: 1;
+}
+#hud-chase-reset:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
 #hud-toast {
   position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
   background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px; padding: 14px 26px;
@@ -131,13 +138,13 @@ const STYLE = `
 #hud-help td { padding: 3px 10px; color: ${INK}; }
 #hud-help td.key { color: ${ACCENT_SOFT}; text-align: right; white-space: nowrap; }
 #hud-gear {
-  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  position: absolute; top: 12px; left: calc(50% + 120px); transform: none;
   width: 30px; height: 30px; border-radius: 50%; pointer-events: auto; cursor: pointer;
   background: ${SURFACE}; border: 1px solid ${EDGE};
   display: flex; align-items: center; justify-content: center; font-size: 15px; color: ${INK_SOFT};
 }
 #hud-stagestatus {
-  top: 60px; left: 50%; transform: translateX(-50%);
+  top: 12px; left: 50%; transform: translateX(-50%);
   text-align: center; min-width: 170px; padding: 8px 16px;
 }
 #hud-stagestatus .t { font-size: 16px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
@@ -186,10 +193,11 @@ const STYLE = `
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
   #navball { width: 100px !important; height: 100px !important; bottom: 130px !important; }
-  #hud-gear { top: 8px; width: 26px; height: 26px; font-size: 13px; }
+  #hud-gear { top: 8px; width: 26px; height: 26px; font-size: 13px; left: calc(50% + 90px); transform: none; }
   #hud-settings { min-width: 0; width: 78vw; }
-  #hud-stagestatus { top: 52px; min-width: 130px; padding: 6px 10px; }
+  #hud-stagestatus { top: 8px; min-width: 130px; padding: 6px 10px; }
   #hud-stagestatus .t { font-size: 14px; }
+  #hud-chase-reset { bottom: 36px; padding: 3px 12px; font-size: 10px; }
 }
 `;
 
@@ -294,6 +302,9 @@ function buildControlsBar(root: HTMLElement): void {
     `${K.warpSlower.label}/${K.warpFaster.label}:時間加速`,
     `[${K.help.label}]:ヘルプ`,
   ].join(' &nbsp;');
+  const chaseReset = el('div', 'hud-chase-reset', root);
+  chaseReset.dataset.id = 'chase-reset';
+  chaseReset.textContent = '視点リセット';
 }
 
 // 全操作の説明表([H]で開閉するヘルプパネル)を組む。
