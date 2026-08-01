@@ -239,6 +239,7 @@ export class PlayerFire {
     this.spawnMuzzleFlash(this.player, muzzle, fwd, zoomActive);
 
     scoreCounter.recordShot();
+    this.player.thermal.addGunHeat(1);
     this._sfx.fire();
   }
 
