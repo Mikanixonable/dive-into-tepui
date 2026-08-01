@@ -157,6 +157,7 @@ const STYLE = `
 #hud-stagestatus .t { font-size: 11px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
 #hud-stagestatus .t.warn { color: ${ACCENT}; }
 #hud-stagestatus .k { font-size: 11px; color: ${INK_SOFT}; line-height: 1.8; white-space: nowrap; }
+#hud-stagestatus .k-widgets:not(:empty) { margin-top: 6px; }
 #hud-stagestatus .radiators { display: flex; flex-direction: column; gap: 6px; }
 #hud-stagestatus .radiator-btn {
   pointer-events: auto; cursor: pointer; position: relative; overflow: hidden;
