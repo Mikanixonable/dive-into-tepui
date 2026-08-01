@@ -1,16 +1,18 @@
 // 軌道計画の未来表示: 予測折れ線(PlanTrajectory)の駆動、表示座標系(trajectoryFrame)、
 // 未来ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
-import { R_EARTH } from '../../physics/orbital';
+import { R_EARTH, elementsFromState, positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/orbital';
 import { Vec3, len } from '../../physics/vec3';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { fmtMarkerDist } from '../hud/utils';
+import { fmtMarkerDist, fmtDist } from '../hud/utils';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { SegmentedControl } from '../hud/buttons';
 import { FRAME_ITEMS } from '../hud/frame-labels';
+import { MapPickable } from '../map-pick';
+import * as C from '../const';
 import { Plan } from './plan';
 import { PlanTrajectory } from './plan-trajectory';
 
@@ -21,6 +23,7 @@ export class PlanDisplay {
 
   private readonly panel: HTMLElement;
   private readonly frame: SegmentedControl<Frame>;
+  private readonly _apsisMarkers: MapPickable[] = [];
 
   // 予測折れ線(PlanTrajectory)と TRAJECTORY パネルの DOM を構築する。
   constructor(
@@ -46,20 +49,40 @@ export class PlanDisplay {
     hudRoot.appendChild(this.panel);
   }
 
-  // 予測折れ線・ゴーストマーカー・TRAJECTORY パネルを現在のプラン/表示時刻に同期する。
+  // 予測折れ線・ゴーストマーカー・アプシスアイコン・TRAJECTORY パネルを現在のプラン/表示時刻に同期する。
   sync(plan: Plan, displayEnd: number, simTime: number, displayTime: number, fo: FloatingOrigin, project: ProjectFn): void {
     this.traj.setVisible(true);
     this.traj.update(plan, displayEnd, this.ephemeris, this.trajectoryFrame, simTime, fo, project);
     this.syncGhost(displayTime, simTime, project);
+    this.syncApsisMarkers(project);
     this.panel.style.display = 'block';
     this.frame.setSelected(this.trajectoryFrame);
   }
 
-  // 予測折れ線・ゴーストマーカー・TRAJECTORY パネルを非表示にする。
+  // 予測折れ線・ゴーストマーカー・アプシスアイコン・TRAJECTORY パネルを非表示にする。
   hide(): void {
     this.traj.setVisible(false);
     this.markerManager.hide('plannedPlayer');
+    this.markerManager.hide('apsisPe');
+    this.markerManager.hide('apsisAp');
+    this._apsisMarkers.length = 0;
     this.panel.style.display = 'none';
+  }
+
+  // 近地点・遠地点アイコンの右クリック候補(非表示中は空)。
+  get apsisMarkers(): readonly MapPickable[] {
+    return this._apsisMarkers;
+  }
+
+  // アプシスアイコン id に対応する通過時刻。アイコンが出ていない id では null。
+  apsisTimeOf(id: string): number | null {
+    const state0 = this.traj.finalSegmentStart;
+    if (!state0 || !this._apsisMarkers.some((m) => m.id === id)) return null;
+    const el = elementsFromState(state0.r, state0.v);
+    if (!el) return null;
+    const nu = id === 'apsisAp' ? Math.PI : 0;
+    const dt = tofBetween(el, trueAnomalyAt(el, state0.r), nu);
+    return isFinite(dt) ? state0.t + dt : null;
   }
 
   // ⬡ ゴーストマーカーを displayTime の予測位置に同期する。表示時刻が現在以前、
@@ -94,5 +117,30 @@ export class PlanDisplay {
     const h = Math.floor(tRel / 3600);
     const m = Math.floor((tRel % 3600) / 60);
     return `T+${h}h${String(m).padStart(2, '0')}m 高度 ${fmtMarkerDist(alt, 0)}`;
+  }
+
+  // 最後のバーン後の軌道(これから乗る軌道)の近地点・遠地点アイコンを、その要素から
+  // 解析的に同期する。離心率がほぼ0で方向が不定なら両方隠す。
+  private syncApsisMarkers(project: ProjectFn): void {
+    this._apsisMarkers.length = 0;
+    const state0 = this.traj.finalSegmentStart;
+    const el = state0 ? elementsFromState(state0.r, state0.v) : null;
+    if (!el || el.e < C.APSIS_MIN_ECC) {
+      this.markerManager.hide('apsisPe');
+      this.markerManager.hide('apsisAp');
+      return;
+    }
+
+    const peWorld = this.traj.toDisplay(positionOnOrbit(el, 0), state0!.t);
+    this._apsisMarkers.push({ id: 'apsisPe', name: '近地点', pos: peWorld, kind: 'apsis' });
+    this.markerManager.setPosition('apsisPe', 'mk-apsis', '◇', peWorld, project, `Pe ${fmtDist(el.peAlt)}`);
+
+    if (isFinite(el.apAlt)) {
+      const apWorld = this.traj.toDisplay(positionOnOrbit(el, Math.PI), state0!.t);
+      this._apsisMarkers.push({ id: 'apsisAp', name: '遠地点', pos: apWorld, kind: 'apsis' });
+      this.markerManager.setPosition('apsisAp', 'mk-apsis', '◇', apWorld, project, `Ap ${fmtDist(el.apAlt)}`);
+    } else {
+      this.markerManager.hide('apsisAp');
+    }
   }
 }
