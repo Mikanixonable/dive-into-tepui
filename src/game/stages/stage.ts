@@ -18,7 +18,7 @@ import { SimSpeedManager } from '../sim-speed-manager';
 import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from '../marker/marker-manager';
 
-export type StageId = '00' | '0' | '1' | '2';
+export type StageId = '00' | '0' | 'practice' | '1' | '2';
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
