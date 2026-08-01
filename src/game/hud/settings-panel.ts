@@ -27,7 +27,7 @@ export class SettingsPanel {
     this.panel.className = 'panel';
     this.panel.innerHTML = `
       <h3>一時停止 / 設定</h3>
-      <div class="srow"><span class="k">BGM Vol</span><input type="range" data-id="bgmslider" min="0" max="1" step="0.05" value="1" style="flex:1; margin-left: 10px; cursor: pointer; accent-color: ${C.COLORS.ACCENT};"></div>
+      <div class="srow"><span class="k">BGM Vol</span><input type="range" data-id="bgmslider" min="0" max="1" step="0.05" value="1" style="flex:1; margin-left: 10px; cursor: pointer; accent-color: ${C.COLOR_ACCENT};"></div>
       <div class="squit" data-id="settingsquit">ゲームを中断してタイトル画面に戻る</div>
       <div class="sclose" data-id="settingsclose">[閉じる]</div>`;
     root.appendChild(this.panel);

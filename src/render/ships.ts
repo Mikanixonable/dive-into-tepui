@@ -256,7 +256,7 @@ export function buildPlasmaMesh(): THREE.Mesh {
   }
   if (!plasmaBodyMat) {
     plasmaBodyMat = (m.material as THREE.MeshBasicMaterial).clone();
-    plasmaBodyMat.color.set(C.COLORS.ENEMY_PLASMA);
+    plasmaBodyMat.color.set(C.COLOR_ENEMY_PLASMA);
     // 不透明にするため AdditiveBlending は設定しない
     plasmaBodyMat.transparent = false;
     plasmaBodyMat.opacity = 1.0;
@@ -486,7 +486,7 @@ function buildGenericDebris(color: string | number, size: number, mat: DebrisMat
 // style に応じたデブリメッシュを1つ生成する(未指定時は汎用形状)。
 export function buildDebrisMesh(accent: string | number, size: number, style?: string): THREE.Mesh {
   const dark = Math.random() < 0.30;
-  const color = dark ? C.COLORS.SHIP_DARK_HULL : accent;
+  const color = dark ? C.COLOR_SHIP_DARK_HULL : accent;
 
   const mat: DebrisMaterial = (opts) =>
     new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.65, metalness: 0.30, ...opts });
