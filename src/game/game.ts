@@ -34,7 +34,8 @@ import { MapModeToggler } from './map-mode-toggler';
 import { NanWatchdog } from './nan-watchdog';
 import { DebugHistoryLine } from './debug-history-line';
 import { MapContextGizmo, MapMenuItem } from './map-context-gizmo';
-import { MapPickable } from './map-pick';
+import { MapPickable, pickNearest } from './map-pick';
+import { NavTarget } from './nav-target';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -77,6 +78,7 @@ export class Game {
   private readonly leadMarkers: LeadMarkers;
   private readonly effects: EffectsSystem;
   readonly targeter: Targeter;
+  readonly navTarget: NavTarget;
   readonly entities: EntityManager;
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
@@ -119,6 +121,7 @@ export class Game {
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
+    this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
     this.displayTimeManager = new DisplayTimeManager(this._hud.root);
     this.editor = new PlanEditor(
@@ -137,9 +140,21 @@ export class Game {
     this.mapModeToggler = new MapModeToggler(this._hud);
     this.mapContextGizmo = new MapContextGizmo();
     this.mapContextGizmo.onSelect = (act, target) => {
-      if (act !== 'focus') return;
-      this.cameraSystem.overviewCamera.focus = target.id;
-      this._hud.hint(`${target.name} にフォーカス`);
+      if (act === 'focus') {
+        this.cameraSystem.overviewCamera.focus = target.id;
+        this._hud.hint(`${target.name} にフォーカス`);
+      } else if (act === 'navTarget') {
+        this.navTarget.toggleTarget(target.id, target.name);
+      } else if (act === 'warp') {
+        const t = this.navTarget.passTimeOf(target.id);
+        if (t !== null) this.simSpeedManager.startAutoWarpTo(t);
+      } else if (act === 'addNode') {
+        const t = target.kind === 'apsis'
+          ? this.editor.planDisplay.apsisTimeOf(target.id)
+          : this.navTarget.passTimeOf(target.id);
+        if (t !== null) this.editor.addNodeAt(t);
+        else this._hud.hint('この時刻の計画軌道が求まりません');
+      }
     };
 
     this.input = new Input(gs.renderer.domElement);
@@ -185,14 +200,17 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.handleInput();
 
+    this.navTarget.update(this.player, this.entities.enemies, this.ephemeris, this.simulator.simTime);
+    const mapPickables = this.buildMapPickables();
+
     // handleInput より後に置く: ポーズ中も Esc・ヘルプなどは効かせる。
     if (this._isPaused) {
       if (this.editor.editMode) {
         this.editor.handleMapPointer(this.input);
-        this.handleMapContextMenu(this.input);
+        this.handleMapContextMenu(this.input, mapPickables);
         this.editor.updateEditing(dt, this.simulator.simTime, this.input);
       }
-      this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt);
+      this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt, mapPickables);
       return;
     }
 
@@ -206,7 +224,7 @@ export class Game {
       this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
       // 決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
       // 軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする。
-      this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt);
+      this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt, mapPickables);
       return;
     }
 
@@ -266,6 +284,7 @@ export class Game {
       this.simulator.simTime,
       this.input,
       dt,
+      mapPickables,
     );
 
     this.editor.plan.trackAnchor(this.player.state);
@@ -273,7 +292,7 @@ export class Game {
     if (this.editor.editMode) {
       // 右クリックはノードを先に試し、外したぶんだけコンテキストメニューへ回る(優先順位はこの順序だけ)。
       this.editor.handleMapPointer(this.input);
-      this.handleMapContextMenu(this.input);
+      this.handleMapContextMenu(this.input, mapPickables);
       this.editor.updateEditing(dt, this.simulator.simTime, this.input);
     }
     else {
@@ -307,11 +326,13 @@ export class Game {
     this.editor.handleInput(this.input);
   }
 
-  // 右クリックの最寄り候補(現状はフォーカス候補ラベルのみ)を探し、当たればその種別に応じた
-  // 項目でコンテキストメニューを開いて消費する。
-  private handleMapContextMenu(input: Input): void {
+  // 右クリックの最寄り候補(mapPickables → 近地点・遠地点アイコンの順)を探し、
+  // 当たればその種別に応じた項目でコンテキストメニューを開いて消費する。
+  private handleMapContextMenu(input: Input, mapPickables: readonly MapPickable[]): void {
     input.takeRightClicks((p) => {
-      const target = this.cameraSystem.pickFocusCandidate(p.x, p.y);
+      const target =
+        this.cameraSystem.pickFocusCandidate(p.x, p.y, mapPickables) ??
+        pickNearest(this.editor.planDisplay.apsisMarkers, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ);
       if (!target) return false;
       this.mapContextGizmo.openMenu(p.x, p.y, target, this.mapMenuItemsFor(target));
       return true;
@@ -322,14 +343,50 @@ export class Game {
   private mapMenuItemsFor(target: MapPickable): readonly MapMenuItem[] {
     switch (target.kind) {
       case 'body':
-      case 'ship':
-      case 'apsis':
-      case 'relnode':
         return [
           { label: 'フォーカスを移動', act: 'focus' },
           { label: 'キャンセル', act: 'cancel' },
         ];
+      case 'apsis':
+        return [
+          { label: 'ここにノードを追加', act: 'addNode' },
+          { label: 'フォーカスを移動', act: 'focus' },
+          { label: 'キャンセル', act: 'cancel' },
+        ];
+      case 'ship':
+        return [
+          { label: 'フォーカスを移動', act: 'focus' },
+          { label: target.id === this.navTarget.id ? '航法ターゲット解除' : '航法ターゲットに設定', act: 'navTarget' },
+          { label: 'キャンセル', act: 'cancel' },
+        ];
+      case 'relnode':
+        return [
+          { label: 'ここまで時間加速', act: 'warp' },
+          { label: 'ここにノードを追加', act: 'addNode' },
+          { label: 'フォーカスを移動', act: 'focus' },
+          { label: 'キャンセル', act: 'cancel' },
+        ];
     }
+  }
+
+  // フォーカス/航法ターゲット選択の被選択物一覧(天体ラベル + 生存中の自機・敵船 +
+  // 航法ターゲットの AN/DN アイコン)。船の位置は表示時刻の displayState — 機体メッシュや
+  // 敵マーカーと同じ未来ゴースト位置に揃える。
+  private buildMapPickables(): MapPickable[] {
+    const orbitPeriod = this.player.elements?.period ?? null;
+    const displayTime = this.displayTimeManager.resolveDisplayTime(orbitPeriod, this.simulator.simTime);
+    const items: MapPickable[] = [...this.cameraSystem.focusMarkers.labels];
+    if (this.player.alive) {
+      const pos = this.player.displayState(displayTime)?.r;
+      if (pos) items.push({ id: 'player', name: '自機', pos, kind: 'ship' });
+    }
+    for (const enemy of this.entities.enemies) {
+      if (!enemy.alive) continue;
+      const pos = enemy.displayState(displayTime)?.r;
+      if (pos) items.push({ id: enemy.name, name: enemy.name, pos, kind: 'ship' });
+    }
+    items.push(...this.navTarget.mapPickables());
+    return items;
   }
 
   // ------------------------------------------------------------------ sync
@@ -366,6 +423,7 @@ export class Game {
     this.effects.sync(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
 
     this.targeter.sync(dt, this.floatingOrigin, this.player, this.entities.enemies, overviewMode, project);
+    this.navTarget.sync(project);
 
     // 敵マーカーは1体では決められない(画面上で近接するものをまとめる)ので集合として渡す。
     // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。

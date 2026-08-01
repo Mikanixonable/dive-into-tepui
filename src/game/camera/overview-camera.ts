@@ -5,11 +5,11 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input/input';
-import { FocusMarkers } from './focus-markers';
 import { ViewFrame } from '../../physics/projection';
 import { Frame, RelativeVec3, toFramePos, toInertialPos } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { qFromAxisAngle, qRotate } from '../../physics/attitude';
+import { MapPickable } from '../map-pick';
 
 const WORLD_UP = v3(0, 1, 0);
 const OVERVIEW_CAMERA_FOV = 50;
@@ -54,7 +54,6 @@ export class OverviewCamera {
   constructor(
     private readonly _hud: Hud,
     _sfx: Sfx,
-    private readonly focusMarkers: FocusMarkers,
     private readonly ephemeris: Ephemeris,
   ) {
     this.camera = new THREE.PerspectiveCamera(
@@ -87,9 +86,10 @@ export class OverviewCamera {
     this.pan_r = toFramePos(this._cameraFrame, this.simTime, v3(), this.ephemeris);
   }
 
-  // 現在のフォーカス対象の ECI 位置を返す。'earth' なら原点。
-  private resolveFocus(): Vec3 {
-    return this.focus === 'earth' ? v3(0, 0, 0) : this.focusMarkers.findLabel(this.focus)?.pos ?? v3(0, 0, 0);
+  // 現在のフォーカス対象の ECI 位置を返す。'earth' または candidates に見当たらなければ原点。
+  private resolveFocus(candidates: readonly MapPickable[]): Vec3 {
+    if (this.focus === 'earth') return v3(0, 0, 0);
+    return candidates.find((c) => c.id === this.focus)?.pos ?? v3(0, 0, 0);
   }
 
   // 現在視点を固定している座標系を返す。
@@ -118,9 +118,10 @@ export class OverviewCamera {
     keyRoll: number,
     dt: number,
     simTime: number,
+    candidates: readonly MapPickable[],
   ): void {
     this.simTime = simTime;
-    const focus = this.resolveFocus();
+    const focus = this.resolveFocus(candidates);
     let offEci = toInertialPos(this._cameraFrame, simTime, this.offset_r, this.ephemeris);
     let panEci = toInertialPos(this._cameraFrame, simTime, this.pan_r, this.ephemeris);
     let upEci = toInertialPos(this._cameraFrame, simTime, this.up_r, this.ephemeris);

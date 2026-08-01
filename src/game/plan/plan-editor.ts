@@ -208,10 +208,19 @@ export class PlanEditor {
 
     // 見つからなければ予測軌道上の最寄り点にノードを配置
     const sample = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX);
-    if (sample) {
-      this.selectedNodeIdx = this.plan.addNode(sample);
-      this._sfx.warp();
+    if (sample) this.addNodeAt(sample.t);
+  }
+
+  // 表示時刻 t における計画軌道上の状態にノードを追加し、選択する。その時刻の計画軌道が
+  // 求まらなければ(表示窓の外・打ち切り後など)ヒントを出すだけで何もしない。
+  addNodeAt(t: number): void {
+    const sample = this.planDisplay.traj.sampleAt(t);
+    if (!sample) {
+      this._hud.hint('この時刻の予測軌道が求まりません');
+      return;
     }
+    this.selectedNodeIdx = this.plan.addNode(sample);
+    this._sfx.warp();
   }
 
   // 既存ノード近傍ならそれを選択してコンテキストメニューを開き true を返す。外れは false。

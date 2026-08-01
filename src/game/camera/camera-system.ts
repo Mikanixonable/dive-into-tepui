@@ -74,7 +74,7 @@ export class CameraSystem {
     // 両カメラとフォーカス候補ラベル
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
     this.combatCamera = new CombatCameraSystem(_hud, sfx, player);
-    this.overviewCamera = new OverviewCamera(_hud, sfx, this.focusMarkers, ephemeris);
+    this.overviewCamera = new OverviewCamera(_hud, sfx, ephemeris);
     // 広範囲視点の操作パネルと各操作のコールバック
     this.overviewCameraPanel = new OverviewCameraPanel(_hud.root, PANEL_FOCUS_IDS.map(
       (id) => [id, this.focusMarkers.findLabel(id)?.name ?? id] as const,
@@ -105,9 +105,9 @@ export class CameraSystem {
     this._elOrbit = document.getElementById('hud-orbit');
   }
 
-  // 画面座標 (clientX, clientY) 付近のフォーカス候補ラベルを返す。圏外なら null。
-  pickFocusCandidate(clientX: number, clientY: number): MapPickable | null {
-    return pickNearest(this.focusMarkers.labels, clientX, clientY, this.activeCameraProjection, C.MAP_PICK_PX_SQ);
+  // 画面座標 (clientX, clientY) 付近の被選択物を candidates から選ぶ。圏外なら null。
+  pickFocusCandidate(clientX: number, clientY: number, candidates: readonly MapPickable[]): MapPickable | null {
+    return pickNearest(candidates, clientX, clientY, this.activeCameraProjection, C.MAP_PICK_PX_SQ);
   }
 
   // 現在アクティブなカメラ(広範囲視点/戦闘追従視点)を返す。
@@ -131,6 +131,7 @@ export class CameraSystem {
     simTime: number,
     input: Input,
     dt: number,
+    mapPickables: readonly MapPickable[],
   ): void {
     // 追従視点トグル
     if (input.takeKey(K.followAttitudeToggle)) this.combatCamera.toggleFollowAttitude();
@@ -150,7 +151,7 @@ export class CameraSystem {
     const mouse = input.mouse();
 
     if (this.overviewMode) {
-      this.overviewCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, simTime);
+      this.overviewCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, simTime, mapPickables);
     }
     else {
       this.combatCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, player, input);
