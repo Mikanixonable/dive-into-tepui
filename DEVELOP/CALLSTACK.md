@@ -69,7 +69,11 @@
         - [editMode] deleteSelected() → deleteNode()
           - plan.removeNode() / closeMenu() / simSpeedManager.cancelAutoWarp() / hud.hint()
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
+  - navTarget.update() // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム
+  - buildMapPickables() // 天体ラベル + 生存中の自機・敵船(displayState 基準)+ navTarget.mapPickables() を集約
   - [game.isPaused] 以降を実行せず return するポーズ経路 // 決着後の簡略経路より前。ポーズ中は決着後も完全に止まる
+    - [editor.editMode] editor.handleMapPointer() / game.handleMapContextMenu(mapPickables) / editor.updateEditing()
+    - cameraSystem.update(..., mapPickables) // ポーズ中も視点更新は続ける
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
     - player.thrust = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
     - simulator.stepSimulation(bulletCollision=false, resolveCollision=false, doSubstep=false) // simSpeed は ×MAX_PHYS_SIM_SPEED で打ち止め
@@ -79,7 +83,7 @@
     - entities.cleanup() // 決着後もワープで時間は進むので、通常経路と同じ位置で回収する
       // Enemy.checkLoss 経由で recordEnemyDeath(cause='reentry') が走り得るが、勝利遷移は
       // isPlaying でガードされているので決着後に上書きされることはない
-    - cameraSystem.update() // 決着後も追従を続ける(sync は止まらないため、飛ばすと視点が絶対 ECI に取り残される)
+    - cameraSystem.update(..., mapPickables) // 決着後も追従を続ける(sync は止まらないため、飛ばすと視点が絶対 ECI に取り残される)
   - nanWatchdog.checkPlayer('frameStart') // 検出済みなら何もしない
   - player.behave()
     - belt.update()
@@ -214,13 +218,14 @@
       - player.stepPrediction(dt) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt を都度計算し直しながら1ステップずつ繰り返し呼ぶ
         - predicted.step() // 1ステップごとに ephemeris を中点サンプル
     - advanceBudget(entity, ...) // 残り予算をカーソル位置から1周ぶん配る。entity.stepPrediction() が最初から false(predictDuration=0/推力中/truncated)なら消費 0 で次へ即進む
-  - cameraSystem.update() // 物理積分の後に呼ぶ(追従カメラの基準を積分後の自機位置に合わせるため)
+  - cameraSystem.update(mapPickables) // 物理積分の後に呼ぶ(追従カメラの基準を積分後の自機位置に合わせるため)
     - combatCamera.toggleFollowAttitude() // K.followAttitudeToggle。カメラ自身の状態なのでここで消費する
-    - overviewCamera.update() // cameraSystem.overviewMode のみ。結果を自身の view へ書く
+    - keyYaw/keyPitch/keyRoll をキー入力からまとめる // cameraRollLeft/Right は Numpad0/Numpad1
+    - overviewCamera.update(..., mapPickables) // cameraSystem.overviewMode のみ。focus を mapPickables から引き直し、結果を自身の view へ書く
     - combatCamera.update() // !overviewMode のみ
       - zoomActive = K.gunsightZoom 押下 // combatCamera 自身のフィールドへ書く(overviewMode 中はこの update 自体が呼ばれないため更新されない — CameraSystem.zoomActive の !overviewMode ガードが読み替えを担保する)
       - gunsightCamera.update() // player.alive && zoomActive。結果を自身の view へ書く
-      - chaseCamera.update() // それ以外。camFollowAttitude && player.alive のときだけ player.att.q を rot に合成し、鍵/ドラッグ入力を回転として適用。結果を自身の view へ書く
+      - chaseCamera.update() // それ以外。camFollowAttitude && player.alive のときだけ player.att.q を rot に合成し、鍵/ドラッグ/ロール入力を回転として適用。結果を自身の view へ書く
       - 選ばれた view.fovDeg から combatCamera 自身の view.fovDeg を指数補間
   - editor.plan.trackAnchor() // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
   - [editor.editMode] 計画編集モード
@@ -229,19 +234,24 @@
         - nodeGizmo.openMenu() + selectedNodeId = ヒットしたノードの ID // ヒット時。true を返して消費
       - handleMapClick() // 左クリックごと。常に消費する
         - selectedNodeIdx = idx + sfx.warp() // 既存ノードをヒットした場合。正本は ID(setter が解決する)
-        - planDisplay.traj.nearestSample() → plan.addNode() + sfx.warp() // 予測軌道上をヒットした場合
-    - game.handleMapContextMenu() // ノードに消費されずに残った右クリックだけが届く
-      - cameraSystem.pickFocusCandidate() // MAP_PICK_PX_SQ 以内のフォーカス候補ラベルを最寄りで拾う
-      - mapContextGizmo.openMenu() // 拾えた場合のみ消費。選択結果は mapContextGizmo.onSelect(act, target) → overviewCamera.focus 代入
+        - planDisplay.traj.nearestSample() → editor.addNodeAt(sample.t) // 予測軌道上をヒットした場合
+          - planDisplay.traj.sampleAt(t) → plan.addNode() + sfx.warp() // その時刻の計画軌道が求まる場合のみ。求まらなければ hud.hint() のみ
+    - game.handleMapContextMenu(mapPickables) // ノードに消費されずに残った右クリックだけが届く
+      - cameraSystem.pickFocusCandidate(mapPickables) // MAP_PICK_PX_SQ 以内の被選択物(天体/自機/敵船/nav-AN・DN)を最寄りで拾う
+      - pickNearest(planDisplay.apsisMarkers) // 上で拾えなかった場合のみ、近地点・遠地点アイコンを最寄りで拾う
+      - mapContextGizmo.openMenu() // どちらかで拾えた場合のみ消費。選択結果は mapContextGizmo.onSelect(act, target) へ
+        - act='focus' → overviewCamera.focus 代入
+        - act='navTarget' → navTarget.toggleTarget()
+        - act='warp' → simSpeedManager.startAutoWarpTo(navTarget.passTimeOf(target.id))
+        - act='addNode' → editor.addNodeAt(planDisplay.apsisTimeOf(target.id) または navTarget.passTimeOf(target.id))
     - editor.updateEditing()
       - applyHeldDv() ×6方向 // WASDQE または dvButtons(長押しボタン)が held の間、ホールド秒数からランプするレートで dt 秒分を積分
       - applyDv() // nodeGizmo.latch がある間、ラッチ超過量に比例したレートで dt 秒分を積分(アームドラッグが DV_DRAG_LATCH_PX を超えて入る)
       - renderPanel() // 計画パネル(MANEUVER PLAN)の HTML 更新
   - [!editor.editMode] targeter.updateCombatTargeting()
-    - handleTargetLockByRightClick() // player.alive のみ。右クリックは当否に関わらず消費する
-      - toggleLockedTarget() + hud.hint() // 右クリックが敵に当たった場合
-      - hud.hint() // 外れ、かつ既にロックがあった場合(ロック解除)
-    - autoTarget を再計算して代入
+    - handleTargetContextMenu() // player.alive のみ。右クリックは当否に関わらず消費する
+      - pickEnemyAt() → openMenu() // 右クリックが敵に当たった場合、第一/第二の設定・解除メニューを開く
+    // 自動選定・自動再選択はない。target/secondaryTarget はメニュー選択でのみ変わる
 
 ---
 
@@ -286,12 +296,13 @@
     - scene.remove() + billboard.dispose() // 寿命切れのフラッシュごと
   - targeter.sync() // ターゲットに紐づく表示物をまとめて
     - syncOrbitLine()
-      - enemy.orbitLine.sync() // 敵ごと。overviewMode かつ生存かつ非ターゲットのときだけ表示
-      - orbitLine.sync() // ターゲット軌道線(オレンジ)
-    - syncBoardMarkers() // 的通過マークの寿命更新と表示(スロットごと)
-    - syncTargetDirMarkers() // ◇/◆ tgtdir/atgdir。overviewMode or ターゲット無しなら hide
-    - syncNodeMarkers() // 相対 AN/DN。要素が無い/軌道面がほぼ一致なら hide
-  - [敵ごと] displayState(displayTime) → markerItem(isTarget, viewerPos, pos) // displayState が null の敵はここで除外(マーカーごと落とす)
+      - enemy.orbitLine.sync() // 敵ごと。overviewMode かつ生存かつ第一・第二どちらでもないときだけ表示
+      - orbitLine.sync() // 第一ターゲット軌道線(オレンジ)
+      - secondaryOrbitLine.sync() // 第二ターゲット軌道線(シアン)
+    - syncBoardMarkers() // 的通過マークの寿命更新と表示(スロットごと)。第一ターゲットのみ
+    - syncTargetDirMarkers() // ◇/◆ tgtdir/atgdir。overviewMode or 第一ターゲット無しなら hide。第一ターゲットのみ
+  - navTarget.sync() // ▲/▽ nav-an/nav-dn マーカー。navTarget.update() が求めた位置があれば表示、無ければ hide
+  - [敵ごと] displayState(displayTime) → markerItem(role, viewerPos, pos) // role は第一/第二/なし。displayState が null の敵はここで除外(マーカーごと落とす)
   - enemyMarkers.sync() // 生存かつ displayState を持つ敵の markerItem() 集合を受ける(まとめは1体では決まらない)
     - groupNearby() // 画面上で近接するものをクラスタ化し、代表以外のラベルを落とす
     - markerManager.set() + markerManager.setBearing() // 対象ごと。画面外なら画面端の方位マーカー▲へ
@@ -299,8 +310,8 @@
   - leadMarkers.sync() // 敵ごとの LEAD マーカー。overviewMode or !player.alive なら全 remove して return
     - trackTargeted() // 最終ロック時刻を生存中の敵ぶんだけ作り直す
     - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある敵ごと
-  - displayTimeManager.sync(orbitPeriod) // PREDICT パネル(期間/未来位置スライダー)の表示/内容を押し出すだけ
-    - panel.setVisible(!forceCurrent) / setDuration() / setSliderLabel() // ラベルは自己完結の "T+" 表記のみ
+  - displayTimeManager.sync(orbitPeriod) // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ)の表示/内容を押し出すだけ
+    - panel.setVisible(!forceCurrent) / setDuration() / setManualVisible() / setSliderLabel() / setTicks() // ラベルは自己完結の "T+" 表記のみ
   - editor.sync(mapDist, displayEnd, simTime, displayTime, fo, project)
     - [editMode] planDisplay.sync(plan, displayEnd, simTime, displayTime, fo, project)
       - traj.setVisible(true)
@@ -312,6 +323,7 @@
           - sampled.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
         - arc.setVisible(false) // 区間が減って余った PlanArc ごと
       - syncGhost() → markerManager.setPosition('plannedPlayer') or hide() // displayTime <= simTime なら hide
+      - syncApsisMarkers() → markerManager.setPosition('apsisPe'/'apsisAp') or hide() // 最終区間の起点要素から解析的に算出。離心率 < APSIS_MIN_ECC なら両方 hide、双曲線なら Ap のみ hide
       - panel.setVisible(true) / setSelected() // TRAJECTORY パネル(表示座標系)
     - [editMode] updateGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
       // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は traj の今フレームの表示文脈を通す
@@ -375,6 +387,10 @@
   引くので、これで再計算がほぼ消える)。
 - **HUD マーカーは持ち主の `sync` が自分で出す**。`game.sync` に並ぶのは「1つの対象では決められない」
   ものだけ(`enemyMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存)で、残りは
-  `player.syncPlayer` / `targeter.sync` / `activeStage.sync` / `cameraSystem.sync` / `editor.sync`(→ `planDisplay`) /
-  `guide.update` の中にある。**`markerManager.resolveCollisions()` だけは全マーカーが
-  出揃った後に一度だけ**呼ぶ必要があるため `game.sync` の末尾に置く。
+  `player.syncPlayer` / `targeter.sync` / `navTarget.sync` / `activeStage.sync` / `cameraSystem.sync` /
+  `editor.sync`(→ `planDisplay`) / `guide.update` の中にある。**`markerManager.resolveCollisions()` だけは
+  全マーカーが出揃った後に一度だけ**呼ぶ必要があるため `game.sync` の末尾に置く。
+- **`buildMapPickables()` は `game.sync` ではなく `game.update` の先頭で呼ぶ**。フォーカス解決
+  (`overviewCamera.update`)も右クリック判定(`handleMapContextMenu`)もどちらも `update` フェーズの
+  仕事で、`displayTimeManager.resolveDisplayTime` が副作用のない純粋関数なので、そのフェーズの
+  先頭で1回組み立てて以降へ引数として配れる(`sync` を待つ必要がない)。
