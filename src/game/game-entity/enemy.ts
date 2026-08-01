@@ -113,7 +113,7 @@ export class Enemy extends Ship {
   private destroyEffect(): void {
     this._sfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    this._fx.spawnShipDestroyEffect(this.state, C.ENEMY_SCALE, C.COLORS.ENEMY_DESTROY_FRAG);
+    this._fx.spawnShipDestroyEffect(this.state, C.ENEMY_SCALE, C.COLOR_ENEMY_DESTROY_FRAG);
   }
 
   // 被弾によるダメージ・致死判定。

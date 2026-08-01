@@ -276,46 +276,36 @@ export const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開�
 export const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
 export const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
-export const COLORS = {
-  // Theme & HUD Base
-  ACCENT: '#ff6a00',
-  ACCENT_SOFT: '#ff9040',
-  BG: '#08090c',
-  TEXT: '#e6e8eb',
-  TEXT_DIM: '#7d838c',
-  HUD_BAR_BG: '#222222',
-  HUD_TEXT_MUTED: '#dfe3e8',
-  HUD_HP_OK: '#ff6a00',
-  HUD_HP_LOW: '#ff4a3d',
-  
-  // Markers
-  MARKER_BORESIGHT: '#dfe3e8',
-  MARKER_PROGRADE: '#cfd6dd',
-  MARKER_NORMAL: '#d08cff',
-  MARKER_RADIAL: '#7de8ff',
-  MARKER_TGTDIR: '#ff7ab0',
-  MARKER_NODE: '#8b93a0',
-  MARKER_BOARDHIT: '#ffffff',
-  MARKER_SELF: '#dfe3e8',
-  MARKER_PLANNED: '#8fd0ff',
-  
-  // Touch UI
-  TOUCH_TEXT: '#cfd6dd',
-  TOUCH_ACTIVE_TEXT: '#ffffff',
-
-  // VFX & Entities
-  BULLET_HIT_FLASH: '#ffe2a0',
-  PLASMA_HIT_FLASH: '#ffa0ff',
-  GAS_PUFF_1: '#aaaaaa',
-  GAS_PUFF_2: '#ffffff',
-  DESTROY_FLASH_1: '#ffb36b',
-  DESTROY_FLASH_2: '#fffbe8',
-  PLAYER_DESTROY_FRAG: '#9fd8e8',
-  ENEMY_DESTROY_FRAG: '#ff6a4a',
-  ENEMY_ORBIT_LINE: '#565b63',
-  ENEMY_PLASMA: '#ffa0ff',
-  SHIP_DARK_HULL: '#2e3340',
-
-  // Stage 0
-  STAGE0_GROUP_ACCENTS: ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff']
-} as const;
+// 色管理 (Colors)
+export const COLOR_ACCENT = '#ff6a00';
+export const COLOR_ACCENT_SOFT = '#ff9040';
+export const COLOR_BG = '#08090c';
+export const COLOR_TEXT = '#e6e8eb';
+export const COLOR_TEXT_DIM = '#7d838c';
+export const COLOR_HUD_BAR_BG = '#222222';
+export const COLOR_HUD_TEXT_MUTED = '#dfe3e8';
+export const COLOR_HUD_HP_OK = '#ff6a00';
+export const COLOR_HUD_HP_LOW = '#ff4a3d';
+export const COLOR_MARKER_BORESIGHT = '#dfe3e8';
+export const COLOR_MARKER_PROGRADE = '#cfd6dd';
+export const COLOR_MARKER_NORMAL = '#d08cff';
+export const COLOR_MARKER_RADIAL = '#7de8ff';
+export const COLOR_MARKER_TGTDIR = '#ff7ab0';
+export const COLOR_MARKER_NODE = '#8b93a0';
+export const COLOR_MARKER_BOARDHIT = '#ffffff';
+export const COLOR_MARKER_SELF = '#dfe3e8';
+export const COLOR_MARKER_PLANNED = '#8fd0ff';
+export const COLOR_TOUCH_TEXT = '#cfd6dd';
+export const COLOR_TOUCH_ACTIVE_TEXT = '#ffffff';
+export const COLOR_BULLET_HIT_FLASH = '#ffe2a0';
+export const COLOR_PLASMA_HIT_FLASH = '#ffa0ff';
+export const COLOR_GAS_PUFF_1 = '#aaaaaa';
+export const COLOR_GAS_PUFF_2 = '#ffffff';
+export const COLOR_DESTROY_FLASH_1 = '#ffb36b';
+export const COLOR_DESTROY_FLASH_2 = '#fffbe8';
+export const COLOR_PLAYER_DESTROY_FRAG = '#9fd8e8';
+export const COLOR_ENEMY_DESTROY_FRAG = '#ff6a4a';
+export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
+export const COLOR_ENEMY_PLASMA = '#ffa0ff';
+export const COLOR_SHIP_DARK_HULL = '#2e3340';
+export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
