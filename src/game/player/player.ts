@@ -26,6 +26,8 @@ import { RcsEffects } from './rcs-effects';
 import { PlayerMarkers } from './player-markers';
 import { MarkerManager } from '../marker/marker-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
+import { RadiatorSystem } from './radiator';
+import { Ephemeris, sunlitFactor } from '../../physics/ephemeris';
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
@@ -34,6 +36,7 @@ export class Player extends Ship {
   readonly fire: PlayerFire;
   readonly belt: Belt;
   readonly thermal: ThermalSystem;
+  readonly radiator: RadiatorSystem;
 
   private readonly thrustEffects: ThrustEffects;
   private readonly rcsEffects: RcsEffects;
@@ -63,6 +66,7 @@ export class Player extends Ship {
     this.fire = new PlayerFire(this, _hud, _sfx, _scene, _fx);
     this.belt = new Belt(this.obj);
     this.thermal = new ThermalSystem(_hud, _sfx);
+    this.radiator = new RadiatorSystem(this.obj);
     this.thrustEffects = new ThrustEffects(_scene);
     this.rcsEffects = new RcsEffects(_scene, _sfx);
     this.markers = new PlayerMarkers(markerManager);
@@ -124,13 +128,22 @@ export class Player extends Ship {
     scoreCounter: ScoreCounter;
     simTime: number;
     zoomActive: boolean;
+    ephemeris: Ephemeris;
     addBullet: (bullet: Bullet) => void;
   }): void {
-    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, addBullet } = params;
+    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, ephemeris, addBullet } = params;
 
     this.belt.update(dt, this.fire.mags, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
     this.handleEdgeInput(input);
     this.updateTorque(input, editMode, dt * simSpeed.simSpeed);
+
+    this.radiator.update(dt);
+    const sunlit = sunlitFactor(this.state.r, ephemeris.sunDirAt(simTime), C.SHADOW_PENUMBRA);
+    this.thermal.setRadiatorLoad(
+      this.radiator.radiatingArea(),
+      this.radiator.solarLoad(sunlit, ephemeris.sunDirAt(simTime), this.att),
+    );
+    this.radius = this.radiator.hitRadius();
 
     // 死亡済み: 射撃、移動、hp回復はできない
     if (!this.alive) {
@@ -184,6 +197,7 @@ export class Player extends Ship {
   attacked(bullet: Bullet, _simTime: number, activeStage: Stage, hitR: Vec3): void {
     if (!this.alive) return;
 
+    this.radiator.damageFromHit(hitR, this.state.r, this.att);
     this.hp -= C.PLAYER_HIT_DAMAGE;
     if (this.hp > 0) {
       // 生存していれば被弾エフェクトのみ
@@ -293,6 +307,7 @@ export class Player extends Ship {
     this.thrustEffects.sync(fo, this.state.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
     this.rcsEffects.sync(fo, this.state.r, this.torque, this.att, this.alive, phasePlaying, paused, camera);
     this.belt.sync(this.alive);
+    this.radiator.sync();
     // マーカーと軌道線
     this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection);
 

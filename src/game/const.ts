@@ -37,7 +37,7 @@ export const REENTRY_GLOW_FULL_Q = 2e4; // 燃焼エフェクトが最大強度�
 export const GUN_HEAT_PER_ROUND = 5.5e6;
 
 // --- ラジエーター(上下2枚、個別展開) ---
-export const RADIATOR_PANEL_AREA = 99; // 1枚の放熱面積 [m^2](パネル寸法の両面ぶん)
+export const RADIATOR_PANEL_AREA = 66; // 1枚の放熱面積 [m^2](6.0 × 5.5 m のパネルの両面ぶん)
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
@@ -172,7 +172,6 @@ export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simu
 export const SUBSTEP_MAX_COUNT = 64; // 1フレームあたりのサブステップ数上限(高倍率ワープ時に計算量が爆発しないための歯止め)
 
 export const PLAYER_RADIUS = 5; // 被弾(弾丸ヒット)判定 [m]。実機体より大きめの当たり判定
-export const PLAYER_RADIUS_RADIATOR_FULL = 12; // ラジエーター全開時の被弾判定 [m]。展開度に応じて PLAYER_RADIUS から線形に広がる
 export const PLAYER_HULL_RADIUS = 2.6; // 薬莢・破片等との物理接触に使う実寸に近い半径 [m]。
 // PLAYER_RADIUS(被弾判定、余裕を持たせた大きめの値)をそのまま物理接触に使うと、
 // 砲口(機体中心から距離約2.9m)で生まれた薬莢が生成直後に弾き飛ばされてしまう。
