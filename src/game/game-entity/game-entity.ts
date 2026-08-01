@@ -69,9 +69,9 @@ export class GameEntity {
   }
 
   // 中心重力 + 環境加速度(大気抵抗・J2・第三体摂動)+ 自身の推力で 1 ステップ積分する。
-  stepSim(dt: number, sunPos: Vec3, moonPos: Vec3): void {
+  stepSim(dt: number, ephemeris: Ephemeris): void {
     if (!this.alive) return;
-    this.current.step(dt, sunPos, moonPos, this.bcInv, this.thrust, this.sampleInterval(), this.historyDuration);
+    this.current.step(dt, ephemeris, this.bcInv, this.thrust, this.sampleInterval(), this.historyDuration);
   }
 
   // 予測列を破棄する。
@@ -101,10 +101,7 @@ export class GameEntity {
     const p = this._predicted;
     if (p.state.t + dt > simTime + this.predictDuration + 1e-6) return false;
 
-    const mid = p.state.t + dt / 2;
-    const sunPos = ephemeris.sunPosAt(mid);
-    const moonPos = ephemeris.moonPosAt(mid);
-    p.step(dt, sunPos, moonPos, this.bcInv, null, this.sampleInterval(), this.predictDuration);
+    p.step(dt, ephemeris, this.bcInv, null, this.sampleInterval(), this.predictDuration);
 
     // 有限チェック
     const { r, v } = p.state;
