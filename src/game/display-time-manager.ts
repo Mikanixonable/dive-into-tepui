@@ -3,13 +3,13 @@
 import * as C from './const';
 import { DisplayTimePanel } from './display-time-panel';
 
-export type PredictDurationKey = 'orbit' | 'day' | 'week' | 'month';
+export type DisplayDurationKey = 'orbit' | 'day' | 'week' | 'month';
 
 export class DisplayTimeManager {
   // 未来表示を禁止するフラグ(初期値 true = 戦闘ビューでは禁止)。
   forceCurrent = true;
 
-  durationKey: PredictDurationKey = 'day';
+  durationKey: DisplayDurationKey = 'day';
   // マップモードの未来ゴーストスライダー位置(0..1、0 でゴースト非表示)。
   sliderT = 0;
 
@@ -30,11 +30,11 @@ export class DisplayTimeManager {
   durationSec(orbitPeriod: number | null): number {
     if (this.durationKey === 'orbit') {
       if (orbitPeriod !== null && isFinite(orbitPeriod) && orbitPeriod > 0) return orbitPeriod;
-      return C.PREDICT_DUR_DAY; // 双曲線・放物線軌道では1日にフォールバック
+      return C.DISPLAY_DUR_DAY; // 双曲線・放物線軌道では1日にフォールバック
     }
-    if (this.durationKey === 'week') return C.PREDICT_DUR_WEEK;
-    if (this.durationKey === 'month') return C.PREDICT_DUR_MONTH;
-    return C.PREDICT_DUR_DAY;
+    if (this.durationKey === 'week') return C.DISPLAY_DUR_WEEK;
+    if (this.durationKey === 'month') return C.DISPLAY_DUR_MONTH;
+    return C.DISPLAY_DUR_DAY;
   }
 
   // スライダーが有効な間は未来の simTime を返す。forceCurrent またはスライダー原点では simTime をそのまま返す。

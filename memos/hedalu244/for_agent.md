@@ -95,7 +95,7 @@
 | `#hud-trajframe` | 296px | 292px |
 
 この帯では canvas に `pointerdown` が届かない = `Input` にクリックが積まれない。
-パンやズームで予測軌道がこの帯に入ると、そこはクリックできない。
+パンやズームで計画軌道がこの帯に入ると、そこはクリックできない。
 
 ## 6. ノードを「クリックしたつもり」が retime になり、下流ノードが全部消える ★実バグ
 
@@ -133,7 +133,7 @@ if (sample) this.selectedNodeIdx = this.plan.retimeNode(idx, sample);
   anchor に入れる(`game.ts:236` / `plan.ts:28`)。
 - `PlanArc.update` の再計算判定は `state0 !== this.key.state0` の**参照比較**
   (`plan-arc.ts:63`)なので、計画が空のあいだは毎フレーム「起点が変わった」と判定される。
-- したがって `PREDICT_DIRTY_THROTTLE_MS = 200ms` ごとに区間全体をゼロから積分し直す。
+- したがって `PLAN_ARC_THROTTLE_MS = 200ms` ごとに区間全体をゼロから積分し直す。
 
 刻みは `stepDt = keplerPeriod(r) / 100`。LEO(周期約 5570s)なら約 56s なので:
 
@@ -145,7 +145,7 @@ if (sample) this.selectedNodeIdx = this.plan.retimeNode(idx, sample);
 | 1ヶ月 | 約 46,500 |
 
 **「1ヶ月」表示では 200ms ごとに 200ms 級の再積分**が走り、実質フリーズする。
-`PREDICT_MAX_SAMPLES = 2000` は**サンプルの間引き**にしか効かず、積分ステップ数は減らない。
+`PLAN_ARC_MAX_SAMPLES = 2000` は**サンプルの間引き**にしか効かず、積分ステップ数は減らない。
 
 なお `Predictor` / `GameEntity.stepPrediction` 側は「先端を1歩ずつ伸ばす」インクリメンタル
 方式なのに、plan 側だけ毎回ゼロから、という非対称がある。
