@@ -1,4 +1,4 @@
-// 大気飛行の危険の監視: 自機の空力加熱/動圧と高度低下警告。
+// 自機の熱収支(空力加熱・射撃発熱・放射冷却)と動圧・高度低下の監視。
 import { R_EARTH } from '../../physics/orbital';
 import { airspeed } from '../../physics/envaccel';
 import { Vec3, len } from '../../physics/vec3';
@@ -15,6 +15,7 @@ export class ThermalSystem {
   hullTemp = C.HULL_START_TEMP;
   qdyn = 0;
   private heatWarned = false;
+  private pendingGunHeat = 0; // 未反映の射撃投入熱量 [J]
 
   // --- 高度警告(EMA平滑化)状態 ---
   private altEma = NaN; // 高度の指数移動平均(離心率によるふらつきを均す)
@@ -28,6 +29,11 @@ export class ThermalSystem {
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
   ) {}
+
+  // 発砲 rounds 発ぶんの投入熱量を次の updateThermal 呼び出しへ持ち越す。
+  addGunHeat(rounds: number): void {
+    this.pendingGunHeat += rounds * C.GUN_HEAT_PER_ROUND;
+  }
 
   // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の
   // Sutton–Graves 近似 q̇ = k·√(ρ/Rn)·v³、冷却はステファン・ボルツマン放射。
@@ -44,10 +50,15 @@ export class ThermalSystem {
       C.STEFAN_BOLTZMANN *
       C.RAD_AREA *
       (Math.pow(C.ENV_TEMP, 4) - Math.pow(this.hullTemp, 4));
+    // 射撃発熱はサブステップ回数・dtSub に依存しない量として貯めてあるので、
+    // 空力加熱と違い dtSub を掛けずに一度だけ温度へ変換する
     this.hullTemp = Math.max(
       C.HULL_TEMP_FLOOR,
-      this.hullTemp + ((qdot * C.HEAT_ABSORB_AREA + cool) / C.HEAT_CAPACITY) * dtSub,
+      this.hullTemp +
+        ((qdot * C.HEAT_ABSORB_AREA + cool) / C.HEAT_CAPACITY) * dtSub +
+        this.pendingGunHeat / C.HEAT_CAPACITY,
     );
+    this.pendingGunHeat = 0;
   }
 
   // 熱防御の飽和・空力破壊を判定し、限界超過の種別を返す。
@@ -63,6 +74,7 @@ export class ThermalSystem {
     if (hot && !this.heatWarned) {
       this.heatWarned = true;
       this._hud.hint('警告: 空力加熱・動圧が危険域 — 高度を上げよ', 4000);
+      this._sfx.altAlarm();
     } else if (!hot && this.hullTemp < 0.6 * C.MAX_HULL_TEMP) {
       this.heatWarned = false;
     }
