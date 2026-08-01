@@ -302,7 +302,7 @@ function buildInfoPanels(root: HTMLElement): void {
     <div data-id="elist"></div>`;
 }
 
-// 視点リセットボタン（以前は controlsBar と一緒だったが、単独で追加）
+// 追従カメラの視点リセットボタンを組む。
 function buildChaseReset(root: HTMLElement): void {
   const chaseReset = el('div', 'hud-chase-reset', root);
   chaseReset.dataset.id = 'chase-reset';
