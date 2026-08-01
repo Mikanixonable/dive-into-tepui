@@ -58,7 +58,8 @@ const STYLE = `
   position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
   pointer-events: auto; cursor: pointer;
   width: 32px; height: 32px; border-radius: 50%;
-  display: flex; justify-content: center; align-items: center; font-size: 16px;
+  display: flex; justify-content: center; align-items: center;
+  padding: 0;
   border: 1px solid ${EDGE}; background: ${SURFACE}; color: ${INK_SOFT};
   z-index: 1;
 }
@@ -194,7 +195,8 @@ const STYLE = `
   #hud-settings { min-width: 0; width: 78vw; }
   #hud-stagestatus { top: 8px; min-width: 130px; padding: 6px 10px; }
   #hud-stagestatus .t { font-size: 14px; }
-  #hud-chase-reset { bottom: 12px; width: 28px; height: 28px; font-size: 14px; }
+  #hud-chase-reset { bottom: 12px; width: 28px; height: 28px; }
+  #hud-chase-reset svg { width: 14px; height: 14px; }
 }
 `;
 
@@ -280,7 +282,7 @@ function buildInfoPanels(root: HTMLElement): void {
 function buildChaseReset(root: HTMLElement): void {
   const chaseReset = el('div', 'hud-chase-reset', root);
   chaseReset.dataset.id = 'chase-reset';
-  chaseReset.textContent = '↺';
+  chaseReset.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>`;
 }
 
 // 全操作の説明表([H]で開閉するヘルプパネル)を組む。
