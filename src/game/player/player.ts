@@ -23,6 +23,7 @@ import { ThermalSystem } from './thermal';
 import { EffectsSystem } from '../vfx/effects-system';
 import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
+import { ReentryEffects } from './reentry-effects';
 import { PlayerMarkers } from './player-markers';
 import { MarkerManager } from '../marker/marker-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
@@ -40,6 +41,7 @@ export class Player extends Ship {
 
   private readonly thrustEffects: ThrustEffects;
   private readonly rcsEffects: RcsEffects;
+  private readonly reentryEffects: ReentryEffects;
   private readonly markers: PlayerMarkers;
   // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
   readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55);
@@ -69,6 +71,7 @@ export class Player extends Ship {
     this.radiator = new RadiatorSystem(this.obj);
     this.thrustEffects = new ThrustEffects(_scene);
     this.rcsEffects = new RcsEffects(_scene, _sfx);
+    this.reentryEffects = new ReentryEffects(_scene);
     this.markers = new PlayerMarkers(markerManager);
 
     _scene.add(this.orbitLine.line);
@@ -235,7 +238,8 @@ export class Player extends Ship {
 
     // 熱・動圧・高度いずれかの限界超過を喪失理由として判定する
     let reason: string | null = null;
-    if (limit === 'heat') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
+    if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
+    else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
     else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
     else if (altitudeOf(this.state.r) < C.PLAYER_MIN_ALT) reason = '濃密な大気に突入し機体は分解した';
     if (reason === null) return;
@@ -306,6 +310,7 @@ export class Player extends Ship {
     // 推力/RCS エフェクトとベルト
     this.thrustEffects.sync(fo, this.state.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
     this.rcsEffects.sync(fo, this.state.r, this.torque, this.att, this.alive, phasePlaying, paused, camera);
+    this.reentryEffects.sync(fo, this.state.r, this.state.v, this.thermal.qdyn, this.alive, camera);
     this.belt.sync(this.alive);
     this.radiator.sync();
     // マーカーと軌道線
