@@ -65,6 +65,14 @@ export class CameraSystem {
     this.overviewCameraPanel.onFrameSelect = (frame: Frame) => {
       this.overviewCamera.cameraFrame = frame;
     };
+
+    const chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
+    if (chaseResetBtn) {
+      chaseResetBtn.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        this.chaseCamera.reset();
+      });
+    }
   }
 
   // マップ編集中のポインタ操作。最寄りラベルがあればフォーカス選択メニューを開いて消費する。
@@ -145,6 +153,11 @@ export class CameraSystem {
     else this.chaseCamera.sync(fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
+    
+    const chaseResetBtn = document.getElementById('hud-chase-reset');
+    if (chaseResetBtn) {
+      chaseResetBtn.style.display = this.overviewMode ? 'none' : 'block';
+    }
     if (this.overviewMode) {
       this.overviewCameraPanel.setFocus(this.overviewCamera.focus);
       this.overviewCameraPanel.setFrame(this.overviewCamera.cameraFrame);
