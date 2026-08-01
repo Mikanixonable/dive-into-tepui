@@ -76,6 +76,11 @@ export abstract class Stage {
     this.statusPanel = new StageStatusPanel(hud.root);
   }
 
+  // ステージ固有の UI(トグル等)をステータスウィンドウ左部へ追加する。
+  protected addStatusPanelWidget(el: HTMLElement): void {
+    this.statusPanel.appendLeftWidget(el);
+  }
+
   // 決着後の [R] で再出撃。プレイ中は素通しする。
   handleInput(input: Input): void {
     if (this.isPlaying) return;

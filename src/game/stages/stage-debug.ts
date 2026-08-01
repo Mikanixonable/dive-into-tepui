@@ -3,7 +3,6 @@
 import { Stage } from './stage';
 import { generateCluster } from './spawner/enemy-spawner';
 import { HudToggle } from '../hud/buttons';
-import { ACCENT, EDGE, SURFACE, TEXT } from '../theme';
 import * as C from '../const';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
@@ -20,39 +19,24 @@ export class StageDebug extends Stage {
   readonly initialAmmo = { mags: 20, rounds: C.MAG_ROUNDS };
 
   private enemyFireEnabled = true;
-  private panel!: HTMLElement;
   private fireToggle!: HudToggle;
 
   // デバッグステージのブリーフィング文言を返す。
   briefingHtml(enemyCount: number): string {
-    return `<b>デバッグステージ</b><br>敵集団 ${enemyCount} 機。撃破しても終了しない。パネルから敵の射撃を切替可能`;
+    return `<b>デバッグステージ</b><br>敵集団 ${enemyCount} 機。撃破しても終了しない。ステータスウィンドウ左部から敵の射撃を切替可能`;
   }
 
-  // 敵集団を1つだけ生成し、射撃切替パネルを組み立てる。
+  // 敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
   init(player: Player, entities: EntityManager): number {
     const enemies = generateCluster(player.state, this._hud, this._sfx, this._fx, this._scene, 1, DEBUG_ENEMY_COUNT);
     for (const enemy of enemies) this.addEnemy(enemy, entities);
-    this.buildPanel();
-    return enemies.length;
-  }
-
-  // 射撃切替パネルの DOM を組み立て、hud.root へ追加する。
-  private buildPanel(): void {
-    this.panel = document.createElement('div');
-    this.panel.style.cssText =
-      `position: absolute; top: 12px; right: 340px; width: 200px; box-sizing: border-box; ` +
-      `background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px; padding: 10px 14px; color: ${TEXT};`;
-    const title = document.createElement('h3');
-    title.style.cssText = `font-size: 11px; letter-spacing: 2.5px; color: ${ACCENT}; margin-bottom: 6px;`;
-    title.textContent = 'DEBUG';
-    this.panel.appendChild(title);
 
     // 切替は enemyFireEnabled へ入るだけで、敵への反映は update が毎フレーム行う
     this.fireToggle = new HudToggle('敵射撃', (on) => { this.enemyFireEnabled = on; });
-    this.panel.appendChild(this.fireToggle.element);
     this.fireToggle.setOn(true);
+    this.addStatusPanelWidget(this.fireToggle.element);
 
-    this._hud.root.appendChild(this.panel);
+    return enemies.length;
   }
 
   // 敵の行動を進め、射撃許可を毎フレーム自ステージの敵全体へ反映する。

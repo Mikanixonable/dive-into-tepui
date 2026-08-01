@@ -28,7 +28,8 @@ interface RadiatorButtonDom {
 
 export class StageStatusPanel {
   private readonly panel: HTMLElement;
-  private readonly leftCol: HTMLElement;
+  private readonly leftText: HTMLElement;
+  private readonly leftWidgets: HTMLElement;
   private readonly centerCol: HTMLElement;
   private lastHpHtml = '';
   private lastLeftHtml = '';
@@ -44,8 +45,11 @@ export class StageStatusPanel {
     this.panel.id = 'hud-stagestatus';
     this.panel.className = 'panel';
     this.panel.style.display = 'none';
-    this.panel.innerHTML = `<div class="k"></div><div class="t"></div><div class="radiators"></div>`;
-    this.leftCol = this.panel.querySelector<HTMLElement>('.k')!;
+    this.panel.innerHTML =
+      `<div class="k"><div class="k-text"></div><div class="k-widgets"></div></div>` +
+      `<div class="t"></div><div class="radiators"></div>`;
+    this.leftText = this.panel.querySelector<HTMLElement>('.k-text')!;
+    this.leftWidgets = this.panel.querySelector<HTMLElement>('.k-widgets')!;
     this.centerCol = this.panel.querySelector<HTMLElement>('.t')!;
     root.appendChild(this.panel);
 
@@ -54,6 +58,11 @@ export class StageStatusPanel {
       up: this.buildRadiatorButton(radiatorsCol, 'up'),
       down: this.buildRadiatorButton(radiatorsCol, 'down'),
     };
+  }
+
+  // ステージ固有の UI(トグル等)を左部へ永続的に追加する。sync の innerHTML 書き換え対象外。
+  appendLeftWidget(el: HTMLElement): void {
+    this.leftWidgets.appendChild(el);
   }
 
   // side 1枚ぶんの展開/収納ボタンを組み立て、以後の更新に使う要素を返す。
@@ -153,10 +162,10 @@ export class StageStatusPanel {
     // ステージからの補助メッセージと撃墜数
     const leftHtml = message ? `<div>${message}</div><div>撃墜 ${kills}</div>` : `<div>撃墜 ${kills}</div>`;
     if (this.lastLeftHtml !== leftHtml) {
-      this.leftCol.innerHTML = leftHtml;
+      this.leftText.innerHTML = leftHtml;
       this.lastLeftHtml = leftHtml;
     }
-    this.panel.style.display = 'block';
+    this.panel.style.display = 'flex';
   }
 
   // パネル DOM を非表示にする
