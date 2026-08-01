@@ -18,7 +18,7 @@ const STYLE = `
      0=マーカー  1=常設パネル  2=トースト・ヒント  3=終了画面・ヘルプ  4=ESC メニュー */
 #hud .mk { z-index: 0; }
 #hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
-#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball { z-index: 1; }
+#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball, #hud-shipplacer { z-index: 1; }
 #hud-toast, #hud-hint { z-index: 2; }
 #hud-end, #hud-help { z-index: 3; }
 #hud-settings { z-index: 4; }
@@ -133,6 +133,8 @@ const STYLE = `
 #hud-displaytime .slider-ticks span { font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; }
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
 #hud-trajframe { display: none; top: 296px; left: 214px; width: 292px; pointer-events: auto; }
+/* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
+#hud-shipplacer { display: none; top: 260px; right: 12px; width: 300px; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
 #navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
 #navball .nb-ball { display: block; width: 100%; height: auto; margin: 4px 0 8px; }
 #navball .nb-rim { fill: rgba(255, 255, 255, 0.03); stroke: ${EDGE}; stroke-width: 1; }
@@ -232,6 +234,7 @@ const STYLE = `
   #hud-overview-camera { top: 8px; left: 8px; width: 186px; }
   #hud-displaytime { top: 146px; left: 8px; width: 186px; }
   #hud-trajframe { top: 246px; left: 8px; width: 186px; }
+  #hud-shipplacer { top: 200px; right: 8px; width: 220px; max-height: 60vh; }
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
