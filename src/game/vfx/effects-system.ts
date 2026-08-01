@@ -38,7 +38,7 @@ export class EffectsSystem {
       C.PLASMA_HIT_FLASH_SIZE0,
       C.PLASMA_HIT_FLASH_SIZE1,
       C.PLASMA_HIT_FLASH_DURATION,
-      0xffa0ff);
+      C.PLASMA_HIT_FLASH_COLOR);
   }
 
   // 実弾命中フラッシュを生成する。
@@ -47,14 +47,14 @@ export class EffectsSystem {
       C.BULLET_HIT_FLASH_SIZE0,
       C.BULLET_HIT_FLASH_SIZE1,
       C.BULLET_HIT_FLASH_DURATION,
-      0xffe2a0);
+      C.BULLET_HIT_FLASH_COLOR);
   }
 
   // ガスのような気体が放出されるエフェクト（被弾時やデブリ命中時用）
   spawnGasPuff(pos: Vec3, vel: Vec3): void {
     // 灰色の低透明度のビルボードを2つ重ねてガスっぽさを出す
-    this.spawnFlash(pos, vel, 1.0, 8.0, 0.45, 0xaaaaaa, 0.3);
-    this.spawnFlash(pos, vel, 0.5, 6.0, 0.35, 0xffffff, 0.4);
+    this.spawnFlash(pos, vel, 1.0, 8.0, 0.45, C.GAS_PUFF_COLOR1, 0.3);
+    this.spawnFlash(pos, vel, 0.5, 6.0, 0.35, C.GAS_PUFF_COLOR2, 0.4);
   }
 
   // pos/vel は呼び出し元の生きたオブジェクト(entity の r/v など)をそのまま渡してよい。
@@ -66,7 +66,7 @@ export class EffectsSystem {
     size0: number,
     size1: number,
     duration: number,
-    color: number,
+    color: string | number,
     peakOpacity = 1,
   ): void {
     const billboard = new Billboard(color);
@@ -87,7 +87,7 @@ export class EffectsSystem {
     origin: Vec3,
     baseVel: Vec3,
     count: number,
-    accent: number,
+    accent: string | number,
     sizeMin: number,
     sizeMax: number,
     spread: number,
@@ -107,16 +107,16 @@ export class EffectsSystem {
 
   // 撃破デブリ: 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果。
   // 敵機は自機の ENEMY_SCALE 倍サイズなので、爆発・破片も見合った大きさにする(scale)。
-  spawnShipDestroyEffect(state: OrbitState, scale: number, accent: number): void {
+  spawnShipDestroyEffect(state: OrbitState, scale: number, accent: string | number): void {
     const { t, r, v } = state;
-    this.spawnFlash(r, v, C.DESTROY_FLASH1_SIZE0 * scale, C.DESTROY_FLASH1_SIZE1 * scale, C.DESTROY_FLASH1_DURATION, 0xffb36b);
-    this.spawnFlash(r, v, C.DESTROY_FLASH2_SIZE0 * scale, C.DESTROY_FLASH2_SIZE1 * scale, C.DESTROY_FLASH2_DURATION, 0xfffbe8);
+    this.spawnFlash(r, v, C.DESTROY_FLASH1_SIZE0 * scale, C.DESTROY_FLASH1_SIZE1 * scale, C.DESTROY_FLASH1_DURATION, C.DESTROY_FLASH1_COLOR);
+    this.spawnFlash(r, v, C.DESTROY_FLASH2_SIZE0 * scale, C.DESTROY_FLASH2_SIZE1 * scale, C.DESTROY_FLASH2_DURATION, C.DESTROY_FLASH2_COLOR);
     // 破片のサイズを 1/3 に縮小し、拡散の初速(spread)を大きくして散らせる
     this.scatterFragments(t, r, v, 11, accent, (C.DESTROY_FRAG_SIZE_MIN * scale) / 3, (C.DESTROY_FRAG_SIZE_MAX * scale) / 3, 20.0);
   }
 
   // 破壊片1個を生成する。
-  spawnFragment(state: OrbitState, att: Attitude, accent: number, size: number): void {
+  spawnFragment(state: OrbitState, att: Attitude, accent: string | number, size: number): void {
     this.spawnDebrisPiece(state, { kind: 'fragment', accent, size }, att);
   }
 

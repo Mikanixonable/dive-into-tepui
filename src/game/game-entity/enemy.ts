@@ -24,12 +24,12 @@ import type { SimSpeedManager } from '../sim-speed-manager';
 export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
 
 // enemyKind の種別に応じたメッシュを組む。
-function buildEnemyObj(enemyKind: EnemyKind, accent: number): THREE.Object3D {
+function buildEnemyObj(enemyKind: EnemyKind, accent: string | number): THREE.Object3D {
   return enemyKind.kind === 'stage0' ? buildStage0EnemyShip(accent, enemyKind.typeIndex) : buildEnemyShip(accent);
 }
 
 export class Enemy extends Ship {
-  accent: number; // マーカー色・集団識別。全敵が保持する
+  accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
   readonly orbitLine: OrbitLine;
 
@@ -48,8 +48,8 @@ export class Enemy extends Ship {
     enemyKind: EnemyKind,
     att: Attitude,
     hp: number,
-    accent: number,
-    orbitLineColor: number,
+    accent: string | number,
+    orbitLineColor: string | number,
     _hud: Hud,
     sfx: Sfx,
     fx: EffectsSystem,
@@ -78,6 +78,7 @@ export class Enemy extends Ship {
 
   // 個体色の CSS 表記。方位マーカー・LEAD マーカーの着色に使う。
   get accentColor(): string {
+    if (typeof this.accent === 'string') return this.accent;
     return '#' + this.accent.toString(16).padStart(6, '0');
   }
 
@@ -112,7 +113,7 @@ export class Enemy extends Ship {
   private destroyEffect(): void {
     this._sfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    this._fx.spawnShipDestroyEffect(this.state, C.ENEMY_SCALE, 0xff6a4a);
+    this._fx.spawnShipDestroyEffect(this.state, C.ENEMY_SCALE, C.ENEMY_DESTROY_FRAG_COLOR);
   }
 
   // 被弾によるダメージ・致死判定。
@@ -212,14 +213,12 @@ export class Enemy extends Ship {
     // 散布界をスケール適用
     const perp = randPerp(aimDir);
     const spreadAng = (Math.random() * C.PLASMA_SPREAD_DEG * scaleFactor * Math.PI) / 180;
-// 濃い赤色
-const ENEMY_BULLET_COLOR = 0x8b0000;
 
     const actualAim = rotateAxis(aimDir, perp, spreadAng);
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene, ENEMY_BULLET_COLOR);
+    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
