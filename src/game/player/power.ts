@@ -4,7 +4,7 @@ import { Vec3, dot, v3 } from '../../physics/vec3';
 import * as C from '../const';
 
 export class PowerSystem {
-  private charge = 0; // 蓄電量 [J]、0..POWER_CAPACITY
+  private charge = C.POWER_CAPACITY * 0.75; // 蓄電量 [J]、0..POWER_CAPACITY
 
   // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
   update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude): void {
@@ -18,5 +18,10 @@ export class PowerSystem {
   // HUD 表示用。0..1。
   get chargeRatio(): number {
     return this.charge / C.POWER_CAPACITY;
+  }
+
+  // HUD 表示用。蓄電量そのもの [J]。
+  get chargeJ(): number {
+    return this.charge;
   }
 }
