@@ -58,7 +58,7 @@
       - [閉じる: cameraSystem.overviewMode]
         - editor.onMapClosed()
           - hidePanel()
-          - plan.removeNode() // Δv が NODE_MIN_DV 未満のノードごと
+          - plan.removeNode() // 末尾から Δv が NODE_MIN_DV 未満のノードを削る。有意な Δv のノードに当たったら打ち切る
         - editor.closeMenu() → nodeGizmo.closeMenu()
         - cameraSystem.closeFocusMenu() → focusGizmo.closeMenu()
         - touchControls?.setMapMode(false)
@@ -67,7 +67,7 @@
     - editor.handleInput()
       - clearPlanByKey() // K.deleteNode
         - [editMode] deleteSelected() → deleteNode()
-          - plan.removeNode() / closeMenu() / simSpeedManager.cancelAutoWarp() / hud.hint()
+          - plan.removeNode() / closeMenu() / simSpeedManager.cancelAutoWarp() / hud.hint() // 下流ノードも一緒に消える
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
   - [game.isPaused] 以降を実行せず return するポーズ経路 // 決着後の簡略経路より前。ポーズ中は決着後も完全に止まる
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
@@ -289,7 +289,8 @@
     - [editMode] planDisplay.sync(plan, simTime, displayTime, fo, project)
       - traj.setVisible(true)
       - traj.update() // plan の corners を区間(segment)へ分解し、区間ごとに PlanArc を駆動。表示文脈(frame/un-bake 時刻/投影)もここで更新
-        // 区間の終端はノードの t。末尾区間だけは起点の解析軌道1周期ぶん(orbitPeriodOf)
+        // 区間の終端はノードの t。末尾区間だけは起点の解析軌道1周期ぶん(plan.ts の orbitPeriodOf)
+        // ノードの t は Plan.nodeTimeRange の制約で起点から1周期以内なので、どの区間も1周を超えない
         - arc.setVisible(true) // 区間ごと
         - arc.update() // 区間ごと
           - integrate() // (state0, end) の変化 + スロットル(または force)を満たしたときのみ。OrbitEntity で state0 から end まで RK4 積分し直す(重い)
