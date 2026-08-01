@@ -127,7 +127,7 @@ if (sample) this.selectedNodeIdx = this.plan.retimeNode(idx, sample);
 (`plan.ts:76`)。`fromOrbitalAxes` が丸めで 1e-18 でも返せば、**毎フレーム下流ノードが
 破棄され続ける**。入力がゼロなら呼ばない形にすべき。
 
-## 9. 計画が空のあいだ、区間全体を 200ms ごとに全再積分している
+## 9. 計画が空のあいだ、区間全体を 200ms ごとに全再積分している(スロットル動作除去済み。要パフォーマンス再評価)
 
 - `Plan.trackAnchor` は計画が空のあいだ毎フレーム `player.state`(毎フレーム新オブジェクト)を
   anchor に入れる(`game.ts:236` / `plan.ts:28`)。
