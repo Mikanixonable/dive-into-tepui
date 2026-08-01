@@ -199,8 +199,6 @@ export const DISPLAY_DUR_MONTH = 28 * 86400; // 28日
 
 // --- 軌道計画の折れ線(plan/plan-arc.ts) ---
 export const PLAN_ARC_MAX_SAMPLES = 2000; // 1区間が保持するサンプル数の上限
-// 区間を再積分する最短間隔。編集操作は高頻度なのでここまで間引く(約5Hz)。
-export const PLAN_ARC_THROTTLE_MS = 200;
 // 周期を持たない軌道(双曲線・放物線)で、末尾区間を伸ばす長さ [s]。
 export const APERIODIC_ARC_DURATION = 86400;
 

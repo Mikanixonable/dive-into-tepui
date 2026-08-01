@@ -340,9 +340,9 @@
   `hitSystem.checkBulletHits()` もその回数呼ばれる。一方 `collisionPhysics.resolve()` は
   `canResolvePhysicalCollisions` が false になり `resolveCollision=false` で渡るため、
   `stepSimulation` の中で丸ごとスキップされる。
-- **計画軌道 RK4 の再計算頻度**は `PlanArc` が per-arc に持つ `(state0, end)` の変化検出 +
-  `PLAN_ARC_THROTTLE_MS`(200ms)のスロットルで決まる。`(state0, end)` はどちらも計画の
-  編集でしか動かない(計画が空のあいだだけ、anchor が自機に追従するので毎フレーム動く)ので、
+- **計画軌道 RK4 の再計算**は `PlanArc` が per-arc に持つ `(state0, end)` の変化検出。
+  `(state0, end)` はどちらも計画の編集でしか動かない
+  (計画が空のあいだだけ、anchor が自機に追従するので毎フレーム動く)ので、
   ノードを置いた後は編集していないフレームでは一切再積分されない。マップモード中でも大半の
   フレームは `sampled.syncTransform()`(O(1) の剛体変換)だけで済む。
 - **過去 state の記録・prevState の更新は `physics/orbit-entity.ts` の `OrbitEntity`(`GameEntity.current`)の
