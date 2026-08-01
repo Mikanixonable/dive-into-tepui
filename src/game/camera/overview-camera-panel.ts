@@ -10,7 +10,6 @@ const FRAMES: readonly (readonly [Frame, string])[] = [
 export class OverviewCameraPanel {
   onFocusSelect: ((focus: string) => void) | null = null;
   onFrameSelect: ((frame: Frame) => void) | null = null;
-  onViewReset: (() => void) | null = null;
 
   private readonly panel: HTMLElement;
   private readonly focus: SegmentedControl<string>;

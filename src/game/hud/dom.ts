@@ -138,7 +138,7 @@ const STYLE = `
 
 #hud-stagestatus {
   top: 12px; left: 50%; transform: translateX(-50%);
-  text-align: center; min-width: 170px; padding: 8px 16px;
+  text-align: center; min-width: 280px; padding: 8px 16px;
 }
 #hud-stagestatus .t { font-size: 11px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
 #hud-stagestatus .t.warn { color: ${ACCENT}; }

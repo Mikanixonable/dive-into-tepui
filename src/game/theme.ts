@@ -3,7 +3,7 @@
 import * as C from './const';
 
 export const ACCENT = C.COLOR_ACCENT;
-export const ACCENT_RGB = '255, 106, 0';
+export const ACCENT_RGB = C.COLOR_ACCENT_RGB;
 export const ACCENT_SOFT = C.COLOR_ACCENT_SOFT;
 export const SURFACE = 'rgba(13, 15, 18, 0.82)';
 export const SURFACE_OPAQUE = 'rgba(13, 15, 18, 0.92)'; // main.ts の選択画面・ローディング用

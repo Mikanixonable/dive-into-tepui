@@ -36,6 +36,11 @@ export class CameraSystem {
   overviewMode = false;
   zoomActive = false;
 
+  // sync() で毎フレーム参照する DOM 要素をコンストラクタ時にキャッシュする。
+  private readonly _elStatus: HTMLElement | null;
+  private readonly _elStageStatus: HTMLElement | null;
+  private readonly _elOrbit: HTMLElement | null;
+
   // 両カメラとフォーカス候補ラベル、フォーカス選択 UI を構築し、パネルの選択操作を配線する。
   constructor(
     private readonly _hud: Hud,
@@ -76,6 +81,11 @@ export class CameraSystem {
         }
       });
     }
+
+    // sync() 用の DOM 要素を事前にキャッシュ
+    this._elStatus = document.getElementById('hud-status');
+    this._elStageStatus = document.getElementById('hud-stagestatus');
+    this._elOrbit = document.getElementById('hud-orbit');
   }
 
   // マップ編集中のポインタ操作。最寄りラベルがあればフォーカス選択メニューを開いて消費する。
@@ -158,15 +168,11 @@ export class CameraSystem {
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
     
-    const ids = ['hud-status', 'hud-stagestatus'];
-    for (const id of ids) {
-      const el = document.getElementById(id);
-      if (el) el.style.display = this.overviewMode ? 'none' : '';
-    }
-    const orbitEl = document.getElementById('hud-orbit');
-    if (orbitEl) {
-      orbitEl.style.left = this.overviewMode ? '12px' : '';
-    }
+    // 戦闘ビュー固有パネルを広範囲視点では非表示にする
+    const hidden = this.overviewMode ? 'none' : '';
+    if (this._elStatus) this._elStatus.style.display = hidden;
+    if (this._elStageStatus) this._elStageStatus.style.display = hidden;
+    if (this._elOrbit) this._elOrbit.style.left = this.overviewMode ? '12px' : '';
     if (this.overviewMode) {
       this.overviewCameraPanel.setFocus(this.overviewCamera.focus);
       this.overviewCameraPanel.setFrame(this.overviewCamera.cameraFrame);

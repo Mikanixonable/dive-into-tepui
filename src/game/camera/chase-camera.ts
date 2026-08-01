@@ -46,8 +46,10 @@ export class ChaseCamera {
   }
 
   // 視点の基準フレーム(機体姿勢基準 ⇔ 軌道基準)を切り替える。
+  // panEci もリセットする: フレーム切替時に累積座標の意味が変わり視点がジャンプするのを防ぐ。
   toggleFollowAttitude(): void {
     this.camFollowAttitude = !this.camFollowAttitude;
+    this.panEci = v3(0, 0, 0); // フレーム切替時に座標系不辺によるパンジャンプを防ぐ
     this._hud.hint(
       `視点のRCS追従: ${this.camFollowAttitude ? 'ON (視点が機体姿勢に追従)' : 'OFF (軌道基準の独立視点)'
       }`,
@@ -147,6 +149,13 @@ export class ChaseCamera {
         (2 * this.dist * Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5))) / Math.max(1, window.innerHeight);
       this.panEci = addScaled(this.panEci, right, -mouse.panDx * metersPerPixel);
       this.panEci = addScaled(this.panEci, camUp, mouse.panDy * metersPerPixel);
+    }
+
+    // パン変位を指数平滑で小さくする: パン入力がなければ自動的に中心に戻る。
+    // 中ボタンドラッグ中は減衰しないようにする。
+    if (mouse.panDx === 0 && mouse.panDy === 0) {
+      const decay = Math.exp(-3 * dt);
+      this.panEci = v3(this.panEci.x * decay, this.panEci.y * decay, this.panEci.z * decay);
     }
 
     this.lookTarget = add(center, this.panEci);
