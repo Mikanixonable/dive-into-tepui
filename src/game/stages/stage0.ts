@@ -17,7 +17,7 @@ export class Stage0 extends Stage {
   readonly selectLabel = 'stage 0';
   readonly selectSub =
     `【近接戦闘訓練】 常時選択可。${C.STAGE0_MAX_RANGE / 1000}km以内に色分けされた敵集団 ` +
-    `約${C.STAGE0_PER_GROUP * C.COLORS.STAGE0_GROUP_ACCENTS.length}機、` +
+    `約${C.STAGE0_PER_GROUP * C.COLOR_STAGE0_GROUP_ACCENTS.length}機、` +
     `制限時間${stage0TimeLimitMinutes()}分の撃墜数スコアアタック`;
   readonly selectKeys = ['KeyT'];
   readonly initialAmmo = { mags: 0, rounds: 0 };
