@@ -28,6 +28,14 @@ export function fmtSpeed(ms: number): string {
   return `${ms.toFixed(1)} m/s`;
 }
 
+// UTC 絶対時刻を "yyyymmddhhmmss" で表記する。
+export function fmtDateTime(unixSec: number): string {
+  if (!isFinite(unixSec)) return '--------------';
+  const d = new Date(unixSec * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
+}
+
 // "HH:MM:SS"
 export function fmtTime(s: number): string {
   if (!isFinite(s)) return '--:--:--';

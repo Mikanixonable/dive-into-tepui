@@ -28,10 +28,13 @@ import { SettingsPanel } from './hud/settings-panel';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
+import { CelestialGridVisibility } from '../render/celestial-grid';
 import { Ephemeris } from '../physics/ephemeris';
 import { MapModeToggler } from './map-mode-toggler';
 import { NanWatchdog } from './nan-watchdog';
 import { DebugHistoryLine } from './debug-history-line';
+import { MapContextGizmo, MapMenuItem } from './map-context-gizmo';
+import { MapPickable } from './map-pick';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -52,12 +55,19 @@ export class Game {
   private readonly displayTimeManager: DisplayTimeManager;
   private readonly guide: PlanGuide;
   readonly mapModeToggler: MapModeToggler;
+  private readonly mapContextGizmo: MapContextGizmo;
 
   readonly activeStage: Stage;
   private _isPaused = false;
   get isPaused(): boolean { return this._isPaused; }
 
   private readonly environment: EnvironmentScene;
+
+  // 天球グリッド6トグルの現在保持者。navball ウィンドウ実装後はそちらへ移る想定。
+  celestialGridVisibility: CelestialGridVisibility = {
+    eclipticPlane: false, eclipticPole: false, eclipticGrid: false,
+    equatorPlane: false, equatorPole: false, equatorGrid: false,
+  };
 
   private readonly unlockManager: UnlockManager;
 
@@ -125,6 +135,12 @@ export class Game {
 
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
     this.mapModeToggler = new MapModeToggler(this._hud);
+    this.mapContextGizmo = new MapContextGizmo();
+    this.mapContextGizmo.onSelect = (act, target) => {
+      if (act !== 'focus') return;
+      this.cameraSystem.overviewCamera.focus = target.id;
+      this._hud.hint(`${target.name} にフォーカス`);
+    };
 
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
@@ -173,7 +189,7 @@ export class Game {
     if (this._isPaused) {
       if (this.editor.editMode) {
         this.editor.handleMapPointer(this.input);
-        this.cameraSystem.handleMapPointer(this.input);
+        this.handleMapContextMenu(this.input);
         this.editor.updateEditing(dt, this.simulator.simTime, this.input);
       }
       this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt);
@@ -255,9 +271,9 @@ export class Game {
     this.editor.plan.trackAnchor(this.player.state);
 
     if (this.editor.editMode) {
-      // 右クリックはノードを先に試し、外したぶんだけフォーカス選択へ回る(優先順位はこの順序だけ)。
+      // 右クリックはノードを先に試し、外したぶんだけコンテキストメニューへ回る(優先順位はこの順序だけ)。
       this.editor.handleMapPointer(this.input);
-      this.cameraSystem.handleMapPointer(this.input);
+      this.handleMapContextMenu(this.input);
       this.editor.updateEditing(dt, this.simulator.simTime, this.input);
     }
     else {
@@ -283,9 +299,35 @@ export class Game {
     );
     this.mapModeToggler.update(
       this.input, this.activeStage.isPlaying, this._isPaused,
-      this.editor, this.touchControls, this.cameraSystem, this.displayTimeManager
+      this.editor, this.touchControls, this.cameraSystem, this.displayTimeManager,
+      this.mapContextGizmo,
     );
     this.editor.handleInput(this.input);
+  }
+
+  // 右クリックの最寄り候補(現状はフォーカス候補ラベルのみ)を探し、当たればその種別に応じた
+  // 項目でコンテキストメニューを開いて消費する。
+  private handleMapContextMenu(input: Input): void {
+    input.takeRightClicks((p) => {
+      const target = this.cameraSystem.pickFocusCandidate(p.x, p.y);
+      if (!target) return false;
+      this.mapContextGizmo.openMenu(p.x, p.y, target, this.mapMenuItemsFor(target));
+      return true;
+    });
+  }
+
+  // 被選択物の種別に応じたコンテキストメニュー項目を返す。
+  private mapMenuItemsFor(target: MapPickable): readonly MapMenuItem[] {
+    switch (target.kind) {
+      case 'body':
+      case 'ship':
+      case 'apsis':
+      case 'relnode':
+        return [
+          { label: 'フォーカスを移動', act: 'focus' },
+          { label: 'キャンセル', act: 'cancel' },
+        ];
+    }
   }
 
   // ------------------------------------------------------------------ sync
@@ -311,6 +353,7 @@ export class Game {
       floatingOrigin: this.floatingOrigin,
       displayTime,
       cameraSystem: this.cameraSystem,
+      celestialGridVisibility: this.celestialGridVisibility,
     });
 
     this.player.syncPlayer(this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused, displayTime);
