@@ -7,6 +7,7 @@
 // predicted ではそれが「現在〜先端の間」になるだけで、構造も操作(step/at)もまったく同じ。
 import { Elements, OrbitState, elementsFromState, hermiteInterpolate } from './orbital';
 import { StateQueue } from './state-queue';
+import type { Ephemeris } from './ephemeris';
 import { Vec3 } from './vec3';
 import { stepEnvRK4 } from './envaccel';
 
@@ -40,21 +41,22 @@ export class OrbitEntity {
   }
 
   // 中心重力 + 環境加速度 + 推力で 1 ステップ RK4 積分する(envaccel.ts の stepEnvRK4)。
+  // 環境加速度の太陽・月位置はこのステップの中点で ephemeris から引く。
   // keepDuration > 0 かつ、直前の state が最新の記録サンプルから sampleInterval 秒以上
   // 離れているときだけ、その直前の state を history へ積む(解像度を落とす箇所はここ)。
   // 積んだ後は keepDuration を保持窓として history.cleanup する。keepDuration = 0 なら
   // history には一切触らない(デブリ・薬莢のコストをゼロに保つ)。
   step(
     dt: number,
-    sunPos: Vec3,
-    moonPos: Vec3,
+    ephemeris: Ephemeris,
     bcInv: number,
     thrust: Vec3 | null,
     sampleInterval: number,
     keepDuration: number,
   ): void {
     const prev = this._state;
-    const next = stepEnvRK4(prev, dt, sunPos, moonPos, bcInv, thrust);
+    const mid = prev.t + dt / 2;
+    const next = stepEnvRK4(prev, dt, ephemeris.sunPosAt(mid), ephemeris.moonPosAt(mid), bcInv, thrust);
     // 間引き済み history への記録
     if (keepDuration > 0) {
       const newest = this._history.newest;
