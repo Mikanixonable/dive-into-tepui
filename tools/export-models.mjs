@@ -213,23 +213,46 @@ function buildPlayerShip() {
     g.add(bracket);
   }
 
-  // === 展開式ラジエーター(上下1枚ずつ、機体X軸ヒンジで後方へ折り畳み) ===
+  // === 展開式ラジエーター(上下1枚ずつ、蛇腹4折り) ===
+  // 1折りはハル幅と揃えた 2.3×2.3 の正方形。折り目 Group を入れ子にし、
+  // 各折り目の rotation.x だけで蛇腹全体の伸縮を表現できるようにする
+  // (src/game/player/radiator.ts の sync が毎フレーム書き込む)。
+  // 折り目名 `${radiatorUp/Down}Fold${i}` は src/render/ships.ts の radiatorFoldName と一致させる。
   const radiatorMat = std(0xdde3ea, { metalness: 0.15, roughness: 0.8 });
-  const radiatorFinMat = std(0xc2c9d2, { metalness: 0.15, roughness: 0.8 });
+  const radiatorSkeletonMat = std(0x3a4048, { metalness: 0.5, roughness: 0.55 });
+  const RADIATOR_SEG = 2.3;
+  const RADIATOR_FOLD_COUNT = 4;
+  const RADIATOR_STACK_NUDGE = 0.012; // 収納時に折り目同士が同一平面へ重なる際の Z ファイティング回避
+  const RADIATOR_SKELETON_OFFSET = 0.12; // 骨格を放熱面の反対側へ張り出す量
+
   for (const sy of [1, -1]) {
     const hinge = new THREE.Group();
-    hinge.name = sy > 0 ? 'radiatorUp' : 'radiatorDown';
+    const baseName = sy > 0 ? 'radiatorUp' : 'radiatorDown';
+    hinge.name = baseName;
     hinge.position.set(0, sy * 1.3, -0.6);
     g.add(hinge);
 
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(6.0, 0.06, 5.5), radiatorMat);
-    panel.position.set(0, 0, -2.75);
-    hinge.add(panel);
+    let parent = hinge;
+    for (let i = 0; i < RADIATOR_FOLD_COUNT; i++) {
+      const fold = new THREE.Group();
+      fold.name = `${baseName}Fold${i}`;
+      if (i > 0) fold.position.set(0, 0, RADIATOR_SEG);
+      parent.add(fold);
 
-    for (const fz of [-1.1, -2.2, -3.3, -4.4]) {
-      const fin = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.03, 0.12), radiatorFinMat);
-      fin.position.set(0, 0.045, fz);
-      hinge.add(fin);
+      // 放熱面: 回転中心(折り目)がセグメントの根元に来るよう、板は半分先へずらす。
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEG, 0.04, RADIATOR_SEG), radiatorMat);
+      panel.position.set(0, i * RADIATOR_STACK_NUDGE, RADIATOR_SEG / 2);
+      fold.add(panel);
+
+      // 骨格: 放熱面と逆位相(偶数折りは +Y、奇数折りは -Y)に張り出す細材2本。
+      const skeletonY = (i % 2 === 0 ? 1 : -1) * RADIATOR_SKELETON_OFFSET;
+      for (const sx of [-1, 1]) {
+        const rod = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, RADIATOR_SEG), radiatorSkeletonMat);
+        rod.position.set(sx * 1.0, skeletonY, RADIATOR_SEG / 2);
+        fold.add(rod);
+      }
+
+      parent = fold;
     }
   }
 
