@@ -269,7 +269,7 @@
     - thrustEffects.sync() → core/outer の sync() or hide() // 実機体の現在状態(this.state)のまま
     - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4 // 同上
     - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出。同上
-    - radiator.sync() // ヒンジ Group の rotation.x へ展開角を書く
+    - radiator.sync() // ヒンジ Group の rotation.y へ展開角を書く
     - reentryEffects.sync() // qdyn が REENTRY_GLOW_MIN_Q 未満、または !alive なら隠すだけ
     - markers.sync(currentState, displayState) // 自機由来の HUD マーカー。呼び出し側から見えるのは syncPlayer だけ
       - [overviewMode] 戦闘用7キーを hide + displayState があれば markerManager.setPosition('self') / 無ければ hide('self')
