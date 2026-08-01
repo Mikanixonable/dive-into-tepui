@@ -9,6 +9,7 @@ import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
 import { CollisionPhysics } from './collision';
 import { Sfx } from '../../audio/sfx';
+import { GameEntity } from '../game-entity/game-entity';
 
 export class Simulator {
   readonly hitSystem: HitSystem;
@@ -37,6 +38,7 @@ export class Simulator {
     bulletCollision: boolean,
     resolveCollision: boolean,
     doSubstep: boolean,
+    onHighSpeedImpact?: (a: GameEntity, b: GameEntity, speed: number) => void,
   ): void {
     // fps によらず積分の刻みを一定に保つため、サブステップ数は simDt のみから決める。
     const nSub = doSubstep
@@ -52,7 +54,7 @@ export class Simulator {
     }
 
     if (resolveCollision) {
-      this.collisionPhysics.resolve(dt, player, this.entities.all(), () => this._sfx.clank());
+      this.collisionPhysics.resolve(dt, player, this.entities.all(), () => this._sfx.clank(), onHighSpeedImpact);
     }
 
     this.stepAttitudes(simDt, player);

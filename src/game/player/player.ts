@@ -198,6 +198,22 @@ export class Player extends Ship {
     this.destroyEffect();
   }
 
+  // 敵機との高速接触によるダメージ・致死判定。speed は接触時の相対速度 [m/s]。
+  collidedAtSpeed(speed: number, activeStage: Stage): void {
+    if (!this.alive) return;
+
+    if (!this.applyCollisionDamage(speed)) return;
+    if (this.hp > 0) {
+      this._sfx.clank();
+      this._fx.spawnGasPuff(this.state.r, this.state.v);
+      return;
+    }
+
+    this.alive = false;
+    activeStage.recordPlayerLost('敵機との高速接触により機体を喪失した');
+    this.destroyEffect();
+  }
+
   // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。
   checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3): void {
     if (!this.alive) return;

@@ -4,6 +4,7 @@ import { FloatingOrigin } from './floating-origin';
 import * as C from './const';
 import { v3 } from '../physics/vec3';
 import { Player } from './player/player';
+import { Enemy } from './game-entity/enemy';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageId } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
@@ -217,7 +218,16 @@ export class Game {
     this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage,
       true, // bulletCollision
       this.simSpeedManager.canResolvePhysicalCollisions, // resolveCollision
-      true, // doSubstep 
+      true, // doSubstep
+      (a, b, speed) => {
+        if (a === this.player && b instanceof Enemy) {
+          this.player.collidedAtSpeed(speed, this.activeStage);
+          b.collidedAtSpeed(speed, this.simulator.simTime, this.activeStage);
+        } else if (b === this.player && a instanceof Enemy) {
+          this.player.collidedAtSpeed(speed, this.activeStage);
+          a.collidedAtSpeed(speed, this.simulator.simTime, this.activeStage);
+        }
+      },
     );
 
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
