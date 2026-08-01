@@ -154,9 +154,10 @@ export class CameraSystem {
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
     
-    const chaseResetBtn = document.getElementById('hud-chase-reset');
-    if (chaseResetBtn) {
-      chaseResetBtn.style.display = this.overviewMode ? 'none' : '';
+    const ids = ['hud-chase-reset', 'hud-status', 'hud-stagestatus'];
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = this.overviewMode ? 'none' : '';
     }
     if (this.overviewMode) {
       this.overviewCameraPanel.setFocus(this.overviewCamera.focus);

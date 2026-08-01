@@ -162,7 +162,10 @@ export class Game {
     this.handleInput();
 
     // handleInput より後に置く: ポーズ中も Esc・ヘルプなどは効かせる。
-    if (this._isPaused) { return; }
+    if (this._isPaused) {
+      this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt);
+      return;
+    }
 
     // behave が呼ばれなくなるので、決着時点の thrust が凍結され続けないよう明示的に消す。
     if (!this.activeStage.isPlaying) {
