@@ -47,14 +47,40 @@ export const RCS_BLOCK_OFFSETS: { x: number; y: number; z: number }[] = [
   { x: -1.0, y: -0.85, z: 1.9 },
 ];
 
-// ラジエーターのヒンジ Group 名(機体座標系、X軸ヒンジで後方へ折り畳み)。
-// getObjectByName() で引いて展開角を同期する。
+// ラジエーターのヒンジ Group 名(機体座標系)。getObjectByName() で引く。
 export const RADIATOR_OBJECT_NAMES = { up: 'radiatorUp', down: 'radiatorDown' } as const;
 
+// 蛇腹1折りの一辺(ハル幅と揃える) [m]。tools/export-models.mjs の RADIATOR_SEG と一致させる。
+export const RADIATOR_SEGMENT_LENGTH = 2.3;
+
+// 全開時、各折りが展開軸(±Y)から傾く角度。
+export const RADIATOR_DEPLOY_TILT = 20 * Math.PI / 180;
+
+// ラジエーター折り目 Group 名(ヒンジ Group の子孫として入れ子)。
+// tools/export-models.mjs の命名(`${radiatorUp/Down}Fold${i}`)と一致させる。
+export function radiatorFoldName(side: 'up' | 'down', fold: number): string {
+  return `${RADIATOR_OBJECT_NAMES[side]}Fold${fold}`;
+}
+
 // ラジエーター1枚を全開にしたときの機体中心からの最遠点 [m]。
-// 全開時の板の隅は幅方向に ±3.0、ヒンジ位置 (0, ±1.3, -0.6) から板長 5.5 展開した
-// 位置 (±3.0, 1.3+5.5, -0.6) に来るため、その3成分から距離を算出。
-export const RADIATOR_TIP_DISTANCE = Math.sqrt(3.0 * 3.0 + 6.8 * 6.8 + 0.6 * 0.6);
+// ヒンジ (0, ±1.3, -0.6) を基点に、展開軸から ±RADIATOR_DEPLOY_TILT で
+// 交互に傾く折り目の方向ベクトルを RADIATOR_FOLD_COUNT 個ぶん積算した先端位置
+// (幅方向 ±RADIATOR_SEGMENT_LENGTH/2 のコーナー)までの距離。
+function computeRadiatorTipDistance(): number {
+  const base = -Math.PI / 2;
+  let y = 0;
+  let z = 0;
+  for (let i = 0; i < C.RADIATOR_FOLD_COUNT; i++) {
+    const theta = base + (i % 2 === 0 ? -RADIATOR_DEPLOY_TILT : RADIATOR_DEPLOY_TILT);
+    y += -Math.sin(theta) * RADIATOR_SEGMENT_LENGTH;
+    z += Math.cos(theta) * RADIATOR_SEGMENT_LENGTH;
+  }
+  const halfWidth = RADIATOR_SEGMENT_LENGTH / 2;
+  const tipY = 1.3 + y;
+  const tipZ = -0.6 + z;
+  return Math.sqrt(halfWidth * halfWidth + tipY * tipY + tipZ * tipZ);
+}
+export const RADIATOR_TIP_DISTANCE = computeRadiatorTipDistance();
 
 // マガジン寸法(機体座標系)。ベルト連結間隔(MAG_BELT_PITCH)は game.ts が
 // マガジンリンクの並びを計算するのに使う。純粋な数値なので JSON 化はしない。

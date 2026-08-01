@@ -2,14 +2,12 @@
 // 敵の射撃 ON/OFF をパネルから切り替えられる。タイトルの通常ボタン列には出ない。
 import { Stage } from './stage';
 import { generateCluster } from './spawner/enemy-spawner';
-import { SegmentedControl } from '../hud/buttons';
+import { HudToggle } from '../hud/buttons';
 import { ACCENT, EDGE, SURFACE, TEXT } from '../theme';
 import * as C from '../const';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
-
-type FireToggle = 'on' | 'off';
 
 const DEBUG_ENEMY_COUNT = 5;
 
@@ -23,7 +21,7 @@ export class StageDebug extends Stage {
 
   private enemyFireEnabled = true;
   private panel!: HTMLElement;
-  private fireToggle!: SegmentedControl<FireToggle>;
+  private fireToggle!: HudToggle;
 
   // デバッグステージのブリーフィング文言を返す。
   briefingHtml(enemyCount: number): string {
@@ -49,17 +47,10 @@ export class StageDebug extends Stage {
     title.textContent = 'DEBUG';
     this.panel.appendChild(title);
 
-    // 選択は enemyFireEnabled へ入るだけで、敵への反映は update が毎フレーム行う
-    this.fireToggle = new SegmentedControl<FireToggle>(
-      '敵射撃',
-      [
-        ['on', 'ON'],
-        ['off', 'OFF'],
-      ],
-      (value) => { this.enemyFireEnabled = value === 'on'; },
-    );
+    // 切替は enemyFireEnabled へ入るだけで、敵への反映は update が毎フレーム行う
+    this.fireToggle = new HudToggle('敵射撃', (on) => { this.enemyFireEnabled = on; });
     this.panel.appendChild(this.fireToggle.element);
-    this.fireToggle.setSelected('on');
+    this.fireToggle.setOn(true);
 
     this._hud.root.appendChild(this.panel);
   }

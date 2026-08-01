@@ -37,7 +37,8 @@ export const REENTRY_GLOW_FULL_Q = 2e4; // 燃焼エフェクトが最大強度�
 export const GUN_HEAT_PER_ROUND = 5.5e6;
 
 // --- ラジエーター(上下2枚、個別展開) ---
-export const RADIATOR_PANEL_AREA = 66; // 1枚の放熱面積 [m^2](6.0 × 5.5 m のパネルの両面ぶん)
+export const RADIATOR_PANEL_AREA = 42; // 1枚の放熱面積 [m^2](2.3 × 2.3 m の蛇腹 4 折りの両面ぶん)
+export const RADIATOR_FOLD_COUNT = 4; // 蛇腹の折り数(1枚あたり)
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]

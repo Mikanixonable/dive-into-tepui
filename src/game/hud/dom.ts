@@ -106,6 +106,19 @@ const STYLE = `
   border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
 }
 #hud .hud-seg .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud .hud-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+#hud .hud-toggle .toggle-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; }
+#hud .hud-toggle .toggle-track {
+  pointer-events: auto; cursor: pointer; position: relative; display: inline-block;
+  width: 34px; height: 18px; border-radius: 9px; border: 1px solid ${EDGE};
+  background: ${SURFACE}; transition: border-color 0.15s, background 0.15s;
+}
+#hud .hud-toggle .toggle-track.on { border-color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.25); }
+#hud .hud-toggle .toggle-knob {
+  position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+  background: ${INK_SOFT}; transition: left 0.15s, background 0.15s;
+}
+#hud .hud-toggle .toggle-track.on .toggle-knob { left: 18px; background: ${ACCENT}; }
 #hud-overview-camera { display: none; top: 12px; left: 12px; width: 292px; pointer-events: auto; }
 #hud-displaytime { display: none; top: 166px; left: 12px; width: 292px; pointer-events: auto; }
 #hud-displaytime input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
