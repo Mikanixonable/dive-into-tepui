@@ -1,6 +1,6 @@
 // HUD ステータスパネル(スタッツ・ターゲット情報・敵一覧)の同期。
 import * as C from '../const';
-import { TEXT_DIM as INK_SOFT } from '../theme';
+import { ACCENT_SECONDARY, TEXT_DIM as INK_SOFT } from '../theme';
 import { altitudeOf } from '../../physics/orbital';
 import { dot, len, sub } from '../../physics/vec3';
 import type { Game } from '../game';
@@ -59,7 +59,8 @@ export class HudPanels {
   // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
   update(game: Game, dt: number): void {
     const player = game.player;
-    const tgt = game.targeter.autoTarget;
+    const tgt = game.targeter.aliveTarget;
+    const secTgt = game.targeter.aliveSecondaryTarget;
     const playerEl = player.elements;
     const tgtEl = tgt ? tgt.elements : null;
 
@@ -132,6 +133,7 @@ export class HudPanels {
           name: e.name,
           dist: len(sub(e.state.r, player.state.r)),
           targeted: e === tgt,
+          secondary: e === secTgt,
         }))
         .sort((a, b) => a.dist - b.dist);
       this.setEnemyList(rows);
@@ -235,8 +237,9 @@ export class HudPanels {
       <div class="row"><span class="k">相対傾斜 [AN/DN]</span><span class="v">${isFinite(t.relIncDeg) ? t.relIncDeg.toFixed(2) + '°' : '---'}</span></div>`;
   }
 
-  // 敵一覧パネルの本文を、距離順の行として書き換える
-  private setEnemyList(rows: { name: string; dist: number; targeted: boolean }[]): void {
+  // 敵一覧パネルの本文を、距離順の行として書き換える。第二ターゲットは第一と別に
+  // シアンで強調する(CSS クラスでなくインライン色。この2色目は theme.ts の ACCENT_SECONDARY)。
+  private setEnemyList(rows: { name: string; dist: number; targeted: boolean; secondary: boolean }[]): void {
     const list = this.els.get('elist');
     if (!list) return;
     // 残存する敵がいなければプレースホルダ表示にする
@@ -245,10 +248,11 @@ export class HudPanels {
       return;
     }
     list.innerHTML = rows
-      .map(
-        (r) =>
-          `<div class="erow${r.targeted ? ' tgt' : ''}"><span>${r.targeted ? '▶ ' : ''}${r.name}</span><span>${fmtDist(r.dist)}</span></div>`,
-      )
+      .map((r) => {
+        const style = r.secondary ? ` style="color:${ACCENT_SECONDARY}"` : '';
+        const mark = r.targeted ? '▶ ' : r.secondary ? '▷ ' : '';
+        return `<div class="erow${r.targeted ? ' tgt' : ''}"${style}><span>${mark}${r.name}</span><span>${fmtDist(r.dist)}</span></div>`;
+      })
       .join('');
   }
 }

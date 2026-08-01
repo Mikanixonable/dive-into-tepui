@@ -146,13 +146,14 @@ export class CameraSystem {
     // キー/マウスによる旋回入力をまとめる
     const keyYaw = (input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0);
     const keyPitch = (input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0);
+    const keyRoll = (input.down(K.cameraRollLeft) ? 1 : 0) + (input.down(K.cameraRollRight) ? -1 : 0);
     const mouse = input.mouse();
 
     if (this.overviewMode) {
-      this.overviewCamera.update(mouse, keyYaw, keyPitch, dt, simTime);
+      this.overviewCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, simTime);
     }
     else {
-      this.combatCamera.update(mouse, keyYaw, keyPitch, dt, player, input);
+      this.combatCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, player, input);
     }
   }
 

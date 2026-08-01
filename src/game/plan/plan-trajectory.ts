@@ -130,7 +130,7 @@ export class PlanTrajectory {
   private arcAt(i: number): PlanArc {
     while (this.arcs.length <= i) {
       const idx = this.arcs.length;
-      const arc = new PlanArc(arcColor(idx), arcOpacity(idx), 2);
+      const arc = new PlanArc(arcColor(idx), arcOpacity(idx), 4);
       this.arcs.push(arc);
       this.group.add(arc.object3d);
     }

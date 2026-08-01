@@ -123,6 +123,12 @@ const STYLE = `
 #hud-overview-camera { display: none; top: 12px; left: 12px; width: 292px; pointer-events: auto; }
 #hud-displaytime { display: none; top: 166px; left: 12px; width: 292px; pointer-events: auto; }
 #hud-displaytime input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
+#hud-displaytime input[type="number"].manual-duration-value {
+  pointer-events: auto; width: 64px; padding: 3px 6px; font-size: 11px;
+  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK};
+}
+#hud-displaytime .slider-ticks { display: flex; justify-content: space-between; margin-top: 2px; }
+#hud-displaytime .slider-ticks span { font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; }
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
 #hud-trajframe { display: none; top: 296px; left: 12px; width: 292px; pointer-events: auto; }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }

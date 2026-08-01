@@ -49,6 +49,8 @@ export const KEY_MAPPING = {
   cameraYawRight: { code: 'ArrowRight', label: '→' },
   cameraPitchUp: { code: 'ArrowUp', label: '↑' },
   cameraPitchDown: { code: 'ArrowDown', label: '↓' },
+  cameraRollLeft: { code: 'Numpad0', label: 'Num0' },
+  cameraRollRight: { code: 'Numpad1', label: 'Num1' },
 
   // 時間
   warpSlower: { code: 'Comma', label: ',' },

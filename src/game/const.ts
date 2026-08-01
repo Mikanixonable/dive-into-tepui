@@ -103,6 +103,7 @@ export const ZOOM_MUZZLE_FLASH_SCALE = 0.02; // ズーム中のマズルフラ�
 export const CAM_KEY_YAW_RATE = 1.4;
 export const CAM_KEY_PITCH_RATE = 1.0;
 export const CAM_DRAG_ROTATE_RATE = 0.005; // マウスドラッグ [rad/px]
+export const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
 
 // 進行方向ホールド([C]キー): 機首をプログレードへ向けるオートパイロットの PD ゲイン
 export const PROGRADE_HOLD_KP = 3.2; // 姿勢誤差角に対する比例ゲイン
@@ -231,7 +232,12 @@ export const NODE_TOL_PLANE_DEG = 2.0; // 軌道面の角度差 [deg]
 export const PREDICT_DUR_DAY = 86400; // 1日
 export const PREDICT_DUR_WEEK = 7 * 86400; // 7日
 export const PREDICT_DUR_MONTH = 28 * 86400; // 28日
+export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定できる表示期間の上限 [s](1年)
 export const PREDICT_MAX_SAMPLES = 2000; // 保持する予測サンプル数の上限
+// 1区間あたりの積分ステップ数の上限。手動レンジで年スケールの表示期間を許すと
+// stepDt(1周回/STEPS_PER_REV)のままではステップ数がフレーム時間を圧迫するので、
+// 超えたら plan-arc.ts の再突入時と同じ「そこで打ち切って endState() を返す」経路に乗せる。
+export const PLAN_ARC_MAX_STEPS = 20000;
 // 予測の再計算頻度: 編集操作に対しては最短でこの間隔(高頻度キー操作を約5Hzに間引く)、
 // 変化がなくても摂動で軌道自体がドリフトするのでこの間隔ごとに再計算する。
 export const PREDICT_DIRTY_THROTTLE_MS = 200;
@@ -322,6 +328,7 @@ export const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 export const COLOR_ACCENT = '#ff6a00';
 export const COLOR_ACCENT_RGB = '255, 106, 0'; // COLOR_ACCENT の RGB 成分（色変更時は必ず両方を同期すること）
 export const COLOR_ACCENT_SOFT = '#ff9040';
+export const COLOR_ACCENT_SECONDARY = '#00c8ff'; // 第二ターゲット用アクセント(シアン)
 export const COLOR_BG = '#08090c';
 export const COLOR_TEXT = '#e6e8eb';
 export const COLOR_TEXT_DIM = '#7d838c';

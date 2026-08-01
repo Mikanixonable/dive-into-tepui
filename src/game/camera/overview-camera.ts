@@ -1,6 +1,6 @@
 // マップモードの地球中心広範囲視点カメラ。太陽回転系への切替とフォーカス対象の選択を持つ。
 import * as THREE from 'three/webgpu';
-import { Vec3, add, addScaled, cross, norm, scale, v3 } from '../../physics/vec3';
+import { Vec3, add, addScaled, cross, dot, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
@@ -9,6 +9,7 @@ import { FocusMarkers } from './focus-markers';
 import { ViewFrame } from '../../physics/projection';
 import { Frame, RelativeVec3, toFramePos, toInertialPos } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
+import { qFromAxisAngle, qRotate } from '../../physics/attitude';
 
 const WORLD_UP = v3(0, 1, 0);
 const OVERVIEW_CAMERA_FOV = 50;
@@ -32,8 +33,10 @@ export class OverviewCamera {
 
   // offset_r … 注視点 → カメラの相対位置ベクトル(方位・仰角・距離を兼ねる)
   // pan_r    … focus → 注視点のパン変位
+  // up_r     … カメラの上方向(テンキー0/1のロールで offset_r まわりに回る)
   private offset_r: RelativeVec3;
   private pan_r: RelativeVec3;
+  private up_r: RelativeVec3;
   // カメラ視点を固定する座標系(慣性系 / 太陽回転系)。
   private _cameraFrame: Frame = 'inertial';
   private simTime = 0; // set cameraFrame の座標変換に使う
@@ -62,6 +65,7 @@ export class OverviewCamera {
     );
     this.offset_r = toFramePos(this._cameraFrame, 0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST), this.ephemeris);
     this.pan_r = toFramePos(this._cameraFrame, 0, v3(), this.ephemeris);
+    this.up_r = toFramePos(this._cameraFrame, 0, WORLD_UP, this.ephemeris);
   }
 
   // 注視点からカメラまでの距離を返す。
@@ -73,6 +77,7 @@ export class OverviewCamera {
   reset(): void {
     this.offset_r = toFramePos(this._cameraFrame, this.simTime, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST), this.ephemeris);
     this.resetPan();
+    this.up_r = toFramePos(this._cameraFrame, this.simTime, WORLD_UP, this.ephemeris);
     this.focus = 'earth';
     this._hud.hint('マップ視点をリセット');
   }
@@ -98,8 +103,10 @@ export class OverviewCamera {
     if (frame === from) return;
     const offEci = toInertialPos(from, this.simTime, this.offset_r, this.ephemeris);
     const panEci = toInertialPos(from, this.simTime, this.pan_r, this.ephemeris);
+    const upEci = toInertialPos(from, this.simTime, this.up_r, this.ephemeris);
     this.offset_r = toFramePos(frame, this.simTime, offEci, this.ephemeris);
     this.pan_r = toFramePos(frame, this.simTime, panEci, this.ephemeris);
+    this.up_r = toFramePos(frame, this.simTime, upEci, this.ephemeris);
     this._cameraFrame = frame;
   }
 
@@ -108,6 +115,7 @@ export class OverviewCamera {
     mouse: MouseDelta,
     keyYaw: number,
     keyPitch: number,
+    keyRoll: number,
     dt: number,
     simTime: number,
   ): void {
@@ -115,6 +123,7 @@ export class OverviewCamera {
     const focus = this.resolveFocus();
     let offEci = toInertialPos(this._cameraFrame, simTime, this.offset_r, this.ephemeris);
     let panEci = toInertialPos(this._cameraFrame, simTime, this.pan_r, this.ephemeris);
+    let upEci = toInertialPos(this._cameraFrame, simTime, this.up_r, this.ephemeris);
 
     // ホイール/ドラッグから距離・方位角・仰角を更新する
     const dist = Math.max(C.OVERVIEW_CAMERA_MIN_DIST,
@@ -126,10 +135,15 @@ export class OverviewCamera {
     ));
     offEci = sphericalOffset(yaw, pitch, dist);
 
+    // 視点方向(offEci)が変わったぶん上方向を再直交化してから、視線軸まわりにロールを加える。
+    const newDir = norm(offEci);
+    upEci = norm(addScaled(upEci, newDir, -dot(upEci, newDir)));
+    if (keyRoll !== 0) upEci = qRotate(qFromAxisAngle(newDir, keyRoll * C.CAM_KEY_ROLL_RATE * dt), upEci);
+
     // 中ボタンドラッグ/2本指ドラッグでパン変位を更新する
     if (mouse.panDx !== 0 || mouse.panDy !== 0) {
-      const viewDir = scale(norm(offEci), -1);
-      const right = norm(cross(viewDir, WORLD_UP));
+      const viewDir = scale(newDir, -1);
+      const right = norm(cross(viewDir, upEci));
       const camUp = norm(cross(right, viewDir));
       const metersPerPixel =
         (2 * dist * Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5))) / Math.max(1, window.innerHeight);
@@ -142,10 +156,11 @@ export class OverviewCamera {
     this.view = {
       position: add(lookTarget, offEci),
       lookTarget,
-      up: WORLD_UP,
+      up: upEci,
       fovDeg: this.fov,
       aspect: window.innerWidth / window.innerHeight,
     };
+    this.up_r = toFramePos(this._cameraFrame, simTime, upEci, this.ephemeris);
     this.offset_r = toFramePos(this._cameraFrame, simTime, offEci, this.ephemeris);
     this.pan_r = toFramePos(this._cameraFrame, simTime, panEci, this.ephemeris);
   }

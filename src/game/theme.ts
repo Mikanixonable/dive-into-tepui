@@ -1,10 +1,12 @@
 // ダークテーマ色定数の唯一の定義元。
-// フラットダークテーマ: ほぼ黒の面に単色グレー、アクセントはオレンジ 1 色のみ。
+// フラットダークテーマ: ほぼ黒の面に単色グレー、アクセントは基本オレンジ 1 色。
+// 第二ターゲットの識別だけはオレンジと混同できないシアンを別アクセントとして使う。
 import * as C from './const';
 
 export const ACCENT = C.COLOR_ACCENT;
 export const ACCENT_RGB = C.COLOR_ACCENT_RGB;
 export const ACCENT_SOFT = C.COLOR_ACCENT_SOFT;
+export const ACCENT_SECONDARY = C.COLOR_ACCENT_SECONDARY;
 export const SURFACE = 'rgba(13, 15, 18, 0.82)';
 export const SURFACE_OPAQUE = 'rgba(13, 15, 18, 0.92)'; // main.ts の選択画面・ローディング用
 export const EDGE = 'rgba(255, 255, 255, 0.09)';
