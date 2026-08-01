@@ -65,18 +65,13 @@ export class Simulator {
     dt: number,
     player: Player,
   ): number {
-    // サブステップ中点の太陽/月位置を1回だけ求めて全エンティティで共有する
-    const mid = simTime + dt / 2;
-    const sunPos = this.ephemeris.sunPosAt(mid);
-    const moonPos = this.ephemeris.moonPosAt(mid);
-
     // 各エンティティを積分する
-    player.stepSim(dt, sunPos, moonPos);
-    for (const e of this.entities.enemies) e.stepSim(dt, sunPos, moonPos);
-    for (const b of this.entities.bullets) b.stepSim(dt, sunPos, moonPos);
-    for (const c of this.entities.casings) c.stepSim(dt, sunPos, moonPos);
-    for (const d of this.entities.debris) d.stepSim(dt, sunPos, moonPos);
-    for (const a of this.entities.ammos) a.stepSim(dt, sunPos, moonPos);
+    player.stepSim(dt, this.ephemeris);
+    for (const e of this.entities.enemies) e.stepSim(dt, this.ephemeris);
+    for (const b of this.entities.bullets) b.stepSim(dt, this.ephemeris);
+    for (const c of this.entities.casings) c.stepSim(dt, this.ephemeris);
+    for (const d of this.entities.debris) d.stepSim(dt, this.ephemeris);
+    for (const a of this.entities.ammos) a.stepSim(dt, this.ephemeris);
 
     player.thermal.updateThermal(dt, player.state.r, player.state.v);
 

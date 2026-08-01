@@ -172,7 +172,7 @@ main.ts
 | ポーズ | `Game.paused` | 唯一の駆動源は `SettingsPanel.onSettingsOpenChange` |
 | 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | |
 | 地球自転の初期位相 | `EnvironmentScene.earthPhase0` | |
-| 太陽・月の初期位相 | `Ephemeris` | それ以外の状態は持たない(時刻を引数に取る純サンプラ) |
+| 太陽・月の初期位相 | `Ephemeris` | 時刻を引数に取るサンプラ。他に持つのは `sunPosAt`/`moonPosAt` の直近1件のメモ(時刻と結果)だけで、返す値が不変なので呼び出し側から観測できる状態ではない |
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
 | 敵 AI の実行時状態(最終発砲時刻・バースト残数) | `Enemy` | |
 | LEAD マーカーの表示履歴(敵ごとの最終ロック時刻) | `LeadMarkers` | 表示専用の状態なので Enemy には置かない。毎フレーム生存中の敵ぶんだけ作り直す |

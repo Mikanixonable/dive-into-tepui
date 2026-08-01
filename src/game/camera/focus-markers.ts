@@ -22,6 +22,9 @@ const LABEL_NAMES: Record<string, string> = {
   'em-l5': '地球-月 L5',
   'se-l1': '太陽-地球 L1',
   'se-l2': '太陽-地球 L2',
+  'se-l3': '太陽-地球 L3',
+  'se-l4': '太陽-地球 L4',
+  'se-l5': '太陽-地球 L5',
 };
 
 export class FocusMarkers {
@@ -51,6 +54,9 @@ export class FocusMarkers {
       'em-l5': emL.L5,
       'se-l1': seL.L1,
       'se-l2': seL.L2,
+      'se-l3': seL.L3,
+      'se-l4': seL.L4,
+      'se-l5': seL.L5,
     };
 
     // 求めた座標をラベルとマーカーへ反映する
