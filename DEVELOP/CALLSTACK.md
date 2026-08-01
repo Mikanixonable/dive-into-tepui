@@ -203,12 +203,13 @@
         - predicted.step() // 1ステップごとに ephemeris を中点サンプル
     - advanceBudget(entity, ...) // 残り予算をカーソル位置から1周ぶん配る。entity.stepPrediction() が最初から false(predictDuration=0/推力中/truncated)なら消費 0 で次へ即進む
   - cameraSystem.update() // 物理積分の後に呼ぶ(追従カメラの基準を積分後の自機位置に合わせるため)
-    - chaseCamera.toggleFollowAttitude() // K.followAttitudeToggle。カメラ自身の状態なのでここで消費する
-    - zoomActive = !overviewMode && K.gunsightZoom 押下
-    - overviewCamera.update() // cameraSystem.overviewMode のみ
-    - chaseCamera.update() // !overviewMode のみ
-      - computeGunsightView() // player.alive && zoomActive
-      - computeChaseView() // それ以外(!alive / 姿勢追従 / 軌道基準の3経路)
+    - combatCamera.toggleFollowAttitude() // K.followAttitudeToggle。カメラ自身の状態なのでここで消費する
+    - overviewCamera.update() // cameraSystem.overviewMode のみ。結果を自身の view へ書く
+    - combatCamera.update() // !overviewMode のみ
+      - zoomActive = K.gunsightZoom 押下 // combatCamera 自身のフィールドへ書く(overviewMode 中はこの update 自体が呼ばれないため更新されない — CameraSystem.zoomActive の !overviewMode ガードが読み替えを担保する)
+      - gunsightCamera.update() // player.alive && zoomActive。結果を自身の view へ書く
+      - chaseCamera.update() // それ以外。camFollowAttitude && player.alive のときだけ player.att.q を rot に合成し、鍵/ドラッグ入力を回転として適用。結果を自身の view へ書く
+      - 選ばれた view.fovDeg から combatCamera 自身の view.fovDeg を指数補間
   - editor.plan.trackAnchor() // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
   - [editor.editMode] 計画編集モード
     - editor.handleMapPointer() // 右クリック → 左クリックの順に受ける
@@ -236,8 +237,7 @@
   - floatingOrigin = new FloatingOrigin(player.state.r, player.state.v) // 以降の sync 系はこの fo だけを参照する
   - orbitPeriod / displayTime を確定 // displayTimeManager.resolveDisplayTime(): 未来ゴーストのスライダーが立っている間だけ先の時刻
   - cameraSystem.sync() // 最初に呼ぶ: environment.sync とマーカー投影が今フレームのカメラ行列を読む
-    - overviewCamera.sync() // overviewMode のみ
-    - chaseCamera.sync() // !overviewMode のみ
+    - syncCameraToViewFrame(active.camera, active.view, fo) // active = overviewMode ? overviewCamera : combatCamera。両カメラの view→THREE.PerspectiveCamera 反映はここ一箇所
     - overviewCameraPanel.setVisible(overviewMode) + setFocus()/setFrame() // MAP VIEW パネル。点灯反映は overviewMode のみ
     - focusMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。overviewMode のみ
     - focusMarkers.hideLabels() // !overviewMode のみ
