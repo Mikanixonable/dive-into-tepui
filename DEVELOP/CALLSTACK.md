@@ -125,7 +125,7 @@
     - invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
   - nanWatchdog.checkPlayer('player.behave')
   - activeStage.update() // 具体ステージへディスパッチ。!isPlaying なら即 return
-    - behaveAllEnemies() // 全ステージ共通の先頭処理
+    - behaveAllEnemies() // 敵を配置する具体ステージ(Stage0/00/1/2)が先頭で呼ぶ
       - enemy.behave() // 生存中の敵ごと(canEnemyFire・距離・バースト状態の判定は behave 内部)
         - firePlasma() → entities.addBullet()
     - [Stage0 訓練スコアアタック] logistics.updateLogistics(respawnOnDespawn=false)
@@ -144,6 +144,7 @@
       - spawnWave() + hud.toast() // 間隔・同時展開上限を満たす場合のみ
       - spawnWave: generateWave() → addEnemy() → entities.addEnemy() + scoreCounter.recordSpawnEnemy()
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
+    - [StagePractice 軌道操作練習] logistics.updateLogistics(respawnOnDespawn=false)
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(respawnOnDespawn=false)
   - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効
@@ -165,7 +166,7 @@
           - activeStage.recordEnemyDeath(cause='killed') // hp<=0
             - scoreCounter.recordKill() + hud.hint()
             - unlockManager.reportClear() // isPlaying かつ checkWin() が true になった場合のみ
-            - onWin() → showWinScreen() // 同上(Stage0/00 は no-op override)
+            - onWin() → showWinScreen() // 同上(Stage0/00/StagePractice は no-op override)
           - destroyEffect() → sfx.explosion() + fx.spawnShipDestroyEffect() // hp<=0
         - [Player.attacked]
           - hitEffect() // hp>0
