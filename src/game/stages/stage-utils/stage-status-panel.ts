@@ -1,9 +1,10 @@
-// ステージ固有の状況表示パネル(自機 HP バー・ステージからの補助メッセージ・撃墜数)。
+// ステージ固有の状況表示パネル(自機の装甲・エンジン出力・温度・ステージからの補助メッセージ・撃墜数)。
 // 表示内容がステージごとに決まるので Stage が所有し、hudSubStatus() を返すステージでだけ現れる。
 // CSS(#hud-stagestatus)は hud/dom.ts の STYLE に一元管理されている。
 
 const LOW_HP_RATIO = 0.3;
 import * as C from '../../const';
+import type { Player } from '../../player/player';
 
 export class StageStatusPanel {
   private readonly panel: HTMLElement;
@@ -25,14 +26,19 @@ export class StageStatusPanel {
   }
 
   // 毎フレーム(sync 時)呼ぶ。DOM の書き換えは内容が変わったフレームだけに絞る。
-  sync(hp: number, maxHp: number, message: string, kills: number, throttleIdx: number): void {
-    // HP バーは内容が変わったフレームだけ書き換える
+  sync(player: Player, message: string, kills: number): void {
+    // 温度は整数 K に丸めてから組み立て、表示が動くフレームだけ DOM を書き換える
+    const { hp, maxHp } = player;
+    const throttleIdx = player.throttleIdx;
     const low = hp <= maxHp * LOW_HP_RATIO;
     const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
     const throttleLabels = ['弱', '中', '強'];
     const throttleVal = C.THROTTLE_LEVELS[throttleIdx];
     const throttlePct = ((throttleIdx + 1) / 3) * 100;
     const throttleText = `${throttleLabels[throttleIdx]} (${throttleVal!.toFixed(1)} m/s²)`;
+    const temp = Math.round(player.thermal.hullTemp);
+    const tempHigh = temp > 0.7 * C.MAX_HULL_TEMP;
+    const tempPct = Math.max(0, Math.min(100, (temp / C.MAX_HULL_TEMP) * 100));
 
     const hpHtml =
       `<div style="display:grid; grid-template-columns:auto 1fr; gap:4px 8px; align-items:center;">` +
@@ -44,6 +50,10 @@ export class StageStatusPanel {
       `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
       `<div style="width:${throttlePct}%; height:100%; background:${C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
       `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${throttleText}</div></div>` +
+      `<span>温度</span>` +
+      `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
+      `<div style="width:${tempPct}%; height:100%; background:${tempHigh ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
+      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${temp} K</div></div>` +
       `</div>`;
     if (this.lastHpHtml !== hpHtml) {
       this.hpRow.innerHTML = hpHtml;
