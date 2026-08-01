@@ -65,7 +65,7 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
     const debugLink = document.createElement('div');
     debugLink.textContent = 'debug stage';
     debugLink.style.cssText =
-      `position: fixed; bottom: 10px; right: 14px; font-size: 11px; color: ${TEXT_DIM}; cursor: pointer;`;
+      `position: fixed; bottom: 10px; left: 14px; font-size: 11px; color: ${TEXT_DIM}; cursor: pointer;`;
     debugLink.addEventListener('click', () => done('debug'));
     document.body.appendChild(debugLink);
 

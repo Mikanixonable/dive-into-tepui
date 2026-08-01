@@ -2,7 +2,7 @@
 // 敵の射撃 ON/OFF をパネルから切り替えられる。タイトルの通常ボタン列には出ない。
 import { Stage } from './stage';
 import { generateCluster } from './spawner/enemy-spawner';
-import { HudToggle } from '../hud/buttons';
+import { hudButton, HudToggle } from '../hud/buttons';
 import * as C from '../const';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
@@ -18,7 +18,7 @@ export class StageDebug extends Stage {
   readonly selectKeys = ['KeyD'];
   readonly initialAmmo = { mags: 20, rounds: C.MAG_ROUNDS };
 
-  private enemyFireEnabled = true;
+  private enemyFireEnabled = false;
   private fireToggle!: HudToggle;
 
   // デバッグステージのブリーフィング文言を返す。
@@ -33,8 +33,21 @@ export class StageDebug extends Stage {
 
     // 切替は enemyFireEnabled へ入るだけで、敵への反映は update が毎フレーム行う
     this.fireToggle = new HudToggle('敵射撃', (on) => { this.enemyFireEnabled = on; });
-    this.fireToggle.setOn(true);
+    this.fireToggle.setOn(false); // デフォルトでオフ
     this.addStatusPanelWidget(this.fireToggle.element);
+
+    // 敵集団をスポーンするボタン
+    const spawnEnemyBtn = hudButton('敵集団をスポーン', () => {
+      const newEnemies = generateCluster(player.state, this._hud, this._sfx, this._fx, this._scene, 1, DEBUG_ENEMY_COUNT);
+      for (const enemy of newEnemies) this.addEnemy(enemy, entities);
+    });
+    this.addStatusPanelWidget(spawnEnemyBtn);
+
+    // 弾薬をスポーンするボタン
+    const spawnAmmoBtn = hudButton('弾薬をスポーン', () => {
+      this.logistics.spawnForPlayer(player);
+    });
+    this.addStatusPanelWidget(spawnAmmoBtn);
 
     return enemies.length;
   }
