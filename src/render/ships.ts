@@ -53,7 +53,7 @@ export const RADIATOR_OBJECT_NAMES = { up: 'radiatorUp', down: 'radiatorDown' } 
 // 蛇腹1折りの一辺(ハル幅と揃える) [m]。tools/export-models.mjs の RADIATOR_SEG と一致させる。
 export const RADIATOR_SEGMENT_LENGTH = 2.3;
 
-// 全開時、各折りが展開軸(±Y)から傾く角度。
+// 全開時、各折りが展開軸(±X)から傾く角度。
 export const RADIATOR_DEPLOY_TILT = 20 * Math.PI / 180;
 
 // ラジエーター折り目 Group 名(ヒンジ Group の子孫として入れ子)。
@@ -63,29 +63,32 @@ export function radiatorFoldName(side: 'up' | 'down', fold: number): string {
 }
 
 // ラジエーター1枚を全開にしたときの機体中心からの最遠点 [m]。
-// ヒンジ (0, ±1.3, -0.6) を基点に、展開軸から ±RADIATOR_DEPLOY_TILT で
-// 交互に傾く折り目の方向ベクトルを RADIATOR_FOLD_COUNT 個ぶん積算した先端位置
-// (幅方向 ±RADIATOR_SEGMENT_LENGTH/2 のコーナー)までの距離。
+// ヒンジ (±2.62, 0.30, -2.20) を基点に、展開軸(ヒンジ局所+Z)から Y軸回転で
+// ±RADIATOR_DEPLOY_TILT ずつ交互に振れる各折り目の方向ベクトルを RADIATOR_FOLD_COUNT
+// 個ぶん積算して先端位置を求め、Y軸回転では不変でなくなった最終折り目のローカル+X
+// (半幅方向)も同じ回転で振らせたコーナーまでの距離を機体中心から測る。
 function computeRadiatorTipDistance(): number {
-  const base = -Math.PI / 2;
-  let y = 0;
-  let z = 0;
+  const base = Math.PI / 2;
+  let x = 2.62;
+  const y = 0.30;
+  let z = -2.20;
+  let theta = base;
   for (let i = 0; i < C.RADIATOR_FOLD_COUNT; i++) {
-    const theta = base + (i % 2 === 0 ? -RADIATOR_DEPLOY_TILT : RADIATOR_DEPLOY_TILT);
-    y += -Math.sin(theta) * RADIATOR_SEGMENT_LENGTH;
+    theta = base + (i % 2 === 0 ? -RADIATOR_DEPLOY_TILT : RADIATOR_DEPLOY_TILT);
+    x += Math.sin(theta) * RADIATOR_SEGMENT_LENGTH;
     z += Math.cos(theta) * RADIATOR_SEGMENT_LENGTH;
   }
   const halfWidth = RADIATOR_SEGMENT_LENGTH / 2;
-  const tipY = 1.3 + y;
-  const tipZ = -0.6 + z;
-  return Math.sqrt(halfWidth * halfWidth + tipY * tipY + tipZ * tipZ);
+  const cornerX = x + halfWidth * Math.cos(theta);
+  const cornerZ = z - halfWidth * Math.sin(theta);
+  return Math.sqrt(cornerX * cornerX + y * y + cornerZ * cornerZ);
 }
 export const RADIATOR_TIP_DISTANCE = computeRadiatorTipDistance();
 
 // マガジン寸法(機体座標系)。ベルト連結間隔(MAG_BELT_PITCH)は game.ts が
 // マガジンリンクの並びを計算するのに使う。純粋な数値なので JSON 化はしない。
 export const MAG_THICKNESS = 1.0;
-export const MAG_WIDTH = MAG_THICKNESS * 4; // ベルト方向(X)
+export const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3); // ベルト方向(X)
 export const MAG_BELT_PITCH = MAG_WIDTH + 0.18; // 連結間隔
 
 // ベルトが機体へ入っていく給弾口の位置(機体座標系 X)。ベルトの節点は継手(マガジンの端面)
