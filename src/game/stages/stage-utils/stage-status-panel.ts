@@ -36,7 +36,7 @@ export class StageStatusPanel {
 
     const hpHtml =
       `<div style="display:grid; grid-template-columns:auto 1fr; gap:4px 8px; align-items:center;">` +
-      `<span>磁気装甲</span>` +
+      `<span>装甲</span>` +
       `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
       `<div style="width:${pct}%; height:100%; background:${low ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
       `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${Math.floor(hp)} / ${maxHp}</div></div>` +
