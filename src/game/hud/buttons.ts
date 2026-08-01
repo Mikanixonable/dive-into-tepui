@@ -40,3 +40,40 @@ export class SegmentedControl<T extends string> {
     for (const [v, btn] of this.buttons) btn.classList.toggle('on', v === value);
   }
 }
+
+// 見出し + ON/OFF を切り替えるトグルスイッチ。
+export class HudToggle {
+  readonly element: HTMLElement;
+  private readonly track: HTMLElement;
+  private on = false;
+
+  // title は見出し。onChange は切り替わった後の値で呼ばれる。
+  constructor(title: string, onChange: (on: boolean) => void) {
+    this.element = document.createElement('div');
+    this.element.className = 'hud-toggle';
+    const heading = document.createElement('span');
+    heading.className = 'toggle-title';
+    heading.textContent = title;
+    this.element.appendChild(heading);
+
+    // クリックを受けるのはトラックで、つまみは表示だけを担う
+    this.track = document.createElement('span');
+    this.track.className = 'toggle-track';
+    const knob = document.createElement('span');
+    knob.className = 'toggle-knob';
+    this.track.appendChild(knob);
+    this.track.addEventListener('pointerdown', (e) => e.stopPropagation());
+    this.track.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setOn(!this.on);
+      onChange(this.on);
+    });
+    this.element.appendChild(this.track);
+  }
+
+  // 表示状態を設定する(onChange は呼ばれない)。
+  setOn(on: boolean): void {
+    this.on = on;
+    this.track.classList.toggle('on', on);
+  }
+}

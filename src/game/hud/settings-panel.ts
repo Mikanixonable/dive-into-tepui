@@ -1,10 +1,10 @@
 // 一時停止 / 設定パネル(BGM トグル・タイトルへ戻る・閉じる)とギアボタン。
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
+import * as C from '../const';
 
 export class SettingsPanel {
   private readonly panel: HTMLElement;
-  private readonly gear: HTMLElement;
 
 
   onSettingsOpenChange: ((open: boolean) => void) | null = null;
@@ -13,12 +13,6 @@ export class SettingsPanel {
 
   // ⚙ ボタンとパネル DOM を組み立て、開閉・BGM トグル・タイトルへ戻るのイベントを配線する。
   constructor(root: HTMLElement) {
-    // ⚙ ボタン
-    this.gear = document.createElement('div');
-    this.gear.id = 'hud-gear';
-    this.gear.textContent = '⚙';
-    this.gear.addEventListener('click', () => this.toggle());
-    root.appendChild(this.gear);
 
     // パネル本体
     this.panel = document.createElement('div');
@@ -26,7 +20,7 @@ export class SettingsPanel {
     this.panel.className = 'panel';
     this.panel.innerHTML = `
       <h3>一時停止 / 設定</h3>
-      <div class="srow"><span class="k">BGM Vol</span><input type="range" data-id="bgmslider" min="0" max="1" step="0.05" value="1" style="flex:1; margin-left: 10px; cursor: pointer; accent-color: #ff6a00;"></div>
+      <div class="srow"><span class="k">BGM Vol</span><input type="range" data-id="bgmslider" min="0" max="1" step="0.05" value="1" style="flex:1; margin-left: 10px; cursor: pointer; accent-color: ${C.COLOR_ACCENT};"></div>
       <div class="squit" data-id="settingsquit">ゲームを中断してタイトル画面に戻る</div>
       <div class="sclose" data-id="settingsclose">[閉じる]</div>`;
     root.appendChild(this.panel);

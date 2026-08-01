@@ -6,8 +6,8 @@
 // THREE/DOM 非依存。位置の計算式は純関数、それを初期位相で束縛して simTime で
 // サンプルする状態は末尾の Ephemeris クラスが持つ。
 import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
-import { MU_EARTH } from './orbital';
-import { Vec3, addScaled, len, norm, scale, v3 } from './vec3';
+import { MU_EARTH, R_EARTH } from './orbital';
+import { Vec3, addScaled, dot, len, norm, scale, v3 } from './vec3';
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
 export const MU_MOON = 4.9048695e12;
@@ -174,6 +174,15 @@ export function seLagrangePoints(t: number, phase0: number): LagrangePoints {
   const { q } = sunOrbitRotation(t, phase0);
   const R = SUN_DIST; // 太陽は円軌道近似なので距離は一定
   return lagrangePoints(MU_EARTH / (MU_SUN + MU_EARTH), (x, y) => qRotate(q, v3(R * (1 - x), -R * y, 0)));
+}
+
+// 位置 r における日照率 0..1。地球を円柱とみなし、影側では地球半径からの距離に応じて
+// penumbra [m] の幅で 0→1 へ線形にぼかす。
+export function sunlitFactor(r: Vec3, sunDir: Vec3, penumbra: number): number {
+  const along = dot(r, sunDir);
+  if (along >= 0) return 1; // 太陽側
+  const perp = len(addScaled(r, sunDir, -along));
+  return Math.min(1, Math.max(0, (perp - R_EARTH) / penumbra));
 }
 
 // 天体暦: 初期位相をゲームごとに固定し、任意の simTime で太陽・月の ECI 位置・

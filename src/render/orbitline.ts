@@ -26,7 +26,7 @@ export class OrbitLine {
   private lastRegen = 0;
 
   // バッファジオメトリと LineBasicMaterial を組み立てる。
-  constructor(color: number, opacity = 0.5) {
+  constructor(color: string | number, opacity = 0.5) {
     this.positions = new Float32Array((POINT_COUNT + 1) * 3);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));

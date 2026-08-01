@@ -101,7 +101,12 @@
     - throttle.updateTorque() → player.torque へ代入。!alive なら即ゼロ
       - onProgradeHoldReleased() → hud.hint() // ホールド中に手動回転入力があった場合のみ
       - autoAlignTorque() // ホールド中 かつ 手動回転入力なしの場合のみ
-    - throttle.clampAngularVelocity() → player.att へ代入 // 常に(角速度上限)
+    - radiator.update() // 展開度のみ。THREE には触れない
+    - sunlitFactor() // 地球影による日照率
+    - thermal.setRadiatorLoad(radiator.radiatingArea(), radiator.solarLoad())
+      // このフレームの全サブステップの updateThermal がこの値を使う
+    - player.radius = radiator.hitRadius() // 展開度に応じて被弾判定が広がる
+    - power.update() // sunlit/sunDir は radiator と共有。THREE には触れない
     - [!player.alive] player.thrust = null して return
     - hpRegen()
     - [editor.editMode] fire.tickMapMode() → tickReloadTimer() / player.thrust = null して return
@@ -170,6 +175,8 @@
             - onWin() → showWinScreen() // 同上(Stage0/00 は no-op override)
           - destroyEffect() → sfx.explosion() + fx.spawnShipDestroyEffect() // hp<=0
         - [Player.attacked]
+          - thermal.addImpactHeat() // 常に
+          - radiator.damageFromHit() → radiatorBreakEffect() // このフレームで新たに全損したパネルがあれば
           - hitEffect() // hp>0
           - activeStage.recordPlayerLost() → showResultScreen() // hp<=0
           - destroyEffect() // hp<=0
@@ -178,6 +185,11 @@
       - resolveCollisionPairs()
         - resolveCollisionPair() → 双方の state へ代入 // 貫入している衝突ペアごと
         - onPlayerCasingImpact() → sfx.clank() // 自機-薬莢の接触時のみ
+        - onHighSpeedImpact() // 反発した接触速度が COLLISION_DAMAGE_MIN_SPEED 以上のペアのみ
+          - player.collidedAtSpeed() / enemy.collidedAtSpeed() // game.ts が自機-敵機のペアだけを通す
+            - applyCollisionDamage() → hp へ代入
+            - sfx.clank() + fx.spawnGasPuff() // hp>0
+            - activeStage.recordPlayerLost() / recordEnemyDeath(cause='killed') + destroyEffect() // hp<=0
       - player.belt.applyCollisionSections() // player.alive && dt>1e-6
     - stepAttitudes() → stepAttitude() → entity.att へ代入 // 自機・敵・薬莢・デブリ・補給それぞれ
     - lastSimDt = simDt
@@ -260,6 +272,8 @@
     - thrustEffects.sync() → core/outer の sync() or hide() // 実機体の現在状態(this.state)のまま
     - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4 // 同上
     - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出。同上
+    - radiator.sync() // ヒンジ Group の rotation.y へ展開角を書く
+    - reentryEffects.sync() // qdyn が REENTRY_GLOW_MIN_Q 未満、または !alive なら隠すだけ
     - markers.sync(currentState, displayState) // 自機由来の HUD マーカー。呼び出し側から見えるのは syncPlayer だけ
       - [overviewMode] 戦闘用7キーを hide + displayState があれば markerManager.setPosition('self') / 無ければ hide('self')
       - [!overviewMode] hide('self') + syncOrbitalDirections(currentState) // pro/retro/nrm/anm/radout/radin。常に現在状態

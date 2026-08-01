@@ -3,6 +3,7 @@
 // ジオメトリ/マテリアルの構築自体は tools/export-models.mjs に移し、
 // src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
 import * as THREE from 'three/webgpu';
+import * as C from '../game/const';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -46,10 +47,46 @@ export const RCS_BLOCK_OFFSETS: { x: number; y: number; z: number }[] = [
   { x: -1.0, y: -0.85, z: 1.9 },
 ];
 
+// ラジエーターのヒンジ Group 名(機体座標系)。getObjectByName() で引く。
+export const RADIATOR_OBJECT_NAMES = { up: 'radiatorUp', down: 'radiatorDown' } as const;
+
+// 蛇腹1折りの一辺 [m]。tools/export-models.mjs と一致させる。
+export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / 6;
+
+// 全開時、各折りが展開軸から残す傾き。0 だと折り目の判別が数値的に不安定になるため、
+// 蛇腹の折り畳みが解消された1枚の板とみなせるごく小さい値を残す。
+// (要望により、完全な平らではなく15度程度折りたたまれた状態を残す)
+export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
+
+// ラジエーター折り目 Group 名(ヒンジ Group の子孫として入れ子)。
+// tools/export-models.mjs の命名(`${radiatorUp/Down}Fold${i}`)と一致させる。
+export function radiatorFoldName(side: 'up' | 'down', fold: number): string {
+  return `${RADIATOR_OBJECT_NAMES[side]}Fold${fold}`;
+}
+
+// ラジエーター1枚を全開にしたときの機体中心からの最遠点 [m]。
+// ヒンジ (2.62, 0.30, -2.20) を基点に、伸びる方向(折り目ローカル+X)が ±RADIATOR_DEPLOY_TILT
+// ずつ交互に振れながら Y軸回転で運ばれる各折りの変位を RADIATOR_FOLD_COUNT 個ぶん積算して
+// 先端位置を求める。パネルの半幅方向(ローカル+Y)は Y軸回転で向きが変わらないので、
+// コーナーまでの距離はそのまま加算するだけでよい。
+function computeRadiatorTipDistance(): number {
+  let x = 2.62;
+  const y = 0.30;
+  let z = -2.20;
+  for (let i = 0; i < C.RADIATOR_FOLD_COUNT; i++) {
+    const theta = i % 2 === 0 ? RADIATOR_DEPLOY_TILT : -RADIATOR_DEPLOY_TILT;
+    x += Math.cos(theta) * RADIATOR_SEGMENT_LENGTH;
+    z -= Math.sin(theta) * RADIATOR_SEGMENT_LENGTH;
+  }
+  const cornerY = y + RADIATOR_SEGMENT_LENGTH / 2;
+  return Math.sqrt(x * x + cornerY * cornerY + z * z);
+}
+export const RADIATOR_TIP_DISTANCE = computeRadiatorTipDistance();
+
 // マガジン寸法(機体座標系)。ベルト連結間隔(MAG_BELT_PITCH)は game.ts が
 // マガジンリンクの並びを計算するのに使う。純粋な数値なので JSON 化はしない。
 export const MAG_THICKNESS = 1.0;
-export const MAG_WIDTH = MAG_THICKNESS * 4; // ベルト方向(X)
+export const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3); // ベルト方向(X)
 export const MAG_BELT_PITCH = MAG_WIDTH + 0.18; // 連結間隔
 
 // ベルトが機体へ入っていく給弾口の位置(機体座標系 X)。ベルトの節点は継手(マガジンの端面)
@@ -170,7 +207,7 @@ export function buildAmmo(count = 4): THREE.Group {
 // 敵機: テンプレートはプレースホルダの基本色で焼き出されている。
 // フィン(finMat)とランプ(lampMat)は userData.role === 'accent' が付与されて
 // おり、これを目印にアクセントカラーへ塗り替える。
-export function buildEnemyShip(accent = 0xff4a3d): THREE.Group {
+export function buildEnemyShip(accent: string | number = 0xff4a3d): THREE.Group {
   const g = parseEnemy();
   // accent ロールが付いたマテリアルだけ塗り替える
   g.traverse((child) => {
@@ -185,7 +222,7 @@ export function buildEnemyShip(accent = 0xff4a3d): THREE.Group {
 }
 
 // stage0 敵機のメッシュを typeIndex(0〜2)の機体テンプレートから生成し、accent 色に塗り替える。
-export function buildStage0EnemyShip(accent = 0x3dc6ff, typeIndex = 0): THREE.Group {
+export function buildStage0EnemyShip(accent: string | number = 0x3dc6ff, typeIndex = 0): THREE.Group {
   let g: THREE.Group;
   // typeIndex で機体テンプレートを選ぶ
   if (typeIndex === 1) g = parseStage0EnemyB();
@@ -238,15 +275,10 @@ export function buildBulletMesh(): THREE.Group {
 }
 
 let plasmaGeomFixed = false;
+let plasmaBodyMat: THREE.MeshBasicMaterial | null = null;
 
-// プラズマ弾の本体色は敵の accent(所属グループの識別色。取りうる値は
-// STAGE0_GROUP_ACCENTS 等ごく少数)ごとに決まり、発射後に書き換わることはない。
-// そのため accent 値ごとにマテリアルを 1 個だけキャッシュして全弾で共有する
-// (毎発 clone/生成すると GPU リソースが撃つたびにリークする — BUG_REPORT.md B1)。
-const plasmaBodyMatByAccent = new Map<number, THREE.MeshBasicMaterial>();
-
-// 敵プラズマ弾のメッシュ(本体のみ)を accent 色で生成する。マテリアルは accent ごとに共有キャッシュする。
-export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Mesh {
+// 敵プラズマ弾のメッシュ(本体のみ)を生成する。マテリアルは1つキャッシュして全弾で共有する。
+export function buildPlasmaMesh(): THREE.Mesh {
   const m = parsePlasma();
   if (!plasmaGeomFixed) {
     // plasma.json (CylinderGeometry) は toJSON() がコンストラクタ引数のみを保存する
@@ -258,16 +290,14 @@ export function buildPlasmaMesh(accent = 0xffa0ff): THREE.Mesh {
     m.geometry.rotateX(Math.PI / 2);
     plasmaGeomFixed = true;
   }
-  let bodyMat = plasmaBodyMatByAccent.get(accent);
-  if (!bodyMat) {
-    bodyMat = (m.material as THREE.MeshBasicMaterial).clone();
-    bodyMat.color.set(accent);
+  if (!plasmaBodyMat) {
+    plasmaBodyMat = (m.material as THREE.MeshBasicMaterial).clone();
+    plasmaBodyMat.color.set(C.COLOR_ENEMY_PLASMA);
     // 不透明にするため AdditiveBlending は設定しない
-    bodyMat.transparent = false;
-    bodyMat.opacity = 1.0;
-    plasmaBodyMatByAccent.set(accent, bodyMat);
+    plasmaBodyMat.transparent = false;
+    plasmaBodyMat.opacity = 1.0;
   }
-  m.material = bodyMat;
+  m.material = plasmaBodyMat;
   m.frustumCulled = false;
 
   // スケールを大きくして視認性を上げる
@@ -443,7 +473,7 @@ function buildSpikeDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
 }
 
 // 汎用デブリ形状をランダムに1つ生成する。color は非破片(dark)判定込みの表示色。
-function buildGenericDebris(color: number, size: number, mat: DebrisMaterial): THREE.Mesh {
+function buildGenericDebris(color: string | number, size: number, mat: DebrisMaterial): THREE.Mesh {
   const kind = Math.random();
   if (kind < 0.22) {
     // 破損した外殻チャンク
@@ -490,9 +520,9 @@ function buildGenericDebris(color: number, size: number, mat: DebrisMaterial): T
 }
 
 // style に応じたデブリメッシュを1つ生成する(未指定時は汎用形状)。
-export function buildDebrisMesh(accent: number, size: number, style?: string): THREE.Mesh {
+export function buildDebrisMesh(accent: string | number, size: number, style?: string): THREE.Mesh {
   const dark = Math.random() < 0.30;
-  const color = dark ? 0x2e3340 : accent;
+  const color = dark ? C.COLOR_SHIP_DARK_HULL : accent;
 
   const mat: DebrisMaterial = (opts) =>
     new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.65, metalness: 0.30, ...opts });

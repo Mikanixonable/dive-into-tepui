@@ -12,6 +12,7 @@ import { Stage00 } from './stage00';
 import { Stage0 } from './stage0';
 import { Stage1 } from './stage1';
 import { Stage2 } from './stage2';
+import { StageDebug } from './stage-debug';
 
 export const DEFAULT_STAGE_ID: StageId = '1';
 
@@ -20,7 +21,7 @@ interface StageClass {
   new (): Stage;
 }
 
-const STAGE_CLASSES: readonly StageClass[] = [Stage00, Stage0, Stage1, Stage2];
+const STAGE_CLASSES: readonly StageClass[] = [Stage00, Stage0, Stage1, Stage2, StageDebug];
 
 // 選択画面のラベル・解放判定用の読み取り専用一覧。
 export const STAGE_DEFINITIONS: readonly Stage[] = STAGE_CLASSES.map((StageClass) => new StageClass());

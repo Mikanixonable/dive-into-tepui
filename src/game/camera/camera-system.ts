@@ -59,6 +59,11 @@ export class CameraSystem {
   // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
   overviewMode = false;
 
+  // sync() で毎フレーム参照する DOM 要素をコンストラクタ時にキャッシュする。
+  private readonly _elStatus: HTMLElement | null;
+  private readonly _elStageStatus: HTMLElement | null;
+  private readonly _elOrbit: HTMLElement | null;
+
   // 両カメラとフォーカス候補ラベル、フォーカス選択 UI を構築し、パネルの選択操作を配線する。
   constructor(
     private readonly _hud: Hud,
@@ -85,10 +90,26 @@ export class CameraSystem {
       this.overviewCamera.focus = focus;
       this.overviewCamera.resetPan();
     };
-    this.overviewCameraPanel.onViewReset = () => this.overviewCamera.reset();
     this.overviewCameraPanel.onFrameSelect = (frame: Frame) => {
       this.overviewCamera.cameraFrame = frame;
     };
+
+    const chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
+    if (chaseResetBtn) {
+      chaseResetBtn.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        if (this.overviewMode) {
+          this.overviewCamera.reset();
+        } else {
+          this.combatCamera.reset();
+        }
+      });
+    }
+
+    // sync() 用の DOM 要素を事前にキャッシュ
+    this._elStatus = document.getElementById('hud-status');
+    this._elStageStatus = document.getElementById('hud-stagestatus');
+    this._elOrbit = document.getElementById('hud-orbit');
   }
 
   // マップ編集中のポインタ操作。最寄りラベルがあればフォーカス選択メニューを開いて消費する。
@@ -154,6 +175,7 @@ export class CameraSystem {
       return true;
     });
 
+
     // キー/マウスによる旋回入力をまとめる
     const keyYaw = (input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0);
     const keyPitch = (input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0);
@@ -173,6 +195,12 @@ export class CameraSystem {
     syncCameraToViewFrame(active.camera, active.view, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
+    
+    // 戦闘ビュー固有パネルを広範囲視点では非表示にする
+    const hidden = this.overviewMode ? 'none' : '';
+    if (this._elStatus) this._elStatus.style.display = hidden;
+    if (this._elStageStatus) this._elStageStatus.style.display = hidden;
+    if (this._elOrbit) this._elOrbit.style.left = this.overviewMode ? '12px' : '';
     if (this.overviewMode) {
       this.overviewCameraPanel.setFocus(this.overviewCamera.focus);
       this.overviewCameraPanel.setFrame(this.overviewCamera.cameraFrame);

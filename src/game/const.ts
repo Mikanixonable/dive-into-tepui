@@ -16,16 +16,42 @@ export const SMALL_DEBRIS_BCINV = 8e-3; // 薬莢・破片
 // --- 空力加熱・構造限界(自機のみ) ---
 export const SG_CONST = 1.7415e-4; // Sutton–Graves 定数(地球) [kg^0.5/m]
 export const NOSE_RADIUS = 0.6; // 機首曲率半径 [m]
-export const HEAT_ABSORB_AREA = 4; // よどみ点熱流束を受ける実効面積 [m^2]
-export const RAD_AREA = 70; // 放射冷却面積 [m^2]
+export const HEAT_ABSORB_AREA = 0.9; // よどみ点熱流束を受ける実効面積 [m^2]
+export const RAD_AREA = 70; // ハル自体の放射冷却面積 [m^2]
 export const HULL_EMISS = 0.85; // 放射率
 export const STEFAN_BOLTZMANN = 5.670374419e-8; // [W/m^2/K^4]
-export const HEAT_CAPACITY = 1.5e6; // 外殻の熱容量 [J/K]
+export const HEAT_CAPACITY = 3.4e5; // 外殻の熱容量 [J/K]
 export const ENV_TEMP = 255; // 放射平衡の環境温度 [K]
 export const HULL_START_TEMP = 273; // 初期機体温度 [K]
 export const MAX_HULL_TEMP = 1300; // 超過で熱防御飽和 → 機体喪失 [K]
 export const MAX_DYN_PRESSURE = 35e3; // 超過で空力破壊 [Pa]
 export const HULL_TEMP_FLOOR = 120; // 放射冷却で下がりきる機体温度の下限 [K]
+
+// --- 再突入の燃焼エフェクト ---
+export const REENTRY_GLOW_MIN_Q = 200; // 燃焼エフェクトが出始める動圧 [Pa]
+export const REENTRY_GLOW_FULL_Q = 2e4; // 燃焼エフェクトが最大強度になる動圧 [Pa]
+
+// --- 射撃による発熱 ---
+export const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりの投入熱量 [J]
+
+// --- ラジエーター(上下2枚、個別展開) ---
+export const RADIATOR_PANEL_AREA = 42; // 1枚の放熱面積 [m^2](2.3 × 2.3 m の蛇腹 4 折りの両面ぶん)
+export const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)
+export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
+export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
+export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
+export const RADIATOR_HIT_WEAR_PER_HIT = 0.002; // 被弾1発で増える損耗度(耐久性10倍)
+export const RADIATOR_WEAR_RECOVERY = 0.01; // 1秒あたりの耐久回復量
+export const RADIATOR_HITTABLE_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
+export const RADIATOR_EFFICIENCY_MULT = 1; // 放熱面積(RADIATOR_PANEL_AREA)に掛ける性能係数
+
+// --- 被弾による発熱 ---
+export const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受ける熱量 [J]
+
+// --- 太陽電池による発電 ---
+export const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
+export const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
+export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
 
 // --- 高度低下警告(EMA平滑化) ---
 export const ALT_EMA_TIME_CONST = 3; // 高度・降下率EMAの時定数 [s]
@@ -46,8 +72,12 @@ export const THROTTLE_LEVELS = [5.0, 20.0, 100.0];//エンジン出力、スロ�
 export const THROTTLE_DEFAULT_IDX = 1;
 
 export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
-export const MAX_ANG_VEL = 1.6; // 手動回転の角速度上限 [rad/s]
 export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
+
+// 自機の主慣性モーメント(相対値、3軸とも異なる非対称形にしてジャニベコフ効果を起こす)
+export const PLAYER_INERTIA_PITCH = 1.0; // ピッチ軸(X)。3軸中の中間値 = 不安定軸
+export const PLAYER_INERTIA_YAW = 1.6; // ヨー軸(Y)
+export const PLAYER_INERTIA_ROLL = 0.5; // ロール軸(Z、機体前後)。細長い形状に見合って最小
 
 // 手動回転RCSの出力ランプ: 押し始めは MIN、RAMP_TIME 秒かけて (MIN + RAMP) まで増加する
 export const RCS_MANUAL_OUTPUT_MIN = 0.3;
@@ -55,7 +85,7 @@ export const RCS_MANUAL_OUTPUT_RAMP = 1.0;
 export const RCS_MANUAL_RAMP_TIME = 3.0; // [s]
 export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
 
-// 微調整モード([V]キーでトグル、射撃中は自動でON)で角加速度・角速度上限に掛ける倍率
+// 微調整モード([V]キーでトグル、射撃中は自動でON)で角加速度に掛ける倍率
 export const FINE_ATTITUDE_SCALE = 0.5;
 
 // 戦闘視点カメラの near/far [m]。near は LEO 高度からの地平線距離(~2,400km)での深度誤差が
@@ -160,7 +190,6 @@ export const PLAYER_HULL_RADIUS = 2.6; // 薬莢・破片等との物理接触�
 // 砲口(機体中心から距離約2.9m)で生まれた薬莢が生成直後に弾き飛ばされてしまう。
 export const ENEMY_RADIUS = 180; // 視認性のため実機体よりかなり大きい当たり判定
 export const ENEMY_SCALE = 20; // buildEnemyShip() の見た目メッシュに掛けるスケール
-export const ENEMY_ORBIT_LINE_COLOR = 0x565b63; // 敵軌道線の既定色(個体色 accent とは独立)
 
 export const INITIAL_ALT = 420e3; // 自機初期高度 [m]
 export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
@@ -215,7 +244,6 @@ export const AUTOWARP_MARGIN = 4;
 export const AUTOWARP_STOP = 20;
 
 // --- 第零ステージ(近接戦闘訓練) ---
-export const STAGE0_GROUP_ACCENTS = [0xff4a3d, 0x3dc6ff, 0x3dff8f, 0xffe23d, 0xbf3dff]; // 赤/青/緑/黄/紫
 export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
 export const STAGE0_PER_GROUP = 10; // グループあたりの機数
 export const STAGE0_ENEMY_HP = 1; // 一撃撃破の軽量機
@@ -269,6 +297,10 @@ export const PLAYER_MAX_HP = 1000;
 export const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 export const PLAYER_HIT_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
 export const ENEMY_HIT_DAMAGE = 1; // 敵機が被弾した際のダメージ [HP]
+
+// --- 高速接触による装甲ダメージ(自機⇔敵機) ---
+export const COLLISION_DAMAGE_MIN_SPEED = 50; // これ未満の接触速度では無傷 [m/s]
+export const COLLISION_DAMAGE_FULL_SPEED = 500; // この接触速度で装甲を最大値ぶん失う [m/s]
 export const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
 export const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
@@ -278,3 +310,38 @@ export const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 同一集団内で同時に�
 export const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開始する確率
 export const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
 export const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
+
+// 色管理 (Colors)
+export const COLOR_ACCENT = '#ff6a00';
+export const COLOR_ACCENT_RGB = '255, 106, 0'; // COLOR_ACCENT の RGB 成分（色変更時は必ず両方を同期すること）
+export const COLOR_ACCENT_SOFT = '#ff9040';
+export const COLOR_BG = '#08090c';
+export const COLOR_TEXT = '#e6e8eb';
+export const COLOR_TEXT_DIM = '#7d838c';
+export const COLOR_HUD_BAR_BG = '#222222';
+export const COLOR_HUD_TEXT_MUTED = '#dfe3e8';
+export const COLOR_HUD_HP_OK = '#ff6a00';
+export const COLOR_HUD_HP_LOW = '#ff4a3d';
+export const COLOR_MARKER_BORESIGHT = '#dfe3e8';
+export const COLOR_MARKER_PROGRADE = '#cfd6dd';
+export const COLOR_MARKER_NORMAL = '#d08cff';
+export const COLOR_MARKER_RADIAL = '#7de8ff';
+export const COLOR_MARKER_TGTDIR = '#ff7ab0';
+export const COLOR_MARKER_NODE = '#8b93a0';
+export const COLOR_MARKER_BOARDHIT = '#ffffff';
+export const COLOR_MARKER_SELF = '#dfe3e8';
+export const COLOR_MARKER_PLANNED = '#8fd0ff';
+export const COLOR_TOUCH_TEXT = '#cfd6dd';
+export const COLOR_TOUCH_ACTIVE_TEXT = '#ffffff';
+export const COLOR_BULLET_HIT_FLASH = '#ffe2a0';
+export const COLOR_PLASMA_HIT_FLASH = '#ffa0ff';
+export const COLOR_GAS_PUFF_1 = '#aaaaaa';
+export const COLOR_GAS_PUFF_2 = '#ffffff';
+export const COLOR_DESTROY_FLASH_1 = '#ffb36b';
+export const COLOR_DESTROY_FLASH_2 = '#fffbe8';
+export const COLOR_PLAYER_DESTROY_FRAG = '#9fd8e8';
+export const COLOR_ENEMY_DESTROY_FRAG = '#ff6a4a';
+export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
+export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
+export const COLOR_SHIP_DARK_HULL = '#2e3340';
+export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];

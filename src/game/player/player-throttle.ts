@@ -1,7 +1,7 @@
 // プレイヤーの並進スロットル・姿勢制御(RCS)・プログレードホールド。
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
-import { Vec3, add, len, norm, scale, v3 } from '../../physics/vec3';
+import { Vec3, add, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -142,16 +142,6 @@ export class PlayerThrottle {
     return manualTorque;
   }
 
-  // 手動回転の角速度上限(fineAttitude で縮小)を掛けた Attitude を返す。
-  // 本来は torque を積分した後の角速度を clamp すべきだが、積分後の角速度は
-  // このフレームではまだ未知なので、積分前の角速度を使って clamp する
-  // (積分後の角速度が clamp を超える場合は、次フレームでだいたい clamp される)。
-  clampAngularVelocity(att: Attitude, fineAttitude: boolean): Attitude {
-    const maxAngVel = C.MAX_ANG_VEL * (fineAttitude ? C.FINE_ATTITUDE_SCALE : 1);
-    const wMag = len(att.w);
-    if (wMag <= maxAngVel) return att;
-    return { ...att, w: scale(att.w, maxAngVel / wMag) };
-  }
 
   // desiredFwd/desiredUp へ機首を向けるPD制御トルクをボディフレームで返す。
   // 特異姿勢(desiredFwd と desiredUp が平行)なら制御せず v3() を返す。
