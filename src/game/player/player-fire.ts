@@ -1,8 +1,8 @@
 // プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の演出もここで組み立てる。
 import * as THREE from 'three/webgpu';
 import { qRotate, randomQuat } from '../../physics/attitude';
-import { orbitState } from '../../physics/orbital';
-import { add, addScaled, norm, randPerp, randSym, randVec, scale, v3, Vec3 } from '../../physics/vec3';
+import { orbitState, R_EARTH_EQ } from '../../physics/orbital';
+import { add, addScaled, dot, lenSq, norm, randPerp, randSym, randVec, scale, v3, Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -10,7 +10,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
-import { getSunDispersionScale, sunPosition } from '../../physics/ephemeris';
+import { sunPosition } from '../../physics/ephemeris';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
@@ -18,6 +18,21 @@ import { SimSpeedManager } from '../sim-speed-manager';
 import { Player } from './player';
 
 export type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
+
+// 太陽グレアによる散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
+// 順光では締まる。難易度調整のための経験則であって物理計算ではない。
+// pos が地球の影(簡易円柱モデル)に入っていれば太陽光が届かないので倍率は 1。
+function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
+  const along = dot(pos, sunDir);
+  if (along < 0 && lenSq(addScaled(pos, sunDir, -along)) < R_EARTH_EQ * R_EARTH_EQ) return 1;
+
+  const angle = (Math.acos(Math.max(-1, Math.min(1, dot(aimDir, sunDir)))) * 180) / Math.PI;
+  if (angle <= 5) return 2;
+  if (angle <= 30) return 1 + (30 - angle) / 25;
+  if (angle >= 160) return 0.5;
+  if (angle >= 130) return 1 - ((angle - 130) / 30) * 0.5;
+  return 1;
+}
 
 export class PlayerFire {
   rounds = C.MAG_ROUNDS;
@@ -230,9 +245,9 @@ export class PlayerFire {
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(ship: Ship, muzzle: Vec3, fwd: Vec3, simTime: number, addBullet: (bullet: Bullet) => void): void {
     const sunDir = norm(sunPosition(simTime, 0));
-    const scale = getSunDispersionScale(muzzle, fwd, sunDir);
+    const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
     // 機首方向に散布角を加えた発射方向
-    const spread = Math.abs(randSym(C.BULLET_SPREAD)) * scale;
+    const spread = Math.abs(randSym(C.BULLET_SPREAD)) * spreadScale;
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
     const bullet = new Bullet(
       orbitState(
