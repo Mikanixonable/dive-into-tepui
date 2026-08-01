@@ -72,7 +72,7 @@ export class HudPanels {
         throttleIdx: player.throttleIdx,
         fineAttitude: player.fineAttitude,
         progradeHold: player.progradeHold,
-        camFollowAttitude: game.cameraSystem.chaseCamera.camFollowAttitude,
+        camFollowAttitude: game.cameraSystem.combatCamera.camFollowAttitude,
         roundsInMag: player.roundsInMag,
         magsLeft: player.magsLeft,
         reloadTimer: player.reloadTimer,
