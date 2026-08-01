@@ -17,6 +17,12 @@ const RADIATOR_UI: Record<RadiatorSide, { label: string; key: string }> = {
   down: { label: '左', key: K.radiatorDeployDown.label },
 };
 
+import type { SolarSide } from '../../player/power';
+const SOLAR_UI: Record<SolarSide, { label: string; key: string }> = {
+  up: { label: '右', key: K.solarDeployUp.label },
+  down: { label: '左', key: K.solarDeployDown.label },
+};
+
 interface RadiatorButtonDom {
   readonly button: HTMLElement;
   readonly fill: HTMLElement;
@@ -38,6 +44,7 @@ export class StageStatusPanel {
   // ラジエーターボタンだけは展開/収納のクリックリスナを保つため、innerHTML の再構築対象から
   // 外した永続 DOM にしてある
   private readonly radiatorButtons: Record<RadiatorSide, RadiatorButtonDom>;
+  private readonly solarButtons: Record<SolarSide, RadiatorButtonDom>;
 
   // 非表示状態のパネル DOM を組み立てて root に追加する
   constructor(root: HTMLElement) {
@@ -54,9 +61,13 @@ export class StageStatusPanel {
     root.appendChild(this.panel);
 
     const radiatorsCol = this.panel.querySelector<HTMLElement>('.radiators')!;
+    this.solarButtons = {
+      down: this.buildButton(radiatorsCol, () => this.player?.power.toggle('down')),
+      up: this.buildButton(radiatorsCol, () => this.player?.power.toggle('up')),
+    };
     this.radiatorButtons = {
-      up: this.buildRadiatorButton(radiatorsCol, 'up'),
-      down: this.buildRadiatorButton(radiatorsCol, 'down'),
+      down: this.buildButton(radiatorsCol, () => this.player?.radiator.toggle('down')),
+      up: this.buildButton(radiatorsCol, () => this.player?.radiator.toggle('up')),
     };
   }
 
@@ -65,12 +76,12 @@ export class StageStatusPanel {
     this.leftWidgets.appendChild(el);
   }
 
-  // side 1枚ぶんの展開/収納ボタンを組み立て、以後の更新に使う要素を返す。
-  private buildRadiatorButton(col: HTMLElement, side: RadiatorSide): RadiatorButtonDom {
+  // 1枚ぶんの展開/収納ボタンを組み立て、以後の更新に使う要素を返す。
+  private buildButton(col: HTMLElement, onClick: () => void): RadiatorButtonDom {
     const button = document.createElement('button');
     button.className = 'radiator-btn';
     button.innerHTML = `<div class="fill"></div><div class="label"></div>`;
-    button.addEventListener('click', () => this.player?.radiator.toggle(side));
+    button.addEventListener('click', onClick);
     col.appendChild(button);
 
     return {
@@ -86,11 +97,18 @@ export class StageStatusPanel {
   // dom の表示を side の展開度・損耗度へ合わせる。着色部の幅は損耗度に応じて減る
   // (損耗ぶん = 失われた放熱能力ぶん、と読めるようにするため)。DOM の書き換えは値が
   // 動いたフレームだけに絞る。
-  private syncRadiatorButton(dom: RadiatorButtonDom, side: RadiatorSide, radiator: Player['radiator']): void {
-    const ui = RADIATOR_UI[side];
-    const deployed = radiator.deployOf(side) >= 0.5;
-    const wearPct = Math.round(radiator.wearOf(side) * 100);
+  private syncButton(
+    dom: RadiatorButtonDom,
+    deploy: number,
+    wear: number,
+    name: string,
+    uiConf: { label: string; key: string }
+  ): void {
+    const deployed = deploy >= 0.5;
+    const wearPct = Math.round(wear * 100);
     const highWear = wearPct > RADIATOR_HIGH_WEAR * 100;
+    
+    dom.button.classList.toggle('on', deployed);
 
     const fillWidth = `${100 - wearPct}%`;
     const fillColor = highWear ? C.COLOR_HUD_HP_LOW : deployed ? ACCENT : C.COLOR_HUD_HP_OK;
@@ -103,11 +121,9 @@ export class StageStatusPanel {
       dom.lastFillColor = fillColor;
     }
 
-    const text =
-      `<div>パドル/放熱板${ui.label} [${ui.key}]</div>` +
-      `<div>${deployed ? '展開中' : '収納中'} / 損耗${wearPct}%</div>`;
+    const text = `${name}${uiConf.label}[${uiConf.key}] ${deployed ? '展開' : '収納'}${wear > 0 ? ` / 損耗${wearPct}%` : ''}`;
     if (dom.lastText !== text) {
-      dom.label.innerHTML = text;
+      dom.label.textContent = text;
       dom.lastText = text;
     }
   }
@@ -156,8 +172,12 @@ export class StageStatusPanel {
     this.centerCol.classList.toggle('warn', low);
 
     const radiator = player.radiator;
-    this.syncRadiatorButton(this.radiatorButtons.up, 'up', radiator);
-    this.syncRadiatorButton(this.radiatorButtons.down, 'down', radiator);
+    this.syncButton(this.radiatorButtons.up, radiator.deployOf('up'), radiator.wearOf('up'), '放熱板', RADIATOR_UI.up);
+    this.syncButton(this.radiatorButtons.down, radiator.deployOf('down'), radiator.wearOf('down'), '放熱板', RADIATOR_UI.down);
+
+    const power = player.power;
+    this.syncButton(this.solarButtons.up, power.deployOf('up'), 0, 'パドル', SOLAR_UI.up);
+    this.syncButton(this.solarButtons.down, power.deployOf('down'), 0, 'パドル', SOLAR_UI.down);
 
     // ステージからの補助メッセージと撃墜数
     const leftHtml = message ? `<div>${message}</div><div>撃墜 ${kills}</div>` : `<div>撃墜 ${kills}</div>`;

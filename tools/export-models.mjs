@@ -187,8 +187,8 @@ function buildPlayerShip() {
     const baseName = side > 0 ? 'solarUp' : 'solarDown';
     const hinge = new THREE.Group();
     hinge.name = baseName;
-    // 胴体側面から伸びる (x = ±1.17, y = 0.52, z = -1.0)
-    hinge.position.set(side * 1.17, 0.52, -1.0);
+    // 胴体側面から伸びる (x = ±1.17, y = 0.52, z = -1.80)
+    hinge.position.set(side * 1.17, 0.52, -1.80);
     g.add(hinge);
 
     let parent = hinge;
@@ -199,9 +199,23 @@ function buildPlayerShip() {
       parent.add(fold);
 
       // パネル面 (幅をZ方向に、長さをX方向のセグメントとして配置)
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(SOLAR_SEG, 0.055, SOLAR_WIDTH), panelMat);
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(SOLAR_SEG, 0.02, SOLAR_WIDTH - 0.1), panelMat);
       panel.position.set(side * SOLAR_SEG / 2, 0, i * SOLAR_STACK_NUDGE);
       fold.add(panel);
+
+      // 外枠(上下Z辺)
+      for (const fz of [-SOLAR_WIDTH/2 + 0.05, SOLAR_WIDTH/2 - 0.05]) {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(SOLAR_SEG, 0.04, 0.1), panelFrame);
+        bar.position.set(side * SOLAR_SEG / 2, 0, i * SOLAR_STACK_NUDGE + fz);
+        fold.add(bar);
+      }
+      
+      // 内部格子(X辺) - 端点と中央
+      for (const fx of [0, SOLAR_SEG/2, SOLAR_SEG]) {
+        const div = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, SOLAR_WIDTH), panelFrame);
+        div.position.set(side * fx, 0, i * SOLAR_STACK_NUDGE);
+        fold.add(div);
+      }
 
       parent = fold;
     }
@@ -230,8 +244,9 @@ function buildPlayerShip() {
     const hinge = new THREE.Group();
     const baseName = sx > 0 ? 'radiatorUp' : 'radiatorDown';
     hinge.name = baseName;
-    // 機体側面に張り付くように x=1.17、はみ出さないよう z=-0.50、上下中心より少し下 y=-0.20 へ移動
-    hinge.position.set(sx * 1.17, -0.20, -0.50);
+    // 機体側面に張り付くように x=1.17、はみ出さないよう上下中心より少し下 y=-0.20
+    // マガジンと干渉しないよう z=-1.80 へ移動
+    hinge.position.set(sx * 1.17, -0.20, -1.80);
     g.add(hinge);
 
     let parent = hinge;
