@@ -6,10 +6,10 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { MU_EARTH, OrbitState, R_EARTH, orbitState } from '../../src/physics/orbital';
 import { OrbitEntity } from '../../src/physics/orbit-entity';
+import { Ephemeris } from '../../src/physics/ephemeris';
 import { len, sub, v3 } from '../../src/physics/vec3';
 
-const SUN_POS = v3(1.5e11, 0, 0);
-const MOON_POS = v3(3.8e8, 0, 0);
+const EPH = new Ephemeris(0, 0); // 初期位相を固定して決定的にする
 
 function circularState(t = 0): OrbitState {
   const r0 = R_EARTH + 420e3;
@@ -23,7 +23,7 @@ export function register(): void {
     const dt = 5;
     const sampleInterval = 23; // dt では割り切れない値にして端数の丸まり方を確認する
     for (let i = 0; i < 100; i++) {
-      e.step(dt, SUN_POS, MOON_POS, 0, null, sampleInterval, 100000);
+      e.step(dt, EPH, 0, null, sampleInterval, 100000);
     }
     // 500秒ぶん進めて間隔 23s なので、間引き後のサンプル数はおよそ 20 件前後のはず
     // (毎ステップ記録すれば100件になるところを大幅に間引けていることを確認する)。
@@ -33,7 +33,7 @@ export function register(): void {
   test('orbit-entity: step never touches history when keepDuration is 0', () => {
     const e = new OrbitEntity(circularState());
     for (let i = 0; i < 50; i++) {
-      e.step(1, SUN_POS, MOON_POS, 0, null, 1, 0);
+      e.step(1, EPH, 0, null, 1, 0);
     }
     assert.equal(e.history.size, 0);
   });
@@ -44,7 +44,7 @@ export function register(): void {
     const sampleInterval = 10; // 毎ステップ記録
     const keepDuration = 200; // 保持窓 200s ÷ 間隔 10s ≈ 20 件程度で頭打ちになるはず
     for (let i = 0; i < 500; i++) { // 5000秒ぶん進める(保持窓の25倍)
-      e.step(dt, SUN_POS, MOON_POS, 0, null, sampleInterval, keepDuration);
+      e.step(dt, EPH, 0, null, sampleInterval, keepDuration);
     }
     assert.ok(e.history.size < 30, `history should stay bounded by keepDuration, got ${e.history.size} samples`);
   });
@@ -59,8 +59,8 @@ export function register(): void {
     const sampleInterval = 174; // LEO 1周32点相当の実測値
     const denseStates: OrbitState[] = [];
     for (let i = 0; i < 200; i++) {
-      dense.step(dt, SUN_POS, MOON_POS, 0, null, dt, 1e6); // sampleInterval=dt → 実質毎ステップ記録
-      sparse.step(dt, SUN_POS, MOON_POS, 0, null, sampleInterval, 1e6);
+      dense.step(dt, EPH, 0, null, dt, 1e6); // sampleInterval=dt → 実質毎ステップ記録
+      sparse.step(dt, EPH, 0, null, sampleInterval, 1e6);
       denseStates.push(dense.state);
     }
     const sample = denseStates[100]!; // 保持区間内の中間あたりの時刻
@@ -74,7 +74,7 @@ export function register(): void {
     const e = new OrbitEntity(circularState());
     const dt = 10;
     for (let i = 0; i < 10; i++) {
-      e.step(dt, SUN_POS, MOON_POS, 0, null, dt, 100000); // 毎ステップ記録: history = t=0..80, state.t=90
+      e.step(dt, EPH, 0, null, dt, 100000); // 毎ステップ記録: history = t=0..80, state.t=90
     }
     assert.ok(e.history.at(50), 'sanity: t=50 should be recorded before reset');
     e.reset(orbitState(50, v3(1, 0, 0), v3(0, 1, 0)));
@@ -87,11 +87,11 @@ export function register(): void {
     const e = new OrbitEntity(circularState());
     assert.equal(e.prevState.t, 0); // 初期状態では自分自身に退化(まだ一度も進んでいない)
 
-    e.step(10, SUN_POS, MOON_POS, 0, null, 1000, 0); // keepDuration=0(history 不使用)でも prevState は更新される
+    e.step(10, EPH, 0, null, 1000, 0); // keepDuration=0(history 不使用)でも prevState は更新される
     assert.equal(e.prevState.t, 0);
     assert.equal(e.state.t, 10);
 
-    e.step(10, SUN_POS, MOON_POS, 0, null, 1000, 0);
+    e.step(10, EPH, 0, null, 1000, 0);
     assert.equal(e.prevState.t, 10);
     assert.equal(e.state.t, 20);
 
@@ -102,7 +102,7 @@ export function register(): void {
 
   test('orbit-entity: at() returns state itself at t === state.t and null beyond it', () => {
     const e = new OrbitEntity(circularState());
-    e.step(10, SUN_POS, MOON_POS, 0, null, 5, 100000);
+    e.step(10, EPH, 0, null, 5, 100000);
     assert.equal(e.at(e.state.t), e.state);
     assert.equal(e.at(e.state.t + 1), null);
   });
@@ -112,7 +112,7 @@ export function register(): void {
     const dt = 10;
     const sampleInterval = 10; // 毎ステップ記録
     for (let i = 0; i < 20; i++) {
-      e.step(dt, SUN_POS, MOON_POS, 0, null, sampleInterval, 1e6);
+      e.step(dt, EPH, 0, null, sampleInterval, 1e6);
     }
     const samples = e.samplesOldestFirst();
     for (let i = 1; i < samples.length; i++) {
@@ -132,7 +132,7 @@ export function register(): void {
 
     const noHistory = new OrbitEntity(circularState());
     for (let i = 0; i < 10; i++) {
-      noHistory.step(1, SUN_POS, MOON_POS, 0, null, 1, 0); // keepDuration=0 なので history は空のまま
+      noHistory.step(1, EPH, 0, null, 1, 0); // keepDuration=0 なので history は空のまま
     }
     const noHistorySamples = noHistory.samplesOldestFirst();
     assert.equal(noHistorySamples.length, 1);
