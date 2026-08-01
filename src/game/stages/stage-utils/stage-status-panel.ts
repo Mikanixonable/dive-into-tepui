@@ -104,7 +104,7 @@ export class StageStatusPanel {
     }
 
     const text =
-      `<div>ラジエーター${ui.label} [${ui.key}]</div>` +
+      `<div>パドル/放熱板${ui.label} [${ui.key}]</div>` +
       `<div>${deployed ? '展開中' : '収納中'} / 損耗${wearPct}%</div>`;
     if (dom.lastText !== text) {
       dom.label.innerHTML = text;

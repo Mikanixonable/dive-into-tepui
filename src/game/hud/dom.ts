@@ -101,11 +101,11 @@ const STYLE = `
 }
 #hud .hud-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 #hud .hud-seg .seg-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 28px; }
-#hud .hud-seg .seg-btn {
+#hud .seg-btn {
   pointer-events: auto; cursor: pointer; padding: 3px 10px; font-size: 11px;
   border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
 }
-#hud .hud-seg .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
 #hud .hud-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 #hud .hud-toggle .toggle-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; }
 #hud .hud-toggle .toggle-track {

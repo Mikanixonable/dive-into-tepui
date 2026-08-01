@@ -7,11 +7,12 @@ export class PowerSystem {
   private charge = C.POWER_CAPACITY * 0.75; // 蓄電量 [J]、0..POWER_CAPACITY
 
   // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
-  update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude): void {
+  // deployMult は太陽電池パドルの展開率(0..1)。
+  update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude, deployMult: number): void {
     const normal = qRotate(att.q, v3(0, 1, 0));
     // 裏面(法線が太陽と反対を向く)では発電しないため負値を0に切り詰める
     const cosIncidence = Math.max(0, dot(normal, sunDir));
-    const power = C.SOLAR_CONSTANT * C.SOLAR_PANEL_EFFICIENCY * C.SOLAR_PANEL_AREA * cosIncidence * sunlit;
+    const power = C.SOLAR_CONSTANT * C.SOLAR_PANEL_EFFICIENCY * C.SOLAR_PANEL_AREA * cosIncidence * sunlit * deployMult;
     this.charge = Math.min(C.POWER_CAPACITY, this.charge + power * dt);
   }
 

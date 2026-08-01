@@ -7,7 +7,6 @@ import { Vec3, dot, len, sub, v3 } from '../../physics/vec3';
 import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_TIP_DISTANCE,
-  radiatorFoldName,
 } from '../../render/ships';
 import * as C from '../const';
 
@@ -31,17 +30,20 @@ class Panel {
 export class RadiatorSystem {
   private readonly panels: Record<RadiatorSide, Panel> = { up: new Panel(), down: new Panel() };
   private readonly folds: Record<RadiatorSide, THREE.Object3D[]>;
+  private readonly solarFolds: Record<RadiatorSide, THREE.Object3D[]>;
 
   // shipObj は自機メッシュ。上下それぞれ、ヒンジ Group の子孫から折り目 Group を
-  // RADIATOR_FOLD_COUNT 個解決して保持する。
+  // RADIATOR_FOLD_COUNT 個解決して保持する。太陽電池パネルの折り目も合わせて保持する。
   constructor(shipObj: THREE.Object3D) {
-    const collect = (side: RadiatorSide): THREE.Object3D[] => {
+    const collect = (side: RadiatorSide, baseName: string): THREE.Object3D[] => {
+      const namePrefix = baseName + (side === 'up' ? 'Up' : 'Down');
       const found = Array.from({ length: C.RADIATOR_FOLD_COUNT }, (_, i) =>
-        shipObj.getObjectByName(radiatorFoldName(side, i)));
-      if (found.some((f) => !f)) throw new Error('radiator fold objects not found in ship model');
+        shipObj.getObjectByName(`${namePrefix}Fold${i}`));
+      if (found.some((f) => !f)) throw new Error(`${baseName} fold objects not found in ship model`);
       return found as THREE.Object3D[];
     };
-    this.folds = { up: collect('up'), down: collect('down') };
+    this.folds = { up: collect('up', 'radiator'), down: collect('down', 'radiator') };
+    this.solarFolds = { up: collect('up', 'solar'), down: collect('down', 'solar') };
   }
 
   // side の展開/収納を切り替える。
@@ -88,9 +90,17 @@ export class RadiatorSystem {
       const broken = this.panels[side].wear >= 1;
       for (let i = 0; i < folds.length; i++) {
         const fold = folds[i];
-        if (!fold) continue;
-        fold.rotation.y = i === 0 ? even : (i % 2 === 1 ? odd - even : even - odd);
-        fold.visible = !broken;
+        const solarFold = this.solarFolds[side][i];
+        const rotY = i === 0 ? even : (i % 2 === 1 ? odd - even : even - odd);
+        
+        if (fold) {
+          fold.rotation.y = rotY;
+          fold.visible = !broken;
+        }
+        if (solarFold) {
+          solarFold.rotation.y = rotY;
+          // 太陽電池パネルはラジエーターが全損してもとりあえず表示しておく
+        }
       }
     }
   }
