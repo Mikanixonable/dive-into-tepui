@@ -146,7 +146,6 @@
       - spawnWave() + hud.toast() // 間隔・同時展開上限を満たす場合のみ
       - spawnWave: generateWave() → addEnemy() → entities.addEnemy() + scoreCounter.recordSpawnEnemy()
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
-    - [StagePractice 軌道操作練習] logistics.updateLogistics(respawnOnDespawn=false)
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(respawnOnDespawn=false)
   - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効
@@ -168,7 +167,7 @@
           - activeStage.recordEnemyDeath(cause='killed') // hp<=0
             - scoreCounter.recordKill() + hud.hint()
             - unlockManager.reportClear() // isPlaying かつ checkWin() が true になった場合のみ
-            - onWin() → showWinScreen() // 同上(Stage0/00/StagePractice は no-op override)
+            - onWin() → showWinScreen() // 同上(Stage0/00 は no-op override)
           - destroyEffect() → sfx.explosion() + fx.spawnShipDestroyEffect() // hp<=0
         - [Player.attacked]
           - hitEffect() // hp>0
