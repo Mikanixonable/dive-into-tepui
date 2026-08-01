@@ -56,6 +56,12 @@ export class Targeter {
     return this.secondaryTarget && this.secondaryTarget.alive ? this.secondaryTarget : null;
   }
 
+  // アクティブ艦の切替時などに、選定済みのターゲットをまとめて解除する。
+  clearTargets(): void {
+    this.target = null;
+    this.secondaryTarget = null;
+  }
+
   // 右クリックによるターゲット選択メニューを扱う。オート選定は行わない。
   updateCombatTargeting(player: Player, enemies: Enemy[], input: Input, project: ProjectFn): void {
     this.handleTargetContextMenu(input, enemies, player, project);

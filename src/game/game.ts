@@ -38,6 +38,7 @@ import { MapContextGizmo, MapMenuItem } from './map-context-gizmo';
 import { MapPickable, pickNearest } from './map-pick';
 import { NavTarget } from './nav-target';
 import { Navball } from './navball/navball';
+import { CreativeShip } from './game-entity/creative-ship';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -51,7 +52,7 @@ export class Game {
   private readonly markerManager: MarkerManager;
   private readonly ephemeris: Ephemeris;
   readonly cameraSystem: CameraSystem;
-  readonly player: Player;
+  player: Player;
   readonly simSpeedManager: SimSpeedManager;
 
   private readonly editor: PlanEditor;
@@ -130,6 +131,7 @@ export class Game {
       this._scene,
       this.markerManager,
       () => this.player.fineAttitude,
+      this.player,
     );
     // 表示期間の非連続な切り替えは、予測折れ線の通常のスロットルを待たせず即座に作り直す。
     this.displayTimeManager.onDurationChange = () => this.editor.planDisplay.traj.invalidate();
@@ -154,6 +156,12 @@ export class Game {
           : this.navTarget.passTimeOf(target.id);
         if (t !== null) this.editor.addNodeAt(t);
         else this._hud.hint('この時刻の計画軌道が求まりません');
+      } else if (act === 'activate') {
+        this.activateCreativeShip(target.id);
+      } else if (act === 'followToggle') {
+        this.toggleCreativeShipFollowPlan(target.id);
+      } else if (act === 'delete') {
+        this.deleteCreativeShip(target.id);
       }
     };
 
@@ -180,6 +188,7 @@ export class Game {
     } else {
       const creativeStage = new CreativeStage();
       creativeStage.setup(this._hud, this._sfx, this._scene, this.entities, this.unlockManager, this.effects, this.markerManager);
+      creativeStage.setupCreative(this.markerManager);
       creativeStage.init(this.player, this.entities);
       this.activeStage = creativeStage;
     }
@@ -200,6 +209,15 @@ export class Game {
   }
 
   resume(): void { this._isPaused = false; }
+
+  // アクティブ艦(操作対象・追従カメラ・計画編集の対象)を差し替える。切替の副作用を
+  // ここへ閉じ、各所有者はそれぞれの持ち分だけを更新する。
+  setActivePlayer(ship: Player): void {
+    this.player = ship;
+    this.cameraSystem.setActivePlayer(ship);
+    this.editor.setActiveShip(ship);
+    this.targeter.clearTargets();
+  }
 
   // ------------------------------------------------------------ update
 
@@ -229,7 +247,7 @@ export class Game {
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
       this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, false, false, false);
       this.nanWatchdog.checkAll('stepSimulation(決着後)', this.player, this.entities, this.simulator.simTime, dt, simDt);
-      this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
+      this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r, this.player);
       // 決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
       // 軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする。
       this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt, mapPickables);
@@ -280,7 +298,7 @@ export class Game {
 
     this.player.checkLoss(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
 
-    this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
+    this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r, this.player);
 
     // cleanup の後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせるため。
     this.predictor.update(this.simulator.simTime, this.player);
@@ -326,8 +344,8 @@ export class Game {
       this.editor.editMode,
       this.editor.plan.firstNode(),
     );
-    // アクティブ艦の概念は未実装。恒常的に true を渡し、艦切替実装側でここを差し替える。
-    const canToggleView = true;
+    // 戦闘ビューはアクティブ艦を前提とする。艦がまだ配置されていない/破壊されている間は無効。
+    const canToggleView = this.player.alive;
     this.mapModeToggler.update(
       this.input, this.activeStage.isPlaying, this._isPaused, canToggleView,
       this.editor, this.touchControls, this.cameraSystem, this.displayTimeManager,
@@ -369,6 +387,17 @@ export class Game {
           { label: target.id === this.navTarget.id ? '航法ターゲット解除' : '航法ターゲットに設定', act: 'navTarget' },
           { label: 'キャンセル', act: 'cancel' },
         ];
+      case 'creativeShip': {
+        const ship = this.findCreativeShip(target.id);
+        const following = ship?.followPlan ?? false;
+        return [
+          { label: '操作対象にする', act: 'activate' },
+          { label: following ? '軌道計画への自動追従 OFF' : '軌道計画への自動追従 ON', act: 'followToggle' },
+          { label: 'フォーカスを移動', act: 'focus' },
+          { label: '削除', act: 'delete' },
+          { label: 'キャンセル', act: 'cancel' },
+        ];
+      }
       case 'relnode':
         return [
           { label: 'ここまで時間加速', act: 'warp' },
@@ -386,7 +415,9 @@ export class Game {
     const orbitPeriod = this.player.elements?.period ?? null;
     const displayTime = this.displayTimeManager.resolveDisplayTime(orbitPeriod, this.simulator.simTime);
     const items: MapPickable[] = [...this.cameraSystem.focusMarkers.labels];
-    if (this.player.alive) {
+    // クリエイティブ艦(アクティブ艦含む)は下の creativeShips ループで 'creativeShip' として
+    // 出すので、ここでは非クリエイティブ(ステージモード)の自機だけを 'ship' として出す。
+    if (this.player.alive && !(this.player instanceof CreativeShip)) {
       const pos = this.player.displayState(displayTime)?.r;
       if (pos) items.push({ id: 'player', name: '自機', pos, kind: 'ship' });
     }
@@ -395,8 +426,44 @@ export class Game {
       const pos = enemy.displayState(displayTime)?.r;
       if (pos) items.push({ id: enemy.name, name: enemy.name, pos, kind: 'ship' });
     }
+    for (const ship of this.entities.creativeShips) {
+      if (!ship.alive) continue;
+      const pos = ship.displayState(displayTime)?.r;
+      if (pos) items.push({ id: ship.name, name: ship.name, pos, kind: 'creativeShip' });
+    }
     items.push(...this.navTarget.mapPickables());
     return items;
+  }
+
+  // id で名指しされたクリエイティブ艦を探す。見つからなければ null。
+  private findCreativeShip(id: string): CreativeShip | null {
+    return this.entities.creativeShips.find((s) => s.name === id) ?? null;
+  }
+
+  private activateCreativeShip(id: string): void {
+    const ship = this.findCreativeShip(id);
+    if (!ship) return;
+    this.setActivePlayer(ship);
+    this._hud.hint(`${ship.name} を操作対象にする`);
+  }
+
+  private toggleCreativeShipFollowPlan(id: string): void {
+    const ship = this.findCreativeShip(id);
+    if (!ship) return;
+    ship.followPlan = !ship.followPlan;
+    this._hud.hint(`${ship.name}: 軌道計画への自動追従 ${ship.followPlan ? 'ON' : 'OFF'}`);
+  }
+
+  // 操作対象の艦は削除できない(削除すると自機が消える)。
+  private deleteCreativeShip(id: string): void {
+    const ship = this.findCreativeShip(id);
+    if (!ship) return;
+    if (ship === this.player) {
+      this._hud.hint('操作対象の艦は削除できません');
+      return;
+    }
+    this.entities.removeCreativeShip(ship);
+    this._hud.hint(`${ship.name} を削除`);
   }
 
   // ------------------------------------------------------------------ sync
@@ -428,7 +495,7 @@ export class Game {
 
     this.player.syncPlayer(this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused, displayTime);
 
-    this.entities.sync(this.floatingOrigin, displayTime);
+    this.entities.sync(this.floatingOrigin, displayTime, this.player);
 
     this.effects.sync(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
 
