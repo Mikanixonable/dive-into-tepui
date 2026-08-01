@@ -17,7 +17,15 @@ export class MapModeToggler {
   private _mapMode = false;
   get mapMode(): boolean { return this._mapMode; }
 
-  constructor(private readonly _hud: Hud) { }
+  constructor(private readonly _hud: Hud, initialMapMode = false) {
+    this._mapMode = initialMapMode;
+  }
+
+  // コンストラクタで受けた初期 mapMode に、視点・入力・未来表示の各フラグを合わせる。
+  // 呼び出し時点でまだ存在しない touchControls は対象外(初期状態では触れない)。
+  applyInitialState(editor: PlanEditor, cameraSystem: CameraSystem, displayTimeManager: DisplayTimeManager): void {
+    this.setMapMode(this._mapMode, editor, null, cameraSystem, displayTimeManager);
+  }
 
   // マップを開く。選択中ノードをクリアしてから mapMode をオンにする。
   private open(
@@ -59,10 +67,13 @@ export class MapModeToggler {
   // 毎フレーム呼ぶ。[M] の開閉を受け、決着後は開いたままにならないよう閉じる。
   // ポーズ中は [M] の入力そのものを無視する(キーも消費しない)が、既に開いているマップを
   // 強制的に閉じることはしない — ポーズ解除後は開いていた状態のまま戻る。
+  // canToggleView が false の間は [M] を無効化する(キーも消費しない) — 戦闘ビューが
+  // 前提とする操作対象艦が無いとき用。
   update(
     input: Input,
     isPlaying: boolean,
     _isPaused: boolean,
+    canToggleView: boolean,
     editor: PlanEditor,
     touchControls: TouchControls | null,
     cameraSystem: CameraSystem,
@@ -76,6 +87,8 @@ export class MapModeToggler {
       }
       return;
     }
+
+    if (!canToggleView) return;
 
     // ポーズ中も [M] でマップビューの切り替えを許可する
 
