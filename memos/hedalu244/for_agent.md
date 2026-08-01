@@ -127,35 +127,6 @@ if (sample) this.selectedNodeIdx = this.plan.retimeNode(idx, sample);
 (`plan.ts:76`)。`fromOrbitalAxes` が丸めで 1e-18 でも返せば、**毎フレーム下流ノードが
 破棄され続ける**。入力がゼロなら呼ばない形にすべき。
 
-## 9. 計画が空のあいだ、区間全体を 200ms ごとに全再積分している(スロットル動作除去済み。要パフォーマンス再評価)
-
-- `Plan.trackAnchor` は計画が空のあいだ毎フレーム `player.state`(毎フレーム新オブジェクト)を
-  anchor に入れる(`game.ts:236` / `plan.ts:28`)。
-- `PlanArc.update` の再計算判定は `state0 !== this.key.state0` の**参照比較**
-  (`plan-arc.ts:63`)なので、計画が空のあいだは毎フレーム「起点が変わった」と判定される。
-- したがって `PLAN_ARC_THROTTLE_MS = 200ms` ごとに区間全体をゼロから積分し直す。
-
-刻みは `stepDt = keplerPeriod(r) / 100`。LEO(周期約 5570s)なら約 56s なので:
-
-| 表示期間 | 1回あたりの RK4 ステップ数 |
-|---|---|
-| 1周回 | 100 |
-| 1日 | 約 1,550 |
-| 1週間 | 約 10,800 |
-| 1ヶ月 | 約 46,500 |
-
-**「1ヶ月」表示では 200ms ごとに 200ms 級の再積分**が走り、実質フリーズする。
-`PLAN_ARC_MAX_SAMPLES = 2000` は**サンプルの間引き**にしか効かず、積分ステップ数は減らない。
-
-なお `Predictor` / `GameEntity.stepPrediction` 側は「先端を1歩ずつ伸ばす」インクリメンタル
-方式なのに、plan 側だけ毎回ゼロから、という非対称がある。
-
-## 10. `hideGizmo()` の毎フレーム呼び出しについて(`editor_todo.md` の疑問への回答)
-
-`nodeGizmo.sync([], null)` は「仕様に無くなった DOM 要素を破棄する」副作用を持つので、
-マップを閉じた瞬間に1回は必要。ただし非 editMode のあいだ毎フレーム呼ぶ必要はない
-(`plan-editor.ts:400`)。閉じる遷移の1回だけにしてよい。
-
 ---
 
 ## 検査して「問題なし」と確認した箇所(再調査の無駄を省くため)
