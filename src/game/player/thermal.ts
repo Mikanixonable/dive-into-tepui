@@ -8,7 +8,8 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 
 // checkThermalLimits の戻り値: 限界超過の種別。null なら超過なし。
-export type ThermalLimit = 'heat' | 'dynpressure' | null;
+// heat-aero: 空力加熱による飽和。heat-internal: 射撃発熱など大気のない状況での飽和。
+export type ThermalLimit = 'heat-aero' | 'heat-internal' | 'dynpressure' | null;
 
 export class ThermalSystem {
   // --- 自機の熱・動圧状態 ---
@@ -73,7 +74,8 @@ export class ThermalSystem {
   // 熱防御の飽和・空力破壊を判定し、限界超過の種別を返す。
   checkThermalLimits(): ThermalLimit {
     if (this.hullTemp > C.MAX_HULL_TEMP) {
-      return 'heat';
+      // 動圧の有無を大気の有無の指標として使い、加熱源(空力/射撃)を出し分ける
+      return this.qdyn >= C.REENTRY_GLOW_MIN_Q ? 'heat-aero' : 'heat-internal';
     }
     if (this.qdyn > C.MAX_DYN_PRESSURE) {
       return 'dynpressure';
