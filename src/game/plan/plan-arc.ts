@@ -2,7 +2,7 @@
 // サンプル列を1本の折れ線として描く。マニューバノードによる区間分割は知らない — 呼び出し側
 // (PlanTrajectory)が arc ごとにこれを持つ。
 import * as THREE from 'three/webgpu';
-import { OrbitState, altitudeOf } from '../../physics/orbital';
+import { OrbitState, altitudeOf, keplerPeriod } from '../../physics/orbital';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -16,12 +16,14 @@ const EPOCH_EPS = 1e-6;
 
 type ComputeKey = { state0: OrbitState; end: number; };
 
-// 刻み幅。動径が小さいほど細かく(LEO で約8.5s)、表示期間が長いほど粗くする。28日ぶんを
-// LEO の秒刻みで積分すると RK4 が数十万ステップに達し、1回の再計算に数百 ms かかる。
-// 計画・表示用途なので、遠い将来ぶんが粗いことは実用上問題にならない。
-function stepDt(r: number, duration: number): number {
-  const coarsen = Math.max(1, Math.min(8, duration / 86400));
-  return Math.max(5, Math.min(600, (r / 8e5) * coarsen));
+// 1周回あたりのステップ数。RK4 の誤差は1周あたりのステップ数でほぼ決まるので、これを固定すると
+// 高度・離心率によらず精度が揃う(28日ぶんの LEO を積分して長半径誤差 1km 未満)。
+const STEPS_PER_REV = 100;
+
+// 刻み幅。その場の軌道運動の時間スケール(動径 r の円軌道周期)を STEPS_PER_REV 等分する。
+// 低軌道では細かく、遠地点では粗くなり、離心軌道でも1周を通して精度が一定になる。
+function stepDt(r: number): number {
+  return keplerPeriod(r) / STEPS_PER_REV;
 }
 
 export class PlanArc {
@@ -113,7 +115,7 @@ export class PlanArc {
 
     while (entity.state.t < end - EPOCH_EPS) {
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
-      const dt = Math.min(stepDt(len(entity.state.r), duration), end - entity.state.t);
+      const dt = Math.min(stepDt(len(entity.state.r)), end - entity.state.t);
       if (dt <= 1e-9) break;
       // 環境加速度は区間の中点の太陽・月位置で評価する
       const mid = entity.state.t + dt / 2;
