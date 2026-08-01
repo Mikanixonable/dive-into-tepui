@@ -197,10 +197,10 @@ export class Player extends Ship {
       case K.throttleLow.code: this.throttle.setThrottlePreset(0); return true;
       case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
       case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
-      case K.radiatorDeployUp.code: this.radiator.toggle('up'); return true;
-      case K.radiatorDeployDown.code: this.radiator.toggle('down'); return true;
-      case K.solarDeployUp.code: this.power.toggle('up'); return true;
-      case K.solarDeployDown.code: this.power.toggle('down'); return true;
+      case K.radiatorDeployLeft.code: this.radiator.toggle('up'); return true;
+      case K.radiatorDeployRight.code: this.radiator.toggle('down'); return true;
+      case K.solarDeployLeft.code: this.power.toggle('up'); return true;
+      case K.solarDeployRight.code: this.power.toggle('down'); return true;
       // マニュアルリロードに成功した場合だけキーを消費する
       case K.reload.code: return this.fire.manualReload();
       default: return false;

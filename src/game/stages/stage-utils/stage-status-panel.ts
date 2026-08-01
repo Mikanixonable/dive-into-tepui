@@ -9,18 +9,18 @@ import type { Player } from '../../player/player';
 import type { RadiatorSide } from '../../player/radiator';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { fmtEnergy } from '../../hud/utils';
-import { ACCENT } from '../../theme';
 
-// side を「右(+X)/左(-X)」ラベルとショートカットキーへ対応させる。
+// side を「左(+X)/右(-X)」ラベルとショートカットキーへ対応させる。
+// (機体の+Zが前なので、後ろから見ると+Xは左になる)
 const RADIATOR_UI: Record<RadiatorSide, { label: string; key: string }> = {
-  up: { label: '右', key: K.radiatorDeployUp.label },
-  down: { label: '左', key: K.radiatorDeployDown.label },
+  up: { label: '左', key: K.radiatorDeployLeft.label },
+  down: { label: '右', key: K.radiatorDeployRight.label },
 };
 
 import type { SolarSide } from '../../player/power';
 const SOLAR_UI: Record<SolarSide, { label: string; key: string }> = {
-  up: { label: '右', key: K.solarDeployUp.label },
-  down: { label: '左', key: K.solarDeployDown.label },
+  up: { label: '左', key: K.solarDeployLeft.label },
+  down: { label: '右', key: K.solarDeployRight.label },
 };
 
 interface RadiatorButtonDom {
@@ -62,12 +62,12 @@ export class StageStatusPanel {
 
     const radiatorsCol = this.panel.querySelector<HTMLElement>('.radiators')!;
     this.solarButtons = {
-      down: this.buildButton(radiatorsCol, () => this.player?.power.toggle('down')),
       up: this.buildButton(radiatorsCol, () => this.player?.power.toggle('up')),
+      down: this.buildButton(radiatorsCol, () => this.player?.power.toggle('down')),
     };
     this.radiatorButtons = {
-      down: this.buildButton(radiatorsCol, () => this.player?.radiator.toggle('down')),
       up: this.buildButton(radiatorsCol, () => this.player?.radiator.toggle('up')),
+      down: this.buildButton(radiatorsCol, () => this.player?.radiator.toggle('down')),
     };
   }
 
@@ -111,7 +111,7 @@ export class StageStatusPanel {
     dom.button.classList.toggle('on', deployed);
 
     const fillWidth = `${100 - wearPct}%`;
-    const fillColor = highWear ? C.COLOR_HUD_HP_LOW : deployed ? ACCENT : C.COLOR_HUD_HP_OK;
+    const fillColor = highWear ? C.COLOR_HUD_HP_LOW : deployed ? 'transparent' : 'transparent';
     if (dom.lastFillWidth !== fillWidth) {
       dom.fill.style.width = fillWidth;
       dom.lastFillWidth = fillWidth;
@@ -171,13 +171,13 @@ export class StageStatusPanel {
     }
     this.centerCol.classList.toggle('warn', low);
 
-    const radiator = player.radiator;
-    this.syncButton(this.radiatorButtons.up, radiator.deployOf('up'), radiator.wearOf('up'), '放熱板', RADIATOR_UI.up);
-    this.syncButton(this.radiatorButtons.down, radiator.deployOf('down'), radiator.wearOf('down'), '放熱板', RADIATOR_UI.down);
-
     const power = player.power;
     this.syncButton(this.solarButtons.up, power.deployOf('up'), 0, 'パドル', SOLAR_UI.up);
     this.syncButton(this.solarButtons.down, power.deployOf('down'), 0, 'パドル', SOLAR_UI.down);
+
+    const radiator = player.radiator;
+    this.syncButton(this.radiatorButtons.up, radiator.deployOf('up'), radiator.wearOf('up'), '放熱板', RADIATOR_UI.up);
+    this.syncButton(this.radiatorButtons.down, radiator.deployOf('down'), radiator.wearOf('down'), '放熱板', RADIATOR_UI.down);
 
     // ステージからの補助メッセージと撃墜数
     const leftHtml = message ? `<div>${message}</div><div>撃墜 ${kills}</div>` : `<div>撃墜 ${kills}</div>`;

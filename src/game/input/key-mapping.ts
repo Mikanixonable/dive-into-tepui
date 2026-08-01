@@ -33,10 +33,10 @@ export const KEY_MAPPING = {
   throttleLow: { code: 'Digit1', label: '1' },
   throttleMid: { code: 'Digit2', label: '2' },
   throttleHigh: { code: 'Digit3', label: '3' },
-  radiatorDeployUp: { code: 'Digit9', label: '9' },
-  radiatorDeployDown: { code: 'Digit0', label: '0' },
-  solarDeployUp: { code: 'Digit8', label: '8' },
-  solarDeployDown: { code: 'Digit7', label: '7' },
+  radiatorDeployLeft: { code: 'Digit9', label: '9' },
+  radiatorDeployRight: { code: 'Digit0', label: '0' },
+  solarDeployLeft: { code: 'Digit7', label: '7' },
+  solarDeployRight: { code: 'Digit8', label: '8' },
 
   // 射撃・装填
   fire: { code: 'Space', label: 'SPACE' },
