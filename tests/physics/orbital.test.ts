@@ -12,9 +12,11 @@ import {
   fromOrbitalAxes,
   hermiteInterpolate,
   j2Accel,
+  keplerPeriod,
   orbitState,
   orbitalAxes,
   positionOnOrbit,
+  semiMajorFromPeriod,
   stateFromElements,
   stepOrbitRK4,
   timeSincePeriapsis,
@@ -22,6 +24,7 @@ import {
   trueAnomalyAt,
   velocityOnOrbit,
 } from '../../src/physics/orbital';
+import { MU_MOON } from '../../src/physics/ephemeris';
 import { dot, len, norm, sub, v3 } from '../../src/physics/vec3';
 
 export function register(): void {
@@ -42,6 +45,20 @@ export function register(): void {
       Math.abs(elx.incDeg - (inc * 180) / Math.PI) < 1e-7,
       `inc round trip: ${elx.incDeg}`,
     );
+  });
+
+  test('orbital: keplerPeriod <-> semiMajorFromPeriod round trip (Earth mu)', () => {
+    const a = R_EARTH + 420e3;
+    const period = keplerPeriod(a);
+    const a2 = semiMajorFromPeriod(period);
+    assert.ok(Math.abs(a2 - a) / a < 1e-9, `a round trip: ${a2} vs ${a}`);
+  });
+
+  test('orbital: keplerPeriod <-> semiMajorFromPeriod round trip (Moon mu)', () => {
+    const a = 2000e3;
+    const period = keplerPeriod(a, MU_MOON);
+    const a2 = semiMajorFromPeriod(period, MU_MOON);
+    assert.ok(Math.abs(a2 - a) / a < 1e-9, `a round trip: ${a2} vs ${a}`);
   });
 
   test('orbital: trueAnomalyAt / positionOnOrbit / velocityOnOrbit round trip', () => {
