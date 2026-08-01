@@ -4,6 +4,7 @@ import { FloatingOrigin } from './floating-origin';
 import * as C from './const';
 import { v3 } from '../physics/vec3';
 import { Player } from './player/player';
+import { Enemy } from './game-entity/enemy';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageId } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
@@ -167,7 +168,15 @@ export class Game {
     this.handleInput();
 
     // handleInput より後に置く: ポーズ中も Esc・ヘルプなどは効かせる。
-    if (this._isPaused) { return; }
+    if (this._isPaused) {
+      if (this.editor.editMode) {
+        this.editor.handleMapPointer(this.input);
+        this.cameraSystem.handleMapPointer(this.input);
+        this.editor.updateEditing(dt, this.simulator.simTime, this.input);
+      }
+      this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt);
+      return;
+    }
 
     // behave が呼ばれなくなるので、決着時点の thrust が凍結され続けないよう明示的に消す。
     if (!this.activeStage.isPlaying) {
@@ -193,6 +202,7 @@ export class Game {
       scoreCounter: this.activeStage.scoreCounter,
       simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
+      ephemeris: this.ephemeris,
       addBullet: (bullet) => this.entities.addBullet(bullet),
     });
 
@@ -207,7 +217,16 @@ export class Game {
     this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage,
       true, // bulletCollision
       this.simSpeedManager.canResolvePhysicalCollisions, // resolveCollision
-      true, // doSubstep 
+      true, // doSubstep
+      (a, b, speed) => {
+        if (a === this.player && b instanceof Enemy) {
+          this.player.collidedAtSpeed(speed, this.activeStage);
+          b.collidedAtSpeed(speed, this.simulator.simTime, this.activeStage);
+        } else if (b === this.player && a instanceof Enemy) {
+          this.player.collidedAtSpeed(speed, this.activeStage);
+          a.collidedAtSpeed(speed, this.simulator.simTime, this.activeStage);
+        }
+      },
     );
 
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
@@ -315,7 +334,7 @@ export class Game {
     this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, displayTime, this.floatingOrigin, project);
 
     this.touchControls?.syncModeButtons(this.player.rcsDamp, this.player.fineAttitude, this.player.progradeHold);
-    this.activeStage.sync(this.player, project, displayTime);
+    this.activeStage.sync(this.player, project, displayTime, overviewMode);
 
     this._hud.panels.update(this, dt);
     this._hud.tick();

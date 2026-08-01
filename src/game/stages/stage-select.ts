@@ -33,7 +33,7 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
           const lx = isTR ? x - 8 : x;
           const ly = isBL ? y - 8 : y;
           if (lx === 0 || lx === 3 || ly === 0 || ly === 3 || (lx === 1 && ly === 1) || (lx === 2 && ly === 2)) {
-             color = ACCENT;
+            color = ACCENT;
           }
         } else {
           const hash = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
@@ -52,18 +52,29 @@ export function selectStage(unlockManager: UnlockManager): Promise<StageId> {
     // 解放状況ごとにボタンを並べる
     const enabledByStage = new Map(STAGE_DEFINITIONS.map((stage) => [stage.id, unlockManager.isUnlocked(stage.id)]));
     for (const stage of STAGE_DEFINITIONS) {
+      if (stage.hiddenFromSelect) continue;
       const enabled = enabledByStage.get(stage.id) ?? false;
       const sub = enabled ? stage.selectSub : stage.selectLockedSub ?? stage.selectSub;
-      const button = btn(stage.selectLabel, sub, enabled);
+      const keyStr = stage.selectKeys[0] ? ` [${stage.selectKeys[0].replace('Digit', '').replace('Key', '')}]` : '';
+      const button = btn(stage.selectLabel + keyStr, sub, enabled);
       div.appendChild(button);
       if (enabled) button.addEventListener('click', () => done(stage.id));
     }
     document.body.appendChild(div);
 
+    // 隅の控えめなリンクからデバッグステージへ移動できる。
+    const debugLink = document.createElement('div');
+    debugLink.textContent = 'debug stage [d]';
+    debugLink.style.cssText =
+      `position: fixed; bottom: 10px; left: 14px; font-size: 11px; color: ${TEXT_DIM}; cursor: pointer; z-index: 200;`;
+    debugLink.addEventListener('click', () => done('debug'));
+    document.body.appendChild(debugLink);
+
     // 選択確定: 画面を片付けて Promise を解決する
     const done = (stage: StageId) => {
       window.removeEventListener('keydown', onKey);
       div.remove();
+      debugLink.remove();
       resolve(stage);
     };
     // 解放済みステージのショートカットキーにマッチしたら選択確定する

@@ -9,7 +9,7 @@ import { GameEntity } from './game-entity';
 
 // DebrisPiece の見た目・振る舞いの種別。
 export type DebrisKind =
-  | { kind: 'fragment'; accent: number; size: number; }
+  | { kind: 'fragment'; accent: string | number; size: number; }
   | { kind: 'barrel'; }
   | { kind: 'magazineFrame'; }
   | { kind: 'casing'; bornSim: number; };
