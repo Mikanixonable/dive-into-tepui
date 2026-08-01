@@ -101,7 +101,7 @@ export class CameraSystem {
         if (this.overviewMode) {
           this.overviewCamera.reset();
         } else {
-          this.chaseCamera.reset();
+          this.combatCamera.reset();
         }
       });
     }
