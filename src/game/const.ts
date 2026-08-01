@@ -1,6 +1,9 @@
 // ゲームバランス・チューニング定数
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/orbital';
 
+// クリエイティブモードで配置できる CreativeShip の上限隻数。
+export const CREATIVE_MAX_SHIPS = 8;
+
 export const REENTRY_ALT = 80e3; // 敵機はこれ以下で大気圏突入・焼失 [m](熱モデルなしの簡易処理)
 export const PLAYER_MIN_ALT = 45e3; // 自機の構造限界高度 [m](通常は加熱・動圧で先に喪失する)
 export const DEBRIS_REENTRY_ALT = 95e3; // 弾・薬莢・破片の消滅高度 [m]
