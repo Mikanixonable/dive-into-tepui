@@ -277,7 +277,9 @@ export class Game {
       this.editor.updateEditing(dt, this.simulator.simTime, this.input);
     }
     else {
-      this.targeter.updateCombatTargeting(this.player, this.entities.enemies, this.input, this.cameraSystem);
+      this.targeter.updateCombatTargeting(
+        this.player, this.entities.enemies, this.input, this.cameraSystem.activeCameraProjection,
+      );
     }
   }
 
@@ -346,6 +348,7 @@ export class Game {
     const overviewMode = this.cameraSystem.overviewMode;
     const simTime = this.simulator.simTime;
     const target = this.targeter.aliveTarget;
+    const secondaryTarget = this.targeter.aliveSecondaryTarget;
 
     this.environment.sync({
       dt,
@@ -370,7 +373,10 @@ export class Game {
     const enemyMarkerItems: GroupedMarkerItem[] = [];
     for (const enemy of aliveEnemies) {
       const pos = enemy.displayState(displayTime)?.r;
-      if (pos) enemyMarkerItems.push(enemy.markerItem(enemy === target, this.player.state.r, pos));
+      if (!pos) continue;
+      const role: 'none' | 'primary' | 'secondary' =
+        enemy === target ? 'primary' : enemy === secondaryTarget ? 'secondary' : 'none';
+      enemyMarkerItems.push(enemy.markerItem(role, this.player.state.r, pos));
     }
     this.enemyMarkers.sync(enemyMarkerItems, project);
     this.leadMarkers.sync(this.player, aliveEnemies, target, simTime, overviewMode, project);

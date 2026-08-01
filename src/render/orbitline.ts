@@ -40,6 +40,8 @@ export class OrbitLine {
     // THREE.Line で始点を終端に複製して閉じる。
     this.line = new THREE.Line(geo, mat);
     this.line.frustumCulled = false;
+    // 既定値(自機の軌道線を想定)。他ロール(ターゲット等)は呼び出し側が
+    // renderOrder を上書きし、重なったときに手前へ来る優先順位を決める。
     this.line.renderOrder = 1;
   }
 
