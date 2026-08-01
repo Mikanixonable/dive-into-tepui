@@ -17,9 +17,9 @@ export type RadiatorSide = 'up' | 'down';
 // 方向ベクトルが完全に打ち消し合い、4折りが同一の 2.3×2.3 の正方形へ重なる。
 const STOW_TILT = Math.PI / 2;
 
-// side の展開軸方向(ヒンジ局所 +Z を ±Y へ倒す基準角)。up は +Y、down は -Y へ展開する。
+// side の展開軸方向(ヒンジ局所 +Z を ±X へ倒す基準角)。up は +X、down は -X へ展開する。
 function sideBase(side: RadiatorSide): number {
-  return side === 'up' ? -Math.PI / 2 : Math.PI / 2;
+  return side === 'up' ? Math.PI / 2 : -Math.PI / 2;
 }
 
 class Panel {
@@ -68,8 +68,8 @@ export class RadiatorSystem {
 
   // 偶数折り目/奇数折り目それぞれの、ヒンジ基準での累積回転角。sync がメッシュへ書く
   // 相対回転と solarLoad が法線計算に使う絶対角を同一の (base, psi) から導く共有点。
-  // down は even/odd の psi 符号を up と逆にする: 揃えないと折り畳みの前後(Z)位置が
-  // 上下で逆向きになる(base の符号反転と psi の加減が噛み合わさるため)。
+  // down は even/odd の psi 符号を up と逆にする: 揃えないと蛇腹の伸長方向(X)が
+  // ヒンジの内側(機体側)へ食い込む(base の符号反転と psi の加減が噛み合わさるため)。
   private foldThetas(side: RadiatorSide): { even: number; odd: number } {
     const base = sideBase(side);
     const psi = this.tilt(this.panels[side].deploy);
@@ -87,7 +87,7 @@ export class RadiatorSystem {
       for (let i = 0; i < folds.length; i++) {
         const fold = folds[i];
         if (!fold) continue;
-        fold.rotation.x = i === 0 ? even : (i % 2 === 1 ? odd - even : even - odd);
+        fold.rotation.y = i === 0 ? even : (i % 2 === 1 ? odd - even : even - odd);
         fold.visible = !broken;
       }
     }
@@ -106,8 +106,8 @@ export class RadiatorSystem {
 
   // theta で折れた放熱面の法線(world 座標、単位ベクトル)。
   private worldNormal(theta: number, att: Attitude): Vec3 {
-    const foldQ = qFromAxisAngle(v3(1, 0, 0), theta);
-    const bodyNormal = qRotate(foldQ, v3(0, 1, 0));
+    const foldQ = qFromAxisAngle(v3(0, 1, 0), theta);
+    const bodyNormal = qRotate(foldQ, v3(0, 0, 1));
     return qRotate(att.q, bodyNormal);
   }
 
@@ -137,7 +137,7 @@ export class RadiatorSystem {
     const bodyOffset = qRotate(qInvert(att.q), worldOffset);
     if (len(bodyOffset) <= C.PLAYER_HULL_RADIUS) return null;
 
-    const side: RadiatorSide = bodyOffset.y >= 0 ? 'up' : 'down';
+    const side: RadiatorSide = bodyOffset.x >= 0 ? 'up' : 'down';
     const p = this.panels[side];
     if (p.deploy < C.RADIATOR_HITTABLE_DEPLOY) return null;
     if (p.wear >= 1) return null;

@@ -213,11 +213,15 @@ function buildPlayerShip() {
     g.add(bracket);
   }
 
-  // === 展開式ラジエーター(上下1枚ずつ、蛇腹4折り) ===
+  // === 展開式ラジエーター(機体側面・太陽電池パネル下に1枚ずつ、蛇腹4折り) ===
   // 1折りはハル幅と揃えた 2.3×2.3 の正方形。折り目 Group を入れ子にし、
-  // 各折り目の rotation.x だけで蛇腹全体の伸縮を表現できるようにする
+  // 各折り目の rotation.y だけで蛇腹全体の伸縮を表現できるようにする
   // (src/game/player/radiator.ts の sync が毎フレーム書き込む)。
   // 折り目名 `${radiatorUp/Down}Fold${i}` は src/render/ships.ts の radiatorFoldName と一致させる。
+  // ヒンジは太陽電池パネル(x=±2.62, y=0.52, z=-2.20)の直下・機体側面に取り付ける
+  // (up が +X 側、down が -X 側。名称は上下のまま維持)。y=0.30 はパネル下端(y≈0.4925)や
+  // パネル接続ストラット/ブラケット(y≈0.47〜0.57)と、蛇腹の骨格張り出し(±0.12)を含めても
+  // 干渉しない値。
   const radiatorMat = std(0xdde3ea, { metalness: 0.15, roughness: 0.8 });
   const radiatorSkeletonMat = std(0x3a4048, { metalness: 0.5, roughness: 0.55 });
   const RADIATOR_SEG = 2.3;
@@ -225,11 +229,11 @@ function buildPlayerShip() {
   const RADIATOR_STACK_NUDGE = 0.012; // 収納時に折り目同士が同一平面へ重なる際の Z ファイティング回避
   const RADIATOR_SKELETON_OFFSET = 0.12; // 骨格を放熱面の反対側へ張り出す量
 
-  for (const sy of [1, -1]) {
+  for (const sx of [1, -1]) {
     const hinge = new THREE.Group();
-    const baseName = sy > 0 ? 'radiatorUp' : 'radiatorDown';
+    const baseName = sx > 0 ? 'radiatorUp' : 'radiatorDown';
     hinge.name = baseName;
-    hinge.position.set(0, sy * 1.3, -0.6);
+    hinge.position.set(sx * 2.62, 0.30, -2.20);
     g.add(hinge);
 
     let parent = hinge;
@@ -359,8 +363,8 @@ function buildPlayerShip() {
 
 // ------------------------------------------------------------- マガジン
 const MAG_THICKNESS = 1.0;
-const MAG_WIDTH = MAG_THICKNESS * 4;
-const MAG_DEPTH = MAG_THICKNESS * 3;
+const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3);
+const MAG_DEPTH = MAG_THICKNESS * 3 * (2 / 3);
 const MAG_ROWS = 4;
 const MAG_COLS = 8;
 
@@ -541,20 +545,21 @@ function buildBulletMesh() {
 
 // ------------------------------------------------------------- 薬莢
 // CIWS 艦砲弾薬をモチーフにしたボトルネック Lathe 形状。
-// セグメント数 8(約半分)に削減。直径を 0.7 倍にしてスリムに。
+// セグメント数 8(約半分)に削減。直径を 0.7 倍にしてスリムに、全長を 2/3 倍に短縮。
 const CASING_SCALE = 0.7;
+const CASING_LENGTH_SCALE = 2 / 3;
 const casingProfile = [
-  new THREE.Vector2(0.000 * CASING_SCALE, -0.56),  // 内底(中心)
-  new THREE.Vector2(0.330 * CASING_SCALE, -0.56),  // リム底面
-  new THREE.Vector2(0.330 * CASING_SCALE, -0.47),  // リム側面
-  new THREE.Vector2(0.230 * CASING_SCALE, -0.47),  // エクストラクターグルーブ底
-  new THREE.Vector2(0.230 * CASING_SCALE, -0.38),  // グルーブ上端
-  new THREE.Vector2(0.305 * CASING_SCALE, -0.35),  // ボディ径に戻る
-  new THREE.Vector2(0.300 * CASING_SCALE,  0.18),  // ボディ
-  new THREE.Vector2(0.175 * CASING_SCALE,  0.34),  // ショルダー
-  new THREE.Vector2(0.148 * CASING_SCALE,  0.42),  // ネック
-  new THREE.Vector2(0.148 * CASING_SCALE,  0.54),  // ネック先端
-  new THREE.Vector2(0.115 * CASING_SCALE,  0.54),  // マウス内径
+  new THREE.Vector2(0.000 * CASING_SCALE, -0.56 * CASING_LENGTH_SCALE),  // 内底(中心)
+  new THREE.Vector2(0.330 * CASING_SCALE, -0.56 * CASING_LENGTH_SCALE),  // リム底面
+  new THREE.Vector2(0.330 * CASING_SCALE, -0.47 * CASING_LENGTH_SCALE),  // リム側面
+  new THREE.Vector2(0.230 * CASING_SCALE, -0.47 * CASING_LENGTH_SCALE),  // エクストラクターグルーブ底
+  new THREE.Vector2(0.230 * CASING_SCALE, -0.38 * CASING_LENGTH_SCALE),  // グルーブ上端
+  new THREE.Vector2(0.305 * CASING_SCALE, -0.35 * CASING_LENGTH_SCALE),  // ボディ径に戻る
+  new THREE.Vector2(0.300 * CASING_SCALE,  0.18 * CASING_LENGTH_SCALE),  // ボディ
+  new THREE.Vector2(0.175 * CASING_SCALE,  0.34 * CASING_LENGTH_SCALE),  // ショルダー
+  new THREE.Vector2(0.148 * CASING_SCALE,  0.42 * CASING_LENGTH_SCALE),  // ネック
+  new THREE.Vector2(0.148 * CASING_SCALE,  0.54 * CASING_LENGTH_SCALE),  // ネック先端
+  new THREE.Vector2(0.115 * CASING_SCALE,  0.54 * CASING_LENGTH_SCALE),  // マウス内径
 ];
 
 function buildCasingMesh() {
