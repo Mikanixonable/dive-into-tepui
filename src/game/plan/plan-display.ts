@@ -45,12 +45,20 @@ export class PlanDisplay {
     hudRoot.appendChild(this.panel);
   }
 
-  // 計画折れ線・ゴーストマーカー・TRAJECTORY パネルを現在のプラン/表示時刻に同期する。
-  sync(plan: Plan, simTime: number, displayTime: number, fo: FloatingOrigin, project: ProjectFn): void {
+  // 計画折れ線・ゴーストマーカーを現在のプラン/表示時刻に同期する。TRAJECTORY パネルは
+  // 表示座標系を選ぶ操作 UI なので、操作を受け付けるときだけ showPanel で出す。
+  sync(
+    plan: Plan,
+    simTime: number,
+    displayTime: number,
+    fo: FloatingOrigin,
+    project: ProjectFn,
+    showPanel: boolean,
+  ): void {
     this.traj.setVisible(true);
     this.traj.update(plan, this.ephemeris, this.trajectoryFrame, simTime, fo, project);
     this.syncGhost(displayTime, simTime, project);
-    this.panel.style.display = 'block';
+    this.panel.style.display = showPanel ? 'block' : 'none';
     this.frame.setSelected(this.trajectoryFrame);
   }
 

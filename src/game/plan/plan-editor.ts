@@ -21,17 +21,8 @@ import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
 
 export class PlanEditor {
-  private selectedNodeId: number | null = null;
-
-  // 選択中ノードの現在の index。内部は ID で保持しているため、上流ノードの削除で繰り上がっても正しいノードを指す。
-  get selectedNodeIdx(): number | null {
-    return this.selectedNodeId === null ? null : this.plan.indexOfNodeId(this.selectedNodeId);
-  }
-
-  // 選択するノードを index で指定する。null で選択解除。
-  set selectedNodeIdx(idx: number | null) {
-    this.selectedNodeId = idx === null ? null : this.plan.nodeIdAt(idx);
-  }
+  // 編集対象として選択中のノードの index。null で未選択。
+  selectedNodeIdx: number | null = null;
 
   plan: Plan = new Plan();
 
@@ -44,7 +35,7 @@ export class PlanEditor {
   private readonly planPanel: HTMLElement;
   private readonly planBody: HTMLElement;
 
-  // 計画パネルの DOM を組み立て、ノードギズモのコールバックを配線し、デバッグ用ノードを置く。
+  // 計画パネルの DOM を組み立て、ノードギズモのコールバックを配線する。
   constructor(
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
@@ -102,10 +93,9 @@ export class PlanEditor {
   // idx 番目のノードを削除する。
   deleteNode(idx: number): void {
     if (!this.plan.nodes[idx]) return;
-    // 削除前に確定: 削除後は後続ノードが繰り上がり idx が別ノードを指す。
-    const deletingSelected = this.selectedNodeIdx === idx;
     this.plan.removeNode(idx);
-    if (deletingSelected) this.selectedNodeIdx = null;
+    // idx 以降は下流ノードごと消えるので、そこを指していた選択は解除する。
+    if (this.selectedNodeIdx !== null && this.selectedNodeIdx >= idx) this.selectedNodeIdx = null;
     this.closeMenu();
     this.simSpeedManager.cancelAutoWarp();
     this._hud.hint('ノードを削除');
@@ -148,7 +138,8 @@ export class PlanEditor {
     return this.planDisplay.traj.projectPoint(node.r, node.t);
   }
 
-  // クリック位置に最も近い既存ノードを選択する。ヒットしなければ計画軌道上の最寄り点へ新規ノードを配置する。
+  // クリック位置に最も近い既存ノードを選択する。ヒットしなければ計画軌道上の最寄り点へ
+  // 新規ノードを配置し、それも外れていれば選択を解除する。
   private handleMapClick(mx: number, my: number): void {
     // 画面距離が最小の既存ノードを探す
     let bestNodeIdx: number | null = null;
@@ -173,7 +164,11 @@ export class PlanEditor {
     if (sample) {
       this.selectedNodeIdx = this.plan.addNode(sample);
       this._sfx.warp();
+      return;
     }
+
+    // ノードにも計画軌道にも当たらないクリックは選択解除
+    this.selectedNodeIdx = null;
   }
 
   // 既存ノード近傍ならそれを選択してコンテキストメニューを開き true を返す。外れは false。
@@ -207,9 +202,10 @@ export class PlanEditor {
     }
   }
 
-  // Δv アームのドラッグ量を選択中ノードの Δv へ加算する。
+  // Δv アームのドラッグ量を選択中ノードの Δv へ加算する。軸方向の移動量がゼロなら
+  // 何もしない — 変化のない加算でも下流ノードは破棄されてしまう。
   private applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
-    if (this.selectedNodeIdx === null) return;
+    if (this.selectedNodeIdx === null || deltaPx === 0) return;
     const node = this.plan.nodes[this.selectedNodeIdx];
     if (!node) return;
     const rate = (fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) / 200;
@@ -307,17 +303,20 @@ export class PlanEditor {
   // WASDQE の押下量から選択中ノードの Δv を加算し、計画パネルの表示データを組み立てる。
   updateEditing(dt: number, simTime: number, input: Input): void {
     const arriving = this.planDisplay.traj.arrivalStates();
-    const selNode = this.selectedNodeIdx !== null ? this.plan.nodes[this.selectedNodeIdx] : undefined;
-    // 選択中ノードへ prograde/normal/radial 方向の Δv を加算
-    if (selNode) {
+    const selIdx = this.selectedNodeIdx;
+    const selNode = selIdx !== null ? this.plan.nodes[selIdx] : undefined;
+    // 選択中ノードへ prograde/normal/radial 方向の Δv を加算する。押下がゼロのフレームでも
+    // 加算すると、Δv が変わらないまま下流ノードだけが毎フレーム破棄されてしまう。
+    if (selIdx !== null && selNode) {
       const i = input;
-      const rate = (this.getFineAttitude() ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) * dt;
-      const local = v3(
-        ((i.down(K.dvPrograde) ? 1 : 0) + (i.down(K.dvRetrograde) ? -1 : 0)) * rate,
-        ((i.down(K.dvNormal) ? 1 : 0) + (i.down(K.dvAntinormal) ? -1 : 0)) * rate,
-        ((i.down(K.dvRadialOut) ? 1 : 0) + (i.down(K.dvRadialIn) ? -1 : 0)) * rate,
-      );
-      this.plan.applyNodeDv(this.selectedNodeIdx!, fromOrbitalAxes(selNode, local));
+      const pro = (i.down(K.dvPrograde) ? 1 : 0) + (i.down(K.dvRetrograde) ? -1 : 0);
+      const nrm = (i.down(K.dvNormal) ? 1 : 0) + (i.down(K.dvAntinormal) ? -1 : 0);
+      const rad = (i.down(K.dvRadialOut) ? 1 : 0) + (i.down(K.dvRadialIn) ? -1 : 0);
+      if (pro !== 0 || nrm !== 0 || rad !== 0) {
+        const rate = (this.getFineAttitude() ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) * dt;
+        const local = v3(pro * rate, nrm * rate, rad * rate);
+        this.plan.applyNodeDv(selIdx, fromOrbitalAxes(selNode, local));
+      }
     }
 
     // パネル表示用のノード一覧を組む
@@ -355,7 +354,9 @@ export class PlanEditor {
     this.planPanel.style.display = 'none';
   }
 
-  // editMode 中は計画の未来表示とノードギズモを同期し、そうでなければ両方隠す。
+  // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
+  // 折れ線は戦闘ビューでも描く — 計画どおりに機体を動かすのは戦闘ビューだから。ただしノードが
+  // 1つも無い計画は自機の現在軌道そのものなので、ノードを置ける編集中だけ描く。
   sync(
     mapDist: number,
     simTime: number,
@@ -363,19 +364,19 @@ export class PlanEditor {
     fo: FloatingOrigin,
     project: ProjectFn,
   ): void {
-    if (this.editMode) {
-      this.planDisplay.sync(this.plan, simTime, displayTime, fo, project);
-      this.updateGizmo(mapDist);
+    if (this.editMode || this.plan.nodes.length > 0) {
+      this.planDisplay.sync(this.plan, simTime, displayTime, fo, project, this.editMode);
     }
     else {
       this.planDisplay.hide();
-      this.hideGizmo();
     }
+    if (this.editMode) this.updateGizmo(mapDist);
   }
 
-  // パネルを隠し、実質 Δv がゼロの末尾ノードを間引いて計画を整理する。
+  // パネルとギズモを隠し、実質 Δv がゼロの末尾ノードを間引いて計画を整理する。
   onMapClosed(): void {
     this.hidePanel();
+    this.hideGizmo();
     const arriving = this.planDisplay.traj.arrivalStates();
     // 末尾から Δv が有意なノードに当たるまで削る。
     for (let i = this.plan.nodes.length - 1; i >= 0; i--) {
