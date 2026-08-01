@@ -47,6 +47,15 @@ export const RCS_BLOCK_OFFSETS: { x: number; y: number; z: number }[] = [
   { x: -1.0, y: -0.85, z: 1.9 },
 ];
 
+// ラジエーターのヒンジ Group 名(機体座標系、X軸ヒンジで後方へ折り畳み)。
+// getObjectByName() で引いて展開角を同期する。
+export const RADIATOR_OBJECT_NAMES = { up: 'radiatorUp', down: 'radiatorDown' } as const;
+
+// ラジエーター1枚を全開にしたときの機体中心からの最遠点 [m]。
+// 全開時の板の隅は幅方向に ±3.0、ヒンジ位置 (0, ±1.3, -0.6) から板長 5.5 展開した
+// 位置 (±3.0, 1.3+5.5, -0.6) に来るため、その3成分から距離を算出。
+export const RADIATOR_TIP_DISTANCE = Math.sqrt(3.0 * 3.0 + 6.8 * 6.8 + 0.6 * 0.6);
+
 // マガジン寸法(機体座標系)。ベルト連結間隔(MAG_BELT_PITCH)は game.ts が
 // マガジンリンクの並びを計算するのに使う。純粋な数値なので JSON 化はしない。
 export const MAG_THICKNESS = 1.0;
