@@ -68,10 +68,13 @@ export class RadiatorSystem {
 
   // 偶数折り目/奇数折り目それぞれの、ヒンジ基準での累積回転角。sync がメッシュへ書く
   // 相対回転と solarLoad が法線計算に使う絶対角を同一の (base, psi) から導く共有点。
+  // down は even/odd の psi 符号を up と逆にする: 揃えないと折り畳みの前後(Z)位置が
+  // 上下で逆向きになる(base の符号反転と psi の加減が噛み合わさるため)。
   private foldThetas(side: RadiatorSide): { even: number; odd: number } {
     const base = sideBase(side);
     const psi = this.tilt(this.panels[side].deploy);
-    return { even: base - psi, odd: base + psi };
+    const sign = side === 'up' ? 1 : -1;
+    return { even: base - sign * psi, odd: base + sign * psi };
   }
 
   // 各折り目 Group の rotation.x(親からの相対回転)を展開角へ同期する。

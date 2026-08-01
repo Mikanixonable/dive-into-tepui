@@ -91,10 +91,12 @@ export class StageStatusPanel {
 
     cell.appendChild(barBox);
 
-    // ボタンはバーの右隣に並べる
+    // ボタンはバーの右隣に並べる。seg-btn の pointer-events:auto は .hud-seg 配下限定の
+    // セレクタなので、.hud-seg でラップしないここでは明示しないとクリックが canvas へ抜ける
     const button = hudButton('展開', () => {
       this.player?.radiator.toggle(side);
     });
+    button.style.pointerEvents = 'auto';
     cell.appendChild(button);
 
     grid.appendChild(cell);
