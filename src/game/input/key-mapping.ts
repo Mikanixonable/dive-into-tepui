@@ -33,6 +33,8 @@ export const KEY_MAPPING = {
   throttleLow: { code: 'Digit1', label: '1' },
   throttleMid: { code: 'Digit2', label: '2' },
   throttleHigh: { code: 'Digit3', label: '3' },
+  radiatorDeployUp: { code: 'Digit9', label: '9' },
+  radiatorDeployDown: { code: 'Digit0', label: '0' },
 
   // 射撃・装填
   fire: { code: 'Space', label: 'SPACE' },
