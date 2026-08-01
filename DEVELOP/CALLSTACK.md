@@ -153,8 +153,7 @@
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(respawnOnDespawn=false)
   - nanWatchdog.checkPlayer('activeStage.update')
-  - simSpeedManager.update() // 自動ワープ中のみ実効
-    - hud.hint() // 実行点に接近して自動ワープを解除したフレームのみ
+  - simSpeedManager.update() // 自動ワープ中のみ実効。残り時間が C.NODE_APPROACH_LEAD 以下なら autoWarpUntil=null + levelIdx=0 で即 return
   - simulator.stepSimulation(bulletCollision=true, resolveCollision=canResolvePhysicalCollisions, doSubstep=true)
     // 弾命中・剛体接触・姿勢積分はいずれもこの中。simulator が hitSystem / collisionPhysics を所有する
     - [サブステップごと] ×1〜SUBSTEP_MAX_COUNT // 分割数は simDt / SUBSTEP_MAX_DT のみで決まる(実 fps に依存しない)
@@ -224,6 +223,13 @@
       - gunsightCamera.update() // player.alive && zoomActive。結果を自身の view へ書く
       - chaseCamera.update() // それ以外。camFollowAttitude && player.alive のときだけ player.att.q を rot に合成し、鍵/ドラッグ入力を回転として適用。結果を自身の view へ書く
       - 選ばれた view.fovDeg から combatCamera 自身の view.fovDeg を指数補間
+  - guide.update(plan, player, simTime, editMode) // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させるため
+    - [editMode または !player.alive] 即 return
+    - plan.dropNodesBefore(simTime - C.NODE_EXPIRE_GRACE) // 期限切れノードをまとめて落とし、最後に落ちたノードを新しいアンカーに据える
+    - [直近ノードが実行の窓(node.t - C.NODE_APPROACH_LEAD)に入っている場合のみ]
+      - notifyApproach() → hud.hint() // ノードごとに最初の1回のみ(approachNotified との同一性比較)
+      - notifyAchieved() // orbitClose(自機軌道要素, 目標軌道要素) が真の場合のみ
+        - hud.hint() + sfx.warp() // ノードごとに最初の1回のみ(achievedNotified との同一性比較)
   - editor.plan.trackAnchor() // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
   - [editor.editMode] 計画編集モード
     - editor.handleMapPointer() // 右クリック → 左クリックの順に受ける
@@ -313,7 +319,7 @@
           - sampled.syncGeometry() // 点列 or frame が変わったときのみ頂点を bake
           - sampled.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
         - arc.setVisible(false) // 区間が減って余った PlanArc ごと
-      - syncGhost() → markerManager.setPosition('plannedPlayer') or hide() // displayTime <= simTime なら hide
+      - syncGhost() → markerManager.setPosition('plannedPlayer') or hide() // 折れ線が displayTime に届かない(traj.sampleAt が null)ときだけ hide
       - panel の表示 = showPanel(= editMode) / setSelected() // TRAJECTORY パネル(表示座標系)。戦闘ビューでは出さない
     - [!editMode かつ plan.nodes.length === 0] planDisplay.hide()
     - [editMode] updateGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
@@ -328,11 +334,9 @@
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
   - hud.tick() // ヒント/トーストのフェードアウト
-  - guide.update()
-    - markerManager.hide('burn') // editMode で return
-    - markerManager.hide('nd'/'burn') // ノード無し or !player.alive で return
-    - [達成] plan.consumeFirstNode() + simSpeedManager.cancelAutoWarp() + hide + hud.hint() + sfx.warp()
-    - [未達成] markerManager.setPosition('nd') + setDirection('burn')
+  - guide.sync(plan, player, simTime, editMode, project)
+    - markerManager.hide('nd') + hide('burn') // editMode または !player.alive、あるいは直近ノードが無い場合
+    - markerManager.setPosition('nd') + setDirection('burn') // 直近ノードがある場合
   - debugHistoryLine.sync() // ?debugLines=1 のときのみ実効。対象(既定: 自機+ターゲット)ごとに
     history/predicted.history を1本の SampledLine へ bake + un-bake
   - markerManager.resolveCollisions() // ラベル衝突緩和 + SVG 引き出し線の再描画。全マーカーが出揃った後に一度だけ
@@ -378,5 +382,5 @@
 - **HUD マーカーは持ち主の `sync` が自分で出す**。`game.sync` に並ぶのは「1つの対象では決められない」
   ものだけ(`enemyMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存)で、残りは
   `player.syncPlayer` / `targeter.sync` / `activeStage.sync` / `cameraSystem.sync` / `editor.sync`(→ `planDisplay`) /
-  `guide.update` の中にある。**`markerManager.resolveCollisions()` だけは全マーカーが
+  `guide.sync` の中にある。**`markerManager.resolveCollisions()` だけは全マーカーが
   出揃った後に一度だけ**呼ぶ必要があるため `game.sync` の末尾に置く。

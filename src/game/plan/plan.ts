@@ -63,9 +63,13 @@ export class Plan {
     this._nodes.length = idx;
   }
 
-  // 最初のノードを実行済みとして取り除く。
-  consumeFirstNode(): void {
-    this._nodes.shift();
+  // 実行時刻が t 以前のノードを実行済みとして取り除き、最後に取り除いたノードを新しい起点に据える。
+  dropNodesBefore(t: number): void {
+    let dropped = 0;
+    while (this._nodes[dropped] && this._nodes[dropped]!.t <= t) dropped++;
+    if (dropped === 0) return;
+    this._anchor = this._nodes[dropped - 1]!;
+    this._nodes.splice(0, dropped);
   }
 
   // 全ノードを削除する。
