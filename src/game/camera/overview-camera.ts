@@ -6,11 +6,9 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input/input';
 import { FocusMarkers } from './focus-markers';
-import { FloatingOrigin } from '../floating-origin';
-import { ndcToScreen, projectToNdc, ViewFrame } from '../../physics/projection';
+import { ViewFrame } from '../../physics/projection';
 import { Frame, RelativeVec3, toFramePos, toInertialPos } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { ProjectFn } from './camera-system';
 
 const WORLD_UP = v3(0, 1, 0);
 const OVERVIEW_CAMERA_FOV = 50;
@@ -41,9 +39,13 @@ export class OverviewCamera {
   private simTime = 0; // set cameraFrame の座標変換に使う
   focus = 'earth'; // 注視対象のラベル ID
 
-  position: Vec3 = v3();
-  private lookTarget: Vec3 = v3();
-  private aspect = window.innerWidth / window.innerHeight;
+  view: ViewFrame = {
+    position: v3(),
+    lookTarget: v3(),
+    up: WORLD_UP,
+    fovDeg: OVERVIEW_CAMERA_FOV,
+    aspect: window.innerWidth / window.innerHeight,
+  };
 
   // THREE.PerspectiveCamera と初期視点(offset_r/pan_r)を組む。
   constructor(
@@ -65,18 +67,6 @@ export class OverviewCamera {
   // 注視点からカメラまでの距離を返す。
   get dist(): number {
     return Math.hypot(this.offset_r.x, this.offset_r.y, this.offset_r.z);
-  }
-
-  // THREE.js カメラ行列やフローティングオリジンに依存しないスクリーン投影関数。
-  get projection(): ProjectFn {
-    const view: ViewFrame = {
-      position: this.position,
-      lookTarget: this.lookTarget,
-      up: WORLD_UP,
-      fovDeg: this.fov,
-      aspect: this.aspect,
-    };
-    return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), window.innerWidth, window.innerHeight);
   }
 
   // 視点・パン・フォーカスを初期状態に戻す。
@@ -113,7 +103,7 @@ export class OverviewCamera {
     this._cameraFrame = frame;
   }
 
-  // マウス/キー入力から視点(position/lookTarget)を1フレーム分更新する。
+  // マウス/キー入力から view を1フレーム分更新する。
   update(
     mouse: MouseDelta,
     keyYaw: number,
@@ -148,23 +138,15 @@ export class OverviewCamera {
     }
 
     // フォーカス+パン+視点オフセットから実位置を組み立てる
-    this.lookTarget = add(focus, panEci);
-    this.position = add(this.lookTarget, offEci);
+    const lookTarget = add(focus, panEci);
+    this.view = {
+      position: add(lookTarget, offEci),
+      lookTarget,
+      up: WORLD_UP,
+      fovDeg: this.fov,
+      aspect: window.innerWidth / window.innerHeight,
+    };
     this.offset_r = toFramePos(this._cameraFrame, simTime, offEci, this.ephemeris);
     this.pan_r = toFramePos(this._cameraFrame, simTime, panEci, this.ephemeris);
-    this.aspect = window.innerWidth / window.innerHeight;
-  }
-
-  // fo を介して position/lookTarget を THREE.PerspectiveCamera へ反映する。
-  sync(fo: FloatingOrigin): void {
-    const camera = this.camera;
-    camera.position.copy(fo.RtoThreeV3(this.position));
-    camera.up.set(0, 1, 0);
-    camera.lookAt(fo.RtoThreeV3(this.lookTarget));
-    if (Math.abs(camera.aspect - this.aspect) > 1e-6) {
-      camera.aspect = this.aspect;
-      camera.updateProjectionMatrix();
-    }
-    camera.updateMatrixWorld();
   }
 }
