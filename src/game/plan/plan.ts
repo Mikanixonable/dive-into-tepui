@@ -36,6 +36,7 @@ export class Plan {
     this._nodes.push(postState);
     this._nodeIds.push(id);
     this.sortByTime();
+    this.debugLogNodes();
     return this._nodes.indexOf(postState);
   }
 
@@ -44,12 +45,14 @@ export class Plan {
     if (!this._nodes[idx]) return;
     this._nodes.splice(idx, 1);
     this._nodeIds.splice(idx, 1);
+    this.debugLogNodes();
   }
 
   // 最初のノードを実行済みとして取り除く。
   consumeFirstNode(): void {
     this._nodes.shift();
     this._nodeIds.shift();
+    this.debugLogNodes();
   }
 
   // 全ノードを削除する。
@@ -57,6 +60,7 @@ export class Plan {
     if (this._nodes.length === 0) return;
     this._nodes = [];
     this._nodeIds = [];
+    this.debugLogNodes();
   }
 
   // ノードを新しい実行後状態へ移し時刻順に再ソート。下流ノードを破棄し、新 index を返す。
@@ -67,6 +71,7 @@ export class Plan {
     const newIdx = this._nodes.indexOf(postState);
     this._nodes.length = newIdx + 1;
     this._nodeIds.length = newIdx + 1;
+    this.debugLogNodes();
     return newIdx;
   }
 
@@ -79,6 +84,12 @@ export class Plan {
       this._nodes.length = idx + 1;
       this._nodeIds.length = idx + 1;
     }
+    this.debugLogNodes();
+  }
+
+  // デバッグ用にノード列を出力する。配列はこの後も破壊的に書き換わるので複製を渡す。
+  private debugLogNodes(): void {
+    console.log([...this._nodes]);
   }
 
   // idx 番目のノードの ID。範囲外なら null。

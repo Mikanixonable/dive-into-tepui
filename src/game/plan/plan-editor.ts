@@ -363,14 +363,13 @@ export class PlanEditor {
   // editMode 中は計画の未来表示とノードギズモを同期し、そうでなければ両方隠す。
   sync(
     mapDist: number,
-    displayEnd: number,
     simTime: number,
     displayTime: number,
     fo: FloatingOrigin,
     project: ProjectFn,
   ): void {
     if (this.editMode) {
-      this.planDisplay.sync(this.plan, displayEnd, simTime, displayTime, fo, project);
+      this.planDisplay.sync(this.plan, simTime, displayTime, fo, project);
       this.updateGizmo(mapDist);
     }
     else {
