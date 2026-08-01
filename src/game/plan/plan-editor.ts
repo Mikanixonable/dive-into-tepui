@@ -1,7 +1,7 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と計画パネルへの反映。
 // 未来表示(予測折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
 import type * as THREE from 'three/webgpu';
-import { Elements, OrbitState, elementsFromState, fromOrbitalAxes, orbitalAxes } from '../../physics/orbital';
+import { Elements, OrbitState, elementsFromState, fromOrbitalAxes, orbitState, orbitalAxes } from '../../physics/orbital';
 import { Projected } from '../../physics/projection';
 import { Vec3, add, len, scale, sub, v3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -44,7 +44,7 @@ export class PlanEditor {
   private readonly planPanel: HTMLElement;
   private readonly planBody: HTMLElement;
 
-  // 計画パネルの DOM を組み立て、ノードギズモのコールバックを配線する。
+  // 計画パネルの DOM を組み立て、ノードギズモのコールバックを配線し、デバッグ用ノードを置く。
   constructor(
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
@@ -64,6 +64,7 @@ export class PlanEditor {
     this._hud.root.appendChild(this.planPanel);
     this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
     this.wireNodeGizmo();
+    this.addDebugNode();
   }
 
   // NodeGizmo の各種コールバックを配線する。
@@ -352,6 +353,11 @@ export class PlanEditor {
   // 計画パネルを非表示にする。
   hidePanel(): void {
     this.planPanel.style.display = 'none';
+  }
+
+  // デバッグ用のノードを1つ置く。
+  private addDebugNode(): void {
+    this.plan.addNode(orbitState(0, v3(0, 0, 6.8e6), v3(7656, 0, 0)));
   }
 
   // editMode 中は計画の未来表示とノードギズモを同期し、そうでなければ両方隠す。
