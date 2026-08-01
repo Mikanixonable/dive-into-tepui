@@ -65,10 +65,11 @@ export class CameraSystem {
     sfx: Sfx,
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
+    player: Player,
   ) {
     // 両カメラとフォーカス候補ラベル
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
-    this.combatCamera = new CombatCameraSystem(_hud, sfx);
+    this.combatCamera = new CombatCameraSystem(_hud, sfx, player);
     this.overviewCamera = new OverviewCamera(_hud, sfx, this.focusMarkers, ephemeris);
     // ラベル右クリックメニューでのフォーカス選択
     this.focusGizmo.onMenuFocus = (targetKey) => {

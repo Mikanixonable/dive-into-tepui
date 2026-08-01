@@ -69,9 +69,10 @@ export const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg
 export const ZOOM_LERP_RATE = 9; // 画角遷移の追従速度 [1/s]
 export const ZOOM_MUZZLE_FLASH_SCALE = 0.02; // ズーム中のマズルフラッシュ最大不透明度倍率(完全には消さない)
 
-// キーボードでの視点回転(矢印キー)[rad/s]。マウスドラッグ(0.005 rad/px)と同じ感覚になる値。
+// キーボードでの視点回転(矢印キー)[rad/s]。マウスドラッグと同じ感覚になる値。
 export const CAM_KEY_YAW_RATE = 1.4;
 export const CAM_KEY_PITCH_RATE = 1.0;
+export const CAM_DRAG_ROTATE_RATE = 0.005; // マウスドラッグ [rad/px]
 
 // 進行方向ホールド([C]キー): 機首をプログレードへ向けるオートパイロットの PD ゲイン
 export const PROGRADE_HOLD_KP = 3.2; // 姿勢誤差角に対する比例ゲイン

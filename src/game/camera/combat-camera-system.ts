@@ -44,8 +44,8 @@ export class CombatCameraSystem {
     aspect: window.innerWidth / window.innerHeight,
   };
 
-  constructor(_hud: Hud, _sfx: Sfx) {
-    this.chaseCamera = new ChaseCamera(_hud);
+  constructor(_hud: Hud, _sfx: Sfx, player: Player) {
+    this.chaseCamera = new ChaseCamera(_hud, player);
   }
 
   // 視点を初期状態にリセットする(内部状態を持つのは ChaseCamera だけ)。
@@ -53,7 +53,7 @@ export class CombatCameraSystem {
     this.chaseCamera.reset();
   }
 
-  // 視点の基準フレーム(機体姿勢基準 ⇔ 軌道基準)を切り替える。判断は ChaseCamera に委譲する。
+  // 視点の基準フレーム(機体姿勢基準 ⇔ ワールド基準)を切り替える。判断は ChaseCamera に委譲する。
   toggleFollowAttitude(): void {
     this.chaseCamera.toggleFollowAttitude();
   }
@@ -69,7 +69,7 @@ export class CombatCameraSystem {
     // 機体死亡中はズーム要求を無視して常に追跡視点へ戻す(照準先が失われているため)。
     const useGunsight = player.alive && this.zoomActive;
     if (useGunsight) this.gunsightCamera.update(player);
-    else this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, player);
+    else this.chaseCamera.update(mouse, keyYaw, keyPitch, dt);
     const target = useGunsight ? this.gunsightCamera.view : this.chaseCamera.view;
     this.view = lerpViewFrameFov(this.view, target, dt);
   }

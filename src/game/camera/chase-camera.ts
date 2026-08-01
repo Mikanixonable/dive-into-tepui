@@ -1,22 +1,23 @@
-// 自機を中心とした三人称軌道カメラ。yaw/pitch/dist の球面座標に加え、基準フレームの
-// 切り替え(camFollowAttitude: 機体姿勢基準 ⇔ 軌道基準)も自身の状態として持つ。
-import { add, addScaled, cross, dot, norm, scale, v3 } from '../../physics/vec3';
+// 自機を中心とした三人称軌道視点。姿勢は単位クオータニオン(rot)と距離(dist)だけで持つ。
+// rot の意味は camFollowAttitude で切り替わる: true なら機体姿勢に対する相対姿勢、false なら
+// ワールド(ECI)に対する絶対姿勢。切り替え時は player の姿勢クオータニオンを掛け/割って読み替える。
+import { add, addScaled, cross, len, norm, scale, v3 } from '../../physics/vec3';
 import { MouseDelta } from '../input/input';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
-import { qRotate } from '../../physics/attitude';
+import { Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { Player } from '../player/player';
 import { ViewFrame } from '../../physics/projection';
 
+// 初期視点: 機体後方やや上から見下ろす。
+const DEFAULT_ROT: Quat = qFromAxisAngle(v3(1, 0, 0), 0.3 - (10 * Math.PI) / 180);
+const DEFAULT_DIST = 38;
+
 export class ChaseCamera {
-  yaw = 0; // 0 = 基準フレームの後方(プログレード側)から見る
-  pitch = 0.3 - (10 * Math.PI) / 180; // 初期カメラ位置を5度低く
-  dist = 38;
-  // 既定値 true: 機体姿勢基準(上 = 機体 +Y、前 = 機体 +Z)を使うため、I/K/J/L/U/O での
-  // 回転がそのままカメラへ反映される。false では軌道基準(上 = 動径方向(地球と反対)、
-  // 前 = 速度方向)になり、軌道運動とともにゆっくり共回転するため地球が常に足元に見える。
-  // 機体が死亡している間は姿勢自体が意味を持たないため、値によらず軌道基準を使う。
-  camFollowAttitude = true;
+  private rot: Quat = DEFAULT_ROT;
+  dist = DEFAULT_DIST;
+  private _camFollowAttitude = true;
+
   view: ViewFrame = {
     position: v3(),
     up: v3(0, 1, 0),
@@ -25,63 +26,70 @@ export class ChaseCamera {
     aspect: window.innerWidth / window.innerHeight,
   };
 
-  constructor(private readonly _hud: Hud) {}
+  constructor(
+    private readonly _hud: Hud,
+    private readonly player: Player,
+  ) {}
+
+  // 視点の基準フレーム(機体姿勢基準 true ⇔ ワールド基準 false)。書き換え時に rot を読み替える。
+  get camFollowAttitude(): boolean {
+    return this._camFollowAttitude;
+  }
+  set camFollowAttitude(v: boolean) {
+    if (v === this._camFollowAttitude) return;
+    const playerQ = this.player.att.q;
+    this.rot = qNormalize(v ? qMul(qInvert(playerQ), this.rot) : qMul(playerQ, this.rot));
+    this._camFollowAttitude = v;
+  }
 
   // 視点を初期状態にリセットする
   reset(): void {
-    this.yaw = 0;
-    this.pitch = 0.3 - (10 * Math.PI) / 180;
-    this.dist = 38;
+    this.rot = DEFAULT_ROT;
+    this.dist = DEFAULT_DIST;
   }
 
-  // 視点の基準フレーム(機体姿勢基準 ⇔ 軌道基準)を切り替える。
+  // 視点の基準フレームを切り替える。
   toggleFollowAttitude(): void {
     this.camFollowAttitude = !this.camFollowAttitude;
     this._hud.hint(
-      `視点のRCS追従: ${this.camFollowAttitude ? 'ON (視点が機体姿勢に追従)' : 'OFF (軌道基準の独立視点)'
+      `視点のRCS追従: ${this.camFollowAttitude ? 'ON (視点が機体姿勢に追従)' : 'OFF (ワールド基準の独立視点)'
       }`,
     );
   }
 
-  // キー/マウス入力から yaw/pitch/dist を更新し、player の状態から基準フレームを選んで視点を view へ書き戻す。
-  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number, player: Player): void {
-    this.yaw -= keyYaw * C.CAM_KEY_YAW_RATE * dt;
-    this.pitch = Math.max(-1.35, Math.min(1.35, this.pitch + keyPitch * C.CAM_KEY_PITCH_RATE * dt));
+  // キー/マウス入力から rot/dist を更新し、player の状態から視点を view へ書き戻す。
+  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number): void {
+    let q = this._camFollowAttitude ? qMul(this.player.att.q, this.rot) : this.rot;
 
-    this.yaw -= mouse.dx * 0.005;
-    this.pitch += mouse.dy * 0.005;
-    this.pitch = Math.max(-1.35, Math.min(1.35, this.pitch));
+    const right = qRotate(q, v3(1, 0, 0));
+    const up = qRotate(q, v3(0, 1, 0));
+    const view = qRotate(q, v3(0, 0, 1));
+
+    if (keyYaw !== 0) q = qMul(qFromAxisAngle(up, -keyYaw * C.CAM_KEY_YAW_RATE * dt), q);
+    if (keyPitch !== 0) q = qMul(qFromAxisAngle(right, keyPitch * C.CAM_KEY_PITCH_RATE * dt), q);
+
+    // ドラッグベクトルと視線ベクトルの外積を回転軸とする: 軸は視線と直交するので視線まわりの
+    // ロールが生じず、「カメラから見て」ドラッグ方向とカメラの回転方向が一致する。
+    const dragVec = addScaled(scale(right, mouse.dx), up, mouse.dy);
+    const dragLen = len(dragVec);
+    if (dragLen > 1e-9) {
+      const axis = norm(cross(dragVec, view));
+      q = qMul(qFromAxisAngle(axis, dragLen * C.CAM_DRAG_ROTATE_RATE), q);
+    }
+    q = qNormalize(q);
+
     this.dist *= Math.exp(mouse.wheel * 0.0012);
     this.dist = Math.max(12, Math.min(8000, this.dist));
 
-    // 速度方向を前方とする軌道基準フレームの up/fwd
-    let up = norm(player.state.r);
-    let fwd = norm(player.state.v);
-    if (this.camFollowAttitude && player.alive) {
-      // 姿勢基準フレームの前方向/上方向
-      fwd = qRotate(player.att.q, v3(0, 0, 1));
-      up = qRotate(player.att.q, v3(0, 1, 0));
-    }
-    const center = player.state.r;
+    this.rot = this._camFollowAttitude ? qNormalize(qMul(qInvert(this.player.att.q), q)) : q;
 
-    // fwd を up と直交する成分だけに正規化し、基準フレームを組む
-    const f = norm(addScaled(fwd, up, -dot(fwd, up)));
-    const side = norm(cross(f, up));
-
-    // 球面座標(yaw/pitch/dist)からオフセットベクトルを組む
-    const cp = Math.cos(this.pitch);
-    let off = scale(f, -cp * Math.cos(this.yaw));
-    off = addScaled(off, side, cp * Math.sin(this.yaw));
-    off = addScaled(off, up, Math.sin(this.pitch));
-    off = scale(off, this.dist);
-
+    const center = this.player.state.r;
     this.view = {
-      position: add(center, off),
-      up,
+      position: add(center, scale(qRotate(q, v3(0, 0, -1)), this.dist)),
+      up: qRotate(q, v3(0, 1, 0)),
       lookTarget: center,
       fovDeg: C.BASE_FOV,
       aspect: window.innerWidth / window.innerHeight,
     };
   }
 }
-

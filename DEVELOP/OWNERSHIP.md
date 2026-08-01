@@ -159,7 +159,7 @@ main.ts
 | 予測表示期間・未来ゴーストスライダー・未来表示の禁止(forceCurrent) | `DisplayTimeManager` | |
 | 予測折れ線を描く表示座標系(trajectoryFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本 |
 | マップ視点(注視点相対オフセット・パン)・表示座標系・フォーカス・ViewFrame | `OverviewCamera` | `view: ViewFrame` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `view` を読むだけで自分では持たない |
-| 戦闘視点(ViewFrame: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | yaw/pitch/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
+| 戦闘視点(ViewFrame: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
 | マップモードの開閉 | `MapModeToggler.mapMode` | 影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayTimeManager.forceCurrent` / タッチUI)を一斉に切り替える |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
 | ターゲットロック・自動ターゲット・的通過マーク | `Targeter` | |
