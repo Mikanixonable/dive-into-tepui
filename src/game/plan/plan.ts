@@ -3,15 +3,19 @@
 import { orbitState, OrbitState } from '../../physics/orbital';
 import { Vec3, add, v3 } from '../../physics/vec3';
 
+interface Node {
+  state: OrbitState;
+  id: number;
+}
+
 export class Plan {
-  private _nodes: OrbitState[] = [];
-  private _nodeIds: number[] = [];
+  private _nodes: Node[] = [];
   private nextNodeId = 1;
   private _anchor: OrbitState = orbitState(0, v3(), v3());
 
   // ノード列を実行時刻順で返す。
   get nodes(): readonly OrbitState[] {
-    return this._nodes;
+    return this._nodes.map(node => node.state);
   }
 
   // 計画の起点状態を返す。
@@ -19,9 +23,15 @@ export class Plan {
     return this._anchor;
   }
 
+  private deleteFollowingNodes(idx: number): void {
+    if (idx < this._nodes.length - 1) {
+      this._nodes.length = idx + 1;
+    }
+  }
+
   // 最初に実行されるノードを返す。ノードが無ければ undefined。
   firstNode(): OrbitState | undefined {
-    return this._nodes[0];
+    return this._nodes[0]?.state;
   }
 
   // 計画が空の間だけアンカーを現在状態へ追従させる。最初のノードを置くと凍結。
@@ -33,25 +43,25 @@ export class Plan {
   // 噴射直後の絶対状態としてノードを追加し、時刻順にソートした後の index を返す。
   addNode(postState: OrbitState): number {
     const id = this.nextNodeId++;
-    this._nodes.push(postState);
-    this._nodeIds.push(id);
+    this._nodes.push({state: postState, id});
     this.sortByTime();
+    const idx = this._nodes.findIndex(node => node.id === id);
+    this.deleteFollowingNodes(idx);
     this.debugLogNodes();
-    return this._nodes.indexOf(postState);
+    return idx;
   }
 
   // idx 番目のノードを削除する。範囲外なら何もしない。
   removeNode(idx: number): void {
     if (!this._nodes[idx]) return;
     this._nodes.splice(idx, 1);
-    this._nodeIds.splice(idx, 1);
+    this.deleteFollowingNodes(idx);
     this.debugLogNodes();
   }
 
   // 最初のノードを実行済みとして取り除く。
   consumeFirstNode(): void {
     this._nodes.shift();
-    this._nodeIds.shift();
     this.debugLogNodes();
   }
 
@@ -59,18 +69,17 @@ export class Plan {
   clear(): void {
     if (this._nodes.length === 0) return;
     this._nodes = [];
-    this._nodeIds = [];
     this.debugLogNodes();
   }
 
   // ノードを新しい実行後状態へ移し時刻順に再ソート。下流ノードを破棄し、新 index を返す。
   retimeNode(idx: number, postState: OrbitState): number {
     if (!this._nodes[idx]) return idx;
-    this._nodes[idx] = postState;
+    const id = this._nodes[idx].id;
+    this._nodes[idx] = {state: postState, id};
     this.sortByTime();
-    const newIdx = this._nodes.indexOf(postState);
+    const newIdx = this._nodes.findIndex(node => node.id === id);
     this._nodes.length = newIdx + 1;
-    this._nodeIds.length = newIdx + 1;
     this.debugLogNodes();
     return newIdx;
   }
@@ -79,11 +88,8 @@ export class Plan {
   applyNodeDv(idx: number, dvWorld: Vec3): void {
     const node = this._nodes[idx];
     if (!node || (dvWorld.x === 0 && dvWorld.y === 0 && dvWorld.z === 0)) return;
-    this._nodes[idx] = orbitState(node.t, node.r, add(node.v, dvWorld));
-    if (idx < this._nodes.length - 1) {
-      this._nodes.length = idx + 1;
-      this._nodeIds.length = idx + 1;
-    }
+    this._nodes[idx]!.state = orbitState(node.state.t, node.state.r, add(node.state.v, dvWorld));
+    this.deleteFollowingNodes(idx);
     this.debugLogNodes();
   }
 
@@ -94,20 +100,17 @@ export class Plan {
 
   // idx 番目のノードの ID。範囲外なら null。
   nodeIdAt(idx: number): number | null {
-    return idx >= 0 && idx < this._nodeIds.length ? this._nodeIds[idx]! : null;
+    return idx >= 0 && idx < this._nodes.length ? this._nodes[idx]!.id : null;
   }
 
   // ID から現在の index を逆引きする。該当ノードが無ければ null。
   indexOfNodeId(id: number): number | null {
-    const idx = this._nodeIds.indexOf(id);
+    const idx = this._nodes.findIndex(node => node.id === id);
     return idx >= 0 ? idx : null;
   }
 
-  // ノードと ID の対応を保ったまま、両配列を実行時刻順に並べ替える。
+  // ノードを実行時刻順に並べ替える。
   private sortByTime(): void {
-    const order = this._nodes.map((_, i) => i);
-    order.sort((a, b) => this._nodes[a]!.t - this._nodes[b]!.t);
-    this._nodes = order.map((i) => this._nodes[i]!);
-    this._nodeIds = order.map((i) => this._nodeIds[i]!);
+    this._nodes.sort((a, b) => a.state.t - b.state.t);
   }
 }
