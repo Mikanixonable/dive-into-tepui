@@ -13,9 +13,15 @@ function showEnd(win: boolean, detailHtml: string, title?: string): void {
   e.innerHTML = `
     <h1>${title ?? (win ? 'MISSION COMPLETE' : 'SHIP LOST')}</h1>
     <div class="detail">${detailHtml}</div>
-    <div class="restart">[${K.restart.label}] キーまたはタップで再出撃</div>`;
-  // クリック/タップを再出撃キーの押下として扱う
-  e.onclick = () => window.dispatchEvent(new KeyboardEvent('keydown', { code: K.restart.code }));
+    <div class="restart" style="cursor: pointer;">[${K.restart.label}] キーまたはタップで再出撃</div>
+    <div class="title-return" style="margin-top: 16px; color: #aaa; font-size: 13px; cursor: pointer; text-decoration: underline;">タイトル画面に戻る</div>`;
+  // クリック/タップを各ボタンのアクションとして扱う
+  e.querySelector('.restart')!.addEventListener('click', () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: K.restart.code }));
+  });
+  e.querySelector('.title-return')!.addEventListener('click', () => {
+    location.href = location.pathname; // URLパラメータなしのパスへ遷移
+  });
 }
 
 // エンジン音・BGM を止めた上で結果画面を表示する。
