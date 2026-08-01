@@ -153,7 +153,8 @@ export class Player extends Ship {
       this.radiator.solarLoad(sunlit, sunDir, this.att),
     );
     this.radius = this.radiator.hitRadius();
-    this.power.update(dt, sunlit, sunDir, this.att);
+    const deployMult = (this.radiator.deployOf('up') + this.radiator.deployOf('down')) / 2;
+    this.power.update(dt, sunlit, sunDir, this.att, deployMult);
 
     // 死亡済み: 射撃、移動、hp回復はできない
     if (!this.alive) {

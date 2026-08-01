@@ -174,46 +174,40 @@ function buildPlayerShip() {
     }
   }
 
-  // === 太陽電池パネル(大型・フレーム格子付き) ===
+  // === 太陽電池パドル (展開式・蛇腹6折り) ===
+  const SOLAR_FOLD_COUNT = 6;
+  const SOLAR_LENGTH = 2.4;
+  const SOLAR_SEG = SOLAR_LENGTH / SOLAR_FOLD_COUNT; 
+  const SOLAR_WIDTH = 1.5;
+  const SOLAR_STACK_NUDGE = 0.012;
   const panelMat   = std(0x1a3a8c, { metalness: 0.38, roughness: 0.52 });
   const panelFrame = std(0x7a838f, { metalness: 0.68, roughness: 0.33 });
-
+  
   for (const side of [-1, 1]) {
-    // パネル面
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.055, 1.5), panelMat);
-    panel.position.set(side * 2.62, 0.52, -2.20);
-    g.add(panel);
+    const baseName = side > 0 ? 'solarUp' : 'solarDown';
+    const hinge = new THREE.Group();
+    hinge.name = baseName;
+    // 胴体側面から伸びる (x = ±1.17, y = 0.52, z = -1.0)
+    hinge.position.set(side * 1.17, 0.52, -1.0);
+    g.add(hinge);
 
-    // 外枠(上下 2 本)
-    for (const fz of [-0.76, 0.76]) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(2.50, 0.10, 0.07), panelFrame);
-      bar.position.set(side * 2.62, 0.52, -2.20 + fz);
-      g.add(bar);
-    }
-    // 外枠(左右 2 本)
-    for (const fx of [-1.26, 1.26]) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.10, 1.60), panelFrame);
-      bar.position.set(side * 2.62 + fx * side, 0.52, -2.20);
-      g.add(bar);
-    }
-    // 内部格子(縦 2 本)
-    for (const dx of [-0.54, 0.54]) {
-      const div = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 1.48), panelFrame);
-      div.position.set(side * 2.62 + dx * side, 0.52, -2.20);
-      g.add(div);
-    }
+    let parent = hinge;
+    for (let i = 0; i < SOLAR_FOLD_COUNT; i++) {
+      const fold = new THREE.Group();
+      fold.name = `${baseName}Fold${i}`;
+      if (i > 0) fold.position.set(side * SOLAR_SEG, 0, 0);
+      parent.add(fold);
 
-    // パネル接続ストラット
-    const strut = new THREE.Mesh(new THREE.BoxGeometry(1.30, 0.10, 0.10), panelFrame);
-    strut.position.set(side * 1.78, 0.52, -2.20);
-    g.add(strut);
-    // 補強ブラケット(Z方向)
-    const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.10, 1.50), panelFrame);
-    bracket.position.set(side * 1.18, 0.52, -2.20);
-    g.add(bracket);
+      // パネル面 (幅をZ方向に、長さをX方向のセグメントとして配置)
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(SOLAR_SEG, 0.055, SOLAR_WIDTH), panelMat);
+      panel.position.set(side * SOLAR_SEG / 2, 0, i * SOLAR_STACK_NUDGE);
+      fold.add(panel);
+
+      parent = fold;
+    }
   }
 
-  // === 展開式ラジエーター(機体側面・太陽電池パネル下に1枚ずつ、蛇腹4折り) ===
+  // === 展開式ラジエーター(機体側面・太陽電池パドル下に1枚ずつ、蛇腹6折り) ===
   // 1折りはハル幅と揃えた 2.3×2.3 の正方形。折り目 Group を入れ子にし、
   // 各折り目の rotation.y だけで蛇腹全体の伸縮を表現できるようにする
   // (src/game/player/radiator.ts の sync が毎フレーム書き込む)。
@@ -236,8 +230,8 @@ function buildPlayerShip() {
     const hinge = new THREE.Group();
     const baseName = sx > 0 ? 'radiatorUp' : 'radiatorDown';
     hinge.name = baseName;
-    // 機体側面に張り付くように x=1.17 へ移動
-    hinge.position.set(sx * 1.17, 0.30, -2.20);
+    // 機体側面に張り付くように x=1.17、はみ出さないよう z=-0.50、上下中心より少し下 y=-0.20 へ移動
+    hinge.position.set(sx * 1.17, -0.20, -0.50);
     g.add(hinge);
 
     let parent = hinge;
