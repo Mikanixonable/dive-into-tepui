@@ -31,6 +31,8 @@ export class PlanTrajectory {
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
   private forceNext = false;
+  // 最後のバーン後(まだノードで終わらない末尾区間)の起点状態。ノードが尽きていれば null。
+  private trailingStart: OrbitState | null = null;
 
   // group をシーンへ登録する(初期状態は非表示)。
   constructor(scene: THREE.Scene) {
@@ -67,6 +69,13 @@ export class PlanTrajectory {
     for (let i = segments.length; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
+    this.trailingStart = segments.length > plan.nodes.length ? segments[segments.length - 1]!.state0 : null;
+  }
+
+  // 最後のバーン後(これから乗る軌道)の起点状態。ノードがすべて表示終端より後にあり
+  // 末尾区間が無ければ null。
+  get finalSegmentStart(): OrbitState | null {
+    return this.trailingStart;
   }
 
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
