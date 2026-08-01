@@ -5,8 +5,9 @@
 //     (昇交点歳差が軌道傾斜角変化の源)。
 // THREE/DOM 非依存。位置の計算式は純関数、それを初期位相で束縛して simTime で
 // サンプルする状態は末尾の Ephemeris クラスが持つ。
-import { Quat, qFromAxisAngle, qMul } from './attitude';
-import { Vec3, addScaled, norm, scale, v3 } from './vec3';
+import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
+import { MU_EARTH } from './orbital';
+import { Vec3, addScaled, len, norm, scale, v3 } from './vec3';
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
 export const MU_MOON = 4.9048695e12;
@@ -27,8 +28,6 @@ const SIN_EPS = Math.sin(EPS);
 const COS_MOON_INC = Math.cos(MOON_INC);
 const SIN_MOON_INC = Math.sin(MOON_INC);
 
-export const SUN_ROTATING_POLE = v3(0, 1, 0); // 極(北極)軸。太陽回転系の回転軸。
-
 // 天体に固定した回転基準系の、ECI に対する姿勢 q と角速度 omega [rad/s](ECI 成分)。
 // 回転軸が一定とは限らないので、軸と回転角の対ではなくこの対で扱う。
 export type FrameRotation = { q: Quat; omega: Vec3 };
@@ -47,45 +46,30 @@ function eclToEci(xe: number, ye: number, ze: number): Vec3 {
 // 黄道座標系の基底軸(成分は黄道座標での値)。
 const ECL_VERNAL = v3(1, 0, 0); // 春分点方向
 const ECL_POLE = v3(0, 0, 1); // 黄道北極
-const ECL_POLE_ECI = eclToEci(0, 0, 1); // 黄道北極をゲーム ECI で表したもの
-// eclToGame と同一の回転をクォータニオンで表したもの。春分点(X)まわりに EPS − 90° 回すと
-// 黄道基底がゲーム ECI 基底へ重なる。
-const Q_ECL_TO_GAME = qFromAxisAngle(ECL_VERNAL, EPS - Math.PI / 2);
+const ECL_POLE_ECI = eclToEci(0, 0, 1); // 黄道北極を ECI で表したもの
+// eclToEci と同一の回転をクォータニオンで表したもの。春分点(X)まわりに EPS − 90° 回すと
+// 黄道基底が ECI 基底へ重なる。
+const Q_ECL_TO_ECI = qFromAxisAngle(ECL_VERNAL, EPS - Math.PI / 2);
+
+// 太陽の黄経とその変化率 [rad], [rad/s]。phase0 は初期黄経。円軌道近似なので変化率は一定。
+function sunAngles(t: number, phase0: number): { lam: number; lamRate: number } {
+  return { lam: phase0 + (2 * Math.PI * t) / YEAR, lamRate: (2 * Math.PI) / YEAR };
+}
 
 // 太陽の ECI 位置(地心から見た太陽)。phase0 は初期黄経 [rad]。
 export function sunPosition(t: number, phase0: number): Vec3 {
-  const lam = phase0 + (2 * Math.PI * t) / YEAR;
+  const { lam } = sunAngles(t, phase0);
   const p = eclToEci(Math.cos(lam), Math.sin(lam), 0);
   return v3(p.x * SUN_DIST, p.y * SUN_DIST, p.z * SUN_DIST);
 }
 
-// 太陽方向の ECI 上での「方位角」(Y軸=極を軸としたXZ平面への射影の偏角)。
-// 黄道傾斜(23.44°)により太陽の実際の運動は Y軸まわりの純粋な回転ではないが、
-// マップモードの「太陽回転系」表示(カメラ方位・予測軌道の回転補正)には
-// この近似で十分(年周期のドリフトなので誤差は視覚上ごく僅か)。
-export function sunAzimuth(t: number, phase0: number): number {
-  const p = sunPosition(t, phase0);
-  return Math.atan2(p.z, p.x);
-}
-
-// sunAzimuth の時間微分 [rad/s]。
-// sunAz = atan2(−sin(lam)·cosEps, cos(lam)), lam = phase0 + 2π t/YEAR を解析微分すると
-// d(sunAz)/dt = −cosEps·lam' / (cos²lam + sin²lam·cos²Eps)。
-export function sunAzimuthRate(t: number, phase0: number): number {
-  const lam = phase0 + (2 * Math.PI * t) / YEAR;
-  const lamDot = (2 * Math.PI) / YEAR;
-  const cl = Math.cos(lam);
-  const sl = Math.sin(lam);
-  return (-COS_EPS * lamDot) / (cl * cl + sl * sl * COS_EPS * COS_EPS);
-}
-
-// 太陽の見かけの公転に固定した回転基準系(極軸まわりに太陽の方位角ぶん回した系)。
-// 黄道傾斜(23.44°)ぶん太陽は極軸まわりの純回転からずれるが、この近似での年周期のドリフトは
-// 表示上ごく僅か。
+// 太陽の見かけの公転に固定した回転基準系(x̂ = 地心から見た太陽の方向、ẑ = 黄道法線)。
+// 回転軸は赤道の極軸ではなく黄道極(赤道に対し 23.44° 傾く)。
 export function sunOrbitRotation(t: number, phase0: number): FrameRotation {
+  const { lam, lamRate } = sunAngles(t, phase0);
   return {
-    q: qFromAxisAngle(SUN_ROTATING_POLE, sunAzimuth(t, phase0)),
-    omega: scale(SUN_ROTATING_POLE, sunAzimuthRate(t, phase0)),
+    q: qMul(Q_ECL_TO_ECI, qFromAxisAngle(ECL_POLE, lam)),
+    omega: scale(ECL_POLE_ECI, lamRate),
   };
 }
 
@@ -147,8 +131,8 @@ export function moonOrbitNormal(t: number, phase0: number): Vec3 {
 // 「白道法線まわりの公転」の和になる。
 export function moonOrbitRotation(t: number, phase0: number): FrameRotation {
   const { node, nodeRate, u, uRate } = moonAngles(t, phase0);
-  // 黄道座標での基底 Rz(Ω)·Rx(i)·Rz(u) を組み、ゲーム ECI へ移す。
-  const q = qMul(Q_ECL_TO_GAME, qMul(
+  // 黄道座標での基底 Rz(Ω)·Rx(i)·Rz(u) を組み、ECI へ移す。
+  const q = qMul(Q_ECL_TO_ECI, qMul(
     qFromAxisAngle(ECL_POLE, node),
     qMul(qFromAxisAngle(ECL_VERNAL, MOON_INC), qFromAxisAngle(ECL_POLE, u)),
   ));
@@ -156,59 +140,40 @@ export function moonOrbitRotation(t: number, phase0: number): FrameRotation {
   return { q, omega };
 }
 
-// 地球-月系のラグランジュ点を ECI [m] で返す。
-export function emLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec3, L3: Vec3, L4: Vec3, L5: Vec3 } {
-  const mPos = moonPosition(t, phase0);
-  const R = Math.sqrt(mPos.x * mPos.x + mPos.y * mPos.y + mPos.z * mPos.z);
-  const mu = MU_MOON / (3.986004418e14 + MU_MOON);
-  
-  const rL1 = R * (1 - Math.pow(mu / 3, 1/3));
-  const rL2 = R * (1 + Math.pow(mu / 3, 1/3));
-  const rL3 = -R * (1 + 5/12 * mu);
+export type LagrangePoints = { L1: Vec3; L2: Vec3; L3: Vec3; L4: Vec3; L5: Vec3 };
 
-  const l1 = v3(mPos.x * rL1 / R, mPos.y * rL1 / R, mPos.z * rL1 / R);
-  const l2 = v3(mPos.x * rL2 / R, mPos.y * rL2 / R, mPos.z * rL2 / R);
-  const l3 = v3(mPos.x * rL3 / R, mPos.y * rL3 / R, mPos.z * rL3 / R);
-
-  // L4/L5 は月軌道面内で月の前後 60°
-  const nHat = moonOrbitNormal(t, phase0);
-  const mHat = v3(mPos.x / R, mPos.y / R, mPos.z / R);
-  const tHat = v3(
-    nHat.y * mHat.z - nHat.z * mHat.y,
-    nHat.z * mHat.x - nHat.x * mHat.z,
-    nHat.x * mHat.y - nHat.y * mHat.x
-  );
-  
-  const cos60 = 0.5;
-  const sin60 = Math.sqrt(3) / 2;
-  
-  const l4 = v3(
-    R * (mHat.x * cos60 + tHat.x * sin60),
-    R * (mHat.y * cos60 + tHat.y * sin60),
-    R * (mHat.z * cos60 + tHat.z * sin60)
-  );
-  const l5 = v3(
-    R * (mHat.x * cos60 - tHat.x * sin60),
-    R * (mHat.y * cos60 - tHat.y * sin60),
-    R * (mHat.z * cos60 - tHat.z * sin60)
-  );
-  
-  return { L1: l1, L2: l2, L3: l3, L4: l4, L5: l5 };
+// 円制限三体問題のラグランジュ点。5点はいずれも回転系(原点 = 主天体、x̂ = 副天体方向、
+// ŷ = 副天体の公転前方)の固定点で、その無次元座標(軌道半径を 1 とする)は質量比
+// mu = m2/(m1+m2) だけで決まる。それを ECI [m] へ移す写像 place を受け取って組み立てる。
+function lagrangePoints(mu: number, place: (x: number, y: number) => Vec3): LagrangePoints {
+  const hill = Math.cbrt(mu / 3); // L1/L2 の副天体からの距離(軌道半径比)
+  const s60 = Math.sqrt(3) / 2;
+  return {
+    L1: place(1 - hill, 0),
+    L2: place(1 + hill, 0),
+    L3: place(-(1 + (5 / 12) * mu), 0),
+    L4: place(0.5, s60),
+    L5: place(0.5, -s60),
+  };
 }
 
-// 太陽-地球系のラグランジュ点を ECI [m] で返す。L1 は太陽側、L2 は反太陽側。
-export function seLagrangePoints(t: number, phase0: number): { L1: Vec3, L2: Vec3 } {
-  const sPos = sunPosition(t, phase0);
-  const D = SUN_DIST;
-  const mu = 3.986004418e14 / MU_SUN;
-  
-  const rL = D * Math.pow(mu / 3, 1/3); // 地球からの距離 [m]
-  const sHat = v3(sPos.x / D, sPos.y / D, sPos.z / D);
-  
-  const l1 = v3(sHat.x * rL, sHat.y * rL, sHat.z * rL); // 太陽方向
-  const l2 = v3(-sHat.x * rL, -sHat.y * rL, -sHat.z * rL); // 反太陽方向
+// 地球-月系のラグランジュ点を ECI [m] で返す。
+// 地球が主天体なので、回転系の原点がそのまま地心になる。
+export function emLagrangePoints(t: number, phase0: number): LagrangePoints {
+  const { q } = moonOrbitRotation(t, phase0);
+  const R = len(moonPosition(t, phase0));
+  return lagrangePoints(MU_MOON / (MU_EARTH + MU_MOON), (x, y) => qRotate(q, v3(R * x, R * y, 0)));
+}
 
-  return { L1: l1, L2: l2 };
+// 太陽-地球系のラグランジュ点を ECI [m] で返す。L1 は太陽側、L2 は反太陽側、
+// L3 は太陽を挟んだ向こう側(地心からは太陽方向へ約 2 au)、L4/L5 は地球の公転前方/後方 60°。
+// 地球はこの系では副天体なので、回転系の原点(太陽)から地心へ移す平行移動が入る。
+// sunOrbitRotation の基底では x̂ が地球→太陽、すなわち回転系の x̂(太陽→地球)とは逆向きで、
+// ŷ も同時に反転するため、無次元座標 (x, y) の地心での像は R·(1 − x, −y) になる。
+export function seLagrangePoints(t: number, phase0: number): LagrangePoints {
+  const { q } = sunOrbitRotation(t, phase0);
+  const R = SUN_DIST; // 太陽は円軌道近似なので距離は一定
+  return lagrangePoints(MU_EARTH / (MU_SUN + MU_EARTH), (x, y) => qRotate(q, v3(R * (1 - x), -R * y, 0)));
 }
 
 // 天体暦: 初期位相をゲームごとに固定し、任意の simTime で太陽・月の ECI 位置・
@@ -264,11 +229,11 @@ export class Ephemeris {
     return moonOrbitRotation(t, this.moonPhase0);
   }
   // 指定時刻の地球-月ラグランジュ点(L1-L5)。
-  emLagrangeAt(t: number): ReturnType<typeof emLagrangePoints> {
+  emLagrangeAt(t: number): LagrangePoints {
     return emLagrangePoints(t, this.moonPhase0);
   }
-  // 指定時刻の太陽-地球ラグランジュ点(L1-L2)。
-  seLagrangeAt(t: number): ReturnType<typeof seLagrangePoints> {
+  // 指定時刻の太陽-地球ラグランジュ点(L1-L5)。
+  seLagrangeAt(t: number): LagrangePoints {
     return seLagrangePoints(t, this.sunPhase0);
   }
 }
