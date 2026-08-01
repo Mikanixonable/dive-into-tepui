@@ -51,14 +51,16 @@
       - close(...) // !isPlaying && cameraSystem.overviewMode のみ(死亡/終了時にマップを強制的に閉じる)
       - [ポーズ中] 何もせず return // [M] は消費もしない。開いていたマップはそのまま維持する
       - [開く: !cameraSystem.overviewMode]
-        - editor.selectedNodeIdx = null // 内部では selectedNodeId(Plan 発行の ID)を消す
+        - editor.selectedNodeIdx = null
         - touchControls?.setMapMode(true) // タッチデバイスのみ
         - cameraSystem.overviewMode = true / editor.editMode = true / displayTimeManager.forceCurrent = false // 独立3責務を同時に立てる唯一の箇所
         - hud.hint()
       - [閉じる: cameraSystem.overviewMode]
         - editor.onMapClosed()
           - hidePanel()
+          - hideGizmo() → nodeGizmo.sync([], null)
           - plan.removeNode() // 末尾から Δv が NODE_MIN_DV 未満のノードを削る。有意な Δv のノードに当たったら打ち切る
+          - selectedNodeIdx = null
         - editor.closeMenu() → nodeGizmo.closeMenu()
         - cameraSystem.closeFocusMenu() → focusGizmo.closeMenu()
         - touchControls?.setMapMode(false)
@@ -215,10 +217,11 @@
   - [editor.editMode] 計画編集モード
     - editor.handleMapPointer() // 右クリック → 左クリックの順に受ける
       - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
-        - nodeGizmo.openMenu() + selectedNodeId = ヒットしたノードの ID // ヒット時。true を返して消費
+        - selectedNodeIdx = ヒットしたノードの idx + nodeGizmo.openMenu() // ヒット時。true を返して消費
       - handleMapClick() // 左クリックごと。常に消費する
-        - selectedNodeIdx = idx + sfx.warp() // 既存ノードをヒットした場合。正本は ID(setter が解決する)
+        - selectedNodeIdx = idx + sfx.warp() // 既存ノードをヒットした場合
         - planDisplay.traj.nearestSample() → plan.addNode() + sfx.warp() // 計画軌道上をヒットした場合
+        - selectedNodeIdx = null // どちらにも当たらなかった場合
     - cameraSystem.handleMapPointer() // ノードに消費されずに残った右クリックだけが届く
       - handleFocusRightClick() → focusGizmo.openMenu() // FOCUS_LABEL_PICK_PX 以内にラベルがある場合のみ消費
     - editor.updateEditing()
@@ -286,7 +289,7 @@
   - displayTimeManager.sync(orbitPeriod) // PREDICT パネル(期間/未来位置スライダー)の表示/内容を押し出すだけ
     - panel.setVisible(!forceCurrent) / setDuration() / setSliderLabel() // ラベルは自己完結の "T+" 表記のみ
   - editor.sync(mapDist, simTime, displayTime, fo, project)
-    - [editMode] planDisplay.sync(plan, simTime, displayTime, fo, project)
+    - [editMode または plan.nodes.length > 0] planDisplay.sync(plan, simTime, displayTime, fo, project, editMode)
       - traj.setVisible(true)
       - traj.update() // plan の corners を区間(segment)へ分解し、区間ごとに PlanArc を駆動。表示文脈(frame/un-bake 時刻/投影)もここで更新
         // 区間の終端はノードの t。末尾区間だけは起点の解析軌道1周期ぶん(plan.ts の orbitPeriodOf)
@@ -298,10 +301,10 @@
           - sampled.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
         - arc.setVisible(false) // 区間が減って余った PlanArc ごと
       - syncGhost() → markerManager.setPosition('plannedPlayer') or hide() // displayTime <= simTime なら hide
-      - panel.setVisible(true) / setSelected() // TRAJECTORY パネル(表示座標系)
+      - panel の表示 = showPanel(= editMode) / setSelected() // TRAJECTORY パネル(表示座標系)。戦闘ビューでは出さない
+    - [!editMode かつ plan.nodes.length === 0] planDisplay.hide()
     - [editMode] updateGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
       // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は traj の今フレームの表示文脈を通す
-    - [!editMode] planDisplay.hide() + hideGizmo() → nodeGizmo.sync([], null)
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync(displayTime)
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示
