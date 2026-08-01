@@ -150,6 +150,22 @@ export class Enemy extends Ship {
     this.destroyEffect();
   }
 
+  // 自機との高速接触によるダメージ・致死判定。speed は接触時の相対速度 [m/s]。
+  collidedAtSpeed(speed: number, simTime: number, activeStage: Stage): void {
+    if (!this.alive) return;
+
+    if (!this.applyCollisionDamage(speed)) return;
+    if (this.hp > 0) {
+      this._sfx.clank();
+      this._fx.spawnGasPuff(this.state.r, this.state.v);
+      return;
+    }
+
+    this.alive = false;
+    activeStage.recordEnemyDeath(this, simTime, 'killed');
+    this.destroyEffect();
+  }
+
   // 交戦圏外への離脱によるデスポーン。
   despawn(simTime: number, activeStage: Stage): void {
     if (!this.alive) return;

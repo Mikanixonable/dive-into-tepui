@@ -176,6 +176,11 @@
       - resolveCollisionPairs()
         - resolveCollisionPair() → 双方の state へ代入 // 貫入している衝突ペアごと
         - onPlayerCasingImpact() → sfx.clank() // 自機-薬莢の接触時のみ
+        - onHighSpeedImpact() // 反発した接触速度が COLLISION_DAMAGE_MIN_SPEED 以上のペアのみ
+          - player.collidedAtSpeed() / enemy.collidedAtSpeed() // game.ts が自機-敵機のペアだけを通す
+            - applyCollisionDamage() → hp へ代入
+            - sfx.clank() + fx.spawnGasPuff() // hp>0
+            - activeStage.recordPlayerLost() / recordEnemyDeath(cause='killed') + destroyEffect() // hp<=0
       - player.belt.applyCollisionSections() // player.alive && dt>1e-6
     - stepAttitudes() → stepAttitude() → entity.att へ代入 // 自機・敵・薬莢・デブリ・補給それぞれ
     - lastSimDt = simDt
