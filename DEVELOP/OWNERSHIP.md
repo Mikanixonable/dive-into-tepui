@@ -41,9 +41,9 @@ main.ts
     │   │   └── GunsightCamera
     │   ├── OverviewCamera
     │   ├── FocusMarkers
-    │   ├── OverviewCameraPanel        ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
-    │   └── FocusGizmo
-    │       └── ContextMenu
+    │   └── OverviewCameraPanel        ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
+    ├── MapContextGizmo                ... マップ右クリックの被選択物(MapPickable)向けコンテキストメニュー
+    │   └── ContextMenu
     ├── GroupedMarkers (enemyMarkers)  ... 画面上で近接する敵マーカーのまとめ + 画面外方位マーカー
     ├── LeadMarkers                    ... 敵ごとの LEAD マーカーと最終ロック時刻
     ├── Player               (extends Ship / GameEntity)
@@ -71,6 +71,7 @@ main.ts
     │   │   └── TRAJECTORY パネル DOM   ... 表示座標系(frame)の SegmentedControl 1 個のみ
     │   ├── NodeGizmo
     │   │   └── ContextMenu
+    │   ├── HudHoldButton ×6            ... Δv 6方向の長押しボタン(dvButtons)
     │   └── 計画パネル DOM
     ├── PlanGuide
     ├── MapModeToggler                 ... 所有物なし(マップ開閉フラグ mapMode だけを持つ)
@@ -81,7 +82,8 @@ main.ts
     │   └── ScoreAttackTimer           ... Stage0 のみ(Stage00 の波状攻撃フェーズ・波数は Stage00 自身のフィールド)
     ├── EnvironmentScene
     │   ├── Earth / Sun / DirectionalLight / AmbientLight / stars / moon メッシュ
-    │   └── OrbitLine ×2               ... geoLine / moonLine(マップ参照線)
+    │   ├── OrbitLine ×2               ... geoLine / moonLine(マップ参照線)
+    │   └── CelestialGrid              ... 赤道面/黄道面それぞれの基準円・緯経線グリッド・両極マーカー
     ├── EffectsSystem
     │   └── FlashEffectManager
     │       └── FlashEffect[]          ... 各々 Billboard を持つ
@@ -158,6 +160,8 @@ main.ts
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
 | 予測ラウンドロビンのカーソル | `Predictor.cursor` | 唯一の状態。`EntityManager.all()` のインデックスとして毎フレーム進む |
 | ワープ段・自動ワープ目標時刻 | `SimSpeedManager` | 閾値判定(canPlayerFire 等)もここの getter が唯一 |
+| 天球グリッド6トグルの可視状態 | `Game.celestialGridVisibility` | navball ウィンドウ実装後はそちらへ移る想定の暫定置き場。`EnvironmentScene.sync` の引数経由で `CelestialGrid.sync` へ渡るだけで、`CelestialGrid` 自身は状態を持たない |
+| Δv アーム/ボタンのホールド継続時間・ラッチ状態 | `PlanEditor.dvHoldTime` / `NodeGizmo.latch` | 6方向ぶんの経過秒数(ホールドレートのランプに使う)と、ドラッグがラッチへ入った軸/超過量。加算そのものは `PlanEditor.applyDv` に一本化 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
 | マニューバ計画(ノード列・アンカー) | `Plan` | 所有は PlanEditor。ノード・アンカーとも 1 個の `OrbitState`(実行時刻 = `t`、Δv は導出値)。各ノードに 1 対 1 の内部 ID を発行する(`nodeIdAt`/`indexOfNodeId`) |
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNodeId` / `.editMode` | 選択は index ではなく Plan 発行の ID で持つ(`consumeFirstNode` 等で配列が動いてもずれない)。`selectedNodeIdx` は ID から都度解決する index ビュー |
