@@ -265,7 +265,7 @@ export class PlayerFire {
   }
 
   // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。
-  // 初速・回転とも抑え、ゆっくり漂いながら緩やかに回転する見た目にする。
+  // 初速は抑えてゆっくり漂わせる一方、回転速度は個体ごとに大きくばらつかせる。
   private dropCasing(ship: Ship, muzzle: Vec3, simTime: number): void {
     // 機体姿勢基準の左右・上方向
     const right = qRotate(ship.att.q, v3(1, 0, 0));
@@ -281,7 +281,7 @@ export class PlayerFire {
       ),
       {
         q: randomQuat(),
-        w: v3(randSym(2.5), randSym(2.5), randSym(2.5)),
+        w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
         inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
       simTime,
