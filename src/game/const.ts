@@ -36,11 +36,12 @@ export const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりの投入熱量 [J]
 
 // --- ラジエーター(上下2枚、個別展開) ---
 export const RADIATOR_PANEL_AREA = 42; // 1枚の放熱面積 [m^2](2.3 × 2.3 m の蛇腹 4 折りの両面ぶん)
-export const RADIATOR_FOLD_COUNT = 4; // 蛇腹の折り数(1枚あたり)
+export const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
-export const RADIATOR_HIT_WEAR_PER_HIT = 0.02; // 被弾1発で増える損耗度(1.0 = 全損。50発で全損)
+export const RADIATOR_HIT_WEAR_PER_HIT = 0.002; // 被弾1発で増える損耗度(耐久性10倍)
+export const RADIATOR_WEAR_RECOVERY = 0.01; // 1秒あたりの耐久回復量
 export const RADIATOR_HITTABLE_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
 export const RADIATOR_EFFICIENCY_MULT = 1; // 放熱面積(RADIATOR_PANEL_AREA)に掛ける性能係数
 
