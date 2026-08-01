@@ -1,37 +1,42 @@
-// ステージ固有の状況表示パネル(自機の装甲・エンジン出力・温度・電力・ラジエーター・ステージからの補助メッセージ・撃墜数)。
-// 表示内容がステージごとに決まるので Stage が所有し、hudSubStatus() を返すステージでだけ現れる。
-// CSS(#hud-stagestatus)は hud/dom.ts の STYLE に一元管理されている。
+// ステージ固有の状況表示パネル(左部: ステージ補助メッセージ・撃墜数 / 中央部: 自機の装甲・エンジン出力・
+// 温度・電力 / 右部: ラジエーター左右の展開ボタン)。表示内容がステージごとに決まるので Stage が所有し、
+// hudSubStatus() を返すステージでだけ現れる。CSS(#hud-stagestatus)は hud/dom.ts の STYLE に一元管理されている。
 
 const LOW_HP_RATIO = 0.3;
 const RADIATOR_HIGH_WEAR = 0.5;
 import * as C from '../../const';
 import type { Player } from '../../player/player';
 import type { RadiatorSide } from '../../player/radiator';
-import { hudButton } from '../../hud/buttons';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { fmtEnergy } from '../../hud/utils';
 import { ACCENT } from '../../theme';
 
-const BAR_WIDTH = 160;
-const BAR_HEIGHT = 12;
+// side を「右(+X)/左(-X)」ラベルとショートカットキーへ対応させる。
+const RADIATOR_UI: Record<RadiatorSide, { label: string; key: string }> = {
+  up: { label: '右', key: K.radiatorDeployUp.label },
+  down: { label: '左', key: K.radiatorDeployDown.label },
+};
 
-interface RadiatorRowDom {
-  readonly bar: HTMLElement;
-  readonly text: HTMLElement;
+interface RadiatorButtonDom {
   readonly button: HTMLElement;
+  readonly fill: HTMLElement;
+  readonly label: HTMLElement;
   lastText: string;
-  lastButtonLabel: string;
-  lastButtonOn: boolean;
+  lastFillWidth: string;
+  lastFillColor: string;
 }
 
 export class StageStatusPanel {
   private readonly panel: HTMLElement;
-  private readonly hpRow: HTMLElement;
-  private readonly body: HTMLElement;
+  private readonly leftCol: HTMLElement;
+  private readonly centerCol: HTMLElement;
   private lastHpHtml = '';
-  private lastBodyHtml = '';
+  private lastLeftHtml = '';
   private player: Player | null = null;
 
-  // ラジエーター行だけは展開/収納ボタンのリスナを保つため、innerHTML の再構築対象から外した永続 DOM にしてある
-  private readonly radiatorRows: Record<RadiatorSide, RadiatorRowDom>;
+  // ラジエーターボタンだけは展開/収納のクリックリスナを保つため、innerHTML の再構築対象から
+  // 外した永続 DOM にしてある
+  private readonly radiatorButtons: Record<RadiatorSide, RadiatorButtonDom>;
 
   // 非表示状態のパネル DOM を組み立てて root に追加する
   constructor(root: HTMLElement) {
@@ -39,99 +44,62 @@ export class StageStatusPanel {
     this.panel.id = 'hud-stagestatus';
     this.panel.className = 'panel';
     this.panel.style.display = 'none';
-    this.panel.innerHTML = `<div class="t"></div><div class="radiator-grid"></div><div class="k"></div>`;
-    this.hpRow = this.panel.querySelector<HTMLElement>('.t')!;
-    this.body = this.panel.querySelector<HTMLElement>('.k')!;
+    this.panel.innerHTML = `<div class="k"></div><div class="t"></div><div class="radiators"></div>`;
+    this.leftCol = this.panel.querySelector<HTMLElement>('.k')!;
+    this.centerCol = this.panel.querySelector<HTMLElement>('.t')!;
     root.appendChild(this.panel);
 
-    // ラジエーター行は上下で別グリッドにしつつ、装甲/出力/温度と同じ列指定で見た目を揃える
-    const radiatorGrid = this.panel.querySelector<HTMLElement>('.radiator-grid')!;
-    radiatorGrid.style.display = 'grid';
-    radiatorGrid.style.gridTemplateColumns = 'auto 1fr';
-    radiatorGrid.style.gap = '4px 8px';
-    radiatorGrid.style.alignItems = 'center';
-
-    this.radiatorRows = {
-      up: this.buildRadiatorRow(radiatorGrid, '上', 'up'),
-      down: this.buildRadiatorRow(radiatorGrid, '下', 'down'),
+    const radiatorsCol = this.panel.querySelector<HTMLElement>('.radiators')!;
+    this.radiatorButtons = {
+      up: this.buildRadiatorButton(radiatorsCol, 'up'),
+      down: this.buildRadiatorButton(radiatorsCol, 'down'),
     };
   }
 
-  // side 1枚ぶんの行(ラベル・バー・展開ボタン)を grid へ組み立て、以後の更新に使う要素を返す。
-  private buildRadiatorRow(grid: HTMLElement, label: string, side: RadiatorSide): RadiatorRowDom {
-    const labelSpan = document.createElement('span');
-    labelSpan.textContent = `ラジエーター${label}`;
-    grid.appendChild(labelSpan);
+  // side 1枚ぶんの展開/収納ボタンを組み立て、以後の更新に使う要素を返す。
+  private buildRadiatorButton(col: HTMLElement, side: RadiatorSide): RadiatorButtonDom {
+    const button = document.createElement('button');
+    button.className = 'radiator-btn';
+    button.innerHTML = `<div class="fill"></div><div class="label"></div>`;
+    button.addEventListener('click', () => this.player?.radiator.toggle(side));
+    col.appendChild(button);
 
-    const cell = document.createElement('div');
-    cell.style.display = 'flex';
-    cell.style.alignItems = 'center';
-    cell.style.gap = '6px';
-
-    const barBox = document.createElement('div');
-    barBox.style.position = 'relative';
-    barBox.style.width = `${BAR_WIDTH}px`;
-    barBox.style.height = `${BAR_HEIGHT}px`;
-    barBox.style.background = C.COLOR_HUD_BAR_BG;
-
-    const bar = document.createElement('div');
-    bar.style.height = '100%';
-    bar.style.transition = 'width 0.2s';
-    barBox.appendChild(bar);
-
-    const text = document.createElement('div');
-    text.style.position = 'absolute';
-    text.style.right = '4px';
-    text.style.top = '0';
-    text.style.bottom = '0';
-    text.style.display = 'flex';
-    text.style.alignItems = 'center';
-    text.style.fontSize = '10px';
-    text.style.color = '#fff';
-    text.style.textShadow = '0 0 2px #000, 0 0 2px #000';
-    barBox.appendChild(text);
-
-    cell.appendChild(barBox);
-
-    // ボタンはバーの右隣に並べる。seg-btn の pointer-events:auto は .hud-seg 配下限定の
-    // セレクタなので、.hud-seg でラップしないここでは明示しないとクリックが canvas へ抜ける
-    const button = hudButton('展開', () => {
-      this.player?.radiator.toggle(side);
-    });
-    button.style.pointerEvents = 'auto';
-    cell.appendChild(button);
-
-    grid.appendChild(cell);
-
-    return { bar, text, button, lastText: '', lastButtonLabel: '展開', lastButtonOn: false };
+    return {
+      button,
+      fill: button.querySelector<HTMLElement>('.fill')!,
+      label: button.querySelector<HTMLElement>('.label')!,
+      lastText: '',
+      lastFillWidth: '',
+      lastFillColor: '',
+    };
   }
 
-  // row の表示を side の展開度・損耗度へ合わせる。文字列は値が動いたときだけ書き換える。
-  private syncRadiatorRow(row: RadiatorRowDom, side: RadiatorSide, radiator: Player['radiator']): void {
-    const deploy = radiator.deployOf(side);
-    const deployPct = Math.round(deploy * 100);
+  // dom の表示を side の展開度・損耗度へ合わせる。着色部の幅は損耗度に応じて減る
+  // (損耗ぶん = 失われた放熱能力ぶん、と読めるようにするため)。DOM の書き換えは値が
+  // 動いたフレームだけに絞る。
+  private syncRadiatorButton(dom: RadiatorButtonDom, side: RadiatorSide, radiator: Player['radiator']): void {
+    const ui = RADIATOR_UI[side];
+    const deployed = radiator.deployOf(side) >= 0.5;
     const wearPct = Math.round(radiator.wearOf(side) * 100);
     const highWear = wearPct > RADIATOR_HIGH_WEAR * 100;
 
-    row.bar.style.width = `${deployPct}%`;
-    row.bar.style.background = highWear ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK;
-
-    const text = `展開${deployPct}% / 損耗${wearPct}%`;
-    if (row.lastText !== text) {
-      row.text.textContent = text;
-      row.lastText = text;
+    const fillWidth = `${100 - wearPct}%`;
+    const fillColor = highWear ? C.COLOR_HUD_HP_LOW : deployed ? ACCENT : C.COLOR_HUD_HP_OK;
+    if (dom.lastFillWidth !== fillWidth) {
+      dom.fill.style.width = fillWidth;
+      dom.lastFillWidth = fillWidth;
+    }
+    if (dom.lastFillColor !== fillColor) {
+      dom.fill.style.background = fillColor;
+      dom.lastFillColor = fillColor;
     }
 
-    const buttonOn = deploy >= 0.5;
-    const buttonLabel = buttonOn ? '収納' : '展開';
-    if (row.lastButtonLabel !== buttonLabel) {
-      row.button.textContent = buttonLabel;
-      row.lastButtonLabel = buttonLabel;
-    }
-    if (row.lastButtonOn !== buttonOn) {
-      row.button.style.borderColor = buttonOn ? ACCENT : '';
-      row.button.style.color = buttonOn ? ACCENT : '';
-      row.lastButtonOn = buttonOn;
+    const text =
+      `<div>ラジエーター${ui.label} [${ui.key}]</div>` +
+      `<div>${deployed ? '展開中' : '収納中'} / 損耗${wearPct}%</div>`;
+    if (dom.lastText !== text) {
+      dom.label.innerHTML = text;
+      dom.lastText = text;
     }
   }
 
@@ -150,6 +118,7 @@ export class StageStatusPanel {
     const temp = Math.round(player.thermal.hullTemp);
     const tempHigh = temp > 0.7 * C.MAX_HULL_TEMP;
     const tempPct = Math.max(0, Math.min(100, (temp / C.MAX_HULL_TEMP) * 100));
+    const chargeJ = player.power.chargeJ;
     const chargePct = Math.max(0, Math.min(100, player.power.chargeRatio * 100));
 
     const hpHtml =
@@ -169,23 +138,23 @@ export class StageStatusPanel {
       `<span>電力</span>` +
       `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
       `<div style="width:${chargePct}%; height:100%; background:${C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
-      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${Math.round(chargePct)}%</div></div>` +
+      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${fmtEnergy(chargeJ)} / ${fmtEnergy(C.POWER_CAPACITY)}</div></div>` +
       `</div>`;
     if (this.lastHpHtml !== hpHtml) {
-      this.hpRow.innerHTML = hpHtml;
+      this.centerCol.innerHTML = hpHtml;
       this.lastHpHtml = hpHtml;
     }
-    this.hpRow.classList.toggle('warn', low);
+    this.centerCol.classList.toggle('warn', low);
 
     const radiator = player.radiator;
-    this.syncRadiatorRow(this.radiatorRows.up, 'up', radiator);
-    this.syncRadiatorRow(this.radiatorRows.down, 'down', radiator);
+    this.syncRadiatorButton(this.radiatorButtons.up, 'up', radiator);
+    this.syncRadiatorButton(this.radiatorButtons.down, 'down', radiator);
 
     // ステージからの補助メッセージと撃墜数
-    const bodyHtml = message ? `${message} &nbsp;|&nbsp; 撃墜 ${kills}` : `撃墜 ${kills}`;
-    if (this.lastBodyHtml !== bodyHtml) {
-      this.body.innerHTML = bodyHtml;
-      this.lastBodyHtml = bodyHtml;
+    const leftHtml = message ? `<div>${message}</div><div>撃墜 ${kills}</div>` : `<div>撃墜 ${kills}</div>`;
+    if (this.lastLeftHtml !== leftHtml) {
+      this.leftCol.innerHTML = leftHtml;
+      this.lastLeftHtml = leftHtml;
     }
     this.panel.style.display = 'block';
   }
