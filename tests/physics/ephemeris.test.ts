@@ -4,15 +4,19 @@ import { test } from './harness';
 import {
   MOON_DIST,
   SUN_DIST,
+  moonOrbitNormal,
+  moonOrbitRotation,
   moonPosition,
   sunAzimuth,
   sunAzimuthRate,
   sunPosition,
 } from '../../src/physics/ephemeris';
-import { len } from '../../src/physics/vec3';
+import { qRotate } from '../../src/physics/attitude';
+import { cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
 
 const YEAR = 365.25636 * 86400;
 const MOON_PERIOD = 27.321661 * 86400;
+const NODE_PERIOD = 18.612958 * 365.25 * 86400;
 
 export function register(): void {
   test('ephemeris: sunPosition distance is always ~1 AU (circular ecliptic orbit)', () => {
@@ -79,6 +83,54 @@ export function register(): void {
       lon += 2 * Math.PI * Math.round((mean - lon) / (2 * Math.PI)); // mean に最も近い分枝へ
       const errDeg = ((lon - mean) * 180) / Math.PI;
       assert.ok(Math.abs(errDeg) < maxCenterDeg, `黄経の平均運動からのずれ (t=${days}日): ${errDeg}°`);
+    }
+  });
+
+  test('ephemeris: moonOrbitNormal は月の位置ベクトルと直交する', () => {
+    for (let i = 0; i < 12; i++) {
+      const t = (i / 12) * MOON_PERIOD * 7.3; // 昇交点歳差も混ざるよう非整数倍で刻む
+      const c = dot(moonOrbitNormal(t, 0.7), norm(moonPosition(t, 0.7)));
+      assert.ok(Math.abs(c) < 1e-12, `法線と月方向の内積 (t=${t}): ${c}`);
+    }
+  });
+
+  test('ephemeris: 白道の赤道傾斜は昇交点歳差で 18.3°〜28.6° を掃く(黄道 23.44° ± 白道 5.145°)', () => {
+    let minDeg = 180;
+    let maxDeg = 0;
+    for (let i = 0; i < 64; i++) {
+      const n = moonOrbitNormal((i / 64) * NODE_PERIOD, 0);
+      const deg = (Math.acos(Math.max(-1, Math.min(1, dot(n, v3(0, 1, 0))))) * 180) / Math.PI;
+      minDeg = Math.min(minDeg, deg);
+      maxDeg = Math.max(maxDeg, deg);
+    }
+    assert.ok(Math.abs(minDeg - 18.294) < 0.1, `最小傾斜: ${minDeg}°`);
+    assert.ok(Math.abs(maxDeg - 28.584) < 0.1, `最大傾斜: ${maxDeg}°`);
+  });
+
+  test('ephemeris: moonOrbitRotation の姿勢は x̂ を月方向・ẑ を白道法線へ移す', () => {
+    for (const t of [0, 1e5, 1e7, 1e9]) {
+      const { q } = moonOrbitRotation(t, 0.4);
+      const x = qRotate(q, v3(1, 0, 0));
+      const z = qRotate(q, v3(0, 0, 1));
+      assert.ok(len(sub(x, norm(moonPosition(t, 0.4)))) < 1e-12, `x̂ の像 (t=${t}): ${JSON.stringify(x)}`);
+      assert.ok(len(sub(z, moonOrbitNormal(t, 0.4))) < 1e-12, `ẑ の像 (t=${t}): ${JSON.stringify(z)}`);
+    }
+  });
+
+  test('ephemeris: moonOrbitRotation の角速度は基底の時間微分に一致する(有限差分)', () => {
+    const dt = 20;
+    for (const t of [0, 1e6, 1e8]) {
+      const { omega } = moonOrbitRotation(t, 0.4);
+      // 基底の各軸について ḃ = ω×b が成り立つか(昇交点歳差ぶんも含めた検証になる)
+      for (const axis of [v3(1, 0, 0), v3(0, 1, 0), v3(0, 0, 1)]) {
+        const at = (s: number) => qRotate(moonOrbitRotation(s, 0.4).q, axis);
+        const fd = scale(sub(at(t + dt), at(t - dt)), 1 / (2 * dt));
+        const analytic = cross(omega, at(t));
+        assert.ok(
+          len(sub(fd, analytic)) < 1e-4 * len(omega),
+          `角速度の不一致 (t=${t}, axis=${JSON.stringify(axis)}): ${JSON.stringify(fd)} vs ${JSON.stringify(analytic)}`,
+        );
+      }
     }
   });
 }
