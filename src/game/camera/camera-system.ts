@@ -61,7 +61,6 @@ export class CameraSystem {
       this.overviewCamera.focus = focus;
       this.overviewCamera.resetPan();
     };
-    this.overviewCameraPanel.onViewReset = () => this.overviewCamera.reset();
     this.overviewCameraPanel.onFrameSelect = (frame: Frame) => {
       this.overviewCamera.cameraFrame = frame;
     };
@@ -158,6 +157,10 @@ export class CameraSystem {
     for (const id of ids) {
       const el = document.getElementById(id);
       if (el) el.style.display = this.overviewMode ? 'none' : '';
+    }
+    const orbitEl = document.getElementById('hud-orbit');
+    if (orbitEl) {
+      orbitEl.style.left = this.overviewMode ? '12px' : '';
     }
     if (this.overviewMode) {
       this.overviewCameraPanel.setFocus(this.overviewCamera.focus);
