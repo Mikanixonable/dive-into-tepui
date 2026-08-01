@@ -31,6 +31,16 @@ export abstract class Ship extends GameEntity {
     this.maxHp = hp;
   }
 
+  // 接触速度に応じた装甲ダメージを hp へ適用し、ダメージが発生したかを返す。
+  // COLLISION_DAMAGE_MIN_SPEED で 0、COLLISION_DAMAGE_FULL_SPEED で maxHp ぶんの線形。
+  protected applyCollisionDamage(speed: number): boolean {
+    const span = C.COLLISION_DAMAGE_FULL_SPEED - C.COLLISION_DAMAGE_MIN_SPEED;
+    const t = Math.min(1, Math.max(0, (speed - C.COLLISION_DAMAGE_MIN_SPEED) / span));
+    if (t <= 0) return false;
+    this.hp -= this.maxHp * t;
+    return true;
+  }
+
   // メッシュ配下のマテリアルを含めて破棄する。
   dispose(): void {
     super.dispose();
