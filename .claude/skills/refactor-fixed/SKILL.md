@@ -148,6 +148,65 @@ N 体へ配る」最適化を担うと、`step` の窓口が「位置を渡す�
 攻撃補助ロジック)がもう片方の対象範囲を縛らないようにする。両方が同じ敵を指すことはあるが、
 それは偶然の一致であって、内部で1つの id を共有させたりはしない。
 
+## マニューバ計画(`Plan`)は艦(`Player`)自身が持つ
+
+**`Plan` の所有者は各 `Player` インスタンスで、`PlanEditor` は所有しない。** `PlanEditor.plan` は
+`activeShip.plan` を返すだけの getter で、`PlanEditor` 自身は計画の中身(ノード列・アンカー)を
+一切保持しない。
+
+理由: クリエイティブモードでは複数の艦(`CreativeShip extends Player`)が同時に存在し、それぞれが
+自分自身のマニューバ計画を持てる必要がある(操作対象でない艦にも、軌道計画への自動追従という
+形で計画が使われる)。計画編集 UI(`PlanEditor`)は常に単一の「今操作している艦」に対して開かれる
+ものなので、UI 側が「今どの艦を編集しているか」を持ち、実データは艦側に置くのが自然な分割になる
+——`PlanEditor.setActiveShip(ship)` を呼ぶだけで編集対象が切り替わり、`Plan` を丸ごとコピー/移動する
+必要がない。
+
+## アクティブ艦(操作対象)の切替は `Game.setActivePlayer` に一元化する
+
+`Game.player` は固定ではなく、クリエイティブモードでは実行時に差し替わる(「艦を右クリック →
+操作対象にする」)。**艦の切替に伴う副作用は `Game.setActivePlayer(ship)` 一箇所に閉じ、各所有者は
+自分の持ち分だけを更新する:**
+
+- `this.player = ship`(`Game` 自身の正本)
+- `cameraSystem.setActivePlayer(ship)` → `CombatCameraSystem.setActivePlayer` → `ChaseCamera.setPlayer`
+  (視点の基準ship参照を差し替える。`rot`/`dist` は据え置きで、切替の瞬間に視点が跳ばない)
+- `editor.setActiveShip(ship)`(`PlanEditor` の編集対象。選択中ノード・開いたメニューは前の艦の
+  計画を指しているので破棄する)
+- `targeter.clearTargets()`(前の艦が握っていた戦闘ターゲットのロックは新しい艦には無関係)
+
+これは「たまたま同時に切り替わるフラグ」節のトグラー集約と同じパターン——複数モジュールにまたがる
+副作用を持つ切替は、切り替える側を一箇所に置いて全部書き換える。**新しい副作用(艦ごとに持つ状態)を
+足すときは、ここに追加する。**
+
+## クリエイティブモードは `Stage` のサブクラスであって、`Game` の第二の軸ではない
+
+`CreativeStage extends Stage` として実装する。`checkWin()` は常に `false`(`StageDebug` と同じ手法)
+で、勝敗判定・`UnlockManager` のクリア回数記録を素通りする。
+
+理由: `Stage` は既に「勝敗 `phase`」「毎フレーム `update`」「ステータスパネル」「`Logistics`」を
+1つだけ持つ形で `Game` に組み込まれている。クリエイティブモードを `Game` レベルの分岐(例えば
+`Game` に `mode: 'stage' | 'creative'` を持たせて各所で分岐する形)にすると、`Game.update`/`sync`
+の全域に分岐が入る。`Stage` のサブクラスにすれば `Game` 側は「どの `Stage` 実装が動いているか」を
+知らないままでよく、既存の1本の `activeStage` 経路にそのまま乗る。
+
+`CreativeStage` は `STAGE_DEFINITIONS`/`STAGE_CLASSES` に**登録しない**(タイトルのステージ選択タブに
+出ない、`?stage=` では起動できない)。`game.ts` は `LaunchSelection.mode === 'creative'` のとき
+`initStage()` を経由せず `CreativeStage` を直接 `new` し、`setup()`/`setupCreative()`/`init()` を
+自分で順に呼ぶ——`initStage()` は「タイトルのステージ選択タブに出す `Stage`」の初期化手順であり、
+出さない `CreativeStage` がそこを通る理由がないため。
+
+## 天球グリッド(`render/celestial-grid.ts`)の可視状態は `Navball` が持つ
+
+`CelestialGrid` 自身は可視状態を持たない(6トグルぶんの `boolean` を毎フレーム引数で受け取って
+描くだけ)。**正本は `Navball.gridVisibility`。** `Game.sync` がそれを読み、
+`EnvironmentScene.sync` の `EnvironmentSyncParams` 経由で `CelestialGrid.sync` へ渡す。
+
+理由: グリッドの ON/OFF トグル UI は Navball ウィンドウの一部として置かれている(姿勢儀と天球グリッドは
+別概念だが、画面上どちらも「今どちらを向いているか」を確認する計器という位置づけで同じウィンドウに
+まとめた——UI とマーカーの所有原則どおり、GUI はその GUI が書き換える状態の所有者が持つ、の帰結として
+トグルの状態は Navball 自身のフィールドになる)。`EnvironmentScene`/`CelestialGrid` はどちらも描画側の
+実装なので、可視性という「何を見せるか」の判断は持たせない。
+
 ## マップの被選択物候補(`MapPickable[]`)の組み立ては `Game.update` が担う
 
 マップ上で右クリック/フォーカス選択の対象になりうるもの(天体ラベル・生存中の自機・敵船・
