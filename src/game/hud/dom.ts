@@ -151,11 +151,25 @@ const STYLE = `
 
 #hud-stagestatus {
   top: 12px; left: 50%; transform: translateX(-50%);
-  text-align: center; min-width: 280px; padding: 8px 16px;
+  display: flex; align-items: flex-start; gap: 22px;
+  text-align: left; min-width: 480px; padding: 8px 16px;
 }
 #hud-stagestatus .t { font-size: 11px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
 #hud-stagestatus .t.warn { color: ${ACCENT}; }
-#hud-stagestatus .k { font-size: 11px; color: ${INK_SOFT}; margin-top: 2px; }
+#hud-stagestatus .k { font-size: 11px; color: ${INK_SOFT}; line-height: 1.8; white-space: nowrap; }
+#hud-stagestatus .radiators { display: flex; flex-direction: column; gap: 6px; }
+#hud-stagestatus .radiator-btn {
+  pointer-events: auto; cursor: pointer; position: relative; overflow: hidden;
+  width: 132px; padding: 4px 8px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: ${SURFACE}; text-align: left;
+}
+#hud-stagestatus .radiator-btn .fill {
+  position: absolute; inset: 0; z-index: 0; transition: width 0.2s, background 0.2s;
+}
+#hud-stagestatus .radiator-btn .label {
+  position: relative; z-index: 1; color: ${INK}; font-size: 10px; line-height: 1.5;
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+}
 #hud-settings {
   position: absolute; bottom: 40px; top: auto; left: 50%; transform: translateX(-50%);
   display: none; min-width: 260px; pointer-events: auto;
