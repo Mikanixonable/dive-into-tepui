@@ -18,7 +18,9 @@ export class Predictor {
   // Game.update の entities.cleanup(...) の後に呼ぶ(死んだ個体を予測しない、積分後の実状態と
   // 突き合わせる)。視点・モードによる条件分岐は持たない — 予測は表示とは独立に常時進む。
   update(simTime: number, player: Player): void {
-    const rest = this.entities.all();
+    // player は明示引数として別枠で予算消化するので、creativeShips 内の同一インスタンス
+    // (アクティブ艦)を二重に予算消化しないよう除く。
+    const rest = this.entities.all().filter((e) => e !== player);
 
     // (a) 距離判定は毎フレーム無条件で全対象に行う(二分探索1回ぶんの費用しかかからない)。
     player.resyncPrediction(simTime, C.PREDICT_RESET_DIST);

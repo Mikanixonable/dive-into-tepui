@@ -25,7 +25,9 @@ export class CollisionPhysics {
   ): void {
     const p = player;
     const beltActive = p.alive && dt > 1e-6;
-    const participants = entities.filter(e => e.alive && e.collideRadius !== undefined);
+    // entities には creativeShips 経由でアクティブ艦(= p)自身が含まれ得るので、
+    // 下で明示的に push する p と同一インスタンスの自己ペアを作らないよう除く。
+    const participants = entities.filter(e => e.alive && e.collideRadius !== undefined && e !== p);
     if (p.alive) participants.push(p);
     // ベルト状態を読み込み、衝突計算後に書き戻す
     if (beltActive) {

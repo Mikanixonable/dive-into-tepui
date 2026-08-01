@@ -20,6 +20,7 @@ import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { Plan } from './plan';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
+import type { Player } from '../player/player';
 
 interface DvButtons {
   readonly pro: HudHoldButton;
@@ -66,7 +67,10 @@ export class PlanEditor {
     this.selectedNodeId = idx === null ? null : this.plan.nodeIdAt(idx);
   }
 
-  plan: Plan = new Plan();
+  private activeShip: Player;
+  // アクティブ艦自身の計画を編集する。艦は自分の計画を所有し続けるので、艦を切り替えると
+  // 編集対象もその艦の計画へ切り替わる。
+  get plan(): Plan { return this.activeShip.plan; }
 
   readonly planDisplay: PlanDisplay;
 
@@ -90,7 +94,9 @@ export class PlanEditor {
     scene: THREE.Scene,
     markerManager: MarkerManager,
     private readonly getFineAttitude: () => boolean,
+    activeShip: Player,
   ) {
+    this.activeShip = activeShip;
     this.planDisplay = new PlanDisplay(scene, this._hud.root, markerManager, ephemeris);
 
     this.planPanel = document.createElement('div');
@@ -130,6 +136,14 @@ export class PlanEditor {
     g.onMenuDelete = (idx) => {
       this.deleteNode(idx);
     };
+  }
+
+  // 編集対象をアクティブ艦の切替に合わせて差し替える。選択中ノード・開いたメニューは
+  // 前の艦の計画を指しているので破棄する。
+  setActiveShip(ship: Player): void {
+    this.activeShip = ship;
+    this.selectedNodeIdx = null;
+    this.closeMenu();
   }
 
   // ノードのコンテキストメニューを閉じる。

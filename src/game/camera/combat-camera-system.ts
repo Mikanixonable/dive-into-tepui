@@ -48,6 +48,11 @@ export class CombatCameraSystem {
     this.chaseCamera = new ChaseCamera(_hud, player);
   }
 
+  // アクティブ艦の切替を追従カメラへ伝える。
+  setActivePlayer(player: Player): void {
+    this.chaseCamera.setPlayer(player);
+  }
+
   // 視点を初期状態にリセットする(内部状態を持つのは ChaseCamera だけ)。
   reset(): void {
     this.chaseCamera.reset();
