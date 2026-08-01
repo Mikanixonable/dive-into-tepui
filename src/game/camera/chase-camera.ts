@@ -151,13 +151,6 @@ export class ChaseCamera {
       this.panEci = addScaled(this.panEci, camUp, mouse.panDy * metersPerPixel);
     }
 
-    // パン変位を指数平滑で小さくする: パン入力がなければ自動的に中心に戻る。
-    // 中ボタンドラッグ中は減衰しないようにする。
-    if (mouse.panDx === 0 && mouse.panDy === 0) {
-      const decay = Math.exp(-3 * dt);
-      this.panEci = v3(this.panEci.x * decay, this.panEci.y * decay, this.panEci.z * decay);
-    }
-
     this.lookTarget = add(center, this.panEci);
     this.position = add(this.lookTarget, off);
     this.upDir = up;
