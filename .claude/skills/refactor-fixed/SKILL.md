@@ -81,6 +81,18 @@ CLAUDE.md の「Naming: render / update / build / sync」節が正本。
 
 `Simulator` のサブステップ分割も同じ分担で、`GameEntity.stepSim` は渡された `dt` に従うだけ。
 
+## 回転座標系は (姿勢, 角速度) の対で表し、その中身は `ephemeris.ts` が持つ
+
+回転する基準系は、時刻ごとの姿勢 `q`(相対 → 慣性系の回転)と角速度 `omega` の対
+(`ephemeris.ts` の `FrameRotation`)だけで表す。**固定軸まわりの回転を前提にしない** —
+月回転系は白道の昇交点が歳差するため、回転軸自体が時刻とともに向きを変える。
+
+- **中身は `physics/ephemeris.ts`。** 天体ごとに `sunOrbitRotation` / `moonOrbitRotation` を持つ。
+  回転系を増やすときも、その天体の運動はここへ実装する。
+- **`physics/frame.ts` は表示座標系の識別子と座標変換だけ。** `Frame` から対応する天体暦の回転を
+  引くだけの module-private `frameRotation` に分岐を 1 箇所へ閉じ込め、順逆変換の 4 関数は
+  すべてそこを経由する。軌道要素・歳差周期・回転軸といった物理量を自前で持たない。
+
 ## ctx・context・opt・params といった引数は原則使わない
 
 場当たり的なオブジェクト引数は禁止。明示的な引数か、事前に共有した参照で渡す。
@@ -117,8 +129,6 @@ CLAUDE.md の「Naming: render / update / build / sync」節が正本。
 
 - **`stages/` 配下の各ステージの挙動。** すべて並列に実装されているし、そうあるべき。共通化するのは
   `Stage` 基底と `stage-utils/` に既に括り出したもの(補給・スコア・タイマー・ウェーブ)まで。
-- **`physics/frame.ts` の回転座標系。** 現在は太陽回転系のみを実装する。将来の月回転系を見越して
-  「軸と回転量を別々に扱う」ような一段上の抽象化はしない。追加するときに、そのとき必要な形で足す。
 
 逆に、**参照が1箇所しかなくても分割する**のは、一般化した側を今後使う可能性があるとき、および
 巨大な責務を切り分けるとき。
@@ -144,8 +154,8 @@ CLAUDE.md の「Naming: render / update / build / sync」節が正本。
 - `SettingsPanel`(BGM・一時停止・タイトルへ戻る)… **複数モジュールにまたがることが本質**の GUI
   なので、所有者を `main.ts` に置く。
 - `Hud.hint()` / `toast()` … 共有サービス(`Sfx` と同型)。所有者の議論の対象外。
-- `hud/context-menu.ts` / `hud/buttons.ts` … DOM とイベントだけを担う共有部品。状態を持たないので
-  「所有者」を問う必要がない。**この形は積極的に増やしてよい。**
+- `hud/context-menu.ts` / `hud/buttons.ts` / `hud/frame-labels.ts` … DOM・イベント・表示文字列だけを
+  担う共有部品。状態を持たないので「所有者」を問う必要がない。**この形は積極的に増やしてよい。**
 
 ### HudPanels が `Game` を丸ごと受け取る形は許容する
 
