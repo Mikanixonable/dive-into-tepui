@@ -197,12 +197,13 @@ export class PlanEditor {
     return true;
   }
 
-  // ドラッグ中のノードを最寄りの計画軌道サンプル時刻へ移動する。
+  // ドラッグ中のノードを、置ける時刻範囲の中で最寄りの計画軌道サンプル時刻へ移動する。
   private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
     if (!this.plan.nodes[idx]) return;
-    const sample = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity);
+    const sample = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity, this.plan.nodeTimeRange(idx));
     if (sample) {
-      this.selectedNodeIdx = this.plan.retimeNode(idx, sample);
+      this.plan.retimeNode(idx, sample);
+      this.selectedNodeIdx = idx;
     }
   }
 
@@ -375,12 +376,12 @@ export class PlanEditor {
   // パネルを隠し、実質 Δv がゼロの末尾ノードを間引いて計画を整理する。
   onMapClosed(): void {
     this.hidePanel();
-    if (this.plan.nodes.length > 0) {
-      const arriving = this.planDisplay.traj.arrivalStates();
-      for (let i = this.plan.nodes.length - 1; i >= 0; i--) {
-        const arr = arriving[i];
-        if (arr && len(sub(this.plan.nodes[i]!.v, arr.v)) < C.NODE_MIN_DV) this.plan.removeNode(i);
-      }
+    const arriving = this.planDisplay.traj.arrivalStates();
+    // 末尾から Δv が有意なノードに当たるまで削る。
+    for (let i = this.plan.nodes.length - 1; i >= 0; i--) {
+      const arr = arriving[i];
+      if (!arr || len(sub(this.plan.nodes[i]!.v, arr.v)) >= C.NODE_MIN_DV) break;
+      this.plan.removeNode(i);
     }
     this.selectedNodeIdx = null;
   }

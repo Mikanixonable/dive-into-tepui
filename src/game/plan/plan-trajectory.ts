@@ -1,15 +1,14 @@
 // 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
-import { OrbitState, elementsFromState } from '../../physics/orbital';
+import { OrbitState } from '../../physics/orbital';
 import { Vec3, v3 } from '../../physics/vec3';
 import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn } from '../camera/camera-system';
-import * as C from '../const';
-import { Plan } from './plan';
+import { orbitPeriodOf, Plan, TimeRange } from './plan';
 import { PlanArc } from './plan-arc';
 
 const SEGMENT_COLORS = [0xbfc9d4, 0xffffff, 0xff6a00];
@@ -95,12 +94,14 @@ export class PlanTrajectory {
   }
 
   // 画面座標に最も近い計画軌道のサンプル(maxPx 以内)。なければ null。
-  nearestSample(mx: number, my: number, maxPx: number): OrbitState | null {
+  // range を渡すと、その時刻範囲に入るサンプルだけを候補にする。
+  nearestSample(mx: number, my: number, maxPx: number, range?: TimeRange): OrbitState | null {
     let best: OrbitState | null = null;
     let bestD = maxPx * maxPx;
     // 全 arc の全サンプルを画面座標へ投影し、最も近いものを選ぶ
     for (let i = 0; i < this.activeCount; i++) {
       for (const s of this.arcs[i]!.samplesRef()) {
+        if (range && (s.t < range.min || s.t > range.max)) continue;
         const p = this.projectPoint(s.r, s.t);
         if (!p.front) continue;
         const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
@@ -143,10 +144,4 @@ function buildSegments(anchor: OrbitState, nodes: readonly OrbitState[]): Segmen
   // 最後のノード(無ければ anchor)から1周期ぶんを末尾区間とする
   segments.push({ state0, end: state0.t + orbitPeriodOf(state0) });
   return segments;
-}
-
-// 状態の解析軌道1周期。周期を持たない軌道(双曲線・放物線)では APERIODIC_ARC_DURATION。
-function orbitPeriodOf(state: OrbitState): number {
-  const period = elementsFromState(state.r, state.v)?.period;
-  return period !== undefined && isFinite(period) && period > 0 ? period : C.APERIODIC_ARC_DURATION;
 }
