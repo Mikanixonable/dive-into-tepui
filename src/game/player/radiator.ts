@@ -25,6 +25,7 @@ export class RadiatorSystem {
   private readonly panels: Record<RadiatorSide, Panel> = { up: new Panel(), down: new Panel() };
   private readonly hinges: Record<RadiatorSide, THREE.Object3D>;
 
+  // shipObj は自機メッシュ。上下のヒンジ Group を名前で解決して保持する。
   constructor(shipObj: THREE.Object3D) {
     const up = shipObj.getObjectByName(RADIATOR_OBJECT_NAMES.up);
     const down = shipObj.getObjectByName(RADIATOR_OBJECT_NAMES.down);

@@ -49,6 +49,7 @@ export class StageDebug extends Stage {
     title.textContent = 'DEBUG';
     this.panel.appendChild(title);
 
+    // 選択は enemyFireEnabled へ入るだけで、敵への反映は update が毎フレーム行う
     this.fireToggle = new SegmentedControl<FireToggle>(
       '敵射撃',
       [
