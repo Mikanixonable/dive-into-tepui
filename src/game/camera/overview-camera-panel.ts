@@ -1,11 +1,7 @@
 // 広範囲視点の操作パネル(注視対象・カメラを固定する座標系・視点リセット)。
 import { Frame } from '../../physics/frame';
 import { SegmentedControl, hudButton } from '../hud/buttons';
-
-const FRAMES: readonly (readonly [Frame, string])[] = [
-  ['inertial', '慣性系'],
-  ['sunRotating', '太陽回転系'],
-];
+import { FRAME_ITEMS } from '../hud/frame-labels';
 
 export class OverviewCameraPanel {
   onFocusSelect: ((focus: string) => void) | null = null;
@@ -29,7 +25,7 @@ export class OverviewCameraPanel {
 
     // 注視対象と視点座標系の選択コントロール
     this.focus = new SegmentedControl('注視', focusItems, (id) => this.onFocusSelect?.(id));
-    this.frame = new SegmentedControl('視点', FRAMES, (frame) => this.onFrameSelect?.(frame));
+    this.frame = new SegmentedControl('視点', FRAME_ITEMS, (frame) => this.onFrameSelect?.(frame));
     this.panel.appendChild(this.focus.element);
     this.panel.appendChild(this.frame.element);
 
