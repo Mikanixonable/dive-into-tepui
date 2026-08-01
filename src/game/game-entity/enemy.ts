@@ -3,14 +3,14 @@ import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
 import { Attitude } from '../../physics/attitude';
-import { altitudeOf, OrbitState, orbitState } from '../../physics/orbital';
+import { altitudeOf, OrbitState, orbitState, R_EARTH_EQ } from '../../physics/orbital';
 import { OrbitLine } from '../../render/orbitline';
-import { add, len, norm, randPerp, rotateAxis, scale, sub, Vec3 } from '../../physics/vec3';
+import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3 } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
-import { getSunDispersionScale, sunPosition } from '../../physics/ephemeris';
+import { sunPosition } from '../../physics/ephemeris';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
@@ -22,6 +22,24 @@ import type { SimSpeedManager } from '../sim-speed-manager';
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
 export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
+
+// 濃い赤色
+const ENEMY_BULLET_COLOR = 0x8b0000;
+
+// 太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
+// 順光では締まる。難易度調整のための経験則であって物理計算ではない。
+// pos が地球の影(簡易円柱モデル)に入っていれば太陽光が届かないので倍率は 1。
+function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
+  const along = dot(pos, sunDir);
+  if (along < 0 && lenSq(addScaled(pos, sunDir, -along)) < R_EARTH_EQ * R_EARTH_EQ) return 1;
+
+  const angle = (Math.acos(Math.max(-1, Math.min(1, dot(aimDir, sunDir)))) * 180) / Math.PI;
+  if (angle <= 5) return 2;
+  if (angle <= 30) return 1 + (30 - angle) / 25;
+  if (angle >= 160) return 0.5;
+  if (angle >= 130) return 1 - ((angle - 130) / 30) * 0.5;
+  return 1;
+}
 
 // enemyKind の種別に応じたメッシュを組む。
 function buildEnemyObj(enemyKind: EnemyKind, accent: number): THREE.Object3D {
@@ -207,14 +225,11 @@ export class Enemy extends Ship {
     const aimDir = norm(predictedRelPos);
 
     const sunDir = norm(sunPosition(simTime, 0));
-    const scaleFactor = getSunDispersionScale(r, aimDir, sunDir);
+    const spreadScale = sunGlareSpreadScale(r, aimDir, sunDir);
 
     // 散布界をスケール適用
     const perp = randPerp(aimDir);
-    const spreadAng = (Math.random() * C.PLASMA_SPREAD_DEG * scaleFactor * Math.PI) / 180;
-// 濃い赤色
-const ENEMY_BULLET_COLOR = 0x8b0000;
-
+    const spreadAng = (Math.random() * C.PLASMA_SPREAD_DEG * spreadScale * Math.PI) / 180;
     const actualAim = rotateAxis(aimDir, perp, spreadAng);
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
