@@ -56,6 +56,7 @@ export class StageDebug extends Stage {
     if (!this.isPlaying) return;
     for (const e of entities.enemies) e.fireEnabled = this.enemyFireEnabled;
     this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
+    this.logistics.updateLogistics(simTime, player);
   }
 
   // 検証を継続できるよう、勝敗を発生させない。
