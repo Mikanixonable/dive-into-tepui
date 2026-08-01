@@ -10,6 +10,7 @@ import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { SegmentedControl } from '../hud/buttons';
+import { FRAME_ITEMS } from '../hud/frame-labels';
 import { Plan } from './plan';
 import { PlanTrajectory } from './plan-trajectory';
 
@@ -40,10 +41,7 @@ export class PlanDisplay {
     title.textContent = 'TRAJECTORY';
     this.panel.appendChild(title);
     // 表示座標系の切り替えボタン
-    this.frame = new SegmentedControl<Frame>('軌道', [
-      ['inertial', '慣性系'],
-      ['sunRotating', '太陽回転系'],
-    ], (frame) => { this.trajectoryFrame = frame; });
+    this.frame = new SegmentedControl<Frame>('軌道', FRAME_ITEMS, (frame) => { this.trajectoryFrame = frame; });
     this.panel.appendChild(this.frame.element);
     hudRoot.appendChild(this.panel);
   }
