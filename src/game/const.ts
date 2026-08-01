@@ -192,15 +192,17 @@ export const NODE_TOL_SMA = 0.02; // 長半径の相対誤差
 export const NODE_TOL_ECC = 0.02; // 離心率差
 export const NODE_TOL_PLANE_DEG = 2.0; // 軌道面の角度差 [deg]
 
-// --- 数値予測(軌道計画モードのポリライン、plan/plan-arc.ts) ---
-export const PREDICT_DUR_DAY = 86400; // 1日
-export const PREDICT_DUR_WEEK = 7 * 86400; // 7日
-export const PREDICT_DUR_MONTH = 28 * 86400; // 28日
-export const PREDICT_MAX_SAMPLES = 2000; // 保持する予測サンプル数の上限
-// 予測軌道を再計算する最短間隔。編集操作は高頻度なのでここまで間引く(約5Hz)。
-export const PREDICT_DIRTY_THROTTLE_MS = 200;
+// --- 未来表示の時刻(display-time-manager.ts のスライダー) ---
+export const DISPLAY_DUR_DAY = 86400; // 1日
+export const DISPLAY_DUR_WEEK = 7 * 86400; // 7日
+export const DISPLAY_DUR_MONTH = 28 * 86400; // 28日
+
+// --- 軌道計画の折れ線(plan/plan-arc.ts) ---
+export const PLAN_ARC_MAX_SAMPLES = 2000; // 1区間が保持するサンプル数の上限
+// 区間を再積分する最短間隔。編集操作は高頻度なのでここまで間引く(約5Hz)。
+export const PLAN_ARC_THROTTLE_MS = 200;
 // 周期を持たない軌道(双曲線・放物線)で、末尾区間を伸ばす長さ [s]。
-export const APERIODIC_ARC_DURATION = PREDICT_DUR_DAY;
+export const APERIODIC_ARC_DURATION = 86400;
 
 // --- エンティティの過去・未来状態列(physics/orbit-entity.ts の OrbitEntity.history/Predictor) ---
 export const PREDICT_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
