@@ -14,7 +14,7 @@ import { generateDriftingEnemy } from './enemy-generator';
 export function generateCluster(base: OrbitState, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy[] {
   const { pro, nrm } = orbitalAxes(base);
   const rHat = norm(base.r);
-  const groupCount = C.COLORS.STAGE0_GROUP_ACCENTS.length;
+  const groupCount = C.COLOR_STAGE0_GROUP_ACCENTS.length;
   const safeRange = C.STAGE0_MAX_RANGE * C.STAGE0_SAFE_RANGE_FACTOR; // マージンを残して確実に5km以内に収める
   const enemies: Enemy[] = [];
 
@@ -37,8 +37,8 @@ export function generateCluster(base: OrbitState, hud: Hud, sfx: Sfx, fx: Effect
       if (offLen > safeRange) off = scale(off, safeRange / offLen);
 
       const state: OrbitState = orbitState(base.t, add(base.r, off), base.v);
-      const accent = C.COLORS.STAGE0_GROUP_ACCENTS[gi]!;
-      enemies.push(generateDriftingEnemy(`${C.STAGE0_GROUP_LABELS[gi]}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, C.COLORS.ENEMY_ORBIT_LINE, hud, sfx, fx, scene));
+      const accent = C.COLOR_STAGE0_GROUP_ACCENTS[gi]!;
+      enemies.push(generateDriftingEnemy(`${C.STAGE0_GROUP_LABELS[gi]}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene));
     }
   }
   return enemies;

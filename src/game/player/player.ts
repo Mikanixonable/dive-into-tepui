@@ -229,7 +229,7 @@ export class Player extends Ship {
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。
   private destroyEffect(): void {
     this._sfx.explosion();
-    this._fx.spawnShipDestroyEffect(this.state, 1, C.COLORS.PLAYER_DESTROY_FRAG);
+    this._fx.spawnShipDestroyEffect(this.state, 1, C.COLOR_PLAYER_DESTROY_FRAG);
   }
 
   // ポーズ中: 移動/発射の一時状態(推力可視化・射撃継続)を止める。
