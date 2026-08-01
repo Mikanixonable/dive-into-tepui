@@ -36,7 +36,7 @@ export class PlanArc {
   private lastComputeMs = -Infinity;
 
   // 描画色・不透明度・renderOrder を指定して線を用意する。
-  constructor(color: number, opacity = 0.85, renderOrder = 2) {
+  constructor(color: number, opacity = 0.85, renderOrder = 4) {
     this.sampled = new SampledLine(color, opacity, renderOrder);
   }
 
@@ -113,6 +113,7 @@ export class PlanArc {
     const sampleInterval = duration / C.PREDICT_MAX_SAMPLES;
     this.truncated = false;
 
+    let steps = 0;
     while (entity.state.t < end - EPOCH_EPS) {
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
       const dt = Math.min(stepDt(len(entity.state.r)), end - entity.state.t);
@@ -121,6 +122,10 @@ export class PlanArc {
 
       const alt = altitudeOf(entity.state.r);
       if (!isFinite(alt) || alt < C.REENTRY_ALT) {
+        this.truncated = true;
+        break;
+      }
+      if (++steps >= C.PLAN_ARC_MAX_STEPS) {
         this.truncated = true;
         break;
       }
