@@ -1,14 +1,12 @@
 // デバッグ用ステージ: 敵集団1つのみを配置し、勝敗を発生させずに検証を続けられる。
 // 敵の射撃 ON/OFF をパネルから切り替えられる。タイトルの通常ボタン列には出ない。
 import { Stage } from './stage';
-import { generateCluster } from './spawner/enemy-spawner';
+import { generateWave } from './stage00';
 import { hudButton, HudToggle } from '../hud/buttons';
 import * as C from '../const';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
-
-const DEBUG_ENEMY_COUNT = 5;
 
 export class StageDebug extends Stage {
   static readonly id = 'debug' as const;
@@ -20,6 +18,7 @@ export class StageDebug extends Stage {
 
   private enemyFireEnabled = false;
   private fireToggle!: HudToggle;
+  private waveCount = 2; // ランダム方向からスポーンさせるため2から開始
 
   // デバッグステージのブリーフィング文言を返す。
   briefingHtml(enemyCount: number): string {
@@ -28,7 +27,7 @@ export class StageDebug extends Stage {
 
   // 敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
   init(player: Player, entities: EntityManager): number {
-    const enemies = generateCluster(player.state, this._hud, this._sfx, this._fx, this._scene, 1, DEBUG_ENEMY_COUNT);
+    const enemies = generateWave(player.state, this.waveCount++, this._hud, this._sfx, this._fx, this._scene, 'random');
     for (const enemy of enemies) this.addEnemy(enemy, entities);
 
     // 切替は enemyFireEnabled へ入るだけで、敵への反映は update が毎フレーム行う
@@ -38,14 +37,14 @@ export class StageDebug extends Stage {
 
     // 敵集団をスポーンするボタン
     const spawnEnemyBtn = hudButton('敵集団をスポーン', () => {
-      const newEnemies = generateCluster(player.state, this._hud, this._sfx, this._fx, this._scene, 1, DEBUG_ENEMY_COUNT);
+      const newEnemies = generateWave(player.state, this.waveCount++, this._hud, this._sfx, this._fx, this._scene, 'random');
       for (const enemy of newEnemies) this.addEnemy(enemy, entities);
     });
     this.addStatusPanelWidget(spawnEnemyBtn);
 
     // 弾薬をスポーンするボタン
     const spawnAmmoBtn = hudButton('弾薬をスポーン', () => {
-      this.logistics.spawnForPlayer(player);
+      this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
     });
     this.addStatusPanelWidget(spawnAmmoBtn);
 
