@@ -43,7 +43,7 @@ function projectionFromView(view: ViewFrame): ProjectFn {
 }
 
 // 広範囲視点の操作パネルに常用のフォーカス先として並べるラベル ID。残りのラベル(ラグランジュ点
-// など)へは右クリックの MapPickMenu 経由でフォーカスする(Game が仲介する)。
+// など)へは右クリックのメニュー経由でフォーカスする(Game が仲介する)。
 const PANEL_FOCUS_IDS = ['earth', 'moon', 'sun'] as const;
 
 // 戦闘ビュー(CombatCameraSystem)と広範囲視点(OverviewCamera)を切り替えて駆動する。

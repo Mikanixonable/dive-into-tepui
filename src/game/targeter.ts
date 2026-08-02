@@ -13,7 +13,7 @@ import { ProjectFn } from './camera/camera-system';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { MarkerManager } from './marker/marker-manager';
 import { FloatingOrigin } from './floating-origin';
-import { MapPickable, pickNearest } from './map-pick';
+import { pickNearest } from './map-pick';
 
 export class Targeter {
   // 唯一の真実。右クリックメニューでのみ変わり、自動選定・自動再選択は行わない。
@@ -32,9 +32,7 @@ export class Targeter {
   // 第二ターゲットのハイライト線(シアン)。第一より薄い renderOrder に置く。
   readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9);
 
-  private readonly contextMenu = new ContextMenu();
-  // 開いているメニューが選択されたときに適用すべき対象。メニュー展開中だけ有効。
-  private currentMenuTarget: Enemy | null = null;
+  private readonly contextMenu = new ContextMenu<Enemy>();
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
   constructor(private readonly _hud: Hud, _sfx: Sfx, private readonly markerManager: MarkerManager, scene: THREE.Scene) {
@@ -42,7 +40,10 @@ export class Targeter {
     this.orbitLine.line.renderOrder = 3;
     scene.add(this.secondaryOrbitLine.line);
     scene.add(this.orbitLine.line);
-    this.contextMenu.onSelect = (act) => this.applyMenuAct(act);
+    this.contextMenu.onSelect = (act, hit) => {
+      if (act === 'primary') this.setTarget(this.target === hit ? null : hit);
+      else if (act === 'secondary') this.setSecondaryTarget(this.secondaryTarget === hit ? null : hit);
+    };
   }
 
   // 生存判定込みの現在の第一ターゲット。撃破後は target を保持したままにせず、ここで
@@ -163,31 +164,19 @@ export class Targeter {
 
   // クリック位置の許容半径内で画面上最も近い生存敵を返す。範囲外なら null。
   private pickEnemyAt(click: PointerPoint, enemies: Enemy[], project: ProjectFn): Enemy | null {
-    const pickables: (MapPickable & { readonly enemy: Enemy; })[] = enemies
-      .filter((enemy) => enemy.alive)
-      .map((enemy) => ({ id: enemy.name, name: enemy.name, pos: enemy.state.r, kind: 'ship', enemy }));
+    const pickables = enemies.filter((e) => e.alive).map((enemy) => ({ pos: enemy.state.r, enemy }));
     const hit = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);
     return hit?.enemy ?? null;
   }
 
   // hit を対象に、現在の第一/第二設定に応じたラベルでメニューを開く。
   private openMenu(click: PointerPoint, hit: Enemy): void {
-    this.currentMenuTarget = hit;
     const items: MenuItem[] = [
       { label: hit === this.target ? 'ターゲット解除' : 'ターゲットに設定', act: 'primary' },
       { label: hit === this.secondaryTarget ? '第二ターゲット解除' : '第二ターゲットに設定', act: 'secondary' },
       { label: 'キャンセル', act: 'cancel' },
     ];
-    this.contextMenu.open(click.x, click.y, items);
-  }
-
-  // メニュー選択結果を、開いた時点の対象へ適用する。
-  private applyMenuAct(act: string): void {
-    const hit = this.currentMenuTarget;
-    this.currentMenuTarget = null;
-    if (!hit) return;
-    if (act === 'primary') this.setTarget(this.target === hit ? null : hit);
-    else if (act === 'secondary') this.setSecondaryTarget(this.secondaryTarget === hit ? null : hit);
+    this.contextMenu.open(click.x, click.y, hit, items);
   }
 
   // 第一ターゲットを設定する。同じ個体が第二ターゲットなら外す(両方兼務を禁止)。
