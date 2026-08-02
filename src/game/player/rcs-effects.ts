@@ -40,12 +40,11 @@ export class RcsEffects {
       return;
     }
     // トルクの符号から各ブロック位置での噴射方向を求める
-    const tau = v3(Math.sign(torque.x), Math.sign(torque.y), Math.sign(torque.z));
     for (let k = 0; k < 4; k++) {
       const puff = this.puffs[k]!;
       const ro = RCS_BLOCK_OFFSETS[k]!;
       const rb = v3(ro.x, ro.y, ro.z);
-      const f = cross(tau, rb);
+      const f = cross(torque, rb);
       // このブロックがトルクに寄与しないなら隠す
       if (lenSq(f) < 0.2) {
         puff.hide();
