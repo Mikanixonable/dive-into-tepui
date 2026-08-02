@@ -56,7 +56,7 @@ main.ts
     │   ├── RadiatorSystem             ... 放熱板2枚の展開度・損耗度。ヒンジ Group は Player.obj 配下を名前で参照
     │   ├── PowerSystem                ... 太陽電池の蓄電量。パネル法線は機体固定 (0,1,0)、可動部なし
     │   ├── ThrustEffects → Billboard ×2
-    │   ├── RcsEffects    → Billboard ×4
+    │   ├── RcsEffects    → Billboard ×8   ... 状態なし。ノズル1基につき1枚、配置は RCS_NOZZLES が正本
     │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
     │   ├── PlayerMarkers              ... 方向マーカー・ボアサイト・マップ上の自機位置
     │   └── OrbitLine                  ... 自機軌道線
