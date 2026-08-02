@@ -34,11 +34,83 @@
 宇宙線がアクティブ状態のとき、Mキーで戦闘ビューに切り替えることができる。
 ```
 
-
 ## refactor todo
 
-（すべて対応済み。chaseCamera の追従先は、仕様「宇宙船がアクティブ状態のとき、Mキーで戦闘ビューに
-切り替えることができる」より activePlayer で確定。）
+## playerの破棄タイミングが怪しい
+entity_managerによる破棄タイミングが怪しい。ほかのentityと区別する理由がなければ、!alive経由でcleanupが自動的にproneすべきだ。
 
-- 将来: sfx が鳴る位置を sfx に伝え、マイク位置（activePlayer またはカメラ位置）に応じて
-  音量や定位を調整する。現状は薬莢との衝突音を activePlayer だけが鳴らす。
+### MapPickableの依存関係
+  1. `Targeter` が `MapPickable` を import し、`pickEnemyAt` が毎クリック偽の `MapPickable[]` を
+     組み立てて `pickNearest` を呼ぶ。`/add-feature` としては正解(ヒットテストの複製を避けた)だが、
+     戦闘側がマップ用の型に依存する形になった。`pickNearest` を `MapPickable` ではなく
+     `{ pos: Vec3 }` 制約の汎用関数にしておけば依存は生じなかった。
+
+### 重複実装懸念
+  2. `Targeter` が `ContextMenu` を直接持ち、`currentMenuTarget` + `onSelect` ディスパッチという
+     **`MapContextGizmo` と同型のパターンを再実装**している(→ 4-5)。
+
+### E. ×131072 が サブステップ設計の前提を破る
+
+`SUBSTEP_MAX_DT = 20` / `SUBSTEP_MAX_COUNT = 64` は変更されていない。
+`nSub = min(64, ceil(simDt / 20))`、`subDt = simDt / nSub`。60fps・×131072 では
+`simDt ≈ 2185 s` → `nSub = 64` → **`subDt ≈ 34 s`** で `SUBSTEP_MAX_DT` を大きく超える。
+指示書 WP-D3 は「高ワープ時に軌道が目に見えて崩れないか実際の値で確認する。崩れるなら
+`SUBSTEP_MAX_COUNT` を上げるか、最上段を諦めてユーザーに報告すること」と明示していたが、
+定数にもコミットログにも対処の形跡がない。上位1〜2段は精度保証の外にある。
+
+### 2. `game.ts` が大きい
+
+- `CameraSystem.handleMapPointer` が消えた代わりに、
+  右クリック処理そのものが `Game.handleMapContextMenu` へ移った。マップの責務が
+  各所有者から `Game` へ吸い上げられた面はある(→ 4-2)。
+
+371行 → **542行**。艦操作(`findCreativeShip` 等)は `EntityManager.findPlayer` + 2行の配線へ縮めた
+ので振る舞いの漏洩は解消したが、`mapMenuItemsFor`(種別ごとのメニュー項目表)・`buildMapPickables`
+(候補集合の組み立て)・`handleMapContextMenu` はまだ `Game` にある。前2つは
+`/refactor-fixed` に「所有者がまたがるので `Game` が持つ」と確定判断として記録済み。
+残る論点は行数だけ。
+
+
+## その他の大きいモジュール
+`plan-editor.ts` 545行 / `ship-placer-panel.ts` 278行。
+  モジュール 200行 の基準を大きく超える。`ship-placer-panel.ts` はフィールド宣言だけで20行以上あり、
+  「軌道要素フォーム」と「ラグランジュ点フォーム」で分割の余地がある。
+
+### 4. `OverviewCamera` のロールとヨー/ピッチが噛み合っていない
+
+`up_r` を導入してロールは効くようになったが、ヨー/ピッチは相変わらず
+`sphericalOffset(yaw, pitch, dist)` = ワールド Y 軸基準で計算されている。
+90° ロールした状態で左右ドラッグしても、画面上の見た目と回転方向が一致しない。
+`ChaseCamera` 側は現在の右/上軸を使うのでこの問題は無い。両者で操作感が割れている。
+| カメラロールをテンキー0/1 | `key-mapping.ts`(`cameraRollLeft/Right`), `chase-camera.ts`(`keyRoll`), `overview-camera.ts`(`up_r` を新設) | ⚠️(→ 4-4) |
+
+### 7. `CreativeStage` の `private simTime`
+
+`Simulator.simTime` のコピーを毎フレーム覚え直す。理由はコメントに書かれている
+(配置パネルの confirm が DOM イベントとして非同期に発火するため)が、正データの重複であることに変わりはない。
+`ShipPlacerPanel.onConfirm` に `simTime` を引数で渡す形にできないか要検討。
+
+### 8. 指示書からの逸脱: ハロー軌道
+
+WP-E3 は「Richardson の三次近似解を使う(推奨)」で、指示書 §6-4 は
+「推奨案が破綻すると分かった場合は**勝手に別案へ倒さず報告して判断を仰ぐこと**」。
+実装(`physics/halo.ts`)は**線形化(一次)解のみ**で、三次の振幅拘束は実装していない。
+ハロー軌道は「面外振動数に λ を流用して面内と共鳴させる」近似。
+モジュール先頭コメントにその旨は明記されているので隠蔽はされていないが、
+推奨案から外れた判断であり、報告・承認を経たかはコミットからは読み取れない。
+
+なお同コメントの「Richardson (1980) の三次近似のうち…**実装していない**」は
+`/comment` 方針の「なにをしないか は書かない」に触れる。ただしゲームの積分器が制限三体問題ではなく
+配置後にドリフトする、という注意は非自明なので残す価値がある。書き方の整理が要る箇所。
+
+| ハロー・リサジュー軌道 | `physics/halo.ts`(新) + `tests/physics/halo.test.ts` | ⚠️ 指示書の Richardson 三次近似ではなく線形化解(→ 4-8) |
+
+### 9. `Navball` が天球グリッドの可視状態を持つ
+
+指示書 WP-D2b が「グリッドトグル6つはこのウィンドウ内に置く」と指示した帰結で、
+`refactor-fixed` にも判断として記録済み。ただし姿勢儀(機体座標)と天球グリッド(ワールド座標の表示物)は
+別概念で、`Navball.gridVisibility` は `Navball` の責務外の状態。
+「GUI はその GUI が書き換える状態の所有者が持つ」という既存原則の帰結ではあるので、
+規約違反というより**トグルの置き場所の選択が状態の置き場所を決めてしまった**例。要判断。
+
+| 黄道/赤道の面・極・グリッド6トグル | `render/celestial-grid.ts`(新、`EnvironmentScene` 所有)、可視状態は `Navball.gridVisibility` | ⚠️ Ctx を広げた(→ 4-1) |

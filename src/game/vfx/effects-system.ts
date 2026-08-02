@@ -26,10 +26,14 @@ export class EffectsSystem {
     this._flashEffects = new FlashEffectManager(_scene);
   }
 
-  // フラッシュ群の寿命・見た目を1フレーム分更新する。
-  sync(dt: number, simDt: number, fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera): void {
-    // debrisはentitiesが管理するので、syncもそちらが行い、こちらではentitiesの責務外になるflashEffectsのみ更新する
-    this._flashEffects.syncFlashEffects(dt, simDt, fo, activeCamera);
+  // フラッシュ群の寿命を1フレーム分進める。破片は entities が持つので、ここはフラッシュだけ。
+  update(dt: number, simDt: number): void {
+    this._flashEffects.updateFlashEffects(dt, simDt);
+  }
+
+  // フラッシュ群のビルボードを現在の状態へ同期する。
+  sync(fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera): void {
+    this._flashEffects.syncFlashEffects(fo, activeCamera);
   }
 
   // プラズマ弾命中フラッシュを生成する。
