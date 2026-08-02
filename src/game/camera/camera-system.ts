@@ -1,12 +1,11 @@
 import * as THREE from 'three/webgpu';
-import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { CombatCameraSystem } from './combat-camera-system';
 import { OverviewCamera } from './overview-camera';
 import { OverviewCameraPanel } from './overview-camera-panel';
 import { FocusMarkers } from './focus-markers';
-import { MapPickable, pickNearest } from '../map-pick';
+import { MapPickable } from '../map-pick';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -44,7 +43,7 @@ function projectionFromView(view: ViewFrame): ProjectFn {
 }
 
 // 広範囲視点の操作パネルに常用のフォーカス先として並べるラベル ID。残りのラベル(ラグランジュ点
-// など)へは右クリックの MapContextGizmo 経由でフォーカスする(Game が仲介する)。
+// など)へは右クリックの MapPickMenu 経由でフォーカスする(Game が仲介する)。
 const PANEL_FOCUS_IDS = ['earth', 'moon', 'sun'] as const;
 
 // 戦闘ビュー(CombatCameraSystem)と広範囲視点(OverviewCamera)を切り替えて駆動する。
@@ -108,11 +107,6 @@ export class CameraSystem {
   // アクティブ艦の切替を戦闘ビューの追従カメラへ伝える。
   setActivePlayer(player: Player): void {
     this.combatCamera.setActivePlayer(player);
-  }
-
-  // 画面座標 (clientX, clientY) 付近の被選択物を candidates から選ぶ。圏外なら null。
-  pickFocusCandidate(clientX: number, clientY: number, candidates: readonly MapPickable[]): MapPickable | null {
-    return pickNearest(candidates, clientX, clientY, this.activeCameraProjection, C.MAP_PICK_PX_SQ);
   }
 
   // 現在アクティブなカメラ(広範囲視点/戦闘追従視点)を返す。

@@ -8,6 +8,7 @@ import type { Sfx } from '../../audio/sfx';
 import type { UnlockManager } from '../unlock-manager';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
+import type { Ephemeris } from '../../physics/ephemeris';
 import { Stage00 } from './stage00';
 import { Stage0 } from './stage0';
 import { Stage1 } from './stage1';
@@ -37,10 +38,11 @@ export function initStage(
   unlockManager: UnlockManager,
   fx: EffectsSystem,
   markerManager: MarkerManager,
+  ephemeris: Ephemeris,
 ): Stage {
   const StageClass = STAGE_CLASSES.find((c) => c.id === stageId) ?? STAGE_CLASSES.find((c) => c.id === DEFAULT_STAGE_ID)!;
   const stage = new StageClass();
-  stage.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager);
+  stage.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris);
   const enemyCount = stage.init(player, entities);
   player.initAmmo(stage.initialAmmo.mags, stage.initialAmmo.rounds);
   hud.toast(stage.briefingHtml(enemyCount), 12000);
