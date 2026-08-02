@@ -1,20 +1,24 @@
 import * as THREE from 'three/webgpu';
-import { add, addScaled, cross, dot, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
+import { add, addScaled, dot, lenSq, norm, scale, sub, Vec3 } from '../physics/vec3';
 import { OrbitLine } from '../render/orbitline';
 import * as C from './const';
+import { ACCENT_SECONDARY } from './theme';
 import { Enemy } from './game-entity/enemy';
 import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
 import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
 import { Input, PointerPoint } from './input/input';
-import { CameraSystem, ProjectFn } from './camera/camera-system';
+import { ProjectFn } from './camera/camera-system';
+import { ContextMenu, MenuItem } from './hud/context-menu';
 import { MarkerManager } from './marker/marker-manager';
 import { FloatingOrigin } from './floating-origin';
+import { MapPickable, pickNearest } from './map-pick';
 
 export class Targeter {
-  private lockedTarget: Enemy | null = null;
-  autoTarget: Enemy | null = null;
+  // 唯一の真実。右クリックメニューでのみ変わり、自動選定・自動再選択は行わない。
+  target: Enemy | null = null;
+  secondaryTarget: Enemy | null = null;
 
   // ターゲット標的面(自機の方を向いた仮想の的)の通過点(ターゲット相対オフセットで
   // 保持し、的に貼り付いて見せる)。markBoardCrossings が push し、updateBoardMarkers
@@ -25,29 +29,42 @@ export class Targeter {
   // (近傍ランデブー狙いのため)。埋もれて見えなくならないよう強い不透明度にし、
   // renderOrder を自機軌道より上げて透明オブジェクトの描画順に依存せず必ず上に描く。
   readonly orbitLine = new OrbitLine(0xff6a00, 0.9);
+  // 第二ターゲットのハイライト線(シアン)。第一より薄い renderOrder に置く。
+  readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9);
+
+  private readonly contextMenu = new ContextMenu();
+  // 開いているメニューが選択されたときに適用すべき対象。メニュー展開中だけ有効。
+  private currentMenuTarget: Enemy | null = null;
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
   constructor(private readonly _hud: Hud, _sfx: Sfx, private readonly markerManager: MarkerManager, scene: THREE.Scene) {
-    this.orbitLine.line.renderOrder = 2;
+    this.secondaryOrbitLine.line.renderOrder = 2;
+    this.orbitLine.line.renderOrder = 3;
+    scene.add(this.secondaryOrbitLine.line);
     scene.add(this.orbitLine.line);
+    this.contextMenu.onSelect = (act) => this.applyMenuAct(act);
   }
 
-  // 生存判定込みの現在ターゲット。autoTarget は死亡個体を指したまま残ることがあるため、
-  // 描画・軌道線更新など「生きているターゲットだけを見たい」箇所はこちらを使う。
+  // 生存判定込みの現在の第一ターゲット。撃破後は target を保持したままにせず、ここで
+  // 死亡個体を隠す(描画・軌道線更新など「生きているターゲットだけを見たい」箇所が使う)。
   get aliveTarget(): Enemy | null {
-    return this.autoTarget && this.autoTarget.alive ? this.autoTarget : null;
+    return this.target && this.target.alive ? this.target : null;
   }
 
-  // 右クリックによるターゲットロックとオートターゲット選定を行い、現在のターゲットを返す。
-  updateCombatTargeting(
-    player: Player,
-    enemies: Enemy[],
-    input: Input,
-    cameraSystem: CameraSystem,
-  ): Enemy | null {
-    this.handleTargetLockByRightClick(input, enemies, player, cameraSystem.activeCameraProjection);
-    this.autoTarget = this.resolveAutoTarget(enemies, player, cameraSystem.activeCamera);
-    return this.autoTarget;
+  // 生存判定込みの現在の第二ターゲット。表示専用の扱いは aliveTarget と同じ。
+  get aliveSecondaryTarget(): Enemy | null {
+    return this.secondaryTarget && this.secondaryTarget.alive ? this.secondaryTarget : null;
+  }
+
+  // アクティブ艦の切替時などに、選定済みのターゲットをまとめて解除する。
+  clearTargets(): void {
+    this.target = null;
+    this.secondaryTarget = null;
+  }
+
+  // 右クリックによるターゲット選択メニューを扱う。オート選定は行わない。
+  updateCombatTargeting(player: Player, enemies: Enemy[], input: Input, project: ProjectFn): void {
+    this.handleTargetContextMenu(input, enemies, player, project);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
@@ -75,30 +92,30 @@ export class Targeter {
     }
   }
 
-  // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー・相対 AN/DN)をまとめて
-  // 更新する。ターゲットの選定を持つのがここなので、その表示もここに閉じる。
+  // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー)をまとめて更新する。
+  // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
   sync(dt: number, fo: FloatingOrigin, player: Player, enemies: Enemy[], overviewMode: boolean, project: ProjectFn): void {
     this.syncOrbitLine(fo, enemies, overviewMode);
     this.syncBoardMarkers(dt, project);
     this.syncTargetDirMarkers(player, overviewMode, project);
-    this.syncNodeMarkers(player, project);
   }
 
-  // ハイライト線を最新のターゲット状態に合わせる。
+  // 第一・第二ターゲットのハイライト線を最新の状態に合わせる。
   private syncOrbitLine(fo: FloatingOrigin, enemies: Enemy[], overviewMode: boolean): void {
     const tgt = this.aliveTarget;
+    const secTgt = this.aliveSecondaryTarget;
     for (const enemy of enemies) {
-      const showGray = overviewMode && enemy.alive && enemy !== tgt;
+      const showGray = overviewMode && enemy.alive && enemy !== tgt && enemy !== secTgt;
       enemy.orbitLine.sync(showGray ? enemy.elements : null, fo);
     }
 
-    const tgtEl = tgt ? tgt.elements : null;
-    this.orbitLine.sync(tgtEl, fo);
+    this.orbitLine.sync(tgt ? tgt.elements : null, fo);
+    this.secondaryOrbitLine.sync(secTgt ? secTgt.elements : null, fo);
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
   private syncBoardMarkers(dt: number, project: ProjectFn): void {
-    // 記録側の markBoardCrossings と同じ aliveTarget を見る: autoTarget のままだと
+    // 記録側の markBoardCrossings と同じ aliveTarget を見る: target のままだと
     // 撃破後も死亡個体の凍結位置を基準に ✦ を描き続けてしまう。
     const target = this.aliveTarget;
     if (!target) this.boardMarks.length = 0;
@@ -119,7 +136,7 @@ export class Targeter {
   }
 
   // ターゲット/その反対方向を指す方向マーカー(戦闘ビューのみ)。自機の軌道基準方向マーカー
-  // (player-markers.ts)と同じ扱いで、自機位置を原点に置く。
+  // (player-markers.ts)と同じ扱いで、自機位置を原点に置く。第一ターゲットのみ。
   private syncTargetDirMarkers(player: Player, overviewMode: boolean, project: ProjectFn): void {
     const tgt = this.aliveTarget;
     if (overviewMode || !tgt) {
@@ -132,99 +149,58 @@ export class Targeter {
     this.markerManager.setDirection('atgdir', 'mk-tgtdir', '◆', player.state.r, scale(tgtDir, -1), project);
   }
 
-  // ターゲットの軌道面との交線(相対昇交点・降交点)を自機の軌道上に表示する。
-  // 面変更(ノーマル/アンチノーマル)burn を行うべき位置がひと目で分かる。
-  private syncNodeMarkers(player: Player, project: ProjectFn): void {
-    const playerEl = player.elements;
-    const tgtEl = this.aliveTarget?.elements ?? null;
-
-    const lineDir = playerEl && tgtEl ? cross(playerEl.hHat, tgtEl.hHat) : null;
-    // lenSq が極小 = 軌道面がほぼ一致 → 交線が定まらない
-    if (!playerEl || !lineDir || lenSq(lineDir) < 1e-6) {
-      this.markerManager.hide('an');
-      this.markerManager.hide('dn');
-      return;
-    }
-
-    const d = norm(lineDir);
-    const thAsc = Math.atan2(dot(d, playerEl.qHat), dot(d, playerEl.pHat));
-    const rAsc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc));
-    const rDesc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc + Math.PI));
-
-    this.markerManager.setPosition('an', 'mk-node', '▲', scale(d, rAsc), project, 'AN');
-    this.markerManager.setPosition('dn', 'mk-node', '▽', scale(d, -rDesc), project, 'DN');
-  }
-
-  // 戦闘ビューの右クリックは射撃と兼用なので、敵に当たったかどうかに関わらずここで消費する
-  // (マップ編集中はこの経路自体が呼ばれず、右クリックはノード/フォーカスへ回る)。
-  private handleTargetLockByRightClick(input: Input, enemies: Enemy[], player: Player, project: ProjectFn): void {
+  // 戦闘ビューの右クリックは射撃と兼用。移動量が閾値内(input.ts が判定済み)の
+  // 右クリックが敵に当たった場合だけ、その敵を対象にコンテキストメニューを開く。
+  // 外れたクリックは消費するだけで何もしない(自動選定・自動解除は行わない)。
+  private handleTargetContextMenu(input: Input, enemies: Enemy[], player: Player, project: ProjectFn): void {
     if (!player.alive) return;
     input.takeRightClicks((click) => {
-      this.pickTargetAt(click, enemies, project);
+      const hit = this.pickEnemyAt(click, enemies, project);
+      if (hit) this.openMenu(click, hit);
       return true;
     });
   }
 
-  // クリック位置の許容半径内で画面上最も近い敵をロック対象に切り替える。
-  // 命中がなければ既存のロックを解除する。
-  private pickTargetAt(click: PointerPoint, enemies: Enemy[], project: ProjectFn): void {
-    let hit: Enemy | null = null;
-    let minDistSq = C.TARGET_LOCK_PICK_PX_SQ;
-    // 画面座標に射影し、クリック位置との距離が最小の生存敵を探す。
-    for (const enemy of enemies) {
-      if (!enemy.alive) continue;
-      const p = project(enemy.state.r);
-      if (!p.front) continue;
-      const dx = p.x - click.x;
-      const dy = p.y - click.y;
-      const distSq = dx * dx + dy * dy;
-      if (distSq < minDistSq) {
-        minDistSq = distSq;
-        hit = enemy;
-      }
-    }
-    if (hit) {
-      this.toggleLockedTarget(hit);
-      return;
-    }
-    if (this.lockedTarget !== null) {
-      this.lockedTarget = null;
-      this._hud.hint('ターゲット固定解除');
-    }
+  // クリック位置の許容半径内で画面上最も近い生存敵を返す。範囲外なら null。
+  private pickEnemyAt(click: PointerPoint, enemies: Enemy[], project: ProjectFn): Enemy | null {
+    const pickables: (MapPickable & { readonly enemy: Enemy; })[] = enemies
+      .filter((enemy) => enemy.alive)
+      .map((enemy) => ({ id: enemy.name, name: enemy.name, pos: enemy.state.r, kind: 'ship', enemy }));
+    const hit = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);
+    return hit?.enemy ?? null;
   }
 
-  // 指定した敵をロック対象にする。既にロック中の敵と同じならロックを解除する。
-  private toggleLockedTarget(hit: Enemy): void {
-    if (this.lockedTarget === hit) {
-      this.lockedTarget = null;
-      this._hud.hint('ターゲット固定解除');
-      return;
-    }
-    this.lockedTarget = hit;
-    this._hud.hint(`ターゲット固定: ${hit.name}`);
+  // hit を対象に、現在の第一/第二設定に応じたラベルでメニューを開く。
+  private openMenu(click: PointerPoint, hit: Enemy): void {
+    this.currentMenuTarget = hit;
+    const items: MenuItem[] = [
+      { label: hit === this.target ? 'ターゲット解除' : 'ターゲットに設定', act: 'primary' },
+      { label: hit === this.secondaryTarget ? '第二ターゲット解除' : '第二ターゲットに設定', act: 'secondary' },
+      { label: 'キャンセル', act: 'cancel' },
+    ];
+    this.contextMenu.open(click.x, click.y, items);
   }
 
-  // ロック中の生存敵があればそれを返す。なければカメラ正面方向に最も近い生存敵を返す。
-  private resolveAutoTarget(enemies: Enemy[], player: Player, activeCamera: THREE.PerspectiveCamera): Enemy | null {
-    if (this.lockedTarget && this.lockedTarget.alive) {
-      return this.lockedTarget;
-    }
-    this.lockedTarget = null;
-    let bestTarget: Enemy | null = null;
-    let bestDot = -1;
-    const camFwdW = new THREE.Vector3();
-    activeCamera.getWorldDirection(camFwdW);
-    const camFwdVec = v3(camFwdW.x, camFwdW.y, camFwdW.z);
-    // カメラ前方ベクトルとの内積が最大の敵(=画面中心に最も近い敵)を選ぶ。
-    for (const enemy of enemies) {
-      if (!enemy.alive) continue;
-      const dir = norm(sub(enemy.state.r, player.state.r));
-      const d = dot(camFwdVec, dir);
-      if (d > bestDot) {
-        bestDot = d;
-        bestTarget = enemy;
-      }
-    }
-    return bestTarget;
+  // メニュー選択結果を、開いた時点の対象へ適用する。
+  private applyMenuAct(act: string): void {
+    const hit = this.currentMenuTarget;
+    this.currentMenuTarget = null;
+    if (!hit) return;
+    if (act === 'primary') this.setTarget(this.target === hit ? null : hit);
+    else if (act === 'secondary') this.setSecondaryTarget(this.secondaryTarget === hit ? null : hit);
+  }
+
+  // 第一ターゲットを設定する。同じ個体が第二ターゲットなら外す(両方兼務を禁止)。
+  private setTarget(t: Enemy | null): void {
+    if (t && this.secondaryTarget === t) this.secondaryTarget = null;
+    this.target = t;
+    this._hud.hint(t ? `ターゲット固定: ${t.name}` : 'ターゲット固定解除');
+  }
+
+  // 第二ターゲットを設定する。同じ個体が第一ターゲットなら外す(両方兼務を禁止)。
+  private setSecondaryTarget(t: Enemy | null): void {
+    if (t && this.target === t) this.target = null;
+    this.secondaryTarget = t;
+    this._hud.hint(t ? `第二ターゲット固定: ${t.name}` : '第二ターゲット固定解除');
   }
 }

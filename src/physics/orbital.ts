@@ -28,9 +28,15 @@ export function altitudeOf(r: Vec3): number {
 }
 
 // 長半径 a の楕円軌道の公転周期 [s]。動径をそのまま渡せば、その高度を回る円軌道の周期
-// (= その場の軌道運動の時間スケール)になる。
-export function keplerPeriod(a: number): number {
-  return 2 * Math.PI * Math.sqrt((a * a * a) / MU_EARTH);
+// (= その場の軌道運動の時間スケール)になる。mu は既定で地球重力定数だが、月中心など
+// 別の主天体まわりの周期を求める場合は明示的に渡す。
+export function keplerPeriod(a: number, mu: number = MU_EARTH): number {
+  return 2 * Math.PI * Math.sqrt((a * a * a) / mu);
+}
+
+// keplerPeriod の逆関数: 公転周期 T から長半径を求める唯一の変換点。
+export function semiMajorFromPeriod(period: number, mu: number = MU_EARTH): number {
+  return Math.cbrt((mu * period * period) / (4 * Math.PI * Math.PI));
 }
 
 // 軌道基底: 進行方向・軌道面法線・面内で進行方向に直交する向きからなる正規直交系。
@@ -300,7 +306,10 @@ export function velocityOnOrbit(el: Elements, nu: number): Vec3 {
   return addScaled(scale(el.pHat, -k * Math.sin(nu)), el.qHat, k * (el.e + Math.cos(nu)));
 }
 
-// 古典的軌道要素 → 時刻 t の状態ベクトル(Y = 北極)。角度はすべて [rad]。
+// 古典的軌道要素 → 時刻 t の状態ベクトル(Y = 北極)。角度はすべて [rad]。mu は既定で
+// 地球重力定数だが、月中心の要素から状態を組む場合など主天体が地球でないときは明示的に渡す
+// (その場合の r/v は主天体中心の相対値であり、絶対 ECI 化は呼び出し側が主天体の位置・速度を
+// 加えて行う)。
 export function stateFromElements(
   t: number,
   a: number,
@@ -309,6 +318,7 @@ export function stateFromElements(
   raan: number,
   argp: number,
   nu: number,
+  mu: number = MU_EARTH,
 ): OrbitState {
   const Y = v3(0, 1, 0);
   // 軌道面の基底を昇交点・傾斜角・近点引数の順に組み立てる
@@ -319,7 +329,7 @@ export function stateFromElements(
   // 真近点角 nu における位置半径
   const p = a * (1 - e * e);
   const r = p / (1 + e * Math.cos(nu));
-  const k = Math.sqrt(MU_EARTH / p);
+  const k = Math.sqrt(mu / p);
   return orbitState(
     t,
     addScaled(scale(pHat, r * Math.cos(nu)), qHat, r * Math.sin(nu)),
