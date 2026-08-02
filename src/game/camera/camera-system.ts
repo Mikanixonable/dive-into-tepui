@@ -153,7 +153,11 @@ export class CameraSystem {
     const keyYaw = (input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0);
     const keyPitch = (input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0);
     const keyRoll = (input.down(K.cameraRollLeft) ? 1 : 0) + (input.down(K.cameraRollRight) ? -1 : 0);
-    const mouse = input.mouse();
+    const keyPanX = (input.down(K.cameraPanLeft) ? 1 : 0) + (input.down(K.cameraPanRight) ? -1 : 0);
+    const keyPanY = (input.down(K.cameraPanUp) ? 1 : 0) + (input.down(K.cameraPanDown) ? -1 : 0);
+    const mouse = { ...input.mouse() };
+    mouse.panDx += keyPanX * C.CAM_KEY_PAN_RATE * dt;
+    mouse.panDy += keyPanY * C.CAM_KEY_PAN_RATE * dt;
 
     if (this.overviewMode) {
       this.overviewCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, simTime, mapPickables);
