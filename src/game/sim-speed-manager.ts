@@ -97,13 +97,12 @@ export class SimSpeedManager {
   }
 
   // 残り時間に応じてシミュレーション速度を自動的に段階調整し、
-  // AUTOWARP_STOP 秒前になったら解除する。
+  // 実行の窓に入ったら等倍へ戻して解除する。
   update(simTime: number): void {
     if (this.autoWarpUntil === null) return;
     const tRem = this.autoWarpUntil - simTime;
-    if (tRem <= C.AUTOWARP_STOP) {
+    if (tRem <= C.NODE_APPROACH_LEAD) {
       this.autoWarpUntil = null;
-      this._hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
       this.levelIdx = 0;
       // ここで return せずループへ落ちると、解除した直後の tRem からもう一度
       // 段を再計算してしまい、×1 に戻したばかりの levelIdx を同じフレームで

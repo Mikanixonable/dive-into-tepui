@@ -9,6 +9,12 @@
             "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/remind-after-src-edit.mjs\" 2>/dev/null || true",
             "statusMessage": "コメント方針・DEVELOP/ 文書のチェック",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/check-boundaries.mjs\" 2>/dev/null || true",
+            "statusMessage": "責務境界(/refactor-fixed)の違反チェック",
+            "timeout": 10
           }
         ]
       }

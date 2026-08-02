@@ -84,12 +84,16 @@ function numberField(root: HTMLElement, label: string, defaultValue: number, ste
   input.type = 'number';
   input.step = String(step);
   input.value = String(defaultValue);
-  input.className = 'manual-duration-value';
   // #hud はマップドラッグを拾うため、この入力上のポインタ操作がカメラドラッグへ抜けないようにする。
   input.addEventListener('pointerdown', (e) => e.stopPropagation());
   row.appendChild(input);
   root.appendChild(row);
   return input;
+}
+
+// numberField が組んだ入力の行(ラベルごと)を出し入れする。
+function setFieldVisible(input: HTMLInputElement, visible: boolean): void {
+  (input.parentElement as HTMLElement).style.display = visible ? '' : 'none';
 }
 
 export class ShipPlacerPanel {
@@ -186,15 +190,18 @@ export class ShipPlacerPanel {
     });
     this.librationPoint.setSelected(this.librationPointValue);
     librationGroup.appendChild(this.librationPoint.element);
+    // ハローの面内振幅は面外振幅から三次の振幅拘束で決まるので、入力欄自体を出さない。
     this.librationOrbitKind = new SegmentedControl('軌道種別', LIBRATION_ORBIT_KIND_ITEMS, (v) => {
       this.librationOrbitKindValue = v;
       this.librationOrbitKind.setSelected(v);
+      setFieldVisible(this.libAx, v === 'lissajous');
     });
-    this.librationOrbitKind.setSelected(this.librationOrbitKindValue);
     librationGroup.appendChild(this.librationOrbitKind.element);
     const defaultAmp = LIBRATION_DEFAULT_AMPLITUDE_KM[this.librationSystemValue];
     this.libAx = numberField(librationGroup, '面内振幅 ax [km]', defaultAmp.ax, 100);
     this.libAz = numberField(librationGroup, '面外振幅 az [km]', defaultAmp.az, 100);
+    this.librationOrbitKind.setSelected(this.librationOrbitKindValue);
+    setFieldVisible(this.libAx, this.librationOrbitKindValue === 'lissajous');
     this.panel.appendChild(librationGroup);
 
     this.placementGroups = { elements: elementsGroup, libration: librationGroup };
@@ -204,7 +211,6 @@ export class ShipPlacerPanel {
     nameRow.className = 'hud-seg';
     this.nameInput = document.createElement('input');
     this.nameInput.type = 'text';
-    this.nameInput.className = 'manual-duration-value';
     this.nameInput.placeholder = '艦名(空欄で自動命名)';
     this.nameInput.addEventListener('pointerdown', (e) => e.stopPropagation());
     nameRow.appendChild(this.nameInput);

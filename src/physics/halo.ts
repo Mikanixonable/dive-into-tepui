@@ -1,18 +1,18 @@
-// 円制限三体問題(CR3BP)の共線ラグランジュ点(L1/L2)まわりの線形化解 — ハロー軌道・
-// リサジュー軌道の初期状態。ラグランジュ点の位置と回転フレームの姿勢/角速度は
-// ephemeris.ts の既存 API(emLagrangeAt/seLagrangeAt/moonOrbitRotationAt/sunOrbitRotationAt)
-// からそのまま取り、ここでは基底・法線を作り直さない。
+// 円制限三体問題(CR3BP)の共線ラグランジュ点(L1/L2)まわりの周期・準周期軌道の初期状態。
+// ラグランジュ点の位置と回転フレームの姿勢/角速度は ephemeris.ts の既存 API
+// (emLagrangeAt/seLagrangeAt/moonOrbitRotationAt/sunOrbitRotationAt)からそのまま取り、
+// ここでは基底・法線を作り直さない。
 //
-// Richardson (1980) の三次近似のうち、面内・面外の振動数を関係づける三次の振幅拘束
-// (十数個の高次係数からなる Az-Ax 関係式)は実装していない。線形化(一次)の周期解に
-// 留め、リサジュー軌道は面内振動数 λ と面外振動数 ωz を独立に使う(面内・面外振幅を
-// 独立に指定できる、線形リサジューそのもの)。ハロー軌道は面外振動数に λ を流用して
-// 面内と共鳴させ、閉じた三次元ループにする — 三次拘束による厳密な周期解ではなく、
-// 振動数だけを合わせた近似であることに留意。
+// 面内・面外の運動は Richardson (1980) の記法に従う。線形解では面内振動数 λ と面外振動数
+// ωz=√c2 が一致しないため、一次の範囲でハロー軌道(閉じた三次元ループ)は存在しない。
+// ハロー軌道は三次の振幅拘束 l1·Ax² + l2·Az² + Δ = 0 が成り立つときに両振動数が一致して
+// 現れるので、haloState は面外振幅 Az からこの拘束で面内振幅 Ax を決め、そのうえで線形解を
+// 面内振動数で駆動する。lissajousState は拘束を課さず、面内・面外を独立な振幅・振動数で
+// 振動させる(一般に非共鳴なので準周期のリサジュー図形になる)。
 //
-// このモジュールが返す初期状態は、この線形化解を積分し続けた場合にのみ周期軌道になる。
-// ゲームの積分器は地球中心二体 + J2 + 抗力 + 日月三体であり制限三体問題そのものでは
-// ないため、ここで返した状態を実際にゲーム内で積分すると軌道はドリフトする。
+// 位置・速度そのものは一次の線形解であり、三次の級数展開までは含まない。またゲームの積分器は
+// 地球中心二体 + J2 + 抗力 + 日月三体であって制限三体問題そのものではないため、ここで返した
+// 状態を実際にゲーム内で積分すると軌道はドリフトする。
 import { Ephemeris, MU_MOON, MU_SUN } from './ephemeris';
 import { MU_EARTH, OrbitState, orbitState } from './orbital';
 import { Vec3, add, cross, len, scale, sub, v3 } from './vec3';
@@ -23,8 +23,9 @@ export type LibrationPoint = 'L1' | 'L2';
 // 共線ラグランジュ点まわりの回転局所基底とその線形化パラメータ。
 // origin: L点の ECI 位置。xHat: 主天体→副天体方向。zHat: 系の公転面法線。
 // yHat = zHat × xHat で右手系を作る。omega: 回転フレームの角速度(ECI 成分、大きさが
-// 無次元化の時間単位 n)。r: 主天体・副天体間距離 [m]。lambda: 面内線形振動数、
-// omegaZ: 面外線形振動数、kappa: 面内運動の y/x 振幅比(いずれも τ=n·t を単位とする無次元量)。
+// 無次元化の時間単位 n)。r: 主天体・副天体間距離 [m]。gamma: 副天体から L点までの距離を
+// r で割った無次元値。lambda: 面内線形振動数、omegaZ: 面外線形振動数、kappa: 面内運動の
+// y/x 振幅比(いずれも τ=n·t を単位とする無次元量)。
 export interface CollinearFrame {
   origin: Vec3;
   xHat: Vec3;
@@ -32,18 +33,21 @@ export interface CollinearFrame {
   zHat: Vec3;
   omega: Vec3;
   r: number;
+  gamma: number;
+  mu: number;
   lambda: number;
   omegaZ: number;
   kappa: number;
 }
 
-// 共線点における Richardson (1980) の c2 係数。gamma は副天体から L点までの距離を
-// 主天体-副天体間距離で割った無次元値。L1/L2 で分母の符号だけが異なる。
-function c2Coefficient(point: LibrationPoint, mu: number, gamma: number): number {
+// 共線点における Richardson (1980) の cn 係数。gamma は副天体から L点までの距離を
+// 主天体-副天体間距離で割った無次元値。L1/L2 で分母と符号が異なる。
+function cn(point: LibrationPoint, mu: number, gamma: number, n: number): number {
+  const sign = (-1) ** n;
   if (point === 'L1') {
-    return (mu + (1 - mu) * gamma ** 3 / (1 - gamma) ** 3) / gamma ** 3;
+    return (mu + sign * (1 - mu) * gamma ** (n + 1) / (1 - gamma) ** (n + 1)) / gamma ** 3;
   }
-  return (mu + (1 - mu) * gamma ** 3 / (1 + gamma) ** 3) / gamma ** 3;
+  return sign * (mu + (1 - mu) * gamma ** (n + 1) / (1 + gamma) ** (n + 1)) / gamma ** 3;
 }
 
 // 指定した系・L点における共線点まわりの回転局所基底と線形化パラメータを組み立てる。
@@ -83,21 +87,21 @@ export function collinearFrame(system: LibrationSystem, point: LibrationPoint, t
   const yHat = cross(zHat, xHat);
 
   const gamma = len(sub(origin, secondaryPos)) / r;
-  const c2 = c2Coefficient(point, mu, gamma);
+  const c2 = cn(point, mu, gamma, 2);
 
-  // 面内特性方程式 λ^4+(c2-2)λ^2-(2c2+1)(c2-1)=0 の判別式は 9c2^2-8c2 に簡約でき、
-  // 負の根 -ωp^2 が面内の振動(周期)解を、正の根が双曲解(ここでは不使用)を与える。
+  // 面内特性方程式 λ⁴+(c2-2)λ²-(2c2+1)(c2-1)=0 の判別式は 9c2²-8c2 に簡約でき、
+  // 正の根が振動解を与える(負の根は双曲解で、ここでは使わない)。
   const disc = Math.sqrt(9 * c2 * c2 - 8 * c2);
-  const omegaP2 = (disc + c2 - 2) / 2;
-  const lambda = Math.sqrt(omegaP2);
+  const lambda2 = (disc - c2 + 2) / 2;
+  const lambda = Math.sqrt(lambda2);
   const omegaZ = Math.sqrt(c2);
   // 面内運動 x=Ax cos(λτ+φ), y=κAx sin(λτ+φ) を線形化方程式へ代入して得る振幅比。
-  const kappa = (2 * lambda) / (c2 - 1 - omegaP2);
+  const kappa = (2 * lambda) / (c2 - 1 - lambda2);
 
-  return { origin, xHat, yHat, zHat, omega, r, lambda, omegaZ, kappa };
+  return { origin, xHat, yHat, zHat, omega, r, gamma, mu, lambda, omegaZ, kappa };
 }
 
-export interface CenterManifoldParams {
+export interface LissajousParams {
   readonly system: LibrationSystem;
   readonly point: LibrationPoint;
   readonly ax: number; // 面内振幅 [m]
@@ -106,33 +110,37 @@ export interface CenterManifoldParams {
   readonly psi?: number; // 面外位相 [rad]、既定 0
 }
 
-// L点局所基底での線形化解(無次元、τ=0 での位置・速度)から ECI の OrbitState を
-// 組み立てる共通部分。zFreq に面内振動数 λ を渡すとハロー軌道(面内・面外が共鳴し
-// 閉じた3次元ループになる)、面外振動数 ωz を渡すとリサジュー軌道(面内・面外が独立)
-// になる。回転フレーム相対速度から ECI 速度への変換は frame.ts の toInertialState と
+export interface HaloParams {
+  readonly system: LibrationSystem;
+  readonly point: LibrationPoint;
+  readonly az: number; // 面外振幅 [m](面内振幅は三次の振幅拘束から決まる)
+  readonly phase?: number; // 面内位相 [rad]、既定 0
+}
+
+// L点局所基底での線形解(無次元、位相 phase/psi での位置・速度)から ECI の OrbitState を
+// 組み立てる。回転フレーム相対速度から ECI 速度への変換は frame.ts の toInertialState と
 // 同じ関係 v = v_rel + ω×r(r は原点=地球からの絶対位置)による。
 function centerManifoldState(
   t: number,
-  ephemeris: Ephemeris,
-  params: CenterManifoldParams,
-  zFreq: (frame: CollinearFrame) => number,
+  frame: CollinearFrame,
+  ax: number,
+  az: number,
+  phase: number,
+  psi: number,
+  zFreq: number,
 ): OrbitState {
-  const frame = collinearFrame(params.system, params.point, t, ephemeris);
-  const phase = params.phase ?? 0;
-  const psi = params.psi ?? 0;
   const { lambda, kappa, r: R, omega } = frame;
-  const omegaZv = zFreq(frame);
   const n = len(omega); // 回転フレームの角速度(無次元時間 τ=n·t の単位)
 
-  const ax = params.ax / R;
-  const az = params.az / R;
+  const axN = ax / R;
+  const azN = az / R;
 
-  const x = ax * Math.cos(phase);
-  const y = kappa * ax * Math.sin(phase);
-  const z = az * Math.sin(psi);
-  const xDot = -ax * lambda * Math.sin(phase);
-  const yDot = kappa * ax * lambda * Math.cos(phase);
-  const zDot = az * omegaZv * Math.cos(psi);
+  const x = axN * Math.cos(phase);
+  const y = kappa * axN * Math.sin(phase);
+  const z = azN * Math.sin(psi);
+  const xDot = -axN * lambda * Math.sin(phase);
+  const yDot = kappa * axN * lambda * Math.cos(phase);
+  const zDot = azN * zFreq * Math.cos(psi);
 
   const relPos = add(add(scale(frame.xHat, x * R), scale(frame.yHat, y * R)), scale(frame.zHat, z * R));
   const relVel = add(
@@ -145,16 +153,65 @@ function centerManifoldState(
   return orbitState(t, rEci, vEci);
 }
 
-// 指定したラグランジュ点(earthMoon/sunEarth の L1/L2)まわりのリサジュー軌道初期状態。
-// 面内振幅 ax・面外振幅 az は独立に指定でき、面内は線形振動数 λ、面外は独立な線形
-// 振動数 ωz で振動する(一般に非共鳴なので周期軌道にはならない準周期のリサジュー図形)。
-export function lissajousState(t: number, ephemeris: Ephemeris, params: CenterManifoldParams): OrbitState {
-  return centerManifoldState(t, ephemeris, params, (f) => f.omegaZ);
+// Richardson (1980) 三次近似の振幅拘束 l1·Ax² + l2·Az² + Δ = 0 における (l1, l2, Δ)。
+// いずれも gamma で正規化した無次元量で、この拘束が成り立つとき面内・面外の振動数が
+// 一致してハロー軌道になる。
+function haloConstraint(frame: CollinearFrame, point: LibrationPoint): { l1: number; l2: number; delta: number } {
+  const { mu, gamma, lambda } = frame;
+  const c2 = cn(point, mu, gamma, 2);
+  const c3 = cn(point, mu, gamma, 3);
+  const c4 = cn(point, mu, gamma, 4);
+  const l2sq = lambda * lambda;
+  // kappa と符号だけが違う Richardson の振幅比。以降の係数はこの k で書かれている。
+  const k = (l2sq + 1 + 2 * c2) / (2 * lambda);
+
+  const d1 = (3 * l2sq / k) * (k * (6 * l2sq - 1) - 2 * lambda);
+
+  const a21 = 3 * c3 * (k * k - 2) / (4 * (1 + 2 * c2));
+  const a22 = 3 * c3 / (4 * (1 + 2 * c2));
+  const a23 = -(3 * c3 * lambda / (4 * k * d1)) * (3 * k ** 3 * lambda - 6 * k * (k - lambda) + 4);
+  const a24 = -(3 * c3 * lambda / (4 * k * d1)) * (2 + 3 * k * lambda);
+  const b21 = -(3 * c3 * lambda / (2 * d1)) * (3 * k * lambda - 4);
+  const b22 = 3 * c3 * lambda / d1;
+  const d21 = -c3 / (2 * l2sq);
+
+  const den = 2 * lambda * (lambda * (1 + k * k) - 2 * k);
+  const s1 = (1.5 * c3 * (2 * a21 * (k * k - 2) - a23 * (k * k + 2) - 2 * k * b21)
+    - 0.375 * c4 * (3 * k ** 4 - 8 * k * k + 8)) / den;
+  const s2 = (1.5 * c3 * (2 * a22 * (k * k - 2) + a24 * (k * k + 2) + 2 * k * b22 + 5 * d21)
+    + 0.375 * c4 * (12 - k * k)) / den;
+
+  const a1 = -1.5 * c3 * (2 * a21 + a23 + 5 * d21) - 0.375 * c4 * (12 - k * k);
+  const a2 = 1.5 * c3 * (a24 - 2 * a22) + 1.125 * c4;
+
+  return { l1: a1 + 2 * l2sq * s1, l2: a2 + 2 * l2sq * s2, delta: l2sq - c2 };
 }
 
-// 指定したラグランジュ点まわりのハロー軌道初期状態。面外振動を面内と同じ線形振動数 λ
-// で駆動することで面内・面外を共鳴させ、閉じた3次元ループにする(モジュール先頭の
-// コメント通り、Richardson 三次近似の振幅拘束によるものではない近似)。
-export function haloState(t: number, ephemeris: Ephemeris, params: CenterManifoldParams): OrbitState {
-  return centerManifoldState(t, ephemeris, params, (f) => f.lambda);
+// 指定したラグランジュ点(earthMoon/sunEarth の L1/L2)まわりのリサジュー軌道初期状態。
+// 面内振幅 ax・面外振幅 az は独立に指定でき、面内は線形振動数 λ、面外は独立な線形
+// 振動数 ωz で振動する。
+export function lissajousState(t: number, ephemeris: Ephemeris, params: LissajousParams): OrbitState {
+  const frame = collinearFrame(params.system, params.point, t, ephemeris);
+  return centerManifoldState(
+    t, frame, params.ax, params.az, params.phase ?? 0, params.psi ?? 0, frame.omegaZ,
+  );
+}
+
+// 指定したラグランジュ点まわりのハロー軌道初期状態。面内振幅は面外振幅 az から三次の
+// 振幅拘束で決まる(az=0 でも面内振幅は下限値を取り、そこから単調に増える)。
+export function haloState(t: number, ephemeris: Ephemeris, params: HaloParams): OrbitState {
+  const frame = collinearFrame(params.system, params.point, t, ephemeris);
+  const ax = haloAmplitudeX(frame, params.point, params.az);
+  // 拘束が成り立つ = 面内・面外の振動数が一致するので、面外も面内振動数 λ で駆動する。
+  // 面外位相を π/2 ずらして面内の x と直交させ、閉じた三次元ループにする。
+  return centerManifoldState(t, frame, ax, params.az, params.phase ?? 0, (params.phase ?? 0) + Math.PI / 2, frame.lambda);
+}
+
+// 面外振幅 az [m] に対応する面内振幅 [m]。az=0 での値が、平面リアプノフ軌道からハローが
+// 分岐する面内振幅の下限になる。
+export function haloAmplitudeX(frame: CollinearFrame, point: LibrationPoint, az: number): number {
+  const { l1, l2, delta } = haloConstraint(frame, point);
+  // 無次元化は gamma 基準(Richardson の局所座標)なので、その単位で解いてから [m] へ戻す。
+  const azN = az / (frame.r * frame.gamma);
+  return Math.sqrt(-(delta + l2 * azN * azN) / l1) * frame.r * frame.gamma;
 }

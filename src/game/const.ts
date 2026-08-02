@@ -1,7 +1,7 @@
 // ゲームバランス・チューニング定数
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/orbital';
 
-// クリエイティブモードで配置できる CreativeShip の上限隻数。
+// クリエイティブモードで配置できる艦の上限隻数。
 export const CREATIVE_MAX_SHIPS = 8;
 
 // クリエイティブモードのラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
@@ -195,7 +195,6 @@ export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 13
 export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
 
 export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simulator.stepSimulation のサブステップ分割数の算出に使う)
-export const SUBSTEP_MAX_COUNT = 64; // 1フレームあたりのサブステップ数上限(高倍率ワープ時に計算量が爆発しないための歯止め)
 
 export const PLAYER_RADIUS = 5; // 被弾(弾丸ヒット)判定 [m]。実機体より大きめの当たり判定
 export const PLAYER_HULL_RADIUS = 2.6; // 薬莢・破片等との物理接触に使う実寸に近い半径 [m]。
@@ -220,8 +219,8 @@ export const OVERVIEW_CAMERA_MIN_DIST = 9e6; // 広範囲視点カメラの注�
 // 太陽地球系のラグランジュ点 L1/L2(約1.5e9m)まで視界に収められる引きの上限。
 export const OVERVIEW_CAMERA_MAX_DIST = 4.5e9;
 export const OVERVIEW_CAMERA_FAR = 1.5e10; // 広範囲視点カメラの far(OVERVIEW_CAMERA_MAX_DIST + 十分な余裕)
-export const NODE_DV_RATE = 30; // Δv 調整速度 [m/s per 実秒]
-export const NODE_DV_RATE_FINE = 2.5; // 微調整モード時
+export const NODE_DV_RATE = 300; // Δv 調整速度 [m/s per 実秒]
+export const NODE_DV_RATE_FINE = 30; // 微調整モード時
 export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 export const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
 export const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
@@ -238,21 +237,26 @@ export const DV_RATE_RAMP_SEC = 2.0; // DV_RATE_MIN から DV_RATE_MAX への指
 export const NODE_TOL_SMA = 0.02; // 長半径の相対誤差
 export const NODE_TOL_ECC = 0.02; // 離心率差
 export const NODE_TOL_PLANE_DEG = 2.0; // 軌道面の角度差 [deg]
+// ノード実行時刻の何秒前から「実行の窓」とみなすか [s]。噴射準備の通知・達成判定の開始・
+// 自動ワープの解除がこの1点を共有する。
+export const NODE_APPROACH_LEAD = 20;
+// 実行時刻をこれだけ過ぎたノードは計画から落とす [s]。多少の遅れなら噴射できる猶予。
+export const NODE_EXPIRE_GRACE = 60;
 
-// --- 数値予測(軌道計画モードのポリライン、plan/plan-arc.ts) ---
-export const PREDICT_DUR_DAY = 86400; // 1日
-export const PREDICT_DUR_WEEK = 7 * 86400; // 7日
-export const PREDICT_DUR_MONTH = 28 * 86400; // 28日
+// --- 未来表示の時刻(display-time-manager.ts のスライダー) ---
+export const DISPLAY_DUR_DAY = 86400; // 1日
+export const DISPLAY_DUR_WEEK = 7 * 86400; // 7日
+export const DISPLAY_DUR_MONTH = 28 * 86400; // 28日
 export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定できる表示期間の上限 [s](1年)
-export const PREDICT_MAX_SAMPLES = 2000; // 保持する予測サンプル数の上限
+
+// --- 軌道計画の折れ線(plan/plan-arc.ts) ---
+export const PLAN_ARC_MAX_SAMPLES = 2000; // 1区間が保持するサンプル数の上限
 // 1区間あたりの積分ステップ数の上限。手動レンジで年スケールの表示期間を許すと
 // stepDt(1周回/STEPS_PER_REV)のままではステップ数がフレーム時間を圧迫するので、
 // 超えたら plan-arc.ts の再突入時と同じ「そこで打ち切って endState() を返す」経路に乗せる。
 export const PLAN_ARC_MAX_STEPS = 20000;
-// 予測の再計算頻度: 編集操作に対しては最短でこの間隔(高頻度キー操作を約5Hzに間引く)、
-// 変化がなくても摂動で軌道自体がドリフトするのでこの間隔ごとに再計算する。
-export const PREDICT_DIRTY_THROTTLE_MS = 200;
-export const PREDICT_REFRESH_INTERVAL_MS = 2000;
+// 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
+export const APERIODIC_ARC_DURATION = 86400;
 // 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率の下限。これ未満は円に近く
 // アプシスの方向が数値的に不定になるので両方隠す。
 export const APSIS_MIN_ECC = 0.01;

@@ -39,14 +39,6 @@ export const MUZZLE_OFFSETS: { x: number; y: number; z: number }[] = [
   { x: 0, y: -0.55, z: 2.55 },
 ];
 
-// RCS スラスタブロックの機体座標(噴射パフの表示位置と一致させるためエクスポート)
-export const RCS_BLOCK_OFFSETS: { x: number; y: number; z: number }[] = [
-  { x: 1.0, y: 0.85, z: 1.9 },
-  { x: -1.0, y: 0.85, z: 1.9 },
-  { x: 1.0, y: -0.85, z: 1.9 },
-  { x: -1.0, y: -0.85, z: 1.9 },
-];
-
 // ラジエーターのヒンジ Group 名(機体座標系)。getObjectByName() で引く。
 export const RADIATOR_OBJECT_NAMES = { up: 'radiatorUp', down: 'radiatorDown' } as const;
 

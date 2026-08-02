@@ -1,8 +1,8 @@
 // 未来表示の操作パネル(表示期間・未来ゴーストスライダー・目盛り・手動レンジ入力)。
 import { SegmentedControl } from './hud/buttons';
-import type { PredictDurationKey } from './display-time-manager';
+import type { DisplayDurationKey } from './display-time-manager';
 
-const DURATIONS: readonly (readonly [PredictDurationKey, string])[] = [
+const DURATIONS: readonly (readonly [DisplayDurationKey, string])[] = [
   ['orbit', '1周回'],
   ['day', '1日'],
   ['week', '7日'],
@@ -24,12 +24,12 @@ const UNITS: readonly (readonly [DurationUnit, string])[] = [
 const SLIDER_HINT = 'スライダーで未来位置を確認';
 
 export class DisplayTimePanel {
-  onDurationSelect: ((key: PredictDurationKey) => void) | null = null;
+  onDurationSelect: ((key: DisplayDurationKey) => void) | null = null;
   onSliderChange: ((t: number) => void) | null = null;
   onManualDurationChange: ((sec: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
-  private readonly duration: SegmentedControl<PredictDurationKey>;
+  private readonly duration: SegmentedControl<DisplayDurationKey>;
   private readonly slider: HTMLInputElement;
   private readonly sliderLabel: HTMLElement;
   private readonly ticks: HTMLElement;
@@ -59,7 +59,6 @@ export class DisplayTimePanel {
     this.manualValue.type = 'number';
     this.manualValue.min = '0';
     this.manualValue.value = '1';
-    this.manualValue.className = 'manual-duration-value';
     this.manualValue.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.manualValue.addEventListener('input', () => this.emitManualDuration());
     this.manualRow.appendChild(this.manualValue);
@@ -106,7 +105,7 @@ export class DisplayTimePanel {
   }
 
   // 期間選択の選択状態を key に合わせる。
-  setDuration(key: PredictDurationKey): void {
+  setDuration(key: DisplayDurationKey): void {
     this.duration.setSelected(key);
   }
 

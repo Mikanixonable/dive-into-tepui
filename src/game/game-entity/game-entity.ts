@@ -99,7 +99,9 @@ export class GameEntity {
     }
     if (this.truncated) return false;
     const p = this._predicted;
-    if (p.state.t + dt > simTime + this.predictDuration + 1e-6) return false;
+    
+    // 常にpredictDurationより先にp.state.tがあるようにpredictを伸ばす
+    if (p.state.t > simTime + this.predictDuration) return false;
 
     p.step(dt, ephemeris, this.bcInv, null, this.sampleInterval(), this.predictDuration);
 

@@ -20,7 +20,7 @@ const INIT_PITCH = 0.45;
 const INIT_DIST = 4.5e7;
 
 // 注視点 → カメラの相対位置ベクトルを、方位角・仰角・距離から組む。回転軸 Y まわりの
-// 方位 yaw と、そこからの仰角 pitch。update()/初期化の両方で使う純粋関数。
+// 方位 yaw と、そこからの仰角 pitch。初期状態の視点を名前の付いた角度で置くための純粋関数。
 function sphericalOffset(yaw: number, pitch: number, dist: number): Vec3 {
   const cp = Math.cos(pitch);
   return scale(v3(cp * Math.cos(yaw), Math.sin(pitch), cp * Math.sin(yaw)), dist);
@@ -126,17 +126,23 @@ export class OverviewCamera {
     let panEci = toInertialPos(this._cameraFrame, simTime, this.pan_r, this.ephemeris);
     let upEci = toInertialPos(this._cameraFrame, simTime, this.up_r, this.ephemeris);
 
-    // ホイール/ドラッグから距離・方位角・仰角を更新する
+    // ホイールで距離を、ドラッグ/キーで視点方向を更新する。ヨー/ピッチはワールド軸ではなく
+    // 現在の上/右軸まわりに回す — ロールで上方向が傾いても、画面上の動きと入力方向が一致する。
     const dist = Math.max(C.OVERVIEW_CAMERA_MIN_DIST,
       Math.min(C.OVERVIEW_CAMERA_MAX_DIST, this.dist * Math.exp(mouse.wheel * 0.0012)));
-    const dir = norm(offEci);
-    const yaw = Math.atan2(dir.z, dir.x) + mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;
-    const pitch = Math.max(-1.4, Math.min(1.4,
-      Math.asin(Math.max(-1, Math.min(1, dir.y))) + mouse.dy * 0.005 + keyPitch * C.CAM_KEY_PITCH_RATE * dt,
-    ));
-    offEci = sphericalOffset(yaw, pitch, dist);
+    upEci = norm(addScaled(upEci, offEci, -dot(upEci, offEci) / dot(offEci, offEci)));
+    const yaw = mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;
+    const pitch = mouse.dy * 0.005 + keyPitch * C.CAM_KEY_PITCH_RATE * dt;
+    if (yaw !== 0) offEci = qRotate(qFromAxisAngle(upEci, -yaw), offEci);
+    const right = norm(cross(norm(offEci), upEci));
+    if (pitch !== 0) {
+      const q = qFromAxisAngle(right, pitch);
+      offEci = qRotate(q, offEci);
+      upEci = qRotate(q, upEci);
+    }
+    offEci = scale(norm(offEci), dist);
 
-    // 視点方向(offEci)が変わったぶん上方向を再直交化してから、視線軸まわりにロールを加える。
+    // 視点方向が変わったぶん上方向を再直交化してから、視線軸まわりにロールを加える。
     const newDir = norm(offEci);
     upEci = norm(addScaled(upEci, newDir, -dot(upEci, newDir)));
     if (keyRoll !== 0) upEci = qRotate(qFromAxisAngle(newDir, keyRoll * C.CAM_KEY_ROLL_RATE * dt), upEci);

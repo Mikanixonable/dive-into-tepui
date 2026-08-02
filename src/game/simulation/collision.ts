@@ -12,8 +12,9 @@ import { Player } from '../player/player';
 const isCasing = (e: GameEntity): boolean => e instanceof DebrisPiece && e.kind === 'casing';
 
 export class CollisionPhysics {
-  // entities は player 以外の衝突参加エンティティ(EntityManager.all() が一本化して渡す —
-  // casings/debris の配列分割は EntityManager 内部の上限管理の都合であり、ここでは扱わない)。
+  // entities は衝突参加エンティティ(EntityManager.all() が一本化して渡す — casings/debris の
+  // 配列分割は EntityManager 内部の上限管理の都合であり、ここでは扱わない)。player はその中の
+  // 操作対象で、マガジンベルトと薬莢接触音を持つ艦としてだけ別に渡す。
   // onHighSpeedImpact は COLLISION_DAMAGE_MIN_SPEED 以上の接触速度で反発したペアにのみ呼ばれる
   // (毎ペア呼び出しのコストを避けるため、足切りはここで行う)。
   resolve(
@@ -25,10 +26,7 @@ export class CollisionPhysics {
   ): void {
     const p = player;
     const beltActive = p.alive && dt > 1e-6;
-    // entities には creativeShips 経由でアクティブ艦(= p)自身が含まれ得るので、
-    // 下で明示的に push する p と同一インスタンスの自己ペアを作らないよう除く。
-    const participants = entities.filter(e => e.alive && e.collideRadius !== undefined && e !== p);
-    if (p.alive) participants.push(p);
+    const participants = entities.filter(e => e.alive && e.collideRadius !== undefined);
     // ベルト状態を読み込み、衝突計算後に書き戻す
     if (beltActive) {
       participants.push(...p.belt.collisionSections(dt, p.state.r, p.state.v, p.att));

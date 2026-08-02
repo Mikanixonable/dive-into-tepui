@@ -1,10 +1,13 @@
 // 点列(時刻付き OrbitState)を1本の単色折れ線として描く汎用描画基盤。OrbitLine(解析的な楕円)の
-// 兄弟で、こちらは数値予測軌道・履歴軌道など「任意の点列」を折れ線化する共通土台になる。
+// 兄弟で、こちらは計画軌道・予測軌道・履歴軌道など「任意の点列」を折れ線化する共通土台になる。
 //
 // 座標変換は physics/frame.ts へ委譲する二段構え:
 //  - bake(点列 or frame が変わったときだけ, syncGeometry): 各サンプルの OrbitState を frame 相対へ
 //    変換し(toFrameState)、位置と速度からエルミート細分した頂点を焼く。点ごとに回転角が違う
-//    非剛体変形なので頂点バッファを作り直す(慣性系なら無変換)。
+//    非剛体変形なので頂点を書き直す(慣性系なら無変換)。BufferGeometry と position 属性は
+//    生成し直さず、確保済みバッファへ書き込んで needsUpdate を立てる — WebGPURenderer は
+//    描画対象ごとに頂点バッファの束縛をキャッシュしており、ジオメトリごと差し替えると
+//    新しい頂点が反映されない。
 //  - un-bake(毎フレーム, syncTransform): 現在時刻 T の剛体回転(toInertialQuat)を line.quaternion
 //    として与え、frame 相対頂点を慣性系へ戻す。全頂点一律なので O(1)。
 //  - フローティングオリジン補正(毎フレーム): line.position = 地球中心の描画フレーム位置。
@@ -24,6 +27,12 @@ const EARTH_CENTER = v3(0, 0, 0);
 // 曲線の膨らみの割合も角度だけで決まる(≈ 角度/8)ので、滑らかさがズーム率に依らない。
 const MAX_EDGE_TURN = (5 * Math.PI) / 180;
 
+// 1本の折れ線が持てる頂点数。ここを超えた分は描かれない。バッファは生成時に確保して以後
+// 差し替えないので(RenderObject が position 属性を生成時にキャッシュするため)、上限は固定。
+// 点列の上限サンプル数(PLAN_ARC_MAX_SAMPLES = 2000)に対して、1辺あたり平均8本の
+// エルミート細分まで吸収できる幅。
+const MAX_VERTICES = 16384;
+
 // 区間 a→b を近似する弦の本数。両端の接線がなす角を MAX_EDGE_TURN ごとに割る。
 // 時刻が同じ/速度が消えている区間は曲線が定まらないので分割しない。
 function chordCount(a: OrbitState, b: OrbitState): number {
@@ -36,8 +45,10 @@ function chordCount(a: OrbitState, b: OrbitState): number {
 
 export class SampledLine {
   readonly line: THREE.Line;
-  private geom = new THREE.BufferGeometry();
+  private readonly geom = new THREE.BufferGeometry();
   private readonly mat: THREE.LineBasicMaterial;
+  private readonly positions = new Float32Array(MAX_VERTICES * 3);
+  private vertexCount = 0;
   private lastSamples: readonly OrbitState[] | null = null;
   private lastFrame: Frame | null = null;
   private wantVisible = true;
@@ -45,6 +56,7 @@ export class SampledLine {
   // 単色の折れ線マテリアル・ジオメトリを構築する。
   constructor(color: number, opacity = 0.85, renderOrder = 2) {
     this.mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
+    this.geom.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
     this.line = new THREE.Line(this.geom, this.mat);
     this.line.frustumCulled = false;
     this.line.renderOrder = renderOrder;
@@ -73,12 +85,17 @@ export class SampledLine {
       verts.push(baked.r.x, baked.r.y, baked.r.z);
       prev = baked;
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
-    this.geom.dispose();
-    this.geom = geo;
-    this.line.geometry = geo;
+    this.writeVertices(verts);
     this.applyVisible();
+  }
+
+  // 頂点列を position 属性へ書き込み、描画範囲をその本数に合わせる。
+  private writeVertices(verts: readonly number[]): void {
+    const n = Math.min(verts.length, this.positions.length);
+    for (let i = 0; i < n; i++) this.positions[i] = verts[i]!;
+    this.vertexCount = n / 3;
+    this.geom.setDrawRange(0, this.vertexCount);
+    this.geom.getAttribute('position').needsUpdate = true;
   }
 
   // 毎フレーム: 剛体 un-bake(line クォータニオン) + フローティングオリジン補正(line 位置)。
@@ -97,7 +114,7 @@ export class SampledLine {
 
   // 折れ線は2点以上ないと描けないので、頂点数不足のときは表示要求に関わらず隠す。
   private applyVisible(): void {
-    this.line.visible = this.wantVisible && (this.lastSamples?.length ?? 0) >= 2;
+    this.line.visible = this.wantVisible && this.vertexCount >= 2;
   }
 
   // ジオメトリ・マテリアルを解放する。
