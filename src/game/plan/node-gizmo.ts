@@ -71,10 +71,9 @@ export class NodeGizmo {
   private readonly root: HTMLDivElement;
   private readonly nodeLayer: HTMLDivElement;
   private readonly axisLayer: HTMLDivElement;
-  private readonly menu = new ContextMenu();
+  private readonly menu = new ContextMenu<number>();
   private readonly nodeEls = new Map<number, NodeEntry>();
   private readonly axisEls: HTMLDivElement[] = [];
-  private menuNodeIdx: number | null = null;
 
   onNodeSelect: ((idx: number) => void) | null = null;
   onNodeDragMove: ((idx: number, clientX: number, clientY: number) => void) | null = null;
@@ -104,18 +103,15 @@ export class NodeGizmo {
     this.root.appendChild(this.axisLayer);
 
     // メニュー選択を対応するノード操作コールバックへ橋渡しする。
-    this.menu.onSelect = (act) => {
-      const idx = this.menuNodeIdx;
-      this.menuNodeIdx = null;
-      if (act === 'warp' && idx !== null) this.onMenuWarpTo?.(idx);
-      else if (act === 'delete' && idx !== null) this.onMenuDelete?.(idx);
+    this.menu.onSelect = (act, idx) => {
+      if (act === 'warp') this.onMenuWarpTo?.(idx);
+      else if (act === 'delete') this.onMenuDelete?.(idx);
     };
   }
 
   // 指定ノードに対するコンテキストメニューを開く。
   openMenu(clientX: number, clientY: number, idx: number): void {
-    this.menuNodeIdx = idx;
-    this.menu.open(clientX, clientY, [
+    this.menu.open(clientX, clientY, idx, [
       { label: 'この時刻まで時間を加速', act: 'warp' },
       { label: 'ノードを削除', act: 'delete' },
       { label: 'キャンセル', act: 'cancel' },
@@ -125,7 +121,6 @@ export class NodeGizmo {
   // コンテキストメニューを閉じる。
   closeMenu(): void {
     this.menu.close();
-    this.menuNodeIdx = null;
   }
 
   // ノードハンドル・Δv アームの DOM を渡された仕様に同期する。仕様に無くなった要素は破棄する。

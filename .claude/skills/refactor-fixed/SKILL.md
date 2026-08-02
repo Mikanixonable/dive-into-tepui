@@ -144,8 +144,10 @@ N 体へ配る」最適化を担うと、`step` の窓口が「位置を渡す�
 
 ## ctx・context・opt・params といった引数は原則使わない
 
-場当たり的なオブジェクト引数は禁止。明示的な引数か、事前に共有した参照で渡す。
-現況と残っている例外は `memos/hedalu244/refactoring_plan/STOP_USING_CTX.md`。
+場当たり的なオブジェクト引数は禁止。明示的な引数か、事前に共有した参照で渡す。既存の `*Ctx`/`*Params`
+はほぼすべて明示引数か共有参照へ展開済みで、唯一残る例外が `Player.behave` のパラメータオブジェクト
+(`memos/hedalu244/refactoring_plan/STOP_USING_CTX.md` に経緯がある)。新規追加も、この生き残りを
+広げることも禁止。
 
 ## 渡すのはクロージャではなくオブジェクトの参照
 
@@ -257,7 +259,7 @@ N 体へ配る」最適化を担うと、`step` の窓口が「位置を渡す�
 
 `CelestialGrid` 自身は可視状態を持たない(6トグルぶんの `boolean` を毎フレーム引数で受け取って
 描くだけ)。**正本は `Navball.gridVisibility`。** `Game.sync` がそれを読み、
-`EnvironmentScene.sync` の `EnvironmentSyncParams` 経由で `CelestialGrid.sync` へ渡す。
+`EnvironmentScene.sync` の `gridVisibility` 引数経由で `CelestialGrid.sync` へ渡す。
 
 理由: グリッドの ON/OFF トグル UI は Navball ウィンドウの一部として置かれている(姿勢儀と天球グリッドは
 別概念だが、画面上どちらも「今どちらを向いているか」を確認する計器という位置づけで同じウィンドウに
@@ -326,6 +328,16 @@ N 体へ配る」最適化を担うと、`step` の窓口が「位置を渡す�
 マーカーも同じ原則で扱う。**マーカーは対象の持ち主が自分の `sync` の中で出す**(`syncMarker` を
 別途公開しない)。対象が1つに定まらないマーカーだけが `marker/` に置かれる — 集合全体を見ないと
 決まらない `GroupedMarkers` と、自機と敵の両方に依存する `LeadMarkers` の2つ。
+
+### コンテキストメニューは対象を自分で保持する(`ContextMenu<T>`)
+
+右クリックメニューは「何に対して開いたか」を**メニュー機構側が持つ**。`hud/context-menu.ts` の
+`ContextMenu<T>` が `open(x, y, target, items)` で対象を保持し、`onSelect(act, target)` で選ばれた
+項目とともに返す。閉じれば対象も破棄されるので、古い対象へ操作が届くことがない。
+
+呼び出し側は「対象を覚えるフィールド + null チェック」を持たない。項目リストと選択後の振る舞い
+だけを持つ。現況: `Game`(`ContextMenu<MapPickable>`)・`Targeter`(`ContextMenu<Enemy>`)・
+`NodeGizmo`(`ContextMenu<number>`)。**「対象を保持するだけ」のラッパークラスを間に挟まない。**
 
 **「どう置くか」は `MarkerManager` の側**に集める。投影して置く(`setPosition`)・方向を仮想距離へ
 飛ばして置く(`setDirection`)・画面外の対象を画面端の円周へ回して置く(`setBearing`)はいずれも

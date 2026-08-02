@@ -34,7 +34,7 @@ import { Ephemeris } from '../physics/ephemeris';
 import { MapModeToggler } from './map-mode-toggler';
 import { NanWatchdog } from './nan-watchdog';
 import { DebugHistoryLine } from './debug-history-line';
-import { MapPickMenu, MapMenuItem } from './map-pick-menu';
+import { ContextMenu, MenuItem } from './hud/context-menu';
 import { MapPickable, pickNearest } from './map-pick';
 import { NavTarget } from './nav-target';
 import { Navball } from './navball/navball';
@@ -58,7 +58,7 @@ export class Game {
   private readonly displayTimeManager: DisplayTimeManager;
   private readonly guide: PlanGuide;
   readonly mapModeToggler: MapModeToggler;
-  private readonly mapPickMenu: MapPickMenu;
+  private readonly mapPickMenu = new ContextMenu<MapPickable>();
 
   readonly activeStage: Stage;
   private _isPaused = false;
@@ -139,7 +139,6 @@ export class Game {
     // クリエイティブモードはマップから始まる。
     this.mapModeToggler = new MapModeToggler(this._hud, launch.mode === 'creative');
     this.mapModeToggler.applyInitialState(this.editor, this.cameraSystem, this.displayTimeManager);
-    this.mapPickMenu = new MapPickMenu();
     this.mapPickMenu.onSelect = (act, target) => {
       if (act === 'focus') {
         this.cameraSystem.overviewCamera.focus = target.id;
@@ -367,21 +366,21 @@ export class Game {
         mapPickables, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ,
       );
       if (!target) return false;
-      this.mapPickMenu.openMenu(p.x, p.y, target, this.mapMenuItemsFor(target));
+      this.mapPickMenu.open(p.x, p.y, target, this.mapMenuItemsFor(target));
       return true;
     });
   }
 
   // 対象を航法ターゲットにする/解除する項目。軌道面が定まらない対象(地球・太陽自身など)
   // では選んでも AN/DN が出ないので項目自体を出さない。
-  private navTargetItems(target: MapPickable): readonly MapMenuItem[] {
+  private navTargetItems(target: MapPickable): readonly MenuItem[] {
     if (target.id === this.navTarget.id) return [{ label: '航法ターゲット解除', act: 'navTarget' }];
     const canTarget = this.navTarget.canTarget(target.id, this.entities, this.ephemeris, this.simulator.simTime);
     return canTarget ? [{ label: '航法ターゲットに設定', act: 'navTarget' }] : [];
   }
 
   // 被選択物の種別に応じたコンテキストメニュー項目を返す。
-  private mapMenuItemsFor(target: MapPickable): readonly MapMenuItem[] {
+  private mapMenuItemsFor(target: MapPickable): readonly MenuItem[] {
     switch (target.kind) {
       case 'body':
         return [
@@ -466,14 +465,10 @@ export class Game {
     const target = this.targeter.aliveTarget;
     const secondaryTarget = this.targeter.aliveSecondaryTarget;
 
-    this.environment.sync({
-      dt,
-      player: this.player,
-      floatingOrigin: this.floatingOrigin,
-      displayTime,
-      cameraSystem: this.cameraSystem,
-      celestialGridVisibility: this.navball.gridVisibility,
-    });
+    this.environment.sync(
+      dt, this.player.state.r, this.floatingOrigin, displayTime,
+      this.cameraSystem, this.navball.gridVisibility,
+    );
 
     for (const ship of this.entities.players) {
       ship.syncPlayer(

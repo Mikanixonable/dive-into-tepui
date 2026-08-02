@@ -11,7 +11,8 @@ import type { Input } from "./input/input";
 import { KEY_MAPPING as K } from "./input/key-mapping";
 import { PlanEditor } from "./plan/plan-editor";
 import { DisplayTimeManager } from "./display-time-manager";
-import { MapPickMenu } from "./map-pick-menu";
+import { ContextMenu } from './hud/context-menu';
+import { MapPickable } from './map-pick';
 
 export class MapModeToggler {
   private _mapMode = false;
@@ -43,10 +44,10 @@ export class MapModeToggler {
     touchControls: TouchControls | null,
     cameraSystem: CameraSystem,
     displayTimeManager: DisplayTimeManager,
-    mapPickMenu: MapPickMenu): void {
+    mapPickMenu: ContextMenu<MapPickable>): void {
     editor.onMapClosed();
     editor.closeMenu();
-    mapPickMenu.closeMenu();
+    mapPickMenu.close();
     this.setMapMode(false, editor, touchControls, cameraSystem, displayTimeManager);
   }
 
@@ -78,7 +79,7 @@ export class MapModeToggler {
     touchControls: TouchControls | null,
     cameraSystem: CameraSystem,
     displayTimeManager: DisplayTimeManager,
-    mapPickMenu: MapPickMenu,
+    mapPickMenu: ContextMenu<MapPickable>,
   ): void {
     // 決着後はマップモードを開けない(既に開いていれば閉じる)
     if (!isPlaying) {

@@ -62,7 +62,7 @@
           - plan.removeNode() // 末尾から Δv が NODE_MIN_DV 未満のノードを削る。有意な Δv のノードに当たったら打ち切る
           - selectedNodeIdx = null
         - editor.closeMenu() → nodeGizmo.closeMenu()
-        - mapPickMenu.closeMenu()
+        - mapPickMenu.close()
         - touchControls?.setMapMode(false)
         - cameraSystem.overviewMode = false / editor.editMode = false / displayTimeManager.forceCurrent = true
         - hud.hint() // plan.nodes.length > 0 のみ
@@ -246,7 +246,7 @@
         - selectedNodeIdx = null // どちらにも当たらなかった場合
     - game.handleMapContextMenu(mapPickables) // ノードに消費されずに残った右クリックだけが届く
       - pickNearest(mapPickables) // MAP_PICK_PX_SQ 以内の被選択物(天体/自機/敵船/nav-AN・DN/アプシス)を最寄りで拾う。候補列は buildMapPickables() の1本
-      - mapPickMenu.openMenu() // 拾えた場合のみ消費。選択結果は mapPickMenu.onSelect(act, target) へ
+      - mapPickMenu.open() // 拾えた場合のみ消費。選択結果は mapPickMenu.onSelect(act, target) へ
         - act='focus' → overviewCamera.focus 代入
         - act='navTarget' → navTarget.toggleTarget()
         - act='warp' → simSpeedManager.startAutoWarpTo(navTarget.passTimeOf(target.id))

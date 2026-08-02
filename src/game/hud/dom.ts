@@ -125,7 +125,8 @@ const STYLE = `
 #hud-overview-camera { display: none; top: 12px; left: 214px; width: 292px; pointer-events: auto; }
 #hud-displaytime { display: none; top: 166px; left: 214px; width: 292px; pointer-events: auto; }
 #hud-displaytime input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
-#hud-displaytime input[type="number"].manual-duration-value {
+/* パネル内の数値・テキスト入力欄の共通見た目(スライダーは上の range 規則が受け持つ)。 */
+#hud .panel input[type="number"], #hud .panel input[type="text"] {
   pointer-events: auto; width: 64px; padding: 3px 6px; font-size: 11px;
   border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK};
 }

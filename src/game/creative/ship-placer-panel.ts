@@ -84,7 +84,6 @@ function numberField(root: HTMLElement, label: string, defaultValue: number, ste
   input.type = 'number';
   input.step = String(step);
   input.value = String(defaultValue);
-  input.className = 'manual-duration-value';
   // #hud はマップドラッグを拾うため、この入力上のポインタ操作がカメラドラッグへ抜けないようにする。
   input.addEventListener('pointerdown', (e) => e.stopPropagation());
   row.appendChild(input);
@@ -204,7 +203,6 @@ export class ShipPlacerPanel {
     nameRow.className = 'hud-seg';
     this.nameInput = document.createElement('input');
     this.nameInput.type = 'text';
-    this.nameInput.className = 'manual-duration-value';
     this.nameInput.placeholder = '艦名(空欄で自動命名)';
     this.nameInput.addEventListener('pointerdown', (e) => e.stopPropagation());
     nameRow.appendChild(this.nameInput);

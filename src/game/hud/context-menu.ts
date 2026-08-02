@@ -1,5 +1,5 @@
-// 画面座標に絶対配置する汎用コンテキストメニュー。右クリックで開き、項目クリックで
-// onSelect(act) を発火して自動で閉じる。
+// 画面座標に絶対配置する汎用コンテキストメニュー。開いた対象 T を保持し、項目クリックで
+// onSelect(act, target) を発火して自動で閉じる。
 import { ACCENT_RGB, ACCENT_SOFT, TEXT as INK, FONT } from '../theme';
 
 const SURFACE = 'rgba(13, 15, 18, 0.85)';
@@ -37,9 +37,11 @@ export interface MenuItem {
   act: string;
 }
 
-export class ContextMenu {
+export class ContextMenu<T> {
   private readonly el: HTMLDivElement;
-  onSelect: ((act: string) => void) | null = null;
+  // 開いているメニューの対象。閉じると破棄されるので、選択結果は必ず開いた対象へ届く。
+  private target: T | null = null;
+  onSelect: ((act: string, target: T) => void) | null = null;
 
   // メニュー要素を DOM に追加する。要素外へのポインタ操作で自動的に閉じる。
   constructor() {
@@ -60,19 +62,22 @@ export class ContextMenu {
     );
   }
 
-  // items を項目として描画し、指定した画面座標に開く。項目クリックで onSelect(act) を発火して閉じる。
-  open(clientX: number, clientY: number, items: MenuItem[]): void {
+  // target を対象として items を描画し、指定した画面座標に開く。項目クリックで
+  // onSelect(act, target) を発火して閉じる。
+  open(clientX: number, clientY: number, target: T, items: readonly MenuItem[]): void {
+    this.target = target;
     // 項目 DOM を組み立てる
     this.el.innerHTML = items
       .map((it) => `<div class="ctx-menu-item" data-act="${it.act}">${it.label}</div>`)
       .join('');
-    // クリックされた項目の act を通知して閉じる
+    // クリックされた項目の act を、開いた時点の対象とともに通知して閉じる
     this.el.querySelectorAll<HTMLElement>('.ctx-menu-item').forEach((item) => {
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         const act = item.dataset['act'] ?? '';
+        const t = this.target;
         this.close();
-        this.onSelect?.(act);
+        if (t !== null) this.onSelect?.(act, t);
       });
     });
     // 指定座標に表示する
@@ -81,8 +86,9 @@ export class ContextMenu {
     this.el.style.display = 'block';
   }
 
-  // メニューを閉じる。
+  // メニューを閉じ、保持中の対象を破棄する。
   close(): void {
     this.el.style.display = 'none';
+    this.target = null;
   }
 }

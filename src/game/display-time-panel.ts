@@ -59,7 +59,6 @@ export class DisplayTimePanel {
     this.manualValue.type = 'number';
     this.manualValue.min = '0';
     this.manualValue.value = '1';
-    this.manualValue.className = 'manual-duration-value';
     this.manualValue.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.manualValue.addEventListener('input', () => this.emitManualDuration());
     this.manualRow.appendChild(this.manualValue);
