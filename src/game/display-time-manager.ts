@@ -4,7 +4,7 @@ import * as C from './const';
 import { DisplayTimePanel } from './display-time-panel';
 import { fmtTime } from './hud/utils';
 
-export type PredictDurationKey = 'orbit' | 'day' | 'week' | 'month' | 'manual';
+export type DisplayDurationKey = 'orbit' | 'day' | 'week' | 'month' | 'manual';
 
 // スライダー下の目盛りの本数(0..1 を等分する点の数)。
 const TICK_COUNT = 6;
@@ -13,14 +13,11 @@ export class DisplayTimeManager {
   // 未来表示を禁止するフラグ(初期値 true = 戦闘ビューでは禁止)。
   forceCurrent = true;
 
-  durationKey: PredictDurationKey = 'day';
-  // マップモードの未来ゴーストスライダー位置(0..1、0 でゴースト非表示)。
+  durationKey: DisplayDurationKey = 'day';
+  // マップモードの未来ゴーストスライダー位置(0..1、0 で現在時刻)。
   sliderT = 0;
   // 'manual' 選択時に使う表示期間 [s]。DISPLAY_DURATION_MAX でクランプする。
-  manualDurationSec = C.PREDICT_DUR_DAY;
-
-  // 表示期間の非連続な切替を通知するコールバック。
-  onDurationChange: (() => void) | null = null;
+  manualDurationSec = C.DISPLAY_DUR_DAY;
 
   private readonly panel: DisplayTimePanel;
 
@@ -29,14 +26,12 @@ export class DisplayTimeManager {
     this.panel = new DisplayTimePanel(hudRoot);
     this.panel.onDurationSelect = (key) => {
       this.durationKey = key;
-      this.onDurationChange?.();
     };
     this.panel.onSliderChange = (t) => {
       this.sliderT = t;
     };
     this.panel.onManualDurationChange = (sec) => {
       this.manualDurationSec = Math.max(0, Math.min(C.DISPLAY_DURATION_MAX, sec));
-      this.onDurationChange?.();
     };
   }
 
@@ -44,12 +39,12 @@ export class DisplayTimeManager {
   durationSec(orbitPeriod: number | null): number {
     if (this.durationKey === 'orbit') {
       if (orbitPeriod !== null && isFinite(orbitPeriod) && orbitPeriod > 0) return orbitPeriod;
-      return C.PREDICT_DUR_DAY; // 双曲線・放物線軌道では1日にフォールバック
+      return C.DISPLAY_DUR_DAY; // 双曲線・放物線軌道では1日にフォールバック
     }
-    if (this.durationKey === 'week') return C.PREDICT_DUR_WEEK;
-    if (this.durationKey === 'month') return C.PREDICT_DUR_MONTH;
+    if (this.durationKey === 'week') return C.DISPLAY_DUR_WEEK;
+    if (this.durationKey === 'month') return C.DISPLAY_DUR_MONTH;
     if (this.durationKey === 'manual') return this.manualDurationSec;
-    return C.PREDICT_DUR_DAY;
+    return C.DISPLAY_DUR_DAY;
   }
 
   // スライダーが有効な間は未来の simTime を返す。forceCurrent またはスライダー原点では simTime をそのまま返す。

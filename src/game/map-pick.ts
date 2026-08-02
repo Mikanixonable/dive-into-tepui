@@ -2,7 +2,7 @@
 import { Vec3 } from '../physics/vec3';
 import type { ProjectFn } from './camera/camera-system';
 
-export type MapPickKind = 'body' | 'ship' | 'apsis' | 'relnode' | 'creativeShip';
+export type MapPickKind = 'body' | 'ship' | 'player' | 'apsis' | 'relnode';
 
 export interface MapPickable {
   readonly id: string;
@@ -12,8 +12,8 @@ export interface MapPickable {
 }
 
 // items を project で画面へ射影し、(x, y) から半径 radiusPxSq [px^2] 以内で最も近いものを返す。
-// 圏外なら null。
-export function pickNearest<T extends MapPickable>(
+// 圏外なら null。ワールド座標さえ持てば何でも渡せる(`MapPickable` である必要はない)。
+export function pickNearest<T extends { readonly pos: Vec3 }>(
   items: readonly T[],
   x: number,
   y: number,

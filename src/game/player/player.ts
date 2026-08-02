@@ -50,6 +50,8 @@ export class Player extends Ship {
   readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55);
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
+  // ON の間、この艦は自分の計画のノード時刻を跨いだ時点でそのノードの絶対状態へ乗り移る。
+  followPlan = false;
 
   private readonly _hud: Hud;
   private readonly _sfx: Sfx;
@@ -58,7 +60,7 @@ export class Player extends Ship {
   fineAttitude = false;
 
   // name・initialState 省略時は高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の円軌道に機首プログレード
-  // で初期配置する。クリエイティブモードの CreativeShip は両方を指定して複数隻を区別する。
+  // で初期配置する。複数隻を並べるときは両方を指定して区別する(name が艦の識別子になる)。
   constructor(
     _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
     name = 'PLAYER', initialState?: OrbitState) {
@@ -316,16 +318,18 @@ export class Player extends Ship {
   }
 
   // 自機のメッシュ・エフェクト・ベルト・マーカー・軌道線を displayTime の状態へ同期する。
+  // isActive はこの艦が操作対象かどうか。操作対象だけがガンサイト時に隠れ、方位マーカーを出す。
   syncPlayer(
     fo: FloatingOrigin,
     camera: CameraSystem,
     phasePlaying: boolean,
     paused: boolean,
     displayTime: number,
+    isActive: boolean,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
-    this.obj.visible = displayState !== null && this.alive && !camera.zoomActive;
+    this.obj.visible = displayState !== null && this.alive && !(isActive && camera.zoomActive);
     if (displayState !== null) {
       this.obj.position.copy(fo.RtoThreeV3(displayState.r));
       this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
@@ -338,8 +342,10 @@ export class Player extends Ship {
     this.belt.sync(this.alive);
     this.radiator.sync();
     this.power.sync();
-    // マーカーと軌道線
-    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection);
+    // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
+    if (isActive) {
+      this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection);
+    }
 
     this.orbitLine.sync(this.alive ? this.elements : null, fo, this.thrustVizDir !== null, this.state.r);
   }

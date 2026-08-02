@@ -13,7 +13,7 @@ import { ProjectFn } from './camera/camera-system';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { MarkerManager } from './marker/marker-manager';
 import { FloatingOrigin } from './floating-origin';
-import { MapPickable, pickNearest } from './map-pick';
+import { pickNearest } from './map-pick';
 
 export class Targeter {
   // 唯一の真実。右クリックメニューでのみ変わり、自動選定・自動再選択は行わない。
@@ -21,8 +21,7 @@ export class Targeter {
   secondaryTarget: Enemy | null = null;
 
   // ターゲット標的面(自機の方を向いた仮想の的)の通過点(ターゲット相対オフセットで
-  // 保持し、的に貼り付いて見せる)。markBoardCrossings が push し、updateBoardMarkers
-  // が寿命管理と描画を行う。
+  // 保持し、的に貼り付いて見せる)。updateBoardMarks が寿命を持ち、syncBoardMarkers が描く。
   boardMarks: { off: Vec3; age: number; }[] = [];
 
   // ターゲット軌道のハイライト線(オレンジ)。自機軌道とほぼ重なるケースが多い
@@ -32,9 +31,7 @@ export class Targeter {
   // 第二ターゲットのハイライト線(シアン)。第一より薄い renderOrder に置く。
   readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9);
 
-  private readonly contextMenu = new ContextMenu();
-  // 開いているメニューが選択されたときに適用すべき対象。メニュー展開中だけ有効。
-  private currentMenuTarget: Enemy | null = null;
+  private readonly contextMenu = new ContextMenu<Enemy>();
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
   constructor(private readonly _hud: Hud, _sfx: Sfx, private readonly markerManager: MarkerManager, scene: THREE.Scene) {
@@ -42,7 +39,10 @@ export class Targeter {
     this.orbitLine.line.renderOrder = 3;
     scene.add(this.secondaryOrbitLine.line);
     scene.add(this.orbitLine.line);
-    this.contextMenu.onSelect = (act) => this.applyMenuAct(act);
+    this.contextMenu.onSelect = (act, hit) => {
+      if (act === 'primary') this.setTarget(this.target === hit ? null : hit);
+      else if (act === 'secondary') this.setSecondaryTarget(this.secondaryTarget === hit ? null : hit);
+    };
   }
 
   // 生存判定込みの現在の第一ターゲット。撃破後は target を保持したままにせず、ここで
@@ -67,12 +67,20 @@ export class Targeter {
     this.handleTargetContextMenu(input, enemies, player, project);
   }
 
-  // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
-  // 発射弾がその面を自機側から通過した点をターゲット相対で記録する。
-  // 次弾の照準修正の目安になるマーカーとして一定時間表示する。
-  markBoardCrossings(player: Player, entities: EntityManager): void {
+  // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
+  // 通過した点をターゲット相対で記録する。既存の記録は経過時間を進め、寿命切れを捨てる。
+  updateBoardMarks(dt: number, player: Player, entities: EntityManager): void {
     const target = this.aliveTarget;
-    if (!target) return;
+    // 記録側と描画側で同じ aliveTarget を見る: target のままだと撃破後も死亡個体の
+    // 凍結位置を基準に ✦ を残し続けてしまう。
+    if (!target) {
+      this.boardMarks.length = 0;
+      return;
+    }
+    this.boardMarks = this.boardMarks.filter((m) => {
+      m.age += dt;
+      return m.age < C.BOARD_MARK_LIFETIME;
+    });
     const n = norm(sub(target.state.r, player.state.r)); // 的の法線 = 視線方向
     if (lenSq(n) < 0.5) return;
 
@@ -94,9 +102,9 @@ export class Targeter {
 
   // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー)をまとめて更新する。
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
-  sync(dt: number, fo: FloatingOrigin, player: Player, enemies: Enemy[], overviewMode: boolean, project: ProjectFn): void {
+  sync(fo: FloatingOrigin, player: Player, enemies: Enemy[], overviewMode: boolean, project: ProjectFn): void {
     this.syncOrbitLine(fo, enemies, overviewMode);
-    this.syncBoardMarkers(dt, project);
+    this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
 
@@ -114,15 +122,8 @@ export class Targeter {
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
-  private syncBoardMarkers(dt: number, project: ProjectFn): void {
-    // 記録側の markBoardCrossings と同じ aliveTarget を見る: target のままだと
-    // 撃破後も死亡個体の凍結位置を基準に ✦ を描き続けてしまう。
+  private syncBoardMarkers(project: ProjectFn): void {
     const target = this.aliveTarget;
-    if (!target) this.boardMarks.length = 0;
-    this.boardMarks = this.boardMarks.filter((m) => {
-      m.age += dt;
-      return m.age < C.BOARD_MARK_LIFETIME;
-    });
     for (let i = 0; i < C.MAX_BOARD_MARKS; i++) {
       const key = `bh${i}`;
       const m = this.boardMarks[i];
@@ -163,31 +164,19 @@ export class Targeter {
 
   // クリック位置の許容半径内で画面上最も近い生存敵を返す。範囲外なら null。
   private pickEnemyAt(click: PointerPoint, enemies: Enemy[], project: ProjectFn): Enemy | null {
-    const pickables: (MapPickable & { readonly enemy: Enemy; })[] = enemies
-      .filter((enemy) => enemy.alive)
-      .map((enemy) => ({ id: enemy.name, name: enemy.name, pos: enemy.state.r, kind: 'ship', enemy }));
+    const pickables = enemies.filter((e) => e.alive).map((enemy) => ({ pos: enemy.state.r, enemy }));
     const hit = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);
     return hit?.enemy ?? null;
   }
 
   // hit を対象に、現在の第一/第二設定に応じたラベルでメニューを開く。
   private openMenu(click: PointerPoint, hit: Enemy): void {
-    this.currentMenuTarget = hit;
     const items: MenuItem[] = [
       { label: hit === this.target ? 'ターゲット解除' : 'ターゲットに設定', act: 'primary' },
       { label: hit === this.secondaryTarget ? '第二ターゲット解除' : '第二ターゲットに設定', act: 'secondary' },
       { label: 'キャンセル', act: 'cancel' },
     ];
-    this.contextMenu.open(click.x, click.y, items);
-  }
-
-  // メニュー選択結果を、開いた時点の対象へ適用する。
-  private applyMenuAct(act: string): void {
-    const hit = this.currentMenuTarget;
-    this.currentMenuTarget = null;
-    if (!hit) return;
-    if (act === 'primary') this.setTarget(this.target === hit ? null : hit);
-    else if (act === 'secondary') this.setSecondaryTarget(this.secondaryTarget === hit ? null : hit);
+    this.contextMenu.open(click.x, click.y, hit, items);
   }
 
   // 第一ターゲットを設定する。同じ個体が第二ターゲットなら外す(両方兼務を禁止)。

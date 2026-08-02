@@ -17,6 +17,8 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from '../marker/marker-manager';
+import type { Ephemeris } from '../../physics/ephemeris';
+import type { Simulator } from '../simulation/simulator';
 
 export type StageId = '00' | '0' | '1' | '2' | 'debug';
 
@@ -50,6 +52,10 @@ export abstract class Stage {
   protected _scene!: THREE.Scene;
   protected _fx!: EffectsSystem;
   protected _unlockManager!: UnlockManager;
+  protected _entities!: EntityManager;
+  protected _markerManager!: MarkerManager;
+  protected _ephemeris!: Ephemeris;
+  protected _simulator!: Simulator;
 
   private _phase: GamePhase = 'playing';
   get phase(): GamePhase { return this._phase; }
@@ -65,12 +71,18 @@ export abstract class Stage {
     unlockManager: UnlockManager,
     fx: EffectsSystem,
     markerManager: MarkerManager,
+    ephemeris: Ephemeris,
+    simulator: Simulator,
   ): void {
     this._hud = hud;
     this._sfx = sfx;
     this._scene = scene;
     this._unlockManager = unlockManager;
     this._fx = fx;
+    this._entities = entities;
+    this._markerManager = markerManager;
+    this._ephemeris = ephemeris;
+    this._simulator = simulator;
     this._phase = 'playing';
     this.logistics = new Logistics(hud, sfx, scene, entities, markerManager);
     this.statusPanel = new StageStatusPanel(hud.root);
@@ -165,6 +177,8 @@ export abstract class Stage {
 
   // 敗北を記録し、reason を添えて敗北画面を表示する。
   recordPlayerLost(reason: string): void {
+    // isPlaying ガード: 勝利後に自機が再突入しても敗北で上書きしないよう。
+    if (!this.isPlaying) return;
     this.setPhase('lost');
     showResultScreen(this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);
   }
