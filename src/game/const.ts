@@ -1,7 +1,7 @@
 // ゲームバランス・チューニング定数
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/orbital';
 
-// クリエイティブモードで配置できる CreativeShip の上限隻数。
+// クリエイティブモードで配置できる艦の上限隻数。
 export const CREATIVE_MAX_SHIPS = 8;
 
 // クリエイティブモードのラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
