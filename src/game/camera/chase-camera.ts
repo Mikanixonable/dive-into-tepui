@@ -29,8 +29,14 @@ export class ChaseCamera {
 
   constructor(
     private readonly _hud: Hud,
-    private readonly player: Player,
+    private player: Player,
   ) { }
+
+  // 追従先の艦を差し替える(アクティブ艦の切替)。姿勢基準の rot はそのまま新しい艦の姿勢に対する
+  // 相対値として使い回す。
+  setPlayer(player: Player): void {
+    this.player = player;
+  }
 
   // 視点の基準フレーム(機体姿勢基準 true ⇔ ワールド基準 false)。書き換え時に rot を読み替える。
   get camFollowAttitude(): boolean {
@@ -61,7 +67,7 @@ export class ChaseCamera {
   }
 
   // キー/マウス入力から rot/dist を更新し、player の状態から視点を view へ書き戻す。
-  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number): void {
+  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number): void {
     let q = this._camFollowAttitude ? qMul(this.player.att.q, this.rot) : this.rot;
 
     const right = qRotate(q, v3(1, 0, 0));
@@ -70,6 +76,7 @@ export class ChaseCamera {
 
     if (keyYaw !== 0) q = qMul(qFromAxisAngle(up, -keyYaw * C.CAM_KEY_YAW_RATE * dt), q);
     if (keyPitch !== 0) q = qMul(qFromAxisAngle(right, keyPitch * C.CAM_KEY_PITCH_RATE * dt), q);
+    if (keyRoll !== 0) q = qMul(qFromAxisAngle(view, keyRoll * C.CAM_KEY_ROLL_RATE * dt), q);
 
     // ドラッグベクトルと視線ベクトルの外積を回転軸とする: 軸は視線と直交するので視線まわりの
     // ロールが生じず、「カメラから見て」ドラッグ方向とカメラの回転方向が一致する。

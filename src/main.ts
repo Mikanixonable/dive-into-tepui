@@ -10,16 +10,19 @@ import { Hud } from './game/hud/hud';
 import { SettingsPanel } from './game/hud/settings-panel';
 import { Sfx } from './audio/sfx';
 import { UnlockManager } from './game/unlock-manager';
-import { StageId } from './game/stages/stage';
 import { isStageId } from './game/stages/stage-dictionary';
-import { selectStage } from './game/stages/stage-select';
+import { selectLaunch } from './game/launch-select';
+import { LaunchSelection } from './game/game-mode';
 
 
-// ?stage=00|0|1|2 で選択画面をスキップ(デバッグ・共有リンク用)。指定が無い/不正なら選択画面を出す。
-export async function resolveStageSelection(unlockManager: UnlockManager): Promise<StageId> {
-  const stageParam = new URLSearchParams(location.search).get('stage');
-  if (isStageId(stageParam)) return stageParam;
-  return selectStage(unlockManager);
+// ?stage=00|0|1|2 または ?mode=creative で起動選択画面をスキップ(デバッグ・共有リンク用)。
+// 指定が無い/不正なら選択画面を出す。
+export async function resolveLaunchSelection(unlockManager: UnlockManager): Promise<LaunchSelection> {
+  const params = new URLSearchParams(location.search);
+  if (params.get('mode') === 'creative') return { mode: 'creative' };
+  const stageParam = params.get('stage');
+  if (isStageId(stageParam)) return { mode: 'stage', stage: stageParam };
+  return selectLaunch(unlockManager);
 }
 
 // WebGPU 初期化(シェーダーコンパイル等でしばらく無反応になり得る)の間に表示する
@@ -115,9 +118,9 @@ async function main() {
   // レンダラ初期化
   const gs = await initScene();
   const { hud, sfx, settingsPanel } = initHud();
-  // ステージ決定とゲーム生成
-  const stageId = await resolveStageSelection(unlockmanager);
-  const game = new Game(gs, stageId, hud, sfx, settingsPanel, unlockmanager);
+  // モード/ステージ決定とゲーム生成
+  const launch = await resolveLaunchSelection(unlockmanager);
+  const game = new Game(gs, launch, hud, sfx, settingsPanel, unlockmanager);
   // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
   settingsPanel.onSettingsOpenChange = (open) => {
     if (open) game.pause();
