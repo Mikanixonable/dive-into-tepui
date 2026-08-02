@@ -185,12 +185,6 @@ WP-E3 は「Richardson の三次近似解を使う(推奨)」で、指示書 §6
   モジュール 200行 の基準を大きく超える。`ship-placer-panel.ts` はフィールド宣言だけで20行以上あり、
   「軌道要素フォーム」と「ラグランジュ点フォーム」で分割の余地がある。
 
-### 11. `navTarget.update` の呼び出し位置
-
-`Game.update` の**先頭**(`stepSimulation` より前)で呼ばれるため、AN/DN の位置と
-同フレームで sync されるメッシュとの間に1ステップぶんのずれがある。
-`buildMapPickables` の `displayState(displayTime)` も同様。ワープ倍率が高いほど無視できなくなる。
-
 ---
 
 ## 5. よかった点(残すべき判断)
@@ -222,7 +216,7 @@ WP-E3 は「Richardson の三次近似解を使う(推奨)」で、指示書 §6
 1. **3-E** — ×131072 の精度を実測し、`SUBSTEP_MAX_COUNT` を上げるか最上段を落とす。
 2. **4-4** — `OverviewCamera` のロールとヨー/ピッチの噛み合わせ。
 3. **4-9 / 4-8** — 天球グリッド可視状態の置き場所、ハロー軌道の近似次数。どちらも要判断。
-4. **4-10 / 4-11** — 行数、`navTarget.update` の呼び出し位置。
+4. **4-10** — `game.ts` / `plan-editor.ts` / `ship-placer-panel.ts` の行数。
 5. **4-7** — `CreativeStage.simTime` の正データ重複。
 
 ---

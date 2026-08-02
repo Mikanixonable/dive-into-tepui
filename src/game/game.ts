@@ -230,11 +230,9 @@ export class Game {
     const dt = Math.min(dtRaw, 0.1);
     this.handleInput();
 
-    this.navTarget.update(this.player, this.entities, this.ephemeris, this.simulator.simTime);
-    const mapPickables = this.buildMapPickables();
-
     // handleInput より後に置く: ポーズ中も Esc・ヘルプなどは効かせる。
     if (this._isPaused) {
+      const mapPickables = this.refreshMapPickables();
       if (this.editor.editMode) {
         this.editor.handleMapPointer(this.input);
         this.handleMapContextMenu(this.input, mapPickables);
@@ -254,7 +252,9 @@ export class Game {
       this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
       // 決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
       // 軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする。
-      this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt, mapPickables);
+      this.cameraSystem.update(
+        this.player, this.simulator.simTime, this.input, dt, this.refreshMapPickables(),
+      );
       return;
     }
 
@@ -306,7 +306,9 @@ export class Game {
     this.predictor.update(this.simulator.simTime, this.player);
 
     // 物理積分の後に行う: 追従カメラの基準は sync 時のフローティングオリジン
-    // (積分後の自機位置)と一致していなければならない。
+    // (積分後の自機位置)と一致していなければならない。被選択物の座標も同じ理由で
+    // ここまで待つ — 積分前に組むと、同フレームで sync されるメッシュと1ステップずれる。
+    const mapPickables = this.refreshMapPickables();
     this.cameraSystem.update(
       this.player,
       this.simulator.simTime,
@@ -421,6 +423,13 @@ export class Game {
           { label: 'キャンセル', act: 'cancel' },
         ];
     }
+  }
+
+  // 航法ターゲットの AN/DN を求め直し、このフレームの被選択物一覧を組んで返す。AN/DN は
+  // 一覧の一部なので、両者は必ずこの順で対にして呼ぶ。
+  private refreshMapPickables(): MapPickable[] {
+    this.navTarget.update(this.player, this.entities, this.ephemeris, this.simulator.simTime);
+    return this.buildMapPickables();
   }
 
   // フォーカス/航法ターゲット選択の被選択物一覧(天体ラベル + 生存中の自機・敵船 +
