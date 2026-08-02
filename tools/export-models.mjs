@@ -11,13 +11,29 @@
 // src/ 配下では 'three/webgpu' 以外から THREE をインポートしてはならない
 // (クラスの重複を避けるため)。
 import * as THREE from 'three';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import ts from 'typescript';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = join(__dirname, '..', 'src', 'assets', 'models');
 mkdirSync(outDir, { recursive: true });
+
+// --- src/render/rcs-nozzles.ts を JS にトランスパイルして動的 import ---
+// Node 単体で .ts を import できないため、devDependency の TypeScript コンパイラで
+// その場に変換する(tools/export-earth-texture.mjs と同じ手口)。
+const nozzleSrcPath = join(__dirname, '..', 'src', 'render', 'rcs-nozzles.ts');
+const { outputText } = ts.transpileModule(readFileSync(nozzleSrcPath, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  fileName: 'rcs-nozzles.ts',
+});
+const nozzleTmpDir = mkdtempSync(join(tmpdir(), 'tepui-rcs-nozzles-'));
+const nozzleTmpPath = join(nozzleTmpDir, 'rcs-nozzles.mjs');
+writeFileSync(nozzleTmpPath, outputText, 'utf8');
+const { RCS_NOZZLES } = await import(pathToFileURL(nozzleTmpPath).href);
+rmSync(nozzleTmpDir, { recursive: true, force: true });
 
 function std(color, opts = {}) {
   return new THREE.MeshStandardMaterial({
@@ -35,19 +51,11 @@ const MUZZLE_OFFSETS = [
   { x: 0, y: -0.55, z: 2.55 },
 ];
 
-// RCS スラスタブロックの機体座標
-const RCS_BLOCK_OFFSETS = [
-  { x: 1.0, y: 0.85, z: 1.9 },
-  { x: -1.0, y: 0.85, z: 1.9 },
-  { x: 1.0, y: -0.85, z: 1.9 },
-  { x: -1.0, y: -0.85, z: 1.9 },
-];
-
 // ------------------------------------------------------------- 自機
 
 // 自機: テーパードハル + 突き出した砲身 + ベルノズルエンジン + 大型ソーラーパネル
 // コックピット窓・アンテナ・アーマーストリップを追加してリッチ化。
-// 機首は +Z 方向。MUZZLE_OFFSETS/RCS_BLOCK_OFFSETS 座標は維持。
+// 機首は +Z 方向。
 function buildPlayerShip() {
   const g = new THREE.Group();
 
@@ -276,18 +284,31 @@ function buildPlayerShip() {
     }
   }
 
-  // === 並進RCS ノズル(前進RCSの他に、左右 +X/-X 方向と上下 +Y/-Y 方向を追加) ===
+  // === 姿勢制御RCS(機首側4隅のブロックに、噴射方向へ開くノズルベルと前進用ノズル) ===
   const rcsMat      = std(0x9aa3ad, { metalness: 0.52 });
   const rcsNozzMat  = std(0xb5bfc9, { metalness: 0.72, roughness: 0.28 });
-  // 前進RCS ノズル(元コードから継承)
-  for (const p of RCS_BLOCK_OFFSETS) {
-    const rcs = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.30, 0.30), rcsMat);
-    rcs.position.set(p.x, p.y, p.z);
-    g.add(rcs);
-    const nozzleSmall = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.11, 6), rcsNozzMat);
-    nozzleSmall.rotation.x = Math.PI / 2;
-    nozzleSmall.position.set(p.x, p.y, p.z + 0.21);
-    g.add(nozzleSmall);
+  const rcsBlockKeys = new Set();
+  for (const n of RCS_NOZZLES) {
+    const blockKey = `${n.pos.x},${n.pos.y},${n.pos.z}`;
+    // 同じ取付位置に複数のノズルが載るので、ブロック本体は最初の1基でだけ作る
+    if (!rcsBlockKeys.has(blockKey)) {
+      rcsBlockKeys.add(blockKey);
+      const rcs = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.30, 0.30), rcsMat);
+      rcs.position.set(n.pos.x, n.pos.y, n.pos.z);
+      g.add(rcs);
+      const nozzleSmall = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.11, 6), rcsNozzMat);
+      nozzleSmall.rotation.x = Math.PI / 2;
+      nozzleSmall.position.set(n.pos.x, n.pos.y, n.pos.z + 0.21);
+      g.add(nozzleSmall);
+    }
+    // 噴射方向へ広がるベル(CylinderGeometry のローカル +Y を dir へ向ける)
+    const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.07, 0.13, 6), rcsNozzMat);
+    bell.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(n.dir.x, n.dir.y, n.dir.z),
+    );
+    bell.position.set(n.pos.x + n.dir.x * 0.2, n.pos.y + n.dir.y * 0.2, n.pos.z + n.dir.z * 0.2);
+    g.add(bell);
   }
 
   // 左右向き並訳RCS (機体中央附近、前後 2 箇所)
