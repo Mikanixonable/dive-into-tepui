@@ -10,16 +10,6 @@ import { CelestialGrid, CelestialGridVisibility } from './celestial-grid';
 import { CameraSystem } from '../game/camera/camera-system';
 import { FloatingOrigin } from '../game/floating-origin';
 import * as C from '../game/const';
-import { Player } from '../game/player/player';
-
-export interface EnvironmentSyncParams {
-  dt: number;
-  player: Player;
-  floatingOrigin: FloatingOrigin;
-  displayTime: number;
-  cameraSystem: CameraSystem;
-  celestialGridVisibility: CelestialGridVisibility;
-}
 
 // 地球メッシュは地球中心(ECI 原点)基準。group.position はその原点の描画フレーム位置。
 const EARTH_CENTER = v3(0, 0, 0);
@@ -86,18 +76,25 @@ export class EnvironmentScene {
     this.celestialGrid = new CelestialGrid(scene);
   }
 
-  // 地球・空の天体・照明・参照線を、この1フレームの表示状態に同期する。
-  sync(params: EnvironmentSyncParams): void {
-    const { dt, player, floatingOrigin, displayTime, cameraSystem, celestialGridVisibility } = params;
+  // 地球・空の天体・照明・参照線・天球グリッドを、この1フレームの表示状態に同期する。
+  // playerPos は照明の日照率を引く基準位置。
+  sync(
+    dt: number,
+    playerPos: Vec3,
+    floatingOrigin: FloatingOrigin,
+    displayTime: number,
+    cameraSystem: CameraSystem,
+    gridVisibility: CelestialGridVisibility,
+  ): void {
     this.syncEarth(dt, floatingOrigin, displayTime);
     this.syncSkyBodies(displayTime, floatingOrigin, cameraSystem);
 
     // lit は自機位置の日照率(円柱影の近似)。物理的に正確ではない。
-    const lit = cameraSystem.overviewMode ? 1.0 : sunlitFactor(player.state.r, this.ephemeris.sunDirAt(displayTime), C.SHADOW_PENUMBRA);
+    const lit = cameraSystem.overviewMode ? 1.0 : sunlitFactor(playerPos, this.ephemeris.sunDirAt(displayTime), C.SHADOW_PENUMBRA);
     this.syncLighting(lit);
 
     this.syncReferenceLines(displayTime, floatingOrigin, cameraSystem.overviewMode);
-    this.celestialGrid.sync(celestialGridVisibility, cameraSystem);
+    this.celestialGrid.sync(gridVisibility, cameraSystem);
   }
 
   // 広範囲視点のときだけ geo/moon の参照線を表示する(戦闘ビューでは非表示)。

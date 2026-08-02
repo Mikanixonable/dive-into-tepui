@@ -133,26 +133,9 @@
 `SUBSTEP_MAX_COUNT` を上げるか、最上段を諦めてユーザーに報告すること」と明示していたが、
 定数にもコミットログにも対処の形跡がない。上位1〜2段は精度保証の外にある。
 
-### F. `ship-placer-panel.ts` の数値入力にスタイルが当たっていない
-
-`numberField` が `input.className = 'manual-duration-value'` を付けているが、
-`dom.ts` の該当セレクタは `#hud-displaytime input[type="number"].manual-duration-value` で
-**`#hud-displaytime` 配下にスコープされている。** パネル id は `hud-shipplacer` なので無効。
-かつ、クラス名が別モジュール(表示期間の手動レンジ)の概念を指しており、命名規約の
-「類義語の混雑 / 混同のおそれ」に該当する。
-
 ---
 
 ## 4. 責務漏洩・リファクタリング規約違反
-
-### 1. `EnvironmentSyncParams` を広げた ★規約の明示的違反
-
-CLAUDE.md:「**`*Ctx` snapshot objects are a rejected pattern here — don't add new ones and don't widen
-the survivors.** …what remains is `EnvironmentSyncParams`」。
-今回 `celestialGridVisibility: CelestialGridVisibility` をこの残存 Ctx に**追加**した。
-指示書自身も WP-D2a で「`EnvironmentScene.sync` へ引数で渡す(`*Ctx` 禁止)」と書いていたので、
-指示書からも規約からも外れている。`refactor-fixed` には「`EnvironmentSyncParams` 経由で渡す」と
-**違反した形のまま確定判断として記録されてしまっている**ので、ここは巻き戻すか判断を改める必要がある。
 
 ### 2. `game.ts` が大きい
 
@@ -168,14 +151,6 @@ the survivors.** …what remains is `EnvironmentSyncParams`」。
 `sphericalOffset(yaw, pitch, dist)` = ワールド Y 軸基準で計算されている。
 90° ロールした状態で左右ドラッグしても、画面上の見た目と回転方向が一致しない。
 `ChaseCamera` 側は現在の右/上軸を使うのでこの問題は無い。両者で操作感が割れている。
-
-### 5. `Targeter` がコンテキストメニュー機構を再実装している
-
-`MapContextGizmo` = 「`ContextMenu` + 対象保持 + 項目は呼び出し側」。
-`Targeter` の `contextMenu` + `currentMenuTarget` + `applyMenuAct` は同じ形の再実装。
-`MapContextGizmo` は `MapPickable` を握る形なので `Enemy` をそのまま渡せない、というのが
-理由だとは推測できるが、**「同じ処理が複数箇所に分散している」実装の重複**にあたる。
-`MapContextGizmo` を `<T>` にするか、対象保持を呼び出し側に戻すかで解消できる。
 
 ### 7. `CreativeStage` の `private simTime`
 
@@ -244,14 +219,11 @@ WP-E3 は「Richardson の三次近似解を使う(推奨)」で、指示書 §6
 
 ## 6. 次に手を入れるなら(優先順)
 
-1. **4-1** — `EnvironmentSyncParams` から `celestialGridVisibility` を引数へ出し、
-   `refactor-fixed` の該当節を書き換える。
-2. **4-5** — `Targeter` のコンテキストメニュー再実装を `MapPickMenu` の共有へ寄せる。
-3. **3-F** — `ship-placer-panel.ts` の数値入力に効いていない CSS クラス名。
-4. **3-E** — ×131072 の精度を実測し、`SUBSTEP_MAX_COUNT` を上げるか最上段を落とす。
-5. **4-4** — `OverviewCamera` のロールとヨー/ピッチの噛み合わせ。
-6. **4-9 / 4-8** — 天球グリッド可視状態の置き場所、ハロー軌道の近似次数。どちらも要判断。
-7. **4-10 / 4-11** — 行数、`navTarget.update` の呼び出し位置。
+1. **3-E** — ×131072 の精度を実測し、`SUBSTEP_MAX_COUNT` を上げるか最上段を落とす。
+2. **4-4** — `OverviewCamera` のロールとヨー/ピッチの噛み合わせ。
+3. **4-9 / 4-8** — 天球グリッド可視状態の置き場所、ハロー軌道の近似次数。どちらも要判断。
+4. **4-10 / 4-11** — 行数、`navTarget.update` の呼び出し位置。
+5. **4-7** — `CreativeStage.simTime` の正データ重複。
 
 ---
 
