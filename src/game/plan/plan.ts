@@ -63,13 +63,15 @@ export class Plan {
     this._nodes.length = idx;
   }
 
-  // 実行時刻が t 以前のノードを実行済みとして取り除き、最後に取り除いたノードを新しい起点に据える。
-  dropNodesBefore(t: number): void {
+  // 実行時刻が t 以前のノードを実行済みとして取り除き、最後に取り除いたノードを新しい起点に据えて
+  // 返す。取り除くものが無ければ null。
+  dropNodesBefore(t: number): OrbitState | null {
     let dropped = 0;
     while (this._nodes[dropped] && this._nodes[dropped]!.t <= t) dropped++;
-    if (dropped === 0) return;
+    if (dropped === 0) return null;
     this._anchor = this._nodes[dropped - 1]!;
     this._nodes.splice(0, dropped);
+    return this._anchor;
   }
 
   // 全ノードを削除する。

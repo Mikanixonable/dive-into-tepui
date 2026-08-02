@@ -12,6 +12,7 @@ import { register as registerFrame } from './frame.test';
 import { register as registerDeque } from './deque.test';
 import { register as registerStateQueue } from './state-queue.test';
 import { register as registerOrbitEntity } from './orbit-entity.test';
+import { register as registerHalo } from './halo.test';
 
 registerVec3();
 registerOrbital();
@@ -24,5 +25,6 @@ registerFrame();
 registerDeque();
 registerStateQueue();
 registerOrbitEntity();
+registerHalo();
 
 runAll();
