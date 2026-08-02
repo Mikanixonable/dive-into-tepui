@@ -114,6 +114,7 @@ export const CAM_KEY_YAW_RATE = 1.4;
 export const CAM_KEY_PITCH_RATE = 1.0;
 export const CAM_DRAG_ROTATE_RATE = 0.005; // マウスドラッグ [rad/px]
 export const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
+export const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリックドラッグと同じ px/s 換算で加算
 
 // 進行方向ホールド([C]キー): 機首をプログレードへ向けるオートパイロットの PD ゲイン
 export const PROGRADE_HOLD_KP = 3.2; // 姿勢誤差角に対する比例ゲイン
