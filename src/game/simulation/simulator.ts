@@ -57,7 +57,7 @@ export class Simulator {
       this.collisionPhysics.resolve(dt, player, this.entities.all(), () => this._sfx.clank(), onHighSpeedImpact);
     }
 
-    this.stepAttitudes(simDt, player);
+    this.stepAttitudes(simDt);
     this.lastSimDt = simDt;
   }
 
@@ -68,30 +68,27 @@ export class Simulator {
     player: Player,
   ): number {
     // 各エンティティを積分する
-    player.stepSim(dt, this.ephemeris);
+    for (const p of this.entities.players) p.stepSim(dt, this.ephemeris);
     for (const e of this.entities.enemies) e.stepSim(dt, this.ephemeris);
     for (const b of this.entities.bullets) b.stepSim(dt, this.ephemeris);
     for (const c of this.entities.casings) c.stepSim(dt, this.ephemeris);
     for (const d of this.entities.debris) d.stepSim(dt, this.ephemeris);
     for (const a of this.entities.ammos) a.stepSim(dt, this.ephemeris);
-    // player と同一インスタンスのクリエイティブ艦(アクティブ艦)は上の player.stepSim で
-    // 既に積分済みなので、二重積分を避けてここでは飛ばす。
-    for (const s of this.entities.creativeShips) if (s !== player) s.stepSim(dt, this.ephemeris);
 
     player.thermal.updateThermal(dt, player.state.r, player.state.v);
 
     return simTime + dt;
   }
 
-  // 全エンティティの姿勢をそれぞれのトルクから積分する。
-  private stepAttitudes(simDt: number, player: Player): void {
-    player.att = stepAttitude(player.att, player.torque, simDt);
+  // 全エンティティの姿勢をそれぞれのトルクから積分する。自機だけは操作に追従させるため
+  // 刻みを丸めず simDt をそのまま使う。
+  private stepAttitudes(simDt: number): void {
+    for (const p of this.entities.players) p.att = stepAttitude(p.att, p.torque, simDt);
 
     const attDt = Math.min(simDt, 0.12);
     for (const e of this.entities.enemies) if (e.alive) e.att = stepAttitude(e.att, e.torque, attDt);
     for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, attDt);
     for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, attDt);
     for (const ammo of this.entities.ammos) if (ammo.alive) ammo.att = stepAttitude(ammo.att, ammo.torque, attDt);
-    for (const s of this.entities.creativeShips) if (s.alive && s !== player) s.att = stepAttitude(s.att, s.torque, attDt);
   }
 }

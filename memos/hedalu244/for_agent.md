@@ -37,10 +37,10 @@
 
 | 要求 | 反映先 | 状態 |
 | --- | --- | --- |
-| 船を右クリックメニューでフォーカス対象に | `map-pick.ts`(新), `map-context-gizmo.ts`(新), `game.ts` `buildMapPickables`/`mapMenuItemsFor`, `overview-camera.ts`(`resolveFocus(candidates)`) | ✅ |
-| 月・ラグランジュ点をターゲットに | `nav-target.ts`(新) — 面法線解決は実装済み | ❌ **UI から到達不能**(→ 3-A) |
-| ターゲットとの相対 AN/DN をアイコン表示、右クリックで加速/ノード追加/フォーカス | `nav-target.ts`(`Targeter` から移設), `game.ts`(act ディスパッチ), `plan-editor.ts` `addNodeAt` | ⚠️ 敵船をターゲットにした場合のみ機能 |
-| 近地点・遠地点アイコン + 右クリックメニュー | `plan-display.ts`(`syncApsisMarkers`/`apsisMarkers`/`apsisTimeOf`), `const.ts` `APSIS_MIN_ECC` | ⚠️ フォーカスが効かない(→ 3-B) |
+| 船を右クリックメニューでフォーカス対象に | `map-pick.ts`(新), `map-pick-menu.ts`(新), `game.ts` `buildMapPickables`/`mapMenuItemsFor`, `overview-camera.ts`(`resolveFocus(candidates)`) | ✅ |
+| 月・ラグランジュ点をターゲットに | `nav-target.ts`(新 `canTarget`), `game.ts` `navTargetItems` | ✅ |
+| ターゲットとの相対 AN/DN をアイコン表示、右クリックで加速/ノード追加/フォーカス | `nav-target.ts`(`Targeter` から移設), `game.ts`(act ディスパッチ), `plan-editor.ts` `addNodeAt` | ✅ |
+| 近地点・遠地点アイコン + 右クリックメニュー | `plan-display.ts`(`syncApsisMarkers`/`apsisMarkers`/`apsisTimeOf`), `const.ts` `APSIS_MIN_ECC` | ✅ |
 | 時間スライダーの目盛り + 手動レンジ | `display-time-manager.ts`(`'manual'`/`manualDurationSec`/`tickLabels`), `display-time-panel.ts`, `plan-arc.ts`(`PLAN_ARC_MAX_STEPS` 打ち切り) | ✅ |
 | Δv 長押しボタン + ドラッグラッチ | `hud/buttons.ts` `HudHoldButton`(新), `node-gizmo.ts` `AxisLatchState`, `plan-editor.ts` `applyDv`/`applyHeldDv` | ✅ レート適用点は `applyDv` 一箇所に集約済み |
 
@@ -71,8 +71,8 @@
 | マップから開始 | `map-mode-toggler.ts`(`initialMapMode` 引数 + `applyInitialState`) | ✅ |
 | 軌道要素指定で艦を配置 | `creative/ship-placer-panel.ts`(新 278行), `stages/creative-stage.ts`(新), `orbital.ts` `semiMajorFromPeriod`, `ephemeris.ts` `moonVelAt` | ✅ 排他な3組(近地点+遠地点 / 半長軸+離心率 / 周期+離心率) |
 | ハロー・リサジュー軌道 | `physics/halo.ts`(新) + `tests/physics/halo.test.ts` | ⚠️ 指示書の Richardson 三次近似ではなく線形化解(→ 4-8) |
-| 右クリックでアクティブ化 | `game-entity/creative-ship.ts`(新 `CreativeShip extends Player`), `game.ts` `setActivePlayer`, `camera-system.ts`/`combat-camera-system.ts`/`chase-camera.ts` の `setPlayer` 連鎖 | ⚠️(→ 3-D, 4-2, 4-3) |
-| 軌道計画の自動追従 | `Plan` の所有を `PlanEditor` → `Player` へ移動、`CreativeShip.followPlan`, `CreativeStage.advanceFollowPlan` | ✅ ノード時刻を跨いだら `state` をノードの絶対状態へ置換 |
+| 右クリックでアクティブ化 | `entity-manager.ts` `players`/`findPlayer`, `game.ts` `setActivePlayer`, `camera-system.ts`/`combat-camera-system.ts`/`chase-camera.ts` の `setPlayer` 連鎖 | ✅ |
+| 軌道計画の自動追従 | `Plan` の所有を `PlanEditor` → `Player` へ移動、`Player.followPlan`, `CreativeStage.advanceFollowPlan` | ✅ ノード時刻を跨いだら `state` をノードの絶対状態へ置換 |
 | アクティブ時に [M] で戦闘ビュー | `map-mode-toggler.ts` `canToggleView` 引数 | ✅ |
 
 ---
@@ -81,21 +81,9 @@
 
 ### 懸念1: 「player を単独のものとして扱う」前提が崩れる
 
-**崩れている。ただし崩し方は一箇所に集約されている。**
-
-- `CreativeShip extends Player`。`Game.player` は `readonly` を外して**再代入可能**になり、
-  切替の副作用は `Game.setActivePlayer(ship)` の 4 行(`this.player` / `cameraSystem.setActivePlayer` /
-  `editor.setActiveShip` / `targeter.clearTargets`)に閉じている。`ChaseCamera` はコンストラクタ注入の
-  `readonly player` をやめて `setPlayer` を生やした。この集約自体は指示書通りで、設計としては妥当。
-- **問題は「アクティブ艦が `Game.player` と `EntityManager.creativeShips` に二重に居る」こと。**
-  その結果、配列を舐める側が**6箇所それぞれで `!== player` の除外を覚えておく必要**がある:
-  `Simulator.simulationSubStep` / `Simulator.stepAttitudes` / `Predictor.update` /
-  `EntityManager.cleanup` / `EntityManager.sync` / `CollisionPhysics.resolve`。
-  これは CLAUDE.md の「複数箇所が一定の整合性を保つことが要求されるデータ」そのもの。
-  しかも `EntityManager.cleanup`/`sync` の `activePlayer` は **`= null` 既定引数**なので、
-  新しい呼び出し側が渡し忘れても型エラーにならず、静かに二重処理になる。
-- ステージモードの `Player`(非 `CreativeShip`)は `entities` に入らないので、
-  除外条件は「クリエイティブ時だけ意味を持つ」形になっており、読み手には分かりにくい。
+**解消済み。** `CreativeShip` を廃止し、すべての自機を `EntityManager.players` に入れて対等に扱う形へ
+変更した(`/refactor-fixed`「自機は1隻でも `EntityManager.players` に入れ、シミュレーションでは
+対等に扱う」節に確定判断として記録済み)。除外分岐と `= null` 既定引数は無くなった。
 
 ### 懸念2: マップモードの責務分配が壊れていないか
 
@@ -136,56 +124,6 @@
 
 ## 3. 機能欠落・バグ(重要度順)
 
-### A. 月・ラグランジュ点を航法ターゲットにできない ★最重要
-
-要件の中核「宇宙船だけでなく、月、ラグランジュ点といった物体についても、ターゲットとすることができる」が
-**UI から到達できない。**
-
-`nav-target.ts` の `resolvePlaneNormal` は `'moon'` / `'em-l*'` / `'se-l*'` を実装済み。しかし
-`game.ts` `mapMenuItemsFor` の `case 'body'` は
-
-```ts
-case 'body':
-  return [
-    { label: 'フォーカスを移動', act: 'focus' },
-    { label: 'キャンセル', act: 'cancel' },
-  ];
-```
-
-で、`act: 'navTarget'` の項目を持つのは `case 'ship'` だけ。天体ラベル(`FocusLabel.kind = 'body'`)を
-右クリックしても「航法ターゲットに設定」が出ない。実装済みのコードが死んでいる。
-`CLAUDE.md` にも `'ship' offers focus plus the nav-target toggle` と書かれており、文書にも欠落が固定されている。
-
-### B. アプシスアイコンの「フォーカスを移動」が地球に落ちる
-
-`mapMenuItemsFor` の `case 'apsis'` は `focus` を提供し、`onSelect` は
-`overviewCamera.focus = target.id`(= `'apsisPe'` / `'apsisAp'`)を書く。しかし
-`OverviewCamera.resolveFocus(candidates)` が引く `candidates` は `Game.buildMapPickables()` の戻り値で、
-**そこにアプシスは含まれない**(`refactor-fixed` にその除外理由が明記されている:
-`PlanDisplay.apsisMarkers` は `PlanEditor.sync` = `update` より後で算出されるため)。
-結果、`resolveFocus` は `v3(0,0,0)` にフォールバックし、**HUD は「近地点 にフォーカス」と出しながら
-カメラは地球へ飛ぶ。** 「候補リストが2本に割れている」ことの直接の副作用。
-
-### C. 自機・クリエイティブ艦を航法ターゲットにできない / 無言で失敗する
-
-- ステージモードの自機は `kind: 'ship'`(id `'player'`)なのでメニューには「航法ターゲットに設定」が出るが、
-  `resolvePlaneNormal` は `'player'` を知らないので `null` を返し、AN/DN は永久に出ない。ヒントだけ出て何も起きない。
-- `kind: 'creativeShip'` のメニューには `navTarget` 項目自体が無い。
-
-### D. クリエイティブモードで初期 `Player` がシーンに取り残される
-
-`Game` はモードに関わらず `this.player = new Player(...)` を作る(`GameEntity` のコンストラクタが
-`scene.add(this.obj)` する)。この初期艦は `entities.creativeShips` に入らない。
-`setActivePlayer(creativeShip)` で操作対象が移ると、この初期艦は
-
-- `Simulator.simulationSubStep` は `player`(=新アクティブ艦)しか step しない
-- `EntityManager.sync` は `all()` を舐めるが、初期艦はどの配列にも属していない
-- `Player.syncPlayer` は `this.player` にしか呼ばれない
-
-ため、**step も sync も dispose もされないまま `obj` だけがシーンに残る。**
-`obj.position` は切替直前のフローティングオリジン相対値で凍結するので、
-画面上は「視点に貼りついたゴースト艦」として見え続けるはず。
-
 ### E. ×131072 が サブステップ設計の前提を破る
 
 `SUBSTEP_MAX_DT = 20` / `SUBSTEP_MAX_COUNT = 64` は変更されていない。
@@ -216,26 +154,13 @@ the survivors.** …what remains is `EnvironmentSyncParams`」。
 指示書からも規約からも外れている。`refactor-fixed` には「`EnvironmentSyncParams` 経由で渡す」と
 **違反した形のまま確定判断として記録されてしまっている**ので、ここは巻き戻すか判断を改める必要がある。
 
-### 2. `game.ts` がクリエイティブモードのドメインロジックを持っている
+### 2. `game.ts` が大きい
 
-371行 → **556行**(+50%)。増えた内訳:
-
-- `mapMenuItemsFor` — 種別ごとのメニュー項目表。所有者がまたがるので `Game` に置く判断自体は理解できる。
-- `buildMapPickables` — 候補集合の組み立て。`refactor-fixed` に判断が記録済み。
-- `findCreativeShip` / `activateCreativeShip` / `toggleCreativeShipFollowPlan` / `deleteCreativeShip` —
-  **これは配線ではなく振る舞い。** id での探索、`followPlan` の反転、ヒント文言、
-  「操作対象の艦は削除できません」というガードまで `Game` が持っている。
-  `CreativeStage` が `creativeShips` の生成・削除・自動追従を担っているのに、
-  右クリック由来の操作だけが `Game` 側に分かれており、クリエイティブ艦の操作系が2箇所に割れている。
-  `Game` は `activeStage` が `CreativeStage` かどうかを知らない設計なので素直には寄せられないが、
-  少なくとも「`Game` は順序を決めるだけ」の原則からは外れている。
-- `handleMapContextMenu` — 右クリックの二段ピック。
-
-### 3. アクティブ艦の二重所属(→ 2-懸念1 に詳述)
-
-除外条件が6箇所に散り、`= null` 既定引数で守られていない。
-`EntityManager` に「アクティブ艦を除いた `creativeShips` を返す」ような単一の窓口を置くか、
-アクティブ艦を配列から抜く(切替時に出し入れする)かのどちらかに寄せるべき論点。
+371行 → **542行**。艦操作(`findCreativeShip` 等)は `EntityManager.findPlayer` + 2行の配線へ縮めた
+ので振る舞いの漏洩は解消したが、`mapMenuItemsFor`(種別ごとのメニュー項目表)・`buildMapPickables`
+(候補集合の組み立て)・`handleMapContextMenu` はまだ `Game` にある。前2つは
+`/refactor-fixed` に「所有者がまたがるので `Game` が持つ」と確定判断として記録済み。
+残る論点は行数だけ。
 
 ### 4. `OverviewCamera` のロールとヨー/ピッチが噛み合っていない
 
@@ -252,31 +177,11 @@ the survivors.** …what remains is `EnvironmentSyncParams`」。
 理由だとは推測できるが、**「同じ処理が複数箇所に分散している」実装の重複**にあたる。
 `MapContextGizmo` を `<T>` にするか、対象保持を呼び出し側に戻すかで解消できる。
 
-### 6. `CameraSystem.pickFocusCandidate` が薄すぎるうえ一貫していない
+### 7. `CreativeStage` の `private simTime`
 
-```ts
-pickFocusCandidate(x, y, candidates) {
-  return pickNearest(candidates, x, y, this.activeCameraProjection, C.MAP_PICK_PX_SQ);
-}
-```
-
-`pickNearest` に `activeCameraProjection` を足すだけのラッパー。
-しかも `Game.handleMapContextMenu` はアプシス側では `pickNearest(...)` を**直接**呼んでおり、
-同じ処理が2つの書き方で並んでいる。CLAUDE.md の「不要なたらい回しをするだけの薄すぎるラッパー」に該当。
-
-### 7. `CreativeStage` の初期化とデッドコード
-
-- `setup()` に加えて **`setupCreative(markerManager, ephemeris)`** の二段初期化。
-  `_markerManager!` / `_ephemeris!` / `_entities!` / `placerPanel!` と `!` 定義代入が4つ並ぶ。
-  `Stage.setup` が受け取らない資源をあとから足す形なので、`setup` 側の引数を増やすか
-  コンストラクタに寄せるかの判断が要る。
-- `addShip(hud, sfx, scene, fx, entities, name, state)` は唯一の呼び出し元(`placeShip`、同一クラス内)が
-  **自分自身のフィールドを自分に渡している**。引数は全部不要。
-- `removeShip(entities, ship)` は `entities.removeCreativeShip(ship)` へのたらい回しで、
-  **呼び出し 0 件のデッドコード**(`Game.deleteCreativeShip` は `entities.removeCreativeShip` を直接呼ぶ)。
-- `private simTime` — `Simulator.simTime` のコピーを毎フレーム覚え直す。理由はコメントに書かれている
-  (配置パネルの confirm が DOM イベントとして非同期に発火するため)が、正データの重複であることに変わりはない。
-  `ShipPlacerPanel.onConfirm` に `simTime` を引数で渡す形にできないか要検討。
+`Simulator.simTime` のコピーを毎フレーム覚え直す。理由はコメントに書かれている
+(配置パネルの confirm が DOM イベントとして非同期に発火するため)が、正データの重複であることに変わりはない。
+`ShipPlacerPanel.onConfirm` に `simTime` を引数で渡す形にできないか要検討。
 
 ### 8. 指示書からの逸脱: ハロー軌道
 
@@ -301,7 +206,7 @@ WP-E3 は「Richardson の三次近似解を使う(推奨)」で、指示書 §6
 
 ### 10. 行数
 
-- `game.ts` 556行 / `plan-editor.ts` 520行 / `ship-placer-panel.ts` 278行。
+- `game.ts` 542行 / `plan-editor.ts` 545行 / `ship-placer-panel.ts` 278行。
   モジュール 200行 の基準を大きく超える。`ship-placer-panel.ts` はフィールド宣言だけで20行以上あり、
   「軌道要素フォーム」と「ラグランジュ点フォーム」で分割の余地がある。
 
@@ -339,17 +244,14 @@ WP-E3 は「Richardson の三次近似解を使う(推奨)」で、指示書 §6
 
 ## 6. 次に手を入れるなら(優先順)
 
-1. **3-A** — `mapMenuItemsFor` の `case 'body'` に `navTarget` 項目を足す。要件の中核が未達。
-2. **3-D** — クリエイティブモードの初期 `Player` の扱いを決める(`creativeShips` に入れる /
-   モード別に生成しない / 切替時に dispose する のいずれか)。
-3. **3-B** — 候補リストの2本立てを解消する。`apsisMarkers` を `buildMapPickables` に合流させるか、
-   `resolveFocus` にアプシスも渡す。
-4. **4-1** — `EnvironmentSyncParams` から `celestialGridVisibility` を引数へ出し、
+1. **4-1** — `EnvironmentSyncParams` から `celestialGridVisibility` を引数へ出し、
    `refactor-fixed` の該当節を書き換える。
-5. **4-3 / 懸念1** — アクティブ艦の二重所属を、除外6箇所ではなく単一の窓口へ。
-6. **3-E** — ×131072 の精度を実測し、`SUBSTEP_MAX_COUNT` を上げるか最上段を落とす。
-7. **4-7** — `CreativeStage` の `removeShip` 削除・`addShip` の引数削除・`setupCreative` の統合。
-8. **3-F / 4-6 / 4-5** — CSS クラス名、薄いラッパー、コンテキストメニューの重複。
+2. **4-5** — `Targeter` のコンテキストメニュー再実装を `MapPickMenu` の共有へ寄せる。
+3. **3-F** — `ship-placer-panel.ts` の数値入力に効いていない CSS クラス名。
+4. **3-E** — ×131072 の精度を実測し、`SUBSTEP_MAX_COUNT` を上げるか最上段を落とす。
+5. **4-4** — `OverviewCamera` のロールとヨー/ピッチの噛み合わせ。
+6. **4-9 / 4-8** — 天球グリッド可視状態の置き場所、ハロー軌道の近似次数。どちらも要判断。
+7. **4-10 / 4-11** — 行数、`navTarget.update` の呼び出し位置。
 
 ---
 

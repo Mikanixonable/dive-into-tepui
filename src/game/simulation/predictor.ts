@@ -18,25 +18,22 @@ export class Predictor {
   // Game.update の entities.cleanup(...) の後に呼ぶ(死んだ個体を予測しない、積分後の実状態と
   // 突き合わせる)。視点・モードによる条件分岐は持たない — 予測は表示とは独立に常時進む。
   update(simTime: number, player: Player): void {
-    // player は明示引数として別枠で予算消化するので、creativeShips 内の同一インスタンス
-    // (アクティブ艦)を二重に予算消化しないよう除く。
-    const rest = this.entities.all().filter((e) => e !== player);
+    const all = this.entities.all();
 
     // (a) 距離判定は毎フレーム無条件で全対象に行う(二分探索1回ぶんの費用しかかからない)。
-    player.resyncPrediction(simTime, C.PREDICT_RESET_DIST);
-    for (const e of rest) e.resyncPrediction(simTime, C.PREDICT_RESET_DIST);
+    for (const e of all) e.resyncPrediction(simTime, C.PREDICT_RESET_DIST);
 
-    // 予算配分: 自機を先頭に、以降はカーソル位置から最大1周だけ回す。
+    // 予算配分: 操作対象の艦を先頭に、以降はカーソル位置から最大1周だけ回す。
     let budget = C.PREDICT_STEP_BUDGET;
     budget -= this.advanceBudget(player, budget, simTime);
 
     let visited = 0;
-    while (budget > 0 && visited < rest.length) {
-      const e = rest[(this.cursor + visited) % rest.length]!;
+    while (budget > 0 && visited < all.length) {
+      const e = all[(this.cursor + visited) % all.length]!;
       budget -= this.advanceBudget(e, budget, simTime);
       visited++;
     }
-    this.cursor = rest.length > 0 ? (this.cursor + visited) % rest.length : 0;
+    this.cursor = all.length > 0 ? (this.cursor + visited) % all.length : 0;
   }
 
   // budgetSteps を上限に、1体ぶんの予測列を GameEntity.stepPrediction で1ステップずつ伸ばし、

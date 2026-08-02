@@ -179,15 +179,40 @@ N 体へ配る」最適化を担うと、`step` の窓口が「位置を渡す�
 ## マニューバ計画(`Plan`)は艦(`Player`)自身が持つ
 
 **`Plan` の所有者は各 `Player` インスタンスで、`PlanEditor` は所有しない。** `PlanEditor.plan` は
-`activeShip.plan` を返すだけの getter で、`PlanEditor` 自身は計画の中身(ノード列・アンカー)を
+`activePlayer.plan` を返すだけの getter で、`PlanEditor` 自身は計画の中身(ノード列・アンカー)を
 一切保持しない。
 
-理由: クリエイティブモードでは複数の艦(`CreativeShip extends Player`)が同時に存在し、それぞれが
-自分自身のマニューバ計画を持てる必要がある(操作対象でない艦にも、軌道計画への自動追従という
-形で計画が使われる)。計画編集 UI(`PlanEditor`)は常に単一の「今操作している艦」に対して開かれる
-ものなので、UI 側が「今どの艦を編集しているか」を持ち、実データは艦側に置くのが自然な分割になる
-——`PlanEditor.setActiveShip(ship)` を呼ぶだけで編集対象が切り替わり、`Plan` を丸ごとコピー/移動する
-必要がない。
+理由: クリエイティブモードでは複数の艦が同時に存在し、それぞれが自分自身のマニューバ計画を持てる
+必要がある(操作対象でない艦にも、軌道計画への自動追従という形で計画が使われる)。計画編集 UI
+(`PlanEditor`)は常に単一の「今操作している艦」に対して開かれるものなので、UI 側が「今どの艦を
+編集しているか」を持ち、実データは艦側に置くのが自然な分割になる——`PlanEditor.setActivePlayer(ship)`
+を呼ぶだけで編集対象が切り替わり、`Plan` を丸ごとコピー/移動する必要がない。
+
+## 自機は1隻でも `EntityManager.players` に入れ、シミュレーションでは対等に扱う
+
+**自機用の派生クラスは作らない。** 艦は常に `Player` そのもので、ステージモードの1隻もクリエイティブ
+モードの複数隻も**すべて `EntityManager.players` に入る**(`Game` はコンストラクタで `new Player(...)`
+した直後に `entities.addPlayer(...)` する)。`EntityManager.all()` は `players` を含む。
+
+**`Game.player` は「そのうち今操作している1隻」への参照であって、二重の所有ではない。**
+`Targeter.target` が `entities.enemies` の1体を指すのと同じ「選択」の関係で、実体の所有は配列側にある。
+
+この形にすると、**積分・姿勢積分・衝突・被弾判定・寿命判定・予測はどれも `players` を他のエンティティと
+同じループで舐めればよく、「アクティブ艦だけ除外する」分岐が要らない。** 参照同一性による除外
+(`if (e !== player)`)や `= null` 既定引数で守る形は、書き忘れが型エラーにならず静かに二重処理に
+なるので採らない。
+
+操作対象を特別扱いしてよいのは、**「操作している人間」に紐づくものだけ**:
+
+- `Player.behave`(入力を受けるのは操作対象だけ)
+- `PlayerMarkers`(方位マーカー・ボアサイト・`▷`)とガンサイトズームでの自機非表示 —
+  `Player.syncPlayer(..., isActive)` の `isActive` がこれを分ける
+- `ThermalSystem` の HUD 警告(`Simulator` が `player.thermal.updateThermal` を操作対象にだけ呼ぶ)
+- 薬莢の接触音(操作対象がマイクを持っているという扱い)
+
+`EntityManager.sync` だけは `players` を含めない。自機はエフェクト・ベルト・軌道線まで持ち
+`Player.syncPlayer` が担当するためで、これは参照同一性の除外ではなく**配列そのものを分けた**形
+(private `otherEntities()`)にしてある。
 
 ## アクティブ艦(操作対象)の切替は `Game.setActivePlayer` に一元化する
 
@@ -195,10 +220,10 @@ N 体へ配る」最適化を担うと、`step` の窓口が「位置を渡す�
 操作対象にする」)。**艦の切替に伴う副作用は `Game.setActivePlayer(ship)` 一箇所に閉じ、各所有者は
 自分の持ち分だけを更新する:**
 
-- `this.player = ship`(`Game` 自身の正本)
+- `this.player = ship`(`entities.players` のどれを選んでいるか)
 - `cameraSystem.setActivePlayer(ship)` → `CombatCameraSystem.setActivePlayer` → `ChaseCamera.setPlayer`
   (視点の基準ship参照を差し替える。`rot`/`dist` は据え置きで、切替の瞬間に視点が跳ばない)
-- `editor.setActiveShip(ship)`(`PlanEditor` の編集対象。選択中ノード・開いたメニューは前の艦の
+- `editor.setActivePlayer(ship)`(`PlanEditor` の編集対象。選択中ノード・開いたメニューは前の艦の
   計画を指しているので破棄する)
 - `targeter.clearTargets()`(前の艦が握っていた戦闘ターゲットのロックは新しい艦には無関係)
 
@@ -219,9 +244,14 @@ N 体へ配る」最適化を担うと、`step` の窓口が「位置を渡す�
 
 `CreativeStage` は `STAGE_DEFINITIONS`/`STAGE_CLASSES` に**登録しない**(タイトルのステージ選択タブに
 出ない、`?stage=` では起動できない)。`game.ts` は `LaunchSelection.mode === 'creative'` のとき
-`initStage()` を経由せず `CreativeStage` を直接 `new` し、`setup()`/`setupCreative()`/`init()` を
-自分で順に呼ぶ——`initStage()` は「タイトルのステージ選択タブに出す `Stage`」の初期化手順であり、
-出さない `CreativeStage` がそこを通る理由がないため。
+`initStage()` を経由せず `CreativeStage` を直接 `new` し、`setup()`/`init()` を自分で順に呼ぶ——
+`initStage()` は「タイトルのステージ選択タブに出す `Stage`」の初期化手順であり、出さない
+`CreativeStage` がそこを通る理由がないため。
+
+**ゲーム所有リソースの注入は `Stage.setup` の1回だけ**にする(二段初期化を足さない)。あるステージ
+だけが要るリソースでも `setup` の引数を増やし、`Stage` が protected フィールドとして持つ。サブクラス
+固有の初期化は `setup` を override して `super.setup(...)` の後に書く。`!` 定義代入フィールドが並ぶ
+二段目の初期化メソッドは、呼び忘れが型で守られないので作らない。
 
 ## 天球グリッド(`render/celestial-grid.ts`)の可視状態は `Navball` が持つ
 
@@ -244,12 +274,21 @@ N 体へ配る」最適化を担うと、`step` の窓口が「位置を渡す�
 見る)形は取らない——候補の集合はどの消費側にとっても同じでなければならず、増える候補の種類ごとに
 複数箇所を書き換える必要がないようにするため。
 
+**候補列は1本に保つ。** 種類ごとに別の列を作って消費側で順に引く形にすると、片方しか見ない消費側が
+必ず出て「メニューには出るがフォーカスは効かない」ように割れる。`PlanDisplay.apsisMarkers` は
+`PlanEditor.sync`(`update` より後)が算出するので `buildMapPickables()` が読むのは前フレームの値に
+なるが、1フレームの遅れはピック判定にとって無害なので、列を分ける理由にはしない。
+
 呼び出し位置は **`Game.sync` ではなく `Game.update` の先頭**。フォーカス解決
 (`OverviewCamera.update`)も右クリック判定(`handleMapContextMenu`)もどちらも `update` フェーズの
 仕事で、`DisplayTimeManager.resolveDisplayTime` が副作用のない純粋関数だからこそ `sync` を待たずに
-`update` の先頭で表示時刻を確定できる。`PlanDisplay.apsisMarkers` だけは `buildMapPickables()` に
-含めない(`PlanEditor.sync` — `update` より後 — が算出するため)——`Game.handleMapContextMenu` が
-`cameraSystem.pickFocusCandidate` で拾えなかった右クリックの二次候補として個別に読む。
+`update` の先頭で表示時刻を確定できる。
+
+被選択物の種別(`MapPickKind`)は `'body' | 'ship' | 'player' | 'apsis' | 'relnode'`。自機は隻数に
+かかわらず `'player'`、敵船が `'ship'`。メニュー項目の表は `Game.mapMenuItemsFor` にあるが、
+**「その対象に対してその操作が意味を持つか」の判定は、その操作の所有者に問い合わせる**
+(航法ターゲット項目なら `NavTarget.canTarget`)。項目を出しておいて選ばれてから黙って失敗する形は
+採らない。
 
 ## 「たまたま」同時に切り替わるフラグは別個にする
 

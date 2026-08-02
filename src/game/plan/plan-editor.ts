@@ -58,10 +58,10 @@ export class PlanEditor {
   // 編集対象として選択中のノードの index。null で未選択。
   selectedNodeIdx: number | null = null;
 
-  private activeShip: Player;
+  private activePlayer: Player;
   // アクティブ艦自身の計画を編集する。艦は自分の計画を所有し続けるので、艦を切り替えると
   // 編集対象もその艦の計画へ切り替わる。
-  get plan(): Plan { return this.activeShip.plan; }
+  get plan(): Plan { return this.activePlayer.plan; }
 
   readonly planDisplay: PlanDisplay;
 
@@ -85,9 +85,9 @@ export class PlanEditor {
     scene: THREE.Scene,
     markerManager: MarkerManager,
     private readonly getFineAttitude: () => boolean,
-    activeShip: Player,
+    activePlayer: Player,
   ) {
-    this.activeShip = activeShip;
+    this.activePlayer = activePlayer;
     this.planDisplay = new PlanDisplay(scene, this._hud.root, markerManager, ephemeris);
 
     this.planPanel = document.createElement('div');
@@ -131,8 +131,8 @@ export class PlanEditor {
 
   // 編集対象をアクティブ艦の切替に合わせて差し替える。選択中ノード・開いたメニューは
   // 前の艦の計画を指しているので破棄する。
-  setActiveShip(ship: Player): void {
-    this.activeShip = ship;
+  setActivePlayer(ship: Player): void {
+    this.activePlayer = ship;
     this.selectedNodeIdx = null;
     this.closeMenu();
   }
