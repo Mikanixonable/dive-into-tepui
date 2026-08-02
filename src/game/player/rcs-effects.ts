@@ -1,26 +1,34 @@
-// RCS パフ(機首側の 4 基のスラスタブロックに対応、ships.ts の配置と一致)。
+// RCS パフ(姿勢制御スラスタの噴射煙)。指令トルクに寄与するノズルを選び、その先へ噴射煙を置く。
 import * as THREE from 'three/webgpu';
 import { Attitude, qRotate } from '../../physics/attitude';
-import { Vec3, add, addScaled, cross, lenSq, norm, scale, v3 } from '../../physics/vec3';
+import { Vec3, add, addScaled, cross, dot, lenSq, scale, v3 } from '../../physics/vec3';
 import { Billboard } from '../../render/billboard';
-import { RCS_BLOCK_OFFSETS } from '../../render/ships';
+import { RCS_NOZZLES } from '../../render/rcs-nozzles';
 import * as C from '../const';
 import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { Sfx } from '../../audio/sfx';
 
-export class RcsEffects {
-  private readonly puffs: Billboard[] = Array.from({ length: 4 }, () => new Billboard(0xcfeaff));
+// ノズルからプルーム中心までの距離 [m]
+const PLUME_OFFSET = 0.55;
 
-  // 4基のパフのビルボードを生成し scene へ追加する。
+export class RcsEffects {
+  // ノズルごとの取付位置・噴射方向・噴射で機体に生じるトルク(いずれも機体座標)とプルーム。
+  private readonly puffs = RCS_NOZZLES.map((nozzle) => {
+    const pos = v3(nozzle.pos.x, nozzle.pos.y, nozzle.pos.z);
+    const exhaust = v3(nozzle.dir.x, nozzle.dir.y, nozzle.dir.z);
+    return { pos, exhaust, torque: cross(pos, scale(exhaust, -1)), plume: new Billboard(0xcfeaff) };
+  });
+
+  // 全ノズルのプルームのビルボードを生成し scene へ追加する。
   constructor(
     scene: THREE.Scene,
     private readonly _sfx: Sfx,
   ) {
-    for (const puff of this.puffs) scene.add(puff.mesh);
+    for (const { plume } of this.puffs) scene.add(plume.mesh);
   }
 
-  // torque から各RCSブロックの噴射方向を求め、対応するパフの位置・大きさを同期する。
+  // 機体座標の指令 torque に寄与するノズルだけプルームを出し、位置・大きさを同期する。
   sync(
     fo: FloatingOrigin,
     playerPos: Vec3,
@@ -31,31 +39,23 @@ export class RcsEffects {
     paused: boolean,
     camera: CameraSystem,
   ): void {
-    const q = att.q;
     // 回転していない、またはズーム視点なら全パフを隠して終える
     const rotating = alive && phasePlaying && !paused && lenSq(torque) > C.RCS_PUFF_TORQUE_EPS * C.RCS_PUFF_TORQUE_EPS;
     this._sfx.setRcs(rotating);
     if (!rotating || camera.zoomActive) {
-      for (const puff of this.puffs) puff.hide();
+      for (const { plume } of this.puffs) plume.hide();
       return;
     }
-    // トルクの符号から各ブロック位置での噴射方向を求める
-    const tau = v3(Math.sign(torque.x), Math.sign(torque.y), Math.sign(torque.z));
-    for (let k = 0; k < 4; k++) {
-      const puff = this.puffs[k]!;
-      const ro = RCS_BLOCK_OFFSETS[k]!;
-      const rb = v3(ro.x, ro.y, ro.z);
-      const f = cross(tau, rb);
-      // このブロックがトルクに寄与しないなら隠す
-      if (lenSq(f) < 0.2) {
-        puff.hide();
+    for (const puff of this.puffs) {
+      // 噴くと指令トルクから遠ざかるノズルは点火しない
+      if (dot(puff.torque, torque) <= 0.2) {
+        puff.plume.hide();
         continue;
       }
-      // 噴射方向と逆側にパフを置き、明滅させる
-      const exhaust = scale(norm(f), -1);
+      // ノズルの先へプルームを置き、明滅させる
       const flick = 0.6 + Math.random() * 0.4;
-      const pos = qRotate(q, addScaled(rb, exhaust, 0.55));
-      puff.sync(fo.RtoThreeV3(add(playerPos, pos)), 0.55 * flick, 0.75 * flick, camera.activeCamera.quaternion);
+      const pos = qRotate(att.q, addScaled(puff.pos, puff.exhaust, PLUME_OFFSET));
+      puff.plume.sync(fo.RtoThreeV3(add(playerPos, pos)), 0.55 * flick, 0.75 * flick, camera.activeCamera.quaternion);
     }
   }
 }
