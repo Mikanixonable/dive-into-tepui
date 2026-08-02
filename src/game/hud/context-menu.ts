@@ -7,7 +7,7 @@ const EDGE = 'rgba(255, 255, 255, 0.16)';
 
 const STYLE = `
 .ctx-menu {
-  position: fixed; display: none; min-width: 168px; z-index: 9;
+  position: fixed; display: none; min-width: 168px; z-index: 11;
   pointer-events: auto; background: ${SURFACE}; border: 1px solid ${EDGE};
   border-radius: 4px; overflow: hidden; font-size: 12px;
   font-family: ${FONT}; user-select: none;
