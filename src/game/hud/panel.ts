@@ -57,7 +57,7 @@ export class HudPanels {
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
   // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
-  update(game: Game, dt: number): void {
+  sync(game: Game, dt: number): void {
     const player = game.player;
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;

@@ -11,8 +11,8 @@ description: リファクタリングの判断基準と手順(モジュール化
    そこに答えがある論点は蒸し返さず、それに従う。
 2. `DEVELOP/OWNERSHIP.md`(状態の正本・保持木)と `DEVELOP/CALLSTACK.md`(per-frame 呼び出し順)。
    全体像はコードではなくこの2つから掴む(手順は `.claude/skills/overview/SKILL.md` = `/overview`)。
-3. `memos/hedalu244/refactoring_plan/` — `refactoring_todo.md`(やることリスト)と、論点ごとの現況
-   (`STOP_USING_CTX.md` などの `*.md`)。CLAUDE.md より新しい。
+3. `memos/hedalu244/` — `refactoring_todo.md`(やることリスト)と、論点ごとの `*_todo.md`。
+   CLAUDE.md より新しい。
 
 ## 基本原則
 
@@ -164,7 +164,7 @@ per-frame 関数の `render` / `update` / `build` / `sync` の使い分けは CL
 判断の結果は `/refactor-fixed` の「一般化しないと決めたもの」へ書く(そこに既に載っている論点は
 再検討しない)。
 
-## `memos/hedalu244/refactoring_plan/refactoring_todo.md` の扱い
+## `memos/hedalu244/refactoring_todo.md` の扱い
 
 **これは todo リストであり、経緯を追う場所ではない。**
 

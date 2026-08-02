@@ -41,9 +41,7 @@ export class Simulator {
     onHighSpeedImpact?: (a: GameEntity, b: GameEntity, speed: number) => void,
   ): void {
     // fps によらず積分の刻みを一定に保つため、サブステップ数は simDt のみから決める。
-    const nSub = doSubstep
-      ? Math.min(C.SUBSTEP_MAX_COUNT, Math.max(1, Math.ceil(simDt / C.SUBSTEP_MAX_DT)))
-      : 1;
+    const nSub = doSubstep ? Math.max(1, Math.ceil(simDt / C.SUBSTEP_MAX_DT)) : 1;
 
     const subDt = simDt / nSub;
     for (let i = 0; i < nSub; i++) {

@@ -13,8 +13,8 @@
   食い違ったら DEVELOP/ を正として CLAUDE.md を直す。
 - SPEC は **意図**(どう振舞うべきか)で、他の3つは **現況**(どう振舞うか)。両者はいずれ一致すべき
   ものだが、開発途中では一致していなくてよい。
-- リファクタリングのやることリストは `../memos/hedalu244/refactoring_plan/refactoring_todo.md`(完了項目は消す)、
-  論点ごとの現況は同フォルダの各文書。判断基準は `/refactor`(一般方針)と
+- リファクタリングのやることリストは `../memos/hedalu244/refactoring_todo.md`(完了項目は消す)、
+  論点ごとの todo は同フォルダの各 `*_todo.md`。判断基準は `/refactor`(一般方針)と
   `/refactor-fixed`(このプロジェクトで確定した責務境界)。
 - `../memos/mikanixonable/dev.md` は人間専用の開発ノート。エージェントは読むだけで、編集しない。
 

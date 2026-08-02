@@ -28,14 +28,8 @@ export class FlashEffectManager {
     this._scene.add(fx.billboard.mesh);
   }
 
-  // 経過時間を進め、寿命切れのエフェクトを破棄しつつ生存中のものをカメラへ同期する。
-  syncFlashEffects(
-    dt: number,
-    simDt: number,
-    fo: FloatingOrigin,
-    activeCamera: THREE.PerspectiveCamera,
-  ): void {
-    const camQuat = activeCamera.quaternion;
+  // 経過時間を進めて発生源の速度で移流させ、寿命切れのエフェクトを破棄する。
+  updateFlashEffects(dt: number, simDt: number): void {
     this.effects = this.effects.filter((fx) => {
       fx.age += dt;
       // 寿命切れなら破棄する
@@ -49,12 +43,19 @@ export class FlashEffectManager {
         fx.pos = addScaled(fx.pos, fx.vel, simDt);
       }
       fx.initialized = true;
+      return true;
+    });
+  }
+
+  // 生存中のビルボードを現在の位置・寿命進捗・カメラ向きへ同期する。
+  syncFlashEffects(fo: FloatingOrigin, activeCamera: THREE.PerspectiveCamera): void {
+    const camQuat = activeCamera.quaternion;
+    for (const fx of this.effects) {
       const t = fx.age / fx.duration;
       const size = fx.size0 + (fx.size1 - fx.size0) * Math.sqrt(t);
       const opacity = fx.peakOpacity * (1 - t);
       fx.billboard.sync(fo.RtoThreeV3(fx.pos), size, opacity, camQuat);
-      return true;
-    });
+    }
   }
 
 }
