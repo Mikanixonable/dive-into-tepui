@@ -56,7 +56,6 @@ export class Input {
   // タッチ用: アクティブポインタの座標(ピンチズーム判定に使う)
   private pointers = new Map<number, { x: number; y: number }>();
   private pinchDist = 0;
-  mouseFiring = false;
   onFirstGesture: (() => void) | null = null;
   private gestureFired = false;
 
@@ -85,7 +84,6 @@ export class Input {
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => {
       this.keys.clear();
-      this.mouseFiring = false;
       this.dragging = false;
       this.panDragging = false;
     });
@@ -101,7 +99,7 @@ export class Input {
     target.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
   }
 
-  // 左ボタンはドラッグ/ピンチ開始、右ボタンは発砲開始、中ボタンはパン開始として扱う。
+  // 左ボタン・右ボタンはともにドラッグ/ピンチ開始(右クリックは閾値未満ならコンテキストメニュー用のクリックとして扱う)、中ボタンはパン開始として扱う。
   private onPointerDown(target: HTMLElement, e: PointerEvent): void {
     this.fireGesture();
     if (e.button === 0) {
@@ -116,13 +114,8 @@ export class Input {
         target.setPointerCapture(e.pointerId);
       }
     } else if (e.button === 2) {
-      this.mouseFiring = true;
       this.rightActive = true;
       this.rightDragMoved = 0;
-      // 捕捉しないと、押したままポインタが pointer-events: auto な HUD 要素
-      // (⚙ ギアボタン等)の上へ移動して離されたとき pointerup がキャンバスへ
-      // 届かず、mouseFiring が true のまま残って撃ちっぱなしになる。捕捉は
-      // pointerup で自動解除されるので明示的な解除は不要。
       target.setPointerCapture(e.pointerId);
     } else if (e.button === 1) {
       // 中ボタンの既定動作(オートスクロール)を抑止する。
@@ -154,6 +147,8 @@ export class Input {
       return;
     }
     if (this.rightActive) {
+      this.dx += e.movementX;
+      this.dy += e.movementY;
       this.rightDragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
       return;
     }
@@ -179,7 +174,6 @@ export class Input {
     if (e.button === 2) {
       if (this.rightActive) this.pushIfClick(this.pendingRightClicks, this.rightDragMoved, e);
       this.rightActive = false;
-      this.mouseFiring = false;
     }
   }
 
@@ -189,7 +183,6 @@ export class Input {
     this.dragging = false;
     this.panDragging = false;
     this.rightActive = false;
-    this.mouseFiring = false;
     this.pinchDist = 0;
   }
 
