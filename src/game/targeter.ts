@@ -21,8 +21,7 @@ export class Targeter {
   secondaryTarget: Enemy | null = null;
 
   // ターゲット標的面(自機の方を向いた仮想の的)の通過点(ターゲット相対オフセットで
-  // 保持し、的に貼り付いて見せる)。markBoardCrossings が push し、updateBoardMarkers
-  // が寿命管理と描画を行う。
+  // 保持し、的に貼り付いて見せる)。updateBoardMarks が寿命を持ち、syncBoardMarkers が描く。
   boardMarks: { off: Vec3; age: number; }[] = [];
 
   // ターゲット軌道のハイライト線(オレンジ)。自機軌道とほぼ重なるケースが多い
@@ -68,12 +67,20 @@ export class Targeter {
     this.handleTargetContextMenu(input, enemies, player, project);
   }
 
-  // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、
-  // 発射弾がその面を自機側から通過した点をターゲット相対で記録する。
-  // 次弾の照準修正の目安になるマーカーとして一定時間表示する。
-  markBoardCrossings(player: Player, entities: EntityManager): void {
+  // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
+  // 通過した点をターゲット相対で記録する。既存の記録は経過時間を進め、寿命切れを捨てる。
+  updateBoardMarks(dt: number, player: Player, entities: EntityManager): void {
     const target = this.aliveTarget;
-    if (!target) return;
+    // 記録側と描画側で同じ aliveTarget を見る: target のままだと撃破後も死亡個体の
+    // 凍結位置を基準に ✦ を残し続けてしまう。
+    if (!target) {
+      this.boardMarks.length = 0;
+      return;
+    }
+    this.boardMarks = this.boardMarks.filter((m) => {
+      m.age += dt;
+      return m.age < C.BOARD_MARK_LIFETIME;
+    });
     const n = norm(sub(target.state.r, player.state.r)); // 的の法線 = 視線方向
     if (lenSq(n) < 0.5) return;
 
@@ -95,9 +102,9 @@ export class Targeter {
 
   // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー)をまとめて更新する。
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
-  sync(dt: number, fo: FloatingOrigin, player: Player, enemies: Enemy[], overviewMode: boolean, project: ProjectFn): void {
+  sync(fo: FloatingOrigin, player: Player, enemies: Enemy[], overviewMode: boolean, project: ProjectFn): void {
     this.syncOrbitLine(fo, enemies, overviewMode);
-    this.syncBoardMarkers(dt, project);
+    this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
 
@@ -115,15 +122,8 @@ export class Targeter {
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
-  private syncBoardMarkers(dt: number, project: ProjectFn): void {
-    // 記録側の markBoardCrossings と同じ aliveTarget を見る: target のままだと
-    // 撃破後も死亡個体の凍結位置を基準に ✦ を描き続けてしまう。
+  private syncBoardMarkers(project: ProjectFn): void {
     const target = this.aliveTarget;
-    if (!target) this.boardMarks.length = 0;
-    this.boardMarks = this.boardMarks.filter((m) => {
-      m.age += dt;
-      return m.age < C.BOARD_MARK_LIFETIME;
-    });
     for (let i = 0; i < C.MAX_BOARD_MARKS; i++) {
       const key = `bh${i}`;
       const m = this.boardMarks[i];
