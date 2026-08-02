@@ -1,7 +1,7 @@
 // クリエイティブモード: 勝敗判定を発生させず、艦艇配置と軌道計画を自由に試すためのステージ。
 import type * as THREE from 'three/webgpu';
 import { Stage } from './stage';
-import type { Player } from '../player/player';
+import { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { Hud } from '../hud/hud';
@@ -13,8 +13,8 @@ import { Ephemeris, MU_MOON, R_MOON } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
 import { add } from '../../physics/vec3';
 import type { ProjectFn } from '../camera/camera-system';
+import type { UnlockManager } from '../unlock-manager';
 import * as C from '../const';
-import { CreativeShip } from '../game-entity/creative-ship';
 import { ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
 
 const DEG = Math.PI / 180;
@@ -27,9 +27,6 @@ export class CreativeStage extends Stage {
   readonly selectKeys: string[] = [];
   readonly initialAmmo = { mags: 0, rounds: 0 };
 
-  private _markerManager!: MarkerManager;
-  private _ephemeris!: Ephemeris;
-  private _entities!: EntityManager;
   private placerPanel!: ShipPlacerPanel;
   private simTime = 0;
 
@@ -37,17 +34,17 @@ export class CreativeStage extends Stage {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
-  // Stage.setup が受け取らない markerManager/ephemeris をここで補う。前者は addShip が
-  // CreativeShip を組み立てるのに、後者は艦艇配置パネルが月中心軌道を ECI 化するのに要る。
-  setupCreative(markerManager: MarkerManager, ephemeris: Ephemeris): void {
-    this._markerManager = markerManager;
-    this._ephemeris = ephemeris;
-    this.placerPanel = new ShipPlacerPanel(this._hud.root);
+  // 共通リソースの注入に加え、艦艇配置パネルを組み立てて確定の宛先を自身にする。
+  setup(
+    hud: Hud, sfx: Sfx, scene: THREE.Scene, entities: EntityManager, unlockManager: UnlockManager,
+    fx: EffectsSystem, markerManager: MarkerManager, ephemeris: Ephemeris,
+  ): void {
+    super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris);
+    this.placerPanel = new ShipPlacerPanel(hud.root);
     this.placerPanel.onConfirm = (name, form) => this.placeShip(name, form);
   }
 
-  init(_player: Player, entities: EntityManager): number {
-    this._entities = entities;
+  init(): number {
     return 0;
   }
 
@@ -60,10 +57,15 @@ export class CreativeStage extends Stage {
   // フォーム値から OrbitState を組み立て、addShip で1隻配置する。上限に達していれば
   // ヒントを出すだけで何もしない。
   private placeShip(name: string, form: ShipPlacerForm): void {
+    if (this._entities.players.length >= C.CREATIVE_MAX_SHIPS) {
+      this._hud.hint(`配置数が上限(${C.CREATIVE_MAX_SHIPS}隻)に達しています`);
+      return;
+    }
     const state = this.buildInitialState(form);
-    const ship = this.addShip(this._hud, this._sfx, this._scene, this._fx, this._entities, name, state);
-    if (!ship) this._hud.hint(`配置数が上限(${C.CREATIVE_MAX_SHIPS}隻)に達しています`);
-    else this._hud.hint(`${name} を配置`);
+    this._entities.addPlayer(
+      new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, name, state),
+    );
+    this._hud.hint(`${name} を配置`);
   }
 
   // フォームの placementMode に応じて軌道要素指定(stateFromElements)かラグランジュ点指定
@@ -120,23 +122,6 @@ export class CreativeStage extends Stage {
     return orbitState(this.simTime, add(moonPos, rel.r), add(moonVel, rel.v));
   }
 
-  // entities.creativeShips へ CreativeShip を1隻追加する。CREATIVE_MAX_SHIPS に達していれば
-  // 追加せず null を返す。軌道要素を指定した配置 UI はここを呼ぶ。
-  addShip(
-    hud: Hud, sfx: Sfx, scene: THREE.Scene, fx: EffectsSystem,
-    entities: EntityManager, name: string, initialState: OrbitState,
-  ): CreativeShip | null {
-    if (entities.creativeShips.length >= C.CREATIVE_MAX_SHIPS) return null;
-    const ship = new CreativeShip(hud, sfx, scene, fx, this._markerManager, name, initialState);
-    entities.addCreativeShip(ship);
-    return ship;
-  }
-
-  // クリエイティブ艦を配置から取り除く。
-  removeShip(entities: EntityManager, ship: CreativeShip): void {
-    entities.removeCreativeShip(ship);
-  }
-
   // 軌道計画への自動追従(followPlan)が ON の艦それぞれについて、次ノードの時刻へ達したかを
   // 見て、達していれば state をそのノードの絶対状態へ置き換えて消費する(有限推力のバーン模擬は
   // 行わない — ノードは既にバーン後の絶対状態のため、置き換えるだけで計画軌道と厳密に一致する)。
@@ -144,10 +129,10 @@ export class CreativeStage extends Stage {
   // 引くのに使うため、ここで毎フレーム覚え直す。
   update(_dt: number, _player: Player, entities: EntityManager, simTime: number, _simSpeed: SimSpeedManager): void {
     this.simTime = simTime;
-    for (const ship of entities.creativeShips) this.advanceFollowPlan(ship, simTime);
+    for (const ship of entities.players) this.advanceFollowPlan(ship, simTime);
   }
 
-  private advanceFollowPlan(ship: CreativeShip, simTime: number): void {
+  private advanceFollowPlan(ship: Player, simTime: number): void {
     if (!ship.followPlan) return;
     const reached = ship.plan.dropNodesBefore(simTime);
     if (reached) ship.state = reached;
@@ -155,5 +140,10 @@ export class CreativeStage extends Stage {
 
   checkWin(): boolean {
     return false;
+  }
+
+  // 勝敗のないモードなので、艦を喪失しても敗北画面は出さず通知だけにする。
+  recordPlayerLost(reason: string): void {
+    this._hud.hint(reason);
   }
 }
