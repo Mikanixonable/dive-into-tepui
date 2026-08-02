@@ -36,20 +36,9 @@
 
 
 ## refactor todo
-クリエイティブモードで追加された`CreativeShip`という命名をやめる。
-EntityManagerは`player[]`を保持するでき、**そのうち**一つが`activePlayer`ということにする。
-従来ステージでもクリエイティブモードでも共通で、creativeShip配列に含まれていないplayerインスタンスがあるという設計はやめる。
 
-activePlayerを特別視しないといけないのは
-behaveを呼ぶのは`activePlayer`だけで、他のplayerは呼ばない。
-薬莢との衝突音（crank）はactivePlayerだけが鳴らす（activePlayerがマイクを持っているという設定になる。将来的にはsfxが鳴る位置をsfxに伝え、マイク位置（activePlayerまたはカメラ位置）に応じて音量や定位を調整するのがよいだろう）。
+（すべて対応済み。chaseCamera の追従先は、仕様「宇宙船がアクティブ状態のとき、Mキーで戦闘ビューに
+切り替えることができる」より activePlayer で確定。）
 
-シミュレーションや物理演算、syncなどにおいて、activePlayerであるか否かに関わらず、players[]は対等に扱う。常にactivePlayerがplayers[]内に存在することにすれば、除外分岐はなくて良い。
-
-chaseCameraの追従先はactivePlayerとは限らない…はず（プロンプト、仕様を再確認）
-simulationなどで、対称に扱えるものについては、activePlayerを除外するのではなく、
-
-## map_context_gizmoをfocus_select_gizmoなど意味の通る命名にする。
-文脈に応じて複数の機能を持つgizmoのみをcontext_gizmoと呼ぶべきであり、もしそのようなcontext_gizmoを実装するのであれば、疎結合に実装された複数のgizmoをオーケストレーションする形でのみ容認される。
-
-今回は文脈に関わらず明確に一つの責務しか持たないので、context_gizmoではないから、命名変更のみ。
+- 将来: sfx が鳴る位置を sfx に伝え、マイク位置（activePlayer またはカメラ位置）に応じて
+  音量や定位を調整する。現状は薬莢との衝突音を activePlayer だけが鳴らす。

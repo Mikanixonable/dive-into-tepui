@@ -1,11 +1,11 @@
-// マップ上の被選択物(MapPickable)を右クリックしたときのコンテキストメニュー。項目リストは
+// マップ上の被選択物(MapPickable)を右クリックしたときに開くメニュー。項目リストは
 // 呼び出し側が対象の種別に応じて用意し、選択結果は対象付きで通知する。
 import { ContextMenu } from './hud/context-menu';
 import { MapPickable } from './map-pick';
 
 export interface MapMenuItem { readonly label: string; readonly act: string; }
 
-export class MapContextGizmo {
+export class MapPickMenu {
   private readonly menu = new ContextMenu();
   private target: MapPickable | null = null;
 
