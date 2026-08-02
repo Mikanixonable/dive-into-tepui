@@ -92,7 +92,7 @@ export class PlayerFire {
   ): void {
     this.tickReloadTimer(dt);
 
-    const keyHeld = input.down(K.fire) || input.mouseFiring;
+    const keyHeld = input.down(K.fire);
     if (!keyHeld) {
       // トリガーを離した時点で連射状態を畳む: wasFiring を立てたままにすると
       // fineAttitude(微調整出力)が恒久的に有効なままになり、次にトリガーを
