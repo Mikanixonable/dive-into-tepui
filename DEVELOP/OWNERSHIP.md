@@ -42,7 +42,8 @@ main.ts
     │   ├── OverviewCamera
     │   ├── FocusMarkers
     │   └── OverviewCameraPanel        ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
-    ├── ContextMenu<MapPickable> (mapPickMenu)  ... マップ右クリックの被選択物向けメニュー
+    ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別メニュー・操作の配分
+    │   └── ContextMenu<MapPickable>       ... マップ右クリックの被選択物向けメニュー
     ├── NavTarget                      ... 航法ターゲット(id)と自機軌道との相対 AN/DN・▲/▽ マーカー
     ├── Navball                        ... 姿勢儀。基準モード(自機/TGT+/TGT-)と天球グリッド6トグルの正本
     │   └── NavballPanel                   ... DOM は Hud.root 配下。SVG のボール + モード選択 + グリッドトグル
@@ -51,7 +52,7 @@ main.ts
     ├── SimSpeedManager
     ├── DisplayTimeManager             ... 「いつを見るか」(表示期間・未来ゴーストスライダー)
     │   └── DisplayTimePanel           ... DOM は Hud.root 配下。期間/未来位置スライダー
-    ├── PlanEditor                     ... plan は活艦(activePlayer)の Plan への転送 getter。正本ではない
+    ├── PlanEditor                     ... plan は活艦(ship)の Plan への転送 getter。正本ではない
     │   ├── PlanDisplay                ... 計画の未来表示(「見えるとき何を見せるか」)
     │   │   ├── PlanTrajectory         ... 計画折れ線 + per-arc キャッシュ + 画面判定
     │   │   │   └── PlanArc[]          ... arc ごと。各々 OrbitEntity 1本(積分の正本)+ SampledLine を持つ
@@ -145,8 +146,8 @@ main.ts
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
 | `Player` / `Simulator` / `EntityManager` / `Stage` | Game | 毎フレームの引数として相互に渡される |
 | `UnlockManager` | main.ts | ステージセレクト画面と、各Stage（クリア後画面判定のため） |
-| `FocusMarkers.labels` | CameraSystem(→FocusMarkers) | `Game.buildMapPickables()` が読んで生存中の自機・敵船・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`Game.handleMapContextMenu`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す |
-| `PlanDisplay.apsisMarkers` | PlanEditor(→PlanDisplay) | `Game.buildMapPickables()` が他の候補と合流させ、`Game.handleMapContextMenu`/`OverviewCamera.update` へ1本の候補列として渡す |
+| `FocusMarkers.labels` | CameraSystem(→FocusMarkers) | `MapPicker.refresh()` が読んで生存中の自機・敵船・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapPicker.handleRightClick`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す |
+| `PlanDisplay.apsisMarkers` | PlanEditor(→PlanDisplay) | `MapPicker.refresh()` が他の候補と合流させ、`MapPicker.handleRightClick`/`OverviewCamera.update` へ1本の候補列として渡す |
 
 ---
 
@@ -181,7 +182,7 @@ main.ts
 | 直近ノードの接近/達成通知済み | `PlanGuide`(`approachNotified` / `achievedNotified`) | 通知済みのノードそのものへの参照。編集のたびノードは別インスタンスへ置き換わるので、同一性比較がそのまま「同じノードについて通知済みか」の判定になる |
 | 予測表示期間(手動レンジの秒数 `manualDurationSec` を含む)・未来ゴーストスライダー・未来表示の禁止(forceCurrent) | `DisplayTimeManager` | |
 | 計画折れ線を描く表示座標系(trajectoryFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本 |
-| マップ視点(注視点相対オフセット・パン・上方向)・表示座標系・フォーカス(id)・ViewFrame | `OverviewCamera` | `view: ViewFrame` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `view` を読むだけで自分では持たない。フォーカス id が指す実位置は `OverviewCamera` が持たず、`update` の引数(`Game.buildMapPickables()`)から毎フレーム引き直す |
+| マップ視点(注視点相対オフセット・パン・上方向)・表示座標系・フォーカス(id)・ViewFrame | `OverviewCamera` | `view: ViewFrame` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `view` を読むだけで自分では持たない。フォーカス id が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す |
 | 戦闘視点(ViewFrame: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
 | マップモードの開閉 | `MapModeToggler.mapMode` | 影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayTimeManager.forceCurrent` / タッチUI)を一斉に切り替える |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
@@ -275,7 +276,7 @@ main.ts
 | `FocusMarkers.labels[].pos` | 天体暦から毎フレーム再計算 | `syncLabels()` 毎 |
 | `NavTarget` の相対 AN/DN 位置・通過時刻 | 自機軌道要素 + 対象の軌道面法線からの導出値(id 自体は正本) | `update()` 毎に全消去→再算出 |
 | `PlanDisplay.apsisMarkers` / アイコン位置 | `PlanTrajectory.finalSegmentStart` の軌道要素からの解析的な導出値 | `syncApsisMarkers()` 毎(`sync`/`hide` から呼ぶ) |
-| `Game.buildMapPickables()` の返り値 | `FocusMarkers.labels` + 生存中の全 `entities.players`・敵船の displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` の合成(保持しない使い捨て配列) | `refreshMapPickables()`(`update()` 内、経路ごとの `cameraSystem.update()` 直前)毎に作り直す |
+| `MapPicker.pickables` | `FocusMarkers.labels` + 生存中の全 `entities.players`・敵船の displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` の合成(保持しない使い捨て配列) | `mapPicker.refresh()`(`update()` 内、経路ごとの `cameraSystem.update()` 直前)毎に作り直す |
 
 ### 基礎データ型の不変性(整合性の前提)
 

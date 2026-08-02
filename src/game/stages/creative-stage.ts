@@ -7,6 +7,7 @@ import type { SimSpeedManager } from '../sim-speed-manager';
 import type { Hud } from '../hud/hud';
 import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
+import type { Simulator } from '../simulation/simulator';
 import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitState, orbitState, semiMajorFromPeriod, stateFromElements } from '../../physics/orbital';
 import { Ephemeris, MU_MOON, R_MOON } from '../../physics/ephemeris';
@@ -28,7 +29,6 @@ export class CreativeStage extends Stage {
   readonly initialAmmo = { mags: 0, rounds: 0 };
 
   private placerPanel!: ShipPlacerPanel;
-  private simTime = 0;
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -37,9 +37,9 @@ export class CreativeStage extends Stage {
   // 共通リソースの注入に加え、艦艇配置パネルを組み立てて確定の宛先を自身にする。
   setup(
     hud: Hud, sfx: Sfx, scene: THREE.Scene, entities: EntityManager, unlockManager: UnlockManager,
-    fx: EffectsSystem, markerManager: MarkerManager, ephemeris: Ephemeris,
+    fx: EffectsSystem, markerManager: MarkerManager, ephemeris: Ephemeris, simulator: Simulator,
   ): void {
-    super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris);
+    super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
     this.placerPanel = new ShipPlacerPanel(hud.root);
     this.placerPanel.onConfirm = (name, form) => this.placeShip(name, form);
   }
@@ -75,18 +75,16 @@ export class CreativeStage extends Stage {
     return this.buildElementsState(form);
   }
 
-  // 系・点・軌道種別・面内/面外振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の
-  // 初期状態を組む。ECI 位置・速度は haloState/lissajousState がそのまま返す。
+  // 系・点・軌道種別・振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
+  // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォームの面内振幅は使わない。
   private buildLibrationState(form: ShipPlacerForm): OrbitState {
-    const params = {
-      system: form.librationSystem,
-      point: form.librationPoint,
-      ax: form.axKm * 1e3,
-      az: form.azKm * 1e3,
-    };
-    return form.librationOrbitKind === 'halo'
-      ? haloState(this.simTime, this._ephemeris, params)
-      : lissajousState(this.simTime, this._ephemeris, params);
+    const common = { system: form.librationSystem, point: form.librationPoint };
+    if (form.librationOrbitKind === 'halo') {
+      return haloState(this._simulator.simTime, this._ephemeris, { ...common, az: form.azKm * 1e3 });
+    }
+    return lissajousState(this._simulator.simTime, this._ephemeris, {
+      ...common, ax: form.axKm * 1e3, az: form.azKm * 1e3,
+    });
   }
 
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
@@ -112,23 +110,20 @@ export class CreativeStage extends Stage {
 
     // 主天体中心(地球 or 月)の相対状態。月基準ならこの時点では月中心の値。
     const rel = stateFromElements(
-      this.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, mu,
+      this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, mu,
     );
     if (form.body === 'earth') return rel;
 
     // 月中心の相対状態に月自身の位置・速度を足して ECI 化する。
-    const moonPos = this._ephemeris.moonPosAt(this.simTime);
-    const moonVel = this._ephemeris.moonVelAt(this.simTime);
-    return orbitState(this.simTime, add(moonPos, rel.r), add(moonVel, rel.v));
+    const moonPos = this._ephemeris.moonPosAt(this._simulator.simTime);
+    const moonVel = this._ephemeris.moonVelAt(this._simulator.simTime);
+    return orbitState(this._simulator.simTime, add(moonPos, rel.r), add(moonVel, rel.v));
   }
 
   // 軌道計画への自動追従(followPlan)が ON の艦それぞれについて、次ノードの時刻へ達したかを
   // 見て、達していれば state をそのノードの絶対状態へ置き換えて消費する(有限推力のバーン模擬は
   // 行わない — ノードは既にバーン後の絶対状態のため、置き換えるだけで計画軌道と厳密に一致する)。
-  // simTime は艦艇配置パネルの confirm(DOM イベントとして非同期に発火する)が配置先の時刻を
-  // 引くのに使うため、ここで毎フレーム覚え直す。
   update(_dt: number, _player: Player, entities: EntityManager, simTime: number, _simSpeed: SimSpeedManager): void {
-    this.simTime = simTime;
     for (const ship of entities.players) this.advanceFollowPlan(ship, simTime);
   }
 

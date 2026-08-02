@@ -44,21 +44,18 @@ export class PlanArc {
     return this.sampled.line;
   }
 
-  // 起点・終端の変化を検出してスロットル付きで再積分し、折れ線を現在の表示状態へ同期する。
-  update(
-    state0: OrbitState,
-    end: number,
-    ephemeris: Ephemeris,
-    frame: Frame,
-    currentTime: number,
-    fo: FloatingOrigin,
-  ): void {
+  // 起点・終端の変化を検出して再積分する。
+  update(state0: OrbitState, end: number, ephemeris: Ephemeris): void {
     // 積分結果は (state0, end) だけで決まるので、変化したときにだけ回す。
     const changed = this.key === null || state0 !== this.key.state0 || end !== this.key.end;
     if (changed) {
       this.integrate(state0, end, ephemeris);
       this.key = { state0, end };
     }
+  }
+
+  // 直近に積分したサンプル列を折れ線メッシュへ反映する。
+  sync(ephemeris: Ephemeris, frame: Frame, currentTime: number, fo: FloatingOrigin): void {
     this.sampled.syncGeometry(this.samples, frame, ephemeris);
     this.sampled.syncTransform(frame, currentTime, ephemeris, fo);
   }

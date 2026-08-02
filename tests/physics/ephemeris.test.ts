@@ -138,9 +138,11 @@ export function register(): void {
       for (const [name, p] of [['L1', L1], ['L2', L2], ['L3', L3], ['L4', L4], ['L5', L5]] as const) {
         assert.ok(Math.abs(dot(p, n)) < 1e-6 * R, `${name} が白道面から外れる (t=${t}): ${dot(p, n)}`);
       }
-      // L1/L2 は月の内側/外側で月から等距離、L3 は反対側
+      // L1/L2 は月の内側/外側、L3 は反対側。共線点の距離は5次方程式の根で L1 と L2 で
+      // 一致せず、地球-月系では L1 が 0.15093 R、L2 が 0.16783 R(いずれも文献値)。
       assert.ok(len(L1) < R && len(L2) > R, `L1/L2 の内外 (t=${t})`);
-      assert.ok(Math.abs(len(sub(L1, mPos)) - len(sub(L2, mPos))) < 1e-6 * R, `L1/L2 が月から等距離でない (t=${t})`);
+      assert.ok(Math.abs(len(sub(L1, mPos)) / R - 0.15093) < 1e-4, `L1 の月からの距離比 (t=${t}): ${len(sub(L1, mPos)) / R}`);
+      assert.ok(Math.abs(len(sub(L2, mPos)) / R - 0.16783) < 1e-4, `L2 の月からの距離比 (t=${t}): ${len(sub(L2, mPos)) / R}`);
       assert.ok(dot(norm(L3), mHat) < -0.999999, `L3 が反月方向でない (t=${t})`);
       // L4/L5 は月と正三角形をなし、公転前方/後方に 60°
       const lead = cross(n, mHat); // 公転前方
@@ -154,10 +156,13 @@ export function register(): void {
 
   test('ephemeris: 太陽-地球ラグランジュ点は黄道面内で地球・太陽に対し所定の配置になる', () => {
     // 地球はこの系では副天体なので、地心を原点とする ECI での配置は地球-月系と別物になる:
-    // L1/L2 は地球のすぐ両隣(ヒル半径 ≈ 150万 km)、L3 は太陽の向こう側(地心から約 2 au)、
+    // L1/L2 は地球のすぐ両隣(共線点距離 ≈ 150万 km、ヒル半径に近いが 5次方程式の根なので
+    // L1/L2 で僅かに違う)、L3 は太陽の向こう側(地心から約 2 au)、
     // L4/L5 は太陽・地球と正三角形をなすので地心から 1 au。
     const mu = MU_EARTH / (MU_SUN + MU_EARTH);
-    const hill = SUN_DIST * Math.cbrt(mu / 3);
+    // 太陽-地球系の共線点距離(軌道半径比)。文献値は L1 = 0.0100, L2 = 0.0100(有効数字4桁で同値)。
+    const gL1 = SUN_DIST * 0.00997;
+    const gL2 = SUN_DIST * 0.01004;
     for (const t of [0, 1e7, 1e9]) {
       const sPos = sunPosition(t, 0.3);
       const sHat = norm(sPos);
@@ -165,8 +170,8 @@ export function register(): void {
       for (const [name, p] of [['L1', L1], ['L2', L2], ['L3', L3], ['L4', L4], ['L5', L5]] as const) {
         assert.ok(Math.abs(dot(p, ECL_POLE_ECI)) < 1e-6 * SUN_DIST, `${name} が黄道面から外れる (t=${t})`);
       }
-      assert.ok(len(sub(L1, scale(sHat, hill))) < 1e-6 * hill, `L1 (t=${t}): ${JSON.stringify(L1)}`);
-      assert.ok(len(sub(L2, scale(sHat, -hill))) < 1e-6 * hill, `L2 (t=${t}): ${JSON.stringify(L2)}`);
+      assert.ok(len(sub(L1, scale(sHat, gL1))) < 1e-3 * gL1, `L1 (t=${t}): ${JSON.stringify(L1)}`);
+      assert.ok(len(sub(L2, scale(sHat, -gL2))) < 1e-3 * gL2, `L2 (t=${t}): ${JSON.stringify(L2)}`);
       const l3Expect = scale(sHat, SUN_DIST * (2 + (5 / 12) * mu));
       assert.ok(len(sub(L3, l3Expect)) < 1e-6 * SUN_DIST, `L3 (t=${t}): ${JSON.stringify(L3)}`);
       // 地球の公転前方 = 太陽の見かけの運動と逆向き。L4 が前方、L5 が後方。
