@@ -9,6 +9,7 @@ import type { UnlockManager } from '../unlock-manager';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
+import type { Simulator } from '../simulation/simulator';
 import { Stage00 } from './stage00';
 import { Stage0 } from './stage0';
 import { Stage1 } from './stage1';
@@ -39,10 +40,11 @@ export function initStage(
   fx: EffectsSystem,
   markerManager: MarkerManager,
   ephemeris: Ephemeris,
+  simulator: Simulator,
 ): Stage {
   const StageClass = STAGE_CLASSES.find((c) => c.id === stageId) ?? STAGE_CLASSES.find((c) => c.id === DEFAULT_STAGE_ID)!;
   const stage = new StageClass();
-  stage.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris);
+  stage.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
   const enemyCount = stage.init(player, entities);
   player.initAmmo(stage.initialAmmo.mags, stage.initialAmmo.rounds);
   hud.toast(stage.briefingHtml(enemyCount), 12000);

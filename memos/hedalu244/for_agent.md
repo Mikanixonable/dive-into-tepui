@@ -1,232 +1,173 @@
-# `origin/workspace2` レビュー — マップ/クリエイティブモード改修
+# 責務境界の監査ログ — `/refactor` `/refactor-fixed` の徹底状況
 
-対象: `f621929`(merge-base) … `origin/workspace2` (`7ebd7cc`)
-差分規模: 68 ファイル / +3336 −536。うち `src/` は 55 ファイル。
-コードは一切変更していない。以下は差分とコミットログからの読み取り。
-
-ブランチ名は `workplace2` ではなく **`workspace2`**。
+対象: `8778273`(workspace2 マージ)〜 `37b2302` を中心に、作業ツリー全体。
+方法: `.claude/hooks/check-boundaries.mjs`(今回追加した機械検査)の全 `src/` スイープ + 手読み。
+検証: `npm run typecheck` 通過 / `npm run test:physics` **116/116 通過**(3件追加・2件修正)。
 
 ---
 
-## 0. コミット構成
+## 0. この変更セットで実施したこと
 
-| commit | 内容 |
-| --- | --- |
-| `cadf7e8` | move: docs |
-| `cd8e9aa` | 実装指示書 `memos/mikanixonable/MAPMODE_CREATIVE_PLAN.md`(491行)を新規作成 |
-| `c0a18ab` | WP-A1/A2(MapPickable・MapContextGizmo)、WP-D3/D4/D5(ワープ段・自動ワープ・日時)、WP-D2a(天球グリッド)、WP-B5(Δv編集UI) |
-| `e1823d2` | WP-C1/C2(ターゲット手動化・第二ターゲット)、WP-D1(カメラロール)、WP-B4(手動レンジ) |
-| `809fb6e` | docs: Wave1 |
-| `71e5228` | WP-B1/B2/B3(船のフォーカス・NavTarget・アプシス) |
-| `718030b` | docs: Wave2/3 + `refactor-fixed` |
-| `b4d82c7` | WP-D2b/E1/E6(navball・起動タブ・CreativeStage) |
-| `cd95e2a` | WP-E3(halo.ts) |
-| `673368f` | WP-E4/E5(アクティブ艦切替・Plan の艦所有・自動追従) |
-| `10be267` | WP-E2(艦艇配置パネル・`semiMajorFromPeriod`・`moonVelAt`) |
-| `a783fc1` / `7ebd7cc` | docs |
-
-指示書は「1 WP = 1 変更セットで、実装と設計文書更新を同じコミットに含める」と自分で書いているが、
-**実際は docs が別コミット(`809fb6e` / `718030b` / `a783fc1`)にまとめられている。** 最終状態としては
-4 文書 + `refactor-fixed` すべて更新済みなので実害は小さいが、規約通りではない。
+1. **`/refactor-fixed` を 371 行 → 約 190 行に圧縮。** 個別モジュールの判断(カメラの `ViewFrame`、
+   `OrbitEntity` 一本化、`FrameRotation`、戦闘/航法ターゲットの分離、`Plan` の所有、
+   `EntityManager.players`、アクティブ艦の切替、`CreativeStage`、天球グリッドの可視状態)は
+   すべて CLAUDE.md へ移した。残したのは横断的・恒久的な 12 節のみ。
+2. **5 つのルールを明文化**(1: Game はロジックを持たない / 2: update と sync を混ぜない /
+   4: physics/ は正確さ最優先・物理でないものを持ち込まない)。
+3. **再発防止フック `.claude/hooks/check-boundaries.mjs` を追加**(§3)。
+4. **検出した違反をすべて是正**(§1)。現在フックのスイープは違反 0 件。
 
 ---
 
-## 1. 要求 → どのモジュールへの変更として反映されたか
+## 1. 検出した違反(すべて是正済み)
 
-### マップモードのUI
+### A. `Game` がマップ被選択物のロジックを持っていた
 
-| 要求 | 反映先 | 状態 |
+`ab7ebc0` で `MapPickMenu`(対象を保持するだけのラッパー)を正しく削除した際、**その周辺の
+ロジックが `Game` へ吸い上げられたまま残り**、`/refactor-fixed` に「所有者がまたがるので
+`Game` が持つ」と確定判断として記録されていた。`Game` にあったのは `buildMapPickables` /
+`refreshMapPickables`(候補列の組み立て)、`mapMenuItemsFor` / `navTargetItems`(種別ごとの
+メニュー項目表)、`handleMapContextMenu`(右クリック解決)、`mapPickMenu.onSelect` の7分岐。
+
+**是正:** `src/game/map-picker.ts`(`MapPicker`, 153行)を新設し、候補列 `pickables` の組み立て・
+右クリック解決・種別別メニュー・選ばれた操作の配分をまとめて移した。`game.ts` は 546 → **442行**。
+`MapModeToggler` が受け取るのも `ContextMenu<MapPickable>` から `MapPicker` へ変わった。
+
+**`Game.setActivePlayer` は `Game` に残した**(ユーザー判断)。分岐も組み立ても持たず、自分の
+フィールドを書いて各所有者へ1行ずつ知らせるだけなので、外へ出しても薄すぎるラッパーにしかならず、
+`pause`/`resume` と同じ「配線の一部」。この線引き(**境界は行数ではなく分岐と組み立ての有無**)を
+`/refactor-fixed` 1 に明記し、フックの許可リストにも入れた。
+
+**教訓:** 薄いラッパーを消すときに、そのラッパーが**持つべきだった**責務まで上位へ流さない。
+`MapPickMenu` は薄すぎたのであって、「マップ被選択物」という責務自体は正しかった。
+
+### B. `sync` が論理値を進めていた / `update` を呼んでいた
+
+`/refactor-fixed` 2 の違反 4 箇所。いずれも update 相へ切り出した。
+
+| 箇所 | 内容 | 是正 |
 | --- | --- | --- |
-| 船を右クリックメニューでフォーカス対象に | `map-pick.ts`(新), `map-pick-menu.ts`(新), `game.ts` `buildMapPickables`/`mapMenuItemsFor`, `overview-camera.ts`(`resolveFocus(candidates)`) | ✅ |
-| 月・ラグランジュ点をターゲットに | `nav-target.ts`(新 `canTarget`), `game.ts` `navTargetItems` | ✅ |
-| ターゲットとの相対 AN/DN をアイコン表示、右クリックで加速/ノード追加/フォーカス | `nav-target.ts`(`Targeter` から移設), `game.ts`(act ディスパッチ), `plan-editor.ts` `addNodeAt` | ✅ |
-| 近地点・遠地点アイコン + 右クリックメニュー | `plan-display.ts`(`syncApsisMarkers`/`apsisMarkers`/`apsisTimeOf`), `const.ts` `APSIS_MIN_ECC` | ✅ |
-| 時間スライダーの目盛り + 手動レンジ | `display-time-manager.ts`(`'manual'`/`manualDurationSec`/`tickLabels`), `display-time-panel.ts`, `plan-arc.ts`(`PLAN_ARC_MAX_STEPS` 打ち切り) | ✅ |
-| Δv 長押しボタン + ドラッグラッチ | `hud/buttons.ts` `HudHoldButton`(新), `node-gizmo.ts` `AxisLatchState`, `plan-editor.ts` `applyDv`/`applyHeldDv` | ✅ レート適用点は `applyDv` 一箇所に集約済み |
+| `vfx/flash-effect-manager.ts` | `syncFlashEffects` が `fx.age += dt` と `simDt` ぶんの移流と寿命破棄をしていた | `updateFlashEffects(dt, simDt)` へ分離。`EffectsSystem.update` として `Game.update` から呼ぶ |
+| `targeter.ts` | `syncBoardMarkers` が `m.age += dt` と寿命破棄をしていた | 記録側の `markBoardCrossings` と統合して `updateBoardMarks(dt, ...)` に。`syncBoardMarkers` は描くだけ |
+| `plan/plan-display.ts` | `sync` が `traj.update()` を呼び、その中で **RK4 積分**が走り、`finalSegmentStart` と `_apsisMarkers`(次フレームの `update` が読む値)を書いていた | `update(plan, simTime, displayTime, show)` を新設。積分・ゴースト位置・アプシスアイコンの算出はそちら、`sync(fo, project, showPanel)` は反映だけ |
+| `plan/plan-arc.ts` | `update` が `sampled.syncGeometry/syncTransform` を呼んでいた | `update`(積分)と `sync`(メッシュ反映)に分離。`PlanTrajectory` も同様 |
 
-### 戦闘ビューのUI
+**副次的な効果:** 被選択物のアプシスアイコンが「前フレームの `sync` が求めた値」になっていた
+歪みが消えた(旧 `/refactor-fixed` はそれを「1フレームの遅れは無害」と書いて正当化していた)。
+`Game.update` の順序も `guide.update` → `trackAnchor` → `editor.update` → `mapPicker.refresh` へ
+整理した。
 
-| 要求 | 反映先 | 状態 |
-| --- | --- | --- |
-| オートターゲット廃止 → 右クリックメニュー | `targeter.ts`(`resolveAutoTarget`/`lockedTarget`/`handleTargetLockByRightClick` を削除、`target` を唯一の正本に), `input.ts`(右クリックにも `CLICK_MOVE_THRESHOLD` 適用) | ✅ |
-| 第二ターゲット・別色 | `targeter.ts` `secondaryTarget`/`secondaryOrbitLine`, `theme.ts` `ACCENT_SECONDARY`(`#00c8ff`), `enemy.ts` `markerItem(role)`, `grouped-markers.ts` `color?`, `hud/panel.ts` | ✅ renderOrder は player=1 / secondary=2 / primary=3 / planned=4 に振り直し済み |
+**挙動の変化(意図的):** フラッシュエフェクトの寿命が update 相に移ったので、**ポーズ中は
+爆発が止まる**(以前はポーズ中もフェードし続けていた)。決着後は簡略経路でも `effects.update` を
+呼ぶので、撃墜の瞬間の爆発は最後まで再生される。
 
-### 両ビュー共通
+### C. `update` フェーズが DOM を書いていた
 
-| 要求 | 反映先 | 状態 |
-| --- | --- | --- |
-| カメラロールをテンキー0/1 | `key-mapping.ts`(`cameraRollLeft/Right`), `chase-camera.ts`(`keyRoll`), `overview-camera.ts`(`up_r` を新設) | ⚠️(→ 4-4) |
-| navball ウィンドウ | `game/navball/navball.ts` + `navball-panel.ts`(新、`Game` 所有) | ✅ |
-| ターゲット順行/逆行モードトグル | `navball.ts` `NavballMode`(`self`/`targetPro`/`targetRetro`) | ✅ |
-| 黄道/赤道の面・極・グリッド6トグル | `render/celestial-grid.ts`(新、`EnvironmentScene` 所有)、可視状態は `Navball.gridVisibility` | ⚠️ Ctx を広げた(→ 4-1) |
-| 最大加速 ×32 | `const.ts` `SIM_SPEED_LEVELS` → `…,4096,16384,65536,131072` | ⚠️ 副作用未対処(→ 3-E) |
-| ノードまでの残り加速時間表示・所要半減 | `sim-speed-manager.ts` `estimatedRealSecondsToWarpEnd`, `AUTOWARP_MARGIN` 4→2, `hud/panel.ts` | ✅ 段が下がる将来を積算する実装で妥当 |
-| 現在日時 + 経過時間 (yyyymmddhhmmss) | `hud/utils.ts` `fmtDateTime`, `const.ts` `SIM_EPOCH_UTC='2030-01-01T00:00:00Z'`, `hud/panel.ts` | ✅ |
+`plan-editor.ts` の `updateEditing`(`Game.update` から呼ばれる)が末尾で `renderPanel()` を呼び、
+MANEUVER PLAN パネルの `innerHTML` を書き換えていた。**是正:** パネルの組み立てごと
+`syncPanel(simTime)` として `PlanEditor.sync` へ移動。`updateEditing(dt, input)` は Δv の加算だけに
+なった。あわせて命名も規約へ合わせた: `renderPanel` → `syncPanel`(`render` は
+`renderer.render` を呼ぶものだけ)、`updateGizmo` → `syncGizmo`(実体は DOM スペックの組み立て)。
+`HudPanels.update` → `HudPanels.sync` も同様(DOM しか書かないのに update を名乗り、`Game.sync`
+から呼ばれていた)。
 
-### クリエイティブモード
+### D. `physics/projection.ts` の位置づけ
 
-| 要求 | 反映先 | 状態 |
-| --- | --- | --- |
-| モード概念・タイトルのタブ | `game-mode.ts`(新 `GameMode`/`LaunchSelection`), `launch-select.ts`(新、`stages/stage-select.ts` を廃止して移動), `main.ts` `resolveLaunchSelection`(`?mode=creative`) | ✅ |
-| マップから開始 | `map-mode-toggler.ts`(`initialMapMode` 引数 + `applyInitialState`) | ✅ |
-| 軌道要素指定で艦を配置 | `creative/ship-placer-panel.ts`(新 278行), `stages/creative-stage.ts`(新), `orbital.ts` `semiMajorFromPeriod`, `ephemeris.ts` `moonVelAt` | ✅ 排他な3組(近地点+遠地点 / 半長軸+離心率 / 周期+離心率) |
-| ハロー・リサジュー軌道 | `physics/halo.ts`(新) + `tests/physics/halo.test.ts` | ⚠️ 指示書の Richardson 三次近似ではなく線形化解(→ 4-8) |
-| 右クリックでアクティブ化 | `entity-manager.ts` `players`/`findPlayer`, `game.ts` `setActivePlayer`, `camera-system.ts`/`combat-camera-system.ts`/`chase-camera.ts` の `setPlayer` 連鎖 | ✅ |
-| 軌道計画の自動追従 | `Plan` の所有を `PlanEditor` → `Player` へ移動、`Player.followPlan`, `CreativeStage.advanceFollowPlan` | ✅ ノード時刻を跨いだら `state` をノードの絶対状態へ置換 |
-| アクティブ時に [M] で戦闘ビュー | `map-mode-toggler.ts` `canToggleView` 引数 | ✅ |
+**「physics に置いてよい」で決着**(ユーザー判断)。直交座標から射影座標への変換は調整値を
+含まない厳密な幾何であり、`physics/` の対象。境界は「用途が表示かどうか」ではなく
+「**厳密な数学・物理そのものか、調整の入った歪めか**」であることを `/refactor-fixed` 4 と
+`projection.ts` 冒頭・CLAUDE.md に明記したので、次回以降の検査には掛からない。
 
----
+### E. `physics/halo.ts` の近似 — 加えて**係数の符号バグを発見・修正**
 
-## 2. ユーザーの3つの懸念への回答
+調査の過程で、面内振動数の式に**符号の誤り**が見つかった。
+`λ² = (√(9c₂²−8c₂) + c₂ − 2)/2` は特性方程式 `λ⁴+(c₂−2)λ²−(2c₂+1)(c₂−1)=0` の**振動解ではない
+方の根**で、正しくは `(√(9c₂²−8c₂) − c₂ + 2)/2`。太陽-地球 L1 で λ=2.53(誤)→ **2.0864**(正、
+文献値と一致)。これで λ・ωz・k がすべて文献値に一致するようになった。
 
-### 懸念1: 「player を単独のものとして扱う」前提が崩れる
+そのうえで、**Richardson (1980) の三次振幅拘束 `l1·Ax² + l2·Az² + Δ = 0` を実装**した。線形解では
+λ ≠ ωz なのでハロー軌道は存在せず、両振動数が一致するのは三次でこの拘束が成り立つときだけ
+— 従来の「面外振動数に λ を流用して共鳴させる」は文献にない独自の細工だった。`haloState` は
+面外振幅 `Az` だけを取り、拘束から `Ax` を解いてから駆動する形にした。艦艇配置パネルの
+「面内振幅」入力はハロー選択時には出さない(導出値になるため)。
 
-**解消済み。** `CreativeShip` を廃止し、すべての自機を `EntityManager.players` に入れて対等に扱う形へ
-変更した(`/refactor-fixed`「自機は1隻でも `EntityManager.players` に入れ、シミュレーションでは
-対等に扱う」節に確定判断として記録済み)。除外分岐と `= null` 既定引数は無くなった。
+**検算:** ISEE-3 ハロー(太陽-地球 L1、Az=110,000 km)で Ax=205,046 km・Ay=662,131 km を再現
+(文献値 206,000 / 666,000 km に対し誤差 1% 未満)。テストに固定した。
 
-### 懸念2: マップモードの責務分配が壊れていないか
+### E-2. ラグランジュ点がヒル半径近似だった(E の調査で発覚)
 
-**壊れていない。むしろ一部は改善している。**
+`ephemeris.ts` の共線点 L1/L2 が `(μ/3)^(1/3)`(ヒル半径)そのままだった。真の値は5次方程式の
+根で、**地球-月系では 5.6%(約 5,400 km)ずれる**(γ: 0.1594 → 0.15093)。Newton 法で解く形に
+修正した。L1 と L2 は副天体から等距離ではなくなる(EM: 0.15093 / 0.16783)ので、それを等距離だと
+断定していた既存テスト2件も文献値との突き合わせに書き換えた。
 
-- `MapModeToggler` は解体されず、`initialMapMode`(コンストラクタ)と `canToggleView`(引数)で拡張された。
-  `[M]` の開閉が `editor.editMode` / `cameraSystem.overviewMode` / `displayTimeManager.forceCurrent` を
-  同時に切り替える構造はそのまま。`applyInitialState` で初期値も同じ経路を通る。
-- `OverviewCamera` から `FocusMarkers` 依存が切れ、`resolveFocus(candidates)` が
-  引数で受けた `MapPickable[]` から id で引き直す形になった。カメラが「候補が何であるか」を
-  知らなくなったので、これは責務分割としては前進。
-- `FocusGizmo`(`camera/`)→ `MapContextGizmo`(`game/` 直下)への一般化 + 所有者の `CameraSystem` → `Game`
-  移動も筋が通っている(メニュー項目が camera / targeter / plan / simSpeed にまたがるため)。
-  旧名 `FocusGizmo` / `focusGizmo` / `closeFocusMenu` / `FOCUS_LABEL_PICK_PX` は全文検索 0 件。改名は綺麗。
-- ポインタ優先順位の「呼び出し順だけで表現し、ギズモは互いを参照しない」設計も維持
-  (`editor.handleMapPointer` → `game.handleMapContextMenu`)。
-- **懸念があるとすれば `Game` 側**: `CameraSystem.handleMapPointer` が消えた代わりに、
-  右クリック処理そのものが `Game.handleMapContextMenu` へ移った。マップの責務が
-  各所有者から `Game` へ吸い上げられた面はある(→ 4-2)。
+### F. `SUBSTEP_MAX_DT` が上位2段のワープで成立していなかった
 
-### 懸念3: `Targeter` の責務が混乱していないか
+`nSub = min(SUBSTEP_MAX_COUNT=64, ceil(simDt/20))` の上限に張り付くと `SUBSTEP_MAX_DT` が守られ
+なくなっていた(60fps・×131072 で subDt ≈ 34 s)。**是正:** ユーザー判断により `SUBSTEP_MAX_COUNT`
+のガードごと削除。最大ワープでもサブステップ数は約2倍(64 → 110)にしかならない。
 
-**混乱していない。分割の判断は正しい。**
+参考に実測した積分誤差(`stepOrbitRK4`、1周期ぶん): LEO 420 km 円軌道で刻み 20 s → 0.29 m、
+34 s → 2.57 m。Molniya 相当(e=0.741)で 0.01 km → 0.07 km。実害は元々小さかったが、
+定数が主張する不変条件が成立していないことが問題だった。
 
-- `NavTarget`(新規 99行)を別クラスとして立て、`Targeter` は `Enemy` 専用のまま据え置いた。
-  `syncNodeMarkers`(相対 AN/DN)は `Targeter` から**移設**され、複製ではない(`Targeter` 側から消えている)。
-  `Targeter` は 230行 → 206行 に減っている。
-- `refactor-fixed/SKILL.md` に「戦闘ターゲットと航法ターゲットは別クラスにする」として判断が記録済み。
-- ただし副作用が2つ:
-  1. `Targeter` が `MapPickable` を import し、`pickEnemyAt` が毎クリック偽の `MapPickable[]` を
-     組み立てて `pickNearest` を呼ぶ。`/add-feature` としては正解(ヒットテストの複製を避けた)だが、
-     戦闘側がマップ用の型に依存する形になった。`pickNearest` を `MapPickable` ではなく
-     `{ pos: Vec3 }` 制約の汎用関数にしておけば依存は生じなかった。
-  2. `Targeter` が `ContextMenu` を直接持ち、`currentMenuTarget` + `onSelect` ディスパッチという
-     **`MapContextGizmo` と同型のパターンを再実装**している(→ 4-5)。
+### G. `CreativeStage.simTime` の正データ重複
 
----
+`Simulator.simTime` のコピーを毎フレーム覚え直していた。**是正:** `Stage.setup` の注入に
+`Simulator` を加え、`CreativeStage` は参照から直接読む形にした(注入は `setup` 1回のまま
+— `/refactor-fixed` 10 の二段初期化禁止に従う)。
 
-## 3. 機能欠落・バグ(重要度順)
+### H. `OverviewCamera` のロールとヨー/ピッチが噛み合っていなかった
 
-### E. ×131072 が サブステップ設計の前提を破る
+`up_r` でロールは効くのに、ヨー/ピッチは `sphericalOffset(yaw, pitch, dist)` = ワールド Y 軸基準の
+ままで、90° ロールすると画面上の見た目と回転方向がずれていた。**是正:** `ChaseCamera` と同じく
+現在の上/右軸まわりの回転として組み直した。`sphericalOffset` は初期視点・リセット専用に残る。
 
-`SUBSTEP_MAX_DT = 20` / `SUBSTEP_MAX_COUNT = 64` は変更されていない。
-`nSub = min(64, ceil(simDt / 20))`、`subDt = simDt / nSub`。60fps・×131072 では
-`simDt ≈ 2185 s` → `nSub = 64` → **`subDt ≈ 34 s`** で `SUBSTEP_MAX_DT` を大きく超える。
-指示書 WP-D3 は「高ワープ時に軌道が目に見えて崩れないか実際の値で確認する。崩れるなら
-`SUBSTEP_MAX_COUNT` を上げるか、最上段を諦めてユーザーに報告すること」と明示していたが、
-定数にもコミットログにも対処の形跡がない。上位1〜2段は精度保証の外にある。
+### I. 文書の壊れた参照
+
+`314cf6a` で `memos/hedalu244/refactoring_plan/` を削除した際、参照側が残っていた
+(CLAUDE.md ×3、`/refactor` ×2、`/overview` ×1、`DEVELOP/README.md` ×1)。実在するパスへ直した。
+`memos/README` にも `## ./refactoring_plan` の節が残っているが、**`memos/hedalu244/` 外は
+エージェントの編集対象外**なので手を付けていない。
 
 ---
 
-## 4. 責務漏洩・リファクタリング規約違反
+## 2. 違反していないことを確認したもの
 
-### 2. `game.ts` が大きい
+- **フローティングオリジンの境界** — `Vec3` → `THREE.Vector3` の変換は `FloatingOrigin` 経由のみ。
+- **`physics/` の依存純度** — THREE・`game/`・`FloatingOrigin` への依存は 0 件。
+- **`*Ctx`** — 残っているのは `Player.behave` のパラメータオブジェクトだけ。
+- **`Belt` / `RadiatorSystem` / `PowerSystem` / `Predictor` / `Simulator` / `EntityManager`** —
+  update と sync が正しく割れている。
+- **`MapModeToggler` の3フラグ同時トグル** — 維持されている。
+- **`EntityManager.players` への一本化**(`8036f82`) — 除外分岐と `= null` 既定引数は残っていない。
+- **改名の徹底** — `CreativeShip`/`MapContextGizmo`/`MapPickMenu`/`FocusGizmo` 等は全文検索 0 件。
+- **関数長** — 90 行超は `selectLaunch`(122)・`Game.update`(112)・`Game.constructor`(91) のみ。
 
-371行 → **542行**。艦操作(`findCreativeShip` 等)は `EntityManager.findPlayer` + 2行の配線へ縮めた
-ので振る舞いの漏洩は解消したが、`mapMenuItemsFor`(種別ごとのメニュー項目表)・`buildMapPickables`
-(候補集合の組み立て)・`handleMapContextMenu` はまだ `Game` にある。前2つは
-`/refactor-fixed` に「所有者がまたがるので `Game` が持つ」と確定判断として記録済み。
-残る論点は行数だけ。
+## 3. 再発防止(追加したフック)
 
-### 4. `OverviewCamera` のロールとヨー/ピッチが噛み合っていない
+`.claude/hooks/check-boundaries.mjs` を `PostToolUse`(Edit|Write)に追加した。
+`src/**/*.ts` を編集するたびに、波括弧の対応でメソッド本文を切り出して次を検査する:
 
-`up_r` を導入してロールは効くようになったが、ヨー/ピッチは相変わらず
-`sphericalOffset(yaw, pitch, dist)` = ワールド Y 軸基準で計算されている。
-90° ロールした状態で左右ドラッグしても、画面上の見た目と回転方向が一致しない。
-`ChaseCamera` 側は現在の右/上軸を使うのでこの問題は無い。両者で操作感が割れている。
+1. `game.ts` に許可メンバー(`constructor`/`update`/`sync`/`render`/`handleInput`/`pause`/`resume`/
+   `setActivePlayer`/`perfCounts`。アクセサは対象外)以外のメソッドが増えていないか。
+2. `sync*` の中に `.update(` / `age +=` / `step*RK4` / 寿命 filter が無いか。
+3. `update*` / `behave` の中に `.sync(` / `.position.set` / `.visible =` / `.style.*=` /
+   `.innerHTML =` が無いか。
+4. `physics/` が `three` / `../game/` / `FloatingOrigin` に触れていないか。
 
-### 7. `CreativeStage` の `private simTime`
+検出時は編集直後に「該当節を読んでコードを直せ、ルールに例外を足して正当化するな」と出す。
 
-`Simulator.simTime` のコピーを毎フレーム覚え直す。理由はコメントに書かれている
-(配置パネルの confirm が DOM イベントとして非同期に発火するため)が、正データの重複であることに変わりはない。
-`ShipPlacerPanel.onConfirm` に `simTime` を引数で渡す形にできないか要検討。
+**限界(承知の上):** 呼び出し先まで追わないので §C(`updateEditing` → `renderPanel`)のような
+1段先の違反は素通りする。`physics/` の近似の妥当性(§E)や概念の置き場所(§D)は機械検査では
+判定できない。**フックは取りこぼす前提で、判断そのものは `/refactor-fixed` を読む。**
 
-### 8. 指示書からの逸脱: ハロー軌道
+## 4. 残 todo
 
-WP-E3 は「Richardson の三次近似解を使う(推奨)」で、指示書 §6-4 は
-「推奨案が破綻すると分かった場合は**勝手に別案へ倒さず報告して判断を仰ぐこと**」。
-実装(`physics/halo.ts`)は**線形化(一次)解のみ**で、三次の振幅拘束は実装していない。
-ハロー軌道は「面外振動数に λ を流用して面内と共鳴させる」近似。
-モジュール先頭コメントにその旨は明記されているので隠蔽はされていないが、
-推奨案から外れた判断であり、報告・承認を経たかはコミットからは読み取れない。
-
-なお同コメントの「Richardson (1980) の三次近似のうち…**実装していない**」は
-`/comment` 方針の「なにをしないか は書かない」に触れる。ただしゲームの積分器が制限三体問題ではなく
-配置後にドリフトする、という注意は非自明なので残す価値がある。書き方の整理が要る箇所。
-
-### 9. `Navball` が天球グリッドの可視状態を持つ
-
-指示書 WP-D2b が「グリッドトグル6つはこのウィンドウ内に置く」と指示した帰結で、
-`refactor-fixed` にも判断として記録済み。ただし姿勢儀(機体座標)と天球グリッド(ワールド座標の表示物)は
-別概念で、`Navball.gridVisibility` は `Navball` の責務外の状態。
-「GUI はその GUI が書き換える状態の所有者が持つ」という既存原則の帰結ではあるので、
-規約違反というより**トグルの置き場所の選択が状態の置き場所を決めてしまった**例。要判断。
-
-### 10. 行数
-
-- `game.ts` 542行 / `plan-editor.ts` 545行 / `ship-placer-panel.ts` 278行。
-  モジュール 200行 の基準を大きく超える。`ship-placer-panel.ts` はフィールド宣言だけで20行以上あり、
-  「軌道要素フォーム」と「ラグランジュ点フォーム」で分割の余地がある。
-
----
-
-## 5. よかった点(残すべき判断)
-
-- **`Targeter` / `NavTarget` の分離。** 懸念3への正しい答え。移設であって複製ではなく、
-  `Targeter` は行数が減っている。判断が `refactor-fixed` に記録済み。
-- **改名の徹底。** `FocusGizmo` / `focusGizmo` / `closeFocusMenu` / `autoTarget` / `lockedTarget` /
-  `resolveAutoTarget` / `handleTargetLockByRightClick` / `syncNodeMarkers` / `selectStage` /
-  `resolveStageSelection` / `FOCUS_LABEL_PICK_PX` — `src/` `tests/` で全文検索 0 件。互換エイリアスも無い。
-- **`Input` のクリック閾値判定の一本化。** 左/中/右で3回書かれていたものを `pushIfClick` に集約
-  (`/add-feature` 準拠)。
-- **`Plan` の所有を `Player` へ移し、`PlanEditor.plan` を getter だけにした。**
-  ステージモードも同じ経路を通り、`PlanEditor` は計画の実データを一切持たない。
-- **Δv 加算のレート適用点を `PlanEditor.applyDv` 一箇所に集約。** ドラッグ・ラッチ・キー・ボタンの
-  4経路すべてがここを通り、「加算量の求め方だけが違う」形になっている。
-- **`HudHoldButton` を `isHeld` ポーリング型にした判断。** `setInterval` を使わないので
-  ポーズ・マップ閉時の止め忘れが構造的に起きない(指示書の推奨通り)。
-- **`estimatedRealSecondsToWarpEnd`。** 現在段のまま外挿するのではなく、段が下がる将来を
-  段リストを舐めて積算している。理由もコメントに書かれている。
-- **`celestial-grid.ts`。** 傾斜角を直書きせず `Q_ECL_TO_ECI` から基底を作り、
-  `LineLoop` 非対応の回避も明記。星殻半径を共有。
-- **設計文書。** `CLAUDE.md` / `CALLSTACK.md` / `OWNERSHIP.md` / `SPEC.md` / `refactor-fixed` が
-  最終状態では整合している。`refactor-fixed` に7件の新しい責務判断が追記されている。
-
----
-
-## 6. 次に手を入れるなら(優先順)
-
-1. **3-E** — ×131072 の精度を実測し、`SUBSTEP_MAX_COUNT` を上げるか最上段を落とす。
-2. **4-4** — `OverviewCamera` のロールとヨー/ピッチの噛み合わせ。
-3. **4-9 / 4-8** — 天球グリッド可視状態の置き場所、ハロー軌道の近似次数。どちらも要判断。
-4. **4-10** — `game.ts` / `plan-editor.ts` / `ship-placer-panel.ts` の行数。
-5. **4-7** — `CreativeStage.simTime` の正データ重複。
-
----
-
-## 付記
-
-- 検証コマンド(`npm run typecheck` / `npm run test:physics`)は**実行していない**。
-  作業ツリーを変更しない方針のため、静的な読み取りのみ。
-- `memos/mikanixonable/dev.md` が `cadf7e8` と `7ebd7cc` で変更されている。
-  CLAUDE.md では「この文書は人間のみが記入できる」とされているファイル。
-  追記内容は今回のプロンプト全文と、その後の要望メモ(「軌道計画は、保存できるようにする。」等)なので
-  人間の記入と読めるが、`7ebd7cc` は "update docs" というコミットに同梱されている。
-  エージェントが触っていないかは要確認。
+- **行数** — `render/ships.ts` 605 / `audio/sfx.ts` 505 / `plan/plan-editor.ts` 515 /
+  `game/game.ts` 442 / `hud/dom.ts` 424 / `game/const.ts` 379。200 行基準を大きく超える。
+  `plan-editor.ts` は Δv 編集(キー/ボタン/ドラッグ/ラッチ)とノードギズモの配線が同居しており、
+  分割の余地がある。
+- **`halo.ts` の三次級数展開** — 振幅拘束は入れたが、位置・速度そのものは一次解のまま。
+  厳密な周期解にするには三次の級数(a21..d32 の全係数)まで要る。ゲームの積分器が制限三体問題
+  ではない以上どのみちドリフトするので、優先度は低い。

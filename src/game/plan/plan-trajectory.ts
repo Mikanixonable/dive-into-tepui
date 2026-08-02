@@ -39,33 +39,34 @@ export class PlanTrajectory {
     scene.add(this.group);
   }
 
-  // plan から区間列を組み直し、各区間の PlanArc を更新する。
-  update(
-    plan: Plan,
-    ephemeris: Ephemeris,
-    frame: Frame,
-    currentTime: number,
-    fo: FloatingOrigin,
-    project: ProjectFn,
-  ): void {
+  // plan から区間列を組み直して各区間を再積分し、表示変換の文脈(座標系・un-bake 時刻)を
+  // このフレームのものに更新する。
+  update(plan: Plan, ephemeris: Ephemeris, frame: Frame, currentTime: number): void {
     this.frame = frame;
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
-    this.project = project;
     // anchor→node…→末尾区間に分解する
     const segments = buildSegments(plan.anchor, plan.nodes);
-    // 各区間に対応する PlanArc を更新する。
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
-      const arc = this.arcAt(i);
-      arc.setVisible(true);
-      arc.update(seg.state0, seg.end, ephemeris, frame, currentTime, fo);
+      this.arcAt(i).update(seg.state0, seg.end, ephemeris);
     }
-    // 区間数が減った分の余った arc を隠す
-    for (let i = segments.length; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
     this.finalSegmentStart = segments.length > plan.nodes.length ? segments[segments.length - 1]!.state0 : null;
+  }
+
+  // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の arc を隠す。
+  // 画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。
+  sync(fo: FloatingOrigin, project: ProjectFn): void {
+    this.project = project;
+    if (this.ephemeris === null) return;
+    for (let i = 0; i < this.activeCount; i++) {
+      const arc = this.arcs[i]!;
+      arc.setVisible(true);
+      arc.sync(this.ephemeris, this.frame, this.unbakeTime, fo);
+    }
+    for (let i = this.activeCount; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
   }
 
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。

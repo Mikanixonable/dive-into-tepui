@@ -18,6 +18,7 @@ import { SimSpeedManager } from '../sim-speed-manager';
 import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
+import type { Simulator } from '../simulation/simulator';
 
 export type StageId = '00' | '0' | '1' | '2' | 'debug';
 
@@ -54,6 +55,7 @@ export abstract class Stage {
   protected _entities!: EntityManager;
   protected _markerManager!: MarkerManager;
   protected _ephemeris!: Ephemeris;
+  protected _simulator!: Simulator;
 
   private _phase: GamePhase = 'playing';
   get phase(): GamePhase { return this._phase; }
@@ -70,6 +72,7 @@ export abstract class Stage {
     fx: EffectsSystem,
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
+    simulator: Simulator,
   ): void {
     this._hud = hud;
     this._sfx = sfx;
@@ -79,6 +82,7 @@ export abstract class Stage {
     this._entities = entities;
     this._markerManager = markerManager;
     this._ephemeris = ephemeris;
+    this._simulator = simulator;
     this._phase = 'playing';
     this.logistics = new Logistics(hud, sfx, scene, entities, markerManager);
     this.statusPanel = new StageStatusPanel(hud.root);

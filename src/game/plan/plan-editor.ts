@@ -58,10 +58,10 @@ export class PlanEditor {
   // 編集対象として選択中のノードの index。null で未選択。
   selectedNodeIdx: number | null = null;
 
-  private activePlayer: Player;
+  private ship: Player;
   // アクティブ艦自身の計画を編集する。艦は自分の計画を所有し続けるので、艦を切り替えると
   // 編集対象もその艦の計画へ切り替わる。
-  get plan(): Plan { return this.activePlayer.plan; }
+  get plan(): Plan { return this.ship.plan; }
 
   readonly planDisplay: PlanDisplay;
 
@@ -85,9 +85,9 @@ export class PlanEditor {
     scene: THREE.Scene,
     markerManager: MarkerManager,
     private readonly getFineAttitude: () => boolean,
-    activePlayer: Player,
+    ship: Player,
   ) {
-    this.activePlayer = activePlayer;
+    this.ship = ship;
     this.planDisplay = new PlanDisplay(scene, this._hud.root, markerManager, ephemeris);
 
     this.planPanel = document.createElement('div');
@@ -132,7 +132,7 @@ export class PlanEditor {
   // 編集対象をアクティブ艦の切替に合わせて差し替える。選択中ノード・開いたメニューは
   // 前の艦の計画を指しているので破棄する。
   setActivePlayer(ship: Player): void {
-    this.activePlayer = ship;
+    this.ship = ship;
     this.selectedNodeIdx = null;
     this.closeMenu();
   }
@@ -357,7 +357,7 @@ export class PlanEditor {
   }
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
-  private updateGizmo(mapDist: number): void {
+  private syncGizmo(mapDist: number): void {
     const arriving = this.planDisplay.traj.arrivalStates();
     const nodeSpecs: NodeHandleSpec[] = [];
     const limit = Math.min(this.plan.nodes.length, C.MAX_PLAN_NODE_MARKERS);
@@ -383,10 +383,8 @@ export class PlanEditor {
     this.nodeGizmo.sync(nodeSpecs, axisSpecs);
   }
 
-  // WASDQE キー・長押しボタン・Δv アームのラッチドラッグから選択中ノードの Δv を加算し、
-  // 計画パネルの表示データを組み立てる。
-  updateEditing(dt: number, simTime: number, input: Input): void {
-    const arriving = this.planDisplay.traj.arrivalStates();
+  // WASDQE キー・長押しボタン・Δv アームのラッチドラッグから選択中ノードの Δv を加算する。
+  updateEditing(dt: number, input: Input): void {
     const fine = this.getFineAttitude();
     const b = this.dvButtons.buttons;
     this.applyHeldDv(0, 1, input.down(K.dvPrograde) || b.pro.isHeld, dt, fine);
@@ -403,9 +401,12 @@ export class PlanEditor {
       const rate = Math.min(latch.excessPx * C.DV_LATCH_RATE_PER_PX, C.DV_RATE_MAX) * fineScale;
       this.applyDv(latch.axis, latch.sign, rate * dt);
     }
+  }
 
-    // パネル表示用のノード一覧を組む
-    const nodesInfo = this.plan.nodes.map((n, i) => ({
+  // 計画パネルの HTML を、現在のノード列と選択中ノードから組み直す。
+  private syncPanel(simTime: number): void {
+    const arriving = this.planDisplay.traj.arrivalStates();
+    const nodes = this.plan.nodes.map((n, i) => ({
       tRel: n.t - simTime,
       dvMag: len(this.nodeDv(i, arriving)),
       selected: i === this.selectedNodeIdx,
@@ -420,15 +421,6 @@ export class PlanEditor {
         selEl = elementsFromState(node.r, node.v);
       }
     }
-    this.renderPanel(nodesInfo, selDv, selEl);
-  }
-
-  // 計画パネルの HTML を差分更新する。
-  private renderPanel(
-    nodes: { tRel: number; dvMag: number; selected: boolean; }[],
-    selDv: Vec3 | null,
-    selEl: Elements | null,
-  ): void {
     const html = planPanelHtml(nodes, selDv, selEl);
     this.planPanel.style.display = 'block';
     if (this.planBody.innerHTML !== html) this.planBody.innerHTML = html;
@@ -439,23 +431,25 @@ export class PlanEditor {
     this.planPanel.style.display = 'none';
   }
 
+  // 計画折れ線を再積分し、ゴースト位置とアプシスアイコンを求め直す。折れ線は戦闘ビューでも
+  // 描く — 計画どおりに機体を動かすのは戦闘ビューだから。ただしノードが1つも無い計画は自機の
+  // 現在軌道そのものなので、ノードを置ける編集中だけ扱う。
+  update(simTime: number, displayTime: number): void {
+    this.planDisplay.update(this.plan, simTime, displayTime, this.editMode || this.plan.nodes.length > 0);
+  }
+
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
-  // 折れ線は戦闘ビューでも描く — 計画どおりに機体を動かすのは戦闘ビューだから。ただしノードが
-  // 1つも無い計画は自機の現在軌道そのものなので、ノードを置ける編集中だけ描く。
-  sync(
-    mapDist: number,
-    simTime: number,
-    displayTime: number,
-    fo: FloatingOrigin,
-    project: ProjectFn,
-  ): void {
+  sync(mapDist: number, simTime: number, fo: FloatingOrigin, project: ProjectFn): void {
     if (this.editMode || this.plan.nodes.length > 0) {
-      this.planDisplay.sync(this.plan, simTime, displayTime, fo, project, this.editMode);
+      this.planDisplay.sync(fo, project, this.editMode);
     }
     else {
       this.planDisplay.hide();
     }
-    if (this.editMode) this.updateGizmo(mapDist);
+    if (this.editMode) {
+      this.syncGizmo(mapDist);
+      this.syncPanel(simTime);
+    }
   }
 
   // パネルとギズモを隠し、実質 Δv がゼロの末尾ノードを間引いて計画を整理する。

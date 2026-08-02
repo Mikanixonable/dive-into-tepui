@@ -11,8 +11,7 @@ import type { Input } from "./input/input";
 import { KEY_MAPPING as K } from "./input/key-mapping";
 import { PlanEditor } from "./plan/plan-editor";
 import { DisplayTimeManager } from "./display-time-manager";
-import { ContextMenu } from './hud/context-menu';
-import { MapPickable } from './map-pick';
+import { MapPicker } from './map-picker';
 
 export class MapModeToggler {
   private _mapMode = false;
@@ -44,10 +43,10 @@ export class MapModeToggler {
     touchControls: TouchControls | null,
     cameraSystem: CameraSystem,
     displayTimeManager: DisplayTimeManager,
-    mapPickMenu: ContextMenu<MapPickable>): void {
+    mapPicker: MapPicker): void {
     editor.onMapClosed();
     editor.closeMenu();
-    mapPickMenu.close();
+    mapPicker.close();
     this.setMapMode(false, editor, touchControls, cameraSystem, displayTimeManager);
   }
 
@@ -79,12 +78,12 @@ export class MapModeToggler {
     touchControls: TouchControls | null,
     cameraSystem: CameraSystem,
     displayTimeManager: DisplayTimeManager,
-    mapPickMenu: ContextMenu<MapPickable>,
+    mapPicker: MapPicker,
   ): void {
     // 決着後はマップモードを開けない(既に開いていれば閉じる)
     if (!isPlaying) {
       if (this._mapMode) { // 開いていたら閉じる
-        this.close(editor, touchControls, cameraSystem, displayTimeManager, mapPickMenu);
+        this.close(editor, touchControls, cameraSystem, displayTimeManager, mapPicker);
       }
       return;
     }
@@ -102,7 +101,7 @@ export class MapModeToggler {
         );
       }
       else { // 開いていたら閉じる
-        this.close(editor, touchControls, cameraSystem, displayTimeManager, mapPickMenu);
+        this.close(editor, touchControls, cameraSystem, displayTimeManager, mapPicker);
         if (editor.plan.nodes.length > 0) {
           this._hud.hint(`マニューバ計画 ${editor.plan.nodes.length} 件確定 — [${K.autoWarpToNode.label}] で直近ノードへ自動ワープ`, 4500);
         }

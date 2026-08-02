@@ -34,9 +34,8 @@ import { Ephemeris } from '../physics/ephemeris';
 import { MapModeToggler } from './map-mode-toggler';
 import { NanWatchdog } from './nan-watchdog';
 import { DebugHistoryLine } from './debug-history-line';
-import { ContextMenu, MenuItem } from './hud/context-menu';
-import { MapPickable, pickNearest } from './map-pick';
 import { NavTarget } from './nav-target';
+import { MapPicker } from './map-picker';
 import { Navball } from './navball/navball';
 
 export class Game {
@@ -58,7 +57,7 @@ export class Game {
   private readonly displayTimeManager: DisplayTimeManager;
   private readonly guide: PlanGuide;
   readonly mapModeToggler: MapModeToggler;
-  private readonly mapPickMenu = new ContextMenu<MapPickable>();
+  private readonly mapPicker: MapPicker;
 
   readonly activeStage: Stage;
   private _isPaused = false;
@@ -135,36 +134,14 @@ export class Game {
       () => this.player.fineAttitude,
       this.player,
     );
+    this.mapPicker = new MapPicker(
+      this, this._hud, this.entities, this.ephemeris, this.navTarget,
+      this.cameraSystem, this.editor, this.simSpeedManager,
+    );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
     // クリエイティブモードはマップから始まる。
     this.mapModeToggler = new MapModeToggler(this._hud, launch.mode === 'creative');
     this.mapModeToggler.applyInitialState(this.editor, this.cameraSystem, this.displayTimeManager);
-    this.mapPickMenu.onSelect = (act, target) => {
-      if (act === 'focus') {
-        this.cameraSystem.overviewCamera.focus = target.id;
-        this._hud.hint(`${target.name} にフォーカス`);
-      } else if (act === 'navTarget') {
-        this.navTarget.toggleTarget(target.id, target.name);
-      } else if (act === 'warp') {
-        const t = this.navTarget.passTimeOf(target.id);
-        if (t !== null) this.simSpeedManager.startAutoWarpTo(t);
-      } else if (act === 'addNode') {
-        const t = target.kind === 'apsis'
-          ? this.editor.planDisplay.apsisTimeOf(target.id)
-          : this.navTarget.passTimeOf(target.id);
-        if (t !== null) this.editor.addNodeAt(t);
-        else this._hud.hint('この時刻の計画軌道が求まりません');
-      } else if (act === 'activate') {
-        const ship = this.entities.findPlayer(target.id);
-        if (ship) this.setActivePlayer(ship);
-      } else if (act === 'followToggle') {
-        const ship = this.entities.findPlayer(target.id);
-        if (ship) ship.followPlan = !ship.followPlan;
-      } else if (act === 'delete') {
-        const ship = this.entities.findPlayer(target.id);
-        if (ship) this.entities.removePlayer(ship);
-      }
-    };
 
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
@@ -186,12 +163,13 @@ export class Game {
         this.effects,
         this.markerManager,
         this.ephemeris,
+        this.simulator,
       );
     } else {
       const creativeStage = new CreativeStage();
       creativeStage.setup(
         this._hud, this._sfx, this._scene, this.entities, this.unlockManager,
-        this.effects, this.markerManager, this.ephemeris,
+        this.effects, this.markerManager, this.ephemeris, this.simulator,
       );
       creativeStage.init();
       this.activeStage = creativeStage;
@@ -214,13 +192,17 @@ export class Game {
 
   resume(): void { this._isPaused = false; }
 
-  // アクティブ艦(操作対象・追従カメラ・計画編集の対象)を差し替える。切替の副作用を
-  // ここへ閉じ、各所有者はそれぞれの持ち分だけを更新する。
+  // アクティブ艦(操作対象・追従カメラ・計画編集の対象)を差し替える。
   setActivePlayer(ship: Player): void {
     this.player = ship;
     this.cameraSystem.setActivePlayer(ship);
     this.editor.setActivePlayer(ship);
     this.targeter.clearTargets();
+  }
+
+  // このフレームの表示時刻(未来ゴーストのスライダーぶん先取りした simTime)。
+  private get displayTime(): number {
+    return this.displayTimeManager.resolveDisplayTime(this.player.elements?.period ?? null, this.simulator.simTime);
   }
 
   // ------------------------------------------------------------ update
@@ -232,13 +214,16 @@ export class Game {
 
     // handleInput より後に置く: ポーズ中も Esc・ヘルプなどは効かせる。
     if (this._isPaused) {
-      const mapPickables = this.refreshMapPickables();
+      this.editor.update(this.simulator.simTime, this.displayTime);
+      this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
       if (this.editor.editMode) {
         this.editor.handleMapPointer(this.input);
-        this.handleMapContextMenu(this.input, mapPickables);
-        this.editor.updateEditing(dt, this.simulator.simTime, this.input);
+        this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
+        this.editor.updateEditing(dt, this.input);
       }
-      this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt, mapPickables);
+      this.cameraSystem.update(
+        this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables,
+      );
       return;
     }
 
@@ -250,10 +235,13 @@ export class Game {
       this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, false, false, false);
       this.nanWatchdog.checkAll('stepSimulation(決着後)', this.player, this.entities, this.simulator.simTime, dt, simDt);
       this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
+      this.effects.update(dt, simDt);
+      this.editor.update(this.simulator.simTime, this.displayTime);
+      this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
       // 決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
       // 軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする。
       this.cameraSystem.update(
-        this.player, this.simulator.simTime, this.input, dt, this.refreshMapPickables(),
+        this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables,
       );
       return;
     }
@@ -298,35 +286,38 @@ export class Game {
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
     this.nanWatchdog.checkAll('simulator.stepSimulation', this.player, this.entities, this.simulator.simTime, dt, simDt);
 
-    this.targeter.markBoardCrossings(this.player, this.entities);
+    this.targeter.updateBoardMarks(dt, this.player, this.entities);
 
     this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
 
     // cleanup の後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせるため。
     this.predictor.update(this.simulator.simTime, this.player);
 
+    this.effects.update(dt, simDt);
+
+    // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
+    this.guide.update(this.editor.plan, this.player, this.simulator.simTime, this.editor.editMode);
+    this.editor.plan.trackAnchor(this.player.state);
+    // 被選択物の候補にアプシスアイコンが入るので、計画の再積分はその組み立てより前に置く。
+    this.editor.update(this.simulator.simTime, this.displayTime);
+
     // 物理積分の後に行う: 追従カメラの基準は sync 時のフローティングオリジン
     // (積分後の自機位置)と一致していなければならない。被選択物の座標も同じ理由で
-    // ここまで待つ — 積分前に組むと、同フレームで sync されるメッシュと1ステップずれる。
-    const mapPickables = this.refreshMapPickables();
+    // ここまで待つ。
+    this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
     this.cameraSystem.update(
       this.player,
       this.simulator.simTime,
       this.input,
       dt,
-      mapPickables,
+      this.mapPicker.pickables,
     );
-
-    // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
-    this.guide.update(this.editor.plan, this.player, this.simulator.simTime, this.editor.editMode);
-
-    this.editor.plan.trackAnchor(this.player.state);
 
     if (this.editor.editMode) {
       // 右クリックはノードを先に試し、外したぶんだけコンテキストメニューへ回る(優先順位はこの順序だけ)。
       this.editor.handleMapPointer(this.input);
-      this.handleMapContextMenu(this.input, mapPickables);
-      this.editor.updateEditing(dt, this.simulator.simTime, this.input);
+      this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
+      this.editor.updateEditing(dt, this.input);
     }
     else {
       this.targeter.updateCombatTargeting(
@@ -356,104 +347,9 @@ export class Game {
     this.mapModeToggler.update(
       this.input, this.activeStage.isPlaying, this._isPaused, canToggleView,
       this.editor, this.touchControls, this.cameraSystem, this.displayTimeManager,
-      this.mapPickMenu,
+      this.mapPicker,
     );
     this.editor.handleInput(this.input);
-  }
-
-  // 右クリック位置の最寄り候補を探し、当たればその種別に応じた項目でメニューを開いて消費する。
-  private handleMapContextMenu(input: Input, mapPickables: readonly MapPickable[]): void {
-    input.takeRightClicks((p) => {
-      const target = pickNearest(
-        mapPickables, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ,
-      );
-      if (!target) return false;
-      this.mapPickMenu.open(p.x, p.y, target, this.mapMenuItemsFor(target));
-      return true;
-    });
-  }
-
-  // 対象を航法ターゲットにする/解除する項目。軌道面が定まらない対象(地球・太陽自身など)
-  // では選んでも AN/DN が出ないので項目自体を出さない。
-  private navTargetItems(target: MapPickable): readonly MenuItem[] {
-    if (target.id === this.navTarget.id) return [{ label: '航法ターゲット解除', act: 'navTarget' }];
-    const canTarget = this.navTarget.canTarget(target.id, this.entities, this.ephemeris, this.simulator.simTime);
-    return canTarget ? [{ label: '航法ターゲットに設定', act: 'navTarget' }] : [];
-  }
-
-  // 被選択物の種別に応じたコンテキストメニュー項目を返す。
-  private mapMenuItemsFor(target: MapPickable): readonly MenuItem[] {
-    switch (target.kind) {
-      case 'body':
-        return [
-          { label: 'フォーカスを移動', act: 'focus' },
-          ...this.navTargetItems(target),
-          { label: 'キャンセル', act: 'cancel' },
-        ];
-      case 'apsis':
-        return [
-          { label: 'ここにノードを追加', act: 'addNode' },
-          { label: 'フォーカスを移動', act: 'focus' },
-          { label: 'キャンセル', act: 'cancel' },
-        ];
-      case 'ship':
-        return [
-          { label: 'フォーカスを移動', act: 'focus' },
-          ...this.navTargetItems(target),
-          { label: 'キャンセル', act: 'cancel' },
-        ];
-      // 操作対象の艦には「操作対象にする」「削除」を出さない(前者は無効、後者は自機が消える)。
-      case 'player': {
-        const ship = this.entities.findPlayer(target.id);
-        const isActive = ship === this.player;
-        return [
-          ...(isActive ? [] : [{ label: '操作対象にする', act: 'activate' }]),
-          { label: ship?.followPlan ? '軌道計画への自動追従 OFF' : '軌道計画への自動追従 ON', act: 'followToggle' },
-          { label: 'フォーカスを移動', act: 'focus' },
-          ...this.navTargetItems(target),
-          ...(isActive ? [] : [{ label: '削除', act: 'delete' }]),
-          { label: 'キャンセル', act: 'cancel' },
-        ];
-      }
-      case 'relnode':
-        return [
-          { label: 'ここまで時間加速', act: 'warp' },
-          { label: 'ここにノードを追加', act: 'addNode' },
-          { label: 'フォーカスを移動', act: 'focus' },
-          { label: 'キャンセル', act: 'cancel' },
-        ];
-    }
-  }
-
-  // 航法ターゲットの AN/DN を求め直し、このフレームの被選択物一覧を組んで返す。AN/DN は
-  // 一覧の一部なので、両者は必ずこの順で対にして呼ぶ。
-  private refreshMapPickables(): MapPickable[] {
-    this.navTarget.update(this.player, this.entities, this.ephemeris, this.simulator.simTime);
-    return this.buildMapPickables();
-  }
-
-  // フォーカス/航法ターゲット選択の被選択物一覧(天体ラベル + 生存中の自機・敵船 +
-  // 航法ターゲットの AN/DN アイコン)。船の位置は表示時刻の displayState — 機体メッシュや
-  // 敵マーカーと同じ未来ゴースト位置に揃える。
-  private buildMapPickables(): MapPickable[] {
-    const orbitPeriod = this.player.elements?.period ?? null;
-    const displayTime = this.displayTimeManager.resolveDisplayTime(orbitPeriod, this.simulator.simTime);
-    const items: MapPickable[] = [...this.cameraSystem.focusMarkers.labels];
-    for (const ship of this.entities.players) {
-      if (!ship.alive) continue;
-      const pos = ship.displayState(displayTime)?.r;
-      if (pos) items.push({ id: ship.name, name: ship.name, pos, kind: 'player' });
-    }
-    for (const enemy of this.entities.enemies) {
-      if (!enemy.alive) continue;
-      const pos = enemy.displayState(displayTime)?.r;
-      if (pos) items.push({ id: enemy.name, name: enemy.name, pos, kind: 'ship' });
-    }
-    items.push(...this.navTarget.mapPickables());
-    // アプシスアイコンは前フレームの sync が求めた位置。フォーカス解決とメニューの両方が
-    // この1本の候補列を引くので、「フォーカスは当たるがカメラは地球へ飛ぶ」割れ方をしない。
-    items.push(...this.editor.planDisplay.apsisMarkers);
-    return items;
   }
 
   // ------------------------------------------------------------------ sync
@@ -488,9 +384,9 @@ export class Game {
 
     this.entities.sync(this.floatingOrigin, displayTime);
 
-    this.effects.sync(dt, this.simulator.lastSimDt, this.floatingOrigin, this.cameraSystem.activeCamera);
+    this.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
 
-    this.targeter.sync(dt, this.floatingOrigin, this.player, this.entities.enemies, overviewMode, project);
+    this.targeter.sync(this.floatingOrigin, this.player, this.entities.enemies, overviewMode, project);
     this.navTarget.sync(project);
     this.navball.sync(this.player.state, this.player.att, this.player.alive, target?.state ?? null);
 
@@ -509,12 +405,12 @@ export class Game {
     this.leadMarkers.sync(this.player, aliveEnemies, target, simTime, overviewMode, project);
 
     this.displayTimeManager.sync(orbitPeriod);
-    this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, displayTime, this.floatingOrigin, project);
+    this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project);
 
     this.touchControls?.syncModeButtons(this.player.rcsDamp, this.player.fineAttitude, this.player.progradeHold);
     this.activeStage.sync(this.player, project, displayTime, overviewMode);
 
-    this._hud.panels.update(this, dt);
+    this._hud.panels.sync(this, dt);
     this._hud.tick();
 
     this.guide.sync(this.editor.plan, this.player, simTime, this.editor.editMode, project);
