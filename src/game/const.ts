@@ -1,6 +1,16 @@
 // ゲームバランス・チューニング定数
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/orbital';
 
+// クリエイティブモードで配置できる CreativeShip の上限隻数。
+export const CREATIVE_MAX_SHIPS = 8;
+
+// クリエイティブモードのラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
+// 地球-月系と太陽-地球系は主天体間距離が3桁近く違うため、系ごとに妥当なオーダーを別々に持つ。
+export const CREATIVE_HALO_AX_EARTHMOON_KM = 8000;
+export const CREATIVE_HALO_AZ_EARTHMOON_KM = 5000;
+export const CREATIVE_HALO_AX_SUNEARTH_KM = 200000;
+export const CREATIVE_HALO_AZ_SUNEARTH_KM = 120000;
+
 export const REENTRY_ALT = 80e3; // 敵機はこれ以下で大気圏突入・焼失 [m](熱モデルなしの簡易処理)
 export const PLAYER_MIN_ALT = 45e3; // 自機の構造限界高度 [m](通常は加熱・動圧で先に喪失する)
 export const DEBRIS_REENTRY_ALT = 95e3; // 弾・薬莢・破片の消滅高度 [m]
@@ -103,6 +113,7 @@ export const ZOOM_MUZZLE_FLASH_SCALE = 0.02; // ズーム中のマズルフラ�
 export const CAM_KEY_YAW_RATE = 1.4;
 export const CAM_KEY_PITCH_RATE = 1.0;
 export const CAM_DRAG_ROTATE_RATE = 0.005; // マウスドラッグ [rad/px]
+export const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
 
 // 進行方向ホールド([C]キー): 機首をプログレードへ向けるオートパイロットの PD ゲイン
 export const PROGRADE_HOLD_KP = 3.2; // 姿勢誤差角に対する比例ゲイン
@@ -138,6 +149,7 @@ export const LOGISTICS_MIN_DIST = 625; // 補給投入位置(自機軌道上の�
 export const LOGISTICS_MAX_DIST = 1250; // 同上限 [m]
 export const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
 export const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
+export const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
 export const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s]
 export const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
 export const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
@@ -178,7 +190,7 @@ export const DESTROY_FLASH2_DURATION = 0.5; // [s]
 export const DESTROY_FRAG_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限。ENEMY_SCALE 倍される
 export const DESTROY_FRAG_SIZE_MAX = 6.0;
 
-export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096];
+export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072];
 export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
 
 export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simulator.stepSimulation のサブステップ分割数の算出に使う)
@@ -210,12 +222,17 @@ export const OVERVIEW_CAMERA_FAR = 1.5e10; // 広範囲視点カメラの far(OV
 export const NODE_DV_RATE = 300; // Δv 調整速度 [m/s per 実秒]
 export const NODE_DV_RATE_FINE = 30; // 微調整モード時
 export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
-export const FOCUS_LABEL_PICK_PX = 20; // 注視候補ラベル(ラグランジュ点等)のクリック判定許容距離 [px]
 export const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
 export const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
 // マップモードの DOM ギズモ(node-gizmo.ts): 選択中ノードの Δv アーム(6方向ハンドル)
 export const NODE_GIZMO_HANDLE_PX = 42; // ノードからアームハンドルを離す距離 [px]
 export const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリック/ドラッグ判定しきい値 [px]
+// Δv アームドラッグ・長押しボタンによる連続加算(plan-editor.ts の applyDv 系)
+export const DV_DRAG_LATCH_PX = 60; // これを超えるアーム基点からの変位でドラッグがラッチ状態に入る [px]
+export const DV_LATCH_RATE_PER_PX = 0.4; // ラッチ中、閾値超過1pxあたりのΔv加算レート [m/s per 実秒 per px]
+export const DV_RATE_MIN = 1; // 長押し開始時のΔv加算レート [m/s per 実秒]
+export const DV_RATE_MAX = 30; // 長押し継続後に到達するΔv加算レート [m/s per 実秒]
+export const DV_RATE_RAMP_SEC = 2.0; // DV_RATE_MIN から DV_RATE_MAX への指数的ランプ時間 [s]
 // マニューバ達成判定(計画軌道への接近許容)
 export const NODE_TOL_SMA = 0.02; // 長半径の相対誤差
 export const NODE_TOL_ECC = 0.02; // 離心率差
@@ -230,11 +247,19 @@ export const NODE_EXPIRE_GRACE = 60;
 export const DISPLAY_DUR_DAY = 86400; // 1日
 export const DISPLAY_DUR_WEEK = 7 * 86400; // 7日
 export const DISPLAY_DUR_MONTH = 28 * 86400; // 28日
+export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定できる表示期間の上限 [s](1年)
 
 // --- 軌道計画の折れ線(plan/plan-arc.ts) ---
 export const PLAN_ARC_MAX_SAMPLES = 2000; // 1区間が保持するサンプル数の上限
+// 1区間あたりの積分ステップ数の上限。手動レンジで年スケールの表示期間を許すと
+// stepDt(1周回/STEPS_PER_REV)のままではステップ数がフレーム時間を圧迫するので、
+// 超えたら plan-arc.ts の再突入時と同じ「そこで打ち切って endState() を返す」経路に乗せる。
+export const PLAN_ARC_MAX_STEPS = 20000;
 // 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
 export const APERIODIC_ARC_DURATION = 86400;
+// 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率の下限。これ未満は円に近く
+// アプシスの方向が数値的に不定になるので両方隠す。
+export const APSIS_MIN_ECC = 0.01;
 
 // --- エンティティの過去・未来状態列(physics/orbit-entity.ts の OrbitEntity.history/Predictor) ---
 export const PREDICT_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
@@ -243,9 +268,11 @@ export const PREDICT_DURATION = 3 * 3600; // 予測する未来の長さ [s](LEO
 export const PREDICT_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
 export const PREDICT_MIN_STEP_DT = SUBSTEP_MAX_DT; // 予測刻みの下限(本体シミュレーションより細かくする理由がないため同じ値)
 export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
-// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選ぶ。
-// 最大速度から解除までが概ね20実秒に収まる値。
-export const AUTOWARP_MARGIN = 4;
+// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
+export const AUTOWARP_MARGIN = 2;
+export const AUTOWARP_STOP = 20;
+
+export const SIM_EPOCH_UTC = '2030-01-01T00:00:00Z'; // simTime = 0 に対応する絶対時刻。HUD の日時表示にのみ使う
 
 // --- 第零ステージ(近接戦闘訓練) ---
 export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
@@ -319,6 +346,7 @@ export const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 export const COLOR_ACCENT = '#ff6a00';
 export const COLOR_ACCENT_RGB = '255, 106, 0'; // COLOR_ACCENT の RGB 成分（色変更時は必ず両方を同期すること）
 export const COLOR_ACCENT_SOFT = '#ff9040';
+export const COLOR_ACCENT_SECONDARY = '#00c8ff'; // 第二ターゲット用アクセント(シアン)
 export const COLOR_BG = '#08090c';
 export const COLOR_TEXT = '#e6e8eb';
 export const COLOR_TEXT_DIM = '#7d838c';

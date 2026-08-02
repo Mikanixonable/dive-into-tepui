@@ -18,7 +18,7 @@ const STYLE = `
      0=マーカー  1=常設パネル  2=トースト・ヒント  3=終了画面・ヘルプ  4=ESC メニュー */
 #hud .mk { z-index: 0; }
 #hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
-#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear { z-index: 1; }
+#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball, #hud-shipplacer { z-index: 1; }
 #hud-toast, #hud-hint { z-index: 2; }
 #hud-end, #hud-help { z-index: 3; }
 #hud-settings { z-index: 4; }
@@ -106,6 +106,8 @@ const STYLE = `
   border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
 }
 #hud .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud .seg-btn.disabled { opacity: 0.35; pointer-events: none; }
+#hud .seg-btn.hold-btn:active { border-color: ${ACCENT}; color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.16); }
 #hud .hud-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 #hud .hud-toggle .toggle-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; }
 #hud .hud-toggle .toggle-track {
@@ -119,12 +121,32 @@ const STYLE = `
   background: ${INK_SOFT}; transition: left 0.15s, background 0.15s;
 }
 #hud .hud-toggle .toggle-track.on .toggle-knob { left: 18px; background: ${ACCENT}; }
-#hud-overview-camera { display: none; top: 12px; left: 12px; width: 292px; pointer-events: auto; }
-#hud-displaytime { display: none; top: 166px; left: 12px; width: 292px; pointer-events: auto; }
+/* MAP VIEW/PREDICT/TRAJECTORY の左列は navball ウィンドウの右に置き、重なりを避ける。 */
+#hud-overview-camera { display: none; top: 12px; left: 214px; width: 292px; pointer-events: auto; }
+#hud-displaytime { display: none; top: 166px; left: 214px; width: 292px; pointer-events: auto; }
 #hud-displaytime input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
+#hud-displaytime input[type="number"].manual-duration-value {
+  pointer-events: auto; width: 64px; padding: 3px 6px; font-size: 11px;
+  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK};
+}
+#hud-displaytime .slider-ticks { display: flex; justify-content: space-between; margin-top: 2px; }
+#hud-displaytime .slider-ticks span { font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; }
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
-#hud-trajframe { display: none; top: 296px; left: 12px; width: 292px; pointer-events: auto; }
+#hud-trajframe { display: none; top: 296px; left: 214px; width: 292px; pointer-events: auto; }
+/* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
+#hud-shipplacer { display: none; top: 260px; right: 12px; width: 300px; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
+#navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
+#navball .nb-ball { display: block; width: 100%; height: auto; margin: 4px 0 8px; }
+#navball .nb-rim { fill: rgba(255, 255, 255, 0.03); stroke: ${EDGE}; stroke-width: 1; }
+#navball .nb-grid { fill: none; stroke: ${INK_SOFT}; stroke-width: 0.6; opacity: 0.35; }
+#navball .nb-equator { fill: none; stroke: ${INK_SOFT}; stroke-width: 0.9; opacity: 0.55; }
+#navball .nb-bore line { stroke: ${C.COLOR_MARKER_BORESIGHT}; stroke-width: 1; opacity: 0.8; }
+#navball text { font-size: 9px; text-anchor: middle; dominant-baseline: middle; }
+#navball .nb-pro { fill: ${C.COLOR_MARKER_PROGRADE}; }
+#navball .nb-nrm { fill: ${C.COLOR_MARKER_NORMAL}; }
+#navball .nb-rad { fill: ${C.COLOR_MARKER_RADIAL}; }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
+.mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 .mk-poi { color: #ffffff; text-shadow: 0 0 4px #000; }
 .mk-poi .sym { font-size: 5px; }
 .mk-poi .lbl { font-size: 11px; margin-top: 4px; padding: 2px 4px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }
@@ -212,10 +234,13 @@ const STYLE = `
   #hud-overview-camera { top: 8px; left: 8px; width: 186px; }
   #hud-displaytime { top: 146px; left: 8px; width: 186px; }
   #hud-trajframe { top: 246px; left: 8px; width: 186px; }
+  #hud-shipplacer { top: 200px; right: 8px; width: 220px; max-height: 60vh; }
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
-  #navball { width: 100px !important; height: 100px !important; bottom: 130px !important; }
+  /* モバイルでは navball を画面下部中央に移すので、MAP VIEW 側は元の左端に戻る
+     (この幅では左右に並べる余地がないため、上下でなく画面下部への退避で衝突を避ける)。 */
+  #navball { top: auto; left: 50%; transform: translateX(-50%); width: 100px !important; height: 100px !important; bottom: 130px !important; }
   #hud-settings { min-width: 0; width: 78vw; }
   #hud-stagestatus { top: 8px; min-width: 130px; padding: 6px 10px; }
   #hud-stagestatus .t { font-size: 14px; }

@@ -8,6 +8,7 @@ import { OrbitLine } from '../../render/orbitline';
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3 } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
+import { ACCENT_SECONDARY } from '../theme';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
 import { sunPosition } from '../../physics/ephemeris';
@@ -99,19 +100,24 @@ export class Enemy extends Ship {
     return '#' + this.accent.toString(16).padStart(6, '0');
   }
 
-  // pos は機体メッシュと同じ表示時刻の位置(displayState 経由)を使う。
-  markerItem(isTarget: boolean, viewerPos: Vec3, pos: Vec3): GroupedMarkerItem {
+  // pos は機体メッシュと同じ表示時刻の位置(displayState 経由)を使う。role が第一/第二
+  // ターゲットのどちらでもなければ通常の敵マーカーになる。
+  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3): GroupedMarkerItem {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
+    // 代表選出の優先度: 第一ターゲット > 第二ターゲット > 距離が近い順
+    const priority = role === 'primary' ? Infinity : role === 'secondary' ? Number.MAX_SAFE_INTEGER : -dist;
+    const color = role === 'secondary' ? ACCENT_SECONDARY : undefined;
     return {
       key: `enemy-${this.name}`,
-      cls: isTarget ? 'mk-target' : 'mk-enemy',
+      cls: role === 'primary' ? 'mk-target' : 'mk-enemy',
       sym: '◇',
       pos,
-      priority: isTarget ? Infinity : -dist,
+      priority,
       name: this.name,
       detail: fmtMarkerDist(dist),
-      bearingColor: this.accentColor,
+      bearingColor: role === 'secondary' ? ACCENT_SECONDARY : this.accentColor,
+      color,
     };
   }
 

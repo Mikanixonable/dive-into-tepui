@@ -19,6 +19,7 @@ export interface GroupedMarkerItem {
   name: string; // ラベルの主題。まとめられた代表には "xN" が付く
   detail: string; // ラベル末尾の付随情報(距離など)
   bearingColor: string; // 画面外方位マーカーの色
+  color?: string; // 画面内マーカー自体の色。省略時は cls の CSS 色に従う
 }
 
 const bearingKey = (key: string): string => `${key}-bearing`;
@@ -49,7 +50,7 @@ export class GroupedMarkers {
 
     for (const m of placed) {
       const label = m.labeled ? this.label(m.item, m.count) : '';
-      this.markerManager.set(m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label);
+      this.markerManager.set(m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, 1, m.item.color);
       // 画面外(背面を含む)の対象は、画面端の ▲ で方位だけを示す。
       this.markerManager.setBearing(bearingKey(m.item.key), 'mk-dir', '▲', m.p, '', 0.6, m.item.bearingColor);
     }

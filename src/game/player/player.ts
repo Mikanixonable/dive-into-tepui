@@ -30,6 +30,7 @@ import { SimSpeedManager } from '../sim-speed-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 import { Ephemeris, sunlitFactor } from '../../physics/ephemeris';
+import { Plan } from '../plan/plan';
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
@@ -47,6 +48,8 @@ export class Player extends Ship {
   private readonly markers: PlayerMarkers;
   // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
   readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55);
+  // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
+  readonly plan = new Plan();
 
   private readonly _hud: Hud;
   private readonly _sfx: Sfx;
@@ -54,11 +57,13 @@ export class Player extends Ship {
 
   fineAttitude = false;
 
-  // 高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の円軌道に機首プログレードで初期配置する
+  // name・initialState 省略時は高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の円軌道に機首プログレード
+  // で初期配置する。クリエイティブモードの CreativeShip は両方を指定して複数隻を区別する。
   constructor(
-    _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager) {
-    const state = Player.makeInitialState();
-    super('PLAYER', state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, _scene);
+    _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
+    name = 'PLAYER', initialState?: OrbitState) {
+    const state = initialState ?? Player.makeInitialState();
+    super(name, state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, _scene);
     this._hud = _hud;
     this._sfx = _sfx;
     this._fx = _fx;

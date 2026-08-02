@@ -49,8 +49,10 @@ export class Input {
   private frameMouse: MouseDelta = ZERO_MOUSE_DELTA;
   private dragging = false;
   private panDragging = false;
+  private rightActive = false;
   private panDragMoved = 0;
   private dragMoved = 0;
+  private rightDragMoved = 0;
   // タッチ用: アクティブポインタの座標(ピンチズーム判定に使う)
   private pointers = new Map<number, { x: number; y: number }>();
   private pinchDist = 0;
@@ -115,7 +117,8 @@ export class Input {
       }
     } else if (e.button === 2) {
       this.mouseFiring = true;
-      this.pendingRightClicks.push({ x: e.clientX, y: e.clientY });
+      this.rightActive = true;
+      this.rightDragMoved = 0;
       // 捕捉しないと、押したままポインタが pointer-events: auto な HUD 要素
       // (⚙ ギアボタン等)の上へ移動して離されたとき pointerup がキャンバスへ
       // 届かず、mouseFiring が true のまま残って撃ちっぱなしになる。捕捉は
@@ -150,6 +153,10 @@ export class Input {
       this.panDragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
       return;
     }
+    if (this.rightActive) {
+      this.rightDragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
+      return;
+    }
     if (this.dragging) {
       this.dx += e.movementX;
       this.dy += e.movementY;
@@ -161,19 +168,19 @@ export class Input {
   private onPointerUp(e: PointerEvent): void {
     if (e.button === 0 || e.pointerType === 'touch') {
       this.pointers.delete(e.pointerId);
-      if (this.dragging && this.dragMoved < CLICK_MOVE_THRESHOLD) {
-        this.pendingClicks.push({ x: e.clientX, y: e.clientY });
-      }
+      if (this.dragging) this.pushIfClick(this.pendingClicks, this.dragMoved, e);
       this.dragging = false;
       this.pinchDist = 0;
     }
     if (e.button === 1) {
-      if (this.panDragging && this.panDragMoved < CLICK_MOVE_THRESHOLD) {
-        this.pendingMiddleClicks.push({ x: e.clientX, y: e.clientY });
-      }
+      if (this.panDragging) this.pushIfClick(this.pendingMiddleClicks, this.panDragMoved, e);
       this.panDragging = false;
     }
-    if (e.button === 2) this.mouseFiring = false;
+    if (e.button === 2) {
+      if (this.rightActive) this.pushIfClick(this.pendingRightClicks, this.rightDragMoved, e);
+      this.rightActive = false;
+      this.mouseFiring = false;
+    }
   }
 
   // ポインタ消失時に全ジェスチャ状態をリセットする。
@@ -181,8 +188,15 @@ export class Input {
     this.pointers.delete(e.pointerId);
     this.dragging = false;
     this.panDragging = false;
+    this.rightActive = false;
     this.mouseFiring = false;
     this.pinchDist = 0;
+  }
+
+  // moved が閾値未満(ドラッグでなくクリック)なら e の座標を queue に積む。
+  // 左・中・右ボタン共通のクリック判定はここに一本化する。
+  private pushIfClick(queue: PointerPoint[], moved: number, e: PointerEvent): void {
+    if (moved < CLICK_MOVE_THRESHOLD) queue.push({ x: e.clientX, y: e.clientY });
   }
 
   // ホイール操作を wheel 量として積算する。

@@ -6,7 +6,7 @@ import { CombatCameraSystem } from './combat-camera-system';
 import { OverviewCamera } from './overview-camera';
 import { OverviewCameraPanel } from './overview-camera-panel';
 import { FocusMarkers } from './focus-markers';
-import { FocusGizmo } from './focus-gizmo';
+import { MapPickable, pickNearest } from '../map-pick';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -44,16 +44,15 @@ function projectionFromView(view: ViewFrame): ProjectFn {
 }
 
 // 広範囲視点の操作パネルに常用のフォーカス先として並べるラベル ID。残りのラベル(ラグランジュ点
-// など)へはラベル右クリックのメニュー(FocusGizmo)からフォーカスする。
+// など)へは右クリックの MapContextGizmo 経由でフォーカスする(Game が仲介する)。
 const PANEL_FOCUS_IDS = ['earth', 'moon', 'sun'] as const;
 
 // 戦闘ビュー(CombatCameraSystem)と広範囲視点(OverviewCamera)を切り替えて駆動する。
-// フォーカス候補(focusMarkers)とその選択 UI(focusGizmo / overviewCameraPanel)も所有する。
+// フォーカス候補ラベル(focusMarkers)とその常用ショートリスト(overviewCameraPanel)も所有する。
 export class CameraSystem {
   readonly combatCamera: CombatCameraSystem;
   readonly overviewCamera: OverviewCamera;
   readonly focusMarkers: FocusMarkers;
-  private readonly focusGizmo = new FocusGizmo();
   // 広範囲視点の操作パネル(注視対象・視点の座標系・視点リセット)。
   private readonly overviewCameraPanel: OverviewCameraPanel;
   // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
@@ -64,9 +63,9 @@ export class CameraSystem {
   private readonly _elStageStatus: HTMLElement | null;
   private readonly _elOrbit: HTMLElement | null;
 
-  // 両カメラとフォーカス候補ラベル、フォーカス選択 UI を構築し、パネルの選択操作を配線する。
+  // 両カメラとフォーカス候補ラベルを構築し、常用ショートリストパネルの選択操作を配線する。
   constructor(
-    private readonly _hud: Hud,
+    _hud: Hud,
     sfx: Sfx,
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
@@ -75,13 +74,7 @@ export class CameraSystem {
     // 両カメラとフォーカス候補ラベル
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
     this.combatCamera = new CombatCameraSystem(_hud, sfx, player);
-    this.overviewCamera = new OverviewCamera(_hud, sfx, this.focusMarkers, ephemeris);
-    // ラベル右クリックメニューでのフォーカス選択
-    this.focusGizmo.onMenuFocus = (targetKey) => {
-      this.overviewCamera.focus = targetKey;
-      const lbl = this.focusMarkers.findLabel(targetKey);
-      if (lbl) this._hud.hint(`${lbl.name} にフォーカス`);
-    };
+    this.overviewCamera = new OverviewCamera(_hud, sfx, ephemeris);
     // 広範囲視点の操作パネルと各操作のコールバック
     this.overviewCameraPanel = new OverviewCameraPanel(_hud.root, PANEL_FOCUS_IDS.map(
       (id) => [id, this.focusMarkers.findLabel(id)?.name ?? id] as const,
@@ -112,35 +105,14 @@ export class CameraSystem {
     this._elOrbit = document.getElementById('hud-orbit');
   }
 
-  // マップ編集中のポインタ操作。最寄りラベルがあればフォーカス選択メニューを開いて消費する。
-  handleMapPointer(input: Input): void {
-    input.takeRightClicks((p) => this.handleFocusRightClick(p.x, p.y));
+  // アクティブ艦の切替を戦闘ビューの追従カメラへ伝える。
+  setActivePlayer(player: Player): void {
+    this.combatCamera.setActivePlayer(player);
   }
 
-  // 最寄りラベル(FOCUS_LABEL_PICK_PX 以内)があればフォーカス選択メニューを開いて true を返す。
-  private handleFocusRightClick(clientX: number, clientY: number): boolean {
-    // 全ラベルとの画面距離を比較し最も近いものを選ぶ
-    const project = this.activeCameraProjection;
-    let bestKey: string | null = null;
-    let bestD = C.FOCUS_LABEL_PICK_PX * C.FOCUS_LABEL_PICK_PX;
-    for (const lbl of this.focusMarkers.labels) {
-      const p = project(lbl.pos);
-      if (!p.front) continue;
-      const d = (p.x - clientX) * (p.x - clientX) + (p.y - clientY) * (p.y - clientY);
-      if (d < bestD) {
-        bestD = d;
-        bestKey = lbl.id;
-      }
-    }
-    // 見つかればメニューを開く
-    if (bestKey === null) return false;
-    this.focusGizmo.openMenu(clientX, clientY, bestKey);
-    return true;
-  }
-
-  // フォーカス選択メニューを閉じる。
-  closeFocusMenu(): void {
-    this.focusGizmo.closeMenu();
+  // 画面座標 (clientX, clientY) 付近の被選択物を candidates から選ぶ。圏外なら null。
+  pickFocusCandidate(clientX: number, clientY: number, candidates: readonly MapPickable[]): MapPickable | null {
+    return pickNearest(candidates, clientX, clientY, this.activeCameraProjection, C.MAP_PICK_PX_SQ);
   }
 
   // 現在アクティブなカメラ(広範囲視点/戦闘追従視点)を返す。
@@ -164,6 +136,7 @@ export class CameraSystem {
     simTime: number,
     input: Input,
     dt: number,
+    mapPickables: readonly MapPickable[],
   ): void {
     // 追従視点トグル
     if (input.takeKey(K.followAttitudeToggle)) this.combatCamera.toggleFollowAttitude();
@@ -179,13 +152,14 @@ export class CameraSystem {
     // キー/マウスによる旋回入力をまとめる
     const keyYaw = (input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0);
     const keyPitch = (input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0);
+    const keyRoll = (input.down(K.cameraRollLeft) ? 1 : 0) + (input.down(K.cameraRollRight) ? -1 : 0);
     const mouse = input.mouse();
 
     if (this.overviewMode) {
-      this.overviewCamera.update(mouse, keyYaw, keyPitch, dt, simTime);
+      this.overviewCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, simTime, mapPickables);
     }
     else {
-      this.combatCamera.update(mouse, keyYaw, keyPitch, dt, player, input);
+      this.combatCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, player, input);
     }
   }
 

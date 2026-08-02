@@ -6,6 +6,7 @@ import { Vec3, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { createEarth, Earth } from './earth';
 import { OrbitLine } from './orbitline';
 import { MOON_VIS_DIST, SUN_DISTANCE, SUN_VISUAL_SIZE, Sun, createMoon, createStars, createSun } from './stars';
+import { CelestialGrid, CelestialGridVisibility } from './celestial-grid';
 import { CameraSystem } from '../game/camera/camera-system';
 import { FloatingOrigin } from '../game/floating-origin';
 import * as C from '../game/const';
@@ -17,6 +18,7 @@ export interface EnvironmentSyncParams {
   floatingOrigin: FloatingOrigin;
   displayTime: number;
   cameraSystem: CameraSystem;
+  celestialGridVisibility: CelestialGridVisibility;
 }
 
 // 地球メッシュは地球中心(ECI 原点)基準。group.position はその原点の描画フレーム位置。
@@ -46,6 +48,7 @@ export class EnvironmentScene {
   readonly starsMesh: THREE.Mesh;
   readonly moonMesh: THREE.Mesh;
   readonly earth: Earth;
+  readonly celestialGrid: CelestialGrid;
 
   private readonly earthPhase0 = Math.random() * Math.PI * 2;
 
@@ -80,11 +83,12 @@ export class EnvironmentScene {
     scene.add(this.starsMesh);
     this.earth = createEarth();
     scene.add(this.earth.group);
+    this.celestialGrid = new CelestialGrid(scene);
   }
 
   // 地球・空の天体・照明・参照線を、この1フレームの表示状態に同期する。
   sync(params: EnvironmentSyncParams): void {
-    const { dt, player, floatingOrigin, displayTime, cameraSystem } = params;
+    const { dt, player, floatingOrigin, displayTime, cameraSystem, celestialGridVisibility } = params;
     this.syncEarth(dt, floatingOrigin, displayTime);
     this.syncSkyBodies(displayTime, floatingOrigin, cameraSystem);
 
@@ -93,6 +97,7 @@ export class EnvironmentScene {
     this.syncLighting(lit);
 
     this.syncReferenceLines(displayTime, floatingOrigin, cameraSystem.overviewMode);
+    this.celestialGrid.sync(celestialGridVisibility, cameraSystem);
   }
 
   // 広範囲視点のときだけ geo/moon の参照線を表示する(戦闘ビューでは非表示)。

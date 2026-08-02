@@ -30,6 +30,8 @@ export class PlanTrajectory {
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
+  // 最後のバーン後(これから乗る軌道)の起点状態。末尾区間が無ければ null。
+  finalSegmentStart: OrbitState | null = null;
 
   // group をシーンへ登録する(初期状態は非表示)。
   constructor(scene: THREE.Scene) {
@@ -63,6 +65,7 @@ export class PlanTrajectory {
     for (let i = segments.length; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
+    this.finalSegmentStart = segments.length > plan.nodes.length ? segments[segments.length - 1]!.state0 : null;
   }
 
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
@@ -123,7 +126,7 @@ export class PlanTrajectory {
   private arcAt(i: number): PlanArc {
     while (this.arcs.length <= i) {
       const idx = this.arcs.length;
-      const arc = new PlanArc(arcColor(idx), arcOpacity(idx), 2);
+      const arc = new PlanArc(arcColor(idx), arcOpacity(idx), 4);
       this.arcs.push(arc);
       this.group.add(arc.object3d);
     }
