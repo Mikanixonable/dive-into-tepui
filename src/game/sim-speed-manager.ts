@@ -115,4 +115,24 @@ export class SimSpeedManager {
     }
     this.levelIdx = idx;
   }
+
+  // 自動ワープが解除されるまでの残り実時間 [s] を見積もる。update() と同じ段選択規則
+  // (tRem/AUTOWARP_MARGIN 以下の最大段)のもとで、残りシミュレーション時間を消化する間に
+  // 段が繰り返し下がっていく過程を積算する — 現在の段のまま進むと仮定した単純な tRem/simSpeed
+  // では、高倍率区間が短く低倍率区間が長い実態から大きく外れるため。自動ワープ中でなければ null。
+  estimatedRealSecondsToWarpEnd(simTime: number): number | null {
+    if (this.autoWarpUntil === null) return null;
+    let tRem = this.autoWarpUntil - simTime;
+    if (tRem <= C.AUTOWARP_STOP) return 0;
+    let realSec = 0;
+    for (let i = C.SIM_SPEED_LEVELS.length - 1; i >= 0; i--) {
+      const s = C.SIM_SPEED_LEVELS[i]!;
+      if (s > tRem / C.AUTOWARP_MARGIN) continue;
+      const lowerBound = Math.max(C.AUTOWARP_STOP, s * C.AUTOWARP_MARGIN);
+      if (tRem <= lowerBound) continue;
+      realSec += (tRem - lowerBound) / s;
+      tRem = lowerBound;
+    }
+    return realSec;
+  }
 }

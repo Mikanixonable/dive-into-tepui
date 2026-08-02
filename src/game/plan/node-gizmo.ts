@@ -53,6 +53,13 @@ export interface AxisHandleSpec {
   label: string;
 }
 
+// ラッチ中の Δv アーム。呼び出し側は毎フレーム読み、excessPx に応じたレートで積分する。
+export interface AxisLatchState {
+  readonly axis: 0 | 1 | 2;
+  readonly sign: 1 | -1;
+  readonly excessPx: number;
+}
+
 interface NodeEntry {
   el: HTMLDivElement;
   lbl: HTMLDivElement;
@@ -75,6 +82,8 @@ export class NodeGizmo {
   onAxisDrag: ((axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number) => void) | null = null;
   onMenuWarpTo: ((idx: number) => void) | null = null;
   onMenuDelete: ((idx: number) => void) | null = null;
+
+  latch: AxisLatchState | null = null;
 
   // DOM レイヤとコンテキストメニューを構築する。
   constructor() {
@@ -221,14 +230,21 @@ export class NodeGizmo {
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
+    let totalProj = 0;
+    let latched = false;
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.stopPropagation();
       dragging = true;
+      latched = false;
+      totalProj = 0;
       lastX = e.clientX;
       lastY = e.clientY;
       el.setPointerCapture(e.pointerId);
     });
+    // 基点からの累積変位が DV_DRAG_LATCH_PX を超えるとラッチへ入る。ラッチ前は従来通り
+    // 変位そのものを onAxisDrag へ渡し、ラッチ後は超過量を latch として公開するだけにする
+    // (レートでの積分は毎フレーム呼び出し側が行う)。
     el.addEventListener('pointermove', (e) => {
       if (!dragging) return;
       const dx = e.clientX - lastX;
@@ -240,11 +256,19 @@ export class NodeGizmo {
       const axis = Number(el.dataset['axis'] ?? 0) as 0 | 1 | 2;
       const sign = Number(el.dataset['sign'] ?? 1) as 1 | -1;
       const proj = dx * dirx + dy * diry;
-      this.onAxisDrag?.(axis, sign, proj);
+      totalProj += proj;
+      if (!latched && Math.abs(totalProj) > C.DV_DRAG_LATCH_PX) latched = true;
+      if (!latched) {
+        this.onAxisDrag?.(axis, sign, proj);
+      } else {
+        this.latch = { axis, sign, excessPx: Math.abs(totalProj) - C.DV_DRAG_LATCH_PX };
+      }
     });
-    // ドラッグ終了時にポインタキャプチャを解放する。
+    // ドラッグ終了時にポインタキャプチャを解放し、ラッチを解除する。
     const end = (e: PointerEvent): void => {
       dragging = false;
+      latched = false;
+      this.latch = null;
       try {
         el.releasePointerCapture(e.pointerId);
       } catch {

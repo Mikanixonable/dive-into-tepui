@@ -7,7 +7,7 @@
 // サンプルする状態は末尾の Ephemeris クラスが持つ。
 import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
 import { MU_EARTH, R_EARTH } from './orbital';
-import { Vec3, addScaled, dot, len, norm, scale, v3 } from './vec3';
+import { Vec3, addScaled, dot, len, norm, scale, sub, v3 } from './vec3';
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
 export const MU_MOON = 4.9048695e12;
@@ -22,6 +22,7 @@ const PERIGEE_PERIOD = 8.85 * 365.25 * 86400; // 月の近地点歳差周期 [s]
 const MOON_ECC = 0.0549; // 月軌道の離心率
 const EPS = (23.439291 * Math.PI) / 180; // 黄道傾斜角
 const MOON_INC = (5.145 * Math.PI) / 180; // 白道の黄道に対する傾斜
+const MOON_VEL_DT = 1; // moonVelAt の中心差分の半刻み [s]
 
 const COS_EPS = Math.cos(EPS);
 const SIN_EPS = Math.sin(EPS);
@@ -49,7 +50,7 @@ const ECL_POLE = v3(0, 0, 1); // 黄道北極
 const ECL_POLE_ECI = eclToEci(0, 0, 1); // 黄道北極を ECI で表したもの
 // eclToEci と同一の回転をクォータニオンで表したもの。春分点(X)まわりに EPS − 90° 回すと
 // 黄道基底が ECI 基底へ重なる。
-const Q_ECL_TO_ECI = qFromAxisAngle(ECL_VERNAL, EPS - Math.PI / 2);
+export const Q_ECL_TO_ECI = qFromAxisAngle(ECL_VERNAL, EPS - Math.PI / 2);
 
 // 太陽の黄経とその変化率 [rad], [rad/s]。phase0 は初期黄経。円軌道近似なので変化率は一定。
 function sunAngles(t: number, phase0: number): { lam: number; lamRate: number } {
@@ -225,6 +226,12 @@ export class Ephemeris {
     }
     return this.moonMemoPos;
   }
+  // 指定時刻の月の ECI 速度。位置の中心差分(±MOON_VEL_DT)で求める — 月の速度の解析式は
+  // 持たず、moonPosAt と別の実装を重複させない。
+  moonVelAt(t: number): Vec3 {
+    const h = MOON_VEL_DT;
+    return scale(sub(moonPosition(t + h, this.moonPhase0), moonPosition(t - h, this.moonPhase0)), 1 / (2 * h));
+  }
   // 太陽方向の単位ベクトル(ライティング・影判定用)。
   sunDirAt(t: number): Vec3 {
     return norm(sunPosition(t, this.sunPhase0));
@@ -236,6 +243,10 @@ export class Ephemeris {
   // 指定時刻の、月の公転に固定した回転基準系。
   moonOrbitRotationAt(t: number): FrameRotation {
     return moonOrbitRotation(t, this.moonPhase0);
+  }
+  // 指定時刻の白道(月の公転面)法線。
+  moonOrbitNormalAt(t: number): Vec3 {
+    return moonOrbitNormal(t, this.moonPhase0);
   }
   // 指定時刻の地球-月ラグランジュ点(L1-L5)。
   emLagrangeAt(t: number): LagrangePoints {

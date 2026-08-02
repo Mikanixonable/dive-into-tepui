@@ -60,7 +60,10 @@ const STYLE = `
 /* 横画面(高さが低い端末): navball を画面下部中央に収め、パッドを詰めて
    縦方向の衝突を避ける */
 @media (orientation: landscape) and (max-height: 500px) {
-  #navball { bottom: 4px !important; width: 88px !important; height: 88px !important; }
+  #navball {
+    top: auto !important; bottom: 4px !important; left: 50% !important;
+    transform: translateX(-50%) !important; width: 88px !important; height: 88px !important;
+  }
   #touch-pad-move, #touch-pad-rot {
     grid-template-columns: repeat(3, 40px); grid-auto-rows: 40px; gap: 4px;
   }
