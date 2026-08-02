@@ -6,7 +6,8 @@ import { tofBetween, trueAnomalyAt } from '../physics/orbital';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
 import { Player } from './player/player';
-import { Enemy } from './game-entity/enemy';
+import type { Ship } from './game-entity/ship';
+import type { EntityManager } from './simulation/entity-manager';
 import { Hud } from './hud/hud';
 import { MarkerManager } from './marker/marker-manager';
 import { ProjectFn } from './camera/camera-system';
@@ -49,12 +50,12 @@ export class NavTarget {
 
   // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は両方 null にする。
-  update(player: Player, enemies: readonly Enemy[], ephemeris: Ephemeris, simTime: number): void {
+  update(player: Player, entities: EntityManager, ephemeris: Ephemeris, simTime: number): void {
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
     const playerEl = player.elements;
     if (!playerEl || !this.targetId) return;
 
-    const targetHat = this.resolvePlaneNormal(this.targetId, enemies, ephemeris, simTime);
+    const targetHat = this.resolvePlaneNormal(this.targetId, entities, ephemeris, simTime);
     if (!targetHat) return;
 
     const lineDir = cross(playerEl.hHat, targetHat);
@@ -72,14 +73,21 @@ export class NavTarget {
     this.dnTime = simTime + tofBetween(playerEl, nu0, thAsc + Math.PI);
   }
 
+  // id が航法ターゲットになれる(軌道面が定まる)かどうか。
+  canTarget(id: string, entities: EntityManager, ephemeris: Ephemeris, t: number): boolean {
+    return this.resolvePlaneNormal(id, entities, ephemeris, t) !== null;
+  }
+
   // id から対象の軌道面法線を求める。船は自身の軌道要素、月は白道、ラグランジュ点は
   // 地球-月系なら白道・太陽-地球系なら黄道の法線を使う。面が定まらない対象は null。
-  private resolvePlaneNormal(id: string, enemies: readonly Enemy[], ephemeris: Ephemeris, t: number): Vec3 | null {
+  private resolvePlaneNormal(id: string, entities: EntityManager, ephemeris: Ephemeris, t: number): Vec3 | null {
     if (id === 'moon') return ephemeris.moonOrbitNormalAt(t);
     if (id.startsWith('em-l')) return qRotate(ephemeris.moonOrbitRotationAt(t).q, Z_HAT);
     if (id.startsWith('se-l')) return qRotate(ephemeris.sunOrbitRotationAt(t).q, Z_HAT);
-    const enemy = enemies.find((e) => e.name === id && e.alive);
-    return enemy?.elements?.hHat ?? null;
+    const ship: Ship | undefined =
+      entities.enemies.find((e) => e.name === id && e.alive) ??
+      entities.players.find((p) => p.name === id && p.alive);
+    return ship?.elements?.hHat ?? null;
   }
 
   // 右クリック対象として公開する AN/DN アイコン。計算できているぶんだけ返す。

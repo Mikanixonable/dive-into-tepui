@@ -1,4 +1,4 @@
-// 軌道計画の多ノード予測軌道を arc 単位で描く。Plan の corners を区間へ分解し、
+// 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital';
@@ -8,7 +8,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn } from '../camera/camera-system';
-import { Plan } from './plan';
+import { orbitPeriodOf, Plan, TimeRange } from './plan';
 import { PlanArc } from './plan-arc';
 
 const SEGMENT_COLORS = [0xbfc9d4, 0xffffff, 0xff6a00];
@@ -30,9 +30,8 @@ export class PlanTrajectory {
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
-  private forceNext = false;
-  // 最後のバーン後(まだノードで終わらない末尾区間)の起点状態。ノードが尽きていれば null。
-  private trailingStart: OrbitState | null = null;
+  // 最後のバーン後(これから乗る軌道)の起点状態。末尾区間が無ければ null。
+  finalSegmentStart: OrbitState | null = null;
 
   // group をシーンへ登録する(初期状態は非表示)。
   constructor(scene: THREE.Scene) {
@@ -40,42 +39,34 @@ export class PlanTrajectory {
     scene.add(this.group);
   }
 
-  // plan/displayEnd から区間列を組み直し、各区間の PlanArc を更新する。
-  update(
-    plan: Plan,
-    displayEnd: number,
-    ephemeris: Ephemeris,
-    frame: Frame,
-    currentTime: number,
-    fo: FloatingOrigin,
-    project: ProjectFn,
-  ): void {
+  // plan から区間列を組み直して各区間を再積分し、表示変換の文脈(座標系・un-bake 時刻)を
+  // このフレームのものに更新する。
+  update(plan: Plan, ephemeris: Ephemeris, frame: Frame, currentTime: number): void {
     this.frame = frame;
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
-    this.project = project;
-    // anchor→node…→displayEnd を区間に分解する
-    const segments = buildSegments(plan.anchor, plan.nodes, displayEnd);
-    const force = this.forceNext;
-    this.forceNext = false;
-    // 各区間に対応する PlanArc を更新する。末尾区間だけが表示窓の終端で切れる。
+    // anchor→node…→末尾区間に分解する
+    const segments = buildSegments(plan.anchor, plan.nodes);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
-      const arc = this.arcAt(i);
-      arc.setVisible(true);
-      arc.update(seg.state0, seg.end, i >= plan.nodes.length, ephemeris, frame, currentTime, fo, force);
+      this.arcAt(i).update(seg.state0, seg.end, ephemeris);
     }
-    // 区間数が減った分の余った arc を隠す
-    for (let i = segments.length; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
-    this.trailingStart = segments.length > plan.nodes.length ? segments[segments.length - 1]!.state0 : null;
+    this.finalSegmentStart = segments.length > plan.nodes.length ? segments[segments.length - 1]!.state0 : null;
   }
 
-  // 最後のバーン後(これから乗る軌道)の起点状態。ノードがすべて表示終端より後にあり
-  // 末尾区間が無ければ null。
-  get finalSegmentStart(): OrbitState | null {
-    return this.trailingStart;
+  // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の arc を隠す。
+  // 画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。
+  sync(fo: FloatingOrigin, project: ProjectFn): void {
+    this.project = project;
+    if (this.ephemeris === null) return;
+    for (let i = 0; i < this.activeCount; i++) {
+      const arc = this.arcs[i]!;
+      arc.setVisible(true);
+      arc.sync(this.ephemeris, this.frame, this.unbakeTime, fo);
+    }
+    for (let i = this.activeCount; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
   }
 
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
@@ -83,11 +74,6 @@ export class PlanTrajectory {
     const out: (OrbitState | null)[] = [];
     for (let i = 0; i < this.nodeCount; i++) out.push(this.arcs[i]?.endState() ?? null);
     return out;
-  }
-
-  // 次フレームに全 arc を強制再計算させる(表示期間切替など窓の滑り以外の変化時)。
-  invalidate(): void {
-    this.forceNext = true;
   }
 
   // 時刻 t を保持区間に含む最初の arc から補間した状態を返す。どの arc の外でも null。
@@ -111,13 +97,15 @@ export class PlanTrajectory {
     return this.project(this.toDisplay(r, t));
   }
 
-  // 画面座標に最も近い予測サンプル(maxPx 以内)。なければ null。
-  nearestSample(mx: number, my: number, maxPx: number): OrbitState | null {
+  // 画面座標に最も近い計画軌道のサンプル(maxPx 以内)。なければ null。
+  // range を渡すと、その時刻範囲に入るサンプルだけを候補にする。
+  nearestSample(mx: number, my: number, maxPx: number, range?: TimeRange): OrbitState | null {
     let best: OrbitState | null = null;
     let bestD = maxPx * maxPx;
     // 全 arc の全サンプルを画面座標へ投影し、最も近いものを選ぶ
     for (let i = 0; i < this.activeCount; i++) {
       for (const s of this.arcs[i]!.samplesRef()) {
+        if (range && (s.t < range.min || s.t > range.max)) continue;
         const p = this.projectPoint(s.r, s.t);
         if (!p.front) continue;
         const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
@@ -147,9 +135,9 @@ export class PlanTrajectory {
   }
 }
 
-// anchor を起点に nodes を順にたどり、end までを区切った区間列を返す。先頭 nodes.length 本は
-// 必ずノードで終わる — 表示期間を縮めても各ノードの到達状態が得られるよう、end で打ち切らない。
-function buildSegments(anchor: OrbitState, nodes: readonly OrbitState[], end: number): Segment[] {
+// anchor を起点に nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
+// 末尾の1本は起点の解析軌道1周期ぶん伸びる。
+function buildSegments(anchor: OrbitState, nodes: readonly OrbitState[]): Segment[] {
   const segments: Segment[] = [];
   let state0 = anchor;
   // ノードを1つずつ経由点として区間を切り出す
@@ -157,7 +145,7 @@ function buildSegments(anchor: OrbitState, nodes: readonly OrbitState[], end: nu
     segments.push({ state0, end: node.t });
     state0 = node;
   }
-  // 最後のノードから表示終端までを最終区間とする
-  if (state0.t < end) segments.push({ state0, end });
+  // 最後のノード(無ければ anchor)から1周期ぶんを末尾区間とする
+  segments.push({ state0, end: state0.t + orbitPeriodOf(state0) });
   return segments;
 }
