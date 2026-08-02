@@ -281,10 +281,13 @@ N 体へ配る」最適化を担うと、`step` の窓口が「位置を渡す�
 `PlanEditor.sync`(`update` より後)が算出するので `buildMapPickables()` が読むのは前フレームの値に
 なるが、1フレームの遅れはピック判定にとって無害なので、列を分ける理由にはしない。
 
-呼び出し位置は **`Game.sync` ではなく `Game.update` の先頭**。フォーカス解決
-(`OverviewCamera.update`)も右クリック判定(`handleMapContextMenu`)もどちらも `update` フェーズの
-仕事で、`DisplayTimeManager.resolveDisplayTime` が副作用のない純粋関数だからこそ `sync` を待たずに
-`update` の先頭で表示時刻を確定できる。
+呼び出し位置は **`Game.sync` ではなく `Game.update` の中、`cameraSystem.update` を呼ぶ直前(物理積分の
+後)**。`navTarget.update()`(AN/DN を求め直す)と対にした private `refreshMapPickables()` が、
+`update` の3経路(ポーズ / 決着後の簡略経路 / 通常経路)それぞれで1回ずつ、その経路の
+`cameraSystem.update` の直前に呼ばれる。積分前(`update` の先頭)で組むと、被選択物の座標が同じ
+フレームで `sync` されるメッシュより1ステップぶん古くなる(ワープ倍率が高いほど無視できない)ため、
+物理積分の後まで待つ。フォーカス解決(`OverviewCamera.update`)も右クリック判定
+(`handleMapContextMenu`)もどちらも `update` フェーズの仕事なので、`sync` を待つ必要はない。
 
 被選択物の種別(`MapPickKind`)は `'body' | 'ship' | 'player' | 'apsis' | 'relnode'`。自機は隻数に
 かかわらず `'player'`、敵船が `'ship'`。メニュー項目の表は `Game.mapMenuItemsFor` にあるが、

@@ -71,9 +71,10 @@
         - [editMode] deleteSelected() → deleteNode()
           - plan.removeNode() / closeMenu() / simSpeedManager.cancelAutoWarp() / hud.hint() // 下流ノードも一緒に消える
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
-  - navTarget.update() // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム
-  - buildMapPickables() // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers を集約
   - [game.isPaused] 以降を実行せず return するポーズ経路 // 決着後の簡略経路より前。ポーズ中は決着後も完全に止まる
+    - refreshMapPickables() // navTarget.update() で AN/DN を求め直してから buildMapPickables() で被選択物一覧を組む。両者は必ずこの順
+      - navTarget.update() // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム
+      - buildMapPickables() // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers を集約
     - [editor.editMode] editor.handleMapPointer() / game.handleMapContextMenu(mapPickables) / editor.updateEditing()
     - cameraSystem.update(..., mapPickables) // ポーズ中も視点更新は続ける
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
@@ -85,6 +86,7 @@
     - entities.cleanup() // 決着後もワープで時間は進むので、通常経路と同じ位置で回収する
       // Enemy.checkLoss/Player.checkLoss 経由で recordEnemyDeath/recordPlayerLost が走り得るが、
       // 両方とも isPlaying でガードされているので決着後に既存の phase を上書きすることはない
+    - refreshMapPickables() // navTarget.update() + buildMapPickables()。内容は上記ポーズ経路と同じ
     - cameraSystem.update(..., mapPickables) // 決着後も追従を続ける(sync は止まらないため、飛ばすと視点が絶対 ECI に取り残される)
   - nanWatchdog.checkPlayer('frameStart') // 検出済みなら何もしない
   - player.behave()
@@ -219,7 +221,8 @@
       - player.stepPrediction(dt) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt を都度計算し直しながら1ステップずつ繰り返し呼ぶ
         - predicted.step() // 1ステップごとに ephemeris を中点サンプル
     - advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player を除外しないので同じフレームで二重に予算が付き得る)。entity.stepPrediction() が最初から false(predictDuration=0/推力中/truncated)なら消費 0 で次へ即進む
-  - cameraSystem.update(mapPickables) // 物理積分の後に呼ぶ(追従カメラの基準を積分後の自機位置に合わせるため)
+  - refreshMapPickables() // navTarget.update() + buildMapPickables()。物理積分の後に組む — 積分前だと同フレームで sync されるメッシュや被選択物の座標と1ステップずれる
+  - cameraSystem.update(mapPickables) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ
     - combatCamera.toggleFollowAttitude() // K.followAttitudeToggle。カメラ自身の状態なのでここで消費する
     - keyYaw/keyPitch/keyRoll をキー入力からまとめる // cameraRollLeft/Right は Numpad0/Numpad1
     - overviewCamera.update(..., mapPickables) // cameraSystem.overviewMode のみ。focus を mapPickables から引き直し、結果を自身の view へ書く
@@ -404,7 +407,9 @@
   `player.syncPlayer` / `targeter.sync` / `navTarget.sync` / `activeStage.sync` / `cameraSystem.sync` /
   `editor.sync`(→ `planDisplay`) / `guide.sync` の中にある。**`markerManager.resolveCollisions()` だけは
   全マーカーが出揃った後に一度だけ**呼ぶ必要があるため `game.sync` の末尾に置く。
-- **`buildMapPickables()` は `game.sync` ではなく `game.update` の先頭付近で呼ぶ**。フォーカス解決
+- **`refreshMapPickables()`(`navTarget.update()` + `buildMapPickables()`)は `game.sync` ではなく
+  `game.update` の中、3経路それぞれで `cameraSystem.update` を呼ぶ直前(物理積分の後)に呼ぶ**。
+  積分前に組むと、被選択物や navTarget の AN/DN の座標が、同じフレームで `sync` されるメッシュに
+  対して1ステップぶん古くなる(ワープ倍率が高いほど無視できない)。フォーカス解決
   (`overviewCamera.update`)も右クリック判定(`handleMapContextMenu`)もどちらも `update` フェーズの
-  仕事で、`displayTimeManager.resolveDisplayTime` が副作用のない純粋関数なので、そのフェーズの
-  早い段階で1回組み立てて以降へ引数として配れる(`sync` を待つ必要がない)。
+  仕事なので、`sync` を待つ必要はない。
