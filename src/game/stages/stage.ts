@@ -143,6 +143,10 @@ export abstract class Stage {
   abstract init(player: Player, entities: EntityManager): number;
   abstract update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
 
+  // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
+  nextSimulationEventTime(_simTime: number): number | null { return null; }
+  applySimulationEvents(_simTime: number): void { }
+
   // 残存敵数が 0 以下なら勝利。
   checkWin(): boolean {
     return this.scoreCounter.totalEnemiesSpawned - this.scoreCounter.kills - this.scoreCounter.losses <= 0;

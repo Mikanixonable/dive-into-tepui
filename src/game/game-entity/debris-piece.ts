@@ -41,12 +41,18 @@ export class DebrisPiece extends GameEntity {
 
   get kind(): DebrisKind['kind'] { return this.debrisKind.kind; }
 
+  nextSimulationEventTime(simTime: number): number | null {
+    if (this.debrisKind.kind !== 'casing') return null;
+    const expiresAt = this.debrisKind.bornSim + C.CASING_LIFETIME;
+    return expiresAt >= simTime ? expiresAt : null;
+  }
+
   // 再突入判定に加え、薬莢は寿命超過でも alive を落とす。
   checkLoss(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3): void {
     super.checkLoss(dt, simTime, activeStage, playerPos);
     if (!this.alive) return;
     // 薬莢のみ、寿命(CASING_LIFETIME)による消滅がある(他のデブリは大気突入のみ)。
-    if (this.debrisKind.kind === 'casing' && simTime - this.debrisKind.bornSim > C.CASING_LIFETIME) {
+    if (this.debrisKind.kind === 'casing' && simTime - this.debrisKind.bornSim >= C.CASING_LIFETIME) {
       this.alive = false;
     }
   }

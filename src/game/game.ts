@@ -234,7 +234,6 @@ export class Game {
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
       this.simulator.stepSimulation(dt, simDt, this.player, this.activeStage, false, false, false);
       this.nanWatchdog.checkAll('stepSimulation(決着後)', this.player, this.entities, this.simulator.simTime, dt, simDt);
-      this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
       this.effects.update(dt, simDt);
       this.editor.update(this.simulator.simTime, this.displayTime);
       this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
@@ -256,7 +255,6 @@ export class Game {
       scoreCounter: this.activeStage.scoreCounter,
       simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
-      ephemeris: this.ephemeris,
       addBullet: (bullet) => this.entities.addBullet(bullet),
     });
 
@@ -288,10 +286,12 @@ export class Game {
 
     this.targeter.updateBoardMarks(dt, this.player, this.entities);
 
-    this.entities.cleanup(dt, this.simulator.simTime, this.activeStage, this.player.state.r);
-
-    // cleanup の後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせるため。
-    this.predictor.update(this.simulator.simTime, this.player);
+    // Simulator内のsubstep cleanup後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせるため。
+    this.predictor.update(
+      this.simulator.simTime,
+      this.player,
+      this.simSpeedManager.simSpeed > C.MAX_PHYS_SIM_SPEED,
+    );
 
     this.effects.update(dt, simDt);
 

@@ -17,7 +17,10 @@ export class Predictor {
 
   // Game.update の entities.cleanup(...) の後に呼ぶ(死んだ個体を予測しない、積分後の実状態と
   // 突き合わせる)。視点・モードによる条件分岐は持たない — 予測は表示とは独立に常時進む。
-  update(simTime: number, player: Player): void {
+  update(simTime: number, player: Player, suspended = false): void {
+    // 高ワープでは実状態が1フレームで予測列を追い越すため、再同期→再構築を繰り返しても
+    // 表示に使える列にならない。等速域へ戻るまで既存列を保持して計算予算を使わない。
+    if (suspended) return;
     const all = this.entities.all();
 
     // (a) 距離判定は毎フレーム無条件で全対象に行う(二分探索1回ぶんの費用しかかからない)。
