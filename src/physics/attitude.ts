@@ -124,7 +124,7 @@ export function randomQuat(rand: () => number = Math.random): Quat {
 }
 
 const ATT_MAX_SUB_DT = 0.04; // 姿勢積分の最大刻み [s]
-const ATT_MAX_ITERS = 12;
+const ATT_MAX_DYNAMIC_STEPS = 256;
 
 // オイラーの運動方程式(主軸系): I ω̇ = (I ω) × ω + τ
 function eulerRates(I: Vec3, w: Vec3, tq: Vec3): Vec3 {
@@ -150,12 +150,17 @@ export function stepAttitude(att: Attitude, torque: Vec3, dt: number): Attitude 
     torque.x === 0 && torque.y === 0 && torque.z === 0;
   let w = att.w;
   let q = att.q;
-  let remaining = Math.min(dt, ATT_MAX_SUB_DT * ATT_MAX_ITERS);
+  // 呼び出し側が要求した経過時間を必ず姿勢へ反映する。剛体のω変化は一定数までRK4で
+  // 解き、極端なwarpの残時間は最後のωによるcoastとして進める。以前のように残時間を
+  // 捨てて姿勢だけepochから取り残すことはしない。
+  let remaining = dt;
+  let dynamicSteps = 0;
   while (remaining > 1e-9) {
     const wMag = len(w);
     // 高速回転ほど刻みを細かく(ω·h ≲ 0.25 rad)
     const h = Math.min(remaining, ATT_MAX_SUB_DT, wMag > 1e-6 ? 0.25 / wMag : ATT_MAX_SUB_DT);
     remaining -= h;
+    dynamicSteps++;
 
     const e0 = kineticEnergy(I, w);
     const k1 = eulerRates(I, w, torque);
@@ -182,6 +187,15 @@ export function stepAttitude(att: Attitude, torque: Vec3, dt: number): Attitude 
     if (aMag > 1e-12) {
       const dq = qFromAxisAngle(scale(avg, 1 / aMag), aMag * h);
       q = qNormalize(qMul(q, dq));
+    }
+
+    if (dynamicSteps >= ATT_MAX_DYNAMIC_STEPS && remaining > 1e-9) {
+      const coastMag = len(w);
+      if (coastMag > 1e-12) {
+        const coastAngle = (coastMag * remaining) % (Math.PI * 2);
+        q = qNormalize(qMul(q, qFromAxisAngle(scale(w, 1 / coastMag), coastAngle)));
+      }
+      remaining = 0;
     }
   }
   return { q, w, inertia: I };

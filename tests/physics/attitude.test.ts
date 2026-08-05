@@ -78,4 +78,19 @@ export function register(): void {
     assert.ok(Math.abs(att.q.y - expected.y) < 1e-6, `q.y: ${att.q.y} vs ${expected.y}`);
     assert.ok(Math.abs(att.q.w - expected.w) < 1e-6, `q.w: ${att.q.w} vs ${expected.w}`);
   });
+
+  test('attitude: advances the complete requested elapsed time', () => {
+    const att0: Attitude = {
+      q: { x: 0, y: 0, z: 0, w: 1 },
+      w: v3(0, 0, 1),
+      inertia: v3(1, 1, 1),
+    };
+    const actual = stepAttitude(att0, v3(), 1);
+    const expected = qFromAxisAngle(v3(0, 0, 1), 1);
+    const alignment = Math.abs(
+      actual.q.x * expected.x + actual.q.y * expected.y
+      + actual.q.z * expected.z + actual.q.w * expected.w,
+    );
+    assert.ok(alignment > 1 - 1e-10, `1s requested but attitude advanced only partially: alignment=${alignment}`);
+  });
 }

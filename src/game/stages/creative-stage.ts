@@ -120,17 +120,28 @@ export class CreativeStage extends Stage {
     return orbitState(this._simulator.simTime, add(moonPos, rel.r), add(moonVel, rel.v));
   }
 
-  // 軌道計画への自動追従(followPlan)が ON の艦それぞれについて、次ノードの時刻へ達したかを
-  // 見て、達していれば state をそのノードの絶対状態へ置き換えて消費する(有限推力のバーン模擬は
-  // 行わない — ノードは既にバーン後の絶対状態のため、置き換えるだけで計画軌道と厳密に一致する)。
-  update(_dt: number, _player: Player, entities: EntityManager, simTime: number, _simSpeed: SimSpeedManager): void {
-    for (const ship of entities.players) this.advanceFollowPlan(ship, simTime);
+  update(_dt: number, _player: Player, _entities: EntityManager, _simTime: number, _simSpeed: SimSpeedManager): void { }
+
+  // followPlan のノードは Simulator の既知イベントとして扱い、必ずnode.tちょうどで積分を切る。
+  // これにより、フレーム末に過去epochのstateを代入する巻き戻しと、バーン前軌道での越境を防ぐ。
+  nextSimulationEventTime(simTime: number): number | null {
+    let next: number | null = null;
+    for (const ship of this._entities.players) {
+      if (!ship.followPlan) continue;
+      const t = ship.plan.firstNode()?.t;
+      if (t !== undefined && t >= simTime && (next === null || t < next)) next = t;
+    }
+    return next;
   }
 
-  private advanceFollowPlan(ship: Player, simTime: number): void {
-    if (!ship.followPlan) return;
-    const reached = ship.plan.dropNodesBefore(simTime);
-    if (reached) ship.state = reached;
+  applySimulationEvents(simTime: number): void {
+    for (const ship of this._entities.players) {
+      if (!ship.followPlan) continue;
+      const node = ship.plan.firstNode();
+      if (!node || node.t > simTime + 1e-9) continue;
+      const reached = ship.plan.dropNodesBefore(simTime);
+      if (reached) ship.state = reached;
+    }
   }
 
   checkWin(): boolean {

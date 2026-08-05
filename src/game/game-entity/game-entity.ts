@@ -74,6 +74,12 @@ export class GameEntity {
     this.current.step(dt, ephemeris, this.bcInv, this.thrust, this.sampleInterval(), this.historyDuration);
   }
 
+  // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
+  // 発生するイベントを持たないエンティティは null を返す。
+  nextSimulationEventTime(_simTime: number): number | null {
+    return null;
+  }
+
   // 予測列を破棄する。
   invalidatePrediction(): void {
     this._predicted = null;
