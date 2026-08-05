@@ -11,6 +11,7 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Player } from '../player/player';
 import { FloatingOrigin } from '../floating-origin';
+import * as C from '../const';
 import { Vec3 } from '../../physics/vec3';
 import { ndcToScreen, Projected, projectToNdc, ViewFrame } from '../../physics/projection';
 import { Frame } from '../../physics/frame';
@@ -69,7 +70,7 @@ export class CameraSystem {
     sfx: Sfx,
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
-    player: Player,
+    player: Player | null,
   ) {
     // 両カメラとフォーカス候補ラベル
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
@@ -106,7 +107,7 @@ export class CameraSystem {
   }
 
   // アクティブ艦の切替を戦闘ビューの追従カメラへ伝える。
-  setActivePlayer(player: Player): void {
+  setActivePlayer(player: Player | null): void {
     this.combatCamera.setActivePlayer(player);
   }
 
@@ -127,7 +128,7 @@ export class CameraSystem {
 
   // 入力からカメラの向き・ズームを更新する。overviewMode に応じてどちらか一方のカメラだけを駆動する。
   update(
-    player: Player,
+    player: Player | null,
     simTime: number,
     input: Input,
     dt: number,

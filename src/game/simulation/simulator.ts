@@ -11,6 +11,7 @@ import { CollisionPhysics } from './collision';
 import { Sfx } from '../../audio/sfx';
 import { GameEntity } from '../game-entity/game-entity';
 import { altitudeOf } from '../../physics/orbital';
+import { v3 } from '../../physics/vec3';
 import { simulationStepDuration } from './time-step';
 
 export class Simulator {
@@ -35,7 +36,7 @@ export class Simulator {
   stepSimulation(
     dt: number,
     simDt: number,
-    player: Player,
+    player: Player | null,
     activeStage: Stage,
     bulletCollision: boolean,
     resolveCollision: boolean,
@@ -51,7 +52,7 @@ export class Simulator {
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
       if (subDt <= 1e-9) {
         activeStage.applySimulationEvents(this.simTime);
-        this.entities.cleanup(0, this.simTime, activeStage, player.state.r);
+        this.entities.cleanup(0, this.simTime, activeStage, player?.state.r ?? v3());
         continue;
       }
 
@@ -60,13 +61,13 @@ export class Simulator {
       for (const p of this.entities.players) p.stepEnvironment(subDt, this.ephemeris, this.simTime);
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの命中判定へ進まないよう、既知境界の直後に回収する。
-      this.entities.cleanup(subDt, this.simTime, activeStage, player.state.r);
+      this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3());
       if (bulletCollision) {
         this.hitSystem.checkBulletHits(this.simTime, player, activeStage, this.entities);
       }
     }
 
-    if (resolveCollision) {
+    if (resolveCollision && player) {
       this.collisionPhysics.resolve(dt, player, this.entities.all(), () => this._sfx.clank(), onHighSpeedImpact);
     }
 

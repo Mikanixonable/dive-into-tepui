@@ -41,4 +41,10 @@ export class ReentryEffects {
     this.core.sync(fo.RtoThreeV3(addScaled(r, dir, 3.0)), sc * 1.4, 0.75 * intensity, camQuat);
     this.outer.sync(fo.RtoThreeV3(addScaled(r, dir, 5.5)), sc * 3.2, 0.35 * intensity, camQuat);
   }
+
+  dispose(scene: THREE.Scene): void {
+    scene.remove(this.core.mesh, this.outer.mesh);
+    this.core.dispose();
+    this.outer.dispose();
+  }
 }

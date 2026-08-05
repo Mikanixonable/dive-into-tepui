@@ -15,6 +15,7 @@ import { register as registerDeque } from './deque.test';
 import { register as registerStateQueue } from './state-queue.test';
 import { register as registerOrbitEntity } from './orbit-entity.test';
 import { register as registerHalo } from './halo.test';
+import './creative-placement-validation.test';
 
 registerVec3();
 registerOrbital();
