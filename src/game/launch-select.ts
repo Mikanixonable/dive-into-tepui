@@ -3,6 +3,7 @@ import { STAGE_DEFINITIONS } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { LaunchSelection } from './game-mode';
 import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT } from './theme';
+import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 
 // 起動選択画面(ステージモード/クリエイティブモードのタブ)を表示し、
 // 選ばれた LaunchSelection で解決される Promise を返す。
@@ -23,33 +24,8 @@ export function selectLaunch(unlockManager: UnlockManager): Promise<LaunchSelect
       b.innerHTML = `<div style="font-size:22px;letter-spacing:3px;color:${enabled ? ACCENT : TEXT_DIM}">${label}</div><div style="font-size:12px;color:${TEXT_DIM}">${sub}</div>`;
       return b;
     };
-    let qrHtml = '<div style="display:grid;grid-template-columns:repeat(12, 1fr);gap:1.5px;width:56px;height:56px;margin-bottom:12px;">';
-    for (let y = 0; y < 12; y++) {
-      for (let x = 0; x < 12; x++) {
-        const isTL = x < 4 && y < 4;
-        const isTR = x > 7 && y < 4;
-        const isBL = x < 4 && y > 7;
-        let color = 'transparent';
-        if (isTL || isTR || isBL) {
-          const lx = isTR ? x - 8 : x;
-          const ly = isBL ? y - 8 : y;
-          if (lx === 0 || lx === 3 || ly === 0 || ly === 3 || (lx === 1 && ly === 1) || (lx === 2 && ly === 2)) {
-            color = ACCENT;
-          }
-        } else {
-          const hash = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-          if (hash - Math.floor(hash) > 0.5) {
-            color = TEXT;
-          }
-        }
-        qrHtml += `<div style="background:${color}"></div>`;
-      }
-    }
-    qrHtml += '</div>';
-
     div.innerHTML =
-      qrHtml +
-      `<div style="font-size:52px;letter-spacing:8px;margin-bottom:8px;color:${ACCENT}">Dive into Tepui</div>`;
+      `<img src="${tepuiRmqrUrl}" alt="dive into tepui" style="width:min(78vw,430px);height:auto;margin-bottom:14px;image-rendering:pixelated">`;
 
     // タブ切替: 選んだタブに応じて下のリスト表示を入れ替える。
     const tabRow = document.createElement('div');
