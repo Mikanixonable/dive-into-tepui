@@ -35,6 +35,10 @@ import { Plan } from '../plan/plan';
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
 export class Player extends Ship {
+  // 表示名はユーザーが自由に重複させられる。一方 id はマップ選択・参照のための不変キー。
+  // name は既存の HUD/Ship API との互換用で displayName と同じ値を保持する。
+  readonly id: string;
+  readonly displayName: string;
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
   readonly belt: Belt;
@@ -56,6 +60,7 @@ export class Player extends Ship {
   private readonly _hud: Hud;
   private readonly _sfx: Sfx;
   private readonly _fx: EffectsSystem;
+  private readonly playerScene: THREE.Scene;
 
   fineAttitude = false;
 
@@ -63,12 +68,15 @@ export class Player extends Ship {
   // で初期配置する。複数隻を並べるときは両方を指定して区別する(name が艦の識別子になる)。
   constructor(
     _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
-    name = 'PLAYER', initialState?: OrbitState) {
+    name = 'PLAYER', initialState?: OrbitState, entityId = name) {
     const state = initialState ?? Player.makeInitialState();
     super(name, state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, _scene);
+    this.id = entityId;
+    this.displayName = name;
     this._hud = _hud;
     this._sfx = _sfx;
     this._fx = _fx;
+    this.playerScene = _scene;
     this.mass = 1000;
     // 剛体接触は実機体サイズ。被弾判定半径(radius)を使うと排莢直後の薬莢を弾いてしまう
     this.collideRadius = C.PLAYER_HULL_RADIUS;
@@ -147,7 +155,7 @@ export class Player extends Ship {
   }): void {
     const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, addBullet } = params;
 
-    this.belt.update(dt, this.fire.mags, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
+    this.updatePassive(dt);
     this.handleEdgeInput(input);
     this.updateTorque(input, editMode, dt * simSpeed.simSpeed);
 
@@ -156,8 +164,6 @@ export class Player extends Ship {
       this.thrust = null;
       return;
     }
-
-    this.hpRegen(dt);
 
     if (editMode) {
       this.fire.tickMapMode(dt);
@@ -170,6 +176,13 @@ export class Player extends Ship {
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
     if (this.thrust !== null) this.invalidatePrediction();
+  }
+
+  // 表示フレーム基準の受動状態。環境(熱・電力・ラジエータ)は stepEnvironment で
+  // simulation clock に合わせて進めるため、ここで重複させない。
+  updatePassive(dt: number): void {
+    this.belt.update(dt, this.fire.mags, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
+    this.hpRegen(dt);
   }
 
   // 軌道・姿勢と同じsimulation clockで受動環境系を進める。Game.behaveのwall dtから
@@ -186,6 +199,14 @@ export class Player extends Ship {
     );
     this.power.update(dt, sunlit, sunDir, this.att);
     this.thermal.updateThermal(dt, this.state.r, this.state.v);
+  }
+
+  // 操作対象から外す/削除する際、次のフレームへ持ち越してはならない連続指令を畳む。
+  clearTransientCommands(): void {
+    this.thrust = null;
+    this.torque = v3();
+    this.throttle.clearTransientState();
+    this.fire.stopFiring();
   }
 
   // 姿勢微調整モードの ON/OFF を切り替える。
@@ -300,8 +321,7 @@ export class Player extends Ship {
 
   // ポーズ中: 移動/発射の一時状態(推力可視化・射撃継続)を止める。
   pause(): void {
-    this.throttle.clearTransientState();
-    this.fire.stopFiring();
+    this.clearTransientCommands();
   }
 
 
@@ -353,5 +373,20 @@ export class Player extends Ship {
     }
 
     this.orbitLine.sync(this.alive ? this.elements : null, fo, this.thrustVizDir !== null, this.state.r);
+  }
+
+  // Creative で任意削除されるため、Player が所有する線・ビルボード・HUD も一度だけ解放する。
+  private disposed = false;
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.clearTransientCommands();
+    this.markers.hide();
+    this.playerScene.remove(this.orbitLine.line);
+    this.orbitLine.dispose();
+    this.thrustEffects.dispose(this.playerScene);
+    this.rcsEffects.dispose(this.playerScene);
+    this.reentryEffects.dispose(this.playerScene);
+    super.dispose();
   }
 }

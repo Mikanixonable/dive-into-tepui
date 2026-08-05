@@ -16,7 +16,7 @@ export class HitSystem {
 
   // 撃破が発生した場合の集計・勝敗判定は activeStage(attacked() 経由)に委ねる。
   // サブステップ間の相対運動を線分 vs 球でチェック(高速弾のトンネリング防止)
-  checkBulletHits(simTime: number, player: Player, activeStage: Stage, entities: EntityManager): void {
+  checkBulletHits(simTime: number, player: Player | null, activeStage: Stage, entities: EntityManager): void {
     const shipTargets: (Player | Enemy)[] = [...entities.players, ...entities.enemies];
     const debrisTargets = entities.debris.filter(d => d.collideRadius !== undefined);
 
