@@ -178,6 +178,9 @@ export class Game {
       creativeStage.onShipPlaced = (ship) => {
         if (this.player === null) this.setActivePlayer(ship);
       };
+      // Creative は0隻で開始する。破棄するbootstrap艦をcamera/editorに保持させない。
+      this.editor.setActivePlayer(null);
+      this.cameraSystem.setActivePlayer(null);
       bootstrapPlayer.dispose();
       this.player = null;
     }
@@ -257,7 +260,6 @@ export class Game {
 
     // Creative の未配置状態でも、残骸・弾など全エンティティの epoch は進め続ける。
     if (this.player === null) {
-      this.activeStage.update(dt, null as unknown as Player, this.entities, this.simulator.simTime, this.simSpeedManager);
       this.simSpeedManager.update(this.simulator.simTime);
       const simDt = dt * this.simSpeedManager.simSpeed;
       this.simulator.stepSimulation(
@@ -451,6 +453,8 @@ export class Game {
       this.cameraSystem, this.navball.gridVisibility,
     );
 
+    // 0隻状態へ移ったフレームで、直前の操作艦のRCSループ音を確実に止める。
+    if (!player) this._sfx.setRcs(false);
     for (const ship of this.entities.players) {
       ship.syncPlayer(
         this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused,
