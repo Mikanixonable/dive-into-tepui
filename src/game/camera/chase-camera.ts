@@ -29,12 +29,12 @@ export class ChaseCamera {
 
   constructor(
     private readonly _hud: Hud,
-    private player: Player,
+    private player: Player | null,
   ) { }
 
   // 追従先の艦を差し替える(アクティブ艦の切替)。姿勢基準の rot はそのまま新しい艦の姿勢に対する
   // 相対値として使い回す。
-  setPlayer(player: Player): void {
+  setPlayer(player: Player | null): void {
     this.player = player;
   }
 
@@ -44,6 +44,7 @@ export class ChaseCamera {
   }
   set camFollowAttitude(v: boolean) {
     if (v === this._camFollowAttitude) return;
+    if (!this.player) return;
     const playerQ = this.player.att.q;
     this.rot = qNormalize(v ? qMul(qInvert(playerQ), this.rot) : qMul(playerQ, this.rot));
     this._camFollowAttitude = v;
@@ -68,6 +69,7 @@ export class ChaseCamera {
 
   // キー/マウス入力から rot/dist を更新し、player の状態から視点を view へ書き戻す。
   update(mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number): void {
+    if (!this.player) return;
     let q = this._camFollowAttitude ? qMul(this.player.att.q, this.rot) : this.rot;
 
     const right = qRotate(q, v3(1, 0, 0));

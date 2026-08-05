@@ -33,4 +33,10 @@ export class ThrustEffects {
     this.core.sync(fo.RtoThreeV3(addScaled(playerPos, d, -3.4)), sc * 1.6, 0.85 * flick, camQuat);
     this.outer.sync(fo.RtoThreeV3(addScaled(playerPos, d, -5.6)), sc * 3.6, 0.32 * flick, camQuat);
   }
+
+  dispose(scene: THREE.Scene): void {
+    scene.remove(this.core.mesh, this.outer.mesh);
+    this.core.dispose();
+    this.outer.dispose();
+  }
 }

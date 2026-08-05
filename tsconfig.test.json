@@ -18,6 +18,7 @@
     "src/physics/atmosphere.ts",
     "src/physics/ephemeris.ts",
     "src/physics/swept-sphere.ts",
+    "src/game/creative/placement-validation.ts",
     "tests/physics/**/*.ts"
   ]
 }

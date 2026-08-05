@@ -59,6 +59,21 @@ export class HudPanels {
   // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
   sync(game: Game, dt: number): void {
     const player = game.player;
+    if (!player) {
+      // Creative の未配置状態には操縦/戦闘 HUD の値が存在しない。
+      for (const id of ['hud-status', 'hud-orbit', 'hud-target', 'hud-enemies']) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      }
+      return;
+    }
+    // 未配置状態から最初の艦を置いたとき、操縦HUDを再び通常の同期へ戻す。
+    if (!game.cameraSystem.overviewMode) {
+      for (const id of ['hud-status', 'hud-orbit']) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = '';
+      }
+    }
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;
     const playerEl = player.elements;

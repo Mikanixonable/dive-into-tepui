@@ -58,10 +58,11 @@ export class PlanEditor {
   // 編集対象として選択中のノードの index。null で未選択。
   selectedNodeIdx: number | null = null;
 
-  private ship: Player;
+  private ship: Player | null;
+  private readonly detachedPlan = new Plan();
   // アクティブ艦自身の計画を編集する。艦は自分の計画を所有し続けるので、艦を切り替えると
   // 編集対象もその艦の計画へ切り替わる。
-  get plan(): Plan { return this.ship.plan; }
+  get plan(): Plan { return this.ship?.plan ?? this.detachedPlan; }
 
   readonly planDisplay: PlanDisplay;
 
@@ -131,7 +132,7 @@ export class PlanEditor {
 
   // 編集対象をアクティブ艦の切替に合わせて差し替える。選択中ノード・開いたメニューは
   // 前の艦の計画を指しているので破棄する。
-  setActivePlayer(ship: Player): void {
+  setActivePlayer(ship: Player | null): void {
     this.ship = ship;
     this.selectedNodeIdx = null;
     this.closeMenu();

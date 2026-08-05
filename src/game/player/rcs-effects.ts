@@ -58,4 +58,11 @@ export class RcsEffects {
       puff.plume.sync(fo.RtoThreeV3(add(playerPos, pos)), 0.55 * flick, 0.75 * flick, camera.activeCamera.quaternion);
     }
   }
+
+  dispose(scene: THREE.Scene): void {
+    for (const { plume } of this.puffs) {
+      scene.remove(plume.mesh);
+      plume.dispose();
+    }
+  }
 }

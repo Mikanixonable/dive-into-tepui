@@ -26,6 +26,11 @@ export class PlayerMarkers {
     this.syncBoresight(currentState, att, alive, project);
   }
 
+  hide(): void {
+    for (const key of COMBAT_KEYS) this.markerManager.hide(key);
+    this.markerManager.hide('self');
+  }
+
   // prograde/retrograde/normal/antinormal/radial in-out の6方向マーカーを配置する。
   private syncOrbitalDirections(state: OrbitState, project: ProjectFn): void {
     const pr = state.r;
