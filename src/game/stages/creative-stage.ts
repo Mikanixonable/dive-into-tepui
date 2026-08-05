@@ -167,7 +167,13 @@ export class CreativeStage extends Stage {
   }
 
   // ノード適用は Simulator のイベント境界で行うため、フレーム更新では何もしない。
-  update(_dt: number, _player: Player, _entities: EntityManager, _simTime: number, _simSpeed: SimSpeedManager): void { }
+  update(_dt: number, player: Player, _entities: EntityManager, simTime: number, _simSpeed: SimSpeedManager): void {
+    // Creative は戦闘フェーズを持たないため、以前は補給ロジスティクスも
+    // 更新されていなかった。その結果、初期弾薬が 0 の Creative 艦は
+    // いったん弾を使い切ると補給が永遠に投入されなかった。
+    // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行う。
+    this.logistics.updateLogistics(simTime, player, true);
+  }
 
   // followPlan のノードは Simulator の既知イベントとして扱い、必ずnode.tちょうどで積分を切る。
   // これにより、フレーム末に過去epochのstateを代入する巻き戻しと、バーン前軌道での越境を防ぐ。
