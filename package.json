@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node node_modules/webpack-cli/bin/cli.js serve --mode development",
     "build": "webpack --mode production",
+    "prebuild": "node tools/generate-rmqr.mjs",
     "verify:source": "node tools/verify-release.mjs --source-only",
     "verify:release": "node tools/verify-release.mjs",
     "smoke:browser": "node tools/browser-smoke.mjs",
@@ -19,6 +20,7 @@
     "css-loader": "^7.1.4",
     "esbuild-loader": "^4.2.2",
     "html-webpack-plugin": "^5.6.0",
+    "rmqr": "^0.3.0",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.1",
     "typescript": "^5.5.4",
