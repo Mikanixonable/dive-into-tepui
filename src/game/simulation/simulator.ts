@@ -10,9 +10,9 @@ import type { Stage } from '../stages/stage';
 import { CollisionPhysics } from './collision';
 import { Sfx } from '../../audio/sfx';
 import { GameEntity } from '../game-entity/game-entity';
-import { altitudeOf } from '../../physics/orbital';
+import { R_EARTH } from '../../physics/orbital';
 import { v3 } from '../../physics/vec3';
-import { simulationStepDuration } from './time-step';
+import { adaptiveSimulationMaxStep, simulationStepDuration } from './time-step';
 
 export class Simulator {
   readonly hitSystem: HitSystem;
@@ -75,20 +75,12 @@ export class Simulator {
   }
 
   private adaptiveMaxStep(): number {
-    let maxStep = C.SUBSTEP_MAX_DT;
-    for (const e of this.entities.all()) {
-      if (!e.alive) continue;
-      const altitude = altitudeOf(e.state.r);
-      if (altitude < C.REENTRY_SUBSTEP_ALT) return C.REENTRY_SUBSTEP_MAX_DT;
-      const { r, v } = e.state;
-      const radius = Math.sqrt(r.x * r.x + r.y * r.y + r.z * r.z);
-      const radialSpeed = (r.x * v.x + r.y * v.y + r.z * v.z) / radius;
-      if (radialSpeed < 0) {
-        const untilReentryRegion = (altitude - C.REENTRY_SUBSTEP_ALT) / -radialSpeed;
-        if (untilReentryRegion > 1e-6) maxStep = Math.min(maxStep, untilReentryRegion);
-      }
-    }
-    return maxStep;
+    return adaptiveSimulationMaxStep(
+      this.entities.all().filter((e) => e.alive).map((e) => e.state),
+      R_EARTH + C.REENTRY_SUBSTEP_ALT,
+      C.SUBSTEP_MAX_DT,
+      C.REENTRY_SUBSTEP_MAX_DT,
+    );
   }
 
   private nextEventTime(activeStage: Stage): number | null {

@@ -9,3 +9,29 @@ export function simulationStepDuration(
   if (nextEventTime !== null && nextEventTime >= simTime && nextEventTime < end) end = nextEventTime;
   return Math.max(0, end - simTime);
 }
+
+export interface StepState {
+  readonly r: { readonly x: number; readonly y: number; readonly z: number };
+  readonly v: { readonly x: number; readonly y: number; readonly z: number };
+}
+
+// 再突入域の境界を越えない最大刻み。境界ちょうどは必ずreentryMaxStep側に含める。
+export function adaptiveSimulationMaxStep(
+  states: readonly StepState[],
+  reentryRadius: number,
+  normalMaxStep: number,
+  reentryMaxStep: number,
+): number {
+  let maxStep = normalMaxStep;
+  for (const { r, v } of states) {
+    const radius = Math.sqrt(r.x * r.x + r.y * r.y + r.z * r.z);
+    if (radius <= reentryRadius) return reentryMaxStep;
+    const radialSpeed = (r.x * v.x + r.y * v.y + r.z * v.z) / radius;
+    if (radialSpeed < 0) {
+      const untilBoundary = (radius - reentryRadius) / -radialSpeed;
+      if (untilBoundary > 1e-9) maxStep = Math.min(maxStep, untilBoundary);
+      else return reentryMaxStep;
+    }
+  }
+  return maxStep;
+}
