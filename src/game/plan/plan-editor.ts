@@ -399,7 +399,10 @@ export class PlanEditor {
     const latch = this.nodeGizmo.latch;
     if (latch) {
       const fineScale = fine ? C.NODE_DV_RATE_FINE / C.NODE_DV_RATE : 1;
-      const rate = Math.min(latch.excessPx * C.DV_LATCH_RATE_PER_PX, C.DV_RATE_MAX) * fineScale;
+      // ラッチ後は基点からの超過距離に比例させる。ここを DV_RATE_MAX で
+      // 飽和させると、一定距離以上のドラッグがすべて同じ Δv になり、
+      // 「大きくドラッグするほど加速が増える」という操作感が失われる。
+      const rate = latch.excessPx * C.DV_LATCH_RATE_PER_PX * fineScale;
       this.applyDv(latch.axis, latch.sign, rate * dt);
     }
   }
