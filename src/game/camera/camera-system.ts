@@ -15,6 +15,7 @@ import { Vec3 } from '../../physics/vec3';
 import { ndcToScreen, Projected, projectToNdc, ViewFrame } from '../../physics/projection';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
+import * as C from '../const';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 
