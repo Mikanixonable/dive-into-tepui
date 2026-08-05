@@ -24,8 +24,13 @@ export function selectLaunch(unlockManager: UnlockManager): Promise<LaunchSelect
       b.innerHTML = `<div style="font-size:22px;letter-spacing:3px;color:${enabled ? ACCENT : TEXT_DIM}">${label}</div><div style="font-size:12px;color:${TEXT_DIM}">${sub}</div>`;
       return b;
     };
+    // rMQRとタイトル文字を同じ幅のロゴブロックにまとめる。画像だけを
+    // 置くとタイトル文字が消えたように見えるため、コードの直下に常に表示する。
     div.innerHTML =
-      `<img src="${tepuiRmqrUrl}" alt="dive into tepui" style="width:min(78vw,430px);height:auto;margin-bottom:14px;image-rendering:pixelated">`;
+      `<div style="width:min(78vw,430px);display:flex;flex-direction:column;align-items:stretch;margin-bottom:14px">` +
+      `<img src="${tepuiRmqrUrl}" alt="dive into tepui" style="display:block;width:100%;height:auto;image-rendering:pixelated">` +
+      `<div style="width:100%;box-sizing:border-box;padding-top:10px;color:${ACCENT};font-size:clamp(16px,3.8vw,22px);line-height:1.2;letter-spacing:clamp(3px,0.9vw,6px);text-align:center;white-space:nowrap">Dive into Tepui</div>` +
+      `</div>`;
 
     // タブ切替: 選んだタブに応じて下のリスト表示を入れ替える。
     const tabRow = document.createElement('div');
