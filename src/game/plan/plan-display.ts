@@ -13,6 +13,7 @@ import { SegmentedControl } from '../hud/buttons';
 import { FRAME_ITEMS } from '../hud/frame-labels';
 import { MapPickable } from '../map-pick';
 import * as C from '../const';
+import { hudDock } from '../hud/dom';
 import { Plan } from './plan';
 import { PlanTrajectory } from './plan-trajectory';
 
@@ -51,7 +52,7 @@ export class PlanDisplay {
     // 表示座標系の切り替えボタン
     this.frame = new SegmentedControl<Frame>('軌道', FRAME_ITEMS, (frame) => { this.trajectoryFrame = frame; });
     this.panel.appendChild(this.frame.element);
-    hudRoot.appendChild(this.panel);
+    hudDock(hudRoot, 'left').appendChild(this.panel);
   }
 
   // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。
