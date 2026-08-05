@@ -206,6 +206,13 @@ export class PlanEditor {
         bestNodeIdx = i;
       }
     }
+    // ノードを置いた直後に同じノードをクリックした場合は編集を続ける。
+    // 別の場所をクリックして選択対象が外れた場合だけ、Δv を一度も加えていない
+    // 空のノードを破棄する。update() で毎フレーム削除すると、作成直後に
+    // ギズモを操作する前に消えてしまうため、クリックを編集の区切りとする。
+    if (this.selectedNodeIdx !== null && this.selectedNodeIdx !== bestNodeIdx) {
+      this.removeSelectedIfEmpty();
+    }
     if (bestNodeIdx !== null) {
       this.selectedNodeIdx = bestNodeIdx;
       this._sfx.warp();
@@ -221,6 +228,17 @@ export class PlanEditor {
     }
 
     // ノードにも計画軌道にも当たらないクリックは選択解除
+    this.selectedNodeIdx = null;
+  }
+
+  // 選択中ノードが実質的に空なら削除する。到達状態を再計算できない間は保留する。
+  private removeSelectedIfEmpty(): void {
+    const idx = this.selectedNodeIdx;
+    if (idx === null || !this.plan.nodes[idx]) return;
+    const arriving = this.planDisplay.traj.arrivalStates();
+    const arr = arriving[idx];
+    if (!arr || len(sub(this.plan.nodes[idx]!.v, arr.v)) >= C.NODE_MIN_DV) return;
+    this.plan.removeNode(idx);
     this.selectedNodeIdx = null;
   }
 
@@ -440,18 +458,6 @@ export class PlanEditor {
   // 現在軌道そのものなので、ノードを置ける編集中だけ扱う。
   update(simTime: number, displayTime: number): void {
     this.planDisplay.update(this.plan, simTime, displayTime, this.editMode || this.plan.nodes.length > 0);
-    // 置いた直後で Δv を一度も編集していないノードは、到達時状態と
-    // 噴射後状態が同一のまま残る。空のマニューバを計画へ残さないため、
-    // 軌道表示を更新した直後に末尾から自動的に取り除く。
-    if (this.editMode && this.plan.nodes.length > 0) {
-      const arriving = this.planDisplay.traj.arrivalStates();
-      for (let i = this.plan.nodes.length - 1; i >= 0; i--) {
-        const arr = arriving[i];
-        if (!arr || len(sub(this.plan.nodes[i]!.v, arr.v)) >= C.NODE_MIN_DV) break;
-        this.plan.removeNode(i);
-        if (this.selectedNodeIdx === i) this.selectedNodeIdx = null;
-      }
-    }
   }
 
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
