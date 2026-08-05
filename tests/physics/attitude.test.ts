@@ -3,7 +3,7 @@
 // 許容誤差は数値誤差起因の小さい値として設定する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { Attitude, qFromAxisAngle, stepAttitude } from '../../src/physics/attitude';
+import { ATT_MAX_DYNAMIC_STEPS, Attitude, qFromAxisAngle, stepAttitude } from '../../src/physics/attitude';
 import { v3 } from '../../src/physics/vec3';
 
 function kineticEnergy(att: Attitude): number {
@@ -17,6 +17,28 @@ function quatNorm(att: Attitude): number {
 }
 
 export function register(): void {
+  test('attitude: warp LOD has a fixed dynamic integration budget', () => {
+    assert.equal(ATT_MAX_DYNAMIC_STEPS, 12);
+  });
+
+  test('attitude: x4 physical-domain step keeps full RK4 dynamics for gameplay spin rates', () => {
+    const initial: Attitude = {
+      q: { x: 0, y: 0, z: 0, w: 1 },
+      w: v3(0.2, 2, -0.3),
+      inertia: v3(1, 2.05, 3),
+    };
+    const whole = stepAttitude(initial, v3(), 0.4);
+    let split = initial;
+    for (let i = 0; i < 10; i++) split = stepAttitude(split, v3(), 0.04);
+    const qDot = Math.abs(
+      whole.q.x * split.q.x + whole.q.y * split.q.y
+      + whole.q.z * split.q.z + whole.q.w * split.q.w,
+    );
+    assert.ok(qDot > 1 - 1e-12);
+    assert.ok(Math.abs(whole.w.x - split.w.x) < 1e-12);
+    assert.ok(Math.abs(whole.w.y - split.w.y) < 1e-12);
+    assert.ok(Math.abs(whole.w.z - split.w.z) < 1e-12);
+  });
   test('attitude: torque-free tumbling conserves kinetic energy over long integration', () => {
     // 非対称慣性主軸(中間軸不安定性 = ジャニベコフ効果が起きる条件)で
     // トルクなし・長時間(1000秒、25ms刻み相当を大きく超える)積分する。
