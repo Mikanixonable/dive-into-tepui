@@ -54,6 +54,52 @@ function showLoading(): () => void {
 
 let hideLoading: (() => void) | null = null;
 
+// 初期化中・実行中を問わず、継続不能な例外は画面内で明示する。
+// 壊れた Game/renderer を同一ページ内で再利用せず、復旧はページ全体の再読込だけにする。
+function showFatalError(title: string, message: string, error: unknown): void {
+  hideLoading?.();
+  hideLoading = null;
+  if (document.getElementById('fatal-error-overlay')) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'fatal-error-overlay';
+  overlay.setAttribute('role', 'alertdialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.style.cssText =
+    'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;' +
+    `color:${TEXT};background:${BG};font-family:${FONT};font-size:16px;text-align:center;line-height:2;z-index:1000`;
+
+  const panel = document.createElement('div');
+  panel.style.cssText =
+    `max-width:680px;background:${SURFACE_OPAQUE};border:1px solid ${EDGE};border-radius:4px;padding:22px 32px`;
+
+  const heading = document.createElement('div');
+  heading.style.color = ACCENT;
+  heading.textContent = title;
+  panel.appendChild(heading);
+
+  const description = document.createElement('div');
+  description.textContent = message;
+  panel.appendChild(description);
+
+  const detail = document.createElement('div');
+  detail.style.cssText = `color:${TEXT_DIM};font-size:12px;overflow-wrap:anywhere`;
+  detail.textContent = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  panel.appendChild(detail);
+
+  const reload = document.createElement('button');
+  reload.type = 'button';
+  reload.style.cssText =
+    `margin-top:14px;padding:8px 18px;color:${TEXT};background:${BG};border:1px solid ${ACCENT};` +
+    `border-radius:3px;font:inherit;cursor:pointer`;
+  reload.textContent = 'ページを再読み込み';
+  reload.addEventListener('click', () => location.reload());
+  panel.appendChild(reload);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+  reload.focus();
+}
+
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(): Promise<GameScene> {
   hideLoading = showLoading();
@@ -69,6 +115,7 @@ async function initScene(): Promise<GameScene> {
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(game: Game, perf: PerfMeter): void {
   let lastTime = performance.now();
+  let completedFrames = 0;
   // 1フレーム分: update → sync → render を実行し、計測後に次フレームを予約する
   function animate(now: number) {
     const dt = (now - lastTime) / 1000;
@@ -85,9 +132,18 @@ function startAnimationLoop(game: Game, perf: PerfMeter): void {
       if (perf.on) {
         perf.record(t1 - t0, t2 - t1, t2);
       }
+      completedFrames++;
+      // Dependency-free browser smoke test が「例外なく60フレーム完走」を判定する印。
+      // 60フレーム目に一度だけDOMへ書き、通常プレイ中の毎フレーム更新は避ける。
+      if (completedFrames === 60) document.documentElement.dataset.gameReady = 'true';
       requestAnimationFrame(animate);
     } catch (e) {
       console.error('Fatal error in animation loop, stopping game loop:', e);
+      showFatalError(
+        'ゲームの実行中にエラーが発生しました。',
+        '安全のためゲームを停止しました。ページを再読み込みしてください。',
+        e,
+      );
     }
   }
   requestAnimationFrame((now) => {
@@ -134,15 +190,9 @@ async function main() {
 
 main().catch((err) => {
   console.error(err);
-  hideLoading?.();
-  const div = document.createElement('div');
-  div.style.cssText =
-    'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
-    `color:${TEXT};background:${BG};font-family:${FONT};font-size:16px;text-align:center;line-height:2`;
-  div.innerHTML =
-    `<div style="background:${SURFACE_OPAQUE};border:1px solid ${EDGE};border-radius:4px;padding:22px 32px">` +
-    `<span style="color:${ACCENT}">WebGPU の初期化に失敗しました。</span><br>` +
-    'Chrome / Edge 最新版など WebGPU 対応ブラウザでアクセスしてください。<br>' +
-    `<span style="color:${TEXT_DIM};font-size:12px">${String(err)}</span></div>`;
-  document.body.appendChild(div);
+  showFatalError(
+    'ゲームの初期化に失敗しました。',
+    'ブラウザやGPUの状態を確認し、ページを再読み込みしてください。',
+    err,
+  );
 });
