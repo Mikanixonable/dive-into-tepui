@@ -261,6 +261,7 @@ export class Game {
     // Creative の未配置状態でも、残骸・弾など全エンティティの epoch は進め続ける。
     if (this.player === null) {
       this.simSpeedManager.update(this.simulator.simTime);
+      this.applyWarpCommandPolicy();
       const simDt = dt * this.simSpeedManager.simSpeed;
       this.simulator.stepSimulation(
         dt, simDt, null, this.activeStage,
@@ -320,6 +321,7 @@ export class Game {
     this.nanWatchdog.checkPlayer('activeStage.update', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
 
     this.simSpeedManager.update(this.simulator.simTime);
+    this.applyWarpCommandPolicy();
     const simDt = dt * this.simSpeedManager.simSpeed;
     this.simulator.stepSimulation(dt, simDt, player, this.activeStage,
       true, // bulletCollision
@@ -399,6 +401,14 @@ export class Game {
         this.player, this.entities.enemies, this.input, this.cameraSystem.activeCameraProjection,
       );
     }
+  }
+
+  // 並進・射撃・衝突と同じく、RCS command torqueは物理相互作用域だけで有効。
+  // 全艦を明示的にzeroへ戻すことで、active切替前やauto-warp開始前のstale指令も残さない。
+  private applyWarpCommandPolicy(): void {
+    if (this.simSpeedManager.simSpeed <= C.MAX_PHYS_SIM_SPEED) return;
+    for (const ship of this.entities.players) ship.suppressAttitudeCommandForWarp();
+    this._sfx.setRcs(false);
   }
 
   // --------------------------------------------------------------- input
