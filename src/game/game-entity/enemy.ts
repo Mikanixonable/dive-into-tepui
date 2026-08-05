@@ -53,6 +53,7 @@ export class Enemy extends Ship {
   lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
   burstLeft?: number; // バースト射撃の残弾
   burstDelay?: number; // 次のバースト弾までの残り時間
+  private lastBehaviorSim?: number;
   // false の間はこの機体が射撃を行わない。移動・AI の他の判定には影響しない。
   fireEnabled = true;
 
@@ -191,7 +192,11 @@ export class Enemy extends Ship {
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
-  behave(dt: number, simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager): void {
+  behave(_dt: number, simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager): void {
+    // 射撃間隔はsimulation timeで統一する。wall dtを混ぜると×4時だけバースト間隔が
+    // 4倍に引き伸ばされ、同じゲーム内時間でもwarp段によって弾数が変わっていた。
+    const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
+    this.lastBehaviorSim = simTime;
     if (!player.alive) return;
     if (!simSpeed.canEnemyFire) return;
     if (!this.fireEnabled) return;
@@ -200,7 +205,7 @@ export class Enemy extends Ship {
 
     // バースト継続中なら次弾のタイミングだけ見る
     if (this.burstLeft && this.burstLeft > 0) {
-      this.burstDelay = (this.burstDelay ?? 0) - dt;
+      this.burstDelay = (this.burstDelay ?? 0) - behaviorDt;
       if (this.burstDelay <= 0) {
         this.firePlasma(simTime, player, entities);
         this.burstLeft--;
