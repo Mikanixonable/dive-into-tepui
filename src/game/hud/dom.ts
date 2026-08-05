@@ -27,6 +27,19 @@ const STYLE = `
   border: 1px solid ${EDGE}; border-radius: 4px;
   padding: 10px 14px; line-height: 1.55; backdrop-filter: blur(4px);
 }
+/* マップ系パネルは左右のドック内で通常フローに積む。内容が増えても他の
+   パネルを押し退けるだけで、固定座標による重なりを起こさない。 */
+#hud .hud-dock {
+  position: absolute; top: 12px; bottom: 12px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+  pointer-events: none; min-height: 0;
+}
+#hud .hud-dock > .panel { position: relative; inset: auto; transform: none; pointer-events: auto; flex: 0 0 auto; }
+#hud .hud-dock-left { left: 12px; width: min(300px, 30vw); }
+#hud .hud-dock-right { right: 12px; width: min(300px, 33vw); }
+#hud .hud-dock > .panel[style*="display: none"] { display: none !important; }
+#hud .hud-dock > #hud-shipplacer { max-height: min(70vh, 620px); overflow-y: auto; }
+#hud .hud-dock > #hud-plan { width: 100%; max-width: none; max-height: calc(100vh - 24px); overflow-y: auto; }
 #hud .panel h3 {
   font-size: 11px; letter-spacing: 2.5px; color: ${ACCENT};
   border-bottom: 1px solid rgba(${ACCENT_RGB}, 0.25); margin-bottom: 6px; padding-bottom: 4px;
@@ -96,9 +109,7 @@ const STYLE = `
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
 .mk-ammo { color: ${ACCENT_SOFT}; text-shadow: 0 0 6px rgba(255,144,64,0.6), 0 0 3px #000; }
 #hud .warn-hot { color: ${ACCENT}; }
-#hud-plan {
-  position: absolute; top: 12px; right: 12px; left: auto; bottom: auto; min-width: 90px; width: 33vw; max-width: 300px;
-}
+#hud-plan { min-width: 90px; width: 33vw; max-width: 300px; }
 #hud .hud-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 #hud .hud-seg .seg-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 28px; }
 #hud .seg-btn {
@@ -122,8 +133,8 @@ const STYLE = `
 }
 #hud .hud-toggle .toggle-track.on .toggle-knob { left: 18px; background: ${ACCENT}; }
 /* MAP VIEW/PREDICT/TRAJECTORY の左列は navball ウィンドウの右に置き、重なりを避ける。 */
-#hud-overview-camera { display: none; top: 12px; left: 214px; width: 292px; pointer-events: auto; }
-#hud-displaytime { display: none; top: 166px; left: 214px; width: 292px; pointer-events: auto; }
+#hud-overview-camera { display: none; width: 100%; pointer-events: auto; }
+#hud-displaytime { display: none; width: 100%; pointer-events: auto; }
 #hud-displaytime input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
 /* パネル内の数値・テキスト入力欄の共通見た目(スライダーは上の range 規則が受け持つ)。 */
 #hud .panel input[type="number"], #hud .panel input[type="text"] {
@@ -133,10 +144,10 @@ const STYLE = `
 #hud-displaytime .slider-ticks { display: flex; justify-content: space-between; margin-top: 2px; }
 #hud-displaytime .slider-ticks span { font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; }
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
-#hud-trajframe { display: none; top: 296px; left: 214px; width: 292px; pointer-events: auto; }
+#hud-trajframe { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
-#hud-shipplacer { display: none; top: 260px; right: 12px; width: 300px; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
-#navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
+#hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
+#navball { width: 190px; pointer-events: auto; }
 #navball .nb-ball { display: block; width: 100%; height: auto; margin: 4px 0 8px; }
 #navball .nb-rim { fill: rgba(255, 255, 255, 0.03); stroke: ${EDGE}; stroke-width: 1; }
 #navball .nb-grid { fill: none; stroke: ${INK_SOFT}; stroke-width: 0.6; opacity: 0.35; }
@@ -231,11 +242,11 @@ const STYLE = `
   #hud-controls { display: none; }
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
-  #hud-plan { top: 8px; right: 8px; left: auto; bottom: auto; min-width: 210px; max-width: 60vw; }
-  #hud-overview-camera { top: 8px; left: 8px; width: 186px; }
-  #hud-displaytime { top: 146px; left: 8px; width: 186px; }
-  #hud-trajframe { top: 246px; left: 8px; width: 186px; }
-  #hud-shipplacer { top: 200px; right: 8px; width: 220px; max-height: 60vh; }
+  #hud .hud-dock { top: 8px; bottom: 8px; gap: 6px; }
+  #hud .hud-dock-left { left: 8px; width: min(220px, 45vw); }
+  #hud .hud-dock-right { right: 8px; width: min(260px, 55vw); }
+  #hud-plan { min-width: 210px; max-width: none; }
+  #hud-shipplacer { max-height: 60vh; }
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
@@ -263,6 +274,12 @@ export interface HudDomRefs {
   root: HTMLElement;
   svgOverlay: SVGSVGElement;
   els: Map<string, HTMLElement>;
+}
+
+/** 動的に生成されるマップ系パネルの配置先を返す。 */
+export function hudDock(root: HTMLElement, side: 'left' | 'right'): HTMLElement {
+  const id = `hud-dock-${side}`;
+  return root.querySelector<HTMLElement>(`#${id}`) ?? root;
 }
 
 // STYLE の CSS を <head> に注入する。
@@ -407,6 +424,8 @@ export function buildHudDom(): HudDomRefs {
   injectStyle();
   const root = el('div', 'hud', document.body);
   const svgOverlay = buildSvgOverlay(root);
+  el('div', 'hud-dock-left', root, 'hud-dock');
+  el('div', 'hud-dock-right', root, 'hud-dock');
 
   // 常設パネル群を組む。
   buildInfoPanels(root);
