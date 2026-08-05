@@ -143,24 +143,13 @@ export class Player extends Ship {
     scoreCounter: ScoreCounter;
     simTime: number;
     zoomActive: boolean;
-    ephemeris: Ephemeris;
     addBullet: (bullet: Bullet) => void;
   }): void {
-    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, ephemeris, addBullet } = params;
+    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, addBullet } = params;
 
     this.belt.update(dt, this.fire.mags, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
     this.handleEdgeInput(input);
     this.updateTorque(input, editMode, dt * simSpeed.simSpeed);
-
-    this.radiator.update(dt);
-    const sunDir = ephemeris.sunDirAt(simTime);
-    const sunlit = sunlitFactor(this.state.r, sunDir, C.SHADOW_PENUMBRA);
-    this.thermal.setRadiatorLoad(
-      this.radiator.radiatingArea(),
-      this.radiator.solarLoad(sunlit, sunDir, this.att),
-    );
-    this.radius = this.radiator.hitRadius();
-    this.power.update(dt, sunlit, sunDir, this.att);
 
     // 死亡済み: 射撃、移動、hp回復はできない
     if (!this.alive) {
@@ -181,6 +170,22 @@ export class Player extends Ship {
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
     if (this.thrust !== null) this.invalidatePrediction();
+  }
+
+  // 軌道・姿勢と同じsimulation clockで受動環境系を進める。Game.behaveのwall dtから
+  // 分離し、各substep終端の位置・姿勢・太陽方向を使うことでwarp依存を防ぐ。
+  stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number): void {
+    if (!this.alive) return;
+    this.radiator.update(dt);
+    this.radius = this.radiator.hitRadius();
+    const sunDir = ephemeris.sunDirAt(simTime);
+    const sunlit = sunlitFactor(this.state.r, sunDir, C.SHADOW_PENUMBRA);
+    this.thermal.setRadiatorLoad(
+      this.radiator.radiatingArea(),
+      this.radiator.solarLoad(sunlit, sunDir, this.att),
+    );
+    this.power.update(dt, sunlit, sunDir, this.att);
+    this.thermal.updateThermal(dt, this.state.r, this.state.v);
   }
 
   // 姿勢微調整モードの ON/OFF を切り替える。

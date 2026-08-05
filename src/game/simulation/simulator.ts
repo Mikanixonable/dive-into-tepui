@@ -10,6 +10,8 @@ import type { Stage } from '../stages/stage';
 import { CollisionPhysics } from './collision';
 import { Sfx } from '../../audio/sfx';
 import { GameEntity } from '../game-entity/game-entity';
+import { altitudeOf } from '../../physics/orbital';
+import { simulationStepDuration } from './time-step';
 
 export class Simulator {
   readonly hitSystem: HitSystem;
@@ -40,12 +42,25 @@ export class Simulator {
     doSubstep: boolean,
     onHighSpeedImpact?: (a: GameEntity, b: GameEntity, speed: number) => void,
   ): void {
-    // fps によらず積分の刻みを一定に保つため、サブステップ数は simDt のみから決める。
-    const nSub = doSubstep ? Math.max(1, Math.ceil(simDt / C.SUBSTEP_MAX_DT)) : 1;
+    const targetTime = this.simTime + simDt;
+    while (this.simTime < targetTime - 1e-9) {
+      const remaining = targetTime - this.simTime;
+      const maxStep = doSubstep ? this.adaptiveMaxStep() : remaining;
+      const eventTime = this.nextEventTime(activeStage);
+      const subDt = simulationStepDuration(this.simTime, targetTime, maxStep, eventTime);
+      // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
+      if (subDt <= 1e-9) {
+        activeStage.applySimulationEvents(this.simTime);
+        this.entities.cleanup(0, this.simTime, activeStage, player.state.r);
+        continue;
+      }
 
-    const subDt = simDt / nSub;
-    for (let i = 0; i < nSub; i++) {
-      this.simTime = this.simulationSubStep(this.simTime, subDt, player);
+      this.simTime = this.simulationSubStep(this.simTime, subDt);
+      this.stepAttitudes(subDt);
+      for (const p of this.entities.players) p.stepEnvironment(subDt, this.ephemeris, this.simTime);
+      activeStage.applySimulationEvents(this.simTime);
+      // 期限切れ弾が同じsubstepの命中判定へ進まないよう、既知境界の直後に回収する。
+      this.entities.cleanup(subDt, this.simTime, activeStage, player.state.r);
       if (bulletCollision) {
         this.hitSystem.checkBulletHits(this.simTime, player, activeStage, this.entities);
       }
@@ -55,15 +70,40 @@ export class Simulator {
       this.collisionPhysics.resolve(dt, player, this.entities.all(), () => this._sfx.clank(), onHighSpeedImpact);
     }
 
-    this.stepAttitudes(simDt);
     this.lastSimDt = simDt;
+  }
+
+  private adaptiveMaxStep(): number {
+    let maxStep = C.SUBSTEP_MAX_DT;
+    for (const e of this.entities.all()) {
+      if (!e.alive) continue;
+      const altitude = altitudeOf(e.state.r);
+      if (altitude < C.REENTRY_SUBSTEP_ALT) return C.REENTRY_SUBSTEP_MAX_DT;
+      const { r, v } = e.state;
+      const radius = Math.sqrt(r.x * r.x + r.y * r.y + r.z * r.z);
+      const radialSpeed = (r.x * v.x + r.y * v.y + r.z * v.z) / radius;
+      if (radialSpeed < 0) {
+        const untilReentryRegion = (altitude - C.REENTRY_SUBSTEP_ALT) / -radialSpeed;
+        if (untilReentryRegion > 1e-6) maxStep = Math.min(maxStep, untilReentryRegion);
+      }
+    }
+    return maxStep;
+  }
+
+  private nextEventTime(activeStage: Stage): number | null {
+    let next = activeStage.nextSimulationEventTime(this.simTime);
+    for (const e of this.entities.all()) {
+      if (!e.alive) continue;
+      const t = e.nextSimulationEventTime(this.simTime);
+      if (t !== null && (next === null || t < next)) next = t;
+    }
+    return next;
   }
 
   // 全エンティティを dt だけ積分する。積分後の simTime を返す。
   private simulationSubStep(
     simTime: number,
     dt: number,
-    player: Player,
   ): number {
     // 各エンティティを積分する
     for (const p of this.entities.players) p.stepSim(dt, this.ephemeris);
@@ -73,20 +113,16 @@ export class Simulator {
     for (const d of this.entities.debris) d.stepSim(dt, this.ephemeris);
     for (const a of this.entities.ammos) a.stepSim(dt, this.ephemeris);
 
-    player.thermal.updateThermal(dt, player.state.r, player.state.v);
-
     return simTime + dt;
   }
 
-  // 全エンティティの姿勢をそれぞれのトルクから積分する。自機だけは操作に追従させるため
-  // 刻みを丸めず simDt をそのまま使う。
+  // 軌道と同じsubstepぶん全姿勢を進める。姿勢だけ別の経過時間capを持たせない。
   private stepAttitudes(simDt: number): void {
     for (const p of this.entities.players) p.att = stepAttitude(p.att, p.torque, simDt);
 
-    const attDt = Math.min(simDt, 0.12);
-    for (const e of this.entities.enemies) if (e.alive) e.att = stepAttitude(e.att, e.torque, attDt);
-    for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, attDt);
-    for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, attDt);
-    for (const ammo of this.entities.ammos) if (ammo.alive) ammo.att = stepAttitude(ammo.att, ammo.torque, attDt);
+    for (const e of this.entities.enemies) if (e.alive) e.att = stepAttitude(e.att, e.torque, simDt);
+    for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, simDt);
+    for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, simDt);
+    for (const ammo of this.entities.ammos) if (ammo.alive) ammo.att = stepAttitude(ammo.att, ammo.torque, simDt);
   }
 }

@@ -38,12 +38,17 @@ export class Bullet extends GameEntity {
         this.type = type;
     }
 
+    nextSimulationEventTime(simTime: number): number | null {
+        const expiresAt = this.bornSim + this.lifetime;
+        return expiresAt >= simTime ? expiresAt : null;
+    }
+
     // 消滅条件は「自機から離れすぎた」が主で、寿命は保険。
     checkLoss(_dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3): void {
         if (!this.alive) return;
         if (altitudeOf(this.state.r) < C.DEBRIS_REENTRY_ALT) { this.alive = false; return; }
         if (lenSq(sub(this.state.r, playerPos)) > C.BULLET_MAX_DIST * C.BULLET_MAX_DIST) { this.alive = false; return; }
-        if (simTime - this.bornSim > this.lifetime) this.alive = false;
+        if (simTime - this.bornSim >= this.lifetime) this.alive = false;
     }
 
     // 姿勢を持たないため、att.q ではなくフローティングオリジンに対する相対速度方向を向く。
