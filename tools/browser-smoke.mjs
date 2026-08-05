@@ -160,6 +160,20 @@ try {
   if (expectCreative && !state.creativeZeroShipOverview) {
     throw new Error('Creative mode did not remain in its zero-ship overview state.');
   }
+  if (expectCreative && process.env.SMOKE_CREATIVE_PLACE === '2') {
+    await devTools.evaluate(`(() => {
+      const panel = document.getElementById('hud-shipplacer');
+      const button = [...(panel?.querySelectorAll('button') ?? [])].find((b) => b.textContent?.includes('配置'));
+      if (!button) throw new Error('Creative placement button not found.');
+      button.click();
+      button.click();
+      return true;
+    })()`);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const after = await devTools.evaluate(`({ fatal: Boolean(document.getElementById('fatal-error-overlay')), text: document.getElementById('fatal-error-overlay')?.textContent ?? '' })`);
+    if (after.result.value.fatal) throw new Error(`Creative second placement failed: ${after.result.value.text}`);
+    if (fatalEvents.length > 0) throw new Error(`Creative second placement reported ${fatalEvents.length} page exception(s).`);
+  }
   const mode = expectCreative ? 'creative zero-ship overview' : query;
   console.log(`Browser smoke passed (${mode}): production build completed 60 frames without page/console fatal errors.`);
 } finally {
