@@ -62,6 +62,8 @@ export class CameraSystem {
   private readonly _elStatus: HTMLElement | null;
   private readonly _elStageStatus: HTMLElement | null;
   private readonly _elOrbit: HTMLElement | null;
+  // Creativeではマップ視点でも配置済み艦のステータスを表示する。
+  private readonly showStatusInOverview: boolean;
 
   // 両カメラとフォーカス候補ラベルを構築し、常用ショートリストパネルの選択操作を配線する。
   constructor(
@@ -70,7 +72,9 @@ export class CameraSystem {
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
     player: Player | null,
+    showStatusInOverview = false,
   ) {
+    this.showStatusInOverview = showStatusInOverview;
     // 両カメラとフォーカス候補ラベル
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
     this.combatCamera = new CombatCameraSystem(_hud, sfx, player);
@@ -170,7 +174,7 @@ export class CameraSystem {
     this.overviewCameraPanel.setVisible(this.overviewMode);
     
     // 戦闘ビュー固有パネルを広範囲視点では非表示にする
-    const hidden = this.overviewMode ? 'none' : '';
+    const hidden = this.overviewMode && !this.showStatusInOverview ? 'none' : '';
     if (this._elStatus) this._elStatus.style.display = hidden;
     if (this._elStageStatus) this._elStageStatus.style.display = hidden;
     if (this._elOrbit) this._elOrbit.style.left = this.overviewMode ? '12px' : '';
