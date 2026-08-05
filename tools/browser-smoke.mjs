@@ -57,13 +57,17 @@ async function waitForDebugPage(port) {
   throw new Error('Chrome DevTools endpoint did not become ready.');
 }
 
-function connectDevTools(url) {
+function connectDevTools(url, onEvent) {
   const socket = new WebSocket(url);
   let nextId = 1;
   const pending = new Map();
   socket.addEventListener('message', (event) => {
     const response = JSON.parse(event.data);
-    if (!response.id || !pending.has(response.id)) return;
+    if (!response.id) {
+      onEvent(response);
+      return;
+    }
+    if (!pending.has(response.id)) return;
     const { resolve, reject } = pending.get(response.id);
     pending.delete(response.id);
     if (response.error) reject(new Error(response.error.message));
@@ -75,10 +79,13 @@ function connectDevTools(url) {
   });
   return {
     opened,
-    evaluate(expression) {
+    send(method, params = {}) {
       const id = nextId++;
-      socket.send(JSON.stringify({ id, method: 'Runtime.evaluate', params: { expression, returnByValue: true } }));
+      socket.send(JSON.stringify({ id, method, params }));
       return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+    },
+    evaluate(expression) {
+      return this.send('Runtime.evaluate', { expression, returnByValue: true });
     },
     close: () => socket.close(),
   };
@@ -86,6 +93,11 @@ function connectDevTools(url) {
 
 const chrome = findChrome();
 const debugPort = 9222;
+const query = process.env.SMOKE_QUERY ?? '?stage=00';
+if (!query.startsWith('?') || query.includes('#')) {
+  throw new Error('SMOKE_QUERY must be a query string beginning with "?" and must not contain a fragment.');
+}
+const expectCreative = new URLSearchParams(query.slice(1)).get('mode') === 'creative';
 const profile = mkdtempSync(path.join(tmpdir(), 'tepui-smoke-'));
 const server = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1', '--directory', 'docs'], {
   cwd: root,
@@ -93,9 +105,10 @@ const server = spawn('python3', ['-m', 'http.server', String(port), '--bind', '1
 });
 let browser;
 let devTools;
+const fatalEvents = [];
 
 try {
-  const url = `http://127.0.0.1:${port}/?stage=00`;
+  const url = `http://127.0.0.1:${port}/${query}`;
   await waitForServer(url);
   browser = spawn(chrome, [
     '--headless=new',
@@ -111,17 +124,29 @@ try {
     '--run-all-compositor-stages-before-draw',
     `--remote-debugging-port=${debugPort}`,
     `--user-data-dir=${profile}`,
-    url,
+    'about:blank',
   ], { stdio: 'ignore' });
 
-  devTools = connectDevTools(await waitForDebugPage(debugPort));
+  devTools = connectDevTools(await waitForDebugPage(debugPort), (event) => {
+    if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
+    if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
+    if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
+  });
   await devTools.opened;
+  await devTools.send('Runtime.enable');
+  await devTools.send('Page.enable');
+  await devTools.send('Inspector.enable');
+  await devTools.send('Page.navigate', { url });
   let state;
   for (let attempt = 0; attempt < 300; attempt++) {
     const result = await devTools.evaluate(`({
       ready: document.documentElement.dataset.gameReady === 'true',
       fatal: Boolean(document.getElementById('fatal-error-overlay')),
-      fatalText: document.getElementById('fatal-error-overlay')?.textContent ?? ''
+      fatalText: document.getElementById('fatal-error-overlay')?.textContent ?? '',
+      creativeZeroShipOverview: Boolean(document.getElementById('hud-shipplacer'))
+        && getComputedStyle(document.getElementById('hud-shipplacer')).display !== 'none'
+        && getComputedStyle(document.getElementById('hud-overview-camera')).display !== 'none'
+        && getComputedStyle(document.getElementById('hud-status')).display === 'none'
     })`);
     state = result.result.value;
     if (state.fatal) throw new Error(`Fatal error overlay appeared during browser smoke test: ${state.fatalText}`);
@@ -129,7 +154,14 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   if (!state?.ready) throw new Error('Game did not complete 60 animation frames within 30 seconds.');
-  console.log('Browser smoke passed: production build completed 60 frames without a fatal overlay.');
+  if (fatalEvents.length > 0) {
+    throw new Error(`Browser reported ${fatalEvents.length} page exception(s) or console error(s).`);
+  }
+  if (expectCreative && !state.creativeZeroShipOverview) {
+    throw new Error('Creative mode did not remain in its zero-ship overview state.');
+  }
+  const mode = expectCreative ? 'creative zero-ship overview' : query;
+  console.log(`Browser smoke passed (${mode}): production build completed 60 frames without page/console fatal errors.`);
 } finally {
   devTools?.close();
   if (browser) {

@@ -343,7 +343,7 @@ export class Player extends Ship {
   }
 
   // 自機のメッシュ・エフェクト・ベルト・マーカー・軌道線を displayTime の状態へ同期する。
-  // isActive はこの艦が操作対象かどうか。操作対象だけがガンサイト時に隠れ、方位マーカーを出す。
+  // isActive はこの艦が操作対象かどうか。操作対象だけがガンサイト時に隠れ、方位マーカーとRCS音を出す。
   syncPlayer(
     fo: FloatingOrigin,
     camera: CameraSystem,
@@ -362,7 +362,7 @@ export class Player extends Ship {
 
     // 推力/RCS エフェクトとベルト
     this.thrustEffects.sync(fo, this.state.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
-    this.rcsEffects.sync(fo, this.state.r, this.torque, this.att, this.alive, phasePlaying, paused, camera);
+    this.rcsEffects.sync(fo, this.state.r, this.torque, this.att, this.alive, phasePlaying, paused, camera, isActive);
     this.reentryEffects.sync(fo, this.state.r, this.state.v, this.thermal.qdyn, this.alive, camera);
     this.belt.sync(this.alive);
     this.radiator.sync();
