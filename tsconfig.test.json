@@ -17,6 +17,7 @@
     "src/physics/attitude.ts",
     "src/physics/atmosphere.ts",
     "src/physics/ephemeris.ts",
+    "src/physics/swept-sphere.ts",
     "tests/physics/**/*.ts"
   ]
 }
