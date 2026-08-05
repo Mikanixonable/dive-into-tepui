@@ -118,6 +118,7 @@ export class Game {
       this.markerManager,
       this.ephemeris,
       bootstrapPlayer,
+      launch.mode === 'creative',
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
