@@ -38,10 +38,12 @@ export class RcsEffects {
     phasePlaying: boolean,
     paused: boolean,
     camera: CameraSystem,
+    audible: boolean,
   ): void {
     // 回転していない、またはズーム視点なら全パフを隠して終える
     const rotating = alive && phasePlaying && !paused && lenSq(torque) > C.RCS_PUFF_TORQUE_EPS * C.RCS_PUFF_TORQUE_EPS;
-    this._sfx.setRcs(rotating);
+    // 全艦のプルームは描画するが、共有音源を更新するのは操作対象だけ。
+    if (audible) this._sfx.setRcs(rotating);
     if (!rotating || camera.zoomActive) {
       for (const { plume } of this.puffs) plume.hide();
       return;
