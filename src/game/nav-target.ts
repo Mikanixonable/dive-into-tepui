@@ -50,9 +50,9 @@ export class NavTarget {
 
   // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は両方 null にする。
-  update(player: Player, entities: EntityManager, ephemeris: Ephemeris, simTime: number): void {
+  update(player: Player | null, entities: EntityManager, ephemeris: Ephemeris, simTime: number): void {
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
-    const playerEl = player.elements;
+    const playerEl = player?.elements;
     if (!playerEl || !this.targetId) return;
 
     const targetHat = this.resolvePlaneNormal(this.targetId, entities, ephemeris, simTime);
@@ -73,6 +73,10 @@ export class NavTarget {
     this.dnTime = simTime + tofBetween(playerEl, nu0, thAsc + Math.PI);
   }
 
+  clearIfTargeting(id: string): void {
+    if (this.targetId === id) this.targetId = null;
+  }
+
   // id が航法ターゲットになれる(軌道面が定まる)かどうか。
   canTarget(id: string, entities: EntityManager, ephemeris: Ephemeris, t: number): boolean {
     return this.resolvePlaneNormal(id, entities, ephemeris, t) !== null;
@@ -86,7 +90,7 @@ export class NavTarget {
     if (id.startsWith('se-l')) return qRotate(ephemeris.sunOrbitRotationAt(t).q, Z_HAT);
     const ship: Ship | undefined =
       entities.enemies.find((e) => e.name === id && e.alive) ??
-      entities.players.find((p) => p.name === id && p.alive);
+      entities.players.find((p) => p.id === id && p.alive);
     return ship?.elements?.hHat ?? null;
   }
 

@@ -17,7 +17,7 @@ export class Predictor {
 
   // Game.update の entities.cleanup(...) の後に呼ぶ(死んだ個体を予測しない、積分後の実状態と
   // 突き合わせる)。視点・モードによる条件分岐は持たない — 予測は表示とは独立に常時進む。
-  update(simTime: number, player: Player, suspended = false): void {
+  update(simTime: number, player: Player | null, suspended = false): void {
     // 高ワープでは実状態が1フレームで予測列を追い越すため、再同期→再構築を繰り返しても
     // 表示に使える列にならない。等速域へ戻るまで既存列を保持して計算予算を使わない。
     if (suspended) return;
@@ -28,7 +28,7 @@ export class Predictor {
 
     // 予算配分: 操作対象の艦を先頭に、以降はカーソル位置から最大1周だけ回す。
     let budget = C.PREDICT_STEP_BUDGET;
-    budget -= this.advanceBudget(player, budget, simTime);
+    if (player) budget -= this.advanceBudget(player, budget, simTime);
 
     let visited = 0;
     while (budget > 0 && visited < all.length) {

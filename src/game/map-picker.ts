@@ -47,7 +47,7 @@ export class MapPicker {
     for (const ship of this.entities.players) {
       if (!ship.alive) continue;
       const pos = ship.displayState(displayTime)?.r;
-      if (pos) items.push({ id: ship.name, name: ship.name, pos, kind: 'player' });
+      if (pos) items.push({ id: ship.id, name: ship.displayName, pos, kind: 'player' });
     }
     for (const enemy of this.entities.enemies) {
       if (!enemy.alive) continue;
@@ -147,7 +147,7 @@ export class MapPicker {
       if (ship) ship.followPlan = !ship.followPlan;
     } else if (act === 'delete') {
       const ship = this.entities.findPlayer(target.id);
-      if (ship) this.entities.removePlayer(ship);
+      if (ship) this.game.removeCreativePlayer(ship);
     }
   }
 }
