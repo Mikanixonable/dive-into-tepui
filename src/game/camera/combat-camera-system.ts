@@ -44,12 +44,12 @@ export class CombatCameraSystem {
     aspect: window.innerWidth / window.innerHeight,
   };
 
-  constructor(_hud: Hud, _sfx: Sfx, player: Player) {
+  constructor(_hud: Hud, _sfx: Sfx, player: Player | null) {
     this.chaseCamera = new ChaseCamera(_hud, player);
   }
 
   // アクティブ艦の切替を追従カメラへ伝える。
-  setActivePlayer(player: Player): void {
+  setActivePlayer(player: Player | null): void {
     this.chaseCamera.setPlayer(player);
   }
 
@@ -69,10 +69,10 @@ export class CombatCameraSystem {
 
   // ズーム状態を入力から求め、現在のモード(通常/ズーム)に応じて ChaseCamera/GunsightCamera の
   // どちらかを駆動して目標 ViewFrame を求め、fovDeg だけをそこへ指数的に近づけて view とする。
-  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number, player: Player, input: Input): void {
+  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number, player: Player | null, input: Input): void {
     this.zoomActive = input.down(K.gunsightZoom);
     // 機体死亡中はズーム要求を無視して常に追跡視点へ戻す(照準先が失われているため)。
-    const useGunsight = player.alive && this.zoomActive;
+    const useGunsight = player?.alive === true && this.zoomActive;
     if (useGunsight) this.gunsightCamera.update(player);
     else this.chaseCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt);
     const target = useGunsight ? this.gunsightCamera.view : this.chaseCamera.view;

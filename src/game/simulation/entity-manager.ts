@@ -39,8 +39,8 @@ export class EntityManager {
   }
 
   // name で名指しされた自機を返す。見つからなければ null。
-  findPlayer(name: string): Player | null {
-    return this.players.find((p) => p.name === name) ?? null;
+  findPlayer(id: string): Player | null {
+    return this.players.find((p) => p.id === id) ?? null;
   }
 
   // 弾を登録する。上限を超えた分は古いものから破棄する。

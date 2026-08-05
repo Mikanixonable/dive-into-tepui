@@ -17,6 +17,7 @@ import type { ProjectFn } from '../camera/camera-system';
 import type { UnlockManager } from '../unlock-manager';
 import * as C from '../const';
 import { ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
+import { validateEllipticPlacement } from '../creative/placement-validation';
 
 const DEG = Math.PI / 180;
 
@@ -29,6 +30,7 @@ export class CreativeStage extends Stage {
   readonly initialAmmo = { mags: 0, rounds: 0 };
 
   private placerPanel!: ShipPlacerPanel;
+  private nextShipId = 1;
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -54,6 +56,11 @@ export class CreativeStage extends Stage {
     this.placerPanel.setVisible(overviewMode);
   }
 
+  // 未配置の開始状態では Stage.sync の player 前提を満たせないため、配置パネルだけを更新する。
+  syncWithoutPlayer(overviewMode: boolean): void {
+    this.placerPanel.setVisible(overviewMode);
+  }
+
   // フォーム値から OrbitState を組み立て、addShip で1隻配置する。上限に達していれば
   // ヒントを出すだけで何もしない。
   private placeShip(name: string, form: ShipPlacerForm): void {
@@ -61,12 +68,24 @@ export class CreativeStage extends Stage {
       this._hud.hint(`配置数が上限(${C.CREATIVE_MAX_SHIPS}隻)に達しています`);
       return;
     }
-    const state = this.buildInitialState(form);
-    this._entities.addPlayer(
-      new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, name, state),
-    );
-    this._hud.hint(`${name} を配置`);
+    try {
+      this.assertValidForm(form);
+      const state = this.buildInitialState(form);
+      this.assertFiniteEllipticState(state);
+      const id = `creative-ship-${this.nextShipId++}`;
+      const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, name, state, id);
+      this._entities.addPlayer(ship);
+      // 最初に配置した艦だけを操作対象にする。Game は callback 経由で受ける。
+      this.onShipPlaced?.(ship);
+      this._hud.hint(`${ship.displayName} を配置`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '入力を解釈できません';
+      this._hud.hint(`配置できません: ${message}`, 5000);
+    }
   }
+
+  // Game が Creative のみで接続する。Stage 基底を複数船の概念で汚さない。
+  onShipPlaced: ((ship: Player) => void) | null = null;
 
   // フォームの placementMode に応じて軌道要素指定(stateFromElements)かラグランジュ点指定
   // (haloState/lissajousState)のどちらかで OrbitState を組み立てる。
@@ -120,6 +139,34 @@ export class CreativeStage extends Stage {
     return orbitState(this._simulator.simTime, add(moonPos, rel.r), add(moonVel, rel.v));
   }
 
+  private assertValidElementsForm(form: ShipPlacerForm): void {
+    const rBody = form.body === 'moon' ? R_MOON : C.R_EARTH;
+    const message = validateEllipticPlacement({
+      bodyRadius: rBody, mu: form.body === 'moon' ? MU_MOON : C.MU_EARTH, sizeMode: form.sizeMode,
+      peAltKm: form.peAltKm, apAltKm: form.apAltKm, semiMajorKm: form.semiMajorKm,
+      eccentricity: form.eccentricity, periodHours: form.periodHours,
+      anglesDeg: [form.incDeg, form.raanDeg, form.argpDeg, form.nuDeg],
+    });
+    if (message) throw new Error(message);
+  }
+
+  private assertValidForm(form: ShipPlacerForm): void {
+    if (form.placementMode === 'elements') {
+      this.assertValidElementsForm(form);
+      return;
+    }
+    const values = [form.axKm, form.azKm];
+    if (!values.every(Number.isFinite) || form.azKm <= 0 || (form.librationOrbitKind === 'lissajous' && form.axKm <= 0)) {
+      throw new Error('ラグランジュ軌道の振幅には有限の正数を入力してください');
+    }
+  }
+
+  private assertFiniteEllipticState(state: OrbitState): void {
+    const values = [state.r.x, state.r.y, state.r.z, state.v.x, state.v.y, state.v.z];
+    if (!values.every(Number.isFinite)) throw new Error('有限の状態を作れませんでした');
+  }
+
+  // ノード適用は Simulator のイベント境界で行うため、フレーム更新では何もしない。
   update(_dt: number, _player: Player, _entities: EntityManager, _simTime: number, _simSpeed: SimSpeedManager): void { }
 
   // followPlan のノードは Simulator の既知イベントとして扱い、必ずnode.tちょうどで積分を切る。
