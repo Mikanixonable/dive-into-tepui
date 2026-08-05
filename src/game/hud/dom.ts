@@ -250,9 +250,8 @@ const STYLE = `
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
-  /* モバイルでは navball を画面下部中央に移すので、MAP VIEW 側は元の左端に戻る
-     (この幅では左右に並べる余地がないため、上下でなく画面下部への退避で衝突を避ける)。 */
-  #navball { top: auto; left: 50%; transform: translateX(-50%); width: 100px !important; height: 100px !important; bottom: 130px !important; }
+  /* navball も左ドックの通常フローに残し、他パネルとの重なりを防ぐ。 */
+  #navball { width: 100px !important; height: auto !important; }
   #hud-settings { min-width: 0; width: 78vw; }
   #hud-stagestatus { top: 8px; min-width: 130px; padding: 6px 10px; }
   #hud-stagestatus .t { font-size: 14px; }
