@@ -209,6 +209,11 @@ export class Player extends Ship {
     this.fire.stopFiring();
   }
 
+  // 物理相互作用を止める高warpではRCS指令も残さない。角速度によるcoast自体は継続する。
+  suppressAttitudeCommandForWarp(): void {
+    this.torque = v3();
+  }
+
   // 姿勢微調整モードの ON/OFF を切り替える。
   toggleFineAttitude(): void {
     this.fineAttitude = !this.fineAttitude;
