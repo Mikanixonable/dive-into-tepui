@@ -5,6 +5,7 @@
 import { SegmentedControl, hudButton } from '../hud/buttons';
 import { LibrationPoint, LibrationSystem } from '../../physics/halo';
 import * as C from '../const';
+import { hudDock } from '../hud/dom';
 
 export type ReferenceBody = 'earth' | 'moon';
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
@@ -218,7 +219,7 @@ export class ShipPlacerPanel {
 
     this.panel.appendChild(hudButton('配置', () => this.confirm()));
 
-    root.appendChild(this.panel);
+    hudDock(root, 'left').appendChild(this.panel);
   }
 
   // サイズ/形の入力組を切り替え、選ばれた組以外を隠す。

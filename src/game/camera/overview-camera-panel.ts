@@ -2,6 +2,7 @@
 import { Frame } from '../../physics/frame';
 import { SegmentedControl } from '../hud/buttons';
 import { FRAME_ITEMS } from '../hud/frame-labels';
+import { hudDock } from '../hud/dom';
 
 export class OverviewCameraPanel {
   onFocusSelect: ((focus: string) => void) | null = null;
@@ -30,7 +31,7 @@ export class OverviewCameraPanel {
 
 
 
-    root.appendChild(this.panel);
+    hudDock(root, 'left').appendChild(this.panel);
   }
 
   // パネルの表示/非表示を切り替える。

@@ -1,6 +1,7 @@
 // 未来表示の操作パネル(表示期間・未来ゴーストスライダー・目盛り・手動レンジ入力)。
 import { SegmentedControl } from './hud/buttons';
 import type { DisplayDurationKey } from './display-time-manager';
+import { hudDock } from './hud/dom';
 
 const DURATIONS: readonly (readonly [DisplayDurationKey, string])[] = [
   ['orbit', '1周回'],
@@ -89,7 +90,7 @@ export class DisplayTimePanel {
     this.sliderLabel.textContent = SLIDER_HINT;
     this.panel.appendChild(this.sliderLabel);
 
-    root.appendChild(this.panel);
+    hudDock(root, 'left').appendChild(this.panel);
   }
 
   // 現在の入力値・単位から秒数を計算して通知する。

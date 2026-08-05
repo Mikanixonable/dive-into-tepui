@@ -18,6 +18,7 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { Plan } from './plan';
+import { hudDock } from '../hud/dom';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
@@ -96,7 +97,7 @@ export class PlanEditor {
     this.planPanel.className = 'panel';
     this.planPanel.innerHTML = `<h3>MANEUVER PLAN [${K.toggleMapMode.label}]</h3><div data-id="planbody"></div>`;
     this.planPanel.style.display = 'none';
-    this._hud.root.appendChild(this.planPanel);
+    hudDock(this._hud.root, 'right').appendChild(this.planPanel);
     this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
     this.planPanel.appendChild(this.dvButtons.row);
     this.wireNodeGizmo();
