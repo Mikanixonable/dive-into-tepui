@@ -124,7 +124,9 @@ export function randomQuat(rand: () => number = Math.random): Quat {
 }
 
 const ATT_MAX_SUB_DT = 0.04; // 姿勢積分の最大刻み [s]
-const ATT_MAX_DYNAMIC_STEPS = 256;
+// 姿勢LODの計算量上限。通常物理域(最大dt=0.1s×warp4=0.4s)は10step以内なので
+// 全区間をRK4、高warpだけ最大0.48sの剛体力学＋残時間coastになる。
+export const ATT_MAX_DYNAMIC_STEPS = 12;
 
 // オイラーの運動方程式(主軸系): I ω̇ = (I ω) × ω + τ
 function eulerRates(I: Vec3, w: Vec3, tq: Vec3): Vec3 {
