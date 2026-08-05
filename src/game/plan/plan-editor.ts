@@ -440,6 +440,18 @@ export class PlanEditor {
   // 現在軌道そのものなので、ノードを置ける編集中だけ扱う。
   update(simTime: number, displayTime: number): void {
     this.planDisplay.update(this.plan, simTime, displayTime, this.editMode || this.plan.nodes.length > 0);
+    // 置いた直後で Δv を一度も編集していないノードは、到達時状態と
+    // 噴射後状態が同一のまま残る。空のマニューバを計画へ残さないため、
+    // 軌道表示を更新した直後に末尾から自動的に取り除く。
+    if (this.editMode && this.plan.nodes.length > 0) {
+      const arriving = this.planDisplay.traj.arrivalStates();
+      for (let i = this.plan.nodes.length - 1; i >= 0; i--) {
+        const arr = arriving[i];
+        if (!arr || len(sub(this.plan.nodes[i]!.v, arr.v)) >= C.NODE_MIN_DV) break;
+        this.plan.removeNode(i);
+        if (this.selectedNodeIdx === i) this.selectedNodeIdx = null;
+      }
+    }
   }
 
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
