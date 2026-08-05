@@ -8,6 +8,7 @@ import { GameEntity } from '../game-entity/game-entity';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { BeltSection } from '../player/belt-physics';
 import { Player } from '../player/player';
+import { sweptSphereToi } from '../../physics/swept-sphere';
 
 const isCasing = (e: GameEntity): boolean => e instanceof DebrisPiece && e.kind === 'casing';
 
@@ -93,20 +94,40 @@ export class CollisionPhysics {
     // 相手側まで NaN に汚染してしまう(自機が巻き込まれると描画が全滅する)。
     // 汚染そのものの検出・報告は nan-watchdog.ts の役目で、ここでは伝播を止めるだけ。
     if (!Number.isFinite(distSq)) return null;
-    if (distSq <= 0 || distSq >= minD * minD) return null;
-    const dist = Math.sqrt(distSq);
-    const nx = dx / dist;
-    const ny = dy / dist;
-    const nz = dz / dist;
-    const pen = minD - dist;
+    let nx: number, ny: number, nz: number;
+    let rA2x: number, rA2y: number, rA2z: number;
+    let rB2x: number, rB2y: number, rB2z: number;
     const invMa = 1 / a.mass;
     const invMb = 1 / b.mass;
     const invM = invMa + invMb;
-    const pCorr = (pen / invM) * 0.8;
-    const cA = pCorr * invMa;
-    const cB = pCorr * invMb;
-    const rA2x = rA.x - nx * cA, rA2y = rA.y - ny * cA, rA2z = rA.z - nz * cA;
-    const rB2x = rB.x + nx * cB, rB2y = rB.y + ny * cB, rB2z = rB.z + nz * cB;
+
+    if (distSq > 0 && distSq < minD * minD) {
+      // 従来の静止overlap解決。
+      const dist = Math.sqrt(distSq);
+      nx = dx / dist; ny = dy / dist; nz = dz / dist;
+      const pen = minD - dist;
+      const pCorr = (pen / invM) * 0.8;
+      const cA = pCorr * invMa;
+      const cB = pCorr * invMb;
+      rA2x = rA.x - nx * cA; rA2y = rA.y - ny * cA; rA2z = rA.z - nz * cA;
+      rB2x = rB.x + nx * cB; rB2y = rB.y + ny * cB; rB2z = rB.z + nz * cB;
+    } else {
+      // 最終位置が離れていても直前substepの線分間で交差していればTOI接触を採用する。
+      // 完全な残時間再積分ではなく、両中心をTOI位置へ決定的に戻して現在速度へimpulseを適用する近似。
+      const pa = a.prevState, pb = b.prevState;
+      if (!(pa.t < a.state.t && pb.t < b.state.t)) return null;
+      if (Math.abs(pa.t - pb.t) > 1e-6 || Math.abs(a.state.t - b.state.t) > 1e-6) return null;
+      const hit = sweptSphereToi(pa.r, rA, pb.r, rB, minD);
+      if (hit === null) return null;
+      nx = hit.normal.x; ny = hit.normal.y; nz = hit.normal.z;
+      const u = hit.toi;
+      rA2x = pa.r.x + (rA.x - pa.r.x) * u;
+      rA2y = pa.r.y + (rA.y - pa.r.y) * u;
+      rA2z = pa.r.z + (rA.z - pa.r.z) * u;
+      rB2x = pb.r.x + (rB.x - pb.r.x) * u;
+      rB2y = pb.r.y + (rB.y - pb.r.y) * u;
+      rB2z = pb.r.z + (rB.z - pb.r.z) * u;
+    }
 
     const vn = (vB.x - vA.x) * nx + (vB.y - vA.y) * ny + (vB.z - vA.z) * nz;
     if (vn >= 0) {
