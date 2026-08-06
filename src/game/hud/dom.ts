@@ -15,15 +15,20 @@ const STYLE = `
   font-size: 13px;
 }
 /* --- 重なり順: マーカーは実行時に DOM 末尾へ追加されるため z-index を明示しないとパネルの上に出る。
-     0=マーカー  1=常設パネル  2=トースト・ヒント  3=終了画面・ヘルプ  4=ESC メニュー */
+     マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0)
+     マーカー群(0-9) < 常設パネル(10) < トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー(40) */
 #hud .mk { z-index: 0; }
+#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-nav, #hud .mk-dir, #hud .mk-boardhit, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
+#hud .mk-ammo { z-index: 2; }
+#hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
+#hud .mk-self { z-index: 4; }
 #hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
-#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball, #hud-shipplacer { z-index: 1; }
-#hud-toast, #hud-hint { z-index: 2; }
-#hud-context { z-index: 1; }
-#hud-end, #hud-help { z-index: 3; }
-#hud-settings { z-index: 4; }
-#hud-modal-shield { display: none; position: absolute; inset: 0; z-index: 2; pointer-events: none; background: rgba(6,7,9,.3); }
+#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball, #hud-shipplacer { z-index: 10; }
+#hud-toast, #hud-hint { z-index: 20; }
+#hud-context { z-index: 10; }
+#hud-end, #hud-help { z-index: 30; }
+#hud-settings { z-index: 40; }
+#hud-modal-shield { display: none; position: absolute; inset: 0; z-index: 20; pointer-events: none; background: rgba(6,7,9,.3); }
 body.hud-modal-open #hud-modal-shield { display: block; }
 body.hud-modal-open #touch-ui { display: none; }
 #hud .panel {
@@ -44,7 +49,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .hud-dock-right { right: 12px; width: min(300px, 33vw); }
 #hud .hud-dock > .panel[style*="display: none"] { display: none !important; }
 #hud .dock-toggle {
-  display: none; position: absolute; top: 8px; z-index: 2; pointer-events: auto;
+  display: none; position: absolute; top: 8px; z-index: 20; pointer-events: auto;
   width: 26px; height: 26px; border: 1px solid ${EDGE}; border-radius: 4px;
   background: ${SURFACE}; color: ${ACCENT}; cursor: pointer;
 }
@@ -107,7 +112,7 @@ body.hud-modal-open #touch-ui { display: none; }
   display: flex; justify-content: center; align-items: center;
   padding: 0;
   border: 1px solid ${EDGE}; background: ${SURFACE}; color: ${INK_SOFT};
-  z-index: 1;
+  z-index: 10;
 }
 #hud-chase-reset:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
 #hud-toast {
