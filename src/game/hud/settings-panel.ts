@@ -2,6 +2,7 @@
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import * as C from '../const';
+import { syncHudModalState } from './dom';
 
 export class SettingsPanel {
   private readonly panel: HTMLElement;
@@ -52,6 +53,7 @@ export class SettingsPanel {
     const show = force !== undefined ? force : !wasOpen;
     if (show === wasOpen) return;
     this.panel.style.display = show ? 'block' : 'none';
+    syncHudModalState();
     this.onSettingsOpenChange?.(show);
   }
 
