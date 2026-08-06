@@ -94,7 +94,7 @@ export class Player extends Ship {
     this.thrustEffects = new ThrustEffects(_scene);
     this.rcsEffects = new RcsEffects(_scene, _sfx);
     this.reentryEffects = new ReentryEffects(_scene);
-    this.markers = new PlayerMarkers(markerManager);
+    this.markers = new PlayerMarkers(markerManager, this.id, this.displayName);
 
     _scene.add(this.orbitLine.line);
     _scene.add(this.moonOrbitTrace.line);
@@ -379,9 +379,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    if (isActive) {
-      this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer, this.magsLeft);
-    }
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer, this.magsLeft);
 
     if (this.predictionCentralBody === 'moon') {
       const samples = [...this.current.samplesOldestFirst(), ...(this.predicted?.samplesOldestFirst() ?? [])];
