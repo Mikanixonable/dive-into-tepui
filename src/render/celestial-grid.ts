@@ -140,7 +140,7 @@ class GridPlane {
     const addLabel = (text: string, cls = '') => {
       const el = document.createElement('div');
       el.textContent = text; el.className = `celestial-grid-label ${cls}`;
-      Object.assign(el.style, { position: 'fixed', color: color.toString(16).padStart(6, '0'), font: '11px monospace', textShadow: '0 0 4px #000', whiteSpace: 'nowrap' });
+      Object.assign(el.style, { position: 'fixed', color: `#${color.toString(16).padStart(6, '0')}`, font: '11px monospace', textShadow: '0 0 4px #000', whiteSpace: 'nowrap' });
       this.labelLayer.appendChild(el); this.labels.push(el); return el;
     };
     addLabel(`${name}面`, 'plane');
