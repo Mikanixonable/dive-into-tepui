@@ -34,6 +34,7 @@ const ECLIPTIC_BASIS: PlaneBasis = {
 
 const GRID_LAT_STEP_DEG = 15; // 交点の緯度間隔
 const GRID_LON_STEP_DEG = 15; // 交点の経度間隔
+const GRID_LABEL_STEP_DEG = 30; // 座標ラベルは間隔を空けて表示
 const CIRCLE_SEGMENTS = 64; // 円1本あたりの分割数
 const POLE_MARKER_HALF_LEN = STAR_SHELL_RADIUS * 0.04; // 極マーカーの殻面からの突き出し長さ
 
@@ -153,15 +154,15 @@ class GridPlane {
     const addLabel = (text: string, cls = '') => {
       const el = document.createElement('div');
       el.textContent = text; el.className = `celestial-grid-label ${cls}`;
-      Object.assign(el.style, { position: 'fixed', color: `#${color.toString(16).padStart(6, '0')}`, font: '11px monospace', textShadow: '0 0 4px #000', whiteSpace: 'nowrap' });
+      Object.assign(el.style, { position: 'fixed', color: `#${color.toString(16).padStart(6, '0')}`, opacity: '0.72', font: '7.7px monospace', textShadow: '0 0 4px #000', whiteSpace: 'nowrap' });
       this.labelLayer.appendChild(el); this.labels.push(el); return el;
     };
     addLabel(`${name} PLANE`, 'plane');
     addLabel(`▲ ${name} N`, 'pole-n'); addLabel(`▼ ${name} S`, 'pole-s');
     // グリッドの全交点に座標ラベルを置く。画面端に固定した代表ラベルは使わない。
-    for (let lat = -75; lat <= 75; lat += GRID_LAT_STEP_DEG) {
+    for (let lat = -60; lat <= 60; lat += GRID_LABEL_STEP_DEG) {
       if (lat === 0) continue;
-      for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) {
+      for (let lon = 0; lon < 360; lon += GRID_LABEL_STEP_DEG) {
         const el = addLabel(`${lon}°/${lat > 0 ? '+' : ''}${lat}°`, 'grid-point');
         this.gridLabels.push({ el, lat, lon });
       }

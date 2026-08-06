@@ -108,14 +108,26 @@ export class Enemy extends Ship {
     const lit = Math.max(0, Math.min(segments, Math.round((this.hp / this.maxHp) * segments)));
     const points: [number, number][] = [[12, 3], [3, 21], [21, 21]];
     const lines: string[] = [];
-    for (let i = 0; i < 3; i++) {
+    const emit = (i: number, j: number, k: number, a: number, b: number): void => {
+      if (b <= a) return;
       const [x1, y1] = points[i]!;
       const [x2, y2] = points[(i + 1) % 3]!;
-      for (let j = 0; j < segments / 3; j++) {
-        const a = (j + 0.12) / (segments / 3);
-        const b = (j + 0.88) / (segments / 3);
-        const color = (i * (segments / 3) + j) < lit ? 'currentColor' : 'rgba(120,125,130,.2)';
-        lines.push(`<line x1="${x1 + (x2 - x1) * a}" y1="${y1 + (y2 - y1) * a}" x2="${x1 + (x2 - x1) * b}" y2="${y1 + (y2 - y1) * b}" stroke="${color}" stroke-width="1.5"/>`);
+      const color = (i * k + j) < lit ? 'currentColor' : 'rgba(120,125,130,.2)';
+      lines.push(`<line x1="${x1 + (x2 - x1) * a}" y1="${y1 + (y2 - y1) * a}" x2="${x1 + (x2 - x1) * b}" y2="${y1 + (y2 - y1) * b}" stroke="${color}" stroke-width="1.5" stroke-linecap="butt"/>`);
+    };
+    for (let i = 0; i < 3; i++) {
+      const k = segments / 3;
+      // 頂点は連続させ、各辺の中央だけを切り欠く。
+      for (let j = 0; j < k; j++) {
+        const a = j / k;
+        const b = (j + 1) / k;
+        const notch = 0.09;
+        if (a < 0.5 && b > 0.5) {
+          emit(i, j, k, a, 0.5 - notch / 2);
+          emit(i, j, k, 0.5 + notch / 2, b);
+        } else {
+          emit(i, j, k, a, b);
+        }
       }
     }
     return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">${lines.join('')}</svg>`;
