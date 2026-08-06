@@ -1,7 +1,7 @@
 // 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
-import { OrbitState } from '../../physics/orbital';
+import { OrbitState, elementsFromState } from '../../physics/orbital';
 import { Vec3, v3 } from '../../physics/vec3';
 import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -26,12 +26,17 @@ export class PlanTrajectory {
   private activeCount = 0;
   // 先頭 nodeCount 本がノードで終わる区間(= 各ノードの到達状態を持つ)。
   private nodeCount = 0;
+  // 積分予測が起点の楕円近似から大きく外れた場合、解析楕円線を隠す。
+  private analyticDivergent = false;
   private frame: Frame = 'inertial';
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
   // 最後のバーン後(これから乗る軌道)の起点状態。末尾区間が無ければ null。
   finalSegmentStart: OrbitState | null = null;
+
+  get isAnalyticDivergent(): boolean { return this.analyticDivergent; }
+  resetDivergence(): void { this.analyticDivergent = false; }
 
   // group をシーンへ登録する(初期状態は非表示)。
   constructor(scene: THREE.Scene) {
@@ -54,6 +59,24 @@ export class PlanTrajectory {
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
     this.finalSegmentStart = segments.length > plan.nodes.length ? segments[segments.length - 1]!.state0 : null;
+    this.analyticDivergent = this.detectAnalyticDivergence(segments[0]?.state0 ?? null);
+  }
+
+  // 各サンプルから求めた瞬時軌道要素を起点要素と比較する。月フライバイのような
+  // 摂動では長半径・離心率・軌道面が変化するため、解析楕円を表示し続けると積分線と
+  // 二重に見えてしまう。通常のLEOの数値誤差/J2の微小変化は閾値未満に収める。
+  private detectAnalyticDivergence(anchor: OrbitState | null): boolean {
+    const base = anchor ? elementsFromState(anchor.r, anchor.v) : null;
+    if (!base || base.e >= 0.98 || !isFinite(base.a) || base.a <= 0) return false;
+    const samples = this.arcs[0]?.samplesRef() ?? [];
+    for (const s of samples) {
+      const el = elementsFromState(s.r, s.v);
+      if (!el || !isFinite(el.a) || el.a <= 0) continue;
+      if (Math.abs(el.a - base.a) / base.a > 0.03 || Math.abs(el.e - base.e) > 0.02) return true;
+      const planeDot = el.hHat.x * base.hHat.x + el.hHat.y * base.hHat.y + el.hHat.z * base.hHat.z;
+      if (planeDot < Math.cos(2 * Math.PI / 180)) return true;
+    }
+    return false;
   }
 
   // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の arc を隠す。
