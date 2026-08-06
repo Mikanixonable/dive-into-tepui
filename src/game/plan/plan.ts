@@ -1,14 +1,16 @@
 // 軌道計画(ノード列)とその起点アンカー。ノードは噴射直後の絶対 OrbitState として凍結し、
 // Δv は導出値。上流ノードを編集すると下流を破棄する。計画軌道の計算・キャッシュは持たない。
-import { elementsFromState, orbitState, OrbitState } from '../../physics/orbital';
+import { Elements, elementsFromState, orbitState, OrbitState } from '../../physics/orbital';
 import { Vec3, add, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { CentralBodyId } from '../../physics/central-body';
+import { centralBodyDefinition, CentralBodyId, toCentralBodyState } from '../../physics/central-body';
+import type { Ephemeris } from '../../physics/ephemeris';
 
 // 計画の1区間が受け持てる時間長 = 起点状態の解析軌道1周期。周期を持たない軌道(双曲線・
 // 放物線)では APERIODIC_ARC_DURATION。
-export function orbitPeriodOf(state: OrbitState): number {
-  const period = elementsFromState(state.r, state.v)?.period;
+export function orbitPeriodOf(state: OrbitState, body: CentralBodyId, ephemeris: Ephemeris): number {
+  const relative = toCentralBodyState(state, body, ephemeris);
+  const period = elementsFromState(relative.r, relative.v, centralBodyDefinition(body).mu)?.period;
   return period !== undefined && isFinite(period) && period > 0 ? period : C.APERIODIC_ARC_DURATION;
 }
 
@@ -16,6 +18,13 @@ export function orbitPeriodOf(state: OrbitState): number {
 export interface TimeRange {
   min: number;
   max: number;
+}
+
+export function apsisAltitudes(el: Elements, bodyRadius: number): { pe: number; ap: number } {
+  return {
+    pe: el.p / (1 + el.e) - bodyRadius,
+    ap: el.e < 1 && isFinite(el.a) ? el.a * (1 + el.e) - bodyRadius : NaN,
+  };
 }
 
 export class Plan {
@@ -85,9 +94,9 @@ export class Plan {
   // idx 番目のノードを置ける実行時刻の範囲。直前の状態(前のノード、無ければアンカー)の時刻から
   // その軌道1周期ぶんまで。これを超えると区間が自分自身に重なり、折れ線上の1点が何周目の
   // どこなのかを指し分けられなくなる。
-  nodeTimeRange(idx: number): TimeRange {
+  nodeTimeRange(idx: number, ephemeris: Ephemeris): TimeRange {
     const prev = this._nodes[idx - 1] ?? this._anchor;
-    return { min: prev.t, max: prev.t + orbitPeriodOf(prev) };
+    return { min: prev.t, max: prev.t + orbitPeriodOf(prev, this.centralBody, ephemeris) };
   }
 
   // ノードを新しい実行後状態へ移し、下流ノードを破棄する。時刻は nodeTimeRange の範囲内であること。

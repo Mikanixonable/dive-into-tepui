@@ -66,9 +66,11 @@ export class SimSpeedManager {
     this._hud.hint(`時間加速 ×${this.simSpeed}`);
   }
 
-  // 指定した simTime まで自動ワープする状態にする。
-  startAutoWarpTo(time: number): void {
+  // 未来の指定時刻まで自動ワープする。既に到達窓へ入った時刻は受け付けない。
+  startAutoWarpTo(time: number, simTime: number): boolean {
+    if (!isFinite(time) || time <= simTime + C.NODE_APPROACH_LEAD) return false;
     this.autoWarpUntil = time;
+    return true;
   }
 
   // 自動ワープを解除する。
@@ -80,14 +82,14 @@ export class SimSpeedManager {
   // 計画編集中は WASDQE などと同じく [N] を計画側へ譲るため editMode 中は受け取らない。
   // ワープ操作は決着後・ポーズ中も効くべきなので、game はこれをそれらの early return より
   // 前に呼ぶ(自動ワープの段階調整そのものは update() が行う)。
-  handleInput(input: Input, isPlaying: boolean, editMode: boolean, firstNode: OrbitState | undefined): void {
+  handleInput(input: Input, isPlaying: boolean, editMode: boolean, firstNode: OrbitState | undefined, simTime: number): void {
     if (input.takeKey(K.warpSlower)) this.shift(-1);
     if (input.takeKey(K.warpFaster)) this.shift(1);
-    if (!editMode && input.takeKey(K.autoWarpToNode)) this.toggleAutoWarpToFirstNode(isPlaying, firstNode);
+    if (!editMode && input.takeKey(K.autoWarpToNode)) this.toggleAutoWarpToFirstNode(isPlaying, firstNode, simTime);
   }
 
   // 直近ノードの実行時刻までの自動ワープをトグルする。
-  toggleAutoWarpToFirstNode(isPlaying: boolean, firstNode: OrbitState | undefined): void {
+  toggleAutoWarpToFirstNode(isPlaying: boolean, firstNode: OrbitState | undefined, simTime: number): void {
     // ノードがなければ計画を促す通知だけ出す
     if (!firstNode || !isPlaying) {
       this._hud.hint(`マニューバノードがありません ([${K.toggleMapMode.label}] で計画)`);
@@ -98,8 +100,9 @@ export class SimSpeedManager {
       this.cancelAutoWarp();
       this._hud.hint('自動ワープ解除');
     } else {
-      this.startAutoWarpTo(firstNode.t);
-      this._hud.hint('ノードへ自動ワープ開始');
+      if (this.startAutoWarpTo(firstNode.t, simTime)) {
+        this._hud.hint('ノードへ自動ワープ開始');
+      } else this._hud.hint('ノード時刻を通過しています');
     }
   }
 

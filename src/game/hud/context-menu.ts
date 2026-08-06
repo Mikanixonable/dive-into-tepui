@@ -32,16 +32,16 @@ function ensureStyle(): void {
   document.head.appendChild(style);
 }
 
-export interface MenuItem {
+export interface MenuItem<A extends string = string> {
   label: string;
-  act: string;
+  act: A;
 }
 
-export class ContextMenu<T> {
+export class ContextMenu<T, A extends string = string> {
   private readonly el: HTMLDivElement;
   // 開いているメニューの対象。閉じると破棄されるので、選択結果は必ず開いた対象へ届く。
   private target: T | null = null;
-  onSelect: ((act: string, target: T) => void) | null = null;
+  onSelect: ((act: A, target: T) => void) | null = null;
 
   // メニュー要素を DOM に追加する。要素外へのポインタ操作で自動的に閉じる。
   constructor() {
@@ -64,7 +64,7 @@ export class ContextMenu<T> {
 
   // target を対象として items を描画し、指定した画面座標に開く。項目クリックで
   // onSelect(act, target) を発火して閉じる。
-  open(clientX: number, clientY: number, target: T, items: readonly MenuItem[]): void {
+  open(clientX: number, clientY: number, target: T, items: readonly MenuItem<A>[]): void {
     this.target = target;
     // 項目 DOM を組み立てる
     this.el.innerHTML = items
@@ -74,7 +74,7 @@ export class ContextMenu<T> {
     this.el.querySelectorAll<HTMLElement>('.ctx-menu-item').forEach((item) => {
       item.addEventListener('click', (e) => {
         e.stopPropagation();
-        const act = item.dataset['act'] ?? '';
+        const act = item.dataset['act'] as A;
         const t = this.target;
         this.close();
         if (t !== null) this.onSelect?.(act, t);

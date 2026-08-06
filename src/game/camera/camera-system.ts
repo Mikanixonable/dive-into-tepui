@@ -56,7 +56,9 @@ export class CameraSystem {
   // 広範囲視点の操作パネル(注視対象・視点の座標系・視点リセット)。
   private readonly overviewCameraPanel: OverviewCameraPanel;
   // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
-  overviewMode = false;
+  private _overviewMode = false;
+  get overviewMode(): boolean { return this._overviewMode; }
+  setMapMode(open: boolean): void { this._overviewMode = open; }
 
   // sync() で毎フレーム参照する DOM 要素をコンストラクタ時にキャッシュする。
   private readonly _elStatus: HTMLElement | null;
@@ -84,8 +86,7 @@ export class CameraSystem {
       (id) => [id, this.focusMarkers.findLabel(id)?.name ?? id] as const,
     ));
     this.overviewCameraPanel.onFocusSelect = (focus) => {
-      this.overviewCamera.focus = focus;
-      this.overviewCamera.resetPan();
+      this.overviewCamera.setFocus(focus);
     };
     this.overviewCameraPanel.onFrameSelect = (frame: Frame) => {
       this.overviewCamera.cameraFrame = frame;

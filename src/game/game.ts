@@ -145,13 +145,15 @@ export class Game {
     );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
     // クリエイティブモードはマップから始まる。
-    this.mapModeToggler = new MapModeToggler(this._hud, launch.mode === 'creative');
-    this.mapModeToggler.applyInitialState(this.editor, this.cameraSystem, this.displayTimeManager);
+    this.mapModeToggler = new MapModeToggler(
+      this._hud, this.editor, this.cameraSystem, this.displayTimeManager, this.mapPicker,
+      launch.mode === 'creative',
+    );
 
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
-    this.touchControls?.setMapMode(this.mapModeToggler.mapMode);
+    this.mapModeToggler.setTouchControls(this.touchControls);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, this._sfx, this.effects);
     this.predictor = new Predictor(this.entities, this.ephemeris);
@@ -222,7 +224,7 @@ export class Game {
     const wasActive = this.player === ship;
     this.navTarget.clearIfTargeting(ship.id);
     this.mapPicker.close();
-    if (this.cameraSystem.overviewCamera.focus === ship.id) this.cameraSystem.overviewCamera.focus = 'earth';
+    this.cameraSystem.overviewCamera.clearFocusIf(ship.id);
     if (wasActive) {
       ship.clearTransientCommands();
       this.player = null;
@@ -232,7 +234,7 @@ export class Game {
     if (wasActive) {
       const next = this.entities.players.find((p) => p.alive) ?? null;
       if (next) this.setActivePlayer(next);
-      else this.cameraSystem.overviewMode = true;
+      else this.mapModeToggler.ensureOpen();
     }
   }
 
@@ -240,6 +242,8 @@ export class Game {
   private get displayTime(): number {
     return this.displayTimeManager.resolveDisplayTime(this.player?.elements?.period ?? null, this.simulator.simTime);
   }
+
+  get simTime(): number { return this.simulator.simTime; }
 
   // ------------------------------------------------------------ update
 
@@ -250,14 +254,12 @@ export class Game {
 
     // handleInput より後に置く: ポーズ中も Esc・ヘルプなどは効かせる。
     if (this._isPaused) {
-      this.editor.update(this.simulator.simTime, this.displayTime);
-      this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
-      if (this.editor.editMode) {
+      this.updateMapPresentation(dt, () => {
+        if (!this.editor.editMode) return;
         this.editor.handleMapPointer(this.input);
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
         this.editor.updateEditing(dt, this.input);
-      }
-      this.cameraSystem.update(this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables);
+      });
       return;
     }
 
@@ -276,9 +278,7 @@ export class Game {
         this.simSpeedManager.simSpeed > C.MAX_PHYS_SIM_SPEED,
       );
       this.effects.update(dt, simDt);
-      this.editor.update(this.simulator.simTime, this.displayTime);
-      this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
-      this.cameraSystem.update(null, this.simulator.simTime, this.input, dt, this.mapPicker.pickables);
+      this.updateMapPresentation(dt);
       return;
     }
     const player = this.player;
@@ -291,13 +291,9 @@ export class Game {
       this.simulator.stepSimulation(dt, simDt, player, this.activeStage, false, false, false);
       this.nanWatchdog.checkAll('stepSimulation(決着後)', player, this.entities, this.simulator.simTime, dt, simDt);
       this.effects.update(dt, simDt);
-      this.editor.update(this.simulator.simTime, this.displayTime);
-      this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
       // 決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
       // 軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする。
-      this.cameraSystem.update(
-        player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables,
-      );
+      this.updateMapPresentation(dt);
       return;
     }
 
@@ -358,7 +354,7 @@ export class Game {
         if (next) this.setActivePlayer(next);
         else {
           this.editor.setActivePlayer(null);
-          this.cameraSystem.overviewMode = true;
+          this.mapModeToggler.ensureOpen();
         }
       }
     }
@@ -378,20 +374,7 @@ export class Game {
       this.guide.update(this.editor.plan, activePlayer, this.simulator.simTime, this.editor.editMode);
       this.editor.plan.trackAnchor(activePlayer.state);
     }
-    // 被選択物の候補にアプシスアイコンが入るので、計画の再積分はその組み立てより前に置く。
-    this.editor.update(this.simulator.simTime, this.displayTime);
-
-    // 物理積分の後に行う: 追従カメラの基準は sync 時のフローティングオリジン
-    // (積分後の自機位置)と一致していなければならない。被選択物の座標も同じ理由で
-    // ここまで待つ。
-    this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
-    this.cameraSystem.update(
-      activePlayer,
-      this.simulator.simTime,
-      this.input,
-      dt,
-      this.mapPicker.pickables,
-    );
+    this.updateMapPresentation(dt);
 
     if (this.editor.editMode) {
       // 右クリックはノードを先に試し、外したぶんだけコンテキストメニューへ回る(優先順位はこの順序だけ)。
@@ -404,6 +387,16 @@ export class Game {
         this.player, this.entities.enemies, this.input, this.cameraSystem.activeCameraProjection,
       );
     }
+  }
+
+  // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
+  private updateMapPresentation(dt: number, afterRefresh?: () => void): void {
+    this.editor.update(this.simulator.simTime, this.displayTime);
+    this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
+    afterRefresh?.();
+    this.cameraSystem.update(
+      this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables,
+    );
   }
 
   // 並進・射撃・衝突と同じく、RCS command torqueは物理相互作用域だけで有効。
@@ -429,14 +422,11 @@ export class Game {
       this.activeStage.isPlaying,
       this.editor.editMode,
       this.editor.plan.firstNode(),
+      this.simulator.simTime,
     );
     // 戦闘ビューはアクティブ艦を前提とする。艦がまだ配置されていない/破壊されている間は無効。
     const canToggleView = this.player?.alive ?? false;
-    this.mapModeToggler.update(
-      this.input, this.activeStage.isPlaying, this._isPaused, canToggleView,
-      this.editor, this.touchControls, this.cameraSystem, this.displayTimeManager,
-      this.mapPicker,
-    );
+    this.mapModeToggler.update(this.input, this.activeStage.isPlaying, canToggleView);
     this.editor.handleInput(this.input);
   }
 

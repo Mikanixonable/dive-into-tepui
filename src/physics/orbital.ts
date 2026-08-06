@@ -252,7 +252,7 @@ export function elementsFromState(r: Vec3, v: Vec3, mu: number = MU_EARTH): Elem
     incDeg,
     apAlt: elliptic ? a * (1 + e) - R_EARTH : NaN,
     peAlt: p / (1 + e) - R_EARTH,
-    period: elliptic ? keplerPeriod(a) : NaN,
+    period: elliptic ? keplerPeriod(a, mu) : NaN,
     pHat,
     qHat,
     hHat,

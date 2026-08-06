@@ -15,8 +15,11 @@ import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
 import type { Game } from './game';
 
+type MapAction = 'focus' | 'navTarget' | 'warp' | 'addNode' | 'activate' | 'followToggle' | 'delete' | 'cancel';
+type MapMenuItem = MenuItem<MapAction>;
+
 export class MapPicker {
-  private readonly menu = new ContextMenu<MapPickable>();
+  private readonly menu = new ContextMenu<MapPickable, MapAction>();
   private items: readonly MapPickable[] = [];
 
   // このフレームの被選択物候補。refresh の後に読む。
@@ -77,7 +80,7 @@ export class MapPicker {
   }
 
   // 被選択物の種別に応じたコンテキストメニュー項目。
-  private itemsFor(target: MapPickable, simTime: number): readonly MenuItem[] {
+  private itemsFor(target: MapPickable, simTime: number): readonly MapMenuItem[] {
     switch (target.kind) {
       case 'body':
       case 'ship':
@@ -96,12 +99,14 @@ export class MapPicker {
       case 'player': {
         const ship = this.entities.findPlayer(target.id);
         const isActive = ship === this.game.player;
+        const activate: readonly MapMenuItem[] = isActive ? [] : [{ label: '操作対象にする', act: 'activate' }];
+        const remove: readonly MapMenuItem[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
         return [
-          ...(isActive ? [] : [{ label: '操作対象にする', act: 'activate' }]),
+          ...activate,
           { label: ship?.followPlan ? '軌道計画への自動追従 OFF' : '軌道計画への自動追従 ON', act: 'followToggle' },
           { label: 'フォーカスを移動', act: 'focus' },
           ...this.navTargetItems(target, simTime),
-          ...(isActive ? [] : [{ label: '削除', act: 'delete' }]),
+          ...remove,
           { label: 'キャンセル', act: 'cancel' },
         ];
       }
@@ -117,22 +122,24 @@ export class MapPicker {
 
   // 対象を航法ターゲットにする/解除する項目。軌道面が定まらない対象(地球・太陽自身など)
   // では選んでも AN/DN が出ないので項目自体を出さない。
-  private navTargetItems(target: MapPickable, simTime: number): readonly MenuItem[] {
+  private navTargetItems(target: MapPickable, simTime: number): readonly MapMenuItem[] {
     if (target.id === this.navTarget.id) return [{ label: '航法ターゲット解除', act: 'navTarget' }];
     const canTarget = this.navTarget.canTarget(target.id, this.entities, this.ephemeris, simTime);
     return canTarget ? [{ label: '航法ターゲットに設定', act: 'navTarget' }] : [];
   }
 
   // 選ばれた項目を、その操作を持つモジュールへ配る。
-  private run(act: string, target: MapPickable): void {
+  private run(act: MapAction, target: MapPickable): void {
     if (act === 'focus') {
-      this.cameraSystem.overviewCamera.focus = target.id;
+      this.cameraSystem.overviewCamera.setFocus(target.id);
       this.hud.hint(`${target.name} にフォーカス`);
     } else if (act === 'navTarget') {
       this.navTarget.toggleTarget(target.id, target.name);
     } else if (act === 'warp') {
       const t = this.navTarget.passTimeOf(target.id);
-      if (t !== null) this.simSpeedManager.startAutoWarpTo(t);
+      if (t !== null && !this.simSpeedManager.startAutoWarpTo(t, this.game.simTime)) {
+        this.hud.hint('この時刻は既に通過しています');
+      }
     } else if (act === 'addNode') {
       const t = target.kind === 'apsis'
         ? this.editor.planDisplay.apsisTimeOf(target.id)
