@@ -61,6 +61,7 @@ export class PlanDisplay {
     if (!show) {
       this.ghost = null;
       this.apsisIcons = [];
+      this.traj.resetDivergence();
       return;
     }
     this.traj.update(plan, this.ephemeris, this.trajectoryFrame, simTime);

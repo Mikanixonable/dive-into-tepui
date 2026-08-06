@@ -24,6 +24,13 @@ export class OrbitLine {
   private readonly positions: Float32Array;
   private snap: { a: number; e: number; hHat: Vec3; pHat: Vec3; focusE?: number } | null = null;
   private lastRegen = 0;
+  private suppressed = false;
+
+  // 摂動が大きい計画では積分予測を優先し、解析楕円線を一時的に隠す。
+  setSuppressed(value: boolean): void {
+    this.suppressed = value;
+    if (value) this.line.visible = false;
+  }
 
   // バッファジオメトリと LineBasicMaterial を組み立てる。
   constructor(color: string | number, opacity = 0.5) {
@@ -54,7 +61,7 @@ export class OrbitLine {
       this.snap = null;
       return;
     }
-    this.line.visible = true;
+    this.line.visible = !this.suppressed;
     // 頂点を自機相対座標で毎フレーム書き直すと、osculating 要素の微小なゆらぎで楕円が
     // 振動して見える。頂点は地球中心座標のまま固定し、平行移動だけで動かすことで避ける。
     this.line.position.copy(fo.RtoThreeV3(EARTH_CENTER));
