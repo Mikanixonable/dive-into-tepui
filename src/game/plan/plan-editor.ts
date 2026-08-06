@@ -22,6 +22,7 @@ import { hudDock } from '../hud/dom';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
+import { centralBodyDefinition, toCentralBodyState } from '../../physics/central-body';
 
 interface DvButtons {
   readonly pro: HudHoldButton;
@@ -83,7 +84,7 @@ export class PlanEditor {
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
     private readonly simSpeedManager: SimSpeedManager,
-    ephemeris: Ephemeris,
+    private readonly ephemeris: Ephemeris,
     scene: THREE.Scene,
     markerManager: MarkerManager,
     private readonly getFineAttitude: () => boolean,
@@ -95,10 +96,15 @@ export class PlanEditor {
     this.planPanel = document.createElement('div');
     this.planPanel.id = 'hud-plan';
     this.planPanel.className = 'panel';
-    this.planPanel.innerHTML = `<h3>MANEUVER PLAN [${K.toggleMapMode.label}]</h3><div data-id="planbody"></div>`;
+    this.planPanel.innerHTML = `<h3>MANEUVER PLAN [${K.toggleMapMode.label}]</h3><label class="row"><span class="k">REFERENCE BODY</span><select data-id="central-body"><option value="earth">EARTH</option><option value="moon">MOON</option></select></label><div data-id="planbody"></div>`;
     this.planPanel.style.display = 'none';
     hudDock(this._hud.root, 'right').appendChild(this.planPanel);
     this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
+    const bodySelect = this.planPanel.querySelector<HTMLSelectElement>('[data-id="central-body"]')!;
+    bodySelect.addEventListener('change', () => {
+      this.plan.centralBody = bodySelect.value === 'moon' ? 'moon' : 'earth';
+      this._hud.hint(`基準天体: ${centralBodyDefinition(this.plan.centralBody).label}`);
+    });
     this.planPanel.appendChild(this.dvButtons.row);
     this.wireNodeGizmo();
   }
@@ -295,7 +301,7 @@ export class PlanEditor {
     if (!node) return;
     const d = amount * sign;
     const local = v3(axis === 0 ? d : 0, axis === 1 ? d : 0, axis === 2 ? d : 0);
-    this.plan.applyNodeDv(this.selectedNodeIdx, fromOrbitalAxes(node, local));
+    this.plan.applyNodeDv(this.selectedNodeIdx, fromOrbitalAxes(this.bodyState(node), local));
   }
 
   // Δv アームのラッチ前ドラッグ量を選択中ノードの Δv へ加算する。
@@ -322,8 +328,9 @@ export class PlanEditor {
     node: OrbitState,
     mapDist: number,
   ): { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; } {
+    const bodyNode = this.bodyState(node);
     const { r } = node;
-    const { pro, nrm, radOut } = orbitalAxes(node);
+    const { pro, nrm, radOut } = orbitalAxes(bodyNode);
     const L = mapDist * 0.05;
     const p0 = this.planDisplay.traj.projectPoint(r, node.t);
     // 軸方向へわずかに動かした点との投影差分から、画面上の単位方向ベクトルを求める。
@@ -373,7 +380,13 @@ export class PlanEditor {
   private nodeDv(i: number, arriving: readonly (OrbitState | null)[]): Vec3 {
     const node = this.plan.nodes[i];
     const arr = arriving[i];
-    return node && arr ? sub(node.v, arr.v) : v3();
+    return node && arr ? sub(this.bodyState(node).v, this.bodyState(arr).v) : v3();
+  }
+
+  // 軌道要素とΔv方向だけを基準天体中心へ変換する。計画軌道の積分自体は
+  // 既存互換の地球ECIで行われるため、月基準選択時も実機状態は変更しない。
+  private bodyState(state: OrbitState): OrbitState {
+    return toCentralBodyState(state, this.plan.centralBody, this.ephemeris);
   }
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
@@ -441,7 +454,8 @@ export class PlanEditor {
       const node = this.plan.nodes[this.selectedNodeIdx];
       if (node) {
         selDv = this.nodeDv(this.selectedNodeIdx, arriving);
-        selEl = elementsFromState(node.r, node.v);
+        const bodyNode = this.bodyState(node);
+        selEl = elementsFromState(bodyNode.r, bodyNode.v, centralBodyDefinition(this.plan.centralBody).mu);
       }
     }
     const html = planPanelHtml(nodes, selDv, selEl);
