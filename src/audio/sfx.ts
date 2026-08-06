@@ -319,11 +319,6 @@ export class Sfx {
     this.tone(1200, 0.1, 0.05, 'square');
     this.tone(800, 0.15, 0.05, 'sawtooth');
 
-    // 遅れてもう一度ガチャッという音
-    setTimeout(() => {
-      this.tone(900, 0.1, 0.04, 'square');
-      this.tone(600, 0.15, 0.04, 'sawtooth');
-    }, 800);
   }
 
   // 連射開始前の起動音: 艦砲 CIWS のモーターが立ち上がる唸りに似せる。
