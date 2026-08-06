@@ -56,6 +56,11 @@ const STYLE = `
   display: flex; gap: 6px; flex-wrap: wrap; max-width: 46vw;
 }
 #touch-util .tbtn { width: 46px; height: 42px; }
+#touch-ui.map-mode #touch-util {
+  left: 50%; right: auto; bottom: 8px; transform: translateX(-50%);
+  flex-wrap: nowrap; max-width: calc(100vw - 16px);
+}
+#touch-ui.map-mode #touch-util .tbtn { flex: 0 1 46px; min-width: 34px; }
 
 /* 横画面(高さが低い端末): navball を画面下部中央に収め、パッドを詰めて
    縦方向の衝突を避ける */
@@ -75,6 +80,7 @@ const STYLE = `
   #touch-zoom { width: 44px; height: 44px; right: 76px; bottom: 124px; }
   #touch-util { bottom: 110px; max-width: 40vw; }
   #touch-util .tbtn { width: 38px; height: 34px; }
+  #touch-ui.map-mode #touch-util { bottom: 4px; max-width: calc(100vw - 12px); }
 }
 `;
 
@@ -107,6 +113,7 @@ export class TouchControls {
 
   // マップモード中は並進・回転・射撃・ズームのパッドを隠す。
   setMapMode(active: boolean): void {
+    document.getElementById('touch-ui')?.classList.toggle('map-mode', active);
     for (const id of ['touch-pad-rot', 'touch-pad-move', 'touch-fire', 'touch-zoom']) {
       const e = document.getElementById(id);
       if (e) e.style.display = active ? 'none' : '';

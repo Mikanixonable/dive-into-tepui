@@ -31,16 +31,28 @@ const STYLE = `
 /* マップ系パネルは左右のドック内で通常フローに積む。内容が増えても他の
    パネルを押し退けるだけで、固定座標による重なりを起こさない。 */
 #hud .hud-dock {
-  position: absolute; top: 12px; bottom: 12px;
+  position: absolute; top: 40px; bottom: 12px;
   display: flex; flex-direction: column; align-items: stretch; gap: 8px;
-  pointer-events: none; min-height: 0;
+  pointer-events: none; min-height: 0; overflow-x: hidden; overflow-y: auto;
+  scrollbar-width: thin; overscroll-behavior: contain;
 }
 #hud .hud-dock > .panel { position: relative; inset: auto; transform: none; pointer-events: auto; flex: 0 0 auto; }
 #hud .hud-dock-left { left: 12px; width: min(300px, 30vw); }
 #hud .hud-dock-right { right: 12px; width: min(300px, 33vw); }
 #hud .hud-dock > .panel[style*="display: none"] { display: none !important; }
-#hud .hud-dock > #hud-shipplacer { max-height: min(70vh, 620px); overflow-y: auto; }
-#hud .hud-dock > #hud-plan { width: 100%; max-width: none; max-height: calc(100vh - 24px); overflow-y: auto; }
+#hud .dock-toggle {
+  display: none; position: absolute; top: 8px; z-index: 2; pointer-events: auto;
+  width: 26px; height: 26px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: ${SURFACE}; color: ${ACCENT}; cursor: pointer;
+}
+#hud.map-mode .dock-toggle { display: block; }
+#hud #hud-dock-toggle-left { left: 8px; }
+#hud #hud-dock-toggle-right { right: 8px; }
+#hud .hud-dock.collapsed { width: 0; }
+#hud .hud-dock.collapsed > .panel,
+#hud .hud-dock.collapsed > #hud-context { display: none !important; }
+#hud .hud-dock > #hud-shipplacer { max-height: none; overflow: visible; }
+#hud .hud-dock > #hud-plan { width: 100%; min-width: 0; max-width: none; max-height: none; overflow: visible; }
 /* MANEUVER PLAN はマップ操作の主パネルとして右ドックの最上段に固定する。 */
 #hud .hud-dock-right > #hud-plan {
   order: -1;
@@ -53,7 +65,7 @@ const STYLE = `
   font-weight: 600;
 }
 #hud-context {
-  position: absolute; top: 10px; right: 12px; pointer-events: none;
+  position: relative; flex: 0 0 auto; align-self: flex-end; pointer-events: none;
   color: ${INK_SOFT}; font-size: 9px; letter-spacing: 1.2px; line-height: 1.35;
   text-align: right; white-space: nowrap; opacity: 0.9;
 }
@@ -129,7 +141,7 @@ const STYLE = `
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
 .mk-ammo { color: ${ACCENT_SOFT}; text-shadow: 0 0 6px rgba(255,144,64,0.6), 0 0 3px #000; }
 #hud .warn-hot { color: ${WARNING}; }
-#hud-plan { min-width: 90px; width: 33vw; max-width: 300px; }
+#hud-plan { min-width: 0; width: 100%; max-width: 300px; overflow-wrap: anywhere; }
 #hud .hud-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 #hud .hud-seg .seg-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 28px; }
 #hud .seg-btn {
@@ -265,10 +277,9 @@ const STYLE = `
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
   #hud .hud-dock { top: 8px; bottom: 8px; gap: 6px; }
-  #hud .hud-dock-left { left: 8px; width: min(220px, 45vw); }
-  #hud .hud-dock-right { right: 8px; width: min(260px, 55vw); }
-  #hud-plan { min-width: 210px; max-width: none; }
-  #hud-shipplacer { max-height: 60vh; }
+  #hud .hud-dock-left { left: 8px; width: min(220px, calc(46vw - 8px)); }
+  #hud .hud-dock-right { right: 8px; width: min(260px, calc(54vw - 8px)); }
+  #hud-plan { min-width: 0; max-width: none; }
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
@@ -279,6 +290,22 @@ const STYLE = `
   #hud-stagestatus .t { font-size: 14px; }
   #hud-chase-reset { bottom: 12px; width: 28px; height: 28px; }
   #hud-chase-reset svg { width: 14px; height: 14px; }
+  #hud .hud-dock { top: 40px; }
+}
+@media (max-width: 520px) {
+  #hud .hud-dock { font-size: 9px; }
+  #hud .hud-dock-left { width: calc(44vw - 8px); }
+  #hud .hud-dock-right { width: calc(56vw - 8px); }
+  #hud .hud-seg { gap: 3px; }
+  #hud .seg-btn { padding: 3px 5px; font-size: 9px; }
+  #hud-displaytime .slider-ticks span:not(:first-child):not(:last-child) { display: none; }
+  #hud-displaytime .slider-ticks span:last-child { margin-left: auto; }
+}
+@media (pointer: coarse) {
+  #hud .hud-dock { bottom: 62px; }
+}
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  #hud .hud-dock { bottom: 52px; }
 }
 `;
 
@@ -301,6 +328,35 @@ export interface HudDomRefs {
 export function hudDock(root: HTMLElement, side: 'left' | 'right'): HTMLElement {
   const id = `hud-dock-${side}`;
   return root.querySelector<HTMLElement>(`#${id}`) ?? root;
+}
+
+function syncDockToggle(button: HTMLElement, dock: HTMLElement, side: 'left' | 'right'): void {
+  const expandedGlyph = side === 'left' ? '◀' : '▶';
+  const collapsedGlyph = side === 'left' ? '▶' : '◀';
+  const collapsed = dock.classList.contains('collapsed');
+  button.textContent = collapsed ? collapsedGlyph : expandedGlyph;
+  button.setAttribute('aria-expanded', String(!collapsed));
+  button.title = `${side === 'left' ? '左' : '右'}マップパネルを${collapsed ? '開く' : '閉じる'}`;
+}
+
+export function resetHudDocks(root: HTMLElement): void {
+  for (const side of ['left', 'right'] as const) {
+    const dock = root.querySelector<HTMLElement>(`#hud-dock-${side}`);
+    const button = root.querySelector<HTMLElement>(`#hud-dock-toggle-${side}`);
+    if (!dock || !button) continue;
+    dock.classList.remove('collapsed');
+    syncDockToggle(button, dock, side);
+  }
+}
+
+function buildDockToggle(root: HTMLElement, dock: HTMLElement, side: 'left' | 'right'): void {
+  const button = el('button', `hud-dock-toggle-${side}`, root, 'dock-toggle');
+  button.addEventListener('pointerdown', (event) => event.stopPropagation());
+  button.addEventListener('click', () => {
+    dock.classList.toggle('collapsed');
+    syncDockToggle(button, dock, side);
+  });
+  syncDockToggle(button, dock, side);
 }
 
 // STYLE の CSS を <head> に注入する。
@@ -447,8 +503,11 @@ export function buildHudDom(): HudDomRefs {
   injectStyle();
   const root = el('div', 'hud', document.body);
   const svgOverlay = buildSvgOverlay(root);
-  el('div', 'hud-dock-left', root, 'hud-dock');
-  el('div', 'hud-dock-right', root, 'hud-dock');
+  el('div', 'hud-dock-left', root, 'hud-dock hud-dock-left');
+  const rightDock = el('div', 'hud-dock-right', root, 'hud-dock hud-dock-right');
+  const leftDock = root.querySelector<HTMLElement>('#hud-dock-left')!;
+  buildDockToggle(root, leftDock, 'left');
+  buildDockToggle(root, rightDock, 'right');
 
   // 常設パネル群を組む。
   buildInfoPanels(root);
@@ -456,7 +515,7 @@ export function buildHudDom(): HudDomRefs {
 
   el('div', 'hud-hint', root);
   el('div', 'hud-toast', root);
-  el('div', 'hud-context', root);
+  el('div', 'hud-context', rightDock);
 
   buildHelpPanel(root);
 
