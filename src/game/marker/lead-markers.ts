@@ -1,7 +1,5 @@
 // LEAD(見越し)マーカー: 自機の弾がその敵に命中する未来位置を示す。自機と敵の双方の
 // 状態に依存するため、Enemy にも Targeter にも属さない独立責務として切り出してある。
-// 一度ターゲットにした敵は、ターゲットを外した後も LEAD_HOLD_SEC の間だけ表示を続ける
-// (乱戦中に狙いを移しながら撃つため)。
 import * as C from '../const';
 import { leadPoint } from '../../physics/intercept';
 import { ProjectFn } from '../camera/camera-system';
@@ -12,9 +10,6 @@ import type { Player } from '../player/player';
 const markerKey = (enemy: Enemy): string => `lead-${enemy.name}`;
 
 export class LeadMarkers {
-  // 敵ごとの最終ロック時刻。毎フレーム生存中の敵一覧から作り直すので、撃破された敵の
-  // エントリが溜まることはない。
-  private lastTargeted = new Map<Enemy, number>();
   private shownKeys: readonly string[] = [];
 
   constructor(private readonly markerManager: MarkerManager) { }
@@ -25,22 +20,22 @@ export class LeadMarkers {
     enemies: readonly Enemy[],
     target: Enemy | null,
     secondaryTarget: Enemy | null,
-    simTime: number,
+    _simTime: number,
     overviewMode: boolean,
     project: ProjectFn,
   ): void {
     if (overviewMode || !player.alive) {
-      this.lastTargeted.clear();
       this.retire([]);
       return;
     }
-    this.lastTargeted = this.trackTargeted(enemies, target, secondaryTarget, simTime);
 
-    // ロックが有効な敵だけリード点を求めてマーカーを置く
+    // 現在の主/第二ターゲットだけリード点を求める。ターゲットから外れた
+    // 敵はこのフレームの retire で直ちにマーカーを除去する。
     const shownKeys: string[] = [];
-    for (const enemy of enemies) {
-      const lockedAt = this.lastTargeted.get(enemy);
-      if (lockedAt === undefined || simTime - lockedAt >= C.LEAD_HOLD_SEC) continue;
+    const targets: Enemy[] = [];
+    if (target && enemies.includes(target)) targets.push(target);
+    if (secondaryTarget && secondaryTarget !== target && enemies.includes(secondaryTarget)) targets.push(secondaryTarget);
+    for (const enemy of targets) {
       const lead = leadPoint(enemy.state, player.state, C.MUZZLE_SPEED, C.LEAD_MAX_TIME);
       if (lead === null) continue;
       // 主照準とは反対向き（逆三角形方向）の三尖星。線だけで描き、中央に
@@ -50,17 +45,6 @@ export class LeadMarkers {
       shownKeys.push(markerKey(enemy));
     }
     this.retire(shownKeys);
-  }
-
-  // 敵ごとのロック時刻を引き継ぎつつ、target は simTime で新たにロックしたものとして返す。
-  private trackTargeted(enemies: readonly Enemy[], target: Enemy | null, secondaryTarget: Enemy | null, simTime: number): Map<Enemy, number> {
-    const tracked = new Map<Enemy, number>();
-    for (const enemy of enemies) {
-      const newlyTargeted = enemy === target || enemy === secondaryTarget;
-      const lockedAt = newlyTargeted ? simTime : this.lastTargeted.get(enemy);
-      if (lockedAt !== undefined) tracked.set(enemy, lockedAt);
-    }
-    return tracked;
   }
 
   // key は敵ごとに一意で増え続けるため hide ではなく remove で DOM ごと片付ける。
