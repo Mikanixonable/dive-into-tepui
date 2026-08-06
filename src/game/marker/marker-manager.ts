@@ -42,7 +42,8 @@ export class MarkerManager {
     label = '',
     opacity = 1,
     color?: string,
-    rotationDeg?: number
+    rotationDeg?: number,
+    symMarkup = false,
   ): void {
     let m = this.markerDictionary.get(key);
     if (!m) {
@@ -57,7 +58,9 @@ export class MarkerManager {
     m.root.style.left = `${x.toFixed(1)}px`;
     m.root.style.top = `${y.toFixed(1)}px`;
     m.root.style.opacity = opacity >= 1 ? '' : opacity.toFixed(2);
-    if (m.sym.textContent !== sym) m.sym.textContent = sym;
+    if (symMarkup) {
+      if (m.sym.innerHTML !== sym) m.sym.innerHTML = sym;
+    } else if (m.sym.textContent !== sym) m.sym.textContent = sym;
     if (m.lbl.textContent !== label) m.lbl.textContent = label;
 
     if (color) {
@@ -104,8 +107,10 @@ export class MarkerManager {
     opacity = 1,
     color?: string,
     rotationDeg?: number,
+    symMarkup = false,
   ): void {
-    this.setPosition(key, cls, sym, addScaled(origin, norm(dir), C.MARKER_DIR_DIST), project, label, opacity, color, rotationDeg);
+    const p = project(addScaled(origin, norm(dir), C.MARKER_DIR_DIST));
+    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup);
   }
 
   // 画面外(背面を含む)の対象を、画面中心から見た方位として画面端の円周上に置く。

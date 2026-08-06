@@ -101,6 +101,26 @@ export class Enemy extends Ship {
     return '#' + this.accent.toString(16).padStart(6, '0');
   }
 
+  // 逆三角形を辺中央の切り欠きで分割し、残HPに応じて発光するSVGを生成する。
+  // 分割数は3の倍数へ丸めるため、将来HPが12/18になっても多重リングへ拡張しやすい。
+  private hpMarkerSvg(): string {
+    const segments = Math.max(3, Math.round(this.maxHp / 3) * 3);
+    const lit = Math.max(0, Math.min(segments, Math.round((this.hp / this.maxHp) * segments)));
+    const points: [number, number][] = [[12, 3], [3, 21], [21, 21]];
+    const lines: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const [x1, y1] = points[i]!;
+      const [x2, y2] = points[(i + 1) % 3]!;
+      for (let j = 0; j < segments / 3; j++) {
+        const a = (j + 0.12) / (segments / 3);
+        const b = (j + 0.88) / (segments / 3);
+        const color = (i * (segments / 3) + j) < lit ? 'currentColor' : 'rgba(120,125,130,.2)';
+        lines.push(`<line x1="${x1 + (x2 - x1) * a}" y1="${y1 + (y2 - y1) * a}" x2="${x1 + (x2 - x1) * b}" y2="${y1 + (y2 - y1) * b}" stroke="${color}" stroke-width="1.5"/>`);
+      }
+    }
+    return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">${lines.join('')}</svg>`;
+  }
+
   // pos は機体メッシュと同じ表示時刻の位置(displayState 経由)を使う。role が第一/第二
   // ターゲットのどちらでもなければ通常の敵マーカーになる。
   markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3): GroupedMarkerItem {
@@ -112,13 +132,14 @@ export class Enemy extends Ship {
     return {
       key: `enemy-${this.name}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy',
-      sym: '◇',
+      sym: this.hpMarkerSvg(),
       pos,
       priority,
       name: this.name,
       detail: fmtMarkerDist(dist),
       bearingColor: role === 'secondary' ? ACCENT_SECONDARY : this.accentColor,
       color,
+      symMarkup: true,
     };
   }
 
