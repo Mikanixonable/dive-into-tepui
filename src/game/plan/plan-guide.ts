@@ -90,14 +90,16 @@ export class PlanGuide {
     const playerEl = player.elements;
     if (!playerEl || !targetEl || !orbitClose(playerEl, targetEl)) return;
     this.achievedNotified = node;
-    // 達成しても node は実行時刻を過ぎるまで計画に残るので、残件数からは自身を除く。
-    const remain = plan.nodes.length - 1;
+    // 計画軌道へ到達したノードは、その場で実行済みとして削除する。
+    // dropNodesBefore(node.t) は現在ノードをアンカーへ移し、後続ノードを保持する。
+    const remain = Math.max(0, plan.nodes.length - 1);
     if (remain === 0) {
       this._hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
     } else {
       this._hud.hint(`✓ ノード達成 — 残り ${remain} 件`, 4000);
     }
     this._sfx.warp();
+    plan.dropNodesBefore(node.t);
   }
 }
 
