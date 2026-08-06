@@ -1,9 +1,9 @@
 // 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、NODE/BURN マーカー。
 import { Elements, OrbitState, elementsFromState } from '../../physics/orbital';
-import { dot, len, sub } from '../../physics/vec3';
+import { addScaled, dot, len, norm, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
-import { fmtSpeed } from '../hud/utils';
+import { fmtDist, fmtSpeed, fmtTime } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
@@ -43,21 +43,25 @@ export class PlanGuide {
     if (!node) {
       this.markerManager.hide('nd');
       this.markerManager.hide('burn');
+      this.markerManager.hide('burn-bearing');
       return;
     }
 
     // NODE マーカー: ノードまでの残り時間を表示する。
     const tRem = node.t - simTime;
-    const tLabel =
-      tRem >= 0
-        ? `T-${Math.floor(tRem / 60)}:${String(Math.floor(tRem % 60)).padStart(2, '0')}`
-        : `T+${Math.floor(-tRem / 60)}:${String(Math.floor(-tRem % 60)).padStart(2, '0')}`;
+    const tLabel = tRem >= 0 ? `T-${fmtTime(tRem)}` : `T+${fmtTime(-tRem)}`;
     const more = plan.nodes.length > 1 ? ` (+${plan.nodes.length - 1})` : '';
-    this.markerManager.setPosition('nd', 'mk-mnode', '◆', node.r, project, `NODE ${tLabel}${more}`);
 
     // BURN マーカー: 目標速度との差分ベクトルを噴射方向として表示する。
     const dvRem = sub(node.v, player.state.v);
     const mag = len(dvRem);
+    const nodeDist = len(sub(node.r, player.state.r));
+    const maxAccel = C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1] ?? 1;
+    const burnTime = maxAccel > 0 ? mag / maxAccel : 0;
+    this.markerManager.setPosition(
+      'nd', 'mk-mnode', '◆', node.r, project,
+      `NODE${more}\nBURN ${fmtTime(burnTime)}\nDIST ${fmtDist(nodeDist)}\nTIME ${tLabel}`,
+    );
     this.markerManager.setDirection(
       'burn',
       'mk-burn',
@@ -67,6 +71,9 @@ export class PlanGuide {
       project,
       `BURN ${mag.toFixed(1)} m/s → ${fmtSpeed(len(node.v))}`,
     );
+    // 噴射方向が視界外(背面を含む)なら、敵・弾薬と同じ画面端の方位ガイドを出す。
+    const burnPoint = project(addScaled(player.state.r, norm(dvRem), C.MARKER_DIR_DIST));
+    this.markerManager.setBearing('burn-bearing', 'mk-dir', '▲', burnPoint, '', 0.7, C.COLOR_MARKER_NODE);
   }
 
   // 実行の窓に入ったことを通知する。
