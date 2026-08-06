@@ -88,6 +88,9 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
 #hud-target { bottom: 12px; right: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-target h3 { font-size: 8.8px; }
+#hud.map-mode #hud-target {
+  top: auto; right: 12px; bottom: 12px; left: auto;
+}
 #hud-enemies { bottom: 12px; right: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
@@ -188,7 +191,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-trajframe { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
-#navball { bottom: 54px; left: 50%; transform: translateX(-50%); width: 190px; pointer-events: auto; }
+#navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
 #navball .nb-ball { display: block; width: 100%; height: auto; margin: 4px 0 8px; }
 #navball .nb-rim { fill: rgba(255, 255, 255, 0.03); stroke: ${EDGE}; stroke-width: 1; }
 #navball .nb-grid { fill: none; stroke: ${INK_SOFT}; stroke-width: 0.6; opacity: 0.35; }
@@ -298,7 +301,7 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
-  #navball { bottom: 48px; width: 96px !important; height: auto !important; }
+  #navball { top: 76px; width: 96px !important; height: auto !important; }
   #navball .hud-seg, #navball .hud-toggle { display: none; }
   #hud-hint {
     top: calc(50% - 40px); transform: translateX(-50%); max-height: 72px;
@@ -332,7 +335,7 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud-combat-shelf { top: 60px; }
   #hud-combat-shelf > .panel { max-height: 82px; }
   #hud-stagestatus { max-height: 46px; }
-  #navball { bottom: 40px; width: 72px !important; }
+  #navball { top: 60px; width: 72px !important; }
   #hud-chase-reset { bottom: 6px; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
