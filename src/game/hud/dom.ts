@@ -1,7 +1,7 @@
 // HUD の静的 DOM/スタイル構築。
 import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { ACCENT, ACCENT_SOFT, ACCENT_RGB, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
+import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
 
 
 const throttleLabels = [K.throttleLow, K.throttleMid, K.throttleHigh].map((k) => k.label).join(' / ');
@@ -24,8 +24,8 @@ const STYLE = `
 #hud-settings { z-index: 4; }
 #hud .panel {
   position: absolute; background: ${SURFACE};
-  border: 1px solid ${EDGE}; border-radius: 4px;
-  padding: 10px 14px; line-height: 1.55; backdrop-filter: blur(4px);
+  border: 1px solid ${EDGE}; border-radius: 6px;
+  padding: 9px 12px; line-height: 1.5; backdrop-filter: blur(4px);
 }
 /* マップ系パネルは左右のドック内で通常フローに積む。内容が増えても他の
    パネルを押し退けるだけで、固定座標による重なりを起こさない。 */
@@ -58,7 +58,7 @@ const STYLE = `
 #hud-enemies { bottom: 12px; right: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
-#hud-enemies .erow.tgt { color: ${ACCENT}; }
+#hud-enemies .erow.tgt { color: ${WARNING}; }
 
 #hud-hint {
   position: absolute; bottom: 200px; left: 50%; transform: translateX(-50%);
@@ -84,7 +84,7 @@ const STYLE = `
   transition: opacity 1s; opacity: 0; line-height: 1.8;
 }
 #hud .sim-speed-hot { color: ${ACCENT}; }
-#hud .mode-tgt { color: ${ACCENT}; }
+#hud .mode-tgt { color: ${WARNING}; }
 .mk {
   position: absolute; transform: translate(-50%, -50%);
   text-align: center; white-space: nowrap; text-shadow: 0 0 4px #000, 0 0 2px #000;
@@ -95,9 +95,10 @@ const STYLE = `
 .mk-boresight { color: ${C.COLOR_MARKER_BORESIGHT}; font-size: 18px; }
 #mk-bore .sym { width: 24px; height: 24px; }
 #mk-bore .lbl { top: -14px; left: 19px; transform: none; font-size: 8px; letter-spacing: .4px; color: ${INK_SOFT}; text-shadow: 0 0 3px #000; }
-.mk-target { color: ${ACCENT}; }
+.mk-target { color: ${WARNING}; }
+.mk-secondary-target { color: ${ACCENT_SECONDARY}; }
 .mk-enemy { color: rgba(230, 232, 235, 0.35); }
-.mk-lead { color: ${ACCENT}; }
+.mk-lead { color: ${WARNING}; }
 .mk-pro { color: ${C.COLOR_MARKER_PROGRADE}; }
 .mk-retro { color: ${C.COLOR_MARKER_PROGRADE}; }
 .mk-nrm { color: ${C.COLOR_MARKER_NORMAL}; }
@@ -110,13 +111,14 @@ const STYLE = `
 .mk-burn { color: ${ACCENT}; text-shadow: 0 0 8px rgba(${ACCENT_RGB}, 0.7); }
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
 .mk-ammo { color: ${ACCENT_SOFT}; text-shadow: 0 0 6px rgba(255,144,64,0.6), 0 0 3px #000; }
-#hud .warn-hot { color: ${ACCENT}; }
+#hud .warn-hot { color: ${WARNING}; }
 #hud-plan { min-width: 90px; width: 33vw; max-width: 300px; }
 #hud .hud-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 #hud .hud-seg .seg-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 28px; }
 #hud .seg-btn {
   pointer-events: auto; cursor: pointer; padding: 3px 10px; font-size: 11px;
-  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
+  border: 1px solid ${EDGE}; border-radius: 6px; background: ${SURFACE}; color: ${INK_SOFT};
+  line-height: 1.2;
 }
 #hud .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
 #hud .seg-btn.disabled { opacity: 0.35; pointer-events: none; }
@@ -141,7 +143,7 @@ const STYLE = `
 /* パネル内の数値・テキスト入力欄の共通見た目(スライダーは上の range 規則が受け持つ)。 */
 #hud .panel input[type="number"], #hud .panel input[type="text"] {
   pointer-events: auto; width: 64px; padding: 3px 6px; font-size: 11px;
-  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK};
+  border: 1px solid ${EDGE}; border-radius: 6px; background: ${SURFACE}; color: ${INK};
 }
 #hud-displaytime .slider-ticks { display: flex; justify-content: space-between; margin-top: 2px; }
 #hud-displaytime .slider-ticks span { font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; }

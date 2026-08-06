@@ -349,8 +349,9 @@ export const COLOR_ACCENT_RGB = '255, 106, 0'; // COLOR_ACCENT の RGB 成分（
 export const COLOR_ACCENT_SOFT = '#ff9040';
 export const COLOR_ACCENT_SECONDARY = '#00c8ff'; // 第二ターゲット用アクセント(シアン)
 export const COLOR_BG = '#08090c';
-export const COLOR_TEXT = '#e6e8eb';
-export const COLOR_TEXT_DIM = '#7d838c';
+// UI用のわずかに紫がかった白。ゲーム世界のマーカー色とは独立したHUD基準色。
+export const COLOR_TEXT = '#eeeaf5';
+export const COLOR_TEXT_DIM = '#aaa5b5';
 export const COLOR_HUD_BAR_BG = '#222222';
 export const COLOR_HUD_TEXT_MUTED = '#dfe3e8';
 export const COLOR_HUD_HP_OK = '#ff6a00';
