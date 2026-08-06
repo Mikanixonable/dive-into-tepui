@@ -432,28 +432,50 @@ export class Sfx {
     osc.stop(t + 0.45);
   }
 
-  // 被弾音。熱で蒸発するような「シュー」という音
+  // 自機被弾音。敵弾通過音と同じノコギリ波ローパスで、さらに低い音域。
   hit(): void {
-    if (!this.ctx || !this.noiseBuf) return;
+    if (!this.ctx) return;
     const ctx = this.ctx;
     const t = ctx.currentTime;
-    
-    const src = ctx.createBufferSource();
-    src.buffer = this.noiseBuf;
-    src.playbackRate.value = 1.0 + Math.random() * 0.2;
-    
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = 42;
     const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = 3000 + Math.random() * 1000;
-    filter.Q.value = 1.5;
-    
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(70, t);
+    filter.frequency.exponentialRampToValueAtTime(190, t + 0.1);
+    filter.frequency.exponentialRampToValueAtTime(55, t + 0.32);
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.25, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
-    
-    src.connect(filter).connect(gain).connect(ctx.destination);
-    src.start(t);
-    src.stop(t + 0.35);
+    gain.gain.setValueAtTime(0.18, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    osc.connect(filter).connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.38);
+  }
+
+  // 敵機被弾時のノコギリ波ローパス和音
+  enemyHit(): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(180, t);
+    filter.frequency.exponentialRampToValueAtTime(520, t + 0.08);
+    filter.frequency.exponentialRampToValueAtTime(130, t + 0.3);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.08, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+    [110, 138, 165].forEach((frequency) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(frequency, t);
+      osc.frequency.exponentialRampToValueAtTime(frequency * 0.72, t + 0.26);
+      osc.connect(filter);
+      osc.start(t);
+      osc.stop(t + 0.35);
+    });
+    filter.connect(gain).connect(ctx.destination);
   }
 
   // 撃破爆発音

@@ -106,6 +106,7 @@ export class PlanEditor {
     this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
     this.centralBodyControl = new SegmentedControl('REFERENCE BODY', [['earth', 'EARTH'], ['moon', 'MOON']] as const, (value) => {
       this.plan.centralBody = value;
+      this.centralBodyControl.setSelected(value);
       this._hud.hint(`基準天体: ${centralBodyDefinition(this.plan.centralBody).label}`);
     });
     this.centralBodyControl.setSelected(this.plan.centralBody);

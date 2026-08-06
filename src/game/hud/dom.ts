@@ -106,12 +106,14 @@ const STYLE = `
 }
 .mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; line-height: 1; }
 .mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: 10px; margin-top: 2px; letter-spacing: 1px; }
-.mk-boresight { color: ${C.COLOR_MARKER_BORESIGHT}; font-size: 18px; }
-#mk-bore .sym { width: 24px; height: 24px; }
+.mk-enemy .lbl, .mk-target .lbl { font-size: 9px; line-height: 1.2; white-space: pre; }
+.mk-dir { color: #ffffff; font-size: 11px; text-shadow: none; }
+.mk-boresight { color: #ffffff; font-size: 36px; }
+#mk-bore .sym { width: 48px; height: 48px; }
 #mk-bore .lbl { top: -14px; left: 19px; transform: none; font-size: 8px; letter-spacing: .4px; color: ${INK_SOFT}; text-shadow: 0 0 3px #000; }
-.mk-target { color: ${WARNING}; }
+.mk-target { color: #ffffff; }
 .mk-secondary-target { color: ${ACCENT_SECONDARY}; }
-.mk-enemy { color: rgba(230, 232, 235, 0.35); }
+.mk-enemy { color: #ffffff; }
 .mk-lead { color: ${WARNING}; }
 .mk-pro { color: ${C.COLOR_MARKER_PROGRADE}; }
 .mk-retro { color: ${C.COLOR_MARKER_PROGRADE}; }
