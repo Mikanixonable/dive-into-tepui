@@ -42,7 +42,11 @@ const STYLE = `
 #hud .hud-dock > #hud-shipplacer { max-height: min(70vh, 620px); overflow-y: auto; }
 #hud .hud-dock > #hud-plan { width: 100%; max-width: none; max-height: calc(100vh - 24px); overflow-y: auto; }
 /* MANEUVER PLAN はマップ操作の主パネルとして右ドックの最上段に固定する。 */
-#hud .hud-dock-right > #hud-plan { order: -1; }
+#hud .hud-dock-right > #hud-plan {
+  order: -1;
+  align-self: flex-end;
+  margin-left: auto;
+}
 #hud .panel h3 {
   font-size: 11px; letter-spacing: 2.5px; color: ${ACCENT};
   border-bottom: 1px solid rgba(${ACCENT_RGB}, 0.25); margin-bottom: 6px; padding-bottom: 4px;
