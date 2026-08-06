@@ -17,6 +17,8 @@
     "src/physics/attitude.ts",
     "src/physics/atmosphere.ts",
     "src/physics/ephemeris.ts",
+    "src/physics/central-body.ts",
+    "src/game/plan/plan.ts",
     "src/physics/swept-sphere.ts",
     "src/game/creative/placement-validation.ts",
     "tests/physics/**/*.ts"

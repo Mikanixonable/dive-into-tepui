@@ -40,7 +40,21 @@ export class OverviewCamera {
   // カメラ視点を固定する座標系(慣性系 / 太陽回転系)。
   private _cameraFrame: Frame = 'inertial';
   private simTime = 0; // set cameraFrame の座標変換に使う
-  focus = 'earth'; // 注視対象のラベル ID
+  private _focus = 'earth';
+  private missingFocusFrames = 0;
+  private lastResolvedFocus = v3();
+
+  get focus(): string { return this._focus; }
+
+  setFocus(id: string, resetPan = true): void {
+    this._focus = id;
+    this.missingFocusFrames = 0;
+    if (resetPan) this.resetPan();
+  }
+
+  clearFocusIf(id: string): void {
+    if (this._focus === id) this.setFocus('earth');
+  }
 
   view: ViewFrame = {
     position: v3(),
@@ -87,10 +101,25 @@ export class OverviewCamera {
     this.pan_r = toFramePos(this._cameraFrame, this.simTime, v3(), this.ephemeris);
   }
 
-  // 現在のフォーカス対象の ECI 位置を返す。'earth' または candidates に見当たらなければ原点。
+  // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は地球へ戻す。
   private resolveFocus(candidates: readonly MapPickable[]): Vec3 {
-    if (this.focus === 'earth') return v3(0, 0, 0);
-    return candidates.find((c) => c.id === this.focus)?.pos ?? v3(0, 0, 0);
+    if (this._focus === 'earth') {
+      this.missingFocusFrames = 0;
+      this.lastResolvedFocus = v3();
+      return this.lastResolvedFocus;
+    }
+    const candidate = candidates.find((c) => c.id === this._focus);
+    if (candidate) {
+      this.missingFocusFrames = 0;
+      this.lastResolvedFocus = candidate.pos;
+      return candidate.pos;
+    }
+    this.missingFocusFrames++;
+    if (this.missingFocusFrames >= 2) {
+      this.setFocus('earth');
+      return v3();
+    }
+    return this.lastResolvedFocus;
   }
 
   // 現在視点を固定している座標系を返す。

@@ -51,7 +51,7 @@ export class PlanTrajectory {
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
     // anchor→node…→末尾区間に分解する
-    const segments = buildSegments(plan.anchor, plan.nodes);
+    const segments = buildSegments(plan, ephemeris);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       this.arcAt(i).update(seg.state0, seg.end, ephemeris);
@@ -160,15 +160,15 @@ export class PlanTrajectory {
 
 // anchor を起点に nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
 // 末尾の1本は起点の解析軌道1周期ぶん伸びる。
-function buildSegments(anchor: OrbitState, nodes: readonly OrbitState[]): Segment[] {
+function buildSegments(plan: Plan, ephemeris: Ephemeris): Segment[] {
   const segments: Segment[] = [];
-  let state0 = anchor;
+  let state0 = plan.anchor;
   // ノードを1つずつ経由点として区間を切り出す
-  for (const node of nodes) {
+  for (const node of plan.nodes) {
     segments.push({ state0, end: node.t });
     state0 = node;
   }
   // 最後のノード(無ければ anchor)から1周期ぶんを末尾区間とする
-  segments.push({ state0, end: state0.t + orbitPeriodOf(state0) });
+  segments.push({ state0, end: state0.t + orbitPeriodOf(state0, plan.centralBody, ephemeris) });
   return segments;
 }
