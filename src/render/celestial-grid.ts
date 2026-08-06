@@ -34,8 +34,6 @@ const ECLIPTIC_BASIS: PlaneBasis = {
 
 const GRID_LAT_STEP_DEG = 15; // 交点の緯度間隔
 const GRID_LON_STEP_DEG = 15; // 交点の経度間隔
-const LABEL_LAT_STEP_DEG = 30; // 緯度ラベルの間隔
-const LABEL_LON_STEP_DEG = 30; // 経度ラベルの間隔
 const CIRCLE_SEGMENTS = 64; // 円1本あたりの分割数
 const POLE_MARKER_HALF_LEN = STAR_SHELL_RADIUS * 0.04; // 極マーカーの殻面からの突き出し長さ
 
@@ -107,6 +105,7 @@ class GridPlane {
   readonly poleGroup = new THREE.Group();
   private readonly labelLayer: HTMLDivElement;
   private readonly labels: HTMLDivElement[] = [];
+  private readonly gridLabels: { el: HTMLDivElement; lat: number; lon: number }[] = [];
   private readonly basis: PlaneBasis;
 
   constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
@@ -159,8 +158,14 @@ class GridPlane {
     };
     addLabel(`${name} PLANE`, 'plane');
     addLabel(`▲ ${name} N`, 'pole-n'); addLabel(`▼ ${name} S`, 'pole-s');
-    for (let lon = 0; lon < 360; lon += LABEL_LON_STEP_DEG) addLabel(`${name} LON ${lon}°`, 'lon');
-    for (let lat = -60; lat <= 60; lat += LABEL_LAT_STEP_DEG) if (lat !== 0) addLabel(`${name} LAT ${lat > 0 ? '+' : ''}${lat}°`, 'lat');
+    // グリッドの全交点に座標ラベルを置く。画面端に固定した代表ラベルは使わない。
+    for (let lat = -75; lat <= 75; lat += GRID_LAT_STEP_DEG) {
+      if (lat === 0) continue;
+      for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) {
+        const el = addLabel(`${lon}°/${lat > 0 ? '+' : ''}${lat}°`, 'grid-point');
+        this.gridLabels.push({ el, lat, lon });
+      }
+    }
   }
 
   sync(planeVisible: boolean, poleVisible: boolean, gridVisible: boolean, origin: THREE.Vector3, scale: number, camera: THREE.Camera): void {
@@ -181,16 +186,38 @@ class GridPlane {
       const y = Math.max(margin, Math.min(h - margin, (-v.y * .5 + .5) * h + (below ? 12 : 0)));
       el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.display = '';
     };
-    const [plane, pn, ps, ...rest] = this.labels;
+    const [plane, pn, ps] = this.labels;
     if (planeVisible) show(plane!, planePoint(this.basis, STAR_SHELL_RADIUS, 0, 0), true);
     if (poleVisible) {
       show(pn!, v3(this.basis.pole.x * STAR_SHELL_RADIUS, this.basis.pole.y * STAR_SHELL_RADIUS, this.basis.pole.z * STAR_SHELL_RADIUS));
       show(ps!, v3(-this.basis.pole.x * STAR_SHELL_RADIUS, -this.basis.pole.y * STAR_SHELL_RADIUS, -this.basis.pole.z * STAR_SHELL_RADIUS));
     }
     if (gridVisible) {
-      let i = 0;
-      for (let lon = 0; lon < 360; lon += LABEL_LON_STEP_DEG) show(rest[i++]!, planePoint(this.basis, STAR_SHELL_RADIUS, 0, (lon * Math.PI) / 180));
-      for (let lat = -60; lat <= 60; lat += LABEL_LAT_STEP_DEG) if (lat !== 0) show(rest[i++]!, planePoint(this.basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, 0));
+      const w = window.innerWidth, h = window.innerHeight;
+      const project = (p: Vec3) => new THREE.Vector3(origin.x + p.x * scale, origin.y + p.y * scale, origin.z + p.z * scale).project(camera);
+      for (const item of this.gridLabels) {
+        const latRad = item.lat * Math.PI / 180;
+        const lonRad = item.lon * Math.PI / 180;
+        const p = planePoint(this.basis, STAR_SHELL_RADIUS, latRad, lonRad);
+        const base = project(p);
+        if (base.z < -1 || base.z > 1) continue;
+        const d = 0.01 * STAR_SHELL_RADIUS;
+        const dl = planePoint(this.basis, STAR_SHELL_RADIUS, latRad, lonRad + d / STAR_SHELL_RADIUS);
+        const dt = planePoint(this.basis, STAR_SHELL_RADIUS, latRad + d / STAR_SHELL_RADIUS, lonRad);
+        const a = project(dl), b = project(dt);
+        const sx = (base.x * .5 + .5) * w, sy = (-base.y * .5 + .5) * h;
+        const dxLon = (a.x - base.x) * w * .5, dyLon = -(a.y - base.y) * h * .5;
+        const dxLat = (b.x - base.x) * w * .5, dyLat = -(b.y - base.y) * h * .5;
+        const hx = Math.abs(dxLon) >= Math.abs(dyLon) ? dxLon : dxLat;
+        const hy = Math.abs(dxLon) >= Math.abs(dyLon) ? dyLon : dyLat;
+        let angle = Math.atan2(hy, hx) * 180 / Math.PI;
+        if (angle > 90) angle -= 180;
+        if (angle < -90) angle += 180;
+        item.el.style.left = `${Math.max(8, Math.min(w - 8, sx + 4))}px`;
+        item.el.style.top = `${Math.max(8, Math.min(h - 8, sy + 4))}px`;
+        item.el.style.transform = `translate(0, 0) rotate(${angle.toFixed(1)}deg)`;
+        item.el.style.display = '';
+      }
     }
   }
 }
