@@ -515,7 +515,8 @@ export class Game {
     if (player) this.guide.sync(this.editor.plan, player, simTime, this.editor.editMode, project);
 
     const debugTargets = player ? (target ? [player, target] : [player]) : [];
-    this.debugHistoryLine.sync(debugTargets, this.editor.planDisplay.trajectoryFrame, simTime, this.ephemeris, this.floatingOrigin);
+    const debugFrame = overviewMode ? this.cameraSystem.overviewCamera.cameraFrame : 'inertial';
+    this.debugHistoryLine.sync(debugTargets, debugFrame, simTime, this.ephemeris, this.floatingOrigin);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions();
