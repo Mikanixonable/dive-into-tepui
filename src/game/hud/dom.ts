@@ -315,6 +315,7 @@ function buildInfoPanels(root: HTMLElement): void {
     <h3>SHIP STATUS</h3>
     <div class="row"><span class="k">MET</span><span class="v" data-id="met"></span></div>
     <div class="row"><span class="k">時間加速</span><span class="v" data-id="sim-speed"></span></div>
+    <div class="row"><span class="k">NODE WARP</span><span class="v" data-id="node-warp-remain">—</span></div>
 
     <div class="row"><span class="k">RCS制動 [${K.rcsDampToggle.label}]</span><span class="v" data-id="rcs"></span></div>
     <div class="row"><span class="k">並進出力 [${K.throttleLow.label}-${K.throttleHigh.label}]</span><span class="v" data-id="throttle"></span></div>
