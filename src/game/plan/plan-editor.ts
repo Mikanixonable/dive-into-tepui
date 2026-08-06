@@ -1,9 +1,9 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と計画パネルへの反映。
 // 未来表示(計画折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
 import type * as THREE from 'three/webgpu';
-import { Elements, OrbitState, elementsFromState, fromOrbitalAxes, orbitalAxes } from '../../physics/orbital';
+import { Elements, OrbitState, elementsFromState, fromOrbitalAxes, orbitState, orbitalAxes } from '../../physics/orbital';
 import { Projected } from '../../physics/projection';
-import { Vec3, add, len, scale, sub, v3 } from '../../physics/vec3';
+import { Vec3, add, dot, len, scale, sub, v3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { ACCENT, TEXT, TEXT_DIM } from '../theme';
@@ -304,11 +304,32 @@ export class PlanEditor {
   // ドラッグ中のノードを、置ける時刻範囲の中で最寄りの計画軌道サンプル時刻へ移動する。
   private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
     if (!this.plan.nodes[idx]) return;
+    const arriving = this.planDisplay.traj.arrivalStates();
     const sample = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity, this.plan.nodeTimeRange(idx, this.ephemeris));
     if (sample) {
-      this.plan.retimeNode(idx, sample);
+      this.plan.retimeNode(idx, this.rebuildDraggedNode(sample, idx, arriving) ?? sample);
       this.selectedNodeIdx = idx;
     }
+  }
+
+  // ドラッグで時刻を動かしても、ノードのΔv(機体座標系の加減速)は維持する。
+  // これにより、同じマニューバを別時刻へ移し替えた計画として再描画できる。
+  private rebuildDraggedNode(
+    sample: OrbitState,
+    idx: number,
+    arriving: readonly (OrbitState | null)[],
+  ): OrbitState | null {
+    const node = this.plan.nodes[idx];
+    const arr = arriving[idx];
+    if (!node || !arr) return null;
+    const dv = sub(node.v, arr.v);
+    const axes = orbitalAxes(this.bodyState(node));
+    const dvLocal = v3(
+      dot(dv, axes.pro),
+      dot(dv, axes.nrm),
+      dot(dv, axes.radOut),
+    );
+    return orbitState(sample.t, sample.r, add(sample.v, fromOrbitalAxes(sample, dvLocal)));
   }
 
   // 選択中ノードの axis 方向(sign 込み)へ amount [m/s] の Δv を加算する。ドラッグ・ラッチ・
@@ -571,6 +592,6 @@ function planPanelHtml(
   // 操作キーのヒント
   const dvKeys =
     `${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label}`;
-  s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動 [矢印ハンドル/${dvKeys}/パネルのボタン] 長押しでΔv調整、ハンドルは大きくドラッグし続けると加速 <br>[右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
+    s += `<div style="margin-top:6px;color:${TEXT_DIM};font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動とマニューバ維持 [矢印ハンドル/${dvKeys}/パネルのボタン] 長押しでΔv調整、ハンドルは大きくドラッグし続けると加速 <br>[右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
   return s;
 }
