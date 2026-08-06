@@ -213,8 +213,10 @@ class GridPlane {
         let angle = Math.atan2(hy, hx) * 180 / Math.PI;
         if (angle > 90) angle -= 180;
         if (angle < -90) angle += 180;
-        item.el.style.left = `${Math.max(8, Math.min(w - 8, sx + 4))}px`;
-        item.el.style.top = `${Math.max(8, Math.min(h - 8, sy + 4))}px`;
+        // 画面端へ押し込む代表ラベルは作らず、交点そのものが画面内にある時だけ表示。
+        if (sx < 8 || sx > w - 8 || sy < 8 || sy > h - 8) continue;
+        item.el.style.left = `${sx + 4}px`;
+        item.el.style.top = `${sy + 4}px`;
         item.el.style.transform = `translate(0, 0) rotate(${angle.toFixed(1)}deg)`;
         item.el.style.display = '';
       }
