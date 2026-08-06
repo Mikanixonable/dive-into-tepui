@@ -144,7 +144,7 @@ class GridPlane {
       this.labelLayer.appendChild(el); this.labels.push(el); return el;
     };
     addLabel(`${name}面`, 'plane');
-    addLabel(`${name}極 N`, 'pole-n'); addLabel(`${name}極 S`, 'pole-s');
+    addLabel(`▲ ${name}極 N`, 'pole-n'); addLabel(`▼ ${name}極 S`, 'pole-s');
     for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) addLabel(`${name} ${lon}°`, 'lon');
     for (let lat = -60; lat <= 60; lat += GRID_LAT_STEP_DEG) if (lat !== 0) addLabel(`${name} ${lat > 0 ? '+' : ''}${lat}°`, 'lat');
   }
