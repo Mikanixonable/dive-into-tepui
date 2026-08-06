@@ -154,7 +154,7 @@ class GridPlane {
     const addLabel = (text: string, cls = '') => {
       const el = document.createElement('div');
       el.textContent = text; el.className = `celestial-grid-label ${cls}`;
-      Object.assign(el.style, { position: 'fixed', color: `#${color.toString(16).padStart(6, '0')}`, opacity: '0.72', font: '7.7px monospace', textShadow: '0 0 4px #000', whiteSpace: 'nowrap' });
+      Object.assign(el.style, { position: 'fixed', color: `#${color.toString(16).padStart(6, '0')}`, opacity: '0.72', font: '10px monospace', textShadow: '0 0 4px #000', whiteSpace: 'nowrap' });
       this.labelLayer.appendChild(el); this.labels.push(el); return el;
     };
     addLabel(`${name} PLANE`, 'plane');
@@ -216,8 +216,15 @@ class GridPlane {
         if (angle < -90) angle += 180;
         // 画面端へ押し込む代表ラベルは作らず、交点そのものが画面内にある時だけ表示。
         if (sx < 8 || sx > w - 8 || sy < 8 || sy > h - 8) continue;
-        item.el.style.left = `${sx + 4}px`;
-        item.el.style.top = `${sy + 4}px`;
+        // ラベルは画面の右下へ固定せず、交点におけるグリッド接線の合成方向へ
+        // 一定距離だけオフセットする。これによりグリッドの向きに追従し、
+        // カメラの回転や投影変化でも交点との対応が崩れない。
+        const tangentX = dxLon + dxLat;
+        const tangentY = dyLon + dyLat;
+        const tangentLen = Math.hypot(tangentX, tangentY) || 1;
+        const offset = 5;
+        item.el.style.left = `${sx + offset * tangentX / tangentLen}px`;
+        item.el.style.top = `${sy + offset * tangentY / tangentLen}px`;
         item.el.style.transform = `translate(0, 0) rotate(${angle.toFixed(1)}deg)`;
         item.el.style.display = '';
       }
