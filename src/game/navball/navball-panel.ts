@@ -4,7 +4,6 @@
 import { hudButton, HudToggle } from '../hud/buttons';
 import { CelestialGridVisibility } from '../../render/celestial-grid';
 import type { NavballMode } from './navball';
-import { hudDock } from '../hud/dom';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -100,7 +99,7 @@ export class NavballPanel {
       panel.appendChild(toggle.element);
     }
 
-    hudDock(root, 'left').appendChild(panel);
+    root.appendChild(panel);
   }
 
   // 選択中モードのボタンを点灯させる。

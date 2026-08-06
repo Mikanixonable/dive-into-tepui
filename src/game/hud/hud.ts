@@ -1,6 +1,6 @@
 // DOM オーバーレイの HUD のシェル。トースト・ヒント・ヘルプの表示と、
 // root/svgOverlay の公開・ステータスパネル同期(panels)を担う。
-import { buildHudDom } from './dom';
+import { buildHudDom, syncHudModalState } from './dom';
 import { HudPanels } from './panel';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -53,7 +53,10 @@ export class Hud {
   // ヘルプパネルの表示/非表示を切り替える。
   private toggleHelp(): void {
     const e = document.getElementById('hud-help');
-    if (e) e.style.display = e.style.display === 'block' ? 'none' : 'block';
+    if (e) {
+      e.style.display = e.style.display === 'block' ? 'none' : 'block';
+      syncHudModalState();
+    }
   }
 
   // 表示期限を過ぎたヒント・トーストをフェードアウトさせる。

@@ -23,6 +23,10 @@ const STYLE = `
 #hud-context { z-index: 1; }
 #hud-end, #hud-help { z-index: 3; }
 #hud-settings { z-index: 4; }
+#hud-modal-shield { display: none; position: absolute; inset: 0; z-index: 2; pointer-events: auto; background: rgba(6,7,9,.68); backdrop-filter: blur(2px); }
+body.hud-modal-open #hud-modal-shield { display: block; }
+body.hud-modal-open #hud > :not(#hud-help):not(#hud-settings):not(#hud-modal-shield) { opacity: .14; }
+body.hud-modal-open #touch-ui { display: none; }
 #hud .panel {
   position: absolute; background: ${SURFACE};
   border: 1px solid ${EDGE}; border-radius: 6px;
@@ -69,6 +73,9 @@ const STYLE = `
   color: ${INK_SOFT}; font-size: 9px; letter-spacing: 1.2px; line-height: 1.35;
   text-align: right; white-space: nowrap; opacity: 0.9;
 }
+#hud:not(.map-mode) #hud-context {
+  position: absolute; top: 8px; right: 12px;
+}
 #hud-context .context-mode { color: ${ACCENT}; }
 #hud-context .context-sep { color: ${EDGE}; padding: 0 4px; }
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
@@ -85,9 +92,10 @@ const STYLE = `
 #hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
 #hud-enemies .erow.tgt { color: ${WARNING}; }
+#hud-combat-shelf { display: contents; }
 
 #hud-hint {
-  position: absolute; bottom: 200px; left: 50%; transform: translateX(-50%);
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   background: ${SURFACE}; border: 1px solid rgba(${ACCENT_RGB}, 0.35); border-radius: 4px;
   padding: 8px 18px;
   color: ${ACCENT_SOFT}; font-size: 14px;
@@ -180,7 +188,7 @@ const STYLE = `
 #hud-trajframe { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
-#navball { width: 190px; pointer-events: auto; }
+#navball { bottom: 54px; left: 50%; transform: translateX(-50%); width: 190px; pointer-events: auto; }
 #navball .nb-ball { display: block; width: 100%; height: auto; margin: 4px 0 8px; }
 #navball .nb-rim { fill: rgba(255, 255, 255, 0.03); stroke: ${EDGE}; stroke-width: 1; }
 #navball .nb-grid { fill: none; stroke: ${INK_SOFT}; stroke-width: 0.6; opacity: 0.35; }
@@ -269,10 +277,17 @@ const STYLE = `
   #hud .panel h3 { font-size: 10px; letter-spacing: 1.5px; margin-bottom: 4px; }
   #hud .row { gap: 8px; }
   #hud .row .v { min-width: 64px; }
-  #hud-status { top: 8px; left: 8px; min-width: 178px; }
-  #hud-orbit { top: 184px; left: 8px; min-width: 178px; }
-  #hud-target { top: 8px; right: 8px; min-width: 182px; }
-  #hud-enemies { top: 286px; right: 8px; min-width: 182px; }
+  #hud-combat-shelf {
+    position: absolute; display: flex; left: 8px; right: 8px; top: 76px;
+    gap: 6px; overflow-x: auto; overflow-y: hidden; pointer-events: auto;
+    scrollbar-width: thin; overscroll-behavior-x: contain; z-index: 1;
+  }
+  #hud-combat-shelf > .panel {
+    position: relative; inset: auto; transform: none; flex: 0 0 178px;
+    width: 178px; min-width: 0; max-height: 116px; overflow-y: auto;
+  }
+  #hud-status, #hud-orbit, #hud-target, #hud-enemies { top: auto; right: auto; bottom: auto; left: auto; }
+  #hud:not(.map-mode) #hud-context { display: none; }
   #hud-controls { display: none; }
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
@@ -283,11 +298,16 @@ const STYLE = `
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
   #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
   #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
-  /* navball も左ドックの通常フローに残し、他パネルとの重なりを防ぐ。 */
-  #navball { width: 100px !important; height: auto !important; }
+  #navball { bottom: 48px; width: 96px !important; height: auto !important; }
+  #navball .hud-seg, #navball .hud-toggle { display: none; }
+  #hud-hint {
+    top: calc(50% - 40px); transform: translateX(-50%); max-height: 72px;
+    overflow-y: auto; padding: 6px 10px; font-size: 11px;
+  }
   #hud-settings { min-width: 0; width: 78vw; }
-  #hud-stagestatus { top: 8px; min-width: 130px; padding: 6px 10px; }
-  #hud-stagestatus .t { font-size: 14px; }
+  #hud-stagestatus { top: 8px; width: min(62vw, 440px); min-width: 0; max-height: 62px; overflow-y: auto; padding: 6px 10px; gap: 8px; }
+  #hud-stagestatus .t { font-size: 11px; }
+  #hud-stagestatus .k { font-size: 9px; line-height: 1.35; white-space: normal; }
   #hud-chase-reset { bottom: 12px; width: 28px; height: 28px; }
   #hud-chase-reset svg { width: 14px; height: 14px; }
   #hud .hud-dock { top: 40px; }
@@ -300,12 +320,25 @@ const STYLE = `
   #hud .seg-btn { padding: 3px 5px; font-size: 9px; }
   #hud-displaytime .slider-ticks span:not(:first-child):not(:last-child) { display: none; }
   #hud-displaytime .slider-ticks span:last-child { margin-left: auto; }
+  #hud-combat-shelf { top: 72px; }
+  #hud-combat-shelf > .panel { flex-basis: min(168px, calc(100vw - 16px)); width: min(168px, calc(100vw - 16px)); }
 }
 @media (pointer: coarse) {
   #hud .hud-dock { bottom: 62px; }
+  #hud-combat-shelf > .panel { max-height: 104px; }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
   #hud .hud-dock { bottom: 52px; }
+  #hud-combat-shelf { top: 60px; }
+  #hud-combat-shelf > .panel { max-height: 82px; }
+  #hud-stagestatus { max-height: 46px; }
+  #navball { bottom: 40px; width: 72px !important; }
+  #hud-chase-reset { bottom: 6px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  #hud-combat-shelf { top: 60px; }
+  #hud-combat-shelf > .panel { max-height: 82px; }
+  #hud-stagestatus { max-height: 46px; }
 }
 `;
 
@@ -349,6 +382,20 @@ export function resetHudDocks(root: HTMLElement): void {
   }
 }
 
+export function syncNavballPlacement(root: HTMLElement, mapMode: boolean): void {
+  const navball = root.querySelector<HTMLElement>('#navball');
+  const target = mapMode ? root.querySelector<HTMLElement>('#hud-dock-left') : root;
+  if (navball && target && navball.parentElement !== target) target.appendChild(navball);
+}
+
+export function syncHudModalState(): void {
+  const helpOpen = getComputedStyle(document.getElementById('hud-help')!).display !== 'none';
+  const settingsOpen = getComputedStyle(document.getElementById('hud-settings')!).display !== 'none';
+  const open = helpOpen || settingsOpen;
+  document.body.classList.toggle('hud-modal-open', open);
+  if (open) window.dispatchEvent(new Event('tepui-release-touch-inputs'));
+}
+
 function buildDockToggle(root: HTMLElement, dock: HTMLElement, side: 'left' | 'right'): void {
   const button = el('button', `hud-dock-toggle-${side}`, root, 'dock-toggle');
   button.addEventListener('pointerdown', (event) => event.stopPropagation());
@@ -381,9 +428,10 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
 
 // 常設の情報パネル(SHIP STATUS/ORBIT/TARGET/CONTACTS)を組む。
 function buildInfoPanels(root: HTMLElement): void {
+  const shelf = el('div', 'hud-combat-shelf', root);
 
   // SHIP STATUS パネル
-  const status = el('div', 'hud-status', root, 'panel');
+  const status = el('div', 'hud-status', shelf, 'panel');
   status.innerHTML = `
     <h3>SHIP STATUS</h3>
     <div class="row"><span class="k">MET</span><span class="v" data-id="met"></span></div>
@@ -398,7 +446,7 @@ function buildInfoPanels(root: HTMLElement): void {
     <div class="row"><span class="k">弾薬 AMMO</span><span class="v" data-id="ammo"></span></div>`;
 
   // ORBIT パネル
-  const orbit = el('div', 'hud-orbit', root, 'panel');
+  const orbit = el('div', 'hud-orbit', shelf, 'panel');
   orbit.innerHTML = `
     <h3>ORBIT</h3>
     <div class="row"><span class="k">高度 ALT</span><span class="v" data-id="alt"></span></div>
@@ -411,13 +459,13 @@ function buildInfoPanels(root: HTMLElement): void {
     <div class="row"><span class="k">機体温度</span><span class="v" data-id="temp"></span></div>`;
 
   // TARGET パネル
-  const target = el('div', 'hud-target', root, 'panel');
+  const target = el('div', 'hud-target', shelf, 'panel');
   target.innerHTML = `
     <h3 data-id="tgtname">TARGET</h3>
     <div data-id="tgtbody"></div>`;
 
   // CONTACTS パネル
-  const enemies = el('div', 'hud-enemies', root, 'panel');
+  const enemies = el('div', 'hud-enemies', shelf, 'panel');
   enemies.innerHTML = `
     <h3>CONTACTS <span data-id="count"></span></h3>
     <div data-id="elist"></div>`;
@@ -512,6 +560,7 @@ export function buildHudDom(): HudDomRefs {
   // 常設パネル群を組む。
   buildInfoPanels(root);
   buildChaseReset(root);
+  el('div', 'hud-modal-shield', root);
 
   el('div', 'hud-hint', root);
   el('div', 'hud-toast', root);

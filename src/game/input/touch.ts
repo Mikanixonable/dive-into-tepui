@@ -62,25 +62,55 @@ const STYLE = `
 }
 #touch-ui.map-mode #touch-util .tbtn { flex: 0 1 46px; min-width: 34px; }
 
+@media (pointer: coarse) {
+  #touch-pad-move, #touch-pad-rot {
+    grid-template-columns: repeat(3, 36px) !important; grid-auto-rows: 36px !important; gap: 4px;
+  }
+  #touch-pad-move { left: 6px; bottom: 6px; }
+  #touch-pad-rot { right: 6px; bottom: 6px; }
+  #touch-mode-col {
+    right: auto; left: calc(50% - 34px); bottom: 6px;
+    grid-template-rows: repeat(2, 36px) !important; gap: 4px;
+  }
+  #touch-mode-col .tbtn { width: 38px !important; }
+  #touch-util { max-width: 42vw; }
+  #navball { bottom: 240px !important; left: 75% !important; }
+  #hud-chase-reset { left: calc(50% + 20px) !important; }
+}
+
 /* 横画面(高さが低い端末): navball を画面下部中央に収め、パッドを詰めて
    縦方向の衝突を避ける */
 @media (orientation: landscape) and (max-height: 500px) {
   #navball {
-    top: auto !important; bottom: 4px !important; left: 50% !important;
-    transform: translateX(-50%) !important; width: 88px !important; height: 88px !important;
+    top: auto !important; bottom: 44px !important; left: 50% !important;
+    transform: translateX(-50%) !important; width: 72px !important; height: 72px !important;
   }
   #touch-pad-move, #touch-pad-rot {
-    grid-template-columns: repeat(3, 40px); grid-auto-rows: 40px; gap: 4px;
+    grid-template-columns: repeat(3, 40px) !important; grid-auto-rows: 40px !important; gap: 4px;
   }
   #touch-pad-move { left: 6px; bottom: 6px; }
   #touch-pad-rot { right: 6px; bottom: 6px; }
-  #touch-mode-col { right: 140px; bottom: 6px; grid-template-rows: repeat(2, 40px); }
-  #touch-mode-col .tbtn { width: 38px; }
+  #touch-mode-col { right: auto; left: 180px; bottom: 6px; grid-template-rows: repeat(2, 40px) !important; }
+  #touch-mode-col .tbtn { width: 38px !important; }
   #touch-fire { width: 56px; height: 56px; right: 14px; bottom: 116px; }
   #touch-zoom { width: 44px; height: 44px; right: 76px; bottom: 124px; }
   #touch-util { bottom: 110px; max-width: 40vw; }
   #touch-util .tbtn { width: 38px; height: 34px; }
   #touch-ui.map-mode #touch-util { bottom: 4px; max-width: calc(100vw - 12px); }
+}
+@media (max-width: 520px) {
+  #touch-pad-move, #touch-pad-rot {
+    grid-template-columns: repeat(3, 36px) !important; grid-auto-rows: 36px !important; gap: 4px;
+  }
+  #touch-pad-move { left: 6px; bottom: 6px; }
+  #touch-pad-rot { right: 6px; bottom: 6px; }
+  #touch-mode-col {
+    right: auto; left: calc(50% - 34px); bottom: 6px;
+    grid-template-rows: repeat(2, 36px) !important; gap: 4px;
+  }
+  #touch-mode-col .tbtn { width: 38px !important; }
+  #navball { bottom: 240px !important; left: 75% !important; }
+  #hud-chase-reset { left: calc(50% + 20px) !important; }
 }
 `;
 
@@ -93,6 +123,7 @@ interface Btn {
 export class TouchControls {
   // トグル系ボタン: タップの押下フィードバック(.held)とは独立に実際のモード状態で光らせる。
   private readonly toggleButtons = new Map<KeyBinding, HTMLElement>();
+  private readonly releaseCallbacks: (() => void)[] = [];
 
   // 現在の端末がタッチ操作に対応しているかを返す。
   static isTouchDevice(): boolean {
@@ -123,12 +154,17 @@ export class TouchControls {
   // 仮想パッド一式の DOM を組み立てる。
   constructor(private readonly input: Input) {
     const root = this.buildRoot();
+    window.addEventListener('tepui-release-touch-inputs', () => this.releaseAllInputs());
     this.buildTranslationPad(root);
     this.buildRotationPad(root);
     this.buildModeColumn(root);
     this.makeButton(root, { key: K.fire, glyph: 'FIRE', label: '' }, 'touch-fire');
     this.buildZoomToggle(root);
     this.buildUtilRow(root);
+  }
+
+  private releaseAllInputs(): void {
+    for (const release of this.releaseCallbacks) release();
   }
 
   // スタイルシートと仮想パッドのルート要素を document へ追加し、ルート要素を返す。
@@ -165,6 +201,7 @@ export class TouchControls {
     e.addEventListener('pointerdown', down);
     e.addEventListener('pointerup', up);
     e.addEventListener('pointercancel', up);
+    this.releaseCallbacks.push(up);
     e.addEventListener('contextmenu', (ev) => ev.preventDefault());
     parent.appendChild(e);
     if (isToggle) this.toggleButtons.set(b.key, e);
@@ -228,6 +265,13 @@ export class TouchControls {
       zoomBtn.classList.toggle('held', zoomOn);
       this.input.setVirtualKey(K.gunsightZoom, zoomOn);
     });
+    const releaseZoom = (): void => {
+      zoomOn = false;
+      zoomBtn.classList.remove('held');
+      this.input.setVirtualKey(K.gunsightZoom, false);
+    };
+    zoomBtn.addEventListener('pointercancel', releaseZoom);
+    this.releaseCallbacks.push(releaseZoom);
     zoomBtn.addEventListener('contextmenu', (ev) => ev.preventDefault());
     root.appendChild(zoomBtn);
   }

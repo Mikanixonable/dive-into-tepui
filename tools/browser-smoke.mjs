@@ -168,6 +168,92 @@ try {
   if (togglesVisible.length !== 2 || togglesVisible.some((visible) => visible !== expectCreative)) {
     throw new Error(`Dock toggle visibility did not match ${expectCreative ? 'map' : 'combat'} mode: ${JSON.stringify(togglesVisible)}`);
   }
+  if (!expectCreative) {
+    const viewports = [[1280, 720], [800, 600], [480, 800], [320, 568], [667, 375]];
+    for (const [width, height] of viewports) {
+      await devTools.send('Emulation.setDeviceMetricsOverride', {
+        width, height, deviceScaleFactor: 1, mobile: width <= 480,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const result = await devTools.evaluate(`(() => {
+        const visible = (el) => el && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden';
+        const rect = (el) => { const r = el.getBoundingClientRect(); return { id: el.id, left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height }; };
+        const overlaps = (a,b) => a.left < b.right-.5 && b.left < a.right-.5 && a.top < b.bottom-.5 && b.top < a.bottom-.5;
+        const ids = ['hud-status','hud-orbit','hud-target','hud-enemies','hud-stagestatus','hud-context','navball','hud-chase-reset',
+          'touch-pad-move','touch-pad-rot','touch-mode-col','touch-fire','touch-zoom','touch-util'];
+        const items = ids.map((id) => document.getElementById(id)).filter(visible).map(rect);
+        const byId = Object.fromEntries(items.map((item) => [item.id,item]));
+        const errors = [];
+        for (const item of items) {
+          const inScrollableShelf = innerWidth <= 900 && ['hud-status','hud-orbit','hud-target','hud-enemies'].includes(item.id);
+          if (!inScrollableShelf && (item.left < -.5 || item.top < -.5 || item.right > innerWidth+.5 || item.bottom > innerHeight+.5)) errors.push('outside viewport: '+item.id);
+        }
+        const shelfRect = rect(document.getElementById('hud-combat-shelf'));
+        if (innerWidth <= 900 && (shelfRect.left < -.5 || shelfRect.right > innerWidth+.5 || shelfRect.top < -.5 || shelfRect.bottom > innerHeight+.5)) errors.push('combat shelf outside viewport');
+        const shelfPanels = ['hud-status','hud-orbit','hud-target','hud-enemies'].map((id)=>byId[id]).filter(Boolean);
+        if (innerWidth <= 900) {
+          const stage = byId['hud-stagestatus'];
+          for (const panel of shelfPanels) if (stage && overlaps(stage,panel)) errors.push('stage overlaps '+panel.id);
+        } else {
+          for (let i=0;i<shelfPanels.length;i++) for(let j=i+1;j<shelfPanels.length;j++) {
+            if (overlaps(shelfPanels[i],shelfPanels[j])) errors.push(shelfPanels[i].id+' overlaps '+shelfPanels[j].id);
+          }
+        }
+        const nav = byId['navball']; const reset = byId['hud-chase-reset'];
+        if (nav && reset && overlaps(nav,reset)) errors.push('navball overlaps reset');
+        for (const panel of shelfPanels) if (nav && overlaps(nav,panel)) errors.push('navball overlaps '+panel.id);
+        const touchIds = ['touch-pad-move','touch-pad-rot','touch-mode-col','touch-fire','touch-zoom','touch-util'];
+        const touch = touchIds.map((id)=>byId[id]).filter(Boolean);
+        for (const panel of shelfPanels) for (const control of touch) if (overlaps(panel,control)) errors.push(panel.id+' overlaps '+control.id);
+        for (const control of touch) if (nav && overlaps(nav,control)) errors.push('navball overlaps '+control.id);
+        for (const control of touch) if (reset && overlaps(reset,control)) errors.push('reset overlaps '+control.id);
+        for (let i=0;i<touch.length;i++) for(let j=i+1;j<touch.length;j++) {
+          if (overlaps(touch[i],touch[j])) errors.push(touch[i].id+' overlaps '+touch[j].id);
+        }
+        const hint = document.getElementById('hud-hint');
+        if (hint) { hint.style.opacity='1'; const h=rect(hint); for(const panel of [...shelfPanels,byId['hud-stagestatus']].filter(Boolean)) if(overlaps(h,panel)) errors.push('hint overlaps '+panel.id); hint.style.opacity='0'; }
+        return { errors, items };
+      })()`);
+      const layout = result.result.value;
+      if (layout.errors.length) throw new Error(`Combat layout failed at ${width}x${height}: ${layout.errors.join('; ')}; items=${JSON.stringify(layout.items)}`);
+    }
+    await devTools.send('Emulation.clearDeviceMetricsOverride');
+
+    if (emulateTouch) {
+      const zoomArmed = await devTools.evaluate(`(() => {
+        const zoom = document.getElementById('touch-zoom');
+        if (!zoom) return false;
+        zoom.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 71 }));
+        return zoom.classList.contains('held');
+      })()`);
+      if (!zoomArmed.result.value) throw new Error('Could not arm touch ZOOM before modal release check.');
+    }
+    await devTools.send('Input.dispatchKeyEvent', { type:'keyDown', key:'h', code:'KeyH', windowsVirtualKeyCode:72 });
+    await devTools.send('Input.dispatchKeyEvent', { type:'keyUp', key:'h', code:'KeyH', windowsVirtualKeyCode:72 });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const helpState = await devTools.evaluate(`({
+      open: getComputedStyle(document.getElementById('hud-help')).display !== 'none',
+      modal: document.body.classList.contains('hud-modal-open'),
+      shield: getComputedStyle(document.getElementById('hud-modal-shield')).pointerEvents === 'auto',
+      touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',
+      backgroundDim: Number(getComputedStyle(document.getElementById('hud-combat-shelf')).opacity) < .5,
+      zoomReleased: !document.getElementById('touch-zoom') || !document.getElementById('touch-zoom').classList.contains('held'),
+    })`);
+    if (!Object.values(helpState.result.value).every(Boolean)) throw new Error(`Help modal shielding failed: ${JSON.stringify(helpState.result.value)}`);
+    await devTools.send('Input.dispatchKeyEvent', { type:'keyDown', key:'h', code:'KeyH', windowsVirtualKeyCode:72 });
+    await devTools.send('Input.dispatchKeyEvent', { type:'keyUp', key:'h', code:'KeyH', windowsVirtualKeyCode:72 });
+    await devTools.send('Input.dispatchKeyEvent', { type:'keyDown', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
+    await devTools.send('Input.dispatchKeyEvent', { type:'keyUp', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const settingsState = await devTools.evaluate(`({
+      open: getComputedStyle(document.getElementById('hud-settings')).display !== 'none',
+      modal: document.body.classList.contains('hud-modal-open'),
+      shield: getComputedStyle(document.getElementById('hud-modal-shield')).pointerEvents === 'auto',
+      touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',
+      backgroundDim: Number(getComputedStyle(document.getElementById('hud-combat-shelf')).opacity) < .5,
+    })`);
+    if (!Object.values(settingsState.result.value).every(Boolean)) throw new Error(`Settings modal shielding failed: ${JSON.stringify(settingsState.result.value)}`);
+  }
   if (expectCreative) {
     const viewports = [
       [1280, 720], [800, 600], [480, 800], [320, 568], [667, 375],
@@ -195,6 +281,8 @@ try {
         const touchUtil = document.getElementById('touch-util');
         const touchRect = touchUtil && visible(touchUtil) ? rect(touchUtil) : null;
         const plan = panels.find((p) => p.id === 'hud-plan');
+        const navball = document.getElementById('navball');
+        const navballRect = navball && visible(navball) ? rect(navball) : null;
         const errors = [];
         for (const d of docks) {
           if (d.left < -0.5 || d.right > innerWidth + 0.5 || d.top < -0.5 || d.bottom > innerHeight + 0.5) {
@@ -203,6 +291,8 @@ try {
         }
         if (docks.length === 2 && overlaps(docks[0], docks[1])) errors.push('left/right docks overlap');
         if (contextRect && plan && overlaps(contextRect, plan)) errors.push('context overlaps maneuver plan');
+        if (!navballRect || navball?.parentElement?.id !== 'hud-dock-left') errors.push('navball is not visible in left map dock');
+        else if (navballRect.left < -.5 || navballRect.right > innerWidth+.5) errors.push('map navball horizontal overflow');
         if (touchRect) {
           for (const dock of docks) if (overlaps(touchRect, dock)) errors.push('touch utility row overlaps dock');
           if (touchRect.left < -0.5 || touchRect.right > innerWidth + 0.5 || touchRect.bottom > innerHeight + 0.5) {

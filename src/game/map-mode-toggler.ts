@@ -6,7 +6,7 @@ import { KEY_MAPPING as K } from './input/key-mapping';
 import { PlanEditor } from './plan/plan-editor';
 import { DisplayTimeManager } from './display-time-manager';
 import { MapPicker } from './map-picker';
-import { resetHudDocks } from './hud/dom';
+import { resetHudDocks, syncNavballPlacement } from './hud/dom';
 
 export class MapModeToggler {
   private _mapMode: boolean;
@@ -38,6 +38,7 @@ export class MapModeToggler {
   private apply(open: boolean): void {
     this._mapMode = open;
     this.hud.root.classList.toggle('map-mode', open);
+    syncNavballPlacement(this.hud.root, open);
     if (!open) resetHudDocks(this.hud.root);
     this.touchControls?.setMapMode(open);
     this.cameraSystem.setMapMode(open);
