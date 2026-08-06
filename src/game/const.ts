@@ -235,12 +235,13 @@ export const DV_RATE_MIN = 1; // 長押し開始時のΔv加算レート [m/s pe
 export const DV_RATE_MAX = 30; // 長押し継続後に到達するΔv加算レート [m/s per 実秒]
 export const DV_RATE_RAMP_SEC = 2.0; // DV_RATE_MIN から DV_RATE_MAX への指数的ランプ時間 [s]
 // マニューバ達成判定(計画軌道への接近許容)
-export const NODE_TOL_SMA = 0.02; // 長半径の相対誤差
-export const NODE_TOL_ECC = 0.02; // 離心率差
-export const NODE_TOL_PLANE_DEG = 2.0; // 軌道面の角度差 [deg]
+// 計画軌道の到達判定。従来値の1/3にして誤差を厳しくする。
+export const NODE_TOL_SMA = 0.02 / 3; // 長半径の相対誤差
+export const NODE_TOL_ECC = 0.02 / 3; // 離心率差
+export const NODE_TOL_PLANE_DEG = 2.0 / 3; // 軌道面の角度差 [deg]
 // ノード実行時刻の何秒前から「実行の窓」とみなすか [s]。噴射準備の通知・達成判定の開始・
 // 自動ワープの解除がこの1点を共有する。
-export const NODE_APPROACH_LEAD = 20;
+export const NODE_APPROACH_LEAD = 10;
 // 実行時刻をこれだけ過ぎたノードは計画から落とす [s]。多少の遅れなら噴射できる猶予。
 export const NODE_EXPIRE_GRACE = 60;
 
@@ -271,7 +272,7 @@ export const PREDICT_MIN_STEP_DT = SUBSTEP_MAX_DT; // 予測刻みの下限(本�
 export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const AUTOWARP_MARGIN = 2;
-export const AUTOWARP_STOP = 20;
+export const AUTOWARP_STOP = 10;
 
 export const SIM_EPOCH_UTC = '2030-01-01T00:00:00Z'; // simTime = 0 に対応する絶対時刻。HUD の日時表示にのみ使う
 
