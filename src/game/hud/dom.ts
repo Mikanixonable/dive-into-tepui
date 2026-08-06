@@ -23,9 +23,8 @@ const STYLE = `
 #hud-context { z-index: 1; }
 #hud-end, #hud-help { z-index: 3; }
 #hud-settings { z-index: 4; }
-#hud-modal-shield { display: none; position: absolute; inset: 0; z-index: 2; pointer-events: auto; background: rgba(6,7,9,.68); backdrop-filter: blur(2px); }
+#hud-modal-shield { display: none; position: absolute; inset: 0; z-index: 2; pointer-events: none; background: rgba(6,7,9,.3); }
 body.hud-modal-open #hud-modal-shield { display: block; }
-body.hud-modal-open #hud > :not(#hud-help):not(#hud-settings):not(#hud-modal-shield) { opacity: .14; }
 body.hud-modal-open #touch-ui { display: none; }
 #hud .panel {
   position: absolute; background: ${SURFACE};
