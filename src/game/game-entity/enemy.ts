@@ -106,7 +106,9 @@ export class Enemy extends Ship {
   private hpMarkerSvg(): string {
     const segments = Math.max(3, Math.round(this.maxHp / 3) * 3);
     const lit = Math.max(0, Math.min(segments, Math.round((this.hp / this.maxHp) * segments)));
-    const points: [number, number][] = [[12, 3], [3, 21], [21, 21]];
+    // 正三角形のシルエット(辺長18、外接円中心は(12,12))。
+    // 旧形状は高さが幅より大きく、画面上で縦長に見えていた。
+    const points: [number, number][] = [[12, 3], [3, 18.588], [21, 18.588]];
     const lines: string[] = [];
     const emit = (i: number, j: number, k: number, a: number, b: number): void => {
       if (b <= a) return;
