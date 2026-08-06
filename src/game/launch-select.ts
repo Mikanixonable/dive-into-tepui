@@ -12,8 +12,9 @@ export function selectLaunch(unlockManager: UnlockManager): Promise<LaunchSelect
     const SURFACE = SURFACE_OPAQUE;
     const div = document.createElement('div');
     div.style.cssText =
-      'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-      `gap:18px;color:${TEXT};background:${BG};font-family:${FONT};z-index:100;text-align:center`;
+      'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;' +
+      'box-sizing:border-box;padding:clamp(28px,8vh,72px) 16px 24px;overflow:hidden;' +
+      `gap:14px;color:${TEXT};background:${BG};font-family:${FONT};z-index:100;text-align:center`;
     // 1項目分のボタン要素を組み立てる。ロック中は薄く表示しクリック不可にする。
     const btn = (label: string, sub: string, enabled: boolean) => {
       const b = document.createElement('div');
@@ -27,19 +28,19 @@ export function selectLaunch(unlockManager: UnlockManager): Promise<LaunchSelect
     // rMQRとタイトル文字を同じ幅のロゴブロックにまとめる。画像だけを
     // 置くとタイトル文字が消えたように見えるため、コードの直下に常に表示する。
     div.innerHTML =
-      `<div style="width:min(78vw,430px);display:flex;flex-direction:column;align-items:stretch;margin-bottom:14px">` +
+      `<div style="width:min(78vw,430px);height:132px;flex:0 0 132px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;margin-bottom:0">` +
       `<img src="${tepuiRmqrUrl}" alt="dive into tepui" style="display:block;width:100%;height:auto;image-rendering:pixelated">` +
       `<div style="width:100%;box-sizing:border-box;padding-top:10px;color:${ACCENT};font-size:clamp(16px,3.8vw,22px);line-height:1.2;letter-spacing:clamp(3px,0.9vw,6px);text-align:center;white-space:nowrap">Dive into Tepui</div>` +
       `</div>`;
 
     // タブ切替: 選んだタブに応じて下のリスト表示を入れ替える。
     const tabRow = document.createElement('div');
-    tabRow.style.cssText = 'display:flex;gap:10px;margin-bottom:4px;';
+    tabRow.style.cssText = 'display:flex;gap:0;width:min(78vw,430px);height:38px;flex:0 0 38px;margin-bottom:2px;border-bottom:1px solid ' + EDGE + ';';
     const tab = (label: string) => {
-      const t = document.createElement('div');
+      const t = document.createElement('button');
       t.textContent = label;
       t.style.cssText =
-        `padding:6px 18px;font-size:13px;letter-spacing:2px;cursor:pointer;border-radius:3px;border:1px solid ${EDGE};`;
+        `flex:1;height:38px;padding:6px 12px;font:inherit;font-size:13px;letter-spacing:2px;cursor:pointer;color:${TEXT_DIM};background:transparent;border:0;border-bottom:2px solid transparent;`;
       return t;
     };
     const stageTab = tab('ステージモード');
@@ -48,14 +49,16 @@ export function selectLaunch(unlockManager: UnlockManager): Promise<LaunchSelect
     div.appendChild(tabRow);
 
     const listDiv = document.createElement('div');
-    listDiv.style.cssText = 'display:flex;flex-direction:column;gap:18px;align-items:center;';
+    listDiv.style.cssText = 'width:min(78vw,430px);display:flex;flex-direction:column;gap:18px;align-items:center;overflow:auto;min-height:0;padding:2px 0 8px;';
     div.appendChild(listDiv);
 
     const setActiveTab = (mode: 'stage' | 'creative') => {
       stageTab.style.color = mode === 'stage' ? ACCENT : TEXT_DIM;
-      stageTab.style.borderColor = mode === 'stage' ? `rgba(${ACCENT_RGB}, 0.4)` : EDGE;
+      stageTab.style.borderBottomColor = mode === 'stage' ? ACCENT : 'transparent';
+      stageTab.style.background = mode === 'stage' ? `rgba(${ACCENT_RGB}, 0.08)` : 'transparent';
       creativeTab.style.color = mode === 'creative' ? ACCENT : TEXT_DIM;
-      creativeTab.style.borderColor = mode === 'creative' ? `rgba(${ACCENT_RGB}, 0.4)` : EDGE;
+      creativeTab.style.borderBottomColor = mode === 'creative' ? ACCENT : 'transparent';
+      creativeTab.style.background = mode === 'creative' ? `rgba(${ACCENT_RGB}, 0.08)` : 'transparent';
       listDiv.innerHTML = '';
       if (mode === 'stage') {
         for (const stage of STAGE_DEFINITIONS) {
