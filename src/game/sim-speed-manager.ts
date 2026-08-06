@@ -28,6 +28,13 @@ export class SimSpeedManager {
     return this.autoWarpUntil !== null;
   }
 
+  // ノード自動ワープの到達時刻までの残りシミュレーション時間 [s]。
+  // 表示用であり、自動ワープの段階制御は update() が担当する。
+  remainingSimulationSeconds(simTime: number): number | null {
+    if (this.autoWarpUntil === null) return null;
+    return Math.max(0, this.autoWarpUntil - simTime);
+  }
+
   // 現在のワープ倍率で物理的な相互作用(推進・射撃・衝突・敵AI)が有効かどうか。
   // 呼び出し側は simSpeed そのものを受け取って閾値判定するのではなく、ここを見る。
   get canPlayerThrust(): boolean {
