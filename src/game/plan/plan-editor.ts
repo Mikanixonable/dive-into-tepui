@@ -8,7 +8,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { ACCENT, TEXT, TEXT_DIM } from '../theme';
 import { Hud } from '../hud/hud';
-import { HudHoldButton } from '../hud/buttons';
+import { HudHoldButton, SegmentedControl } from '../hud/buttons';
 import { ContextMenu } from '../hud/context-menu';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
@@ -81,6 +81,7 @@ export class PlanEditor {
 
   private readonly planPanel: HTMLElement;
   private readonly planBody: HTMLElement;
+  private readonly centralBodyControl: SegmentedControl<'earth' | 'moon'>;
 
   // 計画パネルの DOM を組み立て、ノードギズモのコールバックを配線する。
   constructor(
@@ -99,15 +100,16 @@ export class PlanEditor {
     this.planPanel = document.createElement('div');
     this.planPanel.id = 'hud-plan';
     this.planPanel.className = 'panel';
-    this.planPanel.innerHTML = `<h3>MANEUVER PLAN [${K.toggleMapMode.label}]</h3><label class="row"><span class="k">REFERENCE BODY</span><select data-id="central-body"><option value="earth">EARTH</option><option value="moon">MOON</option></select></label><div data-id="planbody"></div>`;
+    this.planPanel.innerHTML = `<h3>MANEUVER PLAN [${K.toggleMapMode.label}]</h3><div data-id="planbody"></div>`;
     this.planPanel.style.display = 'none';
     hudDock(this._hud.root, 'right').appendChild(this.planPanel);
     this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
-    const bodySelect = this.planPanel.querySelector<HTMLSelectElement>('[data-id="central-body"]')!;
-    bodySelect.addEventListener('change', () => {
-      this.plan.centralBody = bodySelect.value === 'moon' ? 'moon' : 'earth';
+    this.centralBodyControl = new SegmentedControl('REFERENCE BODY', [['earth', 'EARTH'], ['moon', 'MOON']] as const, (value) => {
+      this.plan.centralBody = value;
       this._hud.hint(`基準天体: ${centralBodyDefinition(this.plan.centralBody).label}`);
     });
+    this.centralBodyControl.setSelected(this.plan.centralBody);
+    this.planPanel.insertBefore(this.centralBodyControl.element, this.planBody);
     this.planPanel.appendChild(this.dvButtons.row);
     this.orbitMenu.onSelect = (act, state) => {
       if (act !== 'warp') return;
@@ -149,6 +151,7 @@ export class PlanEditor {
   // 前の艦の計画を指しているので破棄する。
   setActivePlayer(ship: Player | null): void {
     this.ship = ship;
+    this.centralBodyControl.setSelected(this.plan.centralBody);
     this.selectedNodeIdx = null;
     this.closeMenu();
   }
