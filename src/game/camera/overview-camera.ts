@@ -72,12 +72,13 @@ export class OverviewCamera {
     return Math.hypot(this.offset_r.x, this.offset_r.y, this.offset_r.z);
   }
 
-  // 視点・パン・フォーカスを初期状態に戻す。
+  // 視点とパンを初期状態に戻す。フォーカス対象は維持する。
+  // 地球以外の天体や航法ポイントを見ている場合、リセット操作で地球へ
+  // 戻すとユーザーの意図した対象を失うため、focus はここでは変更しない。
   reset(): void {
     this.offset_r = toFramePos(this._cameraFrame, this.simTime, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST), this.ephemeris);
     this.resetPan();
     this.up_r = toFramePos(this._cameraFrame, this.simTime, WORLD_UP, this.ephemeris);
-    this.focus = 'earth';
     this._hud.hint('マップ視点をリセット');
   }
 
