@@ -69,12 +69,9 @@ body.hud-modal-open #touch-ui { display: none; }
   font-weight: 600;
 }
 #hud-context {
-  position: relative; flex: 0 0 auto; align-self: flex-end; pointer-events: none;
+  position: absolute; top: 8px; right: 12px; z-index: 20; pointer-events: none;
   color: ${INK_SOFT}; font-size: 9px; letter-spacing: 1.2px; line-height: 1.35;
   text-align: right; white-space: nowrap; opacity: 0.9;
-}
-#hud:not(.map-mode) #hud-context {
-  position: absolute; top: 8px; right: 12px;
 }
 #hud-context .context-mode { color: ${ACCENT}; }
 #hud-context .context-sep { color: ${EDGE}; padding: 0 4px; }
@@ -567,7 +564,7 @@ export function buildHudDom(): HudDomRefs {
 
   el('div', 'hud-hint', root);
   el('div', 'hud-toast', root);
-  el('div', 'hud-context', rightDock);
+  el('div', 'hud-context', root);
 
   buildHelpPanel(root);
 

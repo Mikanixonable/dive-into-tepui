@@ -73,7 +73,7 @@ export class CreativeStage extends Stage {
       const state = this.buildInitialState(form);
       this.assertFiniteEllipticState(state);
       const id = `creative-ship-${this.nextShipId++}`;
-      const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, name, state, id);
+      const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, name, state, id, form.body);
       this._entities.addPlayer(ship);
       // 最初に配置した艦だけを操作対象にする。Game は callback 経由で受ける。
       this.onShipPlaced?.(ship);

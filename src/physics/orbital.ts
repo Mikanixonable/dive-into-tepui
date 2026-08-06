@@ -144,7 +144,7 @@ export function thirdBodyAccel(r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
 
 // 単一エンティティの RK4 1ステップ(中心重力 + 追加加速度)。
 // 入力 s は書き換えず、時刻も dt だけ進めた新しい OrbitState を返す。
-export function stepOrbitRK4(s: OrbitState, dt: number, extraAccel?: ExtraAccelFn): OrbitState {
+export function stepOrbitRK4(s: OrbitState, dt: number, extraAccel?: ExtraAccelFn, mu = MU_EARTH): OrbitState {
   const r0x = s.r.x, r0y = s.r.y, r0z = s.r.z;
   const v0x = s.v.x, v0y = s.v.y, v0z = s.v.z;
   const h2 = dt / 2;
@@ -157,7 +157,7 @@ export function stepOrbitRK4(s: OrbitState, dt: number, extraAccel?: ExtraAccelF
     // 中心重力加速度
     const d2 = rx * rx + ry * ry + rz * rz;
     const d = Math.sqrt(d2);
-    const k = -MU_EARTH / (d2 * d);
+    const k = -mu / (d2 * d);
     outA.ax = rx * k;
     outA.ay = ry * k;
     outA.az = rz * k;
