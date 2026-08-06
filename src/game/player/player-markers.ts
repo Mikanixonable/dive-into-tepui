@@ -26,8 +26,12 @@ export class PlayerMarkers {
       if (isActive) {
         for (const key of COMBAT_KEYS) this.markerManager.hide(`${key}-${this.id}`);
       }
-      if (displayState) this.markerManager.setPosition(selfKey, 'mk-self', '▷', displayState.r, project, this.displayName);
-      else this.markerManager.hide(selfKey);
+      if (displayState) {
+        const color = isActive ? '#ff0000' : undefined;
+        this.markerManager.setPosition(selfKey, 'mk-self', '▷', displayState.r, project, this.displayName, 1, color);
+      } else {
+        this.markerManager.hide(selfKey);
+      }
       return;
     }
     this.markerManager.hide(selfKey);
