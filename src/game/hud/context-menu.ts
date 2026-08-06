@@ -1,6 +1,7 @@
 // 画面座標に絶対配置する汎用コンテキストメニュー。開いた対象 T を保持し、項目クリックで
 // onSelect(act, target) を発火して自動で閉じる。
 import { ACCENT_RGB, ACCENT_SOFT, TEXT as INK, FONT } from '../theme';
+import { clampOverlayPosition } from './layout';
 
 const SURFACE = 'rgba(13, 15, 18, 0.85)';
 const EDGE = 'rgba(255, 255, 255, 0.16)';
@@ -41,6 +42,8 @@ export class ContextMenu<T, A extends string = string> {
   private readonly el: HTMLDivElement;
   // 開いているメニューの対象。閉じると破棄されるので、選択結果は必ず開いた対象へ届く。
   private target: T | null = null;
+  private requestedX = 0;
+  private requestedY = 0;
   onSelect: ((act: A, target: T) => void) | null = null;
 
   // メニュー要素を DOM に追加する。要素外へのポインタ操作で自動的に閉じる。
@@ -51,6 +54,9 @@ export class ContextMenu<T, A extends string = string> {
     document.body.appendChild(this.el);
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
+    window.addEventListener('resize', () => {
+      if (this.target !== null) this.positionWithinViewport();
+    });
     // キャプチャ段階で拾うことで、途中の要素が stopPropagation していても届く。
     document.addEventListener(
       'pointerdown',
@@ -66,6 +72,8 @@ export class ContextMenu<T, A extends string = string> {
   // onSelect(act, target) を発火して閉じる。
   open(clientX: number, clientY: number, target: T, items: readonly MenuItem<A>[]): void {
     this.target = target;
+    this.requestedX = clientX;
+    this.requestedY = clientY;
     // 項目 DOM を組み立てる
     this.el.innerHTML = items
       .map((it) => `<div class="ctx-menu-item" data-act="${it.act}">${it.label}</div>`)
@@ -80,10 +88,21 @@ export class ContextMenu<T, A extends string = string> {
         if (t !== null) this.onSelect?.(act, t);
       });
     });
-    // 指定座標に表示する
-    this.el.style.left = `${clientX}px`;
-    this.el.style.top = `${clientY}px`;
     this.el.style.display = 'block';
+    this.positionWithinViewport();
+  }
+
+  private positionWithinViewport(): void {
+    const margin = 6;
+    const rect = this.el.getBoundingClientRect();
+    const pos = clampOverlayPosition(
+      { x: this.requestedX, y: this.requestedY },
+      rect,
+      { width: window.innerWidth, height: window.innerHeight },
+      margin,
+    );
+    this.el.style.left = `${pos.x}px`;
+    this.el.style.top = `${pos.y}px`;
   }
 
   // メニューを閉じ、保持中の対象を破棄する。
