@@ -54,7 +54,8 @@ export class PlayerMarkers {
       return;
     }
     const fwd = qRotate(att.q, v3(0, 0, 1));
-    const star = '<svg viewBox="0 0 24 24" width="24" height="24"><path d="M10.5 2h3v7.5H21v3h-7.5V21h-3v-8.5H3v-3h7.5Z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
+    // 中央に切り欠きを残した、等幅長方形3本の三尖星(120度間隔)。
+    const star = '<svg viewBox="0 0 24 24" width="24" height="24" aria-label="照準"><g fill="none" stroke="currentColor" stroke-width="1.3"><rect x="11" y="2" width="2" height="7"/><rect x="11" y="2" width="2" height="7" transform="rotate(120 12 12)"/><rect x="11" y="2" width="2" height="7" transform="rotate(240 12 12)"/></g></svg>';
     const label = `${reloadTimer > 0 ? `RLD ${reloadTimer.toFixed(1)}s` : `AMMO ${Math.max(0, rounds)}`} · ${C.MUZZLE_SPEED.toFixed(0)} m/s`;
     this.markerManager.setDirection('bore', 'mk-boresight', star, state.r, fwd, project, label, 1, undefined, undefined, true);
   }
