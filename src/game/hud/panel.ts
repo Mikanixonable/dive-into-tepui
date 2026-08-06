@@ -12,6 +12,7 @@ const SIM_EPOCH_SEC = Date.parse(C.SIM_EPOCH_UTC) / 1000;
 interface StatsData {
   met: number;
   simSpeedLabel: string;
+  autoWarpSimRemain: number | null;
   autoWarpRealRemain: number | null;
   paused: boolean;
   rcsDamp: boolean;
@@ -87,6 +88,7 @@ export class HudPanels {
       this.setStats({
         met: game.simulator.simTime,
         simSpeedLabel: `×${game.simSpeedManager.simSpeed}`,
+        autoWarpSimRemain: game.simSpeedManager.remainingSimulationSeconds(game.simulator.simTime),
         autoWarpRealRemain: game.simSpeedManager.estimatedRealSecondsToWarpEnd(game.simulator.simTime),
         paused: game.isPaused,
         rcsDamp: player.rcsDamp,
@@ -169,6 +171,11 @@ export class HudPanels {
       const warpRemain = d.autoWarpRealRemain !== null ? ` (残り ${fmtTime(d.autoWarpRealRemain)})` : '';
       simSpeedEl.textContent = d.paused ? 'PAUSE' : `${d.simSpeedLabel}${warpRemain}`;
       simSpeedEl.classList.toggle('sim-speed-hot', d.simSpeedLabel !== '×1' || d.paused);
+    }
+    const nodeWarpEl = this.els.get('node-warp-remain');
+    if (nodeWarpEl) {
+      nodeWarpEl.textContent = d.autoWarpSimRemain === null ? '—' : fmtTime(d.autoWarpSimRemain);
+      nodeWarpEl.classList.toggle('sim-speed-hot', d.autoWarpSimRemain !== null);
     }
 
     this.setText('rcs', d.rcsDamp ? 'ON' : 'OFF');
