@@ -18,7 +18,7 @@ import type { ProjectFn } from '../camera/camera-system';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
-import { Plan } from './plan';
+import { apsisAltitudes, Plan } from './plan';
 import { hudDock } from '../hud/dom';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
@@ -69,7 +69,9 @@ export class PlanEditor {
 
   readonly planDisplay: PlanDisplay;
 
-  editMode = false;
+  private _editMode = false;
+  get editMode(): boolean { return this._editMode; }
+  setMapMode(open: boolean): void { this._editMode = open; }
 
   readonly nodeGizmo = new NodeGizmo();
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
@@ -82,6 +84,7 @@ export class PlanEditor {
   private readonly planPanel: HTMLElement;
   private readonly planBody: HTMLElement;
   private readonly centralBodyControl: SegmentedControl<'earth' | 'moon'>;
+  private simTime = 0;
 
   // 計画パネルの DOM を組み立て、ノードギズモのコールバックを配線する。
   constructor(
@@ -114,8 +117,8 @@ export class PlanEditor {
     this.planPanel.appendChild(this.dvButtons.row);
     this.orbitMenu.onSelect = (act, state) => {
       if (act !== 'warp') return;
-      this.simSpeedManager.startAutoWarpTo(state.t);
-      this._hud.hint('指定位置まで自動ワープ開始');
+      if (this.simSpeedManager.startAutoWarpTo(state.t, this.simTime)) this._hud.hint('指定位置まで自動ワープ開始');
+      else this._hud.hint('この時刻は既に通過しています');
     };
     this.wireNodeGizmo();
   }
@@ -140,8 +143,8 @@ export class PlanEditor {
     g.onMenuWarpTo = (idx) => {
       const n = this.plan.nodes[idx];
       if (!n) return;
-      this.simSpeedManager.startAutoWarpTo(n.t);
-      this._hud.hint('指定時刻まで自動ワープ開始');
+      if (this.simSpeedManager.startAutoWarpTo(n.t, this.simTime)) this._hud.hint('指定時刻まで自動ワープ開始');
+      else this._hud.hint('この時刻は既に通過しています');
     };
     g.onMenuDelete = (idx) => {
       this.deleteNode(idx);
@@ -211,21 +214,25 @@ export class PlanEditor {
     return this.planDisplay.traj.projectPoint(node.r, node.t);
   }
 
-  // クリック位置に最も近い既存ノードを選択する。ヒットしなければ計画軌道上の最寄り点へ
-  // 新規ノードを配置し、それも外れていれば選択を解除する。
-  private handleMapClick(mx: number, my: number): void {
-    // 画面距離が最小の既存ノードを探す
-    let bestNodeIdx: number | null = null;
-    let bestNodeD = C.NODE_PICK_PX * C.NODE_PICK_PX;
+  private pickNodeAt(mx: number, my: number): number | null {
+    let bestIdx: number | null = null;
+    let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
     for (let i = 0; i < this.plan.nodes.length; i++) {
       const p = this.nodeScreenPos(this.plan.nodes[i]!);
       if (!p.front) continue;
-      const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
-      if (d < bestNodeD) {
-        bestNodeD = d;
-        bestNodeIdx = i;
+      const d = (p.x - mx) ** 2 + (p.y - my) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        bestIdx = i;
       }
     }
+    return bestIdx;
+  }
+
+  // クリック位置に最も近い既存ノードを選択する。ヒットしなければ計画軌道上の最寄り点へ
+  // 新規ノードを配置し、それも外れていれば選択を解除する。
+  private handleMapClick(mx: number, my: number): void {
+    const bestNodeIdx = this.pickNodeAt(mx, my);
     // ノードを置いた直後に同じノードをクリックした場合は編集を続ける。
     // 別の場所をクリックして選択対象が外れた場合だけ、Δv を一度も加えていない
     // 空のノードを破棄する。update() で毎フレーム削除すると、作成直後に
@@ -276,18 +283,7 @@ export class PlanEditor {
 
   // 既存ノード近傍ならそれを選択してコンテキストメニューを開き true を返す。外れは false。
   private handleNodeRightClick(mx: number, my: number): boolean {
-    // 画面距離が最小の既存ノードを探す
-    let bestIdx: number | null = null;
-    let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
-    for (let i = 0; i < this.plan.nodes.length; i++) {
-      const p = this.nodeScreenPos(this.plan.nodes[i]!);
-      if (!p.front) continue;
-      const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
-      if (d < bestD) {
-        bestD = d;
-        bestIdx = i;
-      }
-    }
+    const bestIdx = this.pickNodeAt(mx, my);
     if (bestIdx === null) {
       // ノードでなくても計画軌道上を右クリックすれば、その位置の時刻まで
       // 自動ワープできる。描画と同じサンプル列から求めるため、表示変換との
@@ -311,7 +307,7 @@ export class PlanEditor {
   // ドラッグ中のノードを、置ける時刻範囲の中で最寄りの計画軌道サンプル時刻へ移動する。
   private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
     if (!this.plan.nodes[idx]) return;
-    const sample = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity, this.plan.nodeTimeRange(idx));
+    const sample = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity, this.plan.nodeTimeRange(idx, this.ephemeris));
     if (sample) {
       this.plan.retimeNode(idx, sample);
       this.selectedNodeIdx = idx;
@@ -484,7 +480,8 @@ export class PlanEditor {
         selEl = elementsFromState(bodyNode.r, bodyNode.v, centralBodyDefinition(this.plan.centralBody).mu);
       }
     }
-    const html = planPanelHtml(nodes, selDv, selEl);
+    const body = centralBodyDefinition(this.plan.centralBody);
+    const html = planPanelHtml(nodes, selDv, selEl, body.radius, body.id === 'earth');
     this.planPanel.style.display = 'block';
     if (this.planBody.innerHTML !== html) this.planBody.innerHTML = html;
   }
@@ -498,6 +495,7 @@ export class PlanEditor {
   // 描く — 計画どおりに機体を動かすのは戦闘ビューだから。ただしノードが1つも無い計画は自機の
   // 現在軌道そのものなので、ノードを置ける編集中だけ扱う。
   update(simTime: number, displayTime: number): void {
+    this.simTime = simTime;
     this.planDisplay.update(this.plan, simTime, displayTime, this.editMode || this.plan.nodes.length > 0);
   }
 
@@ -535,6 +533,8 @@ function planPanelHtml(
   nodes: { tRel: number; dvMag: number; selected: boolean; }[],
   selDv: Vec3 | null,
   selEl: Elements | null,
+  bodyRadius: number,
+  warnAtmosphere: boolean,
 ): string {
   const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   let s = '';
@@ -560,13 +560,14 @@ function planPanelHtml(
   }
   // 噴射後の軌道要素、近地点が大気圏内なら警告
   if (selEl) {
+    const apsis = apsisAltitudes(selEl, bodyRadius);
     s +=
       `<div style="margin-top:4px;color:${TEXT};font-size:11px;letter-spacing:1px">噴射後の軌道</div>` +
-      row('遠地点 AP', fmtDist(selEl.apAlt)) +
-      row('近地点 PE', fmtDist(selEl.peAlt)) +
+      row('遠地点 AP', fmtDist(apsis.ap)) +
+      row('近地点 PE', fmtDist(apsis.pe)) +
       row('傾斜角 INC', isFinite(selEl.incDeg) ? `${selEl.incDeg.toFixed(2)}°` : '---') +
       row('周期 PRD', fmtTime(selEl.period));
-    if (isFinite(selEl.peAlt) && selEl.peAlt < 120e3) {
+    if (warnAtmosphere && isFinite(apsis.pe) && apsis.pe < 120e3) {
       s += `<div style="color:${ACCENT};margin-top:2px">⚠ 近地点が大気圏内</div>`;
     }
   }
