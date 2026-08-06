@@ -1,7 +1,7 @@
 // 軌道計画の姿の表示: 計画折れ線(PlanTrajectory)の駆動、表示座標系(trajectoryFrame)、
 // 表示時刻の計画上の自機位置ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
-import { R_EARTH, elementsFromState, positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/orbital';
+import { R_EARTH, elementsFromState, orbitState, positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/orbital';
 import { Vec3, len } from '../../physics/vec3';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -16,6 +16,7 @@ import * as C from '../const';
 import { hudDock } from '../hud/dom';
 import { Plan } from './plan';
 import { PlanTrajectory } from './plan-trajectory';
+import { centralBodyDefinition, fromCentralBodyState, toCentralBodyState } from '../../physics/central-body';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {
@@ -31,6 +32,7 @@ export class PlanDisplay {
   private readonly frame: SegmentedControl<Frame>;
   private apsisIcons: readonly ApsisIcon[] = [];
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
+  private plan: Plan | null = null;
 
   // 計画折れ線(PlanTrajectory)と TRAJECTORY パネルの DOM を構築する。
   constructor(
@@ -58,6 +60,7 @@ export class PlanDisplay {
   // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。
   // show=false のときは何も求めない — 出さない計画の位置は持たない。
   update(plan: Plan, simTime: number, displayTime: number, show: boolean): void {
+    this.plan = show ? plan : null;
     if (!show) {
       this.ghost = null;
       this.apsisIcons = [];
@@ -97,11 +100,13 @@ export class PlanDisplay {
   // アプシスアイコン id に対応する通過時刻。アイコンが出ていない id では null。
   apsisTimeOf(id: string): number | null {
     const state0 = this.traj.finalSegmentStart;
-    if (!state0 || !this.apsisIcons.some((icon) => icon.id === id)) return null;
-    const el = elementsFromState(state0.r, state0.v);
+    const plan = this.plan;
+    if (!state0 || !plan || !this.apsisIcons.some((icon) => icon.id === id)) return null;
+    const relative = toCentralBodyState(state0, plan.centralBody, this.ephemeris);
+    const el = elementsFromState(relative.r, relative.v, centralBodyDefinition(plan.centralBody).mu);
     if (!el) return null;
     const nu = id === 'apsisAp' ? Math.PI : 0;
-    const dt = tofBetween(el, trueAnomalyAt(el, state0.r), nu);
+    const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
     return isFinite(dt) ? state0.t + dt : null;
   }
 
@@ -141,19 +146,30 @@ export class PlanDisplay {
   // 解析的に求める。離心率がほぼ0で方向が不定なら空、双曲線軌道なら近地点だけ。
   private apsisIconsOf(): readonly ApsisIcon[] {
     const state0 = this.traj.finalSegmentStart;
-    const el = state0 ? elementsFromState(state0.r, state0.v) : null;
+    const plan = this.plan;
+    if (!state0 || !plan) return [];
+    const body = centralBodyDefinition(plan.centralBody);
+    const relative = toCentralBodyState(state0, plan.centralBody, this.ephemeris);
+    const el = elementsFromState(relative.r, relative.v, body.mu);
     if (!el || el.e < C.APSIS_MIN_ECC) return [];
+
+    const apsisPosition = (nu: number): Vec3 => {
+      const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
+      const t = state0.t + (isFinite(dt) ? dt : 0);
+      const relativeState = orbitState(t, positionOnOrbit(el, nu), relative.v);
+      return this.traj.toDisplay(fromCentralBodyState(relativeState, plan.centralBody, this.ephemeris).r, t);
+    };
 
     const icons: ApsisIcon[] = [{
       id: 'apsisPe', name: '近地点', kind: 'apsis',
-      pos: this.traj.toDisplay(positionOnOrbit(el, 0), state0!.t),
-      label: `Pe ${fmtDist(el.peAlt)}`,
+      pos: apsisPosition(0),
+      label: `Pe ${fmtDist(el.p / (1 + el.e) - body.radius)}`,
     }];
     if (isFinite(el.apAlt)) {
       icons.push({
         id: 'apsisAp', name: '遠地点', kind: 'apsis',
-        pos: this.traj.toDisplay(positionOnOrbit(el, Math.PI), state0!.t),
-        label: `Ap ${fmtDist(el.apAlt)}`,
+        pos: apsisPosition(Math.PI),
+        label: `Ap ${fmtDist(el.a * (1 + el.e) - body.radius)}`,
       });
     }
     return icons;
