@@ -147,7 +147,7 @@ export class ShipPlacerPanel {
     // 軌道要素指定の一式(基準天体・サイズ/形・向き・位相)をまとめて1つの div に収め、
     // ラグランジュ点指定と排他に表示切替できるようにする。
     const elementsGroup = document.createElement('div');
-    this.body = new SegmentedControl('基準', BODY_ITEMS, (v) => { this.bodyValue = v; this.body.setSelected(v); });
+    this.body = new SegmentedControl('基準天体', BODY_ITEMS, (v) => { this.bodyValue = v; this.body.setSelected(v); });
     this.body.setSelected(this.bodyValue);
     elementsGroup.appendChild(this.body.element);
 
