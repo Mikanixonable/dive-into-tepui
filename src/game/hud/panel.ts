@@ -75,6 +75,9 @@ export class HudPanels {
         if (el) el.style.display = '';
       }
     }
+    // CONTACTS は戦闘ビュー専用。マップビューでは計画パネルや軌道表示を優先する。
+    const contacts = document.getElementById('hud-enemies');
+    if (contacts) contacts.style.display = game.cameraSystem.overviewMode ? 'none' : '';
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;
     const playerEl = player.elements;

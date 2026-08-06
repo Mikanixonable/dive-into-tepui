@@ -56,7 +56,7 @@ export class PlayerMarkers {
     const fwd = qRotate(att.q, v3(0, 0, 1));
     // 中央に切り欠きを残した、細い線だけの三尖星(120度間隔)。
     // 塗りつぶしや長方形の輪郭は使わず、各アームを独立した線分として描く。
-    const star = '<svg viewBox="0 0 24 24" width="24" height="24" aria-label="照準"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 9.7V2"/><path d="M12 9.7V2" transform="rotate(120 12 12)"/><path d="M12 9.7V2" transform="rotate(240 12 12)"/></g></svg>';
+    const star = '<svg viewBox="0 0 24 24" width="48" height="48" aria-label="照準"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 9.7V2"/><path d="M12 9.7V2" transform="rotate(120 12 12)"/><path d="M12 9.7V2" transform="rotate(240 12 12)"/></g></svg>';
     const label = `AMMO ${Math.max(0, rounds)}\nBELT ${Math.max(0, beltLinks)}\n${C.MUZZLE_SPEED.toFixed(0)} m/s`;
     this.markerManager.setDirection('bore', 'mk-boresight', star, state.r, fwd, project, label, 1, undefined, undefined, true, true);
   }
