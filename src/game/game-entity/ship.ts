@@ -3,6 +3,7 @@ import { Attitude } from '../../physics/attitude';
 import { OrbitState } from '../../physics/orbital';
 import * as C from '../const';
 import { GameEntity } from './game-entity';
+import type { CentralBodyId } from '../../physics/central-body';
 
 export abstract class Ship extends GameEntity {
   protected readonly bcInv = C.SHIP_BCINV;
@@ -23,8 +24,9 @@ export abstract class Ship extends GameEntity {
     radius: number,
     hp: number,
     scene?: THREE.Scene,
+    predictionCentralBody: CentralBodyId = 'earth',
   ) {
-    super(state, obj, scene, att);
+    super(state, obj, scene, att, predictionCentralBody);
     this.name = name;
     this.radius = radius;
     this.hp = hp;

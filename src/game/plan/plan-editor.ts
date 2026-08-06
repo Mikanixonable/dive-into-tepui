@@ -19,7 +19,6 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { apsisAltitudes, Plan } from './plan';
-import { hudDock } from '../hud/dom';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
@@ -105,16 +104,14 @@ export class PlanEditor {
     this.planPanel.className = 'panel';
     this.planPanel.innerHTML = `<h3>MANEUVER PLAN [${K.toggleMapMode.label}]</h3><div data-id="planbody"></div>`;
     this.planPanel.style.display = 'none';
-    hudDock(this._hud.root, 'right').appendChild(this.planPanel);
     this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
-    this.centralBodyControl = new SegmentedControl('REFERENCE BODY', [['earth', 'EARTH'], ['moon', 'MOON']] as const, (value) => {
+    this.centralBodyControl = new SegmentedControl('基準天体', [['earth', 'EARTH'], ['moon', 'MOON']] as const, (value) => {
       this.plan.centralBody = value;
       this.centralBodyControl.setSelected(value);
       this._hud.hint(`基準天体: ${centralBodyDefinition(this.plan.centralBody).label}`);
     });
     this.centralBodyControl.setSelected(this.plan.centralBody);
-    this.planPanel.insertBefore(this.centralBodyControl.element, this.planBody);
-    this.planPanel.appendChild(this.dvButtons.row);
+    document.getElementById('navball')?.appendChild(this.centralBodyControl.element);
     this.orbitMenu.onSelect = (act, state) => {
       if (act !== 'warp') return;
       if (this.simSpeedManager.startAutoWarpTo(state.t, this.simTime)) this._hud.hint('指定位置まで自動ワープ開始');
