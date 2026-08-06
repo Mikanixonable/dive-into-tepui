@@ -98,8 +98,16 @@ class GridPlane {
   readonly planeLine: THREE.Line;
   readonly gridGroup = new THREE.Group();
   readonly poleGroup = new THREE.Group();
+  private readonly labelLayer: HTMLDivElement;
+  private readonly labels: HTMLDivElement[] = [];
+  private readonly basis: PlaneBasis;
 
-  constructor(scene: THREE.Scene, basis: PlaneBasis, color: number) {
+  constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
+    this.basis = basis;
+    this.labelLayer = document.createElement('div');
+    this.labelLayer.className = 'celestial-grid-labels';
+    Object.assign(this.labelLayer.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '8' });
+    document.body.appendChild(this.labelLayer);
     this.planeLine = makeLine(color, 0.35);
     setLinePoints(this.planeLine, circlePoints(basis, STAR_SHELL_RADIUS, 0));
     scene.add(this.planeLine);
@@ -129,15 +137,46 @@ class GridPlane {
       this.poleGroup.add(line);
     }
     scene.add(this.poleGroup);
+    const addLabel = (text: string, cls = '') => {
+      const el = document.createElement('div');
+      el.textContent = text; el.className = `celestial-grid-label ${cls}`;
+      Object.assign(el.style, { position: 'fixed', color: color.toString(16).padStart(6, '0'), font: '11px monospace', textShadow: '0 0 4px #000', whiteSpace: 'nowrap' });
+      this.labelLayer.appendChild(el); this.labels.push(el); return el;
+    };
+    addLabel(`${name}面`, 'plane');
+    addLabel(`${name}極 N`, 'pole-n'); addLabel(`${name}極 S`, 'pole-s');
+    for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) addLabel(`${name} ${lon}°`, 'lon');
+    for (let lat = -60; lat <= 60; lat += GRID_LAT_STEP_DEG) if (lat !== 0) addLabel(`${name} ${lat > 0 ? '+' : ''}${lat}°`, 'lat');
   }
 
-  sync(planeVisible: boolean, poleVisible: boolean, gridVisible: boolean, origin: THREE.Vector3, scale: number): void {
+  sync(planeVisible: boolean, poleVisible: boolean, gridVisible: boolean, origin: THREE.Vector3, scale: number, camera: THREE.Camera): void {
     this.planeLine.visible = planeVisible;
     this.gridGroup.visible = gridVisible;
     this.poleGroup.visible = poleVisible;
     for (const obj of [this.planeLine, this.gridGroup, this.poleGroup]) {
       obj.position.copy(origin);
       obj.scale.setScalar(scale);
+    }
+    this.labels.forEach((el) => { el.style.display = 'none'; });
+    const show = (el: HTMLDivElement, p: Vec3, below = false) => {
+      const w = window.innerWidth, h = window.innerHeight;
+      const v = new THREE.Vector3(origin.x + p.x * scale, origin.y + p.y * scale, origin.z + p.z * scale).project(camera);
+      if (v.z < -1 || v.z > 1) return;
+      const margin = 18;
+      const x = Math.max(margin, Math.min(w - margin, (v.x * .5 + .5) * w));
+      const y = Math.max(margin, Math.min(h - margin, (-v.y * .5 + .5) * h + (below ? 12 : 0)));
+      el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.display = '';
+    };
+    const [plane, pn, ps, ...rest] = this.labels;
+    if (planeVisible) show(plane!, planePoint(this.basis, STAR_SHELL_RADIUS, 0, 0), true);
+    if (poleVisible) {
+      show(pn!, v3(this.basis.pole.x * STAR_SHELL_RADIUS, this.basis.pole.y * STAR_SHELL_RADIUS, this.basis.pole.z * STAR_SHELL_RADIUS));
+      show(ps!, v3(-this.basis.pole.x * STAR_SHELL_RADIUS, -this.basis.pole.y * STAR_SHELL_RADIUS, -this.basis.pole.z * STAR_SHELL_RADIUS));
+    }
+    if (gridVisible) {
+      let i = 0;
+      for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) show(rest[i++]!, planePoint(this.basis, STAR_SHELL_RADIUS, 0, (lon * Math.PI) / 180));
+      for (let lat = -60; lat <= 60; lat += GRID_LAT_STEP_DEG) if (lat !== 0) show(rest[i++]!, planePoint(this.basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, 0));
     }
   }
 }
@@ -147,8 +186,8 @@ export class CelestialGrid {
   private readonly ecliptic: GridPlane;
 
   constructor(scene: THREE.Scene) {
-    this.equator = new GridPlane(scene, EQUATOR_BASIS, 0x8b93a0);
-    this.ecliptic = new GridPlane(scene, ECLIPTIC_BASIS, 0xc0a878);
+    this.equator = new GridPlane(scene, EQUATOR_BASIS, 0x8b93a0, '赤道');
+    this.ecliptic = new GridPlane(scene, ECLIPTIC_BASIS, 0xc0a878, '黄道');
   }
 
   // 星殻と同じくカメラ追従の固定半径殻として、6 トグルぶんの可視状態を反映する。
@@ -157,7 +196,7 @@ export class CelestialGrid {
     const scale = cameraSystem.overviewMode
       ? (cameraSystem.overviewCamera.camera.far * 0.9) / STAR_SHELL_RADIUS
       : 1.0;
-    this.equator.sync(visibility.equatorPlane, visibility.equatorPole, visibility.equatorGrid, cam.position, scale);
-    this.ecliptic.sync(visibility.eclipticPlane, visibility.eclipticPole, visibility.eclipticGrid, cam.position, scale);
+    this.equator.sync(visibility.equatorPlane, visibility.equatorPole, visibility.equatorGrid, cam.position, scale, cam);
+    this.ecliptic.sync(visibility.eclipticPlane, visibility.eclipticPole, visibility.eclipticGrid, cam.position, scale, cam);
   }
 }
