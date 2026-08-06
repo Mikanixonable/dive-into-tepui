@@ -14,11 +14,14 @@ import { ContextMenu, MenuItem } from './hud/context-menu';
 import { MarkerManager } from './marker/marker-manager';
 import { FloatingOrigin } from './floating-origin';
 import { pickNearest } from './map-pick';
+import { KEY_MAPPING as K } from './input/key-mapping';
 
 export class Targeter {
   // 唯一の真実。右クリックメニューでのみ変わり、自動選定・自動再選択は行わない。
   target: Enemy | null = null;
   secondaryTarget: Enemy | null = null;
+  private targetSelectAt = -Infinity;
+  private targetSelectIndex = -1;
 
   // ターゲット標的面(自機の方を向いた仮想の的)の通過点(ターゲット相対オフセットで
   // 保持し、的に貼り付いて見せる)。updateBoardMarks が寿命を持ち、syncBoardMarkers が描く。
@@ -60,11 +63,44 @@ export class Targeter {
   clearTargets(): void {
     this.target = null;
     this.secondaryTarget = null;
+    this.targetSelectAt = -Infinity;
+    this.targetSelectIndex = -1;
   }
 
   // 右クリックによるターゲット選択メニューを扱う。オート選定は行わない。
   updateCombatTargeting(player: Player, enemies: Enemy[], input: Input, project: ProjectFn): void {
+    this.handleTargetSelectKey(input, enemies, project);
     this.handleTargetContextMenu(input, enemies, player, project);
+  }
+
+  // Tキーで照準中心に近い敵を選ぶ。連打(2秒以内)では第二ターゲット候補を順送りする。
+  private handleTargetSelectKey(input: Input, enemies: Enemy[], project: ProjectFn): void {
+    if (!input.takeKey(K.targetSelect)) return;
+    const now = performance.now() / 1000;
+    const candidates = enemies
+      .filter((e) => e.alive)
+      .map((enemy) => {
+        const p = project(enemy.state.r);
+        const dx = p.x - window.innerWidth * 0.5;
+        const dy = p.y - window.innerHeight * 0.5;
+        return { enemy, d2: dx * dx + dy * dy, front: p.front };
+      })
+      .filter((x) => x.front)
+      .sort((a, b) => a.d2 - b.d2);
+    const primary = this.aliveTarget;
+    if (!primary) {
+      const next = candidates[0]?.enemy ?? null;
+      this.setTarget(next);
+      this.targetSelectIndex = -1;
+      this.targetSelectAt = now;
+      return;
+    }
+    const secondaryCandidates = candidates.filter((x) => x.enemy !== primary);
+    if (now - this.targetSelectAt > 2) this.targetSelectIndex = -1;
+    this.targetSelectIndex = (this.targetSelectIndex + 1) % Math.max(1, secondaryCandidates.length);
+    const next = secondaryCandidates[this.targetSelectIndex]?.enemy ?? null;
+    if (next) this.setSecondaryTarget(next);
+    this.targetSelectAt = now;
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
