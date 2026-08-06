@@ -219,7 +219,7 @@ export class ShipPlacerPanel {
 
     this.panel.appendChild(hudButton('配置', () => this.confirm()));
 
-    hudDock(root, 'left').appendChild(this.panel);
+    hudDock(root, 'right').appendChild(this.panel);
   }
 
   // サイズ/形の入力組を切り替え、選ばれた組以外を隠す。
