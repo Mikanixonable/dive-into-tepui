@@ -32,8 +32,10 @@ const ECLIPTIC_BASIS: PlaneBasis = {
   pole: qRotate(Q_ECL_TO_ECI, v3(0, 0, 1)),
 };
 
-const GRID_LAT_STEP_DEG = 10; // 緯度ラベル/交点の間隔
-const GRID_LON_STEP_DEG = 10; // 経度ラベル/交点の間隔
+const GRID_LAT_STEP_DEG = 15; // 交点の緯度間隔
+const GRID_LON_STEP_DEG = 15; // 交点の経度間隔
+const LABEL_LAT_STEP_DEG = 30; // 緯度ラベルの間隔
+const LABEL_LON_STEP_DEG = 30; // 経度ラベルの間隔
 const CIRCLE_SEGMENTS = 64; // 円1本あたりの分割数
 const POLE_MARKER_HALF_LEN = STAR_SHELL_RADIUS * 0.04; // 極マーカーの殻面からの突き出し長さ
 
@@ -121,12 +123,18 @@ class GridPlane {
     })());
     scene.add(this.planeLine);
 
-    for (let lat = -80; lat <= 80; lat += GRID_LAT_STEP_DEG) {
+    for (let lat = -75; lat <= 75; lat += GRID_LAT_STEP_DEG) {
       if (lat === 0) continue;
       for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) {
-        const line = makeLine(color, 0.3);
-        setLinePoints(line, intersectionCrossPoints(basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, (lon * Math.PI) / 180));
-        this.gridGroup.add(line);
+        const points = intersectionCrossPoints(basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, (lon * Math.PI) / 180);
+        // 交点の東西・南北の線分を別オブジェクトにする。1本の折れ線に
+        // まとめると線分間が斜めに接続され「4」のように見えるため。
+        const lonLine = makeLine(color, 0.3);
+        setLinePoints(lonLine, points.slice(0, 2));
+        this.gridGroup.add(lonLine);
+        const latLine = makeLine(color, 0.3);
+        setLinePoints(latLine, points.slice(2, 4));
+        this.gridGroup.add(latLine);
       }
     }
     scene.add(this.gridGroup);
@@ -151,8 +159,8 @@ class GridPlane {
     };
     addLabel(`${name} PLANE`, 'plane');
     addLabel(`▲ ${name} N`, 'pole-n'); addLabel(`▼ ${name} S`, 'pole-s');
-    for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) addLabel(`${name} LON ${lon}°`, 'lon');
-    for (let lat = -80; lat <= 80; lat += GRID_LAT_STEP_DEG) if (lat !== 0) addLabel(`${name} LAT ${lat > 0 ? '+' : ''}${lat}°`, 'lat');
+    for (let lon = 0; lon < 360; lon += LABEL_LON_STEP_DEG) addLabel(`${name} LON ${lon}°`, 'lon');
+    for (let lat = -60; lat <= 60; lat += LABEL_LAT_STEP_DEG) if (lat !== 0) addLabel(`${name} LAT ${lat > 0 ? '+' : ''}${lat}°`, 'lat');
   }
 
   sync(planeVisible: boolean, poleVisible: boolean, gridVisible: boolean, origin: THREE.Vector3, scale: number, camera: THREE.Camera): void {
@@ -181,8 +189,8 @@ class GridPlane {
     }
     if (gridVisible) {
       let i = 0;
-      for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) show(rest[i++]!, planePoint(this.basis, STAR_SHELL_RADIUS, 0, (lon * Math.PI) / 180));
-      for (let lat = -80; lat <= 80; lat += GRID_LAT_STEP_DEG) if (lat !== 0) show(rest[i++]!, planePoint(this.basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, 0));
+      for (let lon = 0; lon < 360; lon += LABEL_LON_STEP_DEG) show(rest[i++]!, planePoint(this.basis, STAR_SHELL_RADIUS, 0, (lon * Math.PI) / 180));
+      for (let lat = -60; lat <= 60; lat += LABEL_LAT_STEP_DEG) if (lat !== 0) show(rest[i++]!, planePoint(this.basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, 0));
     }
   }
 }
