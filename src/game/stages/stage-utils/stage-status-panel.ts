@@ -1,5 +1,5 @@
 // ステージ固有の状況表示パネル(左部: ステージ補助メッセージ・撃墜数 / 中央部: 自機の装甲・エンジン出力・
-// 温度・電力 / 右部: ラジエーター左右の展開ボタン)。表示内容がステージごとに決まるので Stage が所有し、
+// 動圧・温度・電力 / 右部: ラジエーター左右の展開ボタン)。表示内容がステージごとに決まるので Stage が所有し、
 // hudSubStatus() を返すステージでだけ現れる。CSS(#hud-stagestatus)は hud/dom.ts の STYLE に一元管理されている。
 
 const LOW_HP_RATIO = 0.3;
@@ -143,6 +143,10 @@ export class StageStatusPanel {
     const temp = Math.round(player.thermal.hullTemp);
     const tempHigh = temp > 0.7 * C.MAX_HULL_TEMP;
     const tempPct = Math.max(0, Math.min(100, (temp / C.MAX_HULL_TEMP) * 100));
+    const qdyn = player.thermal.qdyn;
+    const qdynHigh = qdyn > 0.5 * C.MAX_DYN_PRESSURE;
+    const qdynPct = Math.max(0, Math.min(100, (qdyn / C.MAX_DYN_PRESSURE) * 100));
+    const qdynText = qdyn >= 1000 ? `${(qdyn / 1000).toFixed(2)} kPa` : `${qdyn.toFixed(0)} Pa`;
     const chargeJ = player.power.chargeJ;
     const chargePct = Math.max(0, Math.min(100, player.power.chargeRatio * 100));
 
@@ -156,6 +160,10 @@ export class StageStatusPanel {
       `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
       `<div style="width:${throttlePct}%; height:100%; background:${C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
       `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${throttleText}</div></div>` +
+      `<span>動圧</span>` +
+      `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
+      `<div style="width:${qdynPct}%; height:100%; background:${qdynHigh ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
+      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${qdynText}</div></div>` +
       `<span>温度</span>` +
       `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
       `<div style="width:${tempPct}%; height:100%; background:${tempHigh ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
