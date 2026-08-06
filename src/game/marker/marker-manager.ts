@@ -23,7 +23,7 @@ function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLE
 }
 
 export class MarkerManager {
-  private markerDictionary = new Map<string, { root: HTMLElement; sym: HTMLElement; lbl: HTMLElement }>();
+  private markerDictionary = new Map<string, { root: HTMLElement; sym: HTMLElement; lbl: HTMLElement; fixedLabel: boolean }>();
 
   // root: マーカー要素を追加する親(#hud)。svgOverlay: ラベル引き出し線を描く SVG。
   constructor(
@@ -44,15 +44,17 @@ export class MarkerManager {
     color?: string,
     rotationDeg?: number,
     symMarkup = false,
+    fixedLabel = false,
   ): void {
     let m = this.markerDictionary.get(key);
     if (!m) {
       const root = el('div', `mk-${key}`, this.root, `mk ${cls}`);
       const symEl = el('span', `mk-${key}-s`, root, 'sym');
       const lblEl = el('span', `mk-${key}-l`, root, 'lbl');
-      m = { root, sym: symEl, lbl: lblEl };
+      m = { root, sym: symEl, lbl: lblEl, fixedLabel };
       this.markerDictionary.set(key, m);
     }
+    m.fixedLabel = fixedLabel;
     m.root.style.display = visible ? 'block' : 'none';
     if (!visible) return;
     m.root.style.left = `${x.toFixed(1)}px`;
@@ -62,6 +64,7 @@ export class MarkerManager {
       if (m.sym.innerHTML !== sym) m.sym.innerHTML = sym;
     } else if (m.sym.textContent !== sym) m.sym.textContent = sym;
     if (m.lbl.textContent !== label) m.lbl.textContent = label;
+    if (fixedLabel) m.lbl.style.transform = 'none';
 
     if (color) {
       m.root.style.color = color;
@@ -89,9 +92,10 @@ export class MarkerManager {
     color?: string,
     rotationDeg?: number,
     symMarkup = false,
+    fixedLabel = false,
   ): void {
     const p = project(worldPos);
-    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup);
+    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel);
   }
 
   // 3D空間上の「方向」を示すマーカー(プログレード/ボアサイト/BURN など、実在の位置を
@@ -109,9 +113,10 @@ export class MarkerManager {
     color?: string,
     rotationDeg?: number,
     symMarkup = false,
+    fixedLabel = false,
   ): void {
     const p = project(addScaled(origin, norm(dir), C.MARKER_DIR_DIST));
-    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup);
+    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel);
   }
 
   // 画面外(背面を含む)の対象を、画面中心から見た方位として画面端の円周上に置く。
@@ -171,7 +176,7 @@ export class MarkerManager {
 
     // 表示中のマーカーと、そのラベルの推定矩形を集める
     for (const m of this.markerDictionary.values()) {
-      if (m.root.style.display === 'none' || !m.lbl.textContent) {
+      if (m.root.style.display === 'none' || !m.lbl.textContent || m.fixedLabel) {
         m.lbl.style.transform = 'translateX(-50%)';
         continue;
       }
