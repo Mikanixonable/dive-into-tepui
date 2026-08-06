@@ -493,7 +493,7 @@ export class Game {
       enemyMarkerItems.push(enemy.markerItem(role, player?.state.r ?? v3(), pos));
     }
     this.enemyMarkers.sync(enemyMarkerItems, project);
-    if (player) this.leadMarkers.sync(player, aliveEnemies, target, simTime, overviewMode, project);
+    if (player) this.leadMarkers.sync(player, aliveEnemies, target, secondaryTarget, simTime, overviewMode, project);
 
     this.displayTimeManager.sync(orbitPeriod);
     this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project);

@@ -24,6 +24,7 @@ export class LeadMarkers {
     player: Player,
     enemies: readonly Enemy[],
     target: Enemy | null,
+    secondaryTarget: Enemy | null,
     simTime: number,
     overviewMode: boolean,
     project: ProjectFn,
@@ -33,7 +34,7 @@ export class LeadMarkers {
       this.retire([]);
       return;
     }
-    this.lastTargeted = this.trackTargeted(enemies, target, simTime);
+    this.lastTargeted = this.trackTargeted(enemies, target, secondaryTarget, simTime);
 
     // ロックが有効な敵だけリード点を求めてマーカーを置く
     const shownKeys: string[] = [];
@@ -42,17 +43,21 @@ export class LeadMarkers {
       if (lockedAt === undefined || simTime - lockedAt >= C.LEAD_HOLD_SEC) continue;
       const lead = leadPoint(enemy.state, player.state, C.MUZZLE_SPEED, C.LEAD_MAX_TIME);
       if (lead === null) continue;
-      this.markerManager.setPosition(markerKey(enemy), 'mk-lead', '✛', lead, project, '', 1, enemy.accentColor);
+      // 主照準とは反対向き（逆三角形方向）の三尖星。線だけで描き、中央に
+      // 小さな切り欠きを残すことで、敵マーカーや照準と識別しやすくする。
+      const star = '<svg viewBox="0 0 24 24" width="24" height="24" aria-label="LEAD"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 14.3V22"/><path d="M12 14.3V22" transform="rotate(120 12 12)"/><path d="M12 14.3V22" transform="rotate(240 12 12)"/></g></svg>';
+      this.markerManager.setPosition(markerKey(enemy), 'mk-lead', star, lead, project, '', 1, enemy.accentColor, undefined, true);
       shownKeys.push(markerKey(enemy));
     }
     this.retire(shownKeys);
   }
 
   // 敵ごとのロック時刻を引き継ぎつつ、target は simTime で新たにロックしたものとして返す。
-  private trackTargeted(enemies: readonly Enemy[], target: Enemy | null, simTime: number): Map<Enemy, number> {
+  private trackTargeted(enemies: readonly Enemy[], target: Enemy | null, secondaryTarget: Enemy | null, simTime: number): Map<Enemy, number> {
     const tracked = new Map<Enemy, number>();
     for (const enemy of enemies) {
-      const lockedAt = enemy === target ? simTime : this.lastTargeted.get(enemy);
+      const newlyTargeted = enemy === target || enemy === secondaryTarget;
+      const lockedAt = newlyTargeted ? simTime : this.lastTargeted.get(enemy);
       if (lockedAt !== undefined) tracked.set(enemy, lockedAt);
     }
     return tracked;
