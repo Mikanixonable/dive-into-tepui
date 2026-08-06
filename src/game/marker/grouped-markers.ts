@@ -53,7 +53,7 @@ export class GroupedMarkers {
       const label = m.labeled ? this.label(m.item, m.count) : '';
       this.markerManager.set(m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, 1, m.item.color, undefined, m.item.symMarkup);
       // 画面外(背面を含む)の対象は、画面端の ▲ で方位だけを示す。
-      this.markerManager.setBearing(bearingKey(m.item.key), 'mk-dir', '▲', m.p, '', 0.6, m.item.bearingColor);
+      this.markerManager.setBearing(bearingKey(m.item.key), 'mk-dir', '△', m.p, '', 1, m.item.bearingColor);
     }
 
     this.retire(items.map((item) => item.key));
@@ -85,7 +85,7 @@ export class GroupedMarkers {
 
   // 代表のラベル文字列を組み立てる。count > 1 のときは "xN" を付ける。
   private label(item: GroupedMarkerItem, count: number): string {
-    return count > 1 ? `${item.name} x${count} ${item.detail}` : `${item.name} ${item.detail}`;
+    return count > 1 ? `${item.name} x${count}\n${item.detail}` : `${item.name}\n${item.detail}`;
   }
 
   // key は対象(敵)ごとに一意で増え続けるため hide ではなく remove で DOM ごと片付ける。
