@@ -20,6 +20,7 @@ const STYLE = `
 #hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
 #hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball, #hud-shipplacer { z-index: 1; }
 #hud-toast, #hud-hint { z-index: 2; }
+#hud-context { z-index: 1; }
 #hud-end, #hud-help { z-index: 3; }
 #hud-settings { z-index: 4; }
 #hud .panel {
@@ -45,6 +46,13 @@ const STYLE = `
   border-bottom: 1px solid rgba(${ACCENT_RGB}, 0.25); margin-bottom: 6px; padding-bottom: 4px;
   font-weight: 600;
 }
+#hud-context {
+  position: absolute; top: 10px; right: 12px; pointer-events: none;
+  color: ${INK_SOFT}; font-size: 9px; letter-spacing: 1.2px; line-height: 1.35;
+  text-align: right; white-space: nowrap; opacity: 0.9;
+}
+#hud-context .context-mode { color: ${ACCENT}; }
+#hud-context .context-sep { color: ${EDGE}; padding: 0 4px; }
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
 #hud .row .k { color: ${INK_SOFT}; }
 #hud .row .v { color: ${INK}; min-width: 90px; text-align: right; }
@@ -440,6 +448,7 @@ export function buildHudDom(): HudDomRefs {
 
   el('div', 'hud-hint', root);
   el('div', 'hud-toast', root);
+  el('div', 'hud-context', root);
 
   buildHelpPanel(root);
 

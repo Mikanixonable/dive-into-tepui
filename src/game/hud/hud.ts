@@ -38,6 +38,13 @@ export class Hud {
     this.toastUntil = performance.now() + durationMs;
   }
 
+  // 画面右上の現在コンテキスト表示を同期する。
+  setContext(mode: string, stage: string, view: string): void {
+    const e = document.getElementById('hud-context');
+    if (!e) return;
+    e.innerHTML = `<span class="context-mode">${escapeContext(mode)}</span><span class="context-sep">·</span>${escapeContext(stage)}<span class="context-sep">·</span>${escapeContext(view)}`;
+  }
+
   // ヘルプ表示キーの押下エッジを受け取る。
   handleInput(input: Input): void {
     if (input.takeKey(K.help)) this.toggleHelp();
@@ -65,4 +72,8 @@ export class Hud {
       this.toastUntil = 0;
     }
   }
+}
+
+function escapeContext(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] ?? ch);
 }
