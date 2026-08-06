@@ -159,6 +159,7 @@ const STYLE = `
 #navball .nb-pro { fill: ${C.COLOR_MARKER_PROGRADE}; }
 #navball .nb-nrm { fill: ${C.COLOR_MARKER_NORMAL}; }
 #navball .nb-rad { fill: ${C.COLOR_MARKER_RADIAL}; }
+#mk-bore .lbl { top: auto; left: 100%; bottom: 100%; margin: 0 0 2px 5px; white-space: nowrap; text-align: left; font-size: 9px; line-height: 1.2; }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 .mk-poi { color: #ffffff; text-shadow: 0 0 4px #000; }
