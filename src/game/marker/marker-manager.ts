@@ -88,9 +88,10 @@ export class MarkerManager {
     opacity = 1,
     color?: string,
     rotationDeg?: number,
+    symMarkup = false,
   ): void {
     const p = project(worldPos);
-    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg);
+    this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup);
   }
 
   // 3D空間上の「方向」を示すマーカー(プログレード/ボアサイト/BURN など、実在の位置を
