@@ -15,7 +15,7 @@ export class PlayerMarkers {
 
   // currentState: 現在の自機状態(方向マーカー・ボアサイト用)。
   // displayState: スライダー位置の状態(null なら予測期間超過)、▷ マーカー用。
-  sync(currentState: OrbitState, displayState: OrbitState | null, att: Attitude, alive: boolean, overviewMode: boolean, project: ProjectFn, rounds = 0, reloadTimer = 0): void {
+  sync(currentState: OrbitState, displayState: OrbitState | null, att: Attitude, alive: boolean, overviewMode: boolean, project: ProjectFn, rounds = 0, _reloadTimer = 0): void {
     if (overviewMode) {
       for (const key of COMBAT_KEYS) this.markerManager.hide(key);
       if (displayState) this.markerManager.setPosition('self', 'mk-self', '▷', displayState.r, project, 'PLAYER');
@@ -24,7 +24,7 @@ export class PlayerMarkers {
     }
     this.markerManager.hide('self');
     this.syncOrbitalDirections(currentState, project);
-    this.syncBoresight(currentState, att, alive, project, rounds, reloadTimer);
+    this.syncBoresight(currentState, att, alive, project, rounds);
   }
 
   hide(): void {
@@ -48,7 +48,7 @@ export class PlayerMarkers {
   }
 
   // 機首方向にボアサイトマーカーを置く。機体が死亡していれば隠す。
-  private syncBoresight(state: OrbitState, att: Attitude, alive: boolean, project: ProjectFn, rounds: number, reloadTimer: number): void {
+  private syncBoresight(state: OrbitState, att: Attitude, alive: boolean, project: ProjectFn, rounds: number): void {
     if (!alive) {
       this.markerManager.hide('bore');
       return;
@@ -56,7 +56,7 @@ export class PlayerMarkers {
     const fwd = qRotate(att.q, v3(0, 0, 1));
     // 中央に切り欠きを残した、等幅長方形3本の三尖星(120度間隔)。
     const star = '<svg viewBox="0 0 24 24" width="24" height="24" aria-label="照準"><g fill="none" stroke="currentColor" stroke-width="1.3"><rect x="11" y="2" width="2" height="7"/><rect x="11" y="2" width="2" height="7" transform="rotate(120 12 12)"/><rect x="11" y="2" width="2" height="7" transform="rotate(240 12 12)"/></g></svg>';
-    const label = `${reloadTimer > 0 ? `RLD ${reloadTimer.toFixed(1)}s` : `AMMO ${Math.max(0, rounds)}`} · ${C.MUZZLE_SPEED.toFixed(0)} m/s`;
+    const label = `AMMO ${Math.max(0, rounds)} · ${C.MUZZLE_SPEED.toFixed(0)} m/s`;
     this.markerManager.setDirection('bore', 'mk-boresight', star, state.r, fwd, project, label, 1, undefined, undefined, true);
   }
 }
