@@ -93,6 +93,8 @@ const STYLE = `
 .mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; line-height: 1; }
 .mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: 10px; margin-top: 2px; letter-spacing: 1px; }
 .mk-boresight { color: ${C.COLOR_MARKER_BORESIGHT}; font-size: 18px; }
+#mk-bore .sym { width: 24px; height: 24px; }
+#mk-bore .lbl { top: -14px; left: 19px; transform: none; font-size: 8px; letter-spacing: .4px; color: ${INK_SOFT}; text-shadow: 0 0 3px #000; }
 .mk-target { color: ${ACCENT}; }
 .mk-enemy { color: rgba(230, 232, 235, 0.35); }
 .mk-lead { color: ${ACCENT}; }

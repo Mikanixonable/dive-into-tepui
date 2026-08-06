@@ -5,6 +5,7 @@ import { OrbitState, orbitalAxes } from '../../physics/orbital';
 import { scale, v3 } from '../../physics/vec3';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
+import * as C from '../const';
 
 // 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;
@@ -14,7 +15,7 @@ export class PlayerMarkers {
 
   // currentState: 現在の自機状態(方向マーカー・ボアサイト用)。
   // displayState: スライダー位置の状態(null なら予測期間超過)、▷ マーカー用。
-  sync(currentState: OrbitState, displayState: OrbitState | null, att: Attitude, alive: boolean, overviewMode: boolean, project: ProjectFn): void {
+  sync(currentState: OrbitState, displayState: OrbitState | null, att: Attitude, alive: boolean, overviewMode: boolean, project: ProjectFn, rounds = 0, reloadTimer = 0): void {
     if (overviewMode) {
       for (const key of COMBAT_KEYS) this.markerManager.hide(key);
       if (displayState) this.markerManager.setPosition('self', 'mk-self', '▷', displayState.r, project, 'PLAYER');
@@ -23,7 +24,7 @@ export class PlayerMarkers {
     }
     this.markerManager.hide('self');
     this.syncOrbitalDirections(currentState, project);
-    this.syncBoresight(currentState, att, alive, project);
+    this.syncBoresight(currentState, att, alive, project, rounds, reloadTimer);
   }
 
   hide(): void {
@@ -47,12 +48,14 @@ export class PlayerMarkers {
   }
 
   // 機首方向にボアサイトマーカーを置く。機体が死亡していれば隠す。
-  private syncBoresight(state: OrbitState, att: Attitude, alive: boolean, project: ProjectFn): void {
+  private syncBoresight(state: OrbitState, att: Attitude, alive: boolean, project: ProjectFn, rounds: number, reloadTimer: number): void {
     if (!alive) {
       this.markerManager.hide('bore');
       return;
     }
     const fwd = qRotate(att.q, v3(0, 0, 1));
-    this.markerManager.setDirection('bore', 'mk-boresight', '┼', state.r, fwd, project);
+    const star = '<svg viewBox="0 0 24 24" width="24" height="24"><path d="M10.5 2h3v7.5H21v3h-7.5V21h-3v-8.5H3v-3h7.5Z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
+    const label = `${reloadTimer > 0 ? `RLD ${reloadTimer.toFixed(1)}s` : `AMMO ${Math.max(0, rounds)}`} · ${C.MUZZLE_SPEED.toFixed(0)} m/s`;
+    this.markerManager.setDirection('bore', 'mk-boresight', star, state.r, fwd, project, label, 1, undefined, undefined, true);
   }
 }
