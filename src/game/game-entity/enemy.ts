@@ -8,7 +8,6 @@ import { OrbitLine } from '../../render/orbitline';
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3 } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
-import { ACCENT_SECONDARY } from '../theme';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
 import { sunPosition } from '../../physics/ephemeris';
@@ -66,7 +65,7 @@ export class Enemy extends Ship {
     state: OrbitState,
     enemyKind: EnemyKind,
     att: Attitude,
-    hp: number,
+    _hp: number,
     accent: string | number,
     orbitLineColor: string | number,
     _hud: Hud,
@@ -75,7 +74,8 @@ export class Enemy extends Ship {
     waveId?: number,
     scene?: THREE.Scene,
   ) {
-    super(name, state, buildEnemyObj(enemyKind, accent), att, C.ENEMY_RADIUS, hp, scene);
+    const enemyObj = buildEnemyObj(enemyKind, accent);
+    super(name, state, enemyObj, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene);
     this._sfx = sfx;
     this._fx = fx;
     this.accent = accent;
@@ -83,6 +83,11 @@ export class Enemy extends Ship {
     this.mass = 10000;
     this.collideRadius = C.ENEMY_RADIUS;
     this.obj.scale.setScalar(C.ENEMY_SCALE);
+    // 描画メッシュの実スケール後バウンディング球を、弾丸・物理接触の両判定に共有する。
+    const visualBounds = new THREE.Box3().setFromObject(this.obj);
+    const visualSphere = visualBounds.getBoundingSphere(new THREE.Sphere());
+    this.radius = visualSphere.radius;
+    this.collideRadius = visualSphere.radius;
     // 自身の軌道線を作ってシーンへ登録する
     this.orbitLine = new OrbitLine(orbitLineColor, 0.35);
     scene?.add(this.orbitLine.line);
@@ -142,7 +147,6 @@ export class Enemy extends Ship {
     const dist = len(sub(pos, viewerPos));
     // 代表選出の優先度: 第一ターゲット > 第二ターゲット > 距離が近い順
     const priority = role === 'primary' ? Infinity : role === 'secondary' ? Number.MAX_SAFE_INTEGER : -dist;
-    const color = role === 'secondary' ? ACCENT_SECONDARY : undefined;
     return {
       key: `enemy-${this.name}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy',
@@ -151,15 +155,16 @@ export class Enemy extends Ship {
       priority,
       name: this.name,
       detail: fmtMarkerDist(dist),
-      bearingColor: role === 'secondary' ? ACCENT_SECONDARY : this.accentColor,
-      color,
+      // 敵本体・距離ラベル・画面外方位マーカーは同じ白で統一する。
+      bearingColor: '#ffffff',
+      color: '#ffffff',
       symMarkup: true,
     };
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
   private hitEffect(bullet: Bullet, hitR: Vec3): void {
-    this._sfx.hit();
+    this._sfx.enemyHit();
     if (bullet.type === 'plasma') {
       this._fx.spawnPlasmaFlash(hitR, this.state.v);
     } else {

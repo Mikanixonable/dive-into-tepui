@@ -102,7 +102,7 @@ export class BeltPhysics {
   // 各節点の位置を擬似力込みで Verlet 積分する。
   private integrateVerlet(dt: number, w: Vec3, aThrustBody: Vec3): void {
     const h = Math.min(dt, 0.05); // 積分刻みの上限(大きな dt でのはみ出し防止)
-    const damping = 0.98; // 慣性を維持しつつ、毎ステップ2%だけ減衰させる
+    const damping = 0.99; // 慣性を維持しつつ、毎ステップ2%だけ減衰させる
     const invDt = dt > 1e-6 ? 1 / dt : 0;
     // コリオリ力 -2ω×v の係数: vel = pos-prevPos = v*dt なので速度への変換に 2/dt を使う。
     // (2/h ではなく実際の dt を使わないと dt > 0.05 のときコリオリ力が過大になる。)

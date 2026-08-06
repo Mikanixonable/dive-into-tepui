@@ -204,6 +204,7 @@ export const PLAYER_HULL_RADIUS = 2.6; // 薬莢・破片等との物理接触�
 // 砲口(機体中心から距離約2.9m)で生まれた薬莢が生成直後に弾き飛ばされてしまう。
 export const ENEMY_RADIUS = 180; // 視認性のため実機体よりかなり大きい当たり判定
 export const ENEMY_SCALE = 20; // buildEnemyShip() の見た目メッシュに掛けるスケール
+export const ENEMY_MAX_HP = 6;
 
 export const INITIAL_ALT = 420e3; // 自機初期高度 [m]
 export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
