@@ -3,6 +3,7 @@
 import { elementsFromState, orbitState, OrbitState } from '../../physics/orbital';
 import { Vec3, add, v3 } from '../../physics/vec3';
 import * as C from '../const';
+import { CentralBodyId } from '../../physics/central-body';
 
 // 計画の1区間が受け持てる時間長 = 起点状態の解析軌道1周期。周期を持たない軌道(双曲線・
 // 放物線)では APERIODIC_ARC_DURATION。
@@ -18,6 +19,8 @@ export interface TimeRange {
 }
 
 export class Plan {
+  /** この計画で軌道要素・噴射方向を解釈する中心天体。実行状態は従来どおり地球ECI。 */
+  centralBody: CentralBodyId = 'earth';
   private _nodes: OrbitState[] = [];
   private _anchor: OrbitState = orbitState(0, v3(), v3());
 
