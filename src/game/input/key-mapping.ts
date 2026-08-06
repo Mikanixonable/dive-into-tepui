@@ -26,7 +26,8 @@ export const KEY_MAPPING = {
   rollRight: { code: 'KeyO', label: 'O' },
 
   // 機体のモード切替
-  rcsDampToggle: { code: 'KeyT', label: 'T' },
+  rcsDampToggle: { code: 'KeyP', label: 'P' },
+  targetSelect: { code: 'KeyT', label: 'T' },
   progradeReset: { code: 'KeyF', label: 'F' },
   fineAttitudeToggle: { code: 'KeyV', label: 'V' },
   progradeHoldToggle: { code: 'KeyC', label: 'C' },
