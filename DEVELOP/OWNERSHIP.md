@@ -97,6 +97,7 @@ main.ts
     │   │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
     │   │   ├── PlayerMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の艦だけが sync する)
     │   │   ├── OrbitLine              ... 自機軌道線
+    │   │   ├── SampledLine             ... 月基準表示時の積分軌道線(解析楕円の代替)
     │   │   └── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
     │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
     │   ├── Bullet[]

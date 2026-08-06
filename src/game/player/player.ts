@@ -12,6 +12,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { OrbitLine } from '../../render/orbitline';
+import { SampledLine } from '../../render/sampled-line';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Stage } from '../stages/stage';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
@@ -53,6 +54,8 @@ export class Player extends Ship {
   private readonly markers: PlayerMarkers;
   // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
   readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55);
+  // 月基準の表示では、解析楕円の代わりに積分結果の点列をそのまま描く。
+  readonly moonOrbitTrace = new SampledLine(0xbfc9d4, 0.55, 1);
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
   // ON の間、この艦は自分の計画のノード時刻を跨いだ時点でそのノードの絶対状態へ乗り移る。
@@ -94,6 +97,7 @@ export class Player extends Ship {
     this.markers = new PlayerMarkers(markerManager);
 
     _scene.add(this.orbitLine.line);
+    _scene.add(this.moonOrbitTrace.line);
   }
 
   // 高度 INITIAL_ALT、傾斜角 INITIAL_INC_DEG の円軌道状態を返す。
@@ -380,16 +384,15 @@ export class Player extends Ship {
     }
 
     if (this.predictionCentralBody === 'moon') {
-      const orbitState = displayState ?? this.state;
-      const relative = this.centralBodyRelativeState(orbitState, ephemeris);
-      this.orbitLine.sync(
-        this.alive ? this.elementsForPredictionBody(orbitState, ephemeris) : null,
-        fo,
-        this.thrustVizDir !== null,
-        relative.r,
-        ephemeris.moonPosAt(orbitState.t),
-      );
+      const samples = [...this.current.samplesOldestFirst(), ...(this.predicted?.samplesOldestFirst() ?? [])];
+      this.orbitLine.sync(null, fo, false, this.state.r);
+      this.moonOrbitTrace.setVisible(this.alive && samples.length >= 2);
+      if (this.alive && samples.length >= 2) {
+        this.moonOrbitTrace.syncGeometry(samples, 'inertial', ephemeris);
+        this.moonOrbitTrace.syncTransform('inertial', displayTime, ephemeris, fo);
+      }
     } else {
+      this.moonOrbitTrace.setVisible(false);
       // 地球周回は従来どおり、現在の接触軌道と自機 ECI 位置を使う。
       this.orbitLine.sync(this.alive ? this.elements : null, fo, this.thrustVizDir !== null, this.state.r);
     }
@@ -403,7 +406,9 @@ export class Player extends Ship {
     this.clearTransientCommands();
     this.markers.hide();
     this.playerScene.remove(this.orbitLine.line);
+    this.playerScene.remove(this.moonOrbitTrace.line);
     this.orbitLine.dispose();
+    this.moonOrbitTrace.dispose();
     this.thrustEffects.dispose(this.playerScene);
     this.rcsEffects.dispose(this.playerScene);
     this.reentryEffects.dispose(this.playerScene);
