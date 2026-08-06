@@ -4365,6 +4365,8 @@ ${1e3.toFixed(0)} m/s`;this.markerManager.setDirection("bore","mk-boresight",c,e
 #hud .hud-dock > .panel[style*="display: none"] { display: none !important; }
 #hud .hud-dock > #hud-shipplacer { max-height: min(70vh, 620px); overflow-y: auto; }
 #hud .hud-dock > #hud-plan { width: 100%; max-width: none; max-height: calc(100vh - 24px); overflow-y: auto; }
+/* MANEUVER PLAN \u306F\u30DE\u30C3\u30D7\u64CD\u4F5C\u306E\u4E3B\u30D1\u30CD\u30EB\u3068\u3057\u3066\u53F3\u30C9\u30C3\u30AF\u306E\u6700\u4E0A\u6BB5\u306B\u56FA\u5B9A\u3059\u308B\u3002 */
+#hud .hud-dock-right > #hud-plan { order: -1; }
 #hud .panel h3 {
   font-size: 11px; letter-spacing: 2.5px; color: ${Ut};
   border-bottom: 1px solid rgba(${gn}, 0.25); margin-bottom: 6px; padding-bottom: 4px;
