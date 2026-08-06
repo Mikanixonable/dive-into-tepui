@@ -61,6 +61,7 @@ export class Game {
   private readonly mapPicker: MapPicker;
 
   readonly activeStage: Stage;
+  private readonly launchMode: LaunchSelection['mode'];
   private _isPaused = false;
   get isPaused(): boolean { return this._isPaused; }
 
@@ -91,6 +92,7 @@ export class Game {
     settingsPanel: SettingsPanel,
     unlockManager: UnlockManager,
   ) {
+    this.launchMode = launch.mode;
     this._scene = gs.scene;
     this.renderer = gs.renderer;
     this._hud = hud;
@@ -441,6 +443,11 @@ export class Game {
   // ------------------------------------------------------------------ sync
 
   sync(dt: number): void {
+    this._hud.setContext(
+      this.launchMode === 'creative' ? 'CREATIVE' : 'STAGE',
+      this.launchMode === 'creative' ? 'CREATIVE' : this.activeStage.selectLabel,
+      this.mapModeToggler.mapMode ? 'MAP' : 'COMBAT',
+    );
     const player = this.player;
     this.floatingOrigin = player
       ? new FloatingOrigin(player.state.r, player.state.v)
