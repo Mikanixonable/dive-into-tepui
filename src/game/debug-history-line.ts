@@ -42,8 +42,8 @@ export class DebugHistoryLine {
       const currentSamples = entity.current.samplesOldestFirst();
       let predictedSamples = entity.predicted?.samplesOldestFirst() ?? [];
       if (currentSamples.length > 0 && predictedSamples.length > 0) {
-        const lastCurrentTime = currentSamples[currentSamples.length - 1].t;
-        const firstPredictedTime = predictedSamples[0].t;
+        const lastCurrentTime = currentSamples[currentSamples.length - 1]!.t;
+        const firstPredictedTime = predictedSamples[0]!.t;
         if (firstPredictedTime <= lastCurrentTime) {
           predictedSamples = [];
         }
