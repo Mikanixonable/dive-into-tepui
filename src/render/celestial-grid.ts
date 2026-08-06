@@ -32,8 +32,8 @@ const ECLIPTIC_BASIS: PlaneBasis = {
   pole: qRotate(Q_ECL_TO_ECI, v3(0, 0, 1)),
 };
 
-const GRID_LAT_STEP_DEG = 30; // 緯線の間隔(赤道面自体を除く)
-const GRID_LON_STEP_DEG = 30; // 経線の間隔
+const GRID_LAT_STEP_DEG = 10; // 緯度ラベル/交点の間隔
+const GRID_LON_STEP_DEG = 10; // 経度ラベル/交点の間隔
 const CIRCLE_SEGMENTS = 64; // 円1本あたりの分割数
 const POLE_MARKER_HALF_LEN = STAR_SHELL_RADIUS * 0.04; // 極マーカーの殻面からの突き出し長さ
 
@@ -74,22 +74,27 @@ function setLinePoints(line: THREE.Line, points: readonly Vec3[]): void {
 
 // 緯度 latRad の円周を、始点を終端に複製して閉じた頂点列として返す
 // (WebGPU レンダラーは THREE.LineLoop 非対応のため、THREE.Line で手動に閉じる)。
-function circlePoints(basis: PlaneBasis, radius: number, latRad: number): Vec3[] {
-  const pts: Vec3[] = [];
-  for (let i = 0; i <= CIRCLE_SEGMENTS; i++) {
-    const lon = (i / CIRCLE_SEGMENTS) * Math.PI * 2;
-    pts.push(planePoint(basis, radius, latRad, lon));
-  }
-  return pts;
-}
-
-function meridianPoints(basis: PlaneBasis, radius: number, lonRad: number): Vec3[] {
-  const pts: Vec3[] = [];
-  for (let i = 0; i <= CIRCLE_SEGMENTS; i++) {
-    const lat = -Math.PI / 2 + (i / CIRCLE_SEGMENTS) * Math.PI;
-    pts.push(planePoint(basis, radius, lat, lonRad));
-  }
-  return pts;
+// 緯度・経度の交点だけを小さな十字で示す。全周の線を描かないことで、
+// 天球上の座標密度を保ちつつ視界を塞がない。
+function intersectionCrossPoints(basis: PlaneBasis, radius: number, latRad: number, lonRad: number): Vec3[] {
+  const p = planePoint(basis, radius, latRad, lonRad);
+  const eps = radius * 0.012;
+  const dLon = v3(
+    -Math.sin(lonRad) * basis.e1.x + Math.cos(lonRad) * basis.e2.x,
+    -Math.sin(lonRad) * basis.e1.y + Math.cos(lonRad) * basis.e2.y,
+    -Math.sin(lonRad) * basis.e1.z + Math.cos(lonRad) * basis.e2.z,
+  );
+  const dLat = v3(
+    -Math.sin(latRad) * Math.cos(lonRad) * basis.e1.x - Math.sin(latRad) * Math.sin(lonRad) * basis.e2.x + Math.cos(latRad) * basis.pole.x,
+    -Math.sin(latRad) * Math.cos(lonRad) * basis.e1.y - Math.sin(latRad) * Math.sin(lonRad) * basis.e2.y + Math.cos(latRad) * basis.pole.y,
+    -Math.sin(latRad) * Math.cos(lonRad) * basis.e1.z - Math.sin(latRad) * Math.sin(lonRad) * basis.e2.z + Math.cos(latRad) * basis.pole.z,
+  );
+  return [
+    v3(p.x - dLon.x * eps, p.y - dLon.y * eps, p.z - dLon.z * eps),
+    v3(p.x + dLon.x * eps, p.y + dLon.y * eps, p.z + dLon.z * eps),
+    v3(p.x - dLat.x * eps, p.y - dLat.y * eps, p.z - dLat.z * eps),
+    v3(p.x + dLat.x * eps, p.y + dLat.y * eps, p.z + dLat.z * eps),
+  ];
 }
 
 // 面 1 枚ぶんの表示物: 基準円(plane)・緯線経線の網(grid)・両極マーカー(pole)。
@@ -109,19 +114,20 @@ class GridPlane {
     Object.assign(this.labelLayer.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '8' });
     document.body.appendChild(this.labelLayer);
     this.planeLine = makeLine(color, 0.35);
-    setLinePoints(this.planeLine, circlePoints(basis, STAR_SHELL_RADIUS, 0));
+    setLinePoints(this.planeLine, (() => {
+      const pts: Vec3[] = [];
+      for (let i = 0; i <= CIRCLE_SEGMENTS; i++) pts.push(planePoint(basis, STAR_SHELL_RADIUS, 0, (i / CIRCLE_SEGMENTS) * Math.PI * 2));
+      return pts;
+    })());
     scene.add(this.planeLine);
 
-    for (let lat = -90 + GRID_LAT_STEP_DEG; lat < 90; lat += GRID_LAT_STEP_DEG) {
+    for (let lat = -80; lat <= 80; lat += GRID_LAT_STEP_DEG) {
       if (lat === 0) continue;
-      const line = makeLine(color, 0.18);
-      setLinePoints(line, circlePoints(basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180));
-      this.gridGroup.add(line);
-    }
-    for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) {
-      const line = makeLine(color, 0.18);
-      setLinePoints(line, meridianPoints(basis, STAR_SHELL_RADIUS, (lon * Math.PI) / 180));
-      this.gridGroup.add(line);
+      for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) {
+        const line = makeLine(color, 0.3);
+        setLinePoints(line, intersectionCrossPoints(basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, (lon * Math.PI) / 180));
+        this.gridGroup.add(line);
+      }
     }
     scene.add(this.gridGroup);
 
@@ -143,10 +149,10 @@ class GridPlane {
       Object.assign(el.style, { position: 'fixed', color: `#${color.toString(16).padStart(6, '0')}`, font: '11px monospace', textShadow: '0 0 4px #000', whiteSpace: 'nowrap' });
       this.labelLayer.appendChild(el); this.labels.push(el); return el;
     };
-    addLabel(`${name}面`, 'plane');
-    addLabel(`▲ ${name}極 N`, 'pole-n'); addLabel(`▼ ${name}極 S`, 'pole-s');
-    for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) addLabel(`${name} ${lon}°`, 'lon');
-    for (let lat = -60; lat <= 60; lat += GRID_LAT_STEP_DEG) if (lat !== 0) addLabel(`${name} ${lat > 0 ? '+' : ''}${lat}°`, 'lat');
+    addLabel(`${name} PLANE`, 'plane');
+    addLabel(`▲ ${name} N`, 'pole-n'); addLabel(`▼ ${name} S`, 'pole-s');
+    for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) addLabel(`${name} LON ${lon}°`, 'lon');
+    for (let lat = -80; lat <= 80; lat += GRID_LAT_STEP_DEG) if (lat !== 0) addLabel(`${name} LAT ${lat > 0 ? '+' : ''}${lat}°`, 'lat');
   }
 
   sync(planeVisible: boolean, poleVisible: boolean, gridVisible: boolean, origin: THREE.Vector3, scale: number, camera: THREE.Camera): void {
@@ -176,7 +182,7 @@ class GridPlane {
     if (gridVisible) {
       let i = 0;
       for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) show(rest[i++]!, planePoint(this.basis, STAR_SHELL_RADIUS, 0, (lon * Math.PI) / 180));
-      for (let lat = -60; lat <= 60; lat += GRID_LAT_STEP_DEG) if (lat !== 0) show(rest[i++]!, planePoint(this.basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, 0));
+      for (let lat = -80; lat <= 80; lat += GRID_LAT_STEP_DEG) if (lat !== 0) show(rest[i++]!, planePoint(this.basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, 0));
     }
   }
 }
@@ -186,8 +192,8 @@ export class CelestialGrid {
   private readonly ecliptic: GridPlane;
 
   constructor(scene: THREE.Scene) {
-    this.equator = new GridPlane(scene, EQUATOR_BASIS, 0x8b93a0, '赤道');
-    this.ecliptic = new GridPlane(scene, ECLIPTIC_BASIS, 0xc0a878, '黄道');
+    this.equator = new GridPlane(scene, EQUATOR_BASIS, 0x8b93a0, 'EQUATOR');
+    this.ecliptic = new GridPlane(scene, ECLIPTIC_BASIS, 0xc0a878, 'ECLIPTIC');
   }
 
   // 星殻と同じくカメラ追従の固定半径殻として、6 トグルぶんの可視状態を反映する。
