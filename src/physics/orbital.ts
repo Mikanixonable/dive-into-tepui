@@ -225,7 +225,7 @@ export interface Elements {
 }
 
 // 位置・速度から古典軌道要素を求める。半径・角運動量が縮退している場合は null。
-export function elementsFromState(r: Vec3, v: Vec3): Elements | null {
+export function elementsFromState(r: Vec3, v: Vec3, mu: number = MU_EARTH): Elements | null {
   const rMag = len(r);
   if (rMag < 1) return null;
   const h = cross(r, v);
@@ -233,11 +233,11 @@ export function elementsFromState(r: Vec3, v: Vec3): Elements | null {
   if (hMag < 1) return null;
 
   // 離心率ベクトル e = (v×h)/μ - r̂
-  const eVec = sub(scale(cross(v, h), 1 / MU_EARTH), scale(r, 1 / rMag));
+  const eVec = sub(scale(cross(v, h), 1 / mu), scale(r, 1 / rMag));
   const e = len(eVec);
-  const energy = dot(v, v) / 2 - MU_EARTH / rMag;
-  const p = (hMag * hMag) / MU_EARTH;
-  const a = Math.abs(energy) > 1e-12 ? -MU_EARTH / (2 * energy) : Infinity;
+  const energy = dot(v, v) / 2 - mu / rMag;
+  const p = (hMag * hMag) / mu;
+  const a = Math.abs(energy) > 1e-12 ? -mu / (2 * energy) : Infinity;
 
   const hHat = norm(h);
   const pHat = e > 1e-8 ? norm(eVec) : norm(r);
