@@ -11,7 +11,7 @@ import { ProjectFn } from '../camera/camera-system';
 import { orbitPeriodOf, Plan, TimeRange } from './plan';
 import { PlanArc } from './plan-arc';
 
-const SEGMENT_COLORS = [0xbfc9d4, 0xffffff, 0xff6a00];
+const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
 const arcOpacity = (i: number): number => (i === 0 ? 0.55 : 0.85);
 
