@@ -374,7 +374,7 @@ export class Player extends Ship {
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
     if (isActive) {
-      this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer);
+      this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer, this.magsLeft);
     }
 
     this.orbitLine.sync(this.alive ? this.elements : null, fo, this.thrustVizDir !== null, this.state.r);
