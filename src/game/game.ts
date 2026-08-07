@@ -43,6 +43,7 @@ import { Ammo } from './game-entity/ammo';
 import { SaveManager } from './save-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { DockView } from './hud/dock-view';
+import { ViewBadge } from './hud/view-badge';
 import { Base } from './game-entity/base';
 import { len, sub } from '../physics/vec3';
 
@@ -91,6 +92,7 @@ export class Game {
   private readonly nanWatchdog: NanWatchdog;
   private readonly debugHistoryLine: DebugHistoryLine;
   private readonly dockView: DockView;
+  private readonly viewBadge: ViewBadge;
 
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
   constructor(
@@ -205,6 +207,7 @@ export class Game {
     this.dockView = new DockView(this._hud.root);
     this.dockView.onClose = () => { if (this._isPaused) this.resume(); };
     this.dockView.onLaunchShip = (ship, base) => this.launchFromBase(ship, base);
+    this.viewBadge = new ViewBadge(this._hud.root, this.mapModeToggler, this.dockView);
 
     this.floatingOrigin = this.player
       ? new FloatingOrigin(this.player.state.r, this.player.state.v)
@@ -559,11 +562,7 @@ export class Game {
   // ------------------------------------------------------------------ sync
 
   sync(dt: number): void {
-    this._hud.setContext(
-      this.launchMode === 'creative' ? 'CREATIVE' : 'STAGE',
-      this.launchMode === 'creative' ? 'CREATIVE' : this.activeStage.selectLabel,
-      this.mapModeToggler.mapMode ? 'MAP' : 'COMBAT',
-    );
+    this.viewBadge.sync(this.activeStage.selectLabel, this.activeStage.isPlaying && (this.player?.alive ?? false));
     const player = this.player;
     this.floatingOrigin = player
       ? new FloatingOrigin(player.state.r, player.state.v)
