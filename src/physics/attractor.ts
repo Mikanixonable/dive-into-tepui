@@ -75,3 +75,12 @@ export function elementsAround(s: OrbitState, body: Attractor): Elements | null 
   const rel = relativeTo(s, body);
   return elementsFromState(rel.r, rel.v, body.mu);
 }
+
+// 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。margin(大気圏突入高度
+// など)はゲーム側の判断なので呼び出し側から受け取る — physics/ はその値自体を知らない。
+export function hitsAnySurface(r: Vec3, bodies: readonly Attractor[], margin: number): boolean {
+  for (const body of bodies) {
+    if (len(sub(r, body.r)) < body.radius + margin) return true;
+  }
+  return false;
+}

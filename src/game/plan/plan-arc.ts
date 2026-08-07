@@ -2,11 +2,12 @@
 // サンプル列を1本の折れ線として描く。マニューバノードによる区間分割は知らない — 呼び出し側
 // (PlanTrajectory)が arc ごとにこれを持つ。
 import * as THREE from 'three/webgpu';
-import { MU_EARTH, OrbitState, altitudeOf, hermiteInterpolate, keplerPeriod } from '../../physics/orbital';
+import { OrbitState, hermiteInterpolate } from '../../physics/orbital';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { len } from '../../physics/vec3';
+import { Attractor, hitsAnySurface, localOrbitPeriod } from '../../physics/attractor';
+import { Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { SampledLine } from '../../render/sampled-line';
 import * as C from '../const';
@@ -20,10 +21,10 @@ type ComputeKey = { state0: OrbitState; end: number; };
 // 高度・離心率によらず精度が揃う(28日ぶんの LEO を積分して長半径誤差 1km 未満)。
 const STEPS_PER_REV = 100;
 
-// 刻み幅。その場の軌道運動の時間スケール(動径 r の円軌道周期)を STEPS_PER_REV 等分する。
+// 刻み幅。その場で最も強く引く天体を中心とする軌道運動の時間スケールを STEPS_PER_REV 等分する。
 // 低軌道では細かく、遠地点では粗くなり、離心軌道でも1周を通して精度が一定になる。
-function stepDt(r: number): number {
-  return keplerPeriod(r, MU_EARTH) / STEPS_PER_REV;
+function stepDt(r: Vec3, bodies: readonly Attractor[]): number {
+  return localOrbitPeriod(r, bodies) / STEPS_PER_REV;
 }
 
 export class PlanArc {
@@ -97,7 +98,8 @@ export class PlanArc {
 
   // state0 から end まで自機と同じ弾道係数で自由伝播し、サンプル列を作り直す。
   // 保持間隔は区間長を上限サンプル数で割った値、保持窓は区間長そのものなので、区間全体が
-  // 間引かれた解像度で残る。再突入高度を割るか非有限になったらそこで打ち切る。
+  // 間引かれた解像度で残る。いずれかの天体の表面 + REENTRY_ALT を割るか非有限になったら
+  // そこで打ち切る。
   private integrate(state0: OrbitState, end: number, ephemeris: Ephemeris): void {
     const duration = Math.max(0, end - state0.t);
     const entity = new OrbitEntity(state0);
@@ -106,14 +108,17 @@ export class PlanArc {
 
     let steps = 0;
     while (entity.state.t < end - EPOCH_EPS) {
+      const sizingBodies = ephemeris.attractorsAt(entity.state.t);
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
-      const dt = Math.min(stepDt(len(entity.state.r)), end - entity.state.t);
+      const dt = Math.min(stepDt(entity.state.r, sizingBodies), end - entity.state.t);
       if (dt <= 1e-9) break;
       const bodies = ephemeris.attractorsAt(entity.state.t + dt / 2);
       entity.step(dt, bodies, C.SHIP_BCINV, null, sampleInterval, duration);
 
-      const alt = altitudeOf(entity.state.r);
-      if (!isFinite(alt) || alt < C.REENTRY_ALT) {
+      const { r, v } = entity.state;
+      const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
+        && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+      if (!finite || hitsAnySurface(r, bodies, C.REENTRY_ALT)) {
         this.truncated = true;
         break;
       }

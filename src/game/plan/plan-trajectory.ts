@@ -171,6 +171,6 @@ function buildSegments(plan: Plan, ephemeris: Ephemeris): Segment[] {
     state0 = node;
   }
   // 最後のノード(無ければ anchor)から1周期ぶんを末尾区間とする
-  segments.push({ state0, end: state0.t + orbitPeriodOf(state0, plan.centralBody, ephemeris) });
+  segments.push({ state0, end: state0.t + orbitPeriodOf(state0, ephemeris.attractorsAt(state0.t)) });
   return segments;
 }
