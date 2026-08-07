@@ -56,8 +56,9 @@ export const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
-export const RADIATOR_HIT_WEAR_PER_HIT = 0.002; // 被弾1発で増える損耗度(耐久性10倍)
-export const RADIATOR_WEAR_RECOVERY = 0.01; // 1秒あたりの耐久回復量
+// 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
+// 船体への直撃(PLAYER_HIT_DAMAGE)より軽い。損耗はドックで修理するまで戻らない。
+export const RADIATOR_HIT_DAMAGE = 0.25;
 export const RADIATOR_HITTABLE_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
 export const RADIATOR_EFFICIENCY_MULT = 1; // 放熱面積(RADIATOR_PANEL_AREA)に掛ける性能係数
 
@@ -85,6 +86,9 @@ export const SHADOW_MIN_AMBIENT = 0.35; // 影の中に残す環境光の割合
 // 並進推力(WSADQE の全 6 方向で共通)の出力 3 段階 [m/s^2]。[1]/[2]/[3] キーで切替、
 // 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。
 export const THROTTLE_LEVELS = [5.0, 20.0, 100.0];//エンジン出力、スロットル
+// 自機の質量 [kg]。既定パーツのスラスター推力はこの質量で THROTTLE_LEVELS の最大値の
+// 加速度になるよう決めてあるので、両者を別々に動かすと表示と実挙動がずれる。
+export const PLAYER_MASS = 1000;
 export const THROTTLE_DEFAULT_IDX = 1;
 
 export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]

@@ -80,13 +80,10 @@ export class PlayerThrottle {
     const axZ = (input.down(K.thrustForward) ? 1 : 0) + (input.down(K.thrustBackward) ? -1 : 0);
     if (axX === 0 && axY === 0 && axZ === 0) return null;
 
-    // The desired thrust based on preset (0=30%, 1=60%, 2=100% roughly, though originally constant values)
-    // Actually, C.THROTTLE_LEVELS gives the acceleration directly. For parts, we should use ship.totalThrust
-    const baseAccel = C.THROTTLE_LEVELS[this.throttleIdx]!; 
-    const maxAccel = ship.mass > 0 ? ship.totalThrust / ship.mass : baseAccel;
-    
-    // Scale throttle level relative to max (for simplicity we just scale by preset idx, e.g. 1.0, 0.5, 0.1)
-    const presetScale = [0.1, 0.5, 1.0][this.throttleIdx]!;
+    // 全開加速度は推力/質量で決まる。スロットル段は THROTTLE_LEVELS の最大値に対する
+    // 比としてそこへ掛けるので、既定パーツの艦では表示値(THROTTLE_LEVELS)と実加速度が一致する。
+    const maxAccel = ship.mass > 0 ? ship.totalThrust / ship.mass : 0;
+    const presetScale = C.THROTTLE_LEVELS[this.throttleIdx]! / C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
     let thrustAccel = maxAccel * presetScale;
     
     // Fuel consumption
