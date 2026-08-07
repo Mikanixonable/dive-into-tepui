@@ -272,7 +272,8 @@ export class MapPicker {
         if (act === 'delete') {
           if (base) base.alive = false;
         } else if (act === 'openDock') {
-          this.hud.hint('ドックビュー — Coming soon');
+          if (base) this.game.openDockView(base);
+          else this.hud.hint('基地が見つかりません');
         } else {
           this.runBodyShip(act, target);
         }

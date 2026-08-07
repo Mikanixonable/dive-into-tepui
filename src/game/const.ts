@@ -4,6 +4,12 @@ export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/orbital';
 // クリエイティブモードで配置できる艦の上限隻数。
 export const CREATIVE_MAX_SHIPS = 8;
 
+// --- 基地ドッキング ---
+// 収容判定: 基地との距離(m)と相対速度(m/s)がこれ以内なら収容可能とみなす。
+export const DOCK_CAPTURE_DIST = 500;    // [m]
+export const DOCK_CAPTURE_REL_V = 20;   // [m/s]
+
+
 // クリエイティブモードのラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
 // 地球-月系と太陽-地球系は主天体間距離が3桁近く違うため、系ごとに妥当なオーダーを別々に持つ。
 export const CREATIVE_HALO_AX_EARTHMOON_KM = 8000;

@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
 import * as C from './const';
 import { v3 } from '../physics/vec3';
+import { orbitState } from '../physics/orbital';
 import { Player } from './player/player';
 import { Enemy } from './game-entity/enemy';
 import { CameraSystem } from './camera/camera-system';
@@ -41,6 +42,9 @@ import { GameSaveData } from './save-data';
 import { Ammo } from './game-entity/ammo';
 import { SaveManager } from './save-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
+import { DockView } from './hud/dock-view';
+import { Base } from './game-entity/base';
+import { len, sub } from '../physics/vec3';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -86,6 +90,7 @@ export class Game {
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
   private readonly debugHistoryLine: DebugHistoryLine;
+  private readonly dockView: DockView;
 
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
   constructor(
@@ -197,6 +202,9 @@ export class Game {
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.debugHistoryLine = new DebugHistoryLine(this._scene);
+    this.dockView = new DockView(this._hud.root);
+    this.dockView.onClose = () => { if (this._isPaused) this.resume(); };
+    this.dockView.onLaunchShip = (ship, base) => this.launchFromBase(ship, base);
 
     this.floatingOrigin = this.player
       ? new FloatingOrigin(this.player.state.r, this.player.state.v)
@@ -241,6 +249,61 @@ export class Game {
       if (next) this.setActivePlayer(next);
       else this.mapModeToggler.ensureOpen();
     }
+  }
+
+  // 基地に収容する (ランデブー成功時)
+  dockShipToBase(ship: Player, base: Base): void {
+    // 収容データを格納
+    const dockedEntry = {
+      id: ship.id,
+      name: ship.displayName,
+      hp: ship.hp,
+      maxHp: ship.maxHp,
+      parts: ship.parts,
+      _playerRef: ship, // 発進に使う直接参照
+    };
+    base.baseState.dockedShips.push(dockedEntry);
+    // プレイヤーを配置から除去（メッシュは非表示にするが破棄はしない）
+    const wasActive = this.player === ship;
+    ship.alive = false;
+    ship.obj.visible = false;
+    this.mapPicker.close();
+    this.cameraSystem.overviewCamera.clearFocusIf(ship.id);
+    if (wasActive) {
+      ship.clearTransientCommands();
+      this.player = null;
+      this.editor.setActivePlayer(null);
+    }
+    this.entities.removePlayer(ship);
+    if (wasActive) {
+      const next = this.entities.players.find((p) => p.alive) ?? null;
+      if (next) this.setActivePlayer(next);
+      else this.mapModeToggler.ensureOpen();
+    }
+    this._hud.hint(`${ship.displayName} を基地に収容しました`);
+  }
+
+  // ドックビューを開く
+  openDockView(base: Base): void {
+    const creative = this.launchMode === 'creative';
+    this.pause();
+    this.dockView.open(base, this.player, creative);
+  }
+
+  // 基地から船を発進する
+  private launchFromBase(ship: Player, base: Base): void {
+    // 基地近傍に配置 (基地状態をコピーして位置を少しずらす)
+    const br = base.state.r;
+    const launchR = v3(br.x + 600, br.y, br.z);
+    const launchState = orbitState(base.state.t, launchR, base.state.v);
+    ship.state = launchState;
+    ship.alive = true;
+    ship.obj.visible = true;
+    this.entities.addPlayer(ship);
+    this.setActivePlayer(ship);
+    this.dockView.close();
+    this.resume();
+    this._hud.hint(`${ship.displayName} を発進しました`);
   }
 
   // このフレームの表示時刻(未来ゴーストのスライダーぶん先取りした simTime)。
@@ -407,6 +470,13 @@ export class Game {
         }
       }
     }
+
+    // ランデブー収容チェック: 基地に接近した自機を検出し、収容可能であることをHUDに通知する。
+    // ドックビューが開いているときは実行しない。
+    if (!this.dockView.visible && this.entities.bases.length > 0) {
+      this.checkDockingProximity();
+    }
+
 
     // Simulator内のsubstep cleanup後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせるため。
     this.predictor.update(
@@ -598,4 +668,22 @@ export class Game {
       debris: this.entities.debris.length,
     };
   }
+
+  // ランデブー収容判定: 各プレイヤーが基地に十分近く、相対速度が小さければ収容する。
+  private checkDockingProximity(): void {
+    for (const base of this.entities.bases) {
+      if (!base.alive) continue;
+      for (const ship of [...this.entities.players]) {
+        if (!ship.alive) continue;
+        const relR = sub(ship.state.r, base.state.r);
+        const relV = sub(ship.state.v, base.state.v);
+        const dist = len(relR);
+        const relSpeed = len(relV);
+        if (dist < C.DOCK_CAPTURE_DIST && relSpeed < C.DOCK_CAPTURE_REL_V) {
+          this.dockShipToBase(ship, base);
+        }
+      }
+    }
+  }
 }
+

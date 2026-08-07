@@ -350,7 +350,108 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud-combat-shelf > .panel { max-height: 82px; }
   #hud-stagestatus { max-height: 46px; }
 }
+/* ===== DockView ===== */
+.dock-view-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.75); backdrop-filter: blur(6px);
+  font-family: ${FONT};
+}
+.dock-panel {
+  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 10px;
+  width: min(900px,94vw); max-height: 82vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+}
+.dock-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border-bottom: 1px solid ${EDGE};
+  flex: 0 0 auto;
+}
+.dock-title {
+  font-size: 15px; font-weight: 700; letter-spacing: 0.12em;
+  color: ${ACCENT}; flex: 0 0 auto;
+}
+.dock-tabs { display: flex; gap: 4px; flex: 1; }
+.dock-tab-btn {
+  padding: 4px 14px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: transparent; color: ${INK_SOFT}; cursor: pointer;
+  font-size: 12px; transition: color .15s, border-color .15s;
+}
+.dock-tab-btn:hover { color: ${INK}; border-color: ${ACCENT_SOFT}; }
+.dock-tab-btn.active { color: ${ACCENT}; border-color: ${ACCENT}; background: rgba(${ACCENT_RGB},.08); }
+.dock-close-btn {
+  padding: 4px 10px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: transparent; color: ${INK_SOFT}; cursor: pointer; font-size: 14px;
+}
+.dock-close-btn:hover { color: ${INK}; }
+.dock-status-bar {
+  padding: 5px 16px; border-bottom: 1px solid ${EDGE};
+  font-size: 12px; color: ${INK_SOFT}; flex: 0 0 auto;
+}
+.dock-body {
+  flex: 1 1 0; overflow-y: auto; padding: 12px 16px;
+  scrollbar-width: thin;
+}
+.dock-empty { color: ${INK_SOFT}; padding: 24px; text-align: center; line-height: 1.8; }
+/* Ships tab */
+.dock-ship-list { display: flex; flex-direction: column; gap: 8px; }
+.dock-ship-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  border: 1px solid ${EDGE}; border-radius: 6px; cursor: pointer;
+  transition: border-color .15s;
+}
+.dock-ship-row:hover { border-color: ${ACCENT_SOFT}; }
+.dock-ship-row.selected { border-color: ${ACCENT}; background: rgba(${ACCENT_RGB},.06); }
+.dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.dock-ship-name { font-size: 13px; }
+.dock-ship-hp { font-size: 11px; color: ${INK_SOFT}; }
+.dock-ship-actions { display: flex; gap: 6px; }
+/* Parts tab */
+.dock-parts-header {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+  padding-bottom: 8px; border-bottom: 1px solid ${EDGE};
+}
+.dock-ship-label { font-size: 12px; color: ${INK_SOFT}; flex: 1; }
+.dock-part-list { display: flex; flex-direction: column; gap: 6px; }
+.dock-part-row {
+  display: grid; grid-template-columns: 1fr 120px 60px auto;
+  align-items: center; gap: 10px; padding: 6px 10px;
+  border: 1px solid ${EDGE}; border-radius: 4px;
+}
+.dock-part-info { display: flex; flex-direction: column; gap: 2px; }
+.dock-part-name { font-size: 12px; }
+.dock-part-type { font-size: 10px; color: ${INK_SOFT}; }
+.dock-part-hp-bar { height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; }
+.dock-part-hp-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+.dock-part-hp-text { font-size: 11px; color: ${INK_SOFT}; text-align: right; }
+/* Shop tab */
+.dock-shop-header { margin-bottom: 10px; font-size: 11px; color: ${INK_SOFT}; }
+.dock-shop-list { display: flex; flex-direction: column; gap: 6px; }
+.dock-shop-item {
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+  border: 1px solid ${EDGE}; border-radius: 4px;
+}
+.dock-shop-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.dock-shop-name { font-size: 13px; }
+.dock-shop-type { font-size: 10px; color: ${INK_SOFT}; }
+.dock-shop-props { font-size: 11px; color: ${INK_SOFT}; }
+.dock-shop-stats { font-size: 10px; color: ${INK_SOFT}; }
+.dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.dock-shop-price { font-size: 12px; color: ${ACCENT}; }
+/* Common buttons */
+.dock-btn {
+  padding: 4px 12px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: rgba(${ACCENT_RGB},.08); color: ${ACCENT}; cursor: pointer;
+  font-size: 11px; transition: background .15s;
+}
+.dock-btn:hover:not(.disabled) { background: rgba(${ACCENT_RGB},.18); }
+.dock-btn.disabled, .dock-btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.dock-btn-repair-all {
+  font-size: 11px; padding: 4px 12px;
+}
 `;
+
 
 // 指定タグ・id・class の要素を作り、parent に追加して返す。
 function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLElement {
