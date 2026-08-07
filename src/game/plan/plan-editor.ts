@@ -542,7 +542,7 @@ export class PlanEditor {
         arrFor3D = arriving[this.selectedNodeIdx] || null;
         const p = this.nodeScreenPos(node);
         if (p.front) {
-          const dirs = this.computeAxisScreenDirs(node, mapDist);
+          const dirs = this.computeAxisScreenDirs(arrFor3D || node, mapDist);
           axisSpecs = this.buildAxisHandles(p.x, p.y, dirs);
         }
       }
