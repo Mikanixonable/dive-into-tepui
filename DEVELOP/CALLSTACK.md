@@ -169,7 +169,7 @@
     - [サブステップごと] ×ceil(simDt / SUBSTEP_MAX_DT) // 分割数は simDt のみで決まる(実 fps に依存しない)
       - simulationSubStep()
         - entity.stepSim() → current.step() → stepEnvRK4()(軌道要素メモ破棄 + history 記録)
-          // 自機(全隻)・敵・弾・薬莢・デブリ・補給それぞれ、個体ごと。alive のみ実行。自身の thrust + envAccel(bcInv)
+          // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地それぞれ、個体ごと。alive のみ実行。自身の thrust + envAccel(bcInv)
         - player.thermal.updateThermal() // 操作対象のみ(HUD 警告を出すため)
       - hitSystem.checkBulletHits() // bulletCollision=true のときだけ。サブステップごと
       - target.attacked() // 弾が命中した対象ごと
@@ -366,6 +366,9 @@
     - logistics.syncMarkers(displayTime) → ammo.displayState(displayTime) → markerManager.set('mg<i>') + setBearing('mg<i>-bearing')
       // マーカーを出せる補給ごと(i = 生存かつ displayState が非 null な個体だけを詰めた配列の添字)
       - hide() // 前フレームよりその数が減ったぶんの、余った添字だけ
+    - [CreativeStage] syncPreview() // 配置プレビューの軌道線・マーカー位置更新
+    - [CreativeStage] syncBaseMarkers(displayTime) → base.displayState(displayTime) → markerManager.setPosition('base<i>', 'mk-poi', '●')
+      // entities.bases の添字ごと(logistics.syncMarkers と同じ、前フレームより減った添字だけ hide())
   - hud.panels.sync(game, dt) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
