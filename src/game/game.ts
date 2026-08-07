@@ -37,6 +37,10 @@ import { DebugHistoryLine } from './debug-history-line';
 import { NavTarget } from './nav-target';
 import { MapPicker } from './map-picker';
 import { Navball } from './navball/navball';
+import { GameSaveData } from './save-data';
+import { Ammo } from './game-entity/ammo';
+import { SaveManager } from './save-manager';
+import { KEY_MAPPING as K } from './input/key-mapping';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -246,6 +250,43 @@ export class Game {
 
   get simTime(): number { return this.simulator.simTime; }
 
+  // ------------------------------------------------------------ save/load
+
+  restore(data: GameSaveData): void {
+    // 既存のエンティティをすべて破棄
+    this.entities.clearAll();
+    this.player = null;
+    this.editor.setActivePlayer(null);
+    this.cameraSystem.setActivePlayer(null);
+    this.targeter.clearTargets();
+    this.navTarget.clearIfTargeting('');
+
+    // 時刻の復元
+    this.simulator.simTime = data.simTime;
+
+    // Playerの復元
+    if (data.player) {
+      const p = Player.restore(data.player, data.simTime, this._hud, this._sfx, this._scene, this.effects, this.markerManager);
+      this.entities.addPlayer(p);
+      this.setActivePlayer(p);
+    }
+
+    // Enemyの復元
+    for (const edata of data.enemies) {
+      const e = Enemy.restore(edata, data.simTime, this._hud, this._sfx, this.effects, this._scene);
+      this.entities.addEnemy(e);
+    }
+
+    // Ammoの復元
+    for (const adata of data.ammos) {
+      const a = Ammo.restore(adata, data.simTime, this._scene);
+      this.entities.addAmmo(a);
+    }
+
+    // ロード直後の状態同期と安定化
+    this.entities.sync(this.floatingOrigin, data.simTime);
+  }
+
   // ------------------------------------------------------------ update
 
   update(dtRaw: number): void {
@@ -436,6 +477,13 @@ export class Game {
     const canToggleView = this.player?.alive ?? false;
     this.mapModeToggler.update(this.input, this.activeStage.isPlaying, canToggleView);
     this.editor.handleInput(this.input);
+
+    if (this.input.takeKey(K.quickSave)) {
+      SaveManager.save(this);
+    }
+    if (this.input.takeKey(K.quickLoad)) {
+      SaveManager.load(this);
+    }
   }
 
   // ------------------------------------------------------------------ sync
