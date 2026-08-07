@@ -1,7 +1,7 @@
 // 基地への収容・発進まわり一式。Player(艦の操作)・EntityManager(配置)・DockView(UI)・
 // Game(操作対象/カメラ/計画編集の付け替え)にまたがる横断的な関心事なので、Game に分岐と
 // 組み立てを残さずここへ切り出す(所有者が1つに定まらない GUI/挙動は横断そのものを
-// 責務とするモジュールを立てる — MapPicker/MapModeToggler と同じ形)。
+// 責務とするモジュールを立てる — MapPicker/ViewManager と同じ形)。
 import * as C from './const';
 import { v3, len, sub } from '../physics/vec3';
 import { orbitState } from '../physics/orbital';
@@ -15,9 +15,14 @@ import type { CameraSystem } from './camera/camera-system';
 import type { Game } from './game';
 import type { Input } from './input/input';
 import { KEY_MAPPING as K } from './input/key-mapping';
+import type { ViewManager } from './view-manager';
 
 export class Docking {
   readonly dockView: DockView;
+  // ドックビューの対象基地。設定されている間だけドックビューへ遷移できる。
+  private _activeBase: Base | null = null;
+
+  get activeBase(): Base | null { return this._activeBase; }
 
   constructor(
     private readonly game: Game,
@@ -25,21 +30,46 @@ export class Docking {
     private readonly entities: EntityManager,
     private readonly mapPicker: MapPicker,
     private readonly cameraSystem: CameraSystem,
+    private readonly viewManager: ViewManager,
   ) {
     this.dockView = new DockView(this.hud.root);
-    this.dockView.onClose = () => this.close();
+    this.dockView.onClose = () => this.viewManager.leaveDock();
     this.dockView.onLaunchShip = (ship, base) => this.launch(ship, base);
+    this.viewManager.setDocking(this);
   }
 
   // ドックビュー表示中の [ESC] を消費して閉じる。ポーズメニューより先に呼ぶ:
   // 先に消費しないと、同じキーで設定画面も同時に開く。
   handleInput(input: Input): void {
-    if (!this.dockView.visible) return;
-    if (input.takeKey(K.pauseMenu)) this.close();
+    if (this.viewManager.current !== 'dock') return;
+    if (input.takeKey(K.pauseMenu)) this.viewManager.leaveDock();
   }
 
-  // ドックビューを閉じ、開いたときに掛けたポーズを解く。
-  close(): void {
+  // 基地をドックビューの対象に据え、そのままドックビューへ遷移する。
+  activate(base: Base): void {
+    this._activeBase = base;
+    this.viewManager.setView('dock');
+  }
+
+  canEnterDock(): boolean {
+    return this._activeBase !== null && this._activeBase.alive;
+  }
+
+  // 対象基地が消えたらドックへ入れなくする。表示中なら元のビューへ戻す。
+  clearActiveBaseIf(base: Base): void {
+    if (this._activeBase !== base) return;
+    this._activeBase = null;
+    this.viewManager.leaveDock();
+  }
+
+  // ドックビューの開閉は ViewManager が遷移の一部として呼ぶ。ドック中は時間を止める。
+  enterDock(): void {
+    if (!this._activeBase) return;
+    this.game.pause();
+    this.dockView.open(this._activeBase, this.game.player, this.game.isCreative);
+  }
+
+  leaveDock(): void {
     this.dockView.close();
     if (this.game.isPaused) this.game.resume();
   }
@@ -85,12 +115,8 @@ export class Docking {
     ship.alive = true;
     this.entities.addPlayer(ship);
     this.game.setActivePlayer(ship);
-    this.close();
+    this.viewManager.leaveDock();
     this.hud.hint(`${ship.displayName} を発進しました`);
   }
 
-  open(base: Base): void {
-    this.game.pause();
-    this.dockView.open(base, this.game.player, this.game.isCreative);
-  }
 }
