@@ -141,7 +141,6 @@ export class ShipPlacerPanel {
   private librationSystemValue: LibrationSystem = 'earthMoon';
   private librationPointValue: LibrationPoint = 'L1';
   private librationOrbitKindValue: LibrationOrbitKind = 'halo';
-  private shipCount = 0;
 
   // 艦艇配置パネルの DOM を組み立て、root へ追加する。
   constructor(root: HTMLElement) {
@@ -305,9 +304,8 @@ export class ShipPlacerPanel {
 
   // フォームの現在値を読み、onConfirm へ通知する。
   private confirm(): void {
-    this.shipCount++;
-    // 空欄なら連番で自動命名する。
-    const name = this.nameInput.value.trim() || `SHIP-${this.shipCount}`;
+    // 空欄なら確定側(CreativeStage.placeObject)が種別ごとの既定名で自動命名する。
+    const name = this.nameInput.value.trim();
     // 選ばれなかった側の入力値も含めてまとめて渡す(確定側が placementMode/sizeMode を見て
     // 使う組を選ぶ)。
     const form = this.getForm();
