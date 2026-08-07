@@ -6,6 +6,7 @@ import { v3 } from '../../physics/vec3';
 import type { AnyPart, Part } from './parts';
 import { restorePart } from './parts';
 import { Player } from '../player/player';
+import { buildBaseModel } from '../../render/ships';
 import type { Hud } from '../hud/hud';
 import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
@@ -40,15 +41,7 @@ export class Base extends GameEntity {
   };
 
   constructor(state: OrbitState, scene: THREE.Scene, att?: Attitude) {
-    // 基地の仮モデル: 白くて大きい球体 (後で適切なモデルに差し替え可能)
-    const geo = new THREE.SphereGeometry(100, 32, 32);
-    const mat = new THREE.MeshLambertMaterial({
-      color: 0xaaccff,
-      emissive: 0x112244,
-    });
-    const obj = new THREE.Mesh(geo, mat);
-    
-    super(state, obj, scene, att);
+    super(state, buildBaseModel(), scene, att);
     this.mass = 1e6;
     this.collideRadius = 100;
     this.id = `base-${_baseIdCounter++}`;

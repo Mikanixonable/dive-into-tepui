@@ -2,13 +2,14 @@
 // Game(操作対象/カメラ/計画編集の付け替え)にまたがる横断的な関心事なので、Game に分岐と
 // 組み立てを残さずここへ切り出す(所有者が1つに定まらない GUI/挙動は横断そのものを
 // 責務とするモジュールを立てる — MapPicker/ViewManager と同じ形)。
+import * as THREE from 'three/webgpu';
 import * as C from './const';
 import { v3, len, sub } from '../physics/vec3';
 import { orbitState } from '../physics/orbital';
 import { Hud } from './hud/hud';
 import { DockView } from './hud/dock-view';
 import { Base } from './game-entity/base';
-import type { Player } from './player/player';
+import { Player } from './player/player';
 import type { EntityManager } from './simulation/entity-manager';
 import type { MapPicker } from './map-picker';
 import type { CameraSystem } from './camera/camera-system';
@@ -16,17 +17,26 @@ import type { Game } from './game';
 import type { Input } from './input/input';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import type { ViewManager } from './view-manager';
+import type { Sfx } from '../audio/sfx';
+import type { EffectsSystem } from './vfx/effects-system';
+import type { MarkerManager } from './marker/marker-manager';
 
 export class Docking {
   readonly dockView: DockView;
   // ドックビューの対象基地。設定されている間だけドックビューへ遷移できる。
   private _activeBase: Base | null = null;
+  // 新造艦の連番。基地をまたいで一意な id/表示名を割り振るだけの用途。
+  private nextBuiltShipNo = 0;
 
   get activeBase(): Base | null { return this._activeBase; }
 
   constructor(
     private readonly game: Game,
     private readonly hud: Hud,
+    private readonly sfx: Sfx,
+    private readonly scene: THREE.Scene,
+    private readonly effects: EffectsSystem,
+    private readonly markerManager: MarkerManager,
     private readonly entities: EntityManager,
     private readonly mapPicker: MapPicker,
     private readonly cameraSystem: CameraSystem,
@@ -35,6 +45,7 @@ export class Docking {
     this.dockView = new DockView(this.hud.root);
     this.dockView.onClose = () => this.viewManager.leaveDock();
     this.dockView.onLaunchShip = (ship, base) => this.launch(ship, base);
+    this.dockView.onBuildShip = (base) => this.buildShip(base);
     this.viewManager.setDocking(this);
   }
 
@@ -109,6 +120,25 @@ export class Docking {
     this.entities.parkPlayer(ship);
     if (wasActive) this.game.setActivePlayerOrNull(this.entities.players.find((p) => p.alive) ?? null);
     this.hud.hint(`${ship.displayName} を基地に収容しました`);
+  }
+
+  // 既定パーツ一式の艦を1隻建造し、格納艦へ加える。費用の徴収は DockView 側で済んでいる。
+  // 発進するまでは軌道上に実体化しない(dock() で収容した艦と同じ扱い)。
+  private buildShip(base: Base): void {
+    const no = ++this.nextBuiltShipNo;
+    const id = `${base.id}-built-${no}`;
+    const ship = new Player(this.hud, this.sfx, this.scene, this.effects, this.markerManager, `新造艦-${no}`, base.state, id);
+    ship.alive = false;
+    ship.obj.visible = false;
+    base.baseState.dockedShips.push({
+      id: ship.id,
+      name: ship.displayName,
+      hp: ship.hp,
+      maxHp: ship.maxHp,
+      parts: ship.parts,
+      player: ship,
+    });
+    this.hud.hint(`${ship.displayName} を建造しました`);
   }
 
   private launch(ship: Player, base: Base): void {

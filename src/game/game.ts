@@ -202,7 +202,10 @@ export class Game {
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.debugHistoryLine = new DebugHistoryLine(this._scene);
-    this.docking = new Docking(this, this._hud, this.entities, this.mapPicker, this.cameraSystem, this.viewManager);
+    this.docking = new Docking(
+      this, this._hud, this._sfx, this._scene, this.effects, this.markerManager,
+      this.entities, this.mapPicker, this.cameraSystem, this.viewManager,
+    );
     this.mapPicker.setDocking(this.docking);
     this.viewBadge = new ViewBadge(this._hud.root, this.viewManager);
 

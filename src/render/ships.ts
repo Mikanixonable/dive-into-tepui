@@ -603,3 +603,46 @@ export function buildBarrelMesh(): THREE.Group {
 
   return g;
 }
+
+// 基地: 中央ハブ + 放射状トラス4本 + ドッキングモジュール4基 + 太陽電池パドル2枚の低ポリ構成。
+// game-entity/base.ts の collideRadius(100m)と釣り合う全幅を持つ。
+export function buildBaseModel(): THREE.Group {
+  const g = new THREE.Group();
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, flatShading: true, roughness: 0.45, metalness: 0.75 });
+  const trussMat = new THREE.MeshStandardMaterial({ color: 0x1c2028, flatShading: true, roughness: 0.55, metalness: 0.65 });
+  const panelMat = new THREE.MeshStandardMaterial({ color: 0x1a3a5c, flatShading: true, roughness: 0.35, metalness: 0.55 });
+  const beaconMat = new THREE.MeshStandardMaterial({ color: 0xff6a00, emissive: 0xff6a00, emissiveIntensity: 1.2, roughness: 0.4 });
+
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(18, 18, 60, 8), hullMat);
+  g.add(hub);
+
+  const trussLength = 70;
+  const moduleOffset = 18 + trussLength;
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 2;
+    const dir = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+
+    const truss = new THREE.Mesh(new THREE.BoxGeometry(trussLength, 4, 4), trussMat);
+    truss.position.copy(dir).multiplyScalar(18 + trussLength / 2);
+    truss.rotation.y = -angle;
+    g.add(truss);
+
+    const module = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 26, 8), hullMat);
+    module.position.copy(dir).multiplyScalar(moduleOffset);
+    module.rotation.z = Math.PI / 2;
+    module.rotation.y = -angle;
+    g.add(module);
+  }
+
+  for (const side of [1, -1]) {
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(60, 1.5, 22), panelMat);
+    panel.position.set(side * (18 + 34), 0, 0);
+    g.add(panel);
+  }
+
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(3, 8, 6), beaconMat);
+  beacon.position.set(0, 30, 0);
+  g.add(beacon);
+
+  return g;
+}
