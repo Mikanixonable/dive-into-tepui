@@ -510,7 +510,7 @@ export class Game {
       this.touchControls?.syncModeButtons(player.rcsDamp, player.fineAttitude, player.progradeHold);
       this.activeStage.sync(player, project, displayTime, overviewMode);
     } else if (this.activeStage instanceof CreativeStage) {
-      this.activeStage.syncWithoutPlayer(overviewMode);
+      this.activeStage.syncWithoutPlayer(overviewMode, project);
     }
 
     this._hud.panels.sync(this, dt);
