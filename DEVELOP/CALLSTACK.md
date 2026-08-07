@@ -365,6 +365,9 @@
     - logistics.syncMarkers(displayTime) → ammo.displayState(displayTime) → markerManager.set('mg<i>') + setBearing('mg<i>-bearing')
       // マーカーを出せる補給ごと(i = 生存かつ displayState が非 null な個体だけを詰めた配列の添字)
       - hide() // 前フレームよりその数が減ったぶんの、余った添字だけ
+    - [CreativeStage] syncPreview() // 配置プレビューの軌道線・マーカー位置更新
+    - [CreativeStage] syncBaseMarkers(displayTime) → base.displayState(displayTime) → markerManager.setPosition('base<i>', 'mk-poi', '●')
+      // entities.bases の添字ごと(logistics.syncMarkers と同じ、前フレームより減った添字だけ hide())
   - hud.panels.sync(game, dt) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
