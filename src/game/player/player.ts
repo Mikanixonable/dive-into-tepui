@@ -269,7 +269,7 @@ export class Player extends Ship {
     this.thermal.addImpactHeat();
     const side = this.radiator.sideHitBy(hitR, this.state.r, this.att);
     const hitPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
-    this.applyDamageToParts(side === null ? C.PLAYER_HIT_DAMAGE : C.RADIATOR_HIT_DAMAGE, hitPart);
+    this.applyDamageToParts(side === null ? bullet.damage : C.RADIATOR_HIT_DAMAGE, hitPart);
     if (side !== null && hitPart && hitPart.hp <= 0) this.radiatorBreakEffect(side);
     if (this.hp > 0) {
       // 生存していれば被弾エフェクトのみ

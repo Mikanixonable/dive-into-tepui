@@ -160,7 +160,7 @@ export class Enemy extends Ship {
 
     activeStage.scoreCounter.recordHit();
 
-    this.applyDamageToParts(C.ENEMY_HIT_DAMAGE);
+    this.applyDamageToParts(bullet.damage);
     if (this.hp > 0) {
       this.hitEffect(bullet, hitR);
       return;
@@ -275,7 +275,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene);
+    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_HIT_DAMAGE, this.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(

@@ -68,7 +68,7 @@ export abstract class Ship extends GameEntity {
       mk('solar_panel', R.solarPanel, { name: 'Solar Array R', powerGeneration: 50 }),
       mk('weapon', R.weapon, {
         name: 'Gatling Gun', weaponType: 'gatling',
-        fireRate: 1 / C.FIRE_INTERVAL, damage: 1, muzzleVelocity: C.MUZZLE_SPEED,
+        fireRate: 1 / C.FIRE_INTERVAL, damage: C.ENEMY_HIT_DAMAGE, muzzleVelocity: C.MUZZLE_SPEED,
       }),
       mk('armor', R.armor, { name: 'Light Armor', damageReduction: 0.2 }),
     ];
@@ -244,6 +244,12 @@ export abstract class Ship extends GameEntity {
 
   private get aliveWeapons(): import('./parts').WeaponPart[] {
     return this.parts.filter(p => p.type === 'weapon' && p.hp > 0) as import('./parts').WeaponPart[];
+  }
+
+  // 1発あたりのダメージ。複数積んでいる場合は最も強い武装のものを使う。
+  get weaponDamage(): number {
+    const weapons = this.aliveWeapons;
+    return weapons.length === 0 ? 0 : Math.max(...weapons.map(p => p.damage));
   }
 
   get totalFireRate(): number {

@@ -4,6 +4,7 @@ import type { Base, DockedShipEntry } from '../game-entity/base';
 import type { Player } from '../player/player';
 import type { AnyPart, Part, PartType, RcsTankPart } from '../game-entity/parts';
 import { createPart } from '../game-entity/parts';
+import * as C from '../const';
 
 // ショップで購入可能な部品カタログ
 export interface PartCatalogEntry {
@@ -16,22 +17,27 @@ export interface PartCatalogEntry {
   readonly props: Record<string, number | string>;
 }
 
+// 既定パーツ(game-entity/ship.ts の initDefaultParts)と同じ単位・同じ桁で書く。
+// 桁がずれると、換装した瞬間に推力や耐久が別物になる。既定艦の値は
+// 重量 100 / 推力 PLAYER_MASS×最大スロットル / 冷却 25 / 発電 50 / 発射レート 1÷FIRE_INTERVAL。
+const DEFAULT_TORQUE = C.MAX_ANG_ACCEL * Math.max(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL);
+const DEFAULT_THRUST = C.PLAYER_MASS * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
 const SHOP_CATALOG: readonly PartCatalogEntry[] = [
-  { type: 'hull', name: 'Standard Hull', price: 5000, weight: 2000, maxHp: 200, props: {} },
-  { type: 'hull', name: 'Reinforced Hull', price: 12000, weight: 3500, maxHp: 500, props: {} },
-  { type: 'cockpit', name: 'Basic Cockpit', price: 3000, weight: 500, maxHp: 50, props: {} },
-  { type: 'armor', name: 'Light Armor', price: 2000, weight: 800, maxHp: 100, props: { damageReduction: 0.2 } },
-  { type: 'armor', name: 'Heavy Armor', price: 8000, weight: 2500, maxHp: 300, props: { damageReduction: 0.4 } },
-  { type: 'thruster', name: 'Standard RCS', price: 4000, weight: 400, maxHp: 60, props: { torque: 50, thrust: 100, fuelConsumptionRate: 1 } },
-  { type: 'thruster', name: 'High-Thrust RCS', price: 10000, weight: 600, maxHp: 60, props: { torque: 120, thrust: 300, fuelConsumptionRate: 2.5 } },
-  { type: 'rcs_tank', name: 'Small RCS Tank', price: 1500, weight: 200, maxHp: 30, props: { maxFuel: 500, fuel: 500 } },
-  { type: 'rcs_tank', name: 'Large RCS Tank', price: 4000, weight: 500, maxHp: 50, props: { maxFuel: 2000, fuel: 2000 } },
-  { type: 'radiator', name: 'Heat Radiator', price: 3000, weight: 300, maxHp: 40, props: { coolingRate: 50 } },
-  { type: 'radiator', name: 'Advanced Radiator', price: 7000, weight: 500, maxHp: 60, props: { coolingRate: 120 } },
-  { type: 'solar_panel', name: 'Solar Array', price: 2500, weight: 150, maxHp: 20, props: { powerGeneration: 100 } },
-  { type: 'solar_panel', name: 'High-Efficiency Solar', price: 6000, weight: 200, maxHp: 25, props: { powerGeneration: 250 } },
-  { type: 'weapon', name: 'Gatling Gun', price: 5000, weight: 600, maxHp: 40, props: { weaponType: 'gatling', fireRate: 10, damage: 1, muzzleVelocity: 1000 } },
-  { type: 'weapon', name: 'Heavy Cannon', price: 15000, weight: 1500, maxHp: 80, props: { weaponType: 'cannon', fireRate: 2, damage: 8, muzzleVelocity: 1500 } },
+  { type: 'hull', name: 'Standard Hull', price: 5000, weight: 80, maxHp: 300, props: {} },
+  { type: 'hull', name: 'Reinforced Hull', price: 12000, weight: 180, maxHp: 600, props: {} },
+  { type: 'cockpit', name: 'Basic Cockpit', price: 3000, weight: 100, maxHp: 100, props: {} },
+  { type: 'armor', name: 'Light Armor', price: 2000, weight: 100, maxHp: 100, props: { damageReduction: 0.2 } },
+  { type: 'armor', name: 'Heavy Armor', price: 8000, weight: 260, maxHp: 250, props: { damageReduction: 0.4 } },
+  { type: 'thruster', name: 'Standard RCS', price: 4000, weight: 100, maxHp: 80, props: { torque: DEFAULT_TORQUE, thrust: DEFAULT_THRUST, fuelConsumptionRate: 1 } },
+  { type: 'thruster', name: 'High-Thrust RCS', price: 10000, weight: 220, maxHp: 80, props: { torque: DEFAULT_TORQUE * 2, thrust: DEFAULT_THRUST * 2.5, fuelConsumptionRate: 2.5 } },
+  { type: 'rcs_tank', name: 'Small RCS Tank', price: 1500, weight: 60, maxHp: 50, props: { maxFuel: 600, fuel: 600 } },
+  { type: 'rcs_tank', name: 'Large RCS Tank', price: 4000, weight: 210, maxHp: 110, props: { maxFuel: 2200, fuel: 2200 } },
+  { type: 'radiator', name: 'Heat Radiator', price: 3000, weight: 100, maxHp: 50, props: { coolingRate: 25 } },
+  { type: 'radiator', name: 'Advanced Radiator', price: 7000, weight: 160, maxHp: 60, props: { coolingRate: 55 } },
+  { type: 'solar_panel', name: 'Solar Array', price: 2500, weight: 100, maxHp: 30, props: { powerGeneration: 50 } },
+  { type: 'solar_panel', name: 'High-Efficiency Solar', price: 6000, weight: 130, maxHp: 30, props: { powerGeneration: 120 } },
+  { type: 'weapon', name: 'Gatling Gun', price: 5000, weight: 100, maxHp: 80, props: { weaponType: 'gatling', fireRate: 1 / C.FIRE_INTERVAL, damage: C.ENEMY_HIT_DAMAGE, muzzleVelocity: C.MUZZLE_SPEED } },
+  { type: 'weapon', name: 'Heavy Cannon', price: 15000, weight: 220, maxHp: 120, props: { weaponType: 'cannon', fireRate: 4, damage: C.ENEMY_HIT_DAMAGE * 5, muzzleVelocity: C.MUZZLE_SPEED * 1.5 } },
 ];
 
 // 修理コスト: 1HPあたりのクレジット

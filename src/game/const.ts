@@ -340,7 +340,7 @@ export const STAGE00_FLYBY_LATERAL_SPREAD = 20; // フライパス初速の横�
 export const PLAYER_MAX_HP = 1000;
 export const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 export const PLAYER_HIT_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
-export const ENEMY_HIT_DAMAGE = 1; // 敵機が被弾した際のダメージ [HP]
+export const ENEMY_HIT_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
 
 // --- 高速接触による装甲ダメージ(自機⇔敵機) ---
 export const COLLISION_DAMAGE_MIN_SPEED = 50; // これ未満の接触速度では無傷 [m/s]
