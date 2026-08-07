@@ -16,6 +16,7 @@ import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { ProjectFn } from '../camera/camera-system';
+import type { FloatingOrigin } from '../floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
@@ -104,16 +105,17 @@ export abstract class Stage {
     location.replace(`${location.pathname}?stage=${this.id}`);
   }
 
-  // ステータスパネルとロジスティクスのマーカーを同期する。
-  sync(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
+  // ステータスパネルとロジスティクスのマーカーを同期する。fo は配置プレビューなど
+  // ステージ固有の描画物を持つサブクラスが使う。
+  sync(player: Player | null, _fo: FloatingOrigin, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
     this.syncStatusPanel(player, overviewMode);
     this.logistics.syncMarkers(player, project, displayTime, overviewMode);
   }
 
   // hudSubStatus() が null ならパネルを隠し、文字列なら HP・スコアとともに表示する。
-  private syncStatusPanel(player: Player, overviewMode: boolean): void {
+  private syncStatusPanel(player: Player | null, overviewMode: boolean): void {
     const message = this.hudSubStatus();
-    if (message === null || overviewMode) {
+    if (!player || message === null || overviewMode) {
       this.statusPanel.hide();
       return;
     }
@@ -141,7 +143,8 @@ export abstract class Stage {
   abstract briefingHtml(enemyCount: number): string;
   // 戻り値は初期敵数(ブリーフィング表示用)。
   abstract init(player: Player, entities: EntityManager): number;
-  abstract update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
+  // 毎フレーム呼ぶ。艦が1隻も無い間(Creative の未配置状態)は player が null になる。
+  abstract update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
 
   // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
   nextSimulationEventTime(_simTime: number): number | null { return null; }

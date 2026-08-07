@@ -179,7 +179,7 @@ export class CameraSystem {
   }
 
   // 視点状態をフローティングオリジン(fo)で補正してアクティブカメラへ反映する。
-  sync(fo: FloatingOrigin, displayTime: number): void {
+  sync(fo: FloatingOrigin): void {
     const active = this.overviewMode ? this.overviewCamera : this.combatCamera;
     syncCameraToViewFrame(active.camera, active.view, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
@@ -193,7 +193,7 @@ export class CameraSystem {
     if (this.overviewMode) {
       this.overviewCameraPanel.setFocus(this.overviewCamera.focus);
       this.overviewCameraPanel.setFrame(this.overviewCamera.cameraFrame);
-      this.focusMarkers.syncLabels(displayTime, this.activeCameraProjection);
+      this.focusMarkers.syncLabels(this.activeCameraProjection);
     } else {
       this.focusMarkers.hideLabels();
     }

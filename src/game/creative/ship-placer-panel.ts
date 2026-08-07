@@ -107,8 +107,10 @@ function setFieldVisible(input: HTMLInputElement, visible: boolean): void {
 
 export class ShipPlacerPanel {
   onConfirm: ((name: string, form: ShipPlacerForm) => void) | null = null;
-  onChange: (() => void) | null = null;
   onClose: (() => void) | null = null;
+
+  private _isOpen = false;
+  get isOpen(): boolean { return this._isOpen; }
 
   private readonly panel: HTMLElement;
   private readonly objectType: SegmentedControl<ObjectType>;
@@ -265,12 +267,6 @@ export class ShipPlacerPanel {
 
     // root (hud-modal-shield) に追加
     root.appendChild(this.panel);
-
-    // 入力変更イベントのバインド
-    const inputs = this.panel.querySelectorAll('input');
-    for (let i = 0; i < inputs.length; i++) {
-      inputs[i]!.addEventListener('input', () => this.onChange?.());
-    }
   }
 
   // サイズ/形の入力組を切り替え、選ばれた組以外を隠す。
@@ -280,7 +276,6 @@ export class ShipPlacerPanel {
     for (const [key, group] of Object.entries(this.sizeGroups) as [SizeShapeMode, HTMLElement][]) {
       group.style.display = key === mode ? 'block' : 'none';
     }
-    this.onChange?.();
   }
 
   // 配置方法(軌道要素/ラグランジュ点)を切り替え、選ばれなかった側を隠す。
@@ -290,7 +285,6 @@ export class ShipPlacerPanel {
     for (const [key, group] of Object.entries(this.placementGroups) as [PlacementMode, HTMLElement][]) {
       group.style.display = key === mode ? 'block' : 'none';
     }
-    this.onChange?.();
   }
 
   // 系を切り替え、面内/面外振幅の既定値をその系のオーダーへ更新する。
@@ -300,7 +294,6 @@ export class ShipPlacerPanel {
     const amp = LIBRATION_DEFAULT_AMPLITUDE_KM[system];
     this.libAx.value = String(amp.ax);
     this.libAz.value = String(amp.az);
-    this.onChange?.();
   }
 
   // フォームの現在値を読み、onConfirm へ通知する。
@@ -342,7 +335,7 @@ export class ShipPlacerPanel {
 
   // パネルの表示/非表示を切り替える。
   setVisible(visible: boolean): void {
+    this._isOpen = visible;
     this.panel.style.display = visible ? 'block' : 'none';
-    if (visible) this.onChange?.();
   }
 }

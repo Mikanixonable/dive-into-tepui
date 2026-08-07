@@ -58,7 +58,8 @@ export class MapModeToggler {
     this.apply(false);
   }
 
-  update(input: Input, isPlaying: boolean, canToggleView: boolean): void {
+  // [M] の押下エッジを受け取ってマップの開閉を切り替える。プレイ中でなくなったら強制的に閉じる。
+  handleInput(input: Input, isPlaying: boolean, canToggleView: boolean): void {
     if (!isPlaying) {
       if (this._mapMode) this.close();
       return;

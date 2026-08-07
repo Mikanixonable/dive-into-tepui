@@ -44,8 +44,8 @@ export class Stage0 extends Stage {
     return enemies.length;
   }
   // 敵の行動・補給・制限時間を1フレーム分進める。
-  update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
-    if (!this.isPlaying) return;
+  update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+    if (!this.isPlaying || !player) return;
 
     this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
 
