@@ -4,7 +4,7 @@ import * as C from './const';
 import { DisplayTimePanel } from './display-time-panel';
 import { fmtTime } from './hud/utils';
 
-export type DisplayDurationKey = 'orbit' | 'day' | 'week' | 'month' | 'manual';
+export type DisplayDurationKey = '90min' | 'day' | 'week' | 'month' | 'manual';
 
 // スライダー下の目盛りの本数(0..1 を等分する点の数)。
 const TICK_COUNT = 6;
@@ -35,12 +35,9 @@ export class DisplayTimeManager {
     };
   }
 
-  // 選んだ期間の秒数を返す。'orbit' キーの周期は orbitPeriod で渡す。
-  durationSec(orbitPeriod: number | null): number {
-    if (this.durationKey === 'orbit') {
-      if (orbitPeriod !== null && isFinite(orbitPeriod) && orbitPeriod > 0) return orbitPeriod;
-      return C.DISPLAY_DUR_DAY; // 双曲線・放物線軌道では1日にフォールバック
-    }
+  // 選んだ期間の秒数を返す。
+  durationSec(): number {
+    if (this.durationKey === '90min') return C.DISPLAY_DUR_90MIN;
     if (this.durationKey === 'week') return C.DISPLAY_DUR_WEEK;
     if (this.durationKey === 'month') return C.DISPLAY_DUR_MONTH;
     if (this.durationKey === 'manual') return this.manualDurationSec;
@@ -48,29 +45,29 @@ export class DisplayTimeManager {
   }
 
   // スライダーが有効な間は未来の simTime を返す。forceCurrent またはスライダー原点では simTime をそのまま返す。
-  resolveDisplayTime(orbitPeriod: number | null, simTime: number): number {
+  resolveDisplayTime(simTime: number): number {
     if (this.forceCurrent || this.sliderT <= 0) return simTime;
-    return simTime + this.sliderT * this.durationSec(orbitPeriod);
+    return simTime + this.sliderT * this.durationSec();
   }
 
   // 毎フレーム呼ぶ。操作パネル(期間・スライダー・目盛り・手動レンジ)の表示/非表示と内容を押し出す。
-  sync(orbitPeriod: number | null): void {
+  sync(): void {
     this.panel.setVisible(!this.forceCurrent);
     this.panel.setDuration(this.durationKey);
     this.panel.setManualVisible(this.durationKey === 'manual');
-    this.panel.setSliderLabel(this.sliderT > 0 ? this.futureTimeLabel(this.sliderT, orbitPeriod) : null);
-    this.panel.setTicks(this.tickLabels(orbitPeriod));
+    this.panel.setSliderLabel(this.sliderT > 0 ? this.futureTimeLabel(this.sliderT) : null);
+    this.panel.setTicks(this.tickLabels());
   }
 
   // T+ 表記の経過時間ラベル。
-  private futureTimeLabel(t: number, orbitPeriod: number | null): string {
-    return `T+${fmtTime(t * this.durationSec(orbitPeriod))}`;
+  private futureTimeLabel(t: number): string {
+    return `T+${fmtTime(t * this.durationSec())}`;
   }
 
   // スライダー全域を TICK_COUNT 個に等分した各点のラベル。
-  private tickLabels(orbitPeriod: number | null): readonly string[] {
+  private tickLabels(): readonly string[] {
     const labels: string[] = [];
-    for (let i = 0; i < TICK_COUNT; i++) labels.push(this.futureTimeLabel(i / (TICK_COUNT - 1), orbitPeriod));
+    for (let i = 0; i < TICK_COUNT; i++) labels.push(this.futureTimeLabel(i / (TICK_COUNT - 1)));
     return labels;
   }
 }
