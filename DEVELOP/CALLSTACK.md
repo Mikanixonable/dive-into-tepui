@@ -356,6 +356,7 @@
     - [editMode] syncGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
       // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は traj の今フレームの表示文脈を通す
     - [editMode] syncPanel(simTime) // MANEUVER PLAN パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
+  - mapPicker.sync(overviewMode) // 軌道オブジェクトウィンドウ。objectListVisible かつ overviewMode のときだけ pickables を行として書き出す
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync(displayTime)
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示
