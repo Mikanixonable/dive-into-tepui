@@ -13,6 +13,7 @@ import { UnlockManager } from './game/unlock-manager';
 import { isStageId } from './game/stages/stage-dictionary';
 import { selectLaunch } from './game/launch-select';
 import { LaunchSelection } from './game/game-mode';
+import { SaveManager } from './game/save-manager';
 
 
 // ?stage=00|0|1|2 または ?mode=creative で起動選択画面をスキップ(デバッグ・共有リンク用)。
@@ -181,6 +182,21 @@ async function main() {
   settingsPanel.onSettingsOpenChange = (open) => {
     if (open) game.pause();
     else game.resume();
+  };
+  settingsPanel.onSaveGame = () => {
+    try {
+      SaveManager.save(game);
+      settingsPanel.showSaveStatus('セーブしました');
+    } catch (e) {
+      settingsPanel.showSaveStatus('セーブに失敗しました', true);
+    }
+  };
+  settingsPanel.onLoadGame = () => {
+    if (SaveManager.load(game)) {
+      settingsPanel.toggle(false); // ロード成功時はメニューを閉じる
+    } else {
+      settingsPanel.showSaveStatus('ロードに失敗しました', true);
+    }
   };
   // パフォーマンス計測の DOM
   const perf = new PerfMeter(game);

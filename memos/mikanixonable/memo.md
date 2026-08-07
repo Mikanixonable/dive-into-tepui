@@ -248,4 +248,95 @@ devicePixelRatioのキャップ — scene.ts で renderer.setPixelRatio(window.d
 - syncRenderのmapMode分岐整理、MapView / MapPlannerへのコード抽出（Refactoring）
 
 
+---
+# セーブ機能の実装提案
+
+現在のアーキテクチャに基づき、ゲーム状態を保存・復元するセーブ機能の実装アプローチを提案します。
+
+## 1. セーブデータの構造（SaveData）
+ゲームの状態を JSON 形式でシリアライズし、ブラウザの `localStorage` または `IndexedDB` に保存します。
+まずは `localStorage` を使用する想定で、以下のようなデータ構造を定義します。
+
+```typescript
+interface GameSaveData {
+  version: number;          // セーブデータのスキーマバージョン（将来の仕様変更対応）
+  stageId: string;          // 'creative', 'stage1' などのステージID
+  simTime: number;          // 現在のシミュレーション時刻 [s]
+  
+  // エンティティ群の保存
+  player: PlayerSaveData | null;
+  enemies: EnemySaveData[];
+  ammos: AmmoSaveData[];
+  
+  // ※ Debris（薬莢や破片）やエフェクト（爆発など）は見た目専用であるため保存対象外とするのが一般的です。
+}
+
+interface EntitySaveData {
+  id: string;
+  kind: 'player' | 'enemy' | 'ammo';
+  position: { x: number, y: number, z: number };
+  velocity: { x: number, y: number, z: number };
+  attitude: { q: { x: number, y: number, z: number, w: number }, omega: { x: number, y: number, z: number } };
+}
+
+interface PlayerSaveData extends EntitySaveData {
+  mags: number;       // マガジン残量
+  heat: number;       // 現在の熱量
+  // plan (軌道計画ノード) の保存
+  planNodes: { time: number, dv: { x: number, y: number, z: number } }[]; 
+}
+
+interface EnemySaveData extends EntitySaveData {
+  enemyType: string;
+  alive: boolean;
+  health: number;
+}
+```
+
+## 2. 実装方針と各クラスへの影響
+
+### A. セーブ・ロード管理クラスの新規作成 (`src/game/save-manager.ts`)
+`Game` インスタンスから必要な状態を抽出し、また逆に `Game` へ状態を流し込むための `SaveManager` クラスを作成します。
+
+- **`save(game: Game): void`**:
+  `game.entities`、`game.simTime`、`game.activeStage` の状態を取得し、JSON 文字列化して `localStorage.setItem('tepui.save', json)` で保存。
+- **`load(game: Game): boolean`**:
+  JSONをパースし、以下のアクションを実行します。
+  1. `game.entities` にある既存のオブジェクトを全て `dispose()` してクリアする。
+  2. `game.simTime` と `ephemeris` の時刻を復元する。
+  3. JSON内の `PlayerSaveData` から `new Player(...)` を生成し、位置・速度・姿勢を上書きして `game.entities.addPlayer(...)` を呼ぶ。
+  4. 同様に `Enemy` や `Ammo` を再生成する。
+  5. プレイヤーの軌道計画 (`Plan`) に保存されたノードを再追加する。
+
+### B. エンティティのシリアライズ対応
+各クラス（`Player`, `Enemy`, `Ammo` 等）に自身の状態を出力する `serialize()` メソッドと、生データから状態を上書き復元する `restore(data: SaveData)` メソッド（またはファクトリ関数）を実装します。
+
+### C. UI との結合 (`SettingsPanel` / `Input`)
+- **ポーズメニュー (ESC)**
+  `SettingsPanel` に「SAVE」「LOAD」ボタンを追加します。
+- **クイックセーブ / ロード**
+  必要に応じて `Input` クラスで `[F5]` (クイックセーブ) / `[F9]` (クイックロード) などのショートカットをリッスンし、`SaveManager` を呼び出せるようにします。
+
+## 3. 実装上の課題・注意点
+
+> [!WARNING]
+> 以下の点について、実装時に設計の検討が必要です。
+
+1. **軌道計画 (`Plan`) の復元**
+   プレイヤーが設定したマニューバノード（時刻と $\Delta V$）を保存・復元する必要があります。ノードを復元した後、`PlanEditor` に再計算させてセグメント（`PlanSegment`）を正しく再構築する仕組みが必要です。
+2. **ステージ遷移との兼ね合い**
+   ステージ1とクリエイティブモードではゲームの進行ロジック（勝敗判定など）が異なります。セーブデータをロードする際は、まず保存されていた `stageId` のステージを正しく初期化（`initStage`）した上で、エンティティを上書きする必要があります。
+3. **物理シミュレーションの連続性**
+   セーブデータから復元した直後に、RK4 積分器のステップが急激に飛んだり、当たり判定の不整合が生じないよう、ロード直後に一度 `simulate(0)` や `entities.sync()` を手動で回して状態を安定させる必要があります。
+
+## 4. 進行ステップの提案
+
+もしこの実装方針でよろしければ、以下のフェーズに分けて実装を進めることができます。
+
+- **Phase 1**: `SaveManager` のベースと、各エンティティの `serialize()` / `restore()` の実装。
+- **Phase 2**: クリエイティブモードにおける F5/F9 キーによるクイックセーブ/ロード機能の組み込み（状態の書き出し・読み込みテスト）。
+- **Phase 3**: ESCメニュー（UI）への統合と、他ステージでの動作確認。
+- **Phase 4**: マニューバノード（軌道計画）のシリアライズ・復元対応。
+
+いかがでしょうか？内容を調整したい点や、先に着手したい機能があればお知らせください。
 

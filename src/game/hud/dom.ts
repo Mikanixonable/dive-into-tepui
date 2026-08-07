@@ -186,6 +186,12 @@ body.hud-modal-open #touch-ui { display: none; }
   pointer-events: auto; width: 64px; padding: 3px 6px; font-size: 11px;
   border: 1px solid ${EDGE}; border-radius: 6px; background: ${SURFACE}; color: ${INK};
 }
+#hud .settings-btn {
+  pointer-events: auto; cursor: pointer; padding: 4px 8px; font-size: 11px;
+  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK};
+}
+#hud .settings-btn:hover { background: rgba(255, 255, 255, 0.05); }
+#hud .settings-btn:active { background: rgba(255, 255, 255, 0.1); border-color: ${ACCENT_SOFT}; }
 #hud-displaytime .slider-ticks { display: flex; justify-content: space-between; margin-top: 2px; }
 #hud-displaytime .slider-ticks span { font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; }
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
