@@ -1,8 +1,8 @@
 // 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
-import { MU_EARTH, OrbitState } from '../../physics/orbital-state';
-import { elementsFromState } from '../../physics/elements';
+import { OrbitState } from '../../physics/orbital-state';
+import { elementsAround, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -60,18 +60,26 @@ export class PlanTrajectory {
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
     this.finalSegmentStart = segments.length > plan.nodes.length ? segments[segments.length - 1]!.state0 : null;
-    this.analyticDivergent = this.detectAnalyticDivergence(segments[0]?.state0 ?? null);
+    // 先頭区間が再積分されたときだけ判定し直す(全サンプル走査は再積分と同じ頻度に抑える)。
+    if (this.arcs[0]?.didRecompute()) {
+      this.analyticDivergent = this.detectAnalyticDivergence(segments[0]?.state0 ?? null);
+    }
   }
 
   // 各サンプルから求めた瞬時軌道要素を起点要素と比較する。月フライバイのような
   // 摂動では長半径・離心率・軌道面が変化するため、解析楕円を表示し続けると積分線と
   // 二重に見えてしまう。通常のLEOの数値誤差/J2の微小変化は閾値未満に収める。
+  // 途中で最も強く引く天体が起点と変われば、要素の比較を待たずその時点で divergent とする
+  // (中心が違う要素同士を比べても意味がないため)。
   private detectAnalyticDivergence(anchor: OrbitState | null): boolean {
-    const base = anchor ? elementsFromState(anchor.r, anchor.v, MU_EARTH) : null;
+    if (!anchor || !this.ephemeris) return false;
+    const center = strongestAttractor(anchor.r, this.ephemeris.attractorsAt(anchor.t));
+    const base = elementsAround(anchor, center);
     if (!base || base.e >= 0.98 || !isFinite(base.a) || base.a <= 0) return false;
     const samples = this.arcs[0]?.samplesRef() ?? [];
     for (const s of samples) {
-      const el = elementsFromState(s.r, s.v, MU_EARTH);
+      if (strongestAttractor(s.r, this.ephemeris.attractorsAt(s.t)).id !== center.id) return true;
+      const el = elementsAround(s, center);
       if (!el || !isFinite(el.a) || el.a <= 0) continue;
       if (Math.abs(el.a - base.a) / base.a > 0.03 || Math.abs(el.e - base.e) > 0.02) return true;
       const planeDot = el.hHat.x * base.hHat.x + el.hHat.y * base.hHat.y + el.hHat.z * base.hHat.z;
