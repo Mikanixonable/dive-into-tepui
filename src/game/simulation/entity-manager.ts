@@ -7,6 +7,7 @@ import { Ammo } from '../game-entity/ammo';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { Enemy } from '../game-entity/enemy';
 import { Bullet } from '../game-entity/bullet';
+import { Base } from '../game-entity/base';
 import type { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { CombatTarget } from '../targeter';
@@ -20,6 +21,7 @@ export class EntityManager {
   // 自機。操作対象(Game.player)もこの配列の1隻で、積分・衝突・寿命判定・予測では
   // 他の艦と対等に扱う。ステージモードでは1隻だけが入る。
   readonly players: Player[] = [];
+  readonly bases: Base[] = [];
 
   // 敵を登録する。
   addEnemy(enemy: Enemy): void {
@@ -66,6 +68,16 @@ export class EntityManager {
     this.ammos.push(ammo);
   }
 
+  // 基地を登録する。
+  addBase(base: Base): void {
+    this.bases.push(base);
+  }
+
+  // ID で名指された基地を返す。見つからなければ null。
+  findBase(id: string): Base | null {
+    return this.bases.find(b => b.id === id) ?? null;
+  }
+
   // 配列へ追加し、cap を超えたら先頭(最古)を1件破棄する。
   private addCapped<T extends GameEntity>(arr: T[], entity: T, cap: number): void {
     arr.push(entity);
@@ -80,6 +92,7 @@ export class EntityManager {
       ...this.ammos,
       ...this.casings,
       ...this.debris,
+      ...this.bases,
     ];
   }
 
@@ -97,6 +110,7 @@ export class EntityManager {
     this.prune(this.casings);
     this.prune(this.debris);
     this.prune(this.ammos);
+    this.prune(this.bases);
   }
 
   // in-place フィルタ: 配列の参照はそのまま保つ。
