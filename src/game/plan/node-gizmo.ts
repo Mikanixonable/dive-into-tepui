@@ -4,9 +4,6 @@ import * as C from '../const';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, TEXT as INK, FONT } from '../theme';
 import { ContextMenu } from '../hud/context-menu';
 
-const SURFACE = 'rgba(13, 15, 18, 0.85)';
-const EDGE = 'rgba(255, 255, 255, 0.16)';
-
 const STYLE = `
 #node-gizmo {
   position: fixed; inset: 0; pointer-events: none; z-index: 9;
@@ -27,12 +24,12 @@ const STYLE = `
 }
 #node-gizmo .gz-axis {
   position: absolute; transform: translate(-50%, -50%);
-  min-width: 30px; padding: 2px 7px; text-align: center; touch-action: none;
+  width: 44px; height: 44px; border-radius: 22px; touch-action: none;
   pointer-events: auto; cursor: grab;
-  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE};
-  color: ${INK}; font-size: 10px; letter-spacing: 1px;
+  /* 3Dアームの当たり判定として機能させるため透明にする */
+  opacity: 0;
 }
-#node-gizmo .gz-axis:active { border-color: ${ACCENT}; color: ${ACCENT_SOFT}; }
+#node-gizmo .gz-axis:active { cursor: grabbing; }
 `;
 
 export interface NodeHandleSpec {
