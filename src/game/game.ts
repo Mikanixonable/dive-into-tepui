@@ -263,6 +263,7 @@ export class Game {
       return;
     }
 
+    // Creative の未配置状態でも、残骸・弾など全エンティティの epoch は進め続ける。
     if (this.player === null) {
       this.simSpeedManager.update(this.simulator.simTime);
       this.applyWarpCommandPolicy();
@@ -385,10 +386,13 @@ export class Game {
       this.editor.handleMapPointer(this.input);
       this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
       this.editor.updateEditing(dt, this.input);
-    }
-    else if (this.player) {
+    } else if (this.player) {
+      const targets: (import('./targeter').CombatTarget)[] = [
+        ...this.entities.enemies,
+        ...this.entities.players.filter((p) => p !== this.player),
+      ];
       this.targeter.updateCombatTargeting(
-        this.player, this.entities.enemies, this.input, this.cameraSystem.activeCameraProjection,
+        this.player, targets, this.input, this.cameraSystem.activeCameraProjection,
       );
     }
   }
@@ -478,23 +482,32 @@ export class Game {
 
     this.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
 
-    if (player) this.targeter.sync(this.floatingOrigin, player, this.entities.enemies, overviewMode, project);
+    if (player) {
+      const targets: (import('./targeter').CombatTarget)[] = [
+        ...this.entities.enemies,
+        ...this.entities.players.filter((p) => p !== player),
+      ];
+      this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project);
+    }
     this.navTarget.sync(project);
     if (player) this.navball.sync(player.state, player.att, player.alive, target?.state ?? null);
 
     // 敵マーカーは1体では決められない(画面上で近接するものをまとめる)ので集合として渡す。
     // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
-    const aliveEnemies = this.entities.enemies.filter((enemy) => enemy.alive);
+    const aliveTargets: (import('./targeter').CombatTarget)[] = [
+      ...this.entities.enemies.filter((enemy) => enemy.alive),
+      ...this.entities.players.filter((p) => p !== player && p.alive),
+    ];
     const enemyMarkerItems: GroupedMarkerItem[] = [];
-    for (const enemy of aliveEnemies) {
-      const pos = enemy.displayState(displayTime)?.r;
+    for (const tgt of aliveTargets) {
+      const pos = tgt.displayState(displayTime)?.r;
       if (!pos) continue;
       const role: 'none' | 'primary' | 'secondary' =
-        enemy === target ? 'primary' : enemy === secondaryTarget ? 'secondary' : 'none';
-      enemyMarkerItems.push(enemy.markerItem(role, player?.state.r ?? v3(), pos));
+        tgt === target ? 'primary' : tgt === secondaryTarget ? 'secondary' : 'none';
+      enemyMarkerItems.push(tgt.markerItem(role, player?.state.r ?? v3(), pos));
     }
     this.enemyMarkers.sync(enemyMarkerItems, project);
-    if (player) this.leadMarkers.sync(player, aliveEnemies, target, secondaryTarget, simTime, overviewMode, project);
+    if (player) this.leadMarkers.sync(player, aliveTargets, target, secondaryTarget, simTime, overviewMode, project);
 
     this.displayTimeManager.sync(orbitPeriod);
     this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project);

@@ -16,10 +16,12 @@ import { FloatingOrigin } from './floating-origin';
 import { pickNearest } from './map-pick';
 import { KEY_MAPPING as K } from './input/key-mapping';
 
+export type CombatTarget = Enemy | Player;
+
 export class Targeter {
   // 唯一の真実。右クリックメニューでのみ変わり、自動選定・自動再選択は行わない。
-  target: Enemy | null = null;
-  secondaryTarget: Enemy | null = null;
+  target: CombatTarget | null = null;
+  secondaryTarget: CombatTarget | null = null;
   private targetSelectAt = -Infinity;
   private targetSelectIndex = -1;
 
@@ -34,7 +36,7 @@ export class Targeter {
   // 第二ターゲットのハイライト線(シアン)。第一より薄い renderOrder に置く。
   readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9);
 
-  private readonly contextMenu = new ContextMenu<Enemy>();
+  private readonly contextMenu = new ContextMenu<CombatTarget>();
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
   constructor(private readonly _hud: Hud, _sfx: Sfx, private readonly markerManager: MarkerManager, scene: THREE.Scene) {
@@ -50,12 +52,12 @@ export class Targeter {
 
   // 生存判定込みの現在の第一ターゲット。撃破後は target を保持したままにせず、ここで
   // 死亡個体を隠す(描画・軌道線更新など「生きているターゲットだけを見たい」箇所が使う)。
-  get aliveTarget(): Enemy | null {
+  get aliveTarget(): CombatTarget | null {
     return this.target && this.target.alive ? this.target : null;
   }
 
   // 生存判定込みの現在の第二ターゲット。表示専用の扱いは aliveTarget と同じ。
-  get aliveSecondaryTarget(): Enemy | null {
+  get aliveSecondaryTarget(): CombatTarget | null {
     return this.secondaryTarget && this.secondaryTarget.alive ? this.secondaryTarget : null;
   }
 
@@ -68,37 +70,37 @@ export class Targeter {
   }
 
   // 右クリックによるターゲット選択メニューを扱う。オート選定は行わない。
-  updateCombatTargeting(player: Player, enemies: Enemy[], input: Input, project: ProjectFn): void {
-    this.handleTargetSelectKey(input, enemies, project);
-    this.handleTargetContextMenu(input, enemies, player, project);
+  updateCombatTargeting(player: Player, targets: CombatTarget[], input: Input, project: ProjectFn): void {
+    this.handleTargetSelectKey(input, targets, project);
+    this.handleTargetContextMenu(input, targets, player, project);
   }
 
   // Tキーで照準中心に近い敵を選ぶ。連打(2秒以内)では第二ターゲット候補を順送りする。
-  private handleTargetSelectKey(input: Input, enemies: Enemy[], project: ProjectFn): void {
+  private handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn): void {
     if (!input.takeKey(K.targetSelect)) return;
     const now = performance.now() / 1000;
-    const candidates = enemies
+    const candidates = targets
       .filter((e) => e.alive)
-      .map((enemy) => {
-        const p = project(enemy.state.r);
+      .map((target) => {
+        const p = project(target.state.r);
         const dx = p.x - window.innerWidth * 0.5;
         const dy = p.y - window.innerHeight * 0.5;
-        return { enemy, d2: dx * dx + dy * dy, front: p.front };
+        return { target, d2: dx * dx + dy * dy, front: p.front };
       })
       .filter((x) => x.front)
       .sort((a, b) => a.d2 - b.d2);
     const primary = this.aliveTarget;
     if (!primary) {
-      const next = candidates[0]?.enemy ?? null;
+      const next = candidates[0]?.target ?? null;
       this.setTarget(next);
       this.targetSelectIndex = -1;
       this.targetSelectAt = now;
       return;
     }
-    const secondaryCandidates = candidates.filter((x) => x.enemy !== primary);
+    const secondaryCandidates = candidates.filter((x) => x.target !== primary);
     if (now - this.targetSelectAt > 2) this.targetSelectIndex = -1;
     this.targetSelectIndex = (this.targetSelectIndex + 1) % Math.max(1, secondaryCandidates.length);
-    const next = secondaryCandidates[this.targetSelectIndex]?.enemy ?? null;
+    const next = secondaryCandidates[this.targetSelectIndex]?.target ?? null;
     if (next) this.setSecondaryTarget(next);
     this.targetSelectAt = now;
   }
@@ -138,19 +140,27 @@ export class Targeter {
 
   // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー)をまとめて更新する。
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
-  sync(fo: FloatingOrigin, player: Player, enemies: Enemy[], overviewMode: boolean, project: ProjectFn): void {
-    this.syncOrbitLine(fo, enemies, overviewMode);
+  sync(fo: FloatingOrigin, player: Player, targets: CombatTarget[], overviewMode: boolean, project: ProjectFn): void {
+    this.syncOrbitLine(fo, targets, overviewMode);
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
 
   // 第一・第二ターゲットのハイライト線を最新の状態に合わせる。
-  private syncOrbitLine(fo: FloatingOrigin, enemies: Enemy[], overviewMode: boolean): void {
+  private syncOrbitLine(fo: FloatingOrigin, targets: CombatTarget[], overviewMode: boolean): void {
     const tgt = this.aliveTarget;
     const secTgt = this.aliveSecondaryTarget;
-    for (const enemy of enemies) {
-      const showGray = overviewMode && enemy.alive && enemy !== tgt && enemy !== secTgt;
-      enemy.orbitLine.sync(showGray ? enemy.elements : null, fo);
+    for (const t of targets) {
+      const showGray = overviewMode && t.alive && t !== tgt && t !== secTgt;
+      // プレイヤーの場合は自機軌道線として別の色が設定されているが、
+      // overviewModeで非ターゲットとして描画する際の同期はそれぞれのクラスのorbitLine.syncに任せる。
+      // Wait, プレイヤー自身が持っている orbitLine は player.ts 内で sync されるためここでは更新しない方針が安全。
+      // もし t が Player であればここで orbitLine.sync を呼ぶと引数が合わない(Playerのsyncは引数が多い)。
+      // したがってターゲットとしてのハイライト(orbitLine, secondaryOrbitLine)だけを更新し、
+      // ターゲット以外の orbitLine のグレーアウト描画は Enemy だけに行う。
+      if (t instanceof Enemy) {
+        t.orbitLine.sync(showGray ? t.elements : null, fo);
+      }
     }
 
     this.orbitLine.sync(tgt ? tgt.elements : null, fo);
@@ -189,24 +199,24 @@ export class Targeter {
   // 戦闘ビューの右クリックは射撃と兼用。移動量が閾値内(input.ts が判定済み)の
   // 右クリックが敵に当たった場合だけ、その敵を対象にコンテキストメニューを開く。
   // 外れたクリックは消費するだけで何もしない(自動選定・自動解除は行わない)。
-  private handleTargetContextMenu(input: Input, enemies: Enemy[], player: Player, project: ProjectFn): void {
+  private handleTargetContextMenu(input: Input, targets: CombatTarget[], player: Player, project: ProjectFn): void {
     if (!player.alive) return;
     input.takeRightClicks((click) => {
-      const hit = this.pickEnemyAt(click, enemies, project);
+      const hit = this.pickTargetAt(click, targets, project);
       if (hit) this.openMenu(click, hit);
       return true;
     });
   }
 
-  // クリック位置の許容半径内で画面上最も近い生存敵を返す。範囲外なら null。
-  private pickEnemyAt(click: PointerPoint, enemies: Enemy[], project: ProjectFn): Enemy | null {
-    const pickables = enemies.filter((e) => e.alive).map((enemy) => ({ pos: enemy.state.r, enemy }));
+  // クリック位置の許容半径内で画面上最も近い生存ターゲットを返す。範囲外なら null。
+  private pickTargetAt(click: PointerPoint, targets: CombatTarget[], project: ProjectFn): CombatTarget | null {
+    const pickables = targets.filter((e) => e.alive).map((target) => ({ pos: target.state.r, target }));
     const hit = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);
-    return hit?.enemy ?? null;
+    return hit?.target ?? null;
   }
 
   // hit を対象に、現在の第一/第二設定に応じたラベルでメニューを開く。
-  private openMenu(click: PointerPoint, hit: Enemy): void {
+  private openMenu(click: PointerPoint, hit: CombatTarget): void {
     const items: MenuItem[] = [
       { label: hit === this.target ? 'ターゲット解除' : 'ターゲットに設定', act: 'primary' },
       { label: hit === this.secondaryTarget ? '第二ターゲット解除' : '第二ターゲットに設定', act: 'secondary' },
@@ -216,14 +226,14 @@ export class Targeter {
   }
 
   // 第一ターゲットを設定する。同じ個体が第二ターゲットなら外す(両方兼務を禁止)。
-  private setTarget(t: Enemy | null): void {
+  private setTarget(t: CombatTarget | null): void {
     if (t && this.secondaryTarget === t) this.secondaryTarget = null;
     this.target = t;
     this._hud.hint(t ? `ターゲット固定: ${t.name}` : 'ターゲット固定解除');
   }
 
   // 第二ターゲットを設定する。同じ個体が第一ターゲットなら外す(両方兼務を禁止)。
-  private setSecondaryTarget(t: Enemy | null): void {
+  private setSecondaryTarget(t: CombatTarget | null): void {
     if (t && this.target === t) this.target = null;
     this.secondaryTarget = t;
     this._hud.hint(t ? `第二ターゲット固定: ${t.name}` : '第二ターゲット固定解除');

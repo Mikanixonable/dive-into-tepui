@@ -55,6 +55,7 @@ export class CameraSystem {
   readonly focusMarkers: FocusMarkers;
   // 広範囲視点の操作パネル(注視対象・視点の座標系・視点リセット)。
   private readonly overviewCameraPanel: OverviewCameraPanel;
+  // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
   private _overviewMode = false;
   get overviewMode(): boolean { return this._overviewMode; }
 
@@ -174,7 +175,7 @@ export class CameraSystem {
     syncCameraToViewFrame(active.camera, active.view, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
-    
+
     // 戦闘ビュー固有パネルを広範囲視点では非表示にする
     const hidden = this.overviewMode && !this.showStatusInOverview ? 'none' : '';
     if (this._elStatus) this._elStatus.style.display = hidden;
