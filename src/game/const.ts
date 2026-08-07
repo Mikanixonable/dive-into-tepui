@@ -233,8 +233,8 @@ export const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリ
 export const DV_DRAG_LATCH_PX = 60; // これを超えるアーム基点からの変位でドラッグがラッチ状態に入る [px]
 export const DV_LATCH_RATE_PER_PX = 3.0; // ラッチ中、閾値超過1pxあたりのΔv加算レート [m/s per 実秒 per px]
 export const DV_RATE_MIN = 1; // 長押し開始時のΔv加算レート [m/s per 実秒]
-export const DV_RATE_MAX = 150; // 長押し継続後に到達するΔv加算レート [m/s per 実秒]
-export const DV_RATE_RAMP_SEC = 2.0; // DV_RATE_MIN から DV_RATE_MAX への指数的ランプ時間 [s]
+export const DV_RATE_MAX = 400; // 長押し継続後に到達するΔv加算レート [m/s per 実秒]
+export const DV_RATE_RAMP_SEC = 3.0; // DV_RATE_MIN から DV_RATE_MAX への指数的ランプ時間 [s]
 // マニューバ達成判定(計画軌道への接近許容)
 // 計画軌道の到達判定。従来値の1/3にして誤差を厳しくする。
 export const NODE_TOL_SMA = 0.02 / 3; // 長半径の相対誤差
