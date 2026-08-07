@@ -2,10 +2,10 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { Attractor, hitsAnySurface, strongestAttractor } from '../../physics/attractor';
 import type { FloatingOrigin } from '../floating-origin';
 import { Attitude } from '../../physics/attitude';
-import { altitudeOf, OrbitState, orbitState, R_EARTH_EQ } from '../../physics/orbital-state';
+import { OrbitState, orbitState, R_EARTH_EQ } from '../../physics/orbital-state';
 import { OrbitLine } from '../../render/orbitline';
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3 } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
@@ -193,9 +193,9 @@ export class Enemy extends Ship {
   }
 
   // 再突入による自然死。alive がすでに false なら何もしない(多重処理防止)。
-  checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3): void {
+  checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3, bodies: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (altitudeOf(this.state.r) >= C.REENTRY_ALT) return;
+    if (!hitsAnySurface(this.state.r, bodies, C.REENTRY_ALT)) return;
     this.alive = false;
     this.destroyEffect();
     activeStage.recordEnemyDeath(this, simTime, 'reentry');
@@ -288,6 +288,6 @@ export class Enemy extends Ship {
   // オーバービュー時の非ターゲット背景描画用
   syncBackgroundOrbitLine(show: boolean, fo: FloatingOrigin, bodies: readonly Attractor[]): void {
     const center = strongestAttractor(this.state.r, bodies);
-    this.orbitLine.sync(show ? this.elementsAround(center) : null, fo, undefined, undefined, center.r);
+    this.orbitLine.sync(show ? this.elementsAround(center) : null, fo, undefined, undefined, center.state.r);
   }
 }

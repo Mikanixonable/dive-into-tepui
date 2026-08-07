@@ -34,6 +34,7 @@ export class PlanArc {
   // 再突入高度割れ・非有限で積分を打ち切ったか。
   private truncated = false;
   private key: ComputeKey | null = null;
+  private recomputed = false;
 
   // 描画色・不透明度・renderOrder を指定して線を用意する。
   constructor(color: number, opacity = 0.85, renderOrder = 4) {
@@ -48,11 +49,17 @@ export class PlanArc {
   // 起点・終端の変化を検出して再積分する。
   update(state0: OrbitState, end: number, ephemeris: Ephemeris): void {
     // 積分結果は (state0, end) だけで決まるので、変化したときにだけ回す。
-    const changed = this.key === null || state0 !== this.key.state0 || end !== this.key.end;
-    if (changed) {
+    this.recomputed = this.key === null || state0 !== this.key.state0 || end !== this.key.end;
+    if (this.recomputed) {
       this.integrate(state0, end, ephemeris);
       this.key = { state0, end };
     }
+  }
+
+  // 直近の update() で実際に再積分したか。呼び出し側が再積分に連動するキャッシュを
+  // 持つときの判定に使う。
+  didRecompute(): boolean {
+    return this.recomputed;
   }
 
   // 直近に積分したサンプル列を折れ線メッシュへ反映する。

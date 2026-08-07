@@ -138,7 +138,7 @@ export class PlanDisplay {
   private plannedPlayerLabel(displayTime: number, simTime: number, r: Vec3): string {
     const tRel = displayTime - simTime;
     const center = strongestAttractor(r, this.ephemeris.attractorsAt(displayTime));
-    const alt = len(sub(r, center.r)) - center.radius;
+    const alt = len(sub(r, center.state.r)) - center.radius;
     if (tRel <= 0) return `計画位置 高度 ${fmtMarkerDist(alt, 0)}`;
     const h = Math.floor(tRel / 3600);
     const m = Math.floor((tRel % 3600) / 60);

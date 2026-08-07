@@ -1,8 +1,9 @@
 // 環境(太陽・月・星・地球・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
 import { Ephemeris, R_MOON, sunlitFactor } from '../physics/ephemeris';
-import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/orbital-state';
-import { Elements, elementsFromState } from '../physics/elements';
+import { MU_EARTH, R_EARTH, SIDEREAL_DAY, orbitState } from '../physics/orbital-state';
+import { Elements } from '../physics/elements';
+import { Attractor, elementsAround } from '../physics/attractor';
 import { Vec3, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { createEarth, Earth } from './earth';
 import { OrbitLine } from './orbitline';
@@ -15,6 +16,9 @@ import * as C from '../game/const';
 // 地球メッシュは地球中心(ECI 原点)基準。group.position はその原点の描画フレーム位置。
 const EARTH_CENTER = v3(0, 0, 0);
 
+// 地球(原点に静止)。参照軌道線はいずれも地球中心の表示なので、この固定値を center として使う。
+const EARTH_ATTRACTOR: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)) };
+
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。
 const GEO_ELEMENTS: Elements = {
   a: R_EARTH + 35786e3,
@@ -25,7 +29,7 @@ const GEO_ELEMENTS: Elements = {
   hHat: v3(0, 1, 0),
   pHat: v3(1, 0, 0),
   qHat: v3(0, 0, -1),
-  mu: MU_EARTH,
+  center: EARTH_ATTRACTOR,
 };
 
 // 太陽ビルボード位置(カメラ相対)の作業用 THREE.Vector3。毎フレームの再確保を避ける。
@@ -114,7 +118,8 @@ export class EnvironmentScene {
     const dt = 10;
     const r1 = this.ephemeris.moonPosAt(simTime);
     const r2 = this.ephemeris.moonPosAt(simTime + dt);
-    return elementsFromState(r1, scale(sub(r2, r1), 1 / dt), MU_EARTH);
+    const state = orbitState(simTime, r1, scale(sub(r2, r1), 1 / dt));
+    return elementsAround(state, EARTH_ATTRACTOR);
   }
 
   // 地球の位置・自転角・表面アニメーションを表示時刻に同期する。

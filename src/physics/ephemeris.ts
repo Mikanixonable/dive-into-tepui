@@ -7,7 +7,7 @@
 // サンプルする状態は末尾の Ephemeris クラスが持つ。
 import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
 import { Attractor } from './attractor';
-import { MU_EARTH, R_EARTH } from './orbital-state';
+import { MU_EARTH, R_EARTH, orbitState } from './orbital-state';
 import { Vec3, addScaled, dot, len, norm, scale, sub, v3 } from './vec3';
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
@@ -207,31 +207,6 @@ export function sunlitFactor(r: Vec3, sunDir: Vec3, penumbra: number): number {
   return Math.min(1, Math.max(0, (perp - R_EARTH) / penumbra));
 }
 
-// v を初めて読まれたときにだけ ephemeris から計算し、以後はその値を使い回す Attractor。
-// 呼び出しのたびにクロージャを新規に割り当てるとその生成コストが getter 自体より重くつくため、
-// 計算に要る ephemeris/t はインスタンスフィールドに持たせ、getter は全インスタンスで
-// prototype 上の1つを共有する。
-class LazyVelAttractor {
-  readonly r: Vec3;
-  private cachedV: Vec3 | undefined;
-  constructor(
-    readonly id: 'moon' | 'sun',
-    readonly mu: number,
-    readonly radius: number,
-    r: Vec3,
-    private readonly ephemeris: Ephemeris,
-    private readonly t: number,
-  ) {
-    this.r = r;
-  }
-  get v(): Vec3 {
-    if (this.cachedV === undefined) {
-      this.cachedV = this.id === 'moon' ? this.ephemeris.moonVelAt(this.t) : this.ephemeris.sunVelAt(this.t);
-    }
-    return this.cachedV;
-  }
-}
-
 // 天体暦: 初期位相をゲームごとに固定し、任意の simTime で太陽・月の ECI 位置・
 // 太陽方向を計算して返すサンプラ。軌道予測・環境描画・マップ表示など「物理的な天体暦」
 // だけを要する箇所は、位相を露出せずこのオブジェクトを共有する。
@@ -314,16 +289,13 @@ export class Ephemeris {
   }
   // 指定時刻の重力源一覧([earth, moon, sun] 固定順)。地球は原点に静止。返す配列は
   // 不変で、同一 t の再呼び出しには同じ配列参照を返す。
-  // 積分(gravityAccel)・刻み幅決定(localOrbitPeriod)は位置しか読まず、v は表示経路
-  // (relativeTo/toAbsolute/elementsAround)でしか読まれない。中心差分での v の評価は
-  // 位置2回ぶんのコストがあるため、月・太陽の v は初めて読まれたときにのみ計算する。
   attractorsAt(t: number): readonly Attractor[] {
     const cached = this.attractorsMemo.find((m) => m.t === t);
     if (cached) return cached.bodies;
     const bodies: readonly Attractor[] = [
-      { id: 'earth', mu: MU_EARTH, radius: R_EARTH, r: v3(0, 0, 0), v: v3(0, 0, 0) },
-      new LazyVelAttractor('moon', MU_MOON, R_MOON, this.moonPosAt(t), this, t),
-      new LazyVelAttractor('sun', MU_SUN, R_SUN, this.sunPosAt(t), this, t),
+      { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(t, v3(0, 0, 0), v3(0, 0, 0)) },
+      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: orbitState(t, this.moonPosAt(t), this.moonVelAt(t)) },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(t, this.sunPosAt(t), this.sunVelAt(t)) },
     ];
     this.attractorsMemo.unshift({ t, bodies });
     this.attractorsMemo.length = Math.min(this.attractorsMemo.length, 2);

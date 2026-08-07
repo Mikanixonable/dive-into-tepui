@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { GameEntity } from './game-entity';
-import { OrbitState, altitudeOf } from '../../physics/orbital-state';
+import { OrbitState } from '../../physics/orbital-state';
+import { Attractor, hitsAnySurface } from '../../physics/attractor';
 import { FloatingOrigin } from '../floating-origin';
 import type { Stage } from '../stages/stage';
 import { Vec3, lenSq, sub } from '../../physics/vec3';
@@ -43,9 +44,9 @@ export class Bullet extends GameEntity {
     }
 
     // 消滅条件は「自機から離れすぎた」が主で、寿命は保険。
-    checkLoss(_dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3): void {
+    checkLoss(_dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3, bodies: readonly Attractor[]): void {
         if (!this.alive) return;
-        if (altitudeOf(this.state.r) < C.DEBRIS_REENTRY_ALT) { this.alive = false; return; }
+        if (hitsAnySurface(this.state.r, bodies, C.DEBRIS_REENTRY_ALT)) { this.alive = false; return; }
         if (lenSq(sub(this.state.r, playerPos)) > C.BULLET_MAX_DIST * C.BULLET_MAX_DIST) { this.alive = false; return; }
         if (simTime - this.bornSim >= this.lifetime) this.alive = false;
     }

@@ -15,14 +15,14 @@ import { Ephemeris, MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/eph
 import { add, addScaled, len, norm, sub, v3 } from '../../src/physics/vec3';
 
 const ZERO = v3(0, 0, 0);
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, r: ZERO, v: ZERO };
+const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, ZERO, ZERO) };
 
 export function register(): void {
   test('attractor: gravityAccel skips a zero-distance body (自分自身) and stays finite', () => {
     const r = v3(R_EARTH + 420e3, 0, 0);
     // moon がクエリ位置と同じ座標(距離ゼロ)にある人工の配置。飛ばされず加算されると
     // μ/0³ で発散する。
-    const coincidentMoon: Attractor = { id: 'moon', mu: MU_MOON, radius: R_MOON, r, v: ZERO };
+    const coincidentMoon: Attractor = { id: 'moon', mu: MU_MOON, radius: R_MOON, state: orbitState(0, r, ZERO) };
     const a = gravityAccel(r, [EARTH, coincidentMoon]);
     assert.ok(Number.isFinite(a.x) && Number.isFinite(a.y) && Number.isFinite(a.z), `finite: ${JSON.stringify(a)}`);
     const expectedMag = MU_EARTH / (len(r) * len(r));
@@ -55,7 +55,7 @@ export function register(): void {
     const ephemeris = new Ephemeris(0, 0);
     const bodies = ephemeris.attractorsAt(0);
     const moon = bodies.find((b) => b.id === 'moon')!;
-    const towardEarth = (dist: number) => addScaled(moon.r, norm(moon.r), -dist);
+    const towardEarth = (dist: number) => addScaled(moon.state.r, norm(moon.state.r), -dist);
     assert.equal(strongestAttractor(towardEarth(30_000e3), bodies).id, 'moon', '月から30,000km');
     assert.equal(strongestAttractor(towardEarth(50_000e3), bodies).id, 'earth', '月から50,000km');
   });
@@ -75,25 +75,25 @@ export function register(): void {
     assert.ok(Math.abs(leoPeriod - 5580) / 5580 < 0.01, `LEO 周期: ${leoPeriod}`);
 
     const moon = bodies.find((b) => b.id === 'moon')!;
-    const nearMoon = addScaled(moon.r, norm(moon.r), R_MOON + 100e3);
+    const nearMoon = addScaled(moon.state.r, norm(moon.state.r), R_MOON + 100e3);
     const moonPeriod = localOrbitPeriod(nearMoon, bodies);
     assert.ok(Math.abs(moonPeriod - 7066) / 7066 < 0.01, `月面+100km 周期: ${moonPeriod}`);
   });
 
-  test('attractor: elementsAround が Elements.mu を伝え、月中心の tofBetween が MU_MOON 基準の周期と一致する(回帰)', () => {
+  test('attractor: elementsAround が中心天体を伝え、月中心の tofBetween が MU_MOON 基準の周期と一致する(回帰)', () => {
     // 月中心の円軌道。mu を渡し忘れて地球の mu で計算すると半周期の飛行時間が
     // sqrt(MU_EARTH/MU_MOON) ~= 9 倍ずれる。
     const moon: Attractor = {
       id: 'moon', mu: MU_MOON, radius: R_MOON,
-      r: v3(3.844e8, 0, 0), v: v3(0, 0, 1023),
+      state: orbitState(0, v3(3.844e8, 0, 0), v3(0, 0, 1023)),
     };
     const a = R_MOON + 100e3;
     const rel = stateFromElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
-    const s = orbitState(0, add(rel.r, moon.r), add(rel.v, moon.v));
+    const s = orbitState(0, add(rel.r, moon.state.r), add(rel.v, moon.state.v));
 
     const el = elementsAround(s, moon);
     assert.ok(el, 'elementsAround should not be null');
-    assert.equal(el!.mu, MU_MOON);
+    assert.equal(el!.center.mu, MU_MOON);
     const half = tofBetween(el!, 0, Math.PI);
     const expected = keplerPeriod(a, MU_MOON) / 2;
     assert.ok(Math.abs(half - expected) / expected < 1e-6, `半周期の飛行時間: ${half} vs ${expected}`);
@@ -120,9 +120,9 @@ export function register(): void {
     const ephemeris = new Ephemeris(0.1, 0.2);
     const bodies = ephemeris.attractorsAt(5000);
     assert.deepEqual(bodies.map((b) => b.id), ['earth', 'moon', 'sun']);
-    assert.deepEqual(bodies[0]!.r, ZERO, '地球は原点に静止');
-    assert.deepEqual(bodies[1]!.r, ephemeris.moonPosAt(5000));
-    assert.deepEqual(bodies[2]!.r, ephemeris.sunPosAt(5000));
+    assert.deepEqual(bodies[0]!.state.r, ZERO, '地球は原点に静止');
+    assert.deepEqual(bodies[1]!.state.r, ephemeris.moonPosAt(5000));
+    assert.deepEqual(bodies[2]!.state.r, ephemeris.sunPosAt(5000));
     assert.equal(bodies[0]!.mu, MU_EARTH);
     assert.equal(bodies[1]!.mu, MU_MOON);
     assert.equal(bodies[2]!.mu, MU_SUN);
