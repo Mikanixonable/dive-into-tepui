@@ -67,7 +67,7 @@ export class ThermalSystem {
       (Math.pow(C.ENV_TEMP, 4) - Math.pow(this.hullTemp, 4));
     // 射撃・被弾の発熱はサブステップ回数・dtSub に依存しない量として貯めてあるので、
     // 空力加熱と違い dtSub を掛けずに一度だけ温度へ変換する
-    const heatCapacity = ship.mass > 0 ? ship.mass * 100 : C.HEAT_CAPACITY; // roughly 100 J/kg/K
+    const heatCapacity = ship.mass > 0 ? ship.mass * 100 : C.HEAT_CAPACITY; // 比熱 約100 J/kg/K
     
     this.hullTemp = Math.max(
       C.HULL_TEMP_FLOOR,

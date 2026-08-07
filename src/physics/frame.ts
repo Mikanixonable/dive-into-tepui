@@ -58,10 +58,9 @@ export function toFramePos(frame: Frame, t: number, pos: Vec3, ephemeris: Epheme
   return { x: r.x, y: r.y, z: r.z } as RelativeVec3;
 }
 
-// Frame 相対 → 慣性系へ戻す剛体回転（un-bake）をクォータニオンで返す。SampledLine は
-// bake 済み頂点（Frame 相対座標）を持つメッシュ全体を、毎フレーム group 回転として
-// これで慣性系へ戻す。toInertialPos（位置単位）と同一の回転を剛体メッシュへ一括適用する版。
-// THREE 非依存の Quat を返し、描画側が group.quaternion に set する。
+// Frame 相対 → 慣性系へ戻す剛体回転（un-bake）をクォータニオンで返す。toInertialPos
+// （位置単位）と同一の回転を、bake 済み頂点集合へ一括適用したい呼び出し側向けの版。
+// THREE 非依存の Quat を返す。
 export function toInertialQuat(frame: Frame, t: number, ephemeris: Ephemeris): Quat {
   return frameRotation(frame, t, ephemeris).q;
 }

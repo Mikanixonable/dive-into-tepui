@@ -149,7 +149,6 @@ export class Input {
       return;
     }
     if (this.rightActive) {
-      // 右ドラッグでの視点移動は廃止。移動量のみ記録する
       this.rightDragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
       return;
     }
@@ -176,7 +175,6 @@ export class Input {
     }
     if (isRight) {
       if (this.rightActive) {
-        // 右ドラッグ視点移動を廃止したため、右クリック判定の閾値を大きく緩和
         if (this.rightDragMoved < 50) {
           this.pendingRightClicks.push({ x: e.clientX, y: e.clientY });
         }

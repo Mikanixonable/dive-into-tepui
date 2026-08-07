@@ -1,15 +1,13 @@
 // リアル調の地球: 高解像度球 + 実在の地球のテクスチャ、大気は解析的シェーディング。
 // 実寸(半径 6371km)。テクスチャは実在の地球の写真 (src/assets/earth.jpg) を使用。
 //
-// 大気(雲を含む)は過去に FrontSide/BackSide の重ねシェルとして描画していたが、
 // near=2m・24bit 非対数深度バッファでは、地表 +数十〜数百km に浮かぶジオメトリは
 // 水平線に近い視線ほど地表との深度差が量子化幅(δz ≈ z²/near/2^24。距離の2乗で
-// 悪化する)を下回り z-fighting でちらつく。シェルの間隔や枚数をどれだけ増やしても
-// この量子化そのものは解決しない。そこで「高度 ~400km 以下で深度テストされる
+// 悪化する)を下回り z-fighting でちらつく。そこで「高度 ~400km 以下で深度テストされる
 // ジオメトリは不透明な地球1枚だけ」という不変条件を維持し、雲は地表マテリアルの
-// アルベドに焼き込み、大気の発光(近距離のもや・遠距離のリム光)はシェルを使わず
-// 視線方向から解析的に計算する(地球本体による遮蔽もレイ・スフィア交差で解析的に
-// 判定し、ハードウェア深度テストの精度に依存しない)。
+// アルベドに焼き込み、大気の発光(近距離のもや・遠距離のリム光)は視線方向から解析的に
+// 計算する(地球本体による遮蔽もレイ・スフィア交差で解析的に判定し、ハードウェア深度
+// テストの精度に依存しない)。
 import * as THREE from 'three/webgpu';
 import {
   texture as textureNode, mix, uv, vec2, vec3, float, uniform, exp,
@@ -21,9 +19,7 @@ import earthTextureUrl from '../assets/earth.jpg';
 import cloudsTextureUrl from '../assets/8k_clouds.jpg';
 
 const ATMO_COLOR = vec3(0.36, 0.62, 0.91);
-// 大気のもやの濃さ(視線が真上からのときの光学的厚み)。旧・重ねシェル16枚の
-// 合計不透明度(≈0.3)に見た目を合わせた値。
-const ATMO_HAZE_TAU0 = 0.34;
+const ATMO_HAZE_TAU0 = 0.34; // 大気のもやの濃さ(視線が真上からのときの光学的厚み)
 // リム光の可視上限高度。通常飛行高度(420km)より低く保ち、カメラがリムの
 // ジオメトリ内に入らないようにする(内側からだと加算合成が破綻するため)。
 const ATMO_RIM_MAX_H = 340e3;
@@ -125,10 +121,10 @@ function buildAtmoRim(sunDir: SunDirUniform, earthCenter: EarthCenterUniform): T
 }
 
 // オーロラカーテン: 磁気(≒地理)極を囲む緯度 ~67° の波打つリング帯。
-// 複数層、グラデーション拡充、途切れ表現を追加。
+// 複数層を重ね、途切れ・色の揺らぎをノイズ的な周期関数で表現する。
 function buildAurora(sign: 1 | -1, geomSeed: number, colorSeed: number, radiusOffset: number, latOffsetDeg: number) {
   const SEG = 160;
-  const V_SEG = 3; // 4 vertices vertically: 0=bottom fade, 1=core green, 2=mid red, 3=top fade
+  const V_SEG = 3; // 鉛直方向4頂点: 0=下端フェード, 1=核(緑), 2=中間(赤), 3=上端フェード
   const positions = new Float32Array((SEG + 1) * (V_SEG + 1) * 3);
   const colors = new Float32Array((SEG + 1) * (V_SEG + 1) * 3);
   const indices: number[] = [];
@@ -250,7 +246,6 @@ export function createEarth(): Earth {
       (earthCenter.value as THREE.Vector3).copy(group.position);
 
       // シミュレーション時間に連動した位相。
-      // 速度を以前の1/10 (x0.02) に減速。
       auroraPhase = simTime * 0.02;
       for (let i = 0; i < auroras.length; i++) {
         const a = auroras[i]!;
