@@ -23,7 +23,7 @@ export class Logistics {
     private readonly _scene: THREE.Scene,
     private readonly entities: EntityManager,
     private readonly markerManager: MarkerManager,
-  ) {}
+  ) { }
 
   // 自機の軌道上、minDist〜maxDist 先の位相に補給を1個投入する。
   spawnForPlayer(
@@ -82,6 +82,7 @@ export class Logistics {
       const pos = ammo.alive ? ammo.displayState(displayTime)?.r : undefined;
       return pos ? [pos] : [];
     });
+    // 描画と新しい上限の記憶
     for (const [i, pos] of shown.entries()) {
       const key = `mg${i}`;
       const bearing = `${key}-bearing`;
@@ -101,9 +102,8 @@ export class Logistics {
     }
     // 前フレームより件数が減った分のマーカーを隠す
     for (let i = shown.length; i < this.lastMarkerCount; i++) {
-      const key = `mg${i}`;
-      this.markerManager.hide(key);
-      this.markerManager.hide(`${key}-bearing`);
+      this.markerManager.hide(`mg${i}`);
+      this.markerManager.hide(`mg${i}-bearing`);
     }
     this.lastMarkerCount = shown.length;
   }
