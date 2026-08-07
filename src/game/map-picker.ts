@@ -106,11 +106,20 @@ export class MapPicker {
 
   private readonly handlers: Record<MapPickable['kind'], PickHandler> = {
     'body': {
-      itemsFor: (target, simTime) => [
-        MenuCommon.focus(),
-        ...this.navTargetItems(target, simTime),
-        MenuCommon.cancel(),
-      ],
+      itemsFor: (target, simTime) => {
+        let subLabel = '天体・ラグランジュ点';
+        if (target.id === 'earth') subLabel = '母星 (中心天体)';
+        else if (target.id === 'moon') subLabel = '衛星 (月)';
+        else if (target.id === 'sun') subLabel = '恒星 (太陽)';
+        else if (target.id.startsWith('em-l')) subLabel = '地球-月 ラグランジュ点';
+        else if (target.id.startsWith('se-l')) subLabel = '太陽-地球 ラグランジュ点';
+        return [
+          { type: 'header', label: target.name, subLabel },
+          MenuCommon.focus(),
+          ...this.navTargetItems(target, simTime),
+          MenuCommon.cancel(),
+        ];
+      },
       run: (act, target) => this.runBodyShip(act, target),
     },
     'ship': {
@@ -168,6 +177,24 @@ export class MapPicker {
         const relSubLabel = `対 ${targetName}面` + (relTime !== undefined ? ` / T+${fmtTime(relTime - simTime)}` : '');
         return [
           { type: 'header', label: relLabel, subLabel: relSubLabel },
+          MenuCommon.warp(),
+          MenuCommon.addNode(),
+          MenuCommon.focus(),
+          MenuCommon.cancel(),
+        ];
+      },
+      run: (act, target) => this.runApsisRelnode(act, target),
+    },
+    'eqnode': {
+      itemsFor: (target, simTime) => {
+        const eqTime = target.time;
+        const isMoon = target.id.endsWith('Moon');
+        const prefix = isMoon ? '月' : '';
+        const isAn = target.id.startsWith('eqAn');
+        const eqLabel = `${prefix}赤道${isAn ? '昇' : '降'}交点 (${isAn ? 'EqAN' : 'EqDN'})`;
+        const eqSubLabel = eqTime !== undefined ? `到達まで T+${fmtTime(eqTime - simTime)}` : undefined;
+        return [
+          { type: 'header', label: eqLabel, subLabel: eqSubLabel },
           MenuCommon.warp(),
           MenuCommon.addNode(),
           MenuCommon.focus(),
