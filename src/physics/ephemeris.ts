@@ -314,7 +314,7 @@ export class Ephemeris {
   }
   // 指定時刻の重力源一覧([earth, moon, sun] 固定順)。地球は原点に静止。返す配列は
   // 不変で、同一 t の再呼び出しには同じ配列参照を返す。
-  // 積分(gravityAccel)・刻み幅決定(localOrbitPeriod)は位置しか読まず、v は表示経路
+  // 積分(attractorAccel)・刻み幅決定(localOrbitPeriod)は位置しか読まず、v は表示経路
   // (relativeTo/toAbsolute/elementsAround)でしか読まれない。中心差分での v の評価は
   // 位置2回ぶんのコストがあるため、月・太陽の v は初めて読まれたときにのみ計算する。
   attractorsAt(t: number): readonly Attractor[] {

@@ -13,30 +13,30 @@ export type Attractor = {
   readonly v: Vec3; // ECI 速度
 };
 
-const ORIGIN = v3(0, 0, 0);
-
-// 位置 r が全天体から受ける重力加速度の和 Σ μ_b (r_b − r)/|r_b − r|³。距離ゼロの天体
-// (自分自身)は飛ばす。毎ステップ全エンティティぶん走る経路なので、天体ごとに Vec3 を
-// 作らずスカラで畳んで最後に1つだけ返す。
-export function gravityAccel(r: Vec3, bodies: readonly Attractor[]): Vec3 {
+// 天体 body が位置 r の運動方程式へ寄与する加速度 μ[(r_b − r)/|r_b − r|³ − r_b/|r_b|³]。
+// ECI は原点(地球)自身が他の天体に引かれて加速する非慣性系なので、直接引力(第1項)から
+// 「原点が body から受ける引力」(第2項)を差し引く。body が原点天体自身のときは第2項が
+// 距離ゼロで消え、直接引力そのものになる。距離ゼロの項は発散を避けて寄与ゼロとして扱う。
+// 毎ステップ全エンティティぶん走る経路なので、中間の Vec3 を作らずスカラで畳む。
+export function attractorAccel(r: Vec3, body: Attractor): Vec3 {
   let ax = 0, ay = 0, az = 0;
-  for (const body of bodies) {
-    const dx = body.r.x - r.x;
-    const dy = body.r.y - r.y;
-    const dz = body.r.z - r.z;
-    const d2 = dx * dx + dy * dy + dz * dz;
-    if (d2 < 1) continue;
+
+  const dx = body.r.x - r.x;
+  const dy = body.r.y - r.y;
+  const dz = body.r.z - r.z;
+  const d2 = dx * dx + dy * dy + dz * dz;
+  if (d2 >= 1) {
     const k = body.mu / (d2 * Math.sqrt(d2));
     ax += dx * k; ay += dy * k; az += dz * k;
   }
-  return v3(ax, ay, az);
-}
 
-// 天体 body が ECI の運動方程式へ寄与する加速度。ECI は原点(地球)自身が他の天体に
-// 引かれて加速する非慣性系なので、直接引力から「原点が body から受ける引力」を差し引く
-// (body が原点天体自身のときは距離ゼロで第2項が消え、直接引力そのものになる)。
-export function attractorAccel(r: Vec3, body: Attractor): Vec3 {
-  return sub(gravityAccel(r, [body]), gravityAccel(ORIGIN, [body]));
+  const o2 = body.r.x * body.r.x + body.r.y * body.r.y + body.r.z * body.r.z;
+  if (o2 >= 1) {
+    const k = body.mu / (o2 * Math.sqrt(o2));
+    ax -= body.r.x * k; ay -= body.r.y * k; az -= body.r.z * k;
+  }
+
+  return v3(ax, ay, az);
 }
 
 // 位置 r で最も強く重力を及ぼしている天体(|attractorAccel| が最大)。素の引力 μ/d² では
@@ -74,7 +74,7 @@ export function toAbsolute(rel: OrbitState, body: Attractor): OrbitState {
 // strongestAttractor などで選んだ body をそのまま渡す。
 export function elementsAround(s: OrbitState, body: Attractor): Elements | null {
   const rel = relativeTo(s, body);
-  return elementsFromState(rel.r, rel.v, body.mu);
+  return elementsFromState(rel.r, rel.v, body.mu, body.id);
 }
 
 // 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。margin(大気圏突入高度

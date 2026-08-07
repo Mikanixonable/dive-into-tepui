@@ -378,11 +378,12 @@ export class Player extends Ship {
     this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer, this.magsLeft);
 
     if (this.alive) {
-      const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));
+      const bodies = ephemeris.attractorsAt(this.state.t);
+      const center = strongestAttractor(this.state.r, bodies);
       const densifyNear = sub(this.state.r, center.r);
-      this.orbitLine.sync(this.elementsAround(center), fo, this.thrustVizDir !== null, densifyNear, center.r);
+      this.orbitLine.sync(this.elementsAround(center), fo, bodies, this.thrustVizDir !== null, densifyNear);
     } else {
-      this.orbitLine.sync(null, fo);
+      this.orbitLine.sync(null, fo, ephemeris.attractorsAt(this.state.t));
     }
   }
 
