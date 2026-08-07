@@ -297,7 +297,7 @@ state を条件付きで `history` へ送れるのは「state が差し替え以
 `PlannedNode.time` はここへ統合済み)ため、「状態」と「その時刻」が別々に渡されて食い違うことがない。
 
 **例外はない。** RK4 の加速度評価も `dynamics.ts` の `stepDynamicsRK4`(内部で `attractor.ts` の
-`gravityAccel` + 自身の `j2Accel` + `atmosphere.ts` の `dragAccel` を合成)が `Vec3` を返す
+`attractorAccel` の全天体ぶんの和 + 自身の `j2Accel` + `atmosphere.ts` の `dragAccel` を合成)が `Vec3` を返す
 純粋関数の積み重ねで、`stepOrbitRK4` はその結果を `AccelFn` として受け取るだけ。ミュータブルな
 スクラッチや `out` 引数を
 持つ変種は `physics/` のどこにも置かない(その形を撤去した経緯と実測値は

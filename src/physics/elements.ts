@@ -3,6 +3,9 @@
 // THREE/DOM 非依存の純粋関数群。
 import { OrbitState, orbitState } from './orbital-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
+// 型のみの参照(実行時の import は発生しない)なので、attractor.ts → elements.ts の
+// 値の依存方向と衝突しない。AttractorId の実体は attractor.ts 側にある。
+import type { AttractorId } from './attractor';
 
 export interface Elements {
   a: number; // 軌道長半径 [m] (双曲線では負)
@@ -14,6 +17,7 @@ export interface Elements {
   qHat: Vec3; // pHat と直交する軌道面内方向
   hHat: Vec3; // 軌道面法線
   mu: number; // 中心天体の重力定数 [m^3/s^2]
+  centerId: AttractorId; // どの天体を中心に求めた要素か。楕円をどの天体位置へ描画すべきかもこれで決まる。
 }
 
 // 長半径 a の楕円軌道の公転周期 [s]。動径をそのまま渡せば、その高度を回る円軌道の周期
@@ -29,8 +33,10 @@ export function semiMajorFromPeriod(period: number, mu: number): number {
 }
 
 // 位置・速度から古典軌道要素を求める。mu は中心天体の重力定数(結果の Elements.mu に
-// そのまま残る)。半径・角運動量が縮退している場合は null。
-export function elementsFromState(r: Vec3, v: Vec3, mu: number): Elements | null {
+// そのまま残る)。centerId は r/v がどの天体中心の相対値であるかを表し、そのまま
+// Elements.centerId に残る — 楕円をどの天体位置へ描画するかはここで確定する。
+// 半径・角運動量が縮退している場合は null。
+export function elementsFromState(r: Vec3, v: Vec3, mu: number, centerId: AttractorId): Elements | null {
   const rMag = len(r);
   if (rMag < 1) return null;
   const h = cross(r, v);
@@ -60,6 +66,7 @@ export function elementsFromState(r: Vec3, v: Vec3, mu: number): Elements | null
     qHat,
     hHat,
     mu,
+    centerId,
   };
 }
 

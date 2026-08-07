@@ -95,29 +95,29 @@ export class CreativeStage extends Stage {
     }
     try {
       const state = this.buildInitialState(form);
-      const mu = form.body === 'moon' ? MU_MOON : C.MU_EARTH;
+      const centerId = form.body === 'moon' ? 'moon' as const : 'earth' as const;
+      const mu = centerId === 'moon' ? MU_MOON : C.MU_EARTH;
 
       // elementsFromState は中心天体相対の座標・速度を要求するため、
       // 月基準の場合は月の ECI 状態を引いて相対状態に戻す。
       let relR = state.r;
       let relV = state.v;
-      let centerPos = v3(0, 0, 0);
+      const bodies = this._ephemeris.attractorsAt(this._simulator.simTime);
 
-      if (form.body === 'moon') {
+      if (centerId === 'moon') {
         const moonPos = this._ephemeris.moonPosAt(this._simulator.simTime);
         const moonVel = this._ephemeris.moonVelAt(this._simulator.simTime);
         relR = sub(state.r, moonPos);
         relV = sub(state.v, moonVel);
-        centerPos = moonPos;
       }
 
-      const el = elementsFromState(relR, relV, mu);
+      const el = elementsFromState(relR, relV, mu, centerId);
       if (el) {
         const player = this._entities.players.find(p => p.alive) ?? null;
         const fo = player
           ? new FloatingOrigin(player.state.r, player.state.v)
           : new FloatingOrigin(v3(0, 0, 0), v3(0, 0, 0));
-        this.previewOrbitLine.sync(el, fo, true, undefined, centerPos);
+        this.previewOrbitLine.sync(el, fo, bodies, true);
         this.previewOrbitLine.line.visible = true;
 
         if (project) {

@@ -1,8 +1,8 @@
 // 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
-import { MU_EARTH, OrbitState } from '../../physics/orbital-state';
-import { elementsFromState } from '../../physics/elements';
+import { OrbitState } from '../../physics/orbital-state';
+import { elementsAround, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -66,12 +66,18 @@ export class PlanTrajectory {
   // 各サンプルから求めた瞬時軌道要素を起点要素と比較する。月フライバイのような
   // 摂動では長半径・離心率・軌道面が変化するため、解析楕円を表示し続けると積分線と
   // 二重に見えてしまう。通常のLEOの数値誤差/J2の微小変化は閾値未満に収める。
+  // 起点で最も強く引く天体を中心に固定して比較する — 摂動で軌道が変わる過程そのものが
+  // 検出対象なので、後続サンプルで中心天体を選び直すと変化を見逃す。
   private detectAnalyticDivergence(anchor: OrbitState | null): boolean {
-    const base = anchor ? elementsFromState(anchor.r, anchor.v, MU_EARTH) : null;
+    if (!anchor || !this.ephemeris) return false;
+    const center = strongestAttractor(anchor.r, this.ephemeris.attractorsAt(anchor.t));
+    const base = elementsAround(anchor, center);
     if (!base || base.e >= 0.98 || !isFinite(base.a) || base.a <= 0) return false;
     const samples = this.arcs[0]?.samplesRef() ?? [];
     for (const s of samples) {
-      const el = elementsFromState(s.r, s.v, MU_EARTH);
+      // 中心天体自身もサンプル時刻ぶん動くので、そのつど ephemeris から位置を引き直す。
+      const sampleCenter = this.ephemeris.attractorsAt(s.t).find((b) => b.id === center.id) ?? center;
+      const el = elementsAround(s, sampleCenter);
       if (!el || !isFinite(el.a) || el.a <= 0) continue;
       if (Math.abs(el.a - base.a) / base.a > 0.03 || Math.abs(el.e - base.e) > 0.02) return true;
       const planeDot = el.hHat.x * base.hHat.x + el.hHat.y * base.hHat.y + el.hHat.z * base.hHat.z;
