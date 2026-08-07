@@ -10,11 +10,12 @@ import type { EffectsSystem } from '../vfx/effects-system';
 import type { Simulator } from '../simulation/simulator';
 import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitState, orbitState } from '../../physics/orbital-state';
-import { elementsFromState, semiMajorFromPeriod, stateFromElements } from '../../physics/elements';
+import { semiMajorFromPeriod, stateFromElements } from '../../physics/elements';
+import { elementsAround } from '../../physics/attractor';
 import { Ephemeris, MU_MOON, R_MOON } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
 import { FloatingOrigin } from '../floating-origin';
-import { add, sub, v3 } from '../../physics/vec3';
+import { add, v3 } from '../../physics/vec3';
 import type { ProjectFn } from '../camera/camera-system';
 import type { UnlockManager } from '../unlock-manager';
 import { Ammo } from '../game-entity/ammo';
@@ -95,23 +96,11 @@ export class CreativeStage extends Stage {
     }
     try {
       const state = this.buildInitialState(form);
-      const mu = form.body === 'moon' ? MU_MOON : C.MU_EARTH;
+      const center = this._ephemeris.attractorsAt(this._simulator.simTime)
+        .find((body) => body.id === (form.body === 'moon' ? 'moon' : 'earth'))!;
+      const centerPos = center.state.r;
 
-      // elementsFromState は中心天体相対の座標・速度を要求するため、
-      // 月基準の場合は月の ECI 状態を引いて相対状態に戻す。
-      let relR = state.r;
-      let relV = state.v;
-      let centerPos = v3(0, 0, 0);
-
-      if (form.body === 'moon') {
-        const moonPos = this._ephemeris.moonPosAt(this._simulator.simTime);
-        const moonVel = this._ephemeris.moonVelAt(this._simulator.simTime);
-        relR = sub(state.r, moonPos);
-        relV = sub(state.v, moonVel);
-        centerPos = moonPos;
-      }
-
-      const el = elementsFromState(relR, relV, mu);
+      const el = elementsAround(state, center);
       if (el) {
         const player = this._entities.players.find(p => p.alive) ?? null;
         const fo = player
