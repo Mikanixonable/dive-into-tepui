@@ -46,7 +46,7 @@ export abstract class Ship extends GameEntity {
       createPart('rcs_tank', { name: 'Main RCS Tank', maxHp: 30, hp: 30, maxFuel: 1000, fuel: 1000 }),
       createPart('radiator', { name: 'Heat Radiator', maxHp: 40, hp: 40, coolingRate: 50 }),
       createPart('solar_panel', { name: 'Solar Array', maxHp: 20, hp: 20, powerGeneration: 100 }),
-      createPart('weapon', { name: 'Gatling Gun', maxHp: 40, hp: 40, weaponType: 'gatling', fireRate: 10, damage: 1, muzzleVelocity: 1000 }),
+      createPart('weapon', { name: 'Gatling Gun', maxHp: 40, hp: 40, weaponType: 'gatling', fireRate: 1 / C.FIRE_INTERVAL, damage: 1, muzzleVelocity: C.MUZZLE_SPEED }),
       createPart('armor', { name: 'Light Armor', maxHp: 100, hp: 100, damageReduction: 0.2 }),
     ];
   }
@@ -197,6 +197,21 @@ export abstract class Ship extends GameEntity {
   get totalPowerGeneration(): number {
     return (this.parts.filter(p => p.type === 'solar_panel' && p.hp > 0) as import('./parts').SolarPanelPart[])
       .reduce((sum, p) => sum + p.powerGeneration, 0);
+  }
+
+  private get aliveWeapons(): import('./parts').WeaponPart[] {
+    return this.parts.filter(p => p.type === 'weapon' && p.hp > 0) as import('./parts').WeaponPart[];
+  }
+
+  get totalFireRate(): number {
+    return this.aliveWeapons.reduce((sum, p) => sum + p.fireRate, 0);
+  }
+
+  // 生存武装の初速平均。武装が全損している場合は 0(呼び出し側は totalFireRate <= 0 で発射不能を判定する)。
+  get averageMuzzleVelocity(): number {
+    const weapons = this.aliveWeapons;
+    if (weapons.length === 0) return 0;
+    return weapons.reduce((sum, p) => sum + p.muzzleVelocity, 0) / weapons.length;
   }
 
   // メッシュ配下のマテリアルを含めて破棄する。
