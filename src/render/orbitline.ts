@@ -1,11 +1,9 @@
-// Elements から軌道楕円を描画する。頂点は中心天体(Elements.centerId)相対座標のまま保持し、
-// フローティングオリジンによる Object3D 平行移動でその天体の ECI 位置へ置く。中心天体の
-// 位置は sync が受け取る bodies から Elements.centerId で引く — 呼び出し側がどの天体を
-// 中心に楕円を描くかを Elements 自身の外側で選び直すことはできない。ジオメトリの再生成は
-// 軌道要素が閾値を超えて変化したときだけ行う。
+// Elements から軌道楕円を描画する。頂点は中心天体(Elements.center)相対座標のまま保持し、
+// フローティングオリジンによる Object3D 平行移動でその天体の ECI 位置へ置く。どの天体を
+// 中心に描くかは Elements 自身が持つため、呼び出し側が外側で選び直すことはできない。
+// ジオメトリの再生成は軌道要素が閾値を超えて変化したときだけ行う。
 import * as THREE from 'three/webgpu';
 import { Elements } from '../physics/elements';
-import { Attractor } from '../physics/attractor';
 import { Vec3 } from '../physics/vec3';
 import { FloatingOrigin } from '../game/floating-origin';
 
@@ -52,22 +50,19 @@ export class OrbitLine {
     this.line.renderOrder = 1;
   }
 
-  // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン。bodies は Elements.centerId で
-  // 中心天体の ECI 位置を引くための天体集合(通常 Ephemeris.attractorsAt の結果)。
-  // force = 要素が能動的に変化している間(推力中・ノード編集中)は true。densifyNear は
-  // 中心天体相対座標で、その付近に頂点を密に配置する。
-  sync(el: Elements | null, fo: FloatingOrigin, bodies: readonly Attractor[], force = false, densifyNear?: Vec3): void {
+  // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン。force = 要素が能動的に変化している
+  // 間(推力中・ノード編集中)は true。densifyNear は中心天体相対座標で、その付近に頂点を
+  // 密に配置する。
+  sync(el: Elements | null, fo: FloatingOrigin, force = false, densifyNear?: Vec3): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.line.visible = false;
       this.snap = null;
       return;
     }
-    const center = bodies.find((b) => b.id === el.centerId);
-    if (!center) throw new Error(`OrbitLine: bodies に Elements.centerId="${el.centerId}" が見つからない`);
     this.line.visible = !this.suppressed;
     // 頂点を自機相対座標で毎フレーム書き直すと、osculating 要素の微小なゆらぎで楕円が
     // 振動して見える。頂点は中心天体相対座標のまま固定し、平行移動だけで動かす。
-    this.line.position.copy(fo.RtoThreeV3(center.r));
+    this.line.position.copy(fo.RtoThreeV3(el.center.state.r));
     // WebGPUレンダラの不具合回避:
     // FloatingOriginが (0,0,0) のままだと、positionが完全に静止するため、
     // 頂点バッファ(needsUpdate = true)だけを更新してもGPUに送られない（またはキャッシュが破棄されない）問題がある。
