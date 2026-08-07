@@ -2,7 +2,7 @@
 // サンプル列を1本の折れ線として描く。マニューバノードによる区間分割は知らない — 呼び出し側
 // (PlanTrajectory)が arc ごとにこれを持つ。
 import * as THREE from 'three/webgpu';
-import { OrbitState, hermiteInterpolate } from '../../physics/orbital';
+import { OrbitState, hermiteInterpolate } from '../../physics/orbital-state';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';

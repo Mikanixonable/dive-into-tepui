@@ -1,5 +1,6 @@
 // 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、NODE/BURN マーカー。
-import { Elements, MU_EARTH, OrbitState, elementsFromState } from '../../physics/orbital';
+import { MU_EARTH, OrbitState } from '../../physics/orbital-state';
+import { Elements, elementsFromState } from '../../physics/elements';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { addScaled, dot, len, norm, sub } from '../../physics/vec3';
 import * as C from '../const';

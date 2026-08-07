@@ -5,7 +5,7 @@ import { test } from './harness';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { toFramePos, toFrameState, toInertialPos, toInertialQuat, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/physics/attitude';
-import { OrbitState, orbitState } from '../../src/physics/orbital';
+import { OrbitState, orbitState } from '../../src/physics/orbital-state';
 import { Vec3, addScaled, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
 
 const YEAR = 365.25636 * 86400;
