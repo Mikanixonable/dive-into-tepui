@@ -168,8 +168,8 @@
     // 弾命中・剛体接触・姿勢積分はいずれもこの中。simulator が hitSystem / collisionPhysics を所有する
     - [サブステップごと] ×ceil(simDt / SUBSTEP_MAX_DT) // 分割数は simDt のみで決まる(実 fps に依存しない)
       - simulationSubStep()
-        - entity.stepSim() → current.step() → stepEnvRK4()(軌道要素メモ破棄 + history 記録)
-          // 自機(全隻)・敵・弾・薬莢・デブリ・補給それぞれ、個体ごと。alive のみ実行。自身の thrust + envAccel(bcInv)
+        - entity.stepSim() → ephemeris.attractorsAt(state.t + dt/2) → current.step() → stepDynamicsRK4()(history 記録)
+          // 自機(全隻)・敵・弾・薬莢・デブリ・補給それぞれ、個体ごと。alive のみ実行。全天体重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
         - player.thermal.updateThermal() // 操作対象のみ(HUD 警告を出すため)
       - hitSystem.checkBulletHits() // bulletCollision=true のときだけ。サブステップごと
       - target.attacked() // 弾が命中した対象ごと
@@ -220,12 +220,12 @@
   - predictor.update() // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。視点/モードによる分岐なし
     - resyncPrediction() // entities.all() の全対象、毎フレーム無条件(§3-4 (a) の距離判定)
       - invalidatePrediction() // predicted.at(simTime) が実位置から PREDICT_RESET_DIST を超えて乖離、または区間外のときのみ
-    - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループも dt の決定(stepDtForRadius)も Predictor 側が持つ(stepSim に対する simulationSubStep と同じ分担)
+    - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループも dt の決定(ephemeris.attractorsAt(tip.t) → localOrbitPeriod / STEPS_PER_REV)も Predictor 側が持つ(stepSim に対する simulationSubStep と同じ分担)
       - player.stepPrediction(dt) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt を都度計算し直しながら1ステップずつ繰り返し呼ぶ
-        - predicted.step() // 1ステップごとに ephemeris を中点サンプル
+        - predicted.step() // 1ステップごとに ephemeris.attractorsAt を中点サンプル
     - advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player を除外しないので同じフレームで二重に予算が付き得る)。entity.stepPrediction() が最初から false(predictDuration=0/推力中/truncated)なら消費 0 で次へ即進む
   - effects.update(dt, simDt) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と移流。ポーズ中は呼ばれない(=止まる)
-  - guide.update(plan, player, simTime, editMode) // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させるため
+  - guide.update(plan, player, simTime, editMode, ephemeris.attractorsAt(simTime)) // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させるため
     - [editMode または !player.alive] 即 return
     - plan.dropNodesBefore(simTime - C.NODE_EXPIRE_GRACE) // 期限切れノードをまとめて落とし、最後に落ちたノードを新しいアンカーに据える
     - [直近ノードが実行の窓(node.t - C.NODE_APPROACH_LEAD)に入っている場合のみ]
@@ -291,7 +291,7 @@
     - overviewCameraPanel.setVisible(overviewMode) + setFocus()/setFrame() // MAP VIEW パネル。点灯反映は overviewMode のみ
     - focusMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。overviewMode のみ
     - focusMarkers.hideLabels() // !overviewMode のみ
-  - project / overviewMode / simTime / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
+  - project / overviewMode / simTime / bodies(= ephemeris.attractorsAt(simTime)) / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
   - environment.sync()
     - syncEarth() → earth.group.position / earth.setRotation() / earth.tick()
     - syncSkyBodies()
@@ -314,14 +314,13 @@
       - [overviewMode] 戦闘用7キーを hide + displayState があれば markerManager.setPosition('self') / 無ければ hide('self')
       - [!overviewMode] hide('self') + syncOrbitalDirections(currentState) // pro/retro/nrm/anm/radout/radin。常に現在状態
       - [!overviewMode] syncBoresight(currentState) → setDirection('bore') or hide('bore') // player.alive で分岐。常に現在状態
-    - orbitLine.sync() → regenerate() // 地球基準の解析楕円線。要素が閾値以上ドリフト or 推力中(force) or 初回のみ。現在状態基準(要素は時刻に依らない)
-    - [predictionCentralBody==='moon'] moonOrbitTrace.syncGeometry(current+predicted samples) + syncTransform() // 月基準では解析楕円を使わず、積分状態列をそのまま描く。月重力を含む
+    - orbitLine.sync() → regenerate() // 中心天体は毎フレーム strongestAttractor(state.r, ephemeris.attractorsAt(state.t)) で導出(地球固定ではない)。要素が閾値以上ドリフト or 推力中(force) or 初回のみ再生成。現在状態基準(要素は時刻に依らない)
   - entities.sync(displayTime) → entity.sync(displayTime) // 敵・弾・薬莢・デブリ・補給それぞれ(Bullet は速度方向を向く別実装)。自機(全隻)は含まない — 各艦は syncPlayer() が個別に同期済み。
     displayState が null(predictDuration=0 の種別が未来表示中、または予測期間超過)なら visible=false
   - effects.sync() → flashEffectManager.syncFlashEffects()
     - billboard.sync() // 生存中のフラッシュごと(寿命・移流は update フェーズで済んでいる)
-  - targeter.sync() // ターゲットに紐づく表示物をまとめて
-    - syncOrbitLine()
+  - targeter.sync(bodies) // ターゲットに紐づく表示物をまとめて
+    - syncOrbitLine(bodies) // 各線の中心天体は対象ごとに strongestAttractor(target.state.r, bodies) で導出
       - enemy.orbitLine.sync() // 敵ごと。overviewMode かつ生存かつ第一・第二どちらでもないときだけ表示
       - orbitLine.sync() // 第一ターゲット軌道線(オレンジ)
       - secondaryOrbitLine.sync() // 第二ターゲット軌道線(シアン)
@@ -362,7 +361,7 @@
     - logistics.syncMarkers(displayTime) → ammo.displayState(displayTime) → markerManager.set('mg<i>') + setBearing('mg<i>-bearing')
       // マーカーを出せる補給ごと(i = 生存かつ displayState が非 null な個体だけを詰めた配列の添字)
       - hide() // 前フレームよりその数が減ったぶんの、余った添字だけ
-  - hud.panels.sync(game, dt) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
+  - hud.panels.sync(game, dt, bodies) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
   - hud.tick() // ヒント/トーストのフェードアウト

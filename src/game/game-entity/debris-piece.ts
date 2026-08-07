@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
-import { OrbitState } from '../../physics/orbital';
+import { OrbitState } from '../../physics/orbital-state';
 import { Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';

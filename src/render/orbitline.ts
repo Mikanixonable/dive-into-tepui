@@ -2,7 +2,7 @@
 // オリジンによる Object3D 平行移動で中心天体の ECI 位置へ置く。ジオメトリの再生成は軌道要素が閾値を
 // 超えて変化したときだけ行う。
 import * as THREE from 'three/webgpu';
-import { Elements } from '../physics/orbital';
+import { Elements } from '../physics/elements';
 import { Vec3, v3 } from '../physics/vec3';
 import { FloatingOrigin } from '../game/floating-origin';
 

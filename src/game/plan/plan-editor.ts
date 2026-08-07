@@ -1,7 +1,8 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と計画パネルへの反映。
 // 未来表示(計画折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
 import type * as THREE from 'three/webgpu';
-import { Elements, OrbitState, fromOrbitalAxes, orbitState, orbitalAxes } from '../../physics/orbital';
+import { OrbitState, fromOrbitalAxes, orbitState, orbitalAxes } from '../../physics/orbital-state';
+import { Elements } from '../../physics/elements';
 import { Projected } from '../../physics/projection';
 import { Vec3, add, dot, len, scale, sub, v3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -20,7 +21,8 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { PlanGizmo3D } from './plan-gizmo-3d';
-import { apsisAltitudes, Plan } from './plan';
+import { Plan } from './plan';
+import { apsisAltitudes } from '../../physics/elements';
 import { PlanDisplay } from './plan-display';
 import { hudDock } from '../hud/dom';
 import { SimSpeedManager } from '../sim-speed-manager';

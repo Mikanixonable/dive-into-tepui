@@ -1,7 +1,8 @@
 // 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
-import { MU_EARTH, OrbitState, elementsFromState } from '../../physics/orbital';
+import { MU_EARTH, OrbitState } from '../../physics/orbital-state';
+import { elementsFromState } from '../../physics/elements';
 import { Vec3, v3 } from '../../physics/vec3';
 import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';

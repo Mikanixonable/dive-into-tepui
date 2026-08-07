@@ -1,7 +1,7 @@
 // 剛体球どうしの接触解決(自機・敵機・薬莢・補給・デブリ・マガジンベルト)。
 // collideRadius を持つ GameEntity だけが参加し、めり込み補正と反発の結果を
 // 新しい OrbitState として双方に差し替える。
-import { orbitState } from '../../physics/orbital';
+import { orbitState } from '../../physics/orbital-state';
 import { v3 } from '../../physics/vec3';
 import { COLLISION_DAMAGE_MIN_SPEED } from '../const';
 import { GameEntity } from '../game-entity/game-entity';

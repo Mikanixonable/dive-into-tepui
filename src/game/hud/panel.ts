@@ -1,7 +1,8 @@
 // HUD ステータスパネル(スタッツ・ターゲット情報・敵一覧)の同期。
 import * as C from '../const';
 import { ACCENT_SECONDARY, TEXT_DIM as INK_SOFT } from '../theme';
-import { Elements, altitudeOf } from '../../physics/orbital';
+import { altitudeOf } from '../../physics/orbital-state';
+import { Elements, apsisAltitudes } from '../../physics/elements';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { dot, len, sub } from '../../physics/vec3';
 import type { Game } from '../game';
@@ -83,10 +84,13 @@ export class HudPanels {
     const secTgt = game.targeter.aliveSecondaryTarget;
     const playerCenter = strongestAttractor(player.state.r, bodies);
     const playerEl = player.elementsAround(playerCenter);
+    const playerApsis = playerEl ? apsisAltitudes(playerEl, playerCenter.radius) : null;
     let tgtEl: Elements | null = null;
+    let tgtApsis: { pe: number; ap: number } | null = null;
     if (tgt) {
       const tgtCenter = strongestAttractor(tgt.state.r, bodies);
       tgtEl = tgt.elementsAround(tgtCenter);
+      tgtApsis = tgtEl ? apsisAltitudes(tgtEl, tgtCenter.radius) : null;
     }
 
     // スタッツパネルを一定間隔で更新
@@ -111,8 +115,8 @@ export class HudPanels {
         alt: altitudeOf(player.state.r),
         altDescending: thermal.altDescendWarned,
         spd: len(player.state.v),
-        apAlt: playerEl ? playerEl.apAlt : NaN,
-        peAlt: playerEl ? playerEl.peAlt : NaN,
+        apAlt: playerApsis ? playerApsis.ap : NaN,
+        peAlt: playerApsis ? playerApsis.pe : NaN,
         incDeg: playerEl ? playerEl.incDeg : NaN,
         period: playerEl ? playerEl.period : NaN,
         qdyn: thermal.qdyn,
@@ -138,8 +142,8 @@ export class HudPanels {
           relSpeed: len(relV),
           hp: tgt.hp,
           maxHp: tgt.maxHp,
-          apAlt: tgtEl ? tgtEl.apAlt : NaN,
-          peAlt: tgtEl ? tgtEl.peAlt : NaN,
+          apAlt: tgtApsis ? tgtApsis.ap : NaN,
+          peAlt: tgtApsis ? tgtApsis.pe : NaN,
           incDeg: tgtEl ? tgtEl.incDeg : NaN,
           period: tgtEl ? tgtEl.period : NaN,
           relIncDeg,

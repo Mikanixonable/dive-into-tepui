@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, randomQuat } from '../../physics/attitude';
-import { OrbitState, orbitState } from '../../physics/orbital';
+import { OrbitState, orbitState } from '../../physics/orbital-state';
 import { add, randSym, randVec, v3, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';

@@ -1,7 +1,7 @@
 // OrbitState の時系列を Deque で保守するキュー。先頭(peekLeft)が最新、末尾(peekRight)が
 // 最古になるよう常に降順で保つ。push は「最新のサンプル」を積む操作で、時刻が逆行/重複した
 // push は先頭側の同時刻以降(その push によって計算し直された区間)を破棄してから積み直す)
-import { hermiteInterpolate, OrbitState } from './orbital';
+import { hermiteInterpolate, OrbitState } from './orbital-state';
 import { Deque } from './deque';
 
 export class StateQueue {

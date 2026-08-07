@@ -2,7 +2,7 @@
 // 降交点)の算出・マーカー表示・被選択物としての公開。Targeter の戦闘ターゲット(Enemy 専用)
 // とは独立に、月・ラグランジュ点なども対象にできる。
 import { Vec3, cross, dot, norm, scale, v3 } from '../physics/vec3';
-import { tofBetween, trueAnomalyAt } from '../physics/orbital';
+import { tofBetween, trueAnomalyAt } from '../physics/elements';
 import { strongestAttractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';

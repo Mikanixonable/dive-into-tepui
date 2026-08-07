@@ -1,7 +1,7 @@
 // 自機の位置・姿勢だけから決まる HUD マーカー。戦闘ビューでは軌道基準の方向マーカーと
 // 機首ボアサイト、広範囲視点では自機位置マーカーを出す。
 import { Attitude, qRotate } from '../../physics/attitude';
-import { OrbitState, orbitalAxes } from '../../physics/orbital';
+import { OrbitState, orbitalAxes } from '../../physics/orbital-state';
 import { scale, v3 } from '../../physics/vec3';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';

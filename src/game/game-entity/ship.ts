@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
-import { OrbitState } from '../../physics/orbital';
+import { OrbitState } from '../../physics/orbital-state';
 import * as C from '../const';
 import { GameEntity } from './game-entity';
 import type { Attractor } from '../../physics/attractor';

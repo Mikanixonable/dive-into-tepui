@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { StateQueue } from '../../src/physics/state-queue';
-import { orbitState } from '../../src/physics/orbital';
+import { orbitState } from '../../src/physics/orbital-state';
 import { v3 } from '../../src/physics/vec3';
 
 function stateAt(t: number) {

@@ -15,7 +15,7 @@
 // 平行移動の順で正しい。
 import * as THREE from 'three/webgpu';
 import { dot, len, v3 } from '../physics/vec3';
-import { OrbitState, hermiteInterpolate, orbitState } from '../physics/orbital';
+import { OrbitState, hermiteInterpolate, orbitState } from '../physics/orbital-state';
 import { Frame, toFrameState, toInertialQuat } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from '../game/floating-origin';

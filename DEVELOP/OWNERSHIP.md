@@ -96,8 +96,7 @@ main.ts
     │   │   ├── RcsEffects    → Billboard ×8   ... 状態なし。ノズル1基につき1枚、配置は RCS_NOZZLES が正本
     │   │   ├── ReentryEffects → Billboard ×2   ... 状態なし。強度は毎フレーム qdyn から導く
     │   │   ├── PlayerMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の艦だけが sync する)
-    │   │   ├── OrbitLine              ... 自機軌道線
-    │   │   ├── SampledLine             ... 月基準表示時の積分軌道線(解析楕円の代替)
+    │   │   ├── OrbitLine              ... 自機軌道線。中心天体は毎フレーム state から導出(strongestAttractor)
     │   │   └── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
     │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
     │   ├── Bullet[]
@@ -115,8 +114,11 @@ main.ts
 
 - 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・Ammo[]・BeltSection[] — 木の
   どのノードも例外なく)は `physics/orbit-entity.ts` の `OrbitEntity` を1本、フィールド名
-  `current` で保持する(state/history/prevState/elements の正本)。GameEntity ごとに繰り返さず
-  ここに一括で記す。`predictDuration > 0` の GameEntity(Ship・Ammo のみ)は、`Predictor` が
+  `current` で保持する(state/history/prevState の正本)。GameEntity ごとに繰り返さず
+  ここに一括で記す。`OrbitEntity` 自身は軌道要素を持たない — `GameEntity.elementsAround(body)` が
+  `state` の参照同一性 + `body.id` でメモ化する(§付録「正本でないもの」参照。中心天体 `body` は
+  呼び出し側が都度選ぶので `OrbitEntity`/`GameEntity` の状態ではない)。`predictDuration > 0` の
+  GameEntity(Ship・Ammo のみ)は、`Predictor` が
   `stepPrediction` を呼んだ時点で2本目の `OrbitEntity` を `predicted` として追加で持つ
   (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。
 - `STAGE_DEFINITIONS`(stage-dictionary.ts のモジュールスコープ)… 選択画面のラベル・解放条件を読む
@@ -263,7 +265,9 @@ main.ts
 
 | 対象 | 正体 | 無効化の契機 |
 | --- | --- | --- |
-| `GameEntity.elements`(→ `current.elements`) | `state` からの軌道要素のメモ化 | `current.step`/`.reset`(差し替えのたび自動) |
+| `Ephemeris.attractorsAt(t)` の戻り値(`Attractor[]`) | 天体暦(地球・月・太陽の位置・速度・μ・半径)から毎回組み立てる重力源スナップショット。どのクラスもこれを状態として保持しない — 呼んだその場で使い切るか、次のステップ/フレームでまた引き直す | 呼び出しごとに新しい `t` を渡せば作り直せる(同一 `t` の再呼び出しは直近2件のメモを返すだけの内部実装で、外部から見た保持義務ではない) |
+| 解析楕円の中心天体(`strongestAttractor(state.r, bodies)` の結果) | `state`(と `bodies`)から都度導く選択であり、`GameEntity`/`Plan`/`PlanDisplay`/`OrbitLine` のどれもこれを状態として保持しない — 選ぶ GUI もない | 呼ぶたび再計算 |
+| `GameEntity.elementsAround(body)` の内部メモ | `state` の参照同一性 + `body.id` をキーにした軌道要素のメモ化(中心天体 `body` は呼び出し側が選ぶ) | `state` が差し替わるたび(`current.step`/`.reset`)、または `body.id` が変わるたび自動的に不一致になる |
 | `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(`history` とは別) | `step`/`reset` のたび更新 |
 | `GameEntity.predicted` | `current.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictDuration = 0` のクラスでは常に null) | `resyncPrediction` の距離判定(§3-4 (a))、または `Player.behave` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
 | `OrbitLine.snap` / 頂点配列 | 楕円ジオメトリの再生成判定用スナップショット | 要素ドリフト・`force`・初回 |
@@ -292,8 +296,10 @@ state を条件付きで `history` へ送れるのは「state が差し替え以
 すべてこの 1 型で表す**。同じ情報量の型を複数持たない(旧 `TrajectorySample` / `LineSample` /
 `PlannedNode.time` はここへ統合済み)ため、「状態」と「その時刻」が別々に渡されて食い違うことがない。
 
-**例外はない。** RK4 の環境加速度評価も `envaccel.ts` の `envAccel` が `Vec3` を返す純粋関数で、
-`stepOrbitRK4` はそれを `ExtraAccelFn` として受け取る。ミュータブルなスクラッチや `out` 引数を
+**例外はない。** RK4 の加速度評価も `dynamics.ts` の `stepDynamicsRK4`(内部で `attractor.ts` の
+`gravityAccel` + 自身の `j2Accel` + `atmosphere.ts` の `dragAccel` を合成)が `Vec3` を返す
+純粋関数の積み重ねで、`stepOrbitRK4` はその結果を `AccelFn` として受け取るだけ。ミュータブルな
+スクラッチや `out` 引数を
 持つ変種は `physics/` のどこにも置かない(その形を撤去した経緯と実測値は
 `memos/mikanixonable/軽量化計画.md` の A-1 を参照)。エンティティ数が増えて効くようになったときの
 答えは物理 LOD(同 B-1)であって、ミュータブルなスクラッチの再導入ではない。

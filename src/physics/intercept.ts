@@ -1,7 +1,7 @@
 // 弾速一定の弾丸が相対運動する目標に命中するまでの最短時間と、そこから求まる
 // 見越し点(狙うべき位置)を解く純関数。
 import { Vec3, addScaled, dot, lenSq, sub } from './vec3';
-import { OrbitState } from './orbital';
+import { OrbitState } from './orbital-state';
 
 // |relP + relV t| = s t を満たす最小の正の t
 export function solveLeadTime(relP: Vec3, relV: Vec3, s: number): number | null {

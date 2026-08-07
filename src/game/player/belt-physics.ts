@@ -1,7 +1,7 @@
 // マガジンベルトの物理演算(Verlet 積分 + 距離拘束によるチェーンのたわみ・ねじれ)。
 import * as THREE from 'three/webgpu';
 import { Attitude, Quat, qFromUnitVectors, qInvert, qMul, qRotate } from '../../physics/attitude';
-import { orbitState } from '../../physics/orbital';
+import { orbitState } from '../../physics/orbital-state';
 import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
 import * as C from '../const';

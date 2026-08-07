@@ -2,7 +2,8 @@
 // `npm run test:physics` から tsconfig.test.json でコンパイル後、これを node 実行する。
 import { runAll } from './harness';
 import { register as registerVec3 } from './vec3.test';
-import { register as registerOrbital } from './orbital.test';
+import { register as registerOrbitalState } from './orbital-state.test';
+import { register as registerElements } from './elements.test';
 import { register as registerAttitude } from './attitude.test';
 import { register as registerTimeStep } from './time-step.test';
 import { register as registerSweptSphere } from './swept-sphere.test';
@@ -21,7 +22,8 @@ import { register as registerHudLayout } from './hud-layout.test';
 import './creative-placement-validation.test';
 
 registerVec3();
-registerOrbital();
+registerOrbitalState();
+registerElements();
 registerAttitude();
 registerTimeStep();
 registerSweptSphere();

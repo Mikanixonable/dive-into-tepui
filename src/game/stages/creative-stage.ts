@@ -9,7 +9,8 @@ import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { Simulator } from '../simulation/simulator';
 import type { MarkerManager } from '../marker/marker-manager';
-import { OrbitState, orbitState, semiMajorFromPeriod, stateFromElements } from '../../physics/orbital';
+import { OrbitState, orbitState } from '../../physics/orbital-state';
+import { elementsFromState, semiMajorFromPeriod, stateFromElements } from '../../physics/elements';
 import { Ephemeris, MU_MOON, R_MOON } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
 import { FloatingOrigin } from '../floating-origin';
@@ -22,7 +23,6 @@ import * as C from '../const';
 import { ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
 import { validateEllipticPlacement } from '../creative/placement-validation';
 import { OrbitLine } from '../../render/orbitline';
-import { elementsFromState } from '../../physics/orbital';
 
 const DEG = Math.PI / 180;
 

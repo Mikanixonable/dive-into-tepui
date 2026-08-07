@@ -1,5 +1,6 @@
 // 重力を及ぼすもの。位置・速度は ECI(地球は原点に静止)。THREE/DOM 非依存の純関数群。
-import { Elements, OrbitState, elementsFromState, keplerPeriod, orbitState } from './orbital';
+import { OrbitState, orbitState } from './orbital-state';
+import { Elements, elementsFromState, keplerPeriod } from './elements';
 import { Vec3, add, lenSq, len, sub, v3 } from './vec3';
 
 export type AttractorId = 'earth' | 'moon' | 'sun';

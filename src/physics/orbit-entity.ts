@@ -5,7 +5,7 @@
 // 将来 GameEntity が2本目(predicted)を持つとき、過去列にも未来列にも同じこの実装を使う —
 // history は常に「自分の state より古い時刻のサンプル列」であり、current ではそれが過去、
 // predicted ではそれが「現在〜先端の間」になるだけで、構造も操作(step/at)もまったく同じ。
-import { OrbitState, hermiteInterpolate } from './orbital';
+import { OrbitState, hermiteInterpolate } from './orbital-state';
 import { StateQueue } from './state-queue';
 import { Attractor } from './attractor';
 import { Vec3 } from './vec3';
