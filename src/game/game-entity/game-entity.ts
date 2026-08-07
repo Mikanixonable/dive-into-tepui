@@ -5,7 +5,7 @@ import { Attitude } from '../../physics/attitude';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { StateQueue } from '../../physics/state-queue';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Attractor, AttractorId, elementsAround as elementsAroundBody, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, AttractorId, elementsAround as elementsAroundBody, hitsAnySurface, localOrbitPeriod } from '../../physics/attractor';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -135,7 +135,7 @@ export class GameEntity {
     const { r, v } = p.state;
     const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
       && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-    if (!finite || hitsAnyBodySurface(r, bodies)) this.truncated = true;
+    if (!finite || hitsAnySurface(r, bodies, C.REENTRY_ALT)) this.truncated = true;
 
     return true;
   }
@@ -167,14 +167,4 @@ export class GameEntity {
   dispose(): void {
     this.scene?.remove(this.obj);
   }
-}
-
-// 位置 r がいずれかの天体の表面 + REENTRY_ALT を割っているか。予測列の積分打ち切りに使う
-// (月面へ突っ込む予測が内部を突き抜けてでたらめなスイングバイを描くのを止めるため)。
-// 楕円の中心天体の選択とは無関係に全天体を見る。
-function hitsAnyBodySurface(r: Vec3, bodies: readonly Attractor[]): boolean {
-  for (const body of bodies) {
-    if (len(sub(r, body.r)) < body.radius + C.REENTRY_ALT) return true;
-  }
-  return false;
 }

@@ -1,14 +1,14 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と計画パネルへの反映。
 // 未来表示(計画折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
 import type * as THREE from 'three/webgpu';
-import { Elements, OrbitState, elementsFromState, fromOrbitalAxes, orbitState, orbitalAxes } from '../../physics/orbital';
+import { Elements, OrbitState, fromOrbitalAxes, orbitState, orbitalAxes } from '../../physics/orbital';
 import { Projected } from '../../physics/projection';
 import { Vec3, add, dot, len, scale, sub, v3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { ACCENT, TEXT, TEXT_DIM } from '../theme';
 import { Hud } from '../hud/hud';
-import { HudHoldButton, SegmentedControl } from '../hud/buttons';
+import { HudHoldButton } from '../hud/buttons';
 import { ContextMenu } from '../hud/context-menu';
 import { MenuAction, MenuCommon } from '../hud/menu-actions';
 import { fmtDist, fmtTime } from '../hud/utils';
@@ -25,7 +25,7 @@ import { PlanDisplay } from './plan-display';
 import { hudDock } from '../hud/dom';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
-import { centralBodyDefinition, toCentralBodyState } from '../../physics/central-body';
+import { elementsAround, relativeTo, strongestAttractor } from '../../physics/attractor';
 
 interface DvButtons {
   readonly pro: HudHoldButton;
@@ -92,7 +92,6 @@ export class PlanEditor {
   private readonly dvProInput: HTMLInputElement;
   private readonly dvNrmInput: HTMLInputElement;
   private readonly dvRadInput: HTMLInputElement;
-  private readonly centralBodyControl: SegmentedControl<'earth' | 'moon'>;
   private simTime = 0;
 
   // 計画パネルの DOM を組み立て、ノードギズモのコールバックを配線する。
@@ -157,13 +156,6 @@ export class PlanEditor {
     this.dvNrmInput.addEventListener('keydown', stopProp);
     this.dvRadInput.addEventListener('keydown', stopProp);
 
-    this.centralBodyControl = new SegmentedControl('基準天体', [['earth', 'EARTH'], ['moon', 'MOON']] as const, (value) => {
-      this.plan.centralBody = value;
-      this.centralBodyControl.setSelected(value);
-      this._hud.hint(`基準天体: ${centralBodyDefinition(this.plan.centralBody).label}`);
-    });
-    this.centralBodyControl.setSelected(this.plan.centralBody);
-    document.getElementById('navball')?.appendChild(this.centralBodyControl.element);
     hudDock(this._hud.root, 'right').appendChild(this.planPanel);
     this.orbitMenu.onSelect = (act, state) => {
       if (act !== 'warp') return;
@@ -209,7 +201,6 @@ export class PlanEditor {
   // 前の艦の計画を指しているので破棄する。
   setActivePlayer(ship: Player | null): void {
     this.ship = ship;
-    this.centralBodyControl.setSelected(this.plan.centralBody);
     this.selectedNodeIdx = null;
     this.closeMenu();
   }
@@ -520,10 +511,9 @@ export class PlanEditor {
     return node && arr ? sub(this.bodyState(node).v, this.bodyState(arr).v) : v3();
   }
 
-  // 軌道要素とΔv方向だけを基準天体中心へ変換する。計画軌道の積分自体は
-  // 既存互換の地球ECIで行われるため、月基準選択時も実機状態は変更しない。
+  // 軌道要素とΔv方向を解釈するための中心天体相対状態。中心はその位置で最も強く引く天体。
   private bodyState(state: OrbitState): OrbitState {
-    return toCentralBodyState(state, this.plan.centralBody, this.ephemeris);
+    return relativeTo(state, strongestAttractor(state.r, this.ephemeris.attractorsAt(state.t)));
   }
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
@@ -623,22 +613,24 @@ export class PlanEditor {
     // 選択中ノードの Δv と噴射後軌道要素を求める
     let selEl: Elements | null = null;
     let localDv: Vec3 | null = null;
+    // 高度・大気圏警告の基準は、選択中ノード(無ければ計画の起点)で最も強く引く天体。
+    const centerState = (this.selectedNodeIdx !== null ? this.plan.nodes[this.selectedNodeIdx] : null) ?? this.plan.anchor;
+    const center = strongestAttractor(centerState.r, this.ephemeris.attractorsAt(centerState.t));
     if (this.selectedNodeIdx !== null) {
       const node = this.plan.nodes[this.selectedNodeIdx];
       const arr = arriving[this.selectedNodeIdx];
       if (node && arr) {
-        const bodyNode = this.bodyState(node);
-        const bodyArr = this.bodyState(arr);
-        selEl = elementsFromState(bodyNode.r, bodyNode.v, centralBodyDefinition(this.plan.centralBody).mu);
-        
+        const bodyNode = relativeTo(node, center);
+        const bodyArr = relativeTo(arr, center);
+        selEl = elementsAround(node, center);
+
         // 到着時基準でのローカルΔv成分を計算
         const dvWorld = sub(bodyNode.v, bodyArr.v);
         const axes = orbitalAxes(bodyArr);
         localDv = v3(dot(dvWorld, axes.pro), dot(dvWorld, axes.nrm), dot(dvWorld, axes.radOut));
       }
     }
-    const body = centralBodyDefinition(this.plan.centralBody);
-    const html = planPanelHtml(nodes, selEl, body.radius, body.id === 'earth');
+    const html = planPanelHtml(nodes, selEl, center.radius, center.id === 'earth');
     
     // ノードが選択されていない時はパネル全体を非表示にする
     this.planPanel.style.display = this.selectedNodeIdx !== null ? 'block' : 'none';
