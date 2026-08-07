@@ -26,11 +26,6 @@ export function createStars(): THREE.Mesh {
   const mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false;
   mesh.renderOrder = -10;
-  
-  // 天の北極を+Y(ゲーム内の北極)に合わせるための回転(テクスチャの向き次第で調整)
-  // 8k_stars.jpg が equirectangular (緯度経度) で中心が銀河中心などの場合、
-  // +Y軸を上にするにはデフォルトのままで良いことが多い
-  
   return mesh;
 }
 
@@ -58,7 +53,6 @@ export function createMoon(): THREE.Mesh {
   return mesh;
 }
 
-// 太陽ビルボードを構築する。
 export function createSun(): Sun {
   return { billboard: new Billboard(0xfff3d0, -9) };
 }

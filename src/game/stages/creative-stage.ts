@@ -281,6 +281,7 @@ export class CreativeStage extends Stage {
     return orbitState(this._simulator.simTime, add(moonPos, rel.r), add(moonVel, rel.v));
   }
 
+  // 軌道要素指定フォームの値が物理的に成立するか検証する。不正なら理由付きで例外を投げる。
   private assertValidElementsForm(form: ShipPlacerForm): void {
     const rBody = form.body === 'moon' ? R_MOON : C.R_EARTH;
     const message = validateEllipticPlacement({
@@ -292,6 +293,7 @@ export class CreativeStage extends Stage {
     if (message) throw new Error(message);
   }
 
+  // フォームの placementMode に応じた妥当性検証を行う。不正なら理由付きで例外を投げる。
   private assertValidForm(form: ShipPlacerForm): void {
     if (form.placementMode === 'elements') {
       this.assertValidElementsForm(form);
@@ -308,12 +310,8 @@ export class CreativeStage extends Stage {
     if (!values.every(Number.isFinite)) throw new Error('有限の状態を作れませんでした');
   }
 
-  // ノード適用は Simulator のイベント境界で行うため、フレーム更新では何もしない。
+  // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行う(Creative の初期弾薬は0のため必須)。
   update(_dt: number, player: Player, _entities: EntityManager, simTime: number, _simSpeed: SimSpeedManager): void {
-    // Creative は戦闘フェーズを持たないため、以前は補給ロジスティクスも
-    // 更新されていなかった。その結果、初期弾薬が 0 の Creative 艦は
-    // いったん弾を使い切ると補給が永遠に投入されなかった。
-    // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行う。
     this.logistics.updateLogistics(simTime, player, true);
   }
 

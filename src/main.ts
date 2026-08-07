@@ -31,7 +31,6 @@ export async function resolveLaunchSelection(unlockManager: UnlockManager): Prom
 // 真っ黒のままで「固まっている」ように見えるため、先にこれを出しておく。
 function showLoading(): () => void {
   const SURFACE = SURFACE_OPAQUE;
-  // ロゴとスピナーを表示するオーバーレイ
   const div = document.createElement('div');
   div.style.cssText =
     'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
@@ -41,12 +40,10 @@ function showLoading(): () => void {
     `<div style="width:40px;height:40px;border-radius:50%;border:3px solid ${SURFACE};` +
     `border-top-color:${ACCENT};animation:tepui-spin 0.9s linear infinite"></div>` +
     `<div style="font-size:12px;color:${TEXT_DIM}">初期化中(WebGPU)…</div>`;
-  // スピナーの回転アニメーション
   const style = document.createElement('style');
   style.textContent = '@keyframes tepui-spin { to { transform: rotate(360deg); } }';
   document.head.appendChild(style);
   document.body.appendChild(div);
-  // オーバーレイを取り除く後始末
   return () => {
     div.remove();
     style.remove();
@@ -123,13 +120,11 @@ function startAnimationLoop(game: Game, perf: PerfMeter): void {
     lastTime = now;
     const t0 = perf.on ? performance.now() : 0;
     try {
-      // update → sync → render の順で1フレーム進める
       game.update(dt);
       const t1 = perf.on ? performance.now() : 0;
       game.sync(Math.min(dt, 0.1));
       game.render();
       const t2 = perf.on ? performance.now() : 0;
-      // 計測結果を記録
       if (perf.on) {
         perf.record(t1 - t0, t2 - t1, t2);
       }
@@ -172,10 +167,8 @@ function initHud(): { hud: Hud; sfx: Sfx; settingsPanel: SettingsPanel } {
 // シーン初期化からステージ選択、Game 構築、rAF ループ開始までを順に行う。
 async function main() {
   const unlockmanager = new UnlockManager();
-  // レンダラ初期化
   const gs = await initScene();
   const { hud, sfx, settingsPanel } = initHud();
-  // モード/ステージ決定とゲーム生成
   const launch = await resolveLaunchSelection(unlockmanager);
   const game = new Game(gs, launch, hud, sfx, settingsPanel, unlockmanager);
   // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
@@ -198,9 +191,7 @@ async function main() {
       settingsPanel.showSaveStatus('ロードに失敗しました', true);
     }
   };
-  // パフォーマンス計測の DOM
   const perf = new PerfMeter(game);
-  // rAF ループ開始
   startAnimationLoop(game, perf);
 }
 

@@ -246,7 +246,6 @@ export const DV_RATE_MIN = 1; // 長押し開始時のΔv加算レート [m/s pe
 export const DV_RATE_MAX = 400; // 長押し継続後に到達するΔv加算レート [m/s per 実秒]
 export const DV_RATE_RAMP_SEC = 3.0; // DV_RATE_MIN から DV_RATE_MAX への指数的ランプ時間 [s]
 // マニューバ達成判定(計画軌道への接近許容)
-// 計画軌道の到達判定。従来値の1/3にして誤差を厳しくする。
 export const NODE_TOL_SMA = 0.02 / 3; // 長半径の相対誤差
 export const NODE_TOL_ECC = 0.02 / 3; // 離心率差
 export const NODE_TOL_PLANE_DEG = 2.0 / 3; // 軌道面の角度差 [deg]

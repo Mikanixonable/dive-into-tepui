@@ -1,4 +1,6 @@
 // シミュレーション刻みの純粋な決定規則。既知イベントを越えず、低高度では刻みを縮める。
+
+// targetTime・maxStep・nextEventTime のいずれよりも先へ進まない、今回のサブステップ幅 [s] を返す。
 export function simulationStepDuration(
   simTime: number,
   targetTime: number,
