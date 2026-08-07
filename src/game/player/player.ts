@@ -13,7 +13,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { OrbitLine } from '../../render/orbitline';
-import { strongestAttractor } from '../../physics/attractor';
+import { Attractor, hitsAnySurface, strongestAttractor } from '../../physics/attractor';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Stage } from '../stages/stage';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
@@ -284,16 +284,16 @@ export class Player extends Ship {
   }
 
   // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。
-  checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3): void {
+  checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, bodies: readonly Attractor[]): void {
     if (!this.alive) return;
     const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, altitudeOf(this.state.r));
 
-    // 熱・動圧・高度いずれかの限界超過を喪失理由として判定する
+    // 熱・動圧・表面到達いずれかの限界超過を喪失理由として判定する
     let reason: string | null = null;
     if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
     else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
     else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
-    else if (altitudeOf(this.state.r) < C.PLAYER_MIN_ALT) reason = '濃密な大気に突入し機体は分解した';
+    else if (hitsAnySurface(this.state.r, bodies, C.PLAYER_MIN_ALT)) reason = '天体表面付近に達し機体は分解した';
     if (reason === null) return;
 
     this.alive = false;
@@ -378,12 +378,11 @@ export class Player extends Ship {
     this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer, this.magsLeft);
 
     if (this.alive) {
-      const bodies = ephemeris.attractorsAt(this.state.t);
-      const center = strongestAttractor(this.state.r, bodies);
-      const densifyNear = sub(this.state.r, center.r);
-      this.orbitLine.sync(this.elementsAround(center), fo, bodies, this.thrustVizDir !== null, densifyNear);
+      const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));
+      const densifyNear = sub(this.state.r, center.state.r);
+      this.orbitLine.sync(this.elementsAround(center), fo, this.thrustVizDir !== null, densifyNear);
     } else {
-      this.orbitLine.sync(null, fo, ephemeris.attractorsAt(this.state.t));
+      this.orbitLine.sync(null, fo);
     }
   }
 

@@ -10,8 +10,10 @@ import type { Hud } from '../hud/hud';
 import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import { SimSpeedManager } from '../sim-speed-manager';
-import { MU_EARTH, OrbitState, R_EARTH, orbitState } from '../../physics/orbital-state';
-import { apsisAltitudes, elementsFromState } from '../../physics/elements';
+import { OrbitState, orbitState } from '../../physics/orbital-state';
+import { apsisAltitudes } from '../../physics/elements';
+import { elementsAround, strongestAttractor } from '../../physics/attractor';
+import type { Ephemeris } from '../../physics/ephemeris';
 import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../physics/vec3';
 import { generateApproachingEnemy } from './spawner/enemy-generator';
 
@@ -70,7 +72,7 @@ export class Stage00 extends Stage {
   // ウェーブ番号を進め、敵を生成して addEnemy 経由でエンティティ管理に登録する。
   private spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this.waveCount;
-    const enemies = generateWave(player.state, wave, this._hud, this._sfx, this._fx, this._scene, forcedPattern);
+    const enemies = generateWave(player.state, wave, this._ephemeris, this._hud, this._sfx, this._fx, this._scene, forcedPattern);
     for (const enemy of enemies) addEnemy(enemy);
   }
 
@@ -170,12 +172,13 @@ function makeFlybyVelocity(player: OrbitState, centerR: Vec3, wave: number): { a
 }
 
 // 近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らないよう Δv の大きさを二分探索で縮める。
-function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3): Vec3 {
+function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, ephemeris: Ephemeris): Vec3 {
   const minPeAlt = C.REENTRY_ALT + C.STAGE00_MIN_PERIGEE_MARGIN;
+  const center = strongestAttractor(centerR, ephemeris.attractorsAt(t));
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
-    const el = elementsFromState(centerR, v, MU_EARTH, 'earth');
-    return el !== null && apsisAltitudes(el, R_EARTH).pe >= minPeAlt;
+    const el = elementsAround(orbitState(t, centerR, v), center);
+    return el !== null && apsisAltitudes(el).pe >= minPeAlt;
   };
   if (safe(centerV)) return centerV;
 
@@ -258,12 +261,12 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: OrbitState, waveNumber: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: OrbitState, waveNumber: number, ephemeris: Ephemeris, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = C.STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * C.STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, C.STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);
   const { approachDir, centerV: rawCenterV } = makeFlybyVelocity(player, centerR, waveNumber);
-  const centerV = limitFlybyDv(player.v, centerR, rawCenterV);
+  const centerV = limitFlybyDv(player.v, centerR, rawCenterV, player.t, ephemeris);
   const subGroups = makeSubGroupHexes(pickWaveBaseHex());
   const typeIndex = Math.floor(Math.random() * 3);
   const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');

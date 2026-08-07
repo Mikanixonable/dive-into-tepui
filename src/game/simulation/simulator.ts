@@ -52,7 +52,7 @@ export class Simulator {
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
       if (subDt <= 1e-9) {
         activeStage.applySimulationEvents(this.simTime);
-        this.entities.cleanup(0, this.simTime, activeStage, player?.state.r ?? v3());
+        this.entities.cleanup(0, this.simTime, activeStage, player?.state.r ?? v3(), this.ephemeris.attractorsAt(this.simTime));
         continue;
       }
 
@@ -61,7 +61,7 @@ export class Simulator {
       for (const p of this.entities.players) p.stepEnvironment(subDt, this.ephemeris, this.simTime);
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの命中判定へ進まないよう、既知境界の直後に回収する。
-      this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3());
+      this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3(), this.ephemeris.attractorsAt(this.simTime));
       if (bulletCollision) {
         this.hitSystem.checkBulletHits(this.simTime, player, activeStage, this.entities);
       }
