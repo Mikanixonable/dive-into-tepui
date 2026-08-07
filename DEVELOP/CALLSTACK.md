@@ -233,7 +233,7 @@
       - notifyAchieved() // orbitClose(自機軌道要素, 目標軌道要素) が真の場合のみ
         - hud.hint() + sfx.warp() // ノードごとに最初の1回のみ(achievedNotified との同一性比較)
   - editor.plan.trackAnchor() // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
-  - editor.update(simTime, displayTime) // 被選択物候補にアプシスアイコンが入るので mapPicker.refresh より前
+    - editor.update(simTime, displayTime) // 被選択物候補にアプシスアイコンが入るので mapPicker.refresh より前
     - planDisplay.update(plan, simTime, displayTime, show) // show = editMode || plan.nodes.length > 0
       - traj.update() // plan の corners を区間へ分解し、区間ごとに PlanArc を再積分。表示座標系と un-bake 時刻もここで確定
         - arc.update() // 区間ごと。(state0, end) が変わったときだけ OrbitEntity で RK4 積分し直す(重い)
@@ -257,6 +257,7 @@
         - selectedNodeIdx = idx + sfx.warp() // 既存ノードをヒットした場合
         - planDisplay.traj.nearestSample() → plan.addNode() + sfx.warp() // 計画軌道上をヒットした場合
         - selectedNodeIdx = null // どちらにも当たらなかった場合
+      - dragNodeToNearestSample() // ノードを incoming arc の最寄り点へ移し、元のΔv成分を保ったまま新しいノード状態へ焼き直す
     - mapPicker.handleRightClick() // ノードに消費されずに残った右クリックだけが届く
       - pickNearest(mapPicker.pickables) // MAP_PICK_PX_SQ 以内の被選択物(天体/自機/敵船/nav-AN・DN/アプシス)を最寄りで拾う。候補列は mapPicker.refresh() が組んだ1本
       - mapPicker のメニューを開く // 拾えた場合のみ消費。選択結果は MapPicker.run(act, target) へ
@@ -301,7 +302,7 @@
     - syncLighting() // 自機位置の日照率で sunLight/ambient の強度を上書き
     - syncReferenceLines() → geoLine.sync() + moonLine.sync() // !overviewMode では両方 null 渡しで非表示
     - celestialGrid.sync() // navball.gridVisibility の6トグルと overviewMode に応じたスケールを反映
-  - [entities.players ごと] ship.syncPlayer(displayTime, isActive = ship===player)
+    - [entities.players ごと] ship.syncPlayer(displayTime, isActive = ship===player)
     - displayState(displayTime) // current.at または predicted.at。null なら obj.visible=false のみで以下は現在状態のまま
     - obj の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)。ガンサイトズームで隠れるのは isActive の艦だけ
     - thrustEffects.sync() → core/outer の sync() or hide() // 実機体の現在状態(this.state)のまま
@@ -313,7 +314,8 @@
       - [overviewMode] 戦闘用7キーを hide + displayState があれば markerManager.setPosition('self') / 無ければ hide('self')
       - [!overviewMode] hide('self') + syncOrbitalDirections(currentState) // pro/retro/nrm/anm/radout/radin。常に現在状態
       - [!overviewMode] syncBoresight(currentState) → setDirection('bore') or hide('bore') // player.alive で分岐。常に現在状態
-    - orbitLine.sync() → regenerate() // 要素が閾値以上ドリフト or 推力中(force) or 初回のみ。現在状態基準(要素は時刻に依らない)
+    - orbitLine.sync() → regenerate() // 地球基準の解析楕円線。要素が閾値以上ドリフト or 推力中(force) or 初回のみ。現在状態基準(要素は時刻に依らない)
+    - [predictionCentralBody==='moon'] moonOrbitTrace.syncGeometry(current+predicted samples) + syncTransform() // 月基準では解析楕円を使わず、積分状態列をそのまま描く。月重力を含む
   - entities.sync(displayTime) → entity.sync(displayTime) // 敵・弾・薬莢・デブリ・補給それぞれ(Bullet は速度方向を向く別実装)。自機(全隻)は含まない — 各艦は syncPlayer() が個別に同期済み。
     displayState が null(predictDuration=0 の種別が未来表示中、または予測期間超過)なら visible=false
   - effects.sync() → flashEffectManager.syncFlashEffects()

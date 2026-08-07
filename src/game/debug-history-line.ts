@@ -39,7 +39,16 @@ export class DebugHistoryLine {
       }
       // 過去列 → 現在状態 → 未来列(あれば)の順に連結する。sampleInterval を current/predicted で
       // 共有しているため、現在時刻の点で密度が揃って連続する。
-      const samples = [...entity.current.samplesOldestFirst(), ...(entity.predicted?.samplesOldestFirst() ?? [])];
+      const currentSamples = entity.current.samplesOldestFirst();
+      let predictedSamples = entity.predicted?.samplesOldestFirst() ?? [];
+      if (currentSamples.length > 0 && predictedSamples.length > 0) {
+        const lastCurrentTime = currentSamples[currentSamples.length - 1]!.t;
+        const firstPredictedTime = predictedSamples[0]!.t;
+        if (firstPredictedTime <= lastCurrentTime) {
+          predictedSamples = [];
+        }
+      }
+      const samples = [...currentSamples, ...predictedSamples];
       line.syncGeometry(samples, frame, ephemeris);
       line.syncTransform(frame, simTime, ephemeris, fo);
       line.setVisible(true);

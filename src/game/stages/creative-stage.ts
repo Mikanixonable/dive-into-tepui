@@ -12,17 +12,21 @@ import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitState, orbitState, semiMajorFromPeriod, stateFromElements } from '../../physics/orbital';
 import { Ephemeris, MU_MOON, R_MOON } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
-import { add } from '../../physics/vec3';
+import { FloatingOrigin } from '../floating-origin';
+import { add, sub, v3 } from '../../physics/vec3';
 import type { ProjectFn } from '../camera/camera-system';
 import type { UnlockManager } from '../unlock-manager';
 import * as C from '../const';
 import { ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
 import { validateEllipticPlacement } from '../creative/placement-validation';
+import { OrbitLine } from '../../render/orbitline';
+import { elementsFromState } from '../../physics/orbital';
 
 const DEG = Math.PI / 180;
 
 export class CreativeStage extends Stage {
   static readonly id = 'creative' as const;
+  readonly stageId = 'creative' as const;
   readonly selectLabel = 'CREATIVE';
   readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
   readonly hiddenFromSelect = true;
@@ -30,6 +34,7 @@ export class CreativeStage extends Stage {
   readonly initialAmmo = { mags: 0, rounds: 0 };
 
   private placerPanel!: ShipPlacerPanel;
+  private previewOrbitLine!: OrbitLine;
   private nextShipId = 1;
 
   briefingHtml(): string {
@@ -42,23 +47,90 @@ export class CreativeStage extends Stage {
     fx: EffectsSystem, markerManager: MarkerManager, ephemeris: Ephemeris, simulator: Simulator,
   ): void {
     super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
-    this.placerPanel = new ShipPlacerPanel(hud.root);
+    
+    this.previewOrbitLine = new OrbitLine(0xffffff, 0.6);
+    this.previewOrbitLine.line.visible = false;
+    scene.add(this.previewOrbitLine.line);
+
+    const root = document.getElementById('hud-modal-shield') ?? hud.root;
+    this.placerPanel = new ShipPlacerPanel(root);
     this.placerPanel.onConfirm = (name, form) => this.placeShip(name, form);
+    this.placerPanel.onChange = () => this.updatePreview();
+    this.placerPanel.onClose = () => {
+      this.previewOrbitLine.line.visible = false;
+      document.body.classList.remove('hud-modal-open');
+    };
   }
 
   init(): number {
     return 0;
   }
 
-  // 艦艇配置パネルはマップモード中のみ表示する。
+  // プレビューの継続的な位置更新(フローティングオリジン対応)
   sync(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
     super.sync(player, project, displayTime, overviewMode);
-    this.placerPanel.setVisible(overviewMode);
+    this.syncPreview();
   }
 
-  // 未配置の開始状態では Stage.sync の player 前提を満たせないため、配置パネルだけを更新する。
+  // 未配置の開始状態でのプレビュー位置更新
   syncWithoutPlayer(overviewMode: boolean): void {
-    this.placerPanel.setVisible(overviewMode);
+    // overviewMode の未使用警告を回避するためアクセスだけしておく
+    void overviewMode;
+    this.syncPreview();
+  }
+
+  // 艦艇配置モーダルを開く (MapPicker から呼ばれる)
+  openShipPlacer(): void {
+    document.body.classList.add('hud-modal-open');
+    this.placerPanel.setVisible(true);
+  }
+
+  // フォーム値からプレビュー用の軌道要素を求め、OrbitLine を更新する
+  private updatePreview(): void {
+    const form = this.placerPanel.getForm();
+    if (form.placementMode !== 'elements') {
+      this.previewOrbitLine.line.visible = false;
+      return;
+    }
+    try {
+      const state = this.buildInitialState(form);
+      const mu = form.body === 'moon' ? MU_MOON : C.MU_EARTH;
+      
+      // elementsFromState は中心天体相対の座標・速度を要求するため、
+      // 月基準の場合は月の ECI 状態を引いて相対状態に戻す。
+      let relR = state.r;
+      let relV = state.v;
+      let centerPos = v3(0, 0, 0);
+      
+      if (form.body === 'moon') {
+        const moonPos = this._ephemeris.moonPosAt(this._simulator.simTime);
+        const moonVel = this._ephemeris.moonVelAt(this._simulator.simTime);
+        relR = sub(state.r, moonPos);
+        relV = sub(state.v, moonVel);
+        centerPos = moonPos;
+      }
+      
+      const el = elementsFromState(relR, relV, mu);
+      if (el) {
+        const player = this._entities.players.find(p => p.alive) ?? null;
+        const fo = player 
+          ? new FloatingOrigin(player.state.r, player.state.v)
+          : new FloatingOrigin(v3(0,0,0), v3(0,0,0));
+        this.previewOrbitLine.sync(el, fo, true, undefined, centerPos);
+        this.previewOrbitLine.line.visible = true;
+      } else {
+        this.previewOrbitLine.line.visible = false;
+      }
+    } catch {
+      this.previewOrbitLine.line.visible = false;
+    }
+  }
+
+  // 毎フレーム fo を適用するための同期
+  private syncPreview(): void {
+    if (!this.previewOrbitLine.line.visible) return;
+    // フォームの内容が valid であれば表示が維持されているので更新
+    this.updatePreview();
   }
 
   // フォーム値から OrbitState を組み立て、addShip で1隻配置する。上限に達していれば
@@ -73,7 +145,7 @@ export class CreativeStage extends Stage {
       const state = this.buildInitialState(form);
       this.assertFiniteEllipticState(state);
       const id = `creative-ship-${this.nextShipId++}`;
-      const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, name, state, id);
+      const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, name, state, id, form.body);
       this._entities.addPlayer(ship);
       // 最初に配置した艦だけを操作対象にする。Game は callback 経由で受ける。
       this.onShipPlaced?.(ship);
