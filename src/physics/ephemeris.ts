@@ -6,7 +6,8 @@
 // THREE/DOM 非依存。位置の計算式は純関数、それを初期位相で束縛して simTime で
 // サンプルする状態は末尾の Ephemeris クラスが持つ。
 import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
-import { MU_EARTH, R_EARTH } from './orbital';
+import { Attractor } from './attractor';
+import { MU_EARTH, R_EARTH, orbitState } from './orbital';
 import { Vec3, addScaled, dot, len, norm, scale, sub, v3 } from './vec3';
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
@@ -14,6 +15,7 @@ export const MU_MOON = 4.9048695e12;
 export const SUN_DIST = 1.495978707e11; // 1 au [m]
 export const MOON_DIST = 3.844e8; // 平均距離 [m]
 export const R_MOON = 1.7374e6; // 月半径 [m]
+export const R_SUN = 6.957e8; // 太陽半径 [m]
 
 const YEAR = 365.25636 * 86400; // 恒星年 [s]
 const MOON_PERIOD = 27.321661 * 86400; // 恒星月 [s]
@@ -22,7 +24,7 @@ const PERIGEE_PERIOD = 8.85 * 365.25 * 86400; // 月の近地点歳差周期 [s]
 const MOON_ECC = 0.0549; // 月軌道の離心率
 const EPS = (23.439291 * Math.PI) / 180; // 黄道傾斜角
 const MOON_INC = (5.145 * Math.PI) / 180; // 白道の黄道に対する傾斜
-const MOON_VEL_DT = 1; // moonVelAt の中心差分の半刻み [s]
+const VEL_DT = 1; // moonVelAt/sunVelAt の中心差分の半刻み [s]
 
 const COS_EPS = Math.cos(EPS);
 const SIN_EPS = Math.sin(EPS);
@@ -216,6 +218,10 @@ export class Ephemeris {
   private sunMemoPos: Vec3;
   private moonMemoT: number;
   private moonMemoPos: Vec3;
+  // attractorsAt のメモ(直近2件、新しい順)。RK4 のステップ中点(積分用)とステップ始点
+  // (刻み幅・サンプル間隔の決定用)が交互に引かれる呼び出しが構造上避けられず、1件だけでは
+  // 毎回両方とも外れてメモ化が機能しない。
+  private attractorsMemo: { t: number; bodies: readonly Attractor[] }[] = [];
 
   // sunPhase0 は昼(太陽が+X側)から始まるよう既定 0。moonPhase0 は既定でゲーム
   // ごとの乱数。テストは決定的な位相を渡すためコンストラクタで上書きする。
@@ -245,11 +251,17 @@ export class Ephemeris {
     }
     return this.moonMemoPos;
   }
-  // 指定時刻の月の ECI 速度。位置の中心差分(±MOON_VEL_DT)で求める — 月の速度の解析式は
+  // 指定時刻の月の ECI 速度。位置の中心差分(±VEL_DT)で求める — 月の速度の解析式は
   // 持たず、moonPosAt と別の実装を重複させない。
   moonVelAt(t: number): Vec3 {
-    const h = MOON_VEL_DT;
+    const h = VEL_DT;
     return scale(sub(moonPosition(t + h, this.moonPhase0), moonPosition(t - h, this.moonPhase0)), 1 / (2 * h));
+  }
+  // 指定時刻の太陽の ECI 速度。moonVelAt と同じく位置の中心差分(±VEL_DT)で求める —
+  // 太陽の速度の解析式は持たず、sunPosAt と別の実装を重複させない。
+  sunVelAt(t: number): Vec3 {
+    const h = VEL_DT;
+    return scale(sub(sunPosition(t + h, this.sunPhase0), sunPosition(t - h, this.sunPhase0)), 1 / (2 * h));
   }
   // 太陽方向の単位ベクトル(ライティング・影判定用)。
   sunDirAt(t: number): Vec3 {
@@ -274,5 +286,19 @@ export class Ephemeris {
   // 指定時刻の太陽-地球ラグランジュ点(L1-L5)。
   seLagrangeAt(t: number): LagrangePoints {
     return seLagrangePoints(t, this.sunPhase0);
+  }
+  // 指定時刻の重力源一覧([earth, moon, sun] 固定順)。地球は原点に静止。返す配列は
+  // 不変で、同一 t の再呼び出しには同じ配列参照を返す。
+  attractorsAt(t: number): readonly Attractor[] {
+    const cached = this.attractorsMemo.find((m) => m.t === t);
+    if (cached) return cached.bodies;
+    const bodies: readonly Attractor[] = [
+      { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(t, v3(0, 0, 0), v3(0, 0, 0)) },
+      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: orbitState(t, this.moonPosAt(t), this.moonVelAt(t)) },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(t, this.sunPosAt(t), this.sunVelAt(t)) },
+    ];
+    this.attractorsMemo.unshift({ t, bodies });
+    this.attractorsMemo.length = Math.min(this.attractorsMemo.length, 2);
+    return bodies;
   }
 }

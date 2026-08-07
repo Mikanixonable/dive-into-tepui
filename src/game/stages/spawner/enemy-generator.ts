@@ -87,7 +87,7 @@ export function generateMolniyaEnemy(
   const ra = R_EARTH + 39400e3;
   const a = (rp + ra) / 2;
   const e = (ra - rp) / (ra + rp);
-  const state = stateFromElements(t, a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu);
+  const state = stateFromElements(t, a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu, MU_EARTH);
   return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, hud, sfx, fx, scene);
 }
 
