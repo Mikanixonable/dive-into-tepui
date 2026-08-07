@@ -84,10 +84,13 @@ export class GameEntity {
     return C.SHIP_HISTORY_DURATION / C.PREDICT_SAMPLES_PER_REV;
   }
 
-  // 中心重力 + 環境加速度(大気抵抗・J2・第三体摂動)+ 自身の推力で 1 ステップ積分する。
+  // 全天体重力 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。このステップぶんの重力源は
+  // 中点(t + dt/2)で1回だけ引く — attractorsAt は同一時刻の呼び出しを前提にメモ化されて
+  // いるので、1ステップの中で別の時刻を引くとメモが効かなくなる。
   stepSim(dt: number, ephemeris: Ephemeris): void {
     if (!this.alive) return;
-    this.current.step(dt, ephemeris, this.bcInv, this.thrust, this.sampleInterval(ephemeris), this.historyDuration);
+    const bodies = ephemeris.attractorsAt(this.state.t + dt / 2);
+    this.current.step(dt, bodies, this.bcInv, this.thrust, this.sampleInterval(ephemeris), this.historyDuration);
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
@@ -125,11 +128,8 @@ export class GameEntity {
     // 常にpredictDurationより先にp.state.tがあるようにpredictを伸ばす
     if (p.state.t > simTime + this.predictDuration) return false;
 
-    if (this.predictionCentralBody === 'moon') {
-      p.stepMoonPrediction(dt, ephemeris, this.sampleInterval(ephemeris, p.state), this.predictDuration);
-    } else {
-      p.step(dt, ephemeris, this.bcInv, null, this.sampleInterval(ephemeris, p.state), this.predictDuration);
-    }
+    const bodies = ephemeris.attractorsAt(p.state.t + dt / 2);
+    p.step(dt, bodies, this.bcInv, null, this.sampleInterval(ephemeris, p.state), this.predictDuration);
 
     // 有限チェック
     const { r, v } = p.state;

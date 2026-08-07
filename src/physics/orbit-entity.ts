@@ -7,11 +7,9 @@
 // predicted ではそれが「現在〜先端の間」になるだけで、構造も操作(step/at)もまったく同じ。
 import { Elements, MU_EARTH, OrbitState, elementsFromState, hermiteInterpolate } from './orbital';
 import { StateQueue } from './state-queue';
-import type { Ephemeris } from './ephemeris';
+import { Attractor } from './attractor';
 import { Vec3 } from './vec3';
-import { stepEnvRK4 } from './envaccel';
-import { stepOrbitRK4 } from './orbital';
-import { centralBodyDefinition, fromCentralBodyState, toCentralBodyState } from './central-body';
+import { stepDynamicsRK4 } from './dynamics';
 
 export class OrbitEntity {
   private _state: OrbitState;
@@ -42,23 +40,22 @@ export class OrbitEntity {
     return el;
   }
 
-  // 中心重力 + 環境加速度 + 推力で 1 ステップ RK4 積分する(envaccel.ts の stepEnvRK4)。
-  // 環境加速度の太陽・月位置はこのステップの中点で ephemeris から引く。
+  // 全天体重力 + J2 + 大気抵抗 + 推力で 1 ステップ RK4 積分する(dynamics.ts の
+  // stepDynamicsRK4)。bodies はそのステップぶん呼び出し側が確定させた重力源一覧。
   // keepDuration > 0 かつ、直前の state が最新の記録サンプルから sampleInterval 秒以上
   // 離れているときだけ、その直前の state を history へ積む(解像度を落とす箇所はここ)。
   // 積んだ後は keepDuration を保持窓として history.cleanup する。keepDuration = 0 なら
   // history には一切触らない(デブリ・薬莢のコストをゼロに保つ)。
   step(
     dt: number,
-    ephemeris: Ephemeris,
+    bodies: readonly Attractor[],
     bcInv: number,
     thrust: Vec3 | null,
     sampleInterval: number,
     keepDuration: number,
   ): void {
     const prev = this._state;
-    const mid = prev.t + dt / 2;
-    const next = stepEnvRK4(prev, dt, ephemeris.sunPosAt(mid), ephemeris.moonPosAt(mid), bcInv, thrust);
+    const next = stepDynamicsRK4(prev, dt, bodies, bcInv, thrust);
     // 間引き済み history への記録
     if (keepDuration > 0) {
       const newest = this._history.newest;
@@ -68,29 +65,6 @@ export class OrbitEntity {
       }
     }
     // 積分結果を確定し、要素キャッシュを無効化する
-    this._prevState = prev;
-    this._state = next;
-    this._elements = undefined;
-  }
-
-  // 予測専用の月中心二体伝播。ゲーム本体のECI積分経路は変更しない。
-  stepMoonPrediction(
-    dt: number,
-    ephemeris: Ephemeris,
-    sampleInterval: number,
-    keepDuration: number,
-  ): void {
-    const prev = this._state;
-    const relative = toCentralBodyState(prev, 'moon', ephemeris);
-    const nextRelative = stepOrbitRK4(relative, dt, undefined, centralBodyDefinition('moon').mu);
-    const next = fromCentralBodyState(nextRelative, 'moon', ephemeris);
-    if (keepDuration > 0) {
-      const newest = this._history.newest;
-      if (newest === null || prev.t - newest.t >= sampleInterval) {
-        this._history.push(prev);
-        this._history.cleanup(keepDuration, 2);
-      }
-    }
     this._prevState = prev;
     this._state = next;
     this._elements = undefined;
