@@ -76,7 +76,7 @@ export class Logistics {
   }
 
   // 生存中の補給へ ▣ マーカー(画面外なら△の方位矢印)を同期する。
-  syncMarkers(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean, showMapAmmo: boolean): void {
+  syncMarkers(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
     // 表示時刻における生存中ピックアップの位置一覧
     const shown = this.entities.ammos.flatMap((ammo) => {
       const pos = ammo.alive ? ammo.displayState(displayTime)?.r : undefined;
@@ -88,7 +88,7 @@ export class Logistics {
       const bearing = `${key}-bearing`;
       const label = `AMMO ${fmtMarkerDist(len(sub(pos, player.state.r)))}`;
       const p = project(pos);
-      if (overviewMode && !showMapAmmo) {
+      if (overviewMode && !this._hud.settings.showMapAmmo) {
         this.markerManager.hide(key);
         this.markerManager.hide(bearing);
       } else {
