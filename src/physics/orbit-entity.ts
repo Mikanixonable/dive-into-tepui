@@ -5,7 +5,7 @@
 // 将来 GameEntity が2本目(predicted)を持つとき、過去列にも未来列にも同じこの実装を使う —
 // history は常に「自分の state より古い時刻のサンプル列」であり、current ではそれが過去、
 // predicted ではそれが「現在〜先端の間」になるだけで、構造も操作(step/at)もまったく同じ。
-import { Elements, OrbitState, elementsFromState, hermiteInterpolate } from './orbital';
+import { Elements, MU_EARTH, OrbitState, elementsFromState, hermiteInterpolate } from './orbital';
 import { StateQueue } from './state-queue';
 import type { Ephemeris } from './ephemeris';
 import { Vec3 } from './vec3';
@@ -37,7 +37,7 @@ export class OrbitEntity {
   // state からの軌道要素のメモ化。step/reset の呼び出しごとに破棄する。
   get elements(): Elements | null {
     if (this._elements !== undefined) return this._elements;
-    const el = elementsFromState(this._state.r, this._state.v);
+    const el = elementsFromState(this._state.r, this._state.v, MU_EARTH);
     this._elements = el;
     return el;
   }

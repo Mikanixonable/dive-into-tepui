@@ -1,7 +1,7 @@
 // 環境(太陽・月・星・地球・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
 import { Ephemeris, R_MOON, sunlitFactor } from '../physics/ephemeris';
-import { Elements, R_EARTH, SIDEREAL_DAY, elementsFromState } from '../physics/orbital';
+import { Elements, MU_EARTH, R_EARTH, SIDEREAL_DAY, elementsFromState } from '../physics/orbital';
 import { Vec3, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { createEarth, Earth } from './earth';
 import { OrbitLine } from './orbitline';
@@ -26,6 +26,7 @@ const GEO_ELEMENTS: Elements = {
   hHat: v3(0, 1, 0),
   pHat: v3(1, 0, 0),
   qHat: v3(0, 0, -1),
+  mu: MU_EARTH,
 };
 
 // 太陽ビルボード位置(カメラ相対)の作業用 THREE.Vector3。毎フレームの再確保を避ける。
@@ -114,7 +115,7 @@ export class EnvironmentScene {
     const dt = 10;
     const r1 = this.ephemeris.moonPosAt(simTime);
     const r2 = this.ephemeris.moonPosAt(simTime + dt);
-    return elementsFromState(r1, scale(sub(r2, r1), 1 / dt));
+    return elementsFromState(r1, scale(sub(r2, r1), 1 / dt), MU_EARTH);
   }
 
   // 地球の位置・自転角・表面アニメーションを表示時刻に同期する。
