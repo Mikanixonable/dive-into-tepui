@@ -62,6 +62,8 @@ export class PlanEditor {
   // 編集対象として選択中のノードの index。null で未選択。
   selectedNodeIdx: number | null = null;
 
+  onFocusNode: ((state: OrbitState) => void) | null = null;
+
   private ship: Player | null;
   private readonly detachedPlan = new Plan();
   // アクティブ艦自身の計画を編集する。艦は自分の計画を所有し続けるので、艦を切り替えると
@@ -195,6 +197,10 @@ export class PlanEditor {
     };
     g.onMenuDelete = (idx) => {
       this.deleteNode(idx);
+    };
+    g.onMenuFocus = (idx) => {
+      const n = this.plan.nodes[idx];
+      if (n) this.onFocusNode?.(n);
     };
   }
 
@@ -340,7 +346,7 @@ export class PlanEditor {
       this.selectedNodeIdx = null;
       this.orbitMenu.open(mx, my, hit.state, [
         { label: 'この位置まで時間を加速', act: 'warp' },
-        { label: 'キャンセル', act: 'cancel' },
+        { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
       ]);
       return true;
     }
