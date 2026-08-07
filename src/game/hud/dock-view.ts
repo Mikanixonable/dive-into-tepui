@@ -441,7 +441,6 @@ export class DockView {
     const idx = parseInt((e.target as HTMLElement).dataset['shipIdx'] ?? '-1', 10);
     const shipData = base.baseState.dockedShips[idx];
     if (!shipData) return;
-    // 外部に通知 (実際の発進は Game 側で行う)
     this.onLaunchShip?.(shipData.player, base);
     base.baseState.dockedShips.splice(idx, 1);
     if (this.currentShip === shipData.player) this.currentShip = null;
@@ -592,7 +591,6 @@ export class DockView {
     if (!entry) return;
     if (!this.creative && base.baseState.money < entry.price) return;
 
-    // 部品を生成して倉庫へ追加
     const part = createPart(entry.type, {
       name: entry.name,
       weight: entry.weight,

@@ -2,7 +2,7 @@ import { Ephemeris } from './ephemeris';
 import { OrbitState, orbitState, MU_EARTH } from './orbital';
 import { add, sub } from './vec3';
 
-/** 天体中心軌道計算の基準天体。既定値は従来互換の地球。 */
+/** 天体中心軌道計算の基準天体。 */
 export type CentralBodyId = 'earth' | 'moon';
 
 export interface CentralBodyDefinition {

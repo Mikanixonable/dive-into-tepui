@@ -293,6 +293,7 @@ export class Enemy extends Ship {
     this.orbitLine.sync(show ? this.elements : null, fo);
   }
 
+  // セーブデータへ変換する。
   serialize(): EnemySaveData {
     return {
       id: this.id ?? '',
@@ -310,6 +311,7 @@ export class Enemy extends Ship {
     };
   }
 
+  // セーブデータから復元する。
   static restore(data: EnemySaveData, simTime: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene?: THREE.Scene): Enemy {
     const state = orbitState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
     const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };

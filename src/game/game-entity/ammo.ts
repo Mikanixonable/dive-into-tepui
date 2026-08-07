@@ -34,6 +34,7 @@ export class Ammo extends GameEntity {
     });
   }
 
+  // セーブデータへ変換する。
   serialize(): AmmoSaveData {
     return {
       id: this.id ?? '',
@@ -45,6 +46,7 @@ export class Ammo extends GameEntity {
     };
   }
 
+  // セーブデータから復元する。
   static restore(data: AmmoSaveData, simTime: number, scene?: THREE.Scene): Ammo {
     const state = orbitState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
     const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };

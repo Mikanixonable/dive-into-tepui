@@ -68,7 +68,6 @@ export interface EnemySaveData extends EntitySaveData {
 }
 
 export interface AmmoSaveData extends EntitySaveData {
-  // ammo pickup specific data if any
 }
 
 export interface GameSaveData {

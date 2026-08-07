@@ -47,6 +47,7 @@ export class Base extends GameEntity {
     this.id = `base-${_baseIdCounter++}`;
   }
 
+  // セーブデータへ変換する。格納艦は player.serialize() に委ねる。
   serialize(): BaseSaveData {
     return {
       id: this.id,
