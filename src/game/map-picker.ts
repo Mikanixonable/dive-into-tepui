@@ -4,6 +4,7 @@
 // ように割れる。
 import * as C from './const';
 import { Hud } from './hud/hud';
+import { fmtTime } from './hud/utils';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { MapPickable, pickNearest } from './map-pick';
 import type { Input } from './input/input';
@@ -98,12 +99,18 @@ export class MapPicker {
           ...this.navTargetItems(target, simTime),
           { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
         ];
-      case 'apsis':
+      case 'apsis': {
+        const apsisTime = target.time;
+        const apsisLabel = target.id === 'apsisAp' ? '遠点 (Ap)' : '近点 (Pe)';
+        const apsisSubLabel = apsisTime !== undefined ? `到達まで T+${fmtTime(apsisTime - simTime)}` : undefined;
         return [
+          { type: 'header', label: apsisLabel, subLabel: apsisSubLabel },
+          { label: 'ここまで時間加速', act: 'warp' },
           { label: 'ここにノードを追加', act: 'addNode' },
           { label: 'フォーカスを移動', act: 'focus' },
           { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
         ];
+      }
       // 操作対象の艦には「操作対象にする」「削除」を出さない(前者は無効、後者は自機が消える)。
       case 'player': {
         const ship = this.entities.findPlayer(target.id);
@@ -119,13 +126,19 @@ export class MapPicker {
           { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
         ];
       }
-      case 'relnode':
+      case 'relnode': {
+        const relTime = target.time;
+        const relLabel = target.id === 'nav-an' ? '昇交点 (AN)' : '降交点 (DN)';
+        const targetName = this.navTarget.name ?? '対象';
+        const relSubLabel = `対 ${targetName}面` + (relTime !== undefined ? ` / T+${fmtTime(relTime - simTime)}` : '');
         return [
+          { type: 'header', label: relLabel, subLabel: relSubLabel },
           { label: 'ここまで時間加速', act: 'warp' },
           { label: 'ここにノードを追加', act: 'addNode' },
           { label: 'フォーカスを移動', act: 'focus' },
           { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
         ];
+      }
       case 'empty-space':
         return [
           { label: '艦艇を配置する [Enter]', act: 'openShipPlacer', shortcut: 'Enter' },
@@ -150,14 +163,16 @@ export class MapPicker {
     } else if (act === 'navTarget') {
       this.navTarget.toggleTarget(target.id, target.name);
     } else if (act === 'warp') {
-      const t = this.navTarget.passTimeOf(target.id);
+      const t = target.time ?? (target.kind === 'apsis'
+        ? this.editor.planDisplay.apsisTimeOf(target.id)
+        : this.navTarget.passTimeOf(target.id));
       if (t !== null && !this.simSpeedManager.startAutoWarpTo(t, this.game.simTime)) {
         this.hud.hint('この時刻は既に通過しています');
       }
     } else if (act === 'addNode') {
-      const t = target.kind === 'apsis'
+      const t = target.time ?? (target.kind === 'apsis'
         ? this.editor.planDisplay.apsisTimeOf(target.id)
-        : this.navTarget.passTimeOf(target.id);
+        : this.navTarget.passTimeOf(target.id));
       if (t !== null) this.editor.addNodeAt(t);
       else this.hud.hint('この時刻の計画軌道が求まりません');
     } else if (act === 'activate') {

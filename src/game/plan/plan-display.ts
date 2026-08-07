@@ -158,22 +158,29 @@ export class PlanDisplay {
     const rp = el.p / (1 + el.e);
     if (rp > body.soiRadius) return [];
 
-    const apsisPosition = (nu: number): Vec3 => {
+    const apsisPosition = (nu: number): { pos: Vec3, time: number } => {
       const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
       const t = state0.t + (isFinite(dt) ? dt : 0);
       const relativeState = orbitState(t, positionOnOrbit(el, nu), relative.v);
-      return this.traj.toDisplay(fromCentralBodyState(relativeState, plan.centralBody, this.ephemeris).r, t);
+      return {
+        pos: this.traj.toDisplay(fromCentralBodyState(relativeState, plan.centralBody, this.ephemeris).r, t),
+        time: t
+      };
     };
 
+    const pe = apsisPosition(0);
     const icons: ApsisIcon[] = [{
       id: 'apsisPe', name: '近地点', kind: 'apsis',
-      pos: apsisPosition(0),
+      pos: pe.pos,
+      time: pe.time,
       label: `Pe ${fmtDist(el.p / (1 + el.e) - body.radius)}`,
     }];
     if (isFinite(el.apAlt)) {
+      const ap = apsisPosition(Math.PI);
       icons.push({
         id: 'apsisAp', name: '遠地点', kind: 'apsis',
-        pos: apsisPosition(Math.PI),
+        pos: ap.pos,
+        time: ap.time,
         label: `Ap ${fmtDist(el.a * (1 + el.e) - body.radius)}`,
       });
     }
