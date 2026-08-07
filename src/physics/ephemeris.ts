@@ -7,7 +7,7 @@
 // サンプルする状態は末尾の Ephemeris クラスが持つ。
 import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
 import { Attractor } from './attractor';
-import { MU_EARTH, R_EARTH } from './orbital';
+import { MU_EARTH, R_EARTH } from './orbital-state';
 import { Vec3, addScaled, dot, len, norm, scale, sub, v3 } from './vec3';
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]

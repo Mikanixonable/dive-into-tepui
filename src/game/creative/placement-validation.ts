@@ -1,5 +1,5 @@
 // Creative のフォーム入力をDOMやTHREEに依存せず検証する小さな境界。
-import { semiMajorFromPeriod } from '../../physics/orbital';
+import { semiMajorFromPeriod } from '../../physics/elements';
 
 export type EllipticPlacementInput = {
   bodyRadius: number; mu: number; sizeMode: 'apsides' | 'semiMajorEcc' | 'periodEcc';

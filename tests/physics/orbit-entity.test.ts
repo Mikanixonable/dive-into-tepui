@@ -4,7 +4,7 @@
 // ここでの検証は GameEntity.current(過去列側)としての用法をそのまま代表する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { MU_EARTH, OrbitState, R_EARTH, orbitState } from '../../src/physics/orbital';
+import { MU_EARTH, OrbitState, R_EARTH, orbitState } from '../../src/physics/orbital-state';
 import { OrbitEntity } from '../../src/physics/orbit-entity';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { len, sub, v3 } from '../../src/physics/vec3';

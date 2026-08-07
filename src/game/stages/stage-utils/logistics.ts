@@ -4,7 +4,7 @@ import { randomQuat } from '../../../physics/attitude';
 import { add, len, lenSq, randSym, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
 import * as C from '../../const';
 import { Ammo } from '../../game-entity/ammo';
-import { orbitState, orbitalAxes } from '../../../physics/orbital';
+import { orbitState, orbitalAxes } from '../../../physics/orbital-state';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import { Player } from '../../player/player';

@@ -1,6 +1,6 @@
 // 軌道計画(ノード列)とその起点アンカー。ノードは噴射直後の絶対 OrbitState として凍結し、
 // Δv は導出値。上流ノードを編集すると下流を破棄する。計画軌道の計算・キャッシュは持たない。
-import { Elements, orbitState, OrbitState } from '../../physics/orbital';
+import { orbitState, OrbitState } from '../../physics/orbital-state';
 import { Vec3, add, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Attractor, localOrbitPeriod } from '../../physics/attractor';
@@ -17,13 +17,6 @@ export function orbitPeriodOf(state: OrbitState, bodies: readonly Attractor[]): 
 export interface TimeRange {
   min: number;
   max: number;
-}
-
-export function apsisAltitudes(el: Elements, bodyRadius: number): { pe: number; ap: number } {
-  return {
-    pe: el.p / (1 + el.e) - bodyRadius,
-    ap: el.e < 1 && isFinite(el.a) ? el.a * (1 + el.e) - bodyRadius : NaN,
-  };
 }
 
 export class Plan {

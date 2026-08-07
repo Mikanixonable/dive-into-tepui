@@ -1,6 +1,7 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { altitudeOf, Elements, OrbitState } from '../../physics/orbital';
+import { altitudeOf, OrbitState } from '../../physics/orbital-state';
+import { Elements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { StateQueue } from '../../physics/state-queue';

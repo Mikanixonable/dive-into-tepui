@@ -8,7 +8,7 @@
 //
 // シミュレーション全体は地球中心の慣性系(ECI)で回っている。回転系はあくまで「軌道線など
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
-import { OrbitState, orbitState } from './orbital';
+import { OrbitState, orbitState } from './orbital-state';
 import { Ephemeris, FrameRotation } from './ephemeris';
 import { add, cross, sub, v3, Vec3 } from './vec3';
 import { Quat, qInvert, qRotate } from './attitude';
