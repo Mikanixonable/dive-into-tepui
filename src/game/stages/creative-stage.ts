@@ -13,7 +13,8 @@ import { OrbitState, orbitState, semiMajorFromPeriod, stateFromElements } from '
 import { Ephemeris, MU_MOON, R_MOON } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
 import { FloatingOrigin } from '../floating-origin';
-import { add, sub, v3 } from '../../physics/vec3';
+import { add, len, sub, v3 } from '../../physics/vec3';
+import { fmtMarkerDist } from '../hud/utils';
 import type { ProjectFn } from '../camera/camera-system';
 import type { UnlockManager } from '../unlock-manager';
 import { Ammo } from '../game-entity/ammo';
@@ -73,27 +74,39 @@ export class CreativeStage extends Stage {
   sync(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
     super.sync(player, project, displayTime, overviewMode);
     this.syncPreview(project);
-    this.syncBaseMarkers(project, displayTime);
+    this.syncBaseMarkers(project, displayTime, player, overviewMode);
   }
 
   // 未配置の開始状態でのプレビュー位置更新
   syncWithoutPlayer(overviewMode: boolean, project: ProjectFn): void {
-    // overviewMode の未使用警告を回避するためアクセスだけしておく
-    void overviewMode;
     this.syncPreview(project);
-    this.syncBaseMarkers(project, this._simulator.simTime);
+    this.syncBaseMarkers(project, this._simulator.simTime, null, overviewMode);
   }
 
   // 基地は実寸(半径100m)のメッシュしか持たず、マップ視点では見えないほど小さいので、
-  // FocusMarkers と同じ ● のポイントマーカーを立てて発見できるようにする。
-  private syncBaseMarkers(project: ProjectFn, displayTime: number): void {
+  // FocusMarkers と同じ ● のポイントマーカーを立てて発見できるようにする。戦闘ビューでは
+  // 自機からの距離をラベルに添え、画面外なら ▣ AMMO と同じ方式の方位矢印で補う。
+  private syncBaseMarkers(project: ProjectFn, displayTime: number, player: Player | null, overviewMode: boolean): void {
     const bases = this._entities.bases;
     for (const [i, base] of bases.entries()) {
+      const key = `base${i}`;
+      const bearingKey = `${key}-bearing`;
       const pos = base.alive ? base.displayState(displayTime)?.r : undefined;
-      if (pos) this._markerManager.setPosition(`base${i}`, 'mk-poi', '●', pos, project, '基地');
-      else this._markerManager.hide(`base${i}`);
+      if (!pos) {
+        this._markerManager.hide(key);
+        this._markerManager.hide(bearingKey);
+        continue;
+      }
+      const label = player ? `基地 ${fmtMarkerDist(len(sub(pos, player.state.r)))}` : '基地';
+      const p = project(pos);
+      this._markerManager.set(key, 'mk-poi', '●', p.x, p.y, p.front, label);
+      if (overviewMode) this._markerManager.hide(bearingKey);
+      else this._markerManager.setBearing(bearingKey, 'mk-poi', '●', p, label, 0.9);
     }
-    for (let i = bases.length; i < this.lastBaseMarkerCount; i++) this._markerManager.hide(`base${i}`);
+    for (let i = bases.length; i < this.lastBaseMarkerCount; i++) {
+      this._markerManager.hide(`base${i}`);
+      this._markerManager.hide(`base${i}-bearing`);
+    }
     this.lastBaseMarkerCount = bases.length;
   }
 
