@@ -54,7 +54,7 @@ export class PlanTrajectory {
     const segments = buildSegments(plan, ephemeris);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
-      this.arcAt(i).update(seg.state0, seg.end, ephemeris, plan.centralBody);
+      this.arcAt(i).update(seg.state0, seg.end, ephemeris);
     }
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;

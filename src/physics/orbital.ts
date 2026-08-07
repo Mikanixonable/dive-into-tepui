@@ -1,4 +1,4 @@
-// 地球中心の二体問題 + 任意の追加加速度(推力など)の RK4 積分と、
+// 与えられた加速度による RK4 積分の器(ケプラーの二体問題の解析式込み)と、
 // 状態ベクトル → 軌道要素の変換。THREE/DOM 非依存の純粋関数群。
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
 
@@ -105,9 +105,8 @@ export function hermiteInterpolate(
   );
 }
 
-// 追加加速度(推力・大気抵抗・J2・第三体摂動など)を状態の関数として渡すためのコールバック。
-// RK4 の各中間段(k1〜k4)ごとに呼ばれる。
-export type ExtraAccelFn = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => Vec3;
+// 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに呼ばれる。
+export type AccelFn = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => Vec3;
 
 export const J2_EARTH = 1.08262668e-3; // 地球扁平の J2 項
 export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
@@ -122,79 +121,39 @@ export function j2Accel(r: Vec3): Vec3 {
   return v3(k * r.x * (1 - f), k * r.y * (3 - f), k * r.z * (1 - f));
 }
 
-// 第三体(太陽・月)の潮汐摂動: 機体への直接引力から地球中心への引力を
-// 差し引いた差分加速度。a = μ[(ρ/|ρ|³) - (r_b/|r_b|³)], ρ = r_b - r。
-export function thirdBodyAccel(r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
-  // ρ = bodyPos - r
-  const dx = bodyPos.x - r.x;
-  const dy = bodyPos.y - r.y;
-  const dz = bodyPos.z - r.z;
-  const d3 = Math.pow(dx * dx + dy * dy + dz * dz, 1.5);
-  const b3 = Math.pow(
-    bodyPos.x * bodyPos.x + bodyPos.y * bodyPos.y + bodyPos.z * bodyPos.z,
-    1.5,
-  );
-  // μ(ρ/|ρ|³ − r_b/|r_b|³)
-  return v3(
-    (mu * dx) / d3 - (mu * bodyPos.x) / b3,
-    (mu * dy) / d3 - (mu * bodyPos.y) / b3,
-    (mu * dz) / d3 - (mu * bodyPos.z) / b3,
-  );
-}
-
-// 単一エンティティの RK4 1ステップ(中心重力 + 追加加速度)。
+// 加速度コールバック accel だけを使って RK4 で 1 ステップ積分する。
 // 入力 s は書き換えず、時刻も dt だけ進めた新しい OrbitState を返す。
-export function stepOrbitRK4(s: OrbitState, dt: number, extraAccel?: ExtraAccelFn, mu = MU_EARTH): OrbitState {
+export function stepOrbitRK4(s: OrbitState, dt: number, accel: AccelFn): OrbitState {
   const r0x = s.r.x, r0y = s.r.y, r0z = s.r.z;
   const v0x = s.v.x, v0y = s.v.y, v0z = s.v.z;
   const h2 = dt / 2;
   const h6 = dt / 6;
 
-  const outA = { ax: 0, ay: 0, az: 0 };
-
-  // 位置・速度から加速度(中心重力 + 追加加速度)を求め、outA に書き込む。
-  const computeA = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => {
-    // 中心重力加速度
-    const d2 = rx * rx + ry * ry + rz * rz;
-    const d = Math.sqrt(d2);
-    const k = -mu / (d2 * d);
-    outA.ax = rx * k;
-    outA.ay = ry * k;
-    outA.az = rz * k;
-    // 追加加速度を合算
-    if (extraAccel) {
-      const a = extraAccel(rx, ry, rz, vx, vy, vz);
-      outA.ax += a.x;
-      outA.ay += a.y;
-      outA.az += a.z;
-    }
-  };
-
   // k1
   const kr1x = v0x, kr1y = v0y, kr1z = v0z;
-  computeA(r0x, r0y, r0z, v0x, v0y, v0z);
-  const kv1x = outA.ax, kv1y = outA.ay, kv1z = outA.az;
+  const a1 = accel(r0x, r0y, r0z, v0x, v0y, v0z);
+  const kv1x = a1.x, kv1y = a1.y, kv1z = a1.z;
 
   // k2
   const r2x = r0x + kr1x * h2, r2y = r0y + kr1y * h2, r2z = r0z + kr1z * h2;
   const v2x = v0x + kv1x * h2, v2y = v0y + kv1y * h2, v2z = v0z + kv1z * h2;
   const kr2x = v2x, kr2y = v2y, kr2z = v2z;
-  computeA(r2x, r2y, r2z, v2x, v2y, v2z);
-  const kv2x = outA.ax, kv2y = outA.ay, kv2z = outA.az;
+  const a2 = accel(r2x, r2y, r2z, v2x, v2y, v2z);
+  const kv2x = a2.x, kv2y = a2.y, kv2z = a2.z;
 
   // k3
   const r3x = r0x + kr2x * h2, r3y = r0y + kr2y * h2, r3z = r0z + kr2z * h2;
   const v3x = v0x + kv2x * h2, v3y = v0y + kv2y * h2, v3z = v0z + kv2z * h2;
   const kr3x = v3x, kr3y = v3y, kr3z = v3z;
-  computeA(r3x, r3y, r3z, v3x, v3y, v3z);
-  const kv3x = outA.ax, kv3y = outA.ay, kv3z = outA.az;
+  const a3 = accel(r3x, r3y, r3z, v3x, v3y, v3z);
+  const kv3x = a3.x, kv3y = a3.y, kv3z = a3.z;
 
   // k4
   const r4x = r0x + kr3x * dt, r4y = r0y + kr3y * dt, r4z = r0z + kr3z * dt;
   const v4x = v0x + kv3x * dt, v4y = v0y + kv3y * dt, v4z = v0z + kv3z * dt;
   const kr4x = v4x, kr4y = v4y, kr4z = v4z;
-  computeA(r4x, r4y, r4z, v4x, v4y, v4z);
-  const kv4x = outA.ax, kv4y = outA.ay, kv4z = outA.az;
+  const a4 = accel(r4x, r4y, r4z, v4x, v4y, v4z);
+  const kv4x = a4.x, kv4y = a4.y, kv4z = a4.z;
 
   return orbitState(
     s.t + dt,

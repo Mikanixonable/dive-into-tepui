@@ -1,6 +1,8 @@
 // 区分指数大気密度モデル(Vallado, "Fundamentals of Astrodynamics and
-// Applications" の CIRA-72 / U.S. Standard Atmosphere 準拠テーブル)。
-// 各区間で ρ(h) = ρ0 · exp(-(h - h0) / H)。THREE/DOM 非依存の純粋関数。
+// Applications" の CIRA-72 / U.S. Standard Atmosphere 準拠テーブル)と、
+// その大気による対気速度・抗力加速度。THREE/DOM 非依存の純粋関数。
+import { R_EARTH, SIDEREAL_DAY } from './orbital';
+import { Vec3, len, v3 } from './vec3';
 
 // [基準高度 h0 [km], 基準密度 ρ0 [kg/m^3], スケールハイト H [km]]
 const TABLE: readonly [number, number, number][] = [
@@ -45,4 +47,20 @@ export function atmosphericDensity(alt: number): number {
     }
   }
   return row[1] * Math.exp(-(hKm - row[0]) / row[2]);
+}
+
+export const EARTH_OMEGA = (2 * Math.PI) / SIDEREAL_DAY; // 地球自転角速度 [rad/s](Y軸=北極まわり)
+
+// 地球と共回転する大気に対する対気速度: v - ω×r, ω = (0, ω, 0)
+export function airspeed(r: Vec3, v: Vec3): Vec3 {
+  return v3(v.x - EARTH_OMEGA * r.z, v.y, v.z + EARTH_OMEGA * r.x);
+}
+
+// 大気抵抗の加速度。bcInv は弾道係数の逆数 Cd·A/m(0 なら抵抗なし = ゼロベクトル)。
+export function dragAccel(r: Vec3, v: Vec3, bcInv: number): Vec3 {
+  const rho = bcInv > 0 ? atmosphericDensity(len(r) - R_EARTH) : 0;
+  if (rho < 1e-15) return v3();
+  const { x: vrx, y: vry, z: vrz } = airspeed(r, v);
+  const k = -0.5 * rho * Math.sqrt(vrx * vrx + vry * vry + vrz * vrz) * bcInv;
+  return v3(vrx * k, vry * k, vrz * k);
 }
