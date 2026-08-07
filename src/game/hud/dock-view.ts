@@ -1,8 +1,8 @@
 // ドックビュー: 基地に接岸した際に開くフルスクリーンUI。
 // 格納されている船の一覧、部品の確認・修理・換装、ショップを提供する。
-import type { Base } from '../game-entity/base';
+import type { Base, DockedShipEntry } from '../game-entity/base';
 import type { Player } from '../player/player';
-import type { AnyPart, PartType } from '../game-entity/parts';
+import type { AnyPart, Part, PartType } from '../game-entity/parts';
 import { createPart } from '../game-entity/parts';
 
 // ショップで購入可能な部品カタログ
@@ -74,7 +74,7 @@ export class DockView {
       this.currentShip = null;
     }
     this.currentTab = 'ships';
-    this.render();
+    this.refresh();
     this.el.style.display = 'flex';
     this._visible = true;
   }
@@ -118,7 +118,7 @@ export class DockView {
         const tab = (e.target as HTMLElement).dataset['tab'] as DockTab;
         if (tab) {
           this.currentTab = tab;
-          this.render();
+          this.refresh();
         }
       });
     });
@@ -132,7 +132,7 @@ export class DockView {
     });
   }
 
-  private render(): void {
+  private refresh(): void {
     if (!this.currentBase) return;
 
     const moneyEl = this.el.querySelector('#dock-base-money');
@@ -153,22 +153,22 @@ export class DockView {
     if (!body) return;
 
     switch (this.currentTab) {
-      case 'ships': body.innerHTML = this.renderShipsTab(); break;
-      case 'parts': body.innerHTML = this.renderPartsTab(); break;
-      case 'shop': body.innerHTML = this.renderShopTab(); break;
+      case 'ships': body.innerHTML = this.buildShipsTab(); break;
+      case 'parts': body.innerHTML = this.buildPartsTab(); break;
+      case 'shop': body.innerHTML = this.buildShopTab(); break;
     }
 
     this.attachTabEvents();
   }
 
   // ─── 格納艦タブ ───────────────────────────────────────────
-  private renderShipsTab(): string {
+  private buildShipsTab(): string {
     const base = this.currentBase!;
     const ships = base.baseState.dockedShips;
     if (ships.length === 0) {
       return `<div class="dock-empty">格納されている艦はありません。<br>ランデブー後に収容できます。</div>`;
     }
-    const rows = ships.map((s: any, i: number) => `
+    const rows = ships.map((s: DockedShipEntry, i: number) => `
       <div class="dock-ship-row ${this.currentShip?.id === s.id ? 'selected' : ''}" data-ship-idx="${i}">
         <div class="dock-ship-info">
           <span class="dock-ship-name">${s.name ?? `艦 #${i + 1}`}</span>
@@ -184,7 +184,7 @@ export class DockView {
   }
 
   // ─── 部品タブ ───────────────────────────────────────────
-  private renderPartsTab(): string {
+  private buildPartsTab(): string {
     const base = this.currentBase!;
     const ships = base.baseState.dockedShips;
     if (ships.length === 0) {
@@ -194,18 +194,18 @@ export class DockView {
     // 選択艦がなければ最初の艦を表示
     const ship = this.currentShip ?? null;
     const shipData = ship
-      ? (base.baseState.dockedShips.find((s: any) => s.id === ship.id) ?? null)
+      ? (base.baseState.dockedShips.find((s) => s.id === ship.id) ?? null)
       : (base.baseState.dockedShips[0] ?? null);
 
     if (!shipData) return `<div class="dock-empty">艦を選択してください。</div>`;
 
-    const parts: AnyPart[] = shipData.parts ?? [];
-    const totalRepairCost = parts.reduce((sum: number, p: AnyPart) => {
+    const parts = shipData.parts;
+    const totalRepairCost = parts.reduce((sum, p) => {
       const missing = p.maxHp - p.hp;
       return sum + missing * REPAIR_COST_PER_HP;
     }, 0);
 
-    const partRows = parts.map((p: AnyPart, i: number) => {
+    const partRows = parts.map((p, i) => {
       const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
       const hpColor = hpPct > 60 ? '#4caf50' : hpPct > 30 ? '#ff9800' : '#f44336';
       const repairCost = (p.maxHp - p.hp) * REPAIR_COST_PER_HP;
@@ -243,7 +243,7 @@ export class DockView {
   }
 
   // ─── ショップタブ ───────────────────────────────────────
-  private renderShopTab(): string {
+  private buildShopTab(): string {
     const base = this.currentBase!;
     const money = base.baseState.money;
 
@@ -303,11 +303,10 @@ export class DockView {
     this.el.querySelectorAll('.dock-ship-row').forEach((row) => {
       row.addEventListener('click', () => {
         const idx = parseInt((row as HTMLElement).dataset['shipIdx'] ?? '-1', 10);
-        if (idx >= 0) {
-          // 選択状態だけ更新してタブ再描画
-          this.el.querySelectorAll('.dock-ship-row').forEach((r) => r.classList.remove('selected'));
-          row.classList.add('selected');
-        }
+        const shipData = this.currentBase?.baseState.dockedShips[idx];
+        if (!shipData) return;
+        this.currentShip = shipData.player;
+        this.refresh();
       });
     });
   }
@@ -316,23 +315,22 @@ export class DockView {
     const base = this.currentBase;
     if (!base) return;
     const idx = parseInt((e.target as HTMLElement).dataset['shipIdx'] ?? '-1', 10);
-    if (idx < 0) return;
     const shipData = base.baseState.dockedShips[idx];
     if (!shipData) return;
     // 外部に通知 (実際の発進は Game 側で行う)
-    if (this.onLaunchShip && shipData._playerRef) {
-      this.onLaunchShip(shipData._playerRef as Player, base);
-      base.baseState.dockedShips.splice(idx, 1);
-      this.render();
-    }
+    this.onLaunchShip?.(shipData.player, base);
+    base.baseState.dockedShips.splice(idx, 1);
+    if (this.currentShip === shipData.player) this.currentShip = null;
+    this.refresh();
   }
 
   private handleInspect(e: Event): void {
     const idx = parseInt((e.target as HTMLElement).dataset['shipIdx'] ?? '-1', 10);
-    if (idx < 0 || !this.currentBase) return;
-    // 部品タブへ切り替え
+    const shipData = this.currentBase?.baseState.dockedShips[idx];
+    if (!shipData) return;
+    this.currentShip = shipData.player;
     this.currentTab = 'parts';
-    this.render();
+    this.refresh();
   }
 
   private handleRepairPart(e: Event): void {
@@ -341,28 +339,18 @@ export class DockView {
     const btn = e.target as HTMLElement;
     const partIdx = parseInt(btn.dataset['partIdx'] ?? '-1', 10);
     const shipId = btn.dataset['shipId'];
-    const shipData = base.baseState.dockedShips.find((s: any) => s.id === shipId);
+    const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
     if (!shipData || partIdx < 0) return;
 
-    const part: AnyPart = shipData.parts[partIdx];
+    const part: Part | undefined = shipData.parts[partIdx];
     if (!part) return;
     const cost = (part.maxHp - part.hp) * REPAIR_COST_PER_HP;
     if (!this.creative && base.baseState.money < cost) return;
 
-    // 修理実行
     if (!this.creative) base.baseState.money -= cost;
     part.hp = part.maxHp;
-    // 実機への反映
-    if (shipData._playerRef) {
-      const player = shipData._playerRef as Player;
-      const playerPart = player.parts[partIdx];
-      if (playerPart) {
-        playerPart.hp = playerPart.maxHp;
-        player.hp = player.parts.reduce((s, p) => s + p.hp, 0);
-        player.maxHp = player.parts.reduce((s, p) => s + p.maxHp, 0);
-      }
-    }
-    this.render();
+    this.syncDockedSnapshot(shipData);
+    this.refresh();
   }
 
   private handleRepairAll(e: Event): void {
@@ -370,23 +358,26 @@ export class DockView {
     if (!base) return;
     const btn = e.target as HTMLElement;
     const shipId = btn.dataset['shipId'];
-    const shipData = base.baseState.dockedShips.find((s: any) => s.id === shipId);
+    const shipData = base.baseState.dockedShips.find((s) => s.id === shipId);
     if (!shipData) return;
 
-    const parts: AnyPart[] = shipData.parts ?? [];
-    const totalCost = parts.reduce((sum: number, p: AnyPart) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
+    const parts = shipData.parts;
+    const totalCost = parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
     if (!this.creative && base.baseState.money < totalCost) return;
 
     if (!this.creative) base.baseState.money -= totalCost;
-    parts.forEach((p: AnyPart) => { p.hp = p.maxHp; });
+    parts.forEach((p) => { p.hp = p.maxHp; });
+    this.syncDockedSnapshot(shipData);
+    this.refresh();
+  }
 
-    // 実機への反映
-    if (shipData._playerRef) {
-      const player = shipData._playerRef as Player;
-      player.parts.forEach((p) => { p.hp = p.maxHp; });
-      player.hp = player.maxHp;
-    }
-    this.render();
+  // 格納中は shipData.parts が艦本体の parts 配列と同一参照なので、修理は艦へ直接反映される。
+  // hp/maxHp の集計スナップショットだけは別に持っているので、艦一覧タブの表示用にここで揃える。
+  private syncDockedSnapshot(shipData: DockedShipEntry): void {
+    shipData.hp = shipData.parts.reduce((sum, p) => sum + p.hp, 0);
+    shipData.maxHp = shipData.parts.reduce((sum, p) => sum + p.maxHp, 0);
+    shipData.player.hp = shipData.hp;
+    shipData.player.maxHp = shipData.maxHp;
   }
 
   private handleBuy(e: Event): void {
@@ -398,17 +389,17 @@ export class DockView {
     if (!this.creative && base.baseState.money < entry.price) return;
 
     // 部品を生成して倉庫へ追加
-    const part = createPart(entry.type as any, {
+    const part = createPart(entry.type, {
       name: entry.name,
       weight: entry.weight,
       maxHp: entry.maxHp,
       hp: entry.maxHp,
       ...entry.props,
-    } as any);
+    } as Partial<AnyPart>);
 
     if (!this.creative) base.baseState.money -= entry.price;
-    base.baseState.inventory.push(part as any);
-    this.render();
+    base.baseState.inventory.push(part);
+    this.refresh();
   }
 
   dispose(): void {
