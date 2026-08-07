@@ -76,7 +76,7 @@
     - mapPicker.refresh() // AN/DN を求め直してからこのフレームの被選択物一覧を組む
       - navTarget.update() // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム
       - mapPicker.pickables に反映 // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers を集約
-    - [editor.editMode] editor.handleMapPointer() / mapPicker.handleRightClick() / editor.updateEditing()
+    - [editor.editMode] editor.handleMapPointer() // [!hasPlan(=ship===null)] 内部で即 return(艦のいない detachedPlan は編集させない) / mapPicker.handleRightClick() / editor.updateEditing()
     - cameraSystem.update(..., mapPicker.pickables) // ポーズ中も視点更新は続ける
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
     - player.thrust = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
@@ -234,7 +234,7 @@
         - hud.hint() + sfx.warp() // ノードごとに最初の1回のみ(achievedNotified との同一性比較)
   - editor.plan.trackAnchor() // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
     - editor.update(simTime, displayTime) // 被選択物候補にアプシスアイコンが入るので mapPicker.refresh より前
-    - planDisplay.update(plan, simTime, displayTime, show) // show = editMode || plan.nodes.length > 0
+    - planDisplay.update(plan, simTime, displayTime, show) // show = hasPlan(=ship!==null) && (editMode || plan.nodes.length > 0)
       - traj.update() // plan の corners を区間へ分解し、区間ごとに PlanArc を再積分。表示座標系と un-bake 時刻もここで確定
         - arc.update() // 区間ごと。(state0, end) が変わったときだけ OrbitEntity で RK4 積分し直す(重い)
       - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
@@ -250,7 +250,7 @@
       - chaseCamera.update() // それ以外。camFollowAttitude && player.alive のときだけ player.att.q を rot に合成し、鍵/ドラッグ/ロール入力を回転として適用。結果を自身の view へ書く
       - 選ばれた view.fovDeg から combatCamera 自身の view.fovDeg を指数補間
   - [editor.editMode] 計画編集モード
-    - editor.handleMapPointer() // 右クリック → 左クリックの順に受ける
+    - editor.handleMapPointer() // [!hasPlan] 即 return。右クリック → 左クリックの順に受ける
       - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
         - selectedNodeIdx = ヒットしたノードの idx + nodeGizmo.openMenu() // ヒット時。true を返して消費
       - handleMapClick() // 左クリックごと。常に消費する
@@ -340,7 +340,7 @@
   - displayTimeManager.sync(orbitPeriod) // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ)の表示/内容を押し出すだけ
     - panel.setVisible(!forceCurrent) / setDuration() / setManualVisible() / setSliderLabel() / setTicks() // ラベルは自己完結の "T+" 表記のみ
   - editor.sync(mapDist, simTime, fo, project)
-    - [editMode または plan.nodes.length > 0] planDisplay.sync(fo, project, editMode)
+    - [hasPlan かつ(editMode または plan.nodes.length > 0)] planDisplay.sync(fo, project, editMode)
       - traj.setVisible(true)
       - traj.sync(fo, project) // 区間の折れ線メッシュ。表示座標系と un-bake 時刻は update フェーズで確定済み
         // 区間の終端はノードの t。末尾区間だけは起点の解析軌道1周期ぶん(plan.ts の orbitPeriodOf)
@@ -352,10 +352,10 @@
       - syncGhost() → markerManager.setPosition('plannedPlayer') or hide() // update が求めた ghost が null なら hide
       - syncApsisMarkers() → markerManager.setPosition('apsisPe'/'apsisAp') or hide() // update が求めたアイコンごと
       - panel の表示 = showPanel(= editMode) / setSelected() // TRAJECTORY パネル(表示座標系)。戦闘ビューでは出さない
-    - [!editMode かつ plan.nodes.length === 0] planDisplay.hide()
-    - [editMode] syncGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
+    - [!hasPlan、または(!editMode かつ plan.nodes.length === 0)] planDisplay.hide()
+    - [hasPlan かつ editMode] syncGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
       // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は traj の今フレームの表示文脈を通す
-    - [editMode] syncPanel(simTime) // MANEUVER PLAN パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
+    - [hasPlan かつ editMode] syncPanel(simTime) // MANEUVER PLAN パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
   - mapPicker.sync(overviewMode) // 軌道オブジェクトウィンドウ。objectListVisible かつ overviewMode のときだけ pickables を行として書き出す
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync(displayTime)
