@@ -37,22 +37,47 @@ export abstract class Ship extends GameEntity {
     this.initDefaultParts();
   }
 
-  // 初期状態として基本的なパーツセットを生成する（サブクラスで上書き可能）
+  // 既定パーツへの HP 配分比。合計 1 になるよう保つ(艦の maxHp をこの比で割り振る)。
+  // 放熱板・太陽電池パドルは機体の左右2枚ぶんなので、パーツも side ごとに1枚ずつ持つ。
+  private static readonly DEFAULT_PART_HP_RATIO = {
+    hull: 0.40, cockpit: 0.10, thruster: 0.08, rcsTank: 0.08,
+    radiator: 0.05, solarPanel: 0.03, weapon: 0.08, armor: 0.10,
+  } as const;
+
+  // 初期状態として基本的なパーツセットを生成する（サブクラスで上書き可能）。
+  // 生成後の全パーツ HP 合計が艦の hp/maxHp の正本になる。
   protected initDefaultParts(): void {
+    const R = Ship.DEFAULT_PART_HP_RATIO;
+    const share = (ratio: number): number => Math.max(1, Math.round(this.maxHp * ratio));
+    const mk = <T extends Parameters<typeof createPart>[0]>(type: T, ratio: number, props: object) =>
+      createPart(type, { maxHp: share(ratio), hp: share(ratio), ...props } as never);
     this.parts = [
-      createPart('hull', { name: 'Basic Hull', maxHp: this.maxHp, hp: this.maxHp }),
-      createPart('cockpit', { name: 'Cockpit', maxHp: 50, hp: 50 }),
-      createPart('thruster', { name: 'Standard RCS', maxHp: 30, hp: 30, torque: 50, thrust: 100, fuelConsumptionRate: 1 }),
-      createPart('rcs_tank', { name: 'Main RCS Tank', maxHp: 30, hp: 30, maxFuel: 1000, fuel: 1000 }),
-      createPart('radiator', { name: 'Heat Radiator', maxHp: 40, hp: 40, coolingRate: 50 }),
-      createPart('solar_panel', { name: 'Solar Array', maxHp: 20, hp: 20, powerGeneration: 100 }),
-      createPart('weapon', { name: 'Gatling Gun', maxHp: 40, hp: 40, weaponType: 'gatling', fireRate: 1 / C.FIRE_INTERVAL, damage: 1, muzzleVelocity: C.MUZZLE_SPEED }),
-      createPart('armor', { name: 'Light Armor', maxHp: 100, hp: 100, damageReduction: 0.2 }),
+      mk('hull', R.hull, { name: 'Basic Hull' }),
+      mk('cockpit', R.cockpit, { name: 'Cockpit' }),
+      mk('thruster', R.thruster, {
+        name: 'Standard RCS',
+        torque: C.MAX_ANG_ACCEL * Math.max(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL),
+        // 既定パーツだけを積んだ自機が、全開で THROTTLE_LEVELS の最大値の加速度になる推力。
+        thrust: C.PLAYER_MASS * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!,
+        fuelConsumptionRate: 1,
+      }),
+      mk('rcs_tank', R.rcsTank, { name: 'Main RCS Tank', maxFuel: 1000, fuel: 1000 }),
+      mk('radiator', R.radiator, { name: 'Heat Radiator L', coolingRate: 25 }),
+      mk('radiator', R.radiator, { name: 'Heat Radiator R', coolingRate: 25 }),
+      mk('solar_panel', R.solarPanel, { name: 'Solar Array L', powerGeneration: 50 }),
+      mk('solar_panel', R.solarPanel, { name: 'Solar Array R', powerGeneration: 50 }),
+      mk('weapon', R.weapon, {
+        name: 'Gatling Gun', weaponType: 'gatling',
+        fireRate: 1 / C.FIRE_INTERVAL, damage: 1, muzzleVelocity: C.MUZZLE_SPEED,
+      }),
+      mk('armor', R.armor, { name: 'Light Armor', damageReduction: 0.2 }),
     ];
+    // 端数丸めのぶん名目値からずれるので、パーツ側を正本として揃え直す。
+    this.maxHp = this.parts.reduce((sum, p) => sum + p.maxHp, 0);
+    this.hp = this.maxHp;
   }
 
   // 接触速度に応じたダメージをパーツへ適用し、ダメージが発生したかを返す。
-  // (旧ロジックでは hp 全体を減らしていたが、ランダムなパーツの損耗へ変更)
   protected applyCollisionDamage(speed: number): boolean {
     const span = C.COLLISION_DAMAGE_FULL_SPEED - C.COLLISION_DAMAGE_MIN_SPEED;
     const t = Math.min(1, Math.max(0, (speed - C.COLLISION_DAMAGE_MIN_SPEED) / span));
@@ -63,49 +88,35 @@ export abstract class Ship extends GameEntity {
     return true;
   }
 
-  // 受けたダメージをランダムなパーツに割り振る（装甲がある場合は軽減する）
-  protected applyDamageToParts(amount: number): void {
+  // 受けたダメージを健全なパーツ1つへ無作為に割り振る。装甲があれば最も高い軽減率で
+  // 減衰させる。part を指定すると割り振り先をそのパーツに固定する(被弾位置から
+  // 当たったパーツが判っている場合)。
+  applyDamageToParts(amount: number, part?: Part): void {
     if (this.parts.length === 0) {
-      this.hp -= amount; // Fallback
+      this.hp -= amount;
       return;
     }
-    
-    // Calculate armor reduction
+
     const armors = this.parts.filter(p => p.type === 'armor' && p.hp > 0) as import('./parts').ArmorPart[];
-    let reduction = 0;
-    if (armors.length > 0) {
-      // Just use the highest damage reduction for now
-      reduction = Math.max(...armors.map(a => a.damageReduction));
-    }
-    
+    const reduction = armors.length > 0 ? Math.max(...armors.map(a => a.damageReduction)) : 0;
     const effectiveDamage = amount * (1 - reduction);
-    
-    // Pick a random part to damage
+
     const aliveParts = this.parts.filter(p => p.hp > 0);
     const targetParts = aliveParts.length > 0 ? aliveParts : this.parts;
-    const target = targetParts[Math.floor(Math.random() * targetParts.length)];
-    
-    if (target) {
-      target.hp = Math.max(0, target.hp - effectiveDamage);
-    }
-    
-    // Update overall HP based on hull and cockpit (if either is 0, ship dies)
+    const target = part ?? targetParts[Math.floor(Math.random() * targetParts.length)];
+
+    if (target) target.hp = Math.max(0, target.hp - effectiveDamage);
     this.updateOverallHp();
   }
 
-  // すべてのパーツの状態から、機体全体の代表 HP を再計算する
+  // 全パーツの残 HP 合計を機体の hp に反映する。船体かコックピットを失った時点で
+  // 他が無事でも行動不能とみなし 0 にする。
   protected updateOverallHp(): void {
     if (this.parts.length === 0) return;
-    
     const hull = this.parts.find(p => p.type === 'hull');
     const cockpit = this.parts.find(p => p.type === 'cockpit');
-    
-    // If hull or cockpit is destroyed, ship is destroyed
-    if ((hull && hull.hp <= 0) || (cockpit && cockpit.hp <= 0)) {
-      this.hp = 0;
-    } else if (hull) {
-      this.hp = hull.hp;
-    }
+    const vital = (hull && hull.hp <= 0) || (cockpit && cockpit.hp <= 0);
+    this.hp = vital ? 0 : this.parts.reduce((sum, p) => sum + p.hp, 0);
   }
 
   // 逆三角形を辺中央の切り欠きで分割し、残HPに応じて発光するSVGを生成する。
@@ -187,6 +198,18 @@ export abstract class Ship extends GameEntity {
     }
     
     return actualConsumed / amount;
+  }
+
+  // 機体左右2枚の放熱板・太陽電池パドルに対応するパーツ。並び順が side に対応し、
+  // 先頭が 'up'(左)、次が 'down'(右)。枚数が足りなければ undefined になる。
+  get radiatorParts(): readonly (import('./parts').RadiatorPart | undefined)[] {
+    const found = this.parts.filter(p => p.type === 'radiator') as import('./parts').RadiatorPart[];
+    return [found[0], found[1]];
+  }
+
+  get solarParts(): readonly (import('./parts').SolarPanelPart | undefined)[] {
+    const found = this.parts.filter(p => p.type === 'solar_panel') as import('./parts').SolarPanelPart[];
+    return [found[0], found[1]];
   }
 
   get totalCoolingRate(): number {
