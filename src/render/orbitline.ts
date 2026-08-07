@@ -65,6 +65,15 @@ export class OrbitLine {
     // 頂点を自機相対座標で毎フレーム書き直すと、osculating 要素の微小なゆらぎで楕円が
     // 振動して見える。頂点は中心天体相対座標のまま固定し、平行移動だけで動かす。
     this.line.position.copy(fo.RtoThreeV3(centerPos));
+    // WebGPUレンダラの不具合回避:
+    // FloatingOriginが (0,0,0) のままだと、positionが完全に静止するため、
+    // 頂点バッファ(needsUpdate = true)だけを更新してもGPUに送られない（またはキャッシュが破棄されない）問題がある。
+    // そのため、ごく微小なジッターを加えて毎フレームTransformを更新させる。
+    if (this.line.position.x === 0 && this.line.position.y === 0 && this.line.position.z === 0) {
+      this.line.position.x += (Math.random() - 0.5) * 1e-10;
+      this.line.position.y += (Math.random() - 0.5) * 1e-10;
+      this.line.position.z += (Math.random() - 0.5) * 1e-10;
+    }
 
     let focusE: number | undefined;
     if (focusPos) {
@@ -134,6 +143,8 @@ export class OrbitLine {
     this.positions[POINT_COUNT * 3 + 1] = this.positions[1]!;
     this.positions[POINT_COUNT * 3 + 2] = this.positions[2]!;
     (this.line.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    this.line.geometry.computeBoundingSphere();
+    this.line.geometry.computeBoundingBox();
     this.snap = {
       a: el.a,
       e: el.e,
