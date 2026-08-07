@@ -1,12 +1,16 @@
 // 広範囲視点の操作パネル(注視対象・カメラを固定する座標系・視点リセット)。
 import { Frame } from '../../physics/frame';
-import { SegmentedControl } from '../hud/buttons';
+import { SegmentedControl, HudToggle } from '../hud/buttons';
 import { FRAME_ITEMS } from '../hud/frame-labels';
 import { hudDock } from '../hud/dom';
 
 export class OverviewCameraPanel {
   onFocusSelect: ((focus: string) => void) | null = null;
   onFrameSelect: ((frame: Frame) => void) | null = null;
+  onAmmoToggle: ((show: boolean) => void) | null = null;
+
+  showAmmo = false;
+  private readonly ammoToggle: HudToggle;
 
   private readonly panel: HTMLElement;
   private readonly focus: SegmentedControl<string>;
@@ -29,7 +33,12 @@ export class OverviewCameraPanel {
     this.panel.appendChild(this.focus.element);
     this.panel.appendChild(this.frame.element);
 
-
+    this.ammoToggle = new HudToggle('弾薬', (on) => {
+      this.showAmmo = on;
+      this.onAmmoToggle?.(on);
+    });
+    this.ammoToggle.setOn(false);
+    this.panel.appendChild(this.ammoToggle.element);
 
     hudDock(root, 'left').appendChild(this.panel);
   }
