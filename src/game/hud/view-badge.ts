@@ -21,7 +21,9 @@ export class ViewBadge {
   private readonly menu = new ContextMenu<true, ViewId>();
   private combatAvailable = false;
 
+  // バッジの DOM を組み立てて root へ追加し、ビュー選択メニューを配線する。
   constructor(root: HTMLElement, private readonly viewManager: ViewManager) {
+    // タイトル・モード名・ビュー切替ボタンの3つを横に並べる。
     const badge = document.createElement('div');
     badge.id = 'hud-viewbadge';
     badge.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -49,6 +51,7 @@ export class ViewBadge {
     this.combatAvailable = combatAvailable;
   }
 
+  // 遷移できるビューが1つも無ければメニュー自体を開かない。
   private openMenu(): void {
     const items: MenuItem<ViewId>[] = this.viewManager
       .selectableViews(this.combatAvailable)

@@ -41,6 +41,7 @@ export class ViewManager {
     this.applyChrome();
   }
 
+  // タッチ UI は Input より後に生成されるので、生成後に登録する。
   setTouchControls(controls: TouchControls | null): void {
     this.touchControls = controls;
     controls?.setMapMode(this.worldView === 'map');
@@ -84,6 +85,7 @@ export class ViewManager {
     return all.filter((v) => v !== this._current && this.canEnter(v, combatAvailable));
   }
 
+  // そのビューへいま入れるか。ドックは対象基地が要り、戦闘は操作できる艦が要る。
   private canEnter(view: ViewId, combatAvailable = true): boolean {
     if (view === 'dock') return this.docking?.canEnterDock() ?? false;
     if (view === 'combat') return combatAvailable;
@@ -103,10 +105,12 @@ export class ViewManager {
     this.displayTimeManager.forceCurrent = !map;
   }
 
+  // マップへ入るときの支度。
   private openMap(): void {
     this.editor.selectedNodeIdx = null;
   }
 
+  // マップから出るときの後始末。開いたままの編集 UI とメニューを畳む。
   private closeMap(): void {
     this.editor.onMapClosed();
     this.editor.closeMenu();
@@ -115,6 +119,7 @@ export class ViewManager {
 
   // [M] による戦闘⇔マップの切り替えを受ける。ドック表示中はキーを消費しない。
   update(input: Input, isPlaying: boolean, canToggleView: boolean): void {
+    // 決着後はどのビューに居ても戦闘ビューへ戻す(結果画面を隠さないため)。
     if (!isPlaying) {
       if (this._current === 'dock') this.leaveDock();
       if (this._current === 'map') this.setView('combat');

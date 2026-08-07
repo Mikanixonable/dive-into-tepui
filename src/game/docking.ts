@@ -51,6 +51,7 @@ export class Docking {
     this.viewManager.setView('dock');
   }
 
+  // ドックビューへ遷移できるか。対象基地が健在な間だけ true。
   canEnterDock(): boolean {
     return this._activeBase !== null && this._activeBase.alive;
   }
@@ -69,6 +70,7 @@ export class Docking {
     this.dockView.open(this._activeBase, this.game.player, this.game.isCreative);
   }
 
+  // ViewManager がドックから出るときに呼ぶ。
   leaveDock(): void {
     this.dockView.close();
     if (this.game.isPaused) this.game.resume();
