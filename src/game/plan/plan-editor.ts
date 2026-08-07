@@ -632,7 +632,7 @@ export class PlanEditor {
         localDv = v3(dot(dvWorld, axes.pro), dot(dvWorld, axes.nrm), dot(dvWorld, axes.radOut));
       }
     }
-    const html = planPanelHtml(nodes, selEl, center.radius, center.id === 'earth');
+    const html = planPanelHtml(nodes, selEl, center.id === 'earth');
     
     // ノードが選択されていない時はパネル全体を非表示にする
     this.planPanel.style.display = this.selectedNodeIdx !== null ? 'block' : 'none';
@@ -696,7 +696,6 @@ export class PlanEditor {
 function planPanelHtml(
   nodes: { tRel: number; dvMag: number; selected: boolean; }[],
   selEl: Elements | null,
-  bodyRadius: number,
   warnAtmosphere: boolean,
 ): string {
   const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
@@ -712,7 +711,7 @@ function planPanelHtml(
   }
   // 噴射後の軌道要素、近地点が大気圏内なら警告
   if (selEl) {
-    const apsis = apsisAltitudes(selEl, bodyRadius);
+    const apsis = apsisAltitudes(selEl);
     s +=
       `<div style="margin-top:4px;color:${TEXT};font-size:11px;letter-spacing:1px">噴射後の軌道</div>` +
       row('遠地点 AP', fmtDist(apsis.ap)) +
