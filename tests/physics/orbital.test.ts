@@ -25,7 +25,15 @@ import {
   velocityOnOrbit,
 } from '../../src/physics/orbital';
 import { MU_MOON } from '../../src/physics/ephemeris';
-import { dot, len, norm, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, add, dot, len, norm, sub, v3 } from '../../src/physics/vec3';
+
+// stepOrbitRK4 は中心重力を持たない(フェーズ B で外出しされた)ので、地球中心の
+// 二体問題を積分するテストはこの加速度コールバックを自前で渡す。
+function earthGravity(r: Vec3): Vec3 {
+  const d = len(r);
+  const k = -MU_EARTH / (d * d * d);
+  return v3(r.x * k, r.y * k, r.z * k);
+}
 
 export function register(): void {
   test('orbital: stateFromElements <-> elementsFromState round trip (machine precision)', () => {
@@ -144,7 +152,7 @@ export function register(): void {
     const dt = 1; // 1秒刻み
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
-      s = stepOrbitRK4(s, dt);
+      s = stepOrbitRK4(s, dt, (rx, ry, rz) => earthGravity(v3(rx, ry, rz)));
     }
 
     const rMag = len(s.r);
@@ -169,7 +177,7 @@ export function register(): void {
     const a = orbitState(0, v3(r0, 0, 0), v3(0, 0, vCirc));
     const span = 300;
     let b = a;
-    for (let i = 0; i < span; i++) b = stepOrbitRK4(b, 1);
+    for (let i = 0; i < span; i++) b = stepOrbitRK4(b, 1, (rx, ry, rz) => earthGravity(v3(rx, ry, rz)));
 
     // 両端では入力そのもの(エルミートの定義どおり位置・速度とも一致する)
     const at0 = hermiteInterpolate(a, b, a.t);
@@ -179,7 +187,7 @@ export function register(): void {
 
     // 中間時刻: 真値(同じ RK4 で積分した状態)との誤差が線形補間より桁違いに小さい
     let truth = a;
-    for (let i = 0; i < span / 2; i++) truth = stepOrbitRK4(truth, 1);
+    for (let i = 0; i < span / 2; i++) truth = stepOrbitRK4(truth, 1, (rx, ry, rz) => earthGravity(v3(rx, ry, rz)));
     const herm = hermiteInterpolate(a, b, truth.t);
     const linear = v3(
       (a.r.x + b.r.x) / 2, (a.r.y + b.r.y) / 2, (a.r.z + b.r.z) / 2,
@@ -222,7 +230,10 @@ export function register(): void {
     const totalSeconds = totalDays * 86400;
     const steps = Math.round(totalSeconds / dt);
     for (let i = 0; i < steps; i++) {
-      s = stepOrbitRK4(s, dt, (rx, ry, rz) => j2Accel(v3(rx, ry, rz)));
+      s = stepOrbitRK4(s, dt, (rx, ry, rz) => {
+        const r = v3(rx, ry, rz);
+        return add(earthGravity(r), j2Accel(r));
+      });
     }
 
     const el = elementsFromState(s.r, s.v, MU_EARTH) as Elements;
