@@ -58,6 +58,7 @@ export class CreativeStage extends Stage {
     this.placerPanel.onChange = () => this.updatePreview();
     this.placerPanel.onClose = () => {
       this.previewOrbitLine.line.visible = false;
+      this._markerManager.hide('creative-preview');
       document.body.classList.remove('hud-modal-open');
     };
   }
@@ -69,14 +70,14 @@ export class CreativeStage extends Stage {
   // プレビューの継続的な位置更新(フローティングオリジン対応)
   sync(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
     super.sync(player, project, displayTime, overviewMode);
-    this.syncPreview();
+    this.syncPreview(project);
   }
 
   // 未配置の開始状態でのプレビュー位置更新
-  syncWithoutPlayer(overviewMode: boolean): void {
+  syncWithoutPlayer(overviewMode: boolean, project: ProjectFn): void {
     // overviewMode の未使用警告を回避するためアクセスだけしておく
     void overviewMode;
-    this.syncPreview();
+    this.syncPreview(project);
   }
 
   // 艦艇配置モーダルを開く (MapPicker から呼ばれる)
@@ -86,10 +87,11 @@ export class CreativeStage extends Stage {
   }
 
   // フォーム値からプレビュー用の軌道要素を求め、OrbitLine を更新する
-  private updatePreview(): void {
+  private updatePreview(project?: ProjectFn): void {
     const form = this.placerPanel.getForm();
     if (form.placementMode !== 'elements') {
       this.previewOrbitLine.line.visible = false;
+      this._markerManager.hide('creative-preview');
       return;
     }
     try {
@@ -118,19 +120,40 @@ export class CreativeStage extends Stage {
           : new FloatingOrigin(v3(0,0,0), v3(0,0,0));
         this.previewOrbitLine.sync(el, fo, true, undefined, centerPos);
         this.previewOrbitLine.line.visible = true;
+
+        if (project) {
+          this._markerManager.setPosition(
+            'creative-preview',
+            'mk-self',
+            '▷',
+            state.r,
+            project,
+            'PREVIEW',
+            1,
+            '#00ffff',
+            0,
+            false,
+            false
+          );
+        }
       } else {
         this.previewOrbitLine.line.visible = false;
+        this._markerManager.hide('creative-preview');
       }
     } catch {
       this.previewOrbitLine.line.visible = false;
+      this._markerManager.hide('creative-preview');
     }
   }
 
   // 毎フレーム fo を適用するための同期
-  private syncPreview(): void {
-    if (!this.previewOrbitLine.line.visible) return;
+  private syncPreview(project?: ProjectFn): void {
+    if (!this.previewOrbitLine.line.visible) {
+      this._markerManager.hide('creative-preview');
+      return;
+    }
     // フォームの内容が valid であれば表示が維持されているので更新
-    this.updatePreview();
+    this.updatePreview(project);
   }
 
   // フォーム値から OrbitState を組み立て、addShip で1隻配置する。上限に達していれば
