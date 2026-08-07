@@ -1,7 +1,8 @@
 // HUD ステータスパネル(スタッツ・ターゲット情報・敵一覧)の同期。
 import * as C from '../const';
 import { ACCENT_SECONDARY, TEXT_DIM as INK_SOFT } from '../theme';
-import { altitudeOf } from '../../physics/orbital';
+import { Elements, altitudeOf } from '../../physics/orbital';
+import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { dot, len, sub } from '../../physics/vec3';
 import type { Game } from '../game';
 import { fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
@@ -58,7 +59,7 @@ export class HudPanels {
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
   // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
-  sync(game: Game, dt: number): void {
+  sync(game: Game, dt: number, bodies: readonly Attractor[]): void {
     const player = game.player;
     if (!player) {
       // Creative の未配置状態には操縦/戦闘 HUD の値が存在しない。
@@ -80,8 +81,13 @@ export class HudPanels {
     if (contacts) contacts.style.display = game.cameraSystem.overviewMode ? 'none' : '';
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;
-    const playerEl = player.elements;
-    const tgtEl = tgt ? tgt.elements : null;
+    const playerCenter = strongestAttractor(player.state.r, bodies);
+    const playerEl = player.elementsAround(playerCenter);
+    let tgtEl: Elements | null = null;
+    if (tgt) {
+      const tgtCenter = strongestAttractor(tgt.state.r, bodies);
+      tgtEl = tgt.elementsAround(tgtCenter);
+    }
 
     // スタッツパネルを一定間隔で更新
     this.hudTimer -= dt;

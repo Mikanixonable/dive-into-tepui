@@ -1,5 +1,6 @@
 // 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、NODE/BURN マーカー。
 import { Elements, MU_EARTH, OrbitState, elementsFromState } from '../../physics/orbital';
+import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { addScaled, dot, len, norm, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
@@ -25,7 +26,7 @@ export class PlanGuide {
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
   // ノードごとに一度だけ通知する。
-  update(plan: Plan, player: Player, simTime: number, editMode: boolean): void {
+  update(plan: Plan, player: Player, simTime: number, editMode: boolean, bodies: readonly Attractor[]): void {
     if (editMode || !player.alive) return;
     plan.dropNodesBefore(simTime - C.NODE_EXPIRE_GRACE);
 
@@ -34,7 +35,7 @@ export class PlanGuide {
     // 目標軌道との近さを見ても達成の判定にならない。
     if (!node || simTime < node.t - C.NODE_APPROACH_LEAD) return;
     this.notifyApproach(node);
-    this.notifyAchieved(plan, node, player);
+    this.notifyAchieved(plan, node, player, bodies);
   }
 
   // 直近ノードの ◆NODE・⬢BURN マーカーを同期する。
@@ -84,10 +85,11 @@ export class PlanGuide {
   }
 
   // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。
-  private notifyAchieved(plan: Plan, node: OrbitState, player: Player): void {
+  private notifyAchieved(plan: Plan, node: OrbitState, player: Player, bodies: readonly Attractor[]): void {
     if (this.achievedNotified === node) return;
     const targetEl = elementsFromState(node.r, node.v, MU_EARTH);
-    const playerEl = player.elements;
+    const center = strongestAttractor(player.state.r, bodies);
+    const playerEl = player.elementsAround(center);
     if (!playerEl || !targetEl || !orbitClose(playerEl, targetEl)) return;
     this.achievedNotified = node;
     // 計画軌道へ到達したノードは、その場で実行済みとして削除する。

@@ -1,15 +1,15 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { altitudeOf, elementsFromState, Elements, OrbitState } from '../../physics/orbital';
+import { altitudeOf, Elements, OrbitState } from '../../physics/orbital';
 import { Attitude } from '../../physics/attitude';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { StateQueue } from '../../physics/state-queue';
 import type { Ephemeris } from '../../physics/ephemeris';
+import { Attractor, AttractorId, elementsAround as elementsAroundBody, localOrbitPeriod } from '../../physics/attractor';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
-import { centralBodyDefinition, toCentralBodyState, type CentralBodyId } from '../../physics/central-body';
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -21,15 +21,18 @@ const identityAttitude = (): Attitude => ({
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
 export class GameEntity {
   readonly current: OrbitEntity;
-  // 予測列だけが参照する中心天体。実シミュレーションの互換性を保つため既定は地球。
-  readonly predictionCentralBody: CentralBodyId;
 
   get state(): OrbitState { return this.current.state; }
   // 不連続な差し替え専用の口(剛体接触・反動など)。
   set state(s: OrbitState) { this.current.reset(s); }
   get prevState(): OrbitState { return this.current.prevState; }
   get history(): StateQueue { return this.current.history; }
-  get elements(): Elements | null { return this.current.elements; }
+
+  // elementsAround(body) のメモ。state の参照同一性(OrbitState は不変で step ごとに
+  // 新しい参照へ差し替わる)と body.id で無効化する。
+  private _memoState: OrbitState | null = null;
+  private _memoBodyId: AttractorId | null = null;
+  private _memoElements: Elements | null = null;
 
   att: Attitude;
   obj: THREE.Object3D;
@@ -54,43 +57,40 @@ export class GameEntity {
   private truncated = false;
 
   // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
-  constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude(), predictionCentralBody: CentralBodyId = 'earth') {
+  constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
     this.current = new OrbitEntity(state);
     this.att = att;
     this.obj = obj;
     this.scene = scene;
-    this.predictionCentralBody = predictionCentralBody;
     this.scene?.add(this.obj);
   }
 
-  // 過去列へ積む最小間隔 [s]。
-  // 予測と解析軌道線で共有する中心天体相対状態。地球の場合は従来の ECI 状態そのもの。
-  centralBodyRelativeState(state: OrbitState, ephemeris: Ephemeris): OrbitState {
-    return toCentralBodyState(state, this.predictionCentralBody, ephemeris);
-  }
-
-  elementsForPredictionBody(state: OrbitState, ephemeris: Ephemeris): Elements | null {
-    if (this.predictionCentralBody === 'earth' && state === this.state) return this.elements;
-    const relative = this.centralBodyRelativeState(state, ephemeris);
-    return elementsFromState(relative.r, relative.v, centralBodyDefinition(this.predictionCentralBody).mu);
-  }
-
-  // 過去列/予測列へ積む最小間隔 [s]。選択中心天体の軌道周期を使う。
-  protected sampleInterval(ephemeris: Ephemeris, state: OrbitState = this.state): number {
-    const period = this.elementsForPredictionBody(state, ephemeris)?.period;
-    if (period !== undefined && period !== null && isFinite(period) && period > 0) {
-      return period / C.PREDICT_SAMPLES_PER_REV;
+  // body を中心とする接触軌道要素。中心は呼び出し側が選ぶ(例: strongestAttractor)。
+  elementsAround(body: Attractor): Elements | null {
+    if (this._memoState !== this.state || this._memoBodyId !== body.id) {
+      this._memoState = this.state;
+      this._memoBodyId = body.id;
+      this._memoElements = elementsAroundBody(this.state, body);
     }
+    return this._memoElements;
+  }
+
+  // 過去列/予測列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする軌道周期を使う。
+  protected sampleInterval(bodies: readonly Attractor[], state: OrbitState = this.state): number {
+    const period = localOrbitPeriod(state.r, bodies);
+    if (isFinite(period) && period > 0) return period / C.PREDICT_SAMPLES_PER_REV;
     return C.SHIP_HISTORY_DURATION / C.PREDICT_SAMPLES_PER_REV;
   }
 
   // 全天体重力 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。このステップぶんの重力源は
   // 中点(t + dt/2)で1回だけ引く — attractorsAt は同一時刻の呼び出しを前提にメモ化されて
-  // いるので、1ステップの中で別の時刻を引くとメモが効かなくなる。
+  // いるので、1ステップの中で別の時刻を引くとメモが効かなくなる。historyDuration が 0
+  // (弾・薬莢・破片)の間は間引き間隔を使わないので sampleInterval を評価しない。
   stepSim(dt: number, ephemeris: Ephemeris): void {
     if (!this.alive) return;
     const bodies = ephemeris.attractorsAt(this.state.t + dt / 2);
-    this.current.step(dt, bodies, this.bcInv, this.thrust, this.sampleInterval(ephemeris), this.historyDuration);
+    const interval = this.historyDuration > 0 ? this.sampleInterval(bodies) : 0;
+    this.current.step(dt, bodies, this.bcInv, this.thrust, interval, this.historyDuration);
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
@@ -129,13 +129,13 @@ export class GameEntity {
     if (p.state.t > simTime + this.predictDuration) return false;
 
     const bodies = ephemeris.attractorsAt(p.state.t + dt / 2);
-    p.step(dt, bodies, this.bcInv, null, this.sampleInterval(ephemeris, p.state), this.predictDuration);
+    p.step(dt, bodies, this.bcInv, null, this.sampleInterval(bodies, p.state), this.predictDuration);
 
     // 有限チェック
     const { r, v } = p.state;
     const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
       && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-    if (!finite || altitudeOf(r) < C.REENTRY_ALT) this.truncated = true;
+    if (!finite || hitsAnyBodySurface(r, bodies)) this.truncated = true;
 
     return true;
   }
@@ -167,4 +167,14 @@ export class GameEntity {
   dispose(): void {
     this.scene?.remove(this.obj);
   }
+}
+
+// 位置 r がいずれかの天体の表面 + REENTRY_ALT を割っているか。予測列の積分打ち切りに使う
+// (月面へ突っ込む予測が内部を突き抜けてでたらめなスイングバイを描くのを止めるため)。
+// 楕円の中心天体の選択とは無関係に全天体を見る。
+function hitsAnyBodySurface(r: Vec3, bodies: readonly Attractor[]): boolean {
+  for (const body of bodies) {
+    if (len(sub(r, body.r)) < body.radius + C.REENTRY_ALT) return true;
+  }
+  return false;
 }

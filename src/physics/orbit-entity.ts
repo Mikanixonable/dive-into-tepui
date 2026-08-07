@@ -5,7 +5,7 @@
 // 将来 GameEntity が2本目(predicted)を持つとき、過去列にも未来列にも同じこの実装を使う —
 // history は常に「自分の state より古い時刻のサンプル列」であり、current ではそれが過去、
 // predicted ではそれが「現在〜先端の間」になるだけで、構造も操作(step/at)もまったく同じ。
-import { Elements, MU_EARTH, OrbitState, elementsFromState, hermiteInterpolate } from './orbital';
+import { OrbitState, hermiteInterpolate } from './orbital';
 import { StateQueue } from './state-queue';
 import { Attractor } from './attractor';
 import { Vec3 } from './vec3';
@@ -20,7 +20,6 @@ export class OrbitEntity {
   // state より古いサンプル列(間引き済み)。件数ではなく時間窓(keepDuration)+ 間隔
   // (sampleInterval)で管理する — 呼び出し側(GameEntity)が種別ごとに渡す。
   private readonly _history = new StateQueue();
-  private _elements: Elements | null | undefined = undefined;
 
   // state・prevState をともに初期状態で始める。
   constructor(state: OrbitState) {
@@ -31,14 +30,6 @@ export class OrbitEntity {
   get state(): OrbitState { return this._state; }
   get prevState(): OrbitState { return this._prevState; }
   get history(): StateQueue { return this._history; }
-
-  // state からの軌道要素のメモ化。step/reset の呼び出しごとに破棄する。
-  get elements(): Elements | null {
-    if (this._elements !== undefined) return this._elements;
-    const el = elementsFromState(this._state.r, this._state.v, MU_EARTH);
-    this._elements = el;
-    return el;
-  }
 
   // 全天体重力 + J2 + 大気抵抗 + 推力で 1 ステップ RK4 積分する(dynamics.ts の
   // stepDynamicsRK4)。bodies はそのステップぶん呼び出し側が確定させた重力源一覧。
@@ -64,10 +55,8 @@ export class OrbitEntity {
         this._history.cleanup(keepDuration, 2);
       }
     }
-    // 積分結果を確定し、要素キャッシュを無効化する
     this._prevState = prev;
     this._state = next;
-    this._elements = undefined;
   }
 
   // 不連続な差し替え(剛体接触・反動など、積分を経ない外部からの上書き)。history 側に
@@ -77,7 +66,6 @@ export class OrbitEntity {
     this._history.discardFrom(state.t);
     this._prevState = this._state;
     this._state = state;
-    this._elements = undefined;
   }
 
   // 保持区間(history の最古 〜 state)を古い順に並べた1本の列。
