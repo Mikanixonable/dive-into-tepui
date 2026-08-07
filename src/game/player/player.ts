@@ -35,6 +35,7 @@ import { Ephemeris, sunlitFactor } from '../../physics/ephemeris';
 import { Plan } from '../plan/plan';
 import type { CentralBodyId } from '../../physics/central-body';
 import type { PlayerSaveData } from '../save-data';
+import { restorePart, type AnyPart } from '../game-entity/parts';
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
@@ -451,6 +452,9 @@ export class Player extends Ship {
       mags: this.fire.mags,
       rounds: this.fire.rounds,
       heat: this.thermal.hullTemp,
+      hp: this.hp,
+      maxHp: this.maxHp,
+      parts: this.parts.map(p => ({ ...p })) as AnyPart[],
       plan: {
         centralBody: this.plan.centralBody,
         anchor: {
@@ -483,6 +487,9 @@ export class Player extends Ship {
     
     player.fire.initAmmo(data.mags, data.rounds);
     player.thermal.hullTemp = data.heat;
+    player.hp = data.hp;
+    player.maxHp = data.maxHp;
+    player.parts = data.parts.map(restorePart);
 
     if (data.plan) {
       player.plan.centralBody = data.plan.centralBody as CentralBodyId;
