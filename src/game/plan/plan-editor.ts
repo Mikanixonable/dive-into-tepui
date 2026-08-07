@@ -21,6 +21,7 @@ import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { PlanGizmo3D } from './plan-gizmo-3d';
 import { apsisAltitudes, Plan } from './plan';
 import { PlanDisplay } from './plan-display';
+import { hudDock } from '../hud/dom';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
 import { centralBodyDefinition, toCentralBodyState } from '../../physics/central-body';
@@ -160,6 +161,7 @@ export class PlanEditor {
     });
     this.centralBodyControl.setSelected(this.plan.centralBody);
     document.getElementById('navball')?.appendChild(this.centralBodyControl.element);
+    hudDock(this._hud.root, 'right').appendChild(this.planPanel);
     this.orbitMenu.onSelect = (act, state) => {
       if (act !== 'warp') return;
       if (this.simSpeedManager.startAutoWarpTo(state.t, this.simTime)) this._hud.hint('指定位置まで自動ワープ開始');
@@ -494,7 +496,7 @@ export class PlanEditor {
   }
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
-  private syncGizmo(mapDist: number): void {
+  private syncGizmo(mapDist: number, fo: FloatingOrigin): void {
     const arriving = this.planDisplay.traj.arrivalStates();
     const nodeSpecs: NodeHandleSpec[] = [];
     const limit = Math.min(this.plan.nodes.length, C.MAX_PLAN_NODE_MARKERS);
@@ -526,9 +528,10 @@ export class PlanEditor {
     if (nodeFor3D && arrFor3D) {
       this.gizmo3d.setVisible(true);
       const r = this.planDisplay.traj.toDisplay(nodeFor3D.r, nodeFor3D.t);
+      const scenePos = fo.RtoThreeV3(r);
       const bodyArr = this.bodyState(arrFor3D);
       const axes = orbitalAxes(bodyArr);
-      this.gizmo3d.setPositionAndRotation(r, axes.pro, axes.nrm, axes.radOut, mapDist * 0.002);
+      this.gizmo3d.setPositionAndRotation(v3(scenePos.x, scenePos.y, scenePos.z), axes.pro, axes.nrm, axes.radOut, mapDist * 0.002);
     } else {
       this.gizmo3d.setVisible(false);
     }
@@ -620,7 +623,7 @@ export class PlanEditor {
       this.planDisplay.hide();
     }
     if (this.editMode) {
-      this.syncGizmo(mapDist);
+      this.syncGizmo(mapDist, fo);
       this.syncPanel(simTime);
     }
   }
