@@ -334,4 +334,10 @@ export class CreativeStage extends Stage {
   recordPlayerLost(reason: string): void {
     this._hud.hint(reason);
   }
+
+  // ステージ固有の補助メッセージは無いが、null を返すと StageStatusPanel 自体が非表示になるので、
+  // 装甲・エンジン出力・温度・電力の表示のためだけに空文字を返す。
+  hudSubStatus(): string {
+    return '';
+  }
 }
