@@ -105,9 +105,9 @@ export abstract class Stage {
   }
 
   // ステータスパネルとロジスティクスのマーカーを同期する。
-  sync(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean, showMapAmmo: boolean): void {
+  sync(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
     this.syncStatusPanel(player, overviewMode);
-    this.logistics.syncMarkers(player, project, displayTime, overviewMode, showMapAmmo);
+    this.logistics.syncMarkers(player, project, displayTime, overviewMode);
   }
 
   // hudSubStatus() が null ならパネルを隠し、文字列なら HP・スコアとともに表示する。
