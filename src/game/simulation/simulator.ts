@@ -105,6 +105,7 @@ export class Simulator {
     for (const c of this.entities.casings) c.stepSim(dt, this.ephemeris);
     for (const d of this.entities.debris) d.stepSim(dt, this.ephemeris);
     for (const a of this.entities.ammos) a.stepSim(dt, this.ephemeris);
+    for (const b of this.entities.bases) b.stepSim(dt, this.ephemeris);
 
     return simTime + dt;
   }

@@ -169,7 +169,7 @@
     - [サブステップごと] ×ceil(simDt / SUBSTEP_MAX_DT) // 分割数は simDt のみで決まる(実 fps に依存しない)
       - simulationSubStep()
         - entity.stepSim() → current.step() → stepEnvRK4()(軌道要素メモ破棄 + history 記録)
-          // 自機(全隻)・敵・弾・薬莢・デブリ・補給それぞれ、個体ごと。alive のみ実行。自身の thrust + envAccel(bcInv)
+          // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地それぞれ、個体ごと。alive のみ実行。自身の thrust + envAccel(bcInv)
         - player.thermal.updateThermal() // 操作対象のみ(HUD 警告を出すため)
       - hitSystem.checkBulletHits() // bulletCollision=true のときだけ。サブステップごと
       - target.attacked() // 弾が命中した対象ごと
