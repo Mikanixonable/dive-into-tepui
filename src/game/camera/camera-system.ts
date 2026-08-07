@@ -58,6 +58,7 @@ export class CameraSystem {
   // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
   private _overviewMode = false;
   get overviewMode(): boolean { return this._overviewMode; }
+
   setMapMode(open: boolean): void { this._overviewMode = open; }
 
   // sync() で毎フレーム参照する DOM 要素をコンストラクタ時にキャッシュする。
@@ -90,6 +91,9 @@ export class CameraSystem {
     };
     this.overviewCameraPanel.onFrameSelect = (frame: Frame) => {
       this.overviewCamera.cameraFrame = frame;
+    };
+    this.overviewCameraPanel.onAmmoToggle = (show: boolean) => {
+      _hud.settings.showMapAmmo = show;
     };
 
     const chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
@@ -173,7 +177,7 @@ export class CameraSystem {
     syncCameraToViewFrame(active.camera, active.view, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
-    
+
     // 戦闘ビュー固有パネルを広範囲視点では非表示にする
     const hidden = this.overviewMode && !this.showStatusInOverview ? 'none' : '';
     if (this._elStatus) this._elStatus.style.display = hidden;
