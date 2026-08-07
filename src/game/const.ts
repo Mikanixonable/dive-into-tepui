@@ -247,6 +247,7 @@ export const NODE_APPROACH_LEAD = 10;
 export const NODE_EXPIRE_GRACE = 60;
 
 // --- 未来表示の時刻(display-time-manager.ts のスライダー) ---
+export const DISPLAY_DUR_90MIN = 90 * 60; // 90分
 export const DISPLAY_DUR_DAY = 86400; // 1日
 export const DISPLAY_DUR_WEEK = 7 * 86400; // 7日
 export const DISPLAY_DUR_MONTH = 28 * 86400; // 28日
