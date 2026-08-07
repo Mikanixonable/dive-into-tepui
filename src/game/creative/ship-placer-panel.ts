@@ -239,11 +239,11 @@ export class ShipPlacerPanel {
     window.addEventListener('keydown', (e) => {
       if (this.panel.style.display === 'none') return;
       if (e.key === 'Escape') {
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         this.setVisible(false);
         this.onClose?.();
       } else if (e.key === 'Enter') {
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         this.confirm();
       }
     });
