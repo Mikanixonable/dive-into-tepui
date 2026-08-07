@@ -31,7 +31,7 @@ import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
 import { Ephemeris } from '../physics/ephemeris';
-import { MapModeToggler } from './map-mode-toggler';
+import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { DebugHistoryLine } from './debug-history-line';
 import { NavTarget } from './nav-target';
@@ -64,7 +64,7 @@ export class Game {
   private readonly editor: PlanEditor;
   private readonly displayTimeManager: DisplayTimeManager;
   private readonly guide: PlanGuide;
-  readonly mapModeToggler: MapModeToggler;
+  readonly viewManager: ViewManager;
   private readonly mapPicker: MapPicker;
 
   readonly activeStage: Stage;
@@ -155,15 +155,15 @@ export class Game {
     );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
     // クリエイティブモードはマップから始まる。
-    this.mapModeToggler = new MapModeToggler(
+    this.viewManager = new ViewManager(
       this._hud, this.editor, this.cameraSystem, this.displayTimeManager, this.mapPicker,
-      launch.mode === 'creative',
+      launch.mode === 'creative' ? 'map' : 'combat',
     );
 
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
-    this.mapModeToggler.setTouchControls(this.touchControls);
+    this.viewManager.setTouchControls(this.touchControls);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, this._sfx, this.effects);
     this.predictor = new Predictor(this.entities, this.ephemeris);
@@ -202,8 +202,9 @@ export class Game {
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.debugHistoryLine = new DebugHistoryLine(this._scene);
-    this.docking = new Docking(this, this._hud, this.entities, this.mapPicker, this.cameraSystem);
-    this.viewBadge = new ViewBadge(this._hud.root, this.mapModeToggler, this.docking.dockView);
+    this.docking = new Docking(this, this._hud, this.entities, this.mapPicker, this.cameraSystem, this.viewManager);
+    this.mapPicker.setDocking(this.docking);
+    this.viewBadge = new ViewBadge(this._hud.root, this.viewManager);
 
     this.floatingOrigin = this.player
       ? new FloatingOrigin(this.player.state.r, this.player.state.v)
@@ -237,7 +238,7 @@ export class Game {
     else {
       this.player = null;
       this.editor.setActivePlayer(null);
-      this.mapModeToggler.ensureOpen();
+      this.viewManager.setView('map');
     }
   }
 
@@ -258,14 +259,10 @@ export class Game {
     if (wasActive) {
       const next = this.entities.players.find((p) => p.alive) ?? null;
       if (next) this.setActivePlayer(next);
-      else this.mapModeToggler.ensureOpen();
+      else this.viewManager.setView('map');
     }
   }
 
-  // ドックビューを開く
-  openDockView(base: Base): void {
-    this.docking.open(base);
-  }
 
   // このフレームの表示時刻(未来ゴーストのスライダーぶん先取りした simTime)。
   private get displayTime(): number {
@@ -277,7 +274,6 @@ export class Game {
   // ------------------------------------------------------------ save/load
 
   restore(data: GameSaveData): void {
-    // 既存のエンティティをすべて破棄
     this.entities.clearAll();
     this.player = null;
     this.editor.setActivePlayer(null);
@@ -305,6 +301,12 @@ export class Game {
     for (const adata of data.ammos) {
       const a = Ammo.restore(adata, data.simTime, this._scene);
       this.entities.addAmmo(a);
+    }
+
+    // Baseの復元(所持金・在庫・格納艦を含む)
+    for (const bdata of data.bases ?? []) {
+      const b = Base.restore(bdata, data.simTime, this._scene, this._hud, this._sfx, this.effects, this.markerManager);
+      this.entities.addBase(b);
     }
 
     // ロード直後の状態同期と安定化
@@ -427,13 +429,13 @@ export class Game {
         if (next) this.setActivePlayer(next);
         else {
           this.editor.setActivePlayer(null);
-          this.mapModeToggler.ensureOpen();
+          this.viewManager.setView('map');
         }
       }
     }
 
     // ドックビューが開いている間は収容判定を止める(発進直後の再収容ループを防ぐ)。
-    if (!this.docking.dockView.visible && this.entities.bases.length > 0) {
+    if (this.viewManager.current !== 'dock' && this.entities.bases.length > 0) {
       this.docking.checkProximity();
     }
 
@@ -506,7 +508,7 @@ export class Game {
     );
     // 戦闘ビューはアクティブ艦を前提とする。艦がまだ配置されていない/破壊されている間は無効。
     const canToggleView = this.player?.alive ?? false;
-    this.mapModeToggler.update(this.input, this.activeStage.isPlaying, canToggleView);
+    this.viewManager.update(this.input, this.activeStage.isPlaying, canToggleView);
     this.editor.handleInput(this.input);
 
     if (this.input.takeKey(K.quickSave)) {
@@ -612,6 +614,8 @@ export class Game {
   // ------------------------------------------------------------------ render
 
   render(): void {
+    // ドックビューは 3D 世界を持たず画面全体を不透明に覆うので、描画自体を止める。
+    if (this.viewManager.current === 'dock') return;
     this.renderer.render(this._scene, this.cameraSystem.activeCamera);
   }
 
