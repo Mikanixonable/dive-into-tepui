@@ -116,7 +116,13 @@ export class Docking {
     const wasActive = this.game.player === ship;
     this.mapPicker.close();
     this.cameraSystem.overviewCamera.clearFocusIf(ship.id);
-    if (wasActive) ship.clearTransientCommands();
+    // 収容される艦がまさに操作対象だった場合、噴射中の推力/RCS音は艦自身の毎フレーム
+    // 更新(player.behave)が以後走らなくなることで止まらなくなる — 明示的に止める。
+    if (wasActive) {
+      ship.clearTransientCommands();
+      this.sfx.setThrust(false);
+      this.sfx.setRcs(false);
+    }
     this.entities.parkPlayer(ship);
     if (wasActive) this.game.setActivePlayerOrNull(this.entities.players.find((p) => p.alive) ?? null);
     this.hud.hint(`${ship.displayName} を基地に収容しました`);
