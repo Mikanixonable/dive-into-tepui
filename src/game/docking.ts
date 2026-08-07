@@ -13,6 +13,8 @@ import type { EntityManager } from './simulation/entity-manager';
 import type { MapPicker } from './map-picker';
 import type { CameraSystem } from './camera/camera-system';
 import type { Game } from './game';
+import type { Input } from './input/input';
+import { KEY_MAPPING as K } from './input/key-mapping';
 
 export class Docking {
   readonly dockView: DockView;
@@ -25,8 +27,21 @@ export class Docking {
     private readonly cameraSystem: CameraSystem,
   ) {
     this.dockView = new DockView(this.hud.root);
-    this.dockView.onClose = () => { if (this.game.isPaused) this.game.resume(); };
+    this.dockView.onClose = () => this.close();
     this.dockView.onLaunchShip = (ship, base) => this.launch(ship, base);
+  }
+
+  // ドックビュー表示中の [ESC] を消費して閉じる。ポーズメニューより先に呼ぶ:
+  // 先に消費しないと、同じキーで設定画面も同時に開く。
+  handleInput(input: Input): void {
+    if (!this.dockView.visible) return;
+    if (input.takeKey(K.pauseMenu)) this.close();
+  }
+
+  // ドックビューを閉じ、開いたときに掛けたポーズを解く。
+  close(): void {
+    this.dockView.close();
+    if (this.game.isPaused) this.game.resume();
   }
 
   // 生存中の全艦について基地との距離・相対速度を調べ、収容条件を満たす艦を収容する。
@@ -70,8 +85,7 @@ export class Docking {
     ship.alive = true;
     this.entities.addPlayer(ship);
     this.game.setActivePlayer(ship);
-    this.dockView.close();
-    this.game.resume();
+    this.close();
     this.hud.hint(`${ship.displayName} を発進しました`);
   }
 
