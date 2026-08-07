@@ -11,11 +11,18 @@ import type { EntityManager } from './simulation/entity-manager';
 import { Hud } from './hud/hud';
 import { MarkerManager } from './marker/marker-manager';
 import { ProjectFn } from './camera/camera-system';
-import { MapPickable } from './map-pick';
+import { MapPickable, pickNearest } from './map-pick';
+import type { Base } from './game-entity/base';
+import type { Input } from './input/input';
+import * as C from './const';
+import { ContextMenu } from './hud/context-menu';
+import { MenuAction, MenuCommon } from './hud/menu-actions';
 
 const Z_HAT: Vec3 = v3(0, 0, 1);
 
 export class NavTarget {
+  // 戦闘ビューで基地を右クリックしたときの航法ターゲット設定/解除メニュー。
+  private readonly baseMenu = new ContextMenu<Base, MenuAction>();
   private targetId: string | null = null;
   private targetName: string | null = null;
   // 自機軌道上の AN/DN の絶対位置(地球中心)。対象の軌道面が定まらなければ両方 null。
@@ -25,7 +32,11 @@ export class NavTarget {
   private anTime: number | null = null;
   private dnTime: number | null = null;
 
-  constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {}
+  constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
+    this.baseMenu.onSelect = (act, base) => {
+      if (act === 'navTarget') this.toggleTarget(base.id, '基地');
+    };
+  }
 
   get id(): string | null {
     return this.targetId;
@@ -84,12 +95,27 @@ export class NavTarget {
     if (this.targetId === id) this.targetId = null;
   }
 
+  // 戦闘ビューの右クリックで基地を航法ターゲットに設定/解除する。基地に当たらなければ
+  // クリックを消費せず、Targeter の敵ターゲット選択へフォールスルーさせる。
+  updateCombatBasePicking(entities: EntityManager, input: Input, project: ProjectFn): void {
+    input.takeRightClicks((click) => {
+      const pickables = entities.bases.filter((b) => b.alive).map((base) => ({ pos: base.state.r, base }));
+      const hit = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);
+      if (!hit) return false;
+      this.baseMenu.open(click.x, click.y, hit.base, [
+        MenuCommon.navTarget(this.targetId === hit.base.id),
+        MenuCommon.cancel(),
+      ]);
+      return true;
+    });
+  }
+
   // id が航法ターゲットになれる(軌道面が定まる)かどうか。
   canTarget(id: string, entities: EntityManager, ephemeris: Ephemeris, t: number): boolean {
     return this.resolvePlaneNormal(id, entities, ephemeris, t) !== null;
   }
 
-  // id から対象の軌道面法線を求める。船は自身の軌道要素、月は白道、ラグランジュ点は
+  // id から対象の軌道面法線を求める。船・基地は自身の軌道要素、月は白道、ラグランジュ点は
   // 地球-月系なら白道・太陽-地球系なら黄道の法線を使う。面が定まらない対象は null。
   private resolvePlaneNormal(id: string, entities: EntityManager, ephemeris: Ephemeris, t: number): Vec3 | null {
     if (id === 'moon') return ephemeris.moonOrbitNormalAt(t);
@@ -98,7 +124,9 @@ export class NavTarget {
     const ship: Ship | undefined =
       entities.enemies.find((e) => e.name === id && e.alive) ??
       entities.players.find((p) => p.id === id && p.alive);
-    return ship?.elements?.hHat ?? null;
+    if (ship) return ship.elements?.hHat ?? null;
+    const base = entities.bases.find((b) => b.id === id && b.alive);
+    return base?.elements?.hHat ?? null;
   }
 
   // 右クリック対象として公開する AN/DN アイコン。計算できているぶんだけ返す。

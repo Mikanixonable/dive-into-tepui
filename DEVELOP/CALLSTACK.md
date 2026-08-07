@@ -270,6 +270,8 @@
     - editor.updateEditing()
       - applyHeldDv() ×6方向 // WASDQE または dvButtons(長押しボタン)が held の間、ホールド秒数からランプするレートで dt 秒分を積分
       - applyDv() // nodeGizmo.latch がある間、ラッチ超過量に比例したレートで dt 秒分を積分(アームドラッグが DV_DRAG_LATCH_PX を超えて入る)
+  - [!editor.editMode] navTarget.updateCombatBasePicking() // targeter より先に呼ぶ。基地に当たった右クリックだけを消費し、外れは false を返して targeter へ回す
+    - pickNearest(entities.bases) → baseMenu.open() // 当たった場合のみ。航法ターゲット設定/解除メニュー
   - [!editor.editMode] targeter.updateCombatTargeting()
     - handleTargetContextMenu() // player.alive のみ。右クリックは当否に関わらず消費する
       - pickEnemyAt() → openMenu() // 右クリックが敵に当たった場合、第一/第二の設定・解除メニューを開く
@@ -361,7 +363,8 @@
       // マーカーを出せる補給ごと(i = 生存かつ displayState が非 null な個体だけを詰めた配列の添字)
       - hide() // 前フレームよりその数が減ったぶんの、余った添字だけ
     - [CreativeStage] syncPreview() // 配置プレビューの軌道線・マーカー位置更新
-    - [CreativeStage] syncBaseMarkers(displayTime) → base.displayState(displayTime) → markerManager.setPosition('base<i>', 'mk-poi', '●')
+    - [CreativeStage] syncBaseMarkers(displayTime) → base.displayState(displayTime) → markerManager.set('base<i>', 'mk-poi', '●') // ラベルは player があれば距離付き
+      - [!overviewMode] markerManager.setBearing('base<i>-bearing', ...) // 画面外の基地への方位矢印。overviewMode 中は隠す
       // entities.bases の添字ごと(logistics.syncMarkers と同じ、前フレームより減った添字だけ hide())
   - hud.panels.sync(game, dt) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setStats() + setTarget() // 約10Hz にスロットル
