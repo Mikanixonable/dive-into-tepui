@@ -26,16 +26,19 @@ export class Bullet extends GameEntity {
     readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
     readonly shooter: Shooter;
     readonly type: BulletType;
+    readonly damage: number;
     passedClose: boolean = false; // 至近を通過したかどうかのフラグ
     private readonly lifetime: number;
 
     // accent: plasma 弾のみ使う発光色(未指定なら buildPlasmaMesh の既定色)。normal 弾では無視する。
-    constructor(state: OrbitState, lifetime: number, shooter: Shooter, type: BulletType, scene?: THREE.Scene) {
+    // damage は着弾時に与える HP。撃った側の武装で決まるので、弾自身が持ち歩く。
+    constructor(state: OrbitState, lifetime: number, shooter: Shooter, type: BulletType, damage: number, scene?: THREE.Scene) {
         super(state, type === 'plasma' ? buildPlasmaMesh() : buildBulletMesh(), scene);
         this.bornSim = state.t;
         this.lifetime = lifetime;
         this.shooter = shooter;
         this.type = type;
+        this.damage = damage;
     }
 
     nextSimulationEventTime(simTime: number): number | null {
