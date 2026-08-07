@@ -21,16 +21,49 @@ export class SettingsPanel {
     this.panel.className = 'panel';
     this.panel.innerHTML = `
       <h3>一時停止 / 設定</h3>
-      <div class="srow"><span class="k">BGM Vol</span><input type="range" data-id="bgmslider" min="0" max="1" step="0.05" value="1" style="flex:1; margin-left: 10px; cursor: pointer; accent-color: ${C.COLOR_ACCENT};"></div>
+      <div class="srow">
+        <span class="k">BGM Vol</span>
+        <input type="range" data-id="bgmslider" min="0" max="1" step="0.05" value="1" style="flex:1; margin-left: 10px; cursor: pointer; accent-color: ${C.COLOR_ACCENT};">
+        <div class="stoggle" data-id="bgmmute" style="margin-left: 10px;">消音</div>
+      </div>
       <div class="squit" data-id="settingsquit">ゲームを中断してタイトル画面に戻る</div>
       <div class="sclose" data-id="settingsclose">[閉じる]</div>`;
     root.appendChild(this.panel);
 
-    // BGM スライダー
+    // BGM スライダーと消音トグル
     const bgmSlider = this.panel.querySelector<HTMLInputElement>('[data-id="bgmslider"]')!;
+    const bgmMute = this.panel.querySelector<HTMLElement>('[data-id="bgmmute"]')!;
+    let lastVol = 1;
+    let isMuted = false;
+
+    const updateMuteState = (vol: number) => {
+      if (vol > 0) {
+        isMuted = false;
+        bgmMute.classList.remove('on');
+      } else {
+        isMuted = true;
+        bgmMute.classList.add('on');
+      }
+    };
+
     bgmSlider.addEventListener('input', () => {
       const vol = parseFloat(bgmSlider.value);
+      updateMuteState(vol);
       this.onBgmVolumeChange?.(vol);
+    });
+
+    bgmMute.addEventListener('click', () => {
+      if (isMuted) {
+        bgmSlider.value = lastVol.toString();
+        isMuted = false;
+        bgmMute.classList.remove('on');
+      } else {
+        lastVol = parseFloat(bgmSlider.value) || 1;
+        bgmSlider.value = '0';
+        isMuted = true;
+        bgmMute.classList.add('on');
+      }
+      this.onBgmVolumeChange?.(parseFloat(bgmSlider.value));
     });
     // タイトルへ戻る
     this.panel.querySelector<HTMLElement>('[data-id="settingsquit"]')!.addEventListener('click', () => {
