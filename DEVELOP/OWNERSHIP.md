@@ -63,6 +63,8 @@ main.ts
     │   ├── HudHoldButton ×6            ... Δv 6方向の長押しボタン(dvButtons)
     │   └── 計画パネル DOM
     ├── PlanGuide                       ... 直近ノードの接近/達成通知済みフラグ(ノード自体への参照)を持つ
+    ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/Game.player にまたがる横断)
+    │   └── DockView                       ... DOM は Hud.root 配下。格納艦/部品/ショップタブのフルスクリーン UI
     ├── MapModeToggler                 ... 所有物なし(マップ開閉フラグ mapMode だけを持つ)
     ├── Stage (activeStage)            ... initStage() が毎回 new する。クリエイティブモードでは CreativeStage を
     │                                       game.ts が直接 new する(initStage() は経由しない — §1 末尾の補足参照)
@@ -104,7 +106,8 @@ main.ts
     │   ├── Bullet[]
     │   ├── DebrisPiece[] (casings)
     │   ├── DebrisPiece[] (debris)
-    │   └── Ammo[]
+    │   ├── Ammo[]
+    │   └── Base[]                     ... 各々 baseState(money/inventory/dockedShips)を持つ
     ├── Simulator                      ... 実シミュレーション。EntityManager の参照を受け取って回すだけ(所有しない)
     │   ├── HitSystem
     │   └── CollisionPhysics
