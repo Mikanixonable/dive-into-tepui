@@ -4,9 +4,6 @@ import * as C from '../const';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, TEXT as INK, FONT } from '../theme';
 import { ContextMenu } from '../hud/context-menu';
 
-const SURFACE = 'rgba(13, 15, 18, 0.85)';
-const EDGE = 'rgba(255, 255, 255, 0.16)';
-
 const STYLE = `
 #node-gizmo {
   position: fixed; inset: 0; pointer-events: none; z-index: 9;
@@ -27,12 +24,15 @@ const STYLE = `
 }
 #node-gizmo .gz-axis {
   position: absolute; transform: translate(-50%, -50%);
-  min-width: 30px; padding: 2px 7px; text-align: center; touch-action: none;
+  width: 44px; height: 44px; border-radius: 22px; touch-action: none;
   pointer-events: auto; cursor: grab;
-  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE};
-  color: ${INK}; font-size: 10px; letter-spacing: 1px;
+  /* 背景は透明にしつつ、ラベルのテキストは表示する */
+  background: transparent; border: none;
+  color: ${INK}; font-size: 10px; font-weight: bold; letter-spacing: 1px;
+  display: flex; align-items: center; justify-content: center;
+  text-shadow: 0 0 2px #000, 0 0 4px #000;
 }
-#node-gizmo .gz-axis:active { border-color: ${ACCENT}; color: ${ACCENT_SOFT}; }
+#node-gizmo .gz-axis:active { cursor: grabbing; color: ${ACCENT_SOFT}; }
 `;
 
 export interface NodeHandleSpec {
@@ -83,6 +83,7 @@ export class NodeGizmo {
   onMenuDelete: ((idx: number) => void) | null = null;
 
   latch: AxisLatchState | null = null;
+  activeAxis: { axis: 0 | 1 | 2, sign: 1 | -1 } | null = null;
 
   // DOM レイヤとコンテキストメニューを構築する。
   constructor() {
@@ -230,11 +231,14 @@ export class NodeGizmo {
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.stopPropagation();
+      const axis = Number(el.dataset['axis'] ?? 0) as 0 | 1 | 2;
+      const sign = Number(el.dataset['sign'] ?? 1) as 1 | -1;
       dragging = true;
       latched = false;
       totalProj = 0;
       lastX = e.clientX;
       lastY = e.clientY;
+      this.activeAxis = { axis, sign };
       el.setPointerCapture(e.pointerId);
     });
     // 基点からの累積変位が DV_DRAG_LATCH_PX を超えるとラッチへ入る。ラッチ前は従来通り
@@ -264,6 +268,7 @@ export class NodeGizmo {
       dragging = false;
       latched = false;
       this.latch = null;
+      this.activeAxis = null;
       try {
         el.releasePointerCapture(e.pointerId);
       } catch {
