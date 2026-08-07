@@ -6,6 +6,7 @@ import { SegmentedControl, hudButton } from '../hud/buttons';
 import { LibrationPoint, LibrationSystem } from '../../physics/halo';
 import * as C from '../const';
 
+export type ObjectType = 'player' | 'enemy' | 'ammo';
 export type ReferenceBody = 'earth' | 'moon';
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'libration';
@@ -15,6 +16,7 @@ export type LibrationOrbitKind = 'halo' | 'lissajous';
 // よい)、'libration' ならラグランジュ点側の値を使う — 両方まとめて渡し、どちらを使うかは
 // 確定側(CreativeStage)が placementMode を見て決める。
 export interface ShipPlacerForm {
+  readonly objectType: ObjectType;
   readonly placementMode: PlacementMode;
   readonly body: ReferenceBody;
   readonly sizeMode: SizeShapeMode;
@@ -33,6 +35,12 @@ export interface ShipPlacerForm {
   readonly axKm: number;
   readonly azKm: number;
 }
+
+const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string])[] = [
+  ['player', '自機'],
+  ['enemy', '敵機'],
+  ['ammo', '弾薬'],
+];
 
 const PLACEMENT_MODE_ITEMS: readonly (readonly [PlacementMode, string])[] = [
   ['elements', '軌道要素'],
@@ -102,6 +110,7 @@ export class ShipPlacerPanel {
   onClose: (() => void) | null = null;
 
   private readonly panel: HTMLElement;
+  private readonly objectType: SegmentedControl<ObjectType>;
   private readonly placementMode: SegmentedControl<PlacementMode>;
   private readonly placementGroups: Record<PlacementMode, HTMLElement>;
   private readonly body: SegmentedControl<ReferenceBody>;
@@ -124,6 +133,7 @@ export class ShipPlacerPanel {
   private readonly libAx: HTMLInputElement;
   private readonly libAz: HTMLInputElement;
 
+  private objectTypeValue: ObjectType = 'player';
   private placementModeValue: PlacementMode = 'elements';
   private bodyValue: ReferenceBody = 'earth';
   private sizeModeValue: SizeShapeMode = 'apsides';
@@ -145,8 +155,12 @@ export class ShipPlacerPanel {
     this.panel.style.zIndex = '30';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
-    title.textContent = '艦艇配置';
+    title.textContent = '軌道オブジェクト配置';
     this.panel.appendChild(title);
+
+    this.objectType = new SegmentedControl('種類', OBJECT_TYPE_ITEMS, (v) => { this.objectTypeValue = v; this.objectType.setSelected(v); });
+    this.objectType.setSelected(this.objectTypeValue);
+    this.panel.appendChild(this.objectType.element);
 
     this.placementMode = new SegmentedControl('配置方法', PLACEMENT_MODE_ITEMS, (v) => this.selectPlacementMode(v));
     this.panel.appendChild(this.placementMode.element);
@@ -219,7 +233,7 @@ export class ShipPlacerPanel {
     nameRow.className = 'hud-seg';
     this.nameInput = document.createElement('input');
     this.nameInput.type = 'text';
-    this.nameInput.placeholder = '艦名(空欄で自動命名)';
+    this.nameInput.placeholder = 'オブジェクト名(空欄で自動命名)';
     this.nameInput.addEventListener('pointerdown', (e) => e.stopPropagation());
     nameRow.appendChild(this.nameInput);
     this.panel.appendChild(nameRow);
@@ -304,6 +318,7 @@ export class ShipPlacerPanel {
   // 現在のフォームの値を読み取って ShipPlacerForm を返す。プレビュー用にも使用。
   getForm(): ShipPlacerForm {
     return {
+      objectType: this.objectTypeValue,
       placementMode: this.placementModeValue,
       body: this.bodyValue,
       sizeMode: this.sizeModeValue,
