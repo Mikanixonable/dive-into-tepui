@@ -241,7 +241,7 @@ export class Game {
 
   // このフレームの表示時刻(未来ゴーストのスライダーぶん先取りした simTime)。
   private get displayTime(): number {
-    return this.displayTimeManager.resolveDisplayTime(this.player?.elements?.period ?? null, this.simulator.simTime);
+    return this.displayTimeManager.resolveDisplayTime(this.simulator.simTime);
   }
 
   get simTime(): number { return this.simulator.simTime; }
@@ -452,8 +452,7 @@ export class Game {
       : new FloatingOrigin(v3(), v3());
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
-    const orbitPeriod = player?.elements?.period ?? null;
-    const displayTime = this.displayTimeManager.resolveDisplayTime(orbitPeriod, this.simulator.simTime);
+    const displayTime = this.displayTimeManager.resolveDisplayTime(this.simulator.simTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
     this.cameraSystem.sync(this.floatingOrigin, displayTime);
@@ -503,7 +502,7 @@ export class Game {
     this.enemyMarkers.sync(enemyMarkerItems, project);
     if (player) this.leadMarkers.sync(player, aliveTargets, target, secondaryTarget, simTime, overviewMode, project);
 
-    this.displayTimeManager.sync(orbitPeriod);
+    this.displayTimeManager.sync();
     this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project);
     // 月フライバイ等で積分予測と解析楕円が乖離した場合は、重なって誤解を招く
     // 楕円近似線をマップ表示中だけ抑制する。戦闘ビューへ戻れば通常の線へ復帰する。
