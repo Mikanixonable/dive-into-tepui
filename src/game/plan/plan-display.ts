@@ -1,7 +1,8 @@
 // 軌道計画の姿の表示: 計画折れ線(PlanTrajectory)の駆動、表示座標系(trajectoryFrame)、
 // 表示時刻の計画上の自機位置ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
-import { orbitState, positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/orbital';
+import { orbitState } from '../../physics/orbital-state';
+import { positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/elements';
 import { Vec3, len, sub } from '../../physics/vec3';
 import { elementsAround, relativeTo, strongestAttractor, toAbsolute } from '../../physics/attractor';
 import { Frame } from '../../physics/frame';
@@ -171,7 +172,7 @@ export class PlanDisplay {
       time: pe.time,
       label: `Pe ${fmtDist(el.p / (1 + el.e) - center.radius)}`,
     }];
-    if (isFinite(el.apAlt)) {
+    if (el.e < 1) {
       const ap = apsisPosition(Math.PI);
       icons.push({
         id: 'apsisAp', name: '遠地点', kind: 'apsis',

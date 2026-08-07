@@ -5,7 +5,7 @@
 import * as C from './const';
 import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
-import { OrbitState } from '../physics/orbital';
+import { OrbitState } from '../physics/orbital-state';
 import type { Input } from './input/input';
 import { KEY_MAPPING as K } from './input/key-mapping';
 

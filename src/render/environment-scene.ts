@@ -1,7 +1,8 @@
 // 環境(太陽・月・星・地球・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
 import { Ephemeris, R_MOON, sunlitFactor } from '../physics/ephemeris';
-import { Elements, MU_EARTH, R_EARTH, SIDEREAL_DAY, elementsFromState } from '../physics/orbital';
+import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/orbital-state';
+import { Elements, elementsFromState } from '../physics/elements';
 import { Vec3, len, norm, scale, sub, v3 } from '../physics/vec3';
 import { createEarth, Earth } from './earth';
 import { OrbitLine } from './orbitline';
@@ -20,8 +21,6 @@ const GEO_ELEMENTS: Elements = {
   e: 1e-6,
   p: R_EARTH + 35786e3,
   incDeg: 0,
-  apAlt: 35786e3,
-  peAlt: 35786e3,
   period: 86164,
   hHat: v3(0, 1, 0),
   pHat: v3(1, 0, 0),
