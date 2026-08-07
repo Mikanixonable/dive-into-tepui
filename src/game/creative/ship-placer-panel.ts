@@ -137,11 +137,11 @@ export class ShipPlacerPanel {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-shipplacer';
     this.panel.className = 'panel';
-    // モーダルとして画面中央に配置
+    // モーダルとして画面右上に配置
     this.panel.style.position = 'fixed';
-    this.panel.style.top = '50%';
-    this.panel.style.left = '50%';
-    this.panel.style.transform = 'translate(-50%, -50%)';
+    this.panel.style.top = '20px';
+    this.panel.style.right = '20px';
+    this.panel.style.width = 'max-content';
     this.panel.style.zIndex = '30';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
