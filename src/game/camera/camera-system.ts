@@ -156,7 +156,14 @@ export class CameraSystem {
     // キー/マウスによる旋回入力をまとめる
     const keyYaw = (input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0);
     const keyPitch = (input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0);
-    const keyRoll = (input.down(K.cameraRollLeft) ? 1 : 0) + (input.down(K.cameraRollRight) ? -1 : 0);
+    const keyRollLeft = input.down(K.cameraRollLeft);
+    const keyRollRight = input.down(K.cameraRollRight);
+    
+    // /_ の同時押し（ロール左右の同時入力）でマップカメラのロールをリセット
+    if (keyRollLeft && keyRollRight) {
+      if (this.overviewMode) this.overviewCamera.reset();
+    }
+    const keyRoll = (keyRollLeft ? 1 : 0) + (keyRollRight ? -1 : 0);
     const keyPanX = (input.down(K.cameraPanLeft) ? 1 : 0) + (input.down(K.cameraPanRight) ? -1 : 0);
     const keyPanY = (input.down(K.cameraPanUp) ? 1 : 0) + (input.down(K.cameraPanDown) ? -1 : 0);
     const mouse = { ...input.mouse() };
