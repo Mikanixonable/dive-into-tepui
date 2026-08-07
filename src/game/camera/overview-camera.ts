@@ -41,6 +41,7 @@ export class OverviewCamera {
   private _cameraFrame: Frame = 'inertial';
   private simTime = 0; // set cameraFrame の座標変換に使う
   private _focus = 'earth';
+  private _focusPos: Vec3 | null = null;
   private missingFocusFrames = 0;
   private lastResolvedFocus = v3();
 
@@ -48,6 +49,14 @@ export class OverviewCamera {
 
   setFocus(id: string, resetPan = true): void {
     this._focus = id;
+    this._focusPos = null;
+    this.missingFocusFrames = 0;
+    if (resetPan) this.resetPan();
+  }
+
+  setFocusPos(pos: Vec3, resetPan = true): void {
+    this._focus = '';
+    this._focusPos = pos;
     this.missingFocusFrames = 0;
     if (resetPan) this.resetPan();
   }
@@ -103,6 +112,10 @@ export class OverviewCamera {
 
   // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は地球へ戻す。
   private resolveFocus(candidates: readonly MapPickable[]): Vec3 {
+    if (this._focusPos) {
+      this.lastResolvedFocus = this._focusPos;
+      return this._focusPos;
+    }
     if (this._focus === 'earth') {
       this.missingFocusFrames = 0;
       this.lastResolvedFocus = v3();

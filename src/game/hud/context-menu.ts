@@ -36,6 +36,7 @@ function ensureStyle(): void {
 export interface MenuItem<A extends string = string> {
   label: string;
   act: A;
+  shortcut?: string;
 }
 
 export class ContextMenu<T, A extends string = string> {
@@ -66,7 +67,26 @@ export class ContextMenu<T, A extends string = string> {
       },
       true,
     );
+    window.addEventListener('keydown', this.handleKeyDown);
   }
+
+  private handleKeyDown = (e: KeyboardEvent) => {
+    if (this.target === null || this.el.style.display === 'none') return;
+    const items = this.el.querySelectorAll<HTMLElement>('.ctx-menu-item');
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item) continue;
+      if (item.dataset['shortcut'] === e.key) {
+        e.stopPropagation();
+        e.preventDefault();
+        const act = item.dataset['act'] as A;
+        const t = this.target;
+        this.close();
+        if (t !== null) this.onSelect?.(act, t);
+        return;
+      }
+    }
+  };
 
   // target を対象として items を描画し、指定した画面座標に開く。項目クリックで
   // onSelect(act, target) を発火して閉じる。
@@ -76,7 +96,7 @@ export class ContextMenu<T, A extends string = string> {
     this.requestedY = clientY;
     // 項目 DOM を組み立てる
     this.el.innerHTML = items
-      .map((it) => `<div class="ctx-menu-item" data-act="${it.act}">${it.label}</div>`)
+      .map((it) => `<div class="ctx-menu-item" data-act="${it.act}" data-shortcut="${it.shortcut || ''}">${it.label}</div>`)
       .join('');
     // クリックされた項目の act を、開いた時点の対象とともに通知して閉じる
     this.el.querySelectorAll<HTMLElement>('.ctx-menu-item').forEach((item) => {

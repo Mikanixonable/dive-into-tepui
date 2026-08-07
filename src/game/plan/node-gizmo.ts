@@ -71,7 +71,7 @@ export class NodeGizmo {
   private readonly root: HTMLDivElement;
   private readonly nodeLayer: HTMLDivElement;
   private readonly axisLayer: HTMLDivElement;
-  private readonly menu = new ContextMenu<number>();
+  private readonly menu = new ContextMenu<number, 'warp' | 'delete' | 'cancel' | 'focus'>();
   private readonly nodeEls = new Map<number, NodeEntry>();
   private readonly axisEls: HTMLDivElement[] = [];
 
@@ -81,6 +81,7 @@ export class NodeGizmo {
   onAxisDrag: ((axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number) => void) | null = null;
   onMenuWarpTo: ((idx: number) => void) | null = null;
   onMenuDelete: ((idx: number) => void) | null = null;
+  onMenuFocus: ((idx: number) => void) | null = null;
 
   latch: AxisLatchState | null = null;
   activeAxis: { axis: 0 | 1 | 2, sign: 1 | -1 } | null = null;
@@ -107,6 +108,7 @@ export class NodeGizmo {
     this.menu.onSelect = (act, idx) => {
       if (act === 'warp') this.onMenuWarpTo?.(idx);
       else if (act === 'delete') this.onMenuDelete?.(idx);
+      else if (act === 'focus') this.onMenuFocus?.(idx);
     };
   }
 
@@ -115,7 +117,8 @@ export class NodeGizmo {
     this.menu.open(clientX, clientY, idx, [
       { label: 'この時刻まで時間を加速', act: 'warp' },
       { label: 'ノードを削除', act: 'delete' },
-      { label: 'キャンセル', act: 'cancel' },
+      { label: 'フォーカスを移動', act: 'focus' },
+      { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
     ]);
   }
 

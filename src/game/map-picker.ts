@@ -96,13 +96,13 @@ export class MapPicker {
         return [
           { label: 'フォーカスを移動', act: 'focus' },
           ...this.navTargetItems(target, simTime),
-          { label: 'キャンセル', act: 'cancel' },
+          { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
         ];
       case 'apsis':
         return [
           { label: 'ここにノードを追加', act: 'addNode' },
           { label: 'フォーカスを移動', act: 'focus' },
-          { label: 'キャンセル', act: 'cancel' },
+          { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
         ];
       // 操作対象の艦には「操作対象にする」「削除」を出さない(前者は無効、後者は自機が消える)。
       case 'player': {
@@ -116,7 +116,7 @@ export class MapPicker {
           { label: 'フォーカスを移動', act: 'focus' },
           ...this.navTargetItems(target, simTime),
           ...remove,
-          { label: 'キャンセル', act: 'cancel' },
+          { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
         ];
       }
       case 'relnode':
@@ -124,12 +124,12 @@ export class MapPicker {
           { label: 'ここまで時間加速', act: 'warp' },
           { label: 'ここにノードを追加', act: 'addNode' },
           { label: 'フォーカスを移動', act: 'focus' },
-          { label: 'キャンセル', act: 'cancel' },
+          { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
         ];
       case 'empty-space':
         return [
-          { label: '艦艇を配置する', act: 'openShipPlacer' },
-          { label: 'キャンセル', act: 'cancel' },
+          { label: '艦艇を配置する [Enter]', act: 'openShipPlacer', shortcut: 'Enter' },
+          { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
         ];
     }
   }

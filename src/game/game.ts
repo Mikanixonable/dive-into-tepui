@@ -139,6 +139,7 @@ export class Game {
       () => this.player?.fineAttitude ?? false,
       bootstrapPlayer,
     );
+    this.editor.onFocusNode = (state) => this.cameraSystem.overviewCamera.setFocusPos(state.r);
     this.mapPicker = new MapPicker(
       this, this._hud, this.entities, this.ephemeris, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager,
