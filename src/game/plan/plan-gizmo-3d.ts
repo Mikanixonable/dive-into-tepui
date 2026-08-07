@@ -8,14 +8,16 @@ export class PlanGizmo3D {
   constructor() {
     this.group.renderOrder = 999;
     
-    // Prograde (Blue), Normal (Green), Radial (Red)
-    this.createAxis(new THREE.Vector3(0, 0, 1), 0x3b82f6); // PRO (Local Z)
-    this.createAxis(new THREE.Vector3(0, 0, -1), 0x3b82f6); // RETRO
+    // Prograde (Blue) -> Local Y
+    this.createAxis(new THREE.Vector3(0, 1, 0), 0x3b82f6); // PRO
+    this.createAxis(new THREE.Vector3(0, -1, 0), 0x3b82f6); // RETRO
     
-    this.createAxis(new THREE.Vector3(0, 1, 0), 0x10b981); // NRM (Local Y)
-    this.createAxis(new THREE.Vector3(0, -1, 0), 0x10b981); // ANTI-NRM
+    // Normal (Green) -> Local Z
+    this.createAxis(new THREE.Vector3(0, 0, 1), 0x10b981); // NRM
+    this.createAxis(new THREE.Vector3(0, 0, -1), 0x10b981); // ANTI-NRM
     
-    this.createAxis(new THREE.Vector3(1, 0, 0), 0xef4444); // RAD (Local X)
+    // Radial (Red) -> Local X
+    this.createAxis(new THREE.Vector3(1, 0, 0), 0xef4444); // RAD
     this.createAxis(new THREE.Vector3(-1, 0, 0), 0xef4444); // RAD-IN
   }
 
@@ -60,15 +62,15 @@ export class PlanGizmo3D {
   public setPositionAndRotation(pos: Vec3, pro: Vec3, nrm: Vec3, rad: Vec3, scale: number): void {
     this.group.position.set(pos.x, pos.y, pos.z);
     
-    // Construct rotation matrix from local axes (RAD=X, NRM=Y, PRO=Z)
+    // Construct rotation matrix from local axes (RAD=X, PRO=Y, NRM=Z)
     const mat = new THREE.Matrix4().makeBasis(
       new THREE.Vector3(rad.x, rad.y, rad.z),
-      new THREE.Vector3(nrm.x, nrm.y, nrm.z),
-      new THREE.Vector3(pro.x, pro.y, pro.z)
+      new THREE.Vector3(pro.x, pro.y, pro.z),
+      new THREE.Vector3(nrm.x, nrm.y, nrm.z)
     );
     this.group.quaternion.setFromRotationMatrix(mat);
     
-    // Local Y is Normal, Local Z is Prograde, Local X is Radial
+    // Local X is Radial, Local Y is Prograde, Local Z is Normal
     // 画面上で一定サイズに見えるようスケール
     this.group.scale.setScalar(scale);
   }
