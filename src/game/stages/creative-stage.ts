@@ -169,7 +169,7 @@ export class CreativeStage extends Stage {
       if (form.objectType === 'player') {
         const id = `creative-player-${this.nextShipId++}`;
         const finalName = name || `Player-${this.nextShipId}`;
-        const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, finalName, state, id, form.body);
+        const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, finalName, state, id);
         this._entities.addPlayer(ship);
         this.onShipPlaced?.(ship);
         this._hud.hint(`${ship.displayName} を配置`);

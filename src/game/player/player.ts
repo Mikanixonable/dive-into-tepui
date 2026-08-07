@@ -13,7 +13,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { OrbitLine } from '../../render/orbitline';
-import { SampledLine } from '../../render/sampled-line';
+import { strongestAttractor } from '../../physics/attractor';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Stage } from '../stages/stage';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
@@ -33,7 +33,6 @@ import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 import { Ephemeris, sunlitFactor } from '../../physics/ephemeris';
 import { Plan } from '../plan/plan';
-import type { CentralBodyId } from '../../physics/central-body';
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
@@ -55,8 +54,6 @@ export class Player extends Ship {
   private readonly markers: PlayerMarkers;
   // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
   readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55);
-  // 月基準の表示では、解析楕円の代わりに積分結果の点列をそのまま描く。
-  readonly moonOrbitTrace = new SampledLine(0xbfc9d4, 0.55, 1);
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
   // ON の間、この艦は自分の計画のノード時刻を跨いだ時点でそのノードの絶対状態へ乗り移る。
@@ -73,9 +70,9 @@ export class Player extends Ship {
   // で初期配置する。複数隻を並べるときは両方を指定して区別する(name が艦の識別子になる)。
   constructor(
     _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
-    name = 'PLAYER', initialState?: OrbitState, entityId = name, predictionCentralBody: CentralBodyId = 'earth') {
+    name = 'PLAYER', initialState?: OrbitState, entityId = name) {
     const state = initialState ?? Player.makeInitialState();
-    super(name, state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, _scene, predictionCentralBody);
+    super(name, state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, _scene);
     this.id = entityId;
     this.displayName = name;
     this._hud = _hud;
@@ -98,7 +95,6 @@ export class Player extends Ship {
     this.markers = new PlayerMarkers(markerManager, this.id, this.displayName);
 
     _scene.add(this.orbitLine.line);
-    _scene.add(this.moonOrbitTrace.line);
   }
 
   // 高度 INITIAL_ALT、傾斜角 INITIAL_INC_DEG の円軌道状態を返す。
@@ -382,18 +378,12 @@ export class Player extends Ship {
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
     this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer, this.magsLeft);
 
-    if (this.predictionCentralBody === 'moon') {
-      const samples = [...this.current.samplesOldestFirst(), ...(this.predicted?.samplesOldestFirst() ?? [])];
-      this.orbitLine.sync(null, fo, false, this.state.r);
-      this.moonOrbitTrace.setVisible(this.alive && samples.length >= 2);
-      if (this.alive && samples.length >= 2) {
-        this.moonOrbitTrace.syncGeometry(samples, 'inertial', ephemeris);
-        this.moonOrbitTrace.syncTransform('inertial', displayTime, ephemeris, fo);
-      }
+    if (this.alive) {
+      const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));
+      const densifyNear = sub(this.state.r, center.r);
+      this.orbitLine.sync(this.elementsAround(center), fo, this.thrustVizDir !== null, densifyNear, center.r);
     } else {
-      this.moonOrbitTrace.setVisible(false);
-      // 地球周回は従来どおり、現在の接触軌道と自機 ECI 位置を使う。
-      this.orbitLine.sync(this.alive ? this.elements : null, fo, this.thrustVizDir !== null, this.state.r);
+      this.orbitLine.sync(null, fo);
     }
   }
 
@@ -428,9 +418,7 @@ export class Player extends Ship {
     this.clearTransientCommands();
     this.markers.hide();
     this.playerScene.remove(this.orbitLine.line);
-    this.playerScene.remove(this.moonOrbitTrace.line);
     this.orbitLine.dispose();
-    this.moonOrbitTrace.dispose();
     this.thrustEffects.dispose(this.playerScene);
     this.rcsEffects.dispose(this.playerScene);
     this.reentryEffects.dispose(this.playerScene);

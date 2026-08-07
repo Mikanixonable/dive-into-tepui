@@ -53,9 +53,9 @@ export class OrbitLine {
   }
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン。force = 要素が能動的に変化している
-  // 間(推力中・ノード編集中)は true。focusPos は中心天体相対座標で、その付近に
+  // 間(推力中・ノード編集中)は true。densifyNear は中心天体相対座標で、その付近に
   // 頂点を密に配置する。centerPos は軌道の中心天体の ECI 位置(既定は地球中心)。
-  sync(el: Elements | null, fo: FloatingOrigin, force = false, focusPos?: Vec3, centerPos: Vec3 = EARTH_CENTER): void {
+  sync(el: Elements | null, fo: FloatingOrigin, force = false, densifyNear?: Vec3, centerPos: Vec3 = EARTH_CENTER): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.line.visible = false;
       this.snap = null;
@@ -76,13 +76,13 @@ export class OrbitLine {
     }
 
     let focusE: number | undefined;
-    if (focusPos) {
+    if (densifyNear) {
       // 要調査: 密に配置したいのは本来フローティングオリジン(fo)近傍だが、fo は微動でも
       // 動いて再生成を頻発させるため、呼び出し側は代わりに自機位置を渡している。fo からの
       // 乖離が大きい場面では密配置が実際の描画中心とずれる可能性がある。
-      // focusPos の軌道面内ローカル座標 (x, y) から離心近点角を求める
-      const x = focusPos.x * el.pHat.x + focusPos.y * el.pHat.y + focusPos.z * el.pHat.z;
-      const y = focusPos.x * el.qHat.x + focusPos.y * el.qHat.y + focusPos.z * el.qHat.z;
+      // densifyNear の軌道面内ローカル座標 (x, y) から離心近点角を求める
+      const x = densifyNear.x * el.pHat.x + densifyNear.y * el.pHat.y + densifyNear.z * el.pHat.z;
+      const y = densifyNear.x * el.qHat.x + densifyNear.y * el.qHat.y + densifyNear.z * el.qHat.z;
       const b = el.a * Math.sqrt(1 - el.e * el.e);
       focusE = Math.atan2(y / b, x / el.a + el.e);
     }

@@ -47,9 +47,9 @@ export function register(): void {
     const sunPos = v3(1.5e11, 0, 0);
     const moonPos = v3(3.8e8, 0, 0);
     const bodies: readonly Attractor[] = [
-      { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)) },
-      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: orbitState(0, moonPos, v3(0, 0, 0)) },
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(0, sunPos, v3(0, 0, 0)) },
+      { id: 'earth', mu: MU_EARTH, radius: R_EARTH, r: v3(0, 0, 0), v: v3(0, 0, 0) },
+      { id: 'moon', mu: MU_MOON, radius: R_MOON, r: moonPos, v: v3(0, 0, 0) },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, r: sunPos, v: v3(0, 0, 0) },
     ];
 
     const viaNew = stepDynamicsRK4(s0, dt, bodies, 0, null);
@@ -91,7 +91,7 @@ export function register(): void {
     const a = R_MOON + 100e3;
     const period = keplerPeriod(a, MU_MOON); // ~7,066s
     const rel0 = stateFromElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
-    let s = orbitState(0, add(rel0.r, moon0.state.r), add(rel0.v, moon0.state.v));
+    let s = orbitState(0, add(rel0.r, moon0.r), add(rel0.v, moon0.v));
 
     const dt = 5;
     const steps = Math.round(period / dt);

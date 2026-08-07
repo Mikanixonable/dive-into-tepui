@@ -14,7 +14,7 @@ export class Ammo extends GameEntity {
 
   // 補給メッシュを組み立て、質量と衝突半径を設定する。
   constructor(state: OrbitState, att?: Attitude, scene?: THREE.Scene, id?: string) {
-    super(state, buildAmmo(), scene, att, 'earth');
+    super(state, buildAmmo(), scene, att);
     this.mass = 50;
     this.collideRadius = C.AMMO_PHYS_RADIUS;
     this.id = id;

@@ -3,7 +3,7 @@ import { Attitude } from '../../physics/attitude';
 import { OrbitState } from '../../physics/orbital';
 import * as C from '../const';
 import { GameEntity } from './game-entity';
-import type { CentralBodyId } from '../../physics/central-body';
+import type { Attractor } from '../../physics/attractor';
 import type { FloatingOrigin } from '../floating-origin';
 
 export abstract class Ship extends GameEntity {
@@ -25,9 +25,8 @@ export abstract class Ship extends GameEntity {
     radius: number,
     hp: number,
     scene?: THREE.Scene,
-    predictionCentralBody: CentralBodyId = 'earth',
   ) {
-    super(state, obj, scene, att, predictionCentralBody);
+    super(state, obj, scene, att);
     this.name = name;
     this.radius = radius;
     this.hp = hp;
@@ -90,5 +89,5 @@ export abstract class Ship extends GameEntity {
   }
 
   // オーバービュー時の非ターゲット背景描画用
-  syncBackgroundOrbitLine(_show: boolean, _fo: FloatingOrigin): void {}
+  syncBackgroundOrbitLine(_show: boolean, _fo: FloatingOrigin, _bodies: readonly Attractor[]): void {}
 }

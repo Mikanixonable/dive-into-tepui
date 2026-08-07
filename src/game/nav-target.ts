@@ -3,6 +3,7 @@
 // とは独立に、月・ラグランジュ点なども対象にできる。
 import { Vec3, cross, dot, norm, scale, v3 } from '../physics/vec3';
 import { tofBetween, trueAnomalyAt } from '../physics/orbital';
+import { strongestAttractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
 import { Player } from './player/player';
@@ -59,8 +60,10 @@ export class NavTarget {
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は両方 null にする。
   update(player: Player | null, entities: EntityManager, ephemeris: Ephemeris, simTime: number): void {
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
-    const playerEl = player?.elements;
-    if (!playerEl || !this.targetId) return;
+    if (!player || !this.targetId) return;
+    const playerCenter = strongestAttractor(player.state.r, ephemeris.attractorsAt(simTime));
+    const playerEl = player.elementsAround(playerCenter);
+    if (!playerEl) return;
 
     const targetHat = this.resolvePlaneNormal(this.targetId, entities, ephemeris, simTime);
     if (!targetHat) return;
@@ -98,7 +101,9 @@ export class NavTarget {
     const ship: Ship | undefined =
       entities.enemies.find((e) => e.name === id && e.alive) ??
       entities.players.find((p) => p.id === id && p.alive);
-    return ship?.elements?.hHat ?? null;
+    if (!ship) return null;
+    const center = strongestAttractor(ship.state.r, ephemeris.attractorsAt(t));
+    return ship.elementsAround(center)?.hHat ?? null;
   }
 
   // 右クリック対象として公開する AN/DN アイコン。計算できているぶんだけ返す。

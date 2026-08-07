@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
+import { Attractor, strongestAttractor } from '../../physics/attractor';
 import type { FloatingOrigin } from '../floating-origin';
 import { Attitude } from '../../physics/attitude';
 import { altitudeOf, OrbitState, orbitState, R_EARTH_EQ } from '../../physics/orbital';
@@ -285,7 +286,8 @@ export class Enemy extends Ship {
   }
 
   // オーバービュー時の非ターゲット背景描画用
-  syncBackgroundOrbitLine(show: boolean, fo: FloatingOrigin): void {
-    this.orbitLine.sync(show ? this.elements : null, fo);
+  syncBackgroundOrbitLine(show: boolean, fo: FloatingOrigin, bodies: readonly Attractor[]): void {
+    const center = strongestAttractor(this.state.r, bodies);
+    this.orbitLine.sync(show ? this.elementsAround(center) : null, fo, undefined, undefined, center.r);
   }
 }

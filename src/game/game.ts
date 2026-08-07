@@ -379,7 +379,10 @@ export class Game {
     // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
     const activePlayer = this.player;
     if (activePlayer) {
-      this.guide.update(this.editor.plan, activePlayer, this.simulator.simTime, this.editor.editMode);
+      this.guide.update(
+        this.editor.plan, activePlayer, this.simulator.simTime, this.editor.editMode,
+        this.ephemeris.attractorsAt(this.simulator.simTime),
+      );
       this.editor.plan.trackAnchor(activePlayer.state);
     }
     this.updateMapPresentation(dt);
@@ -460,6 +463,7 @@ export class Game {
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
     const simTime = this.simulator.simTime;
+    const bodies = this.ephemeris.attractorsAt(simTime);
     const target = this.targeter.aliveTarget;
     const secondaryTarget = this.targeter.aliveSecondaryTarget;
 
@@ -483,7 +487,7 @@ export class Game {
 
     if (player) {
       const targets = this.entities.getCombatTargets(player);
-      this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project);
+      this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project, bodies);
     }
     this.navTarget.sync(project);
     if (player) this.navball.sync(player.state, player.att, player.alive, target?.state ?? null);
@@ -519,7 +523,7 @@ export class Game {
       this.activeStage.syncWithoutPlayer(overviewMode, project);
     }
 
-    this._hud.panels.sync(this, dt);
+    this._hud.panels.sync(this, dt, bodies);
     this._hud.tick();
 
     if (player) this.guide.sync(this.editor.plan, player, simTime, this.editor.editMode, project);

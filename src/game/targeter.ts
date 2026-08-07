@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { add, addScaled, dot, lenSq, norm, scale, sub, Vec3 } from '../physics/vec3';
+import { Attractor, strongestAttractor } from '../physics/attractor';
 import { OrbitLine } from '../render/orbitline';
 import * as C from './const';
 import { ACCENT_SECONDARY } from './theme';
@@ -140,23 +141,37 @@ export class Targeter {
 
   // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー)をまとめて更新する。
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
-  sync(fo: FloatingOrigin, player: Player, targets: CombatTarget[], overviewMode: boolean, project: ProjectFn): void {
-    this.syncOrbitLine(fo, targets, overviewMode);
+  sync(
+    fo: FloatingOrigin, player: Player, targets: CombatTarget[], overviewMode: boolean,
+    project: ProjectFn, bodies: readonly Attractor[],
+  ): void {
+    this.syncOrbitLine(fo, targets, overviewMode, bodies);
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
 
   // 第一・第二ターゲットのハイライト線を最新の状態に合わせる。
-  private syncOrbitLine(fo: FloatingOrigin, targets: CombatTarget[], overviewMode: boolean): void {
+  private syncOrbitLine(fo: FloatingOrigin, targets: CombatTarget[], overviewMode: boolean, bodies: readonly Attractor[]): void {
     const tgt = this.aliveTarget;
     const secTgt = this.aliveSecondaryTarget;
     for (const t of targets) {
       const showGray = overviewMode && t.alive && t !== tgt && t !== secTgt;
-      t.syncBackgroundOrbitLine(showGray, fo);
+      t.syncBackgroundOrbitLine(showGray, fo, bodies);
     }
 
-    this.orbitLine.sync(tgt ? tgt.elements : null, fo);
-    this.secondaryOrbitLine.sync(secTgt ? secTgt.elements : null, fo);
+    if (tgt) {
+      const center = strongestAttractor(tgt.state.r, bodies);
+      this.orbitLine.sync(tgt.elementsAround(center), fo, undefined, undefined, center.r);
+    } else {
+      this.orbitLine.sync(null, fo);
+    }
+
+    if (secTgt) {
+      const center = strongestAttractor(secTgt.state.r, bodies);
+      this.secondaryOrbitLine.sync(secTgt.elementsAround(center), fo, undefined, undefined, center.r);
+    } else {
+      this.secondaryOrbitLine.sync(null, fo);
+    }
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する

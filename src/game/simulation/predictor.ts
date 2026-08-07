@@ -5,7 +5,7 @@ import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
-import { len } from '../../physics/vec3';
+import { localOrbitPeriod } from '../../physics/attractor';
 
 export class Predictor {
   private cursor = 0;
@@ -40,17 +40,18 @@ export class Predictor {
   }
 
   // budgetSteps を上限に、1体ぶんの予測列を GameEntity.stepPrediction で1ステップずつ伸ばし、
-  // 消費したステップ数を返す。刻み幅(stepDtForRadius)は毎ステップ、現在の予測先端の動径から
-  // 求め直す(先端がまだ無ければ現在状態の動径で代用 — 生成直後は current.state を種にするので
-  // 同じ値になる)。ここが「刻み幅を決めてから1ステップぶん渡す」側、entity 側は「渡された dt で
-  // 実際に1ステップ進めるか判断する」側 — stepSim に対する simulationSubStep と同じ分担。
-  // ホライズン超過などで stepPrediction が false を返したら、そのエンティティの予算消化を打ち切る。
+  // 消費したステップ数を返す。刻み幅は毎ステップ、現在の予測先端の位置で最も強く引く天体を
+  // 中心とする軌道周期から求め直す(先端がまだ無ければ現在状態で代用 — 生成直後は
+  // current.state を種にするので同じ値になる)。ここが「刻み幅を決めてから1ステップぶん渡す」側、
+  // entity 側は「渡された dt で実際に1ステップ進めるか判断する」側 — stepSim に対する
+  // simulationSubStep と同じ分担。ホライズン超過などで stepPrediction が false を返したら、
+  // そのエンティティの予算消化を打ち切る。
   private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number): number {
     let consumed = 0;
     while (consumed < budgetSteps) {
       const tipState = e.predicted?.state ?? e.state;
-      const relativeR = e.centralBodyRelativeState(tipState, this.ephemeris).r;
-      const dt = Math.max(C.PREDICT_MIN_STEP_DT, stepDtForRadius(len(relativeR)));
+      const bodies = this.ephemeris.attractorsAt(tipState.t);
+      const dt = Math.max(C.PREDICT_MIN_STEP_DT, localOrbitPeriod(tipState.r, bodies) / STEPS_PER_REV);
       if (!e.stepPrediction(this.ephemeris, simTime, dt)) break;
       consumed++;
     }
@@ -58,7 +59,6 @@ export class Predictor {
   }
 }
 
-// 動径から刻み幅を決める(低軌道では細かく、遠方では粗く)。LEO(~6.8e6m)で約8.5s。
-function stepDtForRadius(r: number): number {
-  return Math.max(5, Math.min(600, r / 8e5));
-}
+// 1周回あたりの予測ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも遠方の
+// 長周期軌道でも精度が一定になる(plan-arc.ts の STEPS_PER_REV と同じ考え方)。
+const STEPS_PER_REV = 600;
