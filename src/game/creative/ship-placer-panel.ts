@@ -6,7 +6,7 @@ import { SegmentedControl, hudButton } from '../hud/buttons';
 import { LibrationPoint, LibrationSystem } from '../../physics/halo';
 import * as C from '../const';
 
-export type ObjectType = 'player' | 'enemy' | 'ammo';
+export type ObjectType = 'player' | 'enemy' | 'ammo' | 'base';
 export type ReferenceBody = 'earth' | 'moon';
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'libration';
@@ -40,6 +40,7 @@ const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string])[] = [
   ['player', '自機'],
   ['enemy', '敵機'],
   ['ammo', '弾薬'],
+  ['base', '基地'],
 ];
 
 const PLACEMENT_MODE_ITEMS: readonly (readonly [PlacementMode, string])[] = [

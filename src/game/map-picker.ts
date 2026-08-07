@@ -70,6 +70,11 @@ export class MapPicker {
       const pos = ammo.displayState(displayTime)?.r;
       if (pos) items.push({ id: ammo.id ?? 'ammo', name: '弾薬', pos, kind: 'ammo' });
     }
+    for (const base of this.entities.bases) {
+      if (!base.alive) continue;
+      const pos = base.displayState(displayTime)?.r;
+      if (pos) items.push({ id: base.id, name: '基地', pos, kind: 'base' });
+    }
     items.push(...this.navTarget.mapPickables());
     items.push(...this.editor.planDisplay.apsisMarkers);
     this.items = items;
@@ -243,6 +248,33 @@ export class MapPicker {
           if ((this.game.activeStage as any).stageId === 'creative') {
             (this.game.activeStage as any).openShipPlacer();
           }
+        }
+      },
+    },
+    'base': {
+      itemsFor: (target) => {
+        const base = this.entities.findBase(target.id);
+        const subLabel = base 
+          ? `所持金: ${base.baseState.money.toLocaleString()} Cr / 格納船: ${base.baseState.dockedShips.length}隻`
+          : '基地';
+        return [
+          { type: 'header', label: '基地', subLabel },
+          { label: 'ドックビューを開く', act: 'openDock' },
+          { label: '別の船を発進', act: 'activate' },
+          MenuCommon.focus(),
+          ...this.navTargetItems(target, 0),
+          { label: '削除', act: 'delete' },
+          MenuCommon.cancel(),
+        ];
+      },
+      run: (act, target) => {
+        const base = this.entities.findBase(target.id);
+        if (act === 'delete') {
+          if (base) base.alive = false;
+        } else if (act === 'openDock') {
+          this.hud.hint('ドックビュー — Coming soon');
+        } else {
+          this.runBodyShip(act, target);
         }
       },
     },
