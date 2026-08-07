@@ -4,10 +4,10 @@ import * as C from '../const';
 import { leadPoint } from '../../physics/intercept';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from './marker-manager';
-import type { Enemy } from '../game-entity/enemy';
-import type { Player } from '../player/player';
+import type { CombatTarget } from '../targeter';
+import { Player } from '../player/player';
 
-const markerKey = (enemy: Enemy): string => `lead-${enemy.name}`;
+const markerKey = (target: CombatTarget): string => target instanceof Player ? `lead-p-${target.id}` : `lead-e-${target.name}`;
 
 export class LeadMarkers {
   private shownKeys: readonly string[] = [];
@@ -17,9 +17,9 @@ export class LeadMarkers {
   // 射撃できない状況(マップモード・自機喪失)では表示せず、保持していたロック履歴も捨てる。
   sync(
     player: Player,
-    enemies: readonly Enemy[],
-    target: Enemy | null,
-    secondaryTarget: Enemy | null,
+    targetsArray: readonly CombatTarget[],
+    target: CombatTarget | null,
+    secondaryTarget: CombatTarget | null,
     _simTime: number,
     overviewMode: boolean,
     project: ProjectFn,
@@ -32,17 +32,18 @@ export class LeadMarkers {
     // 現在の主/第二ターゲットだけリード点を求める。ターゲットから外れた
     // 敵はこのフレームの retire で直ちにマーカーを除去する。
     const shownKeys: string[] = [];
-    const targets: Enemy[] = [];
-    if (target && enemies.includes(target)) targets.push(target);
-    if (secondaryTarget && secondaryTarget !== target && enemies.includes(secondaryTarget)) targets.push(secondaryTarget);
-    for (const enemy of targets) {
-      const lead = leadPoint(enemy.state, player.state, C.MUZZLE_SPEED, C.LEAD_MAX_TIME);
+    const targets: CombatTarget[] = [];
+    if (target && targetsArray.includes(target)) targets.push(target);
+    if (secondaryTarget && secondaryTarget !== target && targetsArray.includes(secondaryTarget)) targets.push(secondaryTarget);
+    for (const tgt of targets) {
+      const lead = leadPoint(tgt.state, player.state, C.MUZZLE_SPEED, C.LEAD_MAX_TIME);
       if (lead === null) continue;
       // 主照準とは反対向き（逆三角形方向）の三尖星。線だけで描き、中央に
       // 小さな切り欠きを残すことで、敵マーカーや照準と識別しやすくする。
       const star = '<svg viewBox="0 0 24 24" width="24" height="24" aria-label="LEAD"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 14.3V22"/><path d="M12 14.3V22" transform="rotate(120 12 12)"/><path d="M12 14.3V22" transform="rotate(240 12 12)"/></g></svg>';
-      this.markerManager.setPosition(markerKey(enemy), 'mk-lead', star, lead, project, '', 1, enemy.accentColor, undefined, true);
-      shownKeys.push(markerKey(enemy));
+      const color = tgt instanceof Player ? '#00ffff' : tgt.accentColor;
+      this.markerManager.setPosition(markerKey(tgt), 'mk-lead', star, lead, project, '', 1, color, undefined, true);
+      shownKeys.push(markerKey(tgt));
     }
     this.retire(shownKeys);
   }

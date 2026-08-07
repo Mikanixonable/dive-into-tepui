@@ -514,14 +514,12 @@ export class PlanEditor {
   // 現在軌道そのものなので、ノードを置ける編集中だけ扱う。
   update(simTime: number, displayTime: number): void {
     this.simTime = simTime;
-    const shouldShowPlan = this.plan.nodes.length > 0;
-    this.planDisplay.update(this.plan, simTime, displayTime, shouldShowPlan);
+    this.planDisplay.update(this.plan, simTime, displayTime, this.editMode || this.plan.nodes.length > 0);
   }
 
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
   sync(mapDist: number, simTime: number, fo: FloatingOrigin, project: ProjectFn): void {
-    const shouldShowPlan = this.plan.nodes.length > 0;
-    if (shouldShowPlan) {
+    if (this.editMode || this.plan.nodes.length > 0) {
       this.planDisplay.sync(fo, project, this.editMode);
     }
     else {

@@ -9,6 +9,7 @@ export class Hud {
   readonly root: HTMLElement;
   readonly svgOverlay: SVGSVGElement;
   readonly panels: HudPanels;
+  readonly settings = { showMapAmmo: false };
   private hintUntil = 0;
   private toastUntil = 0;
 

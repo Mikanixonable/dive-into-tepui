@@ -23,7 +23,7 @@ export class Logistics {
     private readonly _scene: THREE.Scene,
     private readonly entities: EntityManager,
     private readonly markerManager: MarkerManager,
-  ) {}
+  ) { }
 
   // 自機の軌道上、minDist〜maxDist 先の位相に補給を1個投入する。
   spawnForPlayer(
@@ -76,25 +76,34 @@ export class Logistics {
   }
 
   // 生存中の補給へ ▣ マーカー(画面外なら△の方位矢印)を同期する。
-  syncMarkers(player: Player, project: ProjectFn, displayTime: number): void {
+  syncMarkers(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
     // 表示時刻における生存中ピックアップの位置一覧
     const shown = this.entities.ammos.flatMap((ammo) => {
       const pos = ammo.alive ? ammo.displayState(displayTime)?.r : undefined;
       return pos ? [pos] : [];
     });
+    // 描画と新しい上限の記憶
     for (const [i, pos] of shown.entries()) {
       const key = `mg${i}`;
       const bearing = `${key}-bearing`;
       const label = `AMMO ${fmtMarkerDist(len(sub(pos, player.state.r)))}`;
       const p = project(pos);
-      this.markerManager.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, label);
-      this.markerManager.setBearing(bearing, 'mk-ammo', '△', p, label, 0.9);
+      if (overviewMode && !this._hud.settings.showMapAmmo) {
+        this.markerManager.hide(key);
+        this.markerManager.hide(bearing);
+      } else {
+        this.markerManager.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, label);
+        if (overviewMode) {
+          this.markerManager.hide(bearing);
+        } else {
+          this.markerManager.setBearing(bearing, 'mk-ammo', '△', p, label, 0.9);
+        }
+      }
     }
     // 前フレームより件数が減った分のマーカーを隠す
     for (let i = shown.length; i < this.lastMarkerCount; i++) {
-      const key = `mg${i}`;
-      this.markerManager.hide(key);
-      this.markerManager.hide(`${key}-bearing`);
+      this.markerManager.hide(`mg${i}`);
+      this.markerManager.hide(`mg${i}-bearing`);
     }
     this.lastMarkerCount = shown.length;
   }

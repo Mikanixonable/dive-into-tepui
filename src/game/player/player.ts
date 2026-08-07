@@ -1,13 +1,14 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp } from '../../physics/attitude';
 import { MU_EARTH, OrbitState, R_EARTH, orbitState } from '../../physics/orbital';
-import { Vec3, v3 } from '../../physics/vec3';
+import { Vec3, v3, len, sub } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
+import { fmtMarkerDist } from '../hud/utils';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
@@ -397,7 +398,30 @@ export class Player extends Ship {
   }
 
   // Creative で任意削除されるため、Player が所有する線・ビルボード・HUD も一度だけ解放する。
-  private disposed = false;
+  private disposed: boolean = false;
+
+  // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
+  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3): {
+    key: string; cls: string; sym: string; pos: Vec3; priority: number;
+    name: string; detail: string; bearingColor: string; color: string; symMarkup: boolean;
+  } {
+    const dist = len(sub(pos, viewerPos));
+    const priority = role === 'primary' ? Infinity : role === 'secondary' ? Number.MAX_SAFE_INTEGER : -dist;
+    return {
+      key: `player-${this.id}`,
+      cls: role === 'primary' ? 'mk-target' : 'mk-enemy', // player も味方ターゲットとして mk-enemy に準じる
+      sym: this.hpMarkerSvg(),
+      pos,
+      priority,
+      name: this.displayName,
+      detail: fmtMarkerDist(dist),
+      bearingColor: '#00ffff', // 自機/味方と分かりやすいようにシアン
+      color: '#00ffff',
+      symMarkup: true,
+    };
+  }
+
+  // 自身に関するメッシュやエフェクトを解放する。
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
