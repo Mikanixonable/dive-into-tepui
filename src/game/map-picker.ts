@@ -8,6 +8,7 @@ import { fmtTime } from './hud/utils';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { MapPickable, pickNearest } from './map-pick';
+import { ObjectListPanel } from './object-list-panel';
 import type { Input } from './input/input';
 import { EntityManager } from './simulation/entity-manager';
 import { Ephemeris } from '../physics/ephemeris';
@@ -25,6 +26,8 @@ interface PickHandler {
 
 export class MapPicker {
   private readonly menu = new ContextMenu<MapPickable, MenuAction>();
+  private readonly objectListPanel: ObjectListPanel;
+  private objectListVisible = false;
   private items: readonly MapPickable[] = [];
 
   // このフレームの被選択物候補。refresh の後に読む。
@@ -44,6 +47,10 @@ export class MapPicker {
     this.menu.onSelect = (act, target) => {
       const handler = this.handlers[target.kind];
       if (handler) handler.run(act, target);
+    };
+    this.objectListPanel = new ObjectListPanel(hud.root);
+    this.objectListPanel.onSelect = (id) => {
+      this.cameraSystem.overviewCamera.setFocus(id);
     };
   }
 
@@ -92,21 +99,26 @@ export class MapPicker {
     });
   }
 
-  // 何も当たらなかった場合、クリエイティブモードであれば「空域」として扱う（他のハンドラの後に呼ぶ）。
+  // 何も当たらなかった場合、「空域」として扱う（他のハンドラの後に呼ぶ）。
   handleEmptySpaceRightClick(input: Input, simTime: number): void {
     input.takeRightClicks((p) => {
-      if ((this.game.activeStage as any).stageId === 'creative') {
-        const target = { id: 'empty', name: '宇宙空間', pos: v3(0, 0, 0), kind: 'empty-space' as any };
-        this.menu.open(p.x, p.y, target, this.itemsFor(target, simTime));
-        return true;
-      }
-      return false;
+      const target = { id: 'empty', name: '宇宙空間', pos: v3(0, 0, 0), kind: 'empty-space' as any };
+      this.menu.open(p.x, p.y, target, this.itemsFor(target, simTime));
+      return true;
     });
   }
 
-  // 開いたままのメニューを畳む。
+  // 軌道オブジェクトウィンドウの表示状態を、マップ視点かどうかと合わせて反映する。
+  sync(overviewMode: boolean): void {
+    const visible = overviewMode && this.objectListVisible;
+    this.objectListPanel.setVisible(visible);
+    if (visible) this.objectListPanel.sync(this.items, this.cameraSystem.overviewCamera.focus);
+  }
+
+  // 開いたままのメニュー・ウィンドウを畳む。
   close(): void {
     this.menu.close();
+    this.objectListVisible = false;
   }
 
   private readonly handlers: Record<MapPickable['kind'], PickHandler> = {
@@ -239,15 +251,24 @@ export class MapPicker {
       },
     },
     'empty-space': {
-      itemsFor: () => [
-        { label: 'オブジェクトを配置する', act: 'openShipPlacer', shortcut: 'Enter' },
-        MenuCommon.cancel(),
-      ],
+      itemsFor: () => {
+        const isCreative = (this.game.activeStage as any).stageId === 'creative';
+        const placeItem: readonly MenuItem<MenuAction>[] = isCreative
+          ? [{ label: 'オブジェクトを配置する', act: 'openShipPlacer', shortcut: 'Enter' }]
+          : [];
+        return [
+          ...placeItem,
+          { label: '軌道オブジェクトウィンドウを表示', act: 'openObjectList' },
+          MenuCommon.cancel(),
+        ];
+      },
       run: (act) => {
         if (act === 'openShipPlacer') {
           if ((this.game.activeStage as any).stageId === 'creative') {
             (this.game.activeStage as any).openShipPlacer();
           }
+        } else if (act === 'openObjectList') {
+          this.objectListVisible = true;
         }
       },
     },

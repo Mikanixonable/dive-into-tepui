@@ -623,6 +623,7 @@ export class Game {
 
     this.displayTimeManager.sync(orbitPeriod);
     this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project);
+    this.mapPicker.sync(overviewMode);
     // 月フライバイ等で積分予測と解析楕円が乖離した場合は、重なって誤解を招く
     // 楕円近似線をマップ表示中だけ抑制する。戦闘ビューへ戻れば通常の線へ復帰する。
     if (player) {

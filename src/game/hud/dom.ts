@@ -23,7 +23,7 @@ const STYLE = `
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
 #hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
-#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball, #hud-shipplacer { z-index: 10; }
+#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball, #hud-shipplacer, #hud-object-list { z-index: 10; }
 #hud-toast, #hud-hint { z-index: 20; }
 #hud-context { z-index: 10; }
 #hud-end, #hud-help { z-index: 30; }
@@ -96,6 +96,10 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
 #hud-enemies .erow.tgt { color: ${WARNING}; }
+#hud-object-list { max-height: 240px; overflow-y: auto; }
+#hud-object-list .erow { padding: 3px 0; color: ${INK_SOFT}; cursor: pointer; }
+#hud-object-list .erow:hover { color: ${INK}; }
+#hud-object-list .erow.tgt { color: ${ACCENT}; }
 #hud-combat-shelf { display: contents; }
 
 #hud-hint {

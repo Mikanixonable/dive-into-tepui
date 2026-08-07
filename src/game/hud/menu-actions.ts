@@ -10,7 +10,8 @@ export type MenuAction =
   | 'delete'
   | 'cancel'
   | 'openShipPlacer'
-  | 'openDock';
+  | 'openDock'
+  | 'openObjectList';
 
 // 共通メニュー項目ファクトリ
 export const MenuCommon = {
