@@ -24,11 +24,12 @@ function sideSign(side: RadiatorSide): number {
 class Panel {
   deployTarget: 0 | 1 = 0;
   deploy = 0;
-  wear = 0;
 }
 
 export class RadiatorSystem {
   private readonly panels: Record<RadiatorSide, Panel> = { up: new Panel(), down: new Panel() };
+  // side ごとの損耗率(0=無傷, 1=全損)。放熱板パーツの残 HP から update() で受け取る。
+  private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
   private readonly folds: Record<RadiatorSide, THREE.Object3D[]>;
 
   // shipObj は自機メッシュ。上下それぞれ、ヒンジ Group の子孫から折り目 Group を
@@ -51,15 +52,14 @@ export class RadiatorSystem {
   }
 
   // 展開度を指示値へ RADIATOR_DEPLOY_TIME 秒かけて近づける。数値のみを動かす(THREE には触れない)。
-  update(dt: number): void {
+  // wear は放熱板パーツの残 HP 由来の損耗率で、修理はドックでしか行えない。
+  update(dt: number, wear: Record<RadiatorSide, number>): void {
+    this.wear = wear;
     const step = dt / C.RADIATOR_DEPLOY_TIME;
     for (const side of ['up', 'down'] as const) {
       const p = this.panels[side];
       if (p.deploy < p.deployTarget) p.deploy = Math.min(p.deployTarget, p.deploy + step);
       else if (p.deploy > p.deployTarget) p.deploy = Math.max(p.deployTarget, p.deploy - step);
-
-      // 耐久率(wear)を少しずつ回復させる
-      if (p.wear > 0) p.wear = Math.max(0, p.wear - C.RADIATOR_WEAR_RECOVERY * dt);
     }
   }
 
@@ -85,7 +85,7 @@ export class RadiatorSystem {
     for (const side of ['up', 'down'] as const) {
       const { even, odd } = this.foldThetas(side);
       const folds = this.folds[side];
-      const broken = this.panels[side].wear >= 1;
+      const broken = this.wear[side] >= 1;
       for (let i = 0; i < folds.length; i++) {
         const fold = folds[i];
         const rotY = i === 0 ? even : (i % 2 === 1 ? odd - even : even - odd);
@@ -100,7 +100,7 @@ export class RadiatorSystem {
 
   // side の有効な放熱面積 [m^2]。展開度と損耗度で目減りする。
   private panelArea(side: RadiatorSide, totalCoolingRate: number): number {
-    if (this.panels[side].wear >= 1) return 0;
+    if (this.wear[side] >= 1) return 0;
     return (totalCoolingRate / 2) * this.panels[side].deploy;
   }
 
@@ -135,19 +135,17 @@ export class RadiatorSystem {
     return C.PLAYER_RADIUS + (RADIATOR_TIP_DISTANCE - C.PLAYER_RADIUS) * maxDeploy;
   }
 
-  // 被弾位置から上下どちらのパネルへの命中かを判定し、損耗度を増やす(回復はしない)。
-  // このフレームで新たに全損に達したら、その side を返す(既に全損していたら null)。
-  damageFromHit(hitR: Vec3, shipR: Vec3, att: Attitude): RadiatorSide | null {
+  // 被弾位置が展開中の放熱板に当たっていればその side を返す。判定のみで状態は変えない
+  // (損耗は放熱板パーツの HP が正本なので、減らすのは所有者側の責務)。
+  sideHitBy(hitR: Vec3, shipR: Vec3, att: Attitude): RadiatorSide | null {
     const worldOffset = sub(hitR, shipR);
     const bodyOffset = qRotate(qInvert(att.q), worldOffset);
     if (len(bodyOffset) <= C.PLAYER_HULL_RADIUS) return null;
 
     const side: RadiatorSide = bodyOffset.x >= 0 ? 'up' : 'down';
-    const p = this.panels[side];
-    if (p.deploy < C.RADIATOR_HITTABLE_DEPLOY) return null;
-    if (p.wear >= 1) return null;
-    p.wear = Math.min(1, p.wear + C.RADIATOR_HIT_WEAR_PER_HIT);
-    return p.wear >= 1 ? side : null;
+    if (this.panels[side].deploy < C.RADIATOR_HITTABLE_DEPLOY) return null;
+    if (this.wear[side] >= 1) return null;
+    return side;
   }
 
   // side の蛇腹の先端付近の world 座標を shipR 基準の Vec3 で返す。sync() 後の状態を前提にする。
@@ -162,5 +160,5 @@ export class RadiatorSystem {
 
   // HUD 表示用。
   deployOf(side: RadiatorSide): number { return this.panels[side].deploy; }
-  wearOf(side: RadiatorSide): number { return this.panels[side].wear; }
+  wearOf(side: RadiatorSide): number { return this.wear[side]; }
 }
