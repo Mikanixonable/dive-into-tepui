@@ -5,7 +5,6 @@
 import { SegmentedControl, hudButton } from '../hud/buttons';
 import { LibrationPoint, LibrationSystem } from '../../physics/halo';
 import * as C from '../const';
-import { hudDock } from '../hud/dom';
 
 export type ReferenceBody = 'earth' | 'moon';
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
@@ -99,6 +98,8 @@ function setFieldVisible(input: HTMLInputElement, visible: boolean): void {
 
 export class ShipPlacerPanel {
   onConfirm: ((name: string, form: ShipPlacerForm) => void) | null = null;
+  onChange: (() => void) | null = null;
+  onClose: (() => void) | null = null;
 
   private readonly panel: HTMLElement;
   private readonly placementMode: SegmentedControl<PlacementMode>;
@@ -136,6 +137,12 @@ export class ShipPlacerPanel {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-shipplacer';
     this.panel.className = 'panel';
+    // モーダルとして画面中央に配置
+    this.panel.style.position = 'fixed';
+    this.panel.style.top = '50%';
+    this.panel.style.left = '50%';
+    this.panel.style.transform = 'translate(-50%, -50%)';
+    this.panel.style.zIndex = '30';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
     title.textContent = '艦艇配置';
@@ -217,9 +224,25 @@ export class ShipPlacerPanel {
     nameRow.appendChild(this.nameInput);
     this.panel.appendChild(nameRow);
 
-    this.panel.appendChild(hudButton('配置', () => this.confirm()));
+    const btnRow = document.createElement('div');
+    btnRow.style.display = 'flex';
+    btnRow.style.gap = '10px';
+    btnRow.style.marginTop = '12px';
+    btnRow.appendChild(hudButton('配置', () => this.confirm()));
+    btnRow.appendChild(hudButton('キャンセル', () => {
+      this.setVisible(false);
+      this.onClose?.();
+    }));
+    this.panel.appendChild(btnRow);
 
-    hudDock(root, 'left').appendChild(this.panel);
+    // root (hud-modal-shield) に追加
+    root.appendChild(this.panel);
+
+    // 入力変更イベントのバインド
+    const inputs = this.panel.querySelectorAll('input');
+    for (let i = 0; i < inputs.length; i++) {
+      inputs[i]!.addEventListener('input', () => this.onChange?.());
+    }
   }
 
   // サイズ/形の入力組を切り替え、選ばれた組以外を隠す。
@@ -229,6 +252,7 @@ export class ShipPlacerPanel {
     for (const [key, group] of Object.entries(this.sizeGroups) as [SizeShapeMode, HTMLElement][]) {
       group.style.display = key === mode ? 'block' : 'none';
     }
+    this.onChange?.();
   }
 
   // 配置方法(軌道要素/ラグランジュ点)を切り替え、選ばれなかった側を隠す。
@@ -238,6 +262,7 @@ export class ShipPlacerPanel {
     for (const [key, group] of Object.entries(this.placementGroups) as [PlacementMode, HTMLElement][]) {
       group.style.display = key === mode ? 'block' : 'none';
     }
+    this.onChange?.();
   }
 
   // 系を切り替え、面内/面外振幅の既定値をその系のオーダーへ更新する。
@@ -247,6 +272,7 @@ export class ShipPlacerPanel {
     const amp = LIBRATION_DEFAULT_AMPLITUDE_KM[system];
     this.libAx.value = String(amp.ax);
     this.libAz.value = String(amp.az);
+    this.onChange?.();
   }
 
   // フォームの現在値を読み、onConfirm へ通知する。
@@ -256,7 +282,15 @@ export class ShipPlacerPanel {
     const name = this.nameInput.value.trim() || `SHIP-${this.shipCount}`;
     // 選ばれなかった側の入力値も含めてまとめて渡す(確定側が placementMode/sizeMode を見て
     // 使う組を選ぶ)。
-    const form: ShipPlacerForm = {
+    const form = this.getForm();
+    this.onConfirm?.(name, form);
+    this.setVisible(false);
+    this.onClose?.();
+  }
+
+  // 現在のフォームの値を読み取って ShipPlacerForm を返す。プレビュー用にも使用。
+  getForm(): ShipPlacerForm {
+    return {
       placementMode: this.placementModeValue,
       body: this.bodyValue,
       sizeMode: this.sizeModeValue,
@@ -275,11 +309,11 @@ export class ShipPlacerPanel {
       axKm: Number(this.libAx.value),
       azKm: Number(this.libAz.value),
     };
-    this.onConfirm?.(name, form);
   }
 
   // パネルの表示/非表示を切り替える。
   setVisible(visible: boolean): void {
     this.panel.style.display = visible ? 'block' : 'none';
+    if (visible) this.onChange?.();
   }
 }

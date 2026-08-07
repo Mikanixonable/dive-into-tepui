@@ -11,7 +11,7 @@ import { ProjectFn } from '../camera/camera-system';
 import { orbitPeriodOf, Plan, TimeRange } from './plan';
 import { PlanArc } from './plan-arc';
 
-const SEGMENT_COLORS = [0xbfc9d4, 0xffffff, 0xff6a00];
+const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
 const arcOpacity = (i: number): number => (i === 0 ? 0.55 : 0.85);
 
@@ -54,7 +54,7 @@ export class PlanTrajectory {
     const segments = buildSegments(plan, ephemeris);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
-      this.arcAt(i).update(seg.state0, seg.end, ephemeris);
+      this.arcAt(i).update(seg.state0, seg.end, ephemeris, plan.centralBody);
     }
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
