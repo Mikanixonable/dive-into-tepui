@@ -47,25 +47,19 @@
         - hud.hint() // ノード無し or !isPlaying
         - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
         - startAutoWarpTo() + hud.hint() // 未開始
-    - mapModeToggler.update()
-      - close(...) // !isPlaying && cameraSystem.overviewMode のみ(死亡/終了時にマップを強制的に閉じる)
-      - [ポーズ中] 何もせず return // [M] は消費もしない。開いていたマップはそのまま維持する
-      - [開く: !cameraSystem.overviewMode]
-        - editor.selectedNodeIdx = null
-        - touchControls?.setMapMode(true) // タッチデバイスのみ
-        - cameraSystem.overviewMode = true / editor.editMode = true / displayTimeManager.forceCurrent = false // 独立3責務を同時に立てる唯一の箇所
+    - docking.handleInput() // ドック表示中の [ESC] を先に消費する(設定画面と二重に効かせない)
+    - viewManager.update() // ビュー遷移はすべて setView() を通る
+      - setView('combat') // !isPlaying のみ(死亡/終了時にドック・マップを強制的に閉じる)
+      - [current==='dock'] 何もせず return // [M] は消費もしない
+      - setView(current==='map' ? 'combat' : 'map') // [M]。canToggleView かつ isPlaying のみ
+        - [出るビューが dock] docking.leaveDock() → dockView.close() + game.resume()
+        - [3D 側ビューが map→他] editor.onMapClosed() / editor.closeMenu() / mapPicker.close()
+          - onMapClosed: hidePanel / hideGizmo / plan.removeNode(末尾の Δv 微小ノードを間引く) / selectedNodeIdx=null
+        - [3D 側ビューが 他→map] editor.selectedNodeIdx = null
+        - [入るビューが dock] docking.enterDock() → game.pause() + dockView.open(activeBase)
+        - applyChrome() // map-mode/dock-mode クラス・navball 配置・touchControls・
+                        // cameraSystem.overviewMode・editor.editMode・displayTimeManager.forceCurrent を一斉に揃える
         - hud.hint()
-      - [閉じる: cameraSystem.overviewMode]
-        - editor.onMapClosed()
-          - hidePanel()
-          - hideGizmo() → nodeGizmo.sync([], null)
-          - plan.removeNode() // 末尾から Δv が NODE_MIN_DV 未満のノードを削る。有意な Δv のノードに当たったら打ち切る
-          - selectedNodeIdx = null
-        - editor.closeMenu() → nodeGizmo.closeMenu()
-        - mapPicker.close()
-        - touchControls?.setMapMode(false)
-        - cameraSystem.overviewMode = false / editor.editMode = false / displayTimeManager.forceCurrent = true
-        - hud.hint() // plan.nodes.length > 0 のみ
     - editor.handleInput()
       - clearPlanByKey() // K.deleteNode
         - [editMode] deleteSelected() → deleteNode()
@@ -205,7 +199,7 @@
   - targeter.updateBoardMarks(dt) // 既存マークの経過時間を進め、寿命切れを捨てる。ターゲットが居なければ全消し
     - boardMarks.push() // 通常弾が的の面を自機側から通過した場合のみ
   - [CreativeStage] 撃沈艦を players から除去 → removeCreativePlayer() // 生存 0 隻ならアクティブ艦を差し替え/マップを開く
-  - [!dockView.visible && entities.bases.length > 0] docking.checkProximity() // 全 base × 全生存艦。距離・相対速度が閾値内の艦を収容(EntityManager.parkPlayer で破棄せず除去)
+  - [viewManager.current !== 'dock' && entities.bases.length > 0] docking.checkProximity() // 全 base × 全生存艦。距離・相対速度が閾値内の艦を収容(EntityManager.parkPlayer で破棄せず除去)
   - entities.cleanup() // simulator.simTime と自機位置を渡す(弾は距離で消える)
     - checkLoss() // 敵・弾・薬莢・デブリ・補給・自機(全隻、この順)の各個体ごと(既定は alive=false 代入のみ)
       - [Enemy.checkLoss] destroyEffect() + activeStage.recordEnemyDeath(cause='reentry') // 再突入時のみ
@@ -385,6 +379,7 @@
 ## game.render()
 
 - game.render()
+  - [viewManager.current === 'dock'] 何も描かずに return // ドックは 3D を持たない全画面ビュー
   - renderer.render(scene, cameraSystem.activeCamera) // 通常の全画面描画
 
 ---
