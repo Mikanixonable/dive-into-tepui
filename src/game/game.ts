@@ -466,6 +466,7 @@ export class Game {
       this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
       this.editor.updateEditing(dt, this.input);
     } else if (this.player) {
+      this.navTarget.updateCombatBasePicking(this.entities, this.input, this.cameraSystem.activeCameraProjection);
       const targets = this.entities.getCombatTargets(this.player);
       this.targeter.updateCombatTargeting(
         this.player, targets, this.input, this.cameraSystem.activeCameraProjection,
