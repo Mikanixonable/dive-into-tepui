@@ -122,8 +122,9 @@ export class PlanTrajectory {
 
   // 画面座標に最も近い計画軌道のサンプル(maxPx 以内)。なければ null。
   // range を渡すと、その時刻範囲に入るサンプルだけを候補にする。
-  nearestSample(mx: number, my: number, maxPx: number, range?: TimeRange): OrbitState | null {
+  nearestSample(mx: number, my: number, maxPx: number, range?: TimeRange): { state: OrbitState, arcIdx: number } | null {
     let best: OrbitState | null = null;
+    let bestArc = -1;
     let bestD = maxPx * maxPx;
     // 全 arc の全サンプルを画面座標へ投影し、最も近いものを選ぶ
     for (let i = 0; i < this.activeCount; i++) {
@@ -135,10 +136,11 @@ export class PlanTrajectory {
         if (d < bestD) {
           bestD = d;
           best = s;
+          bestArc = i;
         }
       }
     }
-    return best;
+    return best ? { state: best, arcIdx: bestArc } : null;
   }
 
   // group 全体の表示/非表示を切り替える。
