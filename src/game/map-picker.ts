@@ -14,8 +14,9 @@ import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
 import type { Game } from './game';
+import { v3 } from '../physics/vec3';
 
-type MapAction = 'focus' | 'navTarget' | 'warp' | 'addNode' | 'activate' | 'followToggle' | 'delete' | 'cancel';
+type MapAction = 'focus' | 'navTarget' | 'warp' | 'addNode' | 'activate' | 'followToggle' | 'delete' | 'cancel' | 'openShipPlacer';
 type MapMenuItem = MenuItem<MapAction>;
 
 export class MapPicker {
@@ -63,11 +64,19 @@ export class MapPicker {
   }
 
   // 右クリック位置の最寄り候補を探し、当たればその種別に応じた項目でメニューを開いて消費する。
+  // 何も当たらなかった場合、クリエイティブモードであれば「空域」として扱う。
   handleRightClick(input: Input, simTime: number): void {
     input.takeRightClicks((p) => {
-      const target = pickNearest(
+      let target = pickNearest(
         this.items, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ,
       );
+      if (!target) {
+        if ((this.game.activeStage as any).stageId === 'creative') {
+          target = { id: 'empty', name: '宇宙空間', pos: v3(0, 0, 0), kind: 'empty-space' as any };
+        } else {
+          return false;
+        }
+      }
       if (!target) return false;
       this.menu.open(p.x, p.y, target, this.itemsFor(target, simTime));
       return true;
@@ -117,6 +126,11 @@ export class MapPicker {
           { label: 'フォーカスを移動', act: 'focus' },
           { label: 'キャンセル', act: 'cancel' },
         ];
+      case 'empty-space':
+        return [
+          { label: '艦艇を配置する', act: 'openShipPlacer' },
+          { label: 'キャンセル', act: 'cancel' },
+        ];
     }
   }
 
@@ -155,6 +169,10 @@ export class MapPicker {
     } else if (act === 'delete') {
       const ship = this.entities.findPlayer(target.id);
       if (ship) this.game.removeCreativePlayer(ship);
+    } else if (act === 'openShipPlacer') {
+      if ((this.game.activeStage as any).stageId === 'creative') {
+        (this.game.activeStage as any).openShipPlacer();
+      }
     }
   }
 }
