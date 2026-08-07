@@ -48,6 +48,8 @@ const PART_SELL_RATE = 0.5;
 const PART_FALLBACK_VALUE_PER_MAXHP = 20;
 // RCSタンクへの燃料補給コスト: 1kgあたりのクレジット
 const RCS_REFUEL_PRICE_PER_KG = 2;
+// 新造艦(既定パーツ一式)の価格。SHOP_CATALOG の最安構成の合計(≈31,500 Cr)に組立分を上乗せした額。
+const NEW_SHIP_COST = 35000;
 
 // 部品の売却基準額を見積もる。ショップカタログに type/name が一致する項目があればその価格を、
 // なければ maxHp から概算した価格を使う(艦に最初から積まれていた部品など由来不明なもの向け)。
@@ -76,6 +78,8 @@ export class DockView {
 
   // 外部コールバック
   onLaunchShip: ((ship: Player, base: Base) => void) | null = null;
+  // 「新造」ボタン。実際の艦の生成は Docking 側が行う(DockView は UI のみ)。
+  onBuildShip: ((base: Base) => void) | null = null;
   onClose: (() => void) | null = null;
 
   get visible(): boolean { return this._visible; }
@@ -182,10 +186,14 @@ export class DockView {
   private buildShipsTab(): string {
     const base = this.currentBase!;
     const ships = base.baseState.dockedShips;
-    if (ships.length === 0) {
-      return `<div class="dock-empty">格納されている艦はありません。<br>ランデブー後に収容できます。</div>`;
-    }
-    const rows = ships.map((s: DockedShipEntry, i: number) => `
+    const list = ships.length === 0
+      ? `<div class="dock-empty">格納されている艦はありません。<br>ランデブー後に収容するか、新造してください。</div>`
+      : `<div class="dock-ship-list">${ships.map((s, i) => this.buildShipRow(s, i)).join('')}</div>`;
+    return list + this.buildNewShipHeader(base);
+  }
+
+  private buildShipRow(s: DockedShipEntry, i: number): string {
+    return `
       <div class="dock-ship-row ${this.currentShip?.id === s.id ? 'selected' : ''}" data-ship-idx="${i}">
         <div class="dock-ship-info">
           <span class="dock-ship-name">${s.name ?? `艦 #${i + 1}`}</span>
@@ -196,8 +204,19 @@ export class DockView {
           <button class="dock-btn dock-btn-inspect" data-ship-idx="${i}">詳細</button>
         </div>
       </div>
-    `).join('');
-    return `<div class="dock-ship-list">${rows}</div>`;
+    `;
+  }
+
+  // 新造(既定パーツ一式の艦を1隻、格納艦へ加える)ボタン。
+  private buildNewShipHeader(base: Base): string {
+    const canAfford = this.creative || base.baseState.money >= NEW_SHIP_COST;
+    return `
+      <div class="dock-parts-header">
+        <span class="dock-ship-label">既定パーツ一式の艦を1隻建造します</span>
+        <button class="dock-btn dock-btn-build-ship ${canAfford ? '' : 'disabled'}" ${canAfford ? '' : 'disabled'}
+        >新造 ${this.creative ? '(無料)' : `${NEW_SHIP_COST.toLocaleString()} Cr`}</button>
+      </div>
+    `;
   }
 
   // ─── 部品タブ ───────────────────────────────────────────
@@ -377,6 +396,9 @@ export class DockView {
     this.el.querySelectorAll('.dock-btn-inspect').forEach((btn) => {
       btn.addEventListener('click', (e) => this.handleInspect(e));
     });
+    this.el.querySelectorAll('.dock-btn-build-ship').forEach((btn) => {
+      btn.addEventListener('click', () => this.handleBuildShip());
+    });
     // 部品タブ: 修理・全修理
     this.el.querySelectorAll('.dock-btn-repair').forEach((btn) => {
       btn.addEventListener('click', (e) => this.handleRepairPart(e));
@@ -423,6 +445,16 @@ export class DockView {
     this.onLaunchShip?.(shipData.player, base);
     base.baseState.dockedShips.splice(idx, 1);
     if (this.currentShip === shipData.player) this.currentShip = null;
+    this.refresh();
+  }
+
+  // 新造費用を払い、実際の艦の生成(Docking 側)を要求する。
+  private handleBuildShip(): void {
+    const base = this.currentBase;
+    if (!base) return;
+    if (!this.creative && base.baseState.money < NEW_SHIP_COST) return;
+    if (!this.creative) base.baseState.money -= NEW_SHIP_COST;
+    this.onBuildShip?.(base);
     this.refresh();
   }
 
