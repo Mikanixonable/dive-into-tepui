@@ -106,39 +106,7 @@ export class Enemy extends Ship {
     return '#' + this.accent.toString(16).padStart(6, '0');
   }
 
-  // 逆三角形を辺中央の切り欠きで分割し、残HPに応じて発光するSVGを生成する。
-  // 分割数は3の倍数へ丸めるため、将来HPが12/18になっても多重リングへ拡張しやすい。
-  private hpMarkerSvg(): string {
-    const segments = Math.max(3, Math.round(this.maxHp / 3) * 3);
-    const lit = Math.max(0, Math.min(segments, Math.round((this.hp / this.maxHp) * segments)));
-    // 正三角形のシルエット(辺長18、外接円中心は(12,12))。
-    // 旧形状は高さが幅より大きく、画面上で縦長に見えていた。
-    const points: [number, number][] = [[12, 3], [3, 18.588], [21, 18.588]];
-    const lines: string[] = [];
-    const emit = (i: number, j: number, k: number, a: number, b: number): void => {
-      if (b <= a) return;
-      const [x1, y1] = points[i]!;
-      const [x2, y2] = points[(i + 1) % 3]!;
-      const color = (i * k + j) < lit ? 'currentColor' : 'rgba(120,125,130,.2)';
-      lines.push(`<line x1="${x1 + (x2 - x1) * a}" y1="${y1 + (y2 - y1) * a}" x2="${x1 + (x2 - x1) * b}" y2="${y1 + (y2 - y1) * b}" stroke="${color}" stroke-width="1.5" stroke-linecap="butt"/>`);
-    };
-    for (let i = 0; i < 3; i++) {
-      const k = segments / 3;
-      // 頂点は連続させ、各辺の中央だけを切り欠く。
-      for (let j = 0; j < k; j++) {
-        const a = j / k;
-        const b = (j + 1) / k;
-        const notch = 0.09;
-        if (a < 0.5 && b > 0.5) {
-          emit(i, j, k, a, 0.5 - notch / 2);
-          emit(i, j, k, 0.5 + notch / 2, b);
-        } else {
-          emit(i, j, k, a, b);
-        }
-      }
-    }
-    return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">${lines.join('')}</svg>`;
-  }
+
 
   // pos は機体メッシュと同じ表示時刻の位置(displayState 経由)を使う。role が第一/第二
   // ターゲットのどちらでもなければ通常の敵マーカーになる。
