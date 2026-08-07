@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
 import { OrbitState } from '../../physics/orbital-state';
+import { Attractor } from '../../physics/attractor';
 import { Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
@@ -48,8 +49,8 @@ export class DebrisPiece extends GameEntity {
   }
 
   // 再突入判定に加え、薬莢は寿命超過でも alive を落とす。
-  checkLoss(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3): void {
-    super.checkLoss(dt, simTime, activeStage, playerPos);
+  checkLoss(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3, bodies: readonly Attractor[]): void {
+    super.checkLoss(dt, simTime, activeStage, playerPos, bodies);
     if (!this.alive) return;
     // 薬莢のみ、寿命(CASING_LIFETIME)による消滅がある(他のデブリは大気突入のみ)。
     if (this.debrisKind.kind === 'casing' && simTime - this.debrisKind.bornSim >= C.CASING_LIFETIME) {

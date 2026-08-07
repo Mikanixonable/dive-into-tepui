@@ -3,6 +3,7 @@
 // 値から OrbitState を組み立てるのは物理側(stateFromElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
 import { SegmentedControl, hudButton } from '../hud/buttons';
+import { ATTRACTOR_NAMES } from '../hud/frame-labels';
 import { LibrationPoint, LibrationSystem } from '../../physics/halo';
 import * as C from '../const';
 
@@ -48,8 +49,8 @@ const PLACEMENT_MODE_ITEMS: readonly (readonly [PlacementMode, string])[] = [
 ];
 
 const BODY_ITEMS: readonly (readonly [ReferenceBody, string])[] = [
-  ['earth', '地球'],
-  ['moon', '月'],
+  ['earth', ATTRACTOR_NAMES.earth],
+  ['moon', ATTRACTOR_NAMES.moon],
 ];
 
 const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [

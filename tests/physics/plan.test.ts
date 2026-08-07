@@ -34,8 +34,8 @@ export function register(): void {
     assert.ok(Math.abs(plan.nodeTimeRange(0, ephemeris).max - (t + expected)) < 1e-6);
 
     const el = elementsAround(state, center)!;
-    assert.equal(el.mu, MU_MOON);
-    const apsis = apsisAltitudes(el, center.radius);
+    assert.equal(el.center.mu, MU_MOON);
+    const apsis = apsisAltitudes(el);
     assert.ok(Math.abs(apsis.pe - 100_000) < 1, `近点高度: ${apsis.pe}`);
     assert.ok(Math.abs(apsis.ap - 100_000) < 1, `遠点高度: ${apsis.ap}`);
   });
