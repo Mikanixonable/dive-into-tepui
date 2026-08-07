@@ -85,8 +85,8 @@ export class PlayerThrottle {
     const maxAccel = ship.mass > 0 ? ship.totalThrust / ship.mass : 0;
     const presetScale = C.THROTTLE_LEVELS[this.throttleIdx]! / C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
     let thrustAccel = maxAccel * presetScale;
-    
-    // Fuel consumption
+
+    // 燃料残量に応じて実際の加速度を絞る
     const consumption = ship.totalFuelConsumptionRate * presetScale * dt;
     const actualRatio = ship.consumeFuel(consumption);
     thrustAccel *= actualRatio;
@@ -133,14 +133,14 @@ export class PlayerThrottle {
       C.RCS_MANUAL_OUTPUT_RAMP *
       (Math.min(C.RCS_MANUAL_RAMP_TIME, this.rotationHoldTime) / C.RCS_MANUAL_RAMP_TIME);
       
-    const baseAngAccel = ship.totalTorque > 0 
+    const baseAngAccel = ship.totalTorque > 0
       ? ship.totalTorque / Math.max(inertia.x, inertia.y, inertia.z)
-      : C.MAX_ANG_ACCEL; // fallback
+      : C.MAX_ANG_ACCEL;
 
     const angScale = fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
     let maxAngAccel = baseAngAccel * angScale * rcsOutputFactor;
-    
-    // Fuel consumption for rotation
+
+    // 燃料残量に応じて実際の角加速度を絞る
     const rotateIntensity = Math.max(Math.abs(inX), Math.abs(inY), Math.abs(inZ));
     if (rotateIntensity > 0) {
       const consumption = ship.totalFuelConsumptionRate * rotateIntensity * rcsOutputFactor * angScale * attDt;

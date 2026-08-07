@@ -16,6 +16,7 @@ export class PowerSystem {
   private readonly panels: Record<SolarSide, Panel> = { up: new Panel(), down: new Panel() };
   private readonly solarFolds: Record<SolarSide, THREE.Object3D[]>;
 
+  // shipObj から左右の太陽電池パネルの蛇腹メッシュを名前で探す。見つからなければ例外を投げる。
   constructor(shipObj: THREE.Object3D) {
     const collect = (side: SolarSide): THREE.Object3D[] => {
       const namePrefix = 'solar' + (side === 'up' ? 'Up' : 'Down');
@@ -27,6 +28,7 @@ export class PowerSystem {
     this.solarFolds = { up: collect('up'), down: collect('down') };
   }
 
+  // side のパネルの展開/収納目標を反転する。
   toggle(side: SolarSide): void {
     const p = this.panels[side];
     p.deployTarget = p.deployTarget === 0 ? 1 : 0;

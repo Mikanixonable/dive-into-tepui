@@ -131,7 +131,6 @@ export class StageStatusPanel {
   // 毎フレーム(sync 時)呼ぶ。DOM の書き換えは内容が変わったフレームだけに絞る。
   sync(player: Player, message: string, kills: number): void {
     this.player = player;
-    // 温度は整数 K に丸めてから組み立て、表示が動くフレームだけ DOM を書き換える
     const { hp, maxHp } = player;
     const throttleIdx = player.throttleIdx;
     const low = hp <= maxHp * LOW_HP_RATIO;
@@ -187,7 +186,6 @@ export class StageStatusPanel {
     this.syncButton(this.radiatorButtons.up, radiator.deployOf('up'), radiator.wearOf('up'), '放熱板', RADIATOR_UI.up);
     this.syncButton(this.radiatorButtons.down, radiator.deployOf('down'), radiator.wearOf('down'), '放熱板', RADIATOR_UI.down);
 
-    // ステージからの補助メッセージと撃墜数
     const leftHtml = message ? `<div>${message}</div><div>撃墜 ${kills}</div>` : `<div>撃墜 ${kills}</div>`;
     if (this.lastLeftHtml !== leftHtml) {
       this.leftText.innerHTML = leftHtml;

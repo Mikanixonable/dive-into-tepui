@@ -9,8 +9,7 @@ export const SIDEREAL_DAY = 86164.0905; // 恒星日 [s]
 // ある時刻における位置・速度(エポック付き状態ベクトル)。不変で、進めるときは新しい
 // OrbitState を作って差し替える(参照を共有したまま書き換えると、保持側が変化を検知
 // できなくなるため)。t を state 自身が持つので「状態」と「その時刻」が引数として
-// 分かれて食い違うことがない — 予測点列もエンティティの履歴
-// (game-entity/game-entity.ts)も同じこの型で表す。
+// 分かれて食い違うことがない。
 export type OrbitState = {
   readonly t: number; // 絶対 simTime [s]
   readonly r: Vec3; // ECI 位置 [m]

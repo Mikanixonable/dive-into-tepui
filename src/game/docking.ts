@@ -101,6 +101,7 @@ export class Docking {
     }
   }
 
+  // 艦を基地へ収容する: 格納艦一覧へ登録し、entities.players から外して非表示にする。
   private dock(ship: Player, base: Base): void {
     base.baseState.dockedShips.push({
       id: ship.id,
@@ -147,6 +148,7 @@ export class Docking {
     this.hud.hint(`${ship.displayName} を建造しました`);
   }
 
+  // 格納艦を基地脇の軌道へ実体化し、操作対象に据える。
   private launch(ship: Player, base: Base): void {
     const br = base.state.r;
     ship.state = orbitState(base.state.t, v3(br.x + 600, br.y, br.z), base.state.v);

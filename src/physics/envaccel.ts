@@ -1,7 +1,5 @@
 // 環境加速度の合成: 大気抵抗(bcInv = 0 で省略) + J2(地球扁平) + 月・太陽の
-// 第三体(潮汐)摂動。ゲーム本体(game-entity/game-entity.ts)と軌道計画の積分
-// が同じ力の列挙を共有するための唯一の定義箇所。
-// THREE/DOM 非依存の純関数。
+// 第三体(潮汐)摂動。力の列挙を一箇所にまとめる唯一の定義箇所。THREE/DOM 非依存の純関数。
 import { OrbitState, R_EARTH, SIDEREAL_DAY, j2Accel, stepOrbitRK4, thirdBodyAccel } from './orbital';
 import { MU_MOON, MU_SUN } from './ephemeris';
 import { atmosphericDensity } from './atmosphere';
@@ -32,11 +30,9 @@ export function envAccel(r: Vec3, v: Vec3, sunPos: Vec3, moonPos: Vec3, bcInv: n
   return add(add(add(drag, j2), sun), moon);
 }
 
-// 中心重力 + envAccel(環境加速度)+ 推力の RK4 1ステップ。ゲーム本体の実シミュレーション
-// (OrbitEntity.step)が共有する唯一の
-// 積分ステップ。sunPos/moonPos はこのステップぶん呼び出し側が確定させた値(サンプリング
-// 方針 — ステップ先頭か中点か等 — は呼び出し側の裁量)。bcInv/thrust は種別ごとに異なるため
-// 引数で受け取り、モジュール内に既定値を持たない。
+// 中心重力 + envAccel(環境加速度)+ 推力の RK4 1ステップ。sunPos/moonPos はこのステップぶん
+// 呼び出し側が確定させた値(サンプリング方針 — ステップ先頭か中点か等 — は呼び出し側の裁量)。
+// bcInv/thrust は種別ごとに異なるため引数で受け取り、モジュール内に既定値を持たない。
 export function stepEnvRK4(state: OrbitState, dt: number, sunPos: Vec3, moonPos: Vec3, bcInv: number, thrust: Vec3 | null): OrbitState {
   return stepOrbitRK4(state, dt, (rx, ry, rz, vx, vy, vz) => {
     const accel = envAccel(v3(rx, ry, rz), v3(vx, vy, vz), sunPos, moonPos, bcInv);
