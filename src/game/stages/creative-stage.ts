@@ -10,12 +10,12 @@ import type { EffectsSystem } from '../vfx/effects-system';
 import type { Simulator } from '../simulation/simulator';
 import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitState, orbitState } from '../../physics/orbital-state';
-import { semiMajorFromPeriod, stateFromElements } from '../../physics/elements';
+import { Elements, semiMajorFromPeriod, stateFromElements } from '../../physics/elements';
 import { elementsAround } from '../../physics/attractor';
 import { Ephemeris, MU_MOON, R_MOON } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
-import { FloatingOrigin } from '../floating-origin';
-import { add, v3 } from '../../physics/vec3';
+import type { FloatingOrigin } from '../floating-origin';
+import { Vec3, add } from '../../physics/vec3';
 import type { ProjectFn } from '../camera/camera-system';
 import type { UnlockManager } from '../unlock-manager';
 import { Ammo } from '../game-entity/ammo';
@@ -38,6 +38,8 @@ export class CreativeStage extends Stage {
 
   private placerPanel!: ShipPlacerPanel;
   private previewOrbitLine!: OrbitLine;
+  // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
+  private preview: { readonly elements: Elements; readonly pos: Vec3 } | null = null;
   private nextShipId = 1;
 
   briefingHtml(): string {
@@ -52,33 +54,20 @@ export class CreativeStage extends Stage {
     super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
 
     this.previewOrbitLine = new OrbitLine(0xffffff, 0.6);
-    this.previewOrbitLine.line.visible = false;
     scene.add(this.previewOrbitLine.line);
 
     this.placerPanel = new ShipPlacerPanel(hud.root);
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
-    this.placerPanel.onChange = () => this.updatePreview();
-    this.placerPanel.onClose = () => {
-      this.previewOrbitLine.line.visible = false;
-      this._markerManager.hide('creative-preview');
-    };
   }
 
   init(): number {
     return 0;
   }
 
-  // プレビューの継続的な位置更新(フローティングオリジン対応)
-  sync(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
-    super.sync(player, project, displayTime, overviewMode);
-    this.syncPreview(project);
-  }
-
-  // 未配置の開始状態でのプレビュー位置更新
-  syncWithoutPlayer(overviewMode: boolean, project: ProjectFn): void {
-    // overviewMode の未使用警告を回避するためアクセスだけしておく
-    void overviewMode;
-    this.syncPreview(project);
+  // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
+  sync(player: Player | null, fo: FloatingOrigin, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
+    super.sync(player, fo, project, displayTime, overviewMode);
+    this.syncPreview(fo, project);
   }
 
   // 艦艇配置モーダルを開く (MapPicker から呼ばれる)
@@ -86,61 +75,36 @@ export class CreativeStage extends Stage {
     this.placerPanel.setVisible(true);
   }
 
-  // フォーム値からプレビュー用の軌道要素を求め、OrbitLine を更新する
-  private updatePreview(project?: ProjectFn): void {
+  // フォーム値から配置プレビューの軌道要素と位置を求める。パネルを閉じている間・軌道要素指定
+  // 以外の配置方法・入力を解釈できない値のときは null(プレビューを出さない)。
+  private computePreview(): { elements: Elements; pos: Vec3 } | null {
+    if (!this.placerPanel.isOpen) return null;
     const form = this.placerPanel.getForm();
-    if (form.placementMode !== 'elements') {
-      this.previewOrbitLine.line.visible = false;
-      this._markerManager.hide('creative-preview');
-      return;
-    }
+    if (form.placementMode !== 'elements') return null;
     try {
       const state = this.buildInitialState(form);
+      // 楕円はフォームが選んだ基準天体(地球 or 月)中心で描く。
       const center = this._ephemeris.attractorsAt(this._simulator.simTime)
         .find((body) => body.id === (form.body === 'moon' ? 'moon' : 'earth'))!;
-
-      const el = elementsAround(state, center);
-      if (el) {
-        const player = this._entities.players.find(p => p.alive) ?? null;
-        const fo = player
-          ? new FloatingOrigin(player.state.r, player.state.v)
-          : new FloatingOrigin(v3(0, 0, 0), v3(0, 0, 0));
-        this.previewOrbitLine.sync(el, fo, true);
-        this.previewOrbitLine.line.visible = true;
-
-        if (project) {
-          this._markerManager.setPosition(
-            'creative-preview',
-            'mk-self',
-            '▷',
-            state.r,
-            project,
-            'PREVIEW',
-            1,
-            '#00ffff',
-            0,
-            false,
-            false
-          );
-        }
-      } else {
-        this.previewOrbitLine.line.visible = false;
-        this._markerManager.hide('creative-preview');
-      }
+      const elements = elementsAround(state, center);
+      return elements ? { elements, pos: state.r } : null;
     } catch {
-      this.previewOrbitLine.line.visible = false;
-      this._markerManager.hide('creative-preview');
+      return null;
     }
   }
 
-  // 毎フレーム fo を適用するための同期
-  private syncPreview(project?: ProjectFn): void {
-    if (!this.previewOrbitLine.line.visible) {
+  // 配置プレビューの軌道線と ▷ マーカーを update が求めた値へ同期する。
+  private syncPreview(fo: FloatingOrigin, project: ProjectFn): void {
+    if (!this.preview) {
+      this.previewOrbitLine.sync(null, fo);
       this._markerManager.hide('creative-preview');
       return;
     }
-    // フォームの内容が valid であれば表示が維持されているので更新
-    this.updatePreview(project);
+    this.previewOrbitLine.sync(this.preview.elements, fo, true);
+    this._markerManager.setPosition(
+      'creative-preview', 'mk-self', '▷', this.preview.pos, project,
+      'PREVIEW', 1, '#00ffff', 0, false, false,
+    );
   }
 
   // フォーム値から OrbitState を組み立て、配置する。
@@ -261,13 +225,11 @@ export class CreativeStage extends Stage {
     if (!values.every(Number.isFinite)) throw new Error('有限の状態を作れませんでした');
   }
 
-  // ノード適用は Simulator のイベント境界で行うため、フレーム更新では何もしない。
-  update(_dt: number, player: Player, _entities: EntityManager, simTime: number, _simSpeed: SimSpeedManager): void {
-    // Creative は戦闘フェーズを持たないため、以前は補給ロジスティクスも
-    // 更新されていなかった。その結果、初期弾薬が 0 の Creative 艦は
-    // いったん弾を使い切ると補給が永遠に投入されなかった。
-    // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行う。
-    this.logistics.updateLogistics(simTime, player, true);
+  // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行い、配置プレビューを求め直す。
+  // 計画ノードの適用は Simulator のイベント境界(applySimulationEvents)で行う。
+  update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, _simSpeed: SimSpeedManager): void {
+    if (player) this.logistics.updateLogistics(simTime, player, true);
+    this.preview = this.computePreview();
   }
 
   // followPlan のノードは Simulator の既知イベントとして扱い、必ずnode.tちょうどで積分を切る。

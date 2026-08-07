@@ -75,18 +75,18 @@ export class Logistics {
     return count;
   }
 
-  // 生存中の補給へ ▣ マーカー(画面外なら△の方位矢印)を同期する。
-  syncMarkers(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
-    // 表示時刻における生存中ピックアップの位置一覧
-    const shown = this.entities.ammos.flatMap((ammo) => {
+  // 生存中の補給へ ▣ マーカー(画面外なら△の方位矢印)を同期する。ラベルの距離表示は
+  // 自機基準なので、艦が1隻も無い間はすべて隠す。
+  syncMarkers(player: Player | null, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
+    // 表示時刻における生存中ピックアップの位置とラベル
+    const shown = !player ? [] : this.entities.ammos.flatMap((ammo) => {
       const pos = ammo.alive ? ammo.displayState(displayTime)?.r : undefined;
-      return pos ? [pos] : [];
+      return pos ? [{ pos, label: `AMMO ${fmtMarkerDist(len(sub(pos, player.state.r)))}` }] : [];
     });
     // 描画と新しい上限の記憶
-    for (const [i, pos] of shown.entries()) {
+    for (const [i, { pos, label }] of shown.entries()) {
       const key = `mg${i}`;
       const bearing = `${key}-bearing`;
-      const label = `AMMO ${fmtMarkerDist(len(sub(pos, player.state.r)))}`;
       const p = project(pos);
       if (overviewMode && !this._hud.settings.showMapAmmo) {
         this.markerManager.hide(key);

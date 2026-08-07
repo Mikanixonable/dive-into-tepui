@@ -37,8 +37,8 @@ export class FocusMarkers {
 
   constructor(private readonly markerManager: MarkerManager, private readonly ephemeris: Ephemeris) {}
 
-  // 表示時刻 t でラベル座標を更新し、マーカーに反映する。
-  syncLabels(t: number, project: ProjectFn): void {
+  // 表示時刻 t の各ラベル座標を求め直す。
+  update(t: number): void {
     const ephemeris = this.ephemeris;
     const emL = ephemeris.emLagrangeAt(t);
     const seL = ephemeris.seLagrangeAt(t);
@@ -60,9 +60,12 @@ export class FocusMarkers {
       'se-l5': seL.L5,
     };
 
-    // 求めた座標をラベルとマーカーへ反映する
+    for (const lbl of this.labels) lbl.pos = positions[lbl.id]!;
+  }
+
+  // update が求めた座標へラベルのマーカーを置く。
+  syncLabels(project: ProjectFn): void {
     for (const lbl of this.labels) {
-      lbl.pos = positions[lbl.id]!;
       this.markerManager.setPosition(lbl.id, 'mk-poi', '●', lbl.pos, project, lbl.name);
     }
   }
