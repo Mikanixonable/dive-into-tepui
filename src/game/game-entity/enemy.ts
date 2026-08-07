@@ -160,7 +160,7 @@ export class Enemy extends Ship {
 
     activeStage.scoreCounter.recordHit();
 
-    this.hp -= C.ENEMY_HIT_DAMAGE;
+    this.applyDamageToParts(C.ENEMY_HIT_DAMAGE);
     if (this.hp > 0) {
       this.hitEffect(bullet, hitR);
       return;
