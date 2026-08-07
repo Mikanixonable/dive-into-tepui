@@ -284,6 +284,7 @@
 ## game.sync(dt)
 
 - game.sync(dt)
+  - viewBadge.sync(activeStage.selectLabel, canToggleView) // タイトル・Mode・View ドロップダウンの表示反映
   - floatingOrigin = new FloatingOrigin(player.state.r, player.state.v) // 以降の sync 系はこの fo だけを参照する
   - orbitPeriod / displayTime を確定 // displayTimeManager.resolveDisplayTime(): 未来ゴーストのスライダーが立っている間だけ先の時刻
   - cameraSystem.sync() // 最初に呼ぶ: environment.sync とマーカー投影が今フレームのカメラ行列を読む

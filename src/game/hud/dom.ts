@@ -25,7 +25,7 @@ const STYLE = `
 #hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
 #hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball, #hud-shipplacer, #hud-object-list { z-index: 10; }
 #hud-toast, #hud-hint { z-index: 20; }
-#hud-context { z-index: 10; }
+#hud-viewbadge { z-index: 20; }
 #hud-end, #hud-help { z-index: 30; }
 #hud-settings { z-index: 40; }
 #hud-modal-shield { display: none; position: absolute; inset: 0; z-index: 20; pointer-events: none; background: rgba(6,7,9,.3); }
@@ -57,8 +57,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud #hud-dock-toggle-left { left: 8px; }
 #hud #hud-dock-toggle-right { right: 8px; }
 #hud .hud-dock.collapsed { width: 0; }
-#hud .hud-dock.collapsed > .panel,
-#hud .hud-dock.collapsed > #hud-context { display: none !important; }
+#hud .hud-dock.collapsed > .panel { display: none !important; }
 #hud .hud-dock > #hud-shipplacer { max-height: none; overflow: visible; }
 #hud .hud-dock > #hud-plan { width: 100%; min-width: 0; max-width: none; max-height: none; overflow: visible; }
 /* MANEUVER PLAN はマップ操作の主パネルとして右ドックの最上段に固定する。 */
@@ -72,13 +71,22 @@ body.hud-modal-open #touch-ui { display: none; }
   border-bottom: 1px solid rgba(${ACCENT_RGB}, 0.25); margin-bottom: 6px; padding-bottom: 4px;
   font-weight: 600;
 }
-#hud-context {
-  position: absolute; top: 8px; right: 12px; z-index: 20; pointer-events: none;
-  color: ${INK_SOFT}; font-size: 9px; letter-spacing: 1.2px; line-height: 1.35;
-  text-align: right; white-space: nowrap; opacity: 0.9;
+/* マップモードでは #hud-dock-toggle-right(right:8px, 26px 角)がこの位置に重なるので、
+   その右端(8+26=34px)より確実に外側へ避けておく。 */
+#hud-viewbadge {
+  position: absolute; top: 8px; right: 44px;
+  display: flex; align-items: center; gap: 6px;
+  color: ${INK_SOFT}; font-size: 9px; letter-spacing: 1.2px;
+  white-space: nowrap; opacity: 0.9;
 }
-#hud-context .context-mode { color: ${ACCENT}; }
-#hud-context .context-sep { color: ${EDGE}; padding: 0 4px; }
+#hud-viewbadge .vb-title { color: ${ACCENT}; }
+#hud-viewbadge .vb-mode { color: ${INK_SOFT}; }
+#hud-viewbadge .vb-view-btn {
+  pointer-events: auto; cursor: pointer; background: transparent;
+  border: 1px solid ${EDGE}; border-radius: 4px; padding: 2px 6px;
+  color: ${INK_SOFT}; font: inherit; letter-spacing: inherit;
+}
+#hud-viewbadge .vb-view-btn:hover { color: ${INK}; border-color: ${ACCENT_SOFT}; }
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
 #hud .row .k { color: ${INK_SOFT}; }
 #hud .row .v { color: ${INK}; min-width: 90px; text-align: right; }
@@ -308,7 +316,7 @@ body.hud-modal-open #touch-ui { display: none; }
     width: 178px; min-width: 0; max-height: 116px; overflow-y: auto;
   }
   #hud-status, #hud-orbit, #hud-target, #hud-enemies { top: auto; right: auto; bottom: auto; left: auto; }
-  #hud:not(.map-mode) #hud-context { display: none; }
+  #hud:not(.map-mode) #hud-viewbadge { display: none; }
   #hud-controls { display: none; }
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
@@ -686,7 +694,6 @@ export function buildHudDom(): HudDomRefs {
 
   el('div', 'hud-hint', root);
   el('div', 'hud-toast', root);
-  el('div', 'hud-context', root);
 
   buildHelpPanel(root);
 
