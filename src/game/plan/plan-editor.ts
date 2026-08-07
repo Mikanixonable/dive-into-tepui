@@ -10,6 +10,7 @@ import { ACCENT, TEXT, TEXT_DIM } from '../theme';
 import { Hud } from '../hud/hud';
 import { HudHoldButton, SegmentedControl } from '../hud/buttons';
 import { ContextMenu } from '../hud/context-menu';
+import { MenuAction, MenuCommon } from '../hud/menu-actions';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import type { MarkerManager } from '../marker/marker-manager';
@@ -79,7 +80,7 @@ export class PlanEditor {
 
   readonly nodeGizmo = new NodeGizmo();
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
-  private readonly orbitMenu = new ContextMenu<OrbitState>();
+  private readonly orbitMenu = new ContextMenu<OrbitState, MenuAction>();
 
   private readonly dvButtons = buildDvButtons();
   // 6 方向それぞれのホールド継続時間 [s]。index は axis*2 + (sign<0 ? 1 : 0)。
@@ -345,8 +346,8 @@ export class PlanEditor {
       if (!hit) return false;
       this.selectedNodeIdx = null;
       this.orbitMenu.open(mx, my, hit.state, [
-        { label: 'この位置まで時間を加速', act: 'warp' },
-        { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
+        MenuCommon.warp(),
+        MenuCommon.cancel(),
       ]);
       return true;
     }

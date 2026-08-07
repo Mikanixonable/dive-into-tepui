@@ -118,7 +118,12 @@ export class ContextMenu<T, A extends string = string> {
             ${it.subLabel ? `<div class="ctx-menu-header-sub">${it.subLabel}</div>` : ''}
           </div>`;
         }
-        return `<div class="ctx-menu-item" data-act="${it.act || ''}" data-shortcut="${it.shortcut || ''}">${it.label}</div>`;
+        let label = it.label;
+        if (it.shortcut) {
+          const keyName = it.shortcut === 'Escape' ? 'ESC' : it.shortcut === 'Delete' ? 'DEL' : it.shortcut.toUpperCase();
+          label += ` [${keyName}]`;
+        }
+        return `<div class="ctx-menu-item" data-act="${it.act || ''}" data-shortcut="${it.shortcut || ''}">${label}</div>`;
       })
       .join('');
     // クリックされた項目の act を、開いた時点の対象とともに通知して閉じる
