@@ -83,14 +83,13 @@ export class EnvironmentScene {
   // 地球・空の天体・照明・参照線・天球グリッドを、この1フレームの表示状態に同期する。
   // playerPos は照明の日照率を引く基準位置。
   sync(
-    dt: number,
     playerPos: Vec3,
     floatingOrigin: FloatingOrigin,
     displayTime: number,
     cameraSystem: CameraSystem,
     gridVisibility: CelestialGridVisibility,
   ): void {
-    this.syncEarth(dt, floatingOrigin, displayTime);
+    this.syncEarth(floatingOrigin, displayTime);
     this.syncSkyBodies(displayTime, floatingOrigin, cameraSystem);
 
     // lit は自機位置の日照率(円柱影の近似)。物理的に正確ではない。
@@ -123,10 +122,10 @@ export class EnvironmentScene {
   }
 
   // 地球の位置・自転角・表面アニメーションを表示時刻に同期する。
-  private syncEarth(dt: number, fo: FloatingOrigin, displayTime: number): void {
+  private syncEarth(fo: FloatingOrigin, displayTime: number): void {
     this.earth.group.position.copy(fo.RtoThreeV3(EARTH_CENTER));
     this.earth.setRotation(this.earthPhase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
-    this.earth.tick(dt, displayTime);
+    this.earth.tick(displayTime);
   }
 
   // 太陽・月・星の見た目位置とライティング方向を、表示時刻とカメラに応じて同期する。

@@ -55,14 +55,19 @@ interface TargetData {
   relIncDeg: number; // 自機軌道面との相対傾斜角 [deg]
 }
 
+// パネル書き換えの間隔 [ms]。毎フレーム innerHTML を組み直すには重いので間引く。
+const STATS_INTERVAL_MS = 100;
+const ENEMY_LIST_INTERVAL_MS = 250;
+
 export class HudPanels {
-  private hudTimer = 0;
-  private listTimer = 0;
+  private nextStatsAt = 0;
+  private nextEnemyListAt = 0;
 
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
   // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
-  sync(game: Game, dt: number, bodies: readonly Attractor[]): void {
+  sync(game: Game, bodies: readonly Attractor[]): void {
+    const now = performance.now();
     const player = game.player;
     if (!player) {
       // Creative の未配置状態には操縦/戦闘 HUD の値が存在しない。
@@ -89,9 +94,8 @@ export class HudPanels {
     const playerApsis = playerEl ? apsisAltitudes(playerEl) : null;
 
     // スタッツパネルを一定間隔で更新
-    this.hudTimer -= dt;
-    if (this.hudTimer <= 0) {
-      this.hudTimer = 0.1;
+    if (now >= this.nextStatsAt) {
+      this.nextStatsAt = now + STATS_INTERVAL_MS;
       const thermal = player.thermal;
       this.setStats({
         met: game.simulator.simTime,
@@ -154,9 +158,8 @@ export class HudPanels {
     }
 
     // 敵一覧パネルはさらに緩い間隔で更新
-    this.listTimer -= dt;
-    if (this.listTimer <= 0) {
-      this.listTimer = 0.25;
+    if (now >= this.nextEnemyListAt) {
+      this.nextEnemyListAt = now + ENEMY_LIST_INTERVAL_MS;
       const rows = game.entities.enemies
         .filter((e) => e.alive)
         .map((e) => ({

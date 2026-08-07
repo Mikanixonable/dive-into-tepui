@@ -279,6 +279,7 @@ export class Game {
         null,
         this.simSpeedManager.simSpeed > C.MAX_PHYS_SIM_SPEED,
       );
+      this.activeStage.update(dt, null, this.entities, this.simulator.simTime, this.simSpeedManager);
       this.effects.update(dt, simDt);
       this.updateMapPresentation(dt);
       if (this.editor.editMode) {
@@ -437,13 +438,13 @@ export class Game {
     );
     // 戦闘ビューはアクティブ艦を前提とする。艦がまだ配置されていない/破壊されている間は無効。
     const canToggleView = this.player?.alive ?? false;
-    this.mapModeToggler.update(this.input, this.activeStage.isPlaying, canToggleView);
+    this.mapModeToggler.handleInput(this.input, this.activeStage.isPlaying, canToggleView);
     this.editor.handleInput(this.input);
   }
 
   // ------------------------------------------------------------------ sync
 
-  sync(dt: number): void {
+  sync(): void {
     this._hud.setContext(
       this.launchMode === 'creative' ? 'CREATIVE' : 'STAGE',
       this.launchMode === 'creative' ? 'CREATIVE' : this.activeStage.selectLabel,
@@ -458,7 +459,7 @@ export class Game {
     const displayTime = this.displayTimeManager.resolveDisplayTime(this.simulator.simTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
-    this.cameraSystem.sync(this.floatingOrigin, displayTime);
+    this.cameraSystem.sync(this.floatingOrigin);
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
@@ -468,7 +469,7 @@ export class Game {
     const secondaryTarget = this.targeter.aliveSecondaryTarget;
 
     this.environment.sync(
-      dt, player?.state.r ?? v3(), this.floatingOrigin, displayTime,
+      player?.state.r ?? v3(), this.floatingOrigin, displayTime,
       this.cameraSystem, this.navball.gridVisibility,
     );
 
@@ -518,12 +519,10 @@ export class Game {
 
     if (player) {
       this.touchControls?.syncModeButtons(player.rcsDamp, player.fineAttitude, player.progradeHold);
-      this.activeStage.sync(player, project, displayTime, overviewMode);
-    } else if (this.activeStage instanceof CreativeStage) {
-      this.activeStage.syncWithoutPlayer(overviewMode, project);
     }
+    this.activeStage.sync(player, this.floatingOrigin, project, displayTime, overviewMode);
 
-    this._hud.panels.sync(this, dt, bodies);
+    this._hud.panels.sync(this, bodies);
     this._hud.tick();
 
     if (player) this.guide.sync(this.editor.plan, player, simTime, this.editor.editMode, project);
