@@ -68,8 +68,8 @@ export class CreativeStage extends Stage {
   }
 
   // プレビューの継続的な位置更新(フローティングオリジン対応)
-  sync(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
-    super.sync(player, project, displayTime, overviewMode);
+  sync(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean, showMapAmmo: boolean): void {
+    super.sync(player, project, displayTime, overviewMode, showMapAmmo);
     this.syncPreview(project);
   }
 

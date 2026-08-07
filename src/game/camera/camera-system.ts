@@ -55,9 +55,10 @@ export class CameraSystem {
   readonly focusMarkers: FocusMarkers;
   // 広範囲視点の操作パネル(注視対象・視点の座標系・視点リセット)。
   private readonly overviewCameraPanel: OverviewCameraPanel;
-  // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
   private _overviewMode = false;
   get overviewMode(): boolean { return this._overviewMode; }
+
+  get showMapAmmo(): boolean { return this.overviewCameraPanel.showAmmo; }
   setMapMode(open: boolean): void { this._overviewMode = open; }
 
   // sync() で毎フレーム参照する DOM 要素をコンストラクタ時にキャッシュする。
