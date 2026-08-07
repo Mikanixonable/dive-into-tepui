@@ -65,22 +65,26 @@ export class MapPicker {
   }
 
   // 右クリック位置の最寄り候補を探し、当たればその種別に応じた項目でメニューを開いて消費する。
-  // 何も当たらなかった場合、クリエイティブモードであれば「空域」として扱う。
   handleRightClick(input: Input, simTime: number): void {
     input.takeRightClicks((p) => {
       let target = pickNearest(
         this.items, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ,
       );
-      if (!target) {
-        if ((this.game.activeStage as any).stageId === 'creative') {
-          target = { id: 'empty', name: '宇宙空間', pos: v3(0, 0, 0), kind: 'empty-space' as any };
-        } else {
-          return false;
-        }
-      }
       if (!target) return false;
       this.menu.open(p.x, p.y, target, this.itemsFor(target, simTime));
       return true;
+    });
+  }
+
+  // 何も当たらなかった場合、クリエイティブモードであれば「空域」として扱う（他のハンドラの後に呼ぶ）。
+  handleEmptySpaceRightClick(input: Input, simTime: number): void {
+    input.takeRightClicks((p) => {
+      if ((this.game.activeStage as any).stageId === 'creative') {
+        const target = { id: 'empty', name: '宇宙空間', pos: v3(0, 0, 0), kind: 'empty-space' as any };
+        this.menu.open(p.x, p.y, target, this.itemsFor(target, simTime));
+        return true;
+      }
+      return false;
     });
   }
 
