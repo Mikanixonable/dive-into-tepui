@@ -72,3 +72,18 @@ export function createPart<TType extends PartType>(
   };
   return { ...base, ...overrides } as unknown as ExtractPart<TType>;
 }
+
+// セーブされた AnyPart の生データを createPart 経由で復元する。id も上書きするので、
+// セーブ前後でパーツの同一性(id)が保たれる。
+export function restorePart(data: AnyPart): AnyPart {
+  switch (data.type) {
+    case 'hull': return createPart('hull', data);
+    case 'cockpit': return createPart('cockpit', data);
+    case 'armor': return createPart('armor', data);
+    case 'thruster': return createPart('thruster', data);
+    case 'rcs_tank': return createPart('rcs_tank', data);
+    case 'radiator': return createPart('radiator', data);
+    case 'solar_panel': return createPart('solar_panel', data);
+    case 'weapon': return createPart('weapon', data);
+  }
+}

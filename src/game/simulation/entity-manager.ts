@@ -147,5 +147,6 @@ export class EntityManager {
     this.casings.length = 0;
     this.debris.length = 0;
     this.ammos.length = 0;
+    this.bases.length = 0;
   }
 }
