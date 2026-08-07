@@ -16,7 +16,9 @@ const STYLE = `
 }
 /* --- 重なり順: マーカーは実行時に DOM 末尾へ追加されるため z-index を明示しないとパネルの上に出る。
      マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0)
-     マーカー群(0-9) < 常設パネル(10) < トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー(40) */
+     マーカー群(0-9) < 常設パネル(10) < ドックビュー(15) < トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー(40)
+     ドックビューは画面全体を占めるビューなので常設パネルを覆うが、トースト・ヒントと
+     システム窓(ヘルプ・ESCメニュー)はその上に出す。 */
 #hud .mk { z-index: 0; }
 #hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-nav, #hud .mk-dir, #hud .mk-boardhit, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
 #hud .mk-ammo { z-index: 2; }
@@ -24,6 +26,7 @@ const STYLE = `
 #hud .mk-self { z-index: 4; }
 #hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
 #hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball, #hud-shipplacer, #hud-object-list { z-index: 10; }
+#dock-view { z-index: 15; }
 #hud-toast, #hud-hint { z-index: 20; }
 #hud-viewbadge { z-index: 20; }
 #hud-end, #hud-help { z-index: 30; }
@@ -371,10 +374,11 @@ body.hud-modal-open #touch-ui { display: none; }
 }
 /* ===== DockView ===== */
 .dock-view-overlay {
-  position: fixed; inset: 0; z-index: 50;
+  position: fixed; inset: 0;
   display: flex; align-items: center; justify-content: center;
   background: rgba(0,0,0,0.75); backdrop-filter: blur(6px);
   font-family: ${FONT};
+  pointer-events: auto;
 }
 .dock-panel {
   background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 10px;

@@ -108,10 +108,8 @@ export class DockView {
   }
 
   private attachEvents(): void {
-    this.el.querySelector('#dock-close')?.addEventListener('click', () => {
-      this.onClose?.();
-      this.close();
-    });
+    // 閉じる操作は要求を伝えるだけで、実際に閉じてポーズを解くのは onClose の受け手が行う。
+    this.el.querySelector('#dock-close')?.addEventListener('click', () => this.onClose?.());
 
     this.el.querySelectorAll('.dock-tab-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -121,14 +119,6 @@ export class DockView {
           this.refresh();
         }
       });
-    });
-
-    // ESCキーで閉じる
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this._visible) {
-        this.onClose?.();
-        this.close();
-      }
     });
   }
 

@@ -493,6 +493,7 @@ export class Game {
   // 効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・計画破棄)。
   private handleInput(): void {
     // 上から下へ優先順位順に呼ぶ。
+    this.docking.handleInput(this.input);
     this.settingsPanel.handleInput(this.input);
     this._hud.handleInput(this.input);
     this.activeStage.handleInput(this.input);
