@@ -554,8 +554,11 @@ export class PlanEditor {
       const r = this.planDisplay.traj.toDisplay(nodeFor3D.r, nodeFor3D.t);
       const scenePos = fo.RtoThreeV3(r);
       const bodyArr = this.bodyState(arrFor3D);
-      const axes = orbitalAxes(bodyArr);
-      this.gizmo3d.setPositionAndRotation(v3(scenePos.x, scenePos.y, scenePos.z), axes.pro, axes.nrm, axes.radOut, mapDist * 0.002);
+      let { pro, nrm, radOut } = orbitalAxes(bodyArr);
+      pro = this.planDisplay.traj.toDisplay(pro, nodeFor3D.t);
+      nrm = this.planDisplay.traj.toDisplay(nrm, nodeFor3D.t);
+      radOut = this.planDisplay.traj.toDisplay(radOut, nodeFor3D.t);
+      this.gizmo3d.setPositionAndRotation(v3(scenePos.x, scenePos.y, scenePos.z), pro, nrm, radOut, mapDist * 0.002);
       
       // ドラッグ・ラッチ時のアニメーション
       let activeAxis: 0 | 1 | 2 | null = null;
@@ -629,7 +632,10 @@ export class PlanEditor {
     }
     const body = centralBodyDefinition(this.plan.centralBody);
     const html = planPanelHtml(nodes, selEl, body.radius, body.id === 'earth');
-    this.planPanel.style.display = 'block';
+    
+    // ノードが選択されていない時はパネル全体を非表示にする
+    this.planPanel.style.display = this.selectedNodeIdx !== null ? 'block' : 'none';
+    
     if (this.planBody.innerHTML !== html) this.planBody.innerHTML = html;
 
     if (this.selectedNodeIdx !== null && localDv) {
@@ -694,10 +700,8 @@ function planPanelHtml(
 ): string {
   const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   let s = '';
-  // ノード一覧、無ければ配置案内
-  if (nodes.length === 0) {
-    s += `<div style="color:${TEXT_DIM}">計画軌道(グレー)をクリックしてマニューバノードを配置</div>`;
-  } else {
+  // ノード一覧
+  if (nodes.length > 0) {
     s += nodes
       .map((n, i) => {
         const sign = n.tRel >= 0 ? 'T-' : 'T+';
