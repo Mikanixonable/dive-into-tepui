@@ -1,10 +1,8 @@
 // 時刻付き状態(OrbitState)を「いま」として保持し、1ステップ前進させ、任意時刻を引ける単位。
 // THREE/DOM 非依存の純データ構造(StateQueue/Ephemeris と同じ「純粋だが状態を持つ」枠)。
 //
-// game/game-entity/ の GameEntity はこれを1本(current)持って state/history を転送する。
-// 将来 GameEntity が2本目(predicted)を持つとき、過去列にも未来列にも同じこの実装を使う —
-// history は常に「自分の state より古い時刻のサンプル列」であり、current ではそれが過去、
-// predicted ではそれが「現在〜先端の間」になるだけで、構造も操作(step/at)もまったく同じ。
+// history は常に「自分の state より古い時刻のサンプル列」という不変条件だけを前提にする
+// ため、過去方向の履歴にも未来方向の予測列にも同じ実装をそのまま使える。
 import { Elements, OrbitState, elementsFromState, hermiteInterpolate } from './orbital';
 import { StateQueue } from './state-queue';
 import type { Ephemeris } from './ephemeris';
@@ -15,12 +13,11 @@ import { centralBodyDefinition, fromCentralBodyState, toCentralBodyState } from 
 
 export class OrbitEntity {
   private _state: OrbitState;
-  // 直前ステップの状態。history とは別フィールドで持つ(hit.ts の線分衝突判定・
-  // targeter.ts の標的面通過判定が要るのは「直前サブステップの位置」で、間引かれた
-  // history からは取れないため — ワープ中は1サンプルが数百秒に相当する)。
+  // 直前ステップの状態。history とは別フィールドで持つ — 間引かれた history からは
+  // 「直前サブステップの位置」が取れないため(ワープ中は1サンプルが数百秒に相当する)。
   private _prevState: OrbitState;
   // state より古いサンプル列(間引き済み)。件数ではなく時間窓(keepDuration)+ 間隔
-  // (sampleInterval)で管理する — 呼び出し側(GameEntity)が種別ごとに渡す。
+  // (sampleInterval)で管理し、両者は種別ごとに step の呼び出し元が渡す。
   private readonly _history = new StateQueue();
   private _elements: Elements | null | undefined = undefined;
 
@@ -73,7 +70,8 @@ export class OrbitEntity {
     this._elements = undefined;
   }
 
-  // 予測専用の月中心二体伝播。ゲーム本体のECI積分経路は変更しない。
+  // 月中心の二体近似で1ステップ伝播する(月周回予測など、地球中心系よりこちらが
+  // 精度良く扱える軌道向け)。
   stepMoonPrediction(
     dt: number,
     ephemeris: Ephemeris,

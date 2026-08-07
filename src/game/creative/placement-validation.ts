@@ -7,6 +7,7 @@ export type EllipticPlacementInput = {
   anglesDeg: readonly number[];
 };
 
+// 入力が有効な楕円軌道を表すか検証する。問題なければ null、そうでなければエラーメッセージを返す。
 export function validateEllipticPlacement(input: EllipticPlacementInput): string | null {
   const values = [input.peAltKm, input.apAltKm, input.semiMajorKm, input.eccentricity, input.periodHours, ...input.anglesDeg];
   if (!values.every(Number.isFinite)) return '全ての値に有限な数値を入力してください';

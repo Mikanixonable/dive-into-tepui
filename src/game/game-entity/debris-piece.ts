@@ -41,6 +41,7 @@ export class DebrisPiece extends GameEntity {
 
   get kind(): DebrisKind['kind'] { return this.debrisKind.kind; }
 
+  // 薬莢の寿命切れ絶対時刻を返す。薬莢以外、またはすでに過ぎていれば null。
   nextSimulationEventTime(simTime: number): number | null {
     if (this.debrisKind.kind !== 'casing') return null;
     const expiresAt = this.debrisKind.bornSim + C.CASING_LIFETIME;

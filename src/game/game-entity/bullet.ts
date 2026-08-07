@@ -41,6 +41,7 @@ export class Bullet extends GameEntity {
         this.damage = damage;
     }
 
+    // 寿命切れの絶対時刻を返す。すでに過ぎていれば null。
     nextSimulationEventTime(simTime: number): number | null {
         const expiresAt = this.bornSim + this.lifetime;
         return expiresAt >= simTime ? expiresAt : null;

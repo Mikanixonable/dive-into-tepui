@@ -4,7 +4,9 @@ import { GameSaveData } from './save-data';
 const SAVE_KEY = 'tepui.save';
 const SAVE_VERSION = 1;
 
+// ゲーム状態の localStorage への保存・復元。
 export class SaveManager {
+  // 現在のゲーム状態を1件のセーブデータとして localStorage へ書き込む。
   static save(game: Game): void {
     const data: GameSaveData = {
       version: SAVE_VERSION,
@@ -23,6 +25,8 @@ export class SaveManager {
     }
   }
 
+  // localStorage のセーブデータを game へ復元する。データが無い/破損/ステージ不一致なら
+  // 何もせず false を返す。
   static load(game: Game): boolean {
     let raw: string | null = null;
     try {

@@ -355,7 +355,6 @@ export class PlanEditor {
       ]);
       return true;
     }
-    // 見つかればそれを選択してメニューを開い
     this.selectedNodeIdx = bestIdx;
     this.orbitMenu.close();
     this.nodeGizmo.openMenu(mx, my, bestIdx);
@@ -384,27 +383,23 @@ export class PlanEditor {
     const node = this.plan.nodes[idx];
     const arr = arriving[idx];
     if (!node || !arr) return null;
-    
-    // 現在のノードの絶対的な Delta-V を抽出
+
     const dvWorldOld = sub(node.v, arr.v);
-    
-    // サンプルがノードより後ろの arc (POST-burn) にある場合、
-    // sample.v にはこのノードの Delta-V がすでに加算された状態になっています。
-    // 再度加算してしまわないよう、プレバーン時点の速度を逆算します。
+    // ノードより後ろの arc のサンプルは、このノードの Δv を既に含んだ速度になっているので、
+    // 加算前(プレバーン)の速度へ戻してから改めて Δv を組み立てる。
     let baseV = sample.v;
     if (arcIdx > idx) {
       baseV = sub(sample.v, dvWorldOld);
     }
-    
-    // 元の到着軌道基準でのローカル Delta-V 成分を求める
+
+    // 到着軌道基準のローカル Δv 成分を求め、移動先のプレバーン状態基準へ組み直す。
     const axesOld = orbitalAxes(this.bodyState(arr));
     const dvLocal = v3(
       dot(dvWorldOld, axesOld.pro),
       dot(dvWorldOld, axesOld.nrm),
       dot(dvWorldOld, axesOld.radOut),
     );
-    
-    // 移動先のプレバーン状態基準で、ローカル Delta-V 成分をワールド成分へ変換する
+
     const newPreBurnState = orbitState(sample.t, sample.r, baseV);
     const axesNew = orbitalAxes(this.bodyState(newPreBurnState));
     const newDvWorld = v3(
@@ -412,8 +407,7 @@ export class PlanEditor {
       axesNew.pro.y * dvLocal.x + axesNew.nrm.y * dvLocal.y + axesNew.radOut.y * dvLocal.z,
       axesNew.pro.z * dvLocal.x + axesNew.nrm.z * dvLocal.y + axesNew.radOut.z * dvLocal.z,
     );
-    
-    // 新しいベース速度に対して Delta-V を加える
+
     return orbitState(sample.t, sample.r, add(baseV, newDvWorld));
   }
 

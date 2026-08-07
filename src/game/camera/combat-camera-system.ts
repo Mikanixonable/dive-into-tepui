@@ -53,12 +53,12 @@ export class CombatCameraSystem {
     this.chaseCamera.setPlayer(player);
   }
 
-  // 視点を初期状態にリセットする(内部状態を持つのは ChaseCamera だけ)。
+  // 視点を初期状態にリセットする。
   reset(): void {
     this.chaseCamera.reset();
   }
 
-  // 視点の基準フレーム(機体姿勢基準 ⇔ ワールド基準)を切り替える。判断は ChaseCamera に委譲する。
+  // 視点の基準フレーム(機体姿勢基準 ⇔ ワールド基準)を切り替える。
   toggleFollowAttitude(): void {
     this.chaseCamera.toggleFollowAttitude();
   }

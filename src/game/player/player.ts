@@ -450,6 +450,7 @@ export class Player extends Ship {
     super.dispose();
   }
 
+  // 現在の艦状態を保存用データへ変換する。
   serialize(): PlayerSaveData {
     return {
       id: this.id,
@@ -481,6 +482,7 @@ export class Player extends Ship {
     };
   }
 
+  // 保存データから艦を再構築する。simTime を復元後の状態の epoch として使う。
   static restore(
     data: PlayerSaveData,
     simTime: number,
@@ -509,8 +511,7 @@ export class Player extends Ship {
         v3(data.plan.anchor.r.x, data.plan.anchor.r.y, data.plan.anchor.r.z),
         v3(data.plan.anchor.v.x, data.plan.anchor.v.y, data.plan.anchor.v.z)
       ));
-      // Anchor is only tracked while _nodes is empty. So we must set it first.
-      // But trackAnchor doesn't work if nodes are not empty. So clearing first is good.
+      // trackAnchor はノードが空の間しか効かないため、ノード復元より先に呼ぶ必要がある
       for (const n of data.plan.nodes) {
         player.plan.addNode(orbitState(
           n.t,

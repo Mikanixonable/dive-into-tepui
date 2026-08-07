@@ -112,6 +112,7 @@ export class SettingsPanel {
     }
   }
 
+  // message を3秒間だけステータス行に表示する。
   showSaveStatus(message: string, isError = false): void {
     const status = this.panel.querySelector<HTMLElement>('[data-id="savestatus"]')!;
     status.textContent = message;

@@ -3,6 +3,7 @@ export interface Point2 {
   y: number;
 }
 
+// requested 位置に overlay を置いたとき viewport をはみ出さないよう、margin ぶん内側へ収めた座標を返す。
 export function clampOverlayPosition(
   requested: Point2,
   overlay: { width: number; height: number },

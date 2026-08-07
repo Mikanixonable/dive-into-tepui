@@ -1,13 +1,13 @@
 export type PartType = 'hull' | 'cockpit' | 'armor' | 'thruster' | 'rcs_tank' | 'radiator' | 'solar_panel' | 'weapon';
 
 export interface Part {
-  readonly id: string; // Unique ID for the part instance
+  readonly id: string;
   readonly type: PartType;
   readonly name: string;
   readonly weight: number; // kg
-  
+
   maxHp: number;
-  hp: number; // 0 = destroyed/non-functional
+  hp: number; // 0 = 破壊/機能停止
 }
 
 export interface HullPart extends Part {
@@ -20,14 +20,14 @@ export interface CockpitPart extends Part {
 
 export interface ArmorPart extends Part {
   readonly type: 'armor';
-  damageReduction: number; // 0-1, e.g. 0.5 means 50% damage reduced
+  damageReduction: number; // 0-1
 }
 
 export interface ThrusterPart extends Part {
   readonly type: 'thruster';
-  torque: number; // Torque output
-  thrust: number; // Linear thrust
-  fuelConsumptionRate: number; // kg/s per 100% throttle
+  torque: number;
+  thrust: number;
+  fuelConsumptionRate: number; // kg/s(スロットル100%時)
 }
 
 export interface RcsTankPart extends Part {
@@ -38,19 +38,19 @@ export interface RcsTankPart extends Part {
 
 export interface RadiatorPart extends Part {
   readonly type: 'radiator';
-  coolingRate: number; // Arbitrary unit used in ThermalSystem
+  coolingRate: number; // ThermalSystem 内の任意単位
 }
 
 export interface SolarPanelPart extends Part {
   readonly type: 'solar_panel';
-  powerGeneration: number; // Watts
+  powerGeneration: number; // W
 }
 
 export interface WeaponPart extends Part {
   readonly type: 'weapon';
   weaponType: 'gatling' | 'cannon' | 'missile';
-  fireRate: number; // rounds per second
-  damage: number; // damage per hit
+  fireRate: number; // rounds/s
+  damage: number; // 命中1回あたりのダメージ
   muzzleVelocity: number; // m/s
 }
 
@@ -58,6 +58,7 @@ export type AnyPart = HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTan
 
 type ExtractPart<TType extends PartType> = Extract<AnyPart, { type: TType }>;
 
+// type の既定値に overrides を重ねてパーツを作る。id は呼び出しごとにランダム発行される。
 export function createPart<TType extends PartType>(
   type: TType,
   overrides: Partial<ExtractPart<TType>>

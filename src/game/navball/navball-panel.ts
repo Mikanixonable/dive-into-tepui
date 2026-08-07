@@ -1,5 +1,5 @@
 // 表示設定ウィンドウの DOM: 基準モードの排他選択と、天球グリッド(render/celestial-grid.ts)
-// 6トグル。計器(navball)本体は廃止し、ここは設定コントロールだけを提供する。
+// 6トグルを提供する。
 import { hudButton, HudToggle } from '../hud/buttons';
 import { CelestialGridVisibility } from '../../render/celestial-grid';
 import type { NavballMode } from './navball';

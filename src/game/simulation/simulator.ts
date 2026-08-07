@@ -74,6 +74,7 @@ export class Simulator {
     this.lastSimDt = simDt;
   }
 
+  // 生存エンティティの高度から今フレームのサブステップ上限 [s] を求める。
   private adaptiveMaxStep(): number {
     return adaptiveSimulationMaxStep(
       this.entities.all().filter((e) => e.alive).map((e) => e.state),
@@ -83,6 +84,7 @@ export class Simulator {
     );
   }
 
+  // ステージと全生存エンティティが持つ次イベント時刻のうち最も早いものを返す。無ければ null。
   private nextEventTime(activeStage: Stage): number | null {
     let next = activeStage.nextSimulationEventTime(this.simTime);
     for (const e of this.entities.all()) {
@@ -98,7 +100,6 @@ export class Simulator {
     simTime: number,
     dt: number,
   ): number {
-    // 各エンティティを積分する
     for (const p of this.entities.players) p.stepSim(dt, this.ephemeris);
     for (const e of this.entities.enemies) e.stepSim(dt, this.ephemeris);
     for (const b of this.entities.bullets) b.stepSim(dt, this.ephemeris);
@@ -110,7 +111,7 @@ export class Simulator {
     return simTime + dt;
   }
 
-  // 軌道と同じsubstepぶん全姿勢を進める。姿勢だけ別の経過時間capを持たせない。
+  // 軌道積分と同じ刻み幅 simDt で全エンティティの姿勢を進める。
   private stepAttitudes(simDt: number): void {
     for (const p of this.entities.players) p.att = stepAttitude(p.att, p.torque, simDt);
 

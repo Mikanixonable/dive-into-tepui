@@ -1,51 +1,45 @@
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
 
+// 選択中ノードの Δv アーム6本(PRO/RET・NRM/ANM・OUT/IN)を表す3D矢印ギズモ。
 export class PlanGizmo3D {
   public readonly group = new THREE.Group();
   private parts: { stem: THREE.Mesh, head: THREE.Mesh, dir: THREE.Vector3, baseLen: number }[] = [];
 
   constructor() {
     this.group.renderOrder = 999;
-    
-    // Prograde (Blue) -> Local Y
+
     this.createAxis(new THREE.Vector3(0, 1, 0), 0x3b82f6); // PRO
     this.createAxis(new THREE.Vector3(0, -1, 0), 0x3b82f6); // RETRO
-    
-    // Normal (Green) -> Local Z
     this.createAxis(new THREE.Vector3(0, 0, 1), 0x10b981); // NRM
     this.createAxis(new THREE.Vector3(0, 0, -1), 0x10b981); // ANTI-NRM
-    
-    // Radial (Red) -> Local X
     this.createAxis(new THREE.Vector3(1, 0, 0), 0xef4444); // RAD
     this.createAxis(new THREE.Vector3(-1, 0, 0), 0xef4444); // RAD-IN
   }
 
+  // ローカル方向 dir(単位ベクトル)を向く矢印(軸+頭)を1本作り、group へ加える。
   private createAxis(dir: THREE.Vector3, color: number): void {
-    const length = 20; // ギズモの長さ。画面上でのサイズはカメラ距離等でスケーリング
+    const length = 20;
     const headLength = 4;
     const headWidth = 2.5;
     const stemLength = length - headLength;
     const stemWidth = 0.5;
 
-    const material = new THREE.MeshBasicMaterial({ 
-      color, 
+    const material = new THREE.MeshBasicMaterial({
+      color,
       depthTest: false,
       transparent: true,
       opacity: 0.8
     });
 
-    // Stem
     const stemGeom = new THREE.CylinderGeometry(stemWidth, stemWidth, stemLength, 8);
     const stem = new THREE.Mesh(stemGeom, material);
     stem.position.copy(dir).multiplyScalar(stemLength / 2);
-    
-    // Head
+
     const headGeom = new THREE.ConeGeometry(headWidth, headLength, 12);
     const head = new THREE.Mesh(headGeom, material);
     head.position.copy(dir).multiplyScalar(length - headLength / 2);
 
-    // Rotate to face direction
     const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
     stem.quaternion.copy(quaternion);
     head.quaternion.copy(quaternion);
@@ -59,19 +53,17 @@ export class PlanGizmo3D {
     this.group.visible = visible;
   }
 
+  // ギズモをノード位置へ置き、ローカル軸(X=RAD, Y=PRO, Z=NRM)を軌道基準系 pro/nrm/rad に揃える。
+  // scale は画面上で一定の見かけサイズになるよう呼び出し側がカメラ距離から求める。
   public setPositionAndRotation(pos: Vec3, pro: Vec3, nrm: Vec3, rad: Vec3, scale: number): void {
     this.group.position.set(pos.x, pos.y, pos.z);
-    
-    // Construct rotation matrix from local axes (RAD=X, PRO=Y, NRM=Z)
+
     const mat = new THREE.Matrix4().makeBasis(
       new THREE.Vector3(rad.x, rad.y, rad.z),
       new THREE.Vector3(pro.x, pro.y, pro.z),
       new THREE.Vector3(nrm.x, nrm.y, nrm.z)
     );
     this.group.quaternion.setFromRotationMatrix(mat);
-    
-    // Local X is Radial, Local Y is Prograde, Local Z is Normal
-    // 画面上で一定サイズに見えるようスケール
     this.group.scale.setScalar(scale);
   }
 
