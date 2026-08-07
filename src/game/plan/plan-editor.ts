@@ -18,6 +18,7 @@ import type { ProjectFn } from '../camera/camera-system';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
+import { PlanGizmo3D } from './plan-gizmo-3d';
 import { apsisAltitudes, Plan } from './plan';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../sim-speed-manager';
@@ -67,6 +68,7 @@ export class PlanEditor {
   get plan(): Plan { return this.ship?.plan ?? this.detachedPlan; }
 
   readonly planDisplay: PlanDisplay;
+  private readonly gizmo3d: PlanGizmo3D;
 
   private _editMode = false;
   get editMode(): boolean { return this._editMode; }
@@ -82,6 +84,10 @@ export class PlanEditor {
 
   private readonly planPanel: HTMLElement;
   private readonly planBody: HTMLElement;
+  private readonly editForm: HTMLElement;
+  private readonly dvProInput: HTMLInputElement;
+  private readonly dvNrmInput: HTMLInputElement;
+  private readonly dvRadInput: HTMLInputElement;
   private readonly centralBodyControl: SegmentedControl<'earth' | 'moon'>;
   private simTime = 0;
 
@@ -98,13 +104,55 @@ export class PlanEditor {
   ) {
     this.ship = ship;
     this.planDisplay = new PlanDisplay(scene, this._hud.root, markerManager, ephemeris);
+    this.gizmo3d = new PlanGizmo3D();
+    scene.add(this.gizmo3d.group);
 
     this.planPanel = document.createElement('div');
     this.planPanel.id = 'hud-plan';
     this.planPanel.className = 'panel';
-    this.planPanel.innerHTML = `<h3>MANEUVER PLAN [${K.toggleMapMode.label}]</h3><div data-id="planbody"></div>`;
+    this.planPanel.innerHTML = `
+      <h3>MANEUVER PLAN [${K.toggleMapMode.label}]</h3>
+      <div data-id="planbody"></div>
+      <div data-id="planedit" style="display:none; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1)">
+        <div style="font-size:10px; color:${TEXT_DIM}; margin-bottom:4px;">マニューバ手動入力 (m/s)</div>
+        <div class="hud-seg">
+          <div class="row" style="width:100%; gap:4px; align-items:center;">
+            <span class="k" style="width:28px; color:#3b82f6; font-weight:bold;">PRO</span>
+            <input type="number" id="pe-dv-pro" step="0.1" style="flex:1; width:0;">
+          </div>
+          <div class="row" style="width:100%; gap:4px; align-items:center;">
+            <span class="k" style="width:28px; color:#10b981; font-weight:bold;">NRM</span>
+            <input type="number" id="pe-dv-nrm" step="0.1" style="flex:1; width:0;">
+          </div>
+          <div class="row" style="width:100%; gap:4px; align-items:center;">
+            <span class="k" style="width:28px; color:#ef4444; font-weight:bold;">RAD</span>
+            <input type="number" id="pe-dv-rad" step="0.1" style="flex:1; width:0;">
+          </div>
+        </div>
+      </div>
+    `;
     this.planPanel.style.display = 'none';
     this.planBody = this.planPanel.querySelector<HTMLElement>('[data-id="planbody"]')!;
+    this.editForm = this.planPanel.querySelector<HTMLElement>('[data-id="planedit"]')!;
+    this.dvProInput = this.planPanel.querySelector<HTMLInputElement>('#pe-dv-pro')!;
+    this.dvNrmInput = this.planPanel.querySelector<HTMLInputElement>('#pe-dv-nrm')!;
+    this.dvRadInput = this.planPanel.querySelector<HTMLInputElement>('#pe-dv-rad')!;
+
+    const onInputChange = () => {
+      this.setNodeDvLocal(
+        parseFloat(this.dvProInput.value) || 0,
+        parseFloat(this.dvNrmInput.value) || 0,
+        parseFloat(this.dvRadInput.value) || 0
+      );
+    };
+    this.dvProInput.addEventListener('change', onInputChange);
+    this.dvNrmInput.addEventListener('change', onInputChange);
+    this.dvRadInput.addEventListener('change', onInputChange);
+    const stopProp = (e: Event) => e.stopPropagation();
+    this.dvProInput.addEventListener('keydown', stopProp);
+    this.dvNrmInput.addEventListener('keydown', stopProp);
+    this.dvRadInput.addEventListener('keydown', stopProp);
+
     this.centralBodyControl = new SegmentedControl('基準天体', [['earth', 'EARTH'], ['moon', 'MOON']] as const, (value) => {
       this.plan.centralBody = value;
       this.centralBodyControl.setSelected(value);
@@ -294,7 +342,7 @@ export class PlanEditor {
       ]);
       return true;
     }
-    // 見つかればそれを選択してメニューを開く
+    // 見つかればそれを選択してメニューを開い
     this.selectedNodeIdx = bestIdx;
     this.orbitMenu.close();
     this.nodeGizmo.openMenu(mx, my, bestIdx);
@@ -342,6 +390,21 @@ export class PlanEditor {
     const d = amount * sign;
     const local = v3(axis === 0 ? d : 0, axis === 1 ? d : 0, axis === 2 ? d : 0);
     this.plan.applyNodeDv(this.selectedNodeIdx, fromOrbitalAxes(this.bodyState(node), local));
+  }
+
+  // 手動入力フォームから絶対的な Δv (PRO, NRM, RAD) を指定してノードの速度を上書きする。
+  private setNodeDvLocal(pro: number, nrm: number, rad: number): void {
+    if (this.selectedNodeIdx === null) return;
+    const arriving = this.planDisplay.traj.arrivalStates();
+    const arr = arriving[this.selectedNodeIdx];
+    const node = this.plan.nodes[this.selectedNodeIdx];
+    if (!arr || !node) return;
+    
+    // 入力は「到着時の軌道基準枠」を基準とした絶対量とする。
+    const bodyArr = this.bodyState(arr);
+    const dvWorld = fromOrbitalAxes(bodyArr, v3(pro, nrm, rad));
+    this.plan.retimeNode(this.selectedNodeIdx, orbitState(node.t, node.r, add(arr.v, dvWorld)));
+    this._sfx.warp();
   }
 
   // Δv アームのラッチ前ドラッグ量を選択中ノードの Δv へ加算する。
@@ -414,6 +477,7 @@ export class PlanEditor {
   // ノードギズモを非表示にする。
   private hideGizmo(): void {
     this.nodeGizmo.sync([], null);
+    this.gizmo3d.setVisible(false);
   }
 
   // i 番目のノードの Δv(噴射後速度 − 到達時点速度)を返す。
@@ -443,9 +507,13 @@ export class PlanEditor {
     }
     // 選択中ノードがあれば Δv アームも組む
     let axisSpecs: AxisHandleSpec[] | null = null;
+    let nodeFor3D: OrbitState | null = null;
+    let arrFor3D: OrbitState | null = null;
     if (this.selectedNodeIdx !== null) {
       const node = this.plan.nodes[this.selectedNodeIdx];
       if (node) {
+        nodeFor3D = node;
+        arrFor3D = arriving[this.selectedNodeIdx] || null;
         const p = this.nodeScreenPos(node);
         if (p.front) {
           const dirs = this.computeAxisScreenDirs(node, mapDist);
@@ -454,6 +522,16 @@ export class PlanEditor {
       }
     }
     this.nodeGizmo.sync(nodeSpecs, axisSpecs);
+
+    if (nodeFor3D && arrFor3D) {
+      this.gizmo3d.setVisible(true);
+      const r = this.planDisplay.traj.toDisplay(nodeFor3D.r, nodeFor3D.t);
+      const bodyArr = this.bodyState(arrFor3D);
+      const axes = orbitalAxes(bodyArr);
+      this.gizmo3d.setPositionAndRotation(r, axes.pro, axes.nrm, axes.radOut, mapDist * 0.002);
+    } else {
+      this.gizmo3d.setVisible(false);
+    }
   }
 
   // WASDQE キー・長押しボタン・Δv アームのラッチドラッグから選択中ノードの Δv を加算する。
@@ -488,20 +566,36 @@ export class PlanEditor {
       selected: i === this.selectedNodeIdx,
     }));
     // 選択中ノードの Δv と噴射後軌道要素を求める
-    let selDv: Vec3 | null = null;
     let selEl: Elements | null = null;
+    let localDv: Vec3 | null = null;
     if (this.selectedNodeIdx !== null) {
       const node = this.plan.nodes[this.selectedNodeIdx];
-      if (node) {
-        selDv = this.nodeDv(this.selectedNodeIdx, arriving);
+      const arr = arriving[this.selectedNodeIdx];
+      if (node && arr) {
         const bodyNode = this.bodyState(node);
+        const bodyArr = this.bodyState(arr);
         selEl = elementsFromState(bodyNode.r, bodyNode.v, centralBodyDefinition(this.plan.centralBody).mu);
+        
+        // 到着時基準でのローカルΔv成分を計算
+        const dvWorld = sub(bodyNode.v, bodyArr.v);
+        const axes = orbitalAxes(bodyArr);
+        localDv = v3(dot(dvWorld, axes.pro), dot(dvWorld, axes.nrm), dot(dvWorld, axes.radOut));
       }
     }
     const body = centralBodyDefinition(this.plan.centralBody);
-    const html = planPanelHtml(nodes, selDv, selEl, body.radius, body.id === 'earth');
+    const html = planPanelHtml(nodes, selEl, body.radius, body.id === 'earth');
     this.planPanel.style.display = 'block';
     if (this.planBody.innerHTML !== html) this.planBody.innerHTML = html;
+
+    if (this.selectedNodeIdx !== null && localDv) {
+      this.editForm.style.display = 'block';
+      // 入力フォームにフォーカスがない時だけ値を同期（ドラッグ操作での変動を反映）
+      if (document.activeElement !== this.dvProInput) this.dvProInput.value = localDv.x.toFixed(1);
+      if (document.activeElement !== this.dvNrmInput) this.dvNrmInput.value = localDv.y.toFixed(1);
+      if (document.activeElement !== this.dvRadInput) this.dvRadInput.value = localDv.z.toFixed(1);
+    } else {
+      this.editForm.style.display = 'none';
+    }
   }
 
   // 計画パネルを非表示にする。
@@ -549,7 +643,6 @@ export class PlanEditor {
 // 計画パネルの定型 HTML。近地点が大気圏内(<120km)なら警告を添える。
 function planPanelHtml(
   nodes: { tRel: number; dvMag: number; selected: boolean; }[],
-  selDv: Vec3 | null,
   selEl: Elements | null,
   bodyRadius: number,
   warnAtmosphere: boolean,
@@ -566,15 +659,6 @@ function planPanelHtml(
         return `<div class="row"><span class="k">${n.selected ? '▶ ' : '◆ '}NODE${i + 1} ${sign}${fmtTime(Math.abs(n.tRel))}</span><span class="v">${n.dvMag.toFixed(1)} m/s</span></div>`;
       })
       .join('');
-  }
-  // 選択中ノードの Δv 内訳
-  if (selDv) {
-    s +=
-      `<div style="margin-top:4px;color:${TEXT};font-size:11px;letter-spacing:1px">選択中ノードの Δv</div>` +
-      row('Δv PRO [W/S]', `${selDv.x.toFixed(1)} m/s`) +
-      row('Δv NRM [A/D]', `${selDv.y.toFixed(1)} m/s`) +
-      row('Δv RAD [E/Q]', `${selDv.z.toFixed(1)} m/s`) +
-      row('合計 Δv', `${Math.hypot(selDv.x, selDv.y, selDv.z).toFixed(1)} m/s`);
   }
   // 噴射後の軌道要素、近地点が大気圏内なら警告
   if (selEl) {
