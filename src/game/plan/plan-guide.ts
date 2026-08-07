@@ -1,5 +1,5 @@
 // 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、NODE/BURN マーカー。
-import { Elements, OrbitState, elementsFromState } from '../../physics/orbital';
+import { Elements, MU_EARTH, OrbitState, elementsFromState } from '../../physics/orbital';
 import { addScaled, dot, len, norm, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
@@ -86,7 +86,7 @@ export class PlanGuide {
   // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。
   private notifyAchieved(plan: Plan, node: OrbitState, player: Player): void {
     if (this.achievedNotified === node) return;
-    const targetEl = elementsFromState(node.r, node.v);
+    const targetEl = elementsFromState(node.r, node.v, MU_EARTH);
     const playerEl = player.elements;
     if (!playerEl || !targetEl || !orbitClose(playerEl, targetEl)) return;
     this.achievedNotified = node;
