@@ -65,8 +65,8 @@ main.ts
     ├── PlanGuide                       ... 直近ノードの接近/達成通知済みフラグ(ノード自体への参照)を持つ
     ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/Game.player にまたがる横断)
     │   └── DockView                       ... DOM は Hud.root 配下。格納艦/部品/ショップタブのフルスクリーン UI
-    ├── MapModeToggler                 ... 所有物なし(マップ開閉フラグ mapMode だけを持つ)
-    ├── ViewBadge                      ... DOM は Hud.root 配下。MapModeToggler/DockView を参照するだけで自身は状態を持たない
+    ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約
+    ├── ViewBadge                      ... DOM は Hud.root 配下。ViewManager を参照するだけで自身は状態を持たない
     │   └── ContextMenu<true, ViewId>
     ├── Stage (activeStage)            ... initStage() が毎回 new する。クリエイティブモードでは CreativeStage を
     │                                       game.ts が直接 new する(initStage() は経由しない — §1 末尾の補足参照)
@@ -191,7 +191,8 @@ main.ts
 | 計画折れ線を描く表示座標系(trajectoryFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本 |
 | マップ視点(注視点相対オフセット・パン・上方向)・表示座標系・フォーカス(id)・ViewFrame | `OverviewCamera` | `view: ViewFrame` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `view` を読むだけで自分では持たない。フォーカス id が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す |
 | 戦闘視点(ViewFrame: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
-| マップモードの開閉 | `MapModeToggler.mapMode` | 影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayTimeManager.forceCurrent` / タッチUI)を一斉に切り替える |
+| 現在のビュー(combat/map/dock) | `ViewManager`(private `_current`) | 遷移は `setView()` のみ。影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayTimeManager.forceCurrent` / タッチUI)を一斉に切り替える。ドック表示中は背後の 3D 側ビュー(`returnFromDock`)を保持し、閉じるとそこへ戻る |
+| ドックビューの対象基地 | `Docking`(private `_activeBase`) | 基地の右クリックメニューで設定。これが空でない間だけ `ViewManager.selectableViews()` に `'dock'` が並ぶ |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
 | 軌道オブジェクトウィンドウの表示中フラグ | `MapPicker`(`objectListVisible`) | 空域右クリックメニューの「軌道オブジェクトウィンドウを表示」でのみ true になる。`ObjectListPanel` の ✕ ボタン(`onClose`)、または `MapPicker.close()`(マップモードを閉じたとき)で false に戻る |
 | 第一・第二ターゲット・的通過マーク | `Targeter`(`target`/`secondaryTarget`) | 右クリックメニュー(`applyMenuAct`)でのみ変わる。自動選定・自動再選択はない |
@@ -214,16 +215,16 @@ main.ts
 ### 正本が分かれていることに意味がある組み合わせ
 
 - **`CameraSystem.overviewMode`(視点)・`PlanEditor.editMode`(操作系)・`DisplayTimeManager.forceCurrent`
-  (未来表示の禁止)** は3つとも別の正本。同時に切り替えるのは `MapModeToggler` だけで、描画・視点側は
+  (未来表示の禁止)** は3つとも別の正本。同時に切り替えるのは `ViewManager` だけで、描画・視点側は
   overviewMode を、入力・挙動側は editMode を、未来表示の可否は forceCurrent を見る。
-  「マップモードが開いているか」そのものの正本は第四の値 `MapModeToggler.mapMode` で、上の三つ
+  「いまどのビューか」そのものの正本は第四の値 `ViewManager.current` で、上の三つ
   (とタッチUI)はその影響先。
 - **`FloatingOrigin.r` と `Player.state.r`** は現状同じ値だが意味論的に別物。sync 系は必ず fo を参照し、
   `player.state.r` を描画原点として直接使わない。
 - **`Game.player`(操作対象艦)・`ChaseCamera.player`(追従カメラの基準)・`PlanEditor.activePlayer`(計画編集の対象)・
   `Targeter` のロック** は艦を切り替えるたびに揃える必要がある4箇所。同時に切り替えるのは
   `Game.setActivePlayer` だけで、他はそれぞれ自分の持ち分(視点/編集対象/ロック解除)だけを更新する
-  — `MapModeToggler` が3つのフラグを一斉に切り替えるのと同じ形のトグラー集約。
+  — `ViewManager` が3つのフラグを一斉に切り替えるのと同じ形のトグラー集約。
 - **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `PlanDisplay.trajectoryFrame`(計画折れ線を
   描く座標系)** は別の正本で、ユーザーが独立に選ぶ。PlanTrajectory が受け取るのは後者だけ。
 - **`Targeter.target`(戦闘ターゲット、`Enemy` のみ)と `NavTarget.id`(航法ターゲット、任意の `MapPickable`)**
@@ -232,13 +233,13 @@ main.ts
 - **マップモードの操作パネル**は状態の所有者ごとに分かれる。`OverviewCameraPanel` は CameraSystem が、
   `DisplayTimePanel`(期間・未来位置スライダー)は DisplayTimeManager が、TRAJECTORY パネル(表示座標系)
   は PlanDisplay(PlanEditor 所有)が持ち、それぞれ自分の状態だけを映して自分の状態だけを受け取る。
-  表示・非表示も各所有者が毎フレームの sync で押し出す(MapModeToggler は関与しない)。
+  表示・非表示も各所有者が毎フレームの sync で押し出す(ViewManager は関与しない)。
 - **キー割り当ての正本は `input/key-mapping.ts` の `KEY_MAPPING`、キーの処理の正本は各担当モジュール**。
   どのキーがどの操作かは KEY_MAPPING(コード + 表示名)だけが持ち、入力を読む側(`Input.down` /
   `Input.takeKey` は `KeyBinding` を受ける)と説明を出す側(ヘルプ表・操作バー・タッチパッド・
   ステージ briefing・結果画面)は両方ともそれを参照する。どの操作を誰が処理するかは各モジュールに
   閉じたままで(`SettingsPanel`=pauseMenu / `Hud`=help / `Stage`=restart /
-  `SimSpeedManager`=warpSlower・warpFaster・autoWarpToNode / `MapModeToggler`=toggleMapMode /
+  `SimSpeedManager`=warpSlower・warpFaster・autoWarpToNode / `ViewManager`=toggleMapMode /
   `PlanEditor`=deleteNode・dv* / `CameraSystem`=followAttitudeToggle・gunsightZoom・camera* /
   `Player`=rcsDampToggle・progradeReset・fineAttitudeToggle・progradeHoldToggle・throttle*・reload・thrust*・pitch/yaw/roll)、
   `game.ts` が持つのは「どのモジュールに先に配るか」という順序だけ。
