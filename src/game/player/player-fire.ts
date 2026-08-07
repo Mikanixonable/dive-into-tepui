@@ -268,6 +268,7 @@ export class PlayerFire {
       C.BULLET_LIFETIME,
       'player',
       'normal',
+      ship.weaponDamage,
       this._scene,
     );
     addBullet(bullet);
