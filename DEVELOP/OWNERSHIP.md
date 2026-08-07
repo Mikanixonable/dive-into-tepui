@@ -64,6 +64,8 @@ main.ts
     │   └── 計画パネル DOM
     ├── PlanGuide                       ... 直近ノードの接近/達成通知済みフラグ(ノード自体への参照)を持つ
     ├── MapModeToggler                 ... 所有物なし(マップ開閉フラグ mapMode だけを持つ)
+    ├── ViewBadge                      ... DOM は Hud.root 配下。MapModeToggler/DockView を参照するだけで自身は状態を持たない
+    │   └── ContextMenu<true, ViewId>
     ├── Stage (activeStage)            ... initStage() が毎回 new する。クリエイティブモードでは CreativeStage を
     │                                       game.ts が直接 new する(initStage() は経由しない — §1 末尾の補足参照)
     │   ├── ScoreCounter

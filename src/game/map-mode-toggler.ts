@@ -35,6 +35,12 @@ export class MapModeToggler {
     if (!this._mapMode) this.open();
   }
 
+  // マップモードを閉じる(すでに閉じていれば何もしない)。UI からの明示的な遷移用に、
+  // キー入力を経由しない close() の公開口として ensureOpen() と対にする。
+  forceClose(): void {
+    if (this._mapMode) this.close();
+  }
+
   private apply(open: boolean): void {
     this._mapMode = open;
     this.hud.root.classList.toggle('map-mode', open);
