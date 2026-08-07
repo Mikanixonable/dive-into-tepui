@@ -1,4 +1,3 @@
-// 広範囲視点の操作パネル(注視対象・カメラを固定する座標系・視点リセット)。
 import { Frame } from '../../physics/frame';
 import { SegmentedControl, HudToggle } from '../hud/buttons';
 import { FRAME_ITEMS } from '../hud/frame-labels';
