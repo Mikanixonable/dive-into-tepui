@@ -2,12 +2,24 @@ import * as THREE from 'three/webgpu';
 import { GameEntity } from './game-entity';
 import { OrbitState } from '../../physics/orbital';
 import { Attitude } from '../../physics/attitude';
-import type { Part } from './parts';
+import type { AnyPart, Part } from './parts';
+import type { Player } from '../player/player';
+
+// 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。
+// hp/maxHp は艦一覧タブ表示用の集計値で、修理のたびに書き戻す。
+export interface DockedShipEntry {
+  readonly id: string;
+  readonly name: string;
+  hp: number;
+  maxHp: number;
+  readonly parts: Part[];
+  readonly player: Player;
+}
 
 export interface BaseState {
   money: number;
-  inventory: Part[];
-  dockedShips: any[]; // will contain serialized ship data
+  inventory: AnyPart[];
+  dockedShips: DockedShipEntry[];
 }
 
 let _baseIdCounter = 0;
