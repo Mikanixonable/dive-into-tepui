@@ -84,7 +84,7 @@ export class Player extends Ship {
     this._sfx = _sfx;
     this._fx = _fx;
     this.playerScene = _scene;
-    this.mass = 1000;
+    this.mass = C.PLAYER_MASS;
     // 剛体接触は実機体サイズ。被弾判定半径(radius)を使うと排莢直後の薬莢を弾いてしまう
     this.collideRadius = C.PLAYER_HULL_RADIUS;
 
@@ -197,7 +197,7 @@ export class Player extends Ship {
   // 分離し、各substep終端の位置・姿勢・太陽方向を使うことでwarp依存を防ぐ。
   stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number): void {
     if (!this.alive) return;
-    this.radiator.update(dt);
+    this.radiator.update(dt, this.radiatorWear());
     this.radius = this.radiator.hitRadius();
     const sunDir = ephemeris.sunDirAt(simTime);
     const sunlit = sunlitFactor(this.state.r, sunDir, C.SHADOW_PENUMBRA);
@@ -253,14 +253,24 @@ export class Player extends Ship {
     }
   }
 
-  // 被弾によるダメージ・致死判定。
+  // 放熱板パーツの残 HP から side ごとの損耗率を組む。パーツが欠けている側は全損扱い。
+  private radiatorWear(): Record<RadiatorSide, number> {
+    const [up, down] = this.radiatorParts;
+    const wearOf = (part: typeof up): number =>
+      part && part.maxHp > 0 ? 1 - part.hp / part.maxHp : 1;
+    return { up: wearOf(up), down: wearOf(down) };
+  }
+
+  // 被弾によるダメージ・致死判定。命中位置が展開中の放熱板ならその放熱板パーツへ、
+  // そうでなければ無作為なパーツへダメージが入る。
   attacked(bullet: Bullet, _simTime: number, activeStage: Stage, hitR: Vec3): void {
     if (!this.alive) return;
 
     this.thermal.addImpactHeat();
-    const brokenSide = this.radiator.damageFromHit(hitR, this.state.r, this.att);
-    if (brokenSide !== null) this.radiatorBreakEffect(brokenSide);
-    this.hp -= C.PLAYER_HIT_DAMAGE;
+    const side = this.radiator.sideHitBy(hitR, this.state.r, this.att);
+    const hitPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
+    this.applyDamageToParts(side === null ? C.PLAYER_HIT_DAMAGE : C.RADIATOR_HIT_DAMAGE, hitPart);
+    if (side !== null && hitPart && hitPart.hp <= 0) this.radiatorBreakEffect(side);
     if (this.hp > 0) {
       // 生存していれば被弾エフェクトのみ
       this.hitEffect(bullet, hitR);
@@ -383,7 +393,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer, this.magsLeft);
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity);
 
     if (this.predictionCentralBody === 'moon') {
       const samples = [...this.current.samplesOldestFirst(), ...(this.predicted?.samplesOldestFirst() ?? [])];
