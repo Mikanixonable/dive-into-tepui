@@ -257,8 +257,9 @@ export class Game {
     if (this._isPaused) {
       this.updateMapPresentation(dt, () => {
         if (!this.editor.editMode) return;
-        this.editor.handleMapPointer(this.input);
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
+        this.editor.handleMapPointer(this.input);
+        this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
         this.editor.updateEditing(dt, this.input);
       });
       return;
@@ -281,8 +282,9 @@ export class Game {
       this.effects.update(dt, simDt);
       this.updateMapPresentation(dt);
       if (this.editor.editMode) {
-        this.editor.handleMapPointer(this.input);
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
+        this.editor.handleMapPointer(this.input);
+        this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
         this.editor.updateEditing(dt, this.input);
       }
       return;
@@ -383,9 +385,9 @@ export class Game {
     this.updateMapPresentation(dt);
 
     if (this.editor.editMode) {
-      // 右クリックはノードを先に試し、外したぶんだけコンテキストメニューへ回る(優先順位はこの順序だけ)。
-      this.editor.handleMapPointer(this.input);
       this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
+      this.editor.handleMapPointer(this.input);
+      this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
       this.editor.updateEditing(dt, this.input);
     } else if (this.player) {
       const targets = this.entities.getCombatTargets(this.player);
