@@ -1,8 +1,9 @@
 // 軌道計画の姿の表示: 計画折れ線(PlanTrajectory)の駆動、表示座標系(trajectoryFrame)、
 // 表示時刻の計画上の自機位置ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
-import { R_EARTH, elementsFromState, orbitState, positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/orbital';
-import { Vec3, len } from '../../physics/vec3';
+import { orbitState, positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/orbital';
+import { Vec3, len, sub } from '../../physics/vec3';
+import { elementsAround, relativeTo, strongestAttractor, toAbsolute } from '../../physics/attractor';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { fmtMarkerDist, fmtDist } from '../hud/utils';
@@ -16,7 +17,6 @@ import * as C from '../const';
 import { hudDock } from '../hud/dom';
 import { Plan } from './plan';
 import { PlanTrajectory } from './plan-trajectory';
-import { centralBodyDefinition, fromCentralBodyState, toCentralBodyState } from '../../physics/central-body';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {
@@ -100,10 +100,10 @@ export class PlanDisplay {
   // アプシスアイコン id に対応する通過時刻。アイコンが出ていない id では null。
   apsisTimeOf(id: string): number | null {
     const state0 = this.traj.finalSegmentStart;
-    const plan = this.plan;
-    if (!state0 || !plan || !this.apsisIcons.some((icon) => icon.id === id)) return null;
-    const relative = toCentralBodyState(state0, plan.centralBody, this.ephemeris);
-    const el = elementsFromState(relative.r, relative.v, centralBodyDefinition(plan.centralBody).mu);
+    if (!state0 || !this.plan || !this.apsisIcons.some((icon) => icon.id === id)) return null;
+    const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
+    const relative = relativeTo(state0, center);
+    const el = elementsAround(state0, center);
     if (!el) return null;
     const nu = id === 'apsisAp' ? Math.PI : 0;
     const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
@@ -133,9 +133,11 @@ export class PlanDisplay {
 
   // ゴーストマーカーのラベル文字列(経過時間+高度)を組み立てる。現在時刻のゴーストは
   // 計画どおりに飛べていれば自機に重なるので、経過時間を添えず高度だけを出す。
+  // 高度はその位置で最も強く引く天体の表面からの高さ。
   private plannedPlayerLabel(displayTime: number, simTime: number, r: Vec3): string {
     const tRel = displayTime - simTime;
-    const alt = len(r) - R_EARTH;
+    const center = strongestAttractor(r, this.ephemeris.attractorsAt(displayTime));
+    const alt = len(sub(r, center.r)) - center.radius;
     if (tRel <= 0) return `計画位置 高度 ${fmtMarkerDist(alt, 0)}`;
     const h = Math.floor(tRel / 3600);
     const m = Math.floor((tRel % 3600) / 60);
@@ -146,24 +148,18 @@ export class PlanDisplay {
   // 解析的に求める。離心率がほぼ0で方向が不定なら空、双曲線軌道なら近地点だけ。
   private apsisIconsOf(): readonly ApsisIcon[] {
     const state0 = this.traj.finalSegmentStart;
-    const plan = this.plan;
-    if (!state0 || !plan) return [];
-    const body = centralBodyDefinition(plan.centralBody);
-    const relative = toCentralBodyState(state0, plan.centralBody, this.ephemeris);
-    const el = elementsFromState(relative.r, relative.v, body.mu);
+    if (!state0 || !this.plan) return [];
+    const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
+    const relative = relativeTo(state0, center);
+    const el = elementsAround(state0, center);
     if (!el || el.e < C.APSIS_MIN_ECC) return [];
-
-    // 近点距離が天体の作用圏 (SOI) を超えている場合は、
-    // 実質的にその天体の軌道ではない（単なる通りすがり、あるいは別天体の軌道）とみなして表示しない
-    const rp = el.p / (1 + el.e);
-    if (rp > body.soiRadius) return [];
 
     const apsisPosition = (nu: number): { pos: Vec3, time: number } => {
       const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
       const t = state0.t + (isFinite(dt) ? dt : 0);
       const relativeState = orbitState(t, positionOnOrbit(el, nu), relative.v);
       return {
-        pos: this.traj.toDisplay(fromCentralBodyState(relativeState, plan.centralBody, this.ephemeris).r, t),
+        pos: this.traj.toDisplay(toAbsolute(relativeState, center).r, t),
         time: t
       };
     };
@@ -173,7 +169,7 @@ export class PlanDisplay {
       id: 'apsisPe', name: '近地点', kind: 'apsis',
       pos: pe.pos,
       time: pe.time,
-      label: `Pe ${fmtDist(el.p / (1 + el.e) - body.radius)}`,
+      label: `Pe ${fmtDist(el.p / (1 + el.e) - center.radius)}`,
     }];
     if (isFinite(el.apAlt)) {
       const ap = apsisPosition(Math.PI);
@@ -181,7 +177,7 @@ export class PlanDisplay {
         id: 'apsisAp', name: '遠地点', kind: 'apsis',
         pos: ap.pos,
         time: ap.time,
-        label: `Ap ${fmtDist(el.a * (1 + el.e) - body.radius)}`,
+        label: `Ap ${fmtDist(el.a * (1 + el.e) - center.radius)}`,
       });
     }
     return icons;
