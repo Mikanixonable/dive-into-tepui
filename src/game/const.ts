@@ -231,7 +231,7 @@ export const NODE_GIZMO_HANDLE_PX = 42; // ノードからアームハンドル�
 export const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリック/ドラッグ判定しきい値 [px]
 // Δv アームドラッグ・長押しボタンによる連続加算(plan-editor.ts の applyDv 系)
 export const DV_DRAG_LATCH_PX = 60; // これを超えるアーム基点からの変位でドラッグがラッチ状態に入る [px]
-export const DV_LATCH_RATE_PER_PX = 0.4; // ラッチ中、閾値超過1pxあたりのΔv加算レート [m/s per 実秒 per px]
+export const DV_LATCH_RATE_PER_PX = 3.0; // ラッチ中、閾値超過1pxあたりのΔv加算レート [m/s per 実秒 per px]
 export const DV_RATE_MIN = 1; // 長押し開始時のΔv加算レート [m/s per 実秒]
 export const DV_RATE_MAX = 30; // 長押し継続後に到達するΔv加算レート [m/s per 実秒]
 export const DV_RATE_RAMP_SEC = 2.0; // DV_RATE_MIN から DV_RATE_MAX への指数的ランプ時間 [s]
