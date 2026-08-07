@@ -21,6 +21,19 @@ const STYLE = `
 .ctx-menu-item:hover, .ctx-menu-item:active {
   background: rgba(${ACCENT_RGB}, 0.18); color: ${ACCENT_SOFT};
 }
+.ctx-menu-header {
+  padding: 9px 14px;
+  border-bottom: 1px solid ${EDGE};
+  background: rgba(0, 0, 0, 0.2);
+  color: ${INK};
+  font-weight: bold;
+}
+.ctx-menu-header-sub {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 2px;
+  font-weight: normal;
+}
 `;
 
 let styleInjected = false;
@@ -34,9 +47,11 @@ function ensureStyle(): void {
 }
 
 export interface MenuItem<A extends string = string> {
+  type?: 'item' | 'header';
   label: string;
-  act: A;
+  act?: A;
   shortcut?: string;
+  subLabel?: string;
 }
 
 export class ContextMenu<T, A extends string = string> {
@@ -96,7 +111,15 @@ export class ContextMenu<T, A extends string = string> {
     this.requestedY = clientY;
     // 項目 DOM を組み立てる
     this.el.innerHTML = items
-      .map((it) => `<div class="ctx-menu-item" data-act="${it.act}" data-shortcut="${it.shortcut || ''}">${it.label}</div>`)
+      .map((it) => {
+        if (it.type === 'header') {
+          return `<div class="ctx-menu-header">
+            <div>${it.label}</div>
+            ${it.subLabel ? `<div class="ctx-menu-header-sub">${it.subLabel}</div>` : ''}
+          </div>`;
+        }
+        return `<div class="ctx-menu-item" data-act="${it.act || ''}" data-shortcut="${it.shortcut || ''}">${it.label}</div>`;
+      })
       .join('');
     // クリックされた項目の act を、開いた時点の対象とともに通知して閉じる
     this.el.querySelectorAll<HTMLElement>('.ctx-menu-item').forEach((item) => {

@@ -17,6 +17,7 @@ const Z_HAT: Vec3 = v3(0, 0, 1);
 
 export class NavTarget {
   private targetId: string | null = null;
+  private targetName: string | null = null;
   // 自機軌道上の AN/DN の絶対位置(地球中心)。対象の軌道面が定まらなければ両方 null。
   private anPos: Vec3 | null = null;
   private dnPos: Vec3 | null = null;
@@ -30,13 +31,19 @@ export class NavTarget {
     return this.targetId;
   }
 
+  get name(): string | null {
+    return this.targetName;
+  }
+
   // id と現在の設定が同じなら解除、そうでなければ id を航法ターゲットにする。
   toggleTarget(id: string, name: string): void {
     if (this.targetId === id) {
       this.targetId = null;
+      this.targetName = null;
       this._hud.hint('航法ターゲット解除');
     } else {
       this.targetId = id;
+      this.targetName = name;
       this._hud.hint(`航法ターゲット: ${name}`);
     }
   }
@@ -97,8 +104,8 @@ export class NavTarget {
   // 右クリック対象として公開する AN/DN アイコン。計算できているぶんだけ返す。
   mapPickables(): MapPickable[] {
     const items: MapPickable[] = [];
-    if (this.anPos) items.push({ id: 'nav-an', name: 'AN', pos: this.anPos, kind: 'relnode' });
-    if (this.dnPos) items.push({ id: 'nav-dn', name: 'DN', pos: this.dnPos, kind: 'relnode' });
+    if (this.anPos && this.anTime !== null) items.push({ id: 'nav-an', name: 'AN', pos: this.anPos, time: this.anTime, kind: 'relnode' });
+    if (this.dnPos && this.dnTime !== null) items.push({ id: 'nav-dn', name: 'DN', pos: this.dnPos, time: this.dnTime, kind: 'relnode' });
     return items;
   }
 

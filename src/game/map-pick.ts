@@ -9,6 +9,7 @@ export interface MapPickable {
   readonly name: string;
   readonly pos: Vec3;
   readonly kind: MapPickKind;
+  readonly time?: number;
 }
 
 // items を project で画面へ射影し、(x, y) から半径 radiusPxSq [px^2] 以内で最も近いものを返す。
