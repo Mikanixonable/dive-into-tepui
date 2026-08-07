@@ -26,10 +26,13 @@ const STYLE = `
   position: absolute; transform: translate(-50%, -50%);
   width: 44px; height: 44px; border-radius: 22px; touch-action: none;
   pointer-events: auto; cursor: grab;
-  /* 3Dアームの当たり判定として機能させるため透明にする */
-  opacity: 0;
+  /* 背景は透明にしつつ、ラベルのテキストは表示する */
+  background: transparent; border: none;
+  color: ${INK}; font-size: 10px; font-weight: bold; letter-spacing: 1px;
+  display: flex; align-items: center; justify-content: center;
+  text-shadow: 0 0 2px #000, 0 0 4px #000;
 }
-#node-gizmo .gz-axis:active { cursor: grabbing; }
+#node-gizmo .gz-axis:active { cursor: grabbing; color: ${ACCENT_SOFT}; }
 `;
 
 export interface NodeHandleSpec {
