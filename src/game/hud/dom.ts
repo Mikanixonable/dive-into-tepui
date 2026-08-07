@@ -1,7 +1,7 @@
 // HUD の静的 DOM/スタイル構築。
 import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
+import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, EDGE, BG, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
 
 
 const throttleLabels = [K.throttleLow, K.throttleMid, K.throttleHigh].map((k) => k.label).join(' / ');
@@ -373,23 +373,28 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud-stagestatus { max-height: 46px; }
 }
 /* ===== DockView ===== */
-.dock-view-overlay {
+/* 戦闘・マップと対等な全画面ビュー。背後の 3D は描画自体が止まるので、
+   透過させず不透明な地の色で塗り切る。 */
+#dock-view.dock-view-overlay {
   position: fixed; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(0,0,0,0.75); backdrop-filter: blur(6px);
+  display: flex;
+  background: ${BG};
   font-family: ${FONT};
   pointer-events: auto;
+  /* 右上のビューバッジは全ビュー共通の枠なのでドック中も残る。その帯を避けて中身を始める。 */
+  padding-top: 30px;
 }
+/* マップ左右ドックの開閉ボタンは、背後のマップごと覆われるので出さない。 */
+#hud.dock-mode .dock-toggle { display: none; }
 .dock-panel {
-  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 10px;
-  width: min(900px,94vw); max-height: 82vh;
+  flex: 1 1 auto; min-width: 0;
   display: flex; flex-direction: column; overflow: hidden;
-  box-shadow: 0 8px 40px rgba(0,0,0,0.7);
 }
-.dock-header {
+#dock-view .dock-header {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 16px; border-bottom: 1px solid ${EDGE};
   flex: 0 0 auto;
+  width: min(1100px, 100%); margin: 0 auto;
 }
 .dock-title {
   font-size: 15px; font-weight: 700; letter-spacing: 0.12em;
@@ -408,13 +413,15 @@ body.hud-modal-open #touch-ui { display: none; }
   background: transparent; color: ${INK_SOFT}; cursor: pointer; font-size: 14px;
 }
 .dock-close-btn:hover { color: ${INK}; }
-.dock-status-bar {
+#dock-view .dock-status-bar {
   padding: 5px 16px; border-bottom: 1px solid ${EDGE};
   font-size: 12px; color: ${INK_SOFT}; flex: 0 0 auto;
+  width: min(1100px, 100%); margin: 0 auto;
 }
-.dock-body {
+#dock-view .dock-body {
   flex: 1 1 0; overflow-y: auto; padding: 12px 16px;
   scrollbar-width: thin;
+  width: min(1100px, 100%); margin: 0 auto;
 }
 .dock-empty { color: ${INK_SOFT}; padding: 24px; text-align: center; line-height: 1.8; }
 /* Ships tab */

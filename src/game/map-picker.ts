@@ -16,6 +16,7 @@ import { NavTarget } from './nav-target';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
+import type { Docking } from './docking';
 import type { Game } from './game';
 import { v3 } from '../physics/vec3';
 
@@ -32,6 +33,10 @@ export class MapPicker {
 
   // このフレームの被選択物候補。refresh の後に読む。
   get pickables(): readonly MapPickable[] { return this.items; }
+
+  // Docking は MapPicker より後に生成されるので、生成後に登録する。
+  setDocking(docking: Docking): void { this.docking = docking; }
+  private docking: Docking | null = null;
 
   // 候補の供給元と、メニュー項目の実行先を参照として受け取る。
   constructor(
@@ -294,9 +299,12 @@ export class MapPicker {
       run: (act, target) => {
         const base = this.entities.findBase(target.id);
         if (act === 'delete') {
-          if (base) base.alive = false;
+          if (base) {
+            this.docking?.clearActiveBaseIf(base);
+            base.alive = false;
+          }
         } else if (act === 'openDock') {
-          if (base) this.game.openDockView(base);
+          if (base) this.docking?.activate(base);
           else this.hud.hint('基地が見つかりません');
         } else {
           this.runBodyShip(act, target);
