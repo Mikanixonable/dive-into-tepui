@@ -34,6 +34,7 @@ import { PowerSystem } from './power';
 import { Ephemeris, sunlitFactor } from '../../physics/ephemeris';
 import { Plan } from '../plan/plan';
 import type { CentralBodyId } from '../../physics/central-body';
+import type { PlayerSaveData } from '../save-data';
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
@@ -435,5 +436,72 @@ export class Player extends Ship {
     this.rcsEffects.dispose(this.playerScene);
     this.reentryEffects.dispose(this.playerScene);
     super.dispose();
+  }
+
+  serialize(): PlayerSaveData {
+    return {
+      id: this.id,
+      name: this.displayName,
+      kind: 'player',
+      r: { ...this.state.r },
+      v: { ...this.state.v },
+      q: { ...this.att.q },
+      w: { ...this.att.w },
+      mags: this.fire.mags,
+      rounds: this.fire.rounds,
+      heat: this.thermal.hullTemp,
+      plan: {
+        centralBody: this.plan.centralBody,
+        anchor: {
+          t: this.plan.anchor.t,
+          r: { ...this.plan.anchor.r },
+          v: { ...this.plan.anchor.v },
+        },
+        nodes: this.plan.nodes.map(n => ({
+          t: n.t,
+          r: { ...n.r },
+          v: { ...n.v },
+        })),
+      },
+    };
+  }
+
+  static restore(
+    data: PlayerSaveData,
+    simTime: number,
+    hud: Hud,
+    sfx: Sfx,
+    scene: THREE.Scene,
+    fx: EffectsSystem,
+    markerManager: MarkerManager
+  ): Player {
+    const state = orbitState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
+    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
+    const player = new Player(hud, sfx, scene, fx, markerManager, data.name || data.id, state, data.id, 'earth');
+    player.att = att;
+    
+    player.fire.initAmmo(data.mags, data.rounds);
+    player.thermal.hullTemp = data.heat;
+
+    if (data.plan) {
+      player.plan.centralBody = data.plan.centralBody as CentralBodyId;
+      player.plan.clear();
+      player.plan.trackAnchor(orbitState(
+        data.plan.anchor.t,
+        v3(data.plan.anchor.r.x, data.plan.anchor.r.y, data.plan.anchor.r.z),
+        v3(data.plan.anchor.v.x, data.plan.anchor.v.y, data.plan.anchor.v.z)
+      ));
+      // Anchor is only tracked while _nodes is empty. So we must set it first.
+      // But trackAnchor doesn't work if nodes are not empty. So clearing first is good.
+      for (const n of data.plan.nodes) {
+        player.plan.addNode(orbitState(
+          n.t,
+          v3(n.r.x, n.r.y, n.r.z),
+          v3(n.v.x, n.v.y, n.v.z)
+        ));
+      }
+    }
+
+    return player;
   }
 }
