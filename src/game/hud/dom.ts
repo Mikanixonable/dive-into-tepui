@@ -386,7 +386,7 @@ body.hud-modal-open #touch-ui { display: none; }
 }
 /* マップ左右ドックの開閉ボタンは、背後のマップごと覆われるので出さない。 */
 #hud.dock-mode .dock-toggle { display: none; }
-.dock-panel {
+#dock-view .dock-panel {
   flex: 1 1 auto; min-width: 0;
   display: flex; flex-direction: column; overflow: hidden;
 }
@@ -396,23 +396,23 @@ body.hud-modal-open #touch-ui { display: none; }
   flex: 0 0 auto;
   width: min(1100px, 100%); margin: 0 auto;
 }
-.dock-title {
+#dock-view .dock-title {
   font-size: 15px; font-weight: 700; letter-spacing: 0.12em;
   color: ${ACCENT}; flex: 0 0 auto;
 }
-.dock-tabs { display: flex; gap: 4px; flex: 1; }
-.dock-tab-btn {
+#dock-view .dock-tabs { display: flex; gap: 4px; flex: 1; }
+#dock-view .dock-tab-btn {
   padding: 4px 14px; border: 1px solid ${EDGE}; border-radius: 4px;
   background: transparent; color: ${INK_SOFT}; cursor: pointer;
   font-size: 12px; transition: color .15s, border-color .15s;
 }
-.dock-tab-btn:hover { color: ${INK}; border-color: ${ACCENT_SOFT}; }
-.dock-tab-btn.active { color: ${ACCENT}; border-color: ${ACCENT}; background: rgba(${ACCENT_RGB},.08); }
-.dock-close-btn {
+#dock-view .dock-tab-btn:hover { color: ${INK}; border-color: ${ACCENT_SOFT}; }
+#dock-view .dock-tab-btn.active { color: ${ACCENT}; border-color: ${ACCENT}; background: rgba(${ACCENT_RGB},.08); }
+#dock-view .dock-close-btn {
   padding: 4px 10px; border: 1px solid ${EDGE}; border-radius: 4px;
   background: transparent; color: ${INK_SOFT}; cursor: pointer; font-size: 14px;
 }
-.dock-close-btn:hover { color: ${INK}; }
+#dock-view .dock-close-btn:hover { color: ${INK}; }
 #dock-view .dock-status-bar {
   padding: 5px 16px; border-bottom: 1px solid ${EDGE};
   font-size: 12px; color: ${INK_SOFT}; flex: 0 0 auto;
@@ -423,61 +423,80 @@ body.hud-modal-open #touch-ui { display: none; }
   scrollbar-width: thin;
   width: min(1100px, 100%); margin: 0 auto;
 }
-.dock-empty { color: ${INK_SOFT}; padding: 24px; text-align: center; line-height: 1.8; }
+#dock-view .dock-empty { color: ${INK_SOFT}; padding: 24px; text-align: center; line-height: 1.8; }
 /* Ships tab */
-.dock-ship-list { display: flex; flex-direction: column; gap: 8px; }
-.dock-ship-row {
+#dock-view .dock-ship-list { display: flex; flex-direction: column; gap: 8px; }
+#dock-view .dock-ship-row {
   display: flex; align-items: center; gap: 12px; padding: 10px 12px;
   border: 1px solid ${EDGE}; border-radius: 6px; cursor: pointer;
   transition: border-color .15s;
 }
-.dock-ship-row:hover { border-color: ${ACCENT_SOFT}; }
-.dock-ship-row.selected { border-color: ${ACCENT}; background: rgba(${ACCENT_RGB},.06); }
-.dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.dock-ship-name { font-size: 13px; }
-.dock-ship-hp { font-size: 11px; color: ${INK_SOFT}; }
-.dock-ship-actions { display: flex; gap: 6px; }
+#dock-view .dock-ship-row:hover { border-color: ${ACCENT_SOFT}; }
+#dock-view .dock-ship-row.selected { border-color: ${ACCENT}; background: rgba(${ACCENT_RGB},.06); }
+#dock-view .dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+#dock-view .dock-ship-name { font-size: 13px; }
+#dock-view .dock-ship-hp { font-size: 11px; color: ${INK_SOFT}; }
+#dock-view .dock-ship-actions { display: flex; gap: 6px; }
 /* Parts tab */
-.dock-parts-header {
+#dock-view .dock-parts-header {
   display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
   padding-bottom: 8px; border-bottom: 1px solid ${EDGE};
 }
-.dock-ship-label { font-size: 12px; color: ${INK_SOFT}; flex: 1; }
-.dock-part-list { display: flex; flex-direction: column; gap: 6px; }
-.dock-part-row {
+#dock-view .dock-ship-label { font-size: 12px; color: ${INK_SOFT}; flex: 1; }
+#dock-view .dock-part-list { display: flex; flex-direction: column; gap: 6px; }
+#dock-view .dock-part-row {
   display: grid; grid-template-columns: 1fr 120px 60px auto;
   align-items: center; gap: 10px; padding: 6px 10px;
   border: 1px solid ${EDGE}; border-radius: 4px;
 }
-.dock-part-info { display: flex; flex-direction: column; gap: 2px; }
-.dock-part-name { font-size: 12px; }
-.dock-part-type { font-size: 10px; color: ${INK_SOFT}; }
-.dock-part-hp-bar { height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; }
-.dock-part-hp-fill { height: 100%; border-radius: 3px; transition: width .3s; }
-.dock-part-hp-text { font-size: 11px; color: ${INK_SOFT}; text-align: right; }
+#dock-view .dock-part-info { display: flex; flex-direction: column; gap: 2px; }
+#dock-view .dock-part-name { font-size: 12px; }
+#dock-view .dock-part-type { font-size: 10px; color: ${INK_SOFT}; }
+#dock-view .dock-part-hp-bar { height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; }
+#dock-view .dock-part-hp-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+#dock-view .dock-part-hp-text { font-size: 11px; color: ${INK_SOFT}; text-align: right; }
+#dock-view .dock-part-row { display: flex; flex-direction: column; gap: 6px; }
+#dock-view .dock-part-row-main {
+  display: grid; grid-template-columns: 1fr 120px 60px auto;
+  align-items: center; gap: 10px;
+}
+#dock-view .dock-warehouse-row-main { grid-template-columns: 1fr 60px auto; }
+#dock-view .dock-part-actions { display: flex; align-items: center; gap: 6px; }
+#dock-view .dock-part-swap-row {
+  display: flex; align-items: center; gap: 8px;
+  padding-top: 6px; border-top: 1px solid ${EDGE};
+  font-size: 11px; color: ${INK_SOFT};
+}
+#dock-view .dock-part-swap-select {
+  flex: 1; background: rgba(255,255,255,.04); color: ${INK};
+  border: 1px solid ${EDGE}; border-radius: 4px; padding: 3px 6px; font-size: 11px;
+}
+#dock-view .dock-parts-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+#dock-view .dock-parts-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#dock-view .dock-col-title { font-size: 12px; color: ${INK_SOFT}; border-bottom: 1px solid ${EDGE}; padding-bottom: 4px; }
 /* Shop tab */
-.dock-shop-header { margin-bottom: 10px; font-size: 11px; color: ${INK_SOFT}; }
-.dock-shop-list { display: flex; flex-direction: column; gap: 6px; }
-.dock-shop-item {
+#dock-view .dock-shop-header { margin-bottom: 10px; font-size: 11px; color: ${INK_SOFT}; }
+#dock-view .dock-shop-list { display: flex; flex-direction: column; gap: 6px; }
+#dock-view .dock-shop-item {
   display: flex; align-items: center; gap: 12px; padding: 8px 12px;
   border: 1px solid ${EDGE}; border-radius: 4px;
 }
-.dock-shop-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.dock-shop-name { font-size: 13px; }
-.dock-shop-type { font-size: 10px; color: ${INK_SOFT}; }
-.dock-shop-props { font-size: 11px; color: ${INK_SOFT}; }
-.dock-shop-stats { font-size: 10px; color: ${INK_SOFT}; }
-.dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.dock-shop-price { font-size: 12px; color: ${ACCENT}; }
+#dock-view .dock-shop-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+#dock-view .dock-shop-name { font-size: 13px; }
+#dock-view .dock-shop-type { font-size: 10px; color: ${INK_SOFT}; }
+#dock-view .dock-shop-props { font-size: 11px; color: ${INK_SOFT}; }
+#dock-view .dock-shop-stats { font-size: 10px; color: ${INK_SOFT}; }
+#dock-view .dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+#dock-view .dock-shop-price { font-size: 12px; color: ${ACCENT}; }
 /* Common buttons */
-.dock-btn {
+#dock-view .dock-btn {
   padding: 4px 12px; border: 1px solid ${EDGE}; border-radius: 4px;
   background: rgba(${ACCENT_RGB},.08); color: ${ACCENT}; cursor: pointer;
   font-size: 11px; transition: background .15s;
 }
-.dock-btn:hover:not(.disabled) { background: rgba(${ACCENT_RGB},.18); }
-.dock-btn.disabled, .dock-btn:disabled { opacity: 0.38; cursor: not-allowed; }
-.dock-btn-repair-all {
+#dock-view .dock-btn:hover:not(.disabled) { background: rgba(${ACCENT_RGB},.18); }
+#dock-view .dock-btn.disabled, #dock-view .dock-btn:disabled { opacity: 0.38; cursor: not-allowed; }
+#dock-view .dock-btn-repair-all {
   font-size: 11px; padding: 4px 12px;
 }
 `;
