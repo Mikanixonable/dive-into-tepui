@@ -9,7 +9,8 @@ import {
   localOrbitPeriod,
   strongestAttractor,
 } from '../../src/physics/attractor';
-import { MU_EARTH, R_EARTH, keplerPeriod, orbitState, stateFromElements, tofBetween } from '../../src/physics/orbital';
+import { MU_EARTH, R_EARTH, orbitState } from '../../src/physics/orbital-state';
+import { keplerPeriod, stateFromElements, tofBetween } from '../../src/physics/elements';
 import { Ephemeris, MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/ephemeris';
 import { add, addScaled, len, norm, sub, v3 } from '../../src/physics/vec3';
 

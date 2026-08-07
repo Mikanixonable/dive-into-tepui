@@ -16,7 +16,7 @@ import {
   sunlitFactor,
 } from '../../src/physics/ephemeris';
 import { qRotate } from '../../src/physics/attitude';
-import { MU_EARTH, R_EARTH } from '../../src/physics/orbital';
+import { MU_EARTH, R_EARTH } from '../../src/physics/orbital-state';
 import { Vec3, cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
 
 const YEAR = 365.25636 * 86400;

@@ -5,7 +5,7 @@ import { Ship } from './ship';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import type { FloatingOrigin } from '../floating-origin';
 import { Attitude } from '../../physics/attitude';
-import { altitudeOf, OrbitState, orbitState, R_EARTH_EQ } from '../../physics/orbital';
+import { altitudeOf, OrbitState, orbitState, R_EARTH_EQ } from '../../physics/orbital-state';
 import { OrbitLine } from '../../render/orbitline';
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3 } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';

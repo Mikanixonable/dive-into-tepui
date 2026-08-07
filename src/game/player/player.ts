@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp } from '../../physics/attitude';
-import { MU_EARTH, OrbitState, R_EARTH, orbitState } from '../../physics/orbital';
+import { MU_EARTH, OrbitState, R_EARTH, altitudeOf, orbitState } from '../../physics/orbital-state';
 import { Vec3, v3, len, sub } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -20,7 +20,6 @@ import { ScoreCounter } from '../stages/stage-utils/score-counter';
 import { PlayerThrottle } from './player-throttle';
 import { PlayerFire } from './player-fire';
 import { Belt } from './belt';
-import { altitudeOf } from '../../physics/orbital';
 import { ThermalSystem } from './thermal';
 import { EffectsSystem } from '../vfx/effects-system';
 import { ThrustEffects } from './thrust-effects';

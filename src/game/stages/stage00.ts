@@ -10,7 +10,8 @@ import type { Hud } from '../hud/hud';
 import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import { SimSpeedManager } from '../sim-speed-manager';
-import { MU_EARTH, OrbitState, elementsFromState, orbitState } from '../../physics/orbital';
+import { MU_EARTH, OrbitState, R_EARTH, orbitState } from '../../physics/orbital-state';
+import { apsisAltitudes, elementsFromState } from '../../physics/elements';
 import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../physics/vec3';
 import { generateApproachingEnemy } from './spawner/enemy-generator';
 
@@ -174,7 +175,7 @@ function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3): Vec3 {
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
     const el = elementsFromState(centerR, v, MU_EARTH);
-    return el !== null && el.peAlt >= minPeAlt;
+    return el !== null && apsisAltitudes(el, R_EARTH).pe >= minPeAlt;
   };
   if (safe(centerV)) return centerV;
 

@@ -2,9 +2,10 @@
 import * as assert from 'node:assert/strict';
 import { Ephemeris, MU_MOON, R_MOON } from '../../src/physics/ephemeris';
 import { elementsAround, strongestAttractor } from '../../src/physics/attractor';
-import { keplerPeriod, orbitState } from '../../src/physics/orbital';
+import { orbitState } from '../../src/physics/orbital-state';
+import { apsisAltitudes, keplerPeriod } from '../../src/physics/elements';
 import { add, v3 } from '../../src/physics/vec3';
-import { apsisAltitudes, orbitPeriodOf, Plan } from '../../src/game/plan/plan';
+import { orbitPeriodOf, Plan } from '../../src/game/plan/plan';
 import { test } from './harness';
 
 export function register(): void {
