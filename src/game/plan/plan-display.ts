@@ -153,6 +153,11 @@ export class PlanDisplay {
     const el = elementsFromState(relative.r, relative.v, body.mu);
     if (!el || el.e < C.APSIS_MIN_ECC) return [];
 
+    // 近点距離が天体の作用圏 (SOI) を超えている場合は、
+    // 実質的にその天体の軌道ではない（単なる通りすがり、あるいは別天体の軌道）とみなして表示しない
+    const rp = el.p / (1 + el.e);
+    if (rp > body.soiRadius) return [];
+
     const apsisPosition = (nu: number): Vec3 => {
       const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
       const t = state0.t + (isFinite(dt) ? dt : 0);
