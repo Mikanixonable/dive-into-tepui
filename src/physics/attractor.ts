@@ -9,8 +9,7 @@ export type Attractor = {
   readonly id: AttractorId;
   readonly mu: number; // GM [m^3/s^2]
   readonly radius: number; // 表面半径 [m]
-  readonly r: Vec3; // ECI 位置(地球は原点)
-  readonly v: Vec3; // ECI 速度
+  readonly state: OrbitState; // ECI 位置・速度(同一時刻。地球は原点に静止)
 };
 
 const ORIGIN = v3(0, 0, 0);
@@ -21,9 +20,9 @@ const ORIGIN = v3(0, 0, 0);
 export function gravityAccel(r: Vec3, bodies: readonly Attractor[]): Vec3 {
   let ax = 0, ay = 0, az = 0;
   for (const body of bodies) {
-    const dx = body.r.x - r.x;
-    const dy = body.r.y - r.y;
-    const dz = body.r.z - r.z;
+    const dx = body.state.r.x - r.x;
+    const dy = body.state.r.y - r.y;
+    const dz = body.state.r.z - r.z;
     const d2 = dx * dx + dy * dy + dz * dz;
     if (d2 < 1) continue;
     const k = body.mu / (d2 * Math.sqrt(d2));
@@ -59,29 +58,28 @@ export function strongestAttractor(r: Vec3, bodies: readonly Attractor[]): Attra
 // 刻み幅・サンプル間隔を決めるためのもので、「その天体を中心に軌道要素を出す」こととは無関係。
 export function localOrbitPeriod(r: Vec3, bodies: readonly Attractor[]): number {
   const body = strongestAttractor(r, bodies);
-  return keplerPeriod(len(sub(r, body.r)), body.mu);
+  return keplerPeriod(len(sub(r, body.state.r)), body.mu);
 }
 
 // 天体中心相対 ⇄ ECI(時刻 t は保つ)。
 export function relativeTo(s: OrbitState, body: Attractor): OrbitState {
-  return orbitState(s.t, sub(s.r, body.r), sub(s.v, body.v));
+  return orbitState(s.t, sub(s.r, body.state.r), sub(s.v, body.state.v));
 }
 export function toAbsolute(rel: OrbitState, body: Attractor): OrbitState {
-  return orbitState(rel.t, add(rel.r, body.r), add(rel.v, body.v));
+  return orbitState(rel.t, add(rel.r, body.state.r), add(rel.v, body.state.v));
 }
 
 // 天体 body を中心とする接触軌道要素。中心の選び方には関与しない — 呼び出し側が
 // strongestAttractor などで選んだ body をそのまま渡す。
 export function elementsAround(s: OrbitState, body: Attractor): Elements | null {
-  const rel = relativeTo(s, body);
-  return elementsFromState(rel.r, rel.v, body.mu);
+  return elementsFromState(relativeTo(s, body), body);
 }
 
 // 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。margin(大気圏突入高度
 // など)はゲーム側の判断なので呼び出し側から受け取る — physics/ はその値自体を知らない。
 export function hitsAnySurface(r: Vec3, bodies: readonly Attractor[], margin: number): boolean {
   for (const body of bodies) {
-    if (len(sub(r, body.r)) < body.radius + margin) return true;
+    if (len(sub(r, body.state.r)) < body.radius + margin) return true;
   }
   return false;
 }

@@ -1,6 +1,6 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { altitudeOf, OrbitState } from '../../physics/orbital-state';
+import { OrbitState } from '../../physics/orbital-state';
 import { Elements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { OrbitEntity } from '../../physics/orbit-entity';
@@ -158,10 +158,11 @@ export class GameEntity {
     this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 
-  // playerPos は「自機からの距離」で消える種別(弾)のために一律で渡す。
-  checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3): void {
+  // playerPos は「自機からの距離」で消える種別(弾)のために一律で渡す。bodies はその時刻の
+  // 重力源一覧(表面到達判定に使う)。
+  checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3, bodies: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (altitudeOf(this.state.r) < C.DEBRIS_REENTRY_ALT) this.alive = false;
+    if (hitsAnySurface(this.state.r, bodies, C.DEBRIS_REENTRY_ALT)) this.alive = false;
   }
 
   // メッシュを scene から取り除く。

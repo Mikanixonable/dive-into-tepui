@@ -1,7 +1,7 @@
 // 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、NODE/BURN マーカー。
-import { MU_EARTH, OrbitState } from '../../physics/orbital-state';
-import { Elements, elementsFromState } from '../../physics/elements';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { OrbitState } from '../../physics/orbital-state';
+import { Elements } from '../../physics/elements';
+import { Attractor, elementsAround, strongestAttractor } from '../../physics/attractor';
 import { addScaled, dot, len, norm, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
@@ -85,12 +85,15 @@ export class PlanGuide {
     this._hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
   }
 
-  // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。
+  // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと自機で最も強く引く
+  // 天体が違えば、要素同士の比較自体が意味を持たないので判定しない。
   private notifyAchieved(plan: Plan, node: OrbitState, player: Player, bodies: readonly Attractor[]): void {
     if (this.achievedNotified === node) return;
-    const targetEl = elementsFromState(node.r, node.v, MU_EARTH);
-    const center = strongestAttractor(player.state.r, bodies);
-    const playerEl = player.elementsAround(center);
+    const playerCenter = strongestAttractor(player.state.r, bodies);
+    const nodeCenter = strongestAttractor(node.r, bodies);
+    if (playerCenter.id !== nodeCenter.id) return;
+    const targetEl = elementsAround(node, nodeCenter);
+    const playerEl = player.elementsAround(playerCenter);
     if (!playerEl || !targetEl || !orbitClose(playerEl, targetEl)) return;
     this.achievedNotified = node;
     // 計画軌道へ到達したノードは、その場で実行済みとして削除する。
