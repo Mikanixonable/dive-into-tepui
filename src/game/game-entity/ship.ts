@@ -97,6 +97,7 @@ export abstract class Ship extends GameEntity {
       return;
     }
 
+    // 装甲は複数積んでも最も高い軽減率のものだけが効く。
     const armors = this.parts.filter(p => p.type === 'armor' && p.hp > 0) as import('./parts').ArmorPart[];
     const reduction = armors.length > 0 ? Math.max(...armors.map(a => a.damageReduction)) : 0;
     const effectiveDamage = amount * (1 - reduction);
