@@ -41,6 +41,13 @@ export class EntityManager {
     player.dispose();
   }
 
+  // 自機を取り除くが破棄はしない(基地への収容など、後で addPlayer で復帰させる場合)。
+  parkPlayer(player: Player): void {
+    const i = this.players.indexOf(player);
+    if (i < 0) return;
+    this.players.splice(i, 1);
+  }
+
   // ターゲットとなり得るエンティティの一覧を取得する。
   getCombatTargets(excludePlayer: Player | null): CombatTarget[] {
     const players = excludePlayer ? this.players.filter(p => p !== excludePlayer) : this.players;

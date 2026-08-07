@@ -204,6 +204,8 @@
   - nanWatchdog.checkAll('simulator.stepSimulation') // 全エンティティ走査。検出済みなら何もしない
   - targeter.updateBoardMarks(dt) // 既存マークの経過時間を進め、寿命切れを捨てる。ターゲットが居なければ全消し
     - boardMarks.push() // 通常弾が的の面を自機側から通過した場合のみ
+  - [CreativeStage] 撃沈艦を players から除去 → removeCreativePlayer() // 生存 0 隻ならアクティブ艦を差し替え/マップを開く
+  - [!dockView.visible && entities.bases.length > 0] docking.checkProximity() // 全 base × 全生存艦。距離・相対速度が閾値内の艦を収容(EntityManager.parkPlayer で破棄せず除去)
   - entities.cleanup() // simulator.simTime と自機位置を渡す(弾は距離で消える)
     - checkLoss() // 敵・弾・薬莢・デブリ・補給・自機(全隻、この順)の各個体ごと(既定は alive=false 代入のみ)
       - [Enemy.checkLoss] destroyEffect() + activeStage.recordEnemyDeath(cause='reentry') // 再突入時のみ
