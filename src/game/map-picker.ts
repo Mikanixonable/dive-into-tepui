@@ -65,6 +65,11 @@ export class MapPicker {
       const pos = enemy.displayState(displayTime)?.r;
       if (pos) items.push({ id: enemy.name, name: enemy.name, pos, kind: 'ship' });
     }
+    for (const ammo of this.entities.ammos) {
+      if (!ammo.alive) continue;
+      const pos = ammo.displayState(displayTime)?.r;
+      if (pos) items.push({ id: ammo.id ?? 'ammo', name: '弾薬', pos, kind: 'ammo' });
+    }
     items.push(...this.navTarget.mapPickables());
     items.push(...this.editor.planDisplay.apsisMarkers);
     this.items = items;
@@ -112,9 +117,33 @@ export class MapPicker {
       itemsFor: (target, simTime) => [
         MenuCommon.focus(),
         ...this.navTargetItems(target, simTime),
+        { label: '削除', act: 'delete' },
         MenuCommon.cancel(),
       ],
-      run: (act, target) => this.runBodyShip(act, target),
+      run: (act, target) => {
+        if (act === 'delete') {
+          const enemy = this.entities.enemies.find(e => e.name === target.id);
+          if (enemy) enemy.alive = false;
+        } else {
+          this.runBodyShip(act, target);
+        }
+      },
+    },
+    'ammo': {
+      itemsFor: (target, simTime) => [
+        MenuCommon.focus(),
+        ...this.navTargetItems(target, simTime),
+        { label: '削除', act: 'delete' },
+        MenuCommon.cancel(),
+      ],
+      run: (act, target) => {
+        if (act === 'delete') {
+          const ammo = this.entities.ammos.find(a => a.id === target.id);
+          if (ammo) ammo.alive = false;
+        } else {
+          this.runBodyShip(act, target);
+        }
+      },
     },
     'apsis': {
       itemsFor: (target, simTime) => {
@@ -179,7 +208,7 @@ export class MapPicker {
     },
     'empty-space': {
       itemsFor: () => [
-        { label: '艦艇を配置する', act: 'openShipPlacer', shortcut: 'Enter' },
+        { label: 'オブジェクトを配置する', act: 'openShipPlacer', shortcut: 'Enter' },
         MenuCommon.cancel(),
       ],
       run: (act) => {
