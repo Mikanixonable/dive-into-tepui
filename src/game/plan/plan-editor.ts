@@ -243,7 +243,11 @@ export class PlanEditor {
   }
 
   // マップ上のクリック・右クリックをノード選択/配置とコンテキストメニューへ振り分ける。
+  // 艦がいない(detachedPlan)間は計画そのものに意味がないので、クリックはここで捨てる —
+  // 素通しすると、艦を持たない detachedPlan の原点固定アンカーから計算される退化した
+  // 軌道折れ線に対して当たり判定が成立し、天体アイコンをクリックしてもノードが置けてしまう。
   handleMapPointer(input: Input): void {
+    if (this.ship === null) return;
     input.takeRightClicks((p) => this.handleNodeRightClick(p.x, p.y));
     input.takeClicks((p) => {
       this.handleMapClick(p.x, p.y);
@@ -666,22 +670,26 @@ export class PlanEditor {
   // 現在軌道そのものなので、ノードを置ける編集中だけ扱う。
   update(simTime: number, displayTime: number): void {
     this.simTime = simTime;
-    this.planDisplay.update(this.plan, simTime, displayTime, this.editMode || this.plan.nodes.length > 0);
+    this.planDisplay.update(this.plan, simTime, displayTime, this.hasPlan && (this.editMode || this.plan.nodes.length > 0));
   }
 
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
   sync(mapDist: number, simTime: number, fo: FloatingOrigin, project: ProjectFn): void {
-    if (this.editMode || this.plan.nodes.length > 0) {
+    if (this.hasPlan && (this.editMode || this.plan.nodes.length > 0)) {
       this.planDisplay.sync(fo, project, this.editMode);
     }
     else {
       this.planDisplay.hide();
     }
-    if (this.editMode) {
+    if (this.hasPlan && this.editMode) {
       this.syncGizmo(mapDist, fo);
       this.syncPanel(simTime);
     }
   }
+
+  // detachedPlan(艦なし)のアンカーは原点固定で実際の軌道を表さないので、計画表示・編集は
+  // 艦を持つ間だけ許可する。
+  private get hasPlan(): boolean { return this.ship !== null; }
 
   // パネルとギズモを隠し、実質 Δv がゼロの末尾ノードを間引いて計画を整理する。
   onMapClosed(): void {
