@@ -2,7 +2,7 @@
 // サンプル列を1本の折れ線として描く。マニューバノードによる区間分割は知らない — 呼び出し側
 // (PlanTrajectory)が arc ごとにこれを持つ。
 import * as THREE from 'three/webgpu';
-import { OrbitState, altitudeOf, hermiteInterpolate, keplerPeriod, stepOrbitRK4 } from '../../physics/orbital';
+import { MU_EARTH, OrbitState, altitudeOf, hermiteInterpolate, keplerPeriod, stepOrbitRK4 } from '../../physics/orbital';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -24,7 +24,7 @@ const STEPS_PER_REV = 100;
 // 刻み幅。その場の軌道運動の時間スケール(動径 r の円軌道周期)を STEPS_PER_REV 等分する。
 // 低軌道では細かく、遠地点では粗くなり、離心軌道でも1周を通して精度が一定になる。
 function stepDt(r: number): number {
-  return keplerPeriod(r) / STEPS_PER_REV;
+  return keplerPeriod(r, MU_EARTH) / STEPS_PER_REV;
 }
 
 export class PlanArc {

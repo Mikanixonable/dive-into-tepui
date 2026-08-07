@@ -35,8 +35,8 @@ export function register(): void {
     const raan = 0.7;
     const argp = 1.1;
     const nu = 2.3;
-    const s = stateFromElements(0, a, e, inc, raan, argp, nu);
-    const el = elementsFromState(s.r, s.v);
+    const s = stateFromElements(0, a, e, inc, raan, argp, nu, MU_EARTH);
+    const el = elementsFromState(s.r, s.v, MU_EARTH);
     assert.ok(el, 'elementsFromState should not be null for a bound elliptical orbit');
     const elx = el as Elements;
     assert.ok(Math.abs(elx.a - a) / a < 1e-9, `a round trip: ${elx.a} vs ${a}`);
@@ -49,8 +49,8 @@ export function register(): void {
 
   test('orbital: keplerPeriod <-> semiMajorFromPeriod round trip (Earth mu)', () => {
     const a = R_EARTH + 420e3;
-    const period = keplerPeriod(a);
-    const a2 = semiMajorFromPeriod(period);
+    const period = keplerPeriod(a, MU_EARTH);
+    const a2 = semiMajorFromPeriod(period, MU_EARTH);
     assert.ok(Math.abs(a2 - a) / a < 1e-9, `a round trip: ${a2} vs ${a}`);
   });
 
@@ -65,8 +65,8 @@ export function register(): void {
     const a = R_EARTH + 800e3;
     const e = 0.02;
     const inc = (28 * Math.PI) / 180;
-    const s0 = stateFromElements(0, a, e, inc, 0.3, 0.5, 0.9);
-    const el = elementsFromState(s0.r, s0.v) as Elements;
+    const s0 = stateFromElements(0, a, e, inc, 0.3, 0.5, 0.9, MU_EARTH);
+    const el = elementsFromState(s0.r, s0.v, MU_EARTH) as Elements;
     const nu = trueAnomalyAt(el, s0.r);
     assert.ok(Math.abs(nu - 0.9) < 1e-7, `trueAnomalyAt recovers nu: ${nu}`);
     const r2 = positionOnOrbit(el, nu);
@@ -77,8 +77,8 @@ export function register(): void {
 
   test('orbital: tofBetween(nu, nu) == 0 and tofBetween is period-periodic', () => {
     const a = R_EARTH + 500e3;
-    const s0 = stateFromElements(0, a, 0.01, 0.9, 0, 0, 0);
-    const el = elementsFromState(s0.r, s0.v) as Elements;
+    const s0 = stateFromElements(0, a, 0.01, 0.9, 0, 0, 0, MU_EARTH);
+    const el = elementsFromState(s0.r, s0.v, MU_EARTH) as Elements;
     assert.equal(tofBetween(el, 1.2, 1.2), 0);
     const tHalf = tofBetween(el, 0, Math.PI);
     // 半周の飛行時間はほぼ半周期(離心率が小さいため近似的に対称)
@@ -90,8 +90,8 @@ export function register(): void {
 
   test('orbital: timeSincePeriapsis(nu=0) == 0', () => {
     const a = R_EARTH + 500e3;
-    const s0 = stateFromElements(0, a, 0.1, 0.5, 0, 0, 0);
-    const el = elementsFromState(s0.r, s0.v) as Elements;
+    const s0 = stateFromElements(0, a, 0.1, 0.5, 0, 0, 0, MU_EARTH);
+    const el = elementsFromState(s0.r, s0.v, MU_EARTH) as Elements;
     assert.equal(timeSincePeriapsis(el, 0), 0);
   });
 
@@ -100,8 +100,8 @@ export function register(): void {
     const rp = R_EARTH + 500e3;
     const e = 1.5;
     const a = rp / (1 - e); // 双曲線なので a < 0
-    const s0 = stateFromElements(0, a, e, 0.3, 0, 0, 0); // nu=0 = 近点
-    const el = elementsFromState(s0.r, s0.v) as Elements;
+    const s0 = stateFromElements(0, a, e, 0.3, 0, 0, 0, MU_EARTH); // nu=0 = 近点
+    const el = elementsFromState(s0.r, s0.v, MU_EARTH) as Elements;
     assert.ok(el.e >= 1, `orbit should be hyperbolic: e=${el.e}`);
     assert.ok(el.a < 0, `hyperbolic a should be negative: a=${el.a}`);
 
@@ -215,7 +215,7 @@ export function register(): void {
     const incDeg = 51.6;
     const inc = (incDeg * Math.PI) / 180;
     const a = R_EARTH + alt;
-    let s = stateFromElements(0, a, 0, inc, 0, 0, 0);
+    let s = stateFromElements(0, a, 0, inc, 0, 0, 0, MU_EARTH);
 
     const dt = 10;
     const totalDays = 5;
@@ -225,7 +225,7 @@ export function register(): void {
       s = stepOrbitRK4(s, dt, (rx, ry, rz) => j2Accel(v3(rx, ry, rz)));
     }
 
-    const el = elementsFromState(s.r, s.v) as Elements;
+    const el = elementsFromState(s.r, s.v, MU_EARTH) as Elements;
     // RAAN(昇交点赤経) = atan2(hHat.x, -hHat.z) 的な導出でも良いが、ここでは
     // pHat/hHat から昇交点方向ベクトルを求め、その方位角(XZ平面, 基準X軸)を使う。
     // 昇交点方向 = Y(極軸) × hHat の正規化(軌道面と赤道面の交線)
@@ -250,7 +250,7 @@ export function register(): void {
 
   test('orbital: orbitalAxes returns an orthonormal basis', () => {
     const a = R_EARTH + 700e3;
-    const s = stateFromElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3);
+    const s = stateFromElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3, MU_EARTH);
     const { pro, nrm, radOut } = orbitalAxes(s);
     const tol = 1e-9;
     assert.ok(Math.abs(len(pro) - 1) < tol, `|pro| should be 1: ${len(pro)}`);
@@ -263,7 +263,7 @@ export function register(): void {
 
   test('orbital: orbitalAxes.radOut matches r-hat on a circular orbit (r perp v)', () => {
     const a = R_EARTH + 420e3;
-    const s = stateFromElements(0, a, 0, (51.6 * Math.PI) / 180, 0.2, 0, 0.7);
+    const s = stateFromElements(0, a, 0, (51.6 * Math.PI) / 180, 0.2, 0, 0.7, MU_EARTH);
     const rHat = norm(s.r);
     const { radOut } = orbitalAxes(s);
     assert.ok(
@@ -276,7 +276,7 @@ export function register(): void {
     // e=0.3, nu=1.0(近点でも遠点でもない): dot(r,v) = r*k*e*sin(nu) が非ゼロになり、
     // radOut(進行方向に直交な面内ベクトル)が r-hat から傾く条件になる。
     const a = R_EARTH + 700e3;
-    const s = stateFromElements(0, a, 0.3, (30 * Math.PI) / 180, 0, 0, 1.0);
+    const s = stateFromElements(0, a, 0.3, (30 * Math.PI) / 180, 0, 0, 1.0, MU_EARTH);
     const { pro, nrm, radOut } = orbitalAxes(s);
     const rHat = norm(s.r);
     const divergence = len(sub(radOut, rHat));
@@ -298,7 +298,7 @@ export function register(): void {
 
   test('orbital: fromOrbitalAxes maps the unit axis vectors to pro/nrm/radOut', () => {
     const a = R_EARTH + 700e3;
-    const s = stateFromElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3);
+    const s = stateFromElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3, MU_EARTH);
     const { pro, nrm, radOut } = orbitalAxes(s);
     const tol = 1e-9;
     assert.ok(len(sub(fromOrbitalAxes(s, v3(1, 0, 0)), pro)) < tol, 'x=1 should map to pro');
@@ -308,7 +308,7 @@ export function register(): void {
 
   test('orbital: fromOrbitalAxes preserves vector length (orthonormal change of basis)', () => {
     const a = R_EARTH + 700e3;
-    const s = stateFromElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3);
+    const s = stateFromElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3, MU_EARTH);
     const x = v3(0.3, -0.5, 0.8);
     const mapped = fromOrbitalAxes(s, x);
     assert.ok(
