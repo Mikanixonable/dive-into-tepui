@@ -83,6 +83,7 @@ export class NodeGizmo {
   onMenuDelete: ((idx: number) => void) | null = null;
 
   latch: AxisLatchState | null = null;
+  activeAxis: { axis: 0 | 1 | 2, sign: 1 | -1 } | null = null;
 
   // DOM レイヤとコンテキストメニューを構築する。
   constructor() {
@@ -230,11 +231,14 @@ export class NodeGizmo {
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.stopPropagation();
+      const axis = Number(el.dataset['axis'] ?? 0) as 0 | 1 | 2;
+      const sign = Number(el.dataset['sign'] ?? 1) as 1 | -1;
       dragging = true;
       latched = false;
       totalProj = 0;
       lastX = e.clientX;
       lastY = e.clientY;
+      this.activeAxis = { axis, sign };
       el.setPointerCapture(e.pointerId);
     });
     // 基点からの累積変位が DV_DRAG_LATCH_PX を超えるとラッチへ入る。ラッチ前は従来通り
@@ -264,6 +268,7 @@ export class NodeGizmo {
       dragging = false;
       latched = false;
       this.latch = null;
+      this.activeAxis = null;
       try {
         el.releasePointerCapture(e.pointerId);
       } catch {

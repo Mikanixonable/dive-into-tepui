@@ -3,6 +3,7 @@ import { Vec3 } from '../../physics/vec3';
 
 export class PlanGizmo3D {
   public readonly group = new THREE.Group();
+  private parts: { stem: THREE.Mesh, head: THREE.Mesh, dir: THREE.Vector3, baseLen: number }[] = [];
 
   constructor() {
     this.group.renderOrder = 999;
@@ -49,6 +50,7 @@ export class PlanGizmo3D {
 
     this.group.add(stem);
     this.group.add(head);
+    this.parts.push({ stem, head, dir, baseLen: length });
   }
 
   public setVisible(visible: boolean): void {
@@ -66,7 +68,30 @@ export class PlanGizmo3D {
     );
     this.group.quaternion.setFromRotationMatrix(mat);
     
-    // Scale gizmo so it maintains roughly the same screen size
+    // Local Y is Normal, Local Z is Prograde, Local X is Radial
+    // 画面上で一定サイズに見えるようスケール
     this.group.scale.setScalar(scale);
+  }
+
+  // 特定の軸をドラッグ/ラッチしている時に矢印を伸ばす
+  public setStretch(activeAxis: 0 | 1 | 2 | null, activeSign: 1 | -1 | null, stretchFactor: number): void {
+    for (let i = 0; i < 3; i++) {
+      for (let s of [1, -1]) {
+        const idx = i * 2 + (s < 0 ? 1 : 0);
+        const part = this.parts[idx]!;
+        
+        // アクティブなら少し伸ばす (1.0 + stretchFactor)
+        const isActive = (i === activeAxis && s === activeSign);
+        const length = part.baseLen * (isActive ? 1.0 + stretchFactor : 1.0);
+        
+        const headLength = 4;
+        const stemLength = length - headLength;
+        
+        // 再計算
+        part.stem.scale.y = stemLength / (part.baseLen - headLength);
+        part.stem.position.copy(part.dir).multiplyScalar(stemLength / 2);
+        part.head.position.copy(part.dir).multiplyScalar(length - headLength / 2);
+      }
+    }
   }
 }
