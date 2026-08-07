@@ -207,7 +207,7 @@ export interface Earth {
   group: THREE.Group;
   setRotation(angleRad: number): void;
   setSunDir(x: number, y: number, z: number): void;
-  tick(dt: number, simTime: number): void; // オーロラの明滅アニメーション、大気シェーダの地球中心uniform更新
+  tick(simTime: number): void; // オーロラの明滅アニメーション、大気シェーダの地球中心uniform更新
 }
 
 // 地表・オーロラ・大気リム光をまとめた Earth を組み立てる。
@@ -246,7 +246,7 @@ export function createEarth(): Earth {
       (sunDir.value as THREE.Vector3).set(x, y, z);
     },
     // 地球中心位置と、オーロラの明滅・波打ちを simTime に応じて進める。
-    tick(_dt: number, simTime: number) {
+    tick(simTime: number) {
       (earthCenter.value as THREE.Vector3).copy(group.position);
 
       // シミュレーション時間に連動した位相。

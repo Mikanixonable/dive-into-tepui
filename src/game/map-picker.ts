@@ -47,10 +47,12 @@ export class MapPicker {
     };
   }
 
-  // 航法ターゲットの AN/DN を求め直し、このフレームの候補列を組み直す(天体ラベル +
-  // 生存中の自機・敵船 + AN/DN アイコン + 近地点・遠地点アイコン)。物理積分の後に呼ぶ:
-  // 積分前に組むと、同フレームで sync されるメッシュと座標が1ステップずれる。
+  // 天体ラベルと航法ターゲットの AN/DN を求め直し、このフレームの候補列を組み直す(天体ラベル +
+  // 生存中の自機・敵船 + AN/DN アイコン + 近地点・遠地点アイコン)。どちらも候補列の一部なので、
+  // 求め直しとの対応付けはここに閉じる。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
+  // sync されるメッシュと座標が1ステップずれる。
   refresh(simTime: number, displayTime: number): void {
+    this.cameraSystem.focusMarkers.update(displayTime);
     this.navTarget.update(this.game.player, this.entities, this.ephemeris, simTime);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。

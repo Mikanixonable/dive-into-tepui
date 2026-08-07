@@ -1,6 +1,6 @@
 # CALLSTACK — per-frame 呼び出し依存木
 
-`main.ts` の `requestAnimationFrame` ループが毎フレーム `game.update(dt)` → `game.sync(dt)` →
+`main.ts` の `requestAnimationFrame` ループが毎フレーム `game.update(dt)` → `game.sync()` →
 `game.render()` の順に呼ぶところを起点に、そこから辿れる **副作用のある** 呼び出しを木構造にまとめた
 もの。**「いま何がどの順で走るか」の一次情報**であり、責務の置き場所を検討するための地図として使う。
 
@@ -24,7 +24,7 @@
 
 - animate(now)
   - game.update(dt) // dt = 実経過秒。game 側で 0.1s に clamp される
-  - game.sync(min(dt, 0.1))
+  - game.sync()
   - game.render()
   - perf.record() // `?perf=1` のときのみ(PerfMeter が DOM にフレーム時間・エンティティ数を出す)
 
@@ -47,7 +47,7 @@
         - hud.hint() // ノード無し or !isPlaying
         - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
         - startAutoWarpTo() + hud.hint() // 未開始
-    - mapModeToggler.update()
+    - mapModeToggler.handleInput()
       - close(...) // !isPlaying && cameraSystem.overviewMode のみ(死亡/終了時にマップを強制的に閉じる)
       - [ポーズ中] 何もせず return // [M] は消費もしない。開いていたマップはそのまま維持する
       - [開く: !cameraSystem.overviewMode]
@@ -73,11 +73,20 @@
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
   - [game.isPaused] 以降を実行せず return するポーズ経路 // 決着後の簡略経路より前。ポーズ中は決着後も完全に止まる
     - editor.update(simTime, displayTime) // 計画折れ線の再積分とアプシスアイコン(mapPicker.refresh より前)
-    - mapPicker.refresh() // AN/DN を求め直してからこのフレームの被選択物一覧を組む
+    - mapPicker.refresh() // 天体ラベルと AN/DN を求め直してからこのフレームの被選択物一覧を組む
+      - focusMarkers.update(displayTime) // 地球・月・太陽・両系のラグランジュ点の座標を表示時刻で求め直す
       - navTarget.update() // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム
       - mapPicker.pickables に反映 // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers を集約
     - [editor.editMode] editor.handleMapPointer() / mapPicker.handleRightClick() / editor.updateEditing()
     - cameraSystem.update(..., mapPicker.pickables) // ポーズ中も視点更新は続ける
+  - [game.player === null] 以降を実行せず return する未配置経路 // Creative の開始直後・全艦喪失時。残骸や弾の epoch は進め続ける
+    - simSpeedManager.update() / applyWarpCommandPolicy()
+    - simulator.stepSimulation(player=null)
+    - predictor.update(player=null)
+    - activeStage.update(player=null) // Creative の配置プレビューはここで求め直す(艦が無い間こそ配置中なので飛ばせない)
+    - effects.update(dt, simDt)
+    - editor.update() / mapPicker.refresh() / cameraSystem.update() // 内容は上記ポーズ経路と同じ
+    - [editor.editMode] mapPicker.handleRightClick() / editor.handleMapPointer() / editor.updateEditing()
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
     - player.thrust = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
     - simulator.stepSimulation(bulletCollision=false, resolveCollision=false, doSubstep=false) // simSpeed は ×MAX_PHYS_SIM_SPEED で打ち止め
@@ -140,7 +149,7 @@
       - sfx.setThrust(true) // 推力あり
     - invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
   - nanWatchdog.checkPlayer('player.behave')
-  - activeStage.update() // 具体ステージへディスパッチ。!isPlaying なら即 return
+  - activeStage.update() // 具体ステージへディスパッチ。!isPlaying / 艦が無ければ即 return
     - behaveAllEnemies() // 敵を配置する具体ステージ(Stage0/00/1/2)が先頭で呼ぶ
       - enemy.behave() // 生存中の敵ごと(canEnemyFire・距離・バースト状態の判定は behave 内部)
         - firePlasma() → entities.addBullet()
@@ -240,6 +249,7 @@
       - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
       - apsisIconsOf() // 最終区間の起点要素から解析的に算出。離心率 < APSIS_MIN_ECC なら空、双曲線なら Pe のみ
   - mapPicker.refresh() // 物理積分の後に組む — 積分前だと同フレームで sync されるメッシュと被選択物の座標が1ステップずれる
+    - focusMarkers.update(displayTime) / navTarget.update() // 内容は上記ポーズ経路と同じ
   - cameraSystem.update(mapPicker.pickables) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ
     - combatCamera.toggleFollowAttitude() // K.followAttitudeToggle。カメラ自身の状態なのでここで消費する
     - keyYaw/keyPitch/keyRoll をキー入力からまとめる // cameraRollLeft/Right は Numpad0/Numpad1
@@ -281,9 +291,9 @@
 
 ---
 
-## game.sync(dt)
+## game.sync()
 
-- game.sync(dt)
+- game.sync()
   - floatingOrigin = new FloatingOrigin(player.state.r, player.state.v) // 以降の sync 系はこの fo だけを参照する
   - displayTime を確定 // displayTimeManager.resolveDisplayTime(simTime): 未来ゴーストのスライダーが立っている間だけ先の時刻
   - cameraSystem.sync() // 最初に呼ぶ: environment.sync とマーカー投影が今フレームのカメラ行列を読む
@@ -356,12 +366,14 @@
       // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は traj の今フレームの表示文脈を通す
     - [editMode] syncPanel(simTime) // MANEUVER PLAN パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
-  - activeStage.sync(displayTime)
-    - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示
+  - activeStage.sync(player, fo, project, displayTime, overviewMode) // player は Creative の未配置状態で null
+    - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示。player が null なら隠す
+    - [CreativeStage] syncPreview(fo, project) // update が求めた preview の軌道線 + ▷ マーカー。preview が null なら両方隠す
     - logistics.syncMarkers(displayTime) → ammo.displayState(displayTime) → markerManager.set('mg<i>') + setBearing('mg<i>-bearing')
+      // player が null の間はすべて隠す(ラベルの距離表示が自機基準のため)
       // マーカーを出せる補給ごと(i = 生存かつ displayState が非 null な個体だけを詰めた配列の添字)
       - hide() // 前フレームよりその数が減ったぶんの、余った添字だけ
-  - hud.panels.sync(game, dt, bodies) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
+  - hud.panels.sync(game, bodies) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
   - hud.tick() // ヒント/トーストのフェードアウト
@@ -415,8 +427,14 @@
   `player.syncPlayer` / `targeter.sync` / `navTarget.sync` / `activeStage.sync` / `cameraSystem.sync` /
   `editor.sync`(→ `planDisplay`) / `guide.sync` の中にある。**`markerManager.resolveCollisions()` だけは
   全マーカーが出揃った後に一度だけ**呼ぶ必要があるため `game.sync` の末尾に置く。
-- **`mapPicker.refresh()` は `game.sync` ではなく `game.update` の中、3経路それぞれで
+- **`mapPicker.refresh()` は `game.sync` ではなく `game.update` の中、4経路それぞれで
   `cameraSystem.update` を呼ぶ直前(物理積分の後)に呼ぶ**。積分前に組むと、被選択物や navTarget の
   AN/DN の座標が、同じフレームで `sync` されるメッシュに対して1ステップぶん古くなる(ワープ倍率が
   高いほど無視できない)。フォーカス解決(`overviewCamera.update`)も右クリック判定
   (`mapPicker.handleRightClick`)もどちらも `update` フェーズの仕事なので、`sync` を待つ必要はない。
+  天体ラベル(`focusMarkers`)と AN/DN(`navTarget`)の座標も候補列の一部なので、`refresh()` の
+  先頭で両方を求め直す。`sync` 側(`focusMarkers.syncLabels` / `navTarget.sync`)はその値を
+  マーカーへ置くだけで、座標を求め直さない。
+- **`game.sync` は `dt` を受け取らない**。sync フェーズには進めるものが無い、というルールを
+  シグネチャで見えるようにしてある。HUD パネルの書き換え間引きのような表示側の周期は
+  `performance.now()` の期限で持つ。

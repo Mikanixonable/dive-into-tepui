@@ -49,8 +49,8 @@ export class Stage00 extends Stage {
   }
 
   // 敵の行動・補給の更新を行い、現在の waveState に応じたフェーズ処理へ分岐する。
-  update(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
-    if (!this.isPlaying) return;
+  update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+    if (!this.isPlaying || !player) return;
 
     this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
 

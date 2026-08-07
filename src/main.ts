@@ -125,7 +125,7 @@ function startAnimationLoop(game: Game, perf: PerfMeter): void {
       // update → sync → render の順で1フレーム進める
       game.update(dt);
       const t1 = perf.on ? performance.now() : 0;
-      game.sync(Math.min(dt, 0.1));
+      game.sync();
       game.render();
       const t2 = perf.on ? performance.now() : 0;
       // 計測結果を記録
