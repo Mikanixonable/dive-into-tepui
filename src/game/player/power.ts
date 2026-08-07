@@ -33,7 +33,7 @@ export class PowerSystem {
   }
 
   // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
-  update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude): void {
+  update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude, ship: import('../game-entity/ship').Ship): void {
     // 展開度の更新
     const step = dt / C.RADIATOR_DEPLOY_TIME; // 同じ速度を使用
     for (const side of ['up', 'down'] as const) {
@@ -48,7 +48,8 @@ export class PowerSystem {
     // 裏面(法線が太陽と反対を向く)では発電しないため負値を0に切り詰める
     const cosIncidence = Math.max(0, dot(normal, sunDir));
     // 展開度 deployMult を掛けて、収納時は発電しないようにする
-    const power = C.SOLAR_CONSTANT * C.SOLAR_PANEL_EFFICIENCY * C.SOLAR_PANEL_AREA * cosIncidence * sunlit * deployMult;
+    const basePower = ship.totalPowerGeneration > 0 ? ship.totalPowerGeneration : C.SOLAR_CONSTANT * C.SOLAR_PANEL_EFFICIENCY * C.SOLAR_PANEL_AREA;
+    const power = basePower * cosIncidence * sunlit * deployMult;
     this.charge = Math.min(C.POWER_CAPACITY, this.charge + power * dt);
   }
 

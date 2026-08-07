@@ -5,6 +5,7 @@ import * as C from '../const';
 import { GameEntity } from './game-entity';
 import type { CentralBodyId } from '../../physics/central-body';
 import type { FloatingOrigin } from '../floating-origin';
+import { Part, createPart } from './parts';
 
 export abstract class Ship extends GameEntity {
   protected readonly bcInv = C.SHIP_BCINV;
@@ -15,6 +16,7 @@ export abstract class Ship extends GameEntity {
   radius: number; // 被弾判定半径 [m](剛体接触の collideRadius とは別)
   hp: number;
   maxHp: number;
+  parts: Part[] = [];
 
   // 名前・当たり判定半径・HP を初期化し、基底の状態/メッシュ/姿勢を構築する。
   constructor(
@@ -32,16 +34,78 @@ export abstract class Ship extends GameEntity {
     this.radius = radius;
     this.hp = hp;
     this.maxHp = hp;
+    this.initDefaultParts();
   }
 
-  // 接触速度に応じた装甲ダメージを hp へ適用し、ダメージが発生したかを返す。
-  // COLLISION_DAMAGE_MIN_SPEED で 0、COLLISION_DAMAGE_FULL_SPEED で maxHp ぶんの線形。
+  // 初期状態として基本的なパーツセットを生成する（サブクラスで上書き可能）
+  protected initDefaultParts(): void {
+    this.parts = [
+      createPart('hull', { name: 'Basic Hull', maxHp: this.maxHp, hp: this.maxHp }),
+      createPart('cockpit', { name: 'Cockpit', maxHp: 50, hp: 50 }),
+      createPart('thruster', { name: 'Standard RCS', maxHp: 30, hp: 30, torque: 50, thrust: 100, fuelConsumptionRate: 1 }),
+      createPart('rcs_tank', { name: 'Main RCS Tank', maxHp: 30, hp: 30, maxFuel: 1000, fuel: 1000 }),
+      createPart('radiator', { name: 'Heat Radiator', maxHp: 40, hp: 40, coolingRate: 50 }),
+      createPart('solar_panel', { name: 'Solar Array', maxHp: 20, hp: 20, powerGeneration: 100 }),
+      createPart('weapon', { name: 'Gatling Gun', maxHp: 40, hp: 40, weaponType: 'gatling', fireRate: 10, damage: 1, muzzleVelocity: 1000 }),
+      createPart('armor', { name: 'Light Armor', maxHp: 100, hp: 100, damageReduction: 0.2 }),
+    ];
+  }
+
+  // 接触速度に応じたダメージをパーツへ適用し、ダメージが発生したかを返す。
+  // (旧ロジックでは hp 全体を減らしていたが、ランダムなパーツの損耗へ変更)
   protected applyCollisionDamage(speed: number): boolean {
     const span = C.COLLISION_DAMAGE_FULL_SPEED - C.COLLISION_DAMAGE_MIN_SPEED;
     const t = Math.min(1, Math.max(0, (speed - C.COLLISION_DAMAGE_MIN_SPEED) / span));
     if (t <= 0) return false;
-    this.hp -= this.maxHp * t;
+    
+    const damage = this.maxHp * t;
+    this.applyDamageToParts(damage);
     return true;
+  }
+
+  // 受けたダメージをランダムなパーツに割り振る（装甲がある場合は軽減する）
+  protected applyDamageToParts(amount: number): void {
+    if (this.parts.length === 0) {
+      this.hp -= amount; // Fallback
+      return;
+    }
+    
+    // Calculate armor reduction
+    const armors = this.parts.filter(p => p.type === 'armor' && p.hp > 0) as import('./parts').ArmorPart[];
+    let reduction = 0;
+    if (armors.length > 0) {
+      // Just use the highest damage reduction for now
+      reduction = Math.max(...armors.map(a => a.damageReduction));
+    }
+    
+    const effectiveDamage = amount * (1 - reduction);
+    
+    // Pick a random part to damage
+    const aliveParts = this.parts.filter(p => p.hp > 0);
+    const targetParts = aliveParts.length > 0 ? aliveParts : this.parts;
+    const target = targetParts[Math.floor(Math.random() * targetParts.length)];
+    
+    if (target) {
+      target.hp = Math.max(0, target.hp - effectiveDamage);
+    }
+    
+    // Update overall HP based on hull and cockpit (if either is 0, ship dies)
+    this.updateOverallHp();
+  }
+
+  // すべてのパーツの状態から、機体全体の代表 HP を再計算する
+  protected updateOverallHp(): void {
+    if (this.parts.length === 0) return;
+    
+    const hull = this.parts.find(p => p.type === 'hull');
+    const cockpit = this.parts.find(p => p.type === 'cockpit');
+    
+    // If hull or cockpit is destroyed, ship is destroyed
+    if ((hull && hull.hp <= 0) || (cockpit && cockpit.hp <= 0)) {
+      this.hp = 0;
+    } else if (hull) {
+      this.hp = hull.hp;
+    }
   }
 
   // 逆三角形を辺中央の切り欠きで分割し、残HPに応じて発光するSVGを生成する。
@@ -76,6 +140,63 @@ export abstract class Ship extends GameEntity {
       }
     }
     return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">${lines.join('')}</svg>`;
+  }
+
+  // パーツベースの性能取得
+  get totalTorque(): number {
+    return (this.parts.filter(p => p.type === 'thruster' && p.hp > 0) as import('./parts').ThrusterPart[])
+      .reduce((sum, p) => sum + p.torque, 0);
+  }
+
+  get totalThrust(): number {
+    return (this.parts.filter(p => p.type === 'thruster' && p.hp > 0) as import('./parts').ThrusterPart[])
+      .reduce((sum, p) => sum + p.thrust, 0);
+  }
+  
+  get totalFuelConsumptionRate(): number {
+    return (this.parts.filter(p => p.type === 'thruster' && p.hp > 0) as import('./parts').ThrusterPart[])
+      .reduce((sum, p) => sum + p.fuelConsumptionRate, 0);
+  }
+
+  get totalFuel(): number {
+    return (this.parts.filter(p => p.type === 'rcs_tank' && p.hp > 0) as import('./parts').RcsTankPart[])
+      .reduce((sum, p) => sum + p.fuel, 0);
+  }
+
+  get totalMaxFuel(): number {
+    return (this.parts.filter(p => p.type === 'rcs_tank' && p.hp > 0) as import('./parts').RcsTankPart[])
+      .reduce((sum, p) => sum + p.maxFuel, 0);
+  }
+
+  // 燃料を消費し、実際に消費できた割合（0.0〜1.0）を返す
+  consumeFuel(amount: number): number {
+    if (amount <= 0) return 1.0;
+    
+    let remainingToConsume = amount;
+    let actualConsumed = 0;
+    
+    const tanks = this.parts.filter(p => p.type === 'rcs_tank' && p.hp > 0) as import('./parts').RcsTankPart[];
+    for (const tank of tanks) {
+      if (tank.fuel > 0) {
+        const consumeFromTank = Math.min(tank.fuel, remainingToConsume);
+        tank.fuel -= consumeFromTank;
+        remainingToConsume -= consumeFromTank;
+        actualConsumed += consumeFromTank;
+      }
+      if (remainingToConsume <= 0) break;
+    }
+    
+    return actualConsumed / amount;
+  }
+
+  get totalCoolingRate(): number {
+    return (this.parts.filter(p => p.type === 'radiator' && p.hp > 0) as import('./parts').RadiatorPart[])
+      .reduce((sum, p) => sum + p.coolingRate, 0);
+  }
+
+  get totalPowerGeneration(): number {
+    return (this.parts.filter(p => p.type === 'solar_panel' && p.hp > 0) as import('./parts').SolarPanelPart[])
+      .reduce((sum, p) => sum + p.powerGeneration, 0);
   }
 
   // メッシュ配下のマテリアルを含めて破棄する。

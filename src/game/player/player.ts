@@ -180,7 +180,7 @@ export class Player extends Ship {
 
     this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet);
 
-    this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att);
+    this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
     if (this.thrust !== null) this.invalidatePrediction();
   }
@@ -201,11 +201,11 @@ export class Player extends Ship {
     const sunDir = ephemeris.sunDirAt(simTime);
     const sunlit = sunlitFactor(this.state.r, sunDir, C.SHADOW_PENUMBRA);
     this.thermal.setRadiatorLoad(
-      this.radiator.radiatingArea(),
-      this.radiator.solarLoad(sunlit, sunDir, this.att),
+      this.radiator.radiatingArea(this.totalCoolingRate),
+      this.radiator.solarLoad(sunlit, sunDir, this.att, this.totalCoolingRate),
     );
-    this.power.update(dt, sunlit, sunDir, this.att);
-    this.thermal.updateThermal(dt, this.state.r, this.state.v);
+    this.power.update(dt, sunlit, sunDir, this.att, this);
+    this.thermal.updateThermal(dt, this.state.r, this.state.v, this);
   }
 
   // 操作対象から外す/削除する際、次のフレームへ持ち越してはならない連続指令を畳む。
@@ -350,6 +350,7 @@ export class Player extends Ship {
       editMode,
       fine,
       attDt,
+      this,
       () => this._hud.hint('進行方向ホールド解除(手動操作)'),
     );
   }
