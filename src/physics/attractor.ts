@@ -9,8 +9,7 @@ export type Attractor = {
   readonly id: AttractorId;
   readonly mu: number; // GM [m^3/s^2]
   readonly radius: number; // 表面半径 [m]
-  readonly r: Vec3; // ECI 位置(地球は原点)
-  readonly v: Vec3; // ECI 速度
+  readonly state: OrbitState; // ECI 位置・速度(同一時刻。地球は原点に静止)
 };
 
 // 天体 body が位置 r の運動方程式へ寄与する加速度 μ[(r_b − r)/|r_b − r|³ − r_b/|r_b|³]。
@@ -19,21 +18,22 @@ export type Attractor = {
 // 距離ゼロで消え、直接引力そのものになる。距離ゼロの項は発散を避けて寄与ゼロとして扱う。
 // 毎ステップ全エンティティぶん走る経路なので、中間の Vec3 を作らずスカラで畳む。
 export function attractorAccel(r: Vec3, body: Attractor): Vec3 {
+  const b = body.state.r;
   let ax = 0, ay = 0, az = 0;
 
-  const dx = body.r.x - r.x;
-  const dy = body.r.y - r.y;
-  const dz = body.r.z - r.z;
+  const dx = b.x - r.x;
+  const dy = b.y - r.y;
+  const dz = b.z - r.z;
   const d2 = dx * dx + dy * dy + dz * dz;
   if (d2 >= 1) {
     const k = body.mu / (d2 * Math.sqrt(d2));
     ax += dx * k; ay += dy * k; az += dz * k;
   }
 
-  const o2 = body.r.x * body.r.x + body.r.y * body.r.y + body.r.z * body.r.z;
+  const o2 = b.x * b.x + b.y * b.y + b.z * b.z;
   if (o2 >= 1) {
     const k = body.mu / (o2 * Math.sqrt(o2));
-    ax -= body.r.x * k; ay -= body.r.y * k; az -= body.r.z * k;
+    ax -= b.x * k; ay -= b.y * k; az -= b.z * k;
   }
 
   return v3(ax, ay, az);
@@ -59,29 +59,28 @@ export function strongestAttractor(r: Vec3, bodies: readonly Attractor[]): Attra
 // 刻み幅・サンプル間隔を決めるためのもので、「その天体を中心に軌道要素を出す」こととは無関係。
 export function localOrbitPeriod(r: Vec3, bodies: readonly Attractor[]): number {
   const body = strongestAttractor(r, bodies);
-  return keplerPeriod(len(sub(r, body.r)), body.mu);
+  return keplerPeriod(len(sub(r, body.state.r)), body.mu);
 }
 
 // 天体中心相対 ⇄ ECI(時刻 t は保つ)。
 export function relativeTo(s: OrbitState, body: Attractor): OrbitState {
-  return orbitState(s.t, sub(s.r, body.r), sub(s.v, body.v));
+  return orbitState(s.t, sub(s.r, body.state.r), sub(s.v, body.state.v));
 }
 export function toAbsolute(rel: OrbitState, body: Attractor): OrbitState {
-  return orbitState(rel.t, add(rel.r, body.r), add(rel.v, body.v));
+  return orbitState(rel.t, add(rel.r, body.state.r), add(rel.v, body.state.v));
 }
 
 // 天体 body を中心とする接触軌道要素。中心の選び方には関与しない — 呼び出し側が
 // strongestAttractor などで選んだ body をそのまま渡す。
 export function elementsAround(s: OrbitState, body: Attractor): Elements | null {
-  const rel = relativeTo(s, body);
-  return elementsFromState(rel.r, rel.v, body.mu, body.id);
+  return elementsFromState(relativeTo(s, body), body);
 }
 
 // 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。margin(大気圏突入高度
 // など)はゲーム側の判断なので呼び出し側から受け取る — physics/ はその値自体を知らない。
 export function hitsAnySurface(r: Vec3, bodies: readonly Attractor[], margin: number): boolean {
   for (const body of bodies) {
-    if (len(sub(r, body.r)) < body.radius + margin) return true;
+    if (len(sub(r, body.state.r)) < body.radius + margin) return true;
   }
   return false;
 }
