@@ -5,7 +5,7 @@ import * as C from '../const';
 import { GameEntity } from './game-entity';
 import type { CentralBodyId } from '../../physics/central-body';
 import type { FloatingOrigin } from '../floating-origin';
-import { Part, createPart } from './parts';
+import { Part, PartType, createPart } from './parts';
 
 export abstract class Ship extends GameEntity {
   protected readonly bcInv = C.SHIP_BCINV;
@@ -106,6 +106,20 @@ export abstract class Ship extends GameEntity {
     const target = part ?? targetParts[Math.floor(Math.random() * targetParts.length)];
 
     if (target) target.hp = Math.max(0, target.hp - effectiveDamage);
+    this.updateOverallHp();
+  }
+
+  // 自然回復の対象外にする部品種別。外装パネルは機上で直せず、基地ドックの修理を要する。
+  private static readonly SELF_REPAIR_EXCLUDED: readonly PartType[] = ['radiator', 'solar_panel'];
+
+  // amount [HP] を自然回復できる損傷部品へ均等に配る。全損した部品は対象外で、
+  // 復旧にはドックでの修理が要る。
+  selfRepair(amount: number): void {
+    const targets = this.parts.filter(
+      p => p.hp > 0 && p.hp < p.maxHp && !Ship.SELF_REPAIR_EXCLUDED.includes(p.type));
+    if (targets.length === 0) return;
+    const share = amount / targets.length;
+    for (const p of targets) p.hp = Math.min(p.maxHp, p.hp + share);
     this.updateOverallHp();
   }
 

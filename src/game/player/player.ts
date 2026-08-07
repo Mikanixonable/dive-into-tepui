@@ -125,7 +125,7 @@ export class Player extends Ship {
   // HP を HP_REGEN_RATE で maxHp まで自然回復させる。
   private hpRegen(dt: number): void {
     if (!this.alive || this.hp <= 0 || this.hp >= this.maxHp) return;
-    this.hp = Math.min(this.maxHp, this.hp + dt * C.HP_REGEN_RATE);
+    this.selfRepair(dt * C.HP_REGEN_RATE);
   }
 
   // -------------------------------------------------------- 移動/射撃 状態
