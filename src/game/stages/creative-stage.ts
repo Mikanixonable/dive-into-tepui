@@ -17,6 +17,7 @@ import { add, sub, v3 } from '../../physics/vec3';
 import type { ProjectFn } from '../camera/camera-system';
 import type { UnlockManager } from '../unlock-manager';
 import { Ammo } from '../game-entity/ammo';
+import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import * as C from '../const';
 import { ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
@@ -183,6 +184,11 @@ export class CreativeStage extends Stage {
         const ammo = new Ammo(state, undefined, this._scene, id);
         this._entities.addAmmo(ammo);
         const finalName = name || `Ammo-${this.nextShipId}`;
+        this._hud.hint(`${finalName} を配置`);
+      } else if (form.objectType === 'base') {
+        const base = new Base(state, this._scene);
+        this._entities.addBase(base);
+        const finalName = name || `Base-${this.nextShipId++}`;
         this._hud.hint(`${finalName} を配置`);
       }
     } catch (error) {

@@ -99,14 +99,14 @@ export class RadiatorSystem {
   }
 
   // side の有効な放熱面積 [m^2]。展開度と損耗度で目減りする。
-  private panelArea(side: RadiatorSide): number {
-    const p = this.panels[side];
-    return C.RADIATOR_PANEL_AREA * C.RADIATOR_EFFICIENCY_MULT * p.deploy * (1 - p.wear);
+  private panelArea(side: RadiatorSide, totalCoolingRate: number): number {
+    if (this.panels[side].wear >= 1) return 0;
+    return (totalCoolingRate / 2) * this.panels[side].deploy;
   }
 
   // 放熱に使える面積 [m^2]。
-  radiatingArea(): number {
-    return this.panelArea('up') + this.panelArea('down');
+  radiatingArea(totalCoolingRate: number): number {
+    return this.panelArea('up', totalCoolingRate) + this.panelArea('down', totalCoolingRate);
   }
 
   // theta で折れた放熱面の法線(world 座標、単位ベクトル)。
@@ -119,9 +119,9 @@ export class RadiatorSystem {
   // 日照面が受け取る太陽入射 [W]。sunlit は sunlitFactor の戻り値(0..1)、
   // sunDir は太陽方向の単位ベクトル(world)。蛇腹は偶数/奇数折りで法線が異なるため、
   // 面積を半分ずつ割り当てて2方向ぶんを合算する。
-  solarLoad(sunlit: number, sunDir: Vec3, att: Attitude): number {
+  solarLoad(sunlit: number, sunDir: Vec3, att: Attitude, totalCoolingRate: number): number {
     return (['up', 'down'] as const).reduce((sum, side) => {
-      const halfArea = this.panelArea(side) / 2;
+      const halfArea = this.panelArea(side, totalCoolingRate) / 2;
       const { even, odd } = this.foldThetas(side);
       const cosEven = Math.abs(dot(this.worldNormal(even, att), sunDir));
       const cosOdd = Math.abs(dot(this.worldNormal(odd, att), sunDir));
