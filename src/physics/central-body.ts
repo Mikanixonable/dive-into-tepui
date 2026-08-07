@@ -10,11 +10,12 @@ export interface CentralBodyDefinition {
   label: string;
   mu: number;
   radius: number;
+  soiRadius: number;
 }
 
 export const CENTRAL_BODIES: Record<CentralBodyId, CentralBodyDefinition> = {
-  earth: { id: 'earth', label: 'EARTH', mu: MU_EARTH, radius: 6_378_137 },
-  moon: { id: 'moon', label: 'MOON', mu: 4.9048695e12, radius: 1_737_400 },
+  earth: { id: 'earth', label: 'EARTH', mu: MU_EARTH, radius: 6_378_137, soiRadius: Infinity },
+  moon: { id: 'moon', label: 'MOON', mu: 4.9048695e12, radius: 1_737_400, soiRadius: 6.6e7 },
 };
 
 export function centralBodyDefinition(id: CentralBodyId): CentralBodyDefinition {
