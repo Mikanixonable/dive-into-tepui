@@ -106,6 +106,15 @@ export class PlayerFire {
       return;
     }
 
+    if (this.player.totalFireRate <= 0) {
+      if (!this.wasEmptyClick) {
+        this._sfx.emptyClick();
+        this._hud.hint('武装が損傷しており発射できない', 3000);
+        this.wasEmptyClick = true;
+      }
+      return;
+    }
+
     if (!this.left) {
       if (!this.wasEmptyClick) {
         this._sfx.emptyClick();
@@ -160,12 +169,12 @@ export class PlayerFire {
     switch (result) {
       case 'empty':
       case 'normal':
-        this.cooldown = C.FIRE_INTERVAL;
+        this.cooldown = 1 / this.player.totalFireRate;
         return;
       case 'mag-reload':
         this.spawnEjectedMagazineFrame(this.player);
         this._sfx.magFeed();
-        this.cooldown = C.FIRE_INTERVAL;
+        this.cooldown = 1 / this.player.totalFireRate;
         return;
       case 'barrel-reload':
         this.spawnEjectedMagazineFrame(this.player);
@@ -254,7 +263,7 @@ export class PlayerFire {
       orbitState(
         simTime,
         addScaled(muzzle, fwd, 1.5),
-        addScaled(ship.state.v, dir, C.MUZZLE_SPEED),
+        addScaled(ship.state.v, dir, ship.averageMuzzleVelocity),
       ),
       C.BULLET_LIFETIME,
       'player',
