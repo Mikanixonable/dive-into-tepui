@@ -2,7 +2,7 @@
 // 表示時刻の計画上の自機位置ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { R_EARTH, elementsFromState, orbitState, positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/orbital';
-import { Vec3, len } from '../../physics/vec3';
+import { Vec3, len, cross, dot, norm, v3 } from '../../physics/vec3';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { fmtMarkerDist, fmtDist } from '../hud/utils';
@@ -23,6 +23,11 @@ interface ApsisIcon extends MapPickable {
   readonly label: string;
 }
 
+// 赤道交点アイコン
+interface EqNodeIcon extends MapPickable {
+  readonly label: string;
+}
+
 export class PlanDisplay {
   trajectoryFrame: Frame = 'inertial';
 
@@ -31,6 +36,7 @@ export class PlanDisplay {
   private readonly panel: HTMLElement;
   private readonly frame: SegmentedControl<Frame>;
   private apsisIcons: readonly ApsisIcon[] = [];
+  private eqNodeIcons: readonly EqNodeIcon[] = [];
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
   private plan: Plan | null = null;
 
@@ -70,6 +76,7 @@ export class PlanDisplay {
     this.traj.update(plan, this.ephemeris, this.trajectoryFrame, simTime);
     this.ghost = this.ghostAt(displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
+    this.eqNodeIcons = this.eqNodeIconsOf();
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。
@@ -79,6 +86,7 @@ export class PlanDisplay {
     this.traj.sync(fo, project);
     this.syncGhost(project);
     this.syncApsisMarkers(project);
+    this.syncEqNodeMarkers(project);
     this.panel.style.display = showPanel ? 'block' : 'none';
     this.frame.setSelected(this.trajectoryFrame);
   }
@@ -89,12 +97,14 @@ export class PlanDisplay {
     this.markerManager.hide('plannedPlayer');
     this.markerManager.hide('apsisPe');
     this.markerManager.hide('apsisAp');
+    this.markerManager.hide('eqAn');
+    this.markerManager.hide('eqDn');
     this.panel.style.display = 'none';
   }
 
-  // 近地点・遠地点アイコンの右クリック候補(非表示中は空)。
+  // 近地点・遠地点アイコンおよび赤道交点の右クリック候補(非表示中は空)。
   get apsisMarkers(): readonly MapPickable[] {
-    return this.apsisIcons;
+    return [...this.apsisIcons, ...this.eqNodeIcons];
   }
 
   // アプシスアイコン id に対応する通過時刻。アイコンが出ていない id では null。
@@ -187,11 +197,88 @@ export class PlanDisplay {
     return icons;
   }
 
+  // 赤道交点（昇交点・降交点）アイコンを解析的に求める。
+  private eqNodeIconsOf(): readonly EqNodeIcon[] {
+    const state0 = this.traj.finalSegmentStart;
+    const plan = this.plan;
+    if (!state0 || !plan) return [];
+    const body = centralBodyDefinition(plan.centralBody);
+    const relative = toCentralBodyState(state0, plan.centralBody, this.ephemeris);
+    const el = elementsFromState(relative.r, relative.v, body.mu);
+    if (!el || el.e < C.APSIS_MIN_ECC) return [];
+    
+    // 近点距離がSOIを超える場合は対象外
+    const rp = el.p / (1 + el.e);
+    if (rp > body.soiRadius) return [];
+
+    // 赤道面の法線ベクトル
+    const eqNormal = plan.centralBody === 'moon' 
+      ? this.ephemeris.moonOrbitNormalAt(state0.t) 
+      : v3(0, 1, 0);
+
+    const icons: EqNodeIcon[] = [];
+    
+    // 昇交点の方向ベクトル。軌道法線と赤道面法線の外積（EqNormal × OrbitNormal）が昇交点の方向になる。
+    const lineDir = cross(eqNormal, el.hHat);
+    if (dot(lineDir, lineDir) < 1e-6) return []; // 軌道面と赤道面がほぼ一致
+
+    const d = norm(lineDir);
+    // dベクトルの真近点角を求める
+    const thAsc = Math.atan2(dot(d, el.qHat), dot(d, el.pHat));
+
+    const eqPosition = (nu: number): { pos: Vec3, time: number } => {
+      const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
+      const t = state0.t + (isFinite(dt) ? dt : 0);
+      const relativeState = orbitState(t, positionOnOrbit(el, nu), relative.v);
+      return {
+        pos: this.traj.toDisplay(fromCentralBodyState(relativeState, plan.centralBody, this.ephemeris).r, t),
+        time: t
+      };
+    };
+
+    const isMoon = plan.centralBody === 'moon';
+    const idAn = isMoon ? 'eqAnMoon' : 'eqAn';
+    const idDn = isMoon ? 'eqDnMoon' : 'eqDn';
+
+    const an = eqPosition(thAsc);
+    icons.push({
+      id: idAn, name: '赤道昇交点', kind: 'eqnode',
+      pos: an.pos, time: an.time, label: 'EqAN',
+    });
+
+    const dn = eqPosition(thAsc + Math.PI);
+    icons.push({
+      id: idDn, name: '赤道降交点', kind: 'eqnode',
+      pos: dn.pos, time: dn.time, label: 'EqDN',
+    });
+
+    return icons;
+  }
+
   // ◇ アプシスアイコンを update が求めた位置に置き、出ていないものを隠す。
   private syncApsisMarkers(project: ProjectFn): void {
     for (const key of ['apsisPe', 'apsisAp'] as const) {
       const icon = this.apsisIcons.find((m) => m.id === key);
       if (icon) this.markerManager.setPosition(key, 'mk-apsis', '◇', icon.pos, project, icon.label);
+      else this.markerManager.hide(key);
+    }
+  }
+
+  // △▽ 赤道交点アイコンを update が求めた位置に置き、出ていないものを隠す。
+  private syncEqNodeMarkers(project: ProjectFn): void {
+    const isMoon = this.plan?.centralBody === 'moon';
+    const keys = isMoon ? ['eqAnMoon', 'eqDnMoon'] as const : ['eqAn', 'eqDn'] as const;
+    const hideKeys = isMoon ? ['eqAn', 'eqDn'] as const : ['eqAnMoon', 'eqDnMoon'] as const;
+
+    // 使わない方を隠す
+    for (const key of hideKeys) {
+      this.markerManager.hide(key);
+    }
+
+    for (const key of keys) {
+      const icon = this.eqNodeIcons.find((m) => m.id === key);
+      const isAn = key.startsWith('eqAn');
+      if (icon) this.markerManager.setPosition(key, 'mk-node', isAn ? '△' : '▽', icon.pos, project, icon.label);
       else this.markerManager.hide(key);
     }
   }
