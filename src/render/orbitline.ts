@@ -1,5 +1,5 @@
-// Elements から軌道楕円を描画する。頂点は地球中心(ECI)座標のまま保持し、フローティング
-// オリジンによる Object3D 平行移動だけで動かす。ジオメトリの再生成は軌道要素が閾値を
+// Elements から軌道楕円を描画する。頂点は中心天体相対座標のまま保持し、フローティング
+// オリジンによる Object3D 平行移動で中心天体の ECI 位置へ置く。ジオメトリの再生成は軌道要素が閾値を
 // 超えて変化したときだけ行う。
 import * as THREE from 'three/webgpu';
 import { Elements } from '../physics/orbital';
@@ -53,9 +53,9 @@ export class OrbitLine {
   }
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン。force = 要素が能動的に変化している
-  // 間(推力中・ノード編集中)は true。focusPos = 指定すると、その ECI 点の付近に頂点を
-  // 密に配置する。
-  sync(el: Elements | null, fo: FloatingOrigin, force = false, focusPos?: Vec3): void {
+  // 間(推力中・ノード編集中)は true。focusPos は中心天体相対座標で、その付近に
+  // 頂点を密に配置する。centerPos は軌道の中心天体の ECI 位置(既定は地球中心)。
+  sync(el: Elements | null, fo: FloatingOrigin, force = false, focusPos?: Vec3, centerPos: Vec3 = EARTH_CENTER): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.line.visible = false;
       this.snap = null;
@@ -63,8 +63,8 @@ export class OrbitLine {
     }
     this.line.visible = !this.suppressed;
     // 頂点を自機相対座標で毎フレーム書き直すと、osculating 要素の微小なゆらぎで楕円が
-    // 振動して見える。頂点は地球中心座標のまま固定し、平行移動だけで動かすことで避ける。
-    this.line.position.copy(fo.RtoThreeV3(EARTH_CENTER));
+    // 振動して見える。頂点は中心天体相対座標のまま固定し、平行移動だけで動かす。
+    this.line.position.copy(fo.RtoThreeV3(centerPos));
 
     let focusE: number | undefined;
     if (focusPos) {

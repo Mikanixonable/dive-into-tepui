@@ -263,7 +263,6 @@ export class Game {
       return;
     }
 
-    // Creative の未配置状態でも、残骸・弾など全エンティティの epoch は進め続ける。
     if (this.player === null) {
       this.simSpeedManager.update(this.simulator.simTime);
       this.applyWarpCommandPolicy();
@@ -279,6 +278,11 @@ export class Game {
       );
       this.effects.update(dt, simDt);
       this.updateMapPresentation(dt);
+      if (this.editor.editMode) {
+        this.editor.handleMapPointer(this.input);
+        this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
+        this.editor.updateEditing(dt, this.input);
+      }
       return;
     }
     const player = this.player;
@@ -466,7 +470,7 @@ export class Game {
     for (const ship of this.entities.players) {
       ship.syncPlayer(
         this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused,
-        displayTime, ship === player,
+        displayTime, ship === player, this.ephemeris,
       );
     }
 
@@ -515,7 +519,8 @@ export class Game {
     if (player) this.guide.sync(this.editor.plan, player, simTime, this.editor.editMode, project);
 
     const debugTargets = player ? (target ? [player, target] : [player]) : [];
-    this.debugHistoryLine.sync(debugTargets, this.editor.planDisplay.trajectoryFrame, simTime, this.ephemeris, this.floatingOrigin);
+    const debugFrame = overviewMode ? this.cameraSystem.overviewCamera.cameraFrame : 'inertial';
+    this.debugHistoryLine.sync(debugTargets, debugFrame, simTime, this.ephemeris, this.floatingOrigin);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions();

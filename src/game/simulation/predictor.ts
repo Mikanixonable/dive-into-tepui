@@ -48,8 +48,9 @@ export class Predictor {
   private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number): number {
     let consumed = 0;
     while (consumed < budgetSteps) {
-      const tipR = e.predicted?.state.r ?? e.state.r;
-      const dt = Math.max(C.PREDICT_MIN_STEP_DT, stepDtForRadius(len(tipR)));
+      const tipState = e.predicted?.state ?? e.state;
+      const relativeR = e.centralBodyRelativeState(tipState, this.ephemeris).r;
+      const dt = Math.max(C.PREDICT_MIN_STEP_DT, stepDtForRadius(len(relativeR)));
       if (!e.stepPrediction(this.ephemeris, simTime, dt)) break;
       consumed++;
     }
