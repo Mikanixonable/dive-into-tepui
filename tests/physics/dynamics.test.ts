@@ -159,7 +159,7 @@ export function register(): void {
       });
     }
 
-    const el = elementsFromState(s.r, s.v, MU_EARTH) as Elements;
+    const el = elementsFromState(s.r, s.v, MU_EARTH, 'earth') as Elements;
     // RAAN(昇交点赤経) = atan2(hHat.x, -hHat.z) 的な導出でも良いが、ここでは
     // pHat/hHat から昇交点方向ベクトルを求め、その方位角(XZ平面, 基準X軸)を使う。
     // 昇交点方向 = Y(極軸) × hHat の正規化(軌道面と赤道面の交線)

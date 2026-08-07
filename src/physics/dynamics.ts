@@ -2,17 +2,15 @@
 // および一質点にかかる全加速度(重力 + J2 + 大気抵抗 + 推力)の合成。
 // ゲーム本体(game-entity/game-entity.ts)と軌道計画(plan/plan-arc.ts)の積分が共有する
 // 唯一の定義箇所。THREE/DOM 非依存の純関数。
-import { Attractor, gravityAccel } from './attractor';
+import { Attractor, attractorAccel } from './attractor';
 import { MU_EARTH, OrbitState, R_EARTH_EQ, orbitState } from './orbital-state';
 import { dragAccel } from './atmosphere';
-import { Vec3, add, sub, v3 } from './vec3';
-
-const ORIGIN = v3(0, 0, 0);
+import { Vec3, add, v3 } from './vec3';
 
 // 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに呼ばれる。
-export type AccelFn = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => Vec3;
+type AccelFn = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => Vec3;
 
-export const J2_EARTH = 1.08262668e-3; // 地球扁平の J2 項
+const J2_EARTH = 1.08262668e-3; // 地球扁平の J2 項
 
 // J2(地球扁平)摂動加速度。極軸 = Y。
 // 軌道面に非対称なトルクを与え、昇交点の歳差(LEO 51.6° で約 -5°/日)を生む。
@@ -73,20 +71,24 @@ export function stepOrbitRK4(s: OrbitState, dt: number, accel: AccelFn): OrbitSt
   );
 }
 
-// 全天体からの重力(originAccel を引いて ECI が非慣性系であることを補正済み)+ J2 + 大気抵抗。
-function accel(r: Vec3, v: Vec3, bodies: readonly Attractor[], originAccel: Vec3, bcInv: number): Vec3 {
-  const gravity = sub(gravityAccel(r, bodies), originAccel);
-  return add(add(gravity, j2Accel(r)), dragAccel(r, v, bcInv));
+// 全天体からの重力(Σ attractorAccel — ECI が非慣性系であることの補正込み)+ J2 + 大気抵抗。
+function accel(r: Vec3, v: Vec3, bodies: readonly Attractor[], bcInv: number): Vec3 {
+  let ax = 0, ay = 0, az = 0;
+  for (const body of bodies) {
+    const g = attractorAccel(r, body);
+    ax += g.x; ay += g.y; az += g.z;
+  }
+  const j2 = j2Accel(r);
+  const drag = dragAccel(r, v, bcInv);
+  return v3(ax + j2.x + drag.x, ay + j2.y + drag.y, az + j2.z + drag.z);
 }
 
 // 全天体重力 + J2 + 大気抵抗 + 推力の RK4 1ステップ。bodies はこのステップぶん呼び出し側が
-// 確定させた重力源一覧(Ephemeris.attractorsAt)。原点天体自身の加速度(gravityAccel(0,
-// bodies))はステップ内で定数なので、4段の外で1回だけ評価する。bcInv/thrust は種別ごとに
-// 異なるため引数で受け取り、モジュール内に既定値を持たない。
+// 確定させた重力源一覧(Ephemeris.attractorsAt)。bcInv/thrust は種別ごとに異なるため
+// 引数で受け取り、モジュール内に既定値を持たない。
 export function stepDynamicsRK4(state: OrbitState, dt: number, bodies: readonly Attractor[], bcInv: number, thrust: Vec3 | null): OrbitState {
-  const originAccel = gravityAccel(ORIGIN, bodies);
   return stepOrbitRK4(state, dt, (rx, ry, rz, vx, vy, vz) => {
-    const a = accel(v3(rx, ry, rz), v3(vx, vy, vz), bodies, originAccel, bcInv);
+    const a = accel(v3(rx, ry, rz), v3(vx, vy, vz), bodies, bcInv);
     return thrust ? add(a, thrust) : a;
   });
 }

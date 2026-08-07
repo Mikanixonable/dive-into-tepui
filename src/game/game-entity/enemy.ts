@@ -288,6 +288,6 @@ export class Enemy extends Ship {
   // オーバービュー時の非ターゲット背景描画用
   syncBackgroundOrbitLine(show: boolean, fo: FloatingOrigin, bodies: readonly Attractor[]): void {
     const center = strongestAttractor(this.state.r, bodies);
-    this.orbitLine.sync(show ? this.elementsAround(center) : null, fo, undefined, undefined, center.r);
+    this.orbitLine.sync(show ? this.elementsAround(center) : null, fo, bodies);
   }
 }

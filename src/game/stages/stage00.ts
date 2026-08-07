@@ -174,7 +174,7 @@ function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3): Vec3 {
   const minPeAlt = C.REENTRY_ALT + C.STAGE00_MIN_PERIGEE_MARGIN;
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
-    const el = elementsFromState(centerR, v, MU_EARTH);
+    const el = elementsFromState(centerR, v, MU_EARTH, 'earth');
     return el !== null && apsisAltitudes(el, R_EARTH).pe >= minPeAlt;
   };
   if (safe(centerV)) return centerV;

@@ -5,7 +5,6 @@ import {
   Attractor,
   attractorAccel,
   elementsAround,
-  gravityAccel,
   localOrbitPeriod,
   strongestAttractor,
 } from '../../src/physics/attractor';
@@ -18,30 +17,43 @@ const ZERO = v3(0, 0, 0);
 const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, r: ZERO, v: ZERO };
 
 export function register(): void {
-  test('attractor: gravityAccel skips a zero-distance body (自分自身) and stays finite', () => {
+  test('attractor: attractorAccel は原点天体(地球)では素の中心重力になる', () => {
+    const r = v3(R_EARTH + 420e3, 0, 0);
+    const a = attractorAccel(r, EARTH);
+    const expectedMag = MU_EARTH / (len(r) * len(r));
+    assert.ok(Math.abs(len(a) - expectedMag) / expectedMag < 1e-9, `μ/r² に一致: ${len(a)} vs ${expectedMag}`);
+    assert.ok(a.x < 0, '地心方向を向く');
+  });
+
+  test('attractor: attractorAccel は距離ゼロの天体(自分自身)で発散しない', () => {
     const r = v3(R_EARTH + 420e3, 0, 0);
     // moon がクエリ位置と同じ座標(距離ゼロ)にある人工の配置。飛ばされず加算されると
     // μ/0³ で発散する。
     const coincidentMoon: Attractor = { id: 'moon', mu: MU_MOON, radius: R_MOON, r, v: ZERO };
-    const a = gravityAccel(r, [EARTH, coincidentMoon]);
+    const a = attractorAccel(r, coincidentMoon);
     assert.ok(Number.isFinite(a.x) && Number.isFinite(a.y) && Number.isFinite(a.z), `finite: ${JSON.stringify(a)}`);
-    const expectedMag = MU_EARTH / (len(r) * len(r));
-    assert.ok(Math.abs(len(a) - expectedMag) / expectedMag < 1e-9, `earth 単独の寄与に一致: ${len(a)} vs ${expectedMag}`);
+    // 直接引力の項だけが落ちて、原点補正項(月が地球を引く分)は残る。
+    const expectedMag = MU_MOON / (len(r) * len(r));
+    assert.ok(Math.abs(len(a) - expectedMag) / expectedMag < 1e-9, `原点補正項のみ残る: ${len(a)} vs ${expectedMag}`);
   });
 
-  test('attractor: 分解の恒等式 Σ attractorAccel(r,b) == gravityAccel(r,bodies) - gravityAccel(0,bodies)', () => {
+  test('attractor: attractorAccel は差分潮汐式 μ[(r_b−r)/|r_b−r|³ − r_b/|r_b|³] に一致', () => {
     const ephemeris = new Ephemeris(0.3, 0.4);
     const bodies = ephemeris.attractorsAt(12345);
     const r = v3(R_EARTH + 420e3, 1.2e6, -3e5);
 
-    let sumX = 0, sumY = 0, sumZ = 0;
-    for (const body of bodies) {
+    for (const body of bodies.filter((b) => b.id !== 'earth')) {
+      const rho = sub(body.r, r);
+      const d3 = Math.pow(len(rho), 3);
+      const b3 = Math.pow(len(body.r), 3);
+      const expected = sub(
+        v3((body.mu * rho.x) / d3, (body.mu * rho.y) / d3, (body.mu * rho.z) / d3),
+        v3((body.mu * body.r.x) / b3, (body.mu * body.r.y) / b3, (body.mu * body.r.z) / b3),
+      );
       const a = attractorAccel(r, body);
-      sumX += a.x; sumY += a.y; sumZ += a.z;
+      const diff = len(sub(a, expected));
+      assert.ok(diff / len(expected) < 1e-9, `${body.id} の誤差: ${diff} (|expected|=${len(expected)})`);
     }
-    const rhs = sub(gravityAccel(r, bodies), gravityAccel(ZERO, bodies));
-    const diff = len(v3(sumX - rhs.x, sumY - rhs.y, sumZ - rhs.z));
-    assert.ok(diff / len(rhs) < 1e-9, `恒等式の誤差: ${diff} (|rhs|=${len(rhs)})`);
   });
 
   test('attractor: strongestAttractor は LEO で earth', () => {

@@ -101,3 +101,33 @@ minCountって使われているか？
 
 ## earth.ts の buildAurora(本文70行超)のクラス化
 見た感じ関数というよりもクラスで表現すべき
+
+
+
+## **予測経路では `Ephemeris.attractorsAt` のメモが構造的に外れる。** `Predictor.advanceBudget` が
+  刻み幅を決めるために先端時刻で引き、`GameEntity.stepPrediction` が積分のために中点で引く。
+  時刻が単調増加するので直近2件のメモはどちらも当たらない。予測1ステップ 3.3 μs(実測)、
+  予算上限 500 ステップで約 1.6 ms/フレーム。**中点サンプリングをやめて1回にすれば半減するが、
+  月周回の予測精度が落ちる**(月が dt/2 ぶん遅れた位置になり、1周で無視できない誤差になる)ので
+  採らなかった。速度を遅延評価にして 5.0 μs → 3.3 μs までは下げてある。
+
+## MAP VIEW パネル(カメラ用)に「弾薬」トグルが同居している(`camera/overview-camera-panel.ts:35-40`)。
+  カメラ関連 GUI の集約という観点では逆向きの混在。
+## `render/orbitline.ts` の `densifyNear` に「要調査」コメントあり: 頂点を密に置きたいのは本来
+  フローティングオリジン近傍だが、呼び出し側は自機位置を渡している。
+## 戦闘ビューの方位マーカーは `orbitalAxes` が地心速度基準のままで、中心天体に追従しない。
+  `strongestAttractor` があるので直せるが、重力源の一般化とは別の仕様変更。
+## 影判定(`lenSq(...) < R_EARTH_EQ²`)が `game-entity/enemy.ts` と `player/player-fire.ts` に
+  同じ実装で2つある。
+## `stages/creative-stage.ts` の `updatePreview` が update から sync 相当の処理(THREE の `.visible`)を
+  触っている(フックが検出。今回の変更セットとは無関係な既存の状態)。
+
+## **「月回転系にしても予測軌道が月を周回する形で表示されない」**(`memos/mikanixonable/dev.md:741`)。
+原因は `DebugHistoryLine.sync` に渡すベイク系がマニューバ計画用の `PlanDisplay.trajectoryFrame` に
+なっており、エンティティの積分軌道表示が自分の座標系設定を持っていないこと
+(`memos/mikanixonable/map-orbit-display-fixes.md` 問題2)。
+
+これは「積分軌道をどの座標系でベイクするか」の配線ミスであって、今回直した「積分にどの重力を
+入れるか」「解析楕円をどの天体中心で出すか」とは別の責務。**Step1 では意図的に触っていない。**
+同文書の問題1(ワープ中に過去列と陳腐化した未来列を連結して線が破綻する)
+## ・問題3(ノードが無くてもオレンジの計画線が出る)も未修正。
