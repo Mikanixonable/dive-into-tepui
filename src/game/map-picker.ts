@@ -51,6 +51,10 @@ export class MapPicker {
     this.objectListPanel = new ObjectListPanel(hud.root);
     this.objectListPanel.onSelect = (id) => {
       this.cameraSystem.overviewCamera.setFocus(id);
+      this.hud.hint(`${this.items.find((i) => i.id === id)?.name ?? id} にフォーカス`);
+    };
+    this.objectListPanel.onClose = () => {
+      this.objectListVisible = false;
     };
   }
 

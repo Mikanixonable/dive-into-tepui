@@ -96,8 +96,15 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
 #hud-enemies .erow.tgt { color: ${WARNING}; }
-#hud-object-list { max-height: 240px; overflow-y: auto; }
-#hud-object-list .erow { padding: 3px 0; color: ${INK_SOFT}; cursor: pointer; }
+#hud-object-list { max-height: 320px; overflow-y: auto; }
+#hud-object-list .object-list-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+#hud-object-list .object-list-title-row h3 { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+#hud-object-list .object-list-section-header {
+  display: block; width: 100%; text-align: left; margin: 4px 0 2px;
+  padding: 3px 8px; font-size: 10px; letter-spacing: 1px;
+}
+#hud-object-list .object-list-section-body { padding-left: 4px; }
+#hud-object-list .erow { padding: 3px 4px; color: ${INK_SOFT}; cursor: pointer; }
 #hud-object-list .erow:hover { color: ${INK}; }
 #hud-object-list .erow.tgt { color: ${ACCENT}; }
 #hud-combat-shelf { display: contents; }
