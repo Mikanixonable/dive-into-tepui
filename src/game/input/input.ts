@@ -102,7 +102,9 @@ export class Input {
   // 左ボタン・右ボタンはともにドラッグ/ピンチ開始(右クリックは閾値未満ならコンテキストメニュー用のクリックとして扱う)、中ボタンはパン開始として扱う。
   private onPointerDown(target: HTMLElement, e: PointerEvent): void {
     this.fireGesture();
-    if (e.button === 0) {
+    const isRight = e.button === 2 || (e.button === 0 && e.ctrlKey);
+    const isLeft = e.button === 0 && !e.ctrlKey;
+    if (isLeft) {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (this.pointers.size === 2) {
         // 2本指になったらドラッグをやめてピンチズームに移行
@@ -113,7 +115,7 @@ export class Input {
         this.dragMoved = 0;
         target.setPointerCapture(e.pointerId);
       }
-    } else if (e.button === 2) {
+    } else if (isRight) {
       this.rightActive = true;
       this.rightDragMoved = 0;
       target.setPointerCapture(e.pointerId);
@@ -127,7 +129,7 @@ export class Input {
   }
 
   // アクティブなジェスチャ(ピンチ/パン/ドラッグ)に応じて移動量を積算する。
-  private onPointerMove(e: PointerEvent): void {
+  private onPointerMove = (e: PointerEvent): void => {
     const p = this.pointers.get(e.pointerId);
     if (p) {
       p.x = e.clientX;
@@ -147,8 +149,7 @@ export class Input {
       return;
     }
     if (this.rightActive) {
-      this.dx += e.movementX;
-      this.dy += e.movementY;
+      // 右ドラッグでの視点移動は廃止。移動量のみ記録する
       this.rightDragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
       return;
     }
@@ -160,8 +161,10 @@ export class Input {
   }
 
   // ドラッグ量が閾値未満ならクリックとして記録し、各ジェスチャを終了する。
-  private onPointerUp(e: PointerEvent): void {
-    if (e.button === 0 || e.pointerType === 'touch') {
+  private onPointerUp = (e: PointerEvent): void => {
+    const isRight = e.button === 2 || (e.button === 0 && e.ctrlKey);
+    const isLeft = e.button === 0 && !e.ctrlKey;
+    if (isLeft || e.pointerType === 'touch') {
       this.pointers.delete(e.pointerId);
       if (this.dragging) this.pushIfClick(this.pendingClicks, this.dragMoved, e);
       this.dragging = false;
@@ -171,8 +174,13 @@ export class Input {
       if (this.panDragging) this.pushIfClick(this.pendingMiddleClicks, this.panDragMoved, e);
       this.panDragging = false;
     }
-    if (e.button === 2) {
-      if (this.rightActive) this.pushIfClick(this.pendingRightClicks, this.rightDragMoved, e);
+    if (isRight) {
+      if (this.rightActive) {
+        // 右ドラッグ視点移動を廃止したため、右クリック判定の閾値を大きく緩和
+        if (this.rightDragMoved < 50) {
+          this.pendingRightClicks.push({ x: e.clientX, y: e.clientY });
+        }
+      }
       this.rightActive = false;
     }
   }

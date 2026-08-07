@@ -1,6 +1,6 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { altitudeOf, Elements, OrbitState } from '../../physics/orbital';
+import { altitudeOf, elementsFromState, Elements, OrbitState } from '../../physics/orbital';
 import { Attitude } from '../../physics/attitude';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { StateQueue } from '../../physics/state-queue';
@@ -9,6 +9,7 @@ import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
+import { centralBodyDefinition, toCentralBodyState, type CentralBodyId } from '../../physics/central-body';
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -20,6 +21,8 @@ const identityAttitude = (): Attitude => ({
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
 export class GameEntity {
   readonly current: OrbitEntity;
+  // 予測列だけが参照する中心天体。実シミュレーションの互換性を保つため既定は地球。
+  readonly predictionCentralBody: CentralBodyId;
 
   get state(): OrbitState { return this.current.state; }
   // 不連続な差し替え専用の口(剛体接触・反動など)。
@@ -51,17 +54,30 @@ export class GameEntity {
   private truncated = false;
 
   // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
-  constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
+  constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude(), predictionCentralBody: CentralBodyId = 'earth') {
     this.current = new OrbitEntity(state);
     this.att = att;
     this.obj = obj;
     this.scene = scene;
+    this.predictionCentralBody = predictionCentralBody;
     this.scene?.add(this.obj);
   }
 
   // 過去列へ積む最小間隔 [s]。
-  protected sampleInterval(): number {
-    const period = this.elements?.period;
+  // 予測と解析軌道線で共有する中心天体相対状態。地球の場合は従来の ECI 状態そのもの。
+  centralBodyRelativeState(state: OrbitState, ephemeris: Ephemeris): OrbitState {
+    return toCentralBodyState(state, this.predictionCentralBody, ephemeris);
+  }
+
+  elementsForPredictionBody(state: OrbitState, ephemeris: Ephemeris): Elements | null {
+    if (this.predictionCentralBody === 'earth' && state === this.state) return this.elements;
+    const relative = this.centralBodyRelativeState(state, ephemeris);
+    return elementsFromState(relative.r, relative.v, centralBodyDefinition(this.predictionCentralBody).mu);
+  }
+
+  // 過去列/予測列へ積む最小間隔 [s]。選択中心天体の軌道周期を使う。
+  protected sampleInterval(ephemeris: Ephemeris, state: OrbitState = this.state): number {
+    const period = this.elementsForPredictionBody(state, ephemeris)?.period;
     if (period !== undefined && period !== null && isFinite(period) && period > 0) {
       return period / C.PREDICT_SAMPLES_PER_REV;
     }
@@ -71,7 +87,7 @@ export class GameEntity {
   // 中心重力 + 環境加速度(大気抵抗・J2・第三体摂動)+ 自身の推力で 1 ステップ積分する。
   stepSim(dt: number, ephemeris: Ephemeris): void {
     if (!this.alive) return;
-    this.current.step(dt, ephemeris, this.bcInv, this.thrust, this.sampleInterval(), this.historyDuration);
+    this.current.step(dt, ephemeris, this.bcInv, this.thrust, this.sampleInterval(ephemeris), this.historyDuration);
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
@@ -109,7 +125,11 @@ export class GameEntity {
     // 常にpredictDurationより先にp.state.tがあるようにpredictを伸ばす
     if (p.state.t > simTime + this.predictDuration) return false;
 
-    p.step(dt, ephemeris, this.bcInv, null, this.sampleInterval(), this.predictDuration);
+    if (this.predictionCentralBody === 'moon') {
+      p.stepMoonPrediction(dt, ephemeris, this.sampleInterval(ephemeris, p.state), this.predictDuration);
+    } else {
+      p.step(dt, ephemeris, this.bcInv, null, this.sampleInterval(ephemeris, p.state), this.predictDuration);
+    }
 
     // 有限チェック
     const { r, v } = p.state;

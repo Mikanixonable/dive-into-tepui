@@ -51,7 +51,7 @@ export const KEY_MAPPING = {
   cameraPitchUp: { code: 'ArrowUp', label: '↑' },
   cameraPitchDown: { code: 'ArrowDown', label: '↓' },
   cameraRollLeft: { code: 'Numpad0', altCodes: ['Slash'], label: 'Num0', altLabel: '/' },
-  cameraRollRight: { code: 'Numpad1', altCodes: ['IntlRo', 'Minus'], label: 'Num1', altLabel: '_' },
+  cameraRollRight: { code: 'Numpad1', altCodes: ['IntlRo'], label: 'Num1', altLabel: '_' },
   cameraPanUp: { code: 'BracketLeft', label: '@' },
   cameraPanDown: { code: 'Quote', label: ':' },
   cameraPanLeft: { code: 'Semicolon', label: ';' },

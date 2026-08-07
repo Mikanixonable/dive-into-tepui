@@ -10,6 +10,8 @@ import { StateQueue } from './state-queue';
 import type { Ephemeris } from './ephemeris';
 import { Vec3 } from './vec3';
 import { stepEnvRK4 } from './envaccel';
+import { stepOrbitRK4 } from './orbital';
+import { centralBodyDefinition, fromCentralBodyState, toCentralBodyState } from './central-body';
 
 export class OrbitEntity {
   private _state: OrbitState;
@@ -66,6 +68,29 @@ export class OrbitEntity {
       }
     }
     // 積分結果を確定し、要素キャッシュを無効化する
+    this._prevState = prev;
+    this._state = next;
+    this._elements = undefined;
+  }
+
+  // 予測専用の月中心二体伝播。ゲーム本体のECI積分経路は変更しない。
+  stepMoonPrediction(
+    dt: number,
+    ephemeris: Ephemeris,
+    sampleInterval: number,
+    keepDuration: number,
+  ): void {
+    const prev = this._state;
+    const relative = toCentralBodyState(prev, 'moon', ephemeris);
+    const nextRelative = stepOrbitRK4(relative, dt, undefined, centralBodyDefinition('moon').mu);
+    const next = fromCentralBodyState(nextRelative, 'moon', ephemeris);
+    if (keepDuration > 0) {
+      const newest = this._history.newest;
+      if (newest === null || prev.t - newest.t >= sampleInterval) {
+        this._history.push(prev);
+        this._history.cleanup(keepDuration, 2);
+      }
+    }
     this._prevState = prev;
     this._state = next;
     this._elements = undefined;
