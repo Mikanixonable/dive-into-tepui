@@ -42,6 +42,7 @@ import { Ammo } from './game-entity/ammo';
 import { SaveManager } from './save-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
+import { ViewBadge } from './hud/view-badge';
 import { Base } from './game-entity/base';
 
 export class Game {
@@ -89,6 +90,7 @@ export class Game {
   private readonly nanWatchdog: NanWatchdog;
   private readonly debugHistoryLine: DebugHistoryLine;
   private readonly docking: Docking;
+  private readonly viewBadge: ViewBadge;
 
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
   constructor(
@@ -201,6 +203,7 @@ export class Game {
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.debugHistoryLine = new DebugHistoryLine(this._scene);
     this.docking = new Docking(this, this._hud, this.entities, this.mapPicker, this.cameraSystem);
+    this.viewBadge = new ViewBadge(this._hud.root, this.mapModeToggler, this.docking.dockView);
 
     this.floatingOrigin = this.player
       ? new FloatingOrigin(this.player.state.r, this.player.state.v)
