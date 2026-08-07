@@ -228,12 +228,25 @@ export class ShipPlacerPanel {
     btnRow.style.display = 'flex';
     btnRow.style.gap = '10px';
     btnRow.style.marginTop = '12px';
-    btnRow.appendChild(hudButton('配置', () => this.confirm()));
-    btnRow.appendChild(hudButton('キャンセル', () => {
+    btnRow.appendChild(hudButton('配置 [Enter]', () => this.confirm()));
+    btnRow.appendChild(hudButton('キャンセル [ESC]', () => {
       this.setVisible(false);
       this.onClose?.();
     }));
     this.panel.appendChild(btnRow);
+
+    // Enter / ESC キー操作のバインド
+    window.addEventListener('keydown', (e) => {
+      if (this.panel.style.display === 'none') return;
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        this.setVisible(false);
+        this.onClose?.();
+      } else if (e.key === 'Enter') {
+        e.stopPropagation();
+        this.confirm();
+      }
+    });
 
     // root (hud-modal-shield) に追加
     root.appendChild(this.panel);
