@@ -60,14 +60,17 @@ export class PlanTrajectory {
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
     this.finalSegmentStart = segments.length > plan.nodes.length ? segments[segments.length - 1]!.state0 : null;
-    this.analyticDivergent = this.detectAnalyticDivergence(segments[0]?.state0 ?? null);
+    // 先頭区間が再積分されたときだけ判定し直す(全サンプル走査は再積分と同じ頻度に抑える)。
+    if (this.arcs[0]?.didRecompute()) {
+      this.analyticDivergent = this.detectAnalyticDivergence(segments[0]?.state0 ?? null);
+    }
   }
 
   // 各サンプルから求めた瞬時軌道要素を起点要素と比較する。月フライバイのような
   // 摂動では長半径・離心率・軌道面が変化するため、解析楕円を表示し続けると積分線と
   // 二重に見えてしまう。通常のLEOの数値誤差/J2の微小変化は閾値未満に収める。
-  // 起点で最も強く引く天体を中心に固定して比較する — 摂動で軌道が変わる過程そのものが
-  // 検出対象なので、後続サンプルで中心天体を選び直すと変化を見逃す。
+  // 途中で最も強く引く天体が起点と変われば、要素の比較を待たずその時点で divergent とする
+  // (中心が違う要素同士を比べても意味がないため)。
   private detectAnalyticDivergence(anchor: OrbitState | null): boolean {
     if (!anchor || !this.ephemeris) return false;
     const center = strongestAttractor(anchor.r, this.ephemeris.attractorsAt(anchor.t));
@@ -75,8 +78,9 @@ export class PlanTrajectory {
     if (!base || base.e >= 0.98 || !isFinite(base.a) || base.a <= 0) return false;
     const samples = this.arcs[0]?.samplesRef() ?? [];
     for (const s of samples) {
-      // 中心天体自身もサンプル時刻ぶん動くので、そのつど ephemeris から位置を引き直す。
-      const sampleCenter = this.ephemeris.attractorsAt(s.t).find((b) => b.id === center.id) ?? center;
+      // 中心天体自身もサンプル時刻ぶん動くので、そのつど ephemeris から引き直す。
+      const sampleCenter = strongestAttractor(s.r, this.ephemeris.attractorsAt(s.t));
+      if (sampleCenter.id !== center.id) return true;
       const el = elementsAround(s, sampleCenter);
       if (!el || !isFinite(el.a) || el.a <= 0) continue;
       if (Math.abs(el.a - base.a) / base.a > 0.03 || Math.abs(el.e - base.e) > 0.02) return true;

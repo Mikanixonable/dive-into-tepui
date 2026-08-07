@@ -2,11 +2,13 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { MU_EARTH, R_EARTH, orbitState } from '../../src/physics/orbital-state';
-import { Elements, elementsFromState, keplerPeriod, stateFromElements } from '../../src/physics/elements';
+import { Elements, keplerPeriod, stateFromElements } from '../../src/physics/elements';
 import { Ephemeris, MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/ephemeris';
-import { Attractor } from '../../src/physics/attractor';
+import { Attractor, elementsAround } from '../../src/physics/attractor';
 import { j2Accel, stepDynamicsRK4, stepOrbitRK4 } from '../../src/physics/dynamics';
 import { Vec3, add, len, sub, v3 } from '../../src/physics/vec3';
+
+const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)) };
 
 function circularState() {
   const r0 = R_EARTH + 420e3;
@@ -46,9 +48,9 @@ export function register(): void {
     const sunPos = v3(1.5e11, 0, 0);
     const moonPos = v3(3.8e8, 0, 0);
     const bodies: readonly Attractor[] = [
-      { id: 'earth', mu: MU_EARTH, radius: R_EARTH, r: v3(0, 0, 0), v: v3(0, 0, 0) },
-      { id: 'moon', mu: MU_MOON, radius: R_MOON, r: moonPos, v: v3(0, 0, 0) },
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, r: sunPos, v: v3(0, 0, 0) },
+      EARTH,
+      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: orbitState(0, moonPos, v3(0, 0, 0)) },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(0, sunPos, v3(0, 0, 0)) },
     ];
 
     const viaNew = stepDynamicsRK4(s0, dt, bodies, 0, null);
@@ -90,7 +92,7 @@ export function register(): void {
     const a = R_MOON + 100e3;
     const period = keplerPeriod(a, MU_MOON); // ~7,066s
     const rel0 = stateFromElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
-    let s = orbitState(0, add(rel0.r, moon0.r), add(rel0.v, moon0.v));
+    let s = orbitState(0, add(rel0.r, moon0.state.r), add(rel0.v, moon0.state.v));
 
     const dt = 5;
     const steps = Math.round(period / dt);
@@ -159,7 +161,7 @@ export function register(): void {
       });
     }
 
-    const el = elementsFromState(s.r, s.v, MU_EARTH, 'earth') as Elements;
+    const el = elementsAround(s, EARTH) as Elements;
     // RAAN(昇交点赤経) = atan2(hHat.x, -hHat.z) 的な導出でも良いが、ここでは
     // pHat/hHat から昇交点方向ベクトルを求め、その方位角(XZ平面, 基準X軸)を使う。
     // 昇交点方向 = Y(極軸) × hHat の正規化(軌道面と赤道面の交線)

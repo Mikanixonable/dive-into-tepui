@@ -1,11 +1,9 @@
 // 古典軌道要素(Elements)の定義と、状態ベクトル⇄要素の変換・要素上のケプラー幾何。
-// mu は呼び出し側が渡す中心天体の重力定数で、地球以外の主天体もそのまま扱える。
-// THREE/DOM 非依存の純粋関数群。
+// 軌道要素は「どの天体を中心に取ったか」まで含めて初めて意味が定まるため、Elements 自身が
+// 中心天体(Attractor)を保持する。THREE/DOM 非依存の純粋関数群。
+import type { Attractor } from './attractor';
 import { OrbitState, orbitState } from './orbital-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
-// 型のみの参照(実行時の import は発生しない)なので、attractor.ts → elements.ts の
-// 値の依存方向と衝突しない。AttractorId の実体は attractor.ts 側にある。
-import type { AttractorId } from './attractor';
 
 export interface Elements {
   a: number; // 軌道長半径 [m] (双曲線では負)
@@ -16,8 +14,7 @@ export interface Elements {
   pHat: Vec3; // 近地点方向(軌道面内)
   qHat: Vec3; // pHat と直交する軌道面内方向
   hHat: Vec3; // 軌道面法線
-  mu: number; // 中心天体の重力定数 [m^3/s^2]
-  centerId: AttractorId; // どの天体を中心に求めた要素か。楕円をどの天体位置へ描画すべきかもこれで決まる。
+  center: Attractor; // 中心天体。楕円をどの天体位置へ描画すべきかもこれで決まる。
 }
 
 // 長半径 a の楕円軌道の公転周期 [s]。動径をそのまま渡せば、その高度を回る円軌道の周期
@@ -32,11 +29,14 @@ export function semiMajorFromPeriod(period: number, mu: number): number {
   return Math.cbrt((mu * period * period) / (4 * Math.PI * Math.PI));
 }
 
-// 位置・速度から古典軌道要素を求める。mu は中心天体の重力定数(結果の Elements.mu に
-// そのまま残る)。centerId は r/v がどの天体中心の相対値であるかを表し、そのまま
-// Elements.centerId に残る — 楕円をどの天体位置へ描画するかはここで確定する。
-// 半径・角運動量が縮退している場合は null。
-export function elementsFromState(r: Vec3, v: Vec3, mu: number, centerId: AttractorId): Elements | null {
+// 中心天体相対の状態から古典軌道要素を求める。rel は center 相対(center 自身の位置・速度を
+// 差し引いた後)の状態ベクトルでなければならない — 絶対 ECI 座標をそのまま渡すと、center が
+// 原点(地球)でない限り誤った要素になる。絶対 ECI からの呼び出しは attractor.ts の
+// elementsAround に一本化する。半径・角運動量が縮退している場合は null。
+export function elementsFromState(rel: OrbitState, center: Attractor): Elements | null {
+  const r = rel.r;
+  const v = rel.v;
+  const mu = center.mu;
   const rMag = len(r);
   if (rMag < 1) return null;
   const h = cross(r, v);
@@ -65,13 +65,13 @@ export function elementsFromState(r: Vec3, v: Vec3, mu: number, centerId: Attrac
     pHat,
     qHat,
     hHat,
-    mu,
-    centerId,
+    center,
   };
 }
 
 // 中心天体表面からの近地点・遠地点高度。遠地点は楕円軌道のみ(双曲線・放物線は NaN)。
-export function apsisAltitudes(el: Elements, bodyRadius: number): { pe: number; ap: number } {
+export function apsisAltitudes(el: Elements): { pe: number; ap: number } {
+  const bodyRadius = el.center.radius;
   return {
     pe: el.p / (1 + el.e) - bodyRadius,
     ap: el.e < 1 && isFinite(el.a) ? el.a * (1 + el.e) - bodyRadius : NaN,
@@ -93,7 +93,7 @@ export function timeSincePeriapsis(el: Elements, nu: number): number {
   if (el.e < 1) {
     const E = 2 * Math.atan2(Math.sqrt(1 - el.e) * Math.sin(nu / 2), Math.sqrt(1 + el.e) * Math.cos(nu / 2));
     const M = E - el.e * Math.sin(E);
-    return M / Math.sqrt(el.mu / (el.a * el.a * el.a));
+    return M / Math.sqrt(el.center.mu / (el.a * el.a * el.a));
   }
 
   // 双曲線離心近点角 H = 2 * atanh( sqrt((e-1)/(e+1)) * tan(nu/2) )
@@ -101,7 +101,7 @@ export function timeSincePeriapsis(el: Elements, nu: number): number {
   if (Math.abs(x) >= 1) return NaN; // 漸近線を超えており、その nu には到達しない
   const H = 2 * Math.atanh(x);
   const M = el.e * Math.sinh(H) - H; // 双曲線ケプラー方程式
-  return M / Math.sqrt(el.mu / (-el.a * -el.a * -el.a)); // a < 0 なので -a > 0
+  return M / Math.sqrt(el.center.mu / (-el.a * -el.a * -el.a)); // a < 0 なので -a > 0
 }
 
 // 真近点角 nu0 → nu1 への飛行時間 [s]。
@@ -121,7 +121,7 @@ export function positionOnOrbit(el: Elements, nu: number): Vec3 {
 
 // 軌道上の真近点角 nu における ECI 速度
 export function velocityOnOrbit(el: Elements, nu: number): Vec3 {
-  const k = Math.sqrt(el.mu / el.p);
+  const k = Math.sqrt(el.center.mu / el.p);
   return addScaled(scale(el.pHat, -k * Math.sin(nu)), el.qHat, k * (el.e + Math.cos(nu)));
 }
 

@@ -266,6 +266,7 @@ main.ts
 | 対象 | 正体 | 無効化の契機 |
 | --- | --- | --- |
 | `Ephemeris.attractorsAt(t)` の戻り値(`Attractor[]`) | 天体暦(地球・月・太陽の位置・速度・μ・半径)から毎回組み立てる重力源スナップショット。どのクラスもこれを状態として保持しない — 呼んだその場で使い切るか、次のステップ/フレームでまた引き直す | 呼び出しごとに新しい `t` を渡せば作り直せる(同一 `t` の再呼び出しは直近2件のメモを返すだけの内部実装で、外部から見た保持義務ではない) |
+| `Elements.center`(`Attractor`) | その軌道要素をどの天体まわりで取ったか。要素と同じ寿命でその天体の `t` 時点スナップショットを抱えるので、要素そのものより長く持ち回してはならない(`OrbitLine` は楕円の平行移動先をここから引く) | 要素を作り直すたび。`GameEntity.elementsAround` のメモ経由なら `state` 差し替えのたび |
 | 解析楕円の中心天体(`strongestAttractor(state.r, bodies)` の結果) | `state`(と `bodies`)から都度導く選択であり、`GameEntity`/`Plan`/`PlanDisplay`/`OrbitLine` のどれもこれを状態として保持しない — 選ぶ GUI もない | 呼ぶたび再計算 |
 | `GameEntity.elementsAround(body)` の内部メモ | `state` の参照同一性 + `body.id` をキーにした軌道要素のメモ化(中心天体 `body` は呼び出し側が選ぶ) | `state` が差し替わるたび(`current.step`/`.reset`)、または `body.id` が変わるたび自動的に不一致になる |
 | `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(`history` とは別) | `step`/`reset` のたび更新 |

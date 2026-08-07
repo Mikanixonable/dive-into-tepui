@@ -1,12 +1,12 @@
 // HUD ステータスパネル(スタッツ・ターゲット情報・敵一覧)の同期。
 import * as C from '../const';
 import { ACCENT_SECONDARY, TEXT_DIM as INK_SOFT } from '../theme';
-import { altitudeOf } from '../../physics/orbital-state';
-import { Elements, apsisAltitudes } from '../../physics/elements';
+import { apsisAltitudes } from '../../physics/elements';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { dot, len, sub } from '../../physics/vec3';
 import type { Game } from '../game';
 import { fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
+import { ATTRACTOR_NAMES } from './frame-labels';
 
 // simTime=0 に対応する絶対時刻 [unix s]。HUD の現在日時表示にのみ使う。
 const SIM_EPOCH_SEC = Date.parse(C.SIM_EPOCH_UTC) / 1000;
@@ -25,6 +25,7 @@ interface StatsData {
   roundsInMag: number; // 給弾中マガジンの残弾
   magsLeft: number; // ベルトの未使用マガジン数
   reloadTimer: number; // リロード(バレル交換)中の残り時間
+  centerName: string; // 軌道要素の中心天体の表示名
   alt: number;
   altDescending: boolean;
   spd: number;
@@ -46,6 +47,7 @@ interface TargetData {
   relSpeed: number;
   hp: number;
   maxHp: number;
+  centerName: string; // 軌道要素の中心天体の表示名
   apAlt: number;
   peAlt: number;
   incDeg: number;
@@ -84,14 +86,7 @@ export class HudPanels {
     const secTgt = game.targeter.aliveSecondaryTarget;
     const playerCenter = strongestAttractor(player.state.r, bodies);
     const playerEl = player.elementsAround(playerCenter);
-    const playerApsis = playerEl ? apsisAltitudes(playerEl, playerCenter.radius) : null;
-    let tgtEl: Elements | null = null;
-    let tgtApsis: { pe: number; ap: number } | null = null;
-    if (tgt) {
-      const tgtCenter = strongestAttractor(tgt.state.r, bodies);
-      tgtEl = tgt.elementsAround(tgtCenter);
-      tgtApsis = tgtEl ? apsisAltitudes(tgtEl, tgtCenter.radius) : null;
-    }
+    const playerApsis = playerEl ? apsisAltitudes(playerEl) : null;
 
     // スタッツパネルを一定間隔で更新
     this.hudTimer -= dt;
@@ -112,7 +107,8 @@ export class HudPanels {
         roundsInMag: player.roundsInMag,
         magsLeft: player.magsLeft,
         reloadTimer: player.reloadTimer,
-        alt: altitudeOf(player.state.r),
+        centerName: ATTRACTOR_NAMES[playerCenter.id],
+        alt: len(sub(player.state.r, playerCenter.state.r)) - playerCenter.radius,
         altDescending: thermal.altDescendWarned,
         spd: len(player.state.v),
         apAlt: playerApsis ? playerApsis.ap : NaN,
@@ -127,12 +123,15 @@ export class HudPanels {
       });
 
       if (tgt) {
+        const tgtCenter = strongestAttractor(tgt.state.r, bodies);
+        const tgtEl = tgt.elementsAround(tgtCenter);
+        const tgtApsis = tgtEl ? apsisAltitudes(tgtEl) : null;
         const relP = sub(tgt.state.r, player.state.r);
         const relV = sub(tgt.state.v, player.state.v);
         const dist = len(relP);
-        // 自機軌道面とターゲット軌道面のなす角
+        // 自機軌道面とターゲット軌道面のなす角。中心天体が異なる要素同士は比較に意味がない。
         const relIncDeg =
-          playerEl && tgtEl
+          playerEl && tgtEl && playerCenter.id === tgtCenter.id
             ? (Math.acos(Math.max(-1, Math.min(1, dot(playerEl.hHat, tgtEl.hHat)))) * 180) / Math.PI
             : NaN;
         this.setTarget({
@@ -142,6 +141,7 @@ export class HudPanels {
           relSpeed: len(relV),
           hp: tgt.hp,
           maxHp: tgt.maxHp,
+          centerName: ATTRACTOR_NAMES[tgtCenter.id],
           apAlt: tgtApsis ? tgtApsis.ap : NaN,
           peAlt: tgtApsis ? tgtApsis.pe : NaN,
           incDeg: tgtEl ? tgtEl.incDeg : NaN,
@@ -226,6 +226,7 @@ export class HudPanels {
         ammoEl.classList.toggle('warn-hot', d.magsLeft < 4);
       }
     }
+    this.setText('center', d.centerName);
     this.setText('alt', fmtDist(d.alt));
     const altEl = this.els.get('alt');
     if (altEl) altEl.classList.toggle('warn-hot', d.altDescending);
@@ -265,6 +266,7 @@ export class HudPanels {
       <div class="row"><span class="k">接近速度</span><span class="v">${fmtSpeed(t.closing)}</span></div>
       <div class="row"><span class="k">相対速度</span><span class="v">${fmtSpeed(t.relSpeed)}</span></div>
       <div class="row"><span class="k">装甲</span><span class="v"><div style="display:inline-block; position:relative; width:120px; height:12px; background:${C.COLOR_HUD_BAR_BG}; vertical-align:middle; margin-left:4px;"><div style="width:${Math.max(0, Math.min(100, (t.hp / t.maxHp) * 100))}%; height:100%; background:${t.hp <= t.maxHp * 0.3 ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div><div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${Math.floor(t.hp)} / ${t.maxHp}</div></div></span></div>
+      <div class="row"><span class="k">基準天体</span><span class="v">${t.centerName}</span></div>
       <div class="row"><span class="k">遠地点 AP</span><span class="v">${fmtDist(t.apAlt)}</span></div>
       <div class="row"><span class="k">近地点 PE</span><span class="v">${fmtDist(t.peAlt)}</span></div>
       <div class="row"><span class="k">傾斜角 INC</span><span class="v">${isFinite(t.incDeg) ? t.incDeg.toFixed(2) + '°' : '---'}</span></div>

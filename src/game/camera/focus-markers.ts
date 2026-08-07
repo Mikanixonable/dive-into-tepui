@@ -4,6 +4,7 @@ import { Vec3, v3 } from '../../physics/vec3';
 import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
+import { ATTRACTOR_NAMES } from '../hud/frame-labels';
 
 export interface FocusLabel {
   id: string;
@@ -13,9 +14,7 @@ export interface FocusLabel {
 }
 
 const LABEL_NAMES: Record<string, string> = {
-  earth: '地球',
-  moon: '月',
-  sun: '太陽',
+  ...ATTRACTOR_NAMES,
   'em-l1': '地球-月 L1',
   'em-l2': '地球-月 L2',
   'em-l3': '地球-月 L3',

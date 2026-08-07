@@ -1,5 +1,6 @@
 // エンティティ配列の保持・追加・上限管理・寿命回収・描画同期。
 import { Vec3 } from '../../physics/vec3';
+import { Attractor } from '../../physics/attractor';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
@@ -90,8 +91,8 @@ export class EntityManager {
 
   // 全エンティティの寿命判定を行い、死亡したものを破棄・除去する。喪失した自機は撃墜演出と
   // 追従カメラの基準として残り続けるので、配列からは除かない。
-  cleanup(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3): void {
-    for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos);
+  cleanup(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3, bodies: readonly Attractor[]): void {
+    for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, bodies);
     this.prune(this.enemies);
     this.prune(this.bullets);
     this.prune(this.casings);

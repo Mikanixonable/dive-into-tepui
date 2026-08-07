@@ -453,6 +453,7 @@ function buildInfoPanels(root: HTMLElement): void {
   const orbit = el('div', 'hud-orbit', shelf, 'panel');
   orbit.innerHTML = `
     <h3>ORBIT</h3>
+    <div class="row"><span class="k">基準天体</span><span class="v" data-id="center"></span></div>
     <div class="row"><span class="k">高度 ALT</span><span class="v" data-id="alt"></span></div>
     <div class="row"><span class="k">速度 VEL</span><span class="v" data-id="spd"></span></div>
     <div class="row"><span class="k">遠地点 AP</span><span class="v" data-id="ap"></span></div>

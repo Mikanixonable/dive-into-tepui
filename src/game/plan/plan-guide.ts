@@ -85,16 +85,16 @@ export class PlanGuide {
     this._hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
   }
 
-  // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。ノードの目標軌道要素は
-  // ノード自身の位置で最も強く引く天体を中心に求める(MU_EARTH 決め打ちだと、月周回の
-  // ノードで地球中心の要素と自機の月中心の要素を比べてしまい、絶対に一致しない)。
+  // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと自機で最も強く引く
+  // 天体が違えば、要素同士の比較自体が意味を持たないので判定しない。
   private notifyAchieved(plan: Plan, node: OrbitState, player: Player, bodies: readonly Attractor[]): void {
     if (this.achievedNotified === node) return;
-    const targetCenter = strongestAttractor(node.r, bodies);
-    const targetEl = elementsAround(node, targetCenter);
     const playerCenter = strongestAttractor(player.state.r, bodies);
+    const nodeCenter = strongestAttractor(node.r, bodies);
+    if (playerCenter.id !== nodeCenter.id) return;
+    const targetEl = elementsAround(node, nodeCenter);
     const playerEl = player.elementsAround(playerCenter);
-    if (!playerEl || !targetEl || playerEl.centerId !== targetEl.centerId || !orbitClose(playerEl, targetEl)) return;
+    if (!playerEl || !targetEl || !orbitClose(playerEl, targetEl)) return;
     this.achievedNotified = node;
     // 計画軌道へ到達したノードは、その場で実行済みとして削除する。
     // dropNodesBefore(node.t) は現在ノードをアンカーへ移し、後続ノードを保持する。

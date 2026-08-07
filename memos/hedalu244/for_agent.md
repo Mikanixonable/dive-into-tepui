@@ -13,9 +13,6 @@
 
 ## 0. 前提
 
-- 作業ツリーには Step1 の残り(`Elements.centerId` の追加、`elementsAround` 化)が未コミットで
-  乗っている。**まず `npm run typecheck` と `npm run test:physics` を通し、それをコミットしてから
-  Phase 1 に入る。** この変更と混ぜない。
 - この Step ではアトラクター数に対して計算量が線形に増える形のままでよい。空間分割(素案 Step3)は
   実装しない。**「登録するのは月以上の質量の主要天体だけ」という運用ルールで N を抑える** —
   コードによる質量フィルタは書かない(要求されていない一般化)。
@@ -311,11 +308,11 @@ export class Ephemeris {
   `earth` は自分自身を引くので厳密に `v3(0,0,0)` になる。
 - **削除するもの:** `sunPosition` / `moonPosition` / `moonAngles` / `sunAngles` /
   `sunOrbitRotation` / `moonOrbitRotation` / `moonOrbitNormal` / `emLagrangePoints` /
-  `seLagrangePoints` / `LazyVelAttractor` / `sunPosAt` / `moonPosAt` / `sunVelAt` / `moonVelAt` /
+  `seLagrangePoints` / `sunPosAt` / `moonPosAt` / `sunVelAt` / `moonVelAt` /
   `sunOrbitRotationAt` / `moonOrbitRotationAt` / `moonOrbitNormalAt` / `emLagrangeAt` / `seLagrangeAt`。
   **旧名のエイリアスを残さない**(規約)。旧名を全文検索して 0 件にすること。
-- **`LazyVelAttractor` は不要になる。** 速度が中心差分ではなく解析式で位置と同時に出るため、
-  遅延評価の動機(位置2回ぶんのコスト)が消える。クラスごと消す。
+- **速度は中心差分でなく解析式で位置と同時に出る。** `attractorsAt` が組む `Attractor.state` の
+  `v` はそのまま解析値になる。
 - **メモ化:** `attractorsAt(t)` の結果配列だけを覚える形へ一本化し、`positionOf`/`stateOf` は
   そこから引く。ただし**リング長を 2 から 4 へ増やす。** 現状は「ステップ中点(積分用)と
   始点(刻み幅用)」の2つで埋まっているが、`sunDirAt` が substep 終端という第3の時刻で
@@ -575,10 +572,10 @@ export const CELESTIAL_VIEWS: Record<AttractorId, { name: string; create(): Cele
 1. マップに `木星` ラベルと `太陽-木星 L1〜L5` が出る。
 2. 座標系セレクタに `木星中心慣性系` と `太陽-木星回転系` が出る。選ぶと木星が静止する。
 3. クリエイティブモードの基準天体に `木星` が出て、木星周回軌道に艦が置ける。
-   置いた艦の軌道線が木星を中心に描かれる(`Elements.centerId` 経由)。
+   置いた艦の軌道線が木星を中心に描かれる(`Elements.center` 経由)。
 4. 木星を航法ターゲットにできる。
 5. **`?perf=1` で update フェーズの ms を、Phase 0 の値と比べる。**
-   重力源が 3 → 4 になり、`gravityAccel` は全エンティティ × RK4 4 段 × substep 数ぶん回る
+   重力源が 3 → 4 になり、`attractorAccel` は全エンティティ × RK4 4 段 × substep 数ぶん回る
    最内ループなので、+30% 程度の増加が出うる。許容できないほど悪化した場合は
    **その場で空間分割を作らず、ユーザーに報告して判断を仰ぐこと**(素案 Step3 の前倒しになる)。
 
@@ -651,7 +648,7 @@ export const CELESTIAL_VIEWS: Record<AttractorId, { name: string; create(): Cele
 - `sunlitFactor` の他天体への一般化(木星の影)。移動だけして中身は触らない。
 - 木星のテクスチャ・大気・環などの見た目の作り込み。
 - 天体の自転(地球以外)。`PlanetBody` は自転を持たない。
-- `Elements` / `OrbitLine` の変更。`centerId` 経由でどの天体中心の楕円も描けるので、
+- `Elements` / `OrbitLine` の変更。`center` 経由でどの天体中心の楕円も描けるので、
   Step1 の成果だけで木星周回軌道の描画は通るはず。**通らなければそこにバグがある。**
 
 ---

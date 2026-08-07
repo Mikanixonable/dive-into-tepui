@@ -161,16 +161,16 @@ export class Targeter {
 
     if (tgt) {
       const center = strongestAttractor(tgt.state.r, bodies);
-      this.orbitLine.sync(tgt.elementsAround(center), fo, bodies);
+      this.orbitLine.sync(tgt.elementsAround(center), fo);
     } else {
-      this.orbitLine.sync(null, fo, bodies);
+      this.orbitLine.sync(null, fo);
     }
 
     if (secTgt) {
       const center = strongestAttractor(secTgt.state.r, bodies);
-      this.secondaryOrbitLine.sync(secTgt.elementsAround(center), fo, bodies);
+      this.secondaryOrbitLine.sync(secTgt.elementsAround(center), fo);
     } else {
-      this.secondaryOrbitLine.sync(null, fo, bodies);
+      this.secondaryOrbitLine.sync(null, fo);
     }
   }
 
