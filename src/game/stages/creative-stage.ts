@@ -16,6 +16,8 @@ import { FloatingOrigin } from '../floating-origin';
 import { add, sub, v3 } from '../../physics/vec3';
 import type { ProjectFn } from '../camera/camera-system';
 import type { UnlockManager } from '../unlock-manager';
+import { Ammo } from '../game-entity/ammo';
+import { generateDriftingEnemy } from './spawner/enemy-generator';
 import * as C from '../const';
 import { ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
 import { validateEllipticPlacement } from '../creative/placement-validation';
@@ -52,14 +54,12 @@ export class CreativeStage extends Stage {
     this.previewOrbitLine.line.visible = false;
     scene.add(this.previewOrbitLine.line);
 
-    const root = document.getElementById('hud-modal-shield') ?? hud.root;
-    this.placerPanel = new ShipPlacerPanel(root);
-    this.placerPanel.onConfirm = (name, form) => this.placeShip(name, form);
+    this.placerPanel = new ShipPlacerPanel(hud.root);
+    this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
     this.placerPanel.onChange = () => this.updatePreview();
     this.placerPanel.onClose = () => {
       this.previewOrbitLine.line.visible = false;
       this._markerManager.hide('creative-preview');
-      document.body.classList.remove('hud-modal-open');
     };
   }
 
@@ -82,7 +82,6 @@ export class CreativeStage extends Stage {
 
   // 艦艇配置モーダルを開く (MapPicker から呼ばれる)
   openShipPlacer(): void {
-    document.body.classList.add('hud-modal-open');
     this.placerPanel.setVisible(true);
   }
 
@@ -156,10 +155,9 @@ export class CreativeStage extends Stage {
     this.updatePreview(project);
   }
 
-  // フォーム値から OrbitState を組み立て、addShip で1隻配置する。上限に達していれば
-  // ヒントを出すだけで何もしない。
-  private placeShip(name: string, form: ShipPlacerForm): void {
-    if (this._entities.players.length >= C.CREATIVE_MAX_SHIPS) {
+  // フォーム値から OrbitState を組み立て、配置する。
+  private placeObject(name: string, form: ShipPlacerForm): void {
+    if (form.objectType === 'player' && this._entities.players.length >= C.CREATIVE_MAX_SHIPS) {
       this._hud.hint(`配置数が上限(${C.CREATIVE_MAX_SHIPS}隻)に達しています`);
       return;
     }
@@ -167,12 +165,26 @@ export class CreativeStage extends Stage {
       this.assertValidForm(form);
       const state = this.buildInitialState(form);
       this.assertFiniteEllipticState(state);
-      const id = `creative-ship-${this.nextShipId++}`;
-      const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, name, state, id, form.body);
-      this._entities.addPlayer(ship);
-      // 最初に配置した艦だけを操作対象にする。Game は callback 経由で受ける。
-      this.onShipPlaced?.(ship);
-      this._hud.hint(`${ship.displayName} を配置`);
+      
+      if (form.objectType === 'player') {
+        const id = `creative-player-${this.nextShipId++}`;
+        const finalName = name || `Player-${this.nextShipId}`;
+        const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, finalName, state, id, form.body);
+        this._entities.addPlayer(ship);
+        this.onShipPlaced?.(ship);
+        this._hud.hint(`${ship.displayName} を配置`);
+      } else if (form.objectType === 'enemy') {
+        const finalName = name || `Enemy-${this.nextShipId++}`;
+        const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._hud, this._sfx, this._fx, this._scene);
+        this._entities.addEnemy(enemy);
+        this._hud.hint(`${enemy.name} を配置`);
+      } else if (form.objectType === 'ammo') {
+        const id = `creative-ammo-${this.nextShipId++}`;
+        const ammo = new Ammo(state, undefined, this._scene, id);
+        this._entities.addAmmo(ammo);
+        const finalName = name || `Ammo-${this.nextShipId}`;
+        this._hud.hint(`${finalName} を配置`);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : '入力を解釈できません';
       this._hud.hint(`配置できません: ${message}`, 5000);
