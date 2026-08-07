@@ -1,17 +1,16 @@
 // 軌道計画(ノード列)とその起点アンカー。ノードは噴射直後の絶対 OrbitState として凍結し、
 // Δv は導出値。上流ノードを編集すると下流を破棄する。計画軌道の計算・キャッシュは持たない。
-import { Elements, elementsFromState, orbitState, OrbitState } from '../../physics/orbital';
+import { Elements, orbitState, OrbitState } from '../../physics/orbital';
 import { Vec3, add, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { centralBodyDefinition, CentralBodyId, toCentralBodyState } from '../../physics/central-body';
+import { Attractor, localOrbitPeriod } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 
-// 計画の1区間が受け持てる時間長 = 起点状態の解析軌道1周期。周期を持たない軌道(双曲線・
-// 放物線)では APERIODIC_ARC_DURATION。
-export function orbitPeriodOf(state: OrbitState, body: CentralBodyId, ephemeris: Ephemeris): number {
-  const relative = toCentralBodyState(state, body, ephemeris);
-  const period = elementsFromState(relative.r, relative.v, centralBodyDefinition(body).mu)?.period;
-  return period !== undefined && isFinite(period) && period > 0 ? period : C.APERIODIC_ARC_DURATION;
+// 計画の1区間が受け持てる時間長 = 起点位置で最も強く引く天体を中心とする軌道運動の時間スケール。
+// 有限な周期が求まらなければ APERIODIC_ARC_DURATION。
+export function orbitPeriodOf(state: OrbitState, bodies: readonly Attractor[]): number {
+  const period = localOrbitPeriod(state.r, bodies);
+  return isFinite(period) && period > 0 ? period : C.APERIODIC_ARC_DURATION;
 }
 
 // ノードを置ける実行時刻の範囲。
@@ -28,8 +27,6 @@ export function apsisAltitudes(el: Elements, bodyRadius: number): { pe: number; 
 }
 
 export class Plan {
-  /** この計画で軌道要素・噴射方向を解釈する中心天体。実行状態は従来どおり地球ECI。 */
-  centralBody: CentralBodyId = 'earth';
   private _nodes: OrbitState[] = [];
   private _anchor: OrbitState = orbitState(0, v3(), v3());
 
@@ -96,7 +93,7 @@ export class Plan {
   // どこなのかを指し分けられなくなる。
   nodeTimeRange(idx: number, ephemeris: Ephemeris): TimeRange {
     const prev = this._nodes[idx - 1] ?? this._anchor;
-    return { min: prev.t, max: prev.t + orbitPeriodOf(prev, this.centralBody, ephemeris) };
+    return { min: prev.t, max: prev.t + orbitPeriodOf(prev, ephemeris.attractorsAt(prev.t)) };
   }
 
   // ノードを新しい実行後状態へ移し、下流ノードを破棄する。時刻は nodeTimeRange の範囲内であること。
