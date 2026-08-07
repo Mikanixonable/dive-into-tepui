@@ -285,7 +285,6 @@ export class MapPicker {
         return [
           { type: 'header', label: '基地', subLabel },
           { label: 'ドックビューを開く', act: 'openDock' },
-          { label: '別の船を発進', act: 'activate' },
           MenuCommon.focus(),
           ...this.navTargetItems(target, 0),
           { label: '削除', act: 'delete' },
