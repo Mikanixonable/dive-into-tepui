@@ -387,10 +387,7 @@ export class Game {
       this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
       this.editor.updateEditing(dt, this.input);
     } else if (this.player) {
-      const targets: (import('./targeter').CombatTarget)[] = [
-        ...this.entities.enemies,
-        ...this.entities.players.filter((p) => p !== this.player),
-      ];
+      const targets = this.entities.getCombatTargets(this.player);
       this.targeter.updateCombatTargeting(
         this.player, targets, this.input, this.cameraSystem.activeCameraProjection,
       );
@@ -483,10 +480,7 @@ export class Game {
     this.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
 
     if (player) {
-      const targets: (import('./targeter').CombatTarget)[] = [
-        ...this.entities.enemies,
-        ...this.entities.players.filter((p) => p !== player),
-      ];
+      const targets = this.entities.getCombatTargets(player);
       this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project);
     }
     this.navTarget.sync(project);
@@ -494,10 +488,7 @@ export class Game {
 
     // 敵マーカーは1体では決められない(画面上で近接するものをまとめる)ので集合として渡す。
     // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
-    const aliveTargets: (import('./targeter').CombatTarget)[] = [
-      ...this.entities.enemies.filter((enemy) => enemy.alive),
-      ...this.entities.players.filter((p) => p !== player && p.alive),
-    ];
+    const aliveTargets = this.entities.getCombatTargets(player).filter((t) => t.alive);
     const enemyMarkerItems: GroupedMarkerItem[] = [];
     for (const tgt of aliveTargets) {
       const pos = tgt.displayState(displayTime)?.r;
@@ -521,7 +512,7 @@ export class Game {
 
     if (player) {
       this.touchControls?.syncModeButtons(player.rcsDamp, player.fineAttitude, player.progradeHold);
-      this.activeStage.sync(player, project, displayTime, overviewMode, this.cameraSystem.showMapAmmo);
+      this.activeStage.sync(player, project, displayTime, overviewMode);
     } else if (this.activeStage instanceof CreativeStage) {
       this.activeStage.syncWithoutPlayer(overviewMode, project);
     }

@@ -152,15 +152,7 @@ export class Targeter {
     const secTgt = this.aliveSecondaryTarget;
     for (const t of targets) {
       const showGray = overviewMode && t.alive && t !== tgt && t !== secTgt;
-      // プレイヤーの場合は自機軌道線として別の色が設定されているが、
-      // overviewModeで非ターゲットとして描画する際の同期はそれぞれのクラスのorbitLine.syncに任せる。
-      // Wait, プレイヤー自身が持っている orbitLine は player.ts 内で sync されるためここでは更新しない方針が安全。
-      // もし t が Player であればここで orbitLine.sync を呼ぶと引数が合わない(Playerのsyncは引数が多い)。
-      // したがってターゲットとしてのハイライト(orbitLine, secondaryOrbitLine)だけを更新し、
-      // ターゲット以外の orbitLine のグレーアウト描画は Enemy だけに行う。
-      if (t instanceof Enemy) {
-        t.orbitLine.sync(showGray ? t.elements : null, fo);
-      }
+      t.syncBackgroundOrbitLine(showGray, fo);
     }
 
     this.orbitLine.sync(tgt ? tgt.elements : null, fo);

@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
+import type { FloatingOrigin } from '../floating-origin';
 import { Attitude } from '../../physics/attitude';
 import { altitudeOf, OrbitState, orbitState, R_EARTH_EQ } from '../../physics/orbital';
 import { OrbitLine } from '../../render/orbitline';
@@ -281,5 +282,10 @@ export class Enemy extends Ship {
     pb.obj.quaternion.setFromRotationMatrix(mz);
 
     entities.addBullet(pb);
+  }
+
+  // オーバービュー時の非ターゲット背景描画用
+  syncBackgroundOrbitLine(show: boolean, fo: FloatingOrigin): void {
+    this.orbitLine.sync(show ? this.elements : null, fo);
   }
 }

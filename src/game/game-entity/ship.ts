@@ -4,6 +4,7 @@ import { OrbitState } from '../../physics/orbital';
 import * as C from '../const';
 import { GameEntity } from './game-entity';
 import type { CentralBodyId } from '../../physics/central-body';
+import type { FloatingOrigin } from '../floating-origin';
 
 export abstract class Ship extends GameEntity {
   protected readonly bcInv = C.SHIP_BCINV;
@@ -87,4 +88,7 @@ export abstract class Ship extends GameEntity {
       else mesh.material.dispose();
     });
   }
+
+  // オーバービュー時の非ターゲット背景描画用
+  syncBackgroundOrbitLine(_show: boolean, _fo: FloatingOrigin): void {}
 }

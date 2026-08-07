@@ -59,7 +59,6 @@ export class CameraSystem {
   private _overviewMode = false;
   get overviewMode(): boolean { return this._overviewMode; }
 
-  get showMapAmmo(): boolean { return this.overviewCameraPanel.showAmmo; }
   setMapMode(open: boolean): void { this._overviewMode = open; }
 
   // sync() で毎フレーム参照する DOM 要素をコンストラクタ時にキャッシュする。
@@ -92,6 +91,9 @@ export class CameraSystem {
     };
     this.overviewCameraPanel.onFrameSelect = (frame: Frame) => {
       this.overviewCamera.cameraFrame = frame;
+    };
+    this.overviewCameraPanel.onAmmoToggle = (show: boolean) => {
+      _hud.settings.showMapAmmo = show;
     };
 
     const chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
