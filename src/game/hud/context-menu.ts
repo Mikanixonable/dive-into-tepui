@@ -92,7 +92,7 @@ export class ContextMenu<T, A extends string = string> {
       const item = items[i];
       if (!item) continue;
       if (item.dataset['shortcut'] === e.key) {
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         e.preventDefault();
         const act = item.dataset['act'] as A;
         const t = this.target;
