@@ -39,6 +39,7 @@ export class CreativeStage extends Stage {
   private placerPanel!: ShipPlacerPanel;
   private previewOrbitLine!: OrbitLine;
   private nextShipId = 1;
+  private lastBaseMarkerCount = 0;
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -72,6 +73,7 @@ export class CreativeStage extends Stage {
   sync(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
     super.sync(player, project, displayTime, overviewMode);
     this.syncPreview(project);
+    this.syncBaseMarkers(project, displayTime);
   }
 
   // 未配置の開始状態でのプレビュー位置更新
@@ -79,6 +81,20 @@ export class CreativeStage extends Stage {
     // overviewMode の未使用警告を回避するためアクセスだけしておく
     void overviewMode;
     this.syncPreview(project);
+    this.syncBaseMarkers(project, this._simulator.simTime);
+  }
+
+  // 基地は実寸(半径100m)のメッシュしか持たず、マップ視点では見えないほど小さいので、
+  // FocusMarkers と同じ ● のポイントマーカーを立てて発見できるようにする。
+  private syncBaseMarkers(project: ProjectFn, displayTime: number): void {
+    const bases = this._entities.bases;
+    for (const [i, base] of bases.entries()) {
+      const pos = base.alive ? base.displayState(displayTime)?.r : undefined;
+      if (pos) this._markerManager.setPosition(`base${i}`, 'mk-poi', '●', pos, project, '基地');
+      else this._markerManager.hide(`base${i}`);
+    }
+    for (let i = bases.length; i < this.lastBaseMarkerCount; i++) this._markerManager.hide(`base${i}`);
+    this.lastBaseMarkerCount = bases.length;
   }
 
   // 艦艇配置モーダルを開く (MapPicker から呼ばれる)
