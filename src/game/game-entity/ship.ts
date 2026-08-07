@@ -73,8 +73,13 @@ export abstract class Ship extends GameEntity {
       mk('armor', R.armor, { name: 'Light Armor', damageReduction: 0.2 }),
     ];
     // 端数丸めのぶん名目値からずれるので、パーツ側を正本として揃え直す。
+    this.refreshFromParts();
+  }
+
+  // 部品構成が変わったとき(換装など)に、艦の maxHp と hp を部品側から求め直す。
+  refreshFromParts(): void {
     this.maxHp = this.parts.reduce((sum, p) => sum + p.maxHp, 0);
-    this.hp = this.maxHp;
+    this.updateOverallHp();
   }
 
   // 接触速度に応じたダメージをパーツへ適用し、ダメージが発生したかを返す。
