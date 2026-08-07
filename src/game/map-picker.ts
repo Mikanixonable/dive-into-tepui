@@ -6,6 +6,7 @@ import * as C from './const';
 import { Hud } from './hud/hud';
 import { fmtTime } from './hud/utils';
 import { ContextMenu, MenuItem } from './hud/context-menu';
+import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { MapPickable, pickNearest } from './map-pick';
 import type { Input } from './input/input';
 import { EntityManager } from './simulation/entity-manager';
@@ -17,11 +18,13 @@ import { SimSpeedManager } from './sim-speed-manager';
 import type { Game } from './game';
 import { v3 } from '../physics/vec3';
 
-type MapAction = 'focus' | 'navTarget' | 'warp' | 'addNode' | 'activate' | 'followToggle' | 'delete' | 'cancel' | 'openShipPlacer';
-type MapMenuItem = MenuItem<MapAction>;
+interface PickHandler {
+  itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[];
+  run(act: MenuAction, target: MapPickable): void;
+}
 
 export class MapPicker {
-  private readonly menu = new ContextMenu<MapPickable, MapAction>();
+  private readonly menu = new ContextMenu<MapPickable, MenuAction>();
   private items: readonly MapPickable[] = [];
 
   // このフレームの被選択物候補。refresh の後に読む。
@@ -38,7 +41,10 @@ export class MapPicker {
     private readonly editor: PlanEditor,
     private readonly simSpeedManager: SimSpeedManager,
   ) {
-    this.menu.onSelect = (act, target) => this.run(act, target);
+    this.menu.onSelect = (act, target) => {
+      const handler = this.handlers[target.kind];
+      if (handler) handler.run(act, target);
+    };
   }
 
   // 航法ターゲットの AN/DN を求め直し、このフレームの候補列を組み直す(天体ラベル +
@@ -93,80 +99,124 @@ export class MapPicker {
     this.menu.close();
   }
 
-  // 被選択物の種別に応じたコンテキストメニュー項目。
-  private itemsFor(target: MapPickable, simTime: number): readonly MapMenuItem[] {
-    switch (target.kind) {
-      case 'body':
-      case 'ship':
-        return [
-          { label: 'フォーカスを移動', act: 'focus' },
-          ...this.navTargetItems(target, simTime),
-          { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
-        ];
-      case 'apsis': {
+  private readonly handlers: Record<MapPickable['kind'], PickHandler> = {
+    'body': {
+      itemsFor: (target, simTime) => [
+        MenuCommon.focus(),
+        ...this.navTargetItems(target, simTime),
+        MenuCommon.cancel(),
+      ],
+      run: (act, target) => this.runBodyShip(act, target),
+    },
+    'ship': {
+      itemsFor: (target, simTime) => [
+        MenuCommon.focus(),
+        ...this.navTargetItems(target, simTime),
+        MenuCommon.cancel(),
+      ],
+      run: (act, target) => this.runBodyShip(act, target),
+    },
+    'apsis': {
+      itemsFor: (target, simTime) => {
         const apsisTime = target.time;
         const apsisLabel = target.id === 'apsisAp' ? '遠点 (Ap)' : '近点 (Pe)';
         const apsisSubLabel = apsisTime !== undefined ? `到達まで T+${fmtTime(apsisTime - simTime)}` : undefined;
         return [
           { type: 'header', label: apsisLabel, subLabel: apsisSubLabel },
-          { label: 'ここまで時間加速', act: 'warp' },
-          { label: 'ここにノードを追加', act: 'addNode' },
-          { label: 'フォーカスを移動', act: 'focus' },
-          { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
+          MenuCommon.warp(),
+          MenuCommon.addNode(),
+          MenuCommon.focus(),
+          MenuCommon.cancel(),
         ];
-      }
-      // 操作対象の艦には「操作対象にする」「削除」を出さない(前者は無効、後者は自機が消える)。
-      case 'player': {
-        const ship = this.entities.findPlayer(target.id);
-        const isActive = ship === this.game.player;
-        const activate: readonly MapMenuItem[] = isActive ? [] : [{ label: '操作対象にする', act: 'activate' }];
-        const remove: readonly MapMenuItem[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
-        return [
-          ...activate,
-          { label: ship?.followPlan ? '軌道計画への自動追従 OFF' : '軌道計画への自動追従 ON', act: 'followToggle' },
-          { label: 'フォーカスを移動', act: 'focus' },
-          ...this.navTargetItems(target, simTime),
-          ...remove,
-          { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
-        ];
-      }
-      case 'relnode': {
+      },
+      run: (act, target) => this.runApsisRelnode(act, target),
+    },
+    'relnode': {
+      itemsFor: (target, simTime) => {
         const relTime = target.time;
         const relLabel = target.id === 'nav-an' ? '昇交点 (AN)' : '降交点 (DN)';
         const targetName = this.navTarget.name ?? '対象';
         const relSubLabel = `対 ${targetName}面` + (relTime !== undefined ? ` / T+${fmtTime(relTime - simTime)}` : '');
         return [
           { type: 'header', label: relLabel, subLabel: relSubLabel },
-          { label: 'ここまで時間加速', act: 'warp' },
-          { label: 'ここにノードを追加', act: 'addNode' },
-          { label: 'フォーカスを移動', act: 'focus' },
-          { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
+          MenuCommon.warp(),
+          MenuCommon.addNode(),
+          MenuCommon.focus(),
+          MenuCommon.cancel(),
         ];
-      }
-      case 'empty-space':
+      },
+      run: (act, target) => this.runApsisRelnode(act, target),
+    },
+    'player': {
+      itemsFor: (target, simTime) => {
+        const ship = this.entities.findPlayer(target.id);
+        const isActive = ship === this.game.player;
+        const activate: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '操作対象にする', act: 'activate' }];
+        const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
         return [
-          { label: '艦艇を配置する [Enter]', act: 'openShipPlacer', shortcut: 'Enter' },
-          { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
+          ...activate,
+          { label: ship?.followPlan ? '軌道計画への自動追従 OFF' : '軌道計画への自動追従 ON', act: 'followToggle' },
+          MenuCommon.focus(),
+          ...this.navTargetItems(target, simTime),
+          ...remove,
+          MenuCommon.cancel(),
         ];
-    }
+      },
+      run: (act, target) => {
+        if (act === 'activate') {
+          const ship = this.entities.findPlayer(target.id);
+          if (ship) this.game.setActivePlayer(ship);
+        } else if (act === 'followToggle') {
+          const ship = this.entities.findPlayer(target.id);
+          if (ship) ship.followPlan = !ship.followPlan;
+        } else if (act === 'delete') {
+          const ship = this.entities.findPlayer(target.id);
+          if (ship) this.game.removeCreativePlayer(ship);
+        } else {
+          this.runBodyShip(act, target);
+        }
+      },
+    },
+    'empty-space': {
+      itemsFor: () => [
+        { label: '艦艇を配置する', act: 'openShipPlacer', shortcut: 'Enter' },
+        MenuCommon.cancel(),
+      ],
+      run: (act) => {
+        if (act === 'openShipPlacer') {
+          if ((this.game.activeStage as any).stageId === 'creative') {
+            (this.game.activeStage as any).openShipPlacer();
+          }
+        }
+      },
+    },
+  };
+
+  // 被選択物の種別に応じたコンテキストメニュー項目。
+  private itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[] {
+    const handler = this.handlers[target.kind];
+    return handler ? handler.itemsFor(target, simTime) : [];
   }
 
   // 対象を航法ターゲットにする/解除する項目。軌道面が定まらない対象(地球・太陽自身など)
   // では選んでも AN/DN が出ないので項目自体を出さない。
-  private navTargetItems(target: MapPickable, simTime: number): readonly MapMenuItem[] {
-    if (target.id === this.navTarget.id) return [{ label: '航法ターゲット解除', act: 'navTarget' }];
+  private navTargetItems(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[] {
+    if (target.id === this.navTarget.id) return [MenuCommon.navTarget(true)];
     const canTarget = this.navTarget.canTarget(target.id, this.entities, this.ephemeris, simTime);
-    return canTarget ? [{ label: '航法ターゲットに設定', act: 'navTarget' }] : [];
+    return canTarget ? [MenuCommon.navTarget(false)] : [];
   }
 
-  // 選ばれた項目を、その操作を持つモジュールへ配る。
-  private run(act: MapAction, target: MapPickable): void {
+  private runBodyShip(act: MenuAction, target: MapPickable): void {
     if (act === 'focus') {
       this.cameraSystem.overviewCamera.setFocus(target.id);
       this.hud.hint(`${target.name} にフォーカス`);
     } else if (act === 'navTarget') {
       this.navTarget.toggleTarget(target.id, target.name);
-    } else if (act === 'warp') {
+    }
+  }
+
+  private runApsisRelnode(act: MenuAction, target: MapPickable): void {
+    if (act === 'warp') {
       const t = target.time ?? (target.kind === 'apsis'
         ? this.editor.planDisplay.apsisTimeOf(target.id)
         : this.navTarget.passTimeOf(target.id));
@@ -179,19 +229,8 @@ export class MapPicker {
         : this.navTarget.passTimeOf(target.id));
       if (t !== null) this.editor.addNodeAt(t);
       else this.hud.hint('この時刻の計画軌道が求まりません');
-    } else if (act === 'activate') {
-      const ship = this.entities.findPlayer(target.id);
-      if (ship) this.game.setActivePlayer(ship);
-    } else if (act === 'followToggle') {
-      const ship = this.entities.findPlayer(target.id);
-      if (ship) ship.followPlan = !ship.followPlan;
-    } else if (act === 'delete') {
-      const ship = this.entities.findPlayer(target.id);
-      if (ship) this.game.removeCreativePlayer(ship);
-    } else if (act === 'openShipPlacer') {
-      if ((this.game.activeStage as any).stageId === 'creative') {
-        (this.game.activeStage as any).openShipPlacer();
-      }
+    } else {
+      this.runBodyShip(act, target);
     }
   }
 }

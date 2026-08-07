@@ -3,6 +3,7 @@
 import * as C from '../const';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, TEXT as INK, FONT } from '../theme';
 import { ContextMenu } from '../hud/context-menu';
+import { MenuAction, MenuCommon } from '../hud/menu-actions';
 
 const STYLE = `
 #node-gizmo {
@@ -71,7 +72,7 @@ export class NodeGizmo {
   private readonly root: HTMLDivElement;
   private readonly nodeLayer: HTMLDivElement;
   private readonly axisLayer: HTMLDivElement;
-  private readonly menu = new ContextMenu<number, 'warp' | 'delete' | 'cancel' | 'focus'>();
+  private readonly menu = new ContextMenu<number, MenuAction>();
   private readonly nodeEls = new Map<number, NodeEntry>();
   private readonly axisEls: HTMLDivElement[] = [];
 
@@ -115,10 +116,10 @@ export class NodeGizmo {
   // 指定ノードに対するコンテキストメニューを開く。
   openMenu(clientX: number, clientY: number, idx: number): void {
     this.menu.open(clientX, clientY, idx, [
-      { label: 'この時刻まで時間を加速', act: 'warp' },
-      { label: 'ノードを削除', act: 'delete' },
-      { label: 'フォーカスを移動', act: 'focus' },
-      { label: 'キャンセル [ESC]', act: 'cancel', shortcut: 'Escape' },
+      MenuCommon.warp(),
+      MenuCommon.deleteNode(),
+      MenuCommon.focus(),
+      MenuCommon.cancel(),
     ]);
   }
 
