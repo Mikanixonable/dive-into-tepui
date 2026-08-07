@@ -294,9 +294,9 @@ export class PlanEditor {
     }
 
     // 見つからなければ計画軌道上の最寄り点にノードを配置
-    const sample = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX);
-    if (sample) {
-      this.selectedNodeIdx = this.plan.addNode(sample);
+    const hit = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX);
+    if (hit) {
+      this.selectedNodeIdx = this.plan.addNode(hit.state);
       this._sfx.warp();
       return;
     }
@@ -335,10 +335,10 @@ export class PlanEditor {
       // ノードでなくても計画軌道上を右クリックすれば、その位置の時刻まで
       // 自動ワープできる。描画と同じサンプル列から求めるため、表示変換との
       // ずれや月基準フレームの差を生じさせない。
-      const sample = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX);
-      if (!sample) return false;
+      const hit = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX);
+      if (!hit) return false;
       this.selectedNodeIdx = null;
-      this.orbitMenu.open(mx, my, sample, [
+      this.orbitMenu.open(mx, my, hit.state, [
         { label: 'この位置まで時間を加速', act: 'warp' },
         { label: 'キャンセル', act: 'cancel' },
       ]);
@@ -355,9 +355,9 @@ export class PlanEditor {
   private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
     if (!this.plan.nodes[idx]) return;
     const arriving = this.planDisplay.traj.arrivalStates();
-    const sample = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity, this.plan.nodeTimeRange(idx, this.ephemeris));
-    if (sample) {
-      this.plan.retimeNode(idx, this.rebuildDraggedNode(sample, idx, arriving) ?? sample);
+    const hit = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity, this.plan.nodeTimeRange(idx, this.ephemeris));
+    if (hit) {
+      this.plan.retimeNode(idx, this.rebuildDraggedNode(hit.state, hit.arcIdx, idx, arriving) ?? hit.state);
       this.selectedNodeIdx = idx;
     }
   }
@@ -366,20 +366,44 @@ export class PlanEditor {
   // これにより、同じマニューバを別時刻へ移し替えた計画として再描画できる。
   private rebuildDraggedNode(
     sample: OrbitState,
+    arcIdx: number,
     idx: number,
     arriving: readonly (OrbitState | null)[],
   ): OrbitState | null {
     const node = this.plan.nodes[idx];
     const arr = arriving[idx];
     if (!node || !arr) return null;
-    const dv = sub(node.v, arr.v);
-    const axes = orbitalAxes(this.bodyState(node));
+    
+    // 現在のノードの絶対的な Delta-V を抽出
+    const dvWorldOld = sub(node.v, arr.v);
+    
+    // サンプルがノードより後ろの arc (POST-burn) にある場合、
+    // sample.v にはこのノードの Delta-V がすでに加算された状態になっています。
+    // 再度加算してしまわないよう、プレバーン時点の速度を逆算します。
+    let baseV = sample.v;
+    if (arcIdx > idx) {
+      baseV = sub(sample.v, dvWorldOld);
+    }
+    
+    // 元の到着軌道基準でのローカル Delta-V 成分を求める
+    const axesOld = orbitalAxes(this.bodyState(arr));
     const dvLocal = v3(
-      dot(dv, axes.pro),
-      dot(dv, axes.nrm),
-      dot(dv, axes.radOut),
+      dot(dvWorldOld, axesOld.pro),
+      dot(dvWorldOld, axesOld.nrm),
+      dot(dvWorldOld, axesOld.radOut),
     );
-    return orbitState(sample.t, sample.r, add(sample.v, fromOrbitalAxes(sample, dvLocal)));
+    
+    // 移動先のプレバーン状態基準で、ローカル Delta-V 成分をワールド成分へ変換する
+    const newPreBurnState = orbitState(sample.t, sample.r, baseV);
+    const axesNew = orbitalAxes(this.bodyState(newPreBurnState));
+    const newDvWorld = v3(
+      axesNew.pro.x * dvLocal.x + axesNew.nrm.x * dvLocal.y + axesNew.radOut.x * dvLocal.z,
+      axesNew.pro.y * dvLocal.x + axesNew.nrm.y * dvLocal.y + axesNew.radOut.y * dvLocal.z,
+      axesNew.pro.z * dvLocal.x + axesNew.nrm.z * dvLocal.y + axesNew.radOut.z * dvLocal.z,
+    );
+    
+    // 新しいベース速度に対して Delta-V を加える
+    return orbitState(sample.t, sample.r, add(baseV, newDvWorld));
   }
 
   // 選択中ノードの axis 方向(sign 込み)へ amount [m/s] の Δv を加算する。ドラッグ・ラッチ・
@@ -532,6 +556,24 @@ export class PlanEditor {
       const bodyArr = this.bodyState(arrFor3D);
       const axes = orbitalAxes(bodyArr);
       this.gizmo3d.setPositionAndRotation(v3(scenePos.x, scenePos.y, scenePos.z), axes.pro, axes.nrm, axes.radOut, mapDist * 0.002);
+      
+      // ドラッグ・ラッチ時のアニメーション
+      let activeAxis: 0 | 1 | 2 | null = null;
+      let activeSign: 1 | -1 | null = null;
+      let stretchFactor = 0;
+      
+      if (this.nodeGizmo.latch) {
+        activeAxis = this.nodeGizmo.latch.axis;
+        activeSign = this.nodeGizmo.latch.sign;
+        // ラッチ量は超過量に比例させる (最大 0.5 程度まで)
+        stretchFactor = Math.min(this.nodeGizmo.latch.excessPx * 0.01, 0.5);
+      } else if (this.nodeGizmo.activeAxis) {
+        activeAxis = this.nodeGizmo.activeAxis.axis;
+        activeSign = this.nodeGizmo.activeAxis.sign;
+        // ドラッグ中は固定で 0.2 程度伸ばす
+        stretchFactor = 0.2;
+      }
+      this.gizmo3d.setStretch(activeAxis, activeSign, stretchFactor);
     } else {
       this.gizmo3d.setVisible(false);
     }
