@@ -508,7 +508,7 @@ export class Game {
 
     if (player) {
       this.touchControls?.syncModeButtons(player.rcsDamp, player.fineAttitude, player.progradeHold);
-      this.activeStage.sync(player, project, displayTime, overviewMode);
+      this.activeStage.sync(player, project, displayTime, overviewMode, this.cameraSystem.showMapAmmo);
     } else if (this.activeStage instanceof CreativeStage) {
       this.activeStage.syncWithoutPlayer(overviewMode, project);
     }
