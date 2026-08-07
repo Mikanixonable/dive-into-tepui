@@ -9,6 +9,7 @@ import { Enemy } from '../game-entity/enemy';
 import { Bullet } from '../game-entity/bullet';
 import type { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
+import type { CombatTarget } from '../targeter';
 
 export class EntityManager {
   readonly enemies: Enemy[] = [];
@@ -36,6 +37,12 @@ export class EntityManager {
     if (i < 0) return;
     this.players.splice(i, 1);
     player.dispose();
+  }
+
+  // ターゲットとなり得るエンティティの一覧を取得する。
+  getCombatTargets(excludePlayer: Player | null): CombatTarget[] {
+    const players = excludePlayer ? this.players.filter(p => p !== excludePlayer) : this.players;
+    return [...this.enemies, ...players];
   }
 
   // name で名指しされた自機を返す。見つからなければ null。

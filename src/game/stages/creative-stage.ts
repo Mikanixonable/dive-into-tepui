@@ -47,7 +47,7 @@ export class CreativeStage extends Stage {
     fx: EffectsSystem, markerManager: MarkerManager, ephemeris: Ephemeris, simulator: Simulator,
   ): void {
     super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
-    
+
     this.previewOrbitLine = new OrbitLine(0xffffff, 0.6);
     this.previewOrbitLine.line.visible = false;
     scene.add(this.previewOrbitLine.line);
@@ -58,6 +58,7 @@ export class CreativeStage extends Stage {
     this.placerPanel.onChange = () => this.updatePreview();
     this.placerPanel.onClose = () => {
       this.previewOrbitLine.line.visible = false;
+      this._markerManager.hide('creative-preview');
       document.body.classList.remove('hud-modal-open');
     };
   }
@@ -69,14 +70,14 @@ export class CreativeStage extends Stage {
   // プレビューの継続的な位置更新(フローティングオリジン対応)
   sync(player: Player, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
     super.sync(player, project, displayTime, overviewMode);
-    this.syncPreview();
+    this.syncPreview(project);
   }
 
   // 未配置の開始状態でのプレビュー位置更新
-  syncWithoutPlayer(overviewMode: boolean): void {
+  syncWithoutPlayer(overviewMode: boolean, project: ProjectFn): void {
     // overviewMode の未使用警告を回避するためアクセスだけしておく
     void overviewMode;
-    this.syncPreview();
+    this.syncPreview(project);
   }
 
   // 艦艇配置モーダルを開く (MapPicker から呼ばれる)
@@ -86,22 +87,23 @@ export class CreativeStage extends Stage {
   }
 
   // フォーム値からプレビュー用の軌道要素を求め、OrbitLine を更新する
-  private updatePreview(): void {
+  private updatePreview(project?: ProjectFn): void {
     const form = this.placerPanel.getForm();
     if (form.placementMode !== 'elements') {
       this.previewOrbitLine.line.visible = false;
+      this._markerManager.hide('creative-preview');
       return;
     }
     try {
       const state = this.buildInitialState(form);
       const mu = form.body === 'moon' ? MU_MOON : C.MU_EARTH;
-      
+
       // elementsFromState は中心天体相対の座標・速度を要求するため、
       // 月基準の場合は月の ECI 状態を引いて相対状態に戻す。
       let relR = state.r;
       let relV = state.v;
       let centerPos = v3(0, 0, 0);
-      
+
       if (form.body === 'moon') {
         const moonPos = this._ephemeris.moonPosAt(this._simulator.simTime);
         const moonVel = this._ephemeris.moonVelAt(this._simulator.simTime);
@@ -109,28 +111,49 @@ export class CreativeStage extends Stage {
         relV = sub(state.v, moonVel);
         centerPos = moonPos;
       }
-      
+
       const el = elementsFromState(relR, relV, mu);
       if (el) {
         const player = this._entities.players.find(p => p.alive) ?? null;
-        const fo = player 
+        const fo = player
           ? new FloatingOrigin(player.state.r, player.state.v)
-          : new FloatingOrigin(v3(0,0,0), v3(0,0,0));
+          : new FloatingOrigin(v3(0, 0, 0), v3(0, 0, 0));
         this.previewOrbitLine.sync(el, fo, true, undefined, centerPos);
         this.previewOrbitLine.line.visible = true;
+
+        if (project) {
+          this._markerManager.setPosition(
+            'creative-preview',
+            'mk-self',
+            '▷',
+            state.r,
+            project,
+            'PREVIEW',
+            1,
+            '#00ffff',
+            0,
+            false,
+            false
+          );
+        }
       } else {
         this.previewOrbitLine.line.visible = false;
+        this._markerManager.hide('creative-preview');
       }
     } catch {
       this.previewOrbitLine.line.visible = false;
+      this._markerManager.hide('creative-preview');
     }
   }
 
   // 毎フレーム fo を適用するための同期
-  private syncPreview(): void {
-    if (!this.previewOrbitLine.line.visible) return;
+  private syncPreview(project?: ProjectFn): void {
+    if (!this.previewOrbitLine.line.visible) {
+      this._markerManager.hide('creative-preview');
+      return;
+    }
     // フォームの内容が valid であれば表示が維持されているので更新
-    this.updatePreview();
+    this.updatePreview(project);
   }
 
   // フォーム値から OrbitState を組み立て、addShip で1隻配置する。上限に達していれば
