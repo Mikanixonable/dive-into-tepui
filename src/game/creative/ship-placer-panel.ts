@@ -8,6 +8,10 @@ import { LibrationPoint } from '../../physics/halo';
 import { AttractorId } from '../../physics/attractor';
 import { bodyDef, SOLAR_SYSTEM } from '../../physics/solar-system';
 import type { OrbitingId } from '../../physics/attractor';
+import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../physics/orbital-state';
+import { semiMajorFromPeriod } from '../../physics/elements';
+import { J2_EARTH } from '../../physics/dynamics';
+import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import * as C from '../const';
 
 export type ObjectType = 'player' | 'enemy' | 'ammo' | 'base';
@@ -74,7 +78,7 @@ const ORBITING_IDS = (Object.keys(SOLAR_SYSTEM) as AttractorId[])
 const BODY_ITEMS: readonly (readonly [ReferenceBody, string])[] = ORBITING_IDS.map((id) => [id, ATTRACTOR_NAMES[id]]);
 
 // 基地は敵の射程となる惑星近傍を避けるため、軌道要素指定の基準天体は月だけに絞る
-// (地球・木星は選択肢自体を出さない — placement-validation.ts の validateBaseReference と対にする)。
+// (地球・木星は選択肢自体を出さない — placement-validation.ts の validateBaseReferenceFields と対にする)。
 const BASE_BODY_ITEMS: readonly (readonly [ReferenceBody, string])[] = BODY_ITEMS.filter(([id]) => id === 'moon');
 
 const LIBRATION_SYSTEM_ITEMS: readonly (readonly [OrbitingId, string])[] = ORBITING_IDS.map((id) => {
@@ -99,6 +103,39 @@ const LIBRATION_DEFAULT_AMPLITUDE_KM: Record<OrbitingId, { ax: number; az: numbe
   moon: { ax: C.CREATIVE_HALO_AX_MOON_KM, az: C.CREATIVE_HALO_AZ_MOON_KM },
   earth: { ax: C.CREATIVE_HALO_AX_EARTH_KM, az: C.CREATIVE_HALO_AZ_EARTH_KM },
   jupiter: { ax: C.CREATIVE_HALO_AX_JUPITER_KM, az: C.CREATIVE_HALO_AZ_JUPITER_KM },
+};
+
+const DEG = Math.PI / 180;
+
+// 静止軌道の高度: 恒星日ちょうどの円軌道の半長軸から導出する(マジックナンバーで別途持たない)。
+const GEO_ALT_KM = (semiMajorFromPeriod(SIDEREAL_DAY, MU_EARTH) - R_EARTH) / 1e3;
+
+// 太陽同期軌道の傾斜角: その高度の円軌道が J2 摂動で受ける昇交点歳差(dynamics.ts の j2Accel と
+// 同じ式)が、地球の公転角速度(SOLAR_SYSTEM の地球公転要素そのもの)にちょうど一致する条件から
+// 逆算する。retrograde 解(i>90°)が太陽同期の側。
+function sunSyncInclinationDeg(altKm: number): number {
+  const a = R_EARTH + altKm * 1e3;
+  const n = Math.sqrt(MU_EARTH / (a * a * a));
+  const earthOrbitRate = bodyDef('earth').orbit.lRate;
+  const cosI = earthOrbitRate / (-1.5 * n * J2_EARTH * (R_EARTH / a) ** 2);
+  return Math.acos(cosI) / DEG;
+}
+
+const SUN_SYNC_ALT_KM = 700;
+const MOON_LOW_ALT_KM = 100;
+
+// 軌道要素指定のサイズ/形プリセット。近地点+遠地点高度(円軌道は両方同値)と、向きを固定する
+// 軌道では傾斜角も併せて埋める。基準天体ごとに桁が違う軌道しか意味を持たないため天体単位で持つ。
+type SizePreset = { readonly label: string; readonly peAltKm: number; readonly apAltKm: number; readonly incDeg?: number };
+const PRESETS_BY_BODY: Partial<Record<ReferenceBody, readonly SizePreset[]>> = {
+  earth: [
+    { label: '低軌道(LEO)', peAltKm: 400, apAltKm: 400 },
+    { label: '静止軌道(GEO)', peAltKm: GEO_ALT_KM, apAltKm: GEO_ALT_KM, incDeg: 0 },
+    { label: '太陽同期軌道', peAltKm: SUN_SYNC_ALT_KM, apAltKm: SUN_SYNC_ALT_KM, incDeg: sunSyncInclinationDeg(SUN_SYNC_ALT_KM) },
+  ],
+  moon: [
+    { label: '低軌道', peAltKm: MOON_LOW_ALT_KM, apAltKm: MOON_LOW_ALT_KM },
+  ],
 };
 
 // ラベル行(.hud-seg + .seg-title)と数値 input を組み立てて返す。root への追加は呼び出し側の仕事
@@ -136,9 +173,10 @@ function setFieldVisible(input: HTMLInputElement, visible: boolean): void {
 
 // numberField にスライダー+目盛りを添えた行。数値入力とスライダーは双方向に同期する。
 // 値⇔スライダー位置(0..1)の対応と目盛りラベルは呼び出し側が bindAngleSlider/
-// bindAltitudeSlider 経由で決める(角度は固定範囲の線形対応、高度は基準値相対の対応で
-// 意味が異なるため、この行自体は対応関係を知らない)。
+// bindEccentricitySlider/bindRelativeSlider 経由で決める(角度・離心率は固定範囲の線形対応、
+// 半長軸・周期・高度は上限がなく基準値相対の対応になるため、この行自体は対応関係を知らない)。
 interface SliderRow {
+  readonly element: HTMLElement;
   readonly input: HTMLInputElement;
   readonly slider: HTMLInputElement;
   setTicks(labels: readonly string[]): void;
@@ -185,6 +223,7 @@ function sliderField(root: HTMLElement, label: string, defaultValue: number, ste
   });
 
   return {
+    element: wrap,
     input,
     slider,
     setTicks(labels) {
@@ -210,37 +249,47 @@ function bindAngleSlider(field: SliderRow, rangeDeg: number): void {
   field.setTicks(Array.from({ length: tickCount }, (_, i) => `${i * 90}°`));
 }
 
-// 高度スライダーの基準からの相対倍率: 中央(t=0)を基準値の100%とし、左は等倍で0%まで、
-// 右は2倍指数で400%まで伸びる。上限のない高度を有限のスライダー幅で操作するための仕様。
-function altitudeMultiplier(tOffset: number): number {
+// 離心率スライダー: 0..0.99 の線形対応、0/0.25/0.5/0.75/0.99 に目盛りを表示する。
+function bindEccentricitySlider(field: SliderRow): void {
+  const max = 0.99;
+  field.setMapping((v) => v / max, (t) => t * max);
+  field.setTicks([0, 0.25, 0.5, 0.75, 0.99].map((v) => v.toFixed(2)));
+}
+
+// 基準値相対スライダーの倍率: 中央(t=0)を基準値の100%とし、左は等倍で0%まで、
+// 右は2倍指数で400%まで伸びる。上限のない量を有限のスライダー幅で操作するための仕様。
+function relativeMultiplier(tOffset: number): number {
   return tOffset <= 0 ? 1 + tOffset : Math.pow(2, 2 * tOffset);
 }
 
-// 高度の基準値の下限(km)。基準はスライダーの可動範囲そのものなので、値が 0 まで下がった
-// ときに 0 を基準にすると倍率をいくら掛けても 0 のままになり、二度と操作で戻せなくなる。
-// 一度のドラッグでこの4倍まで戻せる高度を床に置く。
-const ALTITUDE_REF_FLOOR_KM = 100;
-
-// 高度スライダー(Ap/Pe): ドラッグ開始時点の値を基準の100%としてスライダー中央に据え、
-// ドラッグが終わるたびにそのときの値を新しい基準に取り直してつまみを中央へ戻す
-// (基準を固定しないと上限のない高度を動かせない)。
-function bindAltitudeSlider(field: SliderRow): void {
+// 基準値相対スライダー(Ap/Pe高度・半長軸・周期): ドラッグ開始時点の値を基準の100%として
+// スライダー中央に据え、ドラッグが終わるたびにそのときの値を新しい基準に取り直してつまみを
+// 中央へ戻す(基準を固定しないと上限のない量を動かせない)。refFloor は基準値の下限 —
+// 基準はスライダーの可動範囲そのものなので、値が 0 まで下がったときに 0 を基準にすると倍率を
+// いくら掛けても 0 のままになり、二度と操作で戻せなくなる。量ごとに単位・オーダーが違うので
+// 呼び出し側がその量にとって妥当な床を渡す。
+function bindRelativeSlider(field: SliderRow, refFloor: number): void {
   const rebase = (): void => {
-    const ref = Math.max(Number(field.input.value), ALTITUDE_REF_FLOOR_KM);
+    const ref = Math.max(Number(field.input.value), refFloor);
     field.setMapping(
       (v) => {
         const mult = v / ref;
         const tOffset = mult <= 1 ? mult - 1 : Math.log2(mult) / 2;
         return (tOffset + 1) / 2;
       },
-      (t) => ref * altitudeMultiplier(2 * t - 1),
+      (t) => ref * relativeMultiplier(2 * t - 1),
     );
-    field.setTicks([0, 0.5, 1, 2, 4].map((m) => `${Math.round(ref * m)}`));
+    field.setTicks([0, 0.5, 1, 2, 4].map((m) => `${Math.round((ref * m) * 100) / 100}`));
   };
   field.slider.addEventListener('pointerdown', rebase);
   field.slider.addEventListener('pointerup', rebase);
   rebase();
 }
+
+// 高度・半長軸の基準値の下限(km): 一度のドラッグでこの4倍まで戻せる値を床に置く。
+const ALTITUDE_REF_FLOOR_KM = 100;
+// 周期の基準値の下限(h): 高度と同じ床を使うと大きすぎて操作不能になるため、周期のオーダーに合わせる。
+const PERIOD_REF_FLOOR_HOURS = 0.1;
 
 export class ShipPlacerPanel {
   onConfirm: ((name: string, form: ShipPlacerForm) => void) | null = null;
@@ -259,10 +308,10 @@ export class ShipPlacerPanel {
   private readonly nameInput: HTMLInputElement;
   private readonly peAlt: SliderRow;
   private readonly apAlt: SliderRow;
-  private readonly semiMajor: HTMLInputElement;
-  private readonly eccSemiMajor: HTMLInputElement;
-  private readonly period: HTMLInputElement;
-  private readonly eccPeriod: HTMLInputElement;
+  private readonly semiMajor: SliderRow;
+  private readonly eccSemiMajor: SliderRow;
+  private readonly period: SliderRow;
+  private readonly eccPeriod: SliderRow;
   private readonly inc: SliderRow;
   private readonly raan: SliderRow;
   private readonly argp: SliderRow;
@@ -272,6 +321,10 @@ export class ShipPlacerPanel {
   private readonly librationOrbitKind: SegmentedControl<LibrationOrbitKind>;
   private readonly libAx: HTMLInputElement;
   private readonly libAz: HTMLInputElement;
+  private readonly refreshPresets: () => void;
+  private readonly issueList: HTMLElement;
+  private issueRows: readonly HTMLElement[] = [];
+  private lastIssueKey = '';
 
   private objectTypeValue: ObjectType = 'player';
   private placementModeValue: PlacementMode = 'elements';
@@ -318,6 +371,7 @@ export class ShipPlacerPanel {
     this.raan = elements.raan;
     this.argp = elements.argp;
     this.nu = elements.nu;
+    this.refreshPresets = elements.refreshPresets;
     this.selectSizeMode(this.sizeModeValue);
     this.panel.appendChild(elements.element);
 
@@ -336,6 +390,11 @@ export class ShipPlacerPanel {
     this.nameInput = nameRow.nameInput;
     this.panel.appendChild(nameRow.element);
 
+    this.issueList = document.createElement('div');
+    this.issueList.className = 'issue-list';
+    this.issueList.style.display = 'none';
+    this.panel.appendChild(this.issueList);
+
     this.buildButtonsAndKeybinds();
 
     // root (hud-modal-shield) に追加
@@ -352,41 +411,80 @@ export class ShipPlacerPanel {
     sizeGroups: Record<SizeShapeMode, HTMLElement>;
     peAlt: SliderRow;
     apAlt: SliderRow;
-    semiMajor: HTMLInputElement;
-    eccSemiMajor: HTMLInputElement;
-    period: HTMLInputElement;
-    eccPeriod: HTMLInputElement;
+    semiMajor: SliderRow;
+    eccSemiMajor: SliderRow;
+    period: SliderRow;
+    eccPeriod: SliderRow;
     inc: SliderRow;
     raan: SliderRow;
     argp: SliderRow;
     nu: SliderRow;
+    refreshPresets: () => void;
   } {
     const elementsGroup = document.createElement('div');
-    const body = new SegmentedControl('基準天体', BODY_ITEMS, (v) => { this.bodyValue = v; body.setSelected(v); });
+    const body = new SegmentedControl('基準天体', BODY_ITEMS, (v) => {
+      this.bodyValue = v;
+      body.setSelected(v);
+      this.refreshPresets();
+    });
     body.setSelected(this.bodyValue);
     elementsGroup.appendChild(body.element);
 
     const sizeMode = new SegmentedControl('サイズ/形', SIZE_MODE_ITEMS, (v) => this.selectSizeMode(v));
-    elementsGroup.appendChild(sizeMode.element);
 
     const apsidesGroup = document.createElement('div');
     const peAlt = sliderField(apsidesGroup, '近地点高度 [km]', 400, 10, 0);
-    bindAltitudeSlider(peAlt);
+    bindRelativeSlider(peAlt, ALTITUDE_REF_FLOOR_KM);
     const apAlt = sliderField(apsidesGroup, '遠地点高度 [km]', 400, 10, 0);
-    bindAltitudeSlider(apAlt);
-    elementsGroup.appendChild(apsidesGroup);
+    bindRelativeSlider(apAlt, ALTITUDE_REF_FLOOR_KM);
 
     const semiMajorGroup = document.createElement('div');
-    const semiMajor = numberField(semiMajorGroup, '半長軸 [km]', 6771, 10, 0);
-    const eccSemiMajor = numberField(semiMajorGroup, '離心率', 0, 0.01, 0, 0.99);
-    elementsGroup.appendChild(semiMajorGroup);
+    const semiMajor = sliderField(semiMajorGroup, '半長軸 [km]', 6771, 10, 0);
+    bindRelativeSlider(semiMajor, ALTITUDE_REF_FLOOR_KM);
+    const eccSemiMajor = sliderField(semiMajorGroup, '離心率', 0, 0.01, 0, 0.99);
+    bindEccentricitySlider(eccSemiMajor);
 
     const periodGroup = document.createElement('div');
-    const period = numberField(periodGroup, '周期 [h]', 1.54, 0.01, 0);
-    const eccPeriod = numberField(periodGroup, '離心率', 0, 0.01, 0, 0.99);
-    elementsGroup.appendChild(periodGroup);
+    const period = sliderField(periodGroup, '周期 [h]', 1.54, 0.01, 0);
+    bindRelativeSlider(period, PERIOD_REF_FLOOR_HOURS);
+    const eccPeriod = sliderField(periodGroup, '離心率', 0, 0.01, 0, 0.99);
+    bindEccentricitySlider(eccPeriod);
 
     const sizeGroups = { apsides: apsidesGroup, semiMajorEcc: semiMajorGroup, periodEcc: periodGroup };
+
+    // プリセット行: 基準天体が変わるたび refreshPresets で候補を差し替える(選ぶと近地点/遠地点
+    // 高度・必要なら傾斜角を書き換え、サイズ/形を近地点+遠地点表示へ揃える)。
+    const presetRow = document.createElement('div');
+    presetRow.className = 'hud-seg preset-row';
+    const refreshPresets = (): void => {
+      presetRow.innerHTML = '';
+      const presets = PRESETS_BY_BODY[this.bodyValue] ?? [];
+      presetRow.style.display = presets.length > 0 ? '' : 'none';
+      if (presets.length === 0) return;
+      const heading = document.createElement('span');
+      heading.className = 'seg-title';
+      heading.textContent = 'プリセット';
+      presetRow.appendChild(heading);
+      for (const preset of presets) {
+        presetRow.appendChild(hudButton(preset.label, () => {
+          peAlt.input.value = String(preset.peAltKm);
+          peAlt.input.dispatchEvent(new Event('input'));
+          apAlt.input.value = String(preset.apAltKm);
+          apAlt.input.dispatchEvent(new Event('input'));
+          if (preset.incDeg !== undefined) {
+            inc.input.value = String(preset.incDeg);
+            inc.input.dispatchEvent(new Event('input'));
+          }
+          this.selectSizeMode('apsides');
+        }));
+      }
+    };
+
+    elementsGroup.appendChild(presetRow);
+    elementsGroup.appendChild(sizeMode.element);
+    elementsGroup.appendChild(apsidesGroup);
+    elementsGroup.appendChild(semiMajorGroup);
+    elementsGroup.appendChild(periodGroup);
 
     // 向き(i/Ω/ω)と位相(ν)は組の選択によらず常に有効。i は 0..180、それ以外は 0..360 の
     // 線形スライダー(45度刻みの目盛り)を添える。
@@ -399,7 +497,9 @@ export class ShipPlacerPanel {
     const nu = sliderField(elementsGroup, '真近点角 ν [deg]', 0, 1, 0, 360);
     bindAngleSlider(nu, 360);
 
-    return { element: elementsGroup, body, sizeMode, sizeGroups, peAlt, apAlt, semiMajor, eccSemiMajor, period, eccPeriod, inc, raan, argp, nu };
+    refreshPresets();
+
+    return { element: elementsGroup, body, sizeMode, sizeGroups, peAlt, apAlt, semiMajor, eccSemiMajor, period, eccPeriod, inc, raan, argp, nu, refreshPresets };
   }
 
   // ラグランジュ点指定(ハロー/リサジュー)の一式を1つの div にまとめて返す。
@@ -483,7 +583,7 @@ export class ShipPlacerPanel {
   }
 
   // 種類を切り替える。基地は月基準の軌道要素かラグランジュ点指定でしか設置できない
-  // (placement-validation.ts の validateBaseReference と対応)ので、基準天体の選択肢を
+  // (placement-validation.ts の validateBaseReferenceFields と対応)ので、基準天体の選択肢を
   // 月だけに絞り、月以外が選ばれていたら月へ寄せ直す。基地以外へ戻したら選択肢も元に戻す。
   private selectObjectType(v: ObjectType): void {
     this.objectTypeValue = v;
@@ -495,6 +595,7 @@ export class ShipPlacerPanel {
       this.body.setItems(BODY_ITEMS);
     }
     this.body.setSelected(this.bodyValue);
+    this.refreshPresets();
   }
 
   // サイズ/形の入力組を切り替え、選ばれた組以外を隠す。
@@ -573,14 +674,56 @@ export class ShipPlacerPanel {
     } else if (this.sizeModeValue === 'semiMajorEcc') {
       return {
         objectType, ...common, sizeMode: 'semiMajorEcc',
-        semiMajorKm: Number(this.semiMajor.value), eccentricity: Number(this.eccSemiMajor.value),
+        semiMajorKm: Number(this.semiMajor.input.value), eccentricity: Number(this.eccSemiMajor.input.value),
       };
     } else {
       return {
         objectType, ...common, sizeMode: 'periodEcc',
-        periodHours: Number(this.period.value), eccentricity: Number(this.eccPeriod.value),
+        periodHours: Number(this.period.input.value), eccentricity: Number(this.eccPeriod.input.value),
       };
     }
+  }
+
+  // PlacementFieldId をハイライト対象の行要素へ対応させる。離心率は sizeMode が選んだ組の
+  // 入力欄だけがハイライト対象になる(もう一方は非表示なので指しても意味がない)。
+  private fieldRowFor(field: PlacementFieldId): HTMLElement | undefined {
+    switch (field) {
+      case 'periapsisAltitude': return this.peAlt.element;
+      case 'apoapsisAltitude': return this.apAlt.element;
+      case 'semiMajorAxis': return this.semiMajor.element;
+      case 'period': return this.period.element;
+      case 'eccentricity':
+        return this.sizeModeValue === 'semiMajorEcc' ? this.eccSemiMajor.element
+          : this.sizeModeValue === 'periodEcc' ? this.eccPeriod.element : undefined;
+      case 'inclination': return this.inc.element;
+      case 'raan': return this.raan.element;
+      case 'argumentOfPeriapsis': return this.argp.element;
+      case 'trueAnomaly': return this.nu.element;
+      case 'referenceBody': return this.body.element;
+      case 'inPlaneAmplitude': return this.libAx.parentElement as HTMLElement;
+      case 'outOfPlaneAmplitude': return this.libAz.parentElement as HTMLElement;
+    }
+  }
+
+  // 検証結果を差分反映する。CreativeStage.update が毎フレーム導出した issues を渡す想定 —
+  // 前回と同じ内容なら DOM に触らない(該当欄の枠色とメッセージ一覧をまとめて持つ)。
+  setIssues(issues: readonly PlacementFieldIssue[]): void {
+    const key = issues.map((issue) => `${issue.field}:${issue.message}`).join('|');
+    if (key === this.lastIssueKey) return;
+    this.lastIssueKey = key;
+
+    for (const row of this.issueRows) row.classList.remove('field-issue');
+    this.issueRows = issues.map((issue) => this.fieldRowFor(issue.field)).filter((row): row is HTMLElement => row !== undefined);
+    for (const row of this.issueRows) row.classList.add('field-issue');
+
+    this.issueList.innerHTML = '';
+    for (const issue of issues) {
+      const line = document.createElement('div');
+      line.className = 'issue-line';
+      line.textContent = issue.message;
+      this.issueList.appendChild(line);
+    }
+    this.issueList.style.display = issues.length > 0 ? '' : 'none';
   }
 
   // パネルの表示/非表示を切り替える。開くときは defaultBody が基準天体になれる ID
