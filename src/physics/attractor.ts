@@ -92,7 +92,7 @@ export function elementsAround(s: OrbitState, center: Attractor): Elements | nul
 
 // 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。margin(大気圏突入高度
 // など)はゲーム側の判断なので呼び出し側から受け取る — physics/ はその値自体を知らない。
-export function hitsAnySurface(r: Vec3, attractors: readonly Attractor[], margin: number): boolean {
+export function hitCelestialBody(r: Vec3, attractors: readonly Attractor[], margin: number): boolean {
   for (const attractor of attractors) {
     if (len(sub(r, attractor.state.r)) < attractor.radius + margin) return true;
   }
