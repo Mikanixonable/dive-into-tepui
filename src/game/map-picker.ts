@@ -205,7 +205,7 @@ export class MapPicker {
   // 全プロパティウィンドウの値を最新化する。対象そのものが消滅していれば(撃破・回収・削除)
   // 閉じる — 未来ゴースト時刻で位置が求まらないだけのフレーム(displayState が null)は
   // 候補列(this.items)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
-  sync(overviewMode: boolean, simTime: number, bodies: readonly Attractor[], player: Player | null): void {
+  sync(overviewMode: boolean, simTime: number, attractors: readonly Attractor[], player: Player | null): void {
     const visible = overviewMode && this.objectListVisible;
     this.objectListPanel.setVisible(visible);
     if (visible) this.objectListPanel.sync(this.items, this.cameraSystem.overviewCamera.focus);
@@ -218,7 +218,7 @@ export class MapPicker {
       entry.target = byKey.get(key) ?? entry.target;
       const { title, subtitle, items } = this.windowParts(entry.target, simTime);
       entry.win.syncHeader(title, subtitle);
-      entry.win.syncRows(this.buildRows(entry.target, bodies, player, simTime));
+      entry.win.syncRows(this.buildRows(entry.target, attractors, player, simTime));
       entry.win.syncItems(items);
     }
   }
@@ -521,23 +521,23 @@ export class MapPicker {
 
   // 種別ごとのプロパティ行。値の導出は sync フェーズで毎フレーム呼び直す(表示専用のため)。
   private buildRows(
-    target: MapPickable, bodies: readonly Attractor[], player: Player | null, simTime: number,
+    target: MapPickable, attractors: readonly Attractor[], player: Player | null, simTime: number,
   ): PropertyRow[] {
     switch (target.kind) {
-      case 'player': return this.playerRows(target, bodies);
-      case 'ship': return this.shipRows(target, bodies, player);
-      case 'base': return this.baseRows(target, bodies, player);
-      case 'ammo': return this.ammoRows(target, bodies, player);
-      case 'body': return this.bodyRows(target, bodies, player);
-      case 'apsis': return this.apsisRows(target, bodies, simTime);
+      case 'player': return this.playerRows(target, attractors);
+      case 'ship': return this.shipRows(target, attractors, player);
+      case 'base': return this.baseRows(target, attractors, player);
+      case 'ammo': return this.ammoRows(target, attractors, player);
+      case 'body': return this.bodyRows(target, attractors, player);
+      case 'apsis': return this.apsisRows(target, attractors, simTime);
       case 'relnode': case 'eqnode': return this.nodeRows(target, simTime);
       case 'empty-space': return [];
     }
   }
 
   // 基準天体・高度・速度・AP/PE/INC/PRD の軌道要素一式。ship/base/ammo/player 共通で使う。
-  private orbitRows(entity: GameEntity, bodies: readonly Attractor[]): PropertyRow[] {
-    const oi = orbitInfo(entity, bodies);
+  private orbitRows(entity: GameEntity, attractors: readonly Attractor[]): PropertyRow[] {
+    const oi = orbitInfo(entity, attractors);
     return [
       { key: 'center', label: '基準天体', value: oi.centerName },
       { key: 'alt', label: '高度', value: fmtDist(oi.alt) },
@@ -550,7 +550,7 @@ export class MapPicker {
   }
 
   // 名前は既にウィンドウのタイトルにあるので行には含めない。
-  private playerRows(target: MapPickable, bodies: readonly Attractor[]): PropertyRow[] {
+  private playerRows(target: MapPickable, attractors: readonly Attractor[]): PropertyRow[] {
     const ship = this.entities.findPlayer(target.id);
     if (!ship) return [];
     return [
@@ -560,15 +560,15 @@ export class MapPicker {
       { key: 'temp', label: '温度', value: `${ship.thermal.hullTemp.toFixed(0)} K` },
       { key: 'power', label: '電力', value: fmtEnergy(ship.power.chargeJ) },
       { key: 'ammo', label: '弾薬', value: fmtAmmoStatus(ship.roundsInMag, ship.magsLeft, ship.reloadTimer) },
-      ...this.orbitRows(ship, bodies),
+      ...this.orbitRows(ship, attractors),
     ];
   }
 
   // 自機がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
-  private shipRows(target: MapPickable, bodies: readonly Attractor[], player: Player | null): PropertyRow[] {
+  private shipRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const enemy = this.entities.enemies.find((e) => e.name === target.id);
     if (!enemy) return [];
-    const rel = player ? relativeInfo(player, enemy, bodies) : null;
+    const rel = player ? relativeInfo(player, enemy, attractors) : null;
     const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(enemy.hp)} / ${enemy.maxHp}` }];
     if (rel) {
       rows.push(
@@ -577,7 +577,7 @@ export class MapPicker {
         { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed) },
       );
     }
-    rows.push(...this.orbitRows(enemy, bodies));
+    rows.push(...this.orbitRows(enemy, attractors));
     if (rel) {
       rows.push({
         key: 'relinc', label: '相対傾斜 [AN/DN]',
@@ -588,7 +588,7 @@ export class MapPicker {
   }
 
   // 自機がいなければ距離の行は出さない。
-  private baseRows(target: MapPickable, bodies: readonly Attractor[], player: Player | null): PropertyRow[] {
+  private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const base = this.entities.findBase(target.id);
     if (!base) return [];
     const rows: PropertyRow[] = [
@@ -596,23 +596,23 @@ export class MapPicker {
       { key: 'ships', label: '格納艦数', value: `${base.baseState.dockedShips.length}` },
     ];
     if (player) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(base.state.r, player.state.r))) });
-    rows.push(...this.orbitRows(base, bodies));
+    rows.push(...this.orbitRows(base, attractors));
     return rows;
   }
 
   // 自機がいなければ距離の行は出さない。
-  private ammoRows(target: MapPickable, bodies: readonly Attractor[], player: Player | null): PropertyRow[] {
+  private ammoRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const ammo = this.entities.ammos.find((a) => a.id === target.id);
     if (!ammo) return [];
     const rows: PropertyRow[] = [];
     if (player) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(ammo.state.r, player.state.r))) });
-    rows.push(...this.orbitRows(ammo, bodies));
+    rows.push(...this.orbitRows(ammo, attractors));
     return rows;
   }
 
   // 実在の天体(SOLAR_SYSTEM に登録された ID)なら種別・μ・半径・(公転していれば)軌道要素を、
   // ラグランジュ点なら種別のみを出す。
-  private bodyRows(target: MapPickable, bodies: readonly Attractor[], player: Player | null): PropertyRow[] {
+  private bodyRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const rows: PropertyRow[] = [];
     if (player) rows.push({ key: 'dist', label: '自機からの距離', value: fmtDist(len(sub(target.pos, player.state.r))) });
     if (!(target.id in SOLAR_SYSTEM)) {
@@ -627,8 +627,8 @@ export class MapPicker {
       { key: 'radius', label: '半径', value: fmtDist(def.radius) },
     );
     if (def.kind === 'star') return rows;
-    const primary = bodies.find((b) => b.id === primaryOf(def.id));
-    const self = bodies.find((b) => b.id === def.id);
+    const primary = attractors.find((b) => b.id === primaryOf(def.id));
+    const self = attractors.find((b) => b.id === def.id);
     const el = primary && self ? orbitalElementsOf(self.state, primary) : null;
     if (!el) return rows;
     const apsis = apsisAltitudes(el);
@@ -642,8 +642,8 @@ export class MapPicker {
   }
 
   // Pe/Ap の別・AN/DN の別はタイトル側(header)に既に出ているので、ここには乗せない。
-  private apsisRows(target: MapPickable, bodies: readonly Attractor[], simTime: number): PropertyRow[] {
-    const center = strongestAttractor(target.pos, bodies);
+  private apsisRows(target: MapPickable, attractors: readonly Attractor[], simTime: number): PropertyRow[] {
+    const center = strongestAttractor(target.pos, attractors);
     const alt = len(sub(target.pos, center.state.r)) - center.radius;
     const rows: PropertyRow[] = [{ key: 'alt', label: '高度', value: fmtDist(alt) }];
     if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
