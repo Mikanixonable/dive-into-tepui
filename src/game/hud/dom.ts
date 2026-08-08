@@ -233,6 +233,10 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-trajframe { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
+#hud-shipplacer .slider-field { margin-bottom: 8px; }
+#hud-shipplacer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; margin-top: 2px; }
+#hud-shipplacer .slider-field .slider-ticks { display: flex; justify-content: space-between; margin-top: 2px; }
+#hud-shipplacer .slider-field .slider-ticks span { font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; }
 #navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
 #navball .nb-ball { display: block; width: 100%; height: auto; margin: 4px 0 8px; }
 #navball .nb-rim { fill: rgba(255, 255, 255, 0.03); stroke: ${EDGE}; stroke-width: 1; }
