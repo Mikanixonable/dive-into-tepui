@@ -198,7 +198,7 @@ export abstract class Stage {
     return {
       scoreCounter: this.scoreCounter.serialize(),
       phase: this._phase,
-      logisticsResupplyCheckAt: this.logistics.serialize(),
+      logistics: this.logistics.serialize(),
     };
   }
 
@@ -207,6 +207,6 @@ export abstract class Stage {
   restore(data: StageSaveData): void {
     this.scoreCounter.restore(data.scoreCounter);
     this._phase = data.phase;
-    this.logistics.restore(data.logisticsResupplyCheckAt);
+    this.logistics.restore(data.logistics);
   }
 }

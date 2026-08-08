@@ -12,6 +12,7 @@ import { LaunchSelection } from './game-mode';
 import { MarkerManager } from './marker/marker-manager';
 import { GroupedMarkers, GroupedMarkerItem } from './marker/grouped-markers';
 import { LeadMarkers } from './marker/lead-markers';
+import { EquatorNodeMarkers, EqNodeSource } from './marker/equator-node-markers';
 import { EffectsSystem } from './vfx/effects-system';
 import { initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
@@ -81,9 +82,11 @@ export class Game {
   private readonly unlockManager: UnlockManager;
 
   // 単独のオブジェクトでは決められないマーカー群。敵マーカーは「画面上で近接するものを
-  // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とする。
+  // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とする。EqAN/EqDN は
+  // 操作艦・航法ターゲット・戦闘ターゲットという複数の役割にまたがる source 列を Game が組む。
   private readonly enemyMarkers: GroupedMarkers;
   private readonly leadMarkers: LeadMarkers;
+  readonly equatorNodeMarkers: EquatorNodeMarkers;
   private readonly effects: EffectsSystem;
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
@@ -118,6 +121,7 @@ export class Game {
     this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
     this.enemyMarkers = new GroupedMarkers(this.markerManager, C.MARKER_CLUSTER_PX);
     this.leadMarkers = new LeadMarkers(this.markerManager);
+    this.equatorNodeMarkers = new EquatorNodeMarkers(this.markerManager, this.ephemeris);
 
     this.entities = new EntityManager();
     this.effects = new EffectsSystem(this._scene, this.entities);
@@ -296,6 +300,9 @@ export class Game {
     this.cameraSystem.setActivePlayer(null);
     this.targeter.clearTargets();
     this.navTarget.clear();
+    // entities.clearAll() が旧 Base を dispose するので、それを掴んだままの DockView を
+    // 開いておけない — 対象基地消失時と同じ経路(ViewManager.leaveDock)で閉じる。
+    this.viewManager.leaveDock();
     this.docking.clearSelection();
     this.simSpeedManager.reset();
     this.displayTimeManager.forceCurrent = true;
@@ -515,11 +522,40 @@ export class Game {
   // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
   private updateMapPresentation(dt: number, afterRefresh?: () => void): void {
     this.editor.update(this.simulator.simTime, this.displayTime);
+    this.equatorNodeMarkers.update(
+      this.equatorNodeSources(), this.editor.planDisplay.planFrame, this.displayTime,
+    );
     this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
     afterRefresh?.();
     this.cameraSystem.update(
       this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables,
     );
+  }
+
+  // EqAN/EqDN を出す対象: 操作艦(計画があれば最終区間の起点、無ければ実状態)・航法ターゲット
+  // (entities 上の実体として引けるものだけ — 天体・ラグランジュ点はそれ自体が軌道要素を持つ
+  // 「物体」ではないので対象外)・戦闘ターゲット。同じ実体が複数の役割を兼ねうるので id で重複を除く。
+  private equatorNodeSources(): EqNodeSource[] {
+    const sources = new Map<string, EqNodeSource>();
+    if (this.player) {
+      const state = this.editor.planDisplay.path.finalSegmentStart ?? this.player.state;
+      sources.set(this.player.id, { id: this.player.id, name: this.player.displayName, state });
+    }
+    if (this.navTarget.id) {
+      const navPlayer = this.entities.findPlayer(this.navTarget.id);
+      const navEnemy = this.entities.enemies.find((e) => e.name === this.navTarget.id && e.alive);
+      const navBase = this.entities.findBase(this.navTarget.id);
+      const navSource: EqNodeSource | null =
+        navPlayer ? { id: navPlayer.id, name: navPlayer.displayName, state: navPlayer.state } :
+        navEnemy ? { id: navEnemy.name, name: navEnemy.name, state: navEnemy.state } :
+        navBase ? { id: navBase.id, name: navBase.name, state: navBase.state } : null;
+      if (navSource) sources.set(navSource.id, navSource);
+    }
+    const combatTarget = this.targeter.aliveTarget;
+    if (combatTarget) {
+      sources.set(combatTarget.name, { id: combatTarget.name, name: combatTarget.name, state: combatTarget.state });
+    }
+    return [...sources.values()];
   }
 
   // 並進・射撃・衝突と同じく、RCS command torqueは物理相互作用域だけで有効。
@@ -558,7 +594,14 @@ export class Game {
     this.editor.handleInput(this.input);
 
     if (this.input.takeKey(K.quickSave)) {
-      this._hud.hint(SaveManager.save(this) ? 'セーブしました' : 'セーブに失敗しました');
+      // 決着後の phase(won/lost/timeup)はセーブ側で復元する経路を持たない — restore は
+      // phase をそのまま代入するだけで結果画面を出し直さず、Game.update は isPlaying
+      // でない限り早期returnし続けるため、決着後のセーブをロードすると操作不能になる。
+      if (!this.activeStage.isPlaying) {
+        this._hud.hint('決着後はセーブできません');
+      } else {
+        this._hud.hint(SaveManager.save(this) ? 'セーブしました' : 'セーブに失敗しました');
+      }
     }
     if (this.input.takeKey(K.quickLoad)) {
       this._hud.hint(SaveManager.load(this) ? 'ロードしました' : 'ロードに失敗しました');
@@ -611,6 +654,7 @@ export class Game {
       this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project, attractors);
     }
     this.navTarget.sync(project);
+    this.equatorNodeMarkers.sync(project, overviewMode);
     if (player) this.navball.sync(player.state, player.att, player.alive, target?.state ?? null);
 
     // 敵マーカーは1体では決められない(画面上で近接するものをまとめる)ので集合として渡す。
