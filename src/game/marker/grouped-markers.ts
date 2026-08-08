@@ -54,10 +54,12 @@ export class GroupedMarkers {
 
     for (const m of placed) {
       const label = m.labeled ? this.label(m.item, m.count) : '';
-      const heading = overviewMode ? this.markerManager.headingDeg(m.item.pos, m.item.vel, project, scale) : null;
+      const rotationDeg = overviewMode
+        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale)
+        : undefined;
       this.markerManager.set(
         m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, 1, m.item.color,
-        heading !== null ? heading + 90 : undefined, m.item.symMarkup,
+        rotationDeg, m.item.symMarkup,
       );
       // 画面外(背面を含む)の対象は、画面端の ▲ で方位だけを示す。
       if (overviewMode) this.markerManager.hide(bearingKey(m.item.key));
