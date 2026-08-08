@@ -27,7 +27,7 @@ export class PlanGuide {
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
   // ノードごとに一度だけ通知する。
-  update(plan: Plan, player: Player, simTime: number, editMode: boolean, bodies: readonly Attractor[]): void {
+  update(plan: Plan, player: Player, simTime: number, editMode: boolean, attractors: readonly Attractor[]): void {
     if (editMode || !player.alive) return;
     plan.dropNodesBefore(simTime - C.NODE_EXPIRE_GRACE);
 
@@ -36,7 +36,7 @@ export class PlanGuide {
     // 目標軌道との近さを見ても達成の判定にならない。
     if (!node || simTime < node.t - C.NODE_APPROACH_LEAD) return;
     this.notifyApproach(node);
-    this.notifyAchieved(plan, node, player, bodies);
+    this.notifyAchieved(plan, node, player, attractors);
   }
 
   // 直近ノードの ◆NODE・⬢BURN マーカーを同期する。
@@ -87,10 +87,10 @@ export class PlanGuide {
 
   // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと自機で最も強く引く
   // 天体が違えば、要素同士の比較自体が意味を持たないので判定しない。
-  private notifyAchieved(plan: Plan, node: OrbitState, player: Player, bodies: readonly Attractor[]): void {
+  private notifyAchieved(plan: Plan, node: OrbitState, player: Player, attractors: readonly Attractor[]): void {
     if (this.achievedNotified === node) return;
-    const playerCenter = strongestAttractor(player.state.r, bodies);
-    const nodeCenter = strongestAttractor(node.r, bodies);
+    const playerCenter = strongestAttractor(player.state.r, attractors);
+    const nodeCenter = strongestAttractor(node.r, attractors);
     if (playerCenter.id !== nodeCenter.id) return;
     const targetEl = elementsAround(node, nodeCenter);
     const playerEl = player.elementsAround(playerCenter);

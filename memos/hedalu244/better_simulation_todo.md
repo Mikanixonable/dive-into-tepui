@@ -73,7 +73,7 @@ spacial hashアルゴリズムによる遠方の小惑星の無視。
   合流させる形にする。
 
 このステップに含める命名の再検討(`renaming_plan.md` §7-1 で先送りにしたもの):
-- `game/celestial/` の見た目クラス群(`CelestialBody` / `EarthBody` / `SunBody` / `PlanetBody`)を
+- `game/celestial/` の見た目クラス群(`CelestialBody` / `EarthBody` / `SunBody` / `SphereBody`)を
   `CelestialEntity` 系へ寄せるかを、この統一と同じ変更セットで判断する。現状これらは位置・速度を
   一切持たず sync のたびに `Ephemeris` から引くだけなので `Entity` は実装に対して嘘になるが、
   統一を済ませれば状態を持つ側になり、そのとき初めて名前が実装に合う。名前だけを先に動かすことはしない。

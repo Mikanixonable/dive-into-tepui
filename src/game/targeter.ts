@@ -144,31 +144,31 @@ export class Targeter {
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
   sync(
     fo: FloatingOrigin, player: Player, targets: CombatTarget[], overviewMode: boolean,
-    project: ProjectFn, bodies: readonly Attractor[],
+    project: ProjectFn, attractors: readonly Attractor[],
   ): void {
-    this.syncOrbitLine(fo, targets, overviewMode, bodies);
+    this.syncOrbitLine(fo, targets, overviewMode, attractors);
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
 
   // 第一・第二ターゲットのハイライト線を最新の状態に合わせる。
-  private syncOrbitLine(fo: FloatingOrigin, targets: CombatTarget[], overviewMode: boolean, bodies: readonly Attractor[]): void {
+  private syncOrbitLine(fo: FloatingOrigin, targets: CombatTarget[], overviewMode: boolean, attractors: readonly Attractor[]): void {
     const tgt = this.aliveTarget;
     const secTgt = this.aliveSecondaryTarget;
     for (const t of targets) {
       const showGray = overviewMode && t.alive && t !== tgt && t !== secTgt;
-      t.syncBackgroundOrbitLine(showGray, fo, bodies);
+      t.syncBackgroundOrbitLine(showGray, fo, attractors);
     }
 
     if (tgt) {
-      const center = strongestAttractor(tgt.state.r, bodies);
+      const center = strongestAttractor(tgt.state.r, attractors);
       this.orbitLine.sync(tgt.elementsAround(center), fo);
     } else {
       this.orbitLine.sync(null, fo);
     }
 
     if (secTgt) {
-      const center = strongestAttractor(secTgt.state.r, bodies);
+      const center = strongestAttractor(secTgt.state.r, attractors);
       this.secondaryOrbitLine.sync(secTgt.elementsAround(center), fo);
     } else {
       this.secondaryOrbitLine.sync(null, fo);

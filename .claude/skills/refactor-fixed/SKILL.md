@@ -87,7 +87,7 @@ ECI との変換は必ず `Ephemeris.frameTransformAt(frame, t)` が返す `Fram
 天体の位置を自分で引き算して座標系を作らない。
 
 天体の静的事実(質量・半径・軌道)の定義元は `physics/solar-system.ts` の `SOLAR_SYSTEM` 、
-表示名と見た目の定義元は `game/celestial/celestial-registry.ts` の `CELESTIAL_VIEWS`。
+表示名と見た目の定義元は `game/celestial/celestial-registry.ts` の `CELESTIAL_BODIES`。
 **`AttractorId` に対する網羅的 `switch` を新規コードに書かない** — 常にこの2つのレジストリを
 引く鍵として扱う。例外は `solar-system.ts` の `CelestialBodyDef.kind`(恒星/惑星/衛星)に対する
 `switch` で、これは天体の分類がこの3種で閉じているという物理的主張そのものなので、網羅性検査が

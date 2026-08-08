@@ -202,40 +202,40 @@ export class CreativeStage extends Stage {
   // フォームの基準天体(地球 or 月)を、その時刻の重力源として引く。μ・半径・ECI 化に
   // 要る情報がすべてここから出る。
   private referenceAttractor(form: ShipPlacerForm): Attractor {
-    return this._ephemeris.attractorsAt(this._simulator.simTime).find((b) => b.id === form.body)!;
+    return this._ephemeris.attractorsAt(this._simulator.simTime).find((b) => b.id === form.attractor)!;
   }
 
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
   // (stateFromElements)で基準天体中心の相対状態を組んでから、基準天体自身の位置・速度を
   // 足して ECI 化する(地球基準では位置・速度とも厳密に 0 なので、実質そのまま返る)。
   private buildElementsState(form: ShipPlacerForm): OrbitState {
-    const body = this.referenceAttractor(form);
+    const center = this.referenceAttractor(form);
     let a: number;
     let e: number;
     if (form.sizeMode === 'apsides') {
-      const rp = body.radius + form.peAltKm * 1e3;
-      const ra = body.radius + form.apAltKm * 1e3;
+      const rp = center.radius + form.peAltKm * 1e3;
+      const ra = center.radius + form.apAltKm * 1e3;
       a = (rp + ra) / 2;
       e = (ra - rp) / (ra + rp);
     } else if (form.sizeMode === 'semiMajorEcc') {
       a = form.semiMajorKm * 1e3;
       e = form.eccentricity;
     } else {
-      a = semiMajorFromPeriod(form.periodHours * 3600, body.mu);
+      a = semiMajorFromPeriod(form.periodHours * 3600, center.mu);
       e = form.eccentricity;
     }
 
     const rel = stateFromElements(
-      this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, body.mu,
+      this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, center.mu,
     );
-    return orbitState(this._simulator.simTime, add(body.state.r, rel.r), add(body.state.v, rel.v));
+    return orbitState(this._simulator.simTime, add(center.state.r, rel.r), add(center.state.v, rel.v));
   }
 
   // 軌道要素指定フォームの値が物理的に成立するか検証する。不正なら理由付きで例外を投げる。
   private assertValidElementsForm(form: ShipPlacerForm): void {
-    const body = this.referenceAttractor(form);
+    const center = this.referenceAttractor(form);
     const message = validateEllipticPlacement({
-      bodyRadius: body.radius, mu: body.mu, sizeMode: form.sizeMode,
+      centerRadius: center.radius, mu: center.mu, sizeMode: form.sizeMode,
       peAltKm: form.peAltKm, apAltKm: form.apAltKm, semiMajorKm: form.semiMajorKm,
       eccentricity: form.eccentricity, periodHours: form.periodHours,
       anglesDeg: [form.incDeg, form.raanDeg, form.argpDeg, form.nuDeg],
