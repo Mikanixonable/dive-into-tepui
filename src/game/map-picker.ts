@@ -27,6 +27,7 @@ import { len, sub, v3 } from '../physics/vec3';
 import type { ObjectType } from './creative/ship-placer-panel';
 import type { KinematicState } from '../physics/kinematic-state';
 import { AttractorId, Attractor, orbitalElementsOf, strongestAttractor } from '../physics/attractor';
+import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
 import { SOLAR_SYSTEM, bodyDef, primaryOf } from '../physics/solar-system';
 
@@ -117,7 +118,14 @@ export class MapPicker {
     }
     items.push(...this.navTarget.mapPickables());
     items.push(...this.editor.planDisplay.apsisMarkers);
-    this.items = items;
+    items.push(...this.game.equatorNodeMarkers.mapPickables());
+
+    // マップビューでは、天体に遮蔽されて画面上見えていない候補をピック対象から除く —
+    // 見えているのに選べない/見えないのに選べる、という食い違いを防ぐため、表示側
+    // (各所有者の sync)と同じ isOccluded 判定を使う。戦闘ビューでは効かせない。
+    this.items = this.cameraSystem.overviewMode
+      ? items.filter((item) => !isOccluded(this.cameraSystem.activeCameraPos, item.pos, this.ephemeris.attractorsAt(simTime)))
+      : items;
   }
 
   // 右クリック位置の最寄り候補を探し、当たればその種別に応じたプロパティウィンドウを開いて消費する。
@@ -375,7 +383,8 @@ export class MapPicker {
       itemsFor: (target, simTime) => {
         const eqTime = target.time;
         const isAn = target.id.endsWith('-eqan');
-        const eqLabel = `${ATTRACTOR_NAMES[this.eqNodeCenterId(target)]}赤道${isAn ? '昇' : '降'}交点 (${isAn ? 'EqAN' : 'EqDN'})`;
+        const centerName = ATTRACTOR_NAMES[strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id];
+        const eqLabel = `${centerName}赤道${isAn ? '昇' : '降'}交点 (${isAn ? 'EqAN' : 'EqDN'})`;
         const eqSubLabel = eqTime !== undefined ? `到達まで T+${fmtTime(eqTime - simTime)}` : undefined;
         return [
           { type: 'header', label: eqLabel, subLabel: eqSubLabel },
@@ -584,7 +593,7 @@ export class MapPicker {
       case 'ammo': return this.ammoRows(target, attractors, player);
       case 'body': return this.bodyRows(target, attractors, player);
       case 'apsis': return this.apsisRows(target, attractors, simTime);
-      case 'relnode': case 'eqnode': return this.nodeRows(target, simTime);
+      case 'relnode': case 'eqnode': return this.nodeRows(target, attractors, simTime);
       case 'empty-space': return [];
     }
   }
@@ -713,18 +722,13 @@ export class MapPicker {
   }
 
   // AN/DN の別はタイトル側(header)に既に出ているので、ここでは対象名と通過時刻のみ出す。
-  private nodeRows(target: MapPickable, simTime: number): PropertyRow[] {
+  private nodeRows(target: MapPickable, attractors: readonly Attractor[], simTime: number): PropertyRow[] {
     const targetName = target.kind === 'relnode'
       ? (this.navTarget.name ?? '対象')
-      : ATTRACTOR_NAMES[this.eqNodeCenterId(target)];
+      : ATTRACTOR_NAMES[strongestAttractor(target.pos, attractors).id];
     const rows: PropertyRow[] = [{ key: 'target', label: '対象', value: targetName }];
     if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
     return rows;
-  }
-
-  // 赤道交点アイコンの id は `${中心天体}-eqan`/`${中心天体}-eqdn`(plan-display.ts)。
-  private eqNodeCenterId(target: MapPickable): AttractorId {
-    return target.id.replace(/-eq(an|dn)$/, '') as AttractorId;
   }
 
   private runBodyShip(act: MenuAction, target: MapPickable): void {
