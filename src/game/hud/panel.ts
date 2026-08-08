@@ -9,7 +9,6 @@ import { SIM_EPOCH_SEC, fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils'
 import { ATTRACTOR_NAMES } from './frame-labels';
 
 interface StatsData {
-  met: number;
   simSpeedLabel: string;
   autoWarpSimRemain: number | null;
   autoWarpRealRemain: number | null;
@@ -65,6 +64,9 @@ export class HudPanels {
   // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
   sync(game: Game, bodies: readonly Attractor[]): void {
     const now = performance.now();
+    // グローバルステータスの時刻表示は自機の有無に関係なく画面全体の状態なので、
+    // 自機不在で以降の処理を抜ける早期 return より前に書く。
+    this.setText('met', `${fmtDateTime(SIM_EPOCH_SEC + game.simulator.simTime)} / T+ ${fmtTime(game.simulator.simTime)}`);
     const player = game.player;
     if (!player) {
       // Creative の未配置状態には操縦/戦闘 HUD の値が存在しない。
@@ -95,7 +97,6 @@ export class HudPanels {
       this.nextStatsAt = now + STATS_INTERVAL_MS;
       const thermal = player.thermal;
       this.setStats({
-        met: game.simulator.simTime,
         simSpeedLabel: `×${game.simSpeedManager.simSpeed}`,
         autoWarpSimRemain: game.simSpeedManager.remainingSimulationSeconds(game.simulator.simTime),
         autoWarpRealRemain: game.simSpeedManager.estimatedRealSecondsToWarpEnd(game.simulator.simTime),
@@ -178,7 +179,6 @@ export class HudPanels {
 
   // スタッツパネル各項目のテキストと警告表示を書き換える
   private setStats(d: StatsData): void {
-    this.setText('met', `${fmtDateTime(SIM_EPOCH_SEC + d.met)} / T+ ${fmtTime(d.met)}`);
     const simSpeedEl = this.els.get('sim-speed');
     if (simSpeedEl) {
       const warpRemain = d.autoWarpRealRemain !== null ? ` (残り ${fmtTime(d.autoWarpRealRemain)})` : '';
