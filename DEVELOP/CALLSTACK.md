@@ -360,13 +360,14 @@
     - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある敵ごと
   - displayTimeManager.sync(simTime, game.currentOrbitPeriod()) // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ/ジャンプ入力)の表示/内容を押し出すだけ
     - panel.setVisible(!forceCurrent) / setDuration() / setManualVisible() / setSliderLabel() / setTicks() // ラベルは自己完結の "T+" 表記のみ
-  - editor.sync(mapDist, simTime, fo, project)
-    - [hasPlan かつ(editMode または plan.nodes.length > 0)] planDisplay.sync(fo, project, editMode)
-      - path.setVisible(true)
-      - path.sync(fo, project) // 区間の折れ線メッシュ。表示座標系と un-bake 時刻は update フェーズで確定済み
+  - editor.sync(mapDist, simTime, fo, project, cameraSystem.activeCameraScale)
+    - [hasPlan かつ(editMode または plan.nodes.length > 0)] planDisplay.sync(fo, project, scale, editMode)
+      - path.setVisible(plan.nodes.length > 0) // ノードの無い計画は自機の現在軌道そのものを描くだけなので折れ線を隠す
+      - path.sync(fo, project, scale) // ノードの有無に関わらず毎フレーム呼ぶ(画面判定に使う視点を更新するため)。区間の折れ線メッシュ。表示座標系と un-bake 時刻は update フェーズで確定済み
         // 区間の終端はノードの t。末尾区間だけは起点の解析軌道1周期ぶん(plan.ts の orbitPeriodOf)
         // ノードの t は Plan.nodeTimeRange の制約で起点から1周期以内なので、どの区間も1周を超えない
-        - arc.setVisible(true) + arc.sync() // 有効な区間ごと
+        - [区間ごと] サンプル列中央の代表点で scale(m/px) を引き、破線のドット・隙間のピクセル指定を実距離へ換算
+        - arc.setVisible(true) + arc.sync(dashSize, gapSize) // 有効な区間ごと。先頭で破線パターンを書き込んでからサンプル列全体を1本の線へ同期する
           - line.syncGeometry() // 点列 or frame が変わったときのみ頂点を bake
           - line.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
         - arc.setVisible(false) // 区間が減って余った PlanArc ごと
@@ -379,6 +380,10 @@
     - [hasPlan かつ editMode] syncPanel(simTime) // MANEUVER PLAN パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
   - mapPicker.sync(overviewMode, simTime, bodies, player) // 軌道オブジェクトウィンドウ。objectListVisible かつ overviewMode のときだけ pickables を行として書き出す
     - 開いている各プロパティウィンドウ // isTargetGone(target) が真なら closeWindow()(player/ship/ammo/base は実体の alive を直接見る。displayState が null なだけの休止フレームでは alive のまま残るので閉じない。天体/アプシス/AN-DN は pickables に載っているかで判定) — 残れば target を pickables の最新値へ更新し、buildRows() → w.syncRows() / windowItems() → w.syncItems()
+  - predictedTrajectoryLine.sync(predictedTargets, editor.planDisplay.planFrame, simTime, ephemeris, fo) // predictedTargets = 操作対象の自機が生存していればその1隻、いなければ空配列。計画軌道の折れ線と同じ座標系(editor.planDisplay.planFrame)で bake する。空配列を渡すと内部の pruneTo が線を畳む
+    - line.syncGeometry() // entity.predictedTrajectory.samplesOldestFirst() を frame で bake
+    - line.syncTransform()
+  - [player] player.orbitLine.setSuppressed(predictedTrajectoryLine.hasLineFor(player)) // 予測軌道の実線が出ているあいだは解析楕円を重ねて出さない。overviewMode/!overviewMode どちらも同じ判定
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync(player, fo, project, displayTime, overviewMode) // player は Creative の未配置状態で null
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示。player が null なら隠す
@@ -399,7 +404,7 @@
   - guide.sync(plan, player, simTime, editMode, project)
     - markerManager.hide('nd') + hide('burn') // editMode または !player.alive、あるいは直近ノードが無い場合
     - markerManager.setPosition('nd') + setDirection('burn') // 直近ノードがある場合
-  - debugHistoryLine.sync() // ?debugLines=1 のときのみ実効。対象(既定: 自機+ターゲット)ごとに
+  - debugTrajectoryLine.sync(debugTargets, editor.planDisplay.planFrame, simTime, ephemeris, fo) // ?debugLines=1 のときのみ実効。座標系は計画軌道の折れ線と同じ editor.planDisplay.planFrame。対象(既定: 自機+ターゲット)ごとに
     history/predicted.history を1本の SampledLine へ bake + un-bake
   - markerManager.resolveCollisions() // ラベル衝突緩和 + SVG 引き出し線の再描画。全マーカーが出揃った後に一度だけ
 
