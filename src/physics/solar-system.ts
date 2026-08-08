@@ -1,14 +1,23 @@
 // 天体の静的事実の表: 恒星/惑星/衛星の判別 union(CelestialBodyDef)と、太陽系の各天体の
 // 重力定数・半径・軌道モデル(SOLAR_SYSTEM)。宣言順が Ephemeris が返す重力源配列の順になる。
 import { AttractorId, PlanetId, SatelliteId, StarId } from './attractor';
-import { MU_EARTH, R_EARTH, R_EARTH_EQ } from './orbital-state';
 import { PlanetOrbit, planetOrbit } from './planet-orbit';
 import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-orbit';
+import { Vec3, len } from './vec3';
 
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
 export const R_SUN = 6.957e8; // [m]
 export const MU_MOON = 4.9048695e12;
 export const R_MOON = 1.7374e6;
+export const MU_EARTH = 3.986004418e14; // 地球重力定数 [m^3/s^2]
+export const R_EARTH = 6.371e6; // 地球平均半径 [m]
+export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
+export const SIDEREAL_DAY = 86164.0905; // 恒星日 [s]
+
+// 位置ベクトルから地球海抜高度を返す。
+export function earthAltitudeOf(r: Vec3): number {
+  return len(r) - R_EARTH;
+}
 
 // 2次の重力場係数(いずれも非正規化)。正規化係数を収録した外部データで更新する際は換算が要る。
 export const J2_EARTH = 1.08262668e-3;

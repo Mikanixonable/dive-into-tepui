@@ -74,7 +74,7 @@ export class NavTarget {
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
     if (!player || !this.targetId) return;
     const playerCenter = strongestAttractor(player.state.r, ephemeris.attractorsAt(simTime));
-    const playerEl = player.elementsAround(playerCenter);
+    const playerEl = player.orbitalElementsAround(playerCenter);
     if (!playerEl) return;
 
     const targetHat = this.resolvePlaneNormal(this.targetId, entities, ephemeris, simTime);
@@ -130,7 +130,7 @@ export class NavTarget {
     // 同じ形の名前を持つ船が天体として誤って解決される。
     const secondary = /^(.+)-l[1-5]$/.exec(id)?.[1];
     if (secondary !== undefined && secondary in SOLAR_SYSTEM && bodyDef(secondary as AttractorId).kind !== 'star') {
-      return qRotate(ephemeris.orbitRotationAt(secondary as OrbitingId, t).q, Z_HAT);
+      return qRotate(ephemeris.orbitFrameRotationAt(secondary as OrbitingId, t).q, Z_HAT);
     }
     const entity: GameEntity | undefined =
       entities.enemies.find((e) => e.name === id && e.alive) ??
@@ -138,7 +138,7 @@ export class NavTarget {
       entities.bases.find((b) => b.id === id && b.alive);
     if (!entity) return null;
     const center = strongestAttractor(entity.state.r, ephemeris.attractorsAt(t));
-    return entity.elementsAround(center)?.hHat ?? null;
+    return entity.orbitalElementsAround(center)?.hHat ?? null;
   }
 
   // 右クリック対象として公開する AN/DN アイコン。計算できているぶんだけ返す。

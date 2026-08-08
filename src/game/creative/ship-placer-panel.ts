@@ -1,24 +1,22 @@
 // クリエイティブモードの「艦艇配置」パネル: 軌道要素指定とラグランジュ点(ハロー/リサジュー)
 // 指定のどちらかを選び、フォームで値を指定して、確定で1隻分の ShipPlacerForm を通知する。
-// 値から OrbitState を組み立てるのは物理側(stateFromElements/haloState/lissajousState)の
+// 値から KinematicState を組み立てるのは物理側(stateFromOrbitalElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
 import { SegmentedControl, hudButton } from '../hud/buttons';
 import { ATTRACTOR_NAMES } from '../hud/frame-labels';
-import { LibrationPoint } from '../../physics/halo';
+import { CollinearPoint } from '../../physics/halo';
 import { AttractorId } from '../../physics/attractor';
-import { bodyDef, SOLAR_SYSTEM } from '../../physics/solar-system';
+import { bodyDef, SOLAR_SYSTEM, MU_EARTH, R_EARTH, SIDEREAL_DAY, J2_EARTH } from '../../physics/solar-system';
 import type { OrbitingId } from '../../physics/attractor';
-import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../physics/orbital-state';
 import { semiMajorFromPeriod } from '../../physics/elements';
-import { J2_EARTH } from '../../physics/solar-system';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import * as C from '../const';
 
 export type ObjectType = 'player' | 'enemy' | 'ammo' | 'base';
-export type ReferenceBody = AttractorId;
+export type ReferenceAttractor = AttractorId;
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
-export type PlacementMode = 'elements' | 'libration';
-export type LibrationOrbitKind = 'halo' | 'lissajous';
+export type PlacementMode = 'elements' | 'lagrange';
+export type LagrangeOrbitKind = 'halo' | 'lissajous';
 
 // 軌道要素指定のサイズ/形: sizeMode が選んだ組の値だけを持つ。
 export type EllipticSizeForm =
@@ -29,7 +27,7 @@ export type EllipticSizeForm =
 // 軌道要素指定一式: 基準天体・サイズ/形(上記)・向き/位相。
 export type ElementsForm = {
   readonly placementMode: 'elements';
-  readonly body: ReferenceBody;
+  readonly attractor: ReferenceAttractor;
   readonly incDeg: number;
   readonly raanDeg: number;
   readonly argpDeg: number;
@@ -38,18 +36,18 @@ export type ElementsForm = {
 
 // ラグランジュ点指定一式: 軌道種別ごとに持つ振幅が異なる(ハローは面外振幅のみ — 面内振幅は
 // 三次の振幅拘束で導出されるので入力値を持たない。リサジューは両方)。
-export type LibrationForm = {
-  readonly placementMode: 'libration';
-  readonly librationSecondary: OrbitingId;
-  readonly librationPoint: LibrationPoint;
+export type LagrangeForm = {
+  readonly placementMode: 'lagrange';
+  readonly lagrangeSecondary: OrbitingId;
+  readonly lagrangePoint: CollinearPoint;
 } & (
-  | { readonly librationOrbitKind: 'halo'; readonly azKm: number }
-  | { readonly librationOrbitKind: 'lissajous'; readonly axKm: number; readonly azKm: number }
+  | { readonly lagrangeOrbitKind: 'halo'; readonly azKm: number }
+  | { readonly lagrangeOrbitKind: 'lissajous'; readonly axKm: number; readonly azKm: number }
 );
 
 // 確定時点のフォーム値。placementMode を判別子とし、選ばれた配置方法(・サイズ/形・軌道種別)が
 // 実際に使う値だけを持つ。
-export type ShipPlacerForm = { readonly objectType: ObjectType } & (ElementsForm | LibrationForm);
+export type ShipPlacerForm = { readonly objectType: ObjectType } & (ElementsForm | LagrangeForm);
 
 // open() の事前入力: 'body' は基準天体だけをその値へ合わせる(他のフィールドは前回の値のまま) —
 // マップの現在フォーカスを新規配置の初期値にする経路。'objectType' は種類だけを合わせる —
@@ -57,7 +55,7 @@ export type ShipPlacerForm = { readonly objectType: ObjectType } & (ElementsForm
 // 'form' は種類を objectType に固定し、軌道要素一式をその値へ書き換える —
 // 軌道要素をそのまま引き継げる複製の経路。
 export type ShipPlacerPreset =
-  | { readonly kind: 'body'; readonly body: ReferenceBody }
+  | { readonly kind: 'body'; readonly attractor: ReferenceAttractor }
   | { readonly kind: 'objectType'; readonly objectType: ObjectType }
   | { readonly kind: 'form'; readonly objectType: ObjectType; readonly form: ElementsForm };
 
@@ -70,7 +68,7 @@ const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string])[] = [
 
 const PLACEMENT_MODE_ITEMS: readonly (readonly [PlacementMode, string])[] = [
   ['elements', '軌道要素'],
-  ['libration', 'ラグランジュ点'],
+  ['lagrange', 'ラグランジュ点'],
 ];
 
 const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [
@@ -85,31 +83,31 @@ const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [
 const ORBITING_IDS = (Object.keys(SOLAR_SYSTEM) as AttractorId[])
   .filter((id) => bodyDef(id).kind !== 'star') as OrbitingId[];
 
-const BODY_ITEMS: readonly (readonly [ReferenceBody, string])[] = ORBITING_IDS.map((id) => [id, ATTRACTOR_NAMES[id]]);
+const ATTRACTOR_ITEMS: readonly (readonly [ReferenceAttractor, string])[] = ORBITING_IDS.map((id) => [id, ATTRACTOR_NAMES[id]]);
 
 // 基地は敵の射程となる惑星近傍を避けるため、軌道要素指定の基準天体は月だけに絞る
 // (地球・木星は選択肢自体を出さない — placement-validation.ts の validateBaseReferenceFields と対にする)。
-const BASE_BODY_ITEMS: readonly (readonly [ReferenceBody, string])[] = BODY_ITEMS.filter(([id]) => id === 'moon');
+const BASE_ATTRACTOR_ITEMS: readonly (readonly [ReferenceAttractor, string])[] = ATTRACTOR_ITEMS.filter(([id]) => id === 'moon');
 
-const LIBRATION_SYSTEM_ITEMS: readonly (readonly [OrbitingId, string])[] = ORBITING_IDS.map((id) => {
+const LAGRANGE_SYSTEM_ITEMS: readonly (readonly [OrbitingId, string])[] = ORBITING_IDS.map((id) => {
   const def = bodyDef(id);
   const primary: AttractorId = def.kind === 'planet' ? 'sun' : def.planet;
   return [id, `${ATTRACTOR_NAMES[primary]}-${ATTRACTOR_NAMES[id]}`] as const;
 });
 
-const LIBRATION_POINT_ITEMS: readonly (readonly [LibrationPoint, string])[] = [
+const LAGRANGE_POINT_ITEMS: readonly (readonly [CollinearPoint, string])[] = [
   ['L1', 'L1'],
   ['L2', 'L2'],
 ];
 
-const LIBRATION_ORBIT_KIND_ITEMS: readonly (readonly [LibrationOrbitKind, string])[] = [
+const LAGRANGE_ORBIT_KIND_ITEMS: readonly (readonly [LagrangeOrbitKind, string])[] = [
   ['halo', 'ハロー'],
   ['lissajous', 'リサジュー'],
 ];
 
 // 副天体ごとに妥当なオーダーへ面内/面外振幅の既定値を切り替える(系ごとに主天体間距離が
 // 桁違いなため)。
-const LIBRATION_DEFAULT_AMPLITUDE_KM: Record<OrbitingId, { ax: number; az: number }> = {
+const LAGRANGE_DEFAULT_AMPLITUDE_KM: Record<OrbitingId, { ax: number; az: number }> = {
   moon: { ax: C.CREATIVE_HALO_AX_MOON_KM, az: C.CREATIVE_HALO_AZ_MOON_KM },
   earth: { ax: C.CREATIVE_HALO_AX_EARTH_KM, az: C.CREATIVE_HALO_AZ_EARTH_KM },
   jupiter: { ax: C.CREATIVE_HALO_AX_JUPITER_KM, az: C.CREATIVE_HALO_AZ_JUPITER_KM },
@@ -137,7 +135,7 @@ const MOON_LOW_ALT_KM = 100;
 // 軌道要素指定のサイズ/形プリセット。近地点+遠地点高度(円軌道は両方同値)と、向きを固定する
 // 軌道では傾斜角も併せて埋める。基準天体ごとに桁が違う軌道しか意味を持たないため天体単位で持つ。
 type SizePreset = { readonly label: string; readonly peAltKm: number; readonly apAltKm: number; readonly incDeg?: number };
-const PRESETS_BY_BODY: Partial<Record<ReferenceBody, readonly SizePreset[]>> = {
+const PRESETS_BY_BODY: Partial<Record<ReferenceAttractor, readonly SizePreset[]>> = {
   earth: [
     { label: '低軌道(LEO)', peAltKm: 400, apAltKm: 400 },
     { label: '静止軌道(GEO)', peAltKm: GEO_ALT_KM, apAltKm: GEO_ALT_KM, incDeg: 0 },
@@ -316,7 +314,7 @@ export class ShipPlacerPanel {
   private readonly objectType: SegmentedControl<ObjectType>;
   private readonly placementMode: SegmentedControl<PlacementMode>;
   private readonly placementGroups: Record<PlacementMode, HTMLElement>;
-  private readonly body: SegmentedControl<ReferenceBody>;
+  private readonly attractor: SegmentedControl<ReferenceAttractor>;
   private readonly sizeMode: SegmentedControl<SizeShapeMode>;
   private readonly sizeGroups: Record<SizeShapeMode, HTMLElement>;
   private readonly nameInput: HTMLInputElement;
@@ -330,9 +328,9 @@ export class ShipPlacerPanel {
   private readonly raan: SliderRow;
   private readonly argp: SliderRow;
   private readonly nu: SliderRow;
-  private readonly librationSecondary: SegmentedControl<OrbitingId>;
-  private readonly librationPoint: SegmentedControl<LibrationPoint>;
-  private readonly librationOrbitKind: SegmentedControl<LibrationOrbitKind>;
+  private readonly lagrangeSecondary: SegmentedControl<OrbitingId>;
+  private readonly lagrangePoint: SegmentedControl<CollinearPoint>;
+  private readonly lagrangeOrbitKind: SegmentedControl<LagrangeOrbitKind>;
   private readonly libAx: HTMLInputElement;
   private readonly libAz: HTMLInputElement;
   private readonly refreshPresets: () => void;
@@ -342,11 +340,11 @@ export class ShipPlacerPanel {
 
   private objectTypeValue: ObjectType = 'player';
   private placementModeValue: PlacementMode = 'elements';
-  private bodyValue: ReferenceBody = 'earth';
+  private attractorValue: ReferenceAttractor = 'earth';
   private sizeModeValue: SizeShapeMode = 'apsides';
-  private librationSecondaryValue: OrbitingId = 'moon';
-  private librationPointValue: LibrationPoint = 'L1';
-  private librationOrbitKindValue: LibrationOrbitKind = 'halo';
+  private lagrangeSecondaryValue: OrbitingId = 'moon';
+  private lagrangePointValue: CollinearPoint = 'L1';
+  private lagrangeOrbitKindValue: LagrangeOrbitKind = 'halo';
 
   // 艦艇配置パネルの DOM を組み立て、root へ追加する。
   constructor(root: HTMLElement) {
@@ -372,7 +370,7 @@ export class ShipPlacerPanel {
     this.panel.appendChild(this.placementMode.element);
 
     const elements = this.buildElementsGroup();
-    this.body = elements.body;
+    this.attractor = elements.attractor;
     this.sizeMode = elements.sizeMode;
     this.sizeGroups = elements.sizeGroups;
     this.peAlt = elements.peAlt;
@@ -389,15 +387,15 @@ export class ShipPlacerPanel {
     this.selectSizeMode(this.sizeModeValue);
     this.panel.appendChild(elements.element);
 
-    const libration = this.buildLibrationGroup();
-    this.librationSecondary = libration.librationSecondary;
-    this.librationPoint = libration.librationPoint;
-    this.librationOrbitKind = libration.librationOrbitKind;
-    this.libAx = libration.libAx;
-    this.libAz = libration.libAz;
-    this.panel.appendChild(libration.element);
+    const lagrange = this.buildLagrangeGroup();
+    this.lagrangeSecondary = lagrange.lagrangeSecondary;
+    this.lagrangePoint = lagrange.lagrangePoint;
+    this.lagrangeOrbitKind = lagrange.lagrangeOrbitKind;
+    this.libAx = lagrange.libAx;
+    this.libAz = lagrange.libAz;
+    this.panel.appendChild(lagrange.element);
 
-    this.placementGroups = { elements: elements.element, libration: libration.element };
+    this.placementGroups = { elements: elements.element, lagrange: lagrange.element };
     this.selectPlacementMode(this.placementModeValue);
 
     const nameRow = this.buildNameRow();
@@ -420,7 +418,7 @@ export class ShipPlacerPanel {
   // 呼び出し側は返った sizeGroups を this.sizeGroups へ代入してから selectSizeMode を呼ぶ必要がある。
   private buildElementsGroup(): {
     element: HTMLElement;
-    body: SegmentedControl<ReferenceBody>;
+    attractor: SegmentedControl<ReferenceAttractor>;
     sizeMode: SegmentedControl<SizeShapeMode>;
     sizeGroups: Record<SizeShapeMode, HTMLElement>;
     peAlt: SliderRow;
@@ -436,13 +434,13 @@ export class ShipPlacerPanel {
     refreshPresets: () => void;
   } {
     const elementsGroup = document.createElement('div');
-    const body = new SegmentedControl('基準天体', BODY_ITEMS, (v) => {
-      this.bodyValue = v;
-      body.setSelected(v);
+    const attractorControl = new SegmentedControl('基準天体', ATTRACTOR_ITEMS, (v) => {
+      this.attractorValue = v;
+      attractorControl.setSelected(v);
       this.refreshPresets();
     });
-    body.setSelected(this.bodyValue);
-    elementsGroup.appendChild(body.element);
+    attractorControl.setSelected(this.attractorValue);
+    elementsGroup.appendChild(attractorControl.element);
 
     const sizeMode = new SegmentedControl('サイズ/形', SIZE_MODE_ITEMS, (v) => this.selectSizeMode(v));
 
@@ -472,7 +470,7 @@ export class ShipPlacerPanel {
     presetRow.className = 'hud-seg preset-row';
     const refreshPresets = (): void => {
       presetRow.innerHTML = '';
-      const presets = PRESETS_BY_BODY[this.bodyValue] ?? [];
+      const presets = PRESETS_BY_BODY[this.attractorValue] ?? [];
       presetRow.style.display = presets.length > 0 ? '' : 'none';
       if (presets.length === 0) return;
       const heading = document.createElement('span');
@@ -508,44 +506,44 @@ export class ShipPlacerPanel {
 
     refreshPresets();
 
-    return { element: elementsGroup, body, sizeMode, sizeGroups, peAlt, apAlt, semiMajor, eccSemiMajor, period, eccPeriod, inc, raan, argp, nu, refreshPresets };
+    return { element: elementsGroup, attractor: attractorControl, sizeMode, sizeGroups, peAlt, apAlt, semiMajor, eccSemiMajor, period, eccPeriod, inc, raan, argp, nu, refreshPresets };
   }
 
   // ラグランジュ点指定(ハロー/リサジュー)の一式を1つの div にまとめて返す。
-  private buildLibrationGroup(): {
+  private buildLagrangeGroup(): {
     element: HTMLElement;
-    librationSecondary: SegmentedControl<OrbitingId>;
-    librationPoint: SegmentedControl<LibrationPoint>;
-    librationOrbitKind: SegmentedControl<LibrationOrbitKind>;
+    lagrangeSecondary: SegmentedControl<OrbitingId>;
+    lagrangePoint: SegmentedControl<CollinearPoint>;
+    lagrangeOrbitKind: SegmentedControl<LagrangeOrbitKind>;
     libAx: HTMLInputElement;
     libAz: HTMLInputElement;
   } {
-    const librationGroup = document.createElement('div');
-    const librationSecondary = new SegmentedControl('系', LIBRATION_SYSTEM_ITEMS, (v) => this.selectLibrationSecondary(v));
-    librationSecondary.setSelected(this.librationSecondaryValue);
-    librationGroup.appendChild(librationSecondary.element);
-    const librationPoint = new SegmentedControl('点', LIBRATION_POINT_ITEMS, (v) => {
-      this.librationPointValue = v;
-      this.librationPoint.setSelected(v);
+    const lagrangeGroup = document.createElement('div');
+    const lagrangeSecondary = new SegmentedControl('系', LAGRANGE_SYSTEM_ITEMS, (v) => this.selectLagrangeSecondary(v));
+    lagrangeSecondary.setSelected(this.lagrangeSecondaryValue);
+    lagrangeGroup.appendChild(lagrangeSecondary.element);
+    const lagrangePoint = new SegmentedControl('点', LAGRANGE_POINT_ITEMS, (v) => {
+      this.lagrangePointValue = v;
+      this.lagrangePoint.setSelected(v);
     });
-    librationPoint.setSelected(this.librationPointValue);
-    librationGroup.appendChild(librationPoint.element);
+    lagrangePoint.setSelected(this.lagrangePointValue);
+    lagrangeGroup.appendChild(lagrangePoint.element);
     // ハローの面内振幅は面外振幅から三次の振幅拘束で決まるので、入力欄自体を出さない。
     let libAx: HTMLInputElement;
-    const librationOrbitKind = new SegmentedControl('軌道種別', LIBRATION_ORBIT_KIND_ITEMS, (v) => {
-      this.librationOrbitKindValue = v;
-      this.librationOrbitKind.setSelected(v);
+    const lagrangeOrbitKind = new SegmentedControl('軌道種別', LAGRANGE_ORBIT_KIND_ITEMS, (v) => {
+      this.lagrangeOrbitKindValue = v;
+      this.lagrangeOrbitKind.setSelected(v);
       setFieldVisible(libAx, v === 'lissajous');
-      libAx.value = String(this.defaultLibrationAmplitude(this.librationSecondaryValue).ax);
+      libAx.value = String(this.defaultLagrangeAmplitude(this.lagrangeSecondaryValue).ax);
     });
-    librationGroup.appendChild(librationOrbitKind.element);
-    const defaultAmp = this.defaultLibrationAmplitude(this.librationSecondaryValue);
-    libAx = numberField(librationGroup, '面内振幅 ax [km]', defaultAmp.ax, 100, 0);
-    const libAz = numberField(librationGroup, '面外振幅 az [km]', defaultAmp.az, 100, 0);
-    librationOrbitKind.setSelected(this.librationOrbitKindValue);
-    setFieldVisible(libAx, this.librationOrbitKindValue === 'lissajous');
+    lagrangeGroup.appendChild(lagrangeOrbitKind.element);
+    const defaultAmp = this.defaultLagrangeAmplitude(this.lagrangeSecondaryValue);
+    libAx = numberField(lagrangeGroup, '面内振幅 ax [km]', defaultAmp.ax, 100, 0);
+    const libAz = numberField(lagrangeGroup, '面外振幅 az [km]', defaultAmp.az, 100, 0);
+    lagrangeOrbitKind.setSelected(this.lagrangeOrbitKindValue);
+    setFieldVisible(libAx, this.lagrangeOrbitKindValue === 'lissajous');
 
-    return { element: librationGroup, librationSecondary, librationPoint, librationOrbitKind, libAx, libAz };
+    return { element: lagrangeGroup, lagrangeSecondary, lagrangePoint, lagrangeOrbitKind, libAx, libAz };
   }
 
   // 名称行(ラベル + テキスト入力)を組み立てて返す。
@@ -598,12 +596,12 @@ export class ShipPlacerPanel {
     this.objectTypeValue = v;
     this.objectType.setSelected(v);
     if (v === 'base') {
-      if (this.bodyValue !== 'moon') this.bodyValue = 'moon';
-      this.body.setItems(BASE_BODY_ITEMS);
+      if (this.attractorValue !== 'moon') this.attractorValue = 'moon';
+      this.attractor.setItems(BASE_ATTRACTOR_ITEMS);
     } else {
-      this.body.setItems(BODY_ITEMS);
+      this.attractor.setItems(ATTRACTOR_ITEMS);
     }
-    this.body.setSelected(this.bodyValue);
+    this.attractor.setSelected(this.attractorValue);
     this.refreshPresets();
   }
 
@@ -626,17 +624,17 @@ export class ShipPlacerPanel {
   }
 
   // 副天体を切り替え、面内/面外振幅の既定値をその系のオーダーへ更新する。
-  private selectLibrationSecondary(secondary: OrbitingId): void {
-    this.librationSecondaryValue = secondary;
-    this.librationSecondary.setSelected(secondary);
-    const amp = this.defaultLibrationAmplitude(secondary);
+  private selectLagrangeSecondary(secondary: OrbitingId): void {
+    this.lagrangeSecondaryValue = secondary;
+    this.lagrangeSecondary.setSelected(secondary);
+    const amp = this.defaultLagrangeAmplitude(secondary);
     this.libAx.value = String(amp.ax);
     this.libAz.value = String(amp.az);
   }
 
   // 副天体ごとの面内/面外振幅の既定値を返す(系ごとに主天体間距離が桁違いなため)。
-  private defaultLibrationAmplitude(secondary: OrbitingId): { ax: number; az: number } {
-    return LIBRATION_DEFAULT_AMPLITUDE_KM[secondary];
+  private defaultLagrangeAmplitude(secondary: OrbitingId): { ax: number; az: number } {
+    return LAGRANGE_DEFAULT_AMPLITUDE_KM[secondary];
   }
 
   // フォームの現在値を読み、onConfirm へ通知する。
@@ -653,23 +651,23 @@ export class ShipPlacerPanel {
   // プレビュー用にも使用。
   getForm(): ShipPlacerForm {
     const objectType = this.objectTypeValue;
-    if (this.placementModeValue === 'libration') {
+    if (this.placementModeValue === 'lagrange') {
       const common = {
-        placementMode: 'libration' as const,
-        librationSecondary: this.librationSecondaryValue,
-        librationPoint: this.librationPointValue,
+        placementMode: 'lagrange' as const,
+        lagrangeSecondary: this.lagrangeSecondaryValue,
+        lagrangePoint: this.lagrangePointValue,
       };
-      if (this.librationOrbitKindValue === 'halo') {
-        return { objectType, ...common, librationOrbitKind: 'halo', azKm: Number(this.libAz.value) };
+      if (this.lagrangeOrbitKindValue === 'halo') {
+        return { objectType, ...common, lagrangeOrbitKind: 'halo', azKm: Number(this.libAz.value) };
       }
       return {
-        objectType, ...common, librationOrbitKind: 'lissajous',
+        objectType, ...common, lagrangeOrbitKind: 'lissajous',
         axKm: Number(this.libAx.value), azKm: Number(this.libAz.value),
       };
     }
     const common = {
       placementMode: 'elements' as const,
-      body: this.bodyValue,
+      attractor: this.attractorValue,
       incDeg: Number(this.inc.input.value),
       raanDeg: Number(this.raan.input.value),
       argpDeg: Number(this.argp.input.value),
@@ -708,7 +706,7 @@ export class ShipPlacerPanel {
       case 'raan': return this.raan.element;
       case 'argumentOfPeriapsis': return this.argp.element;
       case 'trueAnomaly': return this.nu.element;
-      case 'referenceBody': return this.body.element;
+      case 'referenceAttractor': return this.attractor.element;
       case 'inPlaneAmplitude': return this.libAx.parentElement as HTMLElement;
       case 'outOfPlaneAmplitude': return this.libAz.parentElement as HTMLElement;
     }
@@ -746,10 +744,10 @@ export class ShipPlacerPanel {
     } else if (preset?.kind === 'objectType') {
       this.selectObjectType(preset.objectType);
     } else if (preset?.kind === 'body') {
-      const allowed = this.objectTypeValue === 'base' ? BASE_BODY_ITEMS : BODY_ITEMS;
-      if (allowed.some(([id]) => id === preset.body)) {
-        this.bodyValue = preset.body;
-        this.body.setSelected(this.bodyValue);
+      const allowed = this.objectTypeValue === 'base' ? BASE_ATTRACTOR_ITEMS : ATTRACTOR_ITEMS;
+      if (allowed.some(([id]) => id === preset.attractor)) {
+        this.attractorValue = preset.attractor;
+        this.attractor.setSelected(this.attractorValue);
         this.refreshPresets();
       }
     }
@@ -771,12 +769,12 @@ export class ShipPlacerPanel {
     row.rebase?.();
   }
 
-  // 軌道要素一式をフォームへ書き込む。form.body は呼び出し側 (open) が現在の種類で選べる
+  // 軌道要素一式をフォームへ書き込む。form.attractor は呼び出し側 (open) が現在の種類で選べる
   // 基準天体であることを保証済みの前提で、確認なしにそのまま書き込む。
   private applyElementsForm(form: ElementsForm): void {
     this.selectPlacementMode('elements');
-    this.bodyValue = form.body;
-    this.body.setSelected(this.bodyValue);
+    this.attractorValue = form.attractor;
+    this.attractor.setSelected(this.attractorValue);
     this.refreshPresets();
     this.selectSizeMode(form.sizeMode);
 

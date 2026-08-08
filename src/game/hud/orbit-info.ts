@@ -19,7 +19,7 @@ export interface OrbitInfo {
 // 傾斜角・周期を導出する。要素が求まらない状態(双曲線軌道等)では ap/pe/inc/period を NaN にする。
 export function orbitInfo(entity: GameEntity, bodies: readonly Attractor[]): OrbitInfo {
   const center = strongestAttractor(entity.state.r, bodies);
-  const el = entity.elementsAround(center);
+  const el = entity.orbitalElementsAround(center);
   // apsis 高度は center の半径基準。
   const apsis = el ? apsisAltitudes(el) : null;
   return {
@@ -45,8 +45,8 @@ export interface RelativeInfo {
 export function relativeInfo(self: GameEntity, other: GameEntity, bodies: readonly Attractor[]): RelativeInfo {
   const selfCenter = strongestAttractor(self.state.r, bodies);
   const otherCenter = strongestAttractor(other.state.r, bodies);
-  const selfEl = self.elementsAround(selfCenter);
-  const otherEl = other.elementsAround(otherCenter);
+  const selfEl = self.orbitalElementsAround(selfCenter);
+  const otherEl = other.orbitalElementsAround(otherCenter);
   const relP = sub(other.state.r, self.state.r);
   const relV = sub(other.state.v, self.state.v);
   const dist = len(relP);
