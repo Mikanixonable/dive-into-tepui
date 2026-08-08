@@ -347,7 +347,8 @@ export class Game {
       this.predictor.update(
         this.simulator.simTime,
         null,
-        this.simSpeedManager.simSpeed > C.MAX_PHYS_SIM_SPEED,
+        this.simSpeedManager.canGrowPrediction,
+        this.displayTimeManager.durationSec(),
       );
       this.activeStage.update(dt, null, this.entities, this.simulator.simTime, this.simSpeedManager);
       this.effects.update(dt, simDt);
@@ -448,7 +449,8 @@ export class Game {
     this.predictor.update(
       this.simulator.simTime,
       this.player,
-      this.simSpeedManager.simSpeed > C.MAX_PHYS_SIM_SPEED,
+      this.simSpeedManager.canGrowPrediction,
+      this.displayTimeManager.durationSec(),
     );
 
     this.effects.update(dt, simDt);
@@ -628,12 +630,18 @@ export class Game {
   // ------------------------------------------------------------------ debug
 
   // ?perf=1 のデバッグ表示用エンティティ数。
-  perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
+  perfCounts(): {
+    enemies: number; bullets: number; casings: number; debris: number;
+    predicted: number; predictComplete: number; predictDiscarded: number;
+  } {
     return {
       enemies: this.entities.enemies.length,
       bullets: this.entities.bullets.length,
       casings: this.entities.casings.length,
       debris: this.entities.debris.length,
+      predicted: this.predictor.tracked,
+      predictComplete: this.predictor.complete,
+      predictDiscarded: this.predictor.discarded,
     };
   }
 }
