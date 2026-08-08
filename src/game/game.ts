@@ -29,8 +29,9 @@ import { Hud } from './hud/hud';
 import { SettingsPanel } from './hud/settings-panel';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
-import { EnvironmentScene } from '../render/environment-scene';
+import { EnvironmentScene } from './celestial/environment-scene';
 import { Ephemeris } from '../physics/ephemeris';
+import { INERTIAL_FRAME } from '../physics/frame';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { DebugHistoryLine } from './debug-history-line';
@@ -44,6 +45,7 @@ import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
 import { Base } from './game-entity/base';
+import { strongestAttractor } from '../physics/attractor';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -147,6 +149,7 @@ export class Game {
       this.markerManager,
       () => this.player?.fineAttitude ?? false,
       bootstrapPlayer,
+      this.displayTimeManager,
     );
     this.editor.onFocusNode = (state) => this.cameraSystem.overviewCamera.setFocusPos(state.r);
     this.mapPicker = new MapPicker(
@@ -269,7 +272,15 @@ export class Game {
 
   // このフレームの表示時刻(未来ゴーストのスライダーぶん先取りした simTime)。
   private get displayTime(): number {
-    return this.displayTimeManager.resolveDisplayTime(this.simulator.simTime);
+    return this.displayTimeManager.resolveDisplayTime(this.simulator.simTime, this.currentOrbitPeriod());
+  }
+
+  // 自機の現在軌道の周期 [s]。自機がいない、または有限な周期が求まらない間は NaN —
+  // DisplayTimeManager.durationSec 側のフォールバックに委ねる。
+  private currentOrbitPeriod(): number {
+    if (!this.player) return NaN;
+    const center = strongestAttractor(this.player.state.r, this.ephemeris.attractorsAt(this.simulator.simTime));
+    return this.player.elementsAround(center)?.period ?? NaN;
   }
 
   get simTime(): number { return this.simulator.simTime; }
@@ -347,7 +358,8 @@ export class Game {
       this.predictor.update(
         this.simulator.simTime,
         null,
-        this.simSpeedManager.simSpeed > C.MAX_PHYS_SIM_SPEED,
+        this.simSpeedManager.canGrowPrediction,
+        this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
       );
       this.activeStage.update(dt, null, this.entities, this.simulator.simTime, this.simSpeedManager);
       this.effects.update(dt, simDt);
@@ -387,6 +399,7 @@ export class Game {
       simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
       addBullet: (bullet) => this.entities.addBullet(bullet),
+      ephemeris: this.ephemeris,
     });
 
     // 非操作艦にも、表示フレーム基準のベルト・HP回復だけを一度ずつ進める。
@@ -448,7 +461,8 @@ export class Game {
     this.predictor.update(
       this.simulator.simTime,
       this.player,
-      this.simSpeedManager.simSpeed > C.MAX_PHYS_SIM_SPEED,
+      this.simSpeedManager.canGrowPrediction,
+      this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
     );
 
     this.effects.update(dt, simDt);
@@ -537,7 +551,7 @@ export class Game {
       : new FloatingOrigin(v3(), v3());
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
-    const displayTime = this.displayTimeManager.resolveDisplayTime(this.simulator.simTime);
+    const displayTime = this.displayTimeManager.resolveDisplayTime(this.simulator.simTime, this.currentOrbitPeriod());
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
     this.cameraSystem.sync(this.floatingOrigin);
@@ -588,7 +602,7 @@ export class Game {
     this.enemyMarkers.sync(enemyMarkerItems, project);
     if (player) this.leadMarkers.sync(player, aliveTargets, target, secondaryTarget, simTime, overviewMode, project);
 
-    this.displayTimeManager.sync();
+    this.displayTimeManager.sync(this.currentOrbitPeriod());
     this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project);
     this.mapPicker.sync(overviewMode);
     // 月フライバイ等で積分予測と解析楕円が乖離した場合は、重なって誤解を招く
@@ -610,7 +624,7 @@ export class Game {
     if (player) this.guide.sync(this.editor.plan, player, simTime, this.editor.editMode, project);
 
     const debugTargets = player ? (target ? [player, target] : [player]) : [];
-    const debugFrame = overviewMode ? this.cameraSystem.overviewCamera.cameraFrame : 'inertial';
+    const debugFrame = overviewMode ? this.cameraSystem.overviewCamera.cameraFrame : INERTIAL_FRAME;
     this.debugHistoryLine.sync(debugTargets, debugFrame, simTime, this.ephemeris, this.floatingOrigin);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
@@ -628,12 +642,18 @@ export class Game {
   // ------------------------------------------------------------------ debug
 
   // ?perf=1 のデバッグ表示用エンティティ数。
-  perfCounts(): { enemies: number; bullets: number; casings: number; debris: number; } {
+  perfCounts(): {
+    enemies: number; bullets: number; casings: number; debris: number;
+    predicted: number; predictComplete: number; predictDiscarded: number;
+  } {
     return {
       enemies: this.entities.enemies.length,
       bullets: this.entities.bullets.length,
       casings: this.entities.casings.length,
       debris: this.entities.debris.length,
+      predicted: this.predictor.tracked,
+      predictComplete: this.predictor.complete,
+      predictDiscarded: this.predictor.discarded,
     };
   }
 }

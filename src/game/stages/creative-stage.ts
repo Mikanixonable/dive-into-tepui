@@ -11,8 +11,8 @@ import type { Simulator } from '../simulation/simulator';
 import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitState, orbitState } from '../../physics/orbital-state';
 import { Elements, semiMajorFromPeriod, stateFromElements } from '../../physics/elements';
-import { elementsAround } from '../../physics/attractor';
-import { Ephemeris, MU_MOON, R_MOON } from '../../physics/ephemeris';
+import { Attractor, elementsAround } from '../../physics/attractor';
+import { Ephemeris } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
 import { Vec3, add, len, sub } from '../../physics/vec3';
@@ -114,10 +114,8 @@ export class CreativeStage extends Stage {
     if (form.placementMode !== 'elements') return null;
     try {
       const state = this.buildInitialState(form);
-      // 楕円はフォームが選んだ基準天体(地球 or 月)中心で描く。
-      const center = this._ephemeris.attractorsAt(this._simulator.simTime)
-        .find((body) => body.id === (form.body === 'moon' ? 'moon' : 'earth'))!;
-      const elements = elementsAround(state, center);
+      // 楕円はフォームが選んだ基準天体中心で描く。
+      const elements = elementsAround(state, this.referenceAttractor(form));
       return elements ? { elements, pos: state.r } : null;
     } catch {
       return null;
@@ -189,10 +187,10 @@ export class CreativeStage extends Stage {
     return this.buildElementsState(form);
   }
 
-  // 系・点・軌道種別・振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
+  // 副天体・点・軌道種別・振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
   // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォームの面内振幅は使わない。
   private buildLibrationState(form: ShipPlacerForm): OrbitState {
-    const common = { system: form.librationSystem, point: form.librationPoint };
+    const common = { secondary: form.librationSecondary, point: form.librationPoint };
     if (form.librationOrbitKind === 'halo') {
       return haloState(this._simulator.simTime, this._ephemeris, { ...common, az: form.azKm * 1e3 });
     }
@@ -201,44 +199,43 @@ export class CreativeStage extends Stage {
     });
   }
 
+  // フォームの基準天体(地球 or 月)を、その時刻の重力源として引く。μ・半径・ECI 化に
+  // 要る情報がすべてここから出る。
+  private referenceAttractor(form: ShipPlacerForm): Attractor {
+    return this._ephemeris.attractorsAt(this._simulator.simTime).find((b) => b.id === form.body)!;
+  }
+
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
-  // (stateFromElements)へ渡す。月基準では月中心の要素で組んでから月の位置・速度を足す。
+  // (stateFromElements)で基準天体中心の相対状態を組んでから、基準天体自身の位置・速度を
+  // 足して ECI 化する(地球基準では位置・速度とも厳密に 0 なので、実質そのまま返る)。
   private buildElementsState(form: ShipPlacerForm): OrbitState {
-    const mu = form.body === 'moon' ? MU_MOON : C.MU_EARTH;
-    const rBody = form.body === 'moon' ? R_MOON : C.R_EARTH;
-    // フォームが選んだ組(sizeMode)から長半径・離心率を導出する。
+    const body = this.referenceAttractor(form);
     let a: number;
     let e: number;
     if (form.sizeMode === 'apsides') {
-      const rp = rBody + form.peAltKm * 1e3;
-      const ra = rBody + form.apAltKm * 1e3;
+      const rp = body.radius + form.peAltKm * 1e3;
+      const ra = body.radius + form.apAltKm * 1e3;
       a = (rp + ra) / 2;
       e = (ra - rp) / (ra + rp);
     } else if (form.sizeMode === 'semiMajorEcc') {
       a = form.semiMajorKm * 1e3;
       e = form.eccentricity;
     } else {
-      a = semiMajorFromPeriod(form.periodHours * 3600, mu);
+      a = semiMajorFromPeriod(form.periodHours * 3600, body.mu);
       e = form.eccentricity;
     }
 
-    // 主天体中心(地球 or 月)の相対状態。月基準ならこの時点では月中心の値。
     const rel = stateFromElements(
-      this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, mu,
+      this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, body.mu,
     );
-    if (form.body === 'earth') return rel;
-
-    // 月中心の相対状態に月自身の位置・速度を足して ECI 化する。
-    const moonPos = this._ephemeris.moonPosAt(this._simulator.simTime);
-    const moonVel = this._ephemeris.moonVelAt(this._simulator.simTime);
-    return orbitState(this._simulator.simTime, add(moonPos, rel.r), add(moonVel, rel.v));
+    return orbitState(this._simulator.simTime, add(body.state.r, rel.r), add(body.state.v, rel.v));
   }
 
   // 軌道要素指定フォームの値が物理的に成立するか検証する。不正なら理由付きで例外を投げる。
   private assertValidElementsForm(form: ShipPlacerForm): void {
-    const rBody = form.body === 'moon' ? R_MOON : C.R_EARTH;
+    const body = this.referenceAttractor(form);
     const message = validateEllipticPlacement({
-      bodyRadius: rBody, mu: form.body === 'moon' ? MU_MOON : C.MU_EARTH, sizeMode: form.sizeMode,
+      bodyRadius: body.radius, mu: body.mu, sizeMode: form.sizeMode,
       peAltKm: form.peAltKm, apAltKm: form.apAltKm, semiMajorKm: form.semiMajorKm,
       eccentricity: form.eccentricity, periodHours: form.periodHours,
       anglesDeg: [form.incDeg, form.raanDeg, form.argpDeg, form.nuDeg],
