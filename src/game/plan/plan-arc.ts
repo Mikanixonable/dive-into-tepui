@@ -168,7 +168,7 @@ export class PlanArc {
       if (dt <= 1e-9) break;
       const stepBodies = ephemeris.attractorsAt(entity.state.t + dt / 2);
       const activeBodies = impactBody ? stepBodies.filter((b) => b.id !== impactBody!.id) : stepBodies;
-      entity.step(dt, activeBodies, impactBody ? 0 : C.SHIP_BCINV, null, sampleInterval, duration);
+      entity.step(dt, activeBodies, impactBody ? 0 : C.SHIP_BCINV, C.SHIP_SRP_COEFF, C.SHADOW_PENUMBRA, null, sampleInterval, duration);
 
       const { r, v } = entity.state;
       const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
