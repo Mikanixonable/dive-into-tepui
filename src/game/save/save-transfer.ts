@@ -75,24 +75,36 @@ export async function importSlotFromFile(slots: SaveSlots, file: File): Promise<
 
 // ファイル選択ダイアログを開き、選ばれたファイルを importSlotFromFile に渡す。
 export function pickAndImportSlot(slots: SaveSlots): Promise<ImportResult> {
-  // input はダイアログの開閉に必要な間だけ DOM に置き、選択後は取り除く。
+  // input はダイアログの開閉に必要な間だけ DOM に置き、決着したら取り除く。ダイアログを
+  // 閉じただけでは change が来ない環境があるので、ウィンドウへ戻った時点も終端として扱う
+  // — これが無いと Promise が永久に解決せず、input も残り続ける。
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json,application/json';
     input.style.display = 'none';
 
-    const cleanup = () => input.remove();
+    let settled = false;
+    const settle = (result: ImportResult | Promise<ImportResult>) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('focus', onWindowFocus);
+      input.remove();
+      resolve(result);
+    };
+    const onWindowFocus = () => {
+      // focus はダイアログを閉じた直後に来るが、選択時は change がその後に続く。
+      setTimeout(() => {
+        if (!input.files || input.files.length === 0) settle({ ok: false, reason: '取り込みを中止しました' });
+      }, 300);
+    };
 
     input.addEventListener('change', () => {
       const file = input.files?.[0];
-      cleanup();
-      if (!file) {
-        resolve({ ok: false, reason: '取り込みを中止しました' });
-        return;
-      }
-      importSlotFromFile(slots, file).then(resolve);
+      settle(file ? importSlotFromFile(slots, file) : { ok: false, reason: '取り込みを中止しました' });
     });
+    input.addEventListener('cancel', () => settle({ ok: false, reason: '取り込みを中止しました' }));
+    window.addEventListener('focus', onWindowFocus);
 
     document.body.appendChild(input);
     input.click();
