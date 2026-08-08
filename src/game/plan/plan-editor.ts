@@ -1,8 +1,8 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と計画パネルへの反映。
 // 未来表示(計画折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
 import type * as THREE from 'three/webgpu';
-import { KinematicState, fromOrbitalAxes, kinematicState, orbitalAxes } from '../../physics/kinematic-state';
-import { Elements } from '../../physics/elements';
+import { KinematicState, fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
+import { OrbitalElements } from '../../physics/elements';
 import { Projected } from '../../physics/projection';
 import { Vec3, add, dot, len, scale, sub, v3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -28,7 +28,7 @@ import { hudDock } from '../hud/dom';
 import type { DisplayTimeManager } from '../display-time-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
-import { Attractor, elementsAround, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
+import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { toFrameState } from '../../physics/frame';
 
 interface DvButtons {
@@ -393,7 +393,7 @@ export class PlanEditor {
     }
 
     // 到着軌道基準のローカル Δv 成分を求め、移動先のプレバーン状態基準へ組み直す。
-    const axesOld = orbitalAxes(this.bodyState(arr));
+    const axesOld = orbitAxes(this.bodyState(arr));
     const dvLocal = v3(
       dot(dvWorldOld, axesOld.pro),
       dot(dvWorldOld, axesOld.nrm),
@@ -401,7 +401,7 @@ export class PlanEditor {
     );
 
     const newPreBurnState = kinematicState(sample.t, sample.r, baseV);
-    const axesNew = orbitalAxes(this.bodyState(newPreBurnState));
+    const axesNew = orbitAxes(this.bodyState(newPreBurnState));
     const newDvWorld = v3(
       axesNew.pro.x * dvLocal.x + axesNew.nrm.x * dvLocal.y + axesNew.radOut.x * dvLocal.z,
       axesNew.pro.y * dvLocal.x + axesNew.nrm.y * dvLocal.y + axesNew.radOut.y * dvLocal.z,
@@ -420,7 +420,7 @@ export class PlanEditor {
     if (!node) return;
     const d = amount * sign;
     const local = v3(axis === 0 ? d : 0, axis === 1 ? d : 0, axis === 2 ? d : 0);
-    this.plan.applyNodeDv(this.selectedNodeIdx, fromOrbitalAxes(this.bodyState(node), local));
+    this.plan.applyNodeDv(this.selectedNodeIdx, fromOrbitAxes(this.bodyState(node), local));
   }
 
   // 手動入力フォームから絶対的な Δv (PRO, NRM, RAD) を指定してノードの速度を上書きする。
@@ -433,7 +433,7 @@ export class PlanEditor {
     
     // 入力は「到着時の軌道基準枠」を基準とした絶対量とする。
     const bodyArr = this.bodyState(arr);
-    const dvWorld = fromOrbitalAxes(bodyArr, v3(pro, nrm, rad));
+    const dvWorld = fromOrbitAxes(bodyArr, v3(pro, nrm, rad));
     this.plan.retimeNode(this.selectedNodeIdx, kinematicState(node.t, node.r, add(arr.v, dvWorld)));
     this._sfx.warp();
   }
@@ -464,7 +464,7 @@ export class PlanEditor {
   ): { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; } {
     const bodyNode = this.bodyState(node);
     const { r } = node;
-    const { pro, nrm, radOut } = orbitalAxes(bodyNode);
+    const { pro, nrm, radOut } = orbitAxes(bodyNode);
     const L = mapDist * 0.05;
     const p0 = this.planDisplay.traj.projectPoint(r, node.t);
     // 軸方向へわずかに動かした点との投影差分から、画面上の単位方向ベクトルを求める。
@@ -518,7 +518,7 @@ export class PlanEditor {
     return node && arr ? sub(this.bodyState(node).v, this.bodyState(arr).v) : v3();
   }
 
-  // center 相対状態。orbitalAxes が KinematicState を要求するので、座標系相対の r/v を
+  // center 相対状態。orbitAxes が KinematicState を要求するので、座標系相対の r/v を
   // state の時刻のまま KinematicState へ包み直す。
   private relativeToBody(state: KinematicState, center: Attractor): KinematicState {
     const rel = toFrameState(frameOfAttractor(center), state);
@@ -565,7 +565,7 @@ export class PlanEditor {
       const r = this.planDisplay.traj.toDisplay(nodeFor3D.r, nodeFor3D.t);
       const scenePos = fo.RtoThreeV3(r);
       const bodyArr = this.bodyState(arrFor3D);
-      let { pro, nrm, radOut } = orbitalAxes(bodyArr);
+      let { pro, nrm, radOut } = orbitAxes(bodyArr);
       pro = this.planDisplay.traj.toDisplay(pro, nodeFor3D.t);
       nrm = this.planDisplay.traj.toDisplay(nrm, nodeFor3D.t);
       radOut = this.planDisplay.traj.toDisplay(radOut, nodeFor3D.t);
@@ -625,7 +625,7 @@ export class PlanEditor {
       selected: i === this.selectedNodeIdx,
     }));
     // 選択中ノードの Δv と噴射後軌道要素を求める
-    let selEl: Elements | null = null;
+    let selEl: OrbitalElements | null = null;
     let localDv: Vec3 | null = null;
     // 高度・大気圏警告の基準は、選択中ノード(無ければ計画の起点)で最も強く引く天体。
     const centerState = (this.selectedNodeIdx !== null ? this.plan.nodes[this.selectedNodeIdx] : null) ?? this.plan.anchor;
@@ -636,11 +636,11 @@ export class PlanEditor {
       if (node && arr) {
         const bodyNode = this.relativeToBody(node, center);
         const bodyArr = this.relativeToBody(arr, center);
-        selEl = elementsAround(node, center);
+        selEl = orbitalElementsOf(node, center);
 
         // 到着時基準でのローカルΔv成分を計算
         const dvWorld = sub(bodyNode.v, bodyArr.v);
-        const axes = orbitalAxes(bodyArr);
+        const axes = orbitAxes(bodyArr);
         localDv = v3(dot(dvWorld, axes.pro), dot(dvWorld, axes.nrm), dot(dvWorld, axes.radOut));
       }
     }
@@ -711,7 +711,7 @@ export class PlanEditor {
 // 計画パネルの定型 HTML。近地点が大気圏内(<120km)なら警告を添える。
 function planPanelHtml(
   nodes: { tRel: number; dvMag: number; selected: boolean; }[],
-  selEl: Elements | null,
+  selEl: OrbitalElements | null,
   warnAtmosphere: boolean,
 ): string {
   const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;

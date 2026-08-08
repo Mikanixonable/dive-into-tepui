@@ -2,7 +2,7 @@
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
-import { elementsAround, strongestAttractor } from '../../physics/attractor';
+import { orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { ReferenceFrame, INERTIAL_FRAME, toFramePoint, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -78,14 +78,14 @@ export class PlanTrajectory {
   private detectAnalyticDivergence(anchor: KinematicState | null): boolean {
     if (!anchor || !this.ephemeris) return false;
     const center = strongestAttractor(anchor.r, this.ephemeris.attractorsAt(anchor.t));
-    const base = elementsAround(anchor, center);
+    const base = orbitalElementsOf(anchor, center);
     if (!base || base.e >= 0.98 || !isFinite(base.a) || base.a <= 0) return false;
     const samples = this.arcs[0]?.samplesRef() ?? [];
     for (const s of samples) {
       // 中心天体自身もサンプル時刻ぶん動くので、そのつど ephemeris から引き直す。
       const sampleCenter = strongestAttractor(s.r, this.ephemeris.attractorsAt(s.t));
       if (sampleCenter.id !== center.id) return true;
-      const el = elementsAround(s, sampleCenter);
+      const el = orbitalElementsOf(s, sampleCenter);
       if (!el || !isFinite(el.a) || el.a <= 0) continue;
       if (Math.abs(el.a - base.a) / base.a > 0.03 || Math.abs(el.e - base.e) > 0.02) return true;
       const planeDot = el.hHat.x * base.hHat.x + el.hHat.y * base.hHat.y + el.hHat.z * base.hHat.z;

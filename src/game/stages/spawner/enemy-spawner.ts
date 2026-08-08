@@ -1,7 +1,7 @@
 // 訓練クラスタ(stage0)の敵集団の配置・分散を計算し、直接 Enemy を生成する。
 // (EntityManager への登録は呼び出し側の Stage0 が Stage.addEnemy 経由で行う)。
 import * as THREE from 'three/webgpu';
-import { KinematicState, kinematicState, orbitalAxes } from '../../../physics/kinematic-state';
+import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { add, len, norm, randSym, scale } from '../../../physics/vec3';
 import * as C from '../../const';
 import { Hud } from '../../hud/hud';
@@ -21,7 +21,7 @@ export function generateCluster(
   groupCount: number = C.COLOR_STAGE0_GROUP_ACCENTS.length,
   perGroup: number = C.STAGE0_PER_GROUP,
 ): Enemy[] {
-  const { pro, nrm } = orbitalAxes(base);
+  const { pro, nrm } = orbitAxes(base);
   const rHat = norm(base.r);
   const safeRange = C.STAGE0_MAX_RANGE * C.STAGE0_SAFE_RANGE_FACTOR; // マージンを残して確実に5km以内に収める
   const enemies: Enemy[] = [];

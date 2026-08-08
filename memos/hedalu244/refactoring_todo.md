@@ -108,7 +108,7 @@ minCountって使われているか？
   カメラ関連 GUI の集約という観点では逆向きの混在。
 ## `render/orbitline.ts` の `densifyNear` に「要調査」コメントあり: 頂点を密に置きたいのは本来
   フローティングオリジン近傍だが、呼び出し側は自機位置を渡している。
-## 戦闘ビューの方位マーカーは `orbitalAxes` が地心速度基準のままで、中心天体に追従しない。
+## 戦闘ビューの方位マーカーは `orbitAxes` が地心速度基準のままで、中心天体に追従しない。
   `strongestAttractor` があるので直せるが、重力源の一般化とは別の仕様変更。
 ## 影判定(`lenSq(...) < R_EARTH_EQ²`)が `game-entity/enemy.ts` と `player/player-fire.ts` に
   同じ実装で2つある。

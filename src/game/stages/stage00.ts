@@ -12,7 +12,7 @@ import type { EffectsSystem } from '../vfx/effects-system';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { apsisAltitudes } from '../../physics/elements';
-import { elementsAround, strongestAttractor } from '../../physics/attractor';
+import { orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../physics/vec3';
 import { generateApproachingEnemy } from './spawner/enemy-generator';
@@ -177,7 +177,7 @@ function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, ep
   const center = strongestAttractor(centerR, ephemeris.attractorsAt(t));
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
-    const el = elementsAround(kinematicState(t, centerR, v), center);
+    const el = orbitalElementsOf(kinematicState(t, centerR, v), center);
     return el !== null && apsisAltitudes(el).pe >= minPeAlt;
   };
   if (safe(centerV)) return centerV;

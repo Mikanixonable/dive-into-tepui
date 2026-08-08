@@ -2,10 +2,10 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { MU_EARTH, R_EARTH, kinematicState } from '../../src/physics/kinematic-state';
-import { Elements, keplerPeriod, stateFromElements } from '../../src/physics/elements';
+import { OrbitalElements, keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
-import { Attractor, elementsAround } from '../../src/physics/attractor';
+import { Attractor, orbitalElementsOf } from '../../src/physics/attractor';
 import { j2Accel, stepDynamicsRK4, stepOrbitRK4 } from '../../src/physics/dynamics';
 import { Vec3, add, len, sub, v3 } from '../../src/physics/vec3';
 
@@ -92,7 +92,7 @@ export function register(): void {
     const moon0 = bodies0.find((b) => b.id === 'moon')!;
     const a = R_MOON + 100e3;
     const period = keplerPeriod(a, MU_MOON); // ~7,066s
-    const rel0 = stateFromElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
+    const rel0 = stateFromOrbitalElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
     let s = kinematicState(0, add(rel0.r, moon0.state.r), add(rel0.v, moon0.state.v));
 
     const dt = 5;
@@ -149,7 +149,7 @@ export function register(): void {
     const incDeg = 51.6;
     const inc = (incDeg * Math.PI) / 180;
     const a = R_EARTH + alt;
-    let s = stateFromElements(0, a, 0, inc, 0, 0, 0, MU_EARTH);
+    let s = stateFromOrbitalElements(0, a, 0, inc, 0, 0, 0, MU_EARTH);
 
     const dt = 10;
     const totalDays = 5;
@@ -162,13 +162,13 @@ export function register(): void {
       });
     }
 
-    const el = elementsAround(s, EARTH) as Elements;
+    const el = orbitalElementsOf(s, EARTH) as OrbitalElements;
     // RAAN(昇交点赤経) = atan2(hHat.x, -hHat.z) 的な導出でも良いが、ここでは
     // pHat/hHat から昇交点方向ベクトルを求め、その方位角(XZ平面, 基準X軸)を使う。
     // 昇交点方向 = Y(極軸) × hHat の正規化(軌道面と赤道面の交線)
     const hHat = el.hHat;
     const nodeVec = { x: hHat.z, y: 0, z: -hHat.x }; // Y × hHat
-    // stateFromElements の raan 引数と同じ回転規約(rotateAxis(X, Y, raan) は
+    // stateFromOrbitalElements の raan 引数と同じ回転規約(rotateAxis(X, Y, raan) は
     // X を -Z 方向へ回す)に合わせ、角度は atan2(-z, x) で測る。
     const raan = Math.atan2(-nodeVec.z, nodeVec.x);
     let raanDeg = (raan * 180) / Math.PI;

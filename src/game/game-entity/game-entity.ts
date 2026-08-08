@@ -1,12 +1,12 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
-import { Elements } from '../../physics/elements';
+import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { StateQueue } from '../../physics/state-queue';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Attractor, AttractorId, elementsAround as elementsAroundBody, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, AttractorId, orbitalElementsOf, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -29,11 +29,11 @@ export class GameEntity {
   get prevState(): KinematicState { return this.current.prevState; }
   get history(): StateQueue { return this.current.history; }
 
-  // elementsAround(center) のメモ。state の参照同一性(KinematicState は不変で step ごとに
+  // orbitalElementsAround(center) のメモ。state の参照同一性(KinematicState は不変で step ごとに
   // 新しい参照へ差し替わる)と center.id で無効化する。
   private _memoState: KinematicState | null = null;
   private _memoCenterId: AttractorId | null = null;
-  private _memoElements: Elements | null = null;
+  private _memoElements: OrbitalElements | null = null;
 
   att: Attitude;
   obj: THREE.Object3D;
@@ -68,11 +68,11 @@ export class GameEntity {
   }
 
   // center を中心とする接触軌道要素。中心は呼び出し側が選ぶ(例: strongestAttractor)。
-  elementsAround(center: Attractor): Elements | null {
+  orbitalElementsAround(center: Attractor): OrbitalElements | null {
     if (this._memoState !== this.state || this._memoCenterId !== center.id) {
       this._memoState = this.state;
       this._memoCenterId = center.id;
-      this._memoElements = elementsAroundBody(this.state, center);
+      this._memoElements = orbitalElementsOf(this.state, center);
     }
     return this._memoElements;
   }

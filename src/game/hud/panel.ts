@@ -90,7 +90,7 @@ export class HudPanels {
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;
     const playerCenter = strongestAttractor(player.state.r, attractors);
-    const playerEl = player.elementsAround(playerCenter);
+    const playerEl = player.orbitalElementsAround(playerCenter);
     const playerApsis = playerEl ? apsisAltitudes(playerEl) : null;
 
     // スタッツパネルを一定間隔で更新
@@ -128,7 +128,7 @@ export class HudPanels {
 
       if (tgt) {
         const tgtCenter = strongestAttractor(tgt.state.r, attractors);
-        const tgtEl = tgt.elementsAround(tgtCenter);
+        const tgtEl = tgt.orbitalElementsAround(tgtCenter);
         const tgtApsis = tgtEl ? apsisAltitudes(tgtEl) : null;
         const relP = sub(tgt.state.r, player.state.r);
         const relV = sub(tgt.state.v, player.state.v);

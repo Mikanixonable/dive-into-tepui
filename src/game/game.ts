@@ -280,7 +280,7 @@ export class Game {
   private currentOrbitPeriod(): number {
     if (!this.player) return NaN;
     const center = strongestAttractor(this.player.state.r, this.ephemeris.attractorsAt(this.simulator.simTime));
-    return this.player.elementsAround(center)?.period ?? NaN;
+    return this.player.orbitalElementsAround(center)?.period ?? NaN;
   }
 
   get simTime(): number { return this.simulator.simTime; }

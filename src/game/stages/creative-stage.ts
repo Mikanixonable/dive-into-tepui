@@ -10,8 +10,8 @@ import type { EffectsSystem } from '../vfx/effects-system';
 import type { Simulator } from '../simulation/simulator';
 import type { MarkerManager } from '../marker/marker-manager';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { Elements, semiMajorFromPeriod, stateFromElements } from '../../physics/elements';
-import { Attractor, elementsAround } from '../../physics/attractor';
+import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
+import { Attractor, orbitalElementsOf } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
@@ -41,7 +41,7 @@ export class CreativeStage extends Stage {
   private placerPanel!: ShipPlacerPanel;
   private previewOrbitLine!: OrbitLine;
   // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
-  private preview: { readonly elements: Elements; readonly pos: Vec3 } | null = null;
+  private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   private nextShipId = 1;
   private lastBaseMarkerCount = 0;
 
@@ -108,14 +108,14 @@ export class CreativeStage extends Stage {
 
   // フォーム値から配置プレビューの軌道要素と位置を求める。パネルを閉じている間・軌道要素指定
   // 以外の配置方法・入力を解釈できない値のときは null(プレビューを出さない)。
-  private computePreview(): { elements: Elements; pos: Vec3 } | null {
+  private computePreview(): { elements: OrbitalElements; pos: Vec3 } | null {
     if (!this.placerPanel.isOpen) return null;
     const form = this.placerPanel.getForm();
     if (form.placementMode !== 'elements') return null;
     try {
       const state = this.buildInitialState(form);
       // 楕円はフォームが選んだ基準天体中心で描く。
-      const elements = elementsAround(state, this.referenceAttractor(form));
+      const elements = orbitalElementsOf(state, this.referenceAttractor(form));
       return elements ? { elements, pos: state.r } : null;
     } catch {
       return null;
@@ -180,7 +180,7 @@ export class CreativeStage extends Stage {
   // Game が Creative のみで接続する。Stage 基底を複数船の概念で汚さない。
   onShipPlaced: ((ship: Player) => void) | null = null;
 
-  // フォームの placementMode に応じて軌道要素指定(stateFromElements)かラグランジュ点指定
+  // フォームの placementMode に応じて軌道要素指定(stateFromOrbitalElements)かラグランジュ点指定
   // (haloState/lissajousState)のどちらかで KinematicState を組み立てる。
   private buildInitialState(form: ShipPlacerForm): KinematicState {
     if (form.placementMode === 'libration') return this.buildLibrationState(form);
@@ -206,7 +206,7 @@ export class CreativeStage extends Stage {
   }
 
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
-  // (stateFromElements)で基準天体中心の相対状態を組んでから、基準天体自身の位置・速度を
+  // (stateFromOrbitalElements)で基準天体中心の相対状態を組んでから、基準天体自身の位置・速度を
   // 足して ECI 化する(地球基準では位置・速度とも厳密に 0 なので、実質そのまま返る)。
   private buildElementsState(form: ShipPlacerForm): KinematicState {
     const center = this.referenceAttractor(form);
@@ -225,7 +225,7 @@ export class CreativeStage extends Stage {
       e = form.eccentricity;
     }
 
-    const rel = stateFromElements(
+    const rel = stateFromOrbitalElements(
       this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, center.mu,
     );
     return kinematicState(this._simulator.simTime, add(center.state.r, rel.r), add(center.state.v, rel.v));

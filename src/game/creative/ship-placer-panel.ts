@@ -1,6 +1,6 @@
 // クリエイティブモードの「艦艇配置」パネル: 軌道要素指定とラグランジュ点(ハロー/リサジュー)
 // 指定のどちらかを選び、フォームで値を指定して、確定で1隻分の ShipPlacerForm を通知する。
-// 値から KinematicState を組み立てるのは物理側(stateFromElements/haloState/lissajousState)の
+// 値から KinematicState を組み立てるのは物理側(stateFromOrbitalElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
 import { SegmentedControl, hudButton } from '../hud/buttons';
 import { ATTRACTOR_NAMES } from '../hud/frame-labels';

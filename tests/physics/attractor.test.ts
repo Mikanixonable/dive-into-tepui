@@ -4,12 +4,12 @@ import { test } from './harness';
 import {
   Attractor,
   attractorAccel,
-  elementsAround,
+  orbitalElementsOf,
   localOrbitPeriod,
   strongestAttractor,
 } from '../../src/physics/attractor';
 import { MU_EARTH, R_EARTH, kinematicState } from '../../src/physics/kinematic-state';
-import { keplerPeriod, stateFromElements, tofBetween } from '../../src/physics/elements';
+import { keplerPeriod, stateFromOrbitalElements, tofBetween } from '../../src/physics/elements';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
 import { add, addScaled, len, norm, sub, v3 } from '../../src/physics/vec3';
@@ -94,7 +94,7 @@ export function register(): void {
     assert.ok(Math.abs(moonPeriod - 7066) / 7066 < 0.01, `月面+100km 周期: ${moonPeriod}`);
   });
 
-  test('attractor: elementsAround が中心天体を伝え、月中心の tofBetween が MU_MOON 基準の周期と一致する(回帰)', () => {
+  test('attractor: orbitalElementsOf が中心天体を伝え、月中心の tofBetween が MU_MOON 基準の周期と一致する(回帰)', () => {
     // 月中心の円軌道。mu を渡し忘れて地球の mu で計算すると半周期の飛行時間が
     // sqrt(MU_EARTH/MU_MOON) ~= 9 倍ずれる。
     const moon: Attractor = {
@@ -102,11 +102,11 @@ export function register(): void {
       state: kinematicState(0, v3(3.844e8, 0, 0), v3(0, 0, 1023)),
     };
     const a = R_MOON + 100e3;
-    const rel = stateFromElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
+    const rel = stateFromOrbitalElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
     const s = kinematicState(0, add(rel.r, moon.state.r), add(rel.v, moon.state.v));
 
-    const el = elementsAround(s, moon);
-    assert.ok(el, 'elementsAround should not be null');
+    const el = orbitalElementsOf(s, moon);
+    assert.ok(el, 'orbitalElementsOf should not be null');
     assert.equal(el!.center.mu, MU_MOON);
     const half = tofBetween(el!, 0, Math.PI);
     const expected = keplerPeriod(a, MU_MOON) / 2;
