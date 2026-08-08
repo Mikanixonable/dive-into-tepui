@@ -19,7 +19,7 @@ import { bodyDef } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, scale, sub } from './vec3';
 
-export type LibrationPoint = 'L1' | 'L2';
+export type CollinearPoint = 'L1' | 'L2';
 
 // 共線ラグランジュ点まわりの回転局所基底とその線形化パラメータ。
 // origin: L点の ECI 位置。xHat: 主天体→副天体方向。zHat: 系の公転面法線。
@@ -43,7 +43,7 @@ export interface CollinearFrame {
 
 // 共線点における Richardson (1980) の cn 係数。gamma は副天体から L点までの距離を
 // 主天体-副天体間距離で割った無次元値。L1/L2 で分母と符号が異なる。
-function cn(point: LibrationPoint, mu: number, gamma: number, n: number): number {
+function cn(point: CollinearPoint, mu: number, gamma: number, n: number): number {
   const sign = (-1) ** n;
   if (point === 'L1') {
     return (mu + sign * (1 - mu) * gamma ** (n + 1) / (1 - gamma) ** (n + 1)) / gamma ** 3;
@@ -55,7 +55,7 @@ function cn(point: LibrationPoint, mu: number, gamma: number, n: number): number
 // 位置・回転フレームは ephemeris.ts の既存 API から取得し、質量比・距離比だけをここで
 // 計算する。gamma(副天体から L点までの距離の比)は ephemeris.ts が内部に持つ近似値を
 // 公開していないため、公開済みの L点座標から逆算して一貫性を取る。
-export function collinearFrame(secondary: OrbitingId, point: LibrationPoint, t: number, ephemeris: Ephemeris): CollinearFrame {
+export function collinearFrame(secondary: OrbitingId, point: CollinearPoint, t: number, ephemeris: Ephemeris): CollinearFrame {
   const def = bodyDef(secondary);
   const primary = def.kind === 'planet' ? 'sun' : def.planet;
   const primaryPos = ephemeris.positionOf(primary, t);
@@ -91,7 +91,7 @@ export function collinearFrame(secondary: OrbitingId, point: LibrationPoint, t: 
 
 export interface LissajousParams {
   readonly secondary: OrbitingId;
-  readonly point: LibrationPoint;
+  readonly point: CollinearPoint;
   readonly ax: number; // 面内振幅 [m]
   readonly az: number; // 面外振幅 [m]
   readonly phase?: number; // 面内位相 [rad]、既定 0(軌道上のどこに置くかを選ぶ)
@@ -100,7 +100,7 @@ export interface LissajousParams {
 
 export interface HaloParams {
   readonly secondary: OrbitingId;
-  readonly point: LibrationPoint;
+  readonly point: CollinearPoint;
   readonly az: number; // 面外振幅 [m](面内振幅は三次の振幅拘束から決まる)
   readonly phase?: number; // 面内位相 [rad]、既定 0
 }
@@ -147,7 +147,7 @@ function centerManifoldState(
 // Richardson (1980) 三次近似の振幅拘束 l1·Ax² + l2·Az² + Δ = 0 における (l1, l2, Δ)。
 // いずれも gamma で正規化した無次元量で、この拘束が成り立つとき面内・面外の振動数が
 // 一致してハロー軌道になる。
-function haloConstraint(frame: CollinearFrame, point: LibrationPoint): { l1: number; l2: number; delta: number } {
+function haloConstraint(frame: CollinearFrame, point: CollinearPoint): { l1: number; l2: number; delta: number } {
   const { mu, gamma, lambda } = frame;
   const c2 = cn(point, mu, gamma, 2);
   const c3 = cn(point, mu, gamma, 3);
@@ -200,7 +200,7 @@ export function haloState(t: number, ephemeris: Ephemeris, params: HaloParams): 
 
 // 面外振幅 az [m] に対応する面内振幅 [m]。az=0 での値が、平面リアプノフ軌道からハローが
 // 分岐する面内振幅の下限になる。
-export function haloAmplitudeX(frame: CollinearFrame, point: LibrationPoint, az: number): number {
+export function haloAmplitudeX(frame: CollinearFrame, point: CollinearPoint, az: number): number {
   const { l1, l2, delta } = haloConstraint(frame, point);
   // 無次元化は gamma 基準(Richardson の局所座標)なので、その単位で解いてから [m] へ戻す。
   const azN = az / (frame.r * frame.gamma);
