@@ -111,17 +111,20 @@ export class CreativeStage extends Stage {
     this.placerPanel.open(focusId !== undefined ? { kind: 'body', body: focusId as ReferenceBody } : undefined);
   }
 
-  // 右クリックメニューの「複製」(MapPicker から呼ばれる)。state を軌道要素へ逆算できれば
-  // その値をプリセットして開き、逆算できない状態(双曲線軌道など)なら通常の新規配置として開く。
+  // 右クリックメニューの「複製」(MapPicker から呼ばれる)。state を軌道要素へ逆算でき、
+  // かつ基地の基準天体制約(validateBaseReferenceFields — 月基準かラグランジュ点のみ)を
+  // 満たす値が求まったときだけ、その値をプリセットして開く。逆算できない状態(双曲線軌道など)や、
+  // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
+  // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
   openShipPlacerForDuplicate(objectType: ObjectType, state: OrbitState): void {
     const bodies = this._ephemeris.attractorsAt(this._simulator.simTime);
     const form = elementsFormFromState(state, bodies);
-    if (!form) {
-      this._hud.hint('この軌道は要素に変換できないため、新規配置として開きます');
-      this.placerPanel.open();
+    if (form && validateBaseReferenceFields(objectType, 'elements', form.body).length === 0) {
+      this.placerPanel.open({ kind: 'form', objectType, form });
       return;
     }
-    this.placerPanel.open({ kind: 'form', objectType, form });
+    this._hud.hint('この軌道は要素として複製できないため、種類だけを引き継いだ新規配置として開きます');
+    this.placerPanel.open({ kind: 'objectType', objectType });
   }
 
   // フォーム値から配置プレビューの軌道要素と位置を求める。軌道要素指定以外の配置方法・
