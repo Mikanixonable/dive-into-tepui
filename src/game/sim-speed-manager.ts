@@ -56,6 +56,12 @@ export class SimSpeedManager {
     return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
   }
 
+  // 現在のワープ倍率で予測列を伸ばす意味があるかどうか。高ワープでは実状態が1フレームで
+  // 予測列を追い越すため、伸ばしても表示に使える列にならない。
+  get canGrowPrediction(): boolean {
+    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
+  }
+
   // ワープ段を step 分だけ変更する。上下限を超える変更は無視する。
   shift(step: number): void {
     this.cancelAutoWarp();

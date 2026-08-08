@@ -1,7 +1,7 @@
 // 円制限三体問題(CR3BP)の共線ラグランジュ点(L1/L2)まわりの周期・準周期軌道の初期状態。
 // ラグランジュ点の位置と回転フレームの姿勢/角速度は ephemeris.ts の既存 API
-// (emLagrangeAt/seLagrangeAt/moonOrbitRotationAt/sunOrbitRotationAt)からそのまま取り、
-// ここでは基底・法線を作り直さない。
+// (lagrangeAt/orbitRotationAt/orbitNormalAt)からそのまま取り、ここでは基底・法線を
+// 作り直さない。
 //
 // 面内・面外の運動は Richardson (1980) の記法に従う。線形解では面内振動数 λ と面外振動数
 // ωz=√c2 が一致しないため、一次の範囲でハロー軌道(閉じた三次元ループ)は存在しない。
@@ -13,11 +13,12 @@
 // 位置・速度そのものは一次の線形解であり、三次の級数展開までは含まない。またゲームの積分器は
 // 地球中心二体 + J2 + 抗力 + 日月三体であって制限三体問題そのものではないため、ここで返した
 // 状態を実際にゲーム内で積分すると軌道はドリフトする。
-import { Ephemeris, MU_MOON, MU_SUN } from './ephemeris';
-import { MU_EARTH, OrbitState, orbitState } from './orbital-state';
-import { Vec3, add, cross, len, scale, sub, v3 } from './vec3';
+import { Ephemeris } from './ephemeris';
+import { OrbitingId } from './attractor';
+import { bodyDef } from './solar-system';
+import { OrbitState, orbitState } from './orbital-state';
+import { Vec3, add, cross, len, scale, sub } from './vec3';
 
-export type LibrationSystem = 'earthMoon' | 'sunEarth';
 export type LibrationPoint = 'L1' | 'L2';
 
 // 共線ラグランジュ点まわりの回転局所基底とその線形化パラメータ。
@@ -50,35 +51,22 @@ function cn(point: LibrationPoint, mu: number, gamma: number, n: number): number
   return sign * (mu + (1 - mu) * gamma ** (n + 1) / (1 + gamma) ** (n + 1)) / gamma ** 3;
 }
 
-// 指定した系・L点における共線点まわりの回転局所基底と線形化パラメータを組み立てる。
+// 指定した副天体・L点における共線点まわりの回転局所基底と線形化パラメータを組み立てる。
 // 位置・回転フレームは ephemeris.ts の既存 API から取得し、質量比・距離比だけをここで
 // 計算する。gamma(副天体から L点までの距離の比)は ephemeris.ts が内部に持つ近似値を
 // 公開していないため、公開済みの L点座標から逆算して一貫性を取る。
-export function collinearFrame(system: LibrationSystem, point: LibrationPoint, t: number, ephemeris: Ephemeris): CollinearFrame {
-  let primaryPos: Vec3;
-  let secondaryPos: Vec3;
-  let omega: Vec3;
-  let normal: Vec3;
-  let mu: number;
-  let origin: Vec3;
-  if (system === 'earthMoon') {
-    secondaryPos = ephemeris.moonPosAt(t);
-    primaryPos = v3(0, 0, 0);
-    omega = ephemeris.moonOrbitRotationAt(t).omega;
-    // 月回転系の omega は白道法線まわりの公転成分と黄道極まわりの昇交点歳差成分の和
-    // なので、omega の向きそのものは白道の法線と一致しない(ephemeris.ts 参照)。
-    // 公転面法線は moonOrbitNormalAt から直接取る。
-    normal = ephemeris.moonOrbitNormalAt(t);
-    mu = MU_MOON / (MU_EARTH + MU_MOON);
-    origin = ephemeris.emLagrangeAt(t)[point];
-  } else {
-    primaryPos = ephemeris.sunPosAt(t);
-    secondaryPos = v3(0, 0, 0);
-    omega = ephemeris.sunOrbitRotationAt(t).omega;
-    normal = scale(omega, 1 / len(omega)); // 太陽回転系の omega は黄道法線そのもの
-    mu = MU_EARTH / (MU_SUN + MU_EARTH);
-    origin = ephemeris.seLagrangeAt(t)[point];
-  }
+export function collinearFrame(secondary: OrbitingId, point: LibrationPoint, t: number, ephemeris: Ephemeris): CollinearFrame {
+  const def = bodyDef(secondary);
+  const primary = def.kind === 'planet' ? 'sun' : def.planet;
+  const primaryPos = ephemeris.positionOf(primary, t);
+  const secondaryPos = ephemeris.positionOf(secondary, t);
+  const omega = ephemeris.orbitRotationAt(secondary, t).omega;
+  // 回転フレームの omega は公転面法線まわりの公転成分と昇交点歳差成分の和になりうる
+  // (kepler-orbit.ts 参照)ので、omega の向きそのものが公転面法線と一致するとは限らない。
+  // 歳差の有無によらず正しい公転面法線を orbitNormalAt から直接取る。
+  const normal = ephemeris.orbitNormalAt(secondary, t);
+  const mu = def.mu / (bodyDef(primary).mu + def.mu);
+  const origin = ephemeris.lagrangeAt(secondary, t)[point];
 
   const rVec = sub(secondaryPos, primaryPos);
   const r = len(rVec);
@@ -102,7 +90,7 @@ export function collinearFrame(system: LibrationSystem, point: LibrationPoint, t
 }
 
 export interface LissajousParams {
-  readonly system: LibrationSystem;
+  readonly secondary: OrbitingId;
   readonly point: LibrationPoint;
   readonly ax: number; // 面内振幅 [m]
   readonly az: number; // 面外振幅 [m]
@@ -111,7 +99,7 @@ export interface LissajousParams {
 }
 
 export interface HaloParams {
-  readonly system: LibrationSystem;
+  readonly secondary: OrbitingId;
   readonly point: LibrationPoint;
   readonly az: number; // 面外振幅 [m](面内振幅は三次の振幅拘束から決まる)
   readonly phase?: number; // 面内位相 [rad]、既定 0
@@ -135,6 +123,7 @@ function centerManifoldState(
   const axN = ax / R;
   const azN = az / R;
 
+  // 面内(x,y)は λ で振動し、面外(z)はハロー軌道なら同じ λ、リサジューなら独立な zFreq で振動する。
   const x = axN * Math.cos(phase);
   const y = kappa * axN * Math.sin(phase);
   const z = azN * Math.sin(psi);
@@ -142,12 +131,14 @@ function centerManifoldState(
   const yDot = kappa * axN * lambda * Math.cos(phase);
   const zDot = azN * zFreq * Math.cos(psi);
 
+  // フレーム基底で組んだ無次元の位置・速度を、実長さ R でスケールして ECI 軸へ戻す。
   const relPos = add(add(scale(frame.xHat, x * R), scale(frame.yHat, y * R)), scale(frame.zHat, z * R));
   const relVel = add(
     add(scale(frame.xHat, xDot * R * n), scale(frame.yHat, yDot * R * n)),
     scale(frame.zHat, zDot * R * n),
   );
 
+  // 回転フレーム相対の状態を絶対位置へ平行移動し、フレームの角速度ぶんを足して ECI 速度にする。
   const rEci = add(frame.origin, relPos);
   const vEci = add(relVel, cross(omega, rEci));
   return orbitState(t, rEci, vEci);
@@ -187,11 +178,11 @@ function haloConstraint(frame: CollinearFrame, point: LibrationPoint): { l1: num
   return { l1: a1 + 2 * l2sq * s1, l2: a2 + 2 * l2sq * s2, delta: l2sq - c2 };
 }
 
-// 指定したラグランジュ点(earthMoon/sunEarth の L1/L2)まわりのリサジュー軌道初期状態。
+// 指定したラグランジュ点(副天体 secondary の L1/L2)まわりのリサジュー軌道初期状態。
 // 面内振幅 ax・面外振幅 az は独立に指定でき、面内は線形振動数 λ、面外は独立な線形
 // 振動数 ωz で振動する。
 export function lissajousState(t: number, ephemeris: Ephemeris, params: LissajousParams): OrbitState {
-  const frame = collinearFrame(params.system, params.point, t, ephemeris);
+  const frame = collinearFrame(params.secondary, params.point, t, ephemeris);
   return centerManifoldState(
     t, frame, params.ax, params.az, params.phase ?? 0, params.psi ?? 0, frame.omegaZ,
   );
@@ -200,7 +191,7 @@ export function lissajousState(t: number, ephemeris: Ephemeris, params: Lissajou
 // 指定したラグランジュ点まわりのハロー軌道初期状態。面内振幅は面外振幅 az から三次の
 // 振幅拘束で決まる(az=0 でも面内振幅は下限値を取り、そこから単調に増える)。
 export function haloState(t: number, ephemeris: Ephemeris, params: HaloParams): OrbitState {
-  const frame = collinearFrame(params.system, params.point, t, ephemeris);
+  const frame = collinearFrame(params.secondary, params.point, t, ephemeris);
   const ax = haloAmplitudeX(frame, params.point, params.az);
   // 拘束が成り立つ = 面内・面外の振動数が一致するので、面外も面内振動数 λ で駆動する。
   // 面外位相を π/2 ずらして面内の x と直交させ、閉じた三次元ループにする。

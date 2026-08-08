@@ -14,6 +14,7 @@ export function sweptSphereToi(
   bEnd: Vec3,
   radiusSum: number,
 ): SweptSphereHit | null {
+  // 相対位置 p(t) = p0 + d·t (t∈[0,1]) が半径和 radiusSum の球に触れる最小の t を解く2次方程式。
   const px = bStart.x - aStart.x;
   const py = bStart.y - aStart.y;
   const pz = bStart.z - aStart.z;
@@ -29,6 +30,7 @@ export function sweptSphereToi(
   if (!(discriminant >= 0)) return null;
   const toi = (-bb - Math.sqrt(discriminant)) / (2 * aa);
   if (!(toi >= 0 && toi <= 1)) return null;
+  // 接触時刻における相対位置がそのまま接触法線の向きになる。
   const nx0 = px + dx * toi;
   const ny0 = py + dy * toi;
   const nz0 = pz + dz * toi;

@@ -1,10 +1,12 @@
 // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点等)ラベルの算出と
 // HUD マーカーへの反映。
 import { Vec3, v3 } from '../../physics/vec3';
+import { AttractorId, OrbitingId } from '../../physics/attractor';
+import { bodyDef, SOLAR_SYSTEM } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { ATTRACTOR_NAMES } from '../hud/frame-labels';
+import { CELESTIAL_VIEWS } from '../celestial/celestial-registry';
 
 export interface FocusLabel {
   id: string;
@@ -13,19 +15,20 @@ export interface FocusLabel {
   kind: 'body';
 }
 
-const LABEL_NAMES: Record<string, string> = {
-  ...ATTRACTOR_NAMES,
-  'em-l1': '地球-月 L1',
-  'em-l2': '地球-月 L2',
-  'em-l3': '地球-月 L3',
-  'em-l4': '地球-月 L4',
-  'em-l5': '地球-月 L5',
-  'se-l1': '太陽-地球 L1',
-  'se-l2': '太陽-地球 L2',
-  'se-l3': '太陽-地球 L3',
-  'se-l4': '太陽-地球 L4',
-  'se-l5': '太陽-地球 L5',
-};
+const ATTRACTOR_IDS = Object.keys(SOLAR_SYSTEM) as AttractorId[];
+// 公転している天体(惑星 + 衛星)= ラグランジュ点を持てる天体。
+const ORBITING_IDS = ATTRACTOR_IDS.filter((id) => bodyDef(id).kind !== 'star') as OrbitingId[];
+
+// ラベル id とその表示名。天体本体 1 つにつき、公転しているならその L1〜L5 も足す
+// (表示名は「中心天体名-自分の名 Ln」)。
+const LABEL_NAMES: Record<string, string> = {};
+for (const id of ATTRACTOR_IDS) LABEL_NAMES[id] = CELESTIAL_VIEWS[id].name;
+for (const id of ORBITING_IDS) {
+  const def = bodyDef(id);
+  const primary: AttractorId = def.kind === 'planet' ? 'sun' : def.planet;
+  const prefix = `${CELESTIAL_VIEWS[primary].name}-${CELESTIAL_VIEWS[id].name}`;
+  for (const n of [1, 2, 3, 4, 5]) LABEL_NAMES[`${id}-l${n}`] = `${prefix} L${n}`;
+}
 
 export class FocusMarkers {
   readonly labels: FocusLabel[] = Object.entries(LABEL_NAMES).map(([id, name]) => ({
@@ -40,25 +43,13 @@ export class FocusMarkers {
   // 表示時刻 t の各ラベル座標を求め直す。
   update(t: number): void {
     const ephemeris = this.ephemeris;
-    const emL = ephemeris.emLagrangeAt(t);
-    const seL = ephemeris.seLagrangeAt(t);
 
-    // 各ラベルの座標を求める
-    const positions: Record<string, Vec3> = {
-      'earth': v3(0, 0, 0),
-      'moon': ephemeris.moonPosAt(t),
-      'sun': ephemeris.sunPosAt(t),
-      'em-l1': emL.L1,
-      'em-l2': emL.L2,
-      'em-l3': emL.L3,
-      'em-l4': emL.L4,
-      'em-l5': emL.L5,
-      'se-l1': seL.L1,
-      'se-l2': seL.L2,
-      'se-l3': seL.L3,
-      'se-l4': seL.L4,
-      'se-l5': seL.L5,
-    };
+    const positions: Record<string, Vec3> = {};
+    for (const id of ATTRACTOR_IDS) positions[id] = ephemeris.positionOf(id, t);
+    for (const id of ORBITING_IDS) {
+      const l = ephemeris.lagrangeAt(id, t);
+      for (const n of [1, 2, 3, 4, 5] as const) positions[`${id}-l${n}`] = l[`L${n}`];
+    }
 
     for (const lbl of this.labels) lbl.pos = positions[lbl.id]!;
   }

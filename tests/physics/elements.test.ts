@@ -15,7 +15,7 @@ import {
 } from '../../src/physics/elements';
 import { Attractor, elementsAround } from '../../src/physics/attractor';
 import { MU_EARTH, R_EARTH, orbitState } from '../../src/physics/orbital-state';
-import { MU_MOON } from '../../src/physics/ephemeris';
+import { MU_MOON } from '../../src/physics/solar-system';
 import { len, sub, v3 } from '../../src/physics/vec3';
 
 const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)) };

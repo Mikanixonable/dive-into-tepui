@@ -47,8 +47,9 @@ export class GameEntity {
   protected readonly bcInv: number = 0;
   // 過去列の保持時間 [s]。既定 0 = 記録しない。
   protected readonly historyDuration: number = 0;
-  // 予測する未来の長さ [s]。既定 0 = 予測しない。
-  readonly predictDuration: number = 0;
+  // 未来を予測する種別か。既定 false。予測する長さは表示期間に追従するので、
+  // 種別ごとに決まるのは可否だけ。
+  readonly predictsFuture: boolean = false;
   protected readonly scene?: THREE.Scene;
 
   // 未来の予測列。
@@ -76,11 +77,12 @@ export class GameEntity {
     return this._memoElements;
   }
 
-  // 過去列/予測列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする軌道周期を使う。
-  protected sampleInterval(bodies: readonly Attractor[], state: OrbitState = this.state): number {
+  // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする
+  // 軌道周期を等分し、窓が長いときは保持サンプル数の上限側で頭打ちにする。
+  protected sampleInterval(bodies: readonly Attractor[], state: OrbitState, keepDuration: number): number {
     const period = localOrbitPeriod(state.r, bodies);
-    if (isFinite(period) && period > 0) return period / C.PREDICT_SAMPLES_PER_REV;
-    return C.SHIP_HISTORY_DURATION / C.PREDICT_SAMPLES_PER_REV;
+    const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
+    return Math.max(span / C.PREDICT_SAMPLES_PER_REV, keepDuration / C.PREDICT_MAX_SAMPLES);
   }
 
   // 全天体重力 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。このステップぶんの重力源は
@@ -90,7 +92,9 @@ export class GameEntity {
   stepSim(dt: number, ephemeris: Ephemeris): void {
     if (!this.alive) return;
     const bodies = ephemeris.attractorsAt(this.state.t + dt / 2);
-    const interval = this.historyDuration > 0 ? this.sampleInterval(bodies) : 0;
+    const interval = this.historyDuration > 0
+      ? this.sampleInterval(bodies, this.state, this.historyDuration)
+      : 0;
     this.current.step(dt, bodies, this.bcInv, this.thrust, interval, this.historyDuration);
   }
 
@@ -105,18 +109,33 @@ export class GameEntity {
     this._predicted = null;
   }
 
-  // 実状態との位置ずれが tolerance を超えていたら予測列を破棄する。
-  resyncPrediction(simTime: number, tolerance: number): void {
-    if (this._predicted === null) return;
+  // 実状態との位置ずれが許容量を超えていたら予測列を破棄する。破棄したら true。
+  // bodies は simTime の重力源一覧、horizon は予測している長さ [s]。
+  resyncPrediction(simTime: number, bodies: readonly Attractor[], horizon: number): boolean {
+    if (this._predicted === null) return false;
     const predictedState = this._predicted.at(simTime);
-    if (predictedState === null || len(sub(predictedState.r, this.state.r)) > tolerance) {
-      this.invalidatePrediction();
+    if (predictedState !== null
+      && len(sub(predictedState.r, this.state.r)) <= this.resyncTolerance(bodies, horizon)) {
+      return false;
     }
+    this.invalidatePrediction();
+    return true;
   }
 
-  // 予測列の先端を dt ぶん1ステップ伸ばす。伸ばせなかったら false。
-  stepPrediction(ephemeris: Ephemeris, simTime: number, dt: number): boolean {
-    if (this.predictDuration <= 0) return false;
+  // 乖離判定の許容量 [m]。保持サンプル数の上限で間引きが粗くなると at() の補間そのものが
+  // 誤差を持つので、その誤差(間引き間隔の4乗に比例)まで許容量を広げる — 広げないと、
+  // 実状態と一致している列を毎フレーム破棄して予測が永久に完成しなくなる。
+  private resyncTolerance(bodies: readonly Attractor[], horizon: number): number {
+    const period = localOrbitPeriod(this.state.r, bodies);
+    const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
+    const coarsening = Math.max(1, (horizon / C.PREDICT_MAX_SAMPLES) / (span / C.PREDICT_SAMPLES_PER_REV));
+    return Math.max(C.PREDICT_RESET_DIST, C.PREDICT_SAMPLE_ERROR * coarsening ** 4);
+  }
+
+  // 予測列の先端を、呼び出し側が確定させた重力源 bodies のもとで dt ぶん1ステップ伸ばす。
+  // horizon は simTime から先に予測する長さ [s]。伸ばせなかったら false。
+  stepPrediction(bodies: readonly Attractor[], simTime: number, dt: number, horizon: number): boolean {
+    if (!this.predictsFuture) return false;
     // 自由飛行前提の予測は噴射中に成立しないので、推力がかかっている間は伸ばさない。
     if (this.thrust !== null) return false;
     if (this._predicted === null) {
@@ -125,12 +144,12 @@ export class GameEntity {
     }
     if (this.truncated) return false;
     const p = this._predicted;
-    
-    // 常にpredictDurationより先にp.state.tがあるようにpredictを伸ばす
-    if (p.state.t > simTime + this.predictDuration) return false;
 
-    const bodies = ephemeris.attractorsAt(p.state.t + dt / 2);
-    p.step(dt, bodies, this.bcInv, null, this.sampleInterval(bodies, p.state), this.predictDuration);
+    // ホライズン時刻ちょうどを at() で引けるよう、先端は必ずホライズンを1ステップぶん
+    // 越えたところまで伸ばす。
+    if (p.state.t > simTime + horizon) return false;
+
+    p.step(dt, bodies, this.bcInv, null, this.sampleInterval(bodies, p.state, horizon), horizon);
 
     // 有限チェック
     const { r, v } = p.state;

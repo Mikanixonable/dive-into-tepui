@@ -1,7 +1,10 @@
 import { EDGE, TEXT } from './game/theme';
 
 export interface PerfCountSource {
-  perfCounts(): { enemies: number; bullets: number; casings: number; debris: number };
+  perfCounts(): {
+    enemies: number; bullets: number; casings: number; debris: number;
+    predicted: number; predictComplete: number; predictDiscarded: number;
+  };
 }
 
 export class PerfMeter {
@@ -37,7 +40,8 @@ export class PerfMeter {
     this.el.textContent =
       `fps ${((n * 1000) / (now - this.lastFlush)).toFixed(0)}  ` +
       `sim ${(this.simMs / n).toFixed(2)}ms  render ${(this.renderMs / n).toFixed(2)}ms\n` +
-      `enemies ${c.enemies}  bullets ${c.bullets}  casings ${c.casings}  debris ${c.debris}` +
+      `enemies ${c.enemies}  bullets ${c.bullets}  casings ${c.casings}  debris ${c.debris}\n` +
+      `predict ${c.predictComplete}/${c.predicted}  discard ${c.predictDiscarded}` +
       (mem ? `\nheap ${(mem.usedJSHeapSize / 1048576).toFixed(1)} MB` : '');
     // 次の集計期間へ向けてリセットする
     this.simMs = 0;

@@ -54,6 +54,23 @@ agents.mdは古いドキュメントなので作業から除外して構いま�
 ### Step3
 無数の小惑星の追加。引力がありかつ重力を受ける存在の追加を目指す。
 積分計算を行うOrbitEntityと、step2で追加された太陽、惑星、地球の中間的存在であるから、これらを統一的に扱う枠組みが必要になる。
+spacial hashアルゴリズムによる遠方の小惑星の無視。
+
+現状(この時点で済んでいること):
+- 天体は恒星/惑星/衛星の3分類(`physics/attractor.ts` の `StarId`/`PlanetId`/`SatelliteId`)で
+  固定されており、静的事実は `physics/solar-system.ts` の `SOLAR_SYSTEM` レジストリに集約されている。
+  天体を1つ増やすには `PlanetId`(または `SatelliteId`)に id を1つ足し、`SOLAR_SYSTEM` と
+  `game/celestial/celestial-registry.ts` の2つのレジストリを埋めるだけでよい(木星がこの手順の
+  実例)。
+- `Ephemeris`(`physics/ephemeris.ts`)は `stateOf`/`positionOf`/`attractorsAt` などの
+  「id と時刻を渡すと状態が返る」API に統一されており、解析軌道であることを外部へ漏らさない。
+  小惑星を積分側(`OrbitEntity`)から合流させるときも、この API 形状を変えずに済むはずである。
+- 座標系は `physics/frame.ts` の `Frame = {center: AttractorId, rotatingWith: OrbitingId | null}`
+  (原点天体 × 回転の直積)に一本化されており、太陽中心系・月中心系・木星中心系はすでに選べる。
+  点(`FramePoint`)と方向(`FrameDir`)は型で区別されている。
+- 小惑星を追加する際、恒星/惑星/衛星の判別 union は広げない(小惑星は解析軌道で表せないから
+  小惑星なのであって、4つ目の分類ではない)。`OrbitEntity` 側の存在として `attractorsAt` へ
+  合流させる形にする。
 
 ## 太陽系のハードコードからの脱却
 
