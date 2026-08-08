@@ -9,7 +9,9 @@ export type MenuAction =
   | 'followToggle'
   | 'delete'
   | 'cancel'
-  | 'openShipPlacer';
+  | 'openShipPlacer'
+  | 'openDock'
+  | 'openObjectList';
 
 // 共通メニュー項目ファクトリ
 export const MenuCommon = {

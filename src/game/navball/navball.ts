@@ -1,4 +1,4 @@
-// 表示設定(基準モード・天球グリッド)の状態を保持する。navball 計器は廃止済み。
+// 表示設定(基準モード・天球グリッド)の状態を保持する。
 import { CelestialGridVisibility } from '../../render/celestial-grid';
 import { NavballPanel } from './navball-panel';
 
