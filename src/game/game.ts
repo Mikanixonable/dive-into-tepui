@@ -135,7 +135,7 @@ export class Game {
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
-    this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
+    this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene, this.settingsPanel);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this._hud.root);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
