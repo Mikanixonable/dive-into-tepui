@@ -339,6 +339,7 @@ export class Game {
         if (!this.editor.editMode) return;
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
         this.mapPicker.handleLeftClick(this.input);
+        this.mapPicker.handleDoubleClick(this.input);
         this.editor.handleMapPointer(this.input);
         this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
         this.editor.updateEditing(dt, this.input);
@@ -367,6 +368,7 @@ export class Game {
       if (this.editor.editMode) {
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
         this.mapPicker.handleLeftClick(this.input);
+        this.mapPicker.handleDoubleClick(this.input);
         this.editor.handleMapPointer(this.input);
         this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
         this.editor.updateEditing(dt, this.input);
@@ -482,6 +484,7 @@ export class Game {
     if (this.editor.editMode) {
       this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
       this.mapPicker.handleLeftClick(this.input);
+      this.mapPicker.handleDoubleClick(this.input);
       this.editor.handleMapPointer(this.input);
       this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
       this.editor.updateEditing(dt, this.input);
