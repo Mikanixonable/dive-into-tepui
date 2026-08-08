@@ -7,7 +7,7 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { Player } from '../player/player';
-import { ViewFrame } from '../../physics/projection';
+import { Viewpoint } from '../../physics/projection';
 
 // 初期視点: 機体後方やや上から見下ろす。
 const DEFAULT_ROT: Quat = qFromAxisAngle(v3(1, 0, 0), 0.3 - (10 * Math.PI) / 180);
@@ -19,7 +19,7 @@ export class ChaseCamera {
   private _camFollowAttitude = true;
   private panEci: Vec3 = v3(0, 0, 0);
 
-  view: ViewFrame = {
+  viewpoint: Viewpoint = {
     position: v3(),
     up: v3(0, 1, 0),
     lookTarget: v3(),
@@ -105,7 +105,7 @@ export class ChaseCamera {
 
     const center = this.player.state.r;
     const lookTarget = add(center, this.panEci);
-    this.view = {
+    this.viewpoint = {
       position: add(lookTarget, scale(qRotate(q, v3(0, 0, -1)), this.dist)),
       up: qRotate(q, v3(0, 1, 0)),
       lookTarget: lookTarget,
