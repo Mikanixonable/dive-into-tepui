@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
 import { kinematicState } from '../../physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../physics/solar-system';
+import { MU_EARTH, MU_SUN, R_EARTH, R_SUN } from '../../physics/solar-system';
 import { OrbitalElements } from '../../physics/elements';
 import { Attractor, orbitalElementsOf } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
@@ -43,10 +43,11 @@ export class EnvironmentScene {
   private readonly bodies: readonly CelestialBody[];
   private readonly sunBody: SunBody;
 
-  // マップモード専用の参照軌道線(静止軌道高度の目盛り・月軌道)。どちらも天体暦の
-  // 状態から作られる表示なので、環境描画とともにここが所有する。
+  // マップモード専用の参照軌道線(静止軌道高度の目盛り・月軌道・木星軌道)。いずれも
+  // 天体暦の状態から作られる表示なので、環境描画とともにここが所有する。
   readonly geoLine = new OrbitLine(0x8b93a0, 0.2);
   readonly moonLine = new OrbitLine(0xaab3c0, 0.2);
+  readonly jupiterLine = new OrbitLine(0xc9a97a, 0.2);
 
   // 天体ビューの配列がすべて ephemeris から引く。天体暦はゲーム側が所有する単一インスタンスを
   // 共有参照する(状態を持たない純サンプラ)。
@@ -57,8 +58,10 @@ export class EnvironmentScene {
     // マップ専用の参照軌道線をシーンへ追加する。
     this.geoLine.line.renderOrder = 0;
     this.moonLine.line.renderOrder = 0;
+    this.jupiterLine.line.renderOrder = 0;
     scene.add(this.geoLine.line);
     scene.add(this.moonLine.line);
+    scene.add(this.jupiterLine.line);
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     scene.add(this.ambient);
     this.starsMesh = createStars();
@@ -97,20 +100,31 @@ export class EnvironmentScene {
       cameraSystem.overviewMode ? (cameraSystem.overviewCamera.camera.far * 0.9) / 3.5e7 : 1.0);
   }
 
-  // 広範囲視点のときだけ geo/moon の参照線を表示する(戦闘ビューでは非表示)。
+  // 広範囲視点のときだけ geo/moon/jupiter の参照線を表示する(戦闘ビューでは非表示)。
   private syncReferenceLines(simTime: number, fo: FloatingOrigin, overviewMode: boolean): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo);
       this.moonLine.sync(null, fo);
+      this.jupiterLine.sync(null, fo);
       return;
     }
     this.geoLine.sync(GEO_ELEMENTS, fo, false);
     this.moonLine.sync(this.moonOrbitElements(simTime), fo, false);
+    this.jupiterLine.sync(this.jupiterOrbitElements(simTime), fo, false);
   }
 
   // 月の接触軌道要素(表示専用)。月自身は entity ではなく解析式のみを持つため、
   // ephemeris の解析状態をそのまま他の軌道線と同じ経路に載せる。
   private moonOrbitElements(simTime: number): OrbitalElements | null {
     return orbitalElementsOf(this.ephemeris.stateOf('moon', simTime), EARTH_ATTRACTOR);
+  }
+
+  // 木星の接触軌道要素(表示専用)。木星は太陽中心の軌道なので、太陽自身も ECI 上を
+  // 動く以上、地球のような固定 Attractor では組めず、太陽の現在状態を毎回引く。
+  private jupiterOrbitElements(simTime: number): OrbitalElements | null {
+    const sun: Attractor = {
+      id: 'sun', mu: MU_SUN, radius: R_SUN, state: this.ephemeris.stateOf('sun', simTime), degree2: null,
+    };
+    return orbitalElementsOf(this.ephemeris.stateOf('jupiter', simTime), sun);
   }
 }
