@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital-state';
 import { elementsAround, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
-import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
+import { Frame, INERTIAL_FRAME, toFramePoint, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
@@ -31,7 +31,7 @@ export class PlanTrajectory {
   private nodeCount = 0;
   // 積分予測が起点の楕円近似から大きく外れた場合、解析楕円線を隠す。
   private analyticDivergent = false;
-  private frame: Frame = 'inertial';
+  private frame: Frame = INERTIAL_FRAME;
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
@@ -123,10 +123,13 @@ export class PlanTrajectory {
     return null;
   }
 
-  // 時刻 t のサンプル位置 r を、現在の表示座標(ECI)へ変換する。
+  // 時刻 t のサンプル位置 r を、現在の表示座標(ECI)へ変換する。座標系の原点・姿勢はサンプル
+  // 時刻 t で bake し、表示時刻 unbakeTime で un-bake する(点なので FrameTransform を2つ引く)。
   toDisplay(r: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(r.x, r.y, r.z);
-    return toInertialPos(this.frame, this.unbakeTime, toFramePos(this.frame, t, r, this.ephemeris), this.ephemeris);
+    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t);
+    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime);
+    return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
   }
 
   // 時刻 t のサンプル位置 r をスクリーン座標へ投影する。

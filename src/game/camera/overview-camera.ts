@@ -6,7 +6,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input/input';
 import { ViewFrame } from '../../physics/projection';
-import { Frame, RelativeVec3, toFramePos, toInertialPos } from '../../physics/frame';
+import { Frame, FrameDir, INERTIAL_FRAME, toFrameDir, toInertialDir } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { qFromAxisAngle, qRotate } from '../../physics/attitude';
 import { MapPickable } from '../map-pick';
@@ -34,11 +34,11 @@ export class OverviewCamera {
   // offset_r … 注視点 → カメラの相対位置ベクトル(方位・仰角・距離を兼ねる)
   // pan_r    … focus → 注視点のパン変位
   // up_r     … カメラの上方向(テンキー0/1のロールで offset_r まわりに回る)
-  private offset_r: RelativeVec3;
-  private pan_r: RelativeVec3;
-  private up_r: RelativeVec3;
-  // カメラ視点を固定する座標系(慣性系 / 太陽回転系)。
-  private _cameraFrame: Frame = 'inertial';
+  private offset_r: FrameDir;
+  private pan_r: FrameDir;
+  private up_r: FrameDir;
+  // カメラ視点を固定する座標系。
+  private _cameraFrame: Frame = INERTIAL_FRAME;
   private simTime = 0; // set cameraFrame の座標変換に使う
   private _focus = 'earth';
   private _focusPos: Vec3 | null = null;
@@ -85,9 +85,10 @@ export class OverviewCamera {
       1e4,
       C.OVERVIEW_CAMERA_FAR,
     );
-    this.offset_r = toFramePos(this._cameraFrame, 0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST), this.ephemeris);
-    this.pan_r = toFramePos(this._cameraFrame, 0, v3(), this.ephemeris);
-    this.up_r = toFramePos(this._cameraFrame, 0, WORLD_UP, this.ephemeris);
+    const tf0 = this.ephemeris.frameTransformAt(this._cameraFrame, 0);
+    this.offset_r = toFrameDir(tf0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST));
+    this.pan_r = toFrameDir(tf0, v3());
+    this.up_r = toFrameDir(tf0, WORLD_UP);
   }
 
   // 注視点からカメラまでの距離を返す。
@@ -97,13 +98,13 @@ export class OverviewCamera {
 
   // カメラのロールのみを初期状態(ワールド上方)に戻す。
   reset(): void {
-    this.up_r = toFramePos(this._cameraFrame, this.simTime, WORLD_UP, this.ephemeris);
+    this.up_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime), WORLD_UP);
     this._hud.hint('マップ視点のロールをリセット');
   }
 
   // パン変位をゼロに戻す。
   resetPan(): void {
-    this.pan_r = toFramePos(this._cameraFrame, this.simTime, v3(), this.ephemeris);
+    this.pan_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime), v3());
   }
 
   // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は地球へ戻す。
@@ -140,12 +141,14 @@ export class OverviewCamera {
   set cameraFrame(frame: Frame) {
     const from = this._cameraFrame;
     if (frame === from) return;
-    const offEci = toInertialPos(from, this.simTime, this.offset_r, this.ephemeris);
-    const panEci = toInertialPos(from, this.simTime, this.pan_r, this.ephemeris);
-    const upEci = toInertialPos(from, this.simTime, this.up_r, this.ephemeris);
-    this.offset_r = toFramePos(frame, this.simTime, offEci, this.ephemeris);
-    this.pan_r = toFramePos(frame, this.simTime, panEci, this.ephemeris);
-    this.up_r = toFramePos(frame, this.simTime, upEci, this.ephemeris);
+    const tfFrom = this.ephemeris.frameTransformAt(from, this.simTime);
+    const offEci = toInertialDir(tfFrom, this.offset_r);
+    const panEci = toInertialDir(tfFrom, this.pan_r);
+    const upEci = toInertialDir(tfFrom, this.up_r);
+    const tfTo = this.ephemeris.frameTransformAt(frame, this.simTime);
+    this.offset_r = toFrameDir(tfTo, offEci);
+    this.pan_r = toFrameDir(tfTo, panEci);
+    this.up_r = toFrameDir(tfTo, upEci);
     this._cameraFrame = frame;
   }
 
@@ -161,9 +164,10 @@ export class OverviewCamera {
   ): void {
     this.simTime = simTime;
     const focus = this.resolveFocus(candidates);
-    let offEci = toInertialPos(this._cameraFrame, simTime, this.offset_r, this.ephemeris);
-    let panEci = toInertialPos(this._cameraFrame, simTime, this.pan_r, this.ephemeris);
-    let upEci = toInertialPos(this._cameraFrame, simTime, this.up_r, this.ephemeris);
+    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, simTime);
+    let offEci = toInertialDir(tf, this.offset_r);
+    let panEci = toInertialDir(tf, this.pan_r);
+    let upEci = toInertialDir(tf, this.up_r);
 
     // ホイールで距離を、ドラッグ/キーで視点方向を更新する。ヨー/ピッチはワールド軸ではなく
     // 現在の上/右軸まわりに回す — ロールで上方向が傾いても、画面上の動きと入力方向が一致する。
@@ -208,8 +212,8 @@ export class OverviewCamera {
       fovDeg: this.fov,
       aspect: window.innerWidth / window.innerHeight,
     };
-    this.up_r = toFramePos(this._cameraFrame, simTime, upEci, this.ephemeris);
-    this.offset_r = toFramePos(this._cameraFrame, simTime, offEci, this.ephemeris);
-    this.pan_r = toFramePos(this._cameraFrame, simTime, panEci, this.ephemeris);
+    this.up_r = toFrameDir(tf, upEci);
+    this.offset_r = toFrameDir(tf, offEci);
+    this.pan_r = toFrameDir(tf, panEci);
   }
 }
