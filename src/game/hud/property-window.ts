@@ -243,8 +243,9 @@ export class PropertyWindow<A extends string = string> {
     document.body.appendChild(this.el);
   }
 
-  // 要求座標をビューポート内へクランプして配置する。ドラッグ・resize 再クランプの両方から呼ぶ。
-  private moveTo(clientX: number, clientY: number): void {
+  // 要求座標をビューポート内へクランプして配置する。ドラッグ・resize 再クランプ・
+  // 既存ウィンドウを右クリック位置へ動かす呼び出し元の全てから呼ぶ。
+  moveTo(clientX: number, clientY: number): void {
     const rect = this.el.getBoundingClientRect();
     const pos = clampOverlayPosition(
       { x: clientX, y: clientY },
