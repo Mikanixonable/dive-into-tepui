@@ -13,16 +13,16 @@ import { Player } from '../player/player';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Vec3 } from '../../physics/vec3';
-import { ndcToScreen, Projected, projectToNdc, ViewFrame } from '../../physics/projection';
-import { Frame } from '../../physics/frame';
+import { ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
+import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { AttractorId } from '../../physics/attractor';
 import { CELESTIAL_VIEWS } from '../celestial/celestial-registry';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 
-// 論理カメラの状態(ViewFrame)を THREE.PerspectiveCamera へ反映する。
-function syncCameraToViewFrame(camera: THREE.PerspectiveCamera, view: ViewFrame, fo: FloatingOrigin): void {
+// 論理カメラの状態(Viewpoint)を THREE.PerspectiveCamera へ反映する。
+function syncCameraToViewpoint(camera: THREE.PerspectiveCamera, view: Viewpoint, fo: FloatingOrigin): void {
   camera.position.copy(fo.RtoThreeV3(view.position));
   camera.up.set(view.up.x, view.up.y, view.up.z);
   camera.lookAt(fo.RtoThreeV3(view.lookTarget));
@@ -41,7 +41,7 @@ function syncCameraToViewFrame(camera: THREE.PerspectiveCamera, view: ViewFrame,
 }
 
 // THREE.js カメラ行列やフローティングオリジンに依存しないスクリーン投影関数を組む。
-function projectionFromView(view: ViewFrame): ProjectFn {
+function projectionFromViewpoint(view: Viewpoint): ProjectFn {
   return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), window.innerWidth, window.innerHeight);
 }
 
@@ -91,7 +91,7 @@ export class CameraSystem {
     this.overviewCameraPanel.onFocusSelect = (focus) => {
       this.overviewCamera.setFocus(focus);
     };
-    this.overviewCameraPanel.onFrameSelect = (frame: Frame) => {
+    this.overviewCameraPanel.onFrameSelect = (frame: ReferenceFrame) => {
       this.overviewCamera.cameraFrame = frame;
     };
     this.overviewCameraPanel.onAmmoToggle = (show: boolean) => {
@@ -128,7 +128,7 @@ export class CameraSystem {
 
   // アクティブカメラの位置を返す。
   get activeCameraPos(): Vec3 {
-    return this.overviewMode ? this.overviewCamera.view.position : this.combatCamera.view.position;
+    return this.overviewMode ? this.overviewCamera.viewpoint.position : this.combatCamera.viewpoint.position;
   }
 
   // 戦闘ビューでズーム視点(照準ズーム)が有効かどうか。広範囲視点では常に false。
@@ -183,7 +183,7 @@ export class CameraSystem {
   // 視点状態をフローティングオリジン(fo)で補正してアクティブカメラへ反映する。
   sync(fo: FloatingOrigin): void {
     const active = this.overviewMode ? this.overviewCamera : this.combatCamera;
-    syncCameraToViewFrame(active.camera, active.view, fo);
+    syncCameraToViewpoint(active.camera, active.viewpoint, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
 
@@ -203,6 +203,6 @@ export class CameraSystem {
 
   // アクティブカメラの画面投影関数を返す。
   get activeCameraProjection(): ProjectFn {
-    return projectionFromView(this.overviewMode ? this.overviewCamera.view : this.combatCamera.view);
+    return projectionFromViewpoint(this.overviewMode ? this.overviewCamera.viewpoint : this.combatCamera.viewpoint);
   }
 }

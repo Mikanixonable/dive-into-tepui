@@ -7,7 +7,7 @@
 // ?debugLines=1 のときだけ有効(PerfMeter の ?perf=1 と同じ、URL パラメータで自己完結する
 // デバッグ表示のパターン)。無効時は SampledLine を1本も作らない。
 import * as THREE from 'three/webgpu';
-import { Frame } from '../physics/frame';
+import { ReferenceFrame } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from './floating-origin';
 import { SampledLine } from '../render/sampled-line';
@@ -26,7 +26,7 @@ export class DebugHistoryLine {
 
   // targets: このフレームに線を描きたい対象の集合(呼び出し側が決める。既定は自機+ターゲット)。
   // frame は plan/plan-display.ts の PlanDisplay.trajectoryFrame と同じ値を渡す(bake の座標系)。
-  sync(targets: readonly GameEntity[], frame: Frame, simTime: number, ephemeris: Ephemeris, fo: FloatingOrigin): void {
+  sync(targets: readonly GameEntity[], frame: ReferenceFrame, simTime: number, ephemeris: Ephemeris, fo: FloatingOrigin): void {
     if (!this.enabled) return;
 
     const alive = new Set(targets);

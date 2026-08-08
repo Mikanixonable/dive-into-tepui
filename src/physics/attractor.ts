@@ -76,7 +76,7 @@ export function localOrbitPeriod(r: Vec3, bodies: readonly Attractor[]): number 
 
 const IDENTITY_QUAT: Quat = { x: 0, y: 0, z: 0, w: 1 };
 
-// body を原点とする ECI 恒等姿勢の座標系変換。frame.ts の Frame
+// body を原点とする ECI 恒等姿勢の座標系変換。frame.ts の ReferenceFrame
 // ({center: body.id, rotatingWith: null}) と等価だが、天体暦を引き直さず既に手元にある
 // Attractor のスナップショットからその場で組む。
 export function frameOfAttractor(body: Attractor): FrameTransform {
