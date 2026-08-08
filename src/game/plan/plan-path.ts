@@ -38,6 +38,10 @@ export class PlanPath {
   private cameraPos: Vec3 | null = null;
   // 最後のバーン後(これから乗る軌道)の起点状態。末尾区間が無ければ null。
   finalSegmentStart: KinematicState | null = null;
+  // finalSegmentStart と同じ区間の積分済みサンプル列(古い順)。null は finalSegmentStart 自体が
+  // null のとき。PlanArc.samples をそのまま公開する参照で、update で区間を再積分しない限り
+  // 同一参照を保つ(render/sampled-line.ts の再bake抑制が参照同一性で効くのはこの前提による)。
+  finalSegmentSamples: readonly KinematicState[] | null = null;
 
   // group をシーンへ登録する(初期状態は非表示)。
   constructor(scene: THREE.Scene, private readonly displayTimeManager: DisplayTimeManager) {
@@ -61,7 +65,9 @@ export class PlanPath {
     }
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
-    this.finalSegmentStart = segments.length > plan.nodes.length ? segments[segments.length - 1]!.state0 : null;
+    const hasFinalSegment = segments.length > plan.nodes.length;
+    this.finalSegmentStart = hasFinalSegment ? segments[segments.length - 1]!.state0 : null;
+    this.finalSegmentSamples = hasFinalSegment ? this.arcs[segments.length - 1]!.samples : null;
   }
 
   // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の arc を隠す。
