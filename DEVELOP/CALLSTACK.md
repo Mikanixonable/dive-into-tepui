@@ -223,11 +223,11 @@
         - activeStage.recordPlayerLost() // 同上
     - prune() ×5 → entity.dispose() // alive=false の個体ごと(scene から除去、必要なら geometry も破棄)。players は寿命判定のみで prune の対象外(喪失艦も配列に残り続ける)
   - predictor.update(simTime, player, canGrow, horizon) // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。canGrow = simSpeedManager.canGrowPrediction、horizon = displayTimeManager.durationSec(game.currentOrbitPeriod())。currentOrbitPeriod() は自機の現在軌道を strongestAttractor 周りで求めるだけの純計算(自機なしなら NaN)。視点/モードによる分岐なし
-    - resyncPrediction(simTime, bodies, horizon) // entities.all() の全対象、毎フレーム無条件(canGrow が false でも省略しない — 実状態は動き続けるので、乖離した予測列を放置すると無関係な軌道が描かれ続ける)。bodies は simTime ぶんを1回だけ引いて全対象で使い回す
+    - resyncPrediction(simTime, attractors, horizon) // entities.all() の全対象、毎フレーム無条件(canGrow が false でも省略しない — 実状態は動き続けるので、乖離した予測列を放置すると無関係な軌道が描かれ続ける)。attractors は simTime ぶんを1回だけ引いて全対象で使い回す
       - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
     - [canGrow] advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループも dt・重力源の決定(ephemeris.attractorsAt(tip.t) → localOrbitPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で頭打ち)も Predictor 側が持つ(stepSim に対する simulationSubStep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
-      - player.stepPrediction(bodies, simTime, dt, horizon) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt・bodies を都度計算し直しながら1ステップずつ繰り返し呼ぶ
-        - predicted.step() // 呼び出し側が確定させた bodies で1ステップ積分
+      - player.stepPrediction(attractors, simTime, dt, horizon) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt・attractors を都度計算し直しながら1ステップずつ繰り返し呼ぶ
+        - predicted.step() // 呼び出し側が確定させた attractors で1ステップ積分
     - [canGrow] advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player を除外しないので同じフレームで二重に予算が付き得る)。entity.stepPrediction() が最初から false(predictsFuture=false/推力中/truncated)なら消費 0 で次へ即進む
   - effects.update(dt, simDt) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と移流。ポーズ中は呼ばれない(=止まる)
   - guide.update(plan, player, simTime, editMode, ephemeris.attractorsAt(simTime)) // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させるため
@@ -300,13 +300,13 @@
     - overviewCameraPanel.setVisible(overviewMode) + setFocus()/setFrame() // MAP VIEW パネル。点灯反映は overviewMode のみ
     - focusMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。overviewMode のみ
     - focusMarkers.hideLabels() // !overviewMode のみ
-  - project / overviewMode / simTime / bodies(= ephemeris.attractorsAt(simTime)) / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
+  - project / overviewMode / simTime / attractors(= ephemeris.attractorsAt(simTime)) / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
   - environment.sync()
     - sunBody.setSunlit(lit) // lit = sunlitFactor(playerPos, ephemeris.sunDirAt(displayTime), …)。overviewMode では 1.0 固定
-    - [bodies(= CELESTIAL_VIEWS 登録順の CelestialBody[])ごと] body.sync(fo, displayTime, cameraSystem, ephemeris)
+    - [bodies(= CELESTIAL_BODIES 登録順の CelestialBody[])ごと] body.sync(fo, displayTime, cameraSystem, ephemeris)
       - EarthBody.sync() → earth.group.position / earth.setRotation() / earth.setSunDir() / earth.tick()
       - SunBody.sync() → billboard 位置(カメラ相対の圧縮距離)+ sunLight.position・intensity(setSunlit の lit 反映)
-      - PlanetBody.sync()(月・木星) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。mesh.lookAt() は常に
+      - SphereBody.sync()(月・木星) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。mesh.lookAt() は常に
     - ambient.intensity 更新 // lit から導出
     - syncStars() // starsMesh をカメラへ追従、overviewMode でさらに拡大
     - syncReferenceLines() → geoLine.sync() + moonLine.sync() // !overviewMode では両方 null 渡しで非表示
@@ -328,8 +328,8 @@
     displayState が null(predictsFuture=false の種別が未来表示中、または予測ホライズン超過)なら visible=false
   - effects.sync() → flashEffectManager.syncFlashEffects()
     - billboard.sync() // 生存中のフラッシュごと(寿命・移流は update フェーズで済んでいる)
-  - targeter.sync(bodies) // ターゲットに紐づく表示物をまとめて
-    - syncOrbitLine(bodies) // 各線の中心天体は対象ごとに strongestAttractor(target.state.r, bodies) で導出
+  - targeter.sync(attractors) // ターゲットに紐づく表示物をまとめて
+    - syncOrbitLine(attractors) // 各線の中心天体は対象ごとに strongestAttractor(target.state.r, attractors) で導出
       - enemy.orbitLine.sync() // 敵ごと。overviewMode かつ生存かつ第一・第二どちらでもないときだけ表示
       - orbitLine.sync() // 第一ターゲット軌道線(オレンジ)
       - secondaryOrbitLine.sync() // 第二ターゲット軌道線(シアン)
@@ -376,7 +376,7 @@
     - [CreativeStage] syncBaseMarkers(displayTime) → base.displayState(displayTime) → markerManager.set('base<i>', 'mk-poi', '●') // ラベルは player があれば距離付き
       - [!overviewMode] markerManager.setBearing('base<i>-bearing', ...) // 画面外の基地への方位矢印。overviewMode 中は隠す
       // entities.bases の添字ごと(logistics.syncMarkers と同じ、前フレームより減った添字だけ hide())
-  - hud.panels.sync(game, bodies) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
+  - hud.panels.sync(game, attractors) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
   - hud.tick() // ヒント/トーストのフェードアウト

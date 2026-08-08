@@ -48,9 +48,9 @@ export class Bullet extends GameEntity {
     }
 
     // 消滅条件は「自機から離れすぎた」が主で、寿命は保険。
-    checkLoss(_dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3, bodies: readonly Attractor[]): void {
+    checkLoss(_dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3, attractors: readonly Attractor[]): void {
         if (!this.alive) return;
-        if (hitsAnySurface(this.state.r, bodies, C.DEBRIS_REENTRY_ALT)) { this.alive = false; return; }
+        if (hitsAnySurface(this.state.r, attractors, C.DEBRIS_REENTRY_ALT)) { this.alive = false; return; }
         if (lenSq(sub(this.state.r, playerPos)) > C.BULLET_MAX_DIST * C.BULLET_MAX_DIST) { this.alive = false; return; }
         if (simTime - this.bornSim >= this.lifetime) this.alive = false;
     }
