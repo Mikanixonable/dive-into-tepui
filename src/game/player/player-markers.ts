@@ -27,10 +27,9 @@ export class PlayerMarkers {
       }
       if (displayState) {
         const color = isActive ? '#ff0000' : undefined;
-        const heading = this.markerManager.headingDeg(displayState.r, displayState.v, project, scaleFn);
+        const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn);
         this.markerManager.setPosition(
-          selfKey, 'mk-self', '▲', displayState.r, project, displayName, 1, color,
-          heading !== null ? heading + 90 : undefined,
+          selfKey, 'mk-self', '▲', displayState.r, project, displayName, 1, color, rotationDeg,
         );
       } else {
         this.markerManager.hide(selfKey);
