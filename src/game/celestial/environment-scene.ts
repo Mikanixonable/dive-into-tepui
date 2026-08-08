@@ -13,7 +13,7 @@ import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { CelestialBody } from './celestial-body';
-import { CELESTIAL_VIEWS } from './celestial-registry';
+import { CELESTIAL_BODIES } from './celestial-registry';
 import { SunBody } from './sun-body';
 
 // 地球(原点に静止)。参照軌道線はいずれも地球中心の表示なので、この固定値を center として使う。
@@ -61,7 +61,7 @@ export class EnvironmentScene {
     scene.add(this.starsMesh);
     this.celestialGrid = new CelestialGrid(scene);
 
-    this.bodies = Object.values(CELESTIAL_VIEWS).map((v) => v.create());
+    this.bodies = Object.values(CELESTIAL_BODIES).map((v) => v.create());
     this.sunBody = this.bodies.find((b): b is SunBody => b.id === 'sun')!;
     for (const body of this.bodies) body.build(scene);
   }

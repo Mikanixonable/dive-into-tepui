@@ -6,7 +6,7 @@ import { bodyDef, SOLAR_SYSTEM } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { CELESTIAL_VIEWS } from '../celestial/celestial-registry';
+import { CELESTIAL_BODIES } from '../celestial/celestial-registry';
 
 export interface FocusLabel {
   id: string;
@@ -22,11 +22,11 @@ const ORBITING_IDS = ATTRACTOR_IDS.filter((id) => bodyDef(id).kind !== 'star') a
 // ラベル id とその表示名。天体本体 1 つにつき、公転しているならその L1〜L5 も足す
 // (表示名は「中心天体名-自分の名 Ln」)。
 const LABEL_NAMES: Record<string, string> = {};
-for (const id of ATTRACTOR_IDS) LABEL_NAMES[id] = CELESTIAL_VIEWS[id].name;
+for (const id of ATTRACTOR_IDS) LABEL_NAMES[id] = CELESTIAL_BODIES[id].name;
 for (const id of ORBITING_IDS) {
   const def = bodyDef(id);
   const primary: AttractorId = def.kind === 'planet' ? 'sun' : def.planet;
-  const prefix = `${CELESTIAL_VIEWS[primary].name}-${CELESTIAL_VIEWS[id].name}`;
+  const prefix = `${CELESTIAL_BODIES[primary].name}-${CELESTIAL_BODIES[id].name}`;
   for (const n of [1, 2, 3, 4, 5]) LABEL_NAMES[`${id}-l${n}`] = `${prefix} L${n}`;
 }
 

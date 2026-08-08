@@ -273,5 +273,5 @@ export abstract class Ship extends GameEntity {
   }
 
   // オーバービュー時の非ターゲット背景描画用
-  syncBackgroundOrbitLine(_show: boolean, _fo: FloatingOrigin, _bodies: readonly Attractor[]): void {}
+  syncBackgroundOrbitLine(_show: boolean, _fo: FloatingOrigin, _attractors: readonly Attractor[]): void {}
 }

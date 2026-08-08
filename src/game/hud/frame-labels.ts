@@ -3,10 +3,10 @@
 import { ReferenceFrame, FRAMES } from '../../physics/frame';
 import { AttractorId, PlanetId, SatelliteId } from '../../physics/attractor';
 import { primaryOf } from '../../physics/solar-system';
-import { CELESTIAL_VIEWS } from '../celestial/celestial-registry';
+import { CELESTIAL_BODIES } from '../celestial/celestial-registry';
 
 export const ATTRACTOR_NAMES: Record<AttractorId, string> = Object.fromEntries(
-  Object.entries(CELESTIAL_VIEWS).map(([id, v]) => [id, v.name]),
+  Object.entries(CELESTIAL_BODIES).map(([id, v]) => [id, v.name]),
 ) as Record<AttractorId, string>;
 
 // FRAMES の各要素に表示名をつける。回転しない系は「(天体名)中心慣性系」、回転する系は

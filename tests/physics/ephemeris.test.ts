@@ -203,9 +203,9 @@ export function register(): void {
   });
 
   test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は R_EARTH', () => {
-    const bodies = eph.attractorsAt(1234);
-    assert.deepEqual(bodies.map((b) => b.id), ['earth', 'moon', 'jupiter', 'sun']);
-    assert.equal(bodies[0]!.radius, R_EARTH);
+    const attractors = eph.attractorsAt(1234);
+    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'jupiter', 'sun']);
+    assert.equal(attractors[0]!.radius, R_EARTH);
   });
 }
 

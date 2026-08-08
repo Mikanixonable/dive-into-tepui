@@ -197,9 +197,9 @@ export class Enemy extends Ship {
   }
 
   // 再突入による自然死。alive がすでに false なら何もしない(多重処理防止)。
-  checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3, bodies: readonly Attractor[]): void {
+  checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (!hitsAnySurface(this.state.r, bodies, C.REENTRY_ALT)) return;
+    if (!hitsAnySurface(this.state.r, attractors, C.REENTRY_ALT)) return;
     this.alive = false;
     this.destroyEffect();
     activeStage.recordEnemyDeath(this, simTime, 'reentry');
@@ -290,8 +290,8 @@ export class Enemy extends Ship {
   }
 
   // オーバービュー時の非ターゲット背景描画用
-  syncBackgroundOrbitLine(show: boolean, fo: FloatingOrigin, bodies: readonly Attractor[]): void {
-    const center = strongestAttractor(this.state.r, bodies);
+  syncBackgroundOrbitLine(show: boolean, fo: FloatingOrigin, attractors: readonly Attractor[]): void {
+    const center = strongestAttractor(this.state.r, attractors);
     this.orbitLine.sync(show ? this.elementsAround(center) : null, fo);
   }
 

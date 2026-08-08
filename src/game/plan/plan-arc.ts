@@ -20,8 +20,8 @@ type ComputeKey = { state0: OrbitState; end: number; };
 // 刻み幅。その場で最も強く引く天体を中心とする軌道運動の時間スケールを
 // PLAN_ARC_STEPS_PER_REV 等分する。
 // 低軌道では細かく、遠地点では粗くなり、離心軌道でも1周を通して精度が一定になる。
-function stepDt(r: Vec3, bodies: readonly Attractor[]): number {
-  return localOrbitPeriod(r, bodies) / C.PLAN_ARC_STEPS_PER_REV;
+function stepDt(r: Vec3, attractors: readonly Attractor[]): number {
+  return localOrbitPeriod(r, attractors) / C.PLAN_ARC_STEPS_PER_REV;
 }
 
 export class PlanArc {
@@ -133,17 +133,17 @@ export class PlanArc {
 
     let steps = 0;
     while (entity.state.t < end - EPOCH_EPS) {
-      const sizingBodies = ephemeris.attractorsAt(entity.state.t);
+      const sizingAttractors = ephemeris.attractorsAt(entity.state.t);
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
-      const dt = Math.min(stepDt(entity.state.r, sizingBodies), end - entity.state.t);
+      const dt = Math.min(stepDt(entity.state.r, sizingAttractors), end - entity.state.t);
       if (dt <= 1e-9) break;
-      const bodies = ephemeris.attractorsAt(entity.state.t + dt / 2);
-      entity.step(dt, bodies, C.SHIP_BCINV, null, sampleInterval, duration);
+      const attractors = ephemeris.attractorsAt(entity.state.t + dt / 2);
+      entity.step(dt, attractors, C.SHIP_BCINV, null, sampleInterval, duration);
 
       const { r, v } = entity.state;
       const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
         && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-      if (!finite || hitsAnySurface(r, bodies, C.REENTRY_ALT)) {
+      if (!finite || hitsAnySurface(r, attractors, C.REENTRY_ALT)) {
         this.truncated = true;
         break;
       }

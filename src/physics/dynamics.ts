@@ -72,10 +72,10 @@ export function stepOrbitRK4(s: OrbitState, dt: number, accel: AccelFn): OrbitSt
 }
 
 // 全天体からの重力(Σ attractorAccel — ECI が非慣性系であることの補正込み)+ J2 + 大気抵抗。
-function accel(r: Vec3, v: Vec3, bodies: readonly Attractor[], bcInv: number): Vec3 {
+function accel(r: Vec3, v: Vec3, attractors: readonly Attractor[], bcInv: number): Vec3 {
   let ax = 0, ay = 0, az = 0;
-  for (const body of bodies) {
-    const g = attractorAccel(r, body);
+  for (const attractor of attractors) {
+    const g = attractorAccel(r, attractor);
     ax += g.x; ay += g.y; az += g.z;
   }
   const j2 = j2Accel(r);
@@ -83,12 +83,12 @@ function accel(r: Vec3, v: Vec3, bodies: readonly Attractor[], bcInv: number): V
   return v3(ax + j2.x + drag.x, ay + j2.y + drag.y, az + j2.z + drag.z);
 }
 
-// 全天体重力 + J2 + 大気抵抗 + 推力の RK4 1ステップ。bodies はこのステップぶん呼び出し側が
+// 全天体重力 + J2 + 大気抵抗 + 推力の RK4 1ステップ。attractors はこのステップぶん呼び出し側が
 // 確定させた重力源一覧(Ephemeris.attractorsAt)。bcInv/thrust は種別ごとに異なるため
 // 引数で受け取り、モジュール内に既定値を持たない。
-export function stepDynamicsRK4(state: OrbitState, dt: number, bodies: readonly Attractor[], bcInv: number, thrust: Vec3 | null): OrbitState {
+export function stepDynamicsRK4(state: OrbitState, dt: number, attractors: readonly Attractor[], bcInv: number, thrust: Vec3 | null): OrbitState {
   return stepOrbitRK4(state, dt, (rx, ry, rz, vx, vy, vz) => {
-    const a = accel(v3(rx, ry, rz), v3(vx, vy, vz), bodies, bcInv);
+    const a = accel(v3(rx, ry, rz), v3(vx, vy, vz), attractors, bcInv);
     return thrust ? add(a, thrust) : a;
   });
 }

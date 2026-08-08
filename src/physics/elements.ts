@@ -71,10 +71,10 @@ export function elementsFromState(rel: OrbitState, center: Attractor): Elements 
 
 // 中心天体表面からの近地点・遠地点高度。遠地点は楕円軌道のみ(双曲線・放物線は NaN)。
 export function apsisAltitudes(el: Elements): { pe: number; ap: number } {
-  const bodyRadius = el.center.radius;
+  const centerRadius = el.center.radius;
   return {
-    pe: el.p / (1 + el.e) - bodyRadius,
-    ap: el.e < 1 && isFinite(el.a) ? el.a * (1 + el.e) - bodyRadius : NaN,
+    pe: el.p / (1 + el.e) - centerRadius,
+    ap: el.e < 1 && isFinite(el.a) ? el.a * (1 + el.e) - centerRadius : NaN,
   };
 }
 

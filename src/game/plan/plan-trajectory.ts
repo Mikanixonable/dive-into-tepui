@@ -202,7 +202,7 @@ function buildSegments(plan: Plan, ephemeris: Ephemeris, displayTimeManager: Dis
     segments.push({ state0, end: node.t });
     state0 = node;
   }
-  const bodies = ephemeris.attractorsAt(state0.t);
-  segments.push({ state0, end: state0.t + segmentDurationFrom(state0, bodies, displayTimeManager) });
+  const attractors = ephemeris.attractorsAt(state0.t);
+  segments.push({ state0, end: state0.t + segmentDurationFrom(state0, attractors, displayTimeManager) });
   return segments;
 }

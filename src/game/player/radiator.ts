@@ -112,8 +112,8 @@ export class RadiatorSystem {
   // theta で折れた放熱面の法線(world 座標、単位ベクトル)。
   private worldNormal(theta: number, att: Attitude): Vec3 {
     const foldQ = qFromAxisAngle(v3(0, 1, 0), theta);
-    const bodyNormal = qRotate(foldQ, v3(0, 0, 1));
-    return qRotate(att.q, bodyNormal);
+    const shipNormal = qRotate(foldQ, v3(0, 0, 1));
+    return qRotate(att.q, shipNormal);
   }
 
   // 日照面が受け取る太陽入射 [W]。sunlit は sunlitFactor の戻り値(0..1)、
@@ -139,10 +139,10 @@ export class RadiatorSystem {
   // (損耗は放熱板パーツの HP が正本なので、減らすのは所有者側の責務)。
   sideHitBy(hitR: Vec3, shipR: Vec3, att: Attitude): RadiatorSide | null {
     const worldOffset = sub(hitR, shipR);
-    const bodyOffset = qRotate(qInvert(att.q), worldOffset);
-    if (len(bodyOffset) <= C.PLAYER_HULL_RADIUS) return null;
+    const shipOffset = qRotate(qInvert(att.q), worldOffset);
+    if (len(shipOffset) <= C.PLAYER_HULL_RADIUS) return null;
 
-    const side: RadiatorSide = bodyOffset.x >= 0 ? 'up' : 'down';
+    const side: RadiatorSide = shipOffset.x >= 0 ? 'up' : 'down';
     if (this.panels[side].deploy < C.RADIATOR_HITTABLE_DEPLOY) return null;
     if (this.wear[side] >= 1) return null;
     return side;

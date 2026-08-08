@@ -11,7 +11,7 @@ import type { OrbitingId } from '../../physics/attractor';
 import * as C from '../const';
 
 export type ObjectType = 'player' | 'enemy' | 'ammo' | 'base';
-export type ReferenceBody = AttractorId;
+export type ReferenceAttractor = AttractorId;
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'libration';
 export type LibrationOrbitKind = 'halo' | 'lissajous';
@@ -22,7 +22,7 @@ export type LibrationOrbitKind = 'halo' | 'lissajous';
 export interface ShipPlacerForm {
   readonly objectType: ObjectType;
   readonly placementMode: PlacementMode;
-  readonly body: ReferenceBody;
+  readonly attractor: ReferenceAttractor;
   readonly sizeMode: SizeShapeMode;
   readonly peAltKm: number;
   readonly apAltKm: number;
@@ -64,7 +64,7 @@ const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [
 const ORBITING_IDS = (Object.keys(SOLAR_SYSTEM) as AttractorId[])
   .filter((id) => bodyDef(id).kind !== 'star') as OrbitingId[];
 
-const BODY_ITEMS: readonly (readonly [ReferenceBody, string])[] = ORBITING_IDS.map((id) => [id, ATTRACTOR_NAMES[id]]);
+const ATTRACTOR_ITEMS: readonly (readonly [ReferenceAttractor, string])[] = ORBITING_IDS.map((id) => [id, ATTRACTOR_NAMES[id]]);
 
 const LIBRATION_SYSTEM_ITEMS: readonly (readonly [OrbitingId, string])[] = ORBITING_IDS.map((id) => {
   const def = bodyDef(id);
@@ -125,7 +125,7 @@ export class ShipPlacerPanel {
   private readonly objectType: SegmentedControl<ObjectType>;
   private readonly placementMode: SegmentedControl<PlacementMode>;
   private readonly placementGroups: Record<PlacementMode, HTMLElement>;
-  private readonly body: SegmentedControl<ReferenceBody>;
+  private readonly attractorControl: SegmentedControl<ReferenceAttractor>;
   private readonly sizeMode: SegmentedControl<SizeShapeMode>;
   private readonly sizeGroups: Record<SizeShapeMode, HTMLElement>;
   private readonly nameInput: HTMLInputElement;
@@ -147,7 +147,7 @@ export class ShipPlacerPanel {
 
   private objectTypeValue: ObjectType = 'player';
   private placementModeValue: PlacementMode = 'elements';
-  private bodyValue: ReferenceBody = 'earth';
+  private attractorValue: ReferenceAttractor = 'earth';
   private sizeModeValue: SizeShapeMode = 'apsides';
   private librationSecondaryValue: OrbitingId = 'moon';
   private librationPointValue: LibrationPoint = 'L1';
@@ -179,9 +179,9 @@ export class ShipPlacerPanel {
     // 軌道要素指定の一式(基準天体・サイズ/形・向き・位相)をまとめて1つの div に収め、
     // ラグランジュ点指定と排他に表示切替できるようにする。
     const elementsGroup = document.createElement('div');
-    this.body = new SegmentedControl('基準天体', BODY_ITEMS, (v) => { this.bodyValue = v; this.body.setSelected(v); });
-    this.body.setSelected(this.bodyValue);
-    elementsGroup.appendChild(this.body.element);
+    this.attractorControl = new SegmentedControl('基準天体', ATTRACTOR_ITEMS, (v) => { this.attractorValue = v; this.attractorControl.setSelected(v); });
+    this.attractorControl.setSelected(this.attractorValue);
+    elementsGroup.appendChild(this.attractorControl.element);
 
     this.sizeMode = new SegmentedControl('サイズ/形', SIZE_MODE_ITEMS, (v) => this.selectSizeMode(v));
     elementsGroup.appendChild(this.sizeMode.element);
@@ -321,7 +321,7 @@ export class ShipPlacerPanel {
     return {
       objectType: this.objectTypeValue,
       placementMode: this.placementModeValue,
-      body: this.bodyValue,
+      attractor: this.attractorValue,
       sizeMode: this.sizeModeValue,
       peAltKm: Number(this.peAlt.value),
       apAltKm: Number(this.apAlt.value),

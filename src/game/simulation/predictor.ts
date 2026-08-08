@@ -32,9 +32,9 @@ export class Predictor {
     this.tracked = 0;
     this.complete = 0;
     this.discarded = 0;
-    const bodies = this.ephemeris.attractorsAt(simTime);
+    const attractors = this.ephemeris.attractorsAt(simTime);
     for (const e of all) {
-      if (e.resyncPrediction(simTime, bodies, horizon)) this.discarded++;
+      if (e.resyncPrediction(simTime, attractors, horizon)) this.discarded++;
       if (!e.predictsFuture) continue;
       this.tracked++;
       if (e.predicted !== null && e.predicted.state.t > simTime + horizon) this.complete++;
@@ -68,13 +68,13 @@ export class Predictor {
       // 刻み幅は「その場の周期の等分」と「ホライズン全体をステップ上限で割った値」の粗い方。
       // 後者があるので、表示期間を年スケールにしてもステップ数が有界に収まる。
       const tipState = e.predicted?.state ?? e.state;
-      const bodies = this.ephemeris.attractorsAt(tipState.t);
+      const attractors = this.ephemeris.attractorsAt(tipState.t);
       const dt = Math.max(
         C.PREDICT_MIN_STEP_DT,
-        localOrbitPeriod(tipState.r, bodies) / C.PREDICT_STEPS_PER_REV,
+        localOrbitPeriod(tipState.r, attractors) / C.PREDICT_STEPS_PER_REV,
         horizon / C.PREDICT_MAX_STEPS,
       );
-      if (!e.stepPrediction(bodies, simTime, dt, horizon)) break;
+      if (!e.stepPrediction(attractors, simTime, dt, horizon)) break;
       consumed++;
     }
     return consumed;

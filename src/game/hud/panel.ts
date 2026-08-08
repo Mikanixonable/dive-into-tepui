@@ -66,7 +66,7 @@ export class HudPanels {
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
   // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
-  sync(game: Game, bodies: readonly Attractor[]): void {
+  sync(game: Game, attractors: readonly Attractor[]): void {
     const now = performance.now();
     const player = game.player;
     if (!player) {
@@ -89,7 +89,7 @@ export class HudPanels {
     if (contacts) contacts.style.display = game.cameraSystem.overviewMode ? 'none' : '';
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;
-    const playerCenter = strongestAttractor(player.state.r, bodies);
+    const playerCenter = strongestAttractor(player.state.r, attractors);
     const playerEl = player.elementsAround(playerCenter);
     const playerApsis = playerEl ? apsisAltitudes(playerEl) : null;
 
@@ -127,7 +127,7 @@ export class HudPanels {
       });
 
       if (tgt) {
-        const tgtCenter = strongestAttractor(tgt.state.r, bodies);
+        const tgtCenter = strongestAttractor(tgt.state.r, attractors);
         const tgtEl = tgt.elementsAround(tgtCenter);
         const tgtApsis = tgtEl ? apsisAltitudes(tgtEl) : null;
         const relP = sub(tgt.state.r, player.state.r);

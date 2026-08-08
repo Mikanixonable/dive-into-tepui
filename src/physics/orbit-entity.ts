@@ -29,21 +29,21 @@ export class OrbitEntity {
   get history(): StateQueue { return this._history; }
 
   // 全天体重力 + J2 + 大気抵抗 + 推力で 1 ステップ RK4 積分する(dynamics.ts の
-  // stepDynamicsRK4)。bodies はそのステップぶん呼び出し側が確定させた重力源一覧。
+  // stepDynamicsRK4)。attractors はそのステップぶん呼び出し側が確定させた重力源一覧。
   // keepDuration > 0 かつ、直前の state が最新の記録サンプルから sampleInterval 秒以上
   // 離れているときだけ、その直前の state を history へ積む(解像度を落とす箇所はここ)。
   // 積んだ後は keepDuration を保持窓として history.cleanup する。keepDuration = 0 なら
   // history には一切触らない(デブリ・薬莢のコストをゼロに保つ)。
   step(
     dt: number,
-    bodies: readonly Attractor[],
+    attractors: readonly Attractor[],
     bcInv: number,
     thrust: Vec3 | null,
     sampleInterval: number,
     keepDuration: number,
   ): void {
     const prev = this._state;
-    const next = stepDynamicsRK4(prev, dt, bodies, bcInv, thrust);
+    const next = stepDynamicsRK4(prev, dt, attractors, bcInv, thrust);
     // 間引き済み history への記録
     if (keepDuration > 0) {
       const newest = this._history.newest;
