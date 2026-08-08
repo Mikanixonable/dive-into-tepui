@@ -86,6 +86,9 @@ export class PropertyWindow<A extends string = string> {
   private readonly clipBtnEl: HTMLButtonElement;
   private readonly rowsEl: HTMLDivElement;
   private readonly itemsEl: HTMLDivElement;
+  // 前フレームに描画したタイトル・サブタイトル。同じ値なら DOM に触れない差分更新のための記録。
+  private lastTitle = '';
+  private lastSubtitle: string | undefined = undefined;
   // 前フレームに描画した行の値。同じ値なら DOM に触れない差分更新のための記録。
   private lastRowValues = new Map<string, string>();
   // 前回描画した操作項目の直列化(act/label/shortcut)。同じなら DOM を組み直さない。
@@ -179,12 +182,24 @@ export class PropertyWindow<A extends string = string> {
     window.addEventListener('resize', this.onResize);
     window.addEventListener('keydown', this.handleKeyDown);
 
-    this.titleMainEl.textContent = content.title;
-    this.titleSubEl.textContent = content.subtitle ?? '';
-    this.titleSubEl.style.display = content.subtitle ? 'block' : 'none';
+    this.syncHeader(content.title, content.subtitle);
     this.syncRows(content.rows);
     this.syncItems(content.items);
     this.moveTo(clientX, clientY);
+  }
+
+  // タイトル・サブタイトルを変化があった要素だけ差分更新する。
+  syncHeader(title: string, subtitle: string | undefined): void {
+    if (title !== this.lastTitle) {
+      this.lastTitle = title;
+      this.titleMainEl.textContent = title;
+    }
+    if (subtitle !== this.lastSubtitle) {
+      this.lastSubtitle = subtitle;
+      this.titleSubEl.textContent = subtitle ?? '';
+      this.titleSubEl.style.display = subtitle ? 'block' : 'none';
+      this.reclamp();
+    }
   }
 
   // 操作項目の集合・ラベル・ショートカットが変わったときだけ DOM を組み直す。クリップ済み
