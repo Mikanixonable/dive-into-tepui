@@ -222,13 +222,13 @@
         - destroyEffect() → sfx.explosion() + fx.spawnShipDestroyEffect() // 限界超過 or 高度不足のみ
         - activeStage.recordPlayerLost() // 同上
     - prune() ×5 → entity.dispose() // alive=false の個体ごと(scene から除去、必要なら geometry も破棄)。players は寿命判定のみで prune の対象外(喪失艦も配列に残り続ける)
-  - predictor.update() // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。視点/モードによる分岐なし
-    - resyncPrediction() // entities.all() の全対象、毎フレーム無条件(§3-4 (a) の距離判定)
-      - invalidatePrediction() // predicted.at(simTime) が実位置から PREDICT_RESET_DIST を超えて乖離、または区間外のときのみ
-    - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループも dt の決定(ephemeris.attractorsAt(tip.t) → localOrbitPeriod / STEPS_PER_REV)も Predictor 側が持つ(stepSim に対する simulationSubStep と同じ分担)
-      - player.stepPrediction(dt) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt を都度計算し直しながら1ステップずつ繰り返し呼ぶ
-        - predicted.step() // 1ステップごとに ephemeris.attractorsAt を中点サンプル
-    - advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player を除外しないので同じフレームで二重に予算が付き得る)。entity.stepPrediction() が最初から false(predictDuration=0/推力中/truncated)なら消費 0 で次へ即進む
+  - predictor.update(simTime, player, canGrow, horizon) // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。canGrow = simSpeedManager.canGrowPrediction、horizon = displayTimeManager.durationSec(game.currentOrbitPeriod())。currentOrbitPeriod() は自機の現在軌道を strongestAttractor 周りで求めるだけの純計算(自機なしなら NaN)。視点/モードによる分岐なし
+    - resyncPrediction(simTime, bodies, horizon) // entities.all() の全対象、毎フレーム無条件(canGrow が false でも省略しない — 実状態は動き続けるので、乖離した予測列を放置すると無関係な軌道が描かれ続ける)。bodies は simTime ぶんを1回だけ引いて全対象で使い回す
+      - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
+    - [canGrow] advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループも dt・重力源の決定(ephemeris.attractorsAt(tip.t) → localOrbitPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で頭打ち)も Predictor 側が持つ(stepSim に対する simulationSubStep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
+      - player.stepPrediction(bodies, simTime, dt, horizon) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt・bodies を都度計算し直しながら1ステップずつ繰り返し呼ぶ
+        - predicted.step() // 呼び出し側が確定させた bodies で1ステップ積分
+    - [canGrow] advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player を除外しないので同じフレームで二重に予算が付き得る)。entity.stepPrediction() が最初から false(predictsFuture=false/推力中/truncated)なら消費 0 で次へ即進む
   - effects.update(dt, simDt) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と移流。ポーズ中は呼ばれない(=止まる)
   - guide.update(plan, player, simTime, editMode, ephemeris.attractorsAt(simTime)) // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させるため
     - [editMode または !player.alive] 即 return
@@ -294,7 +294,7 @@
 - game.sync()
   - viewBadge.sync(activeStage.selectLabel, canToggleView) // タイトル・Mode・View ドロップダウンの表示反映
   - floatingOrigin = new FloatingOrigin(player.state.r, player.state.v) // 以降の sync 系はこの fo だけを参照する
-  - displayTime を確定 // displayTimeManager.resolveDisplayTime(simTime): 未来ゴーストのスライダーが立っている間だけ先の時刻
+  - displayTime を確定 // displayTimeManager.resolveDisplayTime(simTime, game.currentOrbitPeriod()): 未来ゴーストのスライダーが立っている間だけ先の時刻
   - cameraSystem.sync() // 最初に呼ぶ: environment.sync とマーカー投影が今フレームのカメラ行列を読む
     - syncCameraToViewFrame(active.camera, active.view, fo) // active = overviewMode ? overviewCamera : combatCamera。両カメラの view→THREE.PerspectiveCamera 反映はここ一箇所
     - overviewCameraPanel.setVisible(overviewMode) + setFocus()/setFrame() // MAP VIEW パネル。点灯反映は overviewMode のみ
@@ -314,7 +314,7 @@
     - [entities.players ごと] ship.syncPlayer(displayTime, isActive = ship===player)
     - displayState(displayTime) // current.at または predicted.at。null なら obj.visible=false のみで以下は現在状態のまま
     - obj の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)。ガンサイトズームで隠れるのは isActive の艦だけ
-    - thrustEffects.sync() → core/outer の sync() or hide() // 実機体の現在状態(this.state)のまま
+    - thrustEffects.sync() → core/outer の sync() or hide() // displayState(displayTime) ?? this.state。displayState が null なら alive=false 扱いで呼び自分で隠れる
     - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4 // 同上
     - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出。同上
     - radiator.sync() // ヒンジ Group の rotation.y へ展開角を書く
@@ -325,7 +325,7 @@
       - [!overviewMode] syncBoresight(currentState) → setDirection('bore') or hide('bore') // player.alive で分岐。常に現在状態
     - orbitLine.sync() → regenerate() // 中心天体は毎フレーム strongestAttractor(state.r, ephemeris.attractorsAt(state.t)) で導出(地球固定ではない)。要素が閾値以上ドリフト or 推力中(force) or 初回のみ再生成。現在状態基準(要素は時刻に依らない)
   - entities.sync(displayTime) → entity.sync(displayTime) // 敵・弾・薬莢・デブリ・補給それぞれ(Bullet は速度方向を向く別実装)。自機(全隻)は含まない — 各艦は syncPlayer() が個別に同期済み。
-    displayState が null(predictDuration=0 の種別が未来表示中、または予測期間超過)なら visible=false
+    displayState が null(predictsFuture=false の種別が未来表示中、または予測ホライズン超過)なら visible=false
   - effects.sync() → flashEffectManager.syncFlashEffects()
     - billboard.sync() // 生存中のフラッシュごと(寿命・移流は update フェーズで済んでいる)
   - targeter.sync(bodies) // ターゲットに紐づく表示物をまとめて
@@ -345,7 +345,7 @@
   - leadMarkers.sync() // 敵ごとの LEAD マーカー。overviewMode or !player.alive なら全 remove して return
     - trackTargeted() // 最終ロック時刻を生存中の敵ぶんだけ作り直す
     - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある敵ごと
-  - displayTimeManager.sync() // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ)の表示/内容を押し出すだけ
+  - displayTimeManager.sync(game.currentOrbitPeriod()) // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ)の表示/内容を押し出すだけ
     - panel.setVisible(!forceCurrent) / setDuration() / setManualVisible() / setSliderLabel() / setTicks() // ラベルは自己完結の "T+" 表記のみ
   - editor.sync(mapDist, simTime, fo, project)
     - [hasPlan かつ(editMode または plan.nodes.length > 0)] planDisplay.sync(fo, project, editMode)
@@ -408,11 +408,17 @@
   `hitSystem.checkBulletHits()` もその回数呼ばれる。一方 `collisionPhysics.resolve()` は
   `canResolvePhysicalCollisions` が false になり `resolveCollision=false` で渡るため、
   `stepSimulation` の中で丸ごとスキップされる。
-- **計画軌道 RK4 の再計算**は `PlanArc` が per-arc に持つ `(state0, end)` の変化検出。
-  `(state0, end)` はどちらも計画の編集でしか動かない
-  (計画が空のあいだだけ、anchor が自機に追従するので毎フレーム動く)ので、
-  ノードを置いた後は編集していないフレームでは一切再積分されない。マップモード中でも大半の
-  フレームは `sampled.syncTransform()`(O(1) の剛体変換)だけで済む。
+- **計画軌道 RK4 の再計算**は `PlanArc.update` が per-arc に持つ `(state0, end)` の変化検出だが、
+  `tracksLiveAnchor` 引数(計画が空のあいだの唯一の区間だけ true — その区間は anchor が自機の
+  現在状態を毎フレーム追従する)で判定基準が変わる。false(ノードを置いた後の区間)なら
+  `state0`/`end` の同一性・値の変化そのものが再積分の合図で、編集していないフレームでは一切
+  再積分されない。true の間は `state0.t` も区間長(≒ 自機の接触周期。[PREDICT] パネルが「1周」
+  のとき J2・大気抵抗で毎フレーム連続的に変化する)も厳密には毎フレーム変わるため、直近の
+  再積分からの変化が描画解像度のサンプル間隔(区間長 / `PLAN_ARC_MAX_SAMPLES`)未満の間だけ
+  再積分をスキップする。ただし `state0` の同一性が変わっていて `t` が前進していない(別艦への
+  切り替え・ドック発進・衝突による状態上書きなどの非連続な差し替え)ときはこの閾値を無視して
+  即座に再積分する。マップモード中でも大半のフレームは `sampled.syncTransform()`(O(1) の
+  剛体変換)だけで済む。
 - **過去 state の記録・prevState の更新は `physics/orbit-entity.ts` の `OrbitEntity`(`GameEntity.current`)の
   `step`/`reset` が行う**ので、この木には独立ノードとして現れない。`entity.stepSim()` /
   `resolveCollisionPair()` / 反動など、state へ代入するすべての経路が記録契機になる
