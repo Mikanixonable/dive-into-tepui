@@ -36,6 +36,11 @@ export function register(): void {
     assert.equal(isOccluded(cameraPos, onSurfaceFacingCamera, [EARTH]), false);
   });
 
+  test('occlusion: 天体自身の中心(その天体のラベル位置)は自己遮蔽しない', () => {
+    const cameraPos = v3(-2e7, 0, 0);
+    assert.equal(isOccluded(cameraPos, EARTH.state.r, [EARTH]), false);
+  });
+
   test('occlusion: カメラの後方にある天体は遮蔽しない', () => {
     const cameraPos = v3(0, 0, 0);
     const point = v3(1e7, 0, 0);
