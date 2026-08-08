@@ -227,8 +227,13 @@ body.hud-modal-open #touch-ui { display: none; }
 }
 #hud .settings-btn:hover { background: rgba(255, 255, 255, 0.05); }
 #hud .settings-btn:active { background: rgba(255, 255, 255, 0.1); border-color: ${ACCENT_SOFT}; }
-#hud-displaytime .slider-ticks { display: flex; justify-content: space-between; margin-top: 2px; }
-#hud-displaytime .slider-ticks span { font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; }
+#hud-displaytime .slider-ticks { position: relative; height: 11px; margin-top: 2px; }
+#hud-displaytime .slider-ticks span {
+  position: absolute; transform: translateX(-50%);
+  font-size: 9px; color: ${INK_SOFT}; white-space: nowrap;
+}
+#hud-displaytime .slider-ticks span:first-child { transform: none; }
+#hud-displaytime .slider-ticks span:last-child { transform: translateX(-100%); }
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
 #hud-trajframe { display: none; width: 100%; pointer-events: auto; }
 #hud-creative-logistics { display: none; width: 100%; pointer-events: auto; }
@@ -380,8 +385,7 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud .hud-dock-right { width: calc(56vw - 8px); }
   #hud .hud-seg { gap: 3px; }
   #hud .seg-btn { padding: 3px 5px; font-size: 9px; }
-  #hud-displaytime .slider-ticks span:not(:first-child):not(:last-child) { display: none; }
-  #hud-displaytime .slider-ticks span:last-child { margin-left: auto; }
+  #hud-displaytime .slider-ticks { display: none; }
   #hud-combat-shelf { top: 72px; }
   #hud-combat-shelf > .panel { flex-basis: min(168px, calc(100vw - 16px)); width: min(168px, calc(100vw - 16px)); }
 }

@@ -2,6 +2,7 @@
 import { hudButton, SegmentedControl } from './hud/buttons';
 import type { DisplayDurationKey } from './display-time-manager';
 import { hudDock } from './hud/dom';
+import type { DisplayTick } from './hud/tick-scale';
 
 const DURATIONS: readonly (readonly [DisplayDurationKey, string])[] = [
   ['orbit', '1周'],
@@ -189,19 +190,22 @@ export class DisplayTimePanel {
     this.jumpInput.setRange(0, maxSec);
   }
 
-  // スライダー全域を等分した各点のラベルを目盛りとして並べる。
-  setTicks(labels: readonly string[]): void {
-    if (this.ticks.childElementCount !== labels.length) {
+  // 各目盛りをスライダー全域上の位置 t(0..1)に配置する。
+  setTicks(ticks: readonly DisplayTick[]): void {
+    if (this.ticks.childElementCount !== ticks.length) {
       this.ticks.innerHTML = '';
-      for (let i = 0; i < labels.length; i++) {
+      for (let i = 0; i < ticks.length; i++) {
         const tick = document.createElement('span');
         this.ticks.appendChild(tick);
       }
     }
-    for (let i = 0; i < labels.length; i++) {
-      const tick = this.ticks.children[i];
-      const label = labels[i];
-      if (tick !== undefined && label !== undefined && tick.textContent !== label) tick.textContent = label;
+    for (let i = 0; i < ticks.length; i++) {
+      const el = this.ticks.children[i];
+      const tick = ticks[i];
+      if (el === undefined || tick === undefined || !(el instanceof HTMLElement)) continue;
+      if (el.textContent !== tick.label) el.textContent = tick.label;
+      const left = `${tick.t * 100}%`;
+      if (el.style.left !== left) el.style.left = left;
     }
   }
 }

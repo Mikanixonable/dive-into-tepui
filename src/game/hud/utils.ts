@@ -53,6 +53,18 @@ export function fmtDateTime(unixSec: number): string {
   return `${y}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
+// 経過秒 sec を、目盛り間隔 unitHintSec が示す単位で表記する
+// (1時間未満なら分、1日未満なら時間、30日未満なら日、それ以上は1ヶ月=30日換算の月)。
+// 例: "30m" / "6h" / "10d" / "3mo"
+export function fmtDuration(sec: number, unitHintSec: number): string {
+  if (!isFinite(sec)) return '--';
+  if (sec === 0) return '0';
+  if (unitHintSec < 3600) return `${Math.round(sec / 60)}m`;
+  if (unitHintSec < 86400) return `${Math.round(sec / 3600)}h`;
+  if (unitHintSec < 30 * 86400) return `${Math.round(sec / 86400)}d`;
+  return `${Math.round(sec / (30 * 86400))}mo`;
+}
+
 // "HH:MM:SS"
 export function fmtTime(s: number): string {
   if (!isFinite(s)) return '--:--:--';
