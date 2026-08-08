@@ -17,6 +17,10 @@ export class DynamicTrajectory {
   // state より古いサンプル列(間引き済み)。件数ではなく時間窓(keepDuration)+ 間隔
   // (sampleInterval)で管理し、両者は種別ごとに step の呼び出し元が渡す。
   private readonly _history = new StateQueue();
+  // samplesOldestFirst() の結果のメモ。step/reset で無効化する — SampledLine.syncGeometry の
+  // 早期 return は samples の参照同一性で判定するため、内容が変わっていない間は同じ配列参照を
+  // 返し続けないと、呼び出し側が同一内容を渡しても毎フレーム焼き直しになってしまう。
+  private _samplesCache: readonly KinematicState[] | null = null;
 
   // state・prevState をともに初期状態で始める。
   constructor(state: KinematicState) {
@@ -57,6 +61,7 @@ export class DynamicTrajectory {
     }
     this._prevState = prev;
     this._state = next;
+    this._samplesCache = null;
   }
 
   // 不連続な差し替え(剛体接触・反動など、積分を経ない外部からの上書き)。history 側に
@@ -66,13 +71,18 @@ export class DynamicTrajectory {
     this._history.discardFrom(state.t);
     this._prevState = this._state;
     this._state = state;
+    this._samplesCache = null;
   }
 
-  // 保持区間(history の最古 〜 state)を古い順に並べた1本の列。
-  samplesOldestFirst(): KinematicState[] {
-    const out = this._history.toArrayOldestFirst();
-    out.push(this._state);
-    return out;
+  // 保持区間(history の最古 〜 state)を古い順に並べた1本の列。step/reset を挟まない限り
+  // 同じ配列参照を返す(SampledLine.syncGeometry の再 bake 抑制が参照同一性で判定するため)。
+  samplesOldestFirst(): readonly KinematicState[] {
+    if (this._samplesCache === null) {
+      const out = this._history.toArrayOldestFirst();
+      out.push(this._state);
+      this._samplesCache = out;
+    }
+    return this._samplesCache;
   }
 
   // 保持区間内(history の最古 〜 state)の任意時刻の状態。区間外は null。
