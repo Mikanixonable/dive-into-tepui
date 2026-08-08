@@ -261,11 +261,17 @@ export const DISPLAY_DUR_DAY = 86400; // 1日
 export const DISPLAY_DUR_WEEK = 7 * 86400; // 7日
 export const DISPLAY_DUR_MONTH = 28 * 86400; // 28日
 export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定できる表示期間の上限 [s](1年)
+// 手動レンジで指定できる表示期間の下限 [s]。表示期間は予測列の保持窓でもあり、0 では
+// サンプルが1件も残らず、どの時刻も引けない列になる。
+export const DISPLAY_DURATION_MIN = 3600;
 
 // --- 軌道計画の折れ線(plan/plan-arc.ts) ---
 export const PLAN_ARC_MAX_SAMPLES = 2000; // 1区間が保持するサンプル数の上限
+// 1周回あたりの積分ステップ数。RK4 の誤差は1周あたりのステップ数でほぼ決まるので、
+// これを固定すると高度・離心率によらず精度が揃う(28日ぶんの LEO を積分して長半径誤差 1km 未満)。
+export const PLAN_ARC_STEPS_PER_REV = 100;
 // 1区間あたりの積分ステップ数の上限。手動レンジで年スケールの表示期間を許すと
-// stepDt(1周回/STEPS_PER_REV)のままではステップ数がフレーム時間を圧迫するので、
+// 1周回 / PLAN_ARC_STEPS_PER_REV のままではステップ数がフレーム時間を圧迫するので、
 // 超えたら plan-arc.ts の再突入時と同じ「そこで打ち切って endState() を返す」経路に乗せる。
 export const PLAN_ARC_MAX_STEPS = 20000;
 // 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
@@ -277,10 +283,21 @@ export const APSIS_MIN_ECC = 0.01;
 // --- エンティティの過去・未来状態列(physics/orbit-entity.ts の OrbitEntity.history/Predictor) ---
 export const PREDICT_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
 export const SHIP_HISTORY_DURATION = 5580; // Ship の過去列の保持時間 [s]。LEO(420km)の公転周期に近似
-export const PREDICT_DURATION = 3 * 3600; // 予測する未来の長さ [s](LEO で約2周回)
+// 1周回あたりの予測の積分ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも
+// 遠方の長周期軌道でも精度が一定になる。
+export const PREDICT_STEPS_PER_REV = 600;
+// 1個体の予測列の積分ステップ数・保持サンプル数の上限。予測の長さは表示期間(最大1年)に
+// 追従するので、1周回基準の刻みのままではステップ数もメモリも青天井になる。長い期間では
+// これらが刻み幅と間引き間隔を決め、軌道の形の精度と引き換えに費用を頭打ちにする。
+export const PREDICT_MAX_STEPS = 20000;
+export const PREDICT_MAX_SAMPLES = 2000;
 export const PREDICT_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
 export const PREDICT_MIN_STEP_DT = SUBSTEP_MAX_DT; // 予測刻みの下限(本体シミュレーションより細かくする理由がないため同じ値)
 export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
+// PREDICT_SAMPLES_PER_REV で間引いた列を補間したときの位置誤差 [m]。三次エルミート補間の
+// 誤差は間引き間隔の4乗で効くので、上限で間引きが粗くなる長い表示期間では
+// PREDICT_RESET_DIST をこの値から外挿した幅まで広げないと、正しい列まで破棄してしまう。
+export const PREDICT_SAMPLE_ERROR = 30;
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;

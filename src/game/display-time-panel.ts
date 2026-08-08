@@ -38,6 +38,8 @@ export class DisplayTimePanel {
   private readonly manualValue: HTMLInputElement;
   private readonly manualUnit: SegmentedControl<DurationUnit>;
   private manualUnitValue: DurationUnit = 'day';
+  private manualMinSec = 0;
+  private manualMaxSec = Infinity;
 
   // PREDICT パネルの DOM を組み立て、root へ追加する。
   constructor(root: HTMLElement) {
@@ -93,11 +95,14 @@ export class DisplayTimePanel {
     hudDock(root, 'left').appendChild(this.panel);
   }
 
-  // 現在の入力値・単位から秒数を計算して通知する。
+  // 現在の入力値・単位から秒数を設定範囲へクランプして通知する。クランプで値が変われば入力欄にも書き戻す。
   private emitManualDuration(): void {
-    const value = Number(this.manualValue.value);
-    if (!isFinite(value) || value < 0) return;
-    this.onManualDurationChange?.(value * UNIT_SEC[this.manualUnitValue]);
+    const raw = Number(this.manualValue.value);
+    const unitSec = UNIT_SEC[this.manualUnitValue];
+    const sec = Math.max(this.manualMinSec, Math.min(this.manualMaxSec, (isFinite(raw) ? raw : 0) * unitSec));
+    const value = sec / unitSec;
+    if (Number(this.manualValue.value) !== value) this.manualValue.value = String(value);
+    this.onManualDurationChange?.(sec);
   }
 
   // パネル全体の表示/非表示を切り替える。
@@ -119,6 +124,18 @@ export class DisplayTimePanel {
   setSliderLabel(label: string | null): void {
     const text = label ?? SLIDER_HINT;
     if (this.sliderLabel.textContent !== text) this.sliderLabel.textContent = text;
+  }
+
+  // スライダーのつまみ位置を t(0..1)に合わせる。
+  setSliderValue(t: number): void {
+    const value = String(Math.round(t * 1000));
+    if (this.slider.value !== value) this.slider.value = value;
+  }
+
+  // 手動レンジ入力が取りうる秒数の範囲を設定する。
+  setManualRange(minSec: number, maxSec: number): void {
+    this.manualMinSec = minSec;
+    this.manualMaxSec = maxSec;
   }
 
   // スライダー全域を等分した各点のラベルを目盛りとして並べる。

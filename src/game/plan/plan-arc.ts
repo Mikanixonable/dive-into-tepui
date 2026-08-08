@@ -17,14 +17,11 @@ const EPOCH_EPS = 1e-6;
 
 type ComputeKey = { state0: OrbitState; end: number; };
 
-// 1周回あたりのステップ数。RK4 の誤差は1周あたりのステップ数でほぼ決まるので、これを固定すると
-// 高度・離心率によらず精度が揃う(28日ぶんの LEO を積分して長半径誤差 1km 未満)。
-const STEPS_PER_REV = 100;
-
-// 刻み幅。その場で最も強く引く天体を中心とする軌道運動の時間スケールを STEPS_PER_REV 等分する。
+// 刻み幅。その場で最も強く引く天体を中心とする軌道運動の時間スケールを
+// PLAN_ARC_STEPS_PER_REV 等分する。
 // 低軌道では細かく、遠地点では粗くなり、離心軌道でも1周を通して精度が一定になる。
 function stepDt(r: Vec3, bodies: readonly Attractor[]): number {
-  return localOrbitPeriod(r, bodies) / STEPS_PER_REV;
+  return localOrbitPeriod(r, bodies) / C.PLAN_ARC_STEPS_PER_REV;
 }
 
 export class PlanArc {
