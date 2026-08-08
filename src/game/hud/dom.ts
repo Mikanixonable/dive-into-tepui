@@ -110,6 +110,9 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .row .v { color: ${INK}; min-width: 90px; text-align: right; }
 #hud-status { bottom: 12px; left: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-status h3 { font-size: 8.8px; }
+/* マップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
+   SHIP STATUS は畳んでパネル占有面積を減らす。戦闘ビューでは従来どおり常設のまま。 */
+#hud.map-mode #hud-status { display: none; }
 #hud-orbit { bottom: 12px; left: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-orbit h3 { font-size: 8.8px; }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
