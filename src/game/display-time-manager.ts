@@ -10,8 +10,7 @@ export type DisplayDurationKey = '90min' | 'day' | 'week' | 'month' | 'manual';
 const TICK_COUNT = 6;
 
 export class DisplayTimeManager {
-  // 未来表示を禁止するフラグ(初期値 true = 戦闘ビューでは禁止)。
-  forceCurrent = true;
+  private _forceCurrent = true;
 
   durationKey: DisplayDurationKey = 'day';
   // マップモードの未来ゴーストスライダー位置(0..1、0 で現在時刻)。
@@ -24,15 +23,27 @@ export class DisplayTimeManager {
   // 操作パネルを構築し、期間選択・スライダー・手動レンジ入力の反映先を自身にする。
   constructor(hudRoot: HTMLElement) {
     this.panel = new DisplayTimePanel(hudRoot);
+    // 期間はスライダーの尺度そのものなので、尺度を変えたら位置も原点へ戻す。
     this.panel.onDurationSelect = (key) => {
       this.durationKey = key;
+      this.sliderT = 0;
     };
     this.panel.onSliderChange = (t) => {
       this.sliderT = t;
     };
     this.panel.onManualDurationChange = (sec) => {
-      this.manualDurationSec = Math.max(0, Math.min(C.DISPLAY_DURATION_MAX, sec));
+      this.manualDurationSec = Math.max(C.DISPLAY_DURATION_MIN, Math.min(C.DISPLAY_DURATION_MAX, sec));
     };
+  }
+
+  // 未来表示を禁止するフラグ。true にすると未来ゴーストスライダーの位置も原点へ戻す。
+  get forceCurrent(): boolean {
+    return this._forceCurrent;
+  }
+
+  set forceCurrent(value: boolean) {
+    this._forceCurrent = value;
+    if (value) this.sliderT = 0;
   }
 
   // 選んだ期間の秒数を返す。
@@ -55,6 +66,8 @@ export class DisplayTimeManager {
     this.panel.setVisible(!this.forceCurrent);
     this.panel.setDuration(this.durationKey);
     this.panel.setManualVisible(this.durationKey === 'manual');
+    this.panel.setManualRange(C.DISPLAY_DURATION_MIN, C.DISPLAY_DURATION_MAX);
+    this.panel.setSliderValue(this.sliderT);
     this.panel.setSliderLabel(this.sliderT > 0 ? this.futureTimeLabel(this.sliderT) : null);
     this.panel.setTicks(this.tickLabels());
   }
