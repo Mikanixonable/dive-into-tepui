@@ -457,9 +457,11 @@ export class Player extends Ship {
       v: { ...this.state.v },
       q: { ...this.att.q },
       w: { ...this.att.w },
-      mags: this.fire.mags,
-      rounds: this.fire.rounds,
-      heat: this.thermal.hullTemp,
+      fire: this.fire.serialize(),
+      thermal: this.thermal.serialize(),
+      radiator: this.radiator.serialize(),
+      power: this.power.serialize(),
+      throttle: this.throttle.serialize(),
       parts: this.parts.map(p => ({ ...p })) as AnyPart[],
       followPlan: this.followPlan,
       plan: {
@@ -492,8 +494,11 @@ export class Player extends Ship {
     const player = new Player(hud, sfx, scene, fx, markerManager, data.name || data.id, state, data.id);
     player.att = att;
     
-    player.fire.initAmmo(data.mags, data.rounds);
-    player.thermal.hullTemp = data.heat;
+    player.fire.restore(data.fire);
+    player.thermal.restore(data.thermal);
+    player.radiator.restore(data.radiator);
+    player.power.restore(data.power);
+    player.throttle.restore(data.throttle);
     player.followPlan = data.followPlan;
     player.parts.splice(0, player.parts.length, ...data.parts.map(restorePart));
     player.refreshFromParts();
