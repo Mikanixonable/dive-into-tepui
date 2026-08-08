@@ -3,13 +3,14 @@
 import { orbitState, OrbitState } from '../../physics/orbital-state';
 import { Vec3, add, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { Attractor, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, elementsAround, strongestAttractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 
-// 計画の1区間が受け持てる時間長 = 起点位置で最も強く引く天体を中心とする軌道運動の時間スケール。
-// 有限な周期が求まらなければ APERIODIC_ARC_DURATION。
+// 計画の1区間が受け持てる時間長 = 起点状態を最も強く引く天体まわりの解析軌道の公転周期。
+// 有限な周期が求まらなければ(双曲線軌道など)APERIODIC_ARC_DURATION。
 export function orbitPeriodOf(state: OrbitState, bodies: readonly Attractor[]): number {
-  const period = localOrbitPeriod(state.r, bodies);
+  const center = strongestAttractor(state.r, bodies);
+  const period = elementsAround(state, center)?.period ?? NaN;
   return isFinite(period) && period > 0 ? period : C.APERIODIC_ARC_DURATION;
 }
 
