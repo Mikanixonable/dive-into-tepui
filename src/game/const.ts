@@ -31,6 +31,11 @@ export const SHIP_BCINV = 3.3e-3; // 機体: Cd≈2.2, A≈12m², m≈8t
 export const BULLET_BCINV = 2e-4; // 弾丸: 高弾道係数でほとんど減速しない
 export const SMALL_DEBRIS_BCINV = 8e-3; // 薬莢・破片
 
+// --- 太陽輻射圧(輻射圧係数 × 断面積質量比 C_R·A/m [m^2/kg]) ---
+// 大気抵抗が消える高軌道・ラグランジュ点領域では、これが唯一残る非重力摂動になる。
+export const SHIP_SRP_COEFF = 1.56e-2; // 機体: C_R≈1.3, A≈12m², m=PLAYER_MASS
+export const SMALL_DEBRIS_SRP_COEFF = 4.7e-3; // 薬莢・破片・弾薬
+
 // --- 空力加熱・構造限界(自機のみ) ---
 export const SG_CONST = 1.7415e-4; // Sutton–Graves 定数(地球) [kg^0.5/m]
 export const NOSE_RADIUS = 0.6; // 機首曲率半径 [m]
