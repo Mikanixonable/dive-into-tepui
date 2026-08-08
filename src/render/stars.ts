@@ -21,6 +21,10 @@ export function createStars(): THREE.Mesh {
     map: texture,
     side: THREE.BackSide,
     depthWrite: false,
+    // renderOrder -10 で最初に描くため深度テストは元々不要。殻がカメラから
+    // 0.9*far の距離にあり、深度クリア値付近の量子化丸めで LESS テストが
+    // 落ちて黒く抜けることがあるため明示的に無効化する。
+    depthTest: false,
   });
   
   const mesh = new THREE.Mesh(geo, mat);

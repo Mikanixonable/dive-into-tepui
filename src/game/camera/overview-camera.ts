@@ -79,21 +79,27 @@ export class OverviewCamera {
     _sfx: Sfx,
     private readonly ephemeris: Ephemeris,
   ) {
-    this.camera = new THREE.PerspectiveCamera(
-      OVERVIEW_CAMERA_FOV,
-      window.innerWidth / window.innerHeight,
-      1e4,
-      C.OVERVIEW_CAMERA_FAR,
-    );
     const tf0 = this.ephemeris.frameTransformAt(this._cameraFrame, 0);
     this.offset_r = toFrameDir(tf0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST));
     this.pan_r = toFrameDir(tf0, v3());
     this.up_r = toFrameDir(tf0, WORLD_UP);
+    this.camera = new THREE.PerspectiveCamera(
+      OVERVIEW_CAMERA_FOV,
+      window.innerWidth / window.innerHeight,
+      this.near,
+      C.OVERVIEW_CAMERA_FAR,
+    );
   }
 
   // 注視点からカメラまでの距離を返す。
   get dist(): number {
     return Math.hypot(this.offset_r.x, this.offset_r.y, this.offset_r.z);
+  }
+
+  // CameraSystem.sync が読む近クリップ距離。dist に比例させることで、どのズーム段でも
+  // 注視点を切り落とさずに深度分解能を保つ(OVERVIEW_CAMERA_NEAR_RATIO 参照)。
+  get near(): number {
+    return this.dist / C.OVERVIEW_CAMERA_NEAR_RATIO;
   }
 
   // カメラのロールのみを初期状態(ワールド上方)に戻す。
