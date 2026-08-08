@@ -107,6 +107,16 @@ export class PlanTrajectory {
     for (let i = this.activeCount; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
   }
 
+  // 天体衝突が検出された地点(区間ごとに高々1つ)。今フレーム表示中の区間だけを対象にする。
+  impactPoints(): readonly { readonly state: OrbitState; readonly arcIdx: number }[] {
+    const out: { state: OrbitState; arcIdx: number }[] = [];
+    for (let i = 0; i < this.activeCount; i++) {
+      const state = this.arcs[i]?.impactPoint();
+      if (state) out.push({ state, arcIdx: i });
+    }
+    return out;
+  }
+
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
   arrivalStates(): (OrbitState | null)[] {
     const out: (OrbitState | null)[] = [];

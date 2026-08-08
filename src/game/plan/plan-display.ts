@@ -29,6 +29,17 @@ interface EqNodeIcon extends MapPickable {
   readonly label: string;
 }
 
+// ✕ 衝突マーカー(区間ごとに高々1つ)
+interface ImpactIcon {
+  readonly key: string;
+  readonly pos: Vec3;
+  readonly label: string;
+}
+
+// 衝突マーカーのキー(区間ごとに固定)。区間数は SEGMENT_COLORS(plan-trajectory.ts)と同じ
+// 上限で足りる。
+const IMPACT_MARKER_KEYS = ['planImpact0', 'planImpact1', 'planImpact2'] as const;
+
 export class PlanDisplay {
   trajectoryFrame: Frame = INERTIAL_FRAME;
 
@@ -38,6 +49,7 @@ export class PlanDisplay {
   private readonly frame: SegmentedControl<Frame>;
   private apsisIcons: readonly ApsisIcon[] = [];
   private eqNodeIcons: readonly EqNodeIcon[] = [];
+  private impactIcons: readonly ImpactIcon[] = [];
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
   private plan: Plan | null = null;
 
@@ -72,6 +84,7 @@ export class PlanDisplay {
     if (!show) {
       this.ghost = null;
       this.apsisIcons = [];
+      this.impactIcons = [];
       this.traj.resetDivergence();
       return;
     }
@@ -79,6 +92,7 @@ export class PlanDisplay {
     this.ghost = this.ghostAt(displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.eqNodeIcons = this.eqNodeIconsOf();
+    this.impactIcons = this.impactIconsOf();
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。
@@ -89,6 +103,7 @@ export class PlanDisplay {
     this.syncGhost(project);
     this.syncApsisMarkers(project);
     this.syncEqNodeMarkers(project);
+    this.syncImpactMarkers(project);
     this.panel.style.display = showPanel ? 'block' : 'none';
     this.frame.setSelected(this.trajectoryFrame);
   }
@@ -101,6 +116,7 @@ export class PlanDisplay {
     this.markerManager.hide('apsisAp');
     this.markerManager.hide('eqAn');
     this.markerManager.hide('eqDn');
+    for (const key of IMPACT_MARKER_KEYS) this.markerManager.hide(key);
     this.panel.style.display = 'none';
   }
 
@@ -236,6 +252,18 @@ export class PlanDisplay {
     ];
   }
 
+  // 天体衝突が検出された地点(区間ごとに高々1つ)。その地点で最も強く引く天体の表面からの
+  // 高度をラベルに添える。
+  private impactIconsOf(): readonly ImpactIcon[] {
+    return this.traj.impactPoints().flatMap(({ state, arcIdx }) => {
+      const key = IMPACT_MARKER_KEYS[arcIdx];
+      if (key === undefined) return [];
+      const center = strongestAttractor(state.r, this.ephemeris.attractorsAt(state.t));
+      const alt = len(sub(state.r, center.state.r)) - center.radius;
+      return [{ key, pos: this.traj.toDisplay(state.r, state.t), label: `衝突 高度 ${fmtMarkerDist(alt, 0)}` }];
+    });
+  }
+
   // ◇ アプシスアイコンを update が求めた位置に置き、出ていないものを隠す。
   private syncApsisMarkers(project: ProjectFn): void {
     for (const key of ['apsisPe', 'apsisAp'] as const) {
@@ -250,6 +278,15 @@ export class PlanDisplay {
     for (const key of ['eqAn', 'eqDn'] as const) {
       const icon = this.eqNodeIcons.find((m) => m.id === key);
       if (icon) this.markerManager.setPosition(key, 'mk-node', key === 'eqAn' ? '△' : '▽', icon.pos, project, icon.label);
+      else this.markerManager.hide(key);
+    }
+  }
+
+  // ✕ 衝突マーカーを update が求めた位置に置き、出ていないものを隠す。
+  private syncImpactMarkers(project: ProjectFn): void {
+    for (const key of IMPACT_MARKER_KEYS) {
+      const icon = this.impactIcons.find((m) => m.key === key);
+      if (icon) this.markerManager.setPosition(key, 'mk-impact', '✕', icon.pos, project, icon.label);
       else this.markerManager.hide(key);
     }
   }
