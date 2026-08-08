@@ -6,8 +6,8 @@ const SAVE_VERSION = 1;
 
 // ゲーム状態の localStorage への保存・復元。
 export class SaveManager {
-  // 現在のゲーム状態を1件のセーブデータとして localStorage へ書き込む。
-  static save(game: Game): void {
+  // 現在のゲーム状態を1件のセーブデータとして localStorage へ書き込み、成否を返す。
+  static save(game: Game): boolean {
     const data: GameSaveData = {
       version: SAVE_VERSION,
       stageId: game.activeStage.id,
@@ -20,9 +20,10 @@ export class SaveManager {
     };
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-      console.log('Saved game state', data);
+      return true;
     } catch (err) {
       console.error('Failed to save', err);
+      return false;
     }
   }
 
