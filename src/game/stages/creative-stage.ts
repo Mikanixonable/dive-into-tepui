@@ -17,6 +17,8 @@ import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
 import { Vec3, add, len, sub } from '../../physics/vec3';
 import { fmtMarkerDist } from '../hud/utils';
+import { HudToggle } from '../hud/buttons';
+import { hudDock } from '../hud/dom';
 import type { ProjectFn } from '../camera/camera-system';
 import type { UnlockManager } from '../unlock-manager';
 import { Ammo } from '../game-entity/ammo';
@@ -40,6 +42,8 @@ export class CreativeStage extends Stage {
   readonly initialAmmo = { mags: 0, rounds: 0 };
 
   private placerPanel!: ShipPlacerPanel;
+  // 補給の自動投入を切り替えるトグルのパネル。マップ視点でだけ出す。
+  private logisticsPanel!: HTMLElement;
   private previewOrbitLine!: OrbitLine;
   // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
   private preview: { readonly elements: Elements; readonly pos: Vec3 } | null = null;
@@ -64,6 +68,23 @@ export class CreativeStage extends Stage {
 
     this.placerPanel = new ShipPlacerPanel(hud.root);
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
+    this.logisticsPanel = this.buildLogisticsPanel(hud.root);
+  }
+
+  // 補給の自動投入トグルを1つ載せたパネルを組み立て、マップ左ドックへ追加して返す。
+  private buildLogisticsPanel(hudRoot: HTMLElement): HTMLElement {
+    const panel = document.createElement('div');
+    panel.id = 'hud-creative-logistics';
+    panel.className = 'panel';
+    panel.addEventListener('pointerdown', (e) => e.stopPropagation());
+    const title = document.createElement('h3');
+    title.textContent = 'LOGISTICS';
+    panel.appendChild(title);
+    const toggle = new HudToggle('補給の自動投入', (on) => { this.logistics.resupplyEnabled = on; });
+    toggle.setOn(this.logistics.resupplyEnabled);
+    panel.appendChild(toggle.element);
+    hudDock(hudRoot, 'left').appendChild(panel);
+    return panel;
   }
 
   init(): number {
@@ -76,6 +97,7 @@ export class CreativeStage extends Stage {
     this.syncPreview(fo, project);
     this.syncBaseMarkers(project, displayTime, player, overviewMode);
     this.placerPanel.setIssues(this.issues);
+    this.logisticsPanel.style.display = overviewMode ? 'block' : 'none';
   }
 
   // 基地は実寸(半径100m)のメッシュしか持たず、マップ視点では見えないほど小さいので、
@@ -293,8 +315,8 @@ export class CreativeStage extends Stage {
   // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行い、配置プレビューとフォームの
   // フィールド単位の検証結果を求め直す。
   // 計画ノードの適用は Simulator のイベント境界(applySimulationEvents)で行う。
-  update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, _simSpeed: SimSpeedManager): void {
-    if (player) this.logistics.updateLogistics(simTime, player, true);
+  update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+    if (player) this.logistics.updateLogistics(simTime, player, simSpeed, true);
     const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
     this.preview = form ? this.computePreview(form) : null;
     this.issues = form ? this.computeFieldIssues(form) : [];

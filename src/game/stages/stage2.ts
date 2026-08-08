@@ -56,6 +56,6 @@ export class Stage2 extends Stage {
 
     this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
 
-    this.logistics.updateLogistics(simTime, player);
+    this.logistics.updateLogistics(simTime, player, simSpeed);
   }
 }

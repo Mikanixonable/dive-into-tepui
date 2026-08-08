@@ -54,7 +54,7 @@ export class Stage00 extends Stage {
 
     this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
 
-    this.logistics.updateLogistics(simTime, player, true);
+    this.logistics.updateLogistics(simTime, player, simSpeed, true);
 
     if (this.waveState === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(player);
     if (this.waveState === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, entities);
