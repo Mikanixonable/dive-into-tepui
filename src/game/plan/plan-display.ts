@@ -236,8 +236,7 @@ export class PlanDisplay {
   // 最後のバーン後の軌道が中心天体の赤道面を横切る点(昇交点・降交点)のアイコンを、その
   // 軌道要素から解析的に求める。赤道面の法線は中心天体自身が持つ実際の自転軸(`Attractor.degree2.pole`
   // — J2 計算が使っているのと同じ値)を使う。太陽・木星のように degree2 が無い(自転軸をモデル化
-  // していない)天体では出さない。離心率がほぼ0で方向が不定なとき、軌道面が赤道面とほぼ一致する
-  // ときも空。
+  // していない)天体では出さない。軌道面が赤道面とほぼ一致するときも空。
   private eqNodeIconsOf(): readonly EqNodeIcon[] {
     const state0 = this.path.finalSegmentStart;
     if (!state0 || !this.plan) return [];
@@ -247,7 +246,7 @@ export class PlanDisplay {
     const tf = frameOfAttractor(center);
     const relative = toFrameState(tf, state0);
     const el = orbitalElementsOf(state0, center);
-    if (!el || el.e < C.APSIS_MIN_ECC) return [];
+    if (!el) return [];
 
     // 交点線の方向 = 赤道面法線 × 軌道面法線。両面がほぼ一致すると外積が潰れて向きが定まらない。
     const lineDir = cross(eqNormal, el.hHat);
