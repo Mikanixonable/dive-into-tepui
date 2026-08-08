@@ -1,90 +1,115 @@
-// 表示に使う時間依存の座標系（慣性系 ⇄ 太陽回転系・月回転系）で、位置と OrbitState の
-// 順・逆変換を供給する。回転系相対の値は branded type（RelativeVec3 / RelativeOrbitState）に
-// なり、変換忘れ・二重変換・慣性系との取り違えが型エラーになる（vec3.ts の Vec3 と同手法）。
+// 表示に使う時間依存の座標系(慣性系・回転系)を「原点天体 × 回転」の直積として表し、
+// 点・方向・OrbitState の順・逆変換を供給する。座標系相対の値は branded type(FramePoint /
+// FrameDir / FrameOrbitState)になり、変換忘れ・二重変換・慣性系との取り違えが型エラーに
+// なる(vec3.ts の Vec3 と同手法)。原点が動く座標系では「点」(位置。回転+平行移動で変換)と
+// 「方向」(変位・速度差・上方向など。回転のみで変換)を取り違えると静かに壊れるため、
+// この2つを別の型にしている。
 //
-// 各回転系の中身（姿勢と角速度）は天体暦 ephemeris.ts が持ち、ここは Frame 識別子から
-// それを引いて変換に落とすだけ。回転軸が時刻とともに向きを変える系（月回転系）もあるため、
-// 変換は軸と回転角ではなく (姿勢, 角速度) の対だけを前提に組み立てる。
+// 座標系の中身(その時刻の原点・姿勢・角速度 = FrameTransform)は天体暦
+// (Ephemeris.frameTransformAt)が組む。ここは変換値を受け取って変換するだけの純関数群で、
+// Ephemeris を import しない — これにより frame.ts と ephemeris.ts の間に循環依存が生まれない。
 //
-// シミュレーション全体は地球中心の慣性系(ECI)で回っている。回転系はあくまで「軌道線など
+// シミュレーション全体は地球中心の慣性系(ECI)で回っている。座標系はあくまで「軌道線など
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
+import { AttractorId, OrbitingId } from './attractor';
+import { bodyDef, SOLAR_SYSTEM } from './solar-system';
 import { OrbitState, orbitState } from './orbital-state';
-import { Ephemeris, FrameRotation } from './ephemeris';
 import { add, cross, sub, v3, Vec3 } from './vec3';
 import { Quat, qInvert, qRotate } from './attitude';
 
-// 軌道トレースの描画に使う座標系。慣性系(ECI, 無変換)と回転系。座標系を増やすときは
-// この配列と frameRotation に足す（Frame 型・isFrame・UI ボタンの検証がすべてここから派生する）。
-export const FRAMES = ['inertial', 'sunRotating', 'moonRotating'] as const;
-export type Frame = (typeof FRAMES)[number];
+// 座標系 = 「どの天体を原点に置くか」×「どの天体の公転に合わせて回すか(null = 回さない)」。
+// 値は必ず FRAMES の要素を参照する — リテラルで組むと参照同一性が崩れ、sampled-line.ts の
+// `frame === lastFrame` によるキャッシュ判定が毎フレーム外れて描画が無駄に重くなる。
+export type Frame = {
+  readonly center: AttractorId;
+  readonly rotatingWith: OrbitingId | null;
+};
 
-// 外部入力（DOM data 属性など）の文字列を Frame へ絞り込む型ガード。
-export function isFrame(s: string): s is Frame {
-  return (FRAMES as readonly string[]).includes(s);
+// 回転系(rotatingWith が非 null)の原点。衛星は惑星まわりの公転を止めて見せたいので
+// その惑星(例: 月回転系は地球中心)、惑星は自分自身(例: 太陽-地球回転系は地球中心のまま、
+// 地球自身の公転方向へ向きだけ合わせる。原点ごと太陽へ移した完全な太陽中心系が欲しければ
+// {center:'sun', rotatingWith:null} を使う)。
+function rotatingFrameCenterOf(id: AttractorId): AttractorId {
+  const def = bodyDef(id);
+  return def.kind === 'satellite' ? def.planet : id;
 }
 
-// 慣性系(ECI)/回転系相対の OrbitState。デフォルトの OrbitState とは __frame の有無で非互換
-// にし（asInertial 経由でしか慣性系にできない）、取り違えを型で防ぐ（vec3.ts の Vec3 と同手法）。
-export type RelativeOrbitState = {
-  r: Vec3; // Frame 相対位置 [m]
-  v: Vec3; // Frame 相対速度 [m/s]
-} & { readonly __tag: 'relativeOrbitState'; };
-
-export type RelativeVec3 = {
-  x: number;
-  y: number;
-  z: number;
-} & {readonly __tag: 'relativeVec3'; };
-
-const IDENTITY_QUAT: Quat = { x: 0, y: 0, z: 0, w: 1 };
-
-// Frame の時刻 t における姿勢と角速度。回転系の中身は天体暦の持ち物なので、ここは
-// Frame の識別子から対応する天体暦の回転基準系へ振り分けるだけ。
-function frameRotation(frame: Frame, t: number, ephemeris: Ephemeris): FrameRotation {
-  switch (frame) {
-    case 'inertial':
-      return { q: IDENTITY_QUAT, omega: v3() };
-    case 'sunRotating':
-      return ephemeris.sunOrbitRotationAt(t);
-    case 'moonRotating':
-      return ephemeris.moonOrbitRotationAt(t);
+// SOLAR_SYSTEM から生成した正準インスタンス。全天体の慣性系(center=X, rotatingWith=null)と、
+// 公転している全天体(恒星以外)ぶんの回転系。天体を1つ増やすと、このリストは手を加えずに
+// 増える。
+export const FRAMES: readonly Frame[] = (() => {
+  const ids = Object.keys(SOLAR_SYSTEM) as AttractorId[];
+  const frames: Frame[] = ids.map((id) => ({ center: id, rotatingWith: null }));
+  for (const id of ids) {
+    if (bodyDef(id).kind === 'star') continue;
+    frames.push({ center: rotatingFrameCenterOf(id), rotatingWith: id as OrbitingId });
   }
+  return frames;
+})();
+
+// 地球中心慣性系。ECI そのものを表す座標系として、UI・描画側の既定値に使う。
+export const INERTIAL_FRAME: Frame = FRAMES.find((f) => f.center === 'earth' && f.rotatingWith === null)!;
+
+// Frame の時刻 t における剛体運動。origin/originVel は ECI での原点の位置・速度、
+// q は「座標系相対 → ECI」の姿勢、omega は ECI 成分の角速度。回転軸が時刻とともに向きを
+// 変える系(月回転系など)もあるため、軸と回転角の対ではなくこの対で扱う。
+export type FrameTransform = {
+  readonly origin: Vec3;
+  readonly originVel: Vec3;
+  readonly q: Quat;
+  readonly omega: Vec3;
+};
+
+// 座標系相対の「点」(位置。原点移動 + 回転のアフィン変換)。
+export type FramePoint = { x: number; y: number; z: number } & { readonly __tag: 'framePoint'; };
+// 座標系相対の「方向・変位」(速度差・オフセット・上方向など。回転のみの線形変換)。
+export type FrameDir = { x: number; y: number; z: number } & { readonly __tag: 'frameDir'; };
+// 座標系相対の OrbitState。デフォルトの OrbitState とは __tag の有無で非互換にし、
+// 慣性系との取り違えを型で防ぐ(vec3.ts の Vec3 と同手法)。
+export type FrameOrbitState = { r: Vec3; v: Vec3; } & { readonly __tag: 'frameOrbitState'; };
+
+// FrameOrbitState を組み立てる、toFrameState 以外で唯一信頼できる入口。軌道要素から解析的に
+// 求めた近地点位置のように「すでに座標系相対と分かっている r/v」を toInertialState へ渡すために
+// 使う — orbitState() が OrbitState に対して果たす役割と同じ。
+export function frameOrbitState(r: Vec3, v: Vec3): FrameOrbitState {
+  return { r, v } as FrameOrbitState;
 }
 
-// 慣性系 → Frame 相対（順変換, bake）。時刻 t は変換対象サンプルの絶対時刻。
-export function toFramePos(frame: Frame, t: number, pos: Vec3, ephemeris: Ephemeris): RelativeVec3 {
-  const { q } = frameRotation(frame, t, ephemeris);
-  const r = qRotate(qInvert(q), pos);
-  return { x: r.x, y: r.y, z: r.z } as RelativeVec3;
+// 慣性系 → 座標系相対の点(順変換, bake)。
+export function toFramePoint(tf: FrameTransform, p: Vec3): FramePoint {
+  const r = qRotate(qInvert(tf.q), sub(p, tf.origin));
+  return { x: r.x, y: r.y, z: r.z } as FramePoint;
 }
 
-// Frame 相対 → 慣性系へ戻す剛体回転（un-bake）をクォータニオンで返す。toInertialPos
-// （位置単位）と同一の回転を、bake 済み頂点集合へ一括適用したい呼び出し側向けの版。
-// THREE 非依存の Quat を返す。
-export function toInertialQuat(frame: Frame, t: number, ephemeris: Ephemeris): Quat {
-  return frameRotation(frame, t, ephemeris).q;
+// 座標系相対の点 → 慣性系(逆変換, un-bake)。
+export function toInertialPoint(tf: FrameTransform, p: FramePoint): Vec3 {
+  return add(qRotate(tf.q, v3(p.x, p.y, p.z)), tf.origin);
 }
 
-// Frame 相対 → 慣性系（逆変換, un-bake）。時刻 t は描画時刻（un-bake なら現在の simTime）。
-export function toInertialPos(frame: Frame, t: number, pos: RelativeVec3, ephemeris: Ephemeris): Vec3 {
-  const { q } = frameRotation(frame, t, ephemeris);
-  return qRotate(q, v3(pos.x, pos.y, pos.z));
+// 慣性系 → 座標系相対の方向(順変換)。原点移動は効かない。
+export function toFrameDir(tf: FrameTransform, d: Vec3): FrameDir {
+  const r = qRotate(qInvert(tf.q), d);
+  return { x: r.x, y: r.y, z: r.z } as FrameDir;
 }
 
-// 慣性系 → Frame 相対（順変換, bake）。変換時刻は state 自身が持つ絶対時刻 s.t。
-// 回転系速度は v_rel = R⁻¹(v − ω×r)。
-export function toFrameState(frame: Frame, s: OrbitState, ephemeris: Ephemeris): RelativeOrbitState {
-  const { q, omega } = frameRotation(frame, s.t, ephemeris);
-  const qi = qInvert(q);
-  return { r: qRotate(qi, s.r), v: qRotate(qi, sub(s.v, cross(omega, s.r))) } as RelativeOrbitState;
+// 座標系相対の方向 → 慣性系(逆変換)。原点移動は効かない。
+export function toInertialDir(tf: FrameTransform, d: FrameDir): Vec3 {
+  return qRotate(tf.q, v3(d.x, d.y, d.z));
 }
 
-// Frame 相対 → 慣性系（逆変換, un-bake）。時刻 t は描画時刻（un-bake なら現在の simTime）で、
-// 復元された OrbitState のエポックにもなる（RelativeOrbitState は時刻を持たない — bake 時刻と
-// un-bake 時刻は別物なので、どちらを持たせても取り違えを招く）。
-// 慣性系速度は v = R·v_rel + ω×r（toFrameState の逆）。
-export function toInertialState(frame: Frame, t: number, s: RelativeOrbitState, ephemeris: Ephemeris): OrbitState {
-  const { q, omega } = frameRotation(frame, t, ephemeris);
-  const r = qRotate(q, s.r);
-  return orbitState(t, r, add(qRotate(q, s.v), cross(omega, r)));
+// 慣性系 → 座標系相対(順変換, bake)。速度は v_rel = R⁻¹(v − ȯ − ω×(r − o))。
+export function toFrameState(tf: FrameTransform, s: OrbitState): FrameOrbitState {
+  const qi = qInvert(tf.q);
+  const rel = sub(s.r, tf.origin);
+  return frameOrbitState(qRotate(qi, rel), qRotate(qi, sub(sub(s.v, tf.originVel), cross(tf.omega, rel))));
+}
+
+// 座標系相対 → 慣性系(逆変換, un-bake)。時刻 t は復元する OrbitState 自身のエポックになる
+// (un-bake なら現在の表示時刻)— FrameOrbitState は時刻を持たない(bake 時刻と un-bake 時刻は
+// 別物なので、どちらを持たせても取り違えを招く)。速度は v = ȯ + R·v_rel + ω×(r − o)
+// (toFrameState の逆)。
+export function toInertialState(tf: FrameTransform, t: number, s: FrameOrbitState): OrbitState {
+  const r = add(qRotate(tf.q, s.r), tf.origin);
+  const v = add(add(tf.originVel, qRotate(tf.q, s.v)), cross(tf.omega, sub(r, tf.origin)));
+  return orbitState(t, r, v);
 }

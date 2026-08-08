@@ -1,27 +1,25 @@
 // 点列(時刻付き OrbitState)を1本の単色折れ線として描く汎用描画基盤。OrbitLine(解析的な楕円)の
 // 兄弟で、こちらは計画軌道・予測軌道・履歴軌道など「任意の点列」を折れ線化する共通土台になる。
 //
-// 座標変換は physics/frame.ts へ委譲する二段構え:
-//  - bake(点列 or frame が変わったときだけ, syncGeometry): 各サンプルの OrbitState を frame 相対へ
-//    変換し(toFrameState)、位置と速度からエルミート細分した頂点を焼く。点ごとに回転角が違う
-//    非剛体変形なので頂点を書き直す(慣性系なら無変換)。BufferGeometry と position 属性は
-//    生成し直さず、確保済みバッファへ書き込んで needsUpdate を立てる — WebGPURenderer は
-//    描画対象ごとに頂点バッファの束縛をキャッシュしており、ジオメトリごと差し替えると
-//    新しい頂点が反映されない。
-//  - un-bake(毎フレーム, syncTransform): 現在時刻 T の剛体回転(toInertialQuat)を line.quaternion
-//    として与え、frame 相対頂点を慣性系へ戻す。全頂点一律なので O(1)。
-//  - フローティングオリジン補正(毎フレーム): line.position = 地球中心の描画フレーム位置。
+// 座標変換は physics/frame.ts / physics/ephemeris.ts へ委譲する二段構え:
+//  - bake(点列 or frame が変わったときだけ, syncGeometry): 各サンプルの OrbitState をその時刻の
+//    座標系相対へ変換し(frameTransformAt→toFrameState)、位置と速度からエルミート細分した頂点を
+//    焼く。点ごとに座標系の姿勢・原点が違う非剛体変形なので頂点を書き直す(慣性系なら無変換)。
+//    BufferGeometry と position 属性は生成し直さず、確保済みバッファへ書き込んで needsUpdate を
+//    立てる — WebGPURenderer は描画対象ごとに頂点バッファの束縛をキャッシュしており、ジオメトリ
+//    ごと差し替えると新しい頂点が反映されない。
+//  - un-bake(毎フレーム, syncTransform): 現在時刻 T の座標系の剛体運動(frameTransformAt)を
+//    line.quaternion として与え、座標系相対頂点を慣性系へ戻す。全頂点一律なので O(1)。
+//  - フローティングオリジン補正(毎フレーム): line.position = 座標系原点の描画フレーム位置
+//    (原点が動く座標系でもここだけ直せば済むよう、頂点は書き換えない)。
 // THREE の合成は world = position + quaternion·vertex なので、原点まわりの un-bake 回転 →
 // 平行移動の順で正しい。
 import * as THREE from 'three/webgpu';
-import { dot, len, v3 } from '../physics/vec3';
+import { dot, len } from '../physics/vec3';
 import { OrbitState, hermiteInterpolate, orbitState } from '../physics/orbital-state';
-import { Frame, toFrameState, toInertialQuat } from '../physics/frame';
+import { Frame, toFrameState } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from '../game/floating-origin';
-
-// 頂点は地球中心(ECI 原点)基準の frame 相対座標。line.position はその原点の描画フレーム位置。
-const EARTH_CENTER = v3(0, 0, 0);
 
 // 1辺あたりに許す接線の折れ角。隣り合う辺の向きがこの角度以下でしか変わらなければ、弦に対する
 // 曲線の膨らみの割合も角度だけで決まる(≈ 角度/8)ので、滑らかさがズーム率に依らない。
@@ -71,9 +69,10 @@ export class SampledLine {
     const verts: number[] = [];
     let prev: OrbitState | null = null;
     for (const sample of samples) {
-      // hermiteInterpolate は座標系に依らない (時刻, 位置, 接線) の多項式なので、frame 相対の
+      // hermiteInterpolate は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の
       // 位置と速度をそのまま OrbitState に詰めて渡す(この慣性系ブランドは関数の外へ出ない)。
-      const rel = toFrameState(frame, sample, ephemeris);
+      // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
+      const rel = toFrameState(ephemeris.frameTransformAt(frame, sample.t), sample);
       const baked = orbitState(sample.t, rel.r, rel.v);
       if (prev !== null) {
         const chords = chordCount(prev, baked);
@@ -98,12 +97,12 @@ export class SampledLine {
     this.geom.getAttribute('position').needsUpdate = true;
   }
 
-  // 毎フレーム: 剛体 un-bake(line クォータニオン) + フローティングオリジン補正(line 位置)。
-  // currentTime = 描画時刻(通常 simTime)。
+  // 毎フレーム: 剛体 un-bake(line クォータニオン) + フローティングオリジン補正(line 位置 =
+  // 座標系原点)。currentTime = 描画時刻(通常 simTime)。
   syncTransform(frame: Frame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin): void {
-    const q = toInertialQuat(frame, currentTime, ephemeris);
-    this.line.quaternion.set(q.x, q.y, q.z, q.w);
-    this.line.position.copy(fo.RtoThreeV3(EARTH_CENTER));
+    const tf = ephemeris.frameTransformAt(frame, currentTime);
+    this.line.quaternion.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
+    this.line.position.copy(fo.RtoThreeV3(tf.origin));
   }
 
   // 表示を要求する。頂点数が2未満の間は実際には隠れたままになる。
