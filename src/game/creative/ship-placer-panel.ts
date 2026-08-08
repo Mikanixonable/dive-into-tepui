@@ -51,6 +51,13 @@ export type LibrationForm = {
 // 実際に使う値だけを持つ。
 export type ShipPlacerForm = { readonly objectType: ObjectType } & (ElementsForm | LibrationForm);
 
+// open() の事前入力: 'body' は基準天体だけをその値へ合わせる(他のフィールドは前回の値のまま) —
+// マップの現在フォーカスを新規配置の初期値にする経路。'form' は種類を objectType に固定し、
+// 軌道要素一式をその値へ書き換える — 既存オブジェクトを複製する経路。
+export type ShipPlacerPreset =
+  | { readonly kind: 'body'; readonly body: ReferenceBody }
+  | { readonly kind: 'form'; readonly objectType: ObjectType; readonly form: ElementsForm };
+
 const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string])[] = [
   ['player', '自機'],
   ['enemy', '敵機'],
@@ -181,6 +188,9 @@ interface SliderRow {
   readonly slider: HTMLInputElement;
   setTicks(labels: readonly string[]): void;
   setMapping(toT: (value: number) => number, fromT: (t: number) => number): void;
+  // bindRelativeSlider が結んだ行にだけ立つ: 基準値相対スライダーの基準をいまの input.value へ
+  // 取り直す。値を外部から書き換えたときはこれも呼ばないと、つまみの位置が実際の値とずれる。
+  rebase?(): void;
 }
 
 function sliderField(root: HTMLElement, label: string, defaultValue: number, step: number, min?: number, max?: number): SliderRow {
@@ -283,6 +293,7 @@ function bindRelativeSlider(field: SliderRow, refFloor: number): void {
   };
   field.slider.addEventListener('pointerdown', rebase);
   field.slider.addEventListener('pointerup', rebase);
+  field.rebase = rebase;
   rebase();
 }
 
@@ -564,7 +575,7 @@ export class ShipPlacerPanel {
     btnRow.style.marginTop = '12px';
     btnRow.appendChild(hudButton('配置 [Enter]', () => this.confirm()));
     btnRow.appendChild(hudButton('キャンセル [ESC]', () => {
-      this.setVisible(false);
+      this.close();
       this.onClose?.();
     }));
     this.panel.appendChild(btnRow);
@@ -573,7 +584,7 @@ export class ShipPlacerPanel {
       if (this.panel.style.display === 'none') return;
       if (e.key === 'Escape') {
         e.stopImmediatePropagation();
-        this.setVisible(false);
+        this.close();
         this.onClose?.();
       } else if (e.key === 'Enter') {
         e.stopImmediatePropagation();
@@ -636,7 +647,7 @@ export class ShipPlacerPanel {
     const name = this.nameInput.value.trim();
     const form = this.getForm();
     this.onConfirm?.(name, form);
-    this.setVisible(false);
+    this.close();
     this.onClose?.();
   }
 
@@ -726,16 +737,60 @@ export class ShipPlacerPanel {
     this.issueList.style.display = issues.length > 0 ? '' : 'none';
   }
 
-  // パネルの表示/非表示を切り替える。開くときは defaultBody が基準天体になれる ID
-  // (公転している天体、かつ基地選択中なら月)なら、基準天体の選択をそれへ合わせる —
-  // 呼び出し側がマップの現在フォーカスを渡すことを想定している。
-  setVisible(visible: boolean, defaultBody?: string): void {
-    this._isOpen = visible;
-    this.panel.style.display = visible ? 'block' : 'none';
+  // パネルを開く。preset の種別で事前入力の範囲が変わる(ShipPlacerPreset 参照)。
+  // 'body' は基準天体が現在の種類で選べる ID のときだけ差し替える。
+  open(preset?: ShipPlacerPreset): void {
+    if (preset?.kind === 'form') {
+      this.selectObjectType(preset.objectType);
+      this.applyElementsForm(preset.form);
+    } else if (preset?.kind === 'body') {
+      const allowed = this.objectTypeValue === 'base' ? BASE_BODY_ITEMS : BODY_ITEMS;
+      if (allowed.some(([id]) => id === preset.body)) {
+        this.bodyValue = preset.body;
+        this.body.setSelected(this.bodyValue);
+        this.refreshPresets();
+      }
+    }
+    this._isOpen = true;
+    this.panel.style.display = 'block';
+  }
+
+  close(): void {
+    this._isOpen = false;
+    this.panel.style.display = 'none';
+  }
+
+  // 軌道要素一式をフォームへ書き込む。基準天体は現在の種類で選べる ID のときだけ差し替える
+  // (基地選択中に月以外を渡された場合など)。基準値相対スライダー(高度)は書き込んだ直後に
+  // 基準を取り直すので、つまみの位置が新しい値と食い違わない。
+  private applyElementsForm(form: ElementsForm): void {
+    this.selectPlacementMode('elements');
     const allowed = this.objectTypeValue === 'base' ? BASE_BODY_ITEMS : BODY_ITEMS;
-    if (visible && defaultBody !== undefined && allowed.some(([id]) => id === defaultBody)) {
-      this.bodyValue = defaultBody as ReferenceBody;
+    if (allowed.some(([id]) => id === form.body)) {
+      this.bodyValue = form.body;
       this.body.setSelected(this.bodyValue);
     }
+    this.refreshPresets();
+    this.selectSizeMode(form.sizeMode);
+
+    const setNumber = (row: SliderRow, value: number): void => {
+      row.input.value = String(value);
+      row.input.dispatchEvent(new Event('input'));
+      row.rebase?.();
+    };
+    if (form.sizeMode === 'apsides') {
+      setNumber(this.peAlt, form.peAltKm);
+      setNumber(this.apAlt, form.apAltKm);
+    } else if (form.sizeMode === 'semiMajorEcc') {
+      setNumber(this.semiMajor, form.semiMajorKm);
+      setNumber(this.eccSemiMajor, form.eccentricity);
+    } else {
+      setNumber(this.period, form.periodHours);
+      setNumber(this.eccPeriod, form.eccentricity);
+    }
+    setNumber(this.inc, form.incDeg);
+    setNumber(this.raan, form.raanDeg);
+    setNumber(this.argp, form.argpDeg);
+    setNumber(this.nu, form.nuDeg);
   }
 }

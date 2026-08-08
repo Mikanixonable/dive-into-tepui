@@ -19,6 +19,8 @@ import { SimSpeedManager } from './sim-speed-manager';
 import type { Docking } from './docking';
 import type { Game } from './game';
 import { v3 } from '../physics/vec3';
+import type { ObjectType } from './creative/ship-placer-panel';
+import type { OrbitState } from '../physics/orbital-state';
 
 interface PickHandler {
   itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[];
@@ -154,6 +156,7 @@ export class MapPicker {
       itemsFor: (target, simTime) => [
         MenuCommon.focus(),
         ...this.navTargetItems(target, simTime),
+        ...this.duplicateItems(),
         { label: '削除', act: 'delete' },
         MenuCommon.cancel(),
       ],
@@ -161,6 +164,8 @@ export class MapPicker {
         if (act === 'delete') {
           const enemy = this.entities.enemies.find(e => e.name === target.id);
           if (enemy) enemy.alive = false;
+        } else if (act === 'duplicate') {
+          this.runDuplicate(target);
         } else {
           this.runBodyShip(act, target);
         }
@@ -170,6 +175,7 @@ export class MapPicker {
       itemsFor: (target, simTime) => [
         MenuCommon.focus(),
         ...this.navTargetItems(target, simTime),
+        ...this.duplicateItems(),
         { label: '削除', act: 'delete' },
         MenuCommon.cancel(),
       ],
@@ -177,6 +183,8 @@ export class MapPicker {
         if (act === 'delete') {
           const ammo = this.entities.ammos.find(a => a.id === target.id);
           if (ammo) ammo.alive = false;
+        } else if (act === 'duplicate') {
+          this.runDuplicate(target);
         } else {
           this.runBodyShip(act, target);
         }
@@ -242,6 +250,7 @@ export class MapPicker {
           { label: ship?.followPlan ? '軌道計画への自動追従 OFF' : '軌道計画への自動追従 ON', act: 'followToggle' },
           MenuCommon.focus(),
           ...this.navTargetItems(target, simTime),
+          ...this.duplicateItems(),
           ...remove,
           MenuCommon.cancel(),
         ];
@@ -253,6 +262,8 @@ export class MapPicker {
         } else if (act === 'followToggle') {
           const ship = this.entities.findPlayer(target.id);
           if (ship) ship.followPlan = !ship.followPlan;
+        } else if (act === 'duplicate') {
+          this.runDuplicate(target);
         } else if (act === 'delete') {
           const ship = this.entities.findPlayer(target.id);
           if (ship) this.game.removeCreativePlayer(ship);
@@ -263,8 +274,7 @@ export class MapPicker {
     },
     'empty-space': {
       itemsFor: () => {
-        const isCreative = (this.game.activeStage as any).stageId === 'creative';
-        const placeItem: readonly MenuItem<MenuAction>[] = isCreative
+        const placeItem: readonly MenuItem<MenuAction>[] = this.isCreativeMode()
           ? [{ label: 'オブジェクトを配置する', act: 'openShipPlacer', shortcut: 'Enter' }]
           : [];
         return [
@@ -276,7 +286,7 @@ export class MapPicker {
       },
       run: (act) => {
         if (act === 'openShipPlacer') {
-          if ((this.game.activeStage as any).stageId === 'creative') {
+          if (this.isCreativeMode()) {
             (this.game.activeStage as any).openShipPlacer(this.game.cameraSystem.overviewCamera.focus);
           }
         } else if (act === 'openObjectList') {
@@ -289,7 +299,7 @@ export class MapPicker {
     'base': {
       itemsFor: (target) => {
         const base = this.entities.findBase(target.id);
-        const subLabel = base 
+        const subLabel = base
           ? `所持金: ${base.baseState.money.toLocaleString()} Cr / 格納船: ${base.baseState.dockedShips.length}隻`
           : '基地';
         return [
@@ -297,6 +307,7 @@ export class MapPicker {
           { label: 'ドックビューを開く', act: 'openDock' },
           MenuCommon.focus(),
           ...this.navTargetItems(target, 0),
+          ...this.duplicateItems(),
           { label: '削除', act: 'delete' },
           MenuCommon.cancel(),
         ];
@@ -311,6 +322,8 @@ export class MapPicker {
         } else if (act === 'openDock') {
           if (base) this.docking?.activate(base);
           else this.hud.hint('基地が見つかりません');
+        } else if (act === 'duplicate') {
+          this.runDuplicate(target);
         } else {
           this.runBodyShip(act, target);
         }
@@ -330,6 +343,51 @@ export class MapPicker {
     if (target.id === this.navTarget.id) return [MenuCommon.navTarget(true)];
     const canTarget = this.navTarget.canTarget(target.id, this.entities, this.ephemeris, simTime);
     return canTarget ? [MenuCommon.navTarget(false)] : [];
+  }
+
+  // クリエイティブモードで実行中かどうか。activeStage を CreativeStage として直接扱えないので、
+  // 既存の型消去アクセスをここへ集約する。
+  private isCreativeMode(): boolean {
+    return (this.game.activeStage as any).stageId === 'creative';
+  }
+
+  // 「複製」項目。クリエイティブモードでのみ出す — 複製先が艦艇配置パネルであり、
+  // 通常ステージには存在しないため。
+  private duplicateItems(): readonly MenuItem<MenuAction>[] {
+    return this.isCreativeMode() ? [MenuCommon.duplicate()] : [];
+  }
+
+  // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして艦艇配置パネルを開く。
+  private runDuplicate(target: MapPickable): void {
+    if (!this.isCreativeMode()) return;
+    const source = this.duplicateSourceFor(target);
+    if (!source) return;
+    (this.game.activeStage as any).openShipPlacerForDuplicate(source.objectType, source.state);
+  }
+
+  // MapPickable を、複製できる実体の種類とその現在状態へ解決する。複製できない種別(天体・
+  // 近点/遠点アイコン・相対AN/DN)ではメニュー自体を出していないので、ここに到達しない。
+  private duplicateSourceFor(target: MapPickable): { objectType: ObjectType; state: OrbitState } | null {
+    switch (target.kind) {
+      case 'player': {
+        const ship = this.entities.findPlayer(target.id);
+        return ship ? { objectType: 'player', state: ship.state } : null;
+      }
+      case 'ship': {
+        const enemy = this.entities.enemies.find((e) => e.name === target.id);
+        return enemy ? { objectType: 'enemy', state: enemy.state } : null;
+      }
+      case 'ammo': {
+        const ammo = this.entities.ammos.find((a) => a.id === target.id);
+        return ammo ? { objectType: 'ammo', state: ammo.state } : null;
+      }
+      case 'base': {
+        const base = this.entities.findBase(target.id);
+        return base ? { objectType: 'base', state: base.state } : null;
+      }
+      default:
+        return null;
+    }
   }
 
   private runBodyShip(act: MenuAction, target: MapPickable): void {

@@ -23,8 +23,9 @@ import { Ammo } from '../game-entity/ammo';
 import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import * as C from '../const';
-import { ElementsForm, LibrationForm, ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
+import { ElementsForm, LibrationForm, ObjectType, ReferenceBody, ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLibrationPlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
+import { elementsFormFromState } from '../creative/duplicate-form';
 import { OrbitLine } from '../../render/orbitline';
 
 const DEG = Math.PI / 180;
@@ -107,7 +108,20 @@ export class CreativeStage extends Stage {
   // 艦艇配置モーダルを開く (MapPicker から呼ばれる)。focusId はマップの現在フォーカスで、
   // 基準天体になれる ID なら基準天体の初期選択に使う。
   openShipPlacer(focusId?: string): void {
-    this.placerPanel.setVisible(true, focusId);
+    this.placerPanel.open(focusId !== undefined ? { kind: 'body', body: focusId as ReferenceBody } : undefined);
+  }
+
+  // 右クリックメニューの「複製」(MapPicker から呼ばれる)。state を軌道要素へ逆算できれば
+  // その値をプリセットして開き、逆算できない状態(双曲線軌道など)なら通常の新規配置として開く。
+  openShipPlacerForDuplicate(objectType: ObjectType, state: OrbitState): void {
+    const bodies = this._ephemeris.attractorsAt(this._simulator.simTime);
+    const form = elementsFormFromState(state, bodies);
+    if (!form) {
+      this._hud.hint('この軌道は要素に変換できないため、新規配置として開きます');
+      this.placerPanel.open();
+      return;
+    }
+    this.placerPanel.open({ kind: 'form', objectType, form });
   }
 
   // フォーム値から配置プレビューの軌道要素と位置を求める。軌道要素指定以外の配置方法・
