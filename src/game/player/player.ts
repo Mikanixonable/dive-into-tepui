@@ -460,9 +460,8 @@ export class Player extends Ship {
       mags: this.fire.mags,
       rounds: this.fire.rounds,
       heat: this.thermal.hullTemp,
-      hp: this.hp,
-      maxHp: this.maxHp,
       parts: this.parts.map(p => ({ ...p })) as AnyPart[],
+      followPlan: this.followPlan,
       plan: {
         anchor: {
           t: this.plan.anchor.t,
@@ -495,9 +494,9 @@ export class Player extends Ship {
     
     player.fire.initAmmo(data.mags, data.rounds);
     player.thermal.hullTemp = data.heat;
-    player.hp = data.hp;
-    player.maxHp = data.maxHp;
-    player.parts = data.parts.map(restorePart);
+    player.followPlan = data.followPlan;
+    player.parts.splice(0, player.parts.length, ...data.parts.map(restorePart));
+    player.refreshFromParts();
 
     if (data.plan) {
       player.plan.clear();
