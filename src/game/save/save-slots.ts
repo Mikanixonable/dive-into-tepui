@@ -13,6 +13,14 @@ import { SaveStore, SAVE_INDEX_VERSION } from './save-store';
 export const AUTO_SNAPSHOT_LIMIT = 12;
 export const PINNED_SNAPSHOT_LIMIT = 30;
 
+// 容量超過かどうか。ブラウザによって名前とコードが違うので両方を見る。
+function isQuotaError(e: unknown): boolean {
+  return (
+    e instanceof DOMException &&
+    (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22)
+  );
+}
+
 // セーブ索引(SaveIndex)の読み書き・スロット/スナップショットのメタ操作のみを担う。
 // スナップショット本体の永続化は一切自分で持たず、常に SaveStore へ委譲する。
 export class SaveSlots {
@@ -77,7 +85,9 @@ export class SaveSlots {
     this.persist();
   }
 
-  // そのスロットが参照する全スナップショット本体を先に消してから索引から外す。
+  // そのスロットが参照する全スナップショット本体を先に消してから索引から外す。遊んでいた
+  // スロットを消した場合は、残っているスロットの1つをアクティブにする(遊ぶ先が無いと
+  // 以降どの経路でもスナップショットを撮れなくなるため)。
   deleteSlot(id: string): void {
     const slot = this.index.slots.find((s) => s.id === id);
     if (!slot) return;
@@ -85,7 +95,7 @@ export class SaveSlots {
       for (const meta of history.snapshots) this.store.deleteSnapshot(meta.id);
     }
     this.index.slots = this.index.slots.filter((s) => s.id !== id);
-    if (this.index.activeSlotId === id) this.index.activeSlotId = null;
+    if (this.index.activeSlotId === id) this.index.activeSlotId = this.index.slots[0]?.id ?? null;
     this.persist();
   }
 
@@ -144,18 +154,24 @@ export class SaveSlots {
 
   // 本体を書き、メタを履歴の先頭へ入れ、pinned:false の超過分を古い順に剪定する。
   // 容量超過で書き込みに失敗した場合は pinned:false を1件ずつ消しながら再試行する。
+  // クリップ済みが上限に達している履歴へ pinned:true を足すことはできない(false を返す)。
   addSnapshot(slotId: string, stageId: string, meta: SnapshotMeta, data: GameSaveData): boolean {
     const history = this.historyFor(slotId, stageId);
     if (!history) return false;
+    if (meta.pinned && history.snapshots.filter((m) => m.pinned).length >= PINNED_SNAPSHOT_LIMIT) return false;
 
     for (;;) {
       try {
         this.store.writeSnapshot(meta.id, data);
         break;
       } catch (e) {
-        const oldestAuto = this.oldestAutoIn(history);
+        // 空き容量以外の失敗(localStorage 自体が使えない等)は剪定しても直らないので、
+        // 消してから諦めることのないよう即座に降りる。
+        const oldestAuto = isQuotaError(e) ? this.oldestAutoIn(history) : null;
         if (!oldestAuto) {
-          console.error('SaveSlots.addSnapshot: 書き込みに失敗し、これ以上剪定できません', e);
+          console.error('SaveSlots.addSnapshot: スナップショットを書き込めませんでした', e);
+          // 剪定でメタを消していれば索引が本体と食い違っているので、諦める前に書き戻す。
+          this.persist();
           return false;
         }
         this.removeSnapshotFrom(history, oldestAuto.id);

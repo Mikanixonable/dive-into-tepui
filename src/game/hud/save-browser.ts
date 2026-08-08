@@ -16,6 +16,12 @@ function esc(text: string): string {
   return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 }
 
+// 数値であるはずのメタ項目。取り込んだファイルでは欠けていることがあり、そのまま
+// 書式化関数へ渡すと一覧の組み立てごと落ちてイベント配線まで届かなくなる。
+function num(v: number): number {
+  return Number.isFinite(v) ? v : 0;
+}
+
 const SNAPSHOT_KIND_LABEL: Record<SnapshotMeta['kind'], string> = {
   auto: '自動', manual: '手動', checkpoint: '決着',
 };
@@ -69,6 +75,11 @@ export class SaveBrowser {
   private setStatus(text: string, isError: boolean): void {
     this.statusLine = text;
     this.statusIsError = isError;
+  }
+
+  // 決着後(won/lost/timeup)の状態は復元しても操作不能なので撮らせない([F5] と同条件)。
+  private canCaptureNow(): boolean {
+    return this.viewedSlotId === this.slots.activeSlotId && this.game.activeStage.isPlaying;
   }
 
   private viewedSlot(): SaveSlotMeta | null {
@@ -140,11 +151,10 @@ export class SaveBrowser {
     const auto = history ? history.snapshots.filter((s) => !s.pinned) : [];
     // 復元できるのは、いま遊んでいるスロットの、いま遊んでいるステージのものだけ。
     const loadable = slot.id === this.slots.activeSlotId && stageId === this.game.activeStage.id;
-    const isViewingActive = slot.id === this.slots.activeSlotId;
 
     return `
       <div class="sb-pane-title">スナップショット</div>
-      <button class="sb-btn" id="sb-capture-now" ${isViewingActive ? '' : 'disabled'}>今の状態をクリップして残す</button>
+      <button class="sb-btn" id="sb-capture-now" ${this.canCaptureNow() ? '' : 'disabled'} title="${this.canCaptureNow() ? '' : '決着後の状態は復元できないため残せません'}">今の状態をクリップして残す</button>
       ${tabs}
       <div class="sb-snapshot-groups">
         <div class="sb-snapshot-group-title">クリップ済み (${pinned.length}/${PINNED_SNAPSHOT_LIMIT})</div>
@@ -156,19 +166,21 @@ export class SaveBrowser {
   }
 
   private buildSnapshotCard(s: SnapshotMeta, slot: SaveSlotMeta, loadable: boolean): string {
-    const hpPct = Math.max(0, Math.min(100, s.hpRatio * 100));
+    // 取り込んだファイル由来のメタは欠けていたり別物だったりし得るので、表示前に必ず均す。
+    const kind = SNAPSHOT_KIND_LABEL[s.kind] ? s.kind : 'auto';
+    const hpPct = Math.max(0, Math.min(100, num(s.hpRatio) * 100));
     const loadDisabled = !loadable;
     const loadTitle = loadDisabled ? 'いま遊んでいるセーブデータ・ステージのスナップショットだけを復元できます' : '';
     return `
       <div class="sb-snap-card" data-snap-id="${s.id}">
         <div class="sb-snap-head">
-          <span class="sb-snap-name">${esc(s.name)}</span>
-          <span class="sb-snap-badge sb-snap-badge-${s.kind}">${SNAPSHOT_KIND_LABEL[s.kind]}</span>
+          <span class="sb-snap-name">${esc(String(s.name ?? ''))}</span>
+          <span class="sb-snap-badge sb-snap-badge-${kind}">${SNAPSHOT_KIND_LABEL[kind]}</span>
         </div>
-        <div class="sb-snap-row">MET ${fmtTime(s.simTime)} / ${fmtDateTime(s.createdAtReal / 1000)}</div>
-        <div class="sb-snap-row">${ATTRACTOR_NAMES[s.centerBodyId]} 高度 ${fmtDist(s.altitude)} / 速度 ${fmtSpeed(s.speed)}</div>
+        <div class="sb-snap-row">MET ${fmtTime(num(s.simTime))} / ${fmtDateTime(num(s.createdAtReal) / 1000)}</div>
+        <div class="sb-snap-row">${ATTRACTOR_NAMES[s.centerBodyId] ?? '—'} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}</div>
         <div class="sb-snap-hp-bar"><div class="sb-snap-hp-fill" style="width:${hpPct}%"></div></div>
-        <div class="sb-snap-row">艦 ${s.playerCount} / 敵残 ${s.enemyAliveCount} / 所持金 ${s.money.toLocaleString()} Cr</div>
+        <div class="sb-snap-row">艦 ${num(s.playerCount)} / 敵残 ${num(s.enemyAliveCount)} / 所持金 ${num(s.money).toLocaleString()} Cr</div>
         <div class="sb-snap-actions">
           <button class="sb-btn sb-btn-sm sb-btn-load" data-slot-id="${slot.id}" data-snap-id="${s.id}" ${loadDisabled ? 'disabled' : ''} title="${loadTitle}">ロード</button>
           <button class="sb-btn sb-btn-sm sb-btn-pin" data-snap-id="${s.id}" data-pinned="${s.pinned}">${s.pinned ? '📌 解除' : '📌 クリップ'}</button>
@@ -281,6 +293,7 @@ export class SaveBrowser {
   }
 
   private handleCaptureNow(): void {
+    if (!this.canCaptureNow()) return;
     const name = prompt('スナップショットの名前', '');
     const snap = this.service.capture(this.game, 'manual', name || null, true);
     this.setStatus(snap ? 'クリップしました。' : 'クリップに失敗しました。', !snap);
