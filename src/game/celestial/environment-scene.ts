@@ -2,11 +2,12 @@
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
-import { MU_EARTH, R_EARTH, kinematicState } from '../../physics/kinematic-state';
+import { kinematicState } from '../../physics/kinematic-state';
+import { MU_EARTH, R_EARTH } from '../../physics/solar-system';
 import { OrbitalElements } from '../../physics/elements';
 import { Attractor, orbitalElementsOf } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
-import { OrbitLine } from '../../render/orbitline';
+import { OrbitLine } from '../../render/orbit-line';
 import { createStars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';

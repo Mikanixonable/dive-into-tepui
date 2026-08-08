@@ -25,7 +25,7 @@ import { generateDriftingEnemy } from './spawner/enemy-generator';
 import * as C from '../const';
 import { ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
 import { validateEllipticPlacement } from '../creative/placement-validation';
-import { OrbitLine } from '../../render/orbitline';
+import { OrbitLine } from '../../render/orbit-line';
 
 const DEG = Math.PI / 180;
 

@@ -51,7 +51,7 @@ export function register(): void {
   });
 
   test('frame: 太陽-地球回転系では太陽がほぼ -X 軸上に静止する(x̂ = 太陽→地球)', () => {
-    // 太陽-地球回転系の基底は orbitRotationAt('earth', t)(x̂ = 太陽→地球-月重心の解析方向)。
+    // 太陽-地球回転系の基底は orbitFrameRotationAt('earth', t)(x̂ = 太陽→地球-月重心の解析方向)。
     // 太陽の実際の地心方向は重心補正(4,673km 級)ぶんだけこの軸からずれるので、
     // 1AU に対して 1e-4 程度の緩い許容にする(軸そのものからのずれは物理的に正しい)。
     for (const t of [0, YEAR / 3, YEAR * 2.7]) {
