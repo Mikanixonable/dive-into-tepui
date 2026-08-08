@@ -24,6 +24,7 @@ import { register as registerOrbitEntity } from './orbit-entity.test';
 import { register as registerHalo } from './halo.test';
 import { register as registerPlan } from './plan.test';
 import { register as registerHudLayout } from './hud-layout.test';
+import { register as registerShortcutHint } from './shortcut-hint.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -49,5 +50,6 @@ registerOrbitEntity();
 registerHalo();
 registerPlan();
 registerHudLayout();
+registerShortcutHint();
 
 runAll();
