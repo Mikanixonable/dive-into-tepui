@@ -80,6 +80,7 @@ export interface PropertyWindowContent<A extends string = string> {
 }
 
 export class PropertyWindow<A extends string = string> {
+  private static readonly UNSET = Symbol('unset');
   private readonly el: HTMLDivElement;
   private readonly titleMainEl: HTMLDivElement;
   private readonly titleSubEl: HTMLDivElement;
@@ -87,8 +88,11 @@ export class PropertyWindow<A extends string = string> {
   private readonly rowsEl: HTMLDivElement;
   private readonly itemsEl: HTMLDivElement;
   // 前フレームに描画したタイトル・サブタイトル。同じ値なら DOM に触れない差分更新のための記録。
+  // サブタイトルは「まだ一度も描画していない」を表す専用の初期値を持つ — `undefined`(サブタイトル
+  // 無し)と区別できないと、最初の syncHeader 呼び出しが「変化なし」と判定され titleSubEl の
+  // display が一度も設定されないままになる。
   private lastTitle = '';
-  private lastSubtitle: string | undefined = undefined;
+  private lastSubtitle: string | undefined | typeof PropertyWindow.UNSET = PropertyWindow.UNSET;
   // 前フレームに描画した行の値。同じ値なら DOM に触れない差分更新のための記録。
   private lastRowValues = new Map<string, string>();
   // 前回描画した操作項目の直列化(act/label/shortcut)。同じなら DOM を組み直さない。
