@@ -133,7 +133,22 @@ function sliderField(root: HTMLElement, label: string, defaultValue: number, ste
   const wrap = document.createElement('div');
   wrap.className = 'slider-field';
 
-  const input = numberField(wrap, label, defaultValue, step);
+  const row = document.createElement('div');
+  row.className = 'hud-seg';
+  const heading = document.createElement('span');
+  heading.className = 'seg-title';
+  heading.textContent = label;
+  row.appendChild(heading);
+
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.step = String(step);
+  input.value = String(defaultValue);
+  input.addEventListener('pointerdown', (e) => e.stopPropagation());
+  row.appendChild(input);
+
+  const sliderCol = document.createElement('div');
+  sliderCol.className = 'slider-col';
 
   const slider = document.createElement('input');
   slider.type = 'range';
@@ -141,11 +156,14 @@ function sliderField(root: HTMLElement, label: string, defaultValue: number, ste
   slider.max = '1000';
   slider.step = '1';
   slider.addEventListener('pointerdown', (e) => e.stopPropagation());
-  wrap.appendChild(slider);
+  sliderCol.appendChild(slider);
 
   const ticksEl = document.createElement('div');
   ticksEl.className = 'slider-ticks';
-  wrap.appendChild(ticksEl);
+  sliderCol.appendChild(ticksEl);
+
+  row.appendChild(sliderCol);
+  wrap.appendChild(row);
 
   root.appendChild(wrap);
 
