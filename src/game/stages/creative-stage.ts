@@ -183,15 +183,15 @@ export class CreativeStage extends Stage {
   // フォームの placementMode に応じて軌道要素指定(stateFromOrbitalElements)かラグランジュ点指定
   // (haloState/lissajousState)のどちらかで KinematicState を組み立てる。
   private buildInitialState(form: ShipPlacerForm): KinematicState {
-    if (form.placementMode === 'libration') return this.buildLibrationState(form);
+    if (form.placementMode === 'lagrange') return this.buildLagrangeState(form);
     return this.buildElementsState(form);
   }
 
   // 副天体・点・軌道種別・振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
   // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォームの面内振幅は使わない。
-  private buildLibrationState(form: ShipPlacerForm): KinematicState {
-    const common = { secondary: form.librationSecondary, point: form.librationPoint };
-    if (form.librationOrbitKind === 'halo') {
+  private buildLagrangeState(form: ShipPlacerForm): KinematicState {
+    const common = { secondary: form.lagrangeSecondary, point: form.lagrangePoint };
+    if (form.lagrangeOrbitKind === 'halo') {
       return haloState(this._simulator.simTime, this._ephemeris, { ...common, az: form.azKm * 1e3 });
     }
     return lissajousState(this._simulator.simTime, this._ephemeris, {
@@ -250,7 +250,7 @@ export class CreativeStage extends Stage {
       return;
     }
     const values = [form.axKm, form.azKm];
-    if (!values.every(Number.isFinite) || form.azKm <= 0 || (form.librationOrbitKind === 'lissajous' && form.axKm <= 0)) {
+    if (!values.every(Number.isFinite) || form.azKm <= 0 || (form.lagrangeOrbitKind === 'lissajous' && form.axKm <= 0)) {
       throw new Error('ラグランジュ軌道の振幅には有限の正数を入力してください');
     }
   }
