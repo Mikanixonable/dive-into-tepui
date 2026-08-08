@@ -7,9 +7,9 @@ import { KinematicState, hermiteInterpolate } from './kinematic-state';
 import { StateQueue } from './state-queue';
 import { Attractor } from './attractor';
 import { Vec3 } from './vec3';
-import { stepDynamicsRK4 } from './dynamics';
+import { stepDynamics } from './dynamics';
 
-export class OrbitEntity {
+export class DynamicTrajectory {
   private _state: KinematicState;
   // 直前ステップの状態。history とは別フィールドで持つ — 間引かれた history からは
   // 「直前サブステップの位置」が取れないため(ワープ中は1サンプルが数百秒に相当する)。
@@ -29,7 +29,7 @@ export class OrbitEntity {
   get history(): StateQueue { return this._history; }
 
   // 全天体重力 + J2 + 大気抵抗 + 推力で 1 ステップ RK4 積分する(dynamics.ts の
-  // stepDynamicsRK4)。attractors はそのステップぶん呼び出し側が確定させた重力源一覧。
+  // stepDynamics)。attractors はそのステップぶん呼び出し側が確定させた重力源一覧。
   // keepDuration > 0 かつ、直前の state が最新の記録サンプルから sampleInterval 秒以上
   // 離れているときだけ、その直前の state を history へ積む(解像度を落とす箇所はここ)。
   // 積んだ後は keepDuration を保持窓として history.cleanup する。keepDuration = 0 なら
@@ -43,7 +43,7 @@ export class OrbitEntity {
     keepDuration: number,
   ): void {
     const prev = this._state;
-    const next = stepDynamicsRK4(prev, dt, attractors, bcInv, thrust);
+    const next = stepDynamics(prev, dt, attractors, bcInv, thrust);
     // 間引き済み history への記録
     if (keepDuration > 0) {
       const newest = this._history.newest;

@@ -24,7 +24,7 @@ description: 関数・機能の追加が要求されたときに必ず通す手�
 | ベクトル演算・乱数ベクトル | `physics/vec3.ts` |
 | 軌道要素・Kepler・RK4・楕円サンプリング | `physics/orbital.ts` |
 | 姿勢・クォータニオン | `physics/attitude.ts` |
-| 状態列の積分・記録・任意時刻の引き当て | `physics/orbit-entity.ts` / `physics/state-queue.ts` |
+| 状態列の積分・記録・任意時刻の引き当て | `physics/dynamic-trajectory.ts` / `physics/state-queue.ts` |
 | 偏差射撃・迎撃時刻 | `physics/intercept.ts` |
 | 空気抵抗・J2・三体加速度 | `physics/envaccel.ts` / `physics/atmosphere.ts` |
 | 表示座標系の変換 / スクリーン投影 | `physics/frame.ts` / `physics/projection.ts` |

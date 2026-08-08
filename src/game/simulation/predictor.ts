@@ -1,4 +1,4 @@
-// 全 GameEntity の予測列(predicted)をフレームあたりの予算内でラウンドロビンに伸ばす。
+// 全 GameEntity の予測列(predictedTrajectory)をフレームあたりの予算内でラウンドロビンに伸ばす。
 // 予測列の長短を問わず一律に扱うため、破棄が多発してもフレーム時間がスパイクしない。
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
@@ -37,7 +37,7 @@ export class Predictor {
       if (e.resyncPrediction(simTime, attractors, horizon)) this.discarded++;
       if (!e.predictsFuture) continue;
       this.tracked++;
-      if (e.predicted !== null && e.predicted.state.t > simTime + horizon) this.complete++;
+      if (e.predictedTrajectory !== null && e.predictedTrajectory.state.t > simTime + horizon) this.complete++;
     }
 
     if (!canGrow) return;
@@ -55,26 +55,26 @@ export class Predictor {
     this.cursor = all.length > 0 ? (this.cursor + visited) % all.length : 0;
   }
 
-  // budgetSteps を上限に、1体ぶんの予測列を GameEntity.stepPrediction で1ステップずつ伸ばし、
+  // budgetSteps を上限に、1体ぶんの予測列を GameEntity.stepPredicted で1ステップずつ伸ばし、
   // 消費したステップ数を返す。刻み幅と重力源は毎ステップ、現在の予測先端の時刻・位置から
-  // 求め直す(先端がまだ無ければ現在状態で代用 — 生成直後は current.state を種にするので
+  // 求め直す(先端がまだ無ければ現在状態で代用 — 生成直後は actualTrajectory.state を種にするので
   // 同じ値になる)。ここが「1ステップぶんの前提を決めて渡す」側、entity 側は「渡された前提で
-  // 実際に1ステップ進めるか判断する」側 — stepSim に対する simulationSubStep と同じ分担。
-  // ホライズン超過などで stepPrediction が false を返したら、そのエンティティの予算消化を打ち切る。
+  // 実際に1ステップ進めるか判断する」側 — stepActual に対する substep と同じ分担。
+  // ホライズン超過などで stepPredicted が false を返したら、そのエンティティの予算消化を打ち切る。
   private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number, horizon: number): number {
     if (!e.predictsFuture) return 0;
     let consumed = 0;
     while (consumed < budgetSteps) {
       // 刻み幅は「その場の周期の等分」と「ホライズン全体をステップ上限で割った値」の粗い方。
       // 後者があるので、表示期間を年スケールにしてもステップ数が有界に収まる。
-      const tipState = e.predicted?.state ?? e.state;
+      const tipState = e.predictedTrajectory?.state ?? e.state;
       const attractors = this.ephemeris.attractorsAt(tipState.t);
       const dt = Math.max(
         C.PREDICT_MIN_STEP_DT,
         localOrbitPeriod(tipState.r, attractors) / C.PREDICT_STEPS_PER_REV,
         horizon / C.PREDICT_MAX_STEPS,
       );
-      if (!e.stepPrediction(attractors, simTime, dt, horizon)) break;
+      if (!e.stepPredicted(attractors, simTime, dt, horizon)) break;
       consumed++;
     }
     return consumed;

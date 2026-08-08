@@ -153,7 +153,7 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 
 - `PlanEditor.editMode`(入力・編集の可否)・`CameraSystem.overviewMode`(視点・描画)・
   `DisplayTimeManager.forceCurrent`(未来表示の可否) → 同時トグルは `MapModeToggler` の責務。
-- `OverviewCamera.cameraFrame`(視点が固定される座標系)と `PlanDisplay.trajectoryFrame`
+- `OverviewCamera.cameraFrame`(視点が固定される座標系)と `PlanDisplay.planFrame`
   (計画軌道を描く座標系) → プレイヤーが独立に選ぶ別々の値。
 
 ## 8. `plan` / `predict` / `display` の語を混ぜない

@@ -61,7 +61,7 @@ export class StateQueue {
     if (this.deque.size > n) this.deque.deleteRightN(this.deque.size - n);
   }
 
-  // t 以上のサンプルをすべて捨てる。不連続な差し替え(OrbitEntity.reset)で、直前まで
+  // t 以上のサンプルをすべて捨てる。不連続な差し替え(DynamicTrajectory.reset)で、直前まで
   // 「これから訪れるはずだった未来」として積まれていたサンプルを無効化するために使う。
   discardFrom(t: number): void {
     this.deque.deleteLeftN(this.bisect(t));

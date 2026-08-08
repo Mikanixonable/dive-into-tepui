@@ -116,7 +116,7 @@ minCountって使われているか？
   触っている(フックが検出。今回の変更セットとは無関係な既存の状態)。
 
 ## **「月回転系にしても予測軌道が月を周回する形で表示されない」**(`memos/mikanixonable/dev.md:741`)。
-原因は `DebugHistoryLine.sync` に渡すベイク系がマニューバ計画用の `PlanDisplay.trajectoryFrame` に
+原因は `DebugTrajectoryLine.sync` に渡すベイク系がマニューバ計画用の `PlanDisplay.planFrame` に
 なっており、エンティティの積分軌道表示が自分の座標系設定を持っていないこと
 (`memos/mikanixonable/map-orbit-display-fixes.md` 問題2)。
 

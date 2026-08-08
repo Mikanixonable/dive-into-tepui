@@ -1,9 +1,9 @@
-// 計画軌道の1区間(arc)。起点状態から終端時刻までを OrbitEntity で数値積分し、その保持
+// 計画軌道の1区間(arc)。起点状態から終端時刻までを DynamicTrajectory で数値積分し、その保持
 // サンプル列を1本の折れ線として描く。マニューバノードによる区間分割は知らない — 呼び出し側
-// (PlanTrajectory)が arc ごとにこれを持つ。
+// (PlanPath)が arc ごとにこれを持つ。
 import * as THREE from 'three/webgpu';
 import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-state';
-import { OrbitEntity } from '../../physics/orbit-entity';
+import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Attractor, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
@@ -25,9 +25,9 @@ function stepDt(r: Vec3, attractors: readonly Attractor[]): number {
 }
 
 export class PlanArc {
-  private readonly sampled: SampledLine;
-  private entity: OrbitEntity | null = null;
-  private samples: readonly KinematicState[] = [];
+  private readonly line: SampledLine;
+  private trajectory: DynamicTrajectory | null = null;
+  private _samples: readonly KinematicState[] = [];
   // 再突入高度割れ・非有限で積分を打ち切ったか。
   private truncated = false;
   private key: ComputeKey | null = null;
@@ -35,12 +35,12 @@ export class PlanArc {
 
   // 描画色・不透明度・renderOrder を指定して線を用意する。
   constructor(color: number, opacity = 0.85, renderOrder = 4) {
-    this.sampled = new SampledLine(color, opacity, renderOrder);
+    this.line = new SampledLine(color, opacity, renderOrder);
   }
 
   // シーンに追加する描画対象。
   get object3d(): THREE.Object3D {
-    return this.sampled.line;
+    return this.line.line;
   }
 
   // 起点・終端の変化を検出して再積分する。tracksLiveAnchor(計画が空の間の唯一の区間)では
@@ -82,43 +82,43 @@ export class PlanArc {
 
   // 直近に積分したサンプル列を折れ線メッシュへ反映する。
   sync(ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number, fo: FloatingOrigin): void {
-    this.sampled.syncGeometry(this.samples, frame, ephemeris);
-    this.sampled.syncTransform(frame, currentTime, ephemeris, fo);
+    this.line.syncGeometry(this._samples, frame, ephemeris);
+    this.line.syncTransform(frame, currentTime, ephemeris, fo);
   }
 
   // 時刻 t の状態。保持区間外は null。
   at(t: number): KinematicState | null {
-    if (this.entity === null) {
-      for (let i = 1; i < this.samples.length; i++) {
-        const a = this.samples[i - 1]!, b = this.samples[i]!;
+    if (this.trajectory === null) {
+      for (let i = 1; i < this._samples.length; i++) {
+        const a = this._samples[i - 1]!, b = this._samples[i]!;
         if (t >= a.t && t <= b.t) return hermiteInterpolate(a, b, t);
       }
-      return this.samples.length && t === this.samples[this.samples.length - 1]!.t ? this.samples[this.samples.length - 1]! : null;
+      return this._samples.length && t === this._samples[this._samples.length - 1]!.t ? this._samples[this._samples.length - 1]! : null;
     }
-    if (this.entity === null) return null;
-    const tip = this.entity.state;
+    if (this.trajectory === null) return null;
+    const tip = this.trajectory.state;
     if (t > tip.t) return t - tip.t <= EPOCH_EPS ? tip : null;
-    return this.entity.at(t);
+    return this.trajectory.at(t);
   }
 
   // 終端(= 次のノードの噴射直前)の状態。終端まで到達できなかった区間は null。
   endState(): KinematicState | null {
-    return this.truncated || this.entity === null ? null : this.entity.state;
+    return this.truncated || this.trajectory === null ? null : this.trajectory.state;
   }
 
   // 直近に積分したサンプル列。
-  samplesRef(): readonly KinematicState[] {
-    return this.samples;
+  get samples(): readonly KinematicState[] {
+    return this._samples;
   }
 
   // 線の表示/非表示を切り替える。
   setVisible(v: boolean): void {
-    this.sampled.setVisible(v);
+    this.line.setVisible(v);
   }
 
   // 保持している描画リソースを破棄する。
   dispose(): void {
-    this.sampled.dispose();
+    this.line.dispose();
   }
 
   // state0 から end まで自機と同じ弾道係数で自由伝播し、サンプル列を作り直す。
@@ -127,20 +127,20 @@ export class PlanArc {
   // そこで打ち切る。
   private integrate(state0: KinematicState, end: number, ephemeris: Ephemeris): void {
     const duration = Math.max(0, end - state0.t);
-    const entity = new OrbitEntity(state0);
+    const trajectory = new DynamicTrajectory(state0);
     const sampleInterval = duration / C.PLAN_ARC_MAX_SAMPLES;
     this.truncated = false;
 
     let steps = 0;
-    while (entity.state.t < end - EPOCH_EPS) {
-      const sizingAttractors = ephemeris.attractorsAt(entity.state.t);
+    while (trajectory.state.t < end - EPOCH_EPS) {
+      const sizingAttractors = ephemeris.attractorsAt(trajectory.state.t);
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
-      const dt = Math.min(stepDt(entity.state.r, sizingAttractors), end - entity.state.t);
+      const dt = Math.min(stepDt(trajectory.state.r, sizingAttractors), end - trajectory.state.t);
       if (dt <= 1e-9) break;
-      const attractors = ephemeris.attractorsAt(entity.state.t + dt / 2);
-      entity.step(dt, attractors, C.SHIP_BCINV, null, sampleInterval, duration);
+      const attractors = ephemeris.attractorsAt(trajectory.state.t + dt / 2);
+      trajectory.step(dt, attractors, C.SHIP_BCINV, null, sampleInterval, duration);
 
-      const { r, v } = entity.state;
+      const { r, v } = trajectory.state;
       const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
         && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
       if (!finite || hitCelestialBody(r, attractors, C.REENTRY_ALT)) {
@@ -153,7 +153,7 @@ export class PlanArc {
       }
     }
 
-    this.entity = entity;
-    this.samples = entity.samplesOldestFirst();
+    this.trajectory = trajectory;
+    this._samples = trajectory.samplesOldestFirst();
   }
 }

@@ -22,7 +22,7 @@ const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
 
 type Segment = { state0: KinematicState; end: number };
 
-export class PlanTrajectory {
+export class PlanPath {
   readonly group = new THREE.Group();
   // 先頭 activeCount 本がこのフレームの区間に対応する(色は index で決まるので使い回す)。
   private arcs: PlanArc[] = [];
@@ -80,7 +80,7 @@ export class PlanTrajectory {
     const center = strongestAttractor(anchor.r, this.ephemeris.attractorsAt(anchor.t));
     const base = orbitalElementsOf(anchor, center);
     if (!base || base.e >= 0.98 || !isFinite(base.a) || base.a <= 0) return false;
-    const samples = this.arcs[0]?.samplesRef() ?? [];
+    const samples = this.arcs[0]?.samples ?? [];
     for (const s of samples) {
       // 中心天体自身もサンプル時刻ぶん動くので、そのつど ephemeris から引き直す。
       const sampleCenter = strongestAttractor(s.r, this.ephemeris.attractorsAt(s.t));
@@ -149,7 +149,7 @@ export class PlanTrajectory {
     const maxDSq = maxPx * maxPx;
     const candidates: { state: KinematicState; arcIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
-      for (const s of this.arcs[i]!.samplesRef()) {
+      for (const s of this.arcs[i]!.samples) {
         if (range && (s.t < range.min || s.t > range.max)) continue;
         const p = this.projectPoint(s.r, s.t);
         if (!p.front) continue;
