@@ -10,7 +10,7 @@ import type { Hud } from '../hud/hud';
 import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import { SimSpeedManager } from '../sim-speed-manager';
-import { OrbitState, orbitState } from '../../physics/orbital-state';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { apsisAltitudes } from '../../physics/elements';
 import { elementsAround, strongestAttractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -139,7 +139,7 @@ function resolveWaveSpawnLimits(waveCount: number, activeGroups: number): { maxG
 }
 
 // ウェーブ出現位置: 自機と同じ高度の水平方向(全方位)にランダムな距離で配置
-function pickWaveCenter(player: OrbitState, wave: number): Vec3 {
+function pickWaveCenter(player: KinematicState, wave: number): Vec3 {
   const dist = C.STAGE00_SPAWN_DIST_MIN + Math.random() * (C.STAGE00_SPAWN_DIST_MAX - C.STAGE00_SPAWN_DIST_MIN);
 
   // 第1波は必ず後方(速度ベクトルと逆向き)に出現させる。
@@ -154,7 +154,7 @@ function pickWaveCenter(player: OrbitState, wave: number): Vec3 {
 }
 
 // ウェーブ中心が自機の近傍を通過するフライバイの接近方向と速度を求める。
-function makeFlybyVelocity(player: OrbitState, centerR: Vec3, wave: number): { approachDir: Vec3; centerV: Vec3 } {
+function makeFlybyVelocity(player: KinematicState, centerR: Vec3, wave: number): { approachDir: Vec3; centerV: Vec3 } {
   const missDist = C.STAGE00_FLYBY_MISS_DIST_MIN + Math.random() * C.STAGE00_FLYBY_MISS_DIST_RANGE;
   const directDir = norm(sub(player.r, centerR));
   const missPerp = randPerp(directDir);
@@ -177,7 +177,7 @@ function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, ep
   const center = strongestAttractor(centerR, ephemeris.attractorsAt(t));
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
-    const el = elementsAround(orbitState(t, centerR, v), center);
+    const el = elementsAround(kinematicState(t, centerR, v), center);
     return el !== null && apsisAltitudes(el).pe >= minPeAlt;
   };
   if (safe(centerV)) return centerV;
@@ -261,7 +261,7 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: OrbitState, waveNumber: number, ephemeris: Ephemeris, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: KinematicState, waveNumber: number, ephemeris: Ephemeris, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = C.STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * C.STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, C.STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);
@@ -276,7 +276,7 @@ export function generateWave(player: OrbitState, waveNumber: number, ephemeris: 
   for (let i = 0; i < shipCount; i++) {
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir);
-    const state: OrbitState = orbitState(player.t, position, centerV);
+    const state: KinematicState = kinematicState(player.t, position, centerV);
     enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, accent, typeIndex, waveNumber, hud, sfx, fx, scene));
   }
   return enemies;

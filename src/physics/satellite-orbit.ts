@@ -14,7 +14,7 @@
 import { PlanetAngles } from './planet-orbit';
 import { eclToEci, eciToEcl } from './ecliptic';
 import { KeplerOrbit, keplerOrbitState } from './kepler-orbit';
-import { OrbitState, orbitState } from './orbital-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { dot, len } from './vec3';
 
 const DEG = Math.PI / 180;
@@ -109,7 +109,7 @@ export function satelliteState(
   planetAngles: PlanetAngles,
   t: number,
   phaseOffset: number,
-): OrbitState {
+): KinematicState {
   const k = orbit.kepler;
   const base = keplerOrbitState(k, t, phaseOffset);
   const pos0 = eciToEcl(base.r);
@@ -159,5 +159,5 @@ export function satelliteState(
   const vye = rDot * cosB * sinL - r * betaRate * sinB * sinL + r * lambdaRate * cosB * cosL;
   const vze = rDot * sinB + r * betaRate * cosB;
 
-  return orbitState(t, eclToEci(xe, ye, ze), eclToEci(vxe, vye, vze));
+  return kinematicState(t, eclToEci(xe, ye, ze), eclToEci(vxe, vye, vze));
 }

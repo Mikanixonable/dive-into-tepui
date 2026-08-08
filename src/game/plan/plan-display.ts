@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/elements';
 import { Vec3, cross, dot, len, norm, sub, v3 } from '../../physics/vec3';
 import { elementsAround, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
-import { ReferenceFrame, INERTIAL_FRAME, frameOrbitState, toFrameState, toInertialState } from '../../physics/frame';
+import { ReferenceFrame, INERTIAL_FRAME, frameKinematicState, toFrameState, toInertialState } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { fmtMarkerDist, fmtDist } from '../hud/utils';
 import { MarkerManager } from '../marker/marker-manager';
@@ -170,7 +170,7 @@ export class PlanDisplay {
     const apsisPosition = (nu: number): { pos: Vec3, time: number } => {
       const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
       const t = state0.t + (isFinite(dt) ? dt : 0);
-      const relativeState = frameOrbitState(positionOnOrbit(el, nu), relative.v);
+      const relativeState = frameKinematicState(positionOnOrbit(el, nu), relative.v);
       return {
         pos: this.traj.toDisplay(toInertialState(tf, t, relativeState).r, t),
         time: t
@@ -221,7 +221,7 @@ export class PlanDisplay {
     const eqPosition = (nu: number): { pos: Vec3, time: number } => {
       const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
       const t = state0.t + (isFinite(dt) ? dt : 0);
-      const relativeState = frameOrbitState(positionOnOrbit(el, nu), relative.v);
+      const relativeState = frameKinematicState(positionOnOrbit(el, nu), relative.v);
       return {
         pos: this.traj.toDisplay(toInertialState(tf, t, relativeState).r, t),
         time: t

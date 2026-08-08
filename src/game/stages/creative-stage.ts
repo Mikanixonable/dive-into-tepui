@@ -9,7 +9,7 @@ import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { Simulator } from '../simulation/simulator';
 import type { MarkerManager } from '../marker/marker-manager';
-import { OrbitState, orbitState } from '../../physics/orbital-state';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Elements, semiMajorFromPeriod, stateFromElements } from '../../physics/elements';
 import { Attractor, elementsAround } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
@@ -136,7 +136,7 @@ export class CreativeStage extends Stage {
     );
   }
 
-  // フォーム値から OrbitState を組み立て、配置する。
+  // フォーム値から KinematicState を組み立て、配置する。
   private placeObject(name: string, form: ShipPlacerForm): void {
     if (form.objectType === 'player' && this._entities.players.length >= C.CREATIVE_MAX_SHIPS) {
       this._hud.hint(`配置数が上限(${C.CREATIVE_MAX_SHIPS}隻)に達しています`);
@@ -181,15 +181,15 @@ export class CreativeStage extends Stage {
   onShipPlaced: ((ship: Player) => void) | null = null;
 
   // フォームの placementMode に応じて軌道要素指定(stateFromElements)かラグランジュ点指定
-  // (haloState/lissajousState)のどちらかで OrbitState を組み立てる。
-  private buildInitialState(form: ShipPlacerForm): OrbitState {
+  // (haloState/lissajousState)のどちらかで KinematicState を組み立てる。
+  private buildInitialState(form: ShipPlacerForm): KinematicState {
     if (form.placementMode === 'libration') return this.buildLibrationState(form);
     return this.buildElementsState(form);
   }
 
   // 副天体・点・軌道種別・振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
   // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォームの面内振幅は使わない。
-  private buildLibrationState(form: ShipPlacerForm): OrbitState {
+  private buildLibrationState(form: ShipPlacerForm): KinematicState {
     const common = { secondary: form.librationSecondary, point: form.librationPoint };
     if (form.librationOrbitKind === 'halo') {
       return haloState(this._simulator.simTime, this._ephemeris, { ...common, az: form.azKm * 1e3 });
@@ -208,7 +208,7 @@ export class CreativeStage extends Stage {
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
   // (stateFromElements)で基準天体中心の相対状態を組んでから、基準天体自身の位置・速度を
   // 足して ECI 化する(地球基準では位置・速度とも厳密に 0 なので、実質そのまま返る)。
-  private buildElementsState(form: ShipPlacerForm): OrbitState {
+  private buildElementsState(form: ShipPlacerForm): KinematicState {
     const center = this.referenceAttractor(form);
     let a: number;
     let e: number;
@@ -228,7 +228,7 @@ export class CreativeStage extends Stage {
     const rel = stateFromElements(
       this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, center.mu,
     );
-    return orbitState(this._simulator.simTime, add(center.state.r, rel.r), add(center.state.v, rel.v));
+    return kinematicState(this._simulator.simTime, add(center.state.r, rel.r), add(center.state.v, rel.v));
   }
 
   // 軌道要素指定フォームの値が物理的に成立するか検証する。不正なら理由付きで例外を投げる。
@@ -255,7 +255,7 @@ export class CreativeStage extends Stage {
     }
   }
 
-  private assertFiniteEllipticState(state: OrbitState): void {
+  private assertFiniteEllipticState(state: KinematicState): void {
     const values = [state.r.x, state.r.y, state.r.z, state.v.x, state.v.y, state.v.z];
     if (!values.every(Number.isFinite)) throw new Error('有限の状態を作れませんでした');
   }

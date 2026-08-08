@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { createEarth, Earth } from '../../render/earth';
 import { Ephemeris } from '../../physics/ephemeris';
-import { SIDEREAL_DAY } from '../../physics/orbital-state';
+import { SIDEREAL_DAY } from '../../physics/kinematic-state';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { CelestialBody } from './celestial-body';
