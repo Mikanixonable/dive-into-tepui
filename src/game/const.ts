@@ -312,7 +312,7 @@ export const PREDICT_SAMPLE_ERROR = 30;
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;
 
-export const SIM_EPOCH_UTC = '2030-01-01T00:00:00Z'; // simTime = 0 に対応する絶対時刻。HUD の日時表示にのみ使う
+export const SIM_EPOCH_UTC = '19112-01-01T00:00:00Z'; // simTime = 0 に対応する絶対時刻。HUD の日時表示にのみ使う
 
 // --- 第零ステージ(近接戦闘訓練) ---
 export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
