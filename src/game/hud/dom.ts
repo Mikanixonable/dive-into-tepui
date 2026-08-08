@@ -24,6 +24,13 @@ const STYLE = `
      トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー(40)
      ドックビューは画面全体を占めるビューなので常設パネル・プロパティウィンドウを覆うが、
      トースト・ヒントとシステム窓(ヘルプ・ESCメニュー)はその上に出す。 */
+/* スクロール可能な領域は既定のブラウザ配色ではダークテーマと調和しないため、
+   パネルの縁色・アクセント色に揃える。 */
+#hud, #hud * { scrollbar-color: ${EDGE} transparent; }
+#hud ::-webkit-scrollbar { width: 8px; height: 8px; }
+#hud ::-webkit-scrollbar-track { background: transparent; }
+#hud ::-webkit-scrollbar-thumb { background: ${EDGE}; border-radius: 4px; }
+#hud ::-webkit-scrollbar-thumb:hover { background: ${ACCENT_SOFT}; }
 #hud .mk { z-index: 0; }
 #hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-boardhit, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
 #hud .mk-ammo { z-index: 2; }
