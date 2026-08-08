@@ -10,7 +10,7 @@ import { bodyDef, SOLAR_SYSTEM } from '../../physics/solar-system';
 import type { OrbitingId } from '../../physics/attractor';
 import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../physics/orbital-state';
 import { semiMajorFromPeriod } from '../../physics/elements';
-import { J2_EARTH } from '../../physics/dynamics';
+import { J2_EARTH } from '../../physics/solar-system';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import * as C from '../const';
 

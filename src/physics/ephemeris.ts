@@ -5,15 +5,20 @@
 // メモ化はしない — 呼び出し順に依存する隠れた制約を作らず、毎回すべてを素直に評価する。
 // THREE/DOM 非依存の純関数群 + 状態(初期位相)を1つだけ持つサンプラクラス。
 import { Quat, qRotate } from './attitude';
-import { Attractor, AttractorId, OrbitingId, PlanetId, SatelliteId } from './attractor';
+import { Attractor, AttractorId, Degree2Gravity, OrbitingId, PlanetId, SatelliteId } from './attractor';
+import { cassiniSpinAxis, principalLongAxis } from './body-orientation';
+import { ECL_POLE_ECI } from './ecliptic';
 import { Frame, FrameTransform } from './frame';
-import { FrameRotation, KeplerOrbit, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
+import { FrameRotation, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
 import { LagrangePoints, lagrangePoints } from './lagrange';
 import { planetAngles } from './planet-orbit';
 import { satelliteState } from './satellite-orbit';
 import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from './solar-system';
 import { OrbitState, orbitState } from './orbital-state';
 import { Vec3, add, addScaled, len, norm, sub, v3 } from './vec3';
+
+// ECI の極軸(Y)。地球の自転軸はこの座標系の定義そのもの。
+const ECI_POLE: Vec3 = v3(0, 1, 0);
 
 // 回転しない座標系(Frame.rotatingWith === null)の姿勢・角速度。
 const IDENTITY_ROTATION: FrameRotation = { q: { x: 0, y: 0, z: 0, w: 1 } as Quat, omega: v3() };
@@ -163,11 +168,30 @@ export class Ephemeris {
     return { origin: origin.r, originVel: origin.v, q, omega };
   }
 
+  // 天体の2次重力場を時刻 t の姿勢込みで解決する。2次重力場を持たない天体は null。
+  // 自転軸は PoleModel の分類で決まり、同期回転する天体の長軸は自身の平均黄経方向 —
+  // 一様自転する本初子午線は真黄経ではなく平均黄経を追うため、真近点角ではこれを表せない。
+  private degree2At(def: CelestialBodyDef, t: number): Degree2Gravity | null {
+    if (def.kind === 'star' || def.degree2 === undefined) return null;
+    const model = def.degree2;
+    const orbit = keplerOrbitOf(def);
+    const phase = this.phaseOf(def.id);
+    // 軌道面法線は歳差するので、そこから組む自転軸も同じ周期で追従する。
+    const pole = model.pole.kind === 'eciPole'
+      ? ECI_POLE
+      : cassiniSpinAxis(ECL_POLE_ECI, keplerOrbitNormal(orbit, t, phase), model.pole.obliquity);
+    const tesseral = model.c22 === 0 ? null : {
+      c22: model.c22,
+      longAxis: principalLongAxis(pole, keplerOrbitMeanDirection(orbit, t, phase)),
+    };
+    return { j2: model.j2, refRadius: model.refRadius, pole, tesseral };
+  }
+
   // 指定時刻の重力源一覧(SOLAR_SYSTEM の宣言順)。地球は原点に静止。
   attractorsAt(t: number): readonly Attractor[] {
     return ATTRACTOR_IDS.map((id) => {
       const def = bodyDef(id);
-      return { id, mu: def.mu, radius: def.radius, state: this.stateOf(id, t) };
+      return { id, mu: def.mu, radius: def.radius, state: this.stateOf(id, t), degree2: this.degree2At(def, t) };
     });
   }
 }
