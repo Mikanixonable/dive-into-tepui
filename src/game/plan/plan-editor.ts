@@ -28,7 +28,8 @@ import { hudDock } from '../hud/dom';
 import type { DisplayTimeManager } from '../display-time-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
-import { elementsAround, relativeTo, strongestAttractor } from '../../physics/attractor';
+import { Attractor, elementsAround, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
+import { toFrameState } from '../../physics/frame';
 
 interface DvButtons {
   readonly pro: HudHoldButton;
@@ -517,9 +518,16 @@ export class PlanEditor {
     return node && arr ? sub(this.bodyState(node).v, this.bodyState(arr).v) : v3();
   }
 
+  // center 相対状態。orbitalAxes が OrbitState を要求するので、座標系相対の r/v を
+  // state の時刻のまま OrbitState へ包み直す。
+  private relativeToBody(state: OrbitState, center: Attractor): OrbitState {
+    const rel = toFrameState(frameOfAttractor(center), state);
+    return orbitState(state.t, rel.r, rel.v);
+  }
+
   // 軌道要素とΔv方向を解釈するための中心天体相対状態。中心はその位置で最も強く引く天体。
   private bodyState(state: OrbitState): OrbitState {
-    return relativeTo(state, strongestAttractor(state.r, this.ephemeris.attractorsAt(state.t)));
+    return this.relativeToBody(state, strongestAttractor(state.r, this.ephemeris.attractorsAt(state.t)));
   }
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
@@ -626,8 +634,8 @@ export class PlanEditor {
       const node = this.plan.nodes[this.selectedNodeIdx];
       const arr = arriving[this.selectedNodeIdx];
       if (node && arr) {
-        const bodyNode = relativeTo(node, center);
-        const bodyArr = relativeTo(arr, center);
+        const bodyNode = this.relativeToBody(node, center);
+        const bodyArr = this.relativeToBody(arr, center);
         selEl = elementsAround(node, center);
 
         // 到着時基準でのローカルΔv成分を計算
