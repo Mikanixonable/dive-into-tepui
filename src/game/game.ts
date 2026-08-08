@@ -135,7 +135,7 @@ export class Game {
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
-    this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
+    this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene, this.settingsPanel);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this._hud.root);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
@@ -510,6 +510,10 @@ export class Game {
     this._sfx.setRcs(false);
   }
 
+  openSettingsMenu(): void {
+    this.settingsPanel.toggle(true);
+  }
+
   // --------------------------------------------------------------- input
 
   // 入力エッジを担当モジュールへ先着順で配る。決めるのは優先順位 = 呼ぶ順序だけで、
@@ -578,6 +582,7 @@ export class Game {
     }
 
     this.entities.sync(this.floatingOrigin, displayTime);
+    for (const base of this.entities.bases) base.syncOrbitLine(overviewMode, this.floatingOrigin, bodies);
 
     this.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
 
