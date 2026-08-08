@@ -10,6 +10,7 @@ import { Attractor, hitAttractor, localOrbitPeriod } from '../../physics/attract
 import { Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { SampledLine } from '../../render/sampled-line';
+import { ScaleFn } from '../camera/camera-system';
 import * as C from '../const';
 
 // 積分の終端は要求時刻に対して丸め誤差ぶん手前に落ちうる。この幅までは終端そのものとみなす。
@@ -85,9 +86,9 @@ export class PlanArc {
 
   // 直近に積分したサンプル列を折れ線メッシュへ反映する。
   sync(ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number, fo: FloatingOrigin,
-    dashSize: number, gapSize: number): void {
+    dashSize: number, gapSize: number, scale: ScaleFn): void {
     this.line.setDash(dashSize, gapSize);
-    this.line.syncGeometry(this._samples, frame, ephemeris);
+    this.line.syncGeometry(this._samples, frame, ephemeris, scale);
     this.line.syncTransform(frame, currentTime, ephemeris, fo);
   }
 

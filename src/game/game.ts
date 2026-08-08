@@ -638,6 +638,7 @@ export class Game {
     const predictedTargets = player?.alive ? [player] : [];
     this.predictedTrajectoryLine.sync(
       predictedTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
+      this.cameraSystem.activeCameraScale,
     );
     // 予測軌道の実線が出ているあいだは、解析楕円は重ねて出さない。
     if (player) {
@@ -657,6 +658,7 @@ export class Game {
     const debugTargets = player ? (target ? [player, target] : [player]) : [];
     this.debugTrajectoryLine.sync(
       debugTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
+      this.cameraSystem.activeCameraScale,
     );
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。

@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { ReferenceFrame } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from './floating-origin';
-import { SampledLine } from '../render/sampled-line';
+import { SampledLine, ScaleAtFn } from '../render/sampled-line';
 import { GameEntity } from './game-entity/game-entity';
 import { EntityLineSet } from './entity-line-set';
 
@@ -21,12 +21,16 @@ export class PredictedTrajectoryLine {
     this.lines = new EntityLineSet(scene, () => new SampledLine(LINE_COLOR, LINE_OPACITY, 1));
   }
 
-  // targets: このフレームに予測軌道線を描きたい対象の集合。frame は bake の座標系。
-  sync(targets: readonly GameEntity[], frame: ReferenceFrame, simTime: number, ephemeris: Ephemeris, fo: FloatingOrigin): void {
+  // targets: このフレームに予測軌道線を描きたい対象の集合。frame は bake の座標系、scale は
+  // 折れ線の細分密度を決める画面スケール。
+  sync(
+    targets: readonly GameEntity[], frame: ReferenceFrame, simTime: number, ephemeris: Ephemeris,
+    fo: FloatingOrigin, scale: ScaleAtFn,
+  ): void {
     for (const entity of targets) {
       const line = this.lines.lineFor(entity);
       const samples = entity.predictedTrajectory?.samplesOldestFirst() ?? [];
-      line.syncGeometry(samples, frame, ephemeris);
+      line.syncGeometry(samples, frame, ephemeris, scale);
       line.syncTransform(frame, simTime, ephemeris, fo);
       line.setVisible(true);
     }
