@@ -103,6 +103,16 @@ export function trueAnomalyAt(el: OrbitalElements, r: Vec3): number {
   return Math.atan2(dot(r, el.qHat), dot(r, el.pHat));
 }
 
+// 軌道 el が法線 planeNormal の平面を横切る昇交点・降交点の真近点角。交点線の方向は
+// planeNormal × el.hHat(昇交点を指す向き)。両面がほぼ一致し交線の向きが定まらない場合は null。
+export function nodeAnomalies(el: OrbitalElements, planeNormal: Vec3): { asc: number; desc: number } | null {
+  const lineDir = cross(planeNormal, el.hHat);
+  if (dot(lineDir, lineDir) < 1e-6) return null;
+  const d = norm(lineDir);
+  const asc = Math.atan2(dot(d, el.qHat), dot(d, el.pHat));
+  return { asc, desc: asc + Math.PI };
+}
+
 // 近点通過からの経過時間 [s]。
 // 楕円(e < 1): ケプラー方程式、[-T/2, T/2]。
 // 双曲線(e >= 1): 双曲線ケプラー方程式。tan(nu/2) が漸近線を超える(その真近点角に

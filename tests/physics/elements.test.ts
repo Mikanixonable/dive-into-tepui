@@ -5,6 +5,7 @@ import { test } from './harness';
 import {
   OrbitalElements,
   keplerPeriod,
+  nodeAnomalies,
   positionOnOrbit,
   semiMajorFromPeriod,
   stateFromOrbitalElements,
@@ -17,7 +18,7 @@ import { Attractor, orbitalElementsOf } from '../../src/physics/attractor';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { MU_MOON } from '../../src/physics/solar-system';
-import { len, sub, v3 } from '../../src/physics/vec3';
+import { dot, len, norm, sub, v3 } from '../../src/physics/vec3';
 
 const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: null };
 
@@ -67,6 +68,47 @@ export function register(): void {
     const v2 = velocityOnOrbit(el, nu);
     assert.ok(len(sub(r2, s0.r)) / len(s0.r) < 1e-9, 'positionOnOrbit matches original r');
     assert.ok(len(sub(v2, s0.v)) / len(s0.v) < 1e-9, 'velocityOnOrbit matches original v');
+  });
+
+  test('elements: nodeAnomalies picks the textbook ascending direction (n = planeNormal x hHat)', () => {
+    // i=45°/Ω=0°/ω=0° の軌道。基準面法線を ECI の極(Y軸)に取ると、昇交点は +X 方向で、
+    // そこでの速度は +Y 成分を持つ(南半球から北半球へ抜ける = 昇交点)はず。
+    const a = R_EARTH + 500e3;
+    const s0 = stateFromOrbitalElements(0, a, 0.05, (45 * Math.PI) / 180, 0, 0, 0, MU_EARTH);
+    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
+    const nodes = nodeAnomalies(el, v3(0, 1, 0));
+    assert.ok(nodes, 'nodeAnomalies should resolve for an inclined orbit against the pole');
+    const ascPos = norm(positionOnOrbit(el, nodes!.asc));
+    assert.ok(len(sub(ascPos, v3(1, 0, 0))) < 1e-9, `ascending node points +X: ${JSON.stringify(ascPos)}`);
+    const ascVel = velocityOnOrbit(el, nodes!.asc);
+    assert.ok(ascVel.y > 0, `velocity at ascending node points toward +Y: ${ascVel.y}`);
+  });
+
+  test('elements: nodeAnomalies ascending/descending nodes are antipodal', () => {
+    const a = R_EARTH + 700e3;
+    const s0 = stateFromOrbitalElements(0, a, 0.1, (60 * Math.PI) / 180, 0.4, 0.2, 0, MU_EARTH);
+    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
+    const nodes = nodeAnomalies(el, v3(0, 1, 0));
+    assert.ok(nodes);
+    const ascDir = norm(positionOnOrbit(el, nodes!.asc));
+    const descDir = norm(positionOnOrbit(el, nodes!.desc));
+    assert.ok(dot(ascDir, descDir) < -1 + 1e-9, `nodes point in opposite directions: dot=${dot(ascDir, descDir)}`);
+  });
+
+  test('elements: nodeAnomalies returns null when the orbit plane matches the reference plane', () => {
+    const a = R_EARTH + 500e3;
+    const s0 = stateFromOrbitalElements(0, a, 0.05, (30 * Math.PI) / 180, 0.6, 0.3, 0, MU_EARTH);
+    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
+    assert.equal(nodeAnomalies(el, el.hHat), null, 'coincident planes have no well-defined line of nodes');
+  });
+
+  test('elements: nodeAnomalies is finite for a near-circular orbit', () => {
+    const a = R_EARTH + 500e3;
+    const s0 = stateFromOrbitalElements(0, a, 0, (45 * Math.PI) / 180, 0.2, 0, 0, MU_EARTH);
+    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
+    const nodes = nodeAnomalies(el, v3(0, 1, 0));
+    assert.ok(nodes, 'nodeAnomalies should resolve for a circular orbit');
+    assert.ok(isFinite(nodes!.asc) && isFinite(nodes!.desc), `finite anomalies: ${JSON.stringify(nodes)}`);
   });
 
   test('elements: tofBetween(nu, nu) == 0 and tofBetween is period-periodic', () => {

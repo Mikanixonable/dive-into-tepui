@@ -1,8 +1,8 @@
 // マップ上の航法ターゲット(任意の MapPickable)の保持と、自機軌道との相対 AN/DN(昇交点・
 // 降交点)の算出・マーカー表示・被選択物としての公開。Targeter の戦闘ターゲット(Enemy 専用)
 // とは独立に、月・ラグランジュ点なども対象にできる。
-import { Vec3, cross, dot, norm, scale, v3 } from '../physics/vec3';
-import { tofBetween, trueAnomalyAt } from '../physics/elements';
+import { Vec3, v3 } from '../physics/vec3';
+import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { AttractorId, OrbitingId, strongestAttractor } from '../physics/attractor';
 import { bodyDef, SOLAR_SYSTEM } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
@@ -80,19 +80,15 @@ export class NavTarget {
     const targetHat = this.resolvePlaneNormal(this.targetId, entities, ephemeris, simTime);
     if (!targetHat) return;
 
-    const lineDir = cross(playerEl.hHat, targetHat);
-    if (dot(lineDir, lineDir) < 1e-6) return; // 軌道面がほぼ一致 → 交線が定まらない
+    const nodes = nodeAnomalies(playerEl, targetHat);
+    if (!nodes) return;
 
-    const d = norm(lineDir);
-    const thAsc = Math.atan2(dot(d, playerEl.qHat), dot(d, playerEl.pHat));
-    const rAsc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc));
-    const rDesc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc + Math.PI));
-    this.anPos = scale(d, rAsc);
-    this.dnPos = scale(d, -rDesc);
+    this.anPos = positionOnOrbit(playerEl, nodes.asc);
+    this.dnPos = positionOnOrbit(playerEl, nodes.desc);
 
     const nu0 = trueAnomalyAt(playerEl, player.state.r);
-    this.anTime = simTime + tofBetween(playerEl, nu0, thAsc);
-    this.dnTime = simTime + tofBetween(playerEl, nu0, thAsc + Math.PI);
+    this.anTime = simTime + tofBetween(playerEl, nu0, nodes.asc);
+    this.dnTime = simTime + tofBetween(playerEl, nu0, nodes.desc);
   }
 
   clearIfTargeting(id: string): void {
