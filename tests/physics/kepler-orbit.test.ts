@@ -9,7 +9,7 @@ import { MU_EARTH, R_EARTH, orbitState } from '../../src/physics/orbital-state';
 import { qRotate } from '../../src/physics/attitude';
 import { dot, len, scale, sub, v3 } from '../../src/physics/vec3';
 
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)) };
+const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: null };
 
 // 永年変化率をすべて 0 にした固定楕円(比較用)。
 const STATIC_ORBIT: KeplerOrbit = {
