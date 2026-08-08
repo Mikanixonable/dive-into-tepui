@@ -11,9 +11,13 @@ const STYLE = `
 #hud {
   position: fixed; inset: 0; pointer-events: none; overflow: hidden;
   font-family: ${FONT};
-  color: ${INK}; user-select: none; z-index: 10;
+  color: ${INK}; user-select: text; z-index: 10;
   font-size: 13px;
 }
+/* 読み取りたい数値は選択できるようにするが、操作部品とマーカーは対象外にする —
+   ボタンの連打やカメラドラッグのたびにラベルが選択されると操作の邪魔になる。 */
+#hud .seg-btn, #hud .hold-btn, #hud .hud-toggle, #hud .ctx-menu-item,
+#hud .mk, #hud .dock-toggle, #hud-chase-reset, #hud-viewbadge .vb-view-btn { user-select: none; }
 /* --- 重なり順: マーカーは実行時に DOM 末尾へ追加されるため z-index を明示しないとパネルの上に出る。
      マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0)
      マーカー群(0-9) < 常設パネル(10) < ドックビュー(15) < トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー(40)
@@ -92,7 +96,9 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-viewbadge .vb-view-btn:hover { color: ${INK}; border-color: ${ACCENT_SOFT}; }
 #hud-globalstatus {
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  pointer-events: auto;
   padding: 4px 14px; border-radius: 0 0 6px 6px;
+  background: ${SURFACE}; border: 1px solid ${EDGE}; border-top: none; backdrop-filter: blur(4px);
   font-size: 11px; letter-spacing: 1px; font-variant-numeric: tabular-nums;
   color: ${INK_SOFT};
 }
