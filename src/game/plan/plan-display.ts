@@ -2,7 +2,7 @@
 // 表示時刻の計画上の自機位置ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/elements';
-import { Vec3, cross, dot, len, norm, sub, v3 } from '../../physics/vec3';
+import { Vec3, cross, dot, len, norm, sub } from '../../physics/vec3';
 import { elementsAround, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { Frame, INERTIAL_FRAME, frameOrbitState, toFrameState, toInertialState } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -94,6 +94,7 @@ export class PlanDisplay {
     if (!show) {
       this.ghost = null;
       this.apsisIcons = [];
+      this.eqNodeIcons = [];
       this.impactIcons = [];
       this.dayTickIcons = [];
       this.traj.resetDivergence();
@@ -228,20 +229,20 @@ export class PlanDisplay {
   }
 
   // 最後のバーン後の軌道が中心天体の赤道面を横切る点(昇交点・降交点)のアイコンを、その
-  // 軌道要素から解析的に求める。赤道面は中心天体ごとに異なり、月なら白道面をとる。
-  // 離心率がほぼ0で方向が不定なとき、軌道面が赤道面とほぼ一致するときは空。
+  // 軌道要素から解析的に求める。赤道面の法線は中心天体自身が持つ実際の自転軸(`Attractor.degree2.pole`
+  // — J2 計算が使っているのと同じ値)を使う。太陽・木星のように degree2 が無い(自転軸をモデル化
+  // していない)天体では出さない。離心率がほぼ0で方向が不定なとき、軌道面が赤道面とほぼ一致する
+  // ときも空。
   private eqNodeIconsOf(): readonly EqNodeIcon[] {
     const state0 = this.traj.finalSegmentStart;
     if (!state0 || !this.plan) return [];
     const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
+    const eqNormal = center.degree2?.pole;
+    if (!eqNormal) return [];
     const tf = frameOfAttractor(center);
     const relative = toFrameState(tf, state0);
     const el = elementsAround(state0, center);
     if (!el || el.e < C.APSIS_MIN_ECC) return [];
-
-    const eqNormal = center.id === 'moon'
-      ? this.ephemeris.orbitNormalAt('moon', state0.t)
-      : v3(0, 1, 0);
 
     // 交点線の方向 = 赤道面法線 × 軌道面法線。両面がほぼ一致すると外積が潰れて向きが定まらない。
     const lineDir = cross(eqNormal, el.hHat);
