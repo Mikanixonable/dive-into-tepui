@@ -31,10 +31,10 @@ import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from './celestial/environment-scene';
 import { Ephemeris } from '../physics/ephemeris';
-import { INERTIAL_FRAME } from '../physics/frame';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { DebugTrajectoryLine } from './debug-trajectory-line';
+import { PredictedTrajectoryLine } from './predicted-trajectory-line';
 import { NavTarget } from './nav-target';
 import { MapPicker } from './map-picker';
 import { Navball } from './navball/navball';
@@ -92,6 +92,7 @@ export class Game {
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
   private readonly debugTrajectoryLine: DebugTrajectoryLine;
+  private readonly predictedTrajectoryLine: PredictedTrajectoryLine;
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
 
@@ -205,6 +206,7 @@ export class Game {
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.debugTrajectoryLine = new DebugTrajectoryLine(this._scene);
+    this.predictedTrajectoryLine = new PredictedTrajectoryLine(this._scene);
     this.docking = new Docking(
       this, this._hud, this._sfx, this._scene, this.effects, this.markerManager,
       this.entities, this.mapPicker, this.cameraSystem, this.viewManager,
@@ -625,14 +627,20 @@ export class Game {
     if (player) this.leadMarkers.sync(player, aliveTargets, target, secondaryTarget, simTime, overviewMode, project);
 
     this.displayTimeManager.sync(simTime, this.currentOrbitPeriod());
-    this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project);
+    this.editor.sync(
+      this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project,
+      this.cameraSystem.activeCameraScale,
+    );
     this.mapPicker.sync(overviewMode, simTime, attractors, player);
-    // 月フライバイ等で積分予測と解析楕円が乖離した場合は、重なって誤解を招く
-    // 楕円近似線をマップ表示中だけ抑制する。戦闘ビューへ戻れば通常の線へ復帰する。
+
+    // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
+    const predictedTargets = player?.alive ? [player] : [];
+    this.predictedTrajectoryLine.sync(
+      predictedTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
+    );
+    // 予測軌道の実線が出ているあいだは、解析楕円は重ねて出さない。
     if (player) {
-      player.orbitLine.setSuppressed(
-        overviewMode && this.editor.planDisplay.path.isAnalyticDivergent,
-      );
+      player.orbitLine.setSuppressed(this.predictedTrajectoryLine.hasLineFor(player));
     }
 
     if (player) {
@@ -646,8 +654,9 @@ export class Game {
     if (player) this.guide.sync(this.editor.plan, player, simTime, this.editor.editMode, project);
 
     const debugTargets = player ? (target ? [player, target] : [player]) : [];
-    const debugFrame = overviewMode ? this.cameraSystem.overviewCamera.cameraFrame : INERTIAL_FRAME;
-    this.debugTrajectoryLine.sync(debugTargets, debugFrame, simTime, this.ephemeris, this.floatingOrigin);
+    this.debugTrajectoryLine.sync(
+      debugTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
+    );
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions();
