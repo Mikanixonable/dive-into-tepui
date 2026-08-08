@@ -305,8 +305,7 @@ export class PlayerFire {
   // (ズーム中は画面のちらつきを抑えるため大幅減光、完全には消さない)
   private spawnMuzzleFlash(ship: Ship, muzzle: Vec3, fwd: Vec3, zoomActive: boolean): void {
     this._fx.spawnFlash(
-      addScaled(muzzle, fwd, 1.2),
-      ship.state.v,
+      orbitState(ship.state.t, addScaled(muzzle, fwd, 1.2), ship.state.v),
       2.2,
       6,
       0.07,
