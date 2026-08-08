@@ -5,8 +5,8 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input/input';
-import { ViewFrame } from '../../physics/projection';
-import { Frame, FrameDir, INERTIAL_FRAME, toFrameDir, toInertialDir } from '../../physics/frame';
+import { Viewpoint } from '../../physics/projection';
+import { ReferenceFrame, FrameDir, INERTIAL_FRAME, toFrameDir, toInertialDir } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { qFromAxisAngle, qRotate } from '../../physics/attitude';
 import { MapPickable } from '../map-pick';
@@ -38,7 +38,7 @@ export class OverviewCamera {
   private pan_r: FrameDir;
   private up_r: FrameDir;
   // カメラ視点を固定する座標系。
-  private _cameraFrame: Frame = INERTIAL_FRAME;
+  private _cameraFrame: ReferenceFrame = INERTIAL_FRAME;
   private simTime = 0; // set cameraFrame の座標変換に使う
   private _focus = 'earth';
   private _focusPos: Vec3 | null = null;
@@ -65,7 +65,7 @@ export class OverviewCamera {
     if (this._focus === id) this.setFocus('earth');
   }
 
-  view: ViewFrame = {
+  viewpoint: Viewpoint = {
     position: v3(),
     lookTarget: v3(),
     up: WORLD_UP,
@@ -133,12 +133,12 @@ export class OverviewCamera {
   }
 
   // 現在視点を固定している座標系を返す。
-  get cameraFrame(): Frame {
+  get cameraFrame(): ReferenceFrame {
     return this._cameraFrame;
   }
 
   // 切替の瞬間にカメラ視点(ECI)を跳ばせずに座標系を切り替える。
-  set cameraFrame(frame: Frame) {
+  set cameraFrame(frame: ReferenceFrame) {
     const from = this._cameraFrame;
     if (frame === from) return;
     const tfFrom = this.ephemeris.frameTransformAt(from, this.simTime);
@@ -152,7 +152,7 @@ export class OverviewCamera {
     this._cameraFrame = frame;
   }
 
-  // マウス/キー入力から view を1フレーム分更新する。
+  // マウス/キー入力から viewpoint を1フレーム分更新する。
   update(
     mouse: MouseDelta,
     keyYaw: number,
@@ -205,7 +205,7 @@ export class OverviewCamera {
 
     // フォーカス+パン+視点オフセットから実位置を組み立てる
     const lookTarget = add(focus, panEci);
-    this.view = {
+    this.viewpoint = {
       position: add(lookTarget, offEci),
       lookTarget,
       up: upEci,

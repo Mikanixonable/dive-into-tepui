@@ -37,7 +37,7 @@ export const ECL_POLE_ECI = eclToEci(0, 0, 1); // 黄道北極を ECI で表し�
 // 黄道基底が ECI 基底へ重なる。
 export const Q_ECL_TO_ECI: Quat = qFromAxisAngle(ECL_VERNAL, EPS - Math.PI / 2);
 
-// Y 上向きの黄道基底(x=春分点, y=黄道北極, z=…)→ ECI。stateFromElements は Y=極 の基底を
+// Y 上向きの黄道基底(x=春分点, y=黄道北極, z=…)→ ECI。stateFromOrbitalElements は Y=極 の基底を
 // 前提にしているため、黄道基準の軌道要素(kepler-orbit.ts の keplerOrbitState)から
-// stateFromElements で組んだ状態は、この回転で ECI へ移す。
+// stateFromOrbitalElements で組んだ状態は、この回転で ECI へ移す。
 export const Q_ECLY_TO_ECI: Quat = qFromAxisAngle(v3(1, 0, 0), EPS);

@@ -4,7 +4,7 @@ import { randomQuat } from '../../../physics/attitude';
 import { add, len, lenSq, randSym, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
 import * as C from '../../const';
 import { Ammo } from '../../game-entity/ammo';
-import { orbitState, orbitalAxes } from '../../../physics/orbital-state';
+import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import { Player } from '../../player/player';
@@ -38,11 +38,11 @@ export class Logistics {
     // 自機の軌道面内で minDist〜maxDist 先に相当する角度だけ位相をずらす
     const r = player.state.r;
     const v = player.state.v;
-    const hHat = orbitalAxes(player.state).nrm;
+    const hHat = orbitAxes(player.state).nrm;
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
     // ずらした位置・速度と、ランダムな姿勢で補給エンティティを作る
     const ammo = new Ammo(
-      orbitState(
+      kinematicState(
         player.state.t,
         rotateAxis(r, hHat, ang),
         add(rotateAxis(v, hHat, ang), randVec(1.5)),

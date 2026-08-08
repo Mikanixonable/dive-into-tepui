@@ -65,7 +65,7 @@ export class HudPanels {
   constructor(private readonly els: Map<string, HTMLElement>) {}
 
   // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
-  sync(game: Game, bodies: readonly Attractor[]): void {
+  sync(game: Game, attractors: readonly Attractor[]): void {
     const now = performance.now();
     // グローバルステータス(時刻・時間加速・NODE WARP)は自機の有無に関係なく画面全体の
     // 状態なので、自機不在で以降の処理を抜ける早期 return より前に書く。
@@ -100,7 +100,7 @@ export class HudPanels {
     if (contacts) contacts.style.display = game.cameraSystem.overviewMode ? 'none' : '';
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;
-    const player0 = orbitInfo(player, bodies);
+    const player0 = orbitInfo(player, attractors);
 
     // スタッツパネルを一定間隔で更新
     if (now >= this.nextStatsAt) {
@@ -125,8 +125,8 @@ export class HudPanels {
       });
 
       if (tgt) {
-        const tgt0 = orbitInfo(tgt, bodies);
-        const rel = relativeInfo(player, tgt, bodies);
+        const tgt0 = orbitInfo(tgt, attractors);
+        const rel = relativeInfo(player, tgt, attractors);
         this.setTarget({
           name: tgt.name,
           hp: tgt.hp,

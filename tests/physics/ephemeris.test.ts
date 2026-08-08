@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { MU_EARTH, R_EARTH } from '../../src/physics/orbital-state';
+import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { MU_MOON, MU_SUN as MU_SUN_LOCAL, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { EPS } from '../../src/physics/ecliptic';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';
@@ -203,9 +203,9 @@ export function register(): void {
   });
 
   test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は R_EARTH', () => {
-    const bodies = eph.attractorsAt(1234);
-    assert.deepEqual(bodies.map((b) => b.id), ['earth', 'moon', 'jupiter', 'sun']);
-    assert.equal(bodies[0]!.radius, R_EARTH);
+    const attractors = eph.attractorsAt(1234);
+    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'jupiter', 'sun']);
+    assert.equal(attractors[0]!.radius, R_EARTH);
   });
 }
 

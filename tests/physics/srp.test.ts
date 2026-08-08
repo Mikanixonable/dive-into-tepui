@@ -4,14 +4,14 @@ import { test } from './harness';
 import { Attractor } from '../../src/physics/attractor';
 import { ASTRONOMICAL_UNIT, SOLAR_PRESSURE_1AU, srpAccel } from '../../src/physics/srp';
 import { MU_SUN, R_SUN } from '../../src/physics/solar-system';
-import { orbitState } from '../../src/physics/orbital-state';
+import { kinematicState } from '../../src/physics/kinematic-state';
 import { cross, dot, len, norm, sub, v3 } from '../../src/physics/vec3';
 
 const ZERO = v3(0, 0, 0);
 
 // 地心から見て +X 方向 1 AU に太陽を置く。
 function sunAt(distance: number): Attractor {
-  return { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(0, v3(distance, 0, 0), ZERO), degree2: null };
+  return { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, v3(distance, 0, 0), ZERO), degree2: null };
 }
 
 export function register(): void {
