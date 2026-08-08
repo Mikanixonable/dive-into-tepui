@@ -147,15 +147,15 @@
     - behaveAllEnemies() // 敵を配置する具体ステージ(Stage0/00/1/2)が先頭で呼ぶ
       - enemy.behave() // 生存中の敵ごと(canEnemyFire・距離・バースト状態の判定は behave 内部)
         - firePlasma() → entities.addBullet()
-    - [Stage0 訓練スコアアタック] logistics.updateLogistics(respawnOnDespawn=false)
+    - [Stage0 訓練スコアアタック] logistics.updateLogistics(simSpeed, respawnOnDespawn=false)
     - [Stage0 訓練スコアアタック] timer.update()
       - setPhase('timeup') + showScoreAttackResultScreen() // 制限時間到達フレームのみ
-    - [Stage00 無限サバイバル] logistics.updateLogistics(respawnOnDespawn=true)
+    - [Stage00 無限サバイバル] logistics.updateLogistics(simSpeed, respawnOnDespawn=true)
       - absorbNearbyAmmo() // player.alive のみ
         - player.onPickup() + sfx.pickup() + hud.hint() // 範囲内の補給ごと
-      - despawnFarAmmo()
-        - spawnForPlayer() // 遠方消滅した数だけ再投入。生存数が MAX_AMMO に達したら打ち切る
-      - spawnForPlayer() // LOGISTICS_CHECK_INTERVAL ごと、かつ低弾薬・上限未満のみ
+      - despawnFarAmmo() // 消滅そのものは投入可否によらず常に走る
+        - spawnForPlayer() // 遠方消滅した数だけ再投入。投入可(resupplyEnabled かつ canResupplyAmmo)のときだけ。生存数が MAX_AMMO に達したら打ち切る
+      - spawnForPlayer() // 投入可のとき、LOGISTICS_CHECK_INTERVAL ごと、かつ低弾薬・上限未満のみ。投入不可の間は次回判定時刻を進めない
     - [Stage00 無限サバイバル] updateWaitingForAmmoPhase() → hud.toast() // 弾薬確保でフェーズ遷移した時のみ
     - [Stage00 無限サバイバル] updateSpawningEnemiesPhase() → spawnWave() // カウントダウン満了時のみ
     - [Stage00 無限サバイバル] updateActiveCombatPhase()
@@ -163,7 +163,7 @@
       - spawnWave() + hud.toast() // 間隔・同時展開上限を満たす場合のみ
       - spawnWave: generateWave() → addEnemy() → entities.addEnemy() + scoreCounter.recordSpawnEnemy()
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
-    - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(respawnOnDespawn=false)
+    - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(simSpeed, respawnOnDespawn=false)
     - [CreativeStage] advanceFollowPlan() // entities.players のうち followPlan=true な艦ごと。plan.dropNodesBefore(simTime) が期限切れノードをまとめて取り除いて返す最後のノードへ state を置き換える(複数ノードを跨いだフレームも dropNodesBefore 内部の while で一括消費)
     - [CreativeStage] placerPanel.isOpen なら getForm() を1回だけ呼び、computePreview(form)/computeFieldIssues(form) へ共有する
   - nanWatchdog.checkPlayer('activeStage.update')
