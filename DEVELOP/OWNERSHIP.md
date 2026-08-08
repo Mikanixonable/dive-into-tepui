@@ -44,7 +44,7 @@ main.ts
     │   └── OverviewCameraPanel        ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
     ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合
     │   ├── ContextMenu<MapPickable>       ... 空域右クリック('empty-space')専用メニュー
-    │   ├── windows: Map<string, PropertyWindow<MenuAction>>  ... オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new
+    │   ├── windows: Map<string, WindowEntry>  ... {win: PropertyWindow<MenuAction>, target}。オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new。PropertyWindow は Hud.root(#hud)配下に append
     │   └── ObjectListPanel                ... DOM は Hud.root 配下。軌道オブジェクトウィンドウ(一覧 + クリックでフォーカス移動)
     ├── NavTarget                      ... 航法ターゲット(id)と自機軌道との相対 AN/DN・▲/▽ マーカー
     ├── Navball                        ... 姿勢儀。基準モード(自機/TGT+/TGT-)と天球グリッド6トグルの正本
@@ -202,7 +202,7 @@ main.ts
 | ドックビューの対象基地 | `Docking`(private `_activeBase`) | 基地の右クリックメニューで設定。これが空でない間だけ `ViewManager.selectableViews()` に `'dock'` が並ぶ |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
 | 軌道オブジェクトウィンドウの表示中フラグ | `MapPicker`(`objectListVisible`) | 空域右クリックメニューの「軌道オブジェクトウィンドウを表示」でのみ true になる。`ObjectListPanel` の ✕ ボタン(`onClose`)、または `MapPicker.close()`(マップモードを閉じたとき)で false に戻る |
-| 開いているプロパティウィンドウの集合・一時ウィンドウのキー | `MapPicker`(`windows`/`tempWindowKey`) | キーは `` `${kind}:${id}` ``。`openPropertyWindow` が新規/移動を判断し、`closeWindow`/`forgetWindow` が畳む。個々の `PropertyWindow` インスタンス自身はクリップ状態(`clipped`)とドラッグ位置だけを持ち、開閉のポリシー(いつ閉じるか)は持たない |
+| 開いているプロパティウィンドウの集合・一時ウィンドウのキー | `MapPicker`(`windows`/`tempWindowKey`) | キーは `` `${kind}:${id}` ``。`openPropertyWindow` が新規/移動を判断し、`closeWindow`/`forgetWindow` が畳む。個々の `PropertyWindow` インスタンス自身はクリップ状態(`clipped`)とドラッグ位置だけを持ち、開閉のポリシー(いつ閉じるか)は持たない — クリップ状態が変わったこと自体は `onClipChange` で `MapPicker` に通知し、`tempWindowKey` の付け替えは通知を受けた `MapPicker` 側が行う |
 | 第一・第二ターゲット・的通過マーク | `Targeter`(`target`/`secondaryTarget`) | 右クリックメニュー(`applyMenuAct`)でのみ変わる。自動選定・自動再選択はない |
 | 航法ターゲット(id)・相対 AN/DN | `NavTarget` | `update()` が自機軌道要素 + `Ephemeris` から毎フレーム再算出する導出値だが、対象の id 自体(`toggleTarget` で変わる)は正本 |
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
