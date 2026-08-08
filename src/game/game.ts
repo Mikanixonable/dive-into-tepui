@@ -510,6 +510,10 @@ export class Game {
     this._sfx.setRcs(false);
   }
 
+  openSettingsMenu(): void {
+    this.settingsPanel.toggle(true);
+  }
+
   // --------------------------------------------------------------- input
 
   // 入力エッジを担当モジュールへ先着順で配る。決めるのは優先順位 = 呼ぶ順序だけで、
