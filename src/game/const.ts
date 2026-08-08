@@ -4,6 +4,12 @@ export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/orbital-state';
 // クリエイティブモードで配置できる艦の上限隻数。
 export const CREATIVE_MAX_SHIPS = 8;
 
+// --- 基地ドッキング ---
+// 収容判定: 基地との距離(m)と相対速度(m/s)がこれ以内なら収容可能とみなす。
+export const DOCK_CAPTURE_DIST = 500;    // [m]
+export const DOCK_CAPTURE_REL_V = 20;   // [m/s]
+
+
 // クリエイティブモードのラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
 // 地球-月系と太陽-地球系は主天体間距離が3桁近く違うため、系ごとに妥当なオーダーを別々に持つ。
 export const CREATIVE_HALO_AX_EARTHMOON_KM = 8000;
@@ -50,8 +56,9 @@ export const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
-export const RADIATOR_HIT_WEAR_PER_HIT = 0.002; // 被弾1発で増える損耗度(耐久性10倍)
-export const RADIATOR_WEAR_RECOVERY = 0.01; // 1秒あたりの耐久回復量
+// 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
+// 船体への直撃(PLAYER_HIT_DAMAGE)より軽い。損耗はドックで修理するまで戻らない。
+export const RADIATOR_HIT_DAMAGE = 0.25;
 export const RADIATOR_HITTABLE_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
 export const RADIATOR_EFFICIENCY_MULT = 1; // 放熱面積(RADIATOR_PANEL_AREA)に掛ける性能係数
 
@@ -79,6 +86,9 @@ export const SHADOW_MIN_AMBIENT = 0.35; // 影の中に残す環境光の割合
 // 並進推力(WSADQE の全 6 方向で共通)の出力 3 段階 [m/s^2]。[1]/[2]/[3] キーで切替、
 // 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。
 export const THROTTLE_LEVELS = [5.0, 20.0, 100.0];//エンジン出力、スロットル
+// 自機の質量 [kg]。既定パーツのスラスター推力はこの質量で THROTTLE_LEVELS の最大値の
+// 加速度になるよう決めてあるので、両者を別々に動かすと表示と実挙動がずれる。
+export const PLAYER_MASS = 1000;
 export const THROTTLE_DEFAULT_IDX = 1;
 
 export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
@@ -236,7 +246,6 @@ export const DV_RATE_MIN = 1; // 長押し開始時のΔv加算レート [m/s pe
 export const DV_RATE_MAX = 400; // 長押し継続後に到達するΔv加算レート [m/s per 実秒]
 export const DV_RATE_RAMP_SEC = 3.0; // DV_RATE_MIN から DV_RATE_MAX への指数的ランプ時間 [s]
 // マニューバ達成判定(計画軌道への接近許容)
-// 計画軌道の到達判定。従来値の1/3にして誤差を厳しくする。
 export const NODE_TOL_SMA = 0.02 / 3; // 長半径の相対誤差
 export const NODE_TOL_ECC = 0.02 / 3; // 離心率差
 export const NODE_TOL_PLANE_DEG = 2.0 / 3; // 軌道面の角度差 [deg]
@@ -331,7 +340,7 @@ export const STAGE00_FLYBY_LATERAL_SPREAD = 20; // フライパス初速の横�
 export const PLAYER_MAX_HP = 1000;
 export const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 export const PLAYER_HIT_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
-export const ENEMY_HIT_DAMAGE = 1; // 敵機が被弾した際のダメージ [HP]
+export const ENEMY_HIT_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
 
 // --- 高速接触による装甲ダメージ(自機⇔敵機) ---
 export const COLLISION_DAMAGE_MIN_SPEED = 50; // これ未満の接触速度では無傷 [m/s]

@@ -32,6 +32,8 @@ import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 import { Ephemeris, sunlitFactor } from '../../physics/ephemeris';
 import { Plan } from '../plan/plan';
+import type { PlayerSaveData } from '../save-data';
+import { restorePart, type AnyPart } from '../game-entity/parts';
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
@@ -78,7 +80,7 @@ export class Player extends Ship {
     this._sfx = _sfx;
     this._fx = _fx;
     this.playerScene = _scene;
-    this.mass = 1000;
+    this.mass = C.PLAYER_MASS;
     // 剛体接触は実機体サイズ。被弾判定半径(radius)を使うと排莢直後の薬莢を弾いてしまう
     this.collideRadius = C.PLAYER_HULL_RADIUS;
 
@@ -118,7 +120,7 @@ export class Player extends Ship {
   // HP を HP_REGEN_RATE で maxHp まで自然回復させる。
   private hpRegen(dt: number): void {
     if (!this.alive || this.hp <= 0 || this.hp >= this.maxHp) return;
-    this.hp = Math.min(this.maxHp, this.hp + dt * C.HP_REGEN_RATE);
+    this.selfRepair(dt * C.HP_REGEN_RATE);
   }
 
   // -------------------------------------------------------- 移動/射撃 状態
@@ -174,7 +176,7 @@ export class Player extends Ship {
 
     this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet);
 
-    this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att);
+    this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
     if (this.thrust !== null) this.invalidatePrediction();
   }
@@ -190,16 +192,16 @@ export class Player extends Ship {
   // 分離し、各substep終端の位置・姿勢・太陽方向を使うことでwarp依存を防ぐ。
   stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number): void {
     if (!this.alive) return;
-    this.radiator.update(dt);
+    this.radiator.update(dt, this.radiatorWear());
     this.radius = this.radiator.hitRadius();
     const sunDir = ephemeris.sunDirAt(simTime);
     const sunlit = sunlitFactor(this.state.r, sunDir, C.SHADOW_PENUMBRA);
     this.thermal.setRadiatorLoad(
-      this.radiator.radiatingArea(),
-      this.radiator.solarLoad(sunlit, sunDir, this.att),
+      this.radiator.radiatingArea(this.totalCoolingRate),
+      this.radiator.solarLoad(sunlit, sunDir, this.att, this.totalCoolingRate),
     );
-    this.power.update(dt, sunlit, sunDir, this.att);
-    this.thermal.updateThermal(dt, this.state.r, this.state.v);
+    this.power.update(dt, sunlit, sunDir, this.att, this);
+    this.thermal.updateThermal(dt, this.state.r, this.state.v, this);
   }
 
   // 操作対象から外す/削除する際、次のフレームへ持ち越してはならない連続指令を畳む。
@@ -246,14 +248,24 @@ export class Player extends Ship {
     }
   }
 
-  // 被弾によるダメージ・致死判定。
+  // 放熱板パーツの残 HP から side ごとの損耗率を組む。パーツが欠けている側は全損扱い。
+  private radiatorWear(): Record<RadiatorSide, number> {
+    const [up, down] = this.radiatorParts;
+    const wearOf = (part: typeof up): number =>
+      part && part.maxHp > 0 ? 1 - part.hp / part.maxHp : 1;
+    return { up: wearOf(up), down: wearOf(down) };
+  }
+
+  // 被弾によるダメージ・致死判定。命中位置が展開中の放熱板ならその放熱板パーツへ、
+  // そうでなければ無作為なパーツへダメージが入る。
   attacked(bullet: Bullet, _simTime: number, activeStage: Stage, hitR: Vec3): void {
     if (!this.alive) return;
 
     this.thermal.addImpactHeat();
-    const brokenSide = this.radiator.damageFromHit(hitR, this.state.r, this.att);
-    if (brokenSide !== null) this.radiatorBreakEffect(brokenSide);
-    this.hp -= C.PLAYER_HIT_DAMAGE;
+    const side = this.radiator.sideHitBy(hitR, this.state.r, this.att);
+    const hitPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
+    this.applyDamageToParts(side === null ? bullet.damage : C.RADIATOR_HIT_DAMAGE, hitPart);
+    if (side !== null && hitPart && hitPart.hp <= 0) this.radiatorBreakEffect(side);
     if (this.hp > 0) {
       // 生存していれば被弾エフェクトのみ
       this.hitEffect(bullet, hitR);
@@ -344,6 +356,7 @@ export class Player extends Ship {
       editMode,
       fine,
       attDt,
+      this,
       () => this._hud.hint('進行方向ホールド解除(手動操作)'),
     );
   }
@@ -375,7 +388,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer, this.magsLeft);
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity);
 
     if (this.alive) {
       const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));
@@ -422,5 +435,77 @@ export class Player extends Ship {
     this.rcsEffects.dispose(this.playerScene);
     this.reentryEffects.dispose(this.playerScene);
     super.dispose();
+  }
+
+  // 現在の艦状態を保存用データへ変換する。
+  serialize(): PlayerSaveData {
+    return {
+      id: this.id,
+      name: this.displayName,
+      kind: 'player',
+      r: { ...this.state.r },
+      v: { ...this.state.v },
+      q: { ...this.att.q },
+      w: { ...this.att.w },
+      mags: this.fire.mags,
+      rounds: this.fire.rounds,
+      heat: this.thermal.hullTemp,
+      hp: this.hp,
+      maxHp: this.maxHp,
+      parts: this.parts.map(p => ({ ...p })) as AnyPart[],
+      plan: {
+        anchor: {
+          t: this.plan.anchor.t,
+          r: { ...this.plan.anchor.r },
+          v: { ...this.plan.anchor.v },
+        },
+        nodes: this.plan.nodes.map(n => ({
+          t: n.t,
+          r: { ...n.r },
+          v: { ...n.v },
+        })),
+      },
+    };
+  }
+
+  // 保存データから艦を再構築する。simTime を復元後の状態の epoch として使う。
+  static restore(
+    data: PlayerSaveData,
+    simTime: number,
+    hud: Hud,
+    sfx: Sfx,
+    scene: THREE.Scene,
+    fx: EffectsSystem,
+    markerManager: MarkerManager
+  ): Player {
+    const state = orbitState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
+    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
+    const player = new Player(hud, sfx, scene, fx, markerManager, data.name || data.id, state, data.id);
+    player.att = att;
+    
+    player.fire.initAmmo(data.mags, data.rounds);
+    player.thermal.hullTemp = data.heat;
+    player.hp = data.hp;
+    player.maxHp = data.maxHp;
+    player.parts = data.parts.map(restorePart);
+
+    if (data.plan) {
+      player.plan.clear();
+      player.plan.trackAnchor(orbitState(
+        data.plan.anchor.t,
+        v3(data.plan.anchor.r.x, data.plan.anchor.r.y, data.plan.anchor.r.z),
+        v3(data.plan.anchor.v.x, data.plan.anchor.v.y, data.plan.anchor.v.z)
+      ));
+      // trackAnchor はノードが空の間しか効かないため、ノード復元より先に呼ぶ必要がある
+      for (const n of data.plan.nodes) {
+        player.plan.addNode(orbitState(
+          n.t,
+          v3(n.r.x, n.r.y, n.r.z),
+          v3(n.v.x, n.v.y, n.v.z)
+        ));
+      }
+    }
+
+    return player;
   }
 }

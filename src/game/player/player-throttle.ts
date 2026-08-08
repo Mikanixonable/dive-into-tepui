@@ -56,8 +56,8 @@ export class PlayerThrottle {
 
   // 入力から機体座標系の推力加速度を組み立てて返す。warp 中などで噴射不可なら null。
   // SFX とスラスト方向の表示用状態も併せて更新する。
-  updateThrustState(input: Input, simSpeed: SimSpeedManager, att: Attitude): Vec3 | null {
-    const thrust = this.buildThrust(input, att.q);
+  updateThrustState(input: Input, simSpeed: SimSpeedManager, att: Attitude, dt: number, ship: import('../game-entity/ship').Ship): Vec3 | null {
+    const thrust = this.buildThrust(input, att.q, ship, dt);
     // 噴射不可、または入力が無ければ噴射音・表示を止めて終える
     if (!simSpeed.canPlayerThrust || !thrust) {
       this._sfx.setThrust(false);
@@ -74,13 +74,25 @@ export class PlayerThrottle {
   }
 
   // 6方向の並進入力から機体座標系の推力加速度ベクトルを求める。入力が無ければ null。
-  private buildThrust(input: Input, q: Attitude['q']): Vec3 | null {
+  private buildThrust(input: Input, q: Attitude['q'], ship: import('../game-entity/ship').Ship, dt: number): Vec3 | null {
     const axX = (input.down(K.thrustLeft) ? 1 : 0) + (input.down(K.thrustRight) ? -1 : 0);
     const axY = (input.down(K.thrustUp) ? 1 : 0) + (input.down(K.thrustDown) ? -1 : 0);
     const axZ = (input.down(K.thrustForward) ? 1 : 0) + (input.down(K.thrustBackward) ? -1 : 0);
     if (axX === 0 && axY === 0 && axZ === 0) return null;
 
-    const thrustAccel = C.THROTTLE_LEVELS[this.throttleIdx]!;
+    // 全開加速度は推力/質量で決まる。スロットル段は THROTTLE_LEVELS の最大値に対する
+    // 比としてそこへ掛けるので、既定パーツの艦では表示値(THROTTLE_LEVELS)と実加速度が一致する。
+    const maxAccel = ship.mass > 0 ? ship.totalThrust / ship.mass : 0;
+    const presetScale = C.THROTTLE_LEVELS[this.throttleIdx]! / C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
+    let thrustAccel = maxAccel * presetScale;
+
+    // 燃料残量に応じて実際の加速度を絞る
+    const consumption = ship.totalFuelConsumptionRate * presetScale * dt;
+    const actualRatio = ship.consumeFuel(consumption);
+    thrustAccel *= actualRatio;
+    
+    if (thrustAccel <= 0) return null;
+
     const dir = norm(v3(axX, axY, axZ));
     return qRotate(q, scale(dir, thrustAccel));
   }
@@ -96,6 +108,7 @@ export class PlayerThrottle {
     editMode: boolean,
     fineAttitude: boolean,
     attDt: number,
+    ship: import('../game-entity/ship').Ship,
     onProgradeHoldReleased: () => void,
   ): Vec3 {
     if (!alive) return v3();
@@ -119,8 +132,22 @@ export class PlayerThrottle {
       C.RCS_MANUAL_OUTPUT_MIN +
       C.RCS_MANUAL_OUTPUT_RAMP *
       (Math.min(C.RCS_MANUAL_RAMP_TIME, this.rotationHoldTime) / C.RCS_MANUAL_RAMP_TIME);
+      
+    const baseAngAccel = ship.totalTorque > 0
+      ? ship.totalTorque / Math.max(inertia.x, inertia.y, inertia.z)
+      : C.MAX_ANG_ACCEL;
+
     const angScale = fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
-    const maxAngAccel = C.MAX_ANG_ACCEL * angScale * rcsOutputFactor;
+    let maxAngAccel = baseAngAccel * angScale * rcsOutputFactor;
+
+    // 燃料残量に応じて実際の角加速度を絞る
+    const rotateIntensity = Math.max(Math.abs(inX), Math.abs(inY), Math.abs(inZ));
+    if (rotateIntensity > 0) {
+      const consumption = ship.totalFuelConsumptionRate * rotateIntensity * rcsOutputFactor * angScale * attDt;
+      const actualRatio = ship.consumeFuel(consumption);
+      maxAngAccel *= actualRatio;
+    }
+    
     const manualTorque = v3(
       inX * maxAngAccel * inertia.x,
       inY * maxAngAccel * inertia.y,

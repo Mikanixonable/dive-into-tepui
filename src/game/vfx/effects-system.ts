@@ -9,12 +9,8 @@ import { Billboard } from '../../render/billboard';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
 import type { EntityManager } from '../simulation/entity-manager';
 
-// FlashEffectとDebrisPieceの生成・管理を一元化するエフェクトシステム。ゲーム内のフラッシュ・破片はすべてここを経由する
-// FlashEffectはFlashEffectManagerが管理する。DebrisPieceはspawn系メソッドで生成されentitiesに追加される
-// フラッシュ・破片エフェクトの発生源。scene への注入をここに一元化し、呼び出し側
-// (Player/Enemy/PlayerFire)は scene を持ち回さずに済む。フラッシュの毎フレーム更新・
-// 寿命管理(FlashEffectManager)もここが私有し、game.ts からは spawn 系メソッドと
-// 同じ窓口(sync)経由でのみ触る。
+// フラッシュ・破片エフェクトの生成窓口。scene への注入をここに一元化し、破片は
+// entities へ追加する。フラッシュの毎フレーム更新・寿命管理は FlashEffectManager が持つ。
 export class EffectsSystem {
   private readonly _flashEffects: FlashEffectManager;
 
@@ -129,7 +125,7 @@ export class EffectsSystem {
     this.spawnDebrisPiece(state, { kind: 'casing', bornSim }, att, 0.2);
   }
 
-  // マガジン撃ち尽くし時に排出されるバレル(手動リロードからも呼ばれる)。
+  // マガジン撃ち尽くし時に排出されるバレル。
   spawnBarrel(state: OrbitState, att: Attitude): void {
     this.spawnDebrisPiece(state, { kind: 'barrel' }, att, 0.8);
   }
