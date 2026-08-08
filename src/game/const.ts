@@ -279,6 +279,11 @@ export const PLAN_ARC_STEPS_PER_REV = 100;
 // 1周回 / PLAN_ARC_STEPS_PER_REV のままではステップ数がフレーム時間を圧迫するので、
 // 超えたら plan-arc.ts の再突入時と同じ「そこで打ち切って endState() を返す」経路に乗せる。
 export const PLAN_ARC_MAX_STEPS = 20000;
+// 天体に衝突した後、その天体を無視して伝播を続ける仮想延長線(幽霊軌道)の破線パターン [m] と
+// 不透明度倍率。dashSize/gapSize は表示座標系の実距離。
+export const PLAN_ARC_GHOST_DASH_M = 3e4;
+export const PLAN_ARC_GHOST_GAP_M = 3e4;
+export const PLAN_ARC_GHOST_OPACITY_MULT = 0.5;
 // 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
 export const APERIODIC_ARC_DURATION = 86400;
 // 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率の下限。これ未満は円に近く
