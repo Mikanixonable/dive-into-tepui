@@ -41,7 +41,8 @@ import { MapPicker } from './map-picker';
 import { Navball } from './navball/navball';
 import { GameSaveData } from './save-data';
 import { Ammo } from './game-entity/ammo';
-import { SaveManager } from './save-manager';
+import { SnapshotService } from './save/snapshot-service';
+import type { SaveBrowser } from './hud/save-browser';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
@@ -80,6 +81,10 @@ export class Game {
   private readonly navball: Navball;
 
   private readonly unlockManager: UnlockManager;
+  private readonly snapshotService: SnapshotService;
+  // SaveBrowser は自分自身(Game)を必要とするため Game より後に作られる。ViewManager が
+  // Docking を後から受け取るのと同じ遅延注入。
+  private saveBrowser: SaveBrowser | null = null;
 
   // 単独のオブジェクトでは決められないマーカー群。敵マーカーは「画面上で近接するものを
   // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とする。EqAN/EqDN は
@@ -107,6 +112,7 @@ export class Game {
     sfx: Sfx,
     settingsPanel: SettingsPanel,
     unlockManager: UnlockManager,
+    snapshotService: SnapshotService,
   ) {
     this.launchMode = launch.mode;
     this._scene = gs.scene;
@@ -115,6 +121,7 @@ export class Game {
     this._sfx = sfx;
     this.settingsPanel = settingsPanel;
     this.unlockManager = unlockManager;
+    this.snapshotService = snapshotService;
 
     this._ephemeris = new Ephemeris();
 
@@ -339,12 +346,17 @@ export class Game {
       this.entities.addBase(b);
     }
 
-    // ステージ状態(スコア・決着状態・固有の内訳)の復元。SaveManager が
+    // ステージ状態(スコア・決着状態・固有の内訳)の復元。SnapshotService が
     // セーブ時と同じ stageId であることを既に検証済み。
     this.activeStage.restore(data.stage);
 
     // ロード直後の状態同期と安定化
     this.entities.sync(this.floatingOrigin, data.simTime);
+  }
+
+  // スナップショット一覧ウィンドウを登録する。構築直後に一度だけ呼ぶ。
+  setSaveBrowser(browser: SaveBrowser): void {
+    this.saveBrowser = browser;
   }
 
   // ------------------------------------------------------------ update
@@ -585,6 +597,9 @@ export class Game {
   private handleInput(): void {
     // 上から下へ優先順位順に呼ぶ。
     this.docking.handleInput(this.input);
+    // スナップショット一覧を開いている間は、その閉じるキーとして [Esc] を先に取る
+    // (設定メニューが上に重なるのを防ぐ)。
+    if (this.saveBrowser?.visible && this.input.takeKey(K.pauseMenu)) this.saveBrowser.close();
     this.settingsPanel.handleInput(this.input);
     this._hud.handleInput(this.input);
     this.activeStage.handleInput(this.input);
@@ -600,18 +615,20 @@ export class Game {
     this.viewManager.handleInput(this.input, this.activeStage.isPlaying, canToggleView);
     this.editor.handleInput(this.input);
 
-    if (this.input.takeKey(K.quickSave)) {
-      // 決着後の phase(won/lost/timeup)はセーブ側で復元する経路を持たない — restore は
-      // phase をそのまま代入するだけで結果画面を出し直さず、Game.update は isPlaying
-      // でない限り早期returnし続けるため、決着後のセーブをロードすると操作不能になる。
+    if (this.input.takeKey(K.clipSnapshot)) {
+      // 決着後の phase(won/lost/timeup)は復元する経路を持たない — restore は phase を
+      // そのまま代入するだけで結果画面を出し直さず、Game.update は isPlaying でない限り
+      // 早期returnし続けるため、決着後のスナップショットをロードすると操作不能になる。
       if (!this.activeStage.isPlaying) {
-        this._hud.hint('決着後はセーブできません');
+        this._hud.hint('決着後はスナップショットを残せません');
       } else {
-        this._hud.hint(SaveManager.save(this) ? 'セーブしました' : 'セーブに失敗しました');
+        const snap = this.snapshotService.capture(this, 'manual', null, true);
+        this._hud.hint(snap ? `クリップしました: ${snap.name}` : 'クリップに失敗しました');
       }
     }
-    if (this.input.takeKey(K.quickLoad)) {
-      this._hud.hint(SaveManager.load(this) ? 'ロードしました' : 'ロードに失敗しました');
+    if (this.input.takeKey(K.openSnapshots)) {
+      if (this.saveBrowser?.visible) this.saveBrowser.close();
+      else this.saveBrowser?.open();
     }
   }
 

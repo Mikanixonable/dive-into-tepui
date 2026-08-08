@@ -1,11 +1,12 @@
 // 軌道エンティティの基準天体・軌道要素・相対情報の導出。DOM に依存しない純粋関数。
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { Attractor, AttractorId, strongestAttractor } from '../../physics/attractor';
 import { apsisAltitudes } from '../../physics/elements';
 import { dot, len, sub } from '../../physics/vec3';
 import type { GameEntity } from '../game-entity/game-entity';
 import { ATTRACTOR_NAMES } from './frame-labels';
 
 export interface OrbitInfo {
+  centerId: AttractorId;
   centerName: string;
   alt: number;
   spd: number;
@@ -23,6 +24,7 @@ export function orbitInfo(entity: GameEntity, attractors: readonly Attractor[]):
   // apsis 高度は center の半径基準。
   const apsis = el ? apsisAltitudes(el) : null;
   return {
+    centerId: center.id,
     centerName: ATTRACTOR_NAMES[center.id],
     alt: len(sub(entity.state.r, center.state.r)) - center.radius,
     spd: len(entity.state.v),
