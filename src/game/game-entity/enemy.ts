@@ -121,9 +121,10 @@ export class Enemy extends Ship {
 
 
 
-  // pos は機体メッシュと同じ表示時刻の位置(displayState 経由)を使う。role が第一/第二
-  // ターゲットのどちらでもなければ通常の敵マーカーになる。
-  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3): GroupedMarkerItem {
+  // pos/vel は機体メッシュと同じ表示時刻の状態(displayState 経由)を使う。role が第一/第二
+  // ターゲットのどちらでもなければ通常の敵マーカーになる。overviewMode では進行方向へ回る
+  // ヘッダーアイコンを、戦闘ビューでは従来の切り欠き三角形を使う。
+  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
     // 代表選出の優先度: 第一ターゲット > 第二ターゲット > 距離が近い順
@@ -131,8 +132,9 @@ export class Enemy extends Ship {
     return {
       key: `enemy-${this.name}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy',
-      sym: this.hpMarkerSvg(),
+      sym: overviewMode ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
       pos,
+      vel,
       priority,
       name: this.name,
       detail: fmtMarkerDist(dist),
