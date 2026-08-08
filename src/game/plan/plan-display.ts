@@ -6,7 +6,7 @@ import { Vec3, cross, dot, len, norm, sub, v3 } from '../../physics/vec3';
 import { elementsAround, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { Frame, INERTIAL_FRAME, frameOrbitState, toFrameState, toInertialState } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { fmtMarkerDist, fmtDist } from '../hud/utils';
+import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
@@ -29,6 +29,24 @@ interface EqNodeIcon extends MapPickable {
   readonly label: string;
 }
 
+// ✕ 衝突マーカー(区間ごとに高々1つ)
+interface ImpactIcon {
+  readonly key: string;
+  readonly pos: Vec3;
+  readonly label: string;
+}
+
+// │ 日付境界の目盛マーカー
+interface DayTickIcon {
+  readonly key: string;
+  readonly pos: Vec3;
+  readonly label: string;
+}
+
+// 衝突マーカーのキー(区間ごとに固定)。区間数は SEGMENT_COLORS(plan-trajectory.ts)と同じ
+// 上限で足りる。
+const IMPACT_MARKER_KEYS = ['planImpact0', 'planImpact1', 'planImpact2'] as const;
+
 export class PlanDisplay {
   trajectoryFrame: Frame = INERTIAL_FRAME;
 
@@ -38,6 +56,9 @@ export class PlanDisplay {
   private readonly frame: SegmentedControl<Frame>;
   private apsisIcons: readonly ApsisIcon[] = [];
   private eqNodeIcons: readonly EqNodeIcon[] = [];
+  private impactIcons: readonly ImpactIcon[] = [];
+  private dayTickIcons: readonly DayTickIcon[] = [];
+  private lastDayTickCount = 0;
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
   private plan: Plan | null = null;
 
@@ -72,6 +93,8 @@ export class PlanDisplay {
     if (!show) {
       this.ghost = null;
       this.apsisIcons = [];
+      this.impactIcons = [];
+      this.dayTickIcons = [];
       this.traj.resetDivergence();
       return;
     }
@@ -79,6 +102,8 @@ export class PlanDisplay {
     this.ghost = this.ghostAt(displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.eqNodeIcons = this.eqNodeIconsOf();
+    this.impactIcons = this.impactIconsOf();
+    this.dayTickIcons = this.dayTickIconsOf();
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。
@@ -89,6 +114,8 @@ export class PlanDisplay {
     this.syncGhost(project);
     this.syncApsisMarkers(project);
     this.syncEqNodeMarkers(project);
+    this.syncImpactMarkers(project);
+    this.syncDayTickMarkers(project);
     this.panel.style.display = showPanel ? 'block' : 'none';
     this.frame.setSelected(this.trajectoryFrame);
   }
@@ -101,6 +128,9 @@ export class PlanDisplay {
     this.markerManager.hide('apsisAp');
     this.markerManager.hide('eqAn');
     this.markerManager.hide('eqDn');
+    for (const key of IMPACT_MARKER_KEYS) this.markerManager.hide(key);
+    for (let i = 0; i < this.lastDayTickCount; i++) this.markerManager.hide(`planDayTick${i}`);
+    this.lastDayTickCount = 0;
     this.panel.style.display = 'none';
   }
 
@@ -236,6 +266,30 @@ export class PlanDisplay {
     ];
   }
 
+  // 天体衝突が検出された地点(区間ごとに高々1つ)。その地点で最も強く引く天体の表面からの
+  // 高度をラベルに添える。
+  private impactIconsOf(): readonly ImpactIcon[] {
+    return this.traj.impactPoints().flatMap(({ state, arcIdx }) => {
+      const key = IMPACT_MARKER_KEYS[arcIdx];
+      if (key === undefined) return [];
+      const center = strongestAttractor(state.r, this.ephemeris.attractorsAt(state.t));
+      const alt = len(sub(state.r, center.state.r)) - center.radius;
+      return [{ key, pos: this.traj.toDisplay(state.r, state.t), label: `衝突 高度 ${fmtMarkerDist(alt, 0)}` }];
+    });
+  }
+
+  // 表示中の折れ線が UTC 日付境界(0時0分0秒)を跨ぐ地点のアイコン。ラベルは UTC の日付。
+  private dayTickIconsOf(): readonly DayTickIcon[] {
+    return this.traj.dayBoundaries().map(({ t, pos }, i) => {
+      const d = new Date((SIM_EPOCH_SEC + t) * 1000);
+      return {
+        key: `planDayTick${i}`,
+        pos: this.traj.toDisplay(pos, t),
+        label: `${d.getUTCMonth() + 1}/${d.getUTCDate()}`,
+      };
+    });
+  }
+
   // ◇ アプシスアイコンを update が求めた位置に置き、出ていないものを隠す。
   private syncApsisMarkers(project: ProjectFn): void {
     for (const key of ['apsisPe', 'apsisAp'] as const) {
@@ -252,5 +306,26 @@ export class PlanDisplay {
       if (icon) this.markerManager.setPosition(key, 'mk-node', key === 'eqAn' ? '△' : '▽', icon.pos, project, icon.label);
       else this.markerManager.hide(key);
     }
+  }
+
+  // ✕ 衝突マーカーを update が求めた位置に置き、出ていないものを隠す。
+  private syncImpactMarkers(project: ProjectFn): void {
+    for (const key of IMPACT_MARKER_KEYS) {
+      const icon = this.impactIcons.find((m) => m.key === key);
+      if (icon) this.markerManager.setPosition(key, 'mk-impact', '✕', icon.pos, project, icon.label);
+      else this.markerManager.hide(key);
+    }
+  }
+
+  // │ 日付境界の目盛マーカーを update が求めた位置に置く。件数が可変なので、前フレームより
+  // 減った分だけ隠す(固定キー集合を持つ他のアイコンとは異なり、キー自体が個数ぶん増減する)。
+  private syncDayTickMarkers(project: ProjectFn): void {
+    for (const icon of this.dayTickIcons) {
+      this.markerManager.setPosition(icon.key, 'mk-daytick', '│', icon.pos, project, icon.label);
+    }
+    for (let i = this.dayTickIcons.length; i < this.lastDayTickCount; i++) {
+      this.markerManager.hide(`planDayTick${i}`);
+    }
+    this.lastDayTickCount = this.dayTickIcons.length;
   }
 }

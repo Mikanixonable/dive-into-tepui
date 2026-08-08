@@ -44,7 +44,7 @@ export function register(): void {
   });
 
   test('plan: 近地点付近の遷移軌道の区間長が近地点半径の円軌道周期に短縮されない', () => {
-    const ephemeris = new Ephemeris(0, 0);
+    const ephemeris = new Ephemeris({ sun: 0, moon: 0 });
     const t = 6789;
     const rp = R_EARTH + 400e3;
     const ra = R_EARTH + 35_000e3;
@@ -62,7 +62,7 @@ export function register(): void {
   });
 
   test('plan: nodeTimeRange は DisplayDurationSource の表示期間にそのまま追従する', () => {
-    const ephemeris = new Ephemeris(0, 0);
+    const ephemeris = new Ephemeris({ sun: 0, moon: 0 });
     const t = 1000;
     const rp = R_EARTH + 400e3;
     const state = orbitState(t, v3(rp, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / rp)));

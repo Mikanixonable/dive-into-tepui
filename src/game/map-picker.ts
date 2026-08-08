@@ -270,16 +270,19 @@ export class MapPicker {
         return [
           ...placeItem,
           { label: '軌道オブジェクトウィンドウを表示', act: 'openObjectList' },
+          { label: '設定メニューを開く', act: 'openSettings' },
           MenuCommon.cancel(),
         ];
       },
       run: (act) => {
         if (act === 'openShipPlacer') {
           if ((this.game.activeStage as any).stageId === 'creative') {
-            (this.game.activeStage as any).openShipPlacer();
+            (this.game.activeStage as any).openShipPlacer(this.game.cameraSystem.overviewCamera.focus);
           }
         } else if (act === 'openObjectList') {
           this.objectListVisible = true;
+        } else if (act === 'openSettings') {
+          this.game.openSettingsMenu();
         }
       },
     },

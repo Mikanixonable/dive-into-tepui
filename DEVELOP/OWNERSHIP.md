@@ -109,7 +109,7 @@ main.ts
     │   ├── DebrisPiece[] (casings)
     │   ├── DebrisPiece[] (debris)
     │   ├── Ammo[]
-    │   └── Base[]                     ... 各々 baseState(money/inventory/dockedShips)を持つ
+    │   └── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
     ├── Simulator                      ... 実シミュレーション。EntityManager の参照を受け取って回すだけ(所有しない)
     │   ├── HitSystem
     │   └── CollisionPhysics

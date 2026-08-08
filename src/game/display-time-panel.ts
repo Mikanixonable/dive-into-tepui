@@ -12,14 +12,14 @@ const DURATIONS: readonly (readonly [DisplayDurationKey, string])[] = [
   ['manual', '手動'],
 ];
 
-type DurationUnit = 'hour' | 'day' | 'week' | 'year';
+type DurationUnit = 'hour' | 'day' | 'month' | 'year';
 
-const UNIT_SEC: Record<DurationUnit, number> = { hour: 3600, day: 86400, week: 7 * 86400, year: 365 * 86400 };
+const UNIT_SEC: Record<DurationUnit, number> = { hour: 3600, day: 86400, month: 30 * 86400, year: 365 * 86400 };
 
 const UNITS: readonly (readonly [DurationUnit, string])[] = [
   ['hour', '時'],
   ['day', '日'],
-  ['week', '週'],
+  ['month', '月'],
   ['year', '年'],
 ];
 

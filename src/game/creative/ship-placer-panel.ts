@@ -66,6 +66,10 @@ const ORBITING_IDS = (Object.keys(SOLAR_SYSTEM) as AttractorId[])
 
 const BODY_ITEMS: readonly (readonly [ReferenceBody, string])[] = ORBITING_IDS.map((id) => [id, ATTRACTOR_NAMES[id]]);
 
+// 基地は敵の射程となる惑星近傍を避けるため、軌道要素指定の基準天体は月だけに絞る
+// (地球・木星は選択肢自体を出さない — placement-validation.ts の validateBaseReference と対にする)。
+const BASE_BODY_ITEMS: readonly (readonly [ReferenceBody, string])[] = BODY_ITEMS.filter(([id]) => id === 'moon');
+
 const LIBRATION_SYSTEM_ITEMS: readonly (readonly [OrbitingId, string])[] = ORBITING_IDS.map((id) => {
   const def = bodyDef(id);
   const primary: AttractorId = def.kind === 'planet' ? 'sun' : def.planet;
@@ -90,8 +94,9 @@ const LIBRATION_DEFAULT_AMPLITUDE_KM: Record<OrbitingId, { ax: number; az: numbe
   jupiter: { ax: C.CREATIVE_HALO_AX_JUPITER_KM, az: C.CREATIVE_HALO_AZ_JUPITER_KM },
 };
 
-// ラベル付き数値入力を1行分組み立てて root へ追加し、input 要素を返す。
-function numberField(root: HTMLElement, label: string, defaultValue: number, step: number): HTMLInputElement {
+// ラベル行(.hud-seg + .seg-title)と数値 input を組み立てて返す。root への追加は呼び出し側の仕事
+// (numberField はそのまま追加するだけだが、sliderField はスライダー列を同じ行に足してから追加する)。
+function buildNumberRow(label: string, defaultValue: number, step: number, min?: number, max?: number): { row: HTMLElement; input: HTMLInputElement } {
   const row = document.createElement('div');
   row.className = 'hud-seg';
   const heading = document.createElement('span');
@@ -102,9 +107,17 @@ function numberField(root: HTMLElement, label: string, defaultValue: number, ste
   input.type = 'number';
   input.step = String(step);
   input.value = String(defaultValue);
+  if (min !== undefined) input.min = String(min);
+  if (max !== undefined) input.max = String(max);
   // #hud はマップドラッグを拾うため、この入力上のポインタ操作がカメラドラッグへ抜けないようにする。
   input.addEventListener('pointerdown', (e) => e.stopPropagation());
   row.appendChild(input);
+  return { row, input };
+}
+
+// ラベル付き数値入力を1行分組み立てて root へ追加し、input 要素を返す。
+function numberField(root: HTMLElement, label: string, defaultValue: number, step: number, min?: number, max?: number): HTMLInputElement {
+  const { row, input } = buildNumberRow(label, defaultValue, step, min, max);
   root.appendChild(row);
   return input;
 }
@@ -112,6 +125,114 @@ function numberField(root: HTMLElement, label: string, defaultValue: number, ste
 // numberField が組んだ入力の行(ラベルごと)を出し入れする。
 function setFieldVisible(input: HTMLInputElement, visible: boolean): void {
   (input.parentElement as HTMLElement).style.display = visible ? '' : 'none';
+}
+
+// numberField にスライダー+目盛りを添えた行。数値入力とスライダーは双方向に同期する。
+// 値⇔スライダー位置(0..1)の対応と目盛りラベルは呼び出し側が bindAngleSlider/
+// bindAltitudeSlider 経由で決める(角度は固定範囲の線形対応、高度は基準値相対の対応で
+// 意味が異なるため、この行自体は対応関係を知らない)。
+interface SliderRow {
+  readonly input: HTMLInputElement;
+  readonly slider: HTMLInputElement;
+  setTicks(labels: readonly string[]): void;
+  setMapping(toT: (value: number) => number, fromT: (t: number) => number): void;
+}
+
+function sliderField(root: HTMLElement, label: string, defaultValue: number, step: number, min?: number, max?: number): SliderRow {
+  const wrap = document.createElement('div');
+  wrap.className = 'slider-field';
+
+  const { row, input } = buildNumberRow(label, defaultValue, step, min, max);
+
+  const sliderCol = document.createElement('div');
+  sliderCol.className = 'slider-col';
+
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = '0';
+  slider.max = '1000';
+  slider.step = '1';
+  slider.addEventListener('pointerdown', (e) => e.stopPropagation());
+  sliderCol.appendChild(slider);
+
+  const ticksEl = document.createElement('div');
+  ticksEl.className = 'slider-ticks';
+  sliderCol.appendChild(ticksEl);
+
+  row.appendChild(sliderCol);
+  wrap.appendChild(row);
+
+  root.appendChild(wrap);
+
+  let toT = (v: number): number => v;
+  let fromT = (t: number): number => t;
+  const syncSliderFromInput = (): void => {
+    const t = Math.max(0, Math.min(1, toT(Number(input.value))));
+    slider.value = String(Math.round(t * 1000));
+  };
+  input.addEventListener('input', syncSliderFromInput);
+  slider.addEventListener('input', () => {
+    // 入力欄の刻みへ丸めてから書き戻す。高度スライダーは書き戻した値を次のドラッグの基準に
+    // 取り直すので、丸めないと端数がドラッグのたびに積み上がる。
+    input.value = String(Math.round(fromT(Number(slider.value) / 1000) / step) * step);
+  });
+
+  return {
+    input,
+    slider,
+    setTicks(labels) {
+      ticksEl.innerHTML = '';
+      for (const text of labels) {
+        const span = document.createElement('span');
+        span.textContent = text;
+        ticksEl.appendChild(span);
+      }
+    },
+    setMapping(newToT, newFromT) {
+      toT = newToT;
+      fromT = newFromT;
+      syncSliderFromInput();
+    },
+  };
+}
+
+// 角度スライダー(i/Ω/ω/ν): 0..rangeDeg の線形対応、90度ごとに目盛りを表示する。
+function bindAngleSlider(field: SliderRow, rangeDeg: number): void {
+  field.setMapping((v) => v / rangeDeg, (t) => t * rangeDeg);
+  const tickCount = rangeDeg / 90 + 1;
+  field.setTicks(Array.from({ length: tickCount }, (_, i) => `${i * 90}°`));
+}
+
+// 高度スライダーの基準からの相対倍率: 中央(t=0)を基準値の100%とし、左は等倍で0%まで、
+// 右は2倍指数で400%まで伸びる。上限のない高度を有限のスライダー幅で操作するための仕様。
+function altitudeMultiplier(tOffset: number): number {
+  return tOffset <= 0 ? 1 + tOffset : Math.pow(2, 2 * tOffset);
+}
+
+// 高度の基準値の下限(km)。基準はスライダーの可動範囲そのものなので、値が 0 まで下がった
+// ときに 0 を基準にすると倍率をいくら掛けても 0 のままになり、二度と操作で戻せなくなる。
+// 一度のドラッグでこの4倍まで戻せる高度を床に置く。
+const ALTITUDE_REF_FLOOR_KM = 100;
+
+// 高度スライダー(Ap/Pe): ドラッグ開始時点の値を基準の100%としてスライダー中央に据え、
+// ドラッグが終わるたびにそのときの値を新しい基準に取り直してつまみを中央へ戻す
+// (基準を固定しないと上限のない高度を動かせない)。
+function bindAltitudeSlider(field: SliderRow): void {
+  const rebase = (): void => {
+    const ref = Math.max(Number(field.input.value), ALTITUDE_REF_FLOOR_KM);
+    field.setMapping(
+      (v) => {
+        const mult = v / ref;
+        const tOffset = mult <= 1 ? mult - 1 : Math.log2(mult) / 2;
+        return (tOffset + 1) / 2;
+      },
+      (t) => ref * altitudeMultiplier(2 * t - 1),
+    );
+    field.setTicks([0, 0.5, 1, 2, 4].map((m) => `${Math.round(ref * m)}`));
+  };
+  field.slider.addEventListener('pointerdown', rebase);
+  field.slider.addEventListener('pointerup', rebase);
+  rebase();
 }
 
 export class ShipPlacerPanel {
@@ -129,16 +250,16 @@ export class ShipPlacerPanel {
   private readonly sizeMode: SegmentedControl<SizeShapeMode>;
   private readonly sizeGroups: Record<SizeShapeMode, HTMLElement>;
   private readonly nameInput: HTMLInputElement;
-  private readonly peAlt: HTMLInputElement;
-  private readonly apAlt: HTMLInputElement;
+  private readonly peAlt: SliderRow;
+  private readonly apAlt: SliderRow;
   private readonly semiMajor: HTMLInputElement;
   private readonly eccSemiMajor: HTMLInputElement;
   private readonly period: HTMLInputElement;
   private readonly eccPeriod: HTMLInputElement;
-  private readonly inc: HTMLInputElement;
-  private readonly raan: HTMLInputElement;
-  private readonly argp: HTMLInputElement;
-  private readonly nu: HTMLInputElement;
+  private readonly inc: SliderRow;
+  private readonly raan: SliderRow;
+  private readonly argp: SliderRow;
+  private readonly nu: SliderRow;
   private readonly librationSecondary: SegmentedControl<OrbitingId>;
   private readonly librationPoint: SegmentedControl<LibrationPoint>;
   private readonly librationOrbitKind: SegmentedControl<LibrationOrbitKind>;
@@ -169,86 +290,167 @@ export class ShipPlacerPanel {
     title.textContent = '軌道オブジェクト配置';
     this.panel.appendChild(title);
 
-    this.objectType = new SegmentedControl('種類', OBJECT_TYPE_ITEMS, (v) => { this.objectTypeValue = v; this.objectType.setSelected(v); });
+    this.objectType = new SegmentedControl('種類', OBJECT_TYPE_ITEMS, (v) => this.selectObjectType(v));
     this.objectType.setSelected(this.objectTypeValue);
     this.panel.appendChild(this.objectType.element);
 
     this.placementMode = new SegmentedControl('配置方法', PLACEMENT_MODE_ITEMS, (v) => this.selectPlacementMode(v));
     this.panel.appendChild(this.placementMode.element);
 
-    // 軌道要素指定の一式(基準天体・サイズ/形・向き・位相)をまとめて1つの div に収め、
-    // ラグランジュ点指定と排他に表示切替できるようにする。
+    const elements = this.buildElementsGroup();
+    this.body = elements.body;
+    this.sizeMode = elements.sizeMode;
+    this.sizeGroups = elements.sizeGroups;
+    this.peAlt = elements.peAlt;
+    this.apAlt = elements.apAlt;
+    this.semiMajor = elements.semiMajor;
+    this.eccSemiMajor = elements.eccSemiMajor;
+    this.period = elements.period;
+    this.eccPeriod = elements.eccPeriod;
+    this.inc = elements.inc;
+    this.raan = elements.raan;
+    this.argp = elements.argp;
+    this.nu = elements.nu;
+    this.selectSizeMode(this.sizeModeValue);
+    this.panel.appendChild(elements.element);
+
+    const libration = this.buildLibrationGroup();
+    this.librationSecondary = libration.librationSecondary;
+    this.librationPoint = libration.librationPoint;
+    this.librationOrbitKind = libration.librationOrbitKind;
+    this.libAx = libration.libAx;
+    this.libAz = libration.libAz;
+    this.panel.appendChild(libration.element);
+
+    this.placementGroups = { elements: elements.element, libration: libration.element };
+    this.selectPlacementMode(this.placementModeValue);
+
+    const nameRow = this.buildNameRow();
+    this.nameInput = nameRow.nameInput;
+    this.panel.appendChild(nameRow.element);
+
+    this.buildButtonsAndKeybinds();
+
+    // root (hud-modal-shield) に追加
+    root.appendChild(this.panel);
+  }
+
+  // 軌道要素指定の一式(基準天体・サイズ/形・向き・位相)を1つの div にまとめて返す。
+  // サイズ/形の3つの入力組はどれか1つだけを表示する(selectSizeMode が切り替える)ので、
+  // 呼び出し側は返った sizeGroups を this.sizeGroups へ代入してから selectSizeMode を呼ぶ必要がある。
+  private buildElementsGroup(): {
+    element: HTMLElement;
+    body: SegmentedControl<ReferenceBody>;
+    sizeMode: SegmentedControl<SizeShapeMode>;
+    sizeGroups: Record<SizeShapeMode, HTMLElement>;
+    peAlt: SliderRow;
+    apAlt: SliderRow;
+    semiMajor: HTMLInputElement;
+    eccSemiMajor: HTMLInputElement;
+    period: HTMLInputElement;
+    eccPeriod: HTMLInputElement;
+    inc: SliderRow;
+    raan: SliderRow;
+    argp: SliderRow;
+    nu: SliderRow;
+  } {
     const elementsGroup = document.createElement('div');
-    this.body = new SegmentedControl('基準天体', BODY_ITEMS, (v) => { this.bodyValue = v; this.body.setSelected(v); });
-    this.body.setSelected(this.bodyValue);
-    elementsGroup.appendChild(this.body.element);
+    const body = new SegmentedControl('基準天体', BODY_ITEMS, (v) => { this.bodyValue = v; body.setSelected(v); });
+    body.setSelected(this.bodyValue);
+    elementsGroup.appendChild(body.element);
 
-    this.sizeMode = new SegmentedControl('サイズ/形', SIZE_MODE_ITEMS, (v) => this.selectSizeMode(v));
-    elementsGroup.appendChild(this.sizeMode.element);
+    const sizeMode = new SegmentedControl('サイズ/形', SIZE_MODE_ITEMS, (v) => this.selectSizeMode(v));
+    elementsGroup.appendChild(sizeMode.element);
 
-    // サイズ/形の3つの入力組はどれか1つだけを表示する(selectSizeMode が切り替える)。
     const apsidesGroup = document.createElement('div');
-    this.peAlt = numberField(apsidesGroup, '近地点高度 [km]', 400, 10);
-    this.apAlt = numberField(apsidesGroup, '遠地点高度 [km]', 400, 10);
+    const peAlt = sliderField(apsidesGroup, '近地点高度 [km]', 400, 10, 0);
+    bindAltitudeSlider(peAlt);
+    const apAlt = sliderField(apsidesGroup, '遠地点高度 [km]', 400, 10, 0);
+    bindAltitudeSlider(apAlt);
     elementsGroup.appendChild(apsidesGroup);
 
     const semiMajorGroup = document.createElement('div');
-    this.semiMajor = numberField(semiMajorGroup, '半長軸 [km]', 6771, 10);
-    this.eccSemiMajor = numberField(semiMajorGroup, '離心率', 0, 0.01);
+    const semiMajor = numberField(semiMajorGroup, '半長軸 [km]', 6771, 10, 0);
+    const eccSemiMajor = numberField(semiMajorGroup, '離心率', 0, 0.01, 0, 0.99);
     elementsGroup.appendChild(semiMajorGroup);
 
     const periodGroup = document.createElement('div');
-    this.period = numberField(periodGroup, '周期 [h]', 1.54, 0.01);
-    this.eccPeriod = numberField(periodGroup, '離心率', 0, 0.01);
+    const period = numberField(periodGroup, '周期 [h]', 1.54, 0.01, 0);
+    const eccPeriod = numberField(periodGroup, '離心率', 0, 0.01, 0, 0.99);
     elementsGroup.appendChild(periodGroup);
 
-    this.sizeGroups = { apsides: apsidesGroup, semiMajorEcc: semiMajorGroup, periodEcc: periodGroup };
-    this.selectSizeMode(this.sizeModeValue);
+    const sizeGroups = { apsides: apsidesGroup, semiMajorEcc: semiMajorGroup, periodEcc: periodGroup };
 
-    // 向き(i/Ω/ω)と位相(ν)は組の選択によらず常に有効。
-    this.inc = numberField(elementsGroup, '傾斜角 i [deg]', 51.6, 1);
-    this.raan = numberField(elementsGroup, '昇交点赤経 Ω [deg]', 0, 1);
-    this.argp = numberField(elementsGroup, '近点引数 ω [deg]', 0, 1);
-    this.nu = numberField(elementsGroup, '真近点角 ν [deg]', 0, 1);
-    this.panel.appendChild(elementsGroup);
+    // 向き(i/Ω/ω)と位相(ν)は組の選択によらず常に有効。i は 0..180、それ以外は 0..360 の
+    // 線形スライダー(45度刻みの目盛り)を添える。
+    const inc = sliderField(elementsGroup, '傾斜角 i [deg]', 0, 1, 0, 180);
+    bindAngleSlider(inc, 180);
+    const raan = sliderField(elementsGroup, '昇交点赤経 Ω [deg]', 0, 1, 0, 360);
+    bindAngleSlider(raan, 360);
+    const argp = sliderField(elementsGroup, '近点引数 ω [deg]', 0, 1, 0, 360);
+    bindAngleSlider(argp, 360);
+    const nu = sliderField(elementsGroup, '真近点角 ν [deg]', 0, 1, 0, 360);
+    bindAngleSlider(nu, 360);
 
-    // ラグランジュ点指定(ハロー/リサジュー)の一式。
+    return { element: elementsGroup, body, sizeMode, sizeGroups, peAlt, apAlt, semiMajor, eccSemiMajor, period, eccPeriod, inc, raan, argp, nu };
+  }
+
+  // ラグランジュ点指定(ハロー/リサジュー)の一式を1つの div にまとめて返す。
+  private buildLibrationGroup(): {
+    element: HTMLElement;
+    librationSecondary: SegmentedControl<OrbitingId>;
+    librationPoint: SegmentedControl<LibrationPoint>;
+    librationOrbitKind: SegmentedControl<LibrationOrbitKind>;
+    libAx: HTMLInputElement;
+    libAz: HTMLInputElement;
+  } {
     const librationGroup = document.createElement('div');
-    this.librationSecondary = new SegmentedControl('系', LIBRATION_SYSTEM_ITEMS, (v) => this.selectLibrationSecondary(v));
-    this.librationSecondary.setSelected(this.librationSecondaryValue);
-    librationGroup.appendChild(this.librationSecondary.element);
-    this.librationPoint = new SegmentedControl('点', LIBRATION_POINT_ITEMS, (v) => {
+    const librationSecondary = new SegmentedControl('系', LIBRATION_SYSTEM_ITEMS, (v) => this.selectLibrationSecondary(v));
+    librationSecondary.setSelected(this.librationSecondaryValue);
+    librationGroup.appendChild(librationSecondary.element);
+    const librationPoint = new SegmentedControl('点', LIBRATION_POINT_ITEMS, (v) => {
       this.librationPointValue = v;
       this.librationPoint.setSelected(v);
     });
-    this.librationPoint.setSelected(this.librationPointValue);
-    librationGroup.appendChild(this.librationPoint.element);
+    librationPoint.setSelected(this.librationPointValue);
+    librationGroup.appendChild(librationPoint.element);
     // ハローの面内振幅は面外振幅から三次の振幅拘束で決まるので、入力欄自体を出さない。
-    this.librationOrbitKind = new SegmentedControl('軌道種別', LIBRATION_ORBIT_KIND_ITEMS, (v) => {
+    let libAx: HTMLInputElement;
+    const librationOrbitKind = new SegmentedControl('軌道種別', LIBRATION_ORBIT_KIND_ITEMS, (v) => {
       this.librationOrbitKindValue = v;
       this.librationOrbitKind.setSelected(v);
-      setFieldVisible(this.libAx, v === 'lissajous');
+      setFieldVisible(libAx, v === 'lissajous');
+      libAx.value = String(this.defaultLibrationAmplitude(this.librationSecondaryValue).ax);
     });
-    librationGroup.appendChild(this.librationOrbitKind.element);
-    const defaultAmp = LIBRATION_DEFAULT_AMPLITUDE_KM[this.librationSecondaryValue];
-    this.libAx = numberField(librationGroup, '面内振幅 ax [km]', defaultAmp.ax, 100);
-    this.libAz = numberField(librationGroup, '面外振幅 az [km]', defaultAmp.az, 100);
-    this.librationOrbitKind.setSelected(this.librationOrbitKindValue);
-    setFieldVisible(this.libAx, this.librationOrbitKindValue === 'lissajous');
-    this.panel.appendChild(librationGroup);
+    librationGroup.appendChild(librationOrbitKind.element);
+    const defaultAmp = this.defaultLibrationAmplitude(this.librationSecondaryValue);
+    libAx = numberField(librationGroup, '面内振幅 ax [km]', defaultAmp.ax, 100, 0);
+    const libAz = numberField(librationGroup, '面外振幅 az [km]', defaultAmp.az, 100, 0);
+    librationOrbitKind.setSelected(this.librationOrbitKindValue);
+    setFieldVisible(libAx, this.librationOrbitKindValue === 'lissajous');
 
-    this.placementGroups = { elements: elementsGroup, libration: librationGroup };
-    this.selectPlacementMode(this.placementModeValue);
+    return { element: librationGroup, librationSecondary, librationPoint, librationOrbitKind, libAx, libAz };
+  }
 
+  // 名称行(ラベル + テキスト入力)を組み立てて返す。
+  private buildNameRow(): { element: HTMLElement; nameInput: HTMLInputElement } {
     const nameRow = document.createElement('div');
     nameRow.className = 'hud-seg';
-    this.nameInput = document.createElement('input');
-    this.nameInput.type = 'text';
-    this.nameInput.placeholder = 'オブジェクト名(空欄で自動命名)';
-    this.nameInput.addEventListener('pointerdown', (e) => e.stopPropagation());
-    nameRow.appendChild(this.nameInput);
-    this.panel.appendChild(nameRow);
+    const nameHeading = document.createElement('span');
+    nameHeading.className = 'seg-title';
+    nameHeading.textContent = '名称';
+    nameRow.appendChild(nameHeading);
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = '空欄で自動命名';
+    nameInput.addEventListener('pointerdown', (e) => e.stopPropagation());
+    nameRow.appendChild(nameInput);
+    return { element: nameRow, nameInput };
+  }
 
+  // 配置/キャンセルのボタン行を this.panel に追加し、Enter/ESC のキーバインドを登録する。
+  // キーバインドは window に貼るため、パネルが非表示のときは display チェックで素通りさせる。
+  private buildButtonsAndKeybinds(): void {
     const btnRow = document.createElement('div');
     btnRow.style.display = 'flex';
     btnRow.style.gap = '10px';
@@ -260,7 +462,6 @@ export class ShipPlacerPanel {
     }));
     this.panel.appendChild(btnRow);
 
-    // Enter / ESC キー操作のバインド
     window.addEventListener('keydown', (e) => {
       if (this.panel.style.display === 'none') return;
       if (e.key === 'Escape') {
@@ -272,9 +473,21 @@ export class ShipPlacerPanel {
         this.confirm();
       }
     });
+  }
 
-    // root (hud-modal-shield) に追加
-    root.appendChild(this.panel);
+  // 種類を切り替える。基地は月基準の軌道要素かラグランジュ点指定でしか設置できない
+  // (placement-validation.ts の validateBaseReference と対応)ので、基準天体の選択肢を
+  // 月だけに絞り、月以外が選ばれていたら月へ寄せ直す。基地以外へ戻したら選択肢も元に戻す。
+  private selectObjectType(v: ObjectType): void {
+    this.objectTypeValue = v;
+    this.objectType.setSelected(v);
+    if (v === 'base') {
+      if (this.bodyValue !== 'moon') this.bodyValue = 'moon';
+      this.body.setItems(BASE_BODY_ITEMS);
+    } else {
+      this.body.setItems(BODY_ITEMS);
+    }
+    this.body.setSelected(this.bodyValue);
   }
 
   // サイズ/形の入力組を切り替え、選ばれた組以外を隠す。
@@ -299,9 +512,14 @@ export class ShipPlacerPanel {
   private selectLibrationSecondary(secondary: OrbitingId): void {
     this.librationSecondaryValue = secondary;
     this.librationSecondary.setSelected(secondary);
-    const amp = LIBRATION_DEFAULT_AMPLITUDE_KM[secondary];
+    const amp = this.defaultLibrationAmplitude(secondary);
     this.libAx.value = String(amp.ax);
     this.libAz.value = String(amp.az);
+  }
+
+  // 副天体ごとの面内/面外振幅の既定値を返す(系ごとに主天体間距離が桁違いなため)。
+  private defaultLibrationAmplitude(secondary: OrbitingId): { ax: number; az: number } {
+    return LIBRATION_DEFAULT_AMPLITUDE_KM[secondary];
   }
 
   // フォームの現在値を読み、onConfirm へ通知する。
@@ -323,15 +541,15 @@ export class ShipPlacerPanel {
       placementMode: this.placementModeValue,
       body: this.bodyValue,
       sizeMode: this.sizeModeValue,
-      peAltKm: Number(this.peAlt.value),
-      apAltKm: Number(this.apAlt.value),
+      peAltKm: Number(this.peAlt.input.value),
+      apAltKm: Number(this.apAlt.input.value),
       semiMajorKm: Number(this.semiMajor.value),
       eccentricity: this.sizeModeValue === 'periodEcc' ? Number(this.eccPeriod.value) : Number(this.eccSemiMajor.value),
       periodHours: Number(this.period.value),
-      incDeg: Number(this.inc.value),
-      raanDeg: Number(this.raan.value),
-      argpDeg: Number(this.argp.value),
-      nuDeg: Number(this.nu.value),
+      incDeg: Number(this.inc.input.value),
+      raanDeg: Number(this.raan.input.value),
+      argpDeg: Number(this.argp.input.value),
+      nuDeg: Number(this.nu.input.value),
       librationSecondary: this.librationSecondaryValue,
       librationPoint: this.librationPointValue,
       librationOrbitKind: this.librationOrbitKindValue,
@@ -340,9 +558,16 @@ export class ShipPlacerPanel {
     };
   }
 
-  // パネルの表示/非表示を切り替える。
-  setVisible(visible: boolean): void {
+  // パネルの表示/非表示を切り替える。開くときは defaultBody が基準天体になれる ID
+  // (公転している天体、かつ基地選択中なら月)なら、基準天体の選択をそれへ合わせる —
+  // 呼び出し側がマップの現在フォーカスを渡すことを想定している。
+  setVisible(visible: boolean, defaultBody?: string): void {
     this._isOpen = visible;
     this.panel.style.display = visible ? 'block' : 'none';
+    const allowed = this.objectTypeValue === 'base' ? BASE_BODY_ITEMS : BODY_ITEMS;
+    if (visible && defaultBody !== undefined && allowed.some(([id]) => id === defaultBody)) {
+      this.bodyValue = defaultBody as ReferenceBody;
+      this.body.setSelected(this.bodyValue);
+    }
   }
 }

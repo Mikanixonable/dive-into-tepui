@@ -61,5 +61,7 @@ module.exports = {
   devServer: {
     static: './docs',
     port: 'auto',
+    liveReload: false,
+    hot: false,
   },
 };
