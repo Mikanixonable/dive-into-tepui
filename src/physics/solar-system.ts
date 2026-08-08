@@ -19,6 +19,15 @@ export function earthAltitudeOf(r: Vec3): number {
   return len(r) - R_EARTH;
 }
 
+// 2次の重力場係数(いずれも非正規化)。正規化係数を収録した外部データで更新する際は換算が要る。
+export const J2_EARTH = 1.08262668e-3;
+// GRAIL による測定値。基準半径 1738.0 km は月の表面半径 R_MOON とは別の量なので分けて持つ。
+export const J2_MOON = 203.3e-6;
+export const C22_MOON = 22.4e-6;
+export const R_MOON_GRAVITY = 1.7380e6; // [m]
+// 月の赤道が黄道に対して傾く角(カッシーニ第2法則)。
+export const MOON_OBLIQUITY = 1.543 * (Math.PI / 180); // [rad]
+
 // 地球-月重心の平均黄経(t=0)。実暦の値ではなく、SIM_EPOCH_UTC と同じくゲーム開始時刻を
 // 昼側に置くための表示上のアンカー — 地球の真黄経が π(太陽から見て反対側 = 地球から見て
 // 太陽が +X 方向)になる近点角から逆算した値(ϖ ≠ 0 なので単純に π にはならない)。
@@ -30,6 +39,21 @@ export function primaryOf(id: PlanetId | SatelliteId): AttractorId {
   return def.kind === 'satellite' ? def.planet : 'sun';
 }
 
+// 自転軸の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)、
+// 'cassini' は同期回転する衛星のカッシーニ状態で、黄道に対する赤道の傾き obliquity [rad]
+// と軌道面法線から決まる。
+export type PoleModel =
+  | { readonly kind: 'eciPole' }
+  | { readonly kind: 'cassini'; readonly obliquity: number };
+
+// 2次の重力場の静的な記述。時刻ごとの自転軸・長軸の実ベクトルは ephemeris.ts が組む。
+export type Degree2GravityDef = {
+  readonly j2: number;
+  readonly c22: number; // 0 なら軸対称
+  readonly refRadius: number; // 係数が定義された基準半径 [m]
+  readonly pole: PoleModel;
+};
+
 export type CelestialBodyDef =
   | { readonly kind: 'star'; readonly id: StarId; readonly mu: number; readonly radius: number }
   | {
@@ -38,6 +62,7 @@ export type CelestialBodyDef =
       readonly mu: number;
       readonly radius: number;
       readonly orbit: PlanetOrbit; // 中心は必ず恒星
+      readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
     }
   | {
       readonly kind: 'satellite';
@@ -46,6 +71,7 @@ export type CelestialBodyDef =
       readonly radius: number;
       readonly planet: PlanetId; // 中心は必ず惑星
       readonly orbit: SatelliteOrbit;
+      readonly degree2?: Degree2GravityDef;
     };
 
 const D2R = Math.PI / 180;
@@ -127,6 +153,8 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: -0.00004392,
       aRatePerCenturyAu: 0.00000562,
     }),
+    // 赤道断面の楕円性 C22 は J2 の約 1/690 しかないため軸対称として扱う。
+    degree2: { j2: J2_EARTH, c22: 0, refRadius: R_EARTH_EQ, pole: { kind: 'eciPole' } },
   },
   moon: {
     kind: 'satellite',
@@ -148,6 +176,13 @@ export const SOLAR_SYSTEM = {
       latTerms: MOON_LAT_TERMS,
       distTerms: MOON_DIST_TERMS,
     }),
+    // J2 に対する C22 の比が地球の約 1/690 に対して約 1/9 と大きく、軸対称近似が成り立たない。
+    degree2: {
+      j2: J2_MOON,
+      c22: C22_MOON,
+      refRadius: R_MOON_GRAVITY,
+      pole: { kind: 'cassini', obliquity: MOON_OBLIQUITY },
+    },
   },
   jupiter: {
     kind: 'planet',

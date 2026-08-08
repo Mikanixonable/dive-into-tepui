@@ -1,26 +1,49 @@
-// 与えられた加速度による RK4 積分の器、地球 J2 摂動、
-// および一質点にかかる全加速度(重力 + J2 + 大気抵抗 + 推力)の合成。
+// 与えられた加速度による RK4 積分の器(ケプラーの二体問題の解析式込み)、天体の2次重力場に
+// よる摂動、および一質点にかかる全加速度(重力 + 2次重力場 + 大気抵抗 + 推力)の合成。
 // ゲーム本体(game-entity/game-entity.ts)と軌道計画(plan/plan-arc.ts)の積分が共有する
 // 唯一の定義箇所。THREE/DOM 非依存の純関数。
-import { Attractor, attractorAccel } from './attractor';
+import { Attractor, Degree2Gravity, attractorAccel } from './attractor';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { MU_EARTH, R_EARTH_EQ } from './solar-system';
 import { dragAccel } from './atmosphere';
-import { Vec3, add, v3 } from './vec3';
+import { sunlitFactor } from './shadow';
+import { srpAccel } from './srp';
+import { Vec3, add, cross, dot, norm, v3 } from './vec3';
 
 // 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに呼ばれる。
 type AccelFn = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => Vec3;
 
-const J2_EARTH = 1.08262668e-3; // 地球扁平の J2 項
-
-// J2(地球扁平)摂動加速度。極軸 = Y。
-// 軌道面に非対称なトルクを与え、昇交点の歳差(LEO 51.6° で約 -5°/日)を生む。
-export function j2Accel(r: Vec3): Vec3 {
-  const r2 = r.x * r.x + r.y * r.y + r.z * r.z;
+// 天体の2次重力場による摂動加速度。rRel はその天体の中心からの相対位置。
+// J2(極方向の扁平)は軌道面に非対称なトルクを与えて昇交点を歳差させ、C22(赤道断面の
+// 楕円性)は主軸座標系の長軸まわりに2回対称な経度依存を加える。
+export function degree2Accel(rRel: Vec3, mu: number, g: Degree2Gravity): Vec3 {
+  const r2 = rRel.x * rRel.x + rRel.y * rRel.y + rRel.z * rRel.z;
+  if (r2 < 1) return v3();
   const rl = Math.sqrt(r2);
-  const k = (-1.5 * J2_EARTH * MU_EARTH * R_EARTH_EQ * R_EARTH_EQ) / (r2 * r2 * rl); // /r^5
-  const f = (5 * r.y * r.y) / r2;
-  return v3(k * r.x * (1 - f), k * r.y * (3 - f), k * r.z * (1 - f));
+  const inv5 = 1 / (r2 * r2 * rl);
+  const muR2 = mu * g.refRadius * g.refRadius;
+
+  // J2: a = k[(1 − 5u²)r + 2(r·p̂)p̂], u = (r·p̂)/|r|
+  const z = dot(rRel, g.pole);
+  const k = -1.5 * g.j2 * muR2 * inv5;
+  const f = 1 - (5 * z * z) / r2;
+  let ax = k * (rRel.x * f + 2 * z * g.pole.x);
+  let ay = k * (rRel.y * f + 2 * z * g.pole.y);
+  let az = k * (rRel.z * f + 2 * z * g.pole.z);
+
+  // C22: ポテンシャル 3·C22·μ·R²·(x² − y²)/|r|⁵ の勾配。x̂ は長軸、ŷ = p̂ × x̂。
+  if (g.tesseral !== null) {
+    const xHat = g.tesseral.longAxis;
+    const yHat = cross(g.pole, xHat);
+    const x = dot(rRel, xHat);
+    const y = dot(rRel, yHat);
+    const a2 = 3 * g.tesseral.c22 * muR2 * inv5;
+    const radial = (-5 * (x * x - y * y)) / r2;
+    ax += a2 * (2 * x * xHat.x - 2 * y * yHat.x + radial * rRel.x);
+    ay += a2 * (2 * x * xHat.y - 2 * y * yHat.y + radial * rRel.y);
+    az += a2 * (2 * x * xHat.z - 2 * y * yHat.z + radial * rRel.z);
+  }
+
+  return v3(ax, ay, az);
 }
 
 // 加速度コールバック accel だけを使って RK4 で 1 ステップ積分する。
@@ -72,24 +95,53 @@ export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): Kinemati
   );
 }
 
-// 全天体からの重力(Σ attractorAccel — ECI が非慣性系であることの補正込み)+ J2 + 大気抵抗。
-function totalAccel(r: Vec3, v: Vec3, attractors: readonly Attractor[], bcInv: number): Vec3 {
+// 全天体からの重力(Σ attractorAccel — ECI が非慣性系であることの補正込み)と、2次重力場を
+// 持つ天体ぶんのその摂動、大気抵抗、太陽輻射圧。天体の同定は Attractor が自分で持つ degree2 に
+// 委ねるので、ここに固有名の分岐は現れない。
+function totalAccel(
+  r: Vec3,
+  v: Vec3,
+  attractors: readonly Attractor[],
+  bcInv: number,
+  srpCoeff: number,
+  penumbra: number,
+): Vec3 {
   let ax = 0, ay = 0, az = 0;
+  let sun: Attractor | null = null;
   for (const attractor of attractors) {
     const g = attractorAccel(r, attractor);
     ax += g.x; ay += g.y; az += g.z;
+    // 2次重力場は天体中心からの相対位置で評価する(質点重力と違い ECI 原点基準では組めない)。
+    if (attractor.degree2 !== null) {
+      const b = attractor.state.r;
+      const d2 = degree2Accel(v3(r.x - b.x, r.y - b.y, r.z - b.z), attractor.mu, attractor.degree2);
+      ax += d2.x; ay += d2.y; az += d2.z;
+    }
+    if (attractor.id === 'sun') sun = attractor;
   }
-  const j2 = j2Accel(r);
+  if (sun !== null && srpCoeff !== 0) {
+    const srp = srpAccel(r, sun, srpCoeff, sunlitFactor(r, norm(sun.state.r), penumbra));
+    ax += srp.x; ay += srp.y; az += srp.z;
+  }
   const drag = dragAccel(r, v, bcInv);
-  return v3(ax + j2.x + drag.x, ay + j2.y + drag.y, az + j2.z + drag.z);
+  return v3(ax + drag.x, ay + drag.y, az + drag.z);
 }
 
-// 全天体重力 + J2 + 大気抵抗 + 推力の RK4 1ステップ。attractors はこのステップぶん呼び出し側が
-// 確定させた重力源一覧(Ephemeris.attractorsAt)。bcInv/thrust は種別ごとに異なるため
-// 引数で受け取り、モジュール内に既定値を持たない。
-export function stepDynamics(state: KinematicState, dt: number, attractors: readonly Attractor[], bcInv: number, thrust: Vec3 | null): KinematicState {
+// 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力の RK4 1ステップ。attractors はこの
+// ステップぶん呼び出し側が確定させた重力源一覧(Ephemeris.attractorsAt)。bcInv/srpCoeff/
+// thrust は種別ごとに、penumbra は表現上の選択として異なるため引数で受け取り、モジュール内に
+// 既定値を持たない。
+export function stepDynamics(
+  state: KinematicState,
+  dt: number,
+  attractors: readonly Attractor[],
+  bcInv: number,
+  srpCoeff: number,
+  penumbra: number,
+  thrust: Vec3 | null,
+): KinematicState {
   return stepRK4(state, dt, (rx, ry, rz, vx, vy, vz) => {
-    const a = totalAccel(v3(rx, ry, rz), v3(vx, vy, vz), attractors, bcInv);
+    const a = totalAccel(v3(rx, ry, rz), v3(vx, vy, vz), attractors, bcInv, srpCoeff, penumbra);
     return thrust ? add(a, thrust) : a;
   });
 }

@@ -15,11 +15,28 @@ export type AttractorId = StarId | PlanetId | SatelliteId;
 // 恒星には存在しない — この型に絞ることで呼び出し側の null 分岐が要らなくなる。
 export type OrbitingId = PlanetId | SatelliteId;
 
+// 2次重力場の非軸対称成分(赤道断面の楕円性)。主軸座標系で表すため S22 は恒等的に 0 になり、
+// 長軸の向きだけで姿勢が決まる。
+export type TesseralGravity = {
+  readonly c22: number;
+  readonly longAxis: Vec3; // 主軸座標系の長軸(単位ベクトル、ECI)
+};
+
+// 天体の2次(degree 2)の重力場。係数は非正規化。refRadius は係数が定義された基準半径で、
+// 地形としての表面半径(Attractor.radius)とは別の量。
+export type Degree2Gravity = {
+  readonly j2: number; // 極方向の扁平(= −C20)
+  readonly refRadius: number; // [m]
+  readonly pole: Vec3; // 自転軸(単位ベクトル、ECI)
+  readonly tesseral: TesseralGravity | null; // null なら軸対称
+};
+
 export type Attractor = {
   readonly id: AttractorId;
   readonly mu: number; // GM [m^3/s^2]
   readonly radius: number; // 表面半径 [m]
   readonly state: KinematicState; // ECI 位置・速度(同一時刻。地球は原点に静止)
+  readonly degree2: Degree2Gravity | null; // null なら質点として扱う
 };
 
 // 天体 attractor が位置 r の運動方程式へ寄与する加速度 μ[(r_b − r)/|r_b − r|³ − r_b/|r_b|³]。
@@ -90,11 +107,16 @@ export function orbitalElementsOf(s: KinematicState, center: Attractor): Orbital
   return orbitalElementsFromState(kinematicState(s.t, rel.r, rel.v), center);
 }
 
-// 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。margin(大気圏突入高度
-// など)はゲーム側の判断なので呼び出し側から受け取る — physics/ はその値自体を知らない。
-export function hitCelestialBody(r: Vec3, attractors: readonly Attractor[], margin: number): boolean {
+// 位置 r がその表面から margin 以内まで沈み込んでいる天体。無ければ null。margin(大気圏突入
+// 高度など)はゲーム側の判断なので呼び出し側から受け取る — physics/ はその値自体を知らない。
+export function hitAttractor(r: Vec3, attractors: readonly Attractor[], margin: number): Attractor | null {
   for (const attractor of attractors) {
-    if (len(sub(r, attractor.state.r)) < attractor.radius + margin) return true;
+    if (len(sub(r, attractor.state.r)) < attractor.radius + margin) return attractor;
   }
-  return false;
+  return null;
+}
+
+// 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。
+export function hitCelestialBody(r: Vec3, attractors: readonly Attractor[], margin: number): boolean {
+  return hitAttractor(r, attractors, margin) !== null;
 }

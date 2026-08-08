@@ -11,21 +11,26 @@ const STYLE = `
 #hud {
   position: fixed; inset: 0; pointer-events: none; overflow: hidden;
   font-family: ${FONT};
-  color: ${INK}; user-select: none; z-index: 10;
+  color: ${INK}; user-select: text; z-index: 10;
   font-size: 13px;
 }
+/* 読み取りたい数値は選択できるようにするが、操作部品とマーカーは対象外にする —
+   ボタンの連打やカメラドラッグのたびにラベルが選択されると操作の邪魔になる。 */
+#hud .seg-btn, #hud .hold-btn, #hud .hud-toggle, #hud .ctx-menu-item,
+#hud .mk, #hud .dock-toggle, #hud-chase-reset, #hud-viewbadge .vb-view-btn { user-select: none; }
 /* --- 重なり順: マーカーは実行時に DOM 末尾へ追加されるため z-index を明示しないとパネルの上に出る。
      マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0)
-     マーカー群(0-9) < 常設パネル(10) < ドックビュー(15) < トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー(40)
-     ドックビューは画面全体を占めるビューなので常設パネルを覆うが、トースト・ヒントと
-     システム窓(ヘルプ・ESCメニュー)はその上に出す。 */
+     マーカー群(0-9) < 常設パネル(10) < プロパティウィンドウ(12) < ドックビュー(15) <
+     トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー(40)
+     ドックビューは画面全体を占めるビューなので常設パネル・プロパティウィンドウを覆うが、
+     トースト・ヒントとシステム窓(ヘルプ・ESCメニュー)はその上に出す。 */
 #hud .mk { z-index: 0; }
 #hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-nav, #hud .mk-dir, #hud .mk-boardhit, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
 #hud .mk-ammo { z-index: 2; }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
 #hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
-#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball, #hud-shipplacer, #hud-object-list { z-index: 10; }
+#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-globalstatus, #hud-gear, #navball, #hud-shipplacer, #hud-object-list, #hud-creative-logistics { z-index: 10; }
 #dock-view { z-index: 15; }
 #hud-toast, #hud-hint { z-index: 20; }
 #hud-viewbadge { z-index: 20; }
@@ -90,11 +95,25 @@ body.hud-modal-open #touch-ui { display: none; }
   color: ${INK_SOFT}; font: inherit; letter-spacing: inherit;
 }
 #hud-viewbadge .vb-view-btn:hover { color: ${INK}; border-color: ${ACCENT_SOFT}; }
+#hud-globalstatus {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  pointer-events: auto;
+  padding: 4px 14px; border-radius: 0 0 6px 6px;
+  background: ${SURFACE}; border: 1px solid ${EDGE}; border-top: none; backdrop-filter: blur(4px);
+  font-size: 11px; letter-spacing: 1px; font-variant-numeric: tabular-nums;
+  color: ${INK_SOFT};
+  display: flex; align-items: center; gap: 8px; white-space: nowrap;
+}
+#hud-globalstatus .v { color: ${INK}; }
+#hud-globalstatus .gs-sep { color: ${EDGE}; }
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
 #hud .row .k { color: ${INK_SOFT}; }
 #hud .row .v { color: ${INK}; min-width: 90px; text-align: right; }
 #hud-status { bottom: 12px; left: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-status h3 { font-size: 8.8px; }
+/* マップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
+   SHIP STATUS は畳んでパネル占有面積を減らす。戦闘ビューでは従来どおり常設のまま。 */
+#hud.map-mode #hud-status { display: none; }
 #hud-orbit { bottom: 12px; left: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-orbit h3 { font-size: 8.8px; }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
@@ -128,7 +147,7 @@ body.hud-modal-open #touch-ui { display: none; }
   transition: opacity 0.4s; opacity: 0; text-align: center;
 }
 #hud-chase-reset {
-  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
   pointer-events: auto; cursor: pointer;
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
@@ -214,12 +233,31 @@ body.hud-modal-open #touch-ui { display: none; }
 }
 #hud .settings-btn:hover { background: rgba(255, 255, 255, 0.05); }
 #hud .settings-btn:active { background: rgba(255, 255, 255, 0.1); border-color: ${ACCENT_SOFT}; }
-#hud-displaytime .slider-ticks { display: flex; justify-content: space-between; margin-top: 2px; }
-#hud-displaytime .slider-ticks span { font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; }
+#hud-displaytime .slider-ticks { position: relative; height: 11px; margin-top: 2px; }
+#hud-displaytime .slider-ticks span {
+  position: absolute; transform: translateX(-50%);
+  font-size: 9px; color: ${INK_SOFT}; white-space: nowrap;
+}
+#hud-displaytime .slider-ticks span:first-child { transform: none; }
+#hud-displaytime .slider-ticks span:last-child { transform: translateX(-100%); }
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
 #hud-trajframe { display: none; width: 100%; pointer-events: auto; }
+#hud-creative-logistics { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
+#hud-shipplacer .slider-field { margin-bottom: 8px; }
+#hud-shipplacer .slider-field .hud-seg { flex-wrap: nowrap; margin-bottom: 0; }
+#hud-shipplacer .slider-field .slider-col { flex: 1 1 60px; min-width: 60px; }
+#hud-shipplacer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
+#hud-shipplacer .slider-field .slider-ticks { display: flex; justify-content: space-between; margin-top: 2px; }
+#hud-shipplacer .slider-field .slider-ticks span { flex: 0 1 auto; min-width: 0; font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#hud-shipplacer .slider-field .slider-ticks span:first-child { text-align: left; }
+#hud-shipplacer .slider-field .slider-ticks span:last-child { text-align: right; }
+#hud-shipplacer input[type="text"] { flex: 1; width: auto; }
+#hud-shipplacer .preset-row { flex-wrap: wrap; gap: 6px; }
+#hud-shipplacer .field-issue { border: 1px solid ${WARNING}; border-radius: 3px; padding: 2px 4px; }
+#hud-shipplacer .issue-list { margin: 8px 0; padding: 6px 8px; border: 1px solid ${WARNING}; border-radius: 3px; background: rgba(255,79,94,0.08); }
+#hud-shipplacer .issue-list .issue-line { font-size: 11px; color: ${WARNING}; }
 #navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
 #navball .nb-ball { display: block; width: 100%; height: auto; margin: 4px 0 8px; }
 #navball .nb-rim { fill: rgba(255, 255, 255, 0.03); stroke: ${EDGE}; stroke-width: 1; }
@@ -233,6 +271,9 @@ body.hud-modal-open #touch-ui { display: none; }
 #mk-bore .lbl { top: auto; left: 100%; bottom: 100%; margin: 0 0 2px 5px; white-space: pre; text-align: left; font-size: 9px; line-height: 1.2; }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
+.mk-impact { color: ${WARNING}; text-shadow: 0 0 6px rgba(255,79,94,0.6), 0 0 3px #000; }
+.mk-daytick { color: ${INK_SOFT}; }
+.mk-daytick .sym { font-size: 10px; }
 .mk-poi { color: #ffffff; text-shadow: 0 0 4px #000; }
 .mk-poi .sym { font-size: 5px; }
 .mk-poi .lbl { font-size: 11px; margin-top: 4px; padding: 2px 4px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }
@@ -258,7 +299,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-help td.key { color: ${ACCENT_SOFT}; text-align: right; white-space: nowrap; }
 
 #hud-stagestatus {
-  top: 12px; left: 50%; transform: translateX(-50%);
+  bottom: 12px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: flex-start; gap: 22px;
   text-align: left; min-width: 480px; padding: 8px 16px;
 }
@@ -337,10 +378,10 @@ body.hud-modal-open #touch-ui { display: none; }
     overflow-y: auto; padding: 6px 10px; font-size: 11px;
   }
   #hud-settings { min-width: 0; width: 78vw; }
-  #hud-stagestatus { top: 8px; width: min(62vw, 440px); min-width: 0; max-height: 62px; overflow-y: auto; padding: 6px 10px; gap: 8px; }
+  #hud-stagestatus { bottom: 8px; width: min(62vw, 440px); min-width: 0; max-height: 62px; overflow-y: auto; padding: 6px 10px; gap: 8px; }
   #hud-stagestatus .t { font-size: 11px; }
   #hud-stagestatus .k { font-size: 9px; line-height: 1.35; white-space: normal; }
-  #hud-chase-reset { bottom: 12px; width: 28px; height: 28px; }
+  #hud-chase-reset { top: 40px; width: 28px; height: 28px; }
   #hud-chase-reset svg { width: 14px; height: 14px; }
   #hud .hud-dock { top: 40px; }
 }
@@ -350,8 +391,7 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud .hud-dock-right { width: calc(56vw - 8px); }
   #hud .hud-seg { gap: 3px; }
   #hud .seg-btn { padding: 3px 5px; font-size: 9px; }
-  #hud-displaytime .slider-ticks span:not(:first-child):not(:last-child) { display: none; }
-  #hud-displaytime .slider-ticks span:last-child { margin-left: auto; }
+  #hud-displaytime .slider-ticks { display: none; }
   #hud-combat-shelf { top: 72px; }
   #hud-combat-shelf > .panel { flex-basis: min(168px, calc(100vw - 16px)); width: min(168px, calc(100vw - 16px)); }
 }
@@ -365,7 +405,7 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud-combat-shelf > .panel { max-height: 82px; }
   #hud-stagestatus { max-height: 46px; }
   #navball { top: 60px; width: 72px !important; }
-  #hud-chase-reset { bottom: 6px; }
+  #hud-chase-reset { top: 34px; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
   #hud-combat-shelf { top: 60px; }
@@ -594,10 +634,6 @@ function buildInfoPanels(root: HTMLElement): void {
   const status = el('div', 'hud-status', shelf, 'panel');
   status.innerHTML = `
     <h3>SHIP STATUS</h3>
-    <div class="row"><span class="k">MET</span><span class="v" data-id="met"></span></div>
-    <div class="row"><span class="k">時間加速</span><span class="v" data-id="sim-speed"></span></div>
-    <div class="row"><span class="k">NODE WARP</span><span class="v" data-id="node-warp-remain">—</span></div>
-
     <div class="row"><span class="k">RCS制動 [${K.rcsDampToggle.label}]</span><span class="v" data-id="rcs"></span></div>
     <div class="row"><span class="k">並進出力 [${K.throttleLow.label}-${K.throttleHigh.label}]</span><span class="v" data-id="throttle"></span></div>
     <div class="row"><span class="k">微調整 [${K.fineAttitudeToggle.label}]</span><span class="v" data-id="fine"></span></div>
@@ -630,6 +666,17 @@ function buildInfoPanels(root: HTMLElement): void {
   enemies.innerHTML = `
     <h3>CONTACTS <span data-id="count"></span></h3>
     <div data-id="elist"></div>`;
+}
+
+// 画面全体のグローバルステータス(MET・時間加速・NODE WARP)を組む。
+function buildGlobalStatus(root: HTMLElement): void {
+  const bar = el('div', 'hud-globalstatus', root);
+  bar.innerHTML = `
+    <span class="v" data-id="met"></span>
+    <span class="gs-sep">|</span>
+    <span class="k">時間加速</span><span class="v" data-id="sim-speed"></span>
+    <span class="gs-sep">|</span>
+    <span class="k">NODE WARP</span><span class="v" data-id="node-warp-remain">—</span>`;
 }
 
 // 追従カメラの視点リセットボタンを組む。
@@ -720,6 +767,7 @@ export function buildHudDom(): HudDomRefs {
 
   // 常設パネル群を組む。
   buildInfoPanels(root);
+  buildGlobalStatus(root);
   buildChaseReset(root);
   el('div', 'hud-modal-shield', root);
 

@@ -12,10 +12,12 @@ import { Sfx } from '../audio/sfx';
 import { Input, PointerPoint } from './input/input';
 import { ProjectFn } from './camera/camera-system';
 import { ContextMenu, MenuItem } from './hud/context-menu';
+import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { MarkerManager } from './marker/marker-manager';
 import { FloatingOrigin } from './floating-origin';
 import { pickNearest } from './map-pick';
 import { KEY_MAPPING as K } from './input/key-mapping';
+import type { SettingsPanel } from './hud/settings-panel';
 
 export type CombatTarget = Enemy | Player;
 
@@ -38,9 +40,15 @@ export class Targeter {
   readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9);
 
   private readonly contextMenu = new ContextMenu<CombatTarget>();
+  // ターゲットに当たらなかった右クリック(何もない箇所)向けのメニュー。実体を持たない
+  // 対象なので ViewBadge と同じ形で true を的替わりに使う。
+  private readonly emptySpaceMenu = new ContextMenu<true, MenuAction>();
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
-  constructor(private readonly _hud: Hud, _sfx: Sfx, private readonly markerManager: MarkerManager, scene: THREE.Scene) {
+  constructor(
+    private readonly _hud: Hud, _sfx: Sfx, private readonly markerManager: MarkerManager,
+    scene: THREE.Scene, private readonly settingsPanel: SettingsPanel,
+  ) {
     this.secondaryOrbitLine.line.renderOrder = 2;
     this.orbitLine.line.renderOrder = 3;
     scene.add(this.secondaryOrbitLine.line);
@@ -48,6 +56,9 @@ export class Targeter {
     this.contextMenu.onSelect = (act, hit) => {
       if (act === 'primary') this.setTarget(this.target === hit ? null : hit);
       else if (act === 'secondary') this.setSecondaryTarget(this.secondaryTarget === hit ? null : hit);
+    };
+    this.emptySpaceMenu.onSelect = (act) => {
+      if (act === 'openSettings') this.settingsPanel.toggle(true);
     };
   }
 
@@ -212,6 +223,10 @@ export class Targeter {
     input.takeRightClicks((click) => {
       const hit = this.pickTargetAt(click, targets, project);
       if (hit) this.openMenu(click, hit);
+      else this.emptySpaceMenu.open(click.x, click.y, true, [
+        { label: '設定メニューを開く', act: 'openSettings' },
+        MenuCommon.cancel(),
+      ]);
       return true;
     });
   }
