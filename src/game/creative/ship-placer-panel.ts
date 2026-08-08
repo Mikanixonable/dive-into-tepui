@@ -52,10 +52,13 @@ export type LibrationForm = {
 export type ShipPlacerForm = { readonly objectType: ObjectType } & (ElementsForm | LibrationForm);
 
 // open() の事前入力: 'body' は基準天体だけをその値へ合わせる(他のフィールドは前回の値のまま) —
-// マップの現在フォーカスを新規配置の初期値にする経路。'form' は種類を objectType に固定し、
-// 軌道要素一式をその値へ書き換える — 既存オブジェクトを複製する経路。
+// マップの現在フォーカスを新規配置の初期値にする経路。'objectType' は種類だけを合わせる —
+// 複製元の軌道要素一式は引き継げない(または引き継ぐと基地の基準天体制約に反する)ときの経路。
+// 'form' は種類を objectType に固定し、軌道要素一式をその値へ書き換える —
+// 軌道要素をそのまま引き継げる複製の経路。
 export type ShipPlacerPreset =
   | { readonly kind: 'body'; readonly body: ReferenceBody }
+  | { readonly kind: 'objectType'; readonly objectType: ObjectType }
   | { readonly kind: 'form'; readonly objectType: ObjectType; readonly form: ElementsForm };
 
 const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string])[] = [
@@ -478,14 +481,9 @@ export class ShipPlacerPanel {
       presetRow.appendChild(heading);
       for (const preset of presets) {
         presetRow.appendChild(hudButton(preset.label, () => {
-          peAlt.input.value = String(preset.peAltKm);
-          peAlt.input.dispatchEvent(new Event('input'));
-          apAlt.input.value = String(preset.apAltKm);
-          apAlt.input.dispatchEvent(new Event('input'));
-          if (preset.incDeg !== undefined) {
-            inc.input.value = String(preset.incDeg);
-            inc.input.dispatchEvent(new Event('input'));
-          }
+          this.setSliderValue(peAlt, preset.peAltKm);
+          this.setSliderValue(apAlt, preset.apAltKm);
+          if (preset.incDeg !== undefined) this.setSliderValue(inc, preset.incDeg);
           this.selectSizeMode('apsides');
         }));
       }
@@ -567,7 +565,7 @@ export class ShipPlacerPanel {
   }
 
   // 配置/キャンセルのボタン行を this.panel に追加し、Enter/ESC のキーバインドを登録する。
-  // キーバインドは window に貼るため、パネルが非表示のときは display チェックで素通りさせる。
+  // キーバインドは window に貼るため、パネルを開いていない間は素通りさせる。
   private buildButtonsAndKeybinds(): void {
     const btnRow = document.createElement('div');
     btnRow.style.display = 'flex';
@@ -581,7 +579,7 @@ export class ShipPlacerPanel {
     this.panel.appendChild(btnRow);
 
     window.addEventListener('keydown', (e) => {
-      if (this.panel.style.display === 'none') return;
+      if (!this._isOpen) return;
       if (e.key === 'Escape') {
         e.stopImmediatePropagation();
         this.close();
@@ -719,7 +717,9 @@ export class ShipPlacerPanel {
   // 検証結果を差分反映する。CreativeStage.update が毎フレーム導出した issues を渡す想定 —
   // 前回と同じ内容なら DOM に触らない(該当欄の枠色とメッセージ一覧をまとめて持つ)。
   setIssues(issues: readonly PlacementFieldIssue[]): void {
-    const key = issues.map((issue) => `${issue.field}:${issue.message}`).join('|');
+    // sizeModeValue も差分判定に含める: 'eccentricity' が指す行(fieldRowFor)は
+    // sizeMode によって変わるため、issues の中身が変わらなくても再反映が要る場合がある。
+    const key = `${this.sizeModeValue}|${issues.map((issue) => `${issue.field}:${issue.message}`).join('|')}`;
     if (key === this.lastIssueKey) return;
     this.lastIssueKey = key;
 
@@ -743,6 +743,8 @@ export class ShipPlacerPanel {
     if (preset?.kind === 'form') {
       this.selectObjectType(preset.objectType);
       this.applyElementsForm(preset.form);
+    } else if (preset?.kind === 'objectType') {
+      this.selectObjectType(preset.objectType);
     } else if (preset?.kind === 'body') {
       const allowed = this.objectTypeValue === 'base' ? BASE_BODY_ITEMS : BODY_ITEMS;
       if (allowed.some(([id]) => id === preset.body)) {
@@ -760,37 +762,37 @@ export class ShipPlacerPanel {
     this.panel.style.display = 'none';
   }
 
-  // 軌道要素一式をフォームへ書き込む。基準天体は現在の種類で選べる ID のときだけ差し替える
-  // (基地選択中に月以外を渡された場合など)。基準値相対スライダー(高度)は書き込んだ直後に
-  // 基準を取り直すので、つまみの位置が新しい値と食い違わない。
+  // SliderRow へ値を書き込み、対応する数値入力の input イベントを発火させたうえで
+  // 基準値相対スライダーの基準を取り直す(値と rebase を分けて呼ぶ経路を作らないための唯一の書き込み口 —
+  // rebase を欠くとつまみの位置が新しい値と食い違う)。
+  private setSliderValue(row: SliderRow, value: number): void {
+    row.input.value = String(value);
+    row.input.dispatchEvent(new Event('input'));
+    row.rebase?.();
+  }
+
+  // 軌道要素一式をフォームへ書き込む。form.body は呼び出し側 (open) が現在の種類で選べる
+  // 基準天体であることを保証済みの前提で、確認なしにそのまま書き込む。
   private applyElementsForm(form: ElementsForm): void {
     this.selectPlacementMode('elements');
-    const allowed = this.objectTypeValue === 'base' ? BASE_BODY_ITEMS : BODY_ITEMS;
-    if (allowed.some(([id]) => id === form.body)) {
-      this.bodyValue = form.body;
-      this.body.setSelected(this.bodyValue);
-    }
+    this.bodyValue = form.body;
+    this.body.setSelected(this.bodyValue);
     this.refreshPresets();
     this.selectSizeMode(form.sizeMode);
 
-    const setNumber = (row: SliderRow, value: number): void => {
-      row.input.value = String(value);
-      row.input.dispatchEvent(new Event('input'));
-      row.rebase?.();
-    };
     if (form.sizeMode === 'apsides') {
-      setNumber(this.peAlt, form.peAltKm);
-      setNumber(this.apAlt, form.apAltKm);
+      this.setSliderValue(this.peAlt, form.peAltKm);
+      this.setSliderValue(this.apAlt, form.apAltKm);
     } else if (form.sizeMode === 'semiMajorEcc') {
-      setNumber(this.semiMajor, form.semiMajorKm);
-      setNumber(this.eccSemiMajor, form.eccentricity);
+      this.setSliderValue(this.semiMajor, form.semiMajorKm);
+      this.setSliderValue(this.eccSemiMajor, form.eccentricity);
     } else {
-      setNumber(this.period, form.periodHours);
-      setNumber(this.eccPeriod, form.eccentricity);
+      this.setSliderValue(this.period, form.periodHours);
+      this.setSliderValue(this.eccPeriod, form.eccentricity);
     }
-    setNumber(this.inc, form.incDeg);
-    setNumber(this.raan, form.raanDeg);
-    setNumber(this.argp, form.argpDeg);
-    setNumber(this.nu, form.nuDeg);
+    this.setSliderValue(this.inc, form.incDeg);
+    this.setSliderValue(this.raan, form.raanDeg);
+    this.setSliderValue(this.argp, form.argpDeg);
+    this.setSliderValue(this.nu, form.nuDeg);
   }
 }
