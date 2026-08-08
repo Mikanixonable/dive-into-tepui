@@ -65,11 +65,6 @@ export function validateEllipticPlacementFields(input: EllipticPlacementInput): 
   return issues;
 }
 
-// 入力が有効な楕円軌道を表すか検証する。問題なければ null、そうでなければ最初のエラーメッセージを返す。
-export function validateEllipticPlacement(input: EllipticPlacementInput): string | null {
-  return validateEllipticPlacementFields(input)[0]?.message ?? null;
-}
-
 export type LibrationPlacementInput =
   | { orbitKind: 'halo'; outOfPlaneAmplitudeKm: number }
   | { orbitKind: 'lissajous'; inPlaneAmplitudeKm: number; outOfPlaneAmplitudeKm: number };
@@ -100,9 +95,3 @@ export function validateBaseReferenceFields(
   return [];
 }
 
-// 基地の基準天体制約を検証する。問題なければ null、そうでなければエラーメッセージを返す。
-export function validateBaseReference(
-  objectType: 'player' | 'enemy' | 'ammo' | 'base', placementMode: 'elements' | 'libration', body?: AttractorId,
-): string | null {
-  return validateBaseReferenceFields(objectType, placementMode, body)[0]?.message ?? null;
-}
