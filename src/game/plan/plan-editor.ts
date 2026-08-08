@@ -1,7 +1,7 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と計画パネルへの反映。
 // 未来表示(計画折れ線・ゴースト)は PlanDisplay を所有・駆動することで行う。
 import type * as THREE from 'three/webgpu';
-import { OrbitState, fromOrbitalAxes, orbitState, orbitalAxes } from '../../physics/orbital-state';
+import { KinematicState, fromOrbitalAxes, kinematicState, orbitalAxes } from '../../physics/kinematic-state';
 import { Elements } from '../../physics/elements';
 import { Projected } from '../../physics/projection';
 import { Vec3, add, dot, len, scale, sub, v3 } from '../../physics/vec3';
@@ -67,7 +67,7 @@ export class PlanEditor {
   // 編集対象として選択中のノードの index。null で未選択。
   selectedNodeIdx: number | null = null;
 
-  onFocusNode: ((state: OrbitState) => void) | null = null;
+  onFocusNode: ((state: KinematicState) => void) | null = null;
 
   private ship: Player | null;
   private readonly detachedPlan = new Plan();
@@ -84,7 +84,7 @@ export class PlanEditor {
 
   readonly nodeGizmo = new NodeGizmo();
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
-  private readonly orbitMenu = new ContextMenu<OrbitState, MenuAction>();
+  private readonly orbitMenu = new ContextMenu<KinematicState, MenuAction>();
 
   private readonly dvButtons = buildDvButtons();
   // 6 方向それぞれのホールド継続時間 [s]。index は axis*2 + (sign<0 ? 1 : 0)。
@@ -264,7 +264,7 @@ export class PlanEditor {
   }
 
   // ノードの画面座標を投影する。
-  private nodeScreenPos(node: OrbitState): Projected {
+  private nodeScreenPos(node: KinematicState): Projected {
     return this.planDisplay.traj.projectPoint(node.r, node.t);
   }
 
@@ -375,11 +375,11 @@ export class PlanEditor {
   // ドラッグで時刻を動かしても、ノードのΔv(機体座標系の加減速)は維持する。
   // これにより、同じマニューバを別時刻へ移し替えた計画として再描画できる。
   private rebuildDraggedNode(
-    sample: OrbitState,
+    sample: KinematicState,
     arcIdx: number,
     idx: number,
-    arriving: readonly (OrbitState | null)[],
-  ): OrbitState | null {
+    arriving: readonly (KinematicState | null)[],
+  ): KinematicState | null {
     const node = this.plan.nodes[idx];
     const arr = arriving[idx];
     if (!node || !arr) return null;
@@ -400,7 +400,7 @@ export class PlanEditor {
       dot(dvWorldOld, axesOld.radOut),
     );
 
-    const newPreBurnState = orbitState(sample.t, sample.r, baseV);
+    const newPreBurnState = kinematicState(sample.t, sample.r, baseV);
     const axesNew = orbitalAxes(this.bodyState(newPreBurnState));
     const newDvWorld = v3(
       axesNew.pro.x * dvLocal.x + axesNew.nrm.x * dvLocal.y + axesNew.radOut.x * dvLocal.z,
@@ -408,7 +408,7 @@ export class PlanEditor {
       axesNew.pro.z * dvLocal.x + axesNew.nrm.z * dvLocal.y + axesNew.radOut.z * dvLocal.z,
     );
 
-    return orbitState(sample.t, sample.r, add(baseV, newDvWorld));
+    return kinematicState(sample.t, sample.r, add(baseV, newDvWorld));
   }
 
   // 選択中ノードの axis 方向(sign 込み)へ amount [m/s] の Δv を加算する。ドラッグ・ラッチ・
@@ -434,7 +434,7 @@ export class PlanEditor {
     // 入力は「到着時の軌道基準枠」を基準とした絶対量とする。
     const bodyArr = this.bodyState(arr);
     const dvWorld = fromOrbitalAxes(bodyArr, v3(pro, nrm, rad));
-    this.plan.retimeNode(this.selectedNodeIdx, orbitState(node.t, node.r, add(arr.v, dvWorld)));
+    this.plan.retimeNode(this.selectedNodeIdx, kinematicState(node.t, node.r, add(arr.v, dvWorld)));
     this._sfx.warp();
   }
 
@@ -459,7 +459,7 @@ export class PlanEditor {
 
   // Δv アーム 6 個の画面方向をノード位置と微小先の投影差分から求める。
   private computeAxisScreenDirs(
-    node: OrbitState,
+    node: KinematicState,
     mapDist: number,
   ): { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; } {
     const bodyNode = this.bodyState(node);
@@ -512,21 +512,21 @@ export class PlanEditor {
   }
 
   // i 番目のノードの Δv(噴射後速度 − 到達時点速度)を返す。
-  private nodeDv(i: number, arriving: readonly (OrbitState | null)[]): Vec3 {
+  private nodeDv(i: number, arriving: readonly (KinematicState | null)[]): Vec3 {
     const node = this.plan.nodes[i];
     const arr = arriving[i];
     return node && arr ? sub(this.bodyState(node).v, this.bodyState(arr).v) : v3();
   }
 
-  // center 相対状態。orbitalAxes が OrbitState を要求するので、座標系相対の r/v を
-  // state の時刻のまま OrbitState へ包み直す。
-  private relativeToBody(state: OrbitState, center: Attractor): OrbitState {
+  // center 相対状態。orbitalAxes が KinematicState を要求するので、座標系相対の r/v を
+  // state の時刻のまま KinematicState へ包み直す。
+  private relativeToBody(state: KinematicState, center: Attractor): KinematicState {
     const rel = toFrameState(frameOfAttractor(center), state);
-    return orbitState(state.t, rel.r, rel.v);
+    return kinematicState(state.t, rel.r, rel.v);
   }
 
   // 軌道要素とΔv方向を解釈するための中心天体相対状態。中心はその位置で最も強く引く天体。
-  private bodyState(state: OrbitState): OrbitState {
+  private bodyState(state: KinematicState): KinematicState {
     return this.relativeToBody(state, strongestAttractor(state.r, this.ephemeris.attractorsAt(state.t)));
   }
 
@@ -544,8 +544,8 @@ export class PlanEditor {
     }
     // 選択中ノードがあれば Δv アームも組む
     let axisSpecs: AxisHandleSpec[] | null = null;
-    let nodeFor3D: OrbitState | null = null;
-    let arrFor3D: OrbitState | null = null;
+    let nodeFor3D: KinematicState | null = null;
+    let arrFor3D: KinematicState | null = null;
     if (this.selectedNodeIdx !== null) {
       const node = this.plan.nodes[this.selectedNodeIdx];
       if (node) {

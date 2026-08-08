@@ -1,7 +1,7 @@
 // 重力を及ぼすもの。位置・速度は ECI(地球は原点に静止)。THREE/DOM 非依存の純関数群。
 import { Quat } from './attitude';
 import { FrameTransform, toFrameState } from './frame';
-import { OrbitState, orbitState } from './orbital-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { Elements, elementsFromState, keplerPeriod } from './elements';
 import { Vec3, lenSq, len, sub, v3 } from './vec3';
 
@@ -19,7 +19,7 @@ export type Attractor = {
   readonly id: AttractorId;
   readonly mu: number; // GM [m^3/s^2]
   readonly radius: number; // 表面半径 [m]
-  readonly state: OrbitState; // ECI 位置・速度(同一時刻。地球は原点に静止)
+  readonly state: KinematicState; // ECI 位置・速度(同一時刻。地球は原点に静止)
 };
 
 // 天体 attractor が位置 r の運動方程式へ寄与する加速度 μ[(r_b − r)/|r_b − r|³ − r_b/|r_b|³]。
@@ -85,9 +85,9 @@ export function frameOfAttractor(center: Attractor): FrameTransform {
 
 // 天体 center を中心とする接触軌道要素。中心の選び方には関与しない — 呼び出し側が
 // strongestAttractor などで選んだ center をそのまま渡す。
-export function elementsAround(s: OrbitState, center: Attractor): Elements | null {
+export function elementsAround(s: KinematicState, center: Attractor): Elements | null {
   const rel = toFrameState(frameOfAttractor(center), s);
-  return elementsFromState(orbitState(s.t, rel.r, rel.v), center);
+  return elementsFromState(kinematicState(s.t, rel.r, rel.v), center);
 }
 
 // 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。margin(大気圏突入高度

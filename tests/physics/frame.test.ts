@@ -1,4 +1,4 @@
-// frame.ts の回帰テスト: 座標系(原点天体 × 回転)の点・OrbitState 順逆変換
+// frame.ts の回帰テスト: 座標系(原点天体 × 回転)の点・KinematicState 順逆変換
 // （恒等・往復・既知回転角・速度の有限差分検証・bake+un-bake 合成・原点が動く系）。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
@@ -6,7 +6,7 @@ import { Ephemeris } from '../../src/physics/ephemeris';
 import { AttractorId } from '../../src/physics/attractor';
 import { FRAMES, ReferenceFrame, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/physics/attitude';
-import { OrbitState, orbitState } from '../../src/physics/orbital-state';
+import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { Vec3, add, addScaled, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
 
 const YEAR = 365.25636 * 86400;
@@ -14,7 +14,7 @@ const YEAR = 365.25636 * 86400;
 function close(a: Vec3, b: Vec3, tol = 1e-6): boolean {
   return len(sub(a, b)) <= tol * Math.max(1, len(b));
 }
-function closeState(a: OrbitState, b: OrbitState, tol = 1e-6): boolean {
+function closeState(a: KinematicState, b: KinematicState, tol = 1e-6): boolean {
   return close(a.r, b.r, tol) && close(a.v, b.v, tol);
 }
 
@@ -33,7 +33,7 @@ const MOON_INERTIAL = findFrame('moon', null);
 export function register(): void {
   const eph = new Ephemeris({ moon: 0.4 }); // 太陽・月とも初期位相を固定して決定的にする
   // bake 時刻は state 自身のエポック(t)なので、時刻はここで与える。
-  const stateAt = (t: number): OrbitState => orbitState(t, v3(6.8e6, 5e5, 3e6), v3(-1200, 300, 7400));
+  const stateAt = (t: number): KinematicState => kinematicState(t, v3(6.8e6, 5e5, 3e6), v3(-1200, 300, 7400));
 
   test('frame: 地球中心慣性系は順逆とも恒等（state）', () => {
     const t = 12345;
@@ -85,7 +85,7 @@ export function register(): void {
     // 慣性系で等速直線運動する点の、回転系位置を中心差分して速度を近似する。回転系自体が
     // 時刻とともに向きを変えるので、各時刻ごとにその時刻の座標系変換で bake する。
     const rRelAt = (t: number): Vec3 =>
-      toFrameState(eph.frameTransformAt(SUN_EARTH_ROTATING, t), orbitState(t, addScaled(s.r, s.v, t - t0), s.v)).r;
+      toFrameState(eph.frameTransformAt(SUN_EARTH_ROTATING, t), kinematicState(t, addScaled(s.r, s.v, t - t0), s.v)).r;
     const vFd = scale(sub(rRelAt(t0 + dt), rRelAt(t0 - dt)), 1 / (2 * dt));
     const vAnalytic = toFrameState(eph.frameTransformAt(SUN_EARTH_ROTATING, t0), s).v;
     // ω×r 項(~1.4 m/s)を落とすと数 m/s ずれる。有限差分自体は 1e-3 m/s より高精度。
@@ -164,7 +164,7 @@ export function register(): void {
     const s = stateAt(t0);
     const dt = 1;
     const rRelAt = (t: number): Vec3 =>
-      toFrameState(eph.frameTransformAt(MOON_ROTATING, t), orbitState(t, addScaled(s.r, s.v, t - t0), s.v)).r;
+      toFrameState(eph.frameTransformAt(MOON_ROTATING, t), kinematicState(t, addScaled(s.r, s.v, t - t0), s.v)).r;
     const vFd = scale(sub(rRelAt(t0 + dt), rRelAt(t0 - dt)), 1 / (2 * dt));
     const vAnalytic = toFrameState(eph.frameTransformAt(MOON_ROTATING, t0), s).v;
     assert.ok(len(sub(vFd, vAnalytic)) < 1e-2, `v mismatch: ${JSON.stringify(vFd)} vs ${JSON.stringify(vAnalytic)}`);

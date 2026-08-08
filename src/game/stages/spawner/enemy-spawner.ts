@@ -1,7 +1,7 @@
 // 訓練クラスタ(stage0)の敵集団の配置・分散を計算し、直接 Enemy を生成する。
 // (EntityManager への登録は呼び出し側の Stage0 が Stage.addEnemy 経由で行う)。
 import * as THREE from 'three/webgpu';
-import { OrbitState, orbitState, orbitalAxes } from '../../../physics/orbital-state';
+import { KinematicState, kinematicState, orbitalAxes } from '../../../physics/kinematic-state';
 import { add, len, norm, randSym, scale } from '../../../physics/vec3';
 import * as C from '../../const';
 import { Hud } from '../../hud/hud';
@@ -13,7 +13,7 @@ import { generateDriftingEnemy } from './enemy-generator';
 // 色分けされたグループ(既定 5 グループ×各10機)を base 周囲5km以内に配置して直接生成する(訓練クラスタ)。
 // groupCount/perGroup でグループ数・1グループあたりの機数を変更できる。
 export function generateCluster(
-  base: OrbitState,
+  base: KinematicState,
   hud: Hud,
   sfx: Sfx,
   fx: EffectsSystem,
@@ -47,7 +47,7 @@ export function generateCluster(
       const offLen = len(off);
       if (offLen > safeRange) off = scale(off, safeRange / offLen);
 
-      const state: OrbitState = orbitState(base.t, add(base.r, off), base.v);
+      const state: KinematicState = kinematicState(base.t, add(base.r, off), base.v);
       enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, C.COLOR_ENEMY_ORBIT_LINE, hud, sfx, fx, scene));
     }
   }

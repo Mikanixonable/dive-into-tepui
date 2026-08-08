@@ -14,7 +14,7 @@ import {
   normalWorld, positionWorld, cameraPosition,
   dot, max, sqrt, select, and, greaterThan, lessThan, normalize, length, sub, clamp, smoothstep,
 } from 'three/tsl';
-import { R_EARTH } from '../physics/orbital-state';
+import { R_EARTH } from '../physics/kinematic-state';
 import earthTextureUrl from '../assets/earth.jpg';
 import cloudsTextureUrl from '../assets/8k_clouds.jpg';
 

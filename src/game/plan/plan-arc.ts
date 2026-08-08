@@ -2,7 +2,7 @@
 // サンプル列を1本の折れ線として描く。マニューバノードによる区間分割は知らない — 呼び出し側
 // (PlanTrajectory)が arc ごとにこれを持つ。
 import * as THREE from 'three/webgpu';
-import { OrbitState, hermiteInterpolate } from '../../physics/orbital-state';
+import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-state';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -15,7 +15,7 @@ import * as C from '../const';
 // 積分の終端は要求時刻に対して丸め誤差ぶん手前に落ちうる。この幅までは終端そのものとみなす。
 const EPOCH_EPS = 1e-6;
 
-type ComputeKey = { state0: OrbitState; end: number; };
+type ComputeKey = { state0: KinematicState; end: number; };
 
 // 刻み幅。その場で最も強く引く天体を中心とする軌道運動の時間スケールを
 // PLAN_ARC_STEPS_PER_REV 等分する。
@@ -27,7 +27,7 @@ function stepDt(r: Vec3, attractors: readonly Attractor[]): number {
 export class PlanArc {
   private readonly sampled: SampledLine;
   private entity: OrbitEntity | null = null;
-  private samples: readonly OrbitState[] = [];
+  private samples: readonly KinematicState[] = [];
   // 再突入高度割れ・非有限で積分を打ち切ったか。
   private truncated = false;
   private key: ComputeKey | null = null;
@@ -55,7 +55,7 @@ export class PlanArc {
   // 前の起点と時刻的に近いというだけで、無関係な軌道をサンプル間隔ぶん描き続けてしまう。
   // tracksLiveAnchor でなければ state0/end の同一性・値の変化で即座に再積分する
   // (ノードの Δv 編集は state0 の同一性変化で必ず拾われる)。
-  update(state0: OrbitState, end: number, ephemeris: Ephemeris, tracksLiveAnchor: boolean): void {
+  update(state0: KinematicState, end: number, ephemeris: Ephemeris, tracksLiveAnchor: boolean): void {
     if (tracksLiveAnchor) {
       // 同一性が変わっても時刻が前進していれば通常の追従とみなし、下のサンプル間隔判定に委ねる。
       const anchorSwapped = this.key !== null && state0 !== this.key.state0 && state0.t <= this.key.state0.t;
@@ -87,7 +87,7 @@ export class PlanArc {
   }
 
   // 時刻 t の状態。保持区間外は null。
-  at(t: number): OrbitState | null {
+  at(t: number): KinematicState | null {
     if (this.entity === null) {
       for (let i = 1; i < this.samples.length; i++) {
         const a = this.samples[i - 1]!, b = this.samples[i]!;
@@ -102,12 +102,12 @@ export class PlanArc {
   }
 
   // 終端(= 次のノードの噴射直前)の状態。終端まで到達できなかった区間は null。
-  endState(): OrbitState | null {
+  endState(): KinematicState | null {
     return this.truncated || this.entity === null ? null : this.entity.state;
   }
 
   // 直近に積分したサンプル列。
-  samplesRef(): readonly OrbitState[] {
+  samplesRef(): readonly KinematicState[] {
     return this.samples;
   }
 
@@ -125,7 +125,7 @@ export class PlanArc {
   // 保持間隔は区間長を上限サンプル数で割った値、保持窓は区間長そのものなので、区間全体が
   // 間引かれた解像度で残る。いずれかの天体の表面 + REENTRY_ALT を割るか非有限になったら
   // そこで打ち切る。
-  private integrate(state0: OrbitState, end: number, ephemeris: Ephemeris): void {
+  private integrate(state0: KinematicState, end: number, ephemeris: Ephemeris): void {
     const duration = Math.max(0, end - state0.t);
     const entity = new OrbitEntity(state0);
     const sampleInterval = duration / C.PLAN_ARC_MAX_SAMPLES;

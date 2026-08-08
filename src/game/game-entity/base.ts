@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { GameEntity } from './game-entity';
-import { OrbitState, orbitState } from '../../physics/orbital-state';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Attitude } from '../../physics/attitude';
 import { v3 } from '../../physics/vec3';
 import type { AnyPart, Part } from './parts';
@@ -40,7 +40,7 @@ export class Base extends GameEntity {
     dockedShips: []
   };
 
-  constructor(state: OrbitState, scene: THREE.Scene, att?: Attitude) {
+  constructor(state: KinematicState, scene: THREE.Scene, att?: Attitude) {
     super(state, buildBaseModel(), scene, att);
     this.mass = 1e6;
     this.collideRadius = 100;
@@ -65,7 +65,7 @@ export class Base extends GameEntity {
     data: BaseSaveData, simTime: number, scene: THREE.Scene,
     hud: Hud, sfx: Sfx, fx: EffectsSystem, markerManager: MarkerManager,
   ): Base {
-    const state = orbitState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
+    const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
     const base = new Base(state, scene);
     base.baseState.money = data.money;
     base.baseState.inventory = data.inventory.map(restorePart);

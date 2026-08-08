@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from './harness';
-import { R_EARTH, MU_EARTH } from '../../src/physics/orbital-state';
+import { R_EARTH, MU_EARTH } from '../../src/physics/kinematic-state';
 import { validateEllipticPlacement } from '../../src/game/creative/placement-validation';
 
 const base = { centerRadius: R_EARTH, mu: MU_EARTH, sizeMode: 'apsides' as const, peAltKm: 400, apAltKm: 400, semiMajorKm: 6771, eccentricity: 0, periodHours: 1.54, anglesDeg: [51.6, 0, 0, 0] };

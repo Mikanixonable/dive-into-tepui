@@ -1,7 +1,7 @@
 // プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の演出もここで組み立てる。
 import * as THREE from 'three/webgpu';
 import { qRotate, randomQuat } from '../../physics/attitude';
-import { orbitState, R_EARTH_EQ } from '../../physics/orbital-state';
+import { kinematicState, R_EARTH_EQ } from '../../physics/kinematic-state';
 import { add, addScaled, dot, lenSq, norm, randPerp, randSym, randVec, scale, v3, Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input/input';
@@ -241,7 +241,7 @@ export class PlayerFire {
 
     this.spawnBullet(this.player, muzzle, fwd, simTime, addBullet, sunDir);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
-    this.player.state = orbitState(
+    this.player.state = kinematicState(
       this.player.state.t,
       this.player.state.r,
       addScaled(this.player.state.v, fwd, -C.RECOIL_DV),
@@ -263,7 +263,7 @@ export class PlayerFire {
     const spread = Math.abs(randSym(C.BULLET_SPREAD)) * spreadScale;
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
     const bullet = new Bullet(
-      orbitState(
+      kinematicState(
         simTime,
         addScaled(muzzle, fwd, 1.5),
         addScaled(ship.state.v, dir, ship.averageMuzzleVelocity),
@@ -284,7 +284,7 @@ export class PlayerFire {
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const up = qRotate(ship.att.q, v3(0, 1, 0));
     this._fx.spawnCasing(
-      orbitState(
+      kinematicState(
         simTime,
         add(muzzle, scale(right, -1.4)),
         add(
@@ -320,7 +320,7 @@ export class PlayerFire {
     // 下方に少し勢いをつけて放出
     const down = qRotate(ship.att.q, v3(0, -1, 0));
     this._fx.spawnBarrel(
-      orbitState(
+      kinematicState(
         ship.state.t,
         add(ship.state.r, qRotate(ship.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
         add(ship.state.v, add(scale(down, 3.0), randVec(0.5))),
@@ -340,7 +340,7 @@ export class PlayerFire {
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const portWorld = add(ship.state.r, qRotate(ship.att.q, v3(-0.9, 0, 0)));
     this._fx.spawnMagazineFrame(
-      orbitState(
+      kinematicState(
         ship.state.t,
         portWorld,
         add(ship.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),

@@ -1,31 +1,31 @@
-// 時刻付き状態(OrbitState)を「いま」として保持し、1ステップ前進させ、任意時刻を引ける単位。
+// 時刻付き状態(KinematicState)を「いま」として保持し、1ステップ前進させ、任意時刻を引ける単位。
 // THREE/DOM 非依存の純データ構造(StateQueue/Ephemeris と同じ「純粋だが状態を持つ」枠)。
 //
 // history は常に「自分の state より古い時刻のサンプル列」という不変条件だけを前提にする
 // ため、過去方向の履歴にも未来方向の予測列にも同じ実装をそのまま使える。
-import { OrbitState, hermiteInterpolate } from './orbital-state';
+import { KinematicState, hermiteInterpolate } from './kinematic-state';
 import { StateQueue } from './state-queue';
 import { Attractor } from './attractor';
 import { Vec3 } from './vec3';
 import { stepDynamicsRK4 } from './dynamics';
 
 export class OrbitEntity {
-  private _state: OrbitState;
+  private _state: KinematicState;
   // 直前ステップの状態。history とは別フィールドで持つ — 間引かれた history からは
   // 「直前サブステップの位置」が取れないため(ワープ中は1サンプルが数百秒に相当する)。
-  private _prevState: OrbitState;
+  private _prevState: KinematicState;
   // state より古いサンプル列(間引き済み)。件数ではなく時間窓(keepDuration)+ 間隔
   // (sampleInterval)で管理し、両者は種別ごとに step の呼び出し元が渡す。
   private readonly _history = new StateQueue();
 
   // state・prevState をともに初期状態で始める。
-  constructor(state: OrbitState) {
+  constructor(state: KinematicState) {
     this._state = state;
     this._prevState = state;
   }
 
-  get state(): OrbitState { return this._state; }
-  get prevState(): OrbitState { return this._prevState; }
+  get state(): KinematicState { return this._state; }
+  get prevState(): KinematicState { return this._prevState; }
   get history(): StateQueue { return this._history; }
 
   // 全天体重力 + J2 + 大気抵抗 + 推力で 1 ステップ RK4 積分する(dynamics.ts の
@@ -59,14 +59,14 @@ export class OrbitEntity {
   // 不連続な差し替え(剛体接触・反動など、積分を経ない外部からの上書き)。history 側に
   // new state の時刻以降のサンプルが残っていると「history は state より古い」という
   // 不変条件が壊れるため、その分を捨てる。
-  reset(state: OrbitState): void {
+  reset(state: KinematicState): void {
     this._history.discardFrom(state.t);
     this._prevState = this._state;
     this._state = state;
   }
 
   // 保持区間(history の最古 〜 state)を古い順に並べた1本の列。
-  samplesOldestFirst(): OrbitState[] {
+  samplesOldestFirst(): KinematicState[] {
     const out = this._history.toArrayOldestFirst();
     out.push(this._state);
     return out;
@@ -76,7 +76,7 @@ export class OrbitEntity {
   // history が空なら t === state.t のときだけ state を返す。history の最新サンプルより
   // 新しければ state との間を、それ以前は history 自身の補間を使う — 列と state をまたぐ
   // 継ぎ目をここに閉じ込めるので、呼び出し側が両者を突き合わせる必要がない。
-  at(t: number): OrbitState | null {
+  at(t: number): KinematicState | null {
     if (t > this._state.t) return null;
     if (t === this._state.t) return this._state;
     const newest = this._history.newest;

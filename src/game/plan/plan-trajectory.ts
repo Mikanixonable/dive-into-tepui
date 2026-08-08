@@ -1,7 +1,7 @@
 // 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
-import { OrbitState } from '../../physics/orbital-state';
+import { KinematicState } from '../../physics/kinematic-state';
 import { elementsAround, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { ReferenceFrame, INERTIAL_FRAME, toFramePoint, toInertialPoint } from '../../physics/frame';
@@ -20,7 +20,7 @@ const arcOpacity = (i: number): number => (i === 0 ? 0.55 : 0.85);
 
 const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
 
-type Segment = { state0: OrbitState; end: number };
+type Segment = { state0: KinematicState; end: number };
 
 export class PlanTrajectory {
   readonly group = new THREE.Group();
@@ -36,7 +36,7 @@ export class PlanTrajectory {
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
   // 最後のバーン後(これから乗る軌道)の起点状態。末尾区間が無ければ null。
-  finalSegmentStart: OrbitState | null = null;
+  finalSegmentStart: KinematicState | null = null;
 
   get isAnalyticDivergent(): boolean { return this.analyticDivergent; }
   resetDivergence(): void { this.analyticDivergent = false; }
@@ -75,7 +75,7 @@ export class PlanTrajectory {
   // 二重に見えてしまう。通常のLEOの数値誤差/J2の微小変化は閾値未満に収める。
   // 途中で最も強く引く天体が起点と変われば、要素の比較を待たずその時点で divergent とする
   // (中心が違う要素同士を比べても意味がないため)。
-  private detectAnalyticDivergence(anchor: OrbitState | null): boolean {
+  private detectAnalyticDivergence(anchor: KinematicState | null): boolean {
     if (!anchor || !this.ephemeris) return false;
     const center = strongestAttractor(anchor.r, this.ephemeris.attractorsAt(anchor.t));
     const base = elementsAround(anchor, center);
@@ -108,14 +108,14 @@ export class PlanTrajectory {
   }
 
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
-  arrivalStates(): (OrbitState | null)[] {
-    const out: (OrbitState | null)[] = [];
+  arrivalStates(): (KinematicState | null)[] {
+    const out: (KinematicState | null)[] = [];
     for (let i = 0; i < this.nodeCount; i++) out.push(this.arcs[i]?.endState() ?? null);
     return out;
   }
 
   // 時刻 t を保持区間に含む最初の arc から補間した状態を返す。どの arc の外でも null。
-  sampleAt(t: number): OrbitState | null {
+  sampleAt(t: number): KinematicState | null {
     for (let i = 0; i < this.activeCount; i++) {
       const s = this.arcs[i]!.at(t);
       if (s) return s;
@@ -145,9 +145,9 @@ export class PlanTrajectory {
   // 以内の候補に絞ってから referenceT に最も近い時刻を選ぶ — 新規配置は範囲の下端(= 最も
   // 早く到達する時刻)を、既存ノードのドラッグはそのノードの現在時刻を渡すことで、
   // 「表示期間が延びて折れ線が自分自身に重なる区間」の曖昧さを呼び出しの意図どおりに解く。
-  nearestSample(mx: number, my: number, maxPx: number, referenceT: number, range?: TimeRange): { state: OrbitState, arcIdx: number } | null {
+  nearestSample(mx: number, my: number, maxPx: number, referenceT: number, range?: TimeRange): { state: KinematicState, arcIdx: number } | null {
     const maxDSq = maxPx * maxPx;
-    const candidates: { state: OrbitState; arcIdx: number; dSq: number }[] = [];
+    const candidates: { state: KinematicState; arcIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       for (const s of this.arcs[i]!.samplesRef()) {
         if (range && (s.t < range.min || s.t > range.max)) continue;

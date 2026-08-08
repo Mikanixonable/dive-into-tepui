@@ -1,4 +1,4 @@
-// 状態ベクトル(OrbitState)そのものの定義と、それだけで完結する幾何演算(高度・軌道基底・
+// 状態ベクトル(KinematicState)そのものの定義と、それだけで完結する幾何演算(高度・軌道基底・
 // エルミート補間)。地球の物理定数もここに置く。THREE/DOM 非依存の純粋関数群。
 import { Vec3, cross, len, norm, v3 } from './vec3';
 
@@ -8,19 +8,19 @@ export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
 export const SIDEREAL_DAY = 86164.0905; // 恒星日 [s]
 
 // ある時刻における位置・速度(エポック付き状態ベクトル)。不変で、進めるときは新しい
-// OrbitState を作って差し替える(参照を共有したまま書き換えると、保持側が変化を検知
+// KinematicState を作って差し替える(参照を共有したまま書き換えると、保持側が変化を検知
 // できなくなるため)。t を state 自身が持つので「状態」と「その時刻」が引数として
 // 分かれて食い違うことがない — 予測点列もエンティティの履歴
 // (game-entity/game-entity.ts)も同じこの型で表す。
-export type OrbitState = {
+export type KinematicState = {
   readonly t: number; // 絶対 simTime [s]
   readonly r: Vec3; // ECI 位置 [m]
   readonly v: Vec3; // ECI 速度 [m/s]
 } & { readonly __frame: 'inertial'; }
 
-// OrbitState を組み立てる唯一の入口。
-export function orbitState(t: number, r: Vec3, v: Vec3): OrbitState {
-  return { t, r, v } as OrbitState;
+// KinematicState を組み立てる唯一の入口。
+export function kinematicState(t: number, r: Vec3, v: Vec3): KinematicState {
+  return { t, r, v } as KinematicState;
 }
 
 // 位置ベクトルから海抜高度を返す。
@@ -38,14 +38,14 @@ export type OrbitalAxes = {
 };
 
 // 状態ベクトルから軌道基底を組む。速度または角運動量が縮退していると各軸は NaN になる。
-export function orbitalAxes(s: OrbitState): OrbitalAxes {
+export function orbitalAxes(s: KinematicState): OrbitalAxes {
   const pro = norm(s.v);
   const nrm = norm(cross(s.r, s.v));
   return { pro, nrm, radOut: cross(pro, nrm) };
 }
 
 // 軌道基底で表したベクトル(x=pro, y=nrm, z=radOut 成分)をワールド ECI へ変換する。
-export function fromOrbitalAxes(s: OrbitState, x: Vec3): Vec3 {
+export function fromOrbitalAxes(s: KinematicState, x: Vec3): Vec3 {
   const { pro, nrm, radOut } = orbitalAxes(s);
   return v3(
     pro.x * x.x + nrm.x * x.y + radOut.x * x.z,
@@ -61,11 +61,11 @@ export function fromOrbitalAxes(s: OrbitState, x: Vec3): Vec3 {
 // 破綻した状態(地球内部の位置、脱出速度を超える速度など)を平然と返すため、既定では
 // 禁止する。呼び出し側が短い外挿と分かったうえで使う場合のみ true にすること。
 export function hermiteInterpolate(
-  a: OrbitState,
-  b: OrbitState,
+  a: KinematicState,
+  b: KinematicState,
   t: number,
   allowExtrapolation = false,
-): OrbitState {
+): KinematicState {
   const h = b.t - a.t;
   if (h === 0) throw new Error(`hermiteInterpolate: 両端が同時刻 (t=${a.t}) で補間できない`);
   if (!allowExtrapolation && (t - a.t) * (t - b.t) > 0) {
@@ -87,7 +87,7 @@ export function hermiteInterpolate(
     wr0 * a.r.z + wv0 * a.v.z + wr1 * b.r.z + wv1 * b.v.z,
   );
 
-  return orbitState(
+  return kinematicState(
     t,
     combine(w[0]!, w[1]! * h, w[2]!, w[3]! * h),
     combine(dw[0]! / h, dw[1]!, dw[2]! / h, dw[3]!),

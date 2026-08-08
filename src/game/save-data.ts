@@ -24,15 +24,15 @@ export interface EntitySaveData {
   w: Vec3SaveData;
 }
 
-export interface OrbitStateSaveData {
+export interface KinematicStateSaveData {
   t: number;
   r: Vec3SaveData;
   v: Vec3SaveData;
 }
 
 export interface PlanSaveData {
-  anchor: OrbitStateSaveData;
-  nodes: OrbitStateSaveData[];
+  anchor: KinematicStateSaveData;
+  nodes: KinematicStateSaveData[];
 }
 
 export interface PlayerSaveData extends EntitySaveData {

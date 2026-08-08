@@ -1,12 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
-import { OrbitState } from '../../physics/orbital-state';
+import { KinematicState } from '../../physics/kinematic-state';
 import * as C from '../const';
 import { buildAmmo } from '../../render/ships';
 import { GameEntity } from './game-entity';
 import { AmmoSaveData } from '../save-data';
 import { v3 } from '../../physics/vec3';
-import { orbitState } from '../../physics/orbital-state';
+import { kinematicState } from '../../physics/kinematic-state';
 
 // 軌道上の補給(接近すると取り込んでベルトを延長できる)
 export class Ammo extends GameEntity {
@@ -16,7 +16,7 @@ export class Ammo extends GameEntity {
   readonly id?: string;
 
   // 補給メッシュを組み立て、質量と衝突半径を設定する。
-  constructor(state: OrbitState, att?: Attitude, scene?: THREE.Scene, id?: string) {
+  constructor(state: KinematicState, att?: Attitude, scene?: THREE.Scene, id?: string) {
     super(state, buildAmmo(), scene, att);
     this.mass = 50;
     this.collideRadius = C.AMMO_PHYS_RADIUS;
@@ -48,7 +48,7 @@ export class Ammo extends GameEntity {
 
   // セーブデータから復元する。
   static restore(data: AmmoSaveData, simTime: number, scene?: THREE.Scene): Ammo {
-    const state = orbitState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
+    const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
     const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
     const ammo = new Ammo(state, att, scene, data.id || undefined);
     return ammo;

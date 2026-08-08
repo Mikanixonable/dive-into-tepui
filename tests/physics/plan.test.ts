@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { MU_MOON, R_MOON } from '../../src/physics/solar-system';
 import { elementsAround, strongestAttractor } from '../../src/physics/attractor';
-import { orbitState, MU_EARTH, R_EARTH } from '../../src/physics/orbital-state';
+import { kinematicState, MU_EARTH, R_EARTH } from '../../src/physics/kinematic-state';
 import { apsisAltitudes, keplerPeriod } from '../../src/physics/elements';
 import { add, v3 } from '../../src/physics/vec3';
 import { orbitPeriodOf, Plan } from '../../src/game/plan/plan';
@@ -17,7 +17,7 @@ export function register(): void {
     const relativeR = v3(radius, 0, 0);
     const relativeV = v3(0, 0, Math.sqrt(MU_MOON / radius));
     const moonState = ephemeris.stateOf('moon', t);
-    const state = orbitState(
+    const state = kinematicState(
       t,
       add(moonState.r, relativeR),
       add(moonState.v, relativeV),
@@ -50,7 +50,7 @@ export function register(): void {
     const ra = R_EARTH + 35_000e3;
     const a = (rp + ra) / 2;
     const vp = Math.sqrt(MU_EARTH * (2 / rp - 1 / a));
-    const state = orbitState(t, v3(rp, 0, 0), v3(0, 0, vp));
+    const state = kinematicState(t, v3(rp, 0, 0), v3(0, 0, vp));
     const attractors = ephemeris.attractorsAt(t);
 
     const expected = keplerPeriod(a, MU_EARTH);
@@ -65,7 +65,7 @@ export function register(): void {
     const ephemeris = new Ephemeris({ moon: 0 });
     const t = 1000;
     const rp = R_EARTH + 400e3;
-    const state = orbitState(t, v3(rp, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / rp)));
+    const state = kinematicState(t, v3(rp, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / rp)));
     const attractors = ephemeris.attractorsAt(t);
     const period = orbitPeriodOf(state, attractors);
 

@@ -1,7 +1,7 @@
 // 弾速一定の弾丸が相対運動する目標に命中するまでの最短時間と、そこから求まる
 // 見越し点(狙うべき位置)を解く純関数。
 import { Vec3, addScaled, dot, lenSq, sub } from './vec3';
-import { OrbitState } from './orbital-state';
+import { KinematicState } from './kinematic-state';
 
 // |relP + relV t| = s t を満たす最小の正の t
 export function solveLeadTime(relP: Vec3, relV: Vec3, s: number): number | null {
@@ -32,8 +32,8 @@ export function solveLeadTime(relP: Vec3, relV: Vec3, s: number): number | null 
 // shooter から muzzleSpeed で撃った弾が target に当たる未来位置。命中解が無い場合と、
 // maxTime より先にしか当たらない(照準の目安として実用にならない)場合は null。
 export function leadPoint(
-  target: OrbitState,
-  shooter: OrbitState,
+  target: KinematicState,
+  shooter: KinematicState,
   muzzleSpeed: number,
   maxTime: number,
 ): Vec3 | null {

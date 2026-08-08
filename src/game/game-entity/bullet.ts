@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { GameEntity } from './game-entity';
-import { OrbitState } from '../../physics/orbital-state';
+import { KinematicState } from '../../physics/kinematic-state';
 import { Attractor, hitCelestialBody } from '../../physics/attractor';
 import { FloatingOrigin } from '../floating-origin';
 import type { Stage } from '../stages/stage';
@@ -32,7 +32,7 @@ export class Bullet extends GameEntity {
 
     // accent: plasma 弾のみ使う発光色(未指定なら buildPlasmaMesh の既定色)。normal 弾では無視する。
     // damage は着弾時に与える HP。撃った側の武装で決まるので、弾自身が持ち歩く。
-    constructor(state: OrbitState, lifetime: number, shooter: Shooter, type: BulletType, damage: number, scene?: THREE.Scene) {
+    constructor(state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number, scene?: THREE.Scene) {
         super(state, type === 'plasma' ? buildPlasmaMesh() : buildBulletMesh(), scene);
         this.bornSim = state.t;
         this.lifetime = lifetime;

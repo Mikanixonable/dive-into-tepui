@@ -12,7 +12,7 @@ import { LagrangePoints, lagrangePoints } from './lagrange';
 import { planetAngles } from './planet-orbit';
 import { satelliteState } from './satellite-orbit';
 import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from './solar-system';
-import { OrbitState, orbitState } from './orbital-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, addScaled, len, norm, sub, v3 } from './vec3';
 
 // 回転しない座標系(ReferenceFrame.rotatingWith === null)の姿勢・角速度。
@@ -53,13 +53,13 @@ export class Ephemeris {
   }
 
   // 惑星-衛星系重心の日心状態。
-  private baryHelioState(def: PlanetDef, t: number): OrbitState {
+  private baryHelioState(def: PlanetDef, t: number): KinematicState {
     return keplerOrbitState(def.orbit, t, this.phaseOf(def.id));
   }
 
   // 衛星の惑星相対状態。太陽の方向は惑星-衛星系重心の軌道が持つ平均角度(planetAngles)
   // から取るので循環しない。
-  private satelliteRelState(def: SatelliteDef, t: number): OrbitState {
+  private satelliteRelState(def: SatelliteDef, t: number): KinematicState {
     const planet = bodyDef(def.planet);
     const pAngles = planetAngles(planet.orbit, t, this.phaseOf(planet.id));
     return satelliteState(def.orbit, pAngles, t, this.phaseOf(def.id));
@@ -67,7 +67,7 @@ export class Ephemeris {
 
   // 惑星本体の日心状態。重心の日心状態から、Σ(μ_衛星/(μ_惑星+Σμ_衛星))·r_衛星(惑星相対)
   // ぶんを引く(重心補正。位置・速度の両方に効く)。
-  private planetHelioState(def: PlanetDef, t: number): OrbitState {
+  private planetHelioState(def: PlanetDef, t: number): KinematicState {
     const bary = this.baryHelioState(def, t);
     const satellites = satellitesOf(def.id);
     if (satellites.length === 0) return bary;
@@ -85,33 +85,33 @@ export class Ephemeris {
       r = addScaled(r, rel.r, -w);
       v = addScaled(v, rel.v, -w);
     }
-    return orbitState(t, r, v);
+    return kinematicState(t, r, v);
   }
 
   // 天体の日心状態(恒星は原点に静止、惑星は重心補正込みの本体、衛星は惑星本体 + 惑星相対状態)。
-  private helioStateOf(id: AttractorId, t: number): OrbitState {
+  private helioStateOf(id: AttractorId, t: number): KinematicState {
     const def = bodyDef(id);
     switch (def.kind) {
       // 恒星は日心座標系の原点そのもの。
       case 'star':
-        return orbitState(t, v3(0, 0, 0), v3(0, 0, 0));
+        return kinematicState(t, v3(0, 0, 0), v3(0, 0, 0));
       case 'planet':
         return this.planetHelioState(def, t);
       // 衛星の日心状態は、惑星本体の日心状態に惑星相対状態を足すだけ。
       case 'satellite': {
         const planetHelio = this.planetHelioState(bodyDef(def.planet), t);
         const rel = this.satelliteRelState(def, t);
-        return orbitState(t, add(planetHelio.r, rel.r), add(planetHelio.v, rel.v));
+        return kinematicState(t, add(planetHelio.r, rel.r), add(planetHelio.v, rel.v));
       }
     }
   }
 
   // 指定時刻の ECI(地球中心)位置・速度。日心状態から地球の日心状態を引く一箇所だけで
   // ECI 化する。地球自身は同じ計算を2回引くので厳密に 0 になる。
-  stateOf(id: AttractorId, t: number): OrbitState {
+  stateOf(id: AttractorId, t: number): KinematicState {
     const helio = this.helioStateOf(id, t);
     const earthHelio = this.helioStateOf('earth', t);
-    return orbitState(t, sub(helio.r, earthHelio.r), sub(helio.v, earthHelio.v));
+    return kinematicState(t, sub(helio.r, earthHelio.r), sub(helio.v, earthHelio.v));
   }
 
   // 指定時刻の ECI 位置。

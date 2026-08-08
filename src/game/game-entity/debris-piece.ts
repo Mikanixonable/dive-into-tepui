@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
-import { OrbitState } from '../../physics/orbital-state';
+import { KinematicState } from '../../physics/kinematic-state';
 import { Attractor } from '../../physics/attractor';
 import { Vec3 } from '../../physics/vec3';
 import * as C from '../const';
@@ -29,7 +29,7 @@ export class DebrisPiece extends GameEntity {
   protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
 
   // DebrisKind に応じたメッシュ・質量で初期化する。collideRadius は fragment 以外の当たり判定半径になる。
-  constructor(state: OrbitState, readonly debrisKind: DebrisKind, att: Attitude, collideRadius?: number, scene?: THREE.Scene) {
+  constructor(state: KinematicState, readonly debrisKind: DebrisKind, att: Attitude, collideRadius?: number, scene?: THREE.Scene) {
     super(state, buildDebrisObj(debrisKind), scene, att);
     this.collideRadius = debrisKind.kind === 'fragment' ? undefined : collideRadius;
     switch (debrisKind.kind) {

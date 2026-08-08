@@ -4,7 +4,7 @@
 // ここでの検証は GameEntity.current(過去列側)としての用法をそのまま代表する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { MU_EARTH, OrbitState, R_EARTH, orbitState } from '../../src/physics/orbital-state';
+import { MU_EARTH, KinematicState, R_EARTH, kinematicState } from '../../src/physics/kinematic-state';
 import { OrbitEntity } from '../../src/physics/orbit-entity';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { len, sub, v3 } from '../../src/physics/vec3';
@@ -12,10 +12,10 @@ import { len, sub, v3 } from '../../src/physics/vec3';
 const EPH = new Ephemeris({ moon: 0 }); // 初期位相を固定して決定的にする
 const bodiesAt = (t: number) => EPH.attractorsAt(t); // step() が要求する重力源をステップ中点で引く
 
-function circularState(t = 0): OrbitState {
+function circularState(t = 0): KinematicState {
   const r0 = R_EARTH + 420e3;
   const vc = Math.sqrt(MU_EARTH / r0);
-  return orbitState(t, v3(r0, 0, 0), v3(0, vc, 0));
+  return kinematicState(t, v3(r0, 0, 0), v3(0, vc, 0));
 }
 
 export function register(): void {
@@ -58,7 +58,7 @@ export function register(): void {
     const sparse = new OrbitEntity(circularState());
     const dt = 5;
     const sampleInterval = 174; // LEO 1周32点相当の実測値
-    const denseStates: OrbitState[] = [];
+    const denseStates: KinematicState[] = [];
     for (let i = 0; i < 200; i++) {
       dense.step(dt, bodiesAt(dense.state.t + dt / 2), 0, null, dt, 1e6); // sampleInterval=dt → 実質毎ステップ記録
       sparse.step(dt, bodiesAt(sparse.state.t + dt / 2), 0, null, sampleInterval, 1e6);
@@ -78,7 +78,7 @@ export function register(): void {
       e.step(dt, bodiesAt(e.state.t + dt / 2), 0, null, dt, 100000); // 毎ステップ記録: history = t=0..80, state.t=90
     }
     assert.ok(e.history.at(50), 'sanity: t=50 should be recorded before reset');
-    e.reset(orbitState(50, v3(1, 0, 0), v3(0, 1, 0)));
+    e.reset(kinematicState(50, v3(1, 0, 0), v3(0, 1, 0)));
     assert.equal(e.history.at(50), null, 'the sample at the reset time itself should be discarded');
     assert.ok(e.history.at(30), 'samples strictly before the reset time should survive');
     assert.equal(e.state.t, 50);
@@ -97,7 +97,7 @@ export function register(): void {
     assert.equal(e.state.t, 20);
 
     const before = e.state;
-    e.reset(orbitState(20, v3(1, 0, 0), v3(0, 1, 0)));
+    e.reset(kinematicState(20, v3(1, 0, 0), v3(0, 1, 0)));
     assert.equal(e.prevState.t, before.t, 'reset should also advance prevState to the state it replaced');
   });
 
