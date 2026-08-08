@@ -241,6 +241,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-shipplacer .slider-field .slider-ticks span { flex: 0 1 auto; min-width: 0; font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #hud-shipplacer .slider-field .slider-ticks span:first-child { text-align: left; }
 #hud-shipplacer .slider-field .slider-ticks span:last-child { text-align: right; }
+#hud-shipplacer input[type="text"] { flex: 1; width: auto; }
 #navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
 #navball .nb-ball { display: block; width: 100%; height: auto; margin: 4px 0 8px; }
 #navball .nb-rim { fill: rgba(255, 255, 255, 0.03); stroke: ${EDGE}; stroke-width: 1; }

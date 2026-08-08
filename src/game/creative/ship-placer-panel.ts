@@ -199,11 +199,11 @@ function sliderField(root: HTMLElement, label: string, defaultValue: number, ste
   };
 }
 
-// 角度スライダー(i/Ω/ω/ν): 0..rangeDeg の線形対応、45度ごとに目盛りを表示する。
+// 角度スライダー(i/Ω/ω/ν): 0..rangeDeg の線形対応、90度ごとに目盛りを表示する。
 function bindAngleSlider(field: SliderRow, rangeDeg: number): void {
   field.setMapping((v) => v / rangeDeg, (t) => t * rangeDeg);
-  const tickCount = rangeDeg / 45 + 1;
-  field.setTicks(Array.from({ length: tickCount }, (_, i) => `${i * 45}°`));
+  const tickCount = rangeDeg / 90 + 1;
+  field.setTicks(Array.from({ length: tickCount }, (_, i) => `${i * 90}°`));
 }
 
 // 高度スライダーの基準からの相対倍率: 中央(t=0)を基準値の100%とし、左は等倍で0%まで、
@@ -373,9 +373,13 @@ export class ShipPlacerPanel {
 
     const nameRow = document.createElement('div');
     nameRow.className = 'hud-seg';
+    const nameHeading = document.createElement('span');
+    nameHeading.className = 'seg-title';
+    nameHeading.textContent = '名称';
+    nameRow.appendChild(nameHeading);
     this.nameInput = document.createElement('input');
     this.nameInput.type = 'text';
-    this.nameInput.placeholder = 'オブジェクト名(空欄で自動命名)';
+    this.nameInput.placeholder = '空欄で自動命名';
     this.nameInput.addEventListener('pointerdown', (e) => e.stopPropagation());
     nameRow.appendChild(this.nameInput);
     this.panel.appendChild(nameRow);
