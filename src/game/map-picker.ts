@@ -4,8 +4,10 @@
 // ように割れる。
 import * as C from './const';
 import { Hud } from './hud/hud';
-import { fmtTime } from './hud/utils';
+import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from './hud/utils';
+import { orbitInfo, relativeInfo } from './hud/orbit-info';
 import { ContextMenu, MenuItem } from './hud/context-menu';
+import { PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem } from './hud/property-window';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { MapPickable, pickNearest } from './map-pick';
 import { ObjectListPanel } from './object-list-panel';
@@ -18,9 +20,14 @@ import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
 import type { Docking } from './docking';
 import type { Game } from './game';
-import { v3 } from '../physics/vec3';
+import type { Player } from './player/player';
+import type { GameEntity } from './game-entity/game-entity';
+import { len, sub, v3 } from '../physics/vec3';
 import type { ObjectType } from './creative/ship-placer-panel';
 import type { OrbitState } from '../physics/orbital-state';
+import { AttractorId, Attractor, elementsAround, strongestAttractor } from '../physics/attractor';
+import { apsisAltitudes } from '../physics/elements';
+import { SOLAR_SYSTEM, bodyDef, primaryOf } from '../physics/solar-system';
 
 interface PickHandler {
   itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[];
@@ -28,7 +35,12 @@ interface PickHandler {
 }
 
 export class MapPicker {
+  // 'empty-space' は宇宙空間そのものでプロパティを持たないので、従来どおり ContextMenu を使う。
   private readonly menu = new ContextMenu<MapPickable, MenuAction>();
+  // 開いているプロパティウィンドウ。`${kind}:${id}` でオブジェクト1つにつき高々1枚に保つ。
+  private readonly windows = new Map<string, PropertyWindow<MenuAction>>();
+  // クリップされていない一時ウィンドウのキー。存在は高々1枚。
+  private tempWindowKey: string | null = null;
   private readonly objectListPanel: ObjectListPanel;
   private objectListVisible = false;
   private items: readonly MapPickable[] = [];
@@ -100,16 +112,63 @@ export class MapPicker {
     this.items = items;
   }
 
-  // 右クリック位置の最寄り候補を探し、当たればその種別に応じた項目でメニューを開いて消費する。
+  // 右クリック位置の最寄り候補を探し、当たればその種別に応じたプロパティウィンドウを開いて消費する。
   handleRightClick(input: Input, simTime: number): void {
     input.takeRightClicks((p) => {
-      let target = pickNearest(
+      const target = pickNearest(
         this.items, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ,
       );
       if (!target) return false;
-      this.menu.open(p.x, p.y, target, this.itemsFor(target, simTime));
+      this.openPropertyWindow(p.x, p.y, target, simTime);
       return true;
     });
+  }
+
+  // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
+  // 新規には開かない。新規に開いたウィンドウは既定でクリップされておらず一時ウィンドウとなるので、
+  // 既存の一時ウィンドウがあれば入れ替わりに閉じる。
+  private openPropertyWindow(clientX: number, clientY: number, target: MapPickable, simTime: number): void {
+    const key = this.windowKey(target);
+    const existing = this.windows.get(key);
+    if (existing) {
+      existing.moveTo(clientX, clientY);
+      existing.bringToFront();
+      return;
+    }
+    const w = new PropertyWindow<MenuAction>(clientX, clientY, this.buildContent(target, simTime));
+    this.windows.set(key, w);
+    if (!w.clipped) {
+      if (this.tempWindowKey !== null) this.closeWindow(this.tempWindowKey);
+      this.tempWindowKey = key;
+    }
+    // 操作項目のクリックは、クリップ済みなら開いたままにする。「削除」は対象自体が消えるので
+    // クリップ状態によらず閉じる。
+    w.onSelect = (act) => {
+      const handler = this.handlers[target.kind];
+      if (handler) handler.run(act, target);
+      if (act === 'delete' || !w.clipped) this.closeWindow(key);
+    };
+    w.onClose = () => this.forgetWindow(key);
+    w.onOutsideClick = () => { if (!w.clipped) this.closeWindow(key); };
+  }
+
+  // windows/tempWindowKey のキー。kind をまたいで id が衝突しないよう種別込みにする。
+  private windowKey(target: MapPickable): string {
+    return `${target.kind}:${target.id}`;
+  }
+
+  // 台帳から外すだけで DOM 破棄はしない — ✕ ボタン自身が dispose 済みのときに呼ぶ経路。
+  private forgetWindow(key: string): void {
+    this.windows.delete(key);
+    if (this.tempWindowKey === key) this.tempWindowKey = null;
+  }
+
+  // ✕ ボタン以外の経路(対象消滅・ビュー離脱・一時ウィンドウの入れ替わり)で閉じる。
+  private closeWindow(key: string): void {
+    const w = this.windows.get(key);
+    if (!w) return;
+    w.dispose();
+    this.forgetWindow(key);
   }
 
   // 何も当たらなかった場合、「空域」として扱う（他のハンドラの後に呼ぶ）。
@@ -121,17 +180,27 @@ export class MapPicker {
     });
   }
 
-  // 軌道オブジェクトウィンドウの表示状態を、マップ視点かどうかと合わせて反映する。
-  sync(overviewMode: boolean): void {
+  // 軌道オブジェクトウィンドウの表示状態をマップ視点かどうかと合わせて反映し、開いている
+  // 全プロパティウィンドウの値を最新化する。対象が今フレームの候補列から消えていれば
+  // (撃破・回収・削除)閉じる。
+  sync(overviewMode: boolean, simTime: number, bodies: readonly Attractor[], player: Player | null): void {
     const visible = overviewMode && this.objectListVisible;
     this.objectListPanel.setVisible(visible);
     if (visible) this.objectListPanel.sync(this.items, this.cameraSystem.overviewCamera.focus);
+
+    const byKey = new Map(this.items.map((i) => [this.windowKey(i), i]));
+    for (const key of [...this.windows.keys()]) {
+      const target = byKey.get(key);
+      if (!target) { this.closeWindow(key); continue; }
+      this.windows.get(key)!.syncRows(this.buildRows(target, bodies, player, simTime));
+    }
   }
 
-  // 開いたままのメニュー・ウィンドウを畳む。
+  // 開いたままのメニュー・ウィンドウを畳む。マップビューを離れるときに呼ぶ。
   close(): void {
     this.menu.close();
     this.objectListVisible = false;
+    for (const key of [...this.windows.keys()]) this.closeWindow(key);
   }
 
   private readonly handlers: Record<MapPickable['kind'], PickHandler> = {
@@ -388,6 +457,158 @@ export class MapPicker {
       default:
         return null;
     }
+  }
+
+  // itemsFor の出力をプロパティウィンドウの形へ組み替える: header 項目はタイトル/サブタイトルへ
+  // 抜き出し、残りをそのまま操作項目として引き継ぐ(増減しない)。
+  private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
+    const menuItems = this.itemsFor(target, simTime);
+    const header = menuItems.find((it) => it.type === 'header');
+    const items: PropertyWindowItem<MenuAction>[] = menuItems
+      .filter((it) => it.type !== 'header' && it.act !== undefined)
+      .map((it) => ({ label: it.label, act: it.act as MenuAction }));
+    return { title: header?.label ?? target.name, subtitle: header?.subLabel, rows: [], items };
+  }
+
+  // 種別ごとのプロパティ行。値の導出は sync フェーズで毎フレーム呼び直す(表示専用のため)。
+  private buildRows(
+    target: MapPickable, bodies: readonly Attractor[], player: Player | null, simTime: number,
+  ): PropertyRow[] {
+    switch (target.kind) {
+      case 'player': return this.playerRows(target, bodies);
+      case 'ship': return this.shipRows(target, bodies, player);
+      case 'base': return this.baseRows(target, bodies, player);
+      case 'ammo': return this.ammoRows(target, bodies, player);
+      case 'body': return this.bodyRows(target, bodies, player);
+      case 'apsis': return this.apsisRows(target, bodies, simTime);
+      case 'relnode': case 'eqnode': return this.nodeRows(target, simTime);
+      case 'empty-space': return [];
+    }
+  }
+
+  // 基準天体・高度・速度・AP/PE/INC/PRD の軌道要素一式。ship/base/ammo/player 共通で使う。
+  private orbitRows(entity: GameEntity, bodies: readonly Attractor[]): PropertyRow[] {
+    const oi = orbitInfo(entity, bodies);
+    return [
+      { key: 'center', label: '基準天体', value: oi.centerName },
+      { key: 'alt', label: '高度', value: fmtDist(oi.alt) },
+      { key: 'spd', label: '速度', value: fmtSpeed(oi.spd) },
+      { key: 'ap', label: '遠地点 AP', value: fmtDist(oi.apAlt) },
+      { key: 'pe', label: '近地点 PE', value: fmtDist(oi.peAlt) },
+      { key: 'inc', label: '傾斜角 INC', value: isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---' },
+      { key: 'prd', label: '周期 PRD', value: fmtTime(oi.period) },
+    ];
+  }
+
+  // 名前は既にウィンドウのタイトルにあるので行には含めない。
+  private playerRows(target: MapPickable, bodies: readonly Attractor[]): PropertyRow[] {
+    const ship = this.entities.findPlayer(target.id);
+    if (!ship) return [];
+    return [
+      { key: 'active', label: '操作対象か', value: ship === this.game.player ? 'はい' : 'いいえ' },
+      { key: 'follow', label: '計画追従', value: ship.followPlan ? 'ON' : 'OFF' },
+      { key: 'hp', label: '装甲', value: `${Math.floor(ship.hp)} / ${ship.maxHp}` },
+      { key: 'temp', label: '温度', value: `${ship.thermal.hullTemp.toFixed(0)} K` },
+      { key: 'power', label: '電力', value: fmtEnergy(ship.power.chargeJ) },
+      { key: 'ammo', label: '弾薬', value: fmtAmmoStatus(ship.roundsInMag, ship.magsLeft, ship.reloadTimer) },
+      ...this.orbitRows(ship, bodies),
+    ];
+  }
+
+  // 自機がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
+  private shipRows(target: MapPickable, bodies: readonly Attractor[], player: Player | null): PropertyRow[] {
+    const enemy = this.entities.enemies.find((e) => e.name === target.id);
+    if (!enemy) return [];
+    const rel = player ? relativeInfo(player, enemy, bodies) : null;
+    const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(enemy.hp)} / ${enemy.maxHp}` }];
+    if (rel) {
+      rows.push(
+        { key: 'dist', label: '距離', value: fmtDist(rel.dist) },
+        { key: 'closing', label: '接近速度', value: fmtSpeed(rel.closing) },
+        { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed) },
+      );
+    }
+    rows.push(...this.orbitRows(enemy, bodies));
+    if (rel) {
+      rows.push({
+        key: 'relinc', label: '相対傾斜 [AN/DN]',
+        value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---',
+      });
+    }
+    return rows;
+  }
+
+  // 自機がいなければ距離の行は出さない。
+  private baseRows(target: MapPickable, bodies: readonly Attractor[], player: Player | null): PropertyRow[] {
+    const base = this.entities.findBase(target.id);
+    if (!base) return [];
+    const rows: PropertyRow[] = [
+      { key: 'money', label: '所持金', value: `${base.baseState.money.toLocaleString()} Cr` },
+      { key: 'ships', label: '格納艦数', value: `${base.baseState.dockedShips.length}` },
+    ];
+    if (player) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(base.state.r, player.state.r))) });
+    rows.push(...this.orbitRows(base, bodies));
+    return rows;
+  }
+
+  // 自機がいなければ距離の行は出さない。
+  private ammoRows(target: MapPickable, bodies: readonly Attractor[], player: Player | null): PropertyRow[] {
+    const ammo = this.entities.ammos.find((a) => a.id === target.id);
+    if (!ammo) return [];
+    const rows: PropertyRow[] = [];
+    if (player) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(ammo.state.r, player.state.r))) });
+    rows.push(...this.orbitRows(ammo, bodies));
+    return rows;
+  }
+
+  // 実在の天体(SOLAR_SYSTEM に登録された ID)なら種別・μ・半径・(公転していれば)軌道要素を、
+  // ラグランジュ点なら種別のみを出す。
+  private bodyRows(target: MapPickable, bodies: readonly Attractor[], player: Player | null): PropertyRow[] {
+    const rows: PropertyRow[] = [];
+    if (player) rows.push({ key: 'dist', label: '自機からの距離', value: fmtDist(len(sub(target.pos, player.state.r))) });
+    if (!(target.id in SOLAR_SYSTEM)) {
+      rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });
+      return rows;
+    }
+    const def = bodyDef(target.id as AttractorId);
+    const kindLabel = def.kind === 'star' ? '恒星' : def.kind === 'planet' ? '惑星' : '衛星';
+    rows.push(
+      { key: 'kind', label: '種別', value: kindLabel },
+      { key: 'mu', label: 'μ', value: `${def.mu.toExponential(3)} m³/s²` },
+      { key: 'radius', label: '半径', value: fmtDist(def.radius) },
+    );
+    if (def.kind === 'star') return rows;
+    const primary = bodies.find((b) => b.id === primaryOf(def.id));
+    const self = bodies.find((b) => b.id === def.id);
+    const el = primary && self ? elementsAround(self.state, primary) : null;
+    if (!el) return rows;
+    const apsis = apsisAltitudes(el);
+    rows.push(
+      { key: 'ap', label: '遠地点 AP', value: fmtDist(apsis.ap) },
+      { key: 'pe', label: '近地点 PE', value: fmtDist(apsis.pe) },
+      { key: 'inc', label: '傾斜角 INC', value: `${el.incDeg.toFixed(2)}°` },
+      { key: 'prd', label: '周期 PRD', value: fmtTime(el.period) },
+    );
+    return rows;
+  }
+
+  // Pe/Ap の別・AN/DN の別はタイトル側(header)に既に出ているので、ここには乗せない。
+  private apsisRows(target: MapPickable, bodies: readonly Attractor[], simTime: number): PropertyRow[] {
+    const center = strongestAttractor(target.pos, bodies);
+    const alt = len(sub(target.pos, center.state.r)) - center.radius;
+    const rows: PropertyRow[] = [{ key: 'alt', label: '高度', value: fmtDist(alt) }];
+    if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
+    return rows;
+  }
+
+  // AN/DN の別はタイトル側(header)に既に出ているので、ここでは対象名と通過時刻のみ出す。
+  private nodeRows(target: MapPickable, simTime: number): PropertyRow[] {
+    const targetName = target.kind === 'relnode'
+      ? (this.navTarget.name ?? '対象')
+      : (target.id.endsWith('Moon') ? '月' : '地球');
+    const rows: PropertyRow[] = [{ key: 'target', label: '対象', value: targetName }];
+    if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
+    return rows;
   }
 
   private runBodyShip(act: MenuAction, target: MapPickable): void {
