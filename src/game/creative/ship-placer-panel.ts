@@ -363,33 +363,33 @@ export class ShipPlacerPanel {
     elementsGroup.appendChild(sizeMode.element);
 
     const apsidesGroup = document.createElement('div');
-    const peAlt = sliderField(apsidesGroup, '近地点高度 [km]', 400, 10);
+    const peAlt = sliderField(apsidesGroup, '近地点高度 [km]', 400, 10, 0);
     bindAltitudeSlider(peAlt);
-    const apAlt = sliderField(apsidesGroup, '遠地点高度 [km]', 400, 10);
+    const apAlt = sliderField(apsidesGroup, '遠地点高度 [km]', 400, 10, 0);
     bindAltitudeSlider(apAlt);
     elementsGroup.appendChild(apsidesGroup);
 
     const semiMajorGroup = document.createElement('div');
-    const semiMajor = numberField(semiMajorGroup, '半長軸 [km]', 6771, 10);
-    const eccSemiMajor = numberField(semiMajorGroup, '離心率', 0, 0.01);
+    const semiMajor = numberField(semiMajorGroup, '半長軸 [km]', 6771, 10, 0);
+    const eccSemiMajor = numberField(semiMajorGroup, '離心率', 0, 0.01, 0, 0.99);
     elementsGroup.appendChild(semiMajorGroup);
 
     const periodGroup = document.createElement('div');
-    const period = numberField(periodGroup, '周期 [h]', 1.54, 0.01);
-    const eccPeriod = numberField(periodGroup, '離心率', 0, 0.01);
+    const period = numberField(periodGroup, '周期 [h]', 1.54, 0.01, 0);
+    const eccPeriod = numberField(periodGroup, '離心率', 0, 0.01, 0, 0.99);
     elementsGroup.appendChild(periodGroup);
 
     const sizeGroups = { apsides: apsidesGroup, semiMajorEcc: semiMajorGroup, periodEcc: periodGroup };
 
     // 向き(i/Ω/ω)と位相(ν)は組の選択によらず常に有効。i は 0..180、それ以外は 0..360 の
     // 線形スライダー(45度刻みの目盛り)を添える。
-    const inc = sliderField(elementsGroup, '傾斜角 i [deg]', 0, 1);
+    const inc = sliderField(elementsGroup, '傾斜角 i [deg]', 0, 1, 0, 180);
     bindAngleSlider(inc, 180);
-    const raan = sliderField(elementsGroup, '昇交点赤経 Ω [deg]', 0, 1);
+    const raan = sliderField(elementsGroup, '昇交点赤経 Ω [deg]', 0, 1, 0, 360);
     bindAngleSlider(raan, 360);
-    const argp = sliderField(elementsGroup, '近点引数 ω [deg]', 0, 1);
+    const argp = sliderField(elementsGroup, '近点引数 ω [deg]', 0, 1, 0, 360);
     bindAngleSlider(argp, 360);
-    const nu = sliderField(elementsGroup, '真近点角 ν [deg]', 0, 1);
+    const nu = sliderField(elementsGroup, '真近点角 ν [deg]', 0, 1, 0, 360);
     bindAngleSlider(nu, 360);
 
     return { element: elementsGroup, body, sizeMode, sizeGroups, peAlt, apAlt, semiMajor, eccSemiMajor, period, eccPeriod, inc, raan, argp, nu };
@@ -423,8 +423,8 @@ export class ShipPlacerPanel {
     });
     librationGroup.appendChild(librationOrbitKind.element);
     const defaultAmp = LIBRATION_DEFAULT_AMPLITUDE_KM[this.librationSecondaryValue];
-    libAx = numberField(librationGroup, '面内振幅 ax [km]', defaultAmp.ax, 100);
-    const libAz = numberField(librationGroup, '面外振幅 az [km]', defaultAmp.az, 100);
+    libAx = numberField(librationGroup, '面内振幅 ax [km]', defaultAmp.ax, 100, 0);
+    const libAz = numberField(librationGroup, '面外振幅 az [km]', defaultAmp.az, 100, 0);
     librationOrbitKind.setSelected(this.librationOrbitKindValue);
     setFieldVisible(libAx, this.librationOrbitKindValue === 'lissajous');
 
