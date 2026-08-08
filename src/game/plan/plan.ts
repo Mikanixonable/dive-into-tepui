@@ -3,14 +3,32 @@
 import { orbitState, OrbitState } from '../../physics/orbital-state';
 import { Vec3, add, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { Attractor, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, elementsAround, strongestAttractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 
-// 計画の1区間が受け持てる時間長 = 起点位置で最も強く引く天体を中心とする軌道運動の時間スケール。
-// 有限な周期が求まらなければ APERIODIC_ARC_DURATION。
+// segmentDurationFrom が要求する DisplayTimeManager の部分だけを切り出した形。
+export interface DisplayDurationSource {
+  durationSec(referencePeriod: number): number;
+}
+
+// 起点状態を最も強く引く天体まわりの解析軌道の公転周期。
+// 有限な周期が求まらなければ(双曲線軌道など)APERIODIC_ARC_DURATION。
 export function orbitPeriodOf(state: OrbitState, bodies: readonly Attractor[]): number {
-  const period = localOrbitPeriod(state.r, bodies);
+  const center = strongestAttractor(state.r, bodies);
+  const period = elementsAround(state, center)?.period ?? NaN;
   return isFinite(period) && period > 0 ? period : C.APERIODIC_ARC_DURATION;
+}
+
+// ある状態を起点に描かれる区間の長さ [s]。その状態の遷移後軌道の公転周期を参照期間として
+// DisplayTimeManager の表示期間を引く。ノードを置ける時刻範囲(nodeTimeRange)と描かれる
+// 折れ線の長さ(plan-trajectory.ts の buildSegments)は必ずこの値を共有する — 両者が
+// 別々に定義すると描画範囲とノード配置可能範囲がずれる。
+export function segmentDurationFrom(
+  state0: OrbitState,
+  bodies: readonly Attractor[],
+  displayDuration: DisplayDurationSource,
+): number {
+  return displayDuration.durationSec(orbitPeriodOf(state0, bodies));
 }
 
 // ノードを置ける実行時刻の範囲。
@@ -81,12 +99,12 @@ export class Plan {
     this._nodes.length = 0;
   }
 
-  // idx 番目のノードを置ける実行時刻の範囲。直前の状態(前のノード、無ければアンカー)の時刻から
-  // その軌道1周期ぶんまで。これを超えると区間が自分自身に重なり、折れ線上の1点が何周目の
-  // どこなのかを指し分けられなくなる。
-  nodeTimeRange(idx: number, ephemeris: Ephemeris): TimeRange {
+  // idx 番目のノードを置ける実行時刻の範囲。直前の状態(前のノード、無ければアンカー)の時刻から、
+  // その状態を起点に描かれている末尾区間の折れ線が尽きるところまで。
+  nodeTimeRange(idx: number, ephemeris: Ephemeris, displayDuration: DisplayDurationSource): TimeRange {
     const prev = this._nodes[idx - 1] ?? this._anchor;
-    return { min: prev.t, max: prev.t + orbitPeriodOf(prev, ephemeris.attractorsAt(prev.t)) };
+    const bodies = ephemeris.attractorsAt(prev.t);
+    return { min: prev.t, max: prev.t + segmentDurationFrom(prev, bodies, displayDuration) };
   }
 
   // ノードを新しい実行後状態へ移し、下流ノードを破棄する。時刻は nodeTimeRange の範囲内であること。
