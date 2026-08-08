@@ -30,6 +30,11 @@ function matchesCode(key: KeyBinding, code: string): boolean {
 
 const ZERO_MOUSE_DELTA: MouseDelta = { dx: 0, dy: 0, panDx: 0, panDy: 0, wheel: 0 };
 
+// macOS では Command キーを押している間、他のキーの keyup がページに配送されない。
+// その間に離されたキーは押しっぱなしとして残り続けるため、Command が離された時点で
+// 押下中セット全体を捨てる(どのキーが実際に離されたかは知りようがない)。
+const META_CODES = ['MetaLeft', 'MetaRight'];
+
 export class Input {
   private keys = new Set<string>();
   private pendingPresses: string[] = [];
@@ -80,12 +85,23 @@ export class Input {
       this.keys.add(e.code);
       this.fireGesture();
     });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => {
-      this.keys.clear();
-      this.dragging = false;
-      this.panDragging = false;
+    window.addEventListener('keyup', (e) => {
+      if (META_CODES.includes(e.code)) this.releaseAll();
+      else this.keys.delete(e.code);
     });
+    window.addEventListener('blur', () => this.releaseAll());
+    window.addEventListener('pagehide', () => this.releaseAll());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.releaseAll();
+    });
+  }
+
+  // 押下中・ドラッグ中の状態をすべて解除する。keyup / pointerup が届かないまま
+  // 操作が中断された場合の復帰点。
+  private releaseAll(): void {
+    this.keys.clear();
+    this.dragging = false;
+    this.panDragging = false;
   }
 
   // target のポインタイベントを購読する。
