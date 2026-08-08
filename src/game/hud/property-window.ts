@@ -7,12 +7,7 @@
 import { ACCENT, ACCENT_RGB, ACCENT_SOFT, EDGE, SURFACE, TEXT as INK, FONT } from '../theme';
 import { CLICK_MOVE_THRESHOLD } from '../const';
 import { clampOverlayPosition, Point2 } from './layout';
-
-// ショートカットキーのラベル表記(`[F]`/`[ESC]`/`[DEL]`)。ContextMenu の項目ヒントと同じ体裁。
-function shortcutHint(shortcut: string): string {
-  const keyName = shortcut === 'Escape' ? 'ESC' : shortcut === 'Delete' ? 'DEL' : shortcut.toUpperCase();
-  return ` [${keyName}]`;
-}
+import { shortcutKeyLabel } from './shortcut-hint';
 
 const STYLE = `
 #hud .prop-window {
@@ -202,7 +197,7 @@ export class PropertyWindow<A extends string = string> {
     for (const it of items) {
       const row = document.createElement('div');
       row.className = 'prop-window-item';
-      row.textContent = it.label + (it.shortcut ? shortcutHint(it.shortcut) : '');
+      row.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
       row.dataset['act'] = it.act;
       row.dataset['shortcut'] = it.shortcut ?? '';
       row.addEventListener('click', (e) => {
