@@ -4,7 +4,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import {
-  HaloParams, LissajousParams, LibrationPoint,
+  HaloParams, LissajousParams, CollinearPoint,
   collinearFrame, haloAmplitudeX, haloState, lissajousState,
 } from '../../src/physics/halo';
 import { Ephemeris } from '../../src/physics/ephemeris';
@@ -12,7 +12,7 @@ import { OrbitingId } from '../../src/physics/attractor';
 import { dot, len, sub } from '../../src/physics/vec3';
 
 const SECONDARIES: OrbitingId[] = ['moon', 'earth'];
-const POINTS: LibrationPoint[] = ['L1', 'L2'];
+const POINTS: CollinearPoint[] = ['L1', 'L2'];
 
 function isFiniteVec(v: { x: number; y: number; z: number }): boolean {
   return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);

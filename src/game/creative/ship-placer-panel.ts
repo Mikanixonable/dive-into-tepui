@@ -4,7 +4,7 @@
 // 仕事なので、ここでは行わない。
 import { SegmentedControl, hudButton } from '../hud/buttons';
 import { ATTRACTOR_NAMES } from '../hud/frame-labels';
-import { LibrationPoint } from '../../physics/halo';
+import { CollinearPoint } from '../../physics/halo';
 import { AttractorId } from '../../physics/attractor';
 import { bodyDef, SOLAR_SYSTEM } from '../../physics/solar-system';
 import type { OrbitingId } from '../../physics/attractor';
@@ -13,11 +13,11 @@ import * as C from '../const';
 export type ObjectType = 'player' | 'enemy' | 'ammo' | 'base';
 export type ReferenceAttractor = AttractorId;
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
-export type PlacementMode = 'elements' | 'libration';
-export type LibrationOrbitKind = 'halo' | 'lissajous';
+export type PlacementMode = 'elements' | 'lagrange';
+export type LagrangeOrbitKind = 'halo' | 'lissajous';
 
 // 確定時点のフォーム全値。placementMode が 'elements' なら sizeMode が選んだ組(残りは無視して
-// よい)、'libration' ならラグランジュ点側の値を使う — 両方まとめて渡し、どちらを使うかは
+// よい)、'lagrange' ならラグランジュ点側の値を使う — 両方まとめて渡し、どちらを使うかは
 // 確定側(CreativeStage)が placementMode を見て決める。
 export interface ShipPlacerForm {
   readonly objectType: ObjectType;
@@ -33,9 +33,9 @@ export interface ShipPlacerForm {
   readonly raanDeg: number;
   readonly argpDeg: number;
   readonly nuDeg: number;
-  readonly librationSecondary: OrbitingId;
-  readonly librationPoint: LibrationPoint;
-  readonly librationOrbitKind: LibrationOrbitKind;
+  readonly lagrangeSecondary: OrbitingId;
+  readonly lagrangePoint: CollinearPoint;
+  readonly lagrangeOrbitKind: LagrangeOrbitKind;
   readonly axKm: number;
   readonly azKm: number;
 }
@@ -49,7 +49,7 @@ const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string])[] = [
 
 const PLACEMENT_MODE_ITEMS: readonly (readonly [PlacementMode, string])[] = [
   ['elements', '軌道要素'],
-  ['libration', 'ラグランジュ点'],
+  ['lagrange', 'ラグランジュ点'],
 ];
 
 const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [
@@ -66,25 +66,25 @@ const ORBITING_IDS = (Object.keys(SOLAR_SYSTEM) as AttractorId[])
 
 const ATTRACTOR_ITEMS: readonly (readonly [ReferenceAttractor, string])[] = ORBITING_IDS.map((id) => [id, ATTRACTOR_NAMES[id]]);
 
-const LIBRATION_SYSTEM_ITEMS: readonly (readonly [OrbitingId, string])[] = ORBITING_IDS.map((id) => {
+const LAGRANGE_SYSTEM_ITEMS: readonly (readonly [OrbitingId, string])[] = ORBITING_IDS.map((id) => {
   const def = bodyDef(id);
   const primary: AttractorId = def.kind === 'planet' ? 'sun' : def.planet;
   return [id, `${ATTRACTOR_NAMES[primary]}-${ATTRACTOR_NAMES[id]}`] as const;
 });
 
-const LIBRATION_POINT_ITEMS: readonly (readonly [LibrationPoint, string])[] = [
+const LAGRANGE_POINT_ITEMS: readonly (readonly [CollinearPoint, string])[] = [
   ['L1', 'L1'],
   ['L2', 'L2'],
 ];
 
-const LIBRATION_ORBIT_KIND_ITEMS: readonly (readonly [LibrationOrbitKind, string])[] = [
+const LAGRANGE_ORBIT_KIND_ITEMS: readonly (readonly [LagrangeOrbitKind, string])[] = [
   ['halo', 'ハロー'],
   ['lissajous', 'リサジュー'],
 ];
 
 // 副天体ごとに妥当なオーダーへ面内/面外振幅の既定値を切り替える(系ごとに主天体間距離が
 // 桁違いなため)。
-const LIBRATION_DEFAULT_AMPLITUDE_KM: Record<OrbitingId, { ax: number; az: number }> = {
+const LAGRANGE_DEFAULT_AMPLITUDE_KM: Record<OrbitingId, { ax: number; az: number }> = {
   moon: { ax: C.CREATIVE_HALO_AX_MOON_KM, az: C.CREATIVE_HALO_AZ_MOON_KM },
   earth: { ax: C.CREATIVE_HALO_AX_EARTH_KM, az: C.CREATIVE_HALO_AZ_EARTH_KM },
   jupiter: { ax: C.CREATIVE_HALO_AX_JUPITER_KM, az: C.CREATIVE_HALO_AZ_JUPITER_KM },
@@ -139,9 +139,9 @@ export class ShipPlacerPanel {
   private readonly raan: HTMLInputElement;
   private readonly argp: HTMLInputElement;
   private readonly nu: HTMLInputElement;
-  private readonly librationSecondary: SegmentedControl<OrbitingId>;
-  private readonly librationPoint: SegmentedControl<LibrationPoint>;
-  private readonly librationOrbitKind: SegmentedControl<LibrationOrbitKind>;
+  private readonly lagrangeSecondary: SegmentedControl<OrbitingId>;
+  private readonly lagrangePoint: SegmentedControl<CollinearPoint>;
+  private readonly lagrangeOrbitKind: SegmentedControl<LagrangeOrbitKind>;
   private readonly libAx: HTMLInputElement;
   private readonly libAz: HTMLInputElement;
 
@@ -149,9 +149,9 @@ export class ShipPlacerPanel {
   private placementModeValue: PlacementMode = 'elements';
   private attractorValue: ReferenceAttractor = 'earth';
   private sizeModeValue: SizeShapeMode = 'apsides';
-  private librationSecondaryValue: OrbitingId = 'moon';
-  private librationPointValue: LibrationPoint = 'L1';
-  private librationOrbitKindValue: LibrationOrbitKind = 'halo';
+  private lagrangeSecondaryValue: OrbitingId = 'moon';
+  private lagrangePointValue: CollinearPoint = 'L1';
+  private lagrangeOrbitKindValue: LagrangeOrbitKind = 'halo';
 
   // 艦艇配置パネルの DOM を組み立て、root へ追加する。
   constructor(root: HTMLElement) {
@@ -213,31 +213,31 @@ export class ShipPlacerPanel {
     this.panel.appendChild(elementsGroup);
 
     // ラグランジュ点指定(ハロー/リサジュー)の一式。
-    const librationGroup = document.createElement('div');
-    this.librationSecondary = new SegmentedControl('系', LIBRATION_SYSTEM_ITEMS, (v) => this.selectLibrationSecondary(v));
-    this.librationSecondary.setSelected(this.librationSecondaryValue);
-    librationGroup.appendChild(this.librationSecondary.element);
-    this.librationPoint = new SegmentedControl('点', LIBRATION_POINT_ITEMS, (v) => {
-      this.librationPointValue = v;
-      this.librationPoint.setSelected(v);
+    const lagrangeGroup = document.createElement('div');
+    this.lagrangeSecondary = new SegmentedControl('系', LAGRANGE_SYSTEM_ITEMS, (v) => this.selectLagrangeSecondary(v));
+    this.lagrangeSecondary.setSelected(this.lagrangeSecondaryValue);
+    lagrangeGroup.appendChild(this.lagrangeSecondary.element);
+    this.lagrangePoint = new SegmentedControl('点', LAGRANGE_POINT_ITEMS, (v) => {
+      this.lagrangePointValue = v;
+      this.lagrangePoint.setSelected(v);
     });
-    this.librationPoint.setSelected(this.librationPointValue);
-    librationGroup.appendChild(this.librationPoint.element);
+    this.lagrangePoint.setSelected(this.lagrangePointValue);
+    lagrangeGroup.appendChild(this.lagrangePoint.element);
     // ハローの面内振幅は面外振幅から三次の振幅拘束で決まるので、入力欄自体を出さない。
-    this.librationOrbitKind = new SegmentedControl('軌道種別', LIBRATION_ORBIT_KIND_ITEMS, (v) => {
-      this.librationOrbitKindValue = v;
-      this.librationOrbitKind.setSelected(v);
+    this.lagrangeOrbitKind = new SegmentedControl('軌道種別', LAGRANGE_ORBIT_KIND_ITEMS, (v) => {
+      this.lagrangeOrbitKindValue = v;
+      this.lagrangeOrbitKind.setSelected(v);
       setFieldVisible(this.libAx, v === 'lissajous');
     });
-    librationGroup.appendChild(this.librationOrbitKind.element);
-    const defaultAmp = LIBRATION_DEFAULT_AMPLITUDE_KM[this.librationSecondaryValue];
-    this.libAx = numberField(librationGroup, '面内振幅 ax [km]', defaultAmp.ax, 100);
-    this.libAz = numberField(librationGroup, '面外振幅 az [km]', defaultAmp.az, 100);
-    this.librationOrbitKind.setSelected(this.librationOrbitKindValue);
-    setFieldVisible(this.libAx, this.librationOrbitKindValue === 'lissajous');
-    this.panel.appendChild(librationGroup);
+    lagrangeGroup.appendChild(this.lagrangeOrbitKind.element);
+    const defaultAmp = LAGRANGE_DEFAULT_AMPLITUDE_KM[this.lagrangeSecondaryValue];
+    this.libAx = numberField(lagrangeGroup, '面内振幅 ax [km]', defaultAmp.ax, 100);
+    this.libAz = numberField(lagrangeGroup, '面外振幅 az [km]', defaultAmp.az, 100);
+    this.lagrangeOrbitKind.setSelected(this.lagrangeOrbitKindValue);
+    setFieldVisible(this.libAx, this.lagrangeOrbitKindValue === 'lissajous');
+    this.panel.appendChild(lagrangeGroup);
 
-    this.placementGroups = { elements: elementsGroup, libration: librationGroup };
+    this.placementGroups = { elements: elementsGroup, lagrange: lagrangeGroup };
     this.selectPlacementMode(this.placementModeValue);
 
     const nameRow = document.createElement('div');
@@ -296,10 +296,10 @@ export class ShipPlacerPanel {
   }
 
   // 副天体を切り替え、面内/面外振幅の既定値をその系のオーダーへ更新する。
-  private selectLibrationSecondary(secondary: OrbitingId): void {
-    this.librationSecondaryValue = secondary;
-    this.librationSecondary.setSelected(secondary);
-    const amp = LIBRATION_DEFAULT_AMPLITUDE_KM[secondary];
+  private selectLagrangeSecondary(secondary: OrbitingId): void {
+    this.lagrangeSecondaryValue = secondary;
+    this.lagrangeSecondary.setSelected(secondary);
+    const amp = LAGRANGE_DEFAULT_AMPLITUDE_KM[secondary];
     this.libAx.value = String(amp.ax);
     this.libAz.value = String(amp.az);
   }
@@ -332,9 +332,9 @@ export class ShipPlacerPanel {
       raanDeg: Number(this.raan.value),
       argpDeg: Number(this.argp.value),
       nuDeg: Number(this.nu.value),
-      librationSecondary: this.librationSecondaryValue,
-      librationPoint: this.librationPointValue,
-      librationOrbitKind: this.librationOrbitKindValue,
+      lagrangeSecondary: this.lagrangeSecondaryValue,
+      lagrangePoint: this.lagrangePointValue,
+      lagrangeOrbitKind: this.lagrangeOrbitKindValue,
       axKm: Number(this.libAx.value),
       azKm: Number(this.libAz.value),
     };
