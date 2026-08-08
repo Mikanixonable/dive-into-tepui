@@ -29,7 +29,7 @@ const STYLE = `
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
 #hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
-#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-globalstatus, #hud-gear, #navball, #hud-shipplacer, #hud-object-list { z-index: 10; }
+#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-globalstatus, #hud-gear, #navball, #hud-shipplacer, #hud-object-list, #hud-creative-logistics { z-index: 10; }
 #dock-view { z-index: 15; }
 #hud-toast, #hud-hint { z-index: 20; }
 #hud-viewbadge { z-index: 20; }
@@ -231,6 +231,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-displaytime .slider-ticks span { font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; }
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
 #hud-trajframe { display: none; width: 100%; pointer-events: auto; }
+#hud-creative-logistics { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
 #hud-shipplacer .slider-field { margin-bottom: 8px; }
