@@ -21,9 +21,9 @@ const STYLE = `
 /* --- 重なり順: マーカーは実行時に DOM 末尾へ追加されるため z-index を明示しないとパネルの上に出る。
      マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0)
      マーカー群(0-9) < 常設パネル(10) < プロパティウィンドウ(12) < ドックビュー(15) <
-     トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー(40)
+     トースト・ヒント(20) < 終了画面・ヘルプ・セーブブラウザ(30) < ESCメニュー(40)
      ドックビューは画面全体を占めるビューなので常設パネル・プロパティウィンドウを覆うが、
-     トースト・ヒントとシステム窓(ヘルプ・ESCメニュー)はその上に出す。 */
+     トースト・ヒントとシステム窓(ヘルプ・セーブブラウザ・ESCメニュー)はその上に出す。 */
 /* スクロール可能な領域は既定のブラウザ配色ではダークテーマと調和しないため、
    パネルの縁色・アクセント色に揃える。 */
 #hud, #hud * { scrollbar-color: ${EDGE} transparent; }
@@ -42,6 +42,7 @@ const STYLE = `
 #hud-toast, #hud-hint { z-index: 20; }
 #hud-viewbadge { z-index: 20; }
 #hud-end, #hud-help { z-index: 30; }
+#save-browser { z-index: 40; }
 #hud-settings { z-index: 40; }
 #hud-modal-shield { display: none; position: absolute; inset: 0; z-index: 20; pointer-events: none; background: rgba(6,7,9,.3); }
 body.hud-modal-open #hud-modal-shield { display: block; }
@@ -546,6 +547,98 @@ body.hud-modal-open #touch-ui { display: none; }
 #dock-view .dock-btn-repair-all {
   font-size: 11px; padding: 4px 12px;
 }
+/* ===== SaveBrowser ===== */
+#save-browser {
+  position: fixed; inset: 0; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(6, 7, 9, 0.82); backdrop-filter: blur(3px);
+  font-family: ${FONT}; pointer-events: auto;
+}
+#save-browser .sb-panel {
+  width: min(1100px, 94vw); height: min(760px, 88vh);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: ${BG}; border: 1px solid ${EDGE}; border-radius: 8px;
+}
+#save-browser .sb-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; border-bottom: 1px solid ${EDGE}; flex: 0 0 auto;
+}
+#save-browser .sb-title { font-size: 13px; font-weight: 700; letter-spacing: 0.12em; color: ${INK}; }
+#save-browser .sb-close-btn {
+  padding: 3px 9px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: transparent; color: ${INK_SOFT}; cursor: pointer; font-size: 13px;
+}
+#save-browser .sb-close-btn:hover { color: ${INK}; border-color: ${INK_SOFT}; }
+#save-browser .sb-body { flex: 1 1 0; min-height: 0; display: flex; gap: 1px; background: ${EDGE}; }
+#save-browser .sb-pane {
+  flex: 1 1 0; min-width: 0; overflow-y: auto; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 6px; background: ${BG};
+  scrollbar-width: thin;
+}
+#save-browser .sb-pane-slots { flex: 0 0 34%; }
+#save-browser .sb-pane-title { font-size: 10px; letter-spacing: 1.5px; color: ${INK_SOFT}; }
+#save-browser .sb-empty { color: ${INK_SOFT}; padding: 12px; text-align: center; line-height: 1.7; font-size: 11px; }
+#save-browser .sb-slot-list { display: flex; flex-direction: column; gap: 4px; }
+/* アクティブ行の識別は色数を増やさず、左端 2px のオレンジ帯のみで示す。
+   「見ている」行は背景をわずかに明るくするだけで区別する。 */
+#save-browser .sb-slot-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 6px;
+  border: 1px solid ${EDGE}; border-left: 2px solid transparent; border-radius: 5px; cursor: pointer;
+}
+#save-browser .sb-slot-row.viewed { background: rgba(255,255,255,.05); }
+#save-browser .sb-slot-row.active { border-left-color: ${ACCENT}; }
+#save-browser .sb-slot-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+#save-browser .sb-slot-name { font-size: 11.5px; }
+#save-browser .sb-slot-meta { font-size: 9.5px; color: ${INK_SOFT}; }
+#save-browser .sb-slot-actions { display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-end; }
+/* 左ペインは幅が狭いので、フッターのボタンは横並びにせず縦積みにして折り返しを防ぐ。 */
+#save-browser .sb-slot-footer { display: flex; flex-direction: column; gap: 5px; margin-top: auto; padding-top: 6px; }
+#save-browser .sb-btn {
+  padding: 4px 9px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: rgba(255,255,255,.04); color: ${INK_SOFT}; cursor: pointer; font-size: 10.5px;
+  white-space: nowrap;
+}
+#save-browser .sb-btn:hover:not(:disabled) { background: rgba(255,255,255,.09); color: ${INK}; }
+#save-browser .sb-btn:disabled { opacity: 0.38; cursor: not-allowed; }
+#save-browser .sb-btn-sm { padding: 3px 6px; }
+#save-browser .sb-btn-play { color: ${INK}; border-color: ${INK_SOFT}; }
+/* このパネルで唯一の「押すと今の状態が増える」操作 — 注目させるためオレンジを残す。 */
+#save-browser #sb-capture-now {
+  background: rgba(${ACCENT_RGB},.12); color: ${ACCENT}; border-color: rgba(${ACCENT_RGB},.4);
+}
+#save-browser #sb-capture-now:hover:not(:disabled) { background: rgba(${ACCENT_RGB},.2); }
+#save-browser .sb-stage-tabs { display: flex; gap: 3px; }
+#save-browser .sb-tab-btn {
+  padding: 3px 9px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: transparent; color: ${INK_SOFT}; cursor: pointer; font-size: 10.5px;
+}
+#save-browser .sb-tab-btn.active { color: ${INK}; border-color: ${INK_SOFT}; background: rgba(255,255,255,.05); }
+#save-browser .sb-snapshot-groups { display: flex; flex-direction: column; gap: 4px; }
+#save-browser .sb-snapshot-group-title { font-size: 10px; color: ${INK_SOFT}; margin-top: 4px; }
+#save-browser .sb-snapshot-list { display: flex; flex-direction: column; gap: 4px; }
+#save-browser .sb-snap-card {
+  display: flex; flex-direction: column; gap: 3px; padding: 6px 8px;
+  border: 1px solid ${EDGE}; border-radius: 5px;
+}
+#save-browser .sb-snap-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#save-browser .sb-snap-name { font-size: 11px; }
+#save-browser .sb-snap-badge {
+  font-size: 8.5px; letter-spacing: .5px; padding: 1px 6px; border-radius: 8px;
+  border: 1px solid ${EDGE}; color: ${INK_SOFT};
+}
+#save-browser .sb-snap-badge-checkpoint { color: ${INK}; border-color: ${INK_SOFT}; }
+#save-browser .sb-snap-row { font-size: 10px; color: ${INK_SOFT}; }
+/* HP バーは細く、満タンでもオレンジで塗らない — このパネルの主役はセーブ操作であって
+   HP 表示ではないため、他の注目要素と競合しないモノトーンに留める。 */
+#save-browser .sb-snap-hp-bar { height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; }
+#save-browser .sb-snap-hp-fill { height: 100%; background: ${INK_SOFT}; }
+#save-browser .sb-snap-actions { display: flex; gap: 3px; flex-wrap: wrap; }
+/* クリップ済み(pin)状態だけは注目対象として残す — この行の意味は「消えずに残る」なので. */
+#save-browser .sb-btn-pin[data-pinned="true"] {
+  background: rgba(${ACCENT_RGB},.12); color: ${ACCENT}; border-color: rgba(${ACCENT_RGB},.4);
+}
+#save-browser .sb-status { min-height: 20px; padding: 3px 14px; font-size: 10.5px; color: ${INK_SOFT}; border-top: 1px solid ${EDGE}; }
+#save-browser .sb-status.error { color: ${WARNING}; }
 `;
 
 
