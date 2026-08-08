@@ -8,7 +8,16 @@ import { AmmoSaveData } from '../save-data';
 import { v3 } from '../../physics/vec3';
 import { orbitState } from '../../physics/orbital-state';
 
+const ID_PREFIX = 'ammo-';
 let _ammoIdCounter = 0;
+
+// 復元された id がカウンタの発番済み連番を追い越していれば、以後の新規発番と衝突しないよう
+// カウンタをその次まで進める。
+function reserveRestoredId(id: string): void {
+  if (!id.startsWith(ID_PREFIX)) return;
+  const n = Number(id.slice(ID_PREFIX.length));
+  if (Number.isFinite(n) && n >= _ammoIdCounter) _ammoIdCounter = n + 1;
+}
 
 // 軌道上の補給(接近すると取り込んでベルトを延長できる)
 export class Ammo extends GameEntity {
@@ -18,14 +27,15 @@ export class Ammo extends GameEntity {
 
   readonly id: string;
 
-  // 補給メッシュを組み立て、質量と衝突半径を設定する。id 省略時はここで一意に発番する
-  // (`Base` の `_baseIdCounter` と同じ方式)— 複数の補給が同時に存在しうるので、呼び出し側で
-  // その場しのぎの id を捏造させない。
+  // 補給メッシュを組み立て、質量と衝突半径を設定する。id 省略時はここで一意に発番し、
+  // 復元 id を渡された場合はカウンタをその番号まで追い越させる — 新規発番との衝突は
+  // どちらの経路から来た id かによらずこのクラス自身が防ぐ。
   constructor(state: OrbitState, att?: Attitude, scene?: THREE.Scene, id?: string) {
     super(state, buildAmmo(), scene, att);
     this.mass = 50;
     this.collideRadius = C.AMMO_PHYS_RADIUS;
-    this.id = id ?? `ammo-${_ammoIdCounter++}`;
+    if (id !== undefined) reserveRestoredId(id);
+    this.id = id ?? `${ID_PREFIX}${_ammoIdCounter++}`;
   }
 
   // メッシュのマテリアルも解放する。
