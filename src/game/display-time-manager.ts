@@ -2,12 +2,13 @@
 // (sliderT)・その解決(resolveDisplayTime)。
 import * as C from './const';
 import { DisplayTimePanel } from './display-time-panel';
+import { buildTicks } from './hud/tick-scale';
 import { SIM_EPOCH_SEC, fmtDateTime, fmtTime } from './hud/utils';
 
 export type DisplayDurationKey = 'orbit' | '90min' | 'day' | 'week' | 'month' | 'manual';
 
-// スライダー下の目盛りの本数(0..1 を等分する点の数)。
-const TICK_COUNT = 6;
+// パネル幅に収まる目盛りの上限本数。
+const TICK_MAX_COUNT = 6;
 
 // 固定長プリセットの秒数。キーを増やすと網羅漏れが型エラーになる。
 const FIXED_DURATION_SEC: Record<'90min' | 'day' | 'week' | 'month', number> = {
@@ -98,7 +99,7 @@ export class DisplayTimeManager {
     this.panel.setSliderSteps(this.sliderSteps());
     this.panel.setSliderValue(this.sliderT);
     this.panel.setSliderLabel(this.sliderT > 0 ? this.futureTimeLabel(this.sliderT, simTime) : null);
-    this.panel.setTicks(this.tickLabels());
+    this.panel.setTicks(buildTicks(this.lastDurationSec, TICK_MAX_COUNT));
   }
 
   // 表示期間を SLIDER_TARGET_STEP_SEC 相当の粒度で刻んだ段階数(上下限あり)。
@@ -111,15 +112,5 @@ export class DisplayTimeManager {
   private futureTimeLabel(t: number, simTime: number): string {
     const elapsed = t * this.lastDurationSec;
     return `${fmtDateTime(SIM_EPOCH_SEC + simTime + elapsed)} / T+${fmtTime(elapsed)}`;
-  }
-
-  // スライダー全域を TICK_COUNT 個に等分した各点の T+ 経過時間ラベル。目盛りは横に並ぶので
-  // 1つあたりの幅が狭く、絶対日時はスライダーラベル側だけが担う。
-  private tickLabels(): readonly string[] {
-    const labels: string[] = [];
-    for (let i = 0; i < TICK_COUNT; i++) {
-      labels.push(`T+${fmtTime((i / (TICK_COUNT - 1)) * this.lastDurationSec)}`);
-    }
-    return labels;
   }
 }
