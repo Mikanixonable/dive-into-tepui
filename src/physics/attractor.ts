@@ -90,11 +90,16 @@ export function elementsAround(s: OrbitState, body: Attractor): Elements | null 
   return elementsFromState(orbitState(s.t, rel.r, rel.v), body);
 }
 
-// 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。margin(大気圏突入高度
-// など)はゲーム側の判断なので呼び出し側から受け取る — physics/ はその値自体を知らない。
-export function hitsAnySurface(r: Vec3, bodies: readonly Attractor[], margin: number): boolean {
+// 位置 r がその表面から margin 以内まで沈み込んでいる天体。無ければ null。margin(大気圏突入
+// 高度など)はゲーム側の判断なので呼び出し側から受け取る — physics/ はその値自体を知らない。
+export function hitAttractor(r: Vec3, bodies: readonly Attractor[], margin: number): Attractor | null {
   for (const body of bodies) {
-    if (len(sub(r, body.state.r)) < body.radius + margin) return true;
+    if (len(sub(r, body.state.r)) < body.radius + margin) return body;
   }
-  return false;
+  return null;
+}
+
+// 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。
+export function hitsAnySurface(r: Vec3, bodies: readonly Attractor[], margin: number): boolean {
+  return hitAttractor(r, bodies, margin) !== null;
 }
