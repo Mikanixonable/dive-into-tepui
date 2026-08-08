@@ -1,0 +1,129 @@
+// 中心天体まわりの軌道を、黄道基準の固定ケプラー要素と角度の永年変化率で表したものの評価。
+// 恒星/惑星/衛星のどの分類にも属さない、純粋な軌道の数学 — 変化率が何に由来するかは
+// planet-orbit.ts / satellite-orbit.ts の責務。
+// 角度は平均黄経 L(公転周期でちょうど1周)→ 平均近点角 M = L − ϖ → 真近点角 ν の順に組む。
+// 昇交点・近点はどちらも歳差するので、L を軌道面内の角(昇交点からの緯度引数 u)へ直接
+// 使うと公転が歳差ぶんだけ遅速し、長期積分で位置が大きくずれる。
+import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
+import { ECL_POLE, ECL_POLE_ECI, ECL_VERNAL, Q_ECL_TO_ECI, Q_ECLY_TO_ECI, eclToEci } from './ecliptic';
+import { eccentricAnomalyFromMean, positionFromElements } from './elements';
+import { OrbitState, orbitState } from './orbital-state';
+import { Vec3, addScaled, cross, norm, scale } from './vec3';
+
+export const JULIAN_CENTURY = 100 * 365.25 * 86400; // [s]
+
+export type KeplerOrbit = {
+  readonly a: number; // t=0 の軌道長半径 [m]
+  readonly aRate: number; // 軌道長半径の変化率 [m/s]
+  readonly e: number; // t=0 の離心率
+  readonly eRate: number; // 離心率の変化率 [1/s]
+  readonly inc: number; // t=0 の黄道に対する傾斜 [rad]
+  readonly incRate: number; // 傾斜の変化率 [rad/s]
+  readonly raan0: number; // t=0 の昇交点黄経 [rad]
+  readonly raanRate: number; // 昇交点の変化率 [rad/s]
+  readonly lonPeri0: number; // t=0 の近点黄経 ϖ [rad]
+  readonly lonPeriRate: number; // 近点の変化率 [rad/s]
+  readonly l0: number; // t=0 の平均黄経 L [rad]
+  readonly lRate: number; // 平均黄経の変化率 [rad/s](= 2π/公転周期)
+};
+
+// 天体に固定した回転基準系の、ECI に対する姿勢 q と角速度 omega [rad/s](ECI 成分)。
+// 回転軸が一定とは限らないので、軸と回転角の対ではなくこの対で扱う。
+export type FrameRotation = { readonly q: Quat; readonly omega: Vec3 };
+
+type OrbitAngles = {
+  readonly a: number;
+  readonly e: number;
+  readonly inc: number;
+  readonly raan: number;
+  readonly argp: number;
+  readonly nu: number;
+  readonly nuRate: number;
+  readonly rDot: number; // 動径方向の速さ [m/s]
+  readonly u: number;
+  readonly uRate: number;
+};
+
+// ν̇ と ṙ は離心近点角 E の軌道面内座標 (a(cosE−e), a√(1−e²)sinE) を陽に時間微分して求める —
+// 標準の ν̇ = Ṁ(1+e cosν)²/(1−e²)^1.5 は a・e を定数とみなした式で、aRate/eRate ≠ 0(惑星要素の
+// 永年変化)では長半径そのものの変化、およびケプラー方程式 M = E − e sinE の e への依存ぶんが
+// Ė、ひいては ν̇/ṙ から抜け落ちる。
+function orbitAngles(orbit: KeplerOrbit, t: number, phaseOffset: number): OrbitAngles {
+  // 各要素を t=0 の値 + 永年変化率×t で t 時点へ進める。
+  const a = orbit.a + orbit.aRate * t;
+  const e = orbit.e + orbit.eRate * t;
+  const inc = orbit.inc + orbit.incRate * t;
+  const raan = orbit.raan0 + orbit.raanRate * t;
+  const lonPeri = orbit.lonPeri0 + orbit.lonPeriRate * t;
+  const L = orbit.l0 + phaseOffset + orbit.lRate * t;
+  const M = L - lonPeri;
+  const mRate = orbit.lRate - orbit.lonPeriRate;
+
+  // ケプラー方程式 M = E − e·sinE を解き、その両辺を陰関数微分して Ė を得る。
+  const E = eccentricAnomalyFromMean(M, e);
+  const cosE = Math.cos(E);
+  const sinE = Math.sin(E);
+  const eDot = orbit.eRate;
+  const eccAnomRate = (mRate + eDot * sinE) / (1 - e * cosE); // Ė(ケプラー方程式の陰関数微分)
+
+  // 軌道面内座標 (x,y) = a(cosE−e, √(1−e²)sinE) とその時間微分から ν̇/ṙ を導く。
+  const sqrt1me2 = Math.sqrt(1 - e * e);
+  const x = a * (cosE - e);
+  const y = a * sqrt1me2 * sinE;
+  const xDot = orbit.aRate * (cosE - e) + a * (-sinE * eccAnomRate - eDot);
+  const yDot = orbit.aRate * sqrt1me2 * sinE
+    + a * ((-e * eDot / sqrt1me2) * sinE + sqrt1me2 * cosE * eccAnomRate);
+
+  const r = Math.hypot(x, y);
+  const nu = Math.atan2(y, x);
+  const nuRate = (x * yDot - y * xDot) / (r * r);
+  const rDot = (x * xDot + y * yDot) / r;
+
+  // 昇交点からの緯度引数 u とその変化率は、真近点角と近点・昇交点の歳差の和。
+  const argp = lonPeri - raan;
+  const u = nu + argp;
+  const uRate = nuRate + (orbit.lonPeriRate - orbit.raanRate);
+  return { a, e, inc, raan, argp, nu, nuRate, rDot, u, uRate };
+}
+
+// 軌道面の法線(単位ベクトル、ECI)。黄道面に対し inc 傾き、その昇交点が raanRate で歳差する
+// ので向きは時刻とともに変わる。
+function normalFromAngles(a: OrbitAngles): Vec3 {
+  return eclToEci(Math.sin(a.raan) * Math.sin(a.inc), -Math.cos(a.raan) * Math.sin(a.inc), Math.cos(a.inc));
+}
+
+// この軌道に固定した回転基準系(x̂ = 中心→自分、ẑ = 軌道面法線)。
+// 姿勢は Rz(Ω)·Rx(inc)·Rz(u) を ECI へ移したもの。角速度は3-1-3オイラー角の合成則により
+// 「黄道極まわりの昇交点歳差」+「昇交点方向まわりの傾斜変化」+「軌道面法線まわりの公転」の和。
+function rotationFromAngles(orbit: KeplerOrbit, a: OrbitAngles): FrameRotation {
+  const q = qMul(Q_ECL_TO_ECI, qMul(
+    qFromAxisAngle(ECL_POLE, a.raan),
+    qMul(qFromAxisAngle(ECL_VERNAL, a.inc), qFromAxisAngle(ECL_POLE, a.u)),
+  ));
+  const node = eclToEci(Math.cos(a.raan), Math.sin(a.raan), 0);
+  const normal = normalFromAngles(a);
+  const omega = addScaled(addScaled(scale(ECL_POLE_ECI, orbit.raanRate), node, orbit.incRate), normal, a.uRate);
+  return { q, omega };
+}
+
+// 中心天体中心・ECI 軸での状態。軌道は要素と平均黄経の変化率だけで決まるので、中心天体の
+// 重力定数は要らない(lRate が平均運動そのもの)。
+// 速度は、軌道面内の動径変化(ṙ·r̂)と回転基準系自身の角速度による見かけの移動(omega×r)の
+// 和として組む — 後者が昇交点・近点の歳差ぶんの寄与を担う。
+export function keplerOrbitState(orbit: KeplerOrbit, t: number, phaseOffset: number): OrbitState {
+  const a = orbitAngles(orbit, t, phaseOffset);
+  const r = qRotate(Q_ECLY_TO_ECI, positionFromElements(a.a, a.e, a.inc, a.raan, a.argp, a.nu));
+  const { omega } = rotationFromAngles(orbit, a);
+  const v = addScaled(cross(omega, r), norm(r), a.rDot);
+  return orbitState(t, r, v);
+}
+
+// この軌道に固定した回転基準系の t 時点の姿勢・角速度。
+export function keplerOrbitRotation(orbit: KeplerOrbit, t: number, phaseOffset: number): FrameRotation {
+  return rotationFromAngles(orbit, orbitAngles(orbit, t, phaseOffset));
+}
+
+// 軌道面の法線(単位ベクトル、ECI)。
+export function keplerOrbitNormal(orbit: KeplerOrbit, t: number, phaseOffset: number): Vec3 {
+  return normalFromAngles(orbitAngles(orbit, t, phaseOffset));
+}

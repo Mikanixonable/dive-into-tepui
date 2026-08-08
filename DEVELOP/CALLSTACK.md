@@ -302,13 +302,13 @@
     - focusMarkers.hideLabels() // !overviewMode のみ
   - project / overviewMode / simTime / bodies(= ephemeris.attractorsAt(simTime)) / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
   - environment.sync()
-    - syncEarth() → earth.group.position / earth.setRotation() / earth.tick()
-    - syncSkyBodies()
-      - earth.setSunDir() / starsMesh の位置・スケール / sun.billboard.sync() / sunLight.position
-      - moonMesh を実 ECI 位置へ配置 // overviewMode(実スケール表示)
-      - placeCombatMoon() // !overviewMode(カメラ相対の圧縮距離)
-      - moonMesh.lookAt() // 常に
-    - syncLighting() // 自機位置の日照率で sunLight/ambient の強度を上書き
+    - sunBody.setSunlit(lit) // lit = sunlitFactor(playerPos, ephemeris.sunDirAt(displayTime), …)。overviewMode では 1.0 固定
+    - [bodies(= CELESTIAL_VIEWS 登録順の CelestialBody[])ごと] body.sync(fo, displayTime, cameraSystem, ephemeris)
+      - EarthBody.sync() → earth.group.position / earth.setRotation() / earth.setSunDir() / earth.tick()
+      - SunBody.sync() → billboard 位置(カメラ相対の圧縮距離)+ sunLight.position・intensity(setSunlit の lit 反映)
+      - PlanetBody.sync()(月・木星) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。mesh.lookAt() は常に
+    - ambient.intensity 更新 // lit から導出
+    - syncStars() // starsMesh をカメラへ追従、overviewMode でさらに拡大
     - syncReferenceLines() → geoLine.sync() + moonLine.sync() // !overviewMode では両方 null 渡しで非表示
     - celestialGrid.sync() // navball.gridVisibility の6トグルと overviewMode に応じたスケールを反映
     - [entities.players ごと] ship.syncPlayer(displayTime, isActive = ship===player)
@@ -428,10 +428,9 @@
 - **`TouchControls` は per-frame の update を持たない**。DOM の pointer イベントから
   `input.setVirtualKey()` を呼ぶだけで、per-frame の接点は `game.sync` からの
   `syncModeButtons()`(トグル点灯)だけ。
-- **`Ephemeris` は per-frame の状態更新を持たない**。各所が `*At(t)` を呼ぶだけなので更新順序の
-  制約が無い。`sunPosAt`/`moonPosAt` は直近に引いた時刻と結果を持つが、返す `Vec3` が不変なので
-  呼び出し側からは毎回計算するのと区別できない(1サブステップ内では全エンティティが同じ時刻を
-  引くので、これで再計算がほぼ消える)。
+- **`Ephemeris` は per-frame の状態更新もキャッシュも持たない**。各所が `stateOf`/`positionOf`/
+  `attractorsAt` などを呼ぶたび、恒星→惑星-衛星系重心→惑星/衛星の合成をゼロから評価する。
+  更新順序の制約が無いのはこのため。
 - **HUD マーカーは持ち主の `sync` が自分で出す**。`game.sync` に並ぶのは「1つの対象では決められない」
   ものだけ(`enemyMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存)で、残りは
   `player.syncPlayer` / `targeter.sync` / `navTarget.sync` / `activeStage.sync` / `cameraSystem.sync` /

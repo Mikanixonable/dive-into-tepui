@@ -9,7 +9,7 @@ import { OrbitEntity } from '../../src/physics/orbit-entity';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { len, sub, v3 } from '../../src/physics/vec3';
 
-const EPH = new Ephemeris(0, 0); // 初期位相を固定して決定的にする
+const EPH = new Ephemeris({ moon: 0 }); // 初期位相を固定して決定的にする
 const bodiesAt = (t: number) => EPH.attractorsAt(t); // step() が要求する重力源をステップ中点で引く
 
 function circularState(t = 0): OrbitState {

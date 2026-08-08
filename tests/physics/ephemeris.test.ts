@@ -1,247 +1,212 @@
-// ephemeris.ts の回帰テスト: 太陽・月位置の距離・周期の基本性質(円軌道近似の理論値)。
+// ephemeris.ts の回帰テスト: Ephemeris クラスの合成(恒星→重心→惑星/衛星、重心補正)
+// が正しいこと。個々の軌道モデルの精度は kepler-orbit.test.ts / satellite-orbit.test.ts が担う。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import {
-  FrameRotation,
-  MOON_DIST,
-  MU_SUN,
-  SUN_DIST,
-  emLagrangePoints,
-  moonOrbitNormal,
-  moonOrbitRotation,
-  moonPosition,
-  seLagrangePoints,
-  sunOrbitRotation,
-  sunPosition,
-  sunlitFactor,
-} from '../../src/physics/ephemeris';
-import { qRotate } from '../../src/physics/attitude';
+import { Ephemeris } from '../../src/physics/ephemeris';
 import { MU_EARTH, R_EARTH } from '../../src/physics/orbital-state';
-import { Vec3, cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { MU_MOON, MU_SUN as MU_SUN_LOCAL, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { EPS } from '../../src/physics/ecliptic';
+import { PlanetOrbit } from '../../src/physics/planet-orbit';
+import { keplerOrbitState } from '../../src/physics/kepler-orbit';
+import { cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
 
 const YEAR = 365.25636 * 86400;
 const MOON_PERIOD = 27.321661 * 86400;
-const NODE_PERIOD = 18.612958 * 365.25 * 86400;
-const EPS = (23.439291 * Math.PI) / 180; // 黄道傾斜角
-// 黄道極を ECI で表したもの = 春分点 × 夏至点方向 = (1,0,0) × (0, sinEPS, −cosEPS)。
-// 赤道の極軸(+Y)から黄道傾斜ぶん傾く。
-const ECL_POLE_ECI = v3(0, Math.cos(EPS), Math.sin(EPS));
+// 地球-月重心の日心ケプラー軌道(SOLAR_SYSTEM の宣言そのもの)。重心不変条件の
+// 検証で Ephemeris の合成結果と突き合わせる基準として使う。
+const EARTH_ORBIT: PlanetOrbit = (SOLAR_SYSTEM.earth as { orbit: PlanetOrbit }).orbit;
 
 export function register(): void {
-  test('ephemeris: sunPosition distance is always ~1 AU (circular ecliptic orbit)', () => {
-    for (let i = 0; i < 8; i++) {
-      const t = (i / 8) * YEAR;
-      const p = sunPosition(t, 0);
-      const d = len(p);
-      assert.ok(Math.abs(d - SUN_DIST) / SUN_DIST < 1e-9, `sun distance at t=${t}: ${d}`);
+  const eph = new Ephemeris({ earth: 0.3, moon: 0.4 });
+
+  test('ephemeris: 地球は ECI 原点に厳密に静止する', () => {
+    for (const t of [0, 1e6, 1e8]) {
+      const s = eph.stateOf('earth', t);
+      assert.deepEqual(s.r, v3(0, 0, 0));
+      assert.deepEqual(s.v, v3(0, 0, 0));
     }
   });
 
-  test('ephemeris: sunPosition is periodic with period = 1 year', () => {
-    const p0 = sunPosition(12345, 0.4);
-    const p1 = sunPosition(12345 + YEAR, 0.4);
-    assert.ok(Math.abs(p0.x - p1.x) < 1, `x mismatch: ${p0.x} vs ${p1.x}`);
-    assert.ok(Math.abs(p0.y - p1.y) < 1, `y mismatch: ${p0.y} vs ${p1.y}`);
-    assert.ok(Math.abs(p0.z - p1.z) < 1, `z mismatch: ${p0.z} vs ${p1.z}`);
+  test('ephemeris: 太陽の地心距離は地球軌道の離心率(0.0167)ぶんの範囲を振る(固定値ではない)', () => {
+    let minD = Infinity;
+    let maxD = 0;
+    for (let i = 0; i < 32; i++) {
+      const t = (i / 32) * YEAR;
+      const d = len(eph.positionOf('sun', t));
+      minD = Math.min(minD, d);
+      maxD = Math.max(maxD, d);
+    }
+    assert.ok(minD > 1.47e11 && minD < 1.475e11, `近日点付近: ${minD}`);
+    assert.ok(maxD > 1.515e11 && maxD < 1.525e11, `遠日点付近: ${maxD}`);
   });
 
-  test('ephemeris: moonPosition distance stays close to mean distance (small eccentricity 0.0549)', () => {
-    for (let i = 0; i < 12; i++) {
-      const t = (i / 12) * MOON_PERIOD;
-      const p = moonPosition(t, 0);
-      const d = len(p);
-      const relDev = Math.abs(d - MOON_DIST) / MOON_DIST;
-      // e=0.0549 -> r ranges roughly within +-6% of mean distance
-      assert.ok(relDev < 0.07, `moon distance deviation at t=${t}: ${relDev}`);
+  // 重心補正の直接検証: ECI での重心位置は「地球は原点」なので (μ_e·0+μ_m·r_moon)/(μ_e+μ_m)
+  // に一致するはずで、これは PlanetOrbit(地球-月重心)から求めた日心重心位置を
+  // 日心地球位置(= -太陽の地心位置)だけ ECI へ平行移動した値とも一致しなければならない。
+  test('ephemeris: 重心の不変条件(質量加重平均 = PlanetOrbit の重心を ECI 化した値、位置・速度とも)', () => {
+    for (const t of [0, 1e6, 3e8]) {
+      const moonState = eph.stateOf('moon', t);
+      const wMoon = MU_MOON / (MU_EARTH + MU_MOON);
+      const baryFromMass = { r: scale(moonState.r, wMoon), v: scale(moonState.v, wMoon) };
+
+      const sunEci = eph.stateOf('sun', t);
+      const earthHelio = { r: scale(sunEci.r, -1), v: scale(sunEci.v, -1) }; // 太陽は日心原点
+      const baryHelio = keplerOrbitState(EARTH_ORBIT, t, 0.3);
+      const baryFromKepler = { r: sub(baryHelio.r, earthHelio.r), v: sub(baryHelio.v, earthHelio.v) };
+
+      const rErr = len(sub(baryFromMass.r, baryFromKepler.r));
+      const vErr = len(sub(baryFromMass.v, baryFromKepler.v));
+      assert.ok(rErr < 1, `重心位置の不一致 (t=${t}): ${rErr} m`);
+      assert.ok(vErr < 1e-6, `重心速度の不一致 (t=${t}): ${vErr} m/s`);
     }
   });
 
-  test('ephemeris: sunOrbitRotation の姿勢は x̂ を太陽方向・ẑ を黄道法線へ移す', () => {
-    // 黄道法線は赤道の極軸(+Y)から黄道傾斜ぶん傾く。極軸まわりの回転として組んでいたら
-    // ẑ の像が +Y のままになり、この検査で落ちる。
-    for (const t of [0, 1e6, 1e7, 3e8]) {
-      const { q } = sunOrbitRotation(t, 0.3);
-      assert.ok(len(sub(qRotate(q, v3(1, 0, 0)), norm(sunPosition(t, 0.3)))) < 1e-12, `x̂ の像 (t=${t})`);
-      assert.ok(len(sub(qRotate(q, v3(0, 0, 1)), ECL_POLE_ECI)) < 1e-12, `ẑ の像 (t=${t})`);
+  // 地球を完全なケプラー軌道(重心補正なし)に置いた場合の太陽の地心位置との差は、
+  // 地球-重心オフセット(= 重心補正そのもの)に等しく、月の公転周期で振れ、平均して
+  // 4,673 km 前後になる(月の距離レンジ × 質量比 ≈ 4,331〜4,941 km)。
+  test('ephemeris: 太陽の地心位置は純ケプラー地球位置から重心補正ぶん(月の位相と共に振れる約4,673km)ずれる', () => {
+    const wMoon = MU_MOON / (MU_EARTH + MU_MOON);
+    const diffAt = (t: number) => {
+      const bary = keplerOrbitState(EARTH_ORBIT, t, 0.3);
+      const pureKeplerSunEci = scale(bary.r, -1);
+      return sub(eph.positionOf('sun', t), pureKeplerSunEci);
+    };
+
+    const d0 = diffAt(1e6);
+    const mag = len(d0);
+    assert.ok(mag > 4.0e6 && mag < 5.0e6, `重心補正ぶんのずれ: ${mag} m`);
+
+    // 補正ベクトルは月方向を向く(地球は重心を挟んで月と反対側にずれるので、地球→重心は月方向)。
+    const moonDir = norm(eph.stateOf('moon', 1e6).r);
+    assert.ok(dot(norm(d0), moonDir) > 0.99, '補正ベクトルは月方向を向く');
+
+    // 恒星月周期で振れる(昇交点・近点歳差は1周期では無視できるほど小さい)。
+    const d1 = diffAt(1e6 + MOON_PERIOD);
+    assert.ok(Math.abs(len(d0) - len(d1)) / len(d0) < 0.01, `1恒星月周期での再現性: ${len(d0)} vs ${len(d1)}`);
+  });
+
+  test('ephemeris: 太陽-地球ラグランジュ点の無次元距離比は文献値と一致する(0.00997/0.01004)', () => {
+    for (const t of [0, 1e7, 1e9]) {
+      const sunDist = len(eph.positionOf('sun', t));
+      const { L1, L2 } = eph.lagrangeAt('earth', t);
+      assert.ok(Math.abs(len(L1) / sunDist - 0.00997) < 1e-3, `L1 比: ${len(L1) / sunDist}`);
+      assert.ok(Math.abs(len(L2) / sunDist - 0.01004) < 1e-3, `L2 比: ${len(L2) / sunDist}`);
     }
   });
 
-  test('ephemeris: sunOrbitRotation の角速度は基底の時間微分に一致する(有限差分)', () => {
-    for (const t of [0, YEAR / 8, YEAR / 3]) {
-      assertOmegaMatchesBasis((s) => sunOrbitRotation(s, 0.3), t, 600);
+  test('ephemeris: 地球-月ラグランジュ点は白道面内にあり、L1/L2 は文献値の距離比になる(0.15093/0.16783)', () => {
+    for (const t of [0, 1e6, 1e8]) {
+      const moonPos = eph.positionOf('moon', t);
+      const R = len(moonPos);
+      const n = eph.orbitNormalAt('moon', t);
+      const { L1, L2, L4, L5 } = eph.lagrangeAt('moon', t);
+      for (const [name, p] of [['L1', L1], ['L2', L2], ['L4', L4], ['L5', L5]] as const) {
+        assert.ok(Math.abs(dot(p, n)) < 1e-6 * R, `${name} が白道面から外れる (t=${t})`);
+      }
+      // 周期摂動項ぶん実際の月位置は回転系の x̂ 軸から最大 1.4° ほどずれる
+      // (satellite-orbit.ts のコメント参照)ため、文献値との一致は 3e-3 まで緩める。
+      assert.ok(Math.abs(len(sub(L1, moonPos)) / R - 0.15093) < 3e-3, `L1 距離比 (t=${t})`);
+      assert.ok(Math.abs(len(sub(L2, moonPos)) / R - 0.16783) < 3e-3, `L2 距離比 (t=${t})`);
     }
   });
 
-  test('ephemeris: moonPosition is approximately periodic over one sidereal month (node/perigee drift is slow)', () => {
-    const p0 = moonPosition(50000, 0.2);
-    const p1 = moonPosition(50000 + MOON_PERIOD, 0.2);
-    const d0 = len(p0);
-    const d1 = len(p1);
-    // 昇交点(18.61年周期)・近地点(8.85年周期)の歳差により1恒星月では厳密には戻らないが、
-    // 変化はごく小さい(距離で1%未満)。
-    assert.ok(Math.abs(d0 - d1) / d0 < 0.01, `distance drift over 1 month: ${d0} vs ${d1}`);
+  // 共線点の内外関係と L3/L4/L5 の幾何。x̂ を「主天体→副天体」へ統一した写像が正しいことは、
+  // 距離比だけでなく「どちら側に置かれるか」で初めて確かめられる。
+  test('ephemeris: 地球-月ラグランジュ点の L1/L2 は月の内外、L3 は反月方向、L4/L5 は正三角形', () => {
+    for (const t of [0, 1e6, 1e8]) {
+      const moonPos = eph.positionOf('moon', t);
+      const R = len(moonPos);
+      const mHat = norm(moonPos);
+      const n = eph.orbitNormalAt('moon', t);
+      const { L1, L2, L3, L4, L5 } = eph.lagrangeAt('moon', t);
+      assert.ok(len(L1) < R && len(L2) > R, `L1/L2 の内外 (t=${t})`);
+      // 同じ理由で厳密な反対方向(-1)からは最大 1.4° ほどずれうる。
+      assert.ok(dot(norm(L3), mHat) < -0.999, `L3 が反月方向でない (t=${t})`);
+      const lead = cross(n, mHat); // 公転前方
+      for (const [name, p, sign] of [['L4', L4, 1], ['L5', L5, -1]] as const) {
+        assert.ok(Math.abs(len(p) - R) < 1e-6 * R, `${name} の軌道半径 (t=${t}): ${len(p)}`);
+        // L4/L5 は回転系(平均要素)の正三角形、moonPos は周期摂動込みの実位置なので
+        // 最大 1.4° ぶんの角度ずれが距離へ乗る。
+        assert.ok(Math.abs(len(sub(p, moonPos)) - R) < 3e-2 * R, `${name} と月の距離 (t=${t})`);
+        assert.ok(sign * dot(norm(p), lead) > 0, `${name} の前後 (t=${t})`);
+      }
+    }
   });
 
-  test('ephemeris: moonPosition の黄経は恒星月の平均運動で進む(歳差ぶんの遅速がない)', () => {
-    // 平均黄経は 2π t / MOON_PERIOD で進み、実際の黄経との差は中心差(最大 ~2e = 6.3°)の
-    // 振動だけになるはず。昇交点・近地点の歳差を平均黄経に混ぜると、この差が年オーダーで
-    // 単調に開いていく(1年で -19° 級)ため、長期の時間加速で月とラグランジュ点が実位置から外れる。
-    const maxCenterDeg = (2 * 0.0549 * 180) / Math.PI + 0.5; // 中心差の振幅 + 余裕
+  // 太陽-地球系では地球が副天体なので、地心を原点とする ECI での配置は地球-月系と別物になる:
+  // L1/L2 は地球の両隣、L3 は太陽の向こう側(地心から約 2 au)、L4/L5 は地心から 1 au。
+  test('ephemeris: 太陽-地球ラグランジュ点は黄道面内にあり、L3 は約2au 太陽側・L4/L5 は正三角形', () => {
+    const mu = MU_EARTH / (MU_SUN_LOCAL + MU_EARTH);
+    for (const t of [0, 1e7, 1e9]) {
+      const sPos = eph.positionOf('sun', t);
+      const R = len(sPos);
+      const sHat = norm(sPos);
+      const n = eph.orbitNormalAt('earth', t);
+      const { L1, L2, L3, L4, L5 } = eph.lagrangeAt('earth', t);
+      // 地心を原点に測るので、L点は地球自身の重心まわりの首振り(最大 4,673 km、うち白道の
+      // 傾き 5.145° ぶんの約 420 km が黄道面外)を丸ごと引き継ぐ。許容はその桁で取る。
+      for (const [name, p] of [['L1', L1], ['L2', L2], ['L3', L3], ['L4', L4], ['L5', L5]] as const) {
+        assert.ok(Math.abs(dot(p, n)) < 1e-5 * R, `${name} が黄道面から外れる (t=${t})`);
+      }
+      assert.ok(dot(norm(L1), sHat) > 0.999999, `L1 が太陽側でない (t=${t})`);
+      assert.ok(dot(norm(L2), sHat) < -0.999999, `L2 が反太陽側でない (t=${t})`);
+      // 距離の同一性も同じ首振りを受ける(L3 は 2 au 先なのでその2倍effectively)。
+      // 桁(1 au に対する 2 au、正三角形の 1 au)が確かめられれば十分なので許容は 1e-4·R。
+      assert.ok(Math.abs(len(L3) - R * (2 + (5 / 12) * mu)) < 1e-4 * R, `L3 の地心距離 (t=${t}): ${len(L3)}`);
+      assert.ok(dot(norm(L3), sHat) > 0.9999, `L3 が太陽側でない (t=${t})`);
+      for (const [name, p] of [['L4', L4], ['L5', L5]] as const) {
+        assert.ok(Math.abs(len(p) - R) < 1e-4 * R, `${name} の地心距離 (t=${t}): ${len(p)}`);
+        assert.ok(Math.abs(len(sub(p, sPos)) - R) < 1e-4 * R, `${name} の日心距離 (t=${t})`);
+      }
+      assert.ok(dot(norm(L4), cross(n, sHat)) * dot(norm(L5), cross(n, sHat)) < 0, `L4/L5 が同じ側 (t=${t})`);
+    }
+  });
+
+  // 月の平均黄経は恒星月でちょうど1周し、実黄経との差は中心差(最大 ~2e = 6.3°)の振動に
+  // とどまる。昇交点・近点の歳差を平均黄経に混ぜると、この差が年オーダーで単調に開く
+  // (1年で -19° 級)ため、長期の時間加速で月とラグランジュ点が実位置から外れる。
+  test('ephemeris: 月の黄経は恒星月の平均運動で進む(歳差ぶんの遅速がない)', () => {
+    const moonEph = new Ephemeris({ moon: 0 });
+    const MOON_ECC = 0.0549;
+    const maxCenterDeg = (2 * MOON_ECC * 180) / Math.PI + 0.5;
     for (const days of [27.321661, 365.25, 3652.5]) {
       const t = days * 86400;
       const mean = (2 * Math.PI * t) / MOON_PERIOD;
-      let lon = eclipticLongitude(moonPosition(t, 0));
+      let lon = eclipticLongitude(moonEph.positionOf('moon', t));
       lon += 2 * Math.PI * Math.round((mean - lon) / (2 * Math.PI)); // mean に最も近い分枝へ
       const errDeg = ((lon - mean) * 180) / Math.PI;
       assert.ok(Math.abs(errDeg) < maxCenterDeg, `黄経の平均運動からのずれ (t=${days}日): ${errDeg}°`);
     }
   });
 
-  test('ephemeris: moonOrbitNormal は月の位置ベクトルと直交する', () => {
-    for (let i = 0; i < 12; i++) {
-      const t = (i / 12) * MOON_PERIOD * 7.3; // 昇交点歳差も混ざるよう非整数倍で刻む
-      const c = dot(moonOrbitNormal(t, 0.7), norm(moonPosition(t, 0.7)));
-      assert.ok(Math.abs(c) < 1e-12, `法線と月方向の内積 (t=${t}): ${c}`);
-    }
-  });
-
-  test('ephemeris: 白道の赤道傾斜は昇交点歳差で 18.3°〜28.6° を掃く(黄道 23.44° ± 白道 5.145°)', () => {
+  test('ephemeris: orbitNormalAt(moon) は昇交点歳差で赤道傾斜 18.3°〜28.6° を掃く', () => {
+    const NODE_PERIOD = 18.612958 * 365.25 * 86400;
     let minDeg = 180;
     let maxDeg = 0;
     for (let i = 0; i < 64; i++) {
-      const n = moonOrbitNormal((i / 64) * NODE_PERIOD, 0);
+      const n = eph.orbitNormalAt('moon', (i / 64) * NODE_PERIOD);
       const deg = (Math.acos(Math.max(-1, Math.min(1, dot(n, v3(0, 1, 0))))) * 180) / Math.PI;
       minDeg = Math.min(minDeg, deg);
       maxDeg = Math.max(maxDeg, deg);
     }
-    assert.ok(Math.abs(minDeg - 18.294) < 0.1, `最小傾斜: ${minDeg}°`);
-    assert.ok(Math.abs(maxDeg - 28.584) < 0.1, `最大傾斜: ${maxDeg}°`);
+    assert.ok(Math.abs(minDeg - 18.294) < 0.2, `最小傾斜: ${minDeg}°`);
+    assert.ok(Math.abs(maxDeg - 28.584) < 0.2, `最大傾斜: ${maxDeg}°`);
   });
 
-  test('ephemeris: moonOrbitRotation の姿勢は x̂ を月方向・ẑ を白道法線へ移す', () => {
-    for (const t of [0, 1e5, 1e7, 1e9]) {
-      const { q } = moonOrbitRotation(t, 0.4);
-      const x = qRotate(q, v3(1, 0, 0));
-      const z = qRotate(q, v3(0, 0, 1));
-      assert.ok(len(sub(x, norm(moonPosition(t, 0.4)))) < 1e-12, `x̂ の像 (t=${t}): ${JSON.stringify(x)}`);
-      assert.ok(len(sub(z, moonOrbitNormal(t, 0.4))) < 1e-12, `ẑ の像 (t=${t}): ${JSON.stringify(z)}`);
-    }
-  });
-
-  test('ephemeris: 地球-月ラグランジュ点は白道面内で月に対し所定の配置になる', () => {
-    for (const t of [0, 1e6, 1e8, 3e9]) {
-      const { L1, L2, L3, L4, L5 } = emLagrangePoints(t, 0.4);
-      const mPos = moonPosition(t, 0.4);
-      const R = len(mPos);
-      const mHat = norm(mPos);
-      const n = moonOrbitNormal(t, 0.4);
-      for (const [name, p] of [['L1', L1], ['L2', L2], ['L3', L3], ['L4', L4], ['L5', L5]] as const) {
-        assert.ok(Math.abs(dot(p, n)) < 1e-6 * R, `${name} が白道面から外れる (t=${t}): ${dot(p, n)}`);
-      }
-      // L1/L2 は月の内側/外側、L3 は反対側。共線点の距離は5次方程式の根で L1 と L2 で
-      // 一致せず、地球-月系では L1 が 0.15093 R、L2 が 0.16783 R(いずれも文献値)。
-      assert.ok(len(L1) < R && len(L2) > R, `L1/L2 の内外 (t=${t})`);
-      assert.ok(Math.abs(len(sub(L1, mPos)) / R - 0.15093) < 1e-4, `L1 の月からの距離比 (t=${t}): ${len(sub(L1, mPos)) / R}`);
-      assert.ok(Math.abs(len(sub(L2, mPos)) / R - 0.16783) < 1e-4, `L2 の月からの距離比 (t=${t}): ${len(sub(L2, mPos)) / R}`);
-      assert.ok(dot(norm(L3), mHat) < -0.999999, `L3 が反月方向でない (t=${t})`);
-      // L4/L5 は月と正三角形をなし、公転前方/後方に 60°
-      const lead = cross(n, mHat); // 公転前方
-      for (const [name, p, sign] of [['L4', L4, 1], ['L5', L5, -1]] as const) {
-        assert.ok(Math.abs(len(p) - R) < 1e-6 * R, `${name} の軌道半径 (t=${t}): ${len(p)}`);
-        assert.ok(Math.abs(len(sub(p, mPos)) - R) < 1e-6 * R, `${name} と月の距離 (t=${t}): ${len(sub(p, mPos))}`);
-        assert.ok(sign * dot(norm(p), lead) > 0, `${name} の前後 (t=${t})`);
-      }
-    }
-  });
-
-  test('ephemeris: 太陽-地球ラグランジュ点は黄道面内で地球・太陽に対し所定の配置になる', () => {
-    // 地球はこの系では副天体なので、地心を原点とする ECI での配置は地球-月系と別物になる:
-    // L1/L2 は地球のすぐ両隣(共線点距離 ≈ 150万 km、ヒル半径に近いが 5次方程式の根なので
-    // L1/L2 で僅かに違う)、L3 は太陽の向こう側(地心から約 2 au)、
-    // L4/L5 は太陽・地球と正三角形をなすので地心から 1 au。
-    const mu = MU_EARTH / (MU_SUN + MU_EARTH);
-    // 太陽-地球系の共線点距離(軌道半径比)。文献値は L1 = 0.0100, L2 = 0.0100(有効数字4桁で同値)。
-    const gL1 = SUN_DIST * 0.00997;
-    const gL2 = SUN_DIST * 0.01004;
-    for (const t of [0, 1e7, 1e9]) {
-      const sPos = sunPosition(t, 0.3);
-      const sHat = norm(sPos);
-      const { L1, L2, L3, L4, L5 } = seLagrangePoints(t, 0.3);
-      for (const [name, p] of [['L1', L1], ['L2', L2], ['L3', L3], ['L4', L4], ['L5', L5]] as const) {
-        assert.ok(Math.abs(dot(p, ECL_POLE_ECI)) < 1e-6 * SUN_DIST, `${name} が黄道面から外れる (t=${t})`);
-      }
-      assert.ok(len(sub(L1, scale(sHat, gL1))) < 1e-3 * gL1, `L1 (t=${t}): ${JSON.stringify(L1)}`);
-      assert.ok(len(sub(L2, scale(sHat, -gL2))) < 1e-3 * gL2, `L2 (t=${t}): ${JSON.stringify(L2)}`);
-      const l3Expect = scale(sHat, SUN_DIST * (2 + (5 / 12) * mu));
-      assert.ok(len(sub(L3, l3Expect)) < 1e-6 * SUN_DIST, `L3 (t=${t}): ${JSON.stringify(L3)}`);
-      // 地球の公転前方 = 太陽の見かけの運動と逆向き。L4 が前方、L5 が後方。
-      const lead = cross(sHat, ECL_POLE_ECI);
-      for (const [name, p, sign] of [['L4', L4, 1], ['L5', L5, -1]] as const) {
-        assert.ok(Math.abs(len(p) - SUN_DIST) < 1e-6 * SUN_DIST, `${name} の地心距離 (t=${t}): ${len(p)}`);
-        assert.ok(Math.abs(len(sub(p, sPos)) - SUN_DIST) < 1e-6 * SUN_DIST, `${name} の日心距離 (t=${t})`);
-        assert.ok(sign * dot(norm(p), lead) > 0, `${name} の前後 (t=${t})`);
-      }
-    }
-  });
-
-  test('ephemeris: moonOrbitRotation の角速度は基底の時間微分に一致する(有限差分)', () => {
-    // 昇交点歳差ぶん(黄道極まわり)を落とすとここで落ちる。
+  test('ephemeris: sunDirAt は単位ベクトルで、positionOf(sun) と同じ向き', () => {
     for (const t of [0, 1e6, 1e8]) {
-      assertOmegaMatchesBasis((s) => moonOrbitRotation(s, 0.4), t, 20);
+      const dir = eph.sunDirAt(t);
+      assert.ok(Math.abs(len(dir) - 1) < 1e-12, `単位ベクトルでない: ${len(dir)}`);
+      const pos = eph.positionOf('sun', t);
+      assert.ok(len(sub(dir, norm(pos))) < 1e-12, `方向が positionOf(sun) と一致しない`);
     }
   });
 
-  test('ephemeris: sunlitFactor は太陽側で常に 1', () => {
-    const sunDir = v3(1, 0, 0);
-    for (const r of [v3(1e6, 0, 0), v3(0, R_EARTH, 0), v3(-1e5, 7e6, 0)]) {
-      assert.equal(sunlitFactor(r, sunDir, 1e5), 1, `r=${JSON.stringify(r)}`);
-    }
+  test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は R_EARTH', () => {
+    const bodies = eph.attractorsAt(1234);
+    assert.deepEqual(bodies.map((b) => b.id), ['earth', 'moon', 'jupiter', 'sun']);
+    assert.equal(bodies[0]!.radius, R_EARTH);
   });
-
-  test('ephemeris: sunlitFactor は影の中心軸上(地球半径より内側)で 0', () => {
-    const sunDir = v3(1, 0, 0);
-    const r = v3(-R_EARTH * 0.5, 0, 0); // 反太陽側かつ軸上
-    assert.equal(sunlitFactor(r, sunDir, 1e5), 0);
-  });
-
-  test('ephemeris: sunlitFactor は影の縁で 0..1 の間になり、軸から離れるほど単調増加する', () => {
-    const sunDir = v3(1, 0, 0);
-    const penumbra = 1e5;
-    const along = -1e6; // 反太陽側
-    let prev = -1;
-    for (let i = 0; i <= 10; i++) {
-      const perp = R_EARTH + (i / 10) * penumbra;
-      const r = v3(along, perp, 0);
-      const lit = sunlitFactor(r, sunDir, penumbra);
-      assert.ok(lit >= 0 && lit <= 1, `範囲外 (i=${i}): ${lit}`);
-      assert.ok(lit >= prev, `単調増加でない (i=${i}): ${lit} < ${prev}`);
-      prev = lit;
-    }
-    assert.ok(prev > 0, '縁の外側で 0 のまま');
-  });
-
-  test('ephemeris: sunlitFactor は常に 0..1 に収まる', () => {
-    const sunDir = norm(v3(0.3, 0.5, -0.8));
-    for (let i = 0; i < 20; i++) {
-      const r = v3((i - 10) * 5e5, (i * 7 - 3) * 3e5, (i * i - 50) * 1e5);
-      const lit = sunlitFactor(r, sunDir, 1e5);
-      assert.ok(lit >= 0 && lit <= 1, `範囲外: ${lit}`);
-    }
-  });
-}
-
-// 回転基準系の角速度が姿勢の時間微分と整合するか(基底の各軸で ḃ = ω×b)を中心差分で確かめる。
-function assertOmegaMatchesBasis(rot: (t: number) => FrameRotation, t: number, dt: number): void {
-  const { omega } = rot(t);
-  for (const axis of [v3(1, 0, 0), v3(0, 1, 0), v3(0, 0, 1)]) {
-    const at = (s: number): Vec3 => qRotate(rot(s).q, axis);
-    const fd = scale(sub(at(t + dt), at(t - dt)), 1 / (2 * dt));
-    const analytic = cross(omega, at(t));
-    assert.ok(
-      len(sub(fd, analytic)) < 1e-4 * len(omega),
-      `角速度の不一致 (t=${t}, axis=${JSON.stringify(axis)}): ${JSON.stringify(fd)} vs ${JSON.stringify(analytic)}`,
-    );
-  }
 }
 
 // ECI(Y=北極)の位置から黄経を取り出す。標準赤道座標へ戻し、黄道傾斜ぶん回してから

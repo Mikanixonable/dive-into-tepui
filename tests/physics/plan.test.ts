@@ -1,6 +1,7 @@
 // 計画の区間長・アプシス高度が、その場で最も強く引く天体を中心として求まることの回帰。
 import * as assert from 'node:assert/strict';
-import { Ephemeris, MU_MOON, R_MOON } from '../../src/physics/ephemeris';
+import { Ephemeris } from '../../src/physics/ephemeris';
+import { MU_MOON, R_MOON } from '../../src/physics/solar-system';
 import { elementsAround, strongestAttractor } from '../../src/physics/attractor';
 import { orbitState, MU_EARTH, R_EARTH } from '../../src/physics/orbital-state';
 import { apsisAltitudes, keplerPeriod } from '../../src/physics/elements';
@@ -10,15 +11,16 @@ import { test } from './harness';
 
 export function register(): void {
   test('plan: 月周回の区間長・アプシスが月中心の状態と重力定数で求まる', () => {
-    const ephemeris = new Ephemeris(0, 0);
+    const ephemeris = new Ephemeris({ moon: 0 });
     const t = 12345;
     const radius = R_MOON + 100_000;
     const relativeR = v3(radius, 0, 0);
     const relativeV = v3(0, 0, Math.sqrt(MU_MOON / radius));
+    const moonState = ephemeris.stateOf('moon', t);
     const state = orbitState(
       t,
-      add(ephemeris.moonPosAt(t), relativeR),
-      add(ephemeris.moonVelAt(t), relativeV),
+      add(moonState.r, relativeR),
+      add(moonState.v, relativeV),
     );
     const bodies = ephemeris.attractorsAt(t);
 
