@@ -77,7 +77,7 @@
     - simSpeedManager.update() / applyWarpCommandPolicy()
     - simulator.stepSimulation(player=null)
     - predictor.update(player=null)
-    - activeStage.update(player=null) // Creative の配置プレビューはここで求め直す(艦が無い間こそ配置中なので飛ばせない)
+    - activeStage.update(player=null) // Creative の配置プレビュー・フォームのフィールド検証結果はここで求め直す(艦が無い間こそ配置中なので飛ばせない)
     - effects.update(dt, simDt)
     - editor.update() / mapPicker.refresh() / cameraSystem.update() // 内容は上記ポーズ経路と同じ
     - [editor.editMode] mapPicker.handleRightClick() / editor.handleMapPointer() / editor.updateEditing()
@@ -165,6 +165,7 @@
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(respawnOnDespawn=false)
     - [CreativeStage] advanceFollowPlan() // entities.players のうち followPlan=true な艦ごと。plan.dropNodesBefore(simTime) が期限切れノードをまとめて取り除いて返す最後のノードへ state を置き換える(複数ノードを跨いだフレームも dropNodesBefore 内部の while で一括消費)
+    - [CreativeStage] placerPanel.isOpen なら getForm() を1回だけ呼び、computePreview(form)/computeFieldIssues(form) へ共有する
   - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効。残り時間が C.NODE_APPROACH_LEAD 以下なら autoWarpUntil=null + levelIdx=0 で即 return
   - simulator.stepSimulation(bulletCollision=true, resolveCollision=canResolvePhysicalCollisions, doSubstep=true)
@@ -370,6 +371,7 @@
   - activeStage.sync(player, fo, project, displayTime, overviewMode) // player は Creative の未配置状態で null
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示。player が null なら隠す
     - [CreativeStage] syncPreview(fo, project) // update が求めた preview の軌道線 + ▷ マーカー。preview が null なら両方隠す
+    - [CreativeStage] placerPanel.setIssues(issues) // update が求めた issues を渡すだけ。前回と同内容なら panel 側が DOM に触らず即 return
     - logistics.syncMarkers(displayTime) → ammo.displayState(displayTime) → markerManager.set('mg<i>') + setBearing('mg<i>-bearing')
       // player が null の間はすべて隠す(ラベルの距離表示が自機基準のため)
       // マーカーを出せる補給ごと(i = 生存かつ displayState が非 null な個体だけを詰めた配列の添字)

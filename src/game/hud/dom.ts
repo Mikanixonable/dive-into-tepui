@@ -242,6 +242,10 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-shipplacer .slider-field .slider-ticks span:first-child { text-align: left; }
 #hud-shipplacer .slider-field .slider-ticks span:last-child { text-align: right; }
 #hud-shipplacer input[type="text"] { flex: 1; width: auto; }
+#hud-shipplacer .preset-row { flex-wrap: wrap; gap: 6px; }
+#hud-shipplacer .field-issue { border: 1px solid ${WARNING}; border-radius: 3px; padding: 2px 4px; }
+#hud-shipplacer .issue-list { margin: 8px 0; padding: 6px 8px; border: 1px solid ${WARNING}; border-radius: 3px; background: rgba(255,79,94,0.08); }
+#hud-shipplacer .issue-list .issue-line { font-size: 11px; color: ${WARNING}; }
 #navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
 #navball .nb-ball { display: block; width: 100%; height: auto; margin: 4px 0 8px; }
 #navball .nb-rim { fill: rgba(255, 255, 255, 0.03); stroke: ${EDGE}; stroke-width: 1; }

@@ -10,7 +10,7 @@ import { Vec3, add, v3 } from './vec3';
 // 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに呼ばれる。
 type AccelFn = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => Vec3;
 
-const J2_EARTH = 1.08262668e-3; // 地球扁平の J2 項
+export const J2_EARTH = 1.08262668e-3; // 地球扁平の J2 項
 
 // J2(地球扁平)摂動加速度。極軸 = Y。
 // 軌道面に非対称なトルクを与え、昇交点の歳差(LEO 51.6° で約 -5°/日)を生む。

@@ -24,7 +24,7 @@ import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import * as C from '../const';
 import { ElementsForm, LibrationForm, ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
-import { validateEllipticPlacement, validateBaseReference, validateLibrationPlacementFields } from '../creative/placement-validation';
+import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLibrationPlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { OrbitLine } from '../../render/orbitline';
 
 const DEG = Math.PI / 180;
@@ -42,6 +42,8 @@ export class CreativeStage extends Stage {
   private previewOrbitLine!: OrbitLine;
   // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
   private preview: { readonly elements: Elements; readonly pos: Vec3 } | null = null;
+  // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
+  private issues: readonly PlacementFieldIssue[] = [];
   private nextShipId = 1;
   private lastBaseMarkerCount = 0;
 
@@ -72,6 +74,7 @@ export class CreativeStage extends Stage {
     super.sync(player, fo, project, displayTime, overviewMode);
     this.syncPreview(fo, project);
     this.syncBaseMarkers(project, displayTime, player, overviewMode);
+    this.placerPanel.setIssues(this.issues);
   }
 
   // 基地は実寸(半径100m)のメッシュしか持たず、マップ視点では見えないほど小さいので、
@@ -107,11 +110,9 @@ export class CreativeStage extends Stage {
     this.placerPanel.setVisible(true, focusId);
   }
 
-  // フォーム値から配置プレビューの軌道要素と位置を求める。パネルを閉じている間・軌道要素指定
-  // 以外の配置方法・入力を解釈できない値のときは null(プレビューを出さない)。
-  private computePreview(): { elements: Elements; pos: Vec3 } | null {
-    if (!this.placerPanel.isOpen) return null;
-    const form = this.placerPanel.getForm();
+  // フォーム値から配置プレビューの軌道要素と位置を求める。軌道要素指定以外の配置方法・
+  // 入力を解釈できない値のときは null(プレビューを出さない)。
+  private computePreview(form: ShipPlacerForm): { elements: Elements; pos: Vec3 } | null {
     if (form.placementMode !== 'elements') return null;
     try {
       const state = this.buildInitialState(form);
@@ -121,6 +122,34 @@ export class CreativeStage extends Stage {
     } catch {
       return null;
     }
+  }
+
+  // フォーム値をフィールド単位で検証する。assertValidForm(確定時、最初の問題で例外を投げる)と
+  // 同じ検証呼び出しを共有し、両者が食い違うことを防ぐ。
+  private computeFieldIssues(form: ShipPlacerForm): PlacementFieldIssue[] {
+    const issues = [...validateBaseReferenceFields(
+      form.objectType, form.placementMode, form.placementMode === 'elements' ? form.body : undefined,
+    )];
+    if (form.placementMode === 'elements') {
+      const body = this.referenceAttractor(form);
+      const common = {
+        bodyRadius: body.radius, mu: body.mu,
+        incDeg: form.incDeg, raanDeg: form.raanDeg, argpDeg: form.argpDeg, nuDeg: form.nuDeg,
+      };
+      issues.push(...validateEllipticPlacementFields(
+        form.sizeMode === 'apsides' ? { ...common, sizeMode: 'apsides', peAltKm: form.peAltKm, apAltKm: form.apAltKm }
+        : form.sizeMode === 'semiMajorEcc'
+          ? { ...common, sizeMode: 'semiMajorEcc', semiMajorKm: form.semiMajorKm, eccentricity: form.eccentricity }
+          : { ...common, sizeMode: 'periodEcc', periodHours: form.periodHours, eccentricity: form.eccentricity },
+      ));
+    } else {
+      issues.push(...validateLibrationPlacementFields(
+        form.librationOrbitKind === 'halo'
+          ? { orbitKind: 'halo', outOfPlaneAmplitudeKm: form.azKm }
+          : { orbitKind: 'lissajous', inPlaneAmplitudeKm: form.axKm, outOfPlaneAmplitudeKm: form.azKm },
+      ));
+    }
+    return issues;
   }
 
   // 配置プレビューの軌道線と ▷ マーカーを update が求めた値へ同期する。
@@ -232,37 +261,10 @@ export class CreativeStage extends Stage {
     return orbitState(this._simulator.simTime, add(body.state.r, rel.r), add(body.state.v, rel.v));
   }
 
-  // 軌道要素指定フォームの値が物理的に成立するか検証する。不正なら理由付きで例外を投げる。
-  private assertValidElementsForm(form: ElementsForm): void {
-    const body = this.referenceAttractor(form);
-    const common = {
-      bodyRadius: body.radius, mu: body.mu,
-      incDeg: form.incDeg, raanDeg: form.raanDeg, argpDeg: form.argpDeg, nuDeg: form.nuDeg,
-    };
-    const message = validateEllipticPlacement(
-      form.sizeMode === 'apsides' ? { ...common, sizeMode: 'apsides', peAltKm: form.peAltKm, apAltKm: form.apAltKm }
-      : form.sizeMode === 'semiMajorEcc'
-        ? { ...common, sizeMode: 'semiMajorEcc', semiMajorKm: form.semiMajorKm, eccentricity: form.eccentricity }
-        : { ...common, sizeMode: 'periodEcc', periodHours: form.periodHours, eccentricity: form.eccentricity },
-    );
-    if (message) throw new Error(message);
-  }
-
-  // フォームの placementMode に応じた妥当性検証を行う。不正なら理由付きで例外を投げる。
+  // フォームの値が物理的に成立するか検証する。computeFieldIssues と同じ検証呼び出しを共有し、
+  // 不正なら最初の問題を理由に例外を投げる。
   private assertValidForm(form: ShipPlacerForm): void {
-    const baseMessage = validateBaseReference(
-      form.objectType, form.placementMode, form.placementMode === 'elements' ? form.body : undefined,
-    );
-    if (baseMessage) throw new Error(baseMessage);
-    if (form.placementMode === 'elements') {
-      this.assertValidElementsForm(form);
-      return;
-    }
-    const [firstIssue] = validateLibrationPlacementFields(
-      form.librationOrbitKind === 'halo'
-        ? { orbitKind: 'halo', outOfPlaneAmplitudeKm: form.azKm }
-        : { orbitKind: 'lissajous', inPlaneAmplitudeKm: form.axKm, outOfPlaneAmplitudeKm: form.azKm },
-    );
+    const [firstIssue] = this.computeFieldIssues(form);
     if (firstIssue) throw new Error(firstIssue.message);
   }
 
@@ -271,11 +273,14 @@ export class CreativeStage extends Stage {
     if (!values.every(Number.isFinite)) throw new Error('有限の状態を作れませんでした');
   }
 
-  // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行い、配置プレビューを求め直す。
+  // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行い、配置プレビューとフォームの
+  // フィールド単位の検証結果を求め直す。
   // 計画ノードの適用は Simulator のイベント境界(applySimulationEvents)で行う。
   update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, _simSpeed: SimSpeedManager): void {
     if (player) this.logistics.updateLogistics(simTime, player, true);
-    this.preview = this.computePreview();
+    const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
+    this.preview = form ? this.computePreview(form) : null;
+    this.issues = form ? this.computeFieldIssues(form) : [];
   }
 
   // followPlan のノードは Simulator の既知イベントとして扱い、必ずnode.tちょうどで積分を切る。
