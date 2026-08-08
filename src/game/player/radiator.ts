@@ -9,6 +9,7 @@ import {
   RADIATOR_TIP_DISTANCE,
 } from '../../render/ships';
 import * as C from '../const';
+import type { RadiatorSaveData } from '../save-data';
 
 export type RadiatorSide = 'up' | 'down';
 
@@ -161,4 +162,19 @@ export class RadiatorSystem {
   // HUD 表示用。
   deployOf(side: RadiatorSide): number { return this.panels[side].deploy; }
   wearOf(side: RadiatorSide): number { return this.wear[side]; }
+
+  // 損耗度(wear)は放熱板パーツの残 HP から導出される値なので含まない。
+  serialize(): RadiatorSaveData {
+    return {
+      up: { deployTarget: this.panels.up.deployTarget, deploy: this.panels.up.deploy },
+      down: { deployTarget: this.panels.down.deployTarget, deploy: this.panels.down.deploy },
+    };
+  }
+
+  restore(data: RadiatorSaveData): void {
+    for (const side of ['up', 'down'] as const) {
+      this.panels[side].deployTarget = data[side].deployTarget;
+      this.panels[side].deploy = data[side].deploy;
+    }
+  }
 }

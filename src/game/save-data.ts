@@ -1,6 +1,7 @@
 import { AnyPart } from './game-entity/parts';
 import { EnemyKind } from './game-entity/enemy';
 import { AttractorId } from '../physics/attractor';
+import type { GamePhase } from './stages/stage';
 
 export interface Vec3SaveData {
   x: number;
@@ -36,10 +37,43 @@ export interface PlanSaveData {
   nodes: KinematicStateSaveData[];
 }
 
-export interface PlayerSaveData extends EntitySaveData {
+export interface FireSaveData {
   mags: number;
   rounds: number;
-  heat: number;
+  barrel: number;
+  cooldown: number;
+  muzzleIdx: number;
+}
+
+export interface ThermalSaveData {
+  hullTemp: number;
+  pendingHeat: number;
+}
+
+export interface RadiatorPanelSaveData {
+  deployTarget: 0 | 1;
+  deploy: number;
+}
+
+export interface RadiatorSaveData {
+  up: RadiatorPanelSaveData;
+  down: RadiatorPanelSaveData;
+}
+
+export interface PowerSaveData {
+  charge: number;
+}
+
+export interface ThrottleSaveData {
+  throttleIdx: number;
+}
+
+export interface PlayerSaveData extends EntitySaveData {
+  fire: FireSaveData;
+  thermal: ThermalSaveData;
+  radiator: RadiatorSaveData;
+  power: PowerSaveData;
+  throttle: ThrottleSaveData;
   parts: AnyPart[];
   plan: PlanSaveData | null;
   followPlan: boolean;
@@ -71,6 +105,33 @@ export interface EnemySaveData extends EntitySaveData {
 export interface AmmoSaveData extends EntitySaveData {
 }
 
+export interface ScoreCounterSaveData {
+  shots: number;
+  hits: number;
+  kills: number;
+  losses: number;
+  totalEnemiesSpawned: number;
+}
+
+// 全ステージ共通の内訳(スコア・決着状態・補給タイマー)。ステージ固有の内訳を持つ
+// 具象ステージはこれを拡張した型を自分の serialize/restore で使う(stage0.ts の
+// Stage0SaveData・stage00.ts の Stage00SaveData)。
+export interface StageSaveData {
+  scoreCounter: ScoreCounterSaveData;
+  phase: GamePhase;
+  logisticsResupplyCheckAt: number;
+}
+
+export interface Stage0SaveData extends StageSaveData {
+  timeLeft: number;
+}
+
+export interface Stage00SaveData extends StageSaveData {
+  waveState: 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
+  spawnTimer: number;
+  waveCount: number;
+}
+
 export interface GameSaveData {
   version: number;
   stageId: string;
@@ -81,4 +142,5 @@ export interface GameSaveData {
   enemies: EnemySaveData[];
   ammos: AmmoSaveData[];
   bases: BaseSaveData[];
+  stage: StageSaveData;
 }

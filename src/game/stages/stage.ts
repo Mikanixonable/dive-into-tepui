@@ -20,6 +20,7 @@ import type { FloatingOrigin } from '../floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
+import type { StageSaveData } from '../save-data';
 
 export type StageId = '00' | '0' | '1' | '2' | 'debug';
 
@@ -188,5 +189,23 @@ export abstract class Stage {
     if (!this.isPlaying) return;
     this.setPhase('lost');
     showResultScreen(this._sfx, false, `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`);
+  }
+
+  // スコア・決着状態・補給タイマーをセーブデータへ変換する。固有の内訳を持つ具象ステージは
+  // これを拡張した戻り値型で override する。
+  serialize(): StageSaveData {
+    return {
+      scoreCounter: this.scoreCounter.serialize(),
+      phase: this._phase,
+      logisticsResupplyCheckAt: this.logistics.serialize(),
+    };
+  }
+
+  // serialize() の対になる復元。固有の内訳を持つ具象ステージは super.restore(data) を
+  // 呼んでから自分の分を復元する override を書く。
+  restore(data: StageSaveData): void {
+    this.scoreCounter.restore(data.scoreCounter);
+    this._phase = data.phase;
+    this.logistics.restore(data.logisticsResupplyCheckAt);
   }
 }
