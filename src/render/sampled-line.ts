@@ -43,6 +43,7 @@ function chordCount(a: KinematicState, b: KinematicState): number {
 
 // 破線パターン。dashSize/gapSize は表示座標系の実距離 [m](LineDashedMaterial の
 // lineDistance 属性がそのままこの単位で評価されるため、scale=1 前提でメートルを直接渡せる)。
+// 呼び出し側が毎フレーム書き換えてよい。
 export type DashPattern = { readonly dashSize: number; readonly gapSize: number };
 
 export class SampledLine {
@@ -143,6 +144,18 @@ export class SampledLine {
   setVisible(v: boolean): void {
     this.wantVisible = v;
     this.applyVisible();
+  }
+
+  get visible(): boolean {
+    return this.line.visible;
+  }
+
+  // 破線パターンを書き換える。破線でないマテリアルでは何もしない。
+  setDash(dashSize: number, gapSize: number): void {
+    if (this.mat instanceof THREE.LineDashedMaterial) {
+      this.mat.dashSize = dashSize;
+      this.mat.gapSize = gapSize;
+    }
   }
 
   // 折れ線は2点以上ないと描けないので、頂点数不足のときは表示要求に関わらず隠す。

@@ -13,13 +13,14 @@ import { Player } from '../player/player';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Vec3 } from '../../physics/vec3';
-import { ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
+import { metersPerPixel, ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { AttractorId } from '../../physics/attractor';
 import { CELESTIAL_BODIES } from '../celestial/celestial-registry';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
+export type ScaleFn = (worldPos: Vec3) => number;
 
 // 論理カメラの状態(Viewpoint)を THREE.PerspectiveCamera へ反映する。
 function syncCameraToViewpoint(camera: THREE.PerspectiveCamera, view: Viewpoint, fo: FloatingOrigin): void {
@@ -43,6 +44,11 @@ function syncCameraToViewpoint(camera: THREE.PerspectiveCamera, view: Viewpoint,
 // THREE.js カメラ行列やフローティングオリジンに依存しないスクリーン投影関数を組む。
 function projectionFromViewpoint(view: Viewpoint): ProjectFn {
   return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), window.innerWidth, window.innerHeight);
+}
+
+// 画面上で1ピクセルに相当する実距離[m]を返す関数を組む。
+function scaleFromViewpoint(view: Viewpoint): ScaleFn {
+  return (worldPos) => metersPerPixel(view, worldPos, window.innerHeight);
 }
 
 // 広範囲視点の操作パネルに常用のフォーカス先として並べる天体本体の ID。残りのラベル
@@ -204,5 +210,10 @@ export class CameraSystem {
   // アクティブカメラの画面投影関数を返す。
   get activeCameraProjection(): ProjectFn {
     return projectionFromViewpoint(this.overviewMode ? this.overviewCamera.viewpoint : this.combatCamera.viewpoint);
+  }
+
+  // アクティブカメラの画面尺度関数を返す。
+  get activeCameraScale(): ScaleFn {
+    return scaleFromViewpoint(this.overviewMode ? this.overviewCamera.viewpoint : this.combatCamera.viewpoint);
   }
 }

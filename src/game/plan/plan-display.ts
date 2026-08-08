@@ -9,7 +9,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
 import { ATTRACTOR_NAMES } from '../hud/frame-labels';
 import { MarkerManager } from '../marker/marker-manager';
-import { ProjectFn } from '../camera/camera-system';
+import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { SegmentedControl } from '../hud/buttons';
 import { FRAME_ITEMS } from '../hud/frame-labels';
@@ -97,7 +97,6 @@ export class PlanDisplay {
       this.eqNodeIcons = [];
       this.impactIcons = [];
       this.dayTickIcons = [];
-      this.path.resetDivergence();
       return;
     }
     this.path.update(plan, this.ephemeris, this.planFrame, simTime);
@@ -110,9 +109,12 @@ export class PlanDisplay {
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。
   // TRAJECTORY パネルは表示座標系を選ぶ操作 UI なので、操作を受け付けるときだけ showPanel で出す。
-  sync(fo: FloatingOrigin, project: ProjectFn, showPanel: boolean): void {
-    this.path.setVisible(true);
-    this.path.sync(fo, project);
+  sync(fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, showPanel: boolean): void {
+    // ノードの無い計画は自機の現在軌道そのものを描くだけで情報を持たないので、折れ線は隠す。
+    // path.sync 自体はノードの有無に関わらず毎フレーム呼ぶ — 画面判定に使う project を
+    // 毎フレーム更新しておかないと、クリック当たり判定が古い視点のまま行われてしまう。
+    this.path.setVisible((this.plan?.nodes.length ?? 0) > 0);
+    this.path.sync(fo, project, scale);
     this.syncGhost(project);
     this.syncApsisMarkers(project);
     this.syncEqNodeMarkers(project);
