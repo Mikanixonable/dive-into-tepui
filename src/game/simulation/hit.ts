@@ -10,7 +10,7 @@ import type { EntityManager } from './entity-manager';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { Sfx } from '../../audio/sfx';
 import { Vec3, v3 } from '../../physics/vec3';
-import { orbitState } from '../../physics/orbital-state';
+import { kinematicState } from '../../physics/kinematic-state';
 
 export class HitSystem {
   constructor(private readonly fx: EffectsSystem, private readonly sfx: Sfx) {}
@@ -73,7 +73,7 @@ export class HitSystem {
             target.state.r.z + res.cz,
           );
           // ガスのようなエフェクトを発生
-          this.fx.spawnGasPuff(orbitState(target.state.t, hitR, target.state.v));
+          this.fx.spawnGasPuff(kinematicState(target.state.t, hitR, target.state.v));
           break; // この弾は消滅した
         }
       }

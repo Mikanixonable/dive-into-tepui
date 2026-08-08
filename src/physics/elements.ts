@@ -1,11 +1,11 @@
-// 古典軌道要素(Elements)の定義と、状態ベクトル⇄要素の変換・要素上のケプラー幾何。
-// 軌道要素は「どの天体を中心に取ったか」まで含めて初めて意味が定まるため、Elements 自身が
+// 古典軌道要素(OrbitalElements)の定義と、状態ベクトル⇄要素の変換・要素上のケプラー幾何。
+// 軌道要素は「どの天体を中心に取ったか」まで含めて初めて意味が定まるため、OrbitalElements 自身が
 // 中心天体(Attractor)を保持する。THREE/DOM 非依存の純粋関数群。
 import type { Attractor } from './attractor';
-import { OrbitState, orbitState } from './orbital-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
 
-export interface Elements {
+export interface OrbitalElements {
   a: number; // 軌道長半径 [m] (双曲線では負)
   e: number; // 離心率
   p: number; // 半直弦 [m]
@@ -32,8 +32,8 @@ export function semiMajorFromPeriod(period: number, mu: number): number {
 // 中心天体相対の状態から古典軌道要素を求める。rel は center 相対(center 自身の位置・速度を
 // 差し引いた後)の状態ベクトルでなければならない — 絶対 ECI 座標をそのまま渡すと、center が
 // 原点(地球)でない限り誤った要素になる。絶対 ECI からの呼び出しは attractor.ts の
-// elementsAround に一本化する。半径・角運動量が縮退している場合は null。
-export function elementsFromState(rel: OrbitState, center: Attractor): Elements | null {
+// orbitalElementsOf に一本化する。半径・角運動量が縮退している場合は null。
+export function orbitalElementsFromState(rel: KinematicState, center: Attractor): OrbitalElements | null {
   const r = rel.r;
   const v = rel.v;
   const mu = center.mu;
@@ -70,11 +70,11 @@ export function elementsFromState(rel: OrbitState, center: Attractor): Elements 
 }
 
 // 中心天体表面からの近地点・遠地点高度。遠地点は楕円軌道のみ(双曲線・放物線は NaN)。
-export function apsisAltitudes(el: Elements): { pe: number; ap: number } {
-  const bodyRadius = el.center.radius;
+export function apsisAltitudes(el: OrbitalElements): { pe: number; ap: number } {
+  const centerRadius = el.center.radius;
   return {
-    pe: el.p / (1 + el.e) - bodyRadius,
-    ap: el.e < 1 && isFinite(el.a) ? el.a * (1 + el.e) - bodyRadius : NaN,
+    pe: el.p / (1 + el.e) - centerRadius,
+    ap: el.e < 1 && isFinite(el.a) ? el.a * (1 + el.e) - centerRadius : NaN,
   };
 }
 
@@ -99,7 +99,7 @@ export function trueAnomalyFromMean(m: number, e: number): number {
 // --- マニューバ計画用のケプラー補助関数(楕円軌道のみ) ---
 
 // 位置ベクトル r の真近点角(pHat 基準、[-π, π])
-export function trueAnomalyAt(el: Elements, r: Vec3): number {
+export function trueAnomalyAt(el: OrbitalElements, r: Vec3): number {
   return Math.atan2(dot(r, el.qHat), dot(r, el.pHat));
 }
 
@@ -107,7 +107,7 @@ export function trueAnomalyAt(el: Elements, r: Vec3): number {
 // 楕円(e < 1): ケプラー方程式、[-T/2, T/2]。
 // 双曲線(e >= 1): 双曲線ケプラー方程式。tan(nu/2) が漸近線を超える(その真近点角に
 // 到達しない)場合は有限の到達時刻が存在しないため NaN を返す。
-export function timeSincePeriapsis(el: Elements, nu: number): number {
+export function timeSincePeriapsis(el: OrbitalElements, nu: number): number {
   if (el.e < 1) {
     const E = 2 * Math.atan2(Math.sqrt(1 - el.e) * Math.sin(nu / 2), Math.sqrt(1 + el.e) * Math.cos(nu / 2));
     const M = E - el.e * Math.sin(E);
@@ -125,20 +125,20 @@ export function timeSincePeriapsis(el: Elements, nu: number): number {
 // 真近点角 nu0 → nu1 への飛行時間 [s]。
 // 楕円(e < 1、周期あり): 順行方向に周期で畳んで [0, T) に正規化する。
 // 双曲線(e >= 1、周期なし): 畳まず単純差分をそのまま返す。
-export function tofBetween(el: Elements, nu0: number, nu1: number): number {
+export function tofBetween(el: OrbitalElements, nu0: number, nu1: number): number {
   const t = timeSincePeriapsis(el, nu1) - timeSincePeriapsis(el, nu0);
   if (el.e >= 1) return t;
   return ((t % el.period) + el.period) % el.period;
 }
 
 // 軌道上の真近点角 nu における ECI 位置
-export function positionOnOrbit(el: Elements, nu: number): Vec3 {
+export function positionOnOrbit(el: OrbitalElements, nu: number): Vec3 {
   const r = el.p / (1 + el.e * Math.cos(nu));
   return addScaled(scale(el.pHat, r * Math.cos(nu)), el.qHat, r * Math.sin(nu));
 }
 
 // 軌道上の真近点角 nu における ECI 速度
-export function velocityOnOrbit(el: Elements, nu: number): Vec3 {
+export function velocityOnOrbit(el: OrbitalElements, nu: number): Vec3 {
   const k = Math.sqrt(el.center.mu / el.p);
   return addScaled(scale(el.pHat, -k * Math.sin(nu)), el.qHat, k * (el.e + Math.cos(nu)));
 }
@@ -155,7 +155,7 @@ function orbitPlaneBasis(inc: number, raan: number, argp: number): { pHat: Vec3;
 
 // 古典的軌道要素 → 時刻 t の位置(Y = 北極)。角度はすべて [rad]。主天体中心の相対位置で、
 // 絶対 ECI 化は呼び出し側が主天体の位置を加えて行う。
-export function positionFromElements(
+export function positionFromOrbitalElements(
   a: number, e: number, inc: number, raan: number, argp: number, nu: number,
 ): Vec3 {
   const { pHat, qHat } = orbitPlaneBasis(inc, raan, argp);
@@ -167,7 +167,7 @@ export function positionFromElements(
 // 重力定数 — 月中心の要素から状態を組む場合など地球以外が主天体のときはその値を渡す
 // (その場合の r/v は主天体中心の相対値であり、絶対 ECI 化は呼び出し側が主天体の位置・速度を
 // 加えて行う)。
-export function stateFromElements(
+export function stateFromOrbitalElements(
   t: number,
   a: number,
   e: number,
@@ -176,13 +176,13 @@ export function stateFromElements(
   argp: number,
   nu: number,
   mu: number,
-): OrbitState {
+): KinematicState {
   const { pHat, qHat } = orbitPlaneBasis(inc, raan, argp);
   const p = a * (1 - e * e);
   const k = Math.sqrt(mu / p);
-  return orbitState(
+  return kinematicState(
     t,
-    positionFromElements(a, e, inc, raan, argp, nu),
+    positionFromOrbitalElements(a, e, inc, raan, argp, nu),
     addScaled(scale(pHat, -k * Math.sin(nu)), qHat, k * (e + Math.cos(nu))),
   );
 }

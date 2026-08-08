@@ -1,7 +1,7 @@
 // 区分指数大気密度モデル(Vallado, "Fundamentals of Astrodynamics and
 // Applications" の CIRA-72 / U.S. Standard Atmosphere 準拠テーブル)と、
 // その大気による対気速度・抗力加速度。THREE/DOM 非依存の純粋関数。
-import { R_EARTH, SIDEREAL_DAY } from './orbital-state';
+import { R_EARTH, SIDEREAL_DAY } from './solar-system';
 import { Vec3, len, v3 } from './vec3';
 
 // [基準高度 h0 [km], 基準密度 ρ0 [kg/m^3], スケールハイト H [km]]

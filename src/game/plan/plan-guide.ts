@@ -1,7 +1,7 @@
 // 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、NODE/BURN マーカー。
-import { OrbitState } from '../../physics/orbital-state';
-import { Elements } from '../../physics/elements';
-import { Attractor, elementsAround, strongestAttractor } from '../../physics/attractor';
+import { KinematicState } from '../../physics/kinematic-state';
+import { OrbitalElements } from '../../physics/elements';
+import { Attractor, orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import { addScaled, dot, len, norm, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
@@ -15,8 +15,8 @@ import type { Player } from '../player/player';
 export class PlanGuide {
   // 通知済みのノード。ノードは編集のたびに別インスタンスへ置き換わるので、同一性の比較が
   // そのまま「同じノードについて既に通知したか」の判定になる。
-  private approachNotified: OrbitState | null = null;
-  private achievedNotified: OrbitState | null = null;
+  private approachNotified: KinematicState | null = null;
+  private achievedNotified: KinematicState | null = null;
 
   constructor(
     private readonly _hud: Hud,
@@ -27,7 +27,7 @@ export class PlanGuide {
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
   // ノードごとに一度だけ通知する。
-  update(plan: Plan, player: Player, simTime: number, editMode: boolean, bodies: readonly Attractor[]): void {
+  update(plan: Plan, player: Player, simTime: number, editMode: boolean, attractors: readonly Attractor[]): void {
     if (editMode || !player.alive) return;
     plan.dropNodesBefore(simTime - C.NODE_EXPIRE_GRACE);
 
@@ -36,7 +36,7 @@ export class PlanGuide {
     // 目標軌道との近さを見ても達成の判定にならない。
     if (!node || simTime < node.t - C.NODE_APPROACH_LEAD) return;
     this.notifyApproach(node);
-    this.notifyAchieved(plan, node, player, bodies);
+    this.notifyAchieved(plan, node, player, attractors);
   }
 
   // 直近ノードの ◆NODE・⬢BURN マーカーを同期する。
@@ -79,7 +79,7 @@ export class PlanGuide {
   }
 
   // 実行の窓に入ったことを通知する。
-  private notifyApproach(node: OrbitState): void {
+  private notifyApproach(node: KinematicState): void {
     if (this.approachNotified === node) return;
     this.approachNotified = node;
     this._hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
@@ -87,14 +87,14 @@ export class PlanGuide {
 
   // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと自機で最も強く引く
   // 天体が違えば、要素同士の比較自体が意味を持たないので判定しない。
-  private notifyAchieved(plan: Plan, node: OrbitState, player: Player, bodies: readonly Attractor[]): void {
+  private notifyAchieved(plan: Plan, node: KinematicState, player: Player, attractors: readonly Attractor[]): void {
     if (this.achievedNotified === node) return;
-    const playerCenter = strongestAttractor(player.state.r, bodies);
-    const nodeCenter = strongestAttractor(node.r, bodies);
+    const playerCenter = strongestAttractor(player.state.r, attractors);
+    const nodeCenter = strongestAttractor(node.r, attractors);
     if (playerCenter.id !== nodeCenter.id) return;
-    const targetEl = elementsAround(node, nodeCenter);
-    const playerEl = player.elementsAround(playerCenter);
-    if (!playerEl || !targetEl || !orbitClose(playerEl, targetEl)) return;
+    const targetEl = orbitalElementsOf(node, nodeCenter);
+    const playerEl = player.orbitalElementsAround(playerCenter);
+    if (!playerEl || !targetEl || !orbitalElementsClose(playerEl, targetEl)) return;
     this.achievedNotified = node;
     // 計画軌道へ到達したノードは、その場で実行済みとして削除する。
     // dropNodesBefore(node.t) は現在ノードをアンカーへ移し、後続ノードを保持する。
@@ -110,7 +110,7 @@ export class PlanGuide {
 }
 
 // 2 軌道の近さ判定(長半径・離心率・軌道面)
-function orbitClose(a: Elements, b: Elements): boolean {
+function orbitalElementsClose(a: OrbitalElements, b: OrbitalElements): boolean {
   if (!isFinite(a.a) || !isFinite(b.a) || a.a <= 0 || b.a <= 0) return false;
   const planeCos = Math.max(-1, Math.min(1, dot(a.hHat, b.hHat)));
   return (

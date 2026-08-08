@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, randomQuat } from '../../physics/attitude';
-import { OrbitState, orbitState } from '../../physics/orbital-state';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { add, randSym, randVec, v3, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -33,7 +33,7 @@ export class EffectsSystem {
   }
 
   // プラズマ弾命中フラッシュを生成する。
-  spawnPlasmaFlash(state: OrbitState): void {
+  spawnPlasmaFlash(state: KinematicState): void {
     this.spawnFlash(state,
       C.PLASMA_HIT_FLASH_SIZE0,
       C.PLASMA_HIT_FLASH_SIZE1,
@@ -42,7 +42,7 @@ export class EffectsSystem {
   }
 
   // 実弾命中フラッシュを生成する。
-  spawnBulletFlash(state: OrbitState): void {
+  spawnBulletFlash(state: KinematicState): void {
     this.spawnFlash(state,
       C.BULLET_HIT_FLASH_SIZE0,
       C.BULLET_HIT_FLASH_SIZE1,
@@ -51,7 +51,7 @@ export class EffectsSystem {
   }
 
   // ガスのような気体が放出されるエフェクト（被弾時やデブリ命中時用）
-  spawnGasPuff(state: OrbitState): void {
+  spawnGasPuff(state: KinematicState): void {
     // 灰色の低透明度のビルボードを2つ重ねてガスっぽさを出す
     this.spawnFlash(state, 1.0, 8.0, 0.45, C.COLOR_GAS_PUFF_1, 0.3);
     this.spawnFlash(state, 0.5, 6.0, 0.35, C.COLOR_GAS_PUFF_2, 0.4);
@@ -60,7 +60,7 @@ export class EffectsSystem {
   // state は発生位置・発生源速度と、その位置が表す時刻(エポック)。積分前の座標から
   // 生成する場合も、その座標の時刻をそのまま渡せば取り残されない。
   spawnFlash(
-    state: OrbitState,
+    state: KinematicState,
     size0: number,
     size1: number,
     duration: number,
@@ -75,7 +75,7 @@ export class EffectsSystem {
   // DebrisPiece を組み立てて追加する共通処理。fragment/barrel/magazineFrame/casing の
   // 各 spawnXxx はすべてこれの薄いラッパー — kind ごとの見た目・寿命判定の違いは
   // DebrisPiece/DebrisKind(game-entity.ts)側の責務。
-  private spawnDebrisPiece(state: OrbitState, kind: DebrisKind, att: Attitude, collideRadius?: number): void {
+  private spawnDebrisPiece(state: KinematicState, kind: DebrisKind, att: Attitude, collideRadius?: number): void {
     this.entities.addDebris(new DebrisPiece(state, kind, att, collideRadius, this._scene));
   }
 
@@ -93,7 +93,7 @@ export class EffectsSystem {
     // 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果。
     for (let i = 0; i < count; i++) {
       const size = sizeMin + Math.random() * (sizeMax - sizeMin);
-      const state = orbitState(t, add(origin, randVec(2.5)), add(baseVel, randVec(spread)));
+      const state = kinematicState(t, add(origin, randVec(2.5)), add(baseVel, randVec(spread)));
       const att = {
         q: randomQuat(),
         w: v3(randSym(0.25), (1.4 + Math.random() * 1.2) * (Math.random() < 0.5 ? -1 : 1), randSym(0.25)),
@@ -105,7 +105,7 @@ export class EffectsSystem {
 
   // 撃破デブリ: 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果。
   // 敵機は自機の ENEMY_SCALE 倍サイズなので、爆発・破片も見合った大きさにする(scale)。
-  spawnShipDestroyEffect(state: OrbitState, scale: number, accent: string | number): void {
+  spawnShipDestroyEffect(state: KinematicState, scale: number, accent: string | number): void {
     const { t, r, v } = state;
     this.spawnFlash(state, C.DESTROY_FLASH1_SIZE0 * scale, C.DESTROY_FLASH1_SIZE1 * scale, C.DESTROY_FLASH1_DURATION, C.COLOR_DESTROY_FLASH_1);
     this.spawnFlash(state, C.DESTROY_FLASH2_SIZE0 * scale, C.DESTROY_FLASH2_SIZE1 * scale, C.DESTROY_FLASH2_DURATION, C.COLOR_DESTROY_FLASH_2);
@@ -114,22 +114,22 @@ export class EffectsSystem {
   }
 
   // 破壊片1個を生成する。
-  spawnFragment(state: OrbitState, att: Attitude, accent: string | number, size: number): void {
+  spawnFragment(state: KinematicState, att: Attitude, accent: string | number, size: number): void {
     this.spawnDebrisPiece(state, { kind: 'fragment', accent, size }, att);
   }
 
   // 排莢: 薬莢は剛体接触半径 0.2m の固定値(実物同様に軽い)。
-  spawnCasing(state: OrbitState, att: Attitude, bornSim: number): void {
+  spawnCasing(state: KinematicState, att: Attitude, bornSim: number): void {
     this.spawnDebrisPiece(state, { kind: 'casing', bornSim }, att, 0.2);
   }
 
   // マガジン撃ち尽くし時に排出されるバレル。
-  spawnBarrel(state: OrbitState, att: Attitude): void {
+  spawnBarrel(state: KinematicState, att: Attitude): void {
     this.spawnDebrisPiece(state, { kind: 'barrel' }, att, 0.8);
   }
 
   // マガジン撃ち尽くし時に排出される空マガジンの外枠。
-  spawnMagazineFrame(state: OrbitState, att: Attitude): void {
+  spawnMagazineFrame(state: KinematicState, att: Attitude): void {
     this.spawnDebrisPiece(state, { kind: 'magazineFrame' }, att, C.EJECTED_MAG_PHYS_RADIUS);
   }
 }

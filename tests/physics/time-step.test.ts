@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict';
 import { adaptiveSimulationMaxStep, simulationStepDuration } from '../../src/game/simulation/time-step';
 import { test } from './harness';
 import { v3 } from '../../src/physics/vec3';
+import { kinematicState } from '../../src/physics/kinematic-state';
 
 export function register(): void {
   test('time-step: known event boundary is never crossed', () => {
@@ -14,13 +15,13 @@ export function register(): void {
   });
 
   test('time-step: reentry boundary and just below stay on the fine step', () => {
-    const state = (radius: number) => ({ r: v3(radius, 0, 0), v: v3(-100, 0, 0) });
+    const state = (radius: number) => kinematicState(0, v3(radius, 0, 0), v3(-100, 0, 0));
     assert.equal(adaptiveSimulationMaxStep([state(200)], 200, 20, 1), 1);
     assert.equal(adaptiveSimulationMaxStep([state(199.999)], 200, 20, 1), 1);
   });
 
   test('time-step: just above reentry boundary stops exactly at it', () => {
-    const state = { r: v3(201, 0, 0), v: v3(-100, 0, 0) };
+    const state = kinematicState(0, v3(201, 0, 0), v3(-100, 0, 0));
     assert.ok(Math.abs(adaptiveSimulationMaxStep([state], 200, 20, 1) - 0.01) < 1e-12);
   });
 }

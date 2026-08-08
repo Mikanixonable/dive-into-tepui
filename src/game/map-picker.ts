@@ -25,8 +25,8 @@ import type { Player } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
 import { len, sub, v3 } from '../physics/vec3';
 import type { ObjectType } from './creative/ship-placer-panel';
-import type { OrbitState } from '../physics/orbital-state';
-import { AttractorId, Attractor, elementsAround, strongestAttractor } from '../physics/attractor';
+import type { KinematicState } from '../physics/kinematic-state';
+import { AttractorId, Attractor, orbitalElementsOf, strongestAttractor } from '../physics/attractor';
 import { apsisAltitudes } from '../physics/elements';
 import { SOLAR_SYSTEM, bodyDef, primaryOf } from '../physics/solar-system';
 
@@ -474,7 +474,7 @@ export class MapPicker {
 
   // MapPickable を、複製できる実体の種類とその現在状態へ解決する。複製できない種別(天体・
   // 近点/遠点アイコン・相対AN/DN)ではメニュー自体を出していないので、ここに到達しない。
-  private duplicateSourceFor(target: MapPickable): { objectType: ObjectType; state: OrbitState } | null {
+  private duplicateSourceFor(target: MapPickable): { objectType: ObjectType; state: KinematicState } | null {
     switch (target.kind) {
       case 'player': {
         const ship = this.entities.findPlayer(target.id);
@@ -629,7 +629,7 @@ export class MapPicker {
     if (def.kind === 'star') return rows;
     const primary = bodies.find((b) => b.id === primaryOf(def.id));
     const self = bodies.find((b) => b.id === def.id);
-    const el = primary && self ? elementsAround(self.state, primary) : null;
+    const el = primary && self ? orbitalElementsOf(self.state, primary) : null;
     if (!el) return rows;
     const apsis = apsisAltitudes(el);
     rows.push(
