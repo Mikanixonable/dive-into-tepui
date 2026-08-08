@@ -4,8 +4,8 @@
 // 出揃った後に一度だけ呼ぶ必要があるため、game.sync の最後で呼ばれる。
 //
 // setPosition/setDirection は、3D空間上の「位置」「方向」を示すマーカーの
-// 投影手順(project → set)を一元化したもの。headingDeg は進行方向(ECI 速度)を
-// スクリーン方位角へ変換する。camera-system.ts が MarkerManager に依存しているため、
+// 投影手順(project → set)を一元化したもの。headingRotationDeg は進行方向(ECI 速度)を
+// 向くグリフの回転角を求める。camera-system.ts が MarkerManager に依存しているため、
 // ProjectFn/ScaleFn 型を直接 import せず同形の関数型で受ける(循環 import を避ける)。
 import { Vec3, addScaled, norm } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
@@ -77,7 +77,10 @@ export class MarkerManager {
 
     // シンボルの中心合わせは CSS が持つ(.mk 枠が投影点に中心揃え、.sym は inset:0 の
     // flex 中央寄せ)。ここで平行移動を足すと二重にかかって像からずれるので、回転だけを扱う。
-    m.sym.style.transform = rotationDeg !== undefined ? `rotate(${rotationDeg}deg)` : '';
+    // rotationDeg が undefined のときは前回の回転角を維持する(向きが数値的に不定な瞬間に
+    // 0° へスナップして戻るちらつきを防ぐため)。回転させない種別はそもそも渡さないので、
+    // その場合は初期値の無回転のまま変わらない。
+    if (rotationDeg !== undefined) m.sym.style.transform = `rotate(${rotationDeg}deg)`;
   }
 
   // 3D空間上の「位置」を示すマーカー(敵機・補給・ノードなど、実在の座標そのもの)。
@@ -120,18 +123,18 @@ export class MarkerManager {
     this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel);
   }
 
-  // worldPos にいる対象の進行方向(ECI 速度 vel)をスクリーン方位角 [deg] に変換する。
-  // atan2 の規約(0=右方向)で返すので、setBearing と同様に、上向きグリフを渡す
-  // 呼び出し側がこれへ +90 して回転させる。速度が視線とほぼ平行で投影差が縮退する場合は
-  // 方位を定められないため null を返す。
-  headingDeg(worldPos: Vec3, vel: Vec3, project: ProjectFn, scale: ScaleFn): number | null {
+  // worldPos にいる対象の進行方向(ECI 速度 vel)を、上向きグリフをその方向へ向ける
+  // rotationDeg に変換する(atan2 は 0=右方向を返すため +90 して補正する)。
+  // set/setPosition の rotationDeg 引数へそのまま渡せる。速度が視線とほぼ平行で
+  // 投影差が縮退し方位を定められないときは undefined を返す。
+  headingRotationDeg(worldPos: Vec3, vel: Vec3, project: ProjectFn, scale: ScaleFn): number | undefined {
     const probe = scale(worldPos) * C.MARKER_HEADING_PROBE_PX;
     const p0 = project(worldPos);
     const p1 = project(addScaled(worldPos, norm(vel), probe));
     const dx = p1.x - p0.x;
     const dy = p1.y - p0.y;
-    if (Math.hypot(dx, dy) < C.MARKER_HEADING_DEGENERATE_PX) return null;
-    return (Math.atan2(dy, dx) * 180) / Math.PI;
+    if (Math.hypot(dx, dy) < C.MARKER_HEADING_DEGENERATE_PX) return undefined;
+    return (Math.atan2(dy, dx) * 180) / Math.PI + 90;
   }
 
   // 画面外(背面を含む)の対象を、画面中心から見た方位として画面端の円周上に置く。
