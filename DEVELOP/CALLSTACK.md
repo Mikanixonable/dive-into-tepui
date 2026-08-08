@@ -55,6 +55,7 @@
         - [出るビューが dock] docking.leaveDock() → dockView.close() + game.resume()
         - [3D 側ビューが map→他] editor.onMapClosed() / editor.closeMenu() / mapPicker.close()
           - onMapClosed: hidePanel / hideGizmo / plan.removeNode(末尾の Δv 微小ノードを間引く) / selectedNodeIdx=null
+          - mapPicker.close(): menu.close() / objectListVisible=false / 開いている全プロパティウィンドウを closeWindow()(クリップ済みも含め全て)
         - [3D 側ビューが 他→map] editor.selectedNodeIdx = null
         - [入るビューが dock] docking.enterDock() → game.pause() + dockView.open(activeBase)
         - applyChrome() // map-mode/dock-mode クラス・navball 配置・touchControls・
@@ -71,16 +72,16 @@
       - focusMarkers.update(displayTime) // 地球・月・太陽・両系のラグランジュ点の座標を表示時刻で求め直す
       - navTarget.update() // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム
       - mapPicker.pickables に反映 // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers を集約
-    - [editor.editMode] editor.handleMapPointer() // [!hasPlan(=ship===null)] 内部で即 return(艦のいない detachedPlan は編集させない) / mapPicker.handleRightClick() / editor.updateEditing()
+    - [editor.editMode] mapPicker.handleRightClick() / mapPicker.handleLeftClick() // 自機・基地マーカーへの左クリックを選択として消費、外れれば下流へ / editor.handleMapPointer() // [!hasPlan(=ship===null)] 内部で即 return(艦のいない detachedPlan は編集させない) / editor.updateEditing()
     - cameraSystem.update(..., mapPicker.pickables) // ポーズ中も視点更新は続ける
   - [game.player === null] 以降を実行せず return する未配置経路 // Creative の開始直後・全艦喪失時。残骸や弾の epoch は進め続ける
     - simSpeedManager.update() / applyWarpCommandPolicy()
     - simulator.advance(player=null)
     - predictor.update(player=null)
-    - activeStage.update(player=null) // Creative の配置プレビューはここで求め直す(艦が無い間こそ配置中なので飛ばせない)
-    - effects.update(dt, simDt)
+    - activeStage.update(player=null) // Creative の配置プレビュー・フォームのフィールド検証結果はここで求め直す(艦が無い間こそ配置中なので飛ばせない)
+    - effects.update(dt, simulator.simTime)
     - editor.update() / mapPicker.refresh() / cameraSystem.update() // 内容は上記ポーズ経路と同じ
-    - [editor.editMode] mapPicker.handleRightClick() / editor.handleMapPointer() / editor.updateEditing()
+    - [editor.editMode] mapPicker.handleRightClick() / mapPicker.handleLeftClick() / editor.handleMapPointer() / editor.updateEditing()
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
     - player.thrust = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
     - simulator.advance(bulletCollision=false, resolveCollision=false, doSubstep=false) // simSpeed は ×MAX_PHYS_SIM_SPEED で打ち止め
@@ -90,7 +91,7 @@
     - entities.cleanup() // 決着後もワープで時間は進むので、通常経路と同じ位置で回収する
       // Enemy.checkLoss/Player.checkLoss 経由で recordEnemyDeath/recordPlayerLost が走り得るが、
       // 両方とも isPlaying でガードされているので決着後に既存の phase を上書きすることはない
-    - effects.update(dt, simDt) // 決着直後の爆発を止めないため、簡略経路でも寿命を進める
+    - effects.update(dt, simulator.simTime) // 決着直後の爆発を止めないため、簡略経路でも寿命を進める
     - editor.update(simTime, displayTime) // 内容は上記ポーズ経路と同じ
     - mapPicker.refresh() // 内容は上記ポーズ経路と同じ
     - cameraSystem.update(..., mapPicker.pickables) // 決着後も追従を続ける(sync は止まらないため、飛ばすと視点が絶対 ECI に取り残される)
@@ -147,15 +148,15 @@
     - behaveAllEnemies() // 敵を配置する具体ステージ(Stage0/00/1/2)が先頭で呼ぶ
       - enemy.behave() // 生存中の敵ごと(canEnemyFire・距離・バースト状態の判定は behave 内部)
         - firePlasma() → entities.addBullet()
-    - [Stage0 訓練スコアアタック] logistics.updateLogistics(respawnOnDespawn=false)
+    - [Stage0 訓練スコアアタック] logistics.updateLogistics(simSpeed, respawnOnDespawn=false)
     - [Stage0 訓練スコアアタック] timer.update()
       - setPhase('timeup') + showScoreAttackResultScreen() // 制限時間到達フレームのみ
-    - [Stage00 無限サバイバル] logistics.updateLogistics(respawnOnDespawn=true)
+    - [Stage00 無限サバイバル] logistics.updateLogistics(simSpeed, respawnOnDespawn=true)
       - absorbNearbyAmmo() // player.alive のみ
         - player.onPickup() + sfx.pickup() + hud.hint() // 範囲内の補給ごと
-      - despawnFarAmmo()
-        - spawnForPlayer() // 遠方消滅した数だけ再投入。生存数が MAX_AMMO に達したら打ち切る
-      - spawnForPlayer() // LOGISTICS_CHECK_INTERVAL ごと、かつ低弾薬・上限未満のみ
+      - despawnFarAmmo() // 消滅そのものは投入可否によらず常に走る
+        - spawnForPlayer() // 遠方消滅した数だけ再投入。投入可(resupplyEnabled かつ canResupplyAmmo)のときだけ。生存数が MAX_AMMO に達したら打ち切る
+      - spawnForPlayer() // 投入可のとき、LOGISTICS_CHECK_INTERVAL ごと、かつ低弾薬・上限未満のみ。投入不可の間は次回判定時刻を進めない
     - [Stage00 無限サバイバル] updateWaitingForAmmoPhase() → hud.toast() // 弾薬確保でフェーズ遷移した時のみ
     - [Stage00 無限サバイバル] updateSpawningEnemiesPhase() → spawnWave() // カウントダウン満了時のみ
     - [Stage00 無限サバイバル] updateActiveCombatPhase()
@@ -163,8 +164,9 @@
       - spawnWave() + hud.toast() // 間隔・同時展開上限を満たす場合のみ
       - spawnWave: generateWave() → addEnemy() → entities.addEnemy() + scoreCounter.recordSpawnEnemy()
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
-    - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(respawnOnDespawn=false)
+    - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(simSpeed, respawnOnDespawn=false)
     - [CreativeStage] advanceFollowPlan() // entities.players のうち followPlan=true な艦ごと。plan.dropNodesBefore(simTime) が期限切れノードをまとめて取り除いて返す最後のノードへ state を置き換える(複数ノードを跨いだフレームも dropNodesBefore 内部の while で一括消費)
+    - [CreativeStage] placerPanel.isOpen なら getForm() を1回だけ呼び、computePreview(form)/computeFieldIssues(form) へ共有する
   - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効。残り時間が C.NODE_APPROACH_LEAD 以下なら autoWarpUntil=null + levelIdx=0 で即 return
   - simulator.advance(bulletCollision=true, resolveCollision=canResolvePhysicalCollisions, doSubstep=true)
@@ -229,7 +231,7 @@
       - player.stepPredicted(attractors, simTime, dt, horizon) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt・attractors を都度計算し直しながら1ステップずつ繰り返し呼ぶ
         - predicted.step() // 呼び出し側が確定させた attractors で1ステップ積分
     - [canGrow] advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player を除外しないので同じフレームで二重に予算が付き得る)。entity.stepPredicted() が最初から false(predictsFuture=false/推力中/truncated)なら消費 0 で次へ即進む
-  - effects.update(dt, simDt) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と移流。ポーズ中は呼ばれない(=止まる)
+  - effects.update(dt, simulator.simTime) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と、各エフェクトの時刻から simTime までの移流。ポーズ中は呼ばれない(=止まる)
   - guide.update(plan, player, simTime, editMode, ephemeris.attractorsAt(simTime)) // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させるため
     - [editMode または !player.alive] 即 return
     - plan.dropNodesBefore(simTime - C.NODE_EXPIRE_GRACE) // 期限切れノードをまとめて落とし、最後に落ちたノードを新しいアンカーに据える
@@ -256,6 +258,8 @@
       - chaseCamera.update() // それ以外。camFollowAttitude && player.alive のときだけ player.att.q を rot に合成し、鍵/ドラッグ/ロール入力を回転として適用。結果を自身の view へ書く
       - 選ばれた view.fovDeg から combatCamera 自身の view.fovDeg を指数補間
   - [editor.editMode] 計画編集モード
+    - mapPicker.handleLeftClick() // 自機/基地マーカーへの左クリックを選択として消費する。外れれば消費せず editor.handleMapPointer() のノード配置/選択解除に読み進む
+      - selectPickable() // 'player' → game.setActivePlayer() / 'base' → docking.selectBase()(遷移はしない)
     - editor.handleMapPointer() // [!hasPlan] 即 return。右クリック → 左クリックの順に受ける
       - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
         - selectedNodeIdx = ヒットしたノードの idx + nodeGizmo.openMenu() // ヒット時。true を返して消費
@@ -266,7 +270,14 @@
       - dragNodeToNearestSample() // ノードを incoming arc の最寄り点へ移し、元のΔv成分を保ったまま新しいノード状態へ焼き直す
     - mapPicker.handleRightClick() // ノードに消費されずに残った右クリックだけが届く
       - pickNearest(mapPicker.pickables) // MAP_PICK_PX_SQ 以内の被選択物(天体/自機/敵船/nav-AN・DN/アプシス)を最寄りで拾う。候補列は mapPicker.refresh() が組んだ1本
-      - mapPicker のメニューを開く // 拾えた場合のみ消費。選択結果は MapPicker.run(act, target) へ
+      - mapPicker.openPropertyWindow() // 拾えた場合のみ消費。既にその対象のウィンドウがあれば移動+最前面化のみ、なければ new PropertyWindow(root=hud.root, buildContent()) // rows は空のまま開き、同フレーム後半の mapPicker.sync() が埋める(items は windowItems() 経由で開いた瞬間から埋まる)
+        - 新規かつ非クリップ → 直前の一時ウィンドウ(tempWindowKey)を closeWindow() してから差し替え
+        - w.onSelect(act) → handlers[target.kind].run(act, target) // 選択結果はこれまでと同じ経路
+          - act='delete' または !w.clipped → closeWindow() // 削除はクリップ有無によらず閉じる
+        - w.onClipChange(clipped) → clipped なら tempWindowKey をこのキーから外し、非clip化なら既存の tempWindowKey を closeWindow() してこのキーに差し替え
+        - w.onOutsideClick → !w.clipped のときだけ closeWindow()
+        - w.onClose(✕ボタン、widget 側で dispose 済み) → forgetWindow() // 台帳から外すだけ
+      - 選択結果は MapPicker.run(act, target) へ
         - act='focus' → overviewCamera.focus 代入
         - act='navTarget' → navTarget.toggleTarget()
         - act='warp' → simSpeedManager.startAutoWarpTo(navTarget.passTimeOf(target.id))
@@ -326,6 +337,7 @@
     - orbitLine.sync() → regenerate() // 中心天体は毎フレーム strongestAttractor(state.r, ephemeris.attractorsAt(state.t)) で導出(地球固定ではない)。要素が閾値以上ドリフト or 推力中(force) or 初回のみ再生成。現在状態基準(要素は時刻に依らない)
   - entities.sync(displayTime) → entity.sync(displayTime) // 敵・弾・薬莢・デブリ・補給それぞれ(Bullet は速度方向を向く別実装)。自機(全隻)は含まない — 各艦は syncPlayer() が個別に同期済み。
     displayState が null(predictsFuture=false の種別が未来表示中、または予測ホライズン超過)なら visible=false
+  - [entities.bases ごと] base.syncOrbitLine(overviewMode, bodies) // 中心天体は strongestAttractor(base.state.r, bodies)。マップビューのみ、それ以外は null を渡して線を消す
   - effects.sync() → flashEffectManager.syncFlashEffects()
     - billboard.sync() // 生存中のフラッシュごと(寿命・移流は update フェーズで済んでいる)
   - targeter.sync(attractors) // ターゲットに紐づく表示物をまとめて
@@ -345,7 +357,7 @@
   - leadMarkers.sync() // 敵ごとの LEAD マーカー。overviewMode or !player.alive なら全 remove して return
     - trackTargeted() // 最終ロック時刻を生存中の敵ぶんだけ作り直す
     - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある敵ごと
-  - displayTimeManager.sync(game.currentOrbitPeriod()) // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ)の表示/内容を押し出すだけ
+  - displayTimeManager.sync(simTime, game.currentOrbitPeriod()) // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ/ジャンプ入力)の表示/内容を押し出すだけ
     - panel.setVisible(!forceCurrent) / setDuration() / setManualVisible() / setSliderLabel() / setTicks() // ラベルは自己完結の "T+" 表記のみ
   - editor.sync(mapDist, simTime, fo, project)
     - [hasPlan かつ(editMode または plan.nodes.length > 0)] planDisplay.sync(fo, project, editMode)
@@ -364,11 +376,13 @@
     - [hasPlan かつ editMode] syncGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
       // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は path の今フレームの表示文脈を通す
     - [hasPlan かつ editMode] syncPanel(simTime) // MANEUVER PLAN パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
-  - mapPicker.sync(overviewMode) // 軌道オブジェクトウィンドウ。objectListVisible かつ overviewMode のときだけ pickables を行として書き出す
+  - mapPicker.sync(overviewMode, simTime, bodies, player) // 軌道オブジェクトウィンドウ。objectListVisible かつ overviewMode のときだけ pickables を行として書き出す
+    - 開いている各プロパティウィンドウ // isTargetGone(target) が真なら closeWindow()(player/ship/ammo/base は実体の alive を直接見る。displayState が null なだけの休止フレームでは alive のまま残るので閉じない。天体/アプシス/AN-DN は pickables に載っているかで判定) — 残れば target を pickables の最新値へ更新し、buildRows() → w.syncRows() / windowItems() → w.syncItems()
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync(player, fo, project, displayTime, overviewMode) // player は Creative の未配置状態で null
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示。player が null なら隠す
     - [CreativeStage] syncPreview(fo, project) // update が求めた preview の軌道線 + ▷ マーカー。preview が null なら両方隠す
+    - [CreativeStage] placerPanel.setIssues(issues) // update が求めた issues を渡すだけ。前回と同内容なら panel 側が DOM に触らず即 return
     - logistics.syncMarkers(displayTime) → ammo.displayState(displayTime) → markerManager.set('mg<i>') + setBearing('mg<i>-bearing')
       // player が null の間はすべて隠す(ラベルの距離表示が自機基準のため)
       // マーカーを出せる補給ごと(i = 生存かつ displayState が非 null な個体だけを詰めた配列の添字)
@@ -377,7 +391,8 @@
       - [!overviewMode] markerManager.setBearing('base<i>-bearing', ...) // 画面外の基地への方位矢印。overviewMode 中は隠す
       // entities.bases の添字ごと(logistics.syncMarkers と同じ、前フレームより減った添字だけ hide())
   - hud.panels.sync(game, attractors) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
-    - setStats() + setTarget() // 約10Hz にスロットル
+    - setText('met') + setGlobalStatus() // 自機不在でも常に実行。setGlobalStatus は約10Hz にスロットル
+    - setStats() + setTarget() // 自機がいる間のみ、約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
   - hud.tick() // ヒント/トーストのフェードアウト
   - guide.sync(plan, player, simTime, editMode, project)

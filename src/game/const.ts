@@ -31,6 +31,11 @@ export const SHIP_BCINV = 3.3e-3; // 機体: Cd≈2.2, A≈12m², m≈8t
 export const BULLET_BCINV = 2e-4; // 弾丸: 高弾道係数でほとんど減速しない
 export const SMALL_DEBRIS_BCINV = 8e-3; // 薬莢・破片
 
+// --- 太陽輻射圧(輻射圧係数 × 断面積質量比 C_R·A/m [m^2/kg]) ---
+// 大気抵抗が消える高軌道・ラグランジュ点領域では、これが唯一残る非重力摂動になる。
+export const SHIP_SRP_COEFF = 1.56e-2; // 機体: C_R≈1.3, A≈12m², m=PLAYER_MASS
+export const SMALL_DEBRIS_SRP_COEFF = 4.7e-3; // 薬莢・破片・弾薬
+
 // --- 空力加熱・構造限界(自機のみ) ---
 export const SG_CONST = 1.7415e-4; // Sutton–Graves 定数(地球) [kg^0.5/m]
 export const NOSE_RADIUS = 0.6; // 機首曲率半径 [m]
@@ -163,6 +168,7 @@ export const LOGISTICS_MAX_DIST = 1250; // 同上限 [m]
 export const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
 export const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
 export const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
+export const CLICK_MOVE_THRESHOLD = 6; // これ未満の累積移動量ならドラッグではなくクリック扱い [px]
 export const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s]
 export const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
 export const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
@@ -279,6 +285,11 @@ export const PLAN_ARC_STEPS_PER_REV = 100;
 // 1周回 / PLAN_ARC_STEPS_PER_REV のままではステップ数がフレーム時間を圧迫するので、
 // 超えたら plan-arc.ts の再突入時と同じ「そこで打ち切って endState() を返す」経路に乗せる。
 export const PLAN_ARC_MAX_STEPS = 20000;
+// 天体に衝突した後、その天体を無視して伝播を続ける仮想延長線(幽霊軌道)の破線パターン [m] と
+// 不透明度倍率。dashSize/gapSize は表示座標系の実距離。
+export const PLAN_ARC_GHOST_DASH_M = 3e4;
+export const PLAN_ARC_GHOST_GAP_M = 3e4;
+export const PLAN_ARC_GHOST_OPACITY_MULT = 0.5;
 // 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
 export const APERIODIC_ARC_DURATION = 86400;
 // 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率の下限。これ未満は円に近く
@@ -307,7 +318,7 @@ export const PREDICT_SAMPLE_ERROR = 30;
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;
 
-export const SIM_EPOCH_UTC = '2030-01-01T00:00:00Z'; // simTime = 0 に対応する絶対時刻。HUD の日時表示にのみ使う
+export const SIM_EPOCH_UTC = '20115-05-14T06:00:00Z'; // simTime = 0 に対応する絶対時刻。HUD の日時表示にのみ使う
 
 // --- 第零ステージ(近接戦闘訓練) ---
 export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
@@ -410,6 +421,7 @@ export const COLOR_DESTROY_FLASH_2 = '#fffbe8';
 export const COLOR_PLAYER_DESTROY_FRAG = '#9fd8e8';
 export const COLOR_ENEMY_DESTROY_FRAG = '#ff6a4a';
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
+export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道線。落ち着いた緑がかった色で他線と区別
 export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
 export const COLOR_SHIP_DARK_HULL = '#2e3340';
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
