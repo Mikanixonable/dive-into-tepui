@@ -128,7 +128,7 @@ main.ts
   `stepPrediction` を呼んだ時点で2本目の `OrbitEntity` を `predicted` として追加で持つ
   (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。予測する長さ
   (horizon)は種別ごとの定数ではなく、`Predictor.update` が毎フレーム
-  `DisplayTimeManager.durationSec()` から渡す引数。
+  `DisplayTimeManager.durationSec(referencePeriod)` から渡す引数。
 - `STAGE_DEFINITIONS`(stage-dictionary.ts のモジュールスコープ)… 選択画面のラベル・解放条件を読む
   ためだけの `Stage` インスタンス列。`setup()`/`init()` は呼ばれず、プレイに使う `activeStage` とは別物。
   `CreativeStage` はここに含まれない(選択画面のタブには出ない)ので、`game.ts` は `launch.mode ===
@@ -152,6 +152,7 @@ main.ts
 | `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay) |
 | `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・HitSystem・CollisionPhysics・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer` 経由の追加・参照のみ) |
 | `PlanTrajectory` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.traj` 経由) |
+| `DisplayTimeManager` | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanTrajectory` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanTrajectory` はこれを保持するだけで書き換えない) |
 | `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が activePlayer.plan を転送)・PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)・CreativeStage(followPlan 艦の自動追従) |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
@@ -280,10 +281,10 @@ main.ts
 | 解析楕円の中心天体(`strongestAttractor(state.r, bodies)` の結果) | `state`(と `bodies`)から都度導く選択であり、`GameEntity`/`Plan`/`PlanDisplay`/`OrbitLine` のどれもこれを状態として保持しない — 選ぶ GUI もない | 呼ぶたび再計算 |
 | `GameEntity.elementsAround(body)` の内部メモ | `state` の参照同一性 + `body.id` をキーにした軌道要素のメモ化(中心天体 `body` は呼び出し側が選ぶ) | `state` が差し替わるたび(`current.step`/`.reset`)、または `body.id` が変わるたび自動的に不一致になる |
 | `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(`history` とは別) | `step`/`reset` のたび更新 |
-| `GameEntity.predicted` | `current.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayTimeManager.durationSec()` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `resyncPrediction` の距離判定(§3-4 (a))、または `Player.behave` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
+| `GameEntity.predicted` | `current.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayTimeManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `resyncPrediction` の距離判定(§3-4 (a))、または `Player.behave` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
 | `SimSpeedManager.canGrowPrediction` | `simSpeed <= C.MAX_PHYS_SIM_SPEED` の派生 getter(`canResolvePhysicalCollisions` と同じ式だが別の問い) | 呼ぶたび再計算 |
 | `OrbitLine.snap` / 頂点配列 | 楕円ジオメトリの再生成判定用スナップショット | 要素ドリフト・`force`・初回 |
-| `PlanArc.samples` / `.key`(`{state0, end}`) | 予測 RK4(`OrbitEntity` 積分)の結果と入力スナップショット | `(state0, end)` の変化 + スロットル、`force` |
+| `PlanArc.samples` / `.key`(`{state0, end}`) | 予測 RK4(`OrbitEntity` 積分)の結果と入力スナップショット | `update` の `tracksLiveAnchor` 引数(計画が空の間の唯一の区間だけ true)が false なら `state0`/`end` の同一性・値の変化。true なら区間長・起点時刻とも直近再積分時からの変化がサンプル間隔(区間長 / `PLAN_ARC_MAX_SAMPLES`)未満の間は無効化しない(`'orbit'` プリセットでは起点の接触周期自体が J2・大気抵抗で毎フレーム連続変化するため、厳密一致ではなくこの閾値で判定する)——ただし `state0` の同一性が変わっていて `t` が前進していない(別艦への切り替え・ドック発進・衝突による状態上書きなどの非連続な差し替え)場合はこの閾値を無視して即座に無効化する |
 | `PlanTrajectory.arcs` / `.activeCount` / `.nodeCount` / `.frame` / `.unbakeTime` / `.project` | 毎フレーム再構築される区間分割と表示文脈(画面判定もこれを使う)。`arcs` は先頭 `activeCount` 本だけがこのフレームの区間に対応するプール、先頭 `nodeCount` 本がノードで終わる区間 | `update()` 毎 |
 | `SampledLine.lastSamples` / `.lastFrame` | bake 済み頂点の入力スナップショット | 点列 or frame の変化 |
 | `DebugHistoryLine.lines`(`Map<GameEntity, SampledLine>`) | 対象ごとの `SampledLine` インスタンスのプール(`?debugLines=1` のみ実体化) | 対象集合(`sync` の引数)から外れたエンティティぶんを毎フレーム破棄 |
