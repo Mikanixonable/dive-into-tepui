@@ -3,7 +3,7 @@
 import { Attitude, qRotate } from '../../physics/attitude';
 import { KinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, v3 } from '../../physics/vec3';
-import { ProjectFn } from '../camera/camera-system';
+import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 
 // 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
@@ -16,9 +16,9 @@ export class PlayerMarkers {
   ) { }
 
   // currentState: 現在の自機状態(方向マーカー・ボアサイト用)。
-  // displayState: スライダー位置の状態(null なら予測期間超過)、▷ マーカー用。
+  // displayState: スライダー位置の状態(null なら予測期間超過)、▲ マーカー用。
   // displayName は改名可能なので毎フレーム引数で受け取り、保持しない。
-  sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, alive: boolean, overviewMode: boolean, isActive: boolean, project: ProjectFn, displayName: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0): void {
+  sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, alive: boolean, overviewMode: boolean, isActive: boolean, project: ProjectFn, scaleFn: ScaleFn, displayName: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0): void {
     const selfKey = `self-${this.id}`;
 
     if (overviewMode) {
@@ -27,7 +27,11 @@ export class PlayerMarkers {
       }
       if (displayState) {
         const color = isActive ? '#ff0000' : undefined;
-        this.markerManager.setPosition(selfKey, 'mk-self', '▷', displayState.r, project, displayName, 1, color);
+        const heading = this.markerManager.headingDeg(displayState.r, displayState.v, project, scaleFn);
+        this.markerManager.setPosition(
+          selfKey, 'mk-self', '▲', displayState.r, project, displayName, 1, color,
+          heading !== null ? heading + 90 : undefined,
+        );
       } else {
         this.markerManager.hide(selfKey);
       }

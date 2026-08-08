@@ -8,7 +8,7 @@ import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import { Player } from '../../player/player';
-import { ProjectFn } from '../../camera/camera-system';
+import { ProjectFn, ScaleFn } from '../../camera/camera-system';
 import { MarkerManager } from '../../marker/marker-manager';
 import { fmtMarkerDist } from '../../hud/utils';
 import type { EntityManager } from '../../simulation/entity-manager';
@@ -96,28 +96,31 @@ export class Logistics {
   }
 
   // 生存中の補給へ ▣ マーカー(画面外なら△の方位矢印)を同期する。ラベルの距離表示は
-  // 自機基準なので、艦が1隻も無い間はすべて隠す。
-  syncMarkers(player: Player | null, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
-    // 表示時刻における生存中ピックアップの位置とラベル
+  // 自機基準なので、艦が1隻も無い間はすべて隠す。overviewMode 中はマーカーを進行方向へ回す。
+  syncMarkers(player: Player | null, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean): void {
+    // 表示時刻における生存中ピックアップの位置・速度とラベル
     const shown = !player ? [] : this.entities.ammos.flatMap((ammo) => {
-      const pos = ammo.alive ? ammo.displayState(displayTime)?.r : undefined;
-      return pos ? [{ pos, label: `AMMO ${fmtMarkerDist(len(sub(pos, player.state.r)))}` }] : [];
+      const ds = ammo.alive ? ammo.displayState(displayTime) : undefined;
+      return ds ? [{ pos: ds.r, vel: ds.v, label: `AMMO ${fmtMarkerDist(len(sub(ds.r, player.state.r)))}` }] : [];
     });
     // 描画と新しい上限の記憶
-    for (const [i, { pos, label }] of shown.entries()) {
+    for (const [i, { pos, vel, label }] of shown.entries()) {
       const key = `mg${i}`;
       const bearing = `${key}-bearing`;
       const p = project(pos);
       if (overviewMode && !this._hud.settings.showMapAmmo) {
         this.markerManager.hide(key);
         this.markerManager.hide(bearing);
+      } else if (overviewMode) {
+        const heading = this.markerManager.headingDeg(pos, vel, project, scale);
+        this.markerManager.set(
+          key, 'mk-ammo', '▲', p.x, p.y, p.front, label, 1, undefined,
+          heading !== null ? heading + 90 : undefined,
+        );
+        this.markerManager.hide(bearing);
       } else {
         this.markerManager.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, label);
-        if (overviewMode) {
-          this.markerManager.hide(bearing);
-        } else {
-          this.markerManager.setBearing(bearing, 'mk-ammo', '△', p, label, 0.9);
-        }
+        this.markerManager.setBearing(bearing, 'mk-ammo', '△', p, label, 0.9);
       }
     }
     // 前フレームより件数が減った分のマーカーを隠す

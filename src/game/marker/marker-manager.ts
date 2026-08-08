@@ -4,14 +4,15 @@
 // 出揃った後に一度だけ呼ぶ必要があるため、game.sync の最後で呼ばれる。
 //
 // setPosition/setDirection は、3D空間上の「位置」「方向」を示すマーカーの
-// 投影手順(project → set)を一元化したもの。camera-system.ts が MarkerManager に
-// 依存しているため、ProjectFn 型を直接 import せず同形の関数型で受ける
-// (循環 import を避ける)。
+// 投影手順(project → set)を一元化したもの。headingDeg は進行方向(ECI 速度)を
+// スクリーン方位角へ変換する。camera-system.ts が MarkerManager に依存しているため、
+// ProjectFn/ScaleFn 型を直接 import せず同形の関数型で受ける(循環 import を避ける)。
 import { Vec3, addScaled, norm } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
 import * as C from '../const';
 
 type ProjectFn = (worldPos: Vec3) => Projected;
+type ScaleFn = (worldPos: Vec3) => number;
 
 // 指定タグの要素を作って id/class を設定し、parent へ追加して返す。
 function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLElement {
@@ -117,6 +118,20 @@ export class MarkerManager {
   ): void {
     const p = project(addScaled(origin, norm(dir), C.MARKER_DIR_DIST));
     this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel);
+  }
+
+  // worldPos にいる対象の進行方向(ECI 速度 vel)をスクリーン方位角 [deg] に変換する。
+  // atan2 の規約(0=右方向)で返すので、setBearing と同様に、上向きグリフを渡す
+  // 呼び出し側がこれへ +90 して回転させる。速度が視線とほぼ平行で投影差が縮退する場合は
+  // 方位を定められないため null を返す。
+  headingDeg(worldPos: Vec3, vel: Vec3, project: ProjectFn, scale: ScaleFn): number | null {
+    const probe = scale(worldPos) * C.MARKER_HEADING_PROBE_PX;
+    const p0 = project(worldPos);
+    const p1 = project(addScaled(worldPos, norm(vel), probe));
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
+    if (Math.hypot(dx, dy) < C.MARKER_HEADING_DEGENERATE_PX) return null;
+    return (Math.atan2(dy, dx) * 180) / Math.PI;
   }
 
   // 画面外(背面を含む)の対象を、画面中心から見た方位として画面端の円周上に置く。

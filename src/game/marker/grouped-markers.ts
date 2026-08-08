@@ -7,7 +7,7 @@
 // 見た目とラベル内容(GroupedMarkerItem)は対象自身が用意する。
 import { Vec3 } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
-import { ProjectFn } from '../camera/camera-system';
+import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { MarkerManager } from './marker-manager';
 
 export interface GroupedMarkerItem {
@@ -15,6 +15,7 @@ export interface GroupedMarkerItem {
   cls: string; // 画面内マーカーの CSS クラス
   sym: string; // 画面内マーカーの記号
   pos: Vec3; // ワールド位置 (ECI)
+  vel: Vec3; // ECI 速度。マップビューでの進行方向表示に使う
   priority: number; // 代表選出の優先度(大きいものが代表になる)
   name: string; // ラベルの主題。まとめられた代表には "xN" が付く
   detail: string; // ラベル末尾の付随情報(距離など)
@@ -43,8 +44,9 @@ export class GroupedMarkers {
 
   // items が空なら前フレームのマーカーをすべて片付けるだけになる(非表示にしたいときは
   // 空配列を渡せばよく、専用の hide は要らない)。overviewMode 中は対象そのものが
-  // 画面内に見えているので、画面端の方位マーカーは出さない。
-  sync(items: readonly GroupedMarkerItem[], project: ProjectFn, overviewMode: boolean): void {
+  // 画面内に見えているので、画面端の方位マーカーは出さず、代わりに vel から進行方向を
+  // 求めてマーカー自体を回す(円軌道では静止画から回転方向が読めないための対策)。
+  sync(items: readonly GroupedMarkerItem[], project: ProjectFn, overviewMode: boolean, scale: ScaleFn): void {
     const placed: PlacedItem[] = items.map(
       (item) => ({ item, p: project(item.pos), count: 1, labeled: true }),
     );
@@ -52,7 +54,11 @@ export class GroupedMarkers {
 
     for (const m of placed) {
       const label = m.labeled ? this.label(m.item, m.count) : '';
-      this.markerManager.set(m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, 1, m.item.color, undefined, m.item.symMarkup);
+      const heading = overviewMode ? this.markerManager.headingDeg(m.item.pos, m.item.vel, project, scale) : null;
+      this.markerManager.set(
+        m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, 1, m.item.color,
+        heading !== null ? heading + 90 : undefined, m.item.symMarkup,
+      );
       // 画面外(背面を含む)の対象は、画面端の ▲ で方位だけを示す。
       if (overviewMode) this.markerManager.hide(bearingKey(m.item.key));
       else this.markerManager.setBearing(bearingKey(m.item.key), 'mk-dir', '△', m.p, '', 1, m.item.bearingColor);
