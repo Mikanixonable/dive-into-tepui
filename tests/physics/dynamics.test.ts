@@ -1,7 +1,7 @@
 // dynamics.ts の回帰テスト。stepDynamicsRK4 は OrbitEntity.step が使う唯一の 1 ステップ実装。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { MU_EARTH, R_EARTH, orbitState } from '../../src/physics/orbital-state';
+import { MU_EARTH, R_EARTH, kinematicState } from '../../src/physics/kinematic-state';
 import { Elements, keplerPeriod, stateFromElements } from '../../src/physics/elements';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
@@ -9,12 +9,12 @@ import { Attractor, elementsAround } from '../../src/physics/attractor';
 import { j2Accel, stepDynamicsRK4, stepOrbitRK4 } from '../../src/physics/dynamics';
 import { Vec3, add, len, sub, v3 } from '../../src/physics/vec3';
 
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)) };
+const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)) };
 
 function circularState() {
   const r0 = R_EARTH + 420e3;
   const vc = Math.sqrt(MU_EARTH / r0);
-  return orbitState(0, v3(r0, 0, 0), v3(0, vc, 0));
+  return kinematicState(0, v3(r0, 0, 0), v3(0, vc, 0));
 }
 
 // フェーズ B 以前の合成: −μ_E r/|r|³(中心重力)+ 太陽・月の潮汐摂動 + J2。
@@ -50,8 +50,8 @@ export function register(): void {
     const moonPos = v3(3.8e8, 0, 0);
     const attractors: readonly Attractor[] = [
       EARTH,
-      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: orbitState(0, moonPos, v3(0, 0, 0)) },
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(0, sunPos, v3(0, 0, 0)) },
+      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, moonPos, v3(0, 0, 0)) },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)) },
     ];
 
     const viaNew = stepDynamicsRK4(s0, dt, attractors, 0, null);
@@ -93,7 +93,7 @@ export function register(): void {
     const a = R_MOON + 100e3;
     const period = keplerPeriod(a, MU_MOON); // ~7,066s
     const rel0 = stateFromElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
-    let s = orbitState(0, add(rel0.r, moon0.state.r), add(rel0.v, moon0.state.v));
+    let s = kinematicState(0, add(rel0.r, moon0.state.r), add(rel0.v, moon0.state.v));
 
     const dt = 5;
     const steps = Math.round(period / dt);
@@ -116,7 +116,7 @@ export function register(): void {
     const alt = 420e3;
     const r0 = R_EARTH + alt;
     const vCirc = Math.sqrt(MU_EARTH / r0);
-    let s = orbitState(0, v3(r0, 0, 0), v3(0, 0, vCirc));
+    let s = kinematicState(0, v3(r0, 0, 0), v3(0, 0, vCirc));
     const period = 2 * Math.PI * Math.sqrt((r0 * r0 * r0) / MU_EARTH);
     const e0 = 0.5 * vCirc * vCirc - MU_EARTH / r0;
 

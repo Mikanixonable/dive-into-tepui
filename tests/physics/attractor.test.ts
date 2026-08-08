@@ -8,14 +8,14 @@ import {
   localOrbitPeriod,
   strongestAttractor,
 } from '../../src/physics/attractor';
-import { MU_EARTH, R_EARTH, orbitState } from '../../src/physics/orbital-state';
+import { MU_EARTH, R_EARTH, kinematicState } from '../../src/physics/kinematic-state';
 import { keplerPeriod, stateFromElements, tofBetween } from '../../src/physics/elements';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
 import { add, addScaled, len, norm, sub, v3 } from '../../src/physics/vec3';
 
 const ZERO = v3(0, 0, 0);
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, ZERO, ZERO) };
+const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO) };
 
 export function register(): void {
   test('attractor: attractorAccel は原点天体(地球)では素の中心重力になる', () => {
@@ -30,7 +30,7 @@ export function register(): void {
     const r = v3(R_EARTH + 420e3, 0, 0);
     // moon がクエリ位置と同じ座標(距離ゼロ)にある人工の配置。飛ばされず加算されると
     // μ/0³ で発散する。
-    const coincidentMoon: Attractor = { id: 'moon', mu: MU_MOON, radius: R_MOON, state: orbitState(0, r, ZERO) };
+    const coincidentMoon: Attractor = { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, r, ZERO) };
     const a = attractorAccel(r, coincidentMoon);
     assert.ok(Number.isFinite(a.x) && Number.isFinite(a.y) && Number.isFinite(a.z), `finite: ${JSON.stringify(a)}`);
     // 直接引力の項だけが落ちて、原点補正項(月が地球を引く分)は残る。
@@ -99,11 +99,11 @@ export function register(): void {
     // sqrt(MU_EARTH/MU_MOON) ~= 9 倍ずれる。
     const moon: Attractor = {
       id: 'moon', mu: MU_MOON, radius: R_MOON,
-      state: orbitState(0, v3(3.844e8, 0, 0), v3(0, 0, 1023)),
+      state: kinematicState(0, v3(3.844e8, 0, 0), v3(0, 0, 1023)),
     };
     const a = R_MOON + 100e3;
     const rel = stateFromElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
-    const s = orbitState(0, add(rel.r, moon.state.r), add(rel.v, moon.state.v));
+    const s = kinematicState(0, add(rel.r, moon.state.r), add(rel.v, moon.state.v));
 
     const el = elementsAround(s, moon);
     assert.ok(el, 'elementsAround should not be null');

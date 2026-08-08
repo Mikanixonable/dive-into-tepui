@@ -1,5 +1,5 @@
 // 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、NODE/BURN マーカー。
-import { OrbitState } from '../../physics/orbital-state';
+import { KinematicState } from '../../physics/kinematic-state';
 import { Elements } from '../../physics/elements';
 import { Attractor, elementsAround, strongestAttractor } from '../../physics/attractor';
 import { addScaled, dot, len, norm, sub } from '../../physics/vec3';
@@ -15,8 +15,8 @@ import type { Player } from '../player/player';
 export class PlanGuide {
   // 通知済みのノード。ノードは編集のたびに別インスタンスへ置き換わるので、同一性の比較が
   // そのまま「同じノードについて既に通知したか」の判定になる。
-  private approachNotified: OrbitState | null = null;
-  private achievedNotified: OrbitState | null = null;
+  private approachNotified: KinematicState | null = null;
+  private achievedNotified: KinematicState | null = null;
 
   constructor(
     private readonly _hud: Hud,
@@ -79,7 +79,7 @@ export class PlanGuide {
   }
 
   // 実行の窓に入ったことを通知する。
-  private notifyApproach(node: OrbitState): void {
+  private notifyApproach(node: KinematicState): void {
     if (this.approachNotified === node) return;
     this.approachNotified = node;
     this._hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
@@ -87,7 +87,7 @@ export class PlanGuide {
 
   // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと自機で最も強く引く
   // 天体が違えば、要素同士の比較自体が意味を持たないので判定しない。
-  private notifyAchieved(plan: Plan, node: OrbitState, player: Player, attractors: readonly Attractor[]): void {
+  private notifyAchieved(plan: Plan, node: KinematicState, player: Player, attractors: readonly Attractor[]): void {
     if (this.achievedNotified === node) return;
     const playerCenter = strongestAttractor(player.state.r, attractors);
     const nodeCenter = strongestAttractor(node.r, attractors);

@@ -5,7 +5,7 @@ import { Ship } from './ship';
 import { Attractor, hitCelestialBody, strongestAttractor } from '../../physics/attractor';
 import type { FloatingOrigin } from '../floating-origin';
 import { Attitude } from '../../physics/attitude';
-import { OrbitState, orbitState, R_EARTH_EQ } from '../../physics/orbital-state';
+import { KinematicState, kinematicState, R_EARTH_EQ } from '../../physics/kinematic-state';
 import { OrbitLine } from '../../render/orbitline';
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
@@ -67,7 +67,7 @@ export class Enemy extends Ship {
   // enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
   constructor(
     name: string,
-    state: OrbitState,
+    state: KinematicState,
     enemyKind: EnemyKind,
     att: Attitude,
     _hp: number,
@@ -276,7 +276,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_HIT_DAMAGE, this.scene);
+    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_HIT_DAMAGE, this.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
@@ -315,7 +315,7 @@ export class Enemy extends Ship {
 
   // セーブデータから復元する。
   static restore(data: EnemySaveData, simTime: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene?: THREE.Scene): Enemy {
-    const state = orbitState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
+    const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
     const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
     const enemy = new Enemy(data.name || '', state, data.enemyKind, att, data.health, data.accent, data.accent, hud, sfx, fx, data.waveId, scene);
     enemy.id = data.id || undefined;
