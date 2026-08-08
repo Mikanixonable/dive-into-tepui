@@ -13,6 +13,17 @@ import type { ThrottleSaveData } from '../save-data';
 // 並進6方向の連打ラッチ判定対象キー一覧。
 const THRUST_KEYS: readonly KeyBinding[] = [K.thrustForward, K.thrustBackward, K.thrustLeft, K.thrustRight, K.thrustUp, K.thrustDown];
 
+// 各キーの反対方向キー。片方をラッチした状態でもう片方を押すと axX/Y/Z が
+// 打ち消し合って噴射が止まってしまうため、押下エッジで反対方向のラッチを解除する。
+const OPPOSITE_THRUST_KEY: ReadonlyMap<string, KeyBinding> = new Map<string, KeyBinding>([
+  [K.thrustForward.code, K.thrustBackward],
+  [K.thrustBackward.code, K.thrustForward],
+  [K.thrustLeft.code, K.thrustRight],
+  [K.thrustRight.code, K.thrustLeft],
+  [K.thrustUp.code, K.thrustDown],
+  [K.thrustDown.code, K.thrustUp],
+]);
+
 export class PlayerThrottle {
   rcsDamp = true;
   throttleIdx = C.THROTTLE_DEFAULT_IDX;
@@ -24,7 +35,6 @@ export class PlayerThrottle {
   // ラッチ中の並進キー(code 単位)。連打で追加/削除する。
   private readonly latchedThrustKeys = new Set<string>();
   private readonly lastThrustPressTime: Partial<Record<string, number>> = {};
-  private thrustClock = 0;
 
   constructor(
     private readonly _hud: Hud,
@@ -57,9 +67,16 @@ export class PlayerThrottle {
 
   // スラスト方向の表示用状態と噴射ラッチを初期化する。
   clearTransientState(): void {
-    this.thrustVizDir = null;
-    this.thrustAccelVec = v3();
+    this.stopThrust();
     this.latchedThrustKeys.clear();
+    for (const key of Object.keys(this.lastThrustPressTime)) delete this.lastThrustPressTime[key];
+  }
+
+  // 噴射音・プルーム表示を止める。噴射が実際に無い(または許可されない)ときの唯一の入口。
+  stopThrust(): void {
+    this._sfx.setThrust(false);
+    this.thrustAccelVec = v3();
+    this.thrustVizDir = null;
   }
 
   serialize(): ThrottleSaveData {
@@ -73,13 +90,9 @@ export class PlayerThrottle {
   // 入力から機体座標系の推力加速度を組み立てて返す。warp 中などで噴射不可なら null。
   // SFX とスラスト方向の表示用状態も併せて更新する。
   updateThrustState(input: Input, simSpeed: SimSpeedManager, att: Attitude, dt: number, ship: import('../game-entity/ship').Ship): Vec3 | null {
-    this.updateThrustLatches(input, dt);
     const thrust = this.buildThrust(input, att.q, ship, dt);
-    // 噴射不可、または入力が無ければ噴射音・表示を止めて終える
     if (!simSpeed.canPlayerThrust || !thrust) {
-      this._sfx.setThrust(false);
-      this.thrustAccelVec = v3();
-      this.thrustVizDir = null;
+      this.stopThrust();
       return null;
     }
 
@@ -91,14 +104,20 @@ export class PlayerThrottle {
   }
 
   // 並進キーを短時間内に連打するとラッチ集合へ追加/削除する(押しっぱなし相当の維持/解除)。
-  private updateThrustLatches(input: Input, dt: number): void {
-    this.thrustClock += dt;
+  // 押下エッジでは反対方向キーのラッチも解除する(片方をラッチしたまま逆方向を押すと
+  // axX/Y/Z が打ち消し合って噴射が止まるため)。連打の間隔は実時間で測るので、
+  // 呼ばれないフレームを挟んでも判定が狂わない。
+  updateThrustLatches(input: Input): void {
+    const now = performance.now() / 1000;
     for (const key of THRUST_KEYS) {
       // 押しっぱなしの keydown リピートを2打目と誤検出しないよう、エッジ(takeKey)だけを見る。
       if (!input.takeKey(key)) continue;
+      const opposite = OPPOSITE_THRUST_KEY.get(key.code);
+      if (opposite) this.latchedThrustKeys.delete(opposite.code);
+
       const last = this.lastThrustPressTime[key.code];
-      this.lastThrustPressTime[key.code] = this.thrustClock;
-      if (last === undefined || this.thrustClock - last > C.THRUST_LATCH_DOUBLE_TAP_SEC) continue;
+      this.lastThrustPressTime[key.code] = now;
+      if (last === undefined || now - last > C.THRUST_LATCH_DOUBLE_TAP_SEC) continue;
       if (this.latchedThrustKeys.has(key.code)) this.latchedThrustKeys.delete(key.code);
       else this.latchedThrustKeys.add(key.code);
       delete this.lastThrustPressTime[key.code];
