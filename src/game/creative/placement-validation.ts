@@ -10,11 +10,15 @@ export type PlacementFieldId =
 
 export type PlacementFieldIssue = { field: PlacementFieldId; message: string };
 
+export type EllipticSizeInput =
+  | { sizeMode: 'apsides'; peAltKm: number; apAltKm: number }
+  | { sizeMode: 'semiMajorEcc'; semiMajorKm: number; eccentricity: number }
+  | { sizeMode: 'periodEcc'; periodHours: number; eccentricity: number };
+
 export type EllipticPlacementInput = {
-  bodyRadius: number; mu: number; sizeMode: 'apsides' | 'semiMajorEcc' | 'periodEcc';
-  peAltKm: number; apAltKm: number; semiMajorKm: number; eccentricity: number; periodHours: number;
+  bodyRadius: number; mu: number;
   incDeg: number; raanDeg: number; argpDeg: number; nuDeg: number;
-};
+} & EllipticSizeInput;
 
 // 入力が有効な楕円軌道を表すか、フィールドごとに検証する。問題がなければ空配列を返す。
 export function validateEllipticPlacementFields(input: EllipticPlacementInput): PlacementFieldIssue[] {
@@ -35,7 +39,9 @@ export function validateEllipticPlacementFields(input: EllipticPlacementInput): 
     if (Number.isFinite(input.peAltKm) && Number.isFinite(input.apAltKm) && input.apAltKm < input.peAltKm) {
       issues.push({ field: 'apoapsisAltitude', message: '遠地点高度は近地点高度以上にしてください' });
     }
-  } else if (input.sizeMode === 'semiMajorEcc') {
+    return issues;
+  }
+  if (input.sizeMode === 'semiMajorEcc') {
     if (!Number.isFinite(input.semiMajorKm)) issues.push({ field: 'semiMajorAxis', message: '有限な数値を入力してください' });
   } else {
     if (!Number.isFinite(input.periodHours)) issues.push({ field: 'period', message: '有限な数値を入力してください' });
@@ -45,9 +51,9 @@ export function validateEllipticPlacementFields(input: EllipticPlacementInput): 
   } else if (!(input.eccentricity >= 0 && input.eccentricity < 1)) {
     issues.push({ field: 'eccentricity', message: '離心率は 0 以上 1 未満にしてください' });
   }
-  // apsides モードは近地点高度そのものを直接検証済みなので、ここでは半長軸/周期指定の
-  // 2モードだけ、導出した近地点半径 a*(1-e) が天体表面より上かを見る。
-  if (input.sizeMode !== 'apsides' && Number.isFinite(input.eccentricity) && input.eccentricity >= 0 && input.eccentricity < 1) {
+  // 導出した近地点半径 a*(1-e) が天体表面より上かを見る(apsides モードは近地点高度
+  // そのものを上で直接検証済みなので、ここは半長軸/周期指定の2モードだけが通る)。
+  if (Number.isFinite(input.eccentricity) && input.eccentricity >= 0 && input.eccentricity < 1) {
     const a = input.sizeMode === 'semiMajorEcc' ? input.semiMajorKm * 1e3 : semiMajorFromPeriod(input.periodHours * 3600, input.mu);
     if (Number.isFinite(a) && !(a > 0 && a * (1 - input.eccentricity) > input.bodyRadius)) {
       issues.push({
@@ -64,9 +70,9 @@ export function validateEllipticPlacement(input: EllipticPlacementInput): string
   return validateEllipticPlacementFields(input)[0]?.message ?? null;
 }
 
-export type LibrationPlacementInput = {
-  orbitKind: 'halo' | 'lissajous'; inPlaneAmplitudeKm: number; outOfPlaneAmplitudeKm: number;
-};
+export type LibrationPlacementInput =
+  | { orbitKind: 'halo'; outOfPlaneAmplitudeKm: number }
+  | { orbitKind: 'lissajous'; inPlaneAmplitudeKm: number; outOfPlaneAmplitudeKm: number };
 
 // ラグランジュ点まわりの振幅入力をフィールドごとに検証する。問題がなければ空配列を返す。
 // ハローの面内振幅は三次の振幅拘束で面外振幅から決まる(buildLibrationState 参照)ため、
@@ -85,7 +91,7 @@ export function validateLibrationPlacementFields(input: LibrationPlacementInput)
 // 基地は敵の射程となる惑星近傍を避け、月基準の軌道要素かラグランジュ点指定でのみ設置できる。
 // 問題がなければ空配列を返す。
 export function validateBaseReferenceFields(
-  objectType: 'player' | 'enemy' | 'ammo' | 'base', placementMode: 'elements' | 'libration', body: AttractorId,
+  objectType: 'player' | 'enemy' | 'ammo' | 'base', placementMode: 'elements' | 'libration', body?: AttractorId,
 ): PlacementFieldIssue[] {
   if (objectType !== 'base') return [];
   if (placementMode === 'elements' && body !== 'moon') {
@@ -96,7 +102,7 @@ export function validateBaseReferenceFields(
 
 // 基地の基準天体制約を検証する。問題なければ null、そうでなければエラーメッセージを返す。
 export function validateBaseReference(
-  objectType: 'player' | 'enemy' | 'ammo' | 'base', placementMode: 'elements' | 'libration', body: AttractorId,
+  objectType: 'player' | 'enemy' | 'ammo' | 'base', placementMode: 'elements' | 'libration', body?: AttractorId,
 ): string | null {
   return validateBaseReferenceFields(objectType, placementMode, body)[0]?.message ?? null;
 }
