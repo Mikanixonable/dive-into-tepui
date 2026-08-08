@@ -24,7 +24,7 @@ import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import * as C from '../const';
 import { ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
-import { validateEllipticPlacement } from '../creative/placement-validation';
+import { validateEllipticPlacement, validateBaseReference, validateLibrationPlacementFields } from '../creative/placement-validation';
 import { OrbitLine } from '../../render/orbitline';
 
 const DEG = Math.PI / 180;
@@ -101,9 +101,10 @@ export class CreativeStage extends Stage {
     this.lastBaseMarkerCount = bases.length;
   }
 
-  // 艦艇配置モーダルを開く (MapPicker から呼ばれる)
-  openShipPlacer(): void {
-    this.placerPanel.setVisible(true);
+  // 艦艇配置モーダルを開く (MapPicker から呼ばれる)。focusId はマップの現在フォーカスで、
+  // 基準天体になれる ID なら基準天体の初期選択に使う。
+  openShipPlacer(focusId?: string): void {
+    this.placerPanel.setVisible(true, focusId);
   }
 
   // フォーム値から配置プレビューの軌道要素と位置を求める。パネルを閉じている間・軌道要素指定
@@ -238,21 +239,23 @@ export class CreativeStage extends Stage {
       bodyRadius: body.radius, mu: body.mu, sizeMode: form.sizeMode,
       peAltKm: form.peAltKm, apAltKm: form.apAltKm, semiMajorKm: form.semiMajorKm,
       eccentricity: form.eccentricity, periodHours: form.periodHours,
-      anglesDeg: [form.incDeg, form.raanDeg, form.argpDeg, form.nuDeg],
+      incDeg: form.incDeg, raanDeg: form.raanDeg, argpDeg: form.argpDeg, nuDeg: form.nuDeg,
     });
     if (message) throw new Error(message);
   }
 
   // フォームの placementMode に応じた妥当性検証を行う。不正なら理由付きで例外を投げる。
   private assertValidForm(form: ShipPlacerForm): void {
+    const baseMessage = validateBaseReference(form.objectType, form.placementMode, form.body);
+    if (baseMessage) throw new Error(baseMessage);
     if (form.placementMode === 'elements') {
       this.assertValidElementsForm(form);
       return;
     }
-    const values = [form.axKm, form.azKm];
-    if (!values.every(Number.isFinite) || form.azKm <= 0 || (form.librationOrbitKind === 'lissajous' && form.axKm <= 0)) {
-      throw new Error('ラグランジュ軌道の振幅には有限の正数を入力してください');
-    }
+    const [firstIssue] = validateLibrationPlacementFields({
+      orbitKind: form.librationOrbitKind, inPlaneAmplitudeKm: form.axKm, outOfPlaneAmplitudeKm: form.azKm,
+    });
+    if (firstIssue) throw new Error(firstIssue.message);
   }
 
   private assertFiniteEllipticState(state: OrbitState): void {

@@ -11,7 +11,8 @@ export type MenuAction =
   | 'cancel'
   | 'openShipPlacer'
   | 'openDock'
-  | 'openObjectList';
+  | 'openObjectList'
+  | 'openSettings';
 
 // 共通メニュー項目ファクトリ
 export const MenuCommon = {
