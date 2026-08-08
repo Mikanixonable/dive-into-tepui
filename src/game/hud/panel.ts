@@ -1,12 +1,11 @@
 // HUD ステータスパネル(スタッツ・ターゲット情報・敵一覧)の同期。
 import * as C from '../const';
 import { ACCENT_SECONDARY, TEXT_DIM as INK_SOFT } from '../theme';
-import { apsisAltitudes } from '../../physics/elements';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
-import { dot, len, sub } from '../../physics/vec3';
+import { Attractor } from '../../physics/attractor';
+import { len, sub } from '../../physics/vec3';
 import type { Game } from '../game';
 import { SIM_EPOCH_SEC, fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
-import { ATTRACTOR_NAMES } from './frame-labels';
+import { orbitInfo, relativeInfo } from './orbit-info';
 
 interface GlobalStatusData {
   simSpeedLabel: string;
@@ -101,9 +100,7 @@ export class HudPanels {
     if (contacts) contacts.style.display = game.cameraSystem.overviewMode ? 'none' : '';
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;
-    const playerCenter = strongestAttractor(player.state.r, bodies);
-    const playerEl = player.elementsAround(playerCenter);
-    const playerApsis = playerEl ? apsisAltitudes(playerEl) : null;
+    const player0 = orbitInfo(player, bodies);
 
     // スタッツパネルを一定間隔で更新
     if (now >= this.nextStatsAt) {
@@ -118,14 +115,8 @@ export class HudPanels {
         roundsInMag: player.roundsInMag,
         magsLeft: player.magsLeft,
         reloadTimer: player.reloadTimer,
-        centerName: ATTRACTOR_NAMES[playerCenter.id],
-        alt: len(sub(player.state.r, playerCenter.state.r)) - playerCenter.radius,
+        ...player0,
         altDescending: thermal.altDescendWarned,
-        spd: len(player.state.v),
-        apAlt: playerApsis ? playerApsis.ap : NaN,
-        peAlt: playerApsis ? playerApsis.pe : NaN,
-        incDeg: playerEl ? playerEl.incDeg : NaN,
-        period: playerEl ? playerEl.period : NaN,
         qdyn: thermal.qdyn,
         hullTemp: thermal.hullTemp,
         shots: game.activeStage.scoreCounter.shots,
@@ -134,30 +125,18 @@ export class HudPanels {
       });
 
       if (tgt) {
-        const tgtCenter = strongestAttractor(tgt.state.r, bodies);
-        const tgtEl = tgt.elementsAround(tgtCenter);
-        const tgtApsis = tgtEl ? apsisAltitudes(tgtEl) : null;
-        const relP = sub(tgt.state.r, player.state.r);
-        const relV = sub(tgt.state.v, player.state.v);
-        const dist = len(relP);
-        // 自機軌道面とターゲット軌道面のなす角。中心天体が異なる要素同士は比較に意味がない。
-        const relIncDeg =
-          playerEl && tgtEl && playerCenter.id === tgtCenter.id
-            ? (Math.acos(Math.max(-1, Math.min(1, dot(playerEl.hHat, tgtEl.hHat)))) * 180) / Math.PI
-            : NaN;
+        const tgt0 = orbitInfo(tgt, bodies);
+        const rel = relativeInfo(player, tgt, bodies);
         this.setTarget({
           name: tgt.name,
-          dist,
-          closing: dist > 1e-6 ? -dot(relP, relV) / dist : 0,
-          relSpeed: len(relV),
           hp: tgt.hp,
           maxHp: tgt.maxHp,
-          centerName: ATTRACTOR_NAMES[tgtCenter.id],
-          apAlt: tgtApsis ? tgtApsis.ap : NaN,
-          peAlt: tgtApsis ? tgtApsis.pe : NaN,
-          incDeg: tgtEl ? tgtEl.incDeg : NaN,
-          period: tgtEl ? tgtEl.period : NaN,
-          relIncDeg,
+          centerName: tgt0.centerName,
+          apAlt: tgt0.apAlt,
+          peAlt: tgt0.peAlt,
+          incDeg: tgt0.incDeg,
+          period: tgt0.period,
+          ...rel,
         });
       } else {
         this.setTarget(null);
