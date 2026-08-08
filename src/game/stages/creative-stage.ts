@@ -101,8 +101,8 @@ export class CreativeStage extends Stage {
 
   // 基地は実寸(半径100m)のメッシュしか持たず、マップ視点では見えないほど小さいので、
   // FocusMarkers と同じ ● のポイントマーカーを立てて発見できるようにする。戦闘ビューでは
-  // 画面外なら ▣ AMMO と同じ方式の方位矢印で補う。overviewMode 中は進行方向を向く三角形に
-  // 差し替える(mk-poi は FocusMarkers の天体ラベルと共用するため、専用の mk-base を使う)。
+  // 画面外なら ▣ AMMO の補給と同じ方式の△方位矢印で補う。overviewMode 中は進行方向を向く
+  // 三角形に差し替える(mk-poi は FocusMarkers の天体ラベルと共用するため、専用の mk-base を使う)。
   private syncBaseMarkers(project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean): void {
     const bases = this._entities.bases;
     for (const [i, base] of bases.entries()) {
@@ -117,15 +117,12 @@ export class CreativeStage extends Stage {
       const label = '基地';
       const p = project(ds.r);
       if (overviewMode) {
-        const heading = this._markerManager.headingDeg(ds.r, ds.v, project, scale);
-        this._markerManager.set(
-          key, 'mk-base', '▲', p.x, p.y, p.front, label, 1, undefined,
-          heading !== null ? heading + 90 : undefined,
-        );
+        const rotationDeg = this._markerManager.headingRotationDeg(ds.r, ds.v, project, scale);
+        this._markerManager.set(key, 'mk-base', '▲', p.x, p.y, p.front, label, 1, undefined, rotationDeg);
         this._markerManager.hide(bearingKey);
       } else {
         this._markerManager.set(key, 'mk-poi', '●', p.x, p.y, p.front, label);
-        this._markerManager.setBearing(bearingKey, 'mk-poi', '●', p, label, 0.9);
+        this._markerManager.setBearing(bearingKey, 'mk-poi', '△', p, label, 0.9);
       }
     }
     for (let i = bases.length; i < this.lastBaseMarkerCount; i++) {
