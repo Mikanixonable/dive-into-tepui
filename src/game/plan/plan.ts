@@ -2,7 +2,6 @@
 // Δv は導出値。上流ノードを編集すると下流を破棄する。計画軌道の計算・キャッシュは持たない。
 import { kinematicState, KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, v3 } from '../../physics/vec3';
-import * as C from '../const';
 import { Attractor, orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 
@@ -12,11 +11,10 @@ export interface DisplayDurationSource {
 }
 
 // 起点状態を最も強く引く天体まわりの解析軌道の公転周期。
-// 有限な周期が求まらなければ(双曲線軌道など)APERIODIC_ARC_DURATION。
+// 有限な周期が求まらなければ(双曲線軌道など)NaN。
 export function orbitPeriodOf(state: KinematicState, attractors: readonly Attractor[]): number {
   const center = strongestAttractor(state.r, attractors);
-  const period = orbitalElementsOf(state, center)?.period ?? NaN;
-  return isFinite(period) && period > 0 ? period : C.APERIODIC_ARC_DURATION;
+  return orbitalElementsOf(state, center)?.period ?? NaN;
 }
 
 // ある状態を起点に描かれる区間の長さ [s]。その状態の遷移後軌道の公転周期を参照期間として
