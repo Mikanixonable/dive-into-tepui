@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/elements';
 import { Vec3, cross, dot, len, norm, sub, v3 } from '../../physics/vec3';
 import { elementsAround, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
-import { Frame, INERTIAL_FRAME, frameOrbitState, toFrameState, toInertialState } from '../../physics/frame';
+import { ReferenceFrame, INERTIAL_FRAME, frameOrbitState, toFrameState, toInertialState } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { fmtMarkerDist, fmtDist } from '../hud/utils';
 import { MarkerManager } from '../marker/marker-manager';
@@ -30,12 +30,12 @@ interface EqNodeIcon extends MapPickable {
 }
 
 export class PlanDisplay {
-  trajectoryFrame: Frame = INERTIAL_FRAME;
+  trajectoryFrame: ReferenceFrame = INERTIAL_FRAME;
 
   readonly traj: PlanTrajectory;
 
   private readonly panel: HTMLElement;
-  private readonly frame: SegmentedControl<Frame>;
+  private readonly frame: SegmentedControl<ReferenceFrame>;
   private apsisIcons: readonly ApsisIcon[] = [];
   private eqNodeIcons: readonly EqNodeIcon[] = [];
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
@@ -60,7 +60,7 @@ export class PlanDisplay {
     title.textContent = 'TRAJECTORY';
     this.panel.appendChild(title);
     // 表示座標系の切り替えボタン
-    this.frame = new SegmentedControl<Frame>('軌道', FRAME_ITEMS, (frame) => { this.trajectoryFrame = frame; });
+    this.frame = new SegmentedControl<ReferenceFrame>('軌道', FRAME_ITEMS, (frame) => { this.trajectoryFrame = frame; });
     this.panel.appendChild(this.frame.element);
     hudDock(hudRoot, 'left').appendChild(this.panel);
   }

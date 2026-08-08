@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { OrbitState, hermiteInterpolate } from '../../physics/orbital-state';
 import { OrbitEntity } from '../../physics/orbit-entity';
-import { Frame } from '../../physics/frame';
+import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Attractor, hitsAnySurface, localOrbitPeriod } from '../../physics/attractor';
 import { Vec3 } from '../../physics/vec3';
@@ -81,7 +81,7 @@ export class PlanArc {
   }
 
   // 直近に積分したサンプル列を折れ線メッシュへ反映する。
-  sync(ephemeris: Ephemeris, frame: Frame, currentTime: number, fo: FloatingOrigin): void {
+  sync(ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number, fo: FloatingOrigin): void {
     this.sampled.syncGeometry(this.samples, frame, ephemeris);
     this.sampled.syncTransform(frame, currentTime, ephemeris, fo);
   }
