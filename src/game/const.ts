@@ -235,6 +235,9 @@ export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想�
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 export const MARKER_BEARING_RING_RATIO = 0.8;
+export const MARKER_HEADING_PROBE_PX = 20; // 進行方向を測るための投影プローブ距離 [px]
+// 投影差がこれ未満なら視線とほぼ平行とみなし、進行方向を定めない [px]
+export const MARKER_HEADING_DEGENERATE_PX = 4;
 export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
 // --- 軌道計画モード([M]) ---

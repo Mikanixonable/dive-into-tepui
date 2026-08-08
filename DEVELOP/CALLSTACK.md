@@ -333,8 +333,8 @@
     - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出。同上
     - radiator.sync() // ヒンジ Group の rotation.y へ展開角を書く
     - reentryEffects.sync() // qdyn が REENTRY_GLOW_MIN_Q 未満、または !alive なら隠すだけ
-    - [isActive] markers.sync(currentState, displayState) // 自機由来の HUD マーカー(方位・ボアサイト・▷)。操作対象の艦だけが出す
-      - [overviewMode] 戦闘用7キーを hide + displayState があれば markerManager.setPosition('self') / 無ければ hide('self')
+    - [isActive] markers.sync(currentState, displayState, ..., project, scale) // 自機由来の HUD マーカー(方位・ボアサイト・▲)。操作対象の艦だけが出す
+      - [overviewMode] 戦闘用7キーを hide + displayState があれば headingDeg(displayState.r, displayState.v) → markerManager.setPosition('self', 'mk-self', '▲', rotationDeg) / 無ければ hide('self')
       - [!overviewMode] hide('self') + syncOrbitAxes(currentState) // pro/retro/nrm/anm/radout/radin。常に現在状態
       - [!overviewMode] syncBoresight(currentState) → setDirection('bore') or hide('bore') // player.alive で分岐。常に現在状態
     - orbitLine.sync() → regenerate() // 中心天体は毎フレーム strongestAttractor(state.r, ephemeris.attractorsAt(state.t)) で導出(地球固定ではない)。要素が閾値以上ドリフト or 推力中(force) or 初回のみ再生成。現在状態基準(要素は時刻に依らない)
@@ -352,10 +352,11 @@
     - syncTargetDirMarkers() // ◇/◆ tgtdir/atgdir。overviewMode or 第一ターゲット無しなら hide。第一ターゲットのみ
   - navTarget.sync() // ▲/▽ nav-an/nav-dn マーカー。navTarget.update() が求めた位置があれば表示、無ければ hide
   - navball.sync(player.state, player.att, player.alive, target?.state ?? null) // 常に自機の現在状態(表示時刻ではない)。ターゲット系モードのままターゲット消失ならモードを自機基準へ戻す
-  - [敵ごと] displayState(displayTime) → markerItem(role, viewerPos, pos) // role は第一/第二/なし。displayState が null の敵はここで除外(マーカーごと落とす)
-  - enemyMarkers.sync() // 生存かつ displayState を持つ敵の markerItem() 集合を受ける(まとめは1体では決まらない)
+  - [敵ごと] displayState(displayTime) → markerItem(role, viewerPos, pos, vel, overviewMode) // role は第一/第二/なし。overviewMode で hpMarkerSvg()/headingHpMarkerSvg() を切り替え。displayState が null の敵はここで除外(マーカーごと落とす)
+  - enemyMarkers.sync(items, project, overviewMode, scale) // 生存かつ displayState を持つ敵の markerItem() 集合を受ける(まとめは1体では決まらない)
     - groupNearby() // 画面上で近接するものをクラスタ化し、代表以外のラベルを落とす
-    - markerManager.set() + markerManager.setBearing() // 対象ごと。画面外なら画面端の方位マーカー▲へ
+    - [overviewMode] headingDeg(item.pos, item.vel) → rotationDeg // 対象ごと。円軌道での進行方向を示す
+    - markerManager.set() + markerManager.setBearing() // 対象ごと。overviewMode 以外で画面外なら画面端の方位マーカー▲へ
     - retire() // 前フレームに出したキーのうち集合から消えたものを remove(敵ごとに増えるキーなので DOM ごと捨てる)
   - leadMarkers.sync() // 敵ごとの LEAD マーカー。overviewMode or !player.alive なら全 remove して return
     - trackTargeted() // 最終ロック時刻を生存中の敵ぶんだけ作り直す
@@ -387,16 +388,17 @@
     - line.syncTransform()
   - [player] player.orbitLine.setSuppressed(predictedTrajectoryLine.hasLineFor(player)) // 予測軌道の実線が出ているあいだは解析楕円を重ねて出さない。overviewMode/!overviewMode どちらも同じ判定
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
-  - activeStage.sync(player, fo, project, displayTime, overviewMode) // player は Creative の未配置状態で null
+  - activeStage.sync(player, fo, project, scale, displayTime, overviewMode) // player は Creative の未配置状態で null
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示。player が null なら隠す
-    - [CreativeStage] syncPreview(fo, project) // update が求めた preview の軌道線 + ▷ マーカー。preview が null なら両方隠す
+    - [CreativeStage] syncPreview(fo, project) // update が求めた preview の軌道線 + ▷ PREVIEW マーカー。preview が null なら両方隠す
     - [CreativeStage] placerPanel.setIssues(issues) // update が求めた issues を渡すだけ。前回と同内容なら panel 側が DOM に触らず即 return
-    - logistics.syncMarkers(displayTime) → ammo.displayState(displayTime) → markerManager.set('mg<i>') + setBearing('mg<i>-bearing')
+    - logistics.syncMarkers(player, project, scale, displayTime, overviewMode) → ammo.displayState(displayTime) → [overviewMode] headingDeg(ds.r, ds.v) → markerManager.set('mg<i>', 'mk-ammo', '▲', rotationDeg) / [!overviewMode] markerManager.set('mg<i>', 'mk-ammo', '▣') + setBearing('mg<i>-bearing')
       // player が null の間はすべて隠す(ラベルの距離表示が自機基準のため)
       // マーカーを出せる補給ごと(i = 生存かつ displayState が非 null な個体だけを詰めた配列の添字)
       - hide() // 前フレームよりその数が減ったぶんの、余った添字だけ
-    - [CreativeStage] syncBaseMarkers(displayTime) → base.displayState(displayTime) → markerManager.set('base<i>', 'mk-poi', '●') // ラベルは player があれば距離付き
-      - [!overviewMode] markerManager.setBearing('base<i>-bearing', ...) // 画面外の基地への方位矢印。overviewMode 中は隠す
+    - [CreativeStage] syncBaseMarkers(project, scale, displayTime, overviewMode) → base.displayState(displayTime) →
+      [overviewMode] headingDeg(ds.r, ds.v) → markerManager.set('base<i>', 'mk-base', '▲', rotationDeg) /
+      [!overviewMode] markerManager.set('base<i>', 'mk-poi', '●') + setBearing('base<i>-bearing', 'mk-poi', '●') // ラベルは player があれば距離付き
       // entities.bases の添字ごと(logistics.syncMarkers と同じ、前フレームより減った添字だけ hide())
   - hud.panels.sync(game, attractors) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setText('met') + setGlobalStatus() // 自機不在でも常に実行。setGlobalStatus は約10Hz にスロットル

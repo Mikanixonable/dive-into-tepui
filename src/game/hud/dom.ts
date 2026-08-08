@@ -25,7 +25,7 @@ const STYLE = `
      ドックビューは画面全体を占めるビューなので常設パネル・プロパティウィンドウを覆うが、
      トースト・ヒントとシステム窓(ヘルプ・ESCメニュー)はその上に出す。 */
 #hud .mk { z-index: 0; }
-#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-nav, #hud .mk-dir, #hud .mk-boardhit, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
+#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-boardhit, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
 #hud .mk-ammo { z-index: 2; }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
@@ -277,6 +277,8 @@ body.hud-modal-open #touch-ui { display: none; }
 .mk-poi { color: #ffffff; text-shadow: 0 0 4px #000; }
 .mk-poi .sym { font-size: 5px; }
 .mk-poi .lbl { font-size: 11px; margin-top: 4px; padding: 2px 4px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }
+.mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px #000; }
+.mk-base .lbl { font-size: 11px; margin-top: 4px; padding: 2px 4px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
   background: rgba(6, 7, 9, 0.82); backdrop-filter: blur(3px);

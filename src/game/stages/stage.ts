@@ -15,7 +15,7 @@ import type { EntityManager } from '../simulation/entity-manager';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { SimSpeedManager } from '../sim-speed-manager';
-import type { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { FloatingOrigin } from '../floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -107,10 +107,11 @@ export abstract class Stage {
   }
 
   // ステータスパネルとロジスティクスのマーカーを同期する。fo は配置プレビューなど
-  // ステージ固有の描画物を持つサブクラスが使う。
-  sync(player: Player | null, _fo: FloatingOrigin, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
+  // ステージ固有の描画物を持つサブクラスが使う。scale は overviewMode 中の ▣ AMMO マーカーの
+  // 進行方向表示に使う。
+  sync(player: Player | null, _fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean): void {
     this.syncStatusPanel(player, overviewMode);
-    this.logistics.syncMarkers(player, project, displayTime, overviewMode);
+    this.logistics.syncMarkers(player, project, scale, displayTime, overviewMode);
   }
 
   // hudSubStatus() が null ならパネルを隠し、文字列なら HP・スコアとともに表示する。

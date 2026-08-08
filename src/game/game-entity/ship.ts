@@ -172,6 +172,22 @@ export abstract class Ship extends GameEntity {
     return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">${lines.join('')}</svg>`;
   }
 
+  // 進行方向へ回転させても崩れない HP 表現。三角形の外形と、底辺からの塗り高さで
+  // 残HP比を示す(hpMarkerSvg の辺ごとの切り欠きは回転すると上下左右の意味が
+  // 崩れるため、マップビューの見出しマーカーにはこちらを使う)。
+  protected headingHpMarkerSvg(): string {
+    const ratio = this.maxHp > 0 ? Math.max(0, Math.min(1, this.hp / this.maxHp)) : 0;
+    const apexY = 3;
+    const baseY = 18.588;
+    const fillTopY = (baseY - ratio * (baseY - apexY)).toFixed(2);
+    const clipId = `hpfill-${this.name}`;
+    return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">` +
+      `<clipPath id="${clipId}"><rect x="0" y="${fillTopY}" width="24" height="24"/></clipPath>` +
+      `<polygon points="12,${apexY} 3,${baseY} 21,${baseY}" fill="currentColor" fill-opacity="0.35" clip-path="url(#${clipId})"/>` +
+      `<polygon points="12,${apexY} 3,${baseY} 21,${baseY}" fill="none" stroke="currentColor" stroke-width="1.5"/>` +
+      `</svg>`;
+  }
+
   // パーツベースの性能取得
   get totalTorque(): number {
     return (this.parts.filter(p => p.type === 'thruster' && p.hp > 0) as import('./parts').ThrusterPart[])

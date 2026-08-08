@@ -618,13 +618,13 @@ export class Game {
     const aliveTargets = this.entities.getCombatTargets(player).filter((t) => t.alive);
     const enemyMarkerItems: GroupedMarkerItem[] = [];
     for (const tgt of aliveTargets) {
-      const pos = tgt.displayState(displayTime)?.r;
-      if (!pos) continue;
+      const ds = tgt.displayState(displayTime);
+      if (!ds) continue;
       const role: 'none' | 'primary' | 'secondary' =
         tgt === target ? 'primary' : tgt === secondaryTarget ? 'secondary' : 'none';
-      enemyMarkerItems.push(tgt.markerItem(role, player?.state.r ?? v3(), pos));
+      enemyMarkerItems.push(tgt.markerItem(role, player?.state.r ?? v3(), ds.r, ds.v, overviewMode));
     }
-    this.enemyMarkers.sync(enemyMarkerItems, project, overviewMode);
+    this.enemyMarkers.sync(enemyMarkerItems, project, overviewMode, this.cameraSystem.activeCameraScale);
     if (player) this.leadMarkers.sync(player, aliveTargets, target, secondaryTarget, simTime, overviewMode, project);
 
     this.displayTimeManager.sync(simTime, this.currentOrbitPeriod());
@@ -647,7 +647,7 @@ export class Game {
     if (player) {
       this.touchControls?.syncModeButtons(player.rcsDamp, player.fineAttitude, player.progradeHold);
     }
-    this.activeStage.sync(player, this.floatingOrigin, project, displayTime, overviewMode);
+    this.activeStage.sync(player, this.floatingOrigin, project, this.cameraSystem.activeCameraScale, displayTime, overviewMode);
 
     this._hud.panels.sync(this, attractors);
     this._hud.tick();
