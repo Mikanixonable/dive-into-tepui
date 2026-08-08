@@ -7,6 +7,7 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
+import type { EntityManager } from '../simulation/entity-manager';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { fmtMarkerDist } from '../hud/utils';
@@ -156,10 +157,10 @@ export class Player extends Ship {
     scoreCounter: ScoreCounter;
     simTime: number;
     zoomActive: boolean;
-    addBullet: (bullet: Bullet) => void;
+    entities: EntityManager;
     ephemeris: Ephemeris;
   }): void {
-    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, addBullet, ephemeris } = params;
+    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, entities, ephemeris } = params;
 
     this.updatePassive(dt);
     this.handleEdgeInput(input);
@@ -177,7 +178,7 @@ export class Player extends Ship {
       return;
     }
 
-    this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet, ephemeris.sunDirAt(simTime));
+    this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, entities, ephemeris.sunDirAt(simTime));
 
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。

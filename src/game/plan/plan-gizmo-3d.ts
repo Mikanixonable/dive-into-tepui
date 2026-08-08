@@ -57,8 +57,8 @@ export class PlanGizmo3D {
 
   // ギズモをノード位置へ置き、ローカル軸(X=RAD, Y=PRO, Z=NRM)を軌道基準系 pro/nrm/rad に揃える。
   // scale は画面上で一定の見かけサイズになるよう呼び出し側がカメラ距離から求める。
-  public setPositionAndRotation(pos: Vec3, pro: Vec3, nrm: Vec3, rad: Vec3, scale: number): void {
-    this.group.position.set(pos.x, pos.y, pos.z);
+  public setPositionAndRotation(pos: THREE.Vector3, pro: Vec3, nrm: Vec3, rad: Vec3, scale: number): void {
+    this.group.position.copy(pos);
 
     const mat = new THREE.Matrix4().makeBasis(
       new THREE.Vector3(rad.x, rad.y, rad.z),

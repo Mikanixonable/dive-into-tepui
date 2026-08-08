@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
-import { ReferenceFrame, INERTIAL_FRAME, toFramePoint, toInertialPoint } from '../../physics/frame';
+import { ReferenceFrame, INERTIAL_FRAME, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
@@ -30,7 +30,7 @@ export class PlanPath {
   private activeCount = 0;
   // 先頭 nodeCount 本がノードで終わる区間(= 各ノードの到達状態を持つ)。
   private nodeCount = 0;
-  // 積分予測が起点の楕円近似から大きく外れた場合、解析楕円線を隠す。
+  // 積分した区間が起点の楕円近似から大きく外れた場合、解析楕円線を隠す。
   private analyticDivergent = false;
   private frame: ReferenceFrame = INERTIAL_FRAME;
   private ephemeris: Ephemeris | null = null;
@@ -165,6 +165,15 @@ export class PlanPath {
     const bakeTf = this.ephemeris.frameTransformAt(this.frame, t);
     const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime);
     return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
+  }
+
+  // 時刻 t の方向ベクトル dir を、現在の表示座標(ECI)へ変換する。方向なので原点移動は掛からず、
+  // サンプル時刻 t の bake 姿勢と表示時刻 unbakeTime の un-bake 姿勢の回転だけを受ける。
+  toDisplayDir(dir: Vec3, t: number): Vec3 {
+    if (!this.ephemeris) return v3(dir.x, dir.y, dir.z);
+    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t);
+    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime);
+    return toInertialDir(unbakeTf, toFrameDir(bakeTf, dir));
   }
 
   // 時刻 t のサンプル位置 r をスクリーン座標へ投影する。
