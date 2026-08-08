@@ -9,6 +9,7 @@ import { Part, PartType, createPart } from './parts';
 
 export abstract class Ship extends GameEntity {
   protected readonly bcInv = C.SHIP_BCINV;
+  protected readonly srpCoeff = C.SHIP_SRP_COEFF;
   protected readonly historyDuration = C.SHIP_HISTORY_DURATION;
   readonly predictsFuture = true;
 

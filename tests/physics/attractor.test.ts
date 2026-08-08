@@ -16,7 +16,7 @@ import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
 import { add, addScaled, len, norm, sub, v3 } from '../../src/physics/vec3';
 
 const ZERO = v3(0, 0, 0);
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO) };
+const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO), degree2: null };
 
 export function register(): void {
   test('attractor: attractorAccel は原点天体(地球)では素の中心重力になる', () => {
@@ -31,7 +31,7 @@ export function register(): void {
     const r = v3(R_EARTH + 420e3, 0, 0);
     // moon がクエリ位置と同じ座標(距離ゼロ)にある人工の配置。飛ばされず加算されると
     // μ/0³ で発散する。
-    const coincidentMoon: Attractor = { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, r, ZERO) };
+    const coincidentMoon: Attractor = { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, r, ZERO), degree2: null };
     const a = attractorAccel(r, coincidentMoon);
     assert.ok(Number.isFinite(a.x) && Number.isFinite(a.y) && Number.isFinite(a.z), `finite: ${JSON.stringify(a)}`);
     // 直接引力の項だけが落ちて、原点補正項(月が地球を引く分)は残る。
@@ -99,7 +99,7 @@ export function register(): void {
     // 月中心の円軌道。mu を渡し忘れて地球の mu で計算すると半周期の飛行時間が
     // sqrt(MU_EARTH/MU_MOON) ~= 9 倍ずれる。
     const moon: Attractor = {
-      id: 'moon', mu: MU_MOON, radius: R_MOON,
+      id: 'moon', mu: MU_MOON, radius: R_MOON, degree2: null,
       state: kinematicState(0, v3(3.844e8, 0, 0), v3(0, 0, 1023)),
     };
     const a = R_MOON + 100e3;

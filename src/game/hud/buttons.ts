@@ -18,9 +18,11 @@ export function hudButton(label: string, onClick: () => void): HTMLElement {
 export class SegmentedControl<T> {
   readonly element: HTMLElement;
   private readonly buttons = new Map<T, HTMLElement>();
+  private readonly onSelect: (value: T) => void;
 
   // items は [値, 表示ラベル] の並びで、その順にボタンを並べる。
   constructor(title: string, items: readonly (readonly [T, string])[], onSelect: (value: T) => void) {
+    this.onSelect = onSelect;
     this.element = document.createElement('div');
     this.element.className = 'hud-seg';
     // 見出し
@@ -28,17 +30,24 @@ export class SegmentedControl<T> {
     heading.className = 'seg-title';
     heading.textContent = title;
     this.element.appendChild(heading);
-    // 各項目をボタン化して並べる
-    for (const [value, label] of items) {
-      const btn = hudButton(label, () => onSelect(value));
-      this.element.appendChild(btn);
-      this.buttons.set(value, btn);
-    }
+    this.setItems(items);
   }
 
   // 選択中の値を点灯させる。候補外の値(ラベルメニューから選んだフォーカスなど)では全消灯になる。
   setSelected(value: T): void {
     for (const [v, btn] of this.buttons) btn.classList.toggle('on', v === value);
+  }
+
+  // ボタン列を items へ丸ごと差し替える(見出しはそのまま)。選べない選択肢を出してから
+  // 拒否するのではなく、状況によって選択肢自体を絞りたい呼び出し側のために用意する。
+  setItems(items: readonly (readonly [T, string])[]): void {
+    for (const btn of this.buttons.values()) btn.remove();
+    this.buttons.clear();
+    for (const [value, label] of items) {
+      const btn = hudButton(label, () => this.onSelect(value));
+      this.element.appendChild(btn);
+      this.buttons.set(value, btn);
+    }
   }
 }
 

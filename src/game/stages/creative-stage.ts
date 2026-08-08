@@ -17,14 +17,17 @@ import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
 import { Vec3, add, len, sub } from '../../physics/vec3';
 import { fmtMarkerDist } from '../hud/utils';
+import { HudToggle } from '../hud/buttons';
+import { hudDock } from '../hud/dom';
 import type { ProjectFn } from '../camera/camera-system';
 import type { UnlockManager } from '../unlock-manager';
 import { Ammo } from '../game-entity/ammo';
 import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import * as C from '../const';
-import { ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
-import { validateEllipticPlacement } from '../creative/placement-validation';
+import { ElementsForm, LagrangeForm, ObjectType, ReferenceAttractor, ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
+import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
+import { elementsFormFromState } from '../creative/duplicate-form';
 import { OrbitLine } from '../../render/orbit-line';
 
 const DEG = Math.PI / 180;
@@ -39,9 +42,13 @@ export class CreativeStage extends Stage {
   readonly initialAmmo = { mags: 0, rounds: 0 };
 
   private placerPanel!: ShipPlacerPanel;
+  // 補給の自動投入を切り替えるトグルのパネル。マップ視点でだけ出す。
+  private logisticsPanel!: HTMLElement;
   private previewOrbitLine!: OrbitLine;
   // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
   private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
+  // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
+  private issues: readonly PlacementFieldIssue[] = [];
   private nextShipId = 1;
   private lastBaseMarkerCount = 0;
 
@@ -61,6 +68,23 @@ export class CreativeStage extends Stage {
 
     this.placerPanel = new ShipPlacerPanel(hud.root);
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
+    this.logisticsPanel = this.buildLogisticsPanel(hud.root);
+  }
+
+  // 補給の自動投入トグルを1つ載せたパネルを組み立て、マップ左ドックへ追加して返す。
+  private buildLogisticsPanel(hudRoot: HTMLElement): HTMLElement {
+    const panel = document.createElement('div');
+    panel.id = 'hud-creative-logistics';
+    panel.className = 'panel';
+    panel.addEventListener('pointerdown', (e) => e.stopPropagation());
+    const title = document.createElement('h3');
+    title.textContent = 'LOGISTICS';
+    panel.appendChild(title);
+    const toggle = new HudToggle('補給の自動投入', (on) => { this.logistics.resupplyEnabled = on; });
+    toggle.setOn(this.logistics.resupplyEnabled);
+    panel.appendChild(toggle.element);
+    hudDock(hudRoot, 'left').appendChild(panel);
+    return panel;
   }
 
   init(): number {
@@ -72,6 +96,8 @@ export class CreativeStage extends Stage {
     super.sync(player, fo, project, displayTime, overviewMode);
     this.syncPreview(fo, project);
     this.syncBaseMarkers(project, displayTime, player, overviewMode);
+    this.placerPanel.setIssues(this.issues);
+    this.logisticsPanel.style.display = overviewMode ? 'block' : 'none';
   }
 
   // 基地は実寸(半径100m)のメッシュしか持たず、マップ視点では見えないほど小さいので、
@@ -101,16 +127,31 @@ export class CreativeStage extends Stage {
     this.lastBaseMarkerCount = bases.length;
   }
 
-  // 艦艇配置モーダルを開く (MapPicker から呼ばれる)
-  openShipPlacer(): void {
-    this.placerPanel.setVisible(true);
+  // 艦艇配置モーダルを開く (MapPicker から呼ばれる)。focusId はマップの現在フォーカスで、
+  // 基準天体になれる ID なら基準天体の初期選択に使う。
+  openShipPlacer(focusId?: string): void {
+    this.placerPanel.open(focusId !== undefined ? { kind: 'body', attractor: focusId as ReferenceAttractor } : undefined);
   }
 
-  // フォーム値から配置プレビューの軌道要素と位置を求める。パネルを閉じている間・軌道要素指定
-  // 以外の配置方法・入力を解釈できない値のときは null(プレビューを出さない)。
-  private computePreview(): { elements: OrbitalElements; pos: Vec3 } | null {
-    if (!this.placerPanel.isOpen) return null;
-    const form = this.placerPanel.getForm();
+  // 右クリックメニューの「複製」(MapPicker から呼ばれる)。state を軌道要素へ逆算でき、
+  // かつ基地の基準天体制約(validateBaseReferenceFields — 月基準かラグランジュ点のみ)を
+  // 満たす値が求まったときだけ、その値をプリセットして開く。逆算できない状態(双曲線軌道など)や、
+  // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
+  // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
+  openShipPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void {
+    const attractors = this._ephemeris.attractorsAt(this._simulator.simTime);
+    const form = elementsFormFromState(state, attractors);
+    if (form && validateBaseReferenceFields(objectType, 'elements', form.attractor).length === 0) {
+      this.placerPanel.open({ kind: 'form', objectType, form });
+      return;
+    }
+    this._hud.hint('この軌道は要素として複製できないため、種類だけを引き継いだ新規配置として開きます');
+    this.placerPanel.open({ kind: 'objectType', objectType });
+  }
+
+  // フォーム値から配置プレビューの軌道要素と位置を求める。軌道要素指定以外の配置方法・
+  // 入力を解釈できない値のときは null(プレビューを出さない)。
+  private computePreview(form: ShipPlacerForm): { elements: OrbitalElements; pos: Vec3 } | null {
     if (form.placementMode !== 'elements') return null;
     try {
       const state = this.buildInitialState(form);
@@ -120,6 +161,34 @@ export class CreativeStage extends Stage {
     } catch {
       return null;
     }
+  }
+
+  // フォーム値をフィールド単位で検証する。assertValidForm(確定時、最初の問題で例外を投げる)と
+  // 同じ検証呼び出しを共有し、両者が食い違うことを防ぐ。
+  private computeFieldIssues(form: ShipPlacerForm): PlacementFieldIssue[] {
+    const issues = [...validateBaseReferenceFields(
+      form.objectType, form.placementMode, form.placementMode === 'elements' ? form.attractor : undefined,
+    )];
+    if (form.placementMode === 'elements') {
+      const center = this.referenceAttractor(form);
+      const common = {
+        centerRadius: center.radius, mu: center.mu,
+        incDeg: form.incDeg, raanDeg: form.raanDeg, argpDeg: form.argpDeg, nuDeg: form.nuDeg,
+      };
+      issues.push(...validateEllipticPlacementFields(
+        form.sizeMode === 'apsides' ? { ...common, sizeMode: 'apsides', peAltKm: form.peAltKm, apAltKm: form.apAltKm }
+        : form.sizeMode === 'semiMajorEcc'
+          ? { ...common, sizeMode: 'semiMajorEcc', semiMajorKm: form.semiMajorKm, eccentricity: form.eccentricity }
+          : { ...common, sizeMode: 'periodEcc', periodHours: form.periodHours, eccentricity: form.eccentricity },
+      ));
+    } else {
+      issues.push(...validateLagrangePlacementFields(
+        form.lagrangeOrbitKind === 'halo'
+          ? { orbitKind: 'halo', outOfPlaneAmplitudeKm: form.azKm }
+          : { orbitKind: 'lissajous', inPlaneAmplitudeKm: form.axKm, outOfPlaneAmplitudeKm: form.azKm },
+      ));
+    }
+    return issues;
   }
 
   // 配置プレビューの軌道線と ▷ マーカーを update が求めた値へ同期する。
@@ -188,8 +257,8 @@ export class CreativeStage extends Stage {
   }
 
   // 副天体・点・軌道種別・振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
-  // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォームの面内振幅は使わない。
-  private buildLagrangeState(form: ShipPlacerForm): KinematicState {
+  // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォーム自体に面内振幅の値がない。
+  private buildLagrangeState(form: LagrangeForm): KinematicState {
     const common = { secondary: form.lagrangeSecondary, point: form.lagrangePoint };
     if (form.lagrangeOrbitKind === 'halo') {
       return haloState(this._simulator.simTime, this._ephemeris, { ...common, az: form.azKm * 1e3 });
@@ -201,14 +270,14 @@ export class CreativeStage extends Stage {
 
   // フォームの基準天体(地球 or 月)を、その時刻の重力源として引く。μ・半径・ECI 化に
   // 要る情報がすべてここから出る。
-  private referenceAttractor(form: ShipPlacerForm): Attractor {
+  private referenceAttractor(form: ElementsForm): Attractor {
     return this._ephemeris.attractorsAt(this._simulator.simTime).find((b) => b.id === form.attractor)!;
   }
 
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
   // (stateFromOrbitalElements)で基準天体中心の相対状態を組んでから、基準天体自身の位置・速度を
   // 足して ECI 化する(地球基準では位置・速度とも厳密に 0 なので、実質そのまま返る)。
-  private buildElementsState(form: ShipPlacerForm): KinematicState {
+  private buildElementsState(form: ElementsForm): KinematicState {
     const center = this.referenceAttractor(form);
     let a: number;
     let e: number;
@@ -231,28 +300,11 @@ export class CreativeStage extends Stage {
     return kinematicState(this._simulator.simTime, add(center.state.r, rel.r), add(center.state.v, rel.v));
   }
 
-  // 軌道要素指定フォームの値が物理的に成立するか検証する。不正なら理由付きで例外を投げる。
-  private assertValidElementsForm(form: ShipPlacerForm): void {
-    const center = this.referenceAttractor(form);
-    const message = validateEllipticPlacement({
-      centerRadius: center.radius, mu: center.mu, sizeMode: form.sizeMode,
-      peAltKm: form.peAltKm, apAltKm: form.apAltKm, semiMajorKm: form.semiMajorKm,
-      eccentricity: form.eccentricity, periodHours: form.periodHours,
-      anglesDeg: [form.incDeg, form.raanDeg, form.argpDeg, form.nuDeg],
-    });
-    if (message) throw new Error(message);
-  }
-
-  // フォームの placementMode に応じた妥当性検証を行う。不正なら理由付きで例外を投げる。
+  // フォームの値が物理的に成立するか検証する。computeFieldIssues と同じ検証呼び出しを共有し、
+  // 不正なら最初の問題を理由に例外を投げる。
   private assertValidForm(form: ShipPlacerForm): void {
-    if (form.placementMode === 'elements') {
-      this.assertValidElementsForm(form);
-      return;
-    }
-    const values = [form.axKm, form.azKm];
-    if (!values.every(Number.isFinite) || form.azKm <= 0 || (form.lagrangeOrbitKind === 'lissajous' && form.axKm <= 0)) {
-      throw new Error('ラグランジュ軌道の振幅には有限の正数を入力してください');
-    }
+    const [firstIssue] = this.computeFieldIssues(form);
+    if (firstIssue) throw new Error(firstIssue.message);
   }
 
   private assertFiniteEllipticState(state: KinematicState): void {
@@ -260,11 +312,14 @@ export class CreativeStage extends Stage {
     if (!values.every(Number.isFinite)) throw new Error('有限の状態を作れませんでした');
   }
 
-  // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行い、配置プレビューを求め直す。
+  // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行い、配置プレビューとフォームの
+  // フィールド単位の検証結果を求め直す。
   // 計画ノードの適用は Simulator のイベント境界(applySimulationEvents)で行う。
-  update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, _simSpeed: SimSpeedManager): void {
-    if (player) this.logistics.updateLogistics(simTime, player, true);
-    this.preview = this.computePreview();
+  update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+    if (player) this.logistics.updateLogistics(simTime, player, simSpeed, true);
+    const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
+    this.preview = form ? this.computePreview(form) : null;
+    this.issues = form ? this.computeFieldIssues(form) : [];
   }
 
   // followPlan のノードは Simulator の既知イベントとして扱い、必ずnode.tちょうどで積分を切る。

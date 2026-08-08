@@ -12,6 +12,10 @@ import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { BaseSaveData } from '../save-data';
+import { Attractor, strongestAttractor } from '../../physics/attractor';
+import type { FloatingOrigin } from '../floating-origin';
+import { OrbitLine } from '../../render/orbit-line';
+import * as C from '../const';
 
 // 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。
 // hp/maxHp は艦一覧タブ表示用の集計値で、修理のたびに書き戻す。
@@ -34,6 +38,7 @@ let _baseIdCounter = 0;
 
 export class Base extends GameEntity {
   readonly id: string;
+  readonly orbitLine: OrbitLine;
   public baseState: BaseState = {
     money: 100000,
     inventory: [],
@@ -45,6 +50,21 @@ export class Base extends GameEntity {
     this.mass = 1e6;
     this.collideRadius = 100;
     this.id = `base-${_baseIdCounter++}`;
+    this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35);
+    scene.add(this.orbitLine.line);
+  }
+
+  dispose(): void {
+    super.dispose();
+    this.scene?.remove(this.orbitLine.line);
+    this.orbitLine.dispose();
+  }
+
+  // マップ表示中だけ軌道楕円を出す(敵の背景軌道線と同じ判断: 戦闘ビューは近距離を見るための
+  // 視点なので、拠点ほど遠い周回全体を示す線は不要)。
+  syncOrbitLine(show: boolean, fo: FloatingOrigin, attractors: readonly Attractor[]): void {
+    const center = strongestAttractor(this.state.r, attractors);
+    this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo);
   }
 
   // セーブデータへ変換する。格納艦は player.serialize() に委ねる。

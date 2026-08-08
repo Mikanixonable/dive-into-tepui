@@ -7,6 +7,7 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
+import type { EntityManager } from '../simulation/entity-manager';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { fmtMarkerDist } from '../hud/utils';
@@ -156,10 +157,10 @@ export class Player extends Ship {
     scoreCounter: ScoreCounter;
     simTime: number;
     zoomActive: boolean;
-    addBullet: (bullet: Bullet) => void;
+    entities: EntityManager;
     ephemeris: Ephemeris;
   }): void {
-    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, addBullet, ephemeris } = params;
+    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, entities, ephemeris } = params;
 
     this.updatePassive(dt);
     this.handleEdgeInput(input);
@@ -177,7 +178,7 @@ export class Player extends Ship {
       return;
     }
 
-    this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet, ephemeris.sunDirAt(simTime));
+    this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, entities, ephemeris.sunDirAt(simTime));
 
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
@@ -289,7 +290,7 @@ export class Player extends Ship {
     if (!this.applyCollisionDamage(speed)) return;
     if (this.hp > 0) {
       this._sfx.clank();
-      this._fx.spawnGasPuff(this.state.r, this.state.v);
+      this._fx.spawnGasPuff(this.state);
       return;
     }
 
@@ -320,11 +321,11 @@ export class Player extends Ship {
   private hitEffect(bullet: Bullet, hitR: Vec3): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(hitR, this.state.v);
+      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, hitR, this.state.v));
     } else {
-      this._fx.spawnBulletFlash(hitR, this.state.v);
+      this._fx.spawnBulletFlash(kinematicState(this.state.t, hitR, this.state.v));
     }
-    this._fx.spawnGasPuff(hitR, this.state.v);
+    this._fx.spawnGasPuff(kinematicState(this.state.t, hitR, this.state.v));
   }
 
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。

@@ -2,6 +2,7 @@
 // onSelect(act, target) を発火して自動で閉じる。
 import { ACCENT_RGB, ACCENT_SOFT, TEXT as INK, FONT } from '../theme';
 import { clampOverlayPosition } from './layout';
+import { shortcutKeyLabel } from './shortcut-hint';
 
 const SURFACE = 'rgba(13, 15, 18, 0.85)';
 const EDGE = 'rgba(255, 255, 255, 0.16)';
@@ -119,11 +120,7 @@ export class ContextMenu<T, A extends string = string> {
             ${it.subLabel ? `<div class="ctx-menu-header-sub">${it.subLabel}</div>` : ''}
           </div>`;
         }
-        let label = it.label;
-        if (it.shortcut) {
-          const keyName = it.shortcut === 'Escape' ? 'ESC' : it.shortcut === 'Delete' ? 'DEL' : it.shortcut.toUpperCase();
-          label += ` [${keyName}]`;
-        }
+        const label = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
         return `<div class="ctx-menu-item" data-act="${it.act || ''}" data-shortcut="${it.shortcut || ''}">${label}</div>`;
       })
       .join('');

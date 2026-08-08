@@ -1,4 +1,18 @@
 // HUD 表示用の数値整形。
+import * as C from '../const';
+
+// "YYYY...-MM-DDTHH:MM:SSZ" を unix 秒へ変換する。年は4桁を超えてよい(SIM_EPOCH_UTC は
+// 作中世界の遠未来年代を持つ)。Date.parse は ECMA-262 の拡張年表記(符号付き6桁)以外の
+// 5桁以上の年を NaN にするため、Date.parse ではなく年ごと数値で取り出して Date.UTC へ渡す。
+function parseUtcIso(iso: string): number {
+  const m = /^(\d+)-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/.exec(iso);
+  if (!m) return NaN;
+  const [, y, mo, d, h, mi, s] = m;
+  return Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)) / 1000;
+}
+
+// simTime=0 に対応する絶対時刻 [unix s]。
+export const SIM_EPOCH_SEC = parseUtcIso(C.SIM_EPOCH_UTC);
 
 // パネル用距離表記(例: "420 m" / "1.23 km" / "1.50 Mm")
 export function fmtDist(m: number): string {
@@ -28,12 +42,35 @@ export function fmtSpeed(ms: number): string {
   return `${ms.toFixed(1)} m/s`;
 }
 
-// UTC 絶対時刻を "yyyymmddhhmmss" で表記する。
+// UTC 絶対時刻を ISO 8601 (例: "2026-08-08T14:16:00") で表記する。toISOString() の
+// 拡張年表記(4桁を超える年に符号を前置する形式)は SIM_EPOCH_UTC の遠未来年代と噛み合わないので
+// 使わず、各成分を直接取り出して組む。
 export function fmtDateTime(unixSec: number): string {
-  if (!isFinite(unixSec)) return '--------------';
+  if (!isFinite(unixSec)) return '-------------------';
   const d = new Date(unixSec * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
+  const y = String(d.getUTCFullYear()).padStart(4, '0');
+  return `${y}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
+
+// 経過秒 sec を、目盛り間隔 unitHintSec が示す単位で表記する
+// (1時間未満なら分、1日未満なら時間、30日未満なら日、それ以上は1ヶ月=30日換算の月)。
+// 例: "30m" / "6h" / "10d" / "3mo"
+export function fmtDuration(sec: number, unitHintSec: number): string {
+  if (!isFinite(sec)) return '--';
+  if (sec === 0) return '0';
+  if (unitHintSec < 3600) return `${Math.round(sec / 60)}m`;
+  if (unitHintSec < 86400) return `${Math.round(sec / 3600)}h`;
+  if (unitHintSec < 30 * 86400) return `${Math.round(sec / 86400)}d`;
+  return `${Math.round(sec / (30 * 86400))}mo`;
+}
+
+// 弾薬状態の表記(例: "RELOADING..." / "弾切れ" / "18/32 +2連")。バレル交換中は
+// 装弾数によらずリロード表示を優先する。
+export function fmtAmmoStatus(roundsInMag: number, magsLeft: number, reloadTimer: number): string {
+  if (reloadTimer > 0) return 'RELOADING...';
+  if (roundsInMag <= 0 && magsLeft <= 0) return '弾切れ';
+  return `${roundsInMag}/${C.MAG_ROUNDS} +${magsLeft}連`;
 }
 
 // "HH:MM:SS"

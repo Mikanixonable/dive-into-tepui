@@ -42,8 +42,9 @@ main.ts
     │   ├── OverviewCamera
     │   ├── FocusMarkers
     │   └── OverviewCameraPanel        ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
-    ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別メニュー・操作の配分
-    │   ├── ContextMenu<MapPickable>       ... マップ右クリックの被選択物向けメニュー
+    ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合
+    │   ├── ContextMenu<MapPickable>       ... 空域右クリック('empty-space')専用メニュー
+    │   ├── windows: Map<string, WindowEntry>  ... {win: PropertyWindow<MenuAction>, target}。オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new。PropertyWindow は Hud.root(#hud)配下に append
     │   └── ObjectListPanel                ... DOM は Hud.root 配下。軌道オブジェクトウィンドウ(一覧 + クリックでフォーカス移動)
     ├── NavTarget                      ... 航法ターゲット(id)と自機軌道との相対 AN/DN・▲/▽ マーカー
     ├── Navball                        ... 姿勢儀。基準モード(自機/TGT+/TGT-)と天球グリッド6トグルの正本
@@ -109,7 +110,7 @@ main.ts
     │   ├── DebrisPiece[] (casings)
     │   ├── DebrisPiece[] (debris)
     │   ├── Ammo[]
-    │   └── Base[]                     ... 各々 baseState(money/inventory/dockedShips)を持つ
+    │   └── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
     ├── Simulator                      ... 実シミュレーション。EntityManager の参照を受け取って回すだけ(所有しない)
     │   ├── HitSystem
     │   └── CollisionPhysics
@@ -201,16 +202,18 @@ main.ts
 | ドックビューの対象基地 | `Docking`(private `_activeBase`) | 基地の右クリックメニューで設定。これが空でない間だけ `ViewManager.selectableViews()` に `'dock'` が並ぶ |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
 | 軌道オブジェクトウィンドウの表示中フラグ | `MapPicker`(`objectListVisible`) | 空域右クリックメニューの「軌道オブジェクトウィンドウを表示」でのみ true になる。`ObjectListPanel` の ✕ ボタン(`onClose`)、または `MapPicker.close()`(マップモードを閉じたとき)で false に戻る |
+| 開いているプロパティウィンドウの集合・一時ウィンドウのキー | `MapPicker`(`windows`/`tempWindowKey`) | キーは `` `${kind}:${id}` ``。`openPropertyWindow` が新規/移動を判断し、`closeWindow`/`forgetWindow` が畳む。個々の `PropertyWindow` インスタンス自身はクリップ状態(`clipped`)とドラッグ位置だけを持ち、開閉のポリシー(いつ閉じるか)は持たない — クリップ状態が変わったこと自体は `onClipChange` で `MapPicker` に通知し、`tempWindowKey` の付け替えは通知を受けた `MapPicker` 側が行う |
 | 第一・第二ターゲット・的通過マーク | `Targeter`(`target`/`secondaryTarget`) | 右クリックメニュー(`applyMenuAct`)でのみ変わる。自動選定・自動再選択はない |
 | 航法ターゲット(id)・相対 AN/DN | `NavTarget` | `update()` が自機軌道要素 + `Ephemeris` から毎フレーム再算出する導出値だが、対象の id 自体(`toggleTarget` で変わる)は正本 |
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
 | 発射数・命中数・撃破数・出撃数 | `ScoreCounter` | 所有は Stage |
-| 補給の投入間隔タイマー | `Logistics` | |
+| 補給の投入間隔タイマー | `Logistics` | 投入できない間は進めない(再開直後のフレームで判定させるため) |
+| 補給の自動投入の可否 | `Logistics.resupplyEnabled` | 書き換えは CreativeStage の LOGISTICS パネルのトグルのみ。ワープ倍率による停止は `SimSpeedManager.canResupplyAmmo` が別途担い、両者の積で投入可否が決まる |
 | ウェーブフェーズ・波数 | `Stage00`(自身のフィールド) | |
 | 残り時間 | `ScoreAttackTimer`(Stage0) | |
 | ステージクリア回数 | **localStorage**(`tepui.clearCounts`) | UnlockManager はその読み書き窓口。インスタンスは正本ではない |
 | ポーズ | `Game.paused` | 唯一の駆動源は `SettingsPanel.onSettingsOpenChange` |
-| 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | |
+| 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | 各要素は位置を時刻つきの `OrbitState` で持ち、`updateFlashEffects` がその時刻から `simTime` まで移流させる |
 | 地球自転の初期位相 | `EarthBody.phase0` | |
 | 各天体の平均黄経の初期位相 | `Ephemeris`(`phaseOffsets`) | 時刻を引数に取るサンプラ。既定で乱数を持つのは月のみ。キャッシュは持たず、毎回天体暦の合成をやり直す |
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
@@ -277,13 +280,14 @@ main.ts
 
 | 対象 | 正体 | 無効化の契機 |
 | --- | --- | --- |
-| `Ephemeris.attractorsAt(t)` の戻り値(`Attractor[]`) | 天体暦(`SOLAR_SYSTEM` 登録順、現在は地球・月・木星・太陽)から毎回組み立てる重力源スナップショット。どのクラスもこれを状態として保持しない — 呼んだその場で使い切るか、次のステップ/フレームでまた引き直す | 呼び出しごとに新しい `t` を渡せば作り直せる。`Ephemeris` はキャッシュを持たないので毎回組み立て直しになる |
+| `Ephemeris.attractorsAt(t)` の戻り値(`Attractor[]`) | 天体暦(`SOLAR_SYSTEM` 登録順、現在は地球・月・木星・太陽)から毎回組み立てる重力源スナップショット。各要素は位置・速度に加えて、その時刻に解決した2次重力場(`degree2`: J2・基準半径・自転軸・長軸。持たない天体は `null`)も抱える。どのクラスもこれを状態として保持しない — 呼んだその場で使い切るか、次のステップ/フレームでまた引き直す | 呼び出しごとに新しい `t` を渡せば作り直せる。`Ephemeris` はキャッシュを持たないので毎回組み立て直しになる |
 | `OrbitalElements.center`(`Attractor`) | その軌道要素をどの天体まわりで取ったか。要素と同じ寿命でその天体の `t` 時点スナップショットを抱えるので、要素そのものより長く持ち回してはならない(`OrbitLine` は楕円の平行移動先をここから引く) | 要素を作り直すたび。`GameEntity.orbitalElementsAround` のメモ経由なら `state` 差し替えのたび |
 | 解析楕円の中心天体(`strongestAttractor(state.r, attractors)` の結果) | `state`(と `attractors`)から都度導く選択であり、`GameEntity`/`Plan`/`PlanDisplay`/`OrbitLine` のどれもこれを状態として保持しない — 選ぶ GUI もない | 呼ぶたび再計算 |
 | `GameEntity.orbitalElementsAround(center)` の内部メモ | `state` の参照同一性 + `center.id` をキーにした軌道要素のメモ化(中心天体 `center` は呼び出し側が選ぶ) | `state` が差し替わるたび(`current.step`/`.reset`)、または `center.id` が変わるたび自動的に不一致になる |
 | `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(`history` とは別) | `step`/`reset` のたび更新 |
 | `GameEntity.predictedTrajectory` | `actualTrajectory.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayTimeManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `resyncPrediction` の距離判定(§3-4 (a))、または `Player.behave` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
 | `SimSpeedManager.canGrowPrediction` | `simSpeed <= C.MAX_PHYS_SIM_SPEED` の派生 getter(`canResolvePhysicalCollisions` と同じ式だが別の問い) | 呼ぶたび再計算 |
+| `SimSpeedManager.canResupplyAmmo` | `simSpeed < C.MAX_PHYS_SIM_SPEED` の派生 getter(他の can* より1段厳しく等倍限定) | 呼ぶたび再計算 |
 | `OrbitLine.snap` / 頂点配列 | 楕円ジオメトリの再生成判定用スナップショット | 要素ドリフト・`force`・初回 |
 | `PlanArc.samples` / `.key`(`{state0, end}`) | 予測 RK4(`DynamicTrajectory` 積分)の結果と入力スナップショット | `update` の `tracksLiveAnchor` 引数(計画が空の間の唯一の区間だけ true)が false なら `state0`/`end` の同一性・値の変化。true なら区間長・起点時刻とも直近再積分時からの変化がサンプル間隔(区間長 / `PLAN_ARC_MAX_SAMPLES`)未満の間は無効化しない(`'orbit'` プリセットでは起点の接触周期自体が J2・大気抵抗で毎フレーム連続変化するため、厳密一致ではなくこの閾値で判定する)——ただし `state0` の同一性が変わっていて `t` が前進していない(別艦への切り替え・ドック発進・衝突による状態上書きなどの非連続な差し替え)場合はこの閾値を無視して即座に無効化する |
 | `PlanPath.arcs` / `.activeCount` / `.nodeCount` / `.frame` / `.unbakeTime` / `.project` | 毎フレーム再構築される区間分割と表示文脈(画面判定もこれを使う)。`arcs` は先頭 `activeCount` 本だけがこのフレームの区間に対応するプール、先頭 `nodeCount` 本がノードで終わる区間 | `update()` 毎 |
@@ -295,6 +299,7 @@ main.ts
 | `FocusMarkers.labels[].pos` | 天体暦から毎フレーム再計算 | `update(t)` 毎(`syncLabels()` はこの値をマーカーへ置くだけ) |
 | `NavTarget` の相対 AN/DN 位置・通過時刻 | 自機軌道要素 + 対象の軌道面法線からの導出値(id 自体は正本) | `update()` 毎に全消去→再算出 |
 | `CreativeStage.preview`(軌道要素 + 位置) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM) | `update()` 毎に再算出。パネルを閉じている間・値を解釈できないときは null |
+| `CreativeStage.issues`(`PlacementFieldIssue[]`) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM。centerRadius/mu は `Ephemeris` から引く) | `update()` 毎に再算出、`sync()` で `ShipPlacerPanel.setIssues()` へ push。パネルを閉じている間は空配列 |
 | `PlanDisplay.apsisMarkers` / アイコン位置 | `PlanPath.finalSegmentStart` の軌道要素からの解析的な導出値 | `syncApsisMarkers()` 毎(`sync`/`hide` から呼ぶ) |
 | `MapPicker.pickables` | `FocusMarkers.labels` + 生存中の全 `entities.players`・敵船の displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` の合成(保持しない使い捨て配列) | `mapPicker.refresh()`(`update()` 内、経路ごとの `cameraSystem.update()` 直前)毎に作り直す |
 

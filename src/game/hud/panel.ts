@@ -1,22 +1,20 @@
 // HUD ステータスパネル(スタッツ・ターゲット情報・敵一覧)の同期。
 import * as C from '../const';
 import { ACCENT_SECONDARY, TEXT_DIM as INK_SOFT } from '../theme';
-import { apsisAltitudes } from '../../physics/elements';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
-import { dot, len, sub } from '../../physics/vec3';
+import { Attractor } from '../../physics/attractor';
+import { len, sub } from '../../physics/vec3';
 import type { Game } from '../game';
-import { fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
-import { ATTRACTOR_NAMES } from './frame-labels';
+import { SIM_EPOCH_SEC, fmtAmmoStatus, fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
+import { orbitInfo, relativeInfo } from './orbit-info';
 
-// simTime=0 に対応する絶対時刻 [unix s]。HUD の現在日時表示にのみ使う。
-const SIM_EPOCH_SEC = Date.parse(C.SIM_EPOCH_UTC) / 1000;
-
-interface StatsData {
-  met: number;
+interface GlobalStatusData {
   simSpeedLabel: string;
   autoWarpSimRemain: number | null;
   autoWarpRealRemain: number | null;
   paused: boolean;
+}
+
+interface StatsData {
   rcsDamp: boolean;
   throttleIdx: number;
   fineAttitude: boolean;
@@ -61,6 +59,7 @@ const ENEMY_LIST_INTERVAL_MS = 250;
 
 export class HudPanels {
   private nextStatsAt = 0;
+  private nextGlobalStatusAt = 0;
   private nextEnemyListAt = 0;
 
   constructor(private readonly els: Map<string, HTMLElement>) {}
@@ -68,6 +67,18 @@ export class HudPanels {
   // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
   sync(game: Game, attractors: readonly Attractor[]): void {
     const now = performance.now();
+    // グローバルステータス(時刻・時間加速・NODE WARP)は自機の有無に関係なく画面全体の
+    // 状態なので、自機不在で以降の処理を抜ける早期 return より前に書く。
+    this.setText('met', `${fmtDateTime(SIM_EPOCH_SEC + game.simulator.simTime)} / T+ ${fmtTime(game.simulator.simTime)}`);
+    if (now >= this.nextGlobalStatusAt) {
+      this.nextGlobalStatusAt = now + STATS_INTERVAL_MS;
+      this.setGlobalStatus({
+        simSpeedLabel: `×${game.simSpeedManager.simSpeed}`,
+        autoWarpSimRemain: game.simSpeedManager.remainingSimulationSeconds(game.simulator.simTime),
+        autoWarpRealRemain: game.simSpeedManager.estimatedRealSecondsToWarpEnd(game.simulator.simTime),
+        paused: game.isPaused,
+      });
+    }
     const player = game.player;
     if (!player) {
       // Creative の未配置状態には操縦/戦闘 HUD の値が存在しない。
@@ -89,20 +100,13 @@ export class HudPanels {
     if (contacts) contacts.style.display = game.cameraSystem.overviewMode ? 'none' : '';
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;
-    const playerCenter = strongestAttractor(player.state.r, attractors);
-    const playerEl = player.orbitalElementsAround(playerCenter);
-    const playerApsis = playerEl ? apsisAltitudes(playerEl) : null;
+    const player0 = orbitInfo(player, attractors);
 
     // スタッツパネルを一定間隔で更新
     if (now >= this.nextStatsAt) {
       this.nextStatsAt = now + STATS_INTERVAL_MS;
       const thermal = player.thermal;
       this.setStats({
-        met: game.simulator.simTime,
-        simSpeedLabel: `×${game.simSpeedManager.simSpeed}`,
-        autoWarpSimRemain: game.simSpeedManager.remainingSimulationSeconds(game.simulator.simTime),
-        autoWarpRealRemain: game.simSpeedManager.estimatedRealSecondsToWarpEnd(game.simulator.simTime),
-        paused: game.isPaused,
         rcsDamp: player.rcsDamp,
         throttleIdx: player.throttleIdx,
         fineAttitude: player.fineAttitude,
@@ -111,14 +115,8 @@ export class HudPanels {
         roundsInMag: player.roundsInMag,
         magsLeft: player.magsLeft,
         reloadTimer: player.reloadTimer,
-        centerName: ATTRACTOR_NAMES[playerCenter.id],
-        alt: len(sub(player.state.r, playerCenter.state.r)) - playerCenter.radius,
+        ...player0,
         altDescending: thermal.altDescendWarned,
-        spd: len(player.state.v),
-        apAlt: playerApsis ? playerApsis.ap : NaN,
-        peAlt: playerApsis ? playerApsis.pe : NaN,
-        incDeg: playerEl ? playerEl.incDeg : NaN,
-        period: playerEl ? playerEl.period : NaN,
         qdyn: thermal.qdyn,
         hullTemp: thermal.hullTemp,
         shots: game.activeStage.scoreCounter.shots,
@@ -127,30 +125,18 @@ export class HudPanels {
       });
 
       if (tgt) {
-        const tgtCenter = strongestAttractor(tgt.state.r, attractors);
-        const tgtEl = tgt.orbitalElementsAround(tgtCenter);
-        const tgtApsis = tgtEl ? apsisAltitudes(tgtEl) : null;
-        const relP = sub(tgt.state.r, player.state.r);
-        const relV = sub(tgt.state.v, player.state.v);
-        const dist = len(relP);
-        // 自機軌道面とターゲット軌道面のなす角。中心天体が異なる要素同士は比較に意味がない。
-        const relIncDeg =
-          playerEl && tgtEl && playerCenter.id === tgtCenter.id
-            ? (Math.acos(Math.max(-1, Math.min(1, dot(playerEl.hHat, tgtEl.hHat)))) * 180) / Math.PI
-            : NaN;
+        const tgt0 = orbitInfo(tgt, attractors);
+        const rel = relativeInfo(player, tgt, attractors);
         this.setTarget({
           name: tgt.name,
-          dist,
-          closing: dist > 1e-6 ? -dot(relP, relV) / dist : 0,
-          relSpeed: len(relV),
           hp: tgt.hp,
           maxHp: tgt.maxHp,
-          centerName: ATTRACTOR_NAMES[tgtCenter.id],
-          apAlt: tgtApsis ? tgtApsis.ap : NaN,
-          peAlt: tgtApsis ? tgtApsis.pe : NaN,
-          incDeg: tgtEl ? tgtEl.incDeg : NaN,
-          period: tgtEl ? tgtEl.period : NaN,
-          relIncDeg,
+          centerName: tgt0.centerName,
+          apAlt: tgt0.apAlt,
+          peAlt: tgt0.peAlt,
+          incDeg: tgt0.incDeg,
+          period: tgt0.period,
+          ...rel,
         });
       } else {
         this.setTarget(null);
@@ -179,11 +165,11 @@ export class HudPanels {
     if (e && e.textContent !== text) e.textContent = text;
   }
 
-  // スタッツパネル各項目のテキストと警告表示を書き換える
-  private setStats(d: StatsData): void {
-    this.setText('met', `${fmtDateTime(SIM_EPOCH_SEC + d.met)} / T+ ${fmtTime(d.met)}`);
+  // グローバルステータスバーの時間加速/NODE WARP 表示を書き換える
+  private setGlobalStatus(d: GlobalStatusData): void {
     const simSpeedEl = this.els.get('sim-speed');
     if (simSpeedEl) {
+      // 自動ワープ中は現在のワープ段の右に残り実時間を添える。停止中はワープ段より PAUSE を優先する。
       const warpRemain = d.autoWarpRealRemain !== null ? ` (残り ${fmtTime(d.autoWarpRealRemain)})` : '';
       simSpeedEl.textContent = d.paused ? 'PAUSE' : `${d.simSpeedLabel}${warpRemain}`;
       simSpeedEl.classList.toggle('sim-speed-hot', d.simSpeedLabel !== '×1' || d.paused);
@@ -193,7 +179,10 @@ export class HudPanels {
       nodeWarpEl.textContent = d.autoWarpSimRemain === null ? '—' : fmtTime(d.autoWarpSimRemain);
       nodeWarpEl.classList.toggle('sim-speed-hot', d.autoWarpSimRemain !== null);
     }
+  }
 
+  // スタッツパネル各項目のテキストと警告表示を書き換える
+  private setStats(d: StatsData): void {
     this.setText('rcs', d.rcsDamp ? 'ON' : 'OFF');
     const throttleLabels = ['弱', '中', '強'];
     this.setText(
@@ -218,16 +207,8 @@ export class HudPanels {
     // 残弾/リロード中の表示
     const ammoEl = this.els.get('ammo');
     if (ammoEl) {
-      if (d.reloadTimer > 0) {
-        ammoEl.textContent = 'RELOADING...';
-        ammoEl.classList.add('warn-hot');
-      } else {
-        ammoEl.textContent =
-          d.roundsInMag <= 0 && d.magsLeft <= 0
-            ? '弾切れ'
-            : `${d.roundsInMag}/${C.MAG_ROUNDS} +${d.magsLeft}連`;
-        ammoEl.classList.toggle('warn-hot', d.magsLeft < 4);
-      }
+      ammoEl.textContent = fmtAmmoStatus(d.roundsInMag, d.magsLeft, d.reloadTimer);
+      ammoEl.classList.toggle('warn-hot', d.reloadTimer > 0 || d.magsLeft < 4);
     }
     this.setText('center', d.centerName);
     this.setText('alt', fmtDist(d.alt));

@@ -10,7 +10,9 @@ import { register as registerSweptSphere } from './swept-sphere.test';
 import { register as registerAtmosphere } from './atmosphere.test';
 import { register as registerEphemeris } from './ephemeris.test';
 import { register as registerShadow } from './shadow.test';
+import { register as registerSrp } from './srp.test';
 import { register as registerAttractor } from './attractor.test';
+import { register as registerBodyOrientation } from './body-orientation.test';
 import { register as registerKeplerOrbit } from './kepler-orbit.test';
 import { register as registerSatelliteOrbit } from './satellite-orbit.test';
 import { register as registerProjection } from './projection.test';
@@ -22,6 +24,7 @@ import { register as registerDynamicTrajectory } from './dynamic-trajectory.test
 import { register as registerHalo } from './halo.test';
 import { register as registerPlan } from './plan.test';
 import { register as registerHudLayout } from './hud-layout.test';
+import { register as registerShortcutHint } from './shortcut-hint.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -33,7 +36,9 @@ registerSweptSphere();
 registerAtmosphere();
 registerEphemeris();
 registerShadow();
+registerSrp();
 registerAttractor();
+registerBodyOrientation();
 registerKeplerOrbit();
 registerSatelliteOrbit();
 registerProjection();
@@ -45,5 +50,6 @@ registerDynamicTrajectory();
 registerHalo();
 registerPlan();
 registerHudLayout();
+registerShortcutHint();
 
 runAll();

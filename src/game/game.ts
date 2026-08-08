@@ -135,7 +135,7 @@ export class Game {
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
-    this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene);
+    this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene, this.settingsPanel);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this._hud.root);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
@@ -147,7 +147,6 @@ export class Game {
       this.ephemeris,
       this._scene,
       this.markerManager,
-      () => this.player?.fineAttitude ?? false,
       bootstrapPlayer,
       this.displayTimeManager,
     );
@@ -339,6 +338,7 @@ export class Game {
       this.updateMapPresentation(dt, () => {
         if (!this.editor.editMode) return;
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
+        this.mapPicker.handleLeftClick(this.input);
         this.editor.handleMapPointer(this.input);
         this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
         this.editor.updateEditing(dt, this.input);
@@ -362,10 +362,11 @@ export class Game {
         this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
       );
       this.activeStage.update(dt, null, this.entities, this.simulator.simTime, this.simSpeedManager);
-      this.effects.update(dt, simDt);
+      this.effects.update(dt, this.simulator.simTime);
       this.updateMapPresentation(dt);
       if (this.editor.editMode) {
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
+        this.mapPicker.handleLeftClick(this.input);
         this.editor.handleMapPointer(this.input);
         this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
         this.editor.updateEditing(dt, this.input);
@@ -381,7 +382,7 @@ export class Game {
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
       this.simulator.advance(dt, simDt, player, this.activeStage, false, false, false);
       this.nanWatchdog.checkAll('advance(決着後)', player, this.entities, this.simulator.simTime, dt, simDt);
-      this.effects.update(dt, simDt);
+      this.effects.update(dt, this.simulator.simTime);
       // 決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
       // 軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする。
       this.updateMapPresentation(dt);
@@ -398,7 +399,7 @@ export class Game {
       scoreCounter: this.activeStage.scoreCounter,
       simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
-      addBullet: (bullet) => this.entities.addBullet(bullet),
+      entities: this.entities,
       ephemeris: this.ephemeris,
     });
 
@@ -465,7 +466,7 @@ export class Game {
       this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
     );
 
-    this.effects.update(dt, simDt);
+    this.effects.update(dt, this.simulator.simTime);
 
     // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
     const activePlayer = this.player;
@@ -480,6 +481,7 @@ export class Game {
 
     if (this.editor.editMode) {
       this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
+      this.mapPicker.handleLeftClick(this.input);
       this.editor.handleMapPointer(this.input);
       this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
       this.editor.updateEditing(dt, this.input);
@@ -508,6 +510,10 @@ export class Game {
     if (this.simSpeedManager.simSpeed <= C.MAX_PHYS_SIM_SPEED) return;
     for (const ship of this.entities.players) ship.suppressAttitudeCommandForWarp();
     this._sfx.setRcs(false);
+  }
+
+  openSettingsMenu(): void {
+    this.settingsPanel.toggle(true);
   }
 
   // --------------------------------------------------------------- input
@@ -578,6 +584,7 @@ export class Game {
     }
 
     this.entities.sync(this.floatingOrigin, displayTime);
+    for (const base of this.entities.bases) base.syncOrbitLine(overviewMode, this.floatingOrigin, attractors);
 
     this.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
 
@@ -599,12 +606,12 @@ export class Game {
         tgt === target ? 'primary' : tgt === secondaryTarget ? 'secondary' : 'none';
       enemyMarkerItems.push(tgt.markerItem(role, player?.state.r ?? v3(), pos));
     }
-    this.enemyMarkers.sync(enemyMarkerItems, project);
+    this.enemyMarkers.sync(enemyMarkerItems, project, overviewMode);
     if (player) this.leadMarkers.sync(player, aliveTargets, target, secondaryTarget, simTime, overviewMode, project);
 
-    this.displayTimeManager.sync(this.currentOrbitPeriod());
+    this.displayTimeManager.sync(simTime, this.currentOrbitPeriod());
     this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project);
-    this.mapPicker.sync(overviewMode);
+    this.mapPicker.sync(overviewMode, simTime, attractors, player);
     // 月フライバイ等で積分予測と解析楕円が乖離した場合は、重なって誤解を招く
     // 楕円近似線をマップ表示中だけ抑制する。戦闘ビューへ戻れば通常の線へ復帰する。
     if (player) {

@@ -2,6 +2,7 @@
 // 1フレームぶんのエッジトリガ(押した瞬間のキー/クリック/右クリック/マウス移動量)を
 // update() で確定させる。エッジトリガは先着順の消費モデルで、
 // take* の handler が true を返したイベントはキューから取り除かれる。
+import { CLICK_MOVE_THRESHOLD } from '../const';
 import { CTRL_GUARD_KEYS, KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
 
 export interface MouseDelta {
@@ -18,8 +19,6 @@ export interface PointerPoint {
   y: number;
 }
 
-const CLICK_MOVE_THRESHOLD = 6; // これ未満の累積移動量ならドラッグではなくクリック扱い
-
 // どの操作にも割り当てていないが、押されるとフォーカスが移動してゲームが操作不能に
 // なるため既定動作だけ止めるキー。
 const FOCUS_GUARD_CODE = 'Tab';
@@ -30,6 +29,11 @@ function matchesCode(key: KeyBinding, code: string): boolean {
 }
 
 const ZERO_MOUSE_DELTA: MouseDelta = { dx: 0, dy: 0, panDx: 0, panDy: 0, wheel: 0 };
+
+// macOS では Command キーを押している間、他のキーの keyup がページに配送されない。
+// その間に離されたキーは押しっぱなしとして残り続けるため、Command が離された時点で
+// 押下中セット全体を捨てる(どのキーが実際に離されたかは知りようがない)。
+const META_CODES = ['MetaLeft', 'MetaRight'];
 
 export class Input {
   private keys = new Set<string>();
@@ -81,12 +85,23 @@ export class Input {
       this.keys.add(e.code);
       this.fireGesture();
     });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => {
-      this.keys.clear();
-      this.dragging = false;
-      this.panDragging = false;
+    window.addEventListener('keyup', (e) => {
+      if (META_CODES.includes(e.code)) this.releaseAll();
+      else this.keys.delete(e.code);
     });
+    window.addEventListener('blur', () => this.releaseAll());
+    window.addEventListener('pagehide', () => this.releaseAll());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.releaseAll();
+    });
+  }
+
+  // 押下中・ドラッグ中の状態をすべて解除する。keyup / pointerup が届かないまま
+  // 操作が中断された場合の復帰点。
+  private releaseAll(): void {
+    this.keys.clear();
+    this.dragging = false;
+    this.panDragging = false;
   }
 
   // target のポインタイベントを購読する。
