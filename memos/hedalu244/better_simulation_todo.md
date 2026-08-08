@@ -41,7 +41,7 @@ headless CDP から右クリックのコンテキストメニューを開けず�
 ### 命名の改善、リファクタリング
 Attractor型の変数名がbodyになっている箇所がある。「同一概念に複数の名前がある」に該当。
 
-orbitという接頭辞の意味が形骸化している。orbitline、orbitalState、orbitEntityなど。これらに接辞を付けているのにElementsには接辞がないのも変。Trajectoryやdynamicsとの区別もあいまい。
+orbitという接頭辞の意味が形骸化している。orbit-line、orbitalState、orbitEntityなど。これらに接辞を付けているのにElementsには接辞がないのも変。Trajectoryやdynamicsとの区別もあいまい。
 現状、シミュレーションにしても線の描画にしても、明確に区別するべきは、純粋なケプラー解析軌道を表すものか、摂動を考慮した非ケプラー解析軌道であるか、RK4積分を行っている/積分に基づくものかであるから、これに即した命名体系に置換するべきである。
 
 DynamicTrajectoryはトラッキングが責務であり、Dynamicsは積分が責務であることが命名的にも構造的にも分かりづらい。sampled-lineは履歴を表し、orbit-lineが純粋なケプラー軌道を表すことも分かりづらい。これらの命名体系も整理する必要がある。
