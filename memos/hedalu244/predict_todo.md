@@ -20,12 +20,12 @@
 
 軌道面法線を求める経路が2つ並存している。
 
-- `orbitalAxes(state).nrm`(`physics/orbital.ts`) — 進行方向・法線・面内直交の3軸を組む。
-- `elementsFromState(r, v).hHat`(同ファイル) — 古典軌道要素を求める過程で法線も出る。
+- `orbitAxes(state).nrm`(`physics/orbital.ts`) — 進行方向・法線・面内直交の3軸を組む。
+- `orbitalElementsFromState(r, v).hHat`(同ファイル) — 古典軌道要素を求める過程で法線も出る。
   `targeter.ts` が相対 AN/DN の計算に使っている。
 
-法線だけが欲しいなら `orbitalAxes` の方が安く、軌道要素も併せて要るなら `elementsFromState`
-を1回呼ぶ方が安い。どちらを正とするか、あるいは `Elements` から軌道基底を導けるようにして
+法線だけが欲しいなら `orbitAxes` の方が安く、軌道要素も併せて要るなら `orbitalElementsFromState`
+を1回呼ぶ方が安い。どちらを正とするか、あるいは `OrbitalElements` から軌道基底を導けるようにして
 一本化するかを決めていない。**呼び出し側の都合で使い分けてよいのか、それとも片方が
 もう片方を使うべきなのか**が論点。
 

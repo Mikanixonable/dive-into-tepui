@@ -4,8 +4,8 @@
 // この1ファイルに並べて置き、互いを見比べやすくする。
 import * as THREE from 'three/webgpu';
 import { qFromForwardUp, randomQuat } from '../../../physics/attitude';
-import { MU_EARTH, KinematicState, R_EARTH, kinematicState, orbitalAxes } from '../../../physics/kinematic-state';
-import { stateFromElements } from '../../../physics/elements';
+import { MU_EARTH, KinematicState, R_EARTH, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
+import { stateFromOrbitalElements } from '../../../physics/elements';
 import { len, norm, randSym, rotateAxis, scale, v3 } from '../../../physics/vec3';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
@@ -14,7 +14,7 @@ import { Enemy } from '../../game-entity/enemy';
 
 // 自機軌道(base)を dAlong だけ進めた位置の軌道状態(プリセット配置の共通基盤)。
 function phasedState(base: KinematicState, dAlong: number): KinematicState {
-  const hHat = orbitalAxes(base).nrm;
+  const hHat = orbitAxes(base).nrm;
   const ang = dAlong / len(base.r);
   return kinematicState(base.t, rotateAxis(base.r, hHat, ang), rotateAxis(base.v, hHat, ang));
 }
@@ -88,7 +88,7 @@ export function generateMolniyaEnemy(
   const ra = R_EARTH + 39400e3;
   const a = (rp + ra) / 2;
   const e = (ra - rp) / (ra + rp);
-  const state = stateFromElements(t, a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu, MU_EARTH);
+  const state = stateFromOrbitalElements(t, a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu, MU_EARTH);
   return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, hud, sfx, fx, scene);
 }
 

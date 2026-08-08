@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/elements';
 import { Vec3, cross, dot, len, norm, sub, v3 } from '../../physics/vec3';
-import { elementsAround, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
+import { orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { ReferenceFrame, INERTIAL_FRAME, frameKinematicState, toFrameState, toInertialState } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { fmtMarkerDist, fmtDist } from '../hud/utils';
@@ -115,7 +115,7 @@ export class PlanDisplay {
     if (!state0 || !this.plan || !this.apsisIcons.some((icon) => icon.id === id)) return null;
     const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
     const relative = toFrameState(frameOfAttractor(center), state0);
-    const el = elementsAround(state0, center);
+    const el = orbitalElementsOf(state0, center);
     if (!el) return null;
     const nu = id === 'apsisAp' ? Math.PI : 0;
     const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
@@ -164,7 +164,7 @@ export class PlanDisplay {
     const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
     const tf = frameOfAttractor(center);
     const relative = toFrameState(tf, state0);
-    const el = elementsAround(state0, center);
+    const el = orbitalElementsOf(state0, center);
     if (!el || el.e < C.APSIS_MIN_ECC) return [];
 
     const apsisPosition = (nu: number): { pos: Vec3, time: number } => {
@@ -205,7 +205,7 @@ export class PlanDisplay {
     const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
     const tf = frameOfAttractor(center);
     const relative = toFrameState(tf, state0);
-    const el = elementsAround(state0, center);
+    const el = orbitalElementsOf(state0, center);
     if (!el || el.e < C.APSIS_MIN_ECC) return [];
 
     const eqNormal = center.id === 'moon'
