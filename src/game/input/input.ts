@@ -2,6 +2,7 @@
 // 1フレームぶんのエッジトリガ(押した瞬間のキー/クリック/右クリック/マウス移動量)を
 // update() で確定させる。エッジトリガは先着順の消費モデルで、
 // take* の handler が true を返したイベントはキューから取り除かれる。
+import { CLICK_MOVE_THRESHOLD } from '../const';
 import { CTRL_GUARD_KEYS, KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
 
 export interface MouseDelta {
@@ -17,8 +18,6 @@ export interface PointerPoint {
   x: number;
   y: number;
 }
-
-const CLICK_MOVE_THRESHOLD = 6; // これ未満の累積移動量ならドラッグではなくクリック扱い
 
 // どの操作にも割り当てていないが、押されるとフォーカスが移動してゲームが操作不能に
 // なるため既定動作だけ止めるキー。
