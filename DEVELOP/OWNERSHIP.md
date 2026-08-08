@@ -122,7 +122,7 @@ main.ts
 - 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・Ammo[]・BeltSection[] — 木の
   どのノードも例外なく)は `physics/orbit-entity.ts` の `OrbitEntity` を1本、フィールド名
   `current` で保持する(state/history/prevState の正本)。GameEntity ごとに繰り返さず
-  ここに一括で記す。`OrbitEntity` 自身は軌道要素を持たない — `GameEntity.elementsAround(center)` が
+  ここに一括で記す。`OrbitEntity` 自身は軌道要素を持たない — `GameEntity.orbitalElementsAround(center)` が
   `state` の参照同一性 + `center.id` でメモ化する(§付録「正本でないもの」参照。中心天体 `center` は
   呼び出し側が都度選ぶので `OrbitEntity`/`GameEntity` の状態ではない)。`predictsFuture = true` の
   GameEntity(Ship・Ammo のみ)は、`Predictor` が
@@ -278,9 +278,9 @@ main.ts
 | 対象 | 正体 | 無効化の契機 |
 | --- | --- | --- |
 | `Ephemeris.attractorsAt(t)` の戻り値(`Attractor[]`) | 天体暦(`SOLAR_SYSTEM` 登録順、現在は地球・月・木星・太陽)から毎回組み立てる重力源スナップショット。どのクラスもこれを状態として保持しない — 呼んだその場で使い切るか、次のステップ/フレームでまた引き直す | 呼び出しごとに新しい `t` を渡せば作り直せる。`Ephemeris` はキャッシュを持たないので毎回組み立て直しになる |
-| `Elements.center`(`Attractor`) | その軌道要素をどの天体まわりで取ったか。要素と同じ寿命でその天体の `t` 時点スナップショットを抱えるので、要素そのものより長く持ち回してはならない(`OrbitLine` は楕円の平行移動先をここから引く) | 要素を作り直すたび。`GameEntity.elementsAround` のメモ経由なら `state` 差し替えのたび |
+| `OrbitalElements.center`(`Attractor`) | その軌道要素をどの天体まわりで取ったか。要素と同じ寿命でその天体の `t` 時点スナップショットを抱えるので、要素そのものより長く持ち回してはならない(`OrbitLine` は楕円の平行移動先をここから引く) | 要素を作り直すたび。`GameEntity.orbitalElementsAround` のメモ経由なら `state` 差し替えのたび |
 | 解析楕円の中心天体(`strongestAttractor(state.r, attractors)` の結果) | `state`(と `attractors`)から都度導く選択であり、`GameEntity`/`Plan`/`PlanDisplay`/`OrbitLine` のどれもこれを状態として保持しない — 選ぶ GUI もない | 呼ぶたび再計算 |
-| `GameEntity.elementsAround(center)` の内部メモ | `state` の参照同一性 + `center.id` をキーにした軌道要素のメモ化(中心天体 `center` は呼び出し側が選ぶ) | `state` が差し替わるたび(`current.step`/`.reset`)、または `center.id` が変わるたび自動的に不一致になる |
+| `GameEntity.orbitalElementsAround(center)` の内部メモ | `state` の参照同一性 + `center.id` をキーにした軌道要素のメモ化(中心天体 `center` は呼び出し側が選ぶ) | `state` が差し替わるたび(`current.step`/`.reset`)、または `center.id` が変わるたび自動的に不一致になる |
 | `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(`history` とは別) | `step`/`reset` のたび更新 |
 | `GameEntity.predicted` | `current.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayTimeManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `resyncPrediction` の距離判定(§3-4 (a))、または `Player.behave` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
 | `SimSpeedManager.canGrowPrediction` | `simSpeed <= C.MAX_PHYS_SIM_SPEED` の派生 getter(`canResolvePhysicalCollisions` と同じ式だが別の問い) | 呼ぶたび再計算 |

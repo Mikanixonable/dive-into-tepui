@@ -2,7 +2,7 @@
 import { Quat } from './attitude';
 import { FrameTransform, toFrameState } from './frame';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Elements, elementsFromState, keplerPeriod } from './elements';
+import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
 import { Vec3, lenSq, len, sub, v3 } from './vec3';
 
 // 天体の分類。恒星は動かず、惑星は太陽まわりのケプラー軌道、衛星は惑星まわりのケプラー軌道
@@ -85,9 +85,9 @@ export function frameOfAttractor(center: Attractor): FrameTransform {
 
 // 天体 center を中心とする接触軌道要素。中心の選び方には関与しない — 呼び出し側が
 // strongestAttractor などで選んだ center をそのまま渡す。
-export function elementsAround(s: KinematicState, center: Attractor): Elements | null {
+export function orbitalElementsOf(s: KinematicState, center: Attractor): OrbitalElements | null {
   const rel = toFrameState(frameOfAttractor(center), s);
-  return elementsFromState(kinematicState(s.t, rel.r, rel.v), center);
+  return orbitalElementsFromState(kinematicState(s.t, rel.r, rel.v), center);
 }
 
 // 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。margin(大気圏突入高度

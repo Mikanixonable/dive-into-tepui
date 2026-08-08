@@ -1,9 +1,9 @@
-// Elements から軌道楕円を描画する。頂点は中心天体(Elements.center)相対座標のまま保持し、
+// OrbitalElements から軌道楕円を描画する。頂点は中心天体(OrbitalElements.center)相対座標のまま保持し、
 // フローティングオリジンによる Object3D 平行移動でその天体の ECI 位置へ置く。どの天体を
-// 中心に描くかは Elements 自身が持つため、呼び出し側が外側で選び直すことはできない。
+// 中心に描くかは OrbitalElements 自身が持つため、呼び出し側が外側で選び直すことはできない。
 // ジオメトリの再生成は軌道要素が閾値を超えて変化したときだけ行う。
 import * as THREE from 'three/webgpu';
-import { Elements } from '../physics/elements';
+import { OrbitalElements } from '../physics/elements';
 import { Vec3 } from '../physics/vec3';
 import { FloatingOrigin } from '../game/floating-origin';
 
@@ -53,7 +53,7 @@ export class OrbitLine {
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン。force = 要素が能動的に変化している
   // 間(推力中・ノード編集中)は true。densifyNear は中心天体相対座標で、その付近に頂点を
   // 密に配置する。
-  sync(el: Elements | null, fo: FloatingOrigin, force = false, densifyNear?: Vec3): void {
+  sync(el: OrbitalElements | null, fo: FloatingOrigin, force = false, densifyNear?: Vec3): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.line.visible = false;
       this.snap = null;
@@ -91,7 +91,7 @@ export class OrbitLine {
   }
 
   // 現在の要素が直近のスナップショットから許容誤差を超えて変化していれば true(要再生成)。
-  private needsRegen(el: Elements, force: boolean, focusE?: number): boolean {
+  private needsRegen(el: OrbitalElements, force: boolean, focusE?: number): boolean {
     if (!this.snap) return true;
     const now = performance.now();
     if (now - this.lastRegen < REGEN_MIN_INTERVAL_MS) return false;
@@ -116,7 +116,7 @@ export class OrbitLine {
   }
 
   // 軌道要素から楕円頂点を計算し直してジオメトリへ反映し、再生成時点のスナップショットを取る。
-  private regenerate(el: Elements, focusE?: number): void {
+  private regenerate(el: OrbitalElements, focusE?: number): void {
     const b = el.a * Math.sqrt(1 - el.e * el.e);
     for (let i = 0; i < POINT_COUNT; i++) {
       let t = i / POINT_COUNT;

@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { MU_MOON, R_MOON } from '../../src/physics/solar-system';
-import { elementsAround, strongestAttractor } from '../../src/physics/attractor';
+import { orbitalElementsOf, strongestAttractor } from '../../src/physics/attractor';
 import { kinematicState, MU_EARTH, R_EARTH } from '../../src/physics/kinematic-state';
 import { apsisAltitudes, keplerPeriod } from '../../src/physics/elements';
 import { add, v3 } from '../../src/physics/vec3';
@@ -36,7 +36,7 @@ export function register(): void {
     const orbitDisplayDuration = { durationSec: (referencePeriod: number) => referencePeriod };
     assert.ok(Math.abs(plan.nodeTimeRange(0, ephemeris, orbitDisplayDuration).max - (t + expected)) < 1e-6);
 
-    const el = elementsAround(state, center)!;
+    const el = orbitalElementsOf(state, center)!;
     assert.equal(el.center.mu, MU_MOON);
     const apsis = apsisAltitudes(el);
     assert.ok(Math.abs(apsis.pe - 100_000) < 1, `近点高度: ${apsis.pe}`);
