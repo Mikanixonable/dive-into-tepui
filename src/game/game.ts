@@ -578,6 +578,7 @@ export class Game {
     }
 
     this.entities.sync(this.floatingOrigin, displayTime);
+    for (const base of this.entities.bases) base.syncOrbitLine(overviewMode, this.floatingOrigin, bodies);
 
     this.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
 
