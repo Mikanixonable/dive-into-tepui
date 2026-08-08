@@ -420,9 +420,10 @@ export class ShipPlacerPanel {
       this.librationOrbitKindValue = v;
       this.librationOrbitKind.setSelected(v);
       setFieldVisible(libAx, v === 'lissajous');
+      libAx.value = String(this.defaultLibrationAmplitude(this.librationSecondaryValue).ax);
     });
     librationGroup.appendChild(librationOrbitKind.element);
-    const defaultAmp = LIBRATION_DEFAULT_AMPLITUDE_KM[this.librationSecondaryValue];
+    const defaultAmp = this.defaultLibrationAmplitude(this.librationSecondaryValue);
     libAx = numberField(librationGroup, '面内振幅 ax [km]', defaultAmp.ax, 100, 0);
     const libAz = numberField(librationGroup, '面外振幅 az [km]', defaultAmp.az, 100, 0);
     librationOrbitKind.setSelected(this.librationOrbitKindValue);
@@ -511,9 +512,14 @@ export class ShipPlacerPanel {
   private selectLibrationSecondary(secondary: OrbitingId): void {
     this.librationSecondaryValue = secondary;
     this.librationSecondary.setSelected(secondary);
-    const amp = LIBRATION_DEFAULT_AMPLITUDE_KM[secondary];
+    const amp = this.defaultLibrationAmplitude(secondary);
     this.libAx.value = String(amp.ax);
     this.libAz.value = String(amp.az);
+  }
+
+  // 副天体ごとの面内/面外振幅の既定値を返す(系ごとに主天体間距離が桁違いなため)。
+  private defaultLibrationAmplitude(secondary: OrbitingId): { ax: number; az: number } {
+    return LIBRATION_DEFAULT_AMPLITUDE_KM[secondary];
   }
 
   // フォームの現在値を読み、onConfirm へ通知する。
