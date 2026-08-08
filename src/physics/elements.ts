@@ -2,7 +2,7 @@
 // 軌道要素は「どの天体を中心に取ったか」まで含めて初めて意味が定まるため、Elements 自身が
 // 中心天体(Attractor)を保持する。THREE/DOM 非依存の純粋関数群。
 import type { Attractor } from './attractor';
-import { OrbitState, orbitState } from './orbital-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
 
 export interface Elements {
@@ -33,7 +33,7 @@ export function semiMajorFromPeriod(period: number, mu: number): number {
 // 差し引いた後)の状態ベクトルでなければならない — 絶対 ECI 座標をそのまま渡すと、center が
 // 原点(地球)でない限り誤った要素になる。絶対 ECI からの呼び出しは attractor.ts の
 // elementsAround に一本化する。半径・角運動量が縮退している場合は null。
-export function elementsFromState(rel: OrbitState, center: Attractor): Elements | null {
+export function elementsFromState(rel: KinematicState, center: Attractor): Elements | null {
   const r = rel.r;
   const v = rel.v;
   const mu = center.mu;
@@ -176,11 +176,11 @@ export function stateFromElements(
   argp: number,
   nu: number,
   mu: number,
-): OrbitState {
+): KinematicState {
   const { pHat, qHat } = orbitPlaneBasis(inc, raan, argp);
   const p = a * (1 - e * e);
   const k = Math.sqrt(mu / p);
-  return orbitState(
+  return kinematicState(
     t,
     positionFromElements(a, e, inc, raan, argp, nu),
     addScaled(scale(pHat, -k * Math.sin(nu)), qHat, k * (e + Math.cos(nu))),

@@ -188,7 +188,7 @@ main.ts
 | 天球グリッド6トグルの可視状態・navball の基準モード | `Navball` | `gridVisibility`/`mode`。`Game.sync` が `navball.gridVisibility` を読んで `EnvironmentScene.sync` の引数(`gridVisibility`)経由で `CelestialGrid.sync` へ渡すだけで、`CelestialGrid` 自身は状態を持たない |
 | Δv アーム/ボタンのホールド継続時間・ラッチ状態 | `PlanEditor.dvHoldTime` / `NodeGizmo.latch` | 6方向ぶんの経過秒数(ホールドレートのランプに使う)と、ドラッグがラッチへ入った軸/超過量。加算そのものは `PlanEditor.applyDv` に一本化 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
-| マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。ノード・アンカーとも 1 個の `OrbitState`(実行時刻 = `t`、Δv は導出値)。ノード列は `OrbitState[]` を1本持つだけで、`addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`dropNodesBefore(t)` は実行時刻が `t` 以前のノードをまとめて取り除き、最後に取り除いたノードを新しい `anchor` に据えて返す(`CreativeStage.advanceFollowPlan` が `followPlan` 艦の自動追従にこの戻り値を使う) |
+| マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。ノード・アンカーとも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `KinematicState[]` を1本持つだけで、`addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`dropNodesBefore(t)` は実行時刻が `t` 以前のノードをまとめて取り除き、最後に取り除いたノードを新しい `anchor` に据えて返す(`CreativeStage.advanceFollowPlan` が `followPlan` 艦の自動追従にこの戻り値を使う) |
 | 操作対象(アクティブ)艦 | `Game.player` | 唯一の書き換え箇所は `Game.setActivePlayer(ship)`。カメラ参照・計画編集対象・ターゲット解除の副作用もすべてここに閉じる(下記「たまたま同時に切り替わる」節参照) |
 | 軌道計画への自動追従 | `Player.followPlan` | 全ての自機が持つ(既定 false)。ON の艦は `CreativeStage.update` が毎フレーム見て、次ノード時刻を跨いだら `state` をノードの絶対状態へ置き換える |
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNodeIdx` / `.editMode` | 選択は素の `number \| null`。`deleteNode(idx)` は削除後 `selectedNodeIdx >= idx` なら選択を解除する |
@@ -300,14 +300,14 @@ main.ts
 
 ### 基礎データ型の不変性(整合性の前提)
 
-`Vec3` / `OrbitState` / `Quat` / `Attitude` は **不変**。値を進めるときは中身を書き換えず、
-新しいオブジェクトを作って差し替える(`stepOrbitRK4` は新しい `OrbitState` を、`stepAttitude` は
+`Vec3` / `KinematicState` / `Quat` / `Attitude` は **不変**。値を進めるときは中身を書き換えず、
+新しいオブジェクトを作って差し替える(`stepOrbitRK4` は新しい `KinematicState` を、`stepAttitude` は
 新しい `Attitude` を返す)。これは最適化ではなく整合性の前提で、`physics/orbit-entity.ts` の
 `OrbitEntity`(`GameEntity.current`)が `step`/`reset` のたび軌道要素メモを破棄し、差し替え前の
 state を条件付きで `history` へ送れるのは「state が差し替え以外では変化しない」からである。
 参照を共有したまま中身を書き換えると保持側が変化を検知できず、メモが黙って腐り、履歴も取り落とす。
 
-`OrbitState` は `{t, r, v}`(エポック付き状態ベクトル)で、**予測点列・エンティティ履歴・計画ノードは
+`KinematicState` は `{t, r, v}`(エポック付き状態ベクトル)で、**予測点列・エンティティ履歴・計画ノードは
 すべてこの 1 型で表す**。同じ情報量の型を複数持たない(旧 `TrajectorySample` / `LineSample` /
 `PlannedNode.time` はここへ統合済み)ため、「状態」と「その時刻」が別々に渡されて食い違うことがない。
 

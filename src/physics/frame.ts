@@ -1,6 +1,6 @@
 // 表示に使う時間依存の座標系(慣性系・回転系)を「原点天体 × 回転」の直積として表し、
-// 点・方向・OrbitState の順・逆変換を供給する。座標系相対の値は branded type(FramePoint /
-// FrameDir / FrameOrbitState)になり、変換忘れ・二重変換・慣性系との取り違えが型エラーに
+// 点・方向・KinematicState の順・逆変換を供給する。座標系相対の値は branded type(FramePoint /
+// FrameDir / FrameKinematicState)になり、変換忘れ・二重変換・慣性系との取り違えが型エラーに
 // なる(vec3.ts の Vec3 と同手法)。原点が動く座標系では「点」(位置。回転+平行移動で変換)と
 // 「方向」(変位・速度差・上方向など。回転のみで変換)を取り違えると静かに壊れるため、
 // この2つを別の型にしている。
@@ -13,7 +13,7 @@
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
 import { AttractorId, OrbitingId } from './attractor';
 import { bodyDef, SOLAR_SYSTEM } from './solar-system';
-import { OrbitState, orbitState } from './orbital-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { add, cross, sub, v3, Vec3 } from './vec3';
 import { Quat, qInvert, qRotate } from './attitude';
 
@@ -64,15 +64,15 @@ export type FrameTransform = {
 export type FramePoint = { x: number; y: number; z: number } & { readonly __tag: 'framePoint'; };
 // 座標系相対の「方向・変位」(速度差・オフセット・上方向など。回転のみの線形変換)。
 export type FrameDir = { x: number; y: number; z: number } & { readonly __tag: 'frameDir'; };
-// 座標系相対の OrbitState。デフォルトの OrbitState とは __tag の有無で非互換にし、
+// 座標系相対の KinematicState。デフォルトの KinematicState とは __tag の有無で非互換にし、
 // 慣性系との取り違えを型で防ぐ(vec3.ts の Vec3 と同手法)。
-export type FrameOrbitState = { r: Vec3; v: Vec3; } & { readonly __tag: 'frameOrbitState'; };
+export type FrameKinematicState = { r: Vec3; v: Vec3; } & { readonly __tag: 'frameKinematicState'; };
 
-// FrameOrbitState を組み立てる、toFrameState 以外で唯一信頼できる入口。軌道要素から解析的に
+// FrameKinematicState を組み立てる、toFrameState 以外で唯一信頼できる入口。軌道要素から解析的に
 // 求めた近地点位置のように「すでに座標系相対と分かっている r/v」を toInertialState へ渡すために
-// 使う — orbitState() が OrbitState に対して果たす役割と同じ。
-export function frameOrbitState(r: Vec3, v: Vec3): FrameOrbitState {
-  return { r, v } as FrameOrbitState;
+// 使う — kinematicState() が KinematicState に対して果たす役割と同じ。
+export function frameKinematicState(r: Vec3, v: Vec3): FrameKinematicState {
+  return { r, v } as FrameKinematicState;
 }
 
 // 慣性系 → 座標系相対の点(順変換, bake)。
@@ -98,18 +98,18 @@ export function toInertialDir(tf: FrameTransform, d: FrameDir): Vec3 {
 }
 
 // 慣性系 → 座標系相対(順変換, bake)。速度は v_rel = R⁻¹(v − ȯ − ω×(r − o))。
-export function toFrameState(tf: FrameTransform, s: OrbitState): FrameOrbitState {
+export function toFrameState(tf: FrameTransform, s: KinematicState): FrameKinematicState {
   const qi = qInvert(tf.q);
   const rel = sub(s.r, tf.origin);
-  return frameOrbitState(qRotate(qi, rel), qRotate(qi, sub(sub(s.v, tf.originVel), cross(tf.omega, rel))));
+  return frameKinematicState(qRotate(qi, rel), qRotate(qi, sub(sub(s.v, tf.originVel), cross(tf.omega, rel))));
 }
 
-// 座標系相対 → 慣性系(逆変換, un-bake)。時刻 t は復元する OrbitState 自身のエポックになる
-// (un-bake なら現在の表示時刻)— FrameOrbitState は時刻を持たない(bake 時刻と un-bake 時刻は
+// 座標系相対 → 慣性系(逆変換, un-bake)。時刻 t は復元する KinematicState 自身のエポックになる
+// (un-bake なら現在の表示時刻)— FrameKinematicState は時刻を持たない(bake 時刻と un-bake 時刻は
 // 別物なので、どちらを持たせても取り違えを招く)。速度は v = ȯ + R·v_rel + ω×(r − o)
 // (toFrameState の逆)。
-export function toInertialState(tf: FrameTransform, t: number, s: FrameOrbitState): OrbitState {
+export function toInertialState(tf: FrameTransform, t: number, s: FrameKinematicState): KinematicState {
   const r = add(qRotate(tf.q, s.r), tf.origin);
   const v = add(add(tf.originVel, qRotate(tf.q, s.v)), cross(tf.omega, sub(r, tf.origin)));
-  return orbitState(t, r, v);
+  return kinematicState(t, r, v);
 }

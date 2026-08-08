@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp } from '../../physics/attitude';
-import { MU_EARTH, OrbitState, R_EARTH, altitudeOf, orbitState } from '../../physics/orbital-state';
+import { MU_EARTH, KinematicState, R_EARTH, altitudeOf, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, v3, len, sub } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -72,7 +72,7 @@ export class Player extends Ship {
   // で初期配置する。複数隻を並べるときは両方を指定して区別する(name が艦の識別子になる)。
   constructor(
     _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
-    name = 'PLAYER', initialState?: OrbitState, entityId = name) {
+    name = 'PLAYER', initialState?: KinematicState, entityId = name) {
     const state = initialState ?? Player.makeInitialState();
     super(name, state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, _scene);
     this.id = entityId;
@@ -100,15 +100,15 @@ export class Player extends Ship {
   }
 
   // 高度 INITIAL_ALT、傾斜角 INITIAL_INC_DEG の円軌道状態を返す。
-  private static makeInitialState(): OrbitState {
+  private static makeInitialState(): KinematicState {
     const r0 = R_EARTH + C.INITIAL_ALT;
     const vCirc = Math.sqrt(MU_EARTH / r0);
     const inc = (C.INITIAL_INC_DEG * Math.PI) / 180;
-    return orbitState(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
+    return kinematicState(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
   }
 
   // state の速度方向を機首、位置方向を上として姿勢を組む。
-  private static progradeAttitude(state: OrbitState): Attitude {
+  private static progradeAttitude(state: KinematicState): Attitude {
     return {
       q: qFromForwardUp(state.v, state.r) ?? { x: 0, y: 0, z: 0, w: 1 },
       w: v3(),
@@ -484,7 +484,7 @@ export class Player extends Ship {
     fx: EffectsSystem,
     markerManager: MarkerManager
   ): Player {
-    const state = orbitState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
+    const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
     const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
     const player = new Player(hud, sfx, scene, fx, markerManager, data.name || data.id, state, data.id);
     player.att = att;
@@ -497,14 +497,14 @@ export class Player extends Ship {
 
     if (data.plan) {
       player.plan.clear();
-      player.plan.trackAnchor(orbitState(
+      player.plan.trackAnchor(kinematicState(
         data.plan.anchor.t,
         v3(data.plan.anchor.r.x, data.plan.anchor.r.y, data.plan.anchor.r.z),
         v3(data.plan.anchor.v.x, data.plan.anchor.v.y, data.plan.anchor.v.z)
       ));
       // trackAnchor はノードが空の間しか効かないため、ノード復元より先に呼ぶ必要がある
       for (const n of data.plan.nodes) {
-        player.plan.addNode(orbitState(
+        player.plan.addNode(kinematicState(
           n.t,
           v3(n.r.x, n.r.y, n.r.z),
           v3(n.v.x, n.v.y, n.v.z)

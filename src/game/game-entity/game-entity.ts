@@ -1,6 +1,6 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { OrbitState } from '../../physics/orbital-state';
+import { KinematicState } from '../../physics/kinematic-state';
 import { Elements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { OrbitEntity } from '../../physics/orbit-entity';
@@ -23,15 +23,15 @@ const identityAttitude = (): Attitude => ({
 export class GameEntity {
   readonly current: OrbitEntity;
 
-  get state(): OrbitState { return this.current.state; }
+  get state(): KinematicState { return this.current.state; }
   // 不連続な差し替え専用の口(剛体接触・反動など)。
-  set state(s: OrbitState) { this.current.reset(s); }
-  get prevState(): OrbitState { return this.current.prevState; }
+  set state(s: KinematicState) { this.current.reset(s); }
+  get prevState(): KinematicState { return this.current.prevState; }
   get history(): StateQueue { return this.current.history; }
 
-  // elementsAround(center) のメモ。state の参照同一性(OrbitState は不変で step ごとに
+  // elementsAround(center) のメモ。state の参照同一性(KinematicState は不変で step ごとに
   // 新しい参照へ差し替わる)と center.id で無効化する。
-  private _memoState: OrbitState | null = null;
+  private _memoState: KinematicState | null = null;
   private _memoCenterId: AttractorId | null = null;
   private _memoElements: Elements | null = null;
 
@@ -59,7 +59,7 @@ export class GameEntity {
   private truncated = false;
 
   // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
-  constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
+  constructor(state: KinematicState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
     this.current = new OrbitEntity(state);
     this.att = att;
     this.obj = obj;
@@ -79,7 +79,7 @@ export class GameEntity {
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする
   // 軌道周期を等分し、窓が長いときは保持サンプル数の上限側で頭打ちにする。
-  protected sampleInterval(attractors: readonly Attractor[], state: OrbitState, keepDuration: number): number {
+  protected sampleInterval(attractors: readonly Attractor[], state: KinematicState, keepDuration: number): number {
     const period = localOrbitPeriod(state.r, attractors);
     const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
     return Math.max(span / C.PREDICT_SAMPLES_PER_REV, keepDuration / C.PREDICT_MAX_SAMPLES);
@@ -161,7 +161,7 @@ export class GameEntity {
   }
 
   // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。
-  displayState(t: number): OrbitState | null {
+  displayState(t: number): KinematicState | null {
     return t <= this.current.state.t ? this.current.at(t) : (this._predicted?.at(t) ?? null);
   }
 

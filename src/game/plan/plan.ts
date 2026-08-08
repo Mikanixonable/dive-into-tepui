@@ -1,6 +1,6 @@
-// 軌道計画(ノード列)とその起点アンカー。ノードは噴射直後の絶対 OrbitState として凍結し、
+// 軌道計画(ノード列)とその起点アンカー。ノードは噴射直後の絶対 KinematicState として凍結し、
 // Δv は導出値。上流ノードを編集すると下流を破棄する。計画軌道の計算・キャッシュは持たない。
-import { orbitState, OrbitState } from '../../physics/orbital-state';
+import { kinematicState, KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Attractor, elementsAround, strongestAttractor } from '../../physics/attractor';
@@ -13,7 +13,7 @@ export interface DisplayDurationSource {
 
 // 起点状態を最も強く引く天体まわりの解析軌道の公転周期。
 // 有限な周期が求まらなければ(双曲線軌道など)APERIODIC_ARC_DURATION。
-export function orbitPeriodOf(state: OrbitState, attractors: readonly Attractor[]): number {
+export function orbitPeriodOf(state: KinematicState, attractors: readonly Attractor[]): number {
   const center = strongestAttractor(state.r, attractors);
   const period = elementsAround(state, center)?.period ?? NaN;
   return isFinite(period) && period > 0 ? period : C.APERIODIC_ARC_DURATION;
@@ -24,7 +24,7 @@ export function orbitPeriodOf(state: OrbitState, attractors: readonly Attractor[
 // 折れ線の長さ(plan-trajectory.ts の buildSegments)は必ずこの値を共有する — 両者が
 // 別々に定義すると描画範囲とノード配置可能範囲がずれる。
 export function segmentDurationFrom(
-  state0: OrbitState,
+  state0: KinematicState,
   attractors: readonly Attractor[],
   displayDuration: DisplayDurationSource,
 ): number {
@@ -38,16 +38,16 @@ export interface TimeRange {
 }
 
 export class Plan {
-  private _nodes: OrbitState[] = [];
-  private _anchor: OrbitState = orbitState(0, v3(), v3());
+  private _nodes: KinematicState[] = [];
+  private _anchor: KinematicState = kinematicState(0, v3(), v3());
 
   // ノード列を実行時刻順で返す。
-  get nodes(): readonly OrbitState[] {
+  get nodes(): readonly KinematicState[] {
     return this._nodes;
   }
 
   // 計画の起点状態を返す。
-  get anchor(): OrbitState {
+  get anchor(): KinematicState {
     return this._anchor;
   }
 
@@ -58,19 +58,19 @@ export class Plan {
   }
 
   // 最初に実行されるノードを返す。ノードが無ければ undefined。
-  firstNode(): OrbitState | undefined {
+  firstNode(): KinematicState | undefined {
     return this._nodes[0];
   }
 
   // 計画が空の間だけアンカーを現在状態へ追従させる。最初のノードを置くと凍結。
-  trackAnchor(state: OrbitState): void {
+  trackAnchor(state: KinematicState): void {
     if (this._nodes.length > 0) return;
     this._anchor = state;
   }
 
   // 噴射直後の絶対状態としてノードを追加し、その index を返す。実行時刻順の挿入位置より
   // 後ろのノードは破棄されるので、追加したノードが常に末尾になる。
-  addNode(postState: OrbitState): number {
+  addNode(postState: KinematicState): number {
     const idx = this._nodes.filter((node) => node.t < postState.t).length;
     this._nodes.length = idx;
     this._nodes.push(postState);
@@ -85,7 +85,7 @@ export class Plan {
 
   // 実行時刻が t 以前のノードを実行済みとして取り除き、最後に取り除いたノードを新しい起点に据えて
   // 返す。取り除くものが無ければ null。
-  dropNodesBefore(t: number): OrbitState | null {
+  dropNodesBefore(t: number): KinematicState | null {
     let dropped = 0;
     while (this._nodes[dropped] && this._nodes[dropped]!.t <= t) dropped++;
     if (dropped === 0) return null;
@@ -108,7 +108,7 @@ export class Plan {
   }
 
   // ノードを新しい実行後状態へ移し、下流ノードを破棄する。時刻は nodeTimeRange の範囲内であること。
-  retimeNode(idx: number, postState: OrbitState): void {
+  retimeNode(idx: number, postState: KinematicState): void {
     if (!this._nodes[idx]) return;
     this.deleteFollowingNodes(idx);
     this._nodes[idx] = postState;
@@ -119,6 +119,6 @@ export class Plan {
     const node = this._nodes[idx];
     if (!node) return;
     this.deleteFollowingNodes(idx);
-    this._nodes[idx] = orbitState(node.t, node.r, add(node.v, dvWorld));
+    this._nodes[idx] = kinematicState(node.t, node.r, add(node.v, dvWorld));
   }
 }
