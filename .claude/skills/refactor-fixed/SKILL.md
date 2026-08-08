@@ -55,7 +55,7 @@ description: このプロジェクトで確定済みの横断的な責務境界(
 `build`(シーンへの登録)と `render`(`renderer.render` を呼ぶもの)を含めた命名規則は
 CLAUDE.md の「Naming: render / update / build / sync」節。
 
-## 3. 座標系の境界 — 独自 `Vec3`/`OrbitState` は ECI、`THREE.Vector3` は描画後、それ以外は `frame.ts` の branded type
+## 3. 座標系の境界 — 独自 `Vec3`/`KinematicState` は ECI、`THREE.Vector3` は描画後、それ以外は `frame.ts` の branded type
 
 ### `Vec3` と `THREE.Vector3` の境界(フローティングオリジン)
 
@@ -67,9 +67,9 @@ CPU 側で事前に平行移動して自機・カメラ付近の浮動小数精�
 - `THREE.Vector3` は描画のための座標なので、フローティングオリジンを引いた後のものだけを扱う。
 - 変換は必ず `FloatingOrigin` の変換関数(`RtoThreeV3` / `VtoThreeV3`)を経由する。
 
-### 独自 `Vec3`/`OrbitState` は ECI が既定、それ以外は `frame.ts` の branded type
+### 独自 `Vec3`/`KinematicState` は ECI が既定、それ以外は `frame.ts` の branded type
 
-独自 `Vec3` / `OrbitState` は**地球中心慣性系(ECI)** を表す。これが既定であり、シミュレーションは
+独自 `Vec3` / `KinematicState` は**地球中心慣性系(ECI)** を表す。これが既定であり、シミュレーションは
 すべてこの系で回る(太陽・月・木星の位置も含め、`physics/attractor.ts` の `Attractor.state` は
 常に ECI)。
 
@@ -87,7 +87,7 @@ ECI との変換は必ず `Ephemeris.frameTransformAt(frame, t)` が返す `Fram
 天体の位置を自分で引き算して座標系を作らない。
 
 天体の静的事実(質量・半径・軌道)の定義元は `physics/solar-system.ts` の `SOLAR_SYSTEM` 、
-表示名と見た目の定義元は `game/celestial/celestial-registry.ts` の `CELESTIAL_VIEWS`。
+表示名と見た目の定義元は `game/celestial/celestial-registry.ts` の `CELESTIAL_BODIES`。
 **`AttractorId` に対する網羅的 `switch` を新規コードに書かない** — 常にこの2つのレジストリを
 引く鍵として扱う。例外は `solar-system.ts` の `CelestialBodyDef.kind`(恒星/惑星/衛星)に対する
 `switch` で、これは天体の分類がこの3種で閉じているという物理的主張そのものなので、網羅性検査が
@@ -153,7 +153,7 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 
 - `PlanEditor.editMode`(入力・編集の可否)・`CameraSystem.overviewMode`(視点・描画)・
   `DisplayTimeManager.forceCurrent`(未来表示の可否) → 同時トグルは `MapModeToggler` の責務。
-- `OverviewCamera.cameraFrame`(視点が固定される座標系)と `PlanDisplay.trajectoryFrame`
+- `OverviewCamera.cameraFrame`(視点が固定される座標系)と `PlanDisplay.planFrame`
   (計画軌道を描く座標系) → プレイヤーが独立に選ぶ別々の値。
 
 ## 8. `plan` / `predict` / `display` の語を混ぜない
@@ -168,7 +168,36 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 計画側の識別子・コメント・パネル文言に `predict` /「予測」を使わない(定数名も含む)。
 逆に予測側を「計画」と呼ばない。
 
-## 9. GUI とマーカーの所有者
+## 9. 軌道まわりの語族 — `orbit` / `ephemeris`・`celestial` / `dynamic`
+
+**判定基準は「そのモジュールの実装が何に限定されているか」であり、外部でどう使われているかではない。**
+
+- **`orbit`** … 解析的に解ける軌道。時刻→位置が閉じた式で決まるもの。
+  `OrbitalElements` / `KeplerOrbit` / `OrbitLine` / `localOrbitPeriod` / `orbitAxes` がここ。
+- **`ephemeris` / `celestial`** … `ephemeris` は「時刻→位置を答える仕組み」、`celestial` は
+  「天体という存在」。責務が違うので統一しない。
+- **`dynamic`** … RK4 積分に基づくもの。`dynamics.ts` / `stepDynamics` / `DynamicTrajectory`。
+- **どの族にも限定されないものには族語を付けない。** `KinematicState`(t/r/v しか持たない)、
+  `stepRK4`(汎用 ODE ステッパ)、`SampledLine`(点列の由来を問わない)がここ。
+
+語形は **`orbit` に統一**し、例外は定訳を採る `OrbitalElements` の1語だけ。`orbital*` を新設しない。
+
+計画した経路は `path`(`PlanArc` / `PlanPath`)、積分した軌跡は `trajectory`(`DynamicTrajectory`)。
+この2語は概念が違うので共存させる。
+
+## 10. `body` は天体、機体座標系は `ship`、重力源の値は `attractor`
+
+天文シミュレーションで無標の `body` が機体座標系に奪われるのは苦しいので、機体の側を有標にする。
+
+- **`body` は天体の意味に残す** … `CelestialBody` / `CelestialBodyDef` / `bodyDef` /
+  `MapPickKind` の `'body'`。
+- **機体に固定した座標系は `ship` で有標にする** … `shipNormal` / `axisShip` / `aThrustShip`。
+  剛体一般(デブリ・薬莢)の固定座標系に名前が要るようになったら、`ship` は使えないので別途決める。
+- **`Attractor` 型の値は型名と一致させて `attractor` / `attractors`。** ただし楕円の中心として
+  渡すものは `center`(`OrbitalElements.center` と一致させる)。**`bodies` が `Attractor[]` を
+  指す箇所は0件**であること。
+
+## 11. GUI とマーカーの所有者
 
 > **GUI は、その GUI が書き換える状態の所有者が持つ。所有者が1つに定まらない GUI は、
 > GUI の方を分割する。** 表示・非表示も所有者が自分の `sync` で押し出す。
@@ -190,14 +219,14 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
   ある**ので `Game` を丸ごと読んでよい。ただし**表示専用**であること(他モジュールの状態や
   DOM を書き換えないこと)は維持する。
 
-## 10. 二段初期化を作らない
+## 12. 二段初期化を作らない
 
 生成後に「初期化メソッドをもう一度呼ばないと使えない」形を作らない。呼び忘れが型で守られない。
 リソースの注入が必要なら、注入は**1つのメソッドに1回だけ**にし、あるサブクラスだけが要る
 リソースでもその引数を増やす。サブクラス固有の初期化は、その1つのメソッドを override して
 `super` の後に書く(`Stage.setup` がこの形)。
 
-## 11. 焼き込みアセットと実行時が共有する値は `src/` に1つ置く
+## 13. 焼き込みアセットと実行時が共有する値は `src/` に1つ置く
 
 `tools/` の焼き込みスクリプトと実行時コードが同じ値に依存するとき、**ツール側へ数値を複製しない。**
 複製した瞬間、片方だけを直しても誰も気付かない。
@@ -206,7 +235,7 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 - ツールは TypeScript コンパイラ API (`ts.transpileModule`) でその場に JS へ変換して動的 import
   する(ts-node 等のパッケージは追加しない)。
 
-## 12. 一般化しないと決めたもの
+## 14. 一般化しないと決めたもの
 
 似た形の実装があっても、**個別に調整される要素**なのでまとめない。判断基準そのものは
 `/refactor` の「重複実装の禁止と早急な一般化の分かれ目」。

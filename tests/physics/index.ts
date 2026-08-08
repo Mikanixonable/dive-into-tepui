@@ -2,7 +2,7 @@
 // `npm run test:physics` から tsconfig.test.json でコンパイル後、これを node 実行する。
 import { runAll } from './harness';
 import { register as registerVec3 } from './vec3.test';
-import { register as registerOrbitalState } from './orbital-state.test';
+import { register as registerKinematicState } from './kinematic-state.test';
 import { register as registerElements } from './elements.test';
 import { register as registerAttitude } from './attitude.test';
 import { register as registerTimeStep } from './time-step.test';
@@ -20,7 +20,7 @@ import { register as registerDynamics } from './dynamics.test';
 import { register as registerFrame } from './frame.test';
 import { register as registerDeque } from './deque.test';
 import { register as registerStateQueue } from './state-queue.test';
-import { register as registerOrbitEntity } from './orbit-entity.test';
+import { register as registerDynamicTrajectory } from './dynamic-trajectory.test';
 import { register as registerHalo } from './halo.test';
 import { register as registerPlan } from './plan.test';
 import { register as registerHudLayout } from './hud-layout.test';
@@ -28,7 +28,7 @@ import { register as registerShortcutHint } from './shortcut-hint.test';
 import './creative-placement-validation.test';
 
 registerVec3();
-registerOrbitalState();
+registerKinematicState();
 registerElements();
 registerAttitude();
 registerTimeStep();
@@ -46,7 +46,7 @@ registerDynamics();
 registerFrame();
 registerDeque();
 registerStateQueue();
-registerOrbitEntity();
+registerDynamicTrajectory();
 registerHalo();
 registerPlan();
 registerHudLayout();

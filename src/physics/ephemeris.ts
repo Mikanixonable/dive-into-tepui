@@ -8,19 +8,19 @@ import { Quat, qRotate } from './attitude';
 import { Attractor, AttractorId, Degree2Gravity, OrbitingId, PlanetId, SatelliteId } from './attractor';
 import { cassiniSpinAxis, principalLongAxis } from './body-orientation';
 import { ECL_POLE_ECI } from './ecliptic';
-import { Frame, FrameTransform } from './frame';
+import { ReferenceFrame, FrameTransform } from './frame';
 import { FrameRotation, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
 import { LagrangePoints, lagrangePoints } from './lagrange';
 import { planetAngles } from './planet-orbit';
 import { satelliteState } from './satellite-orbit';
 import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from './solar-system';
-import { OrbitState, orbitState } from './orbital-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, addScaled, len, norm, sub, v3 } from './vec3';
 
 // ECI の極軸(Y)。地球の自転軸はこの座標系の定義そのもの。
 const ECI_POLE: Vec3 = v3(0, 1, 0);
 
-// 回転しない座標系(Frame.rotatingWith === null)の姿勢・角速度。
+// 回転しない座標系(ReferenceFrame.rotatingWith === null)の姿勢・角速度。
 const IDENTITY_ROTATION: FrameRotation = { q: { x: 0, y: 0, z: 0, w: 1 } as Quat, omega: v3() };
 
 type PlanetDef = Extract<CelestialBodyDef, { readonly kind: 'planet' }>;
@@ -58,13 +58,13 @@ export class Ephemeris {
   }
 
   // 惑星-衛星系重心の日心状態。
-  private baryHelioState(def: PlanetDef, t: number): OrbitState {
+  private baryHelioState(def: PlanetDef, t: number): KinematicState {
     return keplerOrbitState(def.orbit, t, this.phaseOf(def.id));
   }
 
   // 衛星の惑星相対状態。太陽の方向は惑星-衛星系重心の軌道が持つ平均角度(planetAngles)
   // から取るので循環しない。
-  private satelliteRelState(def: SatelliteDef, t: number): OrbitState {
+  private satelliteRelState(def: SatelliteDef, t: number): KinematicState {
     const planet = bodyDef(def.planet);
     const pAngles = planetAngles(planet.orbit, t, this.phaseOf(planet.id));
     return satelliteState(def.orbit, pAngles, t, this.phaseOf(def.id));
@@ -72,7 +72,7 @@ export class Ephemeris {
 
   // 惑星本体の日心状態。重心の日心状態から、Σ(μ_衛星/(μ_惑星+Σμ_衛星))·r_衛星(惑星相対)
   // ぶんを引く(重心補正。位置・速度の両方に効く)。
-  private planetHelioState(def: PlanetDef, t: number): OrbitState {
+  private planetHelioState(def: PlanetDef, t: number): KinematicState {
     const bary = this.baryHelioState(def, t);
     const satellites = satellitesOf(def.id);
     if (satellites.length === 0) return bary;
@@ -90,33 +90,33 @@ export class Ephemeris {
       r = addScaled(r, rel.r, -w);
       v = addScaled(v, rel.v, -w);
     }
-    return orbitState(t, r, v);
+    return kinematicState(t, r, v);
   }
 
   // 天体の日心状態(恒星は原点に静止、惑星は重心補正込みの本体、衛星は惑星本体 + 惑星相対状態)。
-  private helioStateOf(id: AttractorId, t: number): OrbitState {
+  private helioStateOf(id: AttractorId, t: number): KinematicState {
     const def = bodyDef(id);
     switch (def.kind) {
       // 恒星は日心座標系の原点そのもの。
       case 'star':
-        return orbitState(t, v3(0, 0, 0), v3(0, 0, 0));
+        return kinematicState(t, v3(0, 0, 0), v3(0, 0, 0));
       case 'planet':
         return this.planetHelioState(def, t);
       // 衛星の日心状態は、惑星本体の日心状態に惑星相対状態を足すだけ。
       case 'satellite': {
         const planetHelio = this.planetHelioState(bodyDef(def.planet), t);
         const rel = this.satelliteRelState(def, t);
-        return orbitState(t, add(planetHelio.r, rel.r), add(planetHelio.v, rel.v));
+        return kinematicState(t, add(planetHelio.r, rel.r), add(planetHelio.v, rel.v));
       }
     }
   }
 
   // 指定時刻の ECI(地球中心)位置・速度。日心状態から地球の日心状態を引く一箇所だけで
   // ECI 化する。地球自身は同じ計算を2回引くので厳密に 0 になる。
-  stateOf(id: AttractorId, t: number): OrbitState {
+  stateOf(id: AttractorId, t: number): KinematicState {
     const helio = this.helioStateOf(id, t);
     const earthHelio = this.helioStateOf('earth', t);
-    return orbitState(t, sub(helio.r, earthHelio.r), sub(helio.v, earthHelio.v));
+    return kinematicState(t, sub(helio.r, earthHelio.r), sub(helio.v, earthHelio.v));
   }
 
   // 指定時刻の ECI 位置。
@@ -127,7 +127,7 @@ export class Ephemeris {
   // 天体 id に固定した回転基準系(x̂ = 中心天体→id、ẑ = 軌道面法線)。中心は分類から決まる
   // (惑星なら恒星、衛星ならその惑星)。衛星の周期項は平均要素に含めないので、この基底は
   // 実位置の x̂ 軸から最大 1.4° ほどずれる(satellite-orbit.ts 参照)。
-  orbitRotationAt(id: OrbitingId, t: number): FrameRotation {
+  orbitFrameRotationAt(id: OrbitingId, t: number): FrameRotation {
     return keplerOrbitRotation(keplerOrbitOf(bodyDef(id)), t, this.phaseOf(id));
   }
 
@@ -137,7 +137,7 @@ export class Ephemeris {
   }
 
   // secondary(公転している天体)を副天体とする円制限三体問題のラグランジュ点。中心天体
-  // (主天体)は分類から決まる(惑星なら恒星、衛星ならその惑星)。回転系は orbitRotationAt(id)
+  // (主天体)は分類から決まる(惑星なら恒星、衛星ならその惑星)。回転系は orbitFrameRotationAt(id)
   // の姿勢(x̂ = 主天体→副天体)そのものを使う。
   lagrangeAt(secondary: OrbitingId, t: number): LagrangePoints {
     const def = bodyDef(secondary);
@@ -145,7 +145,7 @@ export class Ephemeris {
     const primaryPos = this.positionOf(primary, t);
     const secondaryPos = this.positionOf(secondary, t);
     const R = len(sub(secondaryPos, primaryPos));
-    const { q } = this.orbitRotationAt(secondary, t);
+    const { q } = this.orbitFrameRotationAt(secondary, t);
     const mu = def.mu / (bodyDef(primary).mu + def.mu);
     return lagrangePoints(mu, (x, y) => add(primaryPos, qRotate(q, v3(R * x, R * y, 0))));
   }
@@ -155,16 +155,16 @@ export class Ephemeris {
     return norm(this.positionOf('sun', t));
   }
 
-  // Frame の時刻 t における剛体運動。原点は frame.center の状態、回転は frame.rotatingWith が
+  // ReferenceFrame の時刻 t における剛体運動。原点は frame.center の状態、回転は frame.rotatingWith が
   // null なら恒等、そうでなければその天体自身の回転基準系。分岐は null 判定だけで、
   // 恒星/惑星/衛星の分類には関与しない。rotatingWith が非 null のとき常に公転している天体を
-  // 指す(恒星は自身の公転を持たないので rotatingWith になり得ない)ことは Frame の構築側
+  // 指す(恒星は自身の公転を持たないので rotatingWith になり得ない)ことは ReferenceFrame の構築側
   // (frame.ts の FRAMES、または呼び出し側)が保証する。
-  frameTransformAt(frame: Frame, t: number): FrameTransform {
+  frameTransformAt(frame: ReferenceFrame, t: number): FrameTransform {
     const origin = this.stateOf(frame.center, t);
     const { q, omega } = frame.rotatingWith === null
       ? IDENTITY_ROTATION
-      : this.orbitRotationAt(frame.rotatingWith, t);
+      : this.orbitFrameRotationAt(frame.rotatingWith, t);
     return { origin: origin.r, originVel: origin.v, q, omega };
   }
 
