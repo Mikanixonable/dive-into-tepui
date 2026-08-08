@@ -12,6 +12,7 @@ export class SaveManager {
       version: SAVE_VERSION,
       stageId: game.activeStage.id,
       simTime: game.simTime,
+      phaseOffsets: game.ephemeris.getPhaseOffsets(),
       player: game.player ? game.player.serialize() : null,
       enemies: game.entities.enemies.map(e => e.serialize()),
       ammos: game.entities.ammos.map(a => a.serialize()),

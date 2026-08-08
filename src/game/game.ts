@@ -57,7 +57,8 @@ export class Game {
   private readonly _sfx: Sfx;
   private readonly settingsPanel: SettingsPanel;
   private readonly markerManager: MarkerManager;
-  private readonly ephemeris: Ephemeris;
+  private readonly _ephemeris: Ephemeris;
+  get ephemeris(): Ephemeris { return this._ephemeris; }
   readonly cameraSystem: CameraSystem;
   // Campaign では常に1隻、Creative では未配置/全滅時に null になれる操作対象。
   player: Player | null;
@@ -111,7 +112,7 @@ export class Game {
     this.settingsPanel = settingsPanel;
     this.unlockManager = unlockManager;
 
-    this.ephemeris = new Ephemeris();
+    this._ephemeris = new Ephemeris();
 
     this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
     this.enemyMarkers = new GroupedMarkers(this.markerManager, C.MARKER_CLUSTER_PX);
@@ -296,6 +297,7 @@ export class Game {
 
     // 時刻の復元
     this.simulator.simTime = data.simTime;
+    this._ephemeris.setPhaseOffsets(data.phaseOffsets);
 
     // Playerの復元
     if (data.player) {
