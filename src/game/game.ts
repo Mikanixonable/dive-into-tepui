@@ -147,7 +147,6 @@ export class Game {
       this.ephemeris,
       this._scene,
       this.markerManager,
-      () => this.player?.fineAttitude ?? false,
       bootstrapPlayer,
       this.displayTimeManager,
     );
@@ -400,7 +399,7 @@ export class Game {
       scoreCounter: this.activeStage.scoreCounter,
       simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
-      addBullet: (bullet) => this.entities.addBullet(bullet),
+      entities: this.entities,
       ephemeris: this.ephemeris,
     });
 
