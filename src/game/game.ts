@@ -534,7 +534,9 @@ export class Game {
 
   // EqAN/EqDN を出す対象: 操作艦(計画があれば最終区間の起点、無ければ実状態)・航法ターゲット
   // (entities 上の実体として引けるものだけ — 天体・ラグランジュ点はそれ自体が軌道要素を持つ
-  // 「物体」ではないので対象外)・戦闘ターゲット。同じ実体が複数の役割を兼ねうるので id で重複を除く。
+  // 「物体」ではないので対象外)・戦闘ターゲット・生存中の全基地(基地は常設の静止構造物であり、
+  // 接近・ドッキングは軌道面合わせそのものなので選択の有無に関わらず常に出す)。
+  // 同じ実体が複数の役割を兼ねうるので id で重複を除く。
   private equatorNodeSources(): EqNodeSource[] {
     const sources = new Map<string, EqNodeSource>();
     if (this.player) {
@@ -554,6 +556,9 @@ export class Game {
     const combatTarget = this.targeter.aliveTarget;
     if (combatTarget) {
       sources.set(combatTarget.name, { id: combatTarget.name, name: combatTarget.name, state: combatTarget.state });
+    }
+    for (const base of this.entities.bases) {
+      if (base.alive) sources.set(base.id, { id: base.id, name: base.name, state: base.state });
     }
     return [...sources.values()];
   }
