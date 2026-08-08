@@ -65,6 +65,14 @@ export function fmtDuration(sec: number, unitHintSec: number): string {
   return `${Math.round(sec / (30 * 86400))}mo`;
 }
 
+// 弾薬状態の表記(例: "RELOADING..." / "弾切れ" / "18/32 +2連")。バレル交換中は
+// 装弾数によらずリロード表示を優先する。
+export function fmtAmmoStatus(roundsInMag: number, magsLeft: number, reloadTimer: number): string {
+  if (reloadTimer > 0) return 'RELOADING...';
+  if (roundsInMag <= 0 && magsLeft <= 0) return '弾切れ';
+  return `${roundsInMag}/${C.MAG_ROUNDS} +${magsLeft}連`;
+}
+
 // "HH:MM:SS"
 export function fmtTime(s: number): string {
   if (!isFinite(s)) return '--:--:--';

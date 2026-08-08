@@ -4,7 +4,7 @@ import { ACCENT_SECONDARY, TEXT_DIM as INK_SOFT } from '../theme';
 import { Attractor } from '../../physics/attractor';
 import { len, sub } from '../../physics/vec3';
 import type { Game } from '../game';
-import { SIM_EPOCH_SEC, fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
+import { SIM_EPOCH_SEC, fmtAmmoStatus, fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
 import { orbitInfo, relativeInfo } from './orbit-info';
 
 interface GlobalStatusData {
@@ -207,16 +207,8 @@ export class HudPanels {
     // 残弾/リロード中の表示
     const ammoEl = this.els.get('ammo');
     if (ammoEl) {
-      if (d.reloadTimer > 0) {
-        ammoEl.textContent = 'RELOADING...';
-        ammoEl.classList.add('warn-hot');
-      } else {
-        ammoEl.textContent =
-          d.roundsInMag <= 0 && d.magsLeft <= 0
-            ? '弾切れ'
-            : `${d.roundsInMag}/${C.MAG_ROUNDS} +${d.magsLeft}連`;
-        ammoEl.classList.toggle('warn-hot', d.magsLeft < 4);
-      }
+      ammoEl.textContent = fmtAmmoStatus(d.roundsInMag, d.magsLeft, d.reloadTimer);
+      ammoEl.classList.toggle('warn-hot', d.reloadTimer > 0 || d.magsLeft < 4);
     }
     this.setText('center', d.centerName);
     this.setText('alt', fmtDist(d.alt));

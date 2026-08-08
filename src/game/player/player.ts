@@ -288,7 +288,7 @@ export class Player extends Ship {
     if (!this.applyCollisionDamage(speed)) return;
     if (this.hp > 0) {
       this._sfx.clank();
-      this._fx.spawnGasPuff(this.state.r, this.state.v);
+      this._fx.spawnGasPuff(this.state);
       return;
     }
 
@@ -319,11 +319,11 @@ export class Player extends Ship {
   private hitEffect(bullet: Bullet, hitR: Vec3): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(hitR, this.state.v);
+      this._fx.spawnPlasmaFlash(orbitState(this.state.t, hitR, this.state.v));
     } else {
-      this._fx.spawnBulletFlash(hitR, this.state.v);
+      this._fx.spawnBulletFlash(orbitState(this.state.t, hitR, this.state.v));
     }
-    this._fx.spawnGasPuff(hitR, this.state.v);
+    this._fx.spawnGasPuff(orbitState(this.state.t, hitR, this.state.v));
   }
 
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。
