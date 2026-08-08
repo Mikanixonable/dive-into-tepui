@@ -22,9 +22,9 @@ export class EffectsSystem {
     this._flashEffects = new FlashEffectManager(_scene);
   }
 
-  // フラッシュ群の寿命を1フレーム分進める。破片は entities が持つので、ここはフラッシュだけ。
-  update(dt: number, simDt: number): void {
-    this._flashEffects.updateFlashEffects(dt, simDt);
+  // フラッシュ群の寿命を1フレーム分進め、simTime まで移流させる。
+  update(dt: number, simTime: number): void {
+    this._flashEffects.updateFlashEffects(dt, simTime);
   }
 
   // フラッシュ群のビルボードを現在の状態へ同期する。
@@ -33,8 +33,8 @@ export class EffectsSystem {
   }
 
   // プラズマ弾命中フラッシュを生成する。
-  spawnPlasmaFlash(pos: Vec3, vel: Vec3): void {
-    this.spawnFlash(pos, vel,
+  spawnPlasmaFlash(state: OrbitState): void {
+    this.spawnFlash(state,
       C.PLASMA_HIT_FLASH_SIZE0,
       C.PLASMA_HIT_FLASH_SIZE1,
       C.PLASMA_HIT_FLASH_DURATION,
@@ -42,8 +42,8 @@ export class EffectsSystem {
   }
 
   // 実弾命中フラッシュを生成する。
-  spawnBulletFlash(pos: Vec3, vel: Vec3): void {
-    this.spawnFlash(pos, vel,
+  spawnBulletFlash(state: OrbitState): void {
+    this.spawnFlash(state,
       C.BULLET_HIT_FLASH_SIZE0,
       C.BULLET_HIT_FLASH_SIZE1,
       C.BULLET_HIT_FLASH_DURATION,
@@ -51,18 +51,16 @@ export class EffectsSystem {
   }
 
   // ガスのような気体が放出されるエフェクト（被弾時やデブリ命中時用）
-  spawnGasPuff(pos: Vec3, vel: Vec3): void {
+  spawnGasPuff(state: OrbitState): void {
     // 灰色の低透明度のビルボードを2つ重ねてガスっぽさを出す
-    this.spawnFlash(pos, vel, 1.0, 8.0, 0.45, C.COLOR_GAS_PUFF_1, 0.3);
-    this.spawnFlash(pos, vel, 0.5, 6.0, 0.35, C.COLOR_GAS_PUFF_2, 0.4);
+    this.spawnFlash(state, 1.0, 8.0, 0.45, C.COLOR_GAS_PUFF_1, 0.3);
+    this.spawnFlash(state, 0.5, 6.0, 0.35, C.COLOR_GAS_PUFF_2, 0.4);
   }
 
-  // pos/vel は呼び出し元の生きたオブジェクト(entity の r/v など)をそのまま渡してよい。
-  // Vec3 は不変(physics/vec3.ts)なので clone せずに保持でき、呼び出し元がその後
-  // 別の Vec3 に差し替えても fx が参照する値は変わらない。
+  // state は発生位置・発生源速度と、その位置が表す時刻(エポック)。積分前の座標から
+  // 生成する場合も、その座標の時刻をそのまま渡せば取り残されない。
   spawnFlash(
-    pos: Vec3,
-    vel: Vec3,
+    state: OrbitState,
     size0: number,
     size1: number,
     duration: number,
@@ -70,7 +68,7 @@ export class EffectsSystem {
     peakOpacity = 1,
   ): void {
     const billboard = new Billboard(color);
-    const fx: FlashEffect = { billboard, pos, vel, age: 0, duration, size0, size1, peakOpacity };
+    const fx: FlashEffect = { billboard, state, age: 0, duration, size0, size1, peakOpacity };
     this._flashEffects.addFlash(fx);
   }
 
@@ -109,8 +107,8 @@ export class EffectsSystem {
   // 敵機は自機の ENEMY_SCALE 倍サイズなので、爆発・破片も見合った大きさにする(scale)。
   spawnShipDestroyEffect(state: OrbitState, scale: number, accent: string | number): void {
     const { t, r, v } = state;
-    this.spawnFlash(r, v, C.DESTROY_FLASH1_SIZE0 * scale, C.DESTROY_FLASH1_SIZE1 * scale, C.DESTROY_FLASH1_DURATION, C.COLOR_DESTROY_FLASH_1);
-    this.spawnFlash(r, v, C.DESTROY_FLASH2_SIZE0 * scale, C.DESTROY_FLASH2_SIZE1 * scale, C.DESTROY_FLASH2_DURATION, C.COLOR_DESTROY_FLASH_2);
+    this.spawnFlash(state, C.DESTROY_FLASH1_SIZE0 * scale, C.DESTROY_FLASH1_SIZE1 * scale, C.DESTROY_FLASH1_DURATION, C.COLOR_DESTROY_FLASH_1);
+    this.spawnFlash(state, C.DESTROY_FLASH2_SIZE0 * scale, C.DESTROY_FLASH2_SIZE1 * scale, C.DESTROY_FLASH2_DURATION, C.COLOR_DESTROY_FLASH_2);
     // 破片のサイズを 1/3 に縮小し、拡散の初速(spread)を大きくして散らせる
     this.scatterFragments(t, r, v, 11, accent, (C.DESTROY_FRAG_SIZE_MIN * scale) / 3, (C.DESTROY_FRAG_SIZE_MAX * scale) / 3, 20.0);
   }
