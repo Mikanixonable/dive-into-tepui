@@ -339,6 +339,7 @@ export class Game {
       this.updateMapPresentation(dt, () => {
         if (!this.editor.editMode) return;
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
+        this.mapPicker.handleLeftClick(this.input);
         this.editor.handleMapPointer(this.input);
         this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
         this.editor.updateEditing(dt, this.input);
@@ -366,6 +367,7 @@ export class Game {
       this.updateMapPresentation(dt);
       if (this.editor.editMode) {
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
+        this.mapPicker.handleLeftClick(this.input);
         this.editor.handleMapPointer(this.input);
         this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
         this.editor.updateEditing(dt, this.input);
@@ -480,6 +482,7 @@ export class Game {
 
     if (this.editor.editMode) {
       this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
+      this.mapPicker.handleLeftClick(this.input);
       this.editor.handleMapPointer(this.input);
       this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
       this.editor.updateEditing(dt, this.input);
@@ -604,7 +607,7 @@ export class Game {
         tgt === target ? 'primary' : tgt === secondaryTarget ? 'secondary' : 'none';
       enemyMarkerItems.push(tgt.markerItem(role, player?.state.r ?? v3(), pos));
     }
-    this.enemyMarkers.sync(enemyMarkerItems, project);
+    this.enemyMarkers.sync(enemyMarkerItems, project, overviewMode);
     if (player) this.leadMarkers.sync(player, aliveTargets, target, secondaryTarget, simTime, overviewMode, project);
 
     this.displayTimeManager.sync(simTime, this.currentOrbitPeriod());
