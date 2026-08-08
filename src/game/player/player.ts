@@ -169,21 +169,25 @@ export class Player extends Ship {
     this.handleEdgeInput(input);
     this.updateTorque(input, dt * simSpeed.simSpeed);
 
-    // 死亡済み: 射撃、移動、hp回復はできない
+    // 死亡済み: 射撃、移動、hp回復はできない。操作不能なので並進キーのエッジも消費しない。
     if (!this.alive) {
       this.thrust = null;
+      this.throttle.stopThrust();
       return;
     }
 
     if (mapMode) this.fire.tickMapMode(dt);
     else this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, entities, ephemeris.sunDirAt(simTime));
 
-    // ノードのΔv編集中はWASDQEをそちらへ譲り、実噴射は行わない。
+    // ノードのΔv編集中はWASDQEをΔv編集キーとして譲り、実噴射・ラッチ判定は行わない
+    // (噴射中に編集へ入った場合に備え、表示・SFXは throttle 側で明示的に止める)。
     if (dvEditActive) {
       this.thrust = null;
+      this.throttle.stopThrust();
       return;
     }
 
+    this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
     if (this.thrust !== null) this.invalidatePrediction();
