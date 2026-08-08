@@ -18,7 +18,7 @@ import { MU_EARTH, R_EARTH, orbitState } from '../../src/physics/orbital-state';
 import { MU_MOON } from '../../src/physics/solar-system';
 import { len, sub, v3 } from '../../src/physics/vec3';
 
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)) };
+const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: null };
 
 export function register(): void {
   test('elements: stateFromElements <-> elementsFromState round trip (machine precision)', () => {
