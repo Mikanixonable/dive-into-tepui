@@ -1,7 +1,7 @@
 // HUD の静的 DOM/スタイル構築。
 import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, EDGE, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
+import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, EDGE, BG, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
 
 
 const throttleLabels = [K.throttleLow, K.throttleMid, K.throttleHigh].map((k) => k.label).join(' / ');
@@ -16,16 +16,19 @@ const STYLE = `
 }
 /* --- 重なり順: マーカーは実行時に DOM 末尾へ追加されるため z-index を明示しないとパネルの上に出る。
      マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0)
-     マーカー群(0-9) < 常設パネル(10) < トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー(40) */
+     マーカー群(0-9) < 常設パネル(10) < ドックビュー(15) < トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー(40)
+     ドックビューは画面全体を占めるビューなので常設パネルを覆うが、トースト・ヒントと
+     システム窓(ヘルプ・ESCメニュー)はその上に出す。 */
 #hud .mk { z-index: 0; }
 #hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-nav, #hud .mk-dir, #hud .mk-boardhit, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
 #hud .mk-ammo { z-index: 2; }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
 #hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
-#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball, #hud-shipplacer { z-index: 10; }
+#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-gear, #navball, #hud-shipplacer, #hud-object-list { z-index: 10; }
+#dock-view { z-index: 15; }
 #hud-toast, #hud-hint { z-index: 20; }
-#hud-context { z-index: 10; }
+#hud-viewbadge { z-index: 20; }
 #hud-end, #hud-help { z-index: 30; }
 #hud-settings { z-index: 40; }
 #hud-modal-shield { display: none; position: absolute; inset: 0; z-index: 20; pointer-events: none; background: rgba(6,7,9,.3); }
@@ -57,8 +60,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud #hud-dock-toggle-left { left: 8px; }
 #hud #hud-dock-toggle-right { right: 8px; }
 #hud .hud-dock.collapsed { width: 0; }
-#hud .hud-dock.collapsed > .panel,
-#hud .hud-dock.collapsed > #hud-context { display: none !important; }
+#hud .hud-dock.collapsed > .panel { display: none !important; }
 #hud .hud-dock > #hud-shipplacer { max-height: none; overflow: visible; }
 #hud .hud-dock > #hud-plan { width: 100%; min-width: 0; max-width: none; max-height: none; overflow: visible; }
 /* MANEUVER PLAN はマップ操作の主パネルとして右ドックの最上段に固定する。 */
@@ -72,13 +74,22 @@ body.hud-modal-open #touch-ui { display: none; }
   border-bottom: 1px solid rgba(${ACCENT_RGB}, 0.25); margin-bottom: 6px; padding-bottom: 4px;
   font-weight: 600;
 }
-#hud-context {
-  position: absolute; top: 8px; right: 12px; z-index: 20; pointer-events: none;
-  color: ${INK_SOFT}; font-size: 9px; letter-spacing: 1.2px; line-height: 1.35;
-  text-align: right; white-space: nowrap; opacity: 0.9;
+/* マップモードでは #hud-dock-toggle-right(right:8px, 26px 角)がこの位置に重なるので、
+   その右端(8+26=34px)より確実に外側へ避けておく。 */
+#hud-viewbadge {
+  position: absolute; top: 8px; right: 44px;
+  display: flex; align-items: center; gap: 6px;
+  color: ${INK_SOFT}; font-size: 9px; letter-spacing: 1.2px;
+  white-space: nowrap; opacity: 0.9;
 }
-#hud-context .context-mode { color: ${ACCENT}; }
-#hud-context .context-sep { color: ${EDGE}; padding: 0 4px; }
+#hud-viewbadge .vb-title { color: ${ACCENT}; }
+#hud-viewbadge .vb-mode { color: ${INK_SOFT}; }
+#hud-viewbadge .vb-view-btn {
+  pointer-events: auto; cursor: pointer; background: transparent;
+  border: 1px solid ${EDGE}; border-radius: 4px; padding: 2px 6px;
+  color: ${INK_SOFT}; font: inherit; letter-spacing: inherit;
+}
+#hud-viewbadge .vb-view-btn:hover { color: ${INK}; border-color: ${ACCENT_SOFT}; }
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
 #hud .row .k { color: ${INK_SOFT}; }
 #hud .row .v { color: ${INK}; min-width: 90px; text-align: right; }
@@ -96,6 +107,17 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
 #hud-enemies .erow.tgt { color: ${WARNING}; }
+#hud-object-list { max-height: 320px; overflow-y: auto; }
+#hud-object-list .object-list-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+#hud-object-list .object-list-title-row h3 { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+#hud-object-list .object-list-section-header {
+  display: block; width: 100%; text-align: left; margin: 4px 0 2px;
+  padding: 3px 8px; font-size: 10px; letter-spacing: 1px;
+}
+#hud-object-list .object-list-section-body { padding-left: 4px; }
+#hud-object-list .erow { padding: 3px 4px; color: ${INK_SOFT}; cursor: pointer; }
+#hud-object-list .erow:hover { color: ${INK}; }
+#hud-object-list .erow.tgt { color: ${ACCENT}; }
 #hud-combat-shelf { display: contents; }
 
 #hud-hint {
@@ -186,6 +208,12 @@ body.hud-modal-open #touch-ui { display: none; }
   pointer-events: auto; width: 64px; padding: 3px 6px; font-size: 11px;
   border: 1px solid ${EDGE}; border-radius: 6px; background: ${SURFACE}; color: ${INK};
 }
+#hud .settings-btn {
+  pointer-events: auto; cursor: pointer; padding: 4px 8px; font-size: 11px;
+  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK};
+}
+#hud .settings-btn:hover { background: rgba(255, 255, 255, 0.05); }
+#hud .settings-btn:active { background: rgba(255, 255, 255, 0.1); border-color: ${ACCENT_SOFT}; }
 #hud-displaytime .slider-ticks { display: flex; justify-content: space-between; margin-top: 2px; }
 #hud-displaytime .slider-ticks span { font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; }
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
@@ -291,7 +319,7 @@ body.hud-modal-open #touch-ui { display: none; }
     width: 178px; min-width: 0; max-height: 116px; overflow-y: auto;
   }
   #hud-status, #hud-orbit, #hud-target, #hud-enemies { top: auto; right: auto; bottom: auto; left: auto; }
-  #hud:not(.map-mode) #hud-context { display: none; }
+  #hud:not(.map-mode) #hud-viewbadge { display: none; }
   #hud-controls { display: none; }
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
@@ -344,7 +372,135 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud-combat-shelf > .panel { max-height: 82px; }
   #hud-stagestatus { max-height: 46px; }
 }
+/* ===== DockView ===== */
+/* 戦闘・マップと対等な全画面ビュー。背後の 3D は描画自体が止まるので、
+   透過させず不透明な地の色で塗り切る。 */
+#dock-view.dock-view-overlay {
+  position: fixed; inset: 0;
+  display: flex;
+  background: ${BG};
+  font-family: ${FONT};
+  pointer-events: auto;
+  /* 右上のビューバッジは全ビュー共通の枠なのでドック中も残る。その帯を避けて中身を始める。 */
+  padding-top: 30px;
+}
+/* マップ左右ドックの開閉ボタンは、背後のマップごと覆われるので出さない。 */
+#hud.dock-mode .dock-toggle { display: none; }
+#dock-view .dock-panel {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#dock-view .dock-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border-bottom: 1px solid ${EDGE};
+  flex: 0 0 auto;
+  width: min(1100px, 100%); margin: 0 auto;
+}
+#dock-view .dock-title {
+  font-size: 15px; font-weight: 700; letter-spacing: 0.12em;
+  color: ${ACCENT}; flex: 0 0 auto;
+}
+#dock-view .dock-tabs { display: flex; gap: 4px; flex: 1; }
+#dock-view .dock-tab-btn {
+  padding: 4px 14px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: transparent; color: ${INK_SOFT}; cursor: pointer;
+  font-size: 12px; transition: color .15s, border-color .15s;
+}
+#dock-view .dock-tab-btn:hover { color: ${INK}; border-color: ${ACCENT_SOFT}; }
+#dock-view .dock-tab-btn.active { color: ${ACCENT}; border-color: ${ACCENT}; background: rgba(${ACCENT_RGB},.08); }
+#dock-view .dock-close-btn {
+  padding: 4px 10px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: transparent; color: ${INK_SOFT}; cursor: pointer; font-size: 14px;
+}
+#dock-view .dock-close-btn:hover { color: ${INK}; }
+#dock-view .dock-status-bar {
+  padding: 5px 16px; border-bottom: 1px solid ${EDGE};
+  font-size: 12px; color: ${INK_SOFT}; flex: 0 0 auto;
+  width: min(1100px, 100%); margin: 0 auto;
+}
+#dock-view .dock-body {
+  flex: 1 1 0; overflow-y: auto; padding: 12px 16px;
+  scrollbar-width: thin;
+  width: min(1100px, 100%); margin: 0 auto;
+}
+#dock-view .dock-empty { color: ${INK_SOFT}; padding: 24px; text-align: center; line-height: 1.8; }
+/* Ships tab */
+#dock-view .dock-ship-list { display: flex; flex-direction: column; gap: 8px; }
+#dock-view .dock-ship-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  border: 1px solid ${EDGE}; border-radius: 6px; cursor: pointer;
+  transition: border-color .15s;
+}
+#dock-view .dock-ship-row:hover { border-color: ${ACCENT_SOFT}; }
+#dock-view .dock-ship-row.selected { border-color: ${ACCENT}; background: rgba(${ACCENT_RGB},.06); }
+#dock-view .dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+#dock-view .dock-ship-name { font-size: 13px; }
+#dock-view .dock-ship-hp { font-size: 11px; color: ${INK_SOFT}; }
+#dock-view .dock-ship-actions { display: flex; gap: 6px; }
+/* Parts tab */
+#dock-view .dock-parts-header {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+  padding-bottom: 8px; border-bottom: 1px solid ${EDGE};
+}
+#dock-view .dock-ship-label { font-size: 12px; color: ${INK_SOFT}; flex: 1; }
+#dock-view .dock-part-list { display: flex; flex-direction: column; gap: 6px; }
+#dock-view .dock-part-row {
+  display: grid; grid-template-columns: 1fr 120px 60px auto;
+  align-items: center; gap: 10px; padding: 6px 10px;
+  border: 1px solid ${EDGE}; border-radius: 4px;
+}
+#dock-view .dock-part-info { display: flex; flex-direction: column; gap: 2px; }
+#dock-view .dock-part-name { font-size: 12px; }
+#dock-view .dock-part-type { font-size: 10px; color: ${INK_SOFT}; }
+#dock-view .dock-part-hp-bar { height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; }
+#dock-view .dock-part-hp-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+#dock-view .dock-part-hp-text { font-size: 11px; color: ${INK_SOFT}; text-align: right; }
+#dock-view .dock-part-row { display: flex; flex-direction: column; gap: 6px; }
+#dock-view .dock-part-row-main {
+  display: grid; grid-template-columns: 1fr 120px 60px auto;
+  align-items: center; gap: 10px;
+}
+#dock-view .dock-warehouse-row-main { grid-template-columns: 1fr 60px auto; }
+#dock-view .dock-part-actions { display: flex; align-items: center; gap: 6px; }
+#dock-view .dock-part-swap-row {
+  display: flex; align-items: center; gap: 8px;
+  padding-top: 6px; border-top: 1px solid ${EDGE};
+  font-size: 11px; color: ${INK_SOFT};
+}
+#dock-view .dock-part-swap-select {
+  flex: 1; background: rgba(255,255,255,.04); color: ${INK};
+  border: 1px solid ${EDGE}; border-radius: 4px; padding: 3px 6px; font-size: 11px;
+}
+#dock-view .dock-parts-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+#dock-view .dock-parts-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#dock-view .dock-col-title { font-size: 12px; color: ${INK_SOFT}; border-bottom: 1px solid ${EDGE}; padding-bottom: 4px; }
+/* Shop tab */
+#dock-view .dock-shop-header { margin-bottom: 10px; font-size: 11px; color: ${INK_SOFT}; }
+#dock-view .dock-shop-list { display: flex; flex-direction: column; gap: 6px; }
+#dock-view .dock-shop-item {
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+  border: 1px solid ${EDGE}; border-radius: 4px;
+}
+#dock-view .dock-shop-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+#dock-view .dock-shop-name { font-size: 13px; }
+#dock-view .dock-shop-type { font-size: 10px; color: ${INK_SOFT}; }
+#dock-view .dock-shop-props { font-size: 11px; color: ${INK_SOFT}; }
+#dock-view .dock-shop-stats { font-size: 10px; color: ${INK_SOFT}; }
+#dock-view .dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+#dock-view .dock-shop-price { font-size: 12px; color: ${ACCENT}; }
+/* Common buttons */
+#dock-view .dock-btn {
+  padding: 4px 12px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: rgba(${ACCENT_RGB},.08); color: ${ACCENT}; cursor: pointer;
+  font-size: 11px; transition: background .15s;
+}
+#dock-view .dock-btn:hover:not(.disabled) { background: rgba(${ACCENT_RGB},.18); }
+#dock-view .dock-btn.disabled, #dock-view .dock-btn:disabled { opacity: 0.38; cursor: not-allowed; }
+#dock-view .dock-btn-repair-all {
+  font-size: 11px; padding: 4px 12px;
+}
 `;
+
 
 // 指定タグ・id・class の要素を作り、parent に追加して返す。
 function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLElement {
@@ -569,7 +725,6 @@ export function buildHudDom(): HudDomRefs {
 
   el('div', 'hud-hint', root);
   el('div', 'hud-toast', root);
-  el('div', 'hud-context', root);
 
   buildHelpPanel(root);
 

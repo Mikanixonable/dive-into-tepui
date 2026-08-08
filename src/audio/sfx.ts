@@ -261,7 +261,6 @@ export class Sfx {
     const filter = ctx.createBiquadFilter();
     filter.type = filterType;
     filter.frequency.value = freq;
-    // 音量を指数的に減衰させながら発音する
     const gain = ctx.createGain();
     const t = ctx.currentTime;
     gain.gain.setValueAtTime(volume, t);
@@ -277,7 +276,6 @@ export class Sfx {
     const osc = ctx.createOscillator();
     osc.type = type;
     osc.frequency.value = freq;
-    // 音量を指数的に減衰させながら発音する
     const gain = ctx.createGain();
     const t = ctx.currentTime;
     gain.gain.setValueAtTime(volume, t);
@@ -310,7 +308,7 @@ export class Sfx {
     filter.frequency.setValueAtTime(1500, t);
     filter.frequency.exponentialRampToValueAtTime(300, t + 1.2);
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.25, t); // 半分に
+    gain.gain.setValueAtTime(0.25, t);
     gain.gain.exponentialRampToValueAtTime(0.005, t + 1.2);
     src.connect(filter).connect(gain).connect(ctx.destination);
     src.start(t, 0, 1.2);
@@ -408,11 +406,10 @@ export class Sfx {
 
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
-    osc.frequency.value = 80; // 低い周波数
-    
+    osc.frequency.value = 80;
+
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    // フィルターの周波数を時間変化させて「ヴン」という動きを出す
     filter.frequency.setValueAtTime(100, t);
     filter.frequency.exponentialRampToValueAtTime(400, t + 0.1);
     filter.frequency.exponentialRampToValueAtTime(100, t + 0.3);
