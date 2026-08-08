@@ -79,7 +79,7 @@ export class PlanPath {
         dashSize = C.PLAN_ARC_DASH_PX * mpp;
         gapSize = C.PLAN_ARC_GAP_PX * mpp;
       }
-      arc.sync(this.ephemeris, this.frame, this.unbakeTime, fo, dashSize, gapSize);
+      arc.sync(this.ephemeris, this.frame, this.unbakeTime, fo, dashSize, gapSize, scale);
     }
     for (let i = this.activeCount; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
   }
