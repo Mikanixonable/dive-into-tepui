@@ -51,6 +51,7 @@ main.ts
     │   └── NavballPanel                   ... DOM は Hud.root 配下。SVG のボール + モード選択 + グリッドトグル
     ├── GroupedMarkers (enemyMarkers)  ... 画面上で近接する敵マーカーのまとめ + 画面外方位マーカー
     ├── LeadMarkers                    ... 敵ごとの LEAD マーカーと最終ロック時刻
+    ├── EquatorNodeMarkers             ... 操作艦・navTarget・targeter の対象ごとの EqAN/EqDN。source 列(id で重複除去)は Game が毎フレーム組む
     ├── SimSpeedManager
     ├── DisplayTimeManager             ... 「いつを見るか」(表示期間・未来ゴーストスライダー)
     │   └── DisplayTimePanel           ... DOM は Hud.root 配下。期間/未来位置スライダー
@@ -151,7 +152,7 @@ main.ts
 | `THREE.Scene` / `WebGPURenderer` | `GameScene`(main.ts) | Game・各描画物を持つクラス |
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
-| `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay) |
+| `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・EquatorNodeMarkers・PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay) |
 | `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay) |
 | `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・HitSystem・CollisionPhysics・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer` 経由の追加・参照のみ) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
@@ -220,7 +221,8 @@ main.ts
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
 | 敵 AI の実行時状態(最終発砲時刻・バースト残数) | `Enemy` | |
 | LEAD マーカーの表示履歴(敵ごとの最終ロック時刻) | `LeadMarkers` | 表示専用の状態なので Enemy には置かない。毎フレーム生存中の敵ぶんだけ作り直す |
-| マーカー DOM 要素のプール | `MarkerManager` | キーで索引。`GroupedMarkers`/`LeadMarkers` は自分が前フレームに出したキーを覚えていて、集合から消えたものを hide する |
+| EqAN/EqDN アイコン(source ごとの位置・通過時刻) | `EquatorNodeMarkers.pairs` | update が求め直す。source 列自体は `Game.equatorNodeSources()` が毎フレーム組み、このクラスには保持しない |
+| マーカー DOM 要素のプール | `MarkerManager` | キーで索引。`GroupedMarkers`/`LeadMarkers` は自分が前フレームに出したキーを覚えていて、集合から消えたものを hide する。`EquatorNodeMarkers` は対象の増減でキー集合自体が変わるので remove する |
 
 ### 正本が分かれていることに意味がある組み合わせ
 
@@ -265,9 +267,9 @@ main.ts
   第一ターゲット由来(方位・的通過マーク)は `Targeter`、航法ターゲット由来(相対 AN/DN)は
   `NavTarget`、近地点・遠地点は `PlanDisplay`、補給は `Logistics`、天体ラベルは `FocusMarkers`、
   ノード/BURN は `PlanGuide`、計画上の自機位置ゴーストは `PlanDisplay`。Game が直接持つのは
-  **1つの対象では決められない2つだけ** — `GroupedMarkers`(画面上のまとめ)と `LeadMarkers`(自機と敵の
-  両方に依存)。`Enemy` は自分の見た目とラベルを `markerItem()` で渡すだけで、まとめの判断には
-  関与しない。
+  **1つの対象では決められない3つだけ** — `GroupedMarkers`(画面上のまとめ)、`LeadMarkers`(自機と敵の
+  両方に依存)、`EquatorNodeMarkers`(操作艦・navTarget・targeter という複数の役割にまたがる source 列
+  に依存)。`Enemy` は自分の見た目とラベルを `markerItem()` で渡すだけで、まとめの判断には関与しない。
 - **`EntityManager.players` は他の配列と対等に `all()` へ入る** — 操作対象かどうかは `Game.player` との
   参照同一性だけで決まる選択であり、`players` 配列自体はアクティブ/非アクティブを区別しない。
   積分(`Simulator.substep`/`.stepAttitudes`)・寿命判定(`EntityManager.cleanup`)・
@@ -297,6 +299,7 @@ main.ts
 | 自機 `OrbitLine` の表示抑制(`setSuppressed` の引数) | `PredictedTrajectoryLine.hasLineFor(player)` から導く真偽値。予測軌道の実線が出ているあいだ解析楕円を重ねて出さないための調整で、`OrbitLine` 自身はこの理由を持たない | `Game.sync` が毎フレーム渡し直す |
 | `PlanArc.samples` / `.key`(`{state0, end}`) | 予測 RK4(`DynamicTrajectory` 積分)の結果と入力スナップショット | `update` の `tracksLiveAnchor` 引数(計画が空の間の唯一の区間だけ true)が false なら `state0`/`end` の同一性・値の変化。true なら区間長・起点時刻とも直近再積分時からの変化がサンプル間隔(区間長 / `PLAN_ARC_MAX_SAMPLES`)未満の間は無効化しない(`'orbit'` プリセットでは起点の接触周期自体が J2・大気抵抗で毎フレーム連続変化するため、厳密一致ではなくこの閾値で判定する)——ただし `state0` の同一性が変わっていて `t` が前進していない(別艦への切り替え・ドック発進・衝突による状態上書きなどの非連続な差し替え)場合はこの閾値を無視して即座に無効化する |
 | `PlanPath.arcs` / `.activeCount` / `.nodeCount` / `.frame` / `.unbakeTime` / `.project` | 毎フレーム再構築される区間分割と表示文脈(画面判定もこれを使う)。`arcs` は先頭 `activeCount` 本だけがこのフレームの区間に対応するプール、先頭 `nodeCount` 本がノードで終わる区間 | `update()` 毎 |
+| `PlanPath.cameraPos` / `NavTarget.attractors` / `EquatorNodeMarkers.attractors` / `PlanDisplay.attractors` | マップビューの遮蔽判定(`physics/occlusion.ts` の `isOccluded`)向けに、直近の `sync`/`update` が受け取ったカメラ位置・`Attractor[]` を引き継ぐだけのキャッシュ。`PlanPath.cameraPos` は `nearestSample` が DOM ポインタイベント起点でフレーム外から呼ばれるために要る | 次の `sync`/`update` で上書き |
 | `SampledLine.lastSamples` / `.lastFrame` / `.lastScale` | bake 済み頂点の入力スナップショット(`lastScale` は点列中央のサンプルで評価した画面スケール) | 点列・frame の変化、または `lastScale` から `SCALE_REBAKE_RATIO` 以上動いた画面スケールの変化 |
 | `EntityLineSet.lines`(`Map<GameEntity, SampledLine>`。`DebugTrajectoryLine`/`PredictedTrajectoryLine` がそれぞれ private に1つ持つ) | エンティティごとに `SampledLine` を1本対応させるプールと、対象集合から外れた分の破棄だけを担う共通機構。線の見た目(色・不透明度・renderOrder)は各所有者がコンストラクタへ渡す `factory` が決めるので、このクラス自身は知らない(`DebugTrajectoryLine` の分は `?debugLines=1` のときだけ実体化) | 対象集合(`sync` の引数)から外れたエンティティぶんを毎フレーム破棄 |
 | `PredictedTrajectoryLine.synced`(`Set<GameEntity>`) | 直近の `sync` で実際に予測軌道線を描いた対象の記録。`EntityLineSet.lineFor` は未登録のエンティティにも線を新規作成してしまうため、`hasLineFor` がそれを踏んで誤登録しないための集合 | 毎フレームの `sync` で描画対象から作り直す |
