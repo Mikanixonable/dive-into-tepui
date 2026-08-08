@@ -24,7 +24,7 @@ import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import * as C from '../const';
 import { ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
-import { validateEllipticPlacement } from '../creative/placement-validation';
+import { validateEllipticPlacement, validateBaseReference } from '../creative/placement-validation';
 import { OrbitLine } from '../../render/orbitline';
 
 const DEG = Math.PI / 180;
@@ -246,6 +246,8 @@ export class CreativeStage extends Stage {
 
   // フォームの placementMode に応じた妥当性検証を行う。不正なら理由付きで例外を投げる。
   private assertValidForm(form: ShipPlacerForm): void {
+    const baseMessage = validateBaseReference(form.objectType, form.placementMode, form.body);
+    if (baseMessage) throw new Error(baseMessage);
     if (form.placementMode === 'elements') {
       this.assertValidElementsForm(form);
       return;
