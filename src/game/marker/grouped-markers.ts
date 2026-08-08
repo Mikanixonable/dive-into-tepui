@@ -42,8 +42,9 @@ export class GroupedMarkers {
   ) { }
 
   // items が空なら前フレームのマーカーをすべて片付けるだけになる(非表示にしたいときは
-  // 空配列を渡せばよく、専用の hide は要らない)。
-  sync(items: readonly GroupedMarkerItem[], project: ProjectFn): void {
+  // 空配列を渡せばよく、専用の hide は要らない)。overviewMode 中は対象そのものが
+  // 画面内に見えているので、画面端の方位マーカーは出さない。
+  sync(items: readonly GroupedMarkerItem[], project: ProjectFn, overviewMode: boolean): void {
     const placed: PlacedItem[] = items.map(
       (item) => ({ item, p: project(item.pos), count: 1, labeled: true }),
     );
@@ -53,7 +54,8 @@ export class GroupedMarkers {
       const label = m.labeled ? this.label(m.item, m.count) : '';
       this.markerManager.set(m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, 1, m.item.color, undefined, m.item.symMarkup);
       // 画面外(背面を含む)の対象は、画面端の ▲ で方位だけを示す。
-      this.markerManager.setBearing(bearingKey(m.item.key), 'mk-dir', '△', m.p, '', 1, m.item.bearingColor);
+      if (overviewMode) this.markerManager.hide(bearingKey(m.item.key));
+      else this.markerManager.setBearing(bearingKey(m.item.key), 'mk-dir', '△', m.p, '', 1, m.item.bearingColor);
     }
 
     this.retire(items.map((item) => item.key));
