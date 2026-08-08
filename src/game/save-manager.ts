@@ -2,7 +2,7 @@ import { Game } from './game';
 import { GameSaveData } from './save-data';
 
 const SAVE_KEY = 'tepui.save';
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 
 // ゲーム状態の localStorage への保存・復元。
 export class SaveManager {
@@ -13,7 +13,8 @@ export class SaveManager {
       stageId: game.activeStage.id,
       simTime: game.simTime,
       phaseOffsets: game.ephemeris.getPhaseOffsets(),
-      player: game.player ? game.player.serialize() : null,
+      players: game.entities.players.map(p => p.serialize()),
+      activePlayerId: game.player ? game.player.id : null,
       enemies: game.entities.enemies.map(e => e.serialize()),
       ammos: game.entities.ammos.map(a => a.serialize()),
       bases: game.entities.bases.map(b => b.serialize()),

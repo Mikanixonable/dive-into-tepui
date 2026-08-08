@@ -40,10 +40,9 @@ export interface PlayerSaveData extends EntitySaveData {
   mags: number;
   rounds: number;
   heat: number;
-  hp: number;
-  maxHp: number;
   parts: AnyPart[];
   plan: PlanSaveData | null;
+  followPlan: boolean;
 }
 
 // 基地は艦(EntitySaveData)と持ち物が根本的に異なる(所持金・在庫・収容艦)ため、
@@ -77,7 +76,8 @@ export interface GameSaveData {
   stageId: string;
   simTime: number;
   phaseOffsets: Partial<Record<AttractorId, number>>;
-  player: PlayerSaveData | null;
+  players: PlayerSaveData[];
+  activePlayerId: string | null;
   enemies: EnemySaveData[];
   ammos: AmmoSaveData[];
   bases: BaseSaveData[];
