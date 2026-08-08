@@ -41,7 +41,7 @@ main.ts
     │   │   └── GunsightCamera
     │   ├── OverviewCamera
     │   ├── FocusMarkers
-    │   └── OverviewCameraPanel        ... DOM は Hud.root 配下。注視/視点座標系/視点リセット
+    │   └── OverviewCameraPanel        ... DOM は Hud.root 配下。視点座標系/視点リセット
     ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合
     │   ├── ContextMenu<MapPickable>       ... 空域右クリック('empty-space')専用メニュー
     │   ├── windows: Map<string, WindowEntry>  ... {win: PropertyWindow<MenuAction>, target}。オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new。PropertyWindow は Hud.root(#hud)配下に append
