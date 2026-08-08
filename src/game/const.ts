@@ -97,6 +97,8 @@ export const THROTTLE_LEVELS = [5.0, 20.0, 100.0];//エンジン出力、スロ�
 // 加速度になるよう決めてあるので、両者を別々に動かすと表示と実挙動がずれる。
 export const PLAYER_MASS = 1000;
 export const THROTTLE_DEFAULT_IDX = 1;
+// 並進方向キーをこの秒数以内に連打すると、押しっぱなし相当にラッチ/解除する [s]
+export const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;
 
 export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
 export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
