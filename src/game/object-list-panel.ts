@@ -16,11 +16,10 @@ interface Section {
   expanded: boolean;
 }
 
-// マップ右クリックメニューから開く軌道オブジェクト一覧ウィンドウ。種別ごとの区画にタブ見出しで
+// マップビュー右部に常設の軌道オブジェクト一覧ウィンドウ。種別ごとの区画にタブ見出しで
 // 開閉し、行クリックで onSelect に id を渡す。
 export class ObjectListPanel {
   onSelect: ((id: string) => void) | null = null;
-  onClose: (() => void) | null = null;
 
   private readonly panel: HTMLElement;
   private readonly sections = new Map<MapPickKind, Section>();
@@ -31,17 +30,9 @@ export class ObjectListPanel {
     this.panel.className = 'panel';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
 
-    const titleRow = document.createElement('div');
-    titleRow.className = 'object-list-title-row';
     const title = document.createElement('h3');
     title.textContent = '軌道オブジェクト';
-    const closeButton = document.createElement('button');
-    closeButton.className = 'dock-close-btn';
-    closeButton.textContent = '✕';
-    closeButton.addEventListener('click', () => this.onClose?.());
-    titleRow.appendChild(title);
-    titleRow.appendChild(closeButton);
-    this.panel.appendChild(titleRow);
+    this.panel.appendChild(title);
 
     for (const { kind } of SECTIONS) {
       const header = document.createElement('div');
