@@ -106,7 +106,6 @@ export class PlanEditor {
     private readonly ephemeris: Ephemeris,
     scene: THREE.Scene,
     markerManager: MarkerManager,
-    private readonly getFineAttitude: () => boolean,
     ship: Player,
     private readonly displayTimeManager: DisplayTimeManager,
   ) {
@@ -184,7 +183,7 @@ export class PlanEditor {
     };
     g.onNodeContextMenu = (clientX, clientY) => { this.handleNodeRightClick(clientX, clientY); };
     g.onAxisDrag = (axis, sign, deltaPx) => {
-      this.applyAxisDrag(axis, sign, deltaPx, this.getFineAttitude());
+      this.applyAxisDrag(axis, sign, deltaPx, this.ship?.fineAttitude ?? false);
     };
     // 指定ノードの時刻まで自動ワープを開始する
     g.onMenuWarpTo = (idx) => {
@@ -566,10 +565,10 @@ export class PlanEditor {
       const scenePos = fo.RtoThreeV3(r);
       const bodyArr = this.bodyState(arrFor3D);
       let { pro, nrm, radOut } = orbitAxes(bodyArr);
-      pro = this.planDisplay.path.toDisplay(pro, nodeFor3D.t);
-      nrm = this.planDisplay.path.toDisplay(nrm, nodeFor3D.t);
-      radOut = this.planDisplay.path.toDisplay(radOut, nodeFor3D.t);
-      this.gizmo3d.setPositionAndRotation(v3(scenePos.x, scenePos.y, scenePos.z), pro, nrm, radOut, mapDist * 0.002);
+      pro = this.planDisplay.path.toDisplayDir(pro, nodeFor3D.t);
+      nrm = this.planDisplay.path.toDisplayDir(nrm, nodeFor3D.t);
+      radOut = this.planDisplay.path.toDisplayDir(radOut, nodeFor3D.t);
+      this.gizmo3d.setPositionAndRotation(scenePos, pro, nrm, radOut, mapDist * 0.002);
       
       // ドラッグ・ラッチ時のアニメーション
       let activeAxis: 0 | 1 | 2 | null = null;
@@ -595,7 +594,7 @@ export class PlanEditor {
 
   // WASDQE キー・長押しボタン・Δv アームのラッチドラッグから選択中ノードの Δv を加算する。
   updateEditing(dt: number, input: Input): void {
-    const fine = this.getFineAttitude();
+    const fine = this.ship?.fineAttitude ?? false;
     const b = this.dvButtons.buttons;
     this.applyHeldDv(0, 1, input.down(K.dvPrograde) || b.pro.isHeld, dt, fine);
     this.applyHeldDv(0, -1, input.down(K.dvRetrograde) || b.ret.isHeld, dt, fine);
