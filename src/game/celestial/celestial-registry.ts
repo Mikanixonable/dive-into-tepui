@@ -6,7 +6,7 @@ import { bodyDef } from '../../physics/solar-system';
 import { createMoon, MOON_VIS_DIST } from '../../render/stars';
 import { CelestialBody } from './celestial-body';
 import { EarthBody } from './earth-body';
-import { PlanetBody } from './planet-body';
+import { SphereBody } from './sphere-body';
 import { SunBody } from './sun-body';
 
 // 木星は見た目を作り込まず、単色球で置く(テクスチャなし)。
@@ -21,12 +21,12 @@ function createJupiterMesh(): THREE.Mesh {
   return mesh;
 }
 
-export const CELESTIAL_VIEWS: Record<AttractorId, { readonly name: string; create(): CelestialBody }> = {
+export const CELESTIAL_BODIES: Record<AttractorId, { readonly name: string; create(): CelestialBody }> = {
   earth: { name: '地球', create: () => new EarthBody() },
-  moon: { name: '月', create: () => new PlanetBody('moon', createMoon, bodyDef('moon').radius, MOON_VIS_DIST) },
+  moon: { name: '月', create: () => new SphereBody('moon', createMoon, bodyDef('moon').radius, MOON_VIS_DIST) },
   jupiter: {
     name: '木星',
-    create: () => new PlanetBody('jupiter', createJupiterMesh, bodyDef('jupiter').radius, JUPITER_VIS_DIST),
+    create: () => new SphereBody('jupiter', createJupiterMesh, bodyDef('jupiter').radius, JUPITER_VIS_DIST),
   },
   sun: { name: '太陽', create: () => new SunBody() },
 };

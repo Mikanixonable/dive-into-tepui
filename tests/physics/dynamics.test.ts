@@ -48,13 +48,13 @@ export function register(): void {
     const dt = 10;
     const sunPos = v3(1.5e11, 0, 0);
     const moonPos = v3(3.8e8, 0, 0);
-    const bodies: readonly Attractor[] = [
+    const attractors: readonly Attractor[] = [
       EARTH,
       { id: 'moon', mu: MU_MOON, radius: R_MOON, state: orbitState(0, moonPos, v3(0, 0, 0)) },
       { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(0, sunPos, v3(0, 0, 0)) },
     ];
 
-    const viaNew = stepDynamicsRK4(s0, dt, bodies, 0, null);
+    const viaNew = stepDynamicsRK4(s0, dt, attractors, 0, null);
     const viaLegacy = stepOrbitRK4(s0, dt, (rx, ry, rz) => legacyAccel(v3(rx, ry, rz), sunPos, moonPos));
 
     const posErr = len(sub(viaNew.r, viaLegacy.r)) / len(viaLegacy.r);
@@ -66,11 +66,11 @@ export function register(): void {
   test('dynamics: stepDynamicsRK4 adds thrust on top of gravity', () => {
     const s0 = circularState();
     const dt = 10;
-    const bodies = new Ephemeris({ moon: 0 }).attractorsAt(0);
+    const attractors = new Ephemeris({ moon: 0 }).attractorsAt(0);
     const thrust = v3(0, 0, 5); // 大きめの加速度で差が明確に出るようにする
 
-    const withThrust = stepDynamicsRK4(s0, dt, bodies, 0, thrust);
-    const withoutThrust = stepDynamicsRK4(s0, dt, bodies, 0, null);
+    const withThrust = stepDynamicsRK4(s0, dt, attractors, 0, thrust);
+    const withoutThrust = stepDynamicsRK4(s0, dt, attractors, 0, null);
 
     assert.ok(len(sub(withThrust.v, withoutThrust.v)) > 1, 'thrust should visibly change the velocity');
   });
@@ -78,10 +78,10 @@ export function register(): void {
   test('dynamics: stepDynamicsRK4 with bcInv>0 decelerates more than bcInv=0 at LEO altitude', () => {
     const s0 = circularState();
     const dt = 10;
-    const bodies = new Ephemeris({ moon: 0 }).attractorsAt(0);
+    const attractors = new Ephemeris({ moon: 0 }).attractorsAt(0);
 
-    const noDrag = stepDynamicsRK4(s0, dt, bodies, 0, null);
-    const withDrag = stepDynamicsRK4(s0, dt, bodies, 0.01, null);
+    const noDrag = stepDynamicsRK4(s0, dt, attractors, 0, null);
+    const withDrag = stepDynamicsRK4(s0, dt, attractors, 0.01, null);
 
     assert.ok(len(withDrag.v) < len(noDrag.v), 'drag should reduce orbital speed relative to the drag-free step');
   });
@@ -98,8 +98,8 @@ export function register(): void {
     const dt = 5;
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
-      const bodies = ephemeris.attractorsAt(s.t + dt / 2);
-      s = stepDynamicsRK4(s, dt, bodies, 0, null);
+      const attractors = ephemeris.attractorsAt(s.t + dt / 2);
+      s = stepDynamicsRK4(s, dt, attractors, 0, null);
     }
 
     const relFinal = sub(s.r, ephemeris.positionOf('moon', s.t));

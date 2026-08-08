@@ -559,7 +559,7 @@ export class Game {
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
     const simTime = this.simulator.simTime;
-    const bodies = this.ephemeris.attractorsAt(simTime);
+    const attractors = this.ephemeris.attractorsAt(simTime);
     const target = this.targeter.aliveTarget;
     const secondaryTarget = this.targeter.aliveSecondaryTarget;
 
@@ -583,7 +583,7 @@ export class Game {
 
     if (player) {
       const targets = this.entities.getCombatTargets(player);
-      this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project, bodies);
+      this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project, attractors);
     }
     this.navTarget.sync(project);
     if (player) this.navball.sync(player.state, player.att, player.alive, target?.state ?? null);
@@ -618,7 +618,7 @@ export class Game {
     }
     this.activeStage.sync(player, this.floatingOrigin, project, displayTime, overviewMode);
 
-    this._hud.panels.sync(this, bodies);
+    this._hud.panels.sync(this, attractors);
     this._hud.tick();
 
     if (player) this.guide.sync(this.editor.plan, player, simTime, this.editor.editMode, project);

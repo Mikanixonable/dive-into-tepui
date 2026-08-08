@@ -13,8 +13,8 @@ export interface DisplayDurationSource {
 
 // 起点状態を最も強く引く天体まわりの解析軌道の公転周期。
 // 有限な周期が求まらなければ(双曲線軌道など)APERIODIC_ARC_DURATION。
-export function orbitPeriodOf(state: OrbitState, bodies: readonly Attractor[]): number {
-  const center = strongestAttractor(state.r, bodies);
+export function orbitPeriodOf(state: OrbitState, attractors: readonly Attractor[]): number {
+  const center = strongestAttractor(state.r, attractors);
   const period = elementsAround(state, center)?.period ?? NaN;
   return isFinite(period) && period > 0 ? period : C.APERIODIC_ARC_DURATION;
 }
@@ -25,10 +25,10 @@ export function orbitPeriodOf(state: OrbitState, bodies: readonly Attractor[]): 
 // 別々に定義すると描画範囲とノード配置可能範囲がずれる。
 export function segmentDurationFrom(
   state0: OrbitState,
-  bodies: readonly Attractor[],
+  attractors: readonly Attractor[],
   displayDuration: DisplayDurationSource,
 ): number {
-  return displayDuration.durationSec(orbitPeriodOf(state0, bodies));
+  return displayDuration.durationSec(orbitPeriodOf(state0, attractors));
 }
 
 // ノードを置ける実行時刻の範囲。
@@ -103,8 +103,8 @@ export class Plan {
   // その状態を起点に描かれている末尾区間の折れ線が尽きるところまで。
   nodeTimeRange(idx: number, ephemeris: Ephemeris, displayDuration: DisplayDurationSource): TimeRange {
     const prev = this._nodes[idx - 1] ?? this._anchor;
-    const bodies = ephemeris.attractorsAt(prev.t);
-    return { min: prev.t, max: prev.t + segmentDurationFrom(prev, bodies, displayDuration) };
+    const attractors = ephemeris.attractorsAt(prev.t);
+    return { min: prev.t, max: prev.t + segmentDurationFrom(prev, attractors, displayDuration) };
   }
 
   // ノードを新しい実行後状態へ移し、下流ノードを破棄する。時刻は nodeTimeRange の範囲内であること。
