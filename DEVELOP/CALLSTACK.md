@@ -120,7 +120,7 @@
       // このフレームの全サブステップの updateThermal がこの値を使う
     - player.radius = radiator.hitRadius() // 展開度に応じて被弾判定が広がる
     - power.update() // sunlit/sunDir は radiator と共有。THREE には触れない
-    - [!player.alive] player.thrust = null して return
+    - [!player.alive] player.thrust = null、throttle.stopThrust() して return
     - hpRegen()
     - [editor.editMode] fire.tickMapMode() → tickReloadTimer() // マップビュー中は発射不可(装填タイマーのみ進める)
     - [!editor.editMode] fire.updateFireState()
@@ -139,10 +139,10 @@
           - sfx.fire()
         - spawnEjectedMagazineFrame() + sfx.magFeed() // 'mag-reload'
         - spawnEjectedMagazineFrame() + dropBarrel() + sfx.playReload() // 'barrel-reload'
-    - [dvEditActive(= editor.editMode かつ editor.selectedNodeIdx !== null)] player.thrust = null して return // ノードのΔv編集中はWASDQEをそちらへ譲る
+    - [dvEditActive(= editor.editMode かつ editor.selectedNodeIdx !== null)] player.thrust = null、throttle.stopThrust() して return // ノードのΔv編集中はWASDQEをそちらへ譲り、噴射音・プルーム表示も止める
+    - throttle.updateThrustLatches() // WASDQE各キーの連打をエッジ検出しラッチ集合を更新。反対方向キーの押下エッジでは相手側のラッチも解除する
     - throttle.updateThrustState() → player.thrust へ代入
-      - updateThrustLatches() // WASDQE各キーの連打をエッジ検出しラッチ集合を更新
-      - sfx.setThrust(false) // 推力入力なし(物理押下・ラッチとも無し) or !canPlayerThrust
+      - throttle.stopThrust() // 推力入力なし(物理押下・ラッチとも無し) or !canPlayerThrust
       - sfx.setThrust(true) // 推力あり
     - invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
   - nanWatchdog.checkPlayer('player.behave')
