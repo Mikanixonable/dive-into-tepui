@@ -1,7 +1,7 @@
 // 赤道面・黄道面の目安グリッド(緯線・経線)と両極マーカー。頂点は ECI に固定した
 // 単位球面上の点(星殻と同じ半径)で、自機中心に追従する固定半径殻として描く。
 import * as THREE from 'three/webgpu';
-import { Q_ECL_TO_ECI } from '../physics/ephemeris';
+import { Q_ECL_TO_ECI } from '../physics/ecliptic';
 import { qRotate } from '../physics/attitude';
 import { Vec3, v3 } from '../physics/vec3';
 import { STAR_SHELL_RADIUS } from './stars';

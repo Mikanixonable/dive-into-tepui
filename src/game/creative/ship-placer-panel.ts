@@ -4,11 +4,14 @@
 // 仕事なので、ここでは行わない。
 import { SegmentedControl, hudButton } from '../hud/buttons';
 import { ATTRACTOR_NAMES } from '../hud/frame-labels';
-import { LibrationPoint, LibrationSystem } from '../../physics/halo';
+import { LibrationPoint } from '../../physics/halo';
+import { AttractorId } from '../../physics/attractor';
+import { bodyDef, SOLAR_SYSTEM } from '../../physics/solar-system';
+import type { OrbitingId } from '../../physics/attractor';
 import * as C from '../const';
 
 export type ObjectType = 'player' | 'enemy' | 'ammo' | 'base';
-export type ReferenceBody = 'earth' | 'moon';
+export type ReferenceBody = AttractorId;
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'libration';
 export type LibrationOrbitKind = 'halo' | 'lissajous';
@@ -30,7 +33,7 @@ export interface ShipPlacerForm {
   readonly raanDeg: number;
   readonly argpDeg: number;
   readonly nuDeg: number;
-  readonly librationSystem: LibrationSystem;
+  readonly librationSecondary: OrbitingId;
   readonly librationPoint: LibrationPoint;
   readonly librationOrbitKind: LibrationOrbitKind;
   readonly axKm: number;
@@ -49,21 +52,25 @@ const PLACEMENT_MODE_ITEMS: readonly (readonly [PlacementMode, string])[] = [
   ['libration', 'ラグランジュ点'],
 ];
 
-const BODY_ITEMS: readonly (readonly [ReferenceBody, string])[] = [
-  ['earth', ATTRACTOR_NAMES.earth],
-  ['moon', ATTRACTOR_NAMES.moon],
-];
-
 const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [
   ['apsides', '近地点+遠地点'],
   ['semiMajorEcc', '半長軸+離心率'],
   ['periodEcc', '周期+離心率'],
 ];
 
-const LIBRATION_SYSTEM_ITEMS: readonly (readonly [LibrationSystem, string])[] = [
-  ['earthMoon', '地球-月'],
-  ['sunEarth', '太陽-地球'],
-];
+// ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙し、表示名を
+// 「中心天体名-自分の名」としてレジストリから組む。軌道要素指定の基準天体もこれを使う
+// (公転していない恒星を周回の中心には選べない)。
+const ORBITING_IDS = (Object.keys(SOLAR_SYSTEM) as AttractorId[])
+  .filter((id) => bodyDef(id).kind !== 'star') as OrbitingId[];
+
+const BODY_ITEMS: readonly (readonly [ReferenceBody, string])[] = ORBITING_IDS.map((id) => [id, ATTRACTOR_NAMES[id]]);
+
+const LIBRATION_SYSTEM_ITEMS: readonly (readonly [OrbitingId, string])[] = ORBITING_IDS.map((id) => {
+  const def = bodyDef(id);
+  const primary: AttractorId = def.kind === 'planet' ? 'sun' : def.planet;
+  return [id, `${ATTRACTOR_NAMES[primary]}-${ATTRACTOR_NAMES[id]}`] as const;
+});
 
 const LIBRATION_POINT_ITEMS: readonly (readonly [LibrationPoint, string])[] = [
   ['L1', 'L1'],
@@ -75,11 +82,12 @@ const LIBRATION_ORBIT_KIND_ITEMS: readonly (readonly [LibrationOrbitKind, string
   ['lissajous', 'リサジュー'],
 ];
 
-// 系ごとに妥当なオーダーへ面内/面外振幅の既定値を切り替える(地球-月系と太陽-地球系は
-// 主天体間距離が3桁近く違う)。
-const LIBRATION_DEFAULT_AMPLITUDE_KM: Record<LibrationSystem, { ax: number; az: number }> = {
-  earthMoon: { ax: C.CREATIVE_HALO_AX_EARTHMOON_KM, az: C.CREATIVE_HALO_AZ_EARTHMOON_KM },
-  sunEarth: { ax: C.CREATIVE_HALO_AX_SUNEARTH_KM, az: C.CREATIVE_HALO_AZ_SUNEARTH_KM },
+// 副天体ごとに妥当なオーダーへ面内/面外振幅の既定値を切り替える(系ごとに主天体間距離が
+// 桁違いなため)。
+const LIBRATION_DEFAULT_AMPLITUDE_KM: Record<OrbitingId, { ax: number; az: number }> = {
+  moon: { ax: C.CREATIVE_HALO_AX_MOON_KM, az: C.CREATIVE_HALO_AZ_MOON_KM },
+  earth: { ax: C.CREATIVE_HALO_AX_EARTH_KM, az: C.CREATIVE_HALO_AZ_EARTH_KM },
+  jupiter: { ax: C.CREATIVE_HALO_AX_JUPITER_KM, az: C.CREATIVE_HALO_AZ_JUPITER_KM },
 };
 
 // ラベル付き数値入力を1行分組み立てて root へ追加し、input 要素を返す。
@@ -131,7 +139,7 @@ export class ShipPlacerPanel {
   private readonly raan: HTMLInputElement;
   private readonly argp: HTMLInputElement;
   private readonly nu: HTMLInputElement;
-  private readonly librationSystem: SegmentedControl<LibrationSystem>;
+  private readonly librationSecondary: SegmentedControl<OrbitingId>;
   private readonly librationPoint: SegmentedControl<LibrationPoint>;
   private readonly librationOrbitKind: SegmentedControl<LibrationOrbitKind>;
   private readonly libAx: HTMLInputElement;
@@ -141,7 +149,7 @@ export class ShipPlacerPanel {
   private placementModeValue: PlacementMode = 'elements';
   private bodyValue: ReferenceBody = 'earth';
   private sizeModeValue: SizeShapeMode = 'apsides';
-  private librationSystemValue: LibrationSystem = 'earthMoon';
+  private librationSecondaryValue: OrbitingId = 'moon';
   private librationPointValue: LibrationPoint = 'L1';
   private librationOrbitKindValue: LibrationOrbitKind = 'halo';
 
@@ -206,9 +214,9 @@ export class ShipPlacerPanel {
 
     // ラグランジュ点指定(ハロー/リサジュー)の一式。
     const librationGroup = document.createElement('div');
-    this.librationSystem = new SegmentedControl('系', LIBRATION_SYSTEM_ITEMS, (v) => this.selectLibrationSystem(v));
-    this.librationSystem.setSelected(this.librationSystemValue);
-    librationGroup.appendChild(this.librationSystem.element);
+    this.librationSecondary = new SegmentedControl('系', LIBRATION_SYSTEM_ITEMS, (v) => this.selectLibrationSecondary(v));
+    this.librationSecondary.setSelected(this.librationSecondaryValue);
+    librationGroup.appendChild(this.librationSecondary.element);
     this.librationPoint = new SegmentedControl('点', LIBRATION_POINT_ITEMS, (v) => {
       this.librationPointValue = v;
       this.librationPoint.setSelected(v);
@@ -222,7 +230,7 @@ export class ShipPlacerPanel {
       setFieldVisible(this.libAx, v === 'lissajous');
     });
     librationGroup.appendChild(this.librationOrbitKind.element);
-    const defaultAmp = LIBRATION_DEFAULT_AMPLITUDE_KM[this.librationSystemValue];
+    const defaultAmp = LIBRATION_DEFAULT_AMPLITUDE_KM[this.librationSecondaryValue];
     this.libAx = numberField(librationGroup, '面内振幅 ax [km]', defaultAmp.ax, 100);
     this.libAz = numberField(librationGroup, '面外振幅 az [km]', defaultAmp.az, 100);
     this.librationOrbitKind.setSelected(this.librationOrbitKindValue);
@@ -287,11 +295,11 @@ export class ShipPlacerPanel {
     }
   }
 
-  // 系を切り替え、面内/面外振幅の既定値をその系のオーダーへ更新する。
-  private selectLibrationSystem(system: LibrationSystem): void {
-    this.librationSystemValue = system;
-    this.librationSystem.setSelected(system);
-    const amp = LIBRATION_DEFAULT_AMPLITUDE_KM[system];
+  // 副天体を切り替え、面内/面外振幅の既定値をその系のオーダーへ更新する。
+  private selectLibrationSecondary(secondary: OrbitingId): void {
+    this.librationSecondaryValue = secondary;
+    this.librationSecondary.setSelected(secondary);
+    const amp = LIBRATION_DEFAULT_AMPLITUDE_KM[secondary];
     this.libAx.value = String(amp.ax);
     this.libAz.value = String(amp.az);
   }
@@ -324,7 +332,7 @@ export class ShipPlacerPanel {
       raanDeg: Number(this.raan.value),
       argpDeg: Number(this.argp.value),
       nuDeg: Number(this.nu.value),
-      librationSystem: this.librationSystemValue,
+      librationSecondary: this.librationSecondaryValue,
       librationPoint: this.librationPointValue,
       librationOrbitKind: this.librationOrbitKindValue,
       axKm: Number(this.libAx.value),

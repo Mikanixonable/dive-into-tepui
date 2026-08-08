@@ -30,7 +30,8 @@ import { MarkerManager } from '../marker/marker-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
-import { Ephemeris, sunlitFactor } from '../../physics/ephemeris';
+import { Ephemeris } from '../../physics/ephemeris';
+import { sunlitFactor } from '../../physics/shadow';
 import { Plan } from '../plan/plan';
 import type { PlayerSaveData } from '../save-data';
 import { restorePart, type AnyPart } from '../game-entity/parts';
@@ -155,8 +156,9 @@ export class Player extends Ship {
     simTime: number;
     zoomActive: boolean;
     addBullet: (bullet: Bullet) => void;
+    ephemeris: Ephemeris;
   }): void {
-    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, addBullet } = params;
+    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, addBullet, ephemeris } = params;
 
     this.updatePassive(dt);
     this.handleEdgeInput(input);
@@ -174,7 +176,7 @@ export class Player extends Ship {
       return;
     }
 
-    this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet);
+    this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet, ephemeris.sunDirAt(simTime));
 
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
