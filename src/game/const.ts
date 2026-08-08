@@ -245,7 +245,7 @@ export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見�
 // --- 軌道計画モード([M]) ---
 export const OVERVIEW_CAMERA_MIN_DIST = 1e5; // 広範囲視点カメラの注視点までの距離 [m]
 // 太陽地球系のラグランジュ点 L1/L2(約1.5e9m)まで視界に収められる引きの上限。
-export const OVERVIEW_CAMERA_MAX_DIST = 4.5e9;
+export const OVERVIEW_CAMERA_MAX_DIST = 1e13;
 // 広範囲視点の near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
 // (near = dist / OVERVIEW_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
 // 手前がクリップされにくくなる代わりに、24bit 深度バッファの分解能が落ちる。
