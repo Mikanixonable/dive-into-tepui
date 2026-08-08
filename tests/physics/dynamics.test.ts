@@ -1,20 +1,59 @@
 // dynamics.ts の回帰テスト。stepDynamicsRK4 は OrbitEntity.step が使う唯一の 1 ステップ実装。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { MU_EARTH, R_EARTH, orbitState } from '../../src/physics/orbital-state';
+import { MU_EARTH, R_EARTH, R_EARTH_EQ, orbitState } from '../../src/physics/orbital-state';
 import { Elements, keplerPeriod, stateFromElements } from '../../src/physics/elements';
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
-import { Attractor, elementsAround } from '../../src/physics/attractor';
-import { j2Accel, stepDynamicsRK4, stepOrbitRK4 } from '../../src/physics/dynamics';
-import { Vec3, add, len, sub, v3 } from '../../src/physics/vec3';
+import { C22_MOON, J2_EARTH, J2_MOON, MU_MOON, MU_SUN, R_MOON, R_MOON_GRAVITY, R_SUN } from '../../src/physics/solar-system';
+import { Attractor, Degree2Gravity, elementsAround } from '../../src/physics/attractor';
+import { degree2Accel, stepDynamicsRK4, stepOrbitRK4 } from '../../src/physics/dynamics';
+import { Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { qFromAxisAngle, qRotate } from '../../src/physics/attitude';
 
-const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)) };
+const EARTH_POLE = v3(0, 1, 0);
+const EARTH_DEGREE2: Degree2Gravity = { j2: J2_EARTH, refRadius: R_EARTH_EQ, pole: EARTH_POLE, tesseral: null };
+const EARTH: Attractor = {
+  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: EARTH_DEGREE2,
+};
 
 function circularState() {
   const r0 = R_EARTH + 420e3;
   const vc = Math.sqrt(MU_EARTH / r0);
   return orbitState(0, v3(r0, 0, 0), v3(0, vc, 0));
+}
+
+function rot(v: Vec3, axis: Vec3, angle: number): Vec3 {
+  return qRotate(qFromAxisAngle(axis, angle), v);
+}
+
+// 2次重力場のポテンシャル。degree2Accel はこの勾配であるべきなので、数値微分の基準に使う。
+function degree2Potential(r: Vec3, mu: number, g: Degree2Gravity): number {
+  const r2 = dot(r, r);
+  const inv5 = 1 / (r2 * r2 * Math.sqrt(r2));
+  const muR2 = mu * g.refRadius * g.refRadius;
+  const z = dot(r, g.pole);
+  let u = -0.5 * g.j2 * muR2 * (3 * z * z - r2) * inv5;
+  if (g.tesseral !== null) {
+    const x = dot(r, g.tesseral.longAxis);
+    const y = dot(r, cross(g.pole, g.tesseral.longAxis));
+    u += 3 * g.tesseral.c22 * muR2 * (x * x - y * y) * inv5;
+  }
+  return u;
+}
+
+function numericalGradient(f: (p: Vec3) => number, r: Vec3, h: number): Vec3 {
+  const d = (axis: Vec3) => (f(add(r, scale(axis, h))) - f(sub(r, scale(axis, h)))) / (2 * h);
+  return v3(d(v3(1, 0, 0)), d(v3(0, 1, 0)), d(v3(0, 0, 1)));
+}
+
+// 極軸を Y に固定していた地球専用の J2 式。任意の極方向を取る degree2Accel が、この
+// 特殊形と一致することを検証するための独立した基準として写経する。
+function yAxisJ2Accel(r: Vec3): Vec3 {
+  const r2 = r.x * r.x + r.y * r.y + r.z * r.z;
+  const rl = Math.sqrt(r2);
+  const k = (-1.5 * J2_EARTH * MU_EARTH * R_EARTH_EQ * R_EARTH_EQ) / (r2 * r2 * rl);
+  const f = (5 * r.y * r.y) / r2;
+  return v3(k * r.x * (1 - f), k * r.y * (3 - f), k * r.z * (1 - f));
 }
 
 // フェーズ B 以前の合成: −μ_E r/|r|³(中心重力)+ 太陽・月の潮汐摂動 + J2。
@@ -38,7 +77,7 @@ function legacyAccel(r: Vec3, sunPos: Vec3, moonPos: Vec3): Vec3 {
   const central = legacyCentralGravity(r);
   const sun = legacyThirdBody(r, sunPos, MU_SUN);
   const moon = legacyThirdBody(r, moonPos, MU_MOON);
-  const j2 = j2Accel(r);
+  const j2 = yAxisJ2Accel(r);
   return add(add(add(central, sun), moon), j2);
 }
 
@@ -50,8 +89,8 @@ export function register(): void {
     const moonPos = v3(3.8e8, 0, 0);
     const bodies: readonly Attractor[] = [
       EARTH,
-      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: orbitState(0, moonPos, v3(0, 0, 0)) },
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(0, sunPos, v3(0, 0, 0)) },
+      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: orbitState(0, moonPos, v3(0, 0, 0)), degree2: null },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(0, sunPos, v3(0, 0, 0)), degree2: null },
     ];
 
     const viaNew = stepDynamicsRK4(s0, dt, bodies, 0, null);
@@ -141,7 +180,7 @@ export function register(): void {
     assert.ok(Math.abs(s.t - steps * dt) < 1e-9, `epoch should advance with the integration: ${s.t}`);
   });
 
-  test('dynamics: j2Accel RAAN regression rate at 420km/51.6deg ~= -5deg/day (measured)', () => {
+  test('dynamics: degree2Accel RAAN regression rate at 420km/51.6deg ~= -5deg/day (measured)', () => {
     // J2 のみを追加加速度として与え、円軌道を長時間積分して RAAN のドリフト率を測る。
     // 標準的な太陽同期軌道の式(dRAAN/dt ~ -5deg/day at 51.6°/420km LEO)との一致は
     // CLAUDE.md に既述の設計目安。許容誤差は緩め(±10%)。
@@ -158,7 +197,7 @@ export function register(): void {
     for (let i = 0; i < steps; i++) {
       s = stepOrbitRK4(s, dt, (rx, ry, rz) => {
         const r = v3(rx, ry, rz);
-        return add(legacyCentralGravity(r), j2Accel(r));
+        return add(legacyCentralGravity(r), degree2Accel(r, MU_EARTH, EARTH_DEGREE2));
       });
     }
 
@@ -183,5 +222,99 @@ export function register(): void {
       Math.abs(ratePerDay - expected) < Math.abs(expected) * tolFrac,
       `RAAN regression rate: ${ratePerDay} deg/day (expected ~${expected} +-${tolFrac * 100}%)`,
     );
+  });
+
+  test('dynamics: degree2Accel with the pole on Y reproduces the Y-axis-only J2 formula to machine precision', () => {
+    for (const r of [v3(6.8e6, 1.2e6, -3.1e6), v3(-2.2e6, 6.5e6, 1e5), v3(1e6, -1e6, 7e6)]) {
+      const generalized = degree2Accel(r, MU_EARTH, EARTH_DEGREE2);
+      const special = yAxisJ2Accel(r);
+      const err = len(sub(generalized, special)) / len(special);
+      assert.ok(err < 1e-12, `generalized J2 should match the Y-axis form: relative error ${err} at ${JSON.stringify(r)}`);
+    }
+  });
+
+  test('dynamics: degree2Accel is equivariant under rotating both the position and the body axes', () => {
+    // 極を Y に固定していた実装では確かめようのなかった性質。任意方向の極を正しく
+    // 扱えていなければ、回した系での加速度は回した加速度に一致しない。
+    const g: Degree2Gravity = {
+      j2: J2_MOON, refRadius: R_MOON_GRAVITY, pole: norm(v3(0.1, 0.9, 0.2)),
+      tesseral: { c22: C22_MOON, longAxis: norm(v3(0.95, -0.1, 0.05)) },
+    };
+    const r = v3(1.2e6, 0.7e6, -1.1e6);
+    const axis = norm(v3(0.3, -0.6, 0.74));
+    const angle = 0.937;
+
+    const base = degree2Accel(r, MU_MOON, g);
+    const rotated = degree2Accel(rot(r, axis, angle), MU_MOON, {
+      ...g,
+      pole: rot(g.pole, axis, angle),
+      tesseral: { c22: g.tesseral!.c22, longAxis: rot(g.tesseral!.longAxis, axis, angle) },
+    });
+
+    const err = len(sub(rotated, rot(base, axis, angle))) / len(base);
+    assert.ok(err < 1e-12, `degree2Accel should be equivariant under rotation: relative error ${err}`);
+  });
+
+  test('dynamics: degree2Accel agrees with the central difference of the degree-2 potential', () => {
+    // C22 には J2 の昇交点歳差率のような閉じた永年変化率が無いので、ポテンシャルを
+    // 別実装して数値微分したものを基準に取る。導出ミスと符号ミスの両方を捕まえる。
+    const g: Degree2Gravity = {
+      j2: J2_MOON, refRadius: R_MOON_GRAVITY, pole: norm(v3(0.05, 0.98, -0.19)),
+      tesseral: { c22: C22_MOON, longAxis: norm(v3(0.9, 0.1, 0.42)) },
+    };
+    for (const r of [v3(1.9e6, 0.4e6, 0.3e6), v3(-0.6e6, 1.1e6, -1.5e6), v3(0.2e6, -1.8e6, 0.9e6)]) {
+      const analytic = degree2Accel(r, MU_MOON, g);
+      const numeric = numericalGradient((p) => degree2Potential(p, MU_MOON, g), r, 1);
+      const err = len(sub(analytic, numeric)) / len(analytic);
+      assert.ok(err < 1e-6, `analytic vs numerical gradient: relative error ${err} at ${JSON.stringify(r)}`);
+    }
+  });
+
+  test('dynamics: the C22 contribution flips sign when the position rotates 90 degrees about the pole', () => {
+    // 赤道断面の楕円性は cos2λ の2回対称性を持つので、経度が 90° 変わると符号が反転する。
+    const pole = v3(0, 1, 0);
+    const longAxis = v3(1, 0, 0);
+    const axisymmetric: Degree2Gravity = { j2: J2_MOON, refRadius: R_MOON_GRAVITY, pole, tesseral: null };
+    const withC22: Degree2Gravity = { ...axisymmetric, tesseral: { c22: C22_MOON, longAxis } };
+
+    const alongAxis = v3(1.838e6, 0, 0);
+    const quarterTurn = v3(0, 0, 1.838e6);
+    const c22At = (r: Vec3) => sub(degree2Accel(r, MU_MOON, withC22), degree2Accel(r, MU_MOON, axisymmetric));
+
+    const a = c22At(alongAxis);
+    const b = c22At(quarterTurn);
+    assert.ok(dot(a, norm(alongAxis)) * dot(b, norm(quarterTurn)) < 0, 'the radial C22 term should reverse over a quarter turn');
+    assert.ok(Math.abs(len(a) - len(b)) / len(a) < 1e-9, 'the two quarter-turn positions should feel the same magnitude');
+  });
+
+  test('dynamics: a null tesseral leaves exactly the J2-only acceleration', () => {
+    const pole = norm(v3(0.2, 0.95, -0.1));
+    const j2Only: Degree2Gravity = { j2: J2_MOON, refRadius: R_MOON_GRAVITY, pole, tesseral: null };
+    const zeroC22: Degree2Gravity = { ...j2Only, tesseral: { c22: 0, longAxis: norm(v3(1, 0, 0.3)) } };
+    const r = v3(1.5e6, -0.8e6, 0.6e6);
+    assert.deepEqual(degree2Accel(r, MU_MOON, zeroC22), degree2Accel(r, MU_MOON, j2Only));
+  });
+
+  test('dynamics: lunar J2 acceleration at a 100km lunar orbit is about 4.0e-4 m/s^2', () => {
+    // 中心重力 1.45 m/s^2 に対する比 2.7e-4。低軌道での地球 J2 の比 1.4e-3 の約 1/5 で、
+    // 数日スケールの昇交点歳差として観測できる大きさであることを固定する。
+    const g: Degree2Gravity = {
+      j2: J2_MOON, refRadius: R_MOON_GRAVITY, pole: v3(0, 1, 0), tesseral: null,
+    };
+    const r = v3(1.838e6, 0, 0); // 赤道上(極方向成分ゼロ)
+    const mag = len(degree2Accel(r, MU_MOON, g));
+    assert.ok(Math.abs(mag - 3.96e-4) / 3.96e-4 < 0.05, `lunar J2 magnitude: ${mag} m/s^2 (expected ~3.96e-4)`);
+  });
+
+  test('dynamics: the moon carries a degree-2 field and the sun does not', () => {
+    const bodies = new Ephemeris({ moon: 0.3 }).attractorsAt(1234);
+    const moon = bodies.find((b) => b.id === 'moon')!;
+    const sun = bodies.find((b) => b.id === 'sun')!;
+    assert.ok(moon.degree2 !== null, 'the moon should resolve a degree-2 field');
+    assert.ok(moon.degree2!.tesseral !== null, 'the moon should not be treated as axisymmetric');
+    assert.equal(sun.degree2, null, 'the sun should stay a point mass');
+    // 基準半径は地形としての表面半径とは別の量なので、取り違えていないことを確かめる。
+    assert.equal(moon.degree2!.refRadius, R_MOON_GRAVITY);
+    assert.notEqual(moon.degree2!.refRadius, R_MOON);
   });
 }
