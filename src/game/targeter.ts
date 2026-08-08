@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { add, addScaled, dot, lenSq, norm, scale, sub, Vec3 } from '../physics/vec3';
 import { Attractor, strongestAttractor } from '../physics/attractor';
-import { OrbitLine } from '../render/orbitline';
+import { OrbitLine } from '../render/orbit-line';
 import * as C from './const';
 import { ACCENT_SECONDARY } from './theme';
 import { Enemy } from './game-entity/enemy';

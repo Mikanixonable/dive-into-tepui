@@ -5,7 +5,8 @@ import { assertOmegaMatchesBasis } from './test-helpers';
 import { OrbitalElements, keplerPeriod, timeSincePeriapsis, trueAnomalyFromMean } from '../../src/physics/elements';
 import { Attractor } from '../../src/physics/attractor';
 import { KeplerOrbit, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from '../../src/physics/kepler-orbit';
-import { MU_EARTH, R_EARTH, kinematicState } from '../../src/physics/kinematic-state';
+import { kinematicState } from '../../src/physics/kinematic-state';
+import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { qRotate } from '../../src/physics/attitude';
 import { dot, len, scale, sub, v3 } from '../../src/physics/vec3';
 

@@ -10,7 +10,7 @@ import type { Stage } from '../stages/stage';
 import { CollisionPhysics } from './collision';
 import { Sfx } from '../../audio/sfx';
 import { GameEntity } from '../game-entity/game-entity';
-import { R_EARTH } from '../../physics/kinematic-state';
+import { R_EARTH } from '../../physics/solar-system';
 import { v3 } from '../../physics/vec3';
 import { adaptiveSimulationMaxStep, simulationStepDuration } from './time-step';
 

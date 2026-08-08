@@ -1,11 +1,6 @@
-// 状態ベクトル(KinematicState)そのものの定義と、それだけで完結する幾何演算(高度・軌道基底・
-// エルミート補間)。地球の物理定数もここに置く。THREE/DOM 非依存の純粋関数群。
-import { Vec3, cross, len, norm, v3 } from './vec3';
-
-export const MU_EARTH = 3.986004418e14; // 地球重力定数 [m^3/s^2]
-export const R_EARTH = 6.371e6; // 地球平均半径 [m]
-export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
-export const SIDEREAL_DAY = 86164.0905; // 恒星日 [s]
+// 状態ベクトル(KinematicState)そのものの定義と、それだけで完結する幾何演算(軌道基底・
+// エルミート補間)。THREE/DOM 非依存の純粋関数群。
+import { Vec3, cross, norm, v3 } from './vec3';
 
 // ある時刻における位置・速度(エポック付き状態ベクトル)。不変で、進めるときは新しい
 // KinematicState を作って差し替える(参照を共有したまま書き換えると、保持側が変化を検知
@@ -21,11 +16,6 @@ export type KinematicState = {
 // KinematicState を組み立てる唯一の入口。
 export function kinematicState(t: number, r: Vec3, v: Vec3): KinematicState {
   return { t, r, v } as KinematicState;
-}
-
-// 位置ベクトルから海抜高度を返す。
-export function altitudeOf(r: Vec3): number {
-  return len(r) - R_EARTH;
 }
 
 // 軌道基底: 進行方向・軌道面法線・面内で進行方向に直交する向きからなる正規直交系。

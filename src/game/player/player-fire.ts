@@ -1,7 +1,8 @@
 // プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の演出もここで組み立てる。
 import * as THREE from 'three/webgpu';
 import { qRotate, randomQuat } from '../../physics/attitude';
-import { kinematicState, R_EARTH_EQ } from '../../physics/kinematic-state';
+import { kinematicState } from '../../physics/kinematic-state';
+import { R_EARTH_EQ } from '../../physics/solar-system';
 import { add, addScaled, dot, lenSq, norm, randPerp, randSym, randVec, scale, v3, Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input/input';

@@ -130,7 +130,7 @@ export class NavTarget {
     // 同じ形の名前を持つ船が天体として誤って解決される。
     const secondary = /^(.+)-l[1-5]$/.exec(id)?.[1];
     if (secondary !== undefined && secondary in SOLAR_SYSTEM && bodyDef(secondary as AttractorId).kind !== 'star') {
-      return qRotate(ephemeris.orbitRotationAt(secondary as OrbitingId, t).q, Z_HAT);
+      return qRotate(ephemeris.orbitFrameRotationAt(secondary as OrbitingId, t).q, Z_HAT);
     }
     const entity: GameEntity | undefined =
       entities.enemies.find((e) => e.name === id && e.alive) ??

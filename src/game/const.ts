@@ -1,5 +1,5 @@
 // ゲームバランス・チューニング定数
-export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/kinematic-state';
+export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // クリエイティブモードで配置できる艦の上限隻数。
 export const CREATIVE_MAX_SHIPS = 8;

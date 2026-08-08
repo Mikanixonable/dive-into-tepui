@@ -1,7 +1,8 @@
 // dynamics.ts の回帰テスト。stepDynamics は DynamicTrajectory.step が使う唯一の 1 ステップ実装。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { MU_EARTH, R_EARTH, kinematicState } from '../../src/physics/kinematic-state';
+import { kinematicState } from '../../src/physics/kinematic-state';
+import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { OrbitalElements, keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';

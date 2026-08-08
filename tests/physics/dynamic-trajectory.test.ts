@@ -4,7 +4,8 @@
 // ここでの検証は GameEntity.actualTrajectory(過去列側)としての用法をそのまま代表する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { MU_EARTH, KinematicState, R_EARTH, kinematicState } from '../../src/physics/kinematic-state';
+import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { DynamicTrajectory } from '../../src/physics/dynamic-trajectory';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { len, sub, v3 } from '../../src/physics/vec3';

@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp } from '../../physics/attitude';
-import { MU_EARTH, KinematicState, R_EARTH, altitudeOf, kinematicState } from '../../physics/kinematic-state';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { MU_EARTH, R_EARTH, earthAltitudeOf } from '../../physics/solar-system';
 import { Vec3, v3, len, sub } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -12,7 +13,7 @@ import { fmtMarkerDist } from '../hud/utils';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { OrbitLine } from '../../render/orbitline';
+import { OrbitLine } from '../../render/orbit-line';
 import { Attractor, hitCelestialBody, strongestAttractor } from '../../physics/attractor';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Stage } from '../stages/stage';
@@ -300,7 +301,7 @@ export class Player extends Ship {
   // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。
   checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, altitudeOf(this.state.r));
+    const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, earthAltitudeOf(this.state.r));
 
     // 熱・動圧・表面到達いずれかの限界超過を喪失理由として判定する
     let reason: string | null = null;

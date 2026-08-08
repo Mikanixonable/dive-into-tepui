@@ -1,9 +1,10 @@
-// 与えられた加速度による RK4 積分の器(ケプラーの二体問題の解析式込み)、地球 J2 摂動、
+// 与えられた加速度による RK4 積分の器、地球 J2 摂動、
 // および一質点にかかる全加速度(重力 + J2 + 大気抵抗 + 推力)の合成。
 // ゲーム本体(game-entity/game-entity.ts)と軌道計画(plan/plan-arc.ts)の積分が共有する
 // 唯一の定義箇所。THREE/DOM 非依存の純関数。
 import { Attractor, attractorAccel } from './attractor';
-import { MU_EARTH, KinematicState, R_EARTH_EQ, kinematicState } from './kinematic-state';
+import { KinematicState, kinematicState } from './kinematic-state';
+import { MU_EARTH, R_EARTH_EQ } from './solar-system';
 import { dragAccel } from './atmosphere';
 import { Vec3, add, v3 } from './vec3';
 

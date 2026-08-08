@@ -32,7 +32,7 @@ description: 関数・機能の追加が要求されたときに必ず通す手�
 | 数値・距離・時刻の文字列化 | `game/hud/utils.ts` |
 | ボタン列・ポップアップメニュー | `game/hud/buttons.ts` / `game/hud/context-menu.ts` |
 | 画面マーカー | `game/marker/` と、各対象の所有者の `sync` |
-| 線・メッシュ・ビルボードの生成 | `render/orbitline.ts` / `render/sampled-line.ts` / `render/ships.ts` / `render/billboard.ts` |
+| 線・メッシュ・ビルボードの生成 | `render/orbit-line.ts` / `render/sampled-line.ts` / `render/ships.ts` / `render/billboard.ts` |
 | 敵の生成 | `game/stages/spawner/` |
 | 色・チューニング定数 | `game/theme.ts` / `game/const.ts` |
 

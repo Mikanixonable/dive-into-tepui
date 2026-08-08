@@ -14,7 +14,8 @@ import {
   velocityOnOrbit,
 } from '../../src/physics/elements';
 import { Attractor, orbitalElementsOf } from '../../src/physics/attractor';
-import { MU_EARTH, R_EARTH, kinematicState } from '../../src/physics/kinematic-state';
+import { kinematicState } from '../../src/physics/kinematic-state';
+import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { MU_MOON } from '../../src/physics/solar-system';
 import { len, sub, v3 } from '../../src/physics/vec3';
 

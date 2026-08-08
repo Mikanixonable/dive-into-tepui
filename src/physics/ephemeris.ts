@@ -122,7 +122,7 @@ export class Ephemeris {
   // 天体 id に固定した回転基準系(x̂ = 中心天体→id、ẑ = 軌道面法線)。中心は分類から決まる
   // (惑星なら恒星、衛星ならその惑星)。衛星の周期項は平均要素に含めないので、この基底は
   // 実位置の x̂ 軸から最大 1.4° ほどずれる(satellite-orbit.ts 参照)。
-  orbitRotationAt(id: OrbitingId, t: number): FrameRotation {
+  orbitFrameRotationAt(id: OrbitingId, t: number): FrameRotation {
     return keplerOrbitRotation(keplerOrbitOf(bodyDef(id)), t, this.phaseOf(id));
   }
 
@@ -132,7 +132,7 @@ export class Ephemeris {
   }
 
   // secondary(公転している天体)を副天体とする円制限三体問題のラグランジュ点。中心天体
-  // (主天体)は分類から決まる(惑星なら恒星、衛星ならその惑星)。回転系は orbitRotationAt(id)
+  // (主天体)は分類から決まる(惑星なら恒星、衛星ならその惑星)。回転系は orbitFrameRotationAt(id)
   // の姿勢(x̂ = 主天体→副天体)そのものを使う。
   lagrangeAt(secondary: OrbitingId, t: number): LagrangePoints {
     const def = bodyDef(secondary);
@@ -140,7 +140,7 @@ export class Ephemeris {
     const primaryPos = this.positionOf(primary, t);
     const secondaryPos = this.positionOf(secondary, t);
     const R = len(sub(secondaryPos, primaryPos));
-    const { q } = this.orbitRotationAt(secondary, t);
+    const { q } = this.orbitFrameRotationAt(secondary, t);
     const mu = def.mu / (bodyDef(primary).mu + def.mu);
     return lagrangePoints(mu, (x, y) => add(primaryPos, qRotate(q, v3(R * x, R * y, 0))));
   }
@@ -159,7 +159,7 @@ export class Ephemeris {
     const origin = this.stateOf(frame.center, t);
     const { q, omega } = frame.rotatingWith === null
       ? IDENTITY_ROTATION
-      : this.orbitRotationAt(frame.rotatingWith, t);
+      : this.orbitFrameRotationAt(frame.rotatingWith, t);
     return { origin: origin.r, originVel: origin.v, q, omega };
   }
 

@@ -2,13 +2,12 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import {
-  MU_EARTH,
-  R_EARTH,
   fromOrbitAxes,
   hermiteInterpolate,
   kinematicState,
   orbitAxes,
 } from '../../src/physics/kinematic-state';
+import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { stateFromOrbitalElements } from '../../src/physics/elements';
 import { stepRK4 } from '../../src/physics/dynamics';
 import { Vec3, dot, len, norm, sub, v3 } from '../../src/physics/vec3';

@@ -4,7 +4,8 @@
 // この1ファイルに並べて置き、互いを見比べやすくする。
 import * as THREE from 'three/webgpu';
 import { qFromForwardUp, randomQuat } from '../../../physics/attitude';
-import { MU_EARTH, KinematicState, R_EARTH, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
+import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
+import { MU_EARTH, R_EARTH } from '../../../physics/solar-system';
 import { stateFromOrbitalElements } from '../../../physics/elements';
 import { len, norm, randSym, rotateAxis, scale, v3 } from '../../../physics/vec3';
 import { Hud } from '../../hud/hud';
