@@ -4,7 +4,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, EDGE, BG, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
 
 
-const throttleLabels = [K.throttleLow, K.throttleMid, K.throttleHigh].map((k) => k.label).join(' / ');
+const throttleKeyLabels = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax].map((k) => k.label).join(' / ');
 
 const STYLE = `
 #hud, #hud * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -588,6 +588,13 @@ export function syncNavballPlacement(root: HTMLElement, mapMode: boolean): void 
   if (navball && target && navball.parentElement !== target) target.appendChild(navball);
 }
 
+// マップビューでは ORBIT パネルを右ドックへ移し、他の map 系パネルと同様に折り畳めるようにする。
+export function syncOrbitPlacement(root: HTMLElement, mapMode: boolean): void {
+  const orbit = root.querySelector<HTMLElement>('#hud-orbit');
+  const target = root.querySelector<HTMLElement>(mapMode ? '#hud-dock-right' : '#hud-combat-shelf');
+  if (orbit && target && orbit.parentElement !== target) target.appendChild(orbit);
+}
+
 export function syncHudModalState(): void {
   const helpOpen = getComputedStyle(document.getElementById('hud-help')!).display !== 'none';
   const settingsOpen = getComputedStyle(document.getElementById('hud-settings')!).display !== 'none';
@@ -635,7 +642,7 @@ function buildInfoPanels(root: HTMLElement): void {
   status.innerHTML = `
     <h3>SHIP STATUS</h3>
     <div class="row"><span class="k">RCS制動 [${K.rcsDampToggle.label}]</span><span class="v" data-id="rcs"></span></div>
-    <div class="row"><span class="k">並進出力 [${K.throttleLow.label}-${K.throttleHigh.label}]</span><span class="v" data-id="throttle"></span></div>
+    <div class="row"><span class="k">並進出力 [${K.throttleLow.label}-${K.throttleMax.label}]</span><span class="v" data-id="throttle"></span></div>
     <div class="row"><span class="k">微調整 [${K.fineAttitudeToggle.label}]</span><span class="v" data-id="fine"></span></div>
     <div class="row"><span class="k">進行方向ホールド [${K.progradeHoldToggle.label}]</span><span class="v" data-id="prohold"></span></div>
     <div class="row"><span class="k">視点のRCS追従 [${K.followAttitudeToggle.label}]</span><span class="v" data-id="camfollow"></span></div>
@@ -712,7 +719,7 @@ function buildHelpPanel(root: HTMLElement): void {
       </td><td>回転 (ピッチ / ヨー / ロール)</td></tr>
       <tr><td class="key">${K.rcsDampToggle.label}</td><td>RCS 回転制動 ON/OFF</td></tr>
       <tr><td class="key">${K.progradeReset.label}</td><td>プログレード姿勢リセット (機首を進行方向へ即座に向ける)</td></tr>
-      <tr><td class="key">${throttleLabels}</td><td>並進出力の切替 (弱 / 中 / 強)。並進 6 方向に共通で適用される</td></tr>
+      <tr><td class="key">${throttleKeyLabels}</td><td>並進出力の切替 (${C.THROTTLE_LABELS.join(' / ')})。並進 6 方向に共通で適用される</td></tr>
       <tr><td class="key">${K.fineAttitudeToggle.label}</td><td>姿勢微調整モード ON/OFF (角加速度・角速度を絞って小刻みに操作)</td></tr>
       <tr><td class="key">${K.progradeHoldToggle.label}</td><td>進行方向ホールド ON/OFF (機首をプログレード方向へ自動で向け続ける。手動回転で解除)</td></tr>
       <tr><td class="key">${K.radiatorDeployLeft.label} / ${K.radiatorDeployRight.label}</td><td>ラジエーター展開/収納 (左 / 右)</td></tr>
