@@ -5,7 +5,9 @@
 import { Attractor, Degree2Gravity, attractorAccel } from './attractor';
 import { OrbitState, orbitState } from './orbital-state';
 import { dragAccel } from './atmosphere';
-import { Vec3, add, cross, dot, v3 } from './vec3';
+import { sunlitFactor } from './shadow';
+import { srpAccel } from './srp';
+import { Vec3, add, cross, dot, norm, v3 } from './vec3';
 
 // 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに呼ばれる。
 type AccelFn = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => Vec3;
@@ -94,10 +96,18 @@ export function stepOrbitRK4(s: OrbitState, dt: number, accel: AccelFn): OrbitSt
 }
 
 // 全天体からの重力(Σ attractorAccel — ECI が非慣性系であることの補正込み)と、2次重力場を
-// 持つ天体ぶんのその摂動、および大気抵抗。天体の同定は Attractor が自分で持つ degree2 に
+// 持つ天体ぶんのその摂動、大気抵抗、太陽輻射圧。天体の同定は Attractor が自分で持つ degree2 に
 // 委ねるので、ここに固有名の分岐は現れない。
-function accel(r: Vec3, v: Vec3, bodies: readonly Attractor[], bcInv: number): Vec3 {
+function accel(
+  r: Vec3,
+  v: Vec3,
+  bodies: readonly Attractor[],
+  bcInv: number,
+  srpCoeff: number,
+  penumbra: number,
+): Vec3 {
   let ax = 0, ay = 0, az = 0;
+  let sun: Attractor | null = null;
   for (const body of bodies) {
     const g = attractorAccel(r, body);
     ax += g.x; ay += g.y; az += g.z;
@@ -107,17 +117,31 @@ function accel(r: Vec3, v: Vec3, bodies: readonly Attractor[], bcInv: number): V
       const d2 = degree2Accel(v3(r.x - b.x, r.y - b.y, r.z - b.z), body.mu, body.degree2);
       ax += d2.x; ay += d2.y; az += d2.z;
     }
+    if (body.id === 'sun') sun = body;
+  }
+  if (sun !== null && srpCoeff !== 0) {
+    const srp = srpAccel(r, sun, srpCoeff, sunlitFactor(r, norm(sun.state.r), penumbra));
+    ax += srp.x; ay += srp.y; az += srp.z;
   }
   const drag = dragAccel(r, v, bcInv);
   return v3(ax + drag.x, ay + drag.y, az + drag.z);
 }
 
-// 全天体重力 + 2次重力場 + 大気抵抗 + 推力の RK4 1ステップ。bodies はこのステップぶん
-// 呼び出し側が確定させた重力源一覧(Ephemeris.attractorsAt)。bcInv/thrust は種別ごとに
-// 異なるため引数で受け取り、モジュール内に既定値を持たない。
-export function stepDynamicsRK4(state: OrbitState, dt: number, bodies: readonly Attractor[], bcInv: number, thrust: Vec3 | null): OrbitState {
+// 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力の RK4 1ステップ。bodies はこの
+// ステップぶん呼び出し側が確定させた重力源一覧(Ephemeris.attractorsAt)。bcInv/srpCoeff/
+// thrust は種別ごとに、penumbra は表現上の選択として異なるため引数で受け取り、モジュール内に
+// 既定値を持たない。
+export function stepDynamicsRK4(
+  state: OrbitState,
+  dt: number,
+  bodies: readonly Attractor[],
+  bcInv: number,
+  srpCoeff: number,
+  penumbra: number,
+  thrust: Vec3 | null,
+): OrbitState {
   return stepOrbitRK4(state, dt, (rx, ry, rz, vx, vy, vz) => {
-    const a = accel(v3(rx, ry, rz), v3(vx, vy, vz), bodies, bcInv);
+    const a = accel(v3(rx, ry, rz), v3(vx, vy, vz), bodies, bcInv, srpCoeff, penumbra);
     return thrust ? add(a, thrust) : a;
   });
 }
