@@ -129,3 +129,18 @@ minCountって使われているか？
 ## 物理的正確さとパフォーマンスのトレードオフの検証
 シミュレーションのサブステップやRK4の4ステージにおいて計算を間引いている箇所については、それはあくまでもパフォーマンス向上だけが目的の計算省略であり、実測して問題がなければ物理的正確さを優先すべき事案である。
 計算時間の実測と、誤差の実測の両面から検証したい。
+
+
+### `Manager` / `System` / `Physics` 接尾辞の使い分けの意味のなさ、別軸で分類できないか
+
+「所有して毎フレーム駆動するもの」の接尾辞が4系統ある。`Manager` と `System` はどちらも中身を説明していない。
+
+- `*Manager`: `EntityManager` `MarkerManager` `UnlockManager` `SaveManager` `DisplayTimeManager` `SimSpeedManager` `FlashEffectManager` `ViewManager`
+- `*System`: `CameraSystem` `CombatCameraSystem` `HitSystem` `EffectsSystem` `PowerSystem` `RadiatorSystem` `ThermalSystem`
+- `*Physics`: `CollisionPhysics` `BeltPhysics`
+- 動作主体名: `Simulator` `Predictor` `Targeter` `MapPicker` `Docking`
+
+| 現在 | 案 | 今の実装で表しているもの | 提案の理由 |
+|---|---|---|---|
+| 4系統の混在 | **一括改名しない。「今後 `Manager`/`System` を新設しない」規則にとどめる**(推奨) | 毎フレーム駆動される所有者 | 置換範囲が広く挙動と無関係。既存を動かす価値が改名コストに見合わない |
+| 同上 | 動作主体名(`-er`)へ寄せる | 同上 | 語が説明的になる。ただし `EntityManager` → `EntityHolder` など、うまい名前にならないものが残る |
