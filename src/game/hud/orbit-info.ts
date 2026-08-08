@@ -17,8 +17,8 @@ export interface OrbitInfo {
 
 // エンティティの現在状態から基準天体(strongestAttractor)・高度・速度・遠地点・近地点・
 // 傾斜角・周期を導出する。要素が求まらない状態(双曲線軌道等)では ap/pe/inc/period を NaN にする。
-export function orbitInfo(entity: GameEntity, bodies: readonly Attractor[]): OrbitInfo {
-  const center = strongestAttractor(entity.state.r, bodies);
+export function orbitInfo(entity: GameEntity, attractors: readonly Attractor[]): OrbitInfo {
+  const center = strongestAttractor(entity.state.r, attractors);
   const el = entity.orbitalElementsAround(center);
   // apsis 高度は center の半径基準。
   const apsis = el ? apsisAltitudes(el) : null;
@@ -42,9 +42,9 @@ export interface RelativeInfo {
 
 // self から見た other の距離・接近速度・相対速度・相対傾斜角を導出する。相対傾斜角は
 // 双方の基準天体(strongestAttractor)が一致するときのみ意味を持ち、異なる場合は NaN にする。
-export function relativeInfo(self: GameEntity, other: GameEntity, bodies: readonly Attractor[]): RelativeInfo {
-  const selfCenter = strongestAttractor(self.state.r, bodies);
-  const otherCenter = strongestAttractor(other.state.r, bodies);
+export function relativeInfo(self: GameEntity, other: GameEntity, attractors: readonly Attractor[]): RelativeInfo {
+  const selfCenter = strongestAttractor(self.state.r, attractors);
+  const otherCenter = strongestAttractor(other.state.r, attractors);
   const selfEl = self.orbitalElementsAround(selfCenter);
   const otherEl = other.orbitalElementsAround(otherCenter);
   const relP = sub(other.state.r, self.state.r);
