@@ -235,10 +235,10 @@ export class CreativeStage extends Stage {
         const finalName = name || `Ammo-${this.nextShipId}`;
         this._hud.hint(`${finalName} を配置`);
       } else if (form.objectType === 'base') {
-        const base = new Base(state, this._scene);
-        this._entities.addBase(base);
         const finalName = name || `Base-${this.nextShipId++}`;
-        this._hud.hint(`${finalName} を配置`);
+        const base = new Base(state, this._scene, finalName);
+        this._entities.addBase(base);
+        this._hud.hint(`${base.name} を配置`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '入力を解釈できません';
