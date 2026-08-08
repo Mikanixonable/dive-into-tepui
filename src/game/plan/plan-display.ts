@@ -1,11 +1,11 @@
 // 軌道計画の姿の表示: 計画折れ線(PlanPath)の駆動、表示座標系(planFrame)、
 // 表示時刻の計画上の自機位置ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
-import { positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/elements';
 import { Vec3, len, sub } from '../../physics/vec3';
-import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
+import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { apparentEccentricity, findApsis } from '../../physics/trajectory-features';
 import { isOccluded } from '../../physics/occlusion';
-import { ReferenceFrame, INERTIAL_FRAME, frameKinematicState, toFrameState, toInertialState } from '../../physics/frame';
+import { ReferenceFrame, INERTIAL_FRAME } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
 import { MarkerManager } from '../marker/marker-manager';
@@ -140,15 +140,8 @@ export class PlanDisplay {
 
   // アプシスアイコン id に対応する通過時刻。アイコンが出ていない id では null。
   apsisTimeOf(id: string): number | null {
-    const state0 = this.path.finalSegmentStart;
-    if (!state0 || !this.plan || !this.apsisIcons.some((icon) => icon.id === id)) return null;
-    const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
-    const relative = toFrameState(frameOfAttractor(center), state0);
-    const el = orbitalElementsOf(state0, center);
-    if (!el) return null;
-    const nu = id === 'apsisAp' ? Math.PI : 0;
-    const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
-    return isFinite(dt) ? state0.t + dt : null;
+    const icon = this.apsisIcons.find((i) => i.id === id);
+    return icon?.time ?? null;
   }
 
   // displayTime における計画上の自機位置とそのラベル。折れ線の届く範囲外、または
@@ -188,41 +181,35 @@ export class PlanDisplay {
     return `T+${h}h${String(m).padStart(2, '0')}m 高度 ${fmtMarkerDist(alt, 0)}`;
   }
 
-  // 最後のバーン後の軌道(これから乗る軌道)の近地点・遠地点アイコンを、その軌道要素から
-  // 解析的に求める。離心率がほぼ0で方向が不定なら空、双曲線軌道なら近地点だけ。
+  // 最後のバーン後の軌道(これから乗る軌道)の近地点・遠地点アイコンを、実際に描かれている
+  // 積分折れ線(finalSegmentSamples)を走査して求める — 解析要素はエポックが動くだけで
+  // J2 短周期振動ぶん値が変わるため、Δv=0 のノードを置いても線の上のアイコンが動かない
+  // ようにするには、ノードの有無に関わらず同じ折れ線から拾う必要がある。
+  // apparentEccentricity がほぼ0(円に近い)なら方向が不定として両方隠す。
   private apsisIconsOf(): readonly ApsisIcon[] {
     const state0 = this.path.finalSegmentStart;
-    if (!state0 || !this.plan) return [];
+    const samples = this.path.finalSegmentSamples;
+    if (!state0 || !samples || !this.plan) return [];
     const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
-    const tf = frameOfAttractor(center);
-    const relative = toFrameState(tf, state0);
-    const el = orbitalElementsOf(state0, center);
-    if (!el || el.e < C.APSIS_MIN_ECC) return [];
+    if (apparentEccentricity(samples, center) < C.APSIS_MIN_ECC) return [];
 
-    const apsisPosition = (nu: number): { pos: Vec3, time: number } => {
-      const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
-      const t = state0.t + (isFinite(dt) ? dt : 0);
-      const relativeState = frameKinematicState(positionOnOrbit(el, nu), relative.v);
-      return {
-        pos: this.path.toDisplay(toInertialState(tf, t, relativeState).r, t),
-        time: t
-      };
-    };
-
-    const pe = apsisPosition(0);
-    const icons: ApsisIcon[] = [{
-      id: 'apsisPe', name: '近地点', kind: 'apsis',
-      pos: pe.pos,
-      time: pe.time,
-      label: `Pe ${fmtDist(el.p / (1 + el.e) - center.radius)}`,
-    }];
-    if (el.e < 1) {
-      const ap = apsisPosition(Math.PI);
+    const icons: ApsisIcon[] = [];
+    const pe = findApsis(samples, center, 'periapsis');
+    if (pe) {
+      icons.push({
+        id: 'apsisPe', name: '近地点', kind: 'apsis',
+        pos: this.path.toDisplay(pe.r, pe.t),
+        time: pe.t,
+        label: `Pe ${fmtDist(len(sub(pe.r, center.state.r)) - center.radius)}`,
+      });
+    }
+    const ap = findApsis(samples, center, 'apoapsis');
+    if (ap) {
       icons.push({
         id: 'apsisAp', name: '遠地点', kind: 'apsis',
-        pos: ap.pos,
-        time: ap.time,
-        label: `Ap ${fmtDist(el.a * (1 + el.e) - center.radius)}`,
+        pos: this.path.toDisplay(ap.r, ap.t),
+        time: ap.t,
+        label: `Ap ${fmtDist(len(sub(ap.r, center.state.r)) - center.radius)}`,
       });
     }
     return icons;
