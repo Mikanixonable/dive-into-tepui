@@ -5,11 +5,8 @@ import { apsisAltitudes } from '../../physics/elements';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { dot, len, sub } from '../../physics/vec3';
 import type { Game } from '../game';
-import { fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
+import { SIM_EPOCH_SEC, fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
 import { ATTRACTOR_NAMES } from './frame-labels';
-
-// simTime=0 に対応する絶対時刻 [unix s]。HUD の現在日時表示にのみ使う。
-const SIM_EPOCH_SEC = Date.parse(C.SIM_EPOCH_UTC) / 1000;
 
 interface StatsData {
   met: number;
