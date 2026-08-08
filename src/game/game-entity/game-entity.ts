@@ -45,6 +45,7 @@ export class GameEntity {
   torque: Vec3 = v3();
   // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。
   protected readonly bcInv: number = 0;
+  protected readonly srpCoeff: number = 0;
   // 過去列の保持時間 [s]。既定 0 = 記録しない。
   protected readonly historyDuration: number = 0;
   // 未来を予測する種別か。既定 false。予測する長さは表示期間に追従するので、
@@ -95,7 +96,7 @@ export class GameEntity {
     const interval = this.historyDuration > 0
       ? this.sampleInterval(attractors, this.state, this.historyDuration)
       : 0;
-    this.actualTrajectory.step(dt, attractors, this.bcInv, this.thrust, interval, this.historyDuration);
+    this.actualTrajectory.step(dt, attractors, this.bcInv, this.srpCoeff, C.SHADOW_PENUMBRA, this.thrust, interval, this.historyDuration);
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
@@ -149,7 +150,7 @@ export class GameEntity {
     // 越えたところまで伸ばす。
     if (p.state.t > simTime + horizon) return false;
 
-    p.step(dt, attractors, this.bcInv, null, this.sampleInterval(attractors, p.state, horizon), horizon);
+    p.step(dt, attractors, this.bcInv, this.srpCoeff, C.SHADOW_PENUMBRA, null, this.sampleInterval(attractors, p.state, horizon), horizon);
 
     // 有限チェック
     const { r, v } = p.state;

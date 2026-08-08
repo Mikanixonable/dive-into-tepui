@@ -7,11 +7,13 @@ export type MenuAction =
   | 'addNode'
   | 'activate'
   | 'followToggle'
+  | 'duplicate'
   | 'delete'
   | 'cancel'
   | 'openShipPlacer'
   | 'openDock'
-  | 'openObjectList';
+  | 'openObjectList'
+  | 'openSettings';
 
 // 共通メニュー項目ファクトリ
 export const MenuCommon = {
@@ -20,6 +22,7 @@ export const MenuCommon = {
   warp: (): MenuItem<MenuAction> => ({ label: 'この位置まで時間を加速', act: 'warp', shortcut: 'w' }),
   addNode: (): MenuItem<MenuAction> => ({ label: 'ここにノードを追加', act: 'addNode', shortcut: 'n' }),
   deleteNode: (): MenuItem<MenuAction> => ({ label: 'ノードを削除', act: 'delete', shortcut: 'Delete' }),
+  duplicate: (): MenuItem<MenuAction> => ({ label: '複製', act: 'duplicate' }),
   navTarget: (isTarget: boolean): MenuItem<MenuAction> => ({
     label: isTarget ? '航法ターゲット解除' : '航法ターゲットに設定',
     act: 'navTarget',

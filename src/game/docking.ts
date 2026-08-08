@@ -23,7 +23,7 @@ import type { MarkerManager } from './marker/marker-manager';
 
 export class Docking {
   readonly dockView: DockView;
-  // ドックビューの対象基地。設定されている間だけドックビューへ遷移できる。
+  // 選択中/ドックビューの対象基地。設定されている間だけドックビューへ遷移できる。
   private _activeBase: Base | null = null;
   // 新造艦の連番。基地をまたいで一意な id/表示名を割り振るだけの用途。
   private nextBuiltShipNo = 0;
@@ -56,9 +56,15 @@ export class Docking {
     if (input.takeKey(K.pauseMenu)) this.viewManager.leaveDock();
   }
 
-  // 基地をドックビューの対象に据え、そのままドックビューへ遷移する。
-  activate(base: Base): void {
+  // 基地を選択状態にする(遷移はしない) — マップの左クリック選択と、明示的にドックへ
+  // 入る操作(activate)の両方がここを通る。
+  selectBase(base: Base): void {
     this._activeBase = base;
+  }
+
+  // 基地を選択し、そのままドックビューへ遷移する。
+  activate(base: Base): void {
+    this.selectBase(base);
     this.viewManager.setView('dock');
   }
 
