@@ -3,8 +3,8 @@ import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
 import { MU_EARTH, R_EARTH, kinematicState } from '../../physics/kinematic-state';
-import { Elements } from '../../physics/elements';
-import { Attractor, elementsAround } from '../../physics/attractor';
+import { OrbitalElements } from '../../physics/elements';
+import { Attractor, orbitalElementsOf } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { OrbitLine } from '../../render/orbitline';
 import { createStars } from '../../render/stars';
@@ -20,7 +20,7 @@ import { SunBody } from './sun-body';
 const EARTH_ATTRACTOR: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)) };
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。
-const GEO_ELEMENTS: Elements = {
+const GEO_ELEMENTS: OrbitalElements = {
   a: R_EARTH + 35786e3,
   e: 1e-6,
   p: R_EARTH + 35786e3,
@@ -106,7 +106,7 @@ export class EnvironmentScene {
 
   // 月の接触軌道要素(表示専用)。月自身は entity ではなく解析式のみを持つため、
   // ephemeris の解析状態をそのまま他の軌道線と同じ経路に載せる。
-  private moonOrbitElements(simTime: number): Elements | null {
-    return elementsAround(this.ephemeris.stateOf('moon', simTime), EARTH_ATTRACTOR);
+  private moonOrbitElements(simTime: number): OrbitalElements | null {
+    return orbitalElementsOf(this.ephemeris.stateOf('moon', simTime), EARTH_ATTRACTOR);
   }
 }

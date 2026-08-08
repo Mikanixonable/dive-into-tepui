@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { assertOmegaMatchesBasis } from './test-helpers';
-import { Elements, keplerPeriod, timeSincePeriapsis, trueAnomalyFromMean } from '../../src/physics/elements';
+import { OrbitalElements, keplerPeriod, timeSincePeriapsis, trueAnomalyFromMean } from '../../src/physics/elements';
 import { Attractor } from '../../src/physics/attractor';
 import { KeplerOrbit, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { MU_EARTH, R_EARTH, kinematicState } from '../../src/physics/kinematic-state';
@@ -67,7 +67,7 @@ export function register(): void {
   test('kepler-orbit: eccentricAnomalyFromMean/trueAnomalyFromMean は timeSincePeriapsis の逆写像になる(機械精度)', () => {
     const a = R_EARTH + 500e3;
     for (const e of [0, 0.0549, 0.3]) {
-      const el: Elements = {
+      const el: OrbitalElements = {
         a, e, p: a * (1 - e * e), incDeg: 0, period: keplerPeriod(a, MU_EARTH),
         pHat: v3(1, 0, 0), qHat: v3(0, 1, 0), hHat: v3(0, 0, 1), center: EARTH,
       };
