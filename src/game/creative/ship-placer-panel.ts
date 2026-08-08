@@ -16,29 +16,36 @@ export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'libration';
 export type LibrationOrbitKind = 'halo' | 'lissajous';
 
-// 確定時点のフォーム全値。placementMode が 'elements' なら sizeMode が選んだ組(残りは無視して
-// よい)、'libration' ならラグランジュ点側の値を使う — 両方まとめて渡し、どちらを使うかは
-// 確定側(CreativeStage)が placementMode を見て決める。
-export interface ShipPlacerForm {
-  readonly objectType: ObjectType;
-  readonly placementMode: PlacementMode;
+// 軌道要素指定のサイズ/形: sizeMode が選んだ組の値だけを持つ。
+export type EllipticSizeForm =
+  | { readonly sizeMode: 'apsides'; readonly peAltKm: number; readonly apAltKm: number }
+  | { readonly sizeMode: 'semiMajorEcc'; readonly semiMajorKm: number; readonly eccentricity: number }
+  | { readonly sizeMode: 'periodEcc'; readonly periodHours: number; readonly eccentricity: number };
+
+// 軌道要素指定一式: 基準天体・サイズ/形(上記)・向き/位相。
+export type ElementsForm = {
+  readonly placementMode: 'elements';
   readonly body: ReferenceBody;
-  readonly sizeMode: SizeShapeMode;
-  readonly peAltKm: number;
-  readonly apAltKm: number;
-  readonly semiMajorKm: number;
-  readonly eccentricity: number;
-  readonly periodHours: number;
   readonly incDeg: number;
   readonly raanDeg: number;
   readonly argpDeg: number;
   readonly nuDeg: number;
+} & EllipticSizeForm;
+
+// ラグランジュ点指定一式: 軌道種別ごとに持つ振幅が異なる(ハローは面外振幅のみ — 面内振幅は
+// 三次の振幅拘束で導出されるので入力値を持たない。リサジューは両方)。
+export type LibrationForm = {
+  readonly placementMode: 'libration';
   readonly librationSecondary: OrbitingId;
   readonly librationPoint: LibrationPoint;
-  readonly librationOrbitKind: LibrationOrbitKind;
-  readonly axKm: number;
-  readonly azKm: number;
-}
+} & (
+  | { readonly librationOrbitKind: 'halo'; readonly azKm: number }
+  | { readonly librationOrbitKind: 'lissajous'; readonly axKm: number; readonly azKm: number }
+);
+
+// 確定時点のフォーム値。placementMode を判別子とし、選ばれた配置方法(・サイズ/形・軌道種別)が
+// 実際に使う値だけを持つ。
+export type ShipPlacerForm = { readonly objectType: ObjectType } & (ElementsForm | LibrationForm);
 
 const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string])[] = [
   ['player', '自機'],
@@ -526,36 +533,54 @@ export class ShipPlacerPanel {
   private confirm(): void {
     // 空欄なら確定側(CreativeStage.placeObject)が種別ごとの既定名で自動命名する。
     const name = this.nameInput.value.trim();
-    // 選ばれなかった側の入力値も含めてまとめて渡す(確定側が placementMode/sizeMode を見て
-    // 使う組を選ぶ)。
     const form = this.getForm();
     this.onConfirm?.(name, form);
     this.setVisible(false);
     this.onClose?.();
   }
 
-  // 現在のフォームの値を読み取って ShipPlacerForm を返す。プレビュー用にも使用。
+  // 現在のフォームの値を、選ばれた組・種別が使う値だけを読み取って ShipPlacerForm へ組む。
+  // プレビュー用にも使用。
   getForm(): ShipPlacerForm {
-    return {
-      objectType: this.objectTypeValue,
-      placementMode: this.placementModeValue,
+    const objectType = this.objectTypeValue;
+    if (this.placementModeValue === 'libration') {
+      const common = {
+        placementMode: 'libration' as const,
+        librationSecondary: this.librationSecondaryValue,
+        librationPoint: this.librationPointValue,
+      };
+      if (this.librationOrbitKindValue === 'halo') {
+        return { objectType, ...common, librationOrbitKind: 'halo', azKm: Number(this.libAz.value) };
+      }
+      return {
+        objectType, ...common, librationOrbitKind: 'lissajous',
+        axKm: Number(this.libAx.value), azKm: Number(this.libAz.value),
+      };
+    }
+    const common = {
+      placementMode: 'elements' as const,
       body: this.bodyValue,
-      sizeMode: this.sizeModeValue,
-      peAltKm: Number(this.peAlt.input.value),
-      apAltKm: Number(this.apAlt.input.value),
-      semiMajorKm: Number(this.semiMajor.value),
-      eccentricity: this.sizeModeValue === 'periodEcc' ? Number(this.eccPeriod.value) : Number(this.eccSemiMajor.value),
-      periodHours: Number(this.period.value),
       incDeg: Number(this.inc.input.value),
       raanDeg: Number(this.raan.input.value),
       argpDeg: Number(this.argp.input.value),
       nuDeg: Number(this.nu.input.value),
-      librationSecondary: this.librationSecondaryValue,
-      librationPoint: this.librationPointValue,
-      librationOrbitKind: this.librationOrbitKindValue,
-      axKm: Number(this.libAx.value),
-      azKm: Number(this.libAz.value),
     };
+    if (this.sizeModeValue === 'apsides') {
+      return {
+        objectType, ...common, sizeMode: 'apsides',
+        peAltKm: Number(this.peAlt.input.value), apAltKm: Number(this.apAlt.input.value),
+      };
+    } else if (this.sizeModeValue === 'semiMajorEcc') {
+      return {
+        objectType, ...common, sizeMode: 'semiMajorEcc',
+        semiMajorKm: Number(this.semiMajor.value), eccentricity: Number(this.eccSemiMajor.value),
+      };
+    } else {
+      return {
+        objectType, ...common, sizeMode: 'periodEcc',
+        periodHours: Number(this.period.value), eccentricity: Number(this.eccPeriod.value),
+      };
+    }
   }
 
   // パネルの表示/非表示を切り替える。開くときは defaultBody が基準天体になれる ID

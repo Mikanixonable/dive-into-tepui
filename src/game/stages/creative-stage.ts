@@ -23,7 +23,7 @@ import { Ammo } from '../game-entity/ammo';
 import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import * as C from '../const';
-import { ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
+import { ElementsForm, LibrationForm, ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
 import { validateEllipticPlacement, validateBaseReference, validateLibrationPlacementFields } from '../creative/placement-validation';
 import { OrbitLine } from '../../render/orbitline';
 
@@ -189,8 +189,8 @@ export class CreativeStage extends Stage {
   }
 
   // 副天体・点・軌道種別・振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
-  // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォームの面内振幅は使わない。
-  private buildLibrationState(form: ShipPlacerForm): OrbitState {
+  // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォーム自体に面内振幅の値がない。
+  private buildLibrationState(form: LibrationForm): OrbitState {
     const common = { secondary: form.librationSecondary, point: form.librationPoint };
     if (form.librationOrbitKind === 'halo') {
       return haloState(this._simulator.simTime, this._ephemeris, { ...common, az: form.azKm * 1e3 });
@@ -202,14 +202,14 @@ export class CreativeStage extends Stage {
 
   // フォームの基準天体(地球 or 月)を、その時刻の重力源として引く。μ・半径・ECI 化に
   // 要る情報がすべてここから出る。
-  private referenceAttractor(form: ShipPlacerForm): Attractor {
+  private referenceAttractor(form: ElementsForm): Attractor {
     return this._ephemeris.attractorsAt(this._simulator.simTime).find((b) => b.id === form.body)!;
   }
 
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
   // (stateFromElements)で基準天体中心の相対状態を組んでから、基準天体自身の位置・速度を
   // 足して ECI 化する(地球基準では位置・速度とも厳密に 0 なので、実質そのまま返る)。
-  private buildElementsState(form: ShipPlacerForm): OrbitState {
+  private buildElementsState(form: ElementsForm): OrbitState {
     const body = this.referenceAttractor(form);
     let a: number;
     let e: number;
@@ -233,28 +233,36 @@ export class CreativeStage extends Stage {
   }
 
   // 軌道要素指定フォームの値が物理的に成立するか検証する。不正なら理由付きで例外を投げる。
-  private assertValidElementsForm(form: ShipPlacerForm): void {
+  private assertValidElementsForm(form: ElementsForm): void {
     const body = this.referenceAttractor(form);
-    const message = validateEllipticPlacement({
-      bodyRadius: body.radius, mu: body.mu, sizeMode: form.sizeMode,
-      peAltKm: form.peAltKm, apAltKm: form.apAltKm, semiMajorKm: form.semiMajorKm,
-      eccentricity: form.eccentricity, periodHours: form.periodHours,
+    const common = {
+      bodyRadius: body.radius, mu: body.mu,
       incDeg: form.incDeg, raanDeg: form.raanDeg, argpDeg: form.argpDeg, nuDeg: form.nuDeg,
-    });
+    };
+    const message = validateEllipticPlacement(
+      form.sizeMode === 'apsides' ? { ...common, sizeMode: 'apsides', peAltKm: form.peAltKm, apAltKm: form.apAltKm }
+      : form.sizeMode === 'semiMajorEcc'
+        ? { ...common, sizeMode: 'semiMajorEcc', semiMajorKm: form.semiMajorKm, eccentricity: form.eccentricity }
+        : { ...common, sizeMode: 'periodEcc', periodHours: form.periodHours, eccentricity: form.eccentricity },
+    );
     if (message) throw new Error(message);
   }
 
   // フォームの placementMode に応じた妥当性検証を行う。不正なら理由付きで例外を投げる。
   private assertValidForm(form: ShipPlacerForm): void {
-    const baseMessage = validateBaseReference(form.objectType, form.placementMode, form.body);
+    const baseMessage = validateBaseReference(
+      form.objectType, form.placementMode, form.placementMode === 'elements' ? form.body : undefined,
+    );
     if (baseMessage) throw new Error(baseMessage);
     if (form.placementMode === 'elements') {
       this.assertValidElementsForm(form);
       return;
     }
-    const [firstIssue] = validateLibrationPlacementFields({
-      orbitKind: form.librationOrbitKind, inPlaneAmplitudeKm: form.axKm, outOfPlaneAmplitudeKm: form.azKm,
-    });
+    const [firstIssue] = validateLibrationPlacementFields(
+      form.librationOrbitKind === 'halo'
+        ? { orbitKind: 'halo', outOfPlaneAmplitudeKm: form.azKm }
+        : { orbitKind: 'lissajous', inPlaneAmplitudeKm: form.axKm, outOfPlaneAmplitudeKm: form.azKm },
+    );
     if (firstIssue) throw new Error(firstIssue.message);
   }
 
