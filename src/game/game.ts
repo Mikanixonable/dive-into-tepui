@@ -607,7 +607,7 @@ export class Game {
     this.enemyMarkers.sync(enemyMarkerItems, project);
     if (player) this.leadMarkers.sync(player, aliveTargets, target, secondaryTarget, simTime, overviewMode, project);
 
-    this.displayTimeManager.sync(this.currentOrbitPeriod());
+    this.displayTimeManager.sync(simTime, this.currentOrbitPeriod());
     this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project);
     this.mapPicker.sync(overviewMode);
     // 月フライバイ等で積分予測と解析楕円が乖離した場合は、重なって誤解を招く
