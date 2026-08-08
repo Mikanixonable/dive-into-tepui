@@ -6,7 +6,7 @@ import { Attitude } from '../../physics/attitude';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { StateQueue } from '../../physics/state-queue';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Attractor, AttractorId, elementsAround as elementsAroundBody, hitsAnySurface, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, AttractorId, elementsAround as elementsAroundBody, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -155,7 +155,7 @@ export class GameEntity {
     const { r, v } = p.state;
     const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
       && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-    if (!finite || hitsAnySurface(r, attractors, C.REENTRY_ALT)) this.truncated = true;
+    if (!finite || hitCelestialBody(r, attractors, C.REENTRY_ALT)) this.truncated = true;
 
     return true;
   }
@@ -181,7 +181,7 @@ export class GameEntity {
   // 時刻の重力源一覧(表面到達判定に使う)。
   checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (hitsAnySurface(this.state.r, attractors, C.DEBRIS_REENTRY_ALT)) this.alive = false;
+    if (hitCelestialBody(this.state.r, attractors, C.DEBRIS_REENTRY_ALT)) this.alive = false;
   }
 
   // メッシュを scene から取り除く。

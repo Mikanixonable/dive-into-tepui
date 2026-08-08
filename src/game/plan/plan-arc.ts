@@ -6,7 +6,7 @@ import { OrbitState, hermiteInterpolate } from '../../physics/orbital-state';
 import { OrbitEntity } from '../../physics/orbit-entity';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Attractor, hitsAnySurface, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
 import { Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { SampledLine } from '../../render/sampled-line';
@@ -143,7 +143,7 @@ export class PlanArc {
       const { r, v } = entity.state;
       const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
         && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-      if (!finite || hitsAnySurface(r, attractors, C.REENTRY_ALT)) {
+      if (!finite || hitCelestialBody(r, attractors, C.REENTRY_ALT)) {
         this.truncated = true;
         break;
       }
