@@ -21,9 +21,9 @@ const STYLE = `
 /* --- 重なり順: マーカーは実行時に DOM 末尾へ追加されるため z-index を明示しないとパネルの上に出る。
      マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0)
      マーカー群(0-9) < 常設パネル(10) < プロパティウィンドウ(12) < ドックビュー(15) <
-     トースト・ヒント(20) < 終了画面・ヘルプ・セーブブラウザ(30) < ESCメニュー(40)
+     トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー・セーブブラウザ(40)
      ドックビューは画面全体を占めるビューなので常設パネル・プロパティウィンドウを覆うが、
-     トースト・ヒントとシステム窓(ヘルプ・セーブブラウザ・ESCメニュー)はその上に出す。 */
+     トースト・ヒントとシステム窓(ヘルプ・ESCメニュー・セーブブラウザ)はその上に出す。 */
 /* スクロール可能な領域は既定のブラウザ配色ではダークテーマと調和しないため、
    パネルの縁色・アクセント色に揃える。 */
 #hud, #hud * { scrollbar-color: ${EDGE} transparent; }
@@ -698,7 +698,9 @@ export function syncOrbitPlacement(root: HTMLElement, mapMode: boolean): void {
 export function syncHudModalState(): void {
   const helpOpen = getComputedStyle(document.getElementById('hud-help')!).display !== 'none';
   const settingsOpen = getComputedStyle(document.getElementById('hud-settings')!).display !== 'none';
-  const open = helpOpen || settingsOpen;
+  const saveBrowser = document.getElementById('save-browser');
+  const saveBrowserOpen = saveBrowser !== null && getComputedStyle(saveBrowser).display !== 'none';
+  const open = helpOpen || settingsOpen || saveBrowserOpen;
   document.body.classList.toggle('hud-modal-open', open);
   if (open) window.dispatchEvent(new Event('tepui-release-touch-inputs'));
 }
