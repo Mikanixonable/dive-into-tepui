@@ -31,12 +31,19 @@ import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from '../render/environment-scene';
 import { Ephemeris } from '../physics/ephemeris';
-import { MapModeToggler } from './map-mode-toggler';
+import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { DebugHistoryLine } from './debug-history-line';
 import { NavTarget } from './nav-target';
 import { MapPicker } from './map-picker';
 import { Navball } from './navball/navball';
+import { GameSaveData } from './save-data';
+import { Ammo } from './game-entity/ammo';
+import { SaveManager } from './save-manager';
+import { KEY_MAPPING as K } from './input/key-mapping';
+import { Docking } from './docking';
+import { ViewBadge } from './hud/view-badge';
+import { Base } from './game-entity/base';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -57,7 +64,7 @@ export class Game {
   private readonly editor: PlanEditor;
   private readonly displayTimeManager: DisplayTimeManager;
   private readonly guide: PlanGuide;
-  readonly mapModeToggler: MapModeToggler;
+  readonly viewManager: ViewManager;
   private readonly mapPicker: MapPicker;
 
   readonly activeStage: Stage;
@@ -82,6 +89,8 @@ export class Game {
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
   private readonly debugHistoryLine: DebugHistoryLine;
+  private readonly docking: Docking;
+  private readonly viewBadge: ViewBadge;
 
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
   constructor(
@@ -146,15 +155,15 @@ export class Game {
     );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
     // クリエイティブモードはマップから始まる。
-    this.mapModeToggler = new MapModeToggler(
+    this.viewManager = new ViewManager(
       this._hud, this.editor, this.cameraSystem, this.displayTimeManager, this.mapPicker,
-      launch.mode === 'creative',
+      launch.mode === 'creative' ? 'map' : 'combat',
     );
 
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
-    this.mapModeToggler.setTouchControls(this.touchControls);
+    this.viewManager.setTouchControls(this.touchControls);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, this._sfx, this.effects);
     this.predictor = new Predictor(this.entities, this.ephemeris);
@@ -193,6 +202,12 @@ export class Game {
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.debugHistoryLine = new DebugHistoryLine(this._scene);
+    this.docking = new Docking(
+      this, this._hud, this._sfx, this._scene, this.effects, this.markerManager,
+      this.entities, this.mapPicker, this.cameraSystem, this.viewManager,
+    );
+    this.mapPicker.setDocking(this.docking);
+    this.viewBadge = new ViewBadge(this._hud.root, this.viewManager);
 
     this.floatingOrigin = this.player
       ? new FloatingOrigin(this.player.state.r, this.player.state.v)
@@ -220,6 +235,18 @@ export class Game {
     this.targeter.clearTargets();
   }
 
+  // ship が null なら未配置状態(Creative の全滅/未収容)へ戻す。
+  setActivePlayerOrNull(ship: Player | null): void {
+    if (ship) this.setActivePlayer(ship);
+    else {
+      this.player = null;
+      this.editor.setActivePlayer(null);
+      this.viewManager.setView('map');
+    }
+  }
+
+  get isCreative(): boolean { return this.launchMode === 'creative'; }
+
   // MapPicker の削除口。参照を片付けてから EntityManager へ渡すため、削除後に stale id が残らない。
   removeCreativePlayer(ship: Player): void {
     const wasActive = this.player === ship;
@@ -235,9 +262,10 @@ export class Game {
     if (wasActive) {
       const next = this.entities.players.find((p) => p.alive) ?? null;
       if (next) this.setActivePlayer(next);
-      else this.mapModeToggler.ensureOpen();
+      else this.viewManager.setView('map');
     }
   }
+
 
   // このフレームの表示時刻(未来ゴーストのスライダーぶん先取りした simTime)。
   private get displayTime(): number {
@@ -245,6 +273,48 @@ export class Game {
   }
 
   get simTime(): number { return this.simulator.simTime; }
+
+  // ------------------------------------------------------------ save/load
+
+  restore(data: GameSaveData): void {
+    this.entities.clearAll();
+    this.player = null;
+    this.editor.setActivePlayer(null);
+    this.cameraSystem.setActivePlayer(null);
+    this.targeter.clearTargets();
+    this.navTarget.clearIfTargeting('');
+
+    // 時刻の復元
+    this.simulator.simTime = data.simTime;
+
+    // Playerの復元
+    if (data.player) {
+      const p = Player.restore(data.player, data.simTime, this._hud, this._sfx, this._scene, this.effects, this.markerManager);
+      this.entities.addPlayer(p);
+      this.setActivePlayer(p);
+    }
+
+    // Enemyの復元
+    for (const edata of data.enemies) {
+      const e = Enemy.restore(edata, data.simTime, this._hud, this._sfx, this.effects, this._scene);
+      this.entities.addEnemy(e);
+    }
+
+    // Ammoの復元
+    for (const adata of data.ammos) {
+      const a = Ammo.restore(adata, data.simTime, this._scene);
+      this.entities.addAmmo(a);
+    }
+
+    // Baseの復元(所持金・在庫・格納艦を含む)
+    for (const bdata of data.bases ?? []) {
+      const b = Base.restore(bdata, data.simTime, this._scene, this._hud, this._sfx, this.effects, this.markerManager);
+      this.entities.addBase(b);
+    }
+
+    // ロード直後の状態同期と安定化
+    this.entities.sync(this.floatingOrigin, data.simTime);
+  }
 
   // ------------------------------------------------------------ update
 
@@ -363,10 +433,16 @@ export class Game {
         if (next) this.setActivePlayer(next);
         else {
           this.editor.setActivePlayer(null);
-          this.mapModeToggler.ensureOpen();
+          this.viewManager.setView('map');
         }
       }
     }
+
+    // ドックビューが開いている間は収容判定を止める(発進直後の再収容ループを防ぐ)。
+    if (this.viewManager.current !== 'dock' && this.entities.bases.length > 0) {
+      this.docking.checkProximity();
+    }
+
 
     // Simulator内のsubstep cleanup後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせるため。
     this.predictor.update(
@@ -394,6 +470,7 @@ export class Game {
       this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
       this.editor.updateEditing(dt, this.input);
     } else if (this.player) {
+      this.navTarget.updateCombatBasePicking(this.entities, this.input, this.cameraSystem.activeCameraProjection);
       const targets = this.entities.getCombatTargets(this.player);
       this.targeter.updateCombatTargeting(
         this.player, targets, this.input, this.cameraSystem.activeCameraProjection,
@@ -426,6 +503,7 @@ export class Game {
   // 効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・計画破棄)。
   private handleInput(): void {
     // 上から下へ優先順位順に呼ぶ。
+    this.docking.handleInput(this.input);
     this.settingsPanel.handleInput(this.input);
     this._hud.handleInput(this.input);
     this.activeStage.handleInput(this.input);
@@ -438,18 +516,21 @@ export class Game {
     );
     // 戦闘ビューはアクティブ艦を前提とする。艦がまだ配置されていない/破壊されている間は無効。
     const canToggleView = this.player?.alive ?? false;
-    this.mapModeToggler.handleInput(this.input, this.activeStage.isPlaying, canToggleView);
+    this.viewManager.handleInput(this.input, this.activeStage.isPlaying, canToggleView);
     this.editor.handleInput(this.input);
+
+    if (this.input.takeKey(K.quickSave)) {
+      SaveManager.save(this);
+    }
+    if (this.input.takeKey(K.quickLoad)) {
+      SaveManager.load(this);
+    }
   }
 
   // ------------------------------------------------------------------ sync
 
   sync(): void {
-    this._hud.setContext(
-      this.launchMode === 'creative' ? 'CREATIVE' : 'STAGE',
-      this.launchMode === 'creative' ? 'CREATIVE' : this.activeStage.selectLabel,
-      this.mapModeToggler.mapMode ? 'MAP' : 'COMBAT',
-    );
+    this.viewBadge.sync(this.activeStage.selectLabel, this.activeStage.isPlaying && (this.player?.alive ?? false));
     const player = this.player;
     this.floatingOrigin = player
       ? new FloatingOrigin(player.state.r, player.state.v)
@@ -509,6 +590,7 @@ export class Game {
 
     this.displayTimeManager.sync();
     this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project);
+    this.mapPicker.sync(overviewMode);
     // 月フライバイ等で積分予測と解析楕円が乖離した場合は、重なって誤解を招く
     // 楕円近似線をマップ表示中だけ抑制する。戦闘ビューへ戻れば通常の線へ復帰する。
     if (player) {
@@ -538,6 +620,8 @@ export class Game {
   // ------------------------------------------------------------------ render
 
   render(): void {
+    // ドックビューは 3D 世界を持たず画面全体を不透明に覆うので、描画自体を止める。
+    if (this.viewManager.current === 'dock') return;
     this.renderer.render(this._scene, this.cameraSystem.activeCamera);
   }
 
@@ -553,3 +637,4 @@ export class Game {
     };
   }
 }
+

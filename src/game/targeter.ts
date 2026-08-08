@@ -98,6 +98,7 @@ export class Targeter {
       this.targetSelectAt = now;
       return;
     }
+    // 第一ターゲットが既にあるので、以降の連打は候補を順送りして第二ターゲットへ回す
     const secondaryCandidates = candidates.filter((x) => x.target !== primary);
     if (now - this.targetSelectAt > 2) this.targetSelectIndex = -1;
     this.targetSelectIndex = (this.targetSelectIndex + 1) % Math.max(1, secondaryCandidates.length);

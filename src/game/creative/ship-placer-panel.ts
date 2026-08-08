@@ -7,7 +7,7 @@ import { ATTRACTOR_NAMES } from '../hud/frame-labels';
 import { LibrationPoint, LibrationSystem } from '../../physics/halo';
 import * as C from '../const';
 
-export type ObjectType = 'player' | 'enemy' | 'ammo';
+export type ObjectType = 'player' | 'enemy' | 'ammo' | 'base';
 export type ReferenceBody = 'earth' | 'moon';
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'libration';
@@ -41,6 +41,7 @@ const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string])[] = [
   ['player', '自機'],
   ['enemy', '敵機'],
   ['ammo', '弾薬'],
+  ['base', '基地'],
 ];
 
 const PLACEMENT_MODE_ITEMS: readonly (readonly [PlacementMode, string])[] = [
@@ -143,7 +144,6 @@ export class ShipPlacerPanel {
   private librationSystemValue: LibrationSystem = 'earthMoon';
   private librationPointValue: LibrationPoint = 'L1';
   private librationOrbitKindValue: LibrationOrbitKind = 'halo';
-  private shipCount = 0;
 
   // 艦艇配置パネルの DOM を組み立て、root へ追加する。
   constructor(root: HTMLElement) {
@@ -298,9 +298,8 @@ export class ShipPlacerPanel {
 
   // フォームの現在値を読み、onConfirm へ通知する。
   private confirm(): void {
-    this.shipCount++;
-    // 空欄なら連番で自動命名する。
-    const name = this.nameInput.value.trim() || `SHIP-${this.shipCount}`;
+    // 空欄なら確定側(CreativeStage.placeObject)が種別ごとの既定名で自動命名する。
+    const name = this.nameInput.value.trim();
     // 選ばれなかった側の入力値も含めてまとめて渡す(確定側が placementMode/sizeMode を見て
     // 使う組を選ぶ)。
     const form = this.getForm();

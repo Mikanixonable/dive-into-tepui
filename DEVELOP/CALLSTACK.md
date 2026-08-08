@@ -47,25 +47,19 @@
         - hud.hint() // ノード無し or !isPlaying
         - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
         - startAutoWarpTo() + hud.hint() // 未開始
-    - mapModeToggler.handleInput()
-      - close(...) // !isPlaying && cameraSystem.overviewMode のみ(死亡/終了時にマップを強制的に閉じる)
-      - [ポーズ中] 何もせず return // [M] は消費もしない。開いていたマップはそのまま維持する
-      - [開く: !cameraSystem.overviewMode]
-        - editor.selectedNodeIdx = null
-        - touchControls?.setMapMode(true) // タッチデバイスのみ
-        - cameraSystem.overviewMode = true / editor.editMode = true / displayTimeManager.forceCurrent = false // 独立3責務を同時に立てる唯一の箇所
+    - docking.handleInput() // ドック表示中の [ESC] を先に消費する(設定画面と二重に効かせない)
+    - viewManager.handleInput() // ビュー遷移はすべて setView() を通る
+      - setView('combat') // !isPlaying のみ(死亡/終了時にドック・マップを強制的に閉じる)
+      - [current==='dock'] 何もせず return // [M] は消費もしない
+      - setView(current==='map' ? 'combat' : 'map') // [M]。canToggleView かつ isPlaying のみ
+        - [出るビューが dock] docking.leaveDock() → dockView.close() + game.resume()
+        - [3D 側ビューが map→他] editor.onMapClosed() / editor.closeMenu() / mapPicker.close()
+          - onMapClosed: hidePanel / hideGizmo / plan.removeNode(末尾の Δv 微小ノードを間引く) / selectedNodeIdx=null
+        - [3D 側ビューが 他→map] editor.selectedNodeIdx = null
+        - [入るビューが dock] docking.enterDock() → game.pause() + dockView.open(activeBase)
+        - applyChrome() // map-mode/dock-mode クラス・navball 配置・touchControls・
+                        // cameraSystem.overviewMode・editor.editMode・displayTimeManager.forceCurrent を一斉に揃える
         - hud.hint()
-      - [閉じる: cameraSystem.overviewMode]
-        - editor.onMapClosed()
-          - hidePanel()
-          - hideGizmo() → nodeGizmo.sync([], null)
-          - plan.removeNode() // 末尾から Δv が NODE_MIN_DV 未満のノードを削る。有意な Δv のノードに当たったら打ち切る
-          - selectedNodeIdx = null
-        - editor.closeMenu() → nodeGizmo.closeMenu()
-        - mapPicker.close()
-        - touchControls?.setMapMode(false)
-        - cameraSystem.overviewMode = false / editor.editMode = false / displayTimeManager.forceCurrent = true
-        - hud.hint() // plan.nodes.length > 0 のみ
     - editor.handleInput()
       - clearPlanByKey() // K.deleteNode
         - [editMode] deleteSelected() → deleteNode()
@@ -77,7 +71,7 @@
       - focusMarkers.update(displayTime) // 地球・月・太陽・両系のラグランジュ点の座標を表示時刻で求め直す
       - navTarget.update() // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム
       - mapPicker.pickables に反映 // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers を集約
-    - [editor.editMode] editor.handleMapPointer() / mapPicker.handleRightClick() / editor.updateEditing()
+    - [editor.editMode] editor.handleMapPointer() // [!hasPlan(=ship===null)] 内部で即 return(艦のいない detachedPlan は編集させない) / mapPicker.handleRightClick() / editor.updateEditing()
     - cameraSystem.update(..., mapPicker.pickables) // ポーズ中も視点更新は続ける
   - [game.player === null] 以降を実行せず return する未配置経路 // Creative の開始直後・全艦喪失時。残骸や弾の epoch は進め続ける
     - simSpeedManager.update() / applyWarpCommandPolicy()
@@ -178,7 +172,7 @@
     - [サブステップごと] ×ceil(simDt / SUBSTEP_MAX_DT) // 分割数は simDt のみで決まる(実 fps に依存しない)
       - simulationSubStep()
         - entity.stepSim() → ephemeris.attractorsAt(state.t + dt/2) → current.step() → stepDynamicsRK4()(history 記録)
-          // 自機(全隻)・敵・弾・薬莢・デブリ・補給それぞれ、個体ごと。alive のみ実行。全天体重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
+          // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地それぞれ、個体ごと。alive のみ実行。全天体重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
         - player.thermal.updateThermal() // 操作対象のみ(HUD 警告を出すため)
       - hitSystem.checkBulletHits() // bulletCollision=true のときだけ。サブステップごと
       - target.attacked() // 弾が命中した対象ごと
@@ -213,6 +207,8 @@
   - nanWatchdog.checkAll('simulator.stepSimulation') // 全エンティティ走査。検出済みなら何もしない
   - targeter.updateBoardMarks(dt) // 既存マークの経過時間を進め、寿命切れを捨てる。ターゲットが居なければ全消し
     - boardMarks.push() // 通常弾が的の面を自機側から通過した場合のみ
+  - [CreativeStage] 撃沈艦を players から除去 → removeCreativePlayer() // 生存 0 隻ならアクティブ艦を差し替え/マップを開く
+  - [viewManager.current !== 'dock' && entities.bases.length > 0] docking.checkProximity() // 全 base × 全生存艦。距離・相対速度が閾値内の艦を収容(EntityManager.parkPlayer で破棄せず除去)
   - entities.cleanup() // simulator.simTime・自機位置(弾は距離で消える)・ephemeris.attractorsAt(simTime)(表面到達判定)を渡す
     - checkLoss() // 敵・弾・薬莢・デブリ・補給・自機(全隻、この順)の各個体ごと(既定は alive=false 代入のみ)
       - [Enemy.checkLoss] destroyEffect() + activeStage.recordEnemyDeath(cause='reentry') // 再突入時のみ
@@ -243,7 +239,7 @@
         - hud.hint() + sfx.warp() // ノードごとに最初の1回のみ(achievedNotified との同一性比較)
   - editor.plan.trackAnchor() // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
     - editor.update(simTime, displayTime) // 被選択物候補にアプシスアイコンが入るので mapPicker.refresh より前
-    - planDisplay.update(plan, simTime, displayTime, show) // show = editMode || plan.nodes.length > 0
+    - planDisplay.update(plan, simTime, displayTime, show) // show = hasPlan(=ship!==null) && (editMode || plan.nodes.length > 0)
       - traj.update() // plan の corners を区間へ分解し、区間ごとに PlanArc を再積分。表示座標系と un-bake 時刻もここで確定
         - arc.update() // 区間ごと。(state0, end) が変わったときだけ OrbitEntity で RK4 積分し直す(重い)
       - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
@@ -260,7 +256,7 @@
       - chaseCamera.update() // それ以外。camFollowAttitude && player.alive のときだけ player.att.q を rot に合成し、鍵/ドラッグ/ロール入力を回転として適用。結果を自身の view へ書く
       - 選ばれた view.fovDeg から combatCamera 自身の view.fovDeg を指数補間
   - [editor.editMode] 計画編集モード
-    - editor.handleMapPointer() // 右クリック → 左クリックの順に受ける
+    - editor.handleMapPointer() // [!hasPlan] 即 return。右クリック → 左クリックの順に受ける
       - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
         - selectedNodeIdx = ヒットしたノードの idx + nodeGizmo.openMenu() // ヒット時。true を返して消費
       - handleMapClick() // 左クリックごと。常に消費する
@@ -284,6 +280,8 @@
     - editor.updateEditing()
       - applyHeldDv() ×6方向 // WASDQE または dvButtons(長押しボタン)が held の間、ホールド秒数からランプするレートで dt 秒分を積分
       - applyDv() // nodeGizmo.latch がある間、ラッチ超過量に比例したレートで dt 秒分を積分(アームドラッグが DV_DRAG_LATCH_PX を超えて入る)
+  - [!editor.editMode] navTarget.updateCombatBasePicking() // targeter より先に呼ぶ。基地に当たった右クリックだけを消費し、外れは false を返して targeter へ回す
+    - pickNearest(entities.bases) → baseMenu.open() // 当たった場合のみ。航法ターゲット設定/解除メニュー
   - [!editor.editMode] targeter.updateCombatTargeting()
     - handleTargetContextMenu() // player.alive のみ。右クリックは当否に関わらず消費する
       - pickEnemyAt() → openMenu() // 右クリックが敵に当たった場合、第一/第二の設定・解除メニューを開く
@@ -294,6 +292,7 @@
 ## game.sync()
 
 - game.sync()
+  - viewBadge.sync(activeStage.selectLabel, canToggleView) // タイトル・Mode・View ドロップダウンの表示反映
   - floatingOrigin = new FloatingOrigin(player.state.r, player.state.v) // 以降の sync 系はこの fo だけを参照する
   - displayTime を確定 // displayTimeManager.resolveDisplayTime(simTime): 未来ゴーストのスライダーが立っている間だけ先の時刻
   - cameraSystem.sync() // 最初に呼ぶ: environment.sync とマーカー投影が今フレームのカメラ行列を読む
@@ -349,7 +348,7 @@
   - displayTimeManager.sync() // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ)の表示/内容を押し出すだけ
     - panel.setVisible(!forceCurrent) / setDuration() / setManualVisible() / setSliderLabel() / setTicks() // ラベルは自己完結の "T+" 表記のみ
   - editor.sync(mapDist, simTime, fo, project)
-    - [editMode または plan.nodes.length > 0] planDisplay.sync(fo, project, editMode)
+    - [hasPlan かつ(editMode または plan.nodes.length > 0)] planDisplay.sync(fo, project, editMode)
       - traj.setVisible(true)
       - traj.sync(fo, project) // 区間の折れ線メッシュ。表示座標系と un-bake 時刻は update フェーズで確定済み
         // 区間の終端はノードの t。末尾区間だけは起点の解析軌道1周期ぶん(plan.ts の orbitPeriodOf)
@@ -361,10 +360,11 @@
       - syncGhost() → markerManager.setPosition('plannedPlayer') or hide() // update が求めた ghost が null なら hide
       - syncApsisMarkers() → markerManager.setPosition('apsisPe'/'apsisAp') or hide() // update が求めたアイコンごと
       - panel の表示 = showPanel(= editMode) / setSelected() // TRAJECTORY パネル(表示座標系)。戦闘ビューでは出さない
-    - [!editMode かつ plan.nodes.length === 0] planDisplay.hide()
-    - [editMode] syncGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
+    - [!hasPlan、または(!editMode かつ plan.nodes.length === 0)] planDisplay.hide()
+    - [hasPlan かつ editMode] syncGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
       // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は traj の今フレームの表示文脈を通す
-    - [editMode] syncPanel(simTime) // MANEUVER PLAN パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
+    - [hasPlan かつ editMode] syncPanel(simTime) // MANEUVER PLAN パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
+  - mapPicker.sync(overviewMode) // 軌道オブジェクトウィンドウ。objectListVisible かつ overviewMode のときだけ pickables を行として書き出す
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync(player, fo, project, displayTime, overviewMode) // player は Creative の未配置状態で null
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示。player が null なら隠す
@@ -373,6 +373,9 @@
       // player が null の間はすべて隠す(ラベルの距離表示が自機基準のため)
       // マーカーを出せる補給ごと(i = 生存かつ displayState が非 null な個体だけを詰めた配列の添字)
       - hide() // 前フレームよりその数が減ったぶんの、余った添字だけ
+    - [CreativeStage] syncBaseMarkers(displayTime) → base.displayState(displayTime) → markerManager.set('base<i>', 'mk-poi', '●') // ラベルは player があれば距離付き
+      - [!overviewMode] markerManager.setBearing('base<i>-bearing', ...) // 画面外の基地への方位矢印。overviewMode 中は隠す
+      // entities.bases の添字ごと(logistics.syncMarkers と同じ、前フレームより減った添字だけ hide())
   - hud.panels.sync(game, bodies) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
     - setStats() + setTarget() // 約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
@@ -389,6 +392,7 @@
 ## game.render()
 
 - game.render()
+  - [viewManager.current === 'dock'] 何も描かずに return // ドックは 3D を持たない全画面ビュー
   - renderer.render(scene, cameraSystem.activeCamera) // 通常の全画面描画
 
 ---

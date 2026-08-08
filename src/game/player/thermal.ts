@@ -52,7 +52,7 @@ export class ThermalSystem {
 
   // 対気速度から動圧と外殻温度を更新する。加熱はよどみ点熱流束の
   // Sutton–Graves 近似 q̇ = k·√(ρ/Rn)·v³、冷却はステファン・ボルツマン放射。
-  updateThermal(dtSub: number, r: Vec3, v: Vec3): void {
+  updateThermal(dtSub: number, r: Vec3, v: Vec3, ship: import('../game-entity/ship').Ship): void {
     // 大気密度・対気速度から動圧を求める
     const rho = atmosphericDensity(len(r) - R_EARTH);
     const vr = airspeed(r, v);
@@ -67,11 +67,13 @@ export class ThermalSystem {
       (Math.pow(C.ENV_TEMP, 4) - Math.pow(this.hullTemp, 4));
     // 射撃・被弾の発熱はサブステップ回数・dtSub に依存しない量として貯めてあるので、
     // 空力加熱と違い dtSub を掛けずに一度だけ温度へ変換する
+    const heatCapacity = ship.mass > 0 ? ship.mass * 100 : C.HEAT_CAPACITY; // 比熱 約100 J/kg/K
+    
     this.hullTemp = Math.max(
       C.HULL_TEMP_FLOOR,
       this.hullTemp +
-        ((qdot * C.HEAT_ABSORB_AREA + cool + this.radiatorSolarLoad) / C.HEAT_CAPACITY) * dtSub +
-        this.pendingHeat / C.HEAT_CAPACITY,
+        ((qdot * C.HEAT_ABSORB_AREA + cool + this.radiatorSolarLoad) / heatCapacity) * dtSub +
+        this.pendingHeat / heatCapacity,
     );
     this.pendingHeat = 0;
   }

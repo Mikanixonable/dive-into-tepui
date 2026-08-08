@@ -14,13 +14,11 @@ export interface GameScene {
 export async function createGameScene(canvas: HTMLCanvasElement): Promise<GameScene> {
   const scene = new THREE.Scene();
 
-  // WebGPU レンダラを初期化する
   const renderer = new WebGPURenderer({ canvas, antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   await renderer.init();
 
-  // ウィンドウのリサイズにレンダラのサイズを追随させる。
   const resize = () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
   };

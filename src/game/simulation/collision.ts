@@ -102,7 +102,7 @@ export class CollisionPhysics {
     const invM = invMa + invMb;
 
     if (distSq > 0 && distSq < minD * minD) {
-      // 従来の静止overlap解決。
+      // 重なり(overlap)によるめり込み補正
       const dist = Math.sqrt(distSq);
       nx = dx / dist; ny = dy / dist; nz = dz / dist;
       const pen = minD - dist;

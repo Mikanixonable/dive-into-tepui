@@ -85,6 +85,7 @@ export class ContextMenu<T, A extends string = string> {
     window.addEventListener('keydown', this.handleKeyDown);
   }
 
+  // 開いている項目の shortcut に一致するキー入力を選択として扱う。
   private handleKeyDown = (e: KeyboardEvent) => {
     if (this.target === null || this.el.style.display === 'none') return;
     const items = this.el.querySelectorAll<HTMLElement>('.ctx-menu-item');

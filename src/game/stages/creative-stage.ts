@@ -15,10 +15,12 @@ import { elementsAround } from '../../physics/attractor';
 import { Ephemeris, MU_MOON, R_MOON } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
-import { Vec3, add } from '../../physics/vec3';
+import { Vec3, add, len, sub } from '../../physics/vec3';
+import { fmtMarkerDist } from '../hud/utils';
 import type { ProjectFn } from '../camera/camera-system';
 import type { UnlockManager } from '../unlock-manager';
 import { Ammo } from '../game-entity/ammo';
+import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import * as C from '../const';
 import { ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
@@ -41,6 +43,7 @@ export class CreativeStage extends Stage {
   // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
   private preview: { readonly elements: Elements; readonly pos: Vec3 } | null = null;
   private nextShipId = 1;
+  private lastBaseMarkerCount = 0;
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -64,10 +67,38 @@ export class CreativeStage extends Stage {
     return 0;
   }
 
-  // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
+  // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカー、基地マーカーを同期する。
   sync(player: Player | null, fo: FloatingOrigin, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
     super.sync(player, fo, project, displayTime, overviewMode);
     this.syncPreview(fo, project);
+    this.syncBaseMarkers(project, displayTime, player, overviewMode);
+  }
+
+  // 基地は実寸(半径100m)のメッシュしか持たず、マップ視点では見えないほど小さいので、
+  // FocusMarkers と同じ ● のポイントマーカーを立てて発見できるようにする。戦闘ビューでは
+  // 自機からの距離をラベルに添え、画面外なら ▣ AMMO と同じ方式の方位矢印で補う。
+  private syncBaseMarkers(project: ProjectFn, displayTime: number, player: Player | null, overviewMode: boolean): void {
+    const bases = this._entities.bases;
+    for (const [i, base] of bases.entries()) {
+      const key = `base${i}`;
+      const bearingKey = `${key}-bearing`;
+      const pos = base.alive ? base.displayState(displayTime)?.r : undefined;
+      if (!pos) {
+        this._markerManager.hide(key);
+        this._markerManager.hide(bearingKey);
+        continue;
+      }
+      const label = player ? `基地 ${fmtMarkerDist(len(sub(pos, player.state.r)))}` : '基地';
+      const p = project(pos);
+      this._markerManager.set(key, 'mk-poi', '●', p.x, p.y, p.front, label);
+      if (overviewMode) this._markerManager.hide(bearingKey);
+      else this._markerManager.setBearing(bearingKey, 'mk-poi', '●', p, label, 0.9);
+    }
+    for (let i = bases.length; i < this.lastBaseMarkerCount; i++) {
+      this._markerManager.hide(`base${i}`);
+      this._markerManager.hide(`base${i}-bearing`);
+    }
+    this.lastBaseMarkerCount = bases.length;
   }
 
   // 艦艇配置モーダルを開く (MapPicker から呼ばれる)
@@ -136,6 +167,11 @@ export class CreativeStage extends Stage {
         this._entities.addAmmo(ammo);
         const finalName = name || `Ammo-${this.nextShipId}`;
         this._hud.hint(`${finalName} を配置`);
+      } else if (form.objectType === 'base') {
+        const base = new Base(state, this._scene);
+        this._entities.addBase(base);
+        const finalName = name || `Base-${this.nextShipId++}`;
+        this._hud.hint(`${finalName} を配置`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '入力を解釈できません';
@@ -198,6 +234,7 @@ export class CreativeStage extends Stage {
     return orbitState(this._simulator.simTime, add(moonPos, rel.r), add(moonVel, rel.v));
   }
 
+  // 軌道要素指定フォームの値が物理的に成立するか検証する。不正なら理由付きで例外を投げる。
   private assertValidElementsForm(form: ShipPlacerForm): void {
     const rBody = form.body === 'moon' ? R_MOON : C.R_EARTH;
     const message = validateEllipticPlacement({
@@ -209,6 +246,7 @@ export class CreativeStage extends Stage {
     if (message) throw new Error(message);
   }
 
+  // フォームの placementMode に応じた妥当性検証を行う。不正なら理由付きで例外を投げる。
   private assertValidForm(form: ShipPlacerForm): void {
     if (form.placementMode === 'elements') {
       this.assertValidElementsForm(form);
@@ -261,5 +299,11 @@ export class CreativeStage extends Stage {
   // 勝敗のないモードなので、艦を喪失しても敗北画面は出さず通知だけにする。
   recordPlayerLost(reason: string): void {
     this._hud.hint(reason);
+  }
+
+  // ステージ固有の補助メッセージは無いが、null を返すと StageStatusPanel 自体が非表示になるので、
+  // 装甲・エンジン出力・温度・電力の表示のためだけに空文字を返す。
+  hudSubStatus(): string {
+    return '';
   }
 }

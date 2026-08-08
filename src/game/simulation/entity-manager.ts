@@ -8,6 +8,7 @@ import { Ammo } from '../game-entity/ammo';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { Enemy } from '../game-entity/enemy';
 import { Bullet } from '../game-entity/bullet';
+import { Base } from '../game-entity/base';
 import type { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { CombatTarget } from '../targeter';
@@ -21,6 +22,7 @@ export class EntityManager {
   // 自機。操作対象(Game.player)もこの配列の1隻で、積分・衝突・寿命判定・予測では
   // 他の艦と対等に扱う。ステージモードでは1隻だけが入る。
   readonly players: Player[] = [];
+  readonly bases: Base[] = [];
 
   // 敵を登録する。
   addEnemy(enemy: Enemy): void {
@@ -38,6 +40,13 @@ export class EntityManager {
     if (i < 0) return;
     this.players.splice(i, 1);
     player.dispose();
+  }
+
+  // 自機を取り除くが破棄はしない(基地への収容など、後で addPlayer で復帰させる場合)。
+  parkPlayer(player: Player): void {
+    const i = this.players.indexOf(player);
+    if (i < 0) return;
+    this.players.splice(i, 1);
   }
 
   // ターゲットとなり得るエンティティの一覧を取得する。
@@ -67,6 +76,16 @@ export class EntityManager {
     this.ammos.push(ammo);
   }
 
+  // 基地を登録する。
+  addBase(base: Base): void {
+    this.bases.push(base);
+  }
+
+  // ID で名指された基地を返す。見つからなければ null。
+  findBase(id: string): Base | null {
+    return this.bases.find(b => b.id === id) ?? null;
+  }
+
   // 配列へ追加し、cap を超えたら先頭(最古)を1件破棄する。
   private addCapped<T extends GameEntity>(arr: T[], entity: T, cap: number): void {
     arr.push(entity);
@@ -81,6 +100,7 @@ export class EntityManager {
       ...this.ammos,
       ...this.casings,
       ...this.debris,
+      ...this.bases,
     ];
   }
 
@@ -98,6 +118,7 @@ export class EntityManager {
     this.prune(this.casings);
     this.prune(this.debris);
     this.prune(this.ammos);
+    this.prune(this.bases);
   }
 
   // in-place フィルタ: 配列の参照はそのまま保つ。
@@ -114,5 +135,19 @@ export class EntityManager {
   // 軌道線まで持つので Player.syncPlayer が担当する。
   sync(fo: FloatingOrigin, displayTime: number): void {
     for (const e of this.otherEntities()) e.sync(fo, displayTime);
+  }
+
+  // セーブデータロード時などに全エンティティを破棄して配列を空にする。
+  clearAll(): void {
+    for (const e of this.all()) {
+      e.dispose();
+    }
+    this.players.length = 0;
+    this.enemies.length = 0;
+    this.bullets.length = 0;
+    this.casings.length = 0;
+    this.debris.length = 0;
+    this.ammos.length = 0;
+    this.bases.length = 0;
   }
 }

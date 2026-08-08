@@ -47,7 +47,6 @@ export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / 6;
 
 // 全開時、各折りが展開軸から残す傾き。0 だと折り目の判別が数値的に不安定になるため、
 // 蛇腹の折り畳みが解消された1枚の板とみなせるごく小さい値を残す。
-// (要望により、完全な平らではなく15度程度折りたたまれた状態を残す)
 export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
 
 // ラジエーター折り目 Group 名(ヒンジ Group の子孫として入れ子)。
@@ -124,7 +123,7 @@ function memoParse<T extends THREE.Object3D>(data: object): () => T {
 // geometry/material を参照共有するので、cloneIndependent と違い追加の
 // .clone() は行わない)。弾本体のマテリアルは発射後に書き換えられないので
 // 個体ごとの独立コピーは不要 — これにより毎発の生成で新規 GPU リソースが
-// 増え続けるリークを防ぐ(BUG_REPORT.md B1)。
+// 増え続けるリークを防ぐ。
 function memoParseShared<T extends THREE.Object3D>(data: object): () => T {
   let cached: T | null = null;
   return () => {
@@ -170,9 +169,8 @@ export function buildMagazineFrame(): THREE.Group {
 }
 
 // 軌道上に投入される補給(ammo): マガジン数個を束ねてビーコンを付けた漂流物。
-// テンプレートは既定の count=4 で焼き出し済み。他の個数の呼び出しは現状ないが、
-// 念のため count が既定と異なる場合は都度組み立てる(マガジンサブメッシュは
-// buildMagazineMesh() 経由でテンプレートを再利用する)。
+// テンプレートは既定の count=4 で焼き出し済み。count が既定と異なる場合は、
+// マガジンサブメッシュを buildMagazineMesh() 経由で再利用しながら都度組み立てる。
 let ammoBeaconGeom: THREE.OctahedronGeometry | null = null;
 let ammoBeaconMat: THREE.MeshBasicMaterial | null = null;
 
@@ -196,9 +194,8 @@ export function buildAmmo(count = 4): THREE.Group {
   return g;
 }
 
-// 敵機: テンプレートはプレースホルダの基本色で焼き出されている。
-// フィン(finMat)とランプ(lampMat)は userData.role === 'accent' が付与されて
-// おり、これを目印にアクセントカラーへ塗り替える。
+// 敵機: プレースホルダの基本色で焼き出されたテンプレートのうち、
+// userData.role === 'accent' が付与されたマテリアルだけを accent 色へ塗り替える。
 export function buildEnemyShip(accent: string | number = 0xff4a3d): THREE.Group {
   const g = parseEnemy();
   // accent ロールが付いたマテリアルだけ塗り替える
@@ -234,8 +231,8 @@ export function buildStage0EnemyShip(accent: string | number = 0x3dc6ff, typeInd
 }
 
 // 弾のハロー(光芒)はモジュールスコープで 1 個だけ生成して全弾で共有する
-// (毎発生成すると GPU リソースが撃つたびにリークする — BUG_REPORT.md B1)。
-// 色・形状は固定なので個体ごとの独立コピーは不要。
+// (毎発生成すると GPU リソースが撃つたびにリークする)。色・形状は固定なので
+// 個体ごとの独立コピーは不要。
 let bulletHaloGeom: THREE.CylinderGeometry | null = null;
 let bulletHaloMat: THREE.MeshBasicMaterial | null = null;
 
@@ -314,10 +311,8 @@ export function buildCasingMesh(): THREE.Mesh {
   return mesh;
 }
 
-// 破片: 撃破時の飛散と被弾欠片に使う。
-// 形状を 6 種類に増やし、アクセントカラーを積極的に使用して
-// 敵機のテーマカラーを継承させる。
-// style 引数によって敵種別の固有形状を生成する。
+// 破片: 撃破時の飛散と被弾欠片に使う。style 引数で敵種別ごとの固有形状
+// (mech/crystal/ring/spike/汎用)を生成し、アクセントカラーで敵機のテーマカラーを継承する。
 
 type DebrisMaterial = (opts?: { roughness?: number; metalness?: number; flatShading?: boolean }) => THREE.MeshStandardMaterial;
 
@@ -470,7 +465,8 @@ function buildGenericDebris(color: string | number, size: number, mat: DebrisMat
   if (kind < 0.22) {
     // 破損した外殻チャンク
     const mesh = parseDebrisChunk();
-    mesh.geometry = deepCloneGeometry(mesh.geometry); // deep cloned to prevent WebGPU buffer dispose issues!
+    // テンプレートの頂点バッファを共有したまま displaceVertices で書き換えると他インスタンスへ波及するため deep clone する
+    mesh.geometry = deepCloneGeometry(mesh.geometry);
     mesh.userData.ownsGeometry = true;
     displaceVertices(mesh.geometry, (x, y, z) => [x * (0.5 + Math.random() * 1.2), y * (0.5 + Math.random() * 1.2), z * (0.4 + Math.random() * 1.6)]);
     mesh.scale.setScalar(size);
@@ -600,6 +596,49 @@ export function buildBarrelMesh(): THREE.Group {
   heat.rotation.x = Math.PI / 2;
   heat.position.z = -2.1;
   g.add(heat);
+
+  return g;
+}
+
+// 基地: 中央ハブ + 放射状トラス4本 + ドッキングモジュール4基 + 太陽電池パドル2枚の低ポリ構成。
+// game-entity/base.ts の collideRadius(100m)と釣り合う全幅を持つ。
+export function buildBaseModel(): THREE.Group {
+  const g = new THREE.Group();
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, flatShading: true, roughness: 0.45, metalness: 0.75 });
+  const trussMat = new THREE.MeshStandardMaterial({ color: 0x1c2028, flatShading: true, roughness: 0.55, metalness: 0.65 });
+  const panelMat = new THREE.MeshStandardMaterial({ color: 0x1a3a5c, flatShading: true, roughness: 0.35, metalness: 0.55 });
+  const beaconMat = new THREE.MeshStandardMaterial({ color: 0xff6a00, emissive: 0xff6a00, emissiveIntensity: 1.2, roughness: 0.4 });
+
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(18, 18, 60, 8), hullMat);
+  g.add(hub);
+
+  const trussLength = 70;
+  const moduleOffset = 18 + trussLength;
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 2;
+    const dir = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+
+    const truss = new THREE.Mesh(new THREE.BoxGeometry(trussLength, 4, 4), trussMat);
+    truss.position.copy(dir).multiplyScalar(18 + trussLength / 2);
+    truss.rotation.y = -angle;
+    g.add(truss);
+
+    const module = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 26, 8), hullMat);
+    module.position.copy(dir).multiplyScalar(moduleOffset);
+    module.rotation.z = Math.PI / 2;
+    module.rotation.y = -angle;
+    g.add(module);
+  }
+
+  for (const side of [1, -1]) {
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(60, 1.5, 22), panelMat);
+    panel.position.set(side * (18 + 34), 0, 0);
+    g.add(panel);
+  }
+
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(3, 8, 6), beaconMat);
+  beacon.position.set(0, 30, 0);
+  g.add(beacon);
 
   return g;
 }

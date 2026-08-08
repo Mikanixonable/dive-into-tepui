@@ -7,7 +7,7 @@ import type { FloatingOrigin } from '../floating-origin';
 import { Attitude } from '../../physics/attitude';
 import { OrbitState, orbitState, R_EARTH_EQ } from '../../physics/orbital-state';
 import { OrbitLine } from '../../render/orbitline';
-import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3 } from '../../physics/vec3';
+import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
@@ -21,6 +21,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
+import type { EnemySaveData } from '../save-data';
 
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
 export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
@@ -46,6 +47,7 @@ function buildEnemyObj(enemyKind: EnemyKind, accent: string | number): THREE.Obj
 }
 
 export class Enemy extends Ship {
+  id?: string;
   accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
   readonly orbitLine: OrbitLine;
@@ -60,6 +62,7 @@ export class Enemy extends Ship {
 
   private readonly _sfx: Sfx;
   private readonly _fx: EffectsSystem;
+  public readonly enemyKind: EnemyKind;
 
   // enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
   constructor(
@@ -80,6 +83,7 @@ export class Enemy extends Ship {
     super(name, state, enemyObj, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene);
     this._sfx = sfx;
     this._fx = fx;
+    this.enemyKind = enemyKind;
     this.accent = accent;
     this.waveId = waveId;
     this.mass = 10000;
@@ -157,7 +161,7 @@ export class Enemy extends Ship {
 
     activeStage.scoreCounter.recordHit();
 
-    this.hp -= C.ENEMY_HIT_DAMAGE;
+    this.applyDamageToParts(bullet.damage);
     if (this.hp > 0) {
       this.hitEffect(bullet, hitR);
       return;
@@ -272,7 +276,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', this.scene);
+    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_HIT_DAMAGE, this.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
@@ -289,5 +293,37 @@ export class Enemy extends Ship {
   syncBackgroundOrbitLine(show: boolean, fo: FloatingOrigin, bodies: readonly Attractor[]): void {
     const center = strongestAttractor(this.state.r, bodies);
     this.orbitLine.sync(show ? this.elementsAround(center) : null, fo);
+  }
+
+  // セーブデータへ変換する。
+  serialize(): EnemySaveData {
+    return {
+      id: this.id ?? '',
+      name: this.name,
+      kind: 'enemy',
+      r: { ...this.state.r },
+      v: { ...this.state.v },
+      q: { ...this.att.q },
+      w: { ...this.att.w },
+      enemyKind: this.enemyKind,
+      alive: this.alive,
+      health: this.hp,
+      accent: this.accent,
+      waveId: this.waveId,
+    };
+  }
+
+  // セーブデータから復元する。
+  static restore(data: EnemySaveData, simTime: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene?: THREE.Scene): Enemy {
+    const state = orbitState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
+    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
+    const enemy = new Enemy(data.name || '', state, data.enemyKind, att, data.health, data.accent, data.accent, hud, sfx, fx, data.waveId, scene);
+    enemy.id = data.id || undefined;
+    enemy.alive = data.alive;
+    if (!enemy.alive) {
+      enemy.obj.visible = false;
+      enemy.orbitLine.line.visible = false;
+    }
+    return enemy;
   }
 }
