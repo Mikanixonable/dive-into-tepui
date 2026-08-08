@@ -80,11 +80,13 @@ export class PlayerThrottle {
   }
 
   serialize(): ThrottleSaveData {
-    return { throttleIdx: this.throttleIdx };
+    return { throttleIdx: this.throttleIdx, rcsDamp: this.rcsDamp, progradeHold: this.progradeHold };
   }
 
   restore(data: ThrottleSaveData): void {
     this.throttleIdx = data.throttleIdx;
+    this.rcsDamp = data.rcsDamp ?? true;
+    this.progradeHold = data.progradeHold ?? true;
   }
 
   // 入力から機体座標系の推力加速度を組み立てて返す。warp 中などで噴射不可なら null。
@@ -104,17 +106,19 @@ export class PlayerThrottle {
   }
 
   // 並進キーを短時間内に連打するとラッチ集合へ追加/削除する(押しっぱなし相当の維持/解除)。
-  // 押下エッジでは反対方向キーのラッチも解除する(片方をラッチしたまま逆方向を押すと
-  // axX/Y/Z が打ち消し合って噴射が止まるため)。連打の間隔は実時間で測るので、
-  // 呼ばれないフレームを挟んでも判定が狂わない。
+  // 反対方向キーを物理的に押している間は、そのラッチを外し続ける(片方をラッチしたまま
+  // 逆方向を押しっぱなしにしても axX/Y/Z の相殺で終わらせず、逆方向を離した瞬間に
+  // ラッチが復活するのを防ぐ)。連打の間隔は実時間で測るので、呼ばれないフレームを
+  // 挟んでも判定が狂わない。simSpeed.canPlayerThrust が false の間は呼び出し側が
+  // このメソッド自体を呼ばない(押下エッジを消費させないため)。
   updateThrustLatches(input: Input): void {
     const now = performance.now() / 1000;
     for (const key of THRUST_KEYS) {
+      const opposite = OPPOSITE_THRUST_KEY.get(key.code);
+      if (opposite && input.down(key)) this.latchedThrustKeys.delete(opposite.code);
+
       // 押しっぱなしの keydown リピートを2打目と誤検出しないよう、エッジ(takeKey)だけを見る。
       if (!input.takeKey(key)) continue;
-      const opposite = OPPOSITE_THRUST_KEY.get(key.code);
-      if (opposite) this.latchedThrustKeys.delete(opposite.code);
-
       const last = this.lastThrustPressTime[key.code];
       this.lastThrustPressTime[key.code] = now;
       if (last === undefined || now - last > C.THRUST_LATCH_DOUBLE_TAP_SEC) continue;
