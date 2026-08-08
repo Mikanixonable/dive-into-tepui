@@ -15,8 +15,7 @@ import { Attractor, orbitalElementsOf } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
-import { Vec3, add, len, sub } from '../../physics/vec3';
-import { fmtMarkerDist } from '../hud/utils';
+import { Vec3, add } from '../../physics/vec3';
 import { HudToggle } from '../hud/buttons';
 import { hudDock } from '../hud/dom';
 import type { ProjectFn } from '../camera/camera-system';
@@ -95,15 +94,15 @@ export class CreativeStage extends Stage {
   sync(player: Player | null, fo: FloatingOrigin, project: ProjectFn, displayTime: number, overviewMode: boolean): void {
     super.sync(player, fo, project, displayTime, overviewMode);
     this.syncPreview(fo, project);
-    this.syncBaseMarkers(project, displayTime, player, overviewMode);
+    this.syncBaseMarkers(project, displayTime, overviewMode);
     this.placerPanel.setIssues(this.issues);
     this.logisticsPanel.style.display = overviewMode ? 'block' : 'none';
   }
 
   // 基地は実寸(半径100m)のメッシュしか持たず、マップ視点では見えないほど小さいので、
   // FocusMarkers と同じ ● のポイントマーカーを立てて発見できるようにする。戦闘ビューでは
-  // 自機からの距離をラベルに添え、画面外なら ▣ AMMO と同じ方式の方位矢印で補う。
-  private syncBaseMarkers(project: ProjectFn, displayTime: number, player: Player | null, overviewMode: boolean): void {
+  // 画面外なら ▣ AMMO と同じ方式の方位矢印で補う。
+  private syncBaseMarkers(project: ProjectFn, displayTime: number, overviewMode: boolean): void {
     const bases = this._entities.bases;
     for (const [i, base] of bases.entries()) {
       const key = `base${i}`;
@@ -114,7 +113,7 @@ export class CreativeStage extends Stage {
         this._markerManager.hide(bearingKey);
         continue;
       }
-      const label = player ? `基地 ${fmtMarkerDist(len(sub(pos, player.state.r)))}` : '基地';
+      const label = '基地';
       const p = project(pos);
       this._markerManager.set(key, 'mk-poi', '●', p.x, p.y, p.front, label);
       if (overviewMode) this._markerManager.hide(bearingKey);
