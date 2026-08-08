@@ -1,4 +1,4 @@
-// 軌道計画の姿の表示: 計画折れ線(PlanTrajectory)の駆動、表示座標系(trajectoryFrame)、
+// 軌道計画の姿の表示: 計画折れ線(PlanPath)の駆動、表示座標系(planFrame)、
 // 表示時刻の計画上の自機位置ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/elements';
@@ -16,7 +16,7 @@ import { MapPickable } from '../map-pick';
 import * as C from '../const';
 import { hudDock } from '../hud/dom';
 import { Plan } from './plan';
-import { PlanTrajectory } from './plan-trajectory';
+import { PlanPath } from './plan-path';
 import type { DisplayTimeManager } from '../display-time-manager';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
@@ -30,9 +30,9 @@ interface EqNodeIcon extends MapPickable {
 }
 
 export class PlanDisplay {
-  trajectoryFrame: ReferenceFrame = INERTIAL_FRAME;
+  planFrame: ReferenceFrame = INERTIAL_FRAME;
 
-  readonly traj: PlanTrajectory;
+  readonly path: PlanPath;
 
   private readonly panel: HTMLElement;
   private readonly frame: SegmentedControl<ReferenceFrame>;
@@ -41,7 +41,7 @@ export class PlanDisplay {
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
   private plan: Plan | null = null;
 
-  // 計画折れ線(PlanTrajectory)と TRAJECTORY パネルの DOM を構築する。
+  // 計画折れ線(PlanPath)と TRAJECTORY パネルの DOM を構築する。
   constructor(
     scene: THREE.Scene,
     hudRoot: HTMLElement,
@@ -49,7 +49,7 @@ export class PlanDisplay {
     private readonly ephemeris: Ephemeris,
     displayTimeManager: DisplayTimeManager,
   ) {
-    this.traj = new PlanTrajectory(scene, displayTimeManager);
+    this.path = new PlanPath(scene, displayTimeManager);
 
     // TRAJECTORY パネルの DOM を組み立てる
     this.panel = document.createElement('div');
@@ -60,7 +60,7 @@ export class PlanDisplay {
     title.textContent = 'TRAJECTORY';
     this.panel.appendChild(title);
     // 表示座標系の切り替えボタン
-    this.frame = new SegmentedControl<ReferenceFrame>('軌道', FRAME_ITEMS, (frame) => { this.trajectoryFrame = frame; });
+    this.frame = new SegmentedControl<ReferenceFrame>('軌道', FRAME_ITEMS, (frame) => { this.planFrame = frame; });
     this.panel.appendChild(this.frame.element);
     hudDock(hudRoot, 'left').appendChild(this.panel);
   }
@@ -72,10 +72,10 @@ export class PlanDisplay {
     if (!show) {
       this.ghost = null;
       this.apsisIcons = [];
-      this.traj.resetDivergence();
+      this.path.resetDivergence();
       return;
     }
-    this.traj.update(plan, this.ephemeris, this.trajectoryFrame, simTime);
+    this.path.update(plan, this.ephemeris, this.planFrame, simTime);
     this.ghost = this.ghostAt(displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.eqNodeIcons = this.eqNodeIconsOf();
@@ -84,18 +84,18 @@ export class PlanDisplay {
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。
   // TRAJECTORY パネルは表示座標系を選ぶ操作 UI なので、操作を受け付けるときだけ showPanel で出す。
   sync(fo: FloatingOrigin, project: ProjectFn, showPanel: boolean): void {
-    this.traj.setVisible(true);
-    this.traj.sync(fo, project);
+    this.path.setVisible(true);
+    this.path.sync(fo, project);
     this.syncGhost(project);
     this.syncApsisMarkers(project);
     this.syncEqNodeMarkers(project);
     this.panel.style.display = showPanel ? 'block' : 'none';
-    this.frame.setSelected(this.trajectoryFrame);
+    this.frame.setSelected(this.planFrame);
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコン・TRAJECTORY パネルを非表示にする。
   hide(): void {
-    this.traj.setVisible(false);
+    this.path.setVisible(false);
     this.markerManager.hide('plannedPlayer');
     this.markerManager.hide('apsisPe');
     this.markerManager.hide('apsisAp');
@@ -111,7 +111,7 @@ export class PlanDisplay {
 
   // アプシスアイコン id に対応する通過時刻。アイコンが出ていない id では null。
   apsisTimeOf(id: string): number | null {
-    const state0 = this.traj.finalSegmentStart;
+    const state0 = this.path.finalSegmentStart;
     if (!state0 || !this.plan || !this.apsisIcons.some((icon) => icon.id === id)) return null;
     const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
     const relative = toFrameState(frameOfAttractor(center), state0);
@@ -124,10 +124,10 @@ export class PlanDisplay {
 
   // displayTime における計画上の自機位置とそのラベル。折れ線の届く範囲外なら null。
   private ghostAt(displayTime: number, simTime: number): { pos: Vec3; label: string } | null {
-    const sample = this.traj.sampleAt(displayTime);
+    const sample = this.path.sampleAt(displayTime);
     if (!sample) return null;
     return {
-      pos: this.traj.toDisplay(sample.r, displayTime),
+      pos: this.path.toDisplay(sample.r, displayTime),
       label: this.plannedPlayerLabel(displayTime, simTime, sample.r),
     };
   }
@@ -159,7 +159,7 @@ export class PlanDisplay {
   // 最後のバーン後の軌道(これから乗る軌道)の近地点・遠地点アイコンを、その軌道要素から
   // 解析的に求める。離心率がほぼ0で方向が不定なら空、双曲線軌道なら近地点だけ。
   private apsisIconsOf(): readonly ApsisIcon[] {
-    const state0 = this.traj.finalSegmentStart;
+    const state0 = this.path.finalSegmentStart;
     if (!state0 || !this.plan) return [];
     const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
     const tf = frameOfAttractor(center);
@@ -172,7 +172,7 @@ export class PlanDisplay {
       const t = state0.t + (isFinite(dt) ? dt : 0);
       const relativeState = frameKinematicState(positionOnOrbit(el, nu), relative.v);
       return {
-        pos: this.traj.toDisplay(toInertialState(tf, t, relativeState).r, t),
+        pos: this.path.toDisplay(toInertialState(tf, t, relativeState).r, t),
         time: t
       };
     };
@@ -200,7 +200,7 @@ export class PlanDisplay {
   // 軌道要素から解析的に求める。赤道面は中心天体ごとに異なり、月なら白道面をとる。
   // 離心率がほぼ0で方向が不定なとき、軌道面が赤道面とほぼ一致するときは空。
   private eqNodeIconsOf(): readonly EqNodeIcon[] {
-    const state0 = this.traj.finalSegmentStart;
+    const state0 = this.path.finalSegmentStart;
     if (!state0 || !this.plan) return [];
     const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
     const tf = frameOfAttractor(center);
@@ -223,7 +223,7 @@ export class PlanDisplay {
       const t = state0.t + (isFinite(dt) ? dt : 0);
       const relativeState = frameKinematicState(positionOnOrbit(el, nu), relative.v);
       return {
-        pos: this.traj.toDisplay(toInertialState(tf, t, relativeState).r, t),
+        pos: this.path.toDisplay(toInertialState(tf, t, relativeState).r, t),
         time: t
       };
     };

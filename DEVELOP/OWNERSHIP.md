@@ -55,8 +55,8 @@ main.ts
     │   └── DisplayTimePanel           ... DOM は Hud.root 配下。期間/未来位置スライダー
     ├── PlanEditor                     ... plan は活艦(ship)の Plan への転送 getter。正本ではない
     │   ├── PlanDisplay                ... 計画の未来表示(「見えるとき何を見せるか」)
-    │   │   ├── PlanTrajectory         ... 計画折れ線 + per-arc キャッシュ + 画面判定
-    │   │   │   └── PlanArc[]          ... arc ごと。各々 OrbitEntity 1本(積分の正本)+ SampledLine を持つ
+    │   │   ├── PlanPath         ... 計画折れ線 + per-arc キャッシュ + 画面判定
+    │   │   │   └── PlanArc[]          ... arc ごと。各々 DynamicTrajectory 1本(積分の正本)+ SampledLine を持つ
     │   │   └── TRAJECTORY パネル DOM   ... 表示座標系(frame)の SegmentedControl 1 個のみ
     │   ├── NodeGizmo
     │   │   └── ContextMenu<number>
@@ -120,13 +120,13 @@ main.ts
 木に現れないインスタンス:
 
 - 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・Ammo[]・BeltSection[] — 木の
-  どのノードも例外なく)は `physics/orbit-entity.ts` の `OrbitEntity` を1本、フィールド名
+  どのノードも例外なく)は `physics/dynamic-trajectory.ts` の `DynamicTrajectory` を1本、フィールド名
   `current` で保持する(state/history/prevState の正本)。GameEntity ごとに繰り返さず
-  ここに一括で記す。`OrbitEntity` 自身は軌道要素を持たない — `GameEntity.orbitalElementsAround(center)` が
+  ここに一括で記す。`DynamicTrajectory` 自身は軌道要素を持たない — `GameEntity.orbitalElementsAround(center)` が
   `state` の参照同一性 + `center.id` でメモ化する(§付録「正本でないもの」参照。中心天体 `center` は
-  呼び出し側が都度選ぶので `OrbitEntity`/`GameEntity` の状態ではない)。`predictsFuture = true` の
+  呼び出し側が都度選ぶので `DynamicTrajectory`/`GameEntity` の状態ではない)。`predictsFuture = true` の
   GameEntity(Ship・Ammo のみ)は、`Predictor` が
-  `stepPrediction` を呼んだ時点で2本目の `OrbitEntity` を `predicted` として追加で持つ
+  `stepPredicted` を呼んだ時点で2本目の `DynamicTrajectory` を `predictedTrajectory` として追加で持つ
   (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。予測する長さ
   (horizon)は種別ごとの定数ではなく、`Predictor.update` が毎フレーム
   `DisplayTimeManager.durationSec(referencePeriod)` から渡す引数。
@@ -152,8 +152,8 @@ main.ts
 | `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay) |
 | `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay) |
 | `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・HitSystem・CollisionPhysics・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer` 経由の追加・参照のみ) |
-| `PlanTrajectory` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.traj` 経由) |
-| `DisplayTimeManager` | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanTrajectory` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanTrajectory` はこれを保持するだけで書き換えない) |
+| `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
+| `DisplayTimeManager` | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない) |
 | `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が activePlayer.plan を転送)・PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)・CreativeStage(followPlan 艦の自動追従) |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
@@ -169,7 +169,7 @@ main.ts
 | 状態 | 正本の所有者 | 備考 |
 | --- | --- | --- |
 | 自機の位置・速度・エポック (ECI) | `Player.state` | 書き換えるのは RK4 積分(Simulator)・反動(PlayerFire)・接触(CollisionPhysics) |
-| エンティティの過去 state 列(`StateQueue`) | `GameEntity.history`(→ `current.history`) | 記録するのは `OrbitEntity.step` だけ。時間窓は `historyDuration`(既定 0、Ship のみ `SHIP_HISTORY_DURATION`)、間引き間隔は `sampleInterval()`(軌道周期ベース)で `cleanup` に渡す |
+| エンティティの過去 state 列(`StateQueue`) | `GameEntity.history`(→ `current.history`) | 記録するのは `DynamicTrajectory.step` だけ。時間窓は `historyDuration`(既定 0、Ship のみ `SHIP_HISTORY_DURATION`)、間引き間隔は `sampleInterval()`(軌道周期ベース)で `cleanup` に渡す |
 | 自機の姿勢・角速度 | `Player.att` | 積分は Simulator.stepAttitudes に一元化 |
 | 機体座標系トルク | `Player.torque` | 毎フレーム PlayerThrottle の戻り値で上書きされる |
 | 推力加速度 | `GameEntity.thrust` | 自機は `PlayerThrottle.updateThrustState` の戻り値で毎フレーム上書き。無推力なら null |
@@ -194,7 +194,7 @@ main.ts
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNodeIdx` / `.editMode` | 選択は素の `number \| null`。`deleteNode(idx)` は削除後 `selectedNodeIdx >= idx` なら選択を解除する |
 | 直近ノードの接近/達成通知済み | `PlanGuide`(`approachNotified` / `achievedNotified`) | 通知済みのノードそのものへの参照。編集のたびノードは別インスタンスへ置き換わるので、同一性比較がそのまま「同じノードについて通知済みか」の判定になる |
 | 予測表示期間(手動レンジの秒数 `manualDurationSec` を含む)・未来ゴーストスライダー(`sliderT`)・未来表示の禁止(`forceCurrent`) | `DisplayTimeManager` | `forceCurrent` は get/set アクセサで、true をセットすると `sliderT` も 0 へ戻す。期間の切替(`durationKey` 変更)でも同様に `sliderT` を 0 へ戻す |
-| 計画折れ線を描く表示座標系(trajectoryFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本 |
+| 計画折れ線を描く表示座標系(planFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本 |
 | マップ視点(注視点相対オフセット・パン・上方向)・表示座標系・フォーカス(id)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカス id が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す |
 | 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
 | 現在のビュー(combat/map/dock) | `ViewManager`(private `_current`) | 遷移は `setView()` のみ。影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayTimeManager.forceCurrent` / タッチUI)を一斉に切り替える。ドック表示中は背後の 3D 側ビュー(`returnFromDock`)を保持し、閉じるとそこへ戻る |
@@ -231,8 +231,8 @@ main.ts
   `Targeter` のロック** は艦を切り替えるたびに揃える必要がある4箇所。同時に切り替えるのは
   `Game.setActivePlayer` だけで、他はそれぞれ自分の持ち分(視点/編集対象/ロック解除)だけを更新する
   — `ViewManager` が3つのフラグを一斉に切り替えるのと同じ形のトグラー集約。
-- **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `PlanDisplay.trajectoryFrame`(計画折れ線を
-  描く座標系)** は別の正本で、ユーザーが独立に選ぶ。PlanTrajectory が受け取るのは後者だけ。
+- **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `PlanDisplay.planFrame`(計画折れ線を
+  描く座標系)** は別の正本で、ユーザーが独立に選ぶ。PlanPath が受け取るのは後者だけ。
 - **`Targeter.target`(戦闘ターゲット、`Enemy` のみ)と `NavTarget.id`(航法ターゲット、任意の `MapPickable`)**
   は別の正本。前者は射撃・LEAD・的通過マークの対象、後者はマップの相対 AN/DN・時間加速・ノード追加の
   対象で、対象の型も操作系(右クリック位置がヒットしたのが敵かそれ以外か)も異なるため一本化しない。
@@ -262,7 +262,7 @@ main.ts
   関与しない。
 - **`EntityManager.players` は他の配列と対等に `all()` へ入る** — 操作対象かどうかは `Game.player` との
   参照同一性だけで決まる選択であり、`players` 配列自体はアクティブ/非アクティブを区別しない。
-  積分(`Simulator.simulationSubStep`/`.stepAttitudes`)・寿命判定(`EntityManager.cleanup`)・
+  積分(`Simulator.substep`/`.stepAttitudes`)・寿命判定(`EntityManager.cleanup`)・
   剛体接触(`CollisionPhysics.resolve`)はどの艦も一様に扱う。例外は2つだけ: `EntityManager.sync` は
   `players` を丸ごと素通りする(各艦は `Player.syncPlayer` が個別に同期する)。`Predictor.update` は
   `player` 引数を先頭で明示的に一度予算消化してから `entities.all()`(`players` を含む)を
@@ -282,28 +282,28 @@ main.ts
 | 解析楕円の中心天体(`strongestAttractor(state.r, attractors)` の結果) | `state`(と `attractors`)から都度導く選択であり、`GameEntity`/`Plan`/`PlanDisplay`/`OrbitLine` のどれもこれを状態として保持しない — 選ぶ GUI もない | 呼ぶたび再計算 |
 | `GameEntity.orbitalElementsAround(center)` の内部メモ | `state` の参照同一性 + `center.id` をキーにした軌道要素のメモ化(中心天体 `center` は呼び出し側が選ぶ) | `state` が差し替わるたび(`current.step`/`.reset`)、または `center.id` が変わるたび自動的に不一致になる |
 | `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(`history` とは別) | `step`/`reset` のたび更新 |
-| `GameEntity.predicted` | `current.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayTimeManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `resyncPrediction` の距離判定(§3-4 (a))、または `Player.behave` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
+| `GameEntity.predictedTrajectory` | `actualTrajectory.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayTimeManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `resyncPrediction` の距離判定(§3-4 (a))、または `Player.behave` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
 | `SimSpeedManager.canGrowPrediction` | `simSpeed <= C.MAX_PHYS_SIM_SPEED` の派生 getter(`canResolvePhysicalCollisions` と同じ式だが別の問い) | 呼ぶたび再計算 |
 | `OrbitLine.snap` / 頂点配列 | 楕円ジオメトリの再生成判定用スナップショット | 要素ドリフト・`force`・初回 |
-| `PlanArc.samples` / `.key`(`{state0, end}`) | 予測 RK4(`OrbitEntity` 積分)の結果と入力スナップショット | `update` の `tracksLiveAnchor` 引数(計画が空の間の唯一の区間だけ true)が false なら `state0`/`end` の同一性・値の変化。true なら区間長・起点時刻とも直近再積分時からの変化がサンプル間隔(区間長 / `PLAN_ARC_MAX_SAMPLES`)未満の間は無効化しない(`'orbit'` プリセットでは起点の接触周期自体が J2・大気抵抗で毎フレーム連続変化するため、厳密一致ではなくこの閾値で判定する)——ただし `state0` の同一性が変わっていて `t` が前進していない(別艦への切り替え・ドック発進・衝突による状態上書きなどの非連続な差し替え)場合はこの閾値を無視して即座に無効化する |
-| `PlanTrajectory.arcs` / `.activeCount` / `.nodeCount` / `.frame` / `.unbakeTime` / `.project` | 毎フレーム再構築される区間分割と表示文脈(画面判定もこれを使う)。`arcs` は先頭 `activeCount` 本だけがこのフレームの区間に対応するプール、先頭 `nodeCount` 本がノードで終わる区間 | `update()` 毎 |
+| `PlanArc.samples` / `.key`(`{state0, end}`) | 予測 RK4(`DynamicTrajectory` 積分)の結果と入力スナップショット | `update` の `tracksLiveAnchor` 引数(計画が空の間の唯一の区間だけ true)が false なら `state0`/`end` の同一性・値の変化。true なら区間長・起点時刻とも直近再積分時からの変化がサンプル間隔(区間長 / `PLAN_ARC_MAX_SAMPLES`)未満の間は無効化しない(`'orbit'` プリセットでは起点の接触周期自体が J2・大気抵抗で毎フレーム連続変化するため、厳密一致ではなくこの閾値で判定する)——ただし `state0` の同一性が変わっていて `t` が前進していない(別艦への切り替え・ドック発進・衝突による状態上書きなどの非連続な差し替え)場合はこの閾値を無視して即座に無効化する |
+| `PlanPath.arcs` / `.activeCount` / `.nodeCount` / `.frame` / `.unbakeTime` / `.project` | 毎フレーム再構築される区間分割と表示文脈(画面判定もこれを使う)。`arcs` は先頭 `activeCount` 本だけがこのフレームの区間に対応するプール、先頭 `nodeCount` 本がノードで終わる区間 | `update()` 毎 |
 | `SampledLine.lastSamples` / `.lastFrame` | bake 済み頂点の入力スナップショット | 点列 or frame の変化 |
-| `DebugHistoryLine.lines`(`Map<GameEntity, SampledLine>`) | 対象ごとの `SampledLine` インスタンスのプール(`?debugLines=1` のみ実体化) | 対象集合(`sync` の引数)から外れたエンティティぶんを毎フレーム破棄 |
-| `PlanTrajectory.arrivalStates()` / `PlanEditor.nodeDv()` | 各区間の `PlanArc` 終端状態、およびそこから求めるノード Δv の導出値(表示専用) | 呼ぶたび再計算(`PlanArc` 側の積分結果をそのまま読むので、描画中の計画軌道と同じ結果になる) |
+| `DebugTrajectoryLine.lines`(`Map<GameEntity, SampledLine>`) | 対象ごとの `SampledLine` インスタンスのプール(`?debugLines=1` のみ実体化) | 対象集合(`sync` の引数)から外れたエンティティぶんを毎フレーム破棄 |
+| `PlanPath.arrivalStates()` / `PlanEditor.nodeDv()` | 各区間の `PlanArc` 終端状態、およびそこから求めるノード Δv の導出値(表示専用) | 呼ぶたび再計算(`PlanArc` 側の積分結果をそのまま読むので、描画中の計画軌道と同じ結果になる) |
 | `PlayerThrottle.thrustVizDir` / `.thrustAccelVec` | 推力の表示・ベルト物理向け派生値 | 毎フレーム上書き |
 | `Player` の各 getter(`rcsDamp` / `magsLeft` 等) | throttle/fire への転送 | — |
 | `FocusMarkers.labels[].pos` | 天体暦から毎フレーム再計算 | `update(t)` 毎(`syncLabels()` はこの値をマーカーへ置くだけ) |
 | `NavTarget` の相対 AN/DN 位置・通過時刻 | 自機軌道要素 + 対象の軌道面法線からの導出値(id 自体は正本) | `update()` 毎に全消去→再算出 |
 | `CreativeStage.preview`(軌道要素 + 位置) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM) | `update()` 毎に再算出。パネルを閉じている間・値を解釈できないときは null |
-| `PlanDisplay.apsisMarkers` / アイコン位置 | `PlanTrajectory.finalSegmentStart` の軌道要素からの解析的な導出値 | `syncApsisMarkers()` 毎(`sync`/`hide` から呼ぶ) |
+| `PlanDisplay.apsisMarkers` / アイコン位置 | `PlanPath.finalSegmentStart` の軌道要素からの解析的な導出値 | `syncApsisMarkers()` 毎(`sync`/`hide` から呼ぶ) |
 | `MapPicker.pickables` | `FocusMarkers.labels` + 生存中の全 `entities.players`・敵船の displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` の合成(保持しない使い捨て配列) | `mapPicker.refresh()`(`update()` 内、経路ごとの `cameraSystem.update()` 直前)毎に作り直す |
 
 ### 基礎データ型の不変性(整合性の前提)
 
 `Vec3` / `KinematicState` / `Quat` / `Attitude` は **不変**。値を進めるときは中身を書き換えず、
-新しいオブジェクトを作って差し替える(`stepOrbitRK4` は新しい `KinematicState` を、`stepAttitude` は
-新しい `Attitude` を返す)。これは最適化ではなく整合性の前提で、`physics/orbit-entity.ts` の
-`OrbitEntity`(`GameEntity.current`)が `step`/`reset` のたび軌道要素メモを破棄し、差し替え前の
+新しいオブジェクトを作って差し替える(`stepRK4` は新しい `KinematicState` を、`stepAttitude` は
+新しい `Attitude` を返す)。これは最適化ではなく整合性の前提で、`physics/dynamic-trajectory.ts` の
+`DynamicTrajectory`(`GameEntity.actualTrajectory`)が `step`/`reset` のたび軌道要素メモを破棄し、差し替え前の
 state を条件付きで `history` へ送れるのは「state が差し替え以外では変化しない」からである。
 参照を共有したまま中身を書き換えると保持側が変化を検知できず、メモが黙って腐り、履歴も取り落とす。
 
@@ -311,9 +311,9 @@ state を条件付きで `history` へ送れるのは「state が差し替え以
 すべてこの 1 型で表す**。同じ情報量の型を複数持たない(旧 `TrajectorySample` / `LineSample` /
 `PlannedNode.time` はここへ統合済み)ため、「状態」と「その時刻」が別々に渡されて食い違うことがない。
 
-**例外はない。** RK4 の加速度評価も `dynamics.ts` の `stepDynamicsRK4`(内部で `attractor.ts` の
+**例外はない。** RK4 の加速度評価も `dynamics.ts` の `stepDynamics`(内部で `attractor.ts` の
 `attractorAccel` の全天体ぶんの和 + 自身の `j2Accel` + `atmosphere.ts` の `dragAccel` を合成)が `Vec3` を返す
-純粋関数の積み重ねで、`stepOrbitRK4` はその結果を `AccelFn` として受け取るだけ。ミュータブルな
+純粋関数の積み重ねで、`stepRK4` はその結果を `AccelFn` として受け取るだけ。ミュータブルな
 スクラッチや `out` 引数を
 持つ変種は `physics/` のどこにも置かない(その形を撤去した経緯と実測値は
 `memos/mikanixonable/軽量化計画.md` の A-1 を参照)。エンティティ数が増えて効くようになったときの

@@ -24,7 +24,7 @@ export function j2Accel(r: Vec3): Vec3 {
 
 // 加速度コールバック accel だけを使って RK4 で 1 ステップ積分する。
 // 入力 s は書き換えず、時刻も dt だけ進めた新しい KinematicState を返す。
-export function stepOrbitRK4(s: KinematicState, dt: number, accel: AccelFn): KinematicState {
+export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): KinematicState {
   const r0x = s.r.x, r0y = s.r.y, r0z = s.r.z;
   const v0x = s.v.x, v0y = s.v.y, v0z = s.v.z;
   const h2 = dt / 2;
@@ -72,7 +72,7 @@ export function stepOrbitRK4(s: KinematicState, dt: number, accel: AccelFn): Kin
 }
 
 // 全天体からの重力(Σ attractorAccel — ECI が非慣性系であることの補正込み)+ J2 + 大気抵抗。
-function accel(r: Vec3, v: Vec3, attractors: readonly Attractor[], bcInv: number): Vec3 {
+function totalAccel(r: Vec3, v: Vec3, attractors: readonly Attractor[], bcInv: number): Vec3 {
   let ax = 0, ay = 0, az = 0;
   for (const attractor of attractors) {
     const g = attractorAccel(r, attractor);
@@ -86,9 +86,9 @@ function accel(r: Vec3, v: Vec3, attractors: readonly Attractor[], bcInv: number
 // 全天体重力 + J2 + 大気抵抗 + 推力の RK4 1ステップ。attractors はこのステップぶん呼び出し側が
 // 確定させた重力源一覧(Ephemeris.attractorsAt)。bcInv/thrust は種別ごとに異なるため
 // 引数で受け取り、モジュール内に既定値を持たない。
-export function stepDynamicsRK4(state: KinematicState, dt: number, attractors: readonly Attractor[], bcInv: number, thrust: Vec3 | null): KinematicState {
-  return stepOrbitRK4(state, dt, (rx, ry, rz, vx, vy, vz) => {
-    const a = accel(v3(rx, ry, rz), v3(vx, vy, vz), attractors, bcInv);
+export function stepDynamics(state: KinematicState, dt: number, attractors: readonly Attractor[], bcInv: number, thrust: Vec3 | null): KinematicState {
+  return stepRK4(state, dt, (rx, ry, rz, vx, vy, vz) => {
+    const a = totalAccel(v3(rx, ry, rz), v3(vx, vy, vz), attractors, bcInv);
     return thrust ? add(a, thrust) : a;
   });
 }

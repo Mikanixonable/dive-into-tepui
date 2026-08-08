@@ -33,7 +33,7 @@ export class Simulator {
   }
 
   // dt 分のシミュレーションを進める。simDt をサブステップに分割して積分し、弾命中判定・剛体接触・姿勢積分を行う。
-  stepSimulation(
+  advance(
     dt: number,
     simDt: number,
     player: Player | null,
@@ -56,7 +56,7 @@ export class Simulator {
         continue;
       }
 
-      this.simTime = this.simulationSubStep(this.simTime, subDt);
+      this.simTime = this.substep(this.simTime, subDt);
       this.stepAttitudes(subDt);
       for (const p of this.entities.players) p.stepEnvironment(subDt, this.ephemeris, this.simTime);
       activeStage.applySimulationEvents(this.simTime);
@@ -96,17 +96,17 @@ export class Simulator {
   }
 
   // 全エンティティを dt だけ積分する。積分後の simTime を返す。
-  private simulationSubStep(
+  private substep(
     simTime: number,
     dt: number,
   ): number {
-    for (const p of this.entities.players) p.stepSim(dt, this.ephemeris);
-    for (const e of this.entities.enemies) e.stepSim(dt, this.ephemeris);
-    for (const b of this.entities.bullets) b.stepSim(dt, this.ephemeris);
-    for (const c of this.entities.casings) c.stepSim(dt, this.ephemeris);
-    for (const d of this.entities.debris) d.stepSim(dt, this.ephemeris);
-    for (const a of this.entities.ammos) a.stepSim(dt, this.ephemeris);
-    for (const b of this.entities.bases) b.stepSim(dt, this.ephemeris);
+    for (const p of this.entities.players) p.stepActual(dt, this.ephemeris);
+    for (const e of this.entities.enemies) e.stepActual(dt, this.ephemeris);
+    for (const b of this.entities.bullets) b.stepActual(dt, this.ephemeris);
+    for (const c of this.entities.casings) c.stepActual(dt, this.ephemeris);
+    for (const d of this.entities.debris) d.stepActual(dt, this.ephemeris);
+    for (const a of this.entities.ammos) a.stepActual(dt, this.ephemeris);
+    for (const b of this.entities.bases) b.stepActual(dt, this.ephemeris);
 
     return simTime + dt;
   }
