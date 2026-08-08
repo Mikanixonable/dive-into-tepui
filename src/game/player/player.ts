@@ -187,7 +187,9 @@ export class Player extends Ship {
       return;
     }
 
-    this.throttle.updateThrustLatches(input);
+    // 噴射不可のワープ倍率ではラッチ判定自体を止める(連打がラッチとして積まれ、
+    // ワープを下げた瞬間に不意打ちで噴射が始まるのを防ぐ)。
+    if (simSpeed.canPlayerThrust) this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
     if (this.thrust !== null) this.invalidatePrediction();
@@ -471,6 +473,7 @@ export class Player extends Ship {
       throttle: this.throttle.serialize(),
       parts: this.parts.map(p => ({ ...p })) as AnyPart[],
       followPlan: this.followPlan,
+      fineAttitude: this.fineAttitude,
       plan: {
         anchor: {
           t: this.plan.anchor.t,
@@ -507,6 +510,7 @@ export class Player extends Ship {
     player.power.restore(data.power);
     player.throttle.restore(data.throttle);
     player.followPlan = data.followPlan;
+    player.fineAttitude = data.fineAttitude ?? false;
     player.parts.splice(0, player.parts.length, ...data.parts.map(restorePart));
     player.refreshFromParts();
 
