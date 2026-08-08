@@ -65,9 +65,4 @@ export class FocusMarkers {
   hideLabels(): void {
     for (const lbl of this.labels) this.markerManager.hide(lbl.id);
   }
-
-  // id に対応するラベルを返す。存在しなければ undefined。
-  findLabel(id: string): FocusLabel | undefined {
-    return this.labels.find((l) => l.id === id);
-  }
 }
