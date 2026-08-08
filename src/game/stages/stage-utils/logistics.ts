@@ -12,10 +12,14 @@ import { ProjectFn } from '../../camera/camera-system';
 import { MarkerManager } from '../../marker/marker-manager';
 import { fmtMarkerDist } from '../../hud/utils';
 import type { EntityManager } from '../../simulation/entity-manager';
+import type { SimSpeedManager } from '../../sim-speed-manager';
 
 export class Logistics {
   private resupplyCheckAt = 0;
   private lastMarkerCount = 0;
+
+  // 補給の自動投入を行うかどうか。回収済みの補給や既存の ▣ マーカーには影響しない。
+  resupplyEnabled = true;
 
   constructor(
     private readonly _hud: Hud,
@@ -57,10 +61,17 @@ export class Logistics {
   }
 
   // 近傍の補給を回収し、遠方のものをデスポーンし、残弾が少なければ定期的に新規投入する。
-  updateLogistics(simTime: number, player: Player, respawnOnDespawn = false): void {
+  // 回収とデスポーンは投入の可否によらず常に走る(既に軌道上にある補給の始末は別の話)。
+  updateLogistics(
+    simTime: number, player: Player, simSpeed: SimSpeedManager, respawnOnDespawn = false,
+  ): void {
     if (player.alive) this.absorbNearbyAmmo(player);
-    this.despawnFarAmmo(player, respawnOnDespawn);
+    const canResupply = this.resupplyEnabled && simSpeed.canResupplyAmmo;
+    this.despawnFarAmmo(player, respawnOnDespawn && canResupply);
 
+    // 投入できない間は次回判定時刻を進めない — 再開した直後の1フレームで判定させ、
+    // 停止していた長さぶんの空白を再開後に持ち越さないため。
+    if (!canResupply) return;
     if (simTime < this.resupplyCheckAt) return;
     this.resupplyCheckAt = simTime + C.LOGISTICS_CHECK_INTERVAL;
     if (player.magsLeft < C.LOGISTICS_LOW_MAGS && this.liveAmmoCount() < C.MAX_AMMO) {
