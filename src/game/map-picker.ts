@@ -216,10 +216,10 @@ export class MapPicker {
       // 候補列に載っていれば最新の位置を反映し、載っていなければ開いた時点の対象のまま
       // 据え置く(rows の導出はどの種別も実体の state を直接読むので、位置の鮮度は無関係)。
       entry.target = byKey.get(key) ?? entry.target;
-      const { title, subtitle } = this.windowHeader(entry.target, simTime);
+      const { title, subtitle, items } = this.windowParts(entry.target, simTime);
       entry.win.syncHeader(title, subtitle);
       entry.win.syncRows(this.buildRows(entry.target, bodies, player, simTime));
-      entry.win.syncItems(this.windowItems(entry.target, simTime));
+      entry.win.syncItems(items);
     }
   }
 
@@ -498,26 +498,25 @@ export class MapPicker {
   }
 
   // itemsFor の出力をプロパティウィンドウの形へ組み替える: header 項目はタイトル/サブタイトルへ
-  // 抜き出す。操作項目自体は windowItems へ委ね、開いた直後から sync 時と同じ経路で求める。
+  // 抜き出す。開いた直後から sync 時と同じ経路(windowParts)で求める。
   private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
-    const { title, subtitle } = this.windowHeader(target, simTime);
-    return { title, subtitle, rows: [], items: this.windowItems(target, simTime) };
+    const { title, subtitle, items } = this.windowParts(target, simTime);
+    return { title, subtitle, rows: [], items };
   }
 
-  // タイトル・サブタイトルは header 項目の到達まで T+… や所持金など可変な値を含むため、
-  // 開いた瞬間だけでなく sync のたびにも呼び直す。
-  private windowHeader(target: MapPickable, simTime: number): { title: string; subtitle?: string } {
-    const header = this.itemsFor(target, simTime).find((it) => it.type === 'header');
-    return { title: header?.label ?? target.name, subtitle: header?.subLabel };
-  }
-
-  // 操作項目は操作対象か・追従状態・航法ターゲットかなどの可変な状態に依存するため、開いた
-  // 瞬間だけでなく sync のたびにも呼び直す(PropertyWindow.syncItems 側で変化が無ければ
-  // DOM には触れない)。header 項目はタイトル側で扱うのでここには含めない。
-  private windowItems(target: MapPickable, simTime: number): PropertyWindowItem<MenuAction>[] {
-    return this.itemsFor(target, simTime)
+  // タイトル・サブタイトルは到達まで T+… や所持金など、操作項目は操作対象か・追従状態・
+  // 航法ターゲットかなど、どちらも可変な状態に依存するため itemsFor を毎フレーム呼び直す
+  // 必要があるが、呼び出しは1回にまとめる(header 項目からタイトル/サブタイトルを抜き出し、
+  // 残りを操作項目とする)。
+  private windowParts(
+    target: MapPickable, simTime: number,
+  ): { title: string; subtitle?: string; items: PropertyWindowItem<MenuAction>[] } {
+    const all = this.itemsFor(target, simTime);
+    const header = all.find((it) => it.type === 'header');
+    const items = all
       .filter((it) => it.type !== 'header' && it.act !== undefined)
       .map((it) => ({ label: it.label, act: it.act as MenuAction, shortcut: it.shortcut }));
+    return { title: header?.label ?? target.name, subtitle: header?.subLabel, items };
   }
 
   // 種別ごとのプロパティ行。値の導出は sync フェーズで毎フレーム呼び直す(表示専用のため)。
