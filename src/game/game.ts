@@ -29,8 +29,9 @@ import { Hud } from './hud/hud';
 import { SettingsPanel } from './hud/settings-panel';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
-import { EnvironmentScene } from '../render/environment-scene';
+import { EnvironmentScene } from './celestial/environment-scene';
 import { Ephemeris } from '../physics/ephemeris';
+import { INERTIAL_FRAME } from '../physics/frame';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { DebugHistoryLine } from './debug-history-line';
@@ -387,6 +388,7 @@ export class Game {
       simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
       addBullet: (bullet) => this.entities.addBullet(bullet),
+      ephemeris: this.ephemeris,
     });
 
     // 非操作艦にも、表示フレーム基準のベルト・HP回復だけを一度ずつ進める。
@@ -610,7 +612,7 @@ export class Game {
     if (player) this.guide.sync(this.editor.plan, player, simTime, this.editor.editMode, project);
 
     const debugTargets = player ? (target ? [player, target] : [player]) : [];
-    const debugFrame = overviewMode ? this.cameraSystem.overviewCamera.cameraFrame : 'inertial';
+    const debugFrame = overviewMode ? this.cameraSystem.overviewCamera.cameraFrame : INERTIAL_FRAME;
     this.debugHistoryLine.sync(debugTargets, debugFrame, simTime, this.ephemeris, this.floatingOrigin);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。

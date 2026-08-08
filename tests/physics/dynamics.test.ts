@@ -3,7 +3,8 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { MU_EARTH, R_EARTH, orbitState } from '../../src/physics/orbital-state';
 import { Elements, keplerPeriod, stateFromElements } from '../../src/physics/elements';
-import { Ephemeris, MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/ephemeris';
+import { Ephemeris } from '../../src/physics/ephemeris';
+import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
 import { Attractor, elementsAround } from '../../src/physics/attractor';
 import { j2Accel, stepDynamicsRK4, stepOrbitRK4 } from '../../src/physics/dynamics';
 import { Vec3, add, len, sub, v3 } from '../../src/physics/vec3';
@@ -65,7 +66,7 @@ export function register(): void {
   test('dynamics: stepDynamicsRK4 adds thrust on top of gravity', () => {
     const s0 = circularState();
     const dt = 10;
-    const bodies = new Ephemeris(0, 0).attractorsAt(0);
+    const bodies = new Ephemeris({ moon: 0 }).attractorsAt(0);
     const thrust = v3(0, 0, 5); // 大きめの加速度で差が明確に出るようにする
 
     const withThrust = stepDynamicsRK4(s0, dt, bodies, 0, thrust);
@@ -77,7 +78,7 @@ export function register(): void {
   test('dynamics: stepDynamicsRK4 with bcInv>0 decelerates more than bcInv=0 at LEO altitude', () => {
     const s0 = circularState();
     const dt = 10;
-    const bodies = new Ephemeris(0, 0).attractorsAt(0);
+    const bodies = new Ephemeris({ moon: 0 }).attractorsAt(0);
 
     const noDrag = stepDynamicsRK4(s0, dt, bodies, 0, null);
     const withDrag = stepDynamicsRK4(s0, dt, bodies, 0.01, null);
@@ -86,7 +87,7 @@ export function register(): void {
   });
 
   test('dynamics: a circular lunar orbit (surface +100km) returns to about the same moon-relative position after one revolution (measured, pinned)', () => {
-    const ephemeris = new Ephemeris(0, 0);
+    const ephemeris = new Ephemeris({ moon: 0 });
     const bodies0 = ephemeris.attractorsAt(0);
     const moon0 = bodies0.find((b) => b.id === 'moon')!;
     const a = R_MOON + 100e3;
@@ -101,7 +102,7 @@ export function register(): void {
       s = stepDynamicsRK4(s, dt, bodies, 0, null);
     }
 
-    const relFinal = sub(s.r, ephemeris.moonPosAt(s.t));
+    const relFinal = sub(s.r, ephemeris.positionOf('moon', s.t));
     const drift = len(sub(relFinal, rel0.r));
     // 地球(・太陽)の潮汐差ぶんの摂動がかかるので、月の二体問題の解には正確には戻らない。
     assert.ok(drift < 50e3, `moon-relative drift after 1 revolution: ${drift} m (expected within tens of km)`);
