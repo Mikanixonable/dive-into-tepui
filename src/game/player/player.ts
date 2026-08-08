@@ -155,18 +155,19 @@ export class Player extends Ship {
     dt: number;
     input: Input;
     simSpeed: SimSpeedManager;
-    editMode: boolean;
+    mapMode: boolean;
+    dvEditActive: boolean;
     scoreCounter: ScoreCounter;
     simTime: number;
     zoomActive: boolean;
     entities: EntityManager;
     ephemeris: Ephemeris;
   }): void {
-    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, entities, ephemeris } = params;
+    const { dt, input, simSpeed, mapMode, dvEditActive, scoreCounter, simTime, zoomActive, entities, ephemeris } = params;
 
     this.updatePassive(dt);
     this.handleEdgeInput(input);
-    this.updateTorque(input, editMode, dt * simSpeed.simSpeed);
+    this.updateTorque(input, dt * simSpeed.simSpeed);
 
     // 死亡済み: 射撃、移動、hp回復はできない
     if (!this.alive) {
@@ -174,13 +175,14 @@ export class Player extends Ship {
       return;
     }
 
-    if (editMode) {
-      this.fire.tickMapMode(dt);
+    if (mapMode) this.fire.tickMapMode(dt);
+    else this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, entities, ephemeris.sunDirAt(simTime));
+
+    // ノードのΔv編集中はWASDQEをそちらへ譲り、実噴射は行わない。
+    if (dvEditActive) {
       this.thrust = null;
       return;
     }
-
-    this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, entities, ephemeris.sunDirAt(simTime));
 
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
@@ -350,7 +352,7 @@ export class Player extends Ship {
 
 
   // 入力から機体座標系トルクを求めて this.torque へ反映し、角速度をクランプする。
-  private updateTorque(input: Input, editMode: boolean, attDt: number): void {
+  private updateTorque(input: Input, attDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this.fineAttitude || this.fire.isFiring;
     this.torque = this.throttle.updateTorque(
@@ -359,7 +361,6 @@ export class Player extends Ship {
       this.state.v,
       this.alive,
       input,
-      editMode,
       fine,
       attDt,
       this,
