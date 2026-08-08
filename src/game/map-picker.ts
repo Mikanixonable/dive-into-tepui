@@ -8,6 +8,7 @@ import { fmtTime } from './hud/utils';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { MapPickable, pickNearest } from './map-pick';
+import { ObjectListPanel } from './object-list-panel';
 import type { Input } from './input/input';
 import { EntityManager } from './simulation/entity-manager';
 import { Ephemeris } from '../physics/ephemeris';
@@ -15,6 +16,7 @@ import { NavTarget } from './nav-target';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
+import type { Docking } from './docking';
 import type { Game } from './game';
 import { v3 } from '../physics/vec3';
 
@@ -25,10 +27,16 @@ interface PickHandler {
 
 export class MapPicker {
   private readonly menu = new ContextMenu<MapPickable, MenuAction>();
+  private readonly objectListPanel: ObjectListPanel;
+  private objectListVisible = false;
   private items: readonly MapPickable[] = [];
 
   // このフレームの被選択物候補。refresh の後に読む。
   get pickables(): readonly MapPickable[] { return this.items; }
+
+  // Docking は MapPicker より後に生成されるので、生成後に登録する。
+  setDocking(docking: Docking): void { this.docking = docking; }
+  private docking: Docking | null = null;
 
   // 候補の供給元と、メニュー項目の実行先を参照として受け取る。
   constructor(
@@ -44,6 +52,14 @@ export class MapPicker {
     this.menu.onSelect = (act, target) => {
       const handler = this.handlers[target.kind];
       if (handler) handler.run(act, target);
+    };
+    this.objectListPanel = new ObjectListPanel(hud.root);
+    this.objectListPanel.onSelect = (id) => {
+      this.cameraSystem.overviewCamera.setFocus(id);
+      this.hud.hint(`${this.items.find((i) => i.id === id)?.name ?? id} にフォーカス`);
+    };
+    this.objectListPanel.onClose = () => {
+      this.objectListVisible = false;
     };
   }
 
@@ -72,6 +88,11 @@ export class MapPicker {
       const pos = ammo.displayState(displayTime)?.r;
       if (pos) items.push({ id: ammo.id ?? 'ammo', name: '弾薬', pos, kind: 'ammo' });
     }
+    for (const base of this.entities.bases) {
+      if (!base.alive) continue;
+      const pos = base.displayState(displayTime)?.r;
+      if (pos) items.push({ id: base.id, name: '基地', pos, kind: 'base' });
+    }
     items.push(...this.navTarget.mapPickables());
     items.push(...this.editor.planDisplay.apsisMarkers);
     this.items = items;
@@ -89,30 +110,44 @@ export class MapPicker {
     });
   }
 
-  // 何も当たらなかった場合、クリエイティブモードであれば「空域」として扱う（他のハンドラの後に呼ぶ）。
+  // 何も当たらなかった場合、「空域」として扱う（他のハンドラの後に呼ぶ）。
   handleEmptySpaceRightClick(input: Input, simTime: number): void {
     input.takeRightClicks((p) => {
-      if ((this.game.activeStage as any).stageId === 'creative') {
-        const target = { id: 'empty', name: '宇宙空間', pos: v3(0, 0, 0), kind: 'empty-space' as any };
-        this.menu.open(p.x, p.y, target, this.itemsFor(target, simTime));
-        return true;
-      }
-      return false;
+      const target = { id: 'empty', name: '宇宙空間', pos: v3(0, 0, 0), kind: 'empty-space' as any };
+      this.menu.open(p.x, p.y, target, this.itemsFor(target, simTime));
+      return true;
     });
   }
 
-  // 開いたままのメニューを畳む。
+  // 軌道オブジェクトウィンドウの表示状態を、マップ視点かどうかと合わせて反映する。
+  sync(overviewMode: boolean): void {
+    const visible = overviewMode && this.objectListVisible;
+    this.objectListPanel.setVisible(visible);
+    if (visible) this.objectListPanel.sync(this.items, this.cameraSystem.overviewCamera.focus);
+  }
+
+  // 開いたままのメニュー・ウィンドウを畳む。
   close(): void {
     this.menu.close();
+    this.objectListVisible = false;
   }
 
   private readonly handlers: Record<MapPickable['kind'], PickHandler> = {
     'body': {
-      itemsFor: (target, simTime) => [
-        MenuCommon.focus(),
-        ...this.navTargetItems(target, simTime),
-        MenuCommon.cancel(),
-      ],
+      itemsFor: (target, simTime) => {
+        let subLabel = '天体・ラグランジュ点';
+        if (target.id === 'earth') subLabel = '母星 (中心天体)';
+        else if (target.id === 'moon') subLabel = '衛星 (月)';
+        else if (target.id === 'sun') subLabel = '恒星 (太陽)';
+        else if (target.id.startsWith('em-l')) subLabel = '地球-月 ラグランジュ点';
+        else if (target.id.startsWith('se-l')) subLabel = '太陽-地球 ラグランジュ点';
+        return [
+          { type: 'header', label: target.name, subLabel },
+          MenuCommon.focus(),
+          ...this.navTargetItems(target, simTime),
+          MenuCommon.cancel(),
+        ];
+      },
       run: (act, target) => this.runBodyShip(act, target),
     },
     'ship': {
@@ -178,6 +213,24 @@ export class MapPicker {
       },
       run: (act, target) => this.runApsisRelnode(act, target),
     },
+    'eqnode': {
+      itemsFor: (target, simTime) => {
+        const eqTime = target.time;
+        const isMoon = target.id.endsWith('Moon');
+        const prefix = isMoon ? '月' : '';
+        const isAn = target.id.startsWith('eqAn');
+        const eqLabel = `${prefix}赤道${isAn ? '昇' : '降'}交点 (${isAn ? 'EqAN' : 'EqDN'})`;
+        const eqSubLabel = eqTime !== undefined ? `到達まで T+${fmtTime(eqTime - simTime)}` : undefined;
+        return [
+          { type: 'header', label: eqLabel, subLabel: eqSubLabel },
+          MenuCommon.warp(),
+          MenuCommon.addNode(),
+          MenuCommon.focus(),
+          MenuCommon.cancel(),
+        ];
+      },
+      run: (act, target) => this.runApsisRelnode(act, target),
+    },
     'player': {
       itemsFor: (target, simTime) => {
         const ship = this.entities.findPlayer(target.id);
@@ -209,15 +262,54 @@ export class MapPicker {
       },
     },
     'empty-space': {
-      itemsFor: () => [
-        { label: 'オブジェクトを配置する', act: 'openShipPlacer', shortcut: 'Enter' },
-        MenuCommon.cancel(),
-      ],
+      itemsFor: () => {
+        const isCreative = (this.game.activeStage as any).stageId === 'creative';
+        const placeItem: readonly MenuItem<MenuAction>[] = isCreative
+          ? [{ label: 'オブジェクトを配置する', act: 'openShipPlacer', shortcut: 'Enter' }]
+          : [];
+        return [
+          ...placeItem,
+          { label: '軌道オブジェクトウィンドウを表示', act: 'openObjectList' },
+          MenuCommon.cancel(),
+        ];
+      },
       run: (act) => {
         if (act === 'openShipPlacer') {
           if ((this.game.activeStage as any).stageId === 'creative') {
             (this.game.activeStage as any).openShipPlacer();
           }
+        } else if (act === 'openObjectList') {
+          this.objectListVisible = true;
+        }
+      },
+    },
+    'base': {
+      itemsFor: (target) => {
+        const base = this.entities.findBase(target.id);
+        const subLabel = base 
+          ? `所持金: ${base.baseState.money.toLocaleString()} Cr / 格納船: ${base.baseState.dockedShips.length}隻`
+          : '基地';
+        return [
+          { type: 'header', label: '基地', subLabel },
+          { label: 'ドックビューを開く', act: 'openDock' },
+          MenuCommon.focus(),
+          ...this.navTargetItems(target, 0),
+          { label: '削除', act: 'delete' },
+          MenuCommon.cancel(),
+        ];
+      },
+      run: (act, target) => {
+        const base = this.entities.findBase(target.id);
+        if (act === 'delete') {
+          if (base) {
+            this.docking?.clearActiveBaseIf(base);
+            base.alive = false;
+          }
+        } else if (act === 'openDock') {
+          if (base) this.docking?.activate(base);
+          else this.hud.hint('基地が見つかりません');
+        } else {
+          this.runBodyShip(act, target);
         }
       },
     },

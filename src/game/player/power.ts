@@ -16,6 +16,7 @@ export class PowerSystem {
   private readonly panels: Record<SolarSide, Panel> = { up: new Panel(), down: new Panel() };
   private readonly solarFolds: Record<SolarSide, THREE.Object3D[]>;
 
+  // shipObj から左右の太陽電池パネルの蛇腹メッシュを名前で探す。見つからなければ例外を投げる。
   constructor(shipObj: THREE.Object3D) {
     const collect = (side: SolarSide): THREE.Object3D[] => {
       const namePrefix = 'solar' + (side === 'up' ? 'Up' : 'Down');
@@ -27,13 +28,14 @@ export class PowerSystem {
     this.solarFolds = { up: collect('up'), down: collect('down') };
   }
 
+  // side のパネルの展開/収納目標を反転する。
   toggle(side: SolarSide): void {
     const p = this.panels[side];
     p.deployTarget = p.deployTarget === 0 ? 1 : 0;
   }
 
   // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
-  update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude): void {
+  update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude, ship: import('../game-entity/ship').Ship): void {
     // 展開度の更新
     const step = dt / C.RADIATOR_DEPLOY_TIME; // 同じ速度を使用
     for (const side of ['up', 'down'] as const) {
@@ -48,7 +50,8 @@ export class PowerSystem {
     // 裏面(法線が太陽と反対を向く)では発電しないため負値を0に切り詰める
     const cosIncidence = Math.max(0, dot(normal, sunDir));
     // 展開度 deployMult を掛けて、収納時は発電しないようにする
-    const power = C.SOLAR_CONSTANT * C.SOLAR_PANEL_EFFICIENCY * C.SOLAR_PANEL_AREA * cosIncidence * sunlit * deployMult;
+    const basePower = ship.totalPowerGeneration > 0 ? ship.totalPowerGeneration : C.SOLAR_CONSTANT * C.SOLAR_PANEL_EFFICIENCY * C.SOLAR_PANEL_AREA;
+    const power = basePower * cosIncidence * sunlit * deployMult;
     this.charge = Math.min(C.POWER_CAPACITY, this.charge + power * dt);
   }
 

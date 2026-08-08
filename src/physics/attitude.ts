@@ -152,9 +152,7 @@ export function stepAttitude(att: Attitude, torque: Vec3, dt: number): Attitude 
     torque.x === 0 && torque.y === 0 && torque.z === 0;
   let w = att.w;
   let q = att.q;
-  // 呼び出し側が要求した経過時間を必ず姿勢へ反映する。剛体のω変化は一定数までRK4で
-  // 解き、極端なwarpの残時間は最後のωによるcoastとして進める。以前のように残時間を
-  // 捨てて姿勢だけepochから取り残すことはしない。
+  // 剛体のω変化は一定数までRK4で解き、極端なwarpの残時間は最後のωによるcoastとして進める。
   let remaining = dt;
   let dynamicSteps = 0;
   while (remaining > 1e-9) {
