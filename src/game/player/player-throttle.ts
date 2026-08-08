@@ -4,11 +4,14 @@ import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { Vec3, add, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input/input';
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { ThrottleSaveData } from '../save-data';
+
+// 並進6方向の連打ラッチ判定対象キー一覧。
+const THRUST_KEYS: readonly KeyBinding[] = [K.thrustForward, K.thrustBackward, K.thrustLeft, K.thrustRight, K.thrustUp, K.thrustDown];
 
 export class PlayerThrottle {
   rcsDamp = true;
@@ -18,6 +21,10 @@ export class PlayerThrottle {
   thrustAccelVec: Vec3 = v3();
 
   private rotationHoldTime = 0;
+  // ラッチ中の並進キー(code 単位)。連打で追加/削除する。
+  private readonly latchedThrustKeys = new Set<string>();
+  private readonly lastThrustPressTime: Partial<Record<string, number>> = {};
+  private thrustClock = 0;
 
   constructor(
     private readonly _hud: Hud,
@@ -49,10 +56,11 @@ export class PlayerThrottle {
     this._hud.hint(`並進出力: ${labels[idx]!} (${C.THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
   }
 
-  // スラスト方向の表示用状態を初期化する。
+  // スラスト方向の表示用状態と噴射ラッチを初期化する。
   clearTransientState(): void {
     this.thrustVizDir = null;
     this.thrustAccelVec = v3();
+    this.latchedThrustKeys.clear();
   }
 
   serialize(): ThrottleSaveData {
@@ -66,6 +74,7 @@ export class PlayerThrottle {
   // 入力から機体座標系の推力加速度を組み立てて返す。warp 中などで噴射不可なら null。
   // SFX とスラスト方向の表示用状態も併せて更新する。
   updateThrustState(input: Input, simSpeed: SimSpeedManager, att: Attitude, dt: number, ship: import('../game-entity/ship').Ship): Vec3 | null {
+    this.updateThrustLatches(input, dt);
     const thrust = this.buildThrust(input, att.q, ship, dt);
     // 噴射不可、または入力が無ければ噴射音・表示を止めて終える
     if (!simSpeed.canPlayerThrust || !thrust) {
@@ -82,11 +91,31 @@ export class PlayerThrottle {
     return thrust;
   }
 
+  // 並進キーを短時間内に連打するとラッチ集合へ追加/削除する(押しっぱなし相当の維持/解除)。
+  private updateThrustLatches(input: Input, dt: number): void {
+    this.thrustClock += dt;
+    for (const key of THRUST_KEYS) {
+      // 押しっぱなしの keydown リピートを2打目と誤検出しないよう、エッジ(takeKey)だけを見る。
+      if (!input.takeKey(key)) continue;
+      const last = this.lastThrustPressTime[key.code];
+      this.lastThrustPressTime[key.code] = this.thrustClock;
+      if (last === undefined || this.thrustClock - last > C.THRUST_LATCH_DOUBLE_TAP_SEC) continue;
+      if (this.latchedThrustKeys.has(key.code)) this.latchedThrustKeys.delete(key.code);
+      else this.latchedThrustKeys.add(key.code);
+      delete this.lastThrustPressTime[key.code];
+    }
+  }
+
+  // 物理的な押下、またはラッチ中であれば true。
+  private isThrustHeld(input: Input, key: KeyBinding): boolean {
+    return input.down(key) || this.latchedThrustKeys.has(key.code);
+  }
+
   // 6方向の並進入力から機体座標系の推力加速度ベクトルを求める。入力が無ければ null。
   private buildThrust(input: Input, q: Attitude['q'], ship: import('../game-entity/ship').Ship, dt: number): Vec3 | null {
-    const axX = (input.down(K.thrustLeft) ? 1 : 0) + (input.down(K.thrustRight) ? -1 : 0);
-    const axY = (input.down(K.thrustUp) ? 1 : 0) + (input.down(K.thrustDown) ? -1 : 0);
-    const axZ = (input.down(K.thrustForward) ? 1 : 0) + (input.down(K.thrustBackward) ? -1 : 0);
+    const axX = (this.isThrustHeld(input, K.thrustLeft) ? 1 : 0) + (this.isThrustHeld(input, K.thrustRight) ? -1 : 0);
+    const axY = (this.isThrustHeld(input, K.thrustUp) ? 1 : 0) + (this.isThrustHeld(input, K.thrustDown) ? -1 : 0);
+    const axZ = (this.isThrustHeld(input, K.thrustForward) ? 1 : 0) + (this.isThrustHeld(input, K.thrustBackward) ? -1 : 0);
     if (axX === 0 && axY === 0 && axZ === 0) return null;
 
     // 全開加速度は推力/質量で決まる。スロットル段は THROTTLE_LEVELS の最大値に対する
@@ -114,7 +143,6 @@ export class PlayerThrottle {
     v: Vec3,
     alive: boolean,
     input: Input,
-    editMode: boolean,
     fineAttitude: boolean,
     attDt: number,
     ship: import('../game-entity/ship').Ship,
@@ -122,11 +150,9 @@ export class PlayerThrottle {
   ): Vec3 {
     if (!alive) return v3();
     const inertia = att.inertia;
-    // 各軸の手動回転指令を読む(map編集中は無効化)
-    const manual = editMode ? 0 : 1;
-    const inX = ((input.down(K.pitchDown) ? 1 : 0) + (input.down(K.pitchUp) ? -1 : 0)) * manual;
-    const inY = ((input.down(K.yawLeft) ? 1 : 0) + (input.down(K.yawRight) ? -1 : 0)) * manual;
-    const inZ = ((input.down(K.rollRight) ? 1 : 0) + (input.down(K.rollLeft) ? -1 : 0)) * manual;
+    const inX = (input.down(K.pitchDown) ? 1 : 0) + (input.down(K.pitchUp) ? -1 : 0);
+    const inY = (input.down(K.yawLeft) ? 1 : 0) + (input.down(K.yawRight) ? -1 : 0);
+    const inZ = (input.down(K.rollRight) ? 1 : 0) + (input.down(K.rollLeft) ? -1 : 0);
 
     // 回転指令があればプログレードホールドを解除する
     const isRotating = inX !== 0 || inY !== 0 || inZ !== 0;
