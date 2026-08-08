@@ -540,8 +540,10 @@ export class Game {
   private equatorNodeSources(): EqNodeSource[] {
     const sources = new Map<string, EqNodeSource>();
     if (this.player) {
-      const state = this.editor.planDisplay.path.finalSegmentStart ?? this.player.state;
-      sources.set(this.player.id, { id: this.player.id, name: this.player.displayName, state });
+      const path = this.editor.planDisplay.path;
+      const state = path.finalSegmentStart ?? this.player.state;
+      const samples = path.finalSegmentSamples ?? undefined;
+      sources.set(this.player.id, { id: this.player.id, name: this.player.displayName, state, samples });
     }
     if (this.navTarget.id) {
       const navPlayer = this.entities.findPlayer(this.navTarget.id);
@@ -689,9 +691,11 @@ export class Game {
       predictedTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
       this.cameraSystem.activeCameraScale,
     );
-    // 予測軌道の実線が出ているあいだは、解析楕円は重ねて出さない。
-    if (player) {
-      player.orbitLine.setSuppressed(this.predictedTrajectoryLine.hasLineFor(player));
+    // 予測軌道の実線が出ているあいだは、解析楕円は重ねて出さない。predictedTrajectoryLine は
+    // 操作対象艦しか描かないため、他の艦は常に non-suppressed に戻す — でなければ操作を
+    // 切り替えた艦の抑制状態が解けないまま残ってしまう。
+    for (const ship of this.entities.players) {
+      ship.orbitLine.setSuppressed(this.predictedTrajectoryLine.hasLineFor(ship));
     }
 
     if (player) {
