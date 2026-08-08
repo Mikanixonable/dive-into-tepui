@@ -66,6 +66,9 @@ export interface PowerSaveData {
 
 export interface ThrottleSaveData {
   throttleIdx: number;
+  // 旧セーブデータには無いフィールドなので任意。Throttle.restore が既定値(true)で埋める。
+  rcsDamp?: boolean;
+  progradeHold?: boolean;
 }
 
 export interface PlayerSaveData extends EntitySaveData {
@@ -77,6 +80,8 @@ export interface PlayerSaveData extends EntitySaveData {
   parts: AnyPart[];
   plan: PlanSaveData | null;
   followPlan: boolean;
+  // 旧セーブデータには無いフィールドなので任意。Player.restore が既定値(false)で埋める。
+  fineAttitude?: boolean;
 }
 
 // 基地は艦(EntitySaveData)と持ち物が根本的に異なる(所持金・在庫・収容艦)ため、
@@ -100,6 +105,9 @@ export interface EnemySaveData extends EntitySaveData {
   health: number;
   accent: string | number;
   waveId?: number;
+  // バースト射撃の残弾・次弾までの残り時間。未着手なら両方 undefined。
+  burstLeft?: number;
+  burstDelay?: number;
 }
 
 export interface AmmoSaveData extends EntitySaveData {
@@ -113,13 +121,18 @@ export interface ScoreCounterSaveData {
   totalEnemiesSpawned: number;
 }
 
+export interface LogisticsSaveData {
+  resupplyCheckAt: number;
+  resupplyEnabled: boolean;
+}
+
 // 全ステージ共通の内訳(スコア・決着状態・補給タイマー)。ステージ固有の内訳を持つ
 // 具象ステージはこれを拡張した型を自分の serialize/restore で使う(stage0.ts の
 // Stage0SaveData・stage00.ts の Stage00SaveData)。
 export interface StageSaveData {
   scoreCounter: ScoreCounterSaveData;
   phase: GamePhase;
-  logisticsResupplyCheckAt: number;
+  logistics: LogisticsSaveData;
 }
 
 export interface Stage0SaveData extends StageSaveData {

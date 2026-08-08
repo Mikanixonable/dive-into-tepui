@@ -319,6 +319,8 @@ export class Enemy extends Ship {
       health: this.hp,
       accent: this.accent,
       waveId: this.waveId,
+      burstLeft: this.burstLeft,
+      burstDelay: this.burstDelay,
     };
   }
 
@@ -327,6 +329,9 @@ export class Enemy extends Ship {
     const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
     const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: inertiaForEnemyKind(data.enemyKind) };
     const enemy = new Enemy(data.name || '', state, data.enemyKind, att, data.health, data.accent, data.accent, hud, sfx, fx, data.waveId, scene);
+    enemy.restoreOverallHp(data.health);
+    enemy.burstLeft = data.burstLeft;
+    enemy.burstDelay = data.burstDelay;
     enemy.id = data.id || undefined;
     enemy.alive = data.alive;
     if (!enemy.alive) {
