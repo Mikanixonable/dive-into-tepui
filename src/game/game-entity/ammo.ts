@@ -11,7 +11,7 @@ import { orbitState } from '../../physics/orbital-state';
 // 軌道上の補給(接近すると取り込んでベルトを延長できる)
 export class Ammo extends GameEntity {
   protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
-  readonly predictDuration = C.PREDICT_DURATION;
+  readonly predictsFuture = true;
 
   readonly id?: string;
 
