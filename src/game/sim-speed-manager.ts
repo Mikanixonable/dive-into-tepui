@@ -5,7 +5,7 @@
 import * as C from './const';
 import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
-import { OrbitState } from '../physics/orbital-state';
+import { KinematicState } from '../physics/kinematic-state';
 import type { Input } from './input/input';
 import { KEY_MAPPING as K } from './input/key-mapping';
 
@@ -95,14 +95,14 @@ export class SimSpeedManager {
   // 計画編集中は WASDQE などと同じく [N] を計画側へ譲るため editMode 中は受け取らない。
   // ワープ操作は決着後・ポーズ中も効くべきなので、game はこれをそれらの early return より
   // 前に呼ぶ(自動ワープの段階調整そのものは update() が行う)。
-  handleInput(input: Input, isPlaying: boolean, editMode: boolean, firstNode: OrbitState | undefined, simTime: number): void {
+  handleInput(input: Input, isPlaying: boolean, editMode: boolean, firstNode: KinematicState | undefined, simTime: number): void {
     if (input.takeKey(K.warpSlower)) this.shift(-1);
     if (input.takeKey(K.warpFaster)) this.shift(1);
     if (!editMode && input.takeKey(K.autoWarpToNode)) this.toggleAutoWarpToFirstNode(isPlaying, firstNode, simTime);
   }
 
   // 直近ノードの実行時刻までの自動ワープをトグルする。
-  toggleAutoWarpToFirstNode(isPlaying: boolean, firstNode: OrbitState | undefined, simTime: number): void {
+  toggleAutoWarpToFirstNode(isPlaying: boolean, firstNode: KinematicState | undefined, simTime: number): void {
     // ノードがなければ計画を促す通知だけ出す
     if (!firstNode || !isPlaying) {
       this._hud.hint(`マニューバノードがありません ([${K.toggleMapMode.label}] で計画)`);

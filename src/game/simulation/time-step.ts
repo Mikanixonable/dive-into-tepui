@@ -1,5 +1,7 @@
 // シミュレーション刻みの純粋な決定規則。既知イベントを越えず、低高度では刻みを縮める。
 
+import { KinematicState } from '../../physics/kinematic-state';
+
 // targetTime・maxStep・nextEventTime のいずれよりも先へ進まない、今回のサブステップ幅 [s] を返す。
 export function simulationStepDuration(
   simTime: number,
@@ -12,14 +14,9 @@ export function simulationStepDuration(
   return Math.max(0, end - simTime);
 }
 
-export interface StepState {
-  readonly r: { readonly x: number; readonly y: number; readonly z: number };
-  readonly v: { readonly x: number; readonly y: number; readonly z: number };
-}
-
 // 再突入域の境界を越えない最大刻み。境界ちょうどは必ずreentryMaxStep側に含める。
 export function adaptiveSimulationMaxStep(
-  states: readonly StepState[],
+  states: readonly KinematicState[],
   reentryRadius: number,
   normalMaxStep: number,
   reentryMaxStep: number,

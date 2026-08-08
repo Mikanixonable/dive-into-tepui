@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
-import { OrbitState } from '../../physics/orbital-state';
+import { KinematicState } from '../../physics/kinematic-state';
 import * as C from '../const';
 import { GameEntity } from './game-entity';
 import type { Attractor } from '../../physics/attractor';
@@ -22,7 +22,7 @@ export abstract class Ship extends GameEntity {
   // 名前・当たり判定半径・HP を初期化し、基底の状態/メッシュ/姿勢を構築する。
   constructor(
     name: string,
-    state: OrbitState,
+    state: KinematicState,
     obj: THREE.Object3D,
     att: Attitude,
     radius: number,
@@ -274,5 +274,5 @@ export abstract class Ship extends GameEntity {
   }
 
   // オーバービュー時の非ターゲット背景描画用
-  syncBackgroundOrbitLine(_show: boolean, _fo: FloatingOrigin, _bodies: readonly Attractor[]): void {}
+  syncBackgroundOrbitLine(_show: boolean, _fo: FloatingOrigin, _attractors: readonly Attractor[]): void {}
 }

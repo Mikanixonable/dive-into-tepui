@@ -1,7 +1,7 @@
 // 剛体球どうしの接触解決(自機・敵機・薬莢・補給・デブリ・マガジンベルト)。
 // collideRadius を持つ GameEntity だけが参加し、めり込み補正と反発の結果を
-// 新しい OrbitState として双方に差し替える。
-import { orbitState } from '../../physics/orbital-state';
+// 新しい KinematicState として双方に差し替える。
+import { kinematicState } from '../../physics/kinematic-state';
 import { v3 } from '../../physics/vec3';
 import { COLLISION_DAMAGE_MIN_SPEED } from '../const';
 import { GameEntity } from '../game-entity/game-entity';
@@ -131,15 +131,15 @@ export class CollisionPhysics {
 
     const vn = (vB.x - vA.x) * nx + (vB.y - vA.y) * ny + (vB.z - vA.z) * nz;
     if (vn >= 0) {
-      a.state = orbitState(a.state.t, v3(rA2x, rA2y, rA2z), vA);
-      b.state = orbitState(b.state.t, v3(rB2x, rB2y, rB2z), vB);
+      a.state = kinematicState(a.state.t, v3(rA2x, rA2y, rA2z), vA);
+      b.state = kinematicState(b.state.t, v3(rB2x, rB2y, rB2z), vB);
       return null;
     }
     const j = -((1 + restitution) * vn) / invM;
     const jA = j * invMa;
     const jB = j * invMb;
-    a.state = orbitState(a.state.t, v3(rA2x, rA2y, rA2z), v3(vA.x - nx * jA, vA.y - ny * jA, vA.z - nz * jA));
-    b.state = orbitState(b.state.t, v3(rB2x, rB2y, rB2z), v3(vB.x + nx * jB, vB.y + ny * jB, vB.z + nz * jB));
+    a.state = kinematicState(a.state.t, v3(rA2x, rA2y, rA2z), v3(vA.x - nx * jA, vA.y - ny * jA, vA.z - nz * jA));
+    b.state = kinematicState(b.state.t, v3(rB2x, rB2y, rB2z), v3(vB.x + nx * jB, vB.y + ny * jB, vB.z + nz * jB));
     return Math.abs(vn);
   }
 }

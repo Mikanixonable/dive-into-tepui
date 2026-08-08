@@ -1,12 +1,12 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { OrbitState } from '../../physics/orbital-state';
-import { Elements } from '../../physics/elements';
+import { KinematicState } from '../../physics/kinematic-state';
+import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
-import { OrbitEntity } from '../../physics/orbit-entity';
+import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { StateQueue } from '../../physics/state-queue';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Attractor, AttractorId, elementsAround as elementsAroundBody, hitsAnySurface, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, AttractorId, orbitalElementsOf, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -21,19 +21,19 @@ const identityAttitude = (): Attitude => ({
 // 軌道上を運動するゲーム内エンティティの基底。mesh・HP・生死・姿勢・AI といったゲーム側の
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
 export class GameEntity {
-  readonly current: OrbitEntity;
+  readonly actualTrajectory: DynamicTrajectory;
 
-  get state(): OrbitState { return this.current.state; }
+  get state(): KinematicState { return this.actualTrajectory.state; }
   // 不連続な差し替え専用の口(剛体接触・反動など)。
-  set state(s: OrbitState) { this.current.reset(s); }
-  get prevState(): OrbitState { return this.current.prevState; }
-  get history(): StateQueue { return this.current.history; }
+  set state(s: KinematicState) { this.actualTrajectory.reset(s); }
+  get prevState(): KinematicState { return this.actualTrajectory.prevState; }
+  get history(): StateQueue { return this.actualTrajectory.history; }
 
-  // elementsAround(body) のメモ。state の参照同一性(OrbitState は不変で step ごとに
-  // 新しい参照へ差し替わる)と body.id で無効化する。
-  private _memoState: OrbitState | null = null;
-  private _memoBodyId: AttractorId | null = null;
-  private _memoElements: Elements | null = null;
+  // orbitalElementsAround(center) のメモ。state の参照同一性(KinematicState は不変で step ごとに
+  // 新しい参照へ差し替わる)と center.id で無効化する。
+  private _memoState: KinematicState | null = null;
+  private _memoCenterId: AttractorId | null = null;
+  private _memoElements: OrbitalElements | null = null;
 
   att: Attitude;
   obj: THREE.Object3D;
@@ -54,49 +54,49 @@ export class GameEntity {
   protected readonly scene?: THREE.Scene;
 
   // 未来の予測列。
-  private _predicted: OrbitEntity | null = null;
-  get predicted(): OrbitEntity | null { return this._predicted; }
+  private _predictedTrajectory: DynamicTrajectory | null = null;
+  get predictedTrajectory(): DynamicTrajectory | null { return this._predictedTrajectory; }
   // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。
   private truncated = false;
 
   // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
-  constructor(state: OrbitState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
-    this.current = new OrbitEntity(state);
+  constructor(state: KinematicState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
+    this.actualTrajectory = new DynamicTrajectory(state);
     this.att = att;
     this.obj = obj;
     this.scene = scene;
     this.scene?.add(this.obj);
   }
 
-  // body を中心とする接触軌道要素。中心は呼び出し側が選ぶ(例: strongestAttractor)。
-  elementsAround(body: Attractor): Elements | null {
-    if (this._memoState !== this.state || this._memoBodyId !== body.id) {
+  // center を中心とする接触軌道要素。中心は呼び出し側が選ぶ(例: strongestAttractor)。
+  orbitalElementsAround(center: Attractor): OrbitalElements | null {
+    if (this._memoState !== this.state || this._memoCenterId !== center.id) {
       this._memoState = this.state;
-      this._memoBodyId = body.id;
-      this._memoElements = elementsAroundBody(this.state, body);
+      this._memoCenterId = center.id;
+      this._memoElements = orbitalElementsOf(this.state, center);
     }
     return this._memoElements;
   }
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする
   // 軌道周期を等分し、窓が長いときは保持サンプル数の上限側で頭打ちにする。
-  protected sampleInterval(bodies: readonly Attractor[], state: OrbitState, keepDuration: number): number {
-    const period = localOrbitPeriod(state.r, bodies);
+  protected sampleInterval(attractors: readonly Attractor[], state: KinematicState, keepDuration: number): number {
+    const period = localOrbitPeriod(state.r, attractors);
     const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
-    return Math.max(span / C.PREDICT_SAMPLES_PER_REV, keepDuration / C.PREDICT_MAX_SAMPLES);
+    return Math.max(span / C.TRAJECTORY_SAMPLES_PER_REV, keepDuration / C.PREDICT_MAX_SAMPLES);
   }
 
   // 全天体重力 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。このステップぶんの重力源は
   // 中点(t + dt/2)で1回だけ引く — attractorsAt は同一時刻の呼び出しを前提にメモ化されて
   // いるので、1ステップの中で別の時刻を引くとメモが効かなくなる。historyDuration が 0
   // (弾・薬莢・破片)の間は間引き間隔を使わないので sampleInterval を評価しない。
-  stepSim(dt: number, ephemeris: Ephemeris): void {
+  stepActual(dt: number, ephemeris: Ephemeris): void {
     if (!this.alive) return;
-    const bodies = ephemeris.attractorsAt(this.state.t + dt / 2);
+    const attractors = ephemeris.attractorsAt(this.state.t + dt / 2);
     const interval = this.historyDuration > 0
-      ? this.sampleInterval(bodies, this.state, this.historyDuration)
+      ? this.sampleInterval(attractors, this.state, this.historyDuration)
       : 0;
-    this.current.step(dt, bodies, this.bcInv, this.srpCoeff, C.SHADOW_PENUMBRA, this.thrust, interval, this.historyDuration);
+    this.actualTrajectory.step(dt, attractors, this.bcInv, this.srpCoeff, C.SHADOW_PENUMBRA, this.thrust, interval, this.historyDuration);
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
@@ -107,16 +107,16 @@ export class GameEntity {
 
   // 予測列を破棄する。
   invalidatePrediction(): void {
-    this._predicted = null;
+    this._predictedTrajectory = null;
   }
 
   // 実状態との位置ずれが許容量を超えていたら予測列を破棄する。破棄したら true。
-  // bodies は simTime の重力源一覧、horizon は予測している長さ [s]。
-  resyncPrediction(simTime: number, bodies: readonly Attractor[], horizon: number): boolean {
-    if (this._predicted === null) return false;
-    const predictedState = this._predicted.at(simTime);
+  // attractors は simTime の重力源一覧、horizon は予測している長さ [s]。
+  resyncPrediction(simTime: number, attractors: readonly Attractor[], horizon: number): boolean {
+    if (this._predictedTrajectory === null) return false;
+    const predictedState = this._predictedTrajectory.at(simTime);
     if (predictedState !== null
-      && len(sub(predictedState.r, this.state.r)) <= this.resyncTolerance(bodies, horizon)) {
+      && len(sub(predictedState.r, this.state.r)) <= this.resyncTolerance(attractors, horizon)) {
       return false;
     }
     this.invalidatePrediction();
@@ -126,44 +126,44 @@ export class GameEntity {
   // 乖離判定の許容量 [m]。保持サンプル数の上限で間引きが粗くなると at() の補間そのものが
   // 誤差を持つので、その誤差(間引き間隔の4乗に比例)まで許容量を広げる — 広げないと、
   // 実状態と一致している列を毎フレーム破棄して予測が永久に完成しなくなる。
-  private resyncTolerance(bodies: readonly Attractor[], horizon: number): number {
-    const period = localOrbitPeriod(this.state.r, bodies);
+  private resyncTolerance(attractors: readonly Attractor[], horizon: number): number {
+    const period = localOrbitPeriod(this.state.r, attractors);
     const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
-    const coarsening = Math.max(1, (horizon / C.PREDICT_MAX_SAMPLES) / (span / C.PREDICT_SAMPLES_PER_REV));
+    const coarsening = Math.max(1, (horizon / C.PREDICT_MAX_SAMPLES) / (span / C.TRAJECTORY_SAMPLES_PER_REV));
     return Math.max(C.PREDICT_RESET_DIST, C.PREDICT_SAMPLE_ERROR * coarsening ** 4);
   }
 
-  // 予測列の先端を、呼び出し側が確定させた重力源 bodies のもとで dt ぶん1ステップ伸ばす。
+  // 予測列の先端を、呼び出し側が確定させた重力源 attractors のもとで dt ぶん1ステップ伸ばす。
   // horizon は simTime から先に予測する長さ [s]。伸ばせなかったら false。
-  stepPrediction(bodies: readonly Attractor[], simTime: number, dt: number, horizon: number): boolean {
+  stepPredicted(attractors: readonly Attractor[], simTime: number, dt: number, horizon: number): boolean {
     if (!this.predictsFuture) return false;
     // 自由飛行前提の予測は噴射中に成立しないので、推力がかかっている間は伸ばさない。
     if (this.thrust !== null) return false;
-    if (this._predicted === null) {
-      this._predicted = new OrbitEntity(this.current.state);
+    if (this._predictedTrajectory === null) {
+      this._predictedTrajectory = new DynamicTrajectory(this.actualTrajectory.state);
       this.truncated = false;
     }
     if (this.truncated) return false;
-    const p = this._predicted;
+    const p = this._predictedTrajectory;
 
     // ホライズン時刻ちょうどを at() で引けるよう、先端は必ずホライズンを1ステップぶん
     // 越えたところまで伸ばす。
     if (p.state.t > simTime + horizon) return false;
 
-    p.step(dt, bodies, this.bcInv, this.srpCoeff, C.SHADOW_PENUMBRA, null, this.sampleInterval(bodies, p.state, horizon), horizon);
+    p.step(dt, attractors, this.bcInv, this.srpCoeff, C.SHADOW_PENUMBRA, null, this.sampleInterval(attractors, p.state, horizon), horizon);
 
     // 有限チェック
     const { r, v } = p.state;
     const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
       && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-    if (!finite || hitsAnySurface(r, bodies, C.REENTRY_ALT)) this.truncated = true;
+    if (!finite || hitCelestialBody(r, attractors, C.REENTRY_ALT)) this.truncated = true;
 
     return true;
   }
 
   // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。
-  displayState(t: number): OrbitState | null {
-    return t <= this.current.state.t ? this.current.at(t) : (this._predicted?.at(t) ?? null);
+  displayState(t: number): KinematicState | null {
+    return t <= this.actualTrajectory.state.t ? this.actualTrajectory.at(t) : (this._predictedTrajectory?.at(t) ?? null);
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
@@ -178,11 +178,11 @@ export class GameEntity {
     this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 
-  // playerPos は「自機からの距離」で消える種別(弾)のために一律で渡す。bodies はその時刻の
-  // 重力源一覧(表面到達判定に使う)。
-  checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3, bodies: readonly Attractor[]): void {
+  // playerPos は「自機からの距離」で消える種別(弾)のために一律で渡す。attractors はその
+  // 時刻の重力源一覧(表面到達判定に使う)。
+  checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (hitsAnySurface(this.state.r, bodies, C.DEBRIS_REENTRY_ALT)) this.alive = false;
+    if (hitCelestialBody(this.state.r, attractors, C.DEBRIS_REENTRY_ALT)) this.alive = false;
   }
 
   // メッシュを scene から取り除く。

@@ -2,11 +2,12 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
-import { Attractor, hitsAnySurface, strongestAttractor } from '../../physics/attractor';
+import { Attractor, hitCelestialBody, strongestAttractor } from '../../physics/attractor';
 import type { FloatingOrigin } from '../floating-origin';
 import { Attitude } from '../../physics/attitude';
-import { OrbitState, orbitState, R_EARTH_EQ } from '../../physics/orbital-state';
-import { OrbitLine } from '../../render/orbitline';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { R_EARTH_EQ } from '../../physics/solar-system';
+import { OrbitLine } from '../../render/orbit-line';
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
@@ -67,7 +68,7 @@ export class Enemy extends Ship {
   // enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
   constructor(
     name: string,
-    state: OrbitState,
+    state: KinematicState,
     enemyKind: EnemyKind,
     att: Attitude,
     _hp: number,
@@ -140,11 +141,11 @@ export class Enemy extends Ship {
   private hitEffect(bullet: Bullet, hitR: Vec3): void {
     this._sfx.enemyHit();
     if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(orbitState(this.state.t, hitR, this.state.v));
+      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, hitR, this.state.v));
     } else {
-      this._fx.spawnBulletFlash(orbitState(this.state.t, hitR, this.state.v));
+      this._fx.spawnBulletFlash(kinematicState(this.state.t, hitR, this.state.v));
     }
-    this._fx.spawnGasPuff(orbitState(this.state.t, hitR, this.state.v));
+    this._fx.spawnGasPuff(kinematicState(this.state.t, hitR, this.state.v));
   }
 
   // 撃破時の爆発音・エフェクトを発生させる。
@@ -197,9 +198,9 @@ export class Enemy extends Ship {
   }
 
   // 再突入による自然死。alive がすでに false なら何もしない(多重処理防止)。
-  checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3, bodies: readonly Attractor[]): void {
+  checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (!hitsAnySurface(this.state.r, bodies, C.REENTRY_ALT)) return;
+    if (!hitCelestialBody(this.state.r, attractors, C.REENTRY_ALT)) return;
     this.alive = false;
     this.destroyEffect();
     activeStage.recordEnemyDeath(this, simTime, 'reentry');
@@ -276,7 +277,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(orbitState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_HIT_DAMAGE, this.scene);
+    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_HIT_DAMAGE, this.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
@@ -290,9 +291,9 @@ export class Enemy extends Ship {
   }
 
   // オーバービュー時の非ターゲット背景描画用
-  syncBackgroundOrbitLine(show: boolean, fo: FloatingOrigin, bodies: readonly Attractor[]): void {
-    const center = strongestAttractor(this.state.r, bodies);
-    this.orbitLine.sync(show ? this.elementsAround(center) : null, fo);
+  syncBackgroundOrbitLine(show: boolean, fo: FloatingOrigin, attractors: readonly Attractor[]): void {
+    const center = strongestAttractor(this.state.r, attractors);
+    this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo);
   }
 
   // セーブデータへ変換する。
@@ -315,7 +316,7 @@ export class Enemy extends Ship {
 
   // セーブデータから復元する。
   static restore(data: EnemySaveData, simTime: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene?: THREE.Scene): Enemy {
-    const state = orbitState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
+    const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
     const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
     const enemy = new Enemy(data.name || '', state, data.enemyKind, att, data.health, data.accent, data.accent, hud, sfx, fx, data.waveId, scene);
     enemy.id = data.id || undefined;

@@ -1,6 +1,6 @@
 // 爆発・マズルフラッシュなどの一時エフェクト。
 import * as THREE from "three/webgpu";
-import { OrbitState, orbitState } from "../../physics/orbital-state";
+import { KinematicState, kinematicState } from "../../physics/kinematic-state";
 import { addScaled } from "../../physics/vec3";
 import { Billboard } from "../../render/billboard";
 import { FloatingOrigin } from "../floating-origin";
@@ -9,7 +9,7 @@ import { FloatingOrigin } from "../floating-origin";
 // 持ち、その時刻から現在の simTime までを毎フレーム移流させる。
 export interface FlashEffect {
   billboard: Billboard;
-  state: OrbitState;
+  state: KinematicState;
   age: number;
   duration: number;
   size0: number;
@@ -39,7 +39,7 @@ export class FlashEffectManager {
         return false;
       }
       const s = fx.state;
-      fx.state = orbitState(simTime, addScaled(s.r, s.v, simTime - s.t), s.v);
+      fx.state = kinematicState(simTime, addScaled(s.r, s.v, simTime - s.t), s.v);
       return true;
     });
   }

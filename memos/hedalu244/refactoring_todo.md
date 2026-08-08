@@ -106,9 +106,9 @@ minCountって使われているか？
 
 ## MAP VIEW パネル(カメラ用)に「弾薬」トグルが同居している(`camera/overview-camera-panel.ts:35-40`)。
   カメラ関連 GUI の集約という観点では逆向きの混在。
-## `render/orbitline.ts` の `densifyNear` に「要調査」コメントあり: 頂点を密に置きたいのは本来
+## `render/orbit-line.ts` の `densifyNear` に「要調査」コメントあり: 頂点を密に置きたいのは本来
   フローティングオリジン近傍だが、呼び出し側は自機位置を渡している。
-## 戦闘ビューの方位マーカーは `orbitalAxes` が地心速度基準のままで、中心天体に追従しない。
+## 戦闘ビューの方位マーカーは `orbitAxes` が地心速度基準のままで、中心天体に追従しない。
   `strongestAttractor` があるので直せるが、重力源の一般化とは別の仕様変更。
 ## 影判定(`lenSq(...) < R_EARTH_EQ²`)が `game-entity/enemy.ts` と `player/player-fire.ts` に
   同じ実装で2つある。
@@ -116,7 +116,7 @@ minCountって使われているか？
   触っている(フックが検出。今回の変更セットとは無関係な既存の状態)。
 
 ## **「月回転系にしても予測軌道が月を周回する形で表示されない」**(`memos/mikanixonable/dev.md:741`)。
-原因は `DebugHistoryLine.sync` に渡すベイク系がマニューバ計画用の `PlanDisplay.trajectoryFrame` に
+原因は `DebugTrajectoryLine.sync` に渡すベイク系がマニューバ計画用の `PlanDisplay.planFrame` に
 なっており、エンティティの積分軌道表示が自分の座標系設定を持っていないこと
 (`memos/mikanixonable/map-orbit-display-fixes.md` 問題2)。
 
@@ -129,3 +129,37 @@ minCountって使われているか？
 ## 物理的正確さとパフォーマンスのトレードオフの検証
 シミュレーションのサブステップやRK4の4ステージにおいて計算を間引いている箇所については、それはあくまでもパフォーマンス向上だけが目的の計算省略であり、実測して問題がなければ物理的正確さを優先すべき事案である。
 計算時間の実測と、誤差の実測の両面から検証したい。
+
+
+### `Manager` / `System` / `Physics` 接尾辞の使い分けの意味のなさ、別軸で分類できないか
+
+「所有して毎フレーム駆動するもの」の接尾辞が4系統ある。`Manager` と `System` はどちらも中身を説明していない。
+
+- `*Manager`: `EntityManager` `MarkerManager` `UnlockManager` `SaveManager` `DisplayTimeManager` `SimSpeedManager` `FlashEffectManager` `ViewManager`
+- `*System`: `CameraSystem` `CombatCameraSystem` `HitSystem` `EffectsSystem` `PowerSystem` `RadiatorSystem` `ThermalSystem`
+- `*Physics`: `CollisionPhysics` `BeltPhysics`
+- 動作主体名: `Simulator` `Predictor` `Targeter` `MapPicker` `Docking`
+
+| 現在 | 案 | 今の実装で表しているもの | 提案の理由 |
+|---|---|---|---|
+| 4系統の混在 | **一括改名しない。「今後 `Manager`/`System` を新設しない」規則にとどめる**(推奨) | 毎フレーム駆動される所有者 | 置換範囲が広く挙動と無関係。既存を動かす価値が改名コストに見合わない |
+| 同上 | 動作主体名(`-er`)へ寄せる | 同上 | 語が説明的になる。ただし `EntityManager` → `EntityHolder` など、うまい名前にならないものが残る |
+
+### `hit` の多義 — 接触判定の統合と同時に決める
+
+`hit` は4つの意味で使われている。(1) 弾丸の命中・被弾(`HitSystem` / `checkBulletHits` /
+`hitRadius` / `const.ts` の `*_HIT_*` 十数語。中核は `Ship.attacked`)、(2) 剛体同士の接触
+(`SweptSphereHit` / `collision.ts` の `const hit`。中核は `sweptSphereToi`)、(3) 画面上の
+クリック当たり判定(`nav-target.ts` / `plan-editor.ts` / `targeter.ts` の `const hit`。中核は
+`pickNearest` / `nearestSample`)、(4) 命中までの時間(`enemy.ts` の `timeToHit`)。
+
+(2)(3)(4) はいずれも中核の関数自体が `hit` を含んでおらず、語彙として根を張っていないので
+動かすコストは小さい。ただし `feature_todo.md`「衝突判定の統一化」で実体弾・剛体・天体の
+接触を1実装へ統合する予定であり、統合すれば語の割り当ても変わる。**実装より先に名前だけ
+動かさない** — 統合と同じ変更セットで4つまとめて決める。
+
+### `dynamics.ts` を分割するか
+
+`src/physics/dynamics.ts` が2責務を持っている — 汎用 ODE ステッパ(`stepRK4`)と運動方程式の
+合成(`totalAccel` / `j2Accel`)。名前の上では区別が付いているので、モジュールごと分けるかは
+別途判断する。

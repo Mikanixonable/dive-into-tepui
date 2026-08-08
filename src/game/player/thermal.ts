@@ -1,5 +1,5 @@
 // 自機の熱収支(空力加熱・射撃発熱・放射冷却)と動圧・高度低下の監視。
-import { R_EARTH } from '../../physics/orbital-state';
+import { R_EARTH } from '../../physics/solar-system';
 import { airspeed } from '../../physics/atmosphere';
 import { Vec3, len } from '../../physics/vec3';
 import { atmosphericDensity } from '../../physics/atmosphere';

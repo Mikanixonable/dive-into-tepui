@@ -1,7 +1,7 @@
 // マガジンベルトの物理演算(Verlet 積分 + 距離拘束によるチェーンのたわみ・ねじれ)。
 import * as THREE from 'three/webgpu';
 import { Attitude, Quat, qFromUnitVectors, qInvert, qMul, qRotate } from '../../physics/attitude';
-import { orbitState } from '../../physics/orbital-state';
+import { kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
 import * as C from '../const';
@@ -20,7 +20,7 @@ function clamp(v: number, lo: number, hi: number): number {
 export class BeltSection extends GameEntity {
   // 節点インデックス beltIndex に対応するプロキシを生成する。
   constructor(readonly beltIndex: number) {
-    super(orbitState(0, v3(), v3()), new THREE.Object3D());
+    super(kinematicState(0, v3(), v3()), new THREE.Object3D());
     this.mass = 5;
     this.collideRadius = 0.8;
   }
@@ -34,7 +34,7 @@ export class BeltPhysics {
   // 各リンクのチェーン軸まわりのねじれ角 [rad]。常に ±MAG_CHAIN_MAX_ROLL_DEG に収まる。
   readonly beltTwist: number[] = [];
 
-  private prevBodyW = v3(); // 前フレームの機体角速度(ベルト物理の角加速度推定用)
+  private prevShipW = v3(); // 前フレームの機体角速度(ベルト物理の角加速度推定用)
   private angularAccel = v3();
   // 給弾進みに応じて動く根本の固定点(機体座標系)。
   anchor: Vec3 = v3(MAG_BELT_ANCHOR_X, 0, 0);
@@ -72,8 +72,8 @@ export class BeltPhysics {
     const invDt = dt > 1e-6 ? 1 / dt : 0;
     this.estimateAngularAccel(att.w, invDt);
 
-    const aThrustBody = qRotate(qInvert(att.q), thrustAccelVec);
-    this.integrateVerlet(dt, att.w, aThrustBody);
+    const aThrustShip = qRotate(qInvert(att.q), thrustAccelVec);
+    this.integrateVerlet(dt, att.w, aThrustShip);
 
     this.pinRootToAnchor(beltFeed);
     this.relaxDistanceConstraints();
@@ -95,12 +95,12 @@ export class BeltPhysics {
 
   // 前フレームとの角速度差から角加速度を推定する。
   private estimateAngularAccel(w: Vec3, invDt: number): void {
-    this.angularAccel = v3((w.x - this.prevBodyW.x) * invDt, (w.y - this.prevBodyW.y) * invDt, (w.z - this.prevBodyW.z) * invDt);
-    this.prevBodyW = (w);
+    this.angularAccel = v3((w.x - this.prevShipW.x) * invDt, (w.y - this.prevShipW.y) * invDt, (w.z - this.prevShipW.z) * invDt);
+    this.prevShipW = (w);
   }
 
   // 各節点の位置を擬似力込みで Verlet 積分する。
-  private integrateVerlet(dt: number, w: Vec3, aThrustBody: Vec3): void {
+  private integrateVerlet(dt: number, w: Vec3, aThrustShip: Vec3): void {
     const h = Math.min(dt, 0.05); // 積分刻みの上限(大きな dt でのはみ出し防止)
     const damping = 0.99; // 慣性を維持しつつ、毎ステップ2%だけ減衰させる
     const invDt = dt > 1e-6 ? 1 / dt : 0;
@@ -117,9 +117,9 @@ export class BeltPhysics {
       const centrifugal = cross(w, cross(w, pos));
       const coriolis = scale(cross(w, vel), inv2Dt);
       const accel = v3(
-        -aThrustBody.x - euler.x - centrifugal.x - coriolis.x,
-        -aThrustBody.y - euler.y - centrifugal.y - coriolis.y,
-        -aThrustBody.z - euler.z - centrifugal.z - coriolis.z,
+        -aThrustShip.x - euler.x - centrifugal.x - coriolis.x,
+        -aThrustShip.y - euler.y - centrifugal.y - coriolis.y,
+        -aThrustShip.z - euler.z - centrifugal.z - coriolis.z,
       );
 
       this.beltPrevPos[i] = pos;
@@ -218,7 +218,7 @@ export class BeltPhysics {
 
   private readonly sections: BeltSection[] = [];
 
-  // 各節点の機体座標系での位置・速度をワールド OrbitState に変換し、衝突判定用の
+  // 各節点の機体座標系での位置・速度をワールド KinematicState に変換し、衝突判定用の
   // プロキシ配列を返す。
   collisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     // プロキシを節点数まで拡張する
@@ -235,7 +235,7 @@ export class BeltPhysics {
       const v_body_total = add(v_verlet, v_tangential);
 
       // ワールド座標系へ変換する
-      s.state = orbitState(
+      s.state = kinematicState(
         s.state.t,
         add(baseR, qRotate(att.q, bp)),
         add(baseV, qRotate(att.q, v_body_total)),

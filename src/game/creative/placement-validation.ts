@@ -6,7 +6,7 @@ import { AttractorId } from '../../physics/attractor';
 export type PlacementFieldId =
   | 'periapsisAltitude' | 'apoapsisAltitude' | 'semiMajorAxis' | 'eccentricity' | 'period'
   | 'inclination' | 'raan' | 'argumentOfPeriapsis' | 'trueAnomaly'
-  | 'referenceBody' | 'inPlaneAmplitude' | 'outOfPlaneAmplitude';
+  | 'referenceAttractor' | 'inPlaneAmplitude' | 'outOfPlaneAmplitude';
 
 export type PlacementFieldIssue = { field: PlacementFieldId; message: string };
 
@@ -16,7 +16,7 @@ export type EllipticSizeInput =
   | { sizeMode: 'periodEcc'; periodHours: number; eccentricity: number };
 
 export type EllipticPlacementInput = {
-  bodyRadius: number; mu: number;
+  centerRadius: number; mu: number;
   incDeg: number; raanDeg: number; argpDeg: number; nuDeg: number;
 } & EllipticSizeInput;
 
@@ -55,7 +55,7 @@ export function validateEllipticPlacementFields(input: EllipticPlacementInput): 
   // そのものを上で直接検証済みなので、ここは半長軸/周期指定の2モードだけが通る)。
   if (Number.isFinite(input.eccentricity) && input.eccentricity >= 0 && input.eccentricity < 1) {
     const a = input.sizeMode === 'semiMajorEcc' ? input.semiMajorKm * 1e3 : semiMajorFromPeriod(input.periodHours * 3600, input.mu);
-    if (Number.isFinite(a) && !(a > 0 && a * (1 - input.eccentricity) > input.bodyRadius)) {
+    if (Number.isFinite(a) && !(a > 0 && a * (1 - input.eccentricity) > input.centerRadius)) {
       issues.push({
         field: input.sizeMode === 'semiMajorEcc' ? 'semiMajorAxis' : 'period',
         message: '近地点が天体表面より上の楕円軌道にしてください',
@@ -65,14 +65,14 @@ export function validateEllipticPlacementFields(input: EllipticPlacementInput): 
   return issues;
 }
 
-export type LibrationPlacementInput =
+export type LagrangePlacementInput =
   | { orbitKind: 'halo'; outOfPlaneAmplitudeKm: number }
   | { orbitKind: 'lissajous'; inPlaneAmplitudeKm: number; outOfPlaneAmplitudeKm: number };
 
 // ラグランジュ点まわりの振幅入力をフィールドごとに検証する。問題がなければ空配列を返す。
-// ハローの面内振幅は三次の振幅拘束で面外振幅から決まる(buildLibrationState 参照)ため、
+// ハローの面内振幅は三次の振幅拘束で面外振幅から決まる(buildLagrangeState 参照)ため、
 // リサジューのときのみ面内振幅を検証する。
-export function validateLibrationPlacementFields(input: LibrationPlacementInput): PlacementFieldIssue[] {
+export function validateLagrangePlacementFields(input: LagrangePlacementInput): PlacementFieldIssue[] {
   const issues: PlacementFieldIssue[] = [];
   if (!(Number.isFinite(input.outOfPlaneAmplitudeKm) && input.outOfPlaneAmplitudeKm > 0)) {
     issues.push({ field: 'outOfPlaneAmplitude', message: '面外振幅には有限の正数を入力してください' });
@@ -86,12 +86,11 @@ export function validateLibrationPlacementFields(input: LibrationPlacementInput)
 // 基地は敵の射程となる惑星近傍を避け、月基準の軌道要素かラグランジュ点指定でのみ設置できる。
 // 問題がなければ空配列を返す。
 export function validateBaseReferenceFields(
-  objectType: 'player' | 'enemy' | 'ammo' | 'base', placementMode: 'elements' | 'libration', body?: AttractorId,
+  objectType: 'player' | 'enemy' | 'ammo' | 'base', placementMode: 'elements' | 'lagrange', attractor?: AttractorId,
 ): PlacementFieldIssue[] {
   if (objectType !== 'base') return [];
-  if (placementMode === 'elements' && body !== 'moon') {
-    return [{ field: 'referenceBody', message: '基地は月を基準天体とする軌道要素指定かラグランジュ点指定でのみ配置できます' }];
+  if (placementMode === 'elements' && attractor !== 'moon') {
+    return [{ field: 'referenceAttractor', message: '基地は月を基準天体とする軌道要素指定かラグランジュ点指定でのみ配置できます' }];
   }
   return [];
 }
-

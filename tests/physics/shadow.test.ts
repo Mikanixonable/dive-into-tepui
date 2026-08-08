@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { sunlitFactor } from '../../src/physics/shadow';
-import { R_EARTH } from '../../src/physics/orbital-state';
+import { R_EARTH } from '../../src/physics/solar-system';
 import { v3 } from '../../src/physics/vec3';
 
 export function register(): void {

@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { GameEntity } from './game-entity';
-import { OrbitState, orbitState } from '../../physics/orbital-state';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Attitude } from '../../physics/attitude';
 import { v3 } from '../../physics/vec3';
 import type { AnyPart, Part } from './parts';
@@ -14,7 +14,7 @@ import type { MarkerManager } from '../marker/marker-manager';
 import type { BaseSaveData } from '../save-data';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import type { FloatingOrigin } from '../floating-origin';
-import { OrbitLine } from '../../render/orbitline';
+import { OrbitLine } from '../../render/orbit-line';
 import * as C from '../const';
 
 // 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。
@@ -45,7 +45,7 @@ export class Base extends GameEntity {
     dockedShips: []
   };
 
-  constructor(state: OrbitState, scene: THREE.Scene, att?: Attitude) {
+  constructor(state: KinematicState, scene: THREE.Scene, att?: Attitude) {
     super(state, buildBaseModel(), scene, att);
     this.mass = 1e6;
     this.collideRadius = 100;
@@ -64,7 +64,7 @@ export class Base extends GameEntity {
   // 視点なので、拠点ほど遠い周回全体を示す線は不要)。
   syncOrbitLine(show: boolean, fo: FloatingOrigin, bodies: readonly Attractor[]): void {
     const center = strongestAttractor(this.state.r, bodies);
-    this.orbitLine.sync(show ? this.elementsAround(center) : null, fo);
+    this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo);
   }
 
   // セーブデータへ変換する。格納艦は player.serialize() に委ねる。
@@ -85,7 +85,7 @@ export class Base extends GameEntity {
     data: BaseSaveData, simTime: number, scene: THREE.Scene,
     hud: Hud, sfx: Sfx, fx: EffectsSystem, markerManager: MarkerManager,
   ): Base {
-    const state = orbitState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
+    const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
     const base = new Base(state, scene);
     base.baseState.money = data.money;
     base.baseState.inventory = data.inventory.map(restorePart);

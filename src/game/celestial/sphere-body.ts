@@ -9,7 +9,7 @@ import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { CelestialBody } from './celestial-body';
 
-export class PlanetBody extends CelestialBody {
+export class SphereBody extends CelestialBody {
   readonly id: OrbitingId;
   private mesh!: THREE.Mesh;
 

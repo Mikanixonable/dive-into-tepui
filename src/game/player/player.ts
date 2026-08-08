@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp } from '../../physics/attitude';
-import { MU_EARTH, OrbitState, R_EARTH, altitudeOf, orbitState } from '../../physics/orbital-state';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { MU_EARTH, R_EARTH, earthAltitudeOf } from '../../physics/solar-system';
 import { Vec3, v3, len, sub } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -12,8 +13,8 @@ import { fmtMarkerDist } from '../hud/utils';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { OrbitLine } from '../../render/orbitline';
-import { Attractor, hitsAnySurface, strongestAttractor } from '../../physics/attractor';
+import { OrbitLine } from '../../render/orbit-line';
+import { Attractor, hitCelestialBody, strongestAttractor } from '../../physics/attractor';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Stage } from '../stages/stage';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
@@ -72,7 +73,7 @@ export class Player extends Ship {
   // で初期配置する。複数隻を並べるときは両方を指定して区別する(name が艦の識別子になる)。
   constructor(
     _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
-    name = 'PLAYER', initialState?: OrbitState, entityId = name) {
+    name = 'PLAYER', initialState?: KinematicState, entityId = name) {
     const state = initialState ?? Player.makeInitialState();
     super(name, state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, _scene);
     this.id = entityId;
@@ -100,15 +101,15 @@ export class Player extends Ship {
   }
 
   // 高度 INITIAL_ALT、傾斜角 INITIAL_INC_DEG の円軌道状態を返す。
-  private static makeInitialState(): OrbitState {
+  private static makeInitialState(): KinematicState {
     const r0 = R_EARTH + C.INITIAL_ALT;
     const vCirc = Math.sqrt(MU_EARTH / r0);
     const inc = (C.INITIAL_INC_DEG * Math.PI) / 180;
-    return orbitState(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
+    return kinematicState(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
   }
 
   // state の速度方向を機首、位置方向を上として姿勢を組む。
-  private static progradeAttitude(state: OrbitState): Attitude {
+  private static progradeAttitude(state: KinematicState): Attitude {
     return {
       q: qFromForwardUp(state.v, state.r) ?? { x: 0, y: 0, z: 0, w: 1 },
       w: v3(),
@@ -298,16 +299,16 @@ export class Player extends Ship {
   }
 
   // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。
-  checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, bodies: readonly Attractor[]): void {
+  checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, altitudeOf(this.state.r));
+    const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, earthAltitudeOf(this.state.r));
 
     // 熱・動圧・表面到達いずれかの限界超過を喪失理由として判定する
     let reason: string | null = null;
     if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
     else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
     else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
-    else if (hitsAnySurface(this.state.r, bodies, C.PLAYER_MIN_ALT)) reason = '天体表面付近に達し機体は分解した';
+    else if (hitCelestialBody(this.state.r, attractors, C.PLAYER_MIN_ALT)) reason = '天体表面付近に達し機体は分解した';
     if (reason === null) return;
 
     this.alive = false;
@@ -319,11 +320,11 @@ export class Player extends Ship {
   private hitEffect(bullet: Bullet, hitR: Vec3): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(orbitState(this.state.t, hitR, this.state.v));
+      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, hitR, this.state.v));
     } else {
-      this._fx.spawnBulletFlash(orbitState(this.state.t, hitR, this.state.v));
+      this._fx.spawnBulletFlash(kinematicState(this.state.t, hitR, this.state.v));
     }
-    this._fx.spawnGasPuff(orbitState(this.state.t, hitR, this.state.v));
+    this._fx.spawnGasPuff(kinematicState(this.state.t, hitR, this.state.v));
   }
 
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。
@@ -399,7 +400,7 @@ export class Player extends Ship {
     if (this.alive) {
       const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));
       const densifyNear = sub(this.state.r, center.state.r);
-      this.orbitLine.sync(this.elementsAround(center), fo, this.thrustVizDir !== null, densifyNear);
+      this.orbitLine.sync(this.orbitalElementsAround(center), fo, this.thrustVizDir !== null, densifyNear);
     } else {
       this.orbitLine.sync(null, fo);
     }
@@ -484,7 +485,7 @@ export class Player extends Ship {
     fx: EffectsSystem,
     markerManager: MarkerManager
   ): Player {
-    const state = orbitState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
+    const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
     const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
     const player = new Player(hud, sfx, scene, fx, markerManager, data.name || data.id, state, data.id);
     player.att = att;
@@ -497,14 +498,14 @@ export class Player extends Ship {
 
     if (data.plan) {
       player.plan.clear();
-      player.plan.trackAnchor(orbitState(
+      player.plan.trackAnchor(kinematicState(
         data.plan.anchor.t,
         v3(data.plan.anchor.r.x, data.plan.anchor.r.y, data.plan.anchor.r.z),
         v3(data.plan.anchor.v.x, data.plan.anchor.v.y, data.plan.anchor.v.z)
       ));
       // trackAnchor はノードが空の間しか効かないため、ノード復元より先に呼ぶ必要がある
       for (const n of data.plan.nodes) {
-        player.plan.addNode(orbitState(
+        player.plan.addNode(kinematicState(
           n.t,
           v3(n.r.x, n.r.y, n.r.z),
           v3(n.v.x, n.v.y, n.v.z)

@@ -9,9 +9,9 @@ import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { Simulator } from '../simulation/simulator';
 import type { MarkerManager } from '../marker/marker-manager';
-import { OrbitState, orbitState } from '../../physics/orbital-state';
-import { Elements, semiMajorFromPeriod, stateFromElements } from '../../physics/elements';
-import { Attractor, elementsAround } from '../../physics/attractor';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
+import { Attractor, orbitalElementsOf } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
 import { haloState, lissajousState } from '../../physics/halo';
 import type { FloatingOrigin } from '../floating-origin';
@@ -25,10 +25,10 @@ import { Ammo } from '../game-entity/ammo';
 import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
 import * as C from '../const';
-import { ElementsForm, LibrationForm, ObjectType, ReferenceBody, ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
-import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLibrationPlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
+import { ElementsForm, LagrangeForm, ObjectType, ReferenceAttractor, ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
+import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
-import { OrbitLine } from '../../render/orbitline';
+import { OrbitLine } from '../../render/orbit-line';
 
 const DEG = Math.PI / 180;
 
@@ -46,7 +46,7 @@ export class CreativeStage extends Stage {
   private logisticsPanel!: HTMLElement;
   private previewOrbitLine!: OrbitLine;
   // 艦艇配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
-  private preview: { readonly elements: Elements; readonly pos: Vec3 } | null = null;
+  private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
   private issues: readonly PlacementFieldIssue[] = [];
   private nextShipId = 1;
@@ -130,7 +130,7 @@ export class CreativeStage extends Stage {
   // 艦艇配置モーダルを開く (MapPicker から呼ばれる)。focusId はマップの現在フォーカスで、
   // 基準天体になれる ID なら基準天体の初期選択に使う。
   openShipPlacer(focusId?: string): void {
-    this.placerPanel.open(focusId !== undefined ? { kind: 'body', body: focusId as ReferenceBody } : undefined);
+    this.placerPanel.open(focusId !== undefined ? { kind: 'body', attractor: focusId as ReferenceAttractor } : undefined);
   }
 
   // 右クリックメニューの「複製」(MapPicker から呼ばれる)。state を軌道要素へ逆算でき、
@@ -138,10 +138,10 @@ export class CreativeStage extends Stage {
   // 満たす値が求まったときだけ、その値をプリセットして開く。逆算できない状態(双曲線軌道など)や、
   // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
   // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
-  openShipPlacerForDuplicate(objectType: ObjectType, state: OrbitState): void {
-    const bodies = this._ephemeris.attractorsAt(this._simulator.simTime);
-    const form = elementsFormFromState(state, bodies);
-    if (form && validateBaseReferenceFields(objectType, 'elements', form.body).length === 0) {
+  openShipPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void {
+    const attractors = this._ephemeris.attractorsAt(this._simulator.simTime);
+    const form = elementsFormFromState(state, attractors);
+    if (form && validateBaseReferenceFields(objectType, 'elements', form.attractor).length === 0) {
       this.placerPanel.open({ kind: 'form', objectType, form });
       return;
     }
@@ -151,12 +151,12 @@ export class CreativeStage extends Stage {
 
   // フォーム値から配置プレビューの軌道要素と位置を求める。軌道要素指定以外の配置方法・
   // 入力を解釈できない値のときは null(プレビューを出さない)。
-  private computePreview(form: ShipPlacerForm): { elements: Elements; pos: Vec3 } | null {
+  private computePreview(form: ShipPlacerForm): { elements: OrbitalElements; pos: Vec3 } | null {
     if (form.placementMode !== 'elements') return null;
     try {
       const state = this.buildInitialState(form);
       // 楕円はフォームが選んだ基準天体中心で描く。
-      const elements = elementsAround(state, this.referenceAttractor(form));
+      const elements = orbitalElementsOf(state, this.referenceAttractor(form));
       return elements ? { elements, pos: state.r } : null;
     } catch {
       return null;
@@ -167,12 +167,12 @@ export class CreativeStage extends Stage {
   // 同じ検証呼び出しを共有し、両者が食い違うことを防ぐ。
   private computeFieldIssues(form: ShipPlacerForm): PlacementFieldIssue[] {
     const issues = [...validateBaseReferenceFields(
-      form.objectType, form.placementMode, form.placementMode === 'elements' ? form.body : undefined,
+      form.objectType, form.placementMode, form.placementMode === 'elements' ? form.attractor : undefined,
     )];
     if (form.placementMode === 'elements') {
-      const body = this.referenceAttractor(form);
+      const center = this.referenceAttractor(form);
       const common = {
-        bodyRadius: body.radius, mu: body.mu,
+        centerRadius: center.radius, mu: center.mu,
         incDeg: form.incDeg, raanDeg: form.raanDeg, argpDeg: form.argpDeg, nuDeg: form.nuDeg,
       };
       issues.push(...validateEllipticPlacementFields(
@@ -182,8 +182,8 @@ export class CreativeStage extends Stage {
           : { ...common, sizeMode: 'periodEcc', periodHours: form.periodHours, eccentricity: form.eccentricity },
       ));
     } else {
-      issues.push(...validateLibrationPlacementFields(
-        form.librationOrbitKind === 'halo'
+      issues.push(...validateLagrangePlacementFields(
+        form.lagrangeOrbitKind === 'halo'
           ? { orbitKind: 'halo', outOfPlaneAmplitudeKm: form.azKm }
           : { orbitKind: 'lissajous', inPlaneAmplitudeKm: form.axKm, outOfPlaneAmplitudeKm: form.azKm },
       ));
@@ -205,7 +205,7 @@ export class CreativeStage extends Stage {
     );
   }
 
-  // フォーム値から OrbitState を組み立て、配置する。
+  // フォーム値から KinematicState を組み立て、配置する。
   private placeObject(name: string, form: ShipPlacerForm): void {
     if (form.objectType === 'player' && this._entities.players.length >= C.CREATIVE_MAX_SHIPS) {
       this._hud.hint(`配置数が上限(${C.CREATIVE_MAX_SHIPS}隻)に達しています`);
@@ -249,18 +249,18 @@ export class CreativeStage extends Stage {
   // Game が Creative のみで接続する。Stage 基底を複数船の概念で汚さない。
   onShipPlaced: ((ship: Player) => void) | null = null;
 
-  // フォームの placementMode に応じて軌道要素指定(stateFromElements)かラグランジュ点指定
-  // (haloState/lissajousState)のどちらかで OrbitState を組み立てる。
-  private buildInitialState(form: ShipPlacerForm): OrbitState {
-    if (form.placementMode === 'libration') return this.buildLibrationState(form);
+  // フォームの placementMode に応じて軌道要素指定(stateFromOrbitalElements)かラグランジュ点指定
+  // (haloState/lissajousState)のどちらかで KinematicState を組み立てる。
+  private buildInitialState(form: ShipPlacerForm): KinematicState {
+    if (form.placementMode === 'lagrange') return this.buildLagrangeState(form);
     return this.buildElementsState(form);
   }
 
   // 副天体・点・軌道種別・振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
   // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォーム自体に面内振幅の値がない。
-  private buildLibrationState(form: LibrationForm): OrbitState {
-    const common = { secondary: form.librationSecondary, point: form.librationPoint };
-    if (form.librationOrbitKind === 'halo') {
+  private buildLagrangeState(form: LagrangeForm): KinematicState {
+    const common = { secondary: form.lagrangeSecondary, point: form.lagrangePoint };
+    if (form.lagrangeOrbitKind === 'halo') {
       return haloState(this._simulator.simTime, this._ephemeris, { ...common, az: form.azKm * 1e3 });
     }
     return lissajousState(this._simulator.simTime, this._ephemeris, {
@@ -271,33 +271,33 @@ export class CreativeStage extends Stage {
   // フォームの基準天体(地球 or 月)を、その時刻の重力源として引く。μ・半径・ECI 化に
   // 要る情報がすべてここから出る。
   private referenceAttractor(form: ElementsForm): Attractor {
-    return this._ephemeris.attractorsAt(this._simulator.simTime).find((b) => b.id === form.body)!;
+    return this._ephemeris.attractorsAt(this._simulator.simTime).find((b) => b.id === form.attractor)!;
   }
 
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
-  // (stateFromElements)で基準天体中心の相対状態を組んでから、基準天体自身の位置・速度を
+  // (stateFromOrbitalElements)で基準天体中心の相対状態を組んでから、基準天体自身の位置・速度を
   // 足して ECI 化する(地球基準では位置・速度とも厳密に 0 なので、実質そのまま返る)。
-  private buildElementsState(form: ElementsForm): OrbitState {
-    const body = this.referenceAttractor(form);
+  private buildElementsState(form: ElementsForm): KinematicState {
+    const center = this.referenceAttractor(form);
     let a: number;
     let e: number;
     if (form.sizeMode === 'apsides') {
-      const rp = body.radius + form.peAltKm * 1e3;
-      const ra = body.radius + form.apAltKm * 1e3;
+      const rp = center.radius + form.peAltKm * 1e3;
+      const ra = center.radius + form.apAltKm * 1e3;
       a = (rp + ra) / 2;
       e = (ra - rp) / (ra + rp);
     } else if (form.sizeMode === 'semiMajorEcc') {
       a = form.semiMajorKm * 1e3;
       e = form.eccentricity;
     } else {
-      a = semiMajorFromPeriod(form.periodHours * 3600, body.mu);
+      a = semiMajorFromPeriod(form.periodHours * 3600, center.mu);
       e = form.eccentricity;
     }
 
-    const rel = stateFromElements(
-      this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, body.mu,
+    const rel = stateFromOrbitalElements(
+      this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, center.mu,
     );
-    return orbitState(this._simulator.simTime, add(body.state.r, rel.r), add(body.state.v, rel.v));
+    return kinematicState(this._simulator.simTime, add(center.state.r, rel.r), add(center.state.v, rel.v));
   }
 
   // フォームの値が物理的に成立するか検証する。computeFieldIssues と同じ検証呼び出しを共有し、
@@ -307,7 +307,7 @@ export class CreativeStage extends Stage {
     if (firstIssue) throw new Error(firstIssue.message);
   }
 
-  private assertFiniteEllipticState(state: OrbitState): void {
+  private assertFiniteEllipticState(state: KinematicState): void {
     const values = [state.r.x, state.r.y, state.r.z, state.v.x, state.v.y, state.v.z];
     if (!values.every(Number.isFinite)) throw new Error('有限の状態を作れませんでした');
   }

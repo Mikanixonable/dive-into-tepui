@@ -1,8 +1,8 @@
-// 点列(時刻付き OrbitState)を1本の単色折れ線として描く汎用描画基盤。OrbitLine(解析的な楕円)の
+// 点列(時刻付き KinematicState)を1本の単色折れ線として描く汎用描画基盤。OrbitLine(解析的な楕円)の
 // 兄弟で、こちらは計画軌道・予測軌道・履歴軌道など「任意の点列」を折れ線化する共通土台になる。
 //
 // 座標変換は physics/frame.ts / physics/ephemeris.ts へ委譲する二段構え:
-//  - bake(点列 or frame が変わったときだけ, syncGeometry): 各サンプルの OrbitState をその時刻の
+//  - bake(点列 or frame が変わったときだけ, syncGeometry): 各サンプルの KinematicState をその時刻の
 //    座標系相対へ変換し(frameTransformAt→toFrameState)、位置と速度からエルミート細分した頂点を
 //    焼く。点ごとに座標系の姿勢・原点が違う非剛体変形なので頂点を書き直す(慣性系なら無変換)。
 //    BufferGeometry と position 属性は生成し直さず、確保済みバッファへ書き込んで needsUpdate を
@@ -16,8 +16,8 @@
 // 平行移動の順で正しい。
 import * as THREE from 'three/webgpu';
 import { dot, len } from '../physics/vec3';
-import { OrbitState, hermiteInterpolate, orbitState } from '../physics/orbital-state';
-import { Frame, toFrameState } from '../physics/frame';
+import { KinematicState, hermiteInterpolate, kinematicState } from '../physics/kinematic-state';
+import { ReferenceFrame, toFrameState } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from '../game/floating-origin';
 
@@ -33,7 +33,7 @@ const MAX_VERTICES = 16384;
 
 // 区間 a→b を近似する弦の本数。両端の接線がなす角を MAX_EDGE_TURN ごとに割る。
 // 時刻が同じ/速度が消えている区間は曲線が定まらないので分割しない。
-function chordCount(a: OrbitState, b: OrbitState): number {
+function chordCount(a: KinematicState, b: KinematicState): number {
   const speedA = len(a.v);
   const speedB = len(b.v);
   if (a.t === b.t || speedA === 0 || speedB === 0) return 1;
@@ -53,8 +53,8 @@ export class SampledLine {
   // 破線のときだけ確保する、始点からの累積距離 [m](LineDashedMaterial が読む lineDistance 属性)。
   private readonly lineDistances: Float32Array | null;
   private vertexCount = 0;
-  private lastSamples: readonly OrbitState[] | null = null;
-  private lastFrame: Frame | null = null;
+  private lastSamples: readonly KinematicState[] | null = null;
+  private lastFrame: ReferenceFrame | null = null;
   private wantVisible = true;
 
   // 単色の折れ線マテリアル・ジオメトリを構築する。dash を渡すと破線になる。
@@ -79,7 +79,7 @@ export class SampledLine {
 
   // (点列, frame)が前回から変わったときだけ、頂点を frame 相対座標へ bake し直す(非剛体)。
   // 破線のときは、同じ頂点列挙のついでに始点からの累積距離も焼く。
-  syncGeometry(samples: readonly OrbitState[], frame: Frame, ephemeris: Ephemeris): void {
+  syncGeometry(samples: readonly KinematicState[], frame: ReferenceFrame, ephemeris: Ephemeris): void {
     if (samples === this.lastSamples && frame === this.lastFrame) return;
     this.lastSamples = samples;
     this.lastFrame = frame;
@@ -95,13 +95,13 @@ export class SampledLine {
       verts.push(r.x, r.y, r.z);
       lastR = r;
     };
-    let prev: OrbitState | null = null;
+    let prev: KinematicState | null = null;
     for (const sample of samples) {
       // hermiteInterpolate は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の
-      // 位置と速度をそのまま OrbitState に詰めて渡す(この慣性系ブランドは関数の外へ出ない)。
+      // 位置と速度をそのまま KinematicState に詰めて渡す(この慣性系ブランドは関数の外へ出ない)。
       // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
       const rel = toFrameState(ephemeris.frameTransformAt(frame, sample.t), sample);
-      const baked = orbitState(sample.t, rel.r, rel.v);
+      const baked = kinematicState(sample.t, rel.r, rel.v);
       if (prev !== null) {
         const chords = chordCount(prev, baked);
         for (let k = 1; k < chords; k++) {
@@ -133,7 +133,7 @@ export class SampledLine {
 
   // 毎フレーム: 剛体 un-bake(line クォータニオン) + フローティングオリジン補正(line 位置 =
   // 座標系原点)。currentTime = 描画時刻(通常 simTime)。
-  syncTransform(frame: Frame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin): void {
+  syncTransform(frame: ReferenceFrame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin): void {
     const tf = ephemeris.frameTransformAt(frame, currentTime);
     this.line.quaternion.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
     this.line.position.copy(fo.RtoThreeV3(tf.origin));

@@ -1,7 +1,7 @@
 // 自機の位置・姿勢だけから決まる HUD マーカー。戦闘ビューでは軌道基準の方向マーカーと
 // 機首ボアサイト、広範囲視点では自機位置マーカーを出す。
 import { Attitude, qRotate } from '../../physics/attitude';
-import { OrbitState, orbitalAxes } from '../../physics/orbital-state';
+import { KinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, v3 } from '../../physics/vec3';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
@@ -18,7 +18,7 @@ export class PlayerMarkers {
 
   // currentState: 現在の自機状態(方向マーカー・ボアサイト用)。
   // displayState: スライダー位置の状態(null なら予測期間超過)、▷ マーカー用。
-  sync(currentState: OrbitState, displayState: OrbitState | null, att: Attitude, alive: boolean, overviewMode: boolean, isActive: boolean, project: ProjectFn, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0): void {
+  sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, alive: boolean, overviewMode: boolean, isActive: boolean, project: ProjectFn, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0): void {
     const selfKey = `self-${this.id}`;
 
     if (overviewMode) {
@@ -36,7 +36,7 @@ export class PlayerMarkers {
     this.markerManager.hide(selfKey);
     
     if (isActive) {
-      this.syncOrbitalDirections(currentState, project);
+      this.syncOrbitAxes(currentState, project);
       this.syncBoresight(currentState, att, alive, project, rounds, beltLinks, muzzleSpeed);
     }
   }
@@ -47,9 +47,9 @@ export class PlayerMarkers {
   }
 
   // prograde/retrograde/normal/antinormal/radial in-out の6方向マーカーを配置する。
-  private syncOrbitalDirections(state: OrbitState, project: ProjectFn): void {
+  private syncOrbitAxes(state: KinematicState, project: ProjectFn): void {
     const pr = state.r;
-    const { pro: proDir, nrm: nrmDir, radOut: radDir } = orbitalAxes(state);
+    const { pro: proDir, nrm: nrmDir, radOut: radDir } = orbitAxes(state);
 
     this.markerManager.setDirection(`pro-${this.id}`, 'mk-pro', '⊙', pr, proDir, project, 'PROGRADE');
     this.markerManager.setDirection(`retro-${this.id}`, 'mk-retro', '⊗', pr, scale(proDir, -1), project, 'RETROGRADE');
@@ -62,7 +62,7 @@ export class PlayerMarkers {
   }
 
   // 機首方向にボアサイトマーカーを置く。機体が死亡していれば隠す。
-  private syncBoresight(state: OrbitState, att: Attitude, alive: boolean, project: ProjectFn, rounds: number, beltLinks: number, muzzleSpeed: number): void {
+  private syncBoresight(state: KinematicState, att: Attitude, alive: boolean, project: ProjectFn, rounds: number, beltLinks: number, muzzleSpeed: number): void {
     if (!alive) {
       this.markerManager.hide(`bore-${this.id}`);
       return;

@@ -1,19 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from './harness';
-import { R_EARTH, MU_EARTH } from '../../src/physics/orbital-state';
+import { R_EARTH, MU_EARTH } from '../../src/physics/solar-system';
 import { R_MOON, MU_MOON } from '../../src/physics/solar-system';
 import {
-  validateEllipticPlacementFields, validateLibrationPlacementFields, validateBaseReferenceFields,
+  validateEllipticPlacementFields, validateLagrangePlacementFields, validateBaseReferenceFields,
   EllipticPlacementInput, PlacementFieldIssue,
 } from '../../src/game/creative/placement-validation';
 
 const leo: EllipticPlacementInput = {
-  bodyRadius: R_EARTH, mu: MU_EARTH,
+  centerRadius: R_EARTH, mu: MU_EARTH,
   incDeg: 51.6, raanDeg: 0, argpDeg: 0, nuDeg: 0,
   sizeMode: 'apsides', peAltKm: 400, apAltKm: 400,
 };
 const lunar: EllipticPlacementInput = {
-  bodyRadius: R_MOON, mu: MU_MOON,
+  centerRadius: R_MOON, mu: MU_MOON,
   incDeg: 30, raanDeg: 45, argpDeg: 10, nuDeg: 90,
   sizeMode: 'semiMajorEcc', semiMajorKm: 2500, eccentricity: 0.1,
 };
@@ -103,36 +103,36 @@ test('creative placement: several simultaneous problems in semiMajorEcc mode all
 });
 
 test('creative placement: libration validation accepts a valid halo (out-of-plane only) with no issues', () => {
-  assert.deepEqual(validateLibrationPlacementFields({ orbitKind: 'halo', outOfPlaneAmplitudeKm: 110000 }), []);
+  assert.deepEqual(validateLagrangePlacementFields({ orbitKind: 'halo', outOfPlaneAmplitudeKm: 110000 }), []);
 });
 test('creative placement: libration validation accepts a valid lissajous with no issues', () => {
   assert.deepEqual(
-    validateLibrationPlacementFields({ orbitKind: 'lissajous', inPlaneAmplitudeKm: 200000, outOfPlaneAmplitudeKm: 110000 }),
+    validateLagrangePlacementFields({ orbitKind: 'lissajous', inPlaneAmplitudeKm: 200000, outOfPlaneAmplitudeKm: 110000 }),
     [],
   );
 });
 test('creative placement: halo ignores in-plane amplitude entirely, only out-of-plane is checked', () => {
   // ハローは面外振幅から三次拘束で面内振幅が決まるため、面内振幅フィールド自体が入力に存在しない。
-  const issues = validateLibrationPlacementFields({ orbitKind: 'halo', outOfPlaneAmplitudeKm: -1 });
+  const issues = validateLagrangePlacementFields({ orbitKind: 'halo', outOfPlaneAmplitudeKm: -1 });
   assert.deepEqual(fields(issues), ['outOfPlaneAmplitude']);
 });
 test('creative placement: lissajous flags a non-positive in-plane amplitude on that field alone', () => {
-  const issues = validateLibrationPlacementFields({ orbitKind: 'lissajous', inPlaneAmplitudeKm: 0, outOfPlaneAmplitudeKm: 110000 });
+  const issues = validateLagrangePlacementFields({ orbitKind: 'lissajous', inPlaneAmplitudeKm: 0, outOfPlaneAmplitudeKm: 110000 });
   assert.deepEqual(fields(issues), ['inPlaneAmplitude']);
 });
 test('creative placement: lissajous flags both amplitudes at once when both are invalid', () => {
-  const issues = validateLibrationPlacementFields({ orbitKind: 'lissajous', inPlaneAmplitudeKm: Number.NaN, outOfPlaneAmplitudeKm: -5 });
+  const issues = validateLagrangePlacementFields({ orbitKind: 'lissajous', inPlaneAmplitudeKm: Number.NaN, outOfPlaneAmplitudeKm: -5 });
   assert.deepEqual(new Set(fields(issues)), new Set(['inPlaneAmplitude', 'outOfPlaneAmplitude']));
 });
 
 test('creative placement: base rejects an earth/jupiter elements reference on the referenceBody field', () => {
-  assert.deepEqual(fields(validateBaseReferenceFields('base', 'elements', 'earth')), ['referenceBody']);
-  assert.deepEqual(fields(validateBaseReferenceFields('base', 'elements', 'jupiter')), ['referenceBody']);
+  assert.deepEqual(fields(validateBaseReferenceFields('base', 'elements', 'earth')), ['referenceAttractor']);
+  assert.deepEqual(fields(validateBaseReferenceFields('base', 'elements', 'jupiter')), ['referenceAttractor']);
 });
 test('creative placement: base accepts a moon-elements reference and any libration reference', () => {
   assert.deepEqual(validateBaseReferenceFields('base', 'elements', 'moon'), []);
-  assert.deepEqual(validateBaseReferenceFields('base', 'libration', 'earth'), []);
-  assert.deepEqual(validateBaseReferenceFields('base', 'libration', undefined), []);
+  assert.deepEqual(validateBaseReferenceFields('base', 'lagrange', 'earth'), []);
+  assert.deepEqual(validateBaseReferenceFields('base', 'lagrange', undefined), []);
 });
 test('creative placement: non-base object types are never restricted regardless of reference body', () => {
   assert.deepEqual(validateBaseReferenceFields('player', 'elements', 'earth'), []);

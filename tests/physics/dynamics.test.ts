@@ -1,25 +1,26 @@
-// dynamics.ts の回帰テスト。stepDynamicsRK4 は OrbitEntity.step が使う唯一の 1 ステップ実装。
+// dynamics.ts の回帰テスト。stepDynamics は DynamicTrajectory.step が使う唯一の 1 ステップ実装。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { MU_EARTH, R_EARTH, R_EARTH_EQ, orbitState } from '../../src/physics/orbital-state';
-import { Elements, keplerPeriod, stateFromElements } from '../../src/physics/elements';
+import { kinematicState } from '../../src/physics/kinematic-state';
+import { MU_EARTH, R_EARTH, R_EARTH_EQ } from '../../src/physics/solar-system';
+import { OrbitalElements, keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { C22_MOON, J2_EARTH, J2_MOON, MU_MOON, MU_SUN, R_MOON, R_MOON_GRAVITY, R_SUN } from '../../src/physics/solar-system';
-import { Attractor, Degree2Gravity, elementsAround } from '../../src/physics/attractor';
-import { degree2Accel, stepDynamicsRK4, stepOrbitRK4 } from '../../src/physics/dynamics';
+import { Attractor, Degree2Gravity, orbitalElementsOf } from '../../src/physics/attractor';
+import { degree2Accel, stepDynamics, stepRK4 } from '../../src/physics/dynamics';
 import { Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
 import { qFromAxisAngle, qRotate } from '../../src/physics/attitude';
 
 const EARTH_POLE = v3(0, 1, 0);
 const EARTH_DEGREE2: Degree2Gravity = { j2: J2_EARTH, refRadius: R_EARTH_EQ, pole: EARTH_POLE, tesseral: null };
 const EARTH: Attractor = {
-  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: EARTH_DEGREE2,
+  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: EARTH_DEGREE2,
 };
 
 function circularState() {
   const r0 = R_EARTH + 420e3;
   const vc = Math.sqrt(MU_EARTH / r0);
-  return orbitState(0, v3(r0, 0, 0), v3(0, vc, 0));
+  return kinematicState(0, v3(r0, 0, 0), v3(0, vc, 0));
 }
 
 function rot(v: Vec3, axis: Vec3, angle: number): Vec3 {
@@ -57,7 +58,7 @@ function yAxisJ2Accel(r: Vec3): Vec3 {
 }
 
 // フェーズ B 以前の合成: −μ_E r/|r|³(中心重力)+ 太陽・月の潮汐摂動 + J2。
-// stepOrbitRK4 は中心重力を持たなくなったので、比較対象として本体から消えた式をここへ写経する。
+// stepRK4 は中心重力を持たなくなったので、比較対象として本体から消えた式をここへ写経する。
 function legacyThirdBody(r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
   const rho = sub(bodyPos, r);
   const d3 = Math.pow(len(rho), 3);
@@ -82,19 +83,19 @@ function legacyAccel(r: Vec3, sunPos: Vec3, moonPos: Vec3): Vec3 {
 }
 
 export function register(): void {
-  test('dynamics: stepDynamicsRK4(bcInv=0, thrust=null) matches a hand-written legacy central-gravity + third-body + J2 composition to machine precision', () => {
+  test('dynamics: stepDynamics(bcInv=0, thrust=null) matches a hand-written legacy central-gravity + third-body + J2 composition to machine precision', () => {
     const s0 = circularState();
     const dt = 10;
     const sunPos = v3(1.5e11, 0, 0);
     const moonPos = v3(3.8e8, 0, 0);
-    const bodies: readonly Attractor[] = [
+    const attractors: readonly Attractor[] = [
       EARTH,
-      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: orbitState(0, moonPos, v3(0, 0, 0)), degree2: null },
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(0, sunPos, v3(0, 0, 0)), degree2: null },
+      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, moonPos, v3(0, 0, 0)), degree2: null },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), degree2: null },
     ];
 
-    const viaNew = stepDynamicsRK4(s0, dt, bodies, 0, 0, 0, null);
-    const viaLegacy = stepOrbitRK4(s0, dt, (rx, ry, rz) => legacyAccel(v3(rx, ry, rz), sunPos, moonPos));
+    const viaNew = stepDynamics(s0, dt, attractors, 0, 0, 0, null);
+    const viaLegacy = stepRK4(s0, dt, (rx, ry, rz) => legacyAccel(v3(rx, ry, rz), sunPos, moonPos));
 
     const posErr = len(sub(viaNew.r, viaLegacy.r)) / len(viaLegacy.r);
     const velErr = len(sub(viaNew.v, viaLegacy.v)) / len(viaLegacy.v);
@@ -102,43 +103,43 @@ export function register(): void {
     assert.ok(velErr < 1e-9, `velocity should match to machine precision: relative error ${velErr}`);
   });
 
-  test('dynamics: stepDynamicsRK4 adds thrust on top of gravity', () => {
+  test('dynamics: stepDynamics adds thrust on top of gravity', () => {
     const s0 = circularState();
     const dt = 10;
-    const bodies = new Ephemeris({ moon: 0 }).attractorsAt(0);
+    const attractors = new Ephemeris({ moon: 0 }).attractorsAt(0);
     const thrust = v3(0, 0, 5); // 大きめの加速度で差が明確に出るようにする
 
-    const withThrust = stepDynamicsRK4(s0, dt, bodies, 0, 0, 0, thrust);
-    const withoutThrust = stepDynamicsRK4(s0, dt, bodies, 0, 0, 0, null);
+    const withThrust = stepDynamics(s0, dt, attractors, 0, 0, 0, thrust);
+    const withoutThrust = stepDynamics(s0, dt, attractors, 0, 0, 0, null);
 
     assert.ok(len(sub(withThrust.v, withoutThrust.v)) > 1, 'thrust should visibly change the velocity');
   });
 
-  test('dynamics: stepDynamicsRK4 with bcInv>0 decelerates more than bcInv=0 at LEO altitude', () => {
+  test('dynamics: stepDynamics with bcInv>0 decelerates more than bcInv=0 at LEO altitude', () => {
     const s0 = circularState();
     const dt = 10;
-    const bodies = new Ephemeris({ moon: 0 }).attractorsAt(0);
+    const attractors = new Ephemeris({ moon: 0 }).attractorsAt(0);
 
-    const noDrag = stepDynamicsRK4(s0, dt, bodies, 0, 0, 0, null);
-    const withDrag = stepDynamicsRK4(s0, dt, bodies, 0.01, 0, 0, null);
+    const noDrag = stepDynamics(s0, dt, attractors, 0, 0, 0, null);
+    const withDrag = stepDynamics(s0, dt, attractors, 0.01, 0, 0, null);
 
     assert.ok(len(withDrag.v) < len(noDrag.v), 'drag should reduce orbital speed relative to the drag-free step');
   });
 
   test('dynamics: a circular lunar orbit (surface +100km) returns to about the same moon-relative position after one revolution (measured, pinned)', () => {
     const ephemeris = new Ephemeris({ moon: 0 });
-    const bodies0 = ephemeris.attractorsAt(0);
-    const moon0 = bodies0.find((b) => b.id === 'moon')!;
+    const attractors0 = ephemeris.attractorsAt(0);
+    const moon0 = attractors0.find((b) => b.id === 'moon')!;
     const a = R_MOON + 100e3;
     const period = keplerPeriod(a, MU_MOON); // ~7,066s
-    const rel0 = stateFromElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
-    let s = orbitState(0, add(rel0.r, moon0.state.r), add(rel0.v, moon0.state.v));
+    const rel0 = stateFromOrbitalElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
+    let s = kinematicState(0, add(rel0.r, moon0.state.r), add(rel0.v, moon0.state.v));
 
     const dt = 5;
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
-      const bodies = ephemeris.attractorsAt(s.t + dt / 2);
-      s = stepDynamicsRK4(s, dt, bodies, 0, 0, 0, null);
+      const attractors = ephemeris.attractorsAt(s.t + dt / 2);
+      s = stepDynamics(s, dt, attractors, 0, 0, 0, null);
     }
 
     const relFinal = sub(s.r, ephemeris.positionOf('moon', s.t));
@@ -147,7 +148,7 @@ export function register(): void {
     assert.ok(drift < 50e3, `moon-relative drift after 1 revolution: ${drift} m (expected within tens of km)`);
   });
 
-  test('dynamics: stepOrbitRK4 circular orbit — 1 period position/energy error (measured, pinned)', () => {
+  test('dynamics: stepRK4 circular orbit — 1 period position/energy error (measured, pinned)', () => {
     // 420km 円軌道、無摂動(中心重力のみ)。理論上は閉軌道に戻るはずだが、
     // 固定ステップ RK4 の打ち切り誤差が蓄積する。現状の実装でどの程度かを
     // 実測して基準値として固定する(将来ステップ幅やアルゴリズムを変えた際の
@@ -155,14 +156,14 @@ export function register(): void {
     const alt = 420e3;
     const r0 = R_EARTH + alt;
     const vCirc = Math.sqrt(MU_EARTH / r0);
-    let s = orbitState(0, v3(r0, 0, 0), v3(0, 0, vCirc));
+    let s = kinematicState(0, v3(r0, 0, 0), v3(0, 0, vCirc));
     const period = 2 * Math.PI * Math.sqrt((r0 * r0 * r0) / MU_EARTH);
     const e0 = 0.5 * vCirc * vCirc - MU_EARTH / r0;
 
     const dt = 1; // 1秒刻み
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
-      s = stepOrbitRK4(s, dt, (rx, ry, rz) => legacyCentralGravity(v3(rx, ry, rz)));
+      s = stepRK4(s, dt, (rx, ry, rz) => legacyCentralGravity(v3(rx, ry, rz)));
     }
 
     const rMag = len(s.r);
@@ -188,26 +189,26 @@ export function register(): void {
     const incDeg = 51.6;
     const inc = (incDeg * Math.PI) / 180;
     const a = R_EARTH + alt;
-    let s = stateFromElements(0, a, 0, inc, 0, 0, 0, MU_EARTH);
+    let s = stateFromOrbitalElements(0, a, 0, inc, 0, 0, 0, MU_EARTH);
 
     const dt = 10;
     const totalDays = 5;
     const totalSeconds = totalDays * 86400;
     const steps = Math.round(totalSeconds / dt);
     for (let i = 0; i < steps; i++) {
-      s = stepOrbitRK4(s, dt, (rx, ry, rz) => {
+      s = stepRK4(s, dt, (rx, ry, rz) => {
         const r = v3(rx, ry, rz);
         return add(legacyCentralGravity(r), degree2Accel(r, MU_EARTH, EARTH_DEGREE2));
       });
     }
 
-    const el = elementsAround(s, EARTH) as Elements;
+    const el = orbitalElementsOf(s, EARTH) as OrbitalElements;
     // RAAN(昇交点赤経) = atan2(hHat.x, -hHat.z) 的な導出でも良いが、ここでは
     // pHat/hHat から昇交点方向ベクトルを求め、その方位角(XZ平面, 基準X軸)を使う。
     // 昇交点方向 = Y(極軸) × hHat の正規化(軌道面と赤道面の交線)
     const hHat = el.hHat;
     const nodeVec = { x: hHat.z, y: 0, z: -hHat.x }; // Y × hHat
-    // stateFromElements の raan 引数と同じ回転規約(rotateAxis(X, Y, raan) は
+    // stateFromOrbitalElements の raan 引数と同じ回転規約(rotateAxis(X, Y, raan) は
     // X を -Z 方向へ回す)に合わせ、角度は atan2(-z, x) で測る。
     const raan = Math.atan2(-nodeVec.z, nodeVec.x);
     let raanDeg = (raan * 180) / Math.PI;
@@ -306,34 +307,34 @@ export function register(): void {
     assert.ok(Math.abs(mag - 3.96e-4) / 3.96e-4 < 0.05, `lunar J2 magnitude: ${mag} m/s^2 (expected ~3.96e-4)`);
   });
 
-  test('dynamics: stepDynamicsRK4 applies solar radiation pressure only where the sun actually shines', () => {
+  test('dynamics: stepDynamics applies solar radiation pressure only where the sun actually shines', () => {
     // 純関数 srpAccel が正しくても accel から呼ばれていなければ効かないので、積分側で確かめる。
     // 太陽を +X 1AU に置くと、+X 側の位置は日照、−X 側は地球の影の中に入る。
     const sunPos = v3(1.495978707e11, 0, 0);
-    const bodies: readonly Attractor[] = [
+    const attractors: readonly Attractor[] = [
       EARTH,
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(0, sunPos, v3(0, 0, 0)), degree2: null },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), degree2: null },
     ];
     const dt = 100;
     const srpCoeff = 1e-2;
     const penumbra = 6e4;
     const speed = Math.sqrt(MU_EARTH / 7e6);
 
-    const sunlitStart = orbitState(0, v3(7e6, 0, 0), v3(0, 0, speed));
-    const withSrp = stepDynamicsRK4(sunlitStart, dt, bodies, 0, srpCoeff, penumbra, null);
-    const withoutSrp = stepDynamicsRK4(sunlitStart, dt, bodies, 0, 0, penumbra, null);
+    const sunlitStart = kinematicState(0, v3(7e6, 0, 0), v3(0, 0, speed));
+    const withSrp = stepDynamics(sunlitStart, dt, attractors, 0, srpCoeff, penumbra, null);
+    const withoutSrp = stepDynamics(sunlitStart, dt, attractors, 0, 0, penumbra, null);
     assert.ok(len(sub(withSrp.v, withoutSrp.v)) > 0, 'a sunlit object should feel solar radiation pressure');
 
-    const umbraStart = orbitState(0, v3(-7e6, 0, 0), v3(0, 0, speed));
-    const shadowedWith = stepDynamicsRK4(umbraStart, dt, bodies, 0, srpCoeff, penumbra, null);
-    const shadowedWithout = stepDynamicsRK4(umbraStart, dt, bodies, 0, 0, penumbra, null);
+    const umbraStart = kinematicState(0, v3(-7e6, 0, 0), v3(0, 0, speed));
+    const shadowedWith = stepDynamics(umbraStart, dt, attractors, 0, srpCoeff, penumbra, null);
+    const shadowedWithout = stepDynamics(umbraStart, dt, attractors, 0, 0, penumbra, null);
     assert.deepEqual(shadowedWith, shadowedWithout, 'an object in the umbra should feel nothing');
   });
 
   test('dynamics: the moon carries a degree-2 field and the sun does not', () => {
-    const bodies = new Ephemeris({ moon: 0.3 }).attractorsAt(1234);
-    const moon = bodies.find((b) => b.id === 'moon')!;
-    const sun = bodies.find((b) => b.id === 'sun')!;
+    const attractors = new Ephemeris({ moon: 0.3 }).attractorsAt(1234);
+    const moon = attractors.find((b) => b.id === 'moon')!;
+    const sun = attractors.find((b) => b.id === 'sun')!;
     assert.ok(moon.degree2 !== null, 'the moon should resolve a degree-2 field');
     assert.ok(moon.degree2!.tesseral !== null, 'the moon should not be treated as axisymmetric');
     assert.equal(sun.degree2, null, 'the sun should stay a point mass');

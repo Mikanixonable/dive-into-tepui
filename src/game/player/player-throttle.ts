@@ -187,12 +187,12 @@ export class PlayerThrottle {
     const s = Math.sqrt(Math.max(0, 1 - w * w));
     const axisWorld =
       s > 1e-6 ? new THREE.Vector3(qErr.x / s, qErr.y / s, qErr.z / s) : new THREE.Vector3(1, 0, 0);
-    const axisBody = axisWorld.applyQuaternion(qCurInv);
+    const axisShip = axisWorld.applyQuaternion(qCurInv);
     // 誤差角と角速度ダンピングから軸ごとのPDトルクを組む
     return v3(
-      (C.PROGRADE_HOLD_KP * angle * axisBody.x - C.PROGRADE_HOLD_KD * att.w.x) * inertia.x,
-      (C.PROGRADE_HOLD_KP * angle * axisBody.y - C.PROGRADE_HOLD_KD * att.w.y) * inertia.y,
-      (C.PROGRADE_HOLD_KP * angle * axisBody.z - C.PROGRADE_HOLD_KD * att.w.z) * inertia.z,
+      (C.PROGRADE_HOLD_KP * angle * axisShip.x - C.PROGRADE_HOLD_KD * att.w.x) * inertia.x,
+      (C.PROGRADE_HOLD_KP * angle * axisShip.y - C.PROGRADE_HOLD_KD * att.w.y) * inertia.y,
+      (C.PROGRADE_HOLD_KP * angle * axisShip.z - C.PROGRADE_HOLD_KD * att.w.z) * inertia.z,
     );
   }
 }

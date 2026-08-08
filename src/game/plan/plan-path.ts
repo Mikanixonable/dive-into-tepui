@@ -1,10 +1,10 @@
 // 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
-import { OrbitState } from '../../physics/orbital-state';
-import { elementsAround, strongestAttractor } from '../../physics/attractor';
+import { KinematicState } from '../../physics/kinematic-state';
+import { orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
-import { Frame, INERTIAL_FRAME, toFramePoint, toInertialPoint } from '../../physics/frame';
+import { ReferenceFrame, INERTIAL_FRAME, toFramePoint, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
@@ -21,9 +21,9 @@ const arcOpacity = (i: number): number => (i === 0 ? 0.55 : 0.85);
 
 const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
 
-type Segment = { state0: OrbitState; end: number };
+type Segment = { state0: KinematicState; end: number };
 
-export class PlanTrajectory {
+export class PlanPath {
   readonly group = new THREE.Group();
   // 先頭 activeCount 本がこのフレームの区間に対応する(色は index で決まるので使い回す)。
   private arcs: PlanArc[] = [];
@@ -32,12 +32,12 @@ export class PlanTrajectory {
   private nodeCount = 0;
   // 積分予測が起点の楕円近似から大きく外れた場合、解析楕円線を隠す。
   private analyticDivergent = false;
-  private frame: Frame = INERTIAL_FRAME;
+  private frame: ReferenceFrame = INERTIAL_FRAME;
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
   // 最後のバーン後(これから乗る軌道)の起点状態。末尾区間が無ければ null。
-  finalSegmentStart: OrbitState | null = null;
+  finalSegmentStart: KinematicState | null = null;
 
   get isAnalyticDivergent(): boolean { return this.analyticDivergent; }
   resetDivergence(): void { this.analyticDivergent = false; }
@@ -50,7 +50,7 @@ export class PlanTrajectory {
 
   // plan から区間列を組み直して各区間を再積分し、表示変換の文脈(座標系・un-bake 時刻)を
   // このフレームのものに更新する。
-  update(plan: Plan, ephemeris: Ephemeris, frame: Frame, currentTime: number): void {
+  update(plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number): void {
     this.frame = frame;
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
@@ -76,17 +76,17 @@ export class PlanTrajectory {
   // 二重に見えてしまう。通常のLEOの数値誤差/J2の微小変化は閾値未満に収める。
   // 途中で最も強く引く天体が起点と変われば、要素の比較を待たずその時点で divergent とする
   // (中心が違う要素同士を比べても意味がないため)。
-  private detectAnalyticDivergence(anchor: OrbitState | null): boolean {
+  private detectAnalyticDivergence(anchor: KinematicState | null): boolean {
     if (!anchor || !this.ephemeris) return false;
     const center = strongestAttractor(anchor.r, this.ephemeris.attractorsAt(anchor.t));
-    const base = elementsAround(anchor, center);
+    const base = orbitalElementsOf(anchor, center);
     if (!base || base.e >= 0.98 || !isFinite(base.a) || base.a <= 0) return false;
-    const samples = this.arcs[0]?.samplesRef() ?? [];
+    const samples = this.arcs[0]?.samples ?? [];
     for (const s of samples) {
       // 中心天体自身もサンプル時刻ぶん動くので、そのつど ephemeris から引き直す。
       const sampleCenter = strongestAttractor(s.r, this.ephemeris.attractorsAt(s.t));
       if (sampleCenter.id !== center.id) return true;
-      const el = elementsAround(s, sampleCenter);
+      const el = orbitalElementsOf(s, sampleCenter);
       if (!el || !isFinite(el.a) || el.a <= 0) continue;
       if (Math.abs(el.a - base.a) / base.a > 0.03 || Math.abs(el.e - base.e) > 0.02) return true;
       const planeDot = el.hHat.x * base.hHat.x + el.hHat.y * base.hHat.y + el.hHat.z * base.hHat.z;
@@ -109,8 +109,8 @@ export class PlanTrajectory {
   }
 
   // 天体衝突が検出された地点(区間ごとに高々1つ)。今フレーム表示中の区間だけを対象にする。
-  impactPoints(): readonly { readonly state: OrbitState; readonly arcIdx: number }[] {
-    const out: { state: OrbitState; arcIdx: number }[] = [];
+  impactPoints(): readonly { readonly state: KinematicState; readonly arcIdx: number }[] {
+    const out: { state: KinematicState; arcIdx: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       const state = this.arcs[i]?.impactPoint();
       if (state) out.push({ state, arcIdx: i });
@@ -125,7 +125,7 @@ export class PlanTrajectory {
     let minT = Infinity;
     let maxT = -Infinity;
     for (let i = 0; i < this.activeCount; i++) {
-      const samples = this.arcs[i]!.samplesRef();
+      const samples = this.arcs[i]!.samples;
       if (samples.length === 0) continue;
       minT = Math.min(minT, samples[0]!.t);
       maxT = Math.max(maxT, samples[samples.length - 1]!.t);
@@ -143,14 +143,14 @@ export class PlanTrajectory {
   }
 
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
-  arrivalStates(): (OrbitState | null)[] {
-    const out: (OrbitState | null)[] = [];
+  arrivalStates(): (KinematicState | null)[] {
+    const out: (KinematicState | null)[] = [];
     for (let i = 0; i < this.nodeCount; i++) out.push(this.arcs[i]?.endState() ?? null);
     return out;
   }
 
   // 時刻 t を保持区間に含む最初の arc から補間した状態を返す。どの arc の外でも null。
-  sampleAt(t: number): OrbitState | null {
+  sampleAt(t: number): KinematicState | null {
     for (let i = 0; i < this.activeCount; i++) {
       const s = this.arcs[i]!.at(t);
       if (s) return s;
@@ -180,11 +180,11 @@ export class PlanTrajectory {
   // 以内の候補に絞ってから referenceT に最も近い時刻を選ぶ — 新規配置は範囲の下端(= 最も
   // 早く到達する時刻)を、既存ノードのドラッグはそのノードの現在時刻を渡すことで、
   // 「表示期間が延びて折れ線が自分自身に重なる区間」の曖昧さを呼び出しの意図どおりに解く。
-  nearestSample(mx: number, my: number, maxPx: number, referenceT: number, range?: TimeRange): { state: OrbitState, arcIdx: number } | null {
+  nearestSample(mx: number, my: number, maxPx: number, referenceT: number, range?: TimeRange): { state: KinematicState, arcIdx: number } | null {
     const maxDSq = maxPx * maxPx;
-    const candidates: { state: OrbitState; arcIdx: number; dSq: number }[] = [];
+    const candidates: { state: KinematicState; arcIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
-      for (const s of this.arcs[i]!.samplesRef()) {
+      for (const s of this.arcs[i]!.samples) {
         if (range && (s.t < range.min || s.t > range.max)) continue;
         const p = this.projectPoint(s.r, s.t);
         if (!p.front) continue;
@@ -237,7 +237,7 @@ function buildSegments(plan: Plan, ephemeris: Ephemeris, displayTimeManager: Dis
     segments.push({ state0, end: node.t });
     state0 = node;
   }
-  const bodies = ephemeris.attractorsAt(state0.t);
-  segments.push({ state0, end: state0.t + segmentDurationFrom(state0, bodies, displayTimeManager) });
+  const attractors = ephemeris.attractorsAt(state0.t);
+  segments.push({ state0, end: state0.t + segmentDurationFrom(state0, attractors, displayTimeManager) });
   return segments;
 }

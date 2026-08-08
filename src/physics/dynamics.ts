@@ -3,7 +3,7 @@
 // ゲーム本体(game-entity/game-entity.ts)と軌道計画(plan/plan-arc.ts)の積分が共有する
 // 唯一の定義箇所。THREE/DOM 非依存の純関数。
 import { Attractor, Degree2Gravity, attractorAccel } from './attractor';
-import { OrbitState, orbitState } from './orbital-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { dragAccel } from './atmosphere';
 import { sunlitFactor } from './shadow';
 import { srpAccel } from './srp';
@@ -47,8 +47,8 @@ export function degree2Accel(rRel: Vec3, mu: number, g: Degree2Gravity): Vec3 {
 }
 
 // 加速度コールバック accel だけを使って RK4 で 1 ステップ積分する。
-// 入力 s は書き換えず、時刻も dt だけ進めた新しい OrbitState を返す。
-export function stepOrbitRK4(s: OrbitState, dt: number, accel: AccelFn): OrbitState {
+// 入力 s は書き換えず、時刻も dt だけ進めた新しい KinematicState を返す。
+export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): KinematicState {
   const r0x = s.r.x, r0y = s.r.y, r0z = s.r.z;
   const v0x = s.v.x, v0y = s.v.y, v0z = s.v.z;
   const h2 = dt / 2;
@@ -80,7 +80,7 @@ export function stepOrbitRK4(s: OrbitState, dt: number, accel: AccelFn): OrbitSt
   const a4 = accel(r4x, r4y, r4z, v4x, v4y, v4z);
   const kv4x = a4.x, kv4y = a4.y, kv4z = a4.z;
 
-  return orbitState(
+  return kinematicState(
     s.t + dt,
     v3(
       r0x + h6 * (kr1x + kr4x + 2 * (kr2x + kr3x)),
@@ -98,26 +98,26 @@ export function stepOrbitRK4(s: OrbitState, dt: number, accel: AccelFn): OrbitSt
 // 全天体からの重力(Σ attractorAccel — ECI が非慣性系であることの補正込み)と、2次重力場を
 // 持つ天体ぶんのその摂動、大気抵抗、太陽輻射圧。天体の同定は Attractor が自分で持つ degree2 に
 // 委ねるので、ここに固有名の分岐は現れない。
-function accel(
+function totalAccel(
   r: Vec3,
   v: Vec3,
-  bodies: readonly Attractor[],
+  attractors: readonly Attractor[],
   bcInv: number,
   srpCoeff: number,
   penumbra: number,
 ): Vec3 {
   let ax = 0, ay = 0, az = 0;
   let sun: Attractor | null = null;
-  for (const body of bodies) {
-    const g = attractorAccel(r, body);
+  for (const attractor of attractors) {
+    const g = attractorAccel(r, attractor);
     ax += g.x; ay += g.y; az += g.z;
     // 2次重力場は天体中心からの相対位置で評価する(質点重力と違い ECI 原点基準では組めない)。
-    if (body.degree2 !== null) {
-      const b = body.state.r;
-      const d2 = degree2Accel(v3(r.x - b.x, r.y - b.y, r.z - b.z), body.mu, body.degree2);
+    if (attractor.degree2 !== null) {
+      const b = attractor.state.r;
+      const d2 = degree2Accel(v3(r.x - b.x, r.y - b.y, r.z - b.z), attractor.mu, attractor.degree2);
       ax += d2.x; ay += d2.y; az += d2.z;
     }
-    if (body.id === 'sun') sun = body;
+    if (attractor.id === 'sun') sun = attractor;
   }
   if (sun !== null && srpCoeff !== 0) {
     const srp = srpAccel(r, sun, srpCoeff, sunlitFactor(r, norm(sun.state.r), penumbra));
@@ -127,21 +127,21 @@ function accel(
   return v3(ax + drag.x, ay + drag.y, az + drag.z);
 }
 
-// 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力の RK4 1ステップ。bodies はこの
+// 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力の RK4 1ステップ。attractors はこの
 // ステップぶん呼び出し側が確定させた重力源一覧(Ephemeris.attractorsAt)。bcInv/srpCoeff/
 // thrust は種別ごとに、penumbra は表現上の選択として異なるため引数で受け取り、モジュール内に
 // 既定値を持たない。
-export function stepDynamicsRK4(
-  state: OrbitState,
+export function stepDynamics(
+  state: KinematicState,
   dt: number,
-  bodies: readonly Attractor[],
+  attractors: readonly Attractor[],
   bcInv: number,
   srpCoeff: number,
   penumbra: number,
   thrust: Vec3 | null,
-): OrbitState {
-  return stepOrbitRK4(state, dt, (rx, ry, rz, vx, vy, vz) => {
-    const a = accel(v3(rx, ry, rz), v3(vx, vy, vz), bodies, bcInv, srpCoeff, penumbra);
+): KinematicState {
+  return stepRK4(state, dt, (rx, ry, rz, vx, vy, vz) => {
+    const a = totalAccel(v3(rx, ry, rz), v3(vx, vy, vz), attractors, bcInv, srpCoeff, penumbra);
     return thrust ? add(a, thrust) : a;
   });
 }

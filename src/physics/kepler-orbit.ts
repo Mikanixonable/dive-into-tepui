@@ -6,8 +6,8 @@
 // 使うと公転が歳差ぶんだけ遅速し、長期積分で位置が大きくずれる。
 import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
 import { ECL_POLE, ECL_POLE_ECI, ECL_VERNAL, Q_ECL_TO_ECI, Q_ECLY_TO_ECI, eclToEci } from './ecliptic';
-import { eccentricAnomalyFromMean, positionFromElements } from './elements';
-import { OrbitState, orbitState } from './orbital-state';
+import { eccentricAnomalyFromMean, positionFromOrbitalElements } from './elements';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, norm, scale } from './vec3';
 
 export const JULIAN_CENTURY = 100 * 365.25 * 86400; // [s]
@@ -124,12 +124,12 @@ function rotationFromAngles(orbit: KeplerOrbit, a: OrbitAngles): FrameRotation {
 // 重力定数は要らない(lRate が平均運動そのもの)。
 // 速度は、軌道面内の動径変化(ṙ·r̂)と回転基準系自身の角速度による見かけの移動(omega×r)の
 // 和として組む — 後者が昇交点・近点の歳差ぶんの寄与を担う。
-export function keplerOrbitState(orbit: KeplerOrbit, t: number, phaseOffset: number): OrbitState {
+export function keplerOrbitState(orbit: KeplerOrbit, t: number, phaseOffset: number): KinematicState {
   const a = orbitAngles(orbit, t, phaseOffset);
-  const r = qRotate(Q_ECLY_TO_ECI, positionFromElements(a.a, a.e, a.inc, a.raan, a.argp, a.nu));
+  const r = qRotate(Q_ECLY_TO_ECI, positionFromOrbitalElements(a.a, a.e, a.inc, a.raan, a.argp, a.nu));
   const { omega } = rotationFromAngles(orbit, a);
   const v = addScaled(cross(omega, r), norm(r), a.rDot);
-  return orbitState(t, r, v);
+  return kinematicState(t, r, v);
 }
 
 // この軌道に固定した回転基準系の t 時点の姿勢・角速度。

@@ -2,28 +2,29 @@
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
-import { MU_EARTH, R_EARTH, orbitState } from '../../physics/orbital-state';
-import { Elements } from '../../physics/elements';
-import { Attractor, elementsAround } from '../../physics/attractor';
+import { kinematicState } from '../../physics/kinematic-state';
+import { MU_EARTH, R_EARTH } from '../../physics/solar-system';
+import { OrbitalElements } from '../../physics/elements';
+import { Attractor, orbitalElementsOf } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
-import { OrbitLine } from '../../render/orbitline';
+import { OrbitLine } from '../../render/orbit-line';
 import { createStars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { CelestialBody } from './celestial-body';
-import { CELESTIAL_VIEWS } from './celestial-registry';
+import { CELESTIAL_BODIES } from './celestial-registry';
 import { SunBody } from './sun-body';
 
 // 地球(原点に静止)。参照軌道線はいずれも地球中心の表示なので、この固定値を center として使う。
 // 楕円を描く基準としてしか使わないため、2次重力場は解決しない。
 const EARTH_ATTRACTOR: Attractor = {
-  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: null,
+  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: null,
 };
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。
-const GEO_ELEMENTS: Elements = {
+const GEO_ELEMENTS: OrbitalElements = {
   a: R_EARTH + 35786e3,
   e: 1e-6,
   p: R_EARTH + 35786e3,
@@ -64,7 +65,7 @@ export class EnvironmentScene {
     scene.add(this.starsMesh);
     this.celestialGrid = new CelestialGrid(scene);
 
-    this.bodies = Object.values(CELESTIAL_VIEWS).map((v) => v.create());
+    this.bodies = Object.values(CELESTIAL_BODIES).map((v) => v.create());
     this.sunBody = this.bodies.find((b): b is SunBody => b.id === 'sun')!;
     for (const body of this.bodies) body.build(scene);
   }
@@ -109,7 +110,7 @@ export class EnvironmentScene {
 
   // 月の接触軌道要素(表示専用)。月自身は entity ではなく解析式のみを持つため、
   // ephemeris の解析状態をそのまま他の軌道線と同じ経路に載せる。
-  private moonOrbitElements(simTime: number): Elements | null {
-    return elementsAround(this.ephemeris.stateOf('moon', simTime), EARTH_ATTRACTOR);
+  private moonOrbitElements(simTime: number): OrbitalElements | null {
+    return orbitalElementsOf(this.ephemeris.stateOf('moon', simTime), EARTH_ATTRACTOR);
   }
 }

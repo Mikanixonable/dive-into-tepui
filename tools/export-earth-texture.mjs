@@ -1,5 +1,5 @@
 // 地球表面の焼き込みテクスチャ(equirectangular PNG)を生成するツール。
-// 色計算のロジックは src/render/earthcolor.ts(THREE 非依存の純粋関数)を
+// 色計算のロジックは src/render/earth-color.ts(THREE 非依存の純粋関数)を
 // 唯一の情報源として使う。Node 単体で .ts を import できないため、
 // 既に devDependency として入っている TypeScript コンパイラの
 // transpileModule API でその場に JS へ変換してから動的 import する
@@ -16,19 +16,19 @@ import ts from 'typescript';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
 
-// --- src/render/earthcolor.ts を JS にトランスパイルして動的 import ---
-const earthColorSrcPath = join(repoRoot, 'src', 'render', 'earthcolor.ts');
+// --- src/render/earth-color.ts を JS にトランスパイルして動的 import ---
+const earthColorSrcPath = join(repoRoot, 'src', 'render', 'earth-color.ts');
 const source = readFileSync(earthColorSrcPath, 'utf8');
 const { outputText } = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ESNext,
     target: ts.ScriptTarget.ES2022,
   },
-  fileName: 'earthcolor.ts',
+  fileName: 'earth-color.ts',
 });
 
-const tmpDir = mkdtempSync(join(tmpdir(), 'tepui-earthcolor-'));
-const tmpModulePath = join(tmpDir, 'earthcolor.mjs');
+const tmpDir = mkdtempSync(join(tmpdir(), 'tepui-earth-color-'));
+const tmpModulePath = join(tmpDir, 'earth-color.mjs');
 writeFileSync(tmpModulePath, outputText, 'utf8');
 const { surfaceColor } = await import(pathToFileURL(tmpModulePath).href);
 rmSync(tmpDir, { recursive: true, force: true });
