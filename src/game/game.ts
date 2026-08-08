@@ -362,7 +362,7 @@ export class Game {
         this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
       );
       this.activeStage.update(dt, null, this.entities, this.simulator.simTime, this.simSpeedManager);
-      this.effects.update(dt, simDt);
+      this.effects.update(dt, this.simulator.simTime);
       this.updateMapPresentation(dt);
       if (this.editor.editMode) {
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
@@ -381,7 +381,7 @@ export class Game {
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
       this.simulator.stepSimulation(dt, simDt, player, this.activeStage, false, false, false);
       this.nanWatchdog.checkAll('stepSimulation(決着後)', player, this.entities, this.simulator.simTime, dt, simDt);
-      this.effects.update(dt, simDt);
+      this.effects.update(dt, this.simulator.simTime);
       // 決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
       // 軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする。
       this.updateMapPresentation(dt);
@@ -465,7 +465,7 @@ export class Game {
       this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
     );
 
-    this.effects.update(dt, simDt);
+    this.effects.update(dt, this.simulator.simTime);
 
     // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
     const activePlayer = this.player;

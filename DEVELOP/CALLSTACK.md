@@ -79,7 +79,7 @@
     - simulator.stepSimulation(player=null)
     - predictor.update(player=null)
     - activeStage.update(player=null) // Creative の配置プレビュー・フォームのフィールド検証結果はここで求め直す(艦が無い間こそ配置中なので飛ばせない)
-    - effects.update(dt, simDt)
+    - effects.update(dt, simulator.simTime)
     - editor.update() / mapPicker.refresh() / cameraSystem.update() // 内容は上記ポーズ経路と同じ
     - [editor.editMode] mapPicker.handleRightClick() / editor.handleMapPointer() / editor.updateEditing()
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
@@ -91,7 +91,7 @@
     - entities.cleanup() // 決着後もワープで時間は進むので、通常経路と同じ位置で回収する
       // Enemy.checkLoss/Player.checkLoss 経由で recordEnemyDeath/recordPlayerLost が走り得るが、
       // 両方とも isPlaying でガードされているので決着後に既存の phase を上書きすることはない
-    - effects.update(dt, simDt) // 決着直後の爆発を止めないため、簡略経路でも寿命を進める
+    - effects.update(dt, simulator.simTime) // 決着直後の爆発を止めないため、簡略経路でも寿命を進める
     - editor.update(simTime, displayTime) // 内容は上記ポーズ経路と同じ
     - mapPicker.refresh() // 内容は上記ポーズ経路と同じ
     - cameraSystem.update(..., mapPicker.pickables) // 決着後も追従を続ける(sync は止まらないため、飛ばすと視点が絶対 ECI に取り残される)
@@ -231,7 +231,7 @@
       - player.stepPrediction(bodies, simTime, dt, horizon) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt・bodies を都度計算し直しながら1ステップずつ繰り返し呼ぶ
         - predicted.step() // 呼び出し側が確定させた bodies で1ステップ積分
     - [canGrow] advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player を除外しないので同じフレームで二重に予算が付き得る)。entity.stepPrediction() が最初から false(predictsFuture=false/推力中/truncated)なら消費 0 で次へ即進む
-  - effects.update(dt, simDt) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と移流。ポーズ中は呼ばれない(=止まる)
+  - effects.update(dt, simulator.simTime) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と、各エフェクトの時刻から simTime までの移流。ポーズ中は呼ばれない(=止まる)
   - guide.update(plan, player, simTime, editMode, ephemeris.attractorsAt(simTime)) // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させるため
     - [editMode または !player.alive] 即 return
     - plan.dropNodesBefore(simTime - C.NODE_EXPIRE_GRACE) // 期限切れノードをまとめて落とし、最後に落ちたノードを新しいアンカーに据える
