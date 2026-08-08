@@ -206,7 +206,7 @@ export class ShipPlacerPanel {
     this.selectSizeMode(this.sizeModeValue);
 
     // 向き(i/Ω/ω)と位相(ν)は組の選択によらず常に有効。
-    this.inc = numberField(elementsGroup, '傾斜角 i [deg]', 51.6, 1);
+    this.inc = numberField(elementsGroup, '傾斜角 i [deg]', 0, 1);
     this.raan = numberField(elementsGroup, '昇交点赤経 Ω [deg]', 0, 1);
     this.argp = numberField(elementsGroup, '近点引数 ω [deg]', 0, 1);
     this.nu = numberField(elementsGroup, '真近点角 ν [deg]', 0, 1);
