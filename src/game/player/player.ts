@@ -298,7 +298,7 @@ export class Player extends Ship {
   }
 
   // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。
-  checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, bodies: readonly Attractor[]): void {
+  checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
     const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, altitudeOf(this.state.r));
 
@@ -307,7 +307,7 @@ export class Player extends Ship {
     if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
     else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
     else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
-    else if (hitsAnySurface(this.state.r, bodies, C.PLAYER_MIN_ALT)) reason = '天体表面付近に達し機体は分解した';
+    else if (hitsAnySurface(this.state.r, attractors, C.PLAYER_MIN_ALT)) reason = '天体表面付近に達し機体は分解した';
     if (reason === null) return;
 
     this.alive = false;
