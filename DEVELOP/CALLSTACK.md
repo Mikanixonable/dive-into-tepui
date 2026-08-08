@@ -222,7 +222,7 @@
         - destroyEffect() → sfx.explosion() + fx.spawnShipDestroyEffect() // 限界超過 or 高度不足のみ
         - activeStage.recordPlayerLost() // 同上
     - prune() ×5 → entity.dispose() // alive=false の個体ごと(scene から除去、必要なら geometry も破棄)。players は寿命判定のみで prune の対象外(喪失艦も配列に残り続ける)
-  - predictor.update(simTime, player, canGrow, horizon) // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。canGrow = simSpeedManager.canGrowPrediction、horizon = displayTimeManager.durationSec()。視点/モードによる分岐なし
+  - predictor.update(simTime, player, canGrow, horizon) // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。canGrow = simSpeedManager.canGrowPrediction、horizon = displayTimeManager.durationSec(game.currentOrbitPeriod())。currentOrbitPeriod() は自機の現在軌道を strongestAttractor 周りで求めるだけの純計算(自機なしなら NaN)。視点/モードによる分岐なし
     - resyncPrediction(simTime, bodies, horizon) // entities.all() の全対象、毎フレーム無条件(canGrow が false でも省略しない — 実状態は動き続けるので、乖離した予測列を放置すると無関係な軌道が描かれ続ける)。bodies は simTime ぶんを1回だけ引いて全対象で使い回す
       - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
     - [canGrow] advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループも dt・重力源の決定(ephemeris.attractorsAt(tip.t) → localOrbitPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で頭打ち)も Predictor 側が持つ(stepSim に対する simulationSubStep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
@@ -294,7 +294,7 @@
 - game.sync()
   - viewBadge.sync(activeStage.selectLabel, canToggleView) // タイトル・Mode・View ドロップダウンの表示反映
   - floatingOrigin = new FloatingOrigin(player.state.r, player.state.v) // 以降の sync 系はこの fo だけを参照する
-  - displayTime を確定 // displayTimeManager.resolveDisplayTime(simTime): 未来ゴーストのスライダーが立っている間だけ先の時刻
+  - displayTime を確定 // displayTimeManager.resolveDisplayTime(simTime, game.currentOrbitPeriod()): 未来ゴーストのスライダーが立っている間だけ先の時刻
   - cameraSystem.sync() // 最初に呼ぶ: environment.sync とマーカー投影が今フレームのカメラ行列を読む
     - syncCameraToViewFrame(active.camera, active.view, fo) // active = overviewMode ? overviewCamera : combatCamera。両カメラの view→THREE.PerspectiveCamera 反映はここ一箇所
     - overviewCameraPanel.setVisible(overviewMode) + setFocus()/setFrame() // MAP VIEW パネル。点灯反映は overviewMode のみ
@@ -345,7 +345,7 @@
   - leadMarkers.sync() // 敵ごとの LEAD マーカー。overviewMode or !player.alive なら全 remove して return
     - trackTargeted() // 最終ロック時刻を生存中の敵ぶんだけ作り直す
     - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある敵ごと
-  - displayTimeManager.sync() // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ)の表示/内容を押し出すだけ
+  - displayTimeManager.sync(game.currentOrbitPeriod()) // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ)の表示/内容を押し出すだけ
     - panel.setVisible(!forceCurrent) / setDuration() / setManualVisible() / setSliderLabel() / setTicks() // ラベルは自己完結の "T+" 表記のみ
   - editor.sync(mapDist, simTime, fo, project)
     - [hasPlan かつ(editMode または plan.nodes.length > 0)] planDisplay.sync(fo, project, editMode)
@@ -408,11 +408,17 @@
   `hitSystem.checkBulletHits()` もその回数呼ばれる。一方 `collisionPhysics.resolve()` は
   `canResolvePhysicalCollisions` が false になり `resolveCollision=false` で渡るため、
   `stepSimulation` の中で丸ごとスキップされる。
-- **計画軌道 RK4 の再計算**は `PlanArc` が per-arc に持つ `(state0, end)` の変化検出。
-  `(state0, end)` はどちらも計画の編集でしか動かない
-  (計画が空のあいだだけ、anchor が自機に追従するので毎フレーム動く)ので、
-  ノードを置いた後は編集していないフレームでは一切再積分されない。マップモード中でも大半の
-  フレームは `sampled.syncTransform()`(O(1) の剛体変換)だけで済む。
+- **計画軌道 RK4 の再計算**は `PlanArc.update` が per-arc に持つ `(state0, end)` の変化検出だが、
+  `tracksLiveAnchor` 引数(計画が空のあいだの唯一の区間だけ true — その区間は anchor が自機の
+  現在状態を毎フレーム追従する)で判定基準が変わる。false(ノードを置いた後の区間)なら
+  `state0`/`end` の同一性・値の変化そのものが再積分の合図で、編集していないフレームでは一切
+  再積分されない。true の間は `state0.t` も区間長(≒ 自機の接触周期。[PREDICT] パネルが「1周」
+  のとき J2・大気抵抗で毎フレーム連続的に変化する)も厳密には毎フレーム変わるため、直近の
+  再積分からの変化が描画解像度のサンプル間隔(区間長 / `PLAN_ARC_MAX_SAMPLES`)未満の間だけ
+  再積分をスキップする。ただし `state0` の同一性が変わっていて `t` が前進していない(別艦への
+  切り替え・ドック発進・衝突による状態上書きなどの非連続な差し替え)ときはこの閾値を無視して
+  即座に再積分する。マップモード中でも大半のフレームは `sampled.syncTransform()`(O(1) の
+  剛体変換)だけで済む。
 - **過去 state の記録・prevState の更新は `physics/orbit-entity.ts` の `OrbitEntity`(`GameEntity.current`)の
   `step`/`reset` が行う**ので、この木には独立ノードとして現れない。`entity.stepSim()` /
   `resolveCollisionPair()` / 反動など、state へ代入するすべての経路が記録契機になる

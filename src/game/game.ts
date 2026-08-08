@@ -44,6 +44,7 @@ import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
 import { Base } from './game-entity/base';
+import { strongestAttractor } from '../physics/attractor';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -147,6 +148,7 @@ export class Game {
       this.markerManager,
       () => this.player?.fineAttitude ?? false,
       bootstrapPlayer,
+      this.displayTimeManager,
     );
     this.editor.onFocusNode = (state) => this.cameraSystem.overviewCamera.setFocusPos(state.r);
     this.mapPicker = new MapPicker(
@@ -269,7 +271,15 @@ export class Game {
 
   // このフレームの表示時刻(未来ゴーストのスライダーぶん先取りした simTime)。
   private get displayTime(): number {
-    return this.displayTimeManager.resolveDisplayTime(this.simulator.simTime);
+    return this.displayTimeManager.resolveDisplayTime(this.simulator.simTime, this.currentOrbitPeriod());
+  }
+
+  // 自機の現在軌道の周期 [s]。自機がいない、または有限な周期が求まらない間は NaN —
+  // DisplayTimeManager.durationSec 側のフォールバックに委ねる。
+  private currentOrbitPeriod(): number {
+    if (!this.player) return NaN;
+    const center = strongestAttractor(this.player.state.r, this.ephemeris.attractorsAt(this.simulator.simTime));
+    return this.player.elementsAround(center)?.period ?? NaN;
   }
 
   get simTime(): number { return this.simulator.simTime; }
@@ -348,7 +358,7 @@ export class Game {
         this.simulator.simTime,
         null,
         this.simSpeedManager.canGrowPrediction,
-        this.displayTimeManager.durationSec(),
+        this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
       );
       this.activeStage.update(dt, null, this.entities, this.simulator.simTime, this.simSpeedManager);
       this.effects.update(dt, simDt);
@@ -450,7 +460,7 @@ export class Game {
       this.simulator.simTime,
       this.player,
       this.simSpeedManager.canGrowPrediction,
-      this.displayTimeManager.durationSec(),
+      this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
     );
 
     this.effects.update(dt, simDt);
@@ -539,7 +549,7 @@ export class Game {
       : new FloatingOrigin(v3(), v3());
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
-    const displayTime = this.displayTimeManager.resolveDisplayTime(this.simulator.simTime);
+    const displayTime = this.displayTimeManager.resolveDisplayTime(this.simulator.simTime, this.currentOrbitPeriod());
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
     this.cameraSystem.sync(this.floatingOrigin);
@@ -590,7 +600,7 @@ export class Game {
     this.enemyMarkers.sync(enemyMarkerItems, project);
     if (player) this.leadMarkers.sync(player, aliveTargets, target, secondaryTarget, simTime, overviewMode, project);
 
-    this.displayTimeManager.sync();
+    this.displayTimeManager.sync(this.currentOrbitPeriod());
     this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project);
     this.mapPicker.sync(overviewMode);
     // 月フライバイ等で積分予測と解析楕円が乖離した場合は、重なって誤解を招く

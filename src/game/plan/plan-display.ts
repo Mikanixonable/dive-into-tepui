@@ -18,6 +18,7 @@ import * as C from '../const';
 import { hudDock } from '../hud/dom';
 import { Plan } from './plan';
 import { PlanTrajectory } from './plan-trajectory';
+import type { DisplayTimeManager } from '../display-time-manager';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {
@@ -47,8 +48,9 @@ export class PlanDisplay {
     hudRoot: HTMLElement,
     private readonly markerManager: MarkerManager,
     private readonly ephemeris: Ephemeris,
+    displayTimeManager: DisplayTimeManager,
   ) {
-    this.traj = new PlanTrajectory(scene);
+    this.traj = new PlanTrajectory(scene, displayTimeManager);
 
     // TRAJECTORY パネルの DOM を組み立てる
     this.panel = document.createElement('div');

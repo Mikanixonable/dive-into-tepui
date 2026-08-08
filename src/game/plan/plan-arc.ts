@@ -43,10 +43,31 @@ export class PlanArc {
     return this.sampled.line;
   }
 
-  // 起点・終端の変化を検出して再積分する。
-  update(state0: OrbitState, end: number, ephemeris: Ephemeris): void {
-    // 積分結果は (state0, end) だけで決まるので、変化したときにだけ回す。
-    this.recomputed = this.key === null || state0 !== this.key.state0 || end !== this.key.end;
+  // 起点・終端の変化を検出して再積分する。tracksLiveAnchor(計画が空の間の唯一の区間)では
+  // state0 が自機を毎フレーム追従して end も連動して動く。'orbit' プリセットでは区間長
+  // (= 起点の接触周期)自体も J2・大気抵抗で毎フレーム連続的に変化するため、区間長・
+  // state0.t のどちらも厳密一致では判定できない。そこで両者とも同じ基準
+  // ——直近の再積分結果からの変化が描画解像度のサンプル間隔(区間長 / PLAN_ARC_MAX_SAMPLES)
+  // 未満かどうか——で揃えて判定する: それ未満なら折れ線の見た目は変わらないので再積分を
+  // スキップする。ただし起点の同一性が変わっていて、かつ時刻が前進していない場合(別艦への
+  // 切り替え・ドック発進・衝突による状態上書きなど、同じ時刻での非連続な差し替え)は、
+  // 差分がどれだけ小さくても即座に再積分する — そうしないと切り替え直後の1フレームが
+  // 前の起点と時刻的に近いというだけで、無関係な軌道をサンプル間隔ぶん描き続けてしまう。
+  // tracksLiveAnchor でなければ state0/end の同一性・値の変化で即座に再積分する
+  // (ノードの Δv 編集は state0 の同一性変化で必ず拾われる)。
+  update(state0: OrbitState, end: number, ephemeris: Ephemeris, tracksLiveAnchor: boolean): void {
+    if (tracksLiveAnchor) {
+      // 同一性が変わっても時刻が前進していれば通常の追従とみなし、下のサンプル間隔判定に委ねる。
+      const anchorSwapped = this.key !== null && state0 !== this.key.state0 && state0.t <= this.key.state0.t;
+      const duration = end - state0.t;
+      const keyDuration = this.key ? this.key.end - this.key.state0.t : NaN;
+      const sampleInterval = this.key ? keyDuration / C.PLAN_ARC_MAX_SAMPLES : 0;
+      const durationChanged = this.key === null || Math.abs(duration - keyDuration) >= sampleInterval;
+      const anchorDrifted = this.key !== null && Math.abs(state0.t - this.key.state0.t) >= sampleInterval;
+      this.recomputed = anchorSwapped || durationChanged || anchorDrifted;
+    } else {
+      this.recomputed = this.key === null || state0 !== this.key.state0 || end !== this.key.end;
+    }
     if (this.recomputed) {
       this.integrate(state0, end, ephemeris);
       this.key = { state0, end };
