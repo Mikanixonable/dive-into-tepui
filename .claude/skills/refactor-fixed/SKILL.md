@@ -55,7 +55,7 @@ description: このプロジェクトで確定済みの横断的な責務境界(
 `build`(シーンへの登録)と `render`(`renderer.render` を呼ぶもの)を含めた命名規則は
 CLAUDE.md の「Naming: render / update / build / sync」節。
 
-## 3. 座標系の境界 — 独自 `Vec3`/`OrbitState` は ECI、`THREE.Vector3` は描画後、それ以外は `frame.ts` の branded type
+## 3. 座標系の境界 — 独自 `Vec3`/`KinematicState` は ECI、`THREE.Vector3` は描画後、それ以外は `frame.ts` の branded type
 
 ### `Vec3` と `THREE.Vector3` の境界(フローティングオリジン)
 
@@ -67,9 +67,9 @@ CPU 側で事前に平行移動して自機・カメラ付近の浮動小数精�
 - `THREE.Vector3` は描画のための座標なので、フローティングオリジンを引いた後のものだけを扱う。
 - 変換は必ず `FloatingOrigin` の変換関数(`RtoThreeV3` / `VtoThreeV3`)を経由する。
 
-### 独自 `Vec3`/`OrbitState` は ECI が既定、それ以外は `frame.ts` の branded type
+### 独自 `Vec3`/`KinematicState` は ECI が既定、それ以外は `frame.ts` の branded type
 
-独自 `Vec3` / `OrbitState` は**地球中心慣性系(ECI)** を表す。これが既定であり、シミュレーションは
+独自 `Vec3` / `KinematicState` は**地球中心慣性系(ECI)** を表す。これが既定であり、シミュレーションは
 すべてこの系で回る(太陽・月・木星の位置も含め、`physics/attractor.ts` の `Attractor.state` は
 常に ECI)。
 

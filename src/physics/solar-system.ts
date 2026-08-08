@@ -1,7 +1,7 @@
 // 天体の静的事実の表: 恒星/惑星/衛星の判別 union(CelestialBodyDef)と、太陽系の各天体の
 // 重力定数・半径・軌道モデル(SOLAR_SYSTEM)。宣言順が Ephemeris が返す重力源配列の順になる。
 import { AttractorId, PlanetId, SatelliteId, StarId } from './attractor';
-import { MU_EARTH, R_EARTH } from './orbital-state';
+import { MU_EARTH, R_EARTH } from './kinematic-state';
 import { PlanetOrbit, planetOrbit } from './planet-orbit';
 import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-orbit';
 

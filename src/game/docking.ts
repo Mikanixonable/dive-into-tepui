@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import * as C from './const';
 import { v3, len, sub } from '../physics/vec3';
-import { orbitState } from '../physics/orbital-state';
+import { kinematicState } from '../physics/kinematic-state';
 import { Hud } from './hud/hud';
 import { DockView } from './hud/dock-view';
 import { Base } from './game-entity/base';
@@ -151,7 +151,7 @@ export class Docking {
   // 格納艦を基地脇の軌道へ実体化し、操作対象に据える。
   private launch(ship: Player, base: Base): void {
     const br = base.state.r;
-    ship.state = orbitState(base.state.t, v3(br.x + 600, br.y, br.z), base.state.v);
+    ship.state = kinematicState(base.state.t, v3(br.x + 600, br.y, br.z), base.state.v);
     ship.alive = true;
     this.entities.addPlayer(ship);
     this.game.setActivePlayer(ship);

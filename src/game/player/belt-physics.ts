@@ -1,7 +1,7 @@
 // マガジンベルトの物理演算(Verlet 積分 + 距離拘束によるチェーンのたわみ・ねじれ)。
 import * as THREE from 'three/webgpu';
 import { Attitude, Quat, qFromUnitVectors, qInvert, qMul, qRotate } from '../../physics/attitude';
-import { orbitState } from '../../physics/orbital-state';
+import { kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
 import * as C from '../const';
@@ -20,7 +20,7 @@ function clamp(v: number, lo: number, hi: number): number {
 export class BeltSection extends GameEntity {
   // 節点インデックス beltIndex に対応するプロキシを生成する。
   constructor(readonly beltIndex: number) {
-    super(orbitState(0, v3(), v3()), new THREE.Object3D());
+    super(kinematicState(0, v3(), v3()), new THREE.Object3D());
     this.mass = 5;
     this.collideRadius = 0.8;
   }
@@ -218,7 +218,7 @@ export class BeltPhysics {
 
   private readonly sections: BeltSection[] = [];
 
-  // 各節点の機体座標系での位置・速度をワールド OrbitState に変換し、衝突判定用の
+  // 各節点の機体座標系での位置・速度をワールド KinematicState に変換し、衝突判定用の
   // プロキシ配列を返す。
   collisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     // プロキシを節点数まで拡張する
@@ -235,7 +235,7 @@ export class BeltPhysics {
       const v_body_total = add(v_verlet, v_tangential);
 
       // ワールド座標系へ変換する
-      s.state = orbitState(
+      s.state = kinematicState(
         s.state.t,
         add(baseR, qRotate(att.q, bp)),
         add(baseV, qRotate(att.q, v_body_total)),

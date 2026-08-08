@@ -16,7 +16,7 @@
 import { Ephemeris } from './ephemeris';
 import { OrbitingId } from './attractor';
 import { bodyDef } from './solar-system';
-import { OrbitState, orbitState } from './orbital-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, scale, sub } from './vec3';
 
 export type LibrationPoint = 'L1' | 'L2';
@@ -105,7 +105,7 @@ export interface HaloParams {
   readonly phase?: number; // 面内位相 [rad]、既定 0
 }
 
-// L点局所基底での線形解(無次元、位相 phase/psi での位置・速度)から ECI の OrbitState を
+// L点局所基底での線形解(無次元、位相 phase/psi での位置・速度)から ECI の KinematicState を
 // 組み立てる。回転フレーム相対速度から ECI 速度への変換は frame.ts の toInertialState と
 // 同じ関係 v = v_rel + ω×r(r は原点=地球からの絶対位置)による。
 function centerManifoldState(
@@ -116,7 +116,7 @@ function centerManifoldState(
   phase: number,
   psi: number,
   zFreq: number,
-): OrbitState {
+): KinematicState {
   const { lambda, kappa, r: R, omega } = frame;
   const n = len(omega); // 回転フレームの角速度(無次元時間 τ=n·t の単位)
 
@@ -141,7 +141,7 @@ function centerManifoldState(
   // 回転フレーム相対の状態を絶対位置へ平行移動し、フレームの角速度ぶんを足して ECI 速度にする。
   const rEci = add(frame.origin, relPos);
   const vEci = add(relVel, cross(omega, rEci));
-  return orbitState(t, rEci, vEci);
+  return kinematicState(t, rEci, vEci);
 }
 
 // Richardson (1980) 三次近似の振幅拘束 l1·Ax² + l2·Az² + Δ = 0 における (l1, l2, Δ)。
@@ -181,7 +181,7 @@ function haloConstraint(frame: CollinearFrame, point: LibrationPoint): { l1: num
 // 指定したラグランジュ点(副天体 secondary の L1/L2)まわりのリサジュー軌道初期状態。
 // 面内振幅 ax・面外振幅 az は独立に指定でき、面内は線形振動数 λ、面外は独立な線形
 // 振動数 ωz で振動する。
-export function lissajousState(t: number, ephemeris: Ephemeris, params: LissajousParams): OrbitState {
+export function lissajousState(t: number, ephemeris: Ephemeris, params: LissajousParams): KinematicState {
   const frame = collinearFrame(params.secondary, params.point, t, ephemeris);
   return centerManifoldState(
     t, frame, params.ax, params.az, params.phase ?? 0, params.psi ?? 0, frame.omegaZ,
@@ -190,7 +190,7 @@ export function lissajousState(t: number, ephemeris: Ephemeris, params: Lissajou
 
 // 指定したラグランジュ点まわりのハロー軌道初期状態。面内振幅は面外振幅 az から三次の
 // 振幅拘束で決まる(az=0 でも面内振幅は下限値を取り、そこから単調に増える)。
-export function haloState(t: number, ephemeris: Ephemeris, params: HaloParams): OrbitState {
+export function haloState(t: number, ephemeris: Ephemeris, params: HaloParams): KinematicState {
   const frame = collinearFrame(params.secondary, params.point, t, ephemeris);
   const ax = haloAmplitudeX(frame, params.point, params.az);
   // 拘束が成り立つ = 面内・面外の振動数が一致するので、面外も面内振動数 λ で駆動する。
