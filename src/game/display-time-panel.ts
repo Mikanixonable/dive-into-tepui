@@ -4,6 +4,7 @@ import type { DisplayDurationKey } from './display-time-manager';
 import { hudDock } from './hud/dom';
 
 const DURATIONS: readonly (readonly [DisplayDurationKey, string])[] = [
+  ['orbit', '1周'],
   ['90min', '90分'],
   ['day', '1日'],
   ['week', '7日'],
