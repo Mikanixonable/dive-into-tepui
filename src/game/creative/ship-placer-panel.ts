@@ -94,8 +94,9 @@ const LIBRATION_DEFAULT_AMPLITUDE_KM: Record<OrbitingId, { ax: number; az: numbe
   jupiter: { ax: C.CREATIVE_HALO_AX_JUPITER_KM, az: C.CREATIVE_HALO_AZ_JUPITER_KM },
 };
 
-// ラベル付き数値入力を1行分組み立てて root へ追加し、input 要素を返す。
-function numberField(root: HTMLElement, label: string, defaultValue: number, step: number): HTMLInputElement {
+// ラベル行(.hud-seg + .seg-title)と数値 input を組み立てて返す。root への追加は呼び出し側の仕事
+// (numberField はそのまま追加するだけだが、sliderField はスライダー列を同じ行に足してから追加する)。
+function buildNumberRow(label: string, defaultValue: number, step: number, min?: number, max?: number): { row: HTMLElement; input: HTMLInputElement } {
   const row = document.createElement('div');
   row.className = 'hud-seg';
   const heading = document.createElement('span');
@@ -106,9 +107,17 @@ function numberField(root: HTMLElement, label: string, defaultValue: number, ste
   input.type = 'number';
   input.step = String(step);
   input.value = String(defaultValue);
+  if (min !== undefined) input.min = String(min);
+  if (max !== undefined) input.max = String(max);
   // #hud はマップドラッグを拾うため、この入力上のポインタ操作がカメラドラッグへ抜けないようにする。
   input.addEventListener('pointerdown', (e) => e.stopPropagation());
   row.appendChild(input);
+  return { row, input };
+}
+
+// ラベル付き数値入力を1行分組み立てて root へ追加し、input 要素を返す。
+function numberField(root: HTMLElement, label: string, defaultValue: number, step: number, min?: number, max?: number): HTMLInputElement {
+  const { row, input } = buildNumberRow(label, defaultValue, step, min, max);
   root.appendChild(row);
   return input;
 }
@@ -129,23 +138,11 @@ interface SliderRow {
   setMapping(toT: (value: number) => number, fromT: (t: number) => number): void;
 }
 
-function sliderField(root: HTMLElement, label: string, defaultValue: number, step: number): SliderRow {
+function sliderField(root: HTMLElement, label: string, defaultValue: number, step: number, min?: number, max?: number): SliderRow {
   const wrap = document.createElement('div');
   wrap.className = 'slider-field';
 
-  const row = document.createElement('div');
-  row.className = 'hud-seg';
-  const heading = document.createElement('span');
-  heading.className = 'seg-title';
-  heading.textContent = label;
-  row.appendChild(heading);
-
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.step = String(step);
-  input.value = String(defaultValue);
-  input.addEventListener('pointerdown', (e) => e.stopPropagation());
-  row.appendChild(input);
+  const { row, input } = buildNumberRow(label, defaultValue, step, min, max);
 
   const sliderCol = document.createElement('div');
   sliderCol.className = 'slider-col';
