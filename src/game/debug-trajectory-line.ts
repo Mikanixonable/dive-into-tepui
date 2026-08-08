@@ -11,7 +11,7 @@ import * as THREE from 'three/webgpu';
 import { ReferenceFrame } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from './floating-origin';
-import { SampledLine } from '../render/sampled-line';
+import { SampledLine, ScaleAtFn } from '../render/sampled-line';
 import { GameEntity } from './game-entity/game-entity';
 import { EntityLineSet } from './entity-line-set';
 
@@ -29,7 +29,11 @@ export class DebugTrajectoryLine {
 
   // targets: このフレームに線を描きたい対象の集合(呼び出し側が決める。既定は自機+ターゲット)。
   // frame は plan/plan-display.ts の PlanDisplay.planFrame と同じ値を渡す(bake の座標系)。
-  sync(targets: readonly GameEntity[], frame: ReferenceFrame, simTime: number, ephemeris: Ephemeris, fo: FloatingOrigin): void {
+  // scale は折れ線の細分密度を決める画面スケール。
+  sync(
+    targets: readonly GameEntity[], frame: ReferenceFrame, simTime: number, ephemeris: Ephemeris,
+    fo: FloatingOrigin, scale: ScaleAtFn,
+  ): void {
     if (!this.enabled) return;
 
     for (const entity of targets) {
@@ -46,7 +50,7 @@ export class DebugTrajectoryLine {
         }
       }
       const samples = [...currentSamples, ...predictedSamples];
-      line.syncGeometry(samples, frame, ephemeris);
+      line.syncGeometry(samples, frame, ephemeris, scale);
       line.syncTransform(frame, simTime, ephemeris, fo);
       line.setVisible(true);
     }
