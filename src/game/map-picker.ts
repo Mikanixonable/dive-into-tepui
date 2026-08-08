@@ -9,6 +9,7 @@ import { orbitInfo, relativeInfo } from './hud/orbit-info';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem } from './hud/property-window';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
+import { ATTRACTOR_NAMES } from './hud/frame-labels';
 import { MapPickable, pickNearest } from './map-pick';
 import { ObjectListPanel } from './object-list-panel';
 import type { Input } from './input/input';
@@ -327,9 +328,8 @@ export class MapPicker {
     'eqnode': {
       itemsFor: (target, simTime) => {
         const eqTime = target.time;
-        const prefix = this.eqNodeCenterIsMoon(target, simTime) ? '月' : '';
-        const isAn = target.id.startsWith('eqAn');
-        const eqLabel = `${prefix}赤道${isAn ? '昇' : '降'}交点 (${isAn ? 'EqAN' : 'EqDN'})`;
+        const isAn = target.id.endsWith('-eqan');
+        const eqLabel = `${ATTRACTOR_NAMES[this.eqNodeCenterId(target)]}赤道${isAn ? '昇' : '降'}交点 (${isAn ? 'EqAN' : 'EqDN'})`;
         const eqSubLabel = eqTime !== undefined ? `到達まで T+${fmtTime(eqTime - simTime)}` : undefined;
         return [
           { type: 'header', label: eqLabel, subLabel: eqSubLabel },
@@ -648,17 +648,15 @@ export class MapPicker {
   private nodeRows(target: MapPickable, simTime: number): PropertyRow[] {
     const targetName = target.kind === 'relnode'
       ? (this.navTarget.name ?? '対象')
-      : (this.eqNodeCenterIsMoon(target, simTime) ? '月' : '地球');
+      : ATTRACTOR_NAMES[this.eqNodeCenterId(target)];
     const rows: PropertyRow[] = [{ key: 'target', label: '対象', value: targetName }];
     if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
     return rows;
   }
 
-  // 赤道交点アイコンの id(常に 'eqAn'/'eqDn')は中心天体を持たないので、アイコン位置で
-  // 最も強く引く天体(strongestAttractor)から地球/月を判定する。交点は必ずその天体の
-  // 軌道上にあるので、位置から逆算すれば元の判定と一致する。
-  private eqNodeCenterIsMoon(target: MapPickable, simTime: number): boolean {
-    return strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id === 'moon';
+  // 赤道交点アイコンの id は `${中心天体}-eqan`/`${中心天体}-eqdn`(plan-display.ts)。
+  private eqNodeCenterId(target: MapPickable): AttractorId {
+    return target.id.replace(/-eq(an|dn)$/, '') as AttractorId;
   }
 
   private runBodyShip(act: MenuAction, target: MapPickable): void {
