@@ -6,6 +6,7 @@ import { atmosphericDensity } from '../../physics/atmosphere';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
+import type { ThermalSaveData } from '../save-data';
 
 // checkThermalLimits の戻り値: 限界超過の種別。null なら超過なし。
 // heat-aero: 空力加熱による飽和。heat-internal: 射撃発熱など大気のない状況での飽和。
@@ -134,5 +135,14 @@ export class ThermalSystem {
     }
 
     return this.checkThermalLimits();
+  }
+
+  serialize(): ThermalSaveData {
+    return { hullTemp: this.hullTemp, pendingHeat: this.pendingHeat };
+  }
+
+  restore(data: ThermalSaveData): void {
+    this.hullTemp = data.hullTemp;
+    this.pendingHeat = data.pendingHeat;
   }
 }

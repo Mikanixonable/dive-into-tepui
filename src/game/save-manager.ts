@@ -18,6 +18,7 @@ export class SaveManager {
       enemies: game.entities.enemies.map(e => e.serialize()),
       ammos: game.entities.ammos.map(a => a.serialize()),
       bases: game.entities.bases.map(b => b.serialize()),
+      stage: game.activeStage.serialize(),
     };
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
