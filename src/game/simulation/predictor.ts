@@ -10,6 +10,11 @@ import { localOrbitPeriod } from '../../physics/attractor';
 export class Predictor {
   private cursor = 0;
 
+  // 直近の update() で数えた予測列の状況(?perf=1 の表示用)。
+  tracked = 0; // 予測対象の個体数
+  complete = 0; // うち先端がホライズンに達しているもの
+  discarded = 0; // このフレームに乖離で破棄したもの
+
   constructor(
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
@@ -17,48 +22,61 @@ export class Predictor {
 
   // Game.update の entities.cleanup(...) の後に呼ぶ(死んだ個体を予測しない、積分後の実状態と
   // 突き合わせる)。視点・モードによる条件分岐は持たない — 予測は表示とは独立に常時進む。
-  update(simTime: number, player: Player | null, suspended = false): void {
-    // 高ワープでは実状態が1フレームで予測列を追い越すため、再同期→再構築を繰り返しても
-    // 表示に使える列にならない。等速域へ戻るまで既存列を保持して計算予算を使わない。
-    if (suspended) return;
+  // horizon は simTime から先に予測する長さ [s]。canGrow が false の間は既存列の再同期だけ行う。
+  update(simTime: number, player: Player | null, canGrow: boolean, horizon: number): void {
     const all = this.entities.all();
 
-    // (a) 距離判定は毎フレーム無条件で全対象に行う(二分探索1回ぶんの費用しかかからない)。
-    for (const e of all) e.resyncPrediction(simTime, C.PREDICT_RESET_DIST);
+    // 距離判定は毎フレーム無条件で全対象に行う(二分探索1回ぶんの費用しかかからない)。
+    // 伸長を止めている間も実状態は進むので、乖離した列をここで落とさないと
+    // 現在と無関係な軌道が描かれ続ける。
+    this.tracked = 0;
+    this.complete = 0;
+    this.discarded = 0;
+    const bodies = this.ephemeris.attractorsAt(simTime);
+    for (const e of all) {
+      if (e.resyncPrediction(simTime, bodies, horizon)) this.discarded++;
+      if (!e.predictsFuture) continue;
+      this.tracked++;
+      if (e.predicted !== null && e.predicted.state.t > simTime + horizon) this.complete++;
+    }
+
+    if (!canGrow) return;
 
     // 予算配分: 操作対象の艦を先頭に、以降はカーソル位置から最大1周だけ回す。
     let budget = C.PREDICT_STEP_BUDGET;
-    if (player) budget -= this.advanceBudget(player, budget, simTime);
+    if (player) budget -= this.advanceBudget(player, budget, simTime, horizon);
 
     let visited = 0;
     while (budget > 0 && visited < all.length) {
       const e = all[(this.cursor + visited) % all.length]!;
-      budget -= this.advanceBudget(e, budget, simTime);
+      budget -= this.advanceBudget(e, budget, simTime, horizon);
       visited++;
     }
     this.cursor = all.length > 0 ? (this.cursor + visited) % all.length : 0;
   }
 
   // budgetSteps を上限に、1体ぶんの予測列を GameEntity.stepPrediction で1ステップずつ伸ばし、
-  // 消費したステップ数を返す。刻み幅は毎ステップ、現在の予測先端の位置で最も強く引く天体を
-  // 中心とする軌道周期から求め直す(先端がまだ無ければ現在状態で代用 — 生成直後は
-  // current.state を種にするので同じ値になる)。ここが「刻み幅を決めてから1ステップぶん渡す」側、
-  // entity 側は「渡された dt で実際に1ステップ進めるか判断する」側 — stepSim に対する
-  // simulationSubStep と同じ分担。ホライズン超過などで stepPrediction が false を返したら、
-  // そのエンティティの予算消化を打ち切る。
-  private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number): number {
+  // 消費したステップ数を返す。刻み幅と重力源は毎ステップ、現在の予測先端の時刻・位置から
+  // 求め直す(先端がまだ無ければ現在状態で代用 — 生成直後は current.state を種にするので
+  // 同じ値になる)。ここが「1ステップぶんの前提を決めて渡す」側、entity 側は「渡された前提で
+  // 実際に1ステップ進めるか判断する」側 — stepSim に対する simulationSubStep と同じ分担。
+  // ホライズン超過などで stepPrediction が false を返したら、そのエンティティの予算消化を打ち切る。
+  private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number, horizon: number): number {
+    if (!e.predictsFuture) return 0;
     let consumed = 0;
     while (consumed < budgetSteps) {
+      // 刻み幅は「その場の周期の等分」と「ホライズン全体をステップ上限で割った値」の粗い方。
+      // 後者があるので、表示期間を年スケールにしてもステップ数が有界に収まる。
       const tipState = e.predicted?.state ?? e.state;
       const bodies = this.ephemeris.attractorsAt(tipState.t);
-      const dt = Math.max(C.PREDICT_MIN_STEP_DT, localOrbitPeriod(tipState.r, bodies) / STEPS_PER_REV);
-      if (!e.stepPrediction(this.ephemeris, simTime, dt)) break;
+      const dt = Math.max(
+        C.PREDICT_MIN_STEP_DT,
+        localOrbitPeriod(tipState.r, bodies) / C.PREDICT_STEPS_PER_REV,
+        horizon / C.PREDICT_MAX_STEPS,
+      );
+      if (!e.stepPrediction(bodies, simTime, dt, horizon)) break;
       consumed++;
     }
     return consumed;
   }
 }
-
-// 1周回あたりの予測ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも遠方の
-// 長周期軌道でも精度が一定になる(plan-arc.ts の STEPS_PER_REV と同じ考え方)。
-const STEPS_PER_REV = 600;
