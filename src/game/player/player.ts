@@ -246,6 +246,7 @@ export class Player extends Ship {
       case K.throttleLow.code: this.throttle.setThrottlePreset(0); return true;
       case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
       case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
+      case K.throttleMax.code: this.throttle.setThrottlePreset(3); return true;
       case K.radiatorDeployLeft.code: this.radiator.toggle('up'); return true;
       case K.radiatorDeployRight.code: this.radiator.toggle('down'); return true;
       case K.solarDeployLeft.code: this.power.toggle('up'); return true;
