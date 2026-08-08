@@ -1,9 +1,19 @@
 // 重力を及ぼすもの。位置・速度は ECI(地球は原点に静止)。THREE/DOM 非依存の純関数群。
+import { Quat } from './attitude';
+import { FrameTransform, toFrameState } from './frame';
 import { OrbitState, orbitState } from './orbital-state';
 import { Elements, elementsFromState, keplerPeriod } from './elements';
-import { Vec3, add, lenSq, len, sub, v3 } from './vec3';
+import { Vec3, lenSq, len, sub, v3 } from './vec3';
 
-export type AttractorId = 'earth' | 'moon' | 'sun';
+// 天体の分類。恒星は動かず、惑星は太陽まわりのケプラー軌道、衛星は惑星まわりのケプラー軌道
+// (+ 太陽摂動)を描く — solar-system.ts の CelestialBodyDef がこの分類で判別される。
+export type StarId = 'sun';
+export type PlanetId = 'earth' | 'jupiter';
+export type SatelliteId = 'moon';
+export type AttractorId = StarId | PlanetId | SatelliteId;
+// 公転している天体(惑星 + 衛星)。回転基準系・軌道法線・ラグランジュ点は、公転を持たない
+// 恒星には存在しない — この型に絞ることで呼び出し側の null 分岐が要らなくなる。
+export type OrbitingId = PlanetId | SatelliteId;
 
 export type Attractor = {
   readonly id: AttractorId;
@@ -21,6 +31,7 @@ export function attractorAccel(r: Vec3, body: Attractor): Vec3 {
   const b = body.state.r;
   let ax = 0, ay = 0, az = 0;
 
+  // 直接引力 μ(r_b − r)/|r_b − r|³。
   const dx = b.x - r.x;
   const dy = b.y - r.y;
   const dz = b.z - r.z;
@@ -30,6 +41,7 @@ export function attractorAccel(r: Vec3, body: Attractor): Vec3 {
     ax += dx * k; ay += dy * k; az += dz * k;
   }
 
+  // ECI 原点(地球)自身が body から受ける引力 μ·r_b/|r_b|³ を差し引く。
   const o2 = b.x * b.x + b.y * b.y + b.z * b.z;
   if (o2 >= 1) {
     const k = body.mu / (o2 * Math.sqrt(o2));
@@ -62,18 +74,20 @@ export function localOrbitPeriod(r: Vec3, bodies: readonly Attractor[]): number 
   return keplerPeriod(len(sub(r, body.state.r)), body.mu);
 }
 
-// 天体中心相対 ⇄ ECI(時刻 t は保つ)。
-export function relativeTo(s: OrbitState, body: Attractor): OrbitState {
-  return orbitState(s.t, sub(s.r, body.state.r), sub(s.v, body.state.v));
-}
-export function toAbsolute(rel: OrbitState, body: Attractor): OrbitState {
-  return orbitState(rel.t, add(rel.r, body.state.r), add(rel.v, body.state.v));
+const IDENTITY_QUAT: Quat = { x: 0, y: 0, z: 0, w: 1 };
+
+// body を原点とする ECI 恒等姿勢の座標系変換。frame.ts の Frame
+// ({center: body.id, rotatingWith: null}) と等価だが、天体暦を引き直さず既に手元にある
+// Attractor のスナップショットからその場で組む。
+export function frameOfAttractor(body: Attractor): FrameTransform {
+  return { origin: body.state.r, originVel: body.state.v, q: IDENTITY_QUAT, omega: v3() };
 }
 
 // 天体 body を中心とする接触軌道要素。中心の選び方には関与しない — 呼び出し側が
 // strongestAttractor などで選んだ body をそのまま渡す。
 export function elementsAround(s: OrbitState, body: Attractor): Elements | null {
-  return elementsFromState(relativeTo(s, body), body);
+  const rel = toFrameState(frameOfAttractor(body), s);
+  return elementsFromState(orbitState(s.t, rel.r, rel.v), body);
 }
 
 // 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。margin(大気圏突入高度
