@@ -1,15 +1,15 @@
-// kinematic-state.ts の回帰テスト(hermiteInterpolate / orbitalAxes / fromOrbitalAxes)。
+// kinematic-state.ts の回帰テスト(hermiteInterpolate / orbitAxes / fromOrbitAxes)。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import {
   MU_EARTH,
   R_EARTH,
-  fromOrbitalAxes,
+  fromOrbitAxes,
   hermiteInterpolate,
   kinematicState,
-  orbitalAxes,
+  orbitAxes,
 } from '../../src/physics/kinematic-state';
-import { stateFromElements } from '../../src/physics/elements';
+import { stateFromOrbitalElements } from '../../src/physics/elements';
 import { stepOrbitRK4 } from '../../src/physics/dynamics';
 import { Vec3, dot, len, norm, sub, v3 } from '../../src/physics/vec3';
 
@@ -67,10 +67,10 @@ export function register(): void {
     assert.ok(Number.isFinite(len(out.r)) && Number.isFinite(len(out.v)), 'extrapolation stays finite');
   });
 
-  test('kinematic-state: orbitalAxes returns an orthonormal basis', () => {
+  test('kinematic-state: orbitAxes returns an orthonormal basis', () => {
     const a = R_EARTH + 700e3;
-    const s = stateFromElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3, MU_EARTH);
-    const { pro, nrm, radOut } = orbitalAxes(s);
+    const s = stateFromOrbitalElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3, MU_EARTH);
+    const { pro, nrm, radOut } = orbitAxes(s);
     const tol = 1e-9;
     assert.ok(Math.abs(len(pro) - 1) < tol, `|pro| should be 1: ${len(pro)}`);
     assert.ok(Math.abs(len(nrm) - 1) < tol, `|nrm| should be 1: ${len(nrm)}`);
@@ -80,23 +80,23 @@ export function register(): void {
     assert.ok(Math.abs(dot(radOut, pro)) < tol, `radOut should be orthogonal to pro: ${dot(radOut, pro)}`);
   });
 
-  test('kinematic-state: orbitalAxes.radOut matches r-hat on a circular orbit (r perp v)', () => {
+  test('kinematic-state: orbitAxes.radOut matches r-hat on a circular orbit (r perp v)', () => {
     const a = R_EARTH + 420e3;
-    const s = stateFromElements(0, a, 0, (51.6 * Math.PI) / 180, 0.2, 0, 0.7, MU_EARTH);
+    const s = stateFromOrbitalElements(0, a, 0, (51.6 * Math.PI) / 180, 0.2, 0, 0.7, MU_EARTH);
     const rHat = norm(s.r);
-    const { radOut } = orbitalAxes(s);
+    const { radOut } = orbitAxes(s);
     assert.ok(
       len(sub(radOut, rHat)) < 1e-9,
       `radOut should coincide with r-hat on a circular orbit: ${len(sub(radOut, rHat))}`,
     );
   });
 
-  test('kinematic-state: orbitalAxes.radOut diverges from r-hat on an eccentric orbit but stays orthonormal', () => {
+  test('kinematic-state: orbitAxes.radOut diverges from r-hat on an eccentric orbit but stays orthonormal', () => {
     // e=0.3, nu=1.0(近点でも遠点でもない): dot(r,v) = r*k*e*sin(nu) が非ゼロになり、
     // radOut(進行方向に直交な面内ベクトル)が r-hat から傾く条件になる。
     const a = R_EARTH + 700e3;
-    const s = stateFromElements(0, a, 0.3, (30 * Math.PI) / 180, 0, 0, 1.0, MU_EARTH);
-    const { pro, nrm, radOut } = orbitalAxes(s);
+    const s = stateFromOrbitalElements(0, a, 0.3, (30 * Math.PI) / 180, 0, 0, 1.0, MU_EARTH);
+    const { pro, nrm, radOut } = orbitAxes(s);
     const rHat = norm(s.r);
     const divergence = len(sub(radOut, rHat));
     assert.ok(
@@ -115,21 +115,21 @@ export function register(): void {
     );
   });
 
-  test('kinematic-state: fromOrbitalAxes maps the unit axis vectors to pro/nrm/radOut', () => {
+  test('kinematic-state: fromOrbitAxes maps the unit axis vectors to pro/nrm/radOut', () => {
     const a = R_EARTH + 700e3;
-    const s = stateFromElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3, MU_EARTH);
-    const { pro, nrm, radOut } = orbitalAxes(s);
+    const s = stateFromOrbitalElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3, MU_EARTH);
+    const { pro, nrm, radOut } = orbitAxes(s);
     const tol = 1e-9;
-    assert.ok(len(sub(fromOrbitalAxes(s, v3(1, 0, 0)), pro)) < tol, 'x=1 should map to pro');
-    assert.ok(len(sub(fromOrbitalAxes(s, v3(0, 1, 0)), nrm)) < tol, 'y=1 should map to nrm');
-    assert.ok(len(sub(fromOrbitalAxes(s, v3(0, 0, 1)), radOut)) < tol, 'z=1 should map to radOut');
+    assert.ok(len(sub(fromOrbitAxes(s, v3(1, 0, 0)), pro)) < tol, 'x=1 should map to pro');
+    assert.ok(len(sub(fromOrbitAxes(s, v3(0, 1, 0)), nrm)) < tol, 'y=1 should map to nrm');
+    assert.ok(len(sub(fromOrbitAxes(s, v3(0, 0, 1)), radOut)) < tol, 'z=1 should map to radOut');
   });
 
-  test('kinematic-state: fromOrbitalAxes preserves vector length (orthonormal change of basis)', () => {
+  test('kinematic-state: fromOrbitAxes preserves vector length (orthonormal change of basis)', () => {
     const a = R_EARTH + 700e3;
-    const s = stateFromElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3, MU_EARTH);
+    const s = stateFromOrbitalElements(0, a, 0.15, (43 * Math.PI) / 180, 0.4, 0.9, 1.3, MU_EARTH);
     const x = v3(0.3, -0.5, 0.8);
-    const mapped = fromOrbitalAxes(s, x);
+    const mapped = fromOrbitAxes(s, x);
     assert.ok(
       Math.abs(len(mapped) - len(x)) < 1e-9,
       `length should be preserved by an orthonormal basis: ${len(mapped)} vs ${len(x)}`,

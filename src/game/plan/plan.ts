@@ -3,7 +3,7 @@
 import { kinematicState, KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, v3 } from '../../physics/vec3';
 import * as C from '../const';
-import { Attractor, elementsAround, strongestAttractor } from '../../physics/attractor';
+import { Attractor, orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 
 // segmentDurationFrom が要求する DisplayTimeManager の部分だけを切り出した形。
@@ -15,7 +15,7 @@ export interface DisplayDurationSource {
 // 有限な周期が求まらなければ(双曲線軌道など)APERIODIC_ARC_DURATION。
 export function orbitPeriodOf(state: KinematicState, attractors: readonly Attractor[]): number {
   const center = strongestAttractor(state.r, attractors);
-  const period = elementsAround(state, center)?.period ?? NaN;
+  const period = orbitalElementsOf(state, center)?.period ?? NaN;
   return isFinite(period) && period > 0 ? period : C.APERIODIC_ARC_DURATION;
 }
 

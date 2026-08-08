@@ -1,7 +1,7 @@
 // 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、NODE/BURN マーカー。
 import { KinematicState } from '../../physics/kinematic-state';
-import { Elements } from '../../physics/elements';
-import { Attractor, elementsAround, strongestAttractor } from '../../physics/attractor';
+import { OrbitalElements } from '../../physics/elements';
+import { Attractor, orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import { addScaled, dot, len, norm, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
@@ -92,9 +92,9 @@ export class PlanGuide {
     const playerCenter = strongestAttractor(player.state.r, attractors);
     const nodeCenter = strongestAttractor(node.r, attractors);
     if (playerCenter.id !== nodeCenter.id) return;
-    const targetEl = elementsAround(node, nodeCenter);
-    const playerEl = player.elementsAround(playerCenter);
-    if (!playerEl || !targetEl || !orbitClose(playerEl, targetEl)) return;
+    const targetEl = orbitalElementsOf(node, nodeCenter);
+    const playerEl = player.orbitalElementsAround(playerCenter);
+    if (!playerEl || !targetEl || !orbitalElementsClose(playerEl, targetEl)) return;
     this.achievedNotified = node;
     // 計画軌道へ到達したノードは、その場で実行済みとして削除する。
     // dropNodesBefore(node.t) は現在ノードをアンカーへ移し、後続ノードを保持する。
@@ -110,7 +110,7 @@ export class PlanGuide {
 }
 
 // 2 軌道の近さ判定(長半径・離心率・軌道面)
-function orbitClose(a: Elements, b: Elements): boolean {
+function orbitalElementsClose(a: OrbitalElements, b: OrbitalElements): boolean {
   if (!isFinite(a.a) || !isFinite(b.a) || a.a <= 0 || b.a <= 0) return false;
   const planeCos = Math.max(-1, Math.min(1, dot(a.hHat, b.hHat)));
   return (

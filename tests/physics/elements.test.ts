@@ -3,17 +3,17 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import {
-  Elements,
+  OrbitalElements,
   keplerPeriod,
   positionOnOrbit,
   semiMajorFromPeriod,
-  stateFromElements,
+  stateFromOrbitalElements,
   timeSincePeriapsis,
   tofBetween,
   trueAnomalyAt,
   velocityOnOrbit,
 } from '../../src/physics/elements';
-import { Attractor, elementsAround } from '../../src/physics/attractor';
+import { Attractor, orbitalElementsOf } from '../../src/physics/attractor';
 import { MU_EARTH, R_EARTH, kinematicState } from '../../src/physics/kinematic-state';
 import { MU_MOON } from '../../src/physics/solar-system';
 import { len, sub, v3 } from '../../src/physics/vec3';
@@ -21,17 +21,17 @@ import { len, sub, v3 } from '../../src/physics/vec3';
 const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)) };
 
 export function register(): void {
-  test('elements: stateFromElements <-> elementsFromState round trip (machine precision)', () => {
+  test('elements: stateFromOrbitalElements <-> orbitalElementsFromState round trip (machine precision)', () => {
     const a = R_EARTH + 500e3;
     const e = 0.05;
     const inc = (51.6 * Math.PI) / 180;
     const raan = 0.7;
     const argp = 1.1;
     const nu = 2.3;
-    const s = stateFromElements(0, a, e, inc, raan, argp, nu, MU_EARTH);
-    const el = elementsAround(s, EARTH);
-    assert.ok(el, 'elementsFromState should not be null for a bound elliptical orbit');
-    const elx = el as Elements;
+    const s = stateFromOrbitalElements(0, a, e, inc, raan, argp, nu, MU_EARTH);
+    const el = orbitalElementsOf(s, EARTH);
+    assert.ok(el, 'orbitalElementsFromState should not be null for a bound elliptical orbit');
+    const elx = el as OrbitalElements;
     assert.ok(Math.abs(elx.a - a) / a < 1e-9, `a round trip: ${elx.a} vs ${a}`);
     assert.ok(Math.abs(elx.e - e) < 1e-9, `e round trip: ${elx.e} vs ${e}`);
     assert.ok(
@@ -58,8 +58,8 @@ export function register(): void {
     const a = R_EARTH + 800e3;
     const e = 0.02;
     const inc = (28 * Math.PI) / 180;
-    const s0 = stateFromElements(0, a, e, inc, 0.3, 0.5, 0.9, MU_EARTH);
-    const el = elementsAround(s0, EARTH) as Elements;
+    const s0 = stateFromOrbitalElements(0, a, e, inc, 0.3, 0.5, 0.9, MU_EARTH);
+    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
     const nu = trueAnomalyAt(el, s0.r);
     assert.ok(Math.abs(nu - 0.9) < 1e-7, `trueAnomalyAt recovers nu: ${nu}`);
     const r2 = positionOnOrbit(el, nu);
@@ -70,8 +70,8 @@ export function register(): void {
 
   test('elements: tofBetween(nu, nu) == 0 and tofBetween is period-periodic', () => {
     const a = R_EARTH + 500e3;
-    const s0 = stateFromElements(0, a, 0.01, 0.9, 0, 0, 0, MU_EARTH);
-    const el = elementsAround(s0, EARTH) as Elements;
+    const s0 = stateFromOrbitalElements(0, a, 0.01, 0.9, 0, 0, 0, MU_EARTH);
+    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
     assert.equal(tofBetween(el, 1.2, 1.2), 0);
     const tHalf = tofBetween(el, 0, Math.PI);
     // 半周の飛行時間はほぼ半周期(離心率が小さいため近似的に対称)
@@ -83,8 +83,8 @@ export function register(): void {
 
   test('elements: timeSincePeriapsis(nu=0) == 0', () => {
     const a = R_EARTH + 500e3;
-    const s0 = stateFromElements(0, a, 0.1, 0.5, 0, 0, 0, MU_EARTH);
-    const el = elementsAround(s0, EARTH) as Elements;
+    const s0 = stateFromOrbitalElements(0, a, 0.1, 0.5, 0, 0, 0, MU_EARTH);
+    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
     assert.equal(timeSincePeriapsis(el, 0), 0);
   });
 
@@ -93,8 +93,8 @@ export function register(): void {
     const rp = R_EARTH + 500e3;
     const e = 1.5;
     const a = rp / (1 - e); // 双曲線なので a < 0
-    const s0 = stateFromElements(0, a, e, 0.3, 0, 0, 0, MU_EARTH); // nu=0 = 近点
-    const el = elementsAround(s0, EARTH) as Elements;
+    const s0 = stateFromOrbitalElements(0, a, e, 0.3, 0, 0, 0, MU_EARTH); // nu=0 = 近点
+    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
     assert.ok(el.e >= 1, `orbit should be hyperbolic: e=${el.e}`);
     assert.ok(el.a < 0, `hyperbolic a should be negative: a=${el.a}`);
 

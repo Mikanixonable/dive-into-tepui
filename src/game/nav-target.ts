@@ -74,7 +74,7 @@ export class NavTarget {
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
     if (!player || !this.targetId) return;
     const playerCenter = strongestAttractor(player.state.r, ephemeris.attractorsAt(simTime));
-    const playerEl = player.elementsAround(playerCenter);
+    const playerEl = player.orbitalElementsAround(playerCenter);
     if (!playerEl) return;
 
     const targetHat = this.resolvePlaneNormal(this.targetId, entities, ephemeris, simTime);
@@ -138,7 +138,7 @@ export class NavTarget {
       entities.bases.find((b) => b.id === id && b.alive);
     if (!entity) return null;
     const center = strongestAttractor(entity.state.r, ephemeris.attractorsAt(t));
-    return entity.elementsAround(center)?.hHat ?? null;
+    return entity.orbitalElementsAround(center)?.hHat ?? null;
   }
 
   // 右クリック対象として公開する AN/DN アイコン。計算できているぶんだけ返す。
