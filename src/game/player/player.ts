@@ -400,7 +400,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity);
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity);
 
     if (this.alive) {
       const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));
@@ -415,8 +415,8 @@ export class Player extends Ship {
   private disposed: boolean = false;
 
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
-  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3): {
-    key: string; cls: string; sym: string; pos: Vec3; priority: number;
+  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): {
+    key: string; cls: string; sym: string; pos: Vec3; vel: Vec3; priority: number;
     name: string; detail: string; bearingColor: string; color: string; symMarkup: boolean;
   } {
     const dist = len(sub(pos, viewerPos));
@@ -424,8 +424,9 @@ export class Player extends Ship {
     return {
       key: `player-${this.id}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy', // player も味方ターゲットとして mk-enemy に準じる
-      sym: this.hpMarkerSvg(),
+      sym: overviewMode ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
       pos,
+      vel,
       priority,
       name: this.displayName,
       detail: fmtMarkerDist(dist),
