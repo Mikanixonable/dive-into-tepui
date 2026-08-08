@@ -30,7 +30,8 @@ import { MarkerManager } from '../marker/marker-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
-import { Ephemeris, sunlitFactor } from '../../physics/ephemeris';
+import { Ephemeris } from '../../physics/ephemeris';
+import { sunlitFactor } from '../../physics/shadow';
 import { Plan } from '../plan/plan';
 import type { PlayerSaveData } from '../save-data';
 import { restorePart, type AnyPart } from '../game-entity/parts';
@@ -155,8 +156,9 @@ export class Player extends Ship {
     simTime: number;
     zoomActive: boolean;
     addBullet: (bullet: Bullet) => void;
+    ephemeris: Ephemeris;
   }): void {
-    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, addBullet } = params;
+    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, addBullet, ephemeris } = params;
 
     this.updatePassive(dt);
     this.handleEdgeInput(input);
@@ -174,7 +176,7 @@ export class Player extends Ship {
       return;
     }
 
-    this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet);
+    this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, addBullet, ephemeris.sunDirAt(simTime));
 
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
@@ -380,10 +382,14 @@ export class Player extends Ship {
       this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
     }
 
-    // 推力/RCS エフェクトとベルト
-    this.thrustEffects.sync(fo, this.state.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
-    this.rcsEffects.sync(fo, this.state.r, this.torque, this.att, this.alive, phasePlaying, paused, camera, isActive);
-    this.reentryEffects.sync(fo, this.state.r, this.state.v, this.thermal.qdyn, this.alive, camera);
+    // 推力/RCS エフェクトとベルト。機体メッシュと同じ displayState に載せる —
+    // 揃えないと「機体は未来位置、プルームは現在位置」に割れる。表示できる状態が無いときは
+    // 各エフェクトが自分で消えられるよう alive を倒して呼ぶ。
+    const effectState = displayState ?? this.state;
+    const effectAlive = this.alive && displayState !== null;
+    this.thrustEffects.sync(fo, effectState.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, effectAlive, camera);
+    this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectAlive, phasePlaying, paused, camera, isActive);
+    this.reentryEffects.sync(fo, effectState.r, effectState.v, this.thermal.qdyn, effectAlive, camera);
     this.belt.sync(this.alive);
     this.radiator.sync();
     this.power.sync();

@@ -4,13 +4,15 @@ import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital-state';
 import { elementsAround, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
-import { Frame, toFramePos, toInertialPos } from '../../physics/frame';
+import { Frame, INERTIAL_FRAME, toFramePoint, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn } from '../camera/camera-system';
-import { orbitPeriodOf, Plan, TimeRange } from './plan';
+import { Plan, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
+import type { DisplayTimeManager } from '../display-time-manager';
+import * as C from '../const';
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
@@ -29,7 +31,7 @@ export class PlanTrajectory {
   private nodeCount = 0;
   // 積分予測が起点の楕円近似から大きく外れた場合、解析楕円線を隠す。
   private analyticDivergent = false;
-  private frame: Frame = 'inertial';
+  private frame: Frame = INERTIAL_FRAME;
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
@@ -40,7 +42,7 @@ export class PlanTrajectory {
   resetDivergence(): void { this.analyticDivergent = false; }
 
   // group をシーンへ登録する(初期状態は非表示)。
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, private readonly displayTimeManager: DisplayTimeManager) {
     this.group.visible = false;
     scene.add(this.group);
   }
@@ -52,10 +54,12 @@ export class PlanTrajectory {
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
     // anchor→node…→末尾区間に分解する
-    const segments = buildSegments(plan, ephemeris);
+    const segments = buildSegments(plan, ephemeris, this.displayTimeManager);
+    // ノードが1つも無い間はその唯一の区間(末尾区間)の起点が毎フレーム自機を追従する。
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
-      this.arcAt(i).update(seg.state0, seg.end, ephemeris);
+      const tracksLiveAnchor = plan.nodes.length === 0 && i === segments.length - 1;
+      this.arcAt(i).update(seg.state0, seg.end, ephemeris, tracksLiveAnchor);
     }
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
@@ -119,10 +123,13 @@ export class PlanTrajectory {
     return null;
   }
 
-  // 時刻 t のサンプル位置 r を、現在の表示座標(ECI)へ変換する。
+  // 時刻 t のサンプル位置 r を、現在の表示座標(ECI)へ変換する。座標系の原点・姿勢はサンプル
+  // 時刻 t で bake し、表示時刻 unbakeTime で un-bake する(点なので FrameTransform を2つ引く)。
   toDisplay(r: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(r.x, r.y, r.z);
-    return toInertialPos(this.frame, this.unbakeTime, toFramePos(this.frame, t, r, this.ephemeris), this.ephemeris);
+    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t);
+    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime);
+    return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
   }
 
   // 時刻 t のサンプル位置 r をスクリーン座標へ投影する。
@@ -131,27 +138,41 @@ export class PlanTrajectory {
     return this.project(this.toDisplay(r, t));
   }
 
-  // 画面座標に最も近い計画軌道のサンプル(maxPx 以内)。なければ null。
-  // range を渡すと、その時刻範囲に入るサンプルだけを候補にする。
-  nearestSample(mx: number, my: number, maxPx: number, range?: TimeRange): { state: OrbitState, arcIdx: number } | null {
-    let best: OrbitState | null = null;
-    let bestArc = -1;
-    let bestD = maxPx * maxPx;
-    // 全 arc の全サンプルを画面座標へ投影し、最も近いものを選ぶ
+  // 画面座標に最も近い計画軌道のサンプル(maxPx 以内)。なければ null。range を渡すと、
+  // その時刻範囲に入るサンプルだけを候補にする。まず画面距離だけで最寄りの arc を選び
+  // (バーン前後で arc をまたぐと t の大小関係が逆転するため、複数 arc を通して時刻を
+  // 比べると誤った arc を選びかねない)、その arc の中で画面最短距離から NEAREST_SAMPLE_TIE_PX
+  // 以内の候補に絞ってから referenceT に最も近い時刻を選ぶ — 新規配置は範囲の下端(= 最も
+  // 早く到達する時刻)を、既存ノードのドラッグはそのノードの現在時刻を渡すことで、
+  // 「表示期間が延びて折れ線が自分自身に重なる区間」の曖昧さを呼び出しの意図どおりに解く。
+  nearestSample(mx: number, my: number, maxPx: number, referenceT: number, range?: TimeRange): { state: OrbitState, arcIdx: number } | null {
+    const maxDSq = maxPx * maxPx;
+    const candidates: { state: OrbitState; arcIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       for (const s of this.arcs[i]!.samplesRef()) {
         if (range && (s.t < range.min || s.t > range.max)) continue;
         const p = this.projectPoint(s.r, s.t);
         if (!p.front) continue;
-        const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
-        if (d < bestD) {
-          bestD = d;
-          best = s;
-          bestArc = i;
-        }
+        const dSq = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
+        if (dSq <= maxDSq) candidates.push({ state: s, arcIdx: i, dSq });
       }
     }
-    return best ? { state: best, arcIdx: bestArc } : null;
+    if (candidates.length === 0) return null;
+
+    // 画面最短距離の候補が属する arc だけを tie-break の対象にする。
+    let nearest = candidates[0]!;
+    for (const c of candidates) if (c.dSq < nearest.dSq) nearest = c;
+    const toleranceDSq = (Math.sqrt(nearest.dSq) + C.NEAREST_SAMPLE_TIE_PX) ** 2;
+
+    // referenceT が -Infinity なら全候補が同点になり、最後の t 昇順の同点判定だけで最早時刻に落ち着く。
+    let best: typeof candidates[number] | null = null;
+    for (const c of candidates) {
+      if (c.arcIdx !== nearest.arcIdx || c.dSq > toleranceDSq) continue;
+      const d = Math.abs(c.state.t - referenceT);
+      const bestD = best ? Math.abs(best.state.t - referenceT) : Infinity;
+      if (!best || d < bestD || (d === bestD && c.state.t < best.state.t)) best = c;
+    }
+    return best ? { state: best.state, arcIdx: best.arcIdx } : null;
   }
 
   // group 全体の表示/非表示を切り替える。
@@ -172,8 +193,8 @@ export class PlanTrajectory {
 }
 
 // anchor を起点に nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
-// 末尾の1本は起点の解析軌道1周期ぶん伸びる。
-function buildSegments(plan: Plan, ephemeris: Ephemeris): Segment[] {
+// 末尾の1本は segmentDurationFrom ぶん伸びる。
+function buildSegments(plan: Plan, ephemeris: Ephemeris, displayTimeManager: DisplayTimeManager): Segment[] {
   const segments: Segment[] = [];
   let state0 = plan.anchor;
   // ノードを1つずつ経由点として区間を切り出す
@@ -181,7 +202,7 @@ function buildSegments(plan: Plan, ephemeris: Ephemeris): Segment[] {
     segments.push({ state0, end: node.t });
     state0 = node;
   }
-  // 最後のノード(無ければ anchor)から1周期ぶんを末尾区間とする
-  segments.push({ state0, end: state0.t + orbitPeriodOf(state0, ephemeris.attractorsAt(state0.t)) });
+  const bodies = ephemeris.attractorsAt(state0.t);
+  segments.push({ state0, end: state0.t + segmentDurationFrom(state0, bodies, displayTimeManager) });
   return segments;
 }

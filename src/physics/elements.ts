@@ -78,6 +78,24 @@ export function apsisAltitudes(el: Elements): { pe: number; ap: number } {
   };
 }
 
+// 平均近点角 M → 離心近点角 E(ケプラー方程式 M = E − e sin E をニュートン法で解く。楕円のみ)。
+export function eccentricAnomalyFromMean(m: number, e: number): number {
+  const M = Math.atan2(Math.sin(m), Math.cos(m)); // [-π, π] へ畳んで初期値 E=M の収束を安定させる
+  let E = M;
+  for (let i = 0; i < 50; i++) {
+    const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    E -= dE;
+    if (Math.abs(dE) < 1e-14) break;
+  }
+  return E;
+}
+
+// 平均近点角 M → 真近点角 ν。timeSincePeriapsis(真近点角→時刻)の逆方向。
+export function trueAnomalyFromMean(m: number, e: number): number {
+  const E = eccentricAnomalyFromMean(m, e);
+  return 2 * Math.atan2(Math.sqrt(1 + e) * Math.sin(E / 2), Math.sqrt(1 - e) * Math.cos(E / 2));
+}
+
 // --- マニューバ計画用のケプラー補助関数(楕円軌道のみ) ---
 
 // 位置ベクトル r の真近点角(pHat 基準、[-π, π])
@@ -125,6 +143,26 @@ export function velocityOnOrbit(el: Elements, nu: number): Vec3 {
   return addScaled(scale(el.pHat, -k * Math.sin(nu)), el.qHat, k * (el.e + Math.cos(nu)));
 }
 
+// 軌道面の基底(近点方向 pHat と、軌道面内でそれに直交する qHat)を昇交点黄経・傾斜角・
+// 近点引数から組む(Y = 北極)。角度はすべて [rad]。
+function orbitPlaneBasis(inc: number, raan: number, argp: number): { pHat: Vec3; qHat: Vec3 } {
+  const Y = v3(0, 1, 0);
+  const node = rotateAxis(v3(1, 0, 0), Y, raan); // 昇交点方向
+  const hHat = rotateAxis(Y, node, inc); // 軌道面法線
+  const pHat = rotateAxis(node, hHat, argp); // 近点方向
+  return { pHat, qHat: cross(hHat, pHat) };
+}
+
+// 古典的軌道要素 → 時刻 t の位置(Y = 北極)。角度はすべて [rad]。主天体中心の相対位置で、
+// 絶対 ECI 化は呼び出し側が主天体の位置を加えて行う。
+export function positionFromElements(
+  a: number, e: number, inc: number, raan: number, argp: number, nu: number,
+): Vec3 {
+  const { pHat, qHat } = orbitPlaneBasis(inc, raan, argp);
+  const r = (a * (1 - e * e)) / (1 + e * Math.cos(nu));
+  return addScaled(scale(pHat, r * Math.cos(nu)), qHat, r * Math.sin(nu));
+}
+
 // 古典的軌道要素 → 時刻 t の状態ベクトル(Y = 北極)。角度はすべて [rad]。mu は主天体の
 // 重力定数 — 月中心の要素から状態を組む場合など地球以外が主天体のときはその値を渡す
 // (その場合の r/v は主天体中心の相対値であり、絶対 ECI 化は呼び出し側が主天体の位置・速度を
@@ -139,19 +177,12 @@ export function stateFromElements(
   nu: number,
   mu: number,
 ): OrbitState {
-  const Y = v3(0, 1, 0);
-  // 軌道面の基底を昇交点・傾斜角・近点引数の順に組み立てる
-  const node = rotateAxis(v3(1, 0, 0), Y, raan); // 昇交点方向
-  const hHat = rotateAxis(Y, node, inc); // 軌道面法線
-  const pHat = rotateAxis(node, hHat, argp); // 近点方向
-  const qHat = cross(hHat, pHat);
-  // 真近点角 nu における位置半径
+  const { pHat, qHat } = orbitPlaneBasis(inc, raan, argp);
   const p = a * (1 - e * e);
-  const r = p / (1 + e * Math.cos(nu));
   const k = Math.sqrt(mu / p);
   return orbitState(
     t,
-    addScaled(scale(pHat, r * Math.cos(nu)), qHat, r * Math.sin(nu)),
+    positionFromElements(a, e, inc, raan, argp, nu),
     addScaled(scale(pHat, -k * Math.sin(nu)), qHat, k * (e + Math.cos(nu))),
   );
 }

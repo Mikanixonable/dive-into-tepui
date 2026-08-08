@@ -25,9 +25,11 @@ import { Plan } from './plan';
 import { apsisAltitudes } from '../../physics/elements';
 import { PlanDisplay } from './plan-display';
 import { hudDock } from '../hud/dom';
+import type { DisplayTimeManager } from '../display-time-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
-import { elementsAround, relativeTo, strongestAttractor } from '../../physics/attractor';
+import { Attractor, elementsAround, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
+import { toFrameState } from '../../physics/frame';
 
 interface DvButtons {
   readonly pro: HudHoldButton;
@@ -106,9 +108,10 @@ export class PlanEditor {
     markerManager: MarkerManager,
     private readonly getFineAttitude: () => boolean,
     ship: Player,
+    private readonly displayTimeManager: DisplayTimeManager,
   ) {
     this.ship = ship;
-    this.planDisplay = new PlanDisplay(scene, this._hud.root, markerManager, ephemeris);
+    this.planDisplay = new PlanDisplay(scene, this._hud.root, markerManager, ephemeris, displayTimeManager);
     this.gizmo3d = new PlanGizmo3D();
     scene.add(this.gizmo3d.group);
 
@@ -297,8 +300,9 @@ export class PlanEditor {
       return;
     }
 
-    // 見つからなければ計画軌道上の最寄り点にノードを配置
-    const hit = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX);
+    // 見つからなければ計画軌道上の最寄り点にノードを配置。折れ線が自分自身に重なっていれば
+    // その位置に最初に到達する時刻(= referenceT を -Infinity にして最早時刻)を選ぶ。
+    const hit = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
     if (hit) {
       this.selectedNodeIdx = this.plan.addNode(hit.state);
       this._sfx.warp();
@@ -339,7 +343,7 @@ export class PlanEditor {
       // ノードでなくても計画軌道上を右クリックすれば、その位置の時刻まで
       // 自動ワープできる。描画と同じサンプル列から求めるため、表示変換との
       // ずれや月基準フレームの差を生じさせない。
-      const hit = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX);
+      const hit = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
       if (!hit) return false;
       this.selectedNodeIdx = null;
       this.orbitMenu.open(mx, my, hit.state, [
@@ -354,11 +358,14 @@ export class PlanEditor {
     return true;
   }
 
-  // ドラッグ中のノードを、置ける時刻範囲の中で最寄りの計画軌道サンプル時刻へ移動する。
+  // ドラッグ中のノードを、置ける時刻範囲の中で最寄りの計画軌道サンプル時刻へ移動する。折れ線が
+  // 自分自身に重なる区間では、そのノードの現在時刻に最も近い候補を選ぶ(= 遠い周回のノードを
+  // 掴んでも周回0へ飛ばない)。
   private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
-    if (!this.plan.nodes[idx]) return;
+    const node = this.plan.nodes[idx];
+    if (!node) return;
     const arriving = this.planDisplay.traj.arrivalStates();
-    const hit = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity, this.plan.nodeTimeRange(idx, this.ephemeris));
+    const hit = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity, node.t, this.plan.nodeTimeRange(idx, this.ephemeris, this.displayTimeManager));
     if (hit) {
       this.plan.retimeNode(idx, this.rebuildDraggedNode(hit.state, hit.arcIdx, idx, arriving) ?? hit.state);
       this.selectedNodeIdx = idx;
@@ -511,9 +518,16 @@ export class PlanEditor {
     return node && arr ? sub(this.bodyState(node).v, this.bodyState(arr).v) : v3();
   }
 
+  // center 相対状態。orbitalAxes が OrbitState を要求するので、座標系相対の r/v を
+  // state の時刻のまま OrbitState へ包み直す。
+  private relativeToBody(state: OrbitState, center: Attractor): OrbitState {
+    const rel = toFrameState(frameOfAttractor(center), state);
+    return orbitState(state.t, rel.r, rel.v);
+  }
+
   // 軌道要素とΔv方向を解釈するための中心天体相対状態。中心はその位置で最も強く引く天体。
   private bodyState(state: OrbitState): OrbitState {
-    return relativeTo(state, strongestAttractor(state.r, this.ephemeris.attractorsAt(state.t)));
+    return this.relativeToBody(state, strongestAttractor(state.r, this.ephemeris.attractorsAt(state.t)));
   }
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
@@ -620,8 +634,8 @@ export class PlanEditor {
       const node = this.plan.nodes[this.selectedNodeIdx];
       const arr = arriving[this.selectedNodeIdx];
       if (node && arr) {
-        const bodyNode = relativeTo(node, center);
-        const bodyArr = relativeTo(arr, center);
+        const bodyNode = this.relativeToBody(node, center);
+        const bodyArr = this.relativeToBody(arr, center);
         selEl = elementsAround(node, center);
 
         // 到着時基準でのローカルΔv成分を計算
