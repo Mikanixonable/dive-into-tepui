@@ -1,4 +1,4 @@
-// dynamics.ts の回帰テスト。stepDynamicsRK4 は OrbitEntity.step が使う唯一の 1 ステップ実装。
+// dynamics.ts の回帰テスト。stepDynamics は DynamicTrajectory.step が使う唯一の 1 ステップ実装。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { MU_EARTH, R_EARTH, kinematicState } from '../../src/physics/kinematic-state';
@@ -6,7 +6,7 @@ import { OrbitalElements, keplerPeriod, stateFromOrbitalElements } from '../../s
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
 import { Attractor, orbitalElementsOf } from '../../src/physics/attractor';
-import { j2Accel, stepDynamicsRK4, stepOrbitRK4 } from '../../src/physics/dynamics';
+import { j2Accel, stepDynamics, stepRK4 } from '../../src/physics/dynamics';
 import { Vec3, add, len, sub, v3 } from '../../src/physics/vec3';
 
 const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)) };
@@ -18,7 +18,7 @@ function circularState() {
 }
 
 // フェーズ B 以前の合成: −μ_E r/|r|³(中心重力)+ 太陽・月の潮汐摂動 + J2。
-// stepOrbitRK4 は中心重力を持たなくなったので、比較対象として本体から消えた式をここへ写経する。
+// stepRK4 は中心重力を持たなくなったので、比較対象として本体から消えた式をここへ写経する。
 function legacyThirdBody(r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
   const rho = sub(bodyPos, r);
   const d3 = Math.pow(len(rho), 3);
@@ -43,7 +43,7 @@ function legacyAccel(r: Vec3, sunPos: Vec3, moonPos: Vec3): Vec3 {
 }
 
 export function register(): void {
-  test('dynamics: stepDynamicsRK4(bcInv=0, thrust=null) matches a hand-written legacy central-gravity + third-body + J2 composition to machine precision', () => {
+  test('dynamics: stepDynamics(bcInv=0, thrust=null) matches a hand-written legacy central-gravity + third-body + J2 composition to machine precision', () => {
     const s0 = circularState();
     const dt = 10;
     const sunPos = v3(1.5e11, 0, 0);
@@ -54,8 +54,8 @@ export function register(): void {
       { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)) },
     ];
 
-    const viaNew = stepDynamicsRK4(s0, dt, attractors, 0, null);
-    const viaLegacy = stepOrbitRK4(s0, dt, (rx, ry, rz) => legacyAccel(v3(rx, ry, rz), sunPos, moonPos));
+    const viaNew = stepDynamics(s0, dt, attractors, 0, null);
+    const viaLegacy = stepRK4(s0, dt, (rx, ry, rz) => legacyAccel(v3(rx, ry, rz), sunPos, moonPos));
 
     const posErr = len(sub(viaNew.r, viaLegacy.r)) / len(viaLegacy.r);
     const velErr = len(sub(viaNew.v, viaLegacy.v)) / len(viaLegacy.v);
@@ -63,25 +63,25 @@ export function register(): void {
     assert.ok(velErr < 1e-9, `velocity should match to machine precision: relative error ${velErr}`);
   });
 
-  test('dynamics: stepDynamicsRK4 adds thrust on top of gravity', () => {
+  test('dynamics: stepDynamics adds thrust on top of gravity', () => {
     const s0 = circularState();
     const dt = 10;
     const attractors = new Ephemeris({ moon: 0 }).attractorsAt(0);
     const thrust = v3(0, 0, 5); // 大きめの加速度で差が明確に出るようにする
 
-    const withThrust = stepDynamicsRK4(s0, dt, attractors, 0, thrust);
-    const withoutThrust = stepDynamicsRK4(s0, dt, attractors, 0, null);
+    const withThrust = stepDynamics(s0, dt, attractors, 0, thrust);
+    const withoutThrust = stepDynamics(s0, dt, attractors, 0, null);
 
     assert.ok(len(sub(withThrust.v, withoutThrust.v)) > 1, 'thrust should visibly change the velocity');
   });
 
-  test('dynamics: stepDynamicsRK4 with bcInv>0 decelerates more than bcInv=0 at LEO altitude', () => {
+  test('dynamics: stepDynamics with bcInv>0 decelerates more than bcInv=0 at LEO altitude', () => {
     const s0 = circularState();
     const dt = 10;
     const attractors = new Ephemeris({ moon: 0 }).attractorsAt(0);
 
-    const noDrag = stepDynamicsRK4(s0, dt, attractors, 0, null);
-    const withDrag = stepDynamicsRK4(s0, dt, attractors, 0.01, null);
+    const noDrag = stepDynamics(s0, dt, attractors, 0, null);
+    const withDrag = stepDynamics(s0, dt, attractors, 0.01, null);
 
     assert.ok(len(withDrag.v) < len(noDrag.v), 'drag should reduce orbital speed relative to the drag-free step');
   });
@@ -99,7 +99,7 @@ export function register(): void {
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
       const attractors = ephemeris.attractorsAt(s.t + dt / 2);
-      s = stepDynamicsRK4(s, dt, attractors, 0, null);
+      s = stepDynamics(s, dt, attractors, 0, null);
     }
 
     const relFinal = sub(s.r, ephemeris.positionOf('moon', s.t));
@@ -108,7 +108,7 @@ export function register(): void {
     assert.ok(drift < 50e3, `moon-relative drift after 1 revolution: ${drift} m (expected within tens of km)`);
   });
 
-  test('dynamics: stepOrbitRK4 circular orbit — 1 period position/energy error (measured, pinned)', () => {
+  test('dynamics: stepRK4 circular orbit — 1 period position/energy error (measured, pinned)', () => {
     // 420km 円軌道、無摂動(中心重力のみ)。理論上は閉軌道に戻るはずだが、
     // 固定ステップ RK4 の打ち切り誤差が蓄積する。現状の実装でどの程度かを
     // 実測して基準値として固定する(将来ステップ幅やアルゴリズムを変えた際の
@@ -123,7 +123,7 @@ export function register(): void {
     const dt = 1; // 1秒刻み
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
-      s = stepOrbitRK4(s, dt, (rx, ry, rz) => legacyCentralGravity(v3(rx, ry, rz)));
+      s = stepRK4(s, dt, (rx, ry, rz) => legacyCentralGravity(v3(rx, ry, rz)));
     }
 
     const rMag = len(s.r);
@@ -156,7 +156,7 @@ export function register(): void {
     const totalSeconds = totalDays * 86400;
     const steps = Math.round(totalSeconds / dt);
     for (let i = 0; i < steps; i++) {
-      s = stepOrbitRK4(s, dt, (rx, ry, rz) => {
+      s = stepRK4(s, dt, (rx, ry, rz) => {
         const r = v3(rx, ry, rz);
         return add(legacyCentralGravity(r), j2Accel(r));
       });

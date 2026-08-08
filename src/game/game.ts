@@ -34,7 +34,7 @@ import { Ephemeris } from '../physics/ephemeris';
 import { INERTIAL_FRAME } from '../physics/frame';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
-import { DebugHistoryLine } from './debug-history-line';
+import { DebugTrajectoryLine } from './debug-trajectory-line';
 import { NavTarget } from './nav-target';
 import { MapPicker } from './map-picker';
 import { Navball } from './navball/navball';
@@ -90,7 +90,7 @@ export class Game {
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
-  private readonly debugHistoryLine: DebugHistoryLine;
+  private readonly debugTrajectoryLine: DebugTrajectoryLine;
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
 
@@ -204,7 +204,7 @@ export class Game {
     }
 
     this.nanWatchdog = new NanWatchdog(this._hud);
-    this.debugHistoryLine = new DebugHistoryLine(this._scene);
+    this.debugTrajectoryLine = new DebugTrajectoryLine(this._scene);
     this.docking = new Docking(
       this, this._hud, this._sfx, this._scene, this.effects, this.markerManager,
       this.entities, this.mapPicker, this.cameraSystem, this.viewManager,
@@ -351,7 +351,7 @@ export class Game {
       this.simSpeedManager.update(this.simulator.simTime);
       this.applyWarpCommandPolicy();
       const simDt = dt * this.simSpeedManager.simSpeed;
-      this.simulator.stepSimulation(
+      this.simulator.advance(
         dt, simDt, null, this.activeStage,
         true, false, true,
       );
@@ -379,8 +379,8 @@ export class Game {
       player.thrust = null;
       player.torque = v3();
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
-      this.simulator.stepSimulation(dt, simDt, player, this.activeStage, false, false, false);
-      this.nanWatchdog.checkAll('stepSimulation(決着後)', player, this.entities, this.simulator.simTime, dt, simDt);
+      this.simulator.advance(dt, simDt, player, this.activeStage, false, false, false);
+      this.nanWatchdog.checkAll('advance(決着後)', player, this.entities, this.simulator.simTime, dt, simDt);
       this.effects.update(dt, simDt);
       // 決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
       // 軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする。
@@ -414,7 +414,7 @@ export class Game {
     this.simSpeedManager.update(this.simulator.simTime);
     this.applyWarpCommandPolicy();
     const simDt = dt * this.simSpeedManager.simSpeed;
-    this.simulator.stepSimulation(dt, simDt, player, this.activeStage,
+    this.simulator.advance(dt, simDt, player, this.activeStage,
       true, // bulletCollision
       this.simSpeedManager.canResolvePhysicalCollisions, // resolveCollision
       true, // doSubstep
@@ -430,7 +430,7 @@ export class Game {
     );
 
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
-    this.nanWatchdog.checkAll('simulator.stepSimulation', player, this.entities, this.simulator.simTime, dt, simDt);
+    this.nanWatchdog.checkAll('simulator.advance', player, this.entities, this.simulator.simTime, dt, simDt);
 
     this.targeter.updateBoardMarks(dt, player, this.entities);
 
@@ -609,7 +609,7 @@ export class Game {
     // 楕円近似線をマップ表示中だけ抑制する。戦闘ビューへ戻れば通常の線へ復帰する。
     if (player) {
       player.orbitLine.setSuppressed(
-        overviewMode && this.editor.planDisplay.traj.isAnalyticDivergent,
+        overviewMode && this.editor.planDisplay.path.isAnalyticDivergent,
       );
     }
 
@@ -625,7 +625,7 @@ export class Game {
 
     const debugTargets = player ? (target ? [player, target] : [player]) : [];
     const debugFrame = overviewMode ? this.cameraSystem.overviewCamera.cameraFrame : INERTIAL_FRAME;
-    this.debugHistoryLine.sync(debugTargets, debugFrame, simTime, this.ephemeris, this.floatingOrigin);
+    this.debugTrajectoryLine.sync(debugTargets, debugFrame, simTime, this.ephemeris, this.floatingOrigin);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions();
