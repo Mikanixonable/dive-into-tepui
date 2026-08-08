@@ -101,8 +101,10 @@ body.hud-modal-open #touch-ui { display: none; }
   background: ${SURFACE}; border: 1px solid ${EDGE}; border-top: none; backdrop-filter: blur(4px);
   font-size: 11px; letter-spacing: 1px; font-variant-numeric: tabular-nums;
   color: ${INK_SOFT};
+  display: flex; align-items: center; gap: 8px; white-space: nowrap;
 }
 #hud-globalstatus .v { color: ${INK}; }
+#hud-globalstatus .gs-sep { color: ${EDGE}; }
 #hud .row { display: flex; justify-content: space-between; gap: 12px; }
 #hud .row .k { color: ${INK_SOFT}; }
 #hud .row .v { color: ${INK}; min-width: 90px; text-align: right; }
@@ -628,9 +630,6 @@ function buildInfoPanels(root: HTMLElement): void {
   const status = el('div', 'hud-status', shelf, 'panel');
   status.innerHTML = `
     <h3>SHIP STATUS</h3>
-    <div class="row"><span class="k">時間加速</span><span class="v" data-id="sim-speed"></span></div>
-    <div class="row"><span class="k">NODE WARP</span><span class="v" data-id="node-warp-remain">—</span></div>
-
     <div class="row"><span class="k">RCS制動 [${K.rcsDampToggle.label}]</span><span class="v" data-id="rcs"></span></div>
     <div class="row"><span class="k">並進出力 [${K.throttleLow.label}-${K.throttleHigh.label}]</span><span class="v" data-id="throttle"></span></div>
     <div class="row"><span class="k">微調整 [${K.fineAttitudeToggle.label}]</span><span class="v" data-id="fine"></span></div>
@@ -665,10 +664,15 @@ function buildInfoPanels(root: HTMLElement): void {
     <div data-id="elist"></div>`;
 }
 
-// 画面全体のグローバルステータス(MET)を組む。
+// 画面全体のグローバルステータス(MET・時間加速・NODE WARP)を組む。
 function buildGlobalStatus(root: HTMLElement): void {
   const bar = el('div', 'hud-globalstatus', root);
-  bar.innerHTML = `<span class="v" data-id="met"></span>`;
+  bar.innerHTML = `
+    <span class="v" data-id="met"></span>
+    <span class="gs-sep">|</span>
+    <span class="k">時間加速</span><span class="v" data-id="sim-speed"></span>
+    <span class="gs-sep">|</span>
+    <span class="k">NODE WARP</span><span class="v" data-id="node-warp-remain">—</span>`;
 }
 
 // 追従カメラの視点リセットボタンを組む。

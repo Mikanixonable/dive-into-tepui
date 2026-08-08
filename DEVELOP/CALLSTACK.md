@@ -380,7 +380,8 @@
       - [!overviewMode] markerManager.setBearing('base<i>-bearing', ...) // 画面外の基地への方位矢印。overviewMode 中は隠す
       // entities.bases の添字ごと(logistics.syncMarkers と同じ、前フレームより減った添字だけ hide())
   - hud.panels.sync(game, bodies) // Game インスタンスを直接読む(narrow ctx を介さない唯一の消費者)
-    - setStats() + setTarget() // 約10Hz にスロットル
+    - setText('met') + setGlobalStatus() // 自機不在でも常に実行。setGlobalStatus は約10Hz にスロットル
+    - setStats() + setTarget() // 自機がいる間のみ、約10Hz にスロットル
     - setEnemyList() // 約4Hz にスロットル
   - hud.tick() // ヒント/トーストのフェードアウト
   - guide.sync(plan, player, simTime, editMode, project)
