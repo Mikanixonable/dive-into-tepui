@@ -49,8 +49,23 @@ function keplerOrbitOf(def: OrbitingDef): KeplerOrbit {
 
 export class Ephemeris {
   // 天体ごとの平均黄経の初期オフセット。既定は月のみ乱数(現行の挙動)。テストは決定的な
-  // 位相を渡すためコンストラクタで上書きする。
-  constructor(private readonly phaseOffsets: Partial<Record<AttractorId, number>> = { moon: Math.random() * 2 * Math.PI }) {}
+  // 位相を渡すためコンストラクタで上書きする。セーブ/ロードは setPhaseOffsets で書き換える
+  // (共有インスタンスを差し替えないため)。
+  private phaseOffsets: Partial<Record<AttractorId, number>>;
+
+  constructor(phaseOffsets: Partial<Record<AttractorId, number>> = { moon: Math.random() * 2 * Math.PI }) {
+    this.phaseOffsets = phaseOffsets;
+  }
+
+  // 現在の位相オフセットのスナップショット(セーブ用)。
+  getPhaseOffsets(): Partial<Record<AttractorId, number>> {
+    return { ...this.phaseOffsets };
+  }
+
+  // 位相オフセットを丸ごと差し替える(ロード用)。メモ化を持たないため無効化は不要。
+  setPhaseOffsets(phaseOffsets: Partial<Record<AttractorId, number>>): void {
+    this.phaseOffsets = phaseOffsets;
+  }
 
   // id の平均黄経の初期位相(未指定なら 0)。
   private phaseOf(id: AttractorId): number {

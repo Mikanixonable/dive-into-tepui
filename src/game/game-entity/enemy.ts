@@ -27,6 +27,12 @@ import type { EnemySaveData } from '../save-data';
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
 export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
 
+// enemyKind ごとの主慣性モーメント。'drifting' は非対称にしてジャニベコフ効果(中間軸不安定性)
+// を起こし、'stage0' は機首をプログレードへ向けたまま飛ぶので等方でよい。
+export function inertiaForEnemyKind(enemyKind: EnemyKind): Vec3 {
+  return enemyKind.kind === 'stage0' ? v3(1, 1, 1) : v3(1, 1.1, 1.05);
+}
+
 // 太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
 // 順光では締まる。難易度調整のための経験則であって物理計算ではない。
 // pos が地球の影(簡易円柱モデル)に入っていれば太陽光が届かないので倍率は 1。
@@ -317,7 +323,7 @@ export class Enemy extends Ship {
   // セーブデータから復元する。
   static restore(data: EnemySaveData, simTime: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene?: THREE.Scene): Enemy {
     const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
-    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
+    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: inertiaForEnemyKind(data.enemyKind) };
     const enemy = new Enemy(data.name || '', state, data.enemyKind, att, data.health, data.accent, data.accent, hud, sfx, fx, data.waveId, scene);
     enemy.id = data.id || undefined;
     enemy.alive = data.alive;

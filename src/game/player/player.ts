@@ -109,14 +109,16 @@ export class Player extends Ship {
     return kinematicState(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
   }
 
+  // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
+  // 起こるようにする。ロール軸(機体前後方向)は細長い形状に見合って最小にする。
+  private static readonly INERTIA = v3(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL);
+
   // state の速度方向を機首、位置方向を上として姿勢を組む。
   private static progradeAttitude(state: KinematicState): Attitude {
     return {
       q: qFromForwardUp(state.v, state.r) ?? { x: 0, y: 0, z: 0, w: 1 },
       w: v3(),
-      // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
-      // 起こるようにする。ロール軸(機体前後方向)は細長い形状に見合って最小にする。
-      inertia: v3(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL),
+      inertia: Player.INERTIA,
     };
   }
 
@@ -487,7 +489,7 @@ export class Player extends Ship {
     markerManager: MarkerManager
   ): Player {
     const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
-    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
+    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: Player.INERTIA };
     const player = new Player(hud, sfx, scene, fx, markerManager, data.name || data.id, state, data.id);
     player.att = att;
     
