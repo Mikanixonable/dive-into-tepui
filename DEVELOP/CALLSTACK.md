@@ -24,6 +24,7 @@
 
 - animate(now)
   - game.update(dt) // dt = 実経過秒。game 側で 0.1s に clamp される
+  - autoSave.update(game) // 前回撮影から AUTOSAVE_INTERVAL_REAL_SEC(実時間60秒)経っていれば snapshotService.capture(game, 'auto', null, false) // game.isPaused または !activeStage.isPlaying なら何も撮らない
   - game.sync()
   - game.render()
   - perf.record() // `?perf=1` のときのみ(PerfMeter が DOM にフレーム時間・エンティティ数を出す)
@@ -35,6 +36,8 @@
 - game.update(dtRaw)
   - input.update() // pending キュー(キー/クリック/マウス)を今フレーム分に確定し、次フレーム用にクリア
   - handleInput() // 担当モジュールへ先着順に配る。処理した側が input からそのキーを消費する
+    - docking.handleInput() // ドック表示中の [ESC] を先に消費する(設定画面と二重に効かせない)
+    - [saveBrowser?.visible] input.takeKey(K.pauseMenu) → saveBrowser.close() // 一覧の [Esc] を設定メニューより先に取る(close() 自身が game.resume() する)
     - settingsPanel.handleInput() // K.pauseMenu → toggle() → onSettingsOpenChange → game.pause()/resume()
     - hud.handleInput() // K.help → toggleHelp()
     - activeStage.handleInput() // K.restart。isPlaying なら素通し(Player の装填へ回る)
@@ -47,7 +50,6 @@
         - hud.hint() // ノード無し or !isPlaying
         - cancelAutoWarp() + hud.hint() // 既に自動ワープ中
         - startAutoWarpTo() + hud.hint() // 未開始
-    - docking.handleInput() // ドック表示中の [ESC] を先に消費する(設定画面と二重に効かせない)
     - viewManager.handleInput() // ビュー遷移はすべて setView() を通る
       - setView('combat') // !isPlaying のみ(死亡/終了時にドック・マップを強制的に閉じる)
       - [current==='dock'] 何もせず return // [M] は消費もしない
@@ -66,8 +68,8 @@
         - [editMode] deleteSelected() → deleteNode()
           - plan.removeNode() / closeMenu() / simSpeedManager.cancelAutoWarp() / hud.hint() // 下流ノードも一緒に消える
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
-    - [K.quickSave] [!activeStage.isPlaying] hud.hint() // 決着後は拒否。それ以外は SaveManager.save(this) + hud.hint()
-    - [K.quickLoad] SaveManager.load(this) → game.restore(data) + hud.hint()
+    - [K.clipSnapshot] [!activeStage.isPlaying] hud.hint() // 決着後は拒否。それ以外は snapshotService.capture(this, 'manual', null, true) + hud.hint()
+    - [K.openSnapshots] saveBrowser の open()/close() をトグル // open() が game.pause()、close() が game.resume() を呼ぶ
   - [game.isPaused] 以降を実行せず return するポーズ経路 // 決着後の簡略経路より前。ポーズ中は決着後も完全に止まる
     - editor.update(simTime, displayTime) // 計画折れ線の再積分とアプシスアイコン(mapPicker.refresh より前)
     - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // 操作艦(計画があれば最終区間起点)・navTarget・targeter・生存中の全基地の対象を id で重複除去して EqAN/EqDN を求め直す。mapPicker.refresh より前(候補列に畳み込むため)
