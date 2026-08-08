@@ -194,7 +194,7 @@ export class CameraSystem {
     if (this._elOrbit) this._elOrbit.style.left = this.overviewMode ? '12px' : '';
     if (this.overviewMode) {
       this.overviewCameraPanel.setFrame(this.overviewCamera.cameraFrame);
-      this.focusMarkers.syncLabels(this.activeCameraProjection);
+      this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);
     } else {
       this.focusMarkers.hideLabels();
     }
