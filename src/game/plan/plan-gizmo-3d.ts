@@ -15,6 +15,8 @@ export class PlanGizmo3D {
     this.createAxis(new THREE.Vector3(0, 0, -1), 0x10b981); // ANTI-NRM
     this.createAxis(new THREE.Vector3(1, 0, 0), 0xef4444); // RAD
     this.createAxis(new THREE.Vector3(-1, 0, 0), 0xef4444); // RAD-IN
+
+    this.group.visible = false;
   }
 
   // ローカル方向 dir(単位ベクトル)を向く矢印(軸+頭)を1本作り、group へ加える。
