@@ -1,0 +1,45 @@
+// occlusion.ts の回帰テスト。
+import * as assert from 'node:assert/strict';
+import { test } from './harness';
+import { isOccluded } from '../../src/physics/occlusion';
+import { Attractor } from '../../src/physics/attractor';
+import { kinematicState } from '../../src/physics/kinematic-state';
+import { v3 } from '../../src/physics/vec3';
+
+const ZERO = v3(0, 0, 0);
+const EARTH: Attractor = {
+  id: 'earth', mu: 1, radius: 6.371e6, state: kinematicState(0, ZERO, ZERO), degree2: null,
+};
+
+export function register(): void {
+  test('occlusion: 天体の裏側の点は遮蔽される', () => {
+    const cameraPos = v3(-2e7, 0, 0);
+    const farSide = v3(EARTH.radius + 1e5, 0, 0); // カメラから見て地球の向こう側
+    assert.equal(isOccluded(cameraPos, farSide, [EARTH]), true);
+  });
+
+  test('occlusion: カメラ側の点は遮蔽されない', () => {
+    const cameraPos = v3(-2e7, 0, 0);
+    const nearSide = v3(-(EARTH.radius + 1e5), 0, 0); // カメラから見て地球の手前側
+    assert.equal(isOccluded(cameraPos, nearSide, [EARTH]), false);
+  });
+
+  test('occlusion: 天体から外れた視線上の点は遮蔽されない', () => {
+    const cameraPos = v3(-2e7, 0, 0);
+    const offAxis = v3(EARTH.radius + 1e5, 2 * EARTH.radius, 0);
+    assert.equal(isOccluded(cameraPos, offAxis, [EARTH]), false);
+  });
+
+  test('occlusion: 対象天体自身の表面上の点(自分自身を回っている物体)は自己遮蔽しない', () => {
+    const cameraPos = v3(-2e7, 0, 0);
+    const onSurfaceFacingCamera = v3(-EARTH.radius, 0, 0);
+    assert.equal(isOccluded(cameraPos, onSurfaceFacingCamera, [EARTH]), false);
+  });
+
+  test('occlusion: カメラの後方にある天体は遮蔽しない', () => {
+    const cameraPos = v3(0, 0, 0);
+    const point = v3(1e7, 0, 0);
+    const behindCamera: Attractor = { ...EARTH, state: kinematicState(0, v3(-1e7, 0, 0), ZERO) };
+    assert.equal(isOccluded(cameraPos, point, [behindCamera]), false);
+  });
+}
