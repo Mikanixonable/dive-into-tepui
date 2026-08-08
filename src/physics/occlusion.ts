@@ -12,12 +12,17 @@ const OCCLUSION_MARGIN = 1;
 
 // cameraPos から point への視線が attractors のいずれかの球体に遮られていれば true。
 export function isOccluded(cameraPos: Vec3, point: Vec3, attractors: readonly Attractor[]): boolean {
+  // 各天体についてレイと球の交差判定(判別式 d2 vs r2)を行い、手前側交点が
+  // カメラと point の間に収まっていれば遮蔽とみなす。
   const toPoint = sub(point, cameraPos);
   const dist = Math.sqrt(dot(toPoint, toPoint));
   if (dist < 1e-6) return false;
   const dir = { x: toPoint.x / dist, y: toPoint.y / dist, z: toPoint.z / dist } as Vec3;
 
   for (const attractor of attractors) {
+    const toCenter = sub(attractor.state.r, point);
+    if (dot(toCenter, toCenter) <= attractor.radius * attractor.radius) continue; // 対象点自身がこの天体の内部/表面(その天体の中心ラベルなど)
+
     const oc = sub(attractor.state.r, cameraPos);
     const tca = dot(oc, dir);
     if (tca <= 0) continue; // 天体はカメラの後方
