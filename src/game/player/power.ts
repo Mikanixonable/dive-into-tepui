@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { Attitude, qRotate } from '../../physics/attitude';
 import { Vec3, dot, v3 } from '../../physics/vec3';
 import * as C from '../const';
+import type { PowerSaveData } from '../save-data';
 
 export type SolarSide = 'up' | 'down';
 
@@ -86,4 +87,12 @@ export class PowerSystem {
   }
   
   deployOf(side: SolarSide): number { return this.panels[side].deploy; }
+
+  serialize(): PowerSaveData {
+    return { charge: this.charge };
+  }
+
+  restore(data: PowerSaveData): void {
+    this.charge = data.charge;
+  }
 }

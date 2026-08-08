@@ -8,6 +8,7 @@ import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
+import type { Stage0SaveData } from '../save-data';
 
 // 制限時間を分単位で表す(選択画面の説明文とブリーフィングの両方から参照する)
 const stage0TimeLimitMinutes = (): number => Math.floor(C.STAGE0_TIME_LIMIT / 60);
@@ -62,5 +63,14 @@ export class Stage0 extends Stage {
   // 残り時間を HUD 表示用の文字列で返す。
   hudSubStatus(): string {
     return `残り時間: ${Math.ceil(this.timer.timeLeft)}秒`;
+  }
+
+  serialize(): Stage0SaveData {
+    return { ...super.serialize(), timeLeft: this.timer.serialize() };
+  }
+
+  restore(data: Stage0SaveData): void {
+    super.restore(data);
+    this.timer.restore(data.timeLeft);
   }
 }

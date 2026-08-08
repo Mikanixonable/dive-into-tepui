@@ -79,6 +79,15 @@ export class Logistics {
     }
   }
 
+  // 次回の自動投入判定時刻。
+  serialize(): number {
+    return this.resupplyCheckAt;
+  }
+
+  restore(resupplyCheckAt: number): void {
+    this.resupplyCheckAt = resupplyCheckAt;
+  }
+
   // 生存中の補給の数を返す。
   private liveAmmoCount(): number {
     let count = 0;
