@@ -293,7 +293,10 @@ export class Game {
     this.editor.setActivePlayer(null);
     this.cameraSystem.setActivePlayer(null);
     this.targeter.clearTargets();
-    this.navTarget.clearIfTargeting('');
+    this.navTarget.clear();
+    this.docking.clearSelection();
+    this.simSpeedManager.reset();
+    this.displayTimeManager.forceCurrent = true;
 
     // 時刻の復元
     this.simulator.simTime = data.simTime;
@@ -545,10 +548,10 @@ export class Game {
     this.editor.handleInput(this.input);
 
     if (this.input.takeKey(K.quickSave)) {
-      SaveManager.save(this);
+      this._hud.hint(SaveManager.save(this) ? 'セーブしました' : 'セーブに失敗しました');
     }
     if (this.input.takeKey(K.quickLoad)) {
-      SaveManager.load(this);
+      this._hud.hint(SaveManager.load(this) ? 'ロードしました' : 'ロードに失敗しました');
     }
   }
 

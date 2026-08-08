@@ -177,10 +177,9 @@ async function main() {
     else game.resume();
   };
   settingsPanel.onSaveGame = () => {
-    try {
-      SaveManager.save(game);
+    if (SaveManager.save(game)) {
       settingsPanel.showSaveStatus('セーブしました');
-    } catch (e) {
+    } else {
       settingsPanel.showSaveStatus('セーブに失敗しました', true);
     }
   };
