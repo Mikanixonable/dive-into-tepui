@@ -302,12 +302,15 @@ export class Game {
     this.simulator.simTime = data.simTime;
     this._ephemeris.setPhaseOffsets(data.phaseOffsets);
 
-    // Playerの復元
-    if (data.player) {
-      const p = Player.restore(data.player, data.simTime, this._hud, this._sfx, this._scene, this.effects, this.markerManager);
+    // Playerの復元(複数隻ぶん)
+    let activePlayer: Player | null = null;
+    for (const pdata of data.players) {
+      const p = Player.restore(pdata, data.simTime, this._hud, this._sfx, this._scene, this.effects, this.markerManager);
       this.entities.addPlayer(p);
-      this.setActivePlayer(p);
+      if (pdata.id === data.activePlayerId) activePlayer = p;
     }
+    if (!activePlayer) activePlayer = this.entities.players[0] ?? null;
+    if (activePlayer) this.setActivePlayer(activePlayer);
 
     // Enemyの復元
     for (const edata of data.enemies) {
