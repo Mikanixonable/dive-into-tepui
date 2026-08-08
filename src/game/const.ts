@@ -303,8 +303,9 @@ export const PLAN_ARC_GAP_PX = 6;
 export const PLAN_ARC_OPACITY = 0.85;
 // 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
 export const APERIODIC_ARC_DURATION = 86400;
-// 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率の下限。これ未満は円に近く
-// アプシスの方向が数値的に不定になるので両方隠す。
+// 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。
+// physics/trajectory-features.ts の apparentEccentricity(積分折れ線の半径変動から
+// 求めた指標)と比較する — これ未満は円に近くアプシスの方向が不定になるので両方隠す。
 export const APSIS_MIN_ECC = 0.01;
 
 // --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory.history/Predictor) ---

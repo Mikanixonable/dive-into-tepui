@@ -26,6 +26,7 @@ import { register as registerHalo } from './halo.test';
 import { register as registerPlan } from './plan.test';
 import { register as registerHudLayout } from './hud-layout.test';
 import { register as registerShortcutHint } from './shortcut-hint.test';
+import { register as registerTrajectoryFeatures } from './trajectory-features.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -53,5 +54,6 @@ registerHalo();
 registerPlan();
 registerHudLayout();
 registerShortcutHint();
+registerTrajectoryFeatures();
 
 runAll();
