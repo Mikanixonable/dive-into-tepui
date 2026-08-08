@@ -16,8 +16,6 @@ import { Vec3 } from '../../physics/vec3';
 import { metersPerPixel, ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { AttractorId } from '../../physics/attractor';
-import { CELESTIAL_BODIES } from '../celestial/celestial-registry';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;
@@ -56,12 +54,8 @@ function scaleFromViewpoint(view: Viewpoint): ScaleFn {
   return (worldPos) => metersPerPixel(view, worldPos, window.innerHeight);
 }
 
-// 広範囲視点の操作パネルに常用のフォーカス先として並べる天体本体の ID。残りのラベル
-// (ラグランジュ点など)へは右クリックのメニュー経由でフォーカスする(Game が仲介する)。
-const PANEL_FOCUS_IDS = Object.keys(CELESTIAL_BODIES) as AttractorId[];
-
 // 戦闘ビュー(CombatCameraSystem)と広範囲視点(OverviewCamera)を切り替えて駆動する。
-// フォーカス候補ラベル(focusMarkers)とその常用ショートリスト(overviewCameraPanel)も所有する。
+// フォーカス候補ラベル(focusMarkers)も所有する。
 export class CameraSystem {
   readonly combatCamera: CombatCameraSystem;
   readonly overviewCamera: OverviewCamera;
@@ -96,12 +90,7 @@ export class CameraSystem {
     this.combatCamera = new CombatCameraSystem(_hud, sfx, player);
     this.overviewCamera = new OverviewCamera(_hud, sfx, ephemeris);
     // 広範囲視点の操作パネルと各操作のコールバック
-    this.overviewCameraPanel = new OverviewCameraPanel(_hud.root, PANEL_FOCUS_IDS.map(
-      (id) => [id, this.focusMarkers.findLabel(id)?.name ?? id] as const,
-    ));
-    this.overviewCameraPanel.onFocusSelect = (focus) => {
-      this.overviewCamera.setFocus(focus);
-    };
+    this.overviewCameraPanel = new OverviewCameraPanel(_hud.root);
     this.overviewCameraPanel.onFrameSelect = (frame: ReferenceFrame) => {
       this.overviewCamera.cameraFrame = frame;
     };
@@ -204,7 +193,6 @@ export class CameraSystem {
     if (this._elStageStatus) this._elStageStatus.style.display = hidden;
     if (this._elOrbit) this._elOrbit.style.left = this.overviewMode ? '12px' : '';
     if (this.overviewMode) {
-      this.overviewCameraPanel.setFocus(this.overviewCamera.focus);
       this.overviewCameraPanel.setFrame(this.overviewCamera.cameraFrame);
       this.focusMarkers.syncLabels(this.activeCameraProjection);
     } else {
