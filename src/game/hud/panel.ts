@@ -8,11 +8,14 @@ import type { Game } from '../game';
 import { SIM_EPOCH_SEC, fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
 import { ATTRACTOR_NAMES } from './frame-labels';
 
-interface StatsData {
+interface GlobalStatusData {
   simSpeedLabel: string;
   autoWarpSimRemain: number | null;
   autoWarpRealRemain: number | null;
   paused: boolean;
+}
+
+interface StatsData {
   rcsDamp: boolean;
   throttleIdx: number;
   fineAttitude: boolean;
@@ -57,6 +60,7 @@ const ENEMY_LIST_INTERVAL_MS = 250;
 
 export class HudPanels {
   private nextStatsAt = 0;
+  private nextGlobalStatusAt = 0;
   private nextEnemyListAt = 0;
 
   constructor(private readonly els: Map<string, HTMLElement>) {}
@@ -64,9 +68,18 @@ export class HudPanels {
   // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
   sync(game: Game, bodies: readonly Attractor[]): void {
     const now = performance.now();
-    // グローバルステータスの時刻表示は自機の有無に関係なく画面全体の状態なので、
-    // 自機不在で以降の処理を抜ける早期 return より前に書く。
+    // グローバルステータス(時刻・時間加速・NODE WARP)は自機の有無に関係なく画面全体の
+    // 状態なので、自機不在で以降の処理を抜ける早期 return より前に書く。
     this.setText('met', `${fmtDateTime(SIM_EPOCH_SEC + game.simulator.simTime)} / T+ ${fmtTime(game.simulator.simTime)}`);
+    if (now >= this.nextGlobalStatusAt) {
+      this.nextGlobalStatusAt = now + STATS_INTERVAL_MS;
+      this.setGlobalStatus({
+        simSpeedLabel: `×${game.simSpeedManager.simSpeed}`,
+        autoWarpSimRemain: game.simSpeedManager.remainingSimulationSeconds(game.simulator.simTime),
+        autoWarpRealRemain: game.simSpeedManager.estimatedRealSecondsToWarpEnd(game.simulator.simTime),
+        paused: game.isPaused,
+      });
+    }
     const player = game.player;
     if (!player) {
       // Creative の未配置状態には操縦/戦闘 HUD の値が存在しない。
@@ -97,10 +110,6 @@ export class HudPanels {
       this.nextStatsAt = now + STATS_INTERVAL_MS;
       const thermal = player.thermal;
       this.setStats({
-        simSpeedLabel: `×${game.simSpeedManager.simSpeed}`,
-        autoWarpSimRemain: game.simSpeedManager.remainingSimulationSeconds(game.simulator.simTime),
-        autoWarpRealRemain: game.simSpeedManager.estimatedRealSecondsToWarpEnd(game.simulator.simTime),
-        paused: game.isPaused,
         rcsDamp: player.rcsDamp,
         throttleIdx: player.throttleIdx,
         fineAttitude: player.fineAttitude,
@@ -177,10 +186,11 @@ export class HudPanels {
     if (e && e.textContent !== text) e.textContent = text;
   }
 
-  // スタッツパネル各項目のテキストと警告表示を書き換える
-  private setStats(d: StatsData): void {
+  // グローバルステータスバーの時間加速/NODE WARP 表示を書き換える
+  private setGlobalStatus(d: GlobalStatusData): void {
     const simSpeedEl = this.els.get('sim-speed');
     if (simSpeedEl) {
+      // 自動ワープ中は現在のワープ段の右に残り実時間を添える。停止中はワープ段より PAUSE を優先する。
       const warpRemain = d.autoWarpRealRemain !== null ? ` (残り ${fmtTime(d.autoWarpRealRemain)})` : '';
       simSpeedEl.textContent = d.paused ? 'PAUSE' : `${d.simSpeedLabel}${warpRemain}`;
       simSpeedEl.classList.toggle('sim-speed-hot', d.simSpeedLabel !== '×1' || d.paused);
@@ -190,7 +200,10 @@ export class HudPanels {
       nodeWarpEl.textContent = d.autoWarpSimRemain === null ? '—' : fmtTime(d.autoWarpSimRemain);
       nodeWarpEl.classList.toggle('sim-speed-hot', d.autoWarpSimRemain !== null);
     }
+  }
 
+  // スタッツパネル各項目のテキストと警告表示を書き換える
+  private setStats(d: StatsData): void {
     this.setText('rcs', d.rcsDamp ? 'ON' : 'OFF');
     const throttleLabels = ['弱', '中', '強'];
     this.setText(
