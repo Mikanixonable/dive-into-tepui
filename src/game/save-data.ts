@@ -1,5 +1,6 @@
 import { AnyPart } from './game-entity/parts';
 import { EnemyKind } from './game-entity/enemy';
+import { AttractorId } from '../physics/attractor';
 
 export interface Vec3SaveData {
   x: number;
@@ -75,6 +76,7 @@ export interface GameSaveData {
   version: number;
   stageId: string;
   simTime: number;
+  phaseOffsets: Partial<Record<AttractorId, number>>;
   player: PlayerSaveData | null;
   enemies: EnemySaveData[];
   ammos: AmmoSaveData[];
