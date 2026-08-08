@@ -226,7 +226,11 @@ main.ts
 
 - **`CameraSystem.overviewMode`(視点)・`PlanEditor.editMode`(操作系)・`DisplayTimeManager.forceCurrent`
   (未来表示の禁止)** は3つとも別の正本。同時に切り替えるのは `ViewManager` だけで、描画・視点側は
-  overviewMode を、入力・挙動側は editMode を、未来表示の可否は forceCurrent を見る。
+  overviewMode を、発射可否(`fire.tickMapMode` か `updateFireState` か)は editMode を、未来表示の可否は
+  forceCurrent を見る。実噴射(WASDQE)の可否はさらに一段細かく、`Game` が組む
+  `dvEditActive = editor.editMode && editor.selectedNodeIdx !== null` を `Player.behave` が見る —
+  マップビューが開いていても選択中ノードが無ければ実噴射が効く。手動回転(RCS・IJKLUO)はこの
+  いずれも見ず、マップビュー中でも常時有効。
   「いまどのビューか」そのものの正本は第四の値 `ViewManager.current` で、上の三つ
   (とタッチUI)はその影響先。
 - **`FloatingOrigin.r` と `Player.state.r`** は現状同じ値だが意味論的に別物。sync 系は必ず fo を参照し、

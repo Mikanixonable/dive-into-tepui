@@ -111,7 +111,7 @@
       - throttle.setThrottlePreset(0|1|2) // K.throttleLow/Mid/High
       - fire.manualReload() // K.reload。成功時のみ true(= キー消費)
         - sfx.playReload() + dropBarrel() → fx.spawnBarrel()
-    - throttle.updateTorque() → player.torque へ代入。!alive なら即ゼロ
+    - throttle.updateTorque() → player.torque へ代入。!alive なら即ゼロ(マップビュー中も手動回転は常時有効)
       - onProgradeHoldReleased() → hud.hint() // ホールド中に手動回転入力があった場合のみ
       - autoAlignTorque() // ホールド中 かつ 手動回転入力なしの場合のみ
     - radiator.update() // 展開度のみ。THREE には触れない
@@ -122,8 +122,8 @@
     - power.update() // sunlit/sunDir は radiator と共有。THREE には触れない
     - [!player.alive] player.thrust = null して return
     - hpRegen()
-    - [editor.editMode] fire.tickMapMode() → tickReloadTimer() / player.thrust = null して return
-    - fire.updateFireState()
+    - [editor.editMode] fire.tickMapMode() → tickReloadTimer() // マップビュー中は発射不可(装填タイマーのみ進める)
+    - [!editor.editMode] fire.updateFireState()
       - tickReloadTimer()
       - hud.hint() // 発射キー押下中 かつ !simSpeed.canPlayerFire
       - sfx.emptyClick() + hud.hint() // 弾切れの初回フレームのみ
@@ -139,8 +139,10 @@
           - sfx.fire()
         - spawnEjectedMagazineFrame() + sfx.magFeed() // 'mag-reload'
         - spawnEjectedMagazineFrame() + dropBarrel() + sfx.playReload() // 'barrel-reload'
+    - [dvEditActive(= editor.editMode かつ editor.selectedNodeIdx !== null)] player.thrust = null して return // ノードのΔv編集中はWASDQEをそちらへ譲る
     - throttle.updateThrustState() → player.thrust へ代入
-      - sfx.setThrust(false) // 推力入力なし or !canPlayerThrust
+      - updateThrustLatches() // WASDQE各キーの連打をエッジ検出しラッチ集合を更新
+      - sfx.setThrust(false) // 推力入力なし(物理押下・ラッチとも無し) or !canPlayerThrust
       - sfx.setThrust(true) // 推力あり
     - invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
   - nanWatchdog.checkPlayer('player.behave')
