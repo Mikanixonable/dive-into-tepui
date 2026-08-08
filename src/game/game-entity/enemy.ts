@@ -12,7 +12,7 @@ import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
-import { sunPosition } from '../../physics/ephemeris';
+import type { Ephemeris } from '../../physics/ephemeris';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
@@ -206,7 +206,7 @@ export class Enemy extends Ship {
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
-  behave(_dt: number, simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager): void {
+  behave(_dt: number, simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager, ephemeris: Ephemeris): void {
     // 射撃間隔はsimulation timeで統一する。wall dtを混ぜると×4時だけバースト間隔が
     // 4倍に引き伸ばされ、同じゲーム内時間でもwarp段によって弾数が変わっていた。
     const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
@@ -221,7 +221,7 @@ export class Enemy extends Ship {
     if (this.burstLeft && this.burstLeft > 0) {
       this.burstDelay = (this.burstDelay ?? 0) - behaviorDt;
       if (this.burstDelay <= 0) {
-        this.firePlasma(simTime, player, entities);
+        this.firePlasma(simTime, player, entities, ephemeris);
         this.burstLeft--;
         this.burstDelay = C.ENEMY_BURST_INTERVAL;
       }
@@ -238,7 +238,7 @@ export class Enemy extends Ship {
     const counts = C.ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
     this.burstDelay = C.ENEMY_BURST_INTERVAL;
-    this.firePlasma(simTime, player, entities);
+    this.firePlasma(simTime, player, entities, ephemeris);
   }
 
   // enemies のうち、自分と同じ accent でバースト射撃中の個体数を数える。
@@ -251,7 +251,7 @@ export class Enemy extends Ship {
   }
 
   // player へ向けた見越し射撃でプラズマ弾を1発生成し、entities に追加する。
-  private firePlasma(simTime: number, player: Player, entities: EntityManager): void {
+  private firePlasma(simTime: number, player: Player, entities: EntityManager, ephemeris: Ephemeris): void {
     const r = this.state.r;
     const v = this.state.v;
     const toPlayer = sub(player.state.r, r);
@@ -266,7 +266,7 @@ export class Enemy extends Ship {
     const predictedRelPos = add(toPlayer, scale(relV, timeToHit));
     const aimDir = norm(predictedRelPos);
 
-    const sunDir = norm(sunPosition(simTime, 0));
+    const sunDir = ephemeris.sunDirAt(simTime);
     const spreadScale = sunGlareSpreadScale(r, aimDir, sunDir);
 
     // 散布界をスケール適用
