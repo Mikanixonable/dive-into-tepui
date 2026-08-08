@@ -72,12 +72,11 @@ spacial hashアルゴリズムによる遠方の小惑星の無視。
   小惑星なのであって、4つ目の分類ではない)。`DynamicTrajectory` 側の存在として `attractorsAt` へ
   合流させる形にする。
 
-このステップに含める命名の再検討(`renaming_plan.md` §7-1 で先送りにしたもの):
+このステップに含める命名の再検討:
 - `game/celestial/` の見た目クラス群(`CelestialBody` / `EarthBody` / `SunBody` / `SphereBody`)を
   `CelestialEntity` 系へ寄せるかを、この統一と同じ変更セットで判断する。現状これらは位置・速度を
   一切持たず sync のたびに `Ephemeris` から引くだけなので `Entity` は実装に対して嘘になるが、
   統一を済ませれば状態を持つ側になり、そのとき初めて名前が実装に合う。名前だけを先に動かすことはしない。
-  それまでは「`body` 単独は機体座標系専用、天体は必ず `celestial` を接頭」の規則で衝突を回避する。
 
 ## 太陽系のハードコードからの脱却
 
