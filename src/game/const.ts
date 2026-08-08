@@ -90,9 +90,10 @@ export const AMBIENT_INTENSITY = 0.25; // 環境光の基準強度
 export const SHADOW_MIN_SUN = 0.04; // 影の中に残す太陽光の割合(星明かり・地球照ぶん)
 export const SHADOW_MIN_AMBIENT = 0.35; // 影の中に残す環境光の割合
 
-// 並進推力(WSADQE の全 6 方向で共通)の出力 3 段階 [m/s^2]。[1]/[2]/[3] キーで切替、
-// 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。
-export const THROTTLE_LEVELS = [5.0, 20.0, 100.0];//エンジン出力、スロットル
+// 並進推力(WSADQE の全 6 方向で共通)の出力 4 段階 [m/s^2]。[1]/[2]/[3]/[4] キーで切替、
+// 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。4段目は3段目の4倍。
+export const THROTTLE_LEVELS = [5.0, 20.0, 100.0, 400.0];//エンジン出力、スロットル
+export const THROTTLE_LABELS = ['弱', '中', '強', '最強'] as const;
 // 自機の質量 [kg]。既定パーツのスラスター推力はこの質量で THROTTLE_LEVELS の最大値の
 // 加速度になるよう決めてあるので、両者を別々に動かすと表示と実挙動がずれる。
 export const PLAYER_MASS = 1000;

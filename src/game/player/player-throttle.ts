@@ -52,8 +52,7 @@ export class PlayerThrottle {
   // 並進出力のプリセットを idx 段階目へ切り替える。
   setThrottlePreset(idx: number): void {
     this.throttleIdx = idx;
-    const labels = ['弱', '中', '強'] as const;
-    this._hud.hint(`並進出力: ${labels[idx]!} (${C.THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
+    this._hud.hint(`並進出力: ${C.THROTTLE_LABELS[idx]!} (${C.THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
   }
 
   // スラスト方向の表示用状態と噴射ラッチを初期化する。

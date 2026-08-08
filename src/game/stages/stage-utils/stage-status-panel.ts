@@ -135,10 +135,9 @@ export class StageStatusPanel {
     const throttleIdx = player.throttleIdx;
     const low = hp <= maxHp * LOW_HP_RATIO;
     const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
-    const throttleLabels = ['弱', '中', '強'];
     const throttleVal = C.THROTTLE_LEVELS[throttleIdx];
-    const throttlePct = ((throttleIdx + 1) / 3) * 100;
-    const throttleText = `${throttleLabels[throttleIdx]} (${throttleVal!.toFixed(1)} m/s²)`;
+    const throttlePct = ((throttleIdx + 1) / C.THROTTLE_LEVELS.length) * 100;
+    const throttleText = `${C.THROTTLE_LABELS[throttleIdx]} (${throttleVal!.toFixed(1)} m/s²)`;
     const temp = Math.round(player.thermal.hullTemp);
     const tempHigh = temp > 0.7 * C.MAX_HULL_TEMP;
     const tempPct = Math.max(0, Math.min(100, (temp / C.MAX_HULL_TEMP) * 100));
