@@ -41,20 +41,36 @@ function chordCount(a: OrbitState, b: OrbitState): number {
   return Math.max(1, Math.ceil(turn / MAX_EDGE_TURN));
 }
 
+// 破線パターン。dashSize/gapSize は表示座標系の実距離 [m](LineDashedMaterial の
+// lineDistance 属性がそのままこの単位で評価されるため、scale=1 前提でメートルを直接渡せる)。
+export type DashPattern = { readonly dashSize: number; readonly gapSize: number };
+
 export class SampledLine {
   readonly line: THREE.Line;
   private readonly geom = new THREE.BufferGeometry();
-  private readonly mat: THREE.LineBasicMaterial;
+  private readonly mat: THREE.LineBasicMaterial | THREE.LineDashedMaterial;
   private readonly positions = new Float32Array(MAX_VERTICES * 3);
+  // 破線のときだけ確保する、始点からの累積距離 [m](LineDashedMaterial が読む lineDistance 属性)。
+  private readonly lineDistances: Float32Array | null;
   private vertexCount = 0;
   private lastSamples: readonly OrbitState[] | null = null;
   private lastFrame: Frame | null = null;
   private wantVisible = true;
 
-  // 単色の折れ線マテリアル・ジオメトリを構築する。
-  constructor(color: number, opacity = 0.85, renderOrder = 2) {
-    this.mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
+  // 単色の折れ線マテリアル・ジオメトリを構築する。dash を渡すと破線になる。
+  constructor(color: number, opacity = 0.85, renderOrder = 2, dash?: DashPattern) {
+    this.mat = dash
+      ? new THREE.LineDashedMaterial({
+        color, transparent: true, opacity, depthWrite: false, dashSize: dash.dashSize, gapSize: dash.gapSize,
+      })
+      : new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
     this.geom.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    if (dash) {
+      this.lineDistances = new Float32Array(MAX_VERTICES);
+      this.geom.setAttribute('lineDistance', new THREE.BufferAttribute(this.lineDistances, 1));
+    } else {
+      this.lineDistances = null;
+    }
     this.line = new THREE.Line(this.geom, this.mat);
     this.line.frustumCulled = false;
     this.line.renderOrder = renderOrder;
@@ -62,11 +78,23 @@ export class SampledLine {
   }
 
   // (点列, frame)が前回から変わったときだけ、頂点を frame 相対座標へ bake し直す(非剛体)。
+  // 破線のときは、同じ頂点列挙のついでに始点からの累積距離も焼く。
   syncGeometry(samples: readonly OrbitState[], frame: Frame, ephemeris: Ephemeris): void {
     if (samples === this.lastSamples && frame === this.lastFrame) return;
     this.lastSamples = samples;
     this.lastFrame = frame;
     const verts: number[] = [];
+    const dists: number[] | null = this.lineDistances ? [] : null;
+    let dist = 0;
+    let lastR: { x: number; y: number; z: number } | null = null;
+    const pushVertex = (r: { x: number; y: number; z: number }): void => {
+      if (dists) {
+        if (lastR) dist += Math.hypot(r.x - lastR.x, r.y - lastR.y, r.z - lastR.z);
+        dists.push(dist);
+      }
+      verts.push(r.x, r.y, r.z);
+      lastR = r;
+    };
     let prev: OrbitState | null = null;
     for (const sample of samples) {
       // hermiteInterpolate は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の
@@ -78,23 +106,29 @@ export class SampledLine {
         const chords = chordCount(prev, baked);
         for (let k = 1; k < chords; k++) {
           const { r } = hermiteInterpolate(prev, baked, prev.t + (baked.t - prev.t) * (k / chords));
-          verts.push(r.x, r.y, r.z);
+          pushVertex(r);
         }
       }
-      verts.push(baked.r.x, baked.r.y, baked.r.z);
+      pushVertex(baked.r);
       prev = baked;
     }
-    this.writeVertices(verts);
+    this.writeVertices(verts, dists);
     this.applyVisible();
   }
 
-  // 頂点列を position 属性へ書き込み、描画範囲をその本数に合わせる。
-  private writeVertices(verts: readonly number[]): void {
+  // 頂点列を position 属性へ書き込み、描画範囲をその本数に合わせる。dists は破線のときだけ
+  // lineDistance 属性へ書き込む。
+  private writeVertices(verts: readonly number[], dists: readonly number[] | null): void {
     const n = Math.min(verts.length, this.positions.length);
     for (let i = 0; i < n; i++) this.positions[i] = verts[i]!;
     this.vertexCount = n / 3;
     this.geom.setDrawRange(0, this.vertexCount);
     this.geom.getAttribute('position').needsUpdate = true;
+    if (this.lineDistances && dists) {
+      const m = Math.min(dists.length, this.lineDistances.length);
+      for (let i = 0; i < m; i++) this.lineDistances[i] = dists[i]!;
+      this.geom.getAttribute('lineDistance').needsUpdate = true;
+    }
   }
 
   // 毎フレーム: 剛体 un-bake(line クォータニオン) + フローティングオリジン補正(line 位置 =
