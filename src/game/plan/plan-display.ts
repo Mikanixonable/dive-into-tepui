@@ -101,7 +101,7 @@ export class PlanDisplay {
       return;
     }
     this.path.update(plan, this.ephemeris, this.planFrame, simTime);
-    this.ghost = this.ghostAt(displayTime, simTime);
+    this.ghost = this.ghostAt(plan, displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.eqNodeIcons = this.eqNodeIconsOf();
     this.impactIcons = this.impactIconsOf();
@@ -154,8 +154,11 @@ export class PlanDisplay {
     return isFinite(dt) ? state0.t + dt : null;
   }
 
-  // displayTime における計画上の自機位置とそのラベル。折れ線の届く範囲外なら null。
-  private ghostAt(displayTime: number, simTime: number): { pos: Vec3; label: string } | null {
+  // displayTime における計画上の自機位置とそのラベル。折れ線の届く範囲外、または
+  // ノードが1つも無ければ null — ノード無しの計画は実軌道の追従コピーでしかなく、
+  // 実軌道とのズレを示すゴーストとしては意味を持たない。
+  private ghostAt(plan: Plan, displayTime: number, simTime: number): { pos: Vec3; label: string } | null {
+    if (plan.nodes.length === 0) return null;
     const sample = this.path.sampleAt(displayTime);
     if (!sample) return null;
     return {
