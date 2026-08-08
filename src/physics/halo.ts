@@ -1,6 +1,6 @@
 // 円制限三体問題(CR3BP)の共線ラグランジュ点(L1/L2)まわりの周期・準周期軌道の初期状態。
 // ラグランジュ点の位置と回転フレームの姿勢/角速度は ephemeris.ts の既存 API
-// (lagrangeAt/orbitRotationAt/orbitNormalAt)からそのまま取り、ここでは基底・法線を
+// (lagrangeAt/orbitFrameRotationAt/orbitNormalAt)からそのまま取り、ここでは基底・法線を
 // 作り直さない。
 //
 // 面内・面外の運動は Richardson (1980) の記法に従う。線形解では面内振動数 λ と面外振動数
@@ -60,7 +60,7 @@ export function collinearFrame(secondary: OrbitingId, point: CollinearPoint, t: 
   const primary = def.kind === 'planet' ? 'sun' : def.planet;
   const primaryPos = ephemeris.positionOf(primary, t);
   const secondaryPos = ephemeris.positionOf(secondary, t);
-  const omega = ephemeris.orbitRotationAt(secondary, t).omega;
+  const omega = ephemeris.orbitFrameRotationAt(secondary, t).omega;
   // 回転フレームの omega は公転面法線まわりの公転成分と昇交点歳差成分の和になりうる
   // (kepler-orbit.ts 参照)ので、omega の向きそのものが公転面法線と一致するとは限らない。
   // 歳差の有無によらず正しい公転面法線を orbitNormalAt から直接取る。
