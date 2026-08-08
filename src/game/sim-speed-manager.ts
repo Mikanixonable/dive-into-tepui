@@ -62,6 +62,13 @@ export class SimSpeedManager {
     return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
   }
 
+  // 現在のワープ倍率で補給を投入してよいかどうか。他の can* より1段厳しく等倍限定なのは、
+  // 補給が「接近して回収する」操作を前提にしており、回収そのものが成立しない倍率で
+  // 投入だけが進むと、回収されない補給が軌道上に溜まり続けるため。
+  get canResupplyAmmo(): boolean {
+    return this.simSpeed < C.MAX_PHYS_SIM_SPEED;
+  }
+
   // ワープ段を step 分だけ変更する。上下限を超える変更は無視する。
   shift(step: number): void {
     this.cancelAutoWarp();

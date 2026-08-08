@@ -28,8 +28,9 @@ export class DynamicTrajectory {
   get prevState(): KinematicState { return this._prevState; }
   get history(): StateQueue { return this._history; }
 
-  // 全天体重力 + J2 + 大気抵抗 + 推力で 1 ステップ RK4 積分する(dynamics.ts の
-  // stepDynamics)。attractors はそのステップぶん呼び出し側が確定させた重力源一覧。
+  // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力で 1 ステップ RK4 積分する
+  // (dynamics.ts の stepDynamics)。attractors はそのステップぶん呼び出し側が確定させた
+  // 重力源一覧。
   // keepDuration > 0 かつ、直前の state が最新の記録サンプルから sampleInterval 秒以上
   // 離れているときだけ、その直前の state を history へ積む(解像度を落とす箇所はここ)。
   // 積んだ後は keepDuration を保持窓として history.cleanup する。keepDuration = 0 なら
@@ -38,12 +39,14 @@ export class DynamicTrajectory {
     dt: number,
     attractors: readonly Attractor[],
     bcInv: number,
+    srpCoeff: number,
+    penumbra: number,
     thrust: Vec3 | null,
     sampleInterval: number,
     keepDuration: number,
   ): void {
     const prev = this._state;
-    const next = stepDynamics(prev, dt, attractors, bcInv, thrust);
+    const next = stepDynamics(prev, dt, attractors, bcInv, srpCoeff, penumbra, thrust);
     // 間引き済み history への記録
     if (keepDuration > 0) {
       const newest = this._history.newest;

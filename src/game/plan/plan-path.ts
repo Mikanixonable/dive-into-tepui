@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
-import { ReferenceFrame, INERTIAL_FRAME, toFramePoint, toInertialPoint } from '../../physics/frame';
+import { ReferenceFrame, INERTIAL_FRAME, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
@@ -12,6 +12,7 @@ import { ProjectFn } from '../camera/camera-system';
 import { Plan, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
 import type { DisplayTimeManager } from '../display-time-manager';
+import { SIM_EPOCH_SEC } from '../hud/utils';
 import * as C from '../const';
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
@@ -29,7 +30,7 @@ export class PlanPath {
   private activeCount = 0;
   // 先頭 nodeCount 本がノードで終わる区間(= 各ノードの到達状態を持つ)。
   private nodeCount = 0;
-  // 積分予測が起点の楕円近似から大きく外れた場合、解析楕円線を隠す。
+  // 積分した区間が起点の楕円近似から大きく外れた場合、解析楕円線を隠す。
   private analyticDivergent = false;
   private frame: ReferenceFrame = INERTIAL_FRAME;
   private ephemeris: Ephemeris | null = null;
@@ -107,6 +108,40 @@ export class PlanPath {
     for (let i = this.activeCount; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
   }
 
+  // 天体衝突が検出された地点(区間ごとに高々1つ)。今フレーム表示中の区間だけを対象にする。
+  impactPoints(): readonly { readonly state: KinematicState; readonly arcIdx: number }[] {
+    const out: { state: KinematicState; arcIdx: number }[] = [];
+    for (let i = 0; i < this.activeCount; i++) {
+      const state = this.arcs[i]?.impactPoint();
+      if (state) out.push({ state, arcIdx: i });
+    }
+    return out;
+  }
+
+  // 表示中の区間が覆う時刻範囲(絶対 UTC)に含まれる日付境界(0時0分0秒)の simTime と、
+  // その時刻の折れ線上の位置。区間をまたいでも重複させない。
+  dayBoundaries(): readonly { readonly t: number; readonly pos: Vec3 }[] {
+    if (this.activeCount === 0) return [];
+    let minT = Infinity;
+    let maxT = -Infinity;
+    for (let i = 0; i < this.activeCount; i++) {
+      const samples = this.arcs[i]!.samples;
+      if (samples.length === 0) continue;
+      minT = Math.min(minT, samples[0]!.t);
+      maxT = Math.max(maxT, samples[samples.length - 1]!.t);
+    }
+    if (minT > maxT) return [];
+
+    const out: { t: number; pos: Vec3 }[] = [];
+    const firstBoundaryUnix = Math.ceil((SIM_EPOCH_SEC + minT) / 86400) * 86400;
+    for (let unix = firstBoundaryUnix; unix <= SIM_EPOCH_SEC + maxT; unix += 86400) {
+      const t = unix - SIM_EPOCH_SEC;
+      const state = this.sampleAt(t);
+      if (state) out.push({ t, pos: state.r });
+    }
+    return out;
+  }
+
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
   arrivalStates(): (KinematicState | null)[] {
     const out: (KinematicState | null)[] = [];
@@ -130,6 +165,15 @@ export class PlanPath {
     const bakeTf = this.ephemeris.frameTransformAt(this.frame, t);
     const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime);
     return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
+  }
+
+  // 時刻 t の方向ベクトル dir を、現在の表示座標(ECI)へ変換する。方向なので原点移動は掛からず、
+  // サンプル時刻 t の bake 姿勢と表示時刻 unbakeTime の un-bake 姿勢の回転だけを受ける。
+  toDisplayDir(dir: Vec3, t: number): Vec3 {
+    if (!this.ephemeris) return v3(dir.x, dir.y, dir.z);
+    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t);
+    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime);
+    return toInertialDir(unbakeTf, toFrameDir(bakeTf, dir));
   }
 
   // 時刻 t のサンプル位置 r をスクリーン座標へ投影する。
