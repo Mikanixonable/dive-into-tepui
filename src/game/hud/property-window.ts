@@ -44,6 +44,10 @@ const STYLE = `
 }
 #hud .prop-window-row-label { opacity: 0.7; }
 #hud .prop-window-row-value { text-align: right; }
+#hud .prop-window-row-toggle {
+  padding: 3px 12px; color: ${INK}; opacity: 0.6; cursor: pointer;
+}
+#hud .prop-window-row-toggle:hover { opacity: 1; color: ${ACCENT_SOFT}; }
 #hud .prop-window-items { border-top: 1px solid ${EDGE}; }
 #hud .prop-window-item {
   padding: 9px 14px; color: ${INK}; cursor: pointer; border-bottom: 1px solid ${EDGE};
@@ -68,6 +72,8 @@ export interface PropertyRow {
   readonly key: string;
   readonly label: string;
   readonly value: string;
+  // 立てると「詳細」トグルの下に畳まれ、既定では隠れる。
+  readonly collapsible?: boolean;
 }
 
 export interface PropertyWindowItem<A extends string = string> {
@@ -102,6 +108,9 @@ export class PropertyWindow<A extends string = string> {
   private lastSubtitle: string | undefined | typeof PropertyWindow.UNSET = PropertyWindow.UNSET;
   // 前フレームに描画した行の値。同じ値なら DOM に触れない差分更新のための記録。
   private lastRowValues = new Map<string, string>();
+  private collapsibleContainerEl: HTMLDivElement | null = null;
+  private toggleEl: HTMLDivElement | null = null;
+  private collapsibleExpanded = false;
   // 前回描画した操作項目の直列化(act/label/shortcut)。同じなら DOM を組み直さない。
   private lastItemsKey = '';
   private _clipped = false;
@@ -302,29 +311,53 @@ export class PropertyWindow<A extends string = string> {
     }
   };
 
+  // key/label/value の行 div を組み立てて container へ足し、値を lastRowValues へ記録する。
+  private appendRowEl(container: HTMLElement, r: PropertyRow): void {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'prop-window-row';
+    rowEl.dataset['key'] = r.key;
+    const labelEl = document.createElement('div');
+    labelEl.className = 'prop-window-row-label';
+    labelEl.textContent = r.label;
+    const valueEl = document.createElement('div');
+    valueEl.className = 'prop-window-row-value';
+    valueEl.textContent = r.value;
+    rowEl.appendChild(labelEl);
+    rowEl.appendChild(valueEl);
+    container.appendChild(rowEl);
+    this.lastRowValues.set(r.key, r.value);
+  }
+
   // プロパティ行の値だけを毎フレーム差分更新する。行集合(key の並び)が変わった場合のみ
   // 行 DOM 全体を組み直す — 操作項目・ヘッダのリスナには触れないので副作用はない。
+  // collapsible な行は末尾の「詳細」トグルの下にまとめ、開閉状態はウィンドウが自分で持つ。
   syncRows(rows: readonly PropertyRow[]): void {
-    // key 集合が前回と同じなら値だけ書き換え、変わっていれば行 DOM ごと組み直す。
     const sameShape =
       rows.length === this.lastRowValues.size && rows.every((r) => this.lastRowValues.has(r.key));
     if (!sameShape) {
       this.rowsEl.innerHTML = '';
       this.lastRowValues.clear();
+      this.collapsibleContainerEl = null;
+      this.toggleEl = null;
+      const collapsible = rows.filter((r) => r.collapsible);
       for (const r of rows) {
-        const rowEl = document.createElement('div');
-        rowEl.className = 'prop-window-row';
-        rowEl.dataset['key'] = r.key;
-        const labelEl = document.createElement('div');
-        labelEl.className = 'prop-window-row-label';
-        labelEl.textContent = r.label;
-        const valueEl = document.createElement('div');
-        valueEl.className = 'prop-window-row-value';
-        valueEl.textContent = r.value;
-        rowEl.appendChild(labelEl);
-        rowEl.appendChild(valueEl);
-        this.rowsEl.appendChild(rowEl);
-        this.lastRowValues.set(r.key, r.value);
+        if (!r.collapsible) this.appendRowEl(this.rowsEl, r);
+      }
+      if (collapsible.length > 0) {
+        const toggle = document.createElement('div');
+        toggle.className = 'prop-window-row-toggle';
+        toggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.setCollapsibleExpanded(!this.collapsibleExpanded);
+        });
+        this.rowsEl.appendChild(toggle);
+        this.toggleEl = toggle;
+        const container = document.createElement('div');
+        for (const r of collapsible) this.appendRowEl(container, r);
+        this.rowsEl.appendChild(container);
+        this.collapsibleContainerEl = container;
+        this.syncToggleLabel(collapsible.length);
+        container.style.display = this.collapsibleExpanded ? '' : 'none';
       }
       this.reclamp();
       return;
@@ -337,6 +370,18 @@ export class PropertyWindow<A extends string = string> {
       );
       if (valueEl) valueEl.textContent = r.value;
     }
+  }
+
+  private syncToggleLabel(count: number): void {
+    if (!this.toggleEl) return;
+    this.toggleEl.textContent = this.collapsibleExpanded ? '▲ 詳細を隠す' : `▼ 詳細を表示 (${count})`;
+  }
+
+  private setCollapsibleExpanded(expanded: boolean): void {
+    this.collapsibleExpanded = expanded;
+    if (this.collapsibleContainerEl) this.collapsibleContainerEl.style.display = expanded ? '' : 'none';
+    this.syncToggleLabel(this.collapsibleContainerEl?.childElementCount ?? 0);
+    this.reclamp();
   }
 
   get clipped(): boolean {
