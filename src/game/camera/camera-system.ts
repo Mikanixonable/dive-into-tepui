@@ -22,12 +22,13 @@ import { CELESTIAL_BODIES } from '../celestial/celestial-registry';
 export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;
 
-// 論理カメラの状態(Viewpoint)を THREE.PerspectiveCamera へ反映する。
-function syncCameraToViewpoint(camera: THREE.PerspectiveCamera, view: Viewpoint, fo: FloatingOrigin): void {
+// 論理カメラの状態(Viewpoint)を THREE.PerspectiveCamera へ反映する。near はサブカメラ自身の
+// near getter(固定値、または OverviewCamera のように dist に比例する値)から毎フレーム渡される。
+function syncCameraToViewpoint(camera: THREE.PerspectiveCamera, view: Viewpoint, near: number, fo: FloatingOrigin): void {
   camera.position.copy(fo.RtoThreeV3(view.position));
   camera.up.set(view.up.x, view.up.y, view.up.z);
   camera.lookAt(fo.RtoThreeV3(view.lookTarget));
-  // アスペクト比・FOV が変わったときだけ投影行列を再計算する
+  // アスペクト比・FOV・near が変わったときだけ投影行列を再計算する
   let projectionDirty = false;
   if (Math.abs(camera.aspect - view.aspect) > 1e-6) {
     camera.aspect = view.aspect;
@@ -35,6 +36,10 @@ function syncCameraToViewpoint(camera: THREE.PerspectiveCamera, view: Viewpoint,
   }
   if (Math.abs(camera.fov - view.fovDeg) > 1e-3) {
     camera.fov = view.fovDeg;
+    projectionDirty = true;
+  }
+  if (Math.abs(camera.near - near) > near * 1e-6) {
+    camera.near = near;
     projectionDirty = true;
   }
   if (projectionDirty) camera.updateProjectionMatrix();
@@ -189,7 +194,7 @@ export class CameraSystem {
   // 視点状態をフローティングオリジン(fo)で補正してアクティブカメラへ反映する。
   sync(fo: FloatingOrigin): void {
     const active = this.overviewMode ? this.overviewCamera : this.combatCamera;
-    syncCameraToViewpoint(active.camera, active.viewpoint, fo);
+    syncCameraToViewpoint(active.camera, active.viewpoint, active.near, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
 
