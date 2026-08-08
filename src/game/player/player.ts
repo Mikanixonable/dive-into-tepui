@@ -380,10 +380,14 @@ export class Player extends Ship {
       this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
     }
 
-    // 推力/RCS エフェクトとベルト
-    this.thrustEffects.sync(fo, this.state.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, this.alive, camera);
-    this.rcsEffects.sync(fo, this.state.r, this.torque, this.att, this.alive, phasePlaying, paused, camera, isActive);
-    this.reentryEffects.sync(fo, this.state.r, this.state.v, this.thermal.qdyn, this.alive, camera);
+    // 推力/RCS エフェクトとベルト。機体メッシュと同じ displayState に載せる —
+    // 揃えないと「機体は未来位置、プルームは現在位置」に割れる。表示できる状態が無いときは
+    // 各エフェクトが自分で消えられるよう alive を倒して呼ぶ。
+    const effectState = displayState ?? this.state;
+    const effectAlive = this.alive && displayState !== null;
+    this.thrustEffects.sync(fo, effectState.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, effectAlive, camera);
+    this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectAlive, phasePlaying, paused, camera, isActive);
+    this.reentryEffects.sync(fo, effectState.r, effectState.v, this.thermal.qdyn, effectAlive, camera);
     this.belt.sync(this.alive);
     this.radiator.sync();
     this.power.sync();
