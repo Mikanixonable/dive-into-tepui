@@ -11,11 +11,13 @@ export const DOCK_CAPTURE_REL_V = 20;   // [m/s]
 
 
 // クリエイティブモードのラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
-// 地球-月系と太陽-地球系は主天体間距離が3桁近く違うため、系ごとに妥当なオーダーを別々に持つ。
-export const CREATIVE_HALO_AX_EARTHMOON_KM = 8000;
-export const CREATIVE_HALO_AZ_EARTHMOON_KM = 5000;
-export const CREATIVE_HALO_AX_SUNEARTH_KM = 200000;
-export const CREATIVE_HALO_AZ_SUNEARTH_KM = 120000;
+// 副天体ごとに主天体との距離が3桁近く違うため、妥当なオーダーを副天体ごとに別々に持つ。
+export const CREATIVE_HALO_AX_MOON_KM = 8000;
+export const CREATIVE_HALO_AZ_MOON_KM = 5000;
+export const CREATIVE_HALO_AX_EARTH_KM = 200000;
+export const CREATIVE_HALO_AZ_EARTH_KM = 120000;
+export const CREATIVE_HALO_AX_JUPITER_KM = 7000000;
+export const CREATIVE_HALO_AZ_JUPITER_KM = 4000000;
 
 export const REENTRY_ALT = 80e3; // 敵機はこれ以下で大気圏突入・焼失 [m](熱モデルなしの簡易処理)
 export const PLAYER_MIN_ALT = 45e3; // 自機の構造限界高度 [m](通常は加熱・動圧で先に喪失する)
