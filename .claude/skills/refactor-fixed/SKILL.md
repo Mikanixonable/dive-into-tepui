@@ -55,16 +55,43 @@ description: このプロジェクトで確定済みの横断的な責務境界(
 `build`(シーンへの登録)と `render`(`renderer.render` を呼ぶもの)を含めた命名規則は
 CLAUDE.md の「Naming: render / update / build / sync」節。
 
-## 3. 独自 `Vec3` と `THREE.Vector3` の境界
+## 3. 座標系の境界 — 独自 `Vec3`/`OrbitState` は ECI、`THREE.Vector3` は描画後、それ以外は `frame.ts` の branded type
+
+### `Vec3` と `THREE.Vector3` の境界(フローティングオリジン)
 
 フローティングオリジンは、GPU が巨大な数値を単精度で扱うことによる描画破綻を防ぐための措置で、
 CPU 側で事前に平行移動して自機・カメラ付近の浮動小数精度を高めるためのものである。
 補正前か補正後かを型安全に扱うため、**この境界を独自 `Vec3` と `THREE.Vector3` の境界に
 一致させる。**
 
-- 独自 `Vec3` は地球座標系(ECI)の座標を扱う。
 - `THREE.Vector3` は描画のための座標なので、フローティングオリジンを引いた後のものだけを扱う。
 - 変換は必ず `FloatingOrigin` の変換関数(`RtoThreeV3` / `VtoThreeV3`)を経由する。
+
+### 独自 `Vec3`/`OrbitState` は ECI が既定、それ以外は `frame.ts` の branded type
+
+独自 `Vec3` / `OrbitState` は**地球中心慣性系(ECI)** を表す。これが既定であり、シミュレーションは
+すべてこの系で回る(太陽・月・木星の位置も含め、`physics/attractor.ts` の `Attractor.state` は
+常に ECI)。
+
+ECI 以外の座標系(太陽中心系・月回転系など)の値は、生の `Vec3` に持たせない。
+`physics/frame.ts` が持つ branded type だけがそれを表せる:
+
+- **点**(位置。原点移動 + 回転で変換)は `FramePoint`。
+- **方向**(変位・速度差・上方向など。回転のみで変換)は `FrameDir`。
+- **点と方向を混ぜない。** 原点が動く座標系ではこの取り違えが静かに壊れる —
+  `OverviewCamera` の視点オフセット/パン/上方向はすべて方向であり、点として扱うと座標系を
+  切り替えた瞬間に視点が天体の位置ぶん飛ぶ。
+
+ECI との変換は必ず `Ephemeris.frameTransformAt(frame, t)` が返す `FrameTransform` を経由する
+(`toFramePoint`/`toInertialPoint`/`toFrameDir`/`toInertialDir`/`toFrameState`/`toInertialState`)。
+天体の位置を自分で引き算して座標系を作らない。
+
+天体の静的事実(質量・半径・軌道)の定義元は `physics/solar-system.ts` の `SOLAR_SYSTEM` 、
+表示名と見た目の定義元は `game/celestial/celestial-registry.ts` の `CELESTIAL_VIEWS`。
+**`AttractorId` に対する網羅的 `switch` を新規コードに書かない** — 常にこの2つのレジストリを
+引く鍵として扱う。例外は `solar-system.ts` の `CelestialBodyDef.kind`(恒星/惑星/衛星)に対する
+`switch` で、これは天体の分類がこの3種で閉じているという物理的主張そのものなので、網羅性検査が
+働く方が正しい。
 
 ## 4. `physics/` / `render/` / `game/` の境界
 
