@@ -20,9 +20,10 @@ const STYLE = `
 #hud .mk, #hud .dock-toggle, #hud-chase-reset, #hud-viewbadge .vb-view-btn { user-select: none; }
 /* --- 重なり順: マーカーは実行時に DOM 末尾へ追加されるため z-index を明示しないとパネルの上に出る。
      マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0)
-     マーカー群(0-9) < 常設パネル(10) < ドックビュー(15) < トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー(40)
-     ドックビューは画面全体を占めるビューなので常設パネルを覆うが、トースト・ヒントと
-     システム窓(ヘルプ・ESCメニュー)はその上に出す。 */
+     マーカー群(0-9) < 常設パネル(10) < プロパティウィンドウ(12) < ドックビュー(15) <
+     トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー(40)
+     ドックビューは画面全体を占めるビューなので常設パネル・プロパティウィンドウを覆うが、
+     トースト・ヒントとシステム窓(ヘルプ・ESCメニュー)はその上に出す。 */
 #hud .mk { z-index: 0; }
 #hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-nav, #hud .mk-dir, #hud .mk-boardhit, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
 #hud .mk-ammo { z-index: 2; }

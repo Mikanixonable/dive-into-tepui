@@ -34,11 +34,18 @@ interface PickHandler {
   run(act: MenuAction, target: MapPickable): void;
 }
 
+// 開いているプロパティウィンドウ本体と、開いた時点の対象。rows/items の再導出はこの target
+// (毎フレーム候補列から更新されうる)を経由するので、対象が消滅したかどうかの判定にも使える。
+interface WindowEntry {
+  readonly win: PropertyWindow<MenuAction>;
+  target: MapPickable;
+}
+
 export class MapPicker {
   // 'empty-space' は宇宙空間そのものでプロパティを持たないので、従来どおり ContextMenu を使う。
   private readonly menu = new ContextMenu<MapPickable, MenuAction>();
   // 開いているプロパティウィンドウ。`${kind}:${id}` でオブジェクト1つにつき高々1枚に保つ。
-  private readonly windows = new Map<string, PropertyWindow<MenuAction>>();
+  private readonly windows = new Map<string, WindowEntry>();
   // クリップされていない一時ウィンドウのキー。存在は高々1枚。
   private tempWindowKey: string | null = null;
   private readonly objectListPanel: ObjectListPanel;
@@ -131,12 +138,12 @@ export class MapPicker {
     const key = this.windowKey(target);
     const existing = this.windows.get(key);
     if (existing) {
-      existing.moveTo(clientX, clientY);
-      existing.bringToFront();
+      existing.win.moveTo(clientX, clientY);
+      existing.win.bringToFront();
       return;
     }
-    const w = new PropertyWindow<MenuAction>(clientX, clientY, this.buildContent(target, simTime));
-    this.windows.set(key, w);
+    const w = new PropertyWindow<MenuAction>(this.hud.root, clientX, clientY, this.buildContent(target, simTime));
+    this.windows.set(key, { win: w, target });
     if (!w.clipped) {
       if (this.tempWindowKey !== null) this.closeWindow(this.tempWindowKey);
       this.tempWindowKey = key;
@@ -150,6 +157,16 @@ export class MapPicker {
     };
     w.onClose = () => this.forgetWindow(key);
     w.onOutsideClick = () => { if (!w.clipped) this.closeWindow(key); };
+    // クリップした瞬間に一時ウィンドウの座を明け渡し、逆にクリップを外した瞬間は既存の
+    // 一時ウィンドウ(あれば)を閉じてその座に就く — 「一時ウィンドウは高々1枚」を両方向で保つ。
+    w.onClipChange = (clipped) => {
+      if (clipped) {
+        if (this.tempWindowKey === key) this.tempWindowKey = null;
+      } else {
+        if (this.tempWindowKey !== null && this.tempWindowKey !== key) this.closeWindow(this.tempWindowKey);
+        this.tempWindowKey = key;
+      }
+    };
   }
 
   // windows/tempWindowKey のキー。kind をまたいで id が衝突しないよう種別込みにする。
@@ -165,9 +182,9 @@ export class MapPicker {
 
   // ✕ ボタン以外の経路(対象消滅・ビュー離脱・一時ウィンドウの入れ替わり)で閉じる。
   private closeWindow(key: string): void {
-    const w = this.windows.get(key);
-    if (!w) return;
-    w.dispose();
+    const entry = this.windows.get(key);
+    if (!entry) return;
+    entry.win.dispose();
     this.forgetWindow(key);
   }
 
@@ -181,18 +198,35 @@ export class MapPicker {
   }
 
   // 軌道オブジェクトウィンドウの表示状態をマップ視点かどうかと合わせて反映し、開いている
-  // 全プロパティウィンドウの値を最新化する。対象が今フレームの候補列から消えていれば
-  // (撃破・回収・削除)閉じる。
+  // 全プロパティウィンドウの値を最新化する。対象そのものが消滅していれば(撃破・回収・削除)
+  // 閉じる — 未来ゴースト時刻で位置が求まらないだけのフレーム(displayState が null)は
+  // 候補列(this.items)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
   sync(overviewMode: boolean, simTime: number, bodies: readonly Attractor[], player: Player | null): void {
     const visible = overviewMode && this.objectListVisible;
     this.objectListPanel.setVisible(visible);
     if (visible) this.objectListPanel.sync(this.items, this.cameraSystem.overviewCamera.focus);
 
     const byKey = new Map(this.items.map((i) => [this.windowKey(i), i]));
-    for (const key of [...this.windows.keys()]) {
-      const target = byKey.get(key);
-      if (!target) { this.closeWindow(key); continue; }
-      this.windows.get(key)!.syncRows(this.buildRows(target, bodies, player, simTime));
+    for (const [key, entry] of [...this.windows]) {
+      if (this.isTargetGone(entry.target)) { this.closeWindow(key); continue; }
+      // 候補列に載っていれば最新の位置を反映し、載っていなければ開いた時点の対象のまま
+      // 据え置く(rows の導出はどの種別も実体の state を直接読むので、位置の鮮度は無関係)。
+      entry.target = byKey.get(key) ?? entry.target;
+      entry.win.syncRows(this.buildRows(entry.target, bodies, player, simTime));
+      entry.win.syncItems(this.windowItems(entry.target, simTime));
+    }
+  }
+
+  // ウィンドウの対象そのものが消滅したかどうか。生きている実体を指す種別は alive を直接見て、
+  // 未来ゴースト時刻で位置が求まらないだけの休止フレームでは閉じないようにする。それ以外の
+  // 種別(天体・アプシス・AN/DN)は実体を持たないので、候補列に載っているかで判定する。
+  private isTargetGone(target: MapPickable): boolean {
+    switch (target.kind) {
+      case 'player': return !(this.entities.findPlayer(target.id)?.alive ?? false);
+      case 'ship': return !(this.entities.enemies.find((e) => e.name === target.id)?.alive ?? false);
+      case 'ammo': return !(this.entities.ammos.find((a) => a.id === target.id)?.alive ?? false);
+      case 'base': return !(this.entities.findBase(target.id)?.alive ?? false);
+      default: return !this.items.some((i) => this.windowKey(i) === this.windowKey(target));
     }
   }
 
@@ -293,8 +327,7 @@ export class MapPicker {
     'eqnode': {
       itemsFor: (target, simTime) => {
         const eqTime = target.time;
-        const isMoon = target.id.endsWith('Moon');
-        const prefix = isMoon ? '月' : '';
+        const prefix = this.eqNodeCenterIsMoon(target, simTime) ? '月' : '';
         const isAn = target.id.startsWith('eqAn');
         const eqLabel = `${prefix}赤道${isAn ? '昇' : '降'}交点 (${isAn ? 'EqAN' : 'EqDN'})`;
         const eqSubLabel = eqTime !== undefined ? `到達まで T+${fmtTime(eqTime - simTime)}` : undefined;
@@ -460,14 +493,24 @@ export class MapPicker {
   }
 
   // itemsFor の出力をプロパティウィンドウの形へ組み替える: header 項目はタイトル/サブタイトルへ
-  // 抜き出し、残りをそのまま操作項目として引き継ぐ(増減しない)。
+  // 抜き出す。操作項目自体は windowItems へ委ね、開いた直後から sync 時と同じ経路で求める。
   private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
-    const menuItems = this.itemsFor(target, simTime);
-    const header = menuItems.find((it) => it.type === 'header');
-    const items: PropertyWindowItem<MenuAction>[] = menuItems
+    const header = this.itemsFor(target, simTime).find((it) => it.type === 'header');
+    return {
+      title: header?.label ?? target.name,
+      subtitle: header?.subLabel,
+      rows: [],
+      items: this.windowItems(target, simTime),
+    };
+  }
+
+  // 操作項目は操作対象か・追従状態・航法ターゲットかなどの可変な状態に依存するため、開いた
+  // 瞬間だけでなく sync のたびにも呼び直す(PropertyWindow.syncItems 側で変化が無ければ
+  // DOM には触れない)。header 項目はタイトル側で扱うのでここには含めない。
+  private windowItems(target: MapPickable, simTime: number): PropertyWindowItem<MenuAction>[] {
+    return this.itemsFor(target, simTime)
       .filter((it) => it.type !== 'header' && it.act !== undefined)
-      .map((it) => ({ label: it.label, act: it.act as MenuAction }));
-    return { title: header?.label ?? target.name, subtitle: header?.subLabel, rows: [], items };
+      .map((it) => ({ label: it.label, act: it.act as MenuAction, shortcut: it.shortcut }));
   }
 
   // 種別ごとのプロパティ行。値の導出は sync フェーズで毎フレーム呼び直す(表示専用のため)。
@@ -605,10 +648,17 @@ export class MapPicker {
   private nodeRows(target: MapPickable, simTime: number): PropertyRow[] {
     const targetName = target.kind === 'relnode'
       ? (this.navTarget.name ?? '対象')
-      : (target.id.endsWith('Moon') ? '月' : '地球');
+      : (this.eqNodeCenterIsMoon(target, simTime) ? '月' : '地球');
     const rows: PropertyRow[] = [{ key: 'target', label: '対象', value: targetName }];
     if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
     return rows;
+  }
+
+  // 赤道交点アイコンの id(常に 'eqAn'/'eqDn')は中心天体を持たないので、アイコン位置で
+  // 最も強く引く天体(strongestAttractor)から地球/月を判定する。交点は必ずその天体の
+  // 軌道上にあるので、位置から逆算すれば元の判定と一致する。
+  private eqNodeCenterIsMoon(target: MapPickable, simTime: number): boolean {
+    return strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id === 'moon';
   }
 
   private runBodyShip(act: MenuAction, target: MapPickable): void {
