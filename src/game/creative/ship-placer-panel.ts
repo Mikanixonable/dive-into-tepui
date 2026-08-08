@@ -157,7 +157,9 @@ function sliderField(root: HTMLElement, label: string, defaultValue: number, ste
   };
   input.addEventListener('input', syncSliderFromInput);
   slider.addEventListener('input', () => {
-    input.value = String(fromT(Number(slider.value) / 1000));
+    // 入力欄の刻みへ丸めてから書き戻す。高度スライダーは書き戻した値を次のドラッグの基準に
+    // 取り直すので、丸めないと端数がドラッグのたびに積み上がる。
+    input.value = String(Math.round(fromT(Number(slider.value) / 1000) / step) * step);
   });
 
   return {
@@ -181,7 +183,7 @@ function sliderField(root: HTMLElement, label: string, defaultValue: number, ste
 
 // 角度スライダー(i/Ω/ω/ν): 0..rangeDeg の線形対応、45度ごとに目盛りを表示する。
 function bindAngleSlider(field: SliderRow, rangeDeg: number): void {
-  field.setMapping((v) => v / rangeDeg, (t) => Math.round(t * rangeDeg));
+  field.setMapping((v) => v / rangeDeg, (t) => t * rangeDeg);
   const tickCount = rangeDeg / 45 + 1;
   field.setTicks(Array.from({ length: tickCount }, (_, i) => `${i * 45}°`));
 }
@@ -192,8 +194,10 @@ function altitudeMultiplier(tOffset: number): number {
   return tOffset <= 0 ? 1 + tOffset : Math.pow(2, 2 * tOffset);
 }
 
-// 除算に使う基準値の下限(km)。基準が 0(近地点高度0など)でも 0 除算にならないための床。
-const ALTITUDE_REF_FLOOR_KM = 1e-3;
+// 高度の基準値の下限(km)。基準はスライダーの可動範囲そのものなので、値が 0 まで下がった
+// ときに 0 を基準にすると倍率をいくら掛けても 0 のままになり、二度と操作で戻せなくなる。
+// 一度のドラッグでこの4倍まで戻せる高度を床に置く。
+const ALTITUDE_REF_FLOOR_KM = 100;
 
 // 高度スライダー(Ap/Pe): ドラッグ開始時点の値を基準の100%としてスライダー中央に据え、
 // ドラッグが終わるたびにそのときの値を新しい基準に取り直してつまみを中央へ戻す
