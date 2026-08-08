@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
-import { OrbitEntity } from '../../physics/orbit-entity';
+import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { StateQueue } from '../../physics/state-queue';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Attractor, AttractorId, orbitalElementsOf, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
@@ -21,13 +21,13 @@ const identityAttitude = (): Attitude => ({
 // 軌道上を運動するゲーム内エンティティの基底。mesh・HP・生死・姿勢・AI といったゲーム側の
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
 export class GameEntity {
-  readonly current: OrbitEntity;
+  readonly actualTrajectory: DynamicTrajectory;
 
-  get state(): KinematicState { return this.current.state; }
+  get state(): KinematicState { return this.actualTrajectory.state; }
   // 不連続な差し替え専用の口(剛体接触・反動など)。
-  set state(s: KinematicState) { this.current.reset(s); }
-  get prevState(): KinematicState { return this.current.prevState; }
-  get history(): StateQueue { return this.current.history; }
+  set state(s: KinematicState) { this.actualTrajectory.reset(s); }
+  get prevState(): KinematicState { return this.actualTrajectory.prevState; }
+  get history(): StateQueue { return this.actualTrajectory.history; }
 
   // orbitalElementsAround(center) のメモ。state の参照同一性(KinematicState は不変で step ごとに
   // 新しい参照へ差し替わる)と center.id で無効化する。
@@ -53,14 +53,14 @@ export class GameEntity {
   protected readonly scene?: THREE.Scene;
 
   // 未来の予測列。
-  private _predicted: OrbitEntity | null = null;
-  get predicted(): OrbitEntity | null { return this._predicted; }
+  private _predictedTrajectory: DynamicTrajectory | null = null;
+  get predictedTrajectory(): DynamicTrajectory | null { return this._predictedTrajectory; }
   // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。
   private truncated = false;
 
   // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
   constructor(state: KinematicState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
-    this.current = new OrbitEntity(state);
+    this.actualTrajectory = new DynamicTrajectory(state);
     this.att = att;
     this.obj = obj;
     this.scene = scene;
@@ -82,20 +82,20 @@ export class GameEntity {
   protected sampleInterval(attractors: readonly Attractor[], state: KinematicState, keepDuration: number): number {
     const period = localOrbitPeriod(state.r, attractors);
     const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
-    return Math.max(span / C.PREDICT_SAMPLES_PER_REV, keepDuration / C.PREDICT_MAX_SAMPLES);
+    return Math.max(span / C.TRAJECTORY_SAMPLES_PER_REV, keepDuration / C.PREDICT_MAX_SAMPLES);
   }
 
   // 全天体重力 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。このステップぶんの重力源は
   // 中点(t + dt/2)で1回だけ引く — attractorsAt は同一時刻の呼び出しを前提にメモ化されて
   // いるので、1ステップの中で別の時刻を引くとメモが効かなくなる。historyDuration が 0
   // (弾・薬莢・破片)の間は間引き間隔を使わないので sampleInterval を評価しない。
-  stepSim(dt: number, ephemeris: Ephemeris): void {
+  stepActual(dt: number, ephemeris: Ephemeris): void {
     if (!this.alive) return;
     const attractors = ephemeris.attractorsAt(this.state.t + dt / 2);
     const interval = this.historyDuration > 0
       ? this.sampleInterval(attractors, this.state, this.historyDuration)
       : 0;
-    this.current.step(dt, attractors, this.bcInv, this.thrust, interval, this.historyDuration);
+    this.actualTrajectory.step(dt, attractors, this.bcInv, this.thrust, interval, this.historyDuration);
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
@@ -106,14 +106,14 @@ export class GameEntity {
 
   // 予測列を破棄する。
   invalidatePrediction(): void {
-    this._predicted = null;
+    this._predictedTrajectory = null;
   }
 
   // 実状態との位置ずれが許容量を超えていたら予測列を破棄する。破棄したら true。
   // attractors は simTime の重力源一覧、horizon は予測している長さ [s]。
   resyncPrediction(simTime: number, attractors: readonly Attractor[], horizon: number): boolean {
-    if (this._predicted === null) return false;
-    const predictedState = this._predicted.at(simTime);
+    if (this._predictedTrajectory === null) return false;
+    const predictedState = this._predictedTrajectory.at(simTime);
     if (predictedState !== null
       && len(sub(predictedState.r, this.state.r)) <= this.resyncTolerance(attractors, horizon)) {
       return false;
@@ -128,22 +128,22 @@ export class GameEntity {
   private resyncTolerance(attractors: readonly Attractor[], horizon: number): number {
     const period = localOrbitPeriod(this.state.r, attractors);
     const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
-    const coarsening = Math.max(1, (horizon / C.PREDICT_MAX_SAMPLES) / (span / C.PREDICT_SAMPLES_PER_REV));
+    const coarsening = Math.max(1, (horizon / C.PREDICT_MAX_SAMPLES) / (span / C.TRAJECTORY_SAMPLES_PER_REV));
     return Math.max(C.PREDICT_RESET_DIST, C.PREDICT_SAMPLE_ERROR * coarsening ** 4);
   }
 
   // 予測列の先端を、呼び出し側が確定させた重力源 attractors のもとで dt ぶん1ステップ伸ばす。
   // horizon は simTime から先に予測する長さ [s]。伸ばせなかったら false。
-  stepPrediction(attractors: readonly Attractor[], simTime: number, dt: number, horizon: number): boolean {
+  stepPredicted(attractors: readonly Attractor[], simTime: number, dt: number, horizon: number): boolean {
     if (!this.predictsFuture) return false;
     // 自由飛行前提の予測は噴射中に成立しないので、推力がかかっている間は伸ばさない。
     if (this.thrust !== null) return false;
-    if (this._predicted === null) {
-      this._predicted = new OrbitEntity(this.current.state);
+    if (this._predictedTrajectory === null) {
+      this._predictedTrajectory = new DynamicTrajectory(this.actualTrajectory.state);
       this.truncated = false;
     }
     if (this.truncated) return false;
-    const p = this._predicted;
+    const p = this._predictedTrajectory;
 
     // ホライズン時刻ちょうどを at() で引けるよう、先端は必ずホライズンを1ステップぶん
     // 越えたところまで伸ばす。
@@ -162,7 +162,7 @@ export class GameEntity {
 
   // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。
   displayState(t: number): KinematicState | null {
-    return t <= this.current.state.t ? this.current.at(t) : (this._predicted?.at(t) ?? null);
+    return t <= this.actualTrajectory.state.t ? this.actualTrajectory.at(t) : (this._predictedTrajectory?.at(t) ?? null);
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。

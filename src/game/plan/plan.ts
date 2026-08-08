@@ -21,7 +21,7 @@ export function orbitPeriodOf(state: KinematicState, attractors: readonly Attrac
 
 // ある状態を起点に描かれる区間の長さ [s]。その状態の遷移後軌道の公転周期を参照期間として
 // DisplayTimeManager の表示期間を引く。ノードを置ける時刻範囲(nodeTimeRange)と描かれる
-// 折れ線の長さ(plan-trajectory.ts の buildSegments)は必ずこの値を共有する — 両者が
+// 折れ線の長さ(plan-path.ts の buildSegments)は必ずこの値を共有する — 両者が
 // 別々に定義すると描画範囲とノード配置可能範囲がずれる。
 export function segmentDurationFrom(
   state0: KinematicState,
