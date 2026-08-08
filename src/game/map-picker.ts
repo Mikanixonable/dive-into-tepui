@@ -276,7 +276,7 @@ export class MapPicker {
       run: (act) => {
         if (act === 'openShipPlacer') {
           if ((this.game.activeStage as any).stageId === 'creative') {
-            (this.game.activeStage as any).openShipPlacer();
+            (this.game.activeStage as any).openShipPlacer(this.game.cameraSystem.overviewCamera.focus);
           }
         } else if (act === 'openObjectList') {
           this.objectListVisible = true;
