@@ -192,6 +192,34 @@ export class MapPicker {
     this.forgetWindow(key);
   }
 
+  // 左クリック位置の最寄りの自機・基地を選択する: 自機なら操作対象に、基地なら選択状態にする。
+  // 当たらなければ消費せず、PlanEditor のノード配置/選択解除に読み進める(呼び出し側が
+  // editor.handleMapPointer より先に呼ぶことで、マーカーへの命中をノード配置より優先する)。
+  handleLeftClick(input: Input): void {
+    input.takeClicks((p) => {
+      const candidates = this.items.filter((i) => i.kind === 'player' || i.kind === 'base');
+      const target = pickNearest(candidates, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ);
+      if (!target) return false;
+      this.selectPickable(target);
+      return true;
+    });
+  }
+
+  // 選択操作の実体。
+  private selectPickable(target: MapPickable): void {
+    if (target.kind === 'player') {
+      const ship = this.entities.findPlayer(target.id);
+      if (!ship) return;
+      this.game.setActivePlayer(ship);
+      this.hud.hint(`${target.name} を操作対象に設定`);
+    } else if (target.kind === 'base') {
+      const base = this.entities.findBase(target.id);
+      if (!base) return;
+      this.docking?.selectBase(base);
+      this.hud.hint(`${target.name} を選択`);
+    }
+  }
+
   // 何も当たらなかった場合、「空域」として扱う（他のハンドラの後に呼ぶ）。
   handleEmptySpaceRightClick(input: Input, simTime: number): void {
     input.takeRightClicks((p) => {
