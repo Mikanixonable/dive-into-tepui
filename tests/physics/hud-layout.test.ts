@@ -15,4 +15,22 @@ export function register(): void {
       { x: 6, y: 6 },
     );
   });
+
+  test('hud layout: dragged property window position stays clamped after a viewport shrink', () => {
+    const overlay = { width: 220, height: 160 };
+    // ヘッダドラッグでウィンドウ端まで動かした状態を模する。
+    const draggedInWideViewport = clampOverlayPosition(
+      { x: 900, y: 500 },
+      overlay,
+      { width: 1000, height: 600 },
+    );
+    assert.deepEqual(draggedInWideViewport, { x: 774, y: 434 });
+    // window.resize でビューポートが縮んだあと、同じ座標を再クランプする。
+    const reclampedAfterShrink = clampOverlayPosition(
+      draggedInWideViewport,
+      overlay,
+      { width: 400, height: 300 },
+    );
+    assert.deepEqual(reclampedAfterShrink, { x: 174, y: 134 });
+  });
 }
