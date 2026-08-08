@@ -205,6 +205,18 @@ export class MapPicker {
     });
   }
 
+  // ダブルクリック位置の最寄りの被選択物へフォーカスを移す。種別を問わず候補列全体から探す
+  // (プロパティウィンドウの「フォーカスを移動」項目と同じ操作を、より速い経路で提供する)。
+  handleDoubleClick(input: Input): void {
+    input.takeDoubleClicks((p) => {
+      const target = pickNearest(this.items, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ);
+      if (!target) return false;
+      this.cameraSystem.overviewCamera.setFocus(target.id);
+      this.hud.hint(`${target.name} にフォーカス`);
+      return true;
+    });
+  }
+
   // 基地側は selectBase のみ呼び、ドックビューへの遷移はしない — 選択とドックへ入る操作
   // (activate)を分けて、選択だけでは画面が切り替わらないようにする。
   private selectPickable(target: MapPickable): void {
