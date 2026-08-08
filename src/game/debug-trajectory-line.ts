@@ -9,6 +9,7 @@
 // デバッグ表示のパターン)。無効時は SampledLine を1本も作らない。
 import * as THREE from 'three/webgpu';
 import { ReferenceFrame } from '../physics/frame';
+import { KinematicState } from '../physics/kinematic-state';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from './floating-origin';
 import { SampledLine, ScaleAtFn } from '../render/sampled-line';
@@ -17,9 +18,20 @@ import { EntityLineSet } from './entity-line-set';
 
 const LINE_COLOR = 0x40e0ff;
 
+// 過去列・未来列それぞれの直近の参照と、それらを連結した結果を紐付けて憶える。連結先の
+// SampledLine.syncGeometry は samples の参照同一性で再 bake を抑制するため、
+// DynamicTrajectory.samplesOldestFirst() 自体が変わっていない毎フレームは spread で新しい
+// 配列を作らずこのキャッシュを返す。
+type ConcatCache = {
+  current: readonly KinematicState[];
+  predicted: readonly KinematicState[];
+  combined: readonly KinematicState[];
+};
+
 export class DebugTrajectoryLine {
   readonly enabled: boolean;
   private readonly lines: EntityLineSet;
+  private readonly concatCache = new Map<GameEntity, ConcatCache>();
 
   // ?debugLines=1 の指定を読み取り enabled を確定する。
   constructor(scene: THREE.Scene) {
@@ -49,11 +61,19 @@ export class DebugTrajectoryLine {
           predictedSamples = [];
         }
       }
-      const samples = [...currentSamples, ...predictedSamples];
+      const cached = this.concatCache.get(entity);
+      const samples = cached && cached.current === currentSamples && cached.predicted === predictedSamples
+        ? cached.combined
+        : [...currentSamples, ...predictedSamples];
+      this.concatCache.set(entity, { current: currentSamples, predicted: predictedSamples, combined: samples });
       line.syncGeometry(samples, frame, ephemeris, scale);
       line.syncTransform(frame, simTime, ephemeris, fo);
       line.setVisible(true);
     }
-    this.lines.pruneTo(new Set(targets));
+    const alive = new Set(targets);
+    this.lines.pruneTo(alive);
+    for (const entity of this.concatCache.keys()) {
+      if (!alive.has(entity)) this.concatCache.delete(entity);
+    }
   }
 }
