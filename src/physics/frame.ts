@@ -20,7 +20,7 @@ import { Quat, qInvert, qRotate } from './attitude';
 // 座標系 = 「どの天体を原点に置くか」×「どの天体の公転に合わせて回すか(null = 回さない)」。
 // 値は必ず FRAMES の要素を参照する — リテラルで組むと参照同一性が崩れ、sampled-line.ts の
 // `frame === lastFrame` によるキャッシュ判定が毎フレーム外れて描画が無駄に重くなる。
-export type Frame = {
+export type ReferenceFrame = {
   readonly center: AttractorId;
   readonly rotatingWith: OrbitingId | null;
 };
@@ -37,9 +37,9 @@ function rotatingFrameCenterOf(id: AttractorId): AttractorId {
 // SOLAR_SYSTEM から生成した正準インスタンス。全天体の慣性系(center=X, rotatingWith=null)と、
 // 公転している全天体(恒星以外)ぶんの回転系。天体を1つ増やすと、このリストは手を加えずに
 // 増える。
-export const FRAMES: readonly Frame[] = (() => {
+export const FRAMES: readonly ReferenceFrame[] = (() => {
   const ids = Object.keys(SOLAR_SYSTEM) as AttractorId[];
-  const frames: Frame[] = ids.map((id) => ({ center: id, rotatingWith: null }));
+  const frames: ReferenceFrame[] = ids.map((id) => ({ center: id, rotatingWith: null }));
   for (const id of ids) {
     if (bodyDef(id).kind === 'star') continue;
     frames.push({ center: rotatingFrameCenterOf(id), rotatingWith: id as OrbitingId });
@@ -48,7 +48,7 @@ export const FRAMES: readonly Frame[] = (() => {
 })();
 
 // 地球中心慣性系。ECI そのものを表す座標系として、UI・描画側の既定値に使う。
-export const INERTIAL_FRAME: Frame = FRAMES.find((f) => f.center === 'earth' && f.rotatingWith === null)!;
+export const INERTIAL_FRAME: ReferenceFrame = FRAMES.find((f) => f.center === 'earth' && f.rotatingWith === null)!;
 
 // Frame の時刻 t における剛体運動。origin/originVel は ECI での原点の位置・速度、
 // q は「座標系相対 → ECI」の姿勢、omega は ECI 成分の角速度。回転軸が時刻とともに向きを

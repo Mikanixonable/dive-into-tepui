@@ -1,9 +1,9 @@
 // 自機を画面中心に置く戦闘視点。ChaseCamera(三人称軌道視点)と GunsightCamera(照準ズーム視点)を
-// zoomActive で切り替えて駆動し、両者が view に持つ定常 FOV へ自身の view.fovDeg を指数関数的に
-// 近づけるアニメーションを担う(FOV アニメーション自体は両カメラの責務にしない — 今後増える
-// 視点種別も view.fovDeg を持つだけで済むようにするため)。camFollowAttitude(視点の基準フレーム
-// 切り替え)とその判断は ChaseCamera が持つ — CombatCameraSystem は [G]キーの受け口として
-// toggleFollowAttitude() を転送するだけ。
+// zoomActive で切り替えて駆動し、両者が viewpoint に持つ定常 FOV へ自身の viewpoint.fovDeg を
+// 指数関数的に近づけるアニメーションを担う(FOV アニメーション自体は両カメラの責務にしない —
+// 今後増える視点種別も viewpoint.fovDeg を持つだけで済むようにするため)。camFollowAttitude
+// (視点の基準フレーム切り替え)とその判断は ChaseCamera が持つ — CombatCameraSystem は [G]キーの
+// 受け口として toggleFollowAttitude() を転送するだけ。
 import * as THREE from 'three/webgpu';
 import { v3 } from '../../physics/vec3';
 import { Input, MouseDelta } from '../input/input';
@@ -12,14 +12,14 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { Player } from '../player/player';
-import { ViewFrame } from '../../physics/projection';
+import { Viewpoint } from '../../physics/projection';
 import { ChaseCamera } from './chase-camera';
 import { GunsightCamera } from './gunsight-camera';
 
-// current から target へ、fovDeg だけを指数的に近づけた ViewFrame を返す(position/lookTarget/up/
+// current から target へ、fovDeg だけを指数的に近づけた Viewpoint を返す(position/lookTarget/up/
 // aspect はアニメーションせず target の値をそのまま採用する — カメラの向き自体は毎フレーム
 // 追従してよく、揺れて見えるのは FOV だけで十分なため)。
-function lerpViewFrameFov(current: ViewFrame, target: ViewFrame, dt: number): ViewFrame {
+function lerpViewpointFov(current: Viewpoint, target: Viewpoint, dt: number): Viewpoint {
   const k = 1 - Math.exp(-C.ZOOM_LERP_RATE * dt);
   return { ...target, fovDeg: current.fovDeg + (target.fovDeg - current.fovDeg) * k };
 }
@@ -36,7 +36,7 @@ export class CombatCameraSystem {
   readonly gunsightCamera = new GunsightCamera();
   zoomActive = false;
 
-  view: ViewFrame = {
+  viewpoint: Viewpoint = {
     position: v3(),
     up: v3(0, 1, 0),
     lookTarget: v3(),
@@ -68,14 +68,14 @@ export class CombatCameraSystem {
   }
 
   // ズーム状態を入力から求め、現在のモード(通常/ズーム)に応じて ChaseCamera/GunsightCamera の
-  // どちらかを駆動して目標 ViewFrame を求め、fovDeg だけをそこへ指数的に近づけて view とする。
+  // どちらかを駆動して目標 Viewpoint を求め、fovDeg だけをそこへ指数的に近づけて viewpoint とする。
   update(mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number, player: Player | null, input: Input): void {
     this.zoomActive = input.down(K.gunsightZoom);
     // 機体死亡中はズーム要求を無視して常に追跡視点へ戻す(照準先が失われているため)。
     const useGunsight = player?.alive === true && this.zoomActive;
     if (useGunsight) this.gunsightCamera.update(player);
     else this.chaseCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt);
-    const target = useGunsight ? this.gunsightCamera.view : this.chaseCamera.view;
-    this.view = lerpViewFrameFov(this.view, target, dt);
+    const target = useGunsight ? this.gunsightCamera.viewpoint : this.chaseCamera.viewpoint;
+    this.viewpoint = lerpViewpointFov(this.viewpoint, target, dt);
   }
 }

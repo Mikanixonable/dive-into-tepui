@@ -4,10 +4,10 @@ import { addScaled, norm, v3 } from '../../physics/vec3';
 import { qRotate } from '../../physics/attitude';
 import * as C from '../const';
 import { Player } from '../player/player';
-import { ViewFrame } from '../../physics/projection';
+import { Viewpoint } from '../../physics/projection';
 
 export class GunsightCamera {
-  view: ViewFrame = {
+  viewpoint: Viewpoint = {
     position: v3(),
     up: v3(0, 1, 0),
     lookTarget: v3(),
@@ -15,12 +15,12 @@ export class GunsightCamera {
     aspect: window.innerWidth / window.innerHeight,
   };
 
-  // 機体姿勢のみから視点を求め、view へ書き戻す。
+  // 機体姿勢のみから視点を求め、viewpoint へ書き戻す。
   update(player: Player): void {
     const boreFwd = qRotate(player.att.q, v3(0, 0, 1));
     const boreUp = qRotate(player.att.q, v3(0, 1, 0));
     const center = player.state.r;
-    this.view = {
+    this.viewpoint = {
       position: center,
       up: norm(boreUp),
       lookTarget: addScaled(center, norm(boreFwd), 1000),

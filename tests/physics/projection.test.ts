@@ -2,12 +2,12 @@
 // 同じ基底構築・透視除算になっていることを、手計算できる配置で検証する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { ndcToScreen, projectToNdc, ViewFrame } from '../../src/physics/projection';
+import { ndcToScreen, projectToNdc, Viewpoint } from '../../src/physics/projection';
 import { v3 } from '../../src/physics/vec3';
 
 export function register(): void {
   // forward = +Z, up = +Y, fov=90deg(tanHalf=1) の単純な視点。
-  const view: ViewFrame = {
+  const view: Viewpoint = {
     position: v3(0, 0, 0),
     lookTarget: v3(0, 0, 1),
     up: v3(0, 1, 0),
@@ -37,7 +37,7 @@ export function register(): void {
   });
 
   test('projection: wider aspect shrinks the same horizontal offset in NDC', () => {
-    const wide: ViewFrame = { ...view, aspect: 2 };
+    const wide: Viewpoint = { ...view, aspect: 2 };
     const p = projectToNdc(wide, v3(10, 0, 10));
     assert.ok(Math.abs(p.x - -0.5) < 1e-9, `x: ${p.x}`);
   });
