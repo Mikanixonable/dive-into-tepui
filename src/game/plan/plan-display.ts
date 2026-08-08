@@ -1,13 +1,13 @@
 // 軌道計画の姿の表示: 計画折れ線(PlanPath)の駆動、表示座標系(planFrame)、
 // 表示時刻の計画上の自機位置ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
-import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/elements';
+import { positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/elements';
 import { Vec3, len, sub } from '../../physics/vec3';
-import { orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
+import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
+import { isOccluded } from '../../physics/occlusion';
 import { ReferenceFrame, INERTIAL_FRAME, frameKinematicState, toFrameState, toInertialState } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
-import { ATTRACTOR_NAMES } from '../hud/frame-labels';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
@@ -22,11 +22,6 @@ import type { DisplayTimeManager } from '../display-time-manager';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {
-  readonly label: string;
-}
-
-// 赤道交点アイコン
-interface EqNodeIcon extends MapPickable {
   readonly label: string;
 }
 
@@ -56,12 +51,13 @@ export class PlanDisplay {
   private readonly panel: HTMLElement;
   private readonly frame: SegmentedControl<ReferenceFrame>;
   private apsisIcons: readonly ApsisIcon[] = [];
-  private eqNodeIcons: readonly EqNodeIcon[] = [];
   private impactIcons: readonly ImpactIcon[] = [];
   private dayTickIcons: readonly DayTickIcon[] = [];
   private lastDayTickCount = 0;
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
   private plan: Plan | null = null;
+  // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
+  private attractors: readonly Attractor[] = [];
 
   // 計画折れ線(PlanPath)と TRAJECTORY パネルの DOM を構築する。
   constructor(
@@ -94,30 +90,31 @@ export class PlanDisplay {
     if (!show) {
       this.ghost = null;
       this.apsisIcons = [];
-      this.eqNodeIcons = [];
       this.impactIcons = [];
       this.dayTickIcons = [];
       return;
     }
+    this.attractors = this.ephemeris.attractorsAt(displayTime);
     this.path.update(plan, this.ephemeris, this.planFrame, simTime);
     this.ghost = this.ghostAt(plan, displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
-    this.eqNodeIcons = this.eqNodeIconsOf();
     this.impactIcons = this.impactIconsOf();
     this.dayTickIcons = this.dayTickIconsOf();
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。
   // TRAJECTORY パネルは表示座標系を選ぶ操作 UI なので、操作を受け付けるときだけ showPanel で出す。
-  sync(fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, showPanel: boolean): void {
+  sync(
+    fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, showPanel: boolean,
+    overviewMode: boolean, cameraPos: Vec3,
+  ): void {
     // ノードの無い計画は自機の現在軌道そのものを描くだけで情報を持たないので、折れ線は隠す。
     // path.sync 自体はノードの有無に関わらず毎フレーム呼ぶ — 画面判定に使う project を
     // 毎フレーム更新しておかないと、クリック当たり判定が古い視点のまま行われてしまう。
     this.path.setVisible((this.plan?.nodes.length ?? 0) > 0);
-    this.path.sync(fo, project, scale);
+    this.path.sync(fo, project, scale, cameraPos);
     this.syncGhost(project);
-    this.syncApsisMarkers(project);
-    this.syncEqNodeMarkers(project);
+    this.syncApsisMarkers(project, overviewMode, cameraPos);
     this.syncImpactMarkers(project);
     this.syncDayTickMarkers(project);
     this.panel.style.display = showPanel ? 'block' : 'none';
@@ -130,17 +127,15 @@ export class PlanDisplay {
     this.markerManager.hide('plannedPlayer');
     this.markerManager.hide('apsisPe');
     this.markerManager.hide('apsisAp');
-    this.markerManager.hide('eqAn');
-    this.markerManager.hide('eqDn');
     for (const key of IMPACT_MARKER_KEYS) this.markerManager.hide(key);
     for (let i = 0; i < this.lastDayTickCount; i++) this.markerManager.hide(`planDayTick${i}`);
     this.lastDayTickCount = 0;
     this.panel.style.display = 'none';
   }
 
-  // 近地点・遠地点アイコンおよび赤道交点の右クリック候補(非表示中は空)。
+  // 近地点・遠地点アイコンの右クリック候補(非表示中は空)。
   get apsisMarkers(): readonly MapPickable[] {
-    return [...this.apsisIcons, ...this.eqNodeIcons];
+    return this.apsisIcons;
   }
 
   // アプシスアイコン id に対応する通過時刻。アイコンが出ていない id では null。
@@ -233,43 +228,6 @@ export class PlanDisplay {
     return icons;
   }
 
-  // 最後のバーン後の軌道が中心天体の赤道面を横切る点(昇交点・降交点)のアイコンを、その
-  // 軌道要素から解析的に求める。赤道面の法線は中心天体自身が持つ実際の自転軸(`Attractor.degree2.pole`
-  // — J2 計算が使っているのと同じ値)を使う。太陽・木星のように degree2 が無い(自転軸をモデル化
-  // していない)天体では出さない。軌道面が赤道面とほぼ一致するときも空。
-  private eqNodeIconsOf(): readonly EqNodeIcon[] {
-    const state0 = this.path.finalSegmentStart;
-    if (!state0 || !this.plan) return [];
-    const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
-    const eqNormal = center.degree2?.pole;
-    if (!eqNormal) return [];
-    const tf = frameOfAttractor(center);
-    const relative = toFrameState(tf, state0);
-    const el = orbitalElementsOf(state0, center);
-    if (!el) return [];
-
-    const nodes = nodeAnomalies(el, eqNormal);
-    if (!nodes) return [];
-
-    const eqPosition = (nu: number): { pos: Vec3, time: number } => {
-      const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
-      const t = state0.t + (isFinite(dt) ? dt : 0);
-      const relativeState = frameKinematicState(positionOnOrbit(el, nu), relative.v);
-      return {
-        pos: this.path.toDisplay(toInertialState(tf, t, relativeState).r, t),
-        time: t
-      };
-    };
-
-    const an = eqPosition(nodes.asc);
-    const dn = eqPosition(nodes.desc);
-    const centerName = ATTRACTOR_NAMES[center.id];
-    return [
-      { id: `${center.id}-eqan`, name: `${centerName}赤道昇交点`, kind: 'eqnode', pos: an.pos, time: an.time, label: 'EqAN' },
-      { id: `${center.id}-eqdn`, name: `${centerName}赤道降交点`, kind: 'eqnode', pos: dn.pos, time: dn.time, label: 'EqDN' },
-    ];
-  }
-
   // 天体衝突が検出された地点(区間ごとに高々1つ)。その地点で最も強く引く天体の表面からの
   // 高度をラベルに添える。
   private impactIconsOf(): readonly ImpactIcon[] {
@@ -294,24 +252,17 @@ export class PlanDisplay {
     });
   }
 
-  // ◇ アプシスアイコンを update が求めた位置に置き、出ていないものを隠す。
-  private syncApsisMarkers(project: ProjectFn): void {
+  // ◇ アプシスアイコンを update が求めた位置に置き、出ていないもの・マップビューで天体に
+  // 遮蔽されているものを隠す。
+  private syncApsisMarkers(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
     for (const key of ['apsisPe', 'apsisAp'] as const) {
       const icon = this.apsisIcons.find((m) => m.id === key);
-      if (icon) this.markerManager.setPosition(key, 'mk-apsis', '◇', icon.pos, project, icon.label);
-      else this.markerManager.hide(key);
+      if (icon && !(overviewMode && isOccluded(cameraPos, icon.pos, this.attractors))) {
+        this.markerManager.setPosition(key, 'mk-apsis', '◇', icon.pos, project, icon.label);
+      } else {
+        this.markerManager.hide(key);
+      }
     }
-  }
-
-  // △▽ 赤道交点アイコンを update が求めた位置に置き、出ていないものを隠す。マーカーキーは
-  // 昇交点・降交点の2枠で固定(eqNodeIconsOf が返す配列はその順序で並ぶ)、中心天体を含む
-  // MapPickable.id とは別物。
-  private syncEqNodeMarkers(project: ProjectFn): void {
-    const [an, dn] = this.eqNodeIcons;
-    if (an) this.markerManager.setPosition('eqAn', 'mk-node', '△', an.pos, project, an.label);
-    else this.markerManager.hide('eqAn');
-    if (dn) this.markerManager.setPosition('eqDn', 'mk-node', '▽', dn.pos, project, dn.label);
-    else this.markerManager.hide('eqDn');
   }
 
   // ✕ 衝突マーカーを update が求めた位置に置き、出ていないものを隠す。

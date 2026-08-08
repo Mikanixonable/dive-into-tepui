@@ -6,6 +6,7 @@ import { Vec3, v3 } from '../../physics/vec3';
 import { ReferenceFrame, INERTIAL_FRAME, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
+import { isOccluded } from '../../physics/occlusion';
 import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { Plan, TimeRange, segmentDurationFrom } from './plan';
@@ -32,6 +33,9 @@ export class PlanPath {
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
+  // sync が最後に受け取ったカメラ位置。nearestSample の遮蔽判定に使う(呼び出しは DOM
+  // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
+  private cameraPos: Vec3 | null = null;
   // 最後のバーン後(これから乗る軌道)の起点状態。末尾区間が無ければ null。
   finalSegmentStart: KinematicState | null = null;
 
@@ -64,8 +68,9 @@ export class PlanPath {
   // 画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。破線のドット/隙間は
   // 各区間のサンプル列中央の代表点で scale(m/px)を引き、ピクセル指定を実距離に直してから渡す
   // — ズームによらず画面上の間隔を一定に保つため。
-  sync(fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn): void {
+  sync(fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, cameraPos: Vec3): void {
     this.project = project;
+    this.cameraPos = cameraPos;
     if (this.ephemeris === null) return;
     for (let i = 0; i < this.activeCount; i++) {
       const arc = this.arcs[i]!;
@@ -167,10 +172,15 @@ export class PlanPath {
   // 「表示期間が延びて折れ線が自分自身に重なる区間」の曖昧さを呼び出しの意図どおりに解く。
   nearestSample(mx: number, my: number, maxPx: number, referenceT: number, range?: TimeRange): { state: KinematicState, arcIdx: number } | null {
     const maxDSq = maxPx * maxPx;
+    const cameraPos = this.cameraPos;
+    const attractors = cameraPos && this.ephemeris ? this.ephemeris.attractorsAt(this.unbakeTime) : null;
     const candidates: { state: KinematicState; arcIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       for (const s of this.arcs[i]!.samples) {
         if (range && (s.t < range.min || s.t > range.max)) continue;
+        // 天体に遮蔽されて画面上見えていない点は候補から除く — マップ右クリックの
+        // ピック候補(map-picker.ts)と同じ判定を通す。
+        if (cameraPos && attractors && isOccluded(cameraPos, this.toDisplay(s.r, s.t), attractors)) continue;
         const p = this.projectPoint(s.r, s.t);
         if (!p.front) continue;
         const dSq = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);

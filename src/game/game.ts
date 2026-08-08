@@ -653,8 +653,8 @@ export class Game {
       const targets = this.entities.getCombatTargets(player);
       this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project, attractors);
     }
-    this.navTarget.sync(project);
-    this.equatorNodeMarkers.sync(project, overviewMode);
+    this.navTarget.sync(project, overviewMode, this.cameraSystem.activeCameraPos);
+    this.equatorNodeMarkers.sync(project, overviewMode, this.cameraSystem.activeCameraPos);
     if (player) this.navball.sync(player.state, player.att, player.alive, target?.state ?? null);
 
     // 敵マーカーは1体では決められない(画面上で近接するものをまとめる)ので集合として渡す。
@@ -674,7 +674,7 @@ export class Game {
     this.displayTimeManager.sync(simTime, this.currentOrbitPeriod());
     this.editor.sync(
       this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project,
-      this.cameraSystem.activeCameraScale,
+      this.cameraSystem.activeCameraScale, overviewMode, this.cameraSystem.activeCameraPos,
     );
     this.mapPicker.sync(overviewMode, simTime, attractors, player);
 
