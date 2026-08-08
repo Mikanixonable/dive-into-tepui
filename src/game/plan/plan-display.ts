@@ -7,6 +7,7 @@ import { elementsAround, frameOfAttractor, strongestAttractor } from '../../phys
 import { Frame, INERTIAL_FRAME, frameOrbitState, toFrameState, toInertialState } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
+import { ATTRACTOR_NAMES } from '../hud/frame-labels';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
@@ -260,9 +261,10 @@ export class PlanDisplay {
 
     const an = eqPosition(thAsc);
     const dn = eqPosition(thAsc + Math.PI);
+    const centerName = ATTRACTOR_NAMES[center.id];
     return [
-      { id: 'eqAn', name: '赤道昇交点', kind: 'eqnode', pos: an.pos, time: an.time, label: 'EqAN' },
-      { id: 'eqDn', name: '赤道降交点', kind: 'eqnode', pos: dn.pos, time: dn.time, label: 'EqDN' },
+      { id: `${center.id}-eqan`, name: `${centerName}赤道昇交点`, kind: 'eqnode', pos: an.pos, time: an.time, label: 'EqAN' },
+      { id: `${center.id}-eqdn`, name: `${centerName}赤道降交点`, kind: 'eqnode', pos: dn.pos, time: dn.time, label: 'EqDN' },
     ];
   }
 
@@ -299,13 +301,15 @@ export class PlanDisplay {
     }
   }
 
-  // △▽ 赤道交点アイコンを update が求めた位置に置き、出ていないものを隠す。
+  // △▽ 赤道交点アイコンを update が求めた位置に置き、出ていないものを隠す。マーカーキーは
+  // 昇交点・降交点の2枠で固定(eqNodeIconsOf が返す配列はその順序で並ぶ)、中心天体を含む
+  // MapPickable.id とは別物。
   private syncEqNodeMarkers(project: ProjectFn): void {
-    for (const key of ['eqAn', 'eqDn'] as const) {
-      const icon = this.eqNodeIcons.find((m) => m.id === key);
-      if (icon) this.markerManager.setPosition(key, 'mk-node', key === 'eqAn' ? '△' : '▽', icon.pos, project, icon.label);
-      else this.markerManager.hide(key);
-    }
+    const [an, dn] = this.eqNodeIcons;
+    if (an) this.markerManager.setPosition('eqAn', 'mk-node', '△', an.pos, project, an.label);
+    else this.markerManager.hide('eqAn');
+    if (dn) this.markerManager.setPosition('eqDn', 'mk-node', '▽', dn.pos, project, dn.label);
+    else this.markerManager.hide('eqDn');
   }
 
   // ✕ 衝突マーカーを update が求めた位置に置き、出ていないものを隠す。
