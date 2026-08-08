@@ -345,7 +345,7 @@
   - leadMarkers.sync() // 敵ごとの LEAD マーカー。overviewMode or !player.alive なら全 remove して return
     - trackTargeted() // 最終ロック時刻を生存中の敵ぶんだけ作り直す
     - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある敵ごと
-  - displayTimeManager.sync(game.currentOrbitPeriod()) // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ)の表示/内容を押し出すだけ
+  - displayTimeManager.sync(simTime, game.currentOrbitPeriod()) // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ/ジャンプ入力)の表示/内容を押し出すだけ
     - panel.setVisible(!forceCurrent) / setDuration() / setManualVisible() / setSliderLabel() / setTicks() // ラベルは自己完結の "T+" 表記のみ
   - editor.sync(mapDist, simTime, fo, project)
     - [hasPlan かつ(editMode または plan.nodes.length > 0)] planDisplay.sync(fo, project, editMode)
