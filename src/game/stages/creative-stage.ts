@@ -101,9 +101,10 @@ export class CreativeStage extends Stage {
     this.lastBaseMarkerCount = bases.length;
   }
 
-  // 艦艇配置モーダルを開く (MapPicker から呼ばれる)
-  openShipPlacer(): void {
-    this.placerPanel.setVisible(true);
+  // 艦艇配置モーダルを開く (MapPicker から呼ばれる)。focusId はマップの現在フォーカスで、
+  // 基準天体になれる ID なら基準天体の初期選択に使う。
+  openShipPlacer(focusId?: string): void {
+    this.placerPanel.setVisible(true, focusId);
   }
 
   // フォーム値から配置プレビューの軌道要素と位置を求める。パネルを閉じている間・軌道要素指定

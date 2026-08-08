@@ -340,9 +340,15 @@ export class ShipPlacerPanel {
     };
   }
 
-  // パネルの表示/非表示を切り替える。
-  setVisible(visible: boolean): void {
+  // パネルの表示/非表示を切り替える。開くときは defaultBody が基準天体になれる ID
+  // (公転している天体)なら、基準天体の選択をそれへ合わせる — 呼び出し側が
+  // マップの現在フォーカスを渡すことを想定している。
+  setVisible(visible: boolean, defaultBody?: string): void {
     this._isOpen = visible;
     this.panel.style.display = visible ? 'block' : 'none';
+    if (visible && defaultBody !== undefined && ORBITING_IDS.includes(defaultBody as OrbitingId)) {
+      this.bodyValue = defaultBody as ReferenceBody;
+      this.body.setSelected(this.bodyValue);
+    }
   }
 }
