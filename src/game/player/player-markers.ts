@@ -13,12 +13,12 @@ export class PlayerMarkers {
   constructor(
     private readonly markerManager: MarkerManager,
     private readonly id: string,
-    private readonly displayName: string,
   ) { }
 
   // currentState: 現在の自機状態(方向マーカー・ボアサイト用)。
   // displayState: スライダー位置の状態(null なら予測期間超過)、▷ マーカー用。
-  sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, alive: boolean, overviewMode: boolean, isActive: boolean, project: ProjectFn, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0): void {
+  // displayName は改名可能なので毎フレーム引数で受け取り、保持しない。
+  sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, alive: boolean, overviewMode: boolean, isActive: boolean, project: ProjectFn, displayName: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0): void {
     const selfKey = `self-${this.id}`;
 
     if (overviewMode) {
@@ -27,7 +27,7 @@ export class PlayerMarkers {
       }
       if (displayState) {
         const color = isActive ? '#ff0000' : undefined;
-        this.markerManager.setPosition(selfKey, 'mk-self', '▷', displayState.r, project, this.displayName, 1, color);
+        this.markerManager.setPosition(selfKey, 'mk-self', '▷', displayState.r, project, displayName, 1, color);
       } else {
         this.markerManager.hide(selfKey);
       }
