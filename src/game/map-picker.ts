@@ -590,26 +590,33 @@ export class MapPicker {
   }
 
   // 基準天体・高度・速度・AP/PE/INC/PRD の軌道要素一式。ship/base/ammo/player 共通で使う。
+  // 高度・速度以外は詳細トグルの下に畳む。
   private orbitRows(entity: GameEntity, attractors: readonly Attractor[]): PropertyRow[] {
     const oi = orbitInfo(entity, attractors);
     return [
-      { key: 'center', label: '基準天体', value: oi.centerName },
+      { key: 'center', label: '基準天体', value: oi.centerName, collapsible: true },
       { key: 'alt', label: '高度', value: fmtDist(oi.alt) },
       { key: 'spd', label: '速度', value: fmtSpeed(oi.spd) },
-      { key: 'ap', label: '遠地点 AP', value: fmtDist(oi.apAlt) },
-      { key: 'pe', label: '近地点 PE', value: fmtDist(oi.peAlt) },
-      { key: 'inc', label: '傾斜角 INC', value: isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---' },
-      { key: 'prd', label: '周期 PRD', value: fmtTime(oi.period) },
+      { key: 'ap', label: '遠地点 AP', value: fmtDist(oi.apAlt), collapsible: true },
+      { key: 'pe', label: '近地点 PE', value: fmtDist(oi.peAlt), collapsible: true },
+      {
+        key: 'inc', label: '傾斜角 INC',
+        value: isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---', collapsible: true,
+      },
+      { key: 'prd', label: '周期 PRD', value: fmtTime(oi.period), collapsible: true },
     ];
   }
 
-  // 名前は既にウィンドウのタイトルにあるので行には含めない。
+  // 名前は既にウィンドウのタイトルにあるので行には含めない。装甲・電力・弾薬を主要行とし、
+  // それ以外(操作対象か・計画追従・軌道要素)は詳細トグルの下に畳む。
   private playerRows(target: MapPickable, attractors: readonly Attractor[]): PropertyRow[] {
     const ship = this.entities.findPlayer(target.id);
     if (!ship) return [];
     return [
-      { key: 'active', label: '操作対象か', value: ship === this.game.player ? 'はい' : 'いいえ' },
-      { key: 'follow', label: '計画追従', value: ship.followPlan ? 'ON' : 'OFF' },
+      {
+        key: 'active', label: '操作対象か', value: ship === this.game.player ? 'はい' : 'いいえ', collapsible: true,
+      },
+      { key: 'follow', label: '計画追従', value: ship.followPlan ? 'ON' : 'OFF', collapsible: true },
       { key: 'hp', label: '装甲', value: `${Math.floor(ship.hp)} / ${ship.maxHp}` },
       { key: 'temp', label: '温度', value: `${ship.thermal.hullTemp.toFixed(0)} K` },
       { key: 'power', label: '電力', value: fmtEnergy(ship.power.chargeJ) },
@@ -619,6 +626,7 @@ export class MapPicker {
   }
 
   // 自機がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
+  // 装甲・距離・接近速度を主要行とし、相対速度・軌道要素・相対傾斜角は詳細トグルの下に畳む。
   private shipRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const enemy = this.entities.enemies.find((e) => e.name === target.id);
     if (!enemy) return [];
@@ -628,20 +636,20 @@ export class MapPicker {
       rows.push(
         { key: 'dist', label: '距離', value: fmtDist(rel.dist) },
         { key: 'closing', label: '接近速度', value: fmtSpeed(rel.closing) },
-        { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed) },
+        { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed), collapsible: true },
       );
     }
     rows.push(...this.orbitRows(enemy, attractors));
     if (rel) {
       rows.push({
         key: 'relinc', label: '相対傾斜 [AN/DN]',
-        value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---',
+        value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', collapsible: true,
       });
     }
     return rows;
   }
 
-  // 自機がいなければ距離の行は出さない。
+  // 自機がいなければ距離の行は出さない。軌道要素は詳細トグルの下に畳む。
   private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const base = this.entities.findBase(target.id);
     if (!base) return [];
@@ -654,7 +662,7 @@ export class MapPicker {
     return rows;
   }
 
-  // 自機がいなければ距離の行は出さない。
+  // 自機がいなければ距離の行は出さない。軌道要素は詳細トグルの下に畳む。
   private ammoRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const ammo = this.entities.ammos.find((a) => a.id === target.id);
     if (!ammo) return [];
