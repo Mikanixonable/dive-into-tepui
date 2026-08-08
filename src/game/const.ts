@@ -233,6 +233,8 @@ export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
 // --- HUD マーカー ---
 export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想距離 [m](実在の位置ではなく方向のみを示す)
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
+// 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
+export const FOCUS_LABEL_PRIORITY_PX = 40;
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 export const MARKER_BEARING_RING_RATIO = 0.8;
 export const MARKER_HEADING_PROBE_PX = 20; // 進行方向を測るための投影プローブ距離 [px]
