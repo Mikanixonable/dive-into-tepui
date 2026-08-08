@@ -51,7 +51,6 @@ export class MapPicker {
   // クリップされていない一時ウィンドウのキー。存在は高々1枚。
   private tempWindowKey: string | null = null;
   private readonly objectListPanel: ObjectListPanel;
-  private objectListVisible = false;
   private items: readonly MapPickable[] = [];
 
   // このフレームの被選択物候補。refresh の後に読む。
@@ -80,9 +79,6 @@ export class MapPicker {
     this.objectListPanel.onSelect = (id) => {
       this.cameraSystem.overviewCamera.setFocus(id);
       this.hud.hint(`${this.items.find((i) => i.id === id)?.name ?? id} にフォーカス`);
-    };
-    this.objectListPanel.onClose = () => {
-      this.objectListVisible = false;
     };
   }
 
@@ -250,14 +246,13 @@ export class MapPicker {
     });
   }
 
-  // 軌道オブジェクトウィンドウの表示状態をマップ視点かどうかと合わせて反映し、開いている
-  // 全プロパティウィンドウの値を最新化する。対象そのものが消滅していれば(撃破・回収・削除)
-  // 閉じる — 未来ゴースト時刻で位置が求まらないだけのフレーム(displayState が null)は
-  // 候補列(this.items)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
+  // 軌道オブジェクトウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
+  // ウィンドウの値を最新化する。対象そのものが消滅していれば(撃破・回収・削除)閉じる —
+  // 未来ゴースト時刻で位置が求まらないだけのフレーム(displayState が null)は候補列
+  // (this.items)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
   sync(overviewMode: boolean, simTime: number, attractors: readonly Attractor[], player: Player | null): void {
-    const visible = overviewMode && this.objectListVisible;
-    this.objectListPanel.setVisible(visible);
-    if (visible) this.objectListPanel.sync(this.items, this.cameraSystem.overviewCamera.focus);
+    this.objectListPanel.setVisible(overviewMode);
+    if (overviewMode) this.objectListPanel.sync(this.items, this.cameraSystem.overviewCamera.focus);
 
     const byKey = new Map(this.items.map((i) => [this.windowKey(i), i]));
     for (const [key, entry] of [...this.windows]) {
@@ -288,7 +283,6 @@ export class MapPicker {
   // 開いたままのメニュー・ウィンドウを畳む。マップビューを離れるときに呼ぶ。
   close(): void {
     this.menu.close();
-    this.objectListVisible = false;
     for (const key of [...this.windows.keys()]) this.closeWindow(key);
   }
 
@@ -436,7 +430,6 @@ export class MapPicker {
           : [];
         return [
           ...placeItem,
-          { label: '軌道オブジェクトウィンドウを表示', act: 'openObjectList' },
           { label: '設定メニューを開く', act: 'openSettings' },
           MenuCommon.cancel(),
         ];
@@ -446,8 +439,6 @@ export class MapPicker {
           if (this.isCreativeMode()) {
             (this.game.activeStage as any).openShipPlacer(this.game.cameraSystem.overviewCamera.focus);
           }
-        } else if (act === 'openObjectList') {
-          this.objectListVisible = true;
         } else if (act === 'openSettings') {
           this.game.openSettingsMenu();
         }
