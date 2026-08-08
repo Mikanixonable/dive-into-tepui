@@ -62,8 +62,8 @@ export class Base extends GameEntity {
 
   // マップ表示中だけ軌道楕円を出す(敵の背景軌道線と同じ判断: 戦闘ビューは近距離を見るための
   // 視点なので、拠点ほど遠い周回全体を示す線は不要)。
-  syncOrbitLine(show: boolean, fo: FloatingOrigin, bodies: readonly Attractor[]): void {
-    const center = strongestAttractor(this.state.r, bodies);
+  syncOrbitLine(show: boolean, fo: FloatingOrigin, attractors: readonly Attractor[]): void {
+    const center = strongestAttractor(this.state.r, attractors);
     this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo);
   }
 
