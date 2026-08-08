@@ -1,9 +1,9 @@
 import type { ViewId, ViewManager } from '../view-manager';
 import { ContextMenu, MenuItem } from './context-menu';
-import { version as packageVersion } from '../../../package.json';
+import packageJson from '../../../package.json';
 
 const GAME_TITLE = 'Dive into Tepui';
-const GAME_VERSION = `v${packageVersion}`;
+const GAME_VERSION = `v${packageJson.version}`;
 
 const VIEW_LABELS: Record<ViewId, string> = { combat: 'Combat', map: 'Map', dock: 'Dock' };
 
