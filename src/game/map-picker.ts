@@ -205,7 +205,8 @@ export class MapPicker {
     });
   }
 
-  // 選択操作の実体。
+  // 基地側は selectBase のみ呼び、ドックビューへの遷移はしない — 選択とドックへ入る操作
+  // (activate)を分けて、選択だけでは画面が切り替わらないようにする。
   private selectPickable(target: MapPickable): void {
     if (target.kind === 'player') {
       const ship = this.entities.findPlayer(target.id);
