@@ -627,8 +627,13 @@ export class Game {
       }
     }
     if (this.input.takeKey(K.openSnapshots)) {
-      if (this.saveBrowser?.visible) this.saveBrowser.close();
-      else this.saveBrowser?.open();
+      if (this.saveBrowser?.visible) {
+        this.saveBrowser.close();
+      } else {
+        // ポーズは入れ子にならない真偽値なので、同じ帯のシステム窓を重ねない。
+        this.settingsPanel.toggle(false);
+        this.saveBrowser?.open();
+      }
     }
   }
 
