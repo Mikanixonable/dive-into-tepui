@@ -10,7 +10,7 @@ import { Part, PartType, createPart } from './parts';
 export abstract class Ship extends GameEntity {
   protected readonly bcInv = C.SHIP_BCINV;
   protected readonly historyDuration = C.SHIP_HISTORY_DURATION;
-  readonly predictDuration = C.PREDICT_DURATION;
+  readonly predictsFuture = true;
 
   name: string;
   radius: number; // 被弾判定半径 [m](剛体接触の collideRadius とは別)

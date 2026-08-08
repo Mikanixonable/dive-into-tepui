@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { MU_MOON, R_MOON } from '../../src/physics/solar-system';
 import { elementsAround, strongestAttractor } from '../../src/physics/attractor';
-import { orbitState } from '../../src/physics/orbital-state';
+import { orbitState, MU_EARTH, R_EARTH } from '../../src/physics/orbital-state';
 import { apsisAltitudes, keplerPeriod } from '../../src/physics/elements';
 import { add, v3 } from '../../src/physics/vec3';
 import { orbitPeriodOf, Plan } from '../../src/game/plan/plan';
@@ -33,12 +33,51 @@ export function register(): void {
 
     const plan = new Plan();
     plan.trackAnchor(state);
-    assert.ok(Math.abs(plan.nodeTimeRange(0, ephemeris).max - (t + expected)) < 1e-6);
+    const orbitDisplayDuration = { durationSec: (referencePeriod: number) => referencePeriod };
+    assert.ok(Math.abs(plan.nodeTimeRange(0, ephemeris, orbitDisplayDuration).max - (t + expected)) < 1e-6);
 
     const el = elementsAround(state, center)!;
     assert.equal(el.center.mu, MU_MOON);
     const apsis = apsisAltitudes(el);
     assert.ok(Math.abs(apsis.pe - 100_000) < 1, `近点高度: ${apsis.pe}`);
     assert.ok(Math.abs(apsis.ap - 100_000) < 1, `遠点高度: ${apsis.ap}`);
+  });
+
+  test('plan: 近地点付近の遷移軌道の区間長が近地点半径の円軌道周期に短縮されない', () => {
+    const ephemeris = new Ephemeris(0, 0);
+    const t = 6789;
+    const rp = R_EARTH + 400e3;
+    const ra = R_EARTH + 35_000e3;
+    const a = (rp + ra) / 2;
+    const vp = Math.sqrt(MU_EARTH * (2 / rp - 1 / a));
+    const state = orbitState(t, v3(rp, 0, 0), v3(0, 0, vp));
+    const bodies = ephemeris.attractorsAt(t);
+
+    const expected = keplerPeriod(a, MU_EARTH);
+    const actual = orbitPeriodOf(state, bodies);
+    assert.ok(Math.abs(actual - expected) / expected < 1e-6, `周期: ${actual}, 期待値: ${expected}`);
+
+    const circularAtPerigee = keplerPeriod(rp, MU_EARTH);
+    assert.ok(actual > circularAtPerigee * 2, `近地点半径基準の円軌道周期に短縮されている: ${actual}`);
+  });
+
+  test('plan: nodeTimeRange は DisplayDurationSource の表示期間にそのまま追従する', () => {
+    const ephemeris = new Ephemeris(0, 0);
+    const t = 1000;
+    const rp = R_EARTH + 400e3;
+    const state = orbitState(t, v3(rp, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / rp)));
+    const bodies = ephemeris.attractorsAt(t);
+    const period = orbitPeriodOf(state, bodies);
+
+    const plan = new Plan();
+    plan.trackAnchor(state);
+
+    // 'orbit' 相当のスタブ: 参照期間(起点の軌道周期)をそのまま返す
+    const orbitDuration = { durationSec: (referencePeriod: number) => referencePeriod };
+    assert.ok(Math.abs(plan.nodeTimeRange(0, ephemeris, orbitDuration).max - (t + period)) < 1e-6);
+
+    // 固定プリセット相当のスタブ: 参照期間によらず一定値を返す
+    const fixedDuration = { durationSec: () => 86400 };
+    assert.equal(plan.nodeTimeRange(0, ephemeris, fixedDuration).max, t + 86400);
   });
 }
