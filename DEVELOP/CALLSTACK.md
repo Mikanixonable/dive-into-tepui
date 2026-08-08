@@ -55,6 +55,7 @@
         - [出るビューが dock] docking.leaveDock() → dockView.close() + game.resume()
         - [3D 側ビューが map→他] editor.onMapClosed() / editor.closeMenu() / mapPicker.close()
           - onMapClosed: hidePanel / hideGizmo / plan.removeNode(末尾の Δv 微小ノードを間引く) / selectedNodeIdx=null
+          - mapPicker.close(): menu.close() / objectListVisible=false / 開いている全プロパティウィンドウを closeWindow()(クリップ済みも含め全て)
         - [3D 側ビューが 他→map] editor.selectedNodeIdx = null
         - [入るビューが dock] docking.enterDock() → game.pause() + dockView.open(activeBase)
         - applyChrome() // map-mode/dock-mode クラス・navball 配置・touchControls・
@@ -267,7 +268,13 @@
       - dragNodeToNearestSample() // ノードを incoming arc の最寄り点へ移し、元のΔv成分を保ったまま新しいノード状態へ焼き直す
     - mapPicker.handleRightClick() // ノードに消費されずに残った右クリックだけが届く
       - pickNearest(mapPicker.pickables) // MAP_PICK_PX_SQ 以内の被選択物(天体/自機/敵船/nav-AN・DN/アプシス)を最寄りで拾う。候補列は mapPicker.refresh() が組んだ1本
-      - mapPicker のメニューを開く // 拾えた場合のみ消費。選択結果は MapPicker.run(act, target) へ
+      - mapPicker.openPropertyWindow() // 拾えた場合のみ消費。既にその対象のウィンドウがあれば移動+最前面化のみ、なければ new PropertyWindow(buildContent()) // rows は空のまま開き、同フレーム後半の mapPicker.sync() が埋める
+        - 新規かつ非クリップ → 直前の一時ウィンドウ(tempWindowKey)を closeWindow() してから差し替え
+        - w.onSelect(act) → handlers[target.kind].run(act, target) // 選択結果はこれまでと同じ経路
+          - act='delete' または !w.clipped → closeWindow() // 削除はクリップ有無によらず閉じる
+        - w.onOutsideClick → !w.clipped のときだけ closeWindow()
+        - w.onClose(✕ボタン、widget 側で dispose 済み) → forgetWindow() // 台帳から外すだけ
+      - 選択結果は MapPicker.run(act, target) へ
         - act='focus' → overviewCamera.focus 代入
         - act='navTarget' → navTarget.toggleTarget()
         - act='warp' → simSpeedManager.startAutoWarpTo(navTarget.passTimeOf(target.id))
@@ -366,7 +373,8 @@
     - [hasPlan かつ editMode] syncGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
       // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は traj の今フレームの表示文脈を通す
     - [hasPlan かつ editMode] syncPanel(simTime) // MANEUVER PLAN パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
-  - mapPicker.sync(overviewMode) // 軌道オブジェクトウィンドウ。objectListVisible かつ overviewMode のときだけ pickables を行として書き出す
+  - mapPicker.sync(overviewMode, simTime, bodies, player) // 軌道オブジェクトウィンドウ。objectListVisible かつ overviewMode のときだけ pickables を行として書き出す
+    - 開いている各プロパティウィンドウ // 対象が今フレームの pickables から消えていれば closeWindow()(撃破・回収・削除)、残っていれば buildRows() → w.syncRows()
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync(player, fo, project, displayTime, overviewMode) // player は Creative の未配置状態で null
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示。player が null なら隠す
