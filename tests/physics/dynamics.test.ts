@@ -93,7 +93,7 @@ export function register(): void {
       { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(0, sunPos, v3(0, 0, 0)), degree2: null },
     ];
 
-    const viaNew = stepDynamicsRK4(s0, dt, bodies, 0, null);
+    const viaNew = stepDynamicsRK4(s0, dt, bodies, 0, 0, 0, null);
     const viaLegacy = stepOrbitRK4(s0, dt, (rx, ry, rz) => legacyAccel(v3(rx, ry, rz), sunPos, moonPos));
 
     const posErr = len(sub(viaNew.r, viaLegacy.r)) / len(viaLegacy.r);
@@ -108,8 +108,8 @@ export function register(): void {
     const bodies = new Ephemeris({ moon: 0 }).attractorsAt(0);
     const thrust = v3(0, 0, 5); // 大きめの加速度で差が明確に出るようにする
 
-    const withThrust = stepDynamicsRK4(s0, dt, bodies, 0, thrust);
-    const withoutThrust = stepDynamicsRK4(s0, dt, bodies, 0, null);
+    const withThrust = stepDynamicsRK4(s0, dt, bodies, 0, 0, 0, thrust);
+    const withoutThrust = stepDynamicsRK4(s0, dt, bodies, 0, 0, 0, null);
 
     assert.ok(len(sub(withThrust.v, withoutThrust.v)) > 1, 'thrust should visibly change the velocity');
   });
@@ -119,8 +119,8 @@ export function register(): void {
     const dt = 10;
     const bodies = new Ephemeris({ moon: 0 }).attractorsAt(0);
 
-    const noDrag = stepDynamicsRK4(s0, dt, bodies, 0, null);
-    const withDrag = stepDynamicsRK4(s0, dt, bodies, 0.01, null);
+    const noDrag = stepDynamicsRK4(s0, dt, bodies, 0, 0, 0, null);
+    const withDrag = stepDynamicsRK4(s0, dt, bodies, 0.01, 0, 0, null);
 
     assert.ok(len(withDrag.v) < len(noDrag.v), 'drag should reduce orbital speed relative to the drag-free step');
   });
@@ -138,7 +138,7 @@ export function register(): void {
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
       const bodies = ephemeris.attractorsAt(s.t + dt / 2);
-      s = stepDynamicsRK4(s, dt, bodies, 0, null);
+      s = stepDynamicsRK4(s, dt, bodies, 0, 0, 0, null);
     }
 
     const relFinal = sub(s.r, ephemeris.positionOf('moon', s.t));
@@ -304,6 +304,30 @@ export function register(): void {
     const r = v3(1.838e6, 0, 0); // 赤道上(極方向成分ゼロ)
     const mag = len(degree2Accel(r, MU_MOON, g));
     assert.ok(Math.abs(mag - 3.96e-4) / 3.96e-4 < 0.05, `lunar J2 magnitude: ${mag} m/s^2 (expected ~3.96e-4)`);
+  });
+
+  test('dynamics: stepDynamicsRK4 applies solar radiation pressure only where the sun actually shines', () => {
+    // 純関数 srpAccel が正しくても accel から呼ばれていなければ効かないので、積分側で確かめる。
+    // 太陽を +X 1AU に置くと、+X 側の位置は日照、−X 側は地球の影の中に入る。
+    const sunPos = v3(1.495978707e11, 0, 0);
+    const bodies: readonly Attractor[] = [
+      EARTH,
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(0, sunPos, v3(0, 0, 0)), degree2: null },
+    ];
+    const dt = 100;
+    const srpCoeff = 1e-2;
+    const penumbra = 6e4;
+    const speed = Math.sqrt(MU_EARTH / 7e6);
+
+    const sunlitStart = orbitState(0, v3(7e6, 0, 0), v3(0, 0, speed));
+    const withSrp = stepDynamicsRK4(sunlitStart, dt, bodies, 0, srpCoeff, penumbra, null);
+    const withoutSrp = stepDynamicsRK4(sunlitStart, dt, bodies, 0, 0, penumbra, null);
+    assert.ok(len(sub(withSrp.v, withoutSrp.v)) > 0, 'a sunlit object should feel solar radiation pressure');
+
+    const umbraStart = orbitState(0, v3(-7e6, 0, 0), v3(0, 0, speed));
+    const shadowedWith = stepDynamicsRK4(umbraStart, dt, bodies, 0, srpCoeff, penumbra, null);
+    const shadowedWithout = stepDynamicsRK4(umbraStart, dt, bodies, 0, 0, penumbra, null);
+    assert.deepEqual(shadowedWith, shadowedWithout, 'an object in the umbra should feel nothing');
   });
 
   test('dynamics: the moon carries a degree-2 field and the sun does not', () => {

@@ -27,6 +27,7 @@ function buildDebrisObj(debrisKind: DebrisKind): THREE.Object3D {
 
 export class DebrisPiece extends GameEntity {
   protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
+  protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
 
   // DebrisKind に応じたメッシュ・質量で初期化する。collideRadius は fragment 以外の当たり判定半径になる。
   constructor(state: OrbitState, readonly debrisKind: DebrisKind, att: Attitude, collideRadius?: number, scene?: THREE.Scene) {
