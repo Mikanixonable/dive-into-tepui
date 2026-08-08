@@ -6,7 +6,7 @@
 表はすべて `| 現在 | 案 | 今の実装で表しているもの | 提案の理由 |` の4列で統一する。
 `現在` の括弧内は `src` + `tests/physics` + `DEVELOP` + `CLAUDE.md` に対する grep 一致行数(改名コスト目安)。
 
-**判断はすべて済んでいる。** 各節の「案」欄が確定内容で、あとは §13 の順序で機械的に進められる。
+**判断はすべて済んでいる。** 各節の「案」欄が確定内容で、あとは §14 の順序で機械的に進められる。
 
 ---
 
@@ -368,22 +368,130 @@ UI ラベルの `TRAJECTORY` は人間向け表示なので据え置いてよい
    モジュール関数側を `orbitalElementsOf`、メソッド側を `orbitalElementsAround` にして名前を分ける(§5)。
    衝突が消えるので別名 import そのものが要らなくなる。
 6. **kebab-case 逸脱**: `render/orbitline.ts` / `render/earthcolor.ts`。
-7. **`dynamics.ts` は分割しない。** 汎用 ODE ステッパ(`stepRK4`)と運動方程式の合成(`totalAccel`/`j2Accel`)の
-   2責務が同居しているが、§4 の改名で名前の上の区別が付くので、ファイル分割まではしない。
-8. **`physics/nbody/` を削除する。** `bodies.ts` / `integrator.ts` / `physics.worker.ts` / `README.md` の4ファイルで、
-   `src` のどこからも import されていない(唯一の grep 一致は `plan-editor.ts` の `planbody` という別語)。
-   Step2 のマージで重力源モデルが全面的に作り直された今、この試作をそのまま使う見込みはない。
-   削除で `stepRK4`(§4)の名前衝突が消えるので、**§4 の改名より先に行う。**`Attractor` と無関係な
-   `Body`/`bodies` も一緒に消える。
-   `CLAUDE.md` の該当箇所(冒頭の N-body worker の記述、`src/physics/nbody/...` の項、Not yet implemented の
-   「full N-body cislunar phase」)と `DEVELOP/SPEC.md` の「N体ワーカーは温存」の記述も同じ変更セットで消す。
-
-## 13 //refactor-fixed への追記
-ケプラー軌道を表す接辞orbit/orbital、積分軌道を表す接辞dynamic、ケプラー軌道より厳密だが解析的近似ではあるephemeris系の使い分けを恒久ルールとして/refactor-fixedに追記。それ以外のルールについては、今回解消すれば今後は生じにくい逸脱であったか、今回は明確な結論が出ず据え置きの部分を残した問題であるから、/refactor-fixedには追記しない。
+7. **`dynamics.ts` が2責務を持っている** — 汎用 ODE ステッパ(`stepRK4`)と運動方程式の合成(`totalAccel`/`j2Accel`)。
+   §4 の改名で名前の上では区別が付くが、モジュール分割まで行うかは別途判断。
 
 ---
 
-## 14. 適用順序の提案
+## 13. 私(hedalu244)が決めること
+
+ここだけ判断してもらえれば、残りは機械的に進められる。
+
+### 13-1. `OrbitState` の新しい名前
+
+| 現在 | 案 | 今の実装で表しているもの | 提案の理由 |
+|---|---|---|---|
+| `OrbitState` | `KinematicState`(推奨) | `{t, r, v}` | 力を含まない位置・速度の量なので kinematic が正確(kinetics は力を扱う分野) |
+| `OrbitState` | `StateVector` | 同上 | astrodynamics の定訳は state vector。ただし定訳の state vector は時刻を含まないので `t` を持つ点が外れる |
+| `OrbitState` | `MotionState` | 同上 | 短く、専門語を要求しない。ただし他分野の語との衝突が広い |
+
+> 補足: 「現 `OrbitState` こそ `DynamicTrajectory` と名付けるべきでは」という指摘について。
+> `OrbitState` は `{t, r, v}` 1点で、列も履歴も持っていない。「積分で伸ばす軌跡」に当たるのは `OrbitEntity`
+> (`physics/orbit-entity.ts`)の方で、そちらを §4 で `DynamicTrajectory` としている。
+> **`OrbitState` を指して言っていたのであれば、この対応を入れ替える必要があるので指摘してほしい。**
+
+### 13-2. `orbit` と `orbital` をどう決着させるか
+
+現状 `orbital` が付いているのは `OrbitalAxes` / `orbitalAxes` / `fromOrbitalAxes` / `syncOrbitalDirections` と
+ファイル名 `orbital-state.ts` の5つだけで、**使い分けの意図は無い**(全て `orbit` 族の同じ意味)。
+
+| 現在 | 案 | 今の実装で表しているもの | 提案の理由 |
+|---|---|---|---|
+| `orbital*` と `orbit*` の混在 | 全て `orbit` に統一(`OrbitAxes` / `OrbitElements`) | 解析軌道に関する語 | 規則が1行で書け、例外の判定が要らない。ただし `orbital elements` / `orbital axes` という定訳から外れる |
+| 同上 | 形容詞は `orbital`、名詞連結は `orbit`(`OrbitalElements` / `orbitalAxes` / `OrbitLine`) | 同上 | 英語として自然。ただしどちらを使うかの判定が語感依存になり、規則として弱い |
+| 同上 | 原則 `orbit`、定訳のある複合語だけ `orbital` を許し例外を列挙して固定(`OrbitalElements` / `orbitalAxes` の2語のみ) | 同上 | 定訳を守りつつ例外が有限。ただし「例外表を維持する」というコストが残る |
+
+### 13-3. `dynamic` 族の語をどう付けるか
+
+| 現在 | 案 | 今の実装で表しているもの | 提案の理由 |
+|---|---|---|---|
+| `OrbitEntity` | `DynamicTrajectory` | 積分で前進する時刻付き状態 + 間引いた履歴列 | 族の語を接頭に出す。`dynamics.ts` / `stepDynamics` と語が揃う |
+| `OrbitEntity` | `Trajectory` | 同上 | `PlanTrajectory → PlanPath` の後は衝突しないので接頭辞なしでも一意。短い。ただし族の規則が名前から見えない |
+
+あわせて、`PlanPath` の `path` と `DynamicTrajectory` の `trajectory` が「軌跡」を指す2語として残る点も
+併せて判断してほしい(`PlanArc`/`PlanPath` の対を優先するなら現案のまま)。
+
+### 13-4. 天体を `body` のままにするか `Entity` に寄せるか
+
+「天体は `GameEntity` の類語ではないか」という指摘について、現状を調べた結果を先に示す。
+**3つは今のところ別物で、`Entity` 一語で括れる状態にはない。**
+
+| 現在 | 案 | 今の実装で表しているもの | 提案の理由 |
+|---|---|---|---|
+| `GameEntity` | 据え置き | メッシュ + HP + 姿勢 + 積分軌跡(`DynamicTrajectory`)。重力を及ぼさない | 位置の正本を自分で持つ |
+| `Attractor` | 据え置き | μ + 半径 + その時刻の状態。重力を及ぼす | 値であってオブジェクトではない。`Ephemeris` が時刻ごとに作る |
+| `CelestialBody`(game 側) | §13-4 の選択肢次第 | メッシュだけ。**位置・速度を一切持たず**、sync のたびに `Ephemeris` から引く | 状態を持たない点で `GameEntity` と決定的に違う |
+
+選択肢:
+
+| 現在 | 案 | 今の実装で表しているもの | 提案の理由 |
+|---|---|---|---|
+| `CelestialBody` 系 | **(a) 据え置き + 規則化**(推奨) | 天体の見た目 | 「`body` 単独は機体座標系専用、天体は必ず `celestial` を接頭」という規則だけ足す。改名コスト最小で衝突は消える |
+| `CelestialBody` 系 | (b) `CelestialView` / `EarthView` / `SunView` / `SphereView` | 同上 | 「見た目しか持たない」実装に忠実。ただし `ViewId`(combat/map/dock) / `ViewManager` / `DockView` / `Viewpoint` と `View` が既に「画面のモード」を指しており、新しい衝突を作る |
+| `CelestialBody` 系 | (c) `CelestialEntity` | 同上 | Step3(小惑星 = 積分軌道 + アトラクター)で `EntityManager` と `Ephemeris` を統合する布石になる。ただし**今は状態を持たないので `Entity` は実装に対して嘘**で、統合を先に済ませないと名前だけが先行する |
+
+推奨は **(a) を今やり、(c) は `better_simulation_todo.md` の Step3(構造の統一)と同じ変更セットで再検討** する。
+
+### 13-5. 天体表面到達(`hitsAnySurface`)の語
+
+実装は `len(r − 天体位置) < 天体半径 + margin`。「衝突判定」ではなく「内側にいるか」の距離比較。
+
+| 現在 | 案 | 今の実装で表しているもの | 提案の理由 |
+|---|---|---|---|
+| `hitsAnySurface` | `belowAnySurface`(推奨) | 位置がいずれかの天体の表面 + margin より内側か | 「表面より下」は高度の語彙で、margin を再突入高度として渡す実際の使い方と読みが合う |
+| `hitsAnySurface` | `insideAnyBody` | 同上 | 実装(半径との距離比較)そのままで最も直訳的。ただし `body` を天体の意味で使うことになり §7 の規則と衝突する |
+| `hitsAnySurface` | `reachedAnySurface` | 同上 | 「到達した」= 再突入・地表衝突という結果側を表す。ただし margin > 0 のとき「まだ表面には達していない」ので厳密には嘘 |
+
+### 13-6. `Manager` / `System` / `Physics` 接尾辞
+
+「所有して毎フレーム駆動するもの」の接尾辞が4系統ある。`Manager` と `System` はどちらも中身を説明していない。
+
+- `*Manager`: `EntityManager` `MarkerManager` `UnlockManager` `SaveManager` `DisplayTimeManager` `SimSpeedManager` `FlashEffectManager` `ViewManager`
+- `*System`: `CameraSystem` `CombatCameraSystem` `HitSystem` `EffectsSystem` `PowerSystem` `RadiatorSystem` `ThermalSystem`
+- `*Physics`: `CollisionPhysics` `BeltPhysics`
+- 動作主体名: `Simulator` `Predictor` `Targeter` `MapPicker` `Docking`
+
+| 現在 | 案 | 今の実装で表しているもの | 提案の理由 |
+|---|---|---|---|
+| 4系統の混在 | **一括改名しない。「今後 `Manager`/`System` を新設しない」規則にとどめる**(推奨) | 毎フレーム駆動される所有者 | 置換範囲が広く挙動と無関係。既存を動かす価値が改名コストに見合わない |
+| 同上 | 動作主体名(`-er`)へ寄せる | 同上 | 語が説明的になる。ただし `EntityManager` → `EntityHolder` など、うまい名前にならないものが残る |
+
+### 13-7. 未使用の `physics/nbody/` をどうするか
+
+`physics/nbody/` は `CLAUDE.md` に「LEO ゲームでは未使用、cislunar フェーズ用に温存」と明記された実質デッドコードだが、
+**名前空間は占有し続けている。** 今回の提案と2箇所でぶつかる。
+
+| 現在 | 案 | 今の実装で表しているもの | 提案の理由 |
+|---|---|---|---|
+| `nbody/integrator.ts` の `stepRK4` | (下記のいずれか) | `Body[]` を丸ごと1ステップ進める N 体 RK4 | §4 で `stepOrbitRK4` を `stepRK4` にしたいが、この export と衝突する |
+| `nbody/bodies.ts` の `Body` / `bodies` | (下記のいずれか) | mass/position/velocity だけの簡易 N 体モデル。`Attractor` とは無関係の別型 | §7 で `body` を機体座標系専用にする規則と衝突する |
+
+選択肢:
+
+| 現在 | 案 | 今の実装で表しているもの | 提案の理由 |
+|---|---|---|---|
+| `physics/nbody/` | (a) 削除する | どこからも import されていない試作 | Step2 のマージで重力源モデルが全面的に作り直された今、この試作をそのまま使う見込みは薄い。消せば衝突が2つとも消える |
+| `physics/nbody/` | (b) 残したまま `stepOrbitRK4` → `stepStateRK4` にする(推奨) | 同上 | 温存の判断を今変えずに済む。`stepStateRK4` は「状態を1つ進める」で `stepDynamics` とも並ぶ |
+| `physics/nbody/` | (c) 残して nbody 側を改名する | 同上 | 使っていないコードのために現役コードの名前を曲げない、という筋は通る。ただしデッドコードに改名コストを払うことになる |
+
+### 13-8. `Frame` 自体は据え置きでよいか
+
+「アニメーションの1フレームと座標系の frame の衝突は慣用で仕方ない」という判断に従い、`Frame` は据え置き案にしている。
+`ReferenceFrame` へ改名すると `FrameTransform` / `FramePoint` / `FrameDir` / `FrameOrbitState` / `FrameRotation` /
+`FRAMES` / `INERTIAL_FRAME` / `frameTransformAt` まで連鎖するので、判断は先に固めたい。
+
+### 13-9. その他、判断が要りそうな点
+
+- **§12-2 天体定数の置き場**: `MU_EARTH`/`R_EARTH` を `kinematic-state.ts` から `solar-system.ts` へ移すか。
+  移すと `orbital-state.ts` は純粋に「状態ベクトルとその幾何」だけになる。
+- **§12-3 `orbitPeriodOf` の非周期フォールバック**: `NaN` を返して呼び出し元で当てる形に変えるか。
+- **§12-5 `elementsAround` の別名衝突**: モジュール関数とメソッドのどちらを区別するか
+  (例: メソッド側を `orbitElementsAroundCached` にする / モジュール関数側を `orbitElementsOf` にする)。
+- **§12-7 `dynamics.ts` の分割**: 汎用 ODE ステッパと運動方程式の合成をファイルごと分けるか、名前だけで区別するか。
+
+---
+
+## 13. 適用順序の提案
 
 挙動を変えない純粋な改名なので、**族ごとに1変更セット**で区切り、各セットで
 `npm run typecheck` + `npm run test:physics` を通す。
@@ -409,6 +517,3 @@ UI ラベルの `TRAJECTORY` は人間向け表示なので据え置いてよい
 - `CLAUDE.md` / `DEVELOP/CALLSTACK.md` / `DEVELOP/OWNERSHIP.md` / `DEVELOP/SPEC.md` / `memos/hedalu244`を同じ変更セットで更新する。
   特に `CLAUDE.md` の Architecture 節と `test:physics` の説明文には旧名が大量に入っている。
 - `AGENTS.md`は既に古い文書なので作業対象外。
-
-typescript内のリネームは適切なツールを使って効率的に行い、文書内の
-未決事項には着手せず、完了したタスクは
