@@ -1,17 +1,20 @@
-// physics/ の id にゲームで使う日本語表示名を対応させる表。座標系(Frame)は選ばせる
-// SegmentedControl がそのまま項目として渡し、天体(AttractorId)は他モジュールの
-// 同種の表がここを参照する。
-import { Frame } from '../../physics/frame';
-import { AttractorId } from '../../physics/attractor';
+// 座標系(Frame)に日本語表示名を対応させる表。天体の表示名自体は
+// game/celestial/celestial-registry.ts が唯一の定義元で、ここは参照するだけ。
+import { Frame, FRAMES } from '../../physics/frame';
+import { AttractorId, PlanetId, SatelliteId } from '../../physics/attractor';
+import { primaryOf } from '../../physics/solar-system';
+import { CELESTIAL_VIEWS } from '../celestial/celestial-registry';
 
-export const FRAME_ITEMS: readonly (readonly [Frame, string])[] = [
-  ['inertial', '慣性系'],
-  ['sunRotating', '太陽回転系'],
-  ['moonRotating', '月回転系'],
-];
+export const ATTRACTOR_NAMES: Record<AttractorId, string> = Object.fromEntries(
+  Object.entries(CELESTIAL_VIEWS).map(([id, v]) => [id, v.name]),
+) as Record<AttractorId, string>;
 
-export const ATTRACTOR_NAMES: Record<AttractorId, string> = {
-  earth: '地球',
-  moon: '月',
-  sun: '太陽',
-};
+// FRAMES の各要素に表示名をつける。回転しない系は「(天体名)中心慣性系」、回転する系は
+// 「(回っている天体の親の名)-(回っている天体の名)回転系」。値は必ず FRAMES の要素そのものを
+// 使う(参照同一性が sampled-line.ts のキャッシュ判定の前提)。
+export const FRAME_ITEMS: readonly (readonly [Frame, string])[] = FRAMES.map((frame) => [
+  frame,
+  frame.rotatingWith === null
+    ? `${ATTRACTOR_NAMES[frame.center]}中心慣性系`
+    : `${ATTRACTOR_NAMES[primaryOf(frame.rotatingWith as PlanetId | SatelliteId)]}-${ATTRACTOR_NAMES[frame.rotatingWith]}回転系`,
+]);

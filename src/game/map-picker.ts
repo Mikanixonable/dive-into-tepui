@@ -139,8 +139,8 @@ export class MapPicker {
         if (target.id === 'earth') subLabel = '母星 (中心天体)';
         else if (target.id === 'moon') subLabel = '衛星 (月)';
         else if (target.id === 'sun') subLabel = '恒星 (太陽)';
-        else if (target.id.startsWith('em-l')) subLabel = '地球-月 ラグランジュ点';
-        else if (target.id.startsWith('se-l')) subLabel = '太陽-地球 ラグランジュ点';
+        else if (target.id.startsWith('moon-l')) subLabel = '地球-月 ラグランジュ点';
+        else if (target.id.startsWith('earth-l')) subLabel = '太陽-地球 ラグランジュ点';
         return [
           { type: 'header', label: target.name, subLabel },
           MenuCommon.focus(),

@@ -1,11 +1,10 @@
 // 軌道計画の姿の表示: 計画折れ線(PlanTrajectory)の駆動、表示座標系(trajectoryFrame)、
 // 表示時刻の計画上の自機位置ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
-import { orbitState } from '../../physics/orbital-state';
 import { positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/elements';
 import { Vec3, cross, dot, len, norm, sub, v3 } from '../../physics/vec3';
-import { elementsAround, relativeTo, strongestAttractor, toAbsolute } from '../../physics/attractor';
-import { Frame } from '../../physics/frame';
+import { elementsAround, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
+import { Frame, INERTIAL_FRAME, frameOrbitState, toFrameState, toInertialState } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { fmtMarkerDist, fmtDist } from '../hud/utils';
 import { MarkerManager } from '../marker/marker-manager';
@@ -30,7 +29,7 @@ interface EqNodeIcon extends MapPickable {
 }
 
 export class PlanDisplay {
-  trajectoryFrame: Frame = 'inertial';
+  trajectoryFrame: Frame = INERTIAL_FRAME;
 
   readonly traj: PlanTrajectory;
 
@@ -113,7 +112,7 @@ export class PlanDisplay {
     const state0 = this.traj.finalSegmentStart;
     if (!state0 || !this.plan || !this.apsisIcons.some((icon) => icon.id === id)) return null;
     const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
-    const relative = relativeTo(state0, center);
+    const relative = toFrameState(frameOfAttractor(center), state0);
     const el = elementsAround(state0, center);
     if (!el) return null;
     const nu = id === 'apsisAp' ? Math.PI : 0;
@@ -161,16 +160,17 @@ export class PlanDisplay {
     const state0 = this.traj.finalSegmentStart;
     if (!state0 || !this.plan) return [];
     const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
-    const relative = relativeTo(state0, center);
+    const tf = frameOfAttractor(center);
+    const relative = toFrameState(tf, state0);
     const el = elementsAround(state0, center);
     if (!el || el.e < C.APSIS_MIN_ECC) return [];
 
     const apsisPosition = (nu: number): { pos: Vec3, time: number } => {
       const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
       const t = state0.t + (isFinite(dt) ? dt : 0);
-      const relativeState = orbitState(t, positionOnOrbit(el, nu), relative.v);
+      const relativeState = frameOrbitState(positionOnOrbit(el, nu), relative.v);
       return {
-        pos: this.traj.toDisplay(toAbsolute(relativeState, center).r, t),
+        pos: this.traj.toDisplay(toInertialState(tf, t, relativeState).r, t),
         time: t
       };
     };
@@ -201,12 +201,13 @@ export class PlanDisplay {
     const state0 = this.traj.finalSegmentStart;
     if (!state0 || !this.plan) return [];
     const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
-    const relative = relativeTo(state0, center);
+    const tf = frameOfAttractor(center);
+    const relative = toFrameState(tf, state0);
     const el = elementsAround(state0, center);
     if (!el || el.e < C.APSIS_MIN_ECC) return [];
 
     const eqNormal = center.id === 'moon'
-      ? this.ephemeris.moonOrbitNormalAt(state0.t)
+      ? this.ephemeris.orbitNormalAt('moon', state0.t)
       : v3(0, 1, 0);
 
     // 交点線の方向 = 赤道面法線 × 軌道面法線。両面がほぼ一致すると外積が潰れて向きが定まらない。
@@ -218,9 +219,9 @@ export class PlanDisplay {
     const eqPosition = (nu: number): { pos: Vec3, time: number } => {
       const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
       const t = state0.t + (isFinite(dt) ? dt : 0);
-      const relativeState = orbitState(t, positionOnOrbit(el, nu), relative.v);
+      const relativeState = frameOrbitState(positionOnOrbit(el, nu), relative.v);
       return {
-        pos: this.traj.toDisplay(toAbsolute(relativeState, center).r, t),
+        pos: this.traj.toDisplay(toInertialState(tf, t, relativeState).r, t),
         time: t
       };
     };

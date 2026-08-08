@@ -13,8 +13,9 @@ export function hudButton(label: string, onClick: () => void): HTMLElement {
   return btn;
 }
 
-// 見出し + 排他選択のボタン列。
-export class SegmentedControl<T extends string> {
+// 見出し + 排他選択のボタン列。T は Map のキーとして参照同一性で引けるものであれば足りる
+// (文字列に限らない — 座標系の Frame オブジェクトなど、正準インスタンスの集合から選ぶ値も扱う)。
+export class SegmentedControl<T> {
   readonly element: HTMLElement;
   private readonly buttons = new Map<T, HTMLElement>();
 

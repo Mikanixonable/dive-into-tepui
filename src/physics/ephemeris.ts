@@ -1,304 +1,173 @@
-// 太陽・月の解析天体暦。座標系はゲームの ECI(Y軸 = 北極)。
-// 太陽: 黄道面(赤道に対し 23.44° 傾斜)を 1 恒星年で公転。
-// 月: 黄道に対し 5.145° 傾いた白道上の楕円軌道(e = 0.0549)を 1 恒星月で公転し、
-//     昇交点は 18.61 年周期で逆行歳差、近地点は 8.85 年周期で順行歳差する
-//     (昇交点歳差が軌道傾斜角変化の源)。
-// THREE/DOM 非依存。位置の計算式は純関数、それを初期位相で束縛して simTime で
-// サンプルする状態は末尾の Ephemeris クラスが持つ。
-import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
-import { Attractor } from './attractor';
-import { MU_EARTH, R_EARTH, orbitState } from './orbital-state';
-import { Vec3, addScaled, dot, len, norm, scale, sub, v3 } from './vec3';
+// 天体暦: 恒星→惑星-衛星系重心→惑星/衛星の順に合成し(重心補正込み)、任意時刻の ECI
+// 位置・速度・重力源配列・回転基準系・ラグランジュ点を返すサンプラ。分岐は SOLAR_SYSTEM の
+// kind(恒星/惑星/衛星)だけで、固有名の分岐は持たない。ECI 化は「日心位置 − 地球の日心位置」
+// の一箇所のみ(地球は自分自身を引くので厳密に 0 になる)。
+// メモ化はしない — 呼び出し順に依存する隠れた制約を作らず、毎回すべてを素直に評価する。
+// THREE/DOM 非依存の純関数群 + 状態(初期位相)を1つだけ持つサンプラクラス。
+import { Quat, qRotate } from './attitude';
+import { Attractor, AttractorId, OrbitingId, PlanetId, SatelliteId } from './attractor';
+import { Frame, FrameTransform } from './frame';
+import { FrameRotation, KeplerOrbit, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
+import { LagrangePoints, lagrangePoints } from './lagrange';
+import { planetAngles } from './planet-orbit';
+import { satelliteState } from './satellite-orbit';
+import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from './solar-system';
+import { OrbitState, orbitState } from './orbital-state';
+import { Vec3, add, addScaled, len, norm, sub, v3 } from './vec3';
 
-export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
-export const MU_MOON = 4.9048695e12;
-export const SUN_DIST = 1.495978707e11; // 1 au [m]
-export const MOON_DIST = 3.844e8; // 平均距離 [m]
-export const R_MOON = 1.7374e6; // 月半径 [m]
-export const R_SUN = 6.957e8; // 太陽半径 [m]
+// 回転しない座標系(Frame.rotatingWith === null)の姿勢・角速度。
+const IDENTITY_ROTATION: FrameRotation = { q: { x: 0, y: 0, z: 0, w: 1 } as Quat, omega: v3() };
 
-const YEAR = 365.25636 * 86400; // 恒星年 [s]
-const MOON_PERIOD = 27.321661 * 86400; // 恒星月 [s]
-const NODE_PERIOD = 18.612958 * 365.25 * 86400; // 月の昇交点歳差周期 [s]
-const PERIGEE_PERIOD = 8.85 * 365.25 * 86400; // 月の近地点歳差周期 [s]
-const MOON_ECC = 0.0549; // 月軌道の離心率
-const EPS = (23.439291 * Math.PI) / 180; // 黄道傾斜角
-const MOON_INC = (5.145 * Math.PI) / 180; // 白道の黄道に対する傾斜
-const VEL_DT = 1; // moonVelAt/sunVelAt の中心差分の半刻み [s]
+type PlanetDef = Extract<CelestialBodyDef, { readonly kind: 'planet' }>;
+type SatelliteDef = Extract<CelestialBodyDef, { readonly kind: 'satellite' }>;
+type OrbitingDef = PlanetDef | SatelliteDef;
 
-const COS_EPS = Math.cos(EPS);
-const SIN_EPS = Math.sin(EPS);
-const COS_MOON_INC = Math.cos(MOON_INC);
-const SIN_MOON_INC = Math.sin(MOON_INC);
+// 天体 id の一覧、および attractorsAt が返す重力源配列の順序。SOLAR_SYSTEM の宣言順が
+// そのまま順序になるので、天体を増やしても足す場所はレジストリだけで済む。
+// (Object.keys は string[] を返すため、キー型の復元にだけキャストを使う。)
+const ATTRACTOR_IDS = Object.keys(SOLAR_SYSTEM) as AttractorId[];
 
-// 天体に固定した回転基準系の、ECI に対する姿勢 q と角速度 omega [rad/s](ECI 成分)。
-// 回転軸が一定とは限らないので、軸と回転角の対ではなくこの対で扱う。
-export type FrameRotation = { q: Quat; omega: Vec3 };
-
-// 標準赤道座標 (X=春分点, Z=北極, 右手系) →  ECI (Y=北極)。
-// Xstd→X, Zstd→Y, Ystd→-Z(行列式 +1 の回転)。
-function stdToEci(xs: number, ys: number, zs: number): Vec3 {
-  return v3(xs, zs, -ys);
-}
-
-// 黄道座標 (xe,ye 黄道面内, ze 黄道北極) → 標準赤道座標 →  ECI
-function eclToEci(xe: number, ye: number, ze: number): Vec3 {
-  return stdToEci(xe, ye * COS_EPS - ze * SIN_EPS, ye * SIN_EPS + ze * COS_EPS);
-}
-
-// 黄道座標系の基底軸(成分は黄道座標での値)。
-const ECL_VERNAL = v3(1, 0, 0); // 春分点方向
-const ECL_POLE = v3(0, 0, 1); // 黄道北極
-const ECL_POLE_ECI = eclToEci(0, 0, 1); // 黄道北極を ECI で表したもの
-// eclToEci と同一の回転をクォータニオンで表したもの。春分点(X)まわりに EPS − 90° 回すと
-// 黄道基底が ECI 基底へ重なる。
-export const Q_ECL_TO_ECI = qFromAxisAngle(ECL_VERNAL, EPS - Math.PI / 2);
-
-// 太陽の黄経とその変化率 [rad], [rad/s]。phase0 は初期黄経。円軌道近似なので変化率は一定。
-function sunAngles(t: number, phase0: number): { lam: number; lamRate: number } {
-  return { lam: phase0 + (2 * Math.PI * t) / YEAR, lamRate: (2 * Math.PI) / YEAR };
-}
-
-// 太陽の ECI 位置(地心から見た太陽)。phase0 は初期黄経 [rad]。
-export function sunPosition(t: number, phase0: number): Vec3 {
-  const { lam } = sunAngles(t, phase0);
-  const p = eclToEci(Math.cos(lam), Math.sin(lam), 0);
-  return v3(p.x * SUN_DIST, p.y * SUN_DIST, p.z * SUN_DIST);
-}
-
-// 太陽の見かけの公転に固定した回転基準系(x̂ = 地心から見た太陽の方向、ẑ = 黄道法線)。
-// 回転軸は赤道の極軸ではなく黄道極(赤道に対し 23.44° 傾く)。
-export function sunOrbitRotation(t: number, phase0: number): FrameRotation {
-  const { lam, lamRate } = sunAngles(t, phase0);
-  return {
-    q: qMul(Q_ECL_TO_ECI, qFromAxisAngle(ECL_POLE, lam)),
-    omega: scale(ECL_POLE_ECI, lamRate),
-  };
-}
-
-// 月の軌道角(昇交点黄経 node、真近点角 nu、昇交点からの緯度引数 u)とその時間微分 [rad/s]。
-// phase0 は初期の平均黄経 [rad]。
-// 角度はすべて「黄経」(黄道上の固定方向から測った角)で組み立て、最後に軌道面内の角
-// (昇交点からの緯度引数 u)へ落とす。昇交点・近地点はどちらも歳差するので、平均黄経 L を
-// 直接 u として使うと公転が歳差ぶんだけ遅速し、月の位置が長期に大きくずれる。
-function moonAngles(t: number, phase0: number): {
-  node: number; nodeRate: number; nu: number; u: number; uRate: number;
-} {
-  // 昇交点黄経(逆行、18.61 年)と近地点黄経(順行、約 8.85 年)。
-  const node = -(2 * Math.PI * t) / NODE_PERIOD;
-  const nodeRate = -(2 * Math.PI) / NODE_PERIOD;
-  const lonPerigee = (2 * Math.PI * t) / PERIGEE_PERIOD;
-  const perigeeRate = (2 * Math.PI) / PERIGEE_PERIOD;
-
-  // 平均黄経 L は恒星月で 1 周する。平均近点角 M はそこから近地点黄経を引いたもの。
-  const M = phase0 + (2 * Math.PI * t) / MOON_PERIOD - lonPerigee;
-  const mRate = (2 * Math.PI) / MOON_PERIOD - perigeeRate;
-
-  // 中心差(Equation of the center)による真近点角 ν の近似と、その解析微分。
-  const e = MOON_ECC;
-  const c1 = 2 * e - 0.25 * e * e * e;
-  const c2 = 1.25 * e * e;
-  const nu = M + c1 * Math.sin(M) + c2 * Math.sin(2 * M);
-  const nuRate = mRate * (1 + c1 * Math.cos(M) + 2 * c2 * Math.cos(2 * M));
-
-  // 昇交点からの緯度引数 u = 近地点引数(= 近地点黄経 − 昇交点黄経)+ 真近点角
-  return { node, nodeRate, nu, u: nu + (lonPerigee - node), uRate: nuRate + (perigeeRate - nodeRate) };
-}
-
-// 月の ECI 位置。phase0 は初期の平均黄経 [rad]。
-export function moonPosition(t: number, phase0: number): Vec3 {
-  const { node, nu, u } = moonAngles(t, phase0);
-  const r = (MOON_DIST * (1 - MOON_ECC * MOON_ECC)) / (1 + MOON_ECC * Math.cos(nu));
-
-  const cu = Math.cos(u);
-  const su = Math.sin(u);
-  const cn = Math.cos(node);
-  const sn = Math.sin(node);
-  // 軌道面 → 黄道面(標準的な Ω, i 回転)
-  const xe = cn * cu - sn * su * COS_MOON_INC;
-  const ye = sn * cu + cn * su * COS_MOON_INC;
-  const ze = su * SIN_MOON_INC;
-  const p = eclToEci(xe, ye, ze);
-  return v3(p.x * r, p.y * r, p.z * r);
-}
-
-// 白道(月の公転面)の法線(単位ベクトル、ECI)。黄道面(見かけの太陽の公転面)に対し
-// 5.145° 傾き、その昇交点が 18.61 年周期で逆行するので、向きは時刻とともに変わる。
-export function moonOrbitNormal(t: number, phase0: number): Vec3 {
-  const { node } = moonAngles(t, phase0);
-  return eclToEci(Math.sin(node) * SIN_MOON_INC, -Math.cos(node) * SIN_MOON_INC, COS_MOON_INC);
-}
-
-// 月の公転に固定した回転基準系(x̂ = 地心から見た月の方向、ẑ = 白道法線)。
-// 白道の昇交点が歳差するため回転軸は一つに固定できず、omega は「黄道極まわりの昇交点歳差」と
-// 「白道法線まわりの公転」の和になる。
-export function moonOrbitRotation(t: number, phase0: number): FrameRotation {
-  const { node, nodeRate, u, uRate } = moonAngles(t, phase0);
-  // 黄道座標での基底 Rz(Ω)·Rx(i)·Rz(u) を組み、ECI へ移す。
-  const q = qMul(Q_ECL_TO_ECI, qMul(
-    qFromAxisAngle(ECL_POLE, node),
-    qMul(qFromAxisAngle(ECL_VERNAL, MOON_INC), qFromAxisAngle(ECL_POLE, u)),
-  ));
-  const omega = addScaled(scale(ECL_POLE_ECI, nodeRate), moonOrbitNormal(t, phase0), uRate);
-  return { q, omega };
-}
-
-export type LagrangePoints = { L1: Vec3; L2: Vec3; L3: Vec3; L4: Vec3; L5: Vec3 };
-
-// 共線点 L1/L2 の副天体からの距離(軌道半径比 gamma)。回転系での釣り合いは gamma の5次方程式
-// になり、閉じた形では解けない。Hill 半径 (mu/3)^(1/3) を初期値に Newton 法で解く —
-// 地球-月系では Hill 半径そのものが真の解から 5% (約 5,000 km) ずれるため、反復して詰める。
-function collinearGamma(mu: number, point: 'L1' | 'L2'): number {
-  const sign = point === 'L1' ? -1 : 1;
-  let g = Math.cbrt(mu / 3);
-  for (let i = 0; i < 40; i++) {
-    // L1: g^5 -(3-mu)g^4 +(3-2mu)g^3 -mu g^2 +2mu g -mu = 0
-    // L2: g^5 +(3-mu)g^4 +(3-2mu)g^3 -mu g^2 -2mu g -mu = 0
-    const f = g ** 5 + sign * (3 - mu) * g ** 4 + (3 - 2 * mu) * g ** 3
-      - mu * g * g - sign * 2 * mu * g - mu;
-    const df = 5 * g ** 4 + sign * 4 * (3 - mu) * g ** 3 + 3 * (3 - 2 * mu) * g * g
-      - 2 * mu * g - sign * 2 * mu;
-    const step = f / df;
-    g -= step;
-    if (Math.abs(step) < 1e-15) break;
+// 惑星 planet を回る衛星の id 一覧。
+function satellitesOf(planet: PlanetId): readonly SatelliteId[] {
+  const ids: SatelliteId[] = [];
+  for (const id of ATTRACTOR_IDS) {
+    const def = bodyDef(id);
+    if (def.kind === 'satellite' && def.planet === planet) ids.push(def.id);
   }
-  return g;
+  return ids;
 }
 
-// 円制限三体問題のラグランジュ点。5点はいずれも回転系(原点 = 主天体、x̂ = 副天体方向、
-// ŷ = 副天体の公転前方)の固定点で、その無次元座標(軌道半径を 1 とする)は質量比
-// mu = m2/(m1+m2) だけで決まる。それを ECI [m] へ移す写像 place を受け取って組み立てる。
-function lagrangePoints(mu: number, place: (x: number, y: number) => Vec3): LagrangePoints {
-  const s60 = Math.sqrt(3) / 2;
-  return {
-    L1: place(1 - collinearGamma(mu, 'L1'), 0),
-    L2: place(1 + collinearGamma(mu, 'L2'), 0),
-    L3: place(-(1 + (5 / 12) * mu), 0),
-    L4: place(0.5, s60),
-    L5: place(0.5, -s60),
-  };
+// 公転している天体の二体部分の軌道。衛星は周期摂動項を含まない平均要素(kepler)を持つ。
+function keplerOrbitOf(def: OrbitingDef): KeplerOrbit {
+  return def.kind === 'planet' ? def.orbit : def.orbit.kepler;
 }
 
-// 地球-月系のラグランジュ点を ECI [m] で返す。
-// 地球が主天体なので、回転系の原点がそのまま地心になる。
-export function emLagrangePoints(t: number, phase0: number): LagrangePoints {
-  const { q } = moonOrbitRotation(t, phase0);
-  const R = len(moonPosition(t, phase0));
-  return lagrangePoints(MU_MOON / (MU_EARTH + MU_MOON), (x, y) => qRotate(q, v3(R * x, R * y, 0)));
-}
-
-// 太陽-地球系のラグランジュ点を ECI [m] で返す。L1 は太陽側、L2 は反太陽側、
-// L3 は太陽を挟んだ向こう側(地心からは太陽方向へ約 2 au)、L4/L5 は地球の公転前方/後方 60°。
-// 地球はこの系では副天体なので、回転系の原点(太陽)から地心へ移す平行移動が入る。
-// sunOrbitRotation の基底では x̂ が地球→太陽、すなわち回転系の x̂(太陽→地球)とは逆向きで、
-// ŷ も同時に反転するため、無次元座標 (x, y) の地心での像は R·(1 − x, −y) になる。
-export function seLagrangePoints(t: number, phase0: number): LagrangePoints {
-  const { q } = sunOrbitRotation(t, phase0);
-  const R = SUN_DIST; // 太陽は円軌道近似なので距離は一定
-  return lagrangePoints(MU_EARTH / (MU_SUN + MU_EARTH), (x, y) => qRotate(q, v3(R * (1 - x), -R * y, 0)));
-}
-
-// 位置 r における日照率 0..1。地球を円柱とみなし、影側では地球半径からの距離に応じて
-// penumbra [m] の幅で 0→1 へ線形にぼかす。
-export function sunlitFactor(r: Vec3, sunDir: Vec3, penumbra: number): number {
-  const along = dot(r, sunDir);
-  if (along >= 0) return 1; // 太陽側
-  const perp = len(addScaled(r, sunDir, -along));
-  return Math.min(1, Math.max(0, (perp - R_EARTH) / penumbra));
-}
-
-// 天体暦: 初期位相をゲームごとに固定し、任意の simTime で太陽・月の ECI 位置・
-// 太陽方向を計算して返すサンプラ。軌道予測・環境描画・マップ表示など「物理的な天体暦」
-// だけを要する箇所は、位相を露出せずこのオブジェクトを共有する。
-// sunPosAt/moonPosAt は直近に引いた時刻と結果を覚えて同一時刻の再計算を省くが、返す Vec3 は
-// 不変なので呼び出し側からは毎回計算するのと区別できない — 呼び出し順の制約は生じない。
 export class Ephemeris {
-  // sunPosAt/moonPosAt のメモ(直近に引いた時刻とその結果)。
-  private sunMemoT: number;
-  private sunMemoPos: Vec3;
-  private moonMemoT: number;
-  private moonMemoPos: Vec3;
-  // attractorsAt のメモ(直近2件、新しい順)。RK4 のステップ中点(積分用)とステップ始点
-  // (刻み幅・サンプル間隔の決定用)が交互に引かれる呼び出しが構造上避けられず、1件だけでは
-  // 毎回両方とも外れてメモ化が機能しない。
-  private attractorsMemo: { t: number; bodies: readonly Attractor[] }[] = [];
+  // 天体ごとの平均黄経の初期オフセット。既定は月のみ乱数(現行の挙動)。テストは決定的な
+  // 位相を渡すためコンストラクタで上書きする。
+  constructor(private readonly phaseOffsets: Partial<Record<AttractorId, number>> = { moon: Math.random() * 2 * Math.PI }) {}
 
-  // sunPhase0 は昼(太陽が+X側)から始まるよう既定 0。moonPhase0 は既定でゲーム
-  // ごとの乱数。テストは決定的な位相を渡すためコンストラクタで上書きする。
-  constructor(
-    private readonly sunPhase0 = 0,
-    private readonly moonPhase0 = Math.random() * Math.PI * 2,
-  ) {
-    this.sunMemoT = 0;
-    this.sunMemoPos = sunPosition(0, sunPhase0);
-    this.moonMemoT = 0;
-    this.moonMemoPos = moonPosition(0, moonPhase0);
+  // id の平均黄経の初期位相(未指定なら 0)。
+  private phaseOf(id: AttractorId): number {
+    return this.phaseOffsets[id] ?? 0;
   }
 
-  // 指定時刻の太陽の ECI 位置。
-  sunPosAt(t: number): Vec3 {
-    if (t !== this.sunMemoT) {
-      this.sunMemoPos = sunPosition(t, this.sunPhase0);
-      this.sunMemoT = t;
+  // 惑星-衛星系重心の日心状態。
+  private baryHelioState(def: PlanetDef, t: number): OrbitState {
+    return keplerOrbitState(def.orbit, t, this.phaseOf(def.id));
+  }
+
+  // 衛星の惑星相対状態。太陽の方向は惑星-衛星系重心の軌道が持つ平均角度(planetAngles)
+  // から取るので循環しない。
+  private satelliteRelState(def: SatelliteDef, t: number): OrbitState {
+    const planet = bodyDef(def.planet);
+    const pAngles = planetAngles(planet.orbit, t, this.phaseOf(planet.id));
+    return satelliteState(def.orbit, pAngles, t, this.phaseOf(def.id));
+  }
+
+  // 惑星本体の日心状態。重心の日心状態から、Σ(μ_衛星/(μ_惑星+Σμ_衛星))·r_衛星(惑星相対)
+  // ぶんを引く(重心補正。位置・速度の両方に効く)。
+  private planetHelioState(def: PlanetDef, t: number): OrbitState {
+    const bary = this.baryHelioState(def, t);
+    const satellites = satellitesOf(def.id);
+    if (satellites.length === 0) return bary;
+
+    // 重心を分け合う全質量(惑星本体 + 全衛星)に対する各衛星の比で、重心から差し引く量を決める。
+    let muTotal = def.mu;
+    for (const s of satellites) muTotal += bodyDef(s).mu;
+
+    let r = bary.r;
+    let v = bary.v;
+    for (const s of satellites) {
+      const satDef = bodyDef(s);
+      const rel = this.satelliteRelState(satDef, t);
+      const w = satDef.mu / muTotal;
+      r = addScaled(r, rel.r, -w);
+      v = addScaled(v, rel.v, -w);
     }
-    return this.sunMemoPos;
+    return orbitState(t, r, v);
   }
-  // 指定時刻の月の ECI 位置。
-  moonPosAt(t: number): Vec3 {
-    if (t !== this.moonMemoT) {
-      this.moonMemoPos = moonPosition(t, this.moonPhase0);
-      this.moonMemoT = t;
+
+  // 天体の日心状態(恒星は原点に静止、惑星は重心補正込みの本体、衛星は惑星本体 + 惑星相対状態)。
+  private helioStateOf(id: AttractorId, t: number): OrbitState {
+    const def = bodyDef(id);
+    switch (def.kind) {
+      // 恒星は日心座標系の原点そのもの。
+      case 'star':
+        return orbitState(t, v3(0, 0, 0), v3(0, 0, 0));
+      case 'planet':
+        return this.planetHelioState(def, t);
+      // 衛星の日心状態は、惑星本体の日心状態に惑星相対状態を足すだけ。
+      case 'satellite': {
+        const planetHelio = this.planetHelioState(bodyDef(def.planet), t);
+        const rel = this.satelliteRelState(def, t);
+        return orbitState(t, add(planetHelio.r, rel.r), add(planetHelio.v, rel.v));
+      }
     }
-    return this.moonMemoPos;
   }
-  // 指定時刻の月の ECI 速度。位置の中心差分(±VEL_DT)で求める — 月の速度の解析式は
-  // 持たず、moonPosAt と別の実装を重複させない。
-  moonVelAt(t: number): Vec3 {
-    const h = VEL_DT;
-    return scale(sub(moonPosition(t + h, this.moonPhase0), moonPosition(t - h, this.moonPhase0)), 1 / (2 * h));
+
+  // 指定時刻の ECI(地球中心)位置・速度。日心状態から地球の日心状態を引く一箇所だけで
+  // ECI 化する。地球自身は同じ計算を2回引くので厳密に 0 になる。
+  stateOf(id: AttractorId, t: number): OrbitState {
+    const helio = this.helioStateOf(id, t);
+    const earthHelio = this.helioStateOf('earth', t);
+    return orbitState(t, sub(helio.r, earthHelio.r), sub(helio.v, earthHelio.v));
   }
-  // 指定時刻の太陽の ECI 速度。moonVelAt と同じく位置の中心差分(±VEL_DT)で求める —
-  // 太陽の速度の解析式は持たず、sunPosAt と別の実装を重複させない。
-  sunVelAt(t: number): Vec3 {
-    const h = VEL_DT;
-    return scale(sub(sunPosition(t + h, this.sunPhase0), sunPosition(t - h, this.sunPhase0)), 1 / (2 * h));
+
+  // 指定時刻の ECI 位置。
+  positionOf(id: AttractorId, t: number): Vec3 {
+    return this.stateOf(id, t).r;
   }
-  // 太陽方向の単位ベクトル(ライティング・影判定用)。
+
+  // 天体 id に固定した回転基準系(x̂ = 中心天体→id、ẑ = 軌道面法線)。中心は分類から決まる
+  // (惑星なら恒星、衛星ならその惑星)。衛星の周期項は平均要素に含めないので、この基底は
+  // 実位置の x̂ 軸から最大 1.4° ほどずれる(satellite-orbit.ts 参照)。
+  orbitRotationAt(id: OrbitingId, t: number): FrameRotation {
+    return keplerOrbitRotation(keplerOrbitOf(bodyDef(id)), t, this.phaseOf(id));
+  }
+
+  // id の軌道面の法線(単位ベクトル、ECI)。
+  orbitNormalAt(id: OrbitingId, t: number): Vec3 {
+    return keplerOrbitNormal(keplerOrbitOf(bodyDef(id)), t, this.phaseOf(id));
+  }
+
+  // secondary(公転している天体)を副天体とする円制限三体問題のラグランジュ点。中心天体
+  // (主天体)は分類から決まる(惑星なら恒星、衛星ならその惑星)。回転系は orbitRotationAt(id)
+  // の姿勢(x̂ = 主天体→副天体)そのものを使う。
+  lagrangeAt(secondary: OrbitingId, t: number): LagrangePoints {
+    const def = bodyDef(secondary);
+    const primary: AttractorId = def.kind === 'planet' ? 'sun' : def.planet;
+    const primaryPos = this.positionOf(primary, t);
+    const secondaryPos = this.positionOf(secondary, t);
+    const R = len(sub(secondaryPos, primaryPos));
+    const { q } = this.orbitRotationAt(secondary, t);
+    const mu = def.mu / (bodyDef(primary).mu + def.mu);
+    return lagrangePoints(mu, (x, y) => add(primaryPos, qRotate(q, v3(R * x, R * y, 0))));
+  }
+
+  // 太陽方向の単位ベクトル(ライティング・影判定用)。恒星が太陽1つであることは固有名でよい。
   sunDirAt(t: number): Vec3 {
-    return norm(sunPosition(t, this.sunPhase0));
+    return norm(this.positionOf('sun', t));
   }
-  // 指定時刻の、太陽の見かけの公転に固定した回転基準系。
-  sunOrbitRotationAt(t: number): FrameRotation {
-    return sunOrbitRotation(t, this.sunPhase0);
+
+  // Frame の時刻 t における剛体運動。原点は frame.center の状態、回転は frame.rotatingWith が
+  // null なら恒等、そうでなければその天体自身の回転基準系。分岐は null 判定だけで、
+  // 恒星/惑星/衛星の分類には関与しない。rotatingWith が非 null のとき常に公転している天体を
+  // 指す(恒星は自身の公転を持たないので rotatingWith になり得ない)ことは Frame の構築側
+  // (frame.ts の FRAMES、または呼び出し側)が保証する。
+  frameTransformAt(frame: Frame, t: number): FrameTransform {
+    const origin = this.stateOf(frame.center, t);
+    const { q, omega } = frame.rotatingWith === null
+      ? IDENTITY_ROTATION
+      : this.orbitRotationAt(frame.rotatingWith, t);
+    return { origin: origin.r, originVel: origin.v, q, omega };
   }
-  // 指定時刻の、月の公転に固定した回転基準系。
-  moonOrbitRotationAt(t: number): FrameRotation {
-    return moonOrbitRotation(t, this.moonPhase0);
-  }
-  // 指定時刻の白道(月の公転面)法線。
-  moonOrbitNormalAt(t: number): Vec3 {
-    return moonOrbitNormal(t, this.moonPhase0);
-  }
-  // 指定時刻の地球-月ラグランジュ点(L1-L5)。
-  emLagrangeAt(t: number): LagrangePoints {
-    return emLagrangePoints(t, this.moonPhase0);
-  }
-  // 指定時刻の太陽-地球ラグランジュ点(L1-L5)。
-  seLagrangeAt(t: number): LagrangePoints {
-    return seLagrangePoints(t, this.sunPhase0);
-  }
-  // 指定時刻の重力源一覧([earth, moon, sun] 固定順)。地球は原点に静止。返す配列は
-  // 不変で、同一 t の再呼び出しには同じ配列参照を返す。
+
+  // 指定時刻の重力源一覧(SOLAR_SYSTEM の宣言順)。地球は原点に静止。
   attractorsAt(t: number): readonly Attractor[] {
-    const cached = this.attractorsMemo.find((m) => m.t === t);
-    if (cached) return cached.bodies;
-    const bodies: readonly Attractor[] = [
-      { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: orbitState(t, v3(0, 0, 0), v3(0, 0, 0)) },
-      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: orbitState(t, this.moonPosAt(t), this.moonVelAt(t)) },
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: orbitState(t, this.sunPosAt(t), this.sunVelAt(t)) },
-    ];
-    this.attractorsMemo.unshift({ t, bodies });
-    this.attractorsMemo.length = Math.min(this.attractorsMemo.length, 2);
-    return bodies;
+    return ATTRACTOR_IDS.map((id) => {
+      const def = bodyDef(id);
+      return { id, mu: def.mu, radius: def.radius, state: this.stateOf(id, t) };
+    });
   }
 }

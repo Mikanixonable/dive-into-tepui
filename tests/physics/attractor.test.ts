@@ -10,7 +10,8 @@ import {
 } from '../../src/physics/attractor';
 import { MU_EARTH, R_EARTH, orbitState } from '../../src/physics/orbital-state';
 import { keplerPeriod, stateFromElements, tofBetween } from '../../src/physics/elements';
-import { Ephemeris, MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/ephemeris';
+import { Ephemeris } from '../../src/physics/ephemeris';
+import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
 import { add, addScaled, len, norm, sub, v3 } from '../../src/physics/vec3';
 
 const ZERO = v3(0, 0, 0);
@@ -38,7 +39,7 @@ export function register(): void {
   });
 
   test('attractor: attractorAccel は差分潮汐式 μ[(r_b−r)/|r_b−r|³ − r_b/|r_b|³] に一致', () => {
-    const ephemeris = new Ephemeris(0.3, 0.4);
+    const ephemeris = new Ephemeris({ earth: 0.3, moon: 0.4 });
     const bodies = ephemeris.attractorsAt(12345);
     const r = v3(R_EARTH + 420e3, 1.2e6, -3e5);
 
@@ -58,14 +59,14 @@ export function register(): void {
   });
 
   test('attractor: strongestAttractor は LEO で earth', () => {
-    const ephemeris = new Ephemeris(0, 0);
+    const ephemeris = new Ephemeris({ moon: 0 });
     const bodies = ephemeris.attractorsAt(0);
     const r = v3(R_EARTH + 420e3, 0, 0);
     assert.equal(strongestAttractor(r, bodies).id, 'earth');
   });
 
   test('attractor: strongestAttractor は月から30,000kmでmoon、50,000kmでearthに切り替わる', () => {
-    const ephemeris = new Ephemeris(0, 0);
+    const ephemeris = new Ephemeris({ moon: 0 });
     const bodies = ephemeris.attractorsAt(0);
     const moon = bodies.find((b) => b.id === 'moon')!;
     const towardEarth = (dist: number) => addScaled(moon.state.r, norm(moon.state.r), -dist);
@@ -74,7 +75,7 @@ export function register(): void {
   });
 
   test('attractor: strongestAttractor は素の引力でなくattractorAccelで比べる(地心1e9mでearth、5e9mでsun)', () => {
-    const ephemeris = new Ephemeris(0, 0);
+    const ephemeris = new Ephemeris({ moon: 0 });
     const bodies = ephemeris.attractorsAt(0);
     // 素の引力 μ/d² で比べると太陽は地心 2.6e5 km 手前で既に地球に勝ってしまう回帰。
     assert.equal(strongestAttractor(v3(1e9, 0, 0), bodies).id, 'earth', '地心 1e9 m');
@@ -82,7 +83,7 @@ export function register(): void {
   });
 
   test('attractor: localOrbitPeriod は LEO で約5,580秒、月面+100kmで約7,066秒(実測値をピン留め)', () => {
-    const ephemeris = new Ephemeris(0, 0);
+    const ephemeris = new Ephemeris({ moon: 0 });
     const bodies = ephemeris.attractorsAt(0);
     const leoPeriod = localOrbitPeriod(v3(R_EARTH + 420e3, 0, 0), bodies);
     assert.ok(Math.abs(leoPeriod - 5580) / 5580 < 0.01, `LEO 周期: ${leoPeriod}`);
@@ -112,33 +113,24 @@ export function register(): void {
     assert.ok(Math.abs(half - expected) / expected < 1e-6, `半周期の飛行時間: ${half} vs ${expected}`);
   });
 
-  test('ephemeris: attractorsAt は同一 t で同じ配列参照を返す', () => {
-    const ephemeris = new Ephemeris(0.1, 0.2);
+  test('ephemeris: attractorsAt は同一 t を引くたび同じ値を返す(メモ化なしでも値は再現する)', () => {
+    const ephemeris = new Ephemeris({ earth: 0.1, moon: 0.2 });
     const a = ephemeris.attractorsAt(1000);
     const b = ephemeris.attractorsAt(1000);
-    assert.equal(a, b, '同一 t の再呼び出しは同じ配列参照');
+    assert.deepEqual(a, b);
   });
 
-  test('ephemeris: attractorsAt は直近2件をメモに保つ(t を交互に引いても両方メモに乗る)', () => {
-    const ephemeris = new Ephemeris(0.1, 0.2);
-    const a1 = ephemeris.attractorsAt(1000);
-    const b1 = ephemeris.attractorsAt(2000);
-    const a2 = ephemeris.attractorsAt(1000);
-    const b2 = ephemeris.attractorsAt(2000);
-    assert.equal(a1, a2, 't=1000 が2件メモの片方として残っている');
-    assert.equal(b1, b2, 't=2000 が2件メモの片方として残っている');
-  });
-
-  test('ephemeris: attractorsAt は [earth, moon, sun] の順で、moonPosAt/sunPosAt と整合する', () => {
-    const ephemeris = new Ephemeris(0.1, 0.2);
+  test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、positionOf と整合する', () => {
+    const ephemeris = new Ephemeris({ earth: 0.1, moon: 0.2 });
     const bodies = ephemeris.attractorsAt(5000);
-    assert.deepEqual(bodies.map((b) => b.id), ['earth', 'moon', 'sun']);
+    assert.deepEqual(bodies.map((b) => b.id), ['earth', 'moon', 'jupiter', 'sun']);
     assert.deepEqual(bodies[0]!.state.r, ZERO, '地球は原点に静止');
-    assert.deepEqual(bodies[1]!.state.r, ephemeris.moonPosAt(5000));
-    assert.deepEqual(bodies[2]!.state.r, ephemeris.sunPosAt(5000));
+    assert.deepEqual(bodies[1]!.state.r, ephemeris.positionOf('moon', 5000));
+    assert.deepEqual(bodies[2]!.state.r, ephemeris.positionOf('jupiter', 5000));
+    assert.deepEqual(bodies[3]!.state.r, ephemeris.positionOf('sun', 5000));
     assert.equal(bodies[0]!.mu, MU_EARTH);
     assert.equal(bodies[1]!.mu, MU_MOON);
-    assert.equal(bodies[2]!.mu, MU_SUN);
-    assert.equal(bodies[2]!.radius, R_SUN);
+    assert.equal(bodies[3]!.mu, MU_SUN);
+    assert.equal(bodies[3]!.radius, R_SUN);
   });
 }

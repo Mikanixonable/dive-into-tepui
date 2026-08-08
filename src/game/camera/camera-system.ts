@@ -16,6 +16,8 @@ import { Vec3 } from '../../physics/vec3';
 import { ndcToScreen, Projected, projectToNdc, ViewFrame } from '../../physics/projection';
 import { Frame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
+import { AttractorId } from '../../physics/attractor';
+import { CELESTIAL_VIEWS } from '../celestial/celestial-registry';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 
@@ -43,9 +45,9 @@ function projectionFromView(view: ViewFrame): ProjectFn {
   return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), window.innerWidth, window.innerHeight);
 }
 
-// 広範囲視点の操作パネルに常用のフォーカス先として並べるラベル ID。残りのラベル(ラグランジュ点
-// など)へは右クリックのメニュー経由でフォーカスする(Game が仲介する)。
-const PANEL_FOCUS_IDS = ['earth', 'moon', 'sun'] as const;
+// 広範囲視点の操作パネルに常用のフォーカス先として並べる天体本体の ID。残りのラベル
+// (ラグランジュ点など)へは右クリックのメニュー経由でフォーカスする(Game が仲介する)。
+const PANEL_FOCUS_IDS = Object.keys(CELESTIAL_VIEWS) as AttractorId[];
 
 // 戦闘ビュー(CombatCameraSystem)と広範囲視点(OverviewCamera)を切り替えて駆動する。
 // フォーカス候補ラベル(focusMarkers)とその常用ショートリスト(overviewCameraPanel)も所有する。
