@@ -1,8 +1,8 @@
 // 軌道計画の姿の表示: 計画折れ線(PlanPath)の駆動、表示座標系(planFrame)、
 // 表示時刻の計画上の自機位置ゴースト(⬡ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
-import { positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/elements';
-import { Vec3, cross, dot, len, norm, sub } from '../../physics/vec3';
+import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../../physics/elements';
+import { Vec3, len, sub } from '../../physics/vec3';
 import { orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { ReferenceFrame, INERTIAL_FRAME, frameKinematicState, toFrameState, toInertialState } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -248,11 +248,8 @@ export class PlanDisplay {
     const el = orbitalElementsOf(state0, center);
     if (!el) return [];
 
-    // 交点線の方向 = 赤道面法線 × 軌道面法線。両面がほぼ一致すると外積が潰れて向きが定まらない。
-    const lineDir = cross(eqNormal, el.hHat);
-    if (dot(lineDir, lineDir) < 1e-6) return [];
-    const d = norm(lineDir);
-    const thAsc = Math.atan2(dot(d, el.qHat), dot(d, el.pHat));
+    const nodes = nodeAnomalies(el, eqNormal);
+    if (!nodes) return [];
 
     const eqPosition = (nu: number): { pos: Vec3, time: number } => {
       const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
@@ -264,8 +261,8 @@ export class PlanDisplay {
       };
     };
 
-    const an = eqPosition(thAsc);
-    const dn = eqPosition(thAsc + Math.PI);
+    const an = eqPosition(nodes.asc);
+    const dn = eqPosition(nodes.desc);
     const centerName = ATTRACTOR_NAMES[center.id];
     return [
       { id: `${center.id}-eqan`, name: `${centerName}赤道昇交点`, kind: 'eqnode', pos: an.pos, time: an.time, label: 'EqAN' },
