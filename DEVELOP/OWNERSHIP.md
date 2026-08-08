@@ -195,8 +195,8 @@ main.ts
 | 直近ノードの接近/達成通知済み | `PlanGuide`(`approachNotified` / `achievedNotified`) | 通知済みのノードそのものへの参照。編集のたびノードは別インスタンスへ置き換わるので、同一性比較がそのまま「同じノードについて通知済みか」の判定になる |
 | 予測表示期間(手動レンジの秒数 `manualDurationSec` を含む)・未来ゴーストスライダー(`sliderT`)・未来表示の禁止(`forceCurrent`) | `DisplayTimeManager` | `forceCurrent` は get/set アクセサで、true をセットすると `sliderT` も 0 へ戻す。期間の切替(`durationKey` 変更)でも同様に `sliderT` を 0 へ戻す |
 | 計画折れ線を描く表示座標系(trajectoryFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本 |
-| マップ視点(注視点相対オフセット・パン・上方向)・表示座標系・フォーカス(id)・ViewFrame | `OverviewCamera` | `view: ViewFrame` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `view` を読むだけで自分では持たない。フォーカス id が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す |
-| 戦闘視点(ViewFrame: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
+| マップ視点(注視点相対オフセット・パン・上方向)・表示座標系・フォーカス(id)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカス id が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す |
+| 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
 | 現在のビュー(combat/map/dock) | `ViewManager`(private `_current`) | 遷移は `setView()` のみ。影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayTimeManager.forceCurrent` / タッチUI)を一斉に切り替える。ドック表示中は背後の 3D 側ビュー(`returnFromDock`)を保持し、閉じるとそこへ戻る |
 | ドックビューの対象基地 | `Docking`(private `_activeBase`) | 基地の右クリックメニューで設定。これが空でない間だけ `ViewManager.selectableViews()` に `'dock'` が並ぶ |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |

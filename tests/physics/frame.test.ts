@@ -4,7 +4,7 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { AttractorId } from '../../src/physics/attractor';
-import { FRAMES, Frame, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
+import { FRAMES, ReferenceFrame, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/physics/attitude';
 import { OrbitState, orbitState } from '../../src/physics/orbital-state';
 import { Vec3, add, addScaled, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
@@ -18,7 +18,7 @@ function closeState(a: OrbitState, b: OrbitState, tol = 1e-6): boolean {
   return close(a.r, b.r, tol) && close(a.v, b.v, tol);
 }
 
-function findFrame(center: AttractorId, rotatingWith: AttractorId | null): Frame {
+function findFrame(center: AttractorId, rotatingWith: AttractorId | null): ReferenceFrame {
   const f = FRAMES.find((f) => f.center === center && f.rotatingWith === rotatingWith);
   if (!f) throw new Error(`frame not found: ${center}/${rotatingWith}`);
   return f;

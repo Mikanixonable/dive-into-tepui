@@ -6,7 +6,7 @@
 // THREE/DOM 非依存の純関数群 + 状態(初期位相)を1つだけ持つサンプラクラス。
 import { Quat, qRotate } from './attitude';
 import { Attractor, AttractorId, OrbitingId, PlanetId, SatelliteId } from './attractor';
-import { Frame, FrameTransform } from './frame';
+import { ReferenceFrame, FrameTransform } from './frame';
 import { FrameRotation, KeplerOrbit, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
 import { LagrangePoints, lagrangePoints } from './lagrange';
 import { planetAngles } from './planet-orbit';
@@ -15,7 +15,7 @@ import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from './solar-system';
 import { OrbitState, orbitState } from './orbital-state';
 import { Vec3, add, addScaled, len, norm, sub, v3 } from './vec3';
 
-// 回転しない座標系(Frame.rotatingWith === null)の姿勢・角速度。
+// 回転しない座標系(ReferenceFrame.rotatingWith === null)の姿勢・角速度。
 const IDENTITY_ROTATION: FrameRotation = { q: { x: 0, y: 0, z: 0, w: 1 } as Quat, omega: v3() };
 
 type PlanetDef = Extract<CelestialBodyDef, { readonly kind: 'planet' }>;
@@ -150,12 +150,12 @@ export class Ephemeris {
     return norm(this.positionOf('sun', t));
   }
 
-  // Frame の時刻 t における剛体運動。原点は frame.center の状態、回転は frame.rotatingWith が
+  // ReferenceFrame の時刻 t における剛体運動。原点は frame.center の状態、回転は frame.rotatingWith が
   // null なら恒等、そうでなければその天体自身の回転基準系。分岐は null 判定だけで、
   // 恒星/惑星/衛星の分類には関与しない。rotatingWith が非 null のとき常に公転している天体を
-  // 指す(恒星は自身の公転を持たないので rotatingWith になり得ない)ことは Frame の構築側
+  // 指す(恒星は自身の公転を持たないので rotatingWith になり得ない)ことは ReferenceFrame の構築側
   // (frame.ts の FRAMES、または呼び出し側)が保証する。
-  frameTransformAt(frame: Frame, t: number): FrameTransform {
+  frameTransformAt(frame: ReferenceFrame, t: number): FrameTransform {
     const origin = this.stateOf(frame.center, t);
     const { q, omega } = frame.rotatingWith === null
       ? IDENTITY_ROTATION

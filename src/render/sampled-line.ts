@@ -17,7 +17,7 @@
 import * as THREE from 'three/webgpu';
 import { dot, len } from '../physics/vec3';
 import { OrbitState, hermiteInterpolate, orbitState } from '../physics/orbital-state';
-import { Frame, toFrameState } from '../physics/frame';
+import { ReferenceFrame, toFrameState } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from '../game/floating-origin';
 
@@ -48,7 +48,7 @@ export class SampledLine {
   private readonly positions = new Float32Array(MAX_VERTICES * 3);
   private vertexCount = 0;
   private lastSamples: readonly OrbitState[] | null = null;
-  private lastFrame: Frame | null = null;
+  private lastFrame: ReferenceFrame | null = null;
   private wantVisible = true;
 
   // 単色の折れ線マテリアル・ジオメトリを構築する。
@@ -62,7 +62,7 @@ export class SampledLine {
   }
 
   // (点列, frame)が前回から変わったときだけ、頂点を frame 相対座標へ bake し直す(非剛体)。
-  syncGeometry(samples: readonly OrbitState[], frame: Frame, ephemeris: Ephemeris): void {
+  syncGeometry(samples: readonly OrbitState[], frame: ReferenceFrame, ephemeris: Ephemeris): void {
     if (samples === this.lastSamples && frame === this.lastFrame) return;
     this.lastSamples = samples;
     this.lastFrame = frame;
@@ -99,7 +99,7 @@ export class SampledLine {
 
   // 毎フレーム: 剛体 un-bake(line クォータニオン) + フローティングオリジン補正(line 位置 =
   // 座標系原点)。currentTime = 描画時刻(通常 simTime)。
-  syncTransform(frame: Frame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin): void {
+  syncTransform(frame: ReferenceFrame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin): void {
     const tf = ephemeris.frameTransformAt(frame, currentTime);
     this.line.quaternion.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
     this.line.position.copy(fo.RtoThreeV3(tf.origin));

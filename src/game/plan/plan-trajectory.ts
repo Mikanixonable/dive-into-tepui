@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitState } from '../../physics/orbital-state';
 import { elementsAround, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
-import { Frame, INERTIAL_FRAME, toFramePoint, toInertialPoint } from '../../physics/frame';
+import { ReferenceFrame, INERTIAL_FRAME, toFramePoint, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { FloatingOrigin } from '../floating-origin';
@@ -31,7 +31,7 @@ export class PlanTrajectory {
   private nodeCount = 0;
   // 積分予測が起点の楕円近似から大きく外れた場合、解析楕円線を隠す。
   private analyticDivergent = false;
-  private frame: Frame = INERTIAL_FRAME;
+  private frame: ReferenceFrame = INERTIAL_FRAME;
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
@@ -49,7 +49,7 @@ export class PlanTrajectory {
 
   // plan から区間列を組み直して各区間を再積分し、表示変換の文脈(座標系・un-bake 時刻)を
   // このフレームのものに更新する。
-  update(plan: Plan, ephemeris: Ephemeris, frame: Frame, currentTime: number): void {
+  update(plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number): void {
     this.frame = frame;
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
