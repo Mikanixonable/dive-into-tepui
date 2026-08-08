@@ -330,6 +330,10 @@ export class Game {
       this.entities.addBase(b);
     }
 
+    // ステージ状態(スコア・決着状態・固有の内訳)の復元。SaveManager が
+    // セーブ時と同じ stageId であることを既に検証済み。
+    this.activeStage.restore(data.stage);
+
     // ロード直後の状態同期と安定化
     this.entities.sync(this.floatingOrigin, data.simTime);
   }

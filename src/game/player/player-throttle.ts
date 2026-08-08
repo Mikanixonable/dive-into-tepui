@@ -8,6 +8,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { SimSpeedManager } from '../sim-speed-manager';
+import type { ThrottleSaveData } from '../save-data';
 
 export class PlayerThrottle {
   rcsDamp = true;
@@ -52,6 +53,14 @@ export class PlayerThrottle {
   clearTransientState(): void {
     this.thrustVizDir = null;
     this.thrustAccelVec = v3();
+  }
+
+  serialize(): ThrottleSaveData {
+    return { throttleIdx: this.throttleIdx };
+  }
+
+  restore(data: ThrottleSaveData): void {
+    this.throttleIdx = data.throttleIdx;
   }
 
   // 入力から機体座標系の推力加速度を組み立てて返す。warp 中などで噴射不可なら null。

@@ -15,4 +15,12 @@ export class ScoreAttackTimer {
     onTimeUp('timeup');
     return true;
   }
+
+  serialize(): number {
+    return this.timeLeft;
+  }
+
+  restore(timeLeft: number): void {
+    this.timeLeft = timeLeft;
+  }
 }
