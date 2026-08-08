@@ -38,6 +38,8 @@ let _baseIdCounter = 0;
 
 export class Base extends GameEntity {
   readonly id: string;
+  // プロパティウィンドウから改名できる表示名。
+  name: string;
   readonly orbitLine: OrbitLine;
   public baseState: BaseState = {
     money: 100000,
@@ -45,11 +47,12 @@ export class Base extends GameEntity {
     dockedShips: []
   };
 
-  constructor(state: KinematicState, scene: THREE.Scene, att?: Attitude) {
+  constructor(state: KinematicState, scene: THREE.Scene, name = '基地', att?: Attitude) {
     super(state, buildBaseModel(), scene, att);
     this.mass = 1e6;
     this.collideRadius = 100;
     this.id = `base-${_baseIdCounter++}`;
+    this.name = name;
     this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35);
     scene.add(this.orbitLine.line);
   }
@@ -71,6 +74,7 @@ export class Base extends GameEntity {
   serialize(): BaseSaveData {
     return {
       id: this.id,
+      name: this.name,
       r: { ...this.state.r },
       v: { ...this.state.v },
       money: this.baseState.money,
@@ -86,7 +90,7 @@ export class Base extends GameEntity {
     hud: Hud, sfx: Sfx, fx: EffectsSystem, markerManager: MarkerManager,
   ): Base {
     const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
-    const base = new Base(state, scene);
+    const base = new Base(state, scene, data.name);
     base.baseState.money = data.money;
     base.baseState.inventory = data.inventory.map(restorePart);
     base.baseState.dockedShips = data.dockedShips.map((shipData) => {

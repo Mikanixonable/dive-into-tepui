@@ -113,7 +113,7 @@ export class MapPicker {
     for (const base of this.entities.bases) {
       if (!base.alive) continue;
       const pos = base.displayState(displayTime)?.r;
-      if (pos) items.push({ id: base.id, name: '基地', pos, kind: 'base' });
+      if (pos) items.push({ id: base.id, name: base.name, pos, kind: 'base' });
     }
     items.push(...this.navTarget.mapPickables());
     items.push(...this.editor.planDisplay.apsisMarkers);
@@ -436,10 +436,10 @@ export class MapPicker {
       itemsFor: (target) => {
         const base = this.entities.findBase(target.id);
         const subLabel = base
-          ? `所持金: ${base.baseState.money.toLocaleString()} Cr / 格納船: ${base.baseState.dockedShips.length}隻`
+          ? `基地 / 所持金: ${base.baseState.money.toLocaleString()} Cr / 格納船: ${base.baseState.dockedShips.length}隻`
           : '基地';
         return [
-          { type: 'header', label: '基地', subLabel },
+          { type: 'header', label: base?.name ?? target.name, subLabel },
           { label: 'ドックビューを開く', act: 'openDock' },
           MenuCommon.focus(),
           ...this.navTargetItems(target, 0),
@@ -530,7 +530,20 @@ export class MapPicker {
   // 抜き出す。開いた直後から sync 時と同じ経路(windowParts)で求める。
   private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
-    return { title, subtitle, rows: [], items };
+    return { title, subtitle, rows: [], items, onRename: this.renameHandlerFor(target) };
+  }
+
+  // 改名できる種別(自機・基地)にだけコールバックを渡す。対象は id で引き直す —
+  // ウィンドウを開いた時点の MapPickable を直接束縛すると、以後の位置更新で
+  // 別の実体を指してしまう。
+  private renameHandlerFor(target: MapPickable): ((name: string) => void) | undefined {
+    if (target.kind === 'player') {
+      return (name) => { const ship = this.entities.findPlayer(target.id); if (ship) ship.displayName = name; };
+    }
+    if (target.kind === 'base') {
+      return (name) => { const base = this.entities.findBase(target.id); if (base) base.name = name; };
+    }
+    return undefined;
   }
 
   // タイトル・サブタイトルは到達まで T+… や所持金など、操作項目は操作対象か・追従状態・

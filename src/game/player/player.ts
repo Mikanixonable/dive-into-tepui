@@ -41,10 +41,10 @@ import { restorePart, type AnyPart } from '../game-entity/parts';
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
 export class Player extends Ship {
-  // 表示名はユーザーが自由に重複させられる。一方 id はマップ選択・参照のための不変キー。
-  // name は既存の HUD/Ship API との互換用で displayName と同じ値を保持する。
+  // 表示名はユーザーが自由に重複させられ、プロパティウィンドウから改名もできる。
+  // 一方 id はマップ選択・参照のための不変キー。
   readonly id: string;
-  readonly displayName: string;
+  displayName: string;
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
   readonly belt: Belt;
@@ -96,7 +96,7 @@ export class Player extends Ship {
     this.thrustEffects = new ThrustEffects(_scene);
     this.rcsEffects = new RcsEffects(_scene, _sfx);
     this.reentryEffects = new ReentryEffects(_scene);
-    this.markers = new PlayerMarkers(markerManager, this.id, this.displayName);
+    this.markers = new PlayerMarkers(markerManager, this.id);
 
     _scene.add(this.orbitLine.line);
   }
@@ -396,7 +396,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity);
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity);
 
     if (this.alive) {
       const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));

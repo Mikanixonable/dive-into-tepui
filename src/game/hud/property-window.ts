@@ -27,6 +27,10 @@ const STYLE = `
 #hud .prop-window-title { flex: 1; min-width: 0; }
 #hud .prop-window-title-main { color: ${INK}; font-weight: bold; overflow-wrap: break-word; }
 #hud .prop-window-title-sub { color: ${INK}; opacity: 0.7; font-size: 11px; margin-top: 2px; }
+#hud .prop-window-title-input {
+  width: 100%; background: ${SURFACE}; border: 1px solid ${ACCENT}; border-radius: 3px;
+  color: ${INK}; font: inherit; font-weight: bold; padding: 1px 4px; box-sizing: border-box;
+}
 #hud .prop-window-btn {
   flex: none; width: 18px; height: 18px; line-height: 18px; text-align: center;
   border: 1px solid ${EDGE}; border-radius: 3px; background: transparent; color: ${INK};
@@ -77,6 +81,9 @@ export interface PropertyWindowContent<A extends string = string> {
   readonly subtitle?: string;
   readonly rows: readonly PropertyRow[];
   readonly items: readonly PropertyWindowItem<A>[];
+  // 指定すると、タイトル横に改名ボタンが現れる。呼び出し側は確定した新しい名前を
+  // 実体へ書き戻すところまでを行う — このクラスは編集 UI の開閉のみを持つ。
+  readonly onRename?: (name: string) => void;
 }
 
 export class PropertyWindow<A extends string = string> {
@@ -100,6 +107,8 @@ export class PropertyWindow<A extends string = string> {
   private _clipped = false;
   private disposed = false;
   private readonly rootEl: HTMLElement;
+  private readonly renameCallback: ((name: string) => void) | null;
+  private renaming = false;
 
   private dragPointerId: number | null = null;
   private dragStartClient: Point2 | null = null;
@@ -138,6 +147,18 @@ export class PropertyWindow<A extends string = string> {
     title.appendChild(this.titleMainEl);
     title.appendChild(this.titleSubEl);
 
+    this.renameCallback = content.onRename ?? null;
+    const renameBtn = document.createElement('button');
+    if (this.renameCallback) {
+      renameBtn.className = 'prop-window-btn';
+      renameBtn.textContent = '✎';
+      renameBtn.title = '名前を変更';
+      renameBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.startRename();
+      });
+    }
+
     this.clipBtnEl = document.createElement('button');
     this.clipBtnEl.className = 'prop-window-btn';
     this.clipBtnEl.textContent = '📌';
@@ -157,6 +178,7 @@ export class PropertyWindow<A extends string = string> {
     });
 
     header.appendChild(title);
+    if (this.renameCallback) header.appendChild(renameBtn);
     header.appendChild(this.clipBtnEl);
     header.appendChild(closeBtn);
     header.addEventListener('pointerdown', this.handleHeaderPointerDown);
@@ -204,6 +226,42 @@ export class PropertyWindow<A extends string = string> {
       this.titleSubEl.style.display = subtitle ? 'block' : 'none';
       this.reclamp();
     }
+  }
+
+  // タイトルを編集用の入力欄へ差し替え、確定(Enter/blur)で renameCallback へ通知して
+  // 表示へ戻す。入力欄自身の keydown は伝播させないので、window の全体ショートカット
+  // (handleKeyDown 含む)には届かない。
+  private startRename(): void {
+    if (this.renaming || !this.renameCallback) return;
+    this.renaming = true;
+    const input = document.createElement('input');
+    input.className = 'prop-window-title-input';
+    input.type = 'text';
+    input.maxLength = 40;
+    input.value = this.lastTitle;
+    this.titleMainEl.replaceWith(input);
+    input.addEventListener('pointerdown', (e) => e.stopPropagation());
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+    input.addEventListener('blur', () => commit());
+    input.focus();
+    input.select();
+
+    const commit = () => {
+      if (!this.renaming) return;
+      this.renaming = false;
+      input.replaceWith(this.titleMainEl);
+      const value = input.value.trim();
+      if (value && value !== this.lastTitle) this.renameCallback?.(value);
+    };
+    const cancel = () => {
+      if (!this.renaming) return;
+      this.renaming = false;
+      input.replaceWith(this.titleMainEl);
+    };
   }
 
   // 操作項目の集合・ラベル・ショートカットが変わったときだけ DOM を組み直す。クリップ済み

@@ -49,6 +49,8 @@ export interface PlayerSaveData extends EntitySaveData {
 // kind で分岐する EntitySaveData の派生ではなく独立した型にする。
 export interface BaseSaveData {
   id: string;
+  // 旧セーブデータには無いフィールドなので任意。Base.restore が既定名で埋める。
+  name?: string;
   r: Vec3SaveData;
   v: Vec3SaveData;
   money: number;
