@@ -108,7 +108,7 @@ export class MapPicker {
     for (const ammo of this.entities.ammos) {
       if (!ammo.alive) continue;
       const pos = ammo.displayState(displayTime)?.r;
-      if (pos) items.push({ id: ammo.id ?? 'ammo', name: '弾薬', pos, kind: 'ammo' });
+      if (pos) items.push({ id: ammo.id, name: '弾薬', pos, kind: 'ammo' });
     }
     for (const base of this.entities.bases) {
       if (!base.alive) continue;
@@ -144,16 +144,19 @@ export class MapPicker {
       return;
     }
     const w = new PropertyWindow<MenuAction>(this.hud.root, clientX, clientY, this.buildContent(target, simTime));
-    this.windows.set(key, { win: w, target });
+    const entry: WindowEntry = { win: w, target };
+    this.windows.set(key, entry);
     if (!w.clipped) {
       if (this.tempWindowKey !== null) this.closeWindow(this.tempWindowKey);
       this.tempWindowKey = key;
     }
+    // 実行時は entry.target(sync のたびに最新化される)を読む — 開いた瞬間の対象を
+    // 捕まえたままだと、時刻に依存する操作(ワープ・ノード追加)が古い時刻へ向けて走ってしまう。
     // 操作項目のクリックは、クリップ済みなら開いたままにする。「削除」は対象自体が消えるので
     // クリップ状態によらず閉じる。
     w.onSelect = (act) => {
-      const handler = this.handlers[target.kind];
-      if (handler) handler.run(act, target);
+      const handler = this.handlers[entry.target.kind];
+      if (handler) handler.run(act, entry.target);
       if (act === 'delete' || !w.clipped) this.closeWindow(key);
     };
     w.onClose = () => this.forgetWindow(key);
@@ -213,6 +216,8 @@ export class MapPicker {
       // 候補列に載っていれば最新の位置を反映し、載っていなければ開いた時点の対象のまま
       // 据え置く(rows の導出はどの種別も実体の state を直接読むので、位置の鮮度は無関係)。
       entry.target = byKey.get(key) ?? entry.target;
+      const { title, subtitle } = this.windowHeader(entry.target, simTime);
+      entry.win.syncHeader(title, subtitle);
       entry.win.syncRows(this.buildRows(entry.target, bodies, player, simTime));
       entry.win.syncItems(this.windowItems(entry.target, simTime));
     }
@@ -495,13 +500,15 @@ export class MapPicker {
   // itemsFor の出力をプロパティウィンドウの形へ組み替える: header 項目はタイトル/サブタイトルへ
   // 抜き出す。操作項目自体は windowItems へ委ね、開いた直後から sync 時と同じ経路で求める。
   private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
+    const { title, subtitle } = this.windowHeader(target, simTime);
+    return { title, subtitle, rows: [], items: this.windowItems(target, simTime) };
+  }
+
+  // タイトル・サブタイトルは header 項目の到達まで T+… や所持金など可変な値を含むため、
+  // 開いた瞬間だけでなく sync のたびにも呼び直す。
+  private windowHeader(target: MapPickable, simTime: number): { title: string; subtitle?: string } {
     const header = this.itemsFor(target, simTime).find((it) => it.type === 'header');
-    return {
-      title: header?.label ?? target.name,
-      subtitle: header?.subLabel,
-      rows: [],
-      items: this.windowItems(target, simTime),
-    };
+    return { title: header?.label ?? target.name, subtitle: header?.subLabel };
   }
 
   // 操作項目は操作対象か・追従状態・航法ターゲットかなどの可変な状態に依存するため、開いた
