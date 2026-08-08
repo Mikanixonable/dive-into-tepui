@@ -13,6 +13,7 @@ import { MarkerManager } from '../../marker/marker-manager';
 import { fmtMarkerDist } from '../../hud/utils';
 import type { EntityManager } from '../../simulation/entity-manager';
 import type { SimSpeedManager } from '../../sim-speed-manager';
+import type { LogisticsSaveData } from '../../save-data';
 
 export class Logistics {
   private resupplyCheckAt = 0;
@@ -79,13 +80,13 @@ export class Logistics {
     }
   }
 
-  // 次回の自動投入判定時刻。
-  serialize(): number {
-    return this.resupplyCheckAt;
+  serialize(): LogisticsSaveData {
+    return { resupplyCheckAt: this.resupplyCheckAt, resupplyEnabled: this.resupplyEnabled };
   }
 
-  restore(resupplyCheckAt: number): void {
-    this.resupplyCheckAt = resupplyCheckAt;
+  restore(data: LogisticsSaveData): void {
+    this.resupplyCheckAt = data.resupplyCheckAt;
+    this.resupplyEnabled = data.resupplyEnabled;
   }
 
   // 生存中の補給の数を返す。
@@ -112,11 +113,8 @@ export class Logistics {
         this.markerManager.hide(key);
         this.markerManager.hide(bearing);
       } else if (overviewMode) {
-        const heading = this.markerManager.headingDeg(pos, vel, project, scale);
-        this.markerManager.set(
-          key, 'mk-ammo', '▲', p.x, p.y, p.front, label, 1, undefined,
-          heading !== null ? heading + 90 : undefined,
-        );
+        const rotationDeg = this.markerManager.headingRotationDeg(pos, vel, project, scale);
+        this.markerManager.set(key, 'mk-ammo', '▲', p.x, p.y, p.front, label, 1, undefined, rotationDeg);
         this.markerManager.hide(bearing);
       } else {
         this.markerManager.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, label);
