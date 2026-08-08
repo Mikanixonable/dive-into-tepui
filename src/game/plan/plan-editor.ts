@@ -265,7 +265,7 @@ export class PlanEditor {
 
   // ノードの画面座標を投影する。
   private nodeScreenPos(node: KinematicState): Projected {
-    return this.planDisplay.traj.projectPoint(node.r, node.t);
+    return this.planDisplay.path.projectPoint(node.r, node.t);
   }
 
   private pickNodeAt(mx: number, my: number): number | null {
@@ -302,7 +302,7 @@ export class PlanEditor {
 
     // 見つからなければ計画軌道上の最寄り点にノードを配置。折れ線が自分自身に重なっていれば
     // その位置に最初に到達する時刻(= referenceT を -Infinity にして最早時刻)を選ぶ。
-    const hit = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
+    const hit = this.planDisplay.path.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
     if (hit) {
       this.selectedNodeIdx = this.plan.addNode(hit.state);
       this._sfx.warp();
@@ -317,7 +317,7 @@ export class PlanEditor {
   private removeSelectedIfEmpty(): void {
     const idx = this.selectedNodeIdx;
     if (idx === null || !this.plan.nodes[idx]) return;
-    const arriving = this.planDisplay.traj.arrivalStates();
+    const arriving = this.planDisplay.path.arrivalStates();
     const arr = arriving[idx];
     if (!arr || len(sub(this.plan.nodes[idx]!.v, arr.v)) >= C.NODE_MIN_DV) return;
     this.plan.removeNode(idx);
@@ -327,7 +327,7 @@ export class PlanEditor {
   // 時刻 t の計画軌道上の状態にノードを追加し、選択する。その時刻の計画軌道が
   // 求まらなければ(折れ線の届く範囲外など)ヒントを出すだけで何もしない。
   addNodeAt(t: number): void {
-    const sample = this.planDisplay.traj.sampleAt(t);
+    const sample = this.planDisplay.path.sampleAt(t);
     if (!sample) {
       this._hud.hint('この時刻の計画軌道が求まりません');
       return;
@@ -343,7 +343,7 @@ export class PlanEditor {
       // ノードでなくても計画軌道上を右クリックすれば、その位置の時刻まで
       // 自動ワープできる。描画と同じサンプル列から求めるため、表示変換との
       // ずれや月基準フレームの差を生じさせない。
-      const hit = this.planDisplay.traj.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
+      const hit = this.planDisplay.path.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
       if (!hit) return false;
       this.selectedNodeIdx = null;
       this.orbitMenu.open(mx, my, hit.state, [
@@ -364,8 +364,8 @@ export class PlanEditor {
   private dragNodeToNearestSample(idx: number, clientX: number, clientY: number): void {
     const node = this.plan.nodes[idx];
     if (!node) return;
-    const arriving = this.planDisplay.traj.arrivalStates();
-    const hit = this.planDisplay.traj.nearestSample(clientX, clientY, Infinity, node.t, this.plan.nodeTimeRange(idx, this.ephemeris, this.displayTimeManager));
+    const arriving = this.planDisplay.path.arrivalStates();
+    const hit = this.planDisplay.path.nearestSample(clientX, clientY, Infinity, node.t, this.plan.nodeTimeRange(idx, this.ephemeris, this.displayTimeManager));
     if (hit) {
       this.plan.retimeNode(idx, this.rebuildDraggedNode(hit.state, hit.arcIdx, idx, arriving) ?? hit.state);
       this.selectedNodeIdx = idx;
@@ -426,7 +426,7 @@ export class PlanEditor {
   // 手動入力フォームから絶対的な Δv (PRO, NRM, RAD) を指定してノードの速度を上書きする。
   private setNodeDvLocal(pro: number, nrm: number, rad: number): void {
     if (this.selectedNodeIdx === null) return;
-    const arriving = this.planDisplay.traj.arrivalStates();
+    const arriving = this.planDisplay.path.arrivalStates();
     const arr = arriving[this.selectedNodeIdx];
     const node = this.plan.nodes[this.selectedNodeIdx];
     if (!arr || !node) return;
@@ -466,10 +466,10 @@ export class PlanEditor {
     const { r } = node;
     const { pro, nrm, radOut } = orbitAxes(bodyNode);
     const L = mapDist * 0.05;
-    const p0 = this.planDisplay.traj.projectPoint(r, node.t);
+    const p0 = this.planDisplay.path.projectPoint(r, node.t);
     // 軸方向へわずかに動かした点との投影差分から、画面上の単位方向ベクトルを求める。
     const dirFor = (axisVec: Vec3): { x: number; y: number; } => {
-      const p1 = this.planDisplay.traj.projectPoint(add(r, scale(axisVec, L)), node.t);
+      const p1 = this.planDisplay.path.projectPoint(add(r, scale(axisVec, L)), node.t);
       const dx = p1.x - p0.x;
       const dy = p1.y - p0.y;
       const m = Math.hypot(dx, dy);
@@ -532,7 +532,7 @@ export class PlanEditor {
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
   private syncGizmo(mapDist: number, fo: FloatingOrigin): void {
-    const arriving = this.planDisplay.traj.arrivalStates();
+    const arriving = this.planDisplay.path.arrivalStates();
     const nodeSpecs: NodeHandleSpec[] = [];
     const limit = Math.min(this.plan.nodes.length, C.MAX_PLAN_NODE_MARKERS);
     // 各ノードの画面座標とラベルを組む
@@ -562,13 +562,13 @@ export class PlanEditor {
 
     if (nodeFor3D && arrFor3D) {
       this.gizmo3d.setVisible(true);
-      const r = this.planDisplay.traj.toDisplay(nodeFor3D.r, nodeFor3D.t);
+      const r = this.planDisplay.path.toDisplay(nodeFor3D.r, nodeFor3D.t);
       const scenePos = fo.RtoThreeV3(r);
       const bodyArr = this.bodyState(arrFor3D);
       let { pro, nrm, radOut } = orbitAxes(bodyArr);
-      pro = this.planDisplay.traj.toDisplay(pro, nodeFor3D.t);
-      nrm = this.planDisplay.traj.toDisplay(nrm, nodeFor3D.t);
-      radOut = this.planDisplay.traj.toDisplay(radOut, nodeFor3D.t);
+      pro = this.planDisplay.path.toDisplay(pro, nodeFor3D.t);
+      nrm = this.planDisplay.path.toDisplay(nrm, nodeFor3D.t);
+      radOut = this.planDisplay.path.toDisplay(radOut, nodeFor3D.t);
       this.gizmo3d.setPositionAndRotation(v3(scenePos.x, scenePos.y, scenePos.z), pro, nrm, radOut, mapDist * 0.002);
       
       // ドラッグ・ラッチ時のアニメーション
@@ -618,7 +618,7 @@ export class PlanEditor {
 
   // 計画パネルの HTML を、現在のノード列と選択中ノードから組み直す。
   private syncPanel(simTime: number): void {
-    const arriving = this.planDisplay.traj.arrivalStates();
+    const arriving = this.planDisplay.path.arrivalStates();
     const nodes = this.plan.nodes.map((n, i) => ({
       tRel: n.t - simTime,
       dvMag: len(this.nodeDv(i, arriving)),
@@ -697,7 +697,7 @@ export class PlanEditor {
   onMapClosed(): void {
     this.hidePanel();
     this.hideGizmo();
-    const arriving = this.planDisplay.traj.arrivalStates();
+    const arriving = this.planDisplay.path.arrivalStates();
     // 末尾から Δv が有意なノードに当たるまで削る。
     for (let i = this.plan.nodes.length - 1; i >= 0; i--) {
       const arr = arriving[i];
