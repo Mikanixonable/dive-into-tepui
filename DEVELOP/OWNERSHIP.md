@@ -50,7 +50,7 @@ main.ts
     ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合
     │   ├── ContextMenu<MapPickable>       ... 空域右クリック('empty-space')専用メニュー
     │   ├── windows: Map<string, WindowEntry>  ... {win: PropertyWindow<MenuAction>, target}。オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new。PropertyWindow は Hud.root(#hud)配下に append
-    │   └── ObjectListPanel                ... DOM は Hud.root 配下。軌道オブジェクトウィンドウ(一覧 + クリックでフォーカス移動)。マップ視点である間は常設表示
+    │   └── ObjectListPanel                ... DOM は Hud.root 配下。軌道オブジェクトウィンドウ(一覧 + クリックでフォーカス移動 + 右クリックでプロパティウィンドウ)。マップ視点である間は常設表示
     ├── NavTarget                      ... 航法ターゲット(id)と自機軌道との相対 AN/DN・▲/▽ マーカー
     ├── Navball                        ... 姿勢儀。基準モード(自機/TGT+/TGT-)と天球グリッド6トグルの正本
     │   └── NavballPanel                   ... DOM は Hud.root 配下。SVG のボール + モード選択 + グリッドトグル
