@@ -19,7 +19,7 @@ export class HitSystem {
   // サブステップ間の相対運動を線分 vs 球でチェック(高速弾のトンネリング防止)
   checkBulletHits(simTime: number, player: Player | null, activeStage: Stage, entities: EntityManager): void {
     const shipTargets: (Player | Enemy)[] = [...entities.players, ...entities.enemies];
-    const debrisTargets = entities.debris.filter(d => d.collideRadius !== undefined);
+    const debrisTargets = entities.debris.filter(d => d.collides);
 
     for (const p of entities.bullets) {
       if (!p.alive) continue;
@@ -39,14 +39,14 @@ export class HitSystem {
 
         // 敵プラズマ弾がプレイヤーの至近を通過した場合に音を鳴らす
         if (p.type === 'plasma' && target === player && !p.passedClose) {
-          const closeRadius = target.radius + 15; // 15m以内
+          const closeRadius = target.hitRadius + 15; // 15m以内
           if (distSq < closeRadius * closeRadius) {
             p.passedClose = true;
             this.sfx.magneticInterference();
           }
         }
 
-        if (distSq <= target.radius * target.radius) {
+        if (distSq <= target.hitRadius * target.hitRadius) {
           p.alive = false;
           const hitR = v3(
             target.state.r.x + res.cx,
@@ -65,7 +65,7 @@ export class HitSystem {
       for (const target of debrisTargets) {
         if (!p.alive || !target.alive) continue;
         const res = this.segmentDistSq(p, target.prevState.r, target.state.r);
-        if (res.distSq <= target.collideRadius! * target.collideRadius!) {
+        if (res.distSq <= target.radius * target.radius) {
           p.alive = false;
           const hitR = v3(
             target.state.r.x + res.cx,
