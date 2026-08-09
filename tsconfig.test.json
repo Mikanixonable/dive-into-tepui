@@ -19,6 +19,7 @@
     "src/physics/ephemeris.ts",
     "src/physics/central-body.ts",
     "src/game/plan/plan.ts",
+    "src/game/plan/plan-executor-math.ts",
     "src/game/hud/layout.ts",
     "src/physics/swept-sphere.ts",
     "src/game/creative/placement-validation.ts",

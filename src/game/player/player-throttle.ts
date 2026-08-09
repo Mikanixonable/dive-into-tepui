@@ -156,6 +156,13 @@ export class PlayerThrottle {
     return qRotate(q, scale(dir, thrustAccel));
   }
 
+  // 手動回転キー(ピッチ/ヨー/ロール)がいずれか押されているか。
+  hasManualRotationInput(input: Input): boolean {
+    return input.down(K.pitchDown) || input.down(K.pitchUp)
+      || input.down(K.yawLeft) || input.down(K.yawRight)
+      || input.down(K.rollRight) || input.down(K.rollLeft);
+  }
+
   // 手動回転・RCS制動・プログレードホールドを合成したボディフレームトルクを返す。
   // r/v は軌道の位置・速度で、プログレードホールドの目標姿勢(進行方向)を組むのに使う。
   updateTorque(

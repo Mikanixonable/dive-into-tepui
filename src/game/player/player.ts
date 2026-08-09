@@ -35,8 +35,26 @@ import { PowerSystem } from './power';
 import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
 import { Plan } from '../plan/plan';
+import { PlanExecutor } from '../plan/plan-executor';
 import type { PlayerSaveData } from '../save-data';
 import { restorePart, type AnyPart } from '../game-entity/parts';
+
+// この艦の計画ノードをどう実行するか。'off' は消化しない、'instant' はノード時刻ちょうどで
+// 絶対状態へ乗り移る(既存の瞬間移動)、'powered' は PlanExecutor が姿勢制御・噴射で実行する。
+export type PlanExecutionMode = 'off' | 'instant' | 'powered';
+
+const PLAN_EXECUTION_CYCLE: readonly PlanExecutionMode[] = ['off', 'instant', 'powered'];
+const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = { off: 'OFF', instant: '瞬間移動', powered: '自動操縦' };
+
+// mode を1段階次のモードへ進める(OFF → 瞬間移動 → 自動操縦 → OFF)。
+export function nextPlanExecution(mode: PlanExecutionMode): PlanExecutionMode {
+  return PLAN_EXECUTION_CYCLE[(PLAN_EXECUTION_CYCLE.indexOf(mode) + 1) % PLAN_EXECUTION_CYCLE.length]!;
+}
+
+// mode の表示ラベル(HUDのメニュー項目・プロパティ行が共有する)。
+export function planExecutionLabel(mode: PlanExecutionMode): string {
+  return PLAN_EXECUTION_LABELS[mode];
+}
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
@@ -59,8 +77,8 @@ export class Player extends Ship {
   readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55);
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
-  // ON の間、この艦は自分の計画のノード時刻を跨いだ時点でそのノードの絶対状態へ乗り移る。
-  followPlan = false;
+  readonly planExecutor: PlanExecutor;
+  planExecution: PlanExecutionMode = 'off';
 
   private readonly _hud: Hud;
   private readonly _sfx: Sfx;
@@ -96,6 +114,7 @@ export class Player extends Ship {
     this.rcsEffects = new RcsEffects(_scene, _sfx);
     this.reentryEffects = new ReentryEffects(_scene);
     this.markers = new PlayerMarkers(markerManager, this.id);
+    this.planExecutor = new PlanExecutor(_hud);
 
     _scene.add(this.orbitLine.line);
   }
@@ -192,6 +211,14 @@ export class Player extends Ship {
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
     if (this.thrust !== null) this.invalidatePrediction();
+
+    // 操作対象艦での手動並進・手動回転は 'powered' 自動実行を中断する(進行方向ホールドが
+    // 手動回転で解除されるのと同じ作法)。dvEditActive の間は上の早期 return で既に抜けている。
+    if (this.planExecution === 'powered'
+      && (this.thrust !== null || this.throttle.hasManualRotationInput(input))) {
+      this.planExecution = 'off';
+      this._hud.hint('軌道計画の自動実行を中断(手動操作)');
+    }
   }
 
   // 表示フレーム基準の受動状態。環境(熱・電力・ラジエータ)は stepEnvironment で
@@ -471,7 +498,7 @@ export class Player extends Ship {
       power: this.power.serialize(),
       throttle: this.throttle.serialize(),
       parts: this.parts.map(p => ({ ...p })) as AnyPart[],
-      followPlan: this.followPlan,
+      planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
       plan: {
         anchor: {
@@ -508,7 +535,8 @@ export class Player extends Ship {
     player.radiator.restore(data.radiator);
     player.power.restore(data.power);
     player.throttle.restore(data.throttle);
-    player.followPlan = data.followPlan;
+    // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。
+    player.planExecution = data.planExecution ?? (data.followPlan ? 'instant' : 'off');
     player.fineAttitude = data.fineAttitude ?? false;
     player.parts.splice(0, player.parts.length, ...data.parts.map(restorePart));
     player.refreshFromParts();
