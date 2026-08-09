@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { CelestialBodyDef, MU_EARTH, R_EARTH, bodyDef } from '../../src/physics/solar-system';
+import { CelestialBodyDef, MU_EARTH, R_EARTH_EQ, bodyDef } from '../../src/physics/solar-system';
 import { MU_MOON, MU_SUN as MU_SUN_LOCAL, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { EPS } from '../../src/physics/ecliptic';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';
@@ -214,10 +214,10 @@ export function register(): void {
     }
   });
 
-  test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は R_EARTH', () => {
+  test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は赤道半径 R_EARTH_EQ', () => {
     const attractors = eph.attractorsAt(1234);
     assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'io', 'europa', 'ganymede', 'callisto', 'saturn', 'titan', 'uranus', 'neptune', 'triton', 'ceres', 'vesta', 'pallas', 'pluto', 'haumea', 'makemake', 'eris', 'halley', 'encke', 'sun']);
-    assert.equal(attractors[0]!.radius, R_EARTH);
+    assert.equal(attractors[0]!.radius, R_EARTH_EQ);
   });
 
   test('ephemeris: 同一 t の attractorsAt は同一配列参照を返す', () => {
