@@ -31,6 +31,7 @@ import { register as registerAsteroidBelt } from './asteroid-belt.test';
 import { register as registerTrajectoryFeatures } from './trajectory-features.test';
 import { register as registerNBody } from './n-body.test';
 import { register as registerIrregularSatellites } from './irregular-satellites.test';
+import { register as registerLaplaceSatellites } from './laplace-satellites.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -63,5 +64,6 @@ registerTrajectoryFeatures();
 registerAsteroidBelt();
 registerNBody();
 registerIrregularSatellites();
+registerLaplaceSatellites();
 
 runAll();
