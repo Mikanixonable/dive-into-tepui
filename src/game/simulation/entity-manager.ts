@@ -122,6 +122,14 @@ export class EntityManager {
     return [...this.otherEntities(), ...this.players];
   }
 
+  // 重力を持つ(mu !== 0 かつ生存中の)エンティティを Attractor として返す。GameEntity は
+  // id/radius/mu/degree2/state を直接持つので変換は要らない。
+  // TODO: AttractorId が string へ開かれたら(AttractorId を string に一般化する予定)、
+  // このアサーションは不要になる。
+  attractors(): readonly Attractor[] {
+    return this.all().filter((e) => e.alive && e.mu !== 0) as unknown as readonly Attractor[];
+  }
+
   // 全エンティティの寿命判定を行い、死亡したものを破棄・除去する。喪失した自機は撃墜演出と
   // 追従カメラの基準として残り続けるので、配列からは除かない。
   cleanup(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3, attractors: readonly Attractor[]): void {

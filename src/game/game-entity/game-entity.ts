@@ -5,7 +5,6 @@ import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { StateQueue } from '../../physics/state-queue';
-import type { Ephemeris } from '../../physics/ephemeris';
 import { Attractor, orbitalElementsOf, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
@@ -97,13 +96,12 @@ export class GameEntity {
     return Math.max(span / C.TRAJECTORY_SAMPLES_PER_REV, keepDuration / C.PREDICT_MAX_SAMPLES);
   }
 
-  // 重力源 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。このステップぶんの重力源は
-  // 中点(t + dt/2)で1回だけ引く — Ephemeris は時刻をキーにメモ化するので、1ステップの中で
-  // 別の時刻を引くとメモが効かなくなる。historyDuration が 0(弾・薬莢・破片)の間は
-  // 間引き間隔を使わないので sampleInterval を評価しない。
-  stepActual(dt: number, ephemeris: Ephemeris): void {
+  // 重力源 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。attractors はこのステップの
+  // 重力源一覧 — 呼び出し側(Simulator)が全エンティティで同じ瞬間の同じ配列を使い回す。
+  // historyDuration が 0(弾・薬莢・破片)の間は間引き間隔を使わないので sampleInterval を
+  // 評価しない。
+  stepActual(dt: number, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    const attractors = ephemeris.gravityAttractorsAt(this.state.t + dt / 2);
     const interval = this.historyDuration > 0
       ? this.sampleInterval(attractors, this.state, this.historyDuration)
       : 0;

@@ -48,6 +48,7 @@ import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
 import { Base } from './game-entity/base';
 import { strongestAttractor } from '../physics/attractor';
+import { mergeAttractors } from './simulation/gravity-attractors';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -656,7 +657,9 @@ export class Game {
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
     const simTime = this.simulator.simTime;
-    const attractors = this.ephemeris.attractorsAt(simTime);
+    // 表示側は重力を持つ生存中の GameEntity(小惑星)も中心天体解決・遮蔽判定へ合流させる —
+    // EntityManager.cleanup へ渡す表面到達判定用の配列(解析天体のみ)とは別物。
+    const attractors = mergeAttractors(this.ephemeris.attractorsAt(simTime), this.entities.attractors());
     const target = this.targeter.aliveTarget;
     const secondaryTarget = this.targeter.aliveSecondaryTarget;
 
