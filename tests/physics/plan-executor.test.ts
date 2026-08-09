@@ -124,4 +124,58 @@ export function register(): void {
     executor.update(ship, 0.1, 49, closedGate);
     assert.equal(executor.nextEventTime(ship, 49), null);
   });
+
+  test('PlanExecutor: 点火後、update() を挟んでもthrustが非nullのまま維持される(regression A)', () => {
+    const ship = makeShip();
+    ship.plan.trackAnchor(ship.state);
+    const dv = v3(0, 0, 200); // r=(1e7,0,0) と平行にならない向き(法線方向)
+    ship.plan.addNode(kinematicState(50, ship.state.r, add(ship.state.v, dv)));
+    const executor = new PlanExecutor(hud);
+
+    alignExactly(ship, v3(0, 0, 1), ship.state.r);
+    executor.update(ship, 0.1, 49, openGate);
+    executor.applyIgnitionAndCutoff(ship, 49);
+    assert.ok(ship.thrust !== null, 'test setup: 点火できていること');
+
+    // Player.behave が操作艦の thrust をフレーム冒頭で null に戻すのと同じ状況を模す。
+    ship.thrust = null;
+    executor.update(ship, 0.1, 49, openGate);
+    assert.ok(ship.thrust !== null, 'update() が燃焼中の thrust を書き直していること');
+  });
+
+  test('PlanExecutor: 燃焼中に艦が破壊されるとapplyIgnitionAndCutoffがthrustを戻す(regression K)', () => {
+    const ship = makeShip();
+    ship.plan.trackAnchor(ship.state);
+    const dv = v3(0, 0, 200); // r=(1e7,0,0) と平行にならない向き(法線方向)
+    ship.plan.addNode(kinematicState(50, ship.state.r, add(ship.state.v, dv)));
+    const executor = new PlanExecutor(hud);
+
+    alignExactly(ship, v3(0, 0, 1), ship.state.r);
+    executor.update(ship, 0.1, 49, openGate);
+    executor.applyIgnitionAndCutoff(ship, 49);
+    assert.ok(ship.thrust !== null, 'test setup: 点火できていること');
+
+    // alive は読み取り専用(PlanExecutor は書かない)なので、破壊後の艦は同じ plan/state を
+    // 指す別オブジェクトとして渡す — targetNode は Plan のノード参照で同一性判定するため、
+    // ship オブジェクト自体の同一性は問わない。
+    const destroyed: PlanExecutorShip = { ...ship, alive: false };
+    executor.applyIgnitionAndCutoff(destroyed, 49.1);
+    assert.equal(destroyed.thrust, null);
+    assert.deepEqual(destroyed.torque, v3());
+  });
+
+  test('PlanExecutor: 大きな姿勢転回が要るときは接近ウィンドウが転回時間ぶん広がる(regression L)', () => {
+    const ship = makeShip();
+    ship.plan.trackAnchor(ship.state);
+    // 小さいΔvだが、初期姿勢(単位クォータニオン=+Z向き)からほぼ180°の反転が要る向き。
+    const dv = v3(0, 0, -1);
+    ship.plan.addNode(kinematicState(12, ship.state.r, add(ship.state.v, dv)));
+    const executor = new PlanExecutor(hud);
+
+    // 燃焼時間見積りだけの猶予窓(NODE_APPROACH_LEAD=10s + burnDuration≈0.01s)では
+    // node.t-simTime=12s は外側になるはずだが、転回時間(180°, MAX_ANG_ACCEL)を
+    // 足した窓の内側には入る。
+    executor.update(ship, 0.1, 0, openGate);
+    assert.notDeepEqual(ship.torque, v3(), '転回時間を含めた窓の内側なので整列トルクが出ていること');
+  });
 }

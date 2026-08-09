@@ -102,13 +102,13 @@ export class Player extends Ship {
     this.radius = C.PLAYER_HULL_RADIUS;
     this.collides = true;
 
-    this.throttle = new PlayerThrottle(_hud, _sfx);
+    this.throttle = new PlayerThrottle(_hud);
     this.fire = new PlayerFire(this, _hud, _sfx, _scene, _fx);
     this.belt = new Belt(this.obj);
     this.thermal = new ThermalSystem(_hud, _sfx);
     this.radiator = new RadiatorSystem(this.obj);
     this.power = new PowerSystem(this.obj);
-    this.thrustEffects = new ThrustEffects(_scene);
+    this.thrustEffects = new ThrustEffects(_scene, _sfx);
     this.rcsEffects = new RcsEffects(_scene, _sfx);
     this.reentryEffects = new ReentryEffects(_scene);
     this.markers = new PlayerMarkers(markerManager, this.id);
@@ -148,7 +148,6 @@ export class Player extends Ship {
   get rcsDamp(): boolean { return this.throttle.rcsDamp; }
   get throttleIdx(): number { return this.throttle.throttleIdx; }
   get progradeHold(): boolean { return this.throttle.progradeHold; }
-  get thrustVizDir(): Vec3 | null { return this.throttle.thrustVizDir; }
 
   get roundsInMag(): number { return this.fire.rounds; }
   get magsLeft(): number { return this.fire.mags; }
@@ -423,7 +422,8 @@ export class Player extends Ship {
     // 各エフェクトが自分で消えられるよう alive を倒して呼ぶ。
     const effectState = displayState ?? this.state;
     const effectAlive = this.alive && displayState !== null;
-    this.thrustEffects.sync(fo, effectState.r, this.throttle.thrustVizDir, this.throttle.throttleIdx, effectAlive, camera);
+    const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
+    this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectAlive, isActive, camera);
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectAlive, phasePlaying, paused, camera, isActive);
     this.reentryEffects.sync(fo, effectState.r, effectState.v, this.thermal.qdyn, effectAlive, camera);
     this.belt.sync(this.alive);
@@ -435,7 +435,7 @@ export class Player extends Ship {
     if (this.alive) {
       const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));
       const densifyNear = sub(this.state.r, center.state.r);
-      this.orbitLine.sync(this.orbitalElementsAround(center), fo, this.thrustVizDir !== null, densifyNear);
+      this.orbitLine.sync(this.orbitalElementsAround(center), fo, this.thrust !== null, densifyNear);
     } else {
       this.orbitLine.sync(null, fo);
     }
