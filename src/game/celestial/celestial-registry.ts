@@ -19,6 +19,12 @@ import saturnTextureUrl from '../../assets/2k_saturn.jpg';
 import uranusTextureUrl from '../../assets/2k_uranus.jpg';
 import neptuneTextureUrl from '../../assets/2k_neptune.jpg';
 import saturnRingTextureUrl from '../../assets/2k_saturn_ring_alpha.png';
+import phobosTextureUrl from '../../assets/2k_phobos.jpg';
+import ioTextureUrl from '../../assets/2k_io.jpg';
+import europaTextureUrl from '../../assets/2k_europa.jpg';
+import ganymedeTextureUrl from '../../assets/2k_ganymede.jpg';
+import callistoTextureUrl from '../../assets/2k_callisto.jpg';
+import titanTextureUrl from '../../assets/2k_titan.jpg';
 
 const PLANET_VIS_DIST = 5e7;
 
@@ -94,6 +100,13 @@ function satelliteEntry(id: SolarSystemId, name: string, color: number): Celesti
   return { name, create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST) };
 }
 
+// テクスチャ付き衛星のレジストリ項を、表示名とテクスチャ URL から組む(実写の全球モザイクが
+// 入手できた衛星のみ; それ以外は satelliteEntry の単色のまま)。表示距離は月と揃える。
+function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: string): CelestialView {
+  const buildMesh = () => createTexturedSphereMesh(textureUrl);
+  return { name, create: () => new SphereBody(id, buildMesh, bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST) };
+}
+
 // テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。表示距離は
 // テクスチャ付き惑星と揃える。
 function solidPlanetEntry(id: SolarSystemId, name: string, color: number): CelestialView {
@@ -108,15 +121,15 @@ export const CELESTIAL_BODIES: Record<SolarSystemId, CelestialView> = {
   mercury: planetEntry('mercury', '水星', mercuryTextureUrl, undefined, 'medium'),
   venus: planetEntry('venus', '金星', venusTextureUrl, undefined, 'bright'),
   mars: planetEntry('mars', '火星', marsTextureUrl, undefined, 'medium'),
-  phobos: satelliteEntry('phobos', 'フォボス', 0x8a7a6a),
+  phobos: texturedSatelliteEntry('phobos', 'フォボス', phobosTextureUrl),
   deimos: satelliteEntry('deimos', 'ダイモス', 0x9a8a7a),
   jupiter: planetEntry('jupiter', '木星', jupiterTextureUrl, undefined, 'bright'),
-  io: satelliteEntry('io', 'イオ', 0xd8c94a),
-  europa: satelliteEntry('europa', 'エウロパ', 0xcbb8a0),
-  ganymede: satelliteEntry('ganymede', 'ガニメデ', 0x8a7f73),
-  callisto: satelliteEntry('callisto', 'カリスト', 0x6e6258),
+  io: texturedSatelliteEntry('io', 'イオ', ioTextureUrl),
+  europa: texturedSatelliteEntry('europa', 'エウロパ', europaTextureUrl),
+  ganymede: texturedSatelliteEntry('ganymede', 'ガニメデ', ganymedeTextureUrl),
+  callisto: texturedSatelliteEntry('callisto', 'カリスト', callistoTextureUrl),
   saturn: planetEntry('saturn', '土星', saturnTextureUrl, createSaturnRing, 'medium'),
-  titan: satelliteEntry('titan', 'タイタン', 0xc8912f),
+  titan: texturedSatelliteEntry('titan', 'タイタン', titanTextureUrl),
   uranus: planetEntry('uranus', '天王星', uranusTextureUrl, createUranusRing, 'faint'),
   neptune: planetEntry('neptune', '海王星', neptuneTextureUrl, createNeptuneRings),
   triton: satelliteEntry('triton', 'トリトン', 0xd8ccc0),
