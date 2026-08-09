@@ -5,14 +5,14 @@ import { Vec3, len, sub } from '../../physics/vec3';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { apparentEccentricity, findApsis } from '../../physics/trajectory-features';
 import { isOccluded } from '../../physics/occlusion';
-import { ReferenceFrame, INERTIAL_FRAME } from '../../physics/frame';
+import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { SegmentedControl } from '../hud/buttons';
-import { FRAME_ITEMS } from '../hud/frame-labels';
+import { frameItems } from '../hud/frame-labels';
 import { MapPickable } from '../map-pick';
 import * as C from '../const';
 import { hudDock } from '../hud/dom';
@@ -44,7 +44,7 @@ interface DayTickIcon {
 const IMPACT_MARKER_KEYS = ['planImpact0', 'planImpact1', 'planImpact2'] as const;
 
 export class PlanDisplay {
-  planFrame: ReferenceFrame = INERTIAL_FRAME;
+  planFrame: ReferenceFrame;
 
   readonly path: PlanPath;
 
@@ -67,6 +67,7 @@ export class PlanDisplay {
     private readonly ephemeris: Ephemeris,
     displayTimeManager: DisplayTimeManager,
   ) {
+    this.planFrame = ephemeris.inertialFrame;
     this.path = new PlanPath(scene, displayTimeManager);
 
     // TRAJECTORY パネルの DOM を組み立てる
@@ -78,7 +79,7 @@ export class PlanDisplay {
     title.textContent = 'TRAJECTORY';
     this.panel.appendChild(title);
     // 表示座標系の切り替えボタン
-    this.frame = new SegmentedControl<ReferenceFrame>('軌道', FRAME_ITEMS, (frame) => { this.planFrame = frame; });
+    this.frame = new SegmentedControl<ReferenceFrame>('軌道', frameItems(ephemeris), (frame) => { this.planFrame = frame; });
     this.panel.appendChild(this.frame.element);
     hudDock(hudRoot, 'left').appendChild(this.panel);
   }
