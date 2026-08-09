@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import starsTextureUrl from '../assets/8k_stars.jpg';
 import moonTextureUrl from '../assets/8k_moon.jpg';
 import { Billboard } from './billboard';
+import { CelestialSurface } from './celestial-surface';
 
 export const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
 export const SUN_DISTANCE = 4.2e7; // 太陽ビルボードの表示距離(方向のみ実天体暦に従う)
@@ -38,24 +39,11 @@ export interface Sun {
   mesh: THREE.Mesh;
 }
 
-// 月: 単位球(半径1)を生成し、表示側で位置・スケールを毎フレーム設定する。
-// 太陽の DirectionalLight で照らされるので月相(満ち欠け)が自然に出る。
-export function createMoon(): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(1, 64, 32);
-  geo.rotateY(-Math.PI / 2);
-  const texture = new THREE.TextureLoader().load(moonTextureUrl);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.MeshStandardMaterial({
-    map: texture,
-    roughness: 1,
-    metalness: 0,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;
-  // 潮汐固定(自転周期 = 公転周期)なので、地球側へ常に同じ面を向ける。その向き付けは
-  // 毎フレーム EnvironmentScene.syncSkyBodies が lookAt で行うため、ここでは自転を
-  // 与えず向きの定まっていないメッシュを返す。
-  return mesh;
+// 月の表面。テクスチャの経度原点がモデルの本初子午線(+Z)と揃うようジオメトリを回す。
+export function createMoon(): CelestialSurface {
+  const surface = CelestialSurface.textured(moonTextureUrl, 64, 32);
+  surface.mesh.geometry.rotateY(-Math.PI / 2);
+  return surface;
 }
 
 export function createSun(): Sun {

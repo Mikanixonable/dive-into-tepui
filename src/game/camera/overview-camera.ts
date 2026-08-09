@@ -105,8 +105,10 @@ export class OverviewCamera {
 
   // CameraSystem.sync が読む近クリップ距離。dist に比例させることで、どのズーム段でも
   // 注視点を切り落とさずに深度分解能を保つ(OVERVIEW_CAMERA_NEAR_RATIO 参照)。
+  // 星球シェル・天球グリッドより大きくなって殻ごとクリップされないよう上限を設ける
+  // (OVERVIEW_CAMERA_NEAR_MAX 参照)。
   get near(): number {
-    return this.dist / C.OVERVIEW_CAMERA_NEAR_RATIO;
+    return Math.min(C.OVERVIEW_CAMERA_NEAR_MAX, this.dist / C.OVERVIEW_CAMERA_NEAR_RATIO);
   }
 
   // CameraSystem.sync が読む遠クリップ距離。dist に比例させることで、引いたカメラでも

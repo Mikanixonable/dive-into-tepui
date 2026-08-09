@@ -5,47 +5,62 @@ import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/attractor';
 import { len, scale, sub } from '../../physics/vec3';
+import { RingSystemDef, RingTextureId, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
+import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialBody } from './celestial-body';
+import { RingView } from './ring-view';
 
 export class SphereBody extends CelestialBody {
   readonly id: OrbitingId;
+  private surface!: CelestialSurface;
   private mesh!: THREE.Mesh;
+  // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
+  private readonly axes: THREE.Vector3;
+  private ring?: RingView;
 
-  // buildMesh は build() でメッシュを作る遅延コンストラクタ、radius/visDist は実半径 [m] と
-  // 戦闘視点での表示距離 [m]。buildRing を渡すと環を持つ天体になる — 環は本体メッシュの
-  // 子として付き、赤道面の姿勢と表示スケールをそのまま継承する。
+  // buildSurface は build() で表面を作る遅延コンストラクタ、radius/visDist は実半径 [m] と
+  // 戦闘視点での表示距離 [m]、shape は歪みの形状データ(省略時は radius による真球)。
+  // rings/ringTextures を渡すと環を持つ天体になる(ring-view.ts 参照)。
   constructor(
     id: OrbitingId,
-    private readonly buildMesh: () => THREE.Mesh,
+    private readonly buildSurface: () => CelestialSurface,
     private readonly radius: number,
     private readonly visDist: number,
-    private readonly buildRing?: () => THREE.Object3D,
+    shape?: ShapeDef,
+    private readonly rings?: RingSystemDef,
+    private readonly ringTextures?: Readonly<Partial<Record<RingTextureId, string>>>,
   ) {
     super();
     this.id = id;
+    const a = shapeAxes(radius, shape);
+    this.axes = new THREE.Vector3(a.x, a.y, a.z);
   }
 
-  // buildMesh でメッシュを組み立て、シーンへ一度だけ登録する。
+  // buildSurface で表面を組み立て、シーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
-    this.mesh = this.buildMesh();
-    if (this.buildRing !== undefined) {
-      const ring = this.buildRing();
-      ring.renderOrder = this.mesh.renderOrder + 1;
-      this.mesh.add(ring);
-    }
+    this.surface = this.buildSurface();
+    this.mesh = this.surface.mesh;
     scene.add(this.mesh);
+    if (this.rings !== undefined) {
+      this.ring = new RingView(this.rings, this.radius, this.ringTextures ?? {}, this.mesh.renderOrder + 1);
+      scene.add(this.ring.group);
+    }
   }
 
   // displayTime 時点の位置へ、視点モードに応じた実スケール/圧縮距離のどちらかで同期する。
   sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
     const pos = ephemeris.positionOf(this.id, displayTime);
+    // 陰影は真の位置から見た恒星方向で決める — 戦闘視点では描画位置が圧縮されているため、
+    // 描画位置から引くと昼夜境界が実際とずれる。
+    this.surface.setSunDirection(ephemeris.sunDirFrom(pos, displayTime));
+    let scaleFactor: number;
     if (cameraSystem.overviewMode) {
-      // 広範囲視点は実スケール: 実 ECI 位置に実半径で置く。
+      // 広範囲視点は実スケール: 実 ECI 位置に実半軸で置く。
       this.mesh.position.copy(fo.RtoThreeV3(pos));
-      this.mesh.scale.setScalar(this.radius);
+      scaleFactor = this.radius;
     } else {
       const cam = cameraSystem.activeCamera;
       const rel = sub(pos, cameraSystem.activeCameraPos);
@@ -56,11 +71,18 @@ export class SphereBody extends CelestialBody {
         cam.position.y + dir.y * this.visDist,
         cam.position.z + dir.z * this.visDist,
       );
-      this.mesh.scale.setScalar(this.visDist * (this.radius / dist));
+      scaleFactor = this.visDist * (this.radius / dist);
     }
+    // 歪んだ天体は3軸それぞれの半軸へ同じ倍率を掛ける — 真の視角を保つ性質は変わらない。
+    // 環へ渡すのは倍率のもとになる一様スケール(赤道半径基準)の方で、扁平は乗せない。
+    const k = scaleFactor / this.radius;
+    this.mesh.scale.set(this.axes.x * k, this.axes.y * k, this.axes.z * k);
     // モデル座標は +Y が自転軸、+Z が本初子午線。同期回転する天体はこれで親を向き続ける。
     const orientation = ephemeris.poleAt(this.id, displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     if (q !== null) this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
+    if (this.ring !== undefined) {
+      this.ring.sync(this.mesh.position, scaleFactor, orientation === null ? null : orientation.axis, pos, cameraSystem.activeCameraScale);
+    }
   }
 }

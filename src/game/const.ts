@@ -246,6 +246,9 @@ export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想�
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
 export const FOCUS_LABEL_PRIORITY_PX = 40;
+// 共線点(L1/L2/L3)を持たせる下限。副天体の半径を単位とした L1 までの距離で、これを下回る系は
+// L1 が表面すれすれに来てハロー軌道の振幅が収まらない(フォボス 1.5・イオ 5.8 が落ちる)。
+export const LAGRANGE_MIN_CLEARANCE_RATIO = 10;
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 export const MARKER_BEARING_RING_RATIO = 0.8;
 export const MARKER_HEADING_PROBE_PX = 20; // 進行方向を測るための投影プローブ距離 [px]
@@ -255,12 +258,17 @@ export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見�
 
 // --- 軌道計画モード([M]) ---
 export const OVERVIEW_CAMERA_MIN_DIST = 1e5; // 広範囲視点カメラの注視点までの距離 [m]
-// 太陽地球系のラグランジュ点 L1/L2(約1.5e9m)まで視界に収められる引きの上限。
-export const OVERVIEW_CAMERA_MAX_DIST = 1e13;
+// 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
+// 視界に収められる引きの上限。
+export const OVERVIEW_CAMERA_MAX_DIST = 1e14;
 // 広範囲視点の near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
 // (near = dist / OVERVIEW_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
 // 手前がクリップされにくくなる代わりに、24bit 深度バッファの分解能が落ちる。
 export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
+// near = dist / OVERVIEW_CAMERA_NEAR_RATIO の比例則は dist の上限では星球シェル・
+// 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなり、殻ごと near 平面に切り落とされる
+// (dist=1e14 で near=1e11 > 1.35e10)。far の下限と同じく 10% 内側でクランプする。
+export const OVERVIEW_CAMERA_NEAR_MAX = 1.215e10;
 // 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
 // (far = clamp(dist × OVERVIEW_CAMERA_FAR_RATIO, OVERVIEW_CAMERA_FAR_MIN, OVERVIEW_CAMERA_FAR_MAX))。
 // far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
@@ -270,7 +278,10 @@ export const OVERVIEW_CAMERA_FAR_RATIO = 100;
 // 最小ズーム(dist = OVERVIEW_CAMERA_MIN_DIST)でも月(3.8e8m)や星球シェルが
 // far の外に出ないための下限。
 export const OVERVIEW_CAMERA_FAR_MIN = 1.5e10;
-export const OVERVIEW_CAMERA_FAR_MAX = 1e13;
+// OVERVIEW_CAMERA_MAX_DIST × OVERVIEW_CAMERA_FAR_RATIO と等しい値。これより小さいと
+// 最大ズームアウト付近で far = dist × FAR_RATIO の比例則がこの上限に張り付いてしまい、
+// 注視点より奥にある軌道線・天体が far 平面でクリップされる。
+export const OVERVIEW_CAMERA_FAR_MAX = 1e16;
 // 星球シェル・天球グリッドの表示半径。マップの広範囲視点カメラの far は dist に連動して
 // 毎フレーム変わるため、そこに結びつけると星殻半径も毎フレーム変動してしまう。
 // far とは独立に固定する。

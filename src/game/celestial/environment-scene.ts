@@ -13,10 +13,11 @@ import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-g
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
-import { AsteroidField } from './asteroid-field';
+import { PointFieldView } from './point-field-view';
 import { CelestialBody } from './celestial-body';
 import { CELESTIAL_BODIES, fallbackCelestialView } from './celestial-registry';
-import { SunBody } from './sun-body';
+import { bodyClassOf } from './body-class';
+import { BodyClassToggles } from './body-visibility';
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
 // レジストリに実在しないなら架空レジストリでは無意味なので組まない(constructor で判定)。
@@ -55,13 +56,14 @@ function focusSystemOf(registry: CelestialRegistry, focusId: string): AttractorI
 
 export class EnvironmentScene {
   readonly ambient: THREE.AmbientLight;
+  // 描画原点の近傍にある実スケールの物体(自機・デブリ・薬莢)を照らす平行光。天体は
+  // 描画位置が真の位置と一致しないためこの光を受けず、自分で陰影を計算する。
+  private readonly sunLight: THREE.DirectionalLight;
   readonly starsMesh: THREE.Mesh;
   readonly celestialGrid: CelestialGrid;
   private readonly bodies: readonly CelestialBody[];
-  // 現在のレジストリに主星が無ければ null(照明・日照率は sync 側で計算そのものを飛ばす)。
-  private readonly sunBody: SunBody | null;
   // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なのでここが所有する。
-  private readonly asteroidField = new AsteroidField();
+  private readonly pointFieldView = new PointFieldView();
 
   // 静止軌道高度の参照リングは実在の天体ではないので、以下の天体駆動の配列とは別に持つ。
   // 地球が現在のレジストリに無ければ null(sync は非表示のまま何もしない)。
@@ -94,20 +96,21 @@ export class EnvironmentScene {
 
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     scene.add(this.ambient);
+    this.sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
+    scene.add(this.sunLight);
     this.starsMesh = createStars();
     scene.add(this.starsMesh);
     this.celestialGrid = new CelestialGrid(scene);
 
     this.bodies = Object.keys(registry).map((id) =>
       id in CELESTIAL_BODIES ? CELESTIAL_BODIES[id as SolarSystemId].create() : fallbackCelestialView(registry, id));
-    this.sunBody = ephemeris.starId === null ? null : this.bodies.find((b): b is SunBody => b.id === ephemeris.starId) ?? null;
     for (const body of this.bodies) body.build(scene);
-    this.asteroidField.build(scene);
+    this.pointFieldView.build(scene);
   }
 
   // 表示時刻 t の点群の位置を更新する。
   update(t: number, overviewMode: boolean): void {
-    this.asteroidField.update(t, overviewMode, this.ephemeris);
+    this.pointFieldView.update(t, overviewMode, this.ephemeris);
   }
 
   // 天体ビュー・星・照明・参照線・天球グリッドを、この1フレームの表示状態に同期する。
@@ -123,14 +126,19 @@ export class EnvironmentScene {
     // 日照そのものが無意味なので計算を飛ばす。
     const lit = cameraSystem.overviewMode || this.ephemeris.starId === null
       ? 1.0
-      : sunlitFactor(playerPos, this.ephemeris.sunDirAt(displayTime), C.SHADOW_PENUMBRA);
-    this.sunBody?.setSunlit(lit);
+      : sunlitFactor(playerPos, this.ephemeris.sunDirFrom(playerPos, displayTime), C.SHADOW_PENUMBRA);
     for (const body of this.bodies) body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris);
+    // 平行光の向きは描画原点から見た恒星方向 — 照らす相手がその近傍にいる物体だけなので、
+    // 全員が同じ向きでよい。
+    const sd = this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime);
+    this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
+    this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
     this.ambient.intensity = C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
 
-    this.asteroidField.sync(floatingOrigin, cameraSystem.overviewMode);
+    this.pointFieldView.sync(floatingOrigin, cameraSystem.overviewMode);
     this.syncStars(cameraSystem);
-    this.syncReferenceLines(displayTime, floatingOrigin, cameraSystem.overviewMode, cameraSystem.overviewCamera.focus);
+    this.syncReferenceLines(
+      displayTime, floatingOrigin, cameraSystem.overviewMode, cameraSystem.overviewCamera.focus, cameraSystem.bodyClassToggles);
     this.celestialGrid.sync(gridVisibility, cameraSystem);
   }
 
@@ -142,7 +150,9 @@ export class EnvironmentScene {
   }
 
   // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。
-  private syncReferenceLines(simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: string): void {
+  private syncReferenceLines(
+    simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: string, toggles: BodyClassToggles,
+  ): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo);
       for (const line of this.referenceLines.values()) line.sync(null, fo);
@@ -150,7 +160,7 @@ export class EnvironmentScene {
     }
     this.geoLine.sync(this.geoElements, fo, false);
     for (const [id, line] of this.referenceLines) {
-      const show = this.showsReferenceLine(id, focusId);
+      const show = this.showsReferenceLine(id, focusId, toggles);
       const el = show ? this.orbitElementsFor(id, simTime) : null;
       // 離心率の大きい軌道(彗星など)は近日点付近で曲率が急なので、そこへ頂点を寄せないと
       // 楕円が多角形として粗く見える。
@@ -159,11 +169,15 @@ export class EnvironmentScene {
     }
   }
 
-  // 参照線を引くかどうか。惑星線は常時引き、衛星線はその衛星が属する惑星系にフォーカスして
-  // いるときだけ引く — 全衛星の線を同時に引くと内側太陽系が線で潰れるため。地球系だけは
-  // 例外で常時引く(プレイの中心なので、どこを見ていても月軌道が文脈として要る)。
-  private showsReferenceLine(id: OrbitingId, focusId: string): boolean {
+  // 参照線を引くかどうか。恒星・惑星本体は常時引く。衛星はその衛星が属する惑星系に
+  // フォーカスしているときだけ引く(地球系だけは例外で常時引く — プレイの中心なので、
+  // どこを見ていても月軌道が文脈として要る)。準惑星・小天体は body-visibility.ts と同じ
+  // クラス別トグルに従い、点マーカー・ラベルと連動して現れる/消える。
+  private showsReferenceLine(id: OrbitingId, focusId: string, toggles: BodyClassToggles): boolean {
     const registry = this.ephemeris.registry;
+    const cls = bodyClassOf(registry, id);
+    if (cls === 'dwarf') return toggles.dwarf;
+    if (cls === 'smallBody') return toggles.smallBody;
     const def = bodyDef(registry, id);
     if (def.kind !== 'satellite' || def.planet === 'earth') return true;
     return focusSystemOf(registry, focusId) === def.planet;
