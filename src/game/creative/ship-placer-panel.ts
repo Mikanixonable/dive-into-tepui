@@ -5,6 +5,7 @@
 import { SegmentedControl, hudButton } from '../hud/buttons';
 import { BodyPicker, BodyPickerGroup } from '../hud/body-picker';
 import { BodyClass, bodyClassOf } from '../celestial/body-class';
+import { sameSystemIds } from '../celestial/body-visibility';
 import { celestialBodyName } from '../hud/frame-labels';
 import { CollinearPoint } from '../../physics/halo';
 import { AttractorId } from '../../physics/attractor';
@@ -91,9 +92,8 @@ function orbitingIdsOf(registry: CelestialRegistry): readonly OrbitingId[] {
 function bodyGroupsOf(
   registry: CelestialRegistry, items: readonly (readonly [ReferenceAttractor, string])[], selected: ReferenceAttractor,
 ): readonly BodyPickerGroup<ReferenceAttractor>[] {
-  const selectedParent = primaryOf(registry, selected);
-  const near = items.filter(([id]) => id === selected || id === selectedParent
-    || (selectedParent !== null && primaryOf(registry, id) === selectedParent) || primaryOf(registry, id) === selected);
+  const near0 = sameSystemIds(registry, selected);
+  const near = items.filter(([id]) => near0.has(id));
   const byClass = (cls: BodyClass) => items.filter(([id]) => bodyClassOf(registry, id) === cls);
   return [
     { label: 'いま選んでいる系', items: near },
