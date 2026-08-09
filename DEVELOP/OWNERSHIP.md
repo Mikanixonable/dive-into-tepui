@@ -123,7 +123,8 @@ main.ts
     │   ├── DebrisPiece[] (casings)
     │   ├── DebrisPiece[] (debris)
     │   ├── Ammo[]
-    │   └── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
+    │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
+    │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定
     ├── Simulator                      ... 実シミュレーション。EntityManager の参照を受け取って回すだけ(所有しない)
     │   ├── HitSystem
     │   └── CollisionPhysics
@@ -133,9 +134,17 @@ main.ts
 
 木に現れないインスタンス:
 
+- 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・Ammo[]・Base[]・Asteroid[]・
+  BeltSection[] — 木のどのノードも例外なく)は `id`(コンストラクタで固定。省略時は基底の
+  `EntityIdAllocator` が自動採番)・`radius`(物理半径、既定 0)・`collides`(剛体接触参加可否、
+  既定 false)・`mu`(重力定数 GM、既定 0)・`isStar`(常に false)を自身のフィールドとして持つ —
+  変換なしで `physics/attractor.ts` の `Attractor` と同じ形になり、`EntityManager.attractors()` は
+  `mu !== 0` かつ生存中の個体をフィルタするだけで済む。`Asteroid` はこのうち `radius`/`mu` を
+  コンストラクタ引数の `mass` から導いて両方一括で固定する(§付録「正本でないもの」は参照しない —
+  導出は構築時の1回きり)。
 - 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・Ammo[]・BeltSection[] — 木の
   どのノードも例外なく)は `physics/dynamic-trajectory.ts` の `DynamicTrajectory` を1本、フィールド名
-  `current` で保持する(state/history/prevState の正本)。GameEntity ごとに繰り返さず
+  `actualTrajectory` で保持する(state/history/prevState の正本)。GameEntity ごとに繰り返さず
   ここに一括で記す。`DynamicTrajectory` 自身は軌道要素を持たない — `GameEntity.orbitalElementsAround(center)` が
   `state` の参照同一性 + `center.id` でメモ化する(§付録「正本でないもの」参照。中心天体 `center` は
   呼び出し側が都度選ぶので `DynamicTrajectory`/`GameEntity` の状態ではない)。`predictsFuture = true` の
@@ -165,7 +174,7 @@ main.ts
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
 | `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・EquatorNodeMarkers・PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay) |
 | `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay) |
-| `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・HitSystem・CollisionPhysics・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer` 経由の追加・参照のみ) |
+| `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・HitSystem・CollisionPhysics・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
 | `DisplayTimeManager` | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない) |
 | `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が activePlayer.plan を転送)・PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)・CreativeStage(followPlan 艦の自動追従) |
@@ -229,9 +238,11 @@ main.ts
 | ステージクリア回数 | **localStorage**(`tepui.clearCounts`) | UnlockManager はその読み書き窓口。インスタンスは正本ではない |
 | ポーズ | `Game.paused` | 駆動源は `SettingsPanel.onSettingsOpenChange` と `SaveBrowser.open()`/`close()` の2つ。どちらもシステム窓で、開いている間だけ止める |
 | スナップショット一覧の表示状態 | `SaveBrowser`(private `_visible`) | `open()`/`close()` のみが書き換える。毎フレーム sync は持たず、操作のたびに自分で DOM を作り直す一発モーダル |
-| 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | 各要素は位置を時刻つきの `OrbitState` で持ち、`updateFlashEffects` がその時刻から `simTime` まで移流させる |
+| 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | 各要素は位置を時刻つきの `KinematicState` で持ち、`updateFlashEffects` がその時刻から `simTime` まで移流させる |
 | 地球自転の初期位相 | `EarthBody.phase0` | |
 | 各天体の平均黄経の初期位相 | `Ephemeris`(`phaseOffsets`) | 時刻を引数に取るサンプラ。既定で乱数を持つのは月のみ。時刻 `t` 完全一致キーの4スロットのリングキャッシュ(`planetHelioState`/`satelliteRelState`/`attractorsAt`/`gravityAttractorsAt`)を持ち、ヒットしない呼び出しだけ天体暦の合成をやり直す。セーブ/ロードは `getPhaseOffsets()`/`setPhaseOffsets()` で読み書きする(`Game.restore` が共有インスタンスへ書き戻す。インスタンスの作り直しはしない。`setPhaseOffsets` は4系統のキャッシュを全てクリアする) |
+| `registry`/`originId`/`epochOffsetSec` | `Ephemeris`(コンストラクタ引数、以後不変) | どのステージも既定値(`SOLAR_SYSTEM`/`'earth'`/`EPOCH_T_OFFSET`)を渡すが、`StageClass.ephemerisConfig` を宣言したステージだけ `Game` が別の値を渡して構築する。`starId`/`inertialFrame`/`frames`(登録天体ぶんの `ReferenceFrame` 一覧)もこの3引数からコンストラクタが1回だけ導出する正本 |
+| `dynamicFrames`(`Map<AttractorId, ReferenceFrame>`) | `Ephemeris`(`frameFor` 経由) | レジストリ未登録の id(生存中の重力天体)向け `ReferenceFrame` を初回アクセス時に生成してキャッシュする、実行時に伸びる正本。`frames` と同じ参照同一性契約(`sampled-line.ts` の `frame === lastFrame`)を満たすためのもの |
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
 | 敵 AI の実行時状態(最終発砲時刻・バースト残数) | `Enemy` | |
 | LEAD マーカーの表示履歴(敵ごとの最終ロック時刻) | `LeadMarkers` | 表示専用の状態なので Enemy には置かない。毎フレーム生存中の敵ぶんだけ作り直す |
