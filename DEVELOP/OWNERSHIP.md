@@ -126,7 +126,8 @@ main.ts
     │   ├── DebrisPiece[] (debris)
     │   ├── Ammo[]
     │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
-    │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定
+    │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定。
+    │                                       j2/c22 を渡した場合は degree2(pole/tesseral)も構築時に att から一括で固定
     ├── Simulator                      ... 実シミュレーション。EntityManager の参照を受け取って回すだけ(所有しない)
     │   ├── HitSystem
     │   └── CollisionPhysics
@@ -245,7 +246,7 @@ main.ts
 | スナップショット一覧の表示状態 | `SaveBrowser`(private `_visible`) | `open()`/`close()` のみが書き換える。毎フレーム sync は持たず、操作のたびに自分で DOM を作り直す一発モーダル |
 | 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | 各要素は位置を時刻つきの `KinematicState` で持ち、`updateFlashEffects` がその時刻から `simTime` まで移流させる |
 | 地球自転の初期位相 | `EarthBody.phase0` | |
-| 各天体の平均黄経の初期位相 | `Ephemeris`(`phaseOffsets`) | 時刻を引数に取るサンプラ。既定で乱数を持つのは月のみ。時刻 `t` 完全一致キーの4スロットのリングキャッシュ(`planetHelioState`/`satelliteRelState`/`attractorsAt`/`gravityAttractorsAt`)を持ち、ヒットしない呼び出しだけ天体暦の合成をやり直す。セーブ/ロードは `getPhaseOffsets()`/`setPhaseOffsets()` で読み書きする(`Game.restore` が共有インスタンスへ書き戻す。インスタンスの作り直しはしない。`setPhaseOffsets` は4系統のキャッシュを全てクリアする) |
+| 各天体の平均黄経の初期位相 | `Ephemeris`(`phaseOffsets`) | 時刻を引数に取るサンプラ。既定で乱数を持つのは月のみ。時刻 `t` 完全一致キーの3スロットのリングキャッシュ(`planetHelioState`/`satelliteRelState`/`attractorsAt`)を持ち、ヒットしない呼び出しだけ天体暦の合成をやり直す。セーブ/ロードは `getPhaseOffsets()`/`setPhaseOffsets()` で読み書きする(`Game.restore` が共有インスタンスへ書き戻す。インスタンスの作り直しはしない。`setPhaseOffsets` は3系統のキャッシュを全てクリアする) |
 | `registry`/`originId`/`epochOffsetSec` | `Ephemeris`(コンストラクタ引数、以後不変) | どのステージも既定値(`SOLAR_SYSTEM`/`'earth'`/`EPOCH_T_OFFSET`)を渡すが、`StageClass.ephemerisConfig` を宣言したステージだけ `Game` が別の値を渡して構築する。`starId`/`inertialFrame`/`frames`(登録天体ぶんの `ReferenceFrame` 一覧)もこの3引数からコンストラクタが1回だけ導出する正本 |
 | `dynamicFrames`(`Map<AttractorId, ReferenceFrame>`) | `Ephemeris`(`frameFor` 経由) | レジストリ未登録の id(生存中の重力天体)向け `ReferenceFrame` を初回アクセス時に生成してキャッシュする、実行時に伸びる正本。`frames` と同じ参照同一性契約(`sampled-line.ts` の `frame === lastFrame`)を満たすためのもの |
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
@@ -318,7 +319,7 @@ main.ts
 
 | 対象 | 正体 | 無効化の契機 |
 | --- | --- | --- |
-| `Ephemeris.attractorsAt(t)` / `Ephemeris.gravityAttractorsAt(t)` の戻り値(`Attractor[]`) | 天体暦(`SOLAR_SYSTEM` 登録順 — 地球・月・水星・金星・火星・フォボス・ダイモス・木星・メティス・アドラステア・アマルテア・テーベ・イオ・エウロパ・ガニメデ・カリスト・ヒマリア・エララ・アナンケ・カルメ・パシファエ・シノーペ・土星・パン・ダフニス・プロメテウス・パンドラ・エピメテウス・ヤヌス・ミマス・エンケラドゥス・テティス・ディオネ・レア・タイタン・ヒペリオン・イアペトゥス・フェーベ・天王星・海王星・トリトン・ネレイド・ケレス・ベスタ・パラス・冥王星・ハウメア・マケマケ・エリス・ハレー彗星・エンケ彗星・太陽周回小天体32体・天王星系6衛星・冥王星系5衛星・準惑星/小惑星の衛星6体・太陽の101体)から組み立てる重力源スナップショット。各要素は位置・速度に加えて、その時刻に解決した2次重力場(`degree2`: J2・基準半径・自転軸・長軸。持たない天体は `null`)も抱える。`gravityAttractorsAt` は `mu > 0` の天体だけに絞った窓(質量が測定されていない天体は `mu: 0` で登録して外す。実際にどれが効くかは位置依存の `relevantAttractors` が決めるので、静的なフラグで重ねて絞らない)で、重力積分専用の3箇所(`GameEntity.stepActual`・`Predictor.advanceBudget`・`PlanArc` の積分刻み)だけがこちらを使い、遮蔽判定・表面到達判定・中心天体解決・サンプリング間隔導出・HUD/マーカー等は引き続き `attractorsAt` の全天体窓を使う。どのクラスもこれを状態として保持しない — 呼んだその場で使い切るか、次のステップ/フレームでまた引き直す。`Ephemeris` は時刻 `t` 完全一致キーの4スロットのリングキャッシュを持ち、同一 `t` への呼び出しは同一の配列参照を返す(呼び出し側は書き換え禁止) | 呼び出しごとに新しい `t` を渡せば作り直される(リングキャッシュがヒットしない場合のみ再計算)。`setPhaseOffsets` は全キャッシュを明示的にクリアする |
+| `Ephemeris.attractorsAt(t)` の戻り値(`Attractor[]`) | 天体暦(`SOLAR_SYSTEM` 登録順 — 地球・月・水星・金星・火星・フォボス・ダイモス・木星・メティス・アドラステア・アマルテア・テーベ・イオ・エウロパ・ガニメデ・カリスト・ヒマリア・エララ・アナンケ・カルメ・パシファエ・シノーペ・土星・パン・ダフニス・プロメテウス・パンドラ・エピメテウス・ヤヌス・ミマス・エンケラドゥス・テティス・ディオネ・レア・タイタン・ヒペリオン・イアペトゥス・フェーベ・天王星・海王星・トリトン・ネレイド・ケレス・ベスタ・パラス・冥王星・ハウメア・マケマケ・エリス・ハレー彗星・エンケ彗星・太陽周回小天体32体・天王星系6衛星・冥王星系5衛星・準惑星/小惑星の衛星6体・太陽の101体)から組み立てる重力源スナップショット。各要素は位置・速度に加えて、その時刻に解決した2次重力場(`degree2`: J2・基準半径・自転軸・長軸。持たない天体は `null`)も抱える。全天体を含む唯一の窓で、重力積分の3箇所(`GameEntity.stepActual`・`Predictor.advanceBudget`・`PlanArc` の積分刻み)も遮蔽判定・表面到達判定・中心天体解決・サンプリング間隔導出・HUD/マーカー等も同じこの窓を使う(`mu = 0` の天体は寄与がゼロなので積分側で除外する必要が無い)。どのクラスもこれを状態として保持しない — 呼んだその場で使い切るか、次のステップ/フレームでまた引き直す。`Ephemeris` は時刻 `t` 完全一致キーのリングキャッシュを持ち、同一 `t` への呼び出しは同一の配列参照を返す(呼び出し側は書き換え禁止) | 呼び出しごとに新しい `t` を渡せば作り直される(リングキャッシュがヒットしない場合のみ再計算)。`setPhaseOffsets` は全キャッシュを明示的にクリアする |
 | `OrbitalElements.center`(`Attractor`) | その軌道要素をどの天体まわりで取ったか。要素と同じ寿命でその天体の `t` 時点スナップショットを抱えるので、要素そのものより長く持ち回してはならない(`OrbitLine` は楕円の平行移動先をここから引く) | 要素を作り直すたび。`GameEntity.orbitalElementsAround` のメモ経由なら `state` 差し替えのたび |
 | 解析楕円の中心天体(`strongestAttractor(state.r, attractors)` の結果) | `state`(と `attractors`)から都度導く選択であり、`GameEntity`/`Plan`/`PlanDisplay`/`OrbitLine` のどれもこれを状態として保持しない — 選ぶ GUI もない | 呼ぶたび再計算 |
 | `GameEntity.orbitalElementsAround(center)` の内部メモ | `state` の参照同一性 + `center.id` をキーにした軌道要素のメモ化(中心天体 `center` は呼び出し側が選ぶ) | `state` が差し替わるたび(`current.step`/`.reset`)、または `center.id` が変わるたび自動的に不一致になる |

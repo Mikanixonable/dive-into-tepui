@@ -63,24 +63,36 @@ export function norm(a: Vec3): Vec3 {
   return scale(a, 1 / l);
 }
 
-// [-amp, amp] の一様乱数
-export function randSym(amp: number): number {
-  return (Math.random() * 2 - 1) * amp;
+// シード値から [0, 1) の一様乱数列を生成する mulberry32。Math.random を経由しないので、
+// 同じシードから常に同じ列を再現できる(セーブ・リプレイ・負荷計測の再現性が要る箇所向け)。
+export function mulberry32(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let x = Math.imul(s ^ (s >>> 15), 1 | s);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-// 各成分が [-amp, amp] の一様乱数ベクトル
-export function randVec(amp: number): Vec3 {
-  return v3(randSym(amp), randSym(amp), randSym(amp));
+// [-amp, amp] の一様乱数。rand は [0, 1) を返す生成器(既定 Math.random)。
+export function randSym(amp: number, rand: () => number = Math.random): number {
+  return (rand() * 2 - 1) * amp;
 }
 
-// fwd に直交するランダム単位ベクトル(散布界用)。
+// 各成分が [-amp, amp] の一様乱数ベクトル。rand は [0, 1) を返す生成器(既定 Math.random)。
+export function randVec(amp: number, rand: () => number = Math.random): Vec3 {
+  return v3(randSym(amp, rand), randSym(amp, rand), randSym(amp, rand));
+}
+
+// fwd に直交するランダム単位ベクトル(散布界用)。rand は [0, 1) を返す生成器(既定 Math.random)。
 // 【契約】fwd は単位ベクトルであること。射影 r - fwd(r·fwd) は |fwd| = 1 を前提にしており、
 // 長いベクトル(位置ベクトル等)を渡すと第2項が第1項を飲み込んで、直交どころか ±fwd 方向が
 // 返る。呼び出し側で norm() を通すこと(ここで norm() しないのは、全呼び出しが既に正規化済みの
 // 方向ベクトルを渡しており、毎回の平方根が無駄になるため)。
-export function randPerp(fwd: Vec3): Vec3 {
+export function randPerp(fwd: Vec3, rand: () => number = Math.random): Vec3 {
   for (;;) {
-    const r = randVec(1);
+    const r = randVec(1, rand);
     const p = sub(r, scale(fwd, dot(r, fwd)));
     if (lenSq(p) > 1e-6) return norm(p);
   }
