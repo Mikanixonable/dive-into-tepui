@@ -1,5 +1,6 @@
 // 小惑星帯・トロヤ群の点群のマップビュー表示。位置は asteroid-belt.ts の軌道要素から引き、
 // 1つの InstancedMesh の instanceMatrix へ書き込む。
+// game-entity/asteroid.ts の Asteroid(重力を及ぼし積分される個別の GameEntity)とは別物。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { Vec3, add, v3 } from '../../physics/vec3';
@@ -24,6 +25,8 @@ export class AsteroidField {
   // ラウンドロビン更新で次に引き直す点の添字。
   private cursor = 0;
   private sunPos: Vec3 = v3(0, 0, 0);
+  // 現在のレジストリに恒星が実在するか。無ければ点群は太陽中心の座標を持てないので非表示にする。
+  private hasStar = true;
   // 初回の update だけは全点を評価する — ラウンドロビンに任せると、マップを開いた直後の
   // 数フレームは未評価の点(太陽中心の零ベクトル)が太陽位置に固まって描かれる。
   private primed = false;
@@ -50,8 +53,9 @@ export class AsteroidField {
   // 表示時刻 t の点の位置を引き直す。広範囲視点でないときは何もしない — 戦闘視点では
   // 描かれないので位置を求める意味がない。
   update(t: number, overviewMode: boolean, ephemeris: Ephemeris): void {
-    if (!overviewMode) return;
-    this.sunPos = ephemeris.positionOf('sun', t);
+    this.hasStar = ephemeris.starId !== null;
+    if (!overviewMode || ephemeris.starId === null) return;
+    this.sunPos = ephemeris.positionOf(ephemeris.starId, t);
     const n = this.elements.length;
     const count = this.primed ? Math.ceil(n / UPDATE_FRACTION) : n;
     this.primed = true;
@@ -65,8 +69,8 @@ export class AsteroidField {
   // update が求めた位置へ各インスタンスを置く。浮動原点は毎フレーム動くので、位置を引き直して
   // いない点も含めて全インスタンスの行列を書き直す。
   sync(fo: FloatingOrigin, overviewMode: boolean): void {
-    this.mesh.visible = overviewMode;
-    if (!overviewMode) return;
+    this.mesh.visible = overviewMode && this.hasStar;
+    if (!this.mesh.visible) return;
     for (let i = 0; i < this.positions.length; i++) {
       const p = fo.RtoThreeV3(add(this.positions[i]!, this.sunPos));
       this.matrix.makeTranslation(p.x, p.y, p.z);
