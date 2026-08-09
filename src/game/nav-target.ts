@@ -144,8 +144,9 @@ export class NavTarget {
     if (secondary !== undefined && secondary in SOLAR_SYSTEM && bodyDef(secondary as AttractorId).kind !== 'star') {
       return qRotate(ephemeris.orbitFrameRotationAt(secondary as OrbitingId, t).q, Z_HAT);
     }
+    const enemyMatch = entities.findEnemy(id);
     const entity: GameEntity | undefined =
-      entities.enemies.find((e) => e.name === id && e.alive) ??
+      (enemyMatch?.alive ? enemyMatch : undefined) ??
       entities.players.find((p) => p.id === id && p.alive) ??
       entities.bases.find((b) => b.id === id && b.alive);
     if (!entity) return null;

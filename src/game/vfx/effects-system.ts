@@ -75,8 +75,8 @@ export class EffectsSystem {
   // DebrisPiece を組み立てて追加する共通処理。fragment/barrel/magazineFrame/casing の
   // 各 spawnXxx はすべてこれの薄いラッパー — kind ごとの見た目・寿命判定の違いは
   // DebrisPiece/DebrisKind(game-entity.ts)側の責務。
-  private spawnDebrisPiece(state: KinematicState, kind: DebrisKind, att: Attitude, collideRadius?: number): void {
-    this.entities.addDebris(new DebrisPiece(state, kind, att, collideRadius, this._scene));
+  private spawnDebrisPiece(state: KinematicState, kind: DebrisKind, att: Attitude, radius?: number): void {
+    this.entities.addDebris(new DebrisPiece(state, kind, att, radius, this._scene));
   }
 
   // t は発生時刻(破片 state のエポック)。破壊された entity の state.t をそのまま渡す。

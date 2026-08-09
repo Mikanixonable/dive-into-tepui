@@ -29,10 +29,12 @@ export class DebrisPiece extends GameEntity {
   protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
 
-  // DebrisKind に応じたメッシュ・質量で初期化する。collideRadius は fragment 以外の当たり判定半径になる。
-  constructor(state: KinematicState, readonly debrisKind: DebrisKind, att: Attitude, collideRadius?: number, scene?: THREE.Scene) {
+  // DebrisKind に応じたメッシュ・質量で初期化する。radius は剛体接触半径。fragment は
+  // 剛体接触に参加しない(排莢直後の薬莢を弾いてしまう/破片が跳ね回るのを避ける)。
+  constructor(state: KinematicState, readonly debrisKind: DebrisKind, att: Attitude, radius?: number, scene?: THREE.Scene) {
     super(state, buildDebrisObj(debrisKind), scene, att);
-    this.collideRadius = debrisKind.kind === 'fragment' ? undefined : collideRadius;
+    this.radius = radius ?? 0;
+    this.collides = debrisKind.kind !== 'fragment';
     switch (debrisKind.kind) {
       case 'barrel': this.mass = C.BARREL_MASS; break;
       case 'magazineFrame': this.mass = C.MAGAZINE_FRAME_MASS; break;

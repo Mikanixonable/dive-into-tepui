@@ -42,8 +42,7 @@ import { restorePart, type AnyPart } from '../game-entity/parts';
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
 export class Player extends Ship {
   // 表示名はユーザーが自由に重複させられ、プロパティウィンドウから改名もできる。
-  // 一方 id はマップ選択・参照のための不変キー。
-  readonly id: string;
+  // 一方 id(基底 GameEntity 由来)はマップ選択・参照のための不変キー。
   displayName: string;
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
@@ -76,16 +75,16 @@ export class Player extends Ship {
     _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
     name = 'PLAYER', initialState?: KinematicState, entityId = name) {
     const state = initialState ?? Player.makeInitialState();
-    super(name, state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, _scene);
-    this.id = entityId;
+    super(name, state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, _scene, entityId);
     this.displayName = name;
     this._hud = _hud;
     this._sfx = _sfx;
     this._fx = _fx;
     this.playerScene = _scene;
     this.mass = C.PLAYER_MASS;
-    // 剛体接触は実機体サイズ。被弾判定半径(radius)を使うと排莢直後の薬莢を弾いてしまう
-    this.collideRadius = C.PLAYER_HULL_RADIUS;
+    // 剛体接触は実機体サイズ。被弾判定半径(hitRadius)を使うと排莢直後の薬莢を弾いてしまう
+    this.radius = C.PLAYER_HULL_RADIUS;
+    this.collides = true;
 
     this.throttle = new PlayerThrottle(_hud, _sfx);
     this.fire = new PlayerFire(this, _hud, _sfx, _scene, _fx);
@@ -207,7 +206,7 @@ export class Player extends Ship {
   stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
-    this.radius = this.radiator.hitRadius();
+    this.hitRadius = this.radiator.hitRadius();
     const sunDir = ephemeris.sunDirAt(simTime);
     const sunlit = sunlitFactor(this.state.r, sunDir, C.SHADOW_PENUMBRA);
     this.thermal.setRadiatorLoad(

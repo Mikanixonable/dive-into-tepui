@@ -560,17 +560,17 @@ export class Game {
     }
     if (this.navTarget.id) {
       const navPlayer = this.entities.findPlayer(this.navTarget.id);
-      const navEnemy = this.entities.enemies.find((e) => e.name === this.navTarget.id && e.alive);
+      const navEnemy = this.entities.findEnemy(this.navTarget.id);
       const navBase = this.entities.findBase(this.navTarget.id);
       const navSource: EqNodeSource | null =
         navPlayer ? { id: navPlayer.id, name: navPlayer.displayName, state: navPlayer.state } :
-        navEnemy ? { id: navEnemy.name, name: navEnemy.name, state: navEnemy.state } :
+        navEnemy?.alive ? { id: navEnemy.id, name: navEnemy.name, state: navEnemy.state } :
         navBase ? { id: navBase.id, name: navBase.name, state: navBase.state } : null;
       if (navSource) sources.set(navSource.id, navSource);
     }
     const combatTarget = this.targeter.aliveTarget;
     if (combatTarget) {
-      sources.set(combatTarget.name, { id: combatTarget.name, name: combatTarget.name, state: combatTarget.state });
+      sources.set(combatTarget.id, { id: combatTarget.id, name: combatTarget.name, state: combatTarget.state });
     }
     for (const base of this.entities.bases) {
       if (base.alive) sources.set(base.id, { id: base.id, name: base.name, state: base.state });
