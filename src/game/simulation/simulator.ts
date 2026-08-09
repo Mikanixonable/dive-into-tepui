@@ -1,7 +1,7 @@
 // 実シミュレーションの更新(軌道積分・弾命中・剛体接触・慣性姿勢積分)。simTime/lastSimDt を保持する。
 import { stepAttitude } from '../../physics/attitude';
 import * as C from '../const';
-import { attractorsAt } from './attractors';
+import { attractorsAt, attractorsNear, classifyAttractors } from './attractors';
 import { HitSystem } from './hit';
 import { EffectsSystem } from '../vfx/effects-system';
 import { EntityManager } from './entity-manager';
@@ -97,14 +97,15 @@ export class Simulator {
   }
 
   // 全エンティティを dt だけ積分する。重力源はこのステップの中点(t + dt/2)で1回だけ組み、
-  // 全エンティティで使い回す — 各自が積分後の新しい位置を読みに行くと、本来対称であるべき
-  // 相互作用に処理順依存の誤差が入る。積分後の simTime を返す。
+  // 空間グリッドへ分類してから全エンティティで使い回す — 各自が積分後の新しい位置を読みに
+  // 行くと、本来対称であるべき相互作用に処理順依存の誤差が入る。各エンティティは自身の位置の
+  // 27近傍グリッドを引き直すだけで、分類そのものはこのステップで1回。積分後の simTime を返す。
   private substep(
     simTime: number,
     dt: number,
   ): number {
-    const attractors = attractorsAt(this.ephemeris, this.entities, simTime + dt / 2);
-    for (const e of this.entities.all()) e.stepActual(dt, attractors);
+    const classified = classifyAttractors(attractorsAt(this.ephemeris, this.entities, simTime + dt / 2));
+    for (const e of this.entities.all()) e.stepActual(dt, attractorsNear(e.state.r, classified));
 
     return simTime + dt;
   }
