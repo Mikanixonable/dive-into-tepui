@@ -1,0 +1,64 @@
+// マップ上で「いま関心の対象になっている天体」の判定。マップのラベル・軌道オブジェクト一覧・
+// 配置UIの基準天体は、この1つの集合を共有して表示を絞る — 3つが別々のフィルタを持つと
+// 「マップには出ているのに一覧に無い」が起き、探しているものへ辿り着く道筋が読めなくなる。
+import { AttractorId } from '../../physics/attractor';
+import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
+import { bodyClassOf } from './body-class';
+
+// クラスごとの表示トグル。恒星と惑星は常に見えるのでトグルを持たない(太陽系の骨格であり、
+// 消えると現在地が読めなくなる)。lagrange はラグランジュ点ラベルの表示可否で、天体ではないので
+// BodyClass とは別の軸。
+export type BodyClassToggles = {
+  readonly dwarf: boolean;
+  readonly satellite: boolean;
+  readonly smallBody: boolean;
+  readonly lagrange: boolean;
+};
+
+export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
+  dwarf: false, satellite: false, smallBody: false, lagrange: false,
+};
+
+// focus の親を辿って主星まで遡った id の列(focus 自身を含む)。
+function ancestorsOf(registry: CelestialRegistry, focusId: AttractorId): AttractorId[] {
+  const chain: AttractorId[] = [];
+  let cur: AttractorId | null = focusId;
+  // 循環した registry でも止まるよう、登録数を上限にする。
+  for (let i = 0; cur !== null && i <= Object.keys(registry).length; i++) {
+    if (chain.includes(cur)) break;
+    chain.push(cur);
+    cur = registry[cur] === undefined ? null : primaryOf(registry, cur);
+  }
+  return chain;
+}
+
+// いま表示する天体の集合。3つの規則の和で、どれか1つでも当たれば見える:
+//   1. 恒星と惑星は常に見える。
+//   2. フォーカス中の天体の親・兄弟・子は、クラスに関わらず見える — 木星にフォーカスすれば
+//      ガリレオ衛星が現れ、離れれば引っ込む。「距離が近いもの」をズーム距離で判定すると
+//      ズーム操作の途中で行が明滅するので、離散的に切り替わるこの親子関係で代用する。
+//   3. トグルで明示的に足したクラスは全数見える。
+export function visibleBodyIds(
+  registry: CelestialRegistry, focusId: AttractorId, toggles: BodyClassToggles,
+): ReadonlySet<AttractorId> {
+  const ids = Object.keys(registry);
+  const visible = new Set<AttractorId>();
+
+  for (const id of ids) {
+    const cls = bodyClassOf(registry, id);
+    if (cls === 'star' || cls === 'planet') visible.add(id);
+    else if (cls === 'dwarf' ? toggles.dwarf : cls === 'satellite' ? toggles.satellite : toggles.smallBody) visible.add(id);
+  }
+
+  const chain = ancestorsOf(registry, focusId);
+  for (const id of chain) visible.add(id);
+  // 兄弟は「惑星系の中の兄弟」に限る。恒星の子はすべて互いに兄弟なので、そこまで含めると
+  // 惑星にフォーカスしただけで全太陽周回天体が出てしまう(その階層は 1. が既に賄っている)。
+  const focusParent = registry[focusId] === undefined ? null : primaryOf(registry, focusId);
+  const siblingParent = focusParent !== null && registry[focusParent]?.kind !== 'star' ? focusParent : null;
+  for (const id of ids) {
+    const parent = primaryOf(registry, id);
+    if (parent === focusId || (siblingParent !== null && parent === siblingParent)) visible.add(id);
+  }
+  return visible;
+}

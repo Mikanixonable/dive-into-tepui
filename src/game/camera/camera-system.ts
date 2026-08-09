@@ -5,6 +5,7 @@ import { CombatCameraSystem } from './combat-camera-system';
 import { OverviewCamera } from './overview-camera';
 import { OverviewCameraPanel } from './overview-camera-panel';
 import { FocusMarkers } from './focus-markers';
+import { BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES } from '../celestial/body-visibility';
 import { MapPickable } from '../map-pick';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
@@ -71,6 +72,12 @@ export class CameraSystem {
   private _overviewMode = false;
   get overviewMode(): boolean { return this._overviewMode; }
 
+  // クラスごとの天体表示トグル。マップのラベル・軌道オブジェクト一覧・配置UIの基準天体が
+  // この1つの状態を共有する(body-visibility.ts の visibleBodyIds に渡す)。フォーカスと
+  // MAP VIEW パネルを既に所有しているこのクラスが、同じ場所で持つ。
+  private _bodyClassToggles: BodyClassToggles = DEFAULT_BODY_CLASS_TOGGLES;
+  get bodyClassToggles(): BodyClassToggles { return this._bodyClassToggles; }
+
   setMapMode(open: boolean): void { this._overviewMode = open; }
 
   // sync() で毎フレーム参照する DOM 要素をコンストラクタ時にキャッシュする。
@@ -96,6 +103,9 @@ export class CameraSystem {
     this.overviewCamera = new OverviewCamera(_hud, sfx, ephemeris);
     // 広範囲視点の操作パネルと各操作のコールバック
     this.overviewCameraPanel = new OverviewCameraPanel(_hud.root, ephemeris);
+    this.overviewCameraPanel.onBodyClassToggle = (key, on) => {
+      this._bodyClassToggles = { ...this._bodyClassToggles, [key]: on };
+    };
     this.overviewCameraPanel.onFrameSelect = (frame: ReferenceFrame) => {
       this.overviewCamera.cameraFrame = frame;
     };
@@ -192,6 +202,7 @@ export class CameraSystem {
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
+    this.overviewCameraPanel.setBodyClassToggles(this._bodyClassToggles);
 
     // 戦闘ビュー固有パネルを広範囲視点では非表示にする
     const hidden = this.overviewMode && !this.showStatusInOverview ? 'none' : '';

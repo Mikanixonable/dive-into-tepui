@@ -42,7 +42,7 @@ function planetEntry(
   textureUrl: string,
   buildRing?: () => THREE.Object3D,
   pointBrightness?: PointBrightness,
-): { readonly name: string; create(): CelestialBody } {
+): CelestialView {
   const buildMesh = () => createTexturedSphereMesh(textureUrl);
   const radius = bodyDef(SOLAR_SYSTEM, id).radius;
   return {
@@ -90,17 +90,19 @@ function createSolidSphereMesh(color: number): THREE.Mesh {
 }
 
 // 単色の衛星のレジストリ項を、表示名と色から組む。表示距離は月と揃える。
-function satelliteEntry(id: SolarSystemId, name: string, color: number): { readonly name: string; create(): CelestialBody } {
+function satelliteEntry(id: SolarSystemId, name: string, color: number): CelestialView {
   return { name, create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST) };
 }
 
 // テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。表示距離は
 // テクスチャ付き惑星と揃える。
-function solidPlanetEntry(id: SolarSystemId, name: string, color: number): { readonly name: string; create(): CelestialBody } {
+function solidPlanetEntry(id: SolarSystemId, name: string, color: number): CelestialView {
   return { name, create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST) };
 }
 
-export const CELESTIAL_BODIES: Record<SolarSystemId, { readonly name: string; create(): CelestialBody }> = {
+export type CelestialView = { readonly name: string; create(): CelestialBody };
+
+export const CELESTIAL_BODIES: Record<SolarSystemId, CelestialView> = {
   earth: { name: '地球', create: () => new EarthBody() },
   moon: { name: '月', create: () => new SphereBody('moon', createMoon, bodyDef(SOLAR_SYSTEM, 'moon').radius, MOON_VIS_DIST) },
   mercury: planetEntry('mercury', '水星', mercuryTextureUrl, undefined, 'medium'),
