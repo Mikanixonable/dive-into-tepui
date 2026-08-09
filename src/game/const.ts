@@ -364,6 +364,10 @@ export const APERIODIC_ARC_DURATION = 86400;
 // physics/trajectory-features.ts の apparentEccentricity(積分折れ線の半径変動から
 // 求めた指標)と比較する — これ未満は円に近くアプシスの方向が不定になるので両方隠す。
 export const APSIS_MIN_ECC = 0.01;
+// 日付境界の目盛(plan/plan-display.ts)を間引く最小画面間隔 [px]^2。カレンダー日ごとに
+// 打つ候補は表示期間・軌道の形によって画面上の間隔が数桁変わるため、固定した日数間隔では
+// なく直前に表示した目盛からの画面距離で間引く。
+export const PLAN_DAY_TICK_MIN_PX_SQ = 50 * 50;
 
 // --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory.history/Predictor) ---
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
