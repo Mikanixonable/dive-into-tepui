@@ -10,10 +10,21 @@ export const EPS = (23.439291 * Math.PI) / 180; // 黄道傾斜角
 const COS_EPS = Math.cos(EPS);
 const SIN_EPS = Math.sin(EPS);
 
+// ECI の極軸(Y)。
+export const ECI_POLE: Vec3 = v3(0, 1, 0);
+
 // 標準赤道座標 (X=春分点, Z=北極, 右手系) → ECI (Y=北極)。
 // Xstd→X, Zstd→Y, Ystd→-Z(行列式 +1 の回転)。
-function stdToEci(xs: number, ys: number, zs: number): Vec3 {
+export function stdToEci(xs: number, ys: number, zs: number): Vec3 {
   return v3(xs, zs, -ys);
+}
+
+// 赤経・赤緯 [deg] が指す方向の単位ベクトル(ECI)。
+export function raDecToEci(raDeg: number, decDeg: number): Vec3 {
+  const ra = raDeg * (Math.PI / 180);
+  const dec = decDeg * (Math.PI / 180);
+  const cd = Math.cos(dec);
+  return stdToEci(cd * Math.cos(ra), cd * Math.sin(ra), Math.sin(dec));
 }
 
 // 黄道座標(xe,ye 黄道面内, ze 黄道北極) → 標準赤道座標 → ECI。
