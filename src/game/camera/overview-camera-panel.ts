@@ -1,8 +1,8 @@
 import { ReferenceFrame } from '../../physics/frame';
 import { Attractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { SegmentedControl, HudToggle } from '../hud/buttons';
-import { frameItems } from '../hud/frame-labels';
+import { HudToggle } from '../hud/buttons';
+import { FramePicker } from '../hud/frame-picker';
 import { hudDock } from '../hud/dom';
 import { BodyClassToggles } from '../celestial/body-visibility';
 
@@ -24,7 +24,7 @@ export class OverviewCameraPanel {
   private readonly bodyClassToggles: readonly (readonly [keyof BodyClassToggles, HudToggle])[];
 
   private readonly panel: HTMLElement;
-  private readonly frame: SegmentedControl<ReferenceFrame>;
+  private readonly frame: FramePicker;
   // 直近に選択肢を組んだ重力天体 id の集合(登録天体は変わらないので、生存中の重力を持つ
   // GameEntity の増減だけを見ればよい)。変化した回だけボタン列を組み直す。
   private lastDynamicIds = '';
@@ -40,7 +40,9 @@ export class OverviewCameraPanel {
     this.panel.appendChild(title);
 
     // 視点座標系の選択コントロール
-    this.frame = new SegmentedControl('視点', frameItems(ephemeris, []), (frame) => this.onFrameSelect?.(frame));
+    this.frame = new FramePicker(root, '視点', ephemeris);
+    this.frame.onSelect = (frame) => this.onFrameSelect?.(frame);
+    this.frame.setFrames(ephemeris.frames, []);
     this.panel.appendChild(this.frame.element);
 
     this.ammoToggle = new HudToggle('弾薬', (on) => {
@@ -83,6 +85,8 @@ export class OverviewCameraPanel {
     const dynamicIds = attractors.filter((a) => !(a.id in this.ephemeris.registry)).map((a) => a.id).join(',');
     if (dynamicIds === this.lastDynamicIds) return;
     this.lastDynamicIds = dynamicIds;
-    this.frame.setItems(frameItems(this.ephemeris, attractors));
+    const dynamicFrames = attractors.filter((a) => !(a.id in this.ephemeris.registry))
+      .map((a) => this.ephemeris.frameFor(a.id));
+    this.frame.setFrames([...this.ephemeris.frames, ...dynamicFrames], attractors);
   }
 }

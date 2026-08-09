@@ -3,6 +3,8 @@
 // 値から KinematicState を組み立てるのは物理側(stateFromOrbitalElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
 import { SegmentedControl, hudButton } from '../hud/buttons';
+import { BodyPicker, BodyPickerGroup } from '../hud/body-picker';
+import { BodyClass, bodyClassOf } from '../celestial/body-class';
 import { celestialBodyName } from '../hud/frame-labels';
 import { CollinearPoint } from '../../physics/halo';
 import { AttractorId } from '../../physics/attractor';
@@ -82,6 +84,24 @@ const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [
 // これを使う(公転していない恒星を周回の中心には選べない)。
 function orbitingIdsOf(registry: CelestialRegistry): readonly OrbitingId[] {
   return Object.keys(registry).filter((id) => bodyDef(registry, id).kind !== 'star');
+}
+
+// 天体の候補をクラス別のまとまりへ組む。先頭は「いま選んでいる系」— 実際に選ばれるのは
+// ほぼ常に同じ系の別天体なので、1クリック目に置く。
+function bodyGroupsOf(
+  registry: CelestialRegistry, items: readonly (readonly [ReferenceAttractor, string])[], selected: ReferenceAttractor,
+): readonly BodyPickerGroup<ReferenceAttractor>[] {
+  const selectedParent = primaryOf(registry, selected);
+  const near = items.filter(([id]) => id === selected || id === selectedParent
+    || (selectedParent !== null && primaryOf(registry, id) === selectedParent) || primaryOf(registry, id) === selected);
+  const byClass = (cls: BodyClass) => items.filter(([id]) => bodyClassOf(registry, id) === cls);
+  return [
+    { label: 'いま選んでいる系', items: near },
+    { label: '惑星', items: byClass('planet') },
+    { label: '衛星', items: byClass('satellite') },
+    { label: '準惑星', items: byClass('dwarf') },
+    { label: '小天体', items: byClass('smallBody') },
+  ].filter((g) => g.items.length > 0);
 }
 
 // 表示名を「中心天体名-自分の名」として ephemeris から組む(primaryOf で主星を解決する)。
@@ -324,7 +344,7 @@ export class ShipPlacerPanel {
   private readonly objectType: SegmentedControl<ObjectType>;
   private readonly placementMode: SegmentedControl<PlacementMode>;
   private readonly placementGroups: Record<PlacementMode, HTMLElement>;
-  private readonly attractor: SegmentedControl<ReferenceAttractor>;
+  private readonly attractor: BodyPicker<ReferenceAttractor>;
   private readonly sizeMode: SegmentedControl<SizeShapeMode>;
   private readonly sizeGroups: Record<SizeShapeMode, HTMLElement>;
   private readonly nameInput: HTMLInputElement;
@@ -338,7 +358,7 @@ export class ShipPlacerPanel {
   private readonly raan: SliderRow;
   private readonly argp: SliderRow;
   private readonly nu: SliderRow;
-  private readonly lagrangeSecondary: SegmentedControl<OrbitingId>;
+  private readonly lagrangeSecondary: BodyPicker<OrbitingId>;
   private readonly lagrangePoint: SegmentedControl<CollinearPoint>;
   private readonly lagrangeOrbitKind: SegmentedControl<LagrangeOrbitKind>;
   private readonly libAx: HTMLInputElement;
@@ -363,7 +383,13 @@ export class ShipPlacerPanel {
 
   // 艦艇配置パネルの DOM を組み立て、root へ追加する。基準天体・ラグランジュ系の選択肢は
   // ephemeris が実際に持つレジストリから組む。
+  private readonly registry: CelestialRegistry;
+  // BodyPicker のポップアップの親。パネル自身の overflow に切られないよう HUD ルートへ置く。
+  private readonly hudRoot: HTMLElement;
+
   constructor(root: HTMLElement, ephemeris: Ephemeris) {
+    this.registry = ephemeris.registry;
+    this.hudRoot = root;
     const orbitingIds = orbitingIdsOf(ephemeris.registry);
     this.attractorItems = orbitingIds.map((id) => [id, celestialBodyName(id)] as const);
     this.baseAttractorItems = this.attractorItems.filter(([id]) => id === 'moon');
@@ -439,7 +465,7 @@ export class ShipPlacerPanel {
   // 呼び出し側は返った sizeGroups を this.sizeGroups へ代入してから selectSizeMode を呼ぶ必要がある。
   private buildElementsGroup(): {
     element: HTMLElement;
-    attractor: SegmentedControl<ReferenceAttractor>;
+    attractor: BodyPicker<ReferenceAttractor>;
     sizeMode: SegmentedControl<SizeShapeMode>;
     sizeGroups: Record<SizeShapeMode, HTMLElement>;
     peAlt: SliderRow;
@@ -455,11 +481,12 @@ export class ShipPlacerPanel {
     refreshPresets: () => void;
   } {
     const elementsGroup = document.createElement('div');
-    const attractorControl = new SegmentedControl('基準天体', this.attractorItems, (v) => {
+    const attractorControl = new BodyPicker<ReferenceAttractor>(this.hudRoot, '基準天体', (v) => {
       this.attractorValue = v;
       attractorControl.setSelected(v);
       this.refreshPresets();
     });
+    attractorControl.setGroups(bodyGroupsOf(this.registry, this.attractorItems, this.attractorValue));
     attractorControl.setSelected(this.attractorValue);
     elementsGroup.appendChild(attractorControl.element);
 
@@ -533,14 +560,15 @@ export class ShipPlacerPanel {
   // ラグランジュ点指定(ハロー/リサジュー)の一式を1つの div にまとめて返す。
   private buildLagrangeGroup(): {
     element: HTMLElement;
-    lagrangeSecondary: SegmentedControl<OrbitingId>;
+    lagrangeSecondary: BodyPicker<OrbitingId>;
     lagrangePoint: SegmentedControl<CollinearPoint>;
     lagrangeOrbitKind: SegmentedControl<LagrangeOrbitKind>;
     libAx: HTMLInputElement;
     libAz: HTMLInputElement;
   } {
     const lagrangeGroup = document.createElement('div');
-    const lagrangeSecondary = new SegmentedControl('系', this.lagrangeSystemItems, (v) => this.selectLagrangeSecondary(v));
+    const lagrangeSecondary = new BodyPicker<OrbitingId>(this.hudRoot, '系', (v) => this.selectLagrangeSecondary(v));
+    lagrangeSecondary.setGroups([{ label: '', items: this.lagrangeSystemItems }]);
     lagrangeSecondary.setSelected(this.lagrangeSecondaryValue);
     lagrangeGroup.appendChild(lagrangeSecondary.element);
     const lagrangePoint = new SegmentedControl('点', LAGRANGE_POINT_ITEMS, (v) => {
@@ -618,9 +646,9 @@ export class ShipPlacerPanel {
     this.objectType.setSelected(v);
     if (v === 'base') {
       if (this.attractorValue !== 'moon') this.attractorValue = 'moon';
-      this.attractor.setItems(this.baseAttractorItems);
+      this.attractor.setGroups([{ label: '', items: this.baseAttractorItems }]);
     } else {
-      this.attractor.setItems(this.attractorItems);
+      this.attractor.setGroups(bodyGroupsOf(this.registry, this.attractorItems, this.attractorValue));
     }
     this.attractor.setSelected(this.attractorValue);
     this.refreshPresets();
