@@ -12,43 +12,18 @@
 // シミュレーション全体は地球中心の慣性系(ECI)で回っている。座標系はあくまで「軌道線など
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
 import { AttractorId, OrbitingId } from './attractor';
-import { bodyDef, SOLAR_SYSTEM } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { add, cross, sub, v3, Vec3 } from './vec3';
 import { Quat, qInvert, qRotate } from './attitude';
 
 // 座標系 = 「どの天体を原点に置くか」×「どの天体の公転に合わせて回すか(null = 回さない)」。
-// 値は必ず FRAMES の要素を参照する — リテラルで組むと参照同一性が崩れ、sampled-line.ts の
-// `frame === lastFrame` によるキャッシュ判定が毎フレーム外れて描画が無駄に重くなる。
+// 値は必ず Ephemeris.frames/frameFor の要素を参照する — リテラルで組むと参照同一性が崩れ、
+// sampled-line.ts の `frame === lastFrame` によるキャッシュ判定が毎フレーム外れて描画が
+// 無駄に重くなる。
 export type ReferenceFrame = {
   readonly center: AttractorId;
   readonly rotatingWith: OrbitingId | null;
 };
-
-// 回転系(rotatingWith が非 null)の原点。衛星は惑星まわりの公転を止めて見せたいので
-// その惑星(例: 月回転系は地球中心)、惑星は自分自身(例: 太陽-地球回転系は地球中心のまま、
-// 地球自身の公転方向へ向きだけ合わせる。原点ごと太陽へ移した完全な太陽中心系が欲しければ
-// {center:'sun', rotatingWith:null} を使う)。
-function rotatingFrameCenterOf(id: AttractorId): AttractorId {
-  const def = bodyDef(id);
-  return def.kind === 'satellite' ? def.planet : id;
-}
-
-// SOLAR_SYSTEM から生成した正準インスタンス。全天体の慣性系(center=X, rotatingWith=null)と、
-// 公転している全天体(恒星以外)ぶんの回転系。天体を1つ増やすと、このリストは手を加えずに
-// 増える。
-export const FRAMES: readonly ReferenceFrame[] = (() => {
-  const ids = Object.keys(SOLAR_SYSTEM) as AttractorId[];
-  const frames: ReferenceFrame[] = ids.map((id) => ({ center: id, rotatingWith: null }));
-  for (const id of ids) {
-    if (bodyDef(id).kind === 'star') continue;
-    frames.push({ center: rotatingFrameCenterOf(id), rotatingWith: id as OrbitingId });
-  }
-  return frames;
-})();
-
-// 地球中心慣性系。ECI そのものを表す座標系として、UI・描画側の既定値に使う。
-export const INERTIAL_FRAME: ReferenceFrame = FRAMES.find((f) => f.center === 'earth' && f.rotatingWith === null)!;
 
 // Frame の時刻 t における剛体運動。origin/originVel は ECI での原点の位置・速度、
 // q は「座標系相対 → ECI」の姿勢、omega は ECI 成分の角速度。回転軸が時刻とともに向きを

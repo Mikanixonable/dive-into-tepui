@@ -28,6 +28,7 @@ import { register as registerHudLayout } from './hud-layout.test';
 import { register as registerShortcutHint } from './shortcut-hint.test';
 import { register as registerAsteroidBelt } from './asteroid-belt.test';
 import { register as registerTrajectoryFeatures } from './trajectory-features.test';
+import { register as registerNBody } from './n-body.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -57,5 +58,6 @@ registerHudLayout();
 registerShortcutHint();
 registerTrajectoryFeatures();
 registerAsteroidBelt();
+registerNBody();
 
 runAll();
