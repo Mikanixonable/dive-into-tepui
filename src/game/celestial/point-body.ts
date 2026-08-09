@@ -7,13 +7,12 @@ import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/attractor';
 import { norm, sub } from '../../physics/vec3';
-import { RingSystemDef, RingTextureId } from '../../physics/solar-system';
+import { RingSystemDef, RingTextureId, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
 import { STAR_SHELL_RADIUS } from '../../render/stars';
 import { Billboard } from '../../render/billboard';
-import { ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CelestialBody } from './celestial-body';
 import { RingView } from './ring-view';
 
@@ -72,8 +71,7 @@ export class PointBody extends CelestialBody {
     this.mesh = this.buildMesh();
     scene.add(this.mesh);
     if (this.rings !== undefined) {
-      this.ring = new RingView(this.rings, this.radius, this.ringTextures ?? {});
-      this.ring.group.renderOrder = this.mesh.renderOrder + 1;
+      this.ring = new RingView(this.rings, this.radius, this.ringTextures ?? {}, this.mesh.renderOrder + 1);
       scene.add(this.ring.group);
     }
     scene.add(this.billboard.mesh);
