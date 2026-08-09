@@ -5,12 +5,13 @@ import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { StateQueue } from '../../physics/state-queue';
-import { Attractor, orbitalElementsOf, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, Degree2Gravity, orbitalElementsOf, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import { EntityIdAllocator } from './entity-id';
+import { GRAVITATIONAL_CONSTANT } from '../../physics/solar-system';
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -47,8 +48,9 @@ export class GameEntity {
   collides = false; // 剛体接触(CollisionPhysics)に参加するか
   // 重力定数 GM [m^3/s^2]。0 = 重力を及ぼさない
   mu = 0;
-  readonly degree2: null = null;
-  readonly isStar = false;
+  // 自身が及ぼす二次重力項(J2/C22 等)。null = 質点として扱う
+  degree2: Degree2Gravity | null = null;
+  isStar = false;
   thrust: Vec3 | null = null;
   // 機体座標系トルク。既定ゼロ = 自由回転。
   torque: Vec3 = v3();
@@ -77,6 +79,13 @@ export class GameEntity {
     this.obj = obj;
     this.scene = scene;
     this.scene?.add(this.obj);
+  }
+
+  // 質量から剛体接触の換算質量と重力定数 μ を同時に定める。別々に書くと引力の強さと
+  // 衝突の重さが食い違う。
+  protected setGravitatingMass(mass: number): void {
+    this.mass = mass;
+    this.mu = GRAVITATIONAL_CONSTANT * mass;
   }
 
   // center を中心とする接触軌道要素。中心は呼び出し側が選ぶ(例: strongestAttractor)。
