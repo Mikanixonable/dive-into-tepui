@@ -6,7 +6,6 @@ import { KinematicState } from '../../physics/kinematic-state';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { OrbitalElements, apsisAltitudes, trueAnomalyAt } from '../../physics/elements';
 import { toFrameState } from '../../physics/frame';
-import { bodyDef } from '../../physics/solar-system';
 import { Vec3, cross, dot, len, norm, v3 } from '../../physics/vec3';
 import type { ElementsForm } from './ship-placer-panel';
 
@@ -31,7 +30,7 @@ function raanArgpFromBasis(el: OrbitalElements): { raanDeg: number; argpDeg: num
 // 遠地点高度も基準天体の選択も意味を持たないため null。
 export function elementsFormFromState(state: KinematicState, attractors: readonly Attractor[]): ElementsForm | null {
   const strongest = strongestAttractor(state.r, attractors);
-  const center = bodyDef(strongest.id).kind === 'star' ? attractors.find((a) => a.id === 'earth') ?? strongest : strongest;
+  const center = strongest.isStar ? attractors.find((a) => a.id === 'earth') ?? strongest : strongest;
   const el = orbitalElementsOf(state, center);
   if (!el || el.e >= 1) return null;
 

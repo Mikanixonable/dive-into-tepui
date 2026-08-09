@@ -15,7 +15,7 @@
 // 状態を実際にゲーム内で積分すると軌道はドリフトする。
 import { Ephemeris } from './ephemeris';
 import { OrbitingId } from './attractor';
-import { bodyDef } from './solar-system';
+import { bodyDef, primaryOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, scale, sub } from './vec3';
 
@@ -56,8 +56,9 @@ function cn(point: CollinearPoint, mu: number, gamma: number, n: number): number
 // 計算する。gamma(副天体から L点までの距離の比)は ephemeris.ts が内部に持つ近似値を
 // 公開していないため、公開済みの L点座標から逆算して一貫性を取る。
 export function collinearFrame(secondary: OrbitingId, point: CollinearPoint, t: number, ephemeris: Ephemeris): CollinearFrame {
-  const def = bodyDef(secondary);
-  const primary = def.kind === 'planet' ? 'sun' : def.planet;
+  const def = bodyDef(ephemeris.registry, secondary);
+  const primary = primaryOf(ephemeris.registry, secondary);
+  if (primary === null) throw new Error(`collinearFrame: ${secondary} に主星が無いレジストリでは共線点は定義できない`);
   const primaryPos = ephemeris.positionOf(primary, t);
   const secondaryPos = ephemeris.positionOf(secondary, t);
   const omega = ephemeris.orbitFrameRotationAt(secondary, t).omega;
@@ -65,7 +66,7 @@ export function collinearFrame(secondary: OrbitingId, point: CollinearPoint, t: 
   // (kepler-orbit.ts 参照)ので、omega の向きそのものが公転面法線と一致するとは限らない。
   // 歳差の有無によらず正しい公転面法線を orbitNormalAt から直接取る。
   const normal = ephemeris.orbitNormalAt(secondary, t);
-  const mu = def.mu / (bodyDef(primary).mu + def.mu);
+  const mu = def.mu / (bodyDef(ephemeris.registry, primary).mu + def.mu);
   const origin = ephemeris.lagrangeAt(secondary, t)[point];
 
   const rVec = sub(secondaryPos, primaryPos);

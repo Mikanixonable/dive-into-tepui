@@ -5,22 +5,13 @@ import { KinematicState, kinematicState } from './kinematic-state';
 import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
 import { Vec3, lenSq, len, sub, v3 } from './vec3';
 
-// 天体の分類。恒星は動かず、惑星は太陽まわりのケプラー軌道、衛星は惑星まわりのケプラー軌道
-// (+ 太陽摂動)を描く — solar-system.ts の CelestialBodyDef がこの分類で判別される。
-export type StarId = 'sun';
-export type PlanetId =
-  | 'earth' | 'mercury' | 'venus' | 'mars' | 'jupiter' | 'saturn' | 'uranus' | 'neptune'
-  | 'pluto' | 'ceres' | 'eris' | 'makemake' | 'haumea' | 'vesta' | 'pallas' | 'halley' | 'encke';
-export type SatelliteId =
-  | 'moon'
-  | 'phobos' | 'deimos'
-  | 'io' | 'europa' | 'ganymede' | 'callisto'
-  | 'titan'
-  | 'triton';
-export type AttractorId = StarId | PlanetId | SatelliteId;
-// 公転している天体(惑星 + 衛星)。回転基準系・軌道法線・ラグランジュ点は、公転を持たない
-// 恒星には存在しない — この型に絞ることで呼び出し側の null 分岐が要らなくなる。
-export type OrbitingId = PlanetId | SatelliteId;
+// 天体の識別子。具体的なレジストリ(solar-system.ts の SOLAR_SYSTEM など)が実行時に
+// 差し替え可能なので、ここでは閉じた union にできない — 網羅性の強制は各レジストリの
+// keyof(SolarSystemId 等)が個別に持つ。
+export type AttractorId = string;
+// 公転している天体を指すべき引数の注釈(型としては AttractorId と同じで強制力は無い)。
+// 回転基準系・軌道法線・ラグランジュ点は、公転を持たない恒星には存在しない。
+export type OrbitingId = AttractorId;
 
 // 2次重力場の非軸対称成分(赤道断面の楕円性)。主軸座標系で表すため S22 は恒等的に 0 になり、
 // 長軸の向きだけで姿勢が決まる。
@@ -44,6 +35,7 @@ export type Attractor = {
   readonly radius: number; // 表面半径 [m]
   readonly state: KinematicState; // ECI 位置・速度(同一時刻。地球は原点に静止)
   readonly degree2: Degree2Gravity | null; // null なら質点として扱う
+  readonly isStar: boolean; // 太陽輻射圧の輻射源として加算するか
 };
 
 // 天体 attractor が位置 r の運動方程式へ寄与する加速度 μ[(r_b − r)/|r_b − r|³ − r_b/|r_b|³]。

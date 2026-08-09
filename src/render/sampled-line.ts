@@ -116,7 +116,7 @@ export class SampledLine {
     // 位置と速度をそのまま KinematicState に詰めて渡す(この慣性系ブランドは関数の外へ出ない)。
     // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
     const baked = samples.map((s) => {
-      const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t), s);
+      const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t, []), s);
       return kinematicState(s.t, rel.r, rel.v);
     });
 
@@ -179,7 +179,7 @@ export class SampledLine {
   // 毎フレーム: 剛体 un-bake(line クォータニオン) + フローティングオリジン補正(line 位置 =
   // 座標系原点)。currentTime = 描画時刻(通常 simTime)。
   syncTransform(frame: ReferenceFrame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin): void {
-    const tf = ephemeris.frameTransformAt(frame, currentTime);
+    const tf = ephemeris.frameTransformAt(frame, currentTime, []);
     this.line.quaternion.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
     this.line.position.copy(fo.RtoThreeV3(tf.origin));
   }

@@ -5,12 +5,12 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
+import { MU_EARTH, R_EARTH, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { DynamicTrajectory } from '../../src/physics/dynamic-trajectory';
-import { Ephemeris } from '../../src/physics/ephemeris';
+import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { len, sub, v3 } from '../../src/physics/vec3';
 
-const EPH = new Ephemeris({ moon: 0 }); // 初期位相を固定して決定的にする
+const EPH = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 }); // 初期位相を固定して決定的にする
 const bodiesAt = (t: number) => EPH.attractorsAt(t); // step() が要求する重力源をステップ中点で引く
 
 function circularState(t = 0): KinematicState {

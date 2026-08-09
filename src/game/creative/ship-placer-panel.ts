@@ -6,7 +6,7 @@ import { SegmentedControl, hudButton } from '../hud/buttons';
 import { ATTRACTOR_NAMES } from '../hud/frame-labels';
 import { CollinearPoint } from '../../physics/halo';
 import { AttractorId } from '../../physics/attractor';
-import { bodyDef, SOLAR_SYSTEM, MU_EARTH, R_EARTH, SIDEREAL_DAY, J2_EARTH } from '../../physics/solar-system';
+import { bodyDef, primaryOf, SOLAR_SYSTEM, MU_EARTH, R_EARTH, SIDEREAL_DAY, J2_EARTH } from '../../physics/solar-system';
 import type { OrbitingId } from '../../physics/attractor';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
@@ -82,18 +82,17 @@ const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [
 // (公転していない恒星を周回の中心には選べない)。
 // 重力源でない天体は、そこへ艦を置いても局所力学が成立しないので選択肢に出さない。
 const ORBITING_IDS = (Object.keys(SOLAR_SYSTEM) as AttractorId[])
-  .filter((id) => bodyDef(id).kind !== 'star' && bodyDef(id).gravitySource) as OrbitingId[];
+  .filter((id) => bodyDef(SOLAR_SYSTEM, id).kind !== 'star' && bodyDef(SOLAR_SYSTEM, id).gravitySource) as OrbitingId[];
 
-const ATTRACTOR_ITEMS: readonly (readonly [ReferenceAttractor, string])[] = ORBITING_IDS.map((id) => [id, ATTRACTOR_NAMES[id]]);
+const ATTRACTOR_ITEMS: readonly (readonly [ReferenceAttractor, string])[] = ORBITING_IDS.map((id) => [id, ATTRACTOR_NAMES[id]!]);
 
 // 基地は敵の射程となる惑星近傍を避けるため、軌道要素指定の基準天体は月だけに絞る
 // (地球・木星は選択肢自体を出さない — placement-validation.ts の validateBaseReferenceFields と対にする)。
 const BASE_ATTRACTOR_ITEMS: readonly (readonly [ReferenceAttractor, string])[] = ATTRACTOR_ITEMS.filter(([id]) => id === 'moon');
 
 const LAGRANGE_SYSTEM_ITEMS: readonly (readonly [OrbitingId, string])[] = ORBITING_IDS.map((id) => {
-  const def = bodyDef(id);
-  const primary: AttractorId = def.kind === 'planet' ? 'sun' : def.planet;
-  return [id, `${ATTRACTOR_NAMES[primary]}-${ATTRACTOR_NAMES[id]}`] as const;
+  const primary = primaryOf(SOLAR_SYSTEM, id) ?? 'sun';
+  return [id, `${ATTRACTOR_NAMES[primary]!}-${ATTRACTOR_NAMES[id]!}`] as const;
 });
 
 const LAGRANGE_POINT_ITEMS: readonly (readonly [CollinearPoint, string])[] = [
@@ -116,7 +115,8 @@ const LAGRANGE_DEFAULT_AMPLITUDE_KM: Partial<Record<OrbitingId, { ax: number; az
 
 // 副天体とその主天体の距離 [km](= 副天体の軌道長半径)。
 function primaryDistanceKm(secondary: OrbitingId): number {
-  const def = bodyDef(secondary);
+  const def = bodyDef(SOLAR_SYSTEM, secondary);
+  if (def.kind === 'star') throw new Error(`primaryDistanceKm: ${secondary} は恒星なので公転していない`);
   return (def.kind === 'planet' ? def.orbit.a : def.orbit.kepler.a) / 1e3;
 }
 
@@ -136,7 +136,7 @@ const GEO_ALT_KM = (semiMajorFromPeriod(SIDEREAL_DAY, MU_EARTH) - R_EARTH) / 1e3
 function sunSyncInclinationDeg(altKm: number): number {
   const a = R_EARTH + altKm * 1e3;
   const n = Math.sqrt(MU_EARTH / (a * a * a));
-  const earthOrbitRate = bodyDef('earth').orbit.lRate;
+  const earthOrbitRate = SOLAR_SYSTEM.earth.orbit.lRate;
   const cosI = earthOrbitRate / (-1.5 * n * J2_EARTH * (R_EARTH / a) ** 2);
   return Math.acos(cosI) / DEG;
 }

@@ -1,7 +1,7 @@
 // 天体の静的事実の表: 恒星/惑星/衛星の判別 union(CelestialBodyDef)と、太陽系の各天体の
 // 重力定数・半径・軌道モデル(SOLAR_SYSTEM)。宣言順が Ephemeris が返す重力源配列の順になる。
 import { Quat } from './attitude';
-import { AttractorId, PlanetId, SatelliteId, StarId } from './attractor';
+import { AttractorId } from './attractor';
 import { equatorBasisToEci } from './body-orientation';
 import { raDecToEci } from './ecliptic';
 import { keplerPeriod } from './elements';
@@ -42,10 +42,24 @@ export const R_MOON_GRAVITY = 1.7380e6; // [m]
 // 月の赤道が黄道に対して傾く角(カッシーニ第2法則)。
 export const MOON_OBLIQUITY = 1.543 * (Math.PI / 180); // [rad]
 
-// 公転している天体(惑星・衛星)を、表示上の「親」— 衛星ならその惑星、惑星なら恒星 — へ写す。
-export function primaryOf(id: PlanetId | SatelliteId): AttractorId {
-  const def = bodyDef(id);
-  return def.kind === 'satellite' ? def.planet : 'sun';
+// registry の中から恒星を1つ探す。0個なら null。このステップがサポートするのは主星が
+// ちょうど1つ、または0個の星系のみで、複数の恒星が相互に公転しあう連星系は対象外 — 2つ以上
+// 見つかったら例外にする。
+export function starOf(registry: CelestialRegistry): AttractorId | null {
+  let star: AttractorId | null = null;
+  for (const [id, def] of Object.entries(registry)) {
+    if (def.kind !== 'star') continue;
+    if (star !== null) throw new Error(`starOf: レジストリに複数の恒星がある(連星系は非対応): ${star}, ${id}`);
+    star = id;
+  }
+  return star;
+}
+
+// 公転している天体(惑星・衛星)を、表示上の「親」— 衛星ならその惑星、惑星ならそのレジストリの
+// 恒星 — へ写す。レジストリに恒星が無ければ null(主星が0個の系)。
+export function primaryOf(registry: CelestialRegistry, id: AttractorId): AttractorId | null {
+  const def = bodyDef(registry, id);
+  return def.kind === 'satellite' ? def.planet : starOf(registry);
 }
 
 // 自転軸と自転位相の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)、
@@ -84,10 +98,10 @@ type GravitySourceFlag = { readonly gravitySource: boolean };
 type LagrangeLabelFlag = { readonly lagrangeLabels?: boolean };
 
 export type CelestialBodyDef =
-  | ({ readonly kind: 'star'; readonly id: StarId; readonly mu: number; readonly radius: number } & GravitySourceFlag)
+  | ({ readonly kind: 'star'; readonly id: AttractorId; readonly mu: number; readonly radius: number } & GravitySourceFlag)
   | ({
       readonly kind: 'planet';
-      readonly id: PlanetId;
+      readonly id: AttractorId;
       readonly mu: number;
       readonly radius: number;
       readonly orbit: PlanetOrbit; // 中心は必ず恒星
@@ -96,14 +110,18 @@ export type CelestialBodyDef =
     } & GravitySourceFlag & LagrangeLabelFlag)
   | ({
       readonly kind: 'satellite';
-      readonly id: SatelliteId;
+      readonly id: AttractorId;
       readonly mu: number;
       readonly radius: number;
-      readonly planet: PlanetId; // 中心は必ず惑星
+      readonly planet: AttractorId; // 中心は必ず惑星
       readonly orbit: SatelliteOrbit;
       readonly pole?: PoleModel;
       readonly degree2?: Degree2GravityDef;
     } & GravitySourceFlag & LagrangeLabelFlag);
+
+// 天体レジストリ: id から静的事実(CelestialBodyDef)を引く表。SOLAR_SYSTEM が「現実の太陽系」
+// という名前つきの既定値で、ステージごとに別のレジストリへ差し替えられる。
+export type CelestialRegistry = Readonly<Record<AttractorId, CelestialBodyDef>>;
 
 const D2R = Math.PI / 180;
 
@@ -751,17 +769,17 @@ export const SOLAR_SYSTEM = {
     }),
   },
   sun: { kind: 'star', id: 'sun', mu: MU_SUN, radius: R_SUN, gravitySource: true },
-} satisfies Record<AttractorId, CelestialBodyDef>;
+} satisfies CelestialRegistry;
 
-// SOLAR_SYSTEM を satisfies で受けているため、推論された型にインデックスシグネチャがなく
-// 非リテラルな id での添字アクセスは型エラーになる。動的な id で引く箇所はすべてこれを経由する。
-// 戻り値の型は SOLAR_SYSTEM の実際のキー集合ではなく CelestialBodyDef 自体の判別 union から
-// 組む(id ごとの具体型は保ったまま、天体を1つ追加した際にレジストリが未対応であることの
-// エラーがこの関数の外へ波及しないようにするため)。
-type KindOf<T extends AttractorId> = T extends StarId ? 'star' : T extends PlanetId ? 'planet' : 'satellite';
-type BodyDefOf<T extends AttractorId> = Extract<CelestialBodyDef, { readonly kind: KindOf<T> }>;
+// SOLAR_SYSTEM を satisfies で受けているため、リテラルなキー集合(SolarSystemId)がそのまま
+// 保たれる — CELESTIAL_BODIES(game/celestial/celestial-registry.ts)はこれを Record の
+// キーに使うことで、天体を1体追加すると表示名の欠落がコンパイルエラーになる。
+export type SolarSystemId = keyof typeof SOLAR_SYSTEM;
+export type SolarSystemOrbitingId = { [K in SolarSystemId]: (typeof SOLAR_SYSTEM)[K]['kind'] extends 'star' ? never : K }[SolarSystemId];
 
-// id を SOLAR_SYSTEM から引く。戻り値の型は id の具体型(星/惑星/衛星)に絞り込まれる。
-export function bodyDef<T extends AttractorId>(id: T): BodyDefOf<T> {
-  return (SOLAR_SYSTEM as Record<AttractorId, CelestialBodyDef>)[id] as BodyDefOf<T>;
+// id を registry から引く。registry に無い id を渡すと例外になる。
+export function bodyDef(registry: CelestialRegistry, id: AttractorId): CelestialBodyDef {
+  const def = registry[id];
+  if (def === undefined) throw new Error(`bodyDef: レジストリに登録されていない天体 id: ${id}`);
+  return def;
 }

@@ -26,7 +26,7 @@ import type { GameEntity } from './game-entity/game-entity';
 import { len, sub, v3 } from '../physics/vec3';
 import type { ObjectType } from './creative/ship-placer-panel';
 import type { KinematicState } from '../physics/kinematic-state';
-import { AttractorId, Attractor, orbitalElementsOf, strongestAttractor } from '../physics/attractor';
+import { Attractor, orbitalElementsOf, strongestAttractor } from '../physics/attractor';
 import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
 import { SOLAR_SYSTEM, bodyDef, primaryOf } from '../physics/solar-system';
@@ -377,7 +377,7 @@ export class MapPicker {
       itemsFor: (target, simTime) => {
         const eqTime = target.time;
         const isAn = target.id.endsWith('-eqan');
-        const centerName = ATTRACTOR_NAMES[strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id];
+        const centerName = ATTRACTOR_NAMES[strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id] ?? '—';
         const eqLabel = `${centerName}赤道${isAn ? '昇' : '降'}交点 (${isAn ? 'EqAN' : 'EqDN'})`;
         const eqSubLabel = eqTime !== undefined ? `到達まで T+${fmtTime(eqTime - simTime)}` : undefined;
         return [
@@ -681,7 +681,7 @@ export class MapPicker {
       rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });
       return rows;
     }
-    const def = bodyDef(target.id as AttractorId);
+    const def = bodyDef(SOLAR_SYSTEM, target.id);
     const kindLabel = def.kind === 'star' ? '恒星' : def.kind === 'planet' ? '惑星' : '衛星';
     rows.push(
       { key: 'kind', label: '種別', value: kindLabel },
@@ -689,7 +689,7 @@ export class MapPicker {
       { key: 'radius', label: '半径', value: fmtDist(def.radius) },
     );
     if (def.kind === 'star') return rows;
-    const primary = attractors.find((b) => b.id === primaryOf(def.id));
+    const primary = attractors.find((b) => b.id === primaryOf(SOLAR_SYSTEM, def.id));
     const self = attractors.find((b) => b.id === def.id);
     const el = primary && self ? orbitalElementsOf(self.state, primary) : null;
     if (!el) return rows;
@@ -716,7 +716,7 @@ export class MapPicker {
   private nodeRows(target: MapPickable, attractors: readonly Attractor[], simTime: number): PropertyRow[] {
     const targetName = target.kind === 'relnode'
       ? (this.navTarget.name ?? '対象')
-      : ATTRACTOR_NAMES[strongestAttractor(target.pos, attractors).id];
+      : (ATTRACTOR_NAMES[strongestAttractor(target.pos, attractors).id] ?? '—');
     const rows: PropertyRow[] = [{ key: 'target', label: '対象', value: targetName }];
     if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
     return rows;

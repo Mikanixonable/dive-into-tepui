@@ -6,12 +6,11 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input/input';
 import { Viewpoint } from '../../physics/projection';
-import { ReferenceFrame, FrameDir, INERTIAL_FRAME, toFrameDir, toInertialDir } from '../../physics/frame';
+import { ReferenceFrame, FrameDir, toFrameDir, toInertialDir } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { qFromAxisAngle, qRotate } from '../../physics/attitude';
 import { MapPickable } from '../map-pick';
 import { bodyDef, SOLAR_SYSTEM } from '../../physics/solar-system';
-import { AttractorId } from '../../physics/attractor';
 
 const WORLD_UP = v3(0, 1, 0);
 const OVERVIEW_CAMERA_FOV = 50;
@@ -40,7 +39,7 @@ export class OverviewCamera {
   private pan_r: FrameDir;
   private up_r: FrameDir;
   // カメラ視点を固定する座標系。
-  private _cameraFrame: ReferenceFrame = INERTIAL_FRAME;
+  private _cameraFrame: ReferenceFrame;
   private simTime = 0; // set cameraFrame の座標変換に使う
   private _focus = 'earth';
   private _focusPos: Vec3 | null = null;
@@ -81,7 +80,8 @@ export class OverviewCamera {
     _sfx: Sfx,
     private readonly ephemeris: Ephemeris,
   ) {
-    const tf0 = this.ephemeris.frameTransformAt(this._cameraFrame, 0);
+    this._cameraFrame = ephemeris.inertialFrame;
+    const tf0 = this.ephemeris.frameTransformAt(this._cameraFrame, 0, []);
     this.offset_r = toFrameDir(tf0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST));
     this.pan_r = toFrameDir(tf0, v3());
     this.up_r = toFrameDir(tf0, WORLD_UP);
@@ -114,18 +114,18 @@ export class OverviewCamera {
   // フォーカスが天体でなければ通常の下限をそのまま使う。
   private get minDist(): number {
     if (!(this._focus in SOLAR_SYSTEM)) return C.OVERVIEW_CAMERA_MIN_DIST;
-    return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, bodyDef(this._focus as AttractorId).radius);
+    return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, bodyDef(SOLAR_SYSTEM, this._focus).radius);
   }
 
   // カメラのロールのみを初期状態(ワールド上方)に戻す。
   reset(): void {
-    this.up_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime), WORLD_UP);
+    this.up_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime, []), WORLD_UP);
     this._hud.hint('マップ視点のロールをリセット');
   }
 
   // パン変位をゼロに戻す。
   resetPan(): void {
-    this.pan_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime), v3());
+    this.pan_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime, []), v3());
   }
 
   // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は地球へ戻す。
@@ -162,11 +162,11 @@ export class OverviewCamera {
   set cameraFrame(frame: ReferenceFrame) {
     const from = this._cameraFrame;
     if (frame === from) return;
-    const tfFrom = this.ephemeris.frameTransformAt(from, this.simTime);
+    const tfFrom = this.ephemeris.frameTransformAt(from, this.simTime, []);
     const offEci = toInertialDir(tfFrom, this.offset_r);
     const panEci = toInertialDir(tfFrom, this.pan_r);
     const upEci = toInertialDir(tfFrom, this.up_r);
-    const tfTo = this.ephemeris.frameTransformAt(frame, this.simTime);
+    const tfTo = this.ephemeris.frameTransformAt(frame, this.simTime, []);
     this.offset_r = toFrameDir(tfTo, offEci);
     this.pan_r = toFrameDir(tfTo, panEci);
     this.up_r = toFrameDir(tfTo, upEci);
@@ -185,7 +185,7 @@ export class OverviewCamera {
   ): void {
     this.simTime = simTime;
     const focus = this.resolveFocus(candidates);
-    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, simTime);
+    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, simTime, []);
     let offEci = toInertialDir(tf, this.offset_r);
     let panEci = toInertialDir(tf, this.pan_r);
     let upEci = toInertialDir(tf, this.up_r);
