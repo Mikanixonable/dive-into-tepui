@@ -88,7 +88,10 @@ export class PlanDisplay {
 
   // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。
   // show=false のときは何も求めない — 出さない計画の位置は持たない。
-  update(plan: Plan, simTime: number, displayTime: number, show: boolean): void {
+  update(
+    plan: Plan, simTime: number, displayTime: number, show: boolean,
+    dynamicAttractors: readonly Attractor[],
+  ): void {
     this.plan = show ? plan : null;
     if (!show) {
       this.ghost = null;
@@ -99,7 +102,7 @@ export class PlanDisplay {
     }
     this.attractors = this.ephemeris.attractorsAt(displayTime);
     this.refreshFrameItems();
-    this.path.update(plan, this.ephemeris, this.planFrame, simTime, this.attractors);
+    this.path.update(plan, this.ephemeris, this.planFrame, simTime, this.attractors, dynamicAttractors);
     this.ghost = this.ghostAt(plan, displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.impactIcons = this.impactIconsOf();

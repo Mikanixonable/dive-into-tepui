@@ -7,6 +7,7 @@ import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Attractor, hitAttractor, localOrbitPeriod, relevantAttractors } from '../../physics/attractor';
+import { mergeAttractors } from '../simulation/gravity-attractors';
 import { Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { SampledLine } from '../../render/sampled-line';
@@ -65,7 +66,10 @@ export class PlanArc {
   // 前の起点と時刻的に近いというだけで、無関係な軌道をサンプル間隔ぶん描き続けてしまう。
   // tracksLiveAnchor でなければ state0/end の同一性・値の変化で即座に再積分する
   // (ノードの Δv 編集は state0 の同一性変化で必ず拾われる)。
-  update(state0: KinematicState, end: number, ephemeris: Ephemeris, tracksLiveAnchor: boolean): void {
+  update(
+    state0: KinematicState, end: number, ephemeris: Ephemeris,
+    dynamicAttractors: readonly Attractor[], tracksLiveAnchor: boolean,
+  ): void {
     if (tracksLiveAnchor) {
       // 同一性が変わっても時刻が前進していれば通常の追従とみなし、下のサンプル間隔判定に委ねる。
       const anchorSwapped = this.key !== null && state0 !== this.key.state0 && state0.t <= this.key.state0.t;
@@ -79,7 +83,7 @@ export class PlanArc {
       this.recomputed = this.key === null || state0 !== this.key.state0 || end !== this.key.end;
     }
     if (this.recomputed) {
-      this.integrate(state0, end, ephemeris);
+      this.integrate(state0, end, ephemeris, dynamicAttractors);
       this.key = { state0, end };
     }
   }
@@ -131,7 +135,11 @@ export class PlanArc {
   // 区間長を上限サンプル数で割った値、保持窓は区間長そのものなので、区間全体が間引かれた
   // 解像度で残る。いずれかの天体の表面 + REENTRY_ALT を割ったら、その時点で打ち切る
   // (非有限・ステップ数上限に達した場合も同様)。
-  private integrate(state0: KinematicState, end: number, ephemeris: Ephemeris): void {
+  // dynamicAttractors は呼び出し元がこのフレームで一度だけ求めた値を全ステップで使い回す —
+  // 区間長は最大1年に及び、そのあいだの位置を EntityManager には問えないため。
+  private integrate(
+    state0: KinematicState, end: number, ephemeris: Ephemeris, dynamicAttractors: readonly Attractor[],
+  ): void {
     const duration = Math.max(0, end - state0.t);
     const trajectory = new DynamicTrajectory(state0);
     const sampleInterval = duration / C.PLAN_ARC_MAX_SAMPLES;
@@ -141,12 +149,16 @@ export class PlanArc {
     let steps = 0;
     while (trajectory.state.t < end - EPOCH_EPS) {
       const sizingAttractors = relevantAttractors(
-        trajectory.state.r, ephemeris.gravityAttractorsAt(trajectory.state.t), C.GRAVITY_NEGLIGIBLE_ACCEL);
+        trajectory.state.r,
+        mergeAttractors(ephemeris.gravityAttractorsAt(trajectory.state.t), dynamicAttractors),
+        C.GRAVITY_NEGLIGIBLE_ACCEL);
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
       const dt = Math.min(stepDt(trajectory.state.r, sizingAttractors), end - trajectory.state.t);
       if (dt <= 1e-9) break;
       const stepAttractors = relevantAttractors(
-        trajectory.state.r, ephemeris.gravityAttractorsAt(trajectory.state.t + dt / 2), C.GRAVITY_NEGLIGIBLE_ACCEL);
+        trajectory.state.r,
+        mergeAttractors(ephemeris.gravityAttractorsAt(trajectory.state.t + dt / 2), dynamicAttractors),
+        C.GRAVITY_NEGLIGIBLE_ACCEL);
       trajectory.step(dt, stepAttractors, C.SHIP_BCINV, C.SHIP_SRP_COEFF, C.SHADOW_PENUMBRA, null, sampleInterval, duration);
 
       const { r, v } = trajectory.state;

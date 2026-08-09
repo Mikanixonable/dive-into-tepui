@@ -80,9 +80,8 @@ const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [
 
 // ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙する。軌道要素指定の基準天体も
 // これを使う(公転していない恒星を周回の中心には選べない)。
-// 重力源でない天体は、そこへ艦を置いても局所力学が成立しないので選択肢に出さない。
 function orbitingIdsOf(registry: CelestialRegistry): readonly OrbitingId[] {
-  return Object.keys(registry).filter((id) => bodyDef(registry, id).kind !== 'star' && bodyDef(registry, id).gravitySource);
+  return Object.keys(registry).filter((id) => bodyDef(registry, id).kind !== 'star');
 }
 
 // 表示名を「中心天体名-自分の名」として ephemeris から組む(primaryOf で主星を解決する)。

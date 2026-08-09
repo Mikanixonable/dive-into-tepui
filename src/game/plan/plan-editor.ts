@@ -673,9 +673,12 @@ export class PlanEditor {
   // 計画折れ線を再積分し、ゴースト位置とアプシスアイコンを求め直す。折れ線は戦闘ビューでも
   // 描く — 計画どおりに機体を動かすのは戦闘ビューだから。ただしノードが1つも無い計画は自機の
   // 現在軌道そのものなので、ノードを置ける編集中だけ扱う。
-  update(simTime: number, displayTime: number): void {
+  update(simTime: number, displayTime: number, dynamicAttractors: readonly Attractor[]): void {
     this.simTime = simTime;
-    this.planDisplay.update(this.plan, simTime, displayTime, this.hasPlan && (this.editMode || this.plan.nodes.length > 0));
+    this.planDisplay.update(
+      this.plan, simTime, displayTime,
+      this.hasPlan && (this.editMode || this.plan.nodes.length > 0), dynamicAttractors,
+    );
   }
 
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
