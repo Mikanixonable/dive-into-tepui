@@ -107,7 +107,7 @@ export class Ephemeris {
   // registry の全天体 id、および attractorsAt が返す配列の順序(宣言順)。
   private readonly ids: readonly AttractorId[];
   // ids のうち質量を持つ id(宣言順)。質量が測定されていない天体は mu = 0 で登録され、
-  // 重力窓の候補から外れる。どの候補が実際に効くかは位置依存の relevantAttractors が決める。
+  // 重力窓の候補から外れる。
   private readonly gravityIds: readonly AttractorId[];
   // registry の主星。0個なら null(輻射源・影の計算がそもそも無意味になる — sunDirAt/dynamics.ts の
   // 呼び出し側はその前提で無害なフォールバックを扱う)。

@@ -5,7 +5,7 @@ import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
-import { Attractor, localOrbitPeriod, relevantAttractors } from '../../physics/attractor';
+import { Attractor, localOrbitPeriod } from '../../physics/attractor';
 import { mergeAttractors } from './gravity-attractors';
 
 export class Predictor {
@@ -77,8 +77,7 @@ export class Predictor {
       // 刻み幅は「その場の周期の等分」と「ホライズン全体をステップ上限で割った値」の粗い方。
       // 後者があるので、表示期間を年スケールにしてもステップ数が有界に収まる。
       const tipState = e.predictedTrajectory?.state ?? e.state;
-      const all = mergeAttractors(this.ephemeris.gravityAttractorsAt(tipState.t), dynamic);
-      const attractors = relevantAttractors(tipState.r, all, C.GRAVITY_NEGLIGIBLE_ACCEL);
+      const attractors = mergeAttractors(this.ephemeris.gravityAttractorsAt(tipState.t), dynamic);
       const dt = Math.max(
         C.PREDICT_MIN_STEP_DT,
         localOrbitPeriod(tipState.r, attractors) / C.PREDICT_STEPS_PER_REV,
