@@ -8,7 +8,7 @@ import { sub, Vec3 } from '../physics/vec3';
 //   r … 平行移動の基準。全メッシュ・カメラを「絶対座標 - r」に置く。
 //   v … 相対速度で向きを決める描画(弾・リードマーカー等)が差し引く速度基準。
 export class FloatingOrigin {
-  private readonly  r: Vec3;
+  readonly r: Vec3;
   private readonly v: Vec3;
 
   // r/v を今フレームの原点・速度基準として固定する。

@@ -1,9 +1,9 @@
 // 天体の見た目レジストリ: id から表示名と CelestialBody の生成関数を引く。
 // 天体の日本語表示名の定義元はここ1箇所 — 他のモジュールは必ずここを読む。
-import * as THREE from 'three/webgpu';
 import { bodyDef, CelestialRegistry, RingSystemDef, RingTextureId, ShapeDef, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
 import { AttractorId } from '../../physics/attractor';
 import { createMoon, MOON_VIS_DIST } from '../../render/stars';
+import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialBody } from './celestial-body';
 import { EarthBody } from './earth-body';
 import { SphereBody } from './sphere-body';
@@ -27,16 +27,6 @@ import titanTextureUrl from '../../assets/2k_titan.jpg';
 
 const PLANET_VIS_DIST = 5e7;
 
-// テクスチャ付き半径 1 の球メッシュを組み立てて返す(Solar System Scope 提供の実写テクスチャ)。
-function createTexturedSphereMesh(textureUrl: string): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(1, 48, 24);
-  const texture = new THREE.TextureLoader().load(textureUrl);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.MeshStandardMaterial({ map: texture, roughness: 1, metalness: 0 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;
-  return mesh;
-}
 
 // RingBandDef.texture の識別子から実アセット URL を引く表 — 物理データ(solar-system.ts)は
 // 識別子だけを持ち、実アセットの解決はここが担う。
@@ -46,25 +36,16 @@ const RING_TEXTURES: Readonly<Record<RingTextureId, string>> = { saturn: saturnR
 // そのまま渡す)があれば環付きになる。pointBrightness を渡すと戦闘ビューでの表示が
 // PointBody の輝点スプライトになる(省略時は SphereBody の視距離圧縮球のまま)。
 function planetEntry(id: SolarSystemId, name: string, textureUrl: string, pointBrightness?: PointBrightness): CelestialView {
-  const buildMesh = () => createTexturedSphereMesh(textureUrl);
+  const buildSurface = () => CelestialSurface.textured(textureUrl);
   const def = bodyDef(SOLAR_SYSTEM, id);
   const rings: RingSystemDef | undefined = def.kind === 'planet' ? def.rings : undefined;
   return {
     name,
     create: () =>
       pointBrightness === undefined
-        ? new SphereBody(id, buildMesh, def.radius, PLANET_VIS_DIST, shapeOf(id), rings, RING_TEXTURES)
-        : new PointBody(id, buildMesh, def.radius, pointBrightness, shapeOf(id), rings, RING_TEXTURES),
+        ? new SphereBody(id, buildSurface, def.radius, PLANET_VIS_DIST, shapeOf(id), rings, RING_TEXTURES)
+        : new PointBody(id, buildSurface, def.radius, pointBrightness, shapeOf(id), rings, RING_TEXTURES),
   };
-}
-
-// 単色の球メッシュを組み立てて返す(テクスチャを持たない天体の見た目)。
-function createSolidSphereMesh(color: number): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(1, 32, 16);
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;
-  return mesh;
 }
 
 // id の shape(星は持たない)。SOLAR_SYSTEM を引く箇所が皆この判別をせずに済むよう1箇所に閉じる。
@@ -77,15 +58,15 @@ function shapeOf(id: SolarSystemId): ShapeDef | undefined {
 function satelliteEntry(id: SolarSystemId, name: string, color: number): CelestialView {
   return {
     name,
-    create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST, shapeOf(id)),
+    create: () => new SphereBody(id, () => CelestialSurface.solid(color), bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST, shapeOf(id)),
   };
 }
 
 // テクスチャ付き衛星のレジストリ項を、表示名とテクスチャ URL から組む(実写の全球モザイクが
 // 入手できた衛星のみ; それ以外は satelliteEntry の単色のまま)。表示距離は月と揃える。
 function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: string): CelestialView {
-  const buildMesh = () => createTexturedSphereMesh(textureUrl);
-  return { name, create: () => new SphereBody(id, buildMesh, bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST, shapeOf(id)) };
+  const buildSurface = () => CelestialSurface.textured(textureUrl);
+  return { name, create: () => new SphereBody(id, buildSurface, bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST, shapeOf(id)) };
 }
 
 // テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。表示距離は
@@ -93,7 +74,7 @@ function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: str
 function solidPlanetEntry(id: SolarSystemId, name: string, color: number): CelestialView {
   return {
     name,
-    create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST, shapeOf(id)),
+    create: () => new SphereBody(id, () => CelestialSurface.solid(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST, shapeOf(id)),
   };
 }
 
@@ -136,5 +117,5 @@ export function fallbackCelestialView(registry: CelestialRegistry, id: Attractor
   const def = bodyDef(registry, id);
   return def.kind === 'star'
     ? new SunBody(id, def.radius)
-    : new SphereBody(id, () => createSolidSphereMesh(0x888888), def.radius, def.kind === 'satellite' ? MOON_VIS_DIST : PLANET_VIS_DIST);
+    : new SphereBody(id, () => CelestialSurface.solid(0x888888), def.radius, def.kind === 'satellite' ? MOON_VIS_DIST : PLANET_VIS_DIST);
 }

@@ -15,6 +15,7 @@ import {
   dot, max, sqrt, select, and, greaterThan, lessThan, normalize, length, sub, clamp, smoothstep,
 } from 'three/tsl';
 import { R_EARTH } from '../physics/solar-system';
+import { NIGHT_AMBIENT } from './celestial-surface';
 import earthTextureUrl from '../assets/earth.jpg';
 import cloudsTextureUrl from '../assets/8k_clouds.jpg';
 
@@ -42,10 +43,9 @@ function buildSurface(sunDir: SunDirUniform): THREE.Mesh {
   const cloudsMap = new THREE.TextureLoader().load(cloudsTextureUrl);
   cloudsMap.anisotropy = 16;
 
-  const mat = new THREE.MeshStandardNodeMaterial({
-    roughness: 0.62, // 海面の太陽ハイライトがうっすら出る程度
-    metalness: 0.05,
-  });
+  // 陰影はシーンのライトではなく sunDir から自分で計算する — 他の天体と同じ規則で、
+  // 描画原点がどこにあっても昼夜境界が実際の太陽方向と一致する。
+  const mat = new THREE.MeshBasicNodeMaterial();
 
   const earthSample = textureNode(earthMap, uv());
   
@@ -72,7 +72,8 @@ function buildSurface(sunDir: SunDirUniform): THREE.Mesh {
   // もやの色 (夕方になると夕焼け色に)
   const dynamicAtmoColor = mix(sunsetColor, ATMO_COLOR, smoothstep(0.0, 0.2, sunDot));
   
-  mat.colorNode = mix(baseColor, dynamicAtmoColor, haze.mul(sunFactor));
+  const litColor = mix(baseColor, dynamicAtmoColor, haze.mul(sunFactor));
+  mat.colorNode = litColor.mul(float(NIGHT_AMBIENT).add(sunFactor.mul(1 - NIGHT_AMBIENT)));
 
   return new THREE.Mesh(geo, mat as unknown as THREE.Material);
 }

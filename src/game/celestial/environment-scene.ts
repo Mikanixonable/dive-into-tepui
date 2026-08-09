@@ -16,7 +16,6 @@ import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import { CelestialBody } from './celestial-body';
 import { CELESTIAL_BODIES, fallbackCelestialView } from './celestial-registry';
-import { SunBody } from './sun-body';
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
 // レジストリに実在しないなら架空レジストリでは無意味なので組まない(constructor で判定)。
@@ -55,11 +54,12 @@ function focusSystemOf(registry: CelestialRegistry, focusId: string): AttractorI
 
 export class EnvironmentScene {
   readonly ambient: THREE.AmbientLight;
+  // 描画原点の近傍にある実スケールの物体(自機・デブリ・薬莢)を照らす平行光。天体は
+  // 描画位置が真の位置と一致しないためこの光を受けず、自分で陰影を計算する。
+  private readonly sunLight: THREE.DirectionalLight;
   readonly starsMesh: THREE.Mesh;
   readonly celestialGrid: CelestialGrid;
   private readonly bodies: readonly CelestialBody[];
-  // 現在のレジストリに主星が無ければ null(照明・日照率は sync 側で計算そのものを飛ばす)。
-  private readonly sunBody: SunBody | null;
   // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なのでここが所有する。
   private readonly pointFieldView = new PointFieldView();
 
@@ -94,13 +94,14 @@ export class EnvironmentScene {
 
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     scene.add(this.ambient);
+    this.sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
+    scene.add(this.sunLight);
     this.starsMesh = createStars();
     scene.add(this.starsMesh);
     this.celestialGrid = new CelestialGrid(scene);
 
     this.bodies = Object.keys(registry).map((id) =>
       id in CELESTIAL_BODIES ? CELESTIAL_BODIES[id as SolarSystemId].create() : fallbackCelestialView(registry, id));
-    this.sunBody = ephemeris.starId === null ? null : this.bodies.find((b): b is SunBody => b.id === ephemeris.starId) ?? null;
     for (const body of this.bodies) body.build(scene);
     this.pointFieldView.build(scene);
   }
@@ -123,9 +124,13 @@ export class EnvironmentScene {
     // 日照そのものが無意味なので計算を飛ばす。
     const lit = cameraSystem.overviewMode || this.ephemeris.starId === null
       ? 1.0
-      : sunlitFactor(playerPos, this.ephemeris.sunDirAt(displayTime), C.SHADOW_PENUMBRA);
-    this.sunBody?.setSunlit(lit);
+      : sunlitFactor(playerPos, this.ephemeris.sunDirFrom(playerPos, displayTime), C.SHADOW_PENUMBRA);
     for (const body of this.bodies) body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris);
+    // 平行光の向きは描画原点から見た恒星方向 — 照らす相手がその近傍にいる物体だけなので、
+    // 全員が同じ向きでよい。
+    const sd = this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime);
+    this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
+    this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
     this.ambient.intensity = C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
 
     this.pointFieldView.sync(floatingOrigin, cameraSystem.overviewMode);
