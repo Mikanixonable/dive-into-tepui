@@ -318,34 +318,42 @@ export class CreativeStage extends Stage {
   }
 
   // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行い、配置プレビューとフォームの
-  // フィールド単位の検証結果を求め直す。
-  // 計画ノードの適用は Simulator のイベント境界(applySimulationEvents)で行う。
-  update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  // フィールド単位の検証結果を求め直す。'powered' な艦の姿勢整列・出力段選択も全艦ぶん進める
+  // (操作対象艦に限らない — Player.behave は操作対象艦でしか走らないため)。
+  // ノードの消化・点火・遮断は Simulator のイベント境界(applySimulationEvents)で行う。
+  update(dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (player) this.logistics.updateLogistics(simTime, player, simSpeed, true);
     const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
     this.preview = form ? this.computePreview(form) : null;
     this.issues = form ? this.computeFieldIssues(form) : [];
+    for (const ship of this._entities.players) ship.planExecutor.update(ship, dt, simTime, simSpeed);
   }
 
-  // followPlan のノードは Simulator の既知イベントとして扱い、必ずnode.tちょうどで積分を切る。
-  // これにより、フレーム末に過去epochのstateを代入する巻き戻しと、バーン前軌道での越境を防ぐ。
+  // 'instant' の艦はノード時刻ちょうど、'powered' の艦は点火予定時刻を Simulator の既知
+  // イベントとして返し、simTime がその時刻ちょうどで積分を切るようにする。
   nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
     for (const ship of this._entities.players) {
-      if (!ship.followPlan) continue;
-      const t = ship.plan.firstNode()?.t;
+      const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t
+        : ship.planExecution === 'powered' ? (ship.planExecutor.nextEventTime(ship, simTime) ?? undefined)
+        : undefined;
       if (t !== undefined && t >= simTime && (next === null || t < next)) next = t;
     }
     return next;
   }
 
+  // 'instant' はノード時刻ちょうどでノードの絶対状態へ乗り移り、'powered' は PlanExecutor に
+  // 点火・遮断そのものを委ねる。
   applySimulationEvents(simTime: number): void {
     for (const ship of this._entities.players) {
-      if (!ship.followPlan) continue;
-      const node = ship.plan.firstNode();
-      if (!node || node.t > simTime + 1e-9) continue;
-      const reached = ship.plan.dropNodesBefore(simTime);
-      if (reached) ship.state = reached;
+      if (ship.planExecution === 'instant') {
+        const node = ship.plan.firstNode();
+        if (!node || node.t > simTime + 1e-9) continue;
+        const reached = ship.plan.dropNodesBefore(simTime);
+        if (reached) ship.state = reached;
+      } else if (ship.planExecution === 'powered') {
+        ship.planExecutor.applyIgnitionAndCutoff(ship, simTime);
+      }
     }
   }
 

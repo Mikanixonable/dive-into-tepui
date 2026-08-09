@@ -79,7 +79,10 @@ export interface PlayerSaveData extends EntitySaveData {
   throttle: ThrottleSaveData;
   parts: AnyPart[];
   plan: PlanSaveData | null;
-  followPlan: boolean;
+  // 旧セーブデータには無いフィールドなので任意。Player.restore が旧 followPlan から移行する。
+  planExecution?: 'off' | 'instant' | 'powered';
+  // 'planExecution' 導入前のセーブが持っていたフィールド。
+  followPlan?: boolean;
   // 旧セーブデータには無いフィールドなので任意。Player.restore が既定値(false)で埋める。
   fineAttitude?: boolean;
 }
