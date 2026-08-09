@@ -273,7 +273,10 @@ export const OVERVIEW_CAMERA_FAR_RATIO = 100;
 // 最小ズーム(dist = OVERVIEW_CAMERA_MIN_DIST)でも月(3.8e8m)や星球シェルが
 // far の外に出ないための下限。
 export const OVERVIEW_CAMERA_FAR_MIN = 1.5e10;
-export const OVERVIEW_CAMERA_FAR_MAX = 1e13;
+// OVERVIEW_CAMERA_MAX_DIST × OVERVIEW_CAMERA_FAR_RATIO と等しい値。これより小さいと
+// 最大ズームアウト付近で far = dist × FAR_RATIO の比例則がこの上限に張り付いてしまい、
+// 注視点より奥にある軌道線・天体が far 平面でクリップされる。
+export const OVERVIEW_CAMERA_FAR_MAX = 1e15;
 // 星球シェル・天球グリッドの表示半径。マップの広範囲視点カメラの far は dist に連動して
 // 毎フレーム変わるため、そこに結びつけると星殻半径も毎フレーム変動してしまう。
 // far とは独立に固定する。
