@@ -219,6 +219,10 @@ export class Ephemeris {
     const bary = this.baryHelioState(def, t);
     const satellites = this.satellitesOf(def.id);
     if (satellites.length === 0) return bary;
+    // mu = 0 は「質量が未測定」であって質量0ではない。本体の質量が分からない系では重心の
+    // 位置も決まらないので、補正せず本体を重心に置いたままにする — 補正すると衛星の質量比が
+    // 1 になり、本体が衛星との距離ぶんまるごとずれる。
+    if (def.mu <= 0) return bary;
 
     // 重心を分け合う全質量(惑星本体 + 全衛星)に対する各衛星の比で、重心から差し引く量を決める。
     let muTotal = def.mu;
@@ -301,7 +305,11 @@ export class Ephemeris {
     const primary = primaryOf(this.registry, secondary);
     if (primary === null) return null;
     const def = bodyDef(this.registry, secondary);
-    return def.mu / (bodyDef(this.registry, primary).mu + def.mu);
+    // どちらかの質量が未測定(mu = 0)なら質量比は決まらない。0 を比として通すと共線点を解く
+    // 反復が発散し、1 を通すと L1 が主天体の中心に落ちる。
+    const primaryMu = bodyDef(this.registry, primary).mu;
+    if (primaryMu <= 0 || def.mu <= 0) return null;
+    return def.mu / (primaryMu + def.mu);
   }
 
   // secondary の共線点(L1/L2/L3)が行き先として意味を持つか。副天体が軽いほどヒル半径が

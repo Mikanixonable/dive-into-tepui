@@ -5,6 +5,7 @@ import { AttractorId } from './attractor';
 import { equatorBasisToEci } from './body-orientation';
 import { raDecToEci } from './ecliptic';
 import { keplerPeriod } from './elements';
+import { JULIAN_CENTURY } from './kepler-orbit';
 import { AU, PlanetOrbit, planetOrbit } from './planet-orbit';
 import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-orbit';
 import { Vec3, len, v3 } from './vec3';
@@ -244,6 +245,21 @@ const NEPTUNE_POLE: IauPole = {
   dec0Deg: 43.46, dec1DegPerCentury: 0.0,
   w0Deg: 249.978, wRateDegPerDay: 541.1397757,
 };
+// 天王星は自転軸が黄道に対し 97.8° 横倒しになっている。ここで求まる equatorBasis は
+// 天王星の赤道面基準であって黄道面基準ではないので、以下の衛星の傾斜角を黄道基準の値と
+// 読み替えないこと(横倒しの軸まわりでは両者が大きく異なる)。
+const URANUS_POLE: IauPole = {
+  kind: 'iau',
+  ra0Deg: 257.311, ra1DegPerCentury: 0.0,
+  dec0Deg: -15.175, dec1DegPerCentury: 0.0,
+  w0Deg: 203.81, wRateDegPerDay: -501.1600928,
+};
+const PLUTO_POLE: IauPole = {
+  kind: 'iau',
+  ra0Deg: 132.993, ra1DegPerCentury: 0.0,
+  dec0Deg: -6.163, dec1DegPerCentury: 0.0,
+  w0Deg: 302.695, wRateDegPerDay: 56.3625225,
+};
 
 // 赤経・赤緯で与えた極が張る面を基準面とする回転。
 function poleBasis(raDeg: number, decDeg: number): Quat {
@@ -253,8 +269,14 @@ function poleBasis(raDeg: number, decDeg: number): Quat {
 // 惑星の赤道面を基準面とする回転。極の一次項は世紀あたり 0.11° 以下なので元期の極で固定する
 // (「衛星の軌道面が親の赤道面に対して静止している」という近似そのものが、内側衛星の
 // ラプラス面 ≈ 惑星赤道面という近似と同程度の粗さで、極のこの緩やかな動きはその中に埋もれる)。
+// **IAU の「北極」は太陽系の不変面の北側にある方の極という定義で、自転角運動量の向きではない** —
+// 逆行自転する天体(自転位相 W が減る = wRateDegPerDay < 0。天王星・金星)では両者が反対を向く。
+// 規則衛星は親の自転と同じ向きに公転するので、基準面の極には角運動量の側を取る必要がある。
 function equatorBasis(pole: IauPole): Quat {
-  return poleBasis(pole.ra0Deg, pole.dec0Deg);
+  const retrograde = pole.wRateDegPerDay < 0;
+  return retrograde
+    ? poleBasis(pole.ra0Deg + 180, -pole.dec0Deg)
+    : poleBasis(pole.ra0Deg, pole.dec0Deg);
 }
 
 // 木星系・土星系の衛星の基準面である局所ラプラス面の極(出典: JPL Solar System Dynamics
@@ -362,6 +384,30 @@ const NEPTUNE_RINGS: RingSystemDef = {
       { fromDeg: 276, toDeg: 280 }, // リベルテ
       { fromDeg: 284.5, toDeg: 285.5 }, // クラージュ
     ]), // アダムス環
+  ],
+};
+
+// 長半径 a [m] から、周回天体の平均運動をケプラー第3法則で世紀あたりの度へ換算する。
+// SBDB の公開周期を別途転記すると a と食い違いうるため、常にこれで導く。
+function lRateFromSemiMajorAxis(a: number): number {
+  return (360 * JULIAN_CENTURY) / keplerPeriod(a, MU_SUN);
+}
+
+// 出典: Braga-Ribas et al., Nature 508, 72 (2014)。C1R は半径391km・幅約7km、
+// C2R は半径405km・幅約3km。
+const CHARIKLO_RINGS: RingSystemDef = {
+  bands: [
+    ringBand(391 - 3.5, 391 + 3.5), // C1R
+    ringBand(405 - 1.5, 405 + 1.5), // C2R
+  ],
+};
+
+// 出典: Morgado et al., A&A 2023。Q1R は半径約4100km(幅は方位角で変動するため代表値100km)、
+// Q2R は半径2520km・幅約10km。
+const QUAOAR_RINGS: RingSystemDef = {
+  bands: [
+    ringBand(4100 - 50, 4100 + 50), // Q1R
+    ringBand(2520 - 5, 2520 + 5), // Q2R
   ],
 };
 
@@ -884,16 +930,60 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: -0.00004397,
       aRatePerCenturyAu: -0.00196176,
     }),
-    pole: {
-      kind: 'iau',
-      ra0Deg: 257.311,
-      ra1DegPerCentury: 0.0,
-      dec0Deg: -15.175,
-      dec1DegPerCentury: 0.0,
-      w0Deg: 203.81,
-      wRateDegPerDay: -501.1600928,
-    },
+    pole: URANUS_POLE,
     rings: URANUS_RINGS,
+  },
+  // 天王星の主要衛星6個。基準面は天王星の赤道面(equatorBasis(URANUS_POLE))。
+  // 出典: JPL Solar System Dynamics 衛星平均要素表 / Planetary Satellite Physical Parameters。
+  puck: {
+    kind: 'satellite',
+    id: 'puck',
+    // GM は表に無い(6衛星中パックだけ未測定)。半径は Wikipedia "Puck (moon)" 経由
+    // (一次は Karkoschka 2001 の Voyager 2 画像解析、平均半径 81±2 km)。
+    mu: 0,
+    radius: 81e3,
+    planet: 'uranus',
+    orbit: jplSatelliteOrbit({ a: 86004e3, e: 0.000, incDeg: 0.3, periodDays: 0.761833, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(URANUS_POLE) }),
+  },
+  miranda: {
+    kind: 'satellite',
+    id: 'miranda',
+    mu: 4.3e9,
+    radius: 235.8e3,
+    planet: 'uranus',
+    orbit: jplSatelliteOrbit({ a: 129846e3, e: 0.001, incDeg: 4.4, periodDays: 1.413479, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(URANUS_POLE) }),
+  },
+  ariel: {
+    kind: 'satellite',
+    id: 'ariel',
+    mu: 83.5e9,
+    radius: 578.9e3,
+    planet: 'uranus',
+    orbit: jplSatelliteOrbit({ a: 190929e3, e: 0.001, incDeg: 0.0, periodDays: 2.520379, nodePeriodYears: 0, apsisPeriodYears: 28.901, basisToEci: equatorBasis(URANUS_POLE) }),
+  },
+  umbriel: {
+    kind: 'satellite',
+    id: 'umbriel',
+    mu: 85.1e9,
+    radius: 584.7e3,
+    planet: 'uranus',
+    orbit: jplSatelliteOrbit({ a: 265986e3, e: 0.004, incDeg: 0.1, periodDays: 4.144177, nodePeriodYears: 129.745, apsisPeriodYears: 64.126, basisToEci: equatorBasis(URANUS_POLE) }),
+  },
+  titania: {
+    kind: 'satellite',
+    id: 'titania',
+    mu: 226.9e9,
+    radius: 788.9e3,
+    planet: 'uranus',
+    orbit: jplSatelliteOrbit({ a: 436298e3, e: 0.002, incDeg: 0.1, periodDays: 8.705869, nodePeriodYears: 1644.649, apsisPeriodYears: 579.928, basisToEci: equatorBasis(URANUS_POLE) }),
+  },
+  oberon: {
+    kind: 'satellite',
+    id: 'oberon',
+    mu: 205.3e9,
+    radius: 761.4e3,
+    planet: 'uranus',
+    orbit: jplSatelliteOrbit({ a: 583511e3, e: 0.002, incDeg: 0.1, periodDays: 13.463237, nodePeriodYears: 192.798, apsisPeriodYears: 158.604, basisToEci: equatorBasis(URANUS_POLE) }),
   },
   neptune: {
     kind: 'planet',
@@ -959,8 +1049,8 @@ export const SOLAR_SYSTEM = {
       e: 0.07969229514816586,
       incDeg: 10.58802780183462,
       raanDeg: 80.24862682043221,
-      lonPeriDeg: 153.54284135064808,
-      l0Deg: 158.7455644908673,
+      lonPeriDeg: 153.5428414,
+      l0Deg: 158.7455645,
       lRateDegPerCentury: 7827.470059933903,
       raanRateDegPerCentury: 0,
       incRateDegPerCentury: 0,
@@ -982,8 +1072,8 @@ export const SOLAR_SYSTEM = {
       e: 0.09020374382834395,
       incDeg: 7.143925545058711,
       raanDeg: 103.701293265032,
-      lonPeriDeg: 255.16994108718842,
-      l0Deg: 233.7490090526644,
+      lonPeriDeg: 255.1699411,
+      l0Deg: 233.7490091,
       lRateDegPerCentury: 9920.860648673672,
       raanRateDegPerCentury: 0,
       incRateDegPerCentury: 0,
@@ -1005,8 +1095,8 @@ export const SOLAR_SYSTEM = {
       e: 0.2307000995648547,
       incDeg: 34.93279321851542,
       raanDeg: 172.8866193357694,
-      lonPeriDeg: 123.856535500983,
-      l0Deg: 113.37790163103682,
+      lonPeriDeg: 123.8565355,
+      l0Deg: 113.3779016,
       lRateDegPerCentury: 7810.491496842745,
       raanRateDegPerCentury: 0,
       incRateDegPerCentury: 0,
@@ -1038,6 +1128,51 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0,
       aRatePerCenturyAu: 0,
     }),
+    pole: PLUTO_POLE,
+  },
+  // 冥王星の衛星5個。基準面は冥王星-カロン共通重心の赤道面(equatorBasis(PLUTO_POLE))。
+  // 出典は天王星衛星と同じ JPL Solar System Dynamics 表。歳差周期は5体とも未公開(=0)。
+  charon: {
+    kind: 'satellite',
+    id: 'charon',
+    mu: 106.1e9,
+    radius: 606.0e3,
+    planet: 'pluto',
+    orbit: jplSatelliteOrbit({ a: 19600e3, e: 0.000, incDeg: 0.0, periodDays: 6.387222, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
+  },
+  styx: {
+    kind: 'satellite',
+    id: 'styx',
+    // GM は上限値(< 0.0003 km^3/s^2)しか無く実測でないため 0 として扱う。
+    mu: 0,
+    radius: 5.2e3,
+    planet: 'pluto',
+    orbit: jplSatelliteOrbit({ a: 43200e3, e: 0.025, incDeg: 0.0, periodDays: 20.16, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
+  },
+  nix: {
+    kind: 'satellite',
+    id: 'nix',
+    mu: 0.0015e9,
+    radius: 18.0e3,
+    planet: 'pluto',
+    orbit: jplSatelliteOrbit({ a: 49300e3, e: 0.015, incDeg: 0.0, periodDays: 24.85, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
+  },
+  kerberos: {
+    kind: 'satellite',
+    id: 'kerberos',
+    // GM は上限値(< 0.0002 km^3/s^2)しか無く実測でないため 0 として扱う。
+    mu: 0,
+    radius: 6.0e3,
+    planet: 'pluto',
+    orbit: jplSatelliteOrbit({ a: 58300e3, e: 0.010, incDeg: 0.4, periodDays: 32.17, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
+  },
+  hydra: {
+    kind: 'satellite',
+    id: 'hydra',
+    mu: 0.0020e9,
+    radius: 18.5e3,
+    planet: 'pluto',
+    orbit: jplSatelliteOrbit({ a: 65200e3, e: 0.009, incDeg: 0.3, periodDays: 38.20, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
   },
   haumea: {
     kind: 'planet',
@@ -1053,8 +1188,8 @@ export const SOLAR_SYSTEM = {
       e: 0.1944430148898797,
       incDeg: 28.20847393040364,
       raanDeg: 121.7860561329425,
-      lonPeriDeg: 2.4766033838085946,
-      l0Deg: 192.00768761548116,
+      lonPeriDeg: 2.4766034,
+      l0Deg: 192.0076876,
       lRateDegPerCentury: 127.40276965460927,
       raanRateDegPerCentury: 0,
       incRateDegPerCentury: 0,
@@ -1062,6 +1197,28 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0,
       aRatePerCenturyAu: 0,
     }),
+  },
+  // ハウメアの衛星2個。基準面は黄道面 — JPL 系列(木星・土星・天王星・冥王星の各衛星)より
+  // 精度・基準面の一貫性が低い二次引用(一次は各々 Ratzka et al. 2007 / Wikipedia 経由)。
+  // 質量 [kg] から GRAVITATIONAL_CONSTANT で GM を導く(Asteroid エンティティと同じ手法)。
+  // 歳差周期は2体とも未公開(=0)。
+  hiiaka: {
+    kind: 'satellite',
+    id: 'hiiaka',
+    mu: GRAVITATIONAL_CONSTANT * 1.6e19,
+    radius: 185e3,
+    planet: 'haumea',
+    orbit: jplSatelliteOrbit({ a: 49371e3, e: 0.0542, incDeg: 77.394, periodDays: 49.462, nodePeriodYears: 0, apsisPeriodYears: 0 }),
+  },
+  namaka: {
+    kind: 'satellite',
+    id: 'namaka',
+    mu: GRAVITATIONAL_CONSTANT * 1.18e18,
+    radius: 75e3,
+    planet: 'haumea',
+    // 傾斜角 13° はハウメアの赤道面基準の値とされるが実測精度が粗いため、姉妹衛星ヒイアカと
+    // 同じ黄道面基準の近似値として扱う。
+    orbit: jplSatelliteOrbit({ a: 25506e3, e: 0.2179, incDeg: 13, periodDays: 18.2783, nodePeriodYears: 0, apsisPeriodYears: 0 }),
   },
   makemake: {
     kind: 'planet',
@@ -1074,8 +1231,8 @@ export const SOLAR_SYSTEM = {
       e: 0.1588889953992523,
       incDeg: 29.02785603743067,
       raanDeg: 79.2948338209406,
-      lonPeriDeg: 16.387107160661287,
-      l0Deg: 155.39032853134051,
+      lonPeriDeg: 16.3871072,
+      l0Deg: 155.3903285,
       lRateDegPerCentury: 117.02062563483054,
       raanRateDegPerCentury: 0,
       incRateDegPerCentury: 0,
@@ -1095,8 +1252,8 @@ export const SOLAR_SYSTEM = {
       e: 0.4382385347971672,
       incDeg: 43.9258279471791,
       raanDeg: 36.00477044417249,
-      lonPeriDeg: 186.7996940282037,
-      l0Deg: 21.578055953998067,
+      lonPeriDeg: 186.799694,
+      l0Deg: 21.578056,
       lRateDegPerCentury: 64.29304982186218,
       raanRateDegPerCentury: 0,
       incRateDegPerCentury: 0,
@@ -1104,6 +1261,15 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0,
       aRatePerCenturyAu: 0,
     }),
+  },
+  // エリスの衛星ディスノミア。基準面は黄道面(出典・扱いはハウメアの衛星と同じ)。
+  dysnomia: {
+    kind: 'satellite',
+    id: 'dysnomia',
+    mu: GRAVITATIONAL_CONSTANT * 8.2e19,
+    radius: 307.5e3,
+    planet: 'eris',
+    orbit: jplSatelliteOrbit({ a: 37273e3, e: 0.0062, incDeg: 61.59, periodDays: 15.785899, nodePeriodYears: 0, apsisPeriodYears: 0 }),
   },
   // 彗星核の μ/半径は観測が乏しく粗い推定値。
   halley: {
@@ -1119,8 +1285,8 @@ export const SOLAR_SYSTEM = {
       e: 0.9679359956953211,
       incDeg: 162.1905300439129,
       raanDeg: 59.09894720612437,
-      lonPeriDeg: 171.34037866990076,
-      l0Deg: 237.23068671379107,
+      lonPeriDeg: 171.3403787,
+      l0Deg: 237.2306867,
       lRateDegPerCentury: 474.2130029037993,
       raanRateDegPerCentury: 0,
       incRateDegPerCentury: 0,
@@ -1140,9 +1306,706 @@ export const SOLAR_SYSTEM = {
       e: 0.8477496967533629,
       incDeg: 11.41227811179314,
       raanDeg: 334.1935846036774,
-      lonPeriDeg: 161.327830973245,
-      l0Deg: 90.02574581888393,
+      lonPeriDeg: 161.327831,
+      l0Deg: 90.0257458,
       lRateDegPerCentury: 10885.695675063265,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  // 太陽を公転する小天体32個。永年変化率はいずれも0(SBDBは単一元期の接触要素のみを公開)。
+  // 軌道要素は JPL Small-Body Database(sbdb.api、full-prec=true、元期 JD2461200.5)の
+  // 黄道座標・J2000 の a/e/i/Ω(om)/ω(w)/M(ma) から、raanDeg=Ω・lonPeriDeg=Ω+ω・
+  // l0Deg=Ω+ω+M として求めた(360を超えて構わない)。lRateDegPerCentury は
+  // lRateFromSemiMajorAxis(a) がケプラー第3法則から導く。SBDB の元期は天体ごとに異なり、
+  // churyumov(JD2457305.5)・tempel1(JD2457470.5)・wild2(JD2458808.5)・
+  // hartley2(JD2457152.5)・bennu(JD2455562.5)だけが上記と別の元期を持つ — この実装は
+  // どの元期も simTime=0 に対応させるので、同一の実在時刻の空を再現しているわけではない。
+  // GM は SBDB(なければ 0 = 質量未測定)、直径は SBDB または各天体の観測文献。
+  // セドナのみ直径が未測定なので、掩蔽・熱赤外観測から広く引用される推定値(半径 500 km)を
+  // 代わりに使う — 描画にも衝突判定にも半径が要るため、値が無いままにはできない。
+  // 三軸半径 [km](a>=b>=c)は探査機・掩蔽・レーダー・適応光学など天体ごとに別の観測による。
+  sedna: {
+    kind: 'planet',
+    id: 'sedna',
+    mu: 0,
+    radius: 500000.0,
+    orbit: planetOrbit({
+      a: 543.7195289 * AU,
+      e: 0.8598825,
+      incDeg: 11.9252758,
+      raanDeg: 144.5061663,
+      lonPeriDeg: 455.6049389,
+      l0Deg: 814.2006333,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(543.7195289 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  quaoar: {
+    kind: 'planet',
+    id: 'quaoar',
+    mu: 0,
+    radius: 545000.0,
+    rings: QUAOAR_RINGS,
+    orbit: planetOrbit({
+      a: 43.1561765 * AU,
+      e: 0.0352002,
+      incDeg: 7.9915758,
+      raanDeg: 188.9191248,
+      lonPeriDeg: 352.1281758,
+      l0Deg: 644.9769333,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(43.1561765 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  // クワオアーの衛星ウェイウォット。基準面は黄道面(出典・扱いはハウメアの衛星と同じ)。
+  weywot: {
+    kind: 'satellite',
+    id: 'weywot',
+    mu: GRAVITATIONAL_CONSTANT * 2.4e18,
+    radius: 72e3,
+    planet: 'quaoar',
+    orbit: jplSatelliteOrbit({ a: 13329e3, e: 0.01111, incDeg: 13.62, periodDays: 12.42727, nodePeriodYears: 0, apsisPeriodYears: 0 }),
+  },
+  chariklo: {
+    kind: 'planet',
+    id: 'chariklo',
+    mu: 0,
+    radius: 143800.0, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 143800.0, b: 135200.0, c: 99100.0 },
+    rings: CHARIKLO_RINGS,
+    orbit: planetOrbit({
+      a: 15.7343733 * AU,
+      e: 0.1708196,
+      incDeg: 23.4319043,
+      raanDeg: 300.476891,
+      lonPeriDeg: 541.6834978,
+      l0Deg: 671.7725806,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(15.7343733 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  hygiea: {
+    kind: 'planet',
+    id: 'hygiea',
+    mu: 7000000000.0,
+    radius: 217000.0, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 217000.0, b: 213000.0, c: 210000.0 },
+    orbit: planetOrbit({
+      a: 3.150974 * AU,
+      e: 0.1067093,
+      incDeg: 3.8295299,
+      raanDeg: 283.1198928,
+      lonPeriDeg: 595.5441315,
+      l0Deg: 847.5785557,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(3.150974 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  eros: {
+    kind: 'planet',
+    id: 'eros',
+    mu: 446300.0,
+    radius: 17200.0, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 17200.0, b: 5600.0, c: 5600.0 },
+    orbit: planetOrbit({
+      a: 1.4582437 * AU,
+      e: 0.222878,
+      incDeg: 10.8285441,
+      raanDeg: 304.2679713,
+      lonPeriDeg: 483.1861032,
+      l0Deg: 545.6975582,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(1.4582437 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  ryugu: {
+    kind: 'planet',
+    id: 'ryugu',
+    mu: 30.0,
+    radius: 448.0,
+    orbit: planetOrbit({
+      a: 1.1909189 * AU,
+      e: 0.191073,
+      incDeg: 5.8664425,
+      raanDeg: 251.2897124,
+      lonPeriDeg: 462.8987063,
+      l0Deg: 525.2393806,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(1.1909189 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  bennu: {
+    kind: 'planet',
+    id: 'bennu',
+    mu: 4.8904,
+    radius: 252.35, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 252.35, b: 245.9, c: 228.35 },
+    orbit: planetOrbit({
+      a: 1.126391 * AU,
+      e: 0.2037451,
+      incDeg: 6.0349438,
+      raanDeg: 2.0608662,
+      lonPeriDeg: 68.283927,
+      l0Deg: 169.987879,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(1.126391 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  churyumov: {
+    kind: 'planet',
+    id: 'churyumov',
+    mu: 662.2,
+    radius: 1700.0,
+    orbit: planetOrbit({
+      a: 3.4622495 * AU,
+      e: 0.6409081,
+      incDeg: 7.0402949,
+      raanDeg: 50.1355738,
+      lonPeriDeg: 62.9338235,
+      l0Deg: 71.7937509,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(3.4622495 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  orcus: {
+    kind: 'planet',
+    id: 'orcus',
+    mu: 0,
+    radius: 479200.0,
+    orbit: planetOrbit({
+      a: 39.377 * AU,
+      e: 0.22052,
+      incDeg: 20.5568,
+      raanDeg: 268.4054,
+      lonPeriDeg: 341.9739,
+      l0Deg: 531.0712,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(39.377 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  // オルクスの衛星ヴァンス。基準面は黄道面(出典・扱いはハウメアの衛星と同じ)。
+  vanth: {
+    kind: 'satellite',
+    id: 'vanth',
+    mu: GRAVITATIONAL_CONSTANT * 8.7e19,
+    radius: 221.25e3,
+    planet: 'orcus',
+    orbit: jplSatelliteOrbit({ a: 8999.8e3, e: 0.00091, incDeg: 90.54, periodDays: 9.539154, nodePeriodYears: 0, apsisPeriodYears: 0 }),
+  },
+  gonggong: {
+    kind: 'planet',
+    id: 'gonggong',
+    mu: 0,
+    radius: 615000.0,
+    orbit: planetOrbit({
+      a: 66.867 * AU,
+      e: 0.50425,
+      incDeg: 30.8991,
+      raanDeg: 336.8383,
+      lonPeriDeg: 543.4615,
+      l0Deg: 655.1263,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(66.867 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  salacia: {
+    kind: 'planet',
+    id: 'salacia',
+    mu: 0,
+    radius: 419000.0,
+    orbit: planetOrbit({
+      a: 42.055 * AU,
+      e: 0.1046,
+      incDeg: 23.9272,
+      raanDeg: 280.2543,
+      lonPeriDeg: 589.2316,
+      l0Deg: 723.9095,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(42.055 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  varuna: {
+    kind: 'planet',
+    id: 'varuna',
+    mu: 0,
+    radius: 450000.0,
+    orbit: planetOrbit({
+      a: 43.2 * AU,
+      e: 0.051615,
+      incDeg: 17.1405,
+      raanDeg: 97.2158,
+      lonPeriDeg: 370.5748,
+      l0Deg: 486.2427,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(43.2 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  ixion: {
+    kind: 'planet',
+    id: 'ixion',
+    mu: 0,
+    radius: 348390.0,
+    orbit: planetOrbit({
+      a: 39.346 * AU,
+      e: 0.24356,
+      incDeg: 19.6625,
+      raanDeg: 71.0808,
+      lonPeriDeg: 371.7031,
+      l0Deg: 666.6707,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(39.346 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  arrokoth: {
+    kind: 'planet',
+    id: 'arrokoth',
+    mu: 0,
+    radius: 17500.0, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 17500.0, b: 10000.0, c: 5000.0 },
+    orbit: planetOrbit({
+      a: 44.053 * AU,
+      e: 0.03556,
+      incDeg: 2.4506,
+      raanDeg: 159.0377,
+      lonPeriDeg: 347.8884,
+      l0Deg: 658.8723,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(44.053 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  chiron: {
+    kind: 'planet',
+    id: 'chiron',
+    mu: 0,
+    radius: 63000.0, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 63000.0, b: 54500.0, c: 34000.0 },
+    orbit: planetOrbit({
+      a: 13.68427 * AU,
+      e: 0.379766,
+      incDeg: 6.93057,
+      raanDeg: 209.2961,
+      lonPeriDeg: 548.5839,
+      l0Deg: 765.3038,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(13.68427 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  interamnia: {
+    kind: 'planet',
+    id: 'interamnia',
+    mu: 0,
+    radius: 181000.0, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 181000.0, b: 174000.0, c: 155000.0 },
+    orbit: planetOrbit({
+      a: 3.056812 * AU,
+      e: 0.155059,
+      incDeg: 17.3153,
+      raanDeg: 280.1672,
+      lonPeriDeg: 374.2289,
+      l0Deg: 595.3737,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(3.056812 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  europa52: {
+    kind: 'planet',
+    id: 'europa52',
+    mu: 0,
+    radius: 151959.0,
+    orbit: planetOrbit({
+      a: 3.094136 * AU,
+      e: 0.112483,
+      incDeg: 7.4815,
+      raanDeg: 128.5734,
+      lonPeriDeg: 471.3774,
+      l0Deg: 820.3002,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(3.094136 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  davida: {
+    kind: 'planet',
+    id: 'davida',
+    mu: 0,
+    radius: 178500.0, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 178500.0, b: 147000.0, c: 115500.0 },
+    orbit: planetOrbit({
+      a: 3.161793 * AU,
+      e: 0.189373,
+      incDeg: 15.9498,
+      raanDeg: 107.5541,
+      lonPeriDeg: 444.084,
+      l0Deg: 514.52,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(3.161793 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  juno: {
+    kind: 'planet',
+    id: 'juno',
+    mu: 0,
+    radius: 123298.0,
+    orbit: planetOrbit({
+      a: 2.67099 * AU,
+      e: 0.2557,
+      incDeg: 12.9866,
+      raanDeg: 169.8116,
+      lonPeriDeg: 417.7067,
+      l0Deg: 680.439,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(2.67099 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  psyche: {
+    kind: 'planet',
+    id: 'psyche',
+    mu: 0,
+    radius: 139000.0, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 139000.0, b: 119000.0, c: 85500.0 },
+    orbit: planetOrbit({
+      a: 2.92572 * AU,
+      e: 0.134932,
+      incDeg: 3.0987,
+      raanDeg: 149.9754,
+      lonPeriDeg: 380.0081,
+      l0Deg: 459.7775,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(2.92572 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  eunomia: {
+    kind: 'planet',
+    id: 'eunomia',
+    mu: 0,
+    radius: 170000.0, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 170000.0, b: 124000.0, c: 114500.0 },
+    orbit: planetOrbit({
+      a: 2.641959 * AU,
+      e: 0.187771,
+      incDeg: 11.7614,
+      raanDeg: 292.8808,
+      lonPeriDeg: 391.3421,
+      l0Deg: 551.0312,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(2.641959 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  sylvia: {
+    kind: 'planet',
+    id: 'sylvia',
+    mu: 0,
+    radius: 181500.0, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 181500.0, b: 124500.0, c: 95500.0 },
+    orbit: planetOrbit({
+      a: 3.490931 * AU,
+      e: 0.094242,
+      incDeg: 10.8493,
+      raanDeg: 72.946,
+      lonPeriDeg: 340.0475,
+      l0Deg: 463.9674,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(3.490931 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  itokawa: {
+    kind: 'planet',
+    id: 'itokawa',
+    mu: 0,
+    radius: 267.5, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 267.5, b: 147.0, c: 104.5 },
+    orbit: planetOrbit({
+      a: 1.324052 * AU,
+      e: 0.280178,
+      incDeg: 1.620941,
+      raanDeg: 69.0745,
+      lonPeriDeg: 231.9154,
+      l0Deg: 402.5693,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(1.324052 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  apophis: {
+    kind: 'planet',
+    id: 'apophis',
+    mu: 0,
+    radius: 170.0,
+    orbit: planetOrbit({
+      a: 0.922359 * AU,
+      e: 0.191149,
+      incDeg: 3.340997,
+      raanDeg: 203.8937,
+      lonPeriDeg: 330.5733,
+      l0Deg: 505.9037,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(0.922359 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  didymos: {
+    kind: 'planet',
+    id: 'didymos',
+    mu: 0,
+    radius: 398.5, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 398.5, b: 391.5, c: 380.5 },
+    orbit: planetOrbit({
+      a: 1.64271 * AU,
+      e: 0.383123,
+      incDeg: 3.413877,
+      raanDeg: 72.9858,
+      lonPeriDeg: 392.5665,
+      l0Deg: 653.4278,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(1.64271 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  // ディディモスの衛星ディモルフォス(DART 衝突前の値)。基準面は黄道面(出典・扱いは
+  // ハウメアの衛星と同じ)。i=169.3° は黄道基準の値で、順行(親の赤道面基準では逆向きに
+  // 見える)と混同しないこと — equatorBasis を渡していないのはその整合を保つため。
+  dimorphos: {
+    kind: 'satellite',
+    id: 'dimorphos',
+    mu: GRAVITATIONAL_CONSTANT * 5.0e9,
+    radius: 75.5,
+    planet: 'didymos',
+    orbit: jplSatelliteOrbit({ a: 1206, e: 0, incDeg: 169.3, periodDays: 0.4967, nodePeriodYears: 0, apsisPeriodYears: 0 }),
+  },
+  tempel1: {
+    kind: 'planet',
+    id: 'tempel1',
+    mu: 0,
+    radius: 3000.0,
+    orbit: planetOrbit({
+      a: 3.146134 * AU,
+      e: 0.5097,
+      incDeg: 10.4734,
+      raanDeg: 68.7536,
+      lonPeriDeg: 247.9509,
+      l0Deg: 584.5363,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(3.146134 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  wild2: {
+    kind: 'planet',
+    id: 'wild2',
+    mu: 0,
+    radius: 2000.0,
+    orbit: planetOrbit({
+      a: 3.449746 * AU,
+      e: 0.5374,
+      incDeg: 3.237,
+      raanDeg: 136.1102,
+      lonPeriDeg: 177.8354,
+      l0Deg: 365.4321,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(3.449746 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  hartley2: {
+    kind: 'planet',
+    id: 'hartley2',
+    mu: 0,
+    radius: 800.0,
+    orbit: planetOrbit({
+      a: 3.475652 * AU,
+      e: 0.6936,
+      incDeg: 13.5995,
+      raanDeg: 219.7422,
+      lonPeriDeg: 401.064,
+      l0Deg: 652.8462,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(3.475652 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  cruithne: {
+    kind: 'planet',
+    id: 'cruithne',
+    mu: 0,
+    radius: 1035.5,
+    orbit: planetOrbit({
+      a: 0.997797 * AU,
+      e: 0.5149,
+      incDeg: 19.8024,
+      raanDeg: 126.1887,
+      lonPeriDeg: 170.0717,
+      l0Deg: 352.2041,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(0.997797 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  kamooalewa: {
+    kind: 'planet',
+    id: 'kamooalewa',
+    mu: 0,
+    radius: 34.0, // 三軸の最長半軸(外接球)
+    shape: { kind: 'triaxial', a: 34.0, b: 23.0, c: 19.5 },
+    orbit: planetOrbit({
+      a: 1.00081 * AU,
+      e: 0.10224,
+      incDeg: 7.8026,
+      raanDeg: 65.5932,
+      lonPeriDeg: 369.9564,
+      l0Deg: 613.3436,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(1.00081 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  tk7: {
+    kind: 'planet',
+    id: 'tk7',
+    mu: 0,
+    radius: 189.5,
+    orbit: planetOrbit({
+      a: 0.998508 * AU,
+      e: 0.19027,
+      incDeg: 20.9057,
+      raanDeg: 96.4145,
+      lonPeriDeg: 142.4843,
+      l0Deg: 286.9046,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(0.998508 * AU),
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  eureka: {
+    kind: 'planet',
+    id: 'eureka',
+    mu: 0,
+    radius: 939.0,
+    orbit: planetOrbit({
+      a: 1.523573 * AU,
+      e: 0.06485,
+      incDeg: 20.2811,
+      raanDeg: 245.0121,
+      lonPeriDeg: 340.4941,
+      l0Deg: 677.4051,
+      lRateDegPerCentury: lRateFromSemiMajorAxis(1.523573 * AU),
       raanRateDegPerCentury: 0,
       incRateDegPerCentury: 0,
       lonPeriRateDegPerCentury: 0,
