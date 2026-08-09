@@ -24,7 +24,7 @@ export class SnapshotService {
       name: name && name.length > 0 ? name : autoName(game.simTime, info),
       createdAtReal: Date.now(),
       simTime: game.simTime,
-      centerBodyId: info ? info.centerId : 'earth',
+      centerBodyId: info ? info.centerId : game.ephemeris.originId,
       altitude: info ? info.alt : 0,
       speed: info ? info.spd : 0,
       hpRatio: player && player.maxHp > 0 ? Math.max(0, player.hp) / player.maxHp : 0,

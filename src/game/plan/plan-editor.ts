@@ -643,6 +643,10 @@ export class PlanEditor {
         localDv = v3(dot(dvWorld, axes.pro), dot(dvWorld, axes.nrm), dot(dvWorld, axes.radOut));
       }
     }
+    // 大気圏警告は「このゲームで大気を持つのは地球だけ」という物理モデル自体の意図的な
+    // 簡略化に基づく(CLAUDE.md 既述)ので、ECI 原点(ephemeris.originId)ではなく
+    // 地球という天体そのものへの一致で判定する — レジストリに地球が無ければ常に false になり、
+    // クラッシュも誤警告もしない。
     const html = planPanelHtml(nodes, selEl, center.id === 'earth');
     
     // ノードが選択されていない時はパネル全体を非表示にする

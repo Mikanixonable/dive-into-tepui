@@ -541,8 +541,11 @@ export class Game {
     );
     this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
     afterRefresh?.();
+    // 表示側の合流窓(重力を持つ生存中の GameEntity も含める)。sync 側の attractors と
+    // 同じ合流だが、update フェーズは simTime 基準でこの1箇所からしか要らないので都度求める。
+    const attractors = mergeAttractors(this.ephemeris.attractorsAt(this.simulator.simTime), this.entities.attractors());
     this.cameraSystem.update(
-      this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables,
+      this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables, attractors,
     );
   }
 
@@ -651,15 +654,16 @@ export class Game {
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const displayTime = this.displayTimeManager.resolveDisplayTime(this.simulator.simTime, this.currentOrbitPeriod());
 
-    // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
-    this.cameraSystem.sync(this.floatingOrigin);
-
-    const project = this.cameraSystem.activeCameraProjection;
-    const overviewMode = this.cameraSystem.overviewMode;
     const simTime = this.simulator.simTime;
     // 表示側は重力を持つ生存中の GameEntity(小惑星)も中心天体解決・遮蔽判定へ合流させる —
     // EntityManager.cleanup へ渡す表面到達判定用の配列(解析天体のみ)とは別物。
     const attractors = mergeAttractors(this.ephemeris.attractorsAt(simTime), this.entities.attractors());
+
+    // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
+    this.cameraSystem.sync(this.floatingOrigin, attractors);
+
+    const project = this.cameraSystem.activeCameraProjection;
+    const overviewMode = this.cameraSystem.overviewMode;
     const target = this.targeter.aliveTarget;
     const secondaryTarget = this.targeter.aliveSecondaryTarget;
 
@@ -715,7 +719,7 @@ export class Game {
     const predictedTargets = player?.alive ? [player] : [];
     this.predictedTrajectoryLine.sync(
       predictedTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
-      this.cameraSystem.activeCameraScale,
+      this.cameraSystem.activeCameraScale, attractors,
     );
     // 予測軌道の実線が出ているあいだは、解析楕円は重ねて出さない。predictedTrajectoryLine は
     // 操作対象艦しか描かないため、他の艦は常に non-suppressed に戻す — でなければ操作を
@@ -737,7 +741,7 @@ export class Game {
     const debugTargets = player ? (target ? [player, target] : [player]) : [];
     this.debugTrajectoryLine.sync(
       debugTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
-      this.cameraSystem.activeCameraScale,
+      this.cameraSystem.activeCameraScale, attractors,
     );
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。

@@ -1,7 +1,8 @@
 // 天体の見た目レジストリ: id から表示名と CelestialBody の生成関数を引く。
 // 天体の日本語表示名の定義元はここ1箇所 — 他のモジュールは必ずここを読む。
 import * as THREE from 'three/webgpu';
-import { bodyDef, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
+import { bodyDef, CelestialRegistry, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
+import { AttractorId } from '../../physics/attractor';
 import { createMoon, MOON_VIS_DIST } from '../../render/stars';
 import { CelestialBody } from './celestial-body';
 import { EarthBody } from './earth-body';
@@ -128,3 +129,13 @@ export const CELESTIAL_BODIES: Record<SolarSystemId, { readonly name: string; cr
   encke: solidPlanetEntry('encke', 'エンケ彗星', 0x666666),
   sun: { name: '太陽', create: () => new SunBody() },
 };
+
+// CELESTIAL_BODIES に手作りエントリを持たない id(カスタムレジストリの架空天体)向けの見た目。
+// 恒星は SunBody を汎用の id/半径で構築し、それ以外は単色球にする。表示名は呼び出し側
+// (frame-labels.ts の celestialBodyName)が id からフォールバックする。
+export function fallbackCelestialView(registry: CelestialRegistry, id: AttractorId): CelestialBody {
+  const def = bodyDef(registry, id);
+  return def.kind === 'star'
+    ? new SunBody(id, def.radius)
+    : new SphereBody(id, () => createSolidSphereMesh(0x888888), def.radius, def.kind === 'satellite' ? MOON_VIS_DIST : PLANET_VIS_DIST);
+}

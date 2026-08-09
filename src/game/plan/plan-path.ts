@@ -2,6 +2,7 @@
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
+import { Attractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -33,6 +34,9 @@ export class PlanPath {
   private frame: ReferenceFrame = { center: 'earth', rotatingWith: null };
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
+  // 直近の update が受け取った重力源一覧。toDisplay/toDisplayDir/nearestSample はポインタ
+  // イベント起点でフレーム外から呼ばれうるため、update と同じ値をここから読む。
+  private attractors: readonly Attractor[] = [];
   private project: ProjectFn | null = null;
   // sync が最後に受け取ったカメラ位置。nearestSample の遮蔽判定に使う(呼び出しは DOM
   // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
@@ -52,10 +56,11 @@ export class PlanPath {
 
   // plan から区間列を組み直して各区間を再積分し、表示変換の文脈(座標系・un-bake 時刻)を
   // このフレームのものに更新する。
-  update(plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number): void {
+  update(plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number, attractors: readonly Attractor[]): void {
     this.frame = frame;
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
+    this.attractors = attractors;
     // anchor→node…→末尾区間に分解する
     const segments = buildSegments(plan, ephemeris, this.displayTimeManager);
     // ノードが1つも無い間はその唯一の区間(末尾区間)の起点が毎フレーム自機を追従する。
@@ -91,7 +96,7 @@ export class PlanPath {
         dashSize = C.PLAN_ARC_DASH_PX * mpp;
         gapSize = C.PLAN_ARC_GAP_PX * mpp;
       }
-      arc.sync(this.ephemeris, this.frame, this.unbakeTime, fo, dashSize, gapSize, scale);
+      arc.sync(this.ephemeris, this.frame, this.unbakeTime, fo, dashSize, gapSize, scale, this.attractors);
     }
     for (let i = this.activeCount; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
   }
@@ -150,8 +155,8 @@ export class PlanPath {
   // 時刻 t で bake し、表示時刻 unbakeTime で un-bake する(点なので FrameTransform を2つ引く)。
   toDisplay(r: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(r.x, r.y, r.z);
-    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, []);
-    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, []);
+    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.attractors);
+    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, this.attractors);
     return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
   }
 
@@ -159,8 +164,8 @@ export class PlanPath {
   // サンプル時刻 t の bake 姿勢と表示時刻 unbakeTime の un-bake 姿勢の回転だけを受ける。
   toDisplayDir(dir: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(dir.x, dir.y, dir.z);
-    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, []);
-    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, []);
+    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.attractors);
+    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, this.attractors);
     return toInertialDir(unbakeTf, toFrameDir(bakeTf, dir));
   }
 
