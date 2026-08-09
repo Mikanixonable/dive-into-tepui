@@ -53,6 +53,7 @@ export class MapPicker {
   private tempWindowKey: string | null = null;
   private readonly objectListPanel: ObjectListPanel;
   private items: readonly MapPickable[] = [];
+  private lastSimTime = 0;
 
   // このフレームの被選択物候補。refresh の後に読む。
   get pickables(): readonly MapPickable[] { return this.items; }
@@ -81,6 +82,10 @@ export class MapPicker {
       this.cameraSystem.overviewCamera.setFocus(id);
       this.hud.hint(`${this.items.find((i) => i.id === id)?.name ?? id} にフォーカス`);
     };
+    this.objectListPanel.onSelectRight = (id, clientX, clientY) => {
+      const target = this.items.find((i) => i.id === id);
+      if (target) this.openPropertyWindow(clientX, clientY, target, this.lastSimTime);
+    };
   }
 
   // 天体ラベルと航法ターゲットの AN/DN を求め直し、このフレームの候補列を組み直す(天体ラベル +
@@ -88,6 +93,7 @@ export class MapPicker {
   // 求め直しとの対応付けはここに閉じる。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
   // sync されるメッシュと座標が1ステップずれる。
   refresh(simTime: number, displayTime: number): void {
+    this.lastSimTime = simTime;
     this.cameraSystem.focusMarkers.update(
       displayTime, this.cameraSystem.overviewCamera.focus, this.cameraSystem.bodyClassToggles,
     );
