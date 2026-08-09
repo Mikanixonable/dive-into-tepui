@@ -8,21 +8,20 @@ import { EntityManager } from './entity-manager';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
-import { CollisionPhysics } from './collision';
+import { ContactPhysics } from './contact';
 import { Sfx } from '../../audio/sfx';
-import { GameEntity } from '../game-entity/game-entity';
 import { R_EARTH } from '../../physics/solar-system';
 import { v3 } from '../../physics/vec3';
 import { adaptiveSimulationMaxStep, simulationStepDuration } from './time-step';
 
 export class Simulator {
   readonly hitSystem: HitSystem;
-  readonly collisionPhysics: CollisionPhysics;
+  readonly contactPhysics: ContactPhysics;
 
   simTime = 0;
   lastSimDt = 0;
 
-  // hitSystem/collisionPhysics を構築する。entities/ephemeris/sfx は参照として保持する。
+  // hitSystem/contactPhysics を構築する。entities/ephemeris/sfx は参照として保持する。
   constructor(
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
@@ -30,7 +29,7 @@ export class Simulator {
     private readonly fx: EffectsSystem,
   ) {
     this.hitSystem = new HitSystem(this.fx, this._sfx);
-    this.collisionPhysics = new CollisionPhysics();
+    this.contactPhysics = new ContactPhysics();
   }
 
   // dt 分のシミュレーションを進める。simDt をサブステップに分割して積分し、弾命中判定・剛体接触・姿勢積分を行う。
@@ -42,7 +41,6 @@ export class Simulator {
     bulletCollision: boolean,
     resolveCollision: boolean,
     doSubstep: boolean,
-    onHighSpeedImpact?: (a: GameEntity, b: GameEntity, speed: number) => void,
   ): void {
     const targetTime = this.simTime + simDt;
     while (this.simTime < targetTime - 1e-9) {
@@ -69,7 +67,9 @@ export class Simulator {
     }
 
     if (resolveCollision && player) {
-      this.collisionPhysics.resolve(dt, player, this.entities.all(), () => this._sfx.clank(), onHighSpeedImpact);
+      this.contactPhysics.resolve(
+        dt, this.simTime, player, this.entities.all(), this.ephemeris.attractorsAt(this.simTime), activeStage,
+      );
     }
 
     this.lastSimDt = simDt;
