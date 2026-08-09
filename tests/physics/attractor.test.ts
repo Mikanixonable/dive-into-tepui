@@ -127,7 +127,7 @@ export function register(): void {
   test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、positionOf と整合する', () => {
     const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.1, moon: 0.2 });
     const attractors = ephemeris.attractorsAt(5000);
-    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'titan', 'uranus', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'haumea', 'makemake', 'eris', 'halley', 'encke', 'sun']);
+    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'metis', 'adrastea', 'amalthea', 'thebe', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'hyperion', 'iapetus', 'phoebe', 'uranus', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'haumea', 'makemake', 'eris', 'halley', 'encke', 'sun']);
     // 天体を1つ挿入しても静かに別天体を指さないよう、添字ではなく id で引く。
     const byId = (id: string) => attractors.find((b) => b.id === id)!;
     assert.deepEqual(byId('earth').state.r, ZERO, '地球は原点に静止');
