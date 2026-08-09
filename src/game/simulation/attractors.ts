@@ -22,3 +22,14 @@ export function gravityBodiesAt(ephemeris: Ephemeris, t: number): readonly Attra
 export function attractorsAt(ephemeris: Ephemeris, entities: EntityManager, t: number): readonly Attractor[] {
   return mergeAttractors(gravityBodiesAt(ephemeris, t), entities.attractors());
 }
+
+// 時刻 t での重力源一覧(予測用)。動的重力天体も t の状態で組み、t の状態が得られない
+// 天体は落とす — 現在位置で凍結すると「その時刻に居ない場所」から引くことになる。
+export function predictedAttractorsAt(ephemeris: Ephemeris, entities: EntityManager, t: number): readonly Attractor[] {
+  const dynamic: Attractor[] = [];
+  for (const e of entities.attractors()) {
+    const s = e.displayState(t);
+    if (s !== null) dynamic.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state: s });
+  }
+  return mergeAttractors(gravityBodiesAt(ephemeris, t), dynamic);
+}
