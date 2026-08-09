@@ -7,7 +7,7 @@ import { raDecToEci } from './ecliptic';
 import { keplerPeriod } from './elements';
 import { AU, PlanetOrbit, planetOrbit } from './planet-orbit';
 import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-orbit';
-import { Vec3, len } from './vec3';
+import { Vec3, len, v3 } from './vec3';
 
 // 万有引力定数 [m^3/(kg・s^2)]。MU_* は測定された GM を直接持つ値なのでこれで割り直さないこと —
 // 質量から GM を導く側(Asteroid など)だけがこれを使う。
@@ -93,6 +93,14 @@ export type Degree2GravityDef = {
 // 出すと 5 点 × 天体数のラベルが画面を埋めるので、実際に軌道設計の目標になる系だけを立てる。
 type LagrangeLabelFlag = { readonly lagrangeLabels?: boolean };
 
+// 天体の形状(歪み)。省略時は `radius` による真球。'spheroid' は回転楕円体(赤道半径=極半径
+// の2値)、'triaxial' は三軸楕円体(a >= b >= c、a が最長の赤道軸、b が残りの赤道軸、
+// c が最短の極軸)。出典は pck00011.tpc の BODY_RADII。値はいずれも半径 [m](直径ではない)
+// — pck/SBDB の `extent` は直径で載ることが多いので登録時に 2 で割ること。
+export type ShapeDef =
+  | { readonly kind: 'spheroid'; readonly equatorRadius: number; readonly polarRadius: number }
+  | { readonly kind: 'triaxial'; readonly a: number; readonly b: number; readonly c: number };
+
 export type CelestialBodyDef =
   | { readonly kind: 'star'; readonly id: AttractorId; readonly mu: number; readonly radius: number }
   | ({
@@ -103,6 +111,7 @@ export type CelestialBodyDef =
       readonly orbit: PlanetOrbit; // 中心は必ず恒星
       readonly pole?: PoleModel; // 省略時は自転軸を持たない
       readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
+      readonly shape?: ShapeDef; // 省略時は radius による真球
     } & LagrangeLabelFlag)
   | ({
       readonly kind: 'satellite';
@@ -113,7 +122,19 @@ export type CelestialBodyDef =
       readonly orbit: SatelliteOrbit;
       readonly pole?: PoleModel;
       readonly degree2?: Degree2GravityDef;
+      readonly shape?: ShapeDef;
     } & LagrangeLabelFlag);
+
+// ShapeDef をメッシュのローカル半軸 (x,y,z) へ変換する。ECI は Y が極軸だが、この変換は
+// メッシュへ自転姿勢(pole)を掛ける前のローカル座標を返す — 形状は天体固有の量であって
+// ECI 軸ではなく自転軸に固定されるため、呼び出し側は姿勢クォータニオンの内側でこの scale を
+// 適用する(THREE は scale をローカル軸で解釈するので、姿勢を先に立てても scale の意味は
+// 変わらない)。shape 省略時は `radius` による真球。
+export function shapeAxes(radius: number, shape: ShapeDef | undefined): Vec3 {
+  if (shape === undefined) return v3(radius, radius, radius);
+  if (shape.kind === 'spheroid') return v3(shape.equatorRadius, shape.polarRadius, shape.equatorRadius);
+  return v3(shape.a, shape.c, shape.b);
+}
 
 // 天体レジストリ: id から静的事実(CelestialBodyDef)を引く表。SOLAR_SYSTEM が「現実の太陽系」
 // という名前つきの既定値で、ステージごとに別のレジストリへ差し替えられる。
@@ -244,8 +265,12 @@ export const SOLAR_SYSTEM = {
     kind: 'planet',
     id: 'earth',
     mu: MU_EARTH,
-    radius: R_EARTH,
+    // 衝突球・高度基準は赤道半径(外接球) — R_EARTH(平均半径)は大気・熱等のゲームプレイ側が
+    // 引き続き使う別の量。
+    radius: R_EARTH_EQ,
     lagrangeLabels: true,
+    // 出典: pck00011.tpc BODY_RADII(Re=6378.1366km, Rp=6356.7519km)。
+    shape: { kind: 'spheroid', equatorRadius: R_EARTH_EQ, polarRadius: 6.3567519e6 },
     // JPL 低精度惑星暦の "EM Bary"(地球-月重心)行、黄道基準・J2000 相当。
     orbit: planetOrbit({
       a: 1.495978707e11,
@@ -296,7 +321,8 @@ export const SOLAR_SYSTEM = {
     kind: 'planet',
     id: 'mercury',
     mu: 2.2032e13,
-    radius: 2.4397e6,
+    radius: 2.44053e6, // 赤道半径(外接球)。出典: pck00011.tpc BODY_RADII
+    shape: { kind: 'spheroid', equatorRadius: 2.44053e6, polarRadius: 2.43826e6 },
     // ϖ̇ の 0.16047689 deg/Cy = 577.7″/Cy には一般相対論による近日点移動 42.98″/Cy が既に
     // 含まれている(この表は PPN 相対論込みで数値積分された JPL DE 暦へのフィット)。
     // 惑星摂動のみの古典値 531.6″/Cy に補正項を足す形にしてはならない。
@@ -328,7 +354,7 @@ export const SOLAR_SYSTEM = {
     kind: 'planet',
     id: 'venus',
     mu: 3.24859e14,
-    radius: 6.0518e6,
+    radius: 6.0518e6, // 扁平率 0(pck00011.tpc BODY_RADII は赤道・極とも等値)なので shape なし
     orbit: planetOrbit({
       a: 0.72333566 * AU,
       e: 0.00677672,
@@ -357,7 +383,8 @@ export const SOLAR_SYSTEM = {
     kind: 'planet',
     id: 'mars',
     mu: MU_MARS,
-    radius: 3.3895e6,
+    radius: 3.39619e6, // 赤道半径(外接球)。出典: pck00011.tpc BODY_RADII
+    shape: { kind: 'spheroid', equatorRadius: 3.39619e6, polarRadius: 3.3762e6 },
     orbit: planetOrbit({
       a: 1.52371034 * AU,
       e: 0.09339410,
@@ -378,7 +405,9 @@ export const SOLAR_SYSTEM = {
     kind: 'satellite',
     id: 'phobos',
     mu: 7.112e5,
-    radius: 1.1267e4,
+    radius: 1.295e4, // 三軸の最長半軸(外接球)
+    // 出典: pck00011.tpc BODY_RADII(直径 25.90 × 22.60 × 18.32 km を半径に換算)
+    shape: { kind: 'triaxial', a: 1.295e4, b: 1.13e4, c: 9.16e3 },
     planet: 'mars',
     orbit: equatorialSatelliteOrbit({ a: 9.376e6, e: 0.0151, incDeg: 1.08, planetMu: MU_MARS, planetPole: MARS_POLE }),
   },
@@ -386,7 +415,9 @@ export const SOLAR_SYSTEM = {
     kind: 'satellite',
     id: 'deimos',
     mu: 9.85e4,
-    radius: 6.2e3,
+    radius: 8.04e3, // 三軸の最長半軸(外接球)
+    // 出典: pck00011.tpc BODY_RADII(直径 16.08 × 11.78 × 10.22 km を半径に換算)
+    shape: { kind: 'triaxial', a: 8.04e3, b: 5.89e3, c: 5.11e3 },
     planet: 'mars',
     orbit: equatorialSatelliteOrbit({ a: 2.3458e7, e: 0.00033, incDeg: 1.79, planetMu: MU_MARS, planetPole: MARS_POLE }),
   },
@@ -394,7 +425,8 @@ export const SOLAR_SYSTEM = {
     kind: 'planet',
     id: 'jupiter',
     mu: MU_JUPITER,
-    radius: 6.9911e7,
+    radius: 7.1492e7, // 赤道半径(外接球)。出典: pck00011.tpc BODY_RADII(1 bar 基準)
+    shape: { kind: 'spheroid', equatorRadius: 7.1492e7, polarRadius: 6.6854e7 },
     lagrangeLabels: true,
     orbit: planetOrbit({
       a: 7.78340821e11,
@@ -416,7 +448,9 @@ export const SOLAR_SYSTEM = {
     kind: 'satellite',
     id: 'io',
     mu: 5.9599e12,
-    radius: 1.8216e6,
+    radius: 1.83e6, // 三軸の最長半軸(外接球)
+    // 出典: pck00011.tpc BODY_RADII(直径 3660.0 × 3637.4 × 3630.6 km を半径に換算)
+    shape: { kind: 'triaxial', a: 1.83e6, b: 1.8187e6, c: 1.8153e6 },
     planet: 'jupiter',
     orbit: equatorialSatelliteOrbit({ a: 4.218e8, e: 0.0033, incDeg: 0.04, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
   },
@@ -448,7 +482,8 @@ export const SOLAR_SYSTEM = {
     kind: 'planet',
     id: 'saturn',
     mu: MU_SATURN,
-    radius: 5.8232e7,
+    radius: 6.0268e7, // 赤道半径(外接球)。出典: pck00011.tpc BODY_RADII
+    shape: { kind: 'spheroid', equatorRadius: 6.0268e7, polarRadius: 5.4364e7 },
     lagrangeLabels: true,
     orbit: planetOrbit({
       a: 9.53667594 * AU,
@@ -478,7 +513,8 @@ export const SOLAR_SYSTEM = {
     kind: 'planet',
     id: 'uranus',
     mu: 5.793939e15,
-    radius: 2.5362e7,
+    radius: 2.55566e7, // 赤道半径(外接球)。出典: pck00011.tpc BODY_RADII
+    shape: { kind: 'spheroid', equatorRadius: 2.55566e7, polarRadius: 2.49685e7 },
     orbit: planetOrbit({
       a: 19.18916464 * AU,
       e: 0.04725744,
@@ -507,7 +543,8 @@ export const SOLAR_SYSTEM = {
     kind: 'planet',
     id: 'neptune',
     mu: MU_NEPTUNE,
-    radius: 2.4622e7,
+    radius: 2.47606e7, // 赤道半径(外接球)。出典: pck00011.tpc BODY_RADII
+    shape: { kind: 'spheroid', equatorRadius: 2.47606e7, polarRadius: 2.42853e7 },
     orbit: planetOrbit({
       a: 30.06992276 * AU,
       e: 0.00859048,
@@ -546,7 +583,9 @@ export const SOLAR_SYSTEM = {
     kind: 'planet',
     id: 'ceres',
     mu: 6.26e10,
-    radius: 4.7e5,
+    radius: 4.831e5, // 三軸の最長半軸(外接球)
+    // 出典: pck00011.tpc BODY_RADII(直径 966.2 × 962.0 × 891.8 km を半径に換算)
+    shape: { kind: 'triaxial', a: 4.831e5, b: 4.81e5, c: 4.459e5 },
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Ceres&full-prec=true (元期 JD2461200.5)
     orbit: planetOrbit({
       a: 2.765552595034094 * AU,
@@ -567,7 +606,9 @@ export const SOLAR_SYSTEM = {
     kind: 'planet',
     id: 'vesta',
     mu: 1.73e10,
-    radius: 2.63e5,
+    radius: 2.863e5, // 三軸の最長半軸(外接球)
+    // 出典: pck00011.tpc BODY_RADII(直径 572.6 × 557.2 × 446.4 km を半径に換算)
+    shape: { kind: 'triaxial', a: 2.863e5, b: 2.786e5, c: 2.232e5 },
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Vesta&full-prec=true (元期 JD2461200.5)
     orbit: planetOrbit({
       a: 2.361365965127599 * AU,
@@ -589,6 +630,8 @@ export const SOLAR_SYSTEM = {
     id: 'pallas',
     mu: 1.36e10,
     radius: 2.56e5,
+    // 三軸データ(568×532×448 / 550×516×476 km)は測定手法間で収束しておらず、一方を選ぶ根拠が
+    // ないため shape なし(真球)のままとする。
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Pallas&full-prec=true (元期 JD2461200.5)
     orbit: planetOrbit({
       a: 2.769559010737709 * AU,
@@ -633,7 +676,10 @@ export const SOLAR_SYSTEM = {
     kind: 'planet',
     id: 'haumea',
     mu: 2.67e11,
-    radius: 7.8e5, // 平均半径(準楕円体)
+    radius: 1.05e6, // 三軸の最長半軸(外接球)
+    // 出典: 2019年掩蔽解析(直径 2100 × 1680 × 1074 km を半径に換算)。太陽系で最も極端な
+    // 三軸楕円体
+    shape: { kind: 'triaxial', a: 1.05e6, b: 8.4e5, c: 5.37e5 },
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Haumea&full-prec=true (元期 JD2461200.5)
     orbit: planetOrbit({
       a: 43.06029023650952 * AU,
