@@ -20,6 +20,7 @@ interface Section {
 // 開閉し、行クリックで onSelect に id を渡す。
 export class ObjectListPanel {
   onSelect: ((id: string) => void) | null = null;
+  onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
   private readonly sections = new Map<MapPickKind, Section>();
@@ -83,6 +84,10 @@ export class ObjectListPanel {
           row = document.createElement('div');
           row.className = 'erow';
           row.addEventListener('click', () => this.onSelect?.(item.id));
+          row.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            this.onSelectRight?.(item.id, e.clientX, e.clientY);
+          });
           section.rows.set(item.id, row);
           section.body.appendChild(row);
         }
