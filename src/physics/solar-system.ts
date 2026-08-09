@@ -204,12 +204,24 @@ const NEPTUNE_POLE: IauPole = {
   w0Deg: 249.978, wRateDegPerDay: 541.1397757,
 };
 
+// 赤経・赤緯で与えた極が張る面を基準面とする回転。
+function poleBasis(raDeg: number, decDeg: number): Quat {
+  return equatorBasisToEci(raDecToEci(raDeg, decDeg));
+}
+
 // 惑星の赤道面を基準面とする回転。極の一次項は世紀あたり 0.11° 以下なので元期の極で固定する
 // (「衛星の軌道面が親の赤道面に対して静止している」という近似そのものが、内側衛星の
 // ラプラス面 ≈ 惑星赤道面という近似と同程度の粗さで、極のこの緩やかな動きはその中に埋もれる)。
 function equatorBasis(pole: IauPole): Quat {
-  return equatorBasisToEci(raDecToEci(pole.ra0Deg, pole.dec0Deg));
+  return poleBasis(pole.ra0Deg, pole.dec0Deg);
 }
+
+// 木星系・土星系の衛星の基準面である局所ラプラス面の極(出典: JPL Solar System Dynamics
+// 衛星平均要素表)。ラプラス面は「衛星の昇交点歳差が平均的に含まれる面」で、内側では扁平
+// 摂動が効いて親の赤道面に近く、外側では太陽潮汐が効いて親の公転面に近づく — 親の自転極から
+// 導けないので、表が公開する極をそのまま持つ。この2系では親の IAU 自転極と 0.04° しか違わない。
+const JUPITER_LAPLACE_BASIS = poleBasis(268.1, 64.5);
+const SATURN_LAPLACE_BASIS = poleBasis(40.6, 83.5);
 
 // 親惑星の赤道面を基準面に取る衛星の二体ケプラー軌道。要素は JPL Solar System Dynamics の
 // 衛星平均要素(親惑星の赤道面基準)。歳差・周期摂動は実測値を持たないので置かない。
@@ -444,13 +456,47 @@ export const SOLAR_SYSTEM = {
     }),
     pole: JUPITER_POLE,
   },
+  // 木星の内側小衛星(環境軌道群)4個。基準面はガリレオ衛星と同じ木星系ラプラス面。
+  // GM・平均半径は JPL Planetary Satellite Physical Parameters。歳差周期はいずれも未測定。
+  metis: {
+    kind: 'satellite',
+    id: 'metis',
+    mu: 0.00250e9,
+    radius: 2.15e4,
+    planet: 'jupiter',
+    orbit: jplSatelliteOrbit({ a: 1.28000e8, e: 0.000, incDeg: 0.0, periodDays: 0.294779, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: JUPITER_LAPLACE_BASIS }),
+  },
+  adrastea: {
+    kind: 'satellite',
+    id: 'adrastea',
+    mu: 0.00014e9,
+    radius: 8.2e3,
+    planet: 'jupiter',
+    orbit: jplSatelliteOrbit({ a: 1.29000e8, e: 0.000, incDeg: 0.0, periodDays: 0.298260, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: JUPITER_LAPLACE_BASIS }),
+  },
+  amalthea: {
+    kind: 'satellite',
+    id: 'amalthea',
+    mu: 0.16456e9,
+    radius: 8.35e4,
+    planet: 'jupiter',
+    orbit: jplSatelliteOrbit({ a: 1.81400e8, e: 0.003, incDeg: 0.4, periodDays: 0.499918, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: JUPITER_LAPLACE_BASIS }),
+  },
+  thebe: {
+    kind: 'satellite',
+    id: 'thebe',
+    mu: 0.03015e9,
+    radius: 4.93e4,
+    planet: 'jupiter',
+    orbit: jplSatelliteOrbit({ a: 2.21900e8, e: 0.018, incDeg: 1.1, periodDays: 0.676105, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: JUPITER_LAPLACE_BASIS }),
+  },
   io: {
     kind: 'satellite',
     id: 'io',
     mu: 5.9599e12,
     radius: 1.8216e6,
     planet: 'jupiter',
-    orbit: equatorialSatelliteOrbit({ a: 4.218e8, e: 0.0033, incDeg: 0.04, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
+    orbit: jplSatelliteOrbit({ a: 4.218e8, e: 0.0033, incDeg: 0.04, periodDays: 1.762732, nodePeriodYears: 0, apsisPeriodYears: 1.333, basisToEci: JUPITER_LAPLACE_BASIS }),
   },
   europa: {
     kind: 'satellite',
@@ -458,7 +504,7 @@ export const SOLAR_SYSTEM = {
     mu: 3.2027e12,
     radius: 1.5608e6,
     planet: 'jupiter',
-    orbit: equatorialSatelliteOrbit({ a: 6.711e8, e: 0.0072, incDeg: 0.47, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
+    orbit: jplSatelliteOrbit({ a: 6.711e8, e: 0.0072, incDeg: 0.47, periodDays: 3.525463, nodePeriodYears: 30.202, apsisPeriodYears: 1.394, basisToEci: JUPITER_LAPLACE_BASIS }),
   },
   ganymede: {
     kind: 'satellite',
@@ -466,7 +512,7 @@ export const SOLAR_SYSTEM = {
     mu: 9.8878e12,
     radius: 2.6312e6,
     planet: 'jupiter',
-    orbit: equatorialSatelliteOrbit({ a: 1.0704e9, e: 0.0013, incDeg: 0.20, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
+    orbit: jplSatelliteOrbit({ a: 1.0704e9, e: 0.0013, incDeg: 0.20, periodDays: 7.155588, nodePeriodYears: 137.812, apsisPeriodYears: 68.301, basisToEci: JUPITER_LAPLACE_BASIS }),
   },
   callisto: {
     kind: 'satellite',
@@ -474,7 +520,7 @@ export const SOLAR_SYSTEM = {
     mu: 7.1793e12,
     radius: 2.4103e6,
     planet: 'jupiter',
-    orbit: equatorialSatelliteOrbit({ a: 1.8827e9, e: 0.0048, incDeg: 0.19, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
+    orbit: jplSatelliteOrbit({ a: 1.8827e9, e: 0.0048, incDeg: 0.19, periodDays: 16.690440, nodePeriodYears: 577.264, apsisPeriodYears: 277.921, basisToEci: JUPITER_LAPLACE_BASIS }),
   },
   // 木星の不規則衛星(ヒマリア群・アナンケ群・カルメ群・パシファエ群)。ガリレオ衛星と違い
   // 太陽摂動が支配的な遠方軌道なので、ラプラス面ではなく黄道基準の平均要素を使う(JPL
@@ -553,13 +599,132 @@ export const SOLAR_SYSTEM = {
     }),
     pole: SATURN_POLE,
   },
+  // 土星の輪の近くを回る羊飼い衛星・環境軌道衛星6個。基準面はタイタンと同じ土星系
+  // ラプラス面。GM・平均半径は JPL Planetary Satellite Physical Parameters。歳差周期は
+  // いずれも未測定。ダフニスのみ GM が未測定(mu: 0)で、半径も同表に無いため Wikipedia
+  // "Daphnis (moon)"(平均直径 7.8±1.0 km、一次は測光サイズ推定)の値を使う。
+  pan: {
+    kind: 'satellite',
+    id: 'pan',
+    mu: 0.00028e9,
+    radius: 1.40e4,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 1.336e8, e: 0.000, incDeg: 0.0, periodDays: 0.575051, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  daphnis: {
+    kind: 'satellite',
+    id: 'daphnis',
+    mu: 0,
+    radius: 3.9e3,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 1.365e8, e: 0.000, incDeg: 0.0, periodDays: 0.594080, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  prometheus: {
+    kind: 'satellite',
+    id: 'prometheus',
+    mu: 0.01071e9,
+    radius: 4.31e4,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 1.394e8, e: 0.002, incDeg: 0.0, periodDays: 0.615878, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  pandora: {
+    kind: 'satellite',
+    id: 'pandora',
+    mu: 0.00926e9,
+    radius: 4.06e4,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 1.417e8, e: 0.004, incDeg: 0.0, periodDays: 0.631369, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  epimetheus: {
+    kind: 'satellite',
+    id: 'epimetheus',
+    mu: 0.03514e9,
+    radius: 5.82e4,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 1.514e8, e: 0.020, incDeg: 0.3, periodDays: 0.697012, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  janus: {
+    kind: 'satellite',
+    id: 'janus',
+    mu: 0.12662e9,
+    radius: 8.92e4,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 1.515e8, e: 0.007, incDeg: 0.2, periodDays: 0.697353, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  // 土星の主要な氷衛星6個(ミマス〜レア)。基準面・出典はここまでの土星衛星と同じ。
+  mimas: {
+    kind: 'satellite',
+    id: 'mimas',
+    mu: 2.50349e9,
+    radius: 1.982e5,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 1.860e8, e: 0.020, incDeg: 1.6, periodDays: 0.942422, nodePeriodYears: 0.986, apsisPeriodYears: 0.493, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  enceladus: {
+    kind: 'satellite',
+    id: 'enceladus',
+    mu: 7.21037e9,
+    radius: 2.521e5,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 2.384e8, e: 0.005, incDeg: 0.0, periodDays: 1.370218, nodePeriodYears: 0, apsisPeriodYears: 2.916, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  tethys: {
+    kind: 'satellite',
+    id: 'tethys',
+    mu: 41.21353e9,
+    radius: 5.311e5,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 2.950e8, e: 0.001, incDeg: 1.1, periodDays: 1.887802, nodePeriodYears: 4.982, apsisPeriodYears: 0.005, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  dione: {
+    kind: 'satellite',
+    id: 'dione',
+    mu: 73.11607e9,
+    radius: 5.614e5,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 3.777e8, e: 0.002, incDeg: 0.0, periodDays: 2.736916, nodePeriodYears: 0, apsisPeriodYears: 11.698, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  rhea: {
+    kind: 'satellite',
+    id: 'rhea',
+    mu: 153.94175e9,
+    radius: 7.635e5,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 5.272e8, e: 0.001, incDeg: 0.3, periodDays: 4.517503, nodePeriodYears: 35.775, apsisPeriodYears: 33.939, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
   titan: {
     kind: 'satellite',
     id: 'titan',
     mu: 8.9781e12,
     radius: 2.5747e6,
     planet: 'saturn',
-    orbit: equatorialSatelliteOrbit({ a: 1.22187e9, e: 0.0288, incDeg: 0.35, planetMu: MU_SATURN, planetPole: SATURN_POLE }),
+    orbit: jplSatelliteOrbit({ a: 1.22187e9, e: 0.0288, incDeg: 0.35, periodDays: 15.945448, nodePeriodYears: 687.370, apsisPeriodYears: 346.680, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  // タイタンより遠い土星の不規則衛星寄りの3個。イアペトゥスは軌道傾斜が大きく(基準面から
+  // 7.6°)、フェーベは傾斜角 90° 超で逆行。出典・歳差周期の扱いはここまでの土星衛星と同じ。
+  hyperion: {
+    kind: 'satellite',
+    id: 'hyperion',
+    mu: 0.37049e9,
+    radius: 1.350e5,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 1.4815e9, e: 0.105, incDeg: 0.6, periodDays: 21.276658, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  iapetus: {
+    kind: 'satellite',
+    id: 'iapetus',
+    mu: 120.51511e9,
+    radius: 7.343e5,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 3.5617e9, e: 0.028, incDeg: 7.6, periodDays: 79.331002, nodePeriodYears: 3130.302, apsisPeriodYears: 1662.900, basisToEci: SATURN_LAPLACE_BASIS }),
+  },
+  phoebe: {
+    kind: 'satellite',
+    id: 'phoebe',
+    mu: 0.55479e9,
+    radius: 1.065e5,
+    planet: 'saturn',
+    orbit: jplSatelliteOrbit({ a: 1.29294e10, e: 0.164, incDeg: 175.2, periodDays: 550.303910, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
   },
   uranus: {
     kind: 'planet',
