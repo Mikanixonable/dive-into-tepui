@@ -16,6 +16,7 @@ import { orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../physics/vec3';
 import { generateApproachingEnemy } from './spawner/enemy-generator';
+import type { Stage00SaveData } from '../save-data';
 
 export class Stage00 extends Stage {
   static readonly id = '00' as const;
@@ -108,6 +109,22 @@ export class Stage00 extends Stage {
     this.spawnWave(player, (enemy) => this.addEnemy(enemy, entities));
     this.spawnTimer = C.STAGE00_SPAWN_INTERVAL;
     this._hud.toast(`波状攻撃 第${this.waveCount}波 接近中！`, 3000);
+  }
+
+  serialize(): Stage00SaveData {
+    return {
+      ...super.serialize(),
+      waveState: this.waveState,
+      spawnTimer: this.spawnTimer,
+      waveCount: this.waveCount,
+    };
+  }
+
+  restore(data: Stage00SaveData): void {
+    super.restore(data);
+    this.waveState = data.waveState;
+    this.spawnTimer = data.spawnTimer;
+    this.waveCount = data.waveCount;
   }
 }
 

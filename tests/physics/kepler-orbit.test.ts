@@ -4,7 +4,7 @@ import { test } from './harness';
 import { assertOmegaMatchesBasis } from './test-helpers';
 import { OrbitalElements, keplerPeriod, timeSincePeriapsis, trueAnomalyFromMean } from '../../src/physics/elements';
 import { Attractor } from '../../src/physics/attractor';
-import { KeplerOrbit, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from '../../src/physics/kepler-orbit';
+import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { qRotate } from '../../src/physics/attitude';
@@ -14,6 +14,7 @@ const EARTH: Attractor = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: ki
 
 // 永年変化率をすべて 0 にした固定楕円(比較用)。
 const STATIC_ORBIT: KeplerOrbit = {
+  basisToEci: ECLIPTIC_BASIS,
   a: R_EARTH + 500e3,
   aRate: 0,
   e: 0.05,
@@ -32,6 +33,7 @@ const STATIC_ORBIT: KeplerOrbit = {
 const AU = 1.495978707e11;
 const EARTH_A = AU;
 const PLANET_LIKE_ORBIT: KeplerOrbit = {
+  basisToEci: ECLIPTIC_BASIS,
   a: EARTH_A,
   aRate: (0.00000562 * AU) / (100 * 365.25 * 86400),
   e: 0.01671123,

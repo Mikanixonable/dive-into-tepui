@@ -44,3 +44,14 @@ export function ndcToScreen(ndc: Projected, width: number, height: number, offse
     front: ndc.front,
   };
 }
+
+// depth の下限。視点上・視点の背後の点で 0 や負の尺度を返さないための床。
+const MIN_DEPTH = 1e-6;
+
+// worldPos の位置における画面1ピクセル相当の実距離 [m]。画面上で一定に見せたい長さに
+// 掛けると、その位置での実距離が得られる。
+export function metersPerPixel(view: Viewpoint, worldPos: Vec3, viewportHeight: number): number {
+  const forward = norm(sub(view.lookTarget, view.position));
+  const depth = Math.max(MIN_DEPTH, dot(sub(worldPos, view.position), forward));
+  return (2 * depth * Math.tan((view.fovDeg * Math.PI) / 360)) / viewportHeight;
+}

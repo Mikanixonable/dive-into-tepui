@@ -67,6 +67,16 @@ export class CombatCameraSystem {
     return this.chaseCamera.camFollowAttitude;
   }
 
+  // CameraSystem.sync が読む近クリップ距離。OverviewCamera の同名 getter と読み口を揃える。
+  get near(): number {
+    return C.COMBAT_CAMERA_NEAR;
+  }
+
+  // CameraSystem.sync が読む遠クリップ距離。OverviewCamera の同名 getter と読み口を揃える。
+  get far(): number {
+    return C.COMBAT_CAMERA_FAR;
+  }
+
   // ズーム状態を入力から求め、現在のモード(通常/ズーム)に応じて ChaseCamera/GunsightCamera の
   // どちらかを駆動して目標 Viewpoint を求め、fovDeg だけをそこへ指数的に近づけて viewpoint とする。
   update(mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number, player: Player | null, input: Input): void {

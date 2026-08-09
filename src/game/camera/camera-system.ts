@@ -13,20 +13,20 @@ import { Player } from '../player/player';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Vec3 } from '../../physics/vec3';
-import { ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
+import { metersPerPixel, ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { AttractorId } from '../../physics/attractor';
-import { CELESTIAL_BODIES } from '../celestial/celestial-registry';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
+export type ScaleFn = (worldPos: Vec3) => number;
 
-// 論理カメラの状態(Viewpoint)を THREE.PerspectiveCamera へ反映する。
-function syncCameraToViewpoint(camera: THREE.PerspectiveCamera, view: Viewpoint, fo: FloatingOrigin): void {
+// 論理カメラの状態(Viewpoint)を THREE.PerspectiveCamera へ反映する。near/far はサブカメラ自身の
+// near/far getter(固定値、または OverviewCamera のように dist に比例する値)から毎フレーム渡される。
+function syncCameraToViewpoint(camera: THREE.PerspectiveCamera, view: Viewpoint, near: number, far: number, fo: FloatingOrigin): void {
   camera.position.copy(fo.RtoThreeV3(view.position));
   camera.up.set(view.up.x, view.up.y, view.up.z);
   camera.lookAt(fo.RtoThreeV3(view.lookTarget));
-  // アスペクト比・FOV が変わったときだけ投影行列を再計算する
+  // アスペクト比・FOV・near・far が変わったときだけ投影行列を再計算する
   let projectionDirty = false;
   if (Math.abs(camera.aspect - view.aspect) > 1e-6) {
     camera.aspect = view.aspect;
@@ -34,6 +34,14 @@ function syncCameraToViewpoint(camera: THREE.PerspectiveCamera, view: Viewpoint,
   }
   if (Math.abs(camera.fov - view.fovDeg) > 1e-3) {
     camera.fov = view.fovDeg;
+    projectionDirty = true;
+  }
+  if (Math.abs(camera.near - near) > near * 1e-6) {
+    camera.near = near;
+    projectionDirty = true;
+  }
+  if (Math.abs(camera.far - far) > far * 1e-6) {
+    camera.far = far;
     projectionDirty = true;
   }
   if (projectionDirty) camera.updateProjectionMatrix();
@@ -45,12 +53,13 @@ function projectionFromViewpoint(view: Viewpoint): ProjectFn {
   return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), window.innerWidth, window.innerHeight);
 }
 
-// 広範囲視点の操作パネルに常用のフォーカス先として並べる天体本体の ID。残りのラベル
-// (ラグランジュ点など)へは右クリックのメニュー経由でフォーカスする(Game が仲介する)。
-const PANEL_FOCUS_IDS = Object.keys(CELESTIAL_BODIES) as AttractorId[];
+// 画面上で1ピクセルに相当する実距離[m]を返す関数を組む。
+function scaleFromViewpoint(view: Viewpoint): ScaleFn {
+  return (worldPos) => metersPerPixel(view, worldPos, window.innerHeight);
+}
 
 // 戦闘ビュー(CombatCameraSystem)と広範囲視点(OverviewCamera)を切り替えて駆動する。
-// フォーカス候補ラベル(focusMarkers)とその常用ショートリスト(overviewCameraPanel)も所有する。
+// フォーカス候補ラベル(focusMarkers)も所有する。
 export class CameraSystem {
   readonly combatCamera: CombatCameraSystem;
   readonly overviewCamera: OverviewCamera;
@@ -85,12 +94,7 @@ export class CameraSystem {
     this.combatCamera = new CombatCameraSystem(_hud, sfx, player);
     this.overviewCamera = new OverviewCamera(_hud, sfx, ephemeris);
     // 広範囲視点の操作パネルと各操作のコールバック
-    this.overviewCameraPanel = new OverviewCameraPanel(_hud.root, PANEL_FOCUS_IDS.map(
-      (id) => [id, this.focusMarkers.findLabel(id)?.name ?? id] as const,
-    ));
-    this.overviewCameraPanel.onFocusSelect = (focus) => {
-      this.overviewCamera.setFocus(focus);
-    };
+    this.overviewCameraPanel = new OverviewCameraPanel(_hud.root);
     this.overviewCameraPanel.onFrameSelect = (frame: ReferenceFrame) => {
       this.overviewCamera.cameraFrame = frame;
     };
@@ -183,7 +187,7 @@ export class CameraSystem {
   // 視点状態をフローティングオリジン(fo)で補正してアクティブカメラへ反映する。
   sync(fo: FloatingOrigin): void {
     const active = this.overviewMode ? this.overviewCamera : this.combatCamera;
-    syncCameraToViewpoint(active.camera, active.viewpoint, fo);
+    syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
     this.overviewCameraPanel.setVisible(this.overviewMode);
 
@@ -193,9 +197,8 @@ export class CameraSystem {
     if (this._elStageStatus) this._elStageStatus.style.display = hidden;
     if (this._elOrbit) this._elOrbit.style.left = this.overviewMode ? '12px' : '';
     if (this.overviewMode) {
-      this.overviewCameraPanel.setFocus(this.overviewCamera.focus);
       this.overviewCameraPanel.setFrame(this.overviewCamera.cameraFrame);
-      this.focusMarkers.syncLabels(this.activeCameraProjection);
+      this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);
     } else {
       this.focusMarkers.hideLabels();
     }
@@ -204,5 +207,10 @@ export class CameraSystem {
   // アクティブカメラの画面投影関数を返す。
   get activeCameraProjection(): ProjectFn {
     return projectionFromViewpoint(this.overviewMode ? this.overviewCamera.viewpoint : this.combatCamera.viewpoint);
+  }
+
+  // アクティブカメラの画面尺度関数を返す。
+  get activeCameraScale(): ScaleFn {
+    return scaleFromViewpoint(this.overviewMode ? this.overviewCamera.viewpoint : this.combatCamera.viewpoint);
   }
 }

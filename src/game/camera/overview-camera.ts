@@ -10,6 +10,8 @@ import { ReferenceFrame, FrameDir, INERTIAL_FRAME, toFrameDir, toInertialDir } f
 import type { Ephemeris } from '../../physics/ephemeris';
 import { qFromAxisAngle, qRotate } from '../../physics/attitude';
 import { MapPickable } from '../map-pick';
+import { bodyDef, SOLAR_SYSTEM } from '../../physics/solar-system';
+import { AttractorId } from '../../physics/attractor';
 
 const WORLD_UP = v3(0, 1, 0);
 const OVERVIEW_CAMERA_FOV = 50;
@@ -79,21 +81,40 @@ export class OverviewCamera {
     _sfx: Sfx,
     private readonly ephemeris: Ephemeris,
   ) {
-    this.camera = new THREE.PerspectiveCamera(
-      OVERVIEW_CAMERA_FOV,
-      window.innerWidth / window.innerHeight,
-      1e4,
-      C.OVERVIEW_CAMERA_FAR,
-    );
     const tf0 = this.ephemeris.frameTransformAt(this._cameraFrame, 0);
     this.offset_r = toFrameDir(tf0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST));
     this.pan_r = toFrameDir(tf0, v3());
     this.up_r = toFrameDir(tf0, WORLD_UP);
+    this.camera = new THREE.PerspectiveCamera(
+      OVERVIEW_CAMERA_FOV,
+      window.innerWidth / window.innerHeight,
+      this.near,
+      this.far,
+    );
   }
 
   // 注視点からカメラまでの距離を返す。
   get dist(): number {
     return Math.hypot(this.offset_r.x, this.offset_r.y, this.offset_r.z);
+  }
+
+  // CameraSystem.sync が読む近クリップ距離。dist に比例させることで、どのズーム段でも
+  // 注視点を切り落とさずに深度分解能を保つ(OVERVIEW_CAMERA_NEAR_RATIO 参照)。
+  get near(): number {
+    return this.dist / C.OVERVIEW_CAMERA_NEAR_RATIO;
+  }
+
+  // CameraSystem.sync が読む遠クリップ距離。dist に比例させることで、引いたカメラでも
+  // 太陽・木星のような遠方天体が far の外に出て消えない(OVERVIEW_CAMERA_FAR_RATIO 参照)。
+  get far(): number {
+    return Math.min(C.OVERVIEW_CAMERA_FAR_MAX, Math.max(C.OVERVIEW_CAMERA_FAR_MIN, this.dist * C.OVERVIEW_CAMERA_FAR_RATIO));
+  }
+
+  // 現在のフォーカス対象がクランプ後も表面下にめり込まない最小注視距離。
+  // フォーカスが天体でなければ通常の下限をそのまま使う。
+  private get minDist(): number {
+    if (!(this._focus in SOLAR_SYSTEM)) return C.OVERVIEW_CAMERA_MIN_DIST;
+    return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, bodyDef(this._focus as AttractorId).radius);
   }
 
   // カメラのロールのみを初期状態(ワールド上方)に戻す。
@@ -173,7 +194,7 @@ export class OverviewCamera {
     // 現在の上/右軸まわりに回す — ロールで上方向が傾いても、画面上の動きと入力方向が一致する。
     // マップビューはトラックパッドの細かいスクロールでも操作しやすいよう、
     // スクロールによるズーム感度を combat の基準値から 1.5 倍にする。
-    const dist = Math.max(C.OVERVIEW_CAMERA_MIN_DIST,
+    const dist = Math.max(this.minDist,
       Math.min(C.OVERVIEW_CAMERA_MAX_DIST, this.dist * Math.exp(mouse.wheel * 0.0018)));
     upEci = norm(addScaled(upEci, offEci, -dot(upEci, offEci) / dot(offEci, offEci)));
     const yaw = mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;

@@ -113,20 +113,21 @@ export class CollisionPhysics {
       rB2x = rB.x + nx * cB; rB2y = rB.y + ny * cB; rB2z = rB.z + nz * cB;
     } else {
       // 最終位置が離れていても直前substepの線分間で交差していればTOI接触を採用する。
-      // 完全な残時間再積分ではなく、両中心をTOI位置へ決定的に戻して現在速度へimpulseを適用する近似。
+      // 補正は相対配置だけに効かせ(法線方向に半径和ちょうど)、重心は積分器が出した
+      // 区間終端の値をそのまま保つ — 重心を動かすと質量比の効かない並進が両者に乗り、
+      // 軌道速度で進む重い側ではそれが1サブステップぶんの可視の位置の飛びになる。
       const pa = a.prevState, pb = b.prevState;
       if (!(pa.t < a.state.t && pb.t < b.state.t)) return null;
       if (Math.abs(pa.t - pb.t) > 1e-6 || Math.abs(a.state.t - b.state.t) > 1e-6) return null;
       const hit = sweptSphereToi(pa.r, rA, pb.r, rB, minD);
       if (hit === null) return null;
       nx = hit.normal.x; ny = hit.normal.y; nz = hit.normal.z;
-      const u = hit.toi;
-      rA2x = pa.r.x + (rA.x - pa.r.x) * u;
-      rA2y = pa.r.y + (rA.y - pa.r.y) * u;
-      rA2z = pa.r.z + (rA.z - pa.r.z) * u;
-      rB2x = pb.r.x + (rB.x - pb.r.x) * u;
-      rB2y = pb.r.y + (rB.y - pb.r.y) * u;
-      rB2z = pb.r.z + (rB.z - pb.r.z) * u;
+      const cx = (rA.x * invMb + rB.x * invMa) / invM;
+      const cy = (rA.y * invMb + rB.y * invMa) / invM;
+      const cz = (rA.z * invMb + rB.z * invMa) / invM;
+      const dx2 = nx * minD, dy2 = ny * minD, dz2 = nz * minD;
+      rA2x = cx - dx2 * (invMa / invM); rA2y = cy - dy2 * (invMa / invM); rA2z = cz - dz2 * (invMa / invM);
+      rB2x = cx + dx2 * (invMb / invM); rB2y = cy + dy2 * (invMb / invM); rB2z = cz + dz2 * (invMb / invM);
     }
 
     const vn = (vB.x - vA.x) * nx + (vB.y - vA.y) * ny + (vB.z - vA.z) * nz;

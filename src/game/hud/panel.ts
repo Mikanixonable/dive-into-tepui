@@ -184,10 +184,9 @@ export class HudPanels {
   // スタッツパネル各項目のテキストと警告表示を書き換える
   private setStats(d: StatsData): void {
     this.setText('rcs', d.rcsDamp ? 'ON' : 'OFF');
-    const throttleLabels = ['弱', '中', '強'];
     this.setText(
       'throttle',
-      `${throttleLabels[d.throttleIdx]} (${C.THROTTLE_LEVELS[d.throttleIdx]!.toFixed(1)} m/s²)`,
+      `${C.THROTTLE_LABELS[d.throttleIdx]} (${C.THROTTLE_LEVELS[d.throttleIdx]!.toFixed(1)} m/s²)`,
     );
     const fineEl = this.els.get('fine');
     if (fineEl) {

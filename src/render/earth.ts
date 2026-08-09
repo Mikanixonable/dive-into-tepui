@@ -87,6 +87,7 @@ function buildAtmoRim(sunDir: SunDirUniform, earthCenter: EarthCenterUniform): T
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    depthTest: false, // 遮蔽は上の occluded で解析的に判定済み(ハードウェア深度テストは不要)
     side: THREE.BackSide,
   });
 
