@@ -140,11 +140,15 @@ main.ts
 - 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・Ammo[]・Base[]・Asteroid[]・
   BeltSection[] — 木のどのノードも例外なく)は `id`(コンストラクタで固定。省略時は基底の
   `EntityIdAllocator` が自動採番)・`radius`(物理半径、既定 0)・`collides`(剛体接触参加可否、
-  既定 false)・`mu`(重力定数 GM、既定 0)・`isStar`(常に false)を自身のフィールドとして持つ —
-  変換なしで `physics/attractor.ts` の `Attractor` と同じ形になり、`EntityManager.attractors()` は
-  `mu !== 0` かつ生存中の個体をフィルタするだけで済む。`Asteroid` はこのうち `radius`/`mu` を
-  コンストラクタ引数の `mass` から導いて両方一括で固定する(§付録「正本でないもの」は参照しない —
-  導出は構築時の1回きり)。
+  既定 false)・`mu`(重力定数 GM、既定 0)・`degree2`(2次重力場、既定 null)・`isStar`(既定 false)
+  を自身のフィールドとして持つ — 変換なしで `physics/attractor.ts` の `Attractor` と同じ形になり、
+  `EntityManager.attractors()` は `mu !== 0` かつ生存中の個体をフィルタするだけで済む。`degree2`/
+  `isStar` は(`id`/`radius`/`collides`/`mu` と違い)`readonly` ではない派生クラス可変フィールドで、
+  派生クラスが構築時に自分で組み立てる余地を残す。`GameEntity.setGravitatingMass(mass)` は質量から
+  `mass`(剛体接触の換算質量)と `mu = GRAVITATIONAL_CONSTANT・mass` を同時に定める唯一の入口。
+  `Asteroid` はこれを使って `mu` を、コンストラクタ引数の `radius` をそのまま `radius`/`collides=true`
+  へ固定し、任意の `j2`/`c22` が非零なら自身の `att.q` から `degree2`(pole/tesseral)を構築時に
+  1度だけ組む(§付録「正本でないもの」は参照しない — 導出は構築時の1回きり)。
 - 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・Ammo[]・BeltSection[] — 木の
   どのノードも例外なく)は `physics/dynamic-trajectory.ts` の `DynamicTrajectory` を1本、フィールド名
   `actualTrajectory` で保持する(state/history/prevState の正本)。GameEntity ごとに繰り返さず
