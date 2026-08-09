@@ -200,3 +200,37 @@ export function stepAttitude(att: Attitude, torque: Vec3, dt: number): Attitude 
   }
   return { q, w, inertia: I };
 }
+
+// 現在姿勢 q を目標 forward/up へ合わせるための誤差回転。angle は [-π, π]、axisBody は
+// 機体座標系での回転軸(単位ベクトル)。目標が特異(fwd と up がほぼ平行)なら null。
+export function attitudeAlignError(desiredFwd: Vec3, desiredUp: Vec3, q: Quat): { angle: number; axisBody: Vec3 } | null {
+  const qDesired = qFromForwardUp(desiredFwd, desiredUp);
+  if (!qDesired) return null;
+  const qCurInv = qInvert(q);
+  // ワールド系での誤差回転: qCurrent を qDesired へ重ねる回転
+  const qErr = qMul(qDesired, qCurInv);
+  const w = Math.max(-1, Math.min(1, qErr.w));
+  let angle = 2 * Math.acos(w);
+  if (angle > Math.PI) angle -= 2 * Math.PI;
+  const s = Math.sqrt(Math.max(0, 1 - w * w));
+  const axisWorld = s > 1e-6 ? v3(qErr.x / s, qErr.y / s, qErr.z / s) : v3(1, 0, 0);
+  const axisBody = qRotate(qCurInv, axisWorld);
+  return { angle, axisBody };
+}
+
+// desiredFwd/desiredUp へ機首を向けるPD制御トルクをボディフレームで返す。kp/kd は呼び出し側の
+// ゲイン(physics/ は game/const.ts に依存しないため引数で受け取る)。特異姿勢(desiredFwd と
+// desiredUp が平行)なら制御せず v3() を返す。
+export function attitudeAlignTorque(
+  desiredFwd: Vec3, desiredUp: Vec3, att: Attitude, kp: number, kd: number,
+): Vec3 {
+  const err = attitudeAlignError(desiredFwd, desiredUp, att.q);
+  if (!err) return v3();
+  const { angle, axisBody } = err;
+  const I = att.inertia;
+  return v3(
+    (kp * angle * axisBody.x - kd * att.w.x) * I.x,
+    (kp * angle * axisBody.y - kd * att.w.y) * I.y,
+    (kp * angle * axisBody.z - kd * att.w.z) * I.z,
+  );
+}
