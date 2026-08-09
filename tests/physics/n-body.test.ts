@@ -12,7 +12,7 @@ const ZERO = v3(0, 0, 0);
 // AttractorId は Phase 5 まで閉じた union のままなので、任意の識別子で試験用の Attractor を
 // 組むにはここでのアサーションが要る(Phase 5 で AttractorId を string へ開いたら不要になる)。
 function makeAttractor(id: string, mu: number, state: KinematicState): Attractor {
-  return { id: id as unknown as AttractorId, mu, radius: 0, state, degree2: null };
+  return { id, mu, radius: 0, state, degree2: null, isStar: false };
 }
 
 // 単一の attractor だけを重力源として1ステップ進める(自由伝播: 抵抗・輻射圧・推力なし)。

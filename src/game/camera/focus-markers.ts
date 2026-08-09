@@ -1,8 +1,8 @@
 // マップモードのフォーカス対象(地球・月・太陽・ラグランジュ点等)ラベルの算出と
 // HUD マーカーへの反映。
 import { Vec3, v3 } from '../../physics/vec3';
-import { Attractor, AttractorId, OrbitingId } from '../../physics/attractor';
-import { bodyDef, SOLAR_SYSTEM } from '../../physics/solar-system';
+import { Attractor, OrbitingId } from '../../physics/attractor';
+import { bodyDef, primaryOf, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -18,20 +18,19 @@ export interface FocusLabel {
   isLagrange: boolean;
 }
 
-const ATTRACTOR_IDS = Object.keys(SOLAR_SYSTEM) as AttractorId[];
+const ATTRACTOR_IDS = Object.keys(SOLAR_SYSTEM) as SolarSystemId[];
 // ラグランジュ点ラベルを出す天体(公転していて、かつ軌道設計の目標になる系)。
 const LAGRANGE_LABEL_IDS = ATTRACTOR_IDS.filter((id) => {
-  const def = bodyDef(id);
+  const def = bodyDef(SOLAR_SYSTEM, id);
   return def.kind !== 'star' && def.lagrangeLabels === true;
-}) as OrbitingId[];
+}) as (SolarSystemId & OrbitingId)[];
 
 // ラベル id とその表示名。天体本体 1 つにつき、公転しているならその L1〜L5 も足す
 // (表示名は「中心天体名-自分の名 Ln」)。
 const LABEL_NAMES: Record<string, string> = {};
 for (const id of ATTRACTOR_IDS) LABEL_NAMES[id] = CELESTIAL_BODIES[id].name;
 for (const id of LAGRANGE_LABEL_IDS) {
-  const def = bodyDef(id);
-  const primary: AttractorId = def.kind === 'planet' ? 'sun' : def.planet;
+  const primary = (primaryOf(SOLAR_SYSTEM, id) ?? 'sun') as SolarSystemId;
   const prefix = `${CELESTIAL_BODIES[primary].name}-${CELESTIAL_BODIES[id].name}`;
   for (const n of [1, 2, 3, 4, 5]) LABEL_NAMES[`${id}-l${n}`] = `${prefix} L${n}`;
 }
