@@ -1,7 +1,7 @@
 // 天体の静的事実の表: 恒星/惑星/衛星の判別 union(CelestialBodyDef)と、太陽系の各天体の
 // 重力定数・半径・軌道モデル(SOLAR_SYSTEM)。宣言順が Ephemeris が返す重力源配列の順になる。
 import { AttractorId, PlanetId, SatelliteId, StarId } from './attractor';
-import { PlanetOrbit, planetOrbit } from './planet-orbit';
+import { AU, PlanetOrbit, planetOrbit } from './planet-orbit';
 import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-orbit';
 import { Vec3, len } from './vec3';
 
@@ -27,11 +27,6 @@ export const C22_MOON = 22.4e-6;
 export const R_MOON_GRAVITY = 1.7380e6; // [m]
 // 月の赤道が黄道に対して傾く角(カッシーニ第2法則)。
 export const MOON_OBLIQUITY = 1.543 * (Math.PI / 180); // [rad]
-
-// 地球-月重心の平均黄経(t=0)。実暦の値ではなく、SIM_EPOCH_UTC と同じくゲーム開始時刻を
-// 昼側に置くための表示上のアンカー — 地球の真黄経が π(太陽から見て反対側 = 地球から見て
-// 太陽が +X 方向)になる近点角から逆算した値(ϖ ≠ 0 なので単純に π にはならない)。
-const EARTH_L0_DEG = 178.13895347311777;
 
 // 公転している天体(惑星・衛星)を、表示上の「親」— 衛星ならその惑星、惑星なら恒星 — へ写す。
 export function primaryOf(id: PlanetId | SatelliteId): AttractorId {
@@ -152,8 +147,8 @@ export const SOLAR_SYSTEM = {
       incDeg: 0,
       raanDeg: 0,
       lonPeriDeg: 102.93768,
-      l0Deg: EARTH_L0_DEG,
-      periodSec: 365.25636 * 86400,
+      l0Deg: 100.46457166,
+      lRateDegPerCentury: 35999.37244981,
       raanRateDegPerCentury: 0,
       incRateDegPerCentury: -0.01294668,
       lonPeriRateDegPerCentury: 0.32327364,
@@ -192,14 +187,80 @@ export const SOLAR_SYSTEM = {
       pole: { kind: 'cassini', obliquity: MOON_OBLIQUITY },
     },
   },
+  // 水星〜海王星の要素・永年変化率はいずれも JPL Standish "Keplerian Elements for Approximate
+  // Positions of the Major Planets" Table 1(黄道基準・J2000、有効期間 1800–2050AD)。
+  mercury: {
+    kind: 'planet',
+    id: 'mercury',
+    mu: 2.2032e13,
+    radius: 2.4397e6,
+    gravitySource: false,
+    // ϖ̇ の 0.16047689 deg/Cy = 577.7″/Cy には一般相対論による近日点移動 42.98″/Cy が既に
+    // 含まれている(この表は PPN 相対論込みで数値積分された JPL DE 暦へのフィット)。
+    // 惑星摂動のみの古典値 531.6″/Cy に補正項を足す形にしてはならない。
+    orbit: planetOrbit({
+      a: 0.38709927 * AU,
+      e: 0.20563593,
+      incDeg: 7.00497902,
+      raanDeg: 48.33076593,
+      lonPeriDeg: 77.45779628,
+      l0Deg: 252.25032350,
+      lRateDegPerCentury: 149472.67411175,
+      raanRateDegPerCentury: -0.12534081,
+      incRateDegPerCentury: -0.00594749,
+      lonPeriRateDegPerCentury: 0.16047689,
+      eRatePerCentury: 0.00001906,
+      aRatePerCenturyAu: 0.00000037,
+    }),
+  },
+  venus: {
+    kind: 'planet',
+    id: 'venus',
+    mu: 3.24859e14,
+    radius: 6.0518e6,
+    gravitySource: false,
+    orbit: planetOrbit({
+      a: 0.72333566 * AU,
+      e: 0.00677672,
+      incDeg: 3.39467605,
+      raanDeg: 76.67984255,
+      lonPeriDeg: 131.60246718,
+      l0Deg: 181.97909950,
+      lRateDegPerCentury: 58517.81538729,
+      raanRateDegPerCentury: -0.27769418,
+      incRateDegPerCentury: -0.00078890,
+      lonPeriRateDegPerCentury: 0.00268329,
+      eRatePerCentury: -0.00004107,
+      aRatePerCenturyAu: 0.00000390,
+    }),
+  },
+  mars: {
+    kind: 'planet',
+    id: 'mars',
+    mu: 4.282837e13,
+    radius: 3.3895e6,
+    gravitySource: false,
+    orbit: planetOrbit({
+      a: 1.52371034 * AU,
+      e: 0.09339410,
+      incDeg: 1.84969142,
+      raanDeg: 49.55953891,
+      lonPeriDeg: -23.94362959,
+      l0Deg: -4.55343205,
+      lRateDegPerCentury: 19140.30268499,
+      raanRateDegPerCentury: -0.29257343,
+      incRateDegPerCentury: -0.00813131,
+      lonPeriRateDegPerCentury: 0.44441088,
+      eRatePerCentury: 0.00007882,
+      aRatePerCenturyAu: 0.00001847,
+    }),
+  },
   jupiter: {
     kind: 'planet',
     id: 'jupiter',
     mu: 1.26686534e17,
     radius: 6.9911e7,
     gravitySource: true,
-    // JPL 低精度惑星暦(Standish 1992/2006)の Jupiter 行、黄道基準・J2000 相当。
-    // eRatePerCentury/incRateDegPerCentury も同表の値(タスク指示に無いぶんを補う)。
     orbit: planetOrbit({
       a: 7.78340821e11,
       e: 0.04838624,
@@ -207,12 +268,75 @@ export const SOLAR_SYSTEM = {
       raanDeg: 100.47390909,
       lonPeriDeg: 14.72847983,
       l0Deg: 34.39644051,
-      periodSec: 11.862 * 365.25 * 86400,
+      lRateDegPerCentury: 3034.74612775,
       raanRateDegPerCentury: 0.20469106,
       incRateDegPerCentury: -0.00183714,
       lonPeriRateDegPerCentury: 0.21252668,
       eRatePerCentury: -0.00013253,
       aRatePerCenturyAu: -0.00011607,
+    }),
+  },
+  saturn: {
+    kind: 'planet',
+    id: 'saturn',
+    mu: 3.7931187e16,
+    radius: 5.8232e7,
+    gravitySource: true,
+    orbit: planetOrbit({
+      a: 9.53667594 * AU,
+      e: 0.05386179,
+      incDeg: 2.48599187,
+      raanDeg: 113.66242448,
+      lonPeriDeg: 92.59887831,
+      l0Deg: 49.95424423,
+      lRateDegPerCentury: 1222.49362201,
+      raanRateDegPerCentury: -0.28867794,
+      incRateDegPerCentury: 0.00193609,
+      lonPeriRateDegPerCentury: -0.41897216,
+      eRatePerCentury: -0.00050991,
+      aRatePerCenturyAu: -0.00125060,
+    }),
+  },
+  uranus: {
+    kind: 'planet',
+    id: 'uranus',
+    mu: 5.793939e15,
+    radius: 2.5362e7,
+    gravitySource: false,
+    orbit: planetOrbit({
+      a: 19.18916464 * AU,
+      e: 0.04725744,
+      incDeg: 0.77263783,
+      raanDeg: 74.01692503,
+      lonPeriDeg: 170.95427630,
+      l0Deg: 313.23810451,
+      lRateDegPerCentury: 428.48202785,
+      raanRateDegPerCentury: 0.04240589,
+      incRateDegPerCentury: -0.00242939,
+      lonPeriRateDegPerCentury: 0.40805281,
+      eRatePerCentury: -0.00004397,
+      aRatePerCenturyAu: -0.00196176,
+    }),
+  },
+  neptune: {
+    kind: 'planet',
+    id: 'neptune',
+    mu: 6.836529e15,
+    radius: 2.4622e7,
+    gravitySource: false,
+    orbit: planetOrbit({
+      a: 30.06992276 * AU,
+      e: 0.00859048,
+      incDeg: 1.77004347,
+      raanDeg: 131.78422574,
+      lonPeriDeg: 44.96476227,
+      l0Deg: -55.12002969,
+      lRateDegPerCentury: 218.45945325,
+      raanRateDegPerCentury: -0.00508664,
+      incRateDegPerCentury: 0.00035372,
+      lonPeriRateDegPerCentury: -0.32241464,
+      eRatePerCentury: 0.00005105,
+      aRatePerCenturyAu: 0.00026291,
     }),
   },
   sun: { kind: 'star', id: 'sun', mu: MU_SUN, radius: R_SUN, gravitySource: true },

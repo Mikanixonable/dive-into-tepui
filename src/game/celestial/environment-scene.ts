@@ -3,9 +3,9 @@ import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
 import { kinematicState } from '../../physics/kinematic-state';
-import { MU_EARTH, MU_SUN, R_EARTH, R_SUN } from '../../physics/solar-system';
+import { MU_EARTH, R_EARTH, SOLAR_SYSTEM, bodyDef } from '../../physics/solar-system';
 import { OrbitalElements } from '../../physics/elements';
-import { Attractor, orbitalElementsOf } from '../../physics/attractor';
+import { Attractor, AttractorId, OrbitingId, orbitalElementsOf } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { OrbitLine } from '../../render/orbit-line';
 import { createStars, STAR_SHELL_RADIUS } from '../../render/stars';
@@ -36,6 +36,16 @@ const GEO_ELEMENTS: OrbitalElements = {
   center: EARTH_ATTRACTOR,
 };
 
+// 公転天体の参照軌道線の色: 衛星は月軌道線の色、惑星は木星軌道線の色を踏襲し、
+// 同じ種別の天体はすべて同じ色で引く。
+const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
+const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
+
+// 恒星以外の全公転天体の id(SOLAR_SYSTEM の宣言順)。天体が増えれば参照線もここから自動で増える。
+const REFERENCE_LINE_IDS = (Object.keys(SOLAR_SYSTEM) as AttractorId[]).filter(
+  (id) => bodyDef(id).kind !== 'star',
+) as readonly OrbitingId[];
+
 export class EnvironmentScene {
   readonly ambient: THREE.AmbientLight;
   readonly starsMesh: THREE.Mesh;
@@ -43,12 +53,11 @@ export class EnvironmentScene {
   private readonly bodies: readonly CelestialBody[];
   private readonly sunBody: SunBody;
 
-  // マップモード専用の参照軌道線(静止軌道高度の目盛り・月軌道・地球軌道・木星軌道)。
-  // いずれも天体暦の状態から作られる表示なので、環境描画とともにここが所有する。
+  // 静止軌道高度の参照リングは実在の天体ではないので、以下の天体駆動の配列とは別に持つ。
   readonly geoLine = new OrbitLine(0x8b93a0, 0.2);
-  readonly moonLine = new OrbitLine(0xaab3c0, 0.2);
-  readonly earthLine = new OrbitLine(0xaab3c0, 0.2);
-  readonly jupiterLine = new OrbitLine(0xffffff, 0.2);
+  // 公転天体1体につき1本、SOLAR_SYSTEM から自動生成する参照軌道線(衛星は親惑星中心、
+  // 惑星は太陽中心)。マップモード専用で、天体暦の状態から作られる表示なのでここが所有する。
+  private readonly referenceLines: ReadonlyMap<OrbitingId, OrbitLine>;
 
   // 天体ビューの配列がすべて ephemeris から引く。天体暦はゲーム側が所有する単一インスタンスを
   // 共有参照する(状態を持たない純サンプラ)。
@@ -56,15 +65,19 @@ export class EnvironmentScene {
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
   ) {
-    // マップ専用の参照軌道線をシーンへ追加する。
     this.geoLine.line.renderOrder = 0;
-    this.moonLine.line.renderOrder = 0;
-    this.earthLine.line.renderOrder = 0;
-    this.jupiterLine.line.renderOrder = 0;
     scene.add(this.geoLine.line);
-    scene.add(this.moonLine.line);
-    scene.add(this.earthLine.line);
-    scene.add(this.jupiterLine.line);
+
+    const referenceLines = new Map<OrbitingId, OrbitLine>();
+    for (const id of REFERENCE_LINE_IDS) {
+      const color = bodyDef(id).kind === 'satellite' ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
+      const line = new OrbitLine(color, 0.2);
+      line.line.renderOrder = 0;
+      scene.add(line.line);
+      referenceLines.set(id, line);
+    }
+    this.referenceLines = referenceLines;
+
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     scene.add(this.ambient);
     this.starsMesh = createStars();
@@ -103,33 +116,26 @@ export class EnvironmentScene {
     this.starsMesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
   }
 
-  // 広範囲視点のときだけ geo/moon/earth/jupiter の参照線を表示する(戦闘ビューでは非表示)。
+  // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。
   private syncReferenceLines(simTime: number, fo: FloatingOrigin, overviewMode: boolean): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo);
-      this.moonLine.sync(null, fo);
-      this.earthLine.sync(null, fo);
-      this.jupiterLine.sync(null, fo);
+      for (const line of this.referenceLines.values()) line.sync(null, fo);
       return;
     }
     this.geoLine.sync(GEO_ELEMENTS, fo, false);
-    this.moonLine.sync(this.moonOrbitElements(simTime), fo, false);
-    this.earthLine.sync(this.heliocentricOrbitElements('earth', simTime), fo, false);
-    this.jupiterLine.sync(this.heliocentricOrbitElements('jupiter', simTime), fo, false);
+    for (const [id, line] of this.referenceLines) line.sync(this.orbitElementsFor(id, simTime), fo, false);
   }
 
-  // 月の接触軌道要素(表示専用)。月自身は entity ではなく解析式のみを持つため、
-  // ephemeris の解析状態をそのまま他の軌道線と同じ経路に載せる。
-  private moonOrbitElements(simTime: number): OrbitalElements | null {
-    return orbitalElementsOf(this.ephemeris.stateOf('moon', simTime), EARTH_ATTRACTOR);
-  }
-
-  // 太陽中心の惑星(地球・木星)の接触軌道要素(表示専用)。太陽自身も ECI 上を動く以上、
-  // 地球のような固定 Attractor では組めず、太陽の現在状態を毎回引く。
-  private heliocentricOrbitElements(id: 'earth' | 'jupiter', simTime: number): OrbitalElements | null {
-    const sun: Attractor = {
-      id: 'sun', mu: MU_SUN, radius: R_SUN, state: this.ephemeris.stateOf('sun', simTime), degree2: null,
+  // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は太陽中心 — 中心天体自身も
+  // ECI 上を動くので、固定 Attractor ではなくその時刻の状態を毎回引いて組む。
+  private orbitElementsFor(id: OrbitingId, simTime: number): OrbitalElements | null {
+    const def = bodyDef(id);
+    const centerId: AttractorId = def.kind === 'satellite' ? def.planet : 'sun';
+    const centerDef = bodyDef(centerId);
+    const center: Attractor = {
+      id: centerId, mu: centerDef.mu, radius: centerDef.radius, state: this.ephemeris.stateOf(centerId, simTime), degree2: null,
     };
-    return orbitalElementsOf(this.ephemeris.stateOf(id, simTime), sun);
+    return orbitalElementsOf(this.ephemeris.stateOf(id, simTime), center);
   }
 }

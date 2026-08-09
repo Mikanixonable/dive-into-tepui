@@ -8,7 +8,7 @@ import { Vec3, lenSq, len, sub, v3 } from './vec3';
 // 天体の分類。恒星は動かず、惑星は太陽まわりのケプラー軌道、衛星は惑星まわりのケプラー軌道
 // (+ 太陽摂動)を描く — solar-system.ts の CelestialBodyDef がこの分類で判別される。
 export type StarId = 'sun';
-export type PlanetId = 'earth' | 'jupiter';
+export type PlanetId = 'earth' | 'mercury' | 'venus' | 'mars' | 'jupiter' | 'saturn' | 'uranus' | 'neptune';
 export type SatelliteId = 'moon';
 export type AttractorId = StarId | PlanetId | SatelliteId;
 // 公転している天体(惑星 + 衛星)。回転基準系・軌道法線・ラグランジュ点は、公転を持たない
