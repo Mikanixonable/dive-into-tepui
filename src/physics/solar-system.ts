@@ -237,6 +237,38 @@ function equatorialSatelliteOrbit(p: {
   });
 }
 
+const JULIAN_YEAR_DAYS = 365.25;
+
+// JPL Solar System Dynamics の衛星平均要素表の列(周期は日、歳差周期は年)をそのまま受ける
+// 衛星軌道。基準面は既定で黄道面。公転周期は a とケプラー第3法則から導かず表の値をそのまま
+// 使う — 遠方の衛星の平均運動は太陽摂動で二体値からずれており、公開された実測周期の方が近い。
+// Ω/ω/M0 は表から転記していないので常に 0(登録済みの全衛星と同じ)。
+function jplSatelliteOrbit(p: {
+  a: number;
+  e: number;
+  incDeg: number;
+  periodDays: number;
+  nodePeriodYears: number;
+  apsisPeriodYears: number;
+  basisToEci?: Quat;
+}): SatelliteOrbit {
+  return satelliteOrbit({
+    a: p.a,
+    e: p.e,
+    incDeg: p.incDeg,
+    raan0Deg: 0,
+    lonPeri0Deg: 0,
+    l0Deg: 0,
+    periodSec: p.periodDays * 86400,
+    nodePeriodSec: p.nodePeriodYears * JULIAN_YEAR_DAYS * 86400,
+    perigeePeriodSec: p.apsisPeriodYears * JULIAN_YEAR_DAYS * 86400,
+    basisToEci: p.basisToEci,
+    lonTerms: [],
+    latTerms: [],
+    distTerms: [],
+  });
+}
+
 // 型注釈ではなく satisfies で受けることで、id ごとの具体型(地球なら惑星、月なら衛星)が
 // 保たれ、「地球は必ず惑星」を型から引き出せる。
 export const SOLAR_SYSTEM = {
@@ -444,6 +476,61 @@ export const SOLAR_SYSTEM = {
     planet: 'jupiter',
     orbit: equatorialSatelliteOrbit({ a: 1.8827e9, e: 0.0048, incDeg: 0.19, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
   },
+  // 木星の不規則衛星(ヒマリア群・アナンケ群・カルメ群・パシファエ群)。ガリレオ衛星と違い
+  // 太陽摂動が支配的な遠方軌道なので、ラプラス面ではなく黄道基準の平均要素を使う(JPL
+  // Solar System Dynamics はこの6衛星をこの基準で公開している)。歳差周期は未測定のため
+  // 0(歳差なし)。GM・平均半径は Planetary Satellite Physical Parameters が一次だが、
+  // エララ・アナンケ・カルメ・パシファエ・シノーペの半径はその表に無いため、Wikipedia
+  // "List of natural satellites"(一次は Sheppard の測光サイズ推定)の値を使う。
+  himalia: {
+    kind: 'satellite',
+    id: 'himalia',
+    mu: 0.15155e9,
+    radius: 8.5e4,
+    planet: 'jupiter',
+    orbit: jplSatelliteOrbit({ a: 1.14390e10, e: 0.160, incDeg: 28.4, periodDays: 249.9090, nodePeriodYears: 0, apsisPeriodYears: 0 }),
+  },
+  elara: {
+    kind: 'satellite',
+    id: 'elara',
+    mu: 0,
+    radius: 3.995e4,
+    planet: 'jupiter',
+    orbit: jplSatelliteOrbit({ a: 1.171070e10, e: 0.212, incDeg: 27.8, periodDays: 258.8861, nodePeriodYears: 0, apsisPeriodYears: 0 }),
+  },
+  // 傾斜角 90° 超が逆行を表す。
+  ananke: {
+    kind: 'satellite',
+    id: 'ananke',
+    mu: 0,
+    radius: 1.455e4,
+    planet: 'jupiter',
+    orbit: jplSatelliteOrbit({ a: 2.10295e10, e: 0.238, incDeg: 147.6, periodDays: 623.1097, nodePeriodYears: 0, apsisPeriodYears: 0 }),
+  },
+  carme: {
+    kind: 'satellite',
+    id: 'carme',
+    mu: 0,
+    radius: 2.33e4,
+    planet: 'jupiter',
+    orbit: jplSatelliteOrbit({ a: 2.31392e10, e: 0.261, incDeg: 164.6, periodDays: 719.2806, nodePeriodYears: 0, apsisPeriodYears: 0 }),
+  },
+  pasiphae: {
+    kind: 'satellite',
+    id: 'pasiphae',
+    mu: 0,
+    radius: 2.89e4,
+    planet: 'jupiter',
+    orbit: jplSatelliteOrbit({ a: 2.34632e10, e: 0.412, incDeg: 148.3, periodDays: 734.4215, nodePeriodYears: 0, apsisPeriodYears: 0 }),
+  },
+  sinope: {
+    kind: 'satellite',
+    id: 'sinope',
+    mu: 0,
+    radius: 1.75e4,
+    planet: 'jupiter',
+    orbit: jplSatelliteOrbit({ a: 2.36793e10, e: 0.262, incDeg: 157.3, periodDays: 744.5951, nodePeriodYears: 0, apsisPeriodYears: 0 }),
+  },
   saturn: {
     kind: 'planet',
     id: 'saturn',
@@ -532,6 +619,16 @@ export const SOLAR_SYSTEM = {
     planet: 'neptune',
     // 傾斜 90° 超が逆行を表す。
     orbit: equatorialSatelliteOrbit({ a: 3.5476e8, e: 0.000016, incDeg: 156.885, planetMu: MU_NEPTUNE, planetPole: NEPTUNE_POLE }),
+  },
+  // ネレイド。トリトンの潮汐力に大きく乱された高離心率の遠方軌道で、黄道基準の平均要素を使う
+  // (出典・GM/半径の扱いはヒマリア群と同じ)。GM は未測定。
+  nereid: {
+    kind: 'satellite',
+    id: 'nereid',
+    mu: 0,
+    radius: 1.7e5,
+    planet: 'neptune',
+    orbit: jplSatelliteOrbit({ a: 5.5139e9, e: 0.751, incDeg: 5.1, periodDays: 360.133039, nodePeriodYears: 0, apsisPeriodYears: 0 }),
   },
   // 準惑星・大型小惑星・彗星核。永年摂動項は解いておらず raanRate 等は
   // すべて 0 — 二体ケプラー軌道のみで、木星等による摂動(彗星核では非重力効果も)は含まない。
