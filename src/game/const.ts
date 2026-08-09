@@ -250,7 +250,20 @@ export const OVERVIEW_CAMERA_MAX_DIST = 1e13;
 // (near = dist / OVERVIEW_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
 // 手前がクリップされにくくなる代わりに、24bit 深度バッファの分解能が落ちる。
 export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
-export const OVERVIEW_CAMERA_FAR = 1.5e10; // 広範囲視点カメラの far(OVERVIEW_CAMERA_MAX_DIST + 十分な余裕)
+// 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
+// (far = clamp(dist × OVERVIEW_CAMERA_FAR_RATIO, OVERVIEW_CAMERA_FAR_MIN, OVERVIEW_CAMERA_FAR_MAX))。
+// far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
+// far 平面の外に出て消える一方、近距離域で far を大きく取ると 24bit 深度の分解能を
+// 無駄に浪費する。
+export const OVERVIEW_CAMERA_FAR_RATIO = 100;
+// 最小ズーム(dist = OVERVIEW_CAMERA_MIN_DIST)でも月(3.8e8m)や星球シェルが
+// far の外に出ないための下限。
+export const OVERVIEW_CAMERA_FAR_MIN = 1.5e10;
+export const OVERVIEW_CAMERA_FAR_MAX = 1e13;
+// 星球シェル・天球グリッドの表示半径。マップの広範囲視点カメラの far は dist に連動して
+// 毎フレーム変わるため、そこに結びつけると星殻半径も毎フレーム変動してしまう。
+// far とは独立に固定する。
+export const CELESTIAL_SHELL_RADIUS = 1.5e10;
 export const NODE_DV_RATE = 300; // Δv 調整速度 [m/s per 実秒]
 export const NODE_DV_RATE_FINE = 30; // 微調整モード時
 export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]

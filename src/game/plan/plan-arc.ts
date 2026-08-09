@@ -140,11 +140,11 @@ export class PlanArc {
 
     let steps = 0;
     while (trajectory.state.t < end - EPOCH_EPS) {
-      const sizingAttractors = ephemeris.attractorsAt(trajectory.state.t);
+      const sizingAttractors = ephemeris.gravityAttractorsAt(trajectory.state.t);
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
       const dt = Math.min(stepDt(trajectory.state.r, sizingAttractors), end - trajectory.state.t);
       if (dt <= 1e-9) break;
-      const stepAttractors = ephemeris.attractorsAt(trajectory.state.t + dt / 2);
+      const stepAttractors = ephemeris.gravityAttractorsAt(trajectory.state.t + dt / 2);
       trajectory.step(dt, stepAttractors, C.SHIP_BCINV, C.SHIP_SRP_COEFF, C.SHADOW_PENUMBRA, null, sampleInterval, duration);
 
       const { r, v } = trajectory.state;
