@@ -31,6 +31,7 @@ import { register as registerPointField } from './point-field.test';
 import { register as registerTrajectoryFeatures } from './trajectory-features.test';
 import { register as registerNBody } from './n-body.test';
 import { register as registerShape } from './shape.test';
+import { register as registerRing } from './ring.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -63,5 +64,6 @@ registerTrajectoryFeatures();
 registerPointField();
 registerNBody();
 registerShape();
+registerRing();
 
 runAll();
