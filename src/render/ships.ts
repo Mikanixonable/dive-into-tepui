@@ -601,7 +601,7 @@ export function buildBarrelMesh(): THREE.Group {
 }
 
 // 基地: 中央ハブ + 放射状トラス4本 + ドッキングモジュール4基 + 太陽電池パドル2枚の低ポリ構成。
-// game-entity/base.ts の collideRadius(100m)と釣り合う全幅を持つ。
+// game-entity/base.ts の radius(100m)と釣り合う全幅を持つ。
 export function buildBaseModel(): THREE.Group {
   const g = new THREE.Group();
   const hullMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, flatShading: true, roughness: 0.45, metalness: 0.75 });

@@ -100,7 +100,7 @@ export class MapPicker {
     for (const enemy of this.entities.enemies) {
       if (!enemy.alive) continue;
       const pos = enemy.displayState(displayTime)?.r;
-      if (pos) items.push({ id: enemy.name, name: enemy.name, pos, kind: 'ship' });
+      if (pos) items.push({ id: enemy.id, name: enemy.name, pos, kind: 'ship' });
     }
     for (const ammo of this.entities.ammos) {
       if (!ammo.alive) continue;
@@ -273,7 +273,7 @@ export class MapPicker {
   private isTargetGone(target: MapPickable): boolean {
     switch (target.kind) {
       case 'player': return !(this.entities.findPlayer(target.id)?.alive ?? false);
-      case 'ship': return !(this.entities.enemies.find((e) => e.name === target.id)?.alive ?? false);
+      case 'ship': return !(this.entities.findEnemy(target.id)?.alive ?? false);
       case 'ammo': return !(this.entities.ammos.find((a) => a.id === target.id)?.alive ?? false);
       case 'base': return !(this.entities.findBase(target.id)?.alive ?? false);
       default: return !this.items.some((i) => this.windowKey(i) === this.windowKey(target));
@@ -314,7 +314,7 @@ export class MapPicker {
       ],
       run: (act, target) => {
         if (act === 'delete') {
-          const enemy = this.entities.enemies.find(e => e.name === target.id);
+          const enemy = this.entities.findEnemy(target.id);
           if (enemy) enemy.alive = false;
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
@@ -522,7 +522,7 @@ export class MapPicker {
         return ship ? { objectType: 'player', state: ship.state } : null;
       }
       case 'ship': {
-        const enemy = this.entities.enemies.find((e) => e.name === target.id);
+        const enemy = this.entities.findEnemy(target.id);
         return enemy ? { objectType: 'enemy', state: enemy.state } : null;
       }
       case 'ammo': {
@@ -628,7 +628,7 @@ export class MapPicker {
   // 自機がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
   // 装甲・距離・接近速度を主要行とし、相対速度・軌道要素・相対傾斜角は詳細トグルの下に畳む。
   private shipRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
-    const enemy = this.entities.enemies.find((e) => e.name === target.id);
+    const enemy = this.entities.findEnemy(target.id);
     if (!enemy) return [];
     const rel = player ? relativeInfo(player, enemy, attractors) : null;
     const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(enemy.hp)} / ${enemy.maxHp}` }];

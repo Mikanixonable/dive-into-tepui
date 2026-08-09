@@ -6,11 +6,12 @@ import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { StateQueue } from '../../physics/state-queue';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Attractor, AttractorId, orbitalElementsOf, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, orbitalElementsOf, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
+import { EntityIdAllocator } from './entity-id';
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -32,14 +33,22 @@ export class GameEntity {
   // orbitalElementsAround(center) のメモ。state の参照同一性(KinematicState は不変で step ごとに
   // 新しい参照へ差し替わる)と center.id で無効化する。
   private _memoState: KinematicState | null = null;
-  private _memoCenterId: AttractorId | null = null;
+  private _memoCenterId: string | null = null;
   private _memoElements: OrbitalElements | null = null;
 
+  private static readonly idAllocator = new EntityIdAllocator('entity-');
+
+  // 一意な識別子。表示名(Ship.name/Player.displayName)とは別の概念。
+  readonly id: string;
   att: Attitude;
   obj: THREE.Object3D;
   alive = true;
   mass = 1; // 剛体接触の換算質量
-  collideRadius?: number; // 剛体接触半径 [m]。未設定 = 剛体接触に参加しない
+  radius = 0; // 物理的な半径 [m]。0 = 点。Attractor.radius と同じ量
+  collides = false; // 剛体接触(CollisionPhysics)に参加するか
+  // 重力定数 GM [m^3/s^2]。0 = 重力を及ぼさない
+  mu = 0;
+  readonly degree2: null = null;
   thrust: Vec3 | null = null;
   // 機体座標系トルク。既定ゼロ = 自由回転。
   torque: Vec3 = v3();
@@ -60,8 +69,10 @@ export class GameEntity {
   private truncated = false;
 
   // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
-  constructor(state: KinematicState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
+  // id 省略時はこの基底が自動採番する(復元 id を渡すクラスはそれをそのまま通す)。
+  constructor(state: KinematicState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude(), id?: string) {
     this.actualTrajectory = new DynamicTrajectory(state);
+    this.id = id ?? GameEntity.idAllocator.next();
     this.att = att;
     this.obj = obj;
     this.scene = scene;

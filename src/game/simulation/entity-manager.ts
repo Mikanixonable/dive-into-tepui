@@ -55,9 +55,14 @@ export class EntityManager {
     return [...this.enemies, ...players];
   }
 
-  // name で名指しされた自機を返す。見つからなければ null。
+  // id で名指しされた自機を返す。見つからなければ null。
   findPlayer(id: string): Player | null {
     return this.players.find((p) => p.id === id) ?? null;
+  }
+
+  // id で名指しされた敵を返す。見つからなければ null。
+  findEnemy(id: string): Enemy | null {
+    return this.enemies.find((e) => e.id === id) ?? null;
   }
 
   // 弾を登録する。上限を超えた分は古いものから破棄する。
