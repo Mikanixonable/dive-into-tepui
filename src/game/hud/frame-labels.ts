@@ -4,7 +4,7 @@ import { AttractorId } from '../../physics/attractor';
 import { SolarSystemId } from '../../physics/solar-system';
 import { CELESTIAL_BODIES } from '../celestial/celestial-registry';
 
-// id の日本語表示名。CELESTIAL_BODIES に手作りエントリがある(現実の太陽系27体)ならそれを、
+// id の日本語表示名。CELESTIAL_BODIES に手作りエントリがある(現実の太陽系の天体)ならそれを、
 // なければ(カスタムレジストリの架空天体)id をそのまま表示名として使う。
 export function celestialBodyName(id: AttractorId): string {
   return id in CELESTIAL_BODIES ? CELESTIAL_BODIES[id as SolarSystemId].name : id;
