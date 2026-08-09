@@ -116,16 +116,19 @@ export class BodyPicker<T> {
     this.trigger.textContent = `${label ?? String(this.selected ?? '—')} ▾`;
   }
 
+  // ボタンを押すたびにポップアップの開閉を切り替える。
   private toggle(): void {
     if (this.pop.style.display === 'block') this.close();
     else this.open();
   }
 
-  // ポップアップをボタンの直下に開く。絞り込み入力は毎回空に戻す。
+  // ポップアップをボタンの直下に開く。絞り込み入力は毎回空に戻す(前回の絞り込みが残っていると
+  // 候補が欠けて見える)。開いた直後に入力へフォーカスするので、そのまま名前を打てる。
   private open(): void {
     this.filter.value = '';
     this.renderList();
     this.pop.style.display = 'block';
+    // 画面端で開いてもはみ出さないよう、実寸を測ってから位置を決める。
     const anchor = this.trigger.getBoundingClientRect();
     const rect = this.pop.getBoundingClientRect();
     const pos = clampOverlayPosition(
@@ -137,14 +140,17 @@ export class BodyPicker<T> {
     this.filter.focus();
   }
 
+  // ポップアップを閉じる。
   close(): void {
     this.pop.style.display = 'none';
   }
 
-  // 絞り込み文字列に一致する候補だけを、グループ見出しつきで並べ直す。
+  // 絞り込み文字列に一致する候補だけを、グループ見出しつきで並べ直す。候補が1件も無い
+  // グループは見出しごと出さない。
   private renderList(): void {
     const needle = this.filter.value.trim().toLowerCase();
     this.list.innerHTML = '';
+    // 1件も残らなかったら「該当なし」を出す — 空のポップアップは壊れて見える。
     let shown = 0;
     for (const group of this.groups) {
       const items = needle === ''

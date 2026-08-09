@@ -33,8 +33,10 @@ export class FramePicker {
   private bodyValue: AttractorId;
   private rotationValue: RotationMode = 'inertial';
 
-  // title は見出し、hudRoot は天体選択ポップアップの親。
+  // title は見出し、hudRoot は天体選択ポップアップの親。天体と慣性/回転はどちらが動いても
+  // 同じ emit を通るので、組に対応する座標系の解決は1箇所で済む。
   constructor(hudRoot: HTMLElement, title: string, private readonly ephemeris: Ephemeris) {
+    // 初期値は ECI 原点の慣性系。setSelected/setFrames は呼び出し側が構築直後に呼ぶ。
     this.bodyValue = ephemeris.originId;
     this.element = document.createElement('div');
     this.body = new BodyPicker<AttractorId>(hudRoot, title, (id) => {
