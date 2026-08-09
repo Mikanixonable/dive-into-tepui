@@ -2,14 +2,14 @@
 // collides を立てた GameEntity だけが参加し、めり込み補正と反発の結果を
 // 新しい KinematicState として双方に差し替える。
 import { kinematicState } from '../../physics/kinematic-state';
-import { len, sub, v3 } from '../../physics/vec3';
+import { len, sub } from '../../physics/vec3';
 import { SpatialGrid } from '../../physics/spatial-grid';
 import { COLLISION_DAMAGE_MIN_SPEED } from '../const';
 import { GameEntity } from '../game-entity/game-entity';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { BeltSection } from '../player/belt-physics';
 import { Player } from '../player/player';
-import { sweptSphereToi } from '../../physics/sphere-contact';
+import { resolveSphereCollision } from '../../physics/collision-response';
 
 const isCasing = (e: GameEntity): boolean => e instanceof DebrisPiece && e.kind === 'casing';
 
@@ -93,65 +93,25 @@ export class CollisionPhysics {
   // 接触していれば a/b の state を補正後の値へ差し替え、反発が起きたときの接触速度を返す
   // (めり込み補正だけ行い離反中で反発しなかった場合は null — 薬莢衝突音の発火条件)。
   private resolveCollisionPair(a: GameEntity, b: GameEntity, restitution = 0.4): number | null {
-    const rA = a.state.r, vA = a.state.v;
-    const rB = b.state.r, vB = b.state.v;
-    const dx = rB.x - rA.x;
-    const dy = rB.y - rA.y;
-    const dz = rB.z - rA.z;
-    const distSq = dx * dx + dy * dy + dz * dz;
-    const minD = a.radius + b.radius;
-    // 非有限値(NaN/Infinity)は比較で必ず false になるため、ガードしないと
-    // 「常に接触している」と判定され、毎フレーム反発と衝突音が発生し、しかも
-    // 相手側まで NaN に汚染してしまう(自機が巻き込まれると描画が全滅する)。
-    // 汚染そのものの検出・報告は nan-watchdog.ts の役目で、ここでは伝播を止めるだけ。
-    if (!Number.isFinite(distSq)) return null;
-    let nx: number, ny: number, nz: number;
-    let rA2x: number, rA2y: number, rA2z: number;
-    let rB2x: number, rB2y: number, rB2z: number;
-    const invMa = 1 / a.mass;
-    const invMb = 1 / b.mass;
-    const invM = invMa + invMb;
-
-    if (distSq > 0 && distSq < minD * minD) {
-      // 重なり(overlap)によるめり込み補正
-      const dist = Math.sqrt(distSq);
-      nx = dx / dist; ny = dy / dist; nz = dz / dist;
-      const pen = minD - dist;
-      const pCorr = (pen / invM) * 0.8;
-      const cA = pCorr * invMa;
-      const cB = pCorr * invMb;
-      rA2x = rA.x - nx * cA; rA2y = rA.y - ny * cA; rA2z = rA.z - nz * cA;
-      rB2x = rB.x + nx * cB; rB2y = rB.y + ny * cB; rB2z = rB.z + nz * cB;
-    } else {
-      // 最終位置が離れていても直前substepの線分間で交差していればTOI接触を採用する。
-      // 補正は相対配置だけに効かせ(法線方向に半径和ちょうど)、重心は積分器が出した
-      // 区間終端の値をそのまま保つ — 重心を動かすと質量比の効かない並進が両者に乗り、
-      // 軌道速度で進む重い側ではそれが1サブステップぶんの可視の位置の飛びになる。
-      const pa = a.prevState, pb = b.prevState;
-      if (!(pa.t < a.state.t && pb.t < b.state.t)) return null;
-      if (Math.abs(pa.t - pb.t) > 1e-6 || Math.abs(a.state.t - b.state.t) > 1e-6) return null;
-      const hit = sweptSphereToi(pa.r, rA, pb.r, rB, minD);
-      if (hit === null) return null;
-      nx = hit.normal.x; ny = hit.normal.y; nz = hit.normal.z;
-      const cx = (rA.x * invMb + rB.x * invMa) / invM;
-      const cy = (rA.y * invMb + rB.y * invMa) / invM;
-      const cz = (rA.z * invMb + rB.z * invMa) / invM;
-      const dx2 = nx * minD, dy2 = ny * minD, dz2 = nz * minD;
-      rA2x = cx - dx2 * (invMa / invM); rA2y = cy - dy2 * (invMa / invM); rA2z = cz - dz2 * (invMa / invM);
-      rB2x = cx + dx2 * (invMb / invM); rB2y = cy + dy2 * (invMb / invM); rB2z = cz + dz2 * (invMb / invM);
-    }
-
-    const vn = (vB.x - vA.x) * nx + (vB.y - vA.y) * ny + (vB.z - vA.z) * nz;
-    if (vn >= 0) {
-      a.state = kinematicState(a.state.t, v3(rA2x, rA2y, rA2z), vA);
-      b.state = kinematicState(b.state.t, v3(rB2x, rB2y, rB2z), vB);
-      return null;
-    }
-    const j = -((1 + restitution) * vn) / invM;
-    const jA = j * invMa;
-    const jB = j * invMb;
-    a.state = kinematicState(a.state.t, v3(rA2x, rA2y, rA2z), v3(vA.x - nx * jA, vA.y - ny * jA, vA.z - nz * jA));
-    b.state = kinematicState(b.state.t, v3(rB2x, rB2y, rB2z), v3(vB.x + nx * jB, vB.y + ny * jB, vB.z + nz * jB));
-    return Math.abs(vn);
+    const pa = a.prevState, pb = b.prevState;
+    // 直前substepの位置は、両者とも今の state より前で、かつ同一時刻に揃っているときだけ
+    // 掃引TOIの入力として使える(異なる時刻の位置を組み合わせると法線が意味を失う)。
+    const sweptValid = pa.t < a.state.t && pb.t < b.state.t
+      && Math.abs(pa.t - pb.t) <= 1e-6 && Math.abs(a.state.t - b.state.t) <= 1e-6;
+    const response = resolveSphereCollision(
+      { r: a.state.r, v: a.state.v, radius: a.radius, invMass: 1 / a.mass },
+      { r: b.state.r, v: b.state.v, radius: b.radius, invMass: 1 / b.mass },
+      restitution,
+      sweptValid ? pa.r : undefined,
+      sweptValid ? pb.r : undefined,
+    );
+    if (response === null) return null;
+    a.state = kinematicState(a.state.t, response.rA, response.vA);
+    b.state = kinematicState(b.state.t, response.rB, response.vB);
+    if (response.impulse === 0) return null;
+    // impulse = -(1+e)·vn / invM を vn について解いた式(速度は書き戻し済みの vA/vB からは
+    // もう復元できないため、力積から逆算する)。
+    const invM = 1 / a.mass + 1 / b.mass;
+    return response.impulse * invM / (1 + restitution);
   }
 }
