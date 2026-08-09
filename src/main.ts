@@ -194,6 +194,14 @@ async function main() {
   const activeSlotId = slots.activeSlotId;
   if (activeSlotId !== null) slots.noteLaunch(activeSlotId, launch.mode, game.activeStage.id);
 
+  // アクティブスロットの現在ステージにある最新スナップショットを起動時に復元する。
+  // 本体の欠損・バージョン不一致・ステージ不一致は SnapshotService.restore() に
+  // 判定させ、復元できない場合は通常の新規起動状態をそのまま使う。
+  if (activeSlotId !== null) {
+    const latest = slots.latestSnapshot(activeSlotId, game.activeStage.id);
+    if (latest !== null) snapshotService.restore(game, latest.id);
+  }
+
   const saveBrowser = new SaveBrowser(hud.root, slots, snapshotService, game);
   game.setSaveBrowser(saveBrowser);
   saveBrowser.onSlotSwitched = () => location.assign(location.pathname);
