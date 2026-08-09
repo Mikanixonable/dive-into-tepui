@@ -7,7 +7,7 @@ import { SnapshotService } from '../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
 import type { SaveSlotMeta, SnapshotMeta } from '../save-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from './utils';
-import { ATTRACTOR_NAMES } from './frame-labels';
+import { celestialBodyName } from './frame-labels';
 import { syncHudModalState } from './dom';
 
 // スロット名・スナップショット名はプレイヤーの入力と取り込んだファイル由来なので、
@@ -178,7 +178,7 @@ export class SaveBrowser {
           <span class="sb-snap-badge sb-snap-badge-${kind}">${SNAPSHOT_KIND_LABEL[kind]}</span>
         </div>
         <div class="sb-snap-row">MET ${fmtTime(num(s.simTime))} / ${fmtDateTime(num(s.createdAtReal) / 1000)}</div>
-        <div class="sb-snap-row">${ATTRACTOR_NAMES[s.centerBodyId] ?? '—'} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}</div>
+        <div class="sb-snap-row">${celestialBodyName(s.centerBodyId)} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}</div>
         <div class="sb-snap-hp-bar"><div class="sb-snap-hp-fill" style="width:${hpPct}%"></div></div>
         <div class="sb-snap-row">艦 ${num(s.playerCount)} / 敵残 ${num(s.enemyAliveCount)} / 所持金 ${num(s.money).toLocaleString()} Cr</div>
         <div class="sb-snap-actions">
