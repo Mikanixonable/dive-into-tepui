@@ -1,6 +1,7 @@
 // 小惑星帯・木星トロヤ群の点群を、軌道要素の統計分布として生成し位置を評価する。
 // 表示専用なので AttractorId 系(重力源・ピック対象・フォーカス対象)には載せない。
 // THREE 非依存に保ってあり、生成の決定性と分布は tests/physics で検査する。
+// game-entity/asteroid.ts の Asteroid(重力を及ぼし積分される個別の GameEntity)とは別物。
 import { Q_ECLY_TO_ECI } from '../../physics/ecliptic';
 import { positionFromOrbitalElements, trueAnomalyFromMean } from '../../physics/elements';
 import { EPOCH_T_OFFSET } from '../../physics/ephemeris';

@@ -6,7 +6,7 @@ import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-stat
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Attractor, hitAttractor, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, hitAttractor, localOrbitPeriod, relevantAttractors } from '../../physics/attractor';
 import { Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { SampledLine } from '../../render/sampled-line';
@@ -86,10 +86,10 @@ export class PlanArc {
 
   // 直近に積分したサンプル列を折れ線メッシュへ反映する。
   sync(ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number, fo: FloatingOrigin,
-    dashSize: number, gapSize: number, scale: ScaleFn): void {
+    dashSize: number, gapSize: number, scale: ScaleFn, attractors: readonly Attractor[]): void {
     this.line.setDash(dashSize, gapSize);
-    this.line.syncGeometry(this._samples, frame, ephemeris, scale);
-    this.line.syncTransform(frame, currentTime, ephemeris, fo);
+    this.line.syncGeometry(this._samples, frame, ephemeris, scale, attractors);
+    this.line.syncTransform(frame, currentTime, ephemeris, fo, attractors);
   }
 
   // 時刻 t の状態。保持区間外は null。
@@ -140,11 +140,13 @@ export class PlanArc {
 
     let steps = 0;
     while (trajectory.state.t < end - EPOCH_EPS) {
-      const sizingAttractors = ephemeris.gravityAttractorsAt(trajectory.state.t);
+      const sizingAttractors = relevantAttractors(
+        trajectory.state.r, ephemeris.gravityAttractorsAt(trajectory.state.t), C.GRAVITY_NEGLIGIBLE_ACCEL);
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
       const dt = Math.min(stepDt(trajectory.state.r, sizingAttractors), end - trajectory.state.t);
       if (dt <= 1e-9) break;
-      const stepAttractors = ephemeris.gravityAttractorsAt(trajectory.state.t + dt / 2);
+      const stepAttractors = relevantAttractors(
+        trajectory.state.r, ephemeris.gravityAttractorsAt(trajectory.state.t + dt / 2), C.GRAVITY_NEGLIGIBLE_ACCEL);
       trajectory.step(dt, stepAttractors, C.SHIP_BCINV, C.SHIP_SRP_COEFF, C.SHADOW_PENUMBRA, null, sampleInterval, duration);
 
       const { r, v } = trajectory.state;

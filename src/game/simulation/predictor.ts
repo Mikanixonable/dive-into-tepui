@@ -5,7 +5,8 @@ import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
-import { localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, localOrbitPeriod, relevantAttractors } from '../../physics/attractor';
+import { mergeAttractors } from './gravity-attractors';
 
 export class Predictor {
   private cursor = 0;
@@ -42,33 +43,42 @@ export class Predictor {
 
     if (!canGrow) return;
 
+    // 重力を持つ生存中の GameEntity は、予測ホライズン(最大1年)の間ほぼ動かないとみなし、
+    // このフレームの実状態を1回だけ求めて budget 消化中は使い回す — 予測先端どうしが
+    // 非同期に伸びるラウンドロビンでは、各先端ごとに引き直しても真に無矛盾にはならない。
+    const dynamic = this.entities.attractors();
+
     // 予算配分: 操作対象の艦を先頭に、以降はカーソル位置から最大1周だけ回す。
     let budget = C.PREDICT_STEP_BUDGET;
-    if (player) budget -= this.advanceBudget(player, budget, simTime, horizon);
+    if (player) budget -= this.advanceBudget(player, budget, simTime, horizon, dynamic);
 
     let visited = 0;
     while (budget > 0 && visited < all.length) {
       const e = all[(this.cursor + visited) % all.length]!;
-      budget -= this.advanceBudget(e, budget, simTime, horizon);
+      budget -= this.advanceBudget(e, budget, simTime, horizon, dynamic);
       visited++;
     }
     this.cursor = all.length > 0 ? (this.cursor + visited) % all.length : 0;
   }
 
   // budgetSteps を上限に、1体ぶんの予測列を GameEntity.stepPredicted で1ステップずつ伸ばし、
-  // 消費したステップ数を返す。刻み幅と重力源は毎ステップ、現在の予測先端の時刻・位置から
-  // 求め直す(先端がまだ無ければ現在状態で代用 — 生成直後は actualTrajectory.state を種にするので
-  // 同じ値になる)。ここが「1ステップぶんの前提を決めて渡す」側、entity 側は「渡された前提で
+  // 消費したステップ数を返す。刻み幅と解析天体の重力源は毎ステップ、現在の予測先端の時刻・
+  // 位置から求め直す(先端がまだ無ければ現在状態で代用 — 生成直後は actualTrajectory.state を
+  // 種にするので同じ値になる)。dynamic(重力を持つ GameEntity)は呼び出し元が求めた1つの値を
+  // 使い回す。ここが「1ステップぶんの前提を決めて渡す」側、entity 側は「渡された前提で
   // 実際に1ステップ進めるか判断する」側 — stepActual に対する substep と同じ分担。
   // ホライズン超過などで stepPredicted が false を返したら、そのエンティティの予算消化を打ち切る。
-  private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number, horizon: number): number {
+  private advanceBudget(
+    e: GameEntity, budgetSteps: number, simTime: number, horizon: number, dynamic: readonly Attractor[],
+  ): number {
     if (!e.predictsFuture) return 0;
     let consumed = 0;
     while (consumed < budgetSteps) {
       // 刻み幅は「その場の周期の等分」と「ホライズン全体をステップ上限で割った値」の粗い方。
       // 後者があるので、表示期間を年スケールにしてもステップ数が有界に収まる。
       const tipState = e.predictedTrajectory?.state ?? e.state;
-      const attractors = this.ephemeris.gravityAttractorsAt(tipState.t);
+      const all = mergeAttractors(this.ephemeris.gravityAttractorsAt(tipState.t), dynamic);
+      const attractors = relevantAttractors(tipState.r, all, C.GRAVITY_NEGLIGIBLE_ACCEL);
       const dt = Math.max(
         C.PREDICT_MIN_STEP_DT,
         localOrbitPeriod(tipState.r, attractors) / C.PREDICT_STEPS_PER_REV,

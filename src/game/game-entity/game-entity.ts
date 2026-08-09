@@ -5,12 +5,12 @@ import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { StateQueue } from '../../physics/state-queue';
-import type { Ephemeris } from '../../physics/ephemeris';
-import { Attractor, AttractorId, orbitalElementsOf, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, orbitalElementsOf, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
+import { EntityIdAllocator } from './entity-id';
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -32,14 +32,23 @@ export class GameEntity {
   // orbitalElementsAround(center) のメモ。state の参照同一性(KinematicState は不変で step ごとに
   // 新しい参照へ差し替わる)と center.id で無効化する。
   private _memoState: KinematicState | null = null;
-  private _memoCenterId: AttractorId | null = null;
+  private _memoCenterId: string | null = null;
   private _memoElements: OrbitalElements | null = null;
 
+  private static readonly idAllocator = new EntityIdAllocator('entity-');
+
+  // 一意な識別子。表示名(Ship.name/Player.displayName)とは別の概念。
+  readonly id: string;
   att: Attitude;
   obj: THREE.Object3D;
   alive = true;
   mass = 1; // 剛体接触の換算質量
-  collideRadius?: number; // 剛体接触半径 [m]。未設定 = 剛体接触に参加しない
+  radius = 0; // 物理的な半径 [m]。0 = 点。Attractor.radius と同じ量
+  collides = false; // 剛体接触(CollisionPhysics)に参加するか
+  // 重力定数 GM [m^3/s^2]。0 = 重力を及ぼさない
+  mu = 0;
+  readonly degree2: null = null;
+  readonly isStar = false;
   thrust: Vec3 | null = null;
   // 機体座標系トルク。既定ゼロ = 自由回転。
   torque: Vec3 = v3();
@@ -60,8 +69,10 @@ export class GameEntity {
   private truncated = false;
 
   // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
-  constructor(state: KinematicState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude()) {
+  // id 省略時はこの基底が自動採番する(復元 id を渡すクラスはそれをそのまま通す)。
+  constructor(state: KinematicState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude(), id?: string) {
     this.actualTrajectory = new DynamicTrajectory(state);
+    this.id = id ?? GameEntity.idAllocator.next();
     this.att = att;
     this.obj = obj;
     this.scene = scene;
@@ -86,13 +97,12 @@ export class GameEntity {
     return Math.max(span / C.TRAJECTORY_SAMPLES_PER_REV, keepDuration / C.PREDICT_MAX_SAMPLES);
   }
 
-  // 重力源 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。このステップぶんの重力源は
-  // 中点(t + dt/2)で1回だけ引く — Ephemeris は時刻をキーにメモ化するので、1ステップの中で
-  // 別の時刻を引くとメモが効かなくなる。historyDuration が 0(弾・薬莢・破片)の間は
-  // 間引き間隔を使わないので sampleInterval を評価しない。
-  stepActual(dt: number, ephemeris: Ephemeris): void {
+  // 重力源 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。attractors はこのステップの
+  // 重力源一覧 — 呼び出し側(Simulator)が全エンティティで同じ瞬間の同じ配列を使い回す。
+  // historyDuration が 0(弾・薬莢・破片)の間は間引き間隔を使わないので sampleInterval を
+  // 評価しない。
+  stepActual(dt: number, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    const attractors = ephemeris.gravityAttractorsAt(this.state.t + dt / 2);
     const interval = this.historyDuration > 0
       ? this.sampleInterval(attractors, this.state, this.historyDuration)
       : 0;

@@ -523,6 +523,19 @@ export function buildDebrisMesh(accent: string | number, size: number, style?: s
   return buildGenericDebris(color, size, mat);
 }
 
+// 不定形の岩塊メッシュ(小惑星用)。二十面体を軸ごとに独立した比率でランダムに歪ませ、
+// 人工物のディテールを持たない塊状の見た目にする。radius は歪ませる前の平均半径 [m]。
+export function buildAsteroidMesh(radius: number): THREE.Mesh {
+  const geo = new THREE.IcosahedronGeometry(radius, 1);
+  displaceVertices(geo, (x, y, z) => [
+    x * (0.7 + Math.random() * 0.6),
+    y * (0.7 + Math.random() * 0.6),
+    z * (0.7 + Math.random() * 0.6),
+  ]);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8378, flatShading: true, roughness: 0.9, metalness: 0.05 });
+  return withDispose(new THREE.Mesh(geo, mat));
+}
+
 
 // リロード時に放出される砲身（バレル）メッシュ
 // 砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + 赤熱グロー + ガスポート
@@ -601,7 +614,7 @@ export function buildBarrelMesh(): THREE.Group {
 }
 
 // 基地: 中央ハブ + 放射状トラス4本 + ドッキングモジュール4基 + 太陽電池パドル2枚の低ポリ構成。
-// game-entity/base.ts の collideRadius(100m)と釣り合う全幅を持つ。
+// game-entity/base.ts の radius(100m)と釣り合う全幅を持つ。
 export function buildBaseModel(): THREE.Group {
   const g = new THREE.Group();
   const hullMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, flatShading: true, roughness: 0.45, metalness: 0.75 });

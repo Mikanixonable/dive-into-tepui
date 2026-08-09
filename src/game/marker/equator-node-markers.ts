@@ -10,7 +10,7 @@ import { ReferenceFrame, frameKinematicState, toFramePoint, toFrameState, toIner
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../physics/vec3';
-import { ATTRACTOR_NAMES } from '../hud/frame-labels';
+import { celestialBodyName } from '../hud/frame-labels';
 import { MarkerManager } from './marker-manager';
 import { ProjectFn } from '../camera/camera-system';
 import { MapPickable } from '../map-pick';
@@ -59,8 +59,8 @@ export class EquatorNodeMarkers {
       if (!eqNormal) continue;
 
       const toDisplay = (r: Vec3, t: number): Vec3 => {
-        const bakeTf = this.ephemeris.frameTransformAt(frame, t);
-        const unbakeTf = this.ephemeris.frameTransformAt(frame, displayTime);
+        const bakeTf = this.ephemeris.frameTransformAt(frame, t, this.attractors);
+        const unbakeTf = this.ephemeris.frameTransformAt(frame, displayTime, this.attractors);
         return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
       };
 
@@ -86,7 +86,7 @@ export class EquatorNodeMarkers {
       }
       if (!an || !dn) continue;
 
-      const centerName = ATTRACTOR_NAMES[center.id];
+      const centerName = celestialBodyName(center.id);
       pairs.push({
         sourceId: source.id,
         an: {

@@ -2,11 +2,11 @@
 // HUD マーカーへの反映。
 import { Vec3, v3 } from '../../physics/vec3';
 import { Attractor, AttractorId, OrbitingId } from '../../physics/attractor';
-import { bodyDef, SOLAR_SYSTEM } from '../../physics/solar-system';
+import { bodyDef, primaryOf } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';
 import { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { CELESTIAL_BODIES } from '../celestial/celestial-registry';
+import { celestialBodyName } from '../hud/frame-labels';
 import { isOccluded } from '../../physics/occlusion';
 import { FOCUS_LABEL_PRIORITY_PX } from '../const';
 
@@ -18,44 +18,43 @@ export interface FocusLabel {
   isLagrange: boolean;
 }
 
-const ATTRACTOR_IDS = Object.keys(SOLAR_SYSTEM) as AttractorId[];
-// ラグランジュ点ラベルを出す天体(公転していて、かつ軌道設計の目標になる系)。
-const LAGRANGE_LABEL_IDS = ATTRACTOR_IDS.filter((id) => {
-  const def = bodyDef(id);
-  return def.kind !== 'star' && def.lagrangeLabels === true;
-}) as OrbitingId[];
-
-// ラベル id とその表示名。天体本体 1 つにつき、公転しているならその L1〜L5 も足す
-// (表示名は「中心天体名-自分の名 Ln」)。
-const LABEL_NAMES: Record<string, string> = {};
-for (const id of ATTRACTOR_IDS) LABEL_NAMES[id] = CELESTIAL_BODIES[id].name;
-for (const id of LAGRANGE_LABEL_IDS) {
-  const def = bodyDef(id);
-  const primary: AttractorId = def.kind === 'planet' ? 'sun' : def.planet;
-  const prefix = `${CELESTIAL_BODIES[primary].name}-${CELESTIAL_BODIES[id].name}`;
-  for (const n of [1, 2, 3, 4, 5]) LABEL_NAMES[`${id}-l${n}`] = `${prefix} L${n}`;
-}
-
 export class FocusMarkers {
-  readonly labels: FocusLabel[] = Object.entries(LABEL_NAMES).map(([id, name]) => ({
-    id,
-    name,
-    pos: v3(0, 0, 0),
-    kind: 'body',
-    isLagrange: !(id in SOLAR_SYSTEM),
-  }));
+  // 天体本体1つにつき1ラベル、ラグランジュ点ラベルを出す天体(lagrangeSourceIds — 公転して
+  // いて、かつ軌道設計の目標になる系)にはさらに L1〜L5 の5ラベルが並ぶ(表示名は
+  // 「中心天体名-自分の名 Ln」)。
+  private readonly registryIds: readonly AttractorId[];
+  private readonly lagrangeSourceIds: readonly OrbitingId[];
+  readonly labels: FocusLabel[];
 
   private attractors: readonly Attractor[] = [];
 
-  constructor(private readonly markerManager: MarkerManager, private readonly ephemeris: Ephemeris) {}
+  constructor(private readonly markerManager: MarkerManager, private readonly ephemeris: Ephemeris) {
+    const registry = ephemeris.registry;
+    this.registryIds = Object.keys(registry);
+    this.lagrangeSourceIds = this.registryIds.filter((id) => {
+      const def = bodyDef(registry, id);
+      return def.kind !== 'star' && def.lagrangeLabels === true;
+    });
+
+    this.labels = this.registryIds.map((id) => ({
+      id, name: celestialBodyName(id), pos: v3(0, 0, 0), kind: 'body' as const, isLagrange: false,
+    }));
+    for (const id of this.lagrangeSourceIds) {
+      const primary = primaryOf(registry, id);
+      const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
+      for (const n of [1, 2, 3, 4, 5]) {
+        this.labels.push({ id: `${id}-l${n}`, name: `${prefix} L${n}`, pos: v3(0, 0, 0), kind: 'body', isLagrange: true });
+      }
+    }
+  }
 
   // 表示時刻 t の各ラベル座標を求め直す。
   update(t: number): void {
     const ephemeris = this.ephemeris;
 
     const positions: Record<string, Vec3> = {};
-    for (const id of ATTRACTOR_IDS) positions[id] = ephemeris.positionOf(id, t);
-    for (const id of LAGRANGE_LABEL_IDS) {
+    for (const id of this.registryIds) positions[id] = ephemeris.positionOf(id, t);
+    for (const id of this.lagrangeSourceIds) {
       const l = ephemeris.lagrangeAt(id, t);
       for (const n of [1, 2, 3, 4, 5] as const) positions[`${id}-l${n}`] = l[`L${n}`];
     }

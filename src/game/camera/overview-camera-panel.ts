@@ -1,6 +1,8 @@
 import { ReferenceFrame } from '../../physics/frame';
+import { Attractor } from '../../physics/attractor';
+import type { Ephemeris } from '../../physics/ephemeris';
 import { SegmentedControl, HudToggle } from '../hud/buttons';
-import { FRAME_ITEMS } from '../hud/frame-labels';
+import { frameItems } from '../hud/frame-labels';
 import { hudDock } from '../hud/dom';
 
 export class OverviewCameraPanel {
@@ -12,8 +14,11 @@ export class OverviewCameraPanel {
 
   private readonly panel: HTMLElement;
   private readonly frame: SegmentedControl<ReferenceFrame>;
+  // 直近に選択肢を組んだ重力天体 id の集合(登録天体は変わらないので、生存中の重力を持つ
+  // GameEntity の増減だけを見ればよい)。変化した回だけボタン列を組み直す。
+  private lastDynamicIds = '';
 
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, private readonly ephemeris: Ephemeris) {
     // パネル本体とタイトル
     this.panel = document.createElement('div');
     this.panel.id = 'hud-overview-camera';
@@ -24,7 +29,7 @@ export class OverviewCameraPanel {
     this.panel.appendChild(title);
 
     // 視点座標系の選択コントロール
-    this.frame = new SegmentedControl('視点', FRAME_ITEMS, (frame) => this.onFrameSelect?.(frame));
+    this.frame = new SegmentedControl('視点', frameItems(ephemeris, []), (frame) => this.onFrameSelect?.(frame));
     this.panel.appendChild(this.frame.element);
 
     this.ammoToggle = new HudToggle('弾薬', (on) => {
@@ -45,5 +50,14 @@ export class OverviewCameraPanel {
   // 視点座標系の選択表示を更新する。
   setFrame(frame: ReferenceFrame): void {
     this.frame.setSelected(frame);
+  }
+
+  // 生存中の重力天体の増減を反映して選択肢を組み直す(登録天体は変わらないので変化しない回は
+  // 何もしない)。呼び出し側は setFrame で選択表示を別途更新する。
+  refreshFrameItems(attractors: readonly Attractor[]): void {
+    const dynamicIds = attractors.filter((a) => !(a.id in this.ephemeris.registry)).map((a) => a.id).join(',');
+    if (dynamicIds === this.lastDynamicIds) return;
+    this.lastDynamicIds = dynamicIds;
+    this.frame.setItems(frameItems(this.ephemeris, attractors));
   }
 }

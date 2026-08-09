@@ -7,7 +7,8 @@ import {
   HaloParams, LissajousParams, CollinearPoint,
   collinearFrame, haloAmplitudeX, haloState, lissajousState,
 } from '../../src/physics/halo';
-import { Ephemeris } from '../../src/physics/ephemeris';
+import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
+import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { OrbitingId } from '../../src/physics/attractor';
 import { dot, len, sub } from '../../src/physics/vec3';
 
@@ -19,7 +20,7 @@ function isFiniteVec(v: { x: number; y: number; z: number }): boolean {
 }
 
 export function register(): void {
-  const ephemeris = new Ephemeris({ moon: 0.7 });
+  const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0.7 });
   const t = 1e6;
 
   for (const secondary of SECONDARIES) {

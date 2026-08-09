@@ -2,9 +2,9 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH, R_EARTH_EQ } from '../../src/physics/solar-system';
+import { MU_EARTH, R_EARTH, R_EARTH_EQ, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { OrbitalElements, keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
-import { Ephemeris } from '../../src/physics/ephemeris';
+import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { C22_MOON, J2_EARTH, J2_MOON, MU_MOON, MU_SUN, R_MOON, R_MOON_GRAVITY, R_SUN } from '../../src/physics/solar-system';
 import { Attractor, Degree2Gravity, orbitalElementsOf } from '../../src/physics/attractor';
 import { degree2Accel, stepDynamics, stepRK4 } from '../../src/physics/dynamics';
@@ -14,7 +14,7 @@ import { qFromAxisAngle, qRotate } from '../../src/physics/attitude';
 const EARTH_POLE = v3(0, 1, 0);
 const EARTH_DEGREE2: Degree2Gravity = { j2: J2_EARTH, refRadius: R_EARTH_EQ, pole: EARTH_POLE, tesseral: null };
 const EARTH: Attractor = {
-  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: EARTH_DEGREE2,
+  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: EARTH_DEGREE2, isStar: false,
 };
 
 function circularState() {
@@ -90,8 +90,8 @@ export function register(): void {
     const moonPos = v3(3.8e8, 0, 0);
     const attractors: readonly Attractor[] = [
       EARTH,
-      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, moonPos, v3(0, 0, 0)), degree2: null },
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), degree2: null },
+      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, moonPos, v3(0, 0, 0)), degree2: null, isStar: false },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), degree2: null, isStar: true },
     ];
 
     const viaNew = stepDynamics(s0, dt, attractors, 0, 0, 0, null);
@@ -106,7 +106,7 @@ export function register(): void {
   test('dynamics: stepDynamics adds thrust on top of gravity', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = new Ephemeris({ moon: 0 }).attractorsAt(0);
+    const attractors = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 }).attractorsAt(0);
     const thrust = v3(0, 0, 5); // 大きめの加速度で差が明確に出るようにする
 
     const withThrust = stepDynamics(s0, dt, attractors, 0, 0, 0, thrust);
@@ -118,7 +118,7 @@ export function register(): void {
   test('dynamics: stepDynamics with bcInv>0 decelerates more than bcInv=0 at LEO altitude', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = new Ephemeris({ moon: 0 }).attractorsAt(0);
+    const attractors = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 }).attractorsAt(0);
 
     const noDrag = stepDynamics(s0, dt, attractors, 0, 0, 0, null);
     const withDrag = stepDynamics(s0, dt, attractors, 0.01, 0, 0, null);
@@ -127,7 +127,7 @@ export function register(): void {
   });
 
   test('dynamics: a circular lunar orbit (surface +100km) returns to about the same moon-relative position after one revolution (measured, pinned)', () => {
-    const ephemeris = new Ephemeris({ moon: 0 });
+    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 });
     const attractors0 = ephemeris.attractorsAt(0);
     const moon0 = attractors0.find((b) => b.id === 'moon')!;
     const a = R_MOON + 100e3;
@@ -313,7 +313,7 @@ export function register(): void {
     const sunPos = v3(1.495978707e11, 0, 0);
     const attractors: readonly Attractor[] = [
       EARTH,
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), degree2: null },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), degree2: null, isStar: true },
     ];
     const dt = 100;
     const srpCoeff = 1e-2;
@@ -332,7 +332,7 @@ export function register(): void {
   });
 
   test('dynamics: the moon carries a degree-2 field and the sun does not', () => {
-    const attractors = new Ephemeris({ moon: 0.3 }).attractorsAt(1234);
+    const attractors = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0.3 }).attractorsAt(1234);
     const moon = attractors.find((b) => b.id === 'moon')!;
     const sun = attractors.find((b) => b.id === 'sun')!;
     assert.ok(moon.degree2 !== null, 'the moon should resolve a degree-2 field');

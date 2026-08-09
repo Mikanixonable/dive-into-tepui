@@ -65,7 +65,7 @@ export class CreativeStage extends Stage {
     this.previewOrbitLine = new OrbitLine(0xffffff, 0.6);
     scene.add(this.previewOrbitLine.line);
 
-    this.placerPanel = new ShipPlacerPanel(hud.root);
+    this.placerPanel = new ShipPlacerPanel(hud.root, ephemeris);
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
     this.logisticsPanel = this.buildLogisticsPanel(hud.root);
   }
@@ -145,7 +145,7 @@ export class CreativeStage extends Stage {
   // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
   openShipPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void {
     const attractors = this._ephemeris.attractorsAt(this._simulator.simTime);
-    const form = elementsFormFromState(state, attractors);
+    const form = elementsFormFromState(state, attractors, this._ephemeris.originId);
     if (form && validateBaseReferenceFields(objectType, 'elements', form.attractor).length === 0) {
       this.placerPanel.open({ kind: 'form', objectType, form });
       return;

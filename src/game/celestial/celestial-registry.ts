@@ -1,8 +1,8 @@
 // 天体の見た目レジストリ: id から表示名と CelestialBody の生成関数を引く。
 // 天体の日本語表示名の定義元はここ1箇所 — 他のモジュールは必ずここを読む。
 import * as THREE from 'three/webgpu';
-import { AttractorId, PlanetId, SatelliteId } from '../../physics/attractor';
-import { bodyDef } from '../../physics/solar-system';
+import { bodyDef, CelestialRegistry, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
+import { AttractorId } from '../../physics/attractor';
 import { createMoon, MOON_VIS_DIST } from '../../render/stars';
 import { CelestialBody } from './celestial-body';
 import { EarthBody } from './earth-body';
@@ -37,14 +37,14 @@ function createTexturedSphereMesh(textureUrl: string): THREE.Mesh {
 // 環付きになる(半径は天体半径を 1 とする単位)。pointBrightness を渡すと戦闘ビューでの
 // 表示が PointBody の輝点スプライトになる(省略時は SphereBody の視距離圧縮球のまま)。
 function planetEntry(
-  id: PlanetId,
+  id: SolarSystemId,
   name: string,
   textureUrl: string,
   buildRing?: () => THREE.Object3D,
   pointBrightness?: PointBrightness,
 ): { readonly name: string; create(): CelestialBody } {
   const buildMesh = () => createTexturedSphereMesh(textureUrl);
-  const radius = bodyDef(id).radius;
+  const radius = bodyDef(SOLAR_SYSTEM, id).radius;
   return {
     name,
     create: () =>
@@ -55,8 +55,8 @@ function planetEntry(
 }
 
 // 天体半径を 1 とする単位で環の半径を測るための換算。
-function inRadii(id: PlanetId, meters: number): number {
-  return meters / bodyDef(id).radius;
+function inRadii(id: SolarSystemId, meters: number): number {
+  return meters / bodyDef(SOLAR_SYSTEM, id).radius;
 }
 
 // 土星の環(D 環内縁 1.11 R〜A 環外縁 2.27 R)。カッシーニの間隙を含む内訳は
@@ -90,19 +90,19 @@ function createSolidSphereMesh(color: number): THREE.Mesh {
 }
 
 // 単色の衛星のレジストリ項を、表示名と色から組む。表示距離は月と揃える。
-function satelliteEntry(id: SatelliteId, name: string, color: number): { readonly name: string; create(): CelestialBody } {
-  return { name, create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(id).radius, MOON_VIS_DIST) };
+function satelliteEntry(id: SolarSystemId, name: string, color: number): { readonly name: string; create(): CelestialBody } {
+  return { name, create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST) };
 }
 
 // テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。表示距離は
 // テクスチャ付き惑星と揃える。
-function solidPlanetEntry(id: PlanetId, name: string, color: number): { readonly name: string; create(): CelestialBody } {
-  return { name, create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(id).radius, PLANET_VIS_DIST) };
+function solidPlanetEntry(id: SolarSystemId, name: string, color: number): { readonly name: string; create(): CelestialBody } {
+  return { name, create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST) };
 }
 
-export const CELESTIAL_BODIES: Record<AttractorId, { readonly name: string; create(): CelestialBody }> = {
+export const CELESTIAL_BODIES: Record<SolarSystemId, { readonly name: string; create(): CelestialBody }> = {
   earth: { name: '地球', create: () => new EarthBody() },
-  moon: { name: '月', create: () => new SphereBody('moon', createMoon, bodyDef('moon').radius, MOON_VIS_DIST) },
+  moon: { name: '月', create: () => new SphereBody('moon', createMoon, bodyDef(SOLAR_SYSTEM, 'moon').radius, MOON_VIS_DIST) },
   mercury: planetEntry('mercury', '水星', mercuryTextureUrl, undefined, 'medium'),
   venus: planetEntry('venus', '金星', venusTextureUrl, undefined, 'bright'),
   mars: planetEntry('mars', '火星', marsTextureUrl, undefined, 'medium'),
@@ -129,3 +129,13 @@ export const CELESTIAL_BODIES: Record<AttractorId, { readonly name: string; crea
   encke: solidPlanetEntry('encke', 'エンケ彗星', 0x666666),
   sun: { name: '太陽', create: () => new SunBody() },
 };
+
+// CELESTIAL_BODIES に手作りエントリを持たない id(カスタムレジストリの架空天体)向けの見た目。
+// 恒星は SunBody を汎用の id/半径で構築し、それ以外は単色球にする。表示名は呼び出し側
+// (frame-labels.ts の celestialBodyName)が id からフォールバックする。
+export function fallbackCelestialView(registry: CelestialRegistry, id: AttractorId): CelestialBody {
+  const def = bodyDef(registry, id);
+  return def.kind === 'star'
+    ? new SunBody(id, def.radius)
+    : new SphereBody(id, () => createSolidSphereMesh(0x888888), def.radius, def.kind === 'satellite' ? MOON_VIS_DIST : PLANET_VIS_DIST);
+}

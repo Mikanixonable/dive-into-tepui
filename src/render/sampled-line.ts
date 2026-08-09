@@ -18,6 +18,7 @@ import * as THREE from 'three/webgpu';
 import { dot, len, Vec3 } from '../physics/vec3';
 import { KinematicState, hermiteInterpolate, kinematicState } from '../physics/kinematic-state';
 import { ReferenceFrame, toFrameState } from '../physics/frame';
+import { Attractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from '../game/floating-origin';
 
@@ -103,7 +104,10 @@ export class SampledLine {
   // 参照)。スケールは関数の同一性では比較できない(呼び出し側は毎フレーム新しいクロージャを渡しうる)
   // ので、点列中央のサンプルで一度評価した数値を SCALE_REBAKE_RATIO 幅で比較する。
   // 破線のときは、同じ頂点列挙のついでに始点からの累積距離も焼く。
-  syncGeometry(samples: readonly KinematicState[], frame: ReferenceFrame, ephemeris: Ephemeris, scale: ScaleAtFn): void {
+  syncGeometry(
+    samples: readonly KinematicState[], frame: ReferenceFrame, ephemeris: Ephemeris, scale: ScaleAtFn,
+    attractors: readonly Attractor[],
+  ): void {
     const scaleNow = samples.length > 0 ? scale(samples[Math.floor(samples.length / 2)]!.r) : 1;
     const scaleChanged = this.lastScale === null
       || scaleNow / this.lastScale > SCALE_REBAKE_RATIO || this.lastScale / scaleNow > SCALE_REBAKE_RATIO;
@@ -116,7 +120,7 @@ export class SampledLine {
     // 位置と速度をそのまま KinematicState に詰めて渡す(この慣性系ブランドは関数の外へ出ない)。
     // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
     const baked = samples.map((s) => {
-      const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t), s);
+      const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t, attractors), s);
       return kinematicState(s.t, rel.r, rel.v);
     });
 
@@ -178,8 +182,11 @@ export class SampledLine {
 
   // 毎フレーム: 剛体 un-bake(line クォータニオン) + フローティングオリジン補正(line 位置 =
   // 座標系原点)。currentTime = 描画時刻(通常 simTime)。
-  syncTransform(frame: ReferenceFrame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin): void {
-    const tf = ephemeris.frameTransformAt(frame, currentTime);
+  syncTransform(
+    frame: ReferenceFrame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin,
+    attractors: readonly Attractor[],
+  ): void {
+    const tf = ephemeris.frameTransformAt(frame, currentTime, attractors);
     this.line.quaternion.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
     this.line.position.copy(fo.RtoThreeV3(tf.origin));
   }

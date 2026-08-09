@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { GameEntity } from './game-entity';
+import { EntityIdAllocator } from './entity-id';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Attitude } from '../../physics/attitude';
 import { v3 } from '../../physics/vec3';
@@ -34,10 +35,9 @@ export interface BaseState {
   dockedShips: DockedShipEntry[];
 }
 
-let _baseIdCounter = 0;
+const idAllocator = new EntityIdAllocator('base-');
 
 export class Base extends GameEntity {
-  readonly id: string;
   // プロパティウィンドウから改名できる表示名。
   name: string;
   readonly orbitLine: OrbitLine;
@@ -48,10 +48,10 @@ export class Base extends GameEntity {
   };
 
   constructor(state: KinematicState, scene: THREE.Scene, name = '基地', att?: Attitude) {
-    super(state, buildBaseModel(), scene, att);
+    super(state, buildBaseModel(), scene, att, idAllocator.next());
     this.mass = 1e6;
-    this.collideRadius = 100;
-    this.id = `base-${_baseIdCounter++}`;
+    this.radius = 100;
+    this.collides = true;
     this.name = name;
     this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35);
     scene.add(this.orbitLine.line);

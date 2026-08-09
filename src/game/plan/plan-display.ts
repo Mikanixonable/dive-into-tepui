@@ -5,14 +5,14 @@ import { Vec3, len, sub } from '../../physics/vec3';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { apparentEccentricity, findApsis } from '../../physics/trajectory-features';
 import { isOccluded } from '../../physics/occlusion';
-import { ReferenceFrame, INERTIAL_FRAME } from '../../physics/frame';
+import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { SegmentedControl } from '../hud/buttons';
-import { FRAME_ITEMS } from '../hud/frame-labels';
+import { frameItems } from '../hud/frame-labels';
 import { MapPickable } from '../map-pick';
 import * as C from '../const';
 import { hudDock } from '../hud/dom';
@@ -44,7 +44,7 @@ interface DayTickIcon {
 const IMPACT_MARKER_KEYS = ['planImpact0', 'planImpact1', 'planImpact2'] as const;
 
 export class PlanDisplay {
-  planFrame: ReferenceFrame = INERTIAL_FRAME;
+  planFrame: ReferenceFrame;
 
   readonly path: PlanPath;
 
@@ -58,6 +58,8 @@ export class PlanDisplay {
   private plan: Plan | null = null;
   // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
   private attractors: readonly Attractor[] = [];
+  // 直近に TRAJECTORY パネルの選択肢を組んだ重力天体 id の集合。変化した回だけ組み直す。
+  private lastDynamicIds = '';
 
   // 計画折れ線(PlanPath)と TRAJECTORY パネルの DOM を構築する。
   constructor(
@@ -67,6 +69,7 @@ export class PlanDisplay {
     private readonly ephemeris: Ephemeris,
     displayTimeManager: DisplayTimeManager,
   ) {
+    this.planFrame = ephemeris.inertialFrame;
     this.path = new PlanPath(scene, displayTimeManager);
 
     // TRAJECTORY パネルの DOM を組み立てる
@@ -78,7 +81,7 @@ export class PlanDisplay {
     title.textContent = 'TRAJECTORY';
     this.panel.appendChild(title);
     // 表示座標系の切り替えボタン
-    this.frame = new SegmentedControl<ReferenceFrame>('軌道', FRAME_ITEMS, (frame) => { this.planFrame = frame; });
+    this.frame = new SegmentedControl<ReferenceFrame>('軌道', frameItems(ephemeris, []), (frame) => { this.planFrame = frame; });
     this.panel.appendChild(this.frame.element);
     hudDock(hudRoot, 'left').appendChild(this.panel);
   }
@@ -95,7 +98,8 @@ export class PlanDisplay {
       return;
     }
     this.attractors = this.ephemeris.attractorsAt(displayTime);
-    this.path.update(plan, this.ephemeris, this.planFrame, simTime);
+    this.refreshFrameItems();
+    this.path.update(plan, this.ephemeris, this.planFrame, simTime, this.attractors);
     this.ghost = this.ghostAt(plan, displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.impactIcons = this.impactIconsOf();
@@ -142,6 +146,15 @@ export class PlanDisplay {
   apsisTimeOf(id: string): number | null {
     const icon = this.apsisIcons.find((i) => i.id === id);
     return icon?.time ?? null;
+  }
+
+  // 生存中の重力天体の増減を反映して TRAJECTORY パネルの座標系選択肢を組み直す
+  // (登録天体は変わらないので変化しない回は何もしない)。
+  private refreshFrameItems(): void {
+    const dynamicIds = this.attractors.filter((a) => !(a.id in this.ephemeris.registry)).map((a) => a.id).join(',');
+    if (dynamicIds === this.lastDynamicIds) return;
+    this.lastDynamicIds = dynamicIds;
+    this.frame.setItems(frameItems(this.ephemeris, this.attractors));
   }
 
   // displayTime における計画上の自機位置とそのラベル。折れ線の届く範囲外、または

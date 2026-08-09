@@ -1,5 +1,5 @@
 // 剛体球どうしの接触解決(自機・敵機・薬莢・補給・デブリ・マガジンベルト)。
-// collideRadius を持つ GameEntity だけが参加し、めり込み補正と反発の結果を
+// collides を立てた GameEntity だけが参加し、めり込み補正と反発の結果を
 // 新しい KinematicState として双方に差し替える。
 import { kinematicState } from '../../physics/kinematic-state';
 import { v3 } from '../../physics/vec3';
@@ -27,7 +27,7 @@ export class CollisionPhysics {
   ): void {
     const p = player;
     const beltActive = p.alive && dt > 1e-6;
-    const participants = entities.filter(e => e.alive && e.collideRadius !== undefined);
+    const participants = entities.filter(e => e.alive && e.collides);
     // ベルト状態を読み込み、衝突計算後に書き戻す
     if (beltActive) {
       participants.push(...p.belt.collisionSections(dt, p.state.r, p.state.v, p.att));
@@ -88,7 +88,7 @@ export class CollisionPhysics {
     const dy = rB.y - rA.y;
     const dz = rB.z - rA.z;
     const distSq = dx * dx + dy * dy + dz * dz;
-    const minD = a.collideRadius! + b.collideRadius!;
+    const minD = a.radius + b.radius;
     // 非有限値(NaN/Infinity)は比較で必ず false になるため、ガードしないと
     // 「常に接触している」と判定され、毎フレーム反発と衝突音が発生し、しかも
     // 相手側まで NaN に汚染してしまう(自機が巻き込まれると描画が全滅する)。
