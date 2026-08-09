@@ -10,7 +10,7 @@ export type BodyClass = 'star' | 'planet' | 'dwarf' | 'satellite' | 'smallBody';
 
 // 現実の太陽系(SOLAR_SYSTEM)の各天体の重要度。天体を登録すると Record の網羅性検査が
 // ここを要求する。
-export const BODY_CLASSES: Record<SolarSystemId, BodyClass> = {
+const BODY_CLASSES: Record<SolarSystemId, BodyClass> = {
   sun: 'star',
   mercury: 'planet',
   venus: 'planet',
