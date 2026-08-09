@@ -48,6 +48,7 @@ export class GameEntity {
   // 重力定数 GM [m^3/s^2]。0 = 重力を及ぼさない
   mu = 0;
   readonly degree2: null = null;
+  readonly isStar = false;
   thrust: Vec3 | null = null;
   // 機体座標系トルク。既定ゼロ = 自由回転。
   torque: Vec3 = v3();

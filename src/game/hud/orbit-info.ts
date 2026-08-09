@@ -25,7 +25,7 @@ export function orbitInfo(entity: GameEntity, attractors: readonly Attractor[]):
   const apsis = el ? apsisAltitudes(el) : null;
   return {
     centerId: center.id,
-    centerName: ATTRACTOR_NAMES[center.id],
+    centerName: ATTRACTOR_NAMES[center.id] ?? '—',
     alt: len(sub(entity.state.r, center.state.r)) - center.radius,
     spd: len(entity.state.v),
     apAlt: apsis ? apsis.ap : NaN,
