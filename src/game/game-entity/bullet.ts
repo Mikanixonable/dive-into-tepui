@@ -1,7 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { GameEntity } from './game-entity';
 import { KinematicState } from '../../physics/kinematic-state';
-import { Attractor, hitCelestialBody } from '../../physics/attractor';
+import { Attractor } from '../../physics/attractor';
+import { containingBody } from '../../physics/sphere-contact';
+import { isBurnedUp } from '../../physics/atmosphere';
 import { FloatingOrigin } from '../floating-origin';
 import type { Stage } from '../stages/stage';
 import { Vec3, lenSq, sub } from '../../physics/vec3';
@@ -50,7 +52,8 @@ export class Bullet extends GameEntity {
     // 消滅条件は「自機から離れすぎた」が主で、寿命は保険。
     checkLoss(_dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3, attractors: readonly Attractor[]): void {
         if (!this.alive) return;
-        if (hitCelestialBody(this.state.r, attractors, C.DEBRIS_REENTRY_ALT)) { this.alive = false; return; }
+        if (containingBody(this.state.r, attractors, 0) !== null
+          || isBurnedUp(this.state.r, attractors, C.DEBRIS_REENTRY_ALT)) { this.alive = false; return; }
         if (lenSq(sub(this.state.r, playerPos)) > C.BULLET_MAX_DIST * C.BULLET_MAX_DIST) { this.alive = false; return; }
         if (simTime - this.bornSim >= this.lifetime) this.alive = false;
     }

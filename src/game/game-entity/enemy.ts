@@ -2,7 +2,9 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
-import { Attractor, hitCelestialBody, strongestAttractor } from '../../physics/attractor';
+import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { containingBody } from '../../physics/sphere-contact';
+import { isBurnedUp } from '../../physics/atmosphere';
 import type { FloatingOrigin } from '../floating-origin';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
@@ -208,7 +210,8 @@ export class Enemy extends Ship {
   // 再突入による自然死。alive がすでに false なら何もしない(多重処理防止)。
   checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (!hitCelestialBody(this.state.r, attractors, C.REENTRY_ALT)) return;
+    if (containingBody(this.state.r, attractors, 0) === null
+      && !isBurnedUp(this.state.r, attractors, C.REENTRY_ALT)) return;
     this.alive = false;
     this.destroyEffect();
     activeStage.recordEnemyDeath(this, simTime, 'reentry');
