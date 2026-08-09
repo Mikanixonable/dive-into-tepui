@@ -39,6 +39,13 @@ import { register as registerIrregularSatellites } from './irregular-satellites.
 import { register as registerLaplaceSatellites } from './laplace-satellites.test';
 import { register as registerSmallBodies } from './small-bodies.test';
 import { register as registerEquatorialSatellites } from './equatorial-satellites.test';
+import { register as registerEphemerisProfile } from './ephemeris-profile.test';
+import { register as registerAbsoluteEphemeris } from './absolute-ephemeris.test';
+import { register as registerAstronomicalTime } from './astronomical-time.test';
+import { register as registerEphemerisPackFormat } from './ephemeris-pack-format.test';
+import { register as registerChebyshevEphemeris } from './chebyshev-ephemeris.test';
+import { register as registerPackedAbsoluteEphemeris } from './packed-absolute-ephemeris.test';
+import { register as registerSaveEphemerisContext } from './save-ephemeris-context.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -79,5 +86,15 @@ registerIrregularSatellites();
 registerLaplaceSatellites();
 registerSmallBodies();
 registerEquatorialSatellites();
+registerEphemerisProfile();
+registerAbsoluteEphemeris();
+registerAstronomicalTime();
+registerEphemerisPackFormat();
+registerChebyshevEphemeris();
+registerPackedAbsoluteEphemeris();
+registerSaveEphemerisContext();
 
-runAll();
+runAll().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
