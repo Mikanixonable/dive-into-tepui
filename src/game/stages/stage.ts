@@ -22,7 +22,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
 import type { StageSaveData } from '../save-data';
 
-export type StageId = '00' | '0' | '1' | '2' | 'debug' | 'debug-alt-system';
+export type StageId = '00' | '0' | '1' | '2' | 'debug' | 'debug-alt-system' | 'debug-load';
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 

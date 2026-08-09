@@ -148,12 +148,12 @@
           - sfx.fire()
         - spawnEjectedMagazineFrame() + sfx.magFeed() // 'mag-reload'
         - spawnEjectedMagazineFrame() + dropBarrel() + sfx.playReload() // 'barrel-reload'
-    - [dvEditActive(= editor.editMode かつ editor.selectedNodeIdx !== null)] player.thrust = null、throttle.stopThrust() して return // ノードのΔv編集中はWASDQEをそちらへ譲り、噴射音・プルーム表示も止める
+    - [dvEditActive(= editor.editMode かつ editor.selectedNodeIdx !== null)] player.thrust = null、throttle.stopThrust() して return // ノードのΔv編集中はWASDQEをそちらへ譲る。噴射音・プルームは syncPlayer 側の thrustEffects.sync が player.thrust=null を見て自分で止める
     - [simSpeed.canPlayerThrust] throttle.updateThrustLatches() // WASDQE各キーの連打をエッジ検出しラッチ集合を更新。反対方向キーを押している間は相手側のラッチも解除し続ける。canPlayerThrust が false の間は呼ばれず、押下エッジも消費されない
-    - throttle.updateThrustState() → player.thrust へ代入
-      - throttle.stopThrust() // 推力入力なし(物理押下・ラッチとも無し) or !canPlayerThrust
-      - sfx.setThrust(true) // 推力あり
+    - throttle.updateThrustState() → player.thrust へ代入(手動入力が無ければ null。'powered' 中の艦がここで null になっても、後段の activeStage.update → planExecutor.update が Simulator.advance より前に正しい値へ上書きするので積分には影響しない)
+      - throttle.stopThrust() // 推力入力なし(物理押下・ラッチとも無し) or !canPlayerThrust。thrustAccelVec(ベルト物理向け)を戻すだけ
     - invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
+    - [planExecution==='powered'] thrust!==null または throttle.hasManualRotationInput() なら planExecution='off' // 操作対象艦の手動並進・手動回転で自動実行を中断(マップモードかどうかは問わない)
   - nanWatchdog.checkPlayer('player.behave')
   - activeStage.update() // 具体ステージへディスパッチ。!isPlaying / 艦が無ければ即 return
     - behaveAllEnemies() // 敵を配置する具体ステージ(Stage0/00/1/2)が先頭で呼ぶ
@@ -176,18 +176,24 @@
       - spawnWave: generateWave() → addEnemy() → entities.addEnemy() + scoreCounter.recordSpawnEnemy()
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(simSpeed, respawnOnDespawn=false)
-    - [CreativeStage] advanceFollowPlan() // entities.players のうち followPlan=true な艦ごと。plan.dropNodesBefore(simTime) が期限切れノードをまとめて取り除いて返す最後のノードへ state を置き換える(複数ノードを跨いだフレームも dropNodesBefore 内部の while で一括消費)
     - [CreativeStage] placerPanel.isOpen なら getForm() を1回だけ呼び、computePreview(form)/computeFieldIssues(form) へ共有する
+    - [CreativeStage] entities.players ごとに ship.planExecutor.update(ship, dt, simTime, simSpeed) // planExecution!=='powered' なら idle へ戻すだけ。'powered' なら姿勢整列(idle/slew/armed)、または燃焼中(burn/trim)の出力段選択・燃料消費・ship.thrust の書き直しを進める。ノード時刻に対する猶予窓(NODE_APPROACH_LEAD+見積り燃焼時間+見積り姿勢転回時間)を外れている間は何もしない。死亡していれば reset。点火・遮断そのものはここでは行わない。Simulator.advance より前に呼ばれるので、操作艦で player.behave がこのフレーム player.thrust を null にしていても、積分に渡る前にここで確実に上書きされる
   - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効。残り時間が C.NODE_APPROACH_LEAD 以下なら autoWarpUntil=null + levelIdx=0 で即 return
   - simulator.advance(bulletCollision=true, resolveCollision=canResolvePhysicalCollisions, doSubstep=true)
     // 弾命中・剛体接触・姿勢積分はいずれもこの中。simulator が hitSystem / collisionPhysics を所有する
     - [サブステップごと] ×ceil(simDt / SUBSTEP_MAX_DT) // 分割数は simDt のみで決まる(実 fps に依存しない)
+      - nextEventTime(activeStage) // activeStage.nextSimulationEventTime(simTime) と全生存エンティティの nextSimulationEventTime() のうち最も早いものへ subDt を切り詰める
+        - [CreativeStage] ship.planExecution==='instant' なら plan.firstNode()?.t、'powered' なら ship.planExecutor.nextEventTime(ship, simTime)(ゲートが閉じている間は常に null。armed 中は点火予定時刻、burn/trim 中は射影から求めた遮断予定時刻。どちらも対象ノードが targetNode(参照)と一致する間だけ)
       - substep()
-        - gravityAttractorsAt(ephemeris, entities, t) // サブステップ先頭で1回だけ: ephemeris.gravityAttractorsAt(t)(mu を持つ天体)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流。同じ1配列をこのサブステップの全エンティティで使い回す(処理順に依存した誤差を避けるため)
-        - entity.stepActual() → relevantAttractors(state.r, all, GRAVITY_NEGLIGIBLE_ACCEL) → actualTrajectory.step() → stepDynamics()(history 記録)
-          // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。relevantAttractors がこの位置で無視できない天体だけに絞る。全天体重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
+        - attractorsAt(ephemeris, entities, simTime + dt/2) // サブステップ中点で1回だけ: ephemeris.attractorsAt(t) の mu!==0 部分(gravityBodiesAt)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流
+        - classifyAttractors(attractors) // 同じく1回だけ: μ/GRAVITY_GRID_CELL_SIZE² ≥ GRAVITY_NEGLIGIBLE_ACCEL の天体を always へ、それ以外を SpatialGrid(セル一辺 GRAVITY_GRID_CELL_SIZE)へ分類
+        - entity.stepActual(dt, attractorsNear(entity.state.r, classified)) → actualTrajectory.step() → stepDynamics()(history 記録)
+          // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。attractorsNear は always + 自身の位置の27近傍グリッドを合わせたもの。それらの重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
         - player.thermal.updateThermal() // 操作対象のみ(HUD 警告を出すため)
+      - activeStage.applySimulationEvents(simTime) // simTime がイベント境界ちょうどに到達した substep の直後
+        - [CreativeStage] ship.planExecution==='instant' なら node.t 到達で plan.dropNodesBefore(simTime) → 戻ったノードへ ship.state を置き換え(複数ノードを跨いだフレームも内部の while で一括消費)
+        - [CreativeStage] ship.planExecution==='powered' なら ship.planExecutor.applyIgnitionAndCutoff(ship, simTime) // 冒頭で !ship.alive なら reset して return。armed→burn の点火(ECI 固定の噴射方向 burnDirWorld/burnUpWorld を確定し ship.torque/ship.thrust を立てる)、射影が0を切った遮断(dropNodesBefore + plan.overwriteAnchor で実状態へアンカーを差し替え)
       - hitSystem.checkBulletHits() // bulletCollision=true のときだけ。サブステップごと
       - target.attacked() // 弾が命中した対象ごと
         - [Enemy.attacked]
@@ -208,7 +214,8 @@
     - collisionPhysics.resolve() // resolveCollision のみ(高ワープ時はスキップ)。サブステップ後に1回、実 dt で
       - player.belt.collisionSections() // player.alive && dt>1e-6
       - resolveCollisionPairs()
-        - resolveCollisionPair() → 双方の state へ代入 // 貫入している衝突ペアごと
+        - SpatialGrid 構築 // セル一辺 = 2×(参加者中の最大半径+最大移動量)。全ペアではなく各要素の27近傍だけを候補にする
+        - resolveCollisionPair() → 双方の state へ代入 // 27近傍候補内で貫入している衝突ペアごと
         - onPlayerCasingImpact() → sfx.clank() // 自機-薬莢の接触時のみ
         - onHighSpeedImpact() // 反発した接触速度が COLLISION_DAMAGE_MIN_SPEED 以上のペアのみ
           - player.collidedAtSpeed() / enemy.collidedAtSpeed() // game.ts が自機-敵機のペアだけを通す
@@ -239,8 +246,7 @@
   - predictor.update(simTime, player, canGrow, horizon) // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。canGrow = simSpeedManager.canGrowPrediction、horizon = displayTimeManager.durationSec(game.currentOrbitPeriod())。currentOrbitPeriod() は自機の現在軌道を strongestAttractor 周りで求めるだけの純計算(自機なしなら NaN)。視点/モードによる分岐なし
     - resyncPrediction(simTime, attractors, horizon) // entities.all() の全対象、毎フレーム無条件(canGrow が false でも省略しない — 実状態は動き続けるので、乖離した予測列を放置すると無関係な軌道が描かれ続ける)。attractors は simTime ぶんを1回だけ引いて全対象で使い回す
       - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
-    - dynamic = entities.attractors() // update 先頭で1回だけ求め、以降のラウンドロビン全体で使い回す(重力天体は予測ホライズンの間「現在の実状態で静止」とみなす近似)
-    - [canGrow] advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループも dt・重力源の決定(mergeAttractors(ephemeris.gravityAttractorsAt(tip.t), dynamic) → relevantAttractors(tip.r, ..., GRAVITY_NEGLIGIBLE_ACCEL) → localOrbitPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で頭打ち)も Predictor 側が持つ(stepActual に対する substep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
+    - [canGrow] advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループごとに predictedAttractorsAt(ephemeris, entities, tip.t)(先端の時刻 tip.t で他の重力天体の displayState(tip.t) を引き直す — まだその時刻に達していない天体はその回だけ落とす)→ classifyAttractors → attractorsNear で重力源を決め、dt(localOrbitPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で頭打ち)も Predictor 側が持つ(stepActual に対する substep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
       - player.stepPredicted(attractors, simTime, dt, horizon) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt・attractors を都度計算し直しながら1ステップずつ繰り返し呼ぶ
         - predictedTrajectory.step() // 呼び出し側が確定させた attractors で1ステップ積分
     - [canGrow] advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player を除外しないので同じフレームで二重に予算が付き得る)。entity.stepPredicted() が最初から false(predictsFuture=false/推力中/truncated)なら消費 0 で次へ即進む
@@ -257,7 +263,7 @@
     - editor.update(simTime, displayTime) // 被選択物候補にアプシスアイコンが入るので mapPicker.refresh より前
     - planDisplay.update(plan, simTime, displayTime, show) // show = hasPlan(=ship!==null) && (editMode || plan.nodes.length > 0)
       - path.update() // plan の corners を区間へ分解し、区間ごとに PlanArc を再積分。表示座標系と un-bake 時刻もここで確定
-        - arc.update() // 区間ごと。(state0, end) が変わったときだけ DynamicTrajectory で RK4 積分し直す(重い)。刻み幅ごとの重力源は relevantAttractors(state.r, mergeAttractors(ephemeris.gravityAttractorsAt(t), dynamicAttractors), GRAVITY_NEGLIGIBLE_ACCEL) — 実積分・予測と同じ候補集合。dynamicAttractors は Game.update が entities.attractors() を1回だけ求めて渡す(区間長は最大1年に及び、そのあいだの位置を EntityManager には問えない)
+        - arc.update() // 区間ごと。(state0, end) が変わったときだけ DynamicTrajectory で RK4 積分し直す(重い)。刻み幅ごとの重力源は classifyAttractors(mergeAttractors(gravityBodiesAt(ephemeris, t), dynamicAttractors)) → attractorsNear — 実積分・予測と同じ組み立て。dynamicAttractors は Game.update が entities.attractors() を1回だけ求めて渡す(区間長は最大1年に及び、そのあいだの位置を EntityManager には問えないので現在の実状態で固定する)
       - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
       - apsisIconsOf() // 最終区間の起点要素から解析的に算出。離心率 < APSIS_MIN_ECC なら空、双曲線なら Pe のみ
   - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // editor.update の後・mapPicker.refresh の前
@@ -302,7 +308,7 @@
           - player = ship / cameraSystem.setActivePlayer(ship) → combatCamera.setActivePlayer(ship) → chaseCamera.setPlayer(ship) // rot/dist は据え置き
           - editor.setActivePlayer(ship) → ship 差し替え / selectedNodeIdx = null / closeMenu() // 以後 editor.plan は ship.plan を指す
           - targeter.clearTargets() // 切替前の艦が握っていたロックを持ち越さない
-        - act='followToggle' → entities.findPlayer(target.id) → ship.followPlan を反転 // 'player' のみ
+        - act='planExecCycle' → entities.findPlayer(target.id) → ship.planExecution = nextPlanExecution(ship.planExecution) // 'player' のみ。OFF→瞬間移動→自動操縦→OFF
         - act='delete' → entities.findPlayer(target.id) → entities.removePlayer(ship) → dispose() // 'player' のみ。操作対象の艦にはこの項目自体がメニューに出ない(MapPicker.itemsFor)
     - editor.updateEditing()
       - applyHeldDv() ×6方向 // WASDQE または dvButtons(長押しボタン)が held の間、ホールド秒数からランプするレートで dt 秒分を積分
@@ -345,7 +351,7 @@
     - [entities.players ごと] ship.syncPlayer(displayTime, isActive = ship===player)
     - displayState(displayTime) // current.at または predicted.at。null なら obj.visible=false のみで以下は現在状態のまま
     - obj の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)。ガンサイトズームで隠れるのは isActive の艦だけ
-    - thrustEffects.sync() → core/outer の sync() or hide() // displayState(displayTime) ?? this.state。displayState が null なら alive=false 扱いで呼び自分で隠れる
+    - thrustEffects.sync(this.thrust, maxAccel, ...) → sfx.setThrust(firing)(isActive のみ) + core/outer の sync() or hide() // this.thrust は PlayerThrottle/PlanExecutor どちらが立てても同じ。displayState(displayTime) ?? this.state。displayState が null なら alive=false 扱いで呼び自分で隠れる
     - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4 // 同上
     - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出。同上
     - radiator.sync() // ヒンジ Group の rotation.y へ展開角を書く
@@ -471,22 +477,24 @@
 - **`TouchControls` は per-frame の update を持たない**。DOM の pointer イベントから
   `input.setVirtualKey()` を呼ぶだけで、per-frame の接点は `game.sync` からの
   `syncModeButtons()`(トグル点灯)だけ。
-- **`Ephemeris` は per-frame の状態更新は持たないが、時刻 `t` 完全一致キーの4スロットのリング
-  キャッシュを4系統(`planetHelioState`/`satelliteRelState`/`attractorsAt`/`gravityAttractorsAt`)
+- **`Ephemeris` は per-frame の状態更新は持たないが、時刻 `t` 完全一致キーの3スロットのリング
+  キャッシュを3系統(`planetHelioState`/`satelliteRelState`/`attractorsAt`)
   持つ**。キャッシュは厳密一致でしかヒットしないため、呼び出し順序に依存性はない(「直前ルック
   アップ」方式の単一メモと違い、どの順で呼んでもヒットする箇所は必ずヒットする) — 各所が
-  `stateOf`/`positionOf`/`attractorsAt`/`gravityAttractorsAt` などを呼ぶたび、ヒットしなければ
-  恒星→惑星-衛星系重心→惑星/衛星の合成をゼロから評価する。`attractorsAt`/`gravityAttractorsAt` は
+  `stateOf`/`positionOf`/`attractorsAt` などを呼ぶたび、ヒットしなければ
+  恒星→惑星-衛星系重心→惑星/衛星の合成をゼロから評価する。`attractorsAt` は
   同一 `t` に対して同一の配列参照を返すため、呼び出し側は返り値やその要素を書き換えてはならない。
-  `setPhaseOffsets` は4系統すべてのキャッシュをクリアする。
-- **重力積分が使う配列は3経路(`Simulator.substep`/`Predictor.advanceBudget`/`PlanArc.update`)とも
-  同じ2段: `gravityAttractorsAt(ephemeris, entities, t)`(解析天体の重力窓 + 生存中の重力天体を
-  合流)→ `relevantAttractors(r, ..., GRAVITY_NEGLIGIBLE_ACCEL)`(その位置で無視できる天体を
-  落とす)。**`substep` は同じ合流結果をそのサブステップの全エンティティへ使い回し(処理順に
-  依存した誤差を避けるため)、`Predictor` は `entities.attractors()` を `update` の先頭で1回だけ
-  求めて予測ホライズン全体で使い回す(重力天体は予測の間「現在の実状態で静止」とみなす近似)。
-  `PlanArc` は小惑星を合流させず解析天体のみに `relevantAttractors` を通す。3経路とも `Ephemeris`
-  の窓を直接書き換えず、常に新しい配列へ展開してから絞り込む。
+  `setPhaseOffsets` は3系統すべてのキャッシュをクリアする。
+- **重力積分が使う配列は3経路(`Simulator.substep`/`Predictor.advanceBudget`/`PlanArc.integrate`)とも
+  同じ組み立て: 合流(`gravityBodiesAt` の解析天体 + 生存中の重力天体)→ `classifyAttractors`
+  → `attractorsNear`(問い合わせ位置の27近傍グリッド)。**
+  `substep` はサブステップ中点で1回だけ合流・分類し、その結果をそのサブステップの全エンティティへ
+  使い回す(処理順に依存した誤差を避けるため)。`Predictor` は各対象の予測先端の時刻ごとに
+  `predictedAttractorsAt` で他の重力天体を引き直す(その時刻に達していない天体は落とす — 現在
+  位置に凍結すると「その時刻に居ない場所」から引くことになるため)。`PlanArc` は生存中の重力天体を
+  `Game.update` が1回求めた `dynamicAttractors`(現在の実状態)に固定したまま区間全体で使い回す
+  (区間長は最大1年に及び、そのあいだの位置を `EntityManager` には問えない)。3経路とも `Ephemeris`
+  の窓を直接書き換えず、常に新しい配列へ展開する。
 - **HUD マーカーは持ち主の `sync` が自分で出す**。`game.sync` に並ぶのは「1つの対象では決められない」
   ものだけ(`enemyMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存、`equatorNodeMarkers` =
   操作艦・navTarget・targeter という複数の役割にまたがる source 列に依存)で、残りは

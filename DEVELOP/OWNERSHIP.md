@@ -118,14 +118,16 @@ main.ts
     │   │   ├── PlayerMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の艦だけが sync する)
     │   │   ├── OrbitLine              ... 自機軌道線。中心天体は毎フレーム state から導出(strongestAttractor)。
     │   │   │                              表示抑制(setSuppressed)は Game.sync が PredictedTrajectoryLine.hasLineFor(この艦)から渡す(§付録参照)
-    │   │   └── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
+    │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
+    │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
     │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
     │   ├── Bullet[]
     │   ├── DebrisPiece[] (casings)
     │   ├── DebrisPiece[] (debris)
     │   ├── Ammo[]
     │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
-    │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定
+    │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定。
+    │                                       j2/c22 を渡した場合は degree2(pole/tesseral)も構築時に att から一括で固定
     ├── Simulator                      ... 実シミュレーション。EntityManager の参照を受け取って回すだけ(所有しない)
     │   ├── HitSystem
     │   └── CollisionPhysics
@@ -138,11 +140,15 @@ main.ts
 - 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・Ammo[]・Base[]・Asteroid[]・
   BeltSection[] — 木のどのノードも例外なく)は `id`(コンストラクタで固定。省略時は基底の
   `EntityIdAllocator` が自動採番)・`radius`(物理半径、既定 0)・`collides`(剛体接触参加可否、
-  既定 false)・`mu`(重力定数 GM、既定 0)・`isStar`(常に false)を自身のフィールドとして持つ —
-  変換なしで `physics/attractor.ts` の `Attractor` と同じ形になり、`EntityManager.attractors()` は
-  `mu !== 0` かつ生存中の個体をフィルタするだけで済む。`Asteroid` はこのうち `radius`/`mu` を
-  コンストラクタ引数の `mass` から導いて両方一括で固定する(§付録「正本でないもの」は参照しない —
-  導出は構築時の1回きり)。
+  既定 false)・`mu`(重力定数 GM、既定 0)・`degree2`(2次重力場、既定 null)・`isStar`(既定 false)
+  を自身のフィールドとして持つ — 変換なしで `physics/attractor.ts` の `Attractor` と同じ形になり、
+  `EntityManager.attractors()` は `mu !== 0` かつ生存中の個体をフィルタするだけで済む。`degree2`/
+  `isStar` は(`id`/`radius`/`collides`/`mu` と違い)`readonly` ではない派生クラス可変フィールドで、
+  派生クラスが構築時に自分で組み立てる余地を残す。`GameEntity.setGravitatingMass(mass)` は質量から
+  `mass`(剛体接触の換算質量)と `mu = GRAVITATIONAL_CONSTANT・mass` を同時に定める唯一の入口。
+  `Asteroid` はこれを使って `mu` を、コンストラクタ引数の `radius` をそのまま `radius`/`collides=true`
+  へ固定し、任意の `j2`/`c22` が非零なら自身の `att.q` から `degree2`(pole/tesseral)を構築時に
+  1度だけ組む(§付録「正本でないもの」は参照しない — 導出は構築時の1回きり)。
 - 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・Ammo[]・BeltSection[] — 木の
   どのノードも例外なく)は `physics/dynamic-trajectory.ts` の `DynamicTrajectory` を1本、フィールド名
   `actualTrajectory` で保持する(state/history/prevState の正本)。GameEntity ごとに繰り返さず
@@ -179,7 +185,8 @@ main.ts
 | `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・HitSystem・CollisionPhysics・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
 | `DisplayTimeManager` | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない) |
-| `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が activePlayer.plan を転送)・PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)・CreativeStage(followPlan 艦の自動追従) |
+| `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が activePlayer.plan を転送)・PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)・CreativeStage(`planExecution` 艦のノード消化) |
+| `PlanExecutor`(艦ごとの) | `Player`(艦自身) | CreativeStage(`update`/`nextSimulationEventTime`/`applySimulationEvents` から呼ぶだけで保持しない) |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
 | `Player` / `Simulator` / `EntityManager` / `Stage` | Game | 毎フレームの引数として相互に渡される |
@@ -216,9 +223,10 @@ main.ts
 | 天球グリッド6トグルの可視状態・navball の基準モード | `Navball` | `gridVisibility`/`mode`。`Game.sync` が `navball.gridVisibility` を読んで `EnvironmentScene.sync` の引数(`gridVisibility`)経由で `CelestialGrid.sync` へ渡すだけで、`CelestialGrid` 自身は状態を持たない |
 | Δv アーム/ボタンのホールド継続時間・ラッチ状態 | `PlanEditor.dvHoldTime` / `NodeGizmo.latch` | 6方向ぶんの経過秒数(ホールドレートのランプに使う)と、ドラッグがラッチへ入った軸/超過量。加算そのものは `PlanEditor.applyDv` に一本化 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
-| マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。ノード・アンカーとも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `KinematicState[]` を1本持つだけで、`addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`dropNodesBefore(t)` は実行時刻が `t` 以前のノードをまとめて取り除き、最後に取り除いたノードを新しい `anchor` に据えて返す(`CreativeStage.advanceFollowPlan` が `followPlan` 艦の自動追従にこの戻り値を使う) |
+| マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。ノード・アンカーとも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `KinematicState[]` を1本持つだけで、`addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`dropNodesBefore(t)` は実行時刻が `t` 以前のノードをまとめて取り除き、最後に取り除いたノードを新しい `anchor` に据えて返す(`CreativeStage.applySimulationEvents` が `planExecution==='instant'` 艦の乗り移りにこの戻り値を使う)。`overwriteAnchor(state)` は `trackAnchor` と違いノードが残っていても効く無条件差し替えで、`PlanExecutor.finish` が `'powered'` 艦の遮断後にこれで `anchor` を実状態へ上書きする(ノードが残っている限り `trackAnchor` は no-op なので使えない) |
 | 操作対象(アクティブ)艦 | `Game.player` | 唯一の書き換え箇所は `Game.setActivePlayer(ship)`。カメラ参照・計画編集対象・ターゲット解除の副作用もすべてここに閉じる(下記「たまたま同時に切り替わる」節参照) |
-| 軌道計画への自動追従 | `Player.followPlan` | 全ての自機が持つ(既定 false)。ON の艦は `CreativeStage.update` が毎フレーム見て、次ノード時刻を跨いだら `state` をノードの絶対状態へ置き換える |
+| 軌道計画の実行モード | `Player.planExecution`(型 `PlanExecutionMode` = `'off' \| 'instant' \| 'powered'` は `plan/plan-executor.ts` が定義し `player.ts` は re-export するだけ) | 全ての自機が持つ(既定 `'off'`)。`'instant'` は `CreativeStage.applySimulationEvents` がノード時刻ちょうどで `state` をノードの絶対状態へ置き換え、`'powered'` は `PlanExecutor` が姿勢制御・噴射で実行する。操作対象艦での手動並進(`this.thrust !== null`)・手動回転(`throttle.hasManualRotationInput`)は `Player.behave` が `'powered'` を `'off'` へ落とす |
+| PlanExecutor の状態機械(`phase`/`targetNode`/`burnDirWorld`/`burnUpWorld`/`pendingAccel`/`thrustGateOpen`) | `PlanExecutor`(艦ごとの) | 艦の `planExecution`/ノード/生死/ゲートから毎フレーム `update` が導出。`targetNode` はノードの**参照**を持ち、`node.t` ではなく `node !== targetNode` で差し替わりを検出する(`Plan.applyNodeDv`/`retimeNode` は同じ `t` のまま新しいオブジェクトへ差し替えるため)。`ship.torque`/`ship.thrust`/`ship.plan` は `PlanExecutor` が唯一書き換える(`'powered'` の間のみ)が、書き込みは `update`(毎フレーム、`Player.behave` の後)と `applyIgnitionAndCutoff`(simTime イベント境界ごと)の両方から起きる — 前者は「操作艦で `behave` が毎フレーム上書きする `thrust` を、その後で確実に正しい値へ戻す」役、後者は「点火・遮断の瞬間を simTime ちょうどに固定する」役で、互いの代わりにはならない |
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNodeIdx` / `.editMode` | 選択は素の `number \| null`。`deleteNode(idx)` は削除後 `selectedNodeIdx >= idx` なら選択を解除する |
 | 直近ノードの接近/達成通知済み | `PlanGuide`(`approachNotified` / `achievedNotified`) | 通知済みのノードそのものへの参照。編集のたびノードは別インスタンスへ置き換わるので、同一性比較がそのまま「同じノードについて通知済みか」の判定になる |
 | 予測表示期間(手動レンジの秒数 `manualDurationSec` を含む)・未来ゴーストスライダー(`sliderT`)・未来表示の禁止(`forceCurrent`) | `DisplayTimeManager` | `forceCurrent` は get/set アクセサで、true をセットすると `sliderT` も 0 へ戻す。期間の切替(`durationKey` 変更)でも同様に `sliderT` を 0 へ戻す |
@@ -242,7 +250,7 @@ main.ts
 | スナップショット一覧の表示状態 | `SaveBrowser`(private `_visible`) | `open()`/`close()` のみが書き換える。毎フレーム sync は持たず、操作のたびに自分で DOM を作り直す一発モーダル |
 | 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | 各要素は位置を時刻つきの `KinematicState` で持ち、`updateFlashEffects` がその時刻から `simTime` まで移流させる |
 | 地球自転の初期位相 | `EarthBody.phase0` | |
-| 各天体の平均黄経の初期位相 | `Ephemeris`(`phaseOffsets`) | 時刻を引数に取るサンプラ。既定で乱数を持つのは月のみ。時刻 `t` 完全一致キーの4スロットのリングキャッシュ(`planetHelioState`/`satelliteRelState`/`attractorsAt`/`gravityAttractorsAt`)を持ち、ヒットしない呼び出しだけ天体暦の合成をやり直す。セーブ/ロードは `getPhaseOffsets()`/`setPhaseOffsets()` で読み書きする(`Game.restore` が共有インスタンスへ書き戻す。インスタンスの作り直しはしない。`setPhaseOffsets` は4系統のキャッシュを全てクリアする) |
+| 各天体の平均黄経の初期位相 | `Ephemeris`(`phaseOffsets`) | 時刻を引数に取るサンプラ。既定で乱数を持つのは月のみ。時刻 `t` 完全一致キーの3スロットのリングキャッシュ(`planetHelioState`/`satelliteRelState`/`attractorsAt`)を持ち、ヒットしない呼び出しだけ天体暦の合成をやり直す。セーブ/ロードは `getPhaseOffsets()`/`setPhaseOffsets()` で読み書きする(`Game.restore` が共有インスタンスへ書き戻す。インスタンスの作り直しはしない。`setPhaseOffsets` は3系統のキャッシュを全てクリアする) |
 | `registry`/`originId`/`epochOffsetSec` | `Ephemeris`(コンストラクタ引数、以後不変) | どのステージも既定値(`SOLAR_SYSTEM`/`'earth'`/`EPOCH_T_OFFSET`)を渡すが、`StageClass.ephemerisConfig` を宣言したステージだけ `Game` が別の値を渡して構築する。`starId`/`inertialFrame`/`frames`(登録天体ぶんの `ReferenceFrame` 一覧)もこの3引数からコンストラクタが1回だけ導出する正本 |
 | `dynamicFrames`(`Map<AttractorId, ReferenceFrame>`) | `Ephemeris`(`frameFor` 経由) | レジストリ未登録の id(生存中の重力天体)向け `ReferenceFrame` を初回アクセス時に生成してキャッシュする、実行時に伸びる正本。`frames` と同じ参照同一性契約(`sampled-line.ts` の `frame === lastFrame`)を満たすためのもの |
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
@@ -315,7 +323,7 @@ main.ts
 
 | 対象 | 正体 | 無効化の契機 |
 | --- | --- | --- |
-| `Ephemeris.attractorsAt(t)` / `Ephemeris.gravityAttractorsAt(t)` の戻り値(`Attractor[]`) | 天体暦(`SOLAR_SYSTEM` 登録順 — 地球・月・水星・金星・火星・フォボス・ダイモス・木星・メティス・アドラステア・アマルテア・テーベ・イオ・エウロパ・ガニメデ・カリスト・ヒマリア・エララ・アナンケ・カルメ・パシファエ・シノーペ・土星・パン・ダフニス・プロメテウス・パンドラ・エピメテウス・ヤヌス・ミマス・エンケラドゥス・テティス・ディオネ・レア・タイタン・ヒペリオン・イアペトゥス・フェーベ・天王星・海王星・トリトン・ネレイド・ケレス・ベスタ・パラス・冥王星・ハウメア・マケマケ・エリス・ハレー彗星・エンケ彗星・太陽周回小天体32体・天王星系6衛星・冥王星系5衛星・準惑星/小惑星の衛星6体・太陽の101体)から組み立てる重力源スナップショット。各要素は位置・速度に加えて、その時刻に解決した2次重力場(`degree2`: J2・基準半径・自転軸・長軸。持たない天体は `null`)も抱える。`gravityAttractorsAt` は `mu > 0` の天体だけに絞った窓(質量が測定されていない天体は `mu: 0` で登録して外す。実際にどれが効くかは位置依存の `relevantAttractors` が決めるので、静的なフラグで重ねて絞らない)で、重力積分専用の3箇所(`GameEntity.stepActual`・`Predictor.advanceBudget`・`PlanArc` の積分刻み)だけがこちらを使い、遮蔽判定・表面到達判定・中心天体解決・サンプリング間隔導出・HUD/マーカー等は引き続き `attractorsAt` の全天体窓を使う。どのクラスもこれを状態として保持しない — 呼んだその場で使い切るか、次のステップ/フレームでまた引き直す。`Ephemeris` は時刻 `t` 完全一致キーの4スロットのリングキャッシュを持ち、同一 `t` への呼び出しは同一の配列参照を返す(呼び出し側は書き換え禁止) | 呼び出しごとに新しい `t` を渡せば作り直される(リングキャッシュがヒットしない場合のみ再計算)。`setPhaseOffsets` は全キャッシュを明示的にクリアする |
+| `Ephemeris.attractorsAt(t)` の戻り値(`Attractor[]`) | 天体暦(`SOLAR_SYSTEM` 登録順 — 地球・月・水星・金星・火星・フォボス・ダイモス・木星・メティス・アドラステア・アマルテア・テーベ・イオ・エウロパ・ガニメデ・カリスト・ヒマリア・エララ・アナンケ・カルメ・パシファエ・シノーペ・土星・パン・ダフニス・プロメテウス・パンドラ・エピメテウス・ヤヌス・ミマス・エンケラドゥス・テティス・ディオネ・レア・タイタン・ヒペリオン・イアペトゥス・フェーベ・天王星・海王星・トリトン・ネレイド・ケレス・ベスタ・パラス・冥王星・ハウメア・マケマケ・エリス・ハレー彗星・エンケ彗星・太陽周回小天体32体・天王星系6衛星・冥王星系5衛星・準惑星/小惑星の衛星6体・太陽の101体)から組み立てる重力源スナップショット。各要素は位置・速度に加えて、その時刻に解決した2次重力場(`degree2`: J2・基準半径・自転軸・長軸。持たない天体は `null`)も抱える。全天体を含む唯一の窓で、重力積分の3箇所(`GameEntity.stepActual`・`Predictor.advanceBudget`・`PlanArc` の積分刻み)も遮蔽判定・表面到達判定・中心天体解決・サンプリング間隔導出・HUD/マーカー等も同じこの窓を使う(`mu = 0` の天体は寄与がゼロなので積分側で除外する必要が無い)。どのクラスもこれを状態として保持しない — 呼んだその場で使い切るか、次のステップ/フレームでまた引き直す。`Ephemeris` は時刻 `t` 完全一致キーのリングキャッシュを持ち、同一 `t` への呼び出しは同一の配列参照を返す(呼び出し側は書き換え禁止) | 呼び出しごとに新しい `t` を渡せば作り直される(リングキャッシュがヒットしない場合のみ再計算)。`setPhaseOffsets` は全キャッシュを明示的にクリアする |
 | `OrbitalElements.center`(`Attractor`) | その軌道要素をどの天体まわりで取ったか。要素と同じ寿命でその天体の `t` 時点スナップショットを抱えるので、要素そのものより長く持ち回してはならない(`OrbitLine` は楕円の平行移動先をここから引く) | 要素を作り直すたび。`GameEntity.orbitalElementsAround` のメモ経由なら `state` 差し替えのたび |
 | 解析楕円の中心天体(`strongestAttractor(state.r, attractors)` の結果) | `state`(と `attractors`)から都度導く選択であり、`GameEntity`/`Plan`/`PlanDisplay`/`OrbitLine` のどれもこれを状態として保持しない — 選ぶ GUI もない | 呼ぶたび再計算 |
 | `GameEntity.orbitalElementsAround(center)` の内部メモ | `state` の参照同一性 + `center.id` をキーにした軌道要素のメモ化(中心天体 `center` は呼び出し側が選ぶ) | `state` が差し替わるたび(`current.step`/`.reset`)、または `center.id` が変わるたび自動的に不一致になる |
@@ -333,7 +341,7 @@ main.ts
 | `EntityLineSet.lines`(`Map<GameEntity, SampledLine>`。`DebugTrajectoryLine`/`PredictedTrajectoryLine` がそれぞれ private に1つ持つ) | エンティティごとに `SampledLine` を1本対応させるプールと、対象集合から外れた分の破棄だけを担う共通機構。線の見た目(色・不透明度・renderOrder)は各所有者がコンストラクタへ渡す `factory` が決めるので、このクラス自身は知らない(`DebugTrajectoryLine` の分は `?debugLines=1` のときだけ実体化) | 対象集合(`sync` の引数)から外れたエンティティぶんを毎フレーム破棄 |
 | `PredictedTrajectoryLine.synced`(`Set<GameEntity>`) | 直近の `sync` で実際に予測軌道線を描いた対象の記録。`EntityLineSet.lineFor` は未登録のエンティティにも線を新規作成してしまうため、`hasLineFor` がそれを踏んで誤登録しないための集合 | 毎フレームの `sync` で描画対象から作り直す |
 | `PlanPath.arrivalStates()` / `PlanEditor.nodeDv()` | 各区間の `PlanArc` 終端状態、およびそこから求めるノード Δv の導出値(表示専用) | 呼ぶたび再計算(`PlanArc` 側の積分結果をそのまま読むので、描画中の計画軌道と同じ結果になる) |
-| `PlayerThrottle.thrustVizDir` / `.thrustAccelVec` | 推力の表示・ベルト物理向け派生値 | 毎フレーム上書き |
+| `PlayerThrottle.thrustAccelVec` | ベルト物理(`Belt.update`)向けの推力加速度ベクトル | 毎フレーム上書き。プルーム・エンジン音は `ThrustEffects.sync` が `ship.thrust`(`GameEntity` 側、`PlayerThrottle`/`PlanExecutor` どちらが書いても同じ)を直接読むので、ここには含まれない |
 | `Player` の各 getter(`rcsDamp` / `magsLeft` 等) | throttle/fire への転送 | — |
 | `FocusMarkers.labels[].pos` | 天体暦から毎フレーム再計算。ただし `visibleBodyIds` が admits した天体だけ — 対象外の天体は座標を引かない | `update(t, focusId, toggles)` 毎(`syncLabels()` はこの値をマーカーへ置くだけ) |
 | `NavTarget` の相対 AN/DN 位置・通過時刻 | 自機軌道要素 + 対象の軌道面法線からの導出値(id 自体は正本) | `update()` 毎に全消去→再算出 |

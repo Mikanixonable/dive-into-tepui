@@ -1,6 +1,6 @@
 ---
 name: refactor-fixed
-description: このプロジェクトで確定済みの横断的な責務境界(Game にロジックを書かない、update と sync、physics/ の正確さと純度、独自 Vec3 と THREE.Vector3、ctx 引数の禁止、クロージャ注入の禁止、同時に切り替わるフラグの分離、GUI・マーカーの所有者)。責務の置き場所を判断するときに必ず読む
+description: このプロジェクトで確定済みの横断的な責務境界(Game にロジックを書かない、update と sync、physics/ の正確さと純度、独自 Vec3 と THREE.Vector3、ctx 引数の禁止、クロージャ注入の禁止、同時に切り替わるフラグの分離、GUI・マーカーの所有者、演出/SFXが読むのは入力元固有の状態でなく共有の物理フィールド)。責務の置き場所を判断するときに必ず読む
 ---
 
 # 確定済みの責務境界
@@ -361,3 +361,24 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
   `mesh.scale` をどちらを先に書いても、scale は常に天体自身のローカル軸(赤道断面が X-Z、極が Y)
   に対して効く。形状は自転軸に固定される天体固有の量であって ECI 軸には固定されない、という
   §16 の姿勢の理屈をそのまま裏返した帰結。
+
+## 18. 演出・SFX は入力元固有の状態でなく `GameEntity` が持つ共有の物理フィールドを読む
+
+**ある物理量(推力・トルクなど)を複数の入力元(手動操作・オートパイロット等)が書きうるとき、
+その量を絵や音にする側は `GameEntity` 自身が持つ正本フィールド(`thrust`/`torque`)を直接読み、
+特定の入力元が持つ表示専用の派生状態(例: `PlayerThrottle.thrustVizDir`/`throttleIdx`)には
+依存しない。** 派生状態を読む形にすると、その入力元経由でしか書かれない値を演出側が前提にして
+しまい、別の入力元(例: `plan/plan-executor.ts` の `PlanExecutor` が `ship.thrust` を直接書く
+自動操縦)が同じ物理量を動かしても演出に何も現れない、という食い違いが起きる。
+
+- `player/rcs-effects.ts` の `RcsEffects` は以前からこの形で、`ship.torque` を直接読んで
+  発火するノズルを選ぶ — `PlayerThrottle` の手動回転状態を経由しない。
+- `player/thrust-effects.ts` の `ThrustEffects.sync(fo, pos, thrust, maxAccel, alive, audible, camera)`
+  も同じ形に揃えてある。`thrust: Vec3 | null` は `ship.thrust` そのもの、`maxAccel` は
+  `ship.totalThrust / ship.mass`(呼び出し側が求めて渡す)で、プルームの大きさは
+  「4段階のスロットルプリセットの何段目か」ではなく「全開加速度に対する比」という連続値から
+  決める — 段階的な手動プリセットと、段階を持たない自動操縦の連続出力の両方を同じ式で表せる。
+- エンジン音・RCS 音(共有の1チャンネルループ)は、この `sync` 自身が鳴らす。呼び出し側
+  (`Player.syncPlayer`)は真偽の `audible` 引数(= その艦が操作対象かどうか)を渡すだけで、
+  「いつ鳴らすか」の判断自体は演出クラスの内側に閉じる — 手動側の `PlayerThrottle.stopThrust()`
+  はもう SFX を触らず、ベルト物理向けの `thrustAccelVec` を戻すだけの役に絞られている。

@@ -1,8 +1,7 @@
 // 実シミュレーションの更新(軌道積分・弾命中・剛体接触・慣性姿勢積分)。simTime/lastSimDt を保持する。
 import { stepAttitude } from '../../physics/attitude';
 import * as C from '../const';
-import { relevantAttractors } from '../../physics/attractor';
-import { gravityAttractorsAt } from './gravity-attractors';
+import { attractorsAt, attractorsNear, classifyAttractors } from './attractors';
 import { HitSystem } from './hit';
 import { EffectsSystem } from '../vfx/effects-system';
 import { EntityManager } from './entity-manager';
@@ -98,22 +97,15 @@ export class Simulator {
   }
 
   // 全エンティティを dt だけ積分する。重力源はこのステップの中点(t + dt/2)で1回だけ組み、
-  // 全エンティティで使い回す。重力を持つ GameEntity は state を積分で書き換えるので、各自の
-  // 重力源リストは全員が未積分のうちにまとめて確定させ、確定後にまとめて積分する — 1本の
-  // ループで確定と積分を同時に行うと、先に積分したエンティティの新しい位置を後続のエンティティが
-  // 「今この瞬間の重力源」として読んでしまう。積分後の simTime を返す。
+  // 空間グリッドへ分類してから全エンティティで使い回す — 各自が積分後の新しい位置を読みに
+  // 行くと、本来対称であるべき相互作用に処理順依存の誤差が入る。各エンティティは自身の位置の
+  // 27近傍グリッドを引き直すだけで、分類そのものはこのステップで1回。積分後の simTime を返す。
   private substep(
     simTime: number,
     dt: number,
   ): number {
-    const all = gravityAttractorsAt(this.ephemeris, this.entities, simTime + dt / 2);
-    const entities = this.entities.all();
-    // 全エンティティぶんの重力源を先に確定してから積分する。同じループで確定と積分を同時に
-    // 行うと、先に積分したエンティティの新しい位置を後続が「この瞬間の重力源」として読み、
-    // 本来対称であるべき相互作用に処理順依存の誤差が入る。
-    const attractorsPerEntity = entities.map((e) =>
-      relevantAttractors(e.state.r, all, C.GRAVITY_NEGLIGIBLE_ACCEL));
-    entities.forEach((e, i) => e.stepActual(dt, attractorsPerEntity[i]!));
+    const classified = classifyAttractors(attractorsAt(this.ephemeris, this.entities, simTime + dt / 2));
+    for (const e of this.entities.all()) e.stepActual(dt, attractorsNear(e.state.r, classified));
 
     return simTime + dt;
   }

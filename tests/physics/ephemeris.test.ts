@@ -226,7 +226,6 @@ export function register(): void {
   test('ephemeris: 同一 t の attractorsAt は同一配列参照を返す', () => {
     const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
     assert.equal(e.attractorsAt(1234), e.attractorsAt(1234));
-    assert.equal(e.gravityAttractorsAt(1234), e.gravityAttractorsAt(1234));
   });
 
   test('ephemeris: 異なる t では再計算され、値が変わる', () => {
@@ -248,25 +247,6 @@ export function register(): void {
     const after = e.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
     assert.ok(len(sub(before, after)) > 1e6, `位相差し替えが反映されていない: ${len(sub(before, after))}`);
     assert.deepEqual(after, new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 2.1 }).positionOf('moon', 1234));
-  });
-
-  // 重力窓の候補は「質量が判明している天体」であって、近づける天体を人が選んだ集合ではない
-  // (どの候補が実際に効くかは位置依存の relevantAttractors が決める)。SOLAR_SYSTEM は全天体の
-  // mu が実測値なので、候補は全天体と一致する。
-  test('ephemeris: gravityAttractorsAt は mu を持つ天体だけを宣言順で返し、値は attractorsAt と一致する', () => {
-    const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
-    const gravity = e.gravityAttractorsAt(777);
-    const all = e.attractorsAt(777);
-    assert.deepEqual(gravity.map((b) => b.id), all.filter((b) => b.mu > 0).map((b) => b.id));
-    for (const b of gravity) assert.deepEqual(b, all.find((x) => x.id === b.id));
-  });
-
-  // mu = 0 で登録した天体は候補集合から外れる — 質量が測定されていない天体の登録方法。
-  test('ephemeris: mu が 0 の天体は gravityAttractorsAt に現れない', () => {
-    const registry = { ...SOLAR_SYSTEM, moon: { ...SOLAR_SYSTEM.moon, mu: 0 } };
-    const e = new Ephemeris(registry, 'earth', EPOCH_T_OFFSET, {});
-    assert.ok(!e.gravityAttractorsAt(777).some((b) => b.id === 'moon'));
-    assert.ok(e.attractorsAt(777).some((b) => b.id === 'moon'));
   });
 
   // EPOCH_T_OFFSET はこの見た目の条件そのものから逆算された定数なので、これはその逆算の検算。

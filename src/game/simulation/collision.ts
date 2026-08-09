@@ -2,7 +2,8 @@
 // collides を立てた GameEntity だけが参加し、めり込み補正と反発の結果を
 // 新しい KinematicState として双方に差し替える。
 import { kinematicState } from '../../physics/kinematic-state';
-import { v3 } from '../../physics/vec3';
+import { len, sub, v3 } from '../../physics/vec3';
+import { SpatialGrid } from '../../physics/spatial-grid';
 import { COLLISION_DAMAGE_MIN_SPEED } from '../const';
 import { GameEntity } from '../game-entity/game-entity';
 import { DebrisPiece } from '../game-entity/debris-piece';
@@ -38,31 +39,41 @@ export class CollisionPhysics {
     }
   }
 
-  // 全ペアの接触を解決する。自機と薬莢が衝突したら onPlayerCasingImpact を、
-  // 高速で反発したペアがあれば onHighSpeedImpact を呼ぶ。
+  // 候補ペアを空間グリッドの27近傍列挙で絞り込んでから接触を解決する。自機と薬莢が
+  // 衝突したら onPlayerCasingImpact を、高速で反発したペアがあれば onHighSpeedImpact を呼ぶ。
   private resolveCollisionPairs(
     entities: GameEntity[],
     player: Player,
     onPlayerCasingImpact: () => void,
     onHighSpeedImpact: ((a: GameEntity, b: GameEntity, speed: number) => void) | undefined,
   ): void {
-    // O(n²) の総当たりは実測でボトルネックではない(sim フェーズ 2.7ms 程度)ため、
-    // 空間分割などのアルゴリズム変更は行わない。ここでは1ペアあたりの定数コストのみを
-    // 削減する: instanceof 判定・isCasing 判定・配列アクセスをループ前に一度だけ計算しておく。
     const n = entities.length;
     const isBelt = new Array<boolean>(n);
     const isCasingFlag = new Array<boolean>(n);
+    let maxRadius = 0;
+    let maxMove = 0;
     for (let k = 0; k < n; k++) {
       const e = entities[k]!;
       isBelt[k] = e instanceof BeltSection;
       isCasingFlag[k] = isCasing(e);
+      if (e.radius > maxRadius) maxRadius = e.radius;
+      const move = len(sub(e.state.r, e.prevState.r));
+      if (move > maxMove) maxMove = move;
     }
-    for (let i = 0; i < entities.length; i++) {
+    // 重なり判定(半径和)と直前substepの線分TOI判定(移動量)、双方が拾いうる最大距離の
+    // 2倍ずつを足した値をセル一辺にする — これ以上離れた27近傍の外のペアは、どちらの
+    // 判定式でも接触しえない。
+    const cellSize = 2 * (maxRadius + maxMove) || 1;
+    const grid = new SpatialGrid<number>(cellSize);
+    for (let k = 0; k < n; k++) grid.insert(k, entities[k]!.state.r);
+
+    for (let i = 0; i < n; i++) {
       const a = entities[i]!;
       const aBelt = isBelt[i]!;
       const aIsPlayer = a === player;
       const aCasing = isCasingFlag[i]!;
-      for (let j = i + 1; j < entities.length; j++) {
+      for (const j of grid.neighbors(a.state.r)) {
+        if (j <= i) continue;
         const b = entities[j]!;
         const bBelt = isBelt[j]!;
         if (aBelt && bBelt) continue;
