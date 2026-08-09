@@ -11,9 +11,10 @@
 // との黄経差の最大値が約2.3°(採用14項の振幅和 ≈2.49° に対し実測はその9割強)、地心距離は
 // 近地点 356,400〜370,400 km・遠地点 404,000〜406,700 km の実測範囲にほぼ収まる
 // (遠地点のみ切り詰めによる高次相関項の欠如で最大 0.05% ほど超えることがある)。
+import { Quat } from './attitude';
 import { PlanetAngles } from './planet-orbit';
 import { eclToEci, eciToEcl } from './ecliptic';
-import { KeplerOrbit, keplerOrbitState } from './kepler-orbit';
+import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitState } from './kepler-orbit';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { dot, len } from './vec3';
 
@@ -48,6 +49,7 @@ export function satelliteOrbit(p: {
   periodSec: number;
   nodePeriodSec: number; // 昇交点歳差の周期(正の値。逆行は satelliteOrbit 自身が符号を付ける)
   perigeePeriodSec: number; // 近点歳差の周期(正の値。順行は satelliteOrbit 自身が符号を付ける)
+  basisToEci?: Quat; // 要素を測る基準面(省略時は黄道面)
   lonTerms: readonly PerturbationTerm[];
   latTerms: readonly PerturbationTerm[];
   distTerms: readonly PerturbationTerm[];
@@ -55,6 +57,7 @@ export function satelliteOrbit(p: {
   return {
     // 二体部分は永年歳差込みの KeplerOrbit。周期項(lonTerms/latTerms/distTerms)はそのまま素通しする。
     kepler: {
+      basisToEci: p.basisToEci ?? ECLIPTIC_BASIS,
       a: p.a,
       aRate: 0,
       e: p.e,
@@ -112,6 +115,10 @@ export function satelliteState(
 ): KinematicState {
   const k = orbit.kepler;
   const base = keplerOrbitState(k, t, phaseOffset);
+  // 黄道座標への分解は黄道極を通る軌道で rho0 = hypot(x,y) → 0 となり速度が発散する。
+  // 重ねる補正が1項も無いなら分解する意味自体が無いので、二体解をそのまま返す。
+  if (orbit.lonTerms.length === 0 && orbit.latTerms.length === 0 && orbit.distTerms.length === 0) return base;
+
   const pos0 = eciToEcl(base.r);
   const vel0 = eciToEcl(base.v);
 

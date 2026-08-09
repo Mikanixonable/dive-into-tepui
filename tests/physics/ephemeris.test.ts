@@ -3,6 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
+import { SatelliteId } from '../../src/physics/attractor';
 import { MU_EARTH, R_EARTH, bodyDef } from '../../src/physics/solar-system';
 import { MU_MOON, MU_SUN as MU_SUN_LOCAL, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { EPS } from '../../src/physics/ecliptic';
@@ -206,7 +207,7 @@ export function register(): void {
 
   test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は R_EARTH', () => {
     const attractors = eph.attractorsAt(1234);
-    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'sun']);
+    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'io', 'europa', 'ganymede', 'callisto', 'saturn', 'titan', 'uranus', 'neptune', 'triton', 'sun']);
     assert.equal(attractors[0]!.radius, R_EARTH);
   });
 
@@ -298,6 +299,43 @@ export function register(): void {
   test('ephemeris: 水星の近日点移動は一般相対論込みの 574〜578″/Cy に入る', () => {
     const rateArcsecPerCentury = ((bodyDef('mercury').orbit.lonPeriRate * JULIAN_CENTURY * 180) / Math.PI) * 3600;
     assert.ok(rateArcsecPerCentury > 574 && rateArcsecPerCentury < 578, `水星 ϖ̇: ${rateArcsecPerCentury}″/Cy`);
+  });
+
+  // 平均運動は長半径と親の重力定数からケプラー第3法則で導くので、周期の一致は
+  // 登録した a と親の μ が実測どおりに噛み合っていることの検算になる。
+  test('ephemeris: 主要衛星の公転周期が実測値と一致する', () => {
+    const cases: readonly [string, number][] = [
+      ['io', 1.769138 * 86400],
+      ['europa', 3.551181 * 86400],
+      ['ganymede', 7.154553 * 86400],
+      ['callisto', 16.689017 * 86400],
+      ['titan', 15.945 * 86400],
+      ['triton', 5.876854 * 86400],
+      ['phobos', 7.6533 * 3600],
+      ['deimos', 30.312 * 3600],
+    ];
+    for (const [id, expected] of cases) {
+      const period = (2 * Math.PI) / bodyDef(id as SatelliteId).orbit.kepler.lRate;
+      assert.ok(Math.abs(period / expected - 1) < 0.01, `${id} の公転周期: ${period / 86400} 日(期待 ${expected / 86400} 日)`);
+    }
+  });
+
+  // 親惑星の赤道面を基準面として登録できていれば、軌道法線は親の自転軸のすぐ近くに来る。
+  // 黄道基準のままだと木星の赤道傾斜 3.13° と黄道傾斜 23.44° ぶん離れる。
+  test('ephemeris: ガリレオ衛星の軌道面は木星の赤道面に一致する', () => {
+    const pole = eph.poleAt('jupiter', 1e7)!.axis;
+    for (const id of ['io', 'europa', 'ganymede', 'callisto'] as const) {
+      const offDeg = (Math.acos(dot(eph.orbitNormalAt(id, 1e7), pole)) * 180) / Math.PI;
+      assert.ok(offDeg < 1, `${id} の軌道面法線と木星自転軸のなす角: ${offDeg}°`);
+    }
+  });
+
+  test('ephemeris: トリトンは海王星の自転に対して逆行する', () => {
+    const t = 1e7;
+    const rel = sub(eph.stateOf('triton', t).r, eph.stateOf('neptune', t).r);
+    const relVel = sub(eph.stateOf('triton', t).v, eph.stateOf('neptune', t).v);
+    const h = cross(rel, relVel);
+    assert.ok(dot(h, eph.poleAt('neptune', t)!.axis) < 0, `トリトンの軌道角運動量が順行している: ${dot(norm(h), eph.poleAt('neptune', t)!.axis)}`);
   });
 }
 

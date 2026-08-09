@@ -1,6 +1,10 @@
 // 天体の静的事実の表: 恒星/惑星/衛星の判別 union(CelestialBodyDef)と、太陽系の各天体の
 // 重力定数・半径・軌道モデル(SOLAR_SYSTEM)。宣言順が Ephemeris が返す重力源配列の順になる。
+import { Quat } from './attitude';
 import { AttractorId, PlanetId, SatelliteId, StarId } from './attractor';
+import { equatorBasisToEci } from './body-orientation';
+import { raDecToEci } from './ecliptic';
+import { keplerPeriod } from './elements';
 import { AU, PlanetOrbit, planetOrbit } from './planet-orbit';
 import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-orbit';
 import { Vec3, len } from './vec3';
@@ -13,6 +17,12 @@ export const MU_EARTH = 3.986004418e14; // 地球重力定数 [m^3/s^2]
 export const R_EARTH = 6.371e6; // 地球平均半径 [m]
 export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
 export const SIDEREAL_DAY = 86164.0905; // 恒星日 [s]
+// 衛星を抱える惑星の重力定数 [m^3/s^2]。衛星の平均運動をケプラー第3法則で出すのに要るため、
+// 惑星本体の定義と衛星の軌道が同じ1つの値を読む。
+export const MU_MARS = 4.282837e13;
+export const MU_JUPITER = 1.26686534e17;
+export const MU_SATURN = 3.7931187e16;
+export const MU_NEPTUNE = 6.836529e15;
 
 // 位置ベクトルから地球海抜高度を返す。
 export function earthAltitudeOf(r: Vec3): number {
@@ -143,6 +153,68 @@ const MOON_DIST_TERMS: readonly PerturbationTerm[] = [
   { d: 4, m: 0, mp: -1, f: 0, amp: -34782 },
 ];
 
+type IauPole = Extract<PoleModel, { readonly kind: 'iau' }>;
+
+// 衛星を抱える惑星の自転軸。衛星の軌道要素はこの軸が張る赤道面の上で与えるため、
+// 惑星本体の pole と衛星の基準面が同じ1つの定義を読む。
+const MARS_POLE: IauPole = {
+  kind: 'iau',
+  ra0Deg: 317.269202, ra1DegPerCentury: -0.10927547,
+  dec0Deg: 54.432516, dec1DegPerCentury: -0.05827105,
+  w0Deg: 176.049863, wRateDegPerDay: 350.891982443297,
+};
+const JUPITER_POLE: IauPole = {
+  kind: 'iau',
+  ra0Deg: 268.056595, ra1DegPerCentury: -0.006499,
+  dec0Deg: 64.495303, dec1DegPerCentury: 0.002413,
+  w0Deg: 284.95, wRateDegPerDay: 870.536,
+};
+const SATURN_POLE: IauPole = {
+  kind: 'iau',
+  ra0Deg: 40.589, ra1DegPerCentury: -0.036,
+  dec0Deg: 83.537, dec1DegPerCentury: -0.004,
+  w0Deg: 38.9, wRateDegPerDay: 810.7939024,
+};
+const NEPTUNE_POLE: IauPole = {
+  kind: 'iau',
+  ra0Deg: 299.36, ra1DegPerCentury: 0.0,
+  dec0Deg: 43.46, dec1DegPerCentury: 0.0,
+  w0Deg: 249.978, wRateDegPerDay: 541.1397757,
+};
+
+// 惑星の赤道面を基準面とする回転。極の一次項は世紀あたり 0.11° 以下なので元期の極で固定する
+// (「衛星の軌道面が親の赤道面に対して静止している」という近似そのものが、内側衛星の
+// ラプラス面 ≈ 惑星赤道面という近似と同程度の粗さで、極のこの緩やかな動きはその中に埋もれる)。
+function equatorBasis(pole: IauPole): Quat {
+  return equatorBasisToEci(raDecToEci(pole.ra0Deg, pole.dec0Deg));
+}
+
+// 親惑星の赤道面を基準面に取る衛星の二体ケプラー軌道。要素は JPL Solar System Dynamics の
+// 衛星平均要素(親惑星の赤道面基準)。歳差・周期摂動は実測値を持たないので置かない。
+function equatorialSatelliteOrbit(p: {
+  a: number;
+  e: number;
+  incDeg: number;
+  planetMu: number;
+  planetPole: IauPole;
+}): SatelliteOrbit {
+  return satelliteOrbit({
+    a: p.a,
+    e: p.e,
+    incDeg: p.incDeg,
+    raan0Deg: 0,
+    lonPeri0Deg: 0,
+    l0Deg: 0,
+    periodSec: keplerPeriod(p.a, p.planetMu),
+    nodePeriodSec: Infinity,
+    perigeePeriodSec: Infinity,
+    basisToEci: equatorBasis(p.planetPole),
+    lonTerms: [],
+    latTerms: [],
+    distTerms: [],
+  });
+}
+
 // 型注釈ではなく satisfies で受けることで、id ごとの具体型(地球なら惑星、月なら衛星)が
 // 保たれ、「地球は必ず惑星」を型から引き出せる。
 export const SOLAR_SYSTEM = {
@@ -264,7 +336,7 @@ export const SOLAR_SYSTEM = {
   mars: {
     kind: 'planet',
     id: 'mars',
-    mu: 4.282837e13,
+    mu: MU_MARS,
     radius: 3.3895e6,
     gravitySource: false,
     orbit: planetOrbit({
@@ -281,20 +353,30 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0.00007882,
       aRatePerCenturyAu: 0.00001847,
     }),
-    pole: {
-      kind: 'iau',
-      ra0Deg: 317.269202,
-      ra1DegPerCentury: -0.10927547,
-      dec0Deg: 54.432516,
-      dec1DegPerCentury: -0.05827105,
-      w0Deg: 176.049863,
-      wRateDegPerDay: 350.891982443297,
-    },
+    pole: MARS_POLE,
+  },
+  phobos: {
+    kind: 'satellite',
+    id: 'phobos',
+    mu: 7.112e5,
+    radius: 1.1267e4,
+    gravitySource: false,
+    planet: 'mars',
+    orbit: equatorialSatelliteOrbit({ a: 9.376e6, e: 0.0151, incDeg: 1.08, planetMu: MU_MARS, planetPole: MARS_POLE }),
+  },
+  deimos: {
+    kind: 'satellite',
+    id: 'deimos',
+    mu: 9.85e4,
+    radius: 6.2e3,
+    gravitySource: false,
+    planet: 'mars',
+    orbit: equatorialSatelliteOrbit({ a: 2.3458e7, e: 0.00033, incDeg: 1.79, planetMu: MU_MARS, planetPole: MARS_POLE }),
   },
   jupiter: {
     kind: 'planet',
     id: 'jupiter',
-    mu: 1.26686534e17,
+    mu: MU_JUPITER,
     radius: 6.9911e7,
     gravitySource: true,
     orbit: planetOrbit({
@@ -311,20 +393,48 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: -0.00013253,
       aRatePerCenturyAu: -0.00011607,
     }),
-    pole: {
-      kind: 'iau',
-      ra0Deg: 268.056595,
-      ra1DegPerCentury: -0.006499,
-      dec0Deg: 64.495303,
-      dec1DegPerCentury: 0.002413,
-      w0Deg: 284.95,
-      wRateDegPerDay: 870.536,
-    },
+    pole: JUPITER_POLE,
+  },
+  io: {
+    kind: 'satellite',
+    id: 'io',
+    mu: 5.9599e12,
+    radius: 1.8216e6,
+    gravitySource: false,
+    planet: 'jupiter',
+    orbit: equatorialSatelliteOrbit({ a: 4.218e8, e: 0.0033, incDeg: 0.04, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
+  },
+  europa: {
+    kind: 'satellite',
+    id: 'europa',
+    mu: 3.2027e12,
+    radius: 1.5608e6,
+    gravitySource: false,
+    planet: 'jupiter',
+    orbit: equatorialSatelliteOrbit({ a: 6.711e8, e: 0.0072, incDeg: 0.47, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
+  },
+  ganymede: {
+    kind: 'satellite',
+    id: 'ganymede',
+    mu: 9.8878e12,
+    radius: 2.6312e6,
+    gravitySource: false,
+    planet: 'jupiter',
+    orbit: equatorialSatelliteOrbit({ a: 1.0704e9, e: 0.0013, incDeg: 0.20, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
+  },
+  callisto: {
+    kind: 'satellite',
+    id: 'callisto',
+    mu: 7.1793e12,
+    radius: 2.4103e6,
+    gravitySource: false,
+    planet: 'jupiter',
+    orbit: equatorialSatelliteOrbit({ a: 1.8827e9, e: 0.0048, incDeg: 0.19, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
   },
   saturn: {
     kind: 'planet',
     id: 'saturn',
-    mu: 3.7931187e16,
+    mu: MU_SATURN,
     radius: 5.8232e7,
     gravitySource: true,
     orbit: planetOrbit({
@@ -341,15 +451,16 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: -0.00050991,
       aRatePerCenturyAu: -0.00125060,
     }),
-    pole: {
-      kind: 'iau',
-      ra0Deg: 40.589,
-      ra1DegPerCentury: -0.036,
-      dec0Deg: 83.537,
-      dec1DegPerCentury: -0.004,
-      w0Deg: 38.9,
-      wRateDegPerDay: 810.7939024,
-    },
+    pole: SATURN_POLE,
+  },
+  titan: {
+    kind: 'satellite',
+    id: 'titan',
+    mu: 8.9781e12,
+    radius: 2.5747e6,
+    gravitySource: false,
+    planet: 'saturn',
+    orbit: equatorialSatelliteOrbit({ a: 1.22187e9, e: 0.0288, incDeg: 0.35, planetMu: MU_SATURN, planetPole: SATURN_POLE }),
   },
   uranus: {
     kind: 'planet',
@@ -384,7 +495,7 @@ export const SOLAR_SYSTEM = {
   neptune: {
     kind: 'planet',
     id: 'neptune',
-    mu: 6.836529e15,
+    mu: MU_NEPTUNE,
     radius: 2.4622e7,
     gravitySource: false,
     orbit: planetOrbit({
@@ -401,15 +512,17 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0.00005105,
       aRatePerCenturyAu: 0.00026291,
     }),
-    pole: {
-      kind: 'iau',
-      ra0Deg: 299.36,
-      ra1DegPerCentury: 0.0,
-      dec0Deg: 43.46,
-      dec1DegPerCentury: 0.0,
-      w0Deg: 249.978,
-      wRateDegPerDay: 541.1397757,
-    },
+    pole: NEPTUNE_POLE,
+  },
+  triton: {
+    kind: 'satellite',
+    id: 'triton',
+    mu: 1.4276e12,
+    radius: 1.3534e6,
+    gravitySource: false,
+    planet: 'neptune',
+    // 傾斜 90° 超が逆行を表す。
+    orbit: equatorialSatelliteOrbit({ a: 3.5476e8, e: 0.000016, incDeg: 156.885, planetMu: MU_NEPTUNE, planetPole: NEPTUNE_POLE }),
   },
   sun: { kind: 'star', id: 'sun', mu: MU_SUN, radius: R_SUN, gravitySource: true },
 } satisfies Record<AttractorId, CelestialBodyDef>;
