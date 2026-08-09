@@ -1,7 +1,7 @@
 // 惑星: その惑星と衛星の共通重心が太陽まわりに描くケプラー軌道。惑星本体ではなく重心が
 // ケプラー軌道に乗る(地球は月に対し 1:81 と十分に軽くはなく、重心のまわりを 4,673 km の
 // 振幅で回っている)。要素の永年変化は他惑星からの摂動に由来し、世紀あたりの値で入力する。
-import { JULIAN_CENTURY, KeplerOrbit } from './kepler-orbit';
+import { ECLIPTIC_BASIS, JULIAN_CENTURY, KeplerOrbit } from './kepler-orbit';
 
 export type PlanetOrbit = KeplerOrbit;
 
@@ -25,6 +25,7 @@ export function planetOrbit(p: {
 }): PlanetOrbit {
   // 度/世紀・au/世紀の入力単位を、KeplerOrbit のラジアン/秒単位へ一括変換するだけ。
   return {
+    basisToEci: ECLIPTIC_BASIS,
     a: p.a,
     aRate: (p.aRatePerCenturyAu * AU) / JULIAN_CENTURY,
     e: p.e,

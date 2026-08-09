@@ -124,7 +124,7 @@ export function register(): void {
   test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、positionOf と整合する', () => {
     const ephemeris = new Ephemeris({ earth: 0.1, moon: 0.2 });
     const attractors = ephemeris.attractorsAt(5000);
-    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'sun']);
+    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'io', 'europa', 'ganymede', 'callisto', 'saturn', 'titan', 'uranus', 'neptune', 'triton', 'sun']);
     // 天体を1つ挿入しても静かに別天体を指さないよう、添字ではなく id で引く。
     const byId = (id: string) => attractors.find((b) => b.id === id)!;
     assert.deepEqual(byId('earth').state.r, ZERO, '地球は原点に静止');
