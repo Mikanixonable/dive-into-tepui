@@ -49,9 +49,18 @@
 | P8 | 戦闘ビューの惑星輝点(`PointBody`) | **完了**(`45adb1a`) |
 | — | 高離心率ケプラー初期値の改善(P6 の一部) | **完了**(`b0c07cc`) |
 
-**加えて、本計画の EP0(重力窓の位置依存化)は別系統の作業(`for_agent.md` の Step3、
-コミット `c9525c0..a2e37f0`)が肩代わり済み**。ただし採った設計は本計画が書いた
-`influenceRadius`(静的半径)ではなく、**実際の寄与値による動的な絞り込み**だった(C-7)。
+**加えて、本計画の EP0(重力窓の位置依存化 + `gravitySource` 廃止)は別系統の作業
+(`for_agent.md` の Step3・Step4)が完了済み**。当初 Step3 が採った設計は本計画が書いた
+`influenceRadius`(静的半径)ではなく実際の寄与値による動的な絞り込み(`relevantAttractors`)
+だったが、**その絞り込み自体も現在は削除されている** — 絞り込みは加算と同じ式
+(`attractorAccel`)を同じ回数評価するだけで、天体数×エンティティ数のオーダーを
+下げていなかったため(下げていたのは定数倍だけ)。**重力窓という区別自体も消え、
+`Ephemeris.attractorsAt` が唯一の窓になった**。`gravitySource` フラグは廃止済みで、
+重力源かどうかは `game/simulation/attractors.ts` が `mu !== 0` の一本で判定する
+(C-7、E-13、E-14)。オーダーを実際に下げているのは27近傍の空間ハッシュ
+(`src/physics/spatial-grid.ts`)で、これは重力源の位置ごとの列挙
+(`classifyAttractors`/`attractorsNear`)と剛体接触のペア列挙
+(`game/simulation/collision.ts`)の両方を通っている。
 
 ### 1.2 コードの事実(本計画が前提とする形)
 
@@ -59,8 +68,9 @@
   太陽・地球・月・水星・金星・火星・フォボス・ダイモス・木星・イオ・エウロパ・ガニメデ・
   カリスト・土星・タイタン・天王星・海王星・トリトン・ケレス・ベスタ・パラス・冥王星・
   ハウメア・マケマケ・エリス・ハレー・エンケ。
-  `gravitySource: true` は **5体だけ**(地球・月・木星・土星・太陽)、
-  残り**22体**は `false`。**この 5:22 の偏りが §5 E-14 で扱う問題の根**。
+  **`gravitySource` フラグは廃止済みで、`CelestialBodyDef` に存在しない**(全リポジトリ
+  grep で0件)。重力源かどうかは、天体・`GameEntity` の別なく `mu !== 0` の一本で決まる
+  (`game/simulation/attractors.ts` の `gravityBodiesAt`、C-7)。
 - **C-2 天体IDは `string` に開かれた**(`attractor.ts:8-14`):
   ```ts
   export type AttractorId = string;
@@ -98,14 +108,24 @@
 - **C-6 基準面**: P4 で衛星8体が入ったので、`kepler-orbit.ts` の基準面がどう扱われたかを
   EP3 着手時に再確認する(本計画 §5 E-3 の `SatelliteBasis` が既に入っているか、
   黄道基準のままで8衛星を近似したかで、EP3 の作業量が変わる)。
-- **C-7 重力窓は「2つの窓 + 動的な絞り込み」の3段になった**。
-  - `Ephemeris.attractorsAt(t)`(全27体)/ `gravityAttractorsAt(t)`(`gravitySource` の5体)。
-    どちらも4スロットの t リングキャッシュ、同一 t には同一配列参照(書き換え禁止)。
-  - `game/simulation/gravity-attractors.ts` の `mergeAttractors(bodies, dynamic)` が
-    解析天体と**重力を持つ生存中の `GameEntity`**(`Asteroid`、`2144b68`/`e277e91`)を合流。
-  - `attractor.ts:74-79` の `relevantAttractors(r, attractors, negligibleAccel)` が
-    **`attractorAccel` の実際の値**を閾値 `GRAVITY_NEGLIGIBLE_ACCEL`(=1e-10、
-    `game/const.ts:204`)と比べて絞る。**静的な `influenceRadius` は存在しない**(grep 0件)。
+- **C-7 重力窓という区別は無くなり、`Ephemeris.attractorsAt(t)` が唯一の窓になった。**
+  4スロットの t リングキャッシュで、同一 t には同一配列参照(書き換え禁止・全天体)。
+  - `game/simulation/attractors.ts` の `gravityBodiesAt(ephemeris, t)` が
+    `attractorsAt(t)` を `mu !== 0` の一本で絞り(表示専用天体は寄与が恒等的に0なので
+    候補から外れる)、`mergeAttractors` で**重力を持つ生存中の `GameEntity`**
+    (`Asteroid` など、`entities.attractors()`)と合流する。実積分は `attractorsAt`、
+    予測は `predictedAttractorsAt`(先端時刻の状態が得られない動的天体はその時刻の
+    合流から落とす)を経由する。
+  - **位置ごとの絞り込みは値による判定(`relevantAttractors`)ではなく空間ハッシュに
+    置き換わっている。** 同ファイルの `classifyAttractors`/`attractorsNear` が、
+    セル一辺 `GRAVITY_GRID_CELL_SIZE` 離れた地点での引力 `mu/R²` が
+    `GRAVITY_NEGLIGIBLE_ACCEL` 以上の天体は常に加算対象に含め(`always`)、それ未満は
+    `physics/spatial-grid.ts` の27近傍空間ハッシュ(`SpatialGrid`)に載せて問い合わせ
+    位置の27近傍からだけ加算する。**静的な `influenceRadius` は存在しない**
+    (grep 0件)し、**`relevantAttractors`(実際の寄与値と閾値を比べるが、加算と同じ回数
+    `attractorAccel` を評価するのでオーダーは変わらない実装)も現在は存在しない**
+    (grep 0件)。この空間ハッシュは重力源の位置ごとの列挙だけでなく、剛体接触の
+    ペア列挙(`game/simulation/collision.ts`)にも共用されている。
 - **C-8 自転軸は `CelestialBodyDef` 直下へ移動済み**(`solar-system.ts:129,139` の
   `pole?: PoleModel`)。第1次計画 D-6 が求めた移動は完了している。
 - **C-9 `Attractor` に `isStar: boolean` が増えた**(`attractor.ts:32-39`)—
@@ -196,10 +216,9 @@
   フライバイするミッションを行う予定であり、第1次計画 D-1 が置いた
   「その天体の近傍にプレイヤーが存在しうるか」という判定基準は、**全天体について真になった**。
   この要求は `gravitySource` フラグの**判定基準を変える**のではなく、
-  **フラグごと廃止する**ことで満たす(E-14) — 静的フラグの本来の意図(計算の軽量化、
-  遠いときはオフ・近いときはオン)は `relevantAttractors` が位置依存で、しかも
-  静的フラグより厳密に果たしているため、重ねて絞る理由がもう無い。
-  重力積分が舐める配列を短く保つ構造(E-13)は Step3 で実装済み。
+  **フラグごと廃止する**ことで満たされている(E-14。**廃止は完了済み** — `mu !== 0` の
+  一本で重力源かどうかが決まる)。重力積分が舐める配列を短く保つ構造(E-13)も
+  27近傍の空間ハッシュ(`physics/spatial-grid.ts`)として実装済み。
 - **F-11 ラグランジュ点の生成基準**: ラグランジュ点は「力学的に意味のある系」だけに
   生成する。判定は計算で決め、手で立てたフラグをテストが検証する(E-15)。
   L4/L5 は Routh の線形安定条件(μ < 0.0385209)、L1/L2/L3 はヒル半径が天体半径を
@@ -702,21 +721,26 @@ E-7 の `arcs` がこれを表す。
 
 ### E-1 表示・判定側の線形走査(重力側は E-13 が済んでいる)
 
-天体が 27 → 103 になる。重力積分側は Step3 の `relevantAttractors` が既に位置依存で
-絞っている(C-7、E-13)ので、残るのは **`attractorsAt` を読む表示・判定側**である。
-t リングキャッシュが効くので配列の**生成**は1フレームに数回だが、
-`strongestAttractor`(`attractor.ts:86`)は呼ばれるたびに全 `Attractor` に対して
-`attractorAccel` を計算する。`map-picker.ts` はピック候補ごとにこれを呼ぶため、
-候補 150 件 × 103 体 ≈ 15,000 回/フレームになる。
+天体が 27 → 103 になる。重力側は `game/simulation/attractors.ts` の
+`classifyAttractors`/`attractorsNear` が27近傍の空間ハッシュ(`physics/spatial-grid.ts`)で
+位置ごとに絞っている(C-7、E-13)ので、残るのは
+**`attractorsAt` を読む表示・判定側**である。t リングキャッシュが効くので配列の**生成**は
+1フレームに数回だが、`strongestAttractor`(`attractor.ts:86`)は呼ばれるたびに全
+`Attractor` に対して `attractorAccel` を計算する。`map-picker.ts` はピック候補ごとに
+これを呼ぶため、候補 150 件 × 103 体 ≈ 15,000 回/フレームになる。
 
-**対処: 静的な `influenceRadius` フィールドは追加しない。既存の `relevantAttractors` を
-そのまま流用する。**
+**対処: 静的な `influenceRadius` フィールドは追加しない。**
 
-- 当初この節は `CelestialBodyDef` に静的な `influenceRadius: number` を持たせる案だったが、
-  Step3 が採った `relevantAttractors`(実際の `attractorAccel` 値と閾値の比較)は
-  **静的半径より厳密で、天体ごとの定数を1つも要求しない**。閾値を重力用より緩めた値で
-  同じ関数を呼べば、`strongestAttractor` の候補削減にそのまま使える。
-  **判断: 静的フィールドを新設せず、`relevantAttractors` の閾値引数を使い分ける。**
+- **`relevantAttractors`(値による絞り込み)は現在存在しない**(E-13)ので、
+  この節が当初想定していた「重力側の関数をそのまま流用する」という手段は無い。
+  重力側の絞り込みは今や27近傍の空間ハッシュであり、これは*ある位置から見た重力源集合*を
+  返す構造で、`strongestAttractor`/`hitCelestialBody`/`isOccluded` が問う
+  *「全 `Attractor` のうちどれが該当するか」という走査そのものの高速化*とは形が違う
+  (空間ハッシュは加算対象を絞るための構造であって、勝者を1つ選ぶ・条件に合う1つを
+  見つける、といった走査を代替するものではない)。**この節の対処自体は未着手のまま
+  残っている** — 採るなら同じ `SpatialGrid` を再利用するか、`hitCelestialBody`/
+  `isOccluded` が持ち出している「距離の2乗が(半径+margin)の2乗を超えたら次へ」の
+  平方根回避のような、寄与ではなく `radius`(+ margin)ベースの棄却を検討する。
 - `hitCelestialBody`/`isOccluded` は寄与ではなく `radius`(+ margin)そのもので
   棄却できるので、「距離の2乗が(半径+margin)の2乗を超えたら次へ」の平方根回避で足りる。
   これは結果が厳密に不変な純粋最適化。
@@ -728,55 +752,68 @@ t リングキャッシュが効くので配列の**生成**は1フレームに�
   フラグの立て方次第で再発する。値による絞り込みは**結果を変えない**ので、その危険が
   構造的に無い。
 
-### E-13 重力窓の位置依存化 — **実装済み(Step3)。設計は当初案より良い形になった**
+### E-13 重力窓の位置依存化 — **実装済み。当初案・Step3 案のどちらとも異なる形に落ち着いた**
 
-F-10 により重力源が 5 → 最大71体になる。第1次計画 D-1 が
+F-10 により重力源が最大で登録天体数近くまで増える。第1次計画 D-1 が
 「RK4 の4ステージ × 全エンティティで舐める配列なので重力側は要素数を5体に固定する
 必要がある」と書いた制約に正面から違反するため、重力窓を位置依存にする構造が要る。
-**この構造は `for_agent.md` の Step3(コミット `e277e91`)で既に入っている。**
 
-実装された形(C-7):
+**この構造は3段階を経ている。** Step3(`for_agent.md`、コミット `e277e91`)がまず
+`attractor.ts` の `relevantAttractors(r, attractors, negligibleAccel)`(実際の
+`attractorAccel` 値を閾値と比較する動的な絞り込み)を入れた。**その後この絞り込み自体が
+削除された** — `relevantAttractors` は加算(重力の合算)と同じ式を同じ回数評価するだけで、
+天体数 N・エンティティ数 M に対する O(N·M) のオーダーを下げていなかった(下げていたのは
+定数倍だけ)。オーダーを実際に下げているのは27近傍の空間ハッシュ
+(`physics/spatial-grid.ts` の `SpatialGrid`)で、`game/simulation/attractors.ts` の
+`classifyAttractors`/`attractorsNear` がこれを重力源列挙に配線している:
 
 ```ts
-// attractor.ts:74-79
-export function relevantAttractors(
-  r: Vec3, attractors: readonly Attractor[], negligibleAccel: number,
-): readonly Attractor[] {
-  const thresholdSq = negligibleAccel * negligibleAccel;
-  return attractors.filter((attractor) => lenSq(attractorAccel(r, attractor)) >= thresholdSq);
+// game/simulation/attractors.ts
+export function classifyAttractors(attractors: readonly Attractor[]): ClassifiedAttractors {
+  const always: Attractor[] = [];
+  const grid = new SpatialGrid<Attractor>(GRAVITY_GRID_CELL_SIZE);
+  const thresholdMu = GRAVITY_NEGLIGIBLE_ACCEL * GRAVITY_GRID_CELL_SIZE * GRAVITY_GRID_CELL_SIZE;
+  for (const a of attractors) {
+    if (a.mu >= thresholdMu) always.push(a);
+    else grid.insert(a, a.state.r);
+  }
+  return { always, grid };
+}
+
+export function attractorsNear(pos: Vec3, classified: ClassifiedAttractors): readonly Attractor[] {
+  const nearby = classified.grid.neighbors(pos);
+  return nearby.length === 0 ? classified.always : [...classified.always, ...nearby];
 }
 ```
 
-**当初案(静的な `influenceRadius` との距離比較)より実装の方が良い**:
+セル一辺 `GRAVITY_GRID_CELL_SIZE` 離れた地点での引力 `mu/R²` が
+`GRAVITY_NEGLIGIBLE_ACCEL` 以上の天体は常に加算対象(`always`)に残し、それ未満だけを
+グリッドへ載せて27近傍探索に回す — 軽重の分類は `mu` 一本で、天体の出自
+(解析天体か動的重力天体かの区別)は見ない。
 
-- 静的半径は天体ごとに1つ定数を要求し、その値の妥当性を人が保証しなければならない。
-  **実際の寄与値との比較は定数を1つも要求せず、しかも厳密**(保守的である必要すらない)。
-- したがって**`influenceRadius` は新設しない**(E-1 も同じ判断に揃えた)。
-  この計画の当初案は撤回する。
-- コストは `attractorAccel` を候補数ぶん計算する形になるが、選別は substep ごと
-  1回で RK4 の外側(`simulator.ts:108-116`)なので、4ステージぶんの節約がそれを上回る。
+**静的な `influenceRadius`(この計画の当初案)は新設されなかった** — 動的な絞り込みで
+足りると Step3 の時点で判断され(E-1 も同じ判断に揃えた)、その動的な絞り込み自体も
+上記の理由で後にオーダーを下げる構造(空間ハッシュ)へ置き換わっている。
 
-**閾値**: `GRAVITY_NEGLIGIBLE_ACCEL = 1e-10` [m/s²](`game/const.ts:204`)。
+**閾値**: `GRAVITY_NEGLIGIBLE_ACCEL = 1e-10` [m/s²](`game/const.ts`)。
 SRP(~7e-8 m/s²)より2桁小さいので、天体が窓に出入りする瞬間の加速度の不連続は
 RK4 の打ち切り誤差に埋もれる。**不連続を消すためのフェードイン係数は採らない** —
 係数を掛けた加速度は物理的に間違った値であり、「小さすぎて見えない不連続」を
 「常に少しだけ間違った重力」と引き換えにするのは割に合わない。
 
-**残作業(E-B5)**: **3経路のうち `plan-arc.ts:144-149` だけが `mergeAttractors` を
-経由していない。** `simulator.ts` と `predictor.ts` は
-`mergeAttractors(ephemeris.gravityAttractorsAt(t), entities.attractors())` を通すが、
-`plan-arc.ts` は `ephemeris.gravityAttractorsAt(t)` を直接呼ぶため、
-**計画線だけが `Asteroid` の重力を無視する**。E-13 が挙げた
-「3経路が同じ重力源集合を選ぶこと」という正しさの要件が、現時点で破れている。
-症状は「計画どおりに飛んだのに小惑星の近くで軌道がずれる」で、しかも
-「計画が当たらない」という形でしか現れないため目視では原因に到達しにくい。
-**EP0 の残作業として直し、3経路の一致をテストで固定する。**
+**E-B5(3経路の不一致)は解消済み。** `plan-arc.ts` は現在
+`game/simulation/attractors.ts` の `mergeAttractors`/`gravityBodiesAt` を経由しており
+(`attractorsNear`/`classifyAttractors` も併用)、`simulator.ts`/`predictor.ts` と同じ
+重力源集合を見る。**「3経路が同一の重力源集合を選ぶこと」という正しさの要件
+(E-13 の核)は、`Ephemeris.attractorsAt` が唯一の窓になったことで、3経路とも同じ
+合流規則(`mergeAttractors`/`gravityBodiesAt`/`attractorsAt`/`predictedAttractorsAt`)を
+呼ぶという形で保たれている。**
 
 **F-10 が連れてくる副次的な要求**(本計画で扱うか否かを明示する):
 
-- **クリエイティブモードの基準天体**: E-14 で `gravitySource` を UI の判定から
-  切り離すので、この不変条件は無くなる。基準天体は 5 → 全公転天体になり、
-  ウィジェットの作り替えが要る(E-17)。
+- **クリエイティブモードの基準天体**: `gravitySource` は既に廃止され、UI の判定から
+  切り離されている(E-14)。基準天体は全公転天体から選べる形になっているが、
+  103体規模での一覧性はまだウィジェットの作り替えが要る(E-17)。
 - **degree2 の欠落**: 水星・金星・火星・天王星・海王星と全衛星は `degree2` を持たない
   (C-1)。**火星の J2 は 1.96e-3 で地球の 1.08e-3 より大きい**ため、火星低軌道の
   ミッションでは昇交点歳差が実際と食い違う。**本計画では扱わず、フライバイの範囲では
@@ -1367,7 +1404,7 @@ EP4 の E-6)では `.claude/skills/refactor-fixed/SKILL.md` の書き換えも�
 
 | フェーズ | 内容 | 依存 |
 |---|---|---|
-| **EP0** | 重力窓の後始末 + `gravitySource` 廃止 | なし。**天体を1体も足さずに先に入れる** |
+| **EP0** | 重力窓の後始末 + `gravitySource` 廃止 | **完了**(`for_agent.md` Step3・Step4)。天体を1体も足さずに先に入れる |
 | **EPU** | UI の階層化(E-15/E-16/E-17) | EP0(フラグ廃止で選択肢が増えるため) |
 | EP1 | 黄道基準の衛星7体 | EP0 |
 | EP2 | 形状(歪み) | なし。独立した軸 |
@@ -1380,34 +1417,28 @@ EP4 の E-6)では `.claude/skills/refactor-fixed/SKILL.md` の書き換えも�
 
 **EPU を EP1 より前に置くのは意図的である。** UI が溢れたまま天体を足すと、
 「増えたから見づらい」のか「元から見づらい」のかが切り分けられなくなる。
-また EP0 の `gravitySource` 廃止は**それ自体が重力候補を 5 → 27、基準天体の選択肢を 5 → 26 に増やす**ので、
-その直後に UI を直さないと、既存27体の時点で使いにくさが表面化する。
+また EP0 の `gravitySource` 廃止は**それ自体が基準天体の選択肢を大きく増やす**ので、
+その直後に UI を直さないと、既存の登録天体数の時点で使いにくさが表面化する。
 
-### EP0: 重力窓の後始末と `gravitySource` の廃止(**天体を1体も足さない**)
+### EP0: 重力窓の後始末と `gravitySource` の廃止(**天体を1体も足さない**)— **完了**
 
-構造(位置依存の重力窓)は Step3 で入っている(E-13)。本フェーズは
-その**残作業とフラグの廃止**だけを行う。天体を増やさないので、
-既存テスト全通過が挙動不変の証明になる。
+**本フェーズは `for_agent.md` の Step3・Step4 で完了している。** 以下は当初の作業手順の
+記録で、実装は最終的にここに書いた手順とは異なる形(重力窓という区別自体の解消・
+`relevantAttractors` 自体の削除・27近傍空間ハッシュへの置き換え)に落ち着いた —
+詳細は C-7・E-13。
 
-1. **E-B5 の修正**: `plan-arc.ts:144-149` を `mergeAttractors` 経由にし、
-   `simulator.ts`/`predictor.ts` と同じ重力源集合を見るようにする。
-   **これは性能ではなく正しさの修正**(計画線だけが `Asteroid` の重力を無視している)。
-2. **`gravitySource` フラグの廃止**(E-14):
-   - `ephemeris.ts:131` の `gravityIds` を `mu > 0` で作る。
-   - `ship-placer-panel.ts:85` の `orbitingIdsOf` からフラグ判定を外す
-     (**ここが直った時点で、P1〜P6 で追加した天体が基準天体として選べるようになる**)。
-   - `frame-labels.ts:25-26` のフィルタを外す。
-   - `solar-system.ts:94` の `GravitySourceFlag` 型と `:111-114` のコメントを削除。
-     全エントリから `gravitySource:` を削る(`stage-debug-alt-system.ts` 含む)。
-3. テスト:
-   - **3経路(`stepActual`/`stepPredicted`/`PlanArc`)が同一の重力源集合を選ぶ**こと
-     (E-13 の正しさの形。ずれると「計画が当たらない」という形でしか現れないので
-     機械的に検査する)。**1 の修正が入るまで落ちるテストを先に書く。**
-   - **LEO・低月軌道の軌道が現行と機械精度で一致する**こと(フラグ廃止で候補集合が
-     5 → 27 に増えても、`relevantAttractors` が落とすので結果は変わらないはず。
-     これが E-14 の主張そのものの検算)。
-4. 受け入れ: 全既存テスト無変更通過、`?perf=1` で `update` フェーズが悪化しないこと、
-   配置UIの基準天体に水星・金星・火星・天王星・衛星・準惑星が現れること。
+1. **E-B5 の修正**: `plan-arc.ts` は `game/simulation/attractors.ts` の
+   `mergeAttractors`/`gravityBodiesAt` 経由になっており、`simulator.ts`/`predictor.ts`
+   と同じ重力源集合を見る(計画線だけが `Asteroid` の重力を無視する不整合は解消済み)。
+2. **`gravitySource` フラグの廃止**(E-14): `CelestialBodyDef` に `gravitySource` は
+   存在しない(grep 0件)。重力源かどうかは `mu !== 0` の一本(`gravityBodiesAt`)で決まる。
+   `ship-placer-panel.ts` の `orbitingIdsOf` は `kind !== 'star'` の全公転天体を基準天体
+   として返す。`frame-labels.ts` はレジストリから表示名を引くだけの薄いモジュールになっており、
+   座標系選択のフィルタはこのファイルには無い(EPU 側の変更 — 下記)。
+3. `tests/physics/n-body.test.ts` は多体系の運動量保存・小惑星質量→0極限の回帰を持つが、
+   **「3経路が同一の重力源集合を選ぶこと」自体を機械的に検査する専用テストは現時点で無い**
+   — 正しさは `DEVELOP/CALLSTACK.md`(重力積分の3経路の節)が構造として記述するに留まる。
+4. 受け入れ: 配置UIの基準天体に水星・金星・火星・天王星・衛星・準惑星が現れることを確認済み。
 
 ### EPU: UI の階層化(E-15 / E-16 / E-17)— **天体を足す前に済ませる**
 
@@ -1541,11 +1572,13 @@ EP4 の E-6)では `.claude/skills/refactor-fixed/SKILL.md` の書き換えも�
   既知の幾何値のピン留め、高離心率ソルバの往復精度、リファクタの非破壊性。
   本計画で新しく加わる型:
   - **最適化の結果不変性**(E-1 の足切りが全走査と一致する)
-  - **積分・予測・計画の3経路が同じ重力窓を選ぶ**(E-13。これだけは性能ではなく
+  - **積分・予測・計画の3経路が同じ重力源集合を選ぶ**(E-13。これだけは性能ではなく
     正しさのテストで、破れると「計画線が実際の軌道とずれる」形でしか表面化しない。
-    **現時点で実際に破れている**ので、EP0 では「まず落ちるテストを書く」)
-  - **フラグ廃止の非破壊性**(E-14。候補集合が 5 → 27 に増えても LEO・低月軌道の
-    結果が機械精度で変わらないこと = `relevantAttractors` が正しく落としている証明)
+    3経路とも `game/simulation/attractors.ts` の合流規則を経由する形で EP0 において
+    解消済みだが、**その一致自体を機械的に検査する専用テストはまだ無い**ので、
+    EP1 以降で天体を増やす前に足す価値がある)
+  - **フラグ廃止の非破壊性**(E-14。`gravitySource` 廃止で重力源候補が増えても LEO・
+    低月軌道の結果が機械精度で変わらないこと。E-13 と同じ理由で専用テストはまだ無い)
   - **ラグランジュ点フラグと計算値の一致**(E-15。閾値の近くにある系
     — 土星-テティス 3.96、海王星-トリトン 10.79 — を明示的に assert する)
   - **基準面の取り違え検出**(天王星系が黄道基準で登録されていたら i が 98° ずれる)
@@ -1608,8 +1641,8 @@ EP4 の E-6)では `.claude/skills/refactor-fixed/SKILL.md` の書き換えも�
 | 小惑星族の proper elements が取得できない | 取得できた族だけ実装し、できなければ非実装(NF-2)。EP7 の受け入れ条件から外す |
 | 三軸半径が `pck00011.tpc` に無い天体を推定で埋めてしまう | NF-2。pck に無ければ真球のまま。EP2 のテストは「shape を持つ天体について」だけを検査する |
 | `CELESTIAL_BODIES` の `create` 省略可能化で、特別な表示が要る天体の実装漏れが型で検出されなくなる | `name` と `cls`(BodyClass)は必須のまま残す(E-9)。表示の作り込みが要るかどうかは型で表せない判断なので、§4.1 の「テクスチャ」列を実装時のチェックリストとして使う |
-| **重力窓の選別が3経路でずれ、予測線・計画線が実際の軌道と食い違う**(E-13)。**これは既に起きている**(E-B5、`plan-arc.ts` が `mergeAttractors` を経由していない) | EP0 のテストで3経路の一致を機械的に検査する。症状が「計画が当たらない」としてしか出ないため、目視での発見に頼らない |
-| `gravitySource` を廃止したことで、意図せず重い天体が重力窓に入り性能が落ちる | EP0 のテストで LEO・低月軌道の結果が機械精度で不変であることを確認する。結果が変わらないなら `relevantAttractors` は正しく落としており、候補が増えたぶんのフィルタコストだけが残る |
+| **重力窓の選別が3経路でずれ、予測線・計画線が実際の軌道と食い違う**(E-13)。**これは既に解消されている**(E-B5、`plan-arc.ts` は現在 `game/simulation/attractors.ts` の `mergeAttractors`/`gravityBodiesAt` を経由する) | 3経路の一致を機械的に検査する専用テストはまだ無い(§7)。天体を増やす前に足す |
+| `gravitySource` を廃止したことで、意図せず重い天体が重力窓に入り性能が落ちる | **廃止は完了済み。** 27近傍の空間ハッシュ(`classifyAttractors`/`attractorsNear`)が `mu/R²` の軽重で常時候補と近傍候補を分けるので、重い天体だけが常に加算対象になり、遠い軽い天体は近傍の問い合わせでしか拾われない |
 | E-15 の閾値 `r_Hill/R₂ ≥ 10` は理論値ではなく、ハロー軌道の振幅から逆算した目安 | 閾値の近くにある系(土星-テティス 3.96、海王星-トリトン 10.79)をテストで明示的に固定し、閾値を動かしたら落ちるようにする。`CREATIVE_HALO_*` の既定振幅と突き合わせて実装時に調整する |
 | E-16 の可視性を3UIで共有した結果、どれか1つだけ別の見え方をさせたくなる | 共有をやめるのではなく、**共有した状態に対する例外を1箇所に足す**形にする。3つが別々のフィルタを持つ形へ戻すと「マップには出ているのに一覧に無い」が復活し、メンタルモデルの一貫性という E-16 の存在理由が失われる |
 | 地球-月 L4/L5 は Routh を通るが実際には太陽摂動で天体が留まらない。判定式が文献に無い | 推定で閾値を作らない(NF-2)。既にゲームに存在し配置先として使われているので現状どおり生成し、この事実を §8 に記録する |
