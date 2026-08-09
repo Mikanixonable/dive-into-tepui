@@ -4,6 +4,7 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import {
   OrbitalElements,
+  eccentricAnomalyFromMean,
   keplerPeriod,
   nodeAnomalies,
   positionOnOrbit,
@@ -163,5 +164,50 @@ export function register(): void {
     const nuAsymptote = Math.acos(-1 / el.e);
     const nuBeyond = nuAsymptote + 0.1;
     assert.ok(Number.isNaN(timeSincePeriapsis(el, nuBeyond)), 'beyond the asymptote, no finite arrival time exists (NaN)');
+  });
+
+  test('elements: eccentricAnomalyFromMean <-> M round trip at high eccentricity (Halley e=0.967)', () => {
+    const e = 0.967;
+    for (let i = 0; i < 200; i++) {
+      const m = -Math.PI + (2 * Math.PI * i) / 200;
+      const E = eccentricAnomalyFromMean(m, e);
+      const mBack = E - e * Math.sin(E);
+      const err = Math.atan2(Math.sin(mBack - m), Math.cos(mBack - m));
+      assert.ok(Math.abs(err) < 1e-10, `M round trip at m=${m}: err=${err}`);
+    }
+  });
+
+  test('elements: eccentricAnomalyFromMean <-> M round trip at high eccentricity (Encke e=0.848)', () => {
+    const e = 0.848;
+    for (let i = 0; i < 200; i++) {
+      const m = -Math.PI + (2 * Math.PI * i) / 200;
+      const E = eccentricAnomalyFromMean(m, e);
+      const mBack = E - e * Math.sin(E);
+      const err = Math.atan2(Math.sin(mBack - m), Math.cos(mBack - m));
+      assert.ok(Math.abs(err) < 1e-10, `M round trip at m=${m}: err=${err}`);
+    }
+  });
+
+  test('elements: eccentricAnomalyFromMean round trip at low eccentricity unchanged', () => {
+    for (const e of [0.0167, 0.2]) {
+      for (let i = 0; i < 50; i++) {
+        const m = -Math.PI + (2 * Math.PI * i) / 50;
+        const E = eccentricAnomalyFromMean(m, e);
+        const mBack = E - e * Math.sin(E);
+        const err = Math.atan2(Math.sin(mBack - m), Math.cos(mBack - m));
+        assert.ok(Math.abs(err) < 1e-12, `low-e round trip at e=${e}, m=${m}: err=${err}`);
+      }
+    }
+  });
+
+  test('elements: eccentricAnomalyFromMean converges near periapsis at extreme eccentricity (e=0.99, M~0)', () => {
+    const e = 0.99;
+    for (const m of [0, 1e-6, -1e-6, 1e-3]) {
+      const E = eccentricAnomalyFromMean(m, e);
+      assert.ok(Number.isFinite(E), `E should be finite at m=${m}, e=${e}: ${E}`);
+      const mBack = E - e * Math.sin(E);
+      const err = Math.atan2(Math.sin(mBack - m), Math.cos(mBack - m));
+      assert.ok(Math.abs(err) < 1e-10, `round trip near periapsis at m=${m}: err=${err}`);
+    }
   });
 }
