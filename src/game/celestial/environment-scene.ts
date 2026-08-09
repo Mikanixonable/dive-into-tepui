@@ -8,7 +8,7 @@ import { OrbitalElements } from '../../physics/elements';
 import { Attractor, orbitalElementsOf } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { OrbitLine } from '../../render/orbit-line';
-import { createStars } from '../../render/stars';
+import { createStars, STAR_SHELL_RADIUS } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
@@ -43,11 +43,12 @@ export class EnvironmentScene {
   private readonly bodies: readonly CelestialBody[];
   private readonly sunBody: SunBody;
 
-  // マップモード専用の参照軌道線(静止軌道高度の目盛り・月軌道・木星軌道)。いずれも
-  // 天体暦の状態から作られる表示なので、環境描画とともにここが所有する。
+  // マップモード専用の参照軌道線(静止軌道高度の目盛り・月軌道・地球軌道・木星軌道)。
+  // いずれも天体暦の状態から作られる表示なので、環境描画とともにここが所有する。
   readonly geoLine = new OrbitLine(0x8b93a0, 0.2);
   readonly moonLine = new OrbitLine(0xaab3c0, 0.2);
-  readonly jupiterLine = new OrbitLine(0xc9a97a, 0.2);
+  readonly earthLine = new OrbitLine(0xaab3c0, 0.2);
+  readonly jupiterLine = new OrbitLine(0xffffff, 0.2);
 
   // 天体ビューの配列がすべて ephemeris から引く。天体暦はゲーム側が所有する単一インスタンスを
   // 共有参照する(状態を持たない純サンプラ)。
@@ -58,9 +59,11 @@ export class EnvironmentScene {
     // マップ専用の参照軌道線をシーンへ追加する。
     this.geoLine.line.renderOrder = 0;
     this.moonLine.line.renderOrder = 0;
+    this.earthLine.line.renderOrder = 0;
     this.jupiterLine.line.renderOrder = 0;
     scene.add(this.geoLine.line);
     scene.add(this.moonLine.line);
+    scene.add(this.earthLine.line);
     scene.add(this.jupiterLine.line);
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     scene.add(this.ambient);
@@ -93,11 +96,11 @@ export class EnvironmentScene {
     this.celestialGrid.sync(gridVisibility, cameraSystem);
   }
 
-  // 星球はカメラに追従する固定半径の殻。広範囲視点ではさらに拡大する。
+  // 星球はカメラに追従する固定半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで拡大する
+  // (far は dist に連動して毎フレーム変わるため、殻の拡大率はそこから独立させる)。
   private syncStars(cameraSystem: CameraSystem): void {
     this.starsMesh.position.copy(cameraSystem.activeCamera.position);
-    this.starsMesh.scale.setScalar(
-      cameraSystem.overviewMode ? (cameraSystem.overviewCamera.camera.far * 0.9) / 3.5e7 : 1.0);
+    this.starsMesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
   }
 
   // 広範囲視点のときだけ geo/moon/jupiter の参照線を表示する(戦闘ビューでは非表示)。
