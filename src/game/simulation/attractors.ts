@@ -5,7 +5,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { Attractor } from '../../physics/attractor';
 import { SpatialGrid } from '../../physics/spatial-grid';
 import { Vec3 } from '../../physics/vec3';
-import { GRAVITY_GRID_CELL_SIZE, GRAVITY_NEGLIGIBLE_ACCEL } from '../const';
+import { GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL } from '../const';
 import type { EntityManager } from './entity-manager';
 
 // Ephemeris のリングキャッシュは呼び出し側で破壊してはいけない共有参照を返すので、合流は
@@ -43,20 +43,37 @@ export type ClassifiedAttractors = {
   readonly grid: SpatialGrid<Attractor>;
 };
 
-// 重力源一覧を、セル一辺 GRAVITY_GRID_CELL_SIZE 離れた地点での引力 mu/R² が
-// GRAVITY_NEGLIGIBLE_ACCEL 以上かどうかだけで分類する。判定は mu 一本で、天体の出自(解析天体か
-// 重力を持つ GameEntity か)は見ない。off(グリッドに載せた)天体は、そのセルの27近傍にある
-// 問い合わせ位置からしか加算されない — R より遠い問い合わせ位置には直達項 mu/d² を足さない
-// 近似で、そちらが落とす分の ECI 原点補正項 mu/d²(d は当該天体の原点からの距離)は
-// d > R である限りこれより小さい。
+// mu の重い順 GRAVITY_ALWAYS_COUNT 本目の値。同値の天体をまとめて always 側へ入れるため、
+// 順位ではなく mu の値を返す。
+function alwaysThresholdMu(attractors: readonly Attractor[]): number {
+  if (attractors.length <= GRAVITY_ALWAYS_COUNT) return 0;
+  const mus = attractors.map((a) => a.mu).sort((x, y) => y - x);
+  return mus[GRAVITY_ALWAYS_COUNT - 1] ?? 0;
+}
+
+// グリッドへ載せた天体のうち最も重いものの引力が GRAVITY_NEGLIGIBLE_ACCEL まで落ちる距離。
+// gridded が空のときのセル一辺は結果に影響しないので任意の正数でよい。
+function gridCellSize(gridded: readonly Attractor[]): number {
+  let heaviestMu = 0;
+  for (const a of gridded) heaviestMu = Math.max(heaviestMu, a.mu);
+  return heaviestMu > 0 ? Math.sqrt(heaviestMu / GRAVITY_NEGLIGIBLE_ACCEL) : 1;
+}
+
+// 重力源一覧を、mu の重い順 GRAVITY_ALWAYS_COUNT 本(always)と残り(grid)へ分類する。しきい値
+// もセル一辺も一覧全体から導くので、ある天体がどちらへ入るかは他の天体しだいで決まる。grid の
+// 天体はセルの27近傍からしか加算されない — 遠い問い合わせ位置で落とす直達項 mu/d² はセル一辺で
+// GRAVITY_NEGLIGIBLE_ACCEL 以下、同時に落ちる ECI 原点補正項 mu/D² は D > d の間これより小さい。
 export function classifyAttractors(attractors: readonly Attractor[]): ClassifiedAttractors {
+  const thresholdMu = alwaysThresholdMu(attractors);
   const always: Attractor[] = [];
-  const grid = new SpatialGrid<Attractor>(GRAVITY_GRID_CELL_SIZE);
-  const thresholdMu = GRAVITY_NEGLIGIBLE_ACCEL * GRAVITY_GRID_CELL_SIZE * GRAVITY_GRID_CELL_SIZE;
+  const gridded: Attractor[] = [];
   for (const a of attractors) {
     if (a.mu >= thresholdMu) always.push(a);
-    else grid.insert(a, a.state.r);
+    else gridded.push(a);
   }
+  // セル一辺が grid 側の顔ぶれで決まるため、集め終えてからグリッドを作る。
+  const grid = new SpatialGrid<Attractor>(gridCellSize(gridded));
+  for (const a of gridded) grid.insert(a, a.state.r);
   return { always, grid };
 }
 

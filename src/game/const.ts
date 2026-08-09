@@ -196,22 +196,32 @@ export const MAX_DEBRIS = 600;
 // 岩石密度(~1900kg/m^3)で半径 ASTEROID_TEST_RADIUS の球とおおよそ整合する質量。
 export const ASTEROID_TEST_MASS = 1e15; // [kg]
 export const ASTEROID_TEST_RADIUS = 5000; // [m]
-export const MAX_ASTEROIDS = 60;
+export const MAX_ASTEROIDS = 400;
 
 // --- 高負荷デバッグステージ(stage-debug-load.ts)---
-export const DEBUG_LOAD_ASTEROID_COUNT = 50;
+// 小惑星は直径 1km 級で、質量は岩石密度 ~1900kg/m³ と整合する。
+export const DEBUG_LOAD_ASTEROID_MASS = 1e12; // [kg]
+export const DEBUG_LOAD_ASTEROID_RADIUS = 500; // [m]
+export const DEBUG_LOAD_ASTEROID_COUNT = 300;
+// メインベルト(2.1〜3.3 AU)に直径 1km 以上の小惑星が約190万個ある数密度 [1/m^3]。
+// 平均間隔にすると約 3×10^6 km で、この規模の岩塊が互いの重力を及ぼし合う密度ではない。
+export const DEBUG_LOAD_ASTEROID_DENSITY = 3e-29;
+// 上の数密度で DEBUG_LOAD_ASTEROID_COUNT 体が収まる球の半径 [m]。
+export const DEBUG_LOAD_ASTEROID_MAX_DIST =
+  Math.cbrt((3 * DEBUG_LOAD_ASTEROID_COUNT) / (4 * Math.PI * DEBUG_LOAD_ASTEROID_DENSITY));
+// 破片は衛星の破壊直後の雲を想定し、自機の周囲に留める。
 export const DEBUG_LOAD_DEBRIS_COUNT = 500;
-export const DEBUG_LOAD_PLACEMENT_MIN_DIST = 20000; // 自機からの配置距離下限 [m]
-export const DEBUG_LOAD_PLACEMENT_MAX_DIST = 200000; // 自機からの配置距離上限 [m]
+export const DEBUG_LOAD_DEBRIS_MAX_DIST = 250000; // [m]
+export const DEBUG_LOAD_PLACEMENT_MIN_DIST = 5000; // 自機からの配置距離下限 [m]
 export const DEBUG_LOAD_RNG_SEED = 20260810;
 
-// --- 重力源の空間グリッド(game/simulation/attractors.ts) ---
-// セル一辺の長さ [m]。既存の「近さ」の基準である BULLET_MAX_DIST(30km)と同程度の桁を取り、
-// かつ高負荷デバッグステージの配置半径(DEBUG_LOAD_PLACEMENT_MAX_DIST=200km)を複数セルに
-// 分割できる大きさにした。
-export const GRAVITY_GRID_CELL_SIZE = 50000;
-// セル一辺の距離での引力 mu/R² がこれを下回る天体は、グリッドの27近傍にあるときだけ加算する。
-export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-10; // [m/s^2]
+// --- 重力源の絞り込み(game/simulation/attractors.ts) ---
+// 位置に依らず常に加算する重力源の本数。mu の重い順にこの数を採る。既定のレジストリでは
+// 月が14位なので、これを下回ると地球圏外の艦で月の寄与が消える。
+export const GRAVITY_ALWAYS_COUNT = 15;
+// グリッドへ載せた天体を落としてよい引力の上限 [m/s^2]。セル一辺は、載せた天体の引力が
+// この値まで落ちる距離として天体構成から導かれる。
+export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-8;
 
 // --- 被弾・撃破エフェクト(フラッシュ/破片) ---
 export const BULLET_HIT_FLASH_SIZE0 = 1.5;
