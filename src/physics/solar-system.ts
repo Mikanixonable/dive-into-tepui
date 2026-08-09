@@ -710,21 +710,27 @@ export const SOLAR_SYSTEM = {
     planet: 'saturn',
     orbit: jplSatelliteOrbit({ a: 1.4815e9, e: 0.105, incDeg: 0.6, periodDays: 21.276658, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
   },
+  // イアペトゥス・フェーベは土星から遠く、局所ラプラス面が内側衛星の面から大きく外れる
+  // (ラプラス面は内側では親の扁平が、外側では太陽潮汐が支配する)。JPL が公開する
+  // 傾斜角はそれぞれの局所ラプラス面基準で、その面の極は転記できていないため、黄道面基準の
+  // 傾斜角(イアペトゥス 17.28°: Wikipedia の軌道要素表)で登録する。
   iapetus: {
     kind: 'satellite',
     id: 'iapetus',
     mu: 120.51511e9,
     radius: 7.343e5,
     planet: 'saturn',
-    orbit: jplSatelliteOrbit({ a: 3.5617e9, e: 0.028, incDeg: 7.6, periodDays: 79.331002, nodePeriodYears: 3130.302, apsisPeriodYears: 1662.900, basisToEci: SATURN_LAPLACE_BASIS }),
+    // 歳差周期は局所ラプラス面まわりの実測値で、黄道極まわりに適用すると別の運動になるため置かない。
+    orbit: jplSatelliteOrbit({ a: 3.5617e9, e: 0.028, incDeg: 17.28, periodDays: 79.331002, nodePeriodYears: 0, apsisPeriodYears: 0 }),
   },
+  // フェーベは捕獲された逆行の不規則衛星。JPL の傾斜角 175.2° は黄道基準の値と一致する。
   phoebe: {
     kind: 'satellite',
     id: 'phoebe',
     mu: 0.55479e9,
     radius: 1.065e5,
     planet: 'saturn',
-    orbit: jplSatelliteOrbit({ a: 1.29294e10, e: 0.164, incDeg: 175.2, periodDays: 550.303910, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
+    orbit: jplSatelliteOrbit({ a: 1.29294e10, e: 0.164, incDeg: 175.2, periodDays: 550.303910, nodePeriodYears: 0, apsisPeriodYears: 0 }),
   },
   uranus: {
     kind: 'planet',
