@@ -205,12 +205,15 @@ export function register(): void {
     assert.ok(Math.abs(maxDeg - 28.584) < 0.2, `最大傾斜: ${maxDeg}°`);
   });
 
-  test('ephemeris: sunDirAt は単位ベクトルで、positionOf(sun) と同じ向き', () => {
+  test('ephemeris: sunDirFrom は単位ベクトルで、基準点から太陽へ向く', () => {
     for (const t of [0, 1e6, 1e8]) {
-      const dir = eph.sunDirAt(t);
+      const dir = eph.sunDirFrom(v3(0, 0, 0), t);
       assert.ok(Math.abs(len(dir) - 1) < 1e-12, `単位ベクトルでない: ${len(dir)}`);
       const pos = eph.positionOf('sun', t);
-      assert.ok(len(sub(dir, norm(pos))) < 1e-12, `方向が positionOf(sun) と一致しない`);
+      assert.ok(len(sub(dir, norm(pos))) < 1e-12, `原点からの方向が positionOf(sun) と一致しない`);
+      // 木星から見た太陽方向は、木星→太陽のベクトルと一致する(地心方向では代用できない)。
+      const jup = eph.positionOf('jupiter', t);
+      assert.ok(len(sub(eph.sunDirFrom(jup, t), norm(sub(pos, jup)))) < 1e-12, '基準点が反映されていない');
     }
   });
 
@@ -269,7 +272,7 @@ export function register(): void {
   // EPOCH_T_OFFSET はこの見た目の条件そのものから逆算された定数なので、これはその逆算の検算。
   // 平均黄経で合わせているぶん、中心差(地球の e=0.0167 で最大 1.9°)だけ真の方向はずれる。
   test('ephemeris: t=0 では太陽が +X 方向(昼側)にある', () => {
-    const dir = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {}).sunDirAt(0);
+    const dir = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {}).sunDirFrom(v3(0, 0, 0), 0);
     const offDeg = (Math.acos(dir.x / len(dir)) * 180) / Math.PI;
     assert.ok(offDeg < 3, `t=0 の太陽方向が +X から離れている: ${offDeg}°`);
   });

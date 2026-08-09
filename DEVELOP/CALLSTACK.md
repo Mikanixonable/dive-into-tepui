@@ -329,14 +329,15 @@
     - focusMarkers.hideLabels() // !overviewMode のみ
   - project / overviewMode / simTime / attractors(= ephemeris.attractorsAt(simTime)) / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
   - environment.sync()
-    - sunBody.setSunlit(lit) // lit = sunlitFactor(playerPos, ephemeris.sunDirAt(displayTime), …)。overviewMode では 1.0 固定
+    - lit = sunlitFactor(playerPos, ephemeris.sunDirFrom(playerPos, displayTime), …)。overviewMode では 1.0 固定
     - asteroidField.sync(fo, cameraSystem.overviewMode) // !overviewMode ならメッシュを隠して return。overviewMode では update が引き直していない点も含め全インスタンス行列を書き直す(fo が毎フレーム動くため)
     - [bodies(= CELESTIAL_BODIES 登録順の CelestialBody[])ごと] body.sync(fo, displayTime, cameraSystem, ephemeris)
-      - EarthBody.sync() → earth.group.position / earth.setRotation() / earth.setSunDir() / earth.tick()
-      - SunBody.sync() → billboard 位置(カメラ相対の圧縮距離)+ sunLight.position・intensity(setSunlit の lit 反映)
-      - SphereBody.sync()(月・海王星・準惑星等7体・彗星核2体、および pointBrightness 未指定の惑星) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。姿勢は ephemeris.poleAt(id, displayTime) が非null なら spinOrientation(axis, spinAngle) をクォータニオンへ書き込み(lookAt は使わない)、pole モデルを持たない天体は姿勢を変更しない。rings を持つ天体(木星・土星・天王星・海王星)は続けて RingView.sync() を呼ぶ
+      - EarthBody.sync() → earth.group.position / earth.setRotation() / earth.setSunDir(ephemeris.sunDirFrom(地球の実位置, displayTime)) / earth.tick()
+      - SunBody.sync() → billboard 位置(カメラ相対の圧縮距離)/ 広範囲視点では実位置の球体
+      - SphereBody.sync()(月・海王星・準惑星等7体・彗星核2体、および pointBrightness 未指定の惑星) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。陰影は surface.setSunDirection(ephemeris.sunDirFrom(実 ECI 位置, displayTime))。姿勢は ephemeris.poleAt(id, displayTime) が非null なら spinOrientation(axis, spinAngle) をクォータニオンへ書き込み(lookAt は使わない)、pole モデルを持たない天体は姿勢を変更しない。rings を持つ天体(木星・土星・天王星・海王星)は続けて RingView.sync() を呼ぶ
       - PointBody.sync()(pointBrightness 指定の惑星 = 金星・木星=bright、水星・火星・土星=medium、天王星=faint) → overviewMode なら SphereBody と同じ実 ECI 位置・実半径・姿勢のメッシュ(rings があれば RingView.sync() も)を表示、!overviewMode ならそのメッシュ(と環があれば RingView.group)を隠して代わりに星シェル半径(STAR_SHELL_RADIUS)上の実方向へ billboard を置く輝点表示に切り替える(常にどちらか一方だけ visible)
       - RingView.sync()(SphereBody/PointBody から rings がある天体のみ呼ばれる)→ 環グループの位置・スケールは本体メッシュに揃え、姿勢は spinAngle=0 の spinOrientation で本体とは別個に組む(環は本体メッシュの子ではないので自転位相を継承しない)。厚み0かつ非テクスチャの細帯ごとに、その天体の実 ECI 位置での CameraSystem.activeCameraScale(metersPerPixel)と帯の実幅を game/celestial/ring-lod.ts の ringVisualForm へ渡し、annulus/line のどちらを visible にするか距離依存で切り替える
+    - sunLight.position(= ephemeris.sunDirFrom(fo.r, displayTime))・intensity 更新 // 平行光は描画原点近傍の実スケール物体だけを照らす。天体は body.sync 内で自分の真の位置から陰影を計算済み
     - ambient.intensity 更新 // lit から導出
     - syncStars() // starsMesh をカメラへ追従、overviewMode でさらに拡大
     - syncReferenceLines(simTime, fo, overviewMode, focus) → geoLine.sync() + [referenceLines の各 OrbitLine ごと] showsReferenceLine(id, focus) が true のときだけ line.sync(orbitElementsFor(id, simTime), …)、false なら null 渡しで非表示 // !overviewMode では全線 null。惑星線は常時、衛星線は focus がその衛星系(地球系除く)を指すときだけ show

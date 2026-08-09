@@ -1,12 +1,10 @@
 // 太陽の見た目: 戦闘視点はカメラ相対に置くビルボード、広範囲視点は実位置・実半径の球体。
-// どちらも地心方向を向く DirectionalLight は共通で駆動する。
 import * as THREE from 'three/webgpu';
 import { createSun, Sun, SUN_DISTANCE, SUN_VISUAL_SIZE } from '../../render/stars';
 import { Ephemeris } from '../../physics/ephemeris';
 import { AttractorId } from '../../physics/attractor';
 import { norm, sub } from '../../physics/vec3';
 import { R_SUN } from '../../physics/solar-system';
-import * as C from '../const';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { CelestialBody } from './celestial-body';
@@ -16,8 +14,6 @@ const tmpSunPos = new THREE.Vector3();
 export class SunBody extends CelestialBody {
   readonly id: AttractorId;
   private readonly sun: Sun = createSun();
-  private readonly sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
-  private lit = 1;
 
   // id は恒星として振る舞う天体の id、radius は広範囲視点での実球体半径 [m]。
   constructor(id: AttractorId = 'sun', private readonly radius: number = R_SUN) {
@@ -25,20 +21,13 @@ export class SunBody extends CelestialBody {
     this.id = id;
   }
 
-  // ビルボード・実球体メッシュ・DirectionalLight をシーンへ一度だけ登録する。
+  // ビルボードと実球体メッシュをシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
     scene.add(this.sun.billboard.mesh);
     scene.add(this.sun.mesh);
-    scene.add(this.sunLight);
   }
 
-  // 自機位置の日照率(円柱影近似)を反映する。物理的に正確な値ではない表示上の演出なので、
-  // 天体暦を持たないこのクラスへは呼び出し側(EnvironmentScene)が計算して渡す。
-  setSunlit(lit: number): void {
-    this.lit = lit;
-  }
-
-  // displayTime 時点の方向・位置へビルボード/実球体と DirectionalLight を同期する。
+  // displayTime 時点の方向・位置へビルボード/実球体を同期する。
   sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
     const sunPos = ephemeris.positionOf(this.id, displayTime);
     if (cameraSystem.overviewMode) {
@@ -67,8 +56,5 @@ export class SunBody extends CelestialBody {
       );
       this.sun.mesh.visible = false;
     }
-    const sd = ephemeris.sunDirAt(displayTime);
-    this.sunLight.position.set(sd.x * 1e5, sd.y * 1e5, sd.z * 1e5);
-    this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * this.lit);
   }
 }

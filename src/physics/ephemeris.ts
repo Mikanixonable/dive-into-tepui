@@ -322,10 +322,11 @@ export class Ephemeris {
     return mu !== null && mu > 0 && hasStableTriangularPoints(mu);
   }
 
-  // 恒星方向の単位ベクトル(ライティング・影判定用)。恒星が無いレジストリでは影・輻射圧の
-  // 計算そのものが無意味になるので、無害な既定方向(+X)を返す。
-  sunDirAt(t: number): Vec3 {
-    return this.starId === null ? v3(1, 0, 0) : norm(this.positionOf(this.starId, t));
+  // ECI の点 r から見た恒星方向の単位ベクトル(陰影・日照判定・輻射の向き)。基準点を引数に
+  // 取るのは、恒星との位置関係が点ごとに違うため — 惑星間では地心方向で代用できない。
+  // 恒星が無いレジストリでは影・輻射圧の計算そのものが無意味になるので、無害な既定方向(+X)を返す。
+  sunDirFrom(r: Vec3, t: number): Vec3 {
+    return this.starId === null ? v3(1, 0, 0) : norm(sub(this.positionOf(this.starId, t), r));
   }
 
   // 登録済みの id ならキャッシュ済みの frames/inertialFrame から、そうでなければ

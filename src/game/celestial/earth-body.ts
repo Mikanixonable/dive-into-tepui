@@ -19,9 +19,10 @@ export class EarthBody extends CelestialBody {
 
   // displayTime 時点の位置・自転角・太陽方向・表面アニメーションへ同期する。
   sync(fo: FloatingOrigin, displayTime: number, _cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
-    this.earth.group.position.copy(fo.RtoThreeV3(ephemeris.positionOf('earth', displayTime)));
+    const pos = ephemeris.positionOf('earth', displayTime);
+    this.earth.group.position.copy(fo.RtoThreeV3(pos));
     this.earth.setRotation(this.phase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
-    const sd = ephemeris.sunDirAt(displayTime);
+    const sd = ephemeris.sunDirFrom(pos, displayTime);
     this.earth.setSunDir(sd.x, sd.y, sd.z);
     this.earth.tick(displayTime);
   }
