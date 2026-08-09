@@ -48,7 +48,7 @@ import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
 import { Base } from './game-entity/base';
 import { strongestAttractor } from '../physics/attractor';
-import { mergeAttractors } from './simulation/gravity-attractors';
+import { mergeAttractors } from './simulation/attractors';
 
 export class Game {
   private readonly _scene: THREE.Scene;

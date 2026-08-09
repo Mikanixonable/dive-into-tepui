@@ -186,9 +186,9 @@
       - nextEventTime(activeStage) // activeStage.nextSimulationEventTime(simTime) と全生存エンティティの nextSimulationEventTime() のうち最も早いものへ subDt を切り詰める
         - [CreativeStage] ship.planExecution==='instant' なら plan.firstNode()?.t、'powered' なら ship.planExecutor.nextEventTime(ship, simTime)(ゲートが閉じている間は常に null。armed 中は点火予定時刻、burn/trim 中は射影から求めた遮断予定時刻。どちらも対象ノードが targetNode(参照)と一致する間だけ)
       - substep()
-        - gravityAttractorsAt(ephemeris, entities, t) // サブステップ先頭で1回だけ: ephemeris.gravityAttractorsAt(t)(mu を持つ天体)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流。同じ1配列をこのサブステップの全エンティティで使い回す(処理順に依存した誤差を避けるため)
-        - entity.stepActual() → relevantAttractors(state.r, all, GRAVITY_NEGLIGIBLE_ACCEL) → actualTrajectory.step() → stepDynamics()(history 記録)
-          // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。relevantAttractors がこの位置で無視できない天体だけに絞る。全天体重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
+        - attractorsAt(ephemeris, entities, t) // サブステップ先頭で1回だけ: ephemeris.attractorsAt(t)(全登録天体)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流。同じ1配列をこのサブステップの全エンティティで使い回す(処理順に依存した誤差を避けるため)
+        - entity.stepActual() → actualTrajectory.step() → stepDynamics()(history 記録)
+          // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。全登録天体+生存中の重力天体の重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
         - player.thermal.updateThermal() // 操作対象のみ(HUD 警告を出すため)
       - activeStage.applySimulationEvents(simTime) // simTime がイベント境界ちょうどに到達した substep の直後
         - [CreativeStage] ship.planExecution==='instant' なら node.t 到達で plan.dropNodesBefore(simTime) → 戻ったノードへ ship.state を置き換え(複数ノードを跨いだフレームも内部の while で一括消費)
@@ -245,7 +245,7 @@
     - resyncPrediction(simTime, attractors, horizon) // entities.all() の全対象、毎フレーム無条件(canGrow が false でも省略しない — 実状態は動き続けるので、乖離した予測列を放置すると無関係な軌道が描かれ続ける)。attractors は simTime ぶんを1回だけ引いて全対象で使い回す
       - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
     - dynamic = entities.attractors() // update 先頭で1回だけ求め、以降のラウンドロビン全体で使い回す(重力天体は予測ホライズンの間「現在の実状態で静止」とみなす近似)
-    - [canGrow] advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループも dt・重力源の決定(mergeAttractors(ephemeris.gravityAttractorsAt(tip.t), dynamic) → relevantAttractors(tip.r, ..., GRAVITY_NEGLIGIBLE_ACCEL) → localOrbitPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で頭打ち)も Predictor 側が持つ(stepActual に対する substep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
+    - [canGrow] advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループも dt・重力源の決定(mergeAttractors(ephemeris.attractorsAt(tip.t), dynamic) → localOrbitPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で頭打ち)も Predictor 側が持つ(stepActual に対する substep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
       - player.stepPredicted(attractors, simTime, dt, horizon) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt・attractors を都度計算し直しながら1ステップずつ繰り返し呼ぶ
         - predictedTrajectory.step() // 呼び出し側が確定させた attractors で1ステップ積分
     - [canGrow] advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player を除外しないので同じフレームで二重に予算が付き得る)。entity.stepPredicted() が最初から false(predictsFuture=false/推力中/truncated)なら消費 0 で次へ即進む
@@ -262,7 +262,7 @@
     - editor.update(simTime, displayTime) // 被選択物候補にアプシスアイコンが入るので mapPicker.refresh より前
     - planDisplay.update(plan, simTime, displayTime, show) // show = hasPlan(=ship!==null) && (editMode || plan.nodes.length > 0)
       - path.update() // plan の corners を区間へ分解し、区間ごとに PlanArc を再積分。表示座標系と un-bake 時刻もここで確定
-        - arc.update() // 区間ごと。(state0, end) が変わったときだけ DynamicTrajectory で RK4 積分し直す(重い)。刻み幅ごとの重力源は relevantAttractors(state.r, mergeAttractors(ephemeris.gravityAttractorsAt(t), dynamicAttractors), GRAVITY_NEGLIGIBLE_ACCEL) — 実積分・予測と同じ候補集合。dynamicAttractors は Game.update が entities.attractors() を1回だけ求めて渡す(区間長は最大1年に及び、そのあいだの位置を EntityManager には問えない)
+        - arc.update() // 区間ごと。(state0, end) が変わったときだけ DynamicTrajectory で RK4 積分し直す(重い)。刻み幅ごとの重力源は mergeAttractors(ephemeris.attractorsAt(t), dynamicAttractors) — 実積分・予測と同じ候補集合。dynamicAttractors は Game.update が entities.attractors() を1回だけ求めて渡す(区間長は最大1年に及び、そのあいだの位置を EntityManager には問えない)
       - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
       - apsisIconsOf() // 最終区間の起点要素から解析的に算出。離心率 < APSIS_MIN_ECC なら空、双曲線なら Pe のみ
   - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // editor.update の後・mapPicker.refresh の前
@@ -476,22 +476,21 @@
 - **`TouchControls` は per-frame の update を持たない**。DOM の pointer イベントから
   `input.setVirtualKey()` を呼ぶだけで、per-frame の接点は `game.sync` からの
   `syncModeButtons()`(トグル点灯)だけ。
-- **`Ephemeris` は per-frame の状態更新は持たないが、時刻 `t` 完全一致キーの4スロットのリング
-  キャッシュを4系統(`planetHelioState`/`satelliteRelState`/`attractorsAt`/`gravityAttractorsAt`)
+- **`Ephemeris` は per-frame の状態更新は持たないが、時刻 `t` 完全一致キーの3スロットのリング
+  キャッシュを3系統(`planetHelioState`/`satelliteRelState`/`attractorsAt`)
   持つ**。キャッシュは厳密一致でしかヒットしないため、呼び出し順序に依存性はない(「直前ルック
   アップ」方式の単一メモと違い、どの順で呼んでもヒットする箇所は必ずヒットする) — 各所が
-  `stateOf`/`positionOf`/`attractorsAt`/`gravityAttractorsAt` などを呼ぶたび、ヒットしなければ
-  恒星→惑星-衛星系重心→惑星/衛星の合成をゼロから評価する。`attractorsAt`/`gravityAttractorsAt` は
+  `stateOf`/`positionOf`/`attractorsAt` などを呼ぶたび、ヒットしなければ
+  恒星→惑星-衛星系重心→惑星/衛星の合成をゼロから評価する。`attractorsAt` は
   同一 `t` に対して同一の配列参照を返すため、呼び出し側は返り値やその要素を書き換えてはならない。
-  `setPhaseOffsets` は4系統すべてのキャッシュをクリアする。
+  `setPhaseOffsets` は3系統すべてのキャッシュをクリアする。
 - **重力積分が使う配列は3経路(`Simulator.substep`/`Predictor.advanceBudget`/`PlanArc.update`)とも
-  同じ2段: `gravityAttractorsAt(ephemeris, entities, t)`(解析天体の重力窓 + 生存中の重力天体を
-  合流)→ `relevantAttractors(r, ..., GRAVITY_NEGLIGIBLE_ACCEL)`(その位置で無視できる天体を
-  落とす)。**`substep` は同じ合流結果をそのサブステップの全エンティティへ使い回し(処理順に
+  同じ組み立て: `attractorsAt(ephemeris, entities, t)`(全登録天体 + 生存中の重力天体を合流)。**
+  `substep` は同じ合流結果をそのサブステップの全エンティティへ使い回し(処理順に
   依存した誤差を避けるため)、`Predictor` は `entities.attractors()` を `update` の先頭で1回だけ
   求めて予測ホライズン全体で使い回す(重力天体は予測の間「現在の実状態で静止」とみなす近似)。
-  `PlanArc` は小惑星を合流させず解析天体のみに `relevantAttractors` を通す。3経路とも `Ephemeris`
-  の窓を直接書き換えず、常に新しい配列へ展開してから絞り込む。
+  `PlanArc` は小惑星を合流させず解析天体のみを使う。3経路とも `Ephemeris`
+  の窓を直接書き換えず、常に新しい配列へ展開する。
 - **HUD マーカーは持ち主の `sync` が自分で出す**。`game.sync` に並ぶのは「1つの対象では決められない」
   ものだけ(`enemyMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存、`equatorNodeMarkers` =
   操作艦・navTarget・targeter という複数の役割にまたがる source 列に依存)で、残りは
