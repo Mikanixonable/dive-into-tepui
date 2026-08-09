@@ -2,7 +2,7 @@
 // game/celestial/celestial-registry.ts が唯一の定義元で、ここは参照するだけ。
 import { ReferenceFrame } from '../../physics/frame';
 import { Attractor, AttractorId } from '../../physics/attractor';
-import { SolarSystemId, bodyDef, primaryOf } from '../../physics/solar-system';
+import { SolarSystemId, primaryOf } from '../../physics/solar-system';
 import { CELESTIAL_BODIES } from '../celestial/celestial-registry';
 import type { Ephemeris } from '../../physics/ephemeris';
 
@@ -15,16 +15,11 @@ export function celestialBodyName(id: AttractorId): string {
 // ephemeris.frames の各要素に表示名をつける。回転しない系は「(天体名)中心慣性系」、回転する系は
 // 「(回っている天体の親の名)-(回っている天体の名)回転系」。値は必ず ephemeris.frames の要素
 // そのものを使う(参照同一性が sampled-line.ts のキャッシュ判定の前提)。
-// 選ばせるのは重力源天体の系だけ — 重力積分の対象でない天体を中心に据えても、そこでの
-// 局所力学が成立していないので軌道が読み取れない。attractors に渡した重力を持つ生存中の
-// GameEntity(レジストリ未登録)は、慣性系1つだけを frameFor 経由で追加する — 自転を
-// モデル化しないので回転系の変種は作らない(§2-4)。
+// 登録天体の座標系一覧に、attractors に渡した重力を持つ生存中の GameEntity(レジストリ
+// 未登録)ぶんの慣性系を足して返す。動的天体は自転をモデル化しないので回転系の変種を作らない。
 export function frameItems(ephemeris: Ephemeris, attractors: readonly Attractor[]): readonly (readonly [ReferenceFrame, string])[] {
   const registry = ephemeris.registry;
-  const registered = ephemeris.frames.filter(
-    (frame) => bodyDef(registry, frame.center).gravitySource
-      && (frame.rotatingWith === null || bodyDef(registry, frame.rotatingWith).gravitySource),
-  ).map((frame) => [
+  const registered = ephemeris.frames.map((frame) => [
     frame,
     frame.rotatingWith === null
       ? `${celestialBodyName(frame.center)}中心慣性系`
