@@ -533,8 +533,7 @@ export const SOLAR_SYSTEM = {
     // 傾斜 90° 超が逆行を表す。
     orbit: equatorialSatelliteOrbit({ a: 3.5476e8, e: 0.000016, incDeg: 156.885, planetMu: MU_NEPTUNE, planetPole: NEPTUNE_POLE }),
   },
-  // 準惑星・大型小惑星・彗星核。
-  // (質量を持たない飾りとしてのみ表示・選択される)。永年摂動項は解いておらず raanRate 等は
+  // 準惑星・大型小惑星・彗星核。永年摂動項は解いておらず raanRate 等は
   // すべて 0 — 二体ケプラー軌道のみで、木星等による摂動(彗星核では非重力効果も)は含まない。
   // 軌道要素は JPL Small-Body Database(sbdb.api、full-prec=true)から取得した黄道座標・
   // J2000 の a/e/i/Ω(om)/ω(w)/M(ma) と、その要素の元期(JD)。ハレー・エンケの元期の平均近点角
