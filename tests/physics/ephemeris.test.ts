@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { SatelliteId } from '../../src/physics/attractor';
+import { PlanetId, SatelliteId } from '../../src/physics/attractor';
 import { MU_EARTH, R_EARTH, bodyDef } from '../../src/physics/solar-system';
 import { MU_MOON, MU_SUN as MU_SUN_LOCAL, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { EPS } from '../../src/physics/ecliptic';
@@ -207,7 +207,7 @@ export function register(): void {
 
   test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は R_EARTH', () => {
     const attractors = eph.attractorsAt(1234);
-    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'io', 'europa', 'ganymede', 'callisto', 'saturn', 'titan', 'uranus', 'neptune', 'triton', 'sun']);
+    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'io', 'europa', 'ganymede', 'callisto', 'saturn', 'titan', 'uranus', 'neptune', 'triton', 'ceres', 'vesta', 'pallas', 'pluto', 'haumea', 'makemake', 'eris', 'halley', 'encke', 'sun']);
     assert.equal(attractors[0]!.radius, R_EARTH);
   });
 
@@ -336,6 +336,33 @@ export function register(): void {
     const relVel = sub(eph.stateOf('triton', t).v, eph.stateOf('neptune', t).v);
     const h = cross(rel, relVel);
     assert.ok(dot(h, eph.poleAt('neptune', t)!.axis) < 0, `トリトンの軌道角運動量が順行している: ${dot(norm(h), eph.poleAt('neptune', t)!.axis)}`);
+  });
+
+  // 準惑星・大型小惑星・彗星核の登録が実測の公転周期・近日点距離と噛み合っていることの検算。
+  test('ephemeris: 準惑星・彗星核の公転周期が実測値の範囲に入る', () => {
+    const cases: readonly [PlanetId, number][] = [
+      ['pluto', 248 * YEAR],
+      ['halley', 75.5 * YEAR], // 実測は約75.3〜76.0年で幅がある
+      ['ceres', 4.6 * YEAR],
+    ];
+    for (const [id, expected] of cases) {
+      const period = (2 * Math.PI) / bodyDef(id).orbit.lRate;
+      assert.ok(Math.abs(period / expected - 1) < 0.02, `${id} の公転周期: ${period / YEAR} 年(期待 ${expected / YEAR} 年)`);
+    }
+  });
+
+  test('ephemeris: ハレー彗星の近日点距離は約0.586auになる', () => {
+    const AU = 1.495978707e11;
+    const orbit = bodyDef('halley').orbit;
+    const q = orbit.a * (1 - orbit.e);
+    assert.ok(Math.abs(q / (0.586 * AU) - 1) < 0.02, `ハレー彗星の近日点距離: ${q / AU} au`);
+  });
+
+  // 冥王星の近日点は海王星の軌道半径より内側 — 実際の軌道交差を表現できていることの確認。
+  test('ephemeris: 冥王星の近日点距離は海王星の半長径より小さい(軌道交差)', () => {
+    const plutoOrbit = bodyDef('pluto').orbit;
+    const q = plutoOrbit.a * (1 - plutoOrbit.e);
+    assert.ok(q < bodyDef('neptune').orbit.a, `冥王星近日点: ${q}, 海王星半長径: ${bodyDef('neptune').orbit.a}`);
   });
 }
 

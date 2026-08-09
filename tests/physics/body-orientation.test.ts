@@ -134,6 +134,17 @@ export function register(): void {
     }
   });
 
+  test('ephemeris: the ring-bearing poles reproduce the published ring-plane tilts', () => {
+    // 環の面は赤道面なので、その法線は自転軸そのもの。黄道極からの離角は土星 28.05°
+    // (IAU の α0=40.589°/δ0=83.537° から出る値。軌道面法線基準の赤道傾斜角 26.73° とは別)、
+    // 天王星は横倒しで 82.28°(面は向きを持たないので、逆行自転の 97.72° と同じ傾き)。
+    const ephemeris = new Ephemeris({});
+    for (const [id, expected] of [['saturn', 28.05], ['uranus', 82.28]] as const) {
+      const tilt = angleBetween(ephemeris.poleAt(id, 0)!.axis, ECL_POLE_ECI) * R2D;
+      assert.ok(Math.abs(tilt - expected) < 0.2, `${id} ring-plane tilt: ${tilt} deg (expected ${expected})`);
+    }
+  });
+
   test('ephemeris: the moon pole agrees with the cassini axis carried by its gravity field', () => {
     const ephemeris = new Ephemeris({ moon: 0.4 });
     for (const t of [0, 5e6, 2e8]) {
