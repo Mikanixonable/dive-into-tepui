@@ -187,7 +187,7 @@
         - [CreativeStage] ship.planExecution==='instant' なら plan.firstNode()?.t、'powered' なら ship.planExecutor.nextEventTime(ship, simTime)(ゲートが閉じている間は常に null。armed 中は点火予定時刻、burn/trim 中は射影から求めた遮断予定時刻。どちらも対象ノードが targetNode(参照)と一致する間だけ)
       - substep()
         - attractorsAt(ephemeris, entities, simTime + dt/2) // サブステップ中点で1回だけ: ephemeris.attractorsAt(t) の mu!==0 部分(gravityBodiesAt)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流
-        - classifyAttractors(attractors) // 同じく1回だけ: μ/GRAVITY_GRID_CELL_SIZE² ≥ GRAVITY_NEGLIGIBLE_ACCEL の天体を always へ、それ以外を SpatialGrid(セル一辺 GRAVITY_GRID_CELL_SIZE)へ分類
+        - classifyAttractors(attractors) // 同じく1回だけ: μ の重い順 GRAVITY_ALWAYS_COUNT 本を always へ、残りを SpatialGrid へ分類。しきい値 μ(alwaysThresholdMu)もセル一辺(gridCellSize = √(最重グリッド天体 μ / GRAVITY_NEGLIGIBLE_ACCEL))もこの一覧から毎回導く
         - entity.stepActual(dt, attractorsNear(entity.state.r, classified)) → actualTrajectory.step() → stepDynamics()(history 記録)
           // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。attractorsNear は always + 自身の位置の27近傍グリッドを合わせたもの。それらの重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
         - player.thermal.updateThermal() // 操作対象のみ(HUD 警告を出すため)
