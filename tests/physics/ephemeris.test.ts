@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { CelestialBodyDef, MU_EARTH, R_EARTH, bodyDef } from '../../src/physics/solar-system';
+import { CelestialBodyDef, MU_EARTH, R_EARTH_EQ, bodyDef } from '../../src/physics/solar-system';
 import { MU_MOON, MU_SUN as MU_SUN_LOCAL, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { EPS } from '../../src/physics/ecliptic';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';
@@ -205,19 +205,22 @@ export function register(): void {
     assert.ok(Math.abs(maxDeg - 28.584) < 0.2, `最大傾斜: ${maxDeg}°`);
   });
 
-  test('ephemeris: sunDirAt は単位ベクトルで、positionOf(sun) と同じ向き', () => {
+  test('ephemeris: sunDirFrom は単位ベクトルで、基準点から太陽へ向く', () => {
     for (const t of [0, 1e6, 1e8]) {
-      const dir = eph.sunDirAt(t);
+      const dir = eph.sunDirFrom(v3(0, 0, 0), t);
       assert.ok(Math.abs(len(dir) - 1) < 1e-12, `単位ベクトルでない: ${len(dir)}`);
       const pos = eph.positionOf('sun', t);
-      assert.ok(len(sub(dir, norm(pos))) < 1e-12, `方向が positionOf(sun) と一致しない`);
+      assert.ok(len(sub(dir, norm(pos))) < 1e-12, `原点からの方向が positionOf(sun) と一致しない`);
+      // 木星から見た太陽方向は、木星→太陽のベクトルと一致する(地心方向では代用できない)。
+      const jup = eph.positionOf('jupiter', t);
+      assert.ok(len(sub(eph.sunDirFrom(jup, t), norm(sub(pos, jup)))) < 1e-12, '基準点が反映されていない');
     }
   });
 
-  test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は R_EARTH', () => {
+  test('ephemeris: attractorsAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は赤道半径 R_EARTH_EQ', () => {
     const attractors = eph.attractorsAt(1234);
-    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'io', 'europa', 'ganymede', 'callisto', 'saturn', 'titan', 'uranus', 'neptune', 'triton', 'ceres', 'vesta', 'pallas', 'pluto', 'haumea', 'makemake', 'eris', 'halley', 'encke', 'sun']);
-    assert.equal(attractors[0]!.radius, R_EARTH);
+    assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'metis', 'adrastea', 'amalthea', 'thebe', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'hyperion', 'iapetus', 'phoebe', 'uranus', 'puck', 'miranda', 'ariel', 'umbriel', 'titania', 'oberon', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'charon', 'styx', 'nix', 'kerberos', 'hydra', 'haumea', 'hiiaka', 'namaka', 'makemake', 'eris', 'dysnomia', 'halley', 'encke', 'sedna', 'quaoar', 'weywot', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'churyumov', 'orcus', 'vanth', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia', 'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'itokawa', 'apophis', 'didymos', 'dimorphos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka', 'sun']);
+    assert.equal(attractors[0]!.radius, R_EARTH_EQ);
   });
 
   test('ephemeris: 同一 t の attractorsAt は同一配列参照を返す', () => {
@@ -247,18 +250,29 @@ export function register(): void {
     assert.deepEqual(after, new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 2.1 }).positionOf('moon', 1234));
   });
 
-  test('ephemeris: gravityAttractorsAt は重力源だけを宣言順で返し、値は attractorsAt と一致する', () => {
+  // 重力窓の候補は「質量が判明している天体」であって、近づける天体を人が選んだ集合ではない
+  // (どの候補が実際に効くかは位置依存の relevantAttractors が決める)。SOLAR_SYSTEM は全天体の
+  // mu が実測値なので、候補は全天体と一致する。
+  test('ephemeris: gravityAttractorsAt は mu を持つ天体だけを宣言順で返し、値は attractorsAt と一致する', () => {
     const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
     const gravity = e.gravityAttractorsAt(777);
-    assert.deepEqual(gravity.map((b) => b.id), ['earth', 'moon', 'jupiter', 'saturn', 'sun']);
     const all = e.attractorsAt(777);
+    assert.deepEqual(gravity.map((b) => b.id), all.filter((b) => b.mu > 0).map((b) => b.id));
     for (const b of gravity) assert.deepEqual(b, all.find((x) => x.id === b.id));
+  });
+
+  // mu = 0 で登録した天体は候補集合から外れる — 質量が測定されていない天体の登録方法。
+  test('ephemeris: mu が 0 の天体は gravityAttractorsAt に現れない', () => {
+    const registry = { ...SOLAR_SYSTEM, moon: { ...SOLAR_SYSTEM.moon, mu: 0 } };
+    const e = new Ephemeris(registry, 'earth', EPOCH_T_OFFSET, {});
+    assert.ok(!e.gravityAttractorsAt(777).some((b) => b.id === 'moon'));
+    assert.ok(e.attractorsAt(777).some((b) => b.id === 'moon'));
   });
 
   // EPOCH_T_OFFSET はこの見た目の条件そのものから逆算された定数なので、これはその逆算の検算。
   // 平均黄経で合わせているぶん、中心差(地球の e=0.0167 で最大 1.9°)だけ真の方向はずれる。
   test('ephemeris: t=0 では太陽が +X 方向(昼側)にある', () => {
-    const dir = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {}).sunDirAt(0);
+    const dir = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {}).sunDirFrom(v3(0, 0, 0), 0);
     const offDeg = (Math.acos(dir.x / len(dir)) * 180) / Math.PI;
     assert.ok(offDeg < 3, `t=0 の太陽方向が +X から離れている: ${offDeg}°`);
   });

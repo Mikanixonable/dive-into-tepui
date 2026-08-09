@@ -22,7 +22,7 @@
     "src/game/hud/layout.ts",
     "src/physics/swept-sphere.ts",
     "src/game/creative/placement-validation.ts",
-    "src/game/celestial/asteroid-belt.ts",
+    "src/game/celestial/point-field.ts",
     "tests/physics/**/*.ts"
   ]
 }
