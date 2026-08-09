@@ -96,3 +96,5 @@ npm run typecheck
 ## クレジット
 
 Planet textures: [Solar System Scope](https://www.solarsystemscope.com/textures/) (CC BY 4.0)
+
+Satellite textures (フォボス・イオ・エウロパ・ガニメデ・カリスト・タイタン): [USGS Astrogeology Science Center](https://astrogeology.usgs.gov/) 実写全球モザイク(パブリックドメイン)

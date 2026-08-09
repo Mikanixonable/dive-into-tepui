@@ -275,7 +275,7 @@ export class Enemy extends Ship {
     const predictedRelPos = add(toPlayer, scale(relV, timeToHit));
     const aimDir = norm(predictedRelPos);
 
-    const sunDir = ephemeris.sunDirAt(simTime);
+    const sunDir = ephemeris.sunDirFrom(r, simTime);
     const spreadScale = sunGlareSpreadScale(r, aimDir, sunDir);
 
     // 散布界をスケール適用

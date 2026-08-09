@@ -7,12 +7,15 @@ import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/attractor';
 import { norm, sub } from '../../physics/vec3';
+import { RingSystemDef, RingTextureId, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
 import { STAR_SHELL_RADIUS } from '../../render/stars';
 import { Billboard } from '../../render/billboard';
+import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialBody } from './celestial-body';
+import { RingView } from './ring-view';
 
 // 見かけの明るさ3段階。金星(-4等)・木星(-2等)が bright、水星・火星・土星(0〜+1等台)が
 // medium、天王星(+5.7等、肉眼限界+6等付近)が faint — レジストリ側で天体ごとに選ぶ。
@@ -33,19 +36,26 @@ const tmpPos = new THREE.Vector3();
 
 export class PointBody extends CelestialBody {
   readonly id: OrbitingId;
+  private surface!: CelestialSurface;
   private mesh!: THREE.Mesh;
+  private ring?: RingView;
   private readonly billboard: Billboard;
   private readonly scale: number;
   private readonly opacity: number;
+  // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
+  private readonly axes: THREE.Vector3;
 
-  // buildMesh は build() でマップビュー用の実体メッシュを作る遅延コンストラクタ、radius は
-  // 実半径 [m]。buildRing を渡すとマップビューでのみ環を持つ(戦闘ビューの輝点に環はない)。
+  // buildSurface は build() でマップビュー用の実体表面を作る遅延コンストラクタ、radius は
+  // 実半径 [m]、shape は歪みの形状データ(省略時は radius による真球)。rings/ringTextures を
+  // 渡すとマップビューでのみ環を持つ(戦闘ビューの輝点に環はない — ring-view.ts 参照)。
   constructor(
     id: OrbitingId,
-    private readonly buildMesh: () => THREE.Mesh,
+    private readonly buildSurface: () => CelestialSurface,
     private readonly radius: number,
     brightness: PointBrightness,
-    private readonly buildRing?: () => THREE.Object3D,
+    shape?: ShapeDef,
+    private readonly rings?: RingSystemDef,
+    private readonly ringTextures?: Readonly<Partial<Record<RingTextureId, string>>>,
   ) {
     super();
     this.id = id;
@@ -53,18 +63,20 @@ export class PointBody extends CelestialBody {
     this.opacity = POINT_OPACITY[brightness];
     // 色はテクスチャ平均色を狙わず単色の白 — 恒星状の光点として過剰演出しない。
     this.billboard = new Billboard(0xffffff, -9);
+    const a = shapeAxes(radius, shape);
+    this.axes = new THREE.Vector3(a.x, a.y, a.z);
   }
 
-  // buildMesh でマップビュー用メッシュを組み立て、輝点用ビルボードとあわせてシーンへ
+  // buildSurface でマップビュー用の表面を組み立て、輝点用ビルボードとあわせてシーンへ
   // 一度だけ登録する。
   build(scene: THREE.Scene): void {
-    this.mesh = this.buildMesh();
-    if (this.buildRing !== undefined) {
-      const ring = this.buildRing();
-      ring.renderOrder = this.mesh.renderOrder + 1;
-      this.mesh.add(ring);
-    }
+    this.surface = this.buildSurface();
+    this.mesh = this.surface.mesh;
     scene.add(this.mesh);
+    if (this.rings !== undefined) {
+      this.ring = new RingView(this.rings, this.radius, this.ringTextures ?? {}, this.mesh.renderOrder + 1);
+      scene.add(this.ring.group);
+    }
     scene.add(this.billboard.mesh);
   }
 
@@ -74,16 +86,22 @@ export class PointBody extends CelestialBody {
     const pos = ephemeris.positionOf(this.id, displayTime);
     if (cameraSystem.overviewMode) {
       // 広範囲視点は SphereBody と同じ実スケール。
+      this.surface.setSunDirection(ephemeris.sunDirFrom(pos, displayTime));
       this.mesh.visible = true;
       this.mesh.position.copy(fo.RtoThreeV3(pos));
-      this.mesh.scale.setScalar(this.radius);
+      this.mesh.scale.copy(this.axes);
       this.billboard.hide();
       const orientation = ephemeris.poleAt(this.id, displayTime);
       const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
       if (q !== null) this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
+      if (this.ring !== undefined) {
+        this.ring.group.visible = true;
+        this.ring.sync(this.mesh.position, this.radius, orientation === null ? null : orientation.axis, pos, cameraSystem.activeCameraScale);
+      }
     } else {
       // 戦闘視点は星シェルと同じ「カメラ位置 + 実方向 × STAR_SHELL_RADIUS」に置く輝点。
       this.mesh.visible = false;
+      if (this.ring !== undefined) this.ring.group.visible = false;
       const cam = cameraSystem.activeCamera;
       const dir = norm(sub(pos, cameraSystem.activeCameraPos));
       this.billboard.sync(
