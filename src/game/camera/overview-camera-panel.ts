@@ -4,13 +4,24 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { SegmentedControl, HudToggle } from '../hud/buttons';
 import { frameItems } from '../hud/frame-labels';
 import { hudDock } from '../hud/dom';
+import { BodyClassToggles } from '../celestial/body-visibility';
+
+// クラス別トグルの表示名。恒星と惑星は常時表示なのでトグルを持たない。
+const BODY_CLASS_LABELS: readonly (readonly [keyof BodyClassToggles, string])[] = [
+  ['satellite', '衛星'],
+  ['dwarf', '準惑星'],
+  ['smallBody', '小天体'],
+  ['lagrange', 'ラグランジュ点'],
+];
 
 export class OverviewCameraPanel {
   onFrameSelect: ((frame: ReferenceFrame) => void) | null = null;
   onAmmoToggle: ((show: boolean) => void) | null = null;
+  onBodyClassToggle: ((key: keyof BodyClassToggles, on: boolean) => void) | null = null;
 
   showAmmo = false;
   private readonly ammoToggle: HudToggle;
+  private readonly bodyClassToggles: readonly (readonly [keyof BodyClassToggles, HudToggle])[];
 
   private readonly panel: HTMLElement;
   private readonly frame: SegmentedControl<ReferenceFrame>;
@@ -39,12 +50,26 @@ export class OverviewCameraPanel {
     this.ammoToggle.setOn(false);
     this.panel.appendChild(this.ammoToggle.element);
 
+    // マップに出す天体のクラス。恒星・惑星と、フォーカス中の系の親子は常に出るので、
+    // ここで足すのは「その外まで全部見たい」という明示の意思表示にあたる。
+    this.bodyClassToggles = BODY_CLASS_LABELS.map(([key, label]) => {
+      const toggle = new HudToggle(label, (on) => this.onBodyClassToggle?.(key, on));
+      toggle.setOn(false);
+      this.panel.appendChild(toggle.element);
+      return [key, toggle] as const;
+    });
+
     hudDock(root, 'left').appendChild(this.panel);
   }
 
   // パネルの表示/非表示を切り替える。
   setVisible(visible: boolean): void {
     this.panel.style.display = visible ? 'block' : 'none';
+  }
+
+  // クラス別トグルの表示状態を現在値へ合わせる。
+  setBodyClassToggles(toggles: BodyClassToggles): void {
+    for (const [key, toggle] of this.bodyClassToggles) toggle.setOn(toggles[key]);
   }
 
   // 視点座標系の選択表示を更新する。

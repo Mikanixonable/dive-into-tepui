@@ -1,5 +1,10 @@
-// 円制限三体問題のラグランジュ点。共線点 γ の求解と、回転系での5点の無次元座標。
+// 円制限三体問題のラグランジュ点。共線点 γ の求解と、回転系での5点の無次元座標、および
+// 5点それぞれが力学的に意味を持つかの判定。
 import { Vec3 } from './vec3';
+
+// L4/L5 が線形安定でいられる質量比 mu = m2/(m1+m2) の上限(Routh/Gascheau の基準)。
+// 27mu(1−mu) < 1 の解で、同値な表現は m1/m2 > (25+3√69)/2 ≈ 24.96。
+export const TRIANGULAR_STABILITY_MASS_RATIO = (27 - Math.sqrt(621)) / 54;
 
 export type LagrangePoints = {
   readonly L1: Vec3;
@@ -27,6 +32,18 @@ export function collinearGamma(mu: number, point: 'L1' | 'L2'): number {
     if (Math.abs(step) < 1e-15) break;
   }
   return g;
+}
+
+// L4/L5 に秤動する軌道が存在するか。質量比がこの上限を超える系(冥王星-カロンのような
+// 準二重惑星)では三角点は線形不安定で、そこへ置いた物体は留まらない。
+export function hasStableTriangularPoints(mu: number): boolean {
+  return mu < TRIANGULAR_STABILITY_MASS_RATIO;
+}
+
+// 共線点 L1 が副天体の表面からどれだけ離れているかを、副天体の半径を単位にして返す。
+// 1 を下回れば L1 は副天体の内部にあり、行き先にもハロー軌道の中心にもならない。
+export function collinearClearanceRatio(mu: number, orbitRadius: number, secondaryRadius: number): number {
+  return (orbitRadius * collinearGamma(mu, 'L1')) / secondaryRadius;
 }
 
 // 円制限三体問題のラグランジュ点。5点はいずれも回転系(原点 = 主天体、x̂ = 副天体方向、
