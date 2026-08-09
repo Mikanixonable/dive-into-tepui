@@ -171,13 +171,13 @@ export class EnvironmentScene {
 
   // 参照線を引くかどうか。恒星・惑星本体は常時引く。衛星はその衛星が属する惑星系に
   // フォーカスしているときだけ引く(地球系だけは例外で常時引く — プレイの中心なので、
-  // どこを見ていても月軌道が文脈として要る)。準惑星・小天体は body-visibility.ts と同じ
-  // クラス別トグルに従い、点マーカー・ラベルと連動して現れる/消える。
+  // どこを見ていても月軌道が文脈として要る)。準惑星・小天体は body-visibility.ts の
+  // Orbit トグルに従う(Label トグルとは独立)。
   private showsReferenceLine(id: OrbitingId, focusId: string, toggles: BodyClassToggles): boolean {
     const registry = this.ephemeris.registry;
     const cls = bodyClassOf(registry, id);
-    if (cls === 'dwarf') return toggles.dwarf;
-    if (cls === 'smallBody') return toggles.smallBody;
+    if (cls === 'dwarf') return toggles.dwarfOrbit;
+    if (cls === 'smallBody') return toggles.smallBodyOrbit;
     const def = bodyDef(registry, id);
     if (def.kind !== 'satellite' || def.planet === 'earth') return true;
     return focusSystemOf(registry, focusId) === def.planet;
