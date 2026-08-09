@@ -38,14 +38,19 @@ const RING_TEXTURES: Readonly<Record<RingTextureId, string>> = { saturn: saturnR
 function planetEntry(id: SolarSystemId, name: string, textureUrl: string, pointBrightness?: PointBrightness): CelestialView {
   const buildSurface = () => CelestialSurface.textured(textureUrl);
   const def = bodyDef(SOLAR_SYSTEM, id);
-  const rings: RingSystemDef | undefined = def.kind === 'planet' ? def.rings : undefined;
   return {
     name,
     create: () =>
       pointBrightness === undefined
-        ? new SphereBody(id, buildSurface, def.radius, PLANET_VIS_DIST, shapeOf(id), rings, RING_TEXTURES)
-        : new PointBody(id, buildSurface, def.radius, pointBrightness, shapeOf(id), rings, RING_TEXTURES),
+        ? new SphereBody(id, buildSurface, def.radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id), RING_TEXTURES)
+        : new PointBody(id, buildSurface, def.radius, pointBrightness, shapeOf(id), ringsOf(id), RING_TEXTURES),
   };
+}
+
+// id の環(恒星と衛星は持たない)。shape と同じく、判別を1箇所に閉じる。
+function ringsOf(id: SolarSystemId): RingSystemDef | undefined {
+  const def = bodyDef(SOLAR_SYSTEM, id);
+  return def.kind === 'planet' ? def.rings : undefined;
 }
 
 // id の shape(星は持たない)。SOLAR_SYSTEM を引く箇所が皆この判別をせずに済むよう1箇所に閉じる。
@@ -74,7 +79,7 @@ function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: str
 function solidPlanetEntry(id: SolarSystemId, name: string, color: number): CelestialView {
   return {
     name,
-    create: () => new SphereBody(id, () => CelestialSurface.solid(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST, shapeOf(id)),
+    create: () => new SphereBody(id, () => CelestialSurface.solid(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id), RING_TEXTURES),
   };
 }
 
