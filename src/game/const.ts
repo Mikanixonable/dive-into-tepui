@@ -265,6 +265,10 @@ export const OVERVIEW_CAMERA_MAX_DIST = 1e14;
 // (near = dist / OVERVIEW_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
 // 手前がクリップされにくくなる代わりに、24bit 深度バッファの分解能が落ちる。
 export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
+// near = dist / OVERVIEW_CAMERA_NEAR_RATIO の比例則は dist の上限では星球シェル・
+// 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなり、殻ごと near 平面に切り落とされる
+// (dist=1e14 で near=1e11 > 1.35e10)。far の下限と同じく 10% 内側でクランプする。
+export const OVERVIEW_CAMERA_NEAR_MAX = 1.215e10;
 // 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
 // (far = clamp(dist × OVERVIEW_CAMERA_FAR_RATIO, OVERVIEW_CAMERA_FAR_MIN, OVERVIEW_CAMERA_FAR_MAX))。
 // far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
