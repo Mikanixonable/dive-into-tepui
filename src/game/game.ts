@@ -229,6 +229,8 @@ export class Game {
     this.mapPicker.setDocking(this.docking);
     this.viewBadge = new ViewBadge(this._hud.root, this.viewManager);
 
+    // 暫定値: cameraSystem はまだ update() を経ていないため activeCameraPos が定まらない。
+    // 最初の Game.sync() が render より前に必ず上書きするので、これは描画に使われない。
     this.floatingOrigin = this.player
       ? new FloatingOrigin(this.player.state.r, this.player.state.v)
       : new FloatingOrigin(v3(), v3());
@@ -650,9 +652,10 @@ export class Game {
   sync(): void {
     this.viewBadge.sync(this.activeStage.selectLabel, this.activeStage.isPlaying && (this.player?.alive ?? false));
     const player = this.player;
-    this.floatingOrigin = player
-      ? new FloatingOrigin(player.state.r, player.state.v)
-      : new FloatingOrigin(v3(), v3());
+    // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
+    // 4経路すべてから毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
+    // 速度基準は自機のまま(弾の相対速度描画・再突入エフェクトが前提とする値で、原点とは別concern)。
+    this.floatingOrigin = new FloatingOrigin(this.cameraSystem.activeCameraPos, player?.state.v ?? v3());
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const displayTime = this.displayTimeManager.resolveDisplayTime(this.simulator.simTime, this.currentOrbitPeriod());
