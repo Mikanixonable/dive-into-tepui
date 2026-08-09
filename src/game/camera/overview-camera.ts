@@ -133,7 +133,7 @@ export class OverviewCamera {
     this.pan_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime, this.attractors), v3());
   }
 
-  // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は地球へ戻す。
+  // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は ECI 原点へ戻す。
   private resolveFocus(candidates: readonly MapPickable[]): Vec3 {
     if (this._focusPos) {
       this.lastResolvedFocus = this._focusPos;
@@ -152,7 +152,7 @@ export class OverviewCamera {
     }
     this.missingFocusFrames++;
     if (this.missingFocusFrames >= 2) {
-      this.setFocus('earth');
+      this.setFocus(this.ephemeris.originId);
       return v3();
     }
     return this.lastResolvedFocus;
