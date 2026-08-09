@@ -74,19 +74,20 @@
     - environment.update(displayTime, cameraSystem.overviewMode) // 小惑星帯・トロヤ群点群の位置再評価。updateMapPresentation の先頭、editor.update より前(4経路共通)
     - editor.update(simTime, displayTime) // 計画折れ線の再積分とアプシスアイコン(mapPicker.refresh より前)
     - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // 操作艦(計画があれば最終区間起点)・navTarget・targeter・生存中の全基地の対象を id で重複除去して EqAN/EqDN を求め直す。mapPicker.refresh より前(候補列に畳み込むため)
+    - attractors = mergeAttractors(ephemeris.attractorsAt(simTime), entities.attractors()) // updateMapPresentation(4経路共通)の1回だけ求め、mapPicker.refresh の遮蔽判定・cameraSystem.update の frameTransformAt へ配る
     - mapPicker.refresh() // 天体ラベルと AN/DN を求め直してからこのフレームの被選択物一覧を組む
       - focusMarkers.update(displayTime) // 地球・月・太陽・両系のラグランジュ点の座標を表示時刻で求め直す
       - navTarget.update() // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム
       - mapPicker.pickables に反映 // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers + equatorNodeMarkers.mapPickables() を集約 → [overviewMode] isOccluded(cameraSystem.activeCameraPos, item.pos, ephemeris.attractorsAt(simTime)) で天体に遮蔽された候補を除外
     - [editor.editMode] mapPicker.handleRightClick() / mapPicker.handleLeftClick() // 自機・基地マーカーへの左クリックを選択として消費、外れれば下流へ / mapPicker.handleDoubleClick() // pickables 全種別への最寄りダブルクリックでフォーカス移動 / editor.handleMapPointer() // [!hasPlan(=ship===null)] 内部で即 return(艦のいない detachedPlan は編集させない) / editor.updateEditing()
-    - cameraSystem.update(..., mapPicker.pickables) // ポーズ中も視点更新は続ける
+    - cameraSystem.update(..., mapPicker.pickables, attractors) // ポーズ中も視点更新は続ける
   - [game.player === null] 以降を実行せず return する未配置経路 // Creative の開始直後・全艦喪失時。残骸や弾の epoch は進め続ける
     - simSpeedManager.update() / applyWarpCommandPolicy()
     - simulator.advance(player=null)
     - predictor.update(player=null)
     - activeStage.update(player=null) // Creative の配置プレビュー・フォームのフィールド検証結果はここで求め直す(艦が無い間こそ配置中なので飛ばせない)
     - effects.update(dt, simulator.simTime)
-    - environment.update() / editor.update() / equatorNodeMarkers.update() / mapPicker.refresh() / cameraSystem.update() // 内容は上記ポーズ経路と同じ
+    - environment.update() / editor.update() / equatorNodeMarkers.update() / attractors 算出 / mapPicker.refresh() / cameraSystem.update() // 内容は上記ポーズ経路と同じ
     - [editor.editMode] mapPicker.handleRightClick() / mapPicker.handleLeftClick() / mapPicker.handleDoubleClick() / editor.handleMapPointer() / editor.updateEditing()
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
     - player.thrust = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
@@ -102,7 +103,7 @@
     - editor.update(simTime, displayTime) // 内容は上記ポーズ経路と同じ
     - equatorNodeMarkers.update() // 内容は上記ポーズ経路と同じ
     - mapPicker.refresh() // 内容は上記ポーズ経路と同じ
-    - cameraSystem.update(..., mapPicker.pickables) // 決着後も追従を続ける(sync は止まらないため、飛ばすと視点が絶対 ECI に取り残される)
+    - cameraSystem.update(..., mapPicker.pickables, attractors) // 決着後も追従を続ける(sync は止まらないため、飛ばすと視点が絶対 ECI に取り残される)
   - nanWatchdog.checkPlayer('frameStart') // 検出済みなら何もしない
   - player.behave()
     - belt.update()
@@ -126,7 +127,7 @@
     - sunlitFactor() // 地球影による日照率
     - thermal.setRadiatorLoad(radiator.radiatingArea(), radiator.solarLoad())
       // このフレームの全サブステップの updateThermal がこの値を使う
-    - player.radius = radiator.hitRadius() // 展開度に応じて被弾判定が広がる
+    - player.hitRadius = radiator.hitRadius() // 展開度に応じて被弾判定が広がる
     - power.update() // sunlit/sunDir は radiator と共有。THREE には触れない
     - [!player.alive] player.thrust = null、throttle.stopThrust() して return
     - hpRegen()
@@ -183,8 +184,9 @@
     // 弾命中・剛体接触・姿勢積分はいずれもこの中。simulator が hitSystem / collisionPhysics を所有する
     - [サブステップごと] ×ceil(simDt / SUBSTEP_MAX_DT) // 分割数は simDt のみで決まる(実 fps に依存しない)
       - substep()
-        - entity.stepActual() → ephemeris.gravityAttractorsAt(state.t + dt/2)(gravitySource=true の天体のみ) → actualTrajectory.step() → stepDynamics()(history 記録)
-          // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地それぞれ、個体ごと。alive のみ実行。全天体重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
+        - gravityAttractorsAt(ephemeris, entities, t) // サブステップ先頭で1回だけ: ephemeris.gravityAttractorsAt(t)(gravitySource=true の天体)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流。同じ1配列をこのサブステップの全エンティティで使い回す(処理順に依存した誤差を避けるため)
+        - entity.stepActual() → relevantAttractors(state.r, all, GRAVITY_NEGLIGIBLE_ACCEL) → actualTrajectory.step() → stepDynamics()(history 記録)
+          // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。relevantAttractors がこの位置で無視できない天体だけに絞る。全天体重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
         - player.thermal.updateThermal() // 操作対象のみ(HUD 警告を出すため)
       - hitSystem.checkBulletHits() // bulletCollision=true のときだけ。サブステップごと
       - target.attacked() // 弾が命中した対象ごと
@@ -237,9 +239,10 @@
   - predictor.update(simTime, player, canGrow, horizon) // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。canGrow = simSpeedManager.canGrowPrediction、horizon = displayTimeManager.durationSec(game.currentOrbitPeriod())。currentOrbitPeriod() は自機の現在軌道を strongestAttractor 周りで求めるだけの純計算(自機なしなら NaN)。視点/モードによる分岐なし
     - resyncPrediction(simTime, attractors, horizon) // entities.all() の全対象、毎フレーム無条件(canGrow が false でも省略しない — 実状態は動き続けるので、乖離した予測列を放置すると無関係な軌道が描かれ続ける)。attractors は simTime ぶんを1回だけ引いて全対象で使い回す
       - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
-    - [canGrow] advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループも dt・重力源の決定(ephemeris.gravityAttractorsAt(tip.t)(gravitySource=true の天体のみ) → localOrbitPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で頭打ち)も Predictor 側が持つ(stepActual に対する substep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
+    - dynamic = entities.attractors() // update 先頭で1回だけ求め、以降のラウンドロビン全体で使い回す(重力天体は予測ホライズンの間「現在の実状態で静止」とみなす近似)
+    - [canGrow] advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループも dt・重力源の決定(mergeAttractors(ephemeris.gravityAttractorsAt(tip.t), dynamic) → relevantAttractors(tip.r, ..., GRAVITY_NEGLIGIBLE_ACCEL) → localOrbitPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で頭打ち)も Predictor 側が持つ(stepActual に対する substep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
       - player.stepPredicted(attractors, simTime, dt, horizon) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt・attractors を都度計算し直しながら1ステップずつ繰り返し呼ぶ
-        - predicted.step() // 呼び出し側が確定させた attractors で1ステップ積分
+        - predictedTrajectory.step() // 呼び出し側が確定させた attractors で1ステップ積分
     - [canGrow] advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player を除外しないので同じフレームで二重に予算が付き得る)。entity.stepPredicted() が最初から false(predictsFuture=false/推力中/truncated)なら消費 0 で次へ即進む
   - effects.update(dt, simulator.simTime) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と、各エフェクトの時刻から simTime までの移流。ポーズ中は呼ばれない(=止まる)
   - guide.update(plan, player, simTime, editMode, ephemeris.attractorsAt(simTime)) // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させるため
@@ -254,16 +257,16 @@
     - editor.update(simTime, displayTime) // 被選択物候補にアプシスアイコンが入るので mapPicker.refresh より前
     - planDisplay.update(plan, simTime, displayTime, show) // show = hasPlan(=ship!==null) && (editMode || plan.nodes.length > 0)
       - path.update() // plan の corners を区間へ分解し、区間ごとに PlanArc を再積分。表示座標系と un-bake 時刻もここで確定
-        - arc.update() // 区間ごと。(state0, end) が変わったときだけ DynamicTrajectory で RK4 積分し直す(重い)。刻み幅ごとの重力源は ephemeris.gravityAttractorsAt(t)(gravitySource=true の天体のみ)
+        - arc.update() // 区間ごと。(state0, end) が変わったときだけ DynamicTrajectory で RK4 積分し直す(重い)。刻み幅ごとの重力源は relevantAttractors(state.r, ephemeris.gravityAttractorsAt(t), GRAVITY_NEGLIGIBLE_ACCEL)(小惑星は合流させない — 予測・実積分の2経路と絞り込み関数だけ揃える)
       - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
       - apsisIconsOf() // 最終区間の起点要素から解析的に算出。離心率 < APSIS_MIN_ECC なら空、双曲線なら Pe のみ
   - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // editor.update の後・mapPicker.refresh の前
   - mapPicker.refresh() // 物理積分の後に組む — 積分前だと同フレームで sync されるメッシュと被選択物の座標が1ステップずれる
     - focusMarkers.update(displayTime) / navTarget.update() // 内容は上記ポーズ経路と同じ
-  - cameraSystem.update(mapPicker.pickables) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ
+  - cameraSystem.update(mapPicker.pickables, attractors) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ
     - combatCamera.toggleFollowAttitude() // K.followAttitudeToggle。カメラ自身の状態なのでここで消費する
     - keyYaw/keyPitch/keyRoll をキー入力からまとめる // cameraRollLeft/Right は Numpad0/Numpad1
-    - overviewCamera.update(..., mapPicker.pickables) // cameraSystem.overviewMode のみ。focus を mapPickables から引き直し、結果を自身の view へ書く
+    - overviewCamera.update(..., mapPicker.pickables, attractors) // cameraSystem.overviewMode のみ。focus を mapPickables から引き直し、結果を自身の view へ書く。attractors は frameTransformAt の回転解決(登録天体/生存中の重力天体の2経路)に渡す
     - combatCamera.update() // !overviewMode のみ
       - zoomActive = K.gunsightZoom 押下 // combatCamera 自身のフィールドへ書く(overviewMode 中はこの update 自体が呼ばれないため更新されない — CameraSystem.zoomActive の !overviewMode ガードが読み替えを担保する)
       - gunsightCamera.update() // player.alive && zoomActive。結果を自身の view へ書く
@@ -474,6 +477,14 @@
   恒星→惑星-衛星系重心→惑星/衛星の合成をゼロから評価する。`attractorsAt`/`gravityAttractorsAt` は
   同一 `t` に対して同一の配列参照を返すため、呼び出し側は返り値やその要素を書き換えてはならない。
   `setPhaseOffsets` は4系統すべてのキャッシュをクリアする。
+- **重力積分が使う配列は3経路(`Simulator.substep`/`Predictor.advanceBudget`/`PlanArc.update`)とも
+  同じ2段: `gravityAttractorsAt(ephemeris, entities, t)`(解析天体の重力窓 + 生存中の重力天体を
+  合流)→ `relevantAttractors(r, ..., GRAVITY_NEGLIGIBLE_ACCEL)`(その位置で無視できる天体を
+  落とす)。**`substep` は同じ合流結果をそのサブステップの全エンティティへ使い回し(処理順に
+  依存した誤差を避けるため)、`Predictor` は `entities.attractors()` を `update` の先頭で1回だけ
+  求めて予測ホライズン全体で使い回す(重力天体は予測の間「現在の実状態で静止」とみなす近似)。
+  `PlanArc` は小惑星を合流させず解析天体のみに `relevantAttractors` を通す。3経路とも `Ephemeris`
+  の窓を直接書き換えず、常に新しい配列へ展開してから絞り込む。
 - **HUD マーカーは持ち主の `sync` が自分で出す**。`game.sync` に並ぶのは「1つの対象では決められない」
   ものだけ(`enemyMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存、`equatorNodeMarkers` =
   操作艦・navTarget・targeter という複数の役割にまたがる source 列に依存)で、残りは
