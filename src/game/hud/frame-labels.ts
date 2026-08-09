@@ -2,7 +2,7 @@
 // game/celestial/celestial-registry.ts が唯一の定義元で、ここは参照するだけ。
 import { ReferenceFrame, FRAMES } from '../../physics/frame';
 import { AttractorId, PlanetId, SatelliteId } from '../../physics/attractor';
-import { primaryOf } from '../../physics/solar-system';
+import { bodyDef, primaryOf } from '../../physics/solar-system';
 import { CELESTIAL_BODIES } from '../celestial/celestial-registry';
 
 export const ATTRACTOR_NAMES: Record<AttractorId, string> = Object.fromEntries(
@@ -12,7 +12,12 @@ export const ATTRACTOR_NAMES: Record<AttractorId, string> = Object.fromEntries(
 // FRAMES の各要素に表示名をつける。回転しない系は「(天体名)中心慣性系」、回転する系は
 // 「(回っている天体の親の名)-(回っている天体の名)回転系」。値は必ず FRAMES の要素そのものを
 // 使う(参照同一性が sampled-line.ts のキャッシュ判定の前提)。
-export const FRAME_ITEMS: readonly (readonly [ReferenceFrame, string])[] = FRAMES.map((frame) => [
+// 選ばせるのは重力源天体の系だけ — 重力積分の対象でない天体を中心に据えても、そこでの
+// 局所力学が成立していないので軌道が読み取れない。
+export const FRAME_ITEMS: readonly (readonly [ReferenceFrame, string])[] = FRAMES.filter(
+  (frame) => bodyDef(frame.center).gravitySource
+    && (frame.rotatingWith === null || bodyDef(frame.rotatingWith).gravitySource),
+).map((frame) => [
   frame,
   frame.rotatingWith === null
     ? `${ATTRACTOR_NAMES[frame.center]}中心慣性系`

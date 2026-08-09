@@ -34,6 +34,7 @@ export const KEY_MAPPING = {
   throttleLow: { code: 'Digit1', label: '1' },
   throttleMid: { code: 'Digit2', label: '2' },
   throttleHigh: { code: 'Digit3', label: '3' },
+  throttleMax: { code: 'Digit4', label: '4' },
   radiatorDeployLeft: { code: 'Digit9', label: '9' },
   radiatorDeployRight: { code: 'Digit0', label: '0' },
   solarDeployLeft: { code: 'Digit7', label: '7' },
@@ -76,8 +77,8 @@ export const KEY_MAPPING = {
   help: { code: 'KeyH', label: 'H' },
   pauseMenu: { code: 'Escape', label: 'ESC' },
   restart: { code: 'KeyR', label: 'R' },
-  quickSave: { code: 'F5', label: 'F5' },
-  quickLoad: { code: 'F9', label: 'F9' },
+  clipSnapshot: { code: 'F5', label: 'F5' },
+  openSnapshots: { code: 'F9', label: 'F9' },
 } as const satisfies Record<string, KeyBinding>;
 
 // ブラウザ既定のスクロールを奪うキー(keydown で preventDefault する)。
@@ -89,8 +90,8 @@ export const SCROLL_GUARD_KEYS: readonly KeyBinding[] = [
   KEY_MAPPING.cameraYawRight,
   KEY_MAPPING.cameraPitchUp,
   KEY_MAPPING.cameraPitchDown,
-  KEY_MAPPING.quickSave,
-  KEY_MAPPING.quickLoad,
+  KEY_MAPPING.clipSnapshot,
+  KEY_MAPPING.openSnapshots,
 ];
 
 // CTRL 併用時にブラウザのショートカット(保存・リロード等)へ流さないキー。

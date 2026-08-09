@@ -21,6 +21,10 @@ export function createStars(): THREE.Mesh {
     map: texture,
     side: THREE.BackSide,
     depthWrite: false,
+    // renderOrder -10 で最初に描くため深度テストは元々不要。殻がカメラから
+    // 0.9*far の距離にあり、深度クリア値付近の量子化丸めで LESS テストが
+    // 落ちて黒く抜けることがあるため明示的に無効化する。
+    depthTest: false,
   });
   
   const mesh = new THREE.Mesh(geo, mat);
@@ -31,6 +35,7 @@ export function createStars(): THREE.Mesh {
 
 export interface Sun {
   billboard: Billboard;
+  mesh: THREE.Mesh;
 }
 
 // 月: 単位球(半径1)を生成し、表示側で位置・スケールを毎フレーム設定する。
@@ -54,5 +59,15 @@ export function createMoon(): THREE.Mesh {
 }
 
 export function createSun(): Sun {
-  return { billboard: new Billboard(0xfff3d0, -9) };
+  return { billboard: new Billboard(0xfff3d0, -9), mesh: createSunMesh() };
+}
+
+// 単位球(半径1)の太陽本体。自己発光する光源そのものなので、シーンの照明を受けない
+// MeshBasicMaterial で塗る。広範囲視点でのみ実位置・実半径に置いて使う。
+function createSunMesh(): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(1, 48, 24);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xfff3d0 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  return mesh;
 }

@@ -17,6 +17,7 @@ import { EffectsSystem } from '../vfx/effects-system';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { Player } from './player';
+import type { FireSaveData } from '../save-data';
 
 export type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
 
@@ -63,6 +64,28 @@ export class PlayerFire {
     this.rounds = rounds;
     this.barrel = C.MAGS_PER_BARREL;
     this.cooldown = 0;
+    this.wasEmptyClick = false;
+    this.wasFiring = false;
+  }
+
+  serialize(): FireSaveData {
+    return {
+      mags: this.mags,
+      rounds: this.rounds,
+      barrel: this.barrel,
+      cooldown: this.cooldown,
+      muzzleIdx: this.muzzleIdx,
+    };
+  }
+
+  // 装填数・クールダウン・砲身状態を復元する。initAmmo と異なり、進行中のリロードを
+  // 打ち切らない(セーブ時点の状態をそのまま引き継ぐ)。
+  restore(data: FireSaveData): void {
+    this.mags = data.mags;
+    this.rounds = data.rounds;
+    this.barrel = data.barrel;
+    this.cooldown = data.cooldown;
+    this.muzzleIdx = data.muzzleIdx;
     this.wasEmptyClick = false;
     this.wasFiring = false;
   }

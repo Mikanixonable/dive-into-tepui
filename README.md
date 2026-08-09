@@ -92,3 +92,7 @@ npm run typecheck
 - 敵機全機撃破でのミッション終了、大気圏突入での機体喪失
 
 大気抵抗、J2/潮汐摂動、太陽・月による三体摂動、敵AI、オーロラ演出などは未実装。詳細な設計方針は `dev.md`(人間のみが編集する文書)を参照。開発者向けの技術的な詳細は `CLAUDE.md` を参照。
+
+## クレジット
+
+Planet textures: [Solar System Scope](https://www.solarsystemscope.com/textures/) (CC BY 4.0)
