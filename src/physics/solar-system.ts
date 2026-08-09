@@ -9,6 +9,10 @@ import { AU, PlanetOrbit, planetOrbit } from './planet-orbit';
 import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-orbit';
 import { Vec3, len } from './vec3';
 
+// 万有引力定数 [m^3/(kg・s^2)]。MU_* は測定された GM を直接持つ値なのでこれで割り直さないこと —
+// 質量から GM を導く側(Asteroid など)だけがこれを使う。
+export const GRAVITATIONAL_CONSTANT = 6.6743e-11;
+
 export const MU_SUN = 1.32712440018e20; // [m^3/s^2]
 export const R_SUN = 6.957e8; // [m]
 export const MU_MOON = 4.9048695e12;
