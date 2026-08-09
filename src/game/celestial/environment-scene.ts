@@ -4,7 +4,7 @@ import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
 import { kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH, SOLAR_SYSTEM, bodyDef } from '../../physics/solar-system';
-import { OrbitalElements } from '../../physics/elements';
+import { OrbitalElements, positionOnOrbit } from '../../physics/elements';
 import { Attractor, AttractorId, OrbitingId, PlanetId, orbitalElementsOf } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { OrbitLine } from '../../render/orbit-line';
@@ -136,7 +136,11 @@ export class EnvironmentScene {
     this.geoLine.sync(GEO_ELEMENTS, fo, false);
     for (const [id, line] of this.referenceLines) {
       const show = this.showsReferenceLine(id, focusId);
-      line.sync(show ? this.orbitElementsFor(id, simTime) : null, fo, false);
+      const el = show ? this.orbitElementsFor(id, simTime) : null;
+      // 離心率の大きい軌道(彗星など)は近日点付近で曲率が急なので、そこへ頂点を寄せないと
+      // 楕円が多角形として粗く見える。
+      const densifyNear = el && el.e > 0.5 ? positionOnOrbit(el, 0) : undefined;
+      line.sync(el, fo, false, densifyNear);
     }
   }
 

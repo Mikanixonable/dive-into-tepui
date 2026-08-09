@@ -327,7 +327,7 @@
     - [bodies(= CELESTIAL_BODIES 登録順の CelestialBody[])ごと] body.sync(fo, displayTime, cameraSystem, ephemeris)
       - EarthBody.sync() → earth.group.position / earth.setRotation() / earth.setSunDir() / earth.tick()
       - SunBody.sync() → billboard 位置(カメラ相対の圧縮距離)+ sunLight.position・intensity(setSunlit の lit 反映)
-      - SphereBody.sync()(月・水星・金星・火星・木星・土星・天王星・海王星) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。姿勢は ephemeris.poleAt(id, displayTime) が非null なら spinOrientation(axis, spinAngle) をクォータニオンへ書き込み(lookAt は使わない)、pole モデルを持たない天体は姿勢を変更しない
+      - SphereBody.sync()(月・水星・金星・火星・木星・土星・天王星・海王星・準惑星等7体・彗星核2体) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。姿勢は ephemeris.poleAt(id, displayTime) が非null なら spinOrientation(axis, spinAngle) をクォータニオンへ書き込み(lookAt は使わない)、pole モデルを持たない天体は姿勢を変更しない(環メッシュは本体の子なのでこの姿勢・スケールをそのまま継承する)
     - ambient.intensity 更新 // lit から導出
     - syncStars() // starsMesh をカメラへ追従、overviewMode でさらに拡大
     - syncReferenceLines(simTime, fo, overviewMode, focus) → geoLine.sync() + [referenceLines の各 OrbitLine ごと] showsReferenceLine(id, focus) が true のときだけ line.sync(orbitElementsFor(id, simTime), …)、false なら null 渡しで非表示 // !overviewMode では全線 null。惑星線は常時、衛星線は focus がその衛星系(地球系除く)を指すときだけ show
