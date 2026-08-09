@@ -16,6 +16,8 @@ import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import { CelestialBody } from './celestial-body';
 import { CELESTIAL_BODIES, fallbackCelestialView } from './celestial-registry';
+import { bodyClassOf } from './body-class';
+import { BodyClassToggles } from './body-visibility';
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
 // レジストリに実在しないなら架空レジストリでは無意味なので組まない(constructor で判定)。
@@ -135,7 +137,8 @@ export class EnvironmentScene {
 
     this.pointFieldView.sync(floatingOrigin, cameraSystem.overviewMode);
     this.syncStars(cameraSystem);
-    this.syncReferenceLines(displayTime, floatingOrigin, cameraSystem.overviewMode, cameraSystem.overviewCamera.focus);
+    this.syncReferenceLines(
+      displayTime, floatingOrigin, cameraSystem.overviewMode, cameraSystem.overviewCamera.focus, cameraSystem.bodyClassToggles);
     this.celestialGrid.sync(gridVisibility, cameraSystem);
   }
 
@@ -147,7 +150,9 @@ export class EnvironmentScene {
   }
 
   // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。
-  private syncReferenceLines(simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: string): void {
+  private syncReferenceLines(
+    simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: string, toggles: BodyClassToggles,
+  ): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo);
       for (const line of this.referenceLines.values()) line.sync(null, fo);
@@ -155,7 +160,7 @@ export class EnvironmentScene {
     }
     this.geoLine.sync(this.geoElements, fo, false);
     for (const [id, line] of this.referenceLines) {
-      const show = this.showsReferenceLine(id, focusId);
+      const show = this.showsReferenceLine(id, focusId, toggles);
       const el = show ? this.orbitElementsFor(id, simTime) : null;
       // 離心率の大きい軌道(彗星など)は近日点付近で曲率が急なので、そこへ頂点を寄せないと
       // 楕円が多角形として粗く見える。
@@ -164,11 +169,15 @@ export class EnvironmentScene {
     }
   }
 
-  // 参照線を引くかどうか。惑星線は常時引き、衛星線はその衛星が属する惑星系にフォーカスして
-  // いるときだけ引く — 全衛星の線を同時に引くと内側太陽系が線で潰れるため。地球系だけは
-  // 例外で常時引く(プレイの中心なので、どこを見ていても月軌道が文脈として要る)。
-  private showsReferenceLine(id: OrbitingId, focusId: string): boolean {
+  // 参照線を引くかどうか。恒星・惑星本体は常時引く。衛星はその衛星が属する惑星系に
+  // フォーカスしているときだけ引く(地球系だけは例外で常時引く — プレイの中心なので、
+  // どこを見ていても月軌道が文脈として要る)。準惑星・小天体は body-visibility.ts と同じ
+  // クラス別トグルに従い、点マーカー・ラベルと連動して現れる/消える。
+  private showsReferenceLine(id: OrbitingId, focusId: string, toggles: BodyClassToggles): boolean {
     const registry = this.ephemeris.registry;
+    const cls = bodyClassOf(registry, id);
+    if (cls === 'dwarf') return toggles.dwarf;
+    if (cls === 'smallBody') return toggles.smallBody;
     const def = bodyDef(registry, id);
     if (def.kind !== 'satellite' || def.planet === 'earth') return true;
     return focusSystemOf(registry, focusId) === def.planet;
