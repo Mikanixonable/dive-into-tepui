@@ -524,6 +524,220 @@ export const SOLAR_SYSTEM = {
     // 傾斜 90° 超が逆行を表す。
     orbit: equatorialSatelliteOrbit({ a: 3.5476e8, e: 0.000016, incDeg: 156.885, planetMu: MU_NEPTUNE, planetPole: NEPTUNE_POLE }),
   },
+  // 準惑星・大型小惑星・彗星核。恒星への影響が無視できるほど軽いので gravitySource: false
+  // (質量を持たない飾りとしてのみ表示・選択される)。永年摂動項は解いておらず raanRate 等は
+  // すべて 0 — 二体ケプラー軌道のみで、木星等による摂動(彗星核では非重力効果も)は含まない。
+  // 軌道要素は JPL Small-Body Database(sbdb.api、full-prec=true)から取得した黄道座標・
+  // J2000 の a/e/i/Ω(om)/ω(w)/M(ma) と、その要素の元期(JD)。ハレー・エンケの元期の平均近点角
+  // は取得元期のものなので、そこから J2000 まで平均運動で外挿している(冥王星のみ後述の別出典)。
+  // lRateDegPerCentury は平均運動 n = 360°/period を世紀あたりへ換算したもの — 周期はケプラー第3
+  // 法則 T = 2π√(a³/μ_sun) から SBDB の a のみで独立に計算し(SBDB の per フィールドとも一致)、
+  // n = 360°/T。l0Deg(J2000 の平均黄経)は取得元期の平均黄経 L = M+ω+Ω を、この n で J2000 まで
+  // 外挿して求めた。
+  ceres: {
+    kind: 'planet',
+    id: 'ceres',
+    mu: 6.26e10,
+    radius: 4.7e5,
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Ceres&full-prec=true (元期 JD2461200.5)
+    orbit: planetOrbit({
+      a: 2.765552595034094 * AU,
+      e: 0.07969229514816586,
+      incDeg: 10.58802780183462,
+      raanDeg: 80.24862682043221,
+      lonPeriDeg: 153.54284135064808,
+      l0Deg: 158.7455644908673,
+      lRateDegPerCentury: 7827.470059933903,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  vesta: {
+    kind: 'planet',
+    id: 'vesta',
+    mu: 1.73e10,
+    radius: 2.63e5,
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Vesta&full-prec=true (元期 JD2461200.5)
+    orbit: planetOrbit({
+      a: 2.361365965127599 * AU,
+      e: 0.09020374382834395,
+      incDeg: 7.143925545058711,
+      raanDeg: 103.701293265032,
+      lonPeriDeg: 255.16994108718842,
+      l0Deg: 233.7490090526644,
+      lRateDegPerCentury: 9920.860648673672,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  pallas: {
+    kind: 'planet',
+    id: 'pallas',
+    mu: 1.36e10,
+    radius: 2.56e5,
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Pallas&full-prec=true (元期 JD2461200.5)
+    orbit: planetOrbit({
+      a: 2.769559010737709 * AU,
+      e: 0.2307000995648547,
+      incDeg: 34.93279321851542,
+      raanDeg: 172.8866193357694,
+      lonPeriDeg: 123.856535500983,
+      l0Deg: 113.37790163103682,
+      lRateDegPerCentury: 7810.491496842745,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  // 冥王星は SBDB に対象がないため、a/e/i/Ω/ω は既知値(a=39.482 AU, e=0.2488, i=17.16°,
+  // Ω=110.30°, ω=113.83°)を、平均近点角 M0 は JPL Standish の J2000 表(この Ω/ω と数百分の
+  // 1° の差で近い値)の L0=238.92903833°・ϖ=224.06891629° から M0=L0−ϖ≈14.860° を借りて
+  // 近似値として使う。
+  pluto: {
+    kind: 'planet',
+    id: 'pluto',
+    mu: 8.71e11,
+    radius: 1.1883e6,
+    gravitySource: false,
+    orbit: planetOrbit({
+      a: 39.482 * AU,
+      e: 0.2488,
+      incDeg: 17.16,
+      raanDeg: 110.30,
+      lonPeriDeg: 224.13,
+      l0Deg: 238.99012204,
+      lRateDegPerCentury: 145.10941196758816,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  haumea: {
+    kind: 'planet',
+    id: 'haumea',
+    mu: 2.67e11,
+    radius: 7.8e5, // 平均半径(準楕円体)
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Haumea&full-prec=true (元期 JD2461200.5)
+    orbit: planetOrbit({
+      a: 43.06029023650952 * AU,
+      e: 0.1944430148898797,
+      incDeg: 28.20847393040364,
+      raanDeg: 121.7860561329425,
+      lonPeriDeg: 2.4766033838085946,
+      l0Deg: 192.00768761548116,
+      lRateDegPerCentury: 127.40276965460927,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  makemake: {
+    kind: 'planet',
+    id: 'makemake',
+    mu: 2.1e11,
+    radius: 7.15e5,
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Makemake&full-prec=true (元期 JD2461200.5)
+    orbit: planetOrbit({
+      a: 45.57093317300052 * AU,
+      e: 0.1588889953992523,
+      incDeg: 29.02785603743067,
+      raanDeg: 79.2948338209406,
+      lonPeriDeg: 16.387107160661287,
+      l0Deg: 155.39032853134051,
+      lRateDegPerCentury: 117.02062563483054,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  eris: {
+    kind: 'planet',
+    id: 'eris',
+    mu: 1.108e12,
+    radius: 1.163e6,
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Eris&full-prec=true (元期 JD2461200.5)
+    orbit: planetOrbit({
+      a: 67.93394687853566 * AU,
+      e: 0.4382385347971672,
+      incDeg: 43.9258279471791,
+      raanDeg: 36.00477044417249,
+      lonPeriDeg: 186.7996940282037,
+      l0Deg: 21.578055953998067,
+      lRateDegPerCentury: 64.29304982186218,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  // 彗星核の μ/半径は観測が乏しく粗い推定値。
+  halley: {
+    kind: 'planet',
+    id: 'halley',
+    mu: 1.5e1, // 粗い推定値(核質量 ~2.2e14 kg 相当)
+    radius: 5.5e3, // 粗い推定値(核長径の半分程度)
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=1P&full-prec=true (元期 JD2439875.5、
+    // 1968年の近日点通過に近い元期)。非重力効果(彗星核からのガス噴出による軌道擾乱)は
+    // 未収録なので、周期・形状は正確だが軌道上の位置は年代が離れるほど粗くなる。
+    orbit: planetOrbit({
+      a: 17.92863504856923 * AU,
+      e: 0.9679359956953211,
+      incDeg: 162.1905300439129,
+      raanDeg: 59.09894720612437,
+      lonPeriDeg: 171.34037866990076,
+      l0Deg: 237.23068671379107,
+      lRateDegPerCentury: 474.2130029037993,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  encke: {
+    kind: 'planet',
+    id: 'encke',
+    mu: 4e0, // 粗い推定値(核質量 ~6e13 kg 相当)
+    radius: 2.4e3,
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=2P&full-prec=true (元期 JD2459847.5)
+    orbit: planetOrbit({
+      a: 2.219688710074586 * AU,
+      e: 0.8477496967533629,
+      incDeg: 11.41227811179314,
+      raanDeg: 334.1935846036774,
+      lonPeriDeg: 161.327830973245,
+      l0Deg: 90.02574581888393,
+      lRateDegPerCentury: 10885.695675063265,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
   sun: { kind: 'star', id: 'sun', mu: MU_SUN, radius: R_SUN, gravitySource: true },
 } satisfies Record<AttractorId, CelestialBodyDef>;
 
