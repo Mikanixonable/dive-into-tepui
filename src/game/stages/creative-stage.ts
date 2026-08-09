@@ -326,7 +326,7 @@ export class CreativeStage extends Stage {
     const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
     this.preview = form ? this.computePreview(form) : null;
     this.issues = form ? this.computeFieldIssues(form) : [];
-    for (const ship of this._entities.players) ship.planExecutor.update(ship, dt, simSpeed);
+    for (const ship of this._entities.players) ship.planExecutor.update(ship, dt, simTime, simSpeed);
   }
 
   // 'instant' の艦はノード時刻ちょうど、'powered' の艦は点火予定時刻を Simulator の既知
