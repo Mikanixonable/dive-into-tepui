@@ -11,7 +11,7 @@
 | `src/game/player/belt-physics.ts` (`BeltPhysics`) | Vec3/Quat だけの算術。節点位置 `beltPos` / 前フレーム位置 `beltPrevPos` / ねじれ角 `beltTwist` / 根本アンカー `anchor` を持つ |
 | `src/game/player/belt.ts` (`Belt`) | リンクメッシュ(`THREE.Group` × `BELT_MAX_VISIBLE`)の所有、給弾進み `feed` と可視リンク数 `visibleCount` の導出、物理結果からの姿勢導出とメッシュ反映 |
 | `src/render/ships.ts` | `buildMagazineMesh()`(4×8=32 発が見えるケージ。原点は平たい直方体 X 4.0 × Y 1.0 × Z 3.0 の中心)、`MAG_BELT_PITCH = MAG_WIDTH + 0.18`、給弾口の位置 `MAG_BELT_ANCHOR_X` |
-| `src/game/player/belt-physics.ts` (`BeltSection`) | 剛体接触用プロキシ。`mass = 5`, `collideRadius = 0.8` |
+| `src/game/player/belt-physics.ts` (`BeltSection`) | 剛体接触用プロキシ。`mass = 5`, `radius = 0.8`, `collides = true` |
 
 `Belt` は `Player` が所有(`player.ts:66` で `new Belt(this.obj)`)。リンク群は
 `player.obj` の子なので、機体の位置・姿勢は THREE の親子関係で自動的に付いてくる。
@@ -140,7 +140,7 @@ q     = bendQ * qFromAxisAngle(+X, beltTwist[i])
 | `MAG_BELT_ANCHOR_X` | −1.19 | 給弾口(= 先頭マガジンの機体側の端面)の X 位置 |
 | `MAG_CHAIN_MAX_PITCH_DEG` / `_YAW_DEG` / `_ROLL_DEG` | 30 / 10 / 15 | 継手の角度上限 |
 | `MAG_CHAIN_ROLL_GAIN` / `_ROLL_RATE` | 0.6 / 3.5 | ねじれの発生量と追従速度 |
-| `BeltSection.mass` / `collideRadius` | 5 / 0.8 | 接触プロキシの物理諸元 |
+| `BeltSection.mass` / `radius` | 5 / 0.8 | 接触プロキシの物理諸元 |
 | Verlet 減衰 / 拘束反復 / 積分刻み上限 | 0.95 / 6 / 0.05 s | `belt-physics.ts` 内のハードコード値 |
 
 ## 気づいた点(挙動そのものではない観察)
