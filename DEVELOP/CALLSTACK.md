@@ -71,6 +71,7 @@
     - [K.clipSnapshot] [!activeStage.isPlaying] hud.hint() // 決着後は拒否。それ以外は snapshotService.capture(this, 'manual', null, true) + hud.hint()
     - [K.openSnapshots] saveBrowser の open()/close() をトグル // open() が game.pause()、close() が game.resume() を呼ぶ
   - [game.isPaused] 以降を実行せず return するポーズ経路 // 決着後の簡略経路より前。ポーズ中は決着後も完全に止まる
+    - environment.update(displayTime, cameraSystem.overviewMode) // 小惑星帯・トロヤ群点群の位置再評価。updateMapPresentation の先頭、editor.update より前(4経路共通)
     - editor.update(simTime, displayTime) // 計画折れ線の再積分とアプシスアイコン(mapPicker.refresh より前)
     - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // 操作艦(計画があれば最終区間起点)・navTarget・targeter・生存中の全基地の対象を id で重複除去して EqAN/EqDN を求め直す。mapPicker.refresh より前(候補列に畳み込むため)
     - mapPicker.refresh() // 天体ラベルと AN/DN を求め直してからこのフレームの被選択物一覧を組む
@@ -85,7 +86,7 @@
     - predictor.update(player=null)
     - activeStage.update(player=null) // Creative の配置プレビュー・フォームのフィールド検証結果はここで求め直す(艦が無い間こそ配置中なので飛ばせない)
     - effects.update(dt, simulator.simTime)
-    - editor.update() / equatorNodeMarkers.update() / mapPicker.refresh() / cameraSystem.update() // 内容は上記ポーズ経路と同じ
+    - environment.update() / editor.update() / equatorNodeMarkers.update() / mapPicker.refresh() / cameraSystem.update() // 内容は上記ポーズ経路と同じ
     - [editor.editMode] mapPicker.handleRightClick() / mapPicker.handleLeftClick() / mapPicker.handleDoubleClick() / editor.handleMapPointer() / editor.updateEditing()
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
     - player.thrust = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
@@ -97,6 +98,7 @@
       // Enemy.checkLoss/Player.checkLoss 経由で recordEnemyDeath/recordPlayerLost が走り得るが、
       // 両方とも isPlaying でガードされているので決着後に既存の phase を上書きすることはない
     - effects.update(dt, simulator.simTime) // 決着直後の爆発を止めないため、簡略経路でも寿命を進める
+    - environment.update() // 内容は上記ポーズ経路と同じ
     - editor.update(simTime, displayTime) // 内容は上記ポーズ経路と同じ
     - equatorNodeMarkers.update() // 内容は上記ポーズ経路と同じ
     - mapPicker.refresh() // 内容は上記ポーズ経路と同じ
@@ -248,6 +250,7 @@
       - notifyAchieved() // orbitalElementsClose(自機軌道要素, 目標軌道要素) が真の場合のみ
         - hud.hint() + sfx.warp() // ノードごとに最初の1回のみ(achievedNotified との同一性比較)
   - editor.plan.trackAnchor() // ノードが0件のときだけ実効(1件目を置くとアンカーは凍結される)
+    - environment.update(displayTime, cameraSystem.overviewMode) // 小惑星帯・トロヤ群点群の位置再評価。editor.update より前
     - editor.update(simTime, displayTime) // 被選択物候補にアプシスアイコンが入るので mapPicker.refresh より前
     - planDisplay.update(plan, simTime, displayTime, show) // show = hasPlan(=ship!==null) && (editMode || plan.nodes.length > 0)
       - path.update() // plan の corners を区間へ分解し、区間ごとに PlanArc を再積分。表示座標系と un-bake 時刻もここで確定
@@ -324,10 +327,12 @@
   - project / overviewMode / simTime / attractors(= ephemeris.attractorsAt(simTime)) / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
   - environment.sync()
     - sunBody.setSunlit(lit) // lit = sunlitFactor(playerPos, ephemeris.sunDirAt(displayTime), …)。overviewMode では 1.0 固定
+    - asteroidField.sync(fo, cameraSystem.overviewMode) // !overviewMode ならメッシュを隠して return。overviewMode では update が引き直していない点も含め全インスタンス行列を書き直す(fo が毎フレーム動くため)
     - [bodies(= CELESTIAL_BODIES 登録順の CelestialBody[])ごと] body.sync(fo, displayTime, cameraSystem, ephemeris)
       - EarthBody.sync() → earth.group.position / earth.setRotation() / earth.setSunDir() / earth.tick()
       - SunBody.sync() → billboard 位置(カメラ相対の圧縮距離)+ sunLight.position・intensity(setSunlit の lit 反映)
-      - SphereBody.sync()(月・水星・金星・火星・木星・土星・天王星・海王星・準惑星等7体・彗星核2体) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。姿勢は ephemeris.poleAt(id, displayTime) が非null なら spinOrientation(axis, spinAngle) をクォータニオンへ書き込み(lookAt は使わない)、pole モデルを持たない天体は姿勢を変更しない(環メッシュは本体の子なのでこの姿勢・スケールをそのまま継承する)
+      - SphereBody.sync()(月・海王星・準惑星等7体・彗星核2体、および pointBrightness 未指定の惑星) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。姿勢は ephemeris.poleAt(id, displayTime) が非null なら spinOrientation(axis, spinAngle) をクォータニオンへ書き込み(lookAt は使わない)、pole モデルを持たない天体は姿勢を変更しない(環メッシュは本体の子なのでこの姿勢・スケールをそのまま継承する)
+      - PointBody.sync()(pointBrightness 指定の惑星 = 金星・木星=bright、水星・火星・土星=medium、天王星=faint) → overviewMode なら SphereBody と同じ実 ECI 位置・実半径・姿勢のメッシュを表示、!overviewMode ならそのメッシュを隠して代わりに星シェル半径(STAR_SHELL_RADIUS)上の実方向へ billboard を置く輝点表示に切り替える(常にどちらか一方だけ visible)
     - ambient.intensity 更新 // lit から導出
     - syncStars() // starsMesh をカメラへ追従、overviewMode でさらに拡大
     - syncReferenceLines(simTime, fo, overviewMode, focus) → geoLine.sync() + [referenceLines の各 OrbitLine ごと] showsReferenceLine(id, focus) が true のときだけ line.sync(orbitElementsFor(id, simTime), …)、false なら null 渡しで非表示 // !overviewMode では全線 null。惑星線は常時、衛星線は focus がその衛星系(地球系除く)を指すときだけ show
@@ -484,6 +489,13 @@
   の直後・`mapPicker.refresh` の直前に呼ぶ)の座標も候補列の一部なので、`refresh()` の
   先頭で両方を求め直す。`sync` 側(`focusMarkers.syncLabels` / `navTarget.sync`)はその値を
   マーカーへ置くだけで、座標を求め直さない。
+- **`environment.update(displayTime, cameraSystem.overviewMode)` は `updateMapPresentation` の
+  最初(`editor.update` より前)、4経路すべてで呼ぶ**。小惑星帯・トロヤ群点群(`AsteroidField`)の
+  位置をラウンドロビンで再評価するだけで、`mapPicker.pickables` には一切寄与しない(点群は
+  ピック対象でも重力源でもない表示専用)。`!overviewMode` では即 return するので、コンバットビュー
+  では実質無視できるコスト。`sync` 側は `environment.sync` の中で `asteroidField.sync` を呼ぶ
+  ——`update` が引き直した点も引き直していない点も含め、浮動原点の移動ぶんだけ全インスタンス行列を
+  毎フレーム書き直す。
 - **`game.sync` は `dt` を受け取らない**。sync フェーズには進めるものが無い、というルールを
   シグネチャで見えるようにしてある。HUD パネルの書き換え間引きのような表示側の周期は
   `performance.now()` の期限で持つ。

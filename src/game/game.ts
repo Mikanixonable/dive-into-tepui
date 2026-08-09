@@ -533,6 +533,7 @@ export class Game {
 
   // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
   private updateMapPresentation(dt: number, afterRefresh?: () => void): void {
+    this.environment.update(this.displayTime, this.cameraSystem.overviewMode);
     this.editor.update(this.simulator.simTime, this.displayTime);
     this.equatorNodeMarkers.update(
       this.equatorNodeSources(), this.editor.planDisplay.planFrame, this.displayTime,
