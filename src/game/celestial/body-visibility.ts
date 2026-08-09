@@ -15,8 +15,11 @@ export type BodyClassToggles = {
   readonly lagrange: boolean;
 };
 
+// dwarf/satellite/smallBody の既定 off は「登録数が多くマップが溢れるから」。lagrange は
+// FocusMarkers の構築時点で力学的に意味を持つ点(Ephemeris の hasUsableCollinearPoints /
+// hasStableTriangularPoints)だけに絞り込み済みで同じ懸念が当たらないため、既定 on にする。
 export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
-  dwarf: false, satellite: false, smallBody: false, lagrange: false,
+  dwarf: false, satellite: false, smallBody: false, lagrange: true,
 };
 
 // focusId と同じ系にある天体(自分・親・子・親を共有する兄弟)。UI が「いま見ている系」を
