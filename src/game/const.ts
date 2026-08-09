@@ -307,6 +307,11 @@ export const NODE_APPROACH_LEAD = 10;
 // 実行時刻をこれだけ過ぎたノードは計画から落とす [s]。多少の遅れなら噴射できる猶予。
 export const NODE_EXPIRE_GRACE = 60;
 
+// --- 軌道計画の自動実行(plan-executor.ts) ---
+export const PLAN_EXECUTOR_DV_EPS = 0.05; // これ未満のΔvは燃焼不要とみなす [m/s]
+export const PLAN_EXECUTOR_ARM_ANGLE_DEG = 2.0; // 姿勢誤差がこれを切ったら点火を許可する [deg]
+export const PLAN_EXECUTOR_TRIM_DV = 5.0; // 残り射影がこれを下回ったら最低出力段へ落とす [m/s]
+
 // --- 未来表示の時刻(display-time-manager.ts のスライダー) ---
 export const DISPLAY_DUR_90MIN = 90 * 60; // 90分
 export const DISPLAY_DUR_DAY = 86400; // 1日

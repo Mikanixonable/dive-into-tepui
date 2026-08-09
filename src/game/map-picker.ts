@@ -22,6 +22,7 @@ import { SimSpeedManager } from './sim-speed-manager';
 import type { Docking } from './docking';
 import type { Game } from './game';
 import type { Player } from './player/player';
+import { nextPlanExecution, planExecutionLabel } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
 import { len, sub, v3 } from '../physics/vec3';
 import type { ObjectType } from './creative/ship-placer-panel';
@@ -409,7 +410,7 @@ export class MapPicker {
         const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
         return [
           ...activate,
-          { label: ship?.followPlan ? '軌道計画への自動追従 OFF' : '軌道計画への自動追従 ON', act: 'followToggle' },
+          { label: `軌道計画の実行: ${planExecutionLabel(ship?.planExecution ?? 'off')} (次へ)`, act: 'planExecCycle' },
           MenuCommon.focus(),
           ...this.navTargetItems(target, simTime),
           ...this.duplicateItems(),
@@ -421,9 +422,9 @@ export class MapPicker {
         if (act === 'activate') {
           const ship = this.entities.findPlayer(target.id);
           if (ship) this.game.setActivePlayer(ship);
-        } else if (act === 'followToggle') {
+        } else if (act === 'planExecCycle') {
           const ship = this.entities.findPlayer(target.id);
-          if (ship) ship.followPlan = !ship.followPlan;
+          if (ship) ship.planExecution = nextPlanExecution(ship.planExecution);
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else if (act === 'delete') {
@@ -627,7 +628,7 @@ export class MapPicker {
       {
         key: 'active', label: '操作対象か', value: ship === this.game.player ? 'はい' : 'いいえ', collapsible: true,
       },
-      { key: 'follow', label: '計画追従', value: ship.followPlan ? 'ON' : 'OFF', collapsible: true },
+      { key: 'follow', label: '計画実行', value: planExecutionLabel(ship.planExecution), collapsible: true },
       { key: 'hp', label: '装甲', value: `${Math.floor(ship.hp)} / ${ship.maxHp}` },
       { key: 'temp', label: '温度', value: `${ship.thermal.hullTemp.toFixed(0)} K` },
       { key: 'power', label: '電力', value: fmtEnergy(ship.power.chargeJ) },

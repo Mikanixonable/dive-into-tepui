@@ -118,7 +118,8 @@ main.ts
     │   │   ├── PlayerMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の艦だけが sync する)
     │   │   ├── OrbitLine              ... 自機軌道線。中心天体は毎フレーム state から導出(strongestAttractor)。
     │   │   │                              表示抑制(setSuppressed)は Game.sync が PredictedTrajectoryLine.hasLineFor(この艦)から渡す(§付録参照)
-    │   │   └── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
+    │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
+    │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
     │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
     │   ├── Bullet[]
     │   ├── DebrisPiece[] (casings)
@@ -179,7 +180,8 @@ main.ts
 | `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・HitSystem・CollisionPhysics・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
 | `DisplayTimeManager` | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない) |
-| `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が activePlayer.plan を転送)・PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)・CreativeStage(followPlan 艦の自動追従) |
+| `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が activePlayer.plan を転送)・PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)・CreativeStage(`planExecution` 艦のノード消化) |
+| `PlanExecutor`(艦ごとの) | `Player`(艦自身) | CreativeStage(`update`/`nextSimulationEventTime`/`applySimulationEvents` から呼ぶだけで保持しない) |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
 | `Player` / `Simulator` / `EntityManager` / `Stage` | Game | 毎フレームの引数として相互に渡される |
@@ -216,9 +218,10 @@ main.ts
 | 天球グリッド6トグルの可視状態・navball の基準モード | `Navball` | `gridVisibility`/`mode`。`Game.sync` が `navball.gridVisibility` を読んで `EnvironmentScene.sync` の引数(`gridVisibility`)経由で `CelestialGrid.sync` へ渡すだけで、`CelestialGrid` 自身は状態を持たない |
 | Δv アーム/ボタンのホールド継続時間・ラッチ状態 | `PlanEditor.dvHoldTime` / `NodeGizmo.latch` | 6方向ぶんの経過秒数(ホールドレートのランプに使う)と、ドラッグがラッチへ入った軸/超過量。加算そのものは `PlanEditor.applyDv` に一本化 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
-| マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。ノード・アンカーとも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `KinematicState[]` を1本持つだけで、`addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`dropNodesBefore(t)` は実行時刻が `t` 以前のノードをまとめて取り除き、最後に取り除いたノードを新しい `anchor` に据えて返す(`CreativeStage.advanceFollowPlan` が `followPlan` 艦の自動追従にこの戻り値を使う) |
+| マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。ノード・アンカーとも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `KinematicState[]` を1本持つだけで、`addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`dropNodesBefore(t)` は実行時刻が `t` 以前のノードをまとめて取り除き、最後に取り除いたノードを新しい `anchor` に据えて返す(`CreativeStage.applySimulationEvents` が `planExecution==='instant'` 艦の乗り移りにこの戻り値を使い、`PlanExecutor.finish` が `'powered'` 艦の遮断後に `trackAnchor(ship.state)` で実状態へ上書きする) |
 | 操作対象(アクティブ)艦 | `Game.player` | 唯一の書き換え箇所は `Game.setActivePlayer(ship)`。カメラ参照・計画編集対象・ターゲット解除の副作用もすべてここに閉じる(下記「たまたま同時に切り替わる」節参照) |
-| 軌道計画への自動追従 | `Player.followPlan` | 全ての自機が持つ(既定 false)。ON の艦は `CreativeStage.update` が毎フレーム見て、次ノード時刻を跨いだら `state` をノードの絶対状態へ置き換える |
+| 軌道計画の実行モード | `Player.planExecution`(`'off' \| 'instant' \| 'powered'`) | 全ての自機が持つ(既定 `'off'`)。`'instant'` は `CreativeStage.applySimulationEvents` がノード時刻ちょうどで `state` をノードの絶対状態へ置き換え、`'powered'` は `PlanExecutor` が姿勢制御・噴射で実行する。操作対象艦での手動並進・手動回転(`Player.behave`)は `'powered'` を `'off'` へ落とす |
+| PlanExecutor の状態機械(`phase`/`targetNodeT`/`burnDirWorld`/`pendingAccel`/`thrustGateOpen`) | `PlanExecutor`(艦ごとの) | 艦の `planExecution`/ノード/生死/警告ゲートから毎フレーム `update` が導出。`ship.torque`/`ship.thrust`/`ship.plan` は `PlanExecutor` が唯一書き換える(`'powered'` の間のみ) |
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNodeIdx` / `.editMode` | 選択は素の `number \| null`。`deleteNode(idx)` は削除後 `selectedNodeIdx >= idx` なら選択を解除する |
 | 直近ノードの接近/達成通知済み | `PlanGuide`(`approachNotified` / `achievedNotified`) | 通知済みのノードそのものへの参照。編集のたびノードは別インスタンスへ置き換わるので、同一性比較がそのまま「同じノードについて通知済みか」の判定になる |
 | 予測表示期間(手動レンジの秒数 `manualDurationSec` を含む)・未来ゴーストスライダー(`sliderT`)・未来表示の禁止(`forceCurrent`) | `DisplayTimeManager` | `forceCurrent` は get/set アクセサで、true をセットすると `sliderT` も 0 へ戻す。期間の切替(`durationKey` 変更)でも同様に `sliderT` を 0 へ戻す |
