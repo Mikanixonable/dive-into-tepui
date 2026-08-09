@@ -92,12 +92,13 @@ export abstract class Ship extends GameEntity {
     this.updateOverallHp();
   }
 
-  // 接触速度に応じたダメージをパーツへ適用し、ダメージが発生したかを返す。
-  protected applyCollisionDamage(speed: number): boolean {
-    const span = C.COLLISION_DAMAGE_FULL_SPEED - C.COLLISION_DAMAGE_MIN_SPEED;
-    const t = Math.min(1, Math.max(0, (speed - C.COLLISION_DAMAGE_MIN_SPEED) / span));
+  // 自身が受けた速度変化 dv = impulse/mass に応じたダメージをパーツへ適用し、
+  // ダメージが発生したかを返す。
+  protected applyCollisionDamage(dv: number): boolean {
+    const span = C.COLLISION_DAMAGE_FULL_DV - C.COLLISION_DAMAGE_MIN_DV;
+    const t = Math.min(1, Math.max(0, (dv - C.COLLISION_DAMAGE_MIN_DV) / span));
     if (t <= 0) return false;
-    
+
     const damage = this.maxHp * t;
     this.applyDamageToParts(damage);
     return true;

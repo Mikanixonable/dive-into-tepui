@@ -12,6 +12,7 @@ import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
+import type { Contact } from '../simulation/contact';
 import { EntityIdAllocator } from './entity-id';
 import { GRAVITATIONAL_CONSTANT } from '../../physics/solar-system';
 
@@ -47,7 +48,7 @@ export class GameEntity {
   alive = true;
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。Attractor.radius と同じ量
-  collides = false; // 剛体接触(CollisionPhysics)に参加するか
+  collides = false; // 剛体接触(ContactPhysics)に参加するか
   // 重力定数 GM [m^3/s^2]。0 = 重力を及ぼさない
   mu = 0;
   // 自身が及ぼす二次重力項(J2/C22 等)。null = 質点として扱う
@@ -206,6 +207,15 @@ export class GameEntity {
     if (containingBody(this.state.r, attractors, 0) !== null
       || isBurnedUp(this.state.r, attractors, C.DEBRIS_REENTRY_ALT)) this.alive = false;
   }
+
+  // 自分がこの相手と接触しうるか。既定 true。両側が true を返したときだけ接触する。
+  contactsWith(_other: GameEntity | Attractor, _simTime: number): boolean {
+    return true;
+  }
+
+  // この接触で自分に何が起きるかを記述する。相手に何が起きるかは書かない(相手の
+  // collideWith が書く)。既定は何もしない。
+  collideWith(_other: GameEntity | Attractor, _contact: Contact, _activeStage: Stage): void {}
 
   // メッシュを scene から取り除く。
   dispose(): void {

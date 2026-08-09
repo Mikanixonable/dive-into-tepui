@@ -138,7 +138,7 @@ export class Game {
     this.equatorNodeMarkers = new EquatorNodeMarkers(this.markerManager, this.ephemeris);
 
     this.entities = new EntityManager();
-    this.effects = new EffectsSystem(this._scene, this.entities);
+    this.effects = new EffectsSystem(this._scene, this.entities, this._sfx);
     // 依存グラフを組むための一時艦。Creative では構築後に必ず破棄し、実ゲーム上は0隻で開始する。
     const bootstrapPlayer = new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager);
     this.player = bootstrapPlayer;
@@ -464,15 +464,6 @@ export class Game {
       true, // bulletCollision
       this.simSpeedManager.canResolvePhysicalCollisions, // resolveCollision
       true, // doSubstep
-      (a, b, speed) => {
-        if (a === player && b instanceof Enemy) {
-          player.collidedAtSpeed(speed, this.activeStage);
-          b.collidedAtSpeed(speed, this.simulator.simTime, this.activeStage);
-        } else if (b === player && a instanceof Enemy) {
-          player.collidedAtSpeed(speed, this.activeStage);
-          a.collidedAtSpeed(speed, this.simulator.simTime, this.activeStage);
-        }
-      },
     );
 
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。

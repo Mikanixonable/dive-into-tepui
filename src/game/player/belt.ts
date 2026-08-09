@@ -5,6 +5,7 @@ import { Vec3, len, scale, sub } from '../../physics/vec3';
 import * as C from '../const';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH, buildMagazineMesh } from '../../render/ships';
 import { BeltPhysics, BeltSection, X_AXIS } from './belt-physics';
+import type { GameEntity } from '../game-entity/game-entity';
 
 const IDENTITY_Q: Quat = { x: 0, y: 0, z: 0, w: 1 };
 
@@ -14,8 +15,9 @@ export class Belt {
   private feed = 0;
   private visibleCount = 0;
 
-  // リンクメッシュを playerObj の子として並べ、たわみ物理を初期化する。
-  constructor(playerObj: THREE.Object3D) {
+  // リンクメッシュを playerObj の子として並べ、たわみ物理を初期化する。owner は接触判定で
+  // 自身の節点との接触を除外するために使う吊り元の艦。
+  constructor(playerObj: THREE.Object3D, owner: GameEntity) {
     const group = new THREE.Group();
     for (let i = 0; i < C.BELT_MAX_VISIBLE; i++) {
       const link = buildMagazineMesh();
@@ -24,7 +26,7 @@ export class Belt {
       this.links.push(link);
     }
     playerObj.add(group);
-    this.physics = new BeltPhysics(this.links.length);
+    this.physics = new BeltPhysics(this.links.length, owner);
   }
 
   // 見えているリンク数と給弾進み(beltFeed)を弾薬状態から導出し、たわみ物理を進める。

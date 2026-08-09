@@ -7,7 +7,9 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
+import type { GameEntity } from '../game-entity/game-entity';
 import type { EntityManager } from '../simulation/entity-manager';
+import type { Contact } from '../simulation/contact';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { fmtMarkerDist } from '../hud/utils';
@@ -16,7 +18,6 @@ import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { OrbitLine } from '../../render/orbit-line';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
-import { containingBody } from '../../physics/sphere-contact';
 import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Stage } from '../stages/stage';
@@ -106,7 +107,7 @@ export class Player extends Ship {
 
     this.throttle = new PlayerThrottle(_hud);
     this.fire = new PlayerFire(this, _hud, _sfx, _scene, _fx);
-    this.belt = new Belt(this.obj);
+    this.belt = new Belt(this.obj, this);
     this.thermal = new ThermalSystem(_hud, _sfx);
     this.radiator = new RadiatorSystem(this.obj);
     this.power = new PowerSystem(this.obj);
@@ -319,11 +320,11 @@ export class Player extends Ship {
     this.destroyEffect();
   }
 
-  // 敵機との高速接触によるダメージ・致死判定。speed は接触時の相対速度 [m/s]。
-  collidedAtSpeed(speed: number, activeStage: Stage): void {
+  // 剛体接触によるダメージ・致死判定。自分が受けた Δv = impulse/mass で判定する。
+  collideWith(_other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
-    if (!this.applyCollisionDamage(speed)) return;
+    if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
     if (this.hp > 0) {
       this._sfx.clank();
       this._fx.spawnGasPuff(this.state);
@@ -331,22 +332,21 @@ export class Player extends Ship {
     }
 
     this.alive = false;
-    activeStage.recordPlayerLost('敵機との高速接触により機体を喪失した');
+    activeStage.recordPlayerLost('高速接触により機体を喪失した');
     this.destroyEffect();
   }
 
-  // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。
+  // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。固体表面への接触は collideWith が扱う。
   checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
     const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, earthAltitudeOf(this.state.r));
 
-    // 熱・動圧・表面到達いずれかの限界超過を喪失理由として判定する
+    // 熱・動圧・大気突入いずれかの限界超過を喪失理由として判定する
     let reason: string | null = null;
     if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
     else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
     else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
-    else if (containingBody(this.state.r, attractors, 0) !== null
-      || isBurnedUp(this.state.r, attractors, C.PLAYER_MIN_ALT)) reason = '天体表面付近に達し機体は分解した';
+    else if (isBurnedUp(this.state.r, attractors, C.PLAYER_MIN_ALT)) reason = '大気圏に突入し機体は焼失した';
     if (reason === null) return;
 
     this.alive = false;
