@@ -1,7 +1,7 @@
 // 天体の見た目レジストリ: id から表示名と CelestialBody の生成関数を引く。
 // 天体の日本語表示名の定義元はここ1箇所 — 他のモジュールは必ずここを読む。
 import * as THREE from 'three/webgpu';
-import { bodyDef, CelestialRegistry, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
+import { bodyDef, CelestialRegistry, ShapeDef, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
 import { AttractorId } from '../../physics/attractor';
 import { createMoon, MOON_VIS_DIST } from '../../render/stars';
 import { CelestialBody } from './celestial-body';
@@ -51,12 +51,13 @@ function planetEntry(
 ): CelestialView {
   const buildMesh = () => createTexturedSphereMesh(textureUrl);
   const radius = bodyDef(SOLAR_SYSTEM, id).radius;
+  const shape = shapeOf(id);
   return {
     name,
     create: () =>
       pointBrightness === undefined
-        ? new SphereBody(id, buildMesh, radius, PLANET_VIS_DIST, buildRing)
-        : new PointBody(id, buildMesh, radius, pointBrightness, buildRing),
+        ? new SphereBody(id, buildMesh, radius, PLANET_VIS_DIST, buildRing, shape)
+        : new PointBody(id, buildMesh, radius, pointBrightness, buildRing, shape),
   };
 }
 
@@ -95,9 +96,18 @@ function createSolidSphereMesh(color: number): THREE.Mesh {
   return mesh;
 }
 
+// id の shape(星は持たない)。SOLAR_SYSTEM を引く箇所が皆この判別をせずに済むよう1箇所に閉じる。
+function shapeOf(id: SolarSystemId): ShapeDef | undefined {
+  const def = bodyDef(SOLAR_SYSTEM, id);
+  return def.kind === 'star' ? undefined : def.shape;
+}
+
 // 単色の衛星のレジストリ項を、表示名と色から組む。表示距離は月と揃える。
 function satelliteEntry(id: SolarSystemId, name: string, color: number): CelestialView {
-  return { name, create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST) };
+  return {
+    name,
+    create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST, undefined, shapeOf(id)),
+  };
 }
 
 // テクスチャ付き衛星のレジストリ項を、表示名とテクスチャ URL から組む(実写の全球モザイクが
@@ -110,7 +120,10 @@ function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: str
 // テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。表示距離は
 // テクスチャ付き惑星と揃える。
 function solidPlanetEntry(id: SolarSystemId, name: string, color: number): CelestialView {
-  return { name, create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST) };
+  return {
+    name,
+    create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST, undefined, shapeOf(id)),
+  };
 }
 
 export type CelestialView = { readonly name: string; create(): CelestialBody };

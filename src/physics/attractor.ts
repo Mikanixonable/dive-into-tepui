@@ -32,7 +32,8 @@ export type Degree2Gravity = {
 export type Attractor = {
   readonly id: AttractorId;
   readonly mu: number; // GM [m^3/s^2]
-  readonly radius: number; // 表面半径 [m]
+  readonly radius: number; // 表面半径 [m]。形状(solar-system.ts の ShapeDef)を持つ天体では
+  // その外接球の半径 — 衝突・高度判定を楕円体化しない当面の間、極方向で安全側に倒す選択
   readonly state: KinematicState; // ECI 位置・速度(同一時刻。地球は原点に静止)
   readonly degree2: Degree2Gravity | null; // null なら質点として扱う
   readonly isStar: boolean; // 太陽輻射圧の輻射源として加算するか
