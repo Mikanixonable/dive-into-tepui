@@ -27,11 +27,13 @@ export class StageDebugLoad extends Stage {
   init(player: Player, entities: EntityManager): number {
     const rand = mulberry32(C.DEBUG_LOAD_RNG_SEED);
     for (let i = 0; i < C.DEBUG_LOAD_ASTEROID_COUNT; i++) {
-      const state = kinematicState(player.state.t, add(player.state.r, randomOffset(rand)), player.state.v);
-      entities.addAsteroid(new Asteroid(state, C.ASTEROID_TEST_MASS, C.ASTEROID_TEST_RADIUS, this._scene, { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) }));
+      const offset = randomOffset(rand, C.DEBUG_LOAD_ASTEROID_MAX_DIST);
+      const state = kinematicState(player.state.t, add(player.state.r, offset), player.state.v);
+      entities.addAsteroid(new Asteroid(state, C.DEBUG_LOAD_ASTEROID_MASS, C.DEBUG_LOAD_ASTEROID_RADIUS, this._scene, { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) }));
     }
     for (let i = 0; i < C.DEBUG_LOAD_DEBRIS_COUNT; i++) {
-      const state = kinematicState(player.state.t, add(player.state.r, randomOffset(rand)), player.state.v);
+      const offset = randomOffset(rand, C.DEBUG_LOAD_DEBRIS_MAX_DIST);
+      const state = kinematicState(player.state.t, add(player.state.r, offset), player.state.v);
       const size = C.DESTROY_FRAG_SIZE_MIN + rand() * (C.DESTROY_FRAG_SIZE_MAX - C.DESTROY_FRAG_SIZE_MIN);
       const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
       entities.addDebris(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, undefined, this._scene));
@@ -50,11 +52,11 @@ export class StageDebugLoad extends Stage {
   }
 }
 
-// 自機からの距離が [DEBUG_LOAD_PLACEMENT_MIN_DIST, DEBUG_LOAD_PLACEMENT_MAX_DIST] に収まる
-// ランダムな相対位置を返す。下限は小惑星の物理半径(ASTEROID_TEST_RADIUS)より大きく取り、
-// 配置直後に自機と接触しないようにする。
-function randomOffset(rand: () => number): Vec3 {
-  const dist = C.DEBUG_LOAD_PLACEMENT_MIN_DIST + rand() * (C.DEBUG_LOAD_PLACEMENT_MAX_DIST - C.DEBUG_LOAD_PLACEMENT_MIN_DIST);
+// 自機からの距離が [DEBUG_LOAD_PLACEMENT_MIN_DIST, maxDist] に収まるランダムな相対位置を、
+// その球殻内で密度が一様になるように返す。
+function randomOffset(rand: () => number, maxDist: number): Vec3 {
+  const min3 = C.DEBUG_LOAD_PLACEMENT_MIN_DIST ** 3;
+  const dist = Math.cbrt(min3 + rand() * (maxDist ** 3 - min3));
   const theta = rand() * Math.PI * 2;
   const phi = Math.acos(2 * rand() - 1);
   return v3(dist * Math.sin(phi) * Math.cos(theta), dist * Math.sin(phi) * Math.sin(theta), dist * Math.cos(phi));
