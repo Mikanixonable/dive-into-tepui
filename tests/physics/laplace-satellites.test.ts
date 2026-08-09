@@ -1,12 +1,13 @@
-// 木星系・土星系の局所ラプラス面を基準面とする衛星23個の回帰テスト: JPL 公開値との公転周期・
-// 歳差周期の一致、歳差なし変換、フェーベの逆行、イアペトゥスの軌道傾斜、および基準面が
-// 黄道面ではなくラプラス面であることの検査。
+// 木星系・土星系の衛星23個の回帰テスト: JPL 公開値との公転周期・歳差周期の一致、歳差なし変換、
+// フェーベの逆行、内側衛星の基準面が黄道面ではなくラプラス面であること、および外側の
+// イアペトゥス・フェーベの黄道傾斜が公表値と合うこと。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
+import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { cross, dot, len, norm, sub } from '../../src/physics/vec3';
 
 function satelliteOrbitOf(id: string): SatelliteOrbit {
@@ -58,14 +59,13 @@ const PRECESSION: readonly [string, number, number][] = [
   ['tethys', 4.982, 0.005],
   ['dione', 0, 11.698],
   ['rhea', 35.775, 33.939],
-  ['iapetus', 3130.302, 1662.900],
 ];
 
 // 歳差周期が公開されていない(= 0)体。
 const NO_PRECESSION: readonly string[] = [
   'metis', 'adrastea', 'amalthea', 'thebe',
   'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus',
-  'hyperion', 'phoebe',
+  'hyperion', 'iapetus', 'phoebe',
 ];
 
 // 土星の自転極(IAU、元期の値。SATURN_POLE と同じ出典)。
@@ -116,22 +116,40 @@ export function register(): void {
     }
   });
 
+  // テティスの近点歳差周期 0.005 年(1.83 日)は公転周期 1.888 日とほぼ同じで、近点が1公転に
+  // つき1周する = 実質的に近点が定まらない円軌道であることを表す。出典の値を書き換えずに
+  // 使えるのは、離心率 0.001 では近点がどこを向いても位置がほとんど変わらないため。
+  test('laplace-satellites: テティスの位置は近点歳差の有無でほとんど変わらない', () => {
+    const orbit = satelliteOrbitOf('tethys').kepler;
+    const frozen = { ...orbit, lonPeriRate: 0 };
+    const period = (2 * Math.PI) / orbit.lRate;
+    let maxDiff = 0;
+    for (let i = 0; i < 20; i++) {
+      const t = (i / 20) * period;
+      maxDiff = Math.max(maxDiff, len(sub(keplerOrbitState(orbit, t, 0).r, keplerOrbitState(frozen, t, 0).r)));
+    }
+    // 軌道長半径 295,000 km に対し、離心率ぶんの振れ幅(a·e ≈ 295 km)の数倍に収まる。
+    assert.ok(maxDiff < 1200e3, `近点歳差の有無による位置差: ${maxDiff / 1e3} km`);
+  });
+
   test('laplace-satellites: フェーベは土星の自転極に対しても黄道極に対しても逆行(角運動量が負の内積)', () => {
     const h = orbitNormal(eph, 'phoebe', 'saturn', 1e7);
     assert.ok(dot(h, SATURN_POLE_ECI) < 0, `土星の自転極に対して逆行していない: ${dot(h, SATURN_POLE_ECI)}`);
     assert.ok(dot(h, ECL_POLE_ECI) < 0, `黄道極に対して逆行していない: ${dot(h, ECL_POLE_ECI)}`);
   });
 
-  test('laplace-satellites: イアペトゥスの軌道面は他の土星衛星の軌道面に対して7.6°±0.1°傾いている', () => {
-    // ディオネ(傾斜角 0.0°、基準面そのもの)を比較先に取ることで、両者の昇交点のずれに
-    // 依らず「イアペトゥスの軌道法線が基準面法線から何度傾くか」= 傾斜角そのものを見る。
-    const t = 0;
-    const hIapetus = orbitNormal(eph, 'iapetus', 'saturn', t);
-    const hDione = orbitNormal(eph, 'dione', 'saturn', t);
-    const angleDeg = Math.acos(Math.min(1, Math.max(-1, dot(hIapetus, hDione)))) * (180 / Math.PI);
-    assert.ok(Math.abs(angleDeg - 7.6) < 0.1, `イアペトゥスの軌道傾斜: ${angleDeg}°`);
+  // 外側の2衛星は局所ラプラス面が内側衛星の面と大きく異なるため黄道面基準で登録してある。
+  // 内側衛星の面に載せると、この黄道傾斜が十数度ずれる。
+  test('laplace-satellites: イアペトゥス・フェーベの黄道傾斜が公表値と一致する', () => {
+    const eclipticIncDeg = (id: string, planet: string): number => {
+      const h = orbitNormal(eph, id, planet, 0);
+      return Math.acos(Math.min(1, Math.max(-1, dot(h, ECL_POLE_ECI)))) * (180 / Math.PI);
+    };
+    assert.ok(Math.abs(eclipticIncDeg('iapetus', 'saturn') - 17.28) < 0.2, `イアペトゥス: ${eclipticIncDeg('iapetus', 'saturn')}°`);
+    assert.ok(Math.abs(eclipticIncDeg('phoebe', 'saturn') - 175.2) < 0.2, `フェーベ: ${eclipticIncDeg('phoebe', 'saturn')}°`);
   });
 
+  // 内側衛星は土星の赤道面に近いラプラス面に載るので、黄道極からは土星の赤道傾斜ぶん離れる。
   test('laplace-satellites: 土星の内側衛星の基準面は黄道面ではなくラプラス面(ミマスの軌道法線が黄道極から26°以上離れる)', () => {
     const h = orbitNormal(eph, 'mimas', 'saturn', 1e7);
     const angleFromEclipticPoleDeg = Math.acos(Math.min(1, Math.max(-1, dot(h, ECL_POLE_ECI)))) * (180 / Math.PI);
