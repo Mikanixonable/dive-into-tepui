@@ -176,7 +176,7 @@ export class Player extends Ship {
     }
 
     if (mapMode) this.fire.tickMapMode(dt);
-    else this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, entities, ephemeris.sunDirAt(simTime));
+    else this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, entities, ephemeris.sunDirFrom(this.state.r, simTime));
 
     // ノードのΔv編集中はWASDQEをΔv編集キーとして譲り、実噴射・ラッチ判定は行わない
     // (噴射中に編集へ入った場合に備え、表示・SFXは throttle 側で明示的に止める)。
@@ -207,7 +207,7 @@ export class Player extends Ship {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
     this.hitRadius = this.radiator.hitRadius();
-    const sunDir = ephemeris.sunDirAt(simTime);
+    const sunDir = ephemeris.sunDirFrom(this.state.r, simTime);
     const sunlit = sunlitFactor(this.state.r, sunDir, C.SHADOW_PENUMBRA);
     this.thermal.setRadiatorLoad(
       this.radiator.radiatingArea(this.totalCoolingRate),

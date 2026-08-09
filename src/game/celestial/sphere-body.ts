@@ -9,22 +9,24 @@ import { RingSystemDef, RingTextureId, ShapeDef, shapeAxes } from '../../physics
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
+import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialBody } from './celestial-body';
 import { RingView } from './ring-view';
 
 export class SphereBody extends CelestialBody {
   readonly id: OrbitingId;
+  private surface!: CelestialSurface;
   private mesh!: THREE.Mesh;
   // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
   private readonly axes: THREE.Vector3;
   private ring?: RingView;
 
-  // buildMesh は build() でメッシュを作る遅延コンストラクタ、radius/visDist は実半径 [m] と
+  // buildSurface は build() で表面を作る遅延コンストラクタ、radius/visDist は実半径 [m] と
   // 戦闘視点での表示距離 [m]、shape は歪みの形状データ(省略時は radius による真球)。
   // rings/ringTextures を渡すと環を持つ天体になる(ring-view.ts 参照)。
   constructor(
     id: OrbitingId,
-    private readonly buildMesh: () => THREE.Mesh,
+    private readonly buildSurface: () => CelestialSurface,
     private readonly radius: number,
     private readonly visDist: number,
     shape?: ShapeDef,
@@ -37,9 +39,10 @@ export class SphereBody extends CelestialBody {
     this.axes = new THREE.Vector3(a.x, a.y, a.z);
   }
 
-  // buildMesh でメッシュを組み立て、シーンへ一度だけ登録する。
+  // buildSurface で表面を組み立て、シーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
-    this.mesh = this.buildMesh();
+    this.surface = this.buildSurface();
+    this.mesh = this.surface.mesh;
     scene.add(this.mesh);
     if (this.rings !== undefined) {
       this.ring = new RingView(this.rings, this.radius, this.ringTextures ?? {}, this.mesh.renderOrder + 1);
@@ -50,6 +53,9 @@ export class SphereBody extends CelestialBody {
   // displayTime 時点の位置へ、視点モードに応じた実スケール/圧縮距離のどちらかで同期する。
   sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
     const pos = ephemeris.positionOf(this.id, displayTime);
+    // 陰影は真の位置から見た恒星方向で決める — 戦闘視点では描画位置が圧縮されているため、
+    // 描画位置から引くと昼夜境界が実際とずれる。
+    this.surface.setSunDirection(ephemeris.sunDirFrom(pos, displayTime));
     let scaleFactor: number;
     if (cameraSystem.overviewMode) {
       // 広範囲視点は実スケール: 実 ECI 位置に実半軸で置く。
