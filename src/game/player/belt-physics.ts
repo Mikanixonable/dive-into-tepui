@@ -22,7 +22,8 @@ export class BeltSection extends GameEntity {
   constructor(readonly beltIndex: number) {
     super(kinematicState(0, v3(), v3()), new THREE.Object3D());
     this.mass = 5;
-    this.collideRadius = 0.8;
+    this.radius = 0.8;
+    this.collides = true;
   }
 }
 

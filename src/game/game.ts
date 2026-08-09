@@ -14,7 +14,7 @@ import { GroupedMarkers, GroupedMarkerItem } from './marker/grouped-markers';
 import { LeadMarkers } from './marker/lead-markers';
 import { EquatorNodeMarkers, EqNodeSource } from './marker/equator-node-markers';
 import { EffectsSystem } from './vfx/effects-system';
-import { initStage } from './stages/stage-dictionary';
+import { ephemerisConfigFor, initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
@@ -48,6 +48,7 @@ import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
 import { Base } from './game-entity/base';
 import { strongestAttractor } from '../physics/attractor';
+import { mergeAttractors } from './simulation/gravity-attractors';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -123,7 +124,10 @@ export class Game {
     this.unlockManager = unlockManager;
     this.snapshotService = snapshotService;
 
-    this._ephemeris = new Ephemeris();
+    const ephemerisConfig = ephemerisConfigFor(launch);
+    this._ephemeris = ephemerisConfig === undefined
+      ? new Ephemeris()
+      : new Ephemeris(ephemerisConfig.registry, ephemerisConfig.originId, ephemerisConfig.epochOffsetSec);
 
     this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
     this.enemyMarkers = new GroupedMarkers(this.markerManager, C.MARKER_CLUSTER_PX);
@@ -540,8 +544,11 @@ export class Game {
     );
     this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
     afterRefresh?.();
+    // 表示側の合流窓(重力を持つ生存中の GameEntity も含める)。sync 側の attractors と
+    // 同じ合流だが、update フェーズは simTime 基準でこの1箇所からしか要らないので都度求める。
+    const attractors = mergeAttractors(this.ephemeris.attractorsAt(this.simulator.simTime), this.entities.attractors());
     this.cameraSystem.update(
-      this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables,
+      this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables, attractors,
     );
   }
 
@@ -560,17 +567,17 @@ export class Game {
     }
     if (this.navTarget.id) {
       const navPlayer = this.entities.findPlayer(this.navTarget.id);
-      const navEnemy = this.entities.enemies.find((e) => e.name === this.navTarget.id && e.alive);
+      const navEnemy = this.entities.findEnemy(this.navTarget.id);
       const navBase = this.entities.findBase(this.navTarget.id);
       const navSource: EqNodeSource | null =
         navPlayer ? { id: navPlayer.id, name: navPlayer.displayName, state: navPlayer.state } :
-        navEnemy ? { id: navEnemy.name, name: navEnemy.name, state: navEnemy.state } :
+        navEnemy?.alive ? { id: navEnemy.id, name: navEnemy.name, state: navEnemy.state } :
         navBase ? { id: navBase.id, name: navBase.name, state: navBase.state } : null;
       if (navSource) sources.set(navSource.id, navSource);
     }
     const combatTarget = this.targeter.aliveTarget;
     if (combatTarget) {
-      sources.set(combatTarget.name, { id: combatTarget.name, name: combatTarget.name, state: combatTarget.state });
+      sources.set(combatTarget.id, { id: combatTarget.id, name: combatTarget.name, state: combatTarget.state });
     }
     for (const base of this.entities.bases) {
       if (base.alive) sources.set(base.id, { id: base.id, name: base.name, state: base.state });
@@ -650,13 +657,16 @@ export class Game {
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const displayTime = this.displayTimeManager.resolveDisplayTime(this.simulator.simTime, this.currentOrbitPeriod());
 
+    const simTime = this.simulator.simTime;
+    // 表示側は重力を持つ生存中の GameEntity(小惑星)も中心天体解決・遮蔽判定へ合流させる —
+    // EntityManager.cleanup へ渡す表面到達判定用の配列(解析天体のみ)とは別物。
+    const attractors = mergeAttractors(this.ephemeris.attractorsAt(simTime), this.entities.attractors());
+
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
-    this.cameraSystem.sync(this.floatingOrigin);
+    this.cameraSystem.sync(this.floatingOrigin, attractors);
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
-    const simTime = this.simulator.simTime;
-    const attractors = this.ephemeris.attractorsAt(simTime);
     const target = this.targeter.aliveTarget;
     const secondaryTarget = this.targeter.aliveSecondaryTarget;
 
@@ -712,7 +722,7 @@ export class Game {
     const predictedTargets = player?.alive ? [player] : [];
     this.predictedTrajectoryLine.sync(
       predictedTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
-      this.cameraSystem.activeCameraScale,
+      this.cameraSystem.activeCameraScale, attractors,
     );
     // 予測軌道の実線が出ているあいだは、解析楕円は重ねて出さない。predictedTrajectoryLine は
     // 操作対象艦しか描かないため、他の艦は常に non-suppressed に戻す — でなければ操作を
@@ -734,7 +744,7 @@ export class Game {
     const debugTargets = player ? (target ? [player, target] : [player]) : [];
     this.debugTrajectoryLine.sync(
       debugTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
-      this.cameraSystem.activeCameraScale,
+      this.cameraSystem.activeCameraScale, attractors,
     );
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。

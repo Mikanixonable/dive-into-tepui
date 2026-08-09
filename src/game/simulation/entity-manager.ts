@@ -5,6 +5,7 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
 import { Ammo } from '../game-entity/ammo';
+import { Asteroid } from '../game-entity/asteroid';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { Enemy } from '../game-entity/enemy';
 import { Bullet } from '../game-entity/bullet';
@@ -19,6 +20,7 @@ export class EntityManager {
   readonly casings: DebrisPiece[] = [];
   readonly debris: DebrisPiece[] = [];
   readonly ammos: Ammo[] = [];
+  readonly asteroids: Asteroid[] = [];
   // 自機。操作対象(Game.player)もこの配列の1隻で、積分・衝突・寿命判定・予測では
   // 他の艦と対等に扱う。ステージモードでは1隻だけが入る。
   readonly players: Player[] = [];
@@ -55,9 +57,14 @@ export class EntityManager {
     return [...this.enemies, ...players];
   }
 
-  // name で名指しされた自機を返す。見つからなければ null。
+  // id で名指しされた自機を返す。見つからなければ null。
   findPlayer(id: string): Player | null {
     return this.players.find((p) => p.id === id) ?? null;
+  }
+
+  // id で名指しされた敵を返す。見つからなければ null。
+  findEnemy(id: string): Enemy | null {
+    return this.enemies.find((e) => e.id === id) ?? null;
   }
 
   // 弾を登録する。上限を超えた分は古いものから破棄する。
@@ -74,6 +81,11 @@ export class EntityManager {
   // 弾薬ピックアップを登録する。
   addAmmo(ammo: Ammo): void {
     this.ammos.push(ammo);
+  }
+
+  // 小惑星を登録する。上限を超えた分は古いものから破棄する。
+  addAsteroid(asteroid: Asteroid): void {
+    this.addCapped(this.asteroids, asteroid, C.MAX_ASTEROIDS);
   }
 
   // 基地を登録する。
@@ -98,6 +110,7 @@ export class EntityManager {
       ...this.enemies,
       ...this.bullets,
       ...this.ammos,
+      ...this.asteroids,
       ...this.casings,
       ...this.debris,
       ...this.bases,
@@ -109,6 +122,12 @@ export class EntityManager {
     return [...this.otherEntities(), ...this.players];
   }
 
+  // 重力を持つ(mu !== 0 かつ生存中の)エンティティを Attractor として返す。GameEntity は
+  // id/radius/mu/degree2/isStar/state を直接持つので変換は要らない。
+  attractors(): readonly Attractor[] {
+    return this.all().filter((e) => e.alive && e.mu !== 0);
+  }
+
   // 全エンティティの寿命判定を行い、死亡したものを破棄・除去する。喪失した自機は撃墜演出と
   // 追従カメラの基準として残り続けるので、配列からは除かない。
   cleanup(dt: number, simTime: number, activeStage: Stage, playerPos: Vec3, attractors: readonly Attractor[]): void {
@@ -118,6 +137,7 @@ export class EntityManager {
     this.prune(this.casings);
     this.prune(this.debris);
     this.prune(this.ammos);
+    this.prune(this.asteroids);
     this.prune(this.bases);
   }
 
@@ -148,6 +168,7 @@ export class EntityManager {
     this.casings.length = 0;
     this.debris.length = 0;
     this.ammos.length = 0;
+    this.asteroids.length = 0;
     this.bases.length = 0;
   }
 }
