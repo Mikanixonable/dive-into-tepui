@@ -125,7 +125,8 @@ main.ts
     │   ├── DebrisPiece[] (debris)
     │   ├── Ammo[]
     │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
-    │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定
+    │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定。
+    │                                       j2/c22 を渡した場合は degree2(pole/tesseral)も構築時に att から一括で固定
     ├── Simulator                      ... 実シミュレーション。EntityManager の参照を受け取って回すだけ(所有しない)
     │   ├── HitSystem
     │   └── CollisionPhysics
