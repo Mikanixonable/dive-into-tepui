@@ -75,6 +75,17 @@ export function attractorAccel(r: Vec3, attractor: Attractor): Vec3 {
   return v3(ax, ay, az);
 }
 
+// 位置 r で寄与が negligibleAccel [m/s^2] 以上の天体だけを残した候補一覧。近似の適用範囲は
+// 呼び出し側の判断なので、しきい値そのものは physics/ が持たず引数で受け取る(hitAttractor の
+// margin と同じ形)。判定は静的な影響半径の見積りではなく attractorAccel の実際の大きさ
+// そのものなので、見積り誤差を論証する必要がない。
+export function relevantAttractors(
+  r: Vec3, attractors: readonly Attractor[], negligibleAccel: number,
+): readonly Attractor[] {
+  const thresholdSq = negligibleAccel * negligibleAccel;
+  return attractors.filter((attractor) => lenSq(attractorAccel(r, attractor)) >= thresholdSq);
+}
+
 // 位置 r で最も強く重力を及ぼしている天体(|attractorAccel| が最大)。素の引力 μ/d² では
 // なく、ECI の運動方程式に実際に現れる寄与(attractorAccel)で比べる — 素の引力で比べると
 // ECI が太陽と共に自由落下していることを無視した比較になり、地心 2.6e5 km 以遠で太陽が
