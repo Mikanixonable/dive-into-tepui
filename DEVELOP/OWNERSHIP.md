@@ -262,8 +262,9 @@ main.ts
   いずれも見ず、マップビュー中でも常時有効。
   「いまどのビューか」そのものの正本は第四の値 `ViewManager.current` で、上の三つ
   (とタッチUI)はその影響先。
-- **`FloatingOrigin.r` と `Player.state.r`** は現状同じ値だが意味論的に別物。sync 系は必ず fo を参照し、
-  `player.state.r` を描画原点として直接使わない。
+- **`FloatingOrigin.r`** の正本はアクティブカメラの ECI 位置(`CameraSystem.activeCameraPos`)であり、
+  `Player.state.r` とは別物 — 戦闘ビューではチェイスカメラが自機から数十mしか離れないため近い値に
+  なるだけ。sync 系は必ず fo を参照し、`player.state.r`/カメラ位置を描画原点として直接使わない。
 - **`Game.player`(操作対象艦)・`ChaseCamera.player`(追従カメラの基準)・`PlanEditor.activePlayer`(計画編集の対象)・
   `Targeter` のロック** は艦を切り替えるたびに揃える必要がある4箇所。同時に切り替えるのは
   `Game.setActivePlayer` だけで、他はそれぞれ自分の持ち分(視点/編集対象/ロック解除)だけを更新する
