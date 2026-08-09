@@ -104,7 +104,8 @@ export class Ephemeris {
 
   // registry の全天体 id、および attractorsAt が返す配列の順序(宣言順)。
   private readonly ids: readonly AttractorId[];
-  // ids のうち gravitySource が立っている id(宣言順)。
+  // ids のうち質量を持つ id(宣言順)。質量が測定されていない天体は mu = 0 で登録され、
+  // 重力窓の候補から外れる。どの候補が実際に効くかは位置依存の relevantAttractors が決める。
   private readonly gravityIds: readonly AttractorId[];
   // registry の主星。0個なら null(輻射源・影の計算がそもそも無意味になる — sunDirAt/dynamics.ts の
   // 呼び出し側はその前提で無害なフォールバックを扱う)。
@@ -128,7 +129,7 @@ export class Ephemeris {
   ) {
     this.phaseOffsets = phaseOffsets;
     this.ids = Object.keys(registry);
-    this.gravityIds = this.ids.filter((id) => bodyDef(registry, id).gravitySource);
+    this.gravityIds = this.ids.filter((id) => bodyDef(registry, id).mu > 0);
     this.starId = starOf(registry);
     this.inertialFrame = { center: originId, rotatingWith: null };
     this.frames = [
@@ -401,7 +402,7 @@ export class Ephemeris {
     return this.allAttractorsCache.put(t, this.ids.map((id) => this.attractorAt(id, t)));
   }
 
-  // 指定時刻の重力源一覧(gravitySource が立っている天体のみ、registry の宣言順)。
+  // 指定時刻の重力源一覧(mu を持つ天体のみ、registry の宣言順)。
   // 重力積分はこちらを引く — RK4 の各ステージ × 全エンティティで舐める配列なので、
   // 表示だけの天体を含めない。
   // attractorsAt と同じく、同一 t には同一の配列参照が返る(書き換え禁止)。
