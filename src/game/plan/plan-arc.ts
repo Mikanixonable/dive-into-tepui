@@ -86,10 +86,10 @@ export class PlanArc {
 
   // 直近に積分したサンプル列を折れ線メッシュへ反映する。
   sync(ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number, fo: FloatingOrigin,
-    dashSize: number, gapSize: number, scale: ScaleFn): void {
+    dashSize: number, gapSize: number, scale: ScaleFn, attractors: readonly Attractor[]): void {
     this.line.setDash(dashSize, gapSize);
-    this.line.syncGeometry(this._samples, frame, ephemeris, scale);
-    this.line.syncTransform(frame, currentTime, ephemeris, fo);
+    this.line.syncGeometry(this._samples, frame, ephemeris, scale, attractors);
+    this.line.syncTransform(frame, currentTime, ephemeris, fo, attractors);
   }
 
   // 時刻 t の状態。保持区間外は null。

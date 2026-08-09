@@ -45,6 +45,9 @@ function readLegacy(): GameSaveData | null {
 
 // 旧セーブには一覧用のメタが無いので、本体から読める範囲だけで組み立てる。位置・速度は
 // 導出に Game 実行状態が要るため 0 のままにし、消えないようクリップ済みで取り込む。
+// centerBodyId は 'earth' 固定 — この移行はレジストリ導入前(常に現実の太陽系・地球原点)の
+// セーブ形式だけを対象にしており、起動中の Ephemeris をまだ持てない(main.ts の起動処理の中で
+// Game 構築より前に走る)ため、動的なレジストリの原点を引く経路が無い。
 function metaFromSaveData(data: GameSaveData): SnapshotMeta {
   return {
     id: `legacy-${Date.now().toString(36)}`,
