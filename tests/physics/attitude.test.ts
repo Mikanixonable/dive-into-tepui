@@ -3,7 +3,7 @@
 // 許容誤差は数値誤差起因の小さい値として設定する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { ATT_MAX_DYNAMIC_STEPS, Attitude, qFromAxisAngle, stepAttitude } from '../../src/physics/attitude';
+import { ATT_MAX_DYNAMIC_STEPS, Attitude, attitudeAlignError, attitudeAlignTorque, qFromAxisAngle, stepAttitude } from '../../src/physics/attitude';
 import { v3 } from '../../src/physics/vec3';
 
 function kineticEnergy(att: Attitude): number {
@@ -114,5 +114,35 @@ export function register(): void {
       + actual.q.z * expected.z + actual.q.w * expected.w,
     );
     assert.ok(alignment > 1 - 1e-10, `1s requested but attitude advanced only partially: alignment=${alignment}`);
+  });
+
+  test('attitudeAlignError: zero at the target attitude', () => {
+    const q = qFromAxisAngle(v3(0, 1, 0), 0.7);
+    // fwd/up をこの姿勢がちょうど向ける方向に選ぶと誤差角は 0
+    const fwd = v3(Math.sin(0.7), 0, Math.cos(0.7));
+    const up = v3(0, 1, 0);
+    const err = attitudeAlignError(fwd, up, q);
+    assert.ok(err !== null);
+    assert.ok(Math.abs(err!.angle) < 1e-6, `angle: ${err!.angle}`);
+  });
+
+  test('attitudeAlignError: null at the fwd/up singularity', () => {
+    const q = { x: 0, y: 0, z: 0, w: 1 };
+    assert.equal(attitudeAlignError(v3(0, 1, 0), v3(0, 1, 0), q), null);
+  });
+
+  test('attitudeAlignTorque: PD control drives attitude to the target under integration', () => {
+    let att: Attitude = { q: { x: 0, y: 0, z: 0, w: 1 }, w: v3(), inertia: v3(1, 1, 1) };
+    const desiredFwd = v3(0, 0, -1); // 初期姿勢(fwd=+Z相当)から180°反対
+    const desiredUp = v3(0, 1, 0);
+    const dt = 0.02;
+    for (let i = 0; i < 2000; i++) {
+      const torque = attitudeAlignTorque(desiredFwd, desiredUp, att, 3.2, 2.6);
+      att = stepAttitude(att, torque, dt);
+    }
+    const err = attitudeAlignError(desiredFwd, desiredUp, att.q);
+    assert.ok(err !== null);
+    assert.ok(Math.abs(err!.angle) < 1e-2, `residual angle after settling: ${err!.angle}`);
+    assert.ok(Math.hypot(att.w.x, att.w.y, att.w.z) < 1e-2, `residual rate after settling: ${att.w}`);
   });
 }
