@@ -108,6 +108,25 @@ export function register(): void {
     assert.equal(depth('io'), 2);
   });
 
+  // 天体を足すたび、新しい天体が「既定では出ず、親にフォーカスすると出る」ことを固定する。
+  test('visibility: 木星・土星にフォーカスすると、その衛星が既定のトグルのままで現れる', () => {
+    const jupiterMoons = ['metis', 'adrastea', 'amalthea', 'thebe', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope'];
+    const saturnMoons = ['pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'hyperion', 'iapetus', 'phoebe'];
+
+    const atEarth = visibleBodyIds(SOLAR_SYSTEM, 'earth', DEFAULT_BODY_CLASS_TOGGLES);
+    for (const id of [...jupiterMoons, ...saturnMoons, 'nereid']) {
+      assert.ok(!atEarth.has(id), `${id} が地球にいる間から見えている`);
+    }
+
+    const atJupiter = visibleBodyIds(SOLAR_SYSTEM, 'jupiter', DEFAULT_BODY_CLASS_TOGGLES);
+    for (const id of jupiterMoons) assert.ok(atJupiter.has(id), `${id} が木星にフォーカスしても見えない`);
+
+    const atSaturn = visibleBodyIds(SOLAR_SYSTEM, 'saturn', DEFAULT_BODY_CLASS_TOGGLES);
+    for (const id of saturnMoons) assert.ok(atSaturn.has(id), `${id} が土星にフォーカスしても見えない`);
+
+    assert.ok(visibleBodyIds(SOLAR_SYSTEM, 'neptune', DEFAULT_BODY_CLASS_TOGGLES).has('nereid'), 'ネレイド');
+  });
+
   test('visibility: 未登録の id にフォーカスしても恒星・惑星は見え続ける', () => {
     const visible = visibleBodyIds(SOLAR_SYSTEM, 'asteroid-1', DEFAULT_BODY_CLASS_TOGGLES);
     assert.ok(visible.has('earth'));
