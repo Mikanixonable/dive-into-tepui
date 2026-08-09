@@ -25,6 +25,7 @@ import { register as registerDynamicTrajectory } from './dynamic-trajectory.test
 import { register as registerHalo } from './halo.test';
 import { register as registerPlan } from './plan.test';
 import { register as registerPlanExecutorMath } from './plan-executor-math.test';
+import { register as registerPlanExecutor } from './plan-executor.test';
 import { register as registerHudLayout } from './hud-layout.test';
 import { register as registerShortcutHint } from './shortcut-hint.test';
 import { register as registerBodyVisibility } from './body-visibility.test';
@@ -61,6 +62,7 @@ registerDynamicTrajectory();
 registerHalo();
 registerPlan();
 registerPlanExecutorMath();
+registerPlanExecutor();
 registerHudLayout();
 registerBodyVisibility();
 registerShortcutHint();

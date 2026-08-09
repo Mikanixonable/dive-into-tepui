@@ -35,13 +35,11 @@ import { PowerSystem } from './power';
 import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
 import { Plan } from '../plan/plan';
-import { PlanExecutor } from '../plan/plan-executor';
+import { PlanExecutor, type PlanExecutionMode } from '../plan/plan-executor';
 import type { PlayerSaveData } from '../save-data';
 import { restorePart, type AnyPart } from '../game-entity/parts';
 
-// この艦の計画ノードをどう実行するか。'off' は消化しない、'instant' はノード時刻ちょうどで
-// 絶対状態へ乗り移る(既存の瞬間移動)、'powered' は PlanExecutor が姿勢制御・噴射で実行する。
-export type PlanExecutionMode = 'off' | 'instant' | 'powered';
+export type { PlanExecutionMode };
 
 const PLAN_EXECUTION_CYCLE: readonly PlanExecutionMode[] = ['off', 'instant', 'powered'];
 const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = { off: 'OFF', instant: '瞬間移動', powered: '自動操縦' };
