@@ -93,6 +93,14 @@ ECI との変換は必ず `Ephemeris.frameTransformAt(frame, t)` が返す `Fram
 `switch` で、これは天体の分類がこの3種で閉じているという物理的主張そのものなので、網羅性検査が
 働く方が正しい。
 
+軌道要素の**基準面**は `kepler-orbit.ts`'s `KeplerOrbit.basisToEci` が持つ — 評価側
+(`normalFromAngles`/`directionFromAngles`/`rotationFromAngles`/`keplerOrbitState`)は基準面を
+固定しない。既定は黄道面(`ECLIPTIC_BASIS`、export)で `planet-orbit.ts` は常にこれを使うが、
+`satellite-orbit.ts`'s `satelliteOrbit` は `basisToEci` を上書きできる。衛星が親惑星の赤道面を
+基準に取る場合の基底組み立て(自転軸から `body-orientation.ts`'s `equatorBasisToEci` 経由で
+組む)は `solar-system.ts` の宣言時に一度だけ行う — 評価側の `kepler-orbit.ts` には惑星ごとの
+極を知る責務を持たせない。
+
 ## 4. `physics/` / `render/` / `game/` の境界
 
 - **`physics/`** … THREE.js に依存しない**物理・軌道力学そのもの**。純関数が多いが、

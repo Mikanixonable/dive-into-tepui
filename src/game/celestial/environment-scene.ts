@@ -13,6 +13,7 @@ import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-g
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
+import { AsteroidField } from './asteroid-field';
 import { CelestialBody } from './celestial-body';
 import { CELESTIAL_BODIES } from './celestial-registry';
 import { SunBody } from './sun-body';
@@ -62,6 +63,8 @@ export class EnvironmentScene {
   readonly celestialGrid: CelestialGrid;
   private readonly bodies: readonly CelestialBody[];
   private readonly sunBody: SunBody;
+  // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なのでここが所有する。
+  private readonly asteroidField = new AsteroidField();
 
   // 静止軌道高度の参照リングは実在の天体ではないので、以下の天体駆動の配列とは別に持つ。
   readonly geoLine = new OrbitLine(0x8b93a0, 0.2);
@@ -97,6 +100,12 @@ export class EnvironmentScene {
     this.bodies = Object.values(CELESTIAL_BODIES).map((v) => v.create());
     this.sunBody = this.bodies.find((b): b is SunBody => b.id === 'sun')!;
     for (const body of this.bodies) body.build(scene);
+    this.asteroidField.build(scene);
+  }
+
+  // 表示時刻 t の点群の位置を更新する。
+  update(t: number, overviewMode: boolean): void {
+    this.asteroidField.update(t, overviewMode, this.ephemeris);
   }
 
   // 天体ビュー・星・照明・参照線・天球グリッドを、この1フレームの表示状態に同期する。
@@ -114,6 +123,7 @@ export class EnvironmentScene {
     for (const body of this.bodies) body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris);
     this.ambient.intensity = C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
 
+    this.asteroidField.sync(floatingOrigin, cameraSystem.overviewMode);
     this.syncStars(cameraSystem);
     this.syncReferenceLines(displayTime, floatingOrigin, cameraSystem.overviewMode, cameraSystem.overviewCamera.focus);
     this.celestialGrid.sync(gridVisibility, cameraSystem);
