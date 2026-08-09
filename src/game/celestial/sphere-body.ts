@@ -15,12 +15,14 @@ export class SphereBody extends CelestialBody {
   private mesh!: THREE.Mesh;
 
   // buildMesh は build() でメッシュを作る遅延コンストラクタ、radius/visDist は実半径 [m] と
-  // 戦闘視点での表示距離 [m]。
+  // 戦闘視点での表示距離 [m]。buildRing を渡すと環を持つ天体になる — 環は本体メッシュの
+  // 子として付き、赤道面の姿勢と表示スケールをそのまま継承する。
   constructor(
     id: OrbitingId,
     private readonly buildMesh: () => THREE.Mesh,
     private readonly radius: number,
     private readonly visDist: number,
+    private readonly buildRing?: () => THREE.Object3D,
   ) {
     super();
     this.id = id;
@@ -29,6 +31,11 @@ export class SphereBody extends CelestialBody {
   // buildMesh でメッシュを組み立て、シーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
     this.mesh = this.buildMesh();
+    if (this.buildRing !== undefined) {
+      const ring = this.buildRing();
+      ring.renderOrder = this.mesh.renderOrder + 1;
+      this.mesh.add(ring);
+    }
     scene.add(this.mesh);
   }
 

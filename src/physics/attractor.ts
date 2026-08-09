@@ -8,7 +8,9 @@ import { Vec3, lenSq, len, sub, v3 } from './vec3';
 // 天体の分類。恒星は動かず、惑星は太陽まわりのケプラー軌道、衛星は惑星まわりのケプラー軌道
 // (+ 太陽摂動)を描く — solar-system.ts の CelestialBodyDef がこの分類で判別される。
 export type StarId = 'sun';
-export type PlanetId = 'earth' | 'mercury' | 'venus' | 'mars' | 'jupiter' | 'saturn' | 'uranus' | 'neptune';
+export type PlanetId =
+  | 'earth' | 'mercury' | 'venus' | 'mars' | 'jupiter' | 'saturn' | 'uranus' | 'neptune'
+  | 'pluto' | 'ceres' | 'eris' | 'makemake' | 'haumea' | 'vesta' | 'pallas' | 'halley' | 'encke';
 export type SatelliteId =
   | 'moon'
   | 'phobos' | 'deimos'
