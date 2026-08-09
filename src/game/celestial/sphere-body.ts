@@ -7,6 +7,7 @@ import { OrbitingId } from '../../physics/attractor';
 import { len, scale, sub } from '../../physics/vec3';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
+import { spinOrientation } from '../../physics/body-orientation';
 import { CelestialBody } from './celestial-body';
 
 export class SphereBody extends CelestialBody {
@@ -14,12 +15,14 @@ export class SphereBody extends CelestialBody {
   private mesh!: THREE.Mesh;
 
   // buildMesh は build() でメッシュを作る遅延コンストラクタ、radius/visDist は実半径 [m] と
-  // 戦闘視点での表示距離 [m]。
+  // 戦闘視点での表示距離 [m]。buildRing を渡すと環を持つ天体になる — 環は本体メッシュの
+  // 子として付き、赤道面の姿勢と表示スケールをそのまま継承する。
   constructor(
     id: OrbitingId,
     private readonly buildMesh: () => THREE.Mesh,
     private readonly radius: number,
     private readonly visDist: number,
+    private readonly buildRing?: () => THREE.Object3D,
   ) {
     super();
     this.id = id;
@@ -28,6 +31,11 @@ export class SphereBody extends CelestialBody {
   // buildMesh でメッシュを組み立て、シーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
     this.mesh = this.buildMesh();
+    if (this.buildRing !== undefined) {
+      const ring = this.buildRing();
+      ring.renderOrder = this.mesh.renderOrder + 1;
+      this.mesh.add(ring);
+    }
     scene.add(this.mesh);
   }
 
@@ -50,11 +58,9 @@ export class SphereBody extends CelestialBody {
       );
       this.mesh.scale.setScalar(this.visDist * (this.radius / dist));
     }
-    // 実位置の方向へ向ける(テクスチャ天体の同じ面を常に見せるため)。
-    this.mesh.lookAt(
-      this.mesh.position.x - pos.x,
-      this.mesh.position.y - pos.y,
-      this.mesh.position.z - pos.z,
-    );
+    // モデル座標は +Y が自転軸、+Z が本初子午線。同期回転する天体はこれで親を向き続ける。
+    const orientation = ephemeris.poleAt(this.id, displayTime);
+    const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
+    if (q !== null) this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
   }
 }

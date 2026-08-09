@@ -82,6 +82,15 @@ export abstract class Ship extends GameEntity {
     this.updateOverallHp();
   }
 
+  // セーブされた総HPだけを復元する経路。部品単位のHPまでは保存していない呼び出し元
+  // (Enemy — parts構成自体は毎回既定値で組み直す)向けに、既定パーツへ按分して
+  // savedHp 相当の残HPへ揃え直す。initDefaultParts() 直後(全パーツ満タン)に呼ぶ想定。
+  restoreOverallHp(savedHp: number): void {
+    const ratio = this.maxHp > 0 ? Math.max(0, Math.min(1, savedHp / this.maxHp)) : 0;
+    for (const p of this.parts) p.hp = p.maxHp * ratio;
+    this.updateOverallHp();
+  }
+
   // 接触速度に応じたダメージをパーツへ適用し、ダメージが発生したかを返す。
   protected applyCollisionDamage(speed: number): boolean {
     const span = C.COLLISION_DAMAGE_FULL_SPEED - C.COLLISION_DAMAGE_MIN_SPEED;
@@ -170,6 +179,22 @@ export abstract class Ship extends GameEntity {
       }
     }
     return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">${lines.join('')}</svg>`;
+  }
+
+  // 進行方向へ回転させても崩れない HP 表現。三角形の外形と、底辺からの塗り高さで
+  // 残HP比を示す(hpMarkerSvg の辺ごとの切り欠きは回転すると上下左右の意味が
+  // 崩れるため、マップビューの見出しマーカーにはこちらを使う)。
+  protected headingHpMarkerSvg(): string {
+    const ratio = this.maxHp > 0 ? Math.max(0, Math.min(1, this.hp / this.maxHp)) : 0;
+    const apexY = 3;
+    const baseY = 18.588;
+    const fillTopY = (baseY - ratio * (baseY - apexY)).toFixed(2);
+    const clipId = `hpfill-${this.name}`;
+    return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">` +
+      `<clipPath id="${clipId}"><rect x="0" y="${fillTopY}" width="24" height="24"/></clipPath>` +
+      `<polygon points="12,${apexY} 3,${baseY} 21,${baseY}" fill="currentColor" fill-opacity="0.35" clip-path="url(#${clipId})"/>` +
+      `<polygon points="12,${apexY} 3,${baseY} 21,${baseY}" fill="none" stroke="currentColor" stroke-width="1.5"/>` +
+      `</svg>`;
   }
 
   // パーツベースの性能取得

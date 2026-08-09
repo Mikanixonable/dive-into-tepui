@@ -1,7 +1,11 @@
 // 天体の静的事実の表: 恒星/惑星/衛星の判別 union(CelestialBodyDef)と、太陽系の各天体の
 // 重力定数・半径・軌道モデル(SOLAR_SYSTEM)。宣言順が Ephemeris が返す重力源配列の順になる。
+import { Quat } from './attitude';
 import { AttractorId, PlanetId, SatelliteId, StarId } from './attractor';
-import { PlanetOrbit, planetOrbit } from './planet-orbit';
+import { equatorBasisToEci } from './body-orientation';
+import { raDecToEci } from './ecliptic';
+import { keplerPeriod } from './elements';
+import { AU, PlanetOrbit, planetOrbit } from './planet-orbit';
 import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-orbit';
 import { Vec3, len } from './vec3';
 
@@ -13,6 +17,12 @@ export const MU_EARTH = 3.986004418e14; // 地球重力定数 [m^3/s^2]
 export const R_EARTH = 6.371e6; // 地球平均半径 [m]
 export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
 export const SIDEREAL_DAY = 86164.0905; // 恒星日 [s]
+// 衛星を抱える惑星の重力定数 [m^3/s^2]。衛星の平均運動をケプラー第3法則で出すのに要るため、
+// 惑星本体の定義と衛星の軌道が同じ1つの値を読む。
+export const MU_MARS = 4.282837e13;
+export const MU_JUPITER = 1.26686534e17;
+export const MU_SATURN = 3.7931187e16;
+export const MU_NEPTUNE = 6.836529e15;
 
 // 位置ベクトルから地球海抜高度を返す。
 export function earthAltitudeOf(r: Vec3): number {
@@ -28,51 +38,68 @@ export const R_MOON_GRAVITY = 1.7380e6; // [m]
 // 月の赤道が黄道に対して傾く角(カッシーニ第2法則)。
 export const MOON_OBLIQUITY = 1.543 * (Math.PI / 180); // [rad]
 
-// 地球-月重心の平均黄経(t=0)。実暦の値ではなく、SIM_EPOCH_UTC と同じくゲーム開始時刻を
-// 昼側に置くための表示上のアンカー — 地球の真黄経が π(太陽から見て反対側 = 地球から見て
-// 太陽が +X 方向)になる近点角から逆算した値(ϖ ≠ 0 なので単純に π にはならない)。
-const EARTH_L0_DEG = 178.13895347311777;
-
 // 公転している天体(惑星・衛星)を、表示上の「親」— 衛星ならその惑星、惑星なら恒星 — へ写す。
 export function primaryOf(id: PlanetId | SatelliteId): AttractorId {
   const def = bodyDef(id);
   return def.kind === 'satellite' ? def.planet : 'sun';
 }
 
-// 自転軸の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)、
+// 自転軸と自転位相の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)、
 // 'cassini' は同期回転する衛星のカッシーニ状態で、黄道に対する赤道の傾き obliquity [rad]
-// と軌道面法線から決まる。
+// と軌道面法線から軸が、親を向き続ける平均黄経方向から位相が決まる。'iau' は極の赤経・赤緯と
+// 自転位相 W をそれぞれ時刻の一次式で与える(周期項・高次項は扱わない)。'iau' の係数は
+// いずれも NAIF pck00011.tpc(WGCCRE 2015 準拠)の BODY_POLE_RA / BODY_POLE_DEC / BODY_PM。
 export type PoleModel =
   | { readonly kind: 'eciPole' }
-  | { readonly kind: 'cassini'; readonly obliquity: number };
+  | { readonly kind: 'cassini'; readonly obliquity: number }
+  | {
+      readonly kind: 'iau';
+      readonly ra0Deg: number;
+      readonly ra1DegPerCentury: number;
+      readonly dec0Deg: number;
+      readonly dec1DegPerCentury: number;
+      readonly w0Deg: number;
+      readonly wRateDegPerDay: number;
+    };
 
 // 2次の重力場の静的な記述。時刻ごとの自転軸・長軸の実ベクトルは ephemeris.ts が組む。
 export type Degree2GravityDef = {
   readonly j2: number;
   readonly c22: number; // 0 なら軸対称
   readonly refRadius: number; // 係数が定義された基準半径 [m]
-  readonly pole: PoleModel;
 };
 
+// 重力積分の対象にするかどうか。判定基準は「その天体の近傍にプレイヤーが存在しうるか」で、
+// 地球近傍での加速度寄与ではない(ECI は地球と共に自由落下する非慣性系なので、遠方の天体の
+// 寄与は潮汐差分項に落ちて太陽輻射圧よりも桁で小さくなる)。**クリエイティブモードで基準天体・
+// ラグランジュ系として選択できる天体は必ず true** — 選ばせた先で局所力学が成立しなくなるため。
+type GravitySourceFlag = { readonly gravitySource: boolean };
+
+// ラグランジュ点をフォーカス対象のラベルとして出すかどうか(省略時 = 出さない)。全公転天体で
+// 出すと 5 点 × 天体数のラベルが画面を埋めるので、実際に軌道設計の目標になる系だけを立てる。
+type LagrangeLabelFlag = { readonly lagrangeLabels?: boolean };
+
 export type CelestialBodyDef =
-  | { readonly kind: 'star'; readonly id: StarId; readonly mu: number; readonly radius: number }
-  | {
+  | ({ readonly kind: 'star'; readonly id: StarId; readonly mu: number; readonly radius: number } & GravitySourceFlag)
+  | ({
       readonly kind: 'planet';
       readonly id: PlanetId;
       readonly mu: number;
       readonly radius: number;
       readonly orbit: PlanetOrbit; // 中心は必ず恒星
+      readonly pole?: PoleModel; // 省略時は自転軸を持たない
       readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
-    }
-  | {
+    } & GravitySourceFlag & LagrangeLabelFlag)
+  | ({
       readonly kind: 'satellite';
       readonly id: SatelliteId;
       readonly mu: number;
       readonly radius: number;
       readonly planet: PlanetId; // 中心は必ず惑星
       readonly orbit: SatelliteOrbit;
+      readonly pole?: PoleModel;
       readonly degree2?: Degree2GravityDef;
-    };
+    } & GravitySourceFlag & LagrangeLabelFlag);
 
 const D2R = Math.PI / 180;
 
@@ -130,6 +157,68 @@ const MOON_DIST_TERMS: readonly PerturbationTerm[] = [
   { d: 4, m: 0, mp: -1, f: 0, amp: -34782 },
 ];
 
+type IauPole = Extract<PoleModel, { readonly kind: 'iau' }>;
+
+// 衛星を抱える惑星の自転軸。衛星の軌道要素はこの軸が張る赤道面の上で与えるため、
+// 惑星本体の pole と衛星の基準面が同じ1つの定義を読む。
+const MARS_POLE: IauPole = {
+  kind: 'iau',
+  ra0Deg: 317.269202, ra1DegPerCentury: -0.10927547,
+  dec0Deg: 54.432516, dec1DegPerCentury: -0.05827105,
+  w0Deg: 176.049863, wRateDegPerDay: 350.891982443297,
+};
+const JUPITER_POLE: IauPole = {
+  kind: 'iau',
+  ra0Deg: 268.056595, ra1DegPerCentury: -0.006499,
+  dec0Deg: 64.495303, dec1DegPerCentury: 0.002413,
+  w0Deg: 284.95, wRateDegPerDay: 870.536,
+};
+const SATURN_POLE: IauPole = {
+  kind: 'iau',
+  ra0Deg: 40.589, ra1DegPerCentury: -0.036,
+  dec0Deg: 83.537, dec1DegPerCentury: -0.004,
+  w0Deg: 38.9, wRateDegPerDay: 810.7939024,
+};
+const NEPTUNE_POLE: IauPole = {
+  kind: 'iau',
+  ra0Deg: 299.36, ra1DegPerCentury: 0.0,
+  dec0Deg: 43.46, dec1DegPerCentury: 0.0,
+  w0Deg: 249.978, wRateDegPerDay: 541.1397757,
+};
+
+// 惑星の赤道面を基準面とする回転。極の一次項は世紀あたり 0.11° 以下なので元期の極で固定する
+// (「衛星の軌道面が親の赤道面に対して静止している」という近似そのものが、内側衛星の
+// ラプラス面 ≈ 惑星赤道面という近似と同程度の粗さで、極のこの緩やかな動きはその中に埋もれる)。
+function equatorBasis(pole: IauPole): Quat {
+  return equatorBasisToEci(raDecToEci(pole.ra0Deg, pole.dec0Deg));
+}
+
+// 親惑星の赤道面を基準面に取る衛星の二体ケプラー軌道。要素は JPL Solar System Dynamics の
+// 衛星平均要素(親惑星の赤道面基準)。歳差・周期摂動は実測値を持たないので置かない。
+function equatorialSatelliteOrbit(p: {
+  a: number;
+  e: number;
+  incDeg: number;
+  planetMu: number;
+  planetPole: IauPole;
+}): SatelliteOrbit {
+  return satelliteOrbit({
+    a: p.a,
+    e: p.e,
+    incDeg: p.incDeg,
+    raan0Deg: 0,
+    lonPeri0Deg: 0,
+    l0Deg: 0,
+    periodSec: keplerPeriod(p.a, p.planetMu),
+    nodePeriodSec: Infinity,
+    perigeePeriodSec: Infinity,
+    basisToEci: equatorBasis(p.planetPole),
+    lonTerms: [],
+    latTerms: [],
+    distTerms: [],
+  });
+}
+
 // 型注釈ではなく satisfies で受けることで、id ごとの具体型(地球なら惑星、月なら衛星)が
 // 保たれ、「地球は必ず惑星」を型から引き出せる。
 export const SOLAR_SYSTEM = {
@@ -138,6 +227,8 @@ export const SOLAR_SYSTEM = {
     id: 'earth',
     mu: MU_EARTH,
     radius: R_EARTH,
+    gravitySource: true,
+    lagrangeLabels: true,
     // JPL 低精度惑星暦の "EM Bary"(地球-月重心)行、黄道基準・J2000 相当。
     orbit: planetOrbit({
       a: 1.495978707e11,
@@ -145,22 +236,25 @@ export const SOLAR_SYSTEM = {
       incDeg: 0,
       raanDeg: 0,
       lonPeriDeg: 102.93768,
-      l0Deg: EARTH_L0_DEG,
-      periodSec: 365.25636 * 86400,
+      l0Deg: 100.46457166,
+      lRateDegPerCentury: 35999.37244981,
       raanRateDegPerCentury: 0,
       incRateDegPerCentury: -0.01294668,
       lonPeriRateDegPerCentury: 0.32327364,
       eRatePerCentury: -0.00004392,
       aRatePerCenturyAu: 0.00000562,
     }),
+    pole: { kind: 'eciPole' },
     // 赤道断面の楕円性 C22 は J2 の約 1/690 しかないため軸対称として扱う。
-    degree2: { j2: J2_EARTH, c22: 0, refRadius: R_EARTH_EQ, pole: { kind: 'eciPole' } },
+    degree2: { j2: J2_EARTH, c22: 0, refRadius: R_EARTH_EQ },
   },
   moon: {
     kind: 'satellite',
     id: 'moon',
     mu: MU_MOON,
     radius: R_MOON,
+    gravitySource: true,
+    lagrangeLabels: true,
     planet: 'earth',
     orbit: satelliteOrbit({
       a: 3.844e8,
@@ -176,21 +270,122 @@ export const SOLAR_SYSTEM = {
       latTerms: MOON_LAT_TERMS,
       distTerms: MOON_DIST_TERMS,
     }),
+    pole: { kind: 'cassini', obliquity: MOON_OBLIQUITY },
     // J2 に対する C22 の比が地球の約 1/690 に対して約 1/9 と大きく、軸対称近似が成り立たない。
-    degree2: {
-      j2: J2_MOON,
-      c22: C22_MOON,
-      refRadius: R_MOON_GRAVITY,
-      pole: { kind: 'cassini', obliquity: MOON_OBLIQUITY },
+    degree2: { j2: J2_MOON, c22: C22_MOON, refRadius: R_MOON_GRAVITY },
+  },
+  // 水星〜海王星の要素・永年変化率はいずれも JPL Standish "Keplerian Elements for Approximate
+  // Positions of the Major Planets" Table 1(黄道基準・J2000、有効期間 1800–2050AD)。
+  mercury: {
+    kind: 'planet',
+    id: 'mercury',
+    mu: 2.2032e13,
+    radius: 2.4397e6,
+    gravitySource: false,
+    // ϖ̇ の 0.16047689 deg/Cy = 577.7″/Cy には一般相対論による近日点移動 42.98″/Cy が既に
+    // 含まれている(この表は PPN 相対論込みで数値積分された JPL DE 暦へのフィット)。
+    // 惑星摂動のみの古典値 531.6″/Cy に補正項を足す形にしてはならない。
+    orbit: planetOrbit({
+      a: 0.38709927 * AU,
+      e: 0.20563593,
+      incDeg: 7.00497902,
+      raanDeg: 48.33076593,
+      lonPeriDeg: 77.45779628,
+      l0Deg: 252.25032350,
+      lRateDegPerCentury: 149472.67411175,
+      raanRateDegPerCentury: -0.12534081,
+      incRateDegPerCentury: -0.00594749,
+      lonPeriRateDegPerCentury: 0.16047689,
+      eRatePerCentury: 0.00001906,
+      aRatePerCenturyAu: 0.00000037,
+    }),
+    pole: {
+      kind: 'iau',
+      ra0Deg: 281.0103,
+      ra1DegPerCentury: -0.0328,
+      dec0Deg: 61.4155,
+      dec1DegPerCentury: -0.0049,
+      w0Deg: 329.5988,
+      wRateDegPerDay: 6.1385108,
     },
+  },
+  venus: {
+    kind: 'planet',
+    id: 'venus',
+    mu: 3.24859e14,
+    radius: 6.0518e6,
+    gravitySource: false,
+    orbit: planetOrbit({
+      a: 0.72333566 * AU,
+      e: 0.00677672,
+      incDeg: 3.39467605,
+      raanDeg: 76.67984255,
+      lonPeriDeg: 131.60246718,
+      l0Deg: 181.97909950,
+      lRateDegPerCentury: 58517.81538729,
+      raanRateDegPerCentury: -0.27769418,
+      incRateDegPerCentury: -0.00078890,
+      lonPeriRateDegPerCentury: 0.00268329,
+      eRatePerCentury: -0.00004107,
+      aRatePerCenturyAu: 0.00000390,
+    }),
+    pole: {
+      kind: 'iau',
+      ra0Deg: 272.76,
+      ra1DegPerCentury: 0.0,
+      dec0Deg: 67.16,
+      dec1DegPerCentury: 0.0,
+      w0Deg: 160.2,
+      wRateDegPerDay: -1.4813688,
+    },
+  },
+  mars: {
+    kind: 'planet',
+    id: 'mars',
+    mu: MU_MARS,
+    radius: 3.3895e6,
+    gravitySource: false,
+    orbit: planetOrbit({
+      a: 1.52371034 * AU,
+      e: 0.09339410,
+      incDeg: 1.84969142,
+      raanDeg: 49.55953891,
+      lonPeriDeg: -23.94362959,
+      l0Deg: -4.55343205,
+      lRateDegPerCentury: 19140.30268499,
+      raanRateDegPerCentury: -0.29257343,
+      incRateDegPerCentury: -0.00813131,
+      lonPeriRateDegPerCentury: 0.44441088,
+      eRatePerCentury: 0.00007882,
+      aRatePerCenturyAu: 0.00001847,
+    }),
+    pole: MARS_POLE,
+  },
+  phobos: {
+    kind: 'satellite',
+    id: 'phobos',
+    mu: 7.112e5,
+    radius: 1.1267e4,
+    gravitySource: false,
+    planet: 'mars',
+    orbit: equatorialSatelliteOrbit({ a: 9.376e6, e: 0.0151, incDeg: 1.08, planetMu: MU_MARS, planetPole: MARS_POLE }),
+  },
+  deimos: {
+    kind: 'satellite',
+    id: 'deimos',
+    mu: 9.85e4,
+    radius: 6.2e3,
+    gravitySource: false,
+    planet: 'mars',
+    orbit: equatorialSatelliteOrbit({ a: 2.3458e7, e: 0.00033, incDeg: 1.79, planetMu: MU_MARS, planetPole: MARS_POLE }),
   },
   jupiter: {
     kind: 'planet',
     id: 'jupiter',
-    mu: 1.26686534e17,
+    mu: MU_JUPITER,
     radius: 6.9911e7,
-    // JPL 低精度惑星暦(Standish 1992/2006)の Jupiter 行、黄道基準・J2000 相当。
-    // eRatePerCentury/incRateDegPerCentury も同表の値(タスク指示に無いぶんを補う)。
+    gravitySource: true,
+    lagrangeLabels: true,
     orbit: planetOrbit({
       a: 7.78340821e11,
       e: 0.04838624,
@@ -198,15 +393,360 @@ export const SOLAR_SYSTEM = {
       raanDeg: 100.47390909,
       lonPeriDeg: 14.72847983,
       l0Deg: 34.39644051,
-      periodSec: 11.862 * 365.25 * 86400,
+      lRateDegPerCentury: 3034.74612775,
       raanRateDegPerCentury: 0.20469106,
       incRateDegPerCentury: -0.00183714,
       lonPeriRateDegPerCentury: 0.21252668,
       eRatePerCentury: -0.00013253,
       aRatePerCenturyAu: -0.00011607,
     }),
+    pole: JUPITER_POLE,
   },
-  sun: { kind: 'star', id: 'sun', mu: MU_SUN, radius: R_SUN },
+  io: {
+    kind: 'satellite',
+    id: 'io',
+    mu: 5.9599e12,
+    radius: 1.8216e6,
+    gravitySource: false,
+    planet: 'jupiter',
+    orbit: equatorialSatelliteOrbit({ a: 4.218e8, e: 0.0033, incDeg: 0.04, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
+  },
+  europa: {
+    kind: 'satellite',
+    id: 'europa',
+    mu: 3.2027e12,
+    radius: 1.5608e6,
+    gravitySource: false,
+    planet: 'jupiter',
+    orbit: equatorialSatelliteOrbit({ a: 6.711e8, e: 0.0072, incDeg: 0.47, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
+  },
+  ganymede: {
+    kind: 'satellite',
+    id: 'ganymede',
+    mu: 9.8878e12,
+    radius: 2.6312e6,
+    gravitySource: false,
+    planet: 'jupiter',
+    orbit: equatorialSatelliteOrbit({ a: 1.0704e9, e: 0.0013, incDeg: 0.20, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
+  },
+  callisto: {
+    kind: 'satellite',
+    id: 'callisto',
+    mu: 7.1793e12,
+    radius: 2.4103e6,
+    gravitySource: false,
+    planet: 'jupiter',
+    orbit: equatorialSatelliteOrbit({ a: 1.8827e9, e: 0.0048, incDeg: 0.19, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
+  },
+  saturn: {
+    kind: 'planet',
+    id: 'saturn',
+    mu: MU_SATURN,
+    radius: 5.8232e7,
+    gravitySource: true,
+    lagrangeLabels: true,
+    orbit: planetOrbit({
+      a: 9.53667594 * AU,
+      e: 0.05386179,
+      incDeg: 2.48599187,
+      raanDeg: 113.66242448,
+      lonPeriDeg: 92.59887831,
+      l0Deg: 49.95424423,
+      lRateDegPerCentury: 1222.49362201,
+      raanRateDegPerCentury: -0.28867794,
+      incRateDegPerCentury: 0.00193609,
+      lonPeriRateDegPerCentury: -0.41897216,
+      eRatePerCentury: -0.00050991,
+      aRatePerCenturyAu: -0.00125060,
+    }),
+    pole: SATURN_POLE,
+  },
+  titan: {
+    kind: 'satellite',
+    id: 'titan',
+    mu: 8.9781e12,
+    radius: 2.5747e6,
+    gravitySource: false,
+    planet: 'saturn',
+    orbit: equatorialSatelliteOrbit({ a: 1.22187e9, e: 0.0288, incDeg: 0.35, planetMu: MU_SATURN, planetPole: SATURN_POLE }),
+  },
+  uranus: {
+    kind: 'planet',
+    id: 'uranus',
+    mu: 5.793939e15,
+    radius: 2.5362e7,
+    gravitySource: false,
+    orbit: planetOrbit({
+      a: 19.18916464 * AU,
+      e: 0.04725744,
+      incDeg: 0.77263783,
+      raanDeg: 74.01692503,
+      lonPeriDeg: 170.95427630,
+      l0Deg: 313.23810451,
+      lRateDegPerCentury: 428.48202785,
+      raanRateDegPerCentury: 0.04240589,
+      incRateDegPerCentury: -0.00242939,
+      lonPeriRateDegPerCentury: 0.40805281,
+      eRatePerCentury: -0.00004397,
+      aRatePerCenturyAu: -0.00196176,
+    }),
+    pole: {
+      kind: 'iau',
+      ra0Deg: 257.311,
+      ra1DegPerCentury: 0.0,
+      dec0Deg: -15.175,
+      dec1DegPerCentury: 0.0,
+      w0Deg: 203.81,
+      wRateDegPerDay: -501.1600928,
+    },
+  },
+  neptune: {
+    kind: 'planet',
+    id: 'neptune',
+    mu: MU_NEPTUNE,
+    radius: 2.4622e7,
+    gravitySource: false,
+    orbit: planetOrbit({
+      a: 30.06992276 * AU,
+      e: 0.00859048,
+      incDeg: 1.77004347,
+      raanDeg: 131.78422574,
+      lonPeriDeg: 44.96476227,
+      l0Deg: -55.12002969,
+      lRateDegPerCentury: 218.45945325,
+      raanRateDegPerCentury: -0.00508664,
+      incRateDegPerCentury: 0.00035372,
+      lonPeriRateDegPerCentury: -0.32241464,
+      eRatePerCentury: 0.00005105,
+      aRatePerCenturyAu: 0.00026291,
+    }),
+    pole: NEPTUNE_POLE,
+  },
+  triton: {
+    kind: 'satellite',
+    id: 'triton',
+    mu: 1.4276e12,
+    radius: 1.3534e6,
+    gravitySource: false,
+    planet: 'neptune',
+    // 傾斜 90° 超が逆行を表す。
+    orbit: equatorialSatelliteOrbit({ a: 3.5476e8, e: 0.000016, incDeg: 156.885, planetMu: MU_NEPTUNE, planetPole: NEPTUNE_POLE }),
+  },
+  // 準惑星・大型小惑星・彗星核。恒星への影響が無視できるほど軽いので gravitySource: false
+  // (質量を持たない飾りとしてのみ表示・選択される)。永年摂動項は解いておらず raanRate 等は
+  // すべて 0 — 二体ケプラー軌道のみで、木星等による摂動(彗星核では非重力効果も)は含まない。
+  // 軌道要素は JPL Small-Body Database(sbdb.api、full-prec=true)から取得した黄道座標・
+  // J2000 の a/e/i/Ω(om)/ω(w)/M(ma) と、その要素の元期(JD)。ハレー・エンケの元期の平均近点角
+  // は取得元期のものなので、そこから J2000 まで平均運動で外挿している(冥王星のみ後述の別出典)。
+  // lRateDegPerCentury は平均運動 n = 360°/period を世紀あたりへ換算したもの — 周期はケプラー第3
+  // 法則 T = 2π√(a³/μ_sun) から SBDB の a のみで独立に計算し(SBDB の per フィールドとも一致)、
+  // n = 360°/T。l0Deg(J2000 の平均黄経)は取得元期の平均黄経 L = M+ω+Ω を、この n で J2000 まで
+  // 外挿して求めた。
+  ceres: {
+    kind: 'planet',
+    id: 'ceres',
+    mu: 6.26e10,
+    radius: 4.7e5,
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Ceres&full-prec=true (元期 JD2461200.5)
+    orbit: planetOrbit({
+      a: 2.765552595034094 * AU,
+      e: 0.07969229514816586,
+      incDeg: 10.58802780183462,
+      raanDeg: 80.24862682043221,
+      lonPeriDeg: 153.54284135064808,
+      l0Deg: 158.7455644908673,
+      lRateDegPerCentury: 7827.470059933903,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  vesta: {
+    kind: 'planet',
+    id: 'vesta',
+    mu: 1.73e10,
+    radius: 2.63e5,
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Vesta&full-prec=true (元期 JD2461200.5)
+    orbit: planetOrbit({
+      a: 2.361365965127599 * AU,
+      e: 0.09020374382834395,
+      incDeg: 7.143925545058711,
+      raanDeg: 103.701293265032,
+      lonPeriDeg: 255.16994108718842,
+      l0Deg: 233.7490090526644,
+      lRateDegPerCentury: 9920.860648673672,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  pallas: {
+    kind: 'planet',
+    id: 'pallas',
+    mu: 1.36e10,
+    radius: 2.56e5,
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Pallas&full-prec=true (元期 JD2461200.5)
+    orbit: planetOrbit({
+      a: 2.769559010737709 * AU,
+      e: 0.2307000995648547,
+      incDeg: 34.93279321851542,
+      raanDeg: 172.8866193357694,
+      lonPeriDeg: 123.856535500983,
+      l0Deg: 113.37790163103682,
+      lRateDegPerCentury: 7810.491496842745,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  // 冥王星は SBDB に対象がないため、a/e/i/Ω/ω は既知値(a=39.482 AU, e=0.2488, i=17.16°,
+  // Ω=110.30°, ω=113.83°)を、平均近点角 M0 は JPL Standish の J2000 表(この Ω/ω と数百分の
+  // 1° の差で近い値)の L0=238.92903833°・ϖ=224.06891629° から M0=L0−ϖ≈14.860° を借りて
+  // 近似値として使う。
+  pluto: {
+    kind: 'planet',
+    id: 'pluto',
+    mu: 8.71e11,
+    radius: 1.1883e6,
+    gravitySource: false,
+    orbit: planetOrbit({
+      a: 39.482 * AU,
+      e: 0.2488,
+      incDeg: 17.16,
+      raanDeg: 110.30,
+      lonPeriDeg: 224.13,
+      l0Deg: 238.99012204,
+      lRateDegPerCentury: 145.10941196758816,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  haumea: {
+    kind: 'planet',
+    id: 'haumea',
+    mu: 2.67e11,
+    radius: 7.8e5, // 平均半径(準楕円体)
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Haumea&full-prec=true (元期 JD2461200.5)
+    orbit: planetOrbit({
+      a: 43.06029023650952 * AU,
+      e: 0.1944430148898797,
+      incDeg: 28.20847393040364,
+      raanDeg: 121.7860561329425,
+      lonPeriDeg: 2.4766033838085946,
+      l0Deg: 192.00768761548116,
+      lRateDegPerCentury: 127.40276965460927,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  makemake: {
+    kind: 'planet',
+    id: 'makemake',
+    mu: 2.1e11,
+    radius: 7.15e5,
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Makemake&full-prec=true (元期 JD2461200.5)
+    orbit: planetOrbit({
+      a: 45.57093317300052 * AU,
+      e: 0.1588889953992523,
+      incDeg: 29.02785603743067,
+      raanDeg: 79.2948338209406,
+      lonPeriDeg: 16.387107160661287,
+      l0Deg: 155.39032853134051,
+      lRateDegPerCentury: 117.02062563483054,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  eris: {
+    kind: 'planet',
+    id: 'eris',
+    mu: 1.108e12,
+    radius: 1.163e6,
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Eris&full-prec=true (元期 JD2461200.5)
+    orbit: planetOrbit({
+      a: 67.93394687853566 * AU,
+      e: 0.4382385347971672,
+      incDeg: 43.9258279471791,
+      raanDeg: 36.00477044417249,
+      lonPeriDeg: 186.7996940282037,
+      l0Deg: 21.578055953998067,
+      lRateDegPerCentury: 64.29304982186218,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  // 彗星核の μ/半径は観測が乏しく粗い推定値。
+  halley: {
+    kind: 'planet',
+    id: 'halley',
+    mu: 1.5e1, // 粗い推定値(核質量 ~2.2e14 kg 相当)
+    radius: 5.5e3, // 粗い推定値(核長径の半分程度)
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=1P&full-prec=true (元期 JD2439875.5、
+    // 1968年の近日点通過に近い元期)。非重力効果(彗星核からのガス噴出による軌道擾乱)は
+    // 未収録なので、周期・形状は正確だが軌道上の位置は年代が離れるほど粗くなる。
+    orbit: planetOrbit({
+      a: 17.92863504856923 * AU,
+      e: 0.9679359956953211,
+      incDeg: 162.1905300439129,
+      raanDeg: 59.09894720612437,
+      lonPeriDeg: 171.34037866990076,
+      l0Deg: 237.23068671379107,
+      lRateDegPerCentury: 474.2130029037993,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  encke: {
+    kind: 'planet',
+    id: 'encke',
+    mu: 4e0, // 粗い推定値(核質量 ~6e13 kg 相当)
+    radius: 2.4e3,
+    gravitySource: false,
+    // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=2P&full-prec=true (元期 JD2459847.5)
+    orbit: planetOrbit({
+      a: 2.219688710074586 * AU,
+      e: 0.8477496967533629,
+      incDeg: 11.41227811179314,
+      raanDeg: 334.1935846036774,
+      lonPeriDeg: 161.327830973245,
+      l0Deg: 90.02574581888393,
+      lRateDegPerCentury: 10885.695675063265,
+      raanRateDegPerCentury: 0,
+      incRateDegPerCentury: 0,
+      lonPeriRateDegPerCentury: 0,
+      eRatePerCentury: 0,
+      aRatePerCenturyAu: 0,
+    }),
+  },
+  sun: { kind: 'star', id: 'sun', mu: MU_SUN, radius: R_SUN, gravitySource: true },
 } satisfies Record<AttractorId, CelestialBodyDef>;
 
 // SOLAR_SYSTEM を satisfies で受けているため、推論された型にインデックスシグネチャがなく

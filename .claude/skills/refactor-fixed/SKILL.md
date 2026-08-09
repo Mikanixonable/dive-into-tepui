@@ -93,6 +93,14 @@ ECI との変換は必ず `Ephemeris.frameTransformAt(frame, t)` が返す `Fram
 `switch` で、これは天体の分類がこの3種で閉じているという物理的主張そのものなので、網羅性検査が
 働く方が正しい。
 
+軌道要素の**基準面**は `kepler-orbit.ts`'s `KeplerOrbit.basisToEci` が持つ — 評価側
+(`normalFromAngles`/`directionFromAngles`/`rotationFromAngles`/`keplerOrbitState`)は基準面を
+固定しない。既定は黄道面(`ECLIPTIC_BASIS`、export)で `planet-orbit.ts` は常にこれを使うが、
+`satellite-orbit.ts`'s `satelliteOrbit` は `basisToEci` を上書きできる。衛星が親惑星の赤道面を
+基準に取る場合の基底組み立て(自転軸から `body-orientation.ts`'s `equatorBasisToEci` 経由で
+組む)は `solar-system.ts` の宣言時に一度だけ行う — 評価側の `kepler-orbit.ts` には惑星ごとの
+極を知る責務を持たせない。
+
 ## 4. `physics/` / `render/` / `game/` の境界
 
 - **`physics/`** … THREE.js に依存しない**物理・軌道力学そのもの**。純関数が多いが、
@@ -120,7 +128,10 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 
 境界は「用途が表示かどうか」ではなく「**厳密な数学・物理そのものか、調整の入った歪めか**」。
 直交座標から射影座標への変換(`projection.ts` のピンホール投影)は表示のために使われるが、
-調整値を含まない厳密な幾何なので `physics/` に属する。
+調整値を含まない厳密な幾何なので `physics/` に属する。同じ理由で、視点からある点までの視線が
+天体の球体に遮られているかどうか(`occlusion.ts` の `isOccluded`、レイと球の交差判定)も
+調整値を含まない厳密な幾何であり、`physics/` に属する — マップビューでのアイコン表示可否と
+ピック候補の可否という2つの `game/` 側の用途がこの1関数を共有することで、両者が食い違わない。
 
 物理的に正しい計算を調整値で歪めて使う場合は、`physics/` から素の値を引いて `game/` 側で歪める。
 `physics/` は現実の法則を計算する場所で、そこに調整値が混ざると「この式は物理的に正しいのか、
@@ -276,3 +287,25 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 
 逆に、**参照が1箇所しかなくても分割する**のは、一般化した側を今後使う可能性があるとき、および
 巨大な責務を切り分けるとき。
+
+## 15. 天体の自転軸・自転位相は重力場の付属物ではない
+
+**「天体がどこにいるか」「天体がどちらを向いているか」「重力場がどう効くか」は3つの別の問い**で、
+それぞれ別の場所に置く。
+
+- **自転軸・自転位相のモデル(`PoleModel`)は `CelestialBodyDef` 直下の `pole?: PoleModel`**
+  (`solar-system.ts`)に置く。`Degree2GravityDef`(同じく `solar-system.ts`)は j2/c22/refRadius
+  という重力場の係数だけを持ち、`PoleModel` を持たない。理由は、自転軸を持つが2次重力場は持たない
+  天体(水金火天海の5惑星 — `'iau'` の pole はあるが `degree2` は無い)が実在し、逆に重力場だけ持って
+  自転を表示しない天体があってもよいはずだからで、どちらか一方に従属させると片方だけの天体を
+  型で表現できなくなる。
+- **時刻ごとの実ベクトルへ解決するのは `ephemeris.ts` の仕事。** `Ephemeris.poleAt(id, t)` が
+  `PoleModel.kind` だけで分岐する唯一の解決経路(`private orientationOf`)を通り、公開 API として
+  自転軸・位相を返す。`private degree2At` の重力場側 pole/長軸解決も同じ `orientationOf` を必ず
+  経由する — 表示側の自転軸と重力場側の pole が別の式で計算されて食い違う、という事故はこの一本化で
+  構造的に起こらない。
+- **姿勢を実際にメッシュへ書き込むのは `game/celestial/sphere-body.ts` の仕事。** `SphereBody.sync`
+  は `Ephemeris.poleAt` の結果を `physics/body-orientation.ts` の `spinOrientation(axis, spinAngle)`
+  に渡してクォータニオンを得るだけで、`Object3D.lookAt` のような「見た目だけ合わせる」上書きは
+  一切行わない — 月の潮汐固定も、同期回転の自転位相(`spinPhaseOf` が平均黄経の反対方向から導出)が
+  正しく効いた結果として現れるべきもので、`SphereBody` 側で親の方向を向かせて再現するものではない。

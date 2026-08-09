@@ -2,8 +2,8 @@
 // 同じ基底構築・透視除算になっていることを、手計算できる配置で検証する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { ndcToScreen, projectToNdc, Viewpoint } from '../../src/physics/projection';
-import { v3 } from '../../src/physics/vec3';
+import { metersPerPixel, ndcToScreen, projectToNdc, Viewpoint } from '../../src/physics/projection';
+import { addScaled, cross, norm, sub, v3 } from '../../src/physics/vec3';
 
 export function register(): void {
   // forward = +Z, up = +Y, fov=90deg(tanHalf=1) の単純な視点。
@@ -49,5 +49,31 @@ export function register(): void {
     const topRight = ndcToScreen({ x: 1, y: 1, front: true }, 800, 600, 100, 50);
     assert.ok(Math.abs(topRight.x - 900) < 1e-9, `x: ${topRight.x}`); // offsetX + width
     assert.ok(Math.abs(topRight.y - 50) < 1e-9, `y: ${topRight.y}`); // top edge (NDC +Y = screen top)
+  });
+
+  // metersPerPixel は垂直画角と縦解像度から決まるので、縦方向の変位で検証する
+  // (横方向は aspect が width/height と一致する場合にだけ同じ倍率になる)。
+  test('metersPerPixel: N * metersPerPixel displacement maps to N screen pixels', () => {
+    const width = 800;
+    const height = 600;
+    const p = v3(0, 0, 10);
+    const mpp = metersPerPixel(view, p, height);
+
+    const forward = norm(sub(view.lookTarget, view.position));
+    const right = norm(cross(forward, view.up));
+    const camUp = cross(right, forward);
+    const n = 100;
+    const p2 = addScaled(p, camUp, mpp * n);
+
+    const screen1 = ndcToScreen(projectToNdc(view, p), width, height);
+    const screen2 = ndcToScreen(projectToNdc(view, p2), width, height);
+    assert.ok(Math.abs(Math.abs(screen2.y - screen1.y) - n) < 1e-6, `dy: ${screen2.y - screen1.y}`);
+  });
+
+  test('metersPerPixel: doubling depth doubles metersPerPixel', () => {
+    const height = 600;
+    const near = metersPerPixel(view, v3(0, 0, 10), height);
+    const far = metersPerPixel(view, v3(0, 0, 20), height);
+    assert.ok(Math.abs(far - near * 2) < 1e-12, `near: ${near}, far: ${far}`);
   });
 }

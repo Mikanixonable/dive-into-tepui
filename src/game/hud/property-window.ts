@@ -27,6 +27,10 @@ const STYLE = `
 #hud .prop-window-title { flex: 1; min-width: 0; }
 #hud .prop-window-title-main { color: ${INK}; font-weight: bold; overflow-wrap: break-word; }
 #hud .prop-window-title-sub { color: ${INK}; opacity: 0.7; font-size: 11px; margin-top: 2px; }
+#hud .prop-window-title-input {
+  width: 100%; background: ${SURFACE}; border: 1px solid ${ACCENT}; border-radius: 3px;
+  color: ${INK}; font: inherit; font-weight: bold; padding: 1px 4px; box-sizing: border-box;
+}
 #hud .prop-window-btn {
   flex: none; width: 18px; height: 18px; line-height: 18px; text-align: center;
   border: 1px solid ${EDGE}; border-radius: 3px; background: transparent; color: ${INK};
@@ -40,6 +44,10 @@ const STYLE = `
 }
 #hud .prop-window-row-label { opacity: 0.7; }
 #hud .prop-window-row-value { text-align: right; }
+#hud .prop-window-row-toggle {
+  padding: 3px 12px; color: ${INK}; opacity: 0.6; cursor: pointer;
+}
+#hud .prop-window-row-toggle:hover { opacity: 1; color: ${ACCENT_SOFT}; }
 #hud .prop-window-items { border-top: 1px solid ${EDGE}; }
 #hud .prop-window-item {
   padding: 9px 14px; color: ${INK}; cursor: pointer; border-bottom: 1px solid ${EDGE};
@@ -64,6 +72,8 @@ export interface PropertyRow {
   readonly key: string;
   readonly label: string;
   readonly value: string;
+  // 立てると「詳細」トグルの下に畳まれ、既定では隠れる。
+  readonly collapsible?: boolean;
 }
 
 export interface PropertyWindowItem<A extends string = string> {
@@ -77,6 +87,9 @@ export interface PropertyWindowContent<A extends string = string> {
   readonly subtitle?: string;
   readonly rows: readonly PropertyRow[];
   readonly items: readonly PropertyWindowItem<A>[];
+  // 指定すると、タイトル横に改名ボタンが現れる。呼び出し側は確定した新しい名前を
+  // 実体へ書き戻すところまでを行う — このクラスは編集 UI の開閉のみを持つ。
+  readonly onRename?: (name: string) => void;
 }
 
 export class PropertyWindow<A extends string = string> {
@@ -95,11 +108,16 @@ export class PropertyWindow<A extends string = string> {
   private lastSubtitle: string | undefined | typeof PropertyWindow.UNSET = PropertyWindow.UNSET;
   // 前フレームに描画した行の値。同じ値なら DOM に触れない差分更新のための記録。
   private lastRowValues = new Map<string, string>();
+  private collapsibleContainerEl: HTMLDivElement | null = null;
+  private toggleEl: HTMLDivElement | null = null;
+  private collapsibleExpanded = false;
   // 前回描画した操作項目の直列化(act/label/shortcut)。同じなら DOM を組み直さない。
   private lastItemsKey = '';
   private _clipped = false;
   private disposed = false;
   private readonly rootEl: HTMLElement;
+  private readonly renameCallback: ((name: string) => void) | null;
+  private renaming = false;
 
   private dragPointerId: number | null = null;
   private dragStartClient: Point2 | null = null;
@@ -138,6 +156,18 @@ export class PropertyWindow<A extends string = string> {
     title.appendChild(this.titleMainEl);
     title.appendChild(this.titleSubEl);
 
+    this.renameCallback = content.onRename ?? null;
+    const renameBtn = document.createElement('button');
+    if (this.renameCallback) {
+      renameBtn.className = 'prop-window-btn';
+      renameBtn.textContent = '✎';
+      renameBtn.title = '名前を変更';
+      renameBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.startRename();
+      });
+    }
+
     this.clipBtnEl = document.createElement('button');
     this.clipBtnEl.className = 'prop-window-btn';
     this.clipBtnEl.textContent = '📌';
@@ -157,6 +187,7 @@ export class PropertyWindow<A extends string = string> {
     });
 
     header.appendChild(title);
+    if (this.renameCallback) header.appendChild(renameBtn);
     header.appendChild(this.clipBtnEl);
     header.appendChild(closeBtn);
     header.addEventListener('pointerdown', this.handleHeaderPointerDown);
@@ -206,6 +237,42 @@ export class PropertyWindow<A extends string = string> {
     }
   }
 
+  // タイトルを編集用の入力欄へ差し替え、確定(Enter/blur)で renameCallback へ通知して
+  // 表示へ戻す。入力欄自身の keydown は伝播させないので、window の全体ショートカット
+  // (handleKeyDown 含む)には届かない。
+  private startRename(): void {
+    if (this.renaming || !this.renameCallback) return;
+    this.renaming = true;
+    const input = document.createElement('input');
+    input.className = 'prop-window-title-input';
+    input.type = 'text';
+    input.maxLength = 40;
+    input.value = this.lastTitle;
+    this.titleMainEl.replaceWith(input);
+    input.addEventListener('pointerdown', (e) => e.stopPropagation());
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+    input.addEventListener('blur', () => commit());
+    input.focus();
+    input.select();
+
+    const commit = () => {
+      if (!this.renaming) return;
+      this.renaming = false;
+      input.replaceWith(this.titleMainEl);
+      const value = input.value.trim();
+      if (value && value !== this.lastTitle) this.renameCallback?.(value);
+    };
+    const cancel = () => {
+      if (!this.renaming) return;
+      this.renaming = false;
+      input.replaceWith(this.titleMainEl);
+    };
+  }
+
   // 操作項目の集合・ラベル・ショートカットが変わったときだけ DOM を組み直す。クリップ済み
   // ウィンドウでは可変な状態(操作対象か等)に応じて呼び出し側から毎フレーム渡されうる。
   syncItems(items: readonly PropertyWindowItem<A>[]): void {
@@ -244,29 +311,53 @@ export class PropertyWindow<A extends string = string> {
     }
   };
 
+  // key/label/value の行 div を組み立てて container へ足し、値を lastRowValues へ記録する。
+  private appendRowEl(container: HTMLElement, r: PropertyRow): void {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'prop-window-row';
+    rowEl.dataset['key'] = r.key;
+    const labelEl = document.createElement('div');
+    labelEl.className = 'prop-window-row-label';
+    labelEl.textContent = r.label;
+    const valueEl = document.createElement('div');
+    valueEl.className = 'prop-window-row-value';
+    valueEl.textContent = r.value;
+    rowEl.appendChild(labelEl);
+    rowEl.appendChild(valueEl);
+    container.appendChild(rowEl);
+    this.lastRowValues.set(r.key, r.value);
+  }
+
   // プロパティ行の値だけを毎フレーム差分更新する。行集合(key の並び)が変わった場合のみ
   // 行 DOM 全体を組み直す — 操作項目・ヘッダのリスナには触れないので副作用はない。
+  // collapsible な行は末尾の「詳細」トグルの下にまとめ、開閉状態はウィンドウが自分で持つ。
   syncRows(rows: readonly PropertyRow[]): void {
-    // key 集合が前回と同じなら値だけ書き換え、変わっていれば行 DOM ごと組み直す。
     const sameShape =
       rows.length === this.lastRowValues.size && rows.every((r) => this.lastRowValues.has(r.key));
     if (!sameShape) {
       this.rowsEl.innerHTML = '';
       this.lastRowValues.clear();
+      this.collapsibleContainerEl = null;
+      this.toggleEl = null;
+      const collapsible = rows.filter((r) => r.collapsible);
       for (const r of rows) {
-        const rowEl = document.createElement('div');
-        rowEl.className = 'prop-window-row';
-        rowEl.dataset['key'] = r.key;
-        const labelEl = document.createElement('div');
-        labelEl.className = 'prop-window-row-label';
-        labelEl.textContent = r.label;
-        const valueEl = document.createElement('div');
-        valueEl.className = 'prop-window-row-value';
-        valueEl.textContent = r.value;
-        rowEl.appendChild(labelEl);
-        rowEl.appendChild(valueEl);
-        this.rowsEl.appendChild(rowEl);
-        this.lastRowValues.set(r.key, r.value);
+        if (!r.collapsible) this.appendRowEl(this.rowsEl, r);
+      }
+      if (collapsible.length > 0) {
+        const toggle = document.createElement('div');
+        toggle.className = 'prop-window-row-toggle';
+        toggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.setCollapsibleExpanded(!this.collapsibleExpanded);
+        });
+        this.rowsEl.appendChild(toggle);
+        this.toggleEl = toggle;
+        const container = document.createElement('div');
+        for (const r of collapsible) this.appendRowEl(container, r);
+        this.rowsEl.appendChild(container);
+        this.collapsibleContainerEl = container;
+        this.syncToggleLabel(collapsible.length);
+        container.style.display = this.collapsibleExpanded ? '' : 'none';
       }
       this.reclamp();
       return;
@@ -279,6 +370,18 @@ export class PropertyWindow<A extends string = string> {
       );
       if (valueEl) valueEl.textContent = r.value;
     }
+  }
+
+  private syncToggleLabel(count: number): void {
+    if (!this.toggleEl) return;
+    this.toggleEl.textContent = this.collapsibleExpanded ? '▲ 詳細を隠す' : `▼ 詳細を表示 (${count})`;
+  }
+
+  private setCollapsibleExpanded(expanded: boolean): void {
+    this.collapsibleExpanded = expanded;
+    if (this.collapsibleContainerEl) this.collapsibleContainerEl.style.display = expanded ? '' : 'none';
+    this.syncToggleLabel(this.collapsibleContainerEl?.childElementCount ?? 0);
+    this.reclamp();
   }
 
   get clipped(): boolean {

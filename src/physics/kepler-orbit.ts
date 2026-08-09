@@ -1,23 +1,38 @@
-// 中心天体まわりの軌道を、黄道基準の固定ケプラー要素と角度の永年変化率で表したものの評価。
+// 中心天体まわりの軌道を、基準面に固定したケプラー要素と角度の永年変化率で表したものの評価。
 // 恒星/惑星/衛星のどの分類にも属さない、純粋な軌道の数学 — 変化率が何に由来するかは
 // planet-orbit.ts / satellite-orbit.ts の責務。
 // 角度は平均黄経 L(公転周期でちょうど1周)→ 平均近点角 M = L − ϖ → 真近点角 ν の順に組む。
 // 昇交点・近点はどちらも歳差するので、L を軌道面内の角(昇交点からの緯度引数 u)へ直接
 // 使うと公転が歳差ぶんだけ遅速し、長期積分で位置が大きくずれる。
+// 傾斜・昇交点・近点はすべて basisToEci が指す基準面(黄道面、あるいは親惑星の赤道面)の
+// 上で測る。位置・速度だけでなく軌道法線・回転基準系もこの1つの回転を経由するので、
+// 基準面を変えても表示・ラグランジュ点・回転座標系が食い違うことはない。
 import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
-import { ECL_POLE, ECL_POLE_ECI, ECL_VERNAL, Q_ECL_TO_ECI, Q_ECLY_TO_ECI, eclToEci } from './ecliptic';
+import { Q_ECL_TO_ECI } from './ecliptic';
 import { eccentricAnomalyFromMean, positionFromOrbitalElements } from './elements';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, addScaled, cross, norm, scale } from './vec3';
+import { Vec3, addScaled, cross, norm, scale, v3 } from './vec3';
 
 export const JULIAN_CENTURY = 100 * 365.25 * 86400; // [s]
 
+// 基準面座標系(x = 基準面上の要素の原点方向、z = 基準面の法線)の基底軸。
+const BASIS_ORIGIN: Vec3 = v3(1, 0, 0);
+const BASIS_POLE: Vec3 = v3(0, 0, 1);
+
+// Z 上向きの基準面基底 → Y 上向きの基底。positionFromOrbitalElements は Y=極 を前提とするので、
+// 基準面座標の要素からこの回転を挟んで基準面基底へ戻す。
+const Q_ZUP_TO_YUP: Quat = qFromAxisAngle(BASIS_ORIGIN, Math.PI / 2);
+
+// 既定の基準面 = 黄道面。惑星と月の要素はこの面の上で与えられる。
+export const ECLIPTIC_BASIS: Quat = Q_ECL_TO_ECI;
+
 export type KeplerOrbit = {
+  readonly basisToEci: Quat; // 基準面座標系(z = 基準面の法線)→ ECI
   readonly a: number; // t=0 の軌道長半径 [m]
   readonly aRate: number; // 軌道長半径の変化率 [m/s]
   readonly e: number; // t=0 の離心率
   readonly eRate: number; // 離心率の変化率 [1/s]
-  readonly inc: number; // t=0 の黄道に対する傾斜 [rad]
+  readonly inc: number; // t=0 の基準面に対する傾斜 [rad]
   readonly incRate: number; // 傾斜の変化率 [rad/s]
   readonly raan0: number; // t=0 の昇交点黄経 [rad]
   readonly raanRate: number; // 昇交点の変化率 [rad/s]
@@ -88,18 +103,24 @@ function orbitAngles(orbit: KeplerOrbit, t: number, phaseOffset: number): OrbitA
   return { a, e, inc, raan, argp, nu, nuRate, rDot, u, uMean, uRate };
 }
 
-// 軌道面の法線(単位ベクトル、ECI)。黄道面に対し inc 傾き、その昇交点が raanRate で歳差する
+// 基準面座標で表したベクトルを ECI へ移す。
+function toEci(orbit: KeplerOrbit, x: number, y: number, z: number): Vec3 {
+  return qRotate(orbit.basisToEci, v3(x, y, z));
+}
+
+// 軌道面の法線(単位ベクトル、ECI)。基準面に対し inc 傾き、その昇交点が raanRate で歳差する
 // ので向きは時刻とともに変わる。
-function normalFromAngles(a: OrbitAngles): Vec3 {
-  return eclToEci(Math.sin(a.raan) * Math.sin(a.inc), -Math.cos(a.raan) * Math.sin(a.inc), Math.cos(a.inc));
+function normalFromAngles(orbit: KeplerOrbit, a: OrbitAngles): Vec3 {
+  return toEci(orbit, Math.sin(a.raan) * Math.sin(a.inc), -Math.cos(a.raan) * Math.sin(a.inc), Math.cos(a.inc));
 }
 
 // 昇交点から軌道面内に角 u だけ進んだ方向の単位ベクトル(ECI)。
-function directionFromAngles(a: OrbitAngles, u: number): Vec3 {
+function directionFromAngles(orbit: KeplerOrbit, a: OrbitAngles, u: number): Vec3 {
   const cosU = Math.cos(u);
   const sinU = Math.sin(u);
   const cosI = Math.cos(a.inc);
-  return eclToEci(
+  return toEci(
+    orbit,
     Math.cos(a.raan) * cosU - Math.sin(a.raan) * sinU * cosI,
     Math.sin(a.raan) * cosU + Math.cos(a.raan) * sinU * cosI,
     sinU * Math.sin(a.inc),
@@ -108,15 +129,16 @@ function directionFromAngles(a: OrbitAngles, u: number): Vec3 {
 
 // この軌道に固定した回転基準系(x̂ = 中心→自分、ẑ = 軌道面法線)。
 // 姿勢は Rz(Ω)·Rx(inc)·Rz(u) を ECI へ移したもの。角速度は3-1-3オイラー角の合成則により
-// 「黄道極まわりの昇交点歳差」+「昇交点方向まわりの傾斜変化」+「軌道面法線まわりの公転」の和。
+// 「基準面の極まわりの昇交点歳差」+「昇交点方向まわりの傾斜変化」+「軌道面法線まわりの公転」の和。
 function rotationFromAngles(orbit: KeplerOrbit, a: OrbitAngles): FrameRotation {
-  const q = qMul(Q_ECL_TO_ECI, qMul(
-    qFromAxisAngle(ECL_POLE, a.raan),
-    qMul(qFromAxisAngle(ECL_VERNAL, a.inc), qFromAxisAngle(ECL_POLE, a.u)),
+  const q = qMul(orbit.basisToEci, qMul(
+    qFromAxisAngle(BASIS_POLE, a.raan),
+    qMul(qFromAxisAngle(BASIS_ORIGIN, a.inc), qFromAxisAngle(BASIS_POLE, a.u)),
   ));
-  const node = eclToEci(Math.cos(a.raan), Math.sin(a.raan), 0);
-  const normal = normalFromAngles(a);
-  const omega = addScaled(addScaled(scale(ECL_POLE_ECI, orbit.raanRate), node, orbit.incRate), normal, a.uRate);
+  const node = toEci(orbit, Math.cos(a.raan), Math.sin(a.raan), 0);
+  const basisPole = qRotate(orbit.basisToEci, BASIS_POLE);
+  const normal = normalFromAngles(orbit, a);
+  const omega = addScaled(addScaled(scale(basisPole, orbit.raanRate), node, orbit.incRate), normal, a.uRate);
   return { q, omega };
 }
 
@@ -126,7 +148,7 @@ function rotationFromAngles(orbit: KeplerOrbit, a: OrbitAngles): FrameRotation {
 // 和として組む — 後者が昇交点・近点の歳差ぶんの寄与を担う。
 export function keplerOrbitState(orbit: KeplerOrbit, t: number, phaseOffset: number): KinematicState {
   const a = orbitAngles(orbit, t, phaseOffset);
-  const r = qRotate(Q_ECLY_TO_ECI, positionFromOrbitalElements(a.a, a.e, a.inc, a.raan, a.argp, a.nu));
+  const r = qRotate(qMul(orbit.basisToEci, Q_ZUP_TO_YUP), positionFromOrbitalElements(a.a, a.e, a.inc, a.raan, a.argp, a.nu));
   const { omega } = rotationFromAngles(orbit, a);
   const v = addScaled(cross(omega, r), norm(r), a.rDot);
   return kinematicState(t, r, v);
@@ -139,7 +161,7 @@ export function keplerOrbitRotation(orbit: KeplerOrbit, t: number, phaseOffset: 
 
 // 軌道面の法線(単位ベクトル、ECI)。
 export function keplerOrbitNormal(orbit: KeplerOrbit, t: number, phaseOffset: number): Vec3 {
-  return normalFromAngles(orbitAngles(orbit, t, phaseOffset));
+  return normalFromAngles(orbit, orbitAngles(orbit, t, phaseOffset));
 }
 
 // 平均黄経が指す方向の単位ベクトル(ECI)。真近点角ではなく平均近点角で軌道面内の角を取るので、
@@ -147,5 +169,5 @@ export function keplerOrbitNormal(orbit: KeplerOrbit, t: number, phaseOffset: nu
 // 天体の本初子午線が指す方向はこちらで表される。
 export function keplerOrbitMeanDirection(orbit: KeplerOrbit, t: number, phaseOffset: number): Vec3 {
   const a = orbitAngles(orbit, t, phaseOffset);
-  return directionFromAngles(a, a.uMean);
+  return directionFromAngles(orbit, a, a.uMean);
 }

@@ -41,10 +41,10 @@ import { restorePart, type AnyPart } from '../game-entity/parts';
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
 export class Player extends Ship {
-  // 表示名はユーザーが自由に重複させられる。一方 id はマップ選択・参照のための不変キー。
-  // name は既存の HUD/Ship API との互換用で displayName と同じ値を保持する。
+  // 表示名はユーザーが自由に重複させられ、プロパティウィンドウから改名もできる。
+  // 一方 id はマップ選択・参照のための不変キー。
   readonly id: string;
-  readonly displayName: string;
+  displayName: string;
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
   readonly belt: Belt;
@@ -96,7 +96,7 @@ export class Player extends Ship {
     this.thrustEffects = new ThrustEffects(_scene);
     this.rcsEffects = new RcsEffects(_scene, _sfx);
     this.reentryEffects = new ReentryEffects(_scene);
-    this.markers = new PlayerMarkers(markerManager, this.id, this.displayName);
+    this.markers = new PlayerMarkers(markerManager, this.id);
 
     _scene.add(this.orbitLine.line);
   }
@@ -109,14 +109,16 @@ export class Player extends Ship {
     return kinematicState(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
   }
 
+  // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
+  // 起こるようにする。ロール軸(機体前後方向)は細長い形状に見合って最小にする。
+  private static readonly INERTIA = v3(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL);
+
   // state の速度方向を機首、位置方向を上として姿勢を組む。
   private static progradeAttitude(state: KinematicState): Attitude {
     return {
       q: qFromForwardUp(state.v, state.r) ?? { x: 0, y: 0, z: 0, w: 1 },
       w: v3(),
-      // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
-      // 起こるようにする。ロール軸(機体前後方向)は細長い形状に見合って最小にする。
-      inertia: v3(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL),
+      inertia: Player.INERTIA,
     };
   }
 
@@ -153,33 +155,41 @@ export class Player extends Ship {
     dt: number;
     input: Input;
     simSpeed: SimSpeedManager;
-    editMode: boolean;
+    mapMode: boolean;
+    dvEditActive: boolean;
     scoreCounter: ScoreCounter;
     simTime: number;
     zoomActive: boolean;
     entities: EntityManager;
     ephemeris: Ephemeris;
   }): void {
-    const { dt, input, simSpeed, editMode, scoreCounter, simTime, zoomActive, entities, ephemeris } = params;
+    const { dt, input, simSpeed, mapMode, dvEditActive, scoreCounter, simTime, zoomActive, entities, ephemeris } = params;
 
     this.updatePassive(dt);
     this.handleEdgeInput(input);
-    this.updateTorque(input, editMode, dt * simSpeed.simSpeed);
+    this.updateTorque(input, dt * simSpeed.simSpeed);
 
-    // 死亡済み: 射撃、移動、hp回復はできない
+    // 死亡済み: 射撃、移動、hp回復はできない。操作不能なので並進キーのエッジも消費しない。
     if (!this.alive) {
       this.thrust = null;
+      this.throttle.stopThrust();
       return;
     }
 
-    if (editMode) {
-      this.fire.tickMapMode(dt);
+    if (mapMode) this.fire.tickMapMode(dt);
+    else this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, entities, ephemeris.sunDirAt(simTime));
+
+    // ノードのΔv編集中はWASDQEをΔv編集キーとして譲り、実噴射・ラッチ判定は行わない
+    // (噴射中に編集へ入った場合に備え、表示・SFXは throttle 側で明示的に止める)。
+    if (dvEditActive) {
       this.thrust = null;
+      this.throttle.stopThrust();
       return;
     }
 
-    this.fire.updateFireState(dt, input, scoreCounter, simTime, simSpeed, zoomActive, entities, ephemeris.sunDirAt(simTime));
-
+    // 噴射不可のワープ倍率ではラッチ判定自体を止める(連打がラッチとして積まれ、
+    // ワープを下げた瞬間に不意打ちで噴射が始まるのを防ぐ)。
+    if (simSpeed.canPlayerThrust) this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
     // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
     if (this.thrust !== null) this.invalidatePrediction();
@@ -242,6 +252,7 @@ export class Player extends Ship {
       case K.throttleLow.code: this.throttle.setThrottlePreset(0); return true;
       case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
       case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
+      case K.throttleMax.code: this.throttle.setThrottlePreset(3); return true;
       case K.radiatorDeployLeft.code: this.radiator.toggle('up'); return true;
       case K.radiatorDeployRight.code: this.radiator.toggle('down'); return true;
       case K.solarDeployLeft.code: this.power.toggle('up'); return true;
@@ -348,7 +359,7 @@ export class Player extends Ship {
 
 
   // 入力から機体座標系トルクを求めて this.torque へ反映し、角速度をクランプする。
-  private updateTorque(input: Input, editMode: boolean, attDt: number): void {
+  private updateTorque(input: Input, attDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this.fineAttitude || this.fire.isFiring;
     this.torque = this.throttle.updateTorque(
@@ -357,7 +368,6 @@ export class Player extends Ship {
       this.state.v,
       this.alive,
       input,
-      editMode,
       fine,
       attDt,
       this,
@@ -396,7 +406,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity);
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity);
 
     if (this.alive) {
       const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));
@@ -411,8 +421,8 @@ export class Player extends Ship {
   private disposed: boolean = false;
 
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
-  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3): {
-    key: string; cls: string; sym: string; pos: Vec3; priority: number;
+  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): {
+    key: string; cls: string; sym: string; pos: Vec3; vel: Vec3; priority: number;
     name: string; detail: string; bearingColor: string; color: string; symMarkup: boolean;
   } {
     const dist = len(sub(pos, viewerPos));
@@ -420,8 +430,9 @@ export class Player extends Ship {
     return {
       key: `player-${this.id}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy', // player も味方ターゲットとして mk-enemy に準じる
-      sym: this.hpMarkerSvg(),
+      sym: overviewMode ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
       pos,
+      vel,
       priority,
       name: this.displayName,
       detail: fmtMarkerDist(dist),
@@ -455,12 +466,14 @@ export class Player extends Ship {
       v: { ...this.state.v },
       q: { ...this.att.q },
       w: { ...this.att.w },
-      mags: this.fire.mags,
-      rounds: this.fire.rounds,
-      heat: this.thermal.hullTemp,
-      hp: this.hp,
-      maxHp: this.maxHp,
+      fire: this.fire.serialize(),
+      thermal: this.thermal.serialize(),
+      radiator: this.radiator.serialize(),
+      power: this.power.serialize(),
+      throttle: this.throttle.serialize(),
       parts: this.parts.map(p => ({ ...p })) as AnyPart[],
+      followPlan: this.followPlan,
+      fineAttitude: this.fineAttitude,
       plan: {
         anchor: {
           t: this.plan.anchor.t,
@@ -487,15 +500,19 @@ export class Player extends Ship {
     markerManager: MarkerManager
   ): Player {
     const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
-    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
+    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: Player.INERTIA };
     const player = new Player(hud, sfx, scene, fx, markerManager, data.name || data.id, state, data.id);
     player.att = att;
     
-    player.fire.initAmmo(data.mags, data.rounds);
-    player.thermal.hullTemp = data.heat;
-    player.hp = data.hp;
-    player.maxHp = data.maxHp;
-    player.parts = data.parts.map(restorePart);
+    player.fire.restore(data.fire);
+    player.thermal.restore(data.thermal);
+    player.radiator.restore(data.radiator);
+    player.power.restore(data.power);
+    player.throttle.restore(data.throttle);
+    player.followPlan = data.followPlan;
+    player.fineAttitude = data.fineAttitude ?? false;
+    player.parts.splice(0, player.parts.length, ...data.parts.map(restorePart));
+    player.refreshFromParts();
 
     if (data.plan) {
       player.plan.clear();

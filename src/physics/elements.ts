@@ -81,7 +81,8 @@ export function apsisAltitudes(el: OrbitalElements): { pe: number; ap: number } 
 // 平均近点角 M → 離心近点角 E(ケプラー方程式 M = E − e sin E をニュートン法で解く。楕円のみ)。
 export function eccentricAnomalyFromMean(m: number, e: number): number {
   const M = Math.atan2(Math.sin(m), Math.cos(m)); // [-π, π] へ畳んで初期値 E=M の収束を安定させる
-  let E = M;
+  let E = e > 0.8 ? Math.PI * Math.sign(M || 1) : M; // 高離心率では M≈0 付近で E=M 初期値だと Newton 法が収束しない/振動するため、M と同じ側の ±π から始める
+
   for (let i = 0; i < 50; i++) {
     const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
     E -= dE;
@@ -101,6 +102,16 @@ export function trueAnomalyFromMean(m: number, e: number): number {
 // 位置ベクトル r の真近点角(pHat 基準、[-π, π])
 export function trueAnomalyAt(el: OrbitalElements, r: Vec3): number {
   return Math.atan2(dot(r, el.qHat), dot(r, el.pHat));
+}
+
+// 軌道 el が法線 planeNormal の平面を横切る昇交点・降交点の真近点角。交点線の方向は
+// planeNormal × el.hHat(昇交点を指す向き)。両面がほぼ一致し交線の向きが定まらない場合は null。
+export function nodeAnomalies(el: OrbitalElements, planeNormal: Vec3): { asc: number; desc: number } | null {
+  const lineDir = cross(planeNormal, el.hHat);
+  if (dot(lineDir, lineDir) < 1e-6) return null;
+  const d = norm(lineDir);
+  const asc = Math.atan2(dot(d, el.qHat), dot(d, el.pHat));
+  return { asc, desc: asc + Math.PI };
 }
 
 // 近点通過からの経過時間 [s]。

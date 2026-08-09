@@ -24,10 +24,12 @@ export class OrbitLine {
   private lastRegen = 0;
   private suppressed = false;
 
-  // 摂動が大きい計画では積分予測を優先し、解析楕円線を一時的に隠す。
+  // 楕円線の表示を抑制する。抑制を解いたフレームでそのまま描き戻せるよう、直近の sync が
+  // 有効な軌道要素を得ていた場合(snap がある)に限って表示へ戻す — 次の sync を待つと、
+  // 抑制が解ける原因になった線が既に消えている1フレームのあいだ、どの線も出ない。
   setSuppressed(value: boolean): void {
     this.suppressed = value;
-    if (value) this.line.visible = false;
+    this.line.visible = !value && this.snap !== null;
   }
 
   // バッファジオメトリと LineBasicMaterial を組み立てる。

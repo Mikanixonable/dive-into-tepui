@@ -16,7 +16,7 @@ import { fmtDist, fmtTime } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { FloatingOrigin } from '../floating-origin';
-import type { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
@@ -675,9 +675,12 @@ export class PlanEditor {
   }
 
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
-  sync(mapDist: number, simTime: number, fo: FloatingOrigin, project: ProjectFn): void {
+  sync(
+    mapDist: number, simTime: number, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn,
+    overviewMode: boolean, cameraPos: Vec3,
+  ): void {
     if (this.hasPlan && (this.editMode || this.plan.nodes.length > 0)) {
-      this.planDisplay.sync(fo, project, this.editMode);
+      this.planDisplay.sync(fo, project, scale, this.editMode, overviewMode, cameraPos);
     }
     else {
       this.planDisplay.hide();

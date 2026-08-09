@@ -1,9 +1,11 @@
 // マップ上の航法ターゲット(任意の MapPickable)の保持と、自機軌道との相対 AN/DN(昇交点・
 // 降交点)の算出・マーカー表示・被選択物としての公開。Targeter の戦闘ターゲット(Enemy 専用)
 // とは独立に、月・ラグランジュ点なども対象にできる。
-import { Vec3, cross, dot, norm, scale, v3 } from '../physics/vec3';
-import { tofBetween, trueAnomalyAt } from '../physics/elements';
-import { AttractorId, OrbitingId, strongestAttractor } from '../physics/attractor';
+import { Vec3, v3 } from '../physics/vec3';
+import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
+import { Attractor, AttractorId, OrbitingId, frameOfAttractor, strongestAttractor } from '../physics/attractor';
+import { isOccluded } from '../physics/occlusion';
+import { frameKinematicState, toFrameState, toInertialState } from '../physics/frame';
 import { bodyDef, SOLAR_SYSTEM } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
@@ -33,6 +35,8 @@ export class NavTarget {
   // AN/DN 通過の絶対時刻 [s]。自機軌道要素の現在真近点角からの飛行時間を加えて求める。
   private anTime: number | null = null;
   private dnTime: number | null = null;
+  // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
+  private attractors: readonly Attractor[] = [];
 
   constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
     this.baseMenu.onSelect = (act, base) => {
@@ -70,33 +74,41 @@ export class NavTarget {
 
   // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は両方 null にする。
+  // positionOnOrbit は中心天体基準の相対位置を返すので、frameOfAttractor + toInertialState で
+  // 絶対 ECI 位置へ直す — 地球周回では中心が原点に一致するため偶然一致するが、月周回では
+  // 直さないと月までの距離ぶんずれる。
   update(player: Player | null, entities: EntityManager, ephemeris: Ephemeris, simTime: number): void {
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
+    this.attractors = ephemeris.attractorsAt(simTime);
     if (!player || !this.targetId) return;
-    const playerCenter = strongestAttractor(player.state.r, ephemeris.attractorsAt(simTime));
+    const playerCenter = strongestAttractor(player.state.r, this.attractors);
     const playerEl = player.orbitalElementsAround(playerCenter);
     if (!playerEl) return;
 
     const targetHat = this.resolvePlaneNormal(this.targetId, entities, ephemeris, simTime);
     if (!targetHat) return;
 
-    const lineDir = cross(playerEl.hHat, targetHat);
-    if (dot(lineDir, lineDir) < 1e-6) return; // 軌道面がほぼ一致 → 交線が定まらない
+    const nodes = nodeAnomalies(playerEl, targetHat);
+    if (!nodes) return;
 
-    const d = norm(lineDir);
-    const thAsc = Math.atan2(dot(d, playerEl.qHat), dot(d, playerEl.pHat));
-    const rAsc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc));
-    const rDesc = playerEl.p / (1 + playerEl.e * Math.cos(thAsc + Math.PI));
-    this.anPos = scale(d, rAsc);
-    this.dnPos = scale(d, -rDesc);
-
-    const nu0 = trueAnomalyAt(playerEl, player.state.r);
-    this.anTime = simTime + tofBetween(playerEl, nu0, thAsc);
-    this.dnTime = simTime + tofBetween(playerEl, nu0, thAsc + Math.PI);
+    const tf = frameOfAttractor(playerCenter);
+    const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
+    const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
+    const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
+    this.anPos = toInertialState(tf, anT, frameKinematicState(positionOnOrbit(playerEl, nodes.asc), v3(0, 0, 0))).r;
+    this.dnPos = toInertialState(tf, dnT, frameKinematicState(positionOnOrbit(playerEl, nodes.desc), v3(0, 0, 0))).r;
+    this.anTime = anT;
+    this.dnTime = dnT;
   }
 
   clearIfTargeting(id: string): void {
     if (this.targetId === id) this.targetId = null;
+  }
+
+  // 航法ターゲットを無条件に解除する。
+  clear(): void {
+    this.targetId = null;
+    this.targetName = null;
   }
 
   // 戦闘ビューの右クリックで基地を航法ターゲットに設定/解除する。基地に当たらなければ
@@ -149,10 +161,12 @@ export class NavTarget {
     return items;
   }
 
-  sync(project: ProjectFn): void {
-    if (this.anPos) this.markerManager.setPosition('nav-an', 'mk-node', '▲', this.anPos, project, 'AN');
+  // マップビューでは、天体に遮蔽されて画面上見えていない AN/DN を隠す(戦闘ビューでは効かせない)。
+  sync(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
+    const hidden = (pos: Vec3): boolean => overviewMode && isOccluded(cameraPos, pos, this.attractors);
+    if (this.anPos && !hidden(this.anPos)) this.markerManager.setPosition('nav-an', 'mk-node', '▲', this.anPos, project, 'AN');
     else this.markerManager.hide('nav-an');
-    if (this.dnPos) this.markerManager.setPosition('nav-dn', 'mk-node', '▽', this.dnPos, project, 'DN');
+    if (this.dnPos && !hidden(this.dnPos)) this.markerManager.setPosition('nav-dn', 'mk-node', '▽', this.dnPos, project, 'DN');
     else this.markerManager.hide('nav-dn');
   }
 }

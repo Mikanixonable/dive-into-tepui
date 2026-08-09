@@ -2,13 +2,13 @@
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
-import { orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { ReferenceFrame, INERTIAL_FRAME, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
+import { isOccluded } from '../../physics/occlusion';
 import { FloatingOrigin } from '../floating-origin';
-import { ProjectFn } from '../camera/camera-system';
+import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { Plan, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
 import type { DisplayTimeManager } from '../display-time-manager';
@@ -17,7 +17,6 @@ import * as C from '../const';
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
-const arcOpacity = (i: number): number => (i === 0 ? 0.55 : 0.85);
 
 const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
 
@@ -30,17 +29,19 @@ export class PlanPath {
   private activeCount = 0;
   // 先頭 nodeCount 本がノードで終わる区間(= 各ノードの到達状態を持つ)。
   private nodeCount = 0;
-  // 積分した区間が起点の楕円近似から大きく外れた場合、解析楕円線を隠す。
-  private analyticDivergent = false;
   private frame: ReferenceFrame = INERTIAL_FRAME;
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
+  // sync が最後に受け取ったカメラ位置。nearestSample の遮蔽判定に使う(呼び出しは DOM
+  // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
+  private cameraPos: Vec3 | null = null;
   // 最後のバーン後(これから乗る軌道)の起点状態。末尾区間が無ければ null。
   finalSegmentStart: KinematicState | null = null;
-
-  get isAnalyticDivergent(): boolean { return this.analyticDivergent; }
-  resetDivergence(): void { this.analyticDivergent = false; }
+  // finalSegmentStart と同じ区間の積分済みサンプル列(古い順)。null は finalSegmentStart 自体が
+  // null のとき。PlanArc.samples をそのまま公開する参照で、update で区間を再積分しない限り
+  // 同一参照を保つ(render/sampled-line.ts の再bake抑制が参照同一性で効くのはこの前提による)。
+  finalSegmentSamples: readonly KinematicState[] | null = null;
 
   // group をシーンへ登録する(初期状態は非表示)。
   constructor(scene: THREE.Scene, private readonly displayTimeManager: DisplayTimeManager) {
@@ -64,46 +65,32 @@ export class PlanPath {
     }
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
-    this.finalSegmentStart = segments.length > plan.nodes.length ? segments[segments.length - 1]!.state0 : null;
-    // 先頭区間が再積分されたときだけ判定し直す(全サンプル走査は再積分と同じ頻度に抑える)。
-    if (this.arcs[0]?.didRecompute()) {
-      this.analyticDivergent = this.detectAnalyticDivergence(segments[0]?.state0 ?? null);
-    }
-  }
-
-  // 各サンプルから求めた瞬時軌道要素を起点要素と比較する。月フライバイのような
-  // 摂動では長半径・離心率・軌道面が変化するため、解析楕円を表示し続けると積分線と
-  // 二重に見えてしまう。通常のLEOの数値誤差/J2の微小変化は閾値未満に収める。
-  // 途中で最も強く引く天体が起点と変われば、要素の比較を待たずその時点で divergent とする
-  // (中心が違う要素同士を比べても意味がないため)。
-  private detectAnalyticDivergence(anchor: KinematicState | null): boolean {
-    if (!anchor || !this.ephemeris) return false;
-    const center = strongestAttractor(anchor.r, this.ephemeris.attractorsAt(anchor.t));
-    const base = orbitalElementsOf(anchor, center);
-    if (!base || base.e >= 0.98 || !isFinite(base.a) || base.a <= 0) return false;
-    const samples = this.arcs[0]?.samples ?? [];
-    for (const s of samples) {
-      // 中心天体自身もサンプル時刻ぶん動くので、そのつど ephemeris から引き直す。
-      const sampleCenter = strongestAttractor(s.r, this.ephemeris.attractorsAt(s.t));
-      if (sampleCenter.id !== center.id) return true;
-      const el = orbitalElementsOf(s, sampleCenter);
-      if (!el || !isFinite(el.a) || el.a <= 0) continue;
-      if (Math.abs(el.a - base.a) / base.a > 0.03 || Math.abs(el.e - base.e) > 0.02) return true;
-      const planeDot = el.hHat.x * base.hHat.x + el.hHat.y * base.hHat.y + el.hHat.z * base.hHat.z;
-      if (planeDot < Math.cos(2 * Math.PI / 180)) return true;
-    }
-    return false;
+    const hasFinalSegment = segments.length > plan.nodes.length;
+    this.finalSegmentStart = hasFinalSegment ? segments[segments.length - 1]!.state0 : null;
+    this.finalSegmentSamples = hasFinalSegment ? this.arcs[segments.length - 1]!.samples : null;
   }
 
   // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の arc を隠す。
-  // 画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。
-  sync(fo: FloatingOrigin, project: ProjectFn): void {
+  // 画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。破線のドット/隙間は
+  // 各区間のサンプル列中央の代表点で scale(m/px)を引き、ピクセル指定を実距離に直してから渡す
+  // — ズームによらず画面上の間隔を一定に保つため。
+  sync(fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, cameraPos: Vec3): void {
     this.project = project;
+    this.cameraPos = cameraPos;
     if (this.ephemeris === null) return;
     for (let i = 0; i < this.activeCount; i++) {
       const arc = this.arcs[i]!;
       arc.setVisible(true);
-      arc.sync(this.ephemeris, this.frame, this.unbakeTime, fo);
+      const samples = arc.samples;
+      let dashSize = C.PLAN_ARC_DASH_PX;
+      let gapSize = C.PLAN_ARC_GAP_PX;
+      if (samples.length > 0) {
+        const mid = samples[Math.floor(samples.length / 2)]!;
+        const mpp = scale(this.toDisplay(mid.r, mid.t));
+        dashSize = C.PLAN_ARC_DASH_PX * mpp;
+        gapSize = C.PLAN_ARC_GAP_PX * mpp;
+      }
+      arc.sync(this.ephemeris, this.frame, this.unbakeTime, fo, dashSize, gapSize, scale);
     }
     for (let i = this.activeCount; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
   }
@@ -191,10 +178,15 @@ export class PlanPath {
   // 「表示期間が延びて折れ線が自分自身に重なる区間」の曖昧さを呼び出しの意図どおりに解く。
   nearestSample(mx: number, my: number, maxPx: number, referenceT: number, range?: TimeRange): { state: KinematicState, arcIdx: number } | null {
     const maxDSq = maxPx * maxPx;
+    const cameraPos = this.cameraPos;
+    const attractors = cameraPos && this.ephemeris ? this.ephemeris.attractorsAt(this.unbakeTime) : null;
     const candidates: { state: KinematicState; arcIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       for (const s of this.arcs[i]!.samples) {
         if (range && (s.t < range.min || s.t > range.max)) continue;
+        // 天体に遮蔽されて画面上見えていない点は候補から除く — マップ右クリックの
+        // ピック候補(map-picker.ts)と同じ判定を通す。
+        if (cameraPos && attractors && isOccluded(cameraPos, this.toDisplay(s.r, s.t), attractors)) continue;
         const p = this.projectPoint(s.r, s.t);
         if (!p.front) continue;
         const dSq = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
@@ -228,7 +220,7 @@ export class PlanPath {
   private arcAt(i: number): PlanArc {
     while (this.arcs.length <= i) {
       const idx = this.arcs.length;
-      const arc = new PlanArc(arcColor(idx), arcOpacity(idx), 4);
+      const arc = new PlanArc(arcColor(idx), C.PLAN_ARC_OPACITY, 4);
       this.arcs.push(arc);
       this.group.add(arc.object3d);
     }
