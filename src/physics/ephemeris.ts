@@ -12,7 +12,9 @@ import { cassiniSpinAxis, meridianDirection, orthogonalizedTo, spinPhaseOf } fro
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import { ReferenceFrame, FrameTransform } from './frame';
 import { FrameRotation, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
-import { LagrangePoints, lagrangePoints } from './lagrange';
+import {
+  LagrangePoints, collinearClearanceRatio, hasStableTriangularPoints, lagrangePoints,
+} from './lagrange';
 import { planetAngles } from './planet-orbit';
 import { satelliteState } from './satellite-orbit';
 import { bodyDef, CelestialBodyDef, CelestialRegistry, primaryOf, SOLAR_SYSTEM, starOf } from './solar-system';
@@ -292,6 +294,32 @@ export class Ephemeris {
     const { q } = this.orbitFrameRotationAt(secondary, t);
     const mu = def.mu / (bodyDef(this.registry, primary).mu + def.mu);
     return lagrangePoints(mu, (x, y) => add(primaryPos, qRotate(q, v3(R * x, R * y, 0))));
+  }
+
+  // secondary の主天体に対する質量比 mu = m2/(m1+m2)。主星が無ければ null。
+  private massRatioOf(secondary: OrbitingId): number | null {
+    const primary = primaryOf(this.registry, secondary);
+    if (primary === null) return null;
+    const def = bodyDef(this.registry, secondary);
+    return def.mu / (bodyDef(this.registry, primary).mu + def.mu);
+  }
+
+  // secondary の共線点(L1/L2/L3)が行き先として意味を持つか。副天体が軽いほどヒル半径が
+  // 縮んで L1 が表面へ寄るので、副天体半径に対する余裕が minClearanceRatio 倍に満たない系は
+  // 共線点を持たないものとして扱う(しきい値はハロー軌道の振幅が収まるかの判断なので、
+  // 物理定数ではなく呼び出し側から受け取る)。
+  hasUsableCollinearPoints(secondary: OrbitingId, minClearanceRatio: number): boolean {
+    const mu = this.massRatioOf(secondary);
+    if (mu === null || mu <= 0) return false;
+    const def = bodyDef(this.registry, secondary);
+    if (def.kind === 'star') return false;
+    return collinearClearanceRatio(mu, keplerOrbitOf(def).a, def.radius) >= minClearanceRatio;
+  }
+
+  // secondary の三角点(L4/L5)が線形安定か(Routh の質量比条件)。
+  hasStableTriangularPoints(secondary: OrbitingId): boolean {
+    const mu = this.massRatioOf(secondary);
+    return mu !== null && mu > 0 && hasStableTriangularPoints(mu);
   }
 
   // 恒星方向の単位ベクトル(ライティング・影判定用)。恒星が無いレジストリでは影・輻射圧の

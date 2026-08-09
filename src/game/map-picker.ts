@@ -87,7 +87,9 @@ export class MapPicker {
   // 求め直しとの対応付けはここに閉じる。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
   // sync されるメッシュと座標が1ステップずれる。
   refresh(simTime: number, displayTime: number): void {
-    this.cameraSystem.focusMarkers.update(displayTime);
+    this.cameraSystem.focusMarkers.update(
+      displayTime, this.cameraSystem.overviewCamera.focus, this.cameraSystem.bodyClassToggles,
+    );
     this.navTarget.update(this.game.player, this.entities, this.ephemeris, simTime);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
