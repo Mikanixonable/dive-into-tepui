@@ -37,6 +37,13 @@ export type SatelliteOrbit = {
   readonly distTerms: readonly PerturbationTerm[]; // 動径補正 Σ amp・cos(arg)
 };
 
+// 歳差周期 [s] を符号付きの歳差速度 [rad/s] へ変換する。0 は「歳差しない」ことを表す(JPL の
+// 公開表の規約)ので rate = 0 に写す — 2π/0 の無限大速度、および 0 に負号が付いて -0 になる
+// ことの両方を避けるための特別扱い。
+function precessionRate(periodSec: number, sign: 1 | -1): number {
+  return periodSec === 0 ? 0 : (sign * 2 * Math.PI) / periodSec;
+}
+
 // 度・秒単位で入力された衛星の軌道要素・歳差周期を SatelliteOrbit へ変換する。
 // 昇交点歳差(逆行)・近点歳差(順行)の符号はここで一度だけ決め、呼び出し側には正の周期だけを渡させる。
 export function satelliteOrbit(p: {
@@ -65,9 +72,9 @@ export function satelliteOrbit(p: {
       inc: p.incDeg * DEG,
       incRate: 0,
       raan0: p.raan0Deg * DEG,
-      raanRate: -(2 * Math.PI) / p.nodePeriodSec,
+      raanRate: precessionRate(p.nodePeriodSec, -1),
       lonPeri0: p.lonPeri0Deg * DEG,
-      lonPeriRate: (2 * Math.PI) / p.perigeePeriodSec,
+      lonPeriRate: precessionRate(p.perigeePeriodSec, 1),
       l0: p.l0Deg * DEG,
       lRate: (2 * Math.PI) / p.periodSec,
     },

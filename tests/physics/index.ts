@@ -32,6 +32,8 @@ import { register as registerTrajectoryFeatures } from './trajectory-features.te
 import { register as registerNBody } from './n-body.test';
 import { register as registerShape } from './shape.test';
 import { register as registerRing } from './ring.test';
+import { register as registerIrregularSatellites } from './irregular-satellites.test';
+import { register as registerLaplaceSatellites } from './laplace-satellites.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -65,5 +67,7 @@ registerPointField();
 registerNBody();
 registerShape();
 registerRing();
+registerIrregularSatellites();
+registerLaplaceSatellites();
 
 runAll();

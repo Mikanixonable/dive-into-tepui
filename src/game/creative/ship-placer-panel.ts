@@ -106,7 +106,9 @@ function bodyGroupsOf(
 
 // 表示名を「中心天体名-自分の名」として ephemeris から組む(primaryOf で主星を解決する)。
 function lagrangeSystemItemsOf(ephemeris: Ephemeris, orbitingIds: readonly OrbitingId[]): readonly (readonly [OrbitingId, string])[] {
-  return orbitingIds.map((id) => {
+  // 共線点が行き先として意味を持つ系だけを出す。質量が未測定の天体では質量比が 0 になり、
+  // 共線点の距離比を解く反復が収束せず NaN の状態を返すため、選ばせてはいけない。
+  return orbitingIds.filter((id) => ephemeris.hasUsableCollinearPoints(id, C.LAGRANGE_MIN_CLEARANCE_RATIO)).map((id) => {
     const primary = primaryOf(ephemeris.registry, id);
     const primaryName = primary === null ? celestialBodyName(id) : celestialBodyName(primary);
     return [id, `${primaryName}-${celestialBodyName(id)}`] as const;
