@@ -5,7 +5,6 @@ import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
-import { Sfx } from '../../audio/sfx';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { ThrottleSaveData } from '../save-data';
 
@@ -27,7 +26,6 @@ export class PlayerThrottle {
   rcsDamp = true;
   throttleIdx = C.THROTTLE_DEFAULT_IDX;
   progradeHold = true;
-  thrustVizDir: Vec3 | null = null;
   thrustAccelVec: Vec3 = v3();
 
   private rotationHoldTime = 0;
@@ -35,10 +33,7 @@ export class PlayerThrottle {
   private readonly latchedThrustKeys = new Set<string>();
   private readonly lastThrustPressTime: Partial<Record<string, number>> = {};
 
-  constructor(
-    private readonly _hud: Hud,
-    private readonly _sfx: Sfx,
-  ) {}
+  constructor(private readonly _hud: Hud) {}
 
   // RCS 回転制動の ON/OFF を切り替える。
   toggleRcsDamp(): void {
@@ -71,11 +66,10 @@ export class PlayerThrottle {
     for (const key of Object.keys(this.lastThrustPressTime)) delete this.lastThrustPressTime[key];
   }
 
-  // 噴射音・プルーム表示を止める。噴射が実際に無い(または許可されない)ときの唯一の入口。
+  // 推力ゼロの状態へ戻す。噴射が実際に無い(または許可されない)ときの唯一の入口
+  // (プルーム・エンジン音は ThrustEffects.sync が ship.thrust を直接見て毎フレーム同期する)。
   stopThrust(): void {
-    this._sfx.setThrust(false);
     this.thrustAccelVec = v3();
-    this.thrustVizDir = null;
   }
 
   serialize(): ThrottleSaveData {
@@ -89,18 +83,14 @@ export class PlayerThrottle {
   }
 
   // 入力から機体座標系の推力加速度を組み立てて返す。warp 中などで噴射不可なら null。
-  // SFX とスラスト方向の表示用状態も併せて更新する。
+  // ベルト物理が使う推力加速度の表示用状態も併せて更新する。
   updateThrustState(input: Input, simSpeed: SimSpeedManager, att: Attitude, dt: number, ship: import('../game-entity/ship').Ship): Vec3 | null {
     const thrust = this.buildThrust(input, att.q, ship, dt);
     if (!simSpeed.canPlayerThrust || !thrust) {
       this.stopThrust();
       return null;
     }
-
-    // 噴射中の状態を保持する
-    this._sfx.setThrust(true);
     this.thrustAccelVec = thrust;
-    this.thrustVizDir = norm(this.thrustAccelVec);
     return thrust;
   }
 

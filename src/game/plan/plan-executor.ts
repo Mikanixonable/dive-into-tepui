@@ -13,7 +13,7 @@ import { Attitude, attitudeAlignError, attitudeAlignTorque } from '../../physics
 import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Plan } from './plan';
-import { burnCutoffProjection, burnDurationFor, burnUpReference, ignitionTimeFor } from './plan-executor-math';
+import { burnCutoffProjection, burnDurationFor, burnUpReference, ignitionTimeFor, turnTimeFor } from './plan-executor-math';
 
 // 'off': ノードを消化しない。'instant': ノード時刻ちょうどで絶対状態へ乗り移る(瞬間移動)。
 // 'powered': この PlanExecutor が姿勢制御・噴射で実行する。
@@ -87,29 +87,39 @@ export class PlanExecutor {
     const dv = sub(node.v, ship.state.v);
     const dvMag = len(dv);
     const accel = ship.mass > 0 ? ship.totalThrust / ship.mass : 0;
+
+    // 目標方向・up基準・現在の姿勢誤差角を先に求める(窓の見積りと、窓を通った後の整列トルクの
+    // 両方が必要とするため)。dv が実質無ければ方向自体が定まらないので誤差角は0とみなす —
+    // どのみち窓さえ通れば下の dvMag チェックでこの点は素通りして finish() する。
+    // up 基準は動径方向が既定だが、ラジアル方向のバーン(dv ∥ r)では特異になり
+    // qFromForwardUp が解けなくなるので、軌道面法線へフォールバックする(burnUpReference)。
+    const hasDv = dvMag >= C.PLAN_EXECUTOR_DV_EPS;
+    const fwd = hasDv ? scale(dv, 1 / dvMag) : null;
+    const up = hasDv ? burnUpReference(dv, ship.state) : null;
+    const err = hasDv ? attitudeAlignError(fwd!, up!, ship.att.q) : null;
+    const errRad = hasDv ? (err ? Math.abs(err.angle) : Math.PI) : 0;
+
     // ノード時刻からまだ遠ければ整列・点火判定そのものに入らない。周期軌道では「現在の速度が
     // たまたまノードの目標速度に近い」瞬間が1周前・2周前にも訪れうるので、dv の小ささだけで
     // 判定すると別の周回を今回のノードと誤認する — 実行時刻に対する猶予窓
-    // (NODE_APPROACH_LEAD + 見積もり燃焼時間)で先に絞る。
-    const approachWindow = C.NODE_APPROACH_LEAD + burnDurationFor(dvMag, accel);
+    // (NODE_APPROACH_LEAD + 見積もり燃焼時間 + 見積り転回時間)で先に絞る。転回時間はバンバン
+    // 制御 2√(θ/α) の見積り(turnTimeFor)で、小さいΔvでも大きな姿勢転回が要る場合に
+    // 点火が遅れて非対称な燃焼になるのを防ぐ。
+    const turnTime = turnTimeFor(errRad, C.MAX_ANG_ACCEL);
+    const approachWindow = C.NODE_APPROACH_LEAD + burnDurationFor(dvMag, accel) + turnTime;
     if (node.t - simTime > approachWindow) {
       ship.torque = v3();
       return;
     }
 
     // 目標Δvが実質無ければ整列不要でそのまま消化する。
-    if (dvMag < C.PLAN_EXECUTOR_DV_EPS) {
+    if (!hasDv) {
       this.finish(ship, node);
       return;
     }
     // 目標方向へ機首を向けるPD整列トルクをかけ、誤差角が閾値内なら点火待ちへ進める。
-    // up 基準は動径方向が既定だが、ラジアル方向のバーン(dv ∥ r)では特異になり qFromForwardUp が
-    // 解けなくなるので、軌道面法線へフォールバックする(burnUpReference)。
-    const fwd = scale(dv, 1 / dvMag);
-    const up = burnUpReference(dv, ship.state);
-    ship.torque = attitudeAlignTorque(fwd, up, ship.att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD);
-    const err = attitudeAlignError(fwd, up, ship.att.q);
-    const errDeg = err ? (Math.abs(err.angle) * 180) / Math.PI : 180;
+    ship.torque = attitudeAlignTorque(fwd!, up!, ship.att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD);
+    const errDeg = (errRad * 180) / Math.PI;
     this.phase = errDeg <= C.PLAN_EXECUTOR_ARM_ANGLE_DEG ? 'armed' : 'slew';
   }
 
@@ -146,6 +156,10 @@ export class PlanExecutor {
   // 射影が0を切った時点の遮断を simTime ちょうどで行う。update() と同じ node/phase の前提を
   // 使うので、ここで初めて armed に入ることはない(その判定は update() 側の担当)。
   applyIgnitionAndCutoff(ship: PlanExecutorShip, simTime: number): void {
+    if (!ship.alive) {
+      this.reset(ship);
+      return;
+    }
     if (ship.planExecution !== 'powered') return;
     const node = ship.plan.firstNode();
     if (!node || node !== this.targetNode) return;

@@ -408,9 +408,14 @@ export class MapPicker {
         const isActive = ship === this.game.player;
         const activate: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '操作対象にする', act: 'activate' }];
         const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
+        // 通常ステージには実行モードを進める駆動源(CreativeStage.update/nextSimulationEventTime/
+        // applySimulationEvents)が無く、選ばせても何も起きないので出さない。
+        const planExec: readonly MenuItem<MenuAction>[] = this.isCreativeMode()
+          ? [{ label: `軌道計画の実行: ${planExecutionLabel(ship?.planExecution ?? 'off')} (次へ)`, act: 'planExecCycle' }]
+          : [];
         return [
           ...activate,
-          { label: `軌道計画の実行: ${planExecutionLabel(ship?.planExecution ?? 'off')} (次へ)`, act: 'planExecCycle' },
+          ...planExec,
           MenuCommon.focus(),
           ...this.navTargetItems(target, simTime),
           ...this.duplicateItems(),
