@@ -11,7 +11,7 @@ import { len, norm, randSym, rotateAxis, scale, v3 } from '../../../physics/vec3
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy } from '../../game-entity/enemy';
+import { Enemy, inertiaForEnemyKind } from '../../game-entity/enemy';
 
 // 自機軌道(base)を dAlong だけ進めた位置の軌道状態(プリセット配置の共通基盤)。
 function phasedState(base: KinematicState, dAlong: number): KinematicState {
@@ -30,7 +30,7 @@ export function generateDriftingEnemy(name: string, state: KinematicState, hp: n
       // ランダムな姿勢・角速度を与える
       q: randomQuat(),
       w: v3(randSym(0.12), randSym(0.12), randSym(0.12)),
-      inertia: v3(1, 1.1, 1.05),
+      inertia: inertiaForEnemyKind({ kind: 'drifting' }),
     },
     hp,
     accent,
@@ -105,7 +105,7 @@ export function generateApproachingEnemy(
       // 機首をプログレードへ向ける
       q: qFromForwardUp(state.v, state.r) ?? randomQuat(),
       w: v3(0, 0, 0),
-      inertia: v3(1, 1, 1),
+      inertia: inertiaForEnemyKind({ kind: 'stage0', typeIndex }),
     },
     hp,
     accent,

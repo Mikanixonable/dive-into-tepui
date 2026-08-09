@@ -90,13 +90,16 @@ export const AMBIENT_INTENSITY = 0.25; // 環境光の基準強度
 export const SHADOW_MIN_SUN = 0.04; // 影の中に残す太陽光の割合(星明かり・地球照ぶん)
 export const SHADOW_MIN_AMBIENT = 0.35; // 影の中に残す環境光の割合
 
-// 並進推力(WSADQE の全 6 方向で共通)の出力 3 段階 [m/s^2]。[1]/[2]/[3] キーで切替、
-// 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。
-export const THROTTLE_LEVELS = [5.0, 20.0, 100.0];//エンジン出力、スロットル
+// 並進推力(WSADQE の全 6 方向で共通)の出力 4 段階 [m/s^2]。[1]/[2]/[3]/[4] キーで切替、
+// 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。4段目は3段目の4倍。
+export const THROTTLE_LEVELS = [5.0, 20.0, 100.0, 400.0];//エンジン出力、スロットル
+export const THROTTLE_LABELS = ['弱', '中', '強', '最強'] as const;
 // 自機の質量 [kg]。既定パーツのスラスター推力はこの質量で THROTTLE_LEVELS の最大値の
 // 加速度になるよう決めてあるので、両者を別々に動かすと表示と実挙動がずれる。
 export const PLAYER_MASS = 1000;
 export const THROTTLE_DEFAULT_IDX = 1;
+// 並進方向キーをこの秒数以内に連打すると、押しっぱなし相当にラッチ/解除する [s]
+export const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;
 
 export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
 export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
@@ -230,15 +233,39 @@ export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
 // --- HUD マーカー ---
 export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想距離 [m](実在の位置ではなく方向のみを示す)
 export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
+// 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
+export const FOCUS_LABEL_PRIORITY_PX = 40;
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 export const MARKER_BEARING_RING_RATIO = 0.8;
+export const MARKER_HEADING_PROBE_PX = 20; // 進行方向を測るための投影プローブ距離 [px]
+// 投影差がこれ未満なら視線とほぼ平行とみなし、進行方向を定めない [px]
+export const MARKER_HEADING_DEGENERATE_PX = 4;
 export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
 // --- 軌道計画モード([M]) ---
-export const OVERVIEW_CAMERA_MIN_DIST = 9e6; // 広範囲視点カメラの注視点までの距離 [m]
+export const OVERVIEW_CAMERA_MIN_DIST = 1e5; // 広範囲視点カメラの注視点までの距離 [m]
 // 太陽地球系のラグランジュ点 L1/L2(約1.5e9m)まで視界に収められる引きの上限。
-export const OVERVIEW_CAMERA_MAX_DIST = 4.5e9;
-export const OVERVIEW_CAMERA_FAR = 1.5e10; // 広範囲視点カメラの far(OVERVIEW_CAMERA_MAX_DIST + 十分な余裕)
+export const OVERVIEW_CAMERA_MAX_DIST = 1e13;
+// 広範囲視点の near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
+// (near = dist / OVERVIEW_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
+// 手前がクリップされにくくなる代わりに、24bit 深度バッファの分解能が落ちる。
+export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
+// 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
+// (far = clamp(dist × OVERVIEW_CAMERA_FAR_RATIO, OVERVIEW_CAMERA_FAR_MIN, OVERVIEW_CAMERA_FAR_MAX))。
+// far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
+// far 平面の外に出て消える一方、近距離域で far を大きく取ると 24bit 深度の分解能を
+// 無駄に浪費する。
+export const OVERVIEW_CAMERA_FAR_RATIO = 100;
+// 最小ズーム(dist = OVERVIEW_CAMERA_MIN_DIST)でも月(3.8e8m)や星球シェルが
+// far の外に出ないための下限。
+export const OVERVIEW_CAMERA_FAR_MIN = 1.5e10;
+export const OVERVIEW_CAMERA_FAR_MAX = 1e13;
+// 星球シェル・天球グリッドの表示半径。マップの広範囲視点カメラの far は dist に連動して
+// 毎フレーム変わるため、そこに結びつけると星殻半径も毎フレーム変動してしまう。
+// far とは独立に固定する。
+// far の下限(OVERVIEW_CAMERA_FAR_MIN)より 10% 内側に取る — 等しいと最小ズームで
+// 殻のジオメトリが far 平面上に乗り、視線方向の星・グリッドがクリップされる。
+export const CELESTIAL_SHELL_RADIUS = 1.35e10;
 export const NODE_DV_RATE = 300; // Δv 調整速度 [m/s per 実秒]
 export const NODE_DV_RATE_FINE = 30; // 微調整モード時
 export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
@@ -285,15 +312,17 @@ export const PLAN_ARC_STEPS_PER_REV = 100;
 // 1周回 / PLAN_ARC_STEPS_PER_REV のままではステップ数がフレーム時間を圧迫するので、
 // 超えたら plan-arc.ts の再突入時と同じ「そこで打ち切って endState() を返す」経路に乗せる。
 export const PLAN_ARC_MAX_STEPS = 20000;
-// 天体に衝突した後、その天体を無視して伝播を続ける仮想延長線(幽霊軌道)の破線パターン [m] と
-// 不透明度倍率。dashSize/gapSize は表示座標系の実距離。
-export const PLAN_ARC_GHOST_DASH_M = 3e4;
-export const PLAN_ARC_GHOST_GAP_M = 3e4;
-export const PLAN_ARC_GHOST_OPACITY_MULT = 0.5;
+// 計画軌道の折れ線を破線で描くときの、破線1本・間隔の画面上の長さ [px] と不透明度。
+// 実距離ではなく画面ピクセルで持つのは、マップの倍率が数桁変わるため実距離で固定すると
+// 拡大時は数本の線分に、縮小時はサブピクセルになって実線と区別できなくなるため。
+export const PLAN_ARC_DASH_PX = 8;
+export const PLAN_ARC_GAP_PX = 6;
+export const PLAN_ARC_OPACITY = 0.85;
 // 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
 export const APERIODIC_ARC_DURATION = 86400;
-// 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率の下限。これ未満は円に近く
-// アプシスの方向が数値的に不定になるので両方隠す。
+// 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。
+// physics/trajectory-features.ts の apparentEccentricity(積分折れ線の半径変動から
+// 求めた指標)と比較する — これ未満は円に近くアプシスの方向が不定になるので両方隠す。
 export const APSIS_MIN_ECC = 0.01;
 
 // --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory.history/Predictor) ---
