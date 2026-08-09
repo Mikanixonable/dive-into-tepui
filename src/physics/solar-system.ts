@@ -87,18 +87,12 @@ export type Degree2GravityDef = {
   readonly refRadius: number; // 係数が定義された基準半径 [m]
 };
 
-// 重力積分の対象にするかどうか。判定基準は「その天体の近傍にプレイヤーが存在しうるか」で、
-// 地球近傍での加速度寄与ではない(ECI は地球と共に自由落下する非慣性系なので、遠方の天体の
-// 寄与は潮汐差分項に落ちて太陽輻射圧よりも桁で小さくなる)。**クリエイティブモードで基準天体・
-// ラグランジュ系として選択できる天体は必ず true** — 選ばせた先で局所力学が成立しなくなるため。
-type GravitySourceFlag = { readonly gravitySource: boolean };
-
 // ラグランジュ点をフォーカス対象のラベルとして出すかどうか(省略時 = 出さない)。全公転天体で
 // 出すと 5 点 × 天体数のラベルが画面を埋めるので、実際に軌道設計の目標になる系だけを立てる。
 type LagrangeLabelFlag = { readonly lagrangeLabels?: boolean };
 
 export type CelestialBodyDef =
-  | ({ readonly kind: 'star'; readonly id: AttractorId; readonly mu: number; readonly radius: number } & GravitySourceFlag)
+  | { readonly kind: 'star'; readonly id: AttractorId; readonly mu: number; readonly radius: number }
   | ({
       readonly kind: 'planet';
       readonly id: AttractorId;
@@ -107,7 +101,7 @@ export type CelestialBodyDef =
       readonly orbit: PlanetOrbit; // 中心は必ず恒星
       readonly pole?: PoleModel; // 省略時は自転軸を持たない
       readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
-    } & GravitySourceFlag & LagrangeLabelFlag)
+    } & LagrangeLabelFlag)
   | ({
       readonly kind: 'satellite';
       readonly id: AttractorId;
@@ -117,7 +111,7 @@ export type CelestialBodyDef =
       readonly orbit: SatelliteOrbit;
       readonly pole?: PoleModel;
       readonly degree2?: Degree2GravityDef;
-    } & GravitySourceFlag & LagrangeLabelFlag);
+    } & LagrangeLabelFlag);
 
 // 天体レジストリ: id から静的事実(CelestialBodyDef)を引く表。SOLAR_SYSTEM が「現実の太陽系」
 // という名前つきの既定値で、ステージごとに別のレジストリへ差し替えられる。
@@ -249,7 +243,6 @@ export const SOLAR_SYSTEM = {
     id: 'earth',
     mu: MU_EARTH,
     radius: R_EARTH,
-    gravitySource: true,
     lagrangeLabels: true,
     // JPL 低精度惑星暦の "EM Bary"(地球-月重心)行、黄道基準・J2000 相当。
     orbit: planetOrbit({
@@ -275,7 +268,6 @@ export const SOLAR_SYSTEM = {
     id: 'moon',
     mu: MU_MOON,
     radius: R_MOON,
-    gravitySource: true,
     lagrangeLabels: true,
     planet: 'earth',
     orbit: satelliteOrbit({
@@ -303,7 +295,6 @@ export const SOLAR_SYSTEM = {
     id: 'mercury',
     mu: 2.2032e13,
     radius: 2.4397e6,
-    gravitySource: false,
     // ϖ̇ の 0.16047689 deg/Cy = 577.7″/Cy には一般相対論による近日点移動 42.98″/Cy が既に
     // 含まれている(この表は PPN 相対論込みで数値積分された JPL DE 暦へのフィット)。
     // 惑星摂動のみの古典値 531.6″/Cy に補正項を足す形にしてはならない。
@@ -336,7 +327,6 @@ export const SOLAR_SYSTEM = {
     id: 'venus',
     mu: 3.24859e14,
     radius: 6.0518e6,
-    gravitySource: false,
     orbit: planetOrbit({
       a: 0.72333566 * AU,
       e: 0.00677672,
@@ -366,7 +356,6 @@ export const SOLAR_SYSTEM = {
     id: 'mars',
     mu: MU_MARS,
     radius: 3.3895e6,
-    gravitySource: false,
     orbit: planetOrbit({
       a: 1.52371034 * AU,
       e: 0.09339410,
@@ -388,7 +377,6 @@ export const SOLAR_SYSTEM = {
     id: 'phobos',
     mu: 7.112e5,
     radius: 1.1267e4,
-    gravitySource: false,
     planet: 'mars',
     orbit: equatorialSatelliteOrbit({ a: 9.376e6, e: 0.0151, incDeg: 1.08, planetMu: MU_MARS, planetPole: MARS_POLE }),
   },
@@ -397,7 +385,6 @@ export const SOLAR_SYSTEM = {
     id: 'deimos',
     mu: 9.85e4,
     radius: 6.2e3,
-    gravitySource: false,
     planet: 'mars',
     orbit: equatorialSatelliteOrbit({ a: 2.3458e7, e: 0.00033, incDeg: 1.79, planetMu: MU_MARS, planetPole: MARS_POLE }),
   },
@@ -406,7 +393,6 @@ export const SOLAR_SYSTEM = {
     id: 'jupiter',
     mu: MU_JUPITER,
     radius: 6.9911e7,
-    gravitySource: true,
     lagrangeLabels: true,
     orbit: planetOrbit({
       a: 7.78340821e11,
@@ -429,7 +415,6 @@ export const SOLAR_SYSTEM = {
     id: 'io',
     mu: 5.9599e12,
     radius: 1.8216e6,
-    gravitySource: false,
     planet: 'jupiter',
     orbit: equatorialSatelliteOrbit({ a: 4.218e8, e: 0.0033, incDeg: 0.04, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
   },
@@ -438,7 +423,6 @@ export const SOLAR_SYSTEM = {
     id: 'europa',
     mu: 3.2027e12,
     radius: 1.5608e6,
-    gravitySource: false,
     planet: 'jupiter',
     orbit: equatorialSatelliteOrbit({ a: 6.711e8, e: 0.0072, incDeg: 0.47, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
   },
@@ -447,7 +431,6 @@ export const SOLAR_SYSTEM = {
     id: 'ganymede',
     mu: 9.8878e12,
     radius: 2.6312e6,
-    gravitySource: false,
     planet: 'jupiter',
     orbit: equatorialSatelliteOrbit({ a: 1.0704e9, e: 0.0013, incDeg: 0.20, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
   },
@@ -456,7 +439,6 @@ export const SOLAR_SYSTEM = {
     id: 'callisto',
     mu: 7.1793e12,
     radius: 2.4103e6,
-    gravitySource: false,
     planet: 'jupiter',
     orbit: equatorialSatelliteOrbit({ a: 1.8827e9, e: 0.0048, incDeg: 0.19, planetMu: MU_JUPITER, planetPole: JUPITER_POLE }),
   },
@@ -465,7 +447,6 @@ export const SOLAR_SYSTEM = {
     id: 'saturn',
     mu: MU_SATURN,
     radius: 5.8232e7,
-    gravitySource: true,
     lagrangeLabels: true,
     orbit: planetOrbit({
       a: 9.53667594 * AU,
@@ -488,7 +469,6 @@ export const SOLAR_SYSTEM = {
     id: 'titan',
     mu: 8.9781e12,
     radius: 2.5747e6,
-    gravitySource: false,
     planet: 'saturn',
     orbit: equatorialSatelliteOrbit({ a: 1.22187e9, e: 0.0288, incDeg: 0.35, planetMu: MU_SATURN, planetPole: SATURN_POLE }),
   },
@@ -497,7 +477,6 @@ export const SOLAR_SYSTEM = {
     id: 'uranus',
     mu: 5.793939e15,
     radius: 2.5362e7,
-    gravitySource: false,
     orbit: planetOrbit({
       a: 19.18916464 * AU,
       e: 0.04725744,
@@ -527,7 +506,6 @@ export const SOLAR_SYSTEM = {
     id: 'neptune',
     mu: MU_NEPTUNE,
     radius: 2.4622e7,
-    gravitySource: false,
     orbit: planetOrbit({
       a: 30.06992276 * AU,
       e: 0.00859048,
@@ -549,12 +527,11 @@ export const SOLAR_SYSTEM = {
     id: 'triton',
     mu: 1.4276e12,
     radius: 1.3534e6,
-    gravitySource: false,
     planet: 'neptune',
     // 傾斜 90° 超が逆行を表す。
     orbit: equatorialSatelliteOrbit({ a: 3.5476e8, e: 0.000016, incDeg: 156.885, planetMu: MU_NEPTUNE, planetPole: NEPTUNE_POLE }),
   },
-  // 準惑星・大型小惑星・彗星核。恒星への影響が無視できるほど軽いので gravitySource: false
+  // 準惑星・大型小惑星・彗星核。
   // (質量を持たない飾りとしてのみ表示・選択される)。永年摂動項は解いておらず raanRate 等は
   // すべて 0 — 二体ケプラー軌道のみで、木星等による摂動(彗星核では非重力効果も)は含まない。
   // 軌道要素は JPL Small-Body Database(sbdb.api、full-prec=true)から取得した黄道座標・
@@ -569,7 +546,6 @@ export const SOLAR_SYSTEM = {
     id: 'ceres',
     mu: 6.26e10,
     radius: 4.7e5,
-    gravitySource: false,
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Ceres&full-prec=true (元期 JD2461200.5)
     orbit: planetOrbit({
       a: 2.765552595034094 * AU,
@@ -591,7 +567,6 @@ export const SOLAR_SYSTEM = {
     id: 'vesta',
     mu: 1.73e10,
     radius: 2.63e5,
-    gravitySource: false,
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Vesta&full-prec=true (元期 JD2461200.5)
     orbit: planetOrbit({
       a: 2.361365965127599 * AU,
@@ -613,7 +588,6 @@ export const SOLAR_SYSTEM = {
     id: 'pallas',
     mu: 1.36e10,
     radius: 2.56e5,
-    gravitySource: false,
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Pallas&full-prec=true (元期 JD2461200.5)
     orbit: planetOrbit({
       a: 2.769559010737709 * AU,
@@ -639,7 +613,6 @@ export const SOLAR_SYSTEM = {
     id: 'pluto',
     mu: 8.71e11,
     radius: 1.1883e6,
-    gravitySource: false,
     orbit: planetOrbit({
       a: 39.482 * AU,
       e: 0.2488,
@@ -660,7 +633,6 @@ export const SOLAR_SYSTEM = {
     id: 'haumea',
     mu: 2.67e11,
     radius: 7.8e5, // 平均半径(準楕円体)
-    gravitySource: false,
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Haumea&full-prec=true (元期 JD2461200.5)
     orbit: planetOrbit({
       a: 43.06029023650952 * AU,
@@ -682,7 +654,6 @@ export const SOLAR_SYSTEM = {
     id: 'makemake',
     mu: 2.1e11,
     radius: 7.15e5,
-    gravitySource: false,
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Makemake&full-prec=true (元期 JD2461200.5)
     orbit: planetOrbit({
       a: 45.57093317300052 * AU,
@@ -704,7 +675,6 @@ export const SOLAR_SYSTEM = {
     id: 'eris',
     mu: 1.108e12,
     radius: 1.163e6,
-    gravitySource: false,
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=Eris&full-prec=true (元期 JD2461200.5)
     orbit: planetOrbit({
       a: 67.93394687853566 * AU,
@@ -727,7 +697,6 @@ export const SOLAR_SYSTEM = {
     id: 'halley',
     mu: 1.5e1, // 粗い推定値(核質量 ~2.2e14 kg 相当)
     radius: 5.5e3, // 粗い推定値(核長径の半分程度)
-    gravitySource: false,
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=1P&full-prec=true (元期 JD2439875.5、
     // 1968年の近日点通過に近い元期)。非重力効果(彗星核からのガス噴出による軌道擾乱)は
     // 未収録なので、周期・形状は正確だが軌道上の位置は年代が離れるほど粗くなる。
@@ -751,7 +720,6 @@ export const SOLAR_SYSTEM = {
     id: 'encke',
     mu: 4e0, // 粗い推定値(核質量 ~6e13 kg 相当)
     radius: 2.4e3,
-    gravitySource: false,
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=2P&full-prec=true (元期 JD2459847.5)
     orbit: planetOrbit({
       a: 2.219688710074586 * AU,
@@ -768,7 +736,7 @@ export const SOLAR_SYSTEM = {
       aRatePerCenturyAu: 0,
     }),
   },
-  sun: { kind: 'star', id: 'sun', mu: MU_SUN, radius: R_SUN, gravitySource: true },
+  sun: { kind: 'star', id: 'sun', mu: MU_SUN, radius: R_SUN },
 } satisfies CelestialRegistry;
 
 // SOLAR_SYSTEM を satisfies で受けているため、リテラルなキー集合(SolarSystemId)がそのまま

@@ -184,7 +184,7 @@
     // 弾命中・剛体接触・姿勢積分はいずれもこの中。simulator が hitSystem / collisionPhysics を所有する
     - [サブステップごと] ×ceil(simDt / SUBSTEP_MAX_DT) // 分割数は simDt のみで決まる(実 fps に依存しない)
       - substep()
-        - gravityAttractorsAt(ephemeris, entities, t) // サブステップ先頭で1回だけ: ephemeris.gravityAttractorsAt(t)(gravitySource=true の天体)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流。同じ1配列をこのサブステップの全エンティティで使い回す(処理順に依存した誤差を避けるため)
+        - gravityAttractorsAt(ephemeris, entities, t) // サブステップ先頭で1回だけ: ephemeris.gravityAttractorsAt(t)(mu を持つ天体)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流。同じ1配列をこのサブステップの全エンティティで使い回す(処理順に依存した誤差を避けるため)
         - entity.stepActual() → relevantAttractors(state.r, all, GRAVITY_NEGLIGIBLE_ACCEL) → actualTrajectory.step() → stepDynamics()(history 記録)
           // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。relevantAttractors がこの位置で無視できない天体だけに絞る。全天体重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
         - player.thermal.updateThermal() // 操作対象のみ(HUD 警告を出すため)
@@ -257,7 +257,7 @@
     - editor.update(simTime, displayTime) // 被選択物候補にアプシスアイコンが入るので mapPicker.refresh より前
     - planDisplay.update(plan, simTime, displayTime, show) // show = hasPlan(=ship!==null) && (editMode || plan.nodes.length > 0)
       - path.update() // plan の corners を区間へ分解し、区間ごとに PlanArc を再積分。表示座標系と un-bake 時刻もここで確定
-        - arc.update() // 区間ごと。(state0, end) が変わったときだけ DynamicTrajectory で RK4 積分し直す(重い)。刻み幅ごとの重力源は relevantAttractors(state.r, ephemeris.gravityAttractorsAt(t), GRAVITY_NEGLIGIBLE_ACCEL)(小惑星は合流させない — 予測・実積分の2経路と絞り込み関数だけ揃える)
+        - arc.update() // 区間ごと。(state0, end) が変わったときだけ DynamicTrajectory で RK4 積分し直す(重い)。刻み幅ごとの重力源は relevantAttractors(state.r, mergeAttractors(ephemeris.gravityAttractorsAt(t), dynamicAttractors), GRAVITY_NEGLIGIBLE_ACCEL) — 実積分・予測と同じ候補集合。dynamicAttractors は Game.update が entities.attractors() を1回だけ求めて渡す(区間長は最大1年に及び、そのあいだの位置を EntityManager には問えない)
       - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
       - apsisIconsOf() // 最終区間の起点要素から解析的に算出。離心率 < APSIS_MIN_ECC なら空、双曲線なら Pe のみ
   - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // editor.update の後・mapPicker.refresh の前

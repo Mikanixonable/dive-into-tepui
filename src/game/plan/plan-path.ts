@@ -56,7 +56,10 @@ export class PlanPath {
 
   // plan から区間列を組み直して各区間を再積分し、表示変換の文脈(座標系・un-bake 時刻)を
   // このフレームのものに更新する。
-  update(plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number, attractors: readonly Attractor[]): void {
+  update(
+    plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
+    attractors: readonly Attractor[], dynamicAttractors: readonly Attractor[],
+  ): void {
     this.frame = frame;
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
@@ -67,7 +70,7 @@ export class PlanPath {
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       const tracksLiveAnchor = plan.nodes.length === 0 && i === segments.length - 1;
-      this.arcAt(i).update(seg.state0, seg.end, ephemeris, tracksLiveAnchor);
+      this.arcAt(i).update(seg.state0, seg.end, ephemeris, dynamicAttractors, tracksLiveAnchor);
     }
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;

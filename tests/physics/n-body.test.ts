@@ -9,8 +9,7 @@ import { Vec3, add, len, scale, sub, v3 } from '../../src/physics/vec3';
 
 const ZERO = v3(0, 0, 0);
 
-// AttractorId は Phase 5 まで閉じた union のままなので、任意の識別子で試験用の Attractor を
-// 組むにはここでのアサーションが要る(Phase 5 で AttractorId を string へ開いたら不要になる)。
+// 試験用の Attractor を組む。質点(degree2 なし)・非恒星・半径0で、重力の寄与だけを見る。
 function makeAttractor(id: string, mu: number, state: KinematicState): Attractor {
   return { id, mu, radius: 0, state, degree2: null, isStar: false };
 }
@@ -153,19 +152,20 @@ export function register(): void {
       makeAttractor('asteroid-1', 1e12, kinematicState(0, v3(R_EARTH + 450e3, 2e4, 0), ZERO)),
     ];
 
-    // stepActual(Simulator)/stepPredicted(Predictor) は解析天体 + 小惑星を合流させた集合を
-    // 絞り込む。PlanArc は解析天体だけを絞り込む(小惑星は合流させない、§2-10)。
-    const forStepActual = relevantAttractors(r, [...bodies, ...dynamic], negligibleAccel);
-    const forStepPredicted = relevantAttractors(r, [...bodies, ...dynamic], negligibleAccel);
-    const forPlanArc = relevantAttractors(r, bodies, negligibleAccel);
+    // 3経路(stepActual/stepPredicted/PlanArc.update)はいずれも「解析天体 + 重力を持つ
+    // 生存中の GameEntity」を合流させた同じ候補集合を絞り込む。1つでも別の集合を使うと
+    // 計画線・予測線が実際の軌道からずれる。
+    const candidates = [...bodies, ...dynamic];
+    const forStepActual = relevantAttractors(r, candidates, negligibleAccel);
+    const forStepPredicted = relevantAttractors(r, candidates, negligibleAccel);
+    const forPlanArc = relevantAttractors(r, candidates, negligibleAccel);
 
     assert.deepEqual(forStepActual.map((a) => a.id), forStepPredicted.map((a) => a.id),
-      '積分経路と予測経路は同じ候補集合に対して同じ結果を返す');
-    assert.ok(forPlanArc.every((a) => bodies.some((b) => b.id === a.id)),
-      '計画経路の結果は解析天体のみで構成される');
-    assert.deepEqual(forPlanArc.map((a) => a.id),
-      relevantAttractors(r, bodies, negligibleAccel).map((a) => a.id),
-      '同じ候補集合・同じしきい値なら計画経路は毎回同じ結果を返す');
+      '積分経路と予測経路は同じ結果を返す');
+    assert.deepEqual(forPlanArc.map((a) => a.id), forStepActual.map((a) => a.id),
+      '計画経路も同じ結果を返す');
+    assert.ok(forPlanArc.some((a) => a.id === 'asteroid-1'),
+      '近傍の小惑星は計画経路の重力源にも含まれる');
   });
 
   test('n-body: 地球+小惑星で艦を積分すると、小惑星の質量→0の極限で小惑星なしの結果に収束する', () => {
@@ -193,5 +193,29 @@ export function register(): void {
     // 摂動は小惑星の質量にほぼ線形に比例するので、質量を1/100にすれば差も概ね1/100になる。
     assert.ok(diffSmaller < diffSmall / 10,
       `質量→0の極限でベースラインへ収束する: diffSmall=${diffSmall}, diffSmaller=${diffSmaller}`);
+  });
+
+  // 重力窓の候補集合は「近づける天体」を人が選んだものではなく mu を持つ全天体で、実際に効く
+  // 天体は relevantAttractors が位置から決める。したがって候補集合に遠方の天体を足しても
+  // 積分結果は機械精度で変わらない — この不変性が、候補を静的フラグで絞らなくてよい根拠。
+  test('n-body: 候補集合へ遠方の天体を足しても、絞り込みを通せば軌道は機械精度で変わらない', () => {
+    const earth = makeAttractor('earth', MU_EARTH, kinematicState(0, ZERO, ZERO));
+    const shipR0 = v3(R_EARTH + 420e3, 0, 0);
+    const ship0 = kinematicState(0, shipR0, v3(0, Math.sqrt(MU_EARTH / (R_EARTH + 420e3)), 0));
+    // 地球近傍での寄与が GRAVITY_NEGLIGIBLE_ACCEL(1e-10 m/s²)を確実に下回る遠方天体。
+    const distant = [1, 2, 3, 4, 5].map((i) =>
+      makeAttractor(`distant-${i}`, 1e12, kinematicState(0, v3(i * 1e13, 0, 0), ZERO)));
+    const negligibleAccel = 1e-10;
+
+    const integrate = (candidates: readonly Attractor[]): KinematicState => {
+      let s = ship0;
+      for (let i = 0; i < 200; i++) s = stepFree(s, 1, relevantAttractors(s.r, candidates, negligibleAccel));
+      return s;
+    };
+
+    const narrow = integrate([earth]);
+    const wide = integrate([earth, ...distant]);
+    assert.deepEqual(wide.r, narrow.r, '候補集合を広げても位置が一致する');
+    assert.deepEqual(wide.v, narrow.v, '候補集合を広げても速度が一致する');
   });
 }
