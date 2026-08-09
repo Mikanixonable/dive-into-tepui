@@ -258,8 +258,9 @@ export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見�
 
 // --- 軌道計画モード([M]) ---
 export const OVERVIEW_CAMERA_MIN_DIST = 1e5; // 広範囲視点カメラの注視点までの距離 [m]
-// 太陽地球系のラグランジュ点 L1/L2(約1.5e9m)まで視界に収められる引きの上限。
-export const OVERVIEW_CAMERA_MAX_DIST = 1e13;
+// 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
+// 視界に収められる引きの上限。
+export const OVERVIEW_CAMERA_MAX_DIST = 1e14;
 // 広範囲視点の near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
 // (near = dist / OVERVIEW_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
 // 手前がクリップされにくくなる代わりに、24bit 深度バッファの分解能が落ちる。
@@ -276,7 +277,7 @@ export const OVERVIEW_CAMERA_FAR_MIN = 1.5e10;
 // OVERVIEW_CAMERA_MAX_DIST × OVERVIEW_CAMERA_FAR_RATIO と等しい値。これより小さいと
 // 最大ズームアウト付近で far = dist × FAR_RATIO の比例則がこの上限に張り付いてしまい、
 // 注視点より奥にある軌道線・天体が far 平面でクリップされる。
-export const OVERVIEW_CAMERA_FAR_MAX = 1e15;
+export const OVERVIEW_CAMERA_FAR_MAX = 1e16;
 // 星球シェル・天球グリッドの表示半径。マップの広範囲視点カメラの far は dist に連動して
 // 毎フレーム変わるため、そこに結びつけると星殻半径も毎フレーム変動してしまう。
 // far とは独立に固定する。
