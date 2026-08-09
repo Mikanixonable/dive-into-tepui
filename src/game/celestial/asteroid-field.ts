@@ -24,6 +24,9 @@ export class AsteroidField {
   // ラウンドロビン更新で次に引き直す点の添字。
   private cursor = 0;
   private sunPos: Vec3 = v3(0, 0, 0);
+  // 初回の update だけは全点を評価する — ラウンドロビンに任せると、マップを開いた直後の
+  // 数フレームは未評価の点(太陽中心の零ベクトル)が太陽位置に固まって描かれる。
+  private primed = false;
 
   // 点群を生成し、描画用の InstancedMesh を組む。
   constructor() {
@@ -50,7 +53,8 @@ export class AsteroidField {
     if (!overviewMode) return;
     this.sunPos = ephemeris.positionOf('sun', t);
     const n = this.elements.length;
-    const count = Math.ceil(n / UPDATE_FRACTION);
+    const count = this.primed ? Math.ceil(n / UPDATE_FRACTION) : n;
+    this.primed = true;
     for (let i = 0; i < count; i++) {
       const idx = (this.cursor + i) % n;
       this.positions[idx] = asteroidPositionAt(this.elements[idx]!, t);

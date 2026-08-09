@@ -263,7 +263,9 @@ export const OVERVIEW_CAMERA_FAR_MAX = 1e13;
 // 星球シェル・天球グリッドの表示半径。マップの広範囲視点カメラの far は dist に連動して
 // 毎フレーム変わるため、そこに結びつけると星殻半径も毎フレーム変動してしまう。
 // far とは独立に固定する。
-export const CELESTIAL_SHELL_RADIUS = 1.5e10;
+// far の下限(OVERVIEW_CAMERA_FAR_MIN)より 10% 内側に取る — 等しいと最小ズームで
+// 殻のジオメトリが far 平面上に乗り、視線方向の星・グリッドがクリップされる。
+export const CELESTIAL_SHELL_RADIUS = 1.35e10;
 export const NODE_DV_RATE = 300; // Δv 調整速度 [m/s per 実秒]
 export const NODE_DV_RATE_FINE = 30; // 微調整モード時
 export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
