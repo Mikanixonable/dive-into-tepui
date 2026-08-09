@@ -190,13 +190,20 @@ export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
 export const CASING_MASS = 1; // 薬莢の物理接触用の質量(実物同様に軽い)
 export const MAX_BULLETS = 400;
 export const MAX_CASINGS = 260;
-export const MAX_DEBRIS = 160;
+export const MAX_DEBRIS = 600;
 
 // --- 小惑星(Asteroid、試験配置用) ---
 // 岩石密度(~1900kg/m^3)で半径 ASTEROID_TEST_RADIUS の球とおおよそ整合する質量。
 export const ASTEROID_TEST_MASS = 1e15; // [kg]
 export const ASTEROID_TEST_RADIUS = 5000; // [m]
-export const MAX_ASTEROIDS = 20;
+export const MAX_ASTEROIDS = 60;
+
+// --- 高負荷デバッグステージ(stage-debug-load.ts)---
+export const DEBUG_LOAD_ASTEROID_COUNT = 50;
+export const DEBUG_LOAD_DEBRIS_COUNT = 500;
+export const DEBUG_LOAD_PLACEMENT_MIN_DIST = 20000; // 自機からの配置距離下限 [m]
+export const DEBUG_LOAD_PLACEMENT_MAX_DIST = 200000; // 自機からの配置距離上限 [m]
+export const DEBUG_LOAD_RNG_SEED = 20260810;
 
 // --- 被弾・撃破エフェクト(フラッシュ/破片) ---
 export const BULLET_HIT_FLASH_SIZE0 = 1.5;
