@@ -251,3 +251,25 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 
 逆に、**参照が1箇所しかなくても分割する**のは、一般化した側を今後使う可能性があるとき、および
 巨大な責務を切り分けるとき。
+
+## 15. 天体の自転軸・自転位相は重力場の付属物ではない
+
+**「天体がどこにいるか」「天体がどちらを向いているか」「重力場がどう効くか」は3つの別の問い**で、
+それぞれ別の場所に置く。
+
+- **自転軸・自転位相のモデル(`PoleModel`)は `CelestialBodyDef` 直下の `pole?: PoleModel`**
+  (`solar-system.ts`)に置く。`Degree2GravityDef`(同じく `solar-system.ts`)は j2/c22/refRadius
+  という重力場の係数だけを持ち、`PoleModel` を持たない。理由は、自転軸を持つが2次重力場は持たない
+  天体(水金火天海の5惑星 — `'iau'` の pole はあるが `degree2` は無い)が実在し、逆に重力場だけ持って
+  自転を表示しない天体があってもよいはずだからで、どちらか一方に従属させると片方だけの天体を
+  型で表現できなくなる。
+- **時刻ごとの実ベクトルへ解決するのは `ephemeris.ts` の仕事。** `Ephemeris.poleAt(id, t)` が
+  `PoleModel.kind` だけで分岐する唯一の解決経路(`private orientationOf`)を通り、公開 API として
+  自転軸・位相を返す。`private degree2At` の重力場側 pole/長軸解決も同じ `orientationOf` を必ず
+  経由する — 表示側の自転軸と重力場側の pole が別の式で計算されて食い違う、という事故はこの一本化で
+  構造的に起こらない。
+- **姿勢を実際にメッシュへ書き込むのは `game/celestial/sphere-body.ts` の仕事。** `SphereBody.sync`
+  は `Ephemeris.poleAt` の結果を `physics/body-orientation.ts` の `spinOrientation(axis, spinAngle)`
+  に渡してクォータニオンを得るだけで、`Object3D.lookAt` のような「見た目だけ合わせる」上書きは
+  一切行わない — 月の潮汐固定も、同期回転の自転位相(`spinPhaseOf` が平均黄経の反対方向から導出)が
+  正しく効いた結果として現れるべきもので、`SphereBody` 側で親の方向を向かせて再現するものではない。
