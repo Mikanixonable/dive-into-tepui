@@ -114,7 +114,7 @@ export function register(): void {
     assert.ok(Math.abs(half - expected) / expected < 1e-6, `半周期の飛行時間: ${half} vs ${expected}`);
   });
 
-  test('ephemeris: attractorsAt は同一 t を引くたび同じ値を返す(メモ化なしでも値は再現する)', () => {
+  test('ephemeris: attractorsAt は同一 t を引くたび同じ値を返す', () => {
     const ephemeris = new Ephemeris({ earth: 0.1, moon: 0.2 });
     const a = ephemeris.attractorsAt(1000);
     const b = ephemeris.attractorsAt(1000);
@@ -125,13 +125,15 @@ export function register(): void {
     const ephemeris = new Ephemeris({ earth: 0.1, moon: 0.2 });
     const attractors = ephemeris.attractorsAt(5000);
     assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'jupiter', 'sun']);
-    assert.deepEqual(attractors[0]!.state.r, ZERO, '地球は原点に静止');
-    assert.deepEqual(attractors[1]!.state.r, ephemeris.positionOf('moon', 5000));
-    assert.deepEqual(attractors[2]!.state.r, ephemeris.positionOf('jupiter', 5000));
-    assert.deepEqual(attractors[3]!.state.r, ephemeris.positionOf('sun', 5000));
-    assert.equal(attractors[0]!.mu, MU_EARTH);
-    assert.equal(attractors[1]!.mu, MU_MOON);
-    assert.equal(attractors[3]!.mu, MU_SUN);
-    assert.equal(attractors[3]!.radius, R_SUN);
+    // 天体を1つ挿入しても静かに別天体を指さないよう、添字ではなく id で引く。
+    const byId = (id: string) => attractors.find((b) => b.id === id)!;
+    assert.deepEqual(byId('earth').state.r, ZERO, '地球は原点に静止');
+    assert.deepEqual(byId('moon').state.r, ephemeris.positionOf('moon', 5000));
+    assert.deepEqual(byId('jupiter').state.r, ephemeris.positionOf('jupiter', 5000));
+    assert.deepEqual(byId('sun').state.r, ephemeris.positionOf('sun', 5000));
+    assert.equal(byId('earth').mu, MU_EARTH);
+    assert.equal(byId('moon').mu, MU_MOON);
+    assert.equal(byId('sun').mu, MU_SUN);
+    assert.equal(byId('sun').radius, R_SUN);
   });
 }

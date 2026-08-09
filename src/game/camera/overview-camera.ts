@@ -89,7 +89,7 @@ export class OverviewCamera {
       OVERVIEW_CAMERA_FOV,
       window.innerWidth / window.innerHeight,
       this.near,
-      C.OVERVIEW_CAMERA_FAR,
+      this.far,
     );
   }
 
@@ -102,6 +102,12 @@ export class OverviewCamera {
   // 注視点を切り落とさずに深度分解能を保つ(OVERVIEW_CAMERA_NEAR_RATIO 参照)。
   get near(): number {
     return this.dist / C.OVERVIEW_CAMERA_NEAR_RATIO;
+  }
+
+  // CameraSystem.sync が読む遠クリップ距離。dist に比例させることで、引いたカメラでも
+  // 太陽・木星のような遠方天体が far の外に出て消えない(OVERVIEW_CAMERA_FAR_RATIO 参照)。
+  get far(): number {
+    return Math.min(C.OVERVIEW_CAMERA_FAR_MAX, Math.max(C.OVERVIEW_CAMERA_FAR_MIN, this.dist * C.OVERVIEW_CAMERA_FAR_RATIO));
   }
 
   // 現在のフォーカス対象がクランプ後も表面下にめり込まない最小注視距離。
