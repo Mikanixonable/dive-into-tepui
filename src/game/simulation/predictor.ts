@@ -6,7 +6,7 @@ import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
 import { Attractor, localOrbitPeriod } from '../../physics/attractor';
-import { mergeAttractors } from './gravity-attractors';
+import { gravityBodiesAt, mergeAttractors } from './attractors';
 
 export class Predictor {
   private cursor = 0;
@@ -77,7 +77,7 @@ export class Predictor {
       // 刻み幅は「その場の周期の等分」と「ホライズン全体をステップ上限で割った値」の粗い方。
       // 後者があるので、表示期間を年スケールにしてもステップ数が有界に収まる。
       const tipState = e.predictedTrajectory?.state ?? e.state;
-      const attractors = mergeAttractors(this.ephemeris.gravityAttractorsAt(tipState.t), dynamic);
+      const attractors = mergeAttractors(gravityBodiesAt(this.ephemeris, tipState.t), dynamic);
       const dt = Math.max(
         C.PREDICT_MIN_STEP_DT,
         localOrbitPeriod(tipState.r, attractors) / C.PREDICT_STEPS_PER_REV,
