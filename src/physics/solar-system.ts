@@ -245,6 +245,21 @@ const NEPTUNE_POLE: IauPole = {
   dec0Deg: 43.46, dec1DegPerCentury: 0.0,
   w0Deg: 249.978, wRateDegPerDay: 541.1397757,
 };
+// 天王星は自転軸が黄道に対し 97.8° 横倒しになっている。ここで求まる equatorBasis は
+// 天王星の赤道面基準であって黄道面基準ではないので、以下の衛星の傾斜角を黄道基準の値と
+// 読み替えないこと(横倒しの軸まわりでは両者が大きく異なる)。
+const URANUS_POLE: IauPole = {
+  kind: 'iau',
+  ra0Deg: 257.311, ra1DegPerCentury: 0.0,
+  dec0Deg: -15.175, dec1DegPerCentury: 0.0,
+  w0Deg: 203.81, wRateDegPerDay: -501.1600928,
+};
+const PLUTO_POLE: IauPole = {
+  kind: 'iau',
+  ra0Deg: 132.993, ra1DegPerCentury: 0.0,
+  dec0Deg: -6.163, dec1DegPerCentury: 0.0,
+  w0Deg: 302.695, wRateDegPerDay: 56.3625225,
+};
 
 // 赤経・赤緯で与えた極が張る面を基準面とする回転。
 function poleBasis(raDeg: number, decDeg: number): Quat {
@@ -254,8 +269,14 @@ function poleBasis(raDeg: number, decDeg: number): Quat {
 // 惑星の赤道面を基準面とする回転。極の一次項は世紀あたり 0.11° 以下なので元期の極で固定する
 // (「衛星の軌道面が親の赤道面に対して静止している」という近似そのものが、内側衛星の
 // ラプラス面 ≈ 惑星赤道面という近似と同程度の粗さで、極のこの緩やかな動きはその中に埋もれる)。
+// **IAU の「北極」は太陽系の不変面の北側にある方の極という定義で、自転角運動量の向きではない** —
+// 逆行自転する天体(自転位相 W が減る = wRateDegPerDay < 0。天王星・金星)では両者が反対を向く。
+// 規則衛星は親の自転と同じ向きに公転するので、基準面の極には角運動量の側を取る必要がある。
 function equatorBasis(pole: IauPole): Quat {
-  return poleBasis(pole.ra0Deg, pole.dec0Deg);
+  const retrograde = pole.wRateDegPerDay < 0;
+  return retrograde
+    ? poleBasis(pole.ra0Deg + 180, -pole.dec0Deg)
+    : poleBasis(pole.ra0Deg, pole.dec0Deg);
 }
 
 // 木星系・土星系の衛星の基準面である局所ラプラス面の極(出典: JPL Solar System Dynamics
@@ -909,16 +930,60 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: -0.00004397,
       aRatePerCenturyAu: -0.00196176,
     }),
-    pole: {
-      kind: 'iau',
-      ra0Deg: 257.311,
-      ra1DegPerCentury: 0.0,
-      dec0Deg: -15.175,
-      dec1DegPerCentury: 0.0,
-      w0Deg: 203.81,
-      wRateDegPerDay: -501.1600928,
-    },
+    pole: URANUS_POLE,
     rings: URANUS_RINGS,
+  },
+  // 天王星の主要衛星6個。基準面は天王星の赤道面(equatorBasis(URANUS_POLE))。
+  // 出典: JPL Solar System Dynamics 衛星平均要素表 / Planetary Satellite Physical Parameters。
+  puck: {
+    kind: 'satellite',
+    id: 'puck',
+    // GM は表に無い(6衛星中パックだけ未測定)。半径は Wikipedia "Puck (moon)" 経由
+    // (一次は Karkoschka 2001 の Voyager 2 画像解析、平均半径 81±2 km)。
+    mu: 0,
+    radius: 81e3,
+    planet: 'uranus',
+    orbit: jplSatelliteOrbit({ a: 86004e3, e: 0.000, incDeg: 0.3, periodDays: 0.761833, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(URANUS_POLE) }),
+  },
+  miranda: {
+    kind: 'satellite',
+    id: 'miranda',
+    mu: 4.3e9,
+    radius: 235.8e3,
+    planet: 'uranus',
+    orbit: jplSatelliteOrbit({ a: 129846e3, e: 0.001, incDeg: 4.4, periodDays: 1.413479, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(URANUS_POLE) }),
+  },
+  ariel: {
+    kind: 'satellite',
+    id: 'ariel',
+    mu: 83.5e9,
+    radius: 578.9e3,
+    planet: 'uranus',
+    orbit: jplSatelliteOrbit({ a: 190929e3, e: 0.001, incDeg: 0.0, periodDays: 2.520379, nodePeriodYears: 0, apsisPeriodYears: 28.901, basisToEci: equatorBasis(URANUS_POLE) }),
+  },
+  umbriel: {
+    kind: 'satellite',
+    id: 'umbriel',
+    mu: 85.1e9,
+    radius: 584.7e3,
+    planet: 'uranus',
+    orbit: jplSatelliteOrbit({ a: 265986e3, e: 0.004, incDeg: 0.1, periodDays: 4.144177, nodePeriodYears: 129.745, apsisPeriodYears: 64.126, basisToEci: equatorBasis(URANUS_POLE) }),
+  },
+  titania: {
+    kind: 'satellite',
+    id: 'titania',
+    mu: 226.9e9,
+    radius: 788.9e3,
+    planet: 'uranus',
+    orbit: jplSatelliteOrbit({ a: 436298e3, e: 0.002, incDeg: 0.1, periodDays: 8.705869, nodePeriodYears: 1644.649, apsisPeriodYears: 579.928, basisToEci: equatorBasis(URANUS_POLE) }),
+  },
+  oberon: {
+    kind: 'satellite',
+    id: 'oberon',
+    mu: 205.3e9,
+    radius: 761.4e3,
+    planet: 'uranus',
+    orbit: jplSatelliteOrbit({ a: 583511e3, e: 0.002, incDeg: 0.1, periodDays: 13.463237, nodePeriodYears: 192.798, apsisPeriodYears: 158.604, basisToEci: equatorBasis(URANUS_POLE) }),
   },
   neptune: {
     kind: 'planet',
@@ -1063,6 +1128,51 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0,
       aRatePerCenturyAu: 0,
     }),
+    pole: PLUTO_POLE,
+  },
+  // 冥王星の衛星5個。基準面は冥王星-カロン共通重心の赤道面(equatorBasis(PLUTO_POLE))。
+  // 出典は天王星衛星と同じ JPL Solar System Dynamics 表。歳差周期は5体とも未公開(=0)。
+  charon: {
+    kind: 'satellite',
+    id: 'charon',
+    mu: 106.1e9,
+    radius: 606.0e3,
+    planet: 'pluto',
+    orbit: jplSatelliteOrbit({ a: 19600e3, e: 0.000, incDeg: 0.0, periodDays: 6.387222, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
+  },
+  styx: {
+    kind: 'satellite',
+    id: 'styx',
+    // GM は上限値(< 0.0003 km^3/s^2)しか無く実測でないため 0 として扱う。
+    mu: 0,
+    radius: 5.2e3,
+    planet: 'pluto',
+    orbit: jplSatelliteOrbit({ a: 43200e3, e: 0.025, incDeg: 0.0, periodDays: 20.16, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
+  },
+  nix: {
+    kind: 'satellite',
+    id: 'nix',
+    mu: 0.0015e9,
+    radius: 18.0e3,
+    planet: 'pluto',
+    orbit: jplSatelliteOrbit({ a: 49300e3, e: 0.015, incDeg: 0.0, periodDays: 24.85, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
+  },
+  kerberos: {
+    kind: 'satellite',
+    id: 'kerberos',
+    // GM は上限値(< 0.0002 km^3/s^2)しか無く実測でないため 0 として扱う。
+    mu: 0,
+    radius: 6.0e3,
+    planet: 'pluto',
+    orbit: jplSatelliteOrbit({ a: 58300e3, e: 0.010, incDeg: 0.4, periodDays: 32.17, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
+  },
+  hydra: {
+    kind: 'satellite',
+    id: 'hydra',
+    mu: 0.0020e9,
+    radius: 18.5e3,
+    planet: 'pluto',
+    orbit: jplSatelliteOrbit({ a: 65200e3, e: 0.009, incDeg: 0.3, periodDays: 38.20, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
   },
   haumea: {
     kind: 'planet',
@@ -1087,6 +1197,28 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0,
       aRatePerCenturyAu: 0,
     }),
+  },
+  // ハウメアの衛星2個。基準面は黄道面 — JPL 系列(木星・土星・天王星・冥王星の各衛星)より
+  // 精度・基準面の一貫性が低い二次引用(一次は各々 Ratzka et al. 2007 / Wikipedia 経由)。
+  // 質量 [kg] から GRAVITATIONAL_CONSTANT で GM を導く(Asteroid エンティティと同じ手法)。
+  // 歳差周期は2体とも未公開(=0)。
+  hiiaka: {
+    kind: 'satellite',
+    id: 'hiiaka',
+    mu: GRAVITATIONAL_CONSTANT * 1.6e19,
+    radius: 185e3,
+    planet: 'haumea',
+    orbit: jplSatelliteOrbit({ a: 49371e3, e: 0.0542, incDeg: 77.394, periodDays: 49.462, nodePeriodYears: 0, apsisPeriodYears: 0 }),
+  },
+  namaka: {
+    kind: 'satellite',
+    id: 'namaka',
+    mu: GRAVITATIONAL_CONSTANT * 1.18e18,
+    radius: 75e3,
+    planet: 'haumea',
+    // 傾斜角 13° はハウメアの赤道面基準の値とされるが実測精度が粗いため、姉妹衛星ヒイアカと
+    // 同じ黄道面基準の近似値として扱う。
+    orbit: jplSatelliteOrbit({ a: 25506e3, e: 0.2179, incDeg: 13, periodDays: 18.2783, nodePeriodYears: 0, apsisPeriodYears: 0 }),
   },
   makemake: {
     kind: 'planet',
@@ -1129,6 +1261,15 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0,
       aRatePerCenturyAu: 0,
     }),
+  },
+  // エリスの衛星ディスノミア。基準面は黄道面(出典・扱いはハウメアの衛星と同じ)。
+  dysnomia: {
+    kind: 'satellite',
+    id: 'dysnomia',
+    mu: GRAVITATIONAL_CONSTANT * 8.2e19,
+    radius: 307.5e3,
+    planet: 'eris',
+    orbit: jplSatelliteOrbit({ a: 37273e3, e: 0.0062, incDeg: 61.59, periodDays: 15.785899, nodePeriodYears: 0, apsisPeriodYears: 0 }),
   },
   // 彗星核の μ/半径は観測が乏しく粗い推定値。
   halley: {
@@ -1227,6 +1368,15 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0,
       aRatePerCenturyAu: 0,
     }),
+  },
+  // クワオアーの衛星ウェイウォット。基準面は黄道面(出典・扱いはハウメアの衛星と同じ)。
+  weywot: {
+    kind: 'satellite',
+    id: 'weywot',
+    mu: GRAVITATIONAL_CONSTANT * 2.4e18,
+    radius: 72e3,
+    planet: 'quaoar',
+    orbit: jplSatelliteOrbit({ a: 13329e3, e: 0.01111, incDeg: 13.62, periodDays: 12.42727, nodePeriodYears: 0, apsisPeriodYears: 0 }),
   },
   chariklo: {
     kind: 'planet',
@@ -1372,6 +1522,15 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0,
       aRatePerCenturyAu: 0,
     }),
+  },
+  // オルクスの衛星ヴァンス。基準面は黄道面(出典・扱いはハウメアの衛星と同じ)。
+  vanth: {
+    kind: 'satellite',
+    id: 'vanth',
+    mu: GRAVITATIONAL_CONSTANT * 8.7e19,
+    radius: 221.25e3,
+    planet: 'orcus',
+    orbit: jplSatelliteOrbit({ a: 8999.8e3, e: 0.00091, incDeg: 90.54, periodDays: 9.539154, nodePeriodYears: 0, apsisPeriodYears: 0 }),
   },
   gonggong: {
     kind: 'planet',
@@ -1701,6 +1860,17 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0,
       aRatePerCenturyAu: 0,
     }),
+  },
+  // ディディモスの衛星ディモルフォス(DART 衝突前の値)。基準面は黄道面(出典・扱いは
+  // ハウメアの衛星と同じ)。i=169.3° は黄道基準の値で、順行(親の赤道面基準では逆向きに
+  // 見える)と混同しないこと — equatorBasis を渡していないのはその整合を保つため。
+  dimorphos: {
+    kind: 'satellite',
+    id: 'dimorphos',
+    mu: GRAVITATIONAL_CONSTANT * 5.0e9,
+    radius: 75.5,
+    planet: 'didymos',
+    orbit: jplSatelliteOrbit({ a: 1206, e: 0, incDeg: 169.3, periodDays: 0.4967, nodePeriodYears: 0, apsisPeriodYears: 0 }),
   },
   tempel1: {
     kind: 'planet',
