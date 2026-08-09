@@ -105,10 +105,15 @@ export class OverviewCamera {
 
   // CameraSystem.sync が読む近クリップ距離。dist に比例させることで、どのズーム段でも
   // 注視点を切り落とさずに深度分解能を保つ(OVERVIEW_CAMERA_NEAR_RATIO 参照)。
-  // 星球シェル・天球グリッドより大きくなって殻ごとクリップされないよう上限を設ける
-  // (OVERVIEW_CAMERA_NEAR_MAX 参照)。
+  // near クリップは光軸からの角度 θ の点を R·cosθ で切り詰める平面なので、画面対角の
+  // 半視野角(fov・aspect から求まる)での R·cosθ_diag を超えないようクランプし、
+  // 星球シェル・天球グリッドの周辺・四隅がクリップされないようにする。
   get near(): number {
-    return Math.min(C.OVERVIEW_CAMERA_NEAR_MAX, this.dist / C.OVERVIEW_CAMERA_NEAR_RATIO);
+    const halfV = THREE.MathUtils.degToRad(this.fov * 0.5);
+    const halfH = Math.atan(Math.tan(halfV) * window.innerWidth / window.innerHeight);
+    const halfDiag = Math.atan(Math.hypot(Math.tan(halfV), Math.tan(halfH)));
+    const nearMax = C.CELESTIAL_SHELL_RADIUS * Math.cos(halfDiag) * C.OVERVIEW_CAMERA_NEAR_SHELL_MARGIN;
+    return Math.min(nearMax, this.dist / C.OVERVIEW_CAMERA_NEAR_RATIO);
   }
 
   // CameraSystem.sync が読む遠クリップ距離。dist に比例させることで、引いたカメラでも
