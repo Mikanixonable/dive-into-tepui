@@ -24,10 +24,19 @@ export class RingView {
   private readonly thinBands: ThinBand[] = [];
 
   // rings は物理データ(半径は [m])、bodyRadius は本体メッシュと同じ「半径 1」単位への換算元、
-  // textureUrls は RingBandDef.texture の識別子から実アセット URL を引く表。
-  constructor(rings: RingSystemDef, bodyRadius: number, textureUrls: Readonly<Partial<Record<RingTextureId, string>>>) {
+  // textureUrls は RingBandDef.texture の識別子から実アセット URL を引く表、renderOrder は
+  // 半透明の環を本体より後に描くための値。THREE の描画順は Object3D ごとに独立していて
+  // 親から子へ伝播しないので、グループではなく帯のメッシュ1つ1つへ書く。
+  constructor(
+    rings: RingSystemDef,
+    bodyRadius: number,
+    textureUrls: Readonly<Partial<Record<RingTextureId, string>>>,
+    renderOrder: number,
+  ) {
     for (const band of rings.bands) {
-      this.group.add(this.buildBand(band, bodyRadius, textureUrls));
+      const built = this.buildBand(band, bodyRadius, textureUrls);
+      built.traverse((o) => { o.renderOrder = renderOrder; });
+      this.group.add(built);
     }
   }
 
