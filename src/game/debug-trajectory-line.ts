@@ -10,6 +10,7 @@
 import * as THREE from 'three/webgpu';
 import { ReferenceFrame } from '../physics/frame';
 import { KinematicState } from '../physics/kinematic-state';
+import { Attractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from './floating-origin';
 import { SampledLine, ScaleAtFn } from '../render/sampled-line';
@@ -44,7 +45,7 @@ export class DebugTrajectoryLine {
   // scale は折れ線の細分密度を決める画面スケール。
   sync(
     targets: readonly GameEntity[], frame: ReferenceFrame, simTime: number, ephemeris: Ephemeris,
-    fo: FloatingOrigin, scale: ScaleAtFn,
+    fo: FloatingOrigin, scale: ScaleAtFn, attractors: readonly Attractor[],
   ): void {
     if (!this.enabled) return;
 
@@ -66,8 +67,8 @@ export class DebugTrajectoryLine {
         ? cached.combined
         : [...currentSamples, ...predictedSamples];
       this.concatCache.set(entity, { current: currentSamples, predicted: predictedSamples, combined: samples });
-      line.syncGeometry(samples, frame, ephemeris, scale);
-      line.syncTransform(frame, simTime, ephemeris, fo);
+      line.syncGeometry(samples, frame, ephemeris, scale, attractors);
+      line.syncTransform(frame, simTime, ephemeris, fo, attractors);
       line.setVisible(true);
     }
     const alive = new Set(targets);

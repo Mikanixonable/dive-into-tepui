@@ -10,7 +10,8 @@ import { ReferenceFrame, FrameDir, toFrameDir, toInertialDir } from '../../physi
 import type { Ephemeris } from '../../physics/ephemeris';
 import { qFromAxisAngle, qRotate } from '../../physics/attitude';
 import { MapPickable } from '../map-pick';
-import { bodyDef, SOLAR_SYSTEM } from '../../physics/solar-system';
+import { Attractor } from '../../physics/attractor';
+import { bodyDef } from '../../physics/solar-system';
 
 const WORLD_UP = v3(0, 1, 0);
 const OVERVIEW_CAMERA_FOV = 50;
@@ -41,7 +42,10 @@ export class OverviewCamera {
   // カメラ視点を固定する座標系。
   private _cameraFrame: ReferenceFrame;
   private simTime = 0; // set cameraFrame の座標変換に使う
-  private _focus = 'earth';
+  // 最新の update 呼び出しが受け取った重力源一覧。reset/resetPan/cameraFrame setter は
+  // フレームの外(入力ハンドラ)から呼ばれるため、update と同じ値をここから読む。
+  private attractors: readonly Attractor[] = [];
+  private _focus: string;
   private _focusPos: Vec3 | null = null;
   private missingFocusFrames = 0;
   private lastResolvedFocus = v3();
@@ -63,7 +67,7 @@ export class OverviewCamera {
   }
 
   clearFocusIf(id: string): void {
-    if (this._focus === id) this.setFocus('earth');
+    if (this._focus === id) this.setFocus(this.ephemeris.originId);
   }
 
   viewpoint: Viewpoint = {
@@ -81,6 +85,7 @@ export class OverviewCamera {
     private readonly ephemeris: Ephemeris,
   ) {
     this._cameraFrame = ephemeris.inertialFrame;
+    this._focus = ephemeris.originId;
     const tf0 = this.ephemeris.frameTransformAt(this._cameraFrame, 0, []);
     this.offset_r = toFrameDir(tf0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST));
     this.pan_r = toFrameDir(tf0, v3());
@@ -113,19 +118,19 @@ export class OverviewCamera {
   // 現在のフォーカス対象がクランプ後も表面下にめり込まない最小注視距離。
   // フォーカスが天体でなければ通常の下限をそのまま使う。
   private get minDist(): number {
-    if (!(this._focus in SOLAR_SYSTEM)) return C.OVERVIEW_CAMERA_MIN_DIST;
-    return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, bodyDef(SOLAR_SYSTEM, this._focus).radius);
+    if (!(this._focus in this.ephemeris.registry)) return C.OVERVIEW_CAMERA_MIN_DIST;
+    return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, bodyDef(this.ephemeris.registry, this._focus).radius);
   }
 
   // カメラのロールのみを初期状態(ワールド上方)に戻す。
   reset(): void {
-    this.up_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime, []), WORLD_UP);
+    this.up_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime, this.attractors), WORLD_UP);
     this._hud.hint('マップ視点のロールをリセット');
   }
 
   // パン変位をゼロに戻す。
   resetPan(): void {
-    this.pan_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime, []), v3());
+    this.pan_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.simTime, this.attractors), v3());
   }
 
   // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は地球へ戻す。
@@ -134,7 +139,7 @@ export class OverviewCamera {
       this.lastResolvedFocus = this._focusPos;
       return this._focusPos;
     }
-    if (this._focus === 'earth') {
+    if (this._focus === this.ephemeris.originId) {
       this.missingFocusFrames = 0;
       this.lastResolvedFocus = v3();
       return this.lastResolvedFocus;
@@ -162,11 +167,11 @@ export class OverviewCamera {
   set cameraFrame(frame: ReferenceFrame) {
     const from = this._cameraFrame;
     if (frame === from) return;
-    const tfFrom = this.ephemeris.frameTransformAt(from, this.simTime, []);
+    const tfFrom = this.ephemeris.frameTransformAt(from, this.simTime, this.attractors);
     const offEci = toInertialDir(tfFrom, this.offset_r);
     const panEci = toInertialDir(tfFrom, this.pan_r);
     const upEci = toInertialDir(tfFrom, this.up_r);
-    const tfTo = this.ephemeris.frameTransformAt(frame, this.simTime, []);
+    const tfTo = this.ephemeris.frameTransformAt(frame, this.simTime, this.attractors);
     this.offset_r = toFrameDir(tfTo, offEci);
     this.pan_r = toFrameDir(tfTo, panEci);
     this.up_r = toFrameDir(tfTo, upEci);
@@ -182,10 +187,12 @@ export class OverviewCamera {
     dt: number,
     simTime: number,
     candidates: readonly MapPickable[],
+    attractors: readonly Attractor[],
   ): void {
     this.simTime = simTime;
+    this.attractors = attractors;
     const focus = this.resolveFocus(candidates);
-    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, simTime, []);
+    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, simTime, attractors);
     let offEci = toInertialDir(tf, this.offset_r);
     let panEci = toInertialDir(tf, this.pan_r);
     let upEci = toInertialDir(tf, this.up_r);

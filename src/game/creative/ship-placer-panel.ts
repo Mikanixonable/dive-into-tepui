@@ -3,13 +3,14 @@
 // 値から KinematicState を組み立てるのは物理側(stateFromOrbitalElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
 import { SegmentedControl, hudButton } from '../hud/buttons';
-import { ATTRACTOR_NAMES } from '../hud/frame-labels';
+import { celestialBodyName } from '../hud/frame-labels';
 import { CollinearPoint } from '../../physics/halo';
 import { AttractorId } from '../../physics/attractor';
-import { bodyDef, primaryOf, SOLAR_SYSTEM, MU_EARTH, R_EARTH, SIDEREAL_DAY, J2_EARTH } from '../../physics/solar-system';
+import { bodyDef, primaryOf, CelestialRegistry, SOLAR_SYSTEM, MU_EARTH, R_EARTH, SIDEREAL_DAY, J2_EARTH } from '../../physics/solar-system';
 import type { OrbitingId } from '../../physics/attractor';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
+import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 
 export type ObjectType = 'player' | 'enemy' | 'ammo' | 'base';
@@ -77,23 +78,21 @@ const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [
   ['periodEcc', '周期+離心率'],
 ];
 
-// ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙し、表示名を
-// 「中心天体名-自分の名」としてレジストリから組む。軌道要素指定の基準天体もこれを使う
-// (公転していない恒星を周回の中心には選べない)。
+// ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙する。軌道要素指定の基準天体も
+// これを使う(公転していない恒星を周回の中心には選べない)。
 // 重力源でない天体は、そこへ艦を置いても局所力学が成立しないので選択肢に出さない。
-const ORBITING_IDS = (Object.keys(SOLAR_SYSTEM) as AttractorId[])
-  .filter((id) => bodyDef(SOLAR_SYSTEM, id).kind !== 'star' && bodyDef(SOLAR_SYSTEM, id).gravitySource) as OrbitingId[];
+function orbitingIdsOf(registry: CelestialRegistry): readonly OrbitingId[] {
+  return Object.keys(registry).filter((id) => bodyDef(registry, id).kind !== 'star' && bodyDef(registry, id).gravitySource);
+}
 
-const ATTRACTOR_ITEMS: readonly (readonly [ReferenceAttractor, string])[] = ORBITING_IDS.map((id) => [id, ATTRACTOR_NAMES[id]!]);
-
-// 基地は敵の射程となる惑星近傍を避けるため、軌道要素指定の基準天体は月だけに絞る
-// (地球・木星は選択肢自体を出さない — placement-validation.ts の validateBaseReferenceFields と対にする)。
-const BASE_ATTRACTOR_ITEMS: readonly (readonly [ReferenceAttractor, string])[] = ATTRACTOR_ITEMS.filter(([id]) => id === 'moon');
-
-const LAGRANGE_SYSTEM_ITEMS: readonly (readonly [OrbitingId, string])[] = ORBITING_IDS.map((id) => {
-  const primary = primaryOf(SOLAR_SYSTEM, id) ?? 'sun';
-  return [id, `${ATTRACTOR_NAMES[primary]!}-${ATTRACTOR_NAMES[id]!}`] as const;
-});
+// 表示名を「中心天体名-自分の名」として ephemeris から組む(primaryOf で主星を解決する)。
+function lagrangeSystemItemsOf(ephemeris: Ephemeris, orbitingIds: readonly OrbitingId[]): readonly (readonly [OrbitingId, string])[] {
+  return orbitingIds.map((id) => {
+    const primary = primaryOf(ephemeris.registry, id);
+    const primaryName = primary === null ? celestialBodyName(id) : celestialBodyName(primary);
+    return [id, `${primaryName}-${celestialBodyName(id)}`] as const;
+  });
+}
 
 const LAGRANGE_POINT_ITEMS: readonly (readonly [CollinearPoint, string])[] = [
   ['L1', 'L1'],
@@ -346,6 +345,11 @@ export class ShipPlacerPanel {
   private readonly libAx: HTMLInputElement;
   private readonly libAz: HTMLInputElement;
   private readonly refreshPresets: () => void;
+  private readonly attractorItems: readonly (readonly [ReferenceAttractor, string])[];
+  // 基地は敵の射程となる惑星近傍を避けるため、軌道要素指定の基準天体は月だけに絞る
+  // (地球・木星は選択肢自体を出さない — placement-validation.ts の validateBaseReferenceFields と対にする)。
+  private readonly baseAttractorItems: readonly (readonly [ReferenceAttractor, string])[];
+  private readonly lagrangeSystemItems: readonly (readonly [OrbitingId, string])[];
   private readonly issueList: HTMLElement;
   private issueRows: readonly HTMLElement[] = [];
   private lastIssueKey = '';
@@ -358,8 +362,14 @@ export class ShipPlacerPanel {
   private lagrangePointValue: CollinearPoint = 'L1';
   private lagrangeOrbitKindValue: LagrangeOrbitKind = 'halo';
 
-  // 艦艇配置パネルの DOM を組み立て、root へ追加する。
-  constructor(root: HTMLElement) {
+  // 艦艇配置パネルの DOM を組み立て、root へ追加する。基準天体・ラグランジュ系の選択肢は
+  // ephemeris が実際に持つレジストリから組む。
+  constructor(root: HTMLElement, ephemeris: Ephemeris) {
+    const orbitingIds = orbitingIdsOf(ephemeris.registry);
+    this.attractorItems = orbitingIds.map((id) => [id, celestialBodyName(id)] as const);
+    this.baseAttractorItems = this.attractorItems.filter(([id]) => id === 'moon');
+    this.lagrangeSystemItems = lagrangeSystemItemsOf(ephemeris, orbitingIds);
+
     this.panel = document.createElement('div');
     this.panel.id = 'hud-shipplacer';
     this.panel.className = 'panel';
@@ -446,7 +456,7 @@ export class ShipPlacerPanel {
     refreshPresets: () => void;
   } {
     const elementsGroup = document.createElement('div');
-    const attractorControl = new SegmentedControl('基準天体', ATTRACTOR_ITEMS, (v) => {
+    const attractorControl = new SegmentedControl('基準天体', this.attractorItems, (v) => {
       this.attractorValue = v;
       attractorControl.setSelected(v);
       this.refreshPresets();
@@ -531,7 +541,7 @@ export class ShipPlacerPanel {
     libAz: HTMLInputElement;
   } {
     const lagrangeGroup = document.createElement('div');
-    const lagrangeSecondary = new SegmentedControl('系', LAGRANGE_SYSTEM_ITEMS, (v) => this.selectLagrangeSecondary(v));
+    const lagrangeSecondary = new SegmentedControl('系', this.lagrangeSystemItems, (v) => this.selectLagrangeSecondary(v));
     lagrangeSecondary.setSelected(this.lagrangeSecondaryValue);
     lagrangeGroup.appendChild(lagrangeSecondary.element);
     const lagrangePoint = new SegmentedControl('点', LAGRANGE_POINT_ITEMS, (v) => {
@@ -609,9 +619,9 @@ export class ShipPlacerPanel {
     this.objectType.setSelected(v);
     if (v === 'base') {
       if (this.attractorValue !== 'moon') this.attractorValue = 'moon';
-      this.attractor.setItems(BASE_ATTRACTOR_ITEMS);
+      this.attractor.setItems(this.baseAttractorItems);
     } else {
-      this.attractor.setItems(ATTRACTOR_ITEMS);
+      this.attractor.setItems(this.attractorItems);
     }
     this.attractor.setSelected(this.attractorValue);
     this.refreshPresets();
@@ -759,7 +769,7 @@ export class ShipPlacerPanel {
     } else if (preset?.kind === 'objectType') {
       this.selectObjectType(preset.objectType);
     } else if (preset?.kind === 'body') {
-      const allowed = this.objectTypeValue === 'base' ? BASE_ATTRACTOR_ITEMS : ATTRACTOR_ITEMS;
+      const allowed = this.objectTypeValue === 'base' ? this.baseAttractorItems : this.attractorItems;
       if (allowed.some(([id]) => id === preset.attractor)) {
         this.attractorValue = preset.attractor;
         this.attractor.setSelected(this.attractorValue);
