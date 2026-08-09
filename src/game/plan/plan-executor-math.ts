@@ -23,8 +23,18 @@ export function burnCutoffProjection(targetV: Vec3, currentV: Vec3, burnDir: Vec
 
 // 噴射方向 dv と平行にならない、姿勢整列の up 基準を選ぶ。動径方向 state.r を既定とし、
 // dv がそれとほぼ平行(ラジアル方向のバーン)なら軌道面法線(orbitAxes(state).nrm)へ切り替える —
-// 法線は定義上 r と直交するので、dv が両方に同時に平行になることはない。
+// 法線は定義上 r と直交するので、dv が両方に同時に平行になることはない。しきい値は
+// qFromForwardUp が数値的に不安定になり始める手前(cos ≈ 0.99、約8°)に余裕を持たせてある。
 export function burnUpReference(dv: Vec3, state: KinematicState): Vec3 {
-  const parallelToRadial = Math.abs(dot(norm(dv), norm(state.r))) > 1 - 1e-6;
+  const parallelToRadial = Math.abs(dot(norm(dv), norm(state.r))) > 0.99;
   return parallelToRadial ? orbitAxes(state).nrm : state.r;
+}
+
+// 角度 angleRad [rad] だけの姿勢転回に要る時間 [s]。加減速の対称なバンバン制御(最大角加速度
+// alpha で加速し切ったところで折り返して減速)を仮定した見積もりで、実際の PD 制御より
+// 少し長めに出る(PD は目標角速度で頭打ちにならないぶん速いことがある)ぶんには
+// 接近ウィンドウを狭めに倒さないので安全側。alpha が正でなければ有限時間で回頭できないので
+// Infinity。
+export function turnTimeFor(angleRad: number, alpha: number): number {
+  return alpha > 0 ? 2 * Math.sqrt(Math.abs(angleRad) / alpha) : Infinity;
 }
