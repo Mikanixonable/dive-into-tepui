@@ -1,12 +1,11 @@
 // 天体の見た目レジストリ: id から表示名と CelestialBody の生成関数を引く。
 // 天体の日本語表示名の定義元はここ1箇所 — 他のモジュールは必ずここを読む。
-import * as THREE from 'three/webgpu';
-import { bodyDef, CelestialRegistry, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
+import { bodyDef, CelestialRegistry, RingSystemDef, RingTextureId, ShapeDef, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
 import { AttractorId } from '../../physics/attractor';
 import { createMoon, MOON_VIS_DIST } from '../../render/stars';
+import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialBody } from './celestial-body';
 import { EarthBody } from './earth-body';
-import { createSolidRing, createTexturedRing } from '../../render/ring';
 import { SphereBody } from './sphere-body';
 import { PointBody, PointBrightness } from './point-body';
 import { SunBody } from './sun-body';
@@ -19,114 +18,174 @@ import saturnTextureUrl from '../../assets/2k_saturn.jpg';
 import uranusTextureUrl from '../../assets/2k_uranus.jpg';
 import neptuneTextureUrl from '../../assets/2k_neptune.jpg';
 import saturnRingTextureUrl from '../../assets/2k_saturn_ring_alpha.png';
+import phobosTextureUrl from '../../assets/2k_phobos.jpg';
+import ioTextureUrl from '../../assets/2k_io.jpg';
+import europaTextureUrl from '../../assets/2k_europa.jpg';
+import ganymedeTextureUrl from '../../assets/2k_ganymede.jpg';
+import callistoTextureUrl from '../../assets/2k_callisto.jpg';
+import titanTextureUrl from '../../assets/2k_titan.jpg';
 
 const PLANET_VIS_DIST = 5e7;
 
-// テクスチャ付き半径 1 の球メッシュを組み立てて返す(Solar System Scope 提供の実写テクスチャ)。
-function createTexturedSphereMesh(textureUrl: string): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(1, 48, 24);
-  const texture = new THREE.TextureLoader().load(textureUrl);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.MeshStandardMaterial({ map: texture, roughness: 1, metalness: 0 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;
-  return mesh;
-}
 
-// テクスチャ付き惑星のレジストリ項を、表示名とテクスチャ URL から組む。buildRing を渡すと
-// 環付きになる(半径は天体半径を 1 とする単位)。pointBrightness を渡すと戦闘ビューでの
-// 表示が PointBody の輝点スプライトになる(省略時は SphereBody の視距離圧縮球のまま)。
-function planetEntry(
-  id: SolarSystemId,
-  name: string,
-  textureUrl: string,
-  buildRing?: () => THREE.Object3D,
-  pointBrightness?: PointBrightness,
-): { readonly name: string; create(): CelestialBody } {
-  const buildMesh = () => createTexturedSphereMesh(textureUrl);
-  const radius = bodyDef(SOLAR_SYSTEM, id).radius;
+// RingBandDef.texture の識別子から実アセット URL を引く表 — 物理データ(solar-system.ts)は
+// 識別子だけを持ち、実アセットの解決はここが担う。
+const RING_TEXTURES: Readonly<Record<RingTextureId, string>> = { saturn: saturnRingTextureUrl };
+
+// テクスチャ付き惑星のレジストリ項を、表示名とテクスチャ URL から組む。rings(bodyDef から
+// そのまま渡す)があれば環付きになる。pointBrightness を渡すと戦闘ビューでの表示が
+// PointBody の輝点スプライトになる(省略時は SphereBody の視距離圧縮球のまま)。
+function planetEntry(id: SolarSystemId, name: string, textureUrl: string, pointBrightness?: PointBrightness): CelestialView {
+  const buildSurface = () => CelestialSurface.textured(textureUrl);
+  const def = bodyDef(SOLAR_SYSTEM, id);
   return {
     name,
     create: () =>
       pointBrightness === undefined
-        ? new SphereBody(id, buildMesh, radius, PLANET_VIS_DIST, buildRing)
-        : new PointBody(id, buildMesh, radius, pointBrightness, buildRing),
+        ? new SphereBody(id, buildSurface, def.radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id), RING_TEXTURES)
+        : new PointBody(id, buildSurface, def.radius, pointBrightness, shapeOf(id), ringsOf(id), RING_TEXTURES),
   };
 }
 
-// 天体半径を 1 とする単位で環の半径を測るための換算。
-function inRadii(id: SolarSystemId, meters: number): number {
-  return meters / bodyDef(SOLAR_SYSTEM, id).radius;
+// id の環(恒星と衛星は持たない)。shape と同じく、判別を1箇所に閉じる。
+function ringsOf(id: SolarSystemId): RingSystemDef | undefined {
+  const def = bodyDef(SOLAR_SYSTEM, id);
+  return def.kind === 'planet' ? def.rings : undefined;
 }
 
-// 土星の環(D 環内縁 1.11 R〜A 環外縁 2.27 R)。カッシーニの間隙を含む内訳は
-// テクスチャのアルファが表す。
-function createSaturnRing(): THREE.Object3D {
-  return createTexturedRing(saturnRingTextureUrl, 1.11, 2.27);
-}
-
-// 天王星の環(ε 環ほかを 44,000〜51,000 km の 1 枚にまとめる)。
-function createUranusRing(): THREE.Object3D {
-  return createSolidRing(0x8899aa, 0.25, inRadii('uranus', 4.4e7), inRadii('uranus', 5.1e7));
-}
-
-// 海王星の Adams 環(62,930 km)と Le Verrier 環(53,200 km)。実際の環幅は数十 km
-// 以下で描いても見えないため、視認できる 500 km 幅へ誇張してある。
-function createNeptuneRings(): THREE.Object3D {
-  const group = new THREE.Group();
-  for (const radius of [5.32e7, 6.293e7]) {
-    group.add(createSolidRing(0x8899aa, 0.25, inRadii('neptune', radius - 2.5e5), inRadii('neptune', radius + 2.5e5)));
-  }
-  return group;
-}
-
-// 単色の球メッシュを組み立てて返す(テクスチャを持たない天体の見た目)。
-function createSolidSphereMesh(color: number): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(1, 32, 16);
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;
-  return mesh;
+// id の shape(星は持たない)。SOLAR_SYSTEM を引く箇所が皆この判別をせずに済むよう1箇所に閉じる。
+function shapeOf(id: SolarSystemId): ShapeDef | undefined {
+  const def = bodyDef(SOLAR_SYSTEM, id);
+  return def.kind === 'star' ? undefined : def.shape;
 }
 
 // 単色の衛星のレジストリ項を、表示名と色から組む。表示距離は月と揃える。
-function satelliteEntry(id: SolarSystemId, name: string, color: number): { readonly name: string; create(): CelestialBody } {
-  return { name, create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST) };
+function satelliteEntry(id: SolarSystemId, name: string, color: number): CelestialView {
+  return {
+    name,
+    create: () => new SphereBody(id, () => CelestialSurface.solid(color), bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST, shapeOf(id)),
+  };
+}
+
+// テクスチャ付き衛星のレジストリ項を、表示名とテクスチャ URL から組む(実写の全球モザイクが
+// 入手できた衛星のみ; それ以外は satelliteEntry の単色のまま)。表示距離は月と揃える。
+function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: string): CelestialView {
+  const buildSurface = () => CelestialSurface.textured(textureUrl);
+  return { name, create: () => new SphereBody(id, buildSurface, bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST, shapeOf(id)) };
 }
 
 // テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。表示距離は
 // テクスチャ付き惑星と揃える。
-function solidPlanetEntry(id: SolarSystemId, name: string, color: number): { readonly name: string; create(): CelestialBody } {
-  return { name, create: () => new SphereBody(id, () => createSolidSphereMesh(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST) };
+function solidPlanetEntry(id: SolarSystemId, name: string, color: number): CelestialView {
+  return {
+    name,
+    create: () => new SphereBody(id, () => CelestialSurface.solid(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id), RING_TEXTURES),
+  };
 }
 
-export const CELESTIAL_BODIES: Record<SolarSystemId, { readonly name: string; create(): CelestialBody }> = {
+export type CelestialView = { readonly name: string; create(): CelestialBody };
+
+export const CELESTIAL_BODIES: Record<SolarSystemId, CelestialView> = {
   earth: { name: '地球', create: () => new EarthBody() },
   moon: { name: '月', create: () => new SphereBody('moon', createMoon, bodyDef(SOLAR_SYSTEM, 'moon').radius, MOON_VIS_DIST) },
-  mercury: planetEntry('mercury', '水星', mercuryTextureUrl, undefined, 'medium'),
-  venus: planetEntry('venus', '金星', venusTextureUrl, undefined, 'bright'),
-  mars: planetEntry('mars', '火星', marsTextureUrl, undefined, 'medium'),
-  phobos: satelliteEntry('phobos', 'フォボス', 0x8a7a6a),
+  mercury: planetEntry('mercury', '水星', mercuryTextureUrl, 'medium'),
+  venus: planetEntry('venus', '金星', venusTextureUrl, 'bright'),
+  mars: planetEntry('mars', '火星', marsTextureUrl, 'medium'),
+  phobos: texturedSatelliteEntry('phobos', 'フォボス', phobosTextureUrl),
   deimos: satelliteEntry('deimos', 'ダイモス', 0x9a8a7a),
-  jupiter: planetEntry('jupiter', '木星', jupiterTextureUrl, undefined, 'bright'),
-  io: satelliteEntry('io', 'イオ', 0xd8c94a),
-  europa: satelliteEntry('europa', 'エウロパ', 0xcbb8a0),
-  ganymede: satelliteEntry('ganymede', 'ガニメデ', 0x8a7f73),
-  callisto: satelliteEntry('callisto', 'カリスト', 0x6e6258),
-  saturn: planetEntry('saturn', '土星', saturnTextureUrl, createSaturnRing, 'medium'),
-  titan: satelliteEntry('titan', 'タイタン', 0xc8912f),
-  uranus: planetEntry('uranus', '天王星', uranusTextureUrl, createUranusRing, 'faint'),
-  neptune: planetEntry('neptune', '海王星', neptuneTextureUrl, createNeptuneRings),
+  jupiter: planetEntry('jupiter', '木星', jupiterTextureUrl, 'bright'),
+  metis: satelliteEntry('metis', 'メティス', 0x6a6058),
+  adrastea: satelliteEntry('adrastea', 'アドラステア', 0x6a6058),
+  amalthea: satelliteEntry('amalthea', 'アマルテア', 0x8a5a4a),
+  thebe: satelliteEntry('thebe', 'テーベ', 0x6a6058),
+  io: texturedSatelliteEntry('io', 'イオ', ioTextureUrl),
+  europa: texturedSatelliteEntry('europa', 'エウロパ', europaTextureUrl),
+  ganymede: texturedSatelliteEntry('ganymede', 'ガニメデ', ganymedeTextureUrl),
+  callisto: texturedSatelliteEntry('callisto', 'カリスト', callistoTextureUrl),
+  himalia: satelliteEntry('himalia', 'ヒマリア', 0x7a6f60),
+  elara: satelliteEntry('elara', 'エララ', 0x8f7c6a),
+  ananke: satelliteEntry('ananke', 'アナンケ', 0x746a5e),
+  carme: satelliteEntry('carme', 'カルメ', 0x6a6058),
+  pasiphae: satelliteEntry('pasiphae', 'パシファエ', 0x807264),
+  sinope: satelliteEntry('sinope', 'シノーペ', 0x756658),
+  saturn: planetEntry('saturn', '土星', saturnTextureUrl, 'medium'),
+  pan: satelliteEntry('pan', 'パン', 0x6a6058),
+  daphnis: satelliteEntry('daphnis', 'ダフニス', 0x6a6058),
+  prometheus: satelliteEntry('prometheus', 'プロメテウス', 0x7a7068),
+  pandora: satelliteEntry('pandora', 'パンドラ', 0x7a7068),
+  epimetheus: satelliteEntry('epimetheus', 'エピメテウス', 0x8a8078),
+  janus: satelliteEntry('janus', 'ヤヌス', 0x8a8078),
+  mimas: satelliteEntry('mimas', 'ミマス', 0xc8c4bc),
+  enceladus: satelliteEntry('enceladus', 'エンケラドゥス', 0xe8e6e2),
+  tethys: satelliteEntry('tethys', 'テティス', 0xcfcbc3),
+  dione: satelliteEntry('dione', 'ディオネ', 0xc4c0b8),
+  rhea: satelliteEntry('rhea', 'レア', 0xd0ccc4),
+  titan: texturedSatelliteEntry('titan', 'タイタン', titanTextureUrl),
+  hyperion: satelliteEntry('hyperion', 'ヒペリオン', 0x9a8f7c),
+  iapetus: satelliteEntry('iapetus', 'イアペトゥス', 0x9c968c),
+  phoebe: satelliteEntry('phoebe', 'フェーベ', 0x6a625a),
+  uranus: planetEntry('uranus', '天王星', uranusTextureUrl, 'faint'),
+  puck: satelliteEntry('puck', 'パック', 0xa8a49c),
+  miranda: satelliteEntry('miranda', 'ミランダ', 0xc4c0ba),
+  ariel: satelliteEntry('ariel', 'アリエル', 0xd8d6d2),
+  umbriel: satelliteEntry('umbriel', 'ウンブリエル', 0xc0bcb8),
+  titania: satelliteEntry('titania', 'チタニア', 0xd0cec8),
+  oberon: satelliteEntry('oberon', 'オベロン', 0xc8c4bc),
+  neptune: planetEntry('neptune', '海王星', neptuneTextureUrl),
   triton: satelliteEntry('triton', 'トリトン', 0xd8ccc0),
+  nereid: satelliteEntry('nereid', 'ネレイド', 0x9a8f82),
   ceres: solidPlanetEntry('ceres', 'ケレス', 0x9a938c),
   vesta: solidPlanetEntry('vesta', 'ベスタ', 0x8a8378),
   pallas: solidPlanetEntry('pallas', 'パラス', 0x7a7a72),
   pluto: solidPlanetEntry('pluto', '冥王星', 0xc9b29a),
+  charon: satelliteEntry('charon', 'カロン', 0xd4d0ca),
+  styx: satelliteEntry('styx', 'ステュクス', 0x8a8078),
+  nix: satelliteEntry('nix', 'ニクス', 0x8a8078),
+  kerberos: satelliteEntry('kerberos', 'ケルベロス', 0x8a8078),
+  hydra: satelliteEntry('hydra', 'ヒドラ', 0x8a8078),
   haumea: solidPlanetEntry('haumea', 'ハウメア', 0xcccccc),
+  hiiaka: satelliteEntry('hiiaka', 'ヒイアカ', 0x8a8078),
+  namaka: satelliteEntry('namaka', 'ナマカ', 0x8a8078),
   makemake: solidPlanetEntry('makemake', 'マケマケ', 0xb08a6a),
   eris: solidPlanetEntry('eris', 'エリス', 0xd8d8d8),
+  dysnomia: satelliteEntry('dysnomia', 'ディスノミア', 0x8a8078),
   halley: solidPlanetEntry('halley', 'ハレー彗星', 0x666666),
   encke: solidPlanetEntry('encke', 'エンケ彗星', 0x666666),
+  sedna: solidPlanetEntry('sedna', 'セドナ', 0x8f8378),
+  quaoar: solidPlanetEntry('quaoar', 'クワオアー', 0xa89684),
+  weywot: satelliteEntry('weywot', 'ウェイウォット', 0x8a8078),
+  chariklo: solidPlanetEntry('chariklo', 'カリクロー', 0x9a8f80),
+  hygiea: solidPlanetEntry('hygiea', 'ヒギエア', 0x8c877e),
+  eros: solidPlanetEntry('eros', 'エロス', 0x9c8f74),
+  ryugu: solidPlanetEntry('ryugu', 'リュウグウ', 0x585048),
+  bennu: solidPlanetEntry('bennu', 'ベンヌ', 0x686058),
+  churyumov: solidPlanetEntry('churyumov', 'チュリュモフ・ゲラシメンコ彗星', 0x666666),
+  orcus: solidPlanetEntry('orcus', 'オルクス', 0x9a9aa0),
+  vanth: satelliteEntry('vanth', 'ヴァンス', 0x8a8078),
+  gonggong: solidPlanetEntry('gonggong', 'ゴンゴン', 0xa87860),
+  salacia: solidPlanetEntry('salacia', 'サラキア', 0x8890a0),
+  varuna: solidPlanetEntry('varuna', 'ヴァルナ', 0x8a8478),
+  ixion: solidPlanetEntry('ixion', 'イクシオン', 0x8c8074),
+  arrokoth: solidPlanetEntry('arrokoth', 'アロコス', 0xa85030),
+  chiron: solidPlanetEntry('chiron', 'キロン', 0x787268),
+  interamnia: solidPlanetEntry('interamnia', 'インテラムニア', 0x848078),
+  europa52: solidPlanetEntry('europa52', 'エウロパ (52)', 0x8a847a),
+  davida: solidPlanetEntry('davida', 'ダビダ', 0x827c72),
+  juno: solidPlanetEntry('juno', 'ジュノー', 0x968a7c),
+  psyche: solidPlanetEntry('psyche', 'プシケ', 0x726c66),
+  eunomia: solidPlanetEntry('eunomia', 'エウノミア', 0x9a8e78),
+  sylvia: solidPlanetEntry('sylvia', 'シルビア', 0x76706a),
+  itokawa: solidPlanetEntry('itokawa', 'イトカワ', 0xa89476),
+  apophis: solidPlanetEntry('apophis', 'アポフィス', 0x8e8a86),
+  didymos: solidPlanetEntry('didymos', 'ディディモス', 0x827e78),
+  dimorphos: satelliteEntry('dimorphos', 'ディモルフォス', 0x8a8078),
+  tempel1: solidPlanetEntry('tempel1', 'テンペル第1彗星', 0x666666),
+  wild2: solidPlanetEntry('wild2', 'ワイルド第2彗星', 0x666666),
+  hartley2: solidPlanetEntry('hartley2', 'ハートレー第2彗星', 0x666666),
+  cruithne: solidPlanetEntry('cruithne', 'クルースン', 0x746e64),
+  kamooalewa: solidPlanetEntry('kamooalewa', 'カモオアレワ', 0xa08e70),
+  tk7: solidPlanetEntry('tk7', '2010 TK7', 0x6c6660),
+  eureka: solidPlanetEntry('eureka', 'エウレカ', 0x907c5c),
   sun: { name: '太陽', create: () => new SunBody() },
 };
 
@@ -137,5 +196,5 @@ export function fallbackCelestialView(registry: CelestialRegistry, id: Attractor
   const def = bodyDef(registry, id);
   return def.kind === 'star'
     ? new SunBody(id, def.radius)
-    : new SphereBody(id, () => createSolidSphereMesh(0x888888), def.radius, def.kind === 'satellite' ? MOON_VIS_DIST : PLANET_VIS_DIST);
+    : new SphereBody(id, () => CelestialSurface.solid(0x888888), def.radius, def.kind === 'satellite' ? MOON_VIS_DIST : PLANET_VIS_DIST);
 }

@@ -34,7 +34,6 @@ const ALT_REGISTRY: CelestialRegistry = {
     id: PRIMARY_ID,
     mu: PRIMARY_MU,
     radius: PRIMARY_RADIUS,
-    gravitySource: true,
     orbit: ZERO_HELIOCENTRIC_ORBIT,
   },
   [MOON_ID]: {
@@ -42,7 +41,6 @@ const ALT_REGISTRY: CelestialRegistry = {
     id: MOON_ID,
     mu: 1e11,
     radius: 2e5,
-    gravitySource: true,
     planet: PRIMARY_ID,
     orbit: satelliteOrbit({
       a: 2e7, e: 0.05, incDeg: 10,
