@@ -327,7 +327,7 @@
     - [bodies(= CELESTIAL_BODIES 登録順の CelestialBody[])ごと] body.sync(fo, displayTime, cameraSystem, ephemeris)
       - EarthBody.sync() → earth.group.position / earth.setRotation() / earth.setSunDir() / earth.tick()
       - SunBody.sync() → billboard 位置(カメラ相対の圧縮距離)+ sunLight.position・intensity(setSunlit の lit 反映)
-      - SphereBody.sync()(月・水星・金星・火星・木星・土星・天王星・海王星) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。mesh.lookAt() は常に
+      - SphereBody.sync()(月・水星・金星・火星・木星・土星・天王星・海王星) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。姿勢は ephemeris.poleAt(id, displayTime) が非null なら spinOrientation(axis, spinAngle) をクォータニオンへ書き込み(lookAt は使わない)、pole モデルを持たない天体は姿勢を変更しない
     - ambient.intensity 更新 // lit から導出
     - syncStars() // starsMesh をカメラへ追従、overviewMode でさらに拡大
     - syncReferenceLines() → geoLine.sync() + [referenceLines の各 OrbitLine ごと] line.sync(orbitElementsFor(id, simTime), …) // !overviewMode ではすべて null 渡しで非表示

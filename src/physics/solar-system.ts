@@ -34,19 +34,29 @@ export function primaryOf(id: PlanetId | SatelliteId): AttractorId {
   return def.kind === 'satellite' ? def.planet : 'sun';
 }
 
-// 自転軸の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)、
+// 自転軸と自転位相の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)、
 // 'cassini' は同期回転する衛星のカッシーニ状態で、黄道に対する赤道の傾き obliquity [rad]
-// と軌道面法線から決まる。
+// と軌道面法線から軸が、親を向き続ける平均黄経方向から位相が決まる。'iau' は極の赤経・赤緯と
+// 自転位相 W をそれぞれ時刻の一次式で与える(周期項・高次項は扱わない)。'iau' の係数は
+// いずれも NAIF pck00011.tpc(WGCCRE 2015 準拠)の BODY_POLE_RA / BODY_POLE_DEC / BODY_PM。
 export type PoleModel =
   | { readonly kind: 'eciPole' }
-  | { readonly kind: 'cassini'; readonly obliquity: number };
+  | { readonly kind: 'cassini'; readonly obliquity: number }
+  | {
+      readonly kind: 'iau';
+      readonly ra0Deg: number;
+      readonly ra1DegPerCentury: number;
+      readonly dec0Deg: number;
+      readonly dec1DegPerCentury: number;
+      readonly w0Deg: number;
+      readonly wRateDegPerDay: number;
+    };
 
 // 2次の重力場の静的な記述。時刻ごとの自転軸・長軸の実ベクトルは ephemeris.ts が組む。
 export type Degree2GravityDef = {
   readonly j2: number;
   readonly c22: number; // 0 なら軸対称
   readonly refRadius: number; // 係数が定義された基準半径 [m]
-  readonly pole: PoleModel;
 };
 
 // 重力積分の対象にするかどうか。判定基準は「その天体の近傍にプレイヤーが存在しうるか」で、
@@ -63,6 +73,7 @@ export type CelestialBodyDef =
       readonly mu: number;
       readonly radius: number;
       readonly orbit: PlanetOrbit; // 中心は必ず恒星
+      readonly pole?: PoleModel; // 省略時は自転軸を持たない
       readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
     } & GravitySourceFlag)
   | ({
@@ -72,6 +83,7 @@ export type CelestialBodyDef =
       readonly radius: number;
       readonly planet: PlanetId; // 中心は必ず惑星
       readonly orbit: SatelliteOrbit;
+      readonly pole?: PoleModel;
       readonly degree2?: Degree2GravityDef;
     } & GravitySourceFlag);
 
@@ -155,8 +167,9 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: -0.00004392,
       aRatePerCenturyAu: 0.00000562,
     }),
+    pole: { kind: 'eciPole' },
     // 赤道断面の楕円性 C22 は J2 の約 1/690 しかないため軸対称として扱う。
-    degree2: { j2: J2_EARTH, c22: 0, refRadius: R_EARTH_EQ, pole: { kind: 'eciPole' } },
+    degree2: { j2: J2_EARTH, c22: 0, refRadius: R_EARTH_EQ },
   },
   moon: {
     kind: 'satellite',
@@ -179,13 +192,9 @@ export const SOLAR_SYSTEM = {
       latTerms: MOON_LAT_TERMS,
       distTerms: MOON_DIST_TERMS,
     }),
+    pole: { kind: 'cassini', obliquity: MOON_OBLIQUITY },
     // J2 に対する C22 の比が地球の約 1/690 に対して約 1/9 と大きく、軸対称近似が成り立たない。
-    degree2: {
-      j2: J2_MOON,
-      c22: C22_MOON,
-      refRadius: R_MOON_GRAVITY,
-      pole: { kind: 'cassini', obliquity: MOON_OBLIQUITY },
-    },
+    degree2: { j2: J2_MOON, c22: C22_MOON, refRadius: R_MOON_GRAVITY },
   },
   // 水星〜海王星の要素・永年変化率はいずれも JPL Standish "Keplerian Elements for Approximate
   // Positions of the Major Planets" Table 1(黄道基準・J2000、有効期間 1800–2050AD)。
@@ -212,6 +221,15 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0.00001906,
       aRatePerCenturyAu: 0.00000037,
     }),
+    pole: {
+      kind: 'iau',
+      ra0Deg: 281.0103,
+      ra1DegPerCentury: -0.0328,
+      dec0Deg: 61.4155,
+      dec1DegPerCentury: -0.0049,
+      w0Deg: 329.5988,
+      wRateDegPerDay: 6.1385108,
+    },
   },
   venus: {
     kind: 'planet',
@@ -233,6 +251,15 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: -0.00004107,
       aRatePerCenturyAu: 0.00000390,
     }),
+    pole: {
+      kind: 'iau',
+      ra0Deg: 272.76,
+      ra1DegPerCentury: 0.0,
+      dec0Deg: 67.16,
+      dec1DegPerCentury: 0.0,
+      w0Deg: 160.2,
+      wRateDegPerDay: -1.4813688,
+    },
   },
   mars: {
     kind: 'planet',
@@ -254,6 +281,15 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0.00007882,
       aRatePerCenturyAu: 0.00001847,
     }),
+    pole: {
+      kind: 'iau',
+      ra0Deg: 317.269202,
+      ra1DegPerCentury: -0.10927547,
+      dec0Deg: 54.432516,
+      dec1DegPerCentury: -0.05827105,
+      w0Deg: 176.049863,
+      wRateDegPerDay: 350.891982443297,
+    },
   },
   jupiter: {
     kind: 'planet',
@@ -275,6 +311,15 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: -0.00013253,
       aRatePerCenturyAu: -0.00011607,
     }),
+    pole: {
+      kind: 'iau',
+      ra0Deg: 268.056595,
+      ra1DegPerCentury: -0.006499,
+      dec0Deg: 64.495303,
+      dec1DegPerCentury: 0.002413,
+      w0Deg: 284.95,
+      wRateDegPerDay: 870.536,
+    },
   },
   saturn: {
     kind: 'planet',
@@ -296,6 +341,15 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: -0.00050991,
       aRatePerCenturyAu: -0.00125060,
     }),
+    pole: {
+      kind: 'iau',
+      ra0Deg: 40.589,
+      ra1DegPerCentury: -0.036,
+      dec0Deg: 83.537,
+      dec1DegPerCentury: -0.004,
+      w0Deg: 38.9,
+      wRateDegPerDay: 810.7939024,
+    },
   },
   uranus: {
     kind: 'planet',
@@ -317,6 +371,15 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: -0.00004397,
       aRatePerCenturyAu: -0.00196176,
     }),
+    pole: {
+      kind: 'iau',
+      ra0Deg: 257.311,
+      ra1DegPerCentury: 0.0,
+      dec0Deg: -15.175,
+      dec1DegPerCentury: 0.0,
+      w0Deg: 203.81,
+      wRateDegPerDay: -501.1600928,
+    },
   },
   neptune: {
     kind: 'planet',
@@ -338,6 +401,15 @@ export const SOLAR_SYSTEM = {
       eRatePerCentury: 0.00005105,
       aRatePerCenturyAu: 0.00026291,
     }),
+    pole: {
+      kind: 'iau',
+      ra0Deg: 299.36,
+      ra1DegPerCentury: 0.0,
+      dec0Deg: 43.46,
+      dec1DegPerCentury: 0.0,
+      w0Deg: 249.978,
+      wRateDegPerDay: 541.1397757,
+    },
   },
   sun: { kind: 'star', id: 'sun', mu: MU_SUN, radius: R_SUN, gravitySource: true },
 } satisfies Record<AttractorId, CelestialBodyDef>;

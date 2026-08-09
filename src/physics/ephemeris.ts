@@ -8,8 +8,8 @@
 // THREE/DOM 非依存の純関数群 + 状態(初期位相とメモ)を持つサンプラクラス。
 import { Quat, qRotate } from './attitude';
 import { Attractor, AttractorId, Degree2Gravity, OrbitingId, PlanetId, SatelliteId } from './attractor';
-import { cassiniSpinAxis, principalLongAxis } from './body-orientation';
-import { ECL_POLE_ECI } from './ecliptic';
+import { cassiniSpinAxis, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
+import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import { ReferenceFrame, FrameTransform } from './frame';
 import { FrameRotation, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
 import { LagrangePoints, lagrangePoints } from './lagrange';
@@ -17,10 +17,13 @@ import { planetAngles } from './planet-orbit';
 import { satelliteState } from './satellite-orbit';
 import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, add, addScaled, len, norm, sub, v3 } from './vec3';
+import { Vec3, add, addScaled, len, norm, scale, sub, v3 } from './vec3';
 
-// ECI の極軸(Y)。地球の自転軸はこの座標系の定義そのもの。
-const ECI_POLE: Vec3 = v3(0, 1, 0);
+// 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。
+export type BodyOrientation = { readonly axis: Vec3; readonly spinAngle: number };
+
+const JULIAN_CENTURY = 36525 * 86400; // [s]
+const DAY = 86400; // [s]
 
 // 全天体の軌道評価時刻へ一律に足す定数 [s]。要素の元期は J2000 のままにしたうえで、
 // simTime = 0 をゲーム開始にふさわしい瞬間 — 地球から見て太陽が +X 方向(昼側)にある、
@@ -270,24 +273,49 @@ export class Ephemeris {
     return { origin: origin.r, originVel: origin.v, q, omega };
   }
 
+  // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。自転軸を持たない天体は null。
+  // 位相は body-orientation.ts の基準方向(天体赤道と ECI 赤道の昇交点)から測る。
+  poleAt(id: AttractorId, t: number): BodyOrientation | null {
+    return this.orientationOf(bodyDef(id), t);
+  }
+
+  // poleAt の本体。分岐は PoleModel の分類だけで、固有名は持たない。
+  private orientationOf(def: CelestialBodyDef, t: number): BodyOrientation | null {
+    if (def.kind === 'star' || def.pole === undefined) return null;
+    const model = def.pole;
+    const te = t + EPOCH_T_OFFSET;
+    // 'eciPole' は ECI の極軸そのもの。位相の原点は春分点方向に取る。
+    if (model.kind === 'eciPole') return { axis: ECI_POLE, spinAngle: 0 };
+    if (model.kind === 'iau') {
+      const cy = te / JULIAN_CENTURY;
+      const axis = raDecToEci(
+        model.ra0Deg + model.ra1DegPerCentury * cy,
+        model.dec0Deg + model.dec1DegPerCentury * cy,
+      );
+      const w = (model.w0Deg + model.wRateDegPerDay * (te / DAY)) * (Math.PI / 180);
+      return { axis, spinAngle: w };
+    }
+    // 同期回転する衛星は、軌道面法線から傾いた自転軸のまわりで本初子午線が親を向き続ける。
+    // 一様自転する本初子午線は真黄経ではなく平均黄経を追うため、向きは真近点角では表せない。
+    const orbit = keplerOrbitOf(def);
+    const phase = this.phaseOf(def.id);
+    const axis = cassiniSpinAxis(ECL_POLE_ECI, keplerOrbitNormal(orbit, te, phase), model.obliquity);
+    const toPrimary = scale(keplerOrbitMeanDirection(orbit, te, phase), -1);
+    return { axis, spinAngle: spinPhaseOf(axis, toPrimary) };
+  }
+
   // 天体の2次重力場を時刻 t の姿勢込みで解決する。2次重力場を持たない天体は null。
-  // 自転軸は PoleModel の分類で決まり、同期回転する天体の長軸は自身の平均黄経方向 —
-  // 一様自転する本初子午線は真黄経ではなく平均黄経を追うため、真近点角ではこれを表せない。
+  // 主軸座標系の長軸は本初子午線と同じ向き(C22 項は2回対称なので符号は効かない)。
   private degree2At(def: CelestialBodyDef, t: number): Degree2Gravity | null {
     if (def.kind === 'star' || def.degree2 === undefined) return null;
+    const orientation = this.orientationOf(def, t);
+    if (orientation === null) return null;
     const model = def.degree2;
-    const orbit = keplerOrbitOf(def);
-    const te = t + EPOCH_T_OFFSET;
-    const phase = this.phaseOf(def.id);
-    // 軌道面法線は歳差するので、そこから組む自転軸も同じ周期で追従する。
-    const pole = model.pole.kind === 'eciPole'
-      ? ECI_POLE
-      : cassiniSpinAxis(ECL_POLE_ECI, keplerOrbitNormal(orbit, te, phase), model.pole.obliquity);
     const tesseral = model.c22 === 0 ? null : {
       c22: model.c22,
-      longAxis: principalLongAxis(pole, keplerOrbitMeanDirection(orbit, te, phase)),
+      longAxis: orthogonalizedTo(orientation.axis, meridianDirection(orientation.axis, orientation.spinAngle)),
     };
-    return { j2: model.j2, refRadius: model.refRadius, pole, tesseral };
+    return { j2: model.j2, refRadius: model.refRadius, pole: orientation.axis, tesseral };
   }
 
   // 指定時刻の全登録天体(SOLAR_SYSTEM の宣言順)。地球は原点に静止。遮蔽判定・表面接触・
