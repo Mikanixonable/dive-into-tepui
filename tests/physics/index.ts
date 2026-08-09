@@ -27,7 +27,7 @@ import { register as registerPlan } from './plan.test';
 import { register as registerHudLayout } from './hud-layout.test';
 import { register as registerShortcutHint } from './shortcut-hint.test';
 import { register as registerBodyVisibility } from './body-visibility.test';
-import { register as registerAsteroidBelt } from './asteroid-belt.test';
+import { register as registerPointField } from './point-field.test';
 import { register as registerTrajectoryFeatures } from './trajectory-features.test';
 import { register as registerNBody } from './n-body.test';
 import './creative-placement-validation.test';
@@ -59,7 +59,7 @@ registerHudLayout();
 registerBodyVisibility();
 registerShortcutHint();
 registerTrajectoryFeatures();
-registerAsteroidBelt();
+registerPointField();
 registerNBody();
 
 runAll();

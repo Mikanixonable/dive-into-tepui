@@ -501,12 +501,12 @@
   先頭で両方を求め直す。`sync` 側(`focusMarkers.syncLabels` / `navTarget.sync`)はその値を
   マーカーへ置くだけで、座標を求め直さない。
 - **`environment.update(displayTime, cameraSystem.overviewMode)` は `updateMapPresentation` の
-  最初(`editor.update` より前)、4経路すべてで呼ぶ**。小惑星帯・トロヤ群点群(`AsteroidField`)の
-  位置をラウンドロビンで再評価するだけで、`mapPicker.pickables` には一切寄与しない(点群は
-  ピック対象でも重力源でもない表示専用)。`!overviewMode` では即 return するので、コンバットビュー
-  では実質無視できるコスト。`sync` 側は `environment.sync` の中で `asteroidField.sync` を呼ぶ
-  ——`update` が引き直した点も引き直していない点も含め、浮動原点の移動ぶんだけ全インスタンス行列を
-  毎フレーム書き直す。
+  最初(`editor.update` より前)、4経路すべてで呼ぶ**。小惑星帯・トロヤ群・ヒルダ群・カイパーベルト・
+  散乱円盤の点群(`PointFieldView`)の位置を群ごとにラウンドロビンで再評価するだけで、
+  `mapPicker.pickables` には一切寄与しない(点群はピック対象でも重力源でもない表示専用)。
+  `!overviewMode` では即 return するので、コンバットビューでは実質無視できるコスト。`sync` 側は
+  `environment.sync` の中で `pointFieldView.sync` を呼ぶ——`update` が引き直した点も引き直して
+  いない点も含め、浮動原点の移動ぶんだけ全インスタンス行列を毎フレーム書き直す。
 - **`game.sync` は `dt` を受け取らない**。sync フェーズには進めるものが無い、というルールを
   シグネチャで見えるようにしてある。HUD パネルの書き換え間引きのような表示側の周期は
   `performance.now()` の期限で持つ。
