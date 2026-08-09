@@ -55,10 +55,12 @@ export function starOf(registry: CelestialRegistry): AttractorId | null {
   return star;
 }
 
-// 公転している天体(惑星・衛星)を、表示上の「親」— 衛星ならその惑星、惑星ならそのレジストリの
-// 恒星 — へ写す。レジストリに恒星が無ければ null(主星が0個の系)。
+// 天体を、表示上の「親」— 衛星ならその惑星、惑星ならそのレジストリの恒星 — へ写す。
+// 恒星自身は親を持たないので null(レジストリに恒星が無い場合も同じく null)。
+// null が階層の根であることを呼び出し側が使えるよう、恒星が自分自身を返すことはない。
 export function primaryOf(registry: CelestialRegistry, id: AttractorId): AttractorId | null {
   const def = bodyDef(registry, id);
+  if (def.kind === 'star') return null;
   return def.kind === 'satellite' ? def.planet : starOf(registry);
 }
 
