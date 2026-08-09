@@ -14,24 +14,25 @@ export abstract class Ship extends GameEntity {
   readonly predictsFuture = true;
 
   name: string;
-  radius: number; // 被弾判定半径 [m](剛体接触の collideRadius とは別)
+  hitRadius: number; // 被弾判定半径 [m](剛体接触の GameEntity.radius とは別)
   hp: number;
   maxHp: number;
   parts: Part[] = [];
 
-  // 名前・当たり判定半径・HP を初期化し、基底の状態/メッシュ/姿勢を構築する。
+  // 名前・被弾判定半径・HP を初期化し、基底の状態/メッシュ/姿勢を構築する。
   constructor(
     name: string,
     state: KinematicState,
     obj: THREE.Object3D,
     att: Attitude,
-    radius: number,
+    hitRadius: number,
     hp: number,
     scene?: THREE.Scene,
+    id?: string,
   ) {
-    super(state, obj, scene, att);
+    super(state, obj, scene, att, id);
     this.name = name;
-    this.radius = radius;
+    this.hitRadius = hitRadius;
     this.hp = hp;
     this.maxHp = hp;
     this.initDefaultParts();

@@ -3,7 +3,7 @@ import { Attractor, AttractorId, strongestAttractor } from '../../physics/attrac
 import { apsisAltitudes } from '../../physics/elements';
 import { dot, len, sub } from '../../physics/vec3';
 import type { GameEntity } from '../game-entity/game-entity';
-import { ATTRACTOR_NAMES } from './frame-labels';
+import { celestialBodyName } from './frame-labels';
 
 export interface OrbitInfo {
   centerId: AttractorId;
@@ -25,7 +25,7 @@ export function orbitInfo(entity: GameEntity, attractors: readonly Attractor[]):
   const apsis = el ? apsisAltitudes(el) : null;
   return {
     centerId: center.id,
-    centerName: ATTRACTOR_NAMES[center.id],
+    centerName: celestialBodyName(center.id),
     alt: len(sub(entity.state.r, center.state.r)) - center.radius,
     spd: len(entity.state.v),
     apAlt: apsis ? apsis.ap : NaN,

@@ -107,7 +107,6 @@ function totalAccel(
   penumbra: number,
 ): Vec3 {
   let ax = 0, ay = 0, az = 0;
-  let sun: Attractor | null = null;
   for (const attractor of attractors) {
     const g = attractorAccel(r, attractor);
     ax += g.x; ay += g.y; az += g.z;
@@ -117,11 +116,12 @@ function totalAccel(
       const d2 = degree2Accel(v3(r.x - b.x, r.y - b.y, r.z - b.z), attractor.mu, attractor.degree2);
       ax += d2.x; ay += d2.y; az += d2.z;
     }
-    if (attractor.id === 'sun') sun = attractor;
-  }
-  if (sun !== null && srpCoeff !== 0) {
-    const srp = srpAccel(r, sun, srpCoeff, sunlitFactor(r, norm(sun.state.r), penumbra));
-    ax += srp.x; ay += srp.y; az += srp.z;
+    // 恒星ぶんの輻射圧をすべて加算する(恒星0個なら寄与0)。
+    if (attractor.isStar && srpCoeff !== 0) {
+      const radiant = norm(attractor.state.r);
+      const srp = srpAccel(r, attractor, srpCoeff, sunlitFactor(r, radiant, penumbra));
+      ax += srp.x; ay += srp.y; az += srp.z;
+    }
   }
   const drag = dragAccel(r, v, bcInv);
   return v3(ax + drag.x, ay + drag.y, az + drag.z);

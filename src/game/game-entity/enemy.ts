@@ -54,7 +54,6 @@ function buildEnemyObj(enemyKind: EnemyKind, accent: string | number): THREE.Obj
 }
 
 export class Enemy extends Ship {
-  id?: string;
   accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
   readonly orbitLine: OrbitLine;
@@ -85,22 +84,23 @@ export class Enemy extends Ship {
     fx: EffectsSystem,
     waveId?: number,
     scene?: THREE.Scene,
+    id?: string,
   ) {
     const enemyObj = buildEnemyObj(enemyKind, accent);
-    super(name, state, enemyObj, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene);
+    super(name, state, enemyObj, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
     this._sfx = sfx;
     this._fx = fx;
     this.enemyKind = enemyKind;
     this.accent = accent;
     this.waveId = waveId;
     this.mass = 10000;
-    this.collideRadius = C.ENEMY_RADIUS;
+    this.collides = true;
     this.obj.scale.setScalar(C.ENEMY_SCALE);
     // 描画メッシュの実スケール後バウンディング球を、弾丸・物理接触の両判定に共有する。
     const visualBounds = new THREE.Box3().setFromObject(this.obj);
     const visualSphere = visualBounds.getBoundingSphere(new THREE.Sphere());
+    this.hitRadius = visualSphere.radius;
     this.radius = visualSphere.radius;
-    this.collideRadius = visualSphere.radius;
     // 自身の軌道線を作ってシーンへ登録する
     this.orbitLine = new OrbitLine(orbitLineColor, 0.35);
     scene?.add(this.orbitLine.line);
@@ -307,7 +307,7 @@ export class Enemy extends Ship {
   // セーブデータへ変換する。
   serialize(): EnemySaveData {
     return {
-      id: this.id ?? '',
+      id: this.id,
       name: this.name,
       kind: 'enemy',
       r: { ...this.state.r },
@@ -328,11 +328,10 @@ export class Enemy extends Ship {
   static restore(data: EnemySaveData, simTime: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene?: THREE.Scene): Enemy {
     const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
     const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: inertiaForEnemyKind(data.enemyKind) };
-    const enemy = new Enemy(data.name || '', state, data.enemyKind, att, data.health, data.accent, data.accent, hud, sfx, fx, data.waveId, scene);
+    const enemy = new Enemy(data.name || '', state, data.enemyKind, att, data.health, data.accent, data.accent, hud, sfx, fx, data.waveId, scene, data.id || undefined);
     enemy.restoreOverallHp(data.health);
     enemy.burstLeft = data.burstLeft;
     enemy.burstDelay = data.burstDelay;
-    enemy.id = data.id || undefined;
     enemy.alive = data.alive;
     if (!enemy.alive) {
       enemy.obj.visible = false;

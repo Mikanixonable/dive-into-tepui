@@ -9,7 +9,7 @@ import { orbitInfo, relativeInfo } from './hud/orbit-info';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem } from './hud/property-window';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
-import { ATTRACTOR_NAMES } from './hud/frame-labels';
+import { celestialBodyName } from './hud/frame-labels';
 import { MapPickable, pickNearest } from './map-pick';
 import { ObjectListPanel } from './object-list-panel';
 import type { Input } from './input/input';
@@ -26,10 +26,10 @@ import type { GameEntity } from './game-entity/game-entity';
 import { len, sub, v3 } from '../physics/vec3';
 import type { ObjectType } from './creative/ship-placer-panel';
 import type { KinematicState } from '../physics/kinematic-state';
-import { AttractorId, Attractor, orbitalElementsOf, strongestAttractor } from '../physics/attractor';
+import { Attractor, orbitalElementsOf, strongestAttractor } from '../physics/attractor';
 import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
-import { SOLAR_SYSTEM, bodyDef, primaryOf } from '../physics/solar-system';
+import { bodyDef, primaryOf } from '../physics/solar-system';
 
 interface PickHandler {
   itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[];
@@ -100,7 +100,7 @@ export class MapPicker {
     for (const enemy of this.entities.enemies) {
       if (!enemy.alive) continue;
       const pos = enemy.displayState(displayTime)?.r;
-      if (pos) items.push({ id: enemy.name, name: enemy.name, pos, kind: 'ship' });
+      if (pos) items.push({ id: enemy.id, name: enemy.name, pos, kind: 'ship' });
     }
     for (const ammo of this.entities.ammos) {
       if (!ammo.alive) continue;
@@ -273,7 +273,7 @@ export class MapPicker {
   private isTargetGone(target: MapPickable): boolean {
     switch (target.kind) {
       case 'player': return !(this.entities.findPlayer(target.id)?.alive ?? false);
-      case 'ship': return !(this.entities.enemies.find((e) => e.name === target.id)?.alive ?? false);
+      case 'ship': return !(this.entities.findEnemy(target.id)?.alive ?? false);
       case 'ammo': return !(this.entities.ammos.find((a) => a.id === target.id)?.alive ?? false);
       case 'base': return !(this.entities.findBase(target.id)?.alive ?? false);
       default: return !this.items.some((i) => this.windowKey(i) === this.windowKey(target));
@@ -289,12 +289,18 @@ export class MapPicker {
   private readonly handlers: Record<MapPickable['kind'], PickHandler> = {
     'body': {
       itemsFor: (target, simTime) => {
+        const registry = this.ephemeris.registry;
         let subLabel = '天体・ラグランジュ点';
-        if (target.id === 'earth') subLabel = '母星 (中心天体)';
+        const lagrangeMatch = target.id.match(/^(.+)-l[1-5]$/);
+        if (lagrangeMatch) {
+          const secondary = lagrangeMatch[1]!;
+          const primary = primaryOf(registry, secondary);
+          subLabel = primary === null
+            ? 'ラグランジュ点'
+            : `${celestialBodyName(primary)}-${celestialBodyName(secondary)} ラグランジュ点`;
+        } else if (target.id === this.ephemeris.originId) subLabel = '母星 (中心天体)';
         else if (target.id === 'moon') subLabel = '衛星 (月)';
-        else if (target.id === 'sun') subLabel = '恒星 (太陽)';
-        else if (target.id.startsWith('moon-l')) subLabel = '地球-月 ラグランジュ点';
-        else if (target.id.startsWith('earth-l')) subLabel = '太陽-地球 ラグランジュ点';
+        else if (target.id === this.ephemeris.starId) subLabel = `恒星 (${target.name})`;
         return [
           { type: 'header', label: target.name, subLabel },
           MenuCommon.focus(),
@@ -314,7 +320,7 @@ export class MapPicker {
       ],
       run: (act, target) => {
         if (act === 'delete') {
-          const enemy = this.entities.enemies.find(e => e.name === target.id);
+          const enemy = this.entities.findEnemy(target.id);
           if (enemy) enemy.alive = false;
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
@@ -377,7 +383,7 @@ export class MapPicker {
       itemsFor: (target, simTime) => {
         const eqTime = target.time;
         const isAn = target.id.endsWith('-eqan');
-        const centerName = ATTRACTOR_NAMES[strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id];
+        const centerName = celestialBodyName(strongestAttractor(target.pos, this.ephemeris.attractorsAt(simTime)).id);
         const eqLabel = `${centerName}赤道${isAn ? '昇' : '降'}交点 (${isAn ? 'EqAN' : 'EqDN'})`;
         const eqSubLabel = eqTime !== undefined ? `到達まで T+${fmtTime(eqTime - simTime)}` : undefined;
         return [
@@ -522,7 +528,7 @@ export class MapPicker {
         return ship ? { objectType: 'player', state: ship.state } : null;
       }
       case 'ship': {
-        const enemy = this.entities.enemies.find((e) => e.name === target.id);
+        const enemy = this.entities.findEnemy(target.id);
         return enemy ? { objectType: 'enemy', state: enemy.state } : null;
       }
       case 'ammo': {
@@ -628,7 +634,7 @@ export class MapPicker {
   // 自機がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
   // 装甲・距離・接近速度を主要行とし、相対速度・軌道要素・相対傾斜角は詳細トグルの下に畳む。
   private shipRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
-    const enemy = this.entities.enemies.find((e) => e.name === target.id);
+    const enemy = this.entities.findEnemy(target.id);
     if (!enemy) return [];
     const rel = player ? relativeInfo(player, enemy, attractors) : null;
     const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(enemy.hp)} / ${enemy.maxHp}` }];
@@ -672,16 +678,17 @@ export class MapPicker {
     return rows;
   }
 
-  // 実在の天体(SOLAR_SYSTEM に登録された ID)なら種別・μ・半径・(公転していれば)軌道要素を、
+  // 実在の天体(現在のレジストリに登録された ID)なら種別・μ・半径・(公転していれば)軌道要素を、
   // ラグランジュ点なら種別のみを出す。
   private bodyRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
+    const registry = this.ephemeris.registry;
     const rows: PropertyRow[] = [];
     if (player) rows.push({ key: 'dist', label: '自機からの距離', value: fmtDist(len(sub(target.pos, player.state.r))) });
-    if (!(target.id in SOLAR_SYSTEM)) {
+    if (!(target.id in registry)) {
       rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });
       return rows;
     }
-    const def = bodyDef(target.id as AttractorId);
+    const def = bodyDef(registry, target.id);
     const kindLabel = def.kind === 'star' ? '恒星' : def.kind === 'planet' ? '惑星' : '衛星';
     rows.push(
       { key: 'kind', label: '種別', value: kindLabel },
@@ -689,7 +696,7 @@ export class MapPicker {
       { key: 'radius', label: '半径', value: fmtDist(def.radius) },
     );
     if (def.kind === 'star') return rows;
-    const primary = attractors.find((b) => b.id === primaryOf(def.id));
+    const primary = attractors.find((b) => b.id === primaryOf(registry, def.id));
     const self = attractors.find((b) => b.id === def.id);
     const el = primary && self ? orbitalElementsOf(self.state, primary) : null;
     if (!el) return rows;
@@ -716,7 +723,7 @@ export class MapPicker {
   private nodeRows(target: MapPickable, attractors: readonly Attractor[], simTime: number): PropertyRow[] {
     const targetName = target.kind === 'relnode'
       ? (this.navTarget.name ?? '対象')
-      : ATTRACTOR_NAMES[strongestAttractor(target.pos, attractors).id];
+      : celestialBodyName(strongestAttractor(target.pos, attractors).id);
     const rows: PropertyRow[] = [{ key: 'target', label: '対象', value: targetName }];
     if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
     return rows;

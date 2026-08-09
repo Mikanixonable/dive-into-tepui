@@ -2,6 +2,7 @@
 // 計画軌道(まだ実現していない要求)と対になる「実際に起きること」の線であり、破線にはしない。
 import * as THREE from 'three/webgpu';
 import { ReferenceFrame } from '../physics/frame';
+import { Attractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from './floating-origin';
 import { SampledLine, ScaleAtFn } from '../render/sampled-line';
@@ -25,13 +26,13 @@ export class PredictedTrajectoryLine {
   // 折れ線の細分密度を決める画面スケール。
   sync(
     targets: readonly GameEntity[], frame: ReferenceFrame, simTime: number, ephemeris: Ephemeris,
-    fo: FloatingOrigin, scale: ScaleAtFn,
+    fo: FloatingOrigin, scale: ScaleAtFn, attractors: readonly Attractor[],
   ): void {
     for (const entity of targets) {
       const line = this.lines.lineFor(entity);
       const samples = entity.predictedTrajectory?.samplesOldestFirst() ?? [];
-      line.syncGeometry(samples, frame, ephemeris, scale);
-      line.syncTransform(frame, simTime, ephemeris, fo);
+      line.syncGeometry(samples, frame, ephemeris, scale, attractors);
+      line.syncTransform(frame, simTime, ephemeris, fo, attractors);
       line.setVisible(true);
     }
     this.synced = new Set(targets);
