@@ -198,6 +198,11 @@ export const ASTEROID_TEST_MASS = 1e15; // [kg]
 export const ASTEROID_TEST_RADIUS = 5000; // [m]
 export const MAX_ASTEROIDS = 20;
 
+// relevantAttractors が重力源を棄却するしきい値 [m/s^2]。この大きさなら、天体が窓に
+// 出入りする瞬間の加速度の不連続が RK4 の打ち切り誤差に埋もれる(SRP ~7e-8 m/s² よりさらに
+// 2桁小さい)。
+export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-10;
+
 // --- 被弾・撃破エフェクト(フラッシュ/破片) ---
 export const BULLET_HIT_FLASH_SIZE0 = 1.5;
 export const BULLET_HIT_FLASH_SIZE1 = 6;
