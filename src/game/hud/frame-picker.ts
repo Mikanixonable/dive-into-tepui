@@ -3,9 +3,10 @@
 // 直積を展開した一覧にすると登録天体の2倍近い項目が1列に並ぶ。
 import { ReferenceFrame } from '../../physics/frame';
 import { Attractor, AttractorId } from '../../physics/attractor';
-import { primaryOf } from '../../physics/solar-system';
+
 import type { Ephemeris } from '../../physics/ephemeris';
 import { bodyClassOf, BodyClass } from '../celestial/body-class';
+import { sameSystemIds } from '../celestial/body-visibility';
 import { celestialBodyName } from './frame-labels';
 import { BodyPicker, BodyPickerGroup } from './body-picker';
 import { SegmentedControl } from './buttons';
@@ -62,9 +63,8 @@ export class FramePicker {
     const byClass = (cls: BodyClass) => items.filter(([id]) => inRegistry(id) && bodyClassOf(registry, id) === cls);
     // 先頭は「いま選んでいる系」— 座標系を切り替える動機はほぼ常に同じ系の中の移動なので、
     // 1クリック目に置く。
-    const selectedParent = inRegistry(this.bodyValue) ? primaryOf(registry, this.bodyValue) : null;
-    const near = items.filter(([id]) => id === this.bodyValue || id === selectedParent
-      || (inRegistry(id) && (primaryOf(registry, id) === selectedParent || primaryOf(registry, id) === this.bodyValue)));
+    const near0 = sameSystemIds(registry, this.bodyValue);
+    const near = items.filter(([id]) => near0.has(id));
     const dynamicIds = new Set(dynamicAttractors.filter((a) => !inRegistry(a.id)).map((a) => a.id));
     const groups: BodyPickerGroup<AttractorId>[] = [
       { label: 'いま選んでいる系', items: near },

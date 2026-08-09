@@ -19,6 +19,19 @@ export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
   dwarf: false, satellite: false, smallBody: false, lagrange: false,
 };
 
+// focusId と同じ系にある天体(自分・親・子・親を共有する兄弟)。UI が「いま見ている系」を
+// 先頭に出すときの判定もこれを使う — 可視性と選択候補の並びで系の切り方が食い違わないように。
+export function sameSystemIds(registry: CelestialRegistry, focusId: AttractorId): ReadonlySet<AttractorId> {
+  const parent = registry[focusId] === undefined ? null : primaryOf(registry, focusId);
+  const ids = new Set<AttractorId>([focusId]);
+  if (parent !== null) ids.add(parent);
+  for (const id of Object.keys(registry)) {
+    const p = primaryOf(registry, id);
+    if (p === focusId || (parent !== null && p === parent)) ids.add(id);
+  }
+  return ids;
+}
+
 // focus の親を辿って主星まで遡った id の列(focus 自身を含む)。
 function ancestorsOf(registry: CelestialRegistry, focusId: AttractorId): AttractorId[] {
   const chain: AttractorId[] = [];
@@ -50,15 +63,14 @@ export function visibleBodyIds(
     else if (cls === 'dwarf' ? toggles.dwarf : cls === 'satellite' ? toggles.satellite : toggles.smallBody) visible.add(id);
   }
 
-  const chain = ancestorsOf(registry, focusId);
-  for (const id of chain) visible.add(id);
+  for (const id of ancestorsOf(registry, focusId)) visible.add(id);
   // 兄弟は「惑星系の中の兄弟」に限る。恒星の子はすべて互いに兄弟なので、そこまで含めると
   // 惑星にフォーカスしただけで全太陽周回天体が出てしまう(その階層は 1. が既に賄っている)。
   const focusParent = registry[focusId] === undefined ? null : primaryOf(registry, focusId);
-  const siblingParent = focusParent !== null && registry[focusParent]?.kind !== 'star' ? focusParent : null;
-  for (const id of ids) {
-    const parent = primaryOf(registry, id);
-    if (parent === focusId || (siblingParent !== null && parent === siblingParent)) visible.add(id);
+  const siblingsMatter = focusParent !== null && registry[focusParent]?.kind !== 'star';
+  for (const id of sameSystemIds(registry, focusId)) {
+    // focusId 自身は未登録(生存中の重力天体)でもありうるので、primaryOf を引く前に弾く。
+    if (siblingsMatter || id === focusId || primaryOf(registry, id) === focusId) visible.add(id);
   }
   return visible;
 }

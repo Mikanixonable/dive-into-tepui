@@ -51,9 +51,14 @@ export class FocusMarkers {
     });
 
     // 親を先に、その子を続けて並べる。一覧はこの順をそのまま使うので、並べ替えを持たない。
+    // レジストリは実行時に差し替えられるので、親子関係が循環していても停止し、同じ天体を
+    // 二度並べないよう追加済みを覚えておく。
     const labels: FocusLabel[] = [];
+    const added = new Set<AttractorId>();
     const pointsOf = new Map(this.lagrangeSources.map((s) => [s.id, s.points]));
     const appendBody = (id: AttractorId, depth: number): void => {
+      if (added.has(id)) return;
+      added.add(id);
       labels.push({ id, name: celestialBodyName(id), pos: v3(0, 0, 0), kind: 'body', isLagrange: false, depth });
       const primary = primaryOf(registry, id);
       const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
@@ -70,10 +75,8 @@ export class FocusMarkers {
     for (const id of this.registryIds) {
       if (primaryOf(registry, id) === null) appendBody(id, 0);
     }
-    // 主星を持たない孤立した天体(親が登録されていないレジストリ)も落とさない。
-    for (const id of this.registryIds) {
-      if (!labels.some((l) => l.id === id)) appendBody(id, 0);
-    }
+    // 主星を持たない孤立した天体(親が登録されていないレジストリ・循環したレジストリ)も落とさない。
+    for (const id of this.registryIds) appendBody(id, 0);
     this.allLabels = labels;
   }
 
