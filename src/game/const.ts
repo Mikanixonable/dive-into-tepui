@@ -190,18 +190,28 @@ export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
 export const CASING_MASS = 1; // 薬莢の物理接触用の質量(実物同様に軽い)
 export const MAX_BULLETS = 400;
 export const MAX_CASINGS = 260;
-export const MAX_DEBRIS = 160;
+export const MAX_DEBRIS = 600;
 
 // --- 小惑星(Asteroid、試験配置用) ---
 // 岩石密度(~1900kg/m^3)で半径 ASTEROID_TEST_RADIUS の球とおおよそ整合する質量。
 export const ASTEROID_TEST_MASS = 1e15; // [kg]
 export const ASTEROID_TEST_RADIUS = 5000; // [m]
-export const MAX_ASTEROIDS = 20;
+export const MAX_ASTEROIDS = 60;
 
-// relevantAttractors が重力源を棄却するしきい値 [m/s^2]。この大きさなら、天体が窓に
-// 出入りする瞬間の加速度の不連続が RK4 の打ち切り誤差に埋もれる(SRP ~7e-8 m/s² よりさらに
-// 2桁小さい)。
-export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-10;
+// --- 高負荷デバッグステージ(stage-debug-load.ts)---
+export const DEBUG_LOAD_ASTEROID_COUNT = 50;
+export const DEBUG_LOAD_DEBRIS_COUNT = 500;
+export const DEBUG_LOAD_PLACEMENT_MIN_DIST = 20000; // 自機からの配置距離下限 [m]
+export const DEBUG_LOAD_PLACEMENT_MAX_DIST = 200000; // 自機からの配置距離上限 [m]
+export const DEBUG_LOAD_RNG_SEED = 20260810;
+
+// --- 重力源の空間グリッド(game/simulation/attractors.ts) ---
+// セル一辺の長さ [m]。既存の「近さ」の基準である BULLET_MAX_DIST(30km)と同程度の桁を取り、
+// かつ高負荷デバッグステージの配置半径(DEBUG_LOAD_PLACEMENT_MAX_DIST=200km)を複数セルに
+// 分割できる大きさにした。
+export const GRAVITY_GRID_CELL_SIZE = 50000;
+// セル一辺の距離での引力 mu/R² がこれを下回る天体は、グリッドの27近傍にあるときだけ加算する。
+export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-10; // [m/s^2]
 
 // --- 被弾・撃破エフェクト(フラッシュ/破片) ---
 export const BULLET_HIT_FLASH_SIZE0 = 1.5;
@@ -266,9 +276,12 @@ export const OVERVIEW_CAMERA_MAX_DIST = 1e14;
 // 手前がクリップされにくくなる代わりに、24bit 深度バッファの分解能が落ちる。
 export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
 // near = dist / OVERVIEW_CAMERA_NEAR_RATIO の比例則は dist の上限では星球シェル・
-// 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなり、殻ごと near 平面に切り落とされる
-// (dist=1e14 で near=1e11 > 1.35e10)。far の下限と同じく 10% 内側でクランプする。
-export const OVERVIEW_CAMERA_NEAR_MAX = 1.215e10;
+// 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなる(dist=1e14 で near=1e11)。
+// near クリップは光軸からの角度 θ に対して球殻上の点を R·cosθ まで切り詰めるので、
+// R そのものでなく画面対角の半視野角 θ_diag での R·cosθ_diag を上限に取らないと、
+// 画面中心だけ残して周辺・四隅の星が消える(OverviewCamera.near 参照)。
+// 1 未満のこの係数はその余弦にさらに掛ける安全マージン。
+export const OVERVIEW_CAMERA_NEAR_SHELL_MARGIN = 0.9;
 // 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
 // (far = clamp(dist × OVERVIEW_CAMERA_FAR_RATIO, OVERVIEW_CAMERA_FAR_MIN, OVERVIEW_CAMERA_FAR_MAX))。
 // far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
@@ -314,6 +327,11 @@ export const NODE_TOL_PLANE_DEG = 2.0 / 3; // 軌道面の角度差 [deg]
 export const NODE_APPROACH_LEAD = 10;
 // 実行時刻をこれだけ過ぎたノードは計画から落とす [s]。多少の遅れなら噴射できる猶予。
 export const NODE_EXPIRE_GRACE = 60;
+
+// --- 軌道計画の自動実行(plan-executor.ts) ---
+export const PLAN_EXECUTOR_DV_EPS = 0.05; // これ未満のΔvは燃焼不要とみなす [m/s]
+export const PLAN_EXECUTOR_ARM_ANGLE_DEG = 2.0; // 姿勢誤差がこれを切ったら点火を許可する [deg]
+export const PLAN_EXECUTOR_TRIM_DV = 5.0; // 残り射影がこれを下回ったら最低出力段へ落とす [m/s]
 
 // --- 未来表示の時刻(display-time-manager.ts のスライダー) ---
 export const DISPLAY_DUR_90MIN = 90 * 60; // 90分
