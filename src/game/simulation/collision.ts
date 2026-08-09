@@ -9,7 +9,7 @@ import { GameEntity } from '../game-entity/game-entity';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { BeltSection } from '../player/belt-physics';
 import { Player } from '../player/player';
-import { sweptSphereToi } from '../../physics/swept-sphere';
+import { sweptSphereToi } from '../../physics/sphere-contact';
 
 const isCasing = (e: GameEntity): boolean => e instanceof DebrisPiece && e.kind === 'casing';
 
