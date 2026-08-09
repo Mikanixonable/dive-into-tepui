@@ -7,6 +7,7 @@ import { OrbitingId } from '../../physics/attractor';
 import { len, scale, sub } from '../../physics/vec3';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
+import { spinOrientation } from '../../physics/body-orientation';
 import { CelestialBody } from './celestial-body';
 
 export class SphereBody extends CelestialBody {
@@ -50,11 +51,9 @@ export class SphereBody extends CelestialBody {
       );
       this.mesh.scale.setScalar(this.visDist * (this.radius / dist));
     }
-    // 実位置の方向へ向ける(テクスチャ天体の同じ面を常に見せるため)。
-    this.mesh.lookAt(
-      this.mesh.position.x - pos.x,
-      this.mesh.position.y - pos.y,
-      this.mesh.position.z - pos.z,
-    );
+    // モデル座標は +Y が自転軸、+Z が本初子午線。同期回転する天体はこれで親を向き続ける。
+    const orientation = ephemeris.poleAt(this.id, displayTime);
+    const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
+    if (q !== null) this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
   }
 }
