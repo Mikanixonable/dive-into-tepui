@@ -22,11 +22,11 @@
 その他の前提:
 
 - 分点歳差と月理論の数値表に残る未検証項目は本書のスコープ外のまま `backlog.md` に残す。
-- **万有引力側の残タスク(`relevantAttractors` の削除、空間インデックスの要否判断、
-  `SOLAR_SYSTEM_PLAN2_2026-08-09.md` の前提の同期)は `step4.md` の担当範囲。** 本書は重力の
-  **計算経路**に一切触れない。両者とも `src/physics/attractor.ts` を触るが、触る関数が別
-  (`step4.md` は `relevantAttractors` の削除、本書は `hitAttractor`/`hitCelestialBody` の移動)
-  なので、どちらを先に進めてもよい(同時並行だけ避ける)。
+- **万有引力側の重力計算経路(`relevantAttractors` の削除・空間ハッシュの導入)は既に完了しており、
+  本書はそこに一切触れない。** 本書と `src/physics/attractor.ts` を共に触るが、触る関数が別
+  (万有引力側は `relevantAttractors`(既に削除済み)、本書は `hitAttractor`/`hitCelestialBody` の
+  移動)なので競合しない。`SOLAR_SYSTEM_PLAN2_2026-08-09.md` の前提同期の残課題は
+  `backlog.md` を参照。
 - **`feature_todo.md`「衝突判定の統一化」の4つの `hit` 語彙統一(弾の被弾/剛体接触/画面ピック/
   命中までの時間)は、今回まとめて行わない。** 同メモ自身が「実装より先に名前だけ動かさない —
   統合と同じ変更セットで4つまとめて決める」と明言しており、本書が統合するのは4つのうち
@@ -481,8 +481,8 @@ activeStage)` へ引き上げる。`Player` 固有の処理(存在すれば)は�
 - **`hit`/`collision` 命名の統一(feature_todo.md が挙げる4つの意味の統合)。** 剛体接触
   以外の3つ(被弾・画面ピック・命中までの時間)を今回統合しないため、命名もまだ動かさない
   (Phase 0 で名前を付け直すのは、その4つに含まれない天体表面接触だけ — §0)。
-- **万有引力側の残タスク**(`relevantAttractors` の削除、空間インデックスの要否判断、
-  `SOLAR_SYSTEM_PLAN2_2026-08-09.md` の前提の同期)。`step4.md` の担当範囲。
+- **万有引力側の重力計算経路の変更**(`relevantAttractors` の削除、空間ハッシュの導入)。
+  既に完了済み。`SOLAR_SYSTEM_PLAN2_2026-08-09.md` の前提同期の残課題は `backlog.md` を参照。
 - **分点歳差の導入と、月理論の数値表に残る未検証項目。** `backlog.md` に残したままにする。
 - **`refactoring_todo.md` の他の項目**(sfx/bgm 分離、belt-physics の変換処理見直し、
   const.ts 解体等)。今回の変更セットとは無関係。
