@@ -4,6 +4,7 @@ import { OrbitInfo, orbitInfo } from '../hud/orbit-info';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
+import { CURRENT_EPHEMERIS_CONTEXT, isEphemerisContextCompatible } from './ephemeris-context';
 
 // Game の実行状態と GameSaveData の相互変換、およびストア/スロットへの出し入れを担う。
 export class SnapshotService {
@@ -46,6 +47,14 @@ export class SnapshotService {
     if (data === null) return false;
     if (data.version !== SAVE_VERSION) return false;
     if (game.activeStage.id !== data.stageId) return false;
+    // Old snapshots have no context and intentionally retain the existing
+    // migration behavior. Once a snapshot explicitly records its ephemeris,
+    // loading it under a different epoch/profile/pack would make its absolute
+    // celestial state ambiguous, so decline it without mutating the game.
+    if (!isEphemerisContextCompatible(
+      (data as { ephemerisContext?: unknown }).ephemerisContext,
+      CURRENT_EPHEMERIS_CONTEXT,
+    )) return false;
 
     game.restore(data);
     // ロードした時点より後の自動スナップショットは、もう起きなかった未来なので破棄する。
@@ -60,6 +69,7 @@ function buildSaveData(game: Game): GameSaveData {
     version: SAVE_VERSION,
     stageId: game.activeStage.id,
     simTime: game.simTime,
+    ephemerisContext: { ...CURRENT_EPHEMERIS_CONTEXT },
     phaseOffsets: game.ephemeris.getPhaseOffsets(),
     players: game.entities.players.map(p => p.serialize()),
     activePlayerId: game.player ? game.player.id : null,

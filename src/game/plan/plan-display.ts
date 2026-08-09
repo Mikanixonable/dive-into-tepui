@@ -280,11 +280,22 @@ export class PlanDisplay {
     }
   }
 
-  // │ 日付境界の目盛マーカーを update が求めた位置に置く。件数が可変なので、前フレームより
-  // 減った分だけ隠す(固定キー集合を持つ他のアイコンとは異なり、キー自体が個数ぶん増減する)。
+  // │ 日付境界の目盛マーカーを update が求めた位置に置く。直前に表示した目盛からの画面距離が
+  // PLAN_DAY_TICK_MIN_PX_SQ 未満のものは間引いて隠す — カレンダー日ごとの候補は表示期間・
+  // 軌道の形によって画面上の間隔が数桁変わるため、日数間隔を固定しても密度は揃わない。
+  // 件数が可変なので、前フレームより減った分だけ隠す(固定キー集合を持つ他のアイコンとは
+  // 異なり、キー自体が個数ぶん増減する)。
   private syncDayTickMarkers(project: ProjectFn): void {
+    let lastX = 0;
+    let lastY = 0;
+    let hasLast = false;
     for (const icon of this.dayTickIcons) {
-      this.markerManager.setPosition(icon.key, 'mk-daytick', '│', icon.pos, project, icon.label);
+      const p = project(icon.pos);
+      const dx = p.x - lastX;
+      const dy = p.y - lastY;
+      const show = p.front && (!hasLast || dx * dx + dy * dy >= C.PLAN_DAY_TICK_MIN_PX_SQ);
+      this.markerManager.set(icon.key, 'mk-daytick', '│', p.x, p.y, show, icon.label);
+      if (show) { lastX = p.x; lastY = p.y; hasLast = true; }
     }
     for (let i = this.dayTickIcons.length; i < this.lastDayTickCount; i++) {
       this.markerManager.hide(`planDayTick${i}`);
