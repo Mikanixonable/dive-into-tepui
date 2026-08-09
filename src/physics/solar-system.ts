@@ -75,6 +75,10 @@ export type Degree2GravityDef = {
 // ラグランジュ系として選択できる天体は必ず true** — 選ばせた先で局所力学が成立しなくなるため。
 type GravitySourceFlag = { readonly gravitySource: boolean };
 
+// ラグランジュ点をフォーカス対象のラベルとして出すかどうか(省略時 = 出さない)。全公転天体で
+// 出すと 5 点 × 天体数のラベルが画面を埋めるので、実際に軌道設計の目標になる系だけを立てる。
+type LagrangeLabelFlag = { readonly lagrangeLabels?: boolean };
+
 export type CelestialBodyDef =
   | ({ readonly kind: 'star'; readonly id: StarId; readonly mu: number; readonly radius: number } & GravitySourceFlag)
   | ({
@@ -85,7 +89,7 @@ export type CelestialBodyDef =
       readonly orbit: PlanetOrbit; // 中心は必ず恒星
       readonly pole?: PoleModel; // 省略時は自転軸を持たない
       readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
-    } & GravitySourceFlag)
+    } & GravitySourceFlag & LagrangeLabelFlag)
   | ({
       readonly kind: 'satellite';
       readonly id: SatelliteId;
@@ -95,7 +99,7 @@ export type CelestialBodyDef =
       readonly orbit: SatelliteOrbit;
       readonly pole?: PoleModel;
       readonly degree2?: Degree2GravityDef;
-    } & GravitySourceFlag);
+    } & GravitySourceFlag & LagrangeLabelFlag);
 
 const D2R = Math.PI / 180;
 
@@ -224,6 +228,7 @@ export const SOLAR_SYSTEM = {
     mu: MU_EARTH,
     radius: R_EARTH,
     gravitySource: true,
+    lagrangeLabels: true,
     // JPL 低精度惑星暦の "EM Bary"(地球-月重心)行、黄道基準・J2000 相当。
     orbit: planetOrbit({
       a: 1.495978707e11,
@@ -249,6 +254,7 @@ export const SOLAR_SYSTEM = {
     mu: MU_MOON,
     radius: R_MOON,
     gravitySource: true,
+    lagrangeLabels: true,
     planet: 'earth',
     orbit: satelliteOrbit({
       a: 3.844e8,
@@ -379,6 +385,7 @@ export const SOLAR_SYSTEM = {
     mu: MU_JUPITER,
     radius: 6.9911e7,
     gravitySource: true,
+    lagrangeLabels: true,
     orbit: planetOrbit({
       a: 7.78340821e11,
       e: 0.04838624,
@@ -437,6 +444,7 @@ export const SOLAR_SYSTEM = {
     mu: MU_SATURN,
     radius: 5.8232e7,
     gravitySource: true,
+    lagrangeLabels: true,
     orbit: planetOrbit({
       a: 9.53667594 * AU,
       e: 0.05386179,

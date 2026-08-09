@@ -83,7 +83,12 @@ main.ts
     │   ├── ScoreAttackTimer           ... Stage0 のみ(Stage00 の波状攻撃フェーズ・波数は Stage00 自身のフィールド)
     │   └── ShipPlacerPanel            ... CreativeStage のみ。DOM は Hud.root 配下。艦艇配置フォーム(開閉状態 isOpen も自身が持つ)
     ├── EnvironmentScene               ... game/celestial/ 配下(game/ への依存を持つため render/ から移動)
-    │   ├── CelestialBody[]             ... CELESTIAL_BODIES(celestial-registry.ts)から1体ずつ生成。地球=EarthBody・太陽=SunBody・月/木星/土星等の他惑星=SphereBody(土星・天王星・海王星は build 時に buildRing 引数で環メッシュを本体の子として追加)
+    │   ├── CelestialBody[]             ... CELESTIAL_BODIES(celestial-registry.ts)から1体ずつ生成。地球=EarthBody・太陽=SunBody・pointBrightness 未指定の惑星/月/土星等=SphereBody(土星・天王星・海王星は build 時に buildRing 引数で環メッシュを本体の子として追加)・pointBrightness 指定の惑星(金星・木星・水星・火星・土星・天王星)=PointBody
+    │   ├── AsteroidField               ... 小惑星帯・木星トロヤ群の点群(InstancedMesh、5600点)。asteroid-belt.ts の軌道要素配列を build 時に一度だけ生成し、以後は不変
+    │   │   ├── elements: readonly AsteroidElements[] ... 決定論的乱数(mulberry32、ASTEROID_SEED)で生成、生成後は読み取り専用
+    │   │   ├── positions: Vec3[]        ... 各点の太陽中心位置。update がラウンドロビン(1/4点/フレーム)で書き換える唯一の書き手
+    │   │   ├── sunPos: Vec3             ... 直近 update 時点の太陽 ECI 位置。sync の ECI 化(太陽中心→ECI)がここを読む
+    │   │   └── cursor: number           ... ラウンドロビンの次回開始添字
     │   ├── AmbientLight / stars メッシュ
     │   ├── OrbitLine (geoLine)         ... 静止軌道の参照線(天体ではない特例、個別フィールドのまま)
     │   ├── referenceLines: ReadonlyMap<OrbitingId, OrbitLine> ... SOLAR_SYSTEM の公転天体ぶん自動生成(衛星=旧月線色、惑星=白)。天体の登録追加だけで線が増える

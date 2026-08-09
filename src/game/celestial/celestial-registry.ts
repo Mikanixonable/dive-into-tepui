@@ -8,6 +8,7 @@ import { CelestialBody } from './celestial-body';
 import { EarthBody } from './earth-body';
 import { createSolidRing, createTexturedRing } from '../../render/ring';
 import { SphereBody } from './sphere-body';
+import { PointBody, PointBrightness } from './point-body';
 import { SunBody } from './sun-body';
 
 import mercuryTextureUrl from '../../assets/2k_mercury.jpg';
@@ -33,16 +34,23 @@ function createTexturedSphereMesh(textureUrl: string): THREE.Mesh {
 }
 
 // テクスチャ付き惑星のレジストリ項を、表示名とテクスチャ URL から組む。buildRing を渡すと
-// 環付きになる(半径は天体半径を 1 とする単位)。
+// 環付きになる(半径は天体半径を 1 とする単位)。pointBrightness を渡すと戦闘ビューでの
+// 表示が PointBody の輝点スプライトになる(省略時は SphereBody の視距離圧縮球のまま)。
 function planetEntry(
   id: PlanetId,
   name: string,
   textureUrl: string,
   buildRing?: () => THREE.Object3D,
+  pointBrightness?: PointBrightness,
 ): { readonly name: string; create(): CelestialBody } {
+  const buildMesh = () => createTexturedSphereMesh(textureUrl);
+  const radius = bodyDef(id).radius;
   return {
     name,
-    create: () => new SphereBody(id, () => createTexturedSphereMesh(textureUrl), bodyDef(id).radius, PLANET_VIS_DIST, buildRing),
+    create: () =>
+      pointBrightness === undefined
+        ? new SphereBody(id, buildMesh, radius, PLANET_VIS_DIST, buildRing)
+        : new PointBody(id, buildMesh, radius, pointBrightness, buildRing),
   };
 }
 
@@ -95,19 +103,19 @@ function solidPlanetEntry(id: PlanetId, name: string, color: number): { readonly
 export const CELESTIAL_BODIES: Record<AttractorId, { readonly name: string; create(): CelestialBody }> = {
   earth: { name: '地球', create: () => new EarthBody() },
   moon: { name: '月', create: () => new SphereBody('moon', createMoon, bodyDef('moon').radius, MOON_VIS_DIST) },
-  mercury: planetEntry('mercury', '水星', mercuryTextureUrl),
-  venus: planetEntry('venus', '金星', venusTextureUrl),
-  mars: planetEntry('mars', '火星', marsTextureUrl),
+  mercury: planetEntry('mercury', '水星', mercuryTextureUrl, undefined, 'medium'),
+  venus: planetEntry('venus', '金星', venusTextureUrl, undefined, 'bright'),
+  mars: planetEntry('mars', '火星', marsTextureUrl, undefined, 'medium'),
   phobos: satelliteEntry('phobos', 'フォボス', 0x8a7a6a),
   deimos: satelliteEntry('deimos', 'ダイモス', 0x9a8a7a),
-  jupiter: planetEntry('jupiter', '木星', jupiterTextureUrl),
+  jupiter: planetEntry('jupiter', '木星', jupiterTextureUrl, undefined, 'bright'),
   io: satelliteEntry('io', 'イオ', 0xd8c94a),
   europa: satelliteEntry('europa', 'エウロパ', 0xcbb8a0),
   ganymede: satelliteEntry('ganymede', 'ガニメデ', 0x8a7f73),
   callisto: satelliteEntry('callisto', 'カリスト', 0x6e6258),
-  saturn: planetEntry('saturn', '土星', saturnTextureUrl, createSaturnRing),
+  saturn: planetEntry('saturn', '土星', saturnTextureUrl, createSaturnRing, 'medium'),
   titan: satelliteEntry('titan', 'タイタン', 0xc8912f),
-  uranus: planetEntry('uranus', '天王星', uranusTextureUrl, createUranusRing),
+  uranus: planetEntry('uranus', '天王星', uranusTextureUrl, createUranusRing, 'faint'),
   neptune: planetEntry('neptune', '海王星', neptuneTextureUrl, createNeptuneRings),
   triton: satelliteEntry('triton', 'トリトン', 0xd8ccc0),
   ceres: solidPlanetEntry('ceres', 'ケレス', 0x9a938c),

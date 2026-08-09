@@ -26,6 +26,7 @@ import { register as registerHalo } from './halo.test';
 import { register as registerPlan } from './plan.test';
 import { register as registerHudLayout } from './hud-layout.test';
 import { register as registerShortcutHint } from './shortcut-hint.test';
+import { register as registerAsteroidBelt } from './asteroid-belt.test';
 import { register as registerTrajectoryFeatures } from './trajectory-features.test';
 import './creative-placement-validation.test';
 
@@ -55,5 +56,6 @@ registerPlan();
 registerHudLayout();
 registerShortcutHint();
 registerTrajectoryFeatures();
+registerAsteroidBelt();
 
 runAll();
