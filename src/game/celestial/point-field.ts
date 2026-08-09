@@ -138,6 +138,7 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+// 閉区間 [min, max] の一様乱数。
 function uniform(rand: () => number, [min, max]: readonly [number, number]): number {
   return min + rand() * (max - min);
 }
@@ -156,6 +157,7 @@ function sampleSemiMajorAu(
   [minAu, maxAu]: readonly [number, number],
   gapsAu: readonly number[] | undefined,
 ): number {
+  // 空隙が無ければ一様分布そのもの。あれば採択率 keep で棄却法にかける。
   if (!gapsAu || gapsAu.length === 0) return uniform(rand, [minAu, maxAu]);
   for (let i = 0; i < MAX_REJECTION_TRIES; i++) {
     const au = uniform(rand, [minAu, maxAu]);
@@ -190,12 +192,14 @@ function resonantAngles(
   return { lonPeri, l0, meanMotion: Math.sqrt(MU_SUN / (a * a * a)) };
 }
 
+// 1群の分布定義から点を1つ引く。乱数の消費順は固定で、同じ seed からは同じ点列が出る。
 function generatePoint(
   rand: () => number,
   def: PointFieldDef,
   jupiterLambda0: number,
   jupiterLRate: number,
 ): PointElements {
+  // 近日点分布の群は a を e から逆算するので、e を先に引く。
   const e = uniform(rand, def.eRange);
   const inc = uniform(rand, def.incRange);
   const raan = rand() * TAU;
