@@ -120,7 +120,7 @@ export class Ephemeris {
 
   constructor(
     readonly registry: CelestialRegistry = SOLAR_SYSTEM,
-    private readonly originId: AttractorId = 'earth',
+    readonly originId: AttractorId = 'earth',
     private readonly epochOffsetSec: number = EPOCH_T_OFFSET,
     phaseOffsets: Partial<Record<AttractorId, number>> = { moon: Math.random() * 2 * Math.PI },
   ) {

@@ -3,6 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { createSun, Sun, SUN_DISTANCE, SUN_VISUAL_SIZE } from '../../render/stars';
 import { Ephemeris } from '../../physics/ephemeris';
+import { AttractorId } from '../../physics/attractor';
 import { norm, sub } from '../../physics/vec3';
 import { R_SUN } from '../../physics/solar-system';
 import * as C from '../const';
@@ -13,10 +14,16 @@ import { CelestialBody } from './celestial-body';
 const tmpSunPos = new THREE.Vector3();
 
 export class SunBody extends CelestialBody {
-  readonly id = 'sun' as const;
+  readonly id: AttractorId;
   private readonly sun: Sun = createSun();
   private readonly sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
   private lit = 1;
+
+  // id は恒星として振る舞う天体の id、radius は広範囲視点での実球体半径 [m]。
+  constructor(id: AttractorId = 'sun', private readonly radius: number = R_SUN) {
+    super();
+    this.id = id;
+  }
 
   // ビルボード・実球体メッシュ・DirectionalLight をシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
@@ -33,12 +40,12 @@ export class SunBody extends CelestialBody {
 
   // displayTime 時点の方向・位置へビルボード/実球体と DirectionalLight を同期する。
   sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
-    const sunPos = ephemeris.positionOf('sun', displayTime);
+    const sunPos = ephemeris.positionOf(this.id, displayTime);
     if (cameraSystem.overviewMode) {
       // 広範囲視点は実スケール: 実 ECI 位置に実半径で置き、ビルボードは隠す
       // (SphereBody の月・木星と同じ扱い)。
       this.sun.mesh.position.copy(fo.RtoThreeV3(sunPos));
-      this.sun.mesh.scale.setScalar(R_SUN);
+      this.sun.mesh.scale.setScalar(this.radius);
       this.sun.mesh.visible = true;
       this.sun.billboard.hide();
     } else {

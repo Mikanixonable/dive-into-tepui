@@ -15,6 +15,7 @@ import * as C from '../const';
 import { Vec3 } from '../../physics/vec3';
 import { metersPerPixel, ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
 import { ReferenceFrame } from '../../physics/frame';
+import { Attractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
@@ -147,6 +148,7 @@ export class CameraSystem {
     input: Input,
     dt: number,
     mapPickables: readonly MapPickable[],
+    attractors: readonly Attractor[],
   ): void {
     // 追従視点トグル
     if (input.takeKey(K.followAttitudeToggle)) this.combatCamera.toggleFollowAttitude();
@@ -177,7 +179,7 @@ export class CameraSystem {
     mouse.panDy += keyPanY * C.CAM_KEY_PAN_RATE * dt;
 
     if (this.overviewMode) {
-      this.overviewCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, simTime, mapPickables);
+      this.overviewCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, simTime, mapPickables, attractors);
     }
     else {
       this.combatCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt, player, input);
@@ -185,7 +187,7 @@ export class CameraSystem {
   }
 
   // 視点状態をフローティングオリジン(fo)で補正してアクティブカメラへ反映する。
-  sync(fo: FloatingOrigin): void {
+  sync(fo: FloatingOrigin, attractors: readonly Attractor[]): void {
     const active = this.overviewMode ? this.overviewCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
@@ -197,6 +199,7 @@ export class CameraSystem {
     if (this._elStageStatus) this._elStageStatus.style.display = hidden;
     if (this._elOrbit) this._elOrbit.style.left = this.overviewMode ? '12px' : '';
     if (this.overviewMode) {
+      this.overviewCameraPanel.refreshFrameItems(attractors);
       this.overviewCameraPanel.setFrame(this.overviewCamera.cameraFrame);
       this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);
     } else {
