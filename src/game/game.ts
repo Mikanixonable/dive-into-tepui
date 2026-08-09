@@ -14,7 +14,7 @@ import { GroupedMarkers, GroupedMarkerItem } from './marker/grouped-markers';
 import { LeadMarkers } from './marker/lead-markers';
 import { EquatorNodeMarkers, EqNodeSource } from './marker/equator-node-markers';
 import { EffectsSystem } from './vfx/effects-system';
-import { initStage } from './stages/stage-dictionary';
+import { ephemerisConfigFor, initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
@@ -124,7 +124,10 @@ export class Game {
     this.unlockManager = unlockManager;
     this.snapshotService = snapshotService;
 
-    this._ephemeris = new Ephemeris();
+    const ephemerisConfig = ephemerisConfigFor(launch);
+    this._ephemeris = ephemerisConfig === undefined
+      ? new Ephemeris()
+      : new Ephemeris(ephemerisConfig.registry, ephemerisConfig.originId, ephemerisConfig.epochOffsetSec);
 
     this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
     this.enemyMarkers = new GroupedMarkers(this.markerManager, C.MARKER_CLUSTER_PX);
