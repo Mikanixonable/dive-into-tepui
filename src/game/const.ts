@@ -205,6 +205,14 @@ export const DEBUG_LOAD_PLACEMENT_MIN_DIST = 20000; // 自機からの配置距�
 export const DEBUG_LOAD_PLACEMENT_MAX_DIST = 200000; // 自機からの配置距離上限 [m]
 export const DEBUG_LOAD_RNG_SEED = 20260810;
 
+// --- 重力源の空間グリッド(game/simulation/attractors.ts) ---
+// セル一辺の長さ [m]。既存の「近さ」の基準である BULLET_MAX_DIST(30km)と同程度の桁を取り、
+// かつ高負荷デバッグステージの配置半径(DEBUG_LOAD_PLACEMENT_MAX_DIST=200km)を複数セルに
+// 分割できる大きさにした。
+export const GRAVITY_GRID_CELL_SIZE = 50000;
+// セル一辺の距離での引力 mu/R² がこれを下回る天体は、グリッドの27近傍にあるときだけ加算する。
+export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-10; // [m/s^2]
+
 // --- 被弾・撃破エフェクト(フラッシュ/破片) ---
 export const BULLET_HIT_FLASH_SIZE0 = 1.5;
 export const BULLET_HIT_FLASH_SIZE1 = 6;
