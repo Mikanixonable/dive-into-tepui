@@ -1,6 +1,5 @@
 // プレイヤーの並進スロットル・姿勢制御(RCS)・プログレードホールド。
-import * as THREE from 'three/webgpu';
-import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
+import { Attitude, attitudeAlignTorque, qRotate } from '../../physics/attitude';
 import { Vec3, add, norm, scale, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import { Input } from '../input/input';
@@ -211,9 +210,9 @@ export class PlayerThrottle {
       inZ * maxAngAccel * inertia.z,
     );
 
-    // 無入力かつホールド中なら自動整列トルクを加える
+    // 無入力かつホールド中なら自動整列トルクを加える(機首をプログレード v、上方向を r へ)
     if (this.progradeHold && inX === 0 && inY === 0 && inZ === 0) {
-      return add(manualTorque, this.autoAlignTorque(v, r, att, inertia));
+      return add(manualTorque, attitudeAlignTorque(v, r, att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD));
     }
     // 無入力の軸だけRCS制動を掛ける
     if (this.rcsDamp) {
@@ -224,32 +223,5 @@ export class PlayerThrottle {
       );
     }
     return manualTorque;
-  }
-
-
-  // desiredFwd/desiredUp へ機首を向けるPD制御トルクをボディフレームで返す。
-  // 特異姿勢(desiredFwd と desiredUp が平行)なら制御せず v3() を返す。
-  private autoAlignTorque(desiredFwd: Vec3, desiredUp: Vec3, att: Attitude, inertia: Vec3): Vec3 {
-    // 目標姿勢を forward/up から組む
-    const qd = qFromForwardUp(desiredFwd, desiredUp);
-    if (!qd) return v3();
-    const qDesired = new THREE.Quaternion(qd.x, qd.y, qd.z, qd.w);
-    const qCurrent = new THREE.Quaternion(att.q.x, att.q.y, att.q.z, att.q.w);
-    const qCurInv = qCurrent.clone().invert();
-    // 現在姿勢との誤差回転を角度と軸に分解する
-    const qErr = qDesired.multiply(qCurInv);
-    const w = Math.max(-1, Math.min(1, qErr.w));
-    let angle = 2 * Math.acos(w);
-    if (angle > Math.PI) angle -= 2 * Math.PI;
-    const s = Math.sqrt(Math.max(0, 1 - w * w));
-    const axisWorld =
-      s > 1e-6 ? new THREE.Vector3(qErr.x / s, qErr.y / s, qErr.z / s) : new THREE.Vector3(1, 0, 0);
-    const axisShip = axisWorld.applyQuaternion(qCurInv);
-    // 誤差角と角速度ダンピングから軸ごとのPDトルクを組む
-    return v3(
-      (C.PROGRADE_HOLD_KP * angle * axisShip.x - C.PROGRADE_HOLD_KD * att.w.x) * inertia.x,
-      (C.PROGRADE_HOLD_KP * angle * axisShip.y - C.PROGRADE_HOLD_KD * att.w.y) * inertia.y,
-      (C.PROGRADE_HOLD_KP * angle * axisShip.z - C.PROGRADE_HOLD_KD * att.w.z) * inertia.z,
-    );
   }
 }
