@@ -110,4 +110,30 @@ export function register(): void {
     assert.equal(muOf('kerberos'), 0, 'ケルベロスの GM は上限値のみ(未測定)');
     assert.equal(muOf('puck'), 0, 'パックの GM は表に無い(未測定)');
   });
+
+  // mu = 0 は「質量が未測定」であって質量0ではない。衛星だけが質量を持つ系で重心補正を
+  // 掛けると、衛星の質量比が 1 になって主天体が距離ぶんまるごとずれる — 主天体と衛星の
+  // 相対位置は正しいままなので、主天体の日心位置を直に見ないと分からない。
+  test('equatorial-satellites: 主天体の質量が未測定の系では、衛星を足しても主天体が動かない', () => {
+    for (const [primary, satellite] of [['quaoar', 'weywot'], ['orcus', 'vanth'], ['didymos', 'dimorphos']] as const) {
+      const withoutSatellite = { ...SOLAR_SYSTEM } as Record<string, CelestialBodyDef>;
+      delete withoutSatellite[satellite];
+      const bare = new Ephemeris(withoutSatellite, 'earth', EPOCH_T_OFFSET, {});
+      const t = 1e6;
+      const moved = len(sub(eph.stateOf(primary, t).r, bare.stateOf(primary, t).r));
+      assert.ok(moved < 1, `${primary} が ${satellite} の有無で ${moved} m 動いている`);
+    }
+  });
+
+  // 質量比が決まらない系にラグランジュ点を作らせない(共線点を解く反復が発散するか、
+  // L1 が主天体の中心へ落ちる)。
+  test('equatorial-satellites: どちらかの質量が未測定の系はラグランジュ点を持たない', () => {
+    for (const id of ['quaoar', 'orcus', 'didymos', 'puck', 'styx', 'kerberos'] as const) {
+      assert.equal(eph.hasUsableCollinearPoints(id, 10), false, `${id} の共線点`);
+      assert.equal(eph.hasStableTriangularPoints(id), false, `${id} の三角点`);
+    }
+    // 両方の質量が判明している系はこれまで通り持つ。
+    assert.equal(eph.hasUsableCollinearPoints('moon', 10), true, '地球-月の共線点');
+    assert.equal(eph.hasStableTriangularPoints('moon'), true, '地球-月の三角点');
+  });
 }
