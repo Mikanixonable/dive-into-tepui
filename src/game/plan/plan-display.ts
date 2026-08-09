@@ -11,8 +11,7 @@ import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
-import { SegmentedControl } from '../hud/buttons';
-import { frameItems } from '../hud/frame-labels';
+import { FramePicker } from '../hud/frame-picker';
 import { MapPickable } from '../map-pick';
 import * as C from '../const';
 import { hudDock } from '../hud/dom';
@@ -49,7 +48,7 @@ export class PlanDisplay {
   readonly path: PlanPath;
 
   private readonly panel: HTMLElement;
-  private readonly frame: SegmentedControl<ReferenceFrame>;
+  private readonly frame: FramePicker;
   private apsisIcons: readonly ApsisIcon[] = [];
   private impactIcons: readonly ImpactIcon[] = [];
   private dayTickIcons: readonly DayTickIcon[] = [];
@@ -81,7 +80,9 @@ export class PlanDisplay {
     title.textContent = 'TRAJECTORY';
     this.panel.appendChild(title);
     // 表示座標系の切り替えボタン
-    this.frame = new SegmentedControl<ReferenceFrame>('軌道', frameItems(ephemeris, []), (frame) => { this.planFrame = frame; });
+    this.frame = new FramePicker(hudRoot, '軌道', ephemeris);
+    this.frame.onSelect = (frame) => { this.planFrame = frame; };
+    this.frame.setFrames(ephemeris.frames, []);
     this.panel.appendChild(this.frame.element);
     hudDock(hudRoot, 'left').appendChild(this.panel);
   }
@@ -157,7 +158,9 @@ export class PlanDisplay {
     const dynamicIds = this.attractors.filter((a) => !(a.id in this.ephemeris.registry)).map((a) => a.id).join(',');
     if (dynamicIds === this.lastDynamicIds) return;
     this.lastDynamicIds = dynamicIds;
-    this.frame.setItems(frameItems(this.ephemeris, this.attractors));
+    const dynamicFrames = this.attractors.filter((a) => !(a.id in this.ephemeris.registry))
+      .map((a) => this.ephemeris.frameFor(a.id));
+    this.frame.setFrames([...this.ephemeris.frames, ...dynamicFrames], this.attractors);
   }
 
   // displayTime における計画上の自機位置とそのラベル。折れ線の届く範囲外、または
