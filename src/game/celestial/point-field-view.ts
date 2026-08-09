@@ -43,6 +43,7 @@ class PointFieldGroupView {
   // 数フレームは未評価の点(太陽中心の零ベクトル)が太陽位置に固まって描かれる。
   private primed = false;
 
+  // 群1つぶんの InstancedMesh を、その群の描画半径・色で組む。
   constructor(group: PointFieldGroup) {
     this.points = group.points;
     this.positions = this.points.map(() => v3(0, 0, 0));
@@ -57,10 +58,13 @@ class PointFieldGroupView {
     this.mesh.visible = false;
   }
 
+  // メッシュをシーンへ登録する。
   build(scene: THREE.Scene): void {
     scene.add(this.mesh);
   }
 
+  // 表示時刻 t の点の位置を、ラウンドロビンで一部だけ引き直す。sunPos は呼び出し元が
+  // 群をまたいで1回だけ求めた値を渡す。
   update(t: number, sunPos: Vec3): void {
     this.sunPos = sunPos;
     const n = this.points.length;
@@ -73,6 +77,8 @@ class PointFieldGroupView {
     this.cursor = (this.cursor + count) % n;
   }
 
+  // update が求めた位置へ各インスタンスを置く。浮動原点は毎フレーム動くので、位置を引き直して
+  // いない点も含めて全インスタンスの行列を書き直す。
   sync(fo: FloatingOrigin, visible: boolean): void {
     this.mesh.visible = visible;
     if (!visible) return;
