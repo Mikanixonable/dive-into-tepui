@@ -118,6 +118,8 @@ export class Ephemeris {
   // 参照同一性契約を、初回アクセス時に生成してキャッシュすることで満たす。
   private readonly dynamicFrames = new Map<AttractorId, ReferenceFrame>();
 
+  // registry/originId/epochOffsetSec を省略すると現実の太陽系・地球原点・既定エポックで動く。
+  // starId・inertialFrame・frames は registry から1度だけ導出し、以後は参照を使い回す。
   constructor(
     readonly registry: CelestialRegistry = SOLAR_SYSTEM,
     readonly originId: AttractorId = 'earth',

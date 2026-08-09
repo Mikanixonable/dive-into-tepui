@@ -6,7 +6,7 @@ import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../ph
 import { Attractor, OrbitingId, frameOfAttractor, strongestAttractor } from '../physics/attractor';
 import { isOccluded } from '../physics/occlusion';
 import { frameKinematicState, toFrameState, toInertialState } from '../physics/frame';
-import { bodyDef, SOLAR_SYSTEM } from '../physics/solar-system';
+import { bodyDef } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
 import { Player } from './player/player';
@@ -135,13 +135,14 @@ export class NavTarget {
   // はその公転面法線、ラグランジュ点(`${副天体}-l${n}`)は副天体の公転面法線を使う。
   // 面が定まらない対象(恒星、および軌道要素の無い天体・存在しない船)は null。
   private resolvePlaneNormal(id: string, entities: EntityManager, ephemeris: Ephemeris, t: number): Vec3 | null {
-    if (id in SOLAR_SYSTEM && bodyDef(SOLAR_SYSTEM, id).kind !== 'star') {
+    const registry = ephemeris.registry;
+    if (id in registry && bodyDef(registry, id).kind !== 'star') {
       return ephemeris.orbitNormalAt(id as OrbitingId, t);
     }
     // 副天体がレジストリに実在する公転天体のときだけラグランジュ点として解釈する。そうしないと
     // 同じ形の名前を持つ船が天体として誤って解決される。
     const secondary = /^(.+)-l[1-5]$/.exec(id)?.[1];
-    if (secondary !== undefined && secondary in SOLAR_SYSTEM && bodyDef(SOLAR_SYSTEM, secondary).kind !== 'star') {
+    if (secondary !== undefined && secondary in registry && bodyDef(registry, secondary).kind !== 'star') {
       return qRotate(ephemeris.orbitFrameRotationAt(secondary as OrbitingId, t).q, Z_HAT);
     }
     const enemyMatch = entities.findEnemy(id);
