@@ -1,5 +1,6 @@
 // 小惑星帯・トロヤ群の点群のマップビュー表示。位置は asteroid-belt.ts の軌道要素から引き、
 // 1つの InstancedMesh の instanceMatrix へ書き込む。
+// game-entity/asteroid.ts の Asteroid(重力を及ぼし積分される個別の GameEntity)とは別物。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { Vec3, add, v3 } from '../../physics/vec3';

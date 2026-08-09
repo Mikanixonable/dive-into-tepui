@@ -5,6 +5,7 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
 import { Ammo } from '../game-entity/ammo';
+import { Asteroid } from '../game-entity/asteroid';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { Enemy } from '../game-entity/enemy';
 import { Bullet } from '../game-entity/bullet';
@@ -19,6 +20,7 @@ export class EntityManager {
   readonly casings: DebrisPiece[] = [];
   readonly debris: DebrisPiece[] = [];
   readonly ammos: Ammo[] = [];
+  readonly asteroids: Asteroid[] = [];
   // 自機。操作対象(Game.player)もこの配列の1隻で、積分・衝突・寿命判定・予測では
   // 他の艦と対等に扱う。ステージモードでは1隻だけが入る。
   readonly players: Player[] = [];
@@ -81,6 +83,11 @@ export class EntityManager {
     this.ammos.push(ammo);
   }
 
+  // 小惑星を登録する。上限を超えた分は古いものから破棄する。
+  addAsteroid(asteroid: Asteroid): void {
+    this.addCapped(this.asteroids, asteroid, C.MAX_ASTEROIDS);
+  }
+
   // 基地を登録する。
   addBase(base: Base): void {
     this.bases.push(base);
@@ -103,6 +110,7 @@ export class EntityManager {
       ...this.enemies,
       ...this.bullets,
       ...this.ammos,
+      ...this.asteroids,
       ...this.casings,
       ...this.debris,
       ...this.bases,
@@ -123,6 +131,7 @@ export class EntityManager {
     this.prune(this.casings);
     this.prune(this.debris);
     this.prune(this.ammos);
+    this.prune(this.asteroids);
     this.prune(this.bases);
   }
 
@@ -153,6 +162,7 @@ export class EntityManager {
     this.casings.length = 0;
     this.debris.length = 0;
     this.ammos.length = 0;
+    this.asteroids.length = 0;
     this.bases.length = 0;
   }
 }
