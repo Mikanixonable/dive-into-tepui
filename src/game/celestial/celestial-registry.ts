@@ -38,14 +38,19 @@ const RING_TEXTURES: Readonly<Record<RingTextureId, string>> = { saturn: saturnR
 function planetEntry(id: SolarSystemId, name: string, textureUrl: string, pointBrightness?: PointBrightness): CelestialView {
   const buildSurface = () => CelestialSurface.textured(textureUrl);
   const def = bodyDef(SOLAR_SYSTEM, id);
-  const rings: RingSystemDef | undefined = def.kind === 'planet' ? def.rings : undefined;
   return {
     name,
     create: () =>
       pointBrightness === undefined
-        ? new SphereBody(id, buildSurface, def.radius, PLANET_VIS_DIST, shapeOf(id), rings, RING_TEXTURES)
-        : new PointBody(id, buildSurface, def.radius, pointBrightness, shapeOf(id), rings, RING_TEXTURES),
+        ? new SphereBody(id, buildSurface, def.radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id), RING_TEXTURES)
+        : new PointBody(id, buildSurface, def.radius, pointBrightness, shapeOf(id), ringsOf(id), RING_TEXTURES),
   };
+}
+
+// id の環(恒星と衛星は持たない)。shape と同じく、判別を1箇所に閉じる。
+function ringsOf(id: SolarSystemId): RingSystemDef | undefined {
+  const def = bodyDef(SOLAR_SYSTEM, id);
+  return def.kind === 'planet' ? def.rings : undefined;
 }
 
 // id の shape(星は持たない)。SOLAR_SYSTEM を引く箇所が皆この判別をせずに済むよう1箇所に閉じる。
@@ -74,7 +79,7 @@ function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: str
 function solidPlanetEntry(id: SolarSystemId, name: string, color: number): CelestialView {
   return {
     name,
-    create: () => new SphereBody(id, () => CelestialSurface.solid(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST, shapeOf(id)),
+    create: () => new SphereBody(id, () => CelestialSurface.solid(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id), RING_TEXTURES),
   };
 }
 
@@ -120,6 +125,12 @@ export const CELESTIAL_BODIES: Record<SolarSystemId, CelestialView> = {
   iapetus: satelliteEntry('iapetus', 'イアペトゥス', 0x9c968c),
   phoebe: satelliteEntry('phoebe', 'フェーベ', 0x6a625a),
   uranus: planetEntry('uranus', '天王星', uranusTextureUrl, 'faint'),
+  puck: satelliteEntry('puck', 'パック', 0xa8a49c),
+  miranda: satelliteEntry('miranda', 'ミランダ', 0xc4c0ba),
+  ariel: satelliteEntry('ariel', 'アリエル', 0xd8d6d2),
+  umbriel: satelliteEntry('umbriel', 'ウンブリエル', 0xc0bcb8),
+  titania: satelliteEntry('titania', 'チタニア', 0xd0cec8),
+  oberon: satelliteEntry('oberon', 'オベロン', 0xc8c4bc),
   neptune: planetEntry('neptune', '海王星', neptuneTextureUrl),
   triton: satelliteEntry('triton', 'トリトン', 0xd8ccc0),
   nereid: satelliteEntry('nereid', 'ネレイド', 0x9a8f82),
@@ -127,11 +138,54 @@ export const CELESTIAL_BODIES: Record<SolarSystemId, CelestialView> = {
   vesta: solidPlanetEntry('vesta', 'ベスタ', 0x8a8378),
   pallas: solidPlanetEntry('pallas', 'パラス', 0x7a7a72),
   pluto: solidPlanetEntry('pluto', '冥王星', 0xc9b29a),
+  charon: satelliteEntry('charon', 'カロン', 0xd4d0ca),
+  styx: satelliteEntry('styx', 'ステュクス', 0x8a8078),
+  nix: satelliteEntry('nix', 'ニクス', 0x8a8078),
+  kerberos: satelliteEntry('kerberos', 'ケルベロス', 0x8a8078),
+  hydra: satelliteEntry('hydra', 'ヒドラ', 0x8a8078),
   haumea: solidPlanetEntry('haumea', 'ハウメア', 0xcccccc),
+  hiiaka: satelliteEntry('hiiaka', 'ヒイアカ', 0x8a8078),
+  namaka: satelliteEntry('namaka', 'ナマカ', 0x8a8078),
   makemake: solidPlanetEntry('makemake', 'マケマケ', 0xb08a6a),
   eris: solidPlanetEntry('eris', 'エリス', 0xd8d8d8),
+  dysnomia: satelliteEntry('dysnomia', 'ディスノミア', 0x8a8078),
   halley: solidPlanetEntry('halley', 'ハレー彗星', 0x666666),
   encke: solidPlanetEntry('encke', 'エンケ彗星', 0x666666),
+  sedna: solidPlanetEntry('sedna', 'セドナ', 0x8f8378),
+  quaoar: solidPlanetEntry('quaoar', 'クワオアー', 0xa89684),
+  weywot: satelliteEntry('weywot', 'ウェイウォット', 0x8a8078),
+  chariklo: solidPlanetEntry('chariklo', 'カリクロー', 0x9a8f80),
+  hygiea: solidPlanetEntry('hygiea', 'ヒギエア', 0x8c877e),
+  eros: solidPlanetEntry('eros', 'エロス', 0x9c8f74),
+  ryugu: solidPlanetEntry('ryugu', 'リュウグウ', 0x585048),
+  bennu: solidPlanetEntry('bennu', 'ベンヌ', 0x686058),
+  churyumov: solidPlanetEntry('churyumov', 'チュリュモフ・ゲラシメンコ彗星', 0x666666),
+  orcus: solidPlanetEntry('orcus', 'オルクス', 0x9a9aa0),
+  vanth: satelliteEntry('vanth', 'ヴァンス', 0x8a8078),
+  gonggong: solidPlanetEntry('gonggong', 'ゴンゴン', 0xa87860),
+  salacia: solidPlanetEntry('salacia', 'サラキア', 0x8890a0),
+  varuna: solidPlanetEntry('varuna', 'ヴァルナ', 0x8a8478),
+  ixion: solidPlanetEntry('ixion', 'イクシオン', 0x8c8074),
+  arrokoth: solidPlanetEntry('arrokoth', 'アロコス', 0xa85030),
+  chiron: solidPlanetEntry('chiron', 'キロン', 0x787268),
+  interamnia: solidPlanetEntry('interamnia', 'インテラムニア', 0x848078),
+  europa52: solidPlanetEntry('europa52', 'エウロパ (52)', 0x8a847a),
+  davida: solidPlanetEntry('davida', 'ダビダ', 0x827c72),
+  juno: solidPlanetEntry('juno', 'ジュノー', 0x968a7c),
+  psyche: solidPlanetEntry('psyche', 'プシケ', 0x726c66),
+  eunomia: solidPlanetEntry('eunomia', 'エウノミア', 0x9a8e78),
+  sylvia: solidPlanetEntry('sylvia', 'シルビア', 0x76706a),
+  itokawa: solidPlanetEntry('itokawa', 'イトカワ', 0xa89476),
+  apophis: solidPlanetEntry('apophis', 'アポフィス', 0x8e8a86),
+  didymos: solidPlanetEntry('didymos', 'ディディモス', 0x827e78),
+  dimorphos: satelliteEntry('dimorphos', 'ディモルフォス', 0x8a8078),
+  tempel1: solidPlanetEntry('tempel1', 'テンペル第1彗星', 0x666666),
+  wild2: solidPlanetEntry('wild2', 'ワイルド第2彗星', 0x666666),
+  hartley2: solidPlanetEntry('hartley2', 'ハートレー第2彗星', 0x666666),
+  cruithne: solidPlanetEntry('cruithne', 'クルースン', 0x746e64),
+  kamooalewa: solidPlanetEntry('kamooalewa', 'カモオアレワ', 0xa08e70),
+  tk7: solidPlanetEntry('tk7', '2010 TK7', 0x6c6660),
+  eureka: solidPlanetEntry('eureka', 'エウレカ', 0x907c5c),
   sun: { name: '太陽', create: () => new SunBody() },
 };
 
