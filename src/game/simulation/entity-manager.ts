@@ -122,9 +122,9 @@ export class EntityManager {
     return [...this.otherEntities(), ...this.players];
   }
 
-  // 重力を持つ(mu !== 0 かつ生存中の)エンティティを Attractor として返す。GameEntity は
-  // id/radius/mu/degree2/isStar/state を直接持つので変換は要らない。
-  attractors(): readonly Attractor[] {
+  // 重力を持つ(mu !== 0 かつ生存中の)エンティティを返す。GameEntity は id/radius/mu/degree2/
+  // isStar/state を直接持つので Attractor を満たす。
+  attractors(): readonly GameEntity[] {
     return this.all().filter((e) => e.alive && e.mu !== 0);
   }
 

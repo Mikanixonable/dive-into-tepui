@@ -1,0 +1,61 @@
+// デバッグ用ステージ: 重力を及ぼす小惑星と受ける破片の双方を多数配置し、万有引力計算の
+// 高負荷を常時再現する。タイトルの通常ボタン列には出ない。
+import { Stage } from './stage';
+import type { Player } from '../player/player';
+import type { EntityManager } from '../simulation/entity-manager';
+import type { SimSpeedManager } from '../sim-speed-manager';
+import * as C from '../const';
+import { Asteroid } from '../game-entity/asteroid';
+import { DebrisPiece } from '../game-entity/debris-piece';
+import { randomQuat } from '../../physics/attitude';
+import { kinematicState } from '../../physics/kinematic-state';
+import { add, mulberry32, v3, Vec3 } from '../../physics/vec3';
+
+export class StageDebugLoad extends Stage {
+  static readonly id = 'debug-load' as const;
+  readonly selectLabel = 'DEBUG(高負荷)';
+  readonly selectSub = '【デバッグ】小惑星・破片を多数配置し万有引力計算を高負荷にする・撃破しても終了しない';
+  readonly hiddenFromSelect = true;
+  readonly selectKeys = ['KeyL'];
+  readonly initialAmmo = { mags: 20, rounds: C.MAG_ROUNDS };
+
+  briefingHtml(): string {
+    return `<b>高負荷デバッグステージ</b><br>小惑星 ${C.DEBUG_LOAD_ASTEROID_COUNT} 体・破片 ${C.DEBUG_LOAD_DEBRIS_COUNT} 個を配置`;
+  }
+
+  // 引力を及ぼす小惑星(重力源)と、受けるだけの破片の双方を自機周囲へ散らす。
+  init(player: Player, entities: EntityManager): number {
+    const rand = mulberry32(C.DEBUG_LOAD_RNG_SEED);
+    for (let i = 0; i < C.DEBUG_LOAD_ASTEROID_COUNT; i++) {
+      const state = kinematicState(player.state.t, add(player.state.r, randomOffset(rand)), player.state.v);
+      entities.addAsteroid(new Asteroid(state, C.ASTEROID_TEST_MASS, C.ASTEROID_TEST_RADIUS, this._scene, { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) }));
+    }
+    for (let i = 0; i < C.DEBUG_LOAD_DEBRIS_COUNT; i++) {
+      const state = kinematicState(player.state.t, add(player.state.r, randomOffset(rand)), player.state.v);
+      const size = C.DESTROY_FRAG_SIZE_MIN + rand() * (C.DESTROY_FRAG_SIZE_MAX - C.DESTROY_FRAG_SIZE_MIN);
+      const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
+      entities.addDebris(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, undefined, this._scene));
+    }
+    return 0;
+  }
+
+  update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+    if (!this.isPlaying || !player) return;
+    this.logistics.updateLogistics(simTime, player, simSpeed);
+  }
+
+  // 検証を継続できるよう、勝敗を発生させない(UnlockManager のクリア数にも入らない)。
+  checkWin(): boolean {
+    return false;
+  }
+}
+
+// 自機からの距離が [DEBUG_LOAD_PLACEMENT_MIN_DIST, DEBUG_LOAD_PLACEMENT_MAX_DIST] に収まる
+// ランダムな相対位置を返す。下限は小惑星の物理半径(ASTEROID_TEST_RADIUS)より大きく取り、
+// 配置直後に自機と接触しないようにする。
+function randomOffset(rand: () => number): Vec3 {
+  const dist = C.DEBUG_LOAD_PLACEMENT_MIN_DIST + rand() * (C.DEBUG_LOAD_PLACEMENT_MAX_DIST - C.DEBUG_LOAD_PLACEMENT_MIN_DIST);
+  const theta = rand() * Math.PI * 2;
+  const phi = Math.acos(2 * rand() - 1);
+  return v3(dist * Math.sin(phi) * Math.cos(theta), dist * Math.sin(phi) * Math.sin(theta), dist * Math.cos(phi));
+}

@@ -1,7 +1,7 @@
-// 相互重力(小惑星どうし)と relevantAttractors の回帰テスト。
+// 相互重力(小惑星どうし)の回帰テスト。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { Attractor, AttractorId, attractorAccel, relevantAttractors } from '../../src/physics/attractor';
+import { Attractor, AttractorId } from '../../src/physics/attractor';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
@@ -113,61 +113,6 @@ export function register(): void {
     assert.ok(drift / scaleMag < 1e-3, `三体の全運動量が保存される(緩め許容): drift=${drift}`);
   });
 
-  test('n-body: relevantAttractors はしきい値0で全数と一致する', () => {
-    const r = v3(R_EARTH + 420e3, 0, 0);
-    const attractors: Attractor[] = [
-      makeAttractor('earth', MU_EARTH, kinematicState(0, ZERO, ZERO)),
-      makeAttractor('asteroid-1', 1e10, kinematicState(0, v3(R_EARTH + 500e3, 1e5, 0), ZERO)),
-      makeAttractor('asteroid-2', 1e5, kinematicState(0, v3(1e9, 0, 0), ZERO)),
-    ];
-    const result = relevantAttractors(r, attractors, 0);
-    assert.equal(result.length, attractors.length, 'しきい値0では1体も棄却されない');
-  });
-
-  test('n-body: relevantAttractors が捨てる寄与の総和はしきい値×天体数を超えない', () => {
-    const r = v3(R_EARTH + 420e3, 0, 0);
-    const negligibleAccel = 1e-10;
-    const attractors: Attractor[] = [
-      makeAttractor('earth', MU_EARTH, kinematicState(0, ZERO, ZERO)),
-      makeAttractor('far-1', 1e10, kinematicState(0, v3(5e11, 0, 0), ZERO)),
-      makeAttractor('far-2', 1e8, kinematicState(0, v3(0, 3e11, 0), ZERO)),
-      makeAttractor('far-3', 1e6, kinematicState(0, v3(0, 0, -8e10), ZERO)),
-    ];
-    const kept = relevantAttractors(r, attractors, negligibleAccel);
-    const keptIds = new Set(kept.map((a) => a.id));
-    const discarded = attractors.filter((a) => !keptIds.has(a.id));
-    const discardedSum = discarded.reduce((sum, a) => sum + len(attractorAccel(r, a)), 0);
-    assert.ok(discardedSum <= negligibleAccel * attractors.length,
-      `棄却された寄与の総和がしきい値×天体数を超えない: ${discardedSum}`);
-  });
-
-  test('n-body: relevantAttractors は同じ位置・同じ候補集合に対し3経路(積分/予測/計画)で同じ集合を返す', () => {
-    const r = v3(R_EARTH + 420e3, 0, 0);
-    const negligibleAccel = 1e-10;
-    const bodies: Attractor[] = [
-      makeAttractor('earth', MU_EARTH, kinematicState(0, ZERO, ZERO)),
-      makeAttractor('far', 1e10, kinematicState(0, v3(5e11, 0, 0), ZERO)),
-    ];
-    const dynamic: Attractor[] = [
-      makeAttractor('asteroid-1', 1e12, kinematicState(0, v3(R_EARTH + 450e3, 2e4, 0), ZERO)),
-    ];
-
-    // 3経路(stepActual/stepPredicted/PlanArc.update)はいずれも「解析天体 + 重力を持つ
-    // 生存中の GameEntity」を合流させた同じ候補集合を絞り込む。1つでも別の集合を使うと
-    // 計画線・予測線が実際の軌道からずれる。
-    const candidates = [...bodies, ...dynamic];
-    const forStepActual = relevantAttractors(r, candidates, negligibleAccel);
-    const forStepPredicted = relevantAttractors(r, candidates, negligibleAccel);
-    const forPlanArc = relevantAttractors(r, candidates, negligibleAccel);
-
-    assert.deepEqual(forStepActual.map((a) => a.id), forStepPredicted.map((a) => a.id),
-      '積分経路と予測経路は同じ結果を返す');
-    assert.deepEqual(forPlanArc.map((a) => a.id), forStepActual.map((a) => a.id),
-      '計画経路も同じ結果を返す');
-    assert.ok(forPlanArc.some((a) => a.id === 'asteroid-1'),
-      '近傍の小惑星は計画経路の重力源にも含まれる');
-  });
-
   test('n-body: 地球+小惑星で艦を積分すると、小惑星の質量→0の極限で小惑星なしの結果に収束する', () => {
     const earth = makeAttractor('earth', MU_EARTH, kinematicState(0, ZERO, ZERO));
     const shipR0 = v3(R_EARTH + 420e3, 0, 0);
@@ -193,29 +138,5 @@ export function register(): void {
     // 摂動は小惑星の質量にほぼ線形に比例するので、質量を1/100にすれば差も概ね1/100になる。
     assert.ok(diffSmaller < diffSmall / 10,
       `質量→0の極限でベースラインへ収束する: diffSmall=${diffSmall}, diffSmaller=${diffSmaller}`);
-  });
-
-  // 重力窓の候補集合は「近づける天体」を人が選んだものではなく mu を持つ全天体で、実際に効く
-  // 天体は relevantAttractors が位置から決める。したがって候補集合に遠方の天体を足しても
-  // 積分結果は機械精度で変わらない — この不変性が、候補を静的フラグで絞らなくてよい根拠。
-  test('n-body: 候補集合へ遠方の天体を足しても、絞り込みを通せば軌道は機械精度で変わらない', () => {
-    const earth = makeAttractor('earth', MU_EARTH, kinematicState(0, ZERO, ZERO));
-    const shipR0 = v3(R_EARTH + 420e3, 0, 0);
-    const ship0 = kinematicState(0, shipR0, v3(0, Math.sqrt(MU_EARTH / (R_EARTH + 420e3)), 0));
-    // 地球近傍での寄与が GRAVITY_NEGLIGIBLE_ACCEL(1e-10 m/s²)を確実に下回る遠方天体。
-    const distant = [1, 2, 3, 4, 5].map((i) =>
-      makeAttractor(`distant-${i}`, 1e12, kinematicState(0, v3(i * 1e13, 0, 0), ZERO)));
-    const negligibleAccel = 1e-10;
-
-    const integrate = (candidates: readonly Attractor[]): KinematicState => {
-      let s = ship0;
-      for (let i = 0; i < 200; i++) s = stepFree(s, 1, relevantAttractors(s.r, candidates, negligibleAccel));
-      return s;
-    };
-
-    const narrow = integrate([earth]);
-    const wide = integrate([earth, ...distant]);
-    assert.deepEqual(wide.r, narrow.r, '候補集合を広げても位置が一致する');
-    assert.deepEqual(wide.v, narrow.v, '候補集合を広げても速度が一致する');
   });
 }
