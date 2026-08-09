@@ -97,18 +97,14 @@ export class Ephemeris {
   // (共有インスタンスを差し替えないため)。
   private phaseOffsets: Partial<Record<AttractorId, number>>;
 
-  // 天体ごとの中間結果と、2つの重力源窓の時刻キャッシュ。位相オフセットを差し替えたら
+  // 天体ごとの中間結果と、attractorsAt の時刻キャッシュ。位相オフセットを差し替えたら
   // すべて破棄する。
   private readonly planetHelioCache = new Map<AttractorId, TimeRing<KinematicState>>();
   private readonly satelliteRelCache = new Map<AttractorId, TimeRing<KinematicState>>();
   private readonly allAttractorsCache = new TimeRing<readonly Attractor[]>();
-  private readonly gravityAttractorsCache = new TimeRing<readonly Attractor[]>();
 
   // registry の全天体 id、および attractorsAt が返す配列の順序(宣言順)。
   private readonly ids: readonly AttractorId[];
-  // ids のうち質量を持つ id(宣言順)。質量が測定されていない天体は mu = 0 で登録され、
-  // 重力窓の候補から外れる。
-  private readonly gravityIds: readonly AttractorId[];
   // registry の主星。0個なら null(輻射源・影の計算がそもそも無意味になる — sunDirAt/dynamics.ts の
   // 呼び出し側はその前提で無害なフォールバックを扱う)。
   readonly starId: AttractorId | null;
@@ -131,7 +127,6 @@ export class Ephemeris {
   ) {
     this.phaseOffsets = phaseOffsets;
     this.ids = Object.keys(registry);
-    this.gravityIds = this.ids.filter((id) => bodyDef(registry, id).mu > 0);
     this.starId = starOf(registry);
     this.inertialFrame = { center: originId, rotatingWith: null };
     this.frames = [
@@ -155,7 +150,6 @@ export class Ephemeris {
     for (const ring of this.planetHelioCache.values()) ring.clear();
     for (const ring of this.satelliteRelCache.values()) ring.clear();
     this.allAttractorsCache.clear();
-    this.gravityAttractorsCache.clear();
   }
 
   // id の平均黄経の初期位相(未指定なら 0)。
@@ -430,23 +424,13 @@ export class Ephemeris {
     return { j2: model.j2, refRadius: model.refRadius, pole: orientation.axis, tesseral };
   }
 
-  // 指定時刻の全登録天体(registry の宣言順)。origin は原点に静止。遮蔽判定・表面接触・
-  // 中心天体解決・積分刻み・基準天体解決が読む共通の窓。
+  // 指定時刻の全登録天体(registry の宣言順)。origin は原点に静止。重力積分・遮蔽判定・
+  // 表面接触・中心天体解決・積分刻み・基準天体解決が読む唯一の窓。
   // 同一 t には同一の配列参照が返るので、**呼び出し側はこの配列と要素を書き換えてはならない。**
   attractorsAt(t: number): readonly Attractor[] {
     const cached = this.allAttractorsCache.get(t);
     if (cached !== undefined) return cached;
     return this.allAttractorsCache.put(t, this.ids.map((id) => this.attractorAt(id, t)));
-  }
-
-  // 指定時刻の重力源一覧(mu を持つ天体のみ、registry の宣言順)。
-  // 重力積分はこちらを引く — RK4 の各ステージ × 全エンティティで舐める配列なので、
-  // 表示だけの天体を含めない。
-  // attractorsAt と同じく、同一 t には同一の配列参照が返る(書き換え禁止)。
-  gravityAttractorsAt(t: number): readonly Attractor[] {
-    const cached = this.gravityAttractorsCache.get(t);
-    if (cached !== undefined) return cached;
-    return this.gravityAttractorsCache.put(t, this.gravityIds.map((id) => this.attractorAt(id, t)));
   }
 
   // 1天体ぶんの時刻 t での重力源表現。
