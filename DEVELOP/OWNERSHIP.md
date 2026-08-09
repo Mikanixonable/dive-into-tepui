@@ -83,7 +83,8 @@ main.ts
     │   ├── ScoreAttackTimer           ... Stage0 のみ(Stage00 の波状攻撃フェーズ・波数は Stage00 自身のフィールド)
     │   └── ShipPlacerPanel            ... CreativeStage のみ。DOM は Hud.root 配下。艦艇配置フォーム(開閉状態 isOpen も自身が持つ)
     ├── EnvironmentScene               ... game/celestial/ 配下(game/ への依存を持つため render/ から移動)
-    │   ├── CelestialBody[]             ... CELESTIAL_BODIES(celestial-registry.ts)から1体ずつ生成。地球=EarthBody・太陽=SunBody・pointBrightness 未指定の惑星/月/土星等=SphereBody(土星・天王星・海王星は build 時に buildRing 引数で環メッシュを本体の子として追加)・pointBrightness 指定の惑星(金星・木星・水星・火星・土星・天王星)=PointBody
+    │   ├── CelestialBody[]             ... CELESTIAL_BODIES(celestial-registry.ts)から1体ずつ生成。地球=EarthBody・太陽=SunBody・pointBrightness 未指定の惑星/月/土星等=SphereBody・pointBrightness 指定の惑星(金星・木星・水星・火星・土星・天王星)=PointBody。木星・土星・天王星・海王星は SOLAR_SYSTEM の CelestialBodyDef.rings(物理データ)を own し、build 時に RingView を1つ生成してシーン直下へ追加(本体メッシュの子ではない — sphere-body.ts/point-body.ts 参照)
+    │   │   └── RingView(rings がある天体のみ)... 環1系の THREE オブジェクト群を own。細環の帯(厚み0・非テクスチャ)ごとに annulus/line 両方のメッシュを構築し、sync のたびに距離依存でどちらかだけ visible にする(thinBands: 各帯の実幅とその2メッシュ)
     │   ├── AsteroidField               ... 小惑星帯・木星トロヤ群の点群(InstancedMesh、5600点)。asteroid-belt.ts の軌道要素配列を build 時に一度だけ生成し、以後は不変
     │   │   ├── elements: readonly AsteroidElements[] ... 決定論的乱数(mulberry32、ASTEROID_SEED)で生成、生成後は読み取り専用
     │   │   ├── positions: Vec3[]        ... 各点の太陽中心位置。update がラウンドロビン(1/4点/フレーム)で書き換える唯一の書き手

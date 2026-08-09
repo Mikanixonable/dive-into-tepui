@@ -93,6 +93,27 @@ export type Degree2GravityDef = {
 // 出すと 5 点 × 天体数のラベルが画面を埋めるので、実際に軌道設計の目標になる系だけを立てる。
 type LagrangeLabelFlag = { readonly lagrangeLabels?: boolean };
 
+// 環1本の帯。半径は天体中心からの距離 [m]。thickness > 0 なら扁平トーラス(木星のハロー環・
+// ゴサマー環、土星の E 環のように厚みが半径の数%ある拡散構造)、0 なら平坦(annulus か、
+// 幅が半径の 1/10,000 程度になる細環 — どちらで描くかは視角依存なので描画側が sync ごとに
+// 決める、solar-system.ts はデータだけを持つ)。arcs は経度限定の明部(海王星アダムス環のような
+// アーク構造)— 省略時は全周が同じ濃さ。経度の基準は各天体固有の元期の固定系で、アーク自身の
+// 公転(非目標)は表現しない。texture は band ごと(1系に複数の帯があるうち実写テクスチャを
+// 持つのは高々1本)— URL 文字列を physics/ に持てない(THREE/アセット非依存の規則)ため
+// 識別子だけを持ち、実アセットの解決は celestial-registry.ts 側が担う。
+export type RingArcDef = { readonly fromDeg: number; readonly toDeg: number };
+export type RingTextureId = 'saturn';
+export type RingBandDef = {
+  readonly innerRadius: number; // [m]
+  readonly outerRadius: number; // [m]
+  readonly thickness: number; // [m]
+  readonly arcs?: readonly RingArcDef[];
+  readonly texture?: RingTextureId; // 省略時は単色
+};
+export type RingSystemDef = { readonly bands: readonly RingBandDef[] };
+
+type RingSystemFlag = { readonly rings?: RingSystemDef };
+
 export type CelestialBodyDef =
   | { readonly kind: 'star'; readonly id: AttractorId; readonly mu: number; readonly radius: number }
   | ({
@@ -103,7 +124,7 @@ export type CelestialBodyDef =
       readonly orbit: PlanetOrbit; // 中心は必ず恒星
       readonly pole?: PoleModel; // 省略時は自転軸を持たない
       readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
-    } & LagrangeLabelFlag)
+    } & LagrangeLabelFlag & RingSystemFlag)
   | ({
       readonly kind: 'satellite';
       readonly id: AttractorId;
@@ -113,7 +134,7 @@ export type CelestialBodyDef =
       readonly orbit: SatelliteOrbit;
       readonly pole?: PoleModel;
       readonly degree2?: Degree2GravityDef;
-    } & LagrangeLabelFlag);
+    } & LagrangeLabelFlag & RingSystemFlag);
 
 // 天体レジストリ: id から静的事実(CelestialBodyDef)を引く表。SOLAR_SYSTEM が「現実の太陽系」
 // という名前つきの既定値で、ステージごとに別のレジストリへ差し替えられる。
@@ -236,6 +257,81 @@ function equatorialSatelliteOrbit(p: {
     distTerms: [],
   });
 }
+
+const KM = 1e3;
+
+// [km] 単位の帯を RingBandDef([m])へ変換する。thicknessKm 省略時は平坦。
+function ringBand(innerKm: number, outerKm: number, thicknessKm = 0, arcs?: readonly RingArcDef[], texture?: RingTextureId): RingBandDef {
+  return { innerRadius: innerKm * KM, outerRadius: outerKm * KM, thickness: thicknessKm * KM, arcs, texture };
+}
+
+// 出典: https://en.wikipedia.org/wiki/Rings_of_Jupiter 。ハロー環とゴサマー環(アマルテア・
+// テーベ)は厚みが半径の 1〜10% あり扁平トーラスとして描く(RingBandDef.thickness > 0)。
+// 主環は厚み 30〜300 km に対し半径 12 万 km 台で扁平トーラスと呼べるほどではないので平坦。
+const JUPITER_RINGS: RingSystemDef = {
+  bands: [
+    ringBand(92000, 122500, 12500), // ハロー環
+    ringBand(122500, 129000), // 主環
+    ringBand(129000, 182000, 2300), // アマルテア・ゴサマー環
+    ringBand(129000, 226000, 8400), // テーベ・ゴサマー環
+  ],
+};
+
+// 出典: https://en.wikipedia.org/wiki/Rings_of_Saturn (一次は Planetary Rings Node)。
+// D〜A 環は1枚のテクスチャに焼き込み(カッシーニの間隙はテクスチャのアルファで表現)、
+// F/G 環は幅の薄い細環、E 環は厚みを持つ扁平トーラス(Enceladus 近傍〜外縁で
+// 3,000〜60,000 km 程度とされる範囲の目安値)、フェーベ環は土星本体の 200 倍の直径を持つ
+// 桁違いの巨大構造 — 追加のフィールドは持たせず、他の帯と同じ視角判定(sync 側)で
+// annulus/線を切り替える(E-6)。
+const SATURN_RINGS: RingSystemDef = {
+  bands: [
+    ringBand(66900, 136775, 0, undefined, 'saturn'), // D〜A 環(カッシーニの間隙込み)
+    ringBand(139930, 140430), // F 環
+    ringBand(166000, 175000), // G 環
+    ringBand(180000, 480000, 40000), // E 環
+    ringBand(4.0e6, 1.3e7), // フェーベ環
+  ],
+};
+
+// 出典: https://en.wikipedia.org/wiki/Rings_of_Uranus 。13 環すべてを個別の帯として登録する
+// (ζ・ν・μ は範囲そのものが表の値、他は中心半径 ± 表の幅の中間値)。幅が半径の 1/10,000
+// 以上あり annulus として描くとサブピクセルになるため、視角判定(sync 側)で線に落ちる。
+const URANUS_RINGS: RingSystemDef = {
+  bands: [
+    ringBand(37850, 41350), // ζ
+    ringBand(41837 - 1.9 / 2, 41837 + 1.9 / 2), // 6
+    ringBand(42234 - 3.4 / 2, 42234 + 3.4 / 2), // 5
+    ringBand(42570 - 3.4 / 2, 42570 + 3.4 / 2), // 4
+    ringBand(44718 - 7.4 / 2, 44718 + 7.4 / 2), // α
+    ringBand(45661 - 8.75 / 2, 45661 + 8.75 / 2), // β
+    ringBand(47175 - 2.3 / 2, 47175 + 2.3 / 2), // η
+    ringBand(47627 - 4.15 / 2, 47627 + 4.15 / 2), // γ
+    ringBand(48300 - 5.1 / 2, 48300 + 5.1 / 2), // δ
+    ringBand(50023 - 1.5 / 2, 50023 + 1.5 / 2), // λ
+    ringBand(51149 - 58.05 / 2, 51149 + 58.05 / 2), // ε
+    ringBand(66100, 69900), // ν
+    ringBand(86000, 103000), // μ
+  ],
+};
+
+// 出典: https://en.wikipedia.org/wiki/Rings_of_Neptune 。アダムス環だけがアーク構造
+// (フラテルニテ/エガリテ1/エガリテ2/リベルテ/クラージュ)を持つ — 経度は 1989-08-18 の
+// 固定系での実測値だが、この実装ではアーク自身の公転を追わず環に静止させたまま描く(非目標)。
+const NEPTUNE_RINGS: RingSystemDef = {
+  bands: [
+    ringBand(40900, 42900), // ガレ環
+    ringBand(53200 - 113 / 2, 53200 + 113 / 2), // ル・ヴェリエ環
+    ringBand(53200, 57200), // ラッセル環
+    ringBand(57200 - 25, 57200 + 25), // アラゴ環
+    ringBand(62932 - 32.5 / 2, 62932 + 32.5 / 2, 0, [
+      { fromDeg: 247, toDeg: 257 }, // フラテルニテ
+      { fromDeg: 261, toDeg: 264 }, // エガリテ1
+      { fromDeg: 265, toDeg: 266 }, // エガリテ2
+      { fromDeg: 276, toDeg: 280 }, // リベルテ
+      { fromDeg: 284.5, toDeg: 285.5 }, // クラージュ
+    ]), // アダムス環
+  ],
+};
 
 // 型注釈ではなく satisfies で受けることで、id ごとの具体型(地球なら惑星、月なら衛星)が
 // 保たれ、「地球は必ず惑星」を型から引き出せる。
@@ -411,6 +507,7 @@ export const SOLAR_SYSTEM = {
       aRatePerCenturyAu: -0.00011607,
     }),
     pole: JUPITER_POLE,
+    rings: JUPITER_RINGS,
   },
   io: {
     kind: 'satellite',
@@ -465,6 +562,7 @@ export const SOLAR_SYSTEM = {
       aRatePerCenturyAu: -0.00125060,
     }),
     pole: SATURN_POLE,
+    rings: SATURN_RINGS,
   },
   titan: {
     kind: 'satellite',
@@ -502,6 +600,7 @@ export const SOLAR_SYSTEM = {
       w0Deg: 203.81,
       wRateDegPerDay: -501.1600928,
     },
+    rings: URANUS_RINGS,
   },
   neptune: {
     kind: 'planet',
@@ -523,6 +622,7 @@ export const SOLAR_SYSTEM = {
       aRatePerCenturyAu: 0.00026291,
     }),
     pole: NEPTUNE_POLE,
+    rings: NEPTUNE_RINGS,
   },
   triton: {
     kind: 'satellite',

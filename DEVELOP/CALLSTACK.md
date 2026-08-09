@@ -334,8 +334,9 @@
     - [bodies(= CELESTIAL_BODIES 登録順の CelestialBody[])ごと] body.sync(fo, displayTime, cameraSystem, ephemeris)
       - EarthBody.sync() → earth.group.position / earth.setRotation() / earth.setSunDir() / earth.tick()
       - SunBody.sync() → billboard 位置(カメラ相対の圧縮距離)+ sunLight.position・intensity(setSunlit の lit 反映)
-      - SphereBody.sync()(月・海王星・準惑星等7体・彗星核2体、および pointBrightness 未指定の惑星) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。姿勢は ephemeris.poleAt(id, displayTime) が非null なら spinOrientation(axis, spinAngle) をクォータニオンへ書き込み(lookAt は使わない)、pole モデルを持たない天体は姿勢を変更しない(環メッシュは本体の子なのでこの姿勢・スケールをそのまま継承する)
-      - PointBody.sync()(pointBrightness 指定の惑星 = 金星・木星=bright、水星・火星・土星=medium、天王星=faint) → overviewMode なら SphereBody と同じ実 ECI 位置・実半径・姿勢のメッシュを表示、!overviewMode ならそのメッシュを隠して代わりに星シェル半径(STAR_SHELL_RADIUS)上の実方向へ billboard を置く輝点表示に切り替える(常にどちらか一方だけ visible)
+      - SphereBody.sync()(月・海王星・準惑星等7体・彗星核2体、および pointBrightness 未指定の惑星) → overviewMode なら実 ECI 位置、!overviewMode ならカメラ相対の圧縮距離。姿勢は ephemeris.poleAt(id, displayTime) が非null なら spinOrientation(axis, spinAngle) をクォータニオンへ書き込み(lookAt は使わない)、pole モデルを持たない天体は姿勢を変更しない。rings を持つ天体(木星・土星・天王星・海王星)は続けて RingView.sync() を呼ぶ
+      - PointBody.sync()(pointBrightness 指定の惑星 = 金星・木星=bright、水星・火星・土星=medium、天王星=faint) → overviewMode なら SphereBody と同じ実 ECI 位置・実半径・姿勢のメッシュ(rings があれば RingView.sync() も)を表示、!overviewMode ならそのメッシュ(と環があれば RingView.group)を隠して代わりに星シェル半径(STAR_SHELL_RADIUS)上の実方向へ billboard を置く輝点表示に切り替える(常にどちらか一方だけ visible)
+      - RingView.sync()(SphereBody/PointBody から rings がある天体のみ呼ばれる)→ 環グループの位置・スケールは本体メッシュに揃え、姿勢は spinAngle=0 の spinOrientation で本体とは別個に組む(環は本体メッシュの子ではないので自転位相を継承しない)。厚み0かつ非テクスチャの細帯ごとに、その天体の実 ECI 位置での CameraSystem.activeCameraScale(metersPerPixel)と帯の実幅を game/celestial/ring-lod.ts の ringVisualForm へ渡し、annulus/line のどちらを visible にするか距離依存で切り替える
     - ambient.intensity 更新 // lit から導出
     - syncStars() // starsMesh をカメラへ追従、overviewMode でさらに拡大
     - syncReferenceLines(simTime, fo, overviewMode, focus) → geoLine.sync() + [referenceLines の各 OrbitLine ごと] showsReferenceLine(id, focus) が true のときだけ line.sync(orbitElementsFor(id, simTime), …)、false なら null 渡しで非表示 // !overviewMode では全線 null。惑星線は常時、衛星線は focus がその衛星系(地球系除く)を指すときだけ show
