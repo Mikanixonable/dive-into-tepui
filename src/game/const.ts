@@ -387,7 +387,9 @@ export const PREDICT_SAMPLE_ERROR = 30;
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;
 
-export const SIM_EPOCH_UTC = '20115-05-14T06:00:00Z'; // simTime = 0 に対応する絶対時刻。HUD の日時表示にのみ使う
+// simTime=0 の物理元期。遠未来UTCは定義できないため、天体力学ではTDBとして解釈する。
+// HUDは同じ暦フィールドを作中日時ラベルとして表示する。
+export const SIM_EPOCH_TDB = '20115-05-14T06:00:00';
 
 // --- 第零ステージ(近接戦闘訓練) ---
 export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];

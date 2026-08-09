@@ -1,0 +1,35 @@
+{
+  "manifest": {
+    "format": "tepui-ephemeris-pack",
+    "version": 1,
+    "frame": "ICRF-J2000",
+    "timeScale": "TDB",
+    "timeOrigin": "J2000-ET",
+    "positionUnit": "m",
+    "timeUnit": "s",
+    "validStart": 0,
+    "validEnd": 7200
+  },
+  "segments": [
+    {
+      "body": "synthetic-fixture-body",
+      "start": 0,
+      "end": 3600,
+      "coefficients": [
+        [7000000, 1000],
+        [0, 2000],
+        [0, -500]
+      ]
+    },
+    {
+      "body": "synthetic-fixture-body",
+      "start": 3600,
+      "end": 7200,
+      "coefficients": [
+        [7003600, 1000],
+        [7200000, 2000],
+        [-1800000, -500]
+      ]
+    }
+  ]
+}
