@@ -207,6 +207,38 @@ export function register(): void {
     assert.deepEqual(attractors.map((b) => b.id), ['earth', 'moon', 'jupiter', 'sun']);
     assert.equal(attractors[0]!.radius, R_EARTH);
   });
+
+  test('ephemeris: 同一 t の attractorsAt は同一配列参照を返す', () => {
+    const e = new Ephemeris({ earth: 0.3, moon: 0.4 });
+    assert.equal(e.attractorsAt(1234), e.attractorsAt(1234));
+    assert.equal(e.gravityAttractorsAt(1234), e.gravityAttractorsAt(1234));
+  });
+
+  test('ephemeris: 異なる t では再計算され、値が変わる', () => {
+    const e = new Ephemeris({ earth: 0.3, moon: 0.4 });
+    const a = e.attractorsAt(0);
+    const b = e.attractorsAt(1e5);
+    assert.notEqual(a, b);
+    const moonA = a.find((x) => x.id === 'moon')!.state.r;
+    const moonB = b.find((x) => x.id === 'moon')!.state.r;
+    assert.ok(len(sub(moonA, moonB)) > 1e6, `月が動いていない: ${len(sub(moonA, moonB))}`);
+    // 直近 t を巡回で保持するので、古い t を引き直しても同じ値が返る。
+    assert.deepEqual(e.attractorsAt(0), a);
+  });
+
+  test('ephemeris: setPhaseOffsets 後は古い値を返さない', () => {
+    const e = new Ephemeris({ earth: 0.3, moon: 0.4 });
+    const before = e.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
+    e.setPhaseOffsets({ earth: 0.3, moon: 2.1 });
+    const after = e.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
+    assert.ok(len(sub(before, after)) > 1e6, `位相差し替えが反映されていない: ${len(sub(before, after))}`);
+    assert.deepEqual(after, new Ephemeris({ earth: 0.3, moon: 2.1 }).positionOf('moon', 1234));
+  });
+
+  test('ephemeris: 現状は全天体が重力源なので両窓の返り値が一致する', () => {
+    const e = new Ephemeris({ earth: 0.3, moon: 0.4 });
+    assert.deepEqual(e.gravityAttractorsAt(777), e.attractorsAt(777));
+  });
 }
 
 // ECI(Y=北極)の位置から黄経を取り出す。標準赤道座標へ戻し、黄道傾斜ぶん回してから
