@@ -3,7 +3,7 @@
 // 選出可否は、この1関数を両方が呼ぶことで揃える — 見えているのに押せない/見えないのに
 // 押せる、という食い違いを防ぐ。
 import { Attractor } from './attractor';
-import { dot, sub, Vec3 } from './vec3';
+import { addScaled, dot, lenSq, sub, Vec3 } from './vec3';
 
 // 手前側交点が対象点よりこの距離以上カメラ寄りのときだけ遮蔽と判定する余裕。対象点自身が
 // その天体の表面上・近傍にある(その天体を回っている物体など)場合に、丸め誤差で
@@ -26,7 +26,11 @@ export function isOccluded(cameraPos: Vec3, point: Vec3, attractors: readonly At
     const oc = sub(attractor.state.r, cameraPos);
     const tca = dot(oc, dir);
     if (tca <= 0) continue; // 天体はカメラの後方
-    const d2 = dot(oc, oc) - tca * tca;
+    // d2 = |oc|² − tca² ではなく、視線への垂線ベクトルを先に作ってから2乗する。天体が
+    // カメラから遠いほど oc/tca は大きくなり(太陽系スケールで ~1e11)、2乗した後に引くと
+    // 桁落ちで誤差が数千 m² 規模まで膨れ、半径が小さい天体の遮蔽判定を毎フレーム反転させる。
+    const perp = addScaled(oc, dir, -tca);
+    const d2 = lenSq(perp);
     const r2 = attractor.radius * attractor.radius;
     if (d2 >= r2) continue; // 視線が球を外れる
     const thc = Math.sqrt(r2 - d2);
