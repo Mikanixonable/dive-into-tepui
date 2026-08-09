@@ -10,7 +10,7 @@ import { EPOCH_T_OFFSET } from '../../physics/ephemeris';
 import { AU } from '../../physics/planet-orbit';
 import { MU_SUN, SOLAR_SYSTEM } from '../../physics/solar-system';
 import { qRotate } from '../../physics/attitude';
-import { Vec3 } from '../../physics/vec3';
+import { mulberry32, Vec3 } from '../../physics/vec3';
 
 // 1点の軌道。平均運動を要素と一緒に持つのは、位置評価が毎フレーム全点に及ぶため
 // (a から毎回 sqrt を引くのを避ける)。
@@ -126,17 +126,6 @@ export const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
     incRange: [0, 40 * DEG],
   },
 ];
-
-// mulberry32。Math.random を使わないのは、セーブ・リプレイをまたいで同じ点群が要るため。
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let x = Math.imul(s ^ (s >>> 15), 1 | s);
-    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 // 閉区間 [min, max] の一様乱数。
 function uniform(rand: () => number, [min, max]: readonly [number, number]): number {
