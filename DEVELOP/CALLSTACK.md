@@ -148,12 +148,12 @@
           - sfx.fire()
         - spawnEjectedMagazineFrame() + sfx.magFeed() // 'mag-reload'
         - spawnEjectedMagazineFrame() + dropBarrel() + sfx.playReload() // 'barrel-reload'
-    - [dvEditActive(= editor.editMode かつ editor.selectedNodeIdx !== null)] player.thrust = null、throttle.stopThrust() して return // ノードのΔv編集中はWASDQEをそちらへ譲り、噴射音・プルーム表示も止める
+    - [dvEditActive(= editor.editMode かつ editor.selectedNodeIdx !== null)] player.thrust = null、throttle.stopThrust() して return // ノードのΔv編集中はWASDQEをそちらへ譲る。噴射音・プルームは syncPlayer 側の thrustEffects.sync が player.thrust=null を見て自分で止める
     - [simSpeed.canPlayerThrust] throttle.updateThrustLatches() // WASDQE各キーの連打をエッジ検出しラッチ集合を更新。反対方向キーを押している間は相手側のラッチも解除し続ける。canPlayerThrust が false の間は呼ばれず、押下エッジも消費されない
-    - throttle.updateThrustState() → player.thrust へ代入
-      - throttle.stopThrust() // 推力入力なし(物理押下・ラッチとも無し) or !canPlayerThrust
-      - sfx.setThrust(true) // 推力あり
+    - throttle.updateThrustState() → player.thrust へ代入(手動入力が無ければ null。'powered' 中の艦がここで null になっても、後段の activeStage.update → planExecutor.update が Simulator.advance より前に正しい値へ上書きするので積分には影響しない)
+      - throttle.stopThrust() // 推力入力なし(物理押下・ラッチとも無し) or !canPlayerThrust。thrustAccelVec(ベルト物理向け)を戻すだけ
     - invalidatePrediction() // player.thrust !== null のときのみ(自機の噴射結果を即座に予測へ反映)
+    - [planExecution==='powered'] thrust!==null または throttle.hasManualRotationInput() なら planExecution='off' // 操作対象艦の手動並進・手動回転で自動実行を中断(マップモードかどうかは問わない)
   - nanWatchdog.checkPlayer('player.behave')
   - activeStage.update() // 具体ステージへディスパッチ。!isPlaying / 艦が無ければ即 return
     - behaveAllEnemies() // 敵を配置する具体ステージ(Stage0/00/1/2)が先頭で呼ぶ
@@ -176,18 +176,23 @@
       - spawnWave: generateWave() → addEnemy() → entities.addEnemy() + scoreCounter.recordSpawnEnemy()
         - generateWave: pickWaveCenter() → makeFlybyVelocity() → limitFlybyDv() → waveShipPosition() ×機数
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(simSpeed, respawnOnDespawn=false)
-    - [CreativeStage] advanceFollowPlan() // entities.players のうち followPlan=true な艦ごと。plan.dropNodesBefore(simTime) が期限切れノードをまとめて取り除いて返す最後のノードへ state を置き換える(複数ノードを跨いだフレームも dropNodesBefore 内部の while で一括消費)
     - [CreativeStage] placerPanel.isOpen なら getForm() を1回だけ呼び、computePreview(form)/computeFieldIssues(form) へ共有する
+    - [CreativeStage] entities.players ごとに ship.planExecutor.update(ship, dt, simTime, simSpeed) // planExecution!=='powered' なら idle へ戻すだけ。'powered' なら姿勢整列(idle/slew/armed)、または燃焼中(burn/trim)の出力段選択・燃料消費・ship.thrust の書き直しを進める。ノード時刻に対する猶予窓(NODE_APPROACH_LEAD+見積り燃焼時間+見積り姿勢転回時間)を外れている間は何もしない。死亡していれば reset。点火・遮断そのものはここでは行わない。Simulator.advance より前に呼ばれるので、操作艦で player.behave がこのフレーム player.thrust を null にしていても、積分に渡る前にここで確実に上書きされる
   - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効。残り時間が C.NODE_APPROACH_LEAD 以下なら autoWarpUntil=null + levelIdx=0 で即 return
   - simulator.advance(bulletCollision=true, resolveCollision=canResolvePhysicalCollisions, doSubstep=true)
     // 弾命中・剛体接触・姿勢積分はいずれもこの中。simulator が hitSystem / collisionPhysics を所有する
     - [サブステップごと] ×ceil(simDt / SUBSTEP_MAX_DT) // 分割数は simDt のみで決まる(実 fps に依存しない)
+      - nextEventTime(activeStage) // activeStage.nextSimulationEventTime(simTime) と全生存エンティティの nextSimulationEventTime() のうち最も早いものへ subDt を切り詰める
+        - [CreativeStage] ship.planExecution==='instant' なら plan.firstNode()?.t、'powered' なら ship.planExecutor.nextEventTime(ship, simTime)(ゲートが閉じている間は常に null。armed 中は点火予定時刻、burn/trim 中は射影から求めた遮断予定時刻。どちらも対象ノードが targetNode(参照)と一致する間だけ)
       - substep()
         - gravityAttractorsAt(ephemeris, entities, t) // サブステップ先頭で1回だけ: ephemeris.gravityAttractorsAt(t)(mu を持つ天体)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流。同じ1配列をこのサブステップの全エンティティで使い回す(処理順に依存した誤差を避けるため)
         - entity.stepActual() → relevantAttractors(state.r, all, GRAVITY_NEGLIGIBLE_ACCEL) → actualTrajectory.step() → stepDynamics()(history 記録)
           // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。relevantAttractors がこの位置で無視できない天体だけに絞る。全天体重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
         - player.thermal.updateThermal() // 操作対象のみ(HUD 警告を出すため)
+      - activeStage.applySimulationEvents(simTime) // simTime がイベント境界ちょうどに到達した substep の直後
+        - [CreativeStage] ship.planExecution==='instant' なら node.t 到達で plan.dropNodesBefore(simTime) → 戻ったノードへ ship.state を置き換え(複数ノードを跨いだフレームも内部の while で一括消費)
+        - [CreativeStage] ship.planExecution==='powered' なら ship.planExecutor.applyIgnitionAndCutoff(ship, simTime) // 冒頭で !ship.alive なら reset して return。armed→burn の点火(ECI 固定の噴射方向 burnDirWorld/burnUpWorld を確定し ship.torque/ship.thrust を立てる)、射影が0を切った遮断(dropNodesBefore + plan.overwriteAnchor で実状態へアンカーを差し替え)
       - hitSystem.checkBulletHits() // bulletCollision=true のときだけ。サブステップごと
       - target.attacked() // 弾が命中した対象ごと
         - [Enemy.attacked]
@@ -302,7 +307,7 @@
           - player = ship / cameraSystem.setActivePlayer(ship) → combatCamera.setActivePlayer(ship) → chaseCamera.setPlayer(ship) // rot/dist は据え置き
           - editor.setActivePlayer(ship) → ship 差し替え / selectedNodeIdx = null / closeMenu() // 以後 editor.plan は ship.plan を指す
           - targeter.clearTargets() // 切替前の艦が握っていたロックを持ち越さない
-        - act='followToggle' → entities.findPlayer(target.id) → ship.followPlan を反転 // 'player' のみ
+        - act='planExecCycle' → entities.findPlayer(target.id) → ship.planExecution = nextPlanExecution(ship.planExecution) // 'player' のみ。OFF→瞬間移動→自動操縦→OFF
         - act='delete' → entities.findPlayer(target.id) → entities.removePlayer(ship) → dispose() // 'player' のみ。操作対象の艦にはこの項目自体がメニューに出ない(MapPicker.itemsFor)
     - editor.updateEditing()
       - applyHeldDv() ×6方向 // WASDQE または dvButtons(長押しボタン)が held の間、ホールド秒数からランプするレートで dt 秒分を積分
@@ -345,7 +350,7 @@
     - [entities.players ごと] ship.syncPlayer(displayTime, isActive = ship===player)
     - displayState(displayTime) // current.at または predicted.at。null なら obj.visible=false のみで以下は現在状態のまま
     - obj の position / quaternion / visible // displayState 基準(未来ゴースト表示中は将来位置)。ガンサイトズームで隠れるのは isActive の艦だけ
-    - thrustEffects.sync() → core/outer の sync() or hide() // displayState(displayTime) ?? this.state。displayState が null なら alive=false 扱いで呼び自分で隠れる
+    - thrustEffects.sync(this.thrust, maxAccel, ...) → sfx.setThrust(firing)(isActive のみ) + core/outer の sync() or hide() // this.thrust は PlayerThrottle/PlanExecutor どちらが立てても同じ。displayState(displayTime) ?? this.state。displayState が null なら alive=false 扱いで呼び自分で隠れる
     - rcsEffects.sync() → sfx.setRcs(rotating) + puff の sync() or hide() ×4 // 同上
     - belt.sync() // 各リンクの position/quaternion を平行移動+ツイストから導出。同上
     - radiator.sync() // ヒンジ Group の rotation.y へ展開角を書く

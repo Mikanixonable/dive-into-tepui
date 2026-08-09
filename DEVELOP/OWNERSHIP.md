@@ -118,7 +118,8 @@ main.ts
     │   │   ├── PlayerMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の艦だけが sync する)
     │   │   ├── OrbitLine              ... 自機軌道線。中心天体は毎フレーム state から導出(strongestAttractor)。
     │   │   │                              表示抑制(setSuppressed)は Game.sync が PredictedTrajectoryLine.hasLineFor(この艦)から渡す(§付録参照)
-    │   │   └── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
+    │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
+    │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
     │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
     │   ├── Bullet[]
     │   ├── DebrisPiece[] (casings)
@@ -179,7 +180,8 @@ main.ts
 | `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・HitSystem・CollisionPhysics・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
 | `DisplayTimeManager` | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない) |
-| `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が activePlayer.plan を転送)・PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)・CreativeStage(followPlan 艦の自動追従) |
+| `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が activePlayer.plan を転送)・PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)・CreativeStage(`planExecution` 艦のノード消化) |
+| `PlanExecutor`(艦ごとの) | `Player`(艦自身) | CreativeStage(`update`/`nextSimulationEventTime`/`applySimulationEvents` から呼ぶだけで保持しない) |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
 | `Player` / `Simulator` / `EntityManager` / `Stage` | Game | 毎フレームの引数として相互に渡される |
@@ -216,9 +218,10 @@ main.ts
 | 天球グリッド6トグルの可視状態・navball の基準モード | `Navball` | `gridVisibility`/`mode`。`Game.sync` が `navball.gridVisibility` を読んで `EnvironmentScene.sync` の引数(`gridVisibility`)経由で `CelestialGrid.sync` へ渡すだけで、`CelestialGrid` 自身は状態を持たない |
 | Δv アーム/ボタンのホールド継続時間・ラッチ状態 | `PlanEditor.dvHoldTime` / `NodeGizmo.latch` | 6方向ぶんの経過秒数(ホールドレートのランプに使う)と、ドラッグがラッチへ入った軸/超過量。加算そのものは `PlanEditor.applyDv` に一本化 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
-| マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。ノード・アンカーとも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `KinematicState[]` を1本持つだけで、`addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`dropNodesBefore(t)` は実行時刻が `t` 以前のノードをまとめて取り除き、最後に取り除いたノードを新しい `anchor` に据えて返す(`CreativeStage.advanceFollowPlan` が `followPlan` 艦の自動追従にこの戻り値を使う) |
+| マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。ノード・アンカーとも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `KinematicState[]` を1本持つだけで、`addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`dropNodesBefore(t)` は実行時刻が `t` 以前のノードをまとめて取り除き、最後に取り除いたノードを新しい `anchor` に据えて返す(`CreativeStage.applySimulationEvents` が `planExecution==='instant'` 艦の乗り移りにこの戻り値を使う)。`overwriteAnchor(state)` は `trackAnchor` と違いノードが残っていても効く無条件差し替えで、`PlanExecutor.finish` が `'powered'` 艦の遮断後にこれで `anchor` を実状態へ上書きする(ノードが残っている限り `trackAnchor` は no-op なので使えない) |
 | 操作対象(アクティブ)艦 | `Game.player` | 唯一の書き換え箇所は `Game.setActivePlayer(ship)`。カメラ参照・計画編集対象・ターゲット解除の副作用もすべてここに閉じる(下記「たまたま同時に切り替わる」節参照) |
-| 軌道計画への自動追従 | `Player.followPlan` | 全ての自機が持つ(既定 false)。ON の艦は `CreativeStage.update` が毎フレーム見て、次ノード時刻を跨いだら `state` をノードの絶対状態へ置き換える |
+| 軌道計画の実行モード | `Player.planExecution`(型 `PlanExecutionMode` = `'off' \| 'instant' \| 'powered'` は `plan/plan-executor.ts` が定義し `player.ts` は re-export するだけ) | 全ての自機が持つ(既定 `'off'`)。`'instant'` は `CreativeStage.applySimulationEvents` がノード時刻ちょうどで `state` をノードの絶対状態へ置き換え、`'powered'` は `PlanExecutor` が姿勢制御・噴射で実行する。操作対象艦での手動並進(`this.thrust !== null`)・手動回転(`throttle.hasManualRotationInput`)は `Player.behave` が `'powered'` を `'off'` へ落とす |
+| PlanExecutor の状態機械(`phase`/`targetNode`/`burnDirWorld`/`burnUpWorld`/`pendingAccel`/`thrustGateOpen`) | `PlanExecutor`(艦ごとの) | 艦の `planExecution`/ノード/生死/ゲートから毎フレーム `update` が導出。`targetNode` はノードの**参照**を持ち、`node.t` ではなく `node !== targetNode` で差し替わりを検出する(`Plan.applyNodeDv`/`retimeNode` は同じ `t` のまま新しいオブジェクトへ差し替えるため)。`ship.torque`/`ship.thrust`/`ship.plan` は `PlanExecutor` が唯一書き換える(`'powered'` の間のみ)が、書き込みは `update`(毎フレーム、`Player.behave` の後)と `applyIgnitionAndCutoff`(simTime イベント境界ごと)の両方から起きる — 前者は「操作艦で `behave` が毎フレーム上書きする `thrust` を、その後で確実に正しい値へ戻す」役、後者は「点火・遮断の瞬間を simTime ちょうどに固定する」役で、互いの代わりにはならない |
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNodeIdx` / `.editMode` | 選択は素の `number \| null`。`deleteNode(idx)` は削除後 `selectedNodeIdx >= idx` なら選択を解除する |
 | 直近ノードの接近/達成通知済み | `PlanGuide`(`approachNotified` / `achievedNotified`) | 通知済みのノードそのものへの参照。編集のたびノードは別インスタンスへ置き換わるので、同一性比較がそのまま「同じノードについて通知済みか」の判定になる |
 | 予測表示期間(手動レンジの秒数 `manualDurationSec` を含む)・未来ゴーストスライダー(`sliderT`)・未来表示の禁止(`forceCurrent`) | `DisplayTimeManager` | `forceCurrent` は get/set アクセサで、true をセットすると `sliderT` も 0 へ戻す。期間の切替(`durationKey` 変更)でも同様に `sliderT` を 0 へ戻す |
@@ -333,7 +336,7 @@ main.ts
 | `EntityLineSet.lines`(`Map<GameEntity, SampledLine>`。`DebugTrajectoryLine`/`PredictedTrajectoryLine` がそれぞれ private に1つ持つ) | エンティティごとに `SampledLine` を1本対応させるプールと、対象集合から外れた分の破棄だけを担う共通機構。線の見た目(色・不透明度・renderOrder)は各所有者がコンストラクタへ渡す `factory` が決めるので、このクラス自身は知らない(`DebugTrajectoryLine` の分は `?debugLines=1` のときだけ実体化) | 対象集合(`sync` の引数)から外れたエンティティぶんを毎フレーム破棄 |
 | `PredictedTrajectoryLine.synced`(`Set<GameEntity>`) | 直近の `sync` で実際に予測軌道線を描いた対象の記録。`EntityLineSet.lineFor` は未登録のエンティティにも線を新規作成してしまうため、`hasLineFor` がそれを踏んで誤登録しないための集合 | 毎フレームの `sync` で描画対象から作り直す |
 | `PlanPath.arrivalStates()` / `PlanEditor.nodeDv()` | 各区間の `PlanArc` 終端状態、およびそこから求めるノード Δv の導出値(表示専用) | 呼ぶたび再計算(`PlanArc` 側の積分結果をそのまま読むので、描画中の計画軌道と同じ結果になる) |
-| `PlayerThrottle.thrustVizDir` / `.thrustAccelVec` | 推力の表示・ベルト物理向け派生値 | 毎フレーム上書き |
+| `PlayerThrottle.thrustAccelVec` | ベルト物理(`Belt.update`)向けの推力加速度ベクトル | 毎フレーム上書き。プルーム・エンジン音は `ThrustEffects.sync` が `ship.thrust`(`GameEntity` 側、`PlayerThrottle`/`PlanExecutor` どちらが書いても同じ)を直接読むので、ここには含まれない |
 | `Player` の各 getter(`rcsDamp` / `magsLeft` 等) | throttle/fire への転送 | — |
 | `FocusMarkers.labels[].pos` | 天体暦から毎フレーム再計算。ただし `visibleBodyIds` が admits した天体だけ — 対象外の天体は座標を引かない | `update(t, focusId, toggles)` 毎(`syncLabels()` はこの値をマーカーへ置くだけ) |
 | `NavTarget` の相対 AN/DN 位置・通過時刻 | 自機軌道要素 + 対象の軌道面法線からの導出値(id 自体は正本) | `update()` 毎に全消去→再算出 |

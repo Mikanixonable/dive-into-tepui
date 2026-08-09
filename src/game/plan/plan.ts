@@ -66,6 +66,15 @@ export class Plan {
     this._anchor = state;
   }
 
+  // アンカーを state へ無条件に差し替える。trackAnchor と違い後続ノードが残っていても効く —
+  // 実行済み区間の起点を「そのノードが本来あるべき理想値」ではなく「実際にそこへ到達した
+  // 状態」に置き換える用途(例: 動力飛行のバーンが計画どおりのΔvを達成できず、誤差を残した
+  // まま先頭ノードを消化した場合)。後続ノード自体は絶対状態のまま動かないので、以降の計画が
+  // ここで書き換わるわけではない。
+  overwriteAnchor(state: KinematicState): void {
+    this._anchor = state;
+  }
+
   // 噴射直後の絶対状態としてノードを追加し、その index を返す。実行時刻順の挿入位置より
   // 後ろのノードは破棄されるので、追加したノードが常に末尾になる。
   addNode(postState: KinematicState): number {
