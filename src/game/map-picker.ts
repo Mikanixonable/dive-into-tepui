@@ -254,7 +254,10 @@ export class MapPicker {
   // (this.items)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
   sync(overviewMode: boolean, simTime: number, attractors: readonly Attractor[], player: Player | null): void {
     this.objectListPanel.setVisible(overviewMode);
-    if (overviewMode) this.objectListPanel.sync(this.items, this.cameraSystem.overviewCamera.focus);
+    if (overviewMode) {
+      const depthOf = new Map(this.cameraSystem.focusMarkers.labels.map((l) => [l.id, l.depth]));
+      this.objectListPanel.sync(this.items, this.cameraSystem.overviewCamera.focus, depthOf);
+    }
 
     const byKey = new Map(this.items.map((i) => [this.windowKey(i), i]));
     for (const [key, entry] of [...this.windows]) {

@@ -61,7 +61,8 @@ export class ObjectListPanel {
   // 種別ごとの区画へ、既存行は使い回しつつ id 差分だけ足し引きする。行のクリックリスナーは
   // 生成時の1回だけ張るので、ここで毎フレーム innerHTML を書き換えてはいけない
   // (張り直しになり、クリック中に要素が消えてイベントが発火しなくなる)。
-  sync(items: readonly MapPickable[], focusId: string): void {
+  // depthOf に載っている id は、その深さぶん字下げして親子関係を出す(天体セクション)。
+  sync(items: readonly MapPickable[], focusId: string, depthOf: ReadonlyMap<string, number>): void {
     const byKind = new Map<MapPickKind, MapPickable[]>();
     for (const item of items) {
       const list = byKind.get(item.kind);
@@ -86,6 +87,8 @@ export class ObjectListPanel {
           section.body.appendChild(row);
         }
         if (row.textContent !== item.name) row.textContent = item.name;
+        const indent = 4 + (depthOf.get(item.id) ?? 0) * 10;
+        if (row.style.paddingLeft !== `${indent}px`) row.style.paddingLeft = `${indent}px`;
         row.classList.toggle('tgt', item.id === focusId);
       }
       for (const [id, row] of section.rows) {

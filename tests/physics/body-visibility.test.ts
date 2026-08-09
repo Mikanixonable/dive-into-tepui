@@ -96,6 +96,18 @@ export function register(): void {
     assert.ok(!visible.has('ceres'), '別クラスは足されない');
   });
 
+  // 一覧の並び順は FocusMarkers が組むラベル配列そのものなので、階層の導出だけを固定する。
+  test('visibility: 親子の深さは主星を 0 として数えられる', () => {
+    const depth = (id: string): number => {
+      let d = 0;
+      for (let cur = primaryOf(SOLAR_SYSTEM, id); cur !== null; cur = primaryOf(SOLAR_SYSTEM, cur)) d++;
+      return d;
+    };
+    assert.equal(depth('sun'), 0);
+    assert.equal(depth('jupiter'), 1);
+    assert.equal(depth('io'), 2);
+  });
+
   test('visibility: 未登録の id にフォーカスしても恒星・惑星は見え続ける', () => {
     const visible = visibleBodyIds(SOLAR_SYSTEM, 'asteroid-1', DEFAULT_BODY_CLASS_TOGGLES);
     assert.ok(visible.has('earth'));

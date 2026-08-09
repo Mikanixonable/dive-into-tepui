@@ -16,6 +16,8 @@ export interface FocusLabel {
   pos: Vec3;
   kind: 'body';
   isLagrange: boolean;
+  // 主星を 0 とする階層の深さ。一覧をこの順・この字下げで並べると親子関係がそのまま出る。
+  depth: number;
 }
 
 export class FocusMarkers {
@@ -48,15 +50,29 @@ export class FocusMarkers {
       return points.length === 0 ? [] : [{ id, points }];
     });
 
-    const labels: FocusLabel[] = this.registryIds.map((id) => ({
-      id, name: celestialBodyName(id), pos: v3(0, 0, 0), kind: 'body' as const, isLagrange: false,
-    }));
-    for (const { id, points } of this.lagrangeSources) {
+    // 親を先に、その子を続けて並べる。一覧はこの順をそのまま使うので、並べ替えを持たない。
+    const labels: FocusLabel[] = [];
+    const pointsOf = new Map(this.lagrangeSources.map((s) => [s.id, s.points]));
+    const appendBody = (id: AttractorId, depth: number): void => {
+      labels.push({ id, name: celestialBodyName(id), pos: v3(0, 0, 0), kind: 'body', isLagrange: false, depth });
       const primary = primaryOf(registry, id);
       const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
-      for (const n of points) {
-        labels.push({ id: `${id}-l${n}`, name: `${prefix} L${n}`, pos: v3(0, 0, 0), kind: 'body', isLagrange: true });
+      for (const n of pointsOf.get(id) ?? []) {
+        labels.push({
+          id: `${id}-l${n}`, name: `${prefix} L${n}`, pos: v3(0, 0, 0),
+          kind: 'body', isLagrange: true, depth: depth + 1,
+        });
       }
+      for (const child of this.registryIds) {
+        if (child !== id && primaryOf(registry, child) === id) appendBody(child, depth + 1);
+      }
+    };
+    for (const id of this.registryIds) {
+      if (primaryOf(registry, id) === null) appendBody(id, 0);
+    }
+    // 主星を持たない孤立した天体(親が登録されていないレジストリ)も落とさない。
+    for (const id of this.registryIds) {
+      if (!labels.some((l) => l.id === id)) appendBody(id, 0);
     }
     this.allLabels = labels;
   }
