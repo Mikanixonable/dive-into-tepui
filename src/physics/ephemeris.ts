@@ -12,7 +12,9 @@ import { cassiniSpinAxis, meridianDirection, orthogonalizedTo, spinPhaseOf } fro
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import { ReferenceFrame, FrameTransform } from './frame';
 import { FrameRotation, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
-import { LagrangePoints, lagrangePoints } from './lagrange';
+import {
+  LagrangePoints, collinearClearanceRatio, hasStableTriangularPoints, lagrangePoints,
+} from './lagrange';
 import { planetAngles } from './planet-orbit';
 import { satelliteState } from './satellite-orbit';
 import { bodyDef, CelestialBodyDef, CelestialRegistry, primaryOf, SOLAR_SYSTEM, starOf } from './solar-system';
@@ -104,7 +106,8 @@ export class Ephemeris {
 
   // registry の全天体 id、および attractorsAt が返す配列の順序(宣言順)。
   private readonly ids: readonly AttractorId[];
-  // ids のうち gravitySource が立っている id(宣言順)。
+  // ids のうち質量を持つ id(宣言順)。質量が測定されていない天体は mu = 0 で登録され、
+  // 重力窓の候補から外れる。どの候補が実際に効くかは位置依存の relevantAttractors が決める。
   private readonly gravityIds: readonly AttractorId[];
   // registry の主星。0個なら null(輻射源・影の計算がそもそも無意味になる — sunDirAt/dynamics.ts の
   // 呼び出し側はその前提で無害なフォールバックを扱う)。
@@ -128,7 +131,7 @@ export class Ephemeris {
   ) {
     this.phaseOffsets = phaseOffsets;
     this.ids = Object.keys(registry);
-    this.gravityIds = this.ids.filter((id) => bodyDef(registry, id).gravitySource);
+    this.gravityIds = this.ids.filter((id) => bodyDef(registry, id).mu > 0);
     this.starId = starOf(registry);
     this.inertialFrame = { center: originId, rotatingWith: null };
     this.frames = [
@@ -216,6 +219,10 @@ export class Ephemeris {
     const bary = this.baryHelioState(def, t);
     const satellites = this.satellitesOf(def.id);
     if (satellites.length === 0) return bary;
+    // mu = 0 は「質量が未測定」であって質量0ではない。本体の質量が分からない系では重心の
+    // 位置も決まらないので、補正せず本体を重心に置いたままにする — 補正すると衛星の質量比が
+    // 1 になり、本体が衛星との距離ぶんまるごとずれる。
+    if (def.mu <= 0) return bary;
 
     // 重心を分け合う全質量(惑星本体 + 全衛星)に対する各衛星の比で、重心から差し引く量を決める。
     let muTotal = def.mu;
@@ -293,10 +300,41 @@ export class Ephemeris {
     return lagrangePoints(mu, (x, y) => add(primaryPos, qRotate(q, v3(R * x, R * y, 0))));
   }
 
-  // 恒星方向の単位ベクトル(ライティング・影判定用)。恒星が無いレジストリでは影・輻射圧の
-  // 計算そのものが無意味になるので、無害な既定方向(+X)を返す。
-  sunDirAt(t: number): Vec3 {
-    return this.starId === null ? v3(1, 0, 0) : norm(this.positionOf(this.starId, t));
+  // secondary の主天体に対する質量比 mu = m2/(m1+m2)。主星が無ければ null。
+  private massRatioOf(secondary: OrbitingId): number | null {
+    const primary = primaryOf(this.registry, secondary);
+    if (primary === null) return null;
+    const def = bodyDef(this.registry, secondary);
+    // どちらかの質量が未測定(mu = 0)なら質量比は決まらない。0 を比として通すと共線点を解く
+    // 反復が発散し、1 を通すと L1 が主天体の中心に落ちる。
+    const primaryMu = bodyDef(this.registry, primary).mu;
+    if (primaryMu <= 0 || def.mu <= 0) return null;
+    return def.mu / (primaryMu + def.mu);
+  }
+
+  // secondary の共線点(L1/L2/L3)が行き先として意味を持つか。副天体が軽いほどヒル半径が
+  // 縮んで L1 が表面へ寄るので、副天体半径に対する余裕が minClearanceRatio 倍に満たない系は
+  // 共線点を持たないものとして扱う(しきい値はハロー軌道の振幅が収まるかの判断なので、
+  // 物理定数ではなく呼び出し側から受け取る)。
+  hasUsableCollinearPoints(secondary: OrbitingId, minClearanceRatio: number): boolean {
+    const mu = this.massRatioOf(secondary);
+    if (mu === null || mu <= 0) return false;
+    const def = bodyDef(this.registry, secondary);
+    if (def.kind === 'star') return false;
+    return collinearClearanceRatio(mu, keplerOrbitOf(def).a, def.radius) >= minClearanceRatio;
+  }
+
+  // secondary の三角点(L4/L5)が線形安定か(Routh の質量比条件)。
+  hasStableTriangularPoints(secondary: OrbitingId): boolean {
+    const mu = this.massRatioOf(secondary);
+    return mu !== null && mu > 0 && hasStableTriangularPoints(mu);
+  }
+
+  // ECI の点 r から見た恒星方向の単位ベクトル(陰影・日照判定・輻射の向き)。基準点を引数に
+  // 取るのは、恒星との位置関係が点ごとに違うため — 惑星間では地心方向で代用できない。
+  // 恒星が無いレジストリでは影・輻射圧の計算そのものが無意味になるので、無害な既定方向(+X)を返す。
+  sunDirFrom(r: Vec3, t: number): Vec3 {
+    return this.starId === null ? v3(1, 0, 0) : norm(sub(this.positionOf(this.starId, t), r));
   }
 
   // 登録済みの id ならキャッシュ済みの frames/inertialFrame から、そうでなければ
@@ -401,7 +439,7 @@ export class Ephemeris {
     return this.allAttractorsCache.put(t, this.ids.map((id) => this.attractorAt(id, t)));
   }
 
-  // 指定時刻の重力源一覧(gravitySource が立っている天体のみ、registry の宣言順)。
+  // 指定時刻の重力源一覧(mu を持つ天体のみ、registry の宣言順)。
   // 重力積分はこちらを引く — RK4 の各ステージ × 全エンティティで舐める配列なので、
   // 表示だけの天体を含めない。
   // attractorsAt と同じく、同一 t には同一の配列参照が返る(書き換え禁止)。
