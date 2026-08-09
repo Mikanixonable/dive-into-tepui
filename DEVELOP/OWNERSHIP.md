@@ -83,14 +83,14 @@ main.ts
     │   ├── ScoreAttackTimer           ... Stage0 のみ(Stage00 の波状攻撃フェーズ・波数は Stage00 自身のフィールド)
     │   └── ShipPlacerPanel            ... CreativeStage のみ。DOM は Hud.root 配下。艦艇配置フォーム(開閉状態 isOpen も自身が持つ)
     ├── EnvironmentScene               ... game/celestial/ 配下(game/ への依存を持つため render/ から移動)
-    │   ├── CelestialBody[]             ... CELESTIAL_BODIES(celestial-registry.ts)から1体ずつ生成。地球=EarthBody・太陽=SunBody・pointBrightness 未指定の惑星/月/土星等=SphereBody・pointBrightness 指定の惑星(金星・木星・水星・火星・土星・天王星)=PointBody。木星・土星・天王星・海王星は SOLAR_SYSTEM の CelestialBodyDef.rings(物理データ)を own し、build 時に RingView を1つ生成してシーン直下へ追加(本体メッシュの子ではない — sphere-body.ts/point-body.ts 参照)
+    │   ├── CelestialBody[]             ... CELESTIAL_BODIES(celestial-registry.ts)から1体ずつ生成。地球=EarthBody・太陽=SunBody・pointBrightness 未指定の惑星/月/土星等=SphereBody・pointBrightness 指定の惑星(金星・木星・水星・火星・土星・天王星)=PointBody。木星・土星・天王星・海王星は SOLAR_SYSTEM の CelestialBodyDef.rings(物理データ)を own し、build 時に RingView を1つ生成してシーン直下へ追加(本体メッシュの子ではない — sphere-body.ts/point-body.ts 参照)。SphereBody/PointBody は build 時に CelestialSurface(render/celestial-surface.ts、メッシュと昼夜陰影の uniform)を1つ own する
     │   ├── PointFieldView              ... 小惑星帯・トロヤ群・ヒルダ群・カイパーベルト cold/hot・散乱円盤の点群(群ごとに1つの InstancedMesh、計11200点)。point-field.ts の PointFieldDef 配列(POINT_FIELD_DEFS)から build 時に一度だけ生成し、以後は不変
     │   │   └── groups: readonly PointFieldGroupView[] ... PointFieldDef 1つにつき1インスタンス。群ごとの描画半径・色は point-field-view.ts の GROUP_VIEW が持つ
     │   │       ├── points: readonly PointElements[]   ... 決定論的乱数(mulberry32、ASTEROID_SEED)で生成、生成後は読み取り専用
     │   │       ├── positions: Vec3[]    ... 各点の太陽中心位置。update がラウンドロビン(1/8点/フレーム)で書き換える唯一の書き手
     │   │       ├── sunPos: Vec3         ... 直近 update 時点の太陽 ECI 位置。sync の ECI 化(太陽中心→ECI)がここを読む
     │   │       └── cursor: number       ... ラウンドロビンの次回開始添字
-    │   ├── AmbientLight / stars メッシュ
+    │   ├── AmbientLight / DirectionalLight / stars メッシュ ... 平行光は描画原点近傍の実スケール物体(自機・デブリ・薬莢)専用。天体は各自の CelestialSurface が sunDirection uniform を持って自分で陰影を計算するのでこの光を受けない
     │   ├── OrbitLine (geoLine)         ... 静止軌道の参照線(天体ではない特例、個別フィールドのまま)
     │   ├── referenceLines: ReadonlyMap<OrbitingId, OrbitLine> ... SOLAR_SYSTEM の公転天体ぶん自動生成(衛星=旧月線色、惑星=白)。天体の登録追加だけで線が増える
     │   └── CelestialGrid              ... 赤道面/黄道面それぞれの基準円・緯経線グリッド・両極マーカー
