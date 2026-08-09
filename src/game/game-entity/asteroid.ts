@@ -1,5 +1,5 @@
 // 重力を及ぼし、かつ重力の影響を受ける個別の小天体。GameEntity の通常の積分経路にそのまま乗る。
-// game/celestial/asteroid-belt.ts・asteroid-field.ts の表示専用点群(重力・ピック・フォーカスの
+// game/celestial/point-field.ts・point-field-view.ts の表示専用点群(重力・ピック・フォーカスの
 // 対象にならない)とは別物。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
