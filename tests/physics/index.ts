@@ -35,6 +35,7 @@ import { register as registerRing } from './ring.test';
 import { register as registerIrregularSatellites } from './irregular-satellites.test';
 import { register as registerLaplaceSatellites } from './laplace-satellites.test';
 import { register as registerSmallBodies } from './small-bodies.test';
+import { register as registerEquatorialSatellites } from './equatorial-satellites.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -71,5 +72,6 @@ registerRing();
 registerIrregularSatellites();
 registerLaplaceSatellites();
 registerSmallBodies();
+registerEquatorialSatellites();
 
 runAll();
