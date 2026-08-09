@@ -86,13 +86,13 @@ export class GameEntity {
     return Math.max(span / C.TRAJECTORY_SAMPLES_PER_REV, keepDuration / C.PREDICT_MAX_SAMPLES);
   }
 
-  // 全天体重力 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。このステップぶんの重力源は
-  // 中点(t + dt/2)で1回だけ引く — attractorsAt は同一時刻の呼び出しを前提にメモ化されて
-  // いるので、1ステップの中で別の時刻を引くとメモが効かなくなる。historyDuration が 0
-  // (弾・薬莢・破片)の間は間引き間隔を使わないので sampleInterval を評価しない。
+  // 重力源 + J2 + 大気抵抗 + 自身の推力で 1 ステップ積分する。このステップぶんの重力源は
+  // 中点(t + dt/2)で1回だけ引く — Ephemeris は時刻をキーにメモ化するので、1ステップの中で
+  // 別の時刻を引くとメモが効かなくなる。historyDuration が 0(弾・薬莢・破片)の間は
+  // 間引き間隔を使わないので sampleInterval を評価しない。
   stepActual(dt: number, ephemeris: Ephemeris): void {
     if (!this.alive) return;
-    const attractors = ephemeris.attractorsAt(this.state.t + dt / 2);
+    const attractors = ephemeris.gravityAttractorsAt(this.state.t + dt / 2);
     const interval = this.historyDuration > 0
       ? this.sampleInterval(attractors, this.state, this.historyDuration)
       : 0;

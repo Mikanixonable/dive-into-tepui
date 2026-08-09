@@ -54,17 +54,23 @@ export type Degree2GravityDef = {
   readonly pole: PoleModel;
 };
 
+// 重力積分の対象にするかどうか。判定基準は「その天体の近傍にプレイヤーが存在しうるか」で、
+// 地球近傍での加速度寄与ではない(ECI は地球と共に自由落下する非慣性系なので、遠方の天体の
+// 寄与は潮汐差分項に落ちて太陽輻射圧よりも桁で小さくなる)。**クリエイティブモードで基準天体・
+// ラグランジュ系として選択できる天体は必ず true** — 選ばせた先で局所力学が成立しなくなるため。
+type GravitySourceFlag = { readonly gravitySource: boolean };
+
 export type CelestialBodyDef =
-  | { readonly kind: 'star'; readonly id: StarId; readonly mu: number; readonly radius: number }
-  | {
+  | ({ readonly kind: 'star'; readonly id: StarId; readonly mu: number; readonly radius: number } & GravitySourceFlag)
+  | ({
       readonly kind: 'planet';
       readonly id: PlanetId;
       readonly mu: number;
       readonly radius: number;
       readonly orbit: PlanetOrbit; // 中心は必ず恒星
       readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
-    }
-  | {
+    } & GravitySourceFlag)
+  | ({
       readonly kind: 'satellite';
       readonly id: SatelliteId;
       readonly mu: number;
@@ -72,7 +78,7 @@ export type CelestialBodyDef =
       readonly planet: PlanetId; // 中心は必ず惑星
       readonly orbit: SatelliteOrbit;
       readonly degree2?: Degree2GravityDef;
-    };
+    } & GravitySourceFlag);
 
 const D2R = Math.PI / 180;
 
@@ -138,6 +144,7 @@ export const SOLAR_SYSTEM = {
     id: 'earth',
     mu: MU_EARTH,
     radius: R_EARTH,
+    gravitySource: true,
     // JPL 低精度惑星暦の "EM Bary"(地球-月重心)行、黄道基準・J2000 相当。
     orbit: planetOrbit({
       a: 1.495978707e11,
@@ -161,6 +168,7 @@ export const SOLAR_SYSTEM = {
     id: 'moon',
     mu: MU_MOON,
     radius: R_MOON,
+    gravitySource: true,
     planet: 'earth',
     orbit: satelliteOrbit({
       a: 3.844e8,
@@ -189,6 +197,7 @@ export const SOLAR_SYSTEM = {
     id: 'jupiter',
     mu: 1.26686534e17,
     radius: 6.9911e7,
+    gravitySource: true,
     // JPL 低精度惑星暦(Standish 1992/2006)の Jupiter 行、黄道基準・J2000 相当。
     // eRatePerCentury/incRateDegPerCentury も同表の値(タスク指示に無いぶんを補う)。
     orbit: planetOrbit({
@@ -206,7 +215,7 @@ export const SOLAR_SYSTEM = {
       aRatePerCenturyAu: -0.00011607,
     }),
   },
-  sun: { kind: 'star', id: 'sun', mu: MU_SUN, radius: R_SUN },
+  sun: { kind: 'star', id: 'sun', mu: MU_SUN, radius: R_SUN, gravitySource: true },
 } satisfies Record<AttractorId, CelestialBodyDef>;
 
 // SOLAR_SYSTEM を satisfies で受けているため、推論された型にインデックスシグネチャがなく

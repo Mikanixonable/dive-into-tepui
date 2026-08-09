@@ -2,8 +2,10 @@
 // 位置・速度・重力源配列・回転基準系・ラグランジュ点を返すサンプラ。分岐は SOLAR_SYSTEM の
 // kind(恒星/惑星/衛星)だけで、固有名の分岐は持たない。ECI 化は「日心位置 − 地球の日心位置」
 // の一箇所のみ(地球は自分自身を引くので厳密に 0 になる)。
-// メモ化はしない — 呼び出し順に依存する隠れた制約を作らず、毎回すべてを素直に評価する。
-// THREE/DOM 非依存の純関数群 + 状態(初期位相)を1つだけ持つサンプラクラス。
+// 評価結果は時刻 t をキーにした固定長リングでメモ化する。ヒットするのはキーが厳密に一致した
+// ときだけで、ミス時は常に再計算するため、どの順に呼んでも返る値は変わらない(呼び出し順に
+// 依存する隠れた制約を作らない)。
+// THREE/DOM 非依存の純関数群 + 状態(初期位相とメモ)を持つサンプラクラス。
 import { Quat, qRotate } from './attitude';
 import { Attractor, AttractorId, Degree2Gravity, OrbitingId, PlanetId, SatelliteId } from './attractor';
 import { cassiniSpinAxis, principalLongAxis } from './body-orientation';
@@ -32,6 +34,9 @@ type OrbitingDef = PlanetDef | SatelliteDef;
 // (Object.keys は string[] を返すため、キー型の復元にだけキャストを使う。)
 const ATTRACTOR_IDS = Object.keys(SOLAR_SYSTEM) as AttractorId[];
 
+// 重力積分の対象になる天体の一覧(宣言順)。
+const GRAVITY_SOURCE_IDS = ATTRACTOR_IDS.filter((id) => bodyDef(id).gravitySource);
+
 // 惑星 planet を回る衛星の id 一覧。
 function satellitesOf(planet: PlanetId): readonly SatelliteId[] {
   const ids: SatelliteId[] = [];
@@ -47,11 +52,52 @@ function keplerOrbitOf(def: OrbitingDef): KeplerOrbit {
   return def.kind === 'planet' ? def.orbit : def.orbit.kepler;
 }
 
+// 時刻キャッシュの保持段数。同一ループ内で t と t + dt/2 を交互に引く経路や、対象ごとに
+// 異なる先端時刻を引く経路があるため、1段では主要経路のヒット率が 0 になる。
+const TIME_CACHE_SLOTS = 4;
+
+// 時刻 t をキーにした固定長リング。キーが厳密に一致したときだけ値を返し、それ以外は undefined。
+class TimeRing<T> {
+  private readonly keys: number[] = new Array(TIME_CACHE_SLOTS).fill(NaN);
+  private readonly values: (T | undefined)[] = new Array(TIME_CACHE_SLOTS).fill(undefined);
+  private next = 0;
+
+  // t に一致する保持値。無ければ undefined。
+  get(t: number): T | undefined {
+    for (let i = 0; i < TIME_CACHE_SLOTS; i++) {
+      if (this.keys[i] === t) return this.values[i];
+    }
+    return undefined;
+  }
+
+  // t をキーに value を最古の段へ書き、その value をそのまま返す。
+  put(t: number, value: T): T {
+    this.keys[this.next] = t;
+    this.values[this.next] = value;
+    this.next = (this.next + 1) % TIME_CACHE_SLOTS;
+    return value;
+  }
+
+  // 全段を空にする。
+  clear(): void {
+    this.keys.fill(NaN);
+    this.values.fill(undefined);
+    this.next = 0;
+  }
+}
+
 export class Ephemeris {
   // 天体ごとの平均黄経の初期オフセット。既定は月のみ乱数(現行の挙動)。テストは決定的な
   // 位相を渡すためコンストラクタで上書きする。セーブ/ロードは setPhaseOffsets で書き換える
   // (共有インスタンスを差し替えないため)。
   private phaseOffsets: Partial<Record<AttractorId, number>>;
+
+  // 天体ごとの中間結果と、2つの重力源窓の時刻キャッシュ。位相オフセットを差し替えたら
+  // すべて破棄する。
+  private readonly planetHelioCache = new Map<PlanetId, TimeRing<KinematicState>>();
+  private readonly satelliteRelCache = new Map<SatelliteId, TimeRing<KinematicState>>();
+  private readonly allAttractorsCache = new TimeRing<readonly Attractor[]>();
+  private readonly gravityAttractorsCache = new TimeRing<readonly Attractor[]>();
 
   constructor(phaseOffsets: Partial<Record<AttractorId, number>> = { moon: Math.random() * 2 * Math.PI }) {
     this.phaseOffsets = phaseOffsets;
@@ -62,9 +108,14 @@ export class Ephemeris {
     return { ...this.phaseOffsets };
   }
 
-  // 位相オフセットを丸ごと差し替える(ロード用)。メモ化を持たないため無効化は不要。
+  // 位相オフセットを丸ごと差し替える(ロード用)。同じ時刻でも返る値が変わるので、
+  // 時刻キャッシュはすべて破棄する。
   setPhaseOffsets(phaseOffsets: Partial<Record<AttractorId, number>>): void {
     this.phaseOffsets = phaseOffsets;
+    for (const ring of this.planetHelioCache.values()) ring.clear();
+    for (const ring of this.satelliteRelCache.values()) ring.clear();
+    this.allAttractorsCache.clear();
+    this.gravityAttractorsCache.clear();
   }
 
   // id の平均黄経の初期位相(未指定なら 0)。
@@ -80,6 +131,18 @@ export class Ephemeris {
   // 衛星の惑星相対状態。太陽の方向は惑星-衛星系重心の軌道が持つ平均角度(planetAngles)
   // から取るので循環しない。
   private satelliteRelState(def: SatelliteDef, t: number): KinematicState {
+    let ring = this.satelliteRelCache.get(def.id);
+    if (ring === undefined) {
+      ring = new TimeRing<KinematicState>();
+      this.satelliteRelCache.set(def.id, ring);
+    }
+    const cached = ring.get(t);
+    if (cached !== undefined) return cached;
+    return ring.put(t, this.computeSatelliteRelState(def, t));
+  }
+
+  // 衛星の惑星相対状態そのもの(キャッシュを経由しない評価)。
+  private computeSatelliteRelState(def: SatelliteDef, t: number): KinematicState {
     const planet = bodyDef(def.planet);
     const pAngles = planetAngles(planet.orbit, t, this.phaseOf(planet.id));
     return satelliteState(def.orbit, pAngles, t, this.phaseOf(def.id));
@@ -88,6 +151,18 @@ export class Ephemeris {
   // 惑星本体の日心状態。重心の日心状態から、Σ(μ_衛星/(μ_惑星+Σμ_衛星))·r_衛星(惑星相対)
   // ぶんを引く(重心補正。位置・速度の両方に効く)。
   private planetHelioState(def: PlanetDef, t: number): KinematicState {
+    let ring = this.planetHelioCache.get(def.id);
+    if (ring === undefined) {
+      ring = new TimeRing<KinematicState>();
+      this.planetHelioCache.set(def.id, ring);
+    }
+    const cached = ring.get(t);
+    if (cached !== undefined) return cached;
+    return ring.put(t, this.computePlanetHelioState(def, t));
+  }
+
+  // 惑星本体の日心状態そのもの(キャッシュを経由しない評価)。
+  private computePlanetHelioState(def: PlanetDef, t: number): KinematicState {
     const bary = this.baryHelioState(def, t);
     const satellites = satellitesOf(def.id);
     if (satellites.length === 0) return bary;
@@ -202,11 +277,28 @@ export class Ephemeris {
     return { j2: model.j2, refRadius: model.refRadius, pole, tesseral };
   }
 
-  // 指定時刻の重力源一覧(SOLAR_SYSTEM の宣言順)。地球は原点に静止。
+  // 指定時刻の全登録天体(SOLAR_SYSTEM の宣言順)。地球は原点に静止。遮蔽判定・表面接触・
+  // 中心天体解決・積分刻み・基準天体解決が読む共通の窓。
+  // 同一 t には同一の配列参照が返るので、**呼び出し側はこの配列と要素を書き換えてはならない。**
   attractorsAt(t: number): readonly Attractor[] {
-    return ATTRACTOR_IDS.map((id) => {
-      const def = bodyDef(id);
-      return { id, mu: def.mu, radius: def.radius, state: this.stateOf(id, t), degree2: this.degree2At(def, t) };
-    });
+    const cached = this.allAttractorsCache.get(t);
+    if (cached !== undefined) return cached;
+    return this.allAttractorsCache.put(t, ATTRACTOR_IDS.map((id) => this.attractorAt(id, t)));
+  }
+
+  // 指定時刻の重力源一覧(gravitySource が立っている天体のみ、SOLAR_SYSTEM の宣言順)。
+  // 重力積分はこちらを引く — RK4 の各ステージ × 全エンティティで舐める配列なので、
+  // 表示だけの天体を含めない。
+  // attractorsAt と同じく、同一 t には同一の配列参照が返る(書き換え禁止)。
+  gravityAttractorsAt(t: number): readonly Attractor[] {
+    const cached = this.gravityAttractorsCache.get(t);
+    if (cached !== undefined) return cached;
+    return this.gravityAttractorsCache.put(t, GRAVITY_SOURCE_IDS.map((id) => this.attractorAt(id, t)));
+  }
+
+  // 1天体ぶんの時刻 t での重力源表現。
+  private attractorAt(id: AttractorId, t: number): Attractor {
+    const def = bodyDef(id);
+    return { id, mu: def.mu, radius: def.radius, state: this.stateOf(id, t), degree2: this.degree2At(def, t) };
   }
 }
