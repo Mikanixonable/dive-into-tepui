@@ -1,4 +1,4 @@
-// このステップぶんの重力源一覧 = 解析天体(Ephemeris の重力窓) + 重力を持つ生存中の
+// このステップぶんの重力源一覧 = 解析天体(Ephemeris の全天体窓) + 重力を持つ生存中の
 // GameEntity。呼び出し側が「いつの瞬間か」を決めて1回だけ呼び、同じ配列をそのステップの
 // 全エンティティに使い回す — 重力天体どうしの相互作用を処理順に依存させないため。
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -11,7 +11,14 @@ export function mergeAttractors(bodies: readonly Attractor[], dynamic: readonly 
   return dynamic.length === 0 ? bodies : [...bodies, ...dynamic];
 }
 
+// 時刻 t の解析天体のうち重力を及ぼすもの。重力源かどうかは解析天体・GameEntity の別なく
+// mu !== 0 の一本で決まる — 表示だけの天体は寄与が恒等的にゼロなので加算の候補に載せない
+// (遮蔽・表面接触・中心天体の解決は別の問いで、そちらは Ephemeris の窓をそのまま使う)。
+export function gravityBodiesAt(ephemeris: Ephemeris, t: number): readonly Attractor[] {
+  return ephemeris.attractorsAt(t).filter((a) => a.mu !== 0);
+}
+
 // 時刻 t におけるこのステップぶんの重力源一覧。
-export function gravityAttractorsAt(ephemeris: Ephemeris, entities: EntityManager, t: number): readonly Attractor[] {
-  return mergeAttractors(ephemeris.gravityAttractorsAt(t), entities.attractors());
+export function attractorsAt(ephemeris: Ephemeris, entities: EntityManager, t: number): readonly Attractor[] {
+  return mergeAttractors(gravityBodiesAt(ephemeris, t), entities.attractors());
 }

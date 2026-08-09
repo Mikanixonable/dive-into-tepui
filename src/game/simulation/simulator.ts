@@ -1,7 +1,7 @@
 // 実シミュレーションの更新(軌道積分・弾命中・剛体接触・慣性姿勢積分)。simTime/lastSimDt を保持する。
 import { stepAttitude } from '../../physics/attitude';
 import * as C from '../const';
-import { gravityAttractorsAt } from './gravity-attractors';
+import { attractorsAt } from './attractors';
 import { HitSystem } from './hit';
 import { EffectsSystem } from '../vfx/effects-system';
 import { EntityManager } from './entity-manager';
@@ -103,7 +103,7 @@ export class Simulator {
     simTime: number,
     dt: number,
   ): number {
-    const attractors = gravityAttractorsAt(this.ephemeris, this.entities, simTime + dt / 2);
+    const attractors = attractorsAt(this.ephemeris, this.entities, simTime + dt / 2);
     for (const e of this.entities.all()) e.stepActual(dt, attractors);
 
     return simTime + dt;

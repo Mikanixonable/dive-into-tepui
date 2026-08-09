@@ -7,7 +7,7 @@ import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Attractor, hitAttractor, localOrbitPeriod } from '../../physics/attractor';
-import { mergeAttractors } from '../simulation/gravity-attractors';
+import { gravityBodiesAt, mergeAttractors } from '../simulation/attractors';
 import { Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { SampledLine } from '../../render/sampled-line';
@@ -149,13 +149,13 @@ export class PlanArc {
     let steps = 0;
     while (trajectory.state.t < end - EPOCH_EPS) {
       const sizingAttractors = mergeAttractors(
-        ephemeris.gravityAttractorsAt(trajectory.state.t), dynamicAttractors);
+        gravityBodiesAt(ephemeris, trajectory.state.t), dynamicAttractors);
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
       const dt = Math.min(stepDt(trajectory.state.r, sizingAttractors), end - trajectory.state.t);
       if (dt <= 1e-9) break;
       // 積分そのものはステップ中点(t + dt/2)の重力源で評価する。
       const stepAttractors = mergeAttractors(
-        ephemeris.gravityAttractorsAt(trajectory.state.t + dt / 2), dynamicAttractors);
+        gravityBodiesAt(ephemeris, trajectory.state.t + dt / 2), dynamicAttractors);
       trajectory.step(dt, stepAttractors, C.SHIP_BCINV, C.SHIP_SRP_COEFF, C.SHADOW_PENUMBRA, null, sampleInterval, duration);
 
       const { r, v } = trajectory.state;
