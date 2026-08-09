@@ -103,17 +103,19 @@ export class EnvironmentScene {
     this.starsMesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
   }
 
-  // 広範囲視点のときだけ geo/moon/jupiter の参照線を表示する(戦闘ビューでは非表示)。
+  // 広範囲視点のときだけ geo/moon/earth/jupiter の参照線を表示する(戦闘ビューでは非表示)。
   private syncReferenceLines(simTime: number, fo: FloatingOrigin, overviewMode: boolean): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo);
       this.moonLine.sync(null, fo);
+      this.earthLine.sync(null, fo);
       this.jupiterLine.sync(null, fo);
       return;
     }
     this.geoLine.sync(GEO_ELEMENTS, fo, false);
     this.moonLine.sync(this.moonOrbitElements(simTime), fo, false);
-    this.jupiterLine.sync(this.jupiterOrbitElements(simTime), fo, false);
+    this.earthLine.sync(this.heliocentricOrbitElements('earth', simTime), fo, false);
+    this.jupiterLine.sync(this.heliocentricOrbitElements('jupiter', simTime), fo, false);
   }
 
   // 月の接触軌道要素(表示専用)。月自身は entity ではなく解析式のみを持つため、
@@ -122,12 +124,12 @@ export class EnvironmentScene {
     return orbitalElementsOf(this.ephemeris.stateOf('moon', simTime), EARTH_ATTRACTOR);
   }
 
-  // 木星の接触軌道要素(表示専用)。木星は太陽中心の軌道なので、太陽自身も ECI 上を
-  // 動く以上、地球のような固定 Attractor では組めず、太陽の現在状態を毎回引く。
-  private jupiterOrbitElements(simTime: number): OrbitalElements | null {
+  // 太陽中心の惑星(地球・木星)の接触軌道要素(表示専用)。太陽自身も ECI 上を動く以上、
+  // 地球のような固定 Attractor では組めず、太陽の現在状態を毎回引く。
+  private heliocentricOrbitElements(id: 'earth' | 'jupiter', simTime: number): OrbitalElements | null {
     const sun: Attractor = {
       id: 'sun', mu: MU_SUN, radius: R_SUN, state: this.ephemeris.stateOf('sun', simTime), degree2: null,
     };
-    return orbitalElementsOf(this.ephemeris.stateOf('jupiter', simTime), sun);
+    return orbitalElementsOf(this.ephemeris.stateOf(id, simTime), sun);
   }
 }
