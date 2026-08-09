@@ -15,7 +15,9 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { OrbitLine } from '../../render/orbit-line';
-import { Attractor, hitCelestialBody, strongestAttractor } from '../../physics/attractor';
+import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { containingBody } from '../../physics/sphere-contact';
+import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Stage } from '../stages/stage';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
@@ -343,7 +345,8 @@ export class Player extends Ship {
     if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
     else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
     else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
-    else if (hitCelestialBody(this.state.r, attractors, C.PLAYER_MIN_ALT)) reason = '天体表面付近に達し機体は分解した';
+    else if (containingBody(this.state.r, attractors, 0) !== null
+      || isBurnedUp(this.state.r, attractors, C.PLAYER_MIN_ALT)) reason = '天体表面付近に達し機体は分解した';
     if (reason === null) return;
 
     this.alive = false;

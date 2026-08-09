@@ -5,7 +5,9 @@ import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { StateQueue } from '../../physics/state-queue';
-import { Attractor, Degree2Gravity, orbitalElementsOf, hitCelestialBody, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, Degree2Gravity, orbitalElementsOf, localOrbitPeriod } from '../../physics/attractor';
+import { containingBody } from '../../physics/sphere-contact';
+import { isBurnedUp } from '../../physics/atmosphere';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
@@ -175,7 +177,7 @@ export class GameEntity {
     const { r, v } = p.state;
     const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
       && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-    if (!finite || hitCelestialBody(r, attractors, C.REENTRY_ALT)) this.truncated = true;
+    if (!finite || containingBody(r, attractors, 0) !== null || isBurnedUp(r, attractors, C.REENTRY_ALT)) this.truncated = true;
 
     return true;
   }
@@ -201,7 +203,8 @@ export class GameEntity {
   // 時刻の重力源一覧(表面到達判定に使う)。
   checkLoss(_dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (hitCelestialBody(this.state.r, attractors, C.DEBRIS_REENTRY_ALT)) this.alive = false;
+    if (containingBody(this.state.r, attractors, 0) !== null
+      || isBurnedUp(this.state.r, attractors, C.DEBRIS_REENTRY_ALT)) this.alive = false;
   }
 
   // メッシュを scene から取り除く。

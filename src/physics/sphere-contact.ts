@@ -1,4 +1,7 @@
-import { Vec3, v3 } from './vec3';
+// 球どうしの接触の幾何(掃引接触の時刻・法線、点が球の内側にあるかの判定)。
+// 重力源かどうか・天体かどうかには関与しない純粋な幾何。
+import { KinematicState } from './kinematic-state';
+import { Vec3, len, sub, v3 } from './vec3';
 
 export interface SweptSphereHit {
   readonly toi: number; // frame区間内の衝突割合 0..1
@@ -37,4 +40,16 @@ export function sweptSphereToi(
   const nLen = Math.sqrt(nx0 * nx0 + ny0 * ny0 + nz0 * nz0);
   if (!(nLen > 1e-12)) return null;
   return { toi, normal: v3(nx0 / nLen, ny0 / nLen, nz0 / nLen) };
+}
+
+// point が bodies のいずれかの半径 + margin の球の内側にあれば、その球を返す。無ければ null。
+export function containingBody<T extends { readonly radius: number; readonly state: KinematicState }>(
+  point: Vec3,
+  bodies: readonly T[],
+  margin: number,
+): T | null {
+  for (const body of bodies) {
+    if (len(sub(point, body.state.r)) < body.radius + margin) return body;
+  }
+  return null;
 }
