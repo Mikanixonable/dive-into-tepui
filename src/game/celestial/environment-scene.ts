@@ -5,7 +5,7 @@ import { sunlitFactor } from '../../physics/shadow';
 import { kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH, SOLAR_SYSTEM, bodyDef } from '../../physics/solar-system';
 import { OrbitalElements, positionOnOrbit } from '../../physics/elements';
-import { Attractor, AttractorId, OrbitingId, PlanetId, orbitalElementsOf } from '../../physics/attractor';
+import { Attractor, AttractorId, OrbitingId, orbitalElementsOf } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { OrbitLine } from '../../render/orbit-line';
 import { createStars, STAR_SHELL_RADIUS } from '../../render/stars';
@@ -21,7 +21,7 @@ import { SunBody } from './sun-body';
 // 地球(原点に静止)。参照軌道線はいずれも地球中心の表示なので、この固定値を center として使う。
 // 楕円を描く基準としてしか使わないため、2次重力場は解決しない。
 const EARTH_ATTRACTOR: Attractor = {
-  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: null,
+  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), degree2: null, isStar: false,
 };
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。
@@ -44,15 +44,15 @@ const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
 
 // 恒星以外の全公転天体の id(SOLAR_SYSTEM の宣言順)。天体が増えれば参照線もここから自動で増える。
 const REFERENCE_LINE_IDS = (Object.keys(SOLAR_SYSTEM) as AttractorId[]).filter(
-  (id) => bodyDef(id).kind !== 'star',
+  (id) => bodyDef(SOLAR_SYSTEM, id).kind !== 'star',
 ) as readonly OrbitingId[];
 
 // フォーカス中のラベル id が属する惑星系(その惑星の id)。惑星なら自身、衛星なら親惑星、
 // ラグランジュ点ラベル(`<id>-l1` 等)ならその副天体で解決する。惑星系に属さないなら null。
-function focusSystemOf(focusId: string): PlanetId | null {
+function focusSystemOf(focusId: string): AttractorId | null {
   const bodyId = focusId.replace(/-l[1-5]$/, '');
   if (!(bodyId in SOLAR_SYSTEM)) return null;
-  const def = bodyDef(bodyId as AttractorId);
+  const def = bodyDef(SOLAR_SYSTEM, bodyId);
   if (def.kind === 'planet') return def.id;
   return def.kind === 'satellite' ? def.planet : null;
 }
@@ -83,7 +83,7 @@ export class EnvironmentScene {
 
     const referenceLines = new Map<OrbitingId, OrbitLine>();
     for (const id of REFERENCE_LINE_IDS) {
-      const color = bodyDef(id).kind === 'satellite' ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
+      const color = bodyDef(SOLAR_SYSTEM, id).kind === 'satellite' ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
       const line = new OrbitLine(color, 0.2);
       line.line.renderOrder = 0;
       scene.add(line.line);
@@ -158,7 +158,7 @@ export class EnvironmentScene {
   // いるときだけ引く — 全衛星の線を同時に引くと内側太陽系が線で潰れるため。地球系だけは
   // 例外で常時引く(プレイの中心なので、どこを見ていても月軌道が文脈として要る)。
   private showsReferenceLine(id: OrbitingId, focusId: string): boolean {
-    const def = bodyDef(id);
+    const def = bodyDef(SOLAR_SYSTEM, id);
     if (def.kind !== 'satellite' || def.planet === 'earth') return true;
     return focusSystemOf(focusId) === def.planet;
   }
@@ -166,11 +166,12 @@ export class EnvironmentScene {
   // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は太陽中心 — 中心天体自身も
   // ECI 上を動くので、固定 Attractor ではなくその時刻の状態を毎回引いて組む。
   private orbitElementsFor(id: OrbitingId, simTime: number): OrbitalElements | null {
-    const def = bodyDef(id);
-    const centerId: AttractorId = def.kind === 'satellite' ? def.planet : 'sun';
-    const centerDef = bodyDef(centerId);
+    const def = bodyDef(SOLAR_SYSTEM, id);
+    const centerId = def.kind === 'satellite' ? def.planet : 'sun';
+    const centerDef = bodyDef(SOLAR_SYSTEM, centerId);
     const center: Attractor = {
-      id: centerId, mu: centerDef.mu, radius: centerDef.radius, state: this.ephemeris.stateOf(centerId, simTime), degree2: null,
+      id: centerId, mu: centerDef.mu, radius: centerDef.radius, state: this.ephemeris.stateOf(centerId, simTime),
+      degree2: null, isStar: centerDef.kind === 'star',
     };
     return orbitalElementsOf(this.ephemeris.stateOf(id, simTime), center);
   }

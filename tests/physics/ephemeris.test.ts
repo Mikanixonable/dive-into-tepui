@@ -3,11 +3,11 @@
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { PlanetId, SatelliteId } from '../../src/physics/attractor';
-import { MU_EARTH, R_EARTH, bodyDef } from '../../src/physics/solar-system';
+import { CelestialBodyDef, MU_EARTH, R_EARTH, bodyDef } from '../../src/physics/solar-system';
 import { MU_MOON, MU_SUN as MU_SUN_LOCAL, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { EPS } from '../../src/physics/ecliptic';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';
+import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { JULIAN_CENTURY, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
 
@@ -17,8 +17,17 @@ const MOON_PERIOD = 27.321661 * 86400;
 // 検証で Ephemeris の合成結果と突き合わせる基準として使う。
 const EARTH_ORBIT: PlanetOrbit = (SOLAR_SYSTEM.earth as { orbit: PlanetOrbit }).orbit;
 
+// テスト対象の id が惑星/衛星であることを前提に軌道モデルを取り出す(SOLAR_SYSTEM 自身は
+// 各エントリの具体型を保つが、動的な id 引数を介すと判別できなくなるため断定する)。
+function planetOrbit(id: string): PlanetOrbit {
+  return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'planet' }>).orbit;
+}
+function satelliteOrbitOf(id: string): SatelliteOrbit {
+  return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>).orbit;
+}
+
 export function register(): void {
-  const eph = new Ephemeris({ earth: 0.3, moon: 0.4 });
+  const eph = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
 
   test('ephemeris: 地球は ECI 原点に厳密に静止する', () => {
     for (const t of [0, 1e6, 1e8]) {
@@ -169,7 +178,7 @@ export function register(): void {
   // とどまる。昇交点・近点の歳差を平均黄経に混ぜると、この差が年オーダーで単調に開く
   // (1年で -19° 級)ため、長期の時間加速で月とラグランジュ点が実位置から外れる。
   test('ephemeris: 月の黄経は恒星月の平均運動で進む(歳差ぶんの遅速がない)', () => {
-    const moonEph = new Ephemeris({ moon: 0 });
+    const moonEph = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 });
     const MOON_ECC = 0.0549;
     const maxCenterDeg = (2 * MOON_ECC * 180) / Math.PI + 0.5;
     for (const days of [27.321661, 365.25, 3652.5]) {
@@ -212,13 +221,13 @@ export function register(): void {
   });
 
   test('ephemeris: 同一 t の attractorsAt は同一配列参照を返す', () => {
-    const e = new Ephemeris({ earth: 0.3, moon: 0.4 });
+    const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
     assert.equal(e.attractorsAt(1234), e.attractorsAt(1234));
     assert.equal(e.gravityAttractorsAt(1234), e.gravityAttractorsAt(1234));
   });
 
   test('ephemeris: 異なる t では再計算され、値が変わる', () => {
-    const e = new Ephemeris({ earth: 0.3, moon: 0.4 });
+    const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
     const a = e.attractorsAt(0);
     const b = e.attractorsAt(1e5);
     assert.notEqual(a, b);
@@ -230,16 +239,16 @@ export function register(): void {
   });
 
   test('ephemeris: setPhaseOffsets 後は古い値を返さない', () => {
-    const e = new Ephemeris({ earth: 0.3, moon: 0.4 });
+    const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
     const before = e.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
     e.setPhaseOffsets({ earth: 0.3, moon: 2.1 });
     const after = e.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
     assert.ok(len(sub(before, after)) > 1e6, `位相差し替えが反映されていない: ${len(sub(before, after))}`);
-    assert.deepEqual(after, new Ephemeris({ earth: 0.3, moon: 2.1 }).positionOf('moon', 1234));
+    assert.deepEqual(after, new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 2.1 }).positionOf('moon', 1234));
   });
 
   test('ephemeris: gravityAttractorsAt は重力源だけを宣言順で返し、値は attractorsAt と一致する', () => {
-    const e = new Ephemeris({ earth: 0.3, moon: 0.4 });
+    const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
     const gravity = e.gravityAttractorsAt(777);
     assert.deepEqual(gravity.map((b) => b.id), ['earth', 'moon', 'jupiter', 'saturn', 'sun']);
     const all = e.attractorsAt(777);
@@ -249,7 +258,7 @@ export function register(): void {
   // EPOCH_T_OFFSET はこの見た目の条件そのものから逆算された定数なので、これはその逆算の検算。
   // 平均黄経で合わせているぶん、中心差(地球の e=0.0167 で最大 1.9°)だけ真の方向はずれる。
   test('ephemeris: t=0 では太陽が +X 方向(昼側)にある', () => {
-    const dir = new Ephemeris({}).sunDirAt(0);
+    const dir = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {}).sunDirAt(0);
     const offDeg = (Math.acos(dir.x / len(dir)) * 180) / Math.PI;
     assert.ok(offDeg < 3, `t=0 の太陽方向が +X から離れている: ${offDeg}°`);
   });
@@ -259,7 +268,7 @@ export function register(): void {
   // 中心差(最大 2e: 地球 1.9°・木星 5.6°)ぶんまで離れうる — 元期不整合(78° 級)を捕まえる
   // にはこの幅で足りる。
   test('ephemeris: 地球と木星の日心黄経差は t=−EPOCH_T_OFFSET で J2000 の表の値と一致する', () => {
-    const e = new Ephemeris({});
+    const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {});
     const t = -EPOCH_T_OFFSET;
     const sun = e.positionOf('sun', t);
     const earthHelio = scale(sun, -1);
@@ -274,7 +283,7 @@ export function register(): void {
   // 表の a と L̇ が別々の列である以上、両者の整合は転記ミスを直接捕まえる検査になる。
   test('ephemeris: 各惑星の公転周期はケプラー第3法則と 0.1% 以内で一致する', () => {
     for (const id of ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'] as const) {
-      const orbit = bodyDef(id).orbit;
+      const orbit = planetOrbit(id);
       const fromRate = (2 * Math.PI) / orbit.lRate;
       const fromKepler = 2 * Math.PI * Math.sqrt(orbit.a ** 3 / MU_SUN_LOCAL);
       assert.ok(Math.abs(fromRate / fromKepler - 1) < 1e-3, `${id} の周期: ${fromRate} vs ${fromKepler}`);
@@ -288,7 +297,7 @@ export function register(): void {
       saturn: 9.0229, uranus: 18.2825, neptune: 29.8115,
     };
     for (const [id, auValue] of Object.entries(expected)) {
-      const orbit = bodyDef(id as 'mercury').orbit;
+      const orbit = planetOrbit(id);
       const perihelionAu = (orbit.a * (1 - orbit.e)) / AU;
       assert.ok(Math.abs(perihelionAu - auValue) < 1e-3, `${id} の近日点距離: ${perihelionAu} au`);
     }
@@ -297,7 +306,7 @@ export function register(): void {
   // Standish 表は PPN 相対論込みで数値積分された JPL DE 暦へのフィットなので、水星の近日点移動
   // には一般相対論ぶんの 42.98″/Cy が既に含まれる(惑星摂動のみの古典値は約 531.6″/Cy)。
   test('ephemeris: 水星の近日点移動は一般相対論込みの 574〜578″/Cy に入る', () => {
-    const rateArcsecPerCentury = ((bodyDef('mercury').orbit.lonPeriRate * JULIAN_CENTURY * 180) / Math.PI) * 3600;
+    const rateArcsecPerCentury = ((planetOrbit('mercury').lonPeriRate * JULIAN_CENTURY * 180) / Math.PI) * 3600;
     assert.ok(rateArcsecPerCentury > 574 && rateArcsecPerCentury < 578, `水星 ϖ̇: ${rateArcsecPerCentury}″/Cy`);
   });
 
@@ -315,7 +324,7 @@ export function register(): void {
       ['deimos', 30.312 * 3600],
     ];
     for (const [id, expected] of cases) {
-      const period = (2 * Math.PI) / bodyDef(id as SatelliteId).orbit.kepler.lRate;
+      const period = (2 * Math.PI) / satelliteOrbitOf(id).kepler.lRate;
       assert.ok(Math.abs(period / expected - 1) < 0.01, `${id} の公転周期: ${period / 86400} 日(期待 ${expected / 86400} 日)`);
     }
   });
@@ -340,29 +349,29 @@ export function register(): void {
 
   // 準惑星・大型小惑星・彗星核の登録が実測の公転周期・近日点距離と噛み合っていることの検算。
   test('ephemeris: 準惑星・彗星核の公転周期が実測値の範囲に入る', () => {
-    const cases: readonly [PlanetId, number][] = [
+    const cases: readonly [string, number][] = [
       ['pluto', 248 * YEAR],
       ['halley', 75.5 * YEAR], // 実測は約75.3〜76.0年で幅がある
       ['ceres', 4.6 * YEAR],
     ];
     for (const [id, expected] of cases) {
-      const period = (2 * Math.PI) / bodyDef(id).orbit.lRate;
+      const period = (2 * Math.PI) / planetOrbit(id).lRate;
       assert.ok(Math.abs(period / expected - 1) < 0.02, `${id} の公転周期: ${period / YEAR} 年(期待 ${expected / YEAR} 年)`);
     }
   });
 
   test('ephemeris: ハレー彗星の近日点距離は約0.586auになる', () => {
     const AU = 1.495978707e11;
-    const orbit = bodyDef('halley').orbit;
+    const orbit = planetOrbit('halley');
     const q = orbit.a * (1 - orbit.e);
     assert.ok(Math.abs(q / (0.586 * AU) - 1) < 0.02, `ハレー彗星の近日点距離: ${q / AU} au`);
   });
 
   // 冥王星の近日点は海王星の軌道半径より内側 — 実際の軌道交差を表現できていることの確認。
   test('ephemeris: 冥王星の近日点距離は海王星の半長径より小さい(軌道交差)', () => {
-    const plutoOrbit = bodyDef('pluto').orbit;
+    const plutoOrbit = planetOrbit('pluto');
     const q = plutoOrbit.a * (1 - plutoOrbit.e);
-    assert.ok(q < bodyDef('neptune').orbit.a, `冥王星近日点: ${q}, 海王星半長径: ${bodyDef('neptune').orbit.a}`);
+    assert.ok(q < planetOrbit('neptune').a, `冥王星近日点: ${q}, 海王星半長径: ${planetOrbit('neptune').a}`);
   });
 }
 

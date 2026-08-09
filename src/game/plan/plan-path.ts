@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Vec3, v3 } from '../../physics/vec3';
-import { ReferenceFrame, INERTIAL_FRAME, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
+import { ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { isOccluded } from '../../physics/occlusion';
@@ -29,7 +29,8 @@ export class PlanPath {
   private activeCount = 0;
   // 先頭 nodeCount 本がノードで終わる区間(= 各ノードの到達状態を持つ)。
   private nodeCount = 0;
-  private frame: ReferenceFrame = INERTIAL_FRAME;
+  // update() で実際のレジストリの慣性系に置き換わるまでの暫定値。
+  private frame: ReferenceFrame = { center: 'earth', rotatingWith: null };
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
   private project: ProjectFn | null = null;
@@ -149,8 +150,8 @@ export class PlanPath {
   // 時刻 t で bake し、表示時刻 unbakeTime で un-bake する(点なので FrameTransform を2つ引く)。
   toDisplay(r: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(r.x, r.y, r.z);
-    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t);
-    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime);
+    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, []);
+    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, []);
     return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
   }
 
@@ -158,8 +159,8 @@ export class PlanPath {
   // サンプル時刻 t の bake 姿勢と表示時刻 unbakeTime の un-bake 姿勢の回転だけを受ける。
   toDisplayDir(dir: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(dir.x, dir.y, dir.z);
-    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t);
-    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime);
+    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, []);
+    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, []);
     return toInertialDir(unbakeTf, toFrameDir(bakeTf, dir));
   }
 

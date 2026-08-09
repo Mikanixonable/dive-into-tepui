@@ -1,6 +1,7 @@
 import { ReferenceFrame } from '../../physics/frame';
+import type { Ephemeris } from '../../physics/ephemeris';
 import { SegmentedControl, HudToggle } from '../hud/buttons';
-import { FRAME_ITEMS } from '../hud/frame-labels';
+import { frameItems } from '../hud/frame-labels';
 import { hudDock } from '../hud/dom';
 
 export class OverviewCameraPanel {
@@ -13,7 +14,7 @@ export class OverviewCameraPanel {
   private readonly panel: HTMLElement;
   private readonly frame: SegmentedControl<ReferenceFrame>;
 
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, ephemeris: Ephemeris) {
     // パネル本体とタイトル
     this.panel = document.createElement('div');
     this.panel.id = 'hud-overview-camera';
@@ -24,7 +25,7 @@ export class OverviewCameraPanel {
     this.panel.appendChild(title);
 
     // 視点座標系の選択コントロール
-    this.frame = new SegmentedControl('視点', FRAME_ITEMS, (frame) => this.onFrameSelect?.(frame));
+    this.frame = new SegmentedControl('視点', frameItems(ephemeris), (frame) => this.onFrameSelect?.(frame));
     this.panel.appendChild(this.frame.element);
 
     this.ammoToggle = new HudToggle('弾薬', (on) => {
