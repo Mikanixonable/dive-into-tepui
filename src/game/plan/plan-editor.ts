@@ -82,7 +82,7 @@ export class PlanEditor {
   get editMode(): boolean { return this._editMode; }
   setMapMode(open: boolean): void { this._editMode = open; }
 
-  readonly nodeGizmo = new NodeGizmo();
+  readonly nodeGizmo: NodeGizmo;
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
   private readonly orbitMenu = new ContextMenu<KinematicState, MenuAction>();
 
@@ -111,6 +111,7 @@ export class PlanEditor {
   ) {
     this.ship = ship;
     this.planDisplay = new PlanDisplay(scene, this._hud.root, markerManager, ephemeris, displayTimeManager);
+    this.nodeGizmo = new NodeGizmo(this._hud.root);
     this.gizmo3d = new PlanGizmo3D();
     scene.add(this.gizmo3d.group);
 

@@ -6,8 +6,8 @@ import { ContextMenu } from '../hud/context-menu';
 import { MenuAction, MenuCommon } from '../hud/menu-actions';
 
 const STYLE = `
-#node-gizmo {
-  position: fixed; inset: 0; pointer-events: none; z-index: 9;
+#hud #node-gizmo {
+  position: fixed; inset: 0; pointer-events: none; z-index: 5;
   font-family: ${FONT}; user-select: none;
   -webkit-user-select: none;
 }
@@ -87,8 +87,9 @@ export class NodeGizmo {
   latch: AxisLatchState | null = null;
   activeAxis: { axis: 0 | 1 | 2, sign: 1 | -1 } | null = null;
 
-  // DOM レイヤとコンテキストメニューを構築する。
-  constructor() {
+  // DOM レイヤとコンテキストメニューを構築する。root は #hud(hud/dom.ts の z-index band に
+  // 従わせるため、body 直下ではなく #hud の子として配置する)。
+  constructor(root: HTMLElement) {
     if (!styleInjected) {
       styleInjected = true;
       const style = document.createElement('style');
@@ -98,7 +99,7 @@ export class NodeGizmo {
 
     this.root = document.createElement('div');
     this.root.id = 'node-gizmo';
-    document.body.appendChild(this.root);
+    root.appendChild(this.root);
 
     this.nodeLayer = document.createElement('div');
     this.root.appendChild(this.nodeLayer);
