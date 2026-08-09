@@ -22,6 +22,15 @@ import { Vec3, add, addScaled, len, norm, sub, v3 } from './vec3';
 // ECI の極軸(Y)。地球の自転軸はこの座標系の定義そのもの。
 const ECI_POLE: Vec3 = v3(0, 1, 0);
 
+// 全天体の軌道評価時刻へ一律に足す定数 [s]。要素の元期は J2000 のままにしたうえで、
+// simTime = 0 をゲーム開始にふさわしい瞬間 — 地球から見て太陽が +X 方向(昼側)にある、
+// すなわち地球の日心黄経が π になる瞬間 — へ合わせる。
+// 導出: 地球の平均黄経 L(t) = l0 + L̇·t を L = 180° と置いて解く。
+//   (180° − 100.46457166°) / 35999.37244981 [deg/Cy] × JULIAN_CENTURY = 6.9721972e6 s。
+// 中心差(真黄経と平均黄経の差)は地球の e = 0.0167 で高々 ±1.9° あるが、この定数は
+// 見た目の昼夜を合わせるためのアンカーなので平均黄経で足りる。
+export const EPOCH_T_OFFSET = 6972197.1872752225;
+
 // 回転しない座標系(ReferenceFrame.rotatingWith === null)の姿勢・角速度。
 const IDENTITY_ROTATION: FrameRotation = { q: { x: 0, y: 0, z: 0, w: 1 } as Quat, omega: v3() };
 
@@ -125,7 +134,8 @@ export class Ephemeris {
 
   // 惑星-衛星系重心の日心状態。
   private baryHelioState(def: PlanetDef, t: number): KinematicState {
-    return keplerOrbitState(def.orbit, t, this.phaseOf(def.id));
+    const s = keplerOrbitState(def.orbit, t + EPOCH_T_OFFSET, this.phaseOf(def.id));
+    return kinematicState(t, s.r, s.v);
   }
 
   // 衛星の惑星相対状態。太陽の方向は惑星-衛星系重心の軌道が持つ平均角度(planetAngles)
@@ -144,8 +154,10 @@ export class Ephemeris {
   // 衛星の惑星相対状態そのもの(キャッシュを経由しない評価)。
   private computeSatelliteRelState(def: SatelliteDef, t: number): KinematicState {
     const planet = bodyDef(def.planet);
-    const pAngles = planetAngles(planet.orbit, t, this.phaseOf(planet.id));
-    return satelliteState(def.orbit, pAngles, t, this.phaseOf(def.id));
+    const te = t + EPOCH_T_OFFSET;
+    const pAngles = planetAngles(planet.orbit, te, this.phaseOf(planet.id));
+    const s = satelliteState(def.orbit, pAngles, te, this.phaseOf(def.id));
+    return kinematicState(t, s.r, s.v);
   }
 
   // 惑星本体の日心状態。重心の日心状態から、Σ(μ_衛星/(μ_惑星+Σμ_衛星))·r_衛星(惑星相対)
@@ -216,14 +228,14 @@ export class Ephemeris {
 
   // 天体 id に固定した回転基準系(x̂ = 中心天体→id、ẑ = 軌道面法線)。中心は分類から決まる
   // (惑星なら恒星、衛星ならその惑星)。衛星の周期項は平均要素に含めないので、この基底は
-  // 実位置の x̂ 軸から最大 1.4° ほどずれる(satellite-orbit.ts 参照)。
+  // 実位置の x̂ 軸から最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
   orbitFrameRotationAt(id: OrbitingId, t: number): FrameRotation {
-    return keplerOrbitRotation(keplerOrbitOf(bodyDef(id)), t, this.phaseOf(id));
+    return keplerOrbitRotation(keplerOrbitOf(bodyDef(id)), t + EPOCH_T_OFFSET, this.phaseOf(id));
   }
 
   // id の軌道面の法線(単位ベクトル、ECI)。
   orbitNormalAt(id: OrbitingId, t: number): Vec3 {
-    return keplerOrbitNormal(keplerOrbitOf(bodyDef(id)), t, this.phaseOf(id));
+    return keplerOrbitNormal(keplerOrbitOf(bodyDef(id)), t + EPOCH_T_OFFSET, this.phaseOf(id));
   }
 
   // secondary(公転している天体)を副天体とする円制限三体問題のラグランジュ点。中心天体
@@ -265,14 +277,15 @@ export class Ephemeris {
     if (def.kind === 'star' || def.degree2 === undefined) return null;
     const model = def.degree2;
     const orbit = keplerOrbitOf(def);
+    const te = t + EPOCH_T_OFFSET;
     const phase = this.phaseOf(def.id);
     // 軌道面法線は歳差するので、そこから組む自転軸も同じ周期で追従する。
     const pole = model.pole.kind === 'eciPole'
       ? ECI_POLE
-      : cassiniSpinAxis(ECL_POLE_ECI, keplerOrbitNormal(orbit, t, phase), model.pole.obliquity);
+      : cassiniSpinAxis(ECL_POLE_ECI, keplerOrbitNormal(orbit, te, phase), model.pole.obliquity);
     const tesseral = model.c22 === 0 ? null : {
       c22: model.c22,
-      longAxis: principalLongAxis(pole, keplerOrbitMeanDirection(orbit, t, phase)),
+      longAxis: principalLongAxis(pole, keplerOrbitMeanDirection(orbit, te, phase)),
     };
     return { j2: model.j2, refRadius: model.refRadius, pole, tesseral };
   }

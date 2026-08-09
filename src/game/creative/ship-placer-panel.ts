@@ -80,8 +80,9 @@ const SIZE_MODE_ITEMS: readonly (readonly [SizeShapeMode, string])[] = [
 // ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙し、表示名を
 // 「中心天体名-自分の名」としてレジストリから組む。軌道要素指定の基準天体もこれを使う
 // (公転していない恒星を周回の中心には選べない)。
+// 重力源でない天体は、そこへ艦を置いても局所力学が成立しないので選択肢に出さない。
 const ORBITING_IDS = (Object.keys(SOLAR_SYSTEM) as AttractorId[])
-  .filter((id) => bodyDef(id).kind !== 'star') as OrbitingId[];
+  .filter((id) => bodyDef(id).kind !== 'star' && bodyDef(id).gravitySource) as OrbitingId[];
 
 const ATTRACTOR_ITEMS: readonly (readonly [ReferenceAttractor, string])[] = ORBITING_IDS.map((id) => [id, ATTRACTOR_NAMES[id]]);
 
@@ -107,11 +108,22 @@ const LAGRANGE_ORBIT_KIND_ITEMS: readonly (readonly [LagrangeOrbitKind, string])
 
 // 副天体ごとに妥当なオーダーへ面内/面外振幅の既定値を切り替える(系ごとに主天体間距離が
 // 桁違いなため)。
-const LAGRANGE_DEFAULT_AMPLITUDE_KM: Record<OrbitingId, { ax: number; az: number }> = {
+const LAGRANGE_DEFAULT_AMPLITUDE_KM: Partial<Record<OrbitingId, { ax: number; az: number }>> = {
   moon: { ax: C.CREATIVE_HALO_AX_MOON_KM, az: C.CREATIVE_HALO_AZ_MOON_KM },
   earth: { ax: C.CREATIVE_HALO_AX_EARTH_KM, az: C.CREATIVE_HALO_AZ_EARTH_KM },
   jupiter: { ax: C.CREATIVE_HALO_AX_JUPITER_KM, az: C.CREATIVE_HALO_AZ_JUPITER_KM },
 };
+
+// 副天体とその主天体の距離 [km](= 副天体の軌道長半径)。
+function primaryDistanceKm(secondary: OrbitingId): number {
+  const def = bodyDef(secondary);
+  return (def.kind === 'planet' ? def.orbit.a : def.orbit.kepler.a) / 1e3;
+}
+
+// 表に無い天体の既定振幅を主天体間距離から導くときの比。月の既定値と月の軌道長半径の比を
+// そのまま使うので、表に載っている天体と桁感が揃う。
+const AMPLITUDE_AX_RATIO = C.CREATIVE_HALO_AX_MOON_KM / primaryDistanceKm('moon');
+const AMPLITUDE_AZ_RATIO = C.CREATIVE_HALO_AZ_MOON_KM / primaryDistanceKm('moon');
 
 const DEG = Math.PI / 180;
 
@@ -634,7 +646,10 @@ export class ShipPlacerPanel {
 
   // 副天体ごとの面内/面外振幅の既定値を返す(系ごとに主天体間距離が桁違いなため)。
   private defaultLagrangeAmplitude(secondary: OrbitingId): { ax: number; az: number } {
-    return LAGRANGE_DEFAULT_AMPLITUDE_KM[secondary];
+    const listed = LAGRANGE_DEFAULT_AMPLITUDE_KM[secondary];
+    if (listed !== undefined) return listed;
+    const distanceKm = primaryDistanceKm(secondary);
+    return { ax: distanceKm * AMPLITUDE_AX_RATIO, az: distanceKm * AMPLITUDE_AZ_RATIO };
   }
 
   // フォームの現在値を読み、onConfirm へ通知する。
