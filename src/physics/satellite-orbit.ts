@@ -103,7 +103,7 @@ function sumPeriodicTerms(
 // (黄経・黄緯・動径)を求め、その上に周期項の加算補正を重ねてから ECI 位置・速度へ戻す。
 // 回転基準系(kepler-orbit.ts の keplerOrbitRotation)と軌道法線は二体部分(平均要素)
 // だけから組まれ、周期項を含まない — 混ぜると角速度が滑らかでなくなるためで、
-// この結果、衛星の実位置は回転系の x̂ 軸から最大 1.4° ほどずれる。
+// この結果、衛星の実位置は回転系の x̂ 軸から最大 2.5° ほどずれる(周期項の振幅の総和)。
 export function satelliteState(
   orbit: SatelliteOrbit,
   planetAngles: PlanetAngles,

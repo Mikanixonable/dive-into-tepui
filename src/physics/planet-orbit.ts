@@ -6,7 +6,7 @@ import { JULIAN_CENTURY, KeplerOrbit } from './kepler-orbit';
 export type PlanetOrbit = KeplerOrbit;
 
 const DEG = Math.PI / 180;
-const AU = 1.495978707e11; // [m]
+export const AU = 1.495978707e11; // [m]
 
 // 度・世紀単位で入力された惑星-衛星系重心の軌道要素を、KeplerOrbit のラジアン・秒単位へ変換する。
 export function planetOrbit(p: {
@@ -16,7 +16,7 @@ export function planetOrbit(p: {
   raanDeg: number;
   lonPeriDeg: number;
   l0Deg: number;
-  periodSec: number;
+  lRateDegPerCentury: number;
   raanRateDegPerCentury: number;
   incRateDegPerCentury: number;
   lonPeriRateDegPerCentury: number;
@@ -36,7 +36,7 @@ export function planetOrbit(p: {
     lonPeri0: p.lonPeriDeg * DEG,
     lonPeriRate: (p.lonPeriRateDegPerCentury * DEG) / JULIAN_CENTURY,
     l0: p.l0Deg * DEG,
-    lRate: (2 * Math.PI) / p.periodSec,
+    lRate: (p.lRateDegPerCentury * DEG) / JULIAN_CENTURY,
   };
 }
 
