@@ -12,6 +12,7 @@ import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
 import { STAR_SHELL_RADIUS } from '../../render/stars';
 import { Billboard } from '../../render/billboard';
+import { ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CelestialBody } from './celestial-body';
 
 // 見かけの明るさ3段階。金星(-4等)・木星(-2等)が bright、水星・火星・土星(0〜+1等台)が
@@ -37,15 +38,19 @@ export class PointBody extends CelestialBody {
   private readonly billboard: Billboard;
   private readonly scale: number;
   private readonly opacity: number;
+  // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
+  private readonly axes: THREE.Vector3;
 
   // buildMesh は build() でマップビュー用の実体メッシュを作る遅延コンストラクタ、radius は
-  // 実半径 [m]。buildRing を渡すとマップビューでのみ環を持つ(戦闘ビューの輝点に環はない)。
+  // 実半径 [m]、shape は歪みの形状データ(省略時は radius による真球)。buildRing を渡すと
+  // マップビューでのみ環を持つ(戦闘ビューの輝点に環はない)。
   constructor(
     id: OrbitingId,
     private readonly buildMesh: () => THREE.Mesh,
-    private readonly radius: number,
+    radius: number,
     brightness: PointBrightness,
     private readonly buildRing?: () => THREE.Object3D,
+    shape?: ShapeDef,
   ) {
     super();
     this.id = id;
@@ -53,6 +58,8 @@ export class PointBody extends CelestialBody {
     this.opacity = POINT_OPACITY[brightness];
     // 色はテクスチャ平均色を狙わず単色の白 — 恒星状の光点として過剰演出しない。
     this.billboard = new Billboard(0xffffff, -9);
+    const a = shapeAxes(radius, shape);
+    this.axes = new THREE.Vector3(a.x, a.y, a.z);
   }
 
   // buildMesh でマップビュー用メッシュを組み立て、輝点用ビルボードとあわせてシーンへ
@@ -76,7 +83,7 @@ export class PointBody extends CelestialBody {
       // 広範囲視点は SphereBody と同じ実スケール。
       this.mesh.visible = true;
       this.mesh.position.copy(fo.RtoThreeV3(pos));
-      this.mesh.scale.setScalar(this.radius);
+      this.mesh.scale.copy(this.axes);
       this.billboard.hide();
       const orientation = ephemeris.poleAt(this.id, displayTime);
       const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);

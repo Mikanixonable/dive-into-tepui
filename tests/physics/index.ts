@@ -30,6 +30,7 @@ import { register as registerBodyVisibility } from './body-visibility.test';
 import { register as registerAsteroidBelt } from './asteroid-belt.test';
 import { register as registerTrajectoryFeatures } from './trajectory-features.test';
 import { register as registerNBody } from './n-body.test';
+import { register as registerShape } from './shape.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -61,5 +62,6 @@ registerShortcutHint();
 registerTrajectoryFeatures();
 registerAsteroidBelt();
 registerNBody();
+registerShape();
 
 runAll();
