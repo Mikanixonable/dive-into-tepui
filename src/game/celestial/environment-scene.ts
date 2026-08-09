@@ -5,7 +5,7 @@ import { sunlitFactor } from '../../physics/shadow';
 import { kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH, SOLAR_SYSTEM, bodyDef } from '../../physics/solar-system';
 import { OrbitalElements } from '../../physics/elements';
-import { Attractor, AttractorId, OrbitingId, orbitalElementsOf } from '../../physics/attractor';
+import { Attractor, AttractorId, OrbitingId, PlanetId, orbitalElementsOf } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { OrbitLine } from '../../render/orbit-line';
 import { createStars, STAR_SHELL_RADIUS } from '../../render/stars';
@@ -45,6 +45,16 @@ const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
 const REFERENCE_LINE_IDS = (Object.keys(SOLAR_SYSTEM) as AttractorId[]).filter(
   (id) => bodyDef(id).kind !== 'star',
 ) as readonly OrbitingId[];
+
+// フォーカス中のラベル id が属する惑星系(その惑星の id)。惑星なら自身、衛星なら親惑星、
+// ラグランジュ点ラベル(`<id>-l1` 等)ならその副天体で解決する。惑星系に属さないなら null。
+function focusSystemOf(focusId: string): PlanetId | null {
+  const bodyId = focusId.replace(/-l[1-5]$/, '');
+  if (!(bodyId in SOLAR_SYSTEM)) return null;
+  const def = bodyDef(bodyId as AttractorId);
+  if (def.kind === 'planet') return def.id;
+  return def.kind === 'satellite' ? def.planet : null;
+}
 
 export class EnvironmentScene {
   readonly ambient: THREE.AmbientLight;
@@ -105,7 +115,7 @@ export class EnvironmentScene {
     this.ambient.intensity = C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
 
     this.syncStars(cameraSystem);
-    this.syncReferenceLines(displayTime, floatingOrigin, cameraSystem.overviewMode);
+    this.syncReferenceLines(displayTime, floatingOrigin, cameraSystem.overviewMode, cameraSystem.overviewCamera.focus);
     this.celestialGrid.sync(gridVisibility, cameraSystem);
   }
 
@@ -117,14 +127,26 @@ export class EnvironmentScene {
   }
 
   // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。
-  private syncReferenceLines(simTime: number, fo: FloatingOrigin, overviewMode: boolean): void {
+  private syncReferenceLines(simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: string): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo);
       for (const line of this.referenceLines.values()) line.sync(null, fo);
       return;
     }
     this.geoLine.sync(GEO_ELEMENTS, fo, false);
-    for (const [id, line] of this.referenceLines) line.sync(this.orbitElementsFor(id, simTime), fo, false);
+    for (const [id, line] of this.referenceLines) {
+      const show = this.showsReferenceLine(id, focusId);
+      line.sync(show ? this.orbitElementsFor(id, simTime) : null, fo, false);
+    }
+  }
+
+  // 参照線を引くかどうか。惑星線は常時引き、衛星線はその衛星が属する惑星系にフォーカスして
+  // いるときだけ引く — 全衛星の線を同時に引くと内側太陽系が線で潰れるため。地球系だけは
+  // 例外で常時引く(プレイの中心なので、どこを見ていても月軌道が文脈として要る)。
+  private showsReferenceLine(id: OrbitingId, focusId: string): boolean {
+    const def = bodyDef(id);
+    if (def.kind !== 'satellite' || def.planet === 'earth') return true;
+    return focusSystemOf(focusId) === def.planet;
   }
 
   // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は太陽中心 — 中心天体自身も
