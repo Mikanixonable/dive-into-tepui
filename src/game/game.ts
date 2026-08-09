@@ -32,6 +32,8 @@ import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from './celestial/environment-scene';
 import { Ephemeris } from '../physics/ephemeris';
+import type { AbsoluteEphemeris } from '../physics/absolute-ephemeris';
+import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from './sim-epoch';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { DebugTrajectoryLine } from './debug-trajectory-line';
@@ -114,6 +116,7 @@ export class Game {
     settingsPanel: SettingsPanel,
     unlockManager: UnlockManager,
     snapshotService: SnapshotService,
+    absoluteEphemeris?: AbsoluteEphemeris,
   ) {
     this.launchMode = launch.mode;
     this._scene = gs.scene;
@@ -126,7 +129,7 @@ export class Game {
 
     const ephemerisConfig = ephemerisConfigFor(launch);
     this._ephemeris = ephemerisConfig === undefined
-      ? new Ephemeris()
+      ? new Ephemeris(undefined, undefined, SIM_EPOCH_ET, {}, absoluteEphemeris, SIM_EPOCH_JD_TDB)
       : new Ephemeris(ephemerisConfig.registry, ephemerisConfig.originId, ephemerisConfig.epochOffsetSec);
 
     this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
@@ -780,4 +783,3 @@ export class Game {
     };
   }
 }
-
