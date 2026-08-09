@@ -12,6 +12,7 @@ import { LaunchSelection } from './game-mode';
 import { MarkerManager } from './marker/marker-manager';
 import { GroupedMarkers, GroupedMarkerItem } from './marker/grouped-markers';
 import { LeadMarkers } from './marker/lead-markers';
+import { EquatorNodeMarkers, EqNodeSource } from './marker/equator-node-markers';
 import { EffectsSystem } from './vfx/effects-system';
 import { initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
@@ -31,16 +32,17 @@ import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from './celestial/environment-scene';
 import { Ephemeris } from '../physics/ephemeris';
-import { INERTIAL_FRAME } from '../physics/frame';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { DebugTrajectoryLine } from './debug-trajectory-line';
+import { PredictedTrajectoryLine } from './predicted-trajectory-line';
 import { NavTarget } from './nav-target';
 import { MapPicker } from './map-picker';
 import { Navball } from './navball/navball';
 import { GameSaveData } from './save-data';
 import { Ammo } from './game-entity/ammo';
-import { SaveManager } from './save-manager';
+import { SnapshotService } from './save/snapshot-service';
+import type { SaveBrowser } from './hud/save-browser';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
@@ -57,7 +59,8 @@ export class Game {
   private readonly _sfx: Sfx;
   private readonly settingsPanel: SettingsPanel;
   private readonly markerManager: MarkerManager;
-  private readonly ephemeris: Ephemeris;
+  private readonly _ephemeris: Ephemeris;
+  get ephemeris(): Ephemeris { return this._ephemeris; }
   readonly cameraSystem: CameraSystem;
   // Campaign では常に1隻、Creative では未配置/全滅時に null になれる操作対象。
   player: Player | null;
@@ -78,11 +81,17 @@ export class Game {
   private readonly navball: Navball;
 
   private readonly unlockManager: UnlockManager;
+  private readonly snapshotService: SnapshotService;
+  // SaveBrowser は自分自身(Game)を必要とするため Game より後に作られる。ViewManager が
+  // Docking を後から受け取るのと同じ遅延注入。
+  private saveBrowser: SaveBrowser | null = null;
 
   // 単独のオブジェクトでは決められないマーカー群。敵マーカーは「画面上で近接するものを
-  // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とする。
+  // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とする。EqAN/EqDN は
+  // 操作艦・航法ターゲット・戦闘ターゲットという複数の役割にまたがる source 列を Game が組む。
   private readonly enemyMarkers: GroupedMarkers;
   private readonly leadMarkers: LeadMarkers;
+  readonly equatorNodeMarkers: EquatorNodeMarkers;
   private readonly effects: EffectsSystem;
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
@@ -91,6 +100,7 @@ export class Game {
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
   private readonly debugTrajectoryLine: DebugTrajectoryLine;
+  private readonly predictedTrajectoryLine: PredictedTrajectoryLine;
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
 
@@ -102,6 +112,7 @@ export class Game {
     sfx: Sfx,
     settingsPanel: SettingsPanel,
     unlockManager: UnlockManager,
+    snapshotService: SnapshotService,
   ) {
     this.launchMode = launch.mode;
     this._scene = gs.scene;
@@ -110,12 +121,14 @@ export class Game {
     this._sfx = sfx;
     this.settingsPanel = settingsPanel;
     this.unlockManager = unlockManager;
+    this.snapshotService = snapshotService;
 
-    this.ephemeris = new Ephemeris();
+    this._ephemeris = new Ephemeris();
 
     this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
     this.enemyMarkers = new GroupedMarkers(this.markerManager, C.MARKER_CLUSTER_PX);
     this.leadMarkers = new LeadMarkers(this.markerManager);
+    this.equatorNodeMarkers = new EquatorNodeMarkers(this.markerManager, this.ephemeris);
 
     this.entities = new EntityManager();
     this.effects = new EffectsSystem(this._scene, this.entities);
@@ -204,6 +217,7 @@ export class Game {
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.debugTrajectoryLine = new DebugTrajectoryLine(this._scene);
+    this.predictedTrajectoryLine = new PredictedTrajectoryLine(this._scene);
     this.docking = new Docking(
       this, this._hud, this._sfx, this._scene, this.effects, this.markerManager,
       this.entities, this.mapPicker, this.cameraSystem, this.viewManager,
@@ -292,17 +306,27 @@ export class Game {
     this.editor.setActivePlayer(null);
     this.cameraSystem.setActivePlayer(null);
     this.targeter.clearTargets();
-    this.navTarget.clearIfTargeting('');
+    this.navTarget.clear();
+    // entities.clearAll() が旧 Base を dispose するので、それを掴んだままの DockView を
+    // 開いておけない — 対象基地消失時と同じ経路(ViewManager.leaveDock)で閉じる。
+    this.viewManager.leaveDock();
+    this.docking.clearSelection();
+    this.simSpeedManager.reset();
+    this.displayTimeManager.forceCurrent = true;
 
     // 時刻の復元
     this.simulator.simTime = data.simTime;
+    this._ephemeris.setPhaseOffsets(data.phaseOffsets);
 
-    // Playerの復元
-    if (data.player) {
-      const p = Player.restore(data.player, data.simTime, this._hud, this._sfx, this._scene, this.effects, this.markerManager);
+    // Playerの復元(複数隻ぶん)
+    let activePlayer: Player | null = null;
+    for (const pdata of data.players) {
+      const p = Player.restore(pdata, data.simTime, this._hud, this._sfx, this._scene, this.effects, this.markerManager);
       this.entities.addPlayer(p);
-      this.setActivePlayer(p);
+      if (pdata.id === data.activePlayerId) activePlayer = p;
     }
+    if (!activePlayer) activePlayer = this.entities.players[0] ?? null;
+    if (activePlayer) this.setActivePlayer(activePlayer);
 
     // Enemyの復元
     for (const edata of data.enemies) {
@@ -322,8 +346,17 @@ export class Game {
       this.entities.addBase(b);
     }
 
+    // ステージ状態(スコア・決着状態・固有の内訳)の復元。SnapshotService が
+    // セーブ時と同じ stageId であることを既に検証済み。
+    this.activeStage.restore(data.stage);
+
     // ロード直後の状態同期と安定化
     this.entities.sync(this.floatingOrigin, data.simTime);
+  }
+
+  // スナップショット一覧ウィンドウを登録する。構築直後に一度だけ呼ぶ。
+  setSaveBrowser(browser: SaveBrowser): void {
+    this.saveBrowser = browser;
   }
 
   // ------------------------------------------------------------ update
@@ -339,6 +372,7 @@ export class Game {
         if (!this.editor.editMode) return;
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
         this.mapPicker.handleLeftClick(this.input);
+        this.mapPicker.handleDoubleClick(this.input);
         this.editor.handleMapPointer(this.input);
         this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
         this.editor.updateEditing(dt, this.input);
@@ -367,6 +401,7 @@ export class Game {
       if (this.editor.editMode) {
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
         this.mapPicker.handleLeftClick(this.input);
+        this.mapPicker.handleDoubleClick(this.input);
         this.editor.handleMapPointer(this.input);
         this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
         this.editor.updateEditing(dt, this.input);
@@ -395,7 +430,8 @@ export class Game {
       dt,
       input: this.input,
       simSpeed: this.simSpeedManager,
-      editMode: this.editor.editMode,
+      mapMode: this.editor.editMode,
+      dvEditActive: this.editor.editMode && this.editor.selectedNodeIdx !== null,
       scoreCounter: this.activeStage.scoreCounter,
       simTime: this.simulator.simTime,
       zoomActive: this.cameraSystem.zoomActive,
@@ -482,6 +518,7 @@ export class Game {
     if (this.editor.editMode) {
       this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
       this.mapPicker.handleLeftClick(this.input);
+      this.mapPicker.handleDoubleClick(this.input);
       this.editor.handleMapPointer(this.input);
       this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
       this.editor.updateEditing(dt, this.input);
@@ -496,12 +533,49 @@ export class Game {
 
   // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
   private updateMapPresentation(dt: number, afterRefresh?: () => void): void {
+    this.environment.update(this.displayTime, this.cameraSystem.overviewMode);
     this.editor.update(this.simulator.simTime, this.displayTime);
+    this.equatorNodeMarkers.update(
+      this.equatorNodeSources(), this.editor.planDisplay.planFrame, this.displayTime,
+    );
     this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
     afterRefresh?.();
     this.cameraSystem.update(
       this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables,
     );
+  }
+
+  // EqAN/EqDN を出す対象: 操作艦(計画があれば最終区間の起点、無ければ実状態)・航法ターゲット
+  // (entities 上の実体として引けるものだけ — 天体・ラグランジュ点はそれ自体が軌道要素を持つ
+  // 「物体」ではないので対象外)・戦闘ターゲット・生存中の全基地(基地は常設の静止構造物であり、
+  // 接近・ドッキングは軌道面合わせそのものなので選択の有無に関わらず常に出す)。
+  // 同じ実体が複数の役割を兼ねうるので id で重複を除く。
+  private equatorNodeSources(): EqNodeSource[] {
+    const sources = new Map<string, EqNodeSource>();
+    if (this.player) {
+      const path = this.editor.planDisplay.path;
+      const state = path.finalSegmentStart ?? this.player.state;
+      const samples = path.finalSegmentSamples ?? undefined;
+      sources.set(this.player.id, { id: this.player.id, name: this.player.displayName, state, samples });
+    }
+    if (this.navTarget.id) {
+      const navPlayer = this.entities.findPlayer(this.navTarget.id);
+      const navEnemy = this.entities.enemies.find((e) => e.name === this.navTarget.id && e.alive);
+      const navBase = this.entities.findBase(this.navTarget.id);
+      const navSource: EqNodeSource | null =
+        navPlayer ? { id: navPlayer.id, name: navPlayer.displayName, state: navPlayer.state } :
+        navEnemy ? { id: navEnemy.name, name: navEnemy.name, state: navEnemy.state } :
+        navBase ? { id: navBase.id, name: navBase.name, state: navBase.state } : null;
+      if (navSource) sources.set(navSource.id, navSource);
+    }
+    const combatTarget = this.targeter.aliveTarget;
+    if (combatTarget) {
+      sources.set(combatTarget.name, { id: combatTarget.name, name: combatTarget.name, state: combatTarget.state });
+    }
+    for (const base of this.entities.bases) {
+      if (base.alive) sources.set(base.id, { id: base.id, name: base.name, state: base.state });
+    }
+    return [...sources.values()];
   }
 
   // 並進・射撃・衝突と同じく、RCS command torqueは物理相互作用域だけで有効。
@@ -524,6 +598,9 @@ export class Game {
   private handleInput(): void {
     // 上から下へ優先順位順に呼ぶ。
     this.docking.handleInput(this.input);
+    // スナップショット一覧を開いている間は、その閉じるキーとして [Esc] を先に取る
+    // (設定メニューが上に重なるのを防ぐ)。
+    if (this.saveBrowser?.visible && this.input.takeKey(K.pauseMenu)) this.saveBrowser.close();
     this.settingsPanel.handleInput(this.input);
     this._hud.handleInput(this.input);
     this.activeStage.handleInput(this.input);
@@ -539,11 +616,25 @@ export class Game {
     this.viewManager.handleInput(this.input, this.activeStage.isPlaying, canToggleView);
     this.editor.handleInput(this.input);
 
-    if (this.input.takeKey(K.quickSave)) {
-      SaveManager.save(this);
+    if (this.input.takeKey(K.clipSnapshot)) {
+      // 決着後の phase(won/lost/timeup)は復元する経路を持たない — restore は phase を
+      // そのまま代入するだけで結果画面を出し直さず、Game.update は isPlaying でない限り
+      // 早期returnし続けるため、決着後のスナップショットをロードすると操作不能になる。
+      if (!this.activeStage.isPlaying) {
+        this._hud.hint('決着後はスナップショットを残せません');
+      } else {
+        const snap = this.snapshotService.capture(this, 'manual', null, true);
+        this._hud.hint(snap ? `クリップしました: ${snap.name}` : 'クリップに失敗しました');
+      }
     }
-    if (this.input.takeKey(K.quickLoad)) {
-      SaveManager.load(this);
+    if (this.input.takeKey(K.openSnapshots)) {
+      if (this.saveBrowser?.visible) {
+        this.saveBrowser.close();
+      } else {
+        // ポーズは入れ子にならない真偽値なので、同じ帯のシステム窓を重ねない。
+        this.settingsPanel.toggle(false);
+        this.saveBrowser?.open();
+      }
     }
   }
 
@@ -592,7 +683,8 @@ export class Game {
       const targets = this.entities.getCombatTargets(player);
       this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project, attractors);
     }
-    this.navTarget.sync(project);
+    this.navTarget.sync(project, overviewMode, this.cameraSystem.activeCameraPos);
+    this.equatorNodeMarkers.sync(project, overviewMode, this.cameraSystem.activeCameraPos);
     if (player) this.navball.sync(player.state, player.att, player.alive, target?.state ?? null);
 
     // 敵マーカーは1体では決められない(画面上で近接するものをまとめる)ので集合として渡す。
@@ -600,30 +692,39 @@ export class Game {
     const aliveTargets = this.entities.getCombatTargets(player).filter((t) => t.alive);
     const enemyMarkerItems: GroupedMarkerItem[] = [];
     for (const tgt of aliveTargets) {
-      const pos = tgt.displayState(displayTime)?.r;
-      if (!pos) continue;
+      const ds = tgt.displayState(displayTime);
+      if (!ds) continue;
       const role: 'none' | 'primary' | 'secondary' =
         tgt === target ? 'primary' : tgt === secondaryTarget ? 'secondary' : 'none';
-      enemyMarkerItems.push(tgt.markerItem(role, player?.state.r ?? v3(), pos));
+      enemyMarkerItems.push(tgt.markerItem(role, player?.state.r ?? v3(), ds.r, ds.v, overviewMode));
     }
-    this.enemyMarkers.sync(enemyMarkerItems, project, overviewMode);
+    this.enemyMarkers.sync(enemyMarkerItems, project, overviewMode, this.cameraSystem.activeCameraScale);
     if (player) this.leadMarkers.sync(player, aliveTargets, target, secondaryTarget, simTime, overviewMode, project);
 
     this.displayTimeManager.sync(simTime, this.currentOrbitPeriod());
-    this.editor.sync(this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project);
+    this.editor.sync(
+      this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project,
+      this.cameraSystem.activeCameraScale, overviewMode, this.cameraSystem.activeCameraPos,
+    );
     this.mapPicker.sync(overviewMode, simTime, attractors, player);
-    // 月フライバイ等で積分予測と解析楕円が乖離した場合は、重なって誤解を招く
-    // 楕円近似線をマップ表示中だけ抑制する。戦闘ビューへ戻れば通常の線へ復帰する。
-    if (player) {
-      player.orbitLine.setSuppressed(
-        overviewMode && this.editor.planDisplay.path.isAnalyticDivergent,
-      );
+
+    // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
+    const predictedTargets = player?.alive ? [player] : [];
+    this.predictedTrajectoryLine.sync(
+      predictedTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
+      this.cameraSystem.activeCameraScale,
+    );
+    // 予測軌道の実線が出ているあいだは、解析楕円は重ねて出さない。predictedTrajectoryLine は
+    // 操作対象艦しか描かないため、他の艦は常に non-suppressed に戻す — でなければ操作を
+    // 切り替えた艦の抑制状態が解けないまま残ってしまう。
+    for (const ship of this.entities.players) {
+      ship.orbitLine.setSuppressed(this.predictedTrajectoryLine.hasLineFor(ship));
     }
 
     if (player) {
       this.touchControls?.syncModeButtons(player.rcsDamp, player.fineAttitude, player.progradeHold);
     }
-    this.activeStage.sync(player, this.floatingOrigin, project, displayTime, overviewMode);
+    this.activeStage.sync(player, this.floatingOrigin, project, this.cameraSystem.activeCameraScale, displayTime, overviewMode);
 
     this._hud.panels.sync(this, attractors);
     this._hud.tick();
@@ -631,8 +732,10 @@ export class Game {
     if (player) this.guide.sync(this.editor.plan, player, simTime, this.editor.editMode, project);
 
     const debugTargets = player ? (target ? [player, target] : [player]) : [];
-    const debugFrame = overviewMode ? this.cameraSystem.overviewCamera.cameraFrame : INERTIAL_FRAME;
-    this.debugTrajectoryLine.sync(debugTargets, debugFrame, simTime, this.ephemeris, this.floatingOrigin);
+    this.debugTrajectoryLine.sync(
+      debugTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
+      this.cameraSystem.activeCameraScale,
+    );
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions();

@@ -27,6 +27,12 @@ import type { EnemySaveData } from '../save-data';
 // Enemy の見た目の種別。どの build を呼ぶかをコンストラクタ内部で選ぶための判別用。
 export type EnemyKind = { kind: 'drifting' } | { kind: 'stage0'; typeIndex: number };
 
+// enemyKind ごとの主慣性モーメント。'drifting' は非対称にしてジャニベコフ効果(中間軸不安定性)
+// を起こし、'stage0' は機首をプログレードへ向けたまま飛ぶので等方でよい。
+export function inertiaForEnemyKind(enemyKind: EnemyKind): Vec3 {
+  return enemyKind.kind === 'stage0' ? v3(1, 1, 1) : v3(1, 1.1, 1.05);
+}
+
 // 太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
 // 順光では締まる。難易度調整のための経験則であって物理計算ではない。
 // pos が地球の影(簡易円柱モデル)に入っていれば太陽光が届かないので倍率は 1。
@@ -115,9 +121,10 @@ export class Enemy extends Ship {
 
 
 
-  // pos は機体メッシュと同じ表示時刻の位置(displayState 経由)を使う。role が第一/第二
-  // ターゲットのどちらでもなければ通常の敵マーカーになる。
-  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3): GroupedMarkerItem {
+  // pos/vel は機体メッシュと同じ表示時刻の状態(displayState 経由)を使う。role が第一/第二
+  // ターゲットのどちらでもなければ通常の敵マーカーになる。overviewMode では進行方向へ回る
+  // ヘッダーアイコンを、戦闘ビューでは従来の切り欠き三角形を使う。
+  markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
     // 代表選出の優先度: 第一ターゲット > 第二ターゲット > 距離が近い順
@@ -125,8 +132,9 @@ export class Enemy extends Ship {
     return {
       key: `enemy-${this.name}`,
       cls: role === 'primary' ? 'mk-target' : 'mk-enemy',
-      sym: this.hpMarkerSvg(),
+      sym: overviewMode ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
       pos,
+      vel,
       priority,
       name: this.name,
       detail: fmtMarkerDist(dist),
@@ -311,14 +319,19 @@ export class Enemy extends Ship {
       health: this.hp,
       accent: this.accent,
       waveId: this.waveId,
+      burstLeft: this.burstLeft,
+      burstDelay: this.burstDelay,
     };
   }
 
   // セーブデータから復元する。
   static restore(data: EnemySaveData, simTime: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene?: THREE.Scene): Enemy {
     const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
-    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
+    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: inertiaForEnemyKind(data.enemyKind) };
     const enemy = new Enemy(data.name || '', state, data.enemyKind, att, data.health, data.accent, data.accent, hud, sfx, fx, data.waveId, scene);
+    enemy.restoreOverallHp(data.health);
+    enemy.burstLeft = data.burstLeft;
+    enemy.burstDelay = data.burstDelay;
     enemy.id = data.id || undefined;
     enemy.alive = data.alive;
     if (!enemy.alive) {

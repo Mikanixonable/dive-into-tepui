@@ -13,7 +13,12 @@ import { UnlockManager } from './game/unlock-manager';
 import { isStageId } from './game/stages/stage-dictionary';
 import { selectLaunch } from './game/launch-select';
 import { LaunchSelection } from './game/game-mode';
-import { SaveManager } from './game/save-manager';
+import { LocalStorageSaveStore } from './game/save/save-store';
+import { SaveSlots } from './game/save/save-slots';
+import { SnapshotService } from './game/save/snapshot-service';
+import { AutoSave } from './game/save/autosave';
+import { migrateLegacySave } from './game/save/legacy-save';
+import { SaveBrowser } from './game/hud/save-browser';
 
 
 // ?stage=00|0|1|2 または ?mode=creative で起動選択画面をスキップ(デバッグ・共有リンク用)。
@@ -111,7 +116,7 @@ async function initScene(): Promise<GameScene> {
 }
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
-function startAnimationLoop(game: Game, perf: PerfMeter): void {
+function startAnimationLoop(game: Game, perf: PerfMeter, autoSave: AutoSave): void {
   let lastTime = performance.now();
   let completedFrames = 0;
   // 1フレーム分: update → sync → render を実行し、計測後に次フレームを予約する
@@ -121,6 +126,7 @@ function startAnimationLoop(game: Game, perf: PerfMeter): void {
     const t0 = perf.on ? performance.now() : 0;
     try {
       game.update(dt);
+      autoSave.update(game);
       const t1 = perf.on ? performance.now() : 0;
       game.sync();
       game.render();
@@ -165,34 +171,44 @@ function initHud(): { hud: Hud; sfx: Sfx; settingsPanel: SettingsPanel } {
 }
 
 // シーン初期化からステージ選択、Game 構築、rAF ループ開始までを順に行う。
+// 索引を読み、旧セーブを取り込み、遊ぶ先のスロットが必ず1つある状態にする。
+function initSaveSlots(store: LocalStorageSaveStore): SaveSlots {
+  const slots = new SaveSlots(store);
+  slots.pruneOrphans();
+  const migrated = migrateLegacySave(slots);
+  if (slots.activeSlotId === null) {
+    slots.setActiveSlot((migrated ?? slots.slots[0] ?? slots.createSlot('セーブデータ 1')).id);
+  }
+  return slots;
+}
+
 async function main() {
   const unlockmanager = new UnlockManager();
+  const saveStore = new LocalStorageSaveStore();
+  const slots = initSaveSlots(saveStore);
+  const snapshotService = new SnapshotService(saveStore, slots);
   const gs = await initScene();
   const { hud, sfx, settingsPanel } = initHud();
   const launch = await resolveLaunchSelection(unlockmanager);
-  const game = new Game(gs, launch, hud, sfx, settingsPanel, unlockmanager);
+  const game = new Game(gs, launch, hud, sfx, settingsPanel, unlockmanager, snapshotService);
+  const activeSlotId = slots.activeSlotId;
+  if (activeSlotId !== null) slots.noteLaunch(activeSlotId, launch.mode, game.activeStage.id);
+
+  const saveBrowser = new SaveBrowser(hud.root, slots, snapshotService, game);
+  game.setSaveBrowser(saveBrowser);
+  saveBrowser.onSlotSwitched = () => location.assign(location.pathname);
+  // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
+  settingsPanel.onOpenSnapshots = () => {
+    settingsPanel.toggle(false);
+    saveBrowser.open();
+  };
   // ⚙ギアクリック・[閉じる]・[Esc] いずれの経路で開閉しても一時停止フラグを同期する
   settingsPanel.onSettingsOpenChange = (open) => {
     if (open) game.pause();
     else game.resume();
   };
-  settingsPanel.onSaveGame = () => {
-    try {
-      SaveManager.save(game);
-      settingsPanel.showSaveStatus('セーブしました');
-    } catch (e) {
-      settingsPanel.showSaveStatus('セーブに失敗しました', true);
-    }
-  };
-  settingsPanel.onLoadGame = () => {
-    if (SaveManager.load(game)) {
-      settingsPanel.toggle(false); // ロード成功時はメニューを閉じる
-    } else {
-      settingsPanel.showSaveStatus('ロードに失敗しました', true);
-    }
-  };
   const perf = new PerfMeter(game);
-  startAnimationLoop(game, perf);
+  startAnimationLoop(game, perf, new AutoSave(snapshotService));
 }
 
 main().catch((err) => {

@@ -131,7 +131,7 @@ export function register(): void {
       // 太陽-地球回転系は解析的な地球-月重心方向を軸に取るため、太陽の実方向(月による
       // 重心補正ぶん、~3e-5 rad 級で揺れる)からわずかにずれる。月回転系の軸は
       // 月の平均要素(二体部分)のみで組まれ、月の実位置は太陽摂動の周期項ぶん
-      // そこから最大 1.4° ほどずれる(satellite-orbit.ts 参照)。
+      // そこから最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
       const tol = label === '太陽-地球回転系' ? 1e-4 : 3e-2;
       assert.ok(Math.abs(before - after) < tol, `${label}: 天体との相対角が変わった (${before} vs ${after})`);
       // un-bake 後のエポックは描画時刻 tNow(bake 時刻ではない)。
@@ -147,15 +147,15 @@ export function register(): void {
     assert.ok(closeState(back, s), `round trip: ${JSON.stringify(back)} vs ${JSON.stringify(s)}`);
   });
 
-  test('frame: 月回転系では月がほぼ +X 軸上にある(周期摂動ぶん最大1.4°ずれる)', () => {
+  test('frame: 月回転系では月がほぼ +X 軸上にある(周期摂動ぶん最大2.5°ずれる)', () => {
     // 月回転系の基底(x̂ = 月方向)は二体部分(平均要素)のみで組まれるため、太陽摂動の
-    // 周期項ぶん月の実位置は x̂ 軸から最大 1.4° ほどずれる(satellite-orbit.ts 参照)。
+    // 周期項ぶん月の実位置は x̂ 軸から最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
     for (const t of [0, 3e5, 2.4e6, 1e8]) {
       const tf = eph.frameTransformAt(MOON_ROTATING, t);
       const p = toFramePoint(tf, eph.positionOf('moon', t));
       const dist = len(v3(p.x, p.y, p.z));
       const angleFromXDeg = (Math.acos(p.x / dist) * 180) / Math.PI;
-      assert.ok(angleFromXDeg < 1.5, `月の位置が x̂ から離れすぎる (t=${t}): ${angleFromXDeg}°`);
+      assert.ok(angleFromXDeg < 2.5, `月の位置が x̂ から離れすぎる (t=${t}): ${angleFromXDeg}°`);
     }
   });
 

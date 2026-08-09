@@ -39,6 +39,7 @@ export class Input {
   private keys = new Set<string>();
   private pendingPresses: string[] = [];
   private pendingClicks: PointerPoint[] = [];
+  private pendingDoubleClicks: PointerPoint[] = [];
   private pendingMiddleClicks: PointerPoint[] = [];
   private pendingRightClicks: PointerPoint[] = [];
   private dx = 0;
@@ -48,6 +49,7 @@ export class Input {
   private wheel = 0;
   private framePresses: string[] = [];
   private frameClicks: PointerPoint[] = [];
+  private frameDoubleClicks: PointerPoint[] = [];
   private frameMiddleClicks: PointerPoint[] = [];
   private frameRightClicks: PointerPoint[] = [];
   private frameMouse: MouseDelta = ZERO_MOUSE_DELTA;
@@ -112,6 +114,10 @@ export class Input {
     target.addEventListener('pointermove', (e) => this.onPointerMove(e));
     target.addEventListener('pointerup', (e) => this.onPointerUp(e));
     target.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
+    // ダブルクリックの連打判定(タイミング・移動量とも)はブラウザの標準実装に委ねる。
+    target.addEventListener('dblclick', (e) => {
+      if (e.button === 0) this.pendingDoubleClicks.push({ x: e.clientX, y: e.clientY });
+    });
   }
 
   // 左ボタン・右ボタンはともにドラッグ/ピンチ開始(右クリックは閾値未満ならコンテキストメニュー用のクリックとして扱う)、中ボタンはパン開始として扱う。
@@ -263,12 +269,14 @@ export class Input {
     // 蓄積分を今フレームのスナップショットとして確定
     this.framePresses = this.pendingPresses;
     this.frameClicks = this.pendingClicks;
+    this.frameDoubleClicks = this.pendingDoubleClicks;
     this.frameMiddleClicks = this.pendingMiddleClicks;
     this.frameRightClicks = this.pendingRightClicks;
     this.frameMouse = { dx: this.dx, dy: this.dy, panDx: this.panDx, panDy: this.panDy, wheel: this.wheel };
     // 次フレーム分の蓄積をリセット
     this.pendingPresses = [];
     this.pendingClicks = [];
+    this.pendingDoubleClicks = [];
     this.pendingMiddleClicks = [];
     this.pendingRightClicks = [];
     this.dx = 0;
@@ -298,6 +306,11 @@ export class Input {
   // 今フレームの未消費の左クリック(ドラッグでない短い押下)を順に渡し、handler が true を返したものを消費する。
   takeClicks(handler: (point: PointerPoint) => boolean): void {
     takeFrom(this.frameClicks, handler);
+  }
+
+  // 今フレームの未消費のダブルクリックを順に渡し、handler が true を返したものを消費する。
+  takeDoubleClicks(handler: (point: PointerPoint) => boolean): void {
+    takeFrom(this.frameDoubleClicks, handler);
   }
 
   // 今フレームの未消費の中ボタンクリックを順に渡し、handler が true を返したものを消費する。
