@@ -52,6 +52,7 @@ import { register as registerSaveEphemerisContext } from './save-ephemeris-conte
 import { register as registerExposure } from './exposure.test';
 import { register as registerSurfaceMaterial } from './surface-material.test';
 import { register as registerCelestialPhotometry } from './celestial-photometry.test';
+import { register as registerCelestialQuality } from './celestial-quality.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -105,6 +106,7 @@ registerSaveEphemerisContext();
 registerExposure();
 registerSurfaceMaterial();
 registerCelestialPhotometry();
+registerCelestialQuality();
 
 runAll().catch((error) => {
   console.error(error);
