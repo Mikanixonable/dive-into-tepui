@@ -55,7 +55,8 @@ function phaseUniforms(layer: CloudLayer): CloudPhaseUniforms {
 
 function sphereUv(direction: ReturnType<typeof vec3>, phase: CloudPhaseUniforms, layer: CloudLayer): TslVec2Node {
   const p = CLOUD_LAYER_PARAMETERS[layer];
-  const u0 = direction.z.atan2(direction.x).div(TWO_PI).add(0.5);
+  // SphereGeometry のUVと同じ向きにし、経度端はRepeatWrappingで接続する。
+  const u0 = direction.z.atan2(direction.x.negate()).div(TWO_PI);
   const v0 = direction.y.clamp(-1, 1).acos().div(Math.PI);
   const latitude = v0.mul(2).sub(1);
   const deformation = latitude.mul(Math.PI * 2 * 2.2)
