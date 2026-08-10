@@ -49,6 +49,10 @@ const STYLE = `
   padding: 3px 12px; color: ${INK}; opacity: 0.6; cursor: pointer;
 }
 #hud .prop-window-row-toggle:hover { opacity: 1; color: ${ACCENT_SOFT}; }
+#hud .prop-window-row-group-toggle {
+  padding: 3px 12px; color: ${INK}; opacity: 0.6; cursor: pointer;
+}
+#hud .prop-window-row-group-toggle:hover { opacity: 1; color: ${ACCENT_SOFT}; }
 #hud .prop-window-items { border-top: 1px solid ${EDGE}; }
 #hud .prop-window-item {
   padding: 9px 14px; color: ${INK}; cursor: pointer; border-bottom: 1px solid ${EDGE};
@@ -79,6 +83,9 @@ export interface PropertyRow {
   readonly value: string;
   // 立てると「詳細」トグルの下に畳まれ、既定では隠れる。
   readonly collapsible?: boolean;
+  // 指定すると同名の行同士がグループ見出しの下にまとめられ、既定では畳まれる。
+  // 描画順は rows 中でその名前が最初に現れた順。
+  readonly group?: string;
 }
 
 export interface PropertyWindowItem<A extends string = string> {
@@ -115,9 +122,13 @@ export class PropertyWindow<A extends string = string> {
   private lastSubtitle: string | undefined | typeof PropertyWindow.UNSET = PropertyWindow.UNSET;
   // 前フレームに描画した行の値。同じ値なら DOM に触れない差分更新のための記録。
   private lastRowValues = new Map<string, string>();
+  // 前フレームの行構成(key・group・collapsible の並び)。DOM 組み直しの要否判定に使う。
+  private lastRowShapeKey = '';
   private collapsibleContainerEl: HTMLDivElement | null = null;
   private toggleEl: HTMLDivElement | null = null;
   private collapsibleExpanded = false;
+  // グループ名ごとの開閉状態。syncRows の再構築をまたいで保つ。
+  private readonly groupExpanded = new Map<string, boolean>();
   // 前回描画した操作項目の直列化(act/label/shortcut)。同じなら DOM を組み直さない。
   private lastItemsKey = '';
   private _clipped = false;
@@ -338,48 +349,86 @@ export class PropertyWindow<A extends string = string> {
     this.lastRowValues.set(r.key, r.value);
   }
 
-  // プロパティ行の値だけを毎フレーム差分更新する。行集合(key の並び)が変わった場合のみ
-  // 行 DOM 全体を組み直す — 操作項目・ヘッダのリスナには触れないので副作用はない。
-  // collapsible な行は末尾の「詳細」トグルの下にまとめ、開閉状態はウィンドウが自分で持つ。
+  // プロパティ行の値だけを毎フレーム差分更新する。行構成(key・group・collapsible の並び)が
+  // 変わった場合のみ行 DOM 全体を組み直す — 操作項目・ヘッダのリスナには触れないので副作用はない。
+  // 描画順は「group を持つ行(グループ見出し単位、初出順)」→「無印の行」→「collapsible な行
+  // (末尾の「詳細」トグルの下)」。グループ・詳細トグルの開閉状態はウィンドウが自分で持つ。
   syncRows(rows: readonly PropertyRow[]): void {
-    const sameShape =
-      rows.length === this.lastRowValues.size && rows.every((r) => this.lastRowValues.has(r.key));
-    if (!sameShape) {
-      this.rowsEl.innerHTML = '';
-      this.lastRowValues.clear();
-      this.collapsibleContainerEl = null;
-      this.toggleEl = null;
-      const collapsible = rows.filter((r) => r.collapsible);
+    const shapeKey = rows.map((r) => `${r.key}${r.group ?? ''}${r.collapsible ?? ''}`).join('');
+    if (shapeKey === this.lastRowShapeKey) {
       for (const r of rows) {
-        if (!r.collapsible) this.appendRowEl(this.rowsEl, r);
+        if (this.lastRowValues.get(r.key) === r.value) continue;
+        this.lastRowValues.set(r.key, r.value);
+        const valueEl = this.rowsEl.querySelector<HTMLElement>(
+          `.prop-window-row[data-key="${r.key}"] .prop-window-row-value`,
+        );
+        if (valueEl) valueEl.textContent = r.value;
       }
-      if (collapsible.length > 0) {
-        const toggle = document.createElement('div');
-        toggle.className = 'prop-window-row-toggle';
-        toggle.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.setCollapsibleExpanded(!this.collapsibleExpanded);
-        });
-        this.rowsEl.appendChild(toggle);
-        this.toggleEl = toggle;
-        const container = document.createElement('div');
-        for (const r of collapsible) this.appendRowEl(container, r);
-        this.rowsEl.appendChild(container);
-        this.collapsibleContainerEl = container;
-        this.syncToggleLabel(collapsible.length);
-        container.style.display = this.collapsibleExpanded ? '' : 'none';
-      }
-      this.reclamp();
       return;
     }
+    this.lastRowShapeKey = shapeKey;
+    this.rowsEl.innerHTML = '';
+    this.lastRowValues.clear();
+    this.collapsibleContainerEl = null;
+    this.toggleEl = null;
+
+    const groupNames: string[] = [];
+    const groupRows = new Map<string, PropertyRow[]>();
+    const plainRows: PropertyRow[] = [];
+    const collapsibleRows: PropertyRow[] = [];
     for (const r of rows) {
-      if (this.lastRowValues.get(r.key) === r.value) continue;
-      this.lastRowValues.set(r.key, r.value);
-      const valueEl = this.rowsEl.querySelector<HTMLElement>(
-        `.prop-window-row[data-key="${r.key}"] .prop-window-row-value`,
-      );
-      if (valueEl) valueEl.textContent = r.value;
+      if (r.group !== undefined) {
+        let list = groupRows.get(r.group);
+        if (!list) { list = []; groupRows.set(r.group, list); groupNames.push(r.group); }
+        list.push(r);
+      } else if (r.collapsible) {
+        collapsibleRows.push(r);
+      } else {
+        plainRows.push(r);
+      }
     }
+
+    for (const name of groupNames) this.appendGroupEl(name, groupRows.get(name) ?? []);
+    for (const r of plainRows) this.appendRowEl(this.rowsEl, r);
+    if (collapsibleRows.length > 0) {
+      const toggle = document.createElement('div');
+      toggle.className = 'prop-window-row-toggle';
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.setCollapsibleExpanded(!this.collapsibleExpanded);
+      });
+      this.rowsEl.appendChild(toggle);
+      this.toggleEl = toggle;
+      const container = document.createElement('div');
+      for (const r of collapsibleRows) this.appendRowEl(container, r);
+      this.rowsEl.appendChild(container);
+      this.collapsibleContainerEl = container;
+      this.syncToggleLabel(collapsibleRows.length);
+      container.style.display = this.collapsibleExpanded ? '' : 'none';
+    }
+    this.reclamp();
+  }
+
+  // 1グループ分の見出しボタンと行コンテナを rowsEl へ足す。開閉状態は groupExpanded に
+  // 名前で記録し、既定は畳んだ状態(未登録なら false)。
+  private appendGroupEl(name: string, rows: readonly PropertyRow[]): void {
+    const expanded = this.groupExpanded.get(name) ?? false;
+    const toggle = document.createElement('div');
+    toggle.className = 'prop-window-row-group-toggle';
+    toggle.textContent = expanded ? `▲ ${name}` : `▼ ${name} (${rows.length})`;
+    const container = document.createElement('div');
+    container.style.display = expanded ? '' : 'none';
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const next = !(this.groupExpanded.get(name) ?? false);
+      this.groupExpanded.set(name, next);
+      toggle.textContent = next ? `▲ ${name}` : `▼ ${name} (${rows.length})`;
+      container.style.display = next ? '' : 'none';
+      this.reclamp();
+    });
+    this.rowsEl.appendChild(toggle);
+    for (const r of rows) this.appendRowEl(container, r);
+    this.rowsEl.appendChild(container);
   }
 
   private syncToggleLabel(count: number): void {
