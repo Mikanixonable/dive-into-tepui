@@ -1,0 +1,131 @@
+# 章01: 軌道力学コアのレビュー — findings
+
+対象ファイルはすべて存在した(`ephemeris-pack/`, `absolute-ephemeris.ts`, `packed-absolute-ephemeris.ts`,
+`ephemeris-catalog.ts`, `ephemeris-profile.ts` を含む)。`src/physics/time/index.ts` も
+`packed-absolute-ephemeris.ts`/`ephemeris-pack/absolute-adapter.ts` から参照される周辺ファイルとして軽く確認した。
+
+## 手法メモ
+
+- `git log --oneline HEAD~200..HEAD -- src/physics/` を確認し、最大の変更(`0e26bcf feat: Implement
+  dual-epoch solar system ephemeris`、`ephemeris-pack/`・`absolute-ephemeris.ts`・
+  `packed-absolute-ephemeris.ts`・`ephemeris-catalog.ts`・`ephemeris-profile.ts`・`time/index.ts` を新設、
+  1408 行追加)を中心に読んだ。
+- `grep -rn "'earth'\|'sun'\|'moon'" src/physics/` を実行し、全ヒットを確認。
+- `Ephemeris.attractorsAt`/`stateOf`/`positionOf` の呼び出し全箇所(`game/` 配下含む)を grep し、
+  返却配列・要素を mutate していないか確認。
+- `setPhaseOffsets` の3キャッシュ群クリアを確認。
+- `lagrange.ts` の Routh 比・共線点クリアランス式を文献値と照合。
+- `npm run typecheck` / `npm run test:physics` を実行(修正なしでも実施、両方 PASS)。
+
+## src/physics/ephemeris.ts
+
+- [comment] なし。クラス冒頭・各メソッドの契約コメントは既に充実しており追加の指摘なし。
+
+キャッシュ(`planetHelioCache`/`satelliteRelCache`/`allAttractorsCache`)の正しさ:
+`setPhaseOffsets`(159–164行目)は3キャッシュ群すべてを `clear()` しており、指摘なし。
+`attractorsAt`(481–485行目)が返す配列・各 `Attractor` は `readonly` フィールドのみで構成され、
+呼び出し側(`game/simulation/attractors.ts`, `game/map-picker.ts`, `game/nav-target.ts`,
+`game/plan/*.ts`, `game/camera/focus-target.ts`, `game/marker/equator-node-markers.ts` 等、
+grep で全16箇所)はいずれも `.filter`/`.map`/`.find`/`mergeAttractors`(常に新配列を作る)経由で
+読むだけで、返却された配列・要素への `.push`/`.splice`/フィールド代入は見当たらなかった。
+
+`registry` 汎化: コンストラクタの `originId: AttractorId = 'earth'`(125行目)のみが `'earth'` 文字列を
+持つが、これは CLAUDE.md 本文で「省略すると現実の太陽系・地球原点・既定エポックで動く」と明記された
+意図的なデフォルト値であり、レジストリ非依存性そのものは壊していない(`this.originId` 自体は
+任意の `AttractorId` を受け付ける)。違反として扱わず。
+
+## src/physics/atmosphere.ts (peripheral, not in target list)
+
+- [spec?] 78行目 `if (body.id !== 'earth') continue;` — `src/physics/` 内で `SOLAR_SYSTEM` 定義・
+  テスト以外に残る唯一の `'earth'` リテラル。ただし CLAUDE.md 本文が
+  「大気モデルは地球のものだけ」「大気加熱・動圧のしきい値は地球専用のまま」と明記しており、
+  意図的な設計判断である可能性が高い。対象ファイルリスト外でもあるため、修正はせず報告のみ。
+
+## src/physics/lagrange.ts
+
+数式を文献と照合、問題なし:
+- `TRIANGULAR_STABILITY_MASS_RATIO = (27 - sqrt(621)) / 54 ≈ 0.03852` — Routh/Gascheau の
+  安定質量比上限(27μ(1−μ)<1 の小さい方の根)と一致。
+- `collinearGamma` の L1/L2 五次方程式は Szebehely の標準形と一致。
+- `lagrangePoints` の L3 近似 `x = -(1 + 5μ/12)`、L4/L5 の `(0.5, ±√3/2)` はいずれも標準の
+  一次近似・厳密値。
+
+- [comment] 特になし。関数コメントは契約(何を返すか・単位)を明示しており十分。
+
+## src/physics/kepler-orbit.ts / elements.ts / planet-orbit.ts / satellite-orbit.ts
+
+- `orbitAngles`(kepler-orbit.ts 67–104行目)は aRate/eRate ≠ 0 のときの ν̇/ṙ を陽な時間微分で
+  導出しており、コメントで標準公式との違いが説明されている。式を手で追ったが誤りは見当たらない。
+- `eccentricAnomalyFromMean`(elements.ts 82–92行目)の高離心率(e>0.8)初期値切り替えは
+  CLAUDE.md の記述と一致し、Newton法の収束保証として妥当。
+- `planetOrbit`(planet-orbit.ts)の 度/世紀・au/世紀 → rad/s 変換は次元的に正しい
+  (`DEG / JULIAN_CENTURY` の掛け方に誤りなし)。
+- `ecliptic.ts` の `eclToEci`/`eciToEcl` を手動で逆変換として検算し、一致を確認(37行目)。
+
+- [comment] 特になし。
+
+## src/physics/solar-system.ts
+
+主要な物理定数(`J2_EARTH=1.08262668e-3`, `J2_MOON=203.3e-6`, `C22_MOON=22.4e-6`,
+`MOON_OBLIQUITY=1.543°`, `MU_EARTH`, `MU_MOON`, `MU_SUN`)を文献値と照合、いずれも既知の値と
+一致(桁・符号とも正常)。2055行の惑星/衛星/準惑星の要素表は全件の照合はしていない
+(effort予算の都合上、`test:physics` の各テスト — 公表周期との一致、ラプラス面傾斜、
+セドナの中心差分検証など — が既に多数の個別値をカバーしていることを踏まえ、テストがカバーする
+範囲は追加検証しなかった)。
+
+## src/physics/ephemeris-pack/{format,evaluator,absolute-adapter,types}.ts, absolute-ephemeris.ts, packed-absolute-ephemeris.ts
+
+- `findChebyshevSegmentIndex`(evaluator.ts 98–118行目)の境界条件を手動でトレース
+  (t=セグメント境界、範囲外)し、「後の方のセグメントを選ぶ」「範囲外で -1」の挙動を確認、正しい。
+- `evaluateChebyshevWithDerivative`(52–86行目)の Clenshaw 再帰は標準形と一致。
+- `icrfToGameEci`(absolute-ephemeris.ts 28–30行目)`v3(a.x, a.z, a.y === 0 ? 0 : -a.y)` を
+  手動で検算し、右手系を保った ICRF(春分点,赤道面内,北極)→ ECI(春分点,北極,-赤道面内)の
+  正しい変換であることを確認。
+  - [comment] `a.y === 0 ? 0 : -a.y` の分岐(-0 を避けるための特別扱いと思われる)には
+    その意図を示すコメントが無い。実害はない(-0 は数値的に 0 と等価に振る舞う)ため
+    [bug] ではなく低優先度の [comment] として報告のみ、修正はしなかった。
+- `PackedAbsoluteEphemeris`/`ChebyshevAbsoluteEphemeris`(evaluator側 `absolute-adapter.ts`)は
+  同じ「JD_TDB→秒」変換を似た形で2箇所に持つが(`packed-absolute-ephemeris.ts` は
+  `J2000_JULIAN_DATE` 固定エポック、`absolute-adapter.ts` の `ChebyshevAbsoluteEphemeris` は
+  任意 `epochJdTdb`)、後者は `tests/physics/chebyshev-ephemeris.test.ts` でのみ使われ
+  実プロダクションコードからは未参照に見えた(`grep` で `ChebyshevAbsoluteEphemeris` の呼び出しは
+  テストと `ephemeris-pack/index.ts` の re-export のみ)。
+  - [refactor?] 重複気味の2実装が両方生きている点は将来的な整理対象になりうるが、
+    「なぜ2つあるか」はコメントで説明されており(型を分けている理由)、今回は
+    バグでも規約違反でもないため報告のみに留めた。
+
+## immutability / registry 汎化 / Math.random・Date.now 直呼び
+
+- `grep -rn "Math\.random\|Date\.now" src/physics/` はヘルパー関数のデフォルト引数
+  (`vec3.ts`/`attitude.ts` の `rand: () => number = Math.random`)のみで、CLAUDE.md が明示的に
+  許容する形(呼び出し側が `mulberry32` を渡せる)であり違反なし。
+- モジュールレベルの可変配列・out引数パターンは見当たらなかった
+  (`ephemeris-pack/evaluator.ts` の `copyCoefficients`/`copyBody` は毎回新規配列を `Object.freeze`
+  して返す純関数)。
+
+## hasUsableCollinearPoints / hasStableTriangularPoints (ephemeris.ts 356–368行目)
+
+- `hasStableTriangularPoints` は `lagrange.ts` の Routh 比を正しく使用。
+- `hasUsableCollinearPoints` は `massRatioOf` で μ=0(質量未測定)を弾き、`collinearClearanceRatio`
+  (副天体半径に対する L1 距離の比)としきい値を比較 — 設計判断として妥当。
+- 恒星自身(`def.kind === 'star'`)を明示的に除外しており(360行目)、恒星に対して
+  ラグランジュ点計算を試みることはない。
+
+## まとめ
+
+このセッションでは修正が必要な確証の高い [bug] は見つからなかった。数値定数・回転行列・
+キャッシュ無効化・呼び出し側の非破壊性はいずれも検算・grep で確認でき、`test:physics` の
+広範なテスト(特に `dual-epoch`/`chebyshev`/`absolute-ephemeris` 関連の新規テスト群)が
+既にこの章の主要な懸念(境界条件・単位一致・往復変換)をカバーしていた。
+
+## タグ別件数
+
+- [bug]: 0(修正 0)
+- [spec?]: 1(`atmosphere.ts` の `'earth'` 直書き、意図的の可能性が高い)
+- [refactor]: 1(`ChebyshevAbsoluteEphemeris` と `PackedAbsoluteEphemeris` の重複気味な実装、報告のみ)
+- [comment]: 1(`icrfToGameEci` の `-0` 回避分岐に理由コメントが無い、報告のみ)
+
+## 検証
+
+- `npm run typecheck` — PASS(エラーなし)
+- `npm run test:physics` — PASS(390/390)
