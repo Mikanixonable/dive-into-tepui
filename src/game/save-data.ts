@@ -267,6 +267,8 @@ export interface GameSaveData {
   /** 旧スナップショットには無い。存在する場合は現在の暦と一致しなければ復元しない。 */
   ephemerisContext?: EphemerisContext;
   phaseOffsets: Partial<Record<AttractorId, number>>;
+  /** 旧スナップショットには無い。存在しなければ地球の自転初期位相は復元されない。 */
+  earthSpinPhase0?: number;
   players: PlayerSaveData[];
   activePlayerId: string | null;
   enemies: EnemySaveData[];
