@@ -159,7 +159,7 @@ class GridPlane {
       this.labelLayer.appendChild(el); this.labels.push(el); return el;
     };
     addLabel(`${name} PLANE`, 'plane');
-    addLabel(`▲ ${name} N`, 'pole-n'); addLabel(`▼ ${name} S`, 'pole-s');
+    addLabel(`⇧ ${name} N`, 'pole-n'); addLabel(`⇩ ${name} S`, 'pole-s');
     // グリッドの全交点に座標ラベルを置く。画面端に固定した代表ラベルは使わない。
     for (let lat = -60; lat <= 60; lat += GRID_LABEL_STEP_DEG) {
       if (lat === 0) continue;

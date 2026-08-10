@@ -9,6 +9,7 @@ import { CLICK_MOVE_THRESHOLD } from '../const';
 import { clampOverlayPosition, Point2 } from './layout';
 import { shortcutKeyLabel } from './shortcut-hint';
 import { bringToFront as bringOverlayToFront } from './overlay-layer';
+import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from './dom';
 
 const STYLE = `
 #hud .prop-window {
@@ -64,11 +65,18 @@ const STYLE = `
 #hud .prop-window-item.selected {
   color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.1);
 }
-#hud .prop-window-item.selected::before { content: '● '; }
+#hud .prop-window-item.selected::before { content: '▪ '; }
 `;
 
 let styleInjected = false;
 // ウィンドウのスタイルシートを document.head へ一度だけ挿入する。
+// 行グループ見出しの文字列を組む。
+function groupToggleLabel(name: string, rowCount: number, expanded: boolean): string {
+  return expanded
+    ? `${COLLAPSE_EXPANDED_GLYPH} ${name}`
+    : `${COLLAPSE_COLLAPSED_GLYPH} ${name} (${rowCount})`;
+}
+
 function ensureStyle(): void {
   if (styleInjected) return;
   styleInjected = true;
@@ -415,14 +423,14 @@ export class PropertyWindow<A extends string = string> {
     const expanded = this.groupExpanded.get(name) ?? false;
     const toggle = document.createElement('div');
     toggle.className = 'prop-window-row-group-toggle';
-    toggle.textContent = expanded ? `▲ ${name}` : `▼ ${name} (${rows.length})`;
+    toggle.textContent = groupToggleLabel(name, rows.length, expanded);
     const container = document.createElement('div');
     container.style.display = expanded ? '' : 'none';
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
       const next = !(this.groupExpanded.get(name) ?? false);
       this.groupExpanded.set(name, next);
-      toggle.textContent = next ? `▲ ${name}` : `▼ ${name} (${rows.length})`;
+      toggle.textContent = groupToggleLabel(name, rows.length, next);
       container.style.display = next ? '' : 'none';
       this.reclamp();
     });
@@ -433,7 +441,9 @@ export class PropertyWindow<A extends string = string> {
 
   private syncToggleLabel(count: number): void {
     if (!this.toggleEl) return;
-    this.toggleEl.textContent = this.collapsibleExpanded ? '▲ 詳細を隠す' : `▼ 詳細を表示 (${count})`;
+    this.toggleEl.textContent = this.collapsibleExpanded
+      ? `${COLLAPSE_EXPANDED_GLYPH} 詳細を隠す`
+      : `${COLLAPSE_COLLAPSED_GLYPH} 詳細を表示 (${count})`;
   }
 
   private setCollapsibleExpanded(expanded: boolean): void {

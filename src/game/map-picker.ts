@@ -104,7 +104,7 @@ export class MapPicker {
   }
 
   // マップの天体ラベル(表示のみ)と航法ターゲットの AN/DN を求め直したうえで、このフレームの
-  // 候補列を組み直す(全登録天体・ラグランジュ点 + 生存中の自機・敵船・弾薬・基地 + AN/DN
+  // 候補列を組み直す(全登録天体・ラグランジュ点 + 生存中の自艦・敵船・弾薬・基地 + AN/DN
   // アイコン + 近地点・遠地点アイコン)。天体側はトグルによる表示絞り込みを経由しない全件 —
   // 軌道オブジェクトウィンドウが検索・フィルタの対象を持てるようにするため。物理積分の後に
   // 呼ぶ: 積分前に組むと、同フレームで sync されるメッシュと座標が1ステップずれる。
@@ -148,7 +148,7 @@ export class MapPicker {
     items.push(...this.editor.planDisplay.apsisMarkers);
     items.push(...this.game.equatorNodeMarkers.mapPickables());
 
-    // 自機からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
+    // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
     const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
     const viewer = this.game.player?.state;
     if (viewer) for (let i = 0; i < items.length; i++) {
@@ -242,22 +242,22 @@ export class MapPicker {
     this.forgetWindow(key);
   }
 
-  // 左クリック位置の最寄りの自機・基地を選択する: 自機なら操作対象に、基地なら選択状態にする。
-  // 当たらなければ消費せず、PlanEditor のノード配置/選択解除に読み進める(呼び出し側が
-  // editor.handleMapPointer より先に呼ぶことで、マーカーへの命中をノード配置より優先する)。
+  // 左クリック位置の最寄りの自艦・基地を選択する。当たらなければ消費せず、PlanEditor の
+  // ノード配置/選択解除に読み進める(呼び出し側が editor.handleMapPointer より先に呼ぶことで、
+  // マーカーへの命中をノード配置より優先する)。
   handleLeftClick(input: Input): void {
     input.takeClicks((p) => {
       const candidates = this.items.filter((i) => i.kind === 'player' || i.kind === 'base');
       const target = pickNearest(candidates, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ);
       if (!target) return false;
-      this.selectPickable(target);
+      this.selectPickable(target, p.x, p.y);
       return true;
     });
   }
 
-  // ダブルクリック位置の最寄りの被選択物へフォーカスを移す。種別を問わず候補列全体から探す
-  // (プロパティウィンドウの「フォーカスを移動」項目と同じ操作を、より速い経路で提供する)。
-  // ラベル衝突で非表示になった天体は、表示されている別のラベルの背後から拾わない。
+  // ダブルクリック位置の最寄りの被選択物へフォーカスを移し、自艦であれば操作対象にも切り替える。
+  // 種別を問わず候補列全体から探す。ラベル衝突で非表示になった天体は、表示されている別のラベルの
+  // 背後から拾わない。
   handleDoubleClick(input: Input): void {
     input.takeDoubleClicks((p) => {
       const target = pickNearest(
@@ -267,19 +267,24 @@ export class MapPicker {
       if (!target) return false;
       this.game.frameControls.setFocus({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
+      if (target.kind === 'player') {
+        const ship = this.entities.findPlayer(target.id);
+        if (ship) {
+          this.game.setActivePlayer(ship);
+          this.hud.hint(`${target.name} を操作対象に設定`);
+        }
+      }
       return true;
     });
   }
 
-  // 基地側は selectBase のみ呼び、ドックビューへの遷移はしない — 選択とドックへ入る操作
-  // (activate)を分けて、選択だけでは画面が切り替わらないようにする。
-  private selectPickable(target: MapPickable): void {
+  // 単クリックは選択までに留める: 自艦はプロパティウィンドウを開くだけで操作対象は変えず、
+  // 基地も selectBase のみ呼んでドックビューへは遷移しない。取り消せない操作は明示の項目
+  // (プロパティウィンドウ)かダブルクリックに限る。
+  private selectPickable(target: MapPickable, clientX: number, clientY: number): void {
     this.objectListPanel.select(target.id);
     if (target.kind === 'player') {
-      const ship = this.entities.findPlayer(target.id);
-      if (!ship) return;
-      this.game.setActivePlayer(ship);
-      this.hud.hint(`${target.name} を操作対象に設定`);
+      this.openPropertyWindow(clientX, clientY, target, this.lastSimTime);
     } else if (target.kind === 'base') {
       const base = this.entities.findBase(target.id);
       if (!base) return;
@@ -625,7 +630,7 @@ export class MapPicker {
     return { title, subtitle, rows: [], items, onRename: this.renameHandlerFor(target) };
   }
 
-  // 改名できる種別(自機・基地)にだけコールバックを渡す。対象は id で引き直す —
+  // 改名できる種別(自艦・基地)にだけコールバックを渡す。対象は id で引き直す —
   // ウィンドウを開いた時点の MapPickable を直接束縛すると、以後の位置更新で
   // 別の実体を指してしまう。
   private renameHandlerFor(target: MapPickable): ((name: string) => void) | undefined {
@@ -706,7 +711,7 @@ export class MapPicker {
     ];
   }
 
-  // 自機がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
+  // 自艦がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
   // 装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、軌道要素・相対傾斜角は「軌道」グループの下に畳む。
   private shipRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const enemy = this.entities.findEnemy(target.id);
@@ -730,7 +735,7 @@ export class MapPicker {
     return rows;
   }
 
-  // 自機がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
+  // 自艦がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
   private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const base = this.entities.findBase(target.id);
     if (!base) return [];
@@ -743,7 +748,7 @@ export class MapPicker {
     return rows;
   }
 
-  // 自機がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
+  // 自艦がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
   private ammoRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const ammo = this.entities.ammos.find((a) => a.id === target.id);
     if (!ammo) return [];
@@ -758,7 +763,7 @@ export class MapPicker {
   private bodyRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const registry = this.ephemeris.registry;
     const rows: PropertyRow[] = [];
-    if (player) rows.push({ key: 'dist', label: '自機からの距離', value: fmtDist(len(sub(target.pos, player.state.r))) });
+    if (player) rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(len(sub(target.pos, player.state.r))) });
     if (!(target.id in registry)) {
       rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });
       return rows;

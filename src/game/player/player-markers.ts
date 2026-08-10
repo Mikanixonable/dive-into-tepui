@@ -5,6 +5,7 @@ import { KinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, v3 } from '../../physics/vec3';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
+import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { Attractor } from '../../physics/attractor';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import { isPositionInFocusedSystem } from '../celestial/body-visibility';
@@ -33,7 +34,7 @@ export class PlayerMarkers {
         const color = isActive ? COLOR_ACCENT : undefined;
         const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn);
         this.markerManager.setPosition(
-          selfKey, 'mk-self', '▲', displayState.r, project, isActive ? displayName : '', 1, color, rotationDeg,
+          selfKey, 'mk-self', ENTITY_GLYPH.ship, displayState.r, project, isActive ? displayName : '', 1, color, rotationDeg,
         );
       } else {
         this.markerManager.hide(selfKey);
@@ -59,14 +60,14 @@ export class PlayerMarkers {
     const pr = state.r;
     const { pro: proDir, nrm: nrmDir, radOut: radDir } = orbitAxes(state);
 
-    this.markerManager.setDirection(`pro-${this.id}`, 'mk-pro', '⊙', pr, proDir, project, 'PROGRADE');
-    this.markerManager.setDirection(`retro-${this.id}`, 'mk-retro', '⊗', pr, scale(proDir, -1), project, 'RETROGRADE');
+    this.markerManager.setDirection(`pro-${this.id}`, 'mk-pro', DIRECTION_GLYPH.prograde, pr, proDir, project, 'PROGRADE');
+    this.markerManager.setDirection(`retro-${this.id}`, 'mk-retro', DIRECTION_GLYPH.retrograde, pr, scale(proDir, -1), project, 'RETROGRADE');
 
-    this.markerManager.setDirection(`nrm-${this.id}`, 'mk-nrm', '▲', pr, nrmDir, project, 'NORMAL');
-    this.markerManager.setDirection(`anm-${this.id}`, 'mk-nrm', '▽', pr, scale(nrmDir, -1), project, 'ANTINORMAL');
+    this.markerManager.setDirection(`nrm-${this.id}`, 'mk-nrm', DIRECTION_GLYPH.normal, pr, nrmDir, project, 'NORMAL');
+    this.markerManager.setDirection(`anm-${this.id}`, 'mk-nrm', DIRECTION_GLYPH.antinormal, pr, scale(nrmDir, -1), project, 'ANTINORMAL');
 
-    this.markerManager.setDirection(`radout-${this.id}`, 'mk-rad', '◎', pr, radDir, project, 'RADIAL OUT');
-    this.markerManager.setDirection(`radin-${this.id}`, 'mk-rad', '◉', pr, scale(radDir, -1), project, 'RADIAL IN');
+    this.markerManager.setDirection(`radout-${this.id}`, 'mk-rad', DIRECTION_GLYPH.radialOut, pr, radDir, project, 'RADIAL OUT');
+    this.markerManager.setDirection(`radin-${this.id}`, 'mk-rad', DIRECTION_GLYPH.radialIn, pr, scale(radDir, -1), project, 'RADIAL IN');
   }
 
   // 機首方向にボアサイトマーカーを置く。機体が死亡していれば隠す。

@@ -9,6 +9,7 @@ import { Vec3 } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { MarkerManager } from './marker-manager';
+import { DIRECTION_GLYPH } from './marker-glyphs';
 
 export interface GroupedMarkerItem {
   key: string; // 対象を一意に識別するマーカーキー
@@ -63,7 +64,7 @@ export class GroupedMarkers {
       );
       // 画面外(背面を含む)の対象は、画面端の ▲ で方位だけを示す。
       if (overviewMode) this.markerManager.hide(bearingKey(m.item.key));
-      else this.markerManager.setBearing(bearingKey(m.item.key), 'mk-dir', '△', m.p, '', 1, m.item.bearingColor);
+      else this.markerManager.setBearing(bearingKey(m.item.key), 'mk-dir', DIRECTION_GLYPH.bearing, m.p, '', 1, m.item.bearingColor);
     }
 
     this.retire(items.map((item) => item.key));

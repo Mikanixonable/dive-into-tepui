@@ -14,6 +14,7 @@ import { ProjectFn } from './camera/camera-system';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { MarkerManager } from './marker/marker-manager';
+import { DIRECTION_GLYPH } from './marker/marker-glyphs';
 import { FloatingOrigin } from './floating-origin';
 import { pickNearest } from './map-pick';
 import { KEY_MAPPING as K } from './input/key-mapping';
@@ -211,8 +212,8 @@ export class Targeter {
       return;
     }
     const tgtDir = norm(sub(tgt.state.r, player.state.r));
-    this.markerManager.setDirection('tgtdir', 'mk-tgtdir', '◇', player.state.r, tgtDir, project);
-    this.markerManager.setDirection('atgdir', 'mk-tgtdir', '◆', player.state.r, scale(tgtDir, -1), project);
+    this.markerManager.setDirection('tgtdir', 'mk-tgtdir', DIRECTION_GLYPH.target, player.state.r, tgtDir, project);
+    this.markerManager.setDirection('atgdir', 'mk-tgtdir', DIRECTION_GLYPH.antiTarget, player.state.r, scale(tgtDir, -1), project);
   }
 
   // 戦闘ビューの右クリックは射撃と兼用。移動量が閾値内(input.ts が判定済み)の
