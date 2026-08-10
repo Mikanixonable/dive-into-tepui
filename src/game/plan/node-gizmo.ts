@@ -72,7 +72,7 @@ export class NodeGizmo {
   private readonly root: HTMLDivElement;
   private readonly nodeLayer: HTMLDivElement;
   private readonly axisLayer: HTMLDivElement;
-  private readonly menu = new ContextMenu<number, MenuAction>();
+  private readonly menu: ContextMenu<number, MenuAction>;
   private readonly nodeEls = new Map<number, NodeEntry>();
   private readonly axisEls: HTMLDivElement[] = [];
 
@@ -87,9 +87,9 @@ export class NodeGizmo {
   latch: AxisLatchState | null = null;
   activeAxis: { axis: 0 | 1 | 2, sign: 1 | -1 } | null = null;
 
-  // DOM レイヤとコンテキストメニューを構築する。root は #hud(hud/dom.ts の z-index band に
-  // 従わせるため、body 直下ではなく #hud の子として配置する)。
-  constructor(root: HTMLElement) {
+  // DOM レイヤとコンテキストメニューを構築する。root はハンドル/アーム自体を置くレイヤ、
+  // popupLayer はノードのコンテキストメニューを置くレイヤ(overlay-layer.ts のレイヤ構造に従う)。
+  constructor(root: HTMLElement, popupLayer: HTMLElement) {
     if (!styleInjected) {
       styleInjected = true;
       const style = document.createElement('style');
@@ -106,6 +106,7 @@ export class NodeGizmo {
     this.axisLayer = document.createElement('div');
     this.root.appendChild(this.axisLayer);
 
+    this.menu = new ContextMenu<number, MenuAction>(popupLayer);
     // メニュー選択を対応するノード操作コールバックへ橋渡しする。
     this.menu.onSelect = (act, idx) => {
       if (act === 'warp') this.onMenuWarpTo?.(idx);
