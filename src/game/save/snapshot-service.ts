@@ -77,6 +77,7 @@ function buildSaveData(game: Game): GameSaveData {
     ammos: game.entities.ammos.map(a => a.serialize()),
     bases: game.entities.bases.map(b => b.serialize()),
     stage: game.activeStage.serialize(),
+    camera: { view: game.viewManager.serializeView(), ...game.cameraSystem.serialize() },
   };
 }
 

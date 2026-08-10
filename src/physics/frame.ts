@@ -50,6 +50,18 @@ export function frameKinematicState(r: Vec3, v: Vec3): FrameKinematicState {
   return { r, v } as FrameKinematicState;
 }
 
+// FrameDir を組み立てる、toFrameDir 以外で唯一信頼できる入口。すでに座標系相対と分かっている
+// 方向・変位(セーブデータからの復元など)を toInertialDir へ渡すために使う。
+export function frameDir(x: number, y: number, z: number): FrameDir {
+  return { x, y, z } as FrameDir;
+}
+
+// FramePoint を組み立てる、toFramePoint 以外で唯一信頼できる入口。すでに座標系相対と分かっている
+// 位置(セーブデータからの復元など)を toInertialPoint へ渡すために使う。
+export function framePoint(x: number, y: number, z: number): FramePoint {
+  return { x, y, z } as FramePoint;
+}
+
 // 慣性系 → 座標系相対の点(順変換, bake)。
 export function toFramePoint(tf: FrameTransform, p: Vec3): FramePoint {
   const r = qRotate(qInvert(tf.q), sub(p, tf.origin));

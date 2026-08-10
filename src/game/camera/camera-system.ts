@@ -17,6 +17,7 @@ import { Vec3 } from '../../physics/vec3';
 import { metersPerPixel, ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
 import { Attractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
+import { CameraSaveData } from '../save-data';
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;
@@ -220,5 +221,15 @@ export class CameraSystem {
   // アクティブカメラの画面尺度関数を返す。
   get activeCameraScale(): ScaleFn {
     return scaleFromViewpoint(this.overviewMode ? this.overviewCamera.viewpoint : this.combatCamera.viewpoint);
+  }
+
+  // 両サブカメラの視点状態をセーブデータへ書き出す。どちらが表示中かは ViewManager の責務。
+  serialize(): Pick<CameraSaveData, 'chase' | 'overview'> {
+    return { chase: this.combatCamera.serialize(), overview: this.overviewCamera.serialize() };
+  }
+
+  restore(d: Pick<CameraSaveData, 'chase' | 'overview'>): void {
+    this.combatCamera.restore(d.chase);
+    this.overviewCamera.restore(d.overview);
   }
 }

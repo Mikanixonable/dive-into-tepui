@@ -15,6 +15,7 @@ import { Player } from '../player/player';
 import { Viewpoint } from '../../physics/projection';
 import { ChaseCamera } from './chase-camera';
 import { GunsightCamera } from './gunsight-camera';
+import { ChaseCameraSaveData } from '../save-data';
 
 // current から target へ、fovDeg だけを指数的に近づけた Viewpoint を返す(position/lookTarget/up/
 // aspect はアニメーションせず target の値をそのまま採用する — カメラの向き自体は毎フレーム
@@ -87,5 +88,13 @@ export class CombatCameraSystem {
     else this.chaseCamera.update(mouse, keyYaw, keyPitch, keyRoll, dt);
     const target = useGunsight ? this.gunsightCamera.viewpoint : this.chaseCamera.viewpoint;
     this.viewpoint = lerpViewpointFov(this.viewpoint, target, dt);
+  }
+
+  serialize(): ChaseCameraSaveData {
+    return this.chaseCamera.serialize();
+  }
+
+  restore(d: ChaseCameraSaveData): void {
+    this.chaseCamera.restore(d);
   }
 }

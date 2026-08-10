@@ -6,7 +6,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input/input';
 import { Viewpoint } from '../../physics/projection';
-import { ReferenceFrame, FrameDir, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
+import { ReferenceFrame, FrameDir, frameDir, framePoint, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
 import { OrbitingId } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { qFromAxisAngle, qRotate } from '../../physics/attitude';
@@ -14,6 +14,7 @@ import { MapPickable } from '../map-pick';
 import { Attractor } from '../../physics/attractor';
 import { bodyDef } from '../../physics/solar-system';
 import { FocusTarget } from './focus-target';
+import { OverviewCameraSaveData } from '../save-data';
 
 const WORLD_UP = v3(0, 1, 0);
 const OVERVIEW_CAMERA_FOV = 50;
@@ -258,5 +259,41 @@ export class OverviewCamera {
     this.up_r = toFrameDir(tf, upEci);
     this.offset_r = toFrameDir(tf, offEci);
     this.pan_r = toFrameDir(tf, panEci);
+  }
+
+  // offset_r/pan_r/up_r・視点の座標系・フォーカス対象をセーブデータへ書き出す。
+  serialize(): OverviewCameraSaveData {
+    const focus: OverviewCameraSaveData['focus'] = this._focus.kind === 'object'
+      ? { kind: 'object', id: this._focus.id }
+      : {
+        kind: 'point',
+        center: this._focus.frame.center,
+        rotatingWith: this._focus.frame.rotatingWith,
+        point: { x: this._focus.point.x, y: this._focus.point.y, z: this._focus.point.z },
+      };
+    return {
+      offset: { x: this.offset_r.x, y: this.offset_r.y, z: this.offset_r.z },
+      pan: { x: this.pan_r.x, y: this.pan_r.y, z: this.pan_r.z },
+      up: { x: this.up_r.x, y: this.up_r.y, z: this.up_r.z },
+      rotatingWith: this._cameraFrame.rotatingWith,
+      focus,
+    };
+  }
+
+  // serialize が書き出した状態をそのまま復元する。座標系は必ず ephemeris.frameOf 経由で解決する —
+  // ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
+  restore(d: OverviewCameraSaveData): void {
+    this._cameraFrame = this.ephemeris.frameOf(this.ephemeris.originId, d.rotatingWith);
+    this.offset_r = frameDir(d.offset.x, d.offset.y, d.offset.z);
+    this.pan_r = frameDir(d.pan.x, d.pan.y, d.pan.z);
+    this.up_r = frameDir(d.up.x, d.up.y, d.up.z);
+    const target: FocusTarget = d.focus.kind === 'object'
+      ? { kind: 'object', id: d.focus.id }
+      : {
+        kind: 'point',
+        frame: this.ephemeris.frameOf(d.focus.center, d.focus.rotatingWith),
+        point: framePoint(d.focus.point.x, d.focus.point.y, d.focus.point.z),
+      };
+    this.setFocusTarget(target, false);
   }
 }
