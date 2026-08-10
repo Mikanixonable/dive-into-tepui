@@ -8,6 +8,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { celestialBodyName } from '../hud/frame-labels';
 import { isOccluded } from '../../physics/occlusion';
 import { BodyClassToggles, visibleBodyIds } from '../celestial/body-visibility';
+import { bodyClassOf } from '../celestial/body-class';
 import { FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO } from '../const';
 
 export interface FocusLabel {
@@ -42,9 +43,12 @@ export class FocusMarkers {
     this.lagrangeSources = this.registryIds.flatMap((id) => {
       if (registry[id]!.kind === 'star') return [];
       const collinear = ephemeris.hasUsableCollinearPoints(id, LAGRANGE_MIN_CLEARANCE_RATIO);
-      const triangular = ephemeris.hasStableTriangularPoints(id);
+      // 小天体・準惑星は数が多く、L3・L4・L5 まで並べるとラベルが密集しすぎる。
+      const cls = bodyClassOf(registry, id);
+      const minor = cls === 'smallBody' || cls === 'dwarf';
+      const triangular = !minor && ephemeris.hasStableTriangularPoints(id);
       const points = [
-        ...(collinear ? [1, 2, 3] as const : []),
+        ...(collinear ? (minor ? [1, 2] as const : [1, 2, 3] as const) : []),
         ...(triangular ? [4, 5] as const : []),
       ];
       return points.length === 0 ? [] : [{ id, points }];
