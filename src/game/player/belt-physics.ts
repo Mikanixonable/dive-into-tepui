@@ -172,8 +172,8 @@ export class BeltPhysics {
   private advanceOrientationConstraints(dt: number, att: Attitude): void {
     const maxRoll = (C.MAG_CHAIN_MAX_ROLL_DEG * Math.PI) / 180;
     // tan(最大角度) = ローカル座標系での横ずれ/前進量の上限
-    const tanMaxPitch = Math.tan((C.MAG_CHAIN_MAX_YAW_DEG * Math.PI) / 180);
-    const tanMaxYaw = Math.tan((C.MAG_CHAIN_MAX_PITCH_DEG * Math.PI) / 180);
+    const tanMaxPitch = Math.tan((C.MAG_CHAIN_MAX_PITCH_DEG * Math.PI) / 180);
+    const tanMaxYaw = Math.tan((C.MAG_CHAIN_MAX_YAW_DEG * Math.PI) / 180);
     const rollLerp = Math.min(1, dt * C.MAG_CHAIN_ROLL_RATE);
     let prevPoint = this.anchor;
     let prevQ: Quat = IDENTITY_Q; // アンカー(機体)側の基準姿勢: ベルトは+X方向へ伸びる
