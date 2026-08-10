@@ -747,7 +747,7 @@ export class Game {
     );
     this.mapPicker.sync(overviewMode, simTime, attractors, player);
     this.frameControls.sync(
-      this.mapPicker.pickables, this.cameraSystem.activeCameraPos, attractors, overviewMode,
+      this.mapPicker.pickables, this.cameraSystem.activeCameraPos, attractors, simTime, overviewMode,
     );
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
