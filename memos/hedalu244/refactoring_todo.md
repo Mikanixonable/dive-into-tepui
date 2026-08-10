@@ -136,8 +136,8 @@ minCountって使われているか？
 「所有して毎フレーム駆動するもの」の接尾辞が4系統ある。`Manager` と `System` はどちらも中身を説明していない。
 
 - `*Manager`: `EntityManager` `MarkerManager` `UnlockManager` `SaveManager` `DisplayTimeManager` `SimSpeedManager` `FlashEffectManager` `ViewManager`
-- `*System`: `CameraSystem` `CombatCameraSystem` `HitSystem` `EffectsSystem` `PowerSystem` `RadiatorSystem` `ThermalSystem`
-- `*Physics`: `CollisionPhysics` `BeltPhysics`
+- `*System`: `CameraSystem` `CombatCameraSystem` `EffectsSystem` `PowerSystem` `RadiatorSystem` `ThermalSystem`
+- `*Physics`: `ContactPhysics` `BeltPhysics` `CollisionResponse`(型のみ)
 - 動作主体名: `Simulator` `Predictor` `Targeter` `MapPicker` `Docking`
 
 
