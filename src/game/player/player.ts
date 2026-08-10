@@ -296,14 +296,14 @@ export class Player extends Ship {
 
   // 被弾によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら
   // 無作為なパーツへダメージが入る。
-  private attackedByBullet(bullet: Bullet, hitR: Vec3, activeStage: Stage, side: RadiatorSide | null = null): void {
+  private attackedByBullet(bullet: Bullet, impactPoint: Vec3, activeStage: Stage, side: RadiatorSide | null = null): void {
     this.thermal.addImpactHeat();
-    const hitPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
-    this.applyDamageToParts(side === null ? bullet.damage : C.RADIATOR_HIT_DAMAGE, hitPart);
-    if (side !== null && hitPart && hitPart.hp <= 0) this.radiatorBreakEffect(side);
+    const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
+    this.applyDamageToParts(side === null ? bullet.damage : C.RADIATOR_BULLET_DAMAGE, damagedPart);
+    if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
     if (this.hp > 0) {
       // 生存していれば被弾エフェクトのみ
-      this.hitEffect(bullet, hitR);
+      this.impactEffect(bullet, impactPoint);
       return;
     }
 
@@ -346,9 +346,9 @@ export class Player extends Ship {
       return;
     }
 
-    const hitPart = this.radiatorParts[side === 'up' ? 0 : 1];
-    if (!this.applyCollisionDamage(contact.impulse / this.mass, hitPart)) return;
-    if (hitPart && hitPart.hp <= 0) this.radiatorBreakEffect(side);
+    const damagedPart = this.radiatorParts[side === 'up' ? 0 : 1];
+    if (!this.applyCollisionDamage(contact.impulse / this.mass, damagedPart)) return;
+    if (damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
     if (this.hp > 0) {
       this._sfx.clank();
       this._fx.spawnGasPuff(this.state);
@@ -384,14 +384,14 @@ export class Player extends Ship {
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
-  private hitEffect(bullet: Bullet, hitR: Vec3): void {
+  private impactEffect(bullet: Bullet, impactPoint: Vec3): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, hitR, this.state.v));
+      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, impactPoint, this.state.v));
     } else {
-      this._fx.spawnBulletFlash(kinematicState(this.state.t, hitR, this.state.v));
+      this._fx.spawnBulletFlash(kinematicState(this.state.t, impactPoint, this.state.v));
     }
-    this._fx.spawnGasPuff(kinematicState(this.state.t, hitR, this.state.v));
+    this._fx.spawnGasPuff(kinematicState(this.state.t, impactPoint, this.state.v));
   }
 
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。

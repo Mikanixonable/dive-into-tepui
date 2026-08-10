@@ -116,10 +116,10 @@ export class NavTarget {
   updateCombatBasePicking(entities: EntityManager, input: Input, project: ProjectFn): void {
     input.takeRightClicks((click) => {
       const pickables = entities.bases.filter((b) => b.alive).map((base) => ({ pos: base.state.r, base }));
-      const hit = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);
-      if (!hit) return false;
-      this.baseMenu.open(click.x, click.y, hit.base, [
-        MenuCommon.navTarget(this.targetId === hit.base.id),
+      const picked = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);
+      if (!picked) return false;
+      this.baseMenu.open(click.x, click.y, picked.base, [
+        MenuCommon.navTarget(this.targetId === picked.base.id),
         MenuCommon.cancel(),
       ]);
       return true;
