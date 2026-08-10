@@ -5,8 +5,6 @@ import { Q_ECL_TO_ECI } from '../physics/ecliptic';
 import { qRotate } from '../physics/attitude';
 import { Vec3, v3 } from '../physics/vec3';
 import { STAR_SHELL_RADIUS } from './stars';
-import { CameraSystem } from '../game/camera/camera-system';
-import { CELESTIAL_SHELL_RADIUS } from '../game/const';
 
 export interface CelestialGridVisibility {
   readonly eclipticPlane: boolean;
@@ -243,9 +241,9 @@ export class CelestialGrid {
   }
 
   // 星殻と同じくカメラ追従の固定半径殻として、6 トグルぶんの可視状態を反映する。
-  sync(visibility: CelestialGridVisibility, cameraSystem: CameraSystem): void {
-    const cam = cameraSystem.activeCamera;
-    const scale = cameraSystem.overviewMode ? CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0;
+  // scale は星殻半径 STAR_SHELL_RADIUS に対する拡大率(広範囲視点では呼び出し側が
+  // CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS を渡す)。
+  sync(visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number): void {
     this.equator.sync(visibility.equatorPlane, visibility.equatorPole, visibility.equatorGrid, cam.position, scale, cam);
     this.ecliptic.sync(visibility.eclipticPlane, visibility.eclipticPole, visibility.eclipticGrid, cam.position, scale, cam);
   }
