@@ -59,4 +59,3 @@ export function register(): void {
     assert.equal(EARTH_CLOUD_RADIUS, 6_371_000);
   });
 }
-

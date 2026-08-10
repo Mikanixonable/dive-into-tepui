@@ -11,7 +11,8 @@
 import * as THREE from 'three/webgpu';
 import {
   mix, vec3, float, uniform, exp,
-  normalWorld, positionWorld, cameraPosition,
+  positionLocal, positionWorld, cameraPosition,
+  modelNormalMatrix,
   dot, normalize, sub, clamp, smoothstep,
 } from 'three/tsl';
 import { R_EARTH } from '../physics/solar-system';
@@ -54,6 +55,9 @@ function buildSurface(sunDir: SunDirUniform, cloudSunDir: SunDirUniform): EarthS
 
   const surfaceNodes = createEarthSurfaceNodes(earthMap, cloudsMap, cloudSunDir);
   const earthSample = surfaceNodes.baseColor;
+  // MeshBasicNodeMaterialはr169でnormalNodeを照明へ使わないため、地形法線を
+  // model normal matrixでworldへ移し、以後の手書きBRDFへ明示的に接続する。
+  const shadingNormal = normalize(modelNormalMatrix.mul(surfaceNodes.terrainNormal));
 
   // 雲影は太陽方向に沿って雲層へ投影した密度から求める。地表の直射光だけを
   // 減衰させ、夜側の最低環境光は残す。
@@ -61,13 +65,13 @@ function buildSurface(sunDir: SunDirUniform, cloudSunDir: SunDirUniform): EarthS
   
   // 夕焼けの色 (オレンジ・赤系)
   const sunsetColor = vec3(1.0, 0.4, 0.1);
-  const sunDot = dot(normalWorld, sunDir);
+  const sunDot = dot(shadingNormal, sunDir);
   const sunFactor = clamp(sunDot, 0, 1);
   
   // 大気のもや(aerial perspective): 視線が地平線に近いほど大気中の光路長が
   // 伸びて濃くなる。Beer-Lambert 則で haze = 1 - exp(-tau0 / cosθ)。
   const viewDir = normalize(sub(cameraPosition, positionWorld));
-  const cosTheta = clamp(dot(normalWorld, viewDir), 0.05, 1);
+  const cosTheta = clamp(dot(shadingNormal, viewDir), 0.05, 1);
   const haze = float(1).sub(exp(float(ATMO_HAZE_TAU0).div(cosTheta).negate()));
 
   // 雲頂は地表が夜へ入った後も太陽を受ける。太陽と視線が近いときの
@@ -82,12 +86,13 @@ function buildSurface(sunDir: SunDirUniform, cloudSunDir: SunDirUniform): EarthS
   // 海はSchlick Fresnelと細かな波面法線で太陽のglintを作る。陸は植生の
   // 後方散乱と雪氷の広い鏡面を弱く加え、全材質を同じLambert球にしない。
   const halfDir = normalize(sunDir.add(viewDir));
-  const wave = vec3(
-    positionWorld.x.mul(2.1e-5).add(positionWorld.z.mul(1.3e-5)).sin(),
-    positionWorld.y.mul(1.7e-5).cos(),
-    positionWorld.z.mul(2.4e-5).sub(positionWorld.x.mul(0.9e-5)).sin(),
+  const localWave = vec3(
+    positionLocal.x.mul(2.1e-5).add(positionLocal.z.mul(1.3e-5)).sin(),
+    positionLocal.y.mul(1.7e-5).cos(),
+    positionLocal.z.mul(2.4e-5).sub(positionLocal.x.mul(0.9e-5)).sin(),
   ).mul(0.055);
-  const waterNormal = normalize(normalWorld.add(wave.mul(surfaceNodes.oceanMask)));
+  const worldWave = modelNormalMatrix.mul(localWave);
+  const waterNormal = normalize(shadingNormal.add(worldWave.mul(surfaceNodes.oceanMask)));
   const waterNdotV = clamp(dot(waterNormal, viewDir), 0, 1);
   const fresnel = float(0.0204).add(float(0.9796).mul(float(1).sub(waterNdotV).pow(5)));
   const sunGlint = clamp(dot(waterNormal, halfDir), 0, 1).pow(420)
@@ -96,7 +101,7 @@ function buildSurface(sunDir: SunDirUniform, cloudSunDir: SunDirUniform): EarthS
     .add(vec3(1.0, 0.91, 0.72).mul(sunGlint));
   const vegetationBackscatter = clamp(dot(viewDir, sunDir), 0, 1).pow(5)
     .mul(surfaceNodes.vegetationMask).mul(0.12);
-  const iceSheen = clamp(dot(normalWorld, halfDir), 0, 1).pow(48)
+  const iceSheen = clamp(dot(shadingNormal, halfDir), 0, 1).pow(48)
     .mul(surfaceNodes.iceMask).mul(0.55);
   const directGround = earthSample.mul(groundLighting)
     .add(oceanReflection.mul(surfaceNodes.oceanMask))
@@ -107,9 +112,10 @@ function buildSurface(sunDir: SunDirUniform, cloudSunDir: SunDirUniform): EarthS
   // もやの色 (夕方になると夕焼け色に)
   const dynamicAtmoColor = mix(sunsetColor, ATMO_COLOR, smoothstep(0.0, 0.2, sunDot));
   
-  const litColor = mix(baseColor, dynamicAtmoColor, haze.mul(sunFactor));
+  // 地表が夜へ入った後も、高高度を通る光路はしばらく照らされる。
+  const twilightVisibility = smoothstep(-0.18, 0.08, sunDot);
+  const litColor = mix(baseColor, dynamicAtmoColor, haze.mul(twilightVisibility));
   mat.colorNode = litColor;
-  mat.normalNode = surfaceNodes.terrainNormal;
 
   return {
     mesh: new THREE.Mesh(geo, mat as unknown as THREE.Material),

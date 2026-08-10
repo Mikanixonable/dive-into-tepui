@@ -695,7 +695,12 @@ export class Game {
     const earthToCamera = sub(this.cameraSystem.activeCameraPos, earthPos);
     const earthToSun = this.ephemeris.sunDirFrom(earthPos, displayTime);
     const visibleDay = 0.5 + 0.5 * dot(norm(earthToCamera), earthToSun);
-    const earthCoverage = Math.min(1, (R_EARTH / Math.max(R_EARTH, len(earthToCamera))) * 5);
+    const cameraForward = new THREE.Vector3();
+    this.cameraSystem.activeCamera.getWorldDirection(cameraForward);
+    const towardEarth = norm(sub(earthPos, this.cameraSystem.activeCameraPos));
+    const alignment = cameraForward.x * towardEarth.x + cameraForward.y * towardEarth.y + cameraForward.z * towardEarth.z;
+    const inView = Math.max(0, Math.min(1, (alignment - 0.25) / 0.75));
+    const earthCoverage = Math.min(1, (R_EARTH / Math.max(R_EARTH, len(earthToCamera))) * 5) * inView;
     this.exposureTarget = exposureTargetForLuminance(0.055 + visibleDay * earthCoverage * 0.72);
 
     // 0隻状態へ移ったフレームで、直前の操作艦のRCSループ音を確実に止める。

@@ -7,6 +7,7 @@ import {
   clamp,
   cross,
   dot,
+  float,
   mix,
   normalize,
   positionLocal,
@@ -20,7 +21,6 @@ import {
 } from 'three/tsl';
 import {
   ICE_AGE_EARTH,
-  seasonalSurfaceFactors,
   seasonalLongitudeAt,
   SurfaceMaterialMasks,
 } from '../physics/surface-material';
@@ -32,6 +32,7 @@ export interface EarthClimateUniforms {
   readonly snowPersistence: ReturnType<typeof uniform>;
   readonly vegetationActivity: ReturnType<typeof uniform>;
   readonly seaIceExpansion: ReturnType<typeof uniform>;
+  readonly solarLongitude: ReturnType<typeof uniform>;
 }
 
 export interface EarthSurfaceNodes {
@@ -92,14 +93,23 @@ export function createEarthSurfaceNodes(
     snowPersistence: uniform(ICE_AGE_EARTH.glacialBaseline),
     vegetationActivity: uniform(ICE_AGE_EARTH.vegetationRetention),
     seaIceExpansion: uniform(ICE_AGE_EARTH.seaIceExpansion),
+    solarLongitude: uniform(0),
   };
-  const polarIce = smoothstep(0.64, 0.98, latitude).mul(climate.snowPersistence);
-  const mountainIce = smoothstep(0.58, 0.92, terrainHeight).mul(climate.snowPersistence.mul(0.5));
+  // SphereGeometryではv=0が北。太陽黄経のsinと符号付き緯度を掛け、南北半球で
+  // 夏冬を必ず逆相にする。氷河期の恒常氷床を季節項より優先する。
+  const signedLatitude = float(1).sub(coord.y.mul(2));
+  const localSummer = clamp(float(0.5).add(
+    climate.solarLongitude.sin().mul(signedLatitude).mul(0.5),
+  ), 0, 1);
+  const seasonalSnow = climate.snowPersistence.mul(float(0.78).add(localSummer.oneMinus().mul(0.38)));
+  const polarIce = smoothstep(0.64, 0.98, latitude).mul(seasonalSnow);
+  const mountainIce = smoothstep(0.58, 0.92, terrainHeight).mul(seasonalSnow.mul(0.5));
   const iceMask = clamp(polarIce.add(mountainIce).mul(landMask).add(
     smoothstep(0.64, 0.98, latitude).mul(landMask.oneMinus()).mul(climate.seaIceExpansion),
   ), 0, 1);
   const greenSignal = smoothstep(0.02, 0.16, color.g.sub(color.r));
-  const vegetationMask = landMask.mul(iceMask.oneMinus()).mul(greenSignal).mul(climate.vegetationActivity);
+  const vegetationMask = landMask.mul(iceMask.oneMinus()).mul(greenSignal)
+    .mul(climate.vegetationActivity).mul(float(0.72).add(localSummer.mul(0.38)));
   const clouds = createEarthCloudNodes(cloudsMap, cloudSunDirection);
   const iceColor = vec3(0.77, 0.86, 0.96);
   const vegetationTint = vec3(0.72, 0.92, 0.64);
@@ -116,10 +126,10 @@ export function createEarthSurfaceNodes(
     clouds,
     climate,
     setSeasonalTime(timeSeconds: number) {
-      const seasonal = seasonalSurfaceFactors(0.5, seasonalLongitudeAt(timeSeconds), ICE_AGE_EARTH);
-      climate.snowPersistence.value = seasonal.snowPersistence;
-      climate.vegetationActivity.value = seasonal.vegetationActivity;
-      climate.seaIceExpansion.value = ICE_AGE_EARTH.seaIceExpansion * (0.82 + seasonal.winter * 0.28);
+      climate.snowPersistence.value = ICE_AGE_EARTH.glacialBaseline;
+      climate.vegetationActivity.value = ICE_AGE_EARTH.vegetationRetention;
+      climate.seaIceExpansion.value = ICE_AGE_EARTH.seaIceExpansion;
+      climate.solarLongitude.value = seasonalLongitudeAt(timeSeconds);
       clouds.setTime(timeSeconds);
     },
   };
