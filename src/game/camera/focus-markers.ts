@@ -10,6 +10,7 @@ import { isOccluded } from '../../physics/occlusion';
 import { BodyClassToggles, alwaysFullyVisibleIds, bodyIconLabel, systemMembersAt, visibleBodyIds } from '../celestial/body-visibility';
 import { bodyClassOf } from '../celestial/body-class';
 import { FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO } from '../const';
+import type { MapPickable } from '../map-pick';
 
 export interface FocusLabel {
   id: string;
@@ -45,7 +46,8 @@ export class FocusMarkers {
   private readonly registryIds: readonly AttractorId[];
   // ラグランジュ点ラベルを持つ天体と、そのうち成立する点の番号。
   private readonly lagrangeSources: readonly { readonly id: OrbitingId; readonly points: readonly (1 | 2 | 3 | 4 | 5)[] }[];
-  private readonly allLabels: readonly FocusLabel[];
+  // トグル・フォーカスに関わらない全登録天体+全ラグランジュ点ラベルの全集合(id/isLagrange 目的)。
+  readonly allLabels: readonly FocusLabel[];
   // このフレームで表示する対象に絞ったラベル。
   private shownLabels: readonly FocusLabel[] = [];
   // 直前のフレームに表示していたラベル id(集合から外れたものを隠すため)。
@@ -107,9 +109,24 @@ export class FocusMarkers {
     this.allLabels = labels;
   }
 
-  // このフレームで表示するラベル(ピック候補でもある)。
-  get labels(): readonly FocusLabel[] {
-    return this.shownLabels;
+  // トグル・フォーカスに関わらない全登録天体+全ラグランジュ点の時刻 t の座標。軌道
+  // オブジェクトウィンドウは表示中のマップラベルとは独立に全件を候補とするため、update() の
+  // 可視集合しぼり込みを経由しない。
+  allBodyPickables(t: number): readonly MapPickable[] {
+    const ephemeris = this.ephemeris;
+    const posOf = new Map(ephemeris.attractorsAt(t).map((a) => [a.id, a.state.r]));
+    const items: MapPickable[] = [];
+    for (const id of this.registryIds) {
+      const pos = posOf.get(id);
+      if (pos !== undefined) items.push({ id, name: celestialBodyName(id), pos, kind: 'body' });
+    }
+    for (const { id, points } of this.lagrangeSources) {
+      const l = ephemeris.lagrangeAt(id, t);
+      const primary = primaryOf(ephemeris.registry, id);
+      const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
+      for (const n of points) items.push({ id: `${id}-l${n}`, name: `${prefix} L${n}`, pos: l[`L${n}`], kind: 'body' });
+    }
+    return items;
   }
 
   // 表示時刻 t の各ラベル座標を求め直す。表示対象の外にある天体は座標計算ごと飛ばす —
