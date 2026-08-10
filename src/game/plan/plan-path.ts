@@ -13,6 +13,7 @@ import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { Plan, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
 import type { DisplayTimeManager } from '../display-time-manager';
+import type { PlanAttractorProvider } from '../simulation/attractors';
 import * as C from '../const';
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
@@ -60,7 +61,7 @@ export class PlanPath {
   // このフレームのものに更新する。
   update(
     plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
-    attractors: readonly Attractor[], dynamicAttractors: readonly Attractor[],
+    attractors: readonly Attractor[], attractorProvider: PlanAttractorProvider,
   ): void {
     this.frame = frame;
     this.ephemeris = ephemeris;
@@ -77,7 +78,7 @@ export class PlanPath {
       // 表示時刻に応じて中心天体が変わってしまい、区間の物理そのものと食い違う。
       const isFinalSegment = i === segments.length - 1;
       const apsisCenter = isFinalSegment ? strongestAttractor(seg.state0.r, ephemeris.attractorsAt(seg.state0.t)) : null;
-      this.arcAt(i).update(seg.state0, seg.end, ephemeris, dynamicAttractors, tracksLiveAnchor, apsisCenter);
+      this.arcAt(i).update(seg.state0, seg.end, attractorProvider, tracksLiveAnchor, apsisCenter);
     }
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;

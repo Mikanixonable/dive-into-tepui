@@ -2,11 +2,25 @@
 // GameEntity。呼び出し側が「いつの瞬間か」を決めて1回だけ呼び、同じ配列をそのステップの
 // 全エンティティに使い回す — 重力天体どうしの相互作用を処理順に依存させないため。
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Attractor } from '../../physics/attractor';
+import type { Attractor, AttractorId } from '../../physics/attractor';
 import { SpatialGrid } from '../../physics/spatial-grid';
 import { Vec3 } from '../../physics/vec3';
 import { GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL } from '../const';
 import type { EntityManager } from './entity-manager';
+
+// 計画軌道が時刻ごとに参照する二種類の対象。重力積分は従来どおり近傍へ絞れるが、表面衝突は
+// mu=0 の表示天体や、重力を持たない動的 entity も含めた別集合で判定する。
+export type PlanAttractorSources = {
+  readonly gravity: readonly Attractor[];
+  readonly collision: readonly Attractor[];
+};
+
+// PlanArc は現在状態の配列を凍結せず、各積分時刻に同じ provider を呼ぶ。revision は provider
+// 内の予測列が変化したことを PlanArc の再積分キャッシュへ伝える。
+export type PlanAttractorProvider = {
+  readonly revision: number;
+  readonly at: (t: number) => PlanAttractorSources;
+};
 
 // Ephemeris のリングキャッシュは呼び出し側で破壊してはいけない共有参照を返すので、合流は
 // 常に新しい配列への展開で行う。dynamic が空なら bodies をそのまま返す。
@@ -35,6 +49,47 @@ export function predictedAttractorsAt(ephemeris: Ephemeris, entities: EntityMana
     if (s !== null) dynamic.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state: s });
   }
   return mergeAttractors(gravityBodiesAt(ephemeris, t), dynamic);
+}
+
+// 計画軌道用の時刻 t の対象。重力側は予測列が存在する動的重力源だけを返す。衝突側は
+// Ephemeris の全天体( mu=0 を含む)に、未来状態を取得できる collides entity を加える。
+// 未来状態が無い entity を現在位置へ凍結しないのが重要で、予測不能な対象は明示的に除外する。
+export function planAttractorsAt(
+  ephemeris: Ephemeris,
+  entities: EntityManager,
+  t: number,
+  excludedEntityIds: ReadonlySet<AttractorId> = new Set(),
+): PlanAttractorSources {
+  const gravity = predictedAttractorsAt(ephemeris, entities, t);
+  const collision: Attractor[] = [...ephemeris.attractorsAt(t)];
+  const seen = new Set(collision.map((a) => a.id));
+  for (const e of entities.all()) {
+    if (!e.alive || !e.collides || !(e.radius > 0) || excludedEntityIds.has(e.id) || seen.has(e.id)) continue;
+    const state = e.displayState(t);
+    if (state === null) continue;
+    collision.push({
+      id: e.id,
+      mu: e.mu,
+      radius: e.radius,
+      degree2: e.degree2,
+      isStar: e.isStar,
+      state,
+    });
+    seen.add(e.id);
+  }
+  return { gravity, collision };
+}
+
+// active player のように計画軌道の起点そのものになっている entity を、計画の衝突対象から
+// 外すための provider。除外集合は呼び出し間で不変なので、毎ステップ再生成しない。
+export function planAttractorProvider(
+  ephemeris: Ephemeris,
+  entities: EntityManager,
+  excludedEntityIds: readonly AttractorId[] = [],
+  revision = 0,
+): PlanAttractorProvider {
+  const excluded = new Set(excludedEntityIds);
+  return { revision, at: (t) => planAttractorsAt(ephemeris, entities, t, excluded) };
 }
 
 // 重力源一覧を、常に含める天体(always)と空間グリッドに載せる天体(grid)へ分けたもの。
