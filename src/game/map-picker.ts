@@ -103,10 +103,11 @@ export class MapPicker {
     };
   }
 
-  // 天体ラベルと航法ターゲットの AN/DN を求め直し、このフレームの候補列を組み直す(天体ラベル +
-  // 生存中の自機・敵船 + AN/DN アイコン + 近地点・遠地点アイコン)。どちらも候補列の一部なので、
-  // 求め直しとの対応付けはここに閉じる。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
-  // sync されるメッシュと座標が1ステップずれる。
+  // マップの天体ラベル(表示のみ)と航法ターゲットの AN/DN を求め直したうえで、このフレームの
+  // 候補列を組み直す(全登録天体・ラグランジュ点 + 生存中の自機・敵船・弾薬・基地 + AN/DN
+  // アイコン + 近地点・遠地点アイコン)。天体側はトグルによる表示絞り込みを経由しない全件 —
+  // 軌道オブジェクトウィンドウが検索・フィルタの対象を持てるようにするため。物理積分の後に
+  // 呼ぶ: 積分前に組むと、同フレームで sync されるメッシュと座標が1ステップずれる。
   refresh(simTime: number, displayTime: number): void {
     this.lastSimTime = simTime;
     this.cameraSystem.focusMarkers.update(
@@ -116,7 +117,7 @@ export class MapPicker {
     this.navTarget.update(this.game.player, this.entities, this.ephemeris, simTime);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
-    const items: MapPickable[] = [...this.cameraSystem.focusMarkers.labels];
+    const items: MapPickable[] = [...this.cameraSystem.focusMarkers.allBodyPickables(displayTime)];
     for (const ship of this.entities.players) {
       if (!ship.alive) continue;
       const pos = ship.displayState(displayTime)?.r;
@@ -307,7 +308,7 @@ export class MapPicker {
       // 親とする — 親が無ければ(恒星、もしくは主天体が未登録)undefined のままにして根として扱う。
       const registry = this.ephemeris.registry;
       const parentOf = new Map<string, string>();
-      for (const l of this.cameraSystem.focusMarkers.labels) {
+      for (const l of this.cameraSystem.focusMarkers.allLabels) {
         const parent = l.isLagrange ? lagrangeParentId(l.id) : primaryOf(registry, l.id);
         if (parent !== null) parentOf.set(l.id, parent);
       }
