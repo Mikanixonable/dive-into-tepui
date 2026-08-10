@@ -143,7 +143,9 @@ export class EnvironmentScene {
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
       focusTargetId(cameraSystem.overviewCamera.focus), cameraSystem.bodyClassToggles);
-    this.celestialGrid.sync(gridVisibility, cameraSystem);
+    this.celestialGrid.sync(
+      gridVisibility, cameraSystem.activeCamera,
+      cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
   }
 
   // 星球はカメラに追従する固定半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで拡大する
