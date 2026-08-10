@@ -68,7 +68,7 @@ export abstract class Ship extends GameEntity {
       mk('solar_panel', R.solarPanel, { name: 'Solar Array R', powerGeneration: 50 }),
       mk('weapon', R.weapon, {
         name: 'Gatling Gun', weaponType: 'gatling',
-        fireRate: 1 / C.FIRE_INTERVAL, damage: C.ENEMY_HIT_DAMAGE, muzzleVelocity: C.MUZZLE_SPEED,
+        fireRate: 1 / C.FIRE_INTERVAL, damage: C.ENEMY_BULLET_DAMAGE, muzzleVelocity: C.MUZZLE_SPEED,
       }),
       mk('armor', R.armor, { name: 'Light Armor', damageReduction: 0.2 }),
     ];
