@@ -192,7 +192,7 @@
         - entity.stepActual(dt, attractorsNear(entity.state.r, classified)) → actualTrajectory.step() → stepDynamics()(history 記録)
           // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。attractorsNear は always + 自身の位置の27近傍グリッドを合わせたもの。それらの重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
       - nanWatchdog.checkPlayer('simulator.advance(軌道積分)')
-      - stepAttitudes(subDt) → stepAttitude() → entity.att へ代入 // 自機(全隻。simDt をそのまま使う)・敵・薬莢・デブリ・補給(attDt = min(simDt, 0.12))それぞれ
+      - stepAttitudes(subDt) → stepAttitude() → entity.att へ代入 // 自機・敵・薬莢・デブリ・補給すべて同じ subDt で一律に積分する
       - nanWatchdog.checkPlayer('simulator.advance(姿勢積分)')
       - [entities.players ごと] p.stepEnvironment(subDt, ephemeris, simTime) // 熱・電力・ラジエータの受動状態
       - [resolveCollision のみ] contactPhysics.resolveSubstep(simTime, [...entities.all(), ...radiatorFolds], attractorsNow, activeStage)
@@ -276,19 +276,8 @@
       - gunsightCamera.update() // player.alive && zoomActive。結果を自身の view へ書く
       - chaseCamera.update() // それ以外。camFollowAttitude && player.alive のときだけ player.att.q を rot に合成し、鍵/ドラッグ/ロール入力を回転として適用。結果を自身の view へ書く
       - 選ばれた view.fovDeg から combatCamera 自身の view.fovDeg を指数補間
-  - [editor.editMode] 計画編集モード
-    - mapPicker.handleLeftClick() // 自機/基地マーカーへの左クリックを選択として消費する。外れれば消費せず editor.handleMapPointer() のノード配置/選択解除に読み進む
-      - selectPickable() // 'player' → game.setActivePlayer() / 'base' → docking.selectBase()(遷移はしない)
-    - mapPicker.handleDoubleClick() // pickables 全種別への最寄りダブルクリックで overviewCamera.setFocus()
-    - editor.handleMapPointer() // [!hasPlan] 即 return。右クリック → 左クリックの順に受ける
-      - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
-        - selectedNodeIdx = ヒットしたノードの idx + nodeGizmo.openMenu() // ヒット時。true を返して消費
-      - handleMapClick() // 左クリックごと。常に消費する
-        - selectedNodeIdx = idx + sfx.warp() // 既存ノードをヒットした場合
-        - planDisplay.path.nearestSample() // 直近の sync でキャッシュした cameraPos/attractors で isOccluded な点を候補から除外してから最寄りを探す → plan.addNode() + sfx.warp() // 計画軌道上をヒットした場合
-        - selectedNodeIdx = null // どちらにも当たらなかった場合
-      - dragNodeToNearestSample() // ノードを incoming arc の最寄り点へ移し、元のΔv成分を保ったまま新しいノード状態へ焼き直す
-    - mapPicker.handleRightClick() // ノードに消費されずに残った右クリックだけが届く
+  - [editor.editMode] 計画編集モード。マーカー(handleRightClick/handleLeftClick/handleDoubleClick)→ ノード(editor.handleMapPointer)→ 空域(handleEmptySpaceRightClick)の優先順は呼び出し順そのもの — 上流が消費した右クリックは下流に届かない
+    - mapPicker.handleRightClick() // マーカーへの右クリックだけを消費する。外れれば消費せず editor.handleMapPointer() のノード右クリックへ読み進む
       - pickNearest(mapPicker.pickables) // MAP_PICK_PX_SQ 以内の被選択物(天体/自機/敵船/nav-AN・DN/アプシス)を最寄りで拾う。候補列は mapPicker.refresh() が組んだ1本
       - mapPicker.openPropertyWindow() // 拾えた場合のみ消費。既にその対象のウィンドウがあれば移動+最前面化のみ、なければ new PropertyWindow(root=hud.layers.window, buildContent()) // rows は空のまま開き、同フレーム後半の mapPicker.sync() が埋める(items は windowItems() 経由で開いた瞬間から埋まる)
         - 新規かつ非クリップ → 直前の一時ウィンドウ(tempWindowKey)を closeWindow() してから差し替え
@@ -308,6 +297,18 @@
           - targeter.clearTargets() // 切替前の艦が握っていたロックを持ち越さない
         - act='planExecCycle' → entities.findPlayer(target.id) → ship.planExecution = nextPlanExecution(ship.planExecution) // 'player' のみ。OFF→瞬間移動→自動操縦→OFF
         - act='delete' → entities.findPlayer(target.id) → entities.removePlayer(ship) → dispose() // 'player' のみ。操作対象の艦にはこの項目自体がメニューに出ない(MapPicker.itemsFor)
+    - mapPicker.handleLeftClick() // 自機/基地マーカーへの左クリックを選択として消費する。外れれば消費せず editor.handleMapPointer() のノード配置/選択解除に読み進む
+      - selectPickable() // 'player' → game.setActivePlayer() / 'base' → docking.selectBase()(遷移はしない)
+    - mapPicker.handleDoubleClick() // pickables 全種別への最寄りダブルクリックで overviewCamera.setFocus()
+    - editor.handleMapPointer() // [!hasPlan] 即 return。右クリック → 左クリックの順に受ける
+      - handleNodeRightClick() // 右クリックごと。ノードをヒットしたぶんだけ消費する
+        - selectedNodeIdx = ヒットしたノードの idx + nodeGizmo.openMenu() // ヒット時。true を返して消費
+      - handleMapClick() // 左クリックごと。常に消費する
+        - selectedNodeIdx = idx + sfx.warp() // 既存ノードをヒットした場合
+        - planDisplay.path.nearestSample() // 直近の sync でキャッシュした cameraPos/attractors で isOccluded な点を候補から除外してから最寄りを探す → plan.addNode() + sfx.warp() // 計画軌道上をヒットした場合
+        - selectedNodeIdx = null // どちらにも当たらなかった場合
+      - dragNodeToNearestSample() // ノードを incoming arc の最寄り点へ移し、元のΔv成分を保ったまま新しいノード状態へ焼き直す
+    - mapPicker.handleEmptySpaceRightClick() // マーカーにもノードにも当たらなかった右クリックだけが届く。ContextMenu<MapPickable> で「オブジェクトリストウィンドウを表示」/(クリエイティブのみ)「オブジェクトを配置」/「設定メニューを開く」
     - editor.updateEditing()
       - applyHeldDv() ×6方向 // WASDQE または dvButtons(長押しボタン)が held の間、ホールド秒数からランプするレートで dt 秒分を積分
       - applyDv() // nodeGizmo.latch がある間、ラッチ超過量に比例したレートで dt 秒分を積分(アームドラッグが DV_DRAG_LATCH_PX を超えて入る)
