@@ -81,8 +81,9 @@ export class OrbitLine {
     this.line.visible = this.displayEnabled && !this.suppressed && this.snap !== null;
   }
 
-  // バッファジオメトリと LineBasicNodeMaterial を組み立てる。
-  constructor(color: string | number, opacity = 0.5) {
+  // バッファジオメトリと LineBasicNodeMaterial を組み立てる。renderOrder は、この線が他の線と
+  // 重なったときにどちらを手前へ描くかを決める — 透明描画どうしの前後は描画順でしか決まらない。
+  constructor(color: string | number, opacity = 0.5, renderOrder = 0) {
     this.positions = new Float32Array((POINT_COUNT + 1) * 3);
     this.eAtIndex = new Float32Array(POINT_COUNT + 1);
     this.indices = new Uint32Array(POINT_COUNT * 2);
@@ -108,9 +109,7 @@ export class OrbitLine {
     // シム側の基底クラスが LineSegments の要求する Material と型の上では一致しない。
     this.line = new THREE.LineSegments(geo, mat as unknown as THREE.Material);
     this.line.frustumCulled = false;
-    // 既定値(自機の軌道線を想定)。他ロール(ターゲット等)は呼び出し側が
-    // renderOrder を上書きし、重なったときに手前へ来る優先順位を決める。
-    this.line.renderOrder = 1;
+    this.line.renderOrder = renderOrder;
   }
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン。force = 要素が能動的に変化している

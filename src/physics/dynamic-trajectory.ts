@@ -21,6 +21,9 @@ export class DynamicTrajectory {
   // 早期 return は samples の参照同一性で判定するため、内容が変わっていない間は同じ配列参照を
   // 返し続けないと、呼び出し側が同一内容を渡しても毎フレーム焼き直しになってしまう。
   private _samplesCache: readonly KinematicState[] | null = null;
+  // 直近の step に渡された間引き間隔 [s]。列がどれだけ粗いかは列自身の属性であり、
+  // 積んだ後に呼び出し側の設定が変わっても、既に積んだサンプルの粗さは変わらない。
+  private _sampleInterval = 0;
 
   // state・prevState をともに初期状態で始める。
   constructor(state: KinematicState) {
@@ -31,6 +34,7 @@ export class DynamicTrajectory {
   get state(): KinematicState { return this._state; }
   get prevState(): KinematicState { return this._prevState; }
   get history(): StateQueue { return this._history; }
+  get sampleInterval(): number { return this._sampleInterval; }
 
   // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力で 1 ステップ RK4 積分する
   // (dynamics.ts の stepDynamics)。attractors はそのステップぶん呼び出し側が確定させた
@@ -61,6 +65,7 @@ export class DynamicTrajectory {
     }
     this._prevState = prev;
     this._state = next;
+    this._sampleInterval = sampleInterval;
     this._samplesCache = null;
   }
 

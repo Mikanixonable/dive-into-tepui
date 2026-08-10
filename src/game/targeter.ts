@@ -35,9 +35,9 @@ export class Targeter {
   // ターゲット軌道のハイライト線(オレンジ)。自機軌道とほぼ重なるケースが多い
   // (近傍ランデブー狙いのため)。埋もれて見えなくならないよう強い不透明度にし、
   // renderOrder を自機軌道より上げて透明オブジェクトの描画順に依存せず必ず上に描く。
-  readonly orbitLine = new OrbitLine(0xff6a00, 0.9);
+  readonly orbitLine = new OrbitLine(0xff6a00, 0.9, C.LINE_RENDER_ORDER.target);
   // 第二ターゲットのハイライト線(シアン)。第一より薄い renderOrder に置く。
-  readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9);
+  readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9, C.LINE_RENDER_ORDER.secondaryTarget);
 
   private readonly contextMenu: ContextMenu<CombatTarget>;
   // ターゲットに当たらなかった右クリック(何もない箇所)向けのメニュー。実体を持たない
@@ -51,8 +51,6 @@ export class Targeter {
   ) {
     this.contextMenu = new ContextMenu<CombatTarget>(_hud.layers.popup);
     this.emptySpaceMenu = new ContextMenu<true, MenuAction>(_hud.layers.popup);
-    this.secondaryOrbitLine.line.renderOrder = 2;
-    this.orbitLine.line.renderOrder = 3;
     scene.add(this.secondaryOrbitLine.line);
     scene.add(this.orbitLine.line);
     this.contextMenu.onSelect = (act, picked) => {

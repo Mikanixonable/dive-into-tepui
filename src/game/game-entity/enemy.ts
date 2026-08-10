@@ -104,7 +104,7 @@ export class Enemy extends Ship {
     const visualSphere = visualBounds.getBoundingSphere(new THREE.Sphere());
     this.radius = visualSphere.radius;
     // 自身の軌道線を作ってシーンへ登録する
-    this.orbitLine = new OrbitLine(orbitLineColor, 0.35);
+    this.orbitLine = new OrbitLine(orbitLineColor, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     scene?.add(this.orbitLine.line);
   }
 
