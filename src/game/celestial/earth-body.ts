@@ -7,6 +7,8 @@ import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { CelestialBody } from './celestial-body';
 import { CelestialLightingContext } from '../../render/celestial-lighting';
+import { celestialQualityFor } from '../../physics/celestial-quality';
+import { R_EARTH } from '../../physics/solar-system';
 
 export class EarthBody extends CelestialBody {
   readonly id = 'earth' as const;
@@ -20,7 +22,7 @@ export class EarthBody extends CelestialBody {
 
   // displayTime 時点の位置・自転角・太陽方向・表面アニメーションへ同期する。
   sync(
-    fo: FloatingOrigin, displayTime: number, _cameraSystem: CameraSystem, ephemeris: Ephemeris,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
     lighting: CelestialLightingContext,
   ): void {
     const pos = ephemeris.positionOf('earth', displayTime);
@@ -28,6 +30,10 @@ export class EarthBody extends CelestialBody {
     this.earth.setRotation(this.phase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
     const sd = lighting.sunDirectionFrom(pos);
     this.earth.setSunDir(sd.x, sd.y, sd.z);
+    const camera = cameraSystem.activeCamera;
+    const distance = Math.max(R_EARTH, camera.position.distanceTo(this.earth.group.position));
+    const focalPx = window.innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+    this.earth.setQuality(celestialQualityFor((R_EARTH / distance) * focalPx, window.devicePixelRatio));
     this.earth.tick(displayTime);
   }
 }
