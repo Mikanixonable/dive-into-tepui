@@ -6,7 +6,9 @@ import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-stat
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Attractor, hitAttractor, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, localOrbitPeriod } from '../../physics/attractor';
+import { containingBody } from '../../physics/sphere-contact';
+import { isBurnedUp } from '../../physics/atmosphere';
 import { attractorsNear, classifyAttractors, gravityBodiesAt, mergeAttractors } from '../simulation/attractors';
 import { Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
@@ -167,8 +169,9 @@ export class PlanArc {
         this.truncated = true;
         break;
       }
-      const hit = hitAttractor(r, stepAttractors, C.REENTRY_ALT);
-      if (hit) {
+      const impacted = containingBody(r, stepAttractors, 0) !== null
+        || isBurnedUp(r, stepAttractors, C.REENTRY_ALT);
+      if (impacted) {
         this.impactState = trajectory.state;
         this.truncated = true;
         break;
