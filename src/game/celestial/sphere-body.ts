@@ -12,6 +12,7 @@ import { spinOrientation } from '../../physics/body-orientation';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialBody } from './celestial-body';
 import { RingView } from './ring-view';
+import { CelestialLightingContext } from '../../render/celestial-lighting';
 
 export class SphereBody extends CelestialBody {
   readonly id: OrbitingId;
@@ -51,11 +52,14 @@ export class SphereBody extends CelestialBody {
   }
 
   // displayTime 時点の位置へ、視点モードに応じた実スケール/圧縮距離のどちらかで同期する。
-  sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
+  sync(
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
+    lighting: CelestialLightingContext,
+  ): void {
     const pos = ephemeris.positionOf(this.id, displayTime);
     // 陰影は真の位置から見た恒星方向で決める — 戦闘視点では描画位置が圧縮されているため、
     // 描画位置から引くと昼夜境界が実際とずれる。
-    const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
+    const sunDirection = lighting.sunDirectionFrom(pos);
     this.surface.setSunDirection(sunDirection);
     let scaleFactor: number;
     if (cameraSystem.overviewMode) {
