@@ -222,14 +222,11 @@ export class PlanExecutor {
     return null;
   }
 
-  // ノードを消化し、アンカーを(node の理想値ではなく)実際の到達状態へ差し替えたうえで
-  // 残差 Δv を1回だけ報告する。overwriteAnchor は後続ノードが残っていても効くので、
-  // 「実行後の誤差を残す」方針が後続ノードの有無によらず保たれる。
+  // ノードを消化し、残差 Δv を1回だけ報告する。
   private finish(ship: PlanExecutorShip, node: KinematicState): void {
     const residual = len(sub(node.v, ship.state.v));
     this.hud.hint(`マニューバ自動実行完了(残差Δv ${residual.toFixed(1)} m/s)`);
-    ship.plan.dropNodesBefore(node.t);
-    ship.plan.overwriteAnchor(ship.state);
+    ship.plan.consumeNodesUpTo(node.t, ship.state);
     this.clearState(ship);
   }
 
