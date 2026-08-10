@@ -1,7 +1,7 @@
 // HUD の静的 DOM/スタイル構築。
 import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, EDGE, BG, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
+import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, SURFACE_OPAQUE, EDGE, BG, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
 import { buildOverlayLayers, OVERLAY_LAYER_STYLE, type OverlayLayers } from './overlay-layer';
 
 
@@ -145,6 +145,8 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-map-scale .map-scale-tick.q3 { left: 75%; }
 #hud-map-scale .map-scale-tick.end { right: 0; }
 #hud-object-list { max-height: 320px; overflow-y: auto; }
+/* パネルの padding 分だけ食い込ませて幅いっぱいに広げ、スクロール中も先頭に張り付かせる */
+#hud-object-list .object-list-head { position: sticky; top: -9px; margin: -9px -12px 0; padding: 9px 12px 0; background: ${SURFACE_OPAQUE}; z-index: 1; }
 #hud-object-list .object-list-search { padding:2px 4px; }
 #hud-object-list .object-list-search input { width:100%; box-sizing:border-box; background:${SURFACE}; color:${INK}; border:1px solid ${EDGE}; font:inherit; }
 #hud-object-list .object-list-tools { display:flex; gap:3px; flex-wrap:wrap; padding:2px 4px; }
