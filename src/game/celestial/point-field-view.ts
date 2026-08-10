@@ -117,8 +117,8 @@ export class PointFieldView {
 
   // update が求めた位置へ各インスタンスを置く。浮動原点は毎フレーム動くので、位置を引き直して
   // いない点も含めて全インスタンスの行列を書き直す。
-  sync(fo: FloatingOrigin, overviewMode: boolean): void {
-    const visible = overviewMode && this.hasStar;
+  sync(fo: FloatingOrigin, overviewMode: boolean, smallBodyVisible = true): void {
+    const visible = overviewMode && this.hasStar && smallBodyVisible;
     for (const group of this.groups) group.sync(fo, visible);
   }
 }

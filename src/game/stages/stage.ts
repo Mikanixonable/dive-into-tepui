@@ -21,6 +21,7 @@ import type { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
 import type { StageSaveData } from '../save-data';
+import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 
 export type StageId = '00' | '0' | '1' | '2' | 'debug' | 'debug-alt-system' | 'debug-load';
 
@@ -109,9 +110,9 @@ export abstract class Stage {
   // ステータスパネルとロジスティクスのマーカーを同期する。fo は配置プレビューなど
   // ステージ固有の描画物を持つサブクラスが使う。scale は overviewMode 中の ▣ AMMO マーカーの
   // 進行方向表示に使う。
-  sync(player: Player | null, _fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean): void {
+  sync(player: Player | null, _fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibility: MapVisibilityPolicy | null = null): void {
     this.syncStatusPanel(player, overviewMode);
-    this.logistics.syncMarkers(player, project, scale, displayTime, overviewMode);
+    this.logistics.syncMarkers(player, project, scale, displayTime, overviewMode, visibility);
   }
 
   // hudSubStatus() が null ならパネルを隠し、文字列なら HP・スコアとともに表示する。

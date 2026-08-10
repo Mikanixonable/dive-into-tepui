@@ -82,9 +82,16 @@ export class PointBody extends CelestialBody {
     scene.add(this.billboard.mesh);
   }
 
+  setVisible(visible: boolean): void {
+    this.mesh.visible = visible;
+    this.billboard.mesh.visible = visible;
+    if (this.ring !== undefined) this.ring.group.visible = visible;
+  }
+
   // displayTime 時点の位置へ、視点モードに応じてマップビューの実体メッシュか戦闘ビューの
   // 輝点ビルボードのどちらかを同期する(常に片方は隠す)。
   sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
+    if (!this.mesh.visible && !this.billboard.mesh.visible) return;
     const pos = ephemeris.positionOf(this.id, displayTime);
     if (cameraSystem.overviewMode) {
       // 広範囲視点は SphereBody と同じ実スケール。

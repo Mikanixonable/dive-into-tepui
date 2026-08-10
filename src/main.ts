@@ -185,7 +185,7 @@ function startAnimationLoop(game: Game, perf: PerfMeter, autoSave: AutoSave): vo
 function initHud(): { hud: Hud; sfx: Sfx; settingsPanel: SettingsPanel } {
   const hud = new Hud();
   const sfx = new Sfx();
-  const settingsPanel = new SettingsPanel(hud.layers.system);
+  const settingsPanel = new SettingsPanel(hud.layers.system, hud.modalController);
   settingsPanel.setBgmVolume(sfx.getBgmVolume());
   settingsPanel.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
   // 「ゲームを中断してタイトル画面に戻る」— ?title=1 を付けて選択画面へ強制する
@@ -247,7 +247,7 @@ async function main() {
     if (latest !== null) snapshotService.restore(game, latest.id);
   }
 
-  const saveBrowser = new SaveBrowser(hud.layers.system, slots, snapshotService, game);
+  const saveBrowser = new SaveBrowser(hud.layers.system, slots, snapshotService, game, hud.modalController);
   game.setSaveBrowser(saveBrowser);
   saveBrowser.onSlotSwitched = () => location.assign(location.pathname);
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。

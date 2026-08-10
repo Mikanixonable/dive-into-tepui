@@ -3,6 +3,7 @@ import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, SURFACE_OPAQUE, EDGE, BG, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
 import { buildOverlayLayers, OVERLAY_LAYER_STYLE, type OverlayLayers } from './overlay-layer';
+import { ModalController } from './modal-controller';
 
 
 const throttleKeyLabels = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax].map((k) => k.label).join(' / ');
@@ -736,6 +737,7 @@ export interface HudDomRefs {
   root: HTMLElement;
   layers: OverlayLayers;
   svgOverlay: SVGSVGElement;
+  modalController: ModalController;
   els: Map<string, HTMLElement>;
 }
 
@@ -812,16 +814,6 @@ export function syncNavballPlacement(root: HTMLElement, mapMode: boolean): void 
   const navball = root.querySelector<HTMLElement>('#navball');
   const target = mapMode ? root.querySelector<HTMLElement>('#hud-dock-left') : root;
   if (navball && target && navball.parentElement !== target) target.appendChild(navball);
-}
-
-export function syncHudModalState(): void {
-  const helpOpen = getComputedStyle(document.getElementById('hud-help')!).display !== 'none';
-  const settingsOpen = getComputedStyle(document.getElementById('hud-settings')!).display !== 'none';
-  const saveBrowser = document.getElementById('save-browser');
-  const saveBrowserOpen = saveBrowser !== null && getComputedStyle(saveBrowser).display !== 'none';
-  const open = helpOpen || settingsOpen || saveBrowserOpen;
-  document.body.classList.toggle('hud-modal-open', open);
-  if (open) window.dispatchEvent(new Event('tepui-release-touch-inputs'));
 }
 
 function buildDockToggle(root: HTMLElement, dock: HTMLElement, side: 'left' | 'right'): void {
@@ -1005,7 +997,8 @@ export function buildHudDom(): HudDomRefs {
   buildInfoPanels(layers.panel, rightDock);
   buildGlobalStatus(layers.panel);
   buildChaseReset(layers.panel);
-  el('div', 'hud-modal-shield', layers.notify);
+  const modalShield = el('div', 'hud-modal-shield', layers.notify);
+  const modalController = new ModalController(modalShield, layers.notify);
 
   el('div', 'hud-hint', layers.notify);
   el('div', 'hud-toast', layers.notify);
@@ -1015,5 +1008,5 @@ export function buildHudDom(): HudDomRefs {
   el('div', 'hud-end', layers.system);
 
   const els = collectDataIdElements(root);
-  return { root, layers, svgOverlay, els };
+  return { root, layers, svgOverlay, modalController, els };
 }
