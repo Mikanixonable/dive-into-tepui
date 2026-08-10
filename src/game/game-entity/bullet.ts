@@ -54,12 +54,14 @@ export class Bullet extends GameEntity {
 
     // 弾同士は接触しない。敵弾は Enemy と接触しない(敵は同士討ちしない)。自陣営の艦とは
     // 発射後 SELF_HIT_GRACE の間だけ接触しない — 敵は同士討ちしないが自機は猶予を過ぎた
-    // 自弾に当たる、という非対称は意図的(規則2・3は対称ではない)。
+    // 自弾に当たる、という非対称は意図的(規則2・3は対称ではない)。艦に取り付いた実体
+    // (ベルトの節点・放熱板の折り)は attachedTo を辿って艦本体と同じ扱いにする。
     contactsWith(other: GameEntity | Attractor, simTime: number): boolean {
         if (other instanceof Bullet) return false;
-        if (this.shooter === 'enemy' && other instanceof Enemy) return false;
-        const ownShip = (this.shooter === 'player' && other instanceof Player)
-            || (this.shooter === 'enemy' && other instanceof Enemy);
+        const ship = other instanceof GameEntity ? other.attachedTo ?? other : other;
+        if (this.shooter === 'enemy' && ship instanceof Enemy) return false;
+        const ownShip = (this.shooter === 'player' && ship instanceof Player)
+            || (this.shooter === 'enemy' && ship instanceof Enemy);
         if (ownShip && simTime - this.bornSim <= C.SELF_HIT_GRACE) return false;
         return true;
     }

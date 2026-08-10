@@ -263,10 +263,7 @@ export const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
 // 1 substep の最大長(SUBSTEP_MAX_DT)を、軌道速度の目安(~7.8km/s)で走った距離の2倍を基準に取る。
 export const CONTACT_GRID_CELL_SIZE_FLOOR = 2 * SUBSTEP_MAX_DT * 7800;
 
-export const PLAYER_RADIUS = 5; // 被弾(弾丸ヒット)判定 [m]。実機体より大きめの当たり判定
-export const PLAYER_HULL_RADIUS = 2.6; // 薬莢・破片等との物理接触に使う実寸に近い半径 [m]。
-// PLAYER_RADIUS(被弾判定、余裕を持たせた大きめの値)をそのまま物理接触に使うと、
-// 砲口(機体中心から距離約2.9m)で生まれた薬莢が生成直後に弾き飛ばされてしまう。
+export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]。
 export const ENEMY_RADIUS = 180; // 視認性のため実機体よりかなり大きい当たり判定
 export const ENEMY_SCALE = 20; // buildEnemyShip() の見た目メッシュに掛けるスケール
 export const ENEMY_MAX_HP = 6;
