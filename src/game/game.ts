@@ -180,7 +180,6 @@ export class Game {
     this.mapPicker = new MapPicker(
       this, this._hud, this.entities, this.ephemeris, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager,
-      this.markerManager,
     );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
     // クリエイティブモードはマップから始まる。
