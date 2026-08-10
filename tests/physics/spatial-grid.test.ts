@@ -42,6 +42,25 @@ export function register(): void {
     }
   });
 
+  test('spatial-grid: 半径和だけのセルサイズは掃引経路の途中にいる相手を取りこぼす', () => {
+    // 接触検出は各区間の終端位置で登録する(game/simulation/contact.ts と同じ)。
+    // a は (0,0,0) → (100,0,0) へ動き、c はその掃引経路の途中(50,0,0)近くに静止している。
+    const radius = 1;
+    const aEnd = v3(100, 0, 0);
+    const move = 100; // aの区間移動量
+    const cPos = v3(50, 0, 0);
+
+    const radiusOnlyGrid = new SpatialGrid<string>(2 * radius);
+    radiusOnlyGrid.insert('a', aEnd);
+    radiusOnlyGrid.insert('c', cPos);
+    assert.ok(!radiusOnlyGrid.neighbors(aEnd).includes('c'), '半径和だけのセルサイズでは取りこぼすはずの境界');
+
+    const sweptAwareGrid = new SpatialGrid<string>(2 * (radius + move));
+    sweptAwareGrid.insert('a', aEnd);
+    sweptAwareGrid.insert('c', cPos);
+    assert.ok(sweptAwareGrid.neighbors(aEnd).includes('c'), '半径和+区間移動量の2倍なら取りこぼさない');
+  });
+
   test('spatial-grid: 27近傍列挙は同じ要素を二重に返さない', () => {
     const rand = mulberry32(2);
     const cellSize = 10;

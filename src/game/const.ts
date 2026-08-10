@@ -253,6 +253,16 @@ export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simu
 export const REENTRY_SUBSTEP_ALT = 200e3; // 大気圏近傍で細分化を開始する高度 [m]
 export const REENTRY_SUBSTEP_MAX_DT = 1; // 大気圏近傍の最大積分刻み [s]
 
+// --- 接触判定(game/simulation/contact.ts) ---
+// 1 substep あたりに解決する接触の上限。TOI(接触時刻)昇順で解決し、これを超えた分は
+// 次の substep へ持ち越す(次回呼び出し時に空間グリッドから改めて列挙し直されるので、
+// 明示的な繰越処理は不要)。
+export const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
+// 接触用27近傍グリッドのセル一辺の下限 [m]。通常は「半径和+区間移動量」の2倍(実測値)が
+// これを上回るので使われない — 全参加者が静止・半径0という退化ケースだけの保険。
+// 1 substep の最大長(SUBSTEP_MAX_DT)を、軌道速度の目安(~7.8km/s)で走った距離の2倍を基準に取る。
+export const CONTACT_GRID_CELL_SIZE_FLOOR = 2 * SUBSTEP_MAX_DT * 7800;
+
 export const PLAYER_RADIUS = 5; // 被弾(弾丸ヒット)判定 [m]。実機体より大きめの当たり判定
 export const PLAYER_HULL_RADIUS = 2.6; // 薬莢・破片等との物理接触に使う実寸に近い半径 [m]。
 // PLAYER_RADIUS(被弾判定、余裕を持たせた大きめの値)をそのまま物理接触に使うと、
