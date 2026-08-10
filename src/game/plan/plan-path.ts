@@ -21,7 +21,20 @@ const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLOR
 
 const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
 
+// 時刻の近さで tie-break するときに同点とみなす幅[s]。
+const TIME_TIE_SEC = 1e-6;
+
 type Segment = { state0: KinematicState; end: number };
+
+// 最後のバーン後(これから乗る軌道)の区間。samples は PlanArc.samples をそのまま渡す参照で、
+// 区間を再積分しない限り同一参照を保つ。periapsis/apoapsis は、区間が地表到達等で
+// 打ち切られてその極値へ届かなければ null。
+export interface FinalSegment {
+  readonly state0: KinematicState;
+  readonly samples: readonly KinematicState[];
+  readonly periapsis: KinematicState | null;
+  readonly apoapsis: KinematicState | null;
+}
 
 export class PlanPath {
   readonly group = new THREE.Group();
@@ -41,15 +54,7 @@ export class PlanPath {
   // sync が最後に受け取ったカメラ位置。nearestSample の遮蔽判定に使う(呼び出しは DOM
   // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
   private cameraPos: Vec3 | null = null;
-  // 最後のバーン後(これから乗る軌道)の起点状態。末尾区間が無ければ null。
-  finalSegmentStart: KinematicState | null = null;
-  // finalSegmentStart と同じ区間の積分済みサンプル列(古い順)。null は finalSegmentStart 自体が
-  // null のとき。PlanArc.samples をそのまま公開する参照で、update で区間を再積分しない限り
-  // 同一参照を保つ(render/sampled-line.ts の再bake抑制が参照同一性で効くのはこの前提による)。
-  finalSegmentSamples: readonly KinematicState[] | null = null;
-  // 末尾区間の近地点/遠地点状態。区間が地表到達等で打ち切られ近地点/遠地点に到達しなかった場合は null。
-  finalPeriapsisPoint: KinematicState | null = null;
-  finalApoapsisPoint: KinematicState | null = null;
+  private final: FinalSegment | null = null;
 
   // group をシーンへ登録する(初期状態は非表示)。
   constructor(scene: THREE.Scene, private readonly displayTimeManager: DisplayTimeManager) {
@@ -82,11 +87,18 @@ export class PlanPath {
     }
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
-    const hasFinalSegment = segments.length > plan.nodes.length;
-    this.finalSegmentStart = hasFinalSegment ? segments[segments.length - 1]!.state0 : null;
-    this.finalSegmentSamples = hasFinalSegment ? this.arcs[segments.length - 1]!.samples : null;
-    this.finalPeriapsisPoint = hasFinalSegment ? this.arcs[segments.length - 1]!.periapsisPoint() : null;
-    this.finalApoapsisPoint = hasFinalSegment ? this.arcs[segments.length - 1]!.apoapsisPoint() : null;
+    const finalArc = this.arcs[segments.length - 1]!;
+    this.final = {
+      state0: segments[segments.length - 1]!.state0,
+      samples: finalArc.samples,
+      periapsis: finalArc.periapsisPoint(),
+      apoapsis: finalArc.apoapsisPoint(),
+    };
+  }
+
+  // 最後のバーン後の区間。update() を一度も通していなければ null。
+  finalSegment(): FinalSegment | null {
+    return this.final;
   }
 
   // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の arc を隠す。
@@ -200,15 +212,22 @@ export class PlanPath {
   nearestSample(mx: number, my: number, maxPx: number, referenceT: number, range?: TimeRange): { state: KinematicState, arcIdx: number } | null {
     const maxDSq = maxPx * maxPx;
     const cameraPos = this.cameraPos;
-    const attractors = cameraPos && this.ephemeris ? this.ephemeris.attractorsAt(this.unbakeTime) : null;
+    const ephemeris = this.ephemeris;
+    const attractors = cameraPos && ephemeris ? ephemeris.attractorsAt(this.unbakeTime) : null;
+    // 表示座標への変換をサンプルごとに1回だけ行い、遮蔽判定と投影で共有する。un-bake 側の
+    // 変換は時刻が固定なのでループの外で1回だけ引く。
+    const unbakeTf = ephemeris ? ephemeris.frameTransformAt(this.frame, this.unbakeTime, this.attractors) : null;
     const candidates: { state: KinematicState; arcIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       for (const s of this.arcs[i]!.samples) {
         if (range && (s.t < range.min || s.t > range.max)) continue;
+        const pos = ephemeris && unbakeTf
+          ? toInertialPoint(unbakeTf, toFramePoint(ephemeris.frameTransformAt(this.frame, s.t, this.attractors), s.r))
+          : v3(s.r.x, s.r.y, s.r.z);
         // 天体に遮蔽されて画面上見えていない点は候補から除く — マップ右クリックの
         // ピック候補(map-picker.ts)と同じ判定を通す。
-        if (cameraPos && attractors && isOccluded(cameraPos, this.toDisplay(s.r, s.t), attractors)) continue;
-        const p = this.projectPoint(s.r, s.t);
+        if (cameraPos && attractors && isOccluded(cameraPos, pos, attractors)) continue;
+        const p = this.project ? this.project(pos) : OFFSCREEN;
         if (!p.front) continue;
         const dSq = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
         if (dSq <= maxDSq) candidates.push({ state: s, arcIdx: i, dSq });
@@ -227,7 +246,8 @@ export class PlanPath {
       if (c.arcIdx !== nearest.arcIdx || c.dSq > toleranceDSq) continue;
       const d = Math.abs(c.state.t - referenceT);
       const bestD = best ? Math.abs(best.state.t - referenceT) : Infinity;
-      if (!best || d < bestD || (d === bestD && c.state.t < best.state.t)) best = c;
+      if (!best || d < bestD - TIME_TIE_SEC
+        || (Math.abs(d - bestD) <= TIME_TIE_SEC && c.state.t < best.state.t)) best = c;
     }
     return best ? { state: best.state, arcIdx: best.arcIdx } : null;
   }
@@ -241,7 +261,7 @@ export class PlanPath {
   private arcAt(i: number): PlanArc {
     while (this.arcs.length <= i) {
       const idx = this.arcs.length;
-      const arc = new PlanArc(arcColor(idx), C.PLAN_ARC_OPACITY, 4);
+      const arc = new PlanArc(arcColor(idx), C.PLAN_ARC_OPACITY, C.LINE_RENDER_ORDER.plan);
       this.arcs.push(arc);
       this.group.add(arc.object3d);
     }

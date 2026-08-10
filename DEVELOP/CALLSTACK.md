@@ -242,7 +242,7 @@
         - activeStage.recordPlayerLost() // 同上
     - prune() ×5 → entity.dispose() // alive=false の個体ごと(scene から除去、必要なら geometry も破棄)。players は寿命判定のみで prune の対象外(喪失艦も配列に残り続ける)
   - predictor.update(simTime, player, horizon) // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。horizon = displayTimeManager.durationSec(game.currentOrbitPeriod())。currentOrbitPeriod() は自機の現在軌道を strongestAttractor 周りで求めるだけの純計算(自機なしなら NaN)。視点/モードによる分岐なし
-    - resyncPrediction(simTime, attractors, horizon) // entities.all() の全対象、毎フレーム無条件。attractors は simTime ぶんを1回だけ引いて全対象で使い回す
+    - discardPredictionIfDiverged(simTime, attractors) // entities.all() の全対象、毎フレーム無条件。attractors は simTime ぶんを1回だけ引いて全対象で使い回す
       - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
     - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループごとに predictedAttractorsAt(ephemeris, entities, tip.t)(先端の時刻 tip.t で他の重力天体の displayState(tip.t) を引き直す — まだその時刻に達していない天体はその回だけ落とす)→ classifyAttractors → attractorsNear で重力源を決め、dt(localOrbitPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で頭打ち)も Predictor 側が持つ(stepActual に対する substep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
       - player.stepPredicted(attractors, simTime, dt, horizon) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt・attractors を都度計算し直しながら1ステップずつ繰り返し呼ぶ
@@ -263,7 +263,7 @@
       - path.update() // plan の corners を区間へ分解し、区間ごとに PlanArc を再積分。表示座標系と un-bake 時刻もここで確定
         - arc.update() // 区間ごと。(state0, end) が変わったときだけ DynamicTrajectory で RK4 積分し直す(重い)。刻み幅ごとの重力源は classifyAttractors(mergeAttractors(gravityBodiesAt(ephemeris, t), dynamicAttractors)) → attractorsNear — 実積分・予測と同じ組み立て。dynamicAttractors は Game.update が entities.attractors() を1回だけ求めて渡す(区間長は最大1年に及び、そのあいだの位置を EntityManager には問えないので現在の実状態で固定する)。末尾区間だけ apsisCenter(区間起点の重力源スナップショット)が渡り、積分の各ステップ対で apsisCrossing による近地点/遠地点検出が走る
       - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
-      - apsisIconsOf() // path.finalPeriapsisPoint/finalApoapsisPoint(末尾 arc が積分中に見つけた値)を読むだけ。両方あるとき (遠地点距離-近地点距離)/(遠地点距離+近地点距離) < APSIS_MIN_ECC なら空、片方のみ(双曲線等)ならそのまま出す
+      - apsisIconsOf() // path.finalSegment() の periapsis/apoapsis(末尾 arc が積分中に見つけた値)を読むだけ。両方あるとき (遠地点距離-近地点距離)/(遠地点距離+近地点距離) < APSIS_MIN_ECC なら空、片方のみ(双曲線等)ならそのまま出す
   - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // editor.update の後・mapPicker.refresh の前
   - mapPicker.refresh() // 物理積分の後に組む — 積分前だと同フレームで sync されるメッシュと被選択物の座標が1ステップずれる
     - focusMarkers.update(displayTime, overviewCamera.focus, cameraSystem.bodyClassToggles) // 表示対象(visibleBodyIds)の外にある天体は座標計算ごと飛ばす / navTarget.update() // 内容は上記ポーズ経路と同じ
@@ -414,7 +414,7 @@
   - predictedTrajectoryLine.sync(predictedTargets, editor.planDisplay.planFrame, simTime, ephemeris, fo) // predictedTargets = 操作対象の自機が生存していればその1隻、いなければ空配列。計画軌道の折れ線と同じ座標系(editor.planDisplay.planFrame)で bake する。空配列を渡すと内部の pruneTo が線を畳む
     - line.syncGeometry() // entity.predictedTrajectory.samplesOldestFirst() を frame で bake
     - line.syncTransform()
-  - [player] player.orbitLine.setSuppressed(predictedTrajectoryLine.hasLineFor(player)) // 予測軌道の実線が出ているあいだは解析楕円を重ねて出さない。overviewMode/!overviewMode どちらも同じ判定
+  - [player] player.orbitLine.setSuppressed(predictedTrajectoryLine.coversHorizon(player, simTime, displayTimeManager.durationSec(currentOrbitPeriod()))) // 予測が表示ホライズンを覆いきったときだけ解析楕円を抑制する。overviewMode/!overviewMode どちらも同じ判定
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync(player, fo, project, scale, displayTime, overviewMode) // player は Creative の未配置状態で null
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示。player が null なら隠す

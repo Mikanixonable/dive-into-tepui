@@ -25,7 +25,28 @@ const EPOCH_EPS = 1e-6;
 // (表面までの距離 ÷ 相対速度 に掛ける上限係数)。
 const APPROACH_STEP_SAFETY = 0.5;
 
-type ComputeKey = { state0: KinematicState; end: number; sourceRevision: number; };
+type ComputeKey = {
+  state0: KinematicState;
+  end: number;
+  sourceRevision: number;
+  apsisCenterId: string | null;
+};
+
+// 起点が別の軌道へ飛んだと認めるための余裕係数と、時間差ゼロでも認める位置差の下限[m]。
+// 同じ軌道が dt だけ進んだだけなら位置差は高々「速度 × dt」に収まるので、その
+// ANCHOR_JUMP_SPEED_MARGIN 倍を超える差は連続な伝播では説明が付かない。
+const ANCHOR_JUMP_SPEED_MARGIN = 2;
+const ANCHOR_JUMP_MIN_DIST = 1;
+
+// 起点の差し替えが連続な伝播で説明できない(= 別の軌道へ飛んだ)か。時刻の前後関係は
+// 代理指標として成立しない — 別艦への切り替えやドック発進では新しい起点が普通に前回より
+// 後の時刻を持つので、状態そのものの差を見る。
+function anchorJumped(prev: KinematicState, next: KinematicState): boolean {
+  const dt = Math.abs(next.t - prev.t);
+  const speed = Math.max(len(prev.v), len(next.v));
+  const reachable = speed * dt * ANCHOR_JUMP_SPEED_MARGIN + ANCHOR_JUMP_MIN_DIST;
+  return len(sub(next.r, prev.r)) > reachable;
+}
 
 export interface PlanImpact {
   readonly state: KinematicState;
@@ -116,7 +137,6 @@ export class PlanArc {
   // 非有限・天体衝突・ステップ数上限で積分を打ち切ったか。
   private truncated = false;
   private key: ComputeKey | null = null;
-  private recomputed = false;
 
   // 描画色・不透明度・renderOrder を指定して線を用意する。折れ線は常に破線で描く
   // (実際のパターンは sync() が毎フレーム上書きするので、ここでの初期値に意味は無い)。
@@ -152,10 +172,9 @@ export class PlanArc {
   // state0.t のどちらも厳密一致では判定できない。そこで両者とも同じ基準
   // ——直近の再積分結果からの変化が描画解像度のサンプル間隔(区間長 / PLAN_ARC_MAX_SAMPLES)
   // 未満かどうか——で揃えて判定する: それ未満なら折れ線の見た目は変わらないので再積分を
-  // スキップする。ただし起点の同一性が変わっていて、かつ時刻が前進していない場合(別艦への
-  // 切り替え・ドック発進・衝突による状態上書きなど、同じ時刻での非連続な差し替え)は、
-  // 差分がどれだけ小さくても即座に再積分する — そうしないと切り替え直後の1フレームが
-  // 前の起点と時刻的に近いというだけで、無関係な軌道をサンプル間隔ぶん描き続けてしまう。
+  // スキップする。この閾値判定は「同じ軌道が時間方向に進んだだけ」という前提の上でだけ
+  // 正しいので、起点が別の軌道へ飛んだ場合(別艦への切り替え・ドック発進・衝突による
+  // 状態上書き)は anchorJumped で先に拾い、差分の大小に関わらず即座に再積分する。
   // tracksLiveAnchor でなければ state0/end の同一性・値の変化で即座に再積分する
   // (ノードの Δv 編集は state0 の同一性変化で必ず拾われる)。apsisCenter は
   // periapsisPoint/apoapsisPoint を検出する基準天体 — null なら検出自体を行わない。
@@ -164,22 +183,26 @@ export class PlanArc {
     tracksLiveAnchor: boolean,
     apsisCenter: Attractor | null,
   ): void {
-    const sourceChanged = this.key === null || this.key.sourceRevision !== attractorProvider.revision;
+    const apsisCenterId = apsisCenter?.id ?? null;
+    const inputChanged = this.key === null
+      || this.key.sourceRevision !== attractorProvider.revision
+      || this.key.apsisCenterId !== apsisCenterId;
+    let recompute: boolean;
     if (tracksLiveAnchor) {
-      // 同一性が変わっても時刻が前進していれば通常の追従とみなし、下のサンプル間隔判定に委ねる。
-      const anchorSwapped = this.key !== null && state0 !== this.key.state0 && state0.t <= this.key.state0.t;
+      const anchorSwapped = this.key !== null && state0 !== this.key.state0
+        && anchorJumped(this.key.state0, state0);
       const duration = end - state0.t;
       const keyDuration = this.key ? this.key.end - this.key.state0.t : NaN;
       const sampleInterval = this.key ? keyDuration / C.PLAN_ARC_MAX_SAMPLES : 0;
       const durationChanged = this.key === null || Math.abs(duration - keyDuration) >= sampleInterval;
       const anchorDrifted = this.key !== null && Math.abs(state0.t - this.key.state0.t) >= sampleInterval;
-      this.recomputed = sourceChanged || anchorSwapped || durationChanged || anchorDrifted;
+      recompute = inputChanged || anchorSwapped || durationChanged || anchorDrifted;
     } else {
-      this.recomputed = sourceChanged || this.key === null || state0 !== this.key.state0 || end !== this.key.end;
+      recompute = inputChanged || this.key === null || state0 !== this.key.state0 || end !== this.key.end;
     }
-    if (this.recomputed) {
+    if (recompute) {
       this.integrate(state0, end, attractorProvider, apsisCenter);
-      this.key = { state0, end, sourceRevision: attractorProvider.revision };
+      this.key = { state0, end, sourceRevision: attractorProvider.revision, apsisCenterId };
     }
   }
 
@@ -193,13 +216,6 @@ export class PlanArc {
 
   // 時刻 t の状態。保持区間外は null。
   at(t: number): KinematicState | null {
-    if (this.trajectory === null) {
-      for (let i = 1; i < this._samples.length; i++) {
-        const a = this._samples[i - 1]!, b = this._samples[i]!;
-        if (t >= a.t && t <= b.t) return hermiteInterpolate(a, b, t);
-      }
-      return this._samples.length && t === this._samples[this._samples.length - 1]!.t ? this._samples[this._samples.length - 1]! : null;
-    }
     if (this.trajectory === null) return null;
     const tip = this.trajectory.state;
     if (t > tip.t) return t - tip.t <= EPOCH_EPS ? tip : null;

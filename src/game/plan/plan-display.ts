@@ -182,16 +182,16 @@ export class PlanDisplay {
   }
 
   // 最後のバーン後の軌道(これから乗る軌道)の近地点・遠地点アイコンを、PlanPath が積分中
-  // から直接拾った finalPeriapsisPoint/finalApoapsisPoint から組み立てる。衝突コースの
-  // 区間では近地点に達する前に地表へ達するため finalPeriapsisPoint が null になるのは
-  // 正常な挙動であり、そのときは近地点アイコンを単に出さない。
+  // から直接拾った末尾区間の極値から組み立てる。衝突コースの区間では近地点に達する前に
+  // 地表へ達するため近地点が null になるのは正常な挙動であり、そのときはアイコンを出さない。
   // 両方揃っているときだけ、2点の中心からの距離比から離心率相当の値を求め、ほぼ円
   // (APSIS_MIN_ECC 未満)なら方向が不定として両方隠す — 片方しか無い場合(双曲線軌道等)は
   // この判定自体を行わず、そのまま出す。
   private apsisIconsOf(): readonly ApsisIcon[] {
-    const pe = this.path.finalPeriapsisPoint;
-    const ap = this.path.finalApoapsisPoint;
-    if (!this.plan) return [];
+    const final = this.path.finalSegment();
+    if (!this.plan || !final) return [];
+    const pe = final.periapsis;
+    const ap = final.apoapsis;
 
     let peDist = 0;
     let peCenter: Attractor | null = null;

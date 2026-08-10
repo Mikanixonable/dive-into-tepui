@@ -69,7 +69,7 @@ export class Player extends Ship {
   private readonly reentryEffects: ReentryEffects;
   private readonly markers: PlayerMarkers;
   // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
-  readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55);
+  readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.shipOrbit);
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
   readonly planExecutor: PlanExecutor;
@@ -201,7 +201,7 @@ export class Player extends Ship {
     // ワープを下げた瞬間に不意打ちで噴射が始まるのを防ぐ)。
     if (simSpeed.canPlayerThrust) this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
-    // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
+    // 推力入力の瞬間に予測を即破棄する — discardPredictionIfDiverged の距離判定を待つと数フレームの遅延が生じる。
     if (this.thrust !== null) this.invalidatePrediction();
 
     // 操作対象艦での手動並進・手動回転は 'powered' 自動実行を中断する(進行方向ホールドが

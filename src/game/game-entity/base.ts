@@ -56,7 +56,7 @@ export class Base extends GameEntity {
     this.radius = 100;
     this.collides = true;
     this.name = name;
-    this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35);
+    this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     scene.add(this.orbitLine.line);
   }
 

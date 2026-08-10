@@ -32,6 +32,15 @@ export function register(): void {
     assert.ok(e.history.size > 5 && e.history.size < 30, `expected a decimated history, got ${e.history.size}`);
   });
 
+  test('dynamic-trajectory: sampleInterval reports the interval the series was actually decimated at', () => {
+    const e = new DynamicTrajectory(circularState());
+    assert.equal(e.sampleInterval, 0, '一度も進めていない列は粗さを持たない');
+    e.step(5, bodiesAt(e.state.t + 2.5), 0, 0, 0, null, 174, 1e6);
+    assert.equal(e.sampleInterval, 174);
+    e.step(5, bodiesAt(e.state.t + 2.5), 0, 0, 0, null, 23, 1e6);
+    assert.equal(e.sampleInterval, 23, '直近の step に渡された値を報告する');
+  });
+
   test('dynamic-trajectory: step never touches history when keepDuration is 0', () => {
     const e = new DynamicTrajectory(circularState());
     for (let i = 0; i < 50; i++) {

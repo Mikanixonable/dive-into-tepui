@@ -13,9 +13,10 @@ import { KinematicState } from '../physics/kinematic-state';
 import { Attractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from './floating-origin';
-import { SampledLine, ScaleAtFn } from '../render/sampled-line';
+import { EMPTY_SAMPLES, SampledLine, ScaleAtFn } from '../render/sampled-line';
 import { GameEntity } from './game-entity/game-entity';
 import { EntityLineSet } from './entity-line-set';
+import { LINE_RENDER_ORDER } from './const';
 
 const LINE_COLOR = 0x40e0ff;
 
@@ -37,7 +38,9 @@ export class DebugTrajectoryLine {
   // ?debugLines=1 の指定を読み取り enabled を確定する。
   constructor(scene: THREE.Scene) {
     this.enabled = new URLSearchParams(location.search).get('debugLines') === '1';
-    this.lines = new EntityLineSet(scene, () => new SampledLine(LINE_COLOR, 0.6, 1));
+    this.lines = new EntityLineSet(
+      scene, () => new SampledLine(LINE_COLOR, 0.6, LINE_RENDER_ORDER.predicted),
+    );
   }
 
   // targets: このフレームに線を描きたい対象の集合(呼び出し側が決める。既定は自機+ターゲット)。
@@ -54,7 +57,7 @@ export class DebugTrajectoryLine {
       // 過去列 → 現在状態 → 未来列(あれば)の順に連結する。sampleInterval を actualTrajectory/predictedTrajectory で
       // 共有しているため、現在時刻の点で密度が揃って連続する。
       const currentSamples = entity.actualTrajectory.samplesOldestFirst();
-      let predictedSamples = entity.predictedTrajectory?.samplesOldestFirst() ?? [];
+      let predictedSamples = entity.predictedTrajectory?.samplesOldestFirst() ?? EMPTY_SAMPLES;
       if (currentSamples.length > 0 && predictedSamples.length > 0) {
         const lastCurrentTime = currentSamples[currentSamples.length - 1]!.t;
         const firstPredictedTime = predictedSamples[0]!.t;
