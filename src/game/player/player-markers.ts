@@ -33,7 +33,7 @@ export class PlayerMarkers {
         const color = isActive ? COLOR_ACCENT : undefined;
         const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn);
         this.markerManager.setPosition(
-          selfKey, 'mk-self', '▲', displayState.r, project, displayName, 1, color, rotationDeg,
+          selfKey, 'mk-self', '▲', displayState.r, project, isActive ? displayName : '', 1, color, rotationDeg,
         );
       } else {
         this.markerManager.hide(selfKey);
