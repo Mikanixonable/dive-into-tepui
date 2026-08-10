@@ -110,7 +110,7 @@ export class PlanEditor {
     private readonly displayTimeManager: DisplayTimeManager,
   ) {
     this.ship = ship;
-    this.planDisplay = new PlanDisplay(scene, this._hud.root, markerManager, ephemeris, displayTimeManager);
+    this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayTimeManager);
     this.nodeGizmo = new NodeGizmo(this._hud.root);
     this.gizmo3d = new PlanGizmo3D();
     scene.add(this.gizmo3d.group);
@@ -688,7 +688,7 @@ export class PlanEditor {
     overviewMode: boolean, cameraPos: Vec3,
   ): void {
     if (this.hasPlan && (this.editMode || this.plan.nodes.length > 0)) {
-      this.planDisplay.sync(fo, project, scale, this.editMode, overviewMode, cameraPos);
+      this.planDisplay.sync(fo, project, scale, overviewMode, cameraPos);
     }
     else {
       this.planDisplay.hide();
