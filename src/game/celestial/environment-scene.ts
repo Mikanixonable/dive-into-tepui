@@ -55,8 +55,9 @@ export class EnvironmentScene {
   readonly starsMesh: THREE.Mesh;
   readonly celestialGrid: CelestialGrid;
   private readonly bodies: readonly CelestialBody[];
-  // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なのでここが所有する。
-  private readonly pointFieldView = new PointFieldView();
+  // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なので、マップへ入るまで
+  // 生成しない。11,200点の軌道要素・mesh・instance bufferをロード時に確保しないため。
+  private pointFieldView: PointFieldView | null = null;
 
   // 静止軌道高度の参照リングは実在の天体ではないので、以下の天体駆動の配列とは別に持つ。
   // 地球が現在のレジストリに無ければ null(sync は非表示のまま何もしない)。
@@ -83,7 +84,6 @@ export class EnvironmentScene {
     // 参照線はマップで表示される天体だけが必要とする。全カタログぶんを起動時に
     // GPUへ確保すると、非表示設定でも頂点バッファとオブジェクトが残り続ける。
     this.referenceLines = new Map();
-
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     scene.add(this.ambient);
     this.sunLight = new THREE.DirectionalLight(0xfff4e0, C.SUN_INTENSITY);
@@ -95,12 +95,13 @@ export class EnvironmentScene {
     this.bodies = Object.keys(registry).map((id) =>
       id in CELESTIAL_BODIES ? CELESTIAL_BODIES[id as SolarSystemId].create() : fallbackCelestialView(registry, id));
     for (const body of this.bodies) body.build(scene);
-    this.pointFieldView.build(scene);
   }
 
   // 表示時刻 t の点群の位置を更新する。
   update(t: number, overviewMode: boolean): void {
-    this.pointFieldView.update(t, overviewMode, this.ephemeris);
+    if (!overviewMode || this.ephemeris.starId === null) return;
+    const pointField = this.ensurePointField();
+    pointField.update(t, true, this.ephemeris);
   }
 
   // 地球の自転初期位相(セーブ用)。地球が現在のレジストリに無ければ undefined。
@@ -146,10 +147,13 @@ export class EnvironmentScene {
     this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
     this.ambient.intensity = C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
 
-    this.pointFieldView.sync(
-      floatingOrigin, cameraSystem.overviewMode,
-      !cameraSystem.overviewMode || cameraSystem.bodyClassToggles.smallBodyVisible,
-    );
+    if (cameraSystem.overviewMode && this.ephemeris.starId !== null) {
+      this.ensurePointField().sync(
+        floatingOrigin, true, cameraSystem.bodyClassToggles.smallBodyVisible,
+      );
+    } else {
+      this.pointFieldView?.sync(floatingOrigin, false, true);
+    }
     this.syncStars(cameraSystem);
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
@@ -195,6 +199,15 @@ export class EnvironmentScene {
       const excludeNearBody = el && rel ? this.excludeNearBodyFor(id, rel) : undefined;
       line.sync(el, fo, false, densifyNear, excludeNearBody);
     }
+  }
+
+  // 点群はマップを一度も開かないプレイでは不要。最初のマップ更新時にだけ生成・登録する。
+  private ensurePointField(): PointFieldView {
+    if (this.pointFieldView === null) {
+      this.pointFieldView = new PointFieldView();
+      this.pointFieldView.build(this.scene);
+    }
+    return this.pointFieldView;
   }
 
   private ensureReferenceLine(id: OrbitingId): OrbitLine {
