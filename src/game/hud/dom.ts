@@ -257,6 +257,15 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-displaytime .slider-ticks span:last-child { transform: translateX(-100%); }
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
 #hud-frame-controls { display: none; width: 100%; pointer-events: auto; }
+#hud-frame-controls .hud-frame-scroll-zone {
+  max-height: min(240px, 30vh); overflow-y: auto;
+  scrollbar-width: thin; overscroll-behavior-y: contain;
+}
+/* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
+#hud-frame-controls .hud-frame-origin-zone > .hud-seg:first-child > .seg-title,
+#hud-frame-controls .hud-frame-camera-rotation-zone > .seg-title {
+  flex: 0 0 100%; min-width: 0;
+}
 #hud-creative-logistics { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
