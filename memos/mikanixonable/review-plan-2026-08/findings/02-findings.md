@@ -1,0 +1,65 @@
+# 章02: シミュレーション駆動系 レビュー結果
+
+対象範囲は計画書記載のとおりだが、実ファイル構成は計画書作成後にリファクタリングされている
+(`collision.ts`/`hit.ts`/`entity-id.ts` は `contact.ts` へ統合済み、`physics/nbody/` は
+`626de7f`(未配線のため削除)で既に無い)。現存する `src/game/simulation/`
+(attractors.ts / contact.ts / entity-manager.ts / predictor.ts / simulator.ts / time-step.ts)、
+`src/physics/`(dynamic-trajectory.ts / state-queue.ts / deque.ts / spatial-grid.ts /
+trajectory-features.ts / sphere-contact.ts / collision-response.ts / dynamics.ts / attitude.ts)、
+`game-entity.ts` の stepActual/stepPredicted/resyncPrediction/displayState を対象に読んだ。
+
+## 検証結果
+- `npm run typecheck`: pass
+- `npm run test:physics`: 390/390 pass
+
+## 所見
+
+### [spec?] DEVELOP/CALLSTACK.md:195 — 姿勢積分の刻み幅の記述が実装と食い違っている
+`DEVELOP/CALLSTACK.md:195` は「自機(全隻。simDt をそのまま使う)・敵・薬莢・デブリ・補給
+(attDt = min(simDt, 0.12))」と、自機とそれ以外で姿勢積分の刻み幅を分けて記述している。
+しかし `src/game/simulation/simulator.ts` の `stepAttitudes(simDt)`(117-129行)は
+`players`/`enemies`/`casings`/`debris`/`ammos` すべてに同じ `subDt` を渡しており、
+`0.12` という上限値はリポジトリ全体を検索しても `const.ts` を含めどこにも存在しない
+(`grep -rn "0.12" src/game`で不一致を確認)。刻み幅の分離自体がどこかのリファクタリングで
+撤廃され、CALLSTACK.md の更新だけが漏れたと見える。CLAUDE.md 側の「一つだけの player 固有の
+違いは...simDt をそのまま使う」という記述も同じ前提を引きずっている。
+CALLSTACK.md は呼び出し順・実行条件の一次情報とされている(CLAUDE.md 冒頭のルール)ため、
+実装(現状: 全エンティティ一律 subDt)に合わせて書き直す必要がある。挙動そのものを変える話
+ではないので報告のみ。
+
+### [comment] src/physics/deque.ts — インデントが4スペースでプロジェクト規約(2スペース)から外れている
+`deque.ts` 全体(1-154行)が4スペースインデントで書かれており、同じ `physics/` 配下の他ファイル
+(`state-queue.ts` 等、2スペース)と揃っていない。過去に `9e3cb52` で「kebab-case 逸脱」のような
+表記ゆれをまとめて解消したコミットがあるので、同種の指摘として報告する。挙動に影響はない。
+
+### 確認したが問題なし(参考記録)
+- `Simulator.substep`(simulator.ts:111-119): 重力源を substep 中点で1回だけ組み、
+  `classifyAttractors`/`attractorsNear` を全エンティティで使い回している。相互重力の対称性要件を
+  満たす。
+- `attractors.ts`: `mergeAttractors`/`gravityBodiesAt`/`attractorsAt`/`predictedAttractorsAt`/
+  `classifyAttractors`/`attractorsNear` はいずれも CLAUDE.md の記述どおり。`predictedAttractorsAt`
+  は `displayState(t)` が `null` を返す天体をそのまま配列から落としており、現在位置での代入
+  (stale 代入)は起きていない。
+- `Predictor.update`/`advanceBudget`(predictor.ts): `resyncPrediction` は `canGrow` の可否に
+  関わらず毎フレーム全エンティティに対して走る(44行の `if (!canGrow) return;` は距離判定ループの
+  *後*に置かれている)。`resyncTolerance` の4乗則スケーリングも記述どおり。round-robin の
+  `cursor` は毎フレーム `all.length`(その場で再取得した配列)で mod を取っているため、配列が
+  縮んでも範囲外参照は起きない。
+- `contact.ts`/`collision-response.ts`/`sphere-contact.ts`: cell size は
+  `2 * (maxRadius + maxMove)`(contact.ts:106)で、掃引 TOI 側の判定範囲(半径和 + 区間移動量)と
+  整合している。`collision.ts`/`hit.ts` は既に `contact.ts` へ統合済みで、二重解決や責務重複は
+  見当たらない(弾も天体接触もこのモジュール1つで解決している)。NaN ガードは `!(x > 0)` 系の
+  否定形で統一されており(`isFiniteParticipant`/`isFiniteAttractor`/`resolveSphereCollision`/
+  `sweptSphereToi` すべて)、非有限入力の伝播は塞がれている。
+- `DynamicTrajectory`: `reset` は `discardFrom(state.t)` で「history は state より古い」不変条件
+  を保っている。`samplesOldestFirst()` のメモ化は `step`/`reset` の両方で確実に無効化される
+  (`_samplesCache = null`)。`at(t)` の境界(`t === state.t` は state を直接返す、それ以外は
+  history との補間へ委譲)も記述どおり。
+- `physics/nbody/`: 既に `626de7f`(「未使用の physics/nbody/ を削除」)で削除済み。計画書の
+  該当項目は現状に適用不能(死にコードなし)。
+- `EntityIdAllocator`(計画書は `src/game/simulation/entity-id.ts` を挙げているが、実際は
+  `src/game/game-entity/entity-id.ts` に置かれている — パスのみの齟齬): `reserve(id)` は
+  復元 id がカウンタの採番済み連番以上なら `counter = n + 1` へ進めており、restore 後の新規
+  発番が既存 id を追い越すことはない。
+- update/sync 規約: `src/game/simulation/` 配下に `THREE`/`three/webgpu` の import は無い
+  (`grep` で確認済み)。
