@@ -38,19 +38,19 @@ export class EffectsSystem {
   // プラズマ弾命中フラッシュを生成する。
   spawnPlasmaFlash(state: KinematicState): void {
     this.spawnFlash(state,
-      C.PLASMA_HIT_FLASH_SIZE0,
-      C.PLASMA_HIT_FLASH_SIZE1,
-      C.PLASMA_HIT_FLASH_DURATION,
-      C.COLOR_PLASMA_HIT_FLASH);
+      C.PLASMA_IMPACT_FLASH_SIZE0,
+      C.PLASMA_IMPACT_FLASH_SIZE1,
+      C.PLASMA_IMPACT_FLASH_DURATION,
+      C.COLOR_PLASMA_IMPACT_FLASH);
   }
 
   // 実弾命中フラッシュを生成する。
   spawnBulletFlash(state: KinematicState): void {
     this.spawnFlash(state,
-      C.BULLET_HIT_FLASH_SIZE0,
-      C.BULLET_HIT_FLASH_SIZE1,
-      C.BULLET_HIT_FLASH_DURATION,
-      C.COLOR_BULLET_HIT_FLASH);
+      C.BULLET_IMPACT_FLASH_SIZE0,
+      C.BULLET_IMPACT_FLASH_SIZE1,
+      C.BULLET_IMPACT_FLASH_DURATION,
+      C.COLOR_BULLET_IMPACT_FLASH);
   }
 
   // ガスのような気体が放出されるエフェクト（被弾時やデブリ命中時用）

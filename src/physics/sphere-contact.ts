@@ -3,7 +3,7 @@
 import { KinematicState } from './kinematic-state';
 import { Vec3, len, sub, v3 } from './vec3';
 
-export interface SweptSphereHit {
+export interface SphereContact {
   readonly toi: number; // frame区間内の衝突割合 0..1
   readonly normal: Vec3; // aからbへ向く接触法線
 }
@@ -16,7 +16,7 @@ export function sweptSphereToi(
   bStart: Vec3,
   bEnd: Vec3,
   radiusSum: number,
-): SweptSphereHit | null {
+): SphereContact | null {
   // 相対位置 p(t) = p0 + d·t (t∈[0,1]) が半径和 radiusSum の球に触れる最小の t を解く2次方程式。
   // 各早期returnは `!(x > 0)` 系の否定形で書く — NaN はどの比較でも false になるので、
   // 非有限な入力はこの形のときだけ自動的に null へ落ちる(`x <= 0` に書き換えると通り抜ける)。

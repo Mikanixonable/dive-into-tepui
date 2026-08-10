@@ -64,9 +64,9 @@ export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s
 export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 export const SOLAR_CONSTANT = 1361; // 地球軌道の太陽定数 [W/m^2]
 // 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
-// 船体への直撃(PLAYER_HIT_DAMAGE)より軽い。損耗はドックで修理するまで戻らない。
-export const RADIATOR_HIT_DAMAGE = 0.25;
-export const RADIATOR_HITTABLE_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
+// 船体への直撃(PLAYER_BULLET_DAMAGE)より軽い。損耗はドックで修理するまで戻らない。
+export const RADIATOR_BULLET_DAMAGE = 0.25;
+export const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
 export const RADIATOR_EFFICIENCY_MULT = 1; // 放熱面積(RADIATOR_PANEL_AREA)に掛ける性能係数
 
 // --- 被弾による発熱 ---
@@ -149,7 +149,7 @@ export const BULLET_SPREAD = 0.002; // 散布界 [rad]
 export const BULLET_MAX_DIST = 30e3; // 自機からこれ以上離れた弾を消す [m]
 export const BULLET_LIFETIME = 240; // 保険としての寿命 [sim s]
 export const RECOIL_DV = 0.04; // 反動 [m/s]
-export const SELF_HIT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
+export const SELF_CONTACT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
 export const BULLET_MASS = 0.1; // 弾の剛体接触用質量 [kg](実体弾・プラズマ弾とも共通)
 export const BULLET_RADIUS = 0.02; // 弾の剛体接触用半径 [m]
 export const BULLET_CLOSE_PASS_DIST = 20; // 敵弾が艦の至近を通過したとみなす距離 [m]
@@ -227,16 +227,16 @@ export const GRAVITY_ALWAYS_COUNT = 15;
 export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-8;
 
 // --- 被弾・撃破エフェクト(フラッシュ/破片) ---
-export const BULLET_HIT_FLASH_SIZE0 = 1.5;
-export const BULLET_HIT_FLASH_SIZE1 = 6;
-export const BULLET_HIT_FLASH_DURATION = 0.25; // [s]
-export const PLASMA_HIT_FLASH_SIZE0 = 2;
-export const PLASMA_HIT_FLASH_SIZE1 = 8;
-export const PLASMA_HIT_FLASH_DURATION = 0.3; // [s]
-export const HIT_FRAG_COUNT = 3; // 被弾時に飛散させる欠片の数
-export const HIT_FRAG_SIZE_MIN = 0.18;
-export const HIT_FRAG_SIZE_MAX = 0.5;
-export const HIT_FRAG_SPEED = 5.5; // [m/s]
+export const BULLET_IMPACT_FLASH_SIZE0 = 1.5;
+export const BULLET_IMPACT_FLASH_SIZE1 = 6;
+export const BULLET_IMPACT_FLASH_DURATION = 0.25; // [s]
+export const PLASMA_IMPACT_FLASH_SIZE0 = 2;
+export const PLASMA_IMPACT_FLASH_SIZE1 = 8;
+export const PLASMA_IMPACT_FLASH_DURATION = 0.3; // [s]
+export const IMPACT_FRAG_COUNT = 3; // 被弾時に飛散させる欠片の数
+export const IMPACT_FRAG_SIZE_MIN = 0.18;
+export const IMPACT_FRAG_SIZE_MAX = 0.5;
+export const IMPACT_FRAG_SPEED = 5.5; // [m/s]
 export const DESTROY_FLASH1_SIZE0 = 10; // 撃破時フラッシュ(芯)のサイズ下限。ENEMY_SCALE 倍される
 export const DESTROY_FLASH1_SIZE1 = 110;
 export const DESTROY_FLASH1_DURATION = 1.1; // [s]
@@ -467,8 +467,8 @@ export const STAGE00_FLYBY_LATERAL_SPREAD = 20; // フライパス初速の横�
 
 export const PLAYER_MAX_HP = 1000;
 export const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
-export const PLAYER_HIT_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
-export const ENEMY_HIT_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
+export const PLAYER_BULLET_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
+export const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
 
 // --- 剛体接触による装甲ダメージ(Ship.collideWith が Δv = impulse/mass に適用) ---
 // 艦同士(Player 1000kg ⇔ Enemy 10000kg、反発係数 e=0.4)の接触で、Player 側が受ける Δv が
@@ -509,13 +509,13 @@ export const COLOR_MARKER_NORMAL = '#d08cff';
 export const COLOR_MARKER_RADIAL = '#7de8ff';
 export const COLOR_MARKER_TGTDIR = '#ff7ab0';
 export const COLOR_MARKER_NODE = '#8b93a0';
-export const COLOR_MARKER_BOARDHIT = '#ffffff';
+export const COLOR_MARKER_BOARDPASS = '#ffffff';
 export const COLOR_MARKER_SELF = '#dfe3e8';
 export const COLOR_MARKER_PLANNED = '#8fd0ff';
 export const COLOR_TOUCH_TEXT = '#cfd6dd';
 export const COLOR_TOUCH_ACTIVE_TEXT = '#ffffff';
-export const COLOR_BULLET_HIT_FLASH = '#ffe2a0';
-export const COLOR_PLASMA_HIT_FLASH = '#ffa0ff';
+export const COLOR_BULLET_IMPACT_FLASH = '#ffe2a0';
+export const COLOR_PLASMA_IMPACT_FLASH = '#ffa0ff';
 export const COLOR_GAS_PUFF_1 = '#aaaaaa';
 export const COLOR_GAS_PUFF_2 = '#ffffff';
 export const COLOR_DESTROY_FLASH_1 = '#ffb36b';

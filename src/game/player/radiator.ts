@@ -177,12 +177,12 @@ export class RadiatorSystem {
     }, 0);
   }
 
-  // RADIATOR_HITTABLE_DEPLOY 以上展開し、全損していない side の折りごとに接触代理を返す。
+  // RADIATOR_CONTACT_DEPLOY 以上展開し、全損していない side の折りごとに接触代理を返す。
   // t は接触代理の KinematicState.t に使う現在時刻(swept 判定の区間を成す)。
   collisionFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): RadiatorFold[] {
     const result: RadiatorFold[] = [];
     for (const side of ['up', 'down'] as const) {
-      if (this.panels[side].deploy < C.RADIATOR_HITTABLE_DEPLOY || this.wear[side] >= 1) continue;
+      if (this.panels[side].deploy < C.RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
       const proxies = this.foldProxies[side];
       while (proxies.length < C.RADIATOR_FOLD_COUNT) proxies.push(new RadiatorFold(side, proxies.length, this.owner));
       const { even, odd } = this.foldThetas(side);
