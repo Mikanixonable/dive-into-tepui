@@ -129,6 +129,24 @@ const parseDebrisChunk = memoParse<THREE.Mesh>(debrisChunkData);
 const parseDebrisPanel = memoParse<THREE.Mesh>(debrisPanelData);
 const parseDebrisRod = memoParse<THREE.Mesh>(debrisRodData);
 
+// 薬莢は大量に生成されるため、排莢個体ごとの geometry/material は作らない。
+// geometry はテンプレートを一度だけ deep clone して全長補正を焼き込み、material は
+// parseCasing() がテンプレートから一度だけ複製したものを不変リソースとして共有する。
+let casingGeometry: THREE.BufferGeometry | null = null;
+let casingMaterial: THREE.MeshStandardMaterial | null = null;
+
+function initCasingResources(): void {
+  if (casingGeometry && casingMaterial) return;
+
+  const template = parseCasing();
+  casingGeometry = deepCloneGeometry(template.geometry);
+  casingGeometry.scale(1, 2, 1);
+  casingMaterial = template.material as THREE.MeshStandardMaterial;
+  casingMaterial.color.setHex(0xFF9F5E);
+  casingMaterial.metalness = 0.8;
+  casingMaterial.roughness = 0.3;
+}
+
 // 自機のメッシュを生成する。
 export function buildPlayerShip(): THREE.Group {
   return parsePlayer();
@@ -143,12 +161,25 @@ export function buildMagazineMesh(): THREE.Group {
 // 保持しているマガジンは見た目上「空」であるべきなので、ここで弾(role==='round'
 // が付いた丸・弾頭メッシュ)を除去したフレームだけの版を作る。
 // 右舷排出口の常設表示・排出デブリの両方で使う。
+let magazineFrameTemplate: THREE.Group | null = null;
+
 export function buildMagazineFrame(): THREE.Group {
-  const g = parseMagazine();
-  for (const child of [...g.children]) {
-    if ((child as THREE.Mesh).userData?.['role'] === 'round') g.remove(child);
+  if (magazineFrameTemplate === null) {
+    const g = parseMagazine();
+    for (const child of [...g.children]) {
+      if ((child as THREE.Mesh).userData?.['role'] === 'round') g.remove(child);
+    }
+    // 排出フレームは大量に作られるため、テンプレートの geometry/material を共有する。
+    // DebrisPiece.dispose() が共有リソースを解放しないよう所有権を明示する。
+    g.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.userData.ownsGeometry = false;
+      mesh.userData.ownsMaterial = false;
+    });
+    magazineFrameTemplate = g;
   }
-  return g;
+  return magazineFrameTemplate.clone(true) as THREE.Group;
 }
 
 // 軌道上に投入される補給(ammo): マガジン数個を束ねてビーコンを付けた漂流物。
@@ -278,19 +309,13 @@ export function buildPlasmaMesh(): THREE.Mesh {
   return m;
 }
 
-// 薬莢メッシュを生成する。全長を通常の2倍にスケールした専用ジオメトリを持たせる。
+// 薬莢メッシュを生成する。全長を通常の2倍にした geometry と銅色 material は共有する。
 export function buildCasingMesh(): THREE.Mesh {
-  const mesh = parseCasing();
-  // 薬莢の全長(Y軸)を2倍にする
-  mesh.geometry = deepCloneGeometry(mesh.geometry);
-  mesh.geometry.scale(1, 2, 1);
-  mesh.userData.ownsGeometry = true;
-  // 薬莢の色を銅色（赤みのあるメタリック）に変更
-  mesh.material = (mesh.material as THREE.MeshStandardMaterial).clone();
-  (mesh.material as THREE.MeshStandardMaterial).color.setHex(0xFF9F5E);
-  (mesh.material as THREE.MeshStandardMaterial).metalness = 0.8;
-  (mesh.material as THREE.MeshStandardMaterial).roughness = 0.3;
-  mesh.userData.ownsMaterial = true;
+  initCasingResources();
+  const mesh = new THREE.Mesh(casingGeometry!, casingMaterial!);
+  // DebrisPiece.dispose() が共有リソースを解放しないよう、所有権を明示する。
+  mesh.userData.ownsGeometry = false;
+  mesh.userData.ownsMaterial = false;
   return mesh;
 }
 
@@ -522,7 +547,11 @@ export function buildAsteroidMesh(radius: number): THREE.Mesh {
 
 // リロード時に放出される砲身（バレル）メッシュ
 // 砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + 赤熱グロー + ガスポート
+let barrelTemplate: THREE.Group | null = null;
+
 export function buildBarrelMesh(): THREE.Group {
+  if (barrelTemplate !== null) return barrelTemplate.clone(true) as THREE.Group;
+
   const g = new THREE.Group();
   const S = 0.7; // 直径スケール係数
 
@@ -593,6 +622,15 @@ export function buildBarrelMesh(): THREE.Group {
   heat.position.z = -2.1;
   g.add(heat);
 
+  barrelTemplate = g;
+  // 子 mesh の geometry/material は上のテンプレートを全個体で共有する。flags は未設定でも
+  // 共有扱いだが、破棄側の契約を明示して将来の個別変更で誤って解放しないようにする。
+  g.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.userData.ownsGeometry = false;
+    mesh.userData.ownsMaterial = false;
+  });
   return g;
 }
 
