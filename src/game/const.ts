@@ -411,6 +411,13 @@ export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを�
 // 誤差は間引き間隔の4乗で効くので、上限で間引きが粗くなる長い表示期間では
 // PREDICT_RESET_DIST をこの値から外挿した幅まで広げないと、正しい列まで破棄してしまう。
 export const PREDICT_SAMPLE_ERROR = 30;
+// 1フレームの予測予算のうち操作対象の艦に割ける割合の上限。優先はするが独占はさせない —
+// 予測は表示だけでなく計画軌道の重力源や衝突判定の相手としても消費されるため、艦の予測が
+// 完成するまで他の個体が止まると、計画軌道の形が艦の予測進捗に依存してしまう。
+export const PREDICT_PLAYER_BUDGET_RATIO = 0.5;
+// 予測の重力源配列・空間グリッドを組み直す間隔(予測ステップ数)。数ステップぶんの重力源
+// 位置の遅れは、予測の刻み幅そのものが持つ RK4 の誤差より小さい。
+export const PREDICT_ATTRACTOR_REBUILD_STEPS = 8;
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;
@@ -531,3 +538,15 @@ export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道
 export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
 export const COLOR_SHIP_DARK_HULL = '#2e3340';
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
+
+// 軌道まわりの線の描画順。値が大きいほど後に描かれ、重なったときに手前へ来る。
+// 描画順は線どうしの相対関係でしか意味を持たない(同値だと透明描画の前後が不定になる)ので、
+// 各線が自分の値を単独で決めず、この表で一括して割り当てる。
+export const LINE_RENDER_ORDER = {
+  reference: 0,        // 天体の参照軌道線
+  shipOrbit: 1,        // 自機の解析楕円
+  secondaryTarget: 2,  // 第二ターゲットの軌道線
+  target: 3,           // 主ターゲットの軌道線
+  plan: 4,             // 計画軌道(破線)
+  predicted: 5,        // 積分予測線。解析楕円の代替なので、両方出る境界フレームでは必ずこちらを手前に置く
+} as const;
