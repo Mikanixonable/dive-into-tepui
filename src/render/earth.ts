@@ -10,7 +10,7 @@
 // テストの精度に依存しない)。
 import * as THREE from 'three/webgpu';
 import {
-  texture as textureNode, mix, uv, vec2, vec3, float, uniform, exp,
+  mix, vec3, float, uniform, exp,
   normalWorld, positionWorld, cameraPosition,
   dot, normalize, sub, clamp, smoothstep,
 } from 'three/tsl';
@@ -34,7 +34,7 @@ interface EarthSurface {
   readonly setSeasonalTime: (timeSeconds: number) => void;
 }
 
-function buildSurface(sunDir: SunDirUniform): EarthSurface {
+function buildSurface(sunDir: SunDirUniform, cloudSunDir: SunDirUniform): EarthSurface {
   // インデックス付き球ジオメトリ + スムーズシェーディング。
   // 1024×768 分割で高解像度化
   const geo = new THREE.SphereGeometry(R_EARTH, 1024, 768);
@@ -50,34 +50,40 @@ function buildSurface(sunDir: SunDirUniform): EarthSurface {
   // 描画原点がどこにあっても昼夜境界が実際の太陽方向と一致する。
   const mat = new THREE.MeshBasicNodeMaterial();
 
-  const surfaceNodes = createEarthSurfaceNodes(earthMap, cloudsMap);
+  const surfaceNodes = createEarthSurfaceNodes(earthMap, cloudsMap, cloudSunDir);
   const earthSample = surfaceNodes.baseColor;
-  
-  // 雲と影
-  const cloudAlpha = textureNode(cloudsMap, uv()).r;
-  const cloudShadowAlpha = textureNode(cloudsMap, uv().add(vec2(0.001, 0.0))).r;
-  const shadowColor = mix(earthSample, earthSample.mul(0.2), cloudShadowAlpha.mul(0.8));
+
+  // 雲影は太陽方向に沿って雲層へ投影した密度から求める。地表の直射光だけを
+  // 減衰させ、夜側の最低環境光は残す。
+  const cloudGroundTransmission = float(1).sub(surfaceNodes.clouds.shadow.mul(0.82));
   
   // 夕焼けの色 (オレンジ・赤系)
   const sunsetColor = vec3(1.0, 0.4, 0.1);
   const sunDot = dot(normalWorld, sunDir);
   const sunFactor = clamp(sunDot, 0, 1);
   
-  // 雲の色 (夕方になると夕焼け色に)
-  const cloudColor = mix(sunsetColor, vec3(1, 1, 1), smoothstep(-0.1, 0.2, sunDot));
-  const baseColor = mix(shadowColor, cloudColor, cloudAlpha);
-
   // 大気のもや(aerial perspective): 視線が地平線に近いほど大気中の光路長が
   // 伸びて濃くなる。Beer-Lambert 則で haze = 1 - exp(-tau0 / cosθ)。
   const viewDir = normalize(sub(cameraPosition, positionWorld));
   const cosTheta = clamp(dot(normalWorld, viewDir), 0.05, 1);
   const haze = float(1).sub(exp(float(ATMO_HAZE_TAU0).div(cosTheta).negate()));
+
+  // 雲頂は地表が夜へ入った後も太陽を受ける。太陽と視線が近いときの
+  // 粒子前方散乱を簡易HG近似で加え、低い太陽高度の雲頂を消し切らない。
+  const forward = clamp(dot(sunDir, viewDir), 0, 1);
+  const forwardScatter = float(0.82).add(forward.mul(forward).mul(0.42));
+  const cloudColor = vec3(0.86, 0.9, 0.97)
+    .mul(surfaceNodes.clouds.topLight.mul(forwardScatter));
+  const groundLighting = float(NIGHT_AMBIENT).add(
+    sunFactor.mul(cloudGroundTransmission).mul(1 - NIGHT_AMBIENT),
+  );
+  const baseColor = mix(earthSample.mul(groundLighting), cloudColor, surfaceNodes.clouds.cover);
   
   // もやの色 (夕方になると夕焼け色に)
   const dynamicAtmoColor = mix(sunsetColor, ATMO_COLOR, smoothstep(0.0, 0.2, sunDot));
   
   const litColor = mix(baseColor, dynamicAtmoColor, haze.mul(sunFactor));
-  mat.colorNode = litColor.mul(float(NIGHT_AMBIENT).add(sunFactor.mul(1 - NIGHT_AMBIENT)));
+  mat.colorNode = litColor;
   mat.normalNode = surfaceNodes.terrainNormal;
 
   return {
@@ -178,9 +184,12 @@ export function createEarth(): Earth {
   const spin = new THREE.Group();
 
   const sunDir = uniform(new THREE.Vector3(1, 0, 0));
+  // 雲サンプルは地球表面のbody-fixed local座標で行うため、worldの太陽方向とは別に
+  // 自転の逆変換後の方向を渡す。地表のLambert陰影は従来どおりworld方向を使う。
+  const cloudSunDir = uniform(new THREE.Vector3(1, 0, 0));
   const earthCenter = uniform(new THREE.Vector3(0, 0, 0));
 
-  const surface = buildSurface(sunDir);
+  const surface = buildSurface(sunDir, cloudSunDir);
   spin.add(surface.mesh);
 
   // オーロラは磁気極に固定なので自転と一緒に回す
@@ -198,15 +207,31 @@ export function createEarth(): Earth {
   group.add(createEarthAtmosphere(sunDir, earthCenter).mesh);
 
   let auroraPhase = 0;
+  let rotationAngle = 0;
+  let worldSun = new THREE.Vector3(1, 0, 0);
+  const updateCloudSunDir = () => {
+    const c = Math.cos(rotationAngle);
+    const s = Math.sin(rotationAngle);
+    // local = Ry(-rotation) * world
+    (cloudSunDir.value as THREE.Vector3).set(
+      c * worldSun.x - s * worldSun.z,
+      worldSun.y,
+      s * worldSun.x + c * worldSun.z,
+    ).normalize();
+  };
   return {
     group,
     // 自転角(ラジアン)を設定する。
     setRotation(angleRad: number) {
+      rotationAngle = angleRad;
       spin.rotation.y = angleRad;
+      updateCloudSunDir();
     },
     // 太陽方向ベクトルを設定する。
     setSunDir(x: number, y: number, z: number) {
-      (sunDir.value as THREE.Vector3).set(x, y, z);
+      worldSun = new THREE.Vector3(x, y, z).normalize();
+      (sunDir.value as THREE.Vector3).copy(worldSun);
+      updateCloudSunDir();
     },
     // 地球中心位置と、オーロラの明滅・波打ちを simTime に応じて進める。
     tick(simTime: number) {
