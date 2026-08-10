@@ -284,7 +284,7 @@ body.hud-modal-open #touch-ui { display: none; }
 }
 /* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
 #hud-frame-controls .hud-frame-origin-zone > .hud-seg:first-child > .seg-title,
-#hud-frame-controls .hud-frame-camera-rotation-zone > .seg-title {
+#hud-frame-controls .hud-frame-rotation-zone > .seg-title {
   flex: 0 0 100%; min-width: 0;
 }
 #hud-creative-logistics { display: none; width: 100%; pointer-events: auto; }
