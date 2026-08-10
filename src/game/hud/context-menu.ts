@@ -119,21 +119,30 @@ export class ContextMenu<T, A extends string = string> {
     this.target = target;
     this.requestedX = clientX;
     this.requestedY = clientY;
-    // 項目 DOM を組み立てる
-    this.el.innerHTML = items
-      .map((it) => {
-        if (it.type === 'header') {
-          return `<div class="ctx-menu-header">
-            <div>${it.label}</div>
-            ${it.subLabel ? `<div class="ctx-menu-header-sub">${it.subLabel}</div>` : ''}
-          </div>`;
+    // 項目 DOM を組み立てる。ラベルには改名可能な名前が流れうるので textContent で入れる。
+    this.el.replaceChildren();
+    for (const it of items) {
+      if (it.type === 'header') {
+        const header = document.createElement('div');
+        header.className = 'ctx-menu-header';
+        const main = document.createElement('div');
+        main.textContent = it.label;
+        header.appendChild(main);
+        if (it.subLabel) {
+          const sub = document.createElement('div');
+          sub.className = 'ctx-menu-header-sub';
+          sub.textContent = it.subLabel;
+          header.appendChild(sub);
         }
-        const label = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
-        return `<div class="ctx-menu-item" data-act="${it.act || ''}" data-shortcut="${it.shortcut || ''}">${label}</div>`;
-      })
-      .join('');
-    // クリックされた項目の act を、開いた時点の対象とともに通知して閉じる
-    this.el.querySelectorAll<HTMLElement>('.ctx-menu-item').forEach((item) => {
+        this.el.appendChild(header);
+        continue;
+      }
+      const item = document.createElement('div');
+      item.className = 'ctx-menu-item';
+      item.dataset['act'] = it.act || '';
+      item.dataset['shortcut'] = it.shortcut || '';
+      item.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
+      // クリックされた項目の act を、開いた時点の対象とともに通知して閉じる
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         const act = item.dataset['act'] as A;
@@ -141,7 +150,8 @@ export class ContextMenu<T, A extends string = string> {
         this.close();
         if (t !== null) this.onSelect?.(act, t);
       });
-    });
+      this.el.appendChild(item);
+    }
     this.el.style.display = 'block';
     bringToFront(this.el);
     this.positionWithinViewport();

@@ -9,7 +9,7 @@ import { PlanEditor } from './plan/plan-editor';
 import { DisplayTimeManager } from './display-time-manager';
 import { MapPicker } from './map-picker';
 import type { Docking } from './docking';
-import { resetHudDocks, syncNavballPlacement } from './hud/dom';
+import { syncNavballPlacement } from './hud/dom';
 
 export type ViewId = 'combat' | 'map' | 'dock';
 
@@ -105,12 +105,13 @@ export class ViewManager {
   }
 
   // 現在のビューに合わせて HUD の見た目と、カメラ・計画編集・未来表示の各フラグを揃える。
+  // ここが決めるのはビュー起因の表示/非表示だけで、パネルの折りたたみはユーザーが
+  // マップビューの中で選んだ独立した状態なので、ビューの往復では触らない。
   private applyChrome(): void {
     const map = this.worldView === 'map';
     this.hud.root.classList.toggle('map-mode', map);
     this.hud.root.classList.toggle('dock-mode', this._current === 'dock');
     syncNavballPlacement(this.hud.root, map);
-    if (!map) resetHudDocks(this.hud.root);
     this.touchControls?.setMapMode(map);
     this.cameraSystem.setMapMode(map);
     this.editor.setMapMode(map);
