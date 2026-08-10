@@ -95,7 +95,8 @@ export class GroupedMarkers {
 
   // 代表のラベル文字列を組み立てる。count > 1 のときは "xN" を付ける。
   private label(item: GroupedMarkerItem, count: number): string {
-    return count > 1 ? `${item.name} x${count}\n${item.detail}` : `${item.name}\n${item.detail}`;
+    const head = count > 1 ? `${item.name} x${count}` : item.name;
+    return item.detail === '' ? head : `${head}\n${item.detail}`;
   }
 
   // key は対象(敵)ごとに一意で増え続けるため hide ではなく remove で DOM ごと片付ける。
