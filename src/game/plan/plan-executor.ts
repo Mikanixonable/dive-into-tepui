@@ -184,13 +184,19 @@ export class PlanExecutor {
     }
     if (this.phase !== 'burn' && this.phase !== 'trim') return;
 
-    // burn/trim: 射影が0を切ったら遮断。ゲートが閉じている間は推力だけ止め、フェーズは保持する。
+    // burn/trim: 射影が0を切ったら遮断。ゲートが閉じている間は推力だけ止め、フェーズは保持する
+    // (遮断判定そのものもゲートが開いている間しか行わない — 閉じている間は実際に燃焼していないので
+    // 軌道力学だけによる速度の自然なドリフトを遮断と誤認してはならない)。
     const dir = this.burnDirWorld!;
+    if (!this.thrustGateOpen) {
+      ship.thrust = null;
+      return;
+    }
     if (burnCutoffProjection(node.v, ship.state.v, dir) <= 0) {
       this.finish(ship, node);
       return;
     }
-    ship.thrust = this.thrustGateOpen ? scale(dir, this.pendingAccel) : null;
+    ship.thrust = scale(dir, this.pendingAccel);
   }
 
   // 点火予定時刻(armed 中)または遮断予定時刻(burn/trim 中)。フレームレートに依らず
