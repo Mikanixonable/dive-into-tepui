@@ -386,12 +386,13 @@ export class ShipPlacerPanel {
   // 艦艇配置パネルの DOM を組み立て、root へ追加する。基準天体・ラグランジュ系の選択肢は
   // ephemeris が実際に持つレジストリから組む。
   private readonly registry: CelestialRegistry;
-  // ObjectPicker のポップアップの親。パネル自身の overflow に切られないよう HUD ルートへ置く。
-  private readonly hudRoot: HTMLElement;
+  // ObjectPicker のポップアップの親。パネル自身の overflow に切られないよう popup レイヤへ置く。
+  private readonly popupRoot: HTMLElement;
 
-  constructor(root: HTMLElement, ephemeris: Ephemeris) {
+  // panelRoot はパネル自体の置き場所、popupRoot は ObjectPicker のポップアップの置き場所。
+  constructor(panelRoot: HTMLElement, popupRoot: HTMLElement, ephemeris: Ephemeris) {
     this.registry = ephemeris.registry;
-    this.hudRoot = root;
+    this.popupRoot = popupRoot;
     const orbitingIds = orbitingIdsOf(ephemeris.registry);
     this.attractorItems = orbitingIds.map((id) => [id, celestialBodyName(id)] as const);
     this.baseAttractorItems = this.attractorItems.filter(([id]) => id === 'moon');
@@ -405,7 +406,6 @@ export class ShipPlacerPanel {
     this.panel.style.top = '20px';
     this.panel.style.right = '20px';
     this.panel.style.width = 'max-content';
-    this.panel.style.zIndex = '30';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
     title.textContent = '軌道オブジェクト配置';
@@ -458,8 +458,7 @@ export class ShipPlacerPanel {
 
     this.buildButtonsAndKeybinds();
 
-    // root (hud-modal-shield) に追加
-    root.appendChild(this.panel);
+    panelRoot.appendChild(this.panel);
   }
 
   // 軌道要素指定の一式(基準天体・サイズ/形・向き・位相)を1つの div にまとめて返す。
@@ -483,7 +482,7 @@ export class ShipPlacerPanel {
     refreshPresets: () => void;
   } {
     const elementsGroup = document.createElement('div');
-    const attractorControl = new ObjectPicker<ReferenceAttractor>(this.hudRoot, '基準天体', (v) => {
+    const attractorControl = new ObjectPicker<ReferenceAttractor>(this.popupRoot, '基準天体', (v) => {
       this.attractorValue = v;
       attractorControl.setSelected(v);
       this.refreshPresets();
@@ -569,7 +568,7 @@ export class ShipPlacerPanel {
     libAz: HTMLInputElement;
   } {
     const lagrangeGroup = document.createElement('div');
-    const lagrangeSecondary = new ObjectPicker<OrbitingId>(this.hudRoot, '系', (v) => this.selectLagrangeSecondary(v));
+    const lagrangeSecondary = new ObjectPicker<OrbitingId>(this.popupRoot, '系', (v) => this.selectLagrangeSecondary(v));
     lagrangeSecondary.setGroups([{ label: '', items: this.lagrangeSystemItems }]);
     lagrangeSecondary.setSelected(this.lagrangeSecondaryValue);
     lagrangeGroup.appendChild(lagrangeSecondary.element);
