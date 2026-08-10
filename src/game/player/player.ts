@@ -299,9 +299,7 @@ export class Player extends Ship {
 
   // 被弾によるダメージ・致死判定。命中位置が展開中の放熱板ならその放熱板パーツへ、
   // そうでなければ無作為なパーツへダメージが入る。
-  attacked(bullet: Bullet, _simTime: number, activeStage: Stage, hitR: Vec3): void {
-    if (!this.alive) return;
-
+  private attackedByBullet(bullet: Bullet, hitR: Vec3, activeStage: Stage): void {
     this.thermal.addImpactHeat();
     const side = this.radiator.sideHitBy(hitR, this.state.r, this.att);
     const hitPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
@@ -320,9 +318,15 @@ export class Player extends Ship {
     this.destroyEffect();
   }
 
-  // 剛体接触によるダメージ・致死判定。自分が受けた Δv = impulse/mass で判定する。
-  collideWith(_other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+  // 弾は武装のダメージを、それ以外は接触の速度変化 Δv = impulse/mass を根拠にする
+  // (前者はゲームバランス、後者は物理量で、統合すると前者の根拠が消える)。
+  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
+
+    if (other instanceof Bullet) {
+      this.attackedByBullet(other, contact.point, activeStage);
+      return;
+    }
 
     if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
     if (this.hp > 0) {
