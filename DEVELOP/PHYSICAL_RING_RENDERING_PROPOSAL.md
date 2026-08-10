@@ -280,14 +280,12 @@ pixelRadiance = resolvedRadiance * coverage
   - 穴のない扁平球を廃止。
 - `src/game/celestial/ring-view.ts`
   - 太陽方向、カメラ位置、天体中心・半径をシェーダへ同期。
-  - 被覆率保存LODへ変更。
+  - 二値判定から被覆率保存・クロスフェードのLODへ変更。
 - `src/game/celestial/sphere-body.ts`
 - `src/game/celestial/point-body.ts`
   - ビュー別分岐を投影サイズベースへ統合。
 - `src/render/celestial-surface.ts`
   - 環による惑星表面の減光を追加。
-- `src/game/celestial/ring-lod.ts`
-  - 二値判定から被覆率・クロスフェード計算へ変更。
 - `src/assets/`
   - 土星のτプロファイルとアルベドを分離したテクスチャを追加。
 
