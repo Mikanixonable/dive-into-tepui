@@ -100,6 +100,7 @@ export class HudPanels {
     if (contacts) contacts.style.display = game.cameraSystem.overviewMode ? 'none' : '';
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;
+    this.setTargetVisibility(tgt !== null);
     const player0 = orbitInfo(player, attractors);
 
     // スタッツパネルを一定間隔で更新
@@ -255,6 +256,12 @@ export class HudPanels {
       <div class="row"><span class="k">傾斜角 INC</span><span class="v">${isFinite(t.incDeg) ? t.incDeg.toFixed(2) + '°' : '---'}</span></div>
       <div class="row"><span class="k">周期 PRD</span><span class="v">${fmtTime(t.period)}</span></div>
       <div class="row"><span class="k">相対傾斜 [AN/DN]</span><span class="v">${isFinite(t.relIncDeg) ? t.relIncDeg.toFixed(2) + '°' : '---'}</span></div>`;
+  }
+
+  // ターゲットが無いときはパネル自体を隠し、空のTARGETウィンドウを残さない。
+  private setTargetVisibility(visible: boolean): void {
+    const panel = this.els.get('tgtbody')?.closest<HTMLElement>('#hud-target');
+    if (panel) panel.style.display = visible ? '' : 'none';
   }
 
   // 敵一覧パネルの本文を、距離順の行として書き換える。第二ターゲットは第一と別に

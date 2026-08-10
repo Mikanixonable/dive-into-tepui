@@ -6,6 +6,7 @@ import type { Ephemeris } from '../physics/ephemeris';
 import { Vec3 } from '../physics/vec3';
 import { systemMembersAt } from './celestial/body-visibility';
 import { OverviewCamera } from './camera/overview-camera';
+import { focusPoint, focusTargetId } from './camera/focus-target';
 import { AnchorZone } from './hud/anchor-zone';
 import { RotationZone } from './hud/rotation-zone';
 import { hudDock } from './hud/dom';
@@ -14,9 +15,12 @@ import type { PlanDisplay } from './plan/plan-display';
 
 export class FrameControls {
   private readonly panel: HTMLElement;
+  private readonly cameraZone: AnchorZone;
   private readonly cameraRotationZone: RotationZone;
   private readonly translationZone: AnchorZone;
   private readonly planRotationZone: RotationZone;
+  // DOMイベントから呼ばれる選択処理が、注視点を固定点へ焼き込む時刻。
+  private lastTime = 0;
   // panelRoot はパネル自体(左ドック)の置き場所、popupRoot は ObjectPicker のポップアップの置き場所。
   constructor(
     panelRoot: HTMLElement,
@@ -32,6 +36,10 @@ export class FrameControls {
     const title = document.createElement('h3');
     title.textContent = '座標系';
     this.panel.appendChild(title);
+
+    this.cameraZone = new AnchorZone(popupRoot, 'カメラ', ephemeris, '固定を解除');
+    this.cameraZone.onSelect = (id) => this.selectCameraAnchor(id);
+    this.panel.appendChild(this.cameraZone.element);
 
     // 並進ゾーンには解除を出さない: 描く線は必ずどこかの座標系に焼き込まれるので
     // 「どこにも固定しない」状態が無く、太陽系空間への固定はプルダウンの恒星そのものにあたる。
@@ -55,15 +63,33 @@ export class FrameControls {
     hudDock(panelRoot, 'left').appendChild(this.panel);
   }
 
-  // パネルの表示と3ゾーンの選択肢・選択表示を、他モジュールの状態(両座標系)へ合わせる。
+  // カメラの固定を解除する: いまの注視点を、恒星中心の慣性系へその場に置き去りにする
+  // (恒星が無いレジストリでは焼き込み先が無いので ephemeris.inertialFrame に倒す)。
+  private selectCameraAnchor(id: string | null): void {
+    if (id !== null) {
+      this.overviewCamera.setFocusTarget({ kind: 'object', id });
+      return;
+    }
+    const frame = this.ephemeris.starId !== null
+      ? this.ephemeris.frameOf(this.ephemeris.starId, null)
+      : this.ephemeris.inertialFrame;
+    this.overviewCamera.setFocusTarget(focusPoint(this.ephemeris, frame, this.overviewCamera.resolvedFocus, this.lastTime));
+  }
+
+  // パネルの表示と4ゾーンの選択肢・選択表示を、他モジュールの状態(注視対象・両座標系)へ合わせる。
   sync(
     pickables: readonly MapPickable[], cameraPos: Vec3, attractors: readonly Attractor[],
-    visible: boolean,
+    simTime: number, visible: boolean,
   ): void {
+    this.lastTime = simTime;
     this.panel.style.display = visible ? 'block' : 'none';
     if (!visible) return;
 
     const members = systemMembersAt(this.ephemeris.registry, cameraPos, attractors);
+
+    this.cameraZone.setItems(pickables);
+    this.cameraZone.setNearby(members, pickables);
+    this.cameraZone.setSelected(focusTargetId(this.overviewCamera.focus) ?? null);
 
     this.cameraRotationZone.setNearby(members);
     this.cameraRotationZone.setSelected(this.overviewCamera.cameraFrame.rotatingWith);
