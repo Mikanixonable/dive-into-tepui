@@ -8,16 +8,19 @@ import { DebrisKind, DebrisPiece } from '../game-entity/debris-piece';
 import { Billboard } from '../../render/billboard';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
 import type { EntityManager } from '../simulation/entity-manager';
+import type { Sfx } from '../../audio/sfx';
 
 // フラッシュ・破片エフェクトの生成窓口。scene への注入をここに一元化し、破片は
 // entities へ追加する。フラッシュの毎フレーム更新・寿命管理は FlashEffectManager が持つ。
 export class EffectsSystem {
   private readonly _flashEffects: FlashEffectManager;
 
-  // scene への注入元と、破片の追加先となる entities を受け取る。
+  // scene への注入元と、破片の追加先となる entities を受け取る。sfx/自身(fx)は DebrisPiece
+  // (接触音・弾命中エフェクト)へそのまま渡す。
   constructor(
     private readonly _scene: THREE.Scene,
     private readonly entities: EntityManager,
+    private readonly _sfx: Sfx,
   ) {
     this._flashEffects = new FlashEffectManager(_scene);
   }
@@ -35,19 +38,19 @@ export class EffectsSystem {
   // プラズマ弾命中フラッシュを生成する。
   spawnPlasmaFlash(state: KinematicState): void {
     this.spawnFlash(state,
-      C.PLASMA_HIT_FLASH_SIZE0,
-      C.PLASMA_HIT_FLASH_SIZE1,
-      C.PLASMA_HIT_FLASH_DURATION,
-      C.COLOR_PLASMA_HIT_FLASH);
+      C.PLASMA_IMPACT_FLASH_SIZE0,
+      C.PLASMA_IMPACT_FLASH_SIZE1,
+      C.PLASMA_IMPACT_FLASH_DURATION,
+      C.COLOR_PLASMA_IMPACT_FLASH);
   }
 
   // 実弾命中フラッシュを生成する。
   spawnBulletFlash(state: KinematicState): void {
     this.spawnFlash(state,
-      C.BULLET_HIT_FLASH_SIZE0,
-      C.BULLET_HIT_FLASH_SIZE1,
-      C.BULLET_HIT_FLASH_DURATION,
-      C.COLOR_BULLET_HIT_FLASH);
+      C.BULLET_IMPACT_FLASH_SIZE0,
+      C.BULLET_IMPACT_FLASH_SIZE1,
+      C.BULLET_IMPACT_FLASH_DURATION,
+      C.COLOR_BULLET_IMPACT_FLASH);
   }
 
   // ガスのような気体が放出されるエフェクト（被弾時やデブリ命中時用）
@@ -76,7 +79,7 @@ export class EffectsSystem {
   // 各 spawnXxx はすべてこれの薄いラッパー — kind ごとの見た目・寿命判定の違いは
   // DebrisPiece/DebrisKind(game-entity.ts)側の責務。
   private spawnDebrisPiece(state: KinematicState, kind: DebrisKind, att: Attitude, radius?: number): void {
-    this.entities.addDebris(new DebrisPiece(state, kind, att, radius, this._scene));
+    this.entities.addDebris(new DebrisPiece(state, kind, att, this._sfx, this, radius, this._scene));
   }
 
   // t は発生時刻(破片 state のエポック)。破壊された entity の state.t をそのまま渡す。

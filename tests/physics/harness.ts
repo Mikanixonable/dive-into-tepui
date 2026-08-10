@@ -2,7 +2,7 @@
 // tsconfig.test.json で CommonJS にコンパイルし node で実行する回帰テスト用。
 // 外部依存なし(素の node:assert のみ)。
 
-export type TestFn = () => void;
+export type TestFn = () => void | Promise<void>;
 
 interface Case {
   name: string;
@@ -15,11 +15,11 @@ export function test(name: string, fn: TestFn): void {
   cases.push({ name, fn });
 }
 
-export function runAll(): void {
+export async function runAll(): Promise<void> {
   let failed = 0;
   for (const c of cases) {
     try {
-      c.fn();
+      await c.fn();
       console.log(`  ok  - ${c.name}`);
     } catch (err) {
       failed++;

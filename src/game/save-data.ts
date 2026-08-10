@@ -174,6 +174,16 @@ export interface SnapshotMeta {
   phase: GamePhase;
 }
 
+// 天体暦を使うスナップショットが、どの絶対時刻・プロファイル・packで生成されたか。
+// このフィールドは後方互換のため GameSaveData では任意とする。旧形式には無く、
+// 旧スナップショットは SnapshotService が従来どおり復元を試みる。
+export interface EphemerisContext {
+  epochJdTdb: number;
+  profileId: string;
+  packId: string;
+  packFormatVersion: number;
+}
+
 // 1ステージぶんのスナップショット集合とクリア記録。クリエイティブモードのスロットは
 // これを stageId='creative' の1件だけ持つ。
 export interface StageHistoryMeta {
@@ -227,6 +237,8 @@ export interface GameSaveData {
   version: number;
   stageId: string;
   simTime: number;
+  /** 旧スナップショットには無い。存在する場合は現在の暦と一致しなければ復元しない。 */
+  ephemerisContext?: EphemerisContext;
   phaseOffsets: Partial<Record<AttractorId, number>>;
   players: PlayerSaveData[];
   activePlayerId: string | null;

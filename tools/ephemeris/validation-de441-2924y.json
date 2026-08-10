@@ -1,0 +1,53 @@
+{
+  "model": "tepui-de441-11body-ias15-lunar-secular-v2",
+  "startJdTdb": 6834454.5,
+  "targetJdTdb": 7902483.741675,
+  "forecastYears": 2924.1047,
+  "lunarLongitudeAccelArcsecPerCy2": 62.56448970403922,
+  "bodies": {
+    "sun": {
+      "geocentricPositionErrorM": 159983114.66884133,
+      "geocentricAngularErrorDeg": 0.060803138758360756
+    },
+    "mercury": {
+      "geocentricPositionErrorM": 31405314.812789056,
+      "geocentricAngularErrorDeg": 0.003246154628675487
+    },
+    "venus": {
+      "geocentricPositionErrorM": 343467676.79830235,
+      "geocentricAngularErrorDeg": 0.09179021077228627
+    },
+    "earth": {
+      "geocentricPositionErrorM": 0.0,
+      "geocentricAngularErrorDeg": 0.0
+    },
+    "moon": {
+      "geocentricPositionErrorM": 5794808.683261907,
+      "geocentricAngularErrorDeg": 0.8172995828092102
+    },
+    "mars": {
+      "geocentricPositionErrorM": 186105913.9314476,
+      "geocentricAngularErrorDeg": 0.032132298092869334
+    },
+    "jupiter": {
+      "geocentricPositionErrorM": 165577373.6847315,
+      "geocentricAngularErrorDeg": 0.008320976866278336
+    },
+    "saturn": {
+      "geocentricPositionErrorM": 152772698.67802438,
+      "geocentricAngularErrorDeg": 0.005071887888550074
+    },
+    "uranus": {
+      "geocentricPositionErrorM": 164407853.54132837,
+      "geocentricAngularErrorDeg": 0.0025654598200660923
+    },
+    "neptune": {
+      "geocentricPositionErrorM": 185200615.0003033,
+      "geocentricAngularErrorDeg": 0.002220961642411919
+    },
+    "pluto": {
+      "geocentricPositionErrorM": 140397886.68041855,
+      "geocentricAngularErrorDeg": 0.0004242851306886367
+    }
+  }
+}

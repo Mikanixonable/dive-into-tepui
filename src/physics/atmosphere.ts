@@ -1,8 +1,10 @@
 // 区分指数大気密度モデル(Vallado, "Fundamentals of Astrodynamics and
 // Applications" の CIRA-72 / U.S. Standard Atmosphere 準拠テーブル)と、
-// その大気による対気速度・抗力加速度。THREE/DOM 非依存の純粋関数。
+// その大気による対気速度・抗力加速度・高度マージンによる焼失判定。
+// THREE/DOM 非依存の純粋関数。
+import { KinematicState } from './kinematic-state';
 import { R_EARTH, SIDEREAL_DAY } from './solar-system';
-import { Vec3, len, v3 } from './vec3';
+import { Vec3, len, sub, v3 } from './vec3';
 
 // [基準高度 h0 [km], 基準密度 ρ0 [kg/m^3], スケールハイト H [km]]
 const TABLE: readonly [number, number, number][] = [
@@ -63,4 +65,18 @@ export function dragAccel(r: Vec3, v: Vec3, bcInv: number): Vec3 {
   const { x: vrx, y: vry, z: vrz } = airspeed(r, v);
   const k = -0.5 * rho * Math.sqrt(vrx * vrx + vry * vry + vrz * vrz) * bcInv;
   return v3(vrx * k, vry * k, vrz * k);
+}
+
+// 位置 r が、大気を持つ天体の表面から margin 以内まで沈み込んでいるか。このモデルが表す
+// 大気は地球のものだけなので、判定対象も地球に限る。
+export function isBurnedUp<T extends { readonly id: string; readonly radius: number; readonly state: KinematicState }>(
+  r: Vec3,
+  bodies: readonly T[],
+  margin: number,
+): boolean {
+  for (const body of bodies) {
+    if (body.id !== 'earth') continue;
+    if (len(sub(r, body.state.r)) < body.radius + margin) return true;
+  }
+  return false;
 }

@@ -106,17 +106,3 @@ export function orbitalElementsOf(s: KinematicState, center: Attractor): Orbital
   const rel = toFrameState(frameOfAttractor(center), s);
   return orbitalElementsFromState(kinematicState(s.t, rel.r, rel.v), center);
 }
-
-// 位置 r がその表面から margin 以内まで沈み込んでいる天体。無ければ null。margin(大気圏突入
-// 高度など)はゲーム側の判断なので呼び出し側から受け取る — physics/ はその値自体を知らない。
-export function hitAttractor(r: Vec3, attractors: readonly Attractor[], margin: number): Attractor | null {
-  for (const attractor of attractors) {
-    if (len(sub(r, attractor.state.r)) < attractor.radius + margin) return attractor;
-  }
-  return null;
-}
-
-// 位置 r がいずれかの天体の表面から margin 以内まで沈み込んでいるか。
-export function hitCelestialBody(r: Vec3, attractors: readonly Attractor[], margin: number): boolean {
-  return hitAttractor(r, attractors, margin) !== null;
-}

@@ -32,6 +32,8 @@ import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
 import { EnvironmentScene } from './celestial/environment-scene';
 import { Ephemeris } from '../physics/ephemeris';
+import type { AbsoluteEphemeris } from '../physics/absolute-ephemeris';
+import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from './sim-epoch';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
 import { DebugTrajectoryLine } from './debug-trajectory-line';
@@ -114,6 +116,7 @@ export class Game {
     settingsPanel: SettingsPanel,
     unlockManager: UnlockManager,
     snapshotService: SnapshotService,
+    absoluteEphemeris?: AbsoluteEphemeris,
   ) {
     this.launchMode = launch.mode;
     this._scene = gs.scene;
@@ -126,7 +129,7 @@ export class Game {
 
     const ephemerisConfig = ephemerisConfigFor(launch);
     this._ephemeris = ephemerisConfig === undefined
-      ? new Ephemeris()
+      ? new Ephemeris(undefined, undefined, SIM_EPOCH_ET, {}, absoluteEphemeris, SIM_EPOCH_JD_TDB)
       : new Ephemeris(ephemerisConfig.registry, ephemerisConfig.originId, ephemerisConfig.epochOffsetSec);
 
     this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
@@ -135,7 +138,7 @@ export class Game {
     this.equatorNodeMarkers = new EquatorNodeMarkers(this.markerManager, this.ephemeris);
 
     this.entities = new EntityManager();
-    this.effects = new EffectsSystem(this._scene, this.entities);
+    this.effects = new EffectsSystem(this._scene, this.entities, this._sfx);
     // 依存グラフを組むための一時艦。Creative では構築後に必ず破棄し、実ゲーム上は0隻で開始する。
     const bootstrapPlayer = new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager);
     this.player = bootstrapPlayer;
@@ -184,7 +187,7 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.viewManager.setTouchControls(this.touchControls);
 
-    this.simulator = new Simulator(this.entities, this.ephemeris, this._sfx, this.effects);
+    this.simulator = new Simulator(this.entities, this.ephemeris);
     this.predictor = new Predictor(this.entities, this.ephemeris);
 
     if (launch.mode === 'stage') {
@@ -393,7 +396,7 @@ export class Game {
       const simDt = dt * this.simSpeedManager.simSpeed;
       this.simulator.advance(
         dt, simDt, null, this.activeStage,
-        true, false, true,
+        false, true, this.nanWatchdog,
       );
       this.predictor.update(
         this.simulator.simTime,
@@ -421,7 +424,7 @@ export class Game {
       player.thrust = null;
       player.torque = v3();
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
-      this.simulator.advance(dt, simDt, player, this.activeStage, false, false, false);
+      this.simulator.advance(dt, simDt, player, this.activeStage, false, false, this.nanWatchdog);
       this.nanWatchdog.checkAll('advance(決着後)', player, this.entities, this.simulator.simTime, dt, simDt);
       this.effects.update(dt, this.simulator.simTime);
       // 決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
@@ -458,18 +461,9 @@ export class Game {
     this.applyWarpCommandPolicy();
     const simDt = dt * this.simSpeedManager.simSpeed;
     this.simulator.advance(dt, simDt, player, this.activeStage,
-      true, // bulletCollision
       this.simSpeedManager.canResolvePhysicalCollisions, // resolveCollision
       true, // doSubstep
-      (a, b, speed) => {
-        if (a === player && b instanceof Enemy) {
-          player.collidedAtSpeed(speed, this.activeStage);
-          b.collidedAtSpeed(speed, this.simulator.simTime, this.activeStage);
-        } else if (b === player && a instanceof Enemy) {
-          player.collidedAtSpeed(speed, this.activeStage);
-          a.collidedAtSpeed(speed, this.simulator.simTime, this.activeStage);
-        }
-      },
+      this.nanWatchdog,
     );
 
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
@@ -780,4 +774,3 @@ export class Game {
     };
   }
 }
-

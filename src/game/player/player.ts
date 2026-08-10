@@ -7,7 +7,9 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';
+import type { GameEntity } from '../game-entity/game-entity';
 import type { EntityManager } from '../simulation/entity-manager';
+import type { Contact } from '../simulation/contact';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { fmtMarkerDist } from '../hud/utils';
@@ -15,7 +17,8 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { OrbitLine } from '../../render/orbit-line';
-import { Attractor, hitCelestialBody, strongestAttractor } from '../../physics/attractor';
+import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Stage } from '../stages/stage';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
@@ -91,22 +94,20 @@ export class Player extends Ship {
     _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
     name = 'PLAYER', initialState?: KinematicState, entityId = name) {
     const state = initialState ?? Player.makeInitialState();
-    super(name, state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_RADIUS, C.PLAYER_MAX_HP, _scene, entityId);
+    super(name, state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_HULL_RADIUS, C.PLAYER_MAX_HP, _scene, entityId);
     this.displayName = name;
     this._hud = _hud;
     this._sfx = _sfx;
     this._fx = _fx;
     this.playerScene = _scene;
     this.mass = C.PLAYER_MASS;
-    // 剛体接触は実機体サイズ。被弾判定半径(hitRadius)を使うと排莢直後の薬莢を弾いてしまう
-    this.radius = C.PLAYER_HULL_RADIUS;
     this.collides = true;
 
     this.throttle = new PlayerThrottle(_hud);
     this.fire = new PlayerFire(this, _hud, _sfx, _scene, _fx);
-    this.belt = new Belt(this.obj);
+    this.belt = new Belt(this.obj, this);
     this.thermal = new ThermalSystem(_hud, _sfx);
-    this.radiator = new RadiatorSystem(this.obj);
+    this.radiator = new RadiatorSystem(this.obj, this);
     this.power = new PowerSystem(this.obj);
     this.thrustEffects = new ThrustEffects(_scene, _sfx);
     this.rcsEffects = new RcsEffects(_scene, _sfx);
@@ -230,7 +231,6 @@ export class Player extends Ship {
   stepEnvironment(dt: number, ephemeris: Ephemeris, simTime: number): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
-    this.hitRadius = this.radiator.hitRadius();
     const sunDir = ephemeris.sunDirFrom(this.state.r, simTime);
     const sunlit = sunlitFactor(this.state.r, sunDir, C.SHADOW_PENUMBRA);
     this.thermal.setRadiatorLoad(
@@ -294,19 +294,16 @@ export class Player extends Ship {
     return { up: wearOf(up), down: wearOf(down) };
   }
 
-  // 被弾によるダメージ・致死判定。命中位置が展開中の放熱板ならその放熱板パーツへ、
-  // そうでなければ無作為なパーツへダメージが入る。
-  attacked(bullet: Bullet, _simTime: number, activeStage: Stage, hitR: Vec3): void {
-    if (!this.alive) return;
-
+  // 被弾によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら
+  // 無作為なパーツへダメージが入る。
+  private attackedByBullet(bullet: Bullet, impactPoint: Vec3, activeStage: Stage, side: RadiatorSide | null = null): void {
     this.thermal.addImpactHeat();
-    const side = this.radiator.sideHitBy(hitR, this.state.r, this.att);
-    const hitPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
-    this.applyDamageToParts(side === null ? bullet.damage : C.RADIATOR_HIT_DAMAGE, hitPart);
-    if (side !== null && hitPart && hitPart.hp <= 0) this.radiatorBreakEffect(side);
+    const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
+    this.applyDamageToParts(side === null ? bullet.damage : C.RADIATOR_BULLET_DAMAGE, damagedPart);
+    if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
     if (this.hp > 0) {
       // 生存していれば被弾エフェクトのみ
-      this.hitEffect(bullet, hitR);
+      this.impactEffect(bullet, impactPoint);
       return;
     }
 
@@ -317,11 +314,18 @@ export class Player extends Ship {
     this.destroyEffect();
   }
 
-  // 敵機との高速接触によるダメージ・致死判定。speed は接触時の相対速度 [m/s]。
-  collidedAtSpeed(speed: number, activeStage: Stage): void {
+  // 弾は武装のダメージを、それ以外は接触の速度変化 Δv = impulse/mass を根拠にする
+  // (前者はゲームバランス、後者は物理量で、統合すると前者の根拠が消える)。
+  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
-    if (!this.applyCollisionDamage(speed)) return;
+    if (other instanceof Bullet) {
+      this.attackedByBullet(other, contact.point, activeStage);
+      return;
+    }
+
+    // 弾以外との接触は Δv ベースの物理ダメージとして、無作為なパーツへ振り分ける。
+    if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
     if (this.hp > 0) {
       this._sfx.clank();
       this._fx.spawnGasPuff(this.state);
@@ -329,21 +333,51 @@ export class Player extends Ship {
     }
 
     this.alive = false;
-    activeStage.recordPlayerLost('敵機との高速接触により機体を喪失した');
+    activeStage.recordPlayerLost('高速接触により機体を喪失した');
     this.destroyEffect();
   }
 
-  // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。
+  // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージの割り振り先が side のパーツに
+  // 固定される点だけが collideWith(機体本体)との違い。
+  collideAtRadiator(side: RadiatorSide, other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+    if (!this.alive) return;
+
+    if (other instanceof Bullet) {
+      this.attackedByBullet(other, contact.point, activeStage, side);
+      return;
+    }
+
+    // 弾以外との接触は、collideWith と異なり side の放熱板パーツへ固定して振り分ける。
+    const damagedPart = this.radiatorParts[side === 'up' ? 0 : 1];
+    if (!this.applyCollisionDamage(contact.impulse / this.mass, damagedPart)) return;
+    if (damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
+    if (this.hp > 0) {
+      this._sfx.clank();
+      this._fx.spawnGasPuff(this.state);
+      return;
+    }
+
+    this.alive = false;
+    activeStage.recordPlayerLost('高速接触により機体を喪失した');
+    this.destroyEffect();
+  }
+
+  // この艦の放熱板の、今フレームの接触代理一覧(展開中かつ健在な折りのみ)。
+  collisionFolds(simTime: number): GameEntity[] {
+    return this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime);
+  }
+
+  // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。固体表面への接触は collideWith が扱う。
   checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
     const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, earthAltitudeOf(this.state.r));
 
-    // 熱・動圧・表面到達いずれかの限界超過を喪失理由として判定する
+    // 熱・動圧・大気突入いずれかの限界超過を喪失理由として判定する
     let reason: string | null = null;
     if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
     else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
     else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
-    else if (hitCelestialBody(this.state.r, attractors, C.PLAYER_MIN_ALT)) reason = '天体表面付近に達し機体は分解した';
+    else if (isBurnedUp(this.state.r, attractors, C.PLAYER_MIN_ALT)) reason = '大気圏に突入し機体は焼失した';
     if (reason === null) return;
 
     this.alive = false;
@@ -352,14 +386,14 @@ export class Player extends Ship {
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
-  private hitEffect(bullet: Bullet, hitR: Vec3): void {
+  private impactEffect(bullet: Bullet, impactPoint: Vec3): void {
     this._sfx.hit();
     if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, hitR, this.state.v));
+      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, impactPoint, this.state.v));
     } else {
-      this._fx.spawnBulletFlash(kinematicState(this.state.t, hitR, this.state.v));
+      this._fx.spawnBulletFlash(kinematicState(this.state.t, impactPoint, this.state.v));
     }
-    this._fx.spawnGasPuff(kinematicState(this.state.t, hitR, this.state.v));
+    this._fx.spawnGasPuff(kinematicState(this.state.t, impactPoint, this.state.v));
   }
 
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。

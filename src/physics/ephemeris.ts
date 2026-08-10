@@ -7,6 +7,7 @@
 // 依存する隠れた制約を作らない)。
 // THREE/DOM 非依存の純関数群 + 状態(初期位相とメモ)を持つサンプラクラス。
 import { Quat, qFromForwardUp, qRotate } from './attitude';
+import { AbsoluteEphemeris, OriginCenteredEphemeris } from './absolute-ephemeris';
 import { Attractor, AttractorId, Degree2Gravity, OrbitingId } from './attractor';
 import { cassiniSpinAxis, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
@@ -123,7 +124,9 @@ export class Ephemeris {
     readonly registry: CelestialRegistry = SOLAR_SYSTEM,
     readonly originId: AttractorId = 'earth',
     private readonly epochOffsetSec: number = EPOCH_T_OFFSET,
-    phaseOffsets: Partial<Record<AttractorId, number>> = { moon: Math.random() * 2 * Math.PI },
+    phaseOffsets: Partial<Record<AttractorId, number>> = {},
+    absoluteSource?: AbsoluteEphemeris,
+    epochJdTdb = 2451545 + epochOffsetSec / DAY,
   ) {
     this.phaseOffsets = phaseOffsets;
     this.ids = Object.keys(registry);
@@ -136,7 +139,15 @@ export class Ephemeris {
         .filter((id) => bodyDef(registry, id).kind !== 'star')
         .map((id) => ({ center: rotatingFrameCenterOf(registry, id), rotatingWith: id })),
     ];
+    this.precise = absoluteSource === undefined
+      ? null
+      : new OriginCenteredEphemeris(absoluteSource, originId, epochJdTdb);
   }
+
+  // DE440/長期暦パックが与えられたときだけ使う高精度経路。未収録の衛星は、収録済みの
+  // 親天体へ既存の惑星相対モデルを足して補う。暦パックが無い既存ステージは解析モデルの
+  // ままなので、代替太陽系レジストリの挙動を変えない。
+  private readonly precise: OriginCenteredEphemeris | null;
 
   // 現在の位相オフセットのスナップショット(セーブ用)。
   getPhaseOffsets(): Partial<Record<AttractorId, number>> {
@@ -255,6 +266,15 @@ export class Ephemeris {
   // 指定時刻の ECI(originId 中心)位置・速度。日心状態から originId の日心状態を引く一箇所だけで
   // 座標変換する。originId 自身は同じ計算を2回引くので厳密に 0 になる。
   stateOf(id: AttractorId, t: number): KinematicState {
+    if (this.precise?.hasBody(id)) return this.precise.stateOf(id, t);
+    if (this.precise !== null) {
+      const def = bodyDef(this.registry, id);
+      if (def.kind === 'satellite' && this.precise.hasBody(def.planet)) {
+        const parent = this.precise.stateOf(def.planet, t);
+        const rel = this.satelliteRelState(def, t);
+        return kinematicState(t, add(parent.r, rel.r), add(parent.v, rel.v));
+      }
+    }
     const helio = this.helioStateOf(id, t);
     const originHelio = this.helioStateOf(this.originId, t);
     return kinematicState(t, sub(helio.r, originHelio.r), sub(helio.v, originHelio.v));
@@ -270,12 +290,35 @@ export class Ephemeris {
   // 実位置の x̂ 軸から最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
   orbitFrameRotationAt(id: OrbitingId, t: number): FrameRotation {
     const def = bodyDef(this.registry, id) as OrbitingDef;
+    if (this.precise?.hasBody(id)) {
+      const primary = primaryOf(this.registry, id);
+      if (primary !== null && this.precise.hasBody(primary)) {
+        const a = this.precise.stateOf(primary, t);
+        const b = this.precise.stateOf(id, t);
+        const r = sub(b.r, a.r);
+        const v = sub(b.v, a.v);
+        const h = cross(r, v);
+        const xHat = norm(r);
+        const zHat = norm(h);
+        const yHat = cross(zHat, xHat);
+        const q = qFromForwardUp(zHat, yHat);
+        if (q !== null) return { q, omega: scale(zHat, len(h) / (len(r) * len(r))) };
+      }
+    }
     return keplerOrbitRotation(keplerOrbitOf(def), t + this.epochOffsetSec, this.phaseOf(id));
   }
 
   // id の軌道面の法線(単位ベクトル、ECI)。
   orbitNormalAt(id: OrbitingId, t: number): Vec3 {
     const def = bodyDef(this.registry, id) as OrbitingDef;
+    if (this.precise?.hasBody(id)) {
+      const primary = primaryOf(this.registry, id);
+      if (primary !== null && this.precise.hasBody(primary)) {
+        const a = this.precise.stateOf(primary, t);
+        const b = this.precise.stateOf(id, t);
+        return norm(cross(sub(b.r, a.r), sub(b.v, a.v)));
+      }
+    }
     return keplerOrbitNormal(keplerOrbitOf(def), t + this.epochOffsetSec, this.phaseOf(id));
   }
 

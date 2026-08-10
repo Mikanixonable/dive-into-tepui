@@ -6,11 +6,14 @@ import { FramePicker } from '../hud/frame-picker';
 import { hudDock } from '../hud/dom';
 import { BodyClassToggles } from '../celestial/body-visibility';
 
-// クラス別トグルの表示名。恒星と惑星は常時表示なのでトグルを持たない。
+// クラス別トグルの表示名。恒星と惑星は常時表示なのでトグルを持たない。軌道線とラベルを
+// 別々に切り替えられるクラスは1クラスにつき2行になる。
 const BODY_CLASS_LABELS: readonly (readonly [keyof BodyClassToggles, string])[] = [
-  ['satellite', '衛星'],
-  ['dwarf', '準惑星'],
-  ['smallBody', '小天体'],
+  ['satelliteLabel', '衛星'],
+  ['dwarfOrbit', '準惑星: 軌道'],
+  ['dwarfLabel', '準惑星: ラベル'],
+  ['smallBodyOrbit', '小天体: 軌道'],
+  ['smallBodyLabel', '小天体: ラベル'],
   ['lagrange', 'ラグランジュ点'],
 ];
 
