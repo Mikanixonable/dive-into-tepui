@@ -51,7 +51,7 @@ import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
 import { Base } from './game-entity/base';
 import { strongestAttractor } from '../physics/attractor';
-import { mergeAttractors } from './simulation/attractors';
+import { mergeAttractors, planAttractorProvider } from './simulation/attractors';
 import { FrameControls } from './frame-controls';
 
 export class Game {
@@ -549,7 +549,13 @@ export class Game {
   // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
   private updateMapPresentation(dt: number, afterRefresh?: () => void): void {
     this._environment.update(this.displayTime, this.cameraSystem.overviewMode);
-    this.editor.update(this.simulator.simTime, this.displayTime, this.entities.attractors());
+    const planProvider = planAttractorProvider(
+      this.ephemeris,
+      this.entities,
+      this.player ? [this.player.id] : [],
+      this.simulator.simTime,
+    );
+    this.editor.update(this.simulator.simTime, this.displayTime, planProvider);
     this.equatorNodeMarkers.update(
       this.equatorNodeSources(), this.editor.planDisplay.planFrame, this.displayTime,
     );
