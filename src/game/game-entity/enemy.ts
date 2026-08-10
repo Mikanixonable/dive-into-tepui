@@ -148,14 +148,14 @@ export class Enemy extends Ship {
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
-  private hitEffect(bullet: Bullet, hitR: Vec3): void {
+  private impactEffect(bullet: Bullet, impactPoint: Vec3): void {
     this._sfx.enemyHit();
     if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, hitR, this.state.v));
+      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, impactPoint, this.state.v));
     } else {
-      this._fx.spawnBulletFlash(kinematicState(this.state.t, hitR, this.state.v));
+      this._fx.spawnBulletFlash(kinematicState(this.state.t, impactPoint, this.state.v));
     }
-    this._fx.spawnGasPuff(kinematicState(this.state.t, hitR, this.state.v));
+    this._fx.spawnGasPuff(kinematicState(this.state.t, impactPoint, this.state.v));
   }
 
   // 撃破時の爆発音・エフェクトを発生させる。
@@ -166,12 +166,12 @@ export class Enemy extends Ship {
   }
 
   // 被弾によるダメージ・致死判定。
-  private attackedByBullet(bullet: Bullet, hitR: Vec3, simTime: number, activeStage: Stage): void {
+  private attackedByBullet(bullet: Bullet, impactPoint: Vec3, simTime: number, activeStage: Stage): void {
     activeStage.scoreCounter.recordHit();
 
     this.applyDamageToParts(bullet.damage);
     if (this.hp > 0) {
-      this.hitEffect(bullet, hitR);
+      this.impactEffect(bullet, impactPoint);
       return;
     }
 
@@ -273,12 +273,12 @@ export class Enemy extends Ship {
     const relV = sub(player.state.v, v);
 
     // 正確な見越し時間を計算
-    let timeToHit = solveLeadTime(toPlayer, relV, C.PLASMA_BULLET_SPEED);
-    if (timeToHit === null || timeToHit < 0) {
-      timeToHit = len(toPlayer) / C.PLASMA_BULLET_SPEED; // フォールバック
+    let leadTime = solveLeadTime(toPlayer, relV, C.PLASMA_BULLET_SPEED);
+    if (leadTime === null || leadTime < 0) {
+      leadTime = len(toPlayer) / C.PLASMA_BULLET_SPEED; // フォールバック
     }
 
-    const predictedRelPos = add(toPlayer, scale(relV, timeToHit));
+    const predictedRelPos = add(toPlayer, scale(relV, leadTime));
     const aimDir = norm(predictedRelPos);
 
     const sunDir = ephemeris.sunDirFrom(r, simTime);
@@ -291,7 +291,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_HIT_DAMAGE, this._sfx, this.scene);
+    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_BULLET_DAMAGE, this._sfx, this.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
