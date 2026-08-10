@@ -125,6 +125,29 @@ export function register(): void {
     assert.equal(executor.nextEventTime(ship, 49), null);
   });
 
+  test('PlanExecutor: ゲートが閉じている間はapplyIgnitionAndCutoffの遮断判定も走らない(regression I)', () => {
+    const ship = makeShip();
+    ship.plan.trackAnchor(ship.state);
+    const dv = v3(0, 0, 200); // r=(1e7,0,0) と平行にならない向き(法線方向)
+    const node = kinematicState(50, ship.state.r, add(ship.state.v, dv));
+    ship.plan.addNode(node);
+    const executor = new PlanExecutor(hud);
+
+    alignExactly(ship, v3(0, 0, 1), ship.state.r);
+    executor.update(ship, 0.1, 49, openGate);
+    executor.applyIgnitionAndCutoff(ship, 49);
+    assert.ok(ship.thrust !== null, 'test setup: 点火できていること');
+
+    // 高warpでゲートが閉じている間、実際には燃焼していないのに軌道力学だけの速度変化で
+    // 射影が0を切った(=遮断条件を満たした)状況を模す。
+    ship.state = kinematicState(49, ship.state.r, node.v);
+    executor.update(ship, 0.1, 49, closedGate);
+    executor.applyIgnitionAndCutoff(ship, 49);
+
+    assert.equal(ship.thrust, null, 'ゲートが閉じている間は推力が止まる');
+    assert.equal(ship.plan.nodes.length, 1, 'ゲートが閉じている間はノードが消化されないこと');
+  });
+
   test('PlanExecutor: 点火後、update() を挟んでもthrustが非nullのまま維持される(regression A)', () => {
     const ship = makeShip();
     ship.plan.trackAnchor(ship.state);
