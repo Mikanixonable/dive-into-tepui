@@ -145,8 +145,9 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-map-scale .map-scale-tick.q3 { left: 75%; }
 #hud-map-scale .map-scale-tick.end { right: 0; }
 #hud-object-list { max-height: 320px; overflow-y: auto; }
+#hud-object-list .object-list-search { padding:2px 4px; }
+#hud-object-list .object-list-search input { width:100%; box-sizing:border-box; background:${SURFACE}; color:${INK}; border:1px solid ${EDGE}; font:inherit; }
 #hud-object-list .object-list-tools { display:flex; gap:3px; flex-wrap:wrap; padding:2px 4px; }
-#hud-object-list .object-list-tools input { min-width: 90px; flex:1; background:${SURFACE}; color:${INK}; border:1px solid ${EDGE}; font:inherit; }
 #hud-object-list .object-list-tools button {
   font-size:8px; padding:2px 4px; border:1px solid ${EDGE}; border-radius:4px;
   background:${SURFACE}; color:${INK_SOFT};
