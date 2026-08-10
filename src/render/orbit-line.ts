@@ -17,9 +17,22 @@ const TOL_ECC = 3e-4; // 離心率の変化
 const TOL_PLANE = Math.cos((0.12 * Math.PI) / 180); // 軌道面法線の角変化
 const TOL_APSE = Math.cos((0.3 * Math.PI) / 180); // 近点方向の角変化(e が大きいときのみ)
 
+// excludeNearBody の除外角半径に掛ける安全率。天体半径そのままだと表面ぎりぎりで
+// depth 精度によりまだチラつきうるため余裕を持たせる。
+const EXCLUDE_ANGLE_MARGIN = 2.5;
+
+// 2つの角度(ラジアン)の最短距離を [0, π] で返す。
+function angularDiff(a: number, b: number): number {
+  let d = Math.abs(a - b) % (Math.PI * 2);
+  if (d > Math.PI) d = Math.PI * 2 - d;
+  return d;
+}
+
 export class OrbitLine {
   readonly line: THREE.Line;
   private readonly positions: Float32Array;
+  private readonly eAtIndex: Float32Array;
+  private readonly indices: Uint32Array;
   private snap: { a: number; e: number; hHat: Vec3; pHat: Vec3; focusE?: number } | null = null;
   private lastRegen = 0;
   private suppressed = false;
@@ -35,17 +48,21 @@ export class OrbitLine {
   // バッファジオメトリと LineBasicMaterial を組み立てる。
   constructor(color: string | number, opacity = 0.5) {
     this.positions = new Float32Array((POINT_COUNT + 1) * 3);
+    this.eAtIndex = new Float32Array(POINT_COUNT + 1);
+    this.indices = new Uint32Array(POINT_COUNT * 2);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    geo.setIndex(new THREE.BufferAttribute(this.indices, 1));
     const mat = new THREE.LineBasicMaterial({
       color,
       transparent: true,
       opacity,
       depthWrite: false,
     });
-    // WebGPU レンダラー(r169)は LineLoop 非対応のため、
-    // THREE.Line で始点を終端に複製して閉じる。
-    this.line = new THREE.Line(geo, mat);
+    // WebGPU レンダラー(r169)は LineLoop 非対応のため、閉路は始点=終端の頂点複製で作る。
+    // excludeNearBody で天体近傍のセグメントを間引けるよう連続ストリップではなく
+    // セグメント単位の LineSegments + インデックスバッファで描く。
+    this.line = new THREE.LineSegments(geo, mat);
     this.line.frustumCulled = false;
     // 既定値(自機の軌道線を想定)。他ロール(ターゲット等)は呼び出し側が
     // renderOrder を上書きし、重なったときに手前へ来る優先順位を決める。
@@ -54,8 +71,13 @@ export class OrbitLine {
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン。force = 要素が能動的に変化している
   // 間(推力中・ノード編集中)は true。densifyNear は中心天体相対座標で、その付近に頂点を
-  // 密に配置する。
-  sync(el: OrbitalElements | null, fo: FloatingOrigin, force = false, densifyNear?: Vec3): void {
+  // 密に配置する。excludeNearBody は、この楕円上に乗っている天体自身の位置(離心近点角)と
+  // 半径 — その天体のメッシュと深度が競合してチラつくのを避けるため、周辺のセグメントを
+  // 間引いて描かない。
+  sync(
+    el: OrbitalElements | null, fo: FloatingOrigin, force = false, densifyNear?: Vec3,
+    excludeNearBody?: { E: number; radius: number },
+  ): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.line.visible = false;
       this.snap = null;
@@ -90,6 +112,28 @@ export class OrbitLine {
     if (this.needsRegen(el, force, focusE)) {
       this.regenerate(el, focusE);
     }
+    this.updateIndex(excludeNearBody);
+  }
+
+  // 現在の除外天体の位置に応じて描画するセグメントを選び直す(頂点は動かさない)。
+  // regenerate と独立に、天体が軌道上を動くたび毎フレーム呼ばれる。
+  private updateIndex(excludeNearBody?: { E: number; radius: number }): void {
+    if (!this.snap) return;
+    const gapHalfWidth = excludeNearBody ? (excludeNearBody.radius / this.snap.a) * EXCLUDE_ANGLE_MARGIN : 0;
+    let count = 0;
+    for (let i = 0; i < POINT_COUNT; i++) {
+      if (excludeNearBody) {
+        const e0 = this.eAtIndex[i]!;
+        const e1 = this.eAtIndex[i + 1]!;
+        if (angularDiff(e0, excludeNearBody.E) < gapHalfWidth || angularDiff(e1, excludeNearBody.E) < gapHalfWidth) {
+          continue;
+        }
+      }
+      this.indices[count++] = i;
+      this.indices[count++] = i + 1;
+    }
+    (this.line.geometry.getIndex() as THREE.BufferAttribute).needsUpdate = true;
+    this.line.geometry.setDrawRange(0, count);
   }
 
   // 現在の要素が直近のスナップショットから許容誤差を超えて変化していれば true(要再生成)。
@@ -132,6 +176,7 @@ export class OrbitLine {
         t = f + 4 * u * u * u;
       }
       const E = t * Math.PI * 2;
+      this.eAtIndex[i] = E;
       const x = el.a * (Math.cos(E) - el.e);
       const y = b * Math.sin(E);
       this.positions[i * 3] = el.pHat.x * x + el.qHat.x * y;
@@ -139,6 +184,7 @@ export class OrbitLine {
       this.positions[i * 3 + 2] = el.pHat.z * x + el.qHat.z * y;
     }
     // 閉路化
+    this.eAtIndex[POINT_COUNT] = this.eAtIndex[0]!;
     this.positions[POINT_COUNT * 3] = this.positions[0]!;
     this.positions[POINT_COUNT * 3 + 1] = this.positions[1]!;
     this.positions[POINT_COUNT * 3 + 2] = this.positions[2]!;
