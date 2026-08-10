@@ -109,7 +109,7 @@ export class Game {
   private readonly predictedTrajectoryLine: PredictedTrajectoryLine;
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
-  private readonly frameControls: FrameControls;
+  readonly frameControls: FrameControls;
 
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
   constructor(
@@ -175,7 +175,7 @@ export class Game {
       this.displayTimeManager,
     );
     this.editor.onFocusNode = (state) => {
-      this.cameraSystem.overviewCamera.setFocusTarget(
+      this.frameControls.setFocus(
         focusPoint(this.ephemeris, this.ephemeris.inertialFrame, state.r, state.t));
     };
     this.mapPicker = new MapPicker(
