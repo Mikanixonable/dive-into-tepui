@@ -40,12 +40,8 @@ interface PickHandler {
   run(act: MenuAction, target: MapPickable): void;
 }
 
-// 軌道計画の実行モードの全選択肢と対応する MenuAction。プロパティウィンドウに3択とも
-// 並べて出し、現在値を selected で示す(押すたびに閉じて開き直す巡回操作をやめるため)。
+// 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
 const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant', 'powered'];
-const PLAN_EXEC_ACTS: Record<PlanExecutionMode, MenuAction> = {
-  off: 'planExecOff', instant: 'planExecInstant', powered: 'planExecPowered',
-};
 
 // 開いているプロパティウィンドウ本体と、開いた時点の対象。rows/items の再導出はこの target
 // (毎フレーム候補列から更新されうる)を経由するので、対象が消滅したかどうかの判定にも使える。
@@ -464,20 +460,19 @@ export class MapPicker {
       itemsFor: (target, simTime) => {
         const ship = this.entities.findPlayer(target.id);
         const isActive = ship === this.game.player;
-        const activate: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '操作対象にする', act: 'activate' }];
+        const activate: readonly MenuItem<MenuAction>[] = [
+          isActive ? { label: '操作対象を解除', act: 'deactivate' } : { label: '操作対象にする', act: 'activate' },
+        ];
         const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
         // 通常ステージには実行モードを進める駆動源(CreativeStage.update/nextSimulationEventTime/
         // applySimulationEvents)が無く、選ばせても何も起きないので出さない。
         const mode = ship?.planExecution ?? 'off';
         const planExec: readonly MenuItem<MenuAction>[] = this.isCreativeMode()
-          ? PLAN_EXECUTION_MODES.map((m) => ({
-              label: `軌道計画の実行: ${planExecutionLabel(m)}`, act: PLAN_EXEC_ACTS[m],
-              selected: m === mode, keepOpen: true,
-            }))
+          ? [{ label: `軌道計画の実行: ${planExecutionLabel(mode)}`, act: 'planExecCycle', keepOpen: true }]
           : [];
         return [
-          ...activate,
           ...planExec,
+          ...activate,
           MenuCommon.focus(),
           ...this.navTargetItems(target, simTime),
           ...this.duplicateItems(),
@@ -489,10 +484,14 @@ export class MapPicker {
         if (act === 'activate') {
           const ship = this.entities.findPlayer(target.id);
           if (ship) this.game.setActivePlayer(ship);
-        } else if (act === 'planExecOff' || act === 'planExecInstant' || act === 'planExecPowered') {
+        } else if (act === 'deactivate') {
+          if (this.entities.findPlayer(target.id) === this.game.player) this.game.setActivePlayerOrNull(null);
+        } else if (act === 'planExecCycle') {
           const ship = this.entities.findPlayer(target.id);
-          const mode = PLAN_EXECUTION_MODES.find((m) => PLAN_EXEC_ACTS[m] === act)!;
-          if (ship) ship.planExecution = mode;
+          if (ship) {
+            const next = PLAN_EXECUTION_MODES[(PLAN_EXECUTION_MODES.indexOf(ship.planExecution) + 1) % PLAN_EXECUTION_MODES.length]!;
+            ship.planExecution = next;
+          }
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else if (act === 'delete') {
