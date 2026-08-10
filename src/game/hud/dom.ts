@@ -237,7 +237,6 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .body-class-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 #hud .body-class-row .body-class-title { width: 96px; min-width: 96px; text-align: left; font-size: 10px; letter-spacing: 1px; }
 #hud .body-class-row .body-class-btns { display: flex; gap: 4px; }
-#hud .body-class-row.planet-row .icon-toggle-btn { border-color: rgba(${ACCENT_RGB}, .45); }
 #hud .body-class-row.category-off .icon-toggle-btn.on { border-color: ${EDGE}; color: ${INK_SOFT}; font-weight: 700; opacity: .65; }
 #hud .body-class-row.category-off .icon-toggle-btn.disabled { opacity: .35; }
 #hud .category-toggle-btn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
