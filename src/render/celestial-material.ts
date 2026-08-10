@@ -24,6 +24,7 @@ import {
   seasonalLongitudeAt,
   SurfaceMaterialMasks,
 } from '../physics/surface-material';
+import { EarthCloudNodes, createEarthCloudNodes } from './earth-clouds';
 
 type TslNode = ReturnType<typeof textureNode>;
 
@@ -35,12 +36,12 @@ export interface EarthClimateUniforms {
 
 export interface EarthSurfaceNodes {
   readonly baseColor: TslNode;
-  readonly cloudAlpha: TslNode;
   readonly oceanMask: TslNode;
   readonly landMask: TslNode;
   readonly iceMask: TslNode;
   readonly vegetationMask: TslNode;
   readonly terrainNormal: TslNode;
+  readonly clouds: EarthCloudNodes;
   readonly climate: EarthClimateUniforms;
   readonly setSeasonalTime: (timeSeconds: number) => void;
 }
@@ -76,7 +77,11 @@ function earthLandMask(color: TslNode): TslNode {
 }
 
 /** 氷河期・季節係数を反映する地球表面ノードを構築する。 */
-export function createEarthSurfaceNodes(earthMap: THREE.Texture, cloudsMap: THREE.Texture): EarthSurfaceNodes {
+export function createEarthSurfaceNodes(
+  earthMap: THREE.Texture,
+  cloudsMap: THREE.Texture,
+  cloudSunDirection: ReturnType<typeof uniform>,
+): EarthSurfaceNodes {
   const coord = uv();
   const color = textureNode(earthMap, coord);
   const landMask = earthLandMask(color);
@@ -95,7 +100,7 @@ export function createEarthSurfaceNodes(earthMap: THREE.Texture, cloudsMap: THRE
   ), 0, 1);
   const greenSignal = smoothstep(0.02, 0.16, color.g.sub(color.r));
   const vegetationMask = landMask.mul(iceMask.oneMinus()).mul(greenSignal).mul(climate.vegetationActivity);
-  const cloudAlpha = textureNode(cloudsMap, coord).r;
+  const clouds = createEarthCloudNodes(cloudsMap, cloudSunDirection);
   const iceColor = vec3(0.77, 0.86, 0.96);
   const vegetationTint = vec3(0.72, 0.92, 0.64);
   const iceLand = mix(color, iceColor, iceMask.mul(0.82));
@@ -103,18 +108,19 @@ export function createEarthSurfaceNodes(earthMap: THREE.Texture, cloudsMap: THRE
   const oceanTint = mix(tintedLand, tintedLand.mul(vec3(0.86, 0.96, 1.08)), oceanMask.mul(0.18));
   return {
     baseColor: oceanTint,
-    cloudAlpha,
     oceanMask,
     landMask,
     iceMask,
     vegetationMask,
     terrainNormal: terrainNormalNode(earthMap, 1 / 8192, 0.42, 0.018),
+    clouds,
     climate,
     setSeasonalTime(timeSeconds: number) {
       const seasonal = seasonalSurfaceFactors(0.5, seasonalLongitudeAt(timeSeconds), ICE_AGE_EARTH);
       climate.snowPersistence.value = seasonal.snowPersistence;
       climate.vegetationActivity.value = seasonal.vegetationActivity;
       climate.seaIceExpansion.value = ICE_AGE_EARTH.seaIceExpansion * (0.82 + seasonal.winter * 0.28);
+      clouds.setTime(timeSeconds);
     },
   };
 }
