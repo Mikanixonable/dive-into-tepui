@@ -10,6 +10,9 @@ export interface MapPickable {
   readonly pos: Vec3;
   readonly kind: MapPickKind;
   readonly time?: number;
+  // 一覧専用の軽量な補助表示。物理状態の再計算を UI に持ち込まない。
+  readonly detail?: string;
+  readonly priority?: number;
 }
 
 // items を project で画面へ射影し、(x, y) から半径 radiusPxSq [px^2] 以内で最も近いものを返す。
