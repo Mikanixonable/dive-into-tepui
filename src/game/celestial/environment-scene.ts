@@ -19,7 +19,7 @@ import { CelestialBody } from './celestial-body';
 import { CELESTIAL_BODIES, fallbackCelestialView } from './celestial-registry';
 import { EarthBody } from './earth-body';
 import { bodyClassOf } from './body-class';
-import { BodyClassToggles } from './body-visibility';
+import { BodyClassToggles, systemMembersAt } from './body-visibility';
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
 // レジストリに実在しないなら架空レジストリでは無意味なので組まない(constructor で判定)。
@@ -155,7 +155,8 @@ export class EnvironmentScene {
     this.syncStars(cameraSystem);
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
-      focusTargetId(cameraSystem.overviewCamera.focus), cameraSystem.bodyClassToggles);
+      focusTargetId(cameraSystem.overviewCamera.focus), cameraSystem.bodyClassToggles,
+      systemMembersAt(this.ephemeris.registry, cameraSystem.activeCameraPos, this.ephemeris.attractorsAt(displayTime)));
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
@@ -170,7 +171,8 @@ export class EnvironmentScene {
 
   // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。
   private syncReferenceLines(
-    simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: AttractorId | undefined, toggles: BodyClassToggles,
+    simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: AttractorId | undefined,
+    toggles: BodyClassToggles, nearbyIds: readonly AttractorId[],
   ): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo);
@@ -179,7 +181,7 @@ export class EnvironmentScene {
     }
     this.geoLine.sync(this.geoElements, fo, false);
     for (const [id, line] of this.referenceLines) {
-      const show = this.showsReferenceLine(id, focusId, toggles);
+      const show = this.showsReferenceLine(id, focusId, toggles, nearbyIds);
       const el = show ? this.orbitElementsFor(id, simTime) : null;
       const rel = el ? sub(this.ephemeris.stateOf(id, simTime).r, el.center.state.r) : null;
       // 離心率の大きい軌道(彗星など)は近日点付近で曲率が急なので、そこへ頂点を寄せないと
@@ -205,7 +207,10 @@ export class EnvironmentScene {
   // Orbit トグルに従う(Label トグルとは独立)。衛星も専用トグルに従う。
   // しているときだけ引く(地球系だけは例外で常時引く — プレイの中心なので、どこを見ていても
   // 月軌道が文脈として要る)。
-  private showsReferenceLine(id: OrbitingId, focusId: AttractorId | undefined, toggles: BodyClassToggles): boolean {
+  private showsReferenceLine(
+    id: OrbitingId, focusId: AttractorId | undefined, toggles: BodyClassToggles,
+    nearbyIds: readonly AttractorId[],
+  ): boolean {
     const registry = this.ephemeris.registry;
     const cls = bodyClassOf(registry, id);
     if (cls === 'planet') return toggles.planetVisible && toggles.planetOrbit;
@@ -214,7 +219,7 @@ export class EnvironmentScene {
     const def = bodyDef(registry, id);
     if (def.kind !== 'satellite') return true;
     return toggles.satelliteVisible && toggles.satelliteOrbit
-      && (def.planet === 'earth' || focusSystemOf(registry, focusId) === def.planet);
+      && (def.planet === 'earth' || focusSystemOf(registry, focusId) === def.planet || nearbyIds.includes(id));
   }
 
   // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は主星中心 — 中心天体自身も
