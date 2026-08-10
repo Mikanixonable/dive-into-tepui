@@ -6,20 +6,29 @@ import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
 import { bodyClassOf } from './body-class';
 
 // クラスごとの表示トグル。恒星と惑星は常に見えるのでトグルを持たない(太陽系の骨格であり、
-// 消えると現在地が読めなくなる)。lagrange はラグランジュ点ラベルの表示可否で、天体ではないので
-// BodyClass とは別の軸。
+// 消えると現在地が読めなくなる)。軌道表示(Orbit)とアイコンラベル表示(Label)は別トグル
+// ——「軌道は要らないが位置だけ知りたい」「ラベルは煩雑だが軌道の形は見たい」がそれぞれ
+// 独立に成り立つため。satellite は衛星の参照軌道線がフォーカス中の系かどうかで別途決まる
+// (environment-scene.ts の showsReferenceLine)ので Orbit トグルを持たない。lagrange は
+// ラグランジュ点ラベルの表示可否で、天体ではなく軌道概念もないので単一の軸のまま。
 export type BodyClassToggles = {
-  readonly dwarf: boolean;
-  readonly satellite: boolean;
-  readonly smallBody: boolean;
+  readonly dwarfOrbit: boolean;
+  readonly dwarfLabel: boolean;
+  readonly satelliteLabel: boolean;
+  readonly smallBodyOrbit: boolean;
+  readonly smallBodyLabel: boolean;
   readonly lagrange: boolean;
 };
 
-// dwarf/satellite/smallBody の既定 off は「登録数が多くマップが溢れるから」。lagrange は
+// 既定 off は「登録数が多くマップが溢れるから」。smallBody(小惑星・準惑星・彗星)は例外で、
+// 軌道線は溢れるが位置だけは把握したいことが多いため Label のみ既定 on にする。lagrange は
 // FocusMarkers の構築時点で力学的に意味を持つ点(Ephemeris の hasUsableCollinearPoints /
 // hasStableTriangularPoints)だけに絞り込み済みで同じ懸念が当たらないため、既定 on にする。
 export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
-  dwarf: false, satellite: false, smallBody: false, lagrange: true,
+  dwarfOrbit: false, dwarfLabel: false,
+  satelliteLabel: false,
+  smallBodyOrbit: false, smallBodyLabel: true,
+  lagrange: true,
 };
 
 // focusId と同じ系にある天体(自分・親・子・親を共有する兄弟)。UI が「いま見ている系」を
@@ -63,7 +72,7 @@ export function visibleBodyIds(
   for (const id of ids) {
     const cls = bodyClassOf(registry, id);
     if (cls === 'star' || cls === 'planet') visible.add(id);
-    else if (cls === 'dwarf' ? toggles.dwarf : cls === 'satellite' ? toggles.satellite : toggles.smallBody) visible.add(id);
+    else if (cls === 'dwarf' ? toggles.dwarfLabel : cls === 'satellite' ? toggles.satelliteLabel : toggles.smallBodyLabel) visible.add(id);
   }
 
   for (const id of ancestorsOf(registry, focusId)) visible.add(id);

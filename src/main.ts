@@ -10,7 +10,7 @@ import { Hud } from './game/hud/hud';
 import { SettingsPanel } from './game/hud/settings-panel';
 import { Sfx } from './audio/sfx';
 import { UnlockManager } from './game/unlock-manager';
-import { isStageId } from './game/stages/stage-dictionary';
+import { ephemerisConfigFor, isStageId } from './game/stages/stage-dictionary';
 import { selectLaunch } from './game/launch-select';
 import { LaunchSelection } from './game/game-mode';
 import { LocalStorageSaveStore } from './game/save/save-store';
@@ -19,6 +19,9 @@ import { SnapshotService } from './game/save/snapshot-service';
 import { AutoSave } from './game/save/autosave';
 import { migrateLegacySave } from './game/save/legacy-save';
 import { SaveBrowser } from './game/hud/save-browser';
+import { SIM_EPOCH_JD_TDB } from './game/sim-epoch';
+import { loadAbsoluteEphemeris } from './physics/ephemeris-catalog';
+import { profileAt } from './physics/ephemeris-profile';
 
 
 // ?stage=00|0|1|2 または ?mode=creative で起動選択画面をスキップ(デバッグ・共有リンク用)。
@@ -190,9 +193,37 @@ async function main() {
   const gs = await initScene();
   const { hud, sfx, settingsPanel } = initHud();
   const launch = await resolveLaunchSelection(unlockmanager);
-  const game = new Game(gs, launch, hud, sfx, settingsPanel, unlockmanager, snapshotService);
+  let absoluteEphemeris;
+  // 固有の簡易天体暦を指定するデバッグステージには外部 pack を読み込まない。
+  // 通常起動では開始時刻からプロファイルを決定するため、開始時刻を変更しても
+  // プロファイル ID を別途ハードコードし直す必要がない。
+  if (ephemerisConfigFor(launch) === undefined) {
+    hideLoading = showLoading();
+    try {
+      const profile = profileAt(SIM_EPOCH_JD_TDB);
+      absoluteEphemeris = await loadAbsoluteEphemeris(
+        profile.id,
+        SIM_EPOCH_JD_TDB,
+        SIM_EPOCH_JD_TDB + 10 * 365.25,
+      );
+    } finally {
+      hideLoading?.();
+      hideLoading = null;
+    }
+  }
+  const game = new Game(
+    gs, launch, hud, sfx, settingsPanel, unlockmanager, snapshotService, absoluteEphemeris,
+  );
   const activeSlotId = slots.activeSlotId;
   if (activeSlotId !== null) slots.noteLaunch(activeSlotId, launch.mode, game.activeStage.id);
+
+  // アクティブスロットの現在ステージにある最新スナップショットを起動時に復元する。
+  // 本体の欠損・バージョン不一致・ステージ不一致は SnapshotService.restore() に
+  // 判定させ、復元できない場合は通常の新規起動状態をそのまま使う。
+  if (activeSlotId !== null) {
+    const latest = slots.latestSnapshot(activeSlotId, game.activeStage.id);
+    if (latest !== null) snapshotService.restore(game, latest.id);
+  }
 
   const saveBrowser = new SaveBrowser(hud.root, slots, snapshotService, game);
   game.setSaveBrowser(saveBrowser);

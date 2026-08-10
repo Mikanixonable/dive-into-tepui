@@ -6,7 +6,9 @@ import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-stat
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Attractor, hitAttractor, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, localOrbitPeriod } from '../../physics/attractor';
+import { containingBody } from '../../physics/sphere-contact';
+import { isBurnedUp } from '../../physics/atmosphere';
 import { attractorsNear, classifyAttractors, gravityBodiesAt, mergeAttractors } from '../simulation/attractors';
 import { Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
@@ -133,8 +135,8 @@ export class PlanArc {
 
   // state0 から end まで自機と同じ弾道係数で自由伝播し、サンプル列を作り直す。保持間隔は
   // 区間長を上限サンプル数で割った値、保持窓は区間長そのものなので、区間全体が間引かれた
-  // 解像度で残る。いずれかの天体の表面 + REENTRY_ALT を割ったら、その時点で打ち切る
-  // (非有限・ステップ数上限に達した場合も同様)。
+  // 解像度で残る。いずれかの天体の表面へ接触するか、地球大気で焼失(REENTRY_ALT)したら、
+  // その時点で打ち切る(非有限・ステップ数上限に達した場合も同様)。
   // dynamicAttractors は呼び出し元がこのフレームで一度だけ求めた値を全ステップで使い回す —
   // 区間長は最大1年に及び、そのあいだの位置を EntityManager には問えないため。
   private integrate(
@@ -167,8 +169,9 @@ export class PlanArc {
         this.truncated = true;
         break;
       }
-      const hit = hitAttractor(r, stepAttractors, C.REENTRY_ALT);
-      if (hit) {
+      const impacted = containingBody(r, stepAttractors, 0) !== null
+        || isBurnedUp(r, stepAttractors, C.REENTRY_ALT);
+      if (impacted) {
         this.impactState = trajectory.state;
         this.truncated = true;
         break;
