@@ -577,10 +577,12 @@ export class Game {
   private equatorNodeSources(): EqNodeSource[] {
     const sources = new Map<string, EqNodeSource>();
     if (this.player) {
-      const path = this.editor.planDisplay.path;
-      const state = path.finalSegmentStart ?? this.player.state;
-      const samples = path.finalSegmentSamples ?? undefined;
-      sources.set(this.player.id, { id: this.player.id, name: this.player.displayName, state, samples });
+      const final = this.editor.planDisplay.path.finalSegment();
+      sources.set(this.player.id, {
+        id: this.player.id, name: this.player.displayName,
+        state: final?.state0 ?? this.player.state,
+        samples: final?.samples,
+      });
     }
     if (this.navTarget.id) {
       const navPlayer = this.entities.findPlayer(this.navTarget.id);
@@ -754,11 +756,12 @@ export class Game {
       predictedTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
       this.cameraSystem.activeCameraScale, attractors,
     );
-    // 予測軌道の実線が出ているあいだは、解析楕円は重ねて出さない。predictedTrajectoryLine は
-    // 操作対象艦しか描かないため、他の艦は常に non-suppressed に戻す — でなければ操作を
-    // 切り替えた艦の抑制状態が解けないまま残ってしまう。
+    // 解析楕円は、積分予測が表示範囲に届いていないあいだの代替表示。予測が表示ホライズンを
+    // 覆いきったときだけ抑制する。predictedTrajectoryLine は操作対象艦しか描かないため、
+    // 他の艦は常に non-suppressed に戻る。
+    const predictHorizon = this.displayTimeManager.durationSec(this.currentOrbitPeriod());
     for (const ship of this.entities.players) {
-      ship.orbitLine.setSuppressed(this.predictedTrajectoryLine.hasLineFor(ship));
+      ship.orbitLine.setSuppressed(this.predictedTrajectoryLine.coversHorizon(ship, simTime, predictHorizon));
     }
 
     if (player) {
@@ -802,7 +805,7 @@ export class Game {
       casings: this.entities.casings.length,
       debris: this.entities.debris.length,
       predicted: this.predictor.tracked,
-      predictComplete: this.predictor.complete,
+      predictComplete: this.predictor.finished,
       predictDiscarded: this.predictor.discarded,
     };
   }

@@ -70,7 +70,7 @@ export class CreativeStage extends Stage {
   ): void {
     super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
 
-    this.previewOrbitLine = new OrbitLine(0xffffff, 0.6);
+    this.previewOrbitLine = new OrbitLine(0xffffff, 0.6, C.LINE_RENDER_ORDER.plan);
     scene.add(this.previewOrbitLine.line);
 
     this.placerPanel = new ShipPlacerPanel(hud.layers.panel, hud.layers.popup, ephemeris);

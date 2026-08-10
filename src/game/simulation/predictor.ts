@@ -6,14 +6,14 @@ import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
 import { localOrbitPeriod } from '../../physics/attractor';
-import { attractorsNear, classifyAttractors, predictedAttractorsAt } from './attractors';
+import { ClassifiedAttractors, attractorsNear, classifyAttractors, predictedAttractorsAt } from './attractors';
 
 export class Predictor {
   private cursor = 0;
 
   // 直近の update() で数えた予測列の状況(?perf=1 の表示用)。
   tracked = 0; // 予測対象の個体数
-  complete = 0; // うち先端がホライズンに達しているもの
+  finished = 0; // うち伸長が終わったもの(先端がホライズンに達した/打ち切られた)
   discarded = 0; // このフレームに乖離で破棄したもの
 
   constructor(
@@ -31,19 +31,26 @@ export class Predictor {
     // 伸長を止めている間も実状態は進むので、乖離した列をここで落とさないと
     // 現在と無関係な軌道が描かれ続ける。
     this.tracked = 0;
-    this.complete = 0;
+    this.finished = 0;
     this.discarded = 0;
     const attractors = this.ephemeris.attractorsAt(simTime);
     for (const e of all) {
-      if (e.resyncPrediction(simTime, attractors, horizon)) this.discarded++;
+      if (e.discardPredictionIfDiverged(simTime, attractors)) this.discarded++;
       if (!e.predictsFuture) continue;
       this.tracked++;
-      if (e.predictedTrajectory !== null && e.predictedTrajectory.state.t > simTime + horizon) this.complete++;
+      const reachedHorizon = e.predictedTrajectory !== null && e.predictedTrajectory.state.t > simTime + horizon;
+      if (reachedHorizon || e.predictionTruncated) this.finished++;
     }
 
-    // 予算配分: 操作対象の艦を先頭に、以降はカーソル位置から最大1周だけ回す。
+    // 予算配分: 操作対象の艦を先頭に、以降はカーソル位置から最大1周だけ回す。艦に渡す分は
+    // 全体の PREDICT_PLAYER_BUDGET_RATIO までに抑え、残りは必ずラウンドロビンへ回す —
+    // 艦の予測が完成するまで他の個体が止まると、その予測を重力源として読む計画軌道の形まで
+    // 艦の予測進捗に左右されてしまう。
     let budget = C.PREDICT_STEP_BUDGET;
-    if (player) budget -= this.advanceBudget(player, budget, simTime, horizon);
+    if (player) {
+      const playerBudget = Math.floor(C.PREDICT_STEP_BUDGET * C.PREDICT_PLAYER_BUDGET_RATIO);
+      budget -= this.advanceBudget(player, playerBudget, simTime, horizon);
+    }
 
     let visited = 0;
     while (budget > 0 && visited < all.length) {
@@ -55,20 +62,25 @@ export class Predictor {
   }
 
   // budgetSteps を上限に、1体ぶんの予測列を GameEntity.stepPredicted で1ステップずつ伸ばし、
-  // 消費したステップ数を返す。刻み幅と重力源は毎ステップ、現在の予測先端の時刻・位置から
-  // 求め直す(先端がまだ無ければ現在状態で代用 — 生成直後は actualTrajectory.state を種に
-  // するので同じ値になる)。ここが「1ステップぶんの前提を決めて渡す」側、entity 側は
-  // 「渡された前提で実際に1ステップ進めるか判断する」側 — stepActual に対する substep と
-  // 同じ分担。ホライズン超過などで stepPredicted が false を返したら、そのエンティティの
-  // 予算消化を打ち切る。
+  // 消費したステップ数を返す。刻み幅は毎ステップ、現在の予測先端の時刻・位置から求め直す
+  // (先端がまだ無ければ現在状態で代用 — 生成直後は actualTrajectory.state を種にするので
+  // 同じ値になる)。重力源の空間分類は PREDICT_ATTRACTOR_REBUILD_STEPS ステップごとに1回
+  // だけ組み、その間は使い回す(Simulator.substep が1サブステップで1回だけ組むのと同じ規約)
+  // — 数ステップぶんの重力源位置の遅れは、予測の刻み幅そのものが持つ RK4 の誤差より小さい。
+  // ここが「1ステップぶんの前提を決めて渡す」側、entity 側は「渡された前提で実際に1ステップ
+  // 進めるか判断する」側 — stepActual に対する substep と同じ分担。ホライズン超過などで
+  // stepPredicted が false を返したら、そのエンティティの予算消化を打ち切る。
   private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number, horizon: number): number {
     if (!e.predictsFuture) return 0;
     let consumed = 0;
+    let classified: ClassifiedAttractors | null = null;
     while (consumed < budgetSteps) {
       // 刻み幅は「その場の周期の等分」と「ホライズン全体をステップ上限で割った値」の粗い方。
       // 後者があるので、表示期間を年スケールにしてもステップ数が有界に収まる。
       const tipState = e.predictedTrajectory?.state ?? e.state;
-      const classified = classifyAttractors(predictedAttractorsAt(this.ephemeris, this.entities, tipState.t));
+      if (classified === null || consumed % C.PREDICT_ATTRACTOR_REBUILD_STEPS === 0) {
+        classified = classifyAttractors(predictedAttractorsAt(this.ephemeris, this.entities, tipState.t));
+      }
       const attractors = attractorsNear(tipState.r, classified);
       const dt = Math.max(
         C.PREDICT_MIN_STEP_DT,
