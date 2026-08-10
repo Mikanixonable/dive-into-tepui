@@ -23,6 +23,7 @@ interface RowNode {
   readonly row: HTMLElement;
   readonly toggle: HTMLElement;
   readonly label: HTMLElement;
+  readonly detail: HTMLElement;
   readonly childrenContainer: HTMLElement;
   readonly children: Map<string, RowNode>;
   expanded: boolean;
@@ -45,6 +46,8 @@ function childrenOfMap(items: readonly MapPickable[], parentOf: ReadonlyMap<stri
 // トグル子メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
 export class ObjectListPanel {
   onSelect: ((id: string) => void) | null = null;
+  onFocus: ((id: string) => void) | null = null;
+  onNavTarget: ((id: string) => void) | null = null;
   onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
@@ -98,7 +101,7 @@ export class ObjectListPanel {
 
     for (const { kind, label } of SECTIONS) {
       const section = this.sections.get(kind)!;
-      const list = byKind.get(kind) ?? [];
+      const list = (byKind.get(kind) ?? []).sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || a.name.localeCompare(b.name));
       section.header.style.display = list.length === 0 ? 'none' : '';
       section.header.textContent = `${label} (${list.length}) ${section.expanded ? '▾' : '▸'}`;
 
@@ -133,6 +136,7 @@ export class ObjectListPanel {
       container.appendChild(node.childrenContainer);
     }
     if (node.label.textContent !== item.name) node.label.textContent = item.name;
+    if (node.detail.textContent !== (item.detail ?? '')) node.detail.textContent = item.detail ?? '';
     node.row.classList.toggle('tgt', item.id === focusId);
 
     const children = childrenOf.get(item.id) ?? [];
@@ -165,18 +169,29 @@ export class ObjectListPanel {
     const toggle = document.createElement('span');
     toggle.className = 'object-list-toggle';
     const label = document.createElement('span');
+    label.className = 'object-list-name';
+    const detail = document.createElement('small');
+    detail.className = 'object-list-detail';
     row.appendChild(toggle);
     row.appendChild(label);
+    row.appendChild(detail);
     const childrenContainer = document.createElement('div');
     childrenContainer.className = 'object-list-children';
 
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
     row.addEventListener('click', () => this.onSelect?.(id));
+    row.addEventListener('dblclick', () => this.onFocus?.(id));
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); this.onFocus?.(id); }
+      if (e.key.toLowerCase() === 't' && !(e.target instanceof HTMLInputElement)) { e.preventDefault(); this.onNavTarget?.(id); }
+    });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       this.onSelectRight?.(id, e.clientX, e.clientY);
     });
 
-    const node: RowNode = { row, toggle, label, childrenContainer, children: new Map(), expanded: false };
+    const node: RowNode = { row, toggle, label, detail, childrenContainer, children: new Map(), expanded: false };
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
       node.expanded = !node.expanded;

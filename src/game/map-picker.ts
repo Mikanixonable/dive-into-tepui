@@ -90,8 +90,16 @@ export class MapPicker {
     };
     this.objectListPanel = new ObjectListPanel(hud.layers.panel);
     this.objectListPanel.onSelect = (id) => {
+      const target = this.items.find((i) => i.id === id);
+      if (target) this.selectPickable(target);
+    };
+    this.objectListPanel.onFocus = (id) => {
       this.cameraSystem.overviewCamera.setFocusTarget({ kind: 'object', id });
       this.hud.hint(`${this.items.find((i) => i.id === id)?.name ?? id} にフォーカス`);
+    };
+    this.objectListPanel.onNavTarget = (id) => {
+      const target = this.items.find((i) => i.id === id);
+      if (target && this.navTarget.canTarget(id, this.entities, this.ephemeris, this.lastSimTime)) this.navTarget.toggleTarget(id, target.name);
     };
     this.objectListPanel.onSelectRight = (id, clientX, clientY) => {
       const target = this.items.find((i) => i.id === id);
@@ -115,7 +123,7 @@ export class MapPicker {
     for (const ship of this.entities.players) {
       if (!ship.alive) continue;
       const pos = ship.displayState(displayTime)?.r;
-      if (pos) items.push({ id: ship.id, name: ship.displayName, pos, kind: 'player' });
+      if (pos) items.push({ id: ship.id, name: ship.displayName, pos, kind: 'player', detail: `HP ${Math.round(ship.hp)}/${Math.round(ship.maxHp)} · PE ${Math.round(ship.power.chargeRatio * 100)}%`, priority: ship === this.game.player ? -100 : 0 });
     }
     for (const enemy of this.entities.enemies) {
       if (!enemy.alive) continue;
@@ -130,11 +138,21 @@ export class MapPicker {
     for (const base of this.entities.bases) {
       if (!base.alive) continue;
       const pos = base.displayState(displayTime)?.r;
-      if (pos) items.push({ id: base.id, name: base.name, pos, kind: 'base' });
+      if (pos) items.push({ id: base.id, name: base.name, pos, kind: 'base', detail: `格納 ${base.baseState.dockedShips.length} 隻` });
     }
     items.push(...this.navTarget.mapPickables());
     items.push(...this.editor.planDisplay.apsisMarkers);
     items.push(...this.game.equatorNodeMarkers.mapPickables());
+
+    // 自機からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
+    const viewer = this.game.player?.state;
+    if (viewer) for (let i = 0; i < items.length; i++) {
+      const item = items[i]!;
+      const d = len(sub(item.pos, viewer.r));
+      const speed = len(sub(item.kind === 'player' ? (this.entities.findPlayer(item.id)?.state.v ?? viewer.v) : item.kind === 'ship' ? (this.entities.findEnemy(item.id)?.state.v ?? viewer.v) : viewer.v, viewer.v));
+      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(speed)}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, this.ephemeris.attractorsAt(simTime)).id)}` : item.detail;
+      if (status !== item.detail || item.priority === undefined) items[i] = { ...item, detail: status, priority: item.priority ?? d };
+    }
 
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
     // 同じ判定なので、地球の裏側の player は表示・選択でき、土星系の player はどちらにも
