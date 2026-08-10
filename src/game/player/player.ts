@@ -44,13 +44,7 @@ import { restorePart, type AnyPart } from '../game-entity/parts';
 
 export type { PlanExecutionMode };
 
-const PLAN_EXECUTION_CYCLE: readonly PlanExecutionMode[] = ['off', 'instant', 'powered'];
 const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = { off: 'OFF', instant: '瞬間移動', powered: '自動操縦' };
-
-// mode を1段階次のモードへ進める(OFF → 瞬間移動 → 自動操縦 → OFF)。
-export function nextPlanExecution(mode: PlanExecutionMode): PlanExecutionMode {
-  return PLAN_EXECUTION_CYCLE[(PLAN_EXECUTION_CYCLE.indexOf(mode) + 1) % PLAN_EXECUTION_CYCLE.length]!;
-}
 
 // mode の表示ラベル(HUDのメニュー項目・プロパティ行が共有する)。
 export function planExecutionLabel(mode: PlanExecutionMode): string {

@@ -11,6 +11,7 @@ import { PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem 
 import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { celestialBodyName } from './hud/frame-labels';
 import { MapPickable, pickNearest } from './map-pick';
+import { focusTargetId } from './camera/focus-target';
 import { ObjectListPanel } from './object-list-panel';
 import type { Input } from './input/input';
 import { EntityManager } from './simulation/entity-manager';
@@ -22,7 +23,7 @@ import { SimSpeedManager } from './sim-speed-manager';
 import type { Docking } from './docking';
 import type { Game } from './game';
 import type { Player } from './player/player';
-import { nextPlanExecution, planExecutionLabel } from './player/player';
+import { planExecutionLabel, type PlanExecutionMode } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
 import { len, sub, v3 } from '../physics/vec3';
 import type { ObjectType } from './creative/ship-placer-panel';
@@ -36,6 +37,13 @@ interface PickHandler {
   itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[];
   run(act: MenuAction, target: MapPickable): void;
 }
+
+// 軌道計画の実行モードの全選択肢と対応する MenuAction。プロパティウィンドウに3択とも
+// 並べて出し、現在値を selected で示す(押すたびに閉じて開き直す巡回操作をやめるため)。
+const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant', 'powered'];
+const PLAN_EXEC_ACTS: Record<PlanExecutionMode, MenuAction> = {
+  off: 'planExecOff', instant: 'planExecInstant', powered: 'planExecPowered',
+};
 
 // 開いているプロパティウィンドウ本体と、開いた時点の対象。rows/items の再導出はこの target
 // (毎フレーム候補列から更新されうる)を経由するので、対象が消滅したかどうかの判定にも使える。
@@ -79,7 +87,7 @@ export class MapPicker {
     };
     this.objectListPanel = new ObjectListPanel(hud.root);
     this.objectListPanel.onSelect = (id) => {
-      this.cameraSystem.overviewCamera.setFocus(id);
+      this.cameraSystem.overviewCamera.setFocusTarget({ kind: 'object', id });
       this.hud.hint(`${this.items.find((i) => i.id === id)?.name ?? id} にフォーカス`);
     };
     this.objectListPanel.onSelectRight = (id, clientX, clientY) => {
@@ -95,7 +103,7 @@ export class MapPicker {
   refresh(simTime: number, displayTime: number): void {
     this.lastSimTime = simTime;
     this.cameraSystem.focusMarkers.update(
-      displayTime, this.cameraSystem.overviewCamera.focus, this.cameraSystem.bodyClassToggles,
+      displayTime, focusTargetId(this.cameraSystem.overviewCamera.focus), this.cameraSystem.bodyClassToggles,
     );
     this.navTarget.update(this.game.player, this.entities, this.ephemeris, simTime);
 
@@ -165,12 +173,12 @@ export class MapPicker {
     }
     // 実行時は entry.target(sync のたびに最新化される)を読む — 開いた瞬間の対象を
     // 捕まえたままだと、時刻に依存する操作(ワープ・ノード追加)が古い時刻へ向けて走ってしまう。
-    // 操作項目のクリックは、クリップ済みなら開いたままにする。「削除」は対象自体が消えるので
-    // クリップ状態によらず閉じる。
-    w.onSelect = (act) => {
+    // 操作項目のクリックは、クリップ済みか keepOpen(排他選択肢の切り替え)なら開いたままにする。
+    // 「削除」は対象自体が消えるのでどちらでも閉じる。
+    w.onSelect = (act, keepOpen) => {
       const handler = this.handlers[entry.target.kind];
       if (handler) handler.run(act, entry.target);
-      if (act === 'delete' || !w.clipped) this.closeWindow(key);
+      if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
     w.onClose = () => this.forgetWindow(key);
     w.onOutsideClick = () => { if (!w.clipped) this.closeWindow(key); };
@@ -224,7 +232,7 @@ export class MapPicker {
     input.takeDoubleClicks((p) => {
       const target = pickNearest(this.items, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ);
       if (!target) return false;
-      this.cameraSystem.overviewCamera.setFocus(target.id);
+      this.cameraSystem.overviewCamera.setFocusTarget({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
       return true;
     });
@@ -263,7 +271,7 @@ export class MapPicker {
     this.objectListPanel.setVisible(overviewMode);
     if (overviewMode) {
       const depthOf = new Map(this.cameraSystem.focusMarkers.labels.map((l) => [l.id, l.depth]));
-      this.objectListPanel.sync(this.items, this.cameraSystem.overviewCamera.focus, depthOf);
+      this.objectListPanel.sync(this.items, focusTargetId(this.cameraSystem.overviewCamera.focus), depthOf);
     }
 
     const byKey = new Map(this.items.map((i) => [this.windowKey(i), i]));
@@ -416,8 +424,12 @@ export class MapPicker {
         const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
         // 通常ステージには実行モードを進める駆動源(CreativeStage.update/nextSimulationEventTime/
         // applySimulationEvents)が無く、選ばせても何も起きないので出さない。
+        const mode = ship?.planExecution ?? 'off';
         const planExec: readonly MenuItem<MenuAction>[] = this.isCreativeMode()
-          ? [{ label: `軌道計画の実行: ${planExecutionLabel(ship?.planExecution ?? 'off')} (次へ)`, act: 'planExecCycle' }]
+          ? PLAN_EXECUTION_MODES.map((m) => ({
+              label: `軌道計画の実行: ${planExecutionLabel(m)}`, act: PLAN_EXEC_ACTS[m],
+              selected: m === mode, keepOpen: true,
+            }))
           : [];
         return [
           ...activate,
@@ -433,9 +445,10 @@ export class MapPicker {
         if (act === 'activate') {
           const ship = this.entities.findPlayer(target.id);
           if (ship) this.game.setActivePlayer(ship);
-        } else if (act === 'planExecCycle') {
+        } else if (act === 'planExecOff' || act === 'planExecInstant' || act === 'planExecPowered') {
           const ship = this.entities.findPlayer(target.id);
-          if (ship) ship.planExecution = nextPlanExecution(ship.planExecution);
+          const mode = PLAN_EXECUTION_MODES.find((m) => PLAN_EXEC_ACTS[m] === act)!;
+          if (ship) ship.planExecution = mode;
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else if (act === 'delete') {
@@ -460,7 +473,7 @@ export class MapPicker {
       run: (act) => {
         if (act === 'openShipPlacer') {
           if (this.isCreativeMode()) {
-            (this.game.activeStage as any).openShipPlacer(this.game.cameraSystem.overviewCamera.focus);
+            (this.game.activeStage as any).openShipPlacer(focusTargetId(this.game.cameraSystem.overviewCamera.focus));
           }
         } else if (act === 'openSettings') {
           this.game.openSettingsMenu();
@@ -592,7 +605,7 @@ export class MapPicker {
     const header = all.find((it) => it.type === 'header');
     const items = all
       .filter((it) => it.type !== 'header' && it.act !== undefined)
-      .map((it) => ({ label: it.label, act: it.act as MenuAction, shortcut: it.shortcut }));
+      .map((it) => ({ label: it.label, act: it.act as MenuAction, shortcut: it.shortcut, selected: it.selected, keepOpen: it.keepOpen }));
     return { title: header?.label ?? target.name, subtitle: header?.subLabel, items };
   }
 
@@ -748,7 +761,7 @@ export class MapPicker {
 
   private runBodyShip(act: MenuAction, target: MapPickable): void {
     if (act === 'focus') {
-      this.cameraSystem.overviewCamera.setFocus(target.id);
+      this.cameraSystem.overviewCamera.setFocusTarget({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
     } else if (act === 'navTarget') {
       this.navTarget.toggleTarget(target.id, target.name);
