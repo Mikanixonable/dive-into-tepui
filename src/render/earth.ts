@@ -77,7 +77,30 @@ function buildSurface(sunDir: SunDirUniform, cloudSunDir: SunDirUniform): EarthS
   const groundLighting = float(NIGHT_AMBIENT).add(
     sunFactor.mul(cloudGroundTransmission).mul(1 - NIGHT_AMBIENT),
   );
-  const baseColor = mix(earthSample.mul(groundLighting), cloudColor, surfaceNodes.clouds.cover);
+  // 海はSchlick Fresnelと細かな波面法線で太陽のglintを作る。陸は植生の
+  // 後方散乱と雪氷の広い鏡面を弱く加え、全材質を同じLambert球にしない。
+  const halfDir = normalize(sunDir.add(viewDir));
+  const wave = vec3(
+    positionWorld.x.mul(2.1e-5).add(positionWorld.z.mul(1.3e-5)).sin(),
+    positionWorld.y.mul(1.7e-5).cos(),
+    positionWorld.z.mul(2.4e-5).sub(positionWorld.x.mul(0.9e-5)).sin(),
+  ).mul(0.055);
+  const waterNormal = normalize(normalWorld.add(wave.mul(surfaceNodes.oceanMask)));
+  const waterNdotV = clamp(dot(waterNormal, viewDir), 0, 1);
+  const fresnel = float(0.0204).add(float(0.9796).mul(float(1).sub(waterNdotV).pow(5)));
+  const sunGlint = clamp(dot(waterNormal, halfDir), 0, 1).pow(420)
+    .mul(sunFactor).mul(7.5);
+  const oceanReflection = vec3(0.24, 0.42, 0.72).mul(fresnel.mul(0.6))
+    .add(vec3(1.0, 0.91, 0.72).mul(sunGlint));
+  const vegetationBackscatter = clamp(dot(viewDir, sunDir), 0, 1).pow(5)
+    .mul(surfaceNodes.vegetationMask).mul(0.12);
+  const iceSheen = clamp(dot(normalWorld, halfDir), 0, 1).pow(48)
+    .mul(surfaceNodes.iceMask).mul(0.55);
+  const directGround = earthSample.mul(groundLighting)
+    .add(oceanReflection.mul(surfaceNodes.oceanMask))
+    .add(earthSample.mul(vegetationBackscatter))
+    .add(vec3(0.75, 0.86, 1.0).mul(iceSheen));
+  const baseColor = mix(directGround, cloudColor, surfaceNodes.clouds.cover);
   
   // もやの色 (夕方になると夕焼け色に)
   const dynamicAtmoColor = mix(sunsetColor, ATMO_COLOR, smoothstep(0.0, 0.2, sunDot));
