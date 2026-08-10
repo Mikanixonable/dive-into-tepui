@@ -50,7 +50,10 @@ main.ts
     │   ├── OverviewCamera
     │   ├── FocusMarkers
     │   └── OverviewCameraPanel        ... DOM は Hud.layers.panel 配下。天体クラス別トグル(軌道線/ラベル)+ 弾薬マーカートグルのみ。座標系の選択は持たない
-    ├── FrameControls                  ... 状態を持たない横断。座標系パネル(カメラ/カメラ回転/並進/計画軌道回転の4ゾーン)から OverviewCamera・PlanDisplay.planFrame を書く。パネル DOM は Hud.layers.panel 配下
+    ├── FrameControls                  ... 座標系パネル。カメラ(視点)区画と軌道計画(描画基準)区画がそれぞれ
+    │                                       中心・回転の2ゾーンを持ち、OverviewCamera・PlanDisplay.planFrame を書く。
+    │                                       自分の状態は「カメラの基準に追随」トグル(followCamera)だけ。
+    │                                       パネル DOM は Hud.layers.panel 配下
     │   ├── AnchorZone × 2                 ... カメラ/並進ゾーン。ObjectPicker + SegmentedControl(いまいる系のクイックボタン)。ObjectPicker のポップアップは Hud.layers.popup 配下
     │   └── RotationZone × 2               ... カメラ回転/計画軌道回転ゾーン。SegmentedControl のみ
     ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合
@@ -68,8 +71,8 @@ main.ts
     │   └── DisplayTimePanel           ... DOM は Hud.layers.panel 配下。期間/未来位置スライダー。画面下端の帯として
     │                                       #hud-displaytime-wrap に開閉トグル(hud/dom.ts の buildCollapseToggle)と
     │                                       並べて包まれる。開閉状態はトグル対象要素の `.collapsed` クラスが正本(この
-    │                                       クラス自身は持たない)で、ViewManager.applyChrome がマップを抜けるたびに
-    │                                       resetHudDocks 経由で開いた状態へ戻す
+    │                                       クラス自身は持たない)で、ビューの往復では戻さない(折りたたみは
+    │                                       ビューの性質ではなく操作者の選択)
     ├── PlanEditor                     ... plan は活艦(ship)の Plan への転送 getter。正本ではない
     │   ├── PlanDisplay                ... 計画の未来表示(「見えるとき何を見せるか」)
     │   │   └── PlanPath         ... 計画折れ線 + per-arc キャッシュ + 画面判定
@@ -198,7 +201,7 @@ main.ts
 | `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | MAP VIEW パネルが書き換え、ラベル側を `FocusMarkers.update`、軌道線側を `EnvironmentScene.showsReferenceLine` が読む。マップのラベル・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主(軌道オブジェクト一覧はこれを経由しない、下記 `FocusMarkers.allBodyPickables` を参照) |
 | `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・ContactPhysics(`Simulator.advance` が呼び出しのたびに参照を渡すだけで保持しない)・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
-| `DisplayTimeManager` | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない) |
+| `DisplayTimeManager` | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が表示時刻パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない) |
 | `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が activePlayer.plan を転送)・PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)・CreativeStage(`planExecution` 艦のノード消化) |
 | `PlanExecutor`(艦ごとの) | `Player`(艦自身) | CreativeStage(`update`/`nextSimulationEventTime`/`applySimulationEvents` から呼ぶだけで保持しない) |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
@@ -238,15 +241,15 @@ main.ts
 | 天球グリッド6トグルの可視状態 | `Navball` | `gridVisibility`。`Game.sync` が `navball.gridVisibility` を読んで `EnvironmentScene.sync` の引数(`gridVisibility`)経由で `CelestialGrid.sync` へ渡すだけで、`CelestialGrid` 自身は状態を持たない |
 | Δv アーム/ボタンのホールド継続時間・ラッチ状態 | `PlanEditor.dvHoldTime` / `NodeGizmo.latch` | 6方向ぶんの経過秒数(ホールドレートのランプに使う)と、ドラッグがラッチへ入った軸/超過量。加算そのものは `PlanEditor.applyDv` に一本化 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
-| マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。ノード・アンカーとも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `KinematicState[]` を1本持つだけで、`addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`dropNodesBefore(t)` は実行時刻が `t` 以前のノードをまとめて取り除き、最後に取り除いたノードを新しい `anchor` に据えて返す(`CreativeStage.applySimulationEvents` が `planExecution==='instant'` 艦の乗り移りにこの戻り値を使う)。`overwriteAnchor(state)` は `trackAnchor` と違いノードが残っていても効く無条件差し替えで、`PlanExecutor.finish` が `'powered'` 艦の遮断後にこれで `anchor` を実状態へ上書きする(ノードが残っている限り `trackAnchor` は no-op なので使えない) |
+| マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。ノード・アンカーとも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `KinematicState[]` を1本持つだけで、`addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`consumeNodesUpTo(t, actualState)` は実行時刻が `t` 以前のノードをまとめて取り除き、取り除いた件数を返すとともに、`anchor` を `actualState`(実際に到達した状態)へ**後続ノードの有無によらず無条件に**差し替える — 呼ぶのは `PlanGuide.update`・`PlanExecutor.finish`・`CreativeStage.applySimulationEvents` の3か所だけで、動力飛行の残差を消さずに以降の計画へ残すのがこの無条件差し替えの目的。`addNode` は `anchor.t` 以前の状態を受け付けず `-1` を返す |
 | 操作対象(アクティブ)艦 | `Game.player` | 唯一の書き換え箇所は `Game.setActivePlayer(ship)`。カメラ参照・計画編集対象・ターゲット解除の副作用もすべてここに閉じる(下記「たまたま同時に切り替わる」節参照) |
 | 軌道計画の実行モード | `Player.planExecution`(型 `PlanExecutionMode` = `'off' \| 'instant' \| 'powered'` は `plan/plan-executor.ts` が定義し `player.ts` は re-export するだけ) | 全ての自機が持つ(既定 `'off'`)。`'instant'` は `CreativeStage.applySimulationEvents` がノード時刻ちょうどで `state` をノードの絶対状態へ置き換え、`'powered'` は `PlanExecutor` が姿勢制御・噴射で実行する。操作対象艦での手動並進(`this.thrust !== null`)・手動回転(`throttle.hasManualRotationInput`)は `Player.behave` が `'powered'` を `'off'` へ落とす |
-| PlanExecutor の状態機械(`phase`/`targetNode`/`burnDirWorld`/`burnUpWorld`/`pendingAccel`/`thrustGateOpen`) | `PlanExecutor`(艦ごとの) | 艦の `planExecution`/ノード/生死/ゲートから毎フレーム `update` が導出。`targetNode` はノードの**参照**を持ち、`node.t` ではなく `node !== targetNode` で差し替わりを検出する(`Plan.applyNodeDv`/`retimeNode` は同じ `t` のまま新しいオブジェクトへ差し替えるため)。`ship.torque`/`ship.thrust`/`ship.plan` は `PlanExecutor` が唯一書き換える(`'powered'` の間のみ)が、書き込みは `update`(毎フレーム、`Player.behave` の後)と `applyIgnitionAndCutoff`(simTime イベント境界ごと)の両方から起きる — 前者は「操作艦で `behave` が毎フレーム上書きする `thrust` を、その後で確実に正しい値へ戻す」役、後者は「点火・遮断の瞬間を simTime ちょうどに固定する」役で、互いの代わりにはならない |
-| 選択中ノード・計画編集モード | `PlanEditor.selectedNodeIdx` / `.editMode` | 選択は素の `number \| null`。`deleteNode(idx)` は削除後 `selectedNodeIdx >= idx` なら選択を解除する |
+| PlanExecutor の状態機械(`phase`/`targetNode`/`burnDirWorld`/`burnUpWorld`/`pendingAccel`) | `PlanExecutor`(艦ごとの) | 艦の `planExecution`/ノード/生死/ゲートから毎フレーム `update` が導出。`targetNode` はノードの**参照**を持ち、`node.t` ではなく `node !== targetNode` で差し替わりを検出する(`Plan.applyNodeDv`/`replaceNode` は同じ `t` のまま新しいオブジェクトへ差し替えるため)。噴射ゲート(`simSpeed.canPlayerThrust`)は保持せず、`update`/`applyIgnitionAndCutoff`/`nextEventTime` が各自引数で受け取る。`ship.torque`/`ship.thrust`/`ship.plan` は `PlanExecutor` が唯一書き換える(`'powered'` の間のみ)が、書き込みは `update`(毎フレーム、`Player.behave` の後)と `applyIgnitionAndCutoff`(simTime イベント境界ごと)の両方から起きる — 前者は「操作艦で `behave` が毎フレーム上書きする `thrust` を、その後で確実に正しい値へ戻す」役、後者は「点火・遮断の瞬間を simTime ちょうどに固定する」役で、互いの代わりにはならない |
+| 選択中ノード・計画編集モード | `PlanEditor.selectedNode` / `.editMode` | 選択の正本はノード(`KinematicState`)そのものへの**参照**。`selectedNodeIdx` は `plan.nodes` から同一性で引き直す get/set のみで、列から消えたノード(削除・下流の切り捨て・消化)は自動的に「未選択」になる |
 | 直近ノードの接近/達成通知済み | `PlanGuide`(`approachNotified` / `achievedNotified`) | 通知済みのノードそのものへの参照。編集のたびノードは別インスタンスへ置き換わるので、同一性比較がそのまま「同じノードについて通知済みか」の判定になる |
 | 予測表示期間(手動レンジの秒数 `manualDurationSec` を含む)・未来ゴーストスライダー(`sliderT`)・未来表示の禁止(`forceCurrent`) | `DisplayTimeManager` | `forceCurrent` は get/set アクセサで、true をセットすると `sliderT` も 0 へ戻す。期間の切替(`durationKey` 変更)でも同様に `sliderT` を 0 へ戻す |
-| 計画折れ線を描く表示座標系(planFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本。書き換えは `FrameControls` の並進/計画軌道回転ゾーンのみ、いずれも `Ephemeris.frameOf(center, rotatingWith)` 経由 |
-| マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` のカメラ/カメラ回転ゾーンから呼ばれる |
+| 計画折れ線を描く表示座標系(planFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本。書き換えは `FrameControls` の軌道計画区画の中心/回転ゾーンのみ、いずれも `Ephemeris.frameOf(center, rotatingWith)` 経由 |
+| マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` のカメラ区画の中心/回転ゾーンから呼ばれる |
 | 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
 | 現在のビュー(combat/map/dock) | `ViewManager`(private `_current`) | 遷移は `setView()` のみ。影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayTimeManager.forceCurrent` / タッチUI)を一斉に切り替える。ドック表示中は背後の 3D 側ビュー(`returnFromDock`)を保持し、閉じるとそこへ戻る |
 | ドックビューの対象基地 | `Docking`(private `_activeBase`) | 基地の右クリックメニューで設定。これが空でない間だけ `ViewManager.selectableViews()` に `'dock'` が並ぶ |
@@ -293,9 +296,11 @@ main.ts
   `Game.setActivePlayer` だけで、他はそれぞれ自分の持ち分(視点/編集対象/ロック解除)だけを更新する
   — `ViewManager` が3つのフラグを一斉に切り替えるのと同じ形のトグラー集約。
 - **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `PlanDisplay.planFrame`(計画折れ線を
-  描く座標系)** は別の正本で、ユーザーが `FrameControls` の4ゾーン(カメラ/カメラ回転/並進/計画軌道回転)
-  からそれぞれ独立に選ぶ — 4ゾーンとも状態は書き込み先の2クラスに残したまま `FrameControls` は
-  仲介するだけなので、この独立性自体はゾーンの分割で変わらない。PlanPath が受け取るのは後者だけ。
+  描く座標系)** は別の正本で、ユーザーが `FrameControls` の2区画×(中心・回転)の
+  4ゾーンからそれぞれ独立に選ぶ — 4ゾーンとも状態は書き込み先の2クラスに残したまま `FrameControls` は
+  仲介するだけなので、この独立性自体はゾーンの分割で変わらない。両者を連動させるかどうかだけが
+  `FrameControls` 自身の状態(`followCamera`)で、有効なあいだフォーカス移動が planFrame の中心も動かす。
+  PlanPath が受け取るのは後者だけ。
 - **`Targeter.target`(戦闘ターゲット、`Enemy` のみ)と `NavTarget.id`(航法ターゲット、任意の `MapPickable`)**
   は別の正本。前者は射撃・LEAD・的通過マークの対象、後者はマップの相対 AN/DN・時間加速・ノード追加の
   対象で、対象の型も操作系(右クリック位置がヒットしたのが敵かそれ以外か)も異なるため一本化しない。
@@ -349,9 +354,12 @@ main.ts
 | `GameEntity.prevState`(→ `current.prevState`) | 直前の `step`/`reset` 時点の state を持つ専用フィールド(`history` とは別) | `step`/`reset` のたび更新 |
 | `GameEntity.predictedTrajectory` | `actualTrajectory.state` + ephemeris から `Predictor` が漸進的に構築する未来軌道のキャッシュ(`predictsFuture = false` のクラスでは常に null)。伸ばす長さ(horizon)は `DisplayTimeManager.durationSec(referencePeriod)` の毎フレーム値で、`GameEntity`/`Predictor` のどちらにも独立した状態としては残らない | `discardPredictionIfDiverged` の距離判定(§3-4 (a))、または `Player.behave` の推力確定直後(§3-4 (b))。無効化は破棄のみで即再構築はしない — 次フレーム以降の通常の予算配分で伸び直す |
 | `SimSpeedManager.canResupplyAmmo` | `simSpeed < C.MAX_PHYS_SIM_SPEED` の派生 getter(他の can* より1段厳しく等倍限定) | 呼ぶたび再計算 |
-| `OrbitLine.snap` / 頂点配列 | 楕円ジオメトリの再生成判定用スナップショット | 要素ドリフト・`force`・初回 |
+| `OrbitLine.snap` / 頂点配列 / `lastExclude` | 楕円ジオメトリの再生成判定用スナップショットと、フェード帯の再計算判定用の直近の除外天体(離心近点角・半径) | 要素ドリフト・`force`・初回。フェードは帯の境界が頂点間隔ぶん動いたときだけ焼き直す |
+| `SampledLine.bakedScale` / `lastSamples` / `lastFrame` | 頂点を焼き直すかの判定に使う直近の bake 入力。スケールは点列**先頭**のサンプルで1回だけ評価した数値(列が伸びても動かない点なので、カメラが静止していれば値も動かない) | 点列の参照・座標系・スケール(`SCALE_REBAKE_RATIO` 幅)のいずれかが変わったとき |
+| `DynamicTrajectory.sampleInterval` | 直近の `step` に渡された間引き間隔。列がどれだけ粗いかという列自身の属性で、`GameEntity.divergenceTolerance` が乖離判定の許容量をここから引く(現在の表示期間から引くと、期間を縮めた瞬間に既存の粗い列を破棄し続ける) | `step` のたび |
+| `FocusMarkers.hiddenLabelIds` | 直近の `syncLabels` でマーカーを描かなかったラベル id(ラベル衝突・天体による遮蔽)。`allBodyPickables` が候補の `pickable` に映すだけで、候補からは落とさない | `syncLabels` のたび(マップ非表示時は空集合) |
 | 自機 `OrbitLine` の表示抑制(`setSuppressed` の引数) | `PredictedTrajectoryLine.coversHorizon(player, simTime, horizon)` から導く真偽値。予測が表示範囲を覆いきるまでは解析楕円を代替表示として残すための調整で、`OrbitLine` 自身はこの理由を持たない | `Game.sync` が毎フレーム渡し直す |
-| `PlanArc.samples` / `.key`(`{state0, end}`) | 予測 RK4(`DynamicTrajectory` 積分)の結果と入力スナップショット | `update` の `tracksLiveAnchor` 引数(計画が空の間の唯一の区間だけ true)が false なら `state0`/`end` の同一性・値の変化。true なら区間長・起点時刻とも直近再積分時からの変化がサンプル間隔(区間長 / `PLAN_ARC_MAX_SAMPLES`)未満の間は無効化しない(`'orbit'` プリセットでは起点の接触周期自体が J2・大気抵抗で毎フレーム連続変化するため、厳密一致ではなくこの閾値で判定する)——ただし `state0` の同一性が変わっていて `t` が前進していない(別艦への切り替え・ドック発進・衝突による状態上書きなどの非連続な差し替え)場合はこの閾値を無視して即座に無効化する |
+| `PlanArc.samples` / `.key`(`{state0, end, sourceRevision, apsisCenterId}` — 結果に効く入力をすべて含む。基準天体が変われば極値も変わるので `apsisCenterId` も鍵の一部) | 予測 RK4(`DynamicTrajectory` 積分)の結果と入力スナップショット | `update` の `tracksLiveAnchor` 引数(計画が空の間の唯一の区間だけ true)が false なら `state0`/`end` の同一性・値の変化。true なら区間長・起点時刻とも直近再積分時からの変化がサンプル間隔(区間長 / `PLAN_ARC_MAX_SAMPLES`)未満の間は無効化しない(`'orbit'` プリセットでは起点の接触周期自体が J2・大気抵抗で毎フレーム連続変化するため、厳密一致ではなくこの閾値で判定する)——ただし `state0` の同一性が変わっていて `t` が前進していない(別艦への切り替え・ドック発進・衝突による状態上書きなどの非連続な差し替え)場合はこの閾値を無視して即座に無効化する |
 | `PlanArc.periapsisState` / `.apoapsisState` | 同じ積分ループの中で、`apsisCenter`(呼び出し側が渡す基準天体。末尾区間以外は null で検出自体を省く)に対して `physics/trajectory-features.ts` の `apsisCrossing` をステップ対ごとに掛けた結果、最初に見つかった近地点・遠地点(それぞれ独立)。折れ線サンプルではなく積分の生ステップ対から求めるので、衝突コースで動径速度が符号反転しない区間は近地点側が null のまま残る | `integrate()` の呼び出しごとに null へリセットして最初の1回のみ確定(`.samples`/`.key` と同じ再積分条件) |
 | `PlanPath.arcs` / `.activeCount` / `.nodeCount` / `.frame` / `.unbakeTime` / `.project` | 毎フレーム再構築される区間分割と表示文脈(画面判定もこれを使う)。`arcs` は先頭 `activeCount` 本だけがこのフレームの区間に対応するプール、先頭 `nodeCount` 本がノードで終わる区間 | `update()` 毎 |
 | `PlanPath.finalSegment()`(private `final`) | 末尾区間(次のバーンが無い区間)の `state0` / `samples`(`PlanArc.samples` の同じ配列参照をそのまま公開 — 新しい配列を作り直すと `SampledLine.syncGeometry` の参照同一性による再bake抑制が効かなくなる)/ 同じ末尾 arc の `periapsisState`/`apoapsisState` をそのまま転送した `periapsis`/`apoapsis`。`PlanDisplay` の Pe/Ap アイコンは後者2つを直接読む。`samples` は `Game.equatorNodeSources` が渡す自艦の EqAN/EqDN 走査元 | `update()` 毎(`update()` を一度も通していなければ null) |
