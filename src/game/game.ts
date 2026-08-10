@@ -82,7 +82,8 @@ export class Game {
   private _isPaused = false;
   get isPaused(): boolean { return this._isPaused; }
 
-  private readonly environment: EnvironmentScene;
+  private readonly _environment: EnvironmentScene;
+  get environment(): EnvironmentScene { return this._environment; }
   private readonly navball: Navball;
 
   private readonly unlockManager: UnlockManager;
@@ -161,7 +162,7 @@ export class Game {
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene, this.settingsPanel);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this._hud.layers.panel);
-    this.environment = new EnvironmentScene(this._scene, this.ephemeris);
+    this._environment = new EnvironmentScene(this._scene, this.ephemeris);
     this.displayTimeManager = new DisplayTimeManager(this._hud.layers.panel);
     this.editor = new PlanEditor(
       this._hud,
@@ -335,6 +336,7 @@ export class Game {
     // 時刻の復元
     this.simulator.simTime = data.simTime;
     this._ephemeris.setPhaseOffsets(data.phaseOffsets);
+    if (data.earthSpinPhase0 !== undefined) this._environment.setEarthSpinPhase0(data.earthSpinPhase0);
 
     // Playerの復元(複数隻ぶん)
     let activePlayer: Player | null = null;
@@ -548,7 +550,7 @@ export class Game {
 
   // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
   private updateMapPresentation(dt: number, afterRefresh?: () => void): void {
-    this.environment.update(this.displayTime, this.cameraSystem.overviewMode);
+    this._environment.update(this.displayTime, this.cameraSystem.overviewMode);
     this.editor.update(this.simulator.simTime, this.displayTime, this.entities.attractors());
     this.equatorNodeMarkers.update(
       this.equatorNodeSources(), this.editor.planDisplay.planFrame, this.displayTime,
@@ -682,7 +684,7 @@ export class Game {
     const target = this.targeter.aliveTarget;
     const secondaryTarget = this.targeter.aliveSecondaryTarget;
 
-    this.environment.sync(
+    this._environment.sync(
       player?.state.r ?? v3(), this.floatingOrigin, displayTime,
       this.cameraSystem, this.navball.gridVisibility,
     );
