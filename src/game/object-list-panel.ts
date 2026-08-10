@@ -24,6 +24,7 @@ interface RowNode {
   readonly toggle: HTMLElement;
   readonly label: HTMLElement;
   readonly detail: HTMLElement;
+  readonly actions: HTMLElement;
   readonly childrenContainer: HTMLElement;
   readonly children: Map<string, RowNode>;
   expanded: boolean;
@@ -55,6 +56,7 @@ export class ObjectListPanel {
   private selectedId: string | null = null;
   private query = '';
   private filter: 'all' | 'near' | 'important' | 'bodies' = 'all';
+  private readonly breadcrumb: HTMLElement;
 
   constructor(root: HTMLElement) {
     this.panel = document.createElement('div');
@@ -77,6 +79,9 @@ export class ObjectListPanel {
       tools.appendChild(b);
     }
     this.panel.appendChild(tools);
+    this.breadcrumb = document.createElement('div');
+    this.breadcrumb.className = 'object-list-breadcrumb';
+    this.panel.appendChild(this.breadcrumb);
 
     for (const { kind } of SECTIONS) {
       const header = document.createElement('div');
@@ -110,6 +115,7 @@ export class ObjectListPanel {
   // parentOf は id → 親 id(天体の親子関係のみ、他種別は載らない)。focusId が undefined
   // (フォーカス中の天体が無い)なら、どの行も強調しない。
   sync(items: readonly MapPickable[], focusId: string | undefined, parentOf: ReadonlyMap<string, string>): void {
+    this.breadcrumb.textContent = focusId === undefined ? 'フォーカス: なし' : `フォーカス: ${items.find((i) => i.id === focusId)?.name ?? focusId}`;
     const byKind = new Map<MapPickKind, MapPickable[]>();
     for (const item of items) {
       if (!this.matches(item)) continue;
@@ -131,11 +137,14 @@ export class ObjectListPanel {
         const parent = parentOf.get(i.id);
         return parent === undefined || !idsInSection.has(parent);
       });
+      // 現在フォーカス中の天体へ至る枝は自動展開し、別系は初期状態の畳みを保つ。
+      const focusAncestors = new Set<string>();
+      for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) focusAncestors.add(cur);
 
       const seen = new Set<string>();
       for (const item of roots) {
         seen.add(item.id);
-        this.syncRow(section.rows, item, childrenOf, focusId, section.body);
+        this.syncRow(section.rows, item, childrenOf, focusId, section.body, focusAncestors);
       }
       this.pruneRows(section.rows, seen);
     }
@@ -153,7 +162,7 @@ export class ObjectListPanel {
   // id に対応する RowNode を(無ければ生成して)最新化し、続けてその子を再帰的に同期する。
   private syncRow(
     rows: Map<string, RowNode>, item: MapPickable,
-    childrenOf: ReadonlyMap<string, MapPickable[]>, focusId: string | undefined, container: HTMLElement,
+    childrenOf: ReadonlyMap<string, MapPickable[]>, focusId: string | undefined, container: HTMLElement, focusAncestors: ReadonlySet<string>,
   ): void {
     let node = rows.get(item.id);
     if (!node) {
@@ -168,13 +177,14 @@ export class ObjectListPanel {
     node.row.classList.toggle('selected', item.id === this.selectedId);
 
     const children = childrenOf.get(item.id) ?? [];
+    if (focusAncestors.has(item.id)) node.expanded = true;
     node.toggle.style.visibility = children.length > 0 ? 'visible' : 'hidden';
     this.applyRowExpanded(node);
 
     const seen = new Set<string>();
     for (const child of children) {
       seen.add(child.id);
-      this.syncRow(node.children, child, childrenOf, focusId, node.childrenContainer);
+      this.syncRow(node.children, child, childrenOf, focusId, node.childrenContainer, focusAncestors);
     }
     this.pruneRows(node.children, seen);
   }
@@ -203,6 +213,12 @@ export class ObjectListPanel {
     row.appendChild(toggle);
     row.appendChild(label);
     row.appendChild(detail);
+    const actions = document.createElement('span'); actions.className = 'object-list-actions';
+    const action = (text: string, title: string, fn: () => void) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); actions.appendChild(b); };
+    action('F', 'フォーカス (Enter / ダブルクリック)', () => this.onFocus?.(id));
+    action('T', '航法ターゲット (T)', () => this.onNavTarget?.(id));
+    action('…', '詳細 (右クリック)', () => this.onSelectRight?.(id, row.getBoundingClientRect().right, row.getBoundingClientRect().bottom));
+    row.appendChild(actions);
     const childrenContainer = document.createElement('div');
     childrenContainer.className = 'object-list-children';
 
@@ -219,7 +235,7 @@ export class ObjectListPanel {
       this.onSelectRight?.(id, e.clientX, e.clientY);
     });
 
-    const node: RowNode = { row, toggle, label, detail, childrenContainer, children: new Map(), expanded: false };
+    const node: RowNode = { row, toggle, label, detail, actions, childrenContainer, children: new Map(), expanded: false };
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
       node.expanded = !node.expanded;
