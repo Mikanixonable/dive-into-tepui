@@ -161,6 +161,21 @@ export function register(): void {
     assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'player-1', addScaled(saturn, v3(1, 0, 0), 1e8), attractors));
   });
 
+  test('visibility: 衛星フォーカスでも同じ惑星系の player は表示対象にする', () => {
+    const e = new Ephemeris();
+    const attractors = e.attractorsAt(0);
+    const saturn = e.positionOf('saturn', 0);
+    const titan = e.positionOf('titan', 0);
+    const jupiter = e.positionOf('jupiter', 0);
+
+    // タイタンをフォーカスしても、親惑星の土星周回にいる player は消さない。
+    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'titan', addScaled(saturn, v3(1, 0, 0), 1e8), attractors));
+    // タイタン自身の周回も同じ土星系として扱う。
+    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'titan', addScaled(titan, v3(1, 0, 0), 1e6), attractors));
+    // 木星系の player は土星系の衛星フォーカスでは表示しない。
+    assert.ok(!isPositionInFocusedSystem(SOLAR_SYSTEM, 'titan', addScaled(jupiter, v3(1, 0, 0), 1e8), attractors));
+  });
+
   test('systemChainAt: 月の近くでは月→地球→太陽の系列になる', () => {
     const e = new Ephemeris();
     const attractors = e.attractorsAt(0);
