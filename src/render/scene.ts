@@ -1,11 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
-import { ExposureController, NEUTRAL_CELESTIAL_EXPOSURE } from './exposure';
 
 export interface GameScene {
   scene: THREE.Scene;
   renderer: WebGPURenderer;
-  exposure: ExposureController;
   resize: () => void;
 }
 
@@ -17,12 +15,6 @@ export async function createGameScene(canvas: HTMLCanvasElement): Promise<GameSc
   const scene = new THREE.Scene();
 
   const renderer = new WebGPURenderer({ canvas, antialias: true });
-  // すべての材質入力を線形 sRGB として照明・合成し、最後に表示用 sRGB へ変換する。
-  // AgX は太陽・大気・加算発光を同時に扱う際のハイライトを穏やかに圧縮できる。以後の
-  // 大気/LUTフェーズはこの出力変換の前にHDR値を返すことを前提とする。
-  renderer.toneMapping = THREE.AgXToneMapping;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMappingExposure = NEUTRAL_CELESTIAL_EXPOSURE;
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   await renderer.init();
@@ -32,5 +24,5 @@ export async function createGameScene(canvas: HTMLCanvasElement): Promise<GameSc
   };
   window.addEventListener('resize', resize);
 
-  return { scene, renderer, exposure: new ExposureController(), resize };
+  return { scene, renderer, resize };
 }

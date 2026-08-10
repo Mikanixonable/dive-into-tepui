@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
 import * as C from './const';
-import { dot, len, norm, sub, v3 } from '../physics/vec3';
+import { v3 } from '../physics/vec3';
 import { Player } from './player/player';
 import { Enemy } from './game-entity/enemy';
 import { CameraSystem } from './camera/camera-system';
@@ -31,8 +31,6 @@ import { Hud } from './hud/hud';
 import { SettingsPanel } from './hud/settings-panel';
 import { Sfx } from '../audio/sfx';
 import { GameScene } from '../render/scene';
-import { exposureTargetForLuminance } from '../render/exposure';
-import { R_EARTH } from '../physics/solar-system';
 import { EnvironmentScene } from './celestial/environment-scene';
 import { Ephemeris } from '../physics/ephemeris';
 import type { AbsoluteEphemeris } from '../physics/absolute-ephemeris';
@@ -59,8 +57,6 @@ import { FrameControls } from './frame-controls';
 export class Game {
   private readonly _scene: THREE.Scene;
   private readonly renderer: GameScene['renderer'];
-  private readonly exposure: GameScene['exposure'];
-  private exposureTarget = 1;
   private floatingOrigin: FloatingOrigin;
   private readonly input: Input;
   touchControls: TouchControls | null = null;
@@ -128,7 +124,6 @@ export class Game {
     this.launchMode = launch.mode;
     this._scene = gs.scene;
     this.renderer = gs.renderer;
-    this.exposure = gs.exposure;
     this._hud = hud;
     this._sfx = sfx;
     this.settingsPanel = settingsPanel;
@@ -388,9 +383,6 @@ export class Game {
   update(dtRaw: number): void {
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
-    // 露出の目標はまだ中立固定。ここを全ビュー共通の実時間で更新しておくことで、将来
-    // 測光ベースの自動露出を足しても戦闘/マップ切替そのものが明滅のトリガーにならない。
-    this.renderer.toneMappingExposure = this.exposure.update(dt, this.exposureTarget);
     this.handleInput();
 
     // handleInput より後に置く: ポーズ中も Esc・ヘルプなどは効かせる。
@@ -689,19 +681,6 @@ export class Game {
       player?.state.r ?? v3(), this.floatingOrigin, displayTime,
       this.cameraSystem, this.navball.gridVisibility,
     );
-    // GPU readbackなしの低コスト測光。真のカメラ・地球・太陽方向から、画面を占める
-    // 地球の昼側比率と角サイズを推定する。ビュー種別ではなく見えている光量へ応答する。
-    const earthPos = this.ephemeris.positionOf('earth', displayTime);
-    const earthToCamera = sub(this.cameraSystem.activeCameraPos, earthPos);
-    const earthToSun = this.ephemeris.sunDirFrom(earthPos, displayTime);
-    const visibleDay = 0.5 + 0.5 * dot(norm(earthToCamera), earthToSun);
-    const cameraForward = new THREE.Vector3();
-    this.cameraSystem.activeCamera.getWorldDirection(cameraForward);
-    const towardEarth = norm(sub(earthPos, this.cameraSystem.activeCameraPos));
-    const alignment = cameraForward.x * towardEarth.x + cameraForward.y * towardEarth.y + cameraForward.z * towardEarth.z;
-    const inView = Math.max(0, Math.min(1, (alignment - 0.25) / 0.75));
-    const earthCoverage = Math.min(1, (R_EARTH / Math.max(R_EARTH, len(earthToCamera))) * 5) * inView;
-    this.exposureTarget = exposureTargetForLuminance(0.055 + visibleDay * earthCoverage * 0.72);
 
     // 0隻状態へ移ったフレームで、直前の操作艦のRCSループ音を確実に止める。
     if (!player) this._sfx.setRcs(false);
