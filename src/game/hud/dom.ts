@@ -235,10 +235,12 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .seg-btn.hold-btn:active { border-color: ${ACCENT}; color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.16); }
 #hud .icon-toggle-btn { min-width: 20px; padding: 3px 6px; text-align: center; font-size: 12px; }
 #hud .body-class-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-#hud .body-class-row .body-class-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; width: 96px; min-width: 96px; }
+#hud .body-class-row .body-class-title { width: 96px; min-width: 96px; text-align: left; font-size: 10px; letter-spacing: 1px; }
 #hud .body-class-row .body-class-btns { display: flex; gap: 4px; }
-#hud .body-class-row.planet-row .body-class-title { color: ${ACCENT_SOFT}; }
 #hud .body-class-row.planet-row .icon-toggle-btn { border-color: rgba(${ACCENT_RGB}, .45); }
+#hud .body-class-row.category-off .icon-toggle-btn.on { border-color: ${EDGE}; color: ${INK_SOFT}; font-weight: 700; opacity: .65; }
+#hud .body-class-row.category-off .icon-toggle-btn.disabled { opacity: .35; }
+#hud .category-toggle-btn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #hud .hud-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 #hud .hud-toggle .toggle-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; }
 #hud .hud-toggle .toggle-track {

@@ -699,11 +699,11 @@ export class Game {
     this.entities.sync(this.floatingOrigin, displayTime);
     const displayToggles = this.cameraSystem.bodyClassToggles;
     for (const ship of this.entities.players) {
-      ship.orbitLine.setDisplayEnabled(!overviewMode || displayToggles.playerOrbit);
+      ship.orbitLine.setDisplayEnabled(!overviewMode || (displayToggles.playerVisible && displayToggles.playerOrbit));
     }
     for (const base of this.entities.bases) {
       base.syncOrbitLine(overviewMode, this.floatingOrigin, attractors);
-      base.orbitLine.setDisplayEnabled(!overviewMode || displayToggles.baseOrbit);
+      base.orbitLine.setDisplayEnabled(!overviewMode || (displayToggles.baseVisible && displayToggles.baseOrbit));
     }
 
     this.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
@@ -712,7 +712,7 @@ export class Game {
       const targets = this.entities.getCombatTargets(player);
       this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project, attractors);
       for (const enemy of this.entities.enemies) {
-        enemy.orbitLine.setDisplayEnabled(!overviewMode || displayToggles.shipOrbit);
+        enemy.orbitLine.setDisplayEnabled(!overviewMode || (displayToggles.shipVisible && displayToggles.shipOrbit));
       }
     }
     this.navTarget.sync(project, overviewMode, this.cameraSystem.activeCameraPos);

@@ -119,7 +119,7 @@ export class FocusMarkers {
     // まず表示対象を決め、その中だけ座標を引く。ラグランジュ点は Icon/Label のどちらかが
     // 立っているときだけ。alwaysFullyVisibleIds に含まれる天体は Icon/Label とも常時 true。
     const visible = visibleBodyIds(ephemeris.registry, focusId, toggles);
-    const always = alwaysFullyVisibleIds(ephemeris.registry, focusId);
+    const always = alwaysFullyVisibleIds(ephemeris.registry, focusId, toggles);
 
     const positions: Record<string, Vec3> = {};
     const display: Record<string, { icon: boolean; label: boolean }> = {};
@@ -128,7 +128,7 @@ export class FocusMarkers {
       positions[id] = ephemeris.positionOf(id, t);
       display[id] = always.has(id) ? { icon: true, label: true } : bodyIconLabel(ephemeris.registry, toggles, id);
     }
-    if (toggles.lagrangeIcon || toggles.lagrangeLabel) {
+    if (toggles.lagrangeVisible && (toggles.lagrangeIcon || toggles.lagrangeLabel)) {
       for (const { id, points } of this.lagrangeSources) {
         if (!visible.has(id)) continue;
         const l = ephemeris.lagrangeAt(id, t);
