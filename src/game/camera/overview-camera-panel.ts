@@ -50,7 +50,7 @@ export class OverviewCameraPanel {
     const categories: (readonly [keyof BodyClassToggles, HudToggleButton, HTMLElement, readonly IconToggleButton[]])[] = [];
     for (const row of [...BODY_CLASS_ROWS, ...ENTITY_ROWS]) {
       const rowEl = document.createElement('div');
-      rowEl.className = `body-class-row${row.label === '惑星' ? ' planet-row' : ''}`;
+      rowEl.className = 'body-class-row';
       const category = new HudToggleButton(row.label, `${row.label}を表示`, (on) => this.onBodyClassToggle?.(row.categoryKey, on));
       category.element.classList.add('body-class-title');
       rowEl.appendChild(category.element);
