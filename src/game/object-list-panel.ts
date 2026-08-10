@@ -2,6 +2,7 @@ import { hudDock } from './hud/dom';
 import { BodyClass, bodyClassOf } from './celestial/body-class';
 import type { CelestialRegistry } from '../physics/solar-system';
 import { MapPickable, MapPickKind } from './map-pick';
+import { LAGRANGE_ID } from './hud/object-groups';
 
 const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
   { kind: 'body', label: '天体' },
@@ -18,15 +19,14 @@ interface Section {
   expanded: boolean;
 }
 
-type ObjectListFilter = 'near' | 'system' | Exclude<BodyClass, 'star'>;
+type ObjectListFilter = 'system' | Exclude<BodyClass, 'star'>;
 
 const FILTERS: readonly (readonly [ObjectListFilter, string])[] = [
-  ['near', '近く'],
   ['planet', '惑星'],
   ['satellite', '衛星'],
   ['dwarf', '準惑星'],
-  ['smallBody', '小惑星'],
-  ['system', '自艦系'],
+  ['smallBody', '小天体'],
+  ['system', '船'],
 ];
 
 // 1件ぶんの行 + その子を畳めるトグル区画。子を持たない行(自艦/敵/弾薬/基地、および
@@ -68,7 +68,7 @@ export class ObjectListPanel {
   private readonly registry: CelestialRegistry;
   private selectedId: string | null = null;
   private query = '';
-  private filter: ObjectListFilter = FILTERS[0]![0];
+  private filter: ObjectListFilter | null = null;
   private lastFocusId: string | undefined = undefined;
   private readonly breadcrumb: HTMLElement;
 
@@ -97,7 +97,10 @@ export class ObjectListPanel {
     tools.className = 'object-list-tools';
     for (const [key, label] of FILTERS) {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', key === this.filter ? 'true' : 'false');
-      b.addEventListener('click', () => { this.filter = key; for (const x of Array.from(tools.querySelectorAll('button'))) x.setAttribute('aria-pressed', String(x === b)); });
+      b.addEventListener('click', () => {
+        this.filter = this.filter === key ? null : key;
+        for (const x of Array.from(tools.querySelectorAll('button'))) x.setAttribute('aria-pressed', String(x === b && this.filter === key));
+      });
       tools.appendChild(b);
     }
     head.appendChild(tools);
@@ -108,7 +111,7 @@ export class ObjectListPanel {
 
     for (const { kind } of SECTIONS) {
       const header = document.createElement('div');
-      header.className = 'dock-tab-btn object-list-section-header';
+      header.className = 'object-list-section-header';
       const body = document.createElement('div');
       body.className = 'object-list-section-body';
       const section: Section = { header, body, rows: new Map(), expanded: true };
@@ -131,7 +134,6 @@ export class ObjectListPanel {
   }
 
   select(id: string | null): void { this.selectedId = id; }
-  get selected(): string | null { return this.selectedId; }
 
   // 種別ごとの区画へ、既存行は使い回しつつ id 差分だけ足し引きする。行のクリックリスナーは
   // 生成時の1回だけ張るので、ここで毎フレーム innerHTML を書き換えてはいけない
@@ -161,11 +163,15 @@ export class ObjectListPanel {
         : kind === 'base' ? `ドック候補 ${list.filter((i) => i.detail?.includes('ドック')).length}` : '';
       section.header.textContent = `${label} (${list.length})${state ? ` · ${state}` : ''} ${section.expanded ? '▾' : '▸'}`;
 
-      const childrenOf = childrenOfMap(list, parentOf);
-      const idsInSection = new Set(list.map((i) => i.id));
+      // 衛星フィルタでは、衛星自身はフィルタを通っても親の惑星は通らない(bodyClassOf が
+      // 'planet' のため)。親を惑星ごとのクラスタ見出しとして拾い出す — フィルタの一致件数
+      // (ヘッダーの (N))には含めないので、list ではなく別変数に積む。
+      const displayList = kind === 'body' && this.filter === 'satellite' ? this.withClusterParents(list, items, parentOf) : list;
+      const childrenOf = childrenOfMap(displayList, parentOf);
+      const idsInSection = new Set(displayList.map((i) => i.id));
       // 親が今フレーム同じ区画に見当たらない(遮蔽等で一時的に消えた等)行は根として扱う —
       // 親が現れないせいで子ごと画面から消えてしまうより、ひとまず出す方に倒す。
-      const roots = list.filter((i) => {
+      const roots = displayList.filter((i) => {
         const parent = parentOf.get(i.id);
         return parent === undefined || !idsInSection.has(parent);
       });
@@ -184,15 +190,30 @@ export class ObjectListPanel {
     if (this.selectedId !== null && !items.some((i) => i.id === this.selectedId && this.matches(i))) this.selectedId = null;
   }
 
+  // list の各要素の親(未登場なら)を allItems から補って返す — 親自身はフィルタを通って
+  // いなくても、既存の親子ツリー機構(childrenOfMap/roots)にそのままクラスタ見出しとして乗せる。
+  private withClusterParents(
+    list: readonly MapPickable[], allItems: readonly MapPickable[], parentOf: ReadonlyMap<string, string>,
+  ): MapPickable[] {
+    const byId = new Map(allItems.map((i) => [i.id, i]));
+    const seenIds = new Set(list.map((i) => i.id));
+    const result = [...list];
+    for (const item of list) {
+      const parentId = parentOf.get(item.id);
+      if (parentId === undefined || seenIds.has(parentId)) continue;
+      const parent = byId.get(parentId);
+      if (!parent) continue;
+      seenIds.add(parentId);
+      result.push(parent);
+    }
+    return result;
+  }
+
   private matches(item: MapPickable): boolean {
     if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
-    if (this.filter === 'system') return item.inFocusedSystem !== false;
-    if (this.filter === 'planet' || this.filter === 'satellite' || this.filter === 'dwarf' || this.filter === 'smallBody') {
-      return item.kind === 'body' && bodyClassOf(this.registry, item.id) === this.filter;
-    }
-    // priority は MapPicker が距離[m]として提供する。未指定(天体等)は残す。
-    if (this.filter === 'near') return item.priority === undefined || item.priority < 1e6;
-    return true;
+    if (this.filter === null) return true;
+    if (this.filter === 'system') return item.kind !== 'body' && item.inFocusedSystem !== false;
+    return item.kind === 'body' && !LAGRANGE_ID.test(item.id) && bodyClassOf(this.registry, item.id) === this.filter;
   }
 
   // id に対応する RowNode を(無ければ生成して)最新化し、続けてその子を再帰的に同期する。
@@ -260,7 +281,7 @@ export class ObjectListPanel {
     row.addEventListener('dblclick', () => this.onFocus?.(id));
     row.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); this.onFocus?.(id); }
-      if (e.key.toLowerCase() === 't' && !(e.target instanceof HTMLInputElement)) { e.preventDefault(); this.onNavTarget?.(id); }
+      if (e.key.toLowerCase() === 't') { e.preventDefault(); this.onNavTarget?.(id); }
     });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -283,6 +304,5 @@ export class ObjectListPanel {
 
   private applyExpanded(section: Section): void {
     section.body.style.display = section.expanded ? '' : 'none';
-    section.header.classList.toggle('active', section.expanded);
   }
 }

@@ -46,15 +46,15 @@ export type BodyClassToggles = {
 };
 
 // 既定 off は「登録数が多くマップが溢れるから」。planet は数が少なく太陽系の骨格をなすので
-// 軌道線まで含めて既定 on、smallBody(小惑星・彗星)は軌道線だけが溢れるので Icon/Label のみ
-// 既定 on にする。lagrange は FocusMarkers の構築時点で力学的に意味を持つ点(Ephemeris の
-// hasUsableCollinearPoints / hasStableTriangularPoints)だけに絞り込み済みで同じ懸念が当たらない
-// ため、既定 on にする。
+// 軌道線まで含めて既定 on、dwarf・smallBody(準惑星・小惑星・彗星)は軌道線だけが溢れるので
+// Icon/Label のみ既定 on にする。lagrange は FocusMarkers の構築時点で力学的に意味を持つ点
+// (Ephemeris の hasUsableCollinearPoints / hasStableTriangularPoints)だけに絞り込み済みで
+// 同じ懸念が当たらないため、既定 on にする。
 export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
   planetVisible: true,
   planetOrbit: true, planetIcon: true, planetLabel: true,
   dwarfVisible: true,
-  dwarfOrbit: false, dwarfIcon: false, dwarfLabel: false,
+  dwarfOrbit: false, dwarfIcon: true, dwarfLabel: true,
   satelliteVisible: true,
   satelliteIcon: false, satelliteLabel: false, satelliteOrbit: false,
   smallBodyVisible: true,
