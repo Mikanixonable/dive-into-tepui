@@ -208,12 +208,13 @@ export class EnvironmentScene {
   private showsReferenceLine(id: OrbitingId, focusId: AttractorId | undefined, toggles: BodyClassToggles): boolean {
     const registry = this.ephemeris.registry;
     const cls = bodyClassOf(registry, id);
-    if (cls === 'planet') return toggles.planetOrbit;
-    if (cls === 'dwarf') return toggles.dwarfOrbit;
-    if (cls === 'smallBody') return toggles.smallBodyOrbit;
+    if (cls === 'planet') return toggles.planetVisible && toggles.planetOrbit;
+    if (cls === 'dwarf') return toggles.dwarfVisible && toggles.dwarfOrbit;
+    if (cls === 'smallBody') return toggles.smallBodyVisible && toggles.smallBodyOrbit;
     const def = bodyDef(registry, id);
     if (def.kind !== 'satellite') return true;
-    return toggles.satelliteOrbit && (def.planet === 'earth' || focusSystemOf(registry, focusId) === def.planet);
+    return toggles.satelliteVisible && toggles.satelliteOrbit
+      && (def.planet === 'earth' || focusSystemOf(registry, focusId) === def.planet);
   }
 
   // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は主星中心 — 中心天体自身も
