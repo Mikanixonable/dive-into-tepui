@@ -121,8 +121,11 @@ export function createEarthCloudNodes(
   const shadow = clamp(lowShadow.mul(0.62).add(highShadow.mul(0.42)), 0, 0.84);
 
   // 低層雲の影を高層雲の直射光へ少しだけ反映する。雲を真っ黒な板にはしない。
-  const lowTopLight = float(0.055).add(dot(localDirection, sun).clamp(0, 1).mul(0.945));
-  const highTopLight = float(0.07).add(dot(highShadowDirection, sun).clamp(0, 1).mul(0.93))
+  // 雲頂自身の法線で照明する。影投影点を使うと夜側から地球内部を貫通して昼側を
+  // 参照してしまう。高度ぶんだけ地平線下の太陽を許し、薄明後は直射を遮る。
+  const cloudSunAltitude = dot(localDirection, sun);
+  const lowTopLight = float(0.018).add(smoothstep(-0.025, 0.08, cloudSunAltitude).mul(0.982));
+  const highTopLight = float(0.024).add(smoothstep(-0.056, 0.08, cloudSunAltitude).mul(0.976))
     .mul(float(1).sub(lowDensity.mul(0.28)));
   const topLight = lowTopLight.mul(0.72).add(highTopLight.mul(0.46));
 
