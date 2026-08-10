@@ -20,6 +20,7 @@ import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
+import type { MapVisibility } from '../celestial/map-visibility';
 import type { Stage } from '../stages/stage';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
 import { PlayerThrottle } from './player-throttle';
@@ -437,10 +438,12 @@ export class Player extends Ship {
     isActive: boolean,
     ephemeris: Ephemeris,
     attractors: readonly Attractor[],
+    mapVisibility: MapVisibility | null = null,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
-    this.obj.visible = displayState !== null && this.alive && !(isActive && camera.zoomActive);
+    const mapEntityVisible = !camera.overviewMode || mapVisibility === null || mapVisibility.category;
+    this.obj.visible = displayState !== null && this.alive && mapEntityVisible && !(isActive && camera.zoomActive);
     if (displayState !== null) {
       this.obj.position.copy(fo.RtoThreeV3(displayState.r));
       this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
@@ -450,7 +453,7 @@ export class Player extends Ship {
     // 揃えないと「機体は未来位置、プルームは現在位置」に割れる。表示できる状態が無いときは
     // 各エフェクトが自分で消えられるよう alive を倒して呼ぶ。
     const effectState = displayState ?? this.state;
-    const effectAlive = this.alive && displayState !== null;
+    const effectAlive = this.alive && displayState !== null && mapEntityVisible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
     this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectAlive, isActive, camera);
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectAlive, phasePlaying, paused, camera, isActive);
@@ -459,7 +462,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.overviewCamera.focus), ephemeris.registry, attractors);
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.overviewCamera.focus), ephemeris.registry, attractors, mapVisibility);
 
     if (this.alive) {
       const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));

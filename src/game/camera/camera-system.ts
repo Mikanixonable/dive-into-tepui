@@ -19,6 +19,30 @@ import { Attractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { CameraSaveData } from '../save-data';
 
+const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.bodyClassToggles';
+
+// localStorage から天体クラス別トグルを読み込む。取得できなければ既定値を返す。
+function loadBodyClassToggles(): BodyClassToggles {
+  try {
+    const raw = localStorage.getItem(BODY_CLASS_TOGGLES_STORAGE_KEY);
+    if (!raw) return DEFAULT_BODY_CLASS_TOGGLES;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_BODY_CLASS_TOGGLES;
+    return { ...DEFAULT_BODY_CLASS_TOGGLES, ...parsed };
+  } catch {
+    return DEFAULT_BODY_CLASS_TOGGLES;
+  }
+}
+
+// 天体クラス別トグルを localStorage へ保存する。
+function saveBodyClassToggles(v: BodyClassToggles): void {
+  try {
+    localStorage.setItem(BODY_CLASS_TOGGLES_STORAGE_KEY, JSON.stringify(v));
+  } catch {
+    /* localStorage 不可なら保存しない(次回リロード時は既定値に戻る) */
+  }
+}
+
 export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;
 
@@ -75,7 +99,7 @@ export class CameraSystem {
   // クラスごとの天体表示トグル。マップのラベル・軌道オブジェクト一覧・配置UIの基準天体が
   // この1つの状態を共有する(body-visibility.ts の visibleBodyIds に渡す)。フォーカスと
   // MAP VIEW パネルを既に所有しているこのクラスが、同じ場所で持つ。
-  private _bodyClassToggles: BodyClassToggles = DEFAULT_BODY_CLASS_TOGGLES;
+  private _bodyClassToggles: BodyClassToggles = loadBodyClassToggles();
   get bodyClassToggles(): BodyClassToggles { return this._bodyClassToggles; }
 
   setMapMode(open: boolean): void { this._overviewMode = open; }
@@ -105,11 +129,8 @@ export class CameraSystem {
     this.overviewCameraPanel = new OverviewCameraPanel(_hud.layers.panel);
     this.overviewCameraPanel.onBodyClassToggle = (key, on) => {
       this._bodyClassToggles = { ...this._bodyClassToggles, [key]: on };
-      if (key === 'ammoVisible' || key === 'ammoIcon' || key === 'ammoLabel') {
-        _hud.settings.showMapAmmo = this._bodyClassToggles.ammoVisible && this._bodyClassToggles.ammoIcon;
-      }
+      saveBodyClassToggles(this._bodyClassToggles);
     };
-    _hud.settings.showMapAmmo = this._bodyClassToggles.ammoVisible && this._bodyClassToggles.ammoIcon;
 
     const chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
     if (chaseResetBtn) {

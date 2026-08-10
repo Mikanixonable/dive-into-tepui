@@ -6,7 +6,7 @@
 // game-entity/asteroid.ts の Asteroid(重力を及ぼし積分される個別の GameEntity)とは別物。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
-import { Vec3, add, v3 } from '../../physics/vec3';
+import { Vec3, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import {
   PointElements, PointField, PointFieldGroup, generatePointField, pointPositionAt,
@@ -37,6 +37,9 @@ class PointFieldGroupView {
   private readonly positions: Vec3[];
   private readonly mesh: THREE.InstancedMesh;
   private readonly matrix = new THREE.Matrix4();
+  // update で位置を再評価したインスタンスだけを sync で GPU へ書き戻す。
+  // 配列は毎フレーム作り直さず、clear 後も容量を再利用する。
+  private readonly dirtyIndices: number[] = [];
   private cursor = 0;
   private sunPos: Vec3 = v3(0, 0, 0);
   // 初回の update だけは全点を評価する — ラウンドロビンに任せると、マップを開いた直後の
@@ -64,30 +67,37 @@ class PointFieldGroupView {
   }
 
   // 表示時刻 t の点の位置を、ラウンドロビンで一部だけ引き直す。sunPos は呼び出し元が
-  // 群をまたいで1回だけ求めた値を渡す。
-  update(t: number, sunPos: Vec3): void {
+  // 群をまたいで1回だけ求めた値を渡す。forceAll はマップ再入場時に使う。
+  update(t: number, sunPos: Vec3, forceAll = false): void {
     this.sunPos = sunPos;
     const n = this.points.length;
-    const count = this.primed ? Math.ceil(n / UPDATE_FRACTION) : n;
+    if (forceAll) this.dirtyIndices.length = 0;
+    const count = forceAll || !this.primed ? n : Math.ceil(n / UPDATE_FRACTION);
     this.primed = true;
     for (let i = 0; i < count; i++) {
       const idx = (this.cursor + i) % n;
       this.positions[idx] = pointPositionAt(this.points[idx]!, t);
+      this.dirtyIndices.push(idx);
     }
     this.cursor = (this.cursor + count) % n;
   }
 
-  // update が求めた位置へ各インスタンスを置く。浮動原点は毎フレーム動くので、位置を引き直して
-  // いない点も含めて全インスタンスの行列を書き直す。
+  // update が求めた位置へ、再評価されたインスタンスだけを置く。点群の太陽中心からの位置は
+  // InstancedMesh のローカル座標に残し、太陽の ECI 位置と FloatingOrigin の差分は mesh の
+  // 親位置へ移す。これにより浮動原点が毎フレーム変わっても全インスタンスを更新せずに済む。
   sync(fo: FloatingOrigin, visible: boolean): void {
     this.mesh.visible = visible;
     if (!visible) return;
-    for (let i = 0; i < this.positions.length; i++) {
-      const p = fo.RtoThreeV3(add(this.positions[i]!, this.sunPos));
+    this.mesh.position.copy(fo.RtoThreeV3(this.sunPos));
+    for (const idx of this.dirtyIndices) {
+      const p = this.positions[idx]!;
       this.matrix.makeTranslation(p.x, p.y, p.z);
-      this.mesh.setMatrixAt(i, this.matrix);
+      this.mesh.setMatrixAt(idx, this.matrix);
     }
-    this.mesh.instanceMatrix.needsUpdate = true;
+    if (this.dirtyIndices.length > 0) {
+      this.mesh.instanceMatrix.needsUpdate = true;
+      this.dirtyIndices.length = 0;
+    }
   }
 }
 
@@ -95,6 +105,8 @@ export class PointFieldView {
   private readonly groups: readonly PointFieldGroupView[];
   // 現在のレジストリに恒星が実在するか。無ければ点群は太陽中心の座標を持てないので非表示にする。
   private hasStar = true;
+  // update は map の表示中だけ呼ばれるため、false から true へ戻るフレームを再入場とみなす。
+  private mapActive = false;
 
   // 点群を生成し、群ごとに描画用の InstancedMesh を組む。
   constructor(field: PointField = generatePointField()) {
@@ -110,15 +122,20 @@ export class PointFieldView {
   // 描かれないので位置を求める意味がない。
   update(t: number, overviewMode: boolean, ephemeris: Ephemeris): void {
     this.hasStar = ephemeris.starId !== null;
-    if (!overviewMode || ephemeris.starId === null) return;
+    if (!overviewMode || ephemeris.starId === null) {
+      this.mapActive = false;
+      return;
+    }
     const sunPos = ephemeris.positionOf(ephemeris.starId, t);
-    for (const group of this.groups) group.update(t, sunPos);
+    const reentered = !this.mapActive;
+    this.mapActive = true;
+    for (const group of this.groups) group.update(t, sunPos, reentered);
   }
 
-  // update が求めた位置へ各インスタンスを置く。浮動原点は毎フレーム動くので、位置を引き直して
-  // いない点も含めて全インスタンスの行列を書き直す。
-  sync(fo: FloatingOrigin, overviewMode: boolean): void {
-    const visible = overviewMode && this.hasStar;
+  // update が求めた位置へ各インスタンスを置く。太陽の平行移動は mesh.position、個々の点の
+  // 更新は instanceMatrix に分担させる。
+  sync(fo: FloatingOrigin, overviewMode: boolean, smallBodyVisible = true): void {
+    const visible = overviewMode && this.hasStar && smallBodyVisible;
     for (const group of this.groups) group.sync(fo, visible);
   }
 }

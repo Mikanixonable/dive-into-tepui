@@ -9,6 +9,7 @@ import {
   TRIANGULAR_STABILITY_MASS_RATIO, collinearClearanceRatio, hasStableTriangularPoints,
 } from '../../src/physics/lagrange';
 import { DEFAULT_BODY_CLASS_TOGGLES, isPositionInFocusedSystem, systemChainAt, systemMembersAt, visibleBodyIds } from '../../src/game/celestial/body-visibility';
+import { MapVisibilityPolicy } from '../../src/game/celestial/map-visibility';
 import { v3, addScaled } from '../../src/physics/vec3';
 
 const MIN_CLEARANCE = 10;
@@ -66,13 +67,46 @@ export function register(): void {
     for (const id of ['sun', 'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune']) {
       assert.ok(visible.has(id), `${id} は常に見えるべき`);
     }
-    // smallBodyIcon/smallBodyLabel だけが既定で立っているので、小天体は見えて準惑星と衛星は見えない。
+    // dwarf/smallBody の Icon/Label は既定で立ち、衛星だけは系にフォーカスするまで隠れる。
     for (const id of ['halley', 'encke', 'vesta']) {
       assert.ok(visible.has(id), `${id} は既定で見えるべき`);
     }
-    for (const id of ['io', 'titan', 'triton', 'ceres', 'pluto']) {
+    for (const id of ['io', 'titan', 'triton']) {
       assert.ok(!visible.has(id), `${id} は既定では見えないべき`);
     }
+    for (const id of ['ceres', 'pluto']) assert.ok(visible.has(id), `${id} は既定で見えるべき`);
+  });
+
+  test('visibility policy: entity の category/icon/label/orbit が同じトグルから決まる', () => {
+    const hidden = new MapVisibilityPolicy(SOLAR_SYSTEM, {
+      ...DEFAULT_BODY_CLASS_TOGGLES,
+      shipVisible: false,
+      ammoIcon: false,
+      ammoLabel: true,
+      baseOrbit: false,
+    });
+    assert.deepEqual(hidden.entity('ship'), {
+      category: false, icon: false, label: false, orbit: false, pickable: false,
+    });
+    assert.deepEqual(hidden.entity('ammo'), {
+      category: true, icon: false, label: true, orbit: true, pickable: true,
+    });
+    assert.equal(hidden.entity('base').orbit, false);
+  });
+
+  test('visibility policy: 操作対象の自機はカテゴリを閉じても位置を失わない', () => {
+    const policy = new MapVisibilityPolicy(SOLAR_SYSTEM, {
+      ...DEFAULT_BODY_CLASS_TOGGLES,
+      playerVisible: false,
+      playerIcon: false,
+      playerLabel: false,
+    });
+    assert.deepEqual(policy.entity('player', true), {
+      category: true, icon: true, label: false, orbit: false, pickable: true,
+    });
+    assert.deepEqual(policy.entity('player', false), {
+      category: false, icon: false, label: false, orbit: false, pickable: false,
+    });
   });
 
   test('visibility: フォーカス中の天体の子はトグル無しで見える', () => {
@@ -98,7 +132,7 @@ export function register(): void {
     for (const id of ['moon', 'io', 'titan', 'triton', 'phobos']) {
       assert.ok(visible.has(id), `${id} が見えるべき`);
     }
-    assert.ok(!visible.has('ceres'), '別クラスは足されない');
+    assert.ok(visible.has('ceres'), '準惑星は既定のトグルで見える');
   });
 
   // 一覧の並び順は FocusMarkers が組むラベル配列そのものなので、階層の導出だけを固定する。

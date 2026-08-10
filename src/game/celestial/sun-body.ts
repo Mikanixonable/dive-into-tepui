@@ -27,8 +27,14 @@ export class SunBody extends CelestialBody {
     scene.add(this.sun.mesh);
   }
 
+  setVisible(visible: boolean): void {
+    this.sun.billboard.mesh.visible = visible;
+    this.sun.mesh.visible = visible;
+  }
+
   // displayTime 時点の方向・位置へビルボード/実球体を同期する。
   sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
+    if (!this.sun.billboard.mesh.visible && !this.sun.mesh.visible) return;
     const sunPos = ephemeris.positionOf(this.id, displayTime);
     if (cameraSystem.overviewMode) {
       // 広範囲視点は実スケール: 実 ECI 位置に実半径で置き、ビルボードは隠す

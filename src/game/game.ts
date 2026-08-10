@@ -7,6 +7,7 @@ import { Player } from './player/player';
 import { Enemy } from './game-entity/enemy';
 import { CameraSystem } from './camera/camera-system';
 import { focusPoint } from './camera/focus-target';
+import { focusTargetId } from './camera/focus-target';
 import { Stage } from './stages/stage';
 import { CreativeStage } from './stages/creative-stage';
 import { LaunchSelection } from './game-mode';
@@ -53,6 +54,8 @@ import { Base } from './game-entity/base';
 import { strongestAttractor } from '../physics/attractor';
 import { mergeAttractors, planAttractorProvider } from './simulation/attractors';
 import { FrameControls } from './frame-controls';
+import { systemMembersAt } from './celestial/body-visibility';
+import { MapVisibilityPolicy } from './celestial/map-visibility';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -419,6 +422,7 @@ export class Game {
         this.simulator.simTime,
         null,
         this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
+        this.cameraSystem.overviewMode ? 'map' : 'combat',
       );
       this.activeStage.update(dt, null, this.entities, this.simulator.simTime, this.simSpeedManager);
       this.effects.update(dt, this.simulator.simTime);
@@ -515,6 +519,7 @@ export class Game {
       this.simulator.simTime,
       this.player,
       this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
+      this.cameraSystem.overviewMode ? 'map' : 'combat',
     );
 
     this.effects.update(dt, this.simulator.simTime);
@@ -559,7 +564,11 @@ export class Game {
     this.equatorNodeMarkers.update(
       this.equatorNodeSources(), this.editor.planDisplay.planFrame, this.displayTime,
     );
-    this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
+    // MapPicker/FocusMarkers は全天体・ラグランジュ点・全エンティティの候補を組む。
+    // 戦闘ビューではクリック対象を別経路で処理するため、マップを表示している時だけ更新する。
+    if (this.cameraSystem.overviewMode) {
+      this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
+    }
     afterRefresh?.();
     // 表示側の合流窓(重力を持つ生存中の GameEntity も含める)。sync 側の attractors と
     // 同じ合流だが、update フェーズは simTime 基準でこの1箇所からしか要らないので都度求める。
@@ -687,6 +696,15 @@ export class Game {
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
+    const displayToggles = this.cameraSystem.bodyClassToggles;
+    const mapVisibility = overviewMode
+      ? new MapVisibilityPolicy(
+        this.ephemeris.registry,
+        displayToggles,
+        focusTargetId(this.cameraSystem.overviewCamera.focus),
+        systemMembersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, this.ephemeris.attractorsAt(displayTime)),
+      )
+      : null;
     const target = this.targeter.aliveTarget;
     const secondaryTarget = this.targeter.aliveSecondaryTarget;
 
@@ -701,26 +719,38 @@ export class Game {
       ship.syncPlayer(
         this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused,
         displayTime, ship === player, this.ephemeris, attractors,
+        mapVisibility?.entity('player', ship === player) ?? null,
       );
     }
 
     this.entities.sync(this.floatingOrigin, displayTime);
-    const displayToggles = this.cameraSystem.bodyClassToggles;
     for (const ship of this.entities.players) {
-      ship.orbitLine.setDisplayEnabled(!overviewMode || (displayToggles.playerVisible && displayToggles.playerOrbit));
+      if (mapVisibility && !mapVisibility.entity('player', ship === player).category) ship.obj.visible = false;
+    }
+    for (const enemy of this.entities.enemies) {
+      if (mapVisibility && !mapVisibility.entity('ship').category) enemy.obj.visible = false;
+    }
+    for (const ammo of this.entities.ammos) {
+      if (mapVisibility && !mapVisibility.entity('ammo').category) ammo.obj.visible = false;
+    }
+    for (const base of this.entities.bases) {
+      if (mapVisibility && !mapVisibility.entity('base').category) base.obj.visible = false;
+    }
+    for (const ship of this.entities.players) {
+      ship.orbitLine.setDisplayEnabled(!overviewMode || (mapVisibility?.entity('player', ship === player).orbit ?? false));
     }
     for (const base of this.entities.bases) {
       base.syncOrbitLine(overviewMode, this.floatingOrigin, attractors);
-      base.orbitLine.setDisplayEnabled(!overviewMode || (displayToggles.baseVisible && displayToggles.baseOrbit));
+      base.orbitLine.setDisplayEnabled(!overviewMode || (mapVisibility?.entity('base').orbit ?? false));
     }
 
     this.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
 
     if (player) {
       const targets = this.entities.getCombatTargets(player);
-      this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project, attractors);
+      this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project, attractors, mapVisibility);
       for (const enemy of this.entities.enemies) {
-        enemy.orbitLine.setDisplayEnabled(!overviewMode || (displayToggles.shipVisible && displayToggles.shipOrbit));
+        enemy.orbitLine.setDisplayEnabled(!overviewMode || (mapVisibility?.entity('ship').orbit ?? false));
       }
     }
     this.navTarget.sync(project, overviewMode, this.cameraSystem.activeCameraPos);
@@ -735,7 +765,16 @@ export class Game {
       if (!ds) continue;
       const role: 'none' | 'primary' | 'secondary' =
         tgt === target ? 'primary' : tgt === secondaryTarget ? 'secondary' : 'none';
-      enemyMarkerItems.push(tgt.markerItem(role, player?.state.r ?? v3(), ds.r, ds.v, overviewMode));
+      const entityKind = tgt instanceof Player ? 'player' : 'ship';
+      const visibility = mapVisibility?.entity(entityKind, tgt === player);
+      if (visibility && !visibility.pickable) continue;
+      const item = tgt.markerItem(role, player?.state.r ?? v3(), ds.r, ds.v, overviewMode);
+      enemyMarkerItems.push(visibility ? {
+        ...item,
+        sym: visibility.icon ? item.sym : '',
+        name: visibility.label ? item.name : '',
+        detail: visibility.label ? item.detail : '',
+      } : item);
     }
     this.enemyMarkers.sync(enemyMarkerItems, project, overviewMode, this.cameraSystem.activeCameraScale);
     if (player) this.leadMarkers.sync(player, aliveTargets, target, secondaryTarget, simTime, overviewMode, project);
@@ -767,7 +806,7 @@ export class Game {
     if (player) {
       this.touchControls?.syncModeButtons(player.rcsDamp, player.fineAttitude, player.progradeHold);
     }
-    this.activeStage.sync(player, this.floatingOrigin, project, this.cameraSystem.activeCameraScale, displayTime, overviewMode);
+    this.activeStage.sync(player, this.floatingOrigin, project, this.cameraSystem.activeCameraScale, displayTime, overviewMode, mapVisibility);
 
     this._hud.panels.sync(this, attractors);
     this._hud.tick();
@@ -798,6 +837,8 @@ export class Game {
   perfCounts(): {
     enemies: number; bullets: number; casings: number; debris: number;
     predicted: number; predictComplete: number; predictDiscarded: number;
+    mapMode: boolean; mapItems: number; mapLabels: number;
+    simSubsteps: number; gravitySources: number; predictorSteps: number;
   } {
     return {
       enemies: this.entities.enemies.length,
@@ -807,6 +848,12 @@ export class Game {
       predicted: this.predictor.tracked,
       predictComplete: this.predictor.finished,
       predictDiscarded: this.predictor.discarded,
+      mapMode: this.cameraSystem.overviewMode,
+      mapItems: this.cameraSystem.overviewMode ? this.mapPicker.pickables.length : 0,
+      mapLabels: this.cameraSystem.overviewMode ? this.cameraSystem.focusMarkers.shownLabelCount : 0,
+      simSubsteps: this.simulator.lastSubsteps,
+      gravitySources: this.simulator.lastGravitySourceCount,
+      predictorSteps: this.predictor.lastSteps,
     };
   }
 }

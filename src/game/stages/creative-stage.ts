@@ -31,6 +31,7 @@ import { ElementsForm, LagrangeForm, ObjectType, ReferenceAttractor, ShipPlacerF
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { OrbitLine } from '../../render/orbit-line';
+import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 
 const DEG = Math.PI / 180;
 
@@ -100,10 +101,10 @@ export class CreativeStage extends Stage {
   }
 
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカー、基地マーカーを同期する。
-  sync(player: Player | null, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean): void {
-    super.sync(player, fo, project, scale, displayTime, overviewMode);
+  sync(player: Player | null, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibility: MapVisibilityPolicy | null = null): void {
+    super.sync(player, fo, project, scale, displayTime, overviewMode, visibility);
     this.syncPreview(fo, project);
-    this.syncBaseMarkers(project, scale, displayTime, overviewMode);
+    this.syncBaseMarkers(project, scale, displayTime, overviewMode, visibility);
     this.placerPanel.setIssues(this.issues);
     this.logisticsPanel.style.display = overviewMode ? 'block' : 'none';
   }
@@ -112,7 +113,7 @@ export class CreativeStage extends Stage {
   // 艦と同じ ▲ のポイントマーカーを立てて発見できるようにする。戦闘ビューでは
   // 画面外なら ▣ AMMO の補給と同じ方式の ↑ 方位矢印で補う。overviewMode 中は進行方向を向く
   // 三角形に差し替える(mk-poi は FocusMarkers の天体ラベルと共用するため、専用の mk-base を使う)。
-  private syncBaseMarkers(project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean): void {
+  private syncBaseMarkers(project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibility: MapVisibilityPolicy | null): void {
     const bases = this._entities.bases;
     for (const [i, base] of bases.entries()) {
       const key = `base${i}`;
@@ -123,15 +124,21 @@ export class CreativeStage extends Stage {
         this._markerManager.hide(bearingKey);
         continue;
       }
+      const display = overviewMode ? visibility?.entity('base') : null;
+      if (display && !display.pickable) {
+        this._markerManager.hide(key);
+        this._markerManager.hide(bearingKey);
+        continue;
+      }
       const label = '基地';
       const p = project(ds.r);
       if (overviewMode) {
         const rotationDeg = this._markerManager.headingRotationDeg(ds.r, ds.v, project, scale);
-        this._markerManager.set(key, 'mk-base', ENTITY_GLYPH.ship, p.x, p.y, p.front, label, 1, undefined, rotationDeg);
+        this._markerManager.set(key, 'mk-base', display?.icon === false ? '' : ENTITY_GLYPH.ship, p.x, p.y, p.front, display?.label === false ? '' : label, 1, undefined, rotationDeg);
         this._markerManager.hide(bearingKey);
       } else {
-        this._markerManager.set(key, 'mk-poi', ENTITY_GLYPH.ship, p.x, p.y, p.front, label);
-        this._markerManager.setBearing(bearingKey, 'mk-poi', DIRECTION_GLYPH.bearing, p, label, 0.9);
+        this._markerManager.set(key, 'mk-poi', display?.icon === false ? '' : ENTITY_GLYPH.body, p.x, p.y, p.front, display?.label === false ? '' : label);
+        this._markerManager.setBearing(bearingKey, 'mk-poi', DIRECTION_GLYPH.bearing, p, display?.label === false ? '' : label, 0.9);
       }
     }
     for (let i = bases.length; i < this.lastBaseMarkerCount; i++) {

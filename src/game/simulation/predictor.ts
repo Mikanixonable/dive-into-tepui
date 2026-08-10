@@ -1,20 +1,24 @@
-// 全 GameEntity の予測列(predictedTrajectory)をフレームあたりの予算内でラウンドロビンに伸ばす。
+// マップで必要な GameEntity の予測列(predictedTrajectory)をフレームあたりの予算内で
+// ラウンドロビンに伸ばす。戦闘ビューでは自機の線だけを小さい予算で維持する。
 // 予測列の長短を問わず一律に扱うため、破棄が多発してもフレーム時間がスパイクしない。
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
+import type { Attractor } from '../../physics/attractor';
 import { localOrbitPeriod } from '../../physics/attractor';
-import { ClassifiedAttractors, attractorsNear, classifyAttractors, predictedAttractorsAt } from './attractors';
+import { ClassifiedAttractors, attractorsNearInto, classifyAttractors, predictedAttractorsAt } from './attractors';
 
 export class Predictor {
   private cursor = 0;
+  private readonly nearbyAttractorsScratch: Attractor[] = [];
 
   // 直近の update() で数えた予測列の状況(?perf=1 の表示用)。
   tracked = 0; // 予測対象の個体数
   finished = 0; // うち伸長が終わったもの(先端がホライズンに達した/打ち切られた)
   discarded = 0; // このフレームに乖離で破棄したもの
+  lastSteps = 0; // 直近フレームに予測器が実際に消費した積分step数
 
   constructor(
     private readonly entities: EntityManager,
@@ -22,10 +26,11 @@ export class Predictor {
   ) {}
 
   // Game.update の entities.cleanup(...) の後に呼ぶ(死んだ個体を予測しない、積分後の実状態と
-  // 突き合わせる)。視点・モードによる条件分岐は持たない — 予測は表示とは独立に常時進む。
+  // 突き合わせる)。map では全表示対象、combat では自機だけを候補にする。
+  // 戦闘中も自機の予測線は残すが、予算を小さくして非表示エンティティのresync・RK4を避ける。
   // horizon は simTime から先に予測する長さ [s]。
-  update(simTime: number, player: Player | null, horizon: number): void {
-    const all = this.entities.all();
+  update(simTime: number, player: Player | null, horizon: number, mode: 'map' | 'combat' = 'map'): void {
+    const all = mode === 'map' ? this.entities.all() : player ? [player] : [];
 
     // 距離判定は毎フレーム無条件で全対象に行う(二分探索1回ぶんの費用しかかからない)。
     // 伸長を止めている間も実状態は進むので、乖離した列をここで落とさないと
@@ -33,6 +38,7 @@ export class Predictor {
     this.tracked = 0;
     this.finished = 0;
     this.discarded = 0;
+    this.lastSteps = 0;
     const attractors = this.ephemeris.attractorsAt(simTime);
     for (const e of all) {
       if (e.discardPredictionIfDiverged(simTime, attractors)) this.discarded++;
@@ -43,19 +49,22 @@ export class Predictor {
     }
 
     // 予算配分: 操作対象の艦を先頭に、以降はカーソル位置から最大1周だけ回す。艦に渡す分は
-    // 全体の PREDICT_PLAYER_BUDGET_RATIO までに抑え、残りは必ずラウンドロビンへ回す —
-    // 艦の予測が完成するまで他の個体が止まると、その予測を重力源として読む計画軌道の形まで
-    // 艦の予測進捗に左右されてしまう。
-    let budget = C.PREDICT_STEP_BUDGET;
+    // そのフレームの予算の PREDICT_PLAYER_BUDGET_RATIO までに抑え、残りは必ずラウンドロビンへ
+    // 回す — 艦の予測が完成するまで他の個体が止まると、その予測を重力源として読む計画軌道の
+    // 形まで艦の予測進捗に左右されてしまう。
+    const frameBudget = mode === 'map' ? C.PREDICT_STEP_BUDGET : C.PREDICT_COMBAT_STEP_BUDGET;
+    let budget = frameBudget;
     if (player) {
-      const playerBudget = Math.floor(C.PREDICT_STEP_BUDGET * C.PREDICT_PLAYER_BUDGET_RATIO);
+      const playerBudget = Math.floor(frameBudget * C.PREDICT_PLAYER_BUDGET_RATIO);
       budget -= this.advanceBudget(player, playerBudget, simTime, horizon);
     }
 
     let visited = 0;
     while (budget > 0 && visited < all.length) {
       const e = all[(this.cursor + visited) % all.length]!;
-      budget -= this.advanceBudget(e, budget, simTime, horizon);
+      // player は上で優先処理済み。map の all にも player が含まれるので、ここで再処理すると
+      // 自機だけが予算を二重に消費し、戦闘時は同じ予測線を2回伸ばすことになる。
+      if (e !== player) budget -= this.advanceBudget(e, budget, simTime, horizon);
       visited++;
     }
     this.cursor = all.length > 0 ? (this.cursor + visited) % all.length : 0;
@@ -83,7 +92,7 @@ export class Predictor {
         classified = classifyAttractors(predictedAttractorsAt(this.ephemeris, this.entities, tipState.t));
         classifiedAt = tipState.t;
       }
-      const attractors = attractorsNear(tipState.r, classified);
+      const attractors = attractorsNearInto(tipState.r, classified, this.nearbyAttractorsScratch);
       const dt = Math.max(
         C.PREDICT_MIN_STEP_DT,
         localOrbitPeriod(tipState.r, attractors) / C.PREDICT_STEPS_PER_REV,
@@ -91,6 +100,7 @@ export class Predictor {
       );
       if (!e.stepPredicted(attractors, simTime, dt, horizon)) break;
       consumed++;
+      this.lastSteps++;
     }
     return consumed;
   }

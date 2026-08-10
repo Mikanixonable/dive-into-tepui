@@ -6,7 +6,12 @@ import * as THREE from 'three/webgpu';
 import { attribute, float } from 'three/tsl';
 import { OrbitalElements } from '../physics/elements';
 import { Vec3 } from '../physics/vec3';
+import { pointSphereFade, segmentIntersectsSphere } from '../physics/orbit-line-geometry';
 import { FloatingOrigin } from '../game/floating-origin';
+
+// フェードの再計算を省く天体の移動量。天体半径に対するこの割合より小さく動いただけなら、
+// フェード帯の中の各頂点の不透明度は視認できるほど変わらない。
+const FADE_SKIP_SHIFT_RATIO = 1 / 16;
 
 // 離心近点角 E で一様サンプリング + 自機付近を密にする非線形マッピング。
 const POINT_COUNT = 2048;
@@ -18,39 +23,23 @@ const TOL_ECC = 3e-4; // 離心率の変化
 const TOL_PLANE = Math.cos((0.12 * Math.PI) / 180); // 軌道面法線の角変化
 const TOL_APSE = Math.cos((0.3 * Math.PI) / 180); // 近点方向の角変化(e が大きいときのみ)
 
-// フェード帯の境界。天体中心からの距離を天体半径で割った比が、この下限以下で完全透明、
-// 上限以上で完全不透明になる。
-const FADE_TRANSPARENT_RADIUS_RATIO = 1;
-const FADE_OPAQUE_RADIUS_RATIO = 2;
-
-// この楕円上に乗っている天体(参照軌道線が表す天体そのもの)。E は軌道要素と同じ時刻での
-// 離心近点角 [rad](2π を法として扱うので値域は問わない)、radius は物理半径 [m]。
+// この楕円上に乗っている天体(参照軌道線が表す天体そのもの)。position は軌道線と同じ
+// 中心天体相対座標、radius は物理半径 [m]。角度近似ではなく実際の線分と球の距離で除外する。
 export interface OrbitLineExcludeNearBody {
-  readonly E: number;
+  readonly position: Vec3;
   readonly radius: number;
-}
-
-// 角度 a の b からの符号付き差を [-π, π] で返す。
-function signedAngularDiff(a: number, b: number): number {
-  let d = (a - b) % (Math.PI * 2);
-  if (d > Math.PI) d -= Math.PI * 2;
-  if (d < -Math.PI) d += Math.PI * 2;
-  return d;
-}
-
-// smoothstep(edge0, edge1, x)。区間の外側は 0/1 にクランプする。
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
 }
 
 export class OrbitLine {
   readonly line: THREE.Line;
   private readonly positions: Float32Array;
-  private readonly eAtIndex: Float32Array;
   private readonly indices: Uint32Array;
   // 頂点ごとの不透明度係数(0=透明〜1=不透明)。
   private readonly fade: Float32Array;
+  // 位置属性を変えた世代。原点を揺らして GPU 更新を誘発するのではなく、頂点バッファの
+  // dirty/version を明示的に進める。描画原点が (0,0,0) で変換が不変でも再生成は伝わる。
+  private positionRevision = 0;
+  private uploadedPositionRevision = -1;
   // fade が全頂点 1・全セグメント描画の状態にあるか。楕円上に天体が乗っていない線
   // (自機・ターゲット・敵の軌道線)は毎フレームこの状態のままなので、GPU への
   // 転送を繰り返さずに済ませる。
@@ -85,7 +74,6 @@ export class OrbitLine {
   // 重なったときにどちらを手前へ描くかを決める — 透明描画どうしの前後は描画順でしか決まらない。
   constructor(color: string | number, opacity = 0.5, renderOrder = 0) {
     this.positions = new Float32Array((POINT_COUNT + 1) * 3);
-    this.eAtIndex = new Float32Array(POINT_COUNT + 1);
     this.indices = new Uint32Array(POINT_COUNT * 2);
     this.fade = new Float32Array(POINT_COUNT + 1).fill(1);
     const geo = new THREE.BufferGeometry();
@@ -129,7 +117,6 @@ export class OrbitLine {
     // 頂点を自機相対座標で毎フレーム書き直すと、osculating 要素の微小なゆらぎで楕円が
     // 振動して見える。頂点は中心天体相対座標のまま固定し、平行移動だけで動かす。
     this.line.position.copy(fo.RtoThreeV3(el.center.state.r));
-    this.nudgeTransformForGpuUpload();
 
     let focusE: number | undefined;
     if (densifyNear) {
@@ -148,19 +135,16 @@ export class OrbitLine {
       // 頂点ごとの離心近点角が組み直されたので、前回のフェードは対応先を失っている。
       this.lastExclude = null;
     }
-    this.applyFade(el, excludeNearBody);
+    this.ensurePositionUpload();
+    this.applyFade(excludeNearBody);
     this.applyVisible();
   }
 
-  // 原点が厳密に静止しているフレームでも Transform を更新させるため、位置へ微小なジッターを
-  // 加える。three.js r169 の WebGPURenderer は position が完全に不変だと needsUpdate を
-  // 立てた頂点バッファを GPU へ送らないことがあるための回避策。
-  private nudgeTransformForGpuUpload(): void {
-    const p = this.line.position;
-    if (p.x !== 0 || p.y !== 0 || p.z !== 0) return;
-    p.x += (Math.random() - 0.5) * 1e-10;
-    p.y += (Math.random() - 0.5) * 1e-10;
-    p.z += (Math.random() - 0.5) * 1e-10;
+  // 頂点位置が書き換わったフレームだけ GPU へ転送する。
+  private ensurePositionUpload(): void {
+    if (this.uploadedPositionRevision === this.positionRevision) return;
+    (this.line.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    this.uploadedPositionRevision = this.positionRevision;
   }
 
   // 全セグメントを描く並びにインデックスを埋める(描画範囲は呼び出し側が合わせる)。
@@ -171,12 +155,13 @@ export class OrbitLine {
     }
   }
 
-  // 頂点ごとの不透明度と、描くセグメントの選択を求め直す。頂点位置は動かさず eAtIndex を
-  // 読むだけなので、天体が軌道上を動くぶんには regenerate を伴わず毎フレーム追随できる。
+  // 頂点ごとの不透明度と、描くセグメントの選択を求め直す。天体の現在位置を中心とする
+  // 球と各線分の最近接距離を使うので、離心率が大きい軌道や粗いサンプリングでも天体の
+  // 内部を通るセグメントを取りこぼさない。
   // 完全に透明な頂点を持つセグメントは描画からも外す — 加えて、天体の角半径は頂点間隔より
   // ずっと小さいのが普通で天体はセグメントの途中に来るため、端点の不透明度だけを見ると
   // 天体の真上を通る一本を取りこぼす。両端が天体をまたぐセグメントも落とす。
-  private applyFade(el: OrbitalElements, excludeNearBody?: OrbitLineExcludeNearBody): void {
+  private applyFade(excludeNearBody?: OrbitLineExcludeNearBody): void {
     const fadeAttr = this.line.geometry.getAttribute('fade') as THREE.BufferAttribute;
     const indexAttr = this.line.geometry.getIndex() as THREE.BufferAttribute;
     if (!excludeNearBody) {
@@ -191,33 +176,37 @@ export class OrbitLine {
       return;
     }
 
-    // 天体中心からの弧長を天体半径で割った比。天体が軌道に沿って占める角度は、その半径を
-    // 軌道長半径で割った値で近似できる。
-    const radiiPerRadian = el.a / excludeNearBody.radius;
-    // フェード帯の境界が頂点間隔ぶんも動かないなら、頂点でしか標本化しない不透明度は
-    // どこも変わらないので計算も転送も省く。境界の移動量は E の変化そのものと、半径の変化が
-    // 帯の外端(FADE_OPAQUE_RADIUS_RATIO)を動かす量の和で見る。
-    const vertexSpacingE = (Math.PI * 2) / POINT_COUNT;
+    // フェード帯は天体半径からその2倍までの間に張るので、天体が自身の半径に比べて十分小さく
+    // しか動いていないなら、どの頂点の不透明度も実質変わらない。全頂点の走査と GPU 転送を省く。
     const prev = this.lastExclude;
     if (prev) {
-      const shift = Math.abs(signedAngularDiff(excludeNearBody.E, prev.E))
-        + (FADE_OPAQUE_RADIUS_RATIO * Math.abs(excludeNearBody.radius - prev.radius)) / el.a;
-      if (shift < vertexSpacingE) return;
+      const dx = excludeNearBody.position.x - prev.position.x;
+      const dy = excludeNearBody.position.y - prev.position.y;
+      const dz = excludeNearBody.position.z - prev.position.z;
+      const shift = Math.hypot(dx, dy, dz) + Math.abs(excludeNearBody.radius - prev.radius);
+      if (shift < excludeNearBody.radius * FADE_SKIP_SHIFT_RATIO) return;
     }
-    this.lastExclude = { E: excludeNearBody.E, radius: excludeNearBody.radius };
+    this.lastExclude = { position: excludeNearBody.position, radius: excludeNearBody.radius };
 
     let allOpaque = true;
     for (let i = 0; i <= POINT_COUNT; i++) {
-      const ratio = Math.abs(signedAngularDiff(this.eAtIndex[i]!, excludeNearBody.E)) * radiiPerRadian;
-      this.fade[i] = smoothstep(FADE_TRANSPARENT_RADIUS_RATIO, FADE_OPAQUE_RADIUS_RATIO, ratio);
+      const point = {
+        x: this.positions[i * 3]!,
+        y: this.positions[i * 3 + 1]!,
+        z: this.positions[i * 3 + 2]!,
+      } as Vec3;
+      this.fade[i] = pointSphereFade(point, excludeNearBody.position, excludeNearBody.radius);
       if (this.fade[i] !== 1) allOpaque = false;
     }
     let count = 0;
     for (let i = 0; i < POINT_COUNT; i++) {
-      if (this.fade[i] === 0 || this.fade[i + 1] === 0) continue;
-      const d0 = signedAngularDiff(this.eAtIndex[i]!, excludeNearBody.E);
-      const d1 = signedAngularDiff(this.eAtIndex[i + 1]!, excludeNearBody.E);
-      if (Math.abs(d0) < Math.PI / 2 && Math.abs(d1) < Math.PI / 2 && d0 * d1 <= 0) continue;
+      const start = {
+        x: this.positions[i * 3]!, y: this.positions[i * 3 + 1]!, z: this.positions[i * 3 + 2]!,
+      } as Vec3;
+      const end = {
+        x: this.positions[(i + 1) * 3]!, y: this.positions[(i + 1) * 3 + 1]!, z: this.positions[(i + 1) * 3 + 2]!,
+      } as Vec3;
+      if (segmentIntersectsSphere(start, end, excludeNearBody.position, excludeNearBody.radius)) continue;
       this.indices[count++] = i;
       this.indices[count++] = i + 1;
     }
@@ -267,7 +256,6 @@ export class OrbitLine {
         t = f + 4 * u * u * u;
       }
       const E = t * Math.PI * 2;
-      this.eAtIndex[i] = E;
       const x = el.a * (Math.cos(E) - el.e);
       const y = b * Math.sin(E);
       this.positions[i * 3] = el.pHat.x * x + el.qHat.x * y;
@@ -275,11 +263,10 @@ export class OrbitLine {
       this.positions[i * 3 + 2] = el.pHat.z * x + el.qHat.z * y;
     }
     // 閉路化
-    this.eAtIndex[POINT_COUNT] = this.eAtIndex[0]!;
     this.positions[POINT_COUNT * 3] = this.positions[0]!;
     this.positions[POINT_COUNT * 3 + 1] = this.positions[1]!;
     this.positions[POINT_COUNT * 3 + 2] = this.positions[2]!;
-    (this.line.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    this.positionRevision++;
     this.line.geometry.computeBoundingSphere();
     this.line.geometry.computeBoundingBox();
     this.snap = {
