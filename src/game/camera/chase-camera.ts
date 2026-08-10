@@ -17,6 +17,8 @@ export class ChaseCamera {
   private rot: Quat = DEFAULT_ROT;
   dist = DEFAULT_DIST;
   private _camFollowAttitude = true;
+  // 前フレームの player.alive。真偽が変わった瞬間だけ rot を読み替えるための検出用。
+  private _prevAlive = true;
   private panEci: Vec3 = v3(0, 0, 0);
 
   viewpoint: Viewpoint = {
@@ -36,6 +38,14 @@ export class ChaseCamera {
   // 相対値として使い回す。
   setPlayer(player: Player | null): void {
     this.player = player;
+    this._prevAlive = player?.alive ?? true;
+  }
+
+  // rot の相対/絶対の解釈を切り替える。toRelative が true なら「以後は機体姿勢に対する相対値」
+  // として、false なら「以後は現在の向きをそのまま絶対値」として扱えるよう rot 自体を変換する。
+  private reinterpretRot(toRelative: boolean): Quat {
+    const playerQ = this.player!.att.q;
+    return qNormalize(toRelative ? qMul(qInvert(playerQ), this.rot) : qMul(playerQ, this.rot));
   }
 
   // 視点の基準フレーム(機体姿勢基準 true ⇔ ワールド基準 false)。書き換え時に rot を読み替える。
@@ -45,8 +55,7 @@ export class ChaseCamera {
   set camFollowAttitude(v: boolean) {
     if (v === this._camFollowAttitude) return;
     if (!this.player) return;
-    const playerQ = this.player.att.q;
-    this.rot = qNormalize(v ? qMul(qInvert(playerQ), this.rot) : qMul(playerQ, this.rot));
+    this.rot = this.reinterpretRot(v);
     this._camFollowAttitude = v;
   }
 
@@ -70,7 +79,15 @@ export class ChaseCamera {
   // キー/マウス入力から rot/dist を更新し、player の状態から視点を view へ書き戻す。
   update(mouse: MouseDelta, keyYaw: number, keyPitch: number, keyRoll: number, dt: number): void {
     if (!this.player) return;
-    let q = this._camFollowAttitude ? qMul(this.player.att.q, this.rot) : this.rot;
+    // 機体姿勢基準のまま撃破された/復活した瞬間は、その時点の折り込み済みの向きを
+    // 絶対値として固定する(逆方向も同様)。rot の意味そのものが変わるので読み替えが要る。
+    if (this._camFollowAttitude && this.player.alive !== this._prevAlive) {
+      this.rot = this.reinterpretRot(this.player.alive);
+    }
+    this._prevAlive = this.player.alive;
+
+    const followNow = this._camFollowAttitude && this.player.alive;
+    let q = followNow ? qMul(this.player.att.q, this.rot) : this.rot;
 
     const right = qRotate(q, v3(1, 0, 0));
     const up = qRotate(q, v3(0, 1, 0));
@@ -101,7 +118,7 @@ export class ChaseCamera {
       this.panEci = addScaled(this.panEci, up, mouse.panDy * metersPerPixel);
     }
 
-    this.rot = this._camFollowAttitude ? qNormalize(qMul(qInvert(this.player.att.q), q)) : q;
+    this.rot = followNow ? qNormalize(qMul(qInvert(this.player.att.q), q)) : q;
 
     const center = this.player.state.r;
     const lookTarget = add(center, this.panEci);
