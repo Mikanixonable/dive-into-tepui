@@ -1,91 +1,85 @@
-# レビュー結果 対処タスク(優先度順)
+# レビュー結果 対処タスク
 
-全10章の findings(04・06は未提出)+ 追加調査2件(ラジエーター左右/右クリック優先順・ChaseCamera)の集約。
-各タスクは独立して着手可。[P1] が最優先。
+全10章の findings + 追加調査の集約。**P1〜P3 は 2026-08-10 に対応完了**(下記「完了」節)。
+未対処分は「残タスク」節にある。
 
-## P1 — コードの実バグ(修正する)
+## 完了(main にマージ済み・typecheck 通過 / test:physics 391/391 green)
 
-1. **[P1] plan-executor.ts:189 — ゲート閉鎖中も cutoff 判定が走る**(章03 [bug]、未修正)
-   高warp中(`thrustGateOpen === false`、実際には燃焼していない)でも `burnCutoffProjection <= 0` が
-   無条件に評価され、軌道力学による自然な速度変化だけで `finish()` が発火 → 燃焼ゼロのままノード消費+
-   `overwriteAnchor`。修正: `if (!this.thrustGateOpen) { ship.thrust = null; return; }` を cutoff 判定の
-   前に移し、`update()` 側(135行)と同じ順序に揃える。`tests/physics/plan-executor.test.ts` に
-   「燃焼中ゲート閉鎖→cutoff 不発火」のケースを追加。
+### コードの実バグ
+- **`plan-executor.ts` の遮断判定** — 高warp でゲートが閉じている間(実際には燃焼していない)も
+  `burnCutoffProjection <= 0` が無条件に評価され、軌道力学による自然な速度変化だけで `finish()` が
+  発火してノードが未燃焼のまま消費されていた。ガードを `update()` 側と同じ順序に移動。回帰テスト追加。
+- **`chase-camera.ts` の破壊後タンブル追従** — `7a2310f`(クオータニオン化)で `player.alive` ゲートが
+  取りこぼされたリグレッション。`reinterpretRot` を切り出し、生死の変化フレームで一度だけ相対⇄絶対を
+  読み替えることで視点ジャンプなしに復旧。艦の切替(`setPlayer`)を偽の死亡/復活と誤検出しないようにも対応。
+- **`player-fire.ts` の `[R]` 手動リロード** — `canReload` の条件が `mags > 0 && (rounds < MAG_ROUNDS ||
+  barrel < MAGS_PER_BARREL)` と `||` になっており、装填中が満タンでも予備マガジンを1本消費していた。
+  `rounds < MAG_ROUNDS` のみに絞る最小修正。`DEVELOP/BELT_COUNT_BUG.md` の該当節を解決済みに書き換え。
+- **`belt-physics.ts` のクランプ角** — `tanMaxPitch`/`tanMaxYaw` に代入する定数が入れ替わっており、
+  左右45°/上下15°と `const.ts` の意図と逆の制約になっていた。
+- **`base.ts` の id 復元漏れ** — `Base.restore` が `data.id` を受け取りながらコンストラクタに渡しておらず、
+  セーブ/ロードのたびに基地の id が変わっていた(他クラスは正しく動作していた)。
+- **`save-browser.ts` / `dock-view.ts` の XSS** — 艦名(`Player.displayName`、自由入力)と
+  `celestialBodyName()` の未登録 id フォールバックをエスケープせず `innerHTML` に埋めていた格納型 XSS。
+- **`dom.ts` のマーカーラベル CSS** — `.mk .lbl`/`.mk-poi .lbl`/`.mk-base .lbl` の margin/padding が
+  `#hud, #hud *` リセットに ID 特異性で負けて無効化されていた。`#hud` スコープ化。
+- **`celestial-grid.ts` の render→game import 違反** — `CameraSystem` 丸ごとと `game/const` への依存を
+  `sync(visibility, cam, scale)` の引数化で解消。`orbit-line`/`sampled-line`/`ships` の依存は
+  `RtoThreeV3` 経由の構造的なものと判断し、CLAUDE.md 側に例外として明記。
+- **`tsconfig.test.json`** — `include` に残っていた実在しない3パスを整理。
 
-2. **[P1] chase-camera.ts — 破壊後タンブル追従停止のリグレッション復旧**(章07、調査で確定)
-   `7a2310f`(クオータニオン化)で旧実装の `player.alive` ゲートが取りこぼされた(意図的変更の痕跡なし)。
-   修正: 姿勢の折り込み(update 冒頭と書き戻しの両方)を `_camFollowAttitude && player.alive` に。
-   死亡検知フレームで一度だけ `rot = qMul(player.att.q, rot)` の読み替えを挟み、視点ジャンプを防ぐ
-   (`camFollowAttitude` セッターと同じ手法)。
+### 文書(コードが正、文書を修正)
+- **ラジエーターの左右** — 右手系 nose=+Z/up=+Y より starboard = Z×Y = -X、つまり **+X は左舷**。
+  コードは `f97aae2` で既に正しく、CLAUDE.md と `DEVELOP/BELT.md` だけが古かった。
+- **右クリック優先順** — `3a659a6` で「マーカー → ノード → 空域」の3段フォールスルーへ意図的に
+  再設計済み。CLAUDE.md 3箇所と `DEVELOP/CALLSTACK.md` を現順序に修正。
+- **姿勢積分の刻み幅** — 存在しない `attDt = min(simDt, 0.12)` の記述を削除(実装は全エンティティ一律 `subDt`)。
+- **廃止シンボル** — `hitRadius`/`sideHitBy`/`RADIATOR_HITTABLE_DEPLOY`/`RADIATOR_TIP_DISTANCE` の記述を
+  現行の `RadiatorFold` 接触方式に書き直し。
+- **未記載モジュールの追記** — `physics/ephemeris-pack/`(二段構え暦)・`absolute-ephemeris`・
+  `packed-absolute-ephemeris`・`ephemeris-profile`・`ephemeris-catalog`・`time/`、`plan-gizmo-3d.ts`、
+  `ring-optics.ts`、`radiator-hinge.ts`、`aurora.ts`。`test:physics` 節にも該当テストを追記。
+- **天体数** — 「27 bodies」を実測値(恒星1・planet 49・satellite 51 = **101体**)の構成説明に書き直し。
+- **環の描画** — TSL シェーダによる Beer-Lambert 透過・Henyey-Greenstein 単一散乱・
+  `setRingShadowSystem` の環影・`ringLod` のクロスフェードという現行実装に合わせて全面書き直し。
+- **`stars.ts`** — 「微小三角形」から実装どおりのテクスチャ球殻に修正(WebGPU の Points 制約自体は残置)。
 
-3. **[P1] 作業ツリーの未コミット修正3件の確定**
-   既に適用済み: belt-physics.ts の pitch/yaw クランプ入れ替え(章08 [bug])、dock-view.ts の艦名
-   XSS エスケープ(章09 [bug])、tsconfig.test.json の死んだ include(章10)。
-   `npm run typecheck` + `npm run test:physics` を通してコミットする。
+### レビューの穴埋め
+- 章04(セーブ)・章06(天体表示)の findings を作成(未実施だった2章)。
 
-## P2 — 目に見える不具合・UX(修正または判断)
+## 残タスク
 
-4. **[P2] dom.ts — マーカーラベルの CSS が `#hud` リセットに負けて無効**(章05 [bug])
-   `.mk .lbl`(183行)/`.mk-poi .lbl`(293行)/`.mk-base .lbl`(295行)の margin/padding が
-   `#hud, #hud * { margin:0; padding:0 }` に特異性で負けている。`#hud .mk .lbl` 等 id スコープ化で修正。
+### 要判断(仕様の決定が必要)
+1. **ノード右クリックが到達不能になる条件** — 現在の優先順自体は正しいが、ノードの約24.5px以内に
+   マーカー候補(遠点/近点・AN/DN・艦・天体ラベル)があると、ノードの削除/ワープメニューが開けない
+   (`MAP_PICK_PX_SQ`=600≒24.5px < `NODE_PICK_PX`=30px の非対称も一因)。
+   対処案: 選択中ノードだけ editor を先行させる / ノードを `pickables` に統合する など。
 
-5. **[P2/要判断] ノード右クリックメニューが到達不能になる条件**(章07 + 調査)
-   現在の順序(MapPicker 先行)は `3a659a6` の意図的変更で正。ただしノードの 24.5px 以内に
-   マーカー候補(遠点/近点・AN/DN・艦・天体ラベル)があると、ノードの削除/ワープメニューが
-   **絶対に開けない**(`MAP_PICK_PX_SQ`=600≒24.5px < `NODE_PICK_PX`=30px の非対称も一因)。
-   対処案の判断が要る: 選択中ノードだけ editor を先行させる/ノードを pickables に統合する等。
+2. **`EarthBody.phase0` の非決定性** — `earth-body.ts:13` の自転初期位相が `Math.random()` で、
+   `Ephemeris` の位相オフセット(`GameSaveData.phaseOffsets` として永続化)と違い save/restore 経路が
+   一切ない。同じセーブを開くたび地球の自転角だけが変わる。実装漏れの可能性が高いが確証なし。
 
-6. **[P2/要確認] [R] 手動リロードが満タンのマガジンを破棄する疑い**
-   `DEVELOP/BELT_COUNT_BUG.md` が `player-fire.ts:185` を名指しする既存未解決メモ(章10で再確認)。
-   再現確認のうえ修正。
+### セーブフォーマット変更を要する
+3. **`Enemy.restore` の accent 使い回し** — 機体色と軌道線色に同じ `accent` を使っており、
+   訓練クラスタ敵(accent≠軌道線色で生成)をセーブ/ロードすると軌道線の色が変わる。見た目のみ。
 
-## P3 — 文書の誤り(コードが正。文書を直す)
+### テスト
+4. **`ring.test.ts` が quaoar/chariklo の環を未検証** — 環を持つ天体が6体に増えたがテストは4体のまま。
+5. **測定値 pin の網羅的な妥当性確認** — 章10 が優先度を挙げた `n-body.test.ts` の質量→0 極限の
+   収束閾値と、`plan-executor*.test.ts` のタイミング系マージン。
 
-7. **[P3] CLAUDE.md のラジエーター左右が逆**(章09 + 調査で確定: +X=左舷。`f97aae2` にコードは追従済み)
-   - CLAUDE.md:202「up/down is +X/-X, i.e. starboard/port」→ port/starboard、「ラジエーター右/左, 9/0」→ 左/右
-   - CLAUDE.md:330「up(right/+X)/down(left/-X)」→ up(left)/down(right)
-   - 波及: CLAUDE.md:354「belt … starboard (+X)」、DEVELOP/BELT.md:3「右舷(+X)」、
-     BELT_COUNT_BUG.md:45「左舷側へ潜る」 — いずれも +X=左舷 で書き直し。
-
-8. **[P3] 右クリック優先順の文書更新**(調査で確定: `3a659a6` の意図的変更、文書が旧)
-   CLAUDE.md:108 / 170 / 174、DEVELOP/CALLSTACK.md:280-291 を現順序
-   (MapPicker マーカー → PlanEditor ノード → 空域メニュー、の3段フォールスルー)に書き直す。
-
-9. **[P3] CALLSTACK.md:195 — 姿勢積分刻み幅の記述が実装と不一致**(章02 [spec?])
-   「players は simDt / それ以外は attDt=min(simDt,0.12)」の分離は撤廃済み(0.12 はコード上どこにもない)。
-   現状(全エンティティ一律 subDt)に書き直し。CLAUDE.md の同前提の記述も併せて修正。
-
-10. **[P3] CLAUDE.md 未記載モジュールの追記**(章03・08・10)
-    - `physics/ephemeris-pack/` + `packed-absolute-ephemeris.ts` + `absolute-ephemeris.ts` +
-      `astronomical-time` 系(二段構えの暦データ設計。OWNERSHIP/CALLSTACK/SPEC にも言及ゼロ — 最大の欠落)
-    - `plan/plan-gizmo-3d.ts`(実働コード)、`physics/ring-optics.ts`、`render/radiator-hinge.ts`
-    - `export-assets` 節に `RADIATOR_HINGE` の取得元を追記
-    - radiator.ts 節の廃止済みシンボル(`hitRadius`/`sideHitBy`/`RADIATOR_TIP_DISTANCE`)を
-      現行の `RadiatorFold` 接触方式に書き直し(章08 [spec?])
-    - `plan-display.ts:42` のコメントが存在しない `plan-trajectory.ts` を参照(→ `plan-path.ts` に修正。
-      これはコード内コメント1行の修正)
-
-## P4 — レビューの穴埋め
-
-11. **[P4] 章04(セーブ)・章06(天体表示)の findings が未提出**
-    計画書(`04-save.md` / `06-celestial-display.md`)どおり再実行する。特に章04は
-    serialize/restore 往復性・quota 失敗経路など save 系の追加が大きく、未レビューのまま放置しない。
-
-## P5 — 低優先リファクタ・記録のみ
-
-12. **[P5] ContextMenu.open の label/subLabel 無エスケープ innerHTML**(章05 — 現呼び出し元は静的文字列のみ。
-    textContent 化しておくと将来の動的ラベルで安全)
-13. **[P5] dom.ts に残る z-index(マーカー種別 0-4 / .dock-toggle:20 / svgOverlay:0)**
-    — overlay-layer.ts の「z-index はここだけ」規約と矛盾(章05)。一本化するか規約側に例外を明記
-14. **[P5] map-picker.ts `isCreativeMode()` の `as any`**(章09 — 循環 import 回避の設計判断が要る)
-15. **[P5] deque.ts の4スペースインデント**(章02)
-16. **[P5] `ChebyshevAbsoluteEphemeris`/`PackedAbsoluteEphemeris` の重複気味実装**(章01 — 報告のみ)
-17. **[P5] `icrfToGameEci` の `-0` 回避分岐に理由コメントなし**(章01)
-18. **[P5] refactoring_todo.md の完了項目棚卸し**(章10 — 責務判断を refactor-fixed へ移してから消す手順で)
+### 低優先リファクタ
+6. `ContextMenu.open` の label/subLabel が無エスケープ `innerHTML`(現呼び出し元は静的文字列のみ)
+7. `dom.ts` に残る z-index(マーカー種別 0-4 / `.dock-toggle`:20 / svgOverlay:0)が
+   `overlay-layer.ts` の「z-index はここだけ」規約と矛盾
+8. `map-picker.ts` `isCreativeMode()` の `as any`(循環 import 回避の設計判断が要る)
+9. `orbit-line.ts` の `snap.hHat`/`snap.pHat` がスプレッド構文で `Vec3` を構築(`v3()` 規約違反)
+10. `deque.ts` の4スペースインデント
+11. `ChebyshevAbsoluteEphemeris`/`PackedAbsoluteEphemeris` の重複気味な2実装
+12. `icrfToGameEci` の `-0` 回避分岐に理由コメントなし
+13. `refactoring_todo.md` の完了項目棚卸し(責務判断を refactor-fixed へ移してから消す手順で)
 
 ## 備考
 
-- 章01・02は確証ある [bug] ゼロ(検算・grep・テストで確認済み)。
-- 「接近猶予窓」の PlanGuide/PlanExecutor 差(章03 [minor])と node-gizmo の occlusion 非対称
-  (章03 [minor])は意図的とみられ、対処不要と判断。必要なら P5 扱い。
-- P1-1/P1-2 と P3 の文書修正は同一変更セットで文書同期(develop-docs)を忘れないこと。
+- 章01(軌道力学)・章02(シミュレーション)は確証ある `[bug]` ゼロ。検算・grep・テストで確認済み。
+- 「接近猶予窓」の PlanGuide/PlanExecutor 差と node-gizmo の occlusion 非対称は意図的と判断、対処不要。
