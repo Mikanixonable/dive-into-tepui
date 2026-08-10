@@ -5,10 +5,11 @@
 import { ACCENT, ACCENT_RGB, ACCENT_SOFT, EDGE, FONT, SURFACE, TEXT as INK } from '../theme';
 import { clampOverlayPosition } from './layout';
 import { hudButton } from './buttons';
+import { bringToFront } from './overlay-layer';
 
 const STYLE = `
 #hud .object-picker-pop {
-  position: fixed; display: none; z-index: 12; pointer-events: auto;
+  position: fixed; display: none; pointer-events: auto;
   background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px;
   font-family: ${FONT}; font-size: 12px; color: ${INK};
   width: 520px; max-height: 60vh; overflow-y: auto; user-select: none;
@@ -72,7 +73,7 @@ export class ObjectPicker<T> {
   private selected: T | null = null;
   private readonly onSelect: (value: T) => void;
 
-  // title は見出し、root はポップアップの親(#hud の下に置くことで dom.ts の z-index 帯に乗る)。
+  // title は見出し、root はポップアップを popup レイヤへ追加する親。
   constructor(root: HTMLElement, title: string, onSelect: (value: T) => void) {
     ensureStyle();
     this.onSelect = onSelect;
@@ -147,6 +148,7 @@ export class ObjectPicker<T> {
     this.filter.value = '';
     this.renderList();
     this.pop.style.display = 'block';
+    bringToFront(this.pop);
     // 画面端で開いてもはみ出さないよう、実寸を測ってから位置を決める。
     const anchor = this.trigger.getBoundingClientRect();
     const rect = this.pop.getBoundingClientRect();
