@@ -29,24 +29,69 @@ import { RingSystemDef } from '../physics/solar-system';
 // 夜側の明るさ(0 で真っ暗)。惑星光・星明かりを表す最低限の底上げ。
 export const NIGHT_AMBIENT = 0.04;
 
+type RingShadowBand = {
+  readonly axis: ReturnType<typeof uniform>;
+  readonly center: ReturnType<typeof uniform>;
+  readonly inner: ReturnType<typeof uniform>;
+  readonly outer: ReturnType<typeof uniform>;
+  readonly tau: ReturnType<typeof uniform>;
+  readonly active: ReturnType<typeof uniform>;
+};
+
 export class CelestialSurface {
   private readonly sunDirNode = uniform(new THREE.Vector3(1, 0, 0));
-  private readonly ringShadowBands: readonly {
-    readonly axis: ReturnType<typeof uniform>;
-    readonly center: ReturnType<typeof uniform>;
-    readonly inner: ReturnType<typeof uniform>;
-    readonly outer: ReturnType<typeof uniform>;
-    readonly tau: ReturnType<typeof uniform>;
-    readonly active: ReturnType<typeof uniform>;
-  }[];
+  // リングを持たない天体では null のままにする。リング付き天体でも、実際に同期される
+  // まで遅延して作ることで、非リング天体の shader graph に32帯ぶんの計算を混ぜない。
+  private ringShadowBands: readonly RingShadowBand[] | null = null;
+  // setRingShadowSystem は毎フレーム呼ばれるため、リング付き天体についても一時ベクトルを再利用する。
+  private readonly ringAxis = new THREE.Vector3(0, 1, 0);
 
   // mesh は半径 1 の球で、表示側が位置・スケール・自転姿勢を毎フレーム与える。
   readonly mesh: THREE.Mesh;
+  private readonly albedoNode: ReturnType<typeof vec3>;
 
   // albedo は面の色を返すノード。これに昼夜の陰影を掛けたものが最終色になる。
   private constructor(geometry: THREE.BufferGeometry, albedo: ReturnType<typeof vec3>) {
+    this.albedoNode = albedo;
+    this.material = this.buildMaterial(this.albedoNode, false);
+    this.mesh = new THREE.Mesh(geometry, this.material as unknown as THREE.Material);
+    this.mesh.frustumCulled = false;
+  }
+
+  private material: THREE.MeshBasicNodeMaterial;
+
+  private buildMaterial(albedo: ReturnType<typeof vec3>, withRingShadows: boolean): THREE.MeshBasicNodeMaterial {
     const mat = new THREE.MeshBasicNodeMaterial();
     const lambert = clamp(dot(normalWorld, this.sunDirNode), 0, 1);
+    let ringTransmission = float(1);
+    if (withRingShadows) {
+      // withRingShadows は enableRingShadows() で bands を先に作ってから呼ぶ。
+      const bands = this.ringShadowBands;
+      if (bands === null) throw new Error('CelestialSurface: ring shadow bands are not initialized');
+      for (const band of bands) {
+        const relative = sub(positionWorld, band.center);
+        const denominator = dot(band.axis, this.sunDirNode);
+        const safeDenominator = select(greaterThan(denominator, 0), max(denominator, 0.015), min(denominator, -0.015));
+        const planeDistance = dot(relative, band.axis).negate().div(safeDenominator);
+        const hit = positionWorld.add(this.sunDirNode.mul(planeDistance));
+        const radial = length(sub(hit, band.center));
+        const inside = and(
+          greaterThan(planeDistance, 0),
+          and(greaterThan(radial, band.inner), lessThan(radial, band.outer)),
+        );
+        const transmission = exp(band.tau.div(max(denominator.abs(), 0.015)).negate());
+        ringTransmission = ringTransmission.mul(select(and(inside, greaterThan(band.active, 0.5)), transmission, float(1)));
+      }
+    }
+    // 環が遮るのは太陽の直射光だけ。夜側の環境光まで減衰させない。
+    mat.colorNode = albedo.mul(float(NIGHT_AMBIENT).add(
+      lambert.mul(1 - NIGHT_AMBIENT).mul(ringTransmission),
+    ));
+    return mat;
+  }
+
+  private enableRingShadows(): void {
+    if (this.ringShadowBands !== null) return;
     this.ringShadowBands = Array.from({ length: 32 }, () => ({
       axis: uniform(new THREE.Vector3(0, 1, 0)),
       center: uniform(new THREE.Vector3()),
@@ -55,27 +100,10 @@ export class CelestialSurface {
       tau: uniform(0),
       active: uniform(0),
     }));
-    let ringTransmission = float(1);
-    for (const band of this.ringShadowBands) {
-      const relative = sub(positionWorld, band.center);
-      const denominator = dot(band.axis, this.sunDirNode);
-      const safeDenominator = select(greaterThan(denominator, 0), max(denominator, 0.015), min(denominator, -0.015));
-      const planeDistance = dot(relative, band.axis).negate().div(safeDenominator);
-      const hit = positionWorld.add(this.sunDirNode.mul(planeDistance));
-      const radial = length(sub(hit, band.center));
-      const inside = and(
-        greaterThan(planeDistance, 0),
-        and(greaterThan(radial, band.inner), lessThan(radial, band.outer)),
-      );
-      const transmission = exp(band.tau.div(max(denominator.abs(), 0.015)).negate());
-      ringTransmission = ringTransmission.mul(select(and(inside, greaterThan(band.active, 0.5)), transmission, float(1)));
-    }
-    // 環が遮るのは太陽の直射光だけ。夜側の環境光まで減衰させない。
-    mat.colorNode = albedo.mul(float(NIGHT_AMBIENT).add(
-      lambert.mul(1 - NIGHT_AMBIENT).mul(ringTransmission),
-    ));
-    this.mesh = new THREE.Mesh(geometry, mat as unknown as THREE.Material);
-    this.mesh.frustumCulled = false;
+    const previousMaterial = this.material as unknown as THREE.Material;
+    this.material = this.buildMaterial(this.albedoNode, true);
+    this.mesh.material = this.material as unknown as THREE.Material;
+    previousMaterial.dispose();
   }
 
   // 実写テクスチャを貼った球面。
@@ -98,9 +126,15 @@ export class CelestialSurface {
 
   // 環平面と太陽方向の交点を表面シェーダへ渡す。最大32帯まで、複数帯は透過率を乗算する。
   setRingShadowSystem(rings: RingSystemDef | undefined, bodyCenter: THREE.Vector3, bodyRadius: number, displayScale: number, axis: Vec3 | null): void {
-    const ringAxis = axis === null ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(axis.x, axis.y, axis.z).normalize();
-    for (let i = 0; i < this.ringShadowBands.length; i++) {
-      const node = this.ringShadowBands[i]!;
+    if (rings !== undefined) this.enableRingShadows();
+    const bands = this.ringShadowBands;
+    // リング情報を持たない天体では、リング用uniformもshader nodeも存在しない。
+    if (bands === null) return;
+    const ringAxis = axis === null
+      ? this.ringAxis.set(0, 1, 0)
+      : this.ringAxis.set(axis.x, axis.y, axis.z).normalize();
+    for (let i = 0; i < bands.length; i++) {
+      const node = bands[i]!;
       const band = rings?.bands[i];
       node.axis.value.copy(ringAxis);
       node.center.value.copy(bodyCenter);
