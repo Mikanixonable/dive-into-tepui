@@ -29,6 +29,16 @@ const FILTERS: readonly (readonly [ObjectListFilter, string])[] = [
   ['system', '船'],
 ];
 
+// 自機からこの距離 [m] 以内の対象だけを残す「近傍」フィルタのしきい値(3000万km)。
+const NEARBY_THRESHOLD_M = 3e10;
+
+type ObjectListSort = 'distance' | 'name';
+
+const SORTS: readonly (readonly [ObjectListSort, string])[] = [
+  ['distance', '近さ'],
+  ['name', '名前'],
+];
+
 // 1件ぶんの行 + その子を畳めるトグル区画。子を持たない行(自艦/敵/弾薬/基地、および
 // 子のない天体)でも toggle/childrenContainer 自体は生成しておき、可視性だけ切り替える
 // (子の有無はフレームごとに変わりうるため、生成を後から差し込むより組み替えが少ない)。
@@ -69,6 +79,8 @@ export class ObjectListPanel {
   private selectedId: string | null = null;
   private query = '';
   private filter: ObjectListFilter | null = null;
+  private nearOnly = true;
+  private sort: ObjectListSort = 'distance';
   private lastFocusId: string | undefined = undefined;
   private readonly breadcrumb: HTMLElement;
 
@@ -95,6 +107,14 @@ export class ObjectListPanel {
 
     const tools = document.createElement('div');
     tools.className = 'object-list-tools';
+    // 近傍は他のフィルタと独立な単独トグル(既定 ON) — クラスフィルタと重ねて絞れる。
+    const nearButton = document.createElement('button');
+    nearButton.type = 'button'; nearButton.textContent = '近傍'; nearButton.setAttribute('aria-pressed', String(this.nearOnly));
+    nearButton.addEventListener('click', () => {
+      this.nearOnly = !this.nearOnly;
+      nearButton.setAttribute('aria-pressed', String(this.nearOnly));
+    });
+    tools.appendChild(nearButton);
     for (const [key, label] of FILTERS) {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', key === this.filter ? 'true' : 'false');
       b.addEventListener('click', () => {
@@ -104,6 +124,19 @@ export class ObjectListPanel {
       tools.appendChild(b);
     }
     head.appendChild(tools);
+
+    // 並び順はフィルタとは別行 — 絞り込みと並べ替えは独立な操作であることを見た目でも分ける。
+    const sorts = document.createElement('div');
+    sorts.className = 'object-list-tools';
+    for (const [key, label] of SORTS) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', String(key === this.sort));
+      b.addEventListener('click', () => {
+        this.sort = key;
+        for (const x of Array.from(sorts.querySelectorAll('button'))) x.setAttribute('aria-pressed', String(x === b));
+      });
+      sorts.appendChild(b);
+    }
+    head.appendChild(sorts);
     this.panel.appendChild(head);
     this.breadcrumb = document.createElement('div');
     this.breadcrumb.className = 'object-list-breadcrumb';
@@ -156,7 +189,9 @@ export class ObjectListPanel {
 
     for (const { kind, label } of SECTIONS) {
       const section = this.sections.get(kind)!;
-      const list = (byKind.get(kind) ?? []).sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || a.name.localeCompare(b.name));
+      const list = (byKind.get(kind) ?? []).sort(this.sort === 'distance'
+        ? (a, b) => (a.priority ?? 0) - (b.priority ?? 0) || a.name.localeCompare(b.name)
+        : (a, b) => a.name.localeCompare(b.name));
       section.header.style.display = list.length === 0 ? 'none' : '';
       const state = kind === 'ship' ? `接近 ${list.filter((i) => i.detail?.includes('接近')).length}`
         : kind === 'ammo' ? `回収可 ${list.filter((i) => i.detail?.includes('回収可能')).length}`
@@ -211,6 +246,7 @@ export class ObjectListPanel {
 
   private matches(item: MapPickable): boolean {
     if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
+    if (this.nearOnly && item.priority !== undefined && item.priority >= NEARBY_THRESHOLD_M) return false;
     if (this.filter === null) return true;
     if (this.filter === 'system') return item.kind !== 'body' && item.inFocusedSystem !== false;
     return item.kind === 'body' && !LAGRANGE_ID.test(item.id) && bodyClassOf(this.registry, item.id) === this.filter;
