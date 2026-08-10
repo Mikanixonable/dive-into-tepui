@@ -79,16 +79,19 @@ export class ObjectListPanel {
     this.panel.className = 'panel';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
 
+    const head = document.createElement('div');
+    head.className = 'object-list-head';
+
     const title = document.createElement('h3');
     title.textContent = '軌道オブジェクト';
-    this.panel.appendChild(title);
+    head.appendChild(title);
     const searchWrap = document.createElement('div');
     searchWrap.className = 'object-list-search';
     const search = document.createElement('input');
     search.type = 'search'; search.placeholder = '検索'; search.setAttribute('aria-label', '軌道オブジェクトを検索');
     search.addEventListener('input', () => { this.query = search.value.trim().toLocaleLowerCase(); });
     searchWrap.appendChild(search);
-    this.panel.appendChild(searchWrap);
+    head.appendChild(searchWrap);
 
     const tools = document.createElement('div');
     tools.className = 'object-list-tools';
@@ -97,7 +100,8 @@ export class ObjectListPanel {
       b.addEventListener('click', () => { this.filter = key; for (const x of Array.from(tools.querySelectorAll('button'))) x.setAttribute('aria-pressed', String(x === b)); });
       tools.appendChild(b);
     }
-    this.panel.appendChild(tools);
+    head.appendChild(tools);
+    this.panel.appendChild(head);
     this.breadcrumb = document.createElement('div');
     this.breadcrumb.className = 'object-list-breadcrumb';
     this.panel.appendChild(this.breadcrumb);
