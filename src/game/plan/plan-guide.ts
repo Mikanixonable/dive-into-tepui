@@ -29,7 +29,7 @@ export class PlanGuide {
   // ノードごとに一度だけ通知する。
   update(plan: Plan, player: Player, simTime: number, editMode: boolean, attractors: readonly Attractor[]): void {
     if (editMode || !player.alive) return;
-    plan.dropNodesBefore(simTime - C.NODE_EXPIRE_GRACE);
+    plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state);
 
     const node = plan.firstNode();
     // 実行の窓に入るまでは通知しない。窓の手前では自機はまだ噴射前の軌道にいるので、
@@ -96,16 +96,16 @@ export class PlanGuide {
     const playerEl = player.orbitalElementsAround(playerCenter);
     if (!playerEl || !targetEl || !orbitalElementsClose(playerEl, targetEl)) return;
     this.achievedNotified = node;
-    // 計画軌道へ到達したノードは、その場で実行済みとして削除する。
-    // dropNodesBefore(node.t) は現在ノードをアンカーへ移し、後続ノードを保持する。
-    const remain = Math.max(0, plan.nodes.length - 1);
+    // 計画軌道へ到達したノードは、その場で実行済みとして削除する。同時刻のノードが複数あれば
+    // まとめて落ちるので、残り件数は落とした後の実数を読む。
+    plan.consumeNodesUpTo(node.t, player.state);
+    const remain = plan.nodes.length;
     if (remain === 0) {
       this._hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
     } else {
       this._hud.hint(`✓ ノード達成 — 残り ${remain} 件`, 4000);
     }
     this._sfx.warp();
-    plan.dropNodesBefore(node.t);
   }
 }
 

@@ -51,7 +51,7 @@ export class Plan {
 
   // idx より後ろのノードをすべて捨てる。下流ノードは上流ノードの実行後状態を起点に凍結した
   // 絶対状態なので、上流が動いた時点で意味を失う。編集は必ずこれを通す。
-  private deleteFollowingNodes(idx: number): void {
+  private truncateAfter(idx: number): void {
     this._nodes.length = idx + 1;
   }
 
@@ -66,18 +66,12 @@ export class Plan {
     this._anchor = state;
   }
 
-  // アンカーを state へ無条件に差し替える。trackAnchor と違い後続ノードが残っていても効く —
-  // 実行済み区間の起点を「そのノードが本来あるべき理想値」ではなく「実際にそこへ到達した
-  // 状態」に置き換える用途(例: 動力飛行のバーンが計画どおりのΔvを達成できず、誤差を残した
-  // まま先頭ノードを消化した場合)。後続ノード自体は絶対状態のまま動かないので、以降の計画が
-  // ここで書き換わるわけではない。
-  overwriteAnchor(state: KinematicState): void {
-    this._anchor = state;
-  }
-
   // 噴射直後の絶対状態としてノードを追加し、その index を返す。実行時刻順の挿入位置より
-  // 後ろのノードは破棄されるので、追加したノードが常に末尾になる。
+  // 後ろのノードは破棄されるので、追加したノードが常に末尾になる。アンカー時刻以前は
+  // 計画の外なので受け付けず -1 を返す — そこへ置くと nodeTimeRange(0) の下限を割り、
+  // 「ノードは直前の状態より後」という不変条件が最初のノードで破れる。
   addNode(postState: KinematicState): number {
+    if (postState.t <= this._anchor.t) return -1;
     const idx = this._nodes.filter((node) => node.t < postState.t).length;
     this._nodes.length = idx;
     this._nodes.push(postState);
@@ -90,15 +84,17 @@ export class Plan {
     this._nodes.length = idx;
   }
 
-  // 実行時刻が t 以前のノードを実行済みとして取り除き、最後に取り除いたノードを新しい起点に据えて
-  // 返す。取り除くものが無ければ null。
-  dropNodesBefore(t: number): KinematicState | null {
+  // 実行時刻が t 以前のノードを実行済みとして取り除き、取り除いた件数を返す。
+  // 以降の計画は actualState — ノードが目指した理想値ではなく、実際にそこへ到達した状態 —
+  // を起点に描かれる。動力飛行のバーンは計画どおりの Δv を達成しきれないことがあり、その
+  // 誤差は消さずに以降の計画へ残さなければ、計画と実際の乖離が画面から読めなくなる。
+  consumeNodesUpTo(t: number, actualState: KinematicState): number {
     let dropped = 0;
     while (this._nodes[dropped] && this._nodes[dropped]!.t <= t) dropped++;
-    if (dropped === 0) return null;
-    this._anchor = this._nodes[dropped - 1]!;
+    if (dropped === 0) return 0;
     this._nodes.splice(0, dropped);
-    return this._anchor;
+    this._anchor = actualState;
+    return dropped;
   }
 
   // 全ノードを削除する。
@@ -114,10 +110,11 @@ export class Plan {
     return { min: prev.t, max: prev.t + segmentDurationFrom(prev, attractors, displayDuration) };
   }
 
-  // ノードを新しい実行後状態へ移し、下流ノードを破棄する。時刻は nodeTimeRange の範囲内であること。
-  retimeNode(idx: number, postState: KinematicState): void {
+  // idx 番目のノードを新しい実行後状態へ差し替え、下流ノードを破棄する。
+  // 時刻を動かす場合、postState.t は nodeTimeRange(idx) の範囲内であること。
+  replaceNode(idx: number, postState: KinematicState): void {
     if (!this._nodes[idx]) return;
-    this.deleteFollowingNodes(idx);
+    this.truncateAfter(idx);
     this._nodes[idx] = postState;
   }
 
@@ -125,7 +122,7 @@ export class Plan {
   applyNodeDv(idx: number, dvWorld: Vec3): void {
     const node = this._nodes[idx];
     if (!node) return;
-    this.deleteFollowingNodes(idx);
+    this.truncateAfter(idx);
     this._nodes[idx] = kinematicState(node.t, node.r, add(node.v, dvWorld));
   }
 }
