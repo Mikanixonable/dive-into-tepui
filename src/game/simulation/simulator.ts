@@ -50,13 +50,19 @@ export class Simulator {
       this.simTime = this.substep(this.simTime, subDt);
       this.stepAttitudes(subDt);
       for (const p of this.entities.players) p.stepEnvironment(subDt, this.ephemeris, this.simTime);
+      const attractorsNow = this.ephemeris.attractorsAt(this.simTime);
+      if (resolveCollision) {
+        this.contactPhysics.resolveSubstep(this.simTime, this.entities.all(), attractorsNow, activeStage);
+      }
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
-      this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3(), this.ephemeris.attractorsAt(this.simTime));
+      this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3(), attractorsNow);
     }
 
+    // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
+    // フレームに1回だけ解決する(§3-8)。
     if (resolveCollision && player) {
-      this.contactPhysics.resolve(
+      this.contactPhysics.resolveBelt(
         dt, this.simTime, player, this.entities.all(), this.ephemeris.attractorsAt(this.simTime), activeStage,
       );
     }
