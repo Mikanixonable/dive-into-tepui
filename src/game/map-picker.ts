@@ -33,7 +33,8 @@ import { Attractor, orbitalElementsOf, strongestAttractor } from '../physics/att
 import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
 import { bodyDef, primaryOf } from '../physics/solar-system';
-import { isPositionInFocusedSystem } from './celestial/body-visibility';
+import { isPositionInFocusedSystem, systemMembersAt } from './celestial/body-visibility';
+import { MapVisibilityPolicy } from './celestial/map-visibility';
 
 interface PickHandler {
   itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[];
@@ -110,16 +111,25 @@ export class MapPicker {
   // 呼ぶ: 積分前に組むと、同フレームで sync されるメッシュと座標が1ステップずれる。
   refresh(simTime: number, displayTime: number): void {
     this.lastSimTime = simTime;
+    const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
+    const attractors = this.ephemeris.attractorsAt(simTime);
+    const displayAttractors = this.ephemeris.attractorsAt(displayTime);
+    const visibility = new MapVisibilityPolicy(
+      this.ephemeris.registry,
+      this.cameraSystem.bodyClassToggles,
+      focusId,
+      systemMembersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, displayAttractors),
+    );
     this.cameraSystem.focusMarkers.update(
-      displayTime, focusTargetId(this.cameraSystem.overviewCamera.focus), this.cameraSystem.bodyClassToggles,
+      displayTime, focusId, this.cameraSystem.bodyClassToggles,
       this.cameraSystem.activeCameraPos,
     );
     this.navTarget.update(this.game.player, this.entities, this.ephemeris, simTime);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
-    const items: MapPickable[] = [...this.cameraSystem.focusMarkers.allBodyPickables(displayTime)];
+    const items: MapPickable[] = [...this.cameraSystem.focusMarkers.bodyPickables(displayTime, visibility)];
     for (const ship of this.entities.players) {
-      if (!ship.alive) continue;
+      if (!ship.alive || (this.cameraSystem.overviewMode && !visibility.entity('player', ship === this.game.player).pickable)) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
         const center = strongestAttractor(ship.state.r, this.ephemeris.attractorsAt(simTime));
@@ -129,17 +139,17 @@ export class MapPicker {
       }
     }
     for (const enemy of this.entities.enemies) {
-      if (!enemy.alive) continue;
+      if (!enemy.alive || (this.cameraSystem.overviewMode && !visibility.entity('ship').pickable)) continue;
       const pos = enemy.displayState(displayTime)?.r;
       if (pos) items.push({ id: enemy.id, name: enemy.name, pos, kind: 'ship' });
     }
     for (const ammo of this.entities.ammos) {
-      if (!ammo.alive) continue;
+      if (!ammo.alive || (this.cameraSystem.overviewMode && !visibility.entity('ammo').pickable)) continue;
       const pos = ammo.displayState(displayTime)?.r;
       if (pos) items.push({ id: ammo.id, name: '弾薬', pos, kind: 'ammo' });
     }
     for (const base of this.entities.bases) {
-      if (!base.alive) continue;
+      if (!base.alive || (this.cameraSystem.overviewMode && !visibility.entity('base').pickable)) continue;
       const pos = base.displayState(displayTime)?.r;
       if (pos) items.push({ id: base.id, name: base.name, pos, kind: 'base', detail: `格納 ${base.baseState.dockedShips.length} 隻` });
     }
@@ -148,8 +158,6 @@ export class MapPicker {
     items.push(...this.game.equatorNodeMarkers.mapPickables());
 
     // 自機からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
-    const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
-    const attractors = this.ephemeris.attractorsAt(simTime);
     const viewer = this.game.player?.state;
     if (viewer) for (let i = 0; i < items.length; i++) {
       const item = items[i]!;
