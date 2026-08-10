@@ -118,7 +118,7 @@ export class Logistics {
         this.markerManager.set(key, 'mk-ammo', ammoVisibility?.icon === false ? '' : ENTITY_GLYPH.ship, p.x, p.y, p.front, ammoVisibility?.label === false ? '' : label, 1, undefined, rotationDeg);
         this.markerManager.hide(bearing);
       } else {
-        this.markerManager.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, label);
+        this.markerManager.set(key, 'mk-ammo', ENTITY_GLYPH.ammo, p.x, p.y, p.front, label);
         this.markerManager.setBearing(bearing, 'mk-ammo', DIRECTION_GLYPH.bearing, p, label, 0.9);
       }
     }

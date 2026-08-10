@@ -8,6 +8,7 @@ export const ENTITY_GLYPH = {
   ship: '▲',
   body: '●',
   ghost: '⬢',
+  ammo: '▣',
   preview: '▷',
 } as const;
 

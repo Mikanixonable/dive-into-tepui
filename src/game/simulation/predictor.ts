@@ -55,7 +55,9 @@ export class Predictor {
     const frameBudget = mode === 'map' ? C.PREDICT_STEP_BUDGET : C.PREDICT_COMBAT_STEP_BUDGET;
     let budget = frameBudget;
     if (player) {
-      const playerBudget = Math.floor(frameBudget * C.PREDICT_PLAYER_BUDGET_RATIO);
+      // 回す相手が自機しかいないなら上限は意味を持たない(残りを誰も使わない)ので全額渡す。
+      const others = all.some((e) => e !== player);
+      const playerBudget = others ? Math.floor(frameBudget * C.PREDICT_PLAYER_BUDGET_RATIO) : frameBudget;
       budget -= this.advanceBudget(player, playerBudget, simTime, horizon);
     }
 
