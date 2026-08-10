@@ -107,6 +107,7 @@ export class CameraSystem {
       this._bodyClassToggles = { ...this._bodyClassToggles, [key]: on };
       if (key === 'ammoIcon' || key === 'ammoLabel') _hud.settings.showMapAmmo = on;
     };
+    _hud.settings.showMapAmmo = this._bodyClassToggles.ammoIcon;
 
     const chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
     if (chaseResetBtn) {
