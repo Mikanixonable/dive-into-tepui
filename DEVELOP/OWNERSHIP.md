@@ -65,7 +65,11 @@ main.ts
     ├── EquatorNodeMarkers             ... 操作艦・navTarget・targeter の対象ごとの EqAN/EqDN。source 列(id で重複除去)は Game が毎フレーム組む
     ├── SimSpeedManager
     ├── DisplayTimeManager             ... 「いつを見るか」(表示期間・未来ゴーストスライダー)
-    │   └── DisplayTimePanel           ... DOM は Hud.layers.panel 配下。期間/未来位置スライダー
+    │   └── DisplayTimePanel           ... DOM は Hud.layers.panel 配下。期間/未来位置スライダー。画面下端の帯として
+    │                                       #hud-displaytime-wrap に開閉トグル(hud/dom.ts の buildCollapseToggle)と
+    │                                       並べて包まれる。開閉状態はトグル対象要素の `.collapsed` クラスが正本(この
+    │                                       クラス自身は持たない)で、ViewManager.applyChrome がマップを抜けるたびに
+    │                                       resetHudDocks 経由で開いた状態へ戻す
     ├── PlanEditor                     ... plan は活艦(ship)の Plan への転送 getter。正本ではない
     │   ├── PlanDisplay                ... 計画の未来表示(「見えるとき何を見せるか」)
     │   │   └── PlanPath         ... 計画折れ線 + per-arc キャッシュ + 画面判定

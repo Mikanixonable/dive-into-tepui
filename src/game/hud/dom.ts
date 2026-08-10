@@ -258,13 +258,28 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .hud-toggle .toggle-track.on .toggle-knob { left: 18px; background: ${ACCENT}; }
 /* MAP VIEW の左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-overview-camera { display: none; width: 100%; pointer-events: auto; }
-/* 下部の固定バー。#hud-stagestatus も同じく下部中央に出るため、その上に隙間を空けて重ねない。
+/* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも
+   トグルだけがその場(バーがあった位置の上端)に残るようにする。マップビューでは
+   #hud-stagestatus は常に非表示なので、他の下端揃えパネル(.hud-dock 等)と同じ bottom まで詰める。
    左右ドック(.hud-dock-left/.hud-dock-right)の内側に収まる幅だけを使い、ドックのパネルに重ねない。 */
-#hud-displaytime {
-  display: none; position: absolute; bottom: 100px;
+#hud-displaytime-wrap {
+  position: absolute; bottom: 12px;
   left: calc(12px + min(300px, 30vw) + 8px); right: calc(12px + min(300px, 33vw) + 8px);
-  width: auto; box-sizing: border-box; max-height: 40vh; overflow-y: auto; pointer-events: auto;
+  display: flex; flex-direction: column; gap: 4px; pointer-events: none;
 }
+/* #hud を重ねた ID セレクタで、.panel 共通規則(position:absolute)より詳細度を上げて打ち消す。 */
+#hud #hud-displaytime {
+  display: none; position: relative; inset: auto; order: 2; box-sizing: border-box;
+  max-height: 40vh; overflow-y: auto; pointer-events: auto;
+}
+#hud-displaytime.collapsed { display: none !important; }
+#hud-displaytime-toggle {
+  display: none; order: 1; align-self: center; pointer-events: auto; cursor: pointer;
+  width: 26px; height: 26px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: ${SURFACE}; color: ${ACCENT};
+}
+#hud.map-mode #hud-displaytime-toggle { display: block; }
+#hud.dock-mode #hud-displaytime-toggle { display: none; }
 #hud-displaytime input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
 /* パネル内の数値・テキスト入力欄の共通見た目(スライダーは上の range 規則が受け持つ)。 */
 #hud .panel input[type="number"], #hud .panel input[type="text"] {
@@ -437,8 +452,8 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud-settings { min-width: 0; width: 78vw; }
   #hud-stagestatus { bottom: 8px; width: min(62vw, 440px); min-width: 0; max-height: 62px; overflow-y: auto; padding: 6px 10px; gap: 8px; }
   /* このブレークポイントのドック幅に合わせて左右の隙間を再計算する。 */
-  #hud-displaytime {
-    bottom: 78px;
+  #hud-displaytime-wrap {
+    bottom: 8px;
     left: calc(8px + min(220px, calc(46vw - 8px)) + 8px); right: calc(8px + min(260px, calc(54vw - 8px)) + 8px);
   }
   #hud-stagestatus .t { font-size: 11px; }
@@ -458,7 +473,8 @@ body.hud-modal-open #touch-ui { display: none; }
   /* 左右ドックが幅を使い切り隙間が残らないため、ドックの下端を上げて帯の分を空け、バーは全幅に戻す。
      bottom はここで確保した帯の高さ(28vh)に収まる値まで詰め直す。 */
   #hud.map-mode .hud-dock { bottom: calc(28vh + 16px); }
-  #hud-displaytime { left: 8px; right: 8px; bottom: 8px; max-height: 28vh; }
+  #hud-displaytime-wrap { left: 8px; right: 8px; bottom: 8px; }
+  #hud-displaytime { max-height: 28vh; }
   #hud-combat-shelf { top: 72px; }
   #hud-combat-shelf > .panel { flex-basis: min(168px, calc(100vw - 16px)); width: min(168px, calc(100vw - 16px)); }
 }
@@ -466,6 +482,7 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud .hud-dock { bottom: 62px; }
   #hud-combat-shelf > .panel { max-height: 104px; }
   #hud-map-scale { bottom: 62px; }
+  #hud-displaytime-wrap { bottom: 62px; }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
   #hud .hud-dock { bottom: 52px; }
@@ -474,6 +491,7 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud-stagestatus { max-height: 46px; }
   #navball { top: 60px; width: 72px !important; }
   #hud-chase-reset { top: 34px; }
+  #hud-displaytime-wrap { bottom: 52px; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
   #hud-combat-shelf { top: 60px; }
@@ -727,23 +745,67 @@ export function hudDock(root: HTMLElement, side: 'left' | 'right'): HTMLElement 
   return root.querySelector<HTMLElement>(`#${id}`) ?? root;
 }
 
-function syncDockToggle(button: HTMLElement, dock: HTMLElement, side: 'left' | 'right'): void {
-  const expandedGlyph = side === 'left' ? '◀' : '▶';
-  const collapsedGlyph = side === 'left' ? '▶' : '◀';
-  const collapsed = dock.classList.contains('collapsed');
-  button.textContent = collapsed ? collapsedGlyph : expandedGlyph;
+export interface CollapseToggleLabels {
+  readonly expandedGlyph: string;
+  readonly collapsedGlyph: string;
+  readonly expandedTitle: string;
+  readonly collapsedTitle: string;
+}
+
+// マップビュー下部の PREDICT バー用トグルの見た目。開閉先(display-time-panel.ts)と
+// リセット先(resetHudDocks)の両方が同じラベルを参照するのでここに一つだけ持つ。
+export const PREDICT_TOGGLE_LABELS: CollapseToggleLabels = {
+  expandedGlyph: '▼',
+  collapsedGlyph: '▲',
+  expandedTitle: '下部パネルを閉じる',
+  collapsedTitle: '下部パネルを開く',
+};
+
+function dockToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
+  const label = side === 'left' ? '左' : '右';
+  return {
+    expandedGlyph: side === 'left' ? '◀' : '▶',
+    collapsedGlyph: side === 'left' ? '▶' : '◀',
+    expandedTitle: `${label}マップパネルを閉じる`,
+    collapsedTitle: `${label}マップパネルを開く`,
+  };
+}
+
+// button の見た目(グリフ・aria-expanded・title)を target の collapsed クラスに合わせる。
+export function syncCollapseToggle(button: HTMLElement, target: HTMLElement, labels: CollapseToggleLabels): void {
+  const collapsed = target.classList.contains('collapsed');
+  button.textContent = collapsed ? labels.collapsedGlyph : labels.expandedGlyph;
   button.setAttribute('aria-expanded', String(!collapsed));
-  button.title = `${side === 'left' ? '左' : '右'}マップパネルを${collapsed ? '開く' : '閉じる'}`;
+  button.title = collapsed ? labels.collapsedTitle : labels.expandedTitle;
+}
+
+// target の表示/非表示を collapsed クラスで切り替えるボタンを1つ組み、root へ追加して返す。
+export function buildCollapseToggle(
+  root: HTMLElement, id: string, className: string, target: HTMLElement, labels: CollapseToggleLabels,
+): HTMLElement {
+  const button = el('button', id, root, className);
+  button.addEventListener('pointerdown', (event) => event.stopPropagation());
+  button.addEventListener('click', () => {
+    target.classList.toggle('collapsed');
+    syncCollapseToggle(button, target, labels);
+  });
+  syncCollapseToggle(button, target, labels);
+  return button;
+}
+
+function resetCollapseToggle(root: HTMLElement, targetId: string, buttonId: string, labels: CollapseToggleLabels): void {
+  const target = root.querySelector<HTMLElement>(`#${targetId}`);
+  const button = root.querySelector<HTMLElement>(`#${buttonId}`);
+  if (!target || !button) return;
+  target.classList.remove('collapsed');
+  syncCollapseToggle(button, target, labels);
 }
 
 export function resetHudDocks(root: HTMLElement): void {
   for (const side of ['left', 'right'] as const) {
-    const dock = root.querySelector<HTMLElement>(`#hud-dock-${side}`);
-    const button = root.querySelector<HTMLElement>(`#hud-dock-toggle-${side}`);
-    if (!dock || !button) continue;
-    dock.classList.remove('collapsed');
-    syncDockToggle(button, dock, side);
+    resetCollapseToggle(root, `hud-dock-${side}`, `hud-dock-toggle-${side}`, dockToggleLabels(side));
   }
+  resetCollapseToggle(root, 'hud-displaytime', 'hud-displaytime-toggle', PREDICT_TOGGLE_LABELS);
 }
 
 export function syncNavballPlacement(root: HTMLElement, mapMode: boolean): void {
@@ -763,13 +825,7 @@ export function syncHudModalState(): void {
 }
 
 function buildDockToggle(root: HTMLElement, dock: HTMLElement, side: 'left' | 'right'): void {
-  const button = el('button', `hud-dock-toggle-${side}`, root, 'dock-toggle');
-  button.addEventListener('pointerdown', (event) => event.stopPropagation());
-  button.addEventListener('click', () => {
-    dock.classList.toggle('collapsed');
-    syncDockToggle(button, dock, side);
-  });
-  syncDockToggle(button, dock, side);
+  buildCollapseToggle(root, `hud-dock-toggle-${side}`, 'dock-toggle', dock, dockToggleLabels(side));
 }
 
 // STYLE の CSS を <head> に注入する。
