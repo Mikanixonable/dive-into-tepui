@@ -6,11 +6,13 @@ import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
+import type { Attractor } from '../../physics/attractor';
 import { localOrbitPeriod } from '../../physics/attractor';
-import { attractorsNear, classifyAttractors, predictedAttractorsAt } from './attractors';
+import { attractorsNearInto, classifyAttractors, predictedAttractorsAt } from './attractors';
 
 export class Predictor {
   private cursor = 0;
+  private readonly nearbyAttractorsScratch: Attractor[] = [];
 
   // 直近の update() で数えた予測列の状況(?perf=1 の表示用)。
   tracked = 0; // 予測対象の個体数
@@ -73,7 +75,7 @@ export class Predictor {
       // 後者があるので、表示期間を年スケールにしてもステップ数が有界に収まる。
       const tipState = e.predictedTrajectory?.state ?? e.state;
       const classified = classifyAttractors(predictedAttractorsAt(this.ephemeris, this.entities, tipState.t));
-      const attractors = attractorsNear(tipState.r, classified);
+      const attractors = attractorsNearInto(tipState.r, classified, this.nearbyAttractorsScratch);
       const dt = Math.max(
         C.PREDICT_MIN_STEP_DT,
         localOrbitPeriod(tipState.r, attractors) / C.PREDICT_STEPS_PER_REV,
