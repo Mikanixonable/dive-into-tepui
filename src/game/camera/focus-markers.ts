@@ -87,7 +87,7 @@ export class FocusMarkers {
 
   // 表示時刻 t の各ラベル座標を求め直す。表示対象の外にある天体は座標計算ごと飛ばす —
   // 登録天体が増えるほど lagrangeAt(1天体あたり positionOf 2回 + 回転系1回)が効くため。
-  update(t: number, focusId: AttractorId, toggles: BodyClassToggles): void {
+  update(t: number, focusId: AttractorId | undefined, toggles: BodyClassToggles): void {
     const ephemeris = this.ephemeris;
     // まず表示対象を決め、その中だけ座標を引く。ラグランジュ点はトグルが立っているときだけ。
     const visible = visibleBodyIds(ephemeris.registry, focusId, toggles);

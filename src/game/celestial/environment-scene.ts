@@ -11,6 +11,7 @@ import { OrbitLine } from '../../render/orbit-line';
 import { createStars, STAR_SHELL_RADIUS } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
+import { focusTargetId } from '../camera/focus-target';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { PointFieldView } from './point-field-view';
@@ -45,8 +46,10 @@ function referenceLineIds(registry: CelestialRegistry): readonly OrbitingId[] {
 }
 
 // フォーカス中のラベル id が属する惑星系(その惑星の id)。惑星なら自身、衛星なら親惑星、
-// ラグランジュ点ラベル(`<id>-l1` 等)ならその副天体で解決する。惑星系に属さないなら null。
-function focusSystemOf(registry: CelestialRegistry, focusId: string): AttractorId | null {
+// ラグランジュ点ラベル(`<id>-l1` 等)ならその副天体で解決する。惑星系に属さない、または
+// フォーカス中の天体が無い(focusId が undefined)なら null。
+function focusSystemOf(registry: CelestialRegistry, focusId: AttractorId | undefined): AttractorId | null {
+  if (focusId === undefined) return null;
   const bodyId = focusId.replace(/-l[1-5]$/, '');
   if (!(bodyId in registry)) return null;
   const def = bodyDef(registry, bodyId);
@@ -138,7 +141,8 @@ export class EnvironmentScene {
     this.pointFieldView.sync(floatingOrigin, cameraSystem.overviewMode);
     this.syncStars(cameraSystem);
     this.syncReferenceLines(
-      displayTime, floatingOrigin, cameraSystem.overviewMode, cameraSystem.overviewCamera.focus, cameraSystem.bodyClassToggles);
+      displayTime, floatingOrigin, cameraSystem.overviewMode,
+      focusTargetId(cameraSystem.overviewCamera.focus), cameraSystem.bodyClassToggles);
     this.celestialGrid.sync(gridVisibility, cameraSystem);
   }
 
@@ -151,7 +155,7 @@ export class EnvironmentScene {
 
   // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。
   private syncReferenceLines(
-    simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: string, toggles: BodyClassToggles,
+    simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: AttractorId | undefined, toggles: BodyClassToggles,
   ): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo);
@@ -173,7 +177,7 @@ export class EnvironmentScene {
   // フォーカスしているときだけ引く(地球系だけは例外で常時引く — プレイの中心なので、
   // どこを見ていても月軌道が文脈として要る)。準惑星・小天体は body-visibility.ts の
   // Orbit トグルに従う(Label トグルとは独立)。
-  private showsReferenceLine(id: OrbitingId, focusId: string, toggles: BodyClassToggles): boolean {
+  private showsReferenceLine(id: OrbitingId, focusId: AttractorId | undefined, toggles: BodyClassToggles): boolean {
     const registry = this.ephemeris.registry;
     const cls = bodyClassOf(registry, id);
     if (cls === 'dwarf') return toggles.dwarfOrbit;
