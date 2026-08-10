@@ -47,8 +47,8 @@ export class Base extends GameEntity {
     dockedShips: []
   };
 
-  constructor(state: KinematicState, scene: THREE.Scene, name = '基地', att?: Attitude) {
-    super(state, buildBaseModel(), scene, att, idAllocator.next());
+  constructor(state: KinematicState, scene: THREE.Scene, name = '基地', att?: Attitude, id?: string) {
+    super(state, buildBaseModel(), scene, att, idAllocator.next(id));
     this.mass = 1e6;
     this.radius = 100;
     this.collides = true;
