@@ -66,7 +66,7 @@ export function register(): void {
     for (const id of ['sun', 'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune']) {
       assert.ok(visible.has(id), `${id} は常に見えるべき`);
     }
-    // smallBodyLabel だけが既定で立っているので、小天体は見えて準惑星と衛星は見えない。
+    // smallBodyIcon/smallBodyLabel だけが既定で立っているので、小天体は見えて準惑星と衛星は見えない。
     for (const id of ['halley', 'encke', 'vesta']) {
       assert.ok(visible.has(id), `${id} は既定で見えるべき`);
     }
