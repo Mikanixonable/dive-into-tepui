@@ -115,8 +115,6 @@ hud、sfx注入パターンのなかで今後必要なくなる可能性が高�
 ## enemy-generator.ts の長大な引数リストの重複の共通化
 下手にやるとctx注入と同じになる
 
-## ring-lodモジュールが小さすぎる
-ring-viewに統合すべき
 
 ## MAP VIEW パネル(カメラ用)に「弾薬」トグルが同居している(`camera/overview-camera-panel.ts:35-40`)。
   カメラ関連 GUI の集約という観点では逆向きの混在。
