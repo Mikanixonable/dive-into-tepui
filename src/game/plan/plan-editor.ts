@@ -134,7 +134,7 @@ export class PlanEditor {
     this.planPanel.id = 'hud-plan';
     this.planPanel.className = 'panel';
     this.planPanel.innerHTML = `
-      <h3>MANEUVER PLAN [${K.toggleMapMode.label}]</h3>
+      <h3>軌道計画 [${K.toggleMapMode.label}]</h3>
       <div data-id="planbody"></div>
       <div data-id="planedit" style="display:none; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1)">
         <div style="font-size:10px; color:${TEXT_DIM}; margin-bottom:4px;">マニューバ手動入力 (m/s)</div>
@@ -778,7 +778,7 @@ function planPanelHtml(
     s += nodes
       .map((n, i) => {
         const sign = n.tRel >= 0 ? 'T-' : 'T+';
-        return `<div class="row"><span class="k">${n.selected ? '▶ ' : '◆ '}NODE${i + 1} ${sign}${fmtTime(Math.abs(n.tRel))}</span><span class="v">${n.dvMag.toFixed(1)} m/s</span></div>`;
+        return `<div class="row"><span class="k">${n.selected ? '▸ ' : ''}◈ NODE${i + 1} ${sign}${fmtTime(Math.abs(n.tRel))}</span><span class="v">${n.dvMag.toFixed(1)} m/s</span></div>`;
       })
       .join('');
   }

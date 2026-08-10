@@ -20,7 +20,7 @@ const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
   { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', iconKey: 'lagrangeIcon', labelKey: 'lagrangeLabel', orbitKey: null },
 ];
 const ENTITY_ROWS: readonly BodyClassRow[] = [
-  { label: '宇宙船', categoryKey: 'playerVisible', iconKey: 'playerIcon', labelKey: 'playerLabel', orbitKey: 'playerOrbit' },
+  { label: '自艦', categoryKey: 'playerVisible', iconKey: 'playerIcon', labelKey: 'playerLabel', orbitKey: 'playerOrbit' },
   { label: '敵', categoryKey: 'shipVisible', iconKey: 'shipIcon', labelKey: 'shipLabel', orbitKey: 'shipOrbit' },
   { label: '弾薬', categoryKey: 'ammoVisible', iconKey: 'ammoIcon', labelKey: 'ammoLabel', orbitKey: 'ammoOrbit' },
   { label: '基地', categoryKey: 'baseVisible', iconKey: 'baseIcon', labelKey: 'baseLabel', orbitKey: 'baseOrbit' },
