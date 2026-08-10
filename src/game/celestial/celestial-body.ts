@@ -9,5 +9,6 @@ import { FloatingOrigin } from '../floating-origin';
 export abstract class CelestialBody {
   abstract readonly id: AttractorId;
   abstract build(scene: THREE.Scene): void;
+  abstract setVisible(visible: boolean): void;
   abstract sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void;
 }
