@@ -6,6 +6,7 @@ import type { Ephemeris } from '../physics/ephemeris';
 import { Vec3 } from '../physics/vec3';
 import { systemMembersAt } from './celestial/body-visibility';
 import { OverviewCamera } from './camera/overview-camera';
+import { focusTargetId, FocusTarget } from './camera/focus-target';
 import { AnchorZone } from './hud/anchor-zone';
 import { RotationZone } from './hud/rotation-zone';
 import { hudDock } from './hud/dom';
@@ -48,6 +49,16 @@ export class FrameControls {
     this.panel.appendChild(this.cameraRotationZone.element);
 
     hudDock(panelRoot, 'left').appendChild(this.panel);
+  }
+
+  // マップカメラのフォーカスを target へ移す。target が登録天体を指しているときは
+  // 計画折れ線の原点も同じ天体へ合わせる(回転側は現状を保つ)。
+  setFocus(target: FocusTarget): void {
+    this.overviewCamera.setFocusTarget(target);
+    const id = focusTargetId(target);
+    if (id !== undefined && id in this.ephemeris.registry) {
+      this.planDisplay.planFrame = this.ephemeris.frameOf(id, this.planDisplay.planFrame.rotatingWith);
+    }
   }
 
   // パネルの表示と2ゾーンの選択肢・選択表示を、他モジュールの状態へ合わせる。

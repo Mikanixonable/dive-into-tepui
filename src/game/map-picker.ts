@@ -94,7 +94,7 @@ export class MapPicker {
       if (target) this.objectListPanel.select(id);
     };
     this.objectListPanel.onFocus = (id) => {
-      this.cameraSystem.overviewCamera.setFocusTarget({ kind: 'object', id });
+      this.game.frameControls.setFocus({ kind: 'object', id });
       this.hud.hint(`${this.items.find((i) => i.id === id)?.name ?? id} にフォーカス`);
     };
     this.objectListPanel.onNavTarget = (id) => {
@@ -268,7 +268,7 @@ export class MapPicker {
         p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ,
       );
       if (!target) return false;
-      this.cameraSystem.overviewCamera.setFocusTarget({ kind: 'object', id: target.id });
+      this.game.frameControls.setFocus({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
       return true;
     });
@@ -805,7 +805,7 @@ export class MapPicker {
 
   private runBodyShip(act: MenuAction, target: MapPickable): void {
     if (act === 'focus') {
-      this.cameraSystem.overviewCamera.setFocusTarget({ kind: 'object', id: target.id });
+      this.game.frameControls.setFocus({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
     } else if (act === 'navTarget') {
       this.navTarget.toggleTarget(target.id, target.name);
