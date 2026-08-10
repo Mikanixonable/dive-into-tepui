@@ -20,7 +20,7 @@ import { ephemerisConfigFor, initStage } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
-import { DisplayTimeManager } from './display-time-manager';
+import { DisplayTimeManager, type DisplayWindow } from './display-time-manager';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './sim-speed-manager';
 import { EntityManager } from './simulation/entity-manager';
@@ -102,6 +102,11 @@ export class Game {
   private readonly leadMarkers: LeadMarkers;
   readonly equatorNodeMarkers: EquatorNodeMarkers;
   private readonly effects: EffectsSystem;
+  // 1フレーム分の表示時刻一式。update/sync それぞれの先頭で1回だけ resolveWindow() から
+  // 差し替え、同一フェーズ内の全消費者が同じ値を共有する。
+  private _window: DisplayWindow = {
+    simTime: 0, referencePeriod: NaN, duration: C.APERIODIC_ARC_DURATION, displayTime: 0,
+  };
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
   readonly entities: EntityManager;
@@ -307,9 +312,10 @@ export class Game {
   }
 
 
-  // このフレームの表示時刻(未来ゴーストのスライダーぶん先取りした simTime)。
-  private get displayTime(): number {
-    return this.displayTimeManager.resolveDisplayTime(this.simulator.simTime, this.currentOrbitPeriod());
+  // このフレーム時点の表示時刻一式を組む。currentOrbitPeriod() は登録天体全体を組んで
+  // strongestAttractor を回す重い計算なので、フレームごとに update/sync 先頭で1回ずつだけ呼ぶ。
+  private resolveWindow(): DisplayWindow {
+    return this.displayTimeManager.window(this.simulator.simTime, this.currentOrbitPeriod());
   }
 
   // 自機の現在軌道の周期 [s]。自機がいない、または有限な周期が求まらない間は NaN —
@@ -318,6 +324,16 @@ export class Game {
     if (!this.player) return NaN;
     const center = strongestAttractor(this.player.state.r, this.ephemeris.attractorsAt(this.simulator.simTime));
     return this.player.orbitalElementsAround(center)?.period ?? NaN;
+  }
+
+  // 自機の予測軌道が表示期間のどこまで届いているかの割合(0..1)。スライダーがまだ積分の
+  // 届いていない未来を指しうることをスクラバー上で示すのに使う。自機がいない、または
+  // 予測が無い/表示期間が無い間は、警告すべき相手がいないので 1(全域到達済み扱い)を返す。
+  private predictionCoverageRatio(): number {
+    const end = this.player?.predictedTrajectory?.state.t;
+    if (end === undefined || this._window.duration <= 0) return 1;
+    const ratio = (end - this._window.simTime) / this._window.duration;
+    return Math.max(0, Math.min(1, ratio));
   }
 
   get simTime(): number { return this.simulator.simTime; }
@@ -397,6 +413,7 @@ export class Game {
 
     // handleInput より後に置く: ポーズ中も Esc・ヘルプなどは効かせる。
     if (this._isPaused) {
+      this._window = this.resolveWindow();
       this.updateMapPresentation(dt, () => {
         if (!this.editor.editMode) return;
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
@@ -411,6 +428,7 @@ export class Game {
 
     // Creative の未配置状態でも、残骸・弾など全エンティティの epoch は進め続ける。
     if (this.player === null) {
+      this._window = this.resolveWindow();
       this.simSpeedManager.update(this.simulator.simTime);
       this.applyWarpCommandPolicy();
       const simDt = dt * this.simSpeedManager.simSpeed;
@@ -421,7 +439,7 @@ export class Game {
       this.predictor.update(
         this.simulator.simTime,
         null,
-        this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
+        this._window.duration,
         this.cameraSystem.overviewMode ? 'map' : 'combat',
       );
       this.activeStage.update(dt, null, this.entities, this.simulator.simTime, this.simSpeedManager);
@@ -441,6 +459,7 @@ export class Game {
 
     // behave が呼ばれなくなるので、決着時点の thrust が凍結され続けないよう明示的に消す。
     if (!this.activeStage.isPlaying) {
+      this._window = this.resolveWindow();
       player.thrust = null;
       player.torque = v3();
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
@@ -485,6 +504,9 @@ export class Game {
       true, // doSubstep
       this.nanWatchdog,
     );
+    // simulator.advance 直後、predictor.update より前 — このフレームの表示時刻一式を
+    // 積分後の状態で確定させ、以降の消費者(predictor/updateMapPresentation)へ共有する。
+    this._window = this.resolveWindow();
 
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
     this.nanWatchdog.checkAll('simulator.advance', player, this.entities, this.simulator.simTime, dt, simDt);
@@ -518,7 +540,7 @@ export class Game {
     this.predictor.update(
       this.simulator.simTime,
       this.player,
-      this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
+      this._window.duration,
       this.cameraSystem.overviewMode ? 'map' : 'combat',
     );
 
@@ -553,21 +575,22 @@ export class Game {
 
   // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
   private updateMapPresentation(dt: number, afterRefresh?: () => void): void {
-    this._environment.update(this.displayTime, this.cameraSystem.overviewMode);
+    const displayTime = this._window.displayTime;
+    this._environment.update(displayTime, this.cameraSystem.overviewMode);
     const planProvider = planAttractorProvider(
       this.ephemeris,
       this.entities,
       this.player ? [this.player.id] : [],
       this.simulator.simTime,
     );
-    this.editor.update(this.simulator.simTime, this.displayTime, planProvider);
+    this.editor.update(this.simulator.simTime, displayTime, planProvider);
     this.equatorNodeMarkers.update(
-      this.equatorNodeSources(), this.editor.planDisplay.planFrame, this.displayTime,
+      this.equatorNodeSources(), this.editor.planDisplay.planFrame, displayTime,
     );
     // MapPicker/FocusMarkers は全天体・ラグランジュ点・全エンティティの候補を組む。
     // 戦闘ビューではクリック対象を別経路で処理するため、マップを表示している時だけ更新する。
     if (this.cameraSystem.overviewMode) {
-      this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
+      this.mapPicker.refresh(this.simulator.simTime, displayTime);
     }
     afterRefresh?.();
     // 表示側の合流窓(重力を持つ生存中の GameEntity も含める)。sync 側の attractors と
@@ -676,6 +699,8 @@ export class Game {
   // ------------------------------------------------------------------ sync
 
   sync(): void {
+    // 積分が終わった状態でこのフレームの表示時刻一式を確定させ、sync 全体で共有する。
+    this._window = this.resolveWindow();
     this.viewBadge.sync(this.activeStage.selectLabel, this.activeStage.isPlaying && (this.player?.alive ?? false));
     const player = this.player;
     // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
@@ -684,7 +709,7 @@ export class Game {
     this.floatingOrigin = new FloatingOrigin(this.cameraSystem.activeCameraPos, player?.state.v ?? v3());
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
-    const displayTime = this.displayTimeManager.resolveDisplayTime(this.simulator.simTime, this.currentOrbitPeriod());
+    const displayTime = this._window.displayTime;
 
     const simTime = this.simulator.simTime;
     // 表示側は重力を持つ生存中の GameEntity(小惑星)も中心天体解決・遮蔽判定へ合流させる —
@@ -779,7 +804,8 @@ export class Game {
     this.enemyMarkers.sync(enemyMarkerItems, project, overviewMode, this.cameraSystem.activeCameraScale);
     if (player) this.leadMarkers.sync(player, aliveTargets, target, secondaryTarget, simTime, overviewMode, project);
 
-    this.displayTimeManager.sync(simTime, this.currentOrbitPeriod());
+    this.displayTimeManager.setPredictionCoverage(this.predictionCoverageRatio());
+    this.displayTimeManager.sync(this._window);
     this.editor.sync(
       this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project,
       this.cameraSystem.activeCameraScale, overviewMode, this.cameraSystem.activeCameraPos,
@@ -798,7 +824,7 @@ export class Game {
     // 解析楕円は、積分予測が表示範囲に届いていないあいだの代替表示。予測が表示ホライズンを
     // 覆いきったときだけ抑制する。predictedTrajectoryLine は操作対象艦しか描かないため、
     // 他の艦は常に non-suppressed に戻る。
-    const predictHorizon = this.displayTimeManager.durationSec(this.currentOrbitPeriod());
+    const predictHorizon = this._window.duration;
     for (const ship of this.entities.players) {
       ship.orbitLine.setSuppressed(this.predictedTrajectoryLine.coversHorizon(ship, simTime, predictHorizon));
     }

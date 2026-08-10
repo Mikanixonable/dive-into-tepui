@@ -286,7 +286,35 @@ body.hud-modal-open #touch-ui { display: none; }
 }
 #hud.map-mode #hud-displaytime-toggle { display: block; }
 #hud.dock-mode #hud-displaytime-toggle { display: none; }
-#hud-displaytime input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
+#hud-displaytime .dtp-row1, #hud-displaytime .dtp-row2 { display: flex; align-items: center; gap: 6px; }
+#hud-displaytime .dtp-row1 { flex-wrap: wrap; margin-bottom: 4px; }
+#hud-displaytime .dtp-pills { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+#hud-displaytime .dtp-reset {
+  pointer-events: auto; cursor: pointer; flex: 0 0 auto;
+  width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT}; font-size: 12px;
+}
+#hud-displaytime .dtp-reset:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud-displaytime .dtp-slider-wrap { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; height: 22px; }
+#hud-displaytime input[type="range"] { width: 100%; height: 22px; margin: 0; pointer-events: auto; accent-color: ${ACCENT}; }
+#hud-displaytime .dtp-elapsed {
+  flex: 0 0 auto; pointer-events: auto; cursor: pointer;
+  font-size: 11px; color: ${INK_SOFT}; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+#hud-displaytime .dtp-elapsed:hover { color: ${INK}; }
+#hud-displaytime .dtp-absolute {
+  flex: 0 0 auto; font-size: 11px; color: ${INK_SOFT};
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+#hud-displaytime .dtp-value-input { display: inline-flex; align-items: center; gap: 4px; margin: 0; }
+/* 単位の SegmentedControl は見出しを持たないので、共通規則の見出し幅を出さない。 */
+#hud-displaytime .dtp-value-input .seg-title { display: none; }
+#hud-displaytime .dtp-value-input input[type="number"] { width: 56px; }
+#hud-displaytime .dtp-edit-btn {
+  pointer-events: auto; cursor: pointer; padding: 2px 6px; font-size: 11px;
+  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
+}
+#hud-displaytime .dtp-edit-btn:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
 /* パネル内の数値・テキスト入力欄の共通見た目(スライダーは上の range 規則が受け持つ)。 */
 #hud .panel input[type="number"], #hud .panel input[type="text"] {
   pointer-events: auto; width: 64px; padding: 3px 6px; font-size: 11px;
@@ -300,12 +328,9 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .settings-btn:active { background: rgba(255, 255, 255, 0.1); border-color: ${ACCENT_SOFT}; }
 #hud-displaytime .slider-ticks { position: relative; height: 11px; margin-top: 2px; }
 #hud-displaytime .slider-ticks span {
-  position: absolute; transform: translateX(-50%);
+  position: absolute;
   font-size: 9px; color: ${INK_SOFT}; white-space: nowrap;
 }
-#hud-displaytime .slider-ticks span:first-child { transform: none; }
-#hud-displaytime .slider-ticks span:last-child { transform: translateX(-100%); }
-#hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
 #hud-frame-controls { display: none; width: 100%; pointer-events: auto; }
 #hud-frame-controls .hud-frame-scroll-zone {
   max-height: min(240px, 30vh); overflow-y: auto;
@@ -476,6 +501,8 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud .hud-seg { gap: 3px; }
   #hud .seg-btn { padding: 3px 5px; font-size: 9px; }
   #hud-displaytime .slider-ticks { display: none; }
+  /* 幅が足りないので、行2はスクラバーと T+ 読み値だけ残す。 */
+  #hud-displaytime .dtp-absolute { display: none; }
   /* 左右ドックが幅を使い切り隙間が残らないため、ドックの下端を上げて帯の分を空け、バーは全幅に戻す。
      bottom はここで確保した帯の高さ(28vh)に収まる値まで詰め直す。 */
   #hud.map-mode .hud-dock { bottom: calc(28vh + 16px); }

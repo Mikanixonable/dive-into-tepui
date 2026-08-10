@@ -16,9 +16,8 @@ import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { MapPickable } from '../map-pick';
 import * as C from '../const';
-import { Plan } from './plan';
+import { DisplayDurationSource, Plan } from './plan';
 import { PlanPath } from './plan-path';
-import type { DisplayTimeManager } from '../display-time-manager';
 import type { PlanAttractorProvider } from '../simulation/attractors';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
@@ -79,10 +78,10 @@ export class PlanDisplay {
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
     private readonly ephemeris: Ephemeris,
-    displayTimeManager: DisplayTimeManager,
+    displayDuration: DisplayDurationSource,
   ) {
     this.planFrame = ephemeris.inertialFrame;
-    this.path = new PlanPath(scene, displayTimeManager);
+    this.path = new PlanPath(scene, displayDuration);
   }
 
   // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。

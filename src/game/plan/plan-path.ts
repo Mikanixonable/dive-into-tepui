@@ -10,9 +10,8 @@ import { Projected } from '../../physics/projection';
 import { isOccluded } from '../../physics/occlusion';
 import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
-import { Plan, TimeRange, segmentDurationFrom } from './plan';
+import { DisplayDurationSource, Plan, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
-import type { DisplayTimeManager } from '../display-time-manager';
 import type { PlanAttractorProvider } from '../simulation/attractors';
 import * as C from '../const';
 
@@ -57,7 +56,7 @@ export class PlanPath {
   private final: FinalSegment | null = null;
 
   // group をシーンへ登録する(初期状態は非表示)。
-  constructor(scene: THREE.Scene, private readonly displayTimeManager: DisplayTimeManager) {
+  constructor(scene: THREE.Scene, private readonly displayTimeManager: DisplayDurationSource) {
     this.group.visible = false;
     scene.add(this.group);
   }
@@ -271,7 +270,7 @@ export class PlanPath {
 
 // anchor を起点に nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
 // 末尾の1本は segmentDurationFrom ぶん伸びる。
-function buildSegments(plan: Plan, ephemeris: Ephemeris, displayTimeManager: DisplayTimeManager): Segment[] {
+function buildSegments(plan: Plan, ephemeris: Ephemeris, displayTimeManager: DisplayDurationSource): Segment[] {
   const segments: Segment[] = [];
   let state0 = plan.anchor;
   // ノードを1つずつ経由点として区間を切り出す
