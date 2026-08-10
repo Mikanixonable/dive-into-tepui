@@ -21,11 +21,10 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { PlanGizmo3D } from './plan-gizmo-3d';
-import { Plan } from './plan';
+import { DisplayDurationSource, Plan } from './plan';
 import { apsisAltitudes } from '../../physics/elements';
 import { PlanDisplay } from './plan-display';
 import { hudDock } from '../hud/dom';
-import type { DisplayTimeManager } from '../display-time-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
@@ -121,10 +120,10 @@ export class PlanEditor {
     scene: THREE.Scene,
     markerManager: MarkerManager,
     ship: Player,
-    private readonly displayTimeManager: DisplayTimeManager,
+    private readonly displayDuration: DisplayDurationSource,
   ) {
     this.ship = ship;
-    this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayTimeManager);
+    this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayDuration);
     this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup);
     this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup);
     this.gizmo3d = new PlanGizmo3D();
@@ -399,7 +398,7 @@ export class PlanEditor {
     const node = this.plan.nodes[idx];
     if (!node) return;
     const arriving = this.planDisplay.path.arrivalStates();
-    const picked = this.planDisplay.path.nearestSample(clientX, clientY, Infinity, node.t, this.plan.nodeTimeRange(idx, this.ephemeris, this.displayTimeManager));
+    const picked = this.planDisplay.path.nearestSample(clientX, clientY, Infinity, node.t, this.plan.nodeTimeRange(idx, this.ephemeris, this.displayDuration));
     if (picked) {
       this.selectedNode = this.plan.replaceNode(
         idx, this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state,

@@ -87,18 +87,22 @@ export class Predictor {
     let classified: ClassifiedAttractors | null = null;
     let classifiedAt = 0;
     while (consumed < budgetSteps) {
-      // 刻み幅は「その場の周期の等分」と「ホライズン全体をステップ上限で割った値」の粗い方。
-      // 後者があるので、表示期間を年スケールにしてもステップ数が有界に収まる。
       const tipState = e.predictedTrajectory?.state ?? e.state;
       if (classified === null || tipState.t - classifiedAt >= C.PREDICT_ATTRACTOR_REBUILD_SEC) {
         classified = classifyAttractors(predictedAttractorsAt(this.ephemeris, this.entities, tipState.t));
         classifiedAt = tipState.t;
       }
       const attractors = attractorsNearInto(tipState.r, classified, this.nearbyAttractorsScratch);
-      const dt = Math.max(
-        C.PREDICT_MIN_STEP_DT,
-        localOrbitPeriod(tipState.r, attractors) / C.PREDICT_STEPS_PER_REV,
-        horizon / C.PREDICT_MAX_STEPS,
+      // 1ステップは表示期間より長くしない。先端は設計上ホライズンを1ステップぶん超えた所で
+      // 止まるので、上限が無いと局所周期が跳ね上がった瞬間に先端が暦の有効域の外まで飛び、
+      // 次の周回で attractorsAt がその時刻を引いて失敗する。
+      const dt = Math.min(
+        horizon,
+        Math.max(
+          C.PREDICT_MIN_STEP_DT,
+          localOrbitPeriod(tipState.r, attractors) / C.PREDICT_STEPS_PER_REV,
+          horizon / C.PREDICT_MAX_STEPS,
+        ),
       );
       if (!e.stepPredicted(attractors, simTime, dt, horizon)) break;
       consumed++;
