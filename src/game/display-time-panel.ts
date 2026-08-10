@@ -26,8 +26,8 @@ const UNITS: readonly (readonly [DurationUnit, string])[] = [
 
 const SLIDER_HINT = 'スライダーで未来位置を確認';
 
-// 値(数値入力)+単位(SegmentedControl)の組。秒数への換算とレンジクランプ・min/max属性の
-// 単位追従をここに閉じ込め、手動レンジ入力とジャンプ入力の両方から使う。
+// 見出し + 値(数値入力)+ 単位(SegmentedControl)の組。秒数への換算とレンジクランプ・
+// min/max属性の単位追従をここに閉じ込め、手動レンジ入力とジャンプ入力の両方から使う。
 class DurationValueInput {
   readonly row: HTMLElement;
   private readonly value: HTMLInputElement;
@@ -36,22 +36,33 @@ class DurationValueInput {
   private minSec = 0;
   private maxSec = Infinity;
 
-  // onChange はクランプ後の秒数で呼ばれる。defaultValue は単位換算前の表示値。
-  constructor(defaultUnit: DurationUnit, defaultValue: number, onChange: (sec: number) => void) {
+  // label は行の意味を示す見出し。onChange は確定(change / Enter)時にクランプ後の秒数で
+  // 呼ばれる。defaultValue は単位換算前の表示値。
+  constructor(label: string, defaultUnit: DurationUnit, defaultValue: number, onChange: (sec: number) => void) {
     this.unitValue = defaultUnit;
     this.row = document.createElement('div');
     this.row.className = 'hud-seg';
+    const heading = document.createElement('span');
+    heading.className = 'seg-title';
+    heading.textContent = label;
+    this.row.appendChild(heading);
     this.value = document.createElement('input');
     this.value.type = 'number';
     this.value.value = String(defaultValue);
     this.value.addEventListener('pointerdown', (e) => e.stopPropagation());
-    this.value.addEventListener('input', () => this.emit(onChange));
+    // Input は window で keydown を購読しているので、打鍵がゲーム操作として発火しないよう止める。
+    this.value.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') this.commit(onChange);
+    });
+    this.value.addEventListener('change', () => this.commit(onChange));
     this.row.appendChild(this.value);
     this.unit = new SegmentedControl('単位', UNITS, (unit) => {
+      const sec = this.rawSec();
       this.unitValue = unit;
       this.unit.setSelected(unit);
       this.syncMinMaxAttr();
-      this.emit(onChange);
+      this.value.value = String(sec / UNIT_SEC[unit]);
     });
     this.unit.setSelected(this.unitValue);
     this.row.appendChild(this.unit.element);
@@ -61,11 +72,16 @@ class DurationValueInput {
     return this.row;
   }
 
-  // 現在の入力値・単位から秒数をレンジへクランプして通知する。クランプで値が変われば入力欄にも書き戻す。
-  private emit(onChange: (sec: number) => void): void {
+  // 入力欄の表示値を現在の単位で秒数に直した値(クランプ前)。
+  private rawSec(): number {
     const raw = Number(this.value.value);
+    return (isFinite(raw) ? raw : 0) * UNIT_SEC[this.unitValue];
+  }
+
+  // 入力値をレンジへクランプして通知する。クランプで値が変われば入力欄にも書き戻す。
+  private commit(onChange: (sec: number) => void): void {
     const unitSec = UNIT_SEC[this.unitValue];
-    const sec = Math.max(this.minSec, Math.min(this.maxSec, (isFinite(raw) ? raw : 0) * unitSec));
+    const sec = Math.max(this.minSec, Math.min(this.maxSec, this.rawSec()));
     const shown = sec / unitSec;
     if (Number(this.value.value) !== shown) this.value.value = String(shown);
     onChange(sec);
@@ -103,14 +119,14 @@ export class DisplayTimePanel {
   private readonly jumpInput: DurationValueInput;
   private sliderSteps = 1000;
 
-  // PREDICT パネルの DOM を組み立て、root へ追加する。
+  // 表示時刻パネルの DOM を組み立て、root へ追加する。
   constructor(root: HTMLElement) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-displaytime';
     this.panel.className = 'panel';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
-    title.textContent = 'PREDICT';
+    title.textContent = '表示時刻';
     this.panel.appendChild(title);
 
     // 期間選択(1周回/1日/7日/28日/手動)
@@ -118,11 +134,11 @@ export class DisplayTimePanel {
     this.panel.appendChild(this.duration.element);
 
     // 手動レンジ入力。'manual' 選択時のみ表示する。
-    this.manualInput = new DurationValueInput('day', 1, (sec) => this.onManualDurationChange?.(sec));
+    this.manualInput = new DurationValueInput('表示期間', 'day', 1, (sec) => this.onManualDurationChange?.(sec));
     this.panel.appendChild(this.manualInput.element);
 
     // T+時刻への直接ジャンプ入力。
-    this.jumpInput = new DurationValueInput('hour', 0, (sec) => this.onJumpToTime?.(sec));
+    this.jumpInput = new DurationValueInput('T+ へ移動', 'hour', 0, (sec) => this.onJumpToTime?.(sec));
     this.panel.appendChild(this.jumpInput.element);
 
     // 未来ゴーストスライダー
@@ -134,11 +150,12 @@ export class DisplayTimePanel {
     this.slider.addEventListener('input', () => this.onSliderChange?.(Number(this.slider.value) / this.sliderSteps));
     this.panel.appendChild(this.slider);
 
-    this.panel.appendChild(hudButton('現在に戻す', () => this.onResetToNow?.()));
-
+    // 目盛りはスライダーの直下に置く(位置の対応が読み取れる並びにする)。
     this.ticks = document.createElement('div');
     this.ticks.className = 'slider-ticks';
     this.panel.appendChild(this.ticks);
+
+    this.panel.appendChild(hudButton('現在に戻す', () => this.onResetToNow?.()));
 
     this.sliderLabel = document.createElement('div');
     this.sliderLabel.className = 'slider-label';
@@ -174,13 +191,15 @@ export class DisplayTimePanel {
     if (this.sliderLabel.textContent !== text) this.sliderLabel.textContent = text;
   }
 
-  // スライダーの段階数を設定する。現在のつまみ位置(0..1 換算)は維持する。
+  // スライダーの段階数を設定する。つまみ位置(0..1 換算)は維持し、段階数の丸めで動いた分を
+  // onSliderChange で確定させる(表示時刻とつまみ位置が食い違ったままにならないようにする)。
   setSliderSteps(steps: number): void {
     if (steps === this.sliderSteps) return;
     const t = Number(this.slider.value) / this.sliderSteps;
     this.sliderSteps = steps;
     this.slider.max = String(steps);
     this.slider.value = String(Math.round(t * steps));
+    this.onSliderChange?.(Number(this.slider.value) / steps);
   }
 
   // スライダーのつまみ位置を t(0..1)に合わせる。

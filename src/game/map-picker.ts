@@ -116,13 +116,14 @@ export class MapPicker {
     );
     this.navTarget.update(this.game.player, this.entities, this.ephemeris, simTime);
 
+    const attractors = this.ephemeris.attractorsAt(simTime);
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     const items: MapPickable[] = [...this.cameraSystem.focusMarkers.allBodyPickables(displayTime)];
     for (const ship of this.entities.players) {
       if (!ship.alive) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
-        const center = strongestAttractor(ship.state.r, this.ephemeris.attractorsAt(simTime));
+        const center = strongestAttractor(ship.state.r, attractors);
         const el = ship.orbitalElementsAround(center);
         const pe = el ? fmtDist(apsisAltitudes(el).pe) : '—';
         items.push({ id: ship.id, name: ship.displayName, pos, kind: 'player', detail: `HP ${Math.round(ship.hp)}/${Math.round(ship.maxHp)} · PE ${pe}`, priority: ship === this.game.player ? -100 : 0 });
@@ -149,15 +150,14 @@ export class MapPicker {
 
     // 自機からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
     const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
-    const attractors = this.ephemeris.attractorsAt(simTime);
     const viewer = this.game.player?.state;
     if (viewer) for (let i = 0; i < items.length; i++) {
       const item = items[i]!;
       const d = len(sub(item.pos, viewer.r));
-      const speed = len(sub(item.kind === 'player' ? (this.entities.findPlayer(item.id)?.state.v ?? viewer.v) : item.kind === 'ship' ? (this.entities.findEnemy(item.id)?.state.v ?? viewer.v) : viewer.v, viewer.v));
-      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(speed)}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, this.ephemeris.attractorsAt(simTime)).id)}` : item.detail;
+      // 相対速度は対の速度を持つ敵艦にだけ意味がある。
+      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, attractors).id)}` : item.detail;
       const inFocusedSystem = isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, attractors);
-      items[i] = { ...item, detail: status, priority: item.priority ?? d, inFocusedSystem };
+      items[i] = { ...item, detail: status, distance: d, inFocusedSystem };
     }
 
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
