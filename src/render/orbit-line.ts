@@ -145,6 +145,8 @@ export class OrbitLine {
 
     if (this.needsRegen(el, force, focusE)) {
       this.regenerate(el, focusE);
+      // 頂点ごとの離心近点角が組み直されたので、前回のフェードは対応先を失っている。
+      this.lastExclude = null;
     }
     this.applyFade(el, excludeNearBody);
     this.applyVisible();

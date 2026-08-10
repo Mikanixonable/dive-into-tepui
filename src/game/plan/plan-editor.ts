@@ -401,8 +401,9 @@ export class PlanEditor {
     const arriving = this.planDisplay.path.arrivalStates();
     const picked = this.planDisplay.path.nearestSample(clientX, clientY, Infinity, node.t, this.plan.nodeTimeRange(idx, this.ephemeris, this.displayTimeManager));
     if (picked) {
-      this.plan.replaceNode(idx, this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state);
-      this.selectedNodeIdx = idx;
+      this.selectedNode = this.plan.replaceNode(
+        idx, this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state,
+      );
     }
   }
 
@@ -463,7 +464,7 @@ export class PlanEditor {
     if (!arr) return;
     const d = amount * sign;
     const local = v3(axis === 0 ? d : 0, axis === 1 ? d : 0, axis === 2 ? d : 0);
-    this.plan.applyNodeDv(idx, fromOrbitAxes(this.bodyState(arr), local));
+    this.selectedNode = this.plan.applyNodeDv(idx, fromOrbitAxes(this.bodyState(arr), local));
   }
 
   // 手動入力フォームから絶対的な Δv (PRO, NRM, RAD) を指定してノードの速度を上書きする。
@@ -477,7 +478,7 @@ export class PlanEditor {
     // 入力は「到着時の軌道基準枠」を基準とした絶対量とする。
     const bodyArr = this.bodyState(arr);
     const dvWorld = fromOrbitAxes(bodyArr, v3(pro, nrm, rad));
-    this.plan.replaceNode(this.selectedNodeIdx, kinematicState(node.t, node.r, add(arr.v, dvWorld)));
+    this.selectedNode = this.plan.replaceNode(this.selectedNodeIdx, kinematicState(node.t, node.r, add(arr.v, dvWorld)));
     this._sfx.warp();
   }
 

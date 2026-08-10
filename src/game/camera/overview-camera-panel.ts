@@ -1,6 +1,7 @@
 import { HudToggleButton, IconToggleButton } from '../hud/buttons';
 import { hudDock } from '../hud/dom';
 import { BodyClassToggles } from '../celestial/body-visibility';
+import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 
 // クラス別トグルの1行分。orbitKey が null のクラス(衛星・ラグランジュ点)は軌道線ボタンを持たない
 // ——衛星の参照軌道線はフォーカス中の系かどうかで別途決まり、ラグランジュ点はそもそも軌道を持たない。
@@ -60,7 +61,7 @@ export class OverviewCameraPanel {
       rowEl.appendChild(btnsEl);
       const individualButtons: IconToggleButton[] = [];
 
-      const icon = new IconToggleButton('●', 'アイコン', (on) => this.onBodyClassToggle?.(row.iconKey, on));
+      const icon = new IconToggleButton(ENTITY_GLYPH.body, 'アイコン', (on) => this.onBodyClassToggle?.(row.iconKey, on));
       icon.setOn(false);
       individualButtons.push(icon);
       btnsEl.appendChild(icon.element);

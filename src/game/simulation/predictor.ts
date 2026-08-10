@@ -64,9 +64,9 @@ export class Predictor {
   // budgetSteps を上限に、1体ぶんの予測列を GameEntity.stepPredicted で1ステップずつ伸ばし、
   // 消費したステップ数を返す。刻み幅は毎ステップ、現在の予測先端の時刻・位置から求め直す
   // (先端がまだ無ければ現在状態で代用 — 生成直後は actualTrajectory.state を種にするので
-  // 同じ値になる)。重力源の空間分類は PREDICT_ATTRACTOR_REBUILD_STEPS ステップごとに1回
+  // 同じ値になる)。重力源の空間分類は先端が PREDICT_ATTRACTOR_REBUILD_SEC 進むごとに1回
   // だけ組み、その間は使い回す(Simulator.substep が1サブステップで1回だけ組むのと同じ規約)
-  // — 数ステップぶんの重力源位置の遅れは、予測の刻み幅そのものが持つ RK4 の誤差より小さい。
+  // — その時間ぶんの重力源位置の遅れは、予測の刻み幅そのものが持つ RK4 の誤差より小さい。
   // ここが「1ステップぶんの前提を決めて渡す」側、entity 側は「渡された前提で実際に1ステップ
   // 進めるか判断する」側 — stepActual に対する substep と同じ分担。ホライズン超過などで
   // stepPredicted が false を返したら、そのエンティティの予算消化を打ち切る。
@@ -74,12 +74,14 @@ export class Predictor {
     if (!e.predictsFuture) return 0;
     let consumed = 0;
     let classified: ClassifiedAttractors | null = null;
+    let classifiedAt = 0;
     while (consumed < budgetSteps) {
       // 刻み幅は「その場の周期の等分」と「ホライズン全体をステップ上限で割った値」の粗い方。
       // 後者があるので、表示期間を年スケールにしてもステップ数が有界に収まる。
       const tipState = e.predictedTrajectory?.state ?? e.state;
-      if (classified === null || consumed % C.PREDICT_ATTRACTOR_REBUILD_STEPS === 0) {
+      if (classified === null || tipState.t - classifiedAt >= C.PREDICT_ATTRACTOR_REBUILD_SEC) {
         classified = classifyAttractors(predictedAttractorsAt(this.ephemeris, this.entities, tipState.t));
+        classifiedAt = tipState.t;
       }
       const attractors = attractorsNear(tipState.r, classified);
       const dt = Math.max(

@@ -191,15 +191,14 @@ export class DisplayTimePanel {
     if (this.sliderLabel.textContent !== text) this.sliderLabel.textContent = text;
   }
 
-  // スライダーの段階数を設定する。つまみ位置(0..1 換算)は維持し、段階数の丸めで動いた分を
-  // onSliderChange で確定させる(表示時刻とつまみ位置が食い違ったままにならないようにする)。
+  // スライダーの段階数を設定する。つまみ位置(0..1 換算)は維持する。段階数の丸めで生じる
+  // ずれは、同じ sync の中で続けて呼ばれる setSliderValue が正本の値で上書きして解消する。
   setSliderSteps(steps: number): void {
     if (steps === this.sliderSteps) return;
     const t = Number(this.slider.value) / this.sliderSteps;
     this.sliderSteps = steps;
     this.slider.max = String(steps);
     this.slider.value = String(Math.round(t * steps));
-    this.onSliderChange?.(Number(this.slider.value) / steps);
   }
 
   // スライダーのつまみ位置を t(0..1)に合わせる。

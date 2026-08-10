@@ -40,10 +40,11 @@ export class PredictedTrajectoryLine {
 
   // entity の予測軌道線が、表示中の時間範囲 [simTime, simTime + horizon] を最後まで覆っているかを返す。
   // 解析楕円は「予測が間に合っていないあいだの代替表示」なので、その抑制可否はこの問いで決まる —
-  // 線が1本でも描けているかではなく、代替が要らなくなったかを訊く。
+  // 天体貫入などで打ち切られた列はそれ以上伸びないので、覆えていなくても代替は要らない。
   coversHorizon(entity: GameEntity, simTime: number, horizon: number): boolean {
     const line = this.lines.peek(entity);
     if (!line || !line.visible) return false;
+    if (entity.predictionTruncated) return true;
     const tip = entity.predictedTrajectory?.state.t;
     return tip !== undefined && tip >= simTime + horizon;
   }

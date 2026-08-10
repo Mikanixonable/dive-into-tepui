@@ -35,10 +35,12 @@ export function register(): void {
   test('dynamic-trajectory: sampleInterval reports the interval the series was actually decimated at', () => {
     const e = new DynamicTrajectory(circularState());
     assert.equal(e.sampleInterval, 0, '一度も進めていない列は粗さを持たない');
-    e.step(5, bodiesAt(e.state.t + 2.5), 0, 0, 0, null, 174, 1e6);
-    assert.equal(e.sampleInterval, 174);
-    e.step(5, bodiesAt(e.state.t + 2.5), 0, 0, 0, null, 23, 1e6);
-    assert.equal(e.sampleInterval, 23, '直近の step に渡された値を報告する');
+    // 10s 刻みで 50s ごとにだけ記録させる。列の古い端の間隔は要求値ではなく実際の記録間隔。
+    for (let i = 0; i < 40; i++) e.step(10, bodiesAt(e.state.t + 5), 0, 0, 0, null, 50, 1e6);
+    assert.equal(e.sampleInterval, 50);
+    // 要求間隔を細かくしても、既に積んだ古い端の粗さは変わらない。
+    for (let i = 0; i < 3; i++) e.step(10, bodiesAt(e.state.t + 5), 0, 0, 0, null, 10, 1e6);
+    assert.equal(e.sampleInterval, 50, '既に積んだサンプルの粗さは呼び出し側の設定変更で変わらない');
   });
 
   test('dynamic-trajectory: step never touches history when keepDuration is 0', () => {

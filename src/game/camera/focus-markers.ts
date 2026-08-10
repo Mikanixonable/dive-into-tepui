@@ -11,6 +11,7 @@ import { BodyClassToggles, alwaysFullyVisibleIds, bodyIconLabel, systemMembersAt
 import { bodyClassOf } from '../celestial/body-class';
 import { FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO } from '../const';
 import type { MapPickable } from '../map-pick';
+import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 
 export interface FocusLabel {
   id: string;
@@ -213,7 +214,7 @@ export class FocusMarkers {
         continue;
       }
       this.markerManager.setPosition(
-        lbl.id, 'mk-poi', lbl.showIcon ? '●' : '', lbl.pos, project, lbl.showLabel ? lbl.name : '',
+        lbl.id, 'mk-poi', lbl.showIcon ? ENTITY_GLYPH.body : '', lbl.pos, project, lbl.showLabel ? lbl.name : '',
       );
     }
     const nowShown = new Set(shownIds);

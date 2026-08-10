@@ -92,6 +92,10 @@ export class Plan {
     let dropped = 0;
     while (this._nodes[dropped] && this._nodes[dropped]!.t <= t) dropped++;
     if (dropped === 0) return 0;
+    // actualState の時刻は t より後になりうる(消化を知るのは、その時刻を過ぎてからになる)。
+    // 残るノードを追い越したまま起点に据えると「ノードは直前の状態より後」という不変条件が
+    // 破れ、先頭区間が負の長さになる。追い越した先のノードも消化済みとして扱う。
+    while (this._nodes[dropped] && this._nodes[dropped]!.t <= actualState.t) dropped++;
     this._nodes.splice(0, dropped);
     this._anchor = actualState;
     return dropped;
@@ -110,19 +114,22 @@ export class Plan {
     return { min: prev.t, max: prev.t + segmentDurationFrom(prev, attractors, displayDuration) };
   }
 
-  // idx 番目のノードを新しい実行後状態へ差し替え、下流ノードを破棄する。
+  // idx 番目のノードを新しい実行後状態へ差し替え、下流ノードを破棄して、置いたノードを返す。
   // 時刻を動かす場合、postState.t は nodeTimeRange(idx) の範囲内であること。
-  replaceNode(idx: number, postState: KinematicState): void {
-    if (!this._nodes[idx]) return;
+  // ノードは不変オブジェクトなので編集は必ず別オブジェクトへの差し替えになる — 参照で
+  // ノードを追っている呼び出し側が追随できるよう、置いた結果を返す。
+  replaceNode(idx: number, postState: KinematicState): KinematicState | null {
+    if (!this._nodes[idx]) return null;
     this.truncateAfter(idx);
     this._nodes[idx] = postState;
+    return postState;
   }
 
-  // idx 番目のノードの実行後速度へワールド Δv を加え、下流ノードを破棄する。
-  applyNodeDv(idx: number, dvWorld: Vec3): void {
+  // idx 番目のノードの実行後速度へワールド Δv を加え、下流ノードを破棄して、置いたノードを返す。
+  applyNodeDv(idx: number, dvWorld: Vec3): KinematicState | null {
     const node = this._nodes[idx];
-    if (!node) return;
+    if (!node) return null;
     this.truncateAfter(idx);
-    this._nodes[idx] = kinematicState(node.t, node.r, add(node.v, dvWorld));
+    return this.replaceNode(idx, kinematicState(node.t, node.r, add(node.v, dvWorld)));
   }
 }

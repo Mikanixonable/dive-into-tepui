@@ -1,4 +1,4 @@
-import { buildCollapseToggle, hudDock, type CollapseToggleLabels } from './hud/dom';
+import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, buildCollapseToggle, hudDock, type CollapseToggleLabels } from './hud/dom';
 import { BodyClass, bodyClassOf } from './celestial/body-class';
 import type { CelestialRegistry } from '../physics/solar-system';
 import { MapPickable, MapPickKind } from './map-pick';
@@ -32,10 +32,10 @@ const FILTERS: readonly (readonly [ObjectListFilter, string])[] = [
 // 自艦からこの距離 [m] 以内の対象だけを残す「近傍」フィルタのしきい値(3000万km)。
 const NEARBY_THRESHOLD_M = 3e10;
 
-// このパネル自身の折りたたみトグルの見た目。▸ が閉、▾ が開。
+// このパネル自身の折りたたみトグルの見た目。
 const COLLAPSE_LABELS: CollapseToggleLabels = {
-  expandedGlyph: '▾',
-  collapsedGlyph: '▸',
+  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
+  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
   expandedTitle: '軌道オブジェクト一覧を閉じる',
   collapsedTitle: '軌道オブジェクト一覧を開く',
 };
@@ -222,7 +222,7 @@ export class ObjectListPanel {
       const state = kind === 'ship' ? `接近 ${list.filter((i) => i.detail?.includes('接近')).length}`
         : kind === 'ammo' ? `回収可 ${list.filter((i) => i.detail?.includes('回収可能')).length}`
         : kind === 'base' ? `ドック候補 ${list.filter((i) => i.detail?.includes('ドック')).length}` : '';
-      section.header.textContent = `${label} (${list.length})${state ? ` · ${state}` : ''} ${section.expanded ? '▾' : '▸'}`;
+      section.header.textContent = `${label} (${list.length})${state ? ` · ${state}` : ''} ${section.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH}`;
 
       // 衛星フィルタでは、衛星自身はフィルタを通っても親の惑星は通らない(bodyClassOf が
       // 'planet' のため)。親を惑星ごとのクラスタ見出しとして拾い出す — フィルタの一致件数
@@ -360,7 +360,7 @@ export class ObjectListPanel {
   }
 
   private applyRowExpanded(node: RowNode): void {
-    node.toggle.textContent = node.expanded ? '▾' : '▸';
+    node.toggle.textContent = node.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH;
     node.childrenContainer.style.display = node.expanded ? '' : 'none';
   }
 
