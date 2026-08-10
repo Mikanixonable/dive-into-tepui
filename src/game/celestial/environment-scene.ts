@@ -17,6 +17,7 @@ import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import { CelestialBody } from './celestial-body';
 import { CELESTIAL_BODIES, fallbackCelestialView } from './celestial-registry';
+import { EarthBody } from './earth-body';
 import { bodyClassOf } from './body-class';
 import { BodyClassToggles } from './body-visibility';
 
@@ -114,6 +115,18 @@ export class EnvironmentScene {
   // 表示時刻 t の点群の位置を更新する。
   update(t: number, overviewMode: boolean): void {
     this.pointFieldView.update(t, overviewMode, this.ephemeris);
+  }
+
+  // 地球の自転初期位相(セーブ用)。地球が現在のレジストリに無ければ undefined。
+  earthSpinPhase0(): number | undefined {
+    const earth = this.bodies.find((b): b is EarthBody => b instanceof EarthBody);
+    return earth?.spinPhase0();
+  }
+
+  // 地球の自転初期位相を差し替える(ロード用)。地球が現在のレジストリに無ければ何もしない。
+  setEarthSpinPhase0(phase0: number): void {
+    const earth = this.bodies.find((b): b is EarthBody => b instanceof EarthBody);
+    earth?.setSpinPhase0(phase0);
   }
 
   // 天体ビュー・星・照明・参照線・天球グリッドを、この1フレームの表示状態に同期する。
