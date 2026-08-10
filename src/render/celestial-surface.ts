@@ -15,6 +15,8 @@ import {
   max,
   min,
   normalWorld,
+  modelNormalMatrix,
+  normalize,
   positionWorld,
   select,
   sub,
@@ -57,7 +59,10 @@ export class CelestialSurface {
     lunar = false,
   ) {
     const mat = new THREE.MeshBasicNodeMaterial();
-    const lambert = clamp(dot(normalWorld, this.sunDirNode), 0, 1);
+    const shadingNormal = terrainNormal === null
+      ? normalWorld
+      : normalize(modelNormalMatrix.mul(terrainNormal));
+    const lambert = clamp(dot(shadingNormal, this.sunDirNode), 0, 1);
     this.ringShadowBands = Array.from({ length: 32 }, () => ({
       axis: uniform(new THREE.Vector3(0, 1, 0)),
       center: uniform(new THREE.Vector3()),
@@ -85,9 +90,9 @@ export class CelestialSurface {
     if (lunar) {
       // 低い太陽高度ではdetail normalの凹凸を強く残し、クレーター縁の影を作る。
       // 地球照は月→地球方向から来る別の拡散光として夜側へ加える。
-      const craterVisibility = smoothstep(0.004, 0.065, dot(normalWorld, this.sunDirNode));
+      const craterVisibility = smoothstep(0.004, 0.065, dot(shadingNormal, this.sunDirNode));
       const direct = lambert.mul(craterVisibility).mul(this.directSunNode);
-      const earthLight = clamp(dot(normalWorld, this.earthDirNode), 0, 1)
+      const earthLight = clamp(dot(shadingNormal, this.earthDirNode), 0, 1)
         .mul(this.earthshineNode);
       const eclipseGlow = vec3(0.34, 0.055, 0.018)
         .mul(lambert.mul(this.eclipseRedNode));
@@ -97,7 +102,6 @@ export class CelestialSurface {
         lambert.mul(1 - NIGHT_AMBIENT).mul(ringTransmission),
       ));
     }
-    if (terrainNormal !== null) mat.normalNode = terrainNormal;
     this.mesh = new THREE.Mesh(geometry, mat as unknown as THREE.Material);
     this.mesh.frustumCulled = false;
   }

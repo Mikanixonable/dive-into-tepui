@@ -42,7 +42,9 @@ export function createEarthAtmosphere(sunDirection: UniformNode, earthCenter: Un
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
-    depthTest: false,
+    // 前景の宇宙船・デブリは大気発光を遮る。地球本体による遠側遮蔽は下の
+    // 解析判定も併用し、浮動原点の深度誤差へ依存させない。
+    depthTest: true,
     side: THREE.BackSide,
   });
 
