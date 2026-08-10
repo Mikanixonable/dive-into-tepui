@@ -5,9 +5,11 @@ import { Vec3, len, sub } from '../../physics/vec3';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { apparentEccentricity, findApsis } from '../../physics/trajectory-features';
 import { isOccluded } from '../../physics/occlusion';
+import { Projected } from '../../physics/projection';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
+import { TickRank, calendarBoundaries, tickLabel } from '../hud/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
@@ -31,16 +33,31 @@ interface ImpactIcon {
   readonly label: string;
 }
 
-// │ 日付境界の目盛マーカー
-interface DayTickIcon {
+// ルーラー目盛マーカー。rank/vel は sync 側の間引き・向き決めに使う。
+interface PlanTickIcon {
   readonly key: string;
   readonly pos: Vec3;
+  readonly vel: Vec3;
+  readonly rank: TickRank;
   readonly label: string;
 }
 
 // 衝突マーカーのキー(区間ごとに固定)。区間数は SEGMENT_COLORS(plan-trajectory.ts)と同じ
 // 上限で足りる。
 const IMPACT_MARKER_KEYS = ['planImpact0', 'planImpact1', 'planImpact2'] as const;
+
+// 長さ length[px] の縦線目盛の SVG。投影点を中心に置く前提(CSS 側の .mk 枠中央揃えに乗せる)。
+function tickSvg(length: number): string {
+  return `<svg width="2" height="${length}" viewBox="0 0 2 ${length}">`
+    + `<line x1="1" y1="0" x2="1" y2="${length}" stroke="currentColor" stroke-width="1.5"/></svg>`;
+}
+
+// 2点間のスクリーン距離の2乗。
+function screenDistSq(a: Projected, b: Projected): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy;
+}
 
 export class PlanDisplay {
   planFrame: ReferenceFrame;
@@ -51,8 +68,8 @@ export class PlanDisplay {
   private readonly frame: FramePicker;
   private apsisIcons: readonly ApsisIcon[] = [];
   private impactIcons: readonly ImpactIcon[] = [];
-  private dayTickIcons: readonly DayTickIcon[] = [];
-  private lastDayTickCount = 0;
+  private tickIcons: readonly PlanTickIcon[] = [];
+  private lastTickCount = 0;
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
   private plan: Plan | null = null;
   // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
@@ -98,7 +115,7 @@ export class PlanDisplay {
       this.ghost = null;
       this.apsisIcons = [];
       this.impactIcons = [];
-      this.dayTickIcons = [];
+      this.tickIcons = [];
       return;
     }
     this.attractors = this.ephemeris.attractorsAt(displayTime);
@@ -107,7 +124,7 @@ export class PlanDisplay {
     this.ghost = this.ghostAt(plan, displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.impactIcons = this.impactIconsOf();
-    this.dayTickIcons = this.dayTickIconsOf();
+    this.tickIcons = this.tickIconsOf();
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。
@@ -124,7 +141,7 @@ export class PlanDisplay {
     this.syncGhost(project);
     this.syncApsisMarkers(project, overviewMode, cameraPos);
     this.syncImpactMarkers(project);
-    this.syncDayTickMarkers(project);
+    this.syncTickMarkers(project, scale);
     this.panel.style.display = showPanel ? 'block' : 'none';
     this.frame.setSelected(this.planFrame);
   }
@@ -136,8 +153,8 @@ export class PlanDisplay {
     this.markerManager.hide('apsisPe');
     this.markerManager.hide('apsisAp');
     for (const key of IMPACT_MARKER_KEYS) this.markerManager.hide(key);
-    for (let i = 0; i < this.lastDayTickCount; i++) this.markerManager.hide(`planDayTick${i}`);
-    this.lastDayTickCount = 0;
+    for (let i = 0; i < this.lastTickCount; i++) this.markerManager.hide(`planTick${i}`);
+    this.lastTickCount = 0;
     this.panel.style.display = 'none';
   }
 
@@ -246,16 +263,28 @@ export class PlanDisplay {
     });
   }
 
-  // 表示中の折れ線が UTC 日付境界(0時0分0秒)を跨ぐ地点のアイコン。ラベルは UTC の日付。
-  private dayTickIconsOf(): readonly DayTickIcon[] {
-    return this.path.dayBoundaries().map(({ t, pos }, i) => {
-      const d = new Date((SIM_EPOCH_SEC + t) * 1000);
-      return {
-        key: `planDayTick${i}`,
-        pos: this.path.toDisplay(pos, t),
-        label: `${d.getUTCMonth() + 1}/${d.getUTCDate()}`,
-      };
-    });
+  // 表示中の折れ線が暦の区切り(時・日・月・年)を跨ぐ地点の目盛候補。実際に出すかどうかの
+  // 間引き・向き決めは画面判定が要るので sync 側(syncTickMarkers)の仕事。
+  private tickIconsOf(): readonly PlanTickIcon[] {
+    const range = this.path.timeRange();
+    if (!range) return [];
+    const boundaries = calendarBoundaries(
+      SIM_EPOCH_SEC + range.min, SIM_EPOCH_SEC + range.max, C.PLAN_TICK_MAX_COUNT,
+    );
+    const icons: PlanTickIcon[] = [];
+    for (const b of boundaries) {
+      const t = b.unix - SIM_EPOCH_SEC;
+      const state = this.path.sampleAt(t);
+      if (!state) continue;
+      icons.push({
+        key: `planTick${icons.length}`,
+        pos: this.path.toDisplay(state.r, t),
+        vel: state.v,
+        rank: b.rank,
+        label: tickLabel(b.unix, b.rank),
+      });
+    }
+    return icons;
   }
 
   // ◇ アプシスアイコンを update が求めた位置に置き、出ていないもの・マップビューで天体に
@@ -280,26 +309,67 @@ export class PlanDisplay {
     }
   }
 
-  // │ 日付境界の目盛マーカーを update が求めた位置に置く。直前に表示した目盛からの画面距離が
-  // PLAN_DAY_TICK_MIN_PX_SQ 未満のものは間引いて隠す — カレンダー日ごとの候補は表示期間・
-  // 軌道の形によって画面上の間隔が数桁変わるため、日数間隔を固定しても密度は揃わない。
-  // 件数が可変なので、前フレームより減った分だけ隠す(固定キー集合を持つ他のアイコンとは
-  // 異なり、キー自体が個数ぶん増減する)。
-  private syncDayTickMarkers(project: ProjectFn): void {
-    let lastX = 0;
-    let lastY = 0;
-    let hasLast = false;
-    for (const icon of this.dayTickIcons) {
-      const p = project(icon.pos);
-      const dx = p.x - lastX;
-      const dy = p.y - lastY;
-      const show = p.front && (!hasLast || dx * dx + dy * dy >= C.PLAN_DAY_TICK_MIN_PX_SQ);
-      this.markerManager.set(icon.key, 'mk-daytick', '│', p.x, p.y, show, icon.label);
-      if (show) { lastX = p.x; lastY = p.y; hasLast = true; }
+  // update が求めた目盛候補を画面距離で間引いて置く。粗い階数(月・年)から順に軌道順で
+  // 採否を決め、既に採用済みの目盛から PLAN_TICK_MIN_PX 未満しか離れない候補は捨てる —
+  // 離心軌道では近地点付近と遠地点付近で候補の画面間隔が桁違いになるため、区間全体で
+  // 一つの単位に揃えず、この局所判定に任せることで区間ごとに異なる単位が選ばれてよい。
+  private syncTickMarkers(project: ProjectFn, scale: ScaleFn): void {
+    const icons = this.tickIcons;
+    const n = icons.length;
+    const projected = icons.map((icon) => project(icon.pos));
+    const shown = new Array<boolean>(n).fill(false);
+
+    const ranksDesc = [...new Set(icons.map((icon) => icon.rank))].sort((a, b) => b - a);
+    const minPxSq = C.PLAN_TICK_MIN_PX ** 2;
+    for (const rank of ranksDesc) {
+      for (let i = 0; i < n; i++) {
+        if (icons[i]!.rank !== rank || !projected[i]!.front) continue;
+        if (this.isFarFromShown(projected, shown, i, minPxSq)) shown[i] = true;
+      }
     }
-    for (let i = this.dayTickIcons.length; i < this.lastDayTickCount; i++) {
-      this.markerManager.hide(`planDayTick${i}`);
+
+    // 実際に採用された目盛のうち最も細かい階数を基準に、相対的な深さで長さを決める
+    // — 基準を相対にすることで、単位が切り替わっても目盛の平均的な長さは変わらず、
+    // 切り替わり地点そのものだけが長さの違いとして目に付く。
+    let finestShown: TickRank | null = null;
+    for (let i = 0; i < n; i++) {
+      if (shown[i] && (finestShown === null || icons[i]!.rank < finestShown)) finestShown = icons[i]!.rank;
     }
-    this.lastDayTickCount = this.dayTickIcons.length;
+    const labelMinPxSq = C.PLAN_TICK_LABEL_MIN_PX ** 2;
+    const maxDepth = C.PLAN_TICK_LENGTH_PX.length - 1;
+
+    for (let i = 0; i < n; i++) {
+      const icon = icons[i]!;
+      if (!shown[i]) { this.markerManager.hide(icon.key); continue; }
+      const p = projected[i]!;
+      const depth = finestShown === null ? 0 : Math.min(Math.max(icon.rank - finestShown, 0), maxDepth);
+      const label = this.isFarFromShown(projected, shown, i, labelMinPxSq) ? icon.label : '';
+      const along = this.markerManager.headingRotationDeg(icon.pos, icon.vel, project, scale);
+      const rotationDeg = along === undefined ? undefined : along + 90;
+      this.markerManager.set(
+        icon.key, 'mk-plantick', tickSvg(C.PLAN_TICK_LENGTH_PX[depth]!), p.x, p.y, true,
+        label, 1, undefined, rotationDeg, true,
+      );
+    }
+    for (let i = n; i < this.lastTickCount; i++) this.markerManager.hide(`planTick${i}`);
+    this.lastTickCount = n;
+  }
+
+  // 軌道順で i の前後にある「採用済み(shown)」の目盛それぞれとの画面距離の2乗が、
+  // どちらも minDSq 以上離れているか(採用済みの近傍が片側に無ければその側は無条件で満たす)。
+  private isFarFromShown(
+    projected: readonly Projected[], shown: readonly boolean[], i: number, minDSq: number,
+  ): boolean {
+    for (let j = i - 1; j >= 0; j--) {
+      if (!shown[j]) continue;
+      if (screenDistSq(projected[j]!, projected[i]!) < minDSq) return false;
+      break;
+    }
+    for (let j = i + 1; j < shown.length; j++) {
+      if (!shown[j]) continue;
+      if (screenDistSq(projected[j]!, projected[i]!) < minDSq) return false;
+      break;
+    }
+    return true;
   }
 }
