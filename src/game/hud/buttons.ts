@@ -98,6 +98,7 @@ export class HudHoldButton {
 export class IconToggleButton {
   readonly element: HTMLElement;
   private on = false;
+  private enabled = true;
 
   // glyph は表示するグリフ、title はホバー時に出る説明文。onChange は切り替わった後の値で呼ばれる。
   constructor(glyph: string, title: string, onChange: (on: boolean) => void) {
@@ -108,6 +109,7 @@ export class IconToggleButton {
     this.element.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.element.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (!this.enabled) return;
       this.setOn(!this.on);
       onChange(this.on);
     });
@@ -117,6 +119,40 @@ export class IconToggleButton {
   setOn(on: boolean): void {
     this.on = on;
     this.element.classList.toggle('on', on);
+  }
+
+  // 親カテゴリーが OFF の間は個別設定を保持したまま操作だけ止める。
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    this.element.classList.toggle('disabled', !enabled);
+    this.element.setAttribute('aria-disabled', String(!enabled));
+  }
+}
+
+// カテゴリー名のように、文字列そのものを押して ON/OFF を切り替えるトグル。
+export class HudToggleButton {
+  readonly element: HTMLElement;
+  private on = true;
+
+  constructor(label: string, title: string, onChange: (on: boolean) => void) {
+    this.element = document.createElement('span');
+    this.element.className = 'seg-btn category-toggle-btn on';
+    this.element.textContent = label;
+    this.element.title = title;
+    this.element.setAttribute('role', 'button');
+    this.element.setAttribute('aria-pressed', 'true');
+    this.element.addEventListener('pointerdown', (e) => e.stopPropagation());
+    this.element.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setOn(!this.on);
+      onChange(this.on);
+    });
+  }
+
+  setOn(on: boolean): void {
+    this.on = on;
+    this.element.classList.toggle('on', on);
+    this.element.setAttribute('aria-pressed', String(on));
   }
 }
 

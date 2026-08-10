@@ -16,23 +16,32 @@ import { BodyClass, bodyClassOf } from './body-class';
 // フォーカス中の系かどうかで別途決まる(environment-scene.ts の showsReferenceLine)ので Orbit
 // トグルを持たない。lagrange は天体ではなく軌道概念も無いので Icon/Label の2軸のみ。
 export type BodyClassToggles = {
+  readonly planetVisible: boolean;
   readonly planetOrbit: boolean;
   readonly planetIcon: boolean;
   readonly planetLabel: boolean;
+  readonly dwarfVisible: boolean;
   readonly dwarfOrbit: boolean;
   readonly dwarfIcon: boolean;
   readonly dwarfLabel: boolean;
+  readonly satelliteVisible: boolean;
   readonly satelliteIcon: boolean;
   readonly satelliteLabel: boolean;
   readonly satelliteOrbit: boolean;
+  readonly smallBodyVisible: boolean;
   readonly smallBodyOrbit: boolean;
   readonly smallBodyIcon: boolean;
   readonly smallBodyLabel: boolean;
+  readonly lagrangeVisible: boolean;
   readonly lagrangeIcon: boolean;
   readonly lagrangeLabel: boolean;
+  readonly playerVisible: boolean;
   readonly playerIcon: boolean; readonly playerLabel: boolean; readonly playerOrbit: boolean;
+  readonly shipVisible: boolean;
   readonly shipIcon: boolean; readonly shipLabel: boolean; readonly shipOrbit: boolean;
+  readonly ammoVisible: boolean;
   readonly ammoIcon: boolean; readonly ammoLabel: boolean; readonly ammoOrbit: boolean;
+  readonly baseVisible: boolean;
   readonly baseIcon: boolean; readonly baseLabel: boolean; readonly baseOrbit: boolean;
 };
 
@@ -42,20 +51,41 @@ export type BodyClassToggles = {
 // hasUsableCollinearPoints / hasStableTriangularPoints)だけに絞り込み済みで同じ懸念が当たらない
 // ため、既定 on にする。
 export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
+  planetVisible: true,
   planetOrbit: true, planetIcon: true, planetLabel: true,
+  dwarfVisible: true,
   dwarfOrbit: false, dwarfIcon: false, dwarfLabel: false,
+  satelliteVisible: true,
   satelliteIcon: false, satelliteLabel: false, satelliteOrbit: false,
+  smallBodyVisible: true,
   smallBodyOrbit: false, smallBodyIcon: true, smallBodyLabel: true,
+  lagrangeVisible: true,
   lagrangeIcon: true, lagrangeLabel: true,
+  playerVisible: true,
   playerIcon: true, playerLabel: true, playerOrbit: true,
+  shipVisible: true,
   shipIcon: true, shipLabel: true, shipOrbit: true,
+  ammoVisible: true,
   ammoIcon: true, ammoLabel: true, ammoOrbit: true,
+  baseVisible: true,
   baseIcon: true, baseLabel: true, baseOrbit: true,
 };
+
+// カテゴリー名のトグル。恒星は表示の基準点なのでカテゴリー操作の対象外。
+export function bodyClassVisible(cls: BodyClass, toggles: BodyClassToggles): boolean {
+  switch (cls) {
+    case 'planet': return toggles.planetVisible;
+    case 'dwarf': return toggles.dwarfVisible;
+    case 'satellite': return toggles.satelliteVisible;
+    case 'smallBody': return toggles.smallBodyVisible;
+    default: return true;
+  }
+}
 
 // トグルで足されるクラス(planet/dwarf/satellite/smallBody)の Icon/Label を、そのクラスの
 // トグル値から読む。恒星・focus 近傍の常時表示はここを経由しない(呼び出し側の判断)。
 function classIconLabel(cls: BodyClass, toggles: BodyClassToggles): { icon: boolean; label: boolean } {
+  if (!bodyClassVisible(cls, toggles)) return { icon: false, label: false };
   switch (cls) {
     case 'planet': return { icon: toggles.planetIcon, label: toggles.planetLabel };
     case 'dwarf': return { icon: toggles.dwarfIcon, label: toggles.dwarfLabel };
@@ -126,6 +156,7 @@ function ancestorsOf(registry: CelestialRegistry, focusId: AttractorId): Attract
 // 離散的に切り替わるこの親子関係で代用する。focusId が undefined なら恒星のみ。
 export function alwaysFullyVisibleIds(
   registry: CelestialRegistry, focusId: AttractorId | undefined,
+  toggles?: BodyClassToggles,
 ): ReadonlySet<AttractorId> {
   const ids = new Set<AttractorId>();
   for (const id of Object.keys(registry)) {
@@ -135,7 +166,9 @@ export function alwaysFullyVisibleIds(
 
   if (focusId === undefined) return ids;
 
-  for (const id of ancestorsOf(registry, focusId)) ids.add(id);
+  for (const id of ancestorsOf(registry, focusId)) {
+    if (toggles === undefined || bodyClassVisible(bodyClassOf(registry, id), toggles)) ids.add(id);
+  }
   // 兄弟は「惑星系の中の兄弟」に限る。恒星の子はすべて互いに兄弟なので、そこまで含めると
   // 惑星にフォーカスしただけで全太陽周回天体が出てしまう(惑星どうしの表示は planetOrbit/
   // planetIcon/planetLabel トグルが別途受け持つ)。
@@ -143,7 +176,10 @@ export function alwaysFullyVisibleIds(
   const siblingsMatter = focusParent !== null && registry[focusParent]?.kind !== 'star';
   for (const id of sameSystemIds(registry, focusId)) {
     // focusId 自身は未登録(生存中の重力天体)でもありうるので、primaryOf を引く前に弾く。
-    if (siblingsMatter || id === focusId || primaryOf(registry, id) === focusId) ids.add(id);
+    if ((siblingsMatter || id === focusId || primaryOf(registry, id) === focusId)
+      && (toggles === undefined || bodyClassVisible(bodyClassOf(registry, id), toggles))) {
+      ids.add(id);
+    }
   }
   return ids;
 }
@@ -154,7 +190,7 @@ export function alwaysFullyVisibleIds(
 export function visibleBodyIds(
   registry: CelestialRegistry, focusId: AttractorId | undefined, toggles: BodyClassToggles,
 ): ReadonlySet<AttractorId> {
-  const visible = new Set(alwaysFullyVisibleIds(registry, focusId));
+  const visible = new Set(alwaysFullyVisibleIds(registry, focusId, toggles));
   for (const id of Object.keys(registry)) {
     const cls = bodyClassOf(registry, id);
     const { icon, label } = classIconLabel(cls, toggles);
