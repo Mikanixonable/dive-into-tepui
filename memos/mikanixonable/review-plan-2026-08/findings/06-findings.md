@@ -41,30 +41,36 @@
 - CLAUDE.md は「stars as tiny world-space triangles (WebGPU points are 1px; THREE.Points size doesn't work)」と説明していたが、実装 (`createStars`) は `8k_stars.jpg` を貼った `SphereGeometry` (BackSide) であり三角形の集合ではない。テクスチャ方式へ置き換わったことが文書に反映されていなかった。
 - **2026-08-10 追記**: CLAUDE.md を実装(テクスチャ球殻)に合わせて書き直した。WebGPU の Points 制約自体は `render/ring.ts`/asteroid point-field などの点群描画では依然として有効な制約なので、その旨は残した。
 
-## [spec?] `EarthBody.phase0` が `Math.random()` によりセッションごとに非決定的
+## [bug→修正済み] `EarthBody.phase0` がセーブ/ロードで再現されなかった実装漏れ
 
-- `src/game/celestial/earth-body.ts:13` — `private readonly phase0 = Math.random() * Math.PI * 2;`
-- 地球の自転位相はセーブ/ロード間で永続化されない(`Ephemeris.getPhaseOffsets`/`setPhaseOffsets` の対象外)。CLAUDE.md には「Ephemeris の位相オフセットはゲームごとにランダム」という前例があり、意図的な設計の可能性があるため [bug] ではなく [spec?] とした。同じセーブを異なるセッションで開くと、軌道上の位置(Ephemeris 側)は完全に再現されるが地球の自転位相だけ毎回変わる非対称が生じる点を確認のうえ報告のみ。
+`Ephemeris` の位相オフセット(`phaseOffsets`)は `GameSaveData.phaseOffsets` として明示的にセーブされ、
+セッションをまたいでも公転位相を再現するのに対し、`EarthBody.phase0`(地球の自転初期位相)には
+同等の永続化経路が存在せず、同じセーブを開き直すたびに自転角だけが違う値から始まっていた。
+セーブ内で再現されるべき他の全ての位相と地球の自転位相だけが異なる扱いになっている点に、
+意図した設計だと確認できる記述やコミットは見つからなかったため、実装漏れと判断して修正した。
 
-## [spec?] `EarthBody.phase0` 非決定性の追加調査(review/celestial-doc-drift ブランチでの追調査)
+修正内容:
 
-`Ephemeris` の位相オフセットとの扱いの違いを確認した:
-
-- `Ephemeris.getPhaseOffsets()`/`setPhaseOffsets(...)` は `GameSaveData.phaseOffsets`(`src/game/save-data.ts:242`)として
-  明示的にセーブデータへ含まれ、`src/game/save/snapshot-service.ts:73` の `capture` が
-  `game.ephemeris.getPhaseOffsets()` を読み、`src/game/game.ts:338` の `Game.restore` が
-  `this._ephemeris.setPhaseOffsets(data.phaseOffsets)` で書き戻す — つまりゲームごとのランダム初期位相
-  ではあるが、**一度始まったゲームの中では永続化され、セーブ/ロードをまたいで再現される**。
-- `EarthBody.phase0`(`src/game/celestial/earth-body.ts:13`)は `GameSaveData` のどのフィールドにも
-  乗っていない。`grep` で確認した限り、地球の自転位相を読み書きする save/restore 経路は存在しない。
-  結果、同じセーブファイルを開き直すたびに地球の自転角だけが違う値から始まる。
-
-この非対称は「ゲームごとのランダム初期位相」という設計方針そのものとは矛盾しない(地球の自転位相を
-セーブごとに変えたいという要求は otherwise あり得る)が、**セーブ内で再現されるべき他の全ての位相
-(公転位相含む)と地球の自転位相だけが異なる扱いになっている点に、意図した設計だと確認できる記述や
-コミットは見つからなかった**。`EarthBody` 側に `getPhaseOffsets`/`setPhaseOffsets` 相当の仕組みが
-無いこと自体が実装漏れである可能性が高いと判断するが、確証はないため引き続き [spec?] として記録する
-(コードは変更しない)。
+- `EarthBody.phase0` を可変フィールドにし、`spinPhase0()`/`setSpinPhase0()` を追加。
+- `Ephemeris.phaseOffsets` は各天体の**公転**位相専用のマップ(`'earth'` キーは地球自身の日心軌道位相に
+  既に使われている)なので、地球の**自転**位相をそこへ相乗りさせず、`GameSaveData` に独立フィールド
+  `earthSpinPhase0?: number` を追加した。`EnvironmentScene.earthSpinPhase0()`/`setEarthSpinPhase0()` が
+  `EarthBody` を探して読み書きし、`SnapshotService.buildSaveData`/`Game.restore` が
+  `Ephemeris.getPhaseOffsets()`/`setPhaseOffsets()` と同じ経路(`Game.environment` 経由)で
+  読み書きする。
+- 後方互換: `earthSpinPhase0` は optional。旧セーブ(このフィールドを持たない)を読んだ場合、
+  `Game.restore` は値が存在するときだけ `setEarthSpinPhase0` を呼ぶため、そのゲームセッション開始時に
+  `EarthBody` 自身がコンストラクタで既に割り当てた乱数値がそのまま使われる — 「欠落時は新規ランダム値」
+  という扱いになる。`bases` フィールドが同様に optional で追加された前例(`data.bases ?? []`)に倣い、
+  `SAVE_VERSION` は上げていない(`snapshot-service.ts` の `restore` は `data.version !== SAVE_VERSION` で
+  厳密一致を要求するため、`SAVE_VERSION` 自体は「読み込み可否」の粗い互換境界であり、その内側でどの
+  optional フィールドがいつ追加されたかは各フィールド自身の undefined チェックで吸収する、という
+  既存の運用を踏襲した)。
+- `test:physics` へのテスト追加は見送った: `EarthBody`/`EnvironmentScene` は `render/earth.ts`
+  (`three/webgpu`)を経由して THREE 依存のため、DOM/THREE 非依存を要求する `tsconfig.test.json` の
+  コンパイル対象にできない。`GameSaveData.earthSpinPhase0` 自体は純粋なデータ型なので型としては
+  テスト可能だが、往復を検証する意味のあるテストは `EarthBody`/`Game` 側の挙動を要し、これは物理テスト
+  の対象範囲外と判断した。
 
 ## [refactor] `render/orbit-line.ts` の `snap.hHat`/`snap.pHat` がスプレッド構文で Vec3 を作っている
 
