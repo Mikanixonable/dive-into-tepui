@@ -25,6 +25,7 @@ import {
 } from 'three/tsl';
 import { Vec3 } from '../physics/vec3';
 import { RingSystemDef } from '../physics/solar-system';
+import { createMoonSurfaceNodes } from './celestial-material';
 
 // 夜側の明るさ(0 で真っ暗)。惑星光・星明かりを表す最低限の底上げ。
 export const NIGHT_AMBIENT = 0.04;
@@ -44,7 +45,11 @@ export class CelestialSurface {
   readonly mesh: THREE.Mesh;
 
   // albedo は面の色を返すノード。これに昼夜の陰影を掛けたものが最終色になる。
-  private constructor(geometry: THREE.BufferGeometry, albedo: ReturnType<typeof vec3>) {
+  private constructor(
+    geometry: THREE.BufferGeometry,
+    albedo: ReturnType<typeof vec3>,
+    terrainNormal: ReturnType<typeof vec3> | null = null,
+  ) {
     const mat = new THREE.MeshBasicNodeMaterial();
     const lambert = clamp(dot(normalWorld, this.sunDirNode), 0, 1);
     this.ringShadowBands = Array.from({ length: 32 }, () => ({
@@ -74,15 +79,26 @@ export class CelestialSurface {
     mat.colorNode = albedo.mul(float(NIGHT_AMBIENT).add(
       lambert.mul(1 - NIGHT_AMBIENT).mul(ringTransmission),
     ));
+    if (terrainNormal !== null) mat.normalNode = terrainNormal;
     this.mesh = new THREE.Mesh(geometry, mat as unknown as THREE.Material);
     this.mesh.frustumCulled = false;
   }
 
   // 実写テクスチャを貼った球面。
-  static textured(textureUrl: string, widthSegments = 48, heightSegments = 24): CelestialSurface {
+  static textured(
+    textureUrl: string,
+    widthSegments = 48,
+    heightSegments = 24,
+    options: { readonly terrain?: 'moon' } = {},
+  ): CelestialSurface {
     const map = new THREE.TextureLoader().load(textureUrl);
     map.colorSpace = THREE.SRGBColorSpace;
-    return new CelestialSurface(new THREE.SphereGeometry(1, widthSegments, heightSegments), textureNode(map, uv()));
+    const nodes = options.terrain === 'moon' ? createMoonSurfaceNodes(map) : null;
+    return new CelestialSurface(
+      new THREE.SphereGeometry(1, widthSegments, heightSegments),
+      nodes?.baseColor ?? textureNode(map, uv()),
+      nodes?.terrainNormal ?? null,
+    );
   }
 
   // テクスチャを持たない天体の単色球面。

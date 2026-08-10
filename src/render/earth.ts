@@ -16,6 +16,7 @@ import {
 } from 'three/tsl';
 import { R_EARTH } from '../physics/solar-system';
 import { NIGHT_AMBIENT } from './celestial-surface';
+import { createEarthSurfaceNodes } from './celestial-material';
 import earthTextureUrl from '../assets/earth.jpg';
 import cloudsTextureUrl from '../assets/8k_clouds.jpg';
 
@@ -31,7 +32,12 @@ type SunDirUniform = ReturnType<typeof uniform>;
 type EarthCenterUniform = ReturnType<typeof uniform>;
 
 // 雲・夕焼け・大気のもやを合成した地表メッシュを組む。
-function buildSurface(sunDir: SunDirUniform): THREE.Mesh {
+interface EarthSurface {
+  readonly mesh: THREE.Mesh;
+  readonly setSeasonalTime: (timeSeconds: number) => void;
+}
+
+function buildSurface(sunDir: SunDirUniform): EarthSurface {
   // インデックス付き球ジオメトリ + スムーズシェーディング。
   // 1024×768 分割で高解像度化
   const geo = new THREE.SphereGeometry(R_EARTH, 1024, 768);
@@ -47,7 +53,8 @@ function buildSurface(sunDir: SunDirUniform): THREE.Mesh {
   // 描画原点がどこにあっても昼夜境界が実際の太陽方向と一致する。
   const mat = new THREE.MeshBasicNodeMaterial();
 
-  const earthSample = textureNode(earthMap, uv());
+  const surfaceNodes = createEarthSurfaceNodes(earthMap, cloudsMap);
+  const earthSample = surfaceNodes.baseColor;
   
   // 雲と影
   const cloudAlpha = textureNode(cloudsMap, uv()).r;
@@ -74,8 +81,12 @@ function buildSurface(sunDir: SunDirUniform): THREE.Mesh {
   
   const litColor = mix(baseColor, dynamicAtmoColor, haze.mul(sunFactor));
   mat.colorNode = litColor.mul(float(NIGHT_AMBIENT).add(sunFactor.mul(1 - NIGHT_AMBIENT)));
+  mat.normalNode = surfaceNodes.terrainNormal;
 
-  return new THREE.Mesh(geo, mat as unknown as THREE.Material);
+  return {
+    mesh: new THREE.Mesh(geo, mat as unknown as THREE.Material),
+    setSeasonalTime: surfaceNodes.setSeasonalTime,
+  };
 }
 
 // 大気のリム光: 地球の縁だけをリング状に光らせる加算合成の1枚シェル。
@@ -216,7 +227,8 @@ export function createEarth(): Earth {
   const sunDir = uniform(new THREE.Vector3(1, 0, 0));
   const earthCenter = uniform(new THREE.Vector3(0, 0, 0));
 
-  spin.add(buildSurface(sunDir));
+  const surface = buildSurface(sunDir);
+  spin.add(surface.mesh);
 
   // オーロラは磁気極に固定なので自転と一緒に回す
   const auroras = [
@@ -249,6 +261,7 @@ export function createEarth(): Earth {
 
       // シミュレーション時間に連動した位相。
       auroraPhase = simTime * 0.02;
+      surface.setSeasonalTime(simTime);
       for (let i = 0; i < auroras.length; i++) {
         const a = auroras[i]!;
         // 頂点と色を更新して波打たせる

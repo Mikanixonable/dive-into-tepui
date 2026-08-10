@@ -48,6 +48,7 @@ import { register as registerChebyshevEphemeris } from './chebyshev-ephemeris.te
 import { register as registerPackedAbsoluteEphemeris } from './packed-absolute-ephemeris.test';
 import { register as registerSaveEphemerisContext } from './save-ephemeris-context.test';
 import { register as registerExposure } from './exposure.test';
+import { register as registerSurfaceMaterial } from './surface-material.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -97,6 +98,7 @@ registerChebyshevEphemeris();
 registerPackedAbsoluteEphemeris();
 registerSaveEphemerisContext();
 registerExposure();
+registerSurfaceMaterial();
 
 runAll().catch((error) => {
   console.error(error);

@@ -28,6 +28,7 @@ declare module 'three/webgpu' {
     constructor(parameters?: import('three').MeshBasicMaterialParameters);
     colorNode: unknown;
     opacityNode: unknown;
+    normalNode: unknown;
   }
 }
 
@@ -44,6 +45,8 @@ declare module 'three/tsl' {
   export const float: (x: number) => Node;
   export const uniform: (value: import('three').Vector3 | number) => Node & { value: import('three').Vector3 | number };
   export const normalWorld: Node;
+  export const normalLocal: Node;
+  export const positionLocal: Node;
   export const positionWorld: Node;
   export const cameraPosition: Node;
   export const dot: (a: Node, b: Node) => Node;
@@ -60,4 +63,6 @@ declare module 'three/tsl' {
   export const sub: (a: Node, b: Node) => Node;
   export const clamp: (value: Node, low?: number, high?: number) => Node;
   export const smoothstep: (low: Node | number, high: Node | number, x: Node | number) => Node;
+  export const cross: (a: Node, b: Node) => Node;
+  export const abs: (a: Node) => Node;
 }
