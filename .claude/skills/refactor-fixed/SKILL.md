@@ -29,8 +29,8 @@ description: このプロジェクトで確定済みの横断的な責務境界(
 またがるときの選択肢は2つだけ:
 
 1. どちらか一方の所有者へ寄せる。
-2. **その横断そのものを責務とするモジュールを1つ立てる**(`MapModeToggler` / `MapPicker`
-   がその形)。
+2. **その横断そのものを責務とするモジュールを1つ立てる**(`MapModeToggler` / `MapPicker` /
+   `FrameControls` がその形)。
 
 `Game` はそれを1行呼ぶだけになる。この判断に例外はない。
 
@@ -201,10 +201,14 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 - `PlanEditor.editMode`(入力・編集の可否)・`CameraSystem.overviewMode`(視点・描画)・
   `DisplayTimeManager.forceCurrent`(未来表示の可否) → 同時トグルは `MapModeToggler` の責務。
 - `OverviewCamera.cameraFrame`(視点が固定される座標系)と `PlanDisplay.planFrame`
-  (計画軌道を描く座標系) → プレイヤーが独立に選ぶ別々の値。
-- `BodyClassToggles` のクラス別の軌道線表示(`*Orbit`)とアイコンラベル表示(`*Label`)
-  → プレイヤーが独立に選ぶ別々の値。読む側も別で、ラベルは `visibleBodyIds`、軌道線は
-  `EnvironmentScene.showsReferenceLine`。
+  (計画軌道を描く座標系) → プレイヤーが独立に選ぶ別々の値。`ReferenceFrame` 自体が
+  「原点 × 回転」の直積(`physics/frame.ts`)なので、UI(`frame-controls.ts`)もその形に合わせて
+  4ゾーン(カメラ/カメラ回転/並進/計画軌道回転)に分かれ、`FrameControls` は両方の状態へ書き込む
+  横断モジュールではあっても、書き込み先の2つの正本を1つに統合したり同時に切り替えたりはしない
+  — カメラの原点・回転を変えても `planFrame` は動かず、その逆も同様。
+- `BodyClassToggles` のクラス別の軌道線表示(`*Orbit`)・アイコン表示(`*Icon`)・
+  ラベル表示(`*Label`)→ プレイヤーが独立に選ぶ3つの値。読む側も別で、アイコン/ラベルは
+  `visibleBodyIds`/`bodyIconLabel`、軌道線は `EnvironmentScene.showsReferenceLine`。
 
 ## 9. `plan` / `predict` / `display` の語を混ぜない
 
@@ -270,6 +274,19 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 別途公開しない)。対象が1つに定まらないマーカーだけが `marker/` に置かれる。
 **「どう置くか」(投影・方向・画面端の方位)は `MarkerManager` に集める** — 持ち主が決めるのは
 「何を・どの記号で出すか」だけ。
+
+**GUI の重なり順はレイヤと DOM 順だけで決める。個々の GUI が自分で z-index を持ってはいけない。**
+`hud/overlay-layer.ts` の7段の固定レイヤ(奥から手前へ `marker`/`panel`/`window`/`popup`/`view`/
+`notify`/`system`)が唯一の正本で、z-index を割り当てるのはこのモジュールだけ。GUI の所有者が
+決めるのは自分がどのレイヤの子になるか(コンストラクタ引数で受け取る `panelRoot`/`popupRoot` など、
+根は必ず `Hud.layers` まで遡れる)だけで、同じレイヤ内の前後は DOM 順、最前面化は
+`bringToFront()` の呼び出しだけが動かす。**`ContextMenu`/`ObjectPicker` のようなポップアップの
+親は必ず `popup` レイヤ** — `document.body` や、それを開いた側(パネルなら `panel` レイヤ、
+プロパティウィンドウなら `window` レイヤ)と同じレイヤに直接ぶら下げてはいけない。同じレイヤに
+置くと開いた側より奥へ回り込みうるが、`popup` レイヤは `panel`/`window` の両方より手前に固定
+されているので、ポップアップはどちらから開かれても常にその手前に出る — 開いた瞬間に自分自身へ
+`bringToFront()` を呼ぶのは、同じ `popup` レイヤ内で先に開いている別のポップアップより手前へ
+出すためであって、パネル/ウィンドウとの前後関係はレイヤ分割そのものが保証する。
 
 例外として扱ってよいもの:
 
