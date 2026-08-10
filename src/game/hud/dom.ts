@@ -735,13 +735,6 @@ export function syncNavballPlacement(root: HTMLElement, mapMode: boolean): void 
   if (navball && target && navball.parentElement !== target) target.appendChild(navball);
 }
 
-// マップビューでは ORBIT パネルを右ドックへ移し、他の map 系パネルと同様に折り畳めるようにする。
-export function syncOrbitPlacement(root: HTMLElement, mapMode: boolean): void {
-  const orbit = root.querySelector<HTMLElement>('#hud-orbit');
-  const target = root.querySelector<HTMLElement>(mapMode ? '#hud-dock-right' : '#hud-combat-shelf');
-  if (orbit && target && orbit.parentElement !== target) target.appendChild(orbit);
-}
-
 export function syncHudModalState(): void {
   const helpOpen = getComputedStyle(document.getElementById('hud-help')!).display !== 'none';
   const settingsOpen = getComputedStyle(document.getElementById('hud-settings')!).display !== 'none';
