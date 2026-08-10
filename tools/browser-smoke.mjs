@@ -231,27 +231,51 @@ try {
     await devTools.send('Input.dispatchKeyEvent', { type:'keyDown', key:'h', code:'KeyH', windowsVirtualKeyCode:72 });
     await devTools.send('Input.dispatchKeyEvent', { type:'keyUp', key:'h', code:'KeyH', windowsVirtualKeyCode:72 });
     await new Promise((resolve) => setTimeout(resolve, 100));
-    const helpState = await devTools.evaluate(`({
-      open: getComputedStyle(document.getElementById('hud-help')).display !== 'none',
-      modal: document.body.classList.contains('hud-modal-open'),
-      shield: getComputedStyle(document.getElementById('hud-modal-shield')).pointerEvents === 'auto',
-      touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',
-      backgroundDim: Number(getComputedStyle(document.getElementById('hud-combat-shelf')).opacity) < .5,
-      zoomReleased: !document.getElementById('touch-zoom') || !document.getElementById('touch-zoom').classList.contains('held'),
-    })`);
+    const helpState = await devTools.evaluate(`(() => {
+      const shield = document.getElementById('hud-modal-shield');
+      const canvas = document.querySelector('canvas');
+      let shieldEvents = 0;
+      let backgroundEvents = 0;
+      shield?.addEventListener('pointerdown', () => { shieldEvents++; });
+      canvas?.addEventListener('pointerdown', () => { backgroundEvents++; });
+      const target = document.elementFromPoint(window.innerWidth - 2, window.innerHeight - 2);
+      target?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: window.innerWidth - 2, clientY: window.innerHeight - 2 }));
+      return {
+        open: getComputedStyle(document.getElementById('hud-help')).display !== 'none',
+        modal: document.body.classList.contains('hud-modal-open'),
+        shield: getComputedStyle(shield).pointerEvents === 'auto',
+        shieldTarget: target === shield,
+        shieldEvent: shieldEvents === 1,
+        backgroundEvent: backgroundEvents === 0,
+        touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',
+        zoomReleased: !document.getElementById('touch-zoom') || !document.getElementById('touch-zoom').classList.contains('held'),
+      };
+    })()`);
     if (!Object.values(helpState.result.value).every(Boolean)) throw new Error(`Help modal shielding failed: ${JSON.stringify(helpState.result.value)}`);
     await devTools.send('Input.dispatchKeyEvent', { type:'keyDown', key:'h', code:'KeyH', windowsVirtualKeyCode:72 });
     await devTools.send('Input.dispatchKeyEvent', { type:'keyUp', key:'h', code:'KeyH', windowsVirtualKeyCode:72 });
     await devTools.send('Input.dispatchKeyEvent', { type:'keyDown', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
     await devTools.send('Input.dispatchKeyEvent', { type:'keyUp', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
     await new Promise((resolve) => setTimeout(resolve, 100));
-    const settingsState = await devTools.evaluate(`({
-      open: getComputedStyle(document.getElementById('hud-settings')).display !== 'none',
-      modal: document.body.classList.contains('hud-modal-open'),
-      shield: getComputedStyle(document.getElementById('hud-modal-shield')).pointerEvents === 'auto',
-      touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',
-      backgroundDim: Number(getComputedStyle(document.getElementById('hud-combat-shelf')).opacity) < .5,
-    })`);
+    const settingsState = await devTools.evaluate(`(() => {
+      const shield = document.getElementById('hud-modal-shield');
+      const canvas = document.querySelector('canvas');
+      let shieldEvents = 0;
+      let backgroundEvents = 0;
+      shield?.addEventListener('pointerdown', () => { shieldEvents++; });
+      canvas?.addEventListener('pointerdown', () => { backgroundEvents++; });
+      const target = document.elementFromPoint(window.innerWidth - 2, window.innerHeight - 2);
+      target?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: window.innerWidth - 2, clientY: window.innerHeight - 2 }));
+      return {
+        open: getComputedStyle(document.getElementById('hud-settings')).display !== 'none',
+        modal: document.body.classList.contains('hud-modal-open'),
+        shield: getComputedStyle(shield).pointerEvents === 'auto',
+        shieldTarget: target === shield,
+        shieldEvent: shieldEvents === 1,
+        backgroundEvent: backgroundEvents === 0,
+        touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',
+      };
+    })()`);
     if (!Object.values(settingsState.result.value).every(Boolean)) throw new Error(`Settings modal shielding failed: ${JSON.stringify(settingsState.result.value)}`);
   }
   if (expectCreative) {
