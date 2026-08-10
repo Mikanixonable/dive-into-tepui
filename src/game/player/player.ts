@@ -576,13 +576,16 @@ export class Player extends Ship {
         v3(data.plan.anchor.v.x, data.plan.anchor.v.y, data.plan.anchor.v.z)
       ));
       // trackAnchor はノードが空の間しか効かないため、ノード復元より先に呼ぶ必要がある
+      let rejected = 0;
       for (const n of data.plan.nodes) {
-        player.plan.addNode(kinematicState(
+        const idx = player.plan.addNode(kinematicState(
           n.t,
           v3(n.r.x, n.r.y, n.r.z),
           v3(n.v.x, n.v.y, n.v.z)
         ));
+        if (idx < 0) rejected++;
       }
+      if (rejected > 0) hud.hint(`${player.displayName}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
     }
 
     return player;

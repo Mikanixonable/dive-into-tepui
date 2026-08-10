@@ -415,9 +415,10 @@ export const PREDICT_SAMPLE_ERROR = 30;
 // 予測は表示だけでなく計画軌道の重力源や衝突判定の相手としても消費されるため、艦の予測が
 // 完成するまで他の個体が止まると、計画軌道の形が艦の予測進捗に依存してしまう。
 export const PREDICT_PLAYER_BUDGET_RATIO = 0.5;
-// 予測の重力源配列・空間グリッドを組み直す間隔(予測ステップ数)。数ステップぶんの重力源
-// 位置の遅れは、予測の刻み幅そのものが持つ RK4 の誤差より小さい。
-export const PREDICT_ATTRACTOR_REBUILD_STEPS = 8;
+// 予測の重力源配列・空間グリッドを組み直す間隔(予測先端の経過時間 [s])。この間だけ重力源の
+// 位置を据え置く。ステップ数で切ると、表示期間を年スケールにしたときの粗い刻み幅では据え置きが
+// 数か月に相当してしまうので、実時間で切る。月がこの時間に動く距離は月自身の軌道の 1/1000 未満。
+export const PREDICT_ATTRACTOR_REBUILD_SEC = 3600;
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;
