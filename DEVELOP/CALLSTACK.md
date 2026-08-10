@@ -91,9 +91,10 @@
     - [editor.editMode] mapPicker.handleRightClick() / mapPicker.handleLeftClick() / mapPicker.handleDoubleClick() / editor.handleMapPointer() / editor.updateEditing()
   - [!activeStage.isPlaying] 以降を実行せず return する簡略経路
     - player.thrust = null / player.torque = v3() // 勝敗確定時の推力を凍結させない
-    - simulator.advance(bulletCollision=false, resolveCollision=false, doSubstep=false) // simSpeed は ×MAX_PHYS_SIM_SPEED で打ち止め
-      - substep() ×1 → entity.stepActual() エンティティごと + player.thermal.updateThermal()
+    - simulator.advance(resolveCollision=false, doSubstep=false) // simSpeed は ×MAX_PHYS_SIM_SPEED で打ち止め
+      - substep() ×1 → entity.stepActual() エンティティごと
       - stepAttitudes()
+      - [entities.players ごと] p.stepEnvironment() // 熱・電力・ラジエータの受動状態
     - nanWatchdog.checkAll('advance(決着後)') // 通常経路と同じく積分の直後に一度
     - entities.cleanup() // 決着後もワープで時間は進むので、通常経路と同じ位置で回収する
       // Enemy.checkLoss/Player.checkLoss 経由で recordEnemyDeath/recordPlayerLost が走り得るが、
@@ -127,7 +128,6 @@
     - sunlitFactor() // 地球影による日照率
     - thermal.setRadiatorLoad(radiator.radiatingArea(), radiator.solarLoad())
       // このフレームの全サブステップの updateThermal がこの値を使う
-    - player.hitRadius = radiator.hitRadius() // 展開度に応じて被弾判定が広がる
     - power.update() // sunlit/sunDir は radiator と共有。THREE には触れない
     - [!player.alive] player.thrust = null、throttle.stopThrust() して return
     - hpRegen()
@@ -180,8 +180,9 @@
     - [CreativeStage] entities.players ごとに ship.planExecutor.update(ship, dt, simTime, simSpeed) // planExecution!=='powered' なら idle へ戻すだけ。'powered' なら姿勢整列(idle/slew/armed)、または燃焼中(burn/trim)の出力段選択・燃料消費・ship.thrust の書き直しを進める。ノード時刻に対する猶予窓(NODE_APPROACH_LEAD+見積り燃焼時間+見積り姿勢転回時間)を外れている間は何もしない。死亡していれば reset。点火・遮断そのものはここでは行わない。Simulator.advance より前に呼ばれるので、操作艦で player.behave がこのフレーム player.thrust を null にしていても、積分に渡る前にここで確実に上書きされる
   - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効。残り時間が C.NODE_APPROACH_LEAD 以下なら autoWarpUntil=null + levelIdx=0 で即 return
-  - simulator.advance(bulletCollision=true, resolveCollision=canResolvePhysicalCollisions, doSubstep=true)
-    // 弾命中・剛体接触・姿勢積分はいずれもこの中。simulator が hitSystem / collisionPhysics を所有する
+  - simulator.advance(resolveCollision=canResolvePhysicalCollisions, doSubstep=true)
+    // 弾命中を含む剛体接触・姿勢積分はいずれもこの中。simulator が contactPhysics(ContactPhysics)を所有する。
+    // 弾も薬莢もデブリも天体も同じ ContactPhysics を通る一本の経路
     - [サブステップごと] ×ceil(simDt / SUBSTEP_MAX_DT) // 分割数は simDt のみで決まる(実 fps に依存しない)
       - nextEventTime(activeStage) // activeStage.nextSimulationEventTime(simTime) と全生存エンティティの nextSimulationEventTime() のうち最も早いものへ subDt を切り詰める
         - [CreativeStage] ship.planExecution==='instant' なら plan.firstNode()?.t、'powered' なら ship.planExecutor.nextEventTime(ship, simTime)(ゲートが閉じている間は常に null。armed 中は点火予定時刻、burn/trim 中は射影から求めた遮断予定時刻。どちらも対象ノードが targetNode(参照)と一致する間だけ)
@@ -190,40 +191,37 @@
         - classifyAttractors(attractors) // 同じく1回だけ: μ の重い順 GRAVITY_ALWAYS_COUNT 本を always へ、残りを SpatialGrid へ分類。しきい値 μ(alwaysThresholdMu)もセル一辺(gridCellSize = √(最重グリッド天体 μ / GRAVITY_NEGLIGIBLE_ACCEL))もこの一覧から毎回導く
         - entity.stepActual(dt, attractorsNear(entity.state.r, classified)) → actualTrajectory.step() → stepDynamics()(history 記録)
           // 自機(全隻)・敵・弾・薬莢・デブリ・補給・基地・小惑星それぞれ、個体ごと。alive のみ実行。attractorsNear は always + 自身の位置の27近傍グリッドを合わせたもの。それらの重力 + J2 + 大気抵抗(bcInv)+ 自身の thrust
-        - player.thermal.updateThermal() // 操作対象のみ(HUD 警告を出すため)
-      - activeStage.applySimulationEvents(simTime) // simTime がイベント境界ちょうどに到達した substep の直後
+      - nanWatchdog.checkPlayer('simulator.advance(軌道積分)')
+      - stepAttitudes(subDt) → stepAttitude() → entity.att へ代入 // 自機(全隻。simDt をそのまま使う)・敵・薬莢・デブリ・補給(attDt = min(simDt, 0.12))それぞれ
+      - nanWatchdog.checkPlayer('simulator.advance(姿勢積分)')
+      - [entities.players ごと] p.stepEnvironment(subDt, ephemeris, simTime) // 熱・電力・ラジエータの受動状態
+      - [resolveCollision のみ] contactPhysics.resolveSubstep(simTime, [...entities.all(), ...radiatorFolds], attractorsNow, activeStage)
+        // radiatorFolds = entities.players のうち alive なものの p.collisionFolds(simTime)(艦の姿勢・展開度から毎 substep 置き直す放熱板の接触代理)
+        - isFiniteParticipant() / isFiniteAttractor() でエンティティ・天体を有限値のものだけへ絞る // 空間グリッドへ入れる前に落とす(NaN セル添字を防ぐ主たるガード)
+        - resolveInOrder() // 1 substep 内で TOI 昇順に最大 CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP 件解決。超過分は次回へ持ち越し
+          - SpatialGrid 構築(1回、以後の反復で使い回す) // セル一辺 = 2×(参加者中の最大半径+最大移動量)、または CONTACT_GRID_CELL_SIZE_FLOOR
+          - earliestContact() // 27近傍のエンティティ間ペア + 全 attacker×天体ペアから、双方の contactsWith が true かつ未解決のものだけを候補にし、resolveSphereCollision(collision-response.ts)を通して TOI 最小の1件を選ぶ
+          - applyCandidate() → 双方(または片側、相手が天体の場合)の working state へ代入
+            - [impulse > 0 のときだけ] a.collideWith(b, contact, activeStage) と b.collideWith(a, contact, activeStage) を順不同で呼ぶ // Contact は解決前の状態を保持するので呼び出し順に依らない
+              - [Bullet.collideWith] alive = false // 相手への作用は相手側の collideWith が書く
+              - [Ship(Player/Enemy).collideWith] other instanceof Bullet なら attackedByBullet()、それ以外なら applyCollisionDamage(contact.impulse / mass)
+                - attackedByBullet(): applyDamageToParts(bullet.damage) → hp>0 なら impactEffect()(sfx.hit + fx.spawnPlasmaFlash/spawnBulletFlash + spawnGasPuff)、hp<=0 なら destroyEffect() + activeStage.recordEnemyDeath(cause='killed')/recordPlayerLost()
+                  - [Enemy] destroyEffect() 前に scoreCounter.recordHit()(被弾のたび)
+                  - [Player] thermal.addImpactHeat() は被弾のたび常に。radiator パーツへのダメージ時は radiatorBreakEffect()(全損した瞬間のみ)
+                - applyCollisionDamage(): Δv=impulse/mass を COLLISION_DAMAGE_MIN_DV〜FULL_DV で maxHp へ線形マップし applyDamageToParts → hp>0 なら sfx.clank()+fx.spawnGasPuff()、hp<=0 なら destroyEffect() + recordEnemyDeath/recordPlayerLost()
+              - [RadiatorFold.collideWith] owner.collideAtRadiator(side, other, contact, activeStage) へ委譲(パーツの割り振り先が side に固定される点だけが Ship.collideWith との違い)
+              - [DebrisPiece.collideWith] other instanceof Bullet なら fx.spawnGasPuff()(弾自身の消滅は Bullet.collideWith)。kind==='casing' かつ相手が Player なら sfx.clank()
+        - nanWatchdog.checkPlayer('simulator.advance(接触)')
+      - activeStage.applySimulationEvents(simTime) // simTime がイベント境界ちょうどに到達した substep の直後、接触解決の後
         - [CreativeStage] ship.planExecution==='instant' なら node.t 到達で plan.dropNodesBefore(simTime) → 戻ったノードへ ship.state を置き換え(複数ノードを跨いだフレームも内部の while で一括消費)
         - [CreativeStage] ship.planExecution==='powered' なら ship.planExecutor.applyIgnitionAndCutoff(ship, simTime) // 冒頭で !ship.alive なら reset して return。armed→burn の点火(ECI 固定の噴射方向 burnDirWorld/burnUpWorld を確定し ship.torque/ship.thrust を立てる)、射影が0を切った遮断(dropNodesBefore + plan.overwriteAnchor で実状態へアンカーを差し替え)
-      - hitSystem.checkBulletHits() // bulletCollision=true のときだけ。サブステップごと
-      - target.attacked() // 弾が命中した対象ごと
-        - [Enemy.attacked]
-          - scoreCounter.recordHit()
-          - hitEffect() // 被弾後も hp>0
-            - sfx.hit() / fx.spawnPlasmaFlash() or fx.spawnBulletFlash() / fx.scatterFragments()
-          - activeStage.recordEnemyDeath(cause='killed') // hp<=0
-            - scoreCounter.recordKill() + hud.hint()
-            - unlockManager.reportClear() // isPlaying かつ checkWin() が true になった場合のみ
-            - onWin() → showWinScreen() // 同上(Stage0/00 は no-op override)
-          - destroyEffect() → sfx.explosion() + fx.spawnShipDestroyEffect() // hp<=0
-        - [Player.attacked]
-          - thermal.addImpactHeat() // 常に
-          - radiator.damageFromHit() → radiatorBreakEffect() // このフレームで新たに全損したパネルがあれば
-          - hitEffect() // hp>0
-          - activeStage.recordPlayerLost() → showResultScreen() // hp<=0
-          - destroyEffect() // hp<=0
-    - collisionPhysics.resolve() // resolveCollision のみ(高ワープ時はスキップ)。サブステップ後に1回、実 dt で
-      - player.belt.collisionSections() // player.alive && dt>1e-6
-      - resolveCollisionPairs()
-        - SpatialGrid 構築 // セル一辺 = 2×(参加者中の最大半径+最大移動量)。全ペアではなく各要素の27近傍だけを候補にする
-        - resolveCollisionPair() → 双方の state へ代入 // 27近傍候補内で貫入している衝突ペアごと
-        - onPlayerCasingImpact() → sfx.clank() // 自機-薬莢の接触時のみ
-        - onHighSpeedImpact() // 反発した接触速度が COLLISION_DAMAGE_MIN_SPEED 以上のペアのみ
-          - player.collidedAtSpeed() / enemy.collidedAtSpeed() // game.ts が自機-敵機のペアだけを通す
-            - applyCollisionDamage() → hp へ代入
-            - sfx.clank() + fx.spawnGasPuff() // hp>0
-            - activeStage.recordPlayerLost() / recordEnemyDeath(cause='killed') + destroyEffect() // hp<=0
-      - player.belt.applyCollisionSections() // player.alive && dt>1e-6
-    - stepAttitudes() → stepAttitude() → entity.att へ代入 // 自機(全隻。simDt をそのまま使う)・敵・薬莢・デブリ・補給(attDt = min(simDt, 0.12))それぞれ
+      - entities.cleanup(subDt, simTime, activeStage, playerPos, attractorsNow) // checkLoss(大気突入・天体表面への幾何的沈み込みのバックストップ)+ prune
+    - [resolveCollision && player] contactPhysics.resolveBelt(dt, simTime, player, entities.all(), attractorsAt(simTime), activeStage)
+      // ベルトのみサブステップループの外、フレームに1回、実 dt で解決する(BeltPhysics は実 dt を要求する局所シミュレーションで、substep へ持ち込むとワープ時に破綻するため)
+      - player.belt.collisionSections(dt, ...) // BeltSection(接触代理)へ変換
+      - resolveInOrder() // substep 版と同じ列挙・解決ロジックを共有
+      - player.belt.applyCollisionSections(dt, ...) // 解決結果を Verlet 状態へ書き戻す
+      - nanWatchdog.checkPlayer('simulator.advance(ベルト)')
     - lastSimDt = simDt
   - nanWatchdog.checkAll('simulator.advance') // 全エンティティ走査。検出済みなら何もしない
   - targeter.updateBoardMarks(dt) // 既存マークの経過時間を進め、寿命切れを捨てる。ターゲットが居なければ全消し
@@ -453,10 +451,11 @@
   `Game.render` は renderer.render を呼ぶだけ、という切り分けになっている。
 - **カメラ更新は `Game.update` の末尾**(物理積分の後)にある。`sync` で作るフローティングオリジンは
   積分後の自機位置なので、追従カメラの基準もそこに合わせる必要がある。
-- **高ワープ時**(`simSpeed > MAX_PHYS_SIM_SPEED`)は `substep()` が1フレームに最大64回走り、
-  `hitSystem.checkBulletHits()` もその回数呼ばれる。一方 `collisionPhysics.resolve()` は
-  `canResolvePhysicalCollisions` が false になり `resolveCollision=false` で渡るため、
-  `advance` の中で丸ごとスキップされる。
+- **高ワープ時**(`simSpeed > MAX_PHYS_SIM_SPEED`)は `substep()` が1フレームに最大64回走るが、
+  `contactPhysics.resolveSubstep()`/`resolveBelt()` は `canResolvePhysicalCollisions` が false に
+  なり `resolveCollision=false` で渡るため、`advance` の中で丸ごとスキップされる(接触判定・弾命中を
+  含む)。substep が長大になる高ワープでは弾もすり抜けるが、`canPlayerFire` が同じ閾値で発砲自体を
+  止めているので実害は無い。
 - **計画軌道 RK4 の再計算**は `PlanArc.update` が per-arc に持つ `(state0, end)` の変化検出だが、
   `tracksLiveAnchor` 引数(計画が空のあいだの唯一の区間だけ true — その区間は anchor が自機の
   現在状態を毎フレーム追従する)で判定基準が変わる。false(ノードを置いた後の区間)なら
@@ -470,10 +469,11 @@
   剛体変換)だけで済む。
 - **過去 state の記録・prevState の更新は `physics/dynamic-trajectory.ts` の `DynamicTrajectory`(`GameEntity.actualTrajectory`)の
   `step`/`reset` が行う**ので、この木には独立ノードとして現れない。`entity.stepActual()` /
-  `resolveCollisionPair()` / 反動など、state へ代入するすべての経路が記録契機になる
-  (前者は `actualTrajectory.step` 経由、後者は `actualTrajectory.reset` 経由)。`hitSystem.checkBulletHits()` と
-  `targeter.updateBoardMarks()` が読む「直前サブステップ位置」(`entity.prevState.r`)は
-  history の間引き対象とは別フィールドなので、`historyDuration = 0` の弾でも常に供給される。
+  `contactPhysics.resolveSubstep()`/`resolveBelt()` の解決結果書き戻し / 反動など、state へ代入する
+  すべての経路が記録契機になる(前者は `actualTrajectory.step` 経由、後者は `actualTrajectory.reset`
+  経由)。`game/simulation/contact.ts` の掃引接触判定と `targeter.updateBoardMarks()` が読む
+  「直前サブステップ位置」(`entity.prevState.r`)は history の間引き対象とは別フィールドなので、
+  `historyDuration = 0` の弾でも常に供給される。
 - **`TouchControls` は per-frame の update を持たない**。DOM の pointer イベントから
   `input.setVirtualKey()` を呼ぶだけで、per-frame の接点は `game.sync` からの
   `syncModeButtons()`(トグル点灯)だけ。
