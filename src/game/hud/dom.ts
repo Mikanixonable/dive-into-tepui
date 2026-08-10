@@ -256,9 +256,15 @@ body.hud-modal-open #touch-ui { display: none; }
   background: ${INK_SOFT}; transition: left 0.15s, background 0.15s;
 }
 #hud .hud-toggle .toggle-track.on .toggle-knob { left: 18px; background: ${ACCENT}; }
-/* MAP VIEW/PREDICT/TRAJECTORY の左列は navball ウィンドウの右に置き、重なりを避ける。 */
+/* MAP VIEW の左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-overview-camera { display: none; width: 100%; pointer-events: auto; }
-#hud-displaytime { display: none; width: 100%; pointer-events: auto; }
+/* 下部の固定バー。#hud-stagestatus も同じく下部中央に出るため、その上に隙間を空けて重ねない。
+   左右ドック(.hud-dock-left/.hud-dock-right)の内側に収まる幅だけを使い、ドックのパネルに重ねない。 */
+#hud-displaytime {
+  display: none; position: absolute; bottom: 100px;
+  left: calc(12px + min(300px, 30vw) + 8px); right: calc(12px + min(300px, 33vw) + 8px);
+  width: auto; box-sizing: border-box; max-height: 40vh; overflow-y: auto; pointer-events: auto;
+}
 #hud-displaytime input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
 /* パネル内の数値・テキスト入力欄の共通見た目(スライダーは上の range 規則が受け持つ)。 */
 #hud .panel input[type="number"], #hud .panel input[type="text"] {
@@ -430,6 +436,11 @@ body.hud-modal-open #touch-ui { display: none; }
   }
   #hud-settings { min-width: 0; width: 78vw; }
   #hud-stagestatus { bottom: 8px; width: min(62vw, 440px); min-width: 0; max-height: 62px; overflow-y: auto; padding: 6px 10px; gap: 8px; }
+  /* このブレークポイントのドック幅に合わせて左右の隙間を再計算する。 */
+  #hud-displaytime {
+    bottom: 78px;
+    left: calc(8px + min(220px, calc(46vw - 8px)) + 8px); right: calc(8px + min(260px, calc(54vw - 8px)) + 8px);
+  }
   #hud-stagestatus .t { font-size: 11px; }
   #hud-stagestatus .k { font-size: 9px; line-height: 1.35; white-space: normal; }
   #hud-chase-reset { top: 40px; width: 28px; height: 28px; }
@@ -444,6 +455,10 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud .hud-seg { gap: 3px; }
   #hud .seg-btn { padding: 3px 5px; font-size: 9px; }
   #hud-displaytime .slider-ticks { display: none; }
+  /* 左右ドックが幅を使い切り隙間が残らないため、ドックの下端を上げて帯の分を空け、バーは全幅に戻す。
+     bottom はここで確保した帯の高さ(28vh)に収まる値まで詰め直す。 */
+  #hud.map-mode .hud-dock { bottom: calc(28vh + 16px); }
+  #hud-displaytime { left: 8px; right: 8px; bottom: 8px; max-height: 28vh; }
   #hud-combat-shelf { top: 72px; }
   #hud-combat-shelf > .panel { flex-basis: min(168px, calc(100vw - 16px)); width: min(168px, calc(100vw - 16px)); }
 }
