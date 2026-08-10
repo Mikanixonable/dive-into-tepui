@@ -370,9 +370,9 @@ export const PLAN_ARC_GAP_PX = 6;
 export const PLAN_ARC_OPACITY = 0.85;
 // 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
 export const APERIODIC_ARC_DURATION = 86400;
-// 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。
-// physics/trajectory-features.ts の apparentEccentricity(積分折れ線の半径変動から
-// 求めた指標)と比較する — これ未満は円に近くアプシスの方向が不定になるので両方隠す。
+// 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。両方見つかった
+// ときの (遠地点距離-近地点距離)/(遠地点距離+近地点距離) と比較する — これ未満は円に
+// 近くアプシスの方向が不定になるので両方隠す。
 export const APSIS_MIN_ECC = 0.01;
 // 計画軌道上の UTC 暦目盛(plan/plan-display.ts)の間隔・本数を決める値。時・日・月のどの
 // 単位で刻むかは画面上の間隔で選ぶため、固定した時間間隔ではなく画面距離基準で間引く。

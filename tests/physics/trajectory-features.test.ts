@@ -1,9 +1,9 @@
 // trajectory-features.ts の回帰テスト。解析的なケプラー軌道をサンプリングした列に対して、
-// 折れ線走査が解析値と十分一致することを確認する。
+// 折れ線走査/隣接ステップ判定が解析値と十分一致することを確認する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { Attractor } from '../../src/physics/attractor';
-import { apparentEccentricity, findApsis, findEquatorCrossings } from '../../src/physics/trajectory-features';
+import { apsisCrossing, findEquatorCrossings } from '../../src/physics/trajectory-features';
 import { keplerPeriod, stateFromOrbitalElements, trueAnomalyFromMean } from '../../src/physics/elements';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
@@ -26,62 +26,72 @@ function sampleKeplerOrbit(a: number, e: number, incDeg: number, raan: number, a
   return out;
 }
 
-// a/e/inc/raan/argp のケプラー軌道を、時刻等間隔(実際の PlanArc.samples と同じ刻み方)で
-// n+1 点サンプリングする。平均近点角 M = M0 + 2πt/T をケプラー方程式で真近点角へ変換する。
-// phase は開始時点の平均近点角 [rad] — ブラケットの当たり外れは開始位相に依存するので、
-// 呼び出し側が複数の位相で最悪値を見られるように引数で渡す。
-function sampleKeplerOrbitByTime(
-  a: number, e: number, incDeg: number, raan: number, argp: number, n: number, phase: number,
-): KinematicState[] {
+// 平均近点角 m [rad] に対応するケプラー軌道上の状態を、経過時間 t も含めて正しく作る。
+// apsisCrossing の精密化は hermiteInterpolate(接線に速度を使う)を挟むので、t が実際の
+// 力学と整合していないと補間誤差が乗る — そのため nu を直接指定せず、m から
+// trueAnomalyFromMean で nu を、周期から t を、それぞれ導出する。
+function stateAtMeanAnomaly(a: number, e: number, incDeg: number, raan: number, argp: number, m: number): KinematicState {
   const inc = (incDeg * Math.PI) / 180;
   const period = keplerPeriod(a, MU_EARTH);
-  const out: KinematicState[] = [];
-  for (let i = 0; i <= n; i++) {
-    const t = (period * i) / n;
-    const m = phase + (2 * Math.PI * i) / n;
-    const nu = trueAnomalyFromMean(m, e);
-    out.push(stateFromOrbitalElements(t, a, e, inc, raan, argp, nu, MU_EARTH));
-  }
-  return out;
+  const nu = trueAnomalyFromMean(m, e);
+  const t = (m / (2 * Math.PI)) * period;
+  return stateFromOrbitalElements(t, a, e, inc, raan, argp, nu, MU_EARTH);
 }
 
 export function register(): void {
-  test('trajectory-features: findApsis matches the analytic pe/ap position on a time-evenly-sampled orbit (worst case over 24 start phases)', () => {
-    const a = R_EARTH + 800e3;
-    const e = 0.05;
-    const incDeg = 51.6;
-    const raan = 0.3;
-    const argp = 1.1;
-    // 実際の計画軌道は1周回あたり約100サンプル(PLAN_ARC_STEPS_PER_REV=100)なので、その
-    // オーダーで刻む。
-    const n = 102;
-    const peExpected = stateFromOrbitalElements(0, a, e, (incDeg * Math.PI) / 180, raan, argp, 0, MU_EARTH).r;
-    const apExpected = stateFromOrbitalElements(0, a, e, (incDeg * Math.PI) / 180, raan, argp, Math.PI, MU_EARTH).r;
-    let worstPeErr = 0, worstApErr = 0;
-    for (let k = 0; k < 24; k++) {
-      // 半整数オフセットにするのは、位相がちょうど 0(近地点が列の端 samples[0] に乗る)を
-      // 避けるため — 端点そのものは findApsis の走査対象外(隣接3点の符号判定が使えない)
-      // で、これは今回のブラケット反転バグとは無関係の既知の境界条件。
-      const phase = (2 * Math.PI * (k + 0.5)) / 24;
-      const samples = sampleKeplerOrbitByTime(a, e, incDeg, raan, argp, n, phase);
-      const pe = findApsis(samples, EARTH, 'periapsis');
-      const ap = findApsis(samples, EARTH, 'apoapsis');
-      assert.ok(pe && ap, `both apsides should be found at phase ${phase}`);
-      worstPeErr = Math.max(worstPeErr, len(sub(pe!.r, peExpected)));
-      worstApErr = Math.max(worstApErr, len(sub(ap!.r, apExpected)));
-    }
-    // ブラケットの取り違え(反転バグ)があると along-track に百km級ずれるが、半径だけを見る
-    // 検証ではアプシスで半径の1次変化が消えるため数十mの誤差にしか見えず検出できない —
-    // 解析的な近地点/遠地点の位置そのものとの距離で検証する。正しい実装なら1kmを大きく下回る。
-    assert.ok(worstPeErr < 1000, `pe worst-case position error: ${worstPeErr} m`);
-    assert.ok(worstApErr < 1000, `ap worst-case position error: ${worstApErr} m`);
+  const a = R_EARTH + 800e3;
+  const e = 0.05;
+  const incDeg = 51.6;
+  const raan = 0.3;
+  const argp = 1.1;
+  // 隣接ステップの間隔。実際の積分の1ステップに相当する程度に小さく取る — アプシス走査が
+  // 荒いサンプルの局所極値ではなく、真に隣接する1ステップの符号反転を見る設計であることを
+  // 確かめたいので、粗い1/100周回間隔ではなくこの程度の細かさを使う。
+  const dm = 0.02;
+
+  test('trajectory-features: apsisCrossing finds periapsis between consecutive states straddling nu=0', () => {
+    const prev = stateAtMeanAnomaly(a, e, incDeg, raan, argp, -dm);
+    const next = stateAtMeanAnomaly(a, e, incDeg, raan, argp, dm);
+    const result = apsisCrossing(EARTH, prev, next);
+    assert.ok(result, 'periapsis crossing should be detected');
+    assert.equal(result!.kind, 'periapsis');
+    const expected = stateFromOrbitalElements(0, a, e, (incDeg * Math.PI) / 180, raan, argp, 0, MU_EARTH).r;
+    // ブラケットが十分狭いので、精密化後の誤差は1kmを大きく下回るはず。
+    assert.ok(len(sub(result!.state.r, expected)) < 1000, `periapsis position error: ${len(sub(result!.state.r, expected))} m`);
+  });
+
+  test('trajectory-features: apsisCrossing finds apoapsis between consecutive states straddling nu=pi', () => {
+    const prev = stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI - dm);
+    const next = stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI + dm);
+    const result = apsisCrossing(EARTH, prev, next);
+    assert.ok(result, 'apoapsis crossing should be detected');
+    assert.equal(result!.kind, 'apoapsis');
+    const expected = stateFromOrbitalElements(0, a, e, (incDeg * Math.PI) / 180, raan, argp, Math.PI, MU_EARTH).r;
+    assert.ok(len(sub(result!.state.r, expected)) < 1000, `apoapsis position error: ${len(sub(result!.state.r, expected))} m`);
+  });
+
+  test('trajectory-features: apsisCrossing returns null when the pair stays on one leg (no sign change)', () => {
+    // どちらも遠地点手前(まだ遠ざかり続けている脚)で、近地点にも遠地点にもまたがらない対。
+    const prev = stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 4);
+    const next = stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 2);
+    assert.equal(apsisCrossing(EARTH, prev, next), null);
+  });
+
+  test('trajectory-features: apsisCrossing returns null for a monotonically approaching pair (no crossing yet)', () => {
+    // 近地点の手前、動径速度が両端とも負(接近し続けている)対。これは衝突などで軌道が
+    // 近地点に到達する前に打ち切られたケースの直接的な再現であり、そのようなときに
+    // 偽の近地点を報告せず null を返すことが、粗いサンプル走査からステップごとの符号反転
+    // 判定へ変えた設計上の要点。
+    const prev = stateAtMeanAnomaly(a, e, incDeg, raan, argp, -0.5);
+    const next = stateAtMeanAnomaly(a, e, incDeg, raan, argp, -0.3);
+    assert.equal(apsisCrossing(EARTH, prev, next), null);
   });
 
   test('trajectory-features: findEquatorCrossings finds ascending/descending nodes at zero latitude with the correct sign', () => {
-    const a = R_EARTH + 500e3;
-    const e = 0.01;
-    const inc = 51.6;
-    const samples = sampleKeplerOrbit(a, e, inc, 0, 0, 36);
+    const a2 = R_EARTH + 500e3;
+    const e2 = 0.01;
+    const inc2 = 51.6;
+    const samples = sampleKeplerOrbit(a2, e2, inc2, 0, 0, 36);
     const pole = v3(0, 1, 0);
     const { ascending, descending } = findEquatorCrossings(samples, EARTH, pole);
     assert.ok(ascending && descending, 'both nodes should be found');
@@ -91,19 +101,5 @@ export function register(): void {
     // 昇交点は南→北(v の pole 成分が正)、降交点は北→南(負)へ渡る瞬間
     assert.ok(ascending!.v.y > 0, `ascending node should be moving north: vy=${ascending!.v.y}`);
     assert.ok(descending!.v.y < 0, `descending node should be moving south: vy=${descending!.v.y}`);
-  });
-
-  test('trajectory-features: apparentEccentricity rejects an apsis scan on a near-circular orbit', () => {
-    const a = R_EARTH + 500e3;
-    const samples = sampleKeplerOrbit(a, 0.0005, 51.6, 0, 0, 24);
-    const ecc = apparentEccentricity(samples, EARTH);
-    assert.ok(ecc < 0.01, `near-circular orbit should read as low apparent eccentricity: ${ecc}`);
-  });
-
-  test('trajectory-features: apparentEccentricity reads a real elliptical orbit above the circular guard', () => {
-    const a = R_EARTH + 500e3;
-    const samples = sampleKeplerOrbit(a, 0.05, 51.6, 0, 0, 24);
-    const ecc = apparentEccentricity(samples, EARTH);
-    assert.ok(ecc > 0.01, `eccentric orbit should read above the circular guard: ${ecc}`);
   });
 }
