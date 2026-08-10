@@ -8,6 +8,7 @@ import { MarkerManager } from '../marker/marker-manager';
 import type { Attractor } from '../../physics/attractor';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import { isPositionInFocusedSystem } from '../celestial/body-visibility';
+import { COLOR_ACCENT } from '../const';
 
 // 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;
@@ -29,7 +30,7 @@ export class PlayerMarkers {
         for (const key of COMBAT_KEYS) this.markerManager.hide(`${key}-${this.id}`);
       }
       if (displayState && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, attractors))) {
-        const color = isActive ? '#ff0000' : undefined;
+        const color = isActive ? COLOR_ACCENT : undefined;
         const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn);
         this.markerManager.setPosition(
           selfKey, 'mk-self', '▲', displayState.r, project, displayName, 1, color, rotationDeg,
