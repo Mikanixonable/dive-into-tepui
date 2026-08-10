@@ -416,7 +416,6 @@ export class Game {
       this.predictor.update(
         this.simulator.simTime,
         null,
-        this.simSpeedManager.canGrowPrediction,
         this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
       );
       this.activeStage.update(dt, null, this.entities, this.simulator.simTime, this.simSpeedManager);
@@ -513,7 +512,6 @@ export class Game {
     this.predictor.update(
       this.simulator.simTime,
       this.player,
-      this.simSpeedManager.canGrowPrediction,
       this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
     );
 

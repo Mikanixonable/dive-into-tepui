@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
-import { ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
+import { FrameDir, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { isOccluded } from '../../physics/occlusion';
@@ -113,12 +113,13 @@ export class PlanPath {
     for (let i = this.activeCount; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
   }
 
-  // 天体衝突が検出された地点(区間ごとに高々1つ)。今フレーム表示中の区間だけを対象にする。
-  impactPoints(): readonly { readonly state: KinematicState; readonly arcIdx: number }[] {
-    const out: { state: KinematicState; arcIdx: number }[] = [];
+  // 天体衝突が検出された地点と、その相手の天体(区間ごとに高々1つ)。今フレーム表示中の
+  // 区間だけを対象にする。
+  impactPoints(): readonly { readonly state: KinematicState; readonly body: Attractor; readonly arcIdx: number }[] {
+    const out: { state: KinematicState; body: Attractor; arcIdx: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
-      const state = this.arcs[i]?.impactPoint();
-      if (state) out.push({ state, arcIdx: i });
+      const impact = this.arcs[i]?.impactPoint();
+      if (impact) out.push({ state: impact.state, body: impact.body, arcIdx: i });
     }
     return out;
   }
@@ -169,6 +170,17 @@ export class PlanPath {
     const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.attractors);
     const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, this.attractors);
     return toInertialDir(unbakeTf, toFrameDir(bakeTf, dir));
+  }
+
+  // 時刻 t の状態 state における折れ線の接線方向を、現在の表示座標(ECI)へ変換する。
+  // 折れ線自体は toFrameState の座標系相対速度(ω×r 項込み)を接線として描かれるため、
+  // 単純な方向変換の toDisplayDir(ω×r 項を持たない)ではその接線と一致しない。
+  toDisplayTangent(state: KinematicState, t: number): Vec3 {
+    if (!this.ephemeris) return v3(state.v.x, state.v.y, state.v.z);
+    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.attractors);
+    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, this.attractors);
+    const relV = toFrameState(bakeTf, state).v;
+    return toInertialDir(unbakeTf, { x: relV.x, y: relV.y, z: relV.z } as FrameDir);
   }
 
   // 時刻 t のサンプル位置 r をスクリーン座標へ投影する。

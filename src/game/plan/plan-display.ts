@@ -8,6 +8,7 @@ import { Projected } from '../../physics/projection';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
+import { celestialBodyName } from '../hud/frame-labels';
 import { TickRank, calendarBoundaries, tickLabel } from '../hud/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
@@ -30,11 +31,12 @@ interface ImpactIcon {
   readonly label: string;
 }
 
-// ルーラー目盛マーカー。rank/vel は sync 側の間引き・向き決めに使う。
+// ルーラー目盛マーカー。rank/tangent は sync 側の間引き・向き決めに使う。tangent は
+// pos と同じ表示座標系での折れ線の接線方向(PlanPath.toDisplayTangent)。
 interface PlanTickIcon {
   readonly key: string;
   readonly pos: Vec3;
-  readonly vel: Vec3;
+  readonly tangent: Vec3;
   readonly rank: TickRank;
   readonly label: string;
 }
@@ -64,7 +66,7 @@ export class PlanDisplay {
   private apsisIcons: readonly ApsisIcon[] = [];
   private impactIcons: readonly ImpactIcon[] = [];
   private tickIcons: readonly PlanTickIcon[] = [];
-  private lastTickCount = 0;
+  private lastTickKeys: readonly string[] = [];
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
   private plan: Plan | null = null;
   // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
@@ -126,8 +128,8 @@ export class PlanDisplay {
     this.markerManager.hide('apsisPe');
     this.markerManager.hide('apsisAp');
     for (const key of IMPACT_MARKER_KEYS) this.markerManager.hide(key);
-    for (let i = 0; i < this.lastTickCount; i++) this.markerManager.hide(`planTick${i}`);
-    this.lastTickCount = 0;
+    for (const key of this.lastTickKeys) this.markerManager.remove(key);
+    this.lastTickKeys = [];
   }
 
   // 近地点・遠地点アイコンの右クリック候補(非表示中は空)。
@@ -224,15 +226,14 @@ export class PlanDisplay {
     return icons;
   }
 
-  // 天体衝突が検出された地点(区間ごとに高々1つ)。その地点で最も強く引く天体の表面からの
-  // 高度をラベルに添える。
+  // 天体衝突が検出された地点(区間ごとに高々1つ)。衝突天体は判定そのもの(PlanArc)が
+  // 返したものをそのまま使う — ここで中心天体を引き直すと、判定に使った天体・時刻と
+  // 一致しない高度が出かねない。
   private impactIconsOf(): readonly ImpactIcon[] {
-    return this.path.impactPoints().flatMap(({ state, arcIdx }) => {
+    return this.path.impactPoints().flatMap(({ state, body, arcIdx }) => {
       const key = IMPACT_MARKER_KEYS[arcIdx];
       if (key === undefined) return [];
-      const center = strongestAttractor(state.r, this.ephemeris.attractorsAt(state.t));
-      const alt = len(sub(state.r, center.state.r)) - center.radius;
-      return [{ key, pos: this.path.toDisplay(state.r, state.t), label: `衝突 高度 ${fmtMarkerDist(alt, 0)}` }];
+      return [{ key, pos: this.path.toDisplay(state.r, state.t), label: `衝突 ${celestialBodyName(body.id)}` }];
     });
   }
 
@@ -250,9 +251,9 @@ export class PlanDisplay {
       const state = this.path.sampleAt(t);
       if (!state) continue;
       icons.push({
-        key: `planTick${icons.length}`,
+        key: `planTick:${b.unix}`,
         pos: this.path.toDisplay(state.r, t),
-        vel: state.v,
+        tangent: this.path.toDisplayTangent(state, t),
         rank: b.rank,
         label: tickLabel(b.unix, b.rank),
       });
@@ -317,15 +318,18 @@ export class PlanDisplay {
       const p = projected[i]!;
       const depth = finestShown === null ? 0 : Math.min(Math.max(icon.rank - finestShown, 0), maxDepth);
       const label = this.isFarFromShown(projected, shown, i, labelMinPxSq) ? icon.label : '';
-      const along = this.markerManager.headingRotationDeg(icon.pos, icon.vel, project, scale);
+      const along = this.markerManager.headingRotationDeg(icon.pos, icon.tangent, project, scale);
       const rotationDeg = along === undefined ? undefined : along + 90;
       this.markerManager.set(
         icon.key, 'mk-plantick', tickSvg(C.PLAN_TICK_LENGTH_PX[depth]!), p.x, p.y, true,
         label, 1, undefined, rotationDeg, true,
       );
     }
-    for (let i = n; i < this.lastTickCount; i++) this.markerManager.hide(`planTick${i}`);
-    this.lastTickCount = n;
+    // 候補の暦区切り自体が前フレームと入れ替わった分は hide でなく remove で消す
+    // (equator-node-markers.ts の syncと同じ規約)。
+    const keys = icons.map((icon) => icon.key);
+    for (const key of this.lastTickKeys) if (!keys.includes(key)) this.markerManager.remove(key);
+    this.lastTickKeys = keys;
   }
 
   // 軌道順で i の前後にある「採用済み(shown)」の目盛それぞれとの画面距離の2乗が、

@@ -7,11 +7,11 @@ import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Attractor, localOrbitPeriod } from '../../physics/attractor';
-import { containingBody, sweptSphereToi } from '../../physics/sphere-contact';
+import { sweptSphereToi } from '../../physics/sphere-contact';
 import { apsisCrossing } from '../../physics/trajectory-features';
 import { isBurnedUp } from '../../physics/atmosphere';
 import { attractorsNear, classifyAttractors, gravityBodiesAt, mergeAttractors } from '../simulation/attractors';
-import { Vec3 } from '../../physics/vec3';
+import { addScaled, len, sub, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { SampledLine } from '../../render/sampled-line';
 import { ScaleFn } from '../camera/camera-system';
@@ -20,28 +20,91 @@ import * as C from '../const';
 // 積分の終端は要求時刻に対して丸め誤差ぶん手前に落ちうる。この幅までは終端そのものとみなす。
 const EPOCH_EPS = 1e-6;
 
+// 天体接近時、1ステップで表面までの距離を跨いでしまわないための安全率
+// (表面までの距離 ÷ 相対速度 に掛ける上限係数)。
+const APPROACH_STEP_SAFETY = 0.5;
+
+// 衝突判定の交差点探索の反復回数。固定回数にしているのは、収束判定にすると反復回数が
+// フレームごとに変動し、その分だけ結果が揺れるため(trajectory-features.ts と同じ作法)。
+const IMPACT_REFINE_ITERATIONS = 20;
+
 type ComputeKey = { state0: KinematicState; end: number; };
 
-// 刻み幅。その場で最も強く引く天体を中心とする軌道運動の時間スケールを
-// PLAN_ARC_STEPS_PER_REV 等分する。
-// 低軌道では細かく、遠地点では粗くなり、離心軌道でも1周を通して精度が一定になる。
-function stepDt(r: Vec3, attractors: readonly Attractor[]): number {
-  return localOrbitPeriod(r, attractors) / C.PLAN_ARC_STEPS_PER_REV;
+export interface PlanImpact {
+  readonly state: KinematicState;
+  readonly body: Attractor;
 }
 
-// prev→next の1ステップ中に body の表面へ実際に達した時刻へ、掃引球TOIで巻き戻した状態。
-// TOI が解けなければ(prev が既にめり込んでいる等)next をそのまま返す。
-function surfaceCrossingState(prev: KinematicState, next: KinematicState, body: Attractor): KinematicState {
-  const hit = sweptSphereToi(prev.r, next.r, body.state.r, body.state.r, body.radius);
-  return hit ? hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * hit.toi) : next;
+// 刻み幅。その場で最も強く引く天体を中心とする軌道運動の時間スケール(低軌道では細かく、
+// 遠地点では粗くなる)を PLAN_ARC_STEPS_PER_REV 等分した値と、最も近い天体の表面までの
+// 距離をその天体への相対速度で割った接近時間の小さい方。後者が無ければ1ステップで
+// 影響圏を跨いで天体をすり抜けかねない — 月の影響圏外(最強天体が地球)では前者だけで
+// 数万秒のステップになり、その間に自機も月も数万km動くため。
+function stepDt(state: KinematicState, attractors: readonly Attractor[]): number {
+  const orbitDt = localOrbitPeriod(state.r, attractors) / C.PLAN_ARC_STEPS_PER_REV;
+  let approachDt = Infinity;
+  for (const body of attractors) {
+    const clearance = len(sub(state.r, body.state.r)) - body.radius;
+    if (clearance <= 0) continue;
+    const closingSpeed = len(sub(state.v, body.state.v));
+    if (closingSpeed <= 1e-9) continue;
+    approachDt = Math.min(approachDt, (clearance / closingSpeed) * APPROACH_STEP_SAFETY);
+  }
+  return Math.min(orbitDt, approachDt);
+}
+
+// prev→next の間で body の表面へ実際に到達した状態。区間両端の天体位置(bodyStart/bodyEnd)
+// を使った掃引球TOI(直線弦の解)を初期ブラケットとし、エルミート曲線上で「中心距離 - 半径」
+// の符号が変わる点を固定回数の二分探索で詰め直す — 天体自身も区間内で動くため、直線弦の
+// 比率をそのままエルミート補間へ渡すと交差点がずれる。
+function refineSurfaceCrossing(
+  prev: KinematicState, next: KinematicState, bodyStart: Vec3, bodyEnd: Vec3, radius: number,
+): KinematicState {
+  const clearanceAt = (u: number): number => {
+    const s = hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * u);
+    const bodyPos = addScaled(bodyStart, sub(bodyEnd, bodyStart), u);
+    return len(sub(s.r, bodyPos)) - radius;
+  };
+  let lo = 0, hi = 1;
+  let clearanceLo = clearanceAt(lo);
+  for (let i = 0; i < IMPACT_REFINE_ITERATIONS; i++) {
+    const mid = (lo + hi) / 2;
+    const clearanceMid = clearanceAt(mid);
+    if ((clearanceMid >= 0) === (clearanceLo >= 0)) { lo = mid; clearanceLo = clearanceMid; } else { hi = mid; }
+  }
+  const u = (lo + hi) / 2;
+  return hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * u);
+}
+
+// prev→next の1ステップの間に表面へ到達した候補天体のうち、最も早く(掃引球TOIが小さい)
+// 到達したものを選ぶ。candidates は判定対象の天体一覧、startById/endById はそれぞれ
+// prev.t/next.t 時点の天体位置(id で対応付ける — candidates 自体は1つの評価時刻のみの
+// スナップショットで、動く天体の始終点はここでしか引けない)。
+function findImpact(
+  prev: KinematicState, next: KinematicState, candidates: readonly Attractor[],
+  startById: ReadonlyMap<string, Attractor>, endById: ReadonlyMap<string, Attractor>,
+): PlanImpact | null {
+  let bestBody: Attractor | null = null;
+  let bestToi = Infinity;
+  for (const body of candidates) {
+    const bStart = startById.get(body.id);
+    const bEnd = endById.get(body.id);
+    if (!bStart || !bEnd) continue;
+    const hit = sweptSphereToi(prev.r, next.r, bStart.state.r, bEnd.state.r, body.radius);
+    if (hit && hit.toi < bestToi) { bestToi = hit.toi; bestBody = body; }
+  }
+  if (bestBody === null) return null;
+  const bStart = startById.get(bestBody.id)!;
+  const bEnd = endById.get(bestBody.id)!;
+  return { body: bestBody, state: refineSurfaceCrossing(prev, next, bStart.state.r, bEnd.state.r, bestBody.radius) };
 }
 
 export class PlanArc {
   private readonly line: SampledLine;
   private trajectory: DynamicTrajectory | null = null;
   private _samples: readonly KinematicState[] = [];
-  // 積分中に最初に天体表面へ達した状態。到達しなければ null。
-  private impactState: KinematicState | null = null;
+  // 積分中に最初に天体表面へ達した状態とその天体。到達しなければ null。
+  private impact: PlanImpact | null = null;
   // 積分中に最初に見つかった近地点・遠地点。apsisCenter が null、またはその極値へ
   // 区間が届かなければ null のまま。
   private periapsisState: KinematicState | null = null;
@@ -63,9 +126,9 @@ export class PlanArc {
     return this.line.line;
   }
 
-  // 積分中に最初に天体表面へ達した状態。到達しなければ null。
-  impactPoint(): KinematicState | null {
-    return this.impactState;
+  // 積分中に最初に天体表面へ達した状態と、その天体。到達しなければ null。
+  impactPoint(): PlanImpact | null {
+    return this.impact;
   }
 
   // 積分中に最初に見つかった近地点。中心天体へ接近し続けたまま表面へ達する
@@ -172,7 +235,7 @@ export class PlanArc {
     const trajectory = new DynamicTrajectory(state0);
     const sampleInterval = duration / C.PLAN_ARC_MAX_SAMPLES;
     this.truncated = false;
-    this.impactState = null;
+    this.impact = null;
     this.periapsisState = null;
     this.apoapsisState = null;
 
@@ -182,12 +245,13 @@ export class PlanArc {
         mergeAttractors(gravityBodiesAt(ephemeris, trajectory.state.t), dynamicAttractors));
       const sizingAttractors = attractorsNear(trajectory.state.r, sizingClassified);
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
-      const dt = Math.min(stepDt(trajectory.state.r, sizingAttractors), end - trajectory.state.t);
+      const dt = Math.min(stepDt(trajectory.state, sizingAttractors), end - trajectory.state.t);
       if (dt <= 1e-9) break;
       // 積分そのものはステップ中点(t + dt/2)の重力源で評価する。
       const stepClassified = classifyAttractors(
         mergeAttractors(gravityBodiesAt(ephemeris, trajectory.state.t + dt / 2), dynamicAttractors));
       const stepAttractors = attractorsNear(trajectory.state.r, stepClassified);
+      const prev = trajectory.state;
       trajectory.step(dt, stepAttractors, C.SHIP_BCINV, C.SHIP_SRP_COEFF, C.SHADOW_PENUMBRA, null, sampleInterval, duration);
 
       const { r, v } = trajectory.state;
@@ -198,16 +262,26 @@ export class PlanArc {
         break;
       }
       if (apsisCenter && (this.periapsisState === null || this.apoapsisState === null)) {
-        const crossing = apsisCrossing(apsisCenter, trajectory.prevState, trajectory.state);
+        const crossing = apsisCrossing(apsisCenter, prev, trajectory.state);
         if (crossing?.kind === 'periapsis' && this.periapsisState === null) this.periapsisState = crossing.state;
         if (crossing?.kind === 'apoapsis' && this.apoapsisState === null) this.apoapsisState = crossing.state;
       }
-      const body = containingBody(r, stepAttractors, 0);
-      const impacted = body !== null || isBurnedUp(r, stepAttractors, C.REENTRY_ALT);
-      if (impacted) {
-        this.impactState = body
-          ? surfaceCrossingState(trajectory.prevState, trajectory.state, body)
-          : trajectory.state;
+      // 区間を跨いだ天体表面接触は区間掃引で判定する — 終端1点だけを見ると、1ステップで
+      // 天体を跨いだ通過を見逃す。天体位置はステップ両端それぞれの時刻で引き直す(積分に
+      // 使った中点時刻の位置は接触判定には使わない)。
+      const startBodies = mergeAttractors(gravityBodiesAt(ephemeris, prev.t), dynamicAttractors);
+      const endBodies = mergeAttractors(gravityBodiesAt(ephemeris, trajectory.state.t), dynamicAttractors);
+      const startById = new Map(startBodies.map((a) => [a.id, a] as const));
+      const endById = new Map(endBodies.map((a) => [a.id, a] as const));
+      const impact = findImpact(prev, trajectory.state, stepAttractors, startById, endById);
+      if (impact) {
+        this.impact = impact;
+        this.truncated = true;
+        break;
+      }
+      if (isBurnedUp(r, stepAttractors, C.REENTRY_ALT)) {
+        const earth = stepAttractors.find((a) => a.id === 'earth');
+        if (earth) this.impact = { state: trajectory.state, body: earth };
         this.truncated = true;
         break;
       }
