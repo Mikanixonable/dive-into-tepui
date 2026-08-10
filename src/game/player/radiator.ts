@@ -2,13 +2,20 @@
 // 今フレームの放熱面積と太陽入射を答える。機体温度そのものは知らない
 // (温度の4乗則を持つのは ThermalSystem のみ)。
 import * as THREE from 'three/webgpu';
-import { Attitude, qFromAxisAngle, qInvert, qRotate } from '../../physics/attitude';
-import { Vec3, dot, len, sub, v3 } from '../../physics/vec3';
+import { Attitude, qFromAxisAngle, qRotate } from '../../physics/attitude';
+import { kinematicState } from '../../physics/kinematic-state';
+import { Vec3, add, cross, dot, v3 } from '../../physics/vec3';
 import {
   RADIATOR_DEPLOY_TILT,
-  RADIATOR_TIP_DISTANCE,
+  RADIATOR_HINGE,
+  RADIATOR_SEGMENT_LENGTH,
 } from '../../render/ships';
 import * as C from '../const';
+import { GameEntity } from '../game-entity/game-entity';
+import type { Attractor } from '../../physics/attractor';
+import type { Contact } from '../simulation/contact';
+import type { Stage } from '../stages/stage';
+import type { Player } from './player';
 import type { RadiatorSaveData } from '../save-data';
 
 export type RadiatorSide = 'up' | 'down';
@@ -22,6 +29,44 @@ function sideSign(side: RadiatorSide): number {
   return side === 'up' ? 1 : -1;
 }
 
+// theta(Y軸回転)だけ振れた、機体座標系 X 方向長さ x の変位。
+function yRotatedOffset(theta: number, x: number): Vec3 {
+  return v3(x * Math.cos(theta), 0, -x * Math.sin(theta));
+}
+
+// side の fold 番目の折りの中心位置(機体座標系)。RADIATOR_HINGE から蛇腹を辿り、
+// 各折りの根本から半セグメント先(export-models.mjs の panel.position と同じ位置)を返す。
+function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: number): Vec3 {
+  const sign = sideSign(side);
+  let origin = v3(sign * RADIATOR_HINGE.x, RADIATOR_HINGE.y, RADIATOR_HINGE.z);
+  for (let i = 0; i < fold; i++) {
+    origin = add(origin, yRotatedOffset(i % 2 === 0 ? even : odd, sign * RADIATOR_SEGMENT_LENGTH));
+  }
+  return add(origin, yRotatedOffset(fold % 2 === 0 ? even : odd, sign * RADIATOR_SEGMENT_LENGTH / 2));
+}
+
+// 蛇腹1折りぶんの接触代理。艦の姿勢と展開度から一意に決まる剛体の取り付けなので、
+// ベルトと違い Verlet 解法は要らず、毎フレーム RadiatorSystem.collisionFolds が置き直すだけでよい。
+export class RadiatorFold extends GameEntity {
+  constructor(readonly side: RadiatorSide, readonly foldIndex: number, private readonly owner: Player) {
+    super(kinematicState(0, v3(), v3()), new THREE.Object3D());
+    this.mass = 5;
+    this.radius = RADIATOR_SEGMENT_LENGTH / 2;
+    this.collides = true;
+    this.attachedTo = owner;
+  }
+
+  // 吊り元の艦、およびそれに取り付いた他の実体(放熱板の他の折り・ベルトの節点)とは接触しない。
+  contactsWith(other: GameEntity | Attractor): boolean {
+    if (other === this.owner) return false;
+    return !(other instanceof GameEntity && other.attachedTo === this.owner);
+  }
+
+  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+    this.owner.collideAtRadiator(this.side, other, contact, activeStage);
+  }
+}
+
 class Panel {
   deployTarget: 0 | 1 = 0;
   deploy = 0;
@@ -32,10 +77,12 @@ export class RadiatorSystem {
   // side ごとの損耗率(0=無傷, 1=全損)。放熱板パーツの残 HP から update() で受け取る。
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
   private readonly folds: Record<RadiatorSide, THREE.Object3D[]>;
+  // side ごとの接触代理。折り数まで遅延生成し、以後は使い回す。
+  private readonly foldProxies: Record<RadiatorSide, RadiatorFold[]> = { up: [], down: [] };
 
   // shipObj は自機メッシュ。上下それぞれ、ヒンジ Group の子孫から折り目 Group を
-  // RADIATOR_FOLD_COUNT 個解決して保持する。
-  constructor(shipObj: THREE.Object3D) {
+  // RADIATOR_FOLD_COUNT 個解決して保持する。owner は接触代理が帰結を委ねる先の艦。
+  constructor(shipObj: THREE.Object3D, private readonly owner: Player) {
     const collect = (side: RadiatorSide, baseName: string): THREE.Object3D[] => {
       const namePrefix = baseName + (side === 'up' ? 'Up' : 'Down');
       const found = Array.from({ length: C.RADIATOR_FOLD_COUNT }, (_, i) =>
@@ -90,7 +137,7 @@ export class RadiatorSystem {
       for (let i = 0; i < folds.length; i++) {
         const fold = folds[i];
         const rotY = i === 0 ? even : (i % 2 === 1 ? odd - even : even - odd);
-        
+
         if (fold) {
           fold.rotation.y = rotY;
           fold.visible = !broken;
@@ -130,23 +177,24 @@ export class RadiatorSystem {
     }, 0);
   }
 
-  // 展開度に応じて広がった被弾判定半径 [m]。全開でパネル先端の実距離まで届く。
-  hitRadius(): number {
-    const maxDeploy = Math.max(this.panels.up.deploy, this.panels.down.deploy);
-    return C.PLAYER_RADIUS + (RADIATOR_TIP_DISTANCE - C.PLAYER_RADIUS) * maxDeploy;
-  }
-
-  // 被弾位置が展開中の放熱板に当たっていればその side を返す。判定のみで状態は変えない
-  // (損耗は放熱板パーツの HP が正本なので、減らすのは所有者側の責務)。
-  sideHitBy(hitR: Vec3, shipR: Vec3, att: Attitude): RadiatorSide | null {
-    const worldOffset = sub(hitR, shipR);
-    const shipOffset = qRotate(qInvert(att.q), worldOffset);
-    if (len(shipOffset) <= C.PLAYER_HULL_RADIUS) return null;
-
-    const side: RadiatorSide = shipOffset.x >= 0 ? 'up' : 'down';
-    if (this.panels[side].deploy < C.RADIATOR_HITTABLE_DEPLOY) return null;
-    if (this.wear[side] >= 1) return null;
-    return side;
+  // RADIATOR_HITTABLE_DEPLOY 以上展開し、全損していない side の折りごとに接触代理を返す。
+  // t は接触代理の KinematicState.t に使う現在時刻(swept 判定の区間を成す)。
+  collisionFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): RadiatorFold[] {
+    const result: RadiatorFold[] = [];
+    for (const side of ['up', 'down'] as const) {
+      if (this.panels[side].deploy < C.RADIATOR_HITTABLE_DEPLOY || this.wear[side] >= 1) continue;
+      const proxies = this.foldProxies[side];
+      while (proxies.length < C.RADIATOR_FOLD_COUNT) proxies.push(new RadiatorFold(side, proxies.length, this.owner));
+      const { even, odd } = this.foldThetas(side);
+      for (const fold of proxies) {
+        const bodyOffset = foldLocalPosition(side, fold.foldIndex, even, odd);
+        const worldPos = add(shipR, qRotate(att.q, bodyOffset));
+        const worldVel = add(shipV, qRotate(att.q, cross(att.w, bodyOffset)));
+        fold.state = kinematicState(t, worldPos, worldVel);
+        result.push(fold);
+      }
+    }
+    return result;
   }
 
   // side の蛇腹の先端付近の world 座標を shipR 基準の Vec3 で返す。sync() 後の状態を前提にする。

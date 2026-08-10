@@ -52,7 +52,12 @@ export class Simulator {
       for (const p of this.entities.players) p.stepEnvironment(subDt, this.ephemeris, this.simTime);
       const attractorsNow = this.ephemeris.attractorsAt(this.simTime);
       if (resolveCollision) {
-        this.contactPhysics.resolveSubstep(this.simTime, this.entities.all(), attractorsNow, activeStage);
+        // 放熱板の折りは EntityManager に登録された実体ではなく、艦の姿勢から毎 substep
+        // 置き直す接触代理なので、参加者リストへこの場で合流させる。
+        const radiatorFolds = this.entities.players.flatMap(
+          (p) => p.alive ? p.collisionFolds(this.simTime) : []);
+        this.contactPhysics.resolveSubstep(
+          this.simTime, [...this.entities.all(), ...radiatorFolds], attractorsNow, activeStage);
       }
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
