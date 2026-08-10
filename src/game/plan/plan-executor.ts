@@ -226,7 +226,9 @@ export class PlanExecutor {
   private finish(ship: PlanExecutorShip, node: KinematicState): void {
     const residual = len(sub(node.v, ship.state.v));
     this.hud.hint(`マニューバ自動実行完了(残差Δv ${residual.toFixed(1)} m/s)`);
-    ship.plan.consumeNodesUpTo(node.t, ship.state);
+    // 遮断時刻までに実行時刻を過ぎたノードはまとめて消化される。飛ばした件数は伝える。
+    const consumed = ship.plan.consumeNodesUpTo(node.t, ship.state);
+    if (consumed > 1) this.hud.hint(`実行時刻を過ぎたノード ${consumed - 1} 件を破棄`);
     this.clearState(ship);
   }
 
