@@ -270,11 +270,13 @@ export class Game {
     this.targeter.clearTargets();
   }
 
-  // ship が null なら未配置状態(Creative の全滅/未収容)へ戻す。
+  // ship が null なら未配置状態(Creative の全滅/未収容、または操作対象の手動解除)へ戻す。
   setActivePlayerOrNull(ship: Player | null): void {
     if (ship) this.setActivePlayer(ship);
     else {
+      this.player?.clearTransientCommands();
       this.player = null;
+      this.cameraSystem.setActivePlayer(null);
       this.editor.setActivePlayer(null);
       this.viewManager.setView('map');
     }
