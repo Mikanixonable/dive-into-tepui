@@ -101,7 +101,7 @@ export class CameraSystem {
     this.combatCamera = new CombatCameraSystem(_hud, sfx, player);
     this.overviewCamera = new OverviewCamera(_hud, sfx, ephemeris);
     // 広範囲視点の操作パネルと各操作のコールバック
-    this.overviewCameraPanel = new OverviewCameraPanel(_hud.root);
+    this.overviewCameraPanel = new OverviewCameraPanel(_hud.layers.panel);
     this.overviewCameraPanel.onBodyClassToggle = (key, on) => {
       this._bodyClassToggles = { ...this._bodyClassToggles, [key]: on };
     };

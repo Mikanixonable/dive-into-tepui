@@ -135,7 +135,7 @@ export class Game {
       ? new Ephemeris(undefined, undefined, SIM_EPOCH_ET, {}, absoluteEphemeris, SIM_EPOCH_JD_TDB)
       : new Ephemeris(ephemerisConfig.registry, ephemerisConfig.originId, ephemerisConfig.epochOffsetSec);
 
-    this.markerManager = new MarkerManager(this._hud.root, this._hud.svgOverlay);
+    this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
     this.enemyMarkers = new GroupedMarkers(this.markerManager, C.MARKER_CLUSTER_PX);
     this.leadMarkers = new LeadMarkers(this.markerManager);
     this.equatorNodeMarkers = new EquatorNodeMarkers(this.markerManager, this.ephemeris);
@@ -160,9 +160,9 @@ export class Game {
 
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene, this.settingsPanel);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
-    this.navball = new Navball(this._hud.root);
+    this.navball = new Navball(this._hud.layers.panel);
     this.environment = new EnvironmentScene(this._scene, this.ephemeris);
-    this.displayTimeManager = new DisplayTimeManager(this._hud.root);
+    this.displayTimeManager = new DisplayTimeManager(this._hud.layers.panel);
     this.editor = new PlanEditor(
       this._hud,
       this._sfx,
@@ -236,9 +236,9 @@ export class Game {
       this.entities, this.mapPicker, this.cameraSystem, this.viewManager,
     );
     this.mapPicker.setDocking(this.docking);
-    this.viewBadge = new ViewBadge(this._hud.root, this.viewManager);
+    this.viewBadge = new ViewBadge(this._hud.layers.notify, this.viewManager);
     this.frameControls = new FrameControls(
-      this._hud.root, this.ephemeris, this.cameraSystem.overviewCamera, this.editor.planDisplay,
+      this._hud.layers.panel, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera, this.editor.planDisplay,
     );
 
     // 暫定値: cameraSystem はまだ update() を経ていないため activeCameraPos が定まらない。

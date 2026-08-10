@@ -85,7 +85,7 @@ export class MapPicker {
       const handler = this.handlers[target.kind];
       if (handler) handler.run(act, target);
     };
-    this.objectListPanel = new ObjectListPanel(hud.root);
+    this.objectListPanel = new ObjectListPanel(hud.layers.panel);
     this.objectListPanel.onSelect = (id) => {
       this.cameraSystem.overviewCamera.setFocusTarget({ kind: 'object', id });
       this.hud.hint(`${this.items.find((i) => i.id === id)?.name ?? id} にフォーカス`);
@@ -164,7 +164,7 @@ export class MapPicker {
       existing.win.bringToFront();
       return;
     }
-    const w = new PropertyWindow<MenuAction>(this.hud.root, clientX, clientY, this.buildContent(target, simTime));
+    const w = new PropertyWindow<MenuAction>(this.hud.layers.window, clientX, clientY, this.buildContent(target, simTime));
     const entry: WindowEntry = { win: w, target };
     this.windows.set(key, entry);
     if (!w.clipped) {

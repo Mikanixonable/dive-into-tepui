@@ -70,9 +70,9 @@ export class CreativeStage extends Stage {
     this.previewOrbitLine = new OrbitLine(0xffffff, 0.6);
     scene.add(this.previewOrbitLine.line);
 
-    this.placerPanel = new ShipPlacerPanel(hud.root, ephemeris);
+    this.placerPanel = new ShipPlacerPanel(hud.layers.panel, ephemeris);
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
-    this.logisticsPanel = this.buildLogisticsPanel(hud.root);
+    this.logisticsPanel = this.buildLogisticsPanel(hud.layers.panel);
   }
 
   // 補給の自動投入トグルを1つ載せたパネルを組み立て、マップ左ドックへ追加して返す。
