@@ -4,14 +4,27 @@ export interface PerfCountSource {
   perfCounts(): {
     enemies: number; bullets: number; casings: number; debris: number;
     predicted: number; predictComplete: number; predictDiscarded: number;
+    mapMode: boolean; mapItems: number; mapLabels: number;
+    simSubsteps: number; gravitySources: number; predictorSteps: number;
   };
+}
+
+interface PhaseStats {
+  sum: number;
+  max: number;
+  samples: number[];
+}
+
+function newPhaseStats(): PhaseStats {
+  return { sum: 0, max: 0, samples: [] };
 }
 
 export class PerfMeter {
   readonly on: boolean;
   private readonly el: HTMLDivElement | null;
-  private simMs = 0;
-  private renderMs = 0;
+  private readonly updateStats = newPhaseStats();
+  private readonly syncStats = newPhaseStats();
+  private readonly renderStats = newPhaseStats();
   private frames = 0;
   private lastFlush = performance.now();
 
@@ -21,12 +34,33 @@ export class PerfMeter {
     this.el = this.on ? this.createElement() : null;
   }
 
-  // このフレームの update/render 所要時間を積算し、表示更新のタイミングなら flush する。
-  record(simMs: number, renderMs: number, now: number): void {
-    this.simMs += simMs;
-    this.renderMs += renderMs;
+  // このフレームの update/sync/render 所要時間を積算し、表示更新のタイミングなら flush する。
+  // 計測表示を有効にした時だけ呼ばれるので、通常プレイにはサンプル配列の費用を持ち込まない。
+  record(updateMs: number, syncMs: number, renderMs: number, now: number): void {
+    this.addSample(this.updateStats, updateMs);
+    this.addSample(this.syncStats, syncMs);
+    this.addSample(this.renderStats, renderMs);
     this.frames++;
     this.flush(now);
+  }
+
+  private addSample(stats: PhaseStats, value: number): void {
+    stats.sum += value;
+    stats.max = Math.max(stats.max, value);
+    stats.samples.push(value);
+  }
+
+  private phaseText(label: string, stats: PhaseStats, frames: number): string {
+    const sorted = [...stats.samples].sort((a, b) => a - b);
+    const p95Index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * 0.95) - 1));
+    const p95 = sorted[p95Index] ?? 0;
+    return `${label} ${(stats.sum / frames).toFixed(2)}/${p95.toFixed(2)}/${stats.max.toFixed(2)}ms`;
+  }
+
+  private resetStats(stats: PhaseStats): void {
+    stats.sum = 0;
+    stats.max = 0;
+    stats.samples.length = 0;
   }
 
   // 500ms ごとに蓄積した計測値から fps・処理時間・エンティティ数を表示へ反映する。
@@ -39,13 +73,18 @@ export class PerfMeter {
     // 表示テキストへまとめる
     this.el.textContent =
       `fps ${((n * 1000) / (now - this.lastFlush)).toFixed(0)}  ` +
-      `sim ${(this.simMs / n).toFixed(2)}ms  render ${(this.renderMs / n).toFixed(2)}ms\n` +
+      `${this.phaseText('update', this.updateStats, n)} avg/p95/max  ` +
+      `${this.phaseText('sync', this.syncStats, n)} avg/p95/max\n` +
+      `${this.phaseText('render', this.renderStats, n)} avg/p95/max\n` +
       `enemies ${c.enemies}  bullets ${c.bullets}  casings ${c.casings}  debris ${c.debris}\n` +
+      `map ${c.mapMode ? 'on' : 'off'} items ${c.mapItems} labels ${c.mapLabels}  ` +
+      `substeps ${c.simSubsteps} sources ${c.gravitySources}  predictSteps ${c.predictorSteps}\n` +
       `predict ${c.predictComplete}/${c.predicted}  discard ${c.predictDiscarded}` +
       (mem ? `\nheap ${(mem.usedJSHeapSize / 1048576).toFixed(1)} MB` : '');
     // 次の集計期間へ向けてリセットする
-    this.simMs = 0;
-    this.renderMs = 0;
+    this.resetStats(this.updateStats);
+    this.resetStats(this.syncStats);
+    this.resetStats(this.renderStats);
     this.frames = 0;
     this.lastFlush = now;
   }

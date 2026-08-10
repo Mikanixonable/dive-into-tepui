@@ -154,10 +154,11 @@ function startAnimationLoop(game: Game, perf: PerfMeter, autoSave: AutoSave): vo
       autoSave.update(game);
       const t1 = perf.on ? performance.now() : 0;
       game.sync();
-      game.render();
       const t2 = perf.on ? performance.now() : 0;
+      game.render();
+      const t3 = perf.on ? performance.now() : 0;
       if (perf.on) {
-        perf.record(t1 - t0, t2 - t1, t2);
+        perf.record(t1 - t0, t2 - t1, t3 - t2, t3);
       }
       completedFrames++;
       // Dependency-free browser smoke test が「例外なく60フレーム完走」を判定する印。
