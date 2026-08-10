@@ -35,6 +35,7 @@ export function chooseTickInterval(durationSec: number, maxTicks: number): numbe
 // [0, durationSec] を chooseTickInterval が選ぶ間隔の倍数で刻んだ目盛り列を返す。
 // durationSec ちょうどが間隔の倍数でない場合、その端には目盛りを置かない。
 export function buildTicks(durationSec: number, maxTicks: number): readonly DisplayTick[] {
+  // 非有限値では加算のループが終わらないので、目盛りを置かずに返す。
   if (!isFinite(durationSec) || durationSec <= 0) return [];
   const interval = chooseTickInterval(durationSec, maxTicks);
   const ticks: DisplayTick[] = [];
