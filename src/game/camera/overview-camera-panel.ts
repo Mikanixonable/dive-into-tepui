@@ -1,4 +1,4 @@
-import { HudToggle, IconToggleButton } from '../hud/buttons';
+import { IconToggleButton } from '../hud/buttons';
 import { hudDock } from '../hud/dom';
 import { BodyClassToggles } from '../celestial/body-visibility';
 
@@ -13,18 +13,20 @@ type BodyClassRow = {
 
 const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
   { label: '惑星', iconKey: 'planetIcon', labelKey: 'planetLabel', orbitKey: 'planetOrbit' },
-  { label: '衛星', iconKey: 'satelliteIcon', labelKey: 'satelliteLabel', orbitKey: null },
+  { label: '衛星', iconKey: 'satelliteIcon', labelKey: 'satelliteLabel', orbitKey: 'satelliteOrbit' },
   { label: '準惑星', iconKey: 'dwarfIcon', labelKey: 'dwarfLabel', orbitKey: 'dwarfOrbit' },
   { label: '小天体', iconKey: 'smallBodyIcon', labelKey: 'smallBodyLabel', orbitKey: 'smallBodyOrbit' },
   { label: 'ラグランジュ点', iconKey: 'lagrangeIcon', labelKey: 'lagrangeLabel', orbitKey: null },
 ];
+const ENTITY_ROWS: readonly BodyClassRow[] = [
+  { label: '宇宙船', iconKey: 'playerIcon', labelKey: 'playerLabel', orbitKey: 'playerOrbit' },
+  { label: '敵', iconKey: 'shipIcon', labelKey: 'shipLabel', orbitKey: 'shipOrbit' },
+  { label: '弾薬', iconKey: 'ammoIcon', labelKey: 'ammoLabel', orbitKey: 'ammoOrbit' },
+  { label: '基地', iconKey: 'baseIcon', labelKey: 'baseLabel', orbitKey: 'baseOrbit' },
+];
 
 export class OverviewCameraPanel {
-  onAmmoToggle: ((show: boolean) => void) | null = null;
   onBodyClassToggle: ((key: keyof BodyClassToggles, on: boolean) => void) | null = null;
-
-  showAmmo = false;
-  private readonly ammoToggle: HudToggle;
   private readonly bodyClassButtons: readonly (readonly [keyof BodyClassToggles, IconToggleButton])[];
 
   private readonly panel: HTMLElement;
@@ -36,23 +38,16 @@ export class OverviewCameraPanel {
     this.panel.className = 'panel';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
-    title.textContent = 'MAP VIEW';
+    title.textContent = '表示';
     this.panel.appendChild(title);
-
-    this.ammoToggle = new HudToggle('弾薬', (on) => {
-      this.showAmmo = on;
-      this.onAmmoToggle?.(on);
-    });
-    this.ammoToggle.setOn(false);
-    this.panel.appendChild(this.ammoToggle.element);
 
     // マップに出す天体のクラスごとに、アイコン(点)・ラベル(名前)・軌道線を個別に切り替える。
     // 恒星・惑星と、フォーカス中の系の親子は常に出るので、ここで足すのは「その外まで見たい」
     // という明示の意思表示にあたる。
     const buttons: (readonly [keyof BodyClassToggles, IconToggleButton])[] = [];
-    for (const row of BODY_CLASS_ROWS) {
+    for (const row of [...BODY_CLASS_ROWS, ...ENTITY_ROWS]) {
       const rowEl = document.createElement('div');
-      rowEl.className = 'body-class-row';
+      rowEl.className = `body-class-row${row.label === '惑星' ? ' planet-row' : ''}`;
       const titleEl = document.createElement('span');
       titleEl.className = 'body-class-title';
       titleEl.textContent = row.label;

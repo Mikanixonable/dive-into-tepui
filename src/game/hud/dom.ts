@@ -219,6 +219,8 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .body-class-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 #hud .body-class-row .body-class-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 52px; }
 #hud .body-class-row .body-class-btns { display: flex; gap: 4px; }
+#hud .body-class-row.planet-row .body-class-title { color: ${ACCENT_SOFT}; }
+#hud .body-class-row.planet-row .icon-toggle-btn { border-color: rgba(${ACCENT_RGB}, .45); }
 #hud .hud-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 #hud .hud-toggle .toggle-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; }
 #hud .hud-toggle .toggle-track {
