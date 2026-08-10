@@ -154,15 +154,17 @@ export class GameEntity {
   // 乖離判定の許容量 [m]。保持サンプル数の上限で間引きが粗くなると at() の補間そのものが
   // 誤差を持つので、その誤差(間引き間隔の4乗に比例)まで許容量を広げる — 広げないと、
   // 実状態と一致している列を毎フレーム破棄して予測が永久に完成しなくなる。coarsening^4 は
-  // 表示期間を伸ばすと発散するので、中心天体からの距離に対する一定割合で頭打ちにする。
+  // 表示期間を伸ばすと発散するので、中心天体からの距離に対する一定割合で頭打ちにし、
+  // さらに PREDICT_RESET_DIST を下回らせない — 小さな天体のすぐ近くでは割合の上限自体が
+  // 補間誤差より小さくなり、頭打ちが逆に永久破棄を招くため。
   private resyncTolerance(attractors: readonly Attractor[], horizon: number): number {
+    const center = strongestAttractor(this.state.r, attractors);
     const period = localOrbitPeriod(this.state.r, attractors);
     const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
     const coarsening = Math.max(1, (horizon / C.PREDICT_MAX_SAMPLES) / (span / C.TRAJECTORY_SAMPLES_PER_REV));
-    const raw = Math.max(C.PREDICT_RESET_DIST, C.PREDICT_SAMPLE_ERROR * coarsening ** 4);
-    const center = strongestAttractor(this.state.r, attractors);
+    const raw = C.PREDICT_SAMPLE_ERROR * coarsening ** 4;
     const cap = len(sub(this.state.r, center.state.r)) * RESYNC_TOLERANCE_MAX_ORBIT_RATIO;
-    return Math.min(raw, cap);
+    return Math.max(C.PREDICT_RESET_DIST, Math.min(raw, cap));
   }
 
   // 予測列の先端を、呼び出し側が確定させた重力源 attractors のもとで dt ぶん1ステップ伸ばす。
