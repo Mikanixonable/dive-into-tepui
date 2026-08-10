@@ -26,14 +26,23 @@ export class EntityManager {
   readonly players: Player[] = [];
   readonly bases: Base[] = [];
 
+  // all()/otherEntities() はSimulatorの各substepから何度も呼ばれる。配列の内容が変わった
+  // ときだけ結合し、Predictor→attractors の入れ子呼び出しでも同じ安定配列を返す。
+  private collectionRevision = 0;
+  private cachedRevision = -1;
+  private readonly cachedOtherEntities: GameEntity[] = [];
+  private readonly cachedAllEntities: GameEntity[] = [];
+
   // 敵を登録する。
   addEnemy(enemy: Enemy): void {
     this.enemies.push(enemy);
+    this.invalidateCaches();
   }
 
   // 自機を登録する。
   addPlayer(player: Player): void {
     this.players.push(player);
+    this.invalidateCaches();
   }
 
   // 自機を取り除き、メッシュを破棄する。
@@ -41,6 +50,7 @@ export class EntityManager {
     const i = this.players.indexOf(player);
     if (i < 0) return;
     this.players.splice(i, 1);
+    this.invalidateCaches();
     player.dispose();
   }
 
@@ -49,6 +59,7 @@ export class EntityManager {
     const i = this.players.indexOf(player);
     if (i < 0) return;
     this.players.splice(i, 1);
+    this.invalidateCaches();
   }
 
   // ターゲットとなり得るエンティティの一覧を取得する。
@@ -81,6 +92,7 @@ export class EntityManager {
   // 弾薬ピックアップを登録する。
   addAmmo(ammo: Ammo): void {
     this.ammos.push(ammo);
+    this.invalidateCaches();
   }
 
   // 小惑星を登録する。上限を超えた分は古いものから破棄する。
@@ -91,6 +103,7 @@ export class EntityManager {
   // 基地を登録する。
   addBase(base: Base): void {
     this.bases.push(base);
+    this.invalidateCaches();
   }
 
   // ID で名指された基地を返す。見つからなければ null。
@@ -102,11 +115,17 @@ export class EntityManager {
   private addCapped<T extends GameEntity>(arr: T[], entity: T, cap: number): void {
     arr.push(entity);
     if (arr.length > cap) arr.shift()!.dispose();
+    this.invalidateCaches();
   }
 
-  // 自機以外の保持エンティティを1つの配列にまとめて返す。
-  private otherEntities(): GameEntity[] {
-    return [
+  private invalidateCaches(): void {
+    this.collectionRevision++;
+  }
+
+  private rebuildCachesIfNeeded(): void {
+    if (this.cachedRevision === this.collectionRevision) return;
+    this.cachedOtherEntities.length = 0;
+    this.cachedOtherEntities.push(
       ...this.enemies,
       ...this.bullets,
       ...this.ammos,
@@ -114,12 +133,22 @@ export class EntityManager {
       ...this.casings,
       ...this.debris,
       ...this.bases,
-    ];
+    );
+    this.cachedAllEntities.length = 0;
+    this.cachedAllEntities.push(...this.cachedOtherEntities, ...this.players);
+    this.cachedRevision = this.collectionRevision;
+  }
+
+  // 自機以外の保持エンティティを1つの配列にまとめて返す。
+  private otherEntities(): GameEntity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cachedOtherEntities;
   }
 
   // 保持する全エンティティを1つの配列にまとめて返す。
   all(): GameEntity[] {
-    return [...this.otherEntities(), ...this.players];
+    this.rebuildCachesIfNeeded();
+    return this.cachedAllEntities;
   }
 
   // 重力を持つ(mu !== 0 かつ生存中の)エンティティを返す。GameEntity は id/radius/mu/degree2/
@@ -144,11 +173,16 @@ export class EntityManager {
   // in-place フィルタ: 配列の参照はそのまま保つ。
   private prune<T extends GameEntity>(arr: T[]): void {
     let w = 0;
+    let changed = false;
     for (const x of arr) {
-      if (!x.alive) x.dispose();
+      if (!x.alive) {
+        x.dispose();
+        changed = true;
+      }
       else arr[w++] = x;
     }
     arr.length = w;
+    if (changed) this.invalidateCaches();
   }
 
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
@@ -170,5 +204,6 @@ export class EntityManager {
     this.ammos.length = 0;
     this.asteroids.length = 0;
     this.bases.length = 0;
+    this.invalidateCaches();
   }
 }
