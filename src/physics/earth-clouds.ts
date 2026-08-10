@@ -85,7 +85,9 @@ export interface CloudUv {
 export function directionToCloudUv(direction: Vec3): CloudUv {
   const d = norm(direction);
   return {
-    u: wrapUnit(Math.atan2(d.z, d.x) / TWO_PI + 0.5),
+    // SphereGeometry の x=-cos(phi), z=sin(phi) と同じ経度。RepeatWrappingで
+    // phi=0/2π の端を接続するため、atan2 の負値はwrapする。
+    u: wrapUnit(Math.atan2(d.z, -d.x) / TWO_PI),
     v: Math.acos(Math.max(-1, Math.min(1, d.y))) / Math.PI,
   };
 }
