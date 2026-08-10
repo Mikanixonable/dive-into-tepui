@@ -1,44 +1,36 @@
-// 実シミュレーションの更新(軌道積分・弾命中・剛体接触・慣性姿勢積分)。simTime/lastSimDt を保持する。
+// 実シミュレーションの更新(軌道積分・剛体接触・慣性姿勢積分)。simTime/lastSimDt を保持する。
 import { stepAttitude } from '../../physics/attitude';
 import * as C from '../const';
 import { attractorsAt, attractorsNear, classifyAttractors } from './attractors';
-import { HitSystem } from './hit';
-import { EffectsSystem } from '../vfx/effects-system';
 import { EntityManager } from './entity-manager';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
 import { ContactPhysics } from './contact';
-import { Sfx } from '../../audio/sfx';
 import { R_EARTH } from '../../physics/solar-system';
 import { v3 } from '../../physics/vec3';
 import { adaptiveSimulationMaxStep, simulationStepDuration } from './time-step';
 
 export class Simulator {
-  readonly hitSystem: HitSystem;
   readonly contactPhysics: ContactPhysics;
 
   simTime = 0;
   lastSimDt = 0;
 
-  // hitSystem/contactPhysics を構築する。entities/ephemeris/sfx は参照として保持する。
+  // entities/ephemeris は参照として保持する。
   constructor(
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
-    private readonly _sfx: Sfx,
-    private readonly fx: EffectsSystem,
   ) {
-    this.hitSystem = new HitSystem(this.fx, this._sfx);
     this.contactPhysics = new ContactPhysics();
   }
 
-  // dt 分のシミュレーションを進める。simDt をサブステップに分割して積分し、弾命中判定・剛体接触・姿勢積分を行う。
+  // dt 分のシミュレーションを進める。simDt をサブステップに分割して積分し、剛体接触(弾命中含む)・姿勢積分を行う。
   advance(
     dt: number,
     simDt: number,
     player: Player | null,
     activeStage: Stage,
-    bulletCollision: boolean,
     resolveCollision: boolean,
     doSubstep: boolean,
   ): void {
@@ -59,11 +51,8 @@ export class Simulator {
       this.stepAttitudes(subDt);
       for (const p of this.entities.players) p.stepEnvironment(subDt, this.ephemeris, this.simTime);
       activeStage.applySimulationEvents(this.simTime);
-      // 期限切れ弾が同じsubstepの命中判定へ進まないよう、既知境界の直後に回収する。
+      // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
       this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3(), this.ephemeris.attractorsAt(this.simTime));
-      if (bulletCollision) {
-        this.hitSystem.checkBulletHits(this.simTime, player, activeStage, this.entities);
-      }
     }
 
     if (resolveCollision && player) {

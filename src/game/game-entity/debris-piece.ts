@@ -1,15 +1,17 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
-import { KinematicState } from '../../physics/kinematic-state';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Attractor } from '../../physics/attractor';
 import { Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';
 import type { Sfx } from '../../audio/sfx';
+import type { EffectsSystem } from '../vfx/effects-system';
 import { buildBarrelMesh, buildCasingMesh, buildDebrisMesh, buildMagazineFrame } from '../../render/ships';
 import { GameEntity } from './game-entity';
 import { Player } from '../player/player';
+import { Bullet } from './bullet';
 
 // DebrisPiece の見た目・振る舞いの種別。
 export type DebrisKind =
@@ -39,6 +41,7 @@ export class DebrisPiece extends GameEntity {
     readonly debrisKind: DebrisKind,
     att: Attitude,
     private readonly _sfx: Sfx,
+    private readonly _fx: EffectsSystem,
     radius?: number,
     scene?: THREE.Scene,
   ) {
@@ -55,8 +58,13 @@ export class DebrisPiece extends GameEntity {
 
   get kind(): DebrisKind['kind'] { return this.debrisKind.kind; }
 
-  // 薬莢が艦(操作対象に限らず Player 全般)に触れたときだけ、からんと音を鳴らす。
-  collideWith(other: GameEntity | Attractor, _contact: Contact): void {
+  // 弾が当たったらガスパフを噴いて消える(弾自身の消滅は Bullet.collideWith が書く)。
+  // 薬莢が艦(操作対象に限らず Player 全般)に触れたときは、からんと音を鳴らす。
+  collideWith(other: GameEntity | Attractor, contact: Contact): void {
+    if (other instanceof Bullet) {
+      this._fx.spawnGasPuff(kinematicState(contact.selfState.t, contact.point, contact.selfState.v));
+      return;
+    }
     if (this.debrisKind.kind === 'casing' && other instanceof Player) this._sfx.clank();
   }
 
