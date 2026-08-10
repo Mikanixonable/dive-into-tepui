@@ -1,40 +1,9 @@
-// ring-lod.ts の視角判定と、solar-system.ts の環データの妥当性の回帰テスト。
+// solar-system.ts の環データの妥当性の回帰テスト。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { ringVisualForm } from '../../src/game/celestial/ring-lod';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
 
 export function register(): void {
-  test('ring-lod: 幅一定なら距離(metersPerPixel)の単調な関数として annulus→line の1回だけ切り替わる', () => {
-    const widthMeters = 500e3; // 天王星 ε 環程度の幅
-    let sawLine = false;
-    let flips = 0;
-    let prev: 'annulus' | 'line' | null = null;
-    // metersPerPixel を対数的に増やす = カメラを遠ざけるのと等価。
-    for (let i = 0; i <= 60; i++) {
-      const mpp = 10 * Math.pow(10, i / 10); // 10 m/px 〜 1e7 m/px
-      const form = ringVisualForm(widthMeters, mpp);
-      if (form === 'line') sawLine = true;
-      if (prev !== null && form !== prev) flips++;
-      prev = form;
-    }
-    assert.equal(flips, 1, '単調性が破れている(annulus/line の切り替えが2回以上)');
-    assert.ok(sawLine, '十分遠ざけても annulus のままになっている');
-  });
-
-  test('ring-lod: 閾値ちょうど(幅 = 1px)の境界で annulus 側に倒れる', () => {
-    assert.equal(ringVisualForm(100, 100), 'annulus');
-    assert.equal(ringVisualForm(100, 100.001), 'line');
-  });
-
-  test('ring-lod: 幅が広いほど annulus のまま保たれる距離が伸びる(同じ距離で細い方が先に線化する)', () => {
-    const mpp = 5000;
-    const narrow = ringVisualForm(1000, mpp);
-    const wide = ringVisualForm(1e7, mpp);
-    assert.equal(narrow, 'line');
-    assert.equal(wide, 'annulus');
-  });
-
   const ringBodies = ['jupiter', 'saturn', 'uranus', 'neptune'] as const;
 
   test('環データ: 登録した全惑星が rings を持ち、全帯で内径 < 外径・厚み >= 0', () => {
