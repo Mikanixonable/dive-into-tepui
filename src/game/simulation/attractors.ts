@@ -137,3 +137,17 @@ export function attractorsNear(pos: Vec3, classified: ClassifiedAttractors): rea
   const nearby = classified.grid.neighbors(pos);
   return nearby.length === 0 ? classified.always : [...classified.always, ...nearby];
 }
+
+// attractorsNear と同じ順序の一覧を out へ書き込む再利用版。out は呼び出し側が所有し、
+// この呼び出しの完了後に保持してはいけない。既存の attractorsNear は、PlanArc などが
+// 積分後の判定まで配列を保持できるよう、新規配列を返すAPIとして残す。
+export function attractorsNearInto(
+  pos: Vec3,
+  classified: ClassifiedAttractors,
+  out: Attractor[],
+): Attractor[] {
+  out.length = 0;
+  for (const a of classified.always) out.push(a);
+  classified.grid.appendNeighborsInto(pos, out);
+  return out;
+}
