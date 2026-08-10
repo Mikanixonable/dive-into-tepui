@@ -12,7 +12,6 @@ import type { EntityManager } from '../simulation/entity-manager';
 import type { Contact } from '../simulation/contact';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { fmtMarkerDist } from '../hud/utils';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
@@ -489,7 +488,7 @@ export class Player extends Ship {
       vel,
       priority,
       name: this.displayName,
-      detail: fmtMarkerDist(dist),
+      detail: '',
       bearingColor: '#00ffff', // 自機/味方と分かりやすいようにシアン
       color: '#00ffff',
       symMarkup: true,
