@@ -235,8 +235,8 @@ export class PlayerFire {
   manualReload(): boolean {
     if (this.cooldown > 0) return false;
 
-    // 予備マガジンがあり、かつ実際に補充の余地があるときだけリロードする
-    const canReload = this.mags > 0 && (this.rounds < C.MAG_ROUNDS || this.barrel < C.MAGS_PER_BARREL);
+    // 予備マガジンがあり、かつ装填中のマガジンに実際に補充の余地があるときだけリロードする
+    const canReload = this.mags > 0 && this.rounds < C.MAG_ROUNDS;
     if (!canReload) return false;
     this.mags--;
     this.rounds = C.MAG_ROUNDS;
