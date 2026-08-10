@@ -8,7 +8,7 @@ import { SOLAR_SYSTEM, bodyDef, primaryOf } from '../../src/physics/solar-system
 import {
   TRIANGULAR_STABILITY_MASS_RATIO, collinearClearanceRatio, hasStableTriangularPoints,
 } from '../../src/physics/lagrange';
-import { DEFAULT_BODY_CLASS_TOGGLES, systemChainAt, systemMembersAt, visibleBodyIds } from '../../src/game/celestial/body-visibility';
+import { DEFAULT_BODY_CLASS_TOGGLES, isPositionInFocusedSystem, systemChainAt, systemMembersAt, visibleBodyIds } from '../../src/game/celestial/body-visibility';
 import { v3, addScaled } from '../../src/physics/vec3';
 
 const MIN_CLEARANCE = 10;
@@ -146,6 +146,19 @@ export function register(): void {
     // フォーカス由来の親子・兄弟の追加が無いことを、既定トグルの衛星で確認する。
     const visibleDefault = visibleBodyIds(SOLAR_SYSTEM, undefined, DEFAULT_BODY_CLASS_TOGGLES);
     assert.ok(!visibleDefault.has('moon'), 'フォーカスが無ければ親子関係による追加も無い');
+  });
+
+  test('visibility: フォーカス天体の系に属する位置だけを player 表示対象にする', () => {
+    const e = new Ephemeris();
+    const attractors = e.attractorsAt(0);
+    const moon = e.positionOf('moon', 0);
+    const saturn = e.positionOf('saturn', 0);
+    // 地球周回と、その子である月周回は地球フォーカスで表示する。一方で土星近傍は除く。
+    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'earth', v3(7e6, 0, 0), attractors));
+    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'earth', addScaled(moon, v3(1, 0, 0), 1e6), attractors));
+    assert.ok(!isPositionInFocusedSystem(SOLAR_SYSTEM, 'earth', addScaled(saturn, v3(1, 0, 0), 1e8), attractors));
+    // 天体以外のフォーカスは系を特定できないため、表示を絞らない。
+    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'player-1', addScaled(saturn, v3(1, 0, 0), 1e8), attractors));
   });
 
   test('systemChainAt: 月の近くでは月→地球→太陽の系列になる', () => {

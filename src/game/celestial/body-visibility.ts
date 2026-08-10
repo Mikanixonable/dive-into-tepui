@@ -65,6 +65,30 @@ export function sameSystemIds(registry: CelestialRegistry, focusId: AttractorId 
   return ids;
 }
 
+// focus 天体を根にした系に、position の主引力天体が属するかを返す。地球をフォーカス
+// している間は地球周回と月周回を含め、土星周回のような別の惑星系は除く。画面上の遮蔽や
+// カメラ距離では判定しないため、地球の裏側に回った機体も引き続き対象になる。
+//
+// 天体以外(艦船・固定点など)へフォーカスしている場合は、どの天体系を表示するかを恣意的に
+// 決めないため絞り込まない。これにより、対象艦へフォーカスした瞬間に他艦が消えない。
+export function isPositionInFocusedSystem(
+  registry: CelestialRegistry,
+  focusId: AttractorId | undefined,
+  position: Vec3,
+  attractors: readonly Attractor[],
+): boolean {
+  if (focusId === undefined || registry[focusId] === undefined) return true;
+
+  let current: AttractorId | null = strongestAttractor(position, attractors).id;
+  // 壊れた親子定義でも停止するよう、レジストリ数を上限にする。
+  for (let i = 0; current !== null && i <= Object.keys(registry).length; i++) {
+    if (current === focusId) return true;
+    if (registry[current] === undefined) return false;
+    current = primaryOf(registry, current);
+  }
+  return false;
+}
+
 // focus の親を辿って主星まで遡った id の列(focus 自身を含む)。
 function ancestorsOf(registry: CelestialRegistry, focusId: AttractorId): AttractorId[] {
   const chain: AttractorId[] = [];

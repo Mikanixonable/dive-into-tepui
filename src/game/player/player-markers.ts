@@ -2,11 +2,12 @@
 // 機首ボアサイト、広範囲視点では自機位置マーカーを出す。
 import { Attitude, qRotate } from '../../physics/attitude';
 import { KinematicState, orbitAxes } from '../../physics/kinematic-state';
-import { scale, v3, Vec3 } from '../../physics/vec3';
+import { scale, v3 } from '../../physics/vec3';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
-import { isOccluded } from '../../physics/occlusion';
 import type { Attractor } from '../../physics/attractor';
+import type { CelestialRegistry } from '../../physics/solar-system';
+import { isPositionInFocusedSystem } from '../celestial/body-visibility';
 
 // 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;
@@ -20,14 +21,14 @@ export class PlayerMarkers {
   // currentState: 現在の自機状態(方向マーカー・ボアサイト用)。
   // displayState: スライダー位置の状態(null なら予測期間超過)、▲ マーカー用。
   // displayName は改名可能なので毎フレーム引数で受け取り、保持しない。
-  sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, alive: boolean, overviewMode: boolean, isActive: boolean, project: ProjectFn, scaleFn: ScaleFn, displayName: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0, cameraPos?: Vec3, attractors: readonly Attractor[] = []): void {
+  sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, alive: boolean, overviewMode: boolean, isActive: boolean, project: ProjectFn, scaleFn: ScaleFn, displayName: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0, focusId?: string, registry?: CelestialRegistry, attractors: readonly Attractor[] = []): void {
     const selfKey = `self-${this.id}`;
 
     if (overviewMode) {
       if (isActive) {
         for (const key of COMBAT_KEYS) this.markerManager.hide(`${key}-${this.id}`);
       }
-      if (displayState && (!cameraPos || !isOccluded(cameraPos, displayState.r, attractors))) {
+      if (displayState && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, attractors))) {
         const color = isActive ? '#ff0000' : undefined;
         const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn);
         this.markerManager.setPosition(
