@@ -110,8 +110,8 @@ export class CreativeStage extends Stage {
   }
 
   // 基地は実寸(半径100m)のメッシュしか持たず、マップ視点では見えないほど小さいので、
-  // 艦と同じ ▲ のポイントマーカーを立てて発見できるようにする。戦闘ビューでは
-  // 画面外なら ▣ AMMO の補給と同じ方式の ↑ 方位矢印で補う。overviewMode 中は進行方向を向く
+  // 実体の族の字形でポイントマーカーを立て、どのズームでも見つけられるようにする。戦闘ビューで
+  // 画面外なら方位矢印で補う。overviewMode 中は進行方向を向く
   // 三角形に差し替える(mk-poi は FocusMarkers の天体ラベルと共用するため、専用の mk-base を使う)。
   private syncBaseMarkers(project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibility: MapVisibilityPolicy | null): void {
     const bases = this._entities.bases;
