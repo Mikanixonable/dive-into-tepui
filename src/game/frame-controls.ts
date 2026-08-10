@@ -23,8 +23,10 @@ export class FrameControls {
   // 解除操作が注視点を焼き込む時刻をここから読む。
   private lastTime = 0;
 
+  // panelRoot はパネル自体(左ドック)の置き場所、popupRoot は ObjectPicker のポップアップの置き場所。
   constructor(
-    hudRoot: HTMLElement,
+    panelRoot: HTMLElement,
+    popupRoot: HTMLElement,
     private readonly ephemeris: Ephemeris,
     private readonly overviewCamera: OverviewCamera,
     private readonly planDisplay: PlanDisplay,
@@ -37,7 +39,7 @@ export class FrameControls {
     title.textContent = '座標系';
     this.panel.appendChild(title);
 
-    this.cameraZone = new AnchorZone(hudRoot, 'カメラ', ephemeris, '固定を解除');
+    this.cameraZone = new AnchorZone(popupRoot, 'カメラ', ephemeris, '固定を解除');
     this.cameraZone.onSelect = (id) => this.selectCameraAnchor(id);
     this.panel.appendChild(this.cameraZone.element);
 
@@ -47,7 +49,7 @@ export class FrameControls {
 
     // 並進ゾーンには解除を出さない: 描く線は必ずどこかの座標系に焼き込まれるので
     // 「どこにも固定しない」状態が無く、太陽系空間への固定はプルダウンの恒星そのものにあたる。
-    this.translationZone = new AnchorZone(hudRoot, '並進', ephemeris, null);
+    this.translationZone = new AnchorZone(popupRoot, '並進', ephemeris, null);
     this.translationZone.onSelect = (id) => {
       if (id === null) return;
       planDisplay.planFrame = ephemeris.frameOf(id, planDisplay.planFrame.rotatingWith);
@@ -60,7 +62,7 @@ export class FrameControls {
     };
     this.panel.appendChild(this.planRotationZone.element);
 
-    hudDock(hudRoot, 'left').appendChild(this.panel);
+    hudDock(panelRoot, 'left').appendChild(this.panel);
   }
 
   // カメラの固定を解除する: いまの注視点を、恒星中心の慣性系へその場に置き去りにする

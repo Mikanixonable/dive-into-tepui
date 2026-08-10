@@ -2,16 +2,17 @@
 // ヘッダ(タイトル・サブタイトル・クリップボタン・✕ボタン)/ プロパティ行 / 操作項目の
 // 3段で構成される。表示専用で、プロパティの値をどう導出するかは呼び出し側の責務。
 // 複数存続できる想定のため ContextMenu と異なり呼び出しごとに個別のインスタンスを持つ。
-// #hud の子として置く(dom.ts の重なり順の帯に従う)ため、`#hud, #hud *` の margin/padding
+// #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import { ACCENT, ACCENT_RGB, ACCENT_SOFT, EDGE, SURFACE, TEXT as INK, FONT } from '../theme';
 import { CLICK_MOVE_THRESHOLD } from '../const';
 import { clampOverlayPosition, Point2 } from './layout';
 import { shortcutKeyLabel } from './shortcut-hint';
+import { bringToFront as bringOverlayToFront } from './overlay-layer';
 
 const STYLE = `
 #hud .prop-window {
-  position: fixed; display: block; min-width: 200px; max-width: 280px; z-index: 12;
+  position: fixed; display: block; min-width: 200px; max-width: 280px;
   pointer-events: auto; background: ${SURFACE}; border: 1px solid ${EDGE};
   border-radius: 4px; overflow: hidden; font-size: 12px;
   font-family: ${FONT}; user-select: none;
@@ -121,7 +122,6 @@ export class PropertyWindow<A extends string = string> {
   private lastItemsKey = '';
   private _clipped = false;
   private disposed = false;
-  private readonly rootEl: HTMLElement;
   private readonly renameCallback: ((name: string) => void) | null;
   private renaming = false;
 
@@ -149,7 +149,6 @@ export class PropertyWindow<A extends string = string> {
   // グローバルリスナを登録する。
   constructor(root: HTMLElement, clientX: number, clientY: number, content: PropertyWindowContent<A>) {
     ensureStyle();
-    this.rootEl = root;
     this.el = document.createElement('div');
     this.el.className = 'prop-window';
 
@@ -229,6 +228,7 @@ export class PropertyWindow<A extends string = string> {
     this.syncRows(content.rows);
     this.syncItems(content.items);
     this.moveTo(clientX, clientY);
+    this.bringToFront();
   }
 
   // タイトル・サブタイトルを変化があった要素だけ差分更新する。
@@ -406,9 +406,9 @@ export class PropertyWindow<A extends string = string> {
     this.onClipChange?.(clipped);
   }
 
-  // DOM 順を末尾へ動かして最前面にする(z-index は増やさない)。
+  // window レイヤ内で最前面にする。
   bringToFront(): void {
-    this.rootEl.appendChild(this.el);
+    bringOverlayToFront(this.el);
   }
 
   // 現在位置を要求座標としてビューポート内へクランプし直す。内容の変化でサイズが伸びた

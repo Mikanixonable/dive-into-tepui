@@ -19,11 +19,12 @@ export class ViewBadge {
   private readonly viewButton: HTMLButtonElement;
   // ContextMenu は target !== null であることを onSelect 発火の条件にしているので、
   // 対象を持たないこのメニューでも null 以外のダミー値を渡す。
-  private readonly menu = new ContextMenu<true, ViewId>();
+  private readonly menu: ContextMenu<true, ViewId>;
   private combatAvailable = false;
 
-  // バッジの DOM を組み立てて root へ追加し、ビュー選択メニューを配線する。
-  constructor(root: HTMLElement, private readonly viewManager: ViewManager) {
+  // バッジの DOM を root へ、遷移メニューを popupLayer へ組み立てて配線する。
+  constructor(root: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager) {
+    this.menu = new ContextMenu<true, ViewId>(popupLayer);
     // タイトル・モード名・ビュー切替ボタンの3つを横に並べる。
     const badge = document.createElement('div');
     badge.id = 'hud-viewbadge';

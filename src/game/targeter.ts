@@ -39,16 +39,18 @@ export class Targeter {
   // 第二ターゲットのハイライト線(シアン)。第一より薄い renderOrder に置く。
   readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9);
 
-  private readonly contextMenu = new ContextMenu<CombatTarget>();
+  private readonly contextMenu: ContextMenu<CombatTarget>;
   // ターゲットに当たらなかった右クリック(何もない箇所)向けのメニュー。実体を持たない
   // 対象なので ViewBadge と同じ形で true を的替わりに使う。
-  private readonly emptySpaceMenu = new ContextMenu<true, MenuAction>();
+  private readonly emptySpaceMenu: ContextMenu<true, MenuAction>;
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
   constructor(
     private readonly _hud: Hud, _sfx: Sfx, private readonly markerManager: MarkerManager,
     scene: THREE.Scene, private readonly settingsPanel: SettingsPanel,
   ) {
+    this.contextMenu = new ContextMenu<CombatTarget>(_hud.layers.popup);
+    this.emptySpaceMenu = new ContextMenu<true, MenuAction>(_hud.layers.popup);
     this.secondaryOrbitLine.line.renderOrder = 2;
     this.orbitLine.line.renderOrder = 3;
     scene.add(this.secondaryOrbitLine.line);

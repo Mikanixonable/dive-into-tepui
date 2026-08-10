@@ -31,16 +31,16 @@ export class AnchorZone {
   private readonly quick: SegmentedControl<string | null>;
   private readonly ephemeris: Ephemeris;
 
-  // hudRoot は ObjectPicker のポップアップの親、title はプルダウンの見出し。releaseLabel が
+  // popupRoot は ObjectPicker のポップアップの親、title はプルダウンの見出し。releaseLabel が
   // null なら「解除」の選択肢そのものを出さない(プルダウン先頭・クイックボタン先頭の両方)。
-  constructor(hudRoot: HTMLElement, title: string, ephemeris: Ephemeris, private readonly releaseLabel: string | null) {
+  constructor(popupRoot: HTMLElement, title: string, ephemeris: Ephemeris, private readonly releaseLabel: string | null) {
     ensureStyle();
     this.ephemeris = ephemeris;
 
     this.element = document.createElement('div');
     this.element.className = 'hud-anchor-zone';
 
-    this.picker = new ObjectPicker<string | null>(hudRoot, title, (id) => this.onSelect?.(id));
+    this.picker = new ObjectPicker<string | null>(popupRoot, title, (id) => this.onSelect?.(id));
     this.element.appendChild(this.picker.element);
 
     this.quick = new SegmentedControl<string | null>('', [], (id) => this.onSelect?.(id));

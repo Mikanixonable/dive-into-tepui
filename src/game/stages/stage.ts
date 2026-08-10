@@ -87,7 +87,7 @@ export abstract class Stage {
     this._simulator = simulator;
     this._phase = 'playing';
     this.logistics = new Logistics(hud, sfx, scene, entities, markerManager);
-    this.statusPanel = new StageStatusPanel(hud.root);
+    this.statusPanel = new StageStatusPanel(hud.layers.panel);
   }
 
   // ステージ固有の UI(トグル等)をステータスウィンドウ左部へ追加する。
