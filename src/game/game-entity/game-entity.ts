@@ -16,8 +16,8 @@ import type { Contact } from '../simulation/contact';
 import { EntityIdAllocator } from './entity-id';
 import { GRAVITATIONAL_CONSTANT } from '../../physics/solar-system';
 
-// resyncTolerance の許容量上限。中心天体からの距離に対する割合 [無次元]。
-const RESYNC_TOLERANCE_MAX_ORBIT_RATIO = 0.02;
+// 乖離許容量の上限。その場の局所軌道の長半径に対する割合 [無次元]。
+const DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO = 0.02;
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -76,8 +76,10 @@ export class GameEntity {
   // 未来の予測列。
   private _predictedTrajectory: DynamicTrajectory | null = null;
   get predictedTrajectory(): DynamicTrajectory | null { return this._predictedTrajectory; }
-  // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。
+  // 積分中に再突入高度を割った/非有限値が出て打ち切られたか。打ち切られた列はそれ以上
+  // 伸びない(新しい列を作るまで恒久的)。
   private truncated = false;
+  get predictionTruncated(): boolean { return this.truncated; }
 
   // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
   // id 省略時はこの基底が自動採番する(復元 id を渡すクラスはそれをそのまま通す)。
@@ -139,32 +141,40 @@ export class GameEntity {
   }
 
   // 実状態との位置ずれが許容量を超えていたら予測列を破棄する。破棄したら true。
-  // attractors は simTime の重力源一覧、horizon は予測している長さ [s]。
-  resyncPrediction(simTime: number, attractors: readonly Attractor[], horizon: number): boolean {
+  // attractors は simTime の重力源一覧。
+  discardPredictionIfDiverged(simTime: number, attractors: readonly Attractor[]): boolean {
     if (this._predictedTrajectory === null) return false;
     const predictedState = this._predictedTrajectory.at(simTime);
     if (predictedState !== null
-      && len(sub(predictedState.r, this.state.r)) <= this.resyncTolerance(attractors, horizon)) {
+      && len(sub(predictedState.r, this.state.r)) <= this.divergenceTolerance(attractors)) {
       return false;
     }
     this.invalidatePrediction();
     return true;
   }
 
-  // 乖離判定の許容量 [m]。保持サンプル数の上限で間引きが粗くなると at() の補間そのものが
-  // 誤差を持つので、その誤差(間引き間隔の4乗に比例)まで許容量を広げる — 広げないと、
-  // 実状態と一致している列を毎フレーム破棄して予測が永久に完成しなくなる。coarsening^4 は
-  // 表示期間を伸ばすと発散するので、中心天体からの距離に対する一定割合で頭打ちにし、
-  // さらに PREDICT_RESET_DIST を下回らせない — 小さな天体のすぐ近くでは割合の上限自体が
-  // 補間誤差より小さくなり、頭打ちが逆に永久破棄を招くため。
-  private resyncTolerance(attractors: readonly Attractor[], horizon: number): number {
+  // 乖離判定の許容量 [m]。間引きが粗い列では at() の補間そのものが誤差を持つので、その誤差
+  // (間引き間隔の4乗に比例)まで許容量を広げる — 広げないと、実状態と一致している列を
+  // 毎フレーム破棄して予測が永久に完成しなくなる。粗さは列自身が記録している値から取る:
+  // 現在の表示期間から導くと、表示期間を短く切り替えた瞬間に、粗い間隔で積まれた既存の列に
+  // 対して閾値だけが縮み、正しい列を破棄し続けることになる。
+  // coarsening^4 は粗い列で発散するので、その場の局所軌道の長半径に対する一定割合で頭打ちに
+  // する — 距離を基準にすると、惑星間で最強重力源が恒星になった途端に上限が実質無くなる。
+  // 下限の PREDICT_RESET_DIST は、小さな天体のすぐ近くで割合の上限自体が補間誤差を下回り、
+  // 頭打ちが逆に永久破棄を招くのを防ぐ。
+  private divergenceTolerance(attractors: readonly Attractor[]): number {
     const center = strongestAttractor(this.state.r, attractors);
     const period = localOrbitPeriod(this.state.r, attractors);
     const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
-    const coarsening = Math.max(1, (horizon / C.PREDICT_MAX_SAMPLES) / (span / C.TRAJECTORY_SAMPLES_PER_REV));
+    const interval = this._predictedTrajectory?.sampleInterval ?? 0;
+    const coarsening = Math.max(1, interval / (span / C.TRAJECTORY_SAMPLES_PER_REV));
     const raw = C.PREDICT_SAMPLE_ERROR * coarsening ** 4;
-    const cap = len(sub(this.state.r, center.state.r)) * RESYNC_TOLERANCE_MAX_ORBIT_RATIO;
-    return Math.max(C.PREDICT_RESET_DIST, Math.min(raw, cap));
+    // 局所軌道周期に対応する長半径(ケプラー第三法則)。中心天体の μ が取れなければ
+    // 中心からの距離で代用する。
+    const orbitScale = center.mu > 0 && isFinite(span)
+      ? (center.mu * (span / (2 * Math.PI)) ** 2) ** (1 / 3)
+      : len(sub(this.state.r, center.state.r));
+    return Math.max(C.PREDICT_RESET_DIST, Math.min(raw, orbitScale * DIVERGENCE_TOLERANCE_MAX_ORBIT_RATIO));
   }
 
   // 予測列の先端を、呼び出し側が確定させた重力源 attractors のもとで dt ぶん1ステップ伸ばす。
