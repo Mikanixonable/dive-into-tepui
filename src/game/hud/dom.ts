@@ -132,9 +132,11 @@ body.hud-modal-open #touch-ui { display: none; }
   padding: 3px 8px; font-size: 10px; letter-spacing: 1px;
 }
 #hud-object-list .object-list-section-body { padding-left: 4px; }
-#hud-object-list .erow { padding: 3px 4px; color: ${INK_SOFT}; cursor: pointer; }
+#hud-object-list .erow { padding: 3px 4px; color: ${INK_SOFT}; cursor: pointer; display: flex; align-items: center; gap: 4px; }
 #hud-object-list .erow:hover { color: ${INK}; }
 #hud-object-list .erow.tgt { color: ${ACCENT}; }
+#hud-object-list .object-list-toggle { width: 10px; text-align: center; flex: none; }
+#hud-object-list .object-list-children { padding-left: 12px; }
 #hud-combat-shelf { display: contents; }
 
 #hud-hint {
