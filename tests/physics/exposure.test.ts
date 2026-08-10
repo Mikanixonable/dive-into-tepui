@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { adaptExposure, CELESTIAL_EXPOSURE, clampExposure, NEUTRAL_CELESTIAL_EXPOSURE } from '../../src/render/exposure';
+import { adaptExposure, CELESTIAL_EXPOSURE, clampExposure, exposureTargetForLuminance, NEUTRAL_CELESTIAL_EXPOSURE } from '../../src/render/exposure';
 import { test } from './harness';
 
 export function register(): void {
@@ -16,5 +16,10 @@ export function register(): void {
 
   test('不正な露出入力は中立値へ安全に戻る', () => {
     assert.equal(adaptExposure(Number.NaN, Number.POSITIVE_INFINITY, 0.1), NEUTRAL_CELESTIAL_EXPOSURE);
+  });
+
+  test('自動露出目標は明るい視野ほど暗く、暗い視野ほど明るくする', () => {
+    assert.ok(exposureTargetForLuminance(0.05) > exposureTargetForLuminance(0.8));
+    assert.ok(Number.isFinite(exposureTargetForLuminance(Number.NaN)));
   });
 }
