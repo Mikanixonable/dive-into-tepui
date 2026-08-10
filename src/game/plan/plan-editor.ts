@@ -84,7 +84,7 @@ export class PlanEditor {
 
   readonly nodeGizmo: NodeGizmo;
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
-  private readonly orbitMenu = new ContextMenu<KinematicState, MenuAction>();
+  private readonly orbitMenu: ContextMenu<KinematicState, MenuAction>;
 
   private readonly dvButtons = buildDvButtons();
   // 6 方向それぞれのホールド継続時間 [s]。index は axis*2 + (sign<0 ? 1 : 0)。
@@ -110,8 +110,9 @@ export class PlanEditor {
     private readonly displayTimeManager: DisplayTimeManager,
   ) {
     this.ship = ship;
-    this.planDisplay = new PlanDisplay(scene, this._hud.root, markerManager, ephemeris, displayTimeManager);
-    this.nodeGizmo = new NodeGizmo(this._hud.root);
+    this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayTimeManager);
+    this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup);
+    this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup);
     this.gizmo3d = new PlanGizmo3D();
     scene.add(this.gizmo3d.group);
 
@@ -161,7 +162,7 @@ export class PlanEditor {
     this.dvNrmInput.addEventListener('keydown', stopProp);
     this.dvRadInput.addEventListener('keydown', stopProp);
 
-    hudDock(this._hud.root, 'right').appendChild(this.planPanel);
+    hudDock(this._hud.layers.panel, 'right').appendChild(this.planPanel);
     this.orbitMenu.onSelect = (act, state) => {
       if (act !== 'warp') return;
       if (this.simSpeedManager.startAutoWarpTo(state.t, this.simTime)) this._hud.hint('指定位置まで自動ワープ開始');
@@ -688,7 +689,7 @@ export class PlanEditor {
     overviewMode: boolean, cameraPos: Vec3,
   ): void {
     if (this.hasPlan && (this.editMode || this.plan.nodes.length > 0)) {
-      this.planDisplay.sync(fo, project, scale, this.editMode, overviewMode, cameraPos);
+      this.planDisplay.sync(fo, project, scale, overviewMode, cameraPos);
     }
     else {
       this.planDisplay.hide();
