@@ -1,12 +1,25 @@
 import { hudDock } from './hud/dom';
 import { MapPickable, MapPickKind } from './map-pick';
+import { LAGRANGE_ID } from './hud/object-groups';
 
-const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
-  { kind: 'body', label: '天体' },
-  { kind: 'player', label: '自艦' },
-  { kind: 'ship', label: '敵' },
-  { kind: 'ammo', label: '弾薬' },
-  { kind: 'base', label: '基地' },
+interface SectionDef {
+  readonly key: string;
+  readonly label: string;
+  readonly kind: MapPickKind;
+  // kind だけでは括れない絞り込み(ラグランジュ点とそれ以外の天体の分離)。省略時は絞り込みなし。
+  readonly filter?: (item: MapPickable) => boolean;
+  readonly defaultExpanded: boolean;
+}
+
+// 'body' はラグランジュ点とそれ以外の天体の2区画に分ける — ラグランジュ点は字下げでなく
+// 独立したトグル区画に格納し、既定で畳んでおく(候補数が多く、常に見る必要は薄いため)。
+const SECTIONS: readonly SectionDef[] = [
+  { key: 'body', label: '天体', kind: 'body', filter: (i) => !LAGRANGE_ID.test(i.id), defaultExpanded: true },
+  { key: 'lagrange', label: 'ラグランジュ点', kind: 'body', filter: (i) => LAGRANGE_ID.test(i.id), defaultExpanded: false },
+  { key: 'player', label: '自艦', kind: 'player', defaultExpanded: true },
+  { key: 'ship', label: '敵', kind: 'ship', defaultExpanded: true },
+  { key: 'ammo', label: '弾薬', kind: 'ammo', defaultExpanded: true },
+  { key: 'base', label: '基地', kind: 'base', defaultExpanded: true },
 ];
 
 interface Section {
@@ -16,14 +29,14 @@ interface Section {
   expanded: boolean;
 }
 
-// マップビュー右部に常設の軌道オブジェクト一覧ウィンドウ。種別ごとの区画にタブ見出しで
+// マップビュー右部に常設の軌道オブジェクト一覧ウィンドウ。区画ごとにタブ見出しで
 // 開閉し、行クリックで onSelect に id を渡す。
 export class ObjectListPanel {
   onSelect: ((id: string) => void) | null = null;
   onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
-  private readonly sections = new Map<MapPickKind, Section>();
+  private readonly sections = new Map<string, Section>();
 
   constructor(root: HTMLElement) {
     this.panel = document.createElement('div');
@@ -35,17 +48,17 @@ export class ObjectListPanel {
     title.textContent = '軌道オブジェクト';
     this.panel.appendChild(title);
 
-    for (const { kind } of SECTIONS) {
+    for (const { key, defaultExpanded } of SECTIONS) {
       const header = document.createElement('div');
       header.className = 'dock-tab-btn object-list-section-header';
       const body = document.createElement('div');
       body.className = 'object-list-section-body';
-      const section: Section = { header, body, rows: new Map(), expanded: true };
+      const section: Section = { header, body, rows: new Map(), expanded: defaultExpanded };
       header.addEventListener('click', () => {
         section.expanded = !section.expanded;
         this.applyExpanded(section);
       });
-      this.sections.set(kind, section);
+      this.sections.set(key, section);
       this.panel.appendChild(header);
       this.panel.appendChild(body);
       this.applyExpanded(section);
@@ -59,10 +72,10 @@ export class ObjectListPanel {
     this.panel.style.display = visible ? 'block' : 'none';
   }
 
-  // 種別ごとの区画へ、既存行は使い回しつつ id 差分だけ足し引きする。行のクリックリスナーは
+  // 区画ごとに、既存行は使い回しつつ id 差分だけ足し引きする。行のクリックリスナーは
   // 生成時の1回だけ張るので、ここで毎フレーム innerHTML を書き換えてはいけない
   // (張り直しになり、クリック中に要素が消えてイベントが発火しなくなる)。
-  // depthOf に載っている id は、その深さぶん字下げして親子関係を出す(天体セクション)。
+  // depthOf に載っている id は、その深さぶん字下げして親子関係を出す(天体区画)。
   // focusId が undefined(フォーカス中の天体が無い)なら、どの行も強調しない。
   sync(items: readonly MapPickable[], focusId: string | undefined, depthOf: ReadonlyMap<string, number>): void {
     const byKind = new Map<MapPickKind, MapPickable[]>();
@@ -71,9 +84,9 @@ export class ObjectListPanel {
       if (list) list.push(item); else byKind.set(item.kind, [item]);
     }
 
-    for (const { kind, label } of SECTIONS) {
-      const section = this.sections.get(kind)!;
-      const list = byKind.get(kind) ?? [];
+    for (const { key, label, kind, filter } of SECTIONS) {
+      const section = this.sections.get(key)!;
+      const list = (byKind.get(kind) ?? []).filter((item) => filter?.(item) ?? true);
       section.header.style.display = list.length === 0 ? 'none' : '';
       section.header.textContent = `${label} (${list.length}) ${section.expanded ? '▾' : '▸'}`;
 
