@@ -111,6 +111,7 @@ export class ObjectListPanel {
   }
 
   select(id: string | null): void { this.selectedId = id; }
+  get selected(): string | null { return this.selectedId; }
 
   // 種別ごとの区画へ、既存行は使い回しつつ id 差分だけ足し引きする。行のクリックリスナーは
   // 生成時の1回だけ張るので、ここで毎フレーム innerHTML を書き換えてはいけない
@@ -118,7 +119,10 @@ export class ObjectListPanel {
   // parentOf は id → 親 id(天体の親子関係のみ、他種別は載らない)。focusId が undefined
   // (フォーカス中の天体が無い)なら、どの行も強調しない。
   sync(items: readonly MapPickable[], focusId: string | undefined, parentOf: ReadonlyMap<string, string>): void {
-    this.breadcrumb.textContent = focusId === undefined ? 'フォーカス: なし' : `フォーカス: ${items.find((i) => i.id === focusId)?.name ?? focusId}`;
+    const names = new Map(items.map((i) => [i.id, i.name]));
+    const crumbs: string[] = [];
+    for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) crumbs.push(names.get(cur) ?? cur);
+    this.breadcrumb.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'フォーカス: なし';
     const byKind = new Map<MapPickKind, MapPickable[]>();
     for (const item of items) {
       if (!this.matches(item)) continue;
@@ -130,7 +134,10 @@ export class ObjectListPanel {
       const section = this.sections.get(kind)!;
       const list = (byKind.get(kind) ?? []).sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || a.name.localeCompare(b.name));
       section.header.style.display = list.length === 0 ? 'none' : '';
-      section.header.textContent = `${label} (${list.length}) ${section.expanded ? '▾' : '▸'}`;
+      const state = kind === 'ship' ? `接近 ${list.filter((i) => i.detail?.includes('接近')).length}`
+        : kind === 'ammo' ? `回収可 ${list.filter((i) => i.detail?.includes('回収可能')).length}`
+        : kind === 'base' ? `ドック候補 ${list.filter((i) => i.detail?.includes('ドック')).length}` : '';
+      section.header.textContent = `${label} (${list.length})${state ? ` · ${state}` : ''} ${section.expanded ? '▾' : '▸'}`;
 
       const childrenOf = childrenOfMap(list, parentOf);
       const idsInSection = new Set(list.map((i) => i.id));
@@ -151,6 +158,7 @@ export class ObjectListPanel {
       }
       this.pruneRows(section.rows, seen);
     }
+    if (this.selectedId !== null && !items.some((i) => i.id === this.selectedId && this.matches(i))) this.selectedId = null;
   }
 
   private matches(item: MapPickable): boolean {

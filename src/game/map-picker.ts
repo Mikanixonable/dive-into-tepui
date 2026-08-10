@@ -34,6 +34,7 @@ import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
 import { bodyDef, primaryOf } from '../physics/solar-system';
 import { isPositionInFocusedSystem } from './celestial/body-visibility';
+import { MarkerManager } from './marker/marker-manager';
 
 interface PickHandler {
   itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[];
@@ -82,6 +83,7 @@ export class MapPicker {
     private readonly cameraSystem: CameraSystem,
     private readonly editor: PlanEditor,
     private readonly simSpeedManager: SimSpeedManager,
+    private readonly markerManager: MarkerManager,
   ) {
     this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup);
     this.menu.onSelect = (act, target) => {
@@ -316,6 +318,12 @@ export class MapPicker {
         if (parent !== null) parentOf.set(l.id, parent);
       }
       this.objectListPanel.sync(this.items, focusTargetId(this.cameraSystem.overviewCamera.focus), parentOf);
+      const selected = this.objectListPanel.selected;
+      const target = selected === null ? undefined : this.items.find((i) => i.id === selected);
+      if (target) this.markerManager.setPosition('list-selection', 'mk-list-selection', '◌', target.pos, this.cameraSystem.activeCameraProjection, 'SELECTED', 0.9, '#ffffff');
+      else this.markerManager.hide('list-selection');
+    } else {
+      this.markerManager.hide('list-selection');
     }
 
     const byKey = new Map(this.items.map((i) => [this.windowKey(i), i]));
