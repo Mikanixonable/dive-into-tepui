@@ -27,6 +27,7 @@ export class Aurora {
   ) {
     this.writeVertices(0);
 
+    // 周方向 SEG × 鉛直 V_SEG の格子を四角形ごとに2枚の三角形へ割る。
     const indices: number[] = [];
     for (let i = 0; i < SEG; i++) {
       for (let j = 0; j < V_SEG; j++) {
@@ -61,6 +62,7 @@ export class Aurora {
       0.55 + 0.2 * Math.sin(phase * 0.7 + this.phaseOffset * 2.1) * Math.sin(phase * 0.23 + this.phaseOffset);
   }
 
+  // phase 時点のカーテン形状を positions/colors へ書き込む(GPU への反映は呼び出し側)。
   private writeVertices(phase: number): void {
     const sPhase = this.geomSeed + phase;
     const cPhase = this.colorSeed + phase;
