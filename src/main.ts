@@ -10,7 +10,8 @@ import { Hud } from './game/hud/hud';
 import { SettingsPanel } from './game/hud/settings-panel';
 import { Sfx } from './audio/sfx';
 import { UnlockManager } from './game/unlock-manager';
-import { ephemerisConfigFor, isStageId } from './game/stages/stage-dictionary';
+import { ephemerisConfigFor, isStageId, STAGE_DEFINITIONS } from './game/stages/stage-dictionary';
+import type { StageId } from './game/stages/stage';
 import { selectLaunch } from './game/launch-select';
 import { LaunchSelection } from './game/game-mode';
 import { LocalStorageSaveStore } from './game/save/save-store';
@@ -24,14 +25,35 @@ import { loadAbsoluteEphemeris } from './physics/ephemeris-catalog';
 import { profileAt } from './physics/ephemeris-profile';
 
 
-// ?stage=00|0|1|2 または ?mode=creative で起動選択画面をスキップ(デバッグ・共有リンク用)。
-// 指定が無い/不正なら選択画面を出す。
-export async function resolveLaunchSelection(unlockManager: UnlockManager): Promise<LaunchSelection> {
+// アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)か判定する
+function isResumableStage(unlockManager: UnlockManager, stageId: string): boolean {
+  if (!isStageId(stageId)) return false;
+  const stage = STAGE_DEFINITIONS.find((s) => s.id === stageId);
+  return stage !== undefined && !stage.hiddenFromSelect && unlockManager.isUnlocked(stageId);
+}
+
+// アクティブスロットの直近起動を再開する選択を返す。再開できる情報が無ければ null。
+function resumeFromActiveSlot(unlockManager: UnlockManager, slots: SaveSlots): LaunchSelection | null {
+  const slot = slots.activeSlot();
+  if (slot === null) return null;
+  if (slot.mode === 'creative') return { mode: 'creative' };
+  return isResumableStage(unlockManager, slot.lastStageId)
+    ? { mode: 'stage', stage: slot.lastStageId as StageId }
+    : null;
+}
+
+// ?title=1 は選択画面へ強制する。?mode=creative/?stage= は共有リンク・デバッグ用の
+// 明示指定として最優先。どちらも無ければアクティブスロットの直近起動を再開し、
+// それも無ければ選択画面を出す。
+export async function resolveLaunchSelection(
+  unlockManager: UnlockManager, slots: SaveSlots,
+): Promise<LaunchSelection> {
   const params = new URLSearchParams(location.search);
+  if (params.get('title') === '1') return selectLaunch(unlockManager);
   if (params.get('mode') === 'creative') return { mode: 'creative' };
   const stageParam = params.get('stage');
   if (isStageId(stageParam)) return { mode: 'stage', stage: stageParam };
-  return selectLaunch(unlockManager);
+  return resumeFromActiveSlot(unlockManager, slots) ?? selectLaunch(unlockManager);
 }
 
 // WebGPU 初期化(シェーダーコンパイル等でしばらく無反応になり得る)の間に表示する
@@ -166,9 +188,9 @@ function initHud(): { hud: Hud; sfx: Sfx; settingsPanel: SettingsPanel } {
   const settingsPanel = new SettingsPanel(hud.layers.system);
   settingsPanel.setBgmVolume(sfx.getBgmVolume());
   settingsPanel.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
-  // 「ゲームを中断してタイトル画面に戻る」— ?stage= クエリを落として選択画面へ
+  // 「ゲームを中断してタイトル画面に戻る」— ?title=1 を付けて選択画面へ強制する
   settingsPanel.onQuitToTitle = () => {
-    location.assign(location.pathname);
+    location.assign(`${location.pathname}?title=1`);
   };
   return { hud, sfx, settingsPanel };
 }
@@ -192,7 +214,7 @@ async function main() {
   const snapshotService = new SnapshotService(saveStore, slots);
   const gs = await initScene();
   const { hud, sfx, settingsPanel } = initHud();
-  const launch = await resolveLaunchSelection(unlockmanager);
+  const launch = await resolveLaunchSelection(unlockmanager, slots);
   let absoluteEphemeris;
   // 固有の簡易天体暦を指定するデバッグステージには外部 pack を読み込まない。
   // 通常起動では開始時刻からプロファイルを決定するため、開始時刻を変更しても
