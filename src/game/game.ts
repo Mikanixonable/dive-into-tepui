@@ -419,6 +419,7 @@ export class Game {
         this.simulator.simTime,
         null,
         this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
+        this.cameraSystem.overviewMode ? 'map' : 'combat',
       );
       this.activeStage.update(dt, null, this.entities, this.simulator.simTime, this.simSpeedManager);
       this.effects.update(dt, this.simulator.simTime);
@@ -515,6 +516,7 @@ export class Game {
       this.simulator.simTime,
       this.player,
       this.displayTimeManager.durationSec(this.currentOrbitPeriod()),
+      this.cameraSystem.overviewMode ? 'map' : 'combat',
     );
 
     this.effects.update(dt, this.simulator.simTime);

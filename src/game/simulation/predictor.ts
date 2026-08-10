@@ -1,4 +1,5 @@
-// 全 GameEntity の予測列(predictedTrajectory)をフレームあたりの予算内でラウンドロビンに伸ばす。
+// マップで必要な GameEntity の予測列(predictedTrajectory)をフレームあたりの予算内で
+// ラウンドロビンに伸ばす。戦闘ビューでは自機の線だけを小さい予算で維持する。
 // 予測列の長短を問わず一律に扱うため、破棄が多発してもフレーム時間がスパイクしない。
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
@@ -23,10 +24,11 @@ export class Predictor {
   ) {}
 
   // Game.update の entities.cleanup(...) の後に呼ぶ(死んだ個体を予測しない、積分後の実状態と
-  // 突き合わせる)。視点・モードによる条件分岐は持たない — 予測は表示とは独立に常時進む。
+  // 突き合わせる)。map では全表示対象、combat では自機だけを候補にする。
+  // 戦闘中も自機の予測線は残すが、予算を小さくして非表示エンティティのresync・RK4を避ける。
   // horizon は simTime から先に予測する長さ [s]。
-  update(simTime: number, player: Player | null, horizon: number): void {
-    const all = this.entities.all();
+  update(simTime: number, player: Player | null, horizon: number, mode: 'map' | 'combat' = 'map'): void {
+    const all = mode === 'map' ? this.entities.all() : player ? [player] : [];
 
     // 距離判定は毎フレーム無条件で全対象に行う(二分探索1回ぶんの費用しかかからない)。
     // 伸長を止めている間も実状態は進むので、乖離した列をここで落とさないと
@@ -44,7 +46,7 @@ export class Predictor {
     }
 
     // 予算配分: 操作対象の艦を先頭に、以降はカーソル位置から最大1周だけ回す。
-    let budget = C.PREDICT_STEP_BUDGET;
+    let budget = mode === 'map' ? C.PREDICT_STEP_BUDGET : C.PREDICT_COMBAT_STEP_BUDGET;
     if (player) budget -= this.advanceBudget(player, budget, simTime, horizon);
 
     let visited = 0;
