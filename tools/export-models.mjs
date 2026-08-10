@@ -21,19 +21,26 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = join(__dirname, '..', 'src', 'assets', 'models');
 mkdirSync(outDir, { recursive: true });
 
-// --- src/render/rcs-nozzles.ts を JS にトランスパイルして動的 import ---
+// --- 依存のない TypeScript データモジュールを JS にトランスパイルして動的 import ---
 // Node 単体で .ts を import できないため、devDependency の TypeScript コンパイラで
 // その場に変換する(tools/export-earth-texture.mjs と同じ手口)。
-const nozzleSrcPath = join(__dirname, '..', 'src', 'render', 'rcs-nozzles.ts');
-const { outputText } = ts.transpileModule(readFileSync(nozzleSrcPath, 'utf8'), {
-  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-  fileName: 'rcs-nozzles.ts',
-});
-const nozzleTmpDir = mkdtempSync(join(tmpdir(), 'tepui-rcs-nozzles-'));
-const nozzleTmpPath = join(nozzleTmpDir, 'rcs-nozzles.mjs');
-writeFileSync(nozzleTmpPath, outputText, 'utf8');
-const { RCS_NOZZLES } = await import(pathToFileURL(nozzleTmpPath).href);
-rmSync(nozzleTmpDir, { recursive: true, force: true });
+async function importTsDataModule(relSrcPath) {
+  const srcPath = join(__dirname, '..', relSrcPath);
+  const fileName = relSrcPath.split('/').pop();
+  const { outputText } = ts.transpileModule(readFileSync(srcPath, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+    fileName,
+  });
+  const tmpDir = mkdtempSync(join(tmpdir(), 'tepui-ts-data-'));
+  const tmpPath = join(tmpDir, fileName.replace(/\.ts$/, '.mjs'));
+  writeFileSync(tmpPath, outputText, 'utf8');
+  const mod = await import(pathToFileURL(tmpPath).href);
+  rmSync(tmpDir, { recursive: true, force: true });
+  return mod;
+}
+
+const { RCS_NOZZLES } = await importTsDataModule('src/render/rcs-nozzles.ts');
+const { RADIATOR_HINGE } = await importTsDataModule('src/render/radiator-hinge.ts');
 
 function std(color, opts = {}) {
   return new THREE.MeshStandardMaterial({
@@ -252,9 +259,7 @@ function buildPlayerShip() {
     const hinge = new THREE.Group();
     const baseName = sx > 0 ? 'radiatorUp' : 'radiatorDown';
     hinge.name = baseName;
-    // 機体側面に張り付くように x=1.17、はみ出さないよう上下中心より少し下 y=-0.20
-    // マガジンと干渉しないよう z=-1.80 へ移動
-    hinge.position.set(sx * 1.17, -0.20, -1.80);
+    hinge.position.set(sx * RADIATOR_HINGE.x, RADIATOR_HINGE.y, RADIATOR_HINGE.z);
     g.add(hinge);
 
     let parent = hinge;
