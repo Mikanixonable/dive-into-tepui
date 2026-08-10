@@ -1,7 +1,7 @@
 // 実シミュレーションの更新(軌道積分・剛体接触・慣性姿勢積分)。simTime/lastSimDt を保持する。
 import { stepAttitude } from '../../physics/attitude';
 import * as C from '../const';
-import { attractorsAt, attractorsNear, classifyAttractors } from './attractors';
+import { attractorsAt, attractorsNearInto, classifyAttractors } from './attractors';
 import { EntityManager } from './entity-manager';
 import { Player } from '../player/player';
 import { Ephemeris } from '../../physics/ephemeris';
@@ -27,6 +27,8 @@ export class Simulator {
   ) {
     this.contactPhysics = new ContactPhysics();
   }
+
+  private readonly nearbyAttractorsScratch: Parameters<typeof attractorsNearInto>[2] = [];
 
   // dt 分のシミュレーションを進める。simDt をサブステップに分割して積分し、剛体接触(弾命中含む)・姿勢積分を行う。
   // nanWatchdog は軌道積分・姿勢積分・剛体接触・ベルトの各境界ごとに自機を検査する
