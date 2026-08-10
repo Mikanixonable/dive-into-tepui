@@ -26,11 +26,14 @@ main.ts
 ├── LocalStorageSaveStore  ... セーブの永続化窓口(索引・スナップショット本体の JSON 読み書きのみ)
 ├── SaveSlots              ... LocalStorageSaveStore を参照で持つ。SaveIndex(スロット/ステージ履歴/スナップショットメタ)の正本。initSaveSlots() が pruneOrphans() → migrateLegacySave() → アクティブスロット確定までを起動時に一度だけ行う
 ├── SnapshotService        ... LocalStorageSaveStore・SaveSlots を参照で持つ。Game ↔ GameSaveData の変換(capture/restore)。Game のコンストラクタ引数として渡す(Hud/Sfx と同じ「main.ts が先に作って注入する」形)
-├── Hud                  ... initHud() でタイトル(ステージ選択)画面より前に生成、Game へ参照を渡す
+├── Hud                  ... initHud() でタイトル(ステージ選択)画面より前に生成、Game へ参照を渡す。
+│   │                       root 直下の重なり順は layers: OverlayLayers(overlay-layer.ts、marker/panel/window/popup/view/notify/system の
+│   │                       7層、この順に z-index 10〜16)が正本 — z-index を持つのは overlay-layer.ts だけで、他の全 DOM 所有者は
+│   │                       自分がどの層の子になるかを選ぶだけ。層内の前後は DOM 順、最前面化は bringToFront() のみ
 │   └── HudPanels        (buildHudDom が作った要素索引を共有)
 ├── Sfx                  ... 同上
-├── SettingsPanel        ... 同上。DOM は Hud.root 配下。onSettingsOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots は main.ts が settingsPanel.toggle(false) + saveBrowser.open() へ配線
-├── SaveBrowser            ... Game 自身を構築引数に取るため Game より後に main.ts が new し、Game.setSaveBrowser で遅延注入する(ViewManager.setDocking と同じ形)。所有は main.ts、Game 側は参照を持つだけ
+├── SettingsPanel        ... 同上。DOM は Hud.layers.system 配下。onSettingsOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots は main.ts が settingsPanel.toggle(false) + saveBrowser.open() へ配線
+├── SaveBrowser            ... Game 自身を構築引数に取るため Game より後に main.ts が new し、Game.setSaveBrowser で遅延注入する(ViewManager.setDocking と同じ形)。所有は main.ts、Game 側は参照を持つだけ。DOM は Hud.layers.system 配下
 ├── AutoSave               ... SnapshotService を参照で持つ。startAnimationLoop() へその場で渡すだけで main() 側は変数に束縛しない
 ├── PerfMeter            (?perf=1 の DOM 表示。Game を PerfCountSource として参照するだけ)
 ├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
@@ -38,7 +41,7 @@ main.ts
     ├── FloatingOrigin       ... sync ごとに作り直す使い捨て
     ├── Input
     ├── TouchControls?       ... タッチデバイスのみ
-    ├── MarkerManager        ... DOM の親は Hud.root / Hud.svgOverlay、所有は Game
+    ├── MarkerManager        ... DOM の親は Hud.layers.marker / Hud.svgOverlay、所有は Game
     ├── Ephemeris            ... 状態を持たない純サンプラ。各所へ参照共有する単一インスタンス
     ├── CameraSystem
     │   ├── CombatCameraSystem
@@ -46,44 +49,44 @@ main.ts
     │   │   └── GunsightCamera
     │   ├── OverviewCamera
     │   ├── FocusMarkers
-    │   └── OverviewCameraPanel        ... DOM は Hud.root 配下。天体クラス別トグル(軌道線/ラベル)+ 弾薬マーカートグルのみ。座標系の選択は持たない
-    ├── FrameControls                  ... 状態を持たない横断。座標系パネル(カメラ/カメラ回転/並進/計画軌道回転の4ゾーン)から OverviewCamera・PlanDisplay.planFrame を書く
-    │   ├── AnchorZone × 2                 ... カメラ/並進ゾーン。ObjectPicker + SegmentedControl(いまいる系のクイックボタン)
+    │   └── OverviewCameraPanel        ... DOM は Hud.layers.panel 配下。天体クラス別トグル(軌道線/ラベル)+ 弾薬マーカートグルのみ。座標系の選択は持たない
+    ├── FrameControls                  ... 状態を持たない横断。座標系パネル(カメラ/カメラ回転/並進/計画軌道回転の4ゾーン)から OverviewCamera・PlanDisplay.planFrame を書く。パネル DOM は Hud.layers.panel 配下
+    │   ├── AnchorZone × 2                 ... カメラ/並進ゾーン。ObjectPicker + SegmentedControl(いまいる系のクイックボタン)。ObjectPicker のポップアップは Hud.layers.popup 配下
     │   └── RotationZone × 2               ... カメラ回転/計画軌道回転ゾーン。SegmentedControl のみ
     ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合
-    │   ├── ContextMenu<MapPickable>       ... 空域右クリック('empty-space')専用メニュー
-    │   ├── windows: Map<string, WindowEntry>  ... {win: PropertyWindow<MenuAction>, target}。オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new。PropertyWindow は Hud.root(#hud)配下に append
-    │   └── ObjectListPanel                ... DOM は Hud.root 配下。軌道オブジェクトウィンドウ(一覧 + クリックでフォーカス移動 + 右クリックでプロパティウィンドウ)。マップ視点である間は常設表示
+    │   ├── ContextMenu<MapPickable>       ... 空域右クリック('empty-space')専用メニュー。DOM は Hud.layers.popup 配下
+    │   ├── windows: Map<string, WindowEntry>  ... {win: PropertyWindow<MenuAction>, target}。オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new。PropertyWindow は Hud.layers.window 配下に append
+    │   └── ObjectListPanel                ... DOM は Hud.layers.panel 配下。軌道オブジェクトウィンドウ(一覧 + クリックでフォーカス移動 + 右クリックでプロパティウィンドウ)。マップ視点である間は常設表示
     ├── NavTarget                      ... 航法ターゲット(id)と自機軌道との相対 AN/DN・▲/▽ マーカー
     ├── Navball                        ... 天球グリッド6トグルの正本
-    │   └── NavballPanel                   ... DOM は Hud.root 配下。グリッドトグルのみ
+    │   └── NavballPanel                   ... DOM は Hud.layers.panel 配下。グリッドトグルのみ
     ├── GroupedMarkers (enemyMarkers)  ... 画面上で近接する敵マーカーのまとめ + 画面外方位マーカー
     ├── LeadMarkers                    ... 敵ごとの LEAD マーカーと最終ロック時刻
     ├── EquatorNodeMarkers             ... 操作艦・navTarget・targeter の対象ごとの EqAN/EqDN。source 列(id で重複除去)は Game が毎フレーム組む
     ├── SimSpeedManager
     ├── DisplayTimeManager             ... 「いつを見るか」(表示期間・未来ゴーストスライダー)
-    │   └── DisplayTimePanel           ... DOM は Hud.root 配下。期間/未来位置スライダー
+    │   └── DisplayTimePanel           ... DOM は Hud.layers.panel 配下。期間/未来位置スライダー
     ├── PlanEditor                     ... plan は活艦(ship)の Plan への転送 getter。正本ではない
     │   ├── PlanDisplay                ... 計画の未来表示(「見えるとき何を見せるか」)
     │   │   └── PlanPath         ... 計画折れ線 + per-arc キャッシュ + 画面判定
     │   │       └── PlanArc[]          ... arc ごと。各々 DynamicTrajectory 1本(積分の正本)+ SampledLine を持つ
-    │   ├── NodeGizmo
-    │   │   └── ContextMenu<number>
+    │   ├── NodeGizmo                   ... ノードハンドル/Δv 矢の DOM は Hud.layers.marker 配下
+    │   │   └── ContextMenu<number>     ... DOM は Hud.layers.popup 配下
     │   ├── HudHoldButton ×6            ... Δv 6方向の長押しボタン(dvButtons)
     │   └── 計画パネル DOM
     ├── PlanGuide                       ... 直近ノードの接近/達成通知済みフラグ(ノード自体への参照)を持つ
     ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/Game.player にまたがる横断)
-    │   └── DockView                       ... DOM は Hud.root 配下。格納艦/部品/ショップタブのフルスクリーン UI
+    │   └── DockView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
     ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約
-    ├── ViewBadge                      ... DOM は Hud.root 配下。ViewManager を参照するだけで自身は状態を持たない
-    │   └── ContextMenu<true, ViewId>
+    ├── ViewBadge                      ... DOM は Hud.layers.notify 配下。ViewManager を参照するだけで自身は状態を持たない
+    │   └── ContextMenu<true, ViewId>  ... DOM は Hud.layers.popup 配下
     ├── Stage (activeStage)            ... initStage() が毎回 new する。クリエイティブモードでは CreativeStage を
     │                                       game.ts が直接 new する(initStage() は経由しない — §1 末尾の補足参照)
     │   ├── ScoreCounter
     │   ├── Logistics                  ... 補給の投入判断と ▣ AMMO マーカー
-    │   ├── StageStatusPanel           ... DOM は Hud.root 配下。HP/補助メッセージ/撃墜数
+    │   ├── StageStatusPanel           ... DOM は Hud.layers.panel 配下。HP/補助メッセージ/撃墜数
     │   ├── ScoreAttackTimer           ... Stage0 のみ(Stage00 の波状攻撃フェーズ・波数は Stage00 自身のフィールド)
-    │   └── ShipPlacerPanel            ... CreativeStage のみ。DOM は Hud.root 配下。艦艇配置フォーム(開閉状態 isOpen も自身が持つ)
+    │   └── ShipPlacerPanel            ... CreativeStage のみ。パネル本体は Hud.layers.panel 配下、ObjectPicker のポップアップは Hud.layers.popup 配下(別々の引数で受け取る)。艦艇配置フォーム(開閉状態 isOpen も自身が持つ)
     ├── EnvironmentScene               ... game/celestial/ 配下(game/ への依存を持つため render/ から移動)
     │   ├── CelestialBody[]             ... CELESTIAL_BODIES(celestial-registry.ts)から1体ずつ生成。地球=EarthBody・太陽=SunBody・pointBrightness 未指定の惑星/月/土星等=SphereBody・pointBrightness 指定の惑星(金星・木星・水星・火星・土星・天王星)=PointBody。木星・土星・天王星・海王星は SOLAR_SYSTEM の CelestialBodyDef.rings(物理データ)を own し、build 時に RingView を1つ生成してシーン直下へ追加(本体メッシュの子ではない — sphere-body.ts/point-body.ts 参照)。SphereBody/PointBody は build 時に CelestialSurface(render/celestial-surface.ts、メッシュと昼夜陰影の uniform)を1つ own する
     │   ├── PointFieldView              ... 小惑星帯・トロヤ群・ヒルダ群・カイパーベルト cold/hot・散乱円盤の点群(群ごとに1つの InstancedMesh、計11200点)。point-field.ts の PointFieldDef 配列(POINT_FIELD_DEFS)から build 時に一度だけ生成し、以後は不変
@@ -102,7 +105,7 @@ main.ts
     ├── Targeter
     │   ├── OrbitLine                  ... 第一ターゲット軌道線(オレンジ)
     │   ├── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
-    │   └── ContextMenu<Enemy>         ... 第一/第二ターゲットの設定・解除メニュー
+    │   └── ContextMenu<Enemy>         ... 第一/第二ターゲットの設定・解除メニュー。DOM は Hud.layers.popup 配下
     ├── EntityManager                  ... エンティティ配列の保持のみ。simTime は持たない
     │   ├── Player[] (players)         ... 自機。ステージモードでは1隻のみ。操作対象(Game.player)は
     │   │                                  この配列内の1隻への参照(§3-4 参照)
