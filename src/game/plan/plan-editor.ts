@@ -30,6 +30,7 @@ import { SimSpeedManager } from '../sim-speed-manager';
 import type { Player } from '../player/player';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { toFrameState } from '../../physics/frame';
+import type { PlanAttractorProvider } from '../simulation/attractors';
 
 interface DvButtons {
   readonly pro: HudHoldButton;
@@ -675,11 +676,11 @@ export class PlanEditor {
   // 計画折れ線を再積分し、ゴースト位置とアプシスアイコンを求め直す。折れ線は戦闘ビューでも
   // 描く — 計画どおりに機体を動かすのは戦闘ビューだから。ただしノードが1つも無い計画は自機の
   // 現在軌道そのものなので、ノードを置ける編集中だけ扱う。
-  update(simTime: number, displayTime: number, dynamicAttractors: readonly Attractor[]): void {
+  update(simTime: number, displayTime: number, attractorProvider: PlanAttractorProvider): void {
     this.simTime = simTime;
     this.planDisplay.update(
       this.plan, simTime, displayTime,
-      this.hasPlan && (this.editMode || this.plan.nodes.length > 0), dynamicAttractors,
+      this.hasPlan && (this.editMode || this.plan.nodes.length > 0), attractorProvider,
     );
   }
 

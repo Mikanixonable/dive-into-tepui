@@ -18,6 +18,7 @@ import * as C from '../const';
 import { Plan } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayTimeManager } from '../display-time-manager';
+import type { PlanAttractorProvider } from '../simulation/attractors';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {
@@ -87,7 +88,7 @@ export class PlanDisplay {
   // show=false のときは何も求めない — 出さない計画の位置は持たない。
   update(
     plan: Plan, simTime: number, displayTime: number, show: boolean,
-    dynamicAttractors: readonly Attractor[],
+    attractorProvider: PlanAttractorProvider,
   ): void {
     this.plan = show ? plan : null;
     if (!show) {
@@ -98,7 +99,7 @@ export class PlanDisplay {
       return;
     }
     this.attractors = this.ephemeris.attractorsAt(displayTime);
-    this.path.update(plan, this.ephemeris, this.planFrame, simTime, this.attractors, dynamicAttractors);
+    this.path.update(plan, this.ephemeris, this.planFrame, simTime, this.attractors, attractorProvider);
     this.ghost = this.ghostAt(plan, displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.impactIcons = this.impactIconsOf();
