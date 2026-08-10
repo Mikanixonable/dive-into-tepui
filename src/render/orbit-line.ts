@@ -3,6 +3,7 @@
 // 中心に描くかは OrbitalElements 自身が持つため、呼び出し側が外側で選び直すことはできない。
 // ジオメトリの再生成は軌道要素が閾値を超えて変化したときだけ行う。
 import * as THREE from 'three/webgpu';
+import { attribute, float } from 'three/tsl';
 import { OrbitalElements } from '../physics/elements';
 import { Vec3 } from '../physics/vec3';
 import { FloatingOrigin } from '../game/floating-origin';
@@ -17,9 +18,17 @@ const TOL_ECC = 3e-4; // 離心率の変化
 const TOL_PLANE = Math.cos((0.12 * Math.PI) / 180); // 軌道面法線の角変化
 const TOL_APSE = Math.cos((0.3 * Math.PI) / 180); // 近点方向の角変化(e が大きいときのみ)
 
-// excludeNearBody の除外角半径に掛ける安全率。天体半径そのままだと表面ぎりぎりで
-// depth 精度によりまだチラつきうるため余裕を持たせる。
-const EXCLUDE_ANGLE_MARGIN = 2.5;
+// フェード帯の境界。天体中心からの距離を天体半径で割った比が、この下限以下で完全透明、
+// 上限以上で完全不透明になる。
+const FADE_TRANSPARENT_RADIUS_RATIO = 1;
+const FADE_OPAQUE_RADIUS_RATIO = 2;
+
+// この楕円上に乗っている天体(参照軌道線が表す天体そのもの)。E は軌道要素と同じ時刻での
+// 離心近点角 [rad](2π を法として扱うので値域は問わない)、radius は物理半径 [m]。
+export interface OrbitLineExcludeNearBody {
+  readonly E: number;
+  readonly radius: number;
+}
 
 // 角度 a の b からの符号付き差を [-π, π] で返す。
 function signedAngularDiff(a: number, b: number): number {
@@ -29,11 +38,23 @@ function signedAngularDiff(a: number, b: number): number {
   return d;
 }
 
+// smoothstep(edge0, edge1, x)。区間の外側は 0/1 にクランプする。
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
 export class OrbitLine {
   readonly line: THREE.Line;
   private readonly positions: Float32Array;
   private readonly eAtIndex: Float32Array;
   private readonly indices: Uint32Array;
+  // 頂点ごとの不透明度係数(0=透明〜1=不透明)。
+  private readonly fade: Float32Array;
+  // fade が全頂点 1・全セグメント描画の状態にあるか。楕円上に天体が乗っていない線
+  // (自機・ターゲット・敵の軌道線)は毎フレームこの状態のままなので、GPU への
+  // 転送を繰り返さずに済ませる。
+  private fadeNeutral = true;
   private snap: { a: number; e: number; hHat: Vec3; pHat: Vec3; focusE?: number } | null = null;
   private lastRegen = 0;
   private suppressed = false;
@@ -46,24 +67,32 @@ export class OrbitLine {
     this.line.visible = !value && this.snap !== null;
   }
 
-  // バッファジオメトリと LineBasicMaterial を組み立てる。
+  // バッファジオメトリと LineBasicNodeMaterial を組み立てる。
   constructor(color: string | number, opacity = 0.5) {
     this.positions = new Float32Array((POINT_COUNT + 1) * 3);
     this.eAtIndex = new Float32Array(POINT_COUNT + 1);
     this.indices = new Uint32Array(POINT_COUNT * 2);
+    this.fade = new Float32Array(POINT_COUNT + 1).fill(1);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    geo.setAttribute('fade', new THREE.BufferAttribute(this.fade, 1));
     geo.setIndex(new THREE.BufferAttribute(this.indices, 1));
-    const mat = new THREE.LineBasicMaterial({
+    this.resetIndices();
+    geo.setDrawRange(0, POINT_COUNT * 2);
+    const mat = new THREE.LineBasicNodeMaterial({
       color,
       transparent: true,
-      opacity,
       depthWrite: false,
     });
+    // 頂点属性 fade を不透明度に掛ける。一様な material.opacity では頂点ごとに
+    // 値を変えられないため、TSL で頂点属性を読むノードマテリアルを使う。
+    mat.opacityNode = attribute('fade', 'float').mul(float(opacity));
     // WebGPU レンダラー(r169)は LineLoop 非対応のため、閉路は始点=終端の頂点複製で作る。
     // excludeNearBody で天体近傍のセグメントを間引けるよう連続ストリップではなく
     // セグメント単位の LineSegments + インデックスバッファで描く。
-    this.line = new THREE.LineSegments(geo, mat);
+    // three/webgpu の公開型は LineBasicNodeMaterial を含まず暫定シムで補っているため、
+    // シム側の基底クラスが LineSegments の要求する Material と型の上では一致しない。
+    this.line = new THREE.LineSegments(geo, mat as unknown as THREE.Material);
     this.line.frustumCulled = false;
     // 既定値(自機の軌道線を想定)。他ロール(ターゲット等)は呼び出し側が
     // renderOrder を上書きし、重なったときに手前へ来る優先順位を決める。
@@ -72,12 +101,12 @@ export class OrbitLine {
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン。force = 要素が能動的に変化している
   // 間(推力中・ノード編集中)は true。densifyNear は中心天体相対座標で、その付近に頂点を
-  // 密に配置する。excludeNearBody は、この楕円上に乗っている天体自身の位置(離心近点角)と
-  // 半径 — その天体のメッシュと深度が競合してチラつくのを避けるため、周辺のセグメントを
-  // 間引いて描かない。
+  // 密に配置する。excludeNearBody は、この楕円上に乗っている天体自身の位置と半径 — その
+  // 天体のメッシュと深度が競合してチラつくのを避けるため、天体に近づくほど線を薄くし、
+  // 完全に透明になる内側は描画自体から外す。
   sync(
     el: OrbitalElements | null, fo: FloatingOrigin, force = false, densifyNear?: Vec3,
-    excludeNearBody?: { E: number; radius: number },
+    excludeNearBody?: OrbitLineExcludeNearBody,
   ): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.line.visible = false;
@@ -113,31 +142,56 @@ export class OrbitLine {
     if (this.needsRegen(el, force, focusE)) {
       this.regenerate(el, focusE);
     }
-    this.updateIndex(excludeNearBody);
+    this.applyFade(el, excludeNearBody);
   }
 
-  // 現在の除外天体の位置に応じて描画するセグメントを選び直す(頂点は動かさない)。
-  // regenerate と独立に、天体が軌道上を動くたび毎フレーム呼ばれる。
-  // 天体の角半径は頂点間隔よりずっと小さいのが普通で、天体はセグメントの途中に来る。
-  // 端点が除外範囲に入るかだけを見るとその一本を取りこぼすので、除外範囲をまたぐ
-  // セグメント(両端の符号付き差の符号が異なるもの)も落とす。
-  private updateIndex(excludeNearBody?: { E: number; radius: number }): void {
-    if (!this.snap) return;
-    // 天体が軌道に沿って占める角度は、その半径を軌道長半径で割った値で近似できる。
-    const gapHalfWidth = excludeNearBody ? (excludeNearBody.radius / this.snap.a) * EXCLUDE_ANGLE_MARGIN : 0;
+  // 全セグメントを描く並びにインデックスを埋める(描画範囲は呼び出し側が合わせる)。
+  private resetIndices(): void {
+    for (let i = 0; i < POINT_COUNT; i++) {
+      this.indices[i * 2] = i;
+      this.indices[i * 2 + 1] = i + 1;
+    }
+  }
+
+  // 頂点ごとの不透明度と、描くセグメントの選択を求め直す。頂点位置は動かさず eAtIndex を
+  // 読むだけなので、天体が軌道上を動くぶんには regenerate を伴わず毎フレーム追随できる。
+  // 完全に透明な頂点を持つセグメントは描画からも外す — 加えて、天体の角半径は頂点間隔より
+  // ずっと小さいのが普通で天体はセグメントの途中に来るため、端点の不透明度だけを見ると
+  // 天体の真上を通る一本を取りこぼす。両端が天体をまたぐセグメントも落とす。
+  private applyFade(el: OrbitalElements, excludeNearBody?: OrbitLineExcludeNearBody): void {
+    const fadeAttr = this.line.geometry.getAttribute('fade') as THREE.BufferAttribute;
+    const indexAttr = this.line.geometry.getIndex() as THREE.BufferAttribute;
+    if (!excludeNearBody) {
+      if (this.fadeNeutral) return;
+      this.fade.fill(1);
+      this.resetIndices();
+      this.line.geometry.setDrawRange(0, POINT_COUNT * 2);
+      fadeAttr.needsUpdate = true;
+      indexAttr.needsUpdate = true;
+      this.fadeNeutral = true;
+      return;
+    }
+
+    // 天体中心からの弧長を天体半径で割った比。天体が軌道に沿って占める角度は、その半径を
+    // 軌道長半径で割った値で近似できる。
+    const perRadius = el.a / excludeNearBody.radius;
+    for (let i = 0; i <= POINT_COUNT; i++) {
+      const ratio = Math.abs(signedAngularDiff(this.eAtIndex[i]!, excludeNearBody.E)) * perRadius;
+      this.fade[i] = smoothstep(FADE_TRANSPARENT_RADIUS_RATIO, FADE_OPAQUE_RADIUS_RATIO, ratio);
+    }
     let count = 0;
     for (let i = 0; i < POINT_COUNT; i++) {
-      if (excludeNearBody) {
-        const d0 = signedAngularDiff(this.eAtIndex[i]!, excludeNearBody.E);
-        const d1 = signedAngularDiff(this.eAtIndex[i + 1]!, excludeNearBody.E);
-        const straddles = Math.abs(d0) < Math.PI / 2 && Math.abs(d1) < Math.PI / 2 && d0 * d1 <= 0;
-        if (straddles || Math.abs(d0) < gapHalfWidth || Math.abs(d1) < gapHalfWidth) continue;
-      }
+      if (this.fade[i] === 0 || this.fade[i + 1] === 0) continue;
+      const d0 = signedAngularDiff(this.eAtIndex[i]!, excludeNearBody.E);
+      const d1 = signedAngularDiff(this.eAtIndex[i + 1]!, excludeNearBody.E);
+      if (Math.abs(d0) < Math.PI / 2 && Math.abs(d1) < Math.PI / 2 && d0 * d1 <= 0) continue;
       this.indices[count++] = i;
       this.indices[count++] = i + 1;
     }
-    (this.line.geometry.getIndex() as THREE.BufferAttribute).needsUpdate = true;
+    fadeAttr.needsUpdate = true;
+    indexAttr.needsUpdate = true;
     this.line.geometry.setDrawRange(0, count);
+    this.fadeNeutral = false;
   }
 
   // 現在の要素が直近のスナップショットから許容誤差を超えて変化していれば true(要再生成)。
