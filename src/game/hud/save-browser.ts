@@ -8,7 +8,7 @@ import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
 import type { SaveSlotMeta, SnapshotMeta } from '../save-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from './utils';
 import { celestialBodyName } from './frame-labels';
-import { syncHudModalState } from './dom';
+import type { ModalController } from './modal-controller';
 
 // スロット名・スナップショット名はプレイヤーの入力と取り込んだファイル由来なので、
 // innerHTML へ差し込む前に必ずこれを通す。
@@ -45,6 +45,7 @@ export class SaveBrowser {
     private readonly slots: SaveSlots,
     private readonly service: SnapshotService,
     private readonly game: Game,
+    private readonly modalController: ModalController,
   ) {
     this.el = document.createElement('div');
     this.el.id = 'save-browser';
@@ -62,14 +63,14 @@ export class SaveBrowser {
     this.el.style.display = 'flex';
     this._visible = true;
     this.game.pause();
-    syncHudModalState();
+    this.modalController.setOpen('save-browser', true);
   }
 
   close(): void {
     this.el.style.display = 'none';
     this._visible = false;
     this.game.resume();
-    syncHudModalState();
+    this.modalController.setOpen('save-browser', false);
   }
 
   private setStatus(text: string, isError: boolean): void {
