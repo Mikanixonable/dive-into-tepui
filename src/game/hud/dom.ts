@@ -278,8 +278,8 @@ body.hud-modal-open #touch-ui { display: none; }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 .mk-impact { color: ${WARNING}; text-shadow: 0 0 6px rgba(255,79,94,0.6), 0 0 3px #000; }
-.mk-daytick { color: ${INK_SOFT}; }
-.mk-daytick .sym { font-size: 10px; }
+.mk-plantick { color: ${INK_SOFT}; }
+.mk-plantick .sym svg { display: block; }
 .mk-poi { color: #ffffff; text-shadow: 0 0 4px #000; }
 .mk-poi .sym { font-size: 5px; }
 .mk-poi .lbl { font-size: 11px; margin-top: 4px; padding: 2px 4px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }
