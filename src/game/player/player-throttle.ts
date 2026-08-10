@@ -22,6 +22,18 @@ const OPPOSITE_THRUST_KEY: ReadonlyMap<string, KeyBinding> = new Map<string, Key
   [K.thrustDown.code, K.thrustUp],
 ]);
 
+// 対になる3軸(前後/左右/上下)。いずれか1組を同時押しすると全軸の噴射を緊急停止する。
+const THRUST_AXIS_PAIRS: readonly (readonly [KeyBinding, KeyBinding])[] = [
+  [K.thrustForward, K.thrustBackward],
+  [K.thrustLeft, K.thrustRight],
+  [K.thrustUp, K.thrustDown],
+];
+
+// 3組のいずれかが同時押しされているか。
+function isThrustKillSwitchActive(input: Input): boolean {
+  return THRUST_AXIS_PAIRS.some(([a, b]) => input.down(a) && input.down(b));
+}
+
 export class PlayerThrottle {
   rcsDamp = true;
   throttleIdx = C.THROTTLE_DEFAULT_IDX;
@@ -99,8 +111,14 @@ export class PlayerThrottle {
   // 逆方向を押しっぱなしにしても axX/Y/Z の相殺で終わらせず、逆方向を離した瞬間に
   // ラッチが復活するのを防ぐ)。連打の間隔は実時間で測るので、呼ばれないフレームを
   // 挟んでも判定が狂わない。simSpeed.canPlayerThrust が false の間は呼び出し側が
-  // このメソッド自体を呼ばない(押下エッジを消費させないため)。
+  // このメソッド自体を呼ばない(押下エッジを消費させないため)。緊急停止(3軸いずれかの
+  // 対キー同時押し)中は全ラッチを外し、連打判定そのものを行わない。
   updateThrustLatches(input: Input): void {
+    if (isThrustKillSwitchActive(input)) {
+      this.latchedThrustKeys.clear();
+      for (const key of Object.keys(this.lastThrustPressTime)) delete this.lastThrustPressTime[key];
+      return;
+    }
     const now = performance.now() / 1000;
     for (const key of THRUST_KEYS) {
       const opposite = OPPOSITE_THRUST_KEY.get(key.code);
@@ -124,6 +142,7 @@ export class PlayerThrottle {
 
   // 6方向の並進入力から機体座標系の推力加速度ベクトルを求める。入力が無ければ null。
   private buildThrust(input: Input, q: Attitude['q'], ship: import('../game-entity/ship').Ship, dt: number): Vec3 | null {
+    if (isThrustKillSwitchActive(input)) return null;
     const axX = (this.isThrustHeld(input, K.thrustLeft) ? 1 : 0) + (this.isThrustHeld(input, K.thrustRight) ? -1 : 0);
     const axY = (this.isThrustHeld(input, K.thrustUp) ? 1 : 0) + (this.isThrustHeld(input, K.thrustDown) ? -1 : 0);
     const axZ = (this.isThrustHeld(input, K.thrustForward) ? 1 : 0) + (this.isThrustHeld(input, K.thrustBackward) ? -1 : 0);
