@@ -670,25 +670,26 @@ export class MapPicker {
   }
 
   // 基準天体・高度・速度・AP/PE/INC/PRD の軌道要素一式。ship/base/ammo/player 共通で使う。
-  // 高度・速度以外は詳細トグルの下に畳む。
+  // 「軌道」グループにまとめ、ウィンドウ先頭の折り畳みセクションへ描かれる。
   private orbitRows(entity: GameEntity, attractors: readonly Attractor[]): PropertyRow[] {
     const oi = orbitInfo(entity, attractors);
+    const group = '軌道';
     return [
-      { key: 'center', label: '基準天体', value: oi.centerName, collapsible: true },
-      { key: 'alt', label: '高度', value: fmtDist(oi.alt) },
-      { key: 'spd', label: '速度', value: fmtSpeed(oi.spd) },
-      { key: 'ap', label: '遠地点 AP', value: fmtDist(oi.apAlt), collapsible: true },
-      { key: 'pe', label: '近地点 PE', value: fmtDist(oi.peAlt), collapsible: true },
+      { key: 'center', label: '基準天体', value: oi.centerName, group },
+      { key: 'alt', label: '高度', value: fmtDist(oi.alt), group },
+      { key: 'spd', label: '速度', value: fmtSpeed(oi.spd), group },
+      { key: 'ap', label: '遠地点 AP', value: fmtDist(oi.apAlt), group },
+      { key: 'pe', label: '近地点 PE', value: fmtDist(oi.peAlt), group },
       {
         key: 'inc', label: '傾斜角 INC',
-        value: isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---', collapsible: true,
+        value: isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---', group,
       },
-      { key: 'prd', label: '周期 PRD', value: fmtTime(oi.period), collapsible: true },
+      { key: 'prd', label: '周期 PRD', value: fmtTime(oi.period), group },
     ];
   }
 
   // 名前は既にウィンドウのタイトルにあるので行には含めない。装甲・電力・弾薬を主要行とし、
-  // それ以外(操作対象か・計画追従・軌道要素)は詳細トグルの下に畳む。
+  // それ以外(操作対象か・計画追従)は詳細トグル、軌道要素は「軌道」グループの下に畳む。
   private playerRows(target: MapPickable, attractors: readonly Attractor[]): PropertyRow[] {
     const ship = this.entities.findPlayer(target.id);
     if (!ship) return [];
@@ -706,7 +707,7 @@ export class MapPicker {
   }
 
   // 自機がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
-  // 装甲・距離・接近速度を主要行とし、相対速度・軌道要素・相対傾斜角は詳細トグルの下に畳む。
+  // 装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、軌道要素・相対傾斜角は「軌道」グループの下に畳む。
   private shipRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const enemy = this.entities.findEnemy(target.id);
     if (!enemy) return [];
@@ -723,13 +724,13 @@ export class MapPicker {
     if (rel) {
       rows.push({
         key: 'relinc', label: '相対傾斜 [AN/DN]',
-        value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', collapsible: true,
+        value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', group: '軌道',
       });
     }
     return rows;
   }
 
-  // 自機がいなければ距離の行は出さない。軌道要素は詳細トグルの下に畳む。
+  // 自機がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
   private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const base = this.entities.findBase(target.id);
     if (!base) return [];
@@ -742,7 +743,7 @@ export class MapPicker {
     return rows;
   }
 
-  // 自機がいなければ距離の行は出さない。軌道要素は詳細トグルの下に畳む。
+  // 自機がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
   private ammoRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const ammo = this.entities.ammos.find((a) => a.id === target.id);
     if (!ammo) return [];
@@ -776,10 +777,10 @@ export class MapPicker {
     if (!el) return rows;
     const apsis = apsisAltitudes(el);
     rows.push(
-      { key: 'ap', label: '遠地点 AP', value: fmtDist(apsis.ap) },
-      { key: 'pe', label: '近地点 PE', value: fmtDist(apsis.pe) },
-      { key: 'inc', label: '傾斜角 INC', value: `${el.incDeg.toFixed(2)}°` },
-      { key: 'prd', label: '周期 PRD', value: fmtTime(el.period) },
+      { key: 'ap', label: '遠地点 AP', value: fmtDist(apsis.ap), group: '軌道' },
+      { key: 'pe', label: '近地点 PE', value: fmtDist(apsis.pe), group: '軌道' },
+      { key: 'inc', label: '傾斜角 INC', value: `${el.incDeg.toFixed(2)}°`, group: '軌道' },
+      { key: 'prd', label: '周期 PRD', value: fmtTime(el.period), group: '軌道' },
     );
     return rows;
   }

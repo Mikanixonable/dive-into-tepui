@@ -9,7 +9,7 @@ import { PlanEditor } from './plan/plan-editor';
 import { DisplayTimeManager } from './display-time-manager';
 import { MapPicker } from './map-picker';
 import type { Docking } from './docking';
-import { resetHudDocks, syncNavballPlacement, syncOrbitPlacement } from './hud/dom';
+import { resetHudDocks, syncNavballPlacement } from './hud/dom';
 
 export type ViewId = 'combat' | 'map' | 'dock';
 
@@ -108,7 +108,6 @@ export class ViewManager {
     this.hud.root.classList.toggle('map-mode', map);
     this.hud.root.classList.toggle('dock-mode', this._current === 'dock');
     syncNavballPlacement(this.hud.root, map);
-    syncOrbitPlacement(this.hud.root, map);
     if (!map) resetHudDocks(this.hud.root);
     this.touchControls?.setMapMode(map);
     this.cameraSystem.setMapMode(map);
