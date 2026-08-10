@@ -19,6 +19,7 @@ import { FloatingOrigin } from './floating-origin';
 import { pickNearest } from './map-pick';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import type { SettingsPanel } from './hud/settings-panel';
+import type { MapVisibilityPolicy } from './celestial/map-visibility';
 
 export type CombatTarget = Enemy | Player;
 
@@ -156,30 +157,33 @@ export class Targeter {
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
   sync(
     fo: FloatingOrigin, player: Player, targets: CombatTarget[], overviewMode: boolean,
-    project: ProjectFn, attractors: readonly Attractor[],
+    project: ProjectFn, attractors: readonly Attractor[], visibility: MapVisibilityPolicy | null = null,
   ): void {
-    this.syncOrbitLine(fo, targets, overviewMode, attractors);
+    this.syncOrbitLine(fo, player, targets, overviewMode, attractors, visibility);
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
 
   // 第一・第二ターゲットのハイライト線を最新の状態に合わせる。
-  private syncOrbitLine(fo: FloatingOrigin, targets: CombatTarget[], overviewMode: boolean, attractors: readonly Attractor[]): void {
+  private syncOrbitLine(fo: FloatingOrigin, player: Player, targets: CombatTarget[], overviewMode: boolean, attractors: readonly Attractor[], visibility: MapVisibilityPolicy | null): void {
     const tgt = this.aliveTarget;
     const secTgt = this.aliveSecondaryTarget;
     for (const t of targets) {
-      const showGray = overviewMode && t.alive && t !== tgt && t !== secTgt;
+      const entityVisibility = visibility?.entity(t instanceof Player ? 'player' : 'ship', t === player);
+      const showGray = overviewMode && t.alive && t !== tgt && t !== secTgt && (entityVisibility?.orbit ?? true);
       t.syncBackgroundOrbitLine(showGray, fo, attractors);
     }
 
-    if (tgt) {
+    const targetVisibility = tgt === null ? null : visibility?.entity(tgt instanceof Player ? 'player' : 'ship', tgt === player);
+    if (tgt && (targetVisibility?.orbit ?? true)) {
       const center = strongestAttractor(tgt.state.r, attractors);
       this.orbitLine.sync(tgt.orbitalElementsAround(center), fo);
     } else {
       this.orbitLine.sync(null, fo);
     }
 
-    if (secTgt) {
+    const secondaryVisibility = secTgt === null ? null : visibility?.entity(secTgt instanceof Player ? 'player' : 'ship', secTgt === player);
+    if (secTgt && (secondaryVisibility?.orbit ?? true)) {
       const center = strongestAttractor(secTgt.state.r, attractors);
       this.secondaryOrbitLine.sync(secTgt.orbitalElementsAround(center), fo);
     } else {
