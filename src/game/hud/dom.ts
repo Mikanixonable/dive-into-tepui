@@ -620,6 +620,8 @@ body.hud-modal-open #touch-ui { display: none; }
   display: flex; flex-direction: column; gap: 3px; padding: 6px 8px;
   border: 1px solid ${EDGE}; border-radius: 5px;
 }
+#save-browser .sb-snap-loadable { cursor: pointer; }
+#save-browser .sb-snap-loadable:hover { border-color: ${INK_SOFT}; background: rgba(255,255,255,.03); }
 #save-browser .sb-snap-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #save-browser .sb-snap-name { font-size: 11px; }
 #save-browser .sb-snap-badge {
