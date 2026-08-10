@@ -55,24 +55,7 @@ export function radiatorFoldName(side: 'up' | 'down', fold: number): string {
   return `${RADIATOR_OBJECT_NAMES[side]}Fold${fold}`;
 }
 
-// ラジエーター1枚を全開にしたときの機体中心からの最遠点 [m]。
-// ヒンジ (2.62, 0.30, -2.20) を基点に、伸びる方向(折り目ローカル+X)が ±RADIATOR_DEPLOY_TILT
-// ずつ交互に振れながら Y軸回転で運ばれる各折りの変位を RADIATOR_FOLD_COUNT 個ぶん積算して
-// 先端位置を求める。パネルの半幅方向(ローカル+Y)は Y軸回転で向きが変わらないので、
-// コーナーまでの距離はそのまま加算するだけでよい。
-function computeRadiatorTipDistance(): number {
-  let x = 2.62;
-  const y = 0.30;
-  let z = -2.20;
-  for (let i = 0; i < C.RADIATOR_FOLD_COUNT; i++) {
-    const theta = i % 2 === 0 ? RADIATOR_DEPLOY_TILT : -RADIATOR_DEPLOY_TILT;
-    x += Math.cos(theta) * RADIATOR_SEGMENT_LENGTH;
-    z -= Math.sin(theta) * RADIATOR_SEGMENT_LENGTH;
-  }
-  const cornerY = y + RADIATOR_SEGMENT_LENGTH / 2;
-  return Math.sqrt(x * x + cornerY * cornerY + z * z);
-}
-export const RADIATOR_TIP_DISTANCE = computeRadiatorTipDistance();
+export { RADIATOR_HINGE } from './radiator-hinge';
 
 // マガジン寸法(機体座標系)。ベルト連結間隔(MAG_BELT_PITCH)は game.ts が
 // マガジンリンクの並びを計算するのに使う。純粋な数値なので JSON 化はしない。
