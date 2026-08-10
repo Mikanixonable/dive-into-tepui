@@ -32,6 +32,7 @@ export class EntityManager {
   private cachedRevision = -1;
   private readonly cachedOtherEntities: GameEntity[] = [];
   private readonly cachedAllEntities: GameEntity[] = [];
+  private readonly cachedAttractors: GameEntity[] = [];
 
   // 敵を登録する。
   addEnemy(enemy: Enemy): void {
@@ -136,6 +137,10 @@ export class EntityManager {
     );
     this.cachedAllEntities.length = 0;
     this.cachedAllEntities.push(...this.cachedOtherEntities, ...this.players);
+    this.cachedAttractors.length = 0;
+    for (const e of this.cachedAllEntities) {
+      if (e.alive && e.mu !== 0) this.cachedAttractors.push(e);
+    }
     this.cachedRevision = this.collectionRevision;
   }
 
@@ -154,7 +159,8 @@ export class EntityManager {
   // 重力を持つ(mu !== 0 かつ生存中の)エンティティを返す。GameEntity は id/radius/mu/degree2/
   // isStar/state を直接持つので Attractor を満たす。
   attractors(): readonly GameEntity[] {
-    return this.all().filter((e) => e.alive && e.mu !== 0);
+    this.rebuildCachesIfNeeded();
+    return this.cachedAttractors;
   }
 
   // 全エンティティの寿命判定を行い、死亡したものを破棄・除去する。喪失した自機は撃墜演出と
