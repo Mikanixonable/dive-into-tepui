@@ -206,9 +206,9 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
   4ゾーン(カメラ/カメラ回転/並進/計画軌道回転)に分かれ、`FrameControls` は両方の状態へ書き込む
   横断モジュールではあっても、書き込み先の2つの正本を1つに統合したり同時に切り替えたりはしない
   — カメラの原点・回転を変えても `planFrame` は動かず、その逆も同様。
-- `BodyClassToggles` のクラス別の軌道線表示(`*Orbit`)とアイコンラベル表示(`*Label`)
-  → プレイヤーが独立に選ぶ別々の値。読む側も別で、ラベルは `visibleBodyIds`、軌道線は
-  `EnvironmentScene.showsReferenceLine`。
+- `BodyClassToggles` のクラス別の軌道線表示(`*Orbit`)・アイコン表示(`*Icon`)・
+  ラベル表示(`*Label`)→ プレイヤーが独立に選ぶ3つの値。読む側も別で、アイコン/ラベルは
+  `visibleBodyIds`/`bodyIconLabel`、軌道線は `EnvironmentScene.showsReferenceLine`。
 
 ## 9. `plan` / `predict` / `display` の語を混ぜない
 
