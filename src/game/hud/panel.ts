@@ -6,6 +6,7 @@ import { len, sub } from '../../physics/vec3';
 import type { Game } from '../game';
 import { SIM_EPOCH_SEC, fmtAmmoStatus, fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
 import { orbitInfo, relativeInfo } from './orbit-info';
+import { formatMapScaleDistance, mapScaleFor } from './map-scale';
 
 interface GlobalStatusData {
   simSpeedLabel: string;
@@ -67,6 +68,7 @@ export class HudPanels {
   // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
   sync(game: Game, attractors: readonly Attractor[]): void {
     const now = performance.now();
+    this.syncMapScale(game);
     // グローバルステータス(時刻・時間加速・NODE WARP)は自機の有無に関係なく画面全体の
     // 状態なので、自機不在で以降の処理を抜ける早期 return より前に書く。
     this.setText('met', `${fmtDateTime(SIM_EPOCH_SEC + game.simulator.simTime)} / T+ ${fmtTime(game.simulator.simTime)}`);
@@ -158,6 +160,29 @@ export class HudPanels {
         .sort((a, b) => a.dist - b.dist);
       this.setEnemyList(rows);
     }
+  }
+
+  // マップ視点の縮尺は、カメラから画面中心までではなく、現在フォーカスしている対象の
+  // 深度における meters-per-pixel から求める。パンしてもフォーカス対象を基準にするため、
+  // 同じ天体を見続ける限り、表示値はスクロールズームだけに対応して変化する。
+  private syncMapScale(game: Game): void {
+    const panel = this.els.get('map-scale');
+    if (!panel) return;
+    const overview = game.cameraSystem.overviewMode;
+    panel.style.display = overview ? '' : 'none';
+    if (!overview) return;
+
+    const focus = game.cameraSystem.overviewCamera.resolvedFocus;
+    const metersPerPixel = game.cameraSystem.activeCameraScale(focus);
+    const scale = mapScaleFor(metersPerPixel);
+    const ruler = this.els.get('map-scale-ruler');
+    if (!scale || !ruler) {
+      panel.style.display = 'none';
+      return;
+    }
+    this.setText('map-scale-value', formatMapScaleDistance(scale.distanceM));
+    ruler.style.width = `${scale.widthPx.toFixed(2)}px`;
+    ruler.setAttribute('aria-label', `${formatMapScaleDistance(scale.distanceM)} の縮尺`);
   }
 
   // id 要素のテキストを、変化があるときだけ書き換える
