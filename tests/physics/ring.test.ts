@@ -1,8 +1,9 @@
 // ring-lod.ts の視角判定と、solar-system.ts の環データの妥当性の回帰テスト。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { ringVisualForm } from '../../src/game/celestial/ring-lod';
+import { ringLod, ringVisualForm } from '../../src/game/celestial/ring-lod';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { henyeyGreenstein, ringArcOpticalDepth, ringPixelCoverage, ringPlanetShadow, ringTransmission } from '../../src/physics/ring-optics';
 
 export function register(): void {
   test('ring-lod: 幅一定なら距離(metersPerPixel)の単調な関数として annulus→line の1回だけ切り替わる', () => {
@@ -51,14 +52,15 @@ export function register(): void {
     }
   });
 
-  test('環データ: 土星は D〜A 環にテクスチャ識別子を持ち、他の帯は持たない', () => {
+  test('環データ: 土星主環は物理tauを持つ個別bandへ分割され、視覚alphaテクスチャに依存しない', () => {
     const def = SOLAR_SYSTEM.saturn;
     assert.equal(def.kind, 'planet');
     const rings = def.kind === 'planet' ? def.rings : undefined;
     assert.ok(rings !== undefined);
-    const textured = rings!.bands.filter((b) => b.texture !== undefined);
-    assert.equal(textured.length, 1);
-    assert.equal(textured[0]!.texture, 'saturn');
+    assert.equal(rings!.bands.length, 9);
+    assert.ok(rings!.bands.every((band) => band.optics.normalOpticalDepth >= 0));
+    assert.ok(rings!.bands.some((band) => band.optics.normalOpticalDepth < 1e-5));
+    assert.ok(rings!.bands.some((band) => band.optics.normalOpticalDepth > 1));
   });
 
   test('環データ: 木星のハロー環・ゴサマー環2本と土星 E 環は厚みを持つ(扁平トーラス)', () => {
@@ -111,5 +113,45 @@ export function register(): void {
     const phoebe = rings!.bands.find((b) => b.innerRadius > 1e9);
     assert.ok(phoebe !== undefined, 'フェーベ環が見つからない');
     assert.ok(phoebe!.outerRadius / def.radius > 100, 'フェーベ環が土星本体に対して十分大きくない');
+  });
+
+  test('ring-optics: Beer-Lambert透過と観測開き角', () => {
+    assert.equal(ringTransmission(0, 1), 1);
+    assert.ok(Math.abs(ringTransmission(0.4, 1) - Math.exp(-0.4)) < 1e-12);
+    assert.ok(ringTransmission(0.4, 0.2) < ringTransmission(0.4, 1));
+    assert.ok(ringTransmission(1e6, 1) < 1e-12);
+  });
+
+  test('ring-optics: HGと被覆率', () => {
+    assert.ok(Math.abs(henyeyGreenstein(0, 0) - 1 / (4 * Math.PI)) < 1e-12);
+    assert.ok(henyeyGreenstein(1, 0.8) > henyeyGreenstein(-1, 0.8));
+    assert.equal(ringPixelCoverage(0, 10), 0);
+    assert.equal(ringPixelCoverage(10, 100), 0.1);
+    assert.equal(ringPixelCoverage(200, 100), 1);
+  });
+
+  test('ring-lod: クロスフェード中も重みを保存し、サブピクセルでは被覆率だけ減る', () => {
+    const subpixel = ringLod(25, 100);
+    assert.equal(subpixel.coverage, 0.25);
+    assert.equal(subpixel.lineWeight, 1);
+    assert.equal(subpixel.annulusWeight, 0);
+
+    const transition = ringLod(100, 100);
+    assert.ok(Math.abs(transition.lineWeight + transition.annulusWeight - 1) < 1e-12);
+    assert.equal(transition.coverage, 1);
+  });
+
+  test('ring-optics: アークtau倍率は非重複の光学値として適用される', () => {
+    const arcs = [{ fromDeg: 10, toDeg: 20, opticalDepthScale: 3 }];
+    assert.equal(ringArcOpticalDepth(0.1, 1, 0, arcs), 0.1);
+    assert.ok(Math.abs(ringArcOpticalDepth(0.1, 1, 15, arcs) - 0.3) < 1e-12);
+    assert.ok(Math.abs(ringArcOpticalDepth(0.1, 2, 15, arcs) - 0.6) < 1e-12);
+  });
+
+  test('ring-optics: 惑星影は反太陽側の環だけを遮る', () => {
+    const sun = { x: 1, y: 0, z: 0 };
+    assert.equal(ringPlanetShadow({ x: -2, y: 0, z: 0 }, sun, 1), true);
+    assert.equal(ringPlanetShadow({ x: -2, y: 2, z: 0 }, sun, 1), false);
+    assert.equal(ringPlanetShadow({ x: 2, y: 0, z: 0 }, sun, 1), false);
   });
 }

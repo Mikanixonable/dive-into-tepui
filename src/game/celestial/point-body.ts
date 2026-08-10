@@ -6,7 +6,7 @@
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/attractor';
-import { norm, sub } from '../../physics/vec3';
+import { len, scale as scaleVec, sub } from '../../physics/vec3';
 import { RingSystemDef, RingTextureId, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
@@ -33,6 +33,8 @@ const POINT_OPACITY: Record<PointBrightness, number> = {
 };
 
 const tmpPos = new THREE.Vector3();
+const POINT_BODY_VIS_DIST = 5e7;
+const PHYSICAL_DIAMETER_THRESHOLD_PX = 2;
 
 export class PointBody extends CelestialBody {
   readonly id: OrbitingId;
@@ -86,7 +88,8 @@ export class PointBody extends CelestialBody {
     const pos = ephemeris.positionOf(this.id, displayTime);
     if (cameraSystem.overviewMode) {
       // 広範囲視点は SphereBody と同じ実スケール。
-      this.surface.setSunDirection(ephemeris.sunDirFrom(pos, displayTime));
+      const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
+      this.surface.setSunDirection(sunDirection);
       this.mesh.visible = true;
       this.mesh.position.copy(fo.RtoThreeV3(pos));
       this.mesh.scale.copy(this.axes);
@@ -94,16 +97,75 @@ export class PointBody extends CelestialBody {
       const orientation = ephemeris.poleAt(this.id, displayTime);
       const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
       if (q !== null) this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
+      this.surface.setRingShadowSystem(
+        this.rings,
+        this.mesh.position,
+        this.radius,
+        this.radius,
+        orientation === null ? null : orientation.axis,
+      );
       if (this.ring !== undefined) {
         this.ring.group.visible = true;
-        this.ring.sync(this.mesh.position, this.radius, orientation === null ? null : orientation.axis, pos, cameraSystem.activeCameraScale);
+        this.ring.sync(
+          this.mesh.position,
+          this.radius,
+          orientation === null ? null : orientation.axis,
+          pos,
+          cameraSystem.activeCameraScale,
+          sunDirection,
+          cameraSystem.activeCamera.position,
+        );
       }
     } else {
-      // 戦闘視点は星シェルと同じ「カメラ位置 + 実方向 × STAR_SHELL_RADIUS」に置く輝点。
+      // 戦闘視点でも、天体本体または環外径が2px以上ならSphereBodyと同じ圧縮実体を描く。
+      // それ未満だけを点へ落とし、環を天体クラスだけで無条件に捨てない。
+      const rel = sub(pos, cameraSystem.activeCameraPos);
+      const trueDistance = Math.max(1, len(rel));
+      const outerRadius = this.rings === undefined
+        ? this.radius
+        : this.rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), this.radius);
+      const projectedDiameterPx = (2 * outerRadius) / cameraSystem.activeCameraScale(pos);
+      const showPhysical = projectedDiameterPx >= PHYSICAL_DIAMETER_THRESHOLD_PX;
+      const cam = cameraSystem.activeCamera;
+      const dir = scaleVec(rel, 1 / trueDistance);
+      if (showPhysical) {
+        const scaleFactor = POINT_BODY_VIS_DIST * (this.radius / trueDistance);
+        this.mesh.visible = true;
+        this.mesh.position.set(
+          cam.position.x + dir.x * POINT_BODY_VIS_DIST,
+          cam.position.y + dir.y * POINT_BODY_VIS_DIST,
+          cam.position.z + dir.z * POINT_BODY_VIS_DIST,
+        );
+        const k = scaleFactor / this.radius;
+        this.mesh.scale.set(this.axes.x * k, this.axes.y * k, this.axes.z * k);
+        this.surface.setSunDirection(ephemeris.sunDirFrom(pos, displayTime));
+        const orientation = ephemeris.poleAt(this.id, displayTime);
+        const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
+        if (q !== null) this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
+        this.surface.setRingShadowSystem(
+          this.rings,
+          this.mesh.position,
+          this.radius,
+          scaleFactor,
+          orientation === null ? null : orientation.axis,
+        );
+        this.billboard.hide();
+        if (this.ring !== undefined) {
+          this.ring.group.visible = true;
+          this.ring.sync(
+            this.mesh.position,
+            scaleFactor,
+            orientation === null ? null : orientation.axis,
+            pos,
+            cameraSystem.activeCameraScale,
+            ephemeris.sunDirFrom(pos, displayTime),
+            cameraSystem.activeCamera.position,
+          );
+        }
+        return;
+      }
       this.mesh.visible = false;
       if (this.ring !== undefined) this.ring.group.visible = false;
-      const cam = cameraSystem.activeCamera;
-      const dir = norm(sub(pos, cameraSystem.activeCameraPos));
       this.billboard.sync(
         tmpPos.set(
           cam.position.x + dir.x * STAR_SHELL_RADIUS,

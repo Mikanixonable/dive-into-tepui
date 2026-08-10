@@ -1,112 +1,295 @@
-// 惑星の環を構成する3つの見た目の builder。半径は天体半径を1とする単位で与え、天体メッシュと
-// 同じスケールを継承する呼び出し側(game/celestial/ring-view.ts)に合わせている。環はいずれも
-// 軸対称配置(モデル座標の +Y が自転軸)なので、RingGeometry/自作の円周ジオメトリの法線 +Z を
-// +Y へ倒す RING_TILT を共通で使う。
+// 物理パラメータから環を描く。環のalphaは固定値ではなく、TSLで
+//   T = exp(-tauNormal / |N.V|)
+// と単一散乱を評価する。全てのThree importはWebGPU entry pointから行う。
 import * as THREE from 'three/webgpu';
-import { RingArcDef } from '../physics/solar-system';
+import {
+  and,
+  cameraPosition,
+  dot,
+  exp,
+  float,
+  length,
+  lessThan,
+  max,
+  normalize,
+  positionWorld,
+  select,
+  sub,
+  texture as textureNode,
+  uniform,
+  uv,
+  vec3,
+} from 'three/tsl';
+import { RingArcDef, RingOpticsDef } from '../physics/solar-system';
+import { ringSingleScattering, ringTransmission } from '../physics/ring-optics';
 
 const RING_TILT = -Math.PI / 2;
 const D2R = Math.PI / 180;
-// アークを持つ帯の基準部(アーク以外の部分)の不透明度は、アーク本体の何割か。
-const ARC_BASE_OPACITY_RATIO = 0.35;
+const FOUR_PI = 4 * Math.PI;
+const MU_MIN = 0.015;
+const RADIANCE_SCALE = 0.72;
 
-// 内縁から外縁への放射方向をテクスチャの u 0→1 に対応させる。
+export type RingVisualState = {
+  readonly bodyCenter: THREE.Vector3;
+  readonly bodyRadius: number;
+  readonly sunDirection: THREE.Vector3;
+  readonly cameraPosition: THREE.Vector3;
+  readonly ringAxis: THREE.Vector3;
+  readonly coverage: number;
+};
+
+export type RingVisual = {
+  readonly object: THREE.Object3D;
+  readonly sync: (state: RingVisualState) => void;
+};
+
+function colorNode(color: readonly [number, number, number]): ReturnType<typeof vec3> {
+  return vec3(color[0], color[1], color[2]);
+}
+
+function physicalMaterial(baseColor: any, optics: RingOpticsDef): { material: any; sync: (state: RingVisualState) => void } {
+  const bodyCenter = uniform(new THREE.Vector3());
+  const bodyRadius = uniform(1);
+  const sunDirection = uniform(new THREE.Vector3(1, 0, 0));
+  const tauNormal = uniform(Math.max(0, optics.normalOpticalDepth));
+  const albedo = uniform(Math.max(0, Math.min(1, optics.singleScatteringAlbedo)));
+  const phaseG = uniform(Math.max(-0.999, Math.min(0.999, optics.phaseG)));
+  const coverage = uniform(1);
+  const ringAxis = uniform(new THREE.Vector3(0, 1, 0));
+
+  const viewDirection = normalize(sub(cameraPosition, positionWorld));
+  // RingGeometry の面法線だけでなく、側壁を持つ拡散環でも環面に垂直な
+  // normal optical depth を評価するため、常に物理的な環軸を使う。
+  const muView = max(dot(ringAxis, viewDirection).abs(), MU_MIN);
+  const muSun = max(dot(ringAxis, sunDirection).abs(), MU_MIN);
+  const tauView = tauNormal.div(muView);
+  const tauSun = tauNormal.div(muSun);
+  const transmittance = exp(tauView.negate());
+  const baseExtinction = float(1).sub(transmittance);
+  const extinction = baseExtinction.mul(coverage);
+
+  // 天体球がフラグメントと太陽の間にあるときは直射散乱を遮る。
+  const fromBody = sub(positionWorld, bodyCenter);
+  const alongSunRay = dot(fromBody, sunDirection);
+  const closestToBody = sub(fromBody, sunDirection.mul(alongSunRay));
+  const shadowDistance = length(closestToBody);
+  const inBodyShadow = and(lessThan(alongSunRay, 0), lessThan(shadowDistance, bodyRadius));
+  const directLight = select(inBodyShadow, float(0), float(1));
+
+  const denominator = float(1).add(phaseG.mul(phaseG)).sub(
+    phaseG.mul(float(2).mul(dot(sunDirection.negate(), viewDirection))),
+  );
+  const phase = float(1).sub(phaseG.mul(phaseG)).div(
+    float(FOUR_PI).mul(denominator.sqrt().mul(denominator)),
+  );
+  const scattering = albedo
+    .mul(float(1).sub(exp(tauSun.negate())))
+    .mul(exp(tauView.mul(-0.5)))
+    .mul(phase.mul(FOUR_PI))
+    .mul(directLight)
+    .mul(RADIANCE_SCALE);
+  // 通常alpha合成では color * alpha が画面へ寄与する。coverage を含まない
+  // baseExtinction で割ることで、散乱輝度にもcoverageが一度だけ掛かる。
+  const safeBaseExtinction = max(baseExtinction, 0.001);
+
+  const mat = new THREE.MeshBasicNodeMaterial({
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  mat.colorNode = baseColor.mul(scattering.div(safeBaseExtinction));
+  mat.opacityNode = extinction;
+
+  return {
+    material: mat,
+    sync: (state) => {
+      bodyCenter.value.copy(state.bodyCenter);
+      bodyRadius.value = state.bodyRadius;
+      sunDirection.value.copy(state.sunDirection).normalize();
+      coverage.value = state.coverage;
+      ringAxis.value.copy(state.ringAxis).normalize();
+    },
+  };
+}
+
 function mapRadialUv(geo: THREE.RingGeometry, innerRadius: number, outerRadius: number): void {
   const pos = geo.getAttribute('position');
-  const uv = geo.getAttribute('uv');
+  const uvAttr = geo.getAttribute('uv');
   for (let i = 0; i < pos.count; i++) {
     const r = Math.hypot(pos.getX(i), pos.getY(i));
-    uv.setXY(i, (r - innerRadius) / (outerRadius - innerRadius), 0.5);
+    uvAttr.setXY(i, (r - innerRadius) / (outerRadius - innerRadius), 0.5);
   }
 }
 
-// テクスチャ1枚に環全体を焼き込んだ annulus(土星の D〜A 環)。間隙はテクスチャのアルファで表す。
-export function createTexturedRing(textureUrl: string, innerRadius: number, outerRadius: number): THREE.Mesh {
-  const geo = new THREE.RingGeometry(innerRadius, outerRadius, 128, 1);
-  mapRadialUv(geo, innerRadius, outerRadius);
-  const texture = new THREE.TextureLoader().load(textureUrl);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, depthWrite: false });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.rotation.x = RING_TILT;
-  mesh.frustumCulled = false;
-  return mesh;
-}
-
-function buildAnnulusMesh(color: number, opacity: number, innerRadius: number, outerRadius: number, thetaStart: number, thetaLength: number): THREE.Mesh {
-  const geo = new THREE.RingGeometry(innerRadius, outerRadius, 128, 1, thetaStart, thetaLength);
-  const mat = new THREE.MeshBasicMaterial({ color, opacity, transparent: true, side: THREE.DoubleSide, depthWrite: false });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.rotation.x = RING_TILT;
-  mesh.frustumCulled = false;
-  return mesh;
-}
-
-// 経度範囲 [fromDeg, toDeg) を、環ジオメトリの thetaStart/thetaLength [rad] へ変換する。
-function arcTheta(arc: RingArcDef): { thetaStart: number; thetaLength: number } {
-  const thetaStart = arc.fromDeg * D2R;
-  const span = ((arc.toDeg - arc.fromDeg) % 360 + 360) % 360 || 360;
-  return { thetaStart, thetaLength: span * D2R };
-}
-
-// 単色半透明の annulus。幅が視角で解像できる帯(土星 G 環、木星主環、天王星/海王星の各環など)
-// を面として描く。arcs を渡すと、全周を低い不透明度の基準面で塗った上に、各アークだけ
-// 指定の不透明度の面を重ねる(海王星アダムス環)。
-export function createAnnulusRing(color: number, opacity: number, innerRadius: number, outerRadius: number, arcs?: readonly RingArcDef[]): THREE.Object3D {
-  if (arcs === undefined || arcs.length === 0) return buildAnnulusMesh(color, opacity, innerRadius, outerRadius, 0, Math.PI * 2);
-  const group = new THREE.Group();
-  group.add(buildAnnulusMesh(color, opacity * ARC_BASE_OPACITY_RATIO, innerRadius, outerRadius, 0, Math.PI * 2));
+function sectorParts(arcs: readonly RingArcDef[] | undefined): readonly { start: number; length: number; scale: number }[] {
+  if (arcs === undefined || arcs.length === 0) return [{ start: 0, length: Math.PI * 2, scale: 1 }];
+  const bounds = [0, 360];
   for (const arc of arcs) {
-    const { thetaStart, thetaLength } = arcTheta(arc);
-    group.add(buildAnnulusMesh(color, opacity, innerRadius, outerRadius, thetaStart, thetaLength));
+    bounds.push(((arc.fromDeg % 360) + 360) % 360, ((arc.toDeg % 360) + 360) % 360);
   }
-  return group;
+  const sorted = [...new Set(bounds)].sort((a, b) => a - b);
+  const parts: { start: number; length: number; scale: number }[] = [];
+  for (let i = 0; i + 1 < sorted.length; i++) {
+    const from = sorted[i]!;
+    const to = sorted[i + 1]!;
+    const mid = (from + to) * 0.5;
+    let scale = 1;
+    for (const arc of arcs) {
+      const a = ((arc.fromDeg % 360) + 360) % 360;
+      const b = ((arc.toDeg % 360) + 360) % 360;
+      if (a <= b ? mid >= a && mid < b : mid >= a || mid < b) scale *= arc.opticalDepthScale;
+    }
+    parts.push({ start: from * D2R, length: (to - from) * D2R, scale });
+  }
+  return parts.length > 0 ? parts : [{ start: 0, length: Math.PI * 2, scale: 1 }];
 }
 
-const RING_LINE_SEGMENTS = 256;
-const ARC_LINE_SEGMENTS = 32;
+function combineVisuals(visuals: readonly RingVisual[]): RingVisual {
+  const group = new THREE.Group();
+  for (const visual of visuals) group.add(visual.object);
+  return { object: group, sync: (state) => visuals.forEach((visual) => visual.sync(state)) };
+}
 
-function buildRingLineSegment(color: number, opacity: number, radius: number, thetaStart: number, thetaLength: number, segments: number): THREE.Line {
+function buildAnnulusMesh(
+  optics: RingOpticsDef,
+  innerRadius: number,
+  outerRadius: number,
+  thetaStart: number,
+  thetaLength: number,
+): RingVisual {
+  const geo = new THREE.RingGeometry(innerRadius, outerRadius, 128, 1, thetaStart, thetaLength);
+  const { material, sync } = physicalMaterial(colorNode(optics.color), optics);
+  const mesh = new THREE.Mesh(geo, material as THREE.Material);
+  mesh.rotation.x = RING_TILT;
+  mesh.frustumCulled = false;
+  return { object: mesh, sync };
+}
+
+/** 薄い環。アークは非重複sectorへ分割するため、実効tauが二重合成されない。 */
+export function createAnnulusRing(
+  optics: RingOpticsDef,
+  innerRadius: number,
+  outerRadius: number,
+  arcs?: readonly RingArcDef[],
+): RingVisual {
+  const visuals = sectorParts(arcs).map((part) => buildAnnulusMesh({
+    ...optics,
+    normalOpticalDepth: optics.normalOpticalDepth * part.scale,
+  }, innerRadius, outerRadius, part.start, part.length));
+  return visuals.length === 1 ? visuals[0]! : combineVisuals(visuals);
+}
+
+function buildRingLineSegment(
+  color: number,
+  optics: RingOpticsDef,
+  radius: number,
+  thetaStart: number,
+  thetaLength: number,
+  segments: number,
+): RingVisual {
   const positions = new Float32Array((segments + 1) * 3);
   for (let i = 0; i <= segments; i++) {
     const a = thetaStart + (i / segments) * thetaLength;
     positions[i * 3] = Math.cos(a) * radius;
     positions[i * 3 + 1] = Math.sin(a) * radius;
-    positions[i * 3 + 2] = 0;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.LineBasicMaterial({ color, opacity, transparent: true });
-  // WebGPU レンダラーは LineLoop 未対応なので、始点を終端に重ねた THREE.Line で閉じる。
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, depthWrite: false });
   const line = new THREE.Line(geo, mat);
   line.rotation.x = RING_TILT;
   line.frustumCulled = false;
-  return line;
+  return {
+    object: line,
+    sync: (state) => {
+      const view = state.cameraPosition.clone().sub(state.bodyCenter).normalize();
+      const muView = Math.max(MU_MIN, Math.abs(state.ringAxis.dot(view)));
+      const muSun = Math.max(MU_MIN, Math.abs(state.ringAxis.dot(state.sunDirection)));
+      const cosTheta = Math.max(-1, Math.min(1, state.sunDirection.clone().negate().dot(view)));
+      const baseAlpha = 1 - ringTransmission(optics.normalOpticalDepth, muView);
+      const alpha = baseAlpha * state.coverage;
+      const scatter = ringSingleScattering(optics.normalOpticalDepth, muSun, muView, cosTheta, optics.singleScatteringAlbedo, optics.phaseG);
+      // 1px線は環全周を1 drawで表すため、フラグメントごとの惑星影をCPU側から
+      // 与えられない。誤った全周遮蔽を避け、サブピクセル積分では影を平均化して省略する。
+      mat.opacity = Math.max(0, Math.min(1, alpha));
+      mat.color.setRGB(
+        optics.color[0] * Math.min(1, scatter / Math.max(0.001, baseAlpha)),
+        optics.color[1] * Math.min(1, scatter / Math.max(0.001, baseAlpha)),
+        optics.color[2] * Math.min(1, scatter / Math.max(0.001, baseAlpha)),
+      );
+    },
+  };
 }
 
-// 幅がサブピクセルになる細環を、半径 radius(内縁・外縁の中間)の円1本の線として描く。
-// arcs の扱いは createAnnulusRing と対称 — 全周を低い不透明度の基準線で描いた上に、
-// 各アークだけ別の線分を重ねる。
-export function createRingLine(color: number, opacity: number, radius: number, arcs?: readonly RingArcDef[]): THREE.Object3D {
-  if (arcs === undefined || arcs.length === 0) return buildRingLineSegment(color, opacity, radius, 0, Math.PI * 2, RING_LINE_SEGMENTS);
-  const group = new THREE.Group();
-  group.add(buildRingLineSegment(color, opacity * ARC_BASE_OPACITY_RATIO, radius, 0, Math.PI * 2, RING_LINE_SEGMENTS));
-  for (const arc of arcs) {
-    const { thetaStart, thetaLength } = arcTheta(arc);
-    group.add(buildRingLineSegment(color, opacity, radius, thetaStart, thetaLength, ARC_LINE_SEGMENTS));
+/** サブピクセル細環。被覆率を同期時に掛けるので遠方ほど濃くならない。 */
+export function createRingLine(
+  optics: RingOpticsDef,
+  radius: number,
+  arcs?: readonly RingArcDef[],
+): RingVisual {
+  const visuals = sectorParts(arcs).map((part) => buildRingLineSegment(0xffffff, {
+    ...optics,
+    normalOpticalDepth: optics.normalOpticalDepth * part.scale,
+  }, radius, part.start, part.length, part.length >= Math.PI * 1.9 ? 256 : 32));
+  return visuals.length === 1 ? visuals[0]! : combineVisuals(visuals);
+}
+
+function annularPrism(innerRadius: number, outerRadius: number, height: number): THREE.BufferGeometry {
+  const segments = 128;
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (let layer = 0; layer < 2; layer++) {
+    const z = layer === 0 ? -height * 0.5 : height * 0.5;
+    for (let i = 0; i < segments; i++) {
+      const a = (i / segments) * Math.PI * 2;
+      positions.push(Math.cos(a) * innerRadius, Math.sin(a) * innerRadius, z);
+      positions.push(Math.cos(a) * outerRadius, Math.sin(a) * outerRadius, z);
+    }
   }
-  return group;
+  const ringIndex = (layer: number, i: number, outer: boolean) => layer * segments * 2 + ((i + segments) % segments) * 2 + (outer ? 1 : 0);
+  for (let i = 0; i < segments; i++) {
+    const n = (i + 1) % segments;
+    const ti = ringIndex(1, i, false), tn = ringIndex(1, n, false), oi = ringIndex(1, i, true), on = ringIndex(1, n, true);
+    const bi = ringIndex(0, i, false), bn = ringIndex(0, n, false), boi = ringIndex(0, i, true), bon = ringIndex(0, n, true);
+    indices.push(oi, on, tn, oi, tn, ti, bi, bn, bon, bi, bon, boi);
+    indices.push(oi, boi, bon, oi, bon, on, ti, tn, bn, ti, bn, bi);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
 }
 
-// 厚みを持つ帯(木星のハロー環・ゴサマー環、土星の E 環)を、半透明の扁平球殻(Y 方向だけ
-// 厚み分に潰した球)として描く。annulus のような内径のくり抜きは表現しないが、この規模の環は
-// いずれも拡散した塵の雲でしかないので殻の見え方で足りる。
-export function createTorusRing(color: number, opacity: number, innerRadius: number, outerRadius: number, thickness: number): THREE.Mesh {
-  const meanRadius = (innerRadius + outerRadius) / 2;
-  const geo = new THREE.SphereGeometry(1, 32, 16);
-  const mat = new THREE.MeshBasicMaterial({ color, opacity, transparent: true, side: THREE.DoubleSide, depthWrite: false });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.scale.set(meanRadius, thickness / 2, meanRadius);
+/** 拡散環。扁平球ではなく内径を持つannular prismとして構築する。 */
+export function createTorusRing(
+  optics: RingOpticsDef,
+  innerRadius: number,
+  outerRadius: number,
+  thickness: number,
+): RingVisual {
+  const geo = annularPrism(innerRadius, outerRadius, thickness);
+  const { material, sync } = physicalMaterial(colorNode(optics.color), optics);
+  const mesh = new THREE.Mesh(geo, material as THREE.Material);
+  mesh.rotation.x = RING_TILT;
   mesh.frustumCulled = false;
-  return mesh;
+  return { object: mesh, sync };
+}
+
+/** 旧アセット互換。画像のalphaは物理tauとして扱わず、RGBだけを散乱色として使う。 */
+export function createTexturedRing(
+  textureUrl: string,
+  optics: RingOpticsDef,
+  innerRadius: number,
+  outerRadius: number,
+): RingVisual {
+  const geo = new THREE.RingGeometry(innerRadius, outerRadius, 128, 1);
+  mapRadialUv(geo, innerRadius, outerRadius);
+  const texture = new THREE.TextureLoader().load(textureUrl);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const { material, sync } = physicalMaterial(textureNode(texture, uv()), optics);
+  const mesh = new THREE.Mesh(geo, material as THREE.Material);
+  mesh.rotation.x = RING_TILT;
+  mesh.frustumCulled = false;
+  return { object: mesh, sync };
 }
