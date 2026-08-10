@@ -119,11 +119,8 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud.map-mode #hud-orbit { font-size: inherit; }
 #hud.map-mode #hud-orbit h3 { font-size: 11px; }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
-#hud-target { bottom: 12px; right: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
-#hud-target h3 { font-size: 8.8px; }
-#hud.map-mode #hud-target {
-  top: auto; right: 12px; bottom: 12px; left: auto;
-}
+#hud .hud-dock-right > #hud-target { width: 100%; box-sizing: border-box; font-size: 10.4px; }
+#hud .hud-dock-right > #hud-target h3 { font-size: 8.8px; }
 #hud-enemies { bottom: 12px; right: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
@@ -753,7 +750,7 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
 }
 
 // 常設の情報パネル(SHIP STATUS/ORBIT/TARGET/CONTACTS)を組む。
-function buildInfoPanels(root: HTMLElement): void {
+function buildInfoPanels(root: HTMLElement, targetDock: HTMLElement): void {
   const shelf = el('div', 'hud-combat-shelf', root);
 
   // SHIP STATUS パネル
@@ -782,7 +779,8 @@ function buildInfoPanels(root: HTMLElement): void {
     <div class="row"><span class="k">機体温度</span><span class="v" data-id="temp"></span></div>`;
 
   // TARGET パネル
-  const target = el('div', 'hud-target', shelf, 'panel');
+  const target = el('div', 'hud-target', targetDock, 'panel');
+  target.style.display = 'none';
   target.innerHTML = `
     <h3 data-id="tgtname">TARGET</h3>
     <div data-id="tgtbody"></div>`;
@@ -893,7 +891,7 @@ export function buildHudDom(): HudDomRefs {
   buildDockToggle(layers.panel, rightDock, 'right');
 
   // 常設パネル群を組む。
-  buildInfoPanels(layers.panel);
+  buildInfoPanels(layers.panel, rightDock);
   buildGlobalStatus(layers.panel);
   buildChaseReset(layers.panel);
   el('div', 'hud-modal-shield', layers.notify);
