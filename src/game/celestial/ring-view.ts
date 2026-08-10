@@ -1,32 +1,31 @@
-// RingSystemDef(物理データ)1系の描画。環は本体メッシュの子にはしない — 環の姿勢は極軸
-// だけで決まり(帯ごとの姿勢差はない)、海王星アダムス環のような非軸対称のアーク構造は
-// 本体の自転位相(spinOrientation の spinAngle)には追従してはならないため、位置・スケールは
-// 本体メッシュに揃えつつ、姿勢だけ spinAngle=0 の spinOrientation で別個に組む
-// (body-orientation.ts の spinOrientation をそのまま再利用し、新しい姿勢関数は作らない)。
+// RingSystemDefの物理データを、マップビューと戦闘ビューで共通のRingVisualへ同期する。
+// 環の姿勢は極軸だけで決まり、非軸対称アークは本体の自転位相には追従させない。
 import * as THREE from 'three/webgpu';
 import { spinOrientation } from '../../physics/body-orientation';
-import { ringVisualForm } from './ring-lod';
+import { ringLod } from './ring-lod';
 import { RingBandDef, RingSystemDef, RingTextureId } from '../../physics/solar-system';
 import { Vec3 } from '../../physics/vec3';
-import { createAnnulusRing, createRingLine, createTexturedRing, createTorusRing } from '../../render/ring';
+import {
+  createAnnulusRing,
+  createRingLine,
+  createTexturedRing,
+  createTorusRing,
+  RingVisual,
+  RingVisualState,
+} from '../../render/ring';
 import { ScaleFn } from '../camera/camera-system';
 
-const RING_COLOR = 0x8899aa;
-const RING_OPACITY = 0.3;
-const LINE_OPACITY = 0.5;
-const TORUS_OPACITY = 0.18;
-
-// annulus/line を距離に応じて切り替える帯1本ぶんの2つのメッシュ。
-type ThinBand = { readonly widthMeters: number; readonly annulus: THREE.Object3D; readonly line: THREE.Object3D };
+type ThinBand = {
+  readonly widthMeters: number;
+  readonly annulus: RingVisual;
+  readonly line: RingVisual;
+};
 
 export class RingView {
   readonly group = new THREE.Group();
   private readonly thinBands: ThinBand[] = [];
+  private readonly visuals: RingVisual[] = [];
 
-  // rings は物理データ(半径は [m])、bodyRadius は本体メッシュと同じ「半径 1」単位への換算元、
-  // textureUrls は RingBandDef.texture の識別子から実アセット URL を引く表、renderOrder は
-  // 半透明の環を本体より後に描くための値。THREE の描画順は Object3D ごとに独立していて
-  // 親から子へ伝播しないので、グループではなく帯のメッシュ1つ1つへ書く。
   constructor(
     rings: RingSystemDef,
     bodyRadius: number,
@@ -35,44 +34,76 @@ export class RingView {
   ) {
     for (const band of rings.bands) {
       const built = this.buildBand(band, bodyRadius, textureUrls);
-      built.traverse((o) => { o.renderOrder = renderOrder; });
-      this.group.add(built);
+      built.object.traverse((o) => { o.renderOrder = renderOrder; });
+      this.group.add(built.object);
+      this.visuals.push(built);
     }
   }
 
-  private buildBand(band: RingBandDef, bodyRadius: number, textureUrls: Readonly<Partial<Record<RingTextureId, string>>>): THREE.Object3D {
+  private buildBand(
+    band: RingBandDef,
+    bodyRadius: number,
+    textureUrls: Readonly<Partial<Record<RingTextureId, string>>>,
+  ): RingVisual {
     const inner = band.innerRadius / bodyRadius;
     const outer = band.outerRadius / bodyRadius;
     if (band.texture !== undefined) {
       const url = textureUrls[band.texture];
       if (url === undefined) throw new Error(`RingView: 環テクスチャ未登録の識別子: ${band.texture}`);
-      return createTexturedRing(url, inner, outer);
+      return createTexturedRing(url, band.optics, inner, outer);
     }
-    if (band.thickness > 0) return createTorusRing(RING_COLOR, TORUS_OPACITY, inner, outer, band.thickness / bodyRadius);
-    const annulus = createAnnulusRing(RING_COLOR, RING_OPACITY, inner, outer, band.arcs);
-    const line = createRingLine(RING_COLOR, LINE_OPACITY, (inner + outer) / 2, band.arcs);
+    if (band.thickness > 0) {
+      return createTorusRing(band.optics, inner, outer, band.thickness / bodyRadius);
+    }
+    const annulus = createAnnulusRing(band.optics, inner, outer, band.arcs);
+    const line = createRingLine(band.optics, (inner + outer) / 2, band.arcs);
     this.thinBands.push({ widthMeters: band.outerRadius - band.innerRadius, annulus, line });
     const group = new THREE.Group();
-    group.add(annulus, line);
-    return group;
+    group.add(annulus.object, line.object);
+    return {
+      object: group,
+      sync: (state) => {
+        annulus.sync(state);
+        line.sync(state);
+      },
+    };
   }
 
-  // pos/scale/axis は本体メッシュ(SphereBody/PointBody)と揃える。bodyPos/metersPerPixelAt は
-  // 細環の annulus/線 切り替えの判定専用 — 実 ECI 位置での実距離で判定するので、戦闘視点の
-  // 視距離圧縮表示でも見かけの角直径どおりに切り替わる。
-  sync(pos: THREE.Vector3, scale: number, axis: Vec3 | null, bodyPos: Vec3, metersPerPixelAt: ScaleFn): void {
+  sync(
+    pos: THREE.Vector3,
+    scale: number,
+    axis: Vec3 | null,
+    bodyPos: Vec3,
+    metersPerPixelAt: ScaleFn,
+    sunDirection: Vec3,
+    cameraPosition: THREE.Vector3,
+  ): void {
     this.group.position.copy(pos);
     this.group.scale.setScalar(scale);
+    const ringAxis = axis === null
+      ? new THREE.Vector3(0, 1, 0)
+      : new THREE.Vector3(axis.x, axis.y, axis.z).normalize();
     if (axis !== null) {
       const q = spinOrientation(axis, 0);
       if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     }
+    const state: RingVisualState = {
+      bodyCenter: pos,
+      bodyRadius: scale,
+      sunDirection: new THREE.Vector3(sunDirection.x, sunDirection.y, sunDirection.z).normalize(),
+      cameraPosition,
+      ringAxis,
+      coverage: 1,
+    };
+    for (const visual of this.visuals) visual.sync(state);
     if (this.thinBands.length === 0) return;
     const mpp = metersPerPixelAt(bodyPos);
     for (const band of this.thinBands) {
-      const form = ringVisualForm(band.widthMeters, mpp);
-      band.annulus.visible = form === 'annulus';
-      band.line.visible = form === 'line';
+      const lod = ringLod(band.widthMeters, mpp);
+      band.annulus.object.visible = lod.annulusWeight > 0;
+      band.line.object.visible = lod.lineWeight > 0;
+      band.annulus.sync({ ...state, coverage: lod.coverage * lod.annulusWeight });
+      band.line.sync({ ...state, coverage: lod.coverage * lod.lineWeight });
     }
   }
 }

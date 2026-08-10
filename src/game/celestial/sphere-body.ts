@@ -55,7 +55,8 @@ export class SphereBody extends CelestialBody {
     const pos = ephemeris.positionOf(this.id, displayTime);
     // 陰影は真の位置から見た恒星方向で決める — 戦闘視点では描画位置が圧縮されているため、
     // 描画位置から引くと昼夜境界が実際とずれる。
-    this.surface.setSunDirection(ephemeris.sunDirFrom(pos, displayTime));
+    const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
+    this.surface.setSunDirection(sunDirection);
     let scaleFactor: number;
     if (cameraSystem.overviewMode) {
       // 広範囲視点は実スケール: 実 ECI 位置に実半軸で置く。
@@ -81,8 +82,23 @@ export class SphereBody extends CelestialBody {
     const orientation = ephemeris.poleAt(this.id, displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     if (q !== null) this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
+    this.surface.setRingShadowSystem(
+      this.rings,
+      this.mesh.position,
+      this.radius,
+      scaleFactor,
+      orientation === null ? null : orientation.axis,
+    );
     if (this.ring !== undefined) {
-      this.ring.sync(this.mesh.position, scaleFactor, orientation === null ? null : orientation.axis, pos, cameraSystem.activeCameraScale);
+      this.ring.sync(
+        this.mesh.position,
+        scaleFactor,
+        orientation === null ? null : orientation.axis,
+        pos,
+        cameraSystem.activeCameraScale,
+        sunDirection,
+        cameraSystem.activeCamera.position,
+      );
     }
   }
 }
