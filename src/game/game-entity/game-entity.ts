@@ -5,7 +5,7 @@ import { OrbitalElements } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { StateQueue } from '../../physics/state-queue';
-import { Attractor, Degree2Gravity, orbitalElementsOf, localOrbitPeriod } from '../../physics/attractor';
+import { Attractor, Degree2Gravity, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../physics/attractor';
 import { containingBody } from '../../physics/sphere-contact';
 import { isBurnedUp } from '../../physics/atmosphere';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
@@ -15,6 +15,9 @@ import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';
 import { EntityIdAllocator } from './entity-id';
 import { GRAVITATIONAL_CONSTANT } from '../../physics/solar-system';
+
+// resyncTolerance の許容量上限。中心天体からの距離に対する割合 [無次元]。
+const RESYNC_TOLERANCE_MAX_ORBIT_RATIO = 0.02;
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -150,12 +153,16 @@ export class GameEntity {
 
   // 乖離判定の許容量 [m]。保持サンプル数の上限で間引きが粗くなると at() の補間そのものが
   // 誤差を持つので、その誤差(間引き間隔の4乗に比例)まで許容量を広げる — 広げないと、
-  // 実状態と一致している列を毎フレーム破棄して予測が永久に完成しなくなる。
+  // 実状態と一致している列を毎フレーム破棄して予測が永久に完成しなくなる。coarsening^4 は
+  // 表示期間を伸ばすと発散するので、中心天体からの距離に対する一定割合で頭打ちにする。
   private resyncTolerance(attractors: readonly Attractor[], horizon: number): number {
     const period = localOrbitPeriod(this.state.r, attractors);
     const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
     const coarsening = Math.max(1, (horizon / C.PREDICT_MAX_SAMPLES) / (span / C.TRAJECTORY_SAMPLES_PER_REV));
-    return Math.max(C.PREDICT_RESET_DIST, C.PREDICT_SAMPLE_ERROR * coarsening ** 4);
+    const raw = Math.max(C.PREDICT_RESET_DIST, C.PREDICT_SAMPLE_ERROR * coarsening ** 4);
+    const center = strongestAttractor(this.state.r, attractors);
+    const cap = len(sub(this.state.r, center.state.r)) * RESYNC_TOLERANCE_MAX_ORBIT_RATIO;
+    return Math.min(raw, cap);
   }
 
   // 予測列の先端を、呼び出し側が確定させた重力源 attractors のもとで dt ぶん1ステップ伸ばす。

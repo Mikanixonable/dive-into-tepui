@@ -2,7 +2,7 @@
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // クリエイティブモードで配置できる艦の上限隻数。
-export const CREATIVE_MAX_SHIPS = 8;
+export const CREATIVE_MAX_SHIPS = 50;
 
 // --- 基地ドッキング ---
 // 収容判定: 基地との距離(m)と相対速度(m/s)がこれ以内なら収容可能とみなす。
