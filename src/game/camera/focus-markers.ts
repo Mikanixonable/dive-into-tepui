@@ -25,8 +25,6 @@ export interface FocusLabel {
   // このフレームでマーカーの点・名前をそれぞれ描くか。
   showIcon: boolean;
   showLabel: boolean;
-  // ラベル衝突で隠された対象は、ダブルクリックのフォーカス対象にもしない。
-  pickable: boolean;
 }
 
 // 惑星 > 準惑星 > 衛星・小惑星・彗星 > ラグランジュ点。
@@ -54,6 +52,8 @@ export class FocusMarkers {
   private prevShownIds: readonly string[] = [];
 
   private attractors: readonly Attractor[] = [];
+  // 直前の syncLabels でマーカーを描かなかったラベル id(ラベル衝突・天体による遮蔽)。
+  private hiddenLabelIds = new Set<string>();
 
   // レジストリからラベルの全集合を1度だけ組む。ラグランジュ点は5点まとめてではなく、
   // 共線点・三角点それぞれの成立条件を満たす点だけを持たせる。
@@ -86,7 +86,7 @@ export class FocusMarkers {
       labels.push({
         id, name: celestialBodyName(id), pos: v3(0, 0, 0), kind: 'body', isLagrange: false,
         labelPriority: LABEL_PRIORITY[bodyClassOf(registry, id)], depth,
-        showIcon: false, showLabel: false, pickable: true,
+        showIcon: false, showLabel: false,
       });
       const primary = primaryOf(registry, id);
       const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
@@ -94,7 +94,7 @@ export class FocusMarkers {
         labels.push({
           id: `${id}-l${n}`, name: `${prefix} L${n}`, pos: v3(0, 0, 0),
           kind: 'body', isLagrange: true, labelPriority: LABEL_PRIORITY.lagrange, depth: depth + 1,
-          showIcon: false, showLabel: false, pickable: true,
+          showIcon: false, showLabel: false,
         });
       }
       for (const child of this.registryIds) {
@@ -111,20 +111,25 @@ export class FocusMarkers {
 
   // トグル・フォーカスに関わらない全登録天体+全ラグランジュ点の時刻 t の座標。軌道
   // オブジェクトウィンドウは表示中のマップラベルとは独立に全件を候補とするため、update() の
-  // 可視集合しぼり込みを経由しない。
+  // 可視集合しぼり込みを経由しない。マップ上でマーカーが隠れている天体は pickable: false を
+  // 伴って出す(候補からは落とさない)。
   allBodyPickables(t: number): readonly MapPickable[] {
     const ephemeris = this.ephemeris;
+    const hidden = this.hiddenLabelIds;
     const posOf = new Map(ephemeris.attractorsAt(t).map((a) => [a.id, a.state.r]));
     const items: MapPickable[] = [];
     for (const id of this.registryIds) {
       const pos = posOf.get(id);
-      if (pos !== undefined) items.push({ id, name: celestialBodyName(id), pos, kind: 'body' });
+      if (pos !== undefined) items.push({ id, name: celestialBodyName(id), pos, kind: 'body', pickable: !hidden.has(id) });
     }
     for (const { id, points } of this.lagrangeSources) {
       const l = ephemeris.lagrangeAt(id, t);
       const primary = primaryOf(ephemeris.registry, id);
       const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
-      for (const n of points) items.push({ id: `${id}-l${n}`, name: `${prefix} L${n}`, pos: l[`L${n}`], kind: 'body' });
+      for (const n of points) {
+        const lid = `${id}-l${n}`;
+        items.push({ id: lid, name: `${prefix} L${n}`, pos: l[`L${n}`], kind: 'body', pickable: !hidden.has(lid) });
+      }
     }
     return items;
   }
@@ -169,7 +174,6 @@ export class FocusMarkers {
       const d = display[lbl.id]!;
       lbl.showIcon = d.icon;
       lbl.showLabel = d.label;
-      lbl.pickable = true;
       shown.push(lbl);
     }
     this.shownLabels = shown;
@@ -200,15 +204,11 @@ export class FocusMarkers {
     }
 
     const shownIds: string[] = [];
+    const hidden = new Set<string>();
     for (const lbl of this.shownLabels) {
       shownIds.push(lbl.id);
-      lbl.pickable = !hiddenByPriority.has(lbl.id);
-      if (isOccluded(cameraPos, lbl.pos, this.attractors)) {
-        lbl.pickable = false;
-        this.markerManager.hide(lbl.id);
-        continue;
-      }
-      if (hiddenByPriority.has(lbl.id)) {
+      if (isOccluded(cameraPos, lbl.pos, this.attractors) || hiddenByPriority.has(lbl.id)) {
+        hidden.add(lbl.id);
         this.markerManager.hide(lbl.id);
         continue;
       }
@@ -219,10 +219,12 @@ export class FocusMarkers {
     const nowShown = new Set(shownIds);
     for (const id of this.prevShownIds) if (!nowShown.has(id)) this.markerManager.hide(id);
     this.prevShownIds = shownIds;
+    this.hiddenLabelIds = hidden;
   }
 
   // マップモードを抜けたときの後始末(戦闘ビューには天体ラベルを出さない)。
   hideLabels(): void {
     for (const lbl of this.allLabels) this.markerManager.hide(lbl.id);
+    this.hiddenLabelIds = new Set();
   }
 }

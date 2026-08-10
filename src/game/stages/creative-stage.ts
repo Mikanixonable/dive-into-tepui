@@ -50,6 +50,9 @@ export class CreativeStage extends Stage {
   private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
   private issues: readonly PlacementFieldIssue[] = [];
+  // 噴射の可否を substep 境界でも問い合わせられるよう、update() が受け取る参照を保持する
+  // (値ではなく参照なので、境界での読み取りは常にその時点の時間加速段を反映する)。
+  private simSpeed: SimSpeedManager | null = null;
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
   private readonly ammoIdAllocator = new EntityIdAllocator('creative-ammo-');
   // フォールバック名(Player-N 等)の連番。id とは独立(同名は許容する)。
@@ -331,6 +334,7 @@ export class CreativeStage extends Stage {
     const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
     this.preview = form ? this.computePreview(form) : null;
     this.issues = form ? this.computeFieldIssues(form) : [];
+    this.simSpeed = simSpeed;
     for (const ship of this._entities.players) ship.planExecutor.update(ship, dt, simTime, simSpeed);
   }
 
@@ -340,7 +344,8 @@ export class CreativeStage extends Stage {
     let next: number | null = null;
     for (const ship of this._entities.players) {
       const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t
-        : ship.planExecution === 'powered' ? (ship.planExecutor.nextEventTime(ship, simTime) ?? undefined)
+        : ship.planExecution === 'powered' && this.simSpeed
+          ? (ship.planExecutor.nextEventTime(ship, simTime, this.simSpeed) ?? undefined)
         : undefined;
       if (t !== undefined && t >= simTime && (next === null || t < next)) next = t;
     }
@@ -356,8 +361,8 @@ export class CreativeStage extends Stage {
         if (!node || node.t > simTime + 1e-9) continue;
         const reached = ship.plan.dropNodesBefore(simTime);
         if (reached) ship.state = reached;
-      } else if (ship.planExecution === 'powered') {
-        ship.planExecutor.applyIgnitionAndCutoff(ship, simTime);
+      } else if (ship.planExecution === 'powered' && this.simSpeed) {
+        ship.planExecutor.applyIgnitionAndCutoff(ship, simTime, this.simSpeed);
       }
     }
   }

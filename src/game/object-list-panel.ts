@@ -1,4 +1,4 @@
-import { hudDock } from './hud/dom';
+import { buildCollapseToggle, hudDock, type CollapseToggleLabels } from './hud/dom';
 import { BodyClass, bodyClassOf } from './celestial/body-class';
 import type { CelestialRegistry } from '../physics/solar-system';
 import { MapPickable, MapPickKind } from './map-pick';
@@ -31,6 +31,14 @@ const FILTERS: readonly (readonly [ObjectListFilter, string])[] = [
 
 // 自機からこの距離 [m] 以内の対象だけを残す「近傍」フィルタのしきい値(3000万km)。
 const NEARBY_THRESHOLD_M = 3e10;
+
+// このパネル自身の折りたたみトグルの見た目。▸ が閉、▾ が開。
+const COLLAPSE_LABELS: CollapseToggleLabels = {
+  expandedGlyph: '▾',
+  collapsedGlyph: '▸',
+  expandedTitle: '軌道オブジェクト一覧を閉じる',
+  collapsedTitle: '軌道オブジェクト一覧を開く',
+};
 
 type ObjectListSort = 'distance' | 'name';
 
@@ -94,14 +102,23 @@ export class ObjectListPanel {
     const head = document.createElement('div');
     head.className = 'object-list-head';
 
+    const titleRow = document.createElement('div');
+    titleRow.className = 'object-list-title';
     const title = document.createElement('h3');
     title.textContent = '軌道オブジェクト';
-    head.appendChild(title);
+    titleRow.appendChild(title);
+    head.appendChild(titleRow);
     const searchWrap = document.createElement('div');
     searchWrap.className = 'object-list-search';
     const search = document.createElement('input');
     search.type = 'search'; search.placeholder = '検索'; search.setAttribute('aria-label', '軌道オブジェクトを検索');
     search.addEventListener('input', () => { this.query = search.value.trim().toLocaleLowerCase(); });
+    // Input は window で keydown を購読しているので、止めないと打った文字がそのまま
+    // ゲーム操作として解釈される。Escape は入力を捨てて欄から抜ける。
+    search.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') { search.value = ''; this.query = ''; search.blur(); }
+    });
     searchWrap.appendChild(search);
     head.appendChild(searchWrap);
 
@@ -115,12 +132,16 @@ export class ObjectListPanel {
       nearButton.setAttribute('aria-pressed', String(this.nearOnly));
     });
     tools.appendChild(nearButton);
+    // 排他選択の対象はクラスフィルタのボタンだけ — 同居する近傍トグルは独立した状態なので、
+    // DOM の親子関係ではなくこの配列で範囲を決める。
+    const filterButtons: HTMLElement[] = [];
     for (const [key, label] of FILTERS) {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', key === this.filter ? 'true' : 'false');
       b.addEventListener('click', () => {
         this.filter = this.filter === key ? null : key;
-        for (const x of Array.from(tools.querySelectorAll('button'))) x.setAttribute('aria-pressed', String(x === b && this.filter === key));
+        for (const x of filterButtons) x.setAttribute('aria-pressed', String(x === b && this.filter === key));
       });
+      filterButtons.push(b);
       tools.appendChild(b);
     }
     head.appendChild(tools);
@@ -138,23 +159,28 @@ export class ObjectListPanel {
     }
     head.appendChild(sorts);
     this.panel.appendChild(head);
+    // 見出し以外をまとめて畳める区画にする — 一覧は常時表示で画面右を大きく占有するため。
+    const body = document.createElement('div');
+    body.className = 'object-list-body';
+    this.panel.appendChild(body);
+    buildCollapseToggle(titleRow, 'hud-object-list-toggle', 'object-list-collapse', body, COLLAPSE_LABELS);
     this.breadcrumb = document.createElement('div');
     this.breadcrumb.className = 'object-list-breadcrumb';
-    this.panel.appendChild(this.breadcrumb);
+    body.appendChild(this.breadcrumb);
 
     for (const { kind } of SECTIONS) {
       const header = document.createElement('div');
       header.className = 'object-list-section-header';
-      const body = document.createElement('div');
-      body.className = 'object-list-section-body';
-      const section: Section = { header, body, rows: new Map(), expanded: true };
+      const sectionBody = document.createElement('div');
+      sectionBody.className = 'object-list-section-body';
+      const section: Section = { header, body: sectionBody, rows: new Map(), expanded: true };
       header.addEventListener('click', () => {
         section.expanded = !section.expanded;
         this.applyExpanded(section);
       });
       this.sections.set(kind, section);
-      this.panel.appendChild(header);
-      this.panel.appendChild(body);
+      body.appendChild(header);
+      body.appendChild(sectionBody);
       this.applyExpanded(section);
     }
 
@@ -190,7 +216,7 @@ export class ObjectListPanel {
     for (const { kind, label } of SECTIONS) {
       const section = this.sections.get(kind)!;
       const list = (byKind.get(kind) ?? []).sort(this.sort === 'distance'
-        ? (a, b) => (a.priority ?? 0) - (b.priority ?? 0) || a.name.localeCompare(b.name)
+        ? (a, b) => (a.priority ?? 0) - (b.priority ?? 0) || (a.distance ?? 0) - (b.distance ?? 0) || a.name.localeCompare(b.name)
         : (a, b) => a.name.localeCompare(b.name));
       section.header.style.display = list.length === 0 ? 'none' : '';
       const state = kind === 'ship' ? `接近 ${list.filter((i) => i.detail?.includes('接近')).length}`
@@ -246,7 +272,7 @@ export class ObjectListPanel {
 
   private matches(item: MapPickable): boolean {
     if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
-    if (this.nearOnly && item.priority !== undefined && item.priority >= NEARBY_THRESHOLD_M) return false;
+    if (this.nearOnly && item.distance !== undefined && item.distance >= NEARBY_THRESHOLD_M) return false;
     if (this.filter === null) return true;
     if (this.filter === 'system') return item.kind !== 'body' && item.inFocusedSystem !== false;
     return item.kind === 'body' && !LAGRANGE_ID.test(item.id) && bodyClassOf(this.registry, item.id) === this.filter;

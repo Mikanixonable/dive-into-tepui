@@ -157,6 +157,9 @@ export class NodeGizmo {
     const count = axes?.length ?? 0;
     while (this.axisEls.length > count) {
       this.axisEls.pop()!.remove();
+      // ラッチを解除できるのは要素自身の pointer イベントだけなので、要素の消滅とラッチ状態は必ず同時に切り替える。
+      this.latch = null;
+      this.activeAxis = null;
     }
     if (axes) {
       axes.forEach((a, i) => {

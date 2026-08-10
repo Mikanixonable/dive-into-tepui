@@ -12,6 +12,9 @@ export interface MapPickable {
   readonly time?: number;
   // 一覧専用の軽量な補助表示。物理状態の再計算を UI に持ち込まない。
   readonly detail?: string;
+  // 自機からの距離 [m]。近傍しぼり込みと距離順の並べ替えの基準。
+  readonly distance?: number;
+  // 一覧での表示順の優先度。小さいほど先に出る。同値なら distance 順。
   readonly priority?: number;
   readonly inFocusedSystem?: boolean;
   // 表示上のラベル衝突で隠された対象は、ダブルクリックのフォーカス候補からも外す。

@@ -67,7 +67,7 @@ export function register(): void {
     // armed へ(角度誤差ほぼ0)。ノード時刻に近いので猶予窓は問題にならない。
     executor.update(ship, 0.1, 49, openGate);
     // 点火予定時刻(dv=200, accel=100 -> 燃焼2秒、点火は node.t-1=49)に到達させて点火する。
-    executor.applyIgnitionAndCutoff(ship, 49);
+    executor.applyIgnitionAndCutoff(ship, 49, openGate);
     assert.ok(ship.thrust !== null, 'test setup: 点火できていること');
 
     // 同じ実行時刻のまま Δv を編集(Plan.applyNodeDv は同じ t の新しい KinematicState を作る)。
@@ -91,7 +91,7 @@ export function register(): void {
 
     executor.update(ship, 0.1, 0, openGate);
     // armed に入っていれば nextEventTime は有限の点火予定時刻を返す。slew に留まっていれば null。
-    assert.notEqual(executor.nextEventTime(ship, 0), null);
+    assert.notEqual(executor.nextEventTime(ship, 0, openGate), null);
   });
 
   test('PlanExecutor: ノード時刻がはるか先なら現在のΔvが小さくても点火・完了しない(regression F)', () => {
@@ -107,7 +107,7 @@ export function register(): void {
 
     assert.equal(ship.thrust, null);
     assert.equal(ship.plan.nodes.length, 1, 'ノードが消化されていないこと');
-    assert.equal(executor.nextEventTime(ship, 0), null, 'armed に入っていないこと');
+    assert.equal(executor.nextEventTime(ship, 0, openGate), null, 'armed に入っていないこと');
   });
 
   test('PlanExecutor: 高warpでゲートが閉じている間はnextEventTimeがnull(regression H)', () => {
@@ -119,10 +119,10 @@ export function register(): void {
 
     alignExactly(ship, v3(0, 0, 1), ship.state.r);
     executor.update(ship, 0.1, 49, openGate);
-    assert.notEqual(executor.nextEventTime(ship, 49), null, 'test setup: ゲートが開いていればarmed');
+    assert.notEqual(executor.nextEventTime(ship, 49, openGate), null, 'test setup: ゲートが開いていればarmed');
 
     executor.update(ship, 0.1, 49, closedGate);
-    assert.equal(executor.nextEventTime(ship, 49), null);
+    assert.equal(executor.nextEventTime(ship, 49, closedGate), null);
   });
 
   test('PlanExecutor: ゲートが閉じている間はapplyIgnitionAndCutoffの遮断判定も走らない(regression I)', () => {
@@ -135,14 +135,14 @@ export function register(): void {
 
     alignExactly(ship, v3(0, 0, 1), ship.state.r);
     executor.update(ship, 0.1, 49, openGate);
-    executor.applyIgnitionAndCutoff(ship, 49);
+    executor.applyIgnitionAndCutoff(ship, 49, openGate);
     assert.ok(ship.thrust !== null, 'test setup: 点火できていること');
 
     // 高warpでゲートが閉じている間、実際には燃焼していないのに軌道力学だけの速度変化で
     // 射影が0を切った(=遮断条件を満たした)状況を模す。
     ship.state = kinematicState(49, ship.state.r, node.v);
     executor.update(ship, 0.1, 49, closedGate);
-    executor.applyIgnitionAndCutoff(ship, 49);
+    executor.applyIgnitionAndCutoff(ship, 49, closedGate);
 
     assert.equal(ship.thrust, null, 'ゲートが閉じている間は推力が止まる');
     assert.equal(ship.plan.nodes.length, 1, 'ゲートが閉じている間はノードが消化されないこと');
@@ -157,7 +157,7 @@ export function register(): void {
 
     alignExactly(ship, v3(0, 0, 1), ship.state.r);
     executor.update(ship, 0.1, 49, openGate);
-    executor.applyIgnitionAndCutoff(ship, 49);
+    executor.applyIgnitionAndCutoff(ship, 49, openGate);
     assert.ok(ship.thrust !== null, 'test setup: 点火できていること');
 
     // Player.behave が操作艦の thrust をフレーム冒頭で null に戻すのと同じ状況を模す。
@@ -175,14 +175,14 @@ export function register(): void {
 
     alignExactly(ship, v3(0, 0, 1), ship.state.r);
     executor.update(ship, 0.1, 49, openGate);
-    executor.applyIgnitionAndCutoff(ship, 49);
+    executor.applyIgnitionAndCutoff(ship, 49, openGate);
     assert.ok(ship.thrust !== null, 'test setup: 点火できていること');
 
     // alive は読み取り専用(PlanExecutor は書かない)なので、破壊後の艦は同じ plan/state を
     // 指す別オブジェクトとして渡す — targetNode は Plan のノード参照で同一性判定するため、
     // ship オブジェクト自体の同一性は問わない。
     const destroyed: PlanExecutorShip = { ...ship, alive: false };
-    executor.applyIgnitionAndCutoff(destroyed, 49.1);
+    executor.applyIgnitionAndCutoff(destroyed, 49.1, openGate);
     assert.equal(destroyed.thrust, null);
     assert.deepEqual(destroyed.torque, v3());
   });

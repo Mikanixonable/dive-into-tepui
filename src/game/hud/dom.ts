@@ -155,6 +155,11 @@ body.hud-modal-open #touch-ui { display: none; }
   background:${SURFACE}; color:${INK_SOFT};
 }
 #hud-object-list .object-list-tools button[aria-pressed="true"] { color:${ACCENT}; border-color:${ACCENT}; }
+#hud-object-list .object-list-collapse {
+  margin-left: auto; background: none; border: none; color: ${INK_SOFT}; font: inherit; cursor: pointer; pointer-events: auto;
+}
+#hud-object-list .object-list-title { display: flex; align-items: center; gap: 4px; }
+#hud-object-list .object-list-body.collapsed { display: none !important; }
 #hud-object-list .object-list-breadcrumb { padding:2px 5px; font-size:8px; color:${INK_SOFT}; border-bottom:1px solid ${EDGE}; }
 #hud-object-list .object-list-section-header {
   display: block; width: 100%; text-align: left; margin: 4px 0 2px;
@@ -752,8 +757,7 @@ export interface CollapseToggleLabels {
   readonly collapsedTitle: string;
 }
 
-// マップビュー下部の PREDICT バー用トグルの見た目。開閉先(display-time-panel.ts)と
-// リセット先(resetHudDocks)の両方が同じラベルを参照するのでここに一つだけ持つ。
+// マップビュー下部の PREDICT バー用トグルの見た目。
 export const PREDICT_TOGGLE_LABELS: CollapseToggleLabels = {
   expandedGlyph: '▼',
   collapsedGlyph: '▲',
@@ -772,7 +776,7 @@ function dockToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
 }
 
 // button の見た目(グリフ・aria-expanded・title)を target の collapsed クラスに合わせる。
-export function syncCollapseToggle(button: HTMLElement, target: HTMLElement, labels: CollapseToggleLabels): void {
+function syncCollapseToggle(button: HTMLElement, target: HTMLElement, labels: CollapseToggleLabels): void {
   const collapsed = target.classList.contains('collapsed');
   button.textContent = collapsed ? labels.collapsedGlyph : labels.expandedGlyph;
   button.setAttribute('aria-expanded', String(!collapsed));
@@ -791,21 +795,6 @@ export function buildCollapseToggle(
   });
   syncCollapseToggle(button, target, labels);
   return button;
-}
-
-function resetCollapseToggle(root: HTMLElement, targetId: string, buttonId: string, labels: CollapseToggleLabels): void {
-  const target = root.querySelector<HTMLElement>(`#${targetId}`);
-  const button = root.querySelector<HTMLElement>(`#${buttonId}`);
-  if (!target || !button) return;
-  target.classList.remove('collapsed');
-  syncCollapseToggle(button, target, labels);
-}
-
-export function resetHudDocks(root: HTMLElement): void {
-  for (const side of ['left', 'right'] as const) {
-    resetCollapseToggle(root, `hud-dock-${side}`, `hud-dock-toggle-${side}`, dockToggleLabels(side));
-  }
-  resetCollapseToggle(root, 'hud-displaytime', 'hud-displaytime-toggle', PREDICT_TOGGLE_LABELS);
 }
 
 export function syncNavballPlacement(root: HTMLElement, mapMode: boolean): void {
