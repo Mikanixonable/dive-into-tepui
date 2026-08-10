@@ -202,9 +202,9 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
   `DisplayTimeManager.forceCurrent`(未来表示の可否) → 同時トグルは `MapModeToggler` の責務。
 - `OverviewCamera.cameraFrame`(視点が固定される座標系)と `PlanDisplay.planFrame`
   (計画軌道を描く座標系) → プレイヤーが独立に選ぶ別々の値。
-- `BodyClassToggles` のクラス別の軌道線表示(`*Orbit`)とアイコンラベル表示(`*Label`)
-  → プレイヤーが独立に選ぶ別々の値。読む側も別で、ラベルは `visibleBodyIds`、軌道線は
-  `EnvironmentScene.showsReferenceLine`。
+- `BodyClassToggles` のクラス別の軌道線表示(`*Orbit`)・アイコン表示(`*Icon`)・
+  ラベル表示(`*Label`)→ プレイヤーが独立に選ぶ3つの値。読む側も別で、アイコン/ラベルは
+  `visibleBodyIds`/`bodyIconLabel`、軌道線は `EnvironmentScene.showsReferenceLine`。
 
 ## 9. `plan` / `predict` / `display` の語を混ぜない
 

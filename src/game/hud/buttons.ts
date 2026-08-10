@@ -85,6 +85,33 @@ export class HudHoldButton {
   }
 }
 
+// クリックのたびに ON/OFF が切り替わる、絵文字1字程度のグリフだけの小型トグル。複数個を
+// 1行に並べて「アイコン/ラベル/軌道線」のような同種の切り替えをまとめて出す場面向け。
+export class IconToggleButton {
+  readonly element: HTMLElement;
+  private on = false;
+
+  // glyph は表示するグリフ、title はホバー時に出る説明文。onChange は切り替わった後の値で呼ばれる。
+  constructor(glyph: string, title: string, onChange: (on: boolean) => void) {
+    this.element = document.createElement('span');
+    this.element.className = 'seg-btn icon-toggle-btn';
+    this.element.textContent = glyph;
+    this.element.title = title;
+    this.element.addEventListener('pointerdown', (e) => e.stopPropagation());
+    this.element.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setOn(!this.on);
+      onChange(this.on);
+    });
+  }
+
+  // 表示状態を設定する(onChange は呼ばれない)。
+  setOn(on: boolean): void {
+    this.on = on;
+    this.element.classList.toggle('on', on);
+  }
+}
+
 // 見出し + ON/OFF を切り替えるトグルスイッチ。
 export class HudToggle {
   readonly element: HTMLElement;
