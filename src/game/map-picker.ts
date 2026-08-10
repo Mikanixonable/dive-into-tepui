@@ -103,10 +103,6 @@ export class MapPicker {
       const target = this.items.find((i) => i.id === id);
       if (target && this.navTarget.canTarget(id, this.entities, this.ephemeris, this.lastSimTime)) this.navTarget.toggleTarget(id, target.name);
     };
-    this.objectListPanel.onOperate = (id) => {
-      const target = this.items.find((i) => i.id === id);
-      if (target) this.selectPickable(target);
-    };
     this.objectListPanel.onSelectRight = (id, clientX, clientY) => {
       const target = this.items.find((i) => i.id === id);
       if (target) this.openPropertyWindow(clientX, clientY, target, this.lastSimTime);
@@ -133,7 +129,7 @@ export class MapPicker {
         const center = strongestAttractor(ship.state.r, this.ephemeris.attractorsAt(simTime));
         const el = ship.orbitalElementsAround(center);
         const pe = el ? fmtDist(apsisAltitudes(el).pe) : '—';
-        items.push({ id: ship.id, name: ship.displayName, pos, kind: 'player', detail: `HP ${Math.round(ship.hp)}/${Math.round(ship.maxHp)} · PE ${pe}`, priority: ship === this.game.player ? -100 : 0, canOperate: true });
+        items.push({ id: ship.id, name: ship.displayName, pos, kind: 'player', detail: `HP ${Math.round(ship.hp)}/${Math.round(ship.maxHp)} · PE ${pe}`, priority: ship === this.game.player ? -100 : 0 });
       }
     }
     for (const enemy of this.entities.enemies) {
@@ -164,9 +160,8 @@ export class MapPicker {
       const d = len(sub(item.pos, viewer.r));
       const speed = len(sub(item.kind === 'player' ? (this.entities.findPlayer(item.id)?.state.v ?? viewer.v) : item.kind === 'ship' ? (this.entities.findEnemy(item.id)?.state.v ?? viewer.v) : viewer.v, viewer.v));
       const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(speed)}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, this.ephemeris.attractorsAt(simTime)).id)}` : item.detail;
-      const canNavTarget = this.navTarget.canTarget(item.id, this.entities, this.ephemeris, simTime);
       const inFocusedSystem = isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, attractors);
-      items[i] = { ...item, detail: status, priority: item.priority ?? d, canNavTarget, inFocusedSystem };
+      items[i] = { ...item, detail: status, priority: item.priority ?? d, inFocusedSystem };
     }
 
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
