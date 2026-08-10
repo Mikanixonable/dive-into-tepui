@@ -148,6 +148,18 @@ export function register(): void {
     assert.ok(!visibleDefault.has('moon'), 'フォーカスが無ければ親子関係による追加も無い');
   });
 
+  test('visibility: フォーカス解除後もカメラ近傍の惑星系の衛星は見える', () => {
+    const e = new Ephemeris();
+    const nearby = systemMembersAt(SOLAR_SYSTEM, v3(), e.attractorsAt(0));
+    const visible = visibleBodyIds(SOLAR_SYSTEM, undefined, DEFAULT_BODY_CLASS_TOGGLES, nearby);
+    assert.ok(nearby.includes('earth'));
+    assert.ok(nearby.includes('moon'));
+    assert.ok(visible.has('moon'), '地球近傍カメラではフォーカス解除後も月を残す');
+
+    // 近傍系ではない衛星は、衛星トグル OFF のままなら従来どおり絞り込む。
+    assert.ok(!visible.has('titan'), '遠方系の衛星まで追加しない');
+  });
+
   test('visibility: フォーカス天体の系に属する位置だけを player 表示対象にする', () => {
     const e = new Ephemeris();
     const attractors = e.attractorsAt(0);

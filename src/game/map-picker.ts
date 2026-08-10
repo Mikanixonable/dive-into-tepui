@@ -115,6 +115,7 @@ export class MapPicker {
     this.lastSimTime = simTime;
     this.cameraSystem.focusMarkers.update(
       displayTime, focusTargetId(this.cameraSystem.overviewCamera.focus), this.cameraSystem.bodyClassToggles,
+      this.cameraSystem.activeCameraPos,
     );
     this.navTarget.update(this.game.player, this.entities, this.ephemeris, simTime);
 
