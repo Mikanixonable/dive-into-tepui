@@ -5,7 +5,6 @@
 // (body-orientation.ts の spinOrientation をそのまま再利用し、新しい姿勢関数は作らない)。
 import * as THREE from 'three/webgpu';
 import { spinOrientation } from '../../physics/body-orientation';
-import { ringVisualForm } from './ring-lod';
 import { RingBandDef, RingSystemDef, RingTextureId } from '../../physics/solar-system';
 import { Vec3 } from '../../physics/vec3';
 import { createAnnulusRing, createRingLine, createTexturedRing, createTorusRing } from '../../render/ring';
@@ -15,6 +14,17 @@ const RING_COLOR = 0x8899aa;
 const RING_OPACITY = 0.3;
 const LINE_OPACITY = 0.5;
 const TORUS_OPACITY = 0.18;
+
+// 幅が半径の 1/10,000 程度しかない細環は annulus のまま描くとズームアウトで消えてしまうので、
+// その位置での実距離の幅が画面上でこの画素数を割ったら線へ切り替える(見やすさのための調整値)。
+const RING_LINE_THRESHOLD_PX = 1;
+
+type RingVisualForm = 'annulus' | 'line';
+
+// 帯の実幅 [m] と、その位置での metersPerPixel [m/px] から、面と線のどちらで描くかを決める。
+function ringVisualForm(bandWidthMeters: number, metersPerPixelAtBand: number): RingVisualForm {
+  return bandWidthMeters / metersPerPixelAtBand < RING_LINE_THRESHOLD_PX ? 'line' : 'annulus';
+}
 
 // annulus/line を距離に応じて切り替える帯1本ぶんの2つのメッシュ。
 type ThinBand = { readonly widthMeters: number; readonly annulus: THREE.Object3D; readonly line: THREE.Object3D };
