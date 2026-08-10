@@ -9,13 +9,16 @@ import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
 import { Vec3 } from '../../physics/vec3';
 import { BodyClass, bodyClassOf } from './body-class';
 
-// クラスごとの表示トグル。恒星と惑星は常に見えるのでトグルを持たない(太陽系の骨格であり、
+// クラスごとの表示トグル。恒星は常に見えるのでトグルを持たない(太陽系の基準点であり、
 // 消えると現在地が読めなくなる)。Icon(マーカーの点)と Label(名前)は別トグル——「位置だけ
 // 知りたい(ラベルは煩雑)」「名前だけ確認したい(点は見飽きた)」がそれぞれ独立に成り立つため。
-// Orbit(軌道線)はさらに別軸で、dwarf/smallBody だけが持つ。satellite は衛星の参照軌道線が
+// Orbit(軌道線)はさらに別軸で、planet/dwarf/smallBody だけが持つ。satellite は衛星の参照軌道線が
 // フォーカス中の系かどうかで別途決まる(environment-scene.ts の showsReferenceLine)ので Orbit
 // トグルを持たない。lagrange は天体ではなく軌道概念も無いので Icon/Label の2軸のみ。
 export type BodyClassToggles = {
+  readonly planetOrbit: boolean;
+  readonly planetIcon: boolean;
+  readonly planetLabel: boolean;
   readonly dwarfOrbit: boolean;
   readonly dwarfIcon: boolean;
   readonly dwarfLabel: boolean;
@@ -28,21 +31,24 @@ export type BodyClassToggles = {
   readonly lagrangeLabel: boolean;
 };
 
-// 既定 off は「登録数が多くマップが溢れるから」。smallBody(小惑星・準惑星・彗星)は例外で、
-// 軌道線は溢れるが位置と名前は把握したいことが多いため Icon/Label のみ既定 on にする。lagrange は
-// FocusMarkers の構築時点で力学的に意味を持つ点(Ephemeris の hasUsableCollinearPoints /
-// hasStableTriangularPoints)だけに絞り込み済みで同じ懸念が当たらないため、既定 on にする。
+// 既定 off は「登録数が多くマップが溢れるから」。planet は数が少なく太陽系の骨格をなすので
+// 軌道線まで含めて既定 on、smallBody(小惑星・彗星)は軌道線だけが溢れるので Icon/Label のみ
+// 既定 on にする。lagrange は FocusMarkers の構築時点で力学的に意味を持つ点(Ephemeris の
+// hasUsableCollinearPoints / hasStableTriangularPoints)だけに絞り込み済みで同じ懸念が当たらない
+// ため、既定 on にする。
 export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
+  planetOrbit: true, planetIcon: true, planetLabel: true,
   dwarfOrbit: false, dwarfIcon: false, dwarfLabel: false,
   satelliteIcon: false, satelliteLabel: false,
   smallBodyOrbit: false, smallBodyIcon: true, smallBodyLabel: true,
   lagrangeIcon: true, lagrangeLabel: true,
 };
 
-// トグルで足されるクラス(dwarf/satellite/smallBody)の Icon/Label を、そのクラスの
-// トグル値から読む。恒星・惑星・focus 近傍の常時表示はここを経由しない(呼び出し側の判断)。
+// トグルで足されるクラス(planet/dwarf/satellite/smallBody)の Icon/Label を、そのクラスの
+// トグル値から読む。恒星・focus 近傍の常時表示はここを経由しない(呼び出し側の判断)。
 function classIconLabel(cls: BodyClass, toggles: BodyClassToggles): { icon: boolean; label: boolean } {
   switch (cls) {
+    case 'planet': return { icon: toggles.planetIcon, label: toggles.planetLabel };
     case 'dwarf': return { icon: toggles.dwarfIcon, label: toggles.dwarfLabel };
     case 'satellite': return { icon: toggles.satelliteIcon, label: toggles.satelliteLabel };
     case 'smallBody': return { icon: toggles.smallBodyIcon, label: toggles.smallBodyLabel };
@@ -102,23 +108,24 @@ function ancestorsOf(registry: CelestialRegistry, focusId: AttractorId): Attract
   return chain;
 }
 
-// 恒星・惑星、およびフォーカス中の天体の親・兄弟・子——トグルの状態に関わらず Icon/Label が
+// 恒星、およびフォーカス中の天体の親・兄弟・子——トグルの状態に関わらず Icon/Label が
 // 両方見える id の集合。「距離が近いもの」をズーム距離で判定すると操作の途中で行が明滅するので、
-// 離散的に切り替わるこの親子関係で代用する。focusId が undefined なら恒星・惑星のみ。
+// 離散的に切り替わるこの親子関係で代用する。focusId が undefined なら恒星のみ。
 export function alwaysFullyVisibleIds(
   registry: CelestialRegistry, focusId: AttractorId | undefined,
 ): ReadonlySet<AttractorId> {
   const ids = new Set<AttractorId>();
   for (const id of Object.keys(registry)) {
     const cls = bodyClassOf(registry, id);
-    if (cls === 'star' || cls === 'planet') ids.add(id);
+    if (cls === 'star') ids.add(id);
   }
 
   if (focusId === undefined) return ids;
 
   for (const id of ancestorsOf(registry, focusId)) ids.add(id);
   // 兄弟は「惑星系の中の兄弟」に限る。恒星の子はすべて互いに兄弟なので、そこまで含めると
-  // 惑星にフォーカスしただけで全太陽周回天体が出てしまう(その階層は星・惑星が既に賄っている)。
+  // 惑星にフォーカスしただけで全太陽周回天体が出てしまう(惑星どうしの表示は planetOrbit/
+  // planetIcon/planetLabel トグルが別途受け持つ)。
   const focusParent = registry[focusId] === undefined ? null : primaryOf(registry, focusId);
   const siblingsMatter = focusParent !== null && registry[focusParent]?.kind !== 'star';
   for (const id of sameSystemIds(registry, focusId)) {

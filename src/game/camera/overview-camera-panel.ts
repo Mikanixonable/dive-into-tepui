@@ -12,6 +12,7 @@ type BodyClassRow = {
 };
 
 const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
+  { label: '惑星', iconKey: 'planetIcon', labelKey: 'planetLabel', orbitKey: 'planetOrbit' },
   { label: '衛星', iconKey: 'satelliteIcon', labelKey: 'satelliteLabel', orbitKey: null },
   { label: '準惑星', iconKey: 'dwarfIcon', labelKey: 'dwarfLabel', orbitKey: 'dwarfOrbit' },
   { label: '小天体', iconKey: 'smallBodyIcon', labelKey: 'smallBodyLabel', orbitKey: 'smallBodyOrbit' },
