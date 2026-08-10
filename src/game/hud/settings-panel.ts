@@ -1,7 +1,7 @@
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import * as C from '../const';
-import { syncHudModalState } from './dom';
+import type { ModalController } from './modal-controller';
 
 export class SettingsPanel {
   private readonly panel: HTMLElement;
@@ -13,7 +13,7 @@ export class SettingsPanel {
   onOpenSnapshots: (() => void) | null = null;
 
   // ⚙ ボタンとパネル DOM を組み立て、開閉・BGM トグル・タイトルへ戻るのイベントを配線する。
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, private readonly modalController: ModalController) {
 
     // パネル本体
     this.panel = document.createElement('div');
@@ -93,7 +93,7 @@ export class SettingsPanel {
     const show = force !== undefined ? force : !wasOpen;
     if (show === wasOpen) return;
     this.panel.style.display = show ? 'block' : 'none';
-    syncHudModalState();
+    this.modalController.setOpen('settings', show);
     this.onSettingsOpenChange?.(show);
   }
 
