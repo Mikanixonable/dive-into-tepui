@@ -4,20 +4,14 @@
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/attractor';
-import { dot, len, norm, scale, sub } from '../../physics/vec3';
-import { R_EARTH, R_SUN, RingSystemDef, RingTextureId, ShapeDef, shapeAxes } from '../../physics/solar-system';
-import {
-  earthshineIntensity,
-  lunarEclipseRedGlowFactor,
-  solarDiscOcclusionFraction,
-} from '../../physics/celestial-photometry';
+import { len, scale, sub } from '../../physics/vec3';
+import { RingSystemDef, RingTextureId, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialBody } from './celestial-body';
 import { RingView } from './ring-view';
-import { CelestialLightingContext } from '../../render/celestial-lighting';
 
 export class SphereBody extends CelestialBody {
   readonly id: OrbitingId;
@@ -57,36 +51,12 @@ export class SphereBody extends CelestialBody {
   }
 
   // displayTime 時点の位置へ、視点モードに応じた実スケール/圧縮距離のどちらかで同期する。
-  sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    lighting: CelestialLightingContext,
-  ): void {
+  sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
     const pos = ephemeris.positionOf(this.id, displayTime);
     // 陰影は真の位置から見た恒星方向で決める — 戦闘視点では描画位置が圧縮されているため、
     // 描画位置から引くと昼夜境界が実際とずれる。
-    const sunDirection = lighting.sunDirectionFrom(pos);
+    const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
     this.surface.setSunDirection(sunDirection);
-    if (this.id === 'moon') {
-      const earthPos = lighting.positionOf('earth');
-      const sunPos = lighting.positionOf('sun');
-      const moonToEarth = sub(earthPos, pos);
-      const moonToSun = sub(sunPos, pos);
-      const earthToSun = norm(sub(sunPos, earthPos));
-      const earthToMoon = norm(sub(pos, earthPos));
-      const earthPhase = Math.acos(Math.max(-1, Math.min(1, dot(earthToSun, earthToMoon))));
-      const earthAngularRadius = Math.asin(Math.min(1, R_EARTH / len(moonToEarth)));
-      const separation = Math.acos(Math.max(-1, Math.min(1, dot(norm(moonToEarth), norm(moonToSun)))));
-      const occlusion = solarDiscOcclusionFraction(
-        R_EARTH, len(moonToEarth), R_SUN, len(moonToSun), separation,
-      );
-      // シェーダの太陽直射=1へ正規化した表示値。地球の立体角とLambert位相から得た
-      // 微弱な地球照を可視域へ写し、満地球でも直射光を超えない。
-      const earthshine = Math.min(0.035, earthshineIntensity(earthPhase, earthAngularRadius) * 72);
-      this.surface.setLunarLighting(
-        norm(moonToEarth), earthshine, 1 - occlusion,
-        lunarEclipseRedGlowFactor(occlusion) * 0.09,
-      );
-    }
     let scaleFactor: number;
     if (cameraSystem.overviewMode) {
       // 広範囲視点は実スケール: 実 ECI 位置に実半軸で置く。

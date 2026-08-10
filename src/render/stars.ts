@@ -41,7 +41,7 @@ export interface Sun {
 
 // 月の表面。テクスチャの経度原点がモデルの本初子午線(+Z)と揃うようジオメトリを回す。
 export function createMoon(): CelestialSurface {
-  const surface = CelestialSurface.textured(moonTextureUrl, 96, 64, { terrain: 'moon' });
+  const surface = CelestialSurface.textured(moonTextureUrl, 64, 32);
   surface.mesh.geometry.rotateY(-Math.PI / 2);
   return surface;
 }
