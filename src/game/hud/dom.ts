@@ -136,6 +136,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-object-list .object-list-detail { margin-left: auto; font-size: 8px; color: ${INK_SOFT}; white-space: nowrap; }
 #hud-object-list .erow:hover { color: ${INK}; }
 #hud-object-list .erow.tgt { color: ${ACCENT}; }
+#hud-object-list .erow.selected { outline: 1px solid ${EDGE}; color: ${INK}; }
 #hud-object-list .object-list-toggle { width: 10px; text-align: center; flex: none; }
 #hud-object-list .object-list-children { padding-left: 12px; }
 #hud-combat-shelf { display: contents; }

@@ -91,7 +91,7 @@ export class MapPicker {
     this.objectListPanel = new ObjectListPanel(hud.layers.panel);
     this.objectListPanel.onSelect = (id) => {
       const target = this.items.find((i) => i.id === id);
-      if (target) this.selectPickable(target);
+      if (target) { this.objectListPanel.select(id); this.selectPickable(target); }
     };
     this.objectListPanel.onFocus = (id) => {
       this.cameraSystem.overviewCamera.setFocusTarget({ kind: 'object', id });
@@ -266,6 +266,7 @@ export class MapPicker {
   // 基地側は selectBase のみ呼び、ドックビューへの遷移はしない — 選択とドックへ入る操作
   // (activate)を分けて、選択だけでは画面が切り替わらないようにする。
   private selectPickable(target: MapPickable): void {
+    this.objectListPanel.select(target.id);
     if (target.kind === 'player') {
       const ship = this.entities.findPlayer(target.id);
       if (!ship) return;

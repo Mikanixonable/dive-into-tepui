@@ -52,6 +52,7 @@ export class ObjectListPanel {
 
   private readonly panel: HTMLElement;
   private readonly sections = new Map<MapPickKind, Section>();
+  private selectedId: string | null = null;
 
   constructor(root: HTMLElement) {
     this.panel = document.createElement('div');
@@ -86,6 +87,8 @@ export class ObjectListPanel {
   setVisible(visible: boolean): void {
     this.panel.style.display = visible ? 'block' : 'none';
   }
+
+  select(id: string | null): void { this.selectedId = id; }
 
   // 種別ごとの区画へ、既存行は使い回しつつ id 差分だけ足し引きする。行のクリックリスナーは
   // 生成時の1回だけ張るので、ここで毎フレーム innerHTML を書き換えてはいけない
@@ -138,6 +141,7 @@ export class ObjectListPanel {
     if (node.label.textContent !== item.name) node.label.textContent = item.name;
     if (node.detail.textContent !== (item.detail ?? '')) node.detail.textContent = item.detail ?? '';
     node.row.classList.toggle('tgt', item.id === focusId);
+    node.row.classList.toggle('selected', item.id === this.selectedId);
 
     const children = childrenOf.get(item.id) ?? [];
     node.toggle.style.visibility = children.length > 0 ? 'visible' : 'hidden';
