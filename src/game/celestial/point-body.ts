@@ -16,6 +16,7 @@ import { Billboard } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialBody } from './celestial-body';
 import { RingView } from './ring-view';
+import { CelestialLightingContext } from '../../render/celestial-lighting';
 
 // 見かけの明るさ3段階。金星(-4等)・木星(-2等)が bright、水星・火星・土星(0〜+1等台)が
 // medium、天王星(+5.7等、肉眼限界+6等付近)が faint — レジストリ側で天体ごとに選ぶ。
@@ -84,11 +85,14 @@ export class PointBody extends CelestialBody {
 
   // displayTime 時点の位置へ、視点モードに応じてマップビューの実体メッシュか戦闘ビューの
   // 輝点ビルボードのどちらかを同期する(常に片方は隠す)。
-  sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
+  sync(
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
+    lighting: CelestialLightingContext,
+  ): void {
     const pos = ephemeris.positionOf(this.id, displayTime);
     if (cameraSystem.overviewMode) {
       // 広範囲視点は SphereBody と同じ実スケール。
-      const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
+      const sunDirection = lighting.sunDirectionFrom(pos);
       this.surface.setSunDirection(sunDirection);
       this.mesh.visible = true;
       this.mesh.position.copy(fo.RtoThreeV3(pos));
@@ -138,7 +142,7 @@ export class PointBody extends CelestialBody {
         );
         const k = scaleFactor / this.radius;
         this.mesh.scale.set(this.axes.x * k, this.axes.y * k, this.axes.z * k);
-        this.surface.setSunDirection(ephemeris.sunDirFrom(pos, displayTime));
+        this.surface.setSunDirection(lighting.sunDirectionFrom(pos));
         const orientation = ephemeris.poleAt(this.id, displayTime);
         const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
         if (q !== null) this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
@@ -158,7 +162,7 @@ export class PointBody extends CelestialBody {
             orientation === null ? null : orientation.axis,
             pos,
             cameraSystem.activeCameraScale,
-            ephemeris.sunDirFrom(pos, displayTime),
+            lighting.sunDirectionFrom(pos),
             cameraSystem.activeCamera.position,
           );
         }

@@ -19,6 +19,7 @@ import { CelestialBody } from './celestial-body';
 import { CELESTIAL_BODIES, fallbackCelestialView } from './celestial-registry';
 import { bodyClassOf } from './body-class';
 import { BodyClassToggles } from './body-visibility';
+import { CelestialLightingContext } from '../../render/celestial-lighting';
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
 // レジストリに実在しないなら架空レジストリでは無意味なので組まない(constructor で判定)。
@@ -67,6 +68,8 @@ export class EnvironmentScene {
   private readonly bodies: readonly CelestialBody[];
   // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なのでここが所有する。
   private readonly pointFieldView = new PointFieldView();
+  // 天体の照明方向と表示時刻を共有する。各天体が描画座標から別々に太陽を推定しない。
+  private readonly lighting: CelestialLightingContext;
 
   // 静止軌道高度の参照リングは実在の天体ではないので、以下の天体駆動の配列とは別に持つ。
   // 地球が現在のレジストリに無ければ null(sync は非表示のまま何もしない)。
@@ -82,6 +85,7 @@ export class EnvironmentScene {
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
   ) {
+    this.lighting = new CelestialLightingContext(ephemeris);
     const registry = ephemeris.registry;
     this.geoLine.line.renderOrder = 0;
     scene.add(this.geoLine.line);
@@ -130,7 +134,8 @@ export class EnvironmentScene {
     const lit = cameraSystem.overviewMode || this.ephemeris.starId === null
       ? 1.0
       : sunlitFactor(playerPos, this.ephemeris.sunDirFrom(playerPos, displayTime), C.SHADOW_PENUMBRA);
-    for (const body of this.bodies) body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris);
+    this.lighting.sync(displayTime);
+    for (const body of this.bodies) body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, this.lighting);
     // 平行光の向きは描画原点から見た恒星方向 — 照らす相手がその近傍にいる物体だけなので、
     // 全員が同じ向きでよい。
     const sd = this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime);

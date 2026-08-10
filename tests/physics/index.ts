@@ -47,6 +47,7 @@ import { register as registerEphemerisPackFormat } from './ephemeris-pack-format
 import { register as registerChebyshevEphemeris } from './chebyshev-ephemeris.test';
 import { register as registerPackedAbsoluteEphemeris } from './packed-absolute-ephemeris.test';
 import { register as registerSaveEphemerisContext } from './save-ephemeris-context.test';
+import { register as registerExposure } from './exposure.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -95,6 +96,7 @@ registerEphemerisPackFormat();
 registerChebyshevEphemeris();
 registerPackedAbsoluteEphemeris();
 registerSaveEphemerisContext();
+registerExposure();
 
 runAll().catch((error) => {
   console.error(error);
