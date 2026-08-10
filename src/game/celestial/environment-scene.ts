@@ -202,7 +202,7 @@ export class EnvironmentScene {
   }
 
   // 参照線を引くかどうか。恒星は常時引く。惑星・準惑星・小天体は body-visibility.ts の
-  // Orbit トグルに従う(Label トグルとは独立)。衛星はその衛星が属する惑星系にフォーカス
+  // Orbit トグルに従う(Label トグルとは独立)。衛星も専用トグルに従う。
   // しているときだけ引く(地球系だけは例外で常時引く — プレイの中心なので、どこを見ていても
   // 月軌道が文脈として要る)。
   private showsReferenceLine(id: OrbitingId, focusId: AttractorId | undefined, toggles: BodyClassToggles): boolean {
@@ -212,8 +212,8 @@ export class EnvironmentScene {
     if (cls === 'dwarf') return toggles.dwarfOrbit;
     if (cls === 'smallBody') return toggles.smallBodyOrbit;
     const def = bodyDef(registry, id);
-    if (def.kind !== 'satellite' || def.planet === 'earth') return true;
-    return focusSystemOf(registry, focusId) === def.planet;
+    if (def.kind !== 'satellite') return true;
+    return toggles.satelliteOrbit && (def.planet === 'earth' || focusSystemOf(registry, focusId) === def.planet);
   }
 
   // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は主星中心 — 中心天体自身も

@@ -87,7 +87,7 @@ export class CreativeStage extends Stage {
     const toggle = new HudToggle('補給の自動投入', (on) => { this.logistics.resupplyEnabled = on; });
     toggle.setOn(this.logistics.resupplyEnabled);
     panel.appendChild(toggle.element);
-    hudDock(hudRoot, 'left').appendChild(panel);
+    hudDock(hudRoot, 'right').appendChild(panel);
     return panel;
   }
 

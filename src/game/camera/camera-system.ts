@@ -105,9 +105,7 @@ export class CameraSystem {
     this.overviewCameraPanel = new OverviewCameraPanel(_hud.layers.panel);
     this.overviewCameraPanel.onBodyClassToggle = (key, on) => {
       this._bodyClassToggles = { ...this._bodyClassToggles, [key]: on };
-    };
-    this.overviewCameraPanel.onAmmoToggle = (show: boolean) => {
-      _hud.settings.showMapAmmo = show;
+      if (key === 'ammoIcon' || key === 'ammoLabel') _hud.settings.showMapAmmo = on;
     };
 
     const chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;

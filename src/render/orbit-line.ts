@@ -58,13 +58,19 @@ export class OrbitLine {
   private snap: { a: number; e: number; hHat: Vec3; pHat: Vec3; focusE?: number } | null = null;
   private lastRegen = 0;
   private suppressed = false;
+  private displayEnabled = true;
+
+  setDisplayEnabled(value: boolean): void {
+    this.displayEnabled = value;
+    this.line.visible = value && !this.suppressed && this.snap !== null;
+  }
 
   // 楕円線の表示を抑制する。抑制を解いたフレームでそのまま描き戻せるよう、直近の sync が
   // 有効な軌道要素を得ていた場合(snap がある)に限って表示へ戻す — 次の sync を待つと、
   // 抑制が解ける原因になった線が既に消えている1フレームのあいだ、どの線も出ない。
   setSuppressed(value: boolean): void {
     this.suppressed = value;
-    this.line.visible = !value && this.snap !== null;
+    this.line.visible = this.displayEnabled && !value && this.snap !== null;
   }
 
   // バッファジオメトリと LineBasicNodeMaterial を組み立てる。
@@ -113,7 +119,7 @@ export class OrbitLine {
       this.snap = null;
       return;
     }
-    this.line.visible = !this.suppressed;
+    this.line.visible = this.displayEnabled && !this.suppressed;
     // 頂点を自機相対座標で毎フレーム書き直すと、osculating 要素の微小なゆらぎで楕円が
     // 振動して見える。頂点は中心天体相対座標のまま固定し、平行移動だけで動かす。
     this.line.position.copy(fo.RtoThreeV3(el.center.state.r));
