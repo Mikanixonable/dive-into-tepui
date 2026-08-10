@@ -26,7 +26,7 @@ const Z_HAT: Vec3 = v3(0, 0, 1);
 
 export class NavTarget {
   // 戦闘ビューで基地を右クリックしたときの航法ターゲット設定/解除メニュー。
-  private readonly baseMenu = new ContextMenu<Base, MenuAction>();
+  private readonly baseMenu: ContextMenu<Base, MenuAction>;
   private targetId: string | null = null;
   private targetName: string | null = null;
   // 自機軌道上の AN/DN の絶対位置(地球中心)。対象の軌道面が定まらなければ両方 null。
@@ -39,6 +39,7 @@ export class NavTarget {
   private attractors: readonly Attractor[] = [];
 
   constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
+    this.baseMenu = new ContextMenu<Base, MenuAction>(_hud.layers.popup);
     this.baseMenu.onSelect = (act, base) => {
       if (act === 'navTarget') this.toggleTarget(base.id, '基地');
     };

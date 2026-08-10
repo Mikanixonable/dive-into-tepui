@@ -84,7 +84,7 @@ export class PlanEditor {
 
   readonly nodeGizmo: NodeGizmo;
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
-  private readonly orbitMenu = new ContextMenu<KinematicState, MenuAction>();
+  private readonly orbitMenu: ContextMenu<KinematicState, MenuAction>;
 
   private readonly dvButtons = buildDvButtons();
   // 6 方向それぞれのホールド継続時間 [s]。index は axis*2 + (sign<0 ? 1 : 0)。
@@ -111,7 +111,8 @@ export class PlanEditor {
   ) {
     this.ship = ship;
     this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayTimeManager);
-    this.nodeGizmo = new NodeGizmo(this._hud.layers.marker);
+    this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup);
+    this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup);
     this.gizmo3d = new PlanGizmo3D();
     scene.add(this.gizmo3d.group);
 

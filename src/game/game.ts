@@ -236,7 +236,7 @@ export class Game {
       this.entities, this.mapPicker, this.cameraSystem, this.viewManager,
     );
     this.mapPicker.setDocking(this.docking);
-    this.viewBadge = new ViewBadge(this._hud.layers.notify, this.viewManager);
+    this.viewBadge = new ViewBadge(this._hud.layers.notify, this._hud.layers.popup, this.viewManager);
     this.frameControls = new FrameControls(
       this._hud.layers.panel, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera, this.editor.planDisplay,
     );

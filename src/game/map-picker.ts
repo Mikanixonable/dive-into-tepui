@@ -54,7 +54,7 @@ interface WindowEntry {
 
 export class MapPicker {
   // 'empty-space' は宇宙空間そのものでプロパティを持たないので、従来どおり ContextMenu を使う。
-  private readonly menu = new ContextMenu<MapPickable, MenuAction>();
+  private readonly menu: ContextMenu<MapPickable, MenuAction>;
   // 開いているプロパティウィンドウ。`${kind}:${id}` でオブジェクト1つにつき高々1枚に保つ。
   private readonly windows = new Map<string, WindowEntry>();
   // クリップされていない一時ウィンドウのキー。存在は高々1枚。
@@ -81,6 +81,7 @@ export class MapPicker {
     private readonly editor: PlanEditor,
     private readonly simSpeedManager: SimSpeedManager,
   ) {
+    this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup);
     this.menu.onSelect = (act, target) => {
       const handler = this.handlers[target.kind];
       if (handler) handler.run(act, target);
