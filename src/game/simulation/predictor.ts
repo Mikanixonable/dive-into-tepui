@@ -54,7 +54,9 @@ export class Predictor {
     let visited = 0;
     while (budget > 0 && visited < all.length) {
       const e = all[(this.cursor + visited) % all.length]!;
-      budget -= this.advanceBudget(e, budget, simTime, horizon);
+      // player は上で優先処理済み。map の all にも player が含まれるので、ここで再処理すると
+      // 自機だけが予算を二重に消費し、戦闘時は同じ予測線を2回伸ばすことになる。
+      if (e !== player) budget -= this.advanceBudget(e, budget, simTime, horizon);
       visited++;
     }
     this.cursor = all.length > 0 ? (this.cursor + visited) % all.length : 0;
