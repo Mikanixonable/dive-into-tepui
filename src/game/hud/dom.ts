@@ -750,6 +750,11 @@ export function hudDock(root: HTMLElement, side: 'left' | 'right'): HTMLElement 
   return root.querySelector<HTMLElement>(`#${id}`) ?? root;
 }
 
+// 縦方向の開閉トグルの字形。マップのマーカーとは字形の族を分け、開いている状態と
+// 閉じている状態でどちらを向くかを画面内で一貫させる。
+export const COLLAPSE_EXPANDED_GLYPH = '▾';
+export const COLLAPSE_COLLAPSED_GLYPH = '▸';
+
 export interface CollapseToggleLabels {
   readonly expandedGlyph: string;
   readonly collapsedGlyph: string;
@@ -759,8 +764,8 @@ export interface CollapseToggleLabels {
 
 // マップビュー下部の PREDICT バー用トグルの見た目。
 export const PREDICT_TOGGLE_LABELS: CollapseToggleLabels = {
-  expandedGlyph: '▼',
-  collapsedGlyph: '▲',
+  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
+  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
   expandedTitle: '下部パネルを閉じる',
   collapsedTitle: '下部パネルを開く',
 };

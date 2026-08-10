@@ -12,6 +12,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../physics/vec3';
 import { celestialBodyName } from '../hud/frame-labels';
 import { MarkerManager } from './marker-manager';
+import { ORBIT_POINT_GLYPH } from './marker-glyphs';
 import { ProjectFn } from '../camera/camera-system';
 import { MapPickable } from '../map-pick';
 
@@ -116,9 +117,9 @@ export class EquatorNodeMarkers {
     if (show) {
       for (const p of this.pairs) {
         if (isOccluded(cameraPos, p.an.pos, this.attractors)) this.markerManager.hide(`eqan-${p.sourceId}`);
-        else this.markerManager.setPosition(`eqan-${p.sourceId}`, 'mk-node', '△', p.an.pos, project, p.an.label);
+        else this.markerManager.setPosition(`eqan-${p.sourceId}`, 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, p.an.pos, project, p.an.label);
         if (isOccluded(cameraPos, p.dn.pos, this.attractors)) this.markerManager.hide(`eqdn-${p.sourceId}`);
-        else this.markerManager.setPosition(`eqdn-${p.sourceId}`, 'mk-node', '▽', p.dn.pos, project, p.dn.label);
+        else this.markerManager.setPosition(`eqdn-${p.sourceId}`, 'mk-node', ORBIT_POINT_GLYPH.descendingNode, p.dn.pos, project, p.dn.label);
       }
     }
     for (const id of this.lastKeys) {

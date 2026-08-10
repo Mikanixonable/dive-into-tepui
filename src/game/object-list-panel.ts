@@ -26,10 +26,10 @@ const FILTERS: readonly (readonly [ObjectListFilter, string])[] = [
   ['satellite', '衛星'],
   ['dwarf', '準惑星'],
   ['smallBody', '小天体'],
-  ['system', '船'],
+  ['system', '天体以外'],
 ];
 
-// 自機からこの距離 [m] 以内の対象だけを残す「近傍」フィルタのしきい値(3000万km)。
+// 自艦からこの距離 [m] 以内の対象だけを残す「近傍」フィルタのしきい値(3000万km)。
 const NEARBY_THRESHOLD_M = 3e10;
 
 // このパネル自身の折りたたみトグルの見た目。▸ が閉、▾ が開。
