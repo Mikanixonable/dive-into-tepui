@@ -60,7 +60,7 @@
           - mapPicker.close(): menu.close() / 開いている全プロパティウィンドウを closeWindow()(クリップ済みも含め全て)
         - [3D 側ビューが 他→map] editor.selectedNodeIdx = null
         - [入るビューが dock] docking.enterDock() → game.pause() + dockView.open(activeBase)
-        - applyChrome() // map-mode/dock-mode クラス・navball/ORBIT パネル配置・touchControls・
+        - applyChrome() // map-mode/dock-mode クラス・navball 配置・touchControls・
                         // cameraSystem.overviewMode・editor.editMode・displayTimeManager.forceCurrent を一斉に揃える
         - hud.hint()
     - editor.handleInput()

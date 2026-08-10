@@ -92,14 +92,14 @@ export class HudPanels {
     }
     // 未配置状態から最初の艦を置いたとき、操縦HUDを再び通常の同期へ戻す。
     if (!game.cameraSystem.overviewMode) {
-      for (const id of ['hud-status', 'hud-orbit']) {
-        const el = document.getElementById(id);
-        if (el) el.style.display = '';
-      }
+      const el = document.getElementById('hud-status');
+      if (el) el.style.display = '';
     }
-    // CONTACTS は戦闘ビュー専用。マップビューでは計画パネルや軌道表示を優先する。
-    const contacts = document.getElementById('hud-enemies');
-    if (contacts) contacts.style.display = game.cameraSystem.overviewMode ? 'none' : '';
+    // CONTACTS・ORBIT は戦闘ビュー専用。マップビューではプロパティウィンドウの「軌道」グループが代わる。
+    for (const id of ['hud-orbit', 'hud-enemies']) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = game.cameraSystem.overviewMode ? 'none' : '';
+    }
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;
     this.setTargetVisibility(tgt !== null);
