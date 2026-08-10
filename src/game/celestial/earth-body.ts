@@ -6,6 +6,7 @@ import { SIDEREAL_DAY } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { CelestialBody } from './celestial-body';
+import { CelestialLightingContext } from '../../render/celestial-lighting';
 
 export class EarthBody extends CelestialBody {
   readonly id = 'earth' as const;
@@ -18,11 +19,14 @@ export class EarthBody extends CelestialBody {
   }
 
   // displayTime 時点の位置・自転角・太陽方向・表面アニメーションへ同期する。
-  sync(fo: FloatingOrigin, displayTime: number, _cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
+  sync(
+    fo: FloatingOrigin, displayTime: number, _cameraSystem: CameraSystem, ephemeris: Ephemeris,
+    lighting: CelestialLightingContext,
+  ): void {
     const pos = ephemeris.positionOf('earth', displayTime);
     this.earth.group.position.copy(fo.RtoThreeV3(pos));
     this.earth.setRotation(this.phase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
-    const sd = ephemeris.sunDirFrom(pos, displayTime);
+    const sd = lighting.sunDirectionFrom(pos);
     this.earth.setSunDir(sd.x, sd.y, sd.z);
     this.earth.tick(displayTime);
   }

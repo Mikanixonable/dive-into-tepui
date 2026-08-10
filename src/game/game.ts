@@ -57,6 +57,7 @@ import { FrameControls } from './frame-controls';
 export class Game {
   private readonly _scene: THREE.Scene;
   private readonly renderer: GameScene['renderer'];
+  private readonly exposure: GameScene['exposure'];
   private floatingOrigin: FloatingOrigin;
   private readonly input: Input;
   touchControls: TouchControls | null = null;
@@ -124,6 +125,7 @@ export class Game {
     this.launchMode = launch.mode;
     this._scene = gs.scene;
     this.renderer = gs.renderer;
+    this.exposure = gs.exposure;
     this._hud = hud;
     this._sfx = sfx;
     this.settingsPanel = settingsPanel;
@@ -383,6 +385,9 @@ export class Game {
   update(dtRaw: number): void {
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
+    // 露出の目標はまだ中立固定。ここを全ビュー共通の実時間で更新しておくことで、将来
+    // 測光ベースの自動露出を足しても戦闘/マップ切替そのものが明滅のトリガーにならない。
+    this.renderer.toneMappingExposure = this.exposure.update(dt);
     this.handleInput();
 
     // handleInput より後に置く: ポーズ中も Esc・ヘルプなどは効かせる。
