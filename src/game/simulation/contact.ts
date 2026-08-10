@@ -107,6 +107,10 @@ function contactCellSize(all: readonly GameEntity[], working: ReadonlyMap<GameEn
 }
 
 export class ContactPhysics {
+  // earliestContact は近傍配列をループ中に消費するだけなので、ContactPhysics 単位で再利用
+  // する。Candidate や解決済み集合は要素参照を保持するが、この配列は保持しない。
+  private readonly neighborScratch: number[] = [];
+
   // 1 substep ぶんの接触解決。ワープゲート(canResolvePhysicalCollisions)は呼び出し側
   // (Simulator.advance)が判断してから呼ぶ。
   resolveSubstep(
@@ -193,7 +197,7 @@ export class ContactPhysics {
     const n = all.length;
     for (let i = 0; i < n; i++) {
       const a = all[i]!;
-      for (const j of grid.neighbors(working.get(a)!.r)) {
+      for (const j of grid.neighborsInto(working.get(a)!.r, this.neighborScratch)) {
         // j<=i は、(j,i) 側の反復で同じペアを二重に検討しないためのガード(自分自身も除く)。
         if (j <= i) continue;
         const b = all[j]!;
