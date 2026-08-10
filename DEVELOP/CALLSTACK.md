@@ -76,7 +76,7 @@
     - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // 操作艦(計画があれば最終区間起点)・navTarget・targeter・生存中の全基地の対象を id で重複除去して EqAN/EqDN を求め直す。mapPicker.refresh より前(候補列に畳み込むため)
     - attractors = mergeAttractors(ephemeris.attractorsAt(simTime), entities.attractors()) // updateMapPresentation(4経路共通)の1回だけ求め、mapPicker.refresh の遮蔽判定・cameraSystem.update の frameTransformAt へ配る
     - mapPicker.refresh() // 天体ラベルと AN/DN を求め直してからこのフレームの被選択物一覧を組む
-      - focusMarkers.update(displayTime, overviewCamera.focus, cameraSystem.bodyClassToggles) // 表示対象(visibleBodyIds)の外にある天体は座標計算ごと飛ばす // 地球・月・太陽・両系のラグランジュ点の座標を表示時刻で求め直す
+      - focusMarkers.update(displayTime, overviewCamera.focus, cameraSystem.bodyClassToggles, activeCameraPos) // MapVisibilityPolicy が admits しない天体は座標計算ごと飛ばす // 地球・月・太陽・両系のラグランジュ点の座標を表示時刻で求め直す
       - navTarget.update() // 自機軌道要素 + navTarget.id から相対 AN/DN を求め直す。ポーズ・決着に関わらず毎フレーム
       - mapPicker.pickables に反映 // 天体ラベル + 生存中の entities.players('player')・敵船('ship')(displayState 基準)+ navTarget.mapPickables() + planDisplay.apsisMarkers + equatorNodeMarkers.mapPickables() を集約 → [overviewMode] isOccluded(cameraSystem.activeCameraPos, item.pos, ephemeris.attractorsAt(simTime)) で天体に遮蔽された候補を除外
     - [editor.editMode] mapPicker.handleRightClick() / mapPicker.handleLeftClick() // 自機・基地マーカーへの左クリックを選択として消費、外れれば下流へ / mapPicker.handleDoubleClick() // pickables 全種別への最寄りダブルクリックでフォーカス移動 / editor.handleMapPointer() // [!hasPlan(=ship===null)] 内部で即 return(艦のいない detachedPlan は編集させない) / editor.updateEditing()
@@ -266,7 +266,7 @@
       - apsisIconsOf() // path.finalSegment() の periapsis/apoapsis(末尾 arc が積分中に見つけた値)を読むだけ。両方あるとき (遠地点距離-近地点距離)/(遠地点距離+近地点距離) < APSIS_MIN_ECC なら空、片方のみ(双曲線等)ならそのまま出す
   - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // editor.update の後・mapPicker.refresh の前
   - mapPicker.refresh() // 物理積分の後に組む — 積分前だと同フレームで sync されるメッシュと被選択物の座標が1ステップずれる
-    - focusMarkers.update(displayTime, overviewCamera.focus, cameraSystem.bodyClassToggles) // 表示対象(visibleBodyIds)の外にある天体は座標計算ごと飛ばす / navTarget.update() // 内容は上記ポーズ経路と同じ
+    - focusMarkers.update(displayTime, overviewCamera.focus, cameraSystem.bodyClassToggles, activeCameraPos) // MapVisibilityPolicy が admits しない天体は座標計算ごと飛ばす / navTarget.update() // 内容は上記ポーズ経路と同じ
   - cameraSystem.update(mapPicker.pickables, attractors) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ
     - combatCamera.toggleFollowAttitude() // K.followAttitudeToggle。カメラ自身の状態なのでここで消費する
     - keyYaw/keyPitch/keyRoll をキー入力からまとめる // cameraRollLeft/Right は Numpad0/Numpad1
