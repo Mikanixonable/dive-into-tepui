@@ -6,6 +6,7 @@ import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../ph
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
+import type { Attractor } from '../../physics/attractor';
 
 // ベルトが機体座標系でたわみなく伸びる基準方向。
 export const X_AXIS: Vec3 = v3(1, 0, 0);
@@ -18,12 +19,17 @@ function clamp(v: number, lo: number, hi: number): number {
 
 // ベルトのリンク節点を剛体接触に参加させるためのプロキシ。
 export class BeltSection extends GameEntity {
-  // 節点インデックス beltIndex に対応するプロキシを生成する。
-  constructor(readonly beltIndex: number) {
+  // 節点インデックス beltIndex に対応するプロキシを、吊り元の艦 owner とともに生成する。
+  constructor(readonly beltIndex: number, private readonly owner: GameEntity) {
     super(kinematicState(0, v3(), v3()), new THREE.Object3D());
     this.mass = 5;
     this.radius = 0.8;
     this.collides = true;
+  }
+
+  // ベルト節点どうし、および吊り元の艦とは接触しない。
+  contactsWith(other: GameEntity | Attractor): boolean {
+    return !(other instanceof BeltSection) && other !== this.owner;
   }
 }
 
@@ -40,7 +46,7 @@ export class BeltPhysics {
   // 給弾進みに応じて動く根本の固定点(機体座標系)。
   anchor: Vec3 = v3(MAG_BELT_ANCHOR_X, 0, 0);
 
-  constructor(private readonly linkCount: number) {}
+  constructor(private readonly linkCount: number, private readonly owner: GameEntity) {}
 
   // リンクを1つ手前へ詰め、末尾に新しいリンクを継ぎ足す。
   shiftBeltNodes(): void {
@@ -224,7 +230,7 @@ export class BeltPhysics {
   collisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     // プロキシを節点数まで拡張する
     while (this.sections.length < this.beltPos.length) {
-      this.sections.push(new BeltSection(this.sections.length));
+      this.sections.push(new BeltSection(this.sections.length, this.owner));
     }
     const invDt = 1 / dt;
     for (const s of this.sections) {
