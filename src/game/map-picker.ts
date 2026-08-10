@@ -259,9 +259,13 @@ export class MapPicker {
 
   // ダブルクリック位置の最寄りの被選択物へフォーカスを移す。種別を問わず候補列全体から探す
   // (プロパティウィンドウの「フォーカスを移動」項目と同じ操作を、より速い経路で提供する)。
+  // ラベル衝突で非表示になった天体は、表示されている別のラベルの背後から拾わない。
   handleDoubleClick(input: Input): void {
     input.takeDoubleClicks((p) => {
-      const target = pickNearest(this.items, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ);
+      const target = pickNearest(
+        this.items.filter((item) => item.pickable !== false),
+        p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ,
+      );
       if (!target) return false;
       this.cameraSystem.overviewCamera.setFocusTarget({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
