@@ -2,7 +2,10 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
-import { Attractor, hitCelestialBody, strongestAttractor } from '../../physics/attractor';
+import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { isBurnedUp } from '../../physics/atmosphere';
+import type { GameEntity } from './game-entity';
+import type { Contact } from '../simulation/contact';
 import type { FloatingOrigin } from '../floating-origin';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
@@ -182,11 +185,12 @@ export class Enemy extends Ship {
     this.destroyEffect();
   }
 
-  // 自機との高速接触によるダメージ・致死判定。speed は接触時の相対速度 [m/s]。
-  collidedAtSpeed(speed: number, simTime: number, activeStage: Stage): void {
+  // 剛体接触によるダメージ・致死判定。自分が受けた Δv = impulse/mass で判定する。
+  collideWith(_other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
-    if (!this.applyCollisionDamage(speed)) return;
+    const simTime = contact.selfState.t;
+    if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
     if (this.hp > 0) {
       this._sfx.clank();
       this._fx.spawnGasPuff(this.state);
@@ -205,10 +209,10 @@ export class Enemy extends Ship {
     activeStage.recordEnemyDeath(this, simTime, 'despawn');
   }
 
-  // 再突入による自然死。alive がすでに false なら何もしない(多重処理防止)。
+  // 大気突入による自然死。固体表面への接触は collideWith が扱う。
   checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (!hitCelestialBody(this.state.r, attractors, C.REENTRY_ALT)) return;
+    if (!isBurnedUp(this.state.r, attractors, C.REENTRY_ALT)) return;
     this.alive = false;
     this.destroyEffect();
     activeStage.recordEnemyDeath(this, simTime, 'reentry');
