@@ -25,11 +25,13 @@ export class BeltSection extends GameEntity {
     this.mass = 5;
     this.radius = 0.8;
     this.collides = true;
+    this.attachedTo = owner;
   }
 
-  // ベルト節点どうし、および吊り元の艦とは接触しない。
+  // 吊り元の艦、およびそれに取り付いた他の実体(ベルトの他節点・放熱板の折り)とは接触しない。
   contactsWith(other: GameEntity | Attractor): boolean {
-    return !(other instanceof BeltSection) && other !== this.owner;
+    if (other === this.owner) return false;
+    return !(other instanceof GameEntity && other.attachedTo === this.owner);
   }
 }
 
