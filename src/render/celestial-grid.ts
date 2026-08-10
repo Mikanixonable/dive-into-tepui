@@ -7,9 +7,11 @@ import { Vec3, v3 } from '../physics/vec3';
 import { STAR_SHELL_RADIUS } from './stars';
 
 export interface CelestialGridVisibility {
+  readonly ecliptic: boolean;
   readonly eclipticPlane: boolean;
   readonly eclipticPole: boolean;
   readonly eclipticGrid: boolean;
+  readonly equator: boolean;
   readonly equatorPlane: boolean;
   readonly equatorPole: boolean;
   readonly equatorGrid: boolean;
@@ -244,7 +246,7 @@ export class CelestialGrid {
   // scale は星殻半径 STAR_SHELL_RADIUS に対する拡大率(広範囲視点では呼び出し側が
   // CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS を渡す)。
   sync(visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number): void {
-    this.equator.sync(visibility.equatorPlane, visibility.equatorPole, visibility.equatorGrid, cam.position, scale, cam);
-    this.ecliptic.sync(visibility.eclipticPlane, visibility.eclipticPole, visibility.eclipticGrid, cam.position, scale, cam);
+    this.equator.sync(visibility.equator && visibility.equatorPlane, visibility.equator && visibility.equatorPole, visibility.equator && visibility.equatorGrid, cam.position, scale, cam);
+    this.ecliptic.sync(visibility.ecliptic && visibility.eclipticPlane, visibility.ecliptic && visibility.eclipticPole, visibility.ecliptic && visibility.eclipticGrid, cam.position, scale, cam);
   }
 }
