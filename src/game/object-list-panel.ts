@@ -25,6 +25,8 @@ interface RowNode {
   readonly label: HTMLElement;
   readonly detail: HTMLElement;
   readonly actions: HTMLElement;
+  readonly navButton: HTMLButtonElement;
+  readonly operateButton: HTMLButtonElement;
   readonly childrenContainer: HTMLElement;
   readonly children: Map<string, RowNode>;
   expanded: boolean;
@@ -49,13 +51,14 @@ export class ObjectListPanel {
   onSelect: ((id: string) => void) | null = null;
   onFocus: ((id: string) => void) | null = null;
   onNavTarget: ((id: string) => void) | null = null;
+  onOperate: ((id: string) => void) | null = null;
   onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
   private readonly sections = new Map<MapPickKind, Section>();
   private selectedId: string | null = null;
   private query = '';
-  private filter: 'all' | 'near' | 'important' | 'bodies' = 'all';
+  private filter: 'all' | 'near' | 'important' | 'system' | 'bodies' = 'all';
   private readonly breadcrumb: HTMLElement;
 
   constructor(root: HTMLElement) {
@@ -73,7 +76,7 @@ export class ObjectListPanel {
     search.type = 'search'; search.placeholder = '検索'; search.setAttribute('aria-label', '軌道オブジェクトを検索');
     search.addEventListener('input', () => { this.query = search.value.trim().toLocaleLowerCase(); });
     tools.appendChild(search);
-    for (const [key, label] of [['all', '全て'], ['near', '近く'], ['important', '重要'], ['bodies', '天体']] as const) {
+    for (const [key, label] of [['all', '全て'], ['near', '近く'], ['important', '重要'], ['system', '自艦系'], ['bodies', '天体']] as const) {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', key === 'all' ? 'true' : 'false');
       b.addEventListener('click', () => { this.filter = key; for (const x of Array.from(tools.querySelectorAll('button'))) x.setAttribute('aria-pressed', String(x === b)); });
       tools.appendChild(b);
@@ -154,6 +157,7 @@ export class ObjectListPanel {
     if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
     if (this.filter === 'bodies') return item.kind === 'body';
     if (this.filter === 'important') return /接近|回収可能|ドック/.test(item.detail ?? '');
+    if (this.filter === 'system') return item.inFocusedSystem !== false;
     // priority は MapPicker が距離[m]として提供する。未指定(天体等)は残す。
     if (this.filter === 'near') return item.priority === undefined || item.priority < 1e6;
     return true;
@@ -175,6 +179,9 @@ export class ObjectListPanel {
     if (node.detail.textContent !== (item.detail ?? '')) node.detail.textContent = item.detail ?? '';
     node.row.classList.toggle('tgt', item.id === focusId);
     node.row.classList.toggle('selected', item.id === this.selectedId);
+    node.navButton.hidden = !item.canNavTarget;
+    node.navButton.disabled = !item.canNavTarget;
+    node.operateButton.hidden = !item.canOperate;
 
     const children = childrenOf.get(item.id) ?? [];
     if (focusAncestors.has(item.id)) node.expanded = true;
@@ -214,9 +221,10 @@ export class ObjectListPanel {
     row.appendChild(label);
     row.appendChild(detail);
     const actions = document.createElement('span'); actions.className = 'object-list-actions';
-    const action = (text: string, title: string, fn: () => void) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); actions.appendChild(b); };
+    const action = (text: string, title: string, fn: () => void): HTMLButtonElement => { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); actions.appendChild(b); return b; };
     action('F', 'フォーカス (Enter / ダブルクリック)', () => this.onFocus?.(id));
-    action('T', '航法ターゲット (T)', () => this.onNavTarget?.(id));
+    const navButton = action('T', '航法ターゲット (T)', () => this.onNavTarget?.(id));
+    const operateButton = action('操', '操作対象に設定', () => this.onOperate?.(id));
     action('…', '詳細 (右クリック)', () => this.onSelectRight?.(id, row.getBoundingClientRect().right, row.getBoundingClientRect().bottom));
     row.appendChild(actions);
     const childrenContainer = document.createElement('div');
@@ -235,7 +243,7 @@ export class ObjectListPanel {
       this.onSelectRight?.(id, e.clientX, e.clientY);
     });
 
-    const node: RowNode = { row, toggle, label, detail, actions, childrenContainer, children: new Map(), expanded: false };
+    const node: RowNode = { row, toggle, label, detail, actions, navButton, operateButton, childrenContainer, children: new Map(), expanded: false };
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
       node.expanded = !node.expanded;
