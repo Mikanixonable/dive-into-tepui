@@ -129,6 +129,24 @@ const parseDebrisChunk = memoParse<THREE.Mesh>(debrisChunkData);
 const parseDebrisPanel = memoParse<THREE.Mesh>(debrisPanelData);
 const parseDebrisRod = memoParse<THREE.Mesh>(debrisRodData);
 
+// 薬莢は大量に生成されるため、排莢個体ごとの geometry/material は作らない。
+// geometry はテンプレートを一度だけ deep clone して全長補正を焼き込み、material は
+// parseCasing() がテンプレートから一度だけ複製したものを不変リソースとして共有する。
+let casingGeometry: THREE.BufferGeometry | null = null;
+let casingMaterial: THREE.MeshStandardMaterial | null = null;
+
+function initCasingResources(): void {
+  if (casingGeometry && casingMaterial) return;
+
+  const template = parseCasing();
+  casingGeometry = deepCloneGeometry(template.geometry);
+  casingGeometry.scale(1, 2, 1);
+  casingMaterial = template.material as THREE.MeshStandardMaterial;
+  casingMaterial.color.setHex(0xFF9F5E);
+  casingMaterial.metalness = 0.8;
+  casingMaterial.roughness = 0.3;
+}
+
 // 自機のメッシュを生成する。
 export function buildPlayerShip(): THREE.Group {
   return parsePlayer();
@@ -278,19 +296,13 @@ export function buildPlasmaMesh(): THREE.Mesh {
   return m;
 }
 
-// 薬莢メッシュを生成する。全長を通常の2倍にスケールした専用ジオメトリを持たせる。
+// 薬莢メッシュを生成する。全長を通常の2倍にした geometry と銅色 material は共有する。
 export function buildCasingMesh(): THREE.Mesh {
-  const mesh = parseCasing();
-  // 薬莢の全長(Y軸)を2倍にする
-  mesh.geometry = deepCloneGeometry(mesh.geometry);
-  mesh.geometry.scale(1, 2, 1);
-  mesh.userData.ownsGeometry = true;
-  // 薬莢の色を銅色（赤みのあるメタリック）に変更
-  mesh.material = (mesh.material as THREE.MeshStandardMaterial).clone();
-  (mesh.material as THREE.MeshStandardMaterial).color.setHex(0xFF9F5E);
-  (mesh.material as THREE.MeshStandardMaterial).metalness = 0.8;
-  (mesh.material as THREE.MeshStandardMaterial).roughness = 0.3;
-  mesh.userData.ownsMaterial = true;
+  initCasingResources();
+  const mesh = new THREE.Mesh(casingGeometry!, casingMaterial!);
+  // DebrisPiece.dispose() が共有リソースを解放しないよう、所有権を明示する。
+  mesh.userData.ownsGeometry = false;
+  mesh.userData.ownsMaterial = false;
   return mesh;
 }
 
