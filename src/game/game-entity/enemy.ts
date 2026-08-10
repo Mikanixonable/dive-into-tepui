@@ -167,10 +167,7 @@ export class Enemy extends Ship {
   }
 
   // 被弾によるダメージ・致死判定。
-  attacked(bullet: Bullet, simTime: number, activeStage: Stage, hitR: Vec3): void {
-    if (!this.alive) return;
-    if (bullet.shooter === 'enemy') return; // 敵弾の被弾は無効化
-
+  private attackedByBullet(bullet: Bullet, hitR: Vec3, simTime: number, activeStage: Stage): void {
     activeStage.scoreCounter.recordHit();
 
     this.applyDamageToParts(bullet.damage);
@@ -185,11 +182,17 @@ export class Enemy extends Ship {
     this.destroyEffect();
   }
 
-  // 剛体接触によるダメージ・致死判定。自分が受けた Δv = impulse/mass で判定する。
-  collideWith(_other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
+  // 弾は武装のダメージを、それ以外は接触の速度変化 Δv = impulse/mass を根拠にする
+  // (前者はゲームバランス、後者は物理量で、統合すると前者の根拠が消える)。
+  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
-
     const simTime = contact.selfState.t;
+
+    if (other instanceof Bullet) {
+      this.attackedByBullet(other, contact.point, simTime, activeStage);
+      return;
+    }
+
     if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
     if (this.hp > 0) {
       this._sfx.clank();
@@ -289,7 +292,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_HIT_DAMAGE, this.scene);
+    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_HIT_DAMAGE, this._sfx, this.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
