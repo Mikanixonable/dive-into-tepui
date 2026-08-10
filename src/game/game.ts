@@ -559,7 +559,11 @@ export class Game {
     this.equatorNodeMarkers.update(
       this.equatorNodeSources(), this.editor.planDisplay.planFrame, this.displayTime,
     );
-    this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
+    // MapPicker/FocusMarkers は全天体・ラグランジュ点・全エンティティの候補を組む。
+    // 戦闘ビューではクリック対象を別経路で処理するため、マップを表示している時だけ更新する。
+    if (this.cameraSystem.overviewMode) {
+      this.mapPicker.refresh(this.simulator.simTime, this.displayTime);
+    }
     afterRefresh?.();
     // 表示側の合流窓(重力を持つ生存中の GameEntity も含める)。sync 側の attractors と
     // 同じ合流だが、update フェーズは simTime 基準でこの1箇所からしか要らないので都度求める。
@@ -795,6 +799,8 @@ export class Game {
   perfCounts(): {
     enemies: number; bullets: number; casings: number; debris: number;
     predicted: number; predictComplete: number; predictDiscarded: number;
+    mapMode: boolean; mapItems: number; mapLabels: number;
+    simSubsteps: number; gravitySources: number; predictorSteps: number;
   } {
     return {
       enemies: this.entities.enemies.length,
@@ -804,6 +810,12 @@ export class Game {
       predicted: this.predictor.tracked,
       predictComplete: this.predictor.complete,
       predictDiscarded: this.predictor.discarded,
+      mapMode: this.cameraSystem.overviewMode,
+      mapItems: this.cameraSystem.overviewMode ? this.mapPicker.pickables.length : 0,
+      mapLabels: this.cameraSystem.overviewMode ? this.cameraSystem.focusMarkers.shownLabelCount : 0,
+      simSubsteps: this.simulator.lastSubsteps,
+      gravitySources: this.simulator.lastGravitySourceCount,
+      predictorSteps: this.predictor.lastSteps,
     };
   }
 }

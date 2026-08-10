@@ -17,6 +17,8 @@ export class Simulator {
 
   simTime = 0;
   lastSimDt = 0;
+  lastSubsteps = 0;
+  lastGravitySourceCount = 0;
 
   // entities/ephemeris は参照として保持する。
   constructor(
@@ -38,6 +40,8 @@ export class Simulator {
     doSubstep: boolean,
     nanWatchdog: NanWatchdog,
   ): void {
+    this.lastSubsteps = 0;
+    this.lastGravitySourceCount = 0;
     const targetTime = this.simTime + simDt;
     while (this.simTime < targetTime - 1e-9) {
       const remaining = targetTime - this.simTime;
@@ -52,6 +56,7 @@ export class Simulator {
       }
 
       this.simTime = this.substep(this.simTime, subDt);
+      this.lastSubsteps++;
       if (player) nanWatchdog.checkPlayer('simulator.advance(軌道積分)', player, this.simTime, dt, subDt);
       this.stepAttitudes(subDt);
       if (player) nanWatchdog.checkPlayer('simulator.advance(姿勢積分)', player, this.simTime, dt, subDt);
@@ -112,7 +117,9 @@ export class Simulator {
     simTime: number,
     dt: number,
   ): number {
-    const classified = classifyAttractors(attractorsAt(this.ephemeris, this.entities, simTime + dt / 2));
+    const sources = attractorsAt(this.ephemeris, this.entities, simTime + dt / 2);
+    this.lastGravitySourceCount = sources.length;
+    const classified = classifyAttractors(sources);
     for (const e of this.entities.all()) e.stepActual(dt, attractorsNear(e.state.r, classified));
 
     return simTime + dt;
