@@ -127,6 +127,10 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
 #hud-enemies .erow.tgt { color: ${WARNING}; }
 #hud-object-list { max-height: 320px; overflow-y: auto; }
+#hud-object-list .object-list-tools { display:flex; gap:3px; flex-wrap:wrap; padding:2px 4px; }
+#hud-object-list .object-list-tools input { min-width: 90px; flex:1; background:${SURFACE}; color:${INK}; border:1px solid ${EDGE}; font:inherit; }
+#hud-object-list .object-list-tools button { font-size:8px; padding:2px 4px; }
+#hud-object-list .object-list-tools button[aria-pressed="true"] { color:${ACCENT}; border-color:${ACCENT}; }
 #hud-object-list .object-list-section-header {
   display: block; width: 100%; text-align: left; margin: 4px 0 2px;
   padding: 3px 8px; font-size: 10px; letter-spacing: 1px;

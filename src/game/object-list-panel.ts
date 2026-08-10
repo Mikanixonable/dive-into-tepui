@@ -53,6 +53,8 @@ export class ObjectListPanel {
   private readonly panel: HTMLElement;
   private readonly sections = new Map<MapPickKind, Section>();
   private selectedId: string | null = null;
+  private query = '';
+  private filter: 'all' | 'near' | 'important' | 'bodies' = 'all';
 
   constructor(root: HTMLElement) {
     this.panel = document.createElement('div');
@@ -63,6 +65,18 @@ export class ObjectListPanel {
     const title = document.createElement('h3');
     title.textContent = '軌道オブジェクト';
     this.panel.appendChild(title);
+    const tools = document.createElement('div');
+    tools.className = 'object-list-tools';
+    const search = document.createElement('input');
+    search.type = 'search'; search.placeholder = '検索'; search.setAttribute('aria-label', '軌道オブジェクトを検索');
+    search.addEventListener('input', () => { this.query = search.value.trim().toLocaleLowerCase(); });
+    tools.appendChild(search);
+    for (const [key, label] of [['all', '全て'], ['near', '近く'], ['important', '重要'], ['bodies', '天体']] as const) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', key === 'all' ? 'true' : 'false');
+      b.addEventListener('click', () => { this.filter = key; for (const x of Array.from(tools.querySelectorAll('button'))) x.setAttribute('aria-pressed', String(x === b)); });
+      tools.appendChild(b);
+    }
+    this.panel.appendChild(tools);
 
     for (const { kind } of SECTIONS) {
       const header = document.createElement('div');
@@ -98,6 +112,7 @@ export class ObjectListPanel {
   sync(items: readonly MapPickable[], focusId: string | undefined, parentOf: ReadonlyMap<string, string>): void {
     const byKind = new Map<MapPickKind, MapPickable[]>();
     for (const item of items) {
+      if (!this.matches(item)) continue;
       const list = byKind.get(item.kind);
       if (list) list.push(item); else byKind.set(item.kind, [item]);
     }
@@ -124,6 +139,15 @@ export class ObjectListPanel {
       }
       this.pruneRows(section.rows, seen);
     }
+  }
+
+  private matches(item: MapPickable): boolean {
+    if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
+    if (this.filter === 'bodies') return item.kind === 'body';
+    if (this.filter === 'important') return /接近|回収可能|ドック/.test(item.detail ?? '');
+    // priority は MapPicker が距離[m]として提供する。未指定(天体等)は残す。
+    if (this.filter === 'near') return item.priority === undefined || item.priority < 1e6;
+    return true;
   }
 
   // id に対応する RowNode を(無ければ生成して)最新化し、続けてその子を再帰的に同期する。
