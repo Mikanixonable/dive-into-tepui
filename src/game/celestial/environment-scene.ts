@@ -59,6 +59,7 @@ function focusSystemOf(registry: CelestialRegistry, focusId: AttractorId | undef
 }
 
 export class EnvironmentScene {
+  private readonly scene: THREE.Scene;
   readonly ambient: THREE.AmbientLight;
   // 描画原点の近傍にある実スケールの物体(自機・デブリ・薬莢)を照らす平行光。天体は
   // 描画位置が真の位置と一致しないためこの光を受けず、自分で陰影を計算する。
@@ -66,8 +67,9 @@ export class EnvironmentScene {
   readonly starsMesh: THREE.Mesh;
   readonly celestialGrid: CelestialGrid;
   private readonly bodies: readonly CelestialBody[];
-  // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なのでここが所有する。
-  private readonly pointFieldView = new PointFieldView();
+  // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なので、マップへ入るまで
+  // 生成しない。11,200点の軌道要素・mesh・instance bufferをロード時に確保しないため。
+  private pointFieldView: PointFieldView | null = null;
 
   // 静止軌道高度の参照リングは実在の天体ではないので、以下の天体駆動の配列とは別に持つ。
   // 地球が現在のレジストリに無ければ null(sync は非表示のまま何もしない)。
@@ -75,7 +77,8 @@ export class EnvironmentScene {
   private readonly geoElements: OrbitalElements | null;
   // 公転天体1体につき1本、registry から自動生成する参照軌道線(衛星は親惑星中心、
   // 惑星は太陽中心)。マップモード専用で、天体暦の状態から作られる表示なのでここが所有する。
-  private readonly referenceLines: ReadonlyMap<OrbitingId, OrbitLine>;
+  private readonly referenceLines = new Map<OrbitingId, OrbitLine>();
+  private referenceLinesBuilt = false;
 
   // 天体ビューの配列がすべて ephemeris から引く。天体暦はゲーム側が所有する単一インスタンスを
   // 共有参照する(状態を持たない純サンプラ)。
@@ -83,20 +86,11 @@ export class EnvironmentScene {
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
   ) {
+    this.scene = scene;
     const registry = ephemeris.registry;
     this.geoLine.line.renderOrder = 0;
     scene.add(this.geoLine.line);
     this.geoElements = buildGeoElements(registry);
-
-    const referenceLines = new Map<OrbitingId, OrbitLine>();
-    for (const id of referenceLineIds(registry)) {
-      const color = bodyDef(registry, id).kind === 'satellite' ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
-      const line = new OrbitLine(color, 0.2);
-      line.line.renderOrder = 0;
-      scene.add(line.line);
-      referenceLines.set(id, line);
-    }
-    this.referenceLines = referenceLines;
 
     this.ambient = new THREE.AmbientLight(0x8899bb, 0.25);
     scene.add(this.ambient);
@@ -109,12 +103,13 @@ export class EnvironmentScene {
     this.bodies = Object.keys(registry).map((id) =>
       id in CELESTIAL_BODIES ? CELESTIAL_BODIES[id as SolarSystemId].create() : fallbackCelestialView(registry, id));
     for (const body of this.bodies) body.build(scene);
-    this.pointFieldView.build(scene);
   }
 
   // 表示時刻 t の点群の位置を更新する。
   update(t: number, overviewMode: boolean): void {
-    this.pointFieldView.update(t, overviewMode, this.ephemeris);
+    if (!overviewMode || this.ephemeris.starId === null) return;
+    const pointField = this.ensurePointField();
+    pointField.update(t, true, this.ephemeris);
   }
 
   // 地球の自転初期位相(セーブ用)。地球が現在のレジストリに無ければ undefined。
@@ -151,7 +146,11 @@ export class EnvironmentScene {
     this.sunLight.intensity = C.SUN_INTENSITY * (C.SHADOW_MIN_SUN + (1 - C.SHADOW_MIN_SUN) * lit);
     this.ambient.intensity = C.AMBIENT_INTENSITY * (C.SHADOW_MIN_AMBIENT + (1 - C.SHADOW_MIN_AMBIENT) * lit);
 
-    this.pointFieldView.sync(floatingOrigin, cameraSystem.overviewMode);
+    if (cameraSystem.overviewMode && this.ephemeris.starId !== null) {
+      this.ensurePointField().sync(floatingOrigin, true);
+    } else {
+      this.pointFieldView?.sync(floatingOrigin, false);
+    }
     this.syncStars(cameraSystem);
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
@@ -179,6 +178,7 @@ export class EnvironmentScene {
       for (const line of this.referenceLines.values()) line.sync(null, fo);
       return;
     }
+    this.ensureReferenceLines();
     this.geoLine.sync(this.geoElements, fo, false);
     for (const [id, line] of this.referenceLines) {
       const show = this.showsReferenceLine(id, focusId, toggles, nearbyIds);
@@ -191,6 +191,30 @@ export class EnvironmentScene {
       const densifyNear = el && rel ? (el.e > 0.5 ? positionOnOrbit(el, 0) : rel) : undefined;
       const excludeNearBody = el && rel ? this.excludeNearBodyFor(id, el, rel) : undefined;
       line.sync(el, fo, false, densifyNear, excludeNearBody);
+    }
+  }
+
+  // 点群はマップを一度も開かないプレイでは不要。最初のマップ更新時にだけ生成・登録する。
+  private ensurePointField(): PointFieldView {
+    if (this.pointFieldView === null) {
+      this.pointFieldView = new PointFieldView();
+      this.pointFieldView.build(this.scene);
+    }
+    return this.pointFieldView;
+  }
+
+  // 参照軌道線はマップ専用。OrbitLine 1本につき固定Float32Arrayを確保するため、初回マップ
+  // 表示まで生成を遅らせる。マップを離れても資源は保持し、再入場時の再構築を避ける。
+  private ensureReferenceLines(): void {
+    if (this.referenceLinesBuilt) return;
+    this.referenceLinesBuilt = true;
+    for (const id of referenceLineIds(this.ephemeris.registry)) {
+      const color = bodyDef(this.ephemeris.registry, id).kind === 'satellite'
+        ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
+      const line = new OrbitLine(color, 0.2);
+      line.line.renderOrder = 0;
+      this.scene.add(line.line);
+      this.referenceLines.set(id, line);
     }
   }
 
