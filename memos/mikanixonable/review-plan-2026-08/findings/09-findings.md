@@ -1,0 +1,48 @@
+# 章09findings: ステージ・クリエイティブ・ドック系
+
+## [bug] 修正済み: DockView での艦名エスケープ漏れ(XSS)
+- `src/game/hud/dock-view.ts` の `buildShipRow`/`buildRepairAllHeader`
+- `DockedShipEntry.name`(`Player.displayName` 由来、✎リネームや配置パネルの名前欄で自由入力可)を
+  エスケープせず `innerHTML` に直接埋め込んでいた。`save-browser.ts` は `esc()` でエスケープ済みだが
+  `dock-view.ts` には対応する処理がなかった。
+- 再現: 艦名を `<img src=x onerror=alert(1)>` のような文字列にリネームしてドックの格納艦/部品タブを開くと
+  スクリプトが実行される。
+- 対応: `esc()` ヘルパーを追加し、`buildShipRow`/`buildRepairAllHeader` の該当箇所に適用した。
+
+## [報告のみ] ラジエーターの左右ラベルとキー割り当ての不整合(要目視確認)
+- `src/game/input/key-mapping.ts`(`radiatorDeployLeft` → `Digit9`)と
+  `src/game/stages/stage-utils/stage-status-panel.ts`(`RADIATOR_UI.up.label = '左'`)の対応が、
+  `player/radiator.ts` のコメント・CLAUDE.md が明記する `up`=+X=右舷 という定義と食い違っている。
+- `Digit9` は `up`(+X)パネルをトグルするが、そのキー名は `radiatorDeployLeft`、ステータスパネルの
+  ラベルは「左」。CLAUDE.md 側は `up` を「右」と説明しており、少なくとも一方が誤り。
+- 実機体形状(+X側が実際に右舷として描画されているか)を見ないと、どちらを直すべきか確定できないため
+  修正は保留し、報告のみとする。
+
+## [refactor] `MapPicker.isCreativeMode()` の `as any`
+- `src/game/map-picker.ts`(`isCreativeMode` 内、`(this.game.activeStage as any).stageId === 'creative'`)
+- `this.game.activeStage instanceof CreativeStage` で型安全に書けるはずだが、`CreativeStage` を
+  import すると循環 import のリスクがあるため(`creative-stage.ts` は `Game`/`EntityManager` 等を
+  介して間接的に `map-picker.ts` 側へ依存し得る)、今回は修正を見送り報告のみとする。
+
+## 確認して問題なしと判断した項目
+- phase 保護(`recordEnemyDeath`/`recordPlayerLost` の `isPlaying` ガード、`[R]` restart の分岐)。
+- Docking の dock/launch 遷移(`parkPlayer` で dispose しない、`obj.visible=false`、アクティブ艦なら
+  SFX 強制停止、launch 側は visible を `syncPlayer` に委ねる)。
+- `DockedShipEntry.parts` の参照共有と `hp`/`maxHp` スナップショットの `refreshFromParts()` 経由の
+  書き戻し。
+- `SHOP_CATALOG` が `PLAYER_MASS`/`THROTTLE_LEVELS`/`MAX_ANG_ACCEL` から導出されていること、金額の
+  負値ガード、buy/swap/repair/refuel の debit と在庫整合。
+- `CreativeStage.placeObject` の4分岐とフォールバック名、`CREATIVE_MAX_SHIPS`、毎フレーム再導出される
+  preview(取りこぼしなし)、duplicate の hyperbolic/検証失敗時のフォーム不通過。
+- `Logistics` の二重ゲート、ブロック中のタイマー非進行、scripted spawn のゲートバイパス、マーカー
+  キーの詰め直し。
+- `stage-debug-load` の `mulberry32` 決定論シード、`checkWin()` 恒偽ステージが `UnlockManager` を
+  汚さないこと(`stage00.ts` 自体のウェーブ生成は `Math.random()` を使うが、決定論が要求される場面
+  ではないため未指摘)。
+- `main.ts` `resolveLaunchSelection` の優先順位(`?title=1` → URL ショートカット → active slot →
+  title)と `isResumableStage` の `hiddenFromSelect`/unlock 検査。
+- `dock-view.ts` は one-shot modal として妥当な `innerHTML` 再構築方式であり、`pointer-events: auto`
+  も適切に指定されている。
+
+## 検証
+- `npm run typecheck` 実行済み(下記参照)。
