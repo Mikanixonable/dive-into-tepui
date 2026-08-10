@@ -169,10 +169,11 @@ export class SaveBrowser {
     // 取り込んだファイル由来のメタは欠けていたり別物だったりし得るので、表示前に必ず均す。
     const kind = SNAPSHOT_KIND_LABEL[s.kind] ? s.kind : 'auto';
     const hpPct = Math.max(0, Math.min(100, num(s.hpRatio) * 100));
-    const loadDisabled = !loadable;
-    const loadTitle = loadDisabled ? 'いま遊んでいるセーブデータ・ステージのスナップショットだけを復元できます' : '';
+    const loadTitle = loadable
+      ? 'ダブルクリックでロード'
+      : 'いま遊んでいるセーブデータ・ステージのスナップショットだけを復元できます';
     return `
-      <div class="sb-snap-card" data-snap-id="${s.id}">
+      <div class="sb-snap-card ${loadable ? 'sb-snap-loadable' : ''}" data-snap-id="${s.id}" data-loadable="${loadable}" title="${loadTitle}">
         <div class="sb-snap-head">
           <span class="sb-snap-name">${esc(String(s.name ?? ''))}</span>
           <span class="sb-snap-badge sb-snap-badge-${kind}">${SNAPSHOT_KIND_LABEL[kind]}</span>
@@ -182,7 +183,6 @@ export class SaveBrowser {
         <div class="sb-snap-hp-bar"><div class="sb-snap-hp-fill" style="width:${hpPct}%"></div></div>
         <div class="sb-snap-row">艦 ${num(s.playerCount)} / 敵残 ${num(s.enemyAliveCount)} / 所持金 ${num(s.money).toLocaleString()} Cr</div>
         <div class="sb-snap-actions">
-          <button class="sb-btn sb-btn-sm sb-btn-load" data-slot-id="${slot.id}" data-snap-id="${s.id}" ${loadDisabled ? 'disabled' : ''} title="${loadTitle}">ロード</button>
           <button class="sb-btn sb-btn-sm sb-btn-pin" data-snap-id="${s.id}" data-pinned="${s.pinned}">${s.pinned ? '📌 解除' : '📌 クリップ'}</button>
           <button class="sb-btn sb-btn-sm" data-act="rename-snap" data-snap-id="${s.id}" title="名前変更">✎</button>
           <button class="sb-btn sb-btn-sm" data-act="delete-snap" data-snap-id="${s.id}" title="削除">🗑</button>
@@ -219,7 +219,7 @@ export class SaveBrowser {
       });
     });
     this.el.querySelector('#sb-capture-now')?.addEventListener('click', () => this.handleCaptureNow());
-    this.el.querySelectorAll('.sb-btn-load').forEach((b) => b.addEventListener('click', (e) => this.handleLoadSnapshot(e)));
+    this.el.querySelectorAll('.sb-snap-card').forEach((card) => card.addEventListener('dblclick', (e) => this.handleLoadSnapshot(e)));
     this.el.querySelectorAll('.sb-btn-pin').forEach((b) => b.addEventListener('click', (e) => this.handleTogglePin(e)));
     this.el.querySelectorAll('[data-act="rename-snap"]').forEach((b) => b.addEventListener('click', (e) => this.handleRenameSnapshot(e)));
     this.el.querySelectorAll('[data-act="delete-snap"]').forEach((b) => b.addEventListener('click', (e) => this.handleDeleteSnapshot(e)));
@@ -301,9 +301,15 @@ export class SaveBrowser {
   }
 
   private handleLoadSnapshot(e: Event): void {
-    const btn = e.target as HTMLElement;
-    const snapId = btn.dataset['snapId'];
+    if ((e.target as HTMLElement).closest('button')) return;
+    const card = e.currentTarget as HTMLElement;
+    const snapId = card.dataset['snapId'];
     if (!snapId) return;
+    if (card.dataset['loadable'] !== 'true') {
+      this.setStatus('いま遊んでいるセーブデータ・ステージのスナップショットだけを復元できます。', true);
+      this.rebuild();
+      return;
+    }
     const ok = this.service.restore(this.game, snapId);
     if (ok) {
       this.close();
