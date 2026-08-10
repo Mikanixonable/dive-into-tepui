@@ -13,7 +13,7 @@ import { Attitude, attitudeAlignError, attitudeAlignTorque } from '../../physics
 import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Plan } from './plan';
-import { burnCutoffProjection, burnDurationFor, burnUpReference, ignitionTimeFor, turnTimeFor } from './plan-executor-math';
+import { burnCutoffProjection, burnDurationFor, burnUpReference, ignitionTimeFor, maxAccelOf, turnTimeFor } from './plan-executor-math';
 
 // 'off': ノードを消化しない。'instant': ノード時刻ちょうどで絶対状態へ乗り移る(瞬間移動)。
 // 'powered': この PlanExecutor が姿勢制御・噴射で実行する。
@@ -55,7 +55,6 @@ export class PlanExecutor {
   // update() が求めた、燃料消費込みの現在の点火出力 [m/s^2]。点火の瞬間(applyIgnitionAndCutoff)は
   // 次の update() まで燃料消費を反映できないため、点火直後だけ燃料無制限の値で仮置きする。
   private pendingAccel = 0;
-  private thrustGateOpen = false;
 
   constructor(private readonly hud: PlanExecutorHud) {}
 
@@ -66,27 +65,32 @@ export class PlanExecutor {
   // 点火・遮断の瞬間だけは applyIgnitionAndCutoff からも書く(simTime のイベント境界を跨いだ
   // 直後の残りサブステップにまで反映させるため)。
   update(ship: PlanExecutorShip, dt: number, simTime: number, simSpeed: PlanExecutorSimSpeed): void {
-    this.thrustGateOpen = simSpeed.canPlayerThrust;
     const node = ship.plan.firstNode();
     if (ship.planExecution !== 'powered' || !ship.alive || !node) {
-      this.reset(ship);
+      this.stopIfActive(ship);
       return;
     }
     if (node !== this.targetNode) {
-      this.reset(ship);
+      this.stopIfActive(ship);
       this.targetNode = node;
     }
 
     // 燃焼中は姿勢を追随させず(点火時に確定した向きを保持するだけ)、出力段の見直しと
-    // 推力の書き直しだけを行う。
+    // 推力の書き直しだけを行う。ただし噴射できないゲート状態になったら燃焼ごと中断する —
+    // 凍結した噴射方向は「点火から遮断までの短時間なら慣性系で固定してよい」という近似で
+    // あって、噴射しないまま時間加速で長く進んだ先ではもう艦の位置も速度も別物になっている。
     if (this.phase === 'burn' || this.phase === 'trim') {
+      if (!simSpeed.canPlayerThrust) {
+        this.clearState(ship);
+        return;
+      }
       this.updateBurnOutput(ship, node, dt);
       return;
     }
 
     const dv = sub(node.v, ship.state.v);
     const dvMag = len(dv);
-    const accel = ship.mass > 0 ? ship.totalThrust / ship.mass : 0;
+    const accel = maxAccelOf(ship.totalThrust, ship.mass);
 
     // 目標方向・up基準・現在の姿勢誤差角を先に求める(窓の見積りと、窓を通った後の整列トルクの
     // 両方が必要とするため)。dv が実質無ければ方向自体が定まらないので誤差角は0とみなす —
@@ -125,27 +129,22 @@ export class PlanExecutor {
 
   // 燃焼中(burn/trim)の姿勢保持トルク・出力段・推力を求め直す。姿勢は点火時に確定した
   // burnDirWorld/burnUpWorld を保持し続けるだけで、目標そのものは動かさない。
-  // ゲートが閉じている(高warp)間は実際に噴射しないので燃料は消費せず、推力も止める。
   private updateBurnOutput(ship: PlanExecutorShip, node: KinematicState, dt: number): void {
     const dir = this.burnDirWorld!;
     ship.torque = attitudeAlignTorque(dir, this.burnUpWorld!, ship.att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD);
 
     const remaining = burnCutoffProjection(node.v, ship.state.v, dir);
     this.phase = remaining < C.PLAN_EXECUTOR_TRIM_DV ? 'trim' : 'burn';
-    if (!this.thrustGateOpen) {
-      ship.thrust = null;
-      return;
-    }
     // 出力段はTHROTTLE_LEVELSの最大値に対する比として噴射加速度へ掛ける。
     const maxLevel = C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
     const level = this.phase === 'trim' ? C.THROTTLE_LEVELS[0]! : maxLevel;
     const presetScale = level / maxLevel;
-    const maxAccel = ship.mass > 0 ? ship.totalThrust / ship.mass : 0;
+    const maxAccel = maxAccelOf(ship.totalThrust, ship.mass);
     const ratio = ship.consumeFuel(ship.totalFuelConsumptionRate * presetScale * dt);
     this.pendingAccel = maxAccel * presetScale * ratio;
     if (this.pendingAccel <= 0) {
       ship.planExecution = 'off';
-      this.reset(ship);
+      this.stopIfActive(ship);
       this.hud.hint('燃料切れのため軌道計画の自動実行を中止した');
       return;
     }
@@ -155,9 +154,9 @@ export class PlanExecutor {
   // Simulator の substep 境界(Stage.applySimulationEvents)ごとに呼ぶ。armed→burn の点火と、
   // 射影が0を切った時点の遮断を simTime ちょうどで行う。update() と同じ node/phase の前提を
   // 使うので、ここで初めて armed に入ることはない(その判定は update() 側の担当)。
-  applyIgnitionAndCutoff(ship: PlanExecutorShip, simTime: number): void {
+  applyIgnitionAndCutoff(ship: PlanExecutorShip, simTime: number, simSpeed: PlanExecutorSimSpeed): void {
     if (!ship.alive) {
-      this.reset(ship);
+      this.stopIfActive(ship);
       return;
     }
     if (ship.planExecution !== 'powered') return;
@@ -172,9 +171,9 @@ export class PlanExecutor {
         this.finish(ship, node);
         return;
       }
-      const accel = ship.mass > 0 ? ship.totalThrust / ship.mass : 0;
+      const accel = maxAccelOf(ship.totalThrust, ship.mass);
       const ignition = ignitionTimeFor(node.t, dvMag, accel);
-      if (simTime + 1e-9 < ignition || !this.thrustGateOpen) return;
+      if (simTime + 1e-9 < ignition || !simSpeed.canPlayerThrust) return;
       this.burnDirWorld = scale(dv, 1 / dvMag);
       this.burnUpWorld = burnUpReference(dv, ship.state);
       this.pendingAccel = accel;
@@ -184,12 +183,12 @@ export class PlanExecutor {
     }
     if (this.phase !== 'burn' && this.phase !== 'trim') return;
 
-    // burn/trim: 射影が0を切ったら遮断。ゲートが閉じている間は推力だけ止め、フェーズは保持する
-    // (遮断判定そのものもゲートが開いている間しか行わない — 閉じている間は実際に燃焼していないので
-    // 軌道力学だけによる速度の自然なドリフトを遮断と誤認してはならない)。
+    // burn/trim: 射影が0を切ったら遮断。ゲートが閉じたら燃焼ごと中断する — 実際に燃焼して
+    // いないので軌道力学だけによる速度のドリフトを遮断と誤認してはならず、かといって凍結した
+    // 噴射方向のまま待つこともできない(点火から遮断までの短時間でしか成り立たない近似)。
     const dir = this.burnDirWorld!;
-    if (!this.thrustGateOpen) {
-      ship.thrust = null;
+    if (!simSpeed.canPlayerThrust) {
+      this.clearState(ship);
       return;
     }
     if (burnCutoffProjection(node.v, ship.state.v, dir) <= 0) {
@@ -204,15 +203,14 @@ export class PlanExecutor {
   // ゲートが閉じている間は着火も遮断も実際には起きないので null(実行されない時刻を返して
   // Simulator に無駄な精密ステップを刻ませない)。現在の速度差・出力から毎回引き直すので、
   // 燃焼が進むほど遮断予定は正確に収束する。
-  nextEventTime(ship: PlanExecutorShip, simTime: number): number | null {
-    if (ship.planExecution !== 'powered' || !this.thrustGateOpen) return null;
+  nextEventTime(ship: PlanExecutorShip, simTime: number, simSpeed: PlanExecutorSimSpeed): number | null {
+    if (ship.planExecution !== 'powered' || !simSpeed.canPlayerThrust) return null;
     const node = ship.plan.firstNode();
     if (!node || node !== this.targetNode) return null;
 
     if (this.phase === 'armed') {
       const dvMag = len(sub(node.v, ship.state.v));
-      const accel = ship.mass > 0 ? ship.totalThrust / ship.mass : 0;
-      const t = ignitionTimeFor(node.t, dvMag, accel);
+      const t = ignitionTimeFor(node.t, dvMag, maxAccelOf(ship.totalThrust, ship.mass));
       return t >= simTime ? t : null;
     }
     if ((this.phase === 'burn' || this.phase === 'trim') && this.burnDirWorld) {
@@ -236,7 +234,7 @@ export class PlanExecutor {
   }
 
   // 待機状態(idle)へ戻し、進行中の噴射・トルクを止める。既に idle なら何もしない。
-  private reset(ship: PlanExecutorShip): void {
+  private stopIfActive(ship: PlanExecutorShip): void {
     if (this.phase === 'idle') return;
     this.clearState(ship);
   }
