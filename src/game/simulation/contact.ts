@@ -34,6 +34,7 @@ function isFiniteParticipant(e: GameEntity): boolean {
     && Number.isFinite(e.radius) && Number.isFinite(e.mass) && e.mass > 0;
 }
 
+// 位置・速度・半径が有限か。
 function isFiniteAttractor(a: Attractor): boolean {
   const { r, v } = a.state;
   return Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
@@ -53,10 +54,13 @@ function contactTime(a: GameEntity, toi: number): number {
   return a.prevState.t + (a.state.t - a.prevState.t) * toi;
 }
 
+// working 上の現在位置どうしの剛体接触を解決する。
 function computeEntityResponse(
   a: GameEntity, b: GameEntity, working: ReadonlyMap<GameEntity, KinematicState>,
 ): CollisionResponse | null {
   const aWork = working.get(a)!, bWork = working.get(b)!;
+  // 両者の prevState→state が同じ区間(時刻がほぼ一致)を成すときだけ掃引TOIを試す —
+  // ずれていれば異なる瞬間の直前位置を結ぶ線分になり、掃引の意味を失う。
   const sweptValid = a.prevState.t < a.state.t && b.prevState.t < b.state.t
     && Math.abs(a.prevState.t - b.prevState.t) <= 1e-6 && Math.abs(a.state.t - b.state.t) <= 1e-6;
   return resolveSphereCollision(
@@ -151,6 +155,7 @@ export class ContactPhysics {
     activeStage: Stage,
   ): void {
     if (attackers.length === 0) return;
+    // others が無ければ配列を作り直さず attackers をそのまま使う。
     const all = others.length === 0 ? attackers : [...attackers, ...others];
     const attackerSet = new Set(attackers);
     const working = new Map<GameEntity, KinematicState>();
@@ -189,6 +194,7 @@ export class ContactPhysics {
     for (let i = 0; i < n; i++) {
       const a = all[i]!;
       for (const j of grid.neighbors(working.get(a)!.r)) {
+        // j<=i は、(j,i) 側の反復で同じペアを二重に検討しないためのガード(自分自身も除く)。
         if (j <= i) continue;
         const b = all[j]!;
         if (!attackerSet.has(a) && !attackerSet.has(b)) continue;
@@ -232,6 +238,7 @@ export class ContactPhysics {
     const t = contactTime(a, response.toi);
 
     if (b instanceof GameEntity) {
+      // 天体側(else 節)は不動なので working への書き戻し対象に含めない。
       const bBefore = working.get(b)!;
       working.set(b, kinematicState(b.state.t, response.rB, response.vB));
       changed.add(b);

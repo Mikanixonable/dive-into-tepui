@@ -192,6 +192,7 @@ export class Enemy extends Ship {
       return;
     }
 
+    // 弾以外(天体・他艦・デブリ等)との接触は Δv ベースの物理ダメージとして扱う。
     if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
     if (this.hp > 0) {
       this._sfx.clank();
