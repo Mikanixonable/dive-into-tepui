@@ -60,12 +60,16 @@ export function register(): void {
     assert.ok(!e.hasStableTriangularPoints('sun'));
   });
 
-  test('visibility: 既定では恒星と惑星だけが見える', () => {
+  test('visibility: 既定では恒星・惑星・小天体が見える', () => {
     const visible = visibleBodyIds(SOLAR_SYSTEM, 'earth', DEFAULT_BODY_CLASS_TOGGLES);
     for (const id of ['sun', 'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune']) {
       assert.ok(visible.has(id), `${id} は常に見えるべき`);
     }
-    for (const id of ['io', 'titan', 'triton', 'ceres', 'halley']) {
+    // smallBodyLabel だけが既定で立っているので、小天体は見えて準惑星と衛星は見えない。
+    for (const id of ['halley', 'encke', 'vesta']) {
+      assert.ok(visible.has(id), `${id} は既定で見えるべき`);
+    }
+    for (const id of ['io', 'titan', 'triton', 'ceres', 'pluto']) {
       assert.ok(!visible.has(id), `${id} は既定では見えないべき`);
     }
   });
@@ -89,7 +93,7 @@ export function register(): void {
   });
 
   test('visibility: クラストグルを立てるとそのクラスが全数見える', () => {
-    const visible = visibleBodyIds(SOLAR_SYSTEM, 'earth', { ...DEFAULT_BODY_CLASS_TOGGLES, satellite: true });
+    const visible = visibleBodyIds(SOLAR_SYSTEM, 'earth', { ...DEFAULT_BODY_CLASS_TOGGLES, satelliteLabel: true });
     for (const id of ['moon', 'io', 'titan', 'triton', 'phobos']) {
       assert.ok(visible.has(id), `${id} が見えるべき`);
     }
