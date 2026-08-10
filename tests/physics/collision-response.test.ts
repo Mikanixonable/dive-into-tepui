@@ -70,4 +70,61 @@ export function register(): void {
     assert.ok(Math.abs(dvA * massA - dvB * massB) < 1e-9);
     assert.ok(dvA > dvB); // 軽いA側のΔvの方が大きい
   });
+
+  // 片側が非有限(位置/速度/半径/逆質量)のとき、resolveSphereCollision が相手側の値を
+  // 一切書き換えないことを固定する — 参加者フィルタが破れても、この関数自身が伝播を
+  // 止める最後の砦であること。位置・半径・逆質量は距離/換算質量そのものを壊すので
+  // null(=両側とも変更なし)を返す。速度だけが例外で、位置補正には速度を使わないため
+  // 反発の要否判定(vn)だけが壊れて非nullのまま返る — その場合も相手側(vB)は無傷。
+  test('collision-response: 片側が非有限な位置なら null', () => {
+    const res = resolveSphereCollision(
+      { r: v3(NaN, 0, 0), v: v3(1, 0, 0), radius: 1, invMass: 1 },
+      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      0.5,
+    );
+    assert.equal(res, null);
+  });
+
+  test('collision-response: 片側が非有限な速度は相手側の速度を書き換えない', () => {
+    const res = resolveSphereCollision(
+      { r: v3(-0.6, 0, 0), v: v3(NaN, 0, 0), radius: 1, invMass: 1 },
+      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      0.5,
+    )!;
+    assert.ok(res !== null);
+    assert.deepEqual(res.vB, v3(-1, 0, 0));
+  });
+
+  test('collision-response: 片側が非有限な半径なら null', () => {
+    const res = resolveSphereCollision(
+      { r: v3(-0.6, 0, 0), v: v3(1, 0, 0), radius: NaN, invMass: 1 },
+      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      0.5,
+    );
+    assert.equal(res, null);
+  });
+
+  test('collision-response: 片側が非有限な逆質量なら null', () => {
+    const res = resolveSphereCollision(
+      { r: v3(-0.6, 0, 0), v: v3(1, 0, 0), radius: 1, invMass: NaN },
+      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      0.5,
+    );
+    assert.equal(res, null);
+  });
+
+  // 質量0(逆質量Infinity)側は自分の位置・速度がNaNになりうるが、相手側(有限質量)の
+  // 値は一切書き換えられない — 0×Infinityがどちらの式でも invMass の側にしか掛からないため。
+  // 質量0を参加者に含めない保証自体は game/ 側(6-3)の責務で、ここは万一素通りしても
+  // 相手側へは伝播しないことを固定する。
+  test('collision-response: 質量0(逆質量Infinity)は相手側の値を書き換えない', () => {
+    const res = resolveSphereCollision(
+      { r: v3(-0.6, 0, 0), v: v3(1, 0, 0), radius: 1, invMass: Infinity },
+      { r: v3(0.6, 0, 0), v: v3(-1, 0, 0), radius: 1, invMass: 1 },
+      0.5,
+    )!;
+    assert.ok(res !== null);
+    assert.deepEqual(res.rB, v3(0.6, 0, 0));
+    assert.deepEqual(res.vB, v3(-1, 0, 0));
+  });
 }
