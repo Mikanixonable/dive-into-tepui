@@ -330,7 +330,7 @@
   - displayTime を確定 // displayTimeManager.resolveDisplayTime(simTime, game.currentOrbitPeriod()): 未来ゴーストのスライダーが立っている間だけ先の時刻
   - cameraSystem.sync() // 最初に呼ぶ: environment.sync とマーカー投影が今フレームのカメラ行列を読む
     - syncCameraToViewpoint(active.camera, active.viewpoint, fo) // active = overviewMode ? overviewCamera : combatCamera。両カメラの viewpoint→THREE.PerspectiveCamera 反映はここ一箇所
-    - overviewCameraPanel.setVisible(overviewMode) + setFrame() // MAP VIEW パネル。点灯反映は overviewMode のみ
+    - overviewCameraPanel.setVisible(overviewMode) + setBodyClassToggles(bodyClassToggles) // MAP VIEW パネル。点灯反映は overviewMode のみ
     - focusMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。overviewMode のみ
     - focusMarkers.hideLabels() // !overviewMode のみ
   - project / overviewMode / simTime / attractors(= ephemeris.attractorsAt(simTime)) / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
@@ -388,7 +388,7 @@
   - displayTimeManager.sync(simTime, game.currentOrbitPeriod()) // PREDICT パネル(期間/未来位置スライダー/目盛り/手動レンジ/ジャンプ入力)の表示/内容を押し出すだけ
     - panel.setVisible(!forceCurrent) / setDuration() / setManualVisible() / setSliderLabel() / setTicks() // ラベルは自己完結の "T+" 表記のみ
   - editor.sync(mapDist, simTime, fo, project, cameraSystem.activeCameraScale, overviewMode, cameraSystem.activeCameraPos)
-    - [hasPlan かつ(editMode または plan.nodes.length > 0)] planDisplay.sync(fo, project, scale, editMode, overviewMode, cameraPos)
+    - [hasPlan かつ(editMode または plan.nodes.length > 0)] planDisplay.sync(fo, project, scale, overviewMode, cameraPos)
       - path.setVisible(plan.nodes.length > 0) // ノードの無い計画は自機の現在軌道そのものを描くだけなので折れ線を隠す
       - path.sync(fo, project, scale, cameraPos) // ノードの有無に関わらず毎フレーム呼ぶ(画面判定に使う視点を更新するため)。区間の折れ線メッシュ。表示座標系と un-bake 時刻は update フェーズで確定済み。cameraPos は nearestSample(DOM ポインタイベント起点)向けにここでキャッシュするだけ
         // 区間の終端はノードの t。末尾区間だけは起点の解析軌道1周期ぶん(plan.ts の orbitPeriodOf)
@@ -400,13 +400,18 @@
         - arc.setVisible(false) // 区間が減って余った PlanArc ごと
       - syncGhost() → markerManager.setPosition('plannedPlayer') or hide() // update が求めた ghost が null なら hide
       - syncApsisMarkers(project, overviewMode, cameraPos) → markerManager.setPosition('apsisPe'/'apsisAp') or hide() // update が求めたアイコンごと。[overviewMode かつ isOccluded] も hide
-      - panel の表示 = showPanel(= editMode) / setSelected() // TRAJECTORY パネル(表示座標系)。戦闘ビューでは出さない
     - [!hasPlan、または(!editMode かつ plan.nodes.length === 0)] planDisplay.hide()
     - [hasPlan かつ editMode] syncGizmo() → nodeGizmo.sync() // ノードハンドル + 選択中ノードの Δv アーム6個
       // ↑ planDisplay.sync の後で呼ぶ: ノードの画面座標は path の今フレームの表示文脈を通す
     - [hasPlan かつ editMode] syncPanel(simTime) // MANEUVER PLAN パネルの HTML(ノード一覧・選択中ノードの Δv と噴射後要素)
   - mapPicker.sync(overviewMode, simTime, bodies, player) // 軌道オブジェクトウィンドウ。overviewMode の間は常設表示で pickables を行として書き出す
     - 開いている各プロパティウィンドウ // isTargetGone(target) が真なら closeWindow()(player/ship/ammo/base は実体の alive を直接見る。displayState が null なだけの休止フレームでは alive のまま残るので閉じない。天体/アプシス/AN-DN は pickables に載っているかで判定) — 残れば target を pickables の最新値へ更新し、buildRows() → w.syncRows() / windowItems() → w.syncItems()
+  - frameControls.sync(mapPicker.pickables, cameraSystem.activeCameraPos, attractors, simTime, overviewMode) // 座標系パネル。!overviewMode なら非表示にして return
+    - [overviewMode] members = systemMembersAt(ephemeris.registry, cameraPos, attractors) // 4ゾーン共通の「いまカメラがいる系の天体列」を1回だけ導出
+    - [overviewMode] cameraZone.setItems(pickables) / setNearby(members, pickables) / setSelected(focusTargetId(overviewCamera.focus)) // カメラの固定先(全候補プルダウン + いまいる系のクイックボタン)
+    - [overviewMode] cameraRotationZone.setNearby(members) / setSelected(overviewCamera.cameraFrame.rotatingWith)
+    - [overviewMode] translationZone.setItems(pickables) / setNearby(members, pickables) / setSelected(planDisplay.planFrame.center) // 計画折れ線の原点
+    - [overviewMode] planRotationZone.setNearby(members) / setSelected(planDisplay.planFrame.rotatingWith)
   - predictedTrajectoryLine.sync(predictedTargets, editor.planDisplay.planFrame, simTime, ephemeris, fo) // predictedTargets = 操作対象の自機が生存していればその1隻、いなければ空配列。計画軌道の折れ線と同じ座標系(editor.planDisplay.planFrame)で bake する。空配列を渡すと内部の pruneTo が線を畳む
     - line.syncGeometry() // entity.predictedTrajectory.samplesOldestFirst() を frame で bake
     - line.syncTransform()
