@@ -24,9 +24,6 @@ interface RowNode {
   readonly toggle: HTMLElement;
   readonly label: HTMLElement;
   readonly detail: HTMLElement;
-  readonly actions: HTMLElement;
-  readonly navButton: HTMLButtonElement;
-  readonly operateButton: HTMLButtonElement;
   readonly childrenContainer: HTMLElement;
   readonly children: Map<string, RowNode>;
   expanded: boolean;
@@ -51,7 +48,6 @@ export class ObjectListPanel {
   onSelect: ((id: string) => void) | null = null;
   onFocus: ((id: string) => void) | null = null;
   onNavTarget: ((id: string) => void) | null = null;
-  onOperate: ((id: string) => void) | null = null;
   onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
@@ -187,9 +183,6 @@ export class ObjectListPanel {
     if (node.detail.textContent !== (item.detail ?? '')) node.detail.textContent = item.detail ?? '';
     node.row.classList.toggle('tgt', item.id === focusId);
     node.row.classList.toggle('selected', item.id === this.selectedId);
-    node.navButton.hidden = !item.canNavTarget;
-    node.navButton.disabled = !item.canNavTarget;
-    node.operateButton.hidden = !item.canOperate;
 
     const children = childrenOf.get(item.id) ?? [];
     if (focusAncestors.has(item.id)) node.expanded = true;
@@ -228,13 +221,6 @@ export class ObjectListPanel {
     row.appendChild(toggle);
     row.appendChild(label);
     row.appendChild(detail);
-    const actions = document.createElement('span'); actions.className = 'object-list-actions';
-    const action = (text: string, title: string, fn: () => void): HTMLButtonElement => { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); actions.appendChild(b); return b; };
-    action('F', 'フォーカス (Enter / ダブルクリック)', () => this.onFocus?.(id));
-    const navButton = action('T', '航法ターゲット (T)', () => this.onNavTarget?.(id));
-    const operateButton = action('操', '操作対象に設定', () => this.onOperate?.(id));
-    action('…', '詳細 (右クリック)', () => this.onSelectRight?.(id, row.getBoundingClientRect().right, row.getBoundingClientRect().bottom));
-    row.appendChild(actions);
     const childrenContainer = document.createElement('div');
     childrenContainer.className = 'object-list-children';
 
@@ -251,7 +237,7 @@ export class ObjectListPanel {
       this.onSelectRight?.(id, e.clientX, e.clientY);
     });
 
-    const node: RowNode = { row, toggle, label, detail, actions, navButton, operateButton, childrenContainer, children: new Map(), expanded: false };
+    const node: RowNode = { row, toggle, label, detail, childrenContainer, children: new Map(), expanded: false };
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
       node.expanded = !node.expanded;

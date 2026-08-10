@@ -129,7 +129,10 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-object-list { max-height: 320px; overflow-y: auto; }
 #hud-object-list .object-list-tools { display:flex; gap:3px; flex-wrap:wrap; padding:2px 4px; }
 #hud-object-list .object-list-tools input { min-width: 90px; flex:1; background:${SURFACE}; color:${INK}; border:1px solid ${EDGE}; font:inherit; }
-#hud-object-list .object-list-tools button { font-size:8px; padding:2px 4px; }
+#hud-object-list .object-list-tools button {
+  font-size:8px; padding:2px 4px; border:1px solid ${EDGE}; border-radius:4px;
+  background:${SURFACE}; color:${INK_SOFT};
+}
 #hud-object-list .object-list-tools button[aria-pressed="true"] { color:${ACCENT}; border-color:${ACCENT}; }
 #hud-object-list .object-list-breadcrumb { padding:2px 5px; font-size:8px; color:${INK_SOFT}; border-bottom:1px solid ${EDGE}; }
 #hud-object-list .object-list-section-header {
@@ -139,9 +142,6 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-object-list .object-list-section-body { padding-left: 4px; }
 #hud-object-list .erow { padding: 3px 4px; color: ${INK_SOFT}; cursor: pointer; display: flex; align-items: center; gap: 4px; }
 #hud-object-list .object-list-detail { margin-left: auto; font-size: 8px; color: ${INK_SOFT}; white-space: nowrap; }
-#hud-object-list .object-list-actions { display:none; gap:2px; }
-#hud-object-list .erow:hover .object-list-actions, #hud-object-list .erow:focus .object-list-actions { display:flex; }
-#hud-object-list .object-list-actions button { padding:0 3px; font-size:8px; }
 .mk-list-selection { color:#fff; font-size:28px; pointer-events:none; }
 #hud-object-list .erow:hover { color: ${INK}; }
 #hud-object-list .erow.tgt { color: ${ACCENT}; }
