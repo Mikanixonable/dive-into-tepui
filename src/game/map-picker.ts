@@ -88,7 +88,7 @@ export class MapPicker {
       const handler = this.handlers[target.kind];
       if (handler) handler.run(act, target);
     };
-    this.objectListPanel = new ObjectListPanel(hud.layers.panel);
+    this.objectListPanel = new ObjectListPanel(hud.layers.panel, ephemeris.registry);
     this.objectListPanel.onSelect = (id) => {
       const target = this.items.find((i) => i.id === id);
       if (target) this.objectListPanel.select(id);

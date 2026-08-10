@@ -1,4 +1,6 @@
 import { hudDock } from './hud/dom';
+import { BodyClass, bodyClassOf } from './celestial/body-class';
+import type { CelestialRegistry } from '../physics/solar-system';
 import { MapPickable, MapPickKind } from './map-pick';
 
 const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
@@ -15,6 +17,19 @@ interface Section {
   readonly rows: Map<string, RowNode>;
   expanded: boolean;
 }
+
+type ObjectListFilter = 'all' | 'near' | 'system' | 'bodies' | Exclude<BodyClass, 'star'>;
+
+const FILTERS: readonly (readonly [ObjectListFilter, string])[] = [
+  ['all', '全て'],
+  ['near', '近く'],
+  ['planet', '惑星'],
+  ['satellite', '衛星'],
+  ['dwarf', '準惑星'],
+  ['smallBody', '小惑星'],
+  ['system', '自艦系'],
+  ['bodies', '天体'],
+];
 
 // 1件ぶんの行 + その子を畳めるトグル区画。子を持たない行(自艦/敵/弾薬/基地、および
 // 子のない天体)でも toggle/childrenContainer 自体は生成しておき、可視性だけ切り替える
@@ -52,12 +67,14 @@ export class ObjectListPanel {
 
   private readonly panel: HTMLElement;
   private readonly sections = new Map<MapPickKind, Section>();
+  private readonly registry: CelestialRegistry;
   private selectedId: string | null = null;
   private query = '';
-  private filter: 'all' | 'near' | 'important' | 'system' | 'bodies' = 'all';
+  private filter: ObjectListFilter = 'all';
   private readonly breadcrumb: HTMLElement;
 
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, registry: CelestialRegistry) {
+    this.registry = registry;
     this.panel = document.createElement('div');
     this.panel.id = 'hud-object-list';
     this.panel.className = 'panel';
@@ -72,7 +89,7 @@ export class ObjectListPanel {
     search.type = 'search'; search.placeholder = '検索'; search.setAttribute('aria-label', '軌道オブジェクトを検索');
     search.addEventListener('input', () => { this.query = search.value.trim().toLocaleLowerCase(); });
     tools.appendChild(search);
-    for (const [key, label] of [['all', '全て'], ['near', '近く'], ['important', '重要'], ['system', '自艦系'], ['bodies', '天体']] as const) {
+    for (const [key, label] of FILTERS) {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', key === 'all' ? 'true' : 'false');
       b.addEventListener('click', () => { this.filter = key; for (const x of Array.from(tools.querySelectorAll('button'))) x.setAttribute('aria-pressed', String(x === b)); });
       tools.appendChild(b);
@@ -160,8 +177,10 @@ export class ObjectListPanel {
   private matches(item: MapPickable): boolean {
     if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
     if (this.filter === 'bodies') return item.kind === 'body';
-    if (this.filter === 'important') return /接近|回収可能|ドック/.test(item.detail ?? '');
     if (this.filter === 'system') return item.inFocusedSystem !== false;
+    if (this.filter === 'planet' || this.filter === 'satellite' || this.filter === 'dwarf' || this.filter === 'smallBody') {
+      return item.kind === 'body' && bodyClassOf(this.registry, item.id) === this.filter;
+    }
     // priority は MapPicker が距離[m]として提供する。未指定(天体等)は残す。
     if (this.filter === 'near') return item.priority === undefined || item.priority < 1e6;
     return true;
