@@ -2,6 +2,7 @@
 import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, EDGE, BG, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
+import { buildOverlayLayers, OVERLAY_LAYER_STYLE, type OverlayLayers } from './overlay-layer';
 
 
 const throttleKeyLabels = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax].map((k) => k.label).join(' / ');
@@ -11,6 +12,8 @@ const STYLE = `
 #hud {
   position: fixed; inset: 0; pointer-events: none; overflow: hidden;
   font-family: ${FONT};
+  /* body 直下の他要素(タッチ操作パッド・天球グリッドのラベル層)との前後関係を決める。
+     #hud の内側の重なり順は overlay-layer.ts のレイヤが持つ。 */
   color: ${INK}; user-select: text; z-index: 10;
   font-size: 13px;
 }
@@ -18,12 +21,9 @@ const STYLE = `
    ボタンの連打やカメラドラッグのたびにラベルが選択されると操作の邪魔になる。 */
 #hud .seg-btn, #hud .hold-btn, #hud .hud-toggle, #hud .ctx-menu-item,
 #hud .mk, #hud .dock-toggle, #hud-chase-reset, #hud-viewbadge .vb-view-btn { user-select: none; }
-/* --- 重なり順: マーカーは実行時に DOM 末尾へ追加されるため z-index を明示しないとパネルの上に出る。
-     マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0)
-     マーカー群(0-9) < 常設パネル(10) < プロパティウィンドウ(12) < ドックビュー(15) <
-     トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー・セーブブラウザ(40)
-     ドックビューは画面全体を占めるビューなので常設パネル・プロパティウィンドウを覆うが、
-     トースト・ヒントとシステム窓(ヘルプ・ESCメニュー・セーブブラウザ)はその上に出す。 */
+${OVERLAY_LAYER_STYLE}
+/* #hud 直下の兄弟同士の重なり順は overlay-layer.ts のレイヤが持つ。
+   マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0) */
 /* スクロール可能な領域は既定のブラウザ配色ではダークテーマと調和しないため、
    パネルの縁色・アクセント色に揃える。 */
 #hud, #hud * { scrollbar-color: ${EDGE} transparent; }
@@ -36,15 +36,7 @@ const STYLE = `
 #hud .mk-ammo { z-index: 2; }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
-#hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
-#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-globalstatus, #hud-gear, #navball, #hud-shipplacer, #hud-object-list, #hud-creative-logistics { z-index: 10; }
-#dock-view { z-index: 15; }
-#hud-toast, #hud-hint { z-index: 20; }
-#hud-viewbadge { z-index: 20; }
-#hud-end, #hud-help { z-index: 30; }
-#save-browser { z-index: 40; }
-#hud-settings { z-index: 40; }
-#hud-modal-shield { display: none; position: absolute; inset: 0; z-index: 20; pointer-events: none; background: rgba(6,7,9,.3); }
+#hud-modal-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: rgba(6,7,9,.3); }
 body.hud-modal-open #hud-modal-shield { display: block; }
 body.hud-modal-open #touch-ui { display: none; }
 #hud .panel {
@@ -159,7 +151,6 @@ body.hud-modal-open #touch-ui { display: none; }
   display: flex; justify-content: center; align-items: center;
   padding: 0;
   border: 1px solid ${EDGE}; background: ${SURFACE}; color: ${INK_SOFT};
-  z-index: 10;
 }
 #hud-chase-reset:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
 #hud-toast {
@@ -211,6 +202,10 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
 #hud .seg-btn.disabled { opacity: 0.35; pointer-events: none; }
 #hud .seg-btn.hold-btn:active { border-color: ${ACCENT}; color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.16); }
+#hud .icon-toggle-btn { min-width: 20px; padding: 3px 6px; text-align: center; font-size: 12px; }
+#hud .body-class-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+#hud .body-class-row .body-class-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 52px; }
+#hud .body-class-row .body-class-btns { display: flex; gap: 4px; }
 #hud .hud-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 #hud .hud-toggle .toggle-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; }
 #hud .hud-toggle .toggle-track {
@@ -247,7 +242,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-displaytime .slider-ticks span:first-child { transform: none; }
 #hud-displaytime .slider-ticks span:last-child { transform: translateX(-100%); }
 #hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
-#hud-trajframe { display: none; width: 100%; pointer-events: auto; }
+#hud-frame-controls { display: none; width: 100%; pointer-events: auto; }
 #hud-creative-logistics { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
@@ -653,6 +648,7 @@ function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLE
 
 export interface HudDomRefs {
   root: HTMLElement;
+  layers: OverlayLayers;
   svgOverlay: SVGSVGElement;
   els: Map<string, HTMLElement>;
 }
@@ -863,30 +859,31 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   return els;
 }
 
-// HUD のスタイル・各パネル・SVG オーバーレイを一括構築し、DOM 参照をまとめて返す。
+// HUD のスタイル・レイヤ・各パネル・SVG オーバーレイを一括構築し、DOM 参照をまとめて返す。
 export function buildHudDom(): HudDomRefs {
   injectStyle();
   const root = el('div', 'hud', document.body);
-  const svgOverlay = buildSvgOverlay(root);
-  el('div', 'hud-dock-left', root, 'hud-dock hud-dock-left');
-  const rightDock = el('div', 'hud-dock-right', root, 'hud-dock hud-dock-right');
-  const leftDock = root.querySelector<HTMLElement>('#hud-dock-left')!;
-  buildDockToggle(root, leftDock, 'left');
-  buildDockToggle(root, rightDock, 'right');
+  const layers = buildOverlayLayers(root);
+  const svgOverlay = buildSvgOverlay(layers.marker);
+  el('div', 'hud-dock-left', layers.panel, 'hud-dock hud-dock-left');
+  const rightDock = el('div', 'hud-dock-right', layers.panel, 'hud-dock hud-dock-right');
+  const leftDock = layers.panel.querySelector<HTMLElement>('#hud-dock-left')!;
+  buildDockToggle(layers.panel, leftDock, 'left');
+  buildDockToggle(layers.panel, rightDock, 'right');
 
   // 常設パネル群を組む。
-  buildInfoPanels(root);
-  buildGlobalStatus(root);
-  buildChaseReset(root);
-  el('div', 'hud-modal-shield', root);
+  buildInfoPanels(layers.panel);
+  buildGlobalStatus(layers.panel);
+  buildChaseReset(layers.panel);
+  el('div', 'hud-modal-shield', layers.notify);
 
-  el('div', 'hud-hint', root);
-  el('div', 'hud-toast', root);
+  el('div', 'hud-hint', layers.notify);
+  el('div', 'hud-toast', layers.notify);
 
-  buildHelpPanel(root);
+  buildHelpPanel(layers.system);
 
-  el('div', 'hud-end', root);
+  el('div', 'hud-end', layers.system);
 
   const els = collectDataIdElements(root);
-  return { root, svgOverlay, els };
+  return { root, layers, svgOverlay, els };
 }
