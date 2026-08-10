@@ -38,6 +38,9 @@ export interface BaseState {
 const idAllocator = new EntityIdAllocator('base-');
 
 export class Base extends GameEntity {
+  // 計画軌道の衝突判定でも基地の未来位置を使う。現在位置を凍結すると、長時間計画では
+  // 実際に移動した基地と計画線の衝突判定が食い違うため、通常の entity 予測列へ乗せる。
+  readonly predictsFuture = true;
   // プロパティウィンドウから改名できる表示名。
   name: string;
   readonly orbitLine: OrbitLine;
