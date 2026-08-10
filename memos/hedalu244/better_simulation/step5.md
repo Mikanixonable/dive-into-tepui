@@ -1,6 +1,9 @@
-# Step 5 実装手順 — 接触シミュレーションの統一
+# Step 5 — 接触シミュレーションの統一(実装済み)
 
-`goal.md` の§目標が明言する最後の未着手の柱、
+**Phase 0〜9 まで全て実装済み。** §0〜4 は設計判断そのものとして今も有効、§5 のフェーズ別手順は
+実施した変更の記録として残す。未確認のまま残った調査対象は `backlog.md` を参照。
+
+`goal.md` の§目標が明言していた、
 
 > 衝突シミュレーションについては、現時点では弾であるか、天体であるか、大気再突入であるかと
 > いった区別になっているが、基本的には弾にせよデブリにせよ小惑星にせよ、剛体シミュレーション
@@ -490,7 +493,7 @@ Phase 6 で、**接触経路については再現テストで塞いだことを�
 
 ## 5. フェーズ別手順
 
-### Phase 0 — 天体表面接触を重力から引き剥がし、大気と分ける
+### Phase 0 — 天体表面接触を重力から引き剥がし、大気と分ける(実施済み)
 
 撃力計算に触れないので単独でコミットできる。
 
@@ -529,7 +532,7 @@ Phase 6 で、**接触経路については再現テストで塞いだことを�
 
 ---
 
-### Phase 1 — 剛体解決を `physics/collision-response.ts` へ抽出
+### Phase 1 — 剛体解決を `physics/collision-response.ts` へ抽出(実施済み)
 
 **1-1.** `game/simulation/collision.ts` の `resolveCollisionPair`(`:84-145`)から、
 めり込み補正・法線・反発後速度・力積の計算を `physics/collision-response.ts` へ移す。
@@ -566,7 +569,7 @@ export interface CollisionResponse {
 
 ---
 
-### Phase 2 — 帰結を当事者へ移し、`game.ts` から分岐を消す
+### Phase 2 — 帰結を当事者へ移し、`game.ts` から分岐を消す(実施済み)
 
 **2-1.** `GameEntity` に `collideWith(other, contact)` / `contactsWith(other, simTime)` の
 既定実装(何もしない / `true`)を追加する。`Contact` 型を
@@ -608,7 +611,7 @@ Phase 0-3 で `checkLoss` に残していた表面接触のつなぎを削除し
 
 ---
 
-### Phase 3 — 弾を接触の参加者にし、`HitSystem` を廃止する
+### Phase 3 — 弾を接触の参加者にし、`HitSystem` を廃止する(実施済み)
 
 **3-1.** `Bullet` に `collides = true`・`mass`・`radius` を与える(`const.ts` に定数を追加)。
 `contactsWith` に既存の特例を **`Shooter` 基準で**移す(§3-3。`BulletType` で書かない —
@@ -654,7 +657,7 @@ Phase 0-3 で `checkLoss` に残していた表面接触のつなぎを削除し
 
 ---
 
-### Phase 4 — 全ペア掃引化と TOI 順序解決、実測
+### Phase 4 — 全ペア掃引化と TOI 順序解決、実測(実施済み)
 
 **4-1.** `contact.ts` の接触検出を、掃引判定(`sphere-contact.ts` の `sweptSphereToi`)を
 一次手段とする形へ変える。重なり補正は異常時のフォールバックとしてだけ残す(§3-7)。
@@ -680,7 +683,7 @@ sim フェーズ所要時間を `?perf=1` で計測し、本書 §8 に記録す
 
 ---
 
-### Phase 5 — 放熱板を実体化し、被弾半径を廃止する
+### Phase 5 — 放熱板を実体化し、被弾半径を廃止する(実施済み)
 
 **5-1.** `RadiatorSystem` に、蛇腹の折りごとの接触代理を出す口を追加する
 (`BeltPhysics.collisionSections` と同じ形。ただし Verlet 解法は不要で、艦の姿勢と
@@ -705,7 +708,7 @@ sim フェーズ所要時間を `?perf=1` で計測し、本書 §8 に記録す
 
 ---
 
-### Phase 6 — 有限値ガードの再確立と、NaN 発生源の切り分け
+### Phase 6 — 有限値ガードの再確立と、NaN 発生源の切り分け(実施済み)
 
 構造が出揃ったところで、ガードが本当に効いていることを固定する(§3-12)。
 **Phase 2-5 で移したガードの「確認」フェーズであって、ここで初めて実装するのではない。**
@@ -743,7 +746,7 @@ sim フェーズ所要時間を `?perf=1` で計測し、本書 §8 に記録す
 
 ---
 
-### Phase 7 — `hit` 語彙の一括整理
+### Phase 7 — `hit` 語彙の一括整理(実施済み)
 
 構造の変更が全部済んでから、機械的な改名だけをまとめて行う(§3-10)。**構造のフェーズと
 混ぜないこと** — 改名と設計変更が同じ diff に載ると、どちらのレビューもできなくなる。
@@ -778,7 +781,7 @@ sim フェーズ所要時間を `?perf=1` で計測し、本書 §8 に記録す
 
 ---
 
-### Phase 8 — 変更セットの `/refactor`・`/refactor-fixed` 違反点検
+### Phase 8 — 変更セットの `/refactor`・`/refactor-fixed` 違反点検(実施済み)
 
 1. **`collision-response.ts`/`sphere-contact.ts` が `Vec3`/`KinematicState` だけに依存し、
    `GameEntity`/`Ship`/`game/` を import していないか。**
@@ -815,7 +818,7 @@ sim フェーズ所要時間を `?perf=1` で計測し、本書 §8 に記録す
 
 ---
 
-### Phase 9 — 設計文書の更新
+### Phase 9 — 設計文書の更新(実施済み)
 
 同じ変更セットに含める(`/develop-docs`):
 
