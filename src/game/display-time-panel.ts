@@ -1,5 +1,6 @@
 // 未来表示の操作パネル(表示期間・未来ゴーストスライダー・目盛り・手動レンジ入力・ジャンプ入力)。
 import { hudButton, SegmentedControl } from './hud/buttons';
+import { buildCollapseToggle, PREDICT_TOGGLE_LABELS } from './hud/dom';
 import type { DisplayDurationKey } from './display-time-manager';
 import type { DisplayTick } from './hud/tick-scale';
 
@@ -144,10 +145,15 @@ export class DisplayTimePanel {
     this.sliderLabel.textContent = SLIDER_HINT;
     this.panel.appendChild(this.sliderLabel);
 
-    root.appendChild(this.panel);
+    // トグルとバー本体を1つの縦積み flex にまとめ、バーを畳んでもトグルだけがその場に残るようにする。
+    const wrap = document.createElement('div');
+    wrap.id = 'hud-displaytime-wrap';
+    wrap.appendChild(this.panel);
+    buildCollapseToggle(wrap, 'hud-displaytime-toggle', '', this.panel, PREDICT_TOGGLE_LABELS);
+    root.appendChild(wrap);
   }
 
-  // パネル全体の表示/非表示を切り替える。
+  // パネル全体の表示/非表示を切り替える。収納トグルの開閉状態とは独立に効く。
   setVisible(visible: boolean): void {
     this.panel.style.display = visible ? 'block' : 'none';
   }

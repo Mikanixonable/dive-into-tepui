@@ -331,7 +331,6 @@ export class Game {
     this.viewManager.leaveDock();
     this.docking.clearSelection();
     this.simSpeedManager.reset();
-    this.displayTimeManager.forceCurrent = true;
 
     // 時刻の復元
     this.simulator.simTime = data.simTime;
@@ -370,11 +369,10 @@ export class Game {
     // セーブ時と同じ stageId であることを既に検証済み。
     this.activeStage.restore(data.stage);
 
-    // カメラ視点の復元。旧スナップショットには無いので、無ければ既定視点のまま始める。
-    if (data.camera) {
-      this.viewManager.restoreView(data.camera.view);
-      this.cameraSystem.restore(data.camera);
-    }
+    // カメラ視点の復元。旧スナップショットには無いので、無ければ既定視点のまま
+    // restoreView を呼び、未来ゴーストスライダー等の表示系フラグだけ現在のビューへ揃え直す。
+    this.viewManager.restoreView(data.camera?.view ?? this.viewManager.serializeView());
+    if (data.camera) this.cameraSystem.restore(data.camera);
 
     // ロード直後の状態同期と安定化
     this.entities.sync(this.floatingOrigin, data.simTime);
