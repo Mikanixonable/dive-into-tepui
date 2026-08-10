@@ -151,17 +151,27 @@ function ancestorsOf(registry: CelestialRegistry, focusId: AttractorId): Attract
   return chain;
 }
 
-// 恒星、およびフォーカス中の天体の親・兄弟・子——トグルの状態に関わらず Icon/Label が
-// 両方見える id の集合。「距離が近いもの」をズーム距離で判定すると操作の途中で行が明滅するので、
-// 離散的に切り替わるこの親子関係で代用する。focusId が undefined なら恒星のみ。
+// 恒星、フォーカス中の天体の親・兄弟・子、およびカメラが現在属する系の天体——トグルの
+// 状態に関わらず Icon/Label が両方見える id の集合。「距離が近いもの」をズーム距離で判定
+// すると操作の途中で行が明滅するので、カメラ位置から求めた重力系のメンバーで代用する。
+// focusId が undefined でも、nearbyIds に渡された近傍系は残す。
 export function alwaysFullyVisibleIds(
   registry: CelestialRegistry, focusId: AttractorId | undefined,
+  nearbyIds: Iterable<AttractorId> = [],
   toggles?: BodyClassToggles,
 ): ReadonlySet<AttractorId> {
   const ids = new Set<AttractorId>();
   for (const id of Object.keys(registry)) {
     const cls = bodyClassOf(registry, id);
     if (cls === 'star') ids.add(id);
+  }
+
+  // nearbyIds は systemMembersAt() など、呼び出し側がカメラ位置から求めた系の集合。
+  // 未登録の重力源が混ざっても、ここは天体ラベルの集合なので無視する。
+  for (const id of nearbyIds) {
+    if (registry[id] !== undefined && (toggles === undefined || bodyClassVisible(bodyClassOf(registry, id), toggles))) {
+      ids.add(id);
+    }
   }
 
   if (focusId === undefined) return ids;
@@ -189,8 +199,9 @@ export function alwaysFullyVisibleIds(
 // 何にもならないので、ピック候補や配置UIの基準天体からも除く。
 export function visibleBodyIds(
   registry: CelestialRegistry, focusId: AttractorId | undefined, toggles: BodyClassToggles,
+  nearbyIds: Iterable<AttractorId> = [],
 ): ReadonlySet<AttractorId> {
-  const visible = new Set(alwaysFullyVisibleIds(registry, focusId, toggles));
+  const visible = new Set(alwaysFullyVisibleIds(registry, focusId, nearbyIds, toggles));
   for (const id of Object.keys(registry)) {
     const cls = bodyClassOf(registry, id);
     const { icon, label } = classIconLabel(cls, toggles);

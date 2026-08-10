@@ -7,7 +7,7 @@ import { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { celestialBodyName } from '../hud/frame-labels';
 import { isOccluded } from '../../physics/occlusion';
-import { BodyClassToggles, alwaysFullyVisibleIds, bodyIconLabel, visibleBodyIds } from '../celestial/body-visibility';
+import { BodyClassToggles, alwaysFullyVisibleIds, bodyIconLabel, systemMembersAt, visibleBodyIds } from '../celestial/body-visibility';
 import { bodyClassOf } from '../celestial/body-class';
 import { FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO } from '../const';
 
@@ -114,12 +114,17 @@ export class FocusMarkers {
 
   // 表示時刻 t の各ラベル座標を求め直す。表示対象の外にある天体は座標計算ごと飛ばす —
   // 登録天体が増えるほど lagrangeAt(1天体あたり positionOf 2回 + 回転系1回)が効くため。
-  update(t: number, focusId: AttractorId | undefined, toggles: BodyClassToggles): void {
+  update(t: number, focusId: AttractorId | undefined, toggles: BodyClassToggles, cameraPos: Vec3): void {
     const ephemeris = this.ephemeris;
+    const attractors = ephemeris.attractorsAt(t);
+    // フォーカスを解除しても、カメラが実際にいる惑星系の衛星は消さない。カメラ位置の
+    // 「近さ」を固定距離で判定せず、既存の重力系判定を使うことで、地球/月や木星/衛星の
+    // 境界を同じ規則で扱える。
+    const nearby = systemMembersAt(ephemeris.registry, cameraPos, attractors);
     // まず表示対象を決め、その中だけ座標を引く。ラグランジュ点は Icon/Label のどちらかが
     // 立っているときだけ。alwaysFullyVisibleIds に含まれる天体は Icon/Label とも常時 true。
-    const visible = visibleBodyIds(ephemeris.registry, focusId, toggles);
-    const always = alwaysFullyVisibleIds(ephemeris.registry, focusId, toggles);
+    const visible = visibleBodyIds(ephemeris.registry, focusId, toggles, nearby);
+    const always = alwaysFullyVisibleIds(ephemeris.registry, focusId, nearby, toggles);
 
     const positions: Record<string, Vec3> = {};
     const display: Record<string, { icon: boolean; label: boolean }> = {};
@@ -151,7 +156,7 @@ export class FocusMarkers {
       shown.push(lbl);
     }
     this.shownLabels = shown;
-    this.attractors = ephemeris.attractorsAt(t);
+    this.attractors = attractors;
   }
 
   // update が求めた座標へラベルのマーカーを置く。天体に遮られているラベルは隠し、
