@@ -55,14 +55,17 @@ export class OrbitLine {
   // (自機・ターゲット・敵の軌道線)は毎フレームこの状態のままなので、GPU への
   // 転送を繰り返さずに済ませる。
   private fadeNeutral = true;
+  // 直近に applyFade へ適用した excludeNearBody の値。
+  private lastExclude: OrbitLineExcludeNearBody | null = null;
   private snap: { a: number; e: number; hHat: Vec3; pHat: Vec3; focusE?: number } | null = null;
   private lastRegen = 0;
   private suppressed = false;
   private displayEnabled = true;
 
+  // 表示の有効/無効を切り替える。
   setDisplayEnabled(value: boolean): void {
     this.displayEnabled = value;
-    this.line.visible = value && !this.suppressed && this.snap !== null;
+    this.applyVisible();
   }
 
   // 楕円線の表示を抑制する。抑制を解いたフレームでそのまま描き戻せるよう、直近の sync が
@@ -70,7 +73,12 @@ export class OrbitLine {
   // 抑制が解ける原因になった線が既に消えている1フレームのあいだ、どの線も出ない。
   setSuppressed(value: boolean): void {
     this.suppressed = value;
-    this.line.visible = this.displayEnabled && !value && this.snap !== null;
+    this.applyVisible();
+  }
+
+  // 有効な軌道要素を得ている(snap がある)ときだけ、表示要求どおりに描く。
+  private applyVisible(): void {
+    this.line.visible = this.displayEnabled && !this.suppressed && this.snap !== null;
   }
 
   // バッファジオメトリと LineBasicNodeMaterial を組み立てる。
@@ -115,23 +123,14 @@ export class OrbitLine {
     excludeNearBody?: OrbitLineExcludeNearBody,
   ): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
-      this.line.visible = false;
       this.snap = null;
+      this.applyVisible();
       return;
     }
-    this.line.visible = this.displayEnabled && !this.suppressed;
     // 頂点を自機相対座標で毎フレーム書き直すと、osculating 要素の微小なゆらぎで楕円が
     // 振動して見える。頂点は中心天体相対座標のまま固定し、平行移動だけで動かす。
     this.line.position.copy(fo.RtoThreeV3(el.center.state.r));
-    // WebGPUレンダラの不具合回避:
-    // FloatingOriginが (0,0,0) のままだと、positionが完全に静止するため、
-    // 頂点バッファ(needsUpdate = true)だけを更新してもGPUに送られない（またはキャッシュが破棄されない）問題がある。
-    // そのため、ごく微小なジッターを加えて毎フレームTransformを更新させる。
-    if (this.line.position.x === 0 && this.line.position.y === 0 && this.line.position.z === 0) {
-      this.line.position.x += (Math.random() - 0.5) * 1e-10;
-      this.line.position.y += (Math.random() - 0.5) * 1e-10;
-      this.line.position.z += (Math.random() - 0.5) * 1e-10;
-    }
+    this.nudgeTransformForGpuUpload();
 
     let focusE: number | undefined;
     if (densifyNear) {
@@ -149,6 +148,18 @@ export class OrbitLine {
       this.regenerate(el, focusE);
     }
     this.applyFade(el, excludeNearBody);
+    this.applyVisible();
+  }
+
+  // 原点が厳密に静止しているフレームでも Transform を更新させるため、位置へ微小なジッターを
+  // 加える。three.js r169 の WebGPURenderer は position が完全に不変だと needsUpdate を
+  // 立てた頂点バッファを GPU へ送らないことがあるための回避策。
+  private nudgeTransformForGpuUpload(): void {
+    const p = this.line.position;
+    if (p.x !== 0 || p.y !== 0 || p.z !== 0) return;
+    p.x += (Math.random() - 0.5) * 1e-10;
+    p.y += (Math.random() - 0.5) * 1e-10;
+    p.z += (Math.random() - 0.5) * 1e-10;
   }
 
   // 全セグメントを描く並びにインデックスを埋める(描画範囲は呼び出し側が合わせる)。
@@ -168,6 +179,7 @@ export class OrbitLine {
     const fadeAttr = this.line.geometry.getAttribute('fade') as THREE.BufferAttribute;
     const indexAttr = this.line.geometry.getIndex() as THREE.BufferAttribute;
     if (!excludeNearBody) {
+      this.lastExclude = null;
       if (this.fadeNeutral) return;
       this.fade.fill(1);
       this.resetIndices();
@@ -180,10 +192,24 @@ export class OrbitLine {
 
     // 天体中心からの弧長を天体半径で割った比。天体が軌道に沿って占める角度は、その半径を
     // 軌道長半径で割った値で近似できる。
-    const perRadius = el.a / excludeNearBody.radius;
+    const radiiPerRadian = el.a / excludeNearBody.radius;
+    // フェード帯の境界が頂点間隔ぶんも動かないなら、頂点でしか標本化しない不透明度は
+    // どこも変わらないので計算も転送も省く。境界の移動量は E の変化そのものと、半径の変化が
+    // 帯の外端(FADE_OPAQUE_RADIUS_RATIO)を動かす量の和で見る。
+    const vertexSpacingE = (Math.PI * 2) / POINT_COUNT;
+    const prev = this.lastExclude;
+    if (prev) {
+      const shift = Math.abs(signedAngularDiff(excludeNearBody.E, prev.E))
+        + (FADE_OPAQUE_RADIUS_RATIO * Math.abs(excludeNearBody.radius - prev.radius)) / el.a;
+      if (shift < vertexSpacingE) return;
+    }
+    this.lastExclude = { E: excludeNearBody.E, radius: excludeNearBody.radius };
+
+    let allOpaque = true;
     for (let i = 0; i <= POINT_COUNT; i++) {
-      const ratio = Math.abs(signedAngularDiff(this.eAtIndex[i]!, excludeNearBody.E)) * perRadius;
+      const ratio = Math.abs(signedAngularDiff(this.eAtIndex[i]!, excludeNearBody.E)) * radiiPerRadian;
       this.fade[i] = smoothstep(FADE_TRANSPARENT_RADIUS_RATIO, FADE_OPAQUE_RADIUS_RATIO, ratio);
+      if (this.fade[i] !== 1) allOpaque = false;
     }
     let count = 0;
     for (let i = 0; i < POINT_COUNT; i++) {
@@ -197,7 +223,7 @@ export class OrbitLine {
     fadeAttr.needsUpdate = true;
     indexAttr.needsUpdate = true;
     this.line.geometry.setDrawRange(0, count);
-    this.fadeNeutral = false;
+    this.fadeNeutral = allOpaque && count === POINT_COUNT * 2;
   }
 
   // 現在の要素が直近のスナップショットから許容誤差を超えて変化していれば true(要再生成)。
