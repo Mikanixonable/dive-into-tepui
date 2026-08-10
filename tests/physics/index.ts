@@ -51,6 +51,7 @@ import { register as registerPackedAbsoluteEphemeris } from './packed-absolute-e
 import { register as registerSaveEphemerisContext } from './save-ephemeris-context.test';
 import { register as registerExposure } from './exposure.test';
 import { register as registerSurfaceMaterial } from './surface-material.test';
+import { register as registerCelestialPhotometry } from './celestial-photometry.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -103,6 +104,7 @@ registerPackedAbsoluteEphemeris();
 registerSaveEphemerisContext();
 registerExposure();
 registerSurfaceMaterial();
+registerCelestialPhotometry();
 
 runAll().catch((error) => {
   console.error(error);

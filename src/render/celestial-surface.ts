@@ -22,6 +22,7 @@ import {
   uniform,
   uv,
   vec3,
+  smoothstep,
 } from 'three/tsl';
 import { Vec3 } from '../physics/vec3';
 import { RingSystemDef } from '../physics/solar-system';
@@ -32,6 +33,10 @@ export const NIGHT_AMBIENT = 0.04;
 
 export class CelestialSurface {
   private readonly sunDirNode = uniform(new THREE.Vector3(1, 0, 0));
+  private readonly earthDirNode = uniform(new THREE.Vector3(1, 0, 0));
+  private readonly earthshineNode = uniform(0);
+  private readonly directSunNode = uniform(1);
+  private readonly eclipseRedNode = uniform(0);
   private readonly ringShadowBands: readonly {
     readonly axis: ReturnType<typeof uniform>;
     readonly center: ReturnType<typeof uniform>;
@@ -49,6 +54,7 @@ export class CelestialSurface {
     geometry: THREE.BufferGeometry,
     albedo: ReturnType<typeof vec3>,
     terrainNormal: ReturnType<typeof vec3> | null = null,
+    lunar = false,
   ) {
     const mat = new THREE.MeshBasicNodeMaterial();
     const lambert = clamp(dot(normalWorld, this.sunDirNode), 0, 1);
@@ -76,9 +82,21 @@ export class CelestialSurface {
       ringTransmission = ringTransmission.mul(select(and(inside, greaterThan(band.active, 0.5)), transmission, float(1)));
     }
     // 環が遮るのは太陽の直射光だけ。夜側の環境光まで減衰させない。
-    mat.colorNode = albedo.mul(float(NIGHT_AMBIENT).add(
-      lambert.mul(1 - NIGHT_AMBIENT).mul(ringTransmission),
-    ));
+    if (lunar) {
+      // 低い太陽高度ではdetail normalの凹凸を強く残し、クレーター縁の影を作る。
+      // 地球照は月→地球方向から来る別の拡散光として夜側へ加える。
+      const craterVisibility = smoothstep(0.004, 0.065, dot(normalWorld, this.sunDirNode));
+      const direct = lambert.mul(craterVisibility).mul(this.directSunNode);
+      const earthLight = clamp(dot(normalWorld, this.earthDirNode), 0, 1)
+        .mul(this.earthshineNode);
+      const eclipseGlow = vec3(0.34, 0.055, 0.018)
+        .mul(lambert.mul(this.eclipseRedNode));
+      mat.colorNode = albedo.mul(float(0.006).add(direct).add(earthLight)).add(eclipseGlow);
+    } else {
+      mat.colorNode = albedo.mul(float(NIGHT_AMBIENT).add(
+        lambert.mul(1 - NIGHT_AMBIENT).mul(ringTransmission),
+      ));
+    }
     if (terrainNormal !== null) mat.normalNode = terrainNormal;
     this.mesh = new THREE.Mesh(geometry, mat as unknown as THREE.Material);
     this.mesh.frustumCulled = false;
@@ -98,6 +116,7 @@ export class CelestialSurface {
       new THREE.SphereGeometry(1, widthSegments, heightSegments),
       nodes?.baseColor ?? textureNode(map, uv()),
       nodes?.terrainNormal ?? null,
+      options.terrain === 'moon',
     );
   }
 
@@ -110,6 +129,14 @@ export class CelestialSurface {
   // この天体の真の ECI 位置から見た恒星方向(単位ベクトル)を与える。
   setSunDirection(dir: Vec3): void {
     this.sunDirNode.value.set(dir.x, dir.y, dir.z);
+  }
+
+  /** 月面専用の地球照・月食入力。通常天体では呼ばれない。 */
+  setLunarLighting(earthDirection: Vec3, earthshine: number, directSun: number, eclipseRed: number): void {
+    this.earthDirNode.value.set(earthDirection.x, earthDirection.y, earthDirection.z);
+    this.earthshineNode.value = Math.max(0, earthshine);
+    this.directSunNode.value = Math.max(0, Math.min(1, directSun));
+    this.eclipseRedNode.value = Math.max(0, Math.min(1, eclipseRed));
   }
 
   // 環平面と太陽方向の交点を表面シェーダへ渡す。最大32帯まで、複数帯は透過率を乗算する。

@@ -3,6 +3,7 @@
 // このコンテキストが真の天体暦と表示時刻を一箇所で保持し、以後の大気・食・地球照もここへ
 // 追加する。
 import { Ephemeris } from '../physics/ephemeris';
+import { AttractorId } from '../physics/attractor';
 import { Vec3 } from '../physics/vec3';
 
 export class CelestialLightingContext {
@@ -19,5 +20,10 @@ export class CelestialLightingContext {
   // position は常に真の ECI 位置 [m]。返す方向も ECI の単位ベクトルである。
   sunDirectionFrom(position: Vec3): Vec3 {
     return this.ephemeris.sunDirFrom(position, this.time);
+  }
+
+  /** 食・惑星照の計算用。表示圧縮前の真のECI位置を返す。 */
+  positionOf(id: AttractorId): Vec3 {
+    return this.ephemeris.positionOf(id, this.time);
   }
 }
