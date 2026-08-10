@@ -4,9 +4,11 @@ import { buildHudDom, syncHudModalState } from './dom';
 import { HudPanels } from './panel';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
+import type { OverlayLayers } from './overlay-layer';
 
 export class Hud {
   readonly root: HTMLElement;
+  readonly layers: OverlayLayers;
   readonly svgOverlay: SVGSVGElement;
   readonly panels: HudPanels;
   readonly settings = { showMapAmmo: false };
@@ -15,8 +17,9 @@ export class Hud {
 
   // HUD の DOM を構築する。
   constructor() {
-    const { root, svgOverlay, els } = buildHudDom();
+    const { root, layers, svgOverlay, els } = buildHudDom();
     this.root = root;
+    this.layers = layers;
     this.svgOverlay = svgOverlay;
     this.panels = new HudPanels(els);
   }
