@@ -20,26 +20,51 @@
 
 - 両ファイルとも実在し、`ring.ts`/`celestial-surface.ts`/`ring-lod.ts` から使われている(`ring-optics.ts` は `ringTransmission`/`henyeyGreenstein`/`ringPixelCoverage`/`ringArcOpticalDepth`/`ringSingleScattering`/`ringPlanetShadow` を提供、テストも `tests/physics/ring.test.ts` にあり)。CLAUDE.md の `src/physics/` 一覧・`src/render/ships.ts` 隣接エントリのいずれにも記載がなく、計画書が予告した「新設 — CLAUDE.md 未記載なら文書齟齬として報告」に該当する。
 - CLAUDE.md 編集は他エージェントに委ねられているため報告のみ。
+- **2026-08-10 追記(review/celestial-doc-drift ブランチ)**: `ring-optics.ts` は CLAUDE.md へ追記した(`src/physics/ring.ts`/`ring-view.ts`/`celestial-surface.ts` の項も併せて実装に合わせて書き直した)。`radiator-hinge.ts` は本ブランチのスコープ外(天体表示ではなくプレイヤー機体のラジエーター)のため未対応のまま。
 
 ## [spec?] `render/ring.ts` / `ring-view.ts` / `celestial-surface.ts` の実装が CLAUDE.md の記述から大きく乖離
 
-- CLAUDE.md は `render/ring.ts` を「4つの純粋な mesh builder(createTexturedRing/createAnnulusRing/createRingLine/createTorusRing)」とだけ説明しているが、実装は物理ベースレンダリング(TSL シェーダによる Beer-Lambert 透過・単一散乱・惑星による太陽光遮蔽)を伴う `RingVisual { object, sync }` を返す設計に置き換わっている。
-- さらに `celestial-surface.ts` に環が惑星本体へ落とす影(`setRingShadowSystem`、最大32帯)という新機能が入っているが、CLAUDE.md の `celestial-surface.ts` エントリにはこの言及が一切ない。
-- `ring-lod.ts` も CLAUDE.md は「annulus/line の二値切替」とするが、実装は `ringLod` によるクロスフェード(annulusWeight/lineWeight、0.75〜1.25px で線形補間)に発展している。
-- 挙動自体は `ring.test.ts`(ring-lod のクロスフェード込み)で緑になっており実装側にバグは見当たらないが、文書との乖離が大きいため報告のみ。
+- CLAUDE.md は `render/ring.ts` を「4つの純粋な mesh builder(createTexturedRing/createAnnulusRing/createRingLine/createTorusRing)」とだけ説明していたが、実装は物理ベースレンダリング(TSL シェーダによる Beer-Lambert 透過・単一散乱・惑星による太陽光遮蔽)を伴う `RingVisual { object, sync }` を返す設計に置き換わっている。
+- さらに `celestial-surface.ts` に環が惑星本体へ落とす影(`setRingShadowSystem`、最大32帯)という新機能が入っているが、CLAUDE.md の `celestial-surface.ts` エントリにはこの言及が一切なかった。
+- `ring-lod.ts` も CLAUDE.md は「annulus/line の二値切替」としていたが、実装は `ringLod` によるクロスフェード(annulusWeight/lineWeight、0.75〜1.25px で線形補間)に発展している。
+- 挙動自体は `ring.test.ts`(ring-lod のクロスフェード込み)で緑になっており実装側にバグは見当たらないが、文書との乖離が大きかった。
+- **2026-08-10 追記**: 上記3ファイルの CLAUDE.md 記述を実装に合わせて全面的に書き直した(`ring-optics.ts` の物理モデル、`setRingShadowSystem` の影、`ringLod` のクロスフェードを反映)。
 
 ## [spec?] `celestial-registry.ts` の登録天体数が CLAUDE.md の「27 body」から大幅に増加
 
-- CLAUDE.md は `SOLAR_SYSTEM` を「27 bodies」と繰り返し明記しているが、`celestial-registry.ts`/`body-class.ts` には現在 100 体近い天体(準惑星・彗星核・小惑星探査対象など多数)が登録されている。`Record<SolarSystemId, …>` の網羅性チェックにより型は整合しており(`npm run typecheck` green)、コード上のバグは無い。文書との乖離のみ報告。
+- CLAUDE.md は `SOLAR_SYSTEM` を「27 bodies」と繰り返し明記していたが、`celestial-registry.ts`/`body-class.ts` には現在 101 体(恒星1・`kind:'planet'` 49・`kind:'satellite'` 51)の天体が登録されている。`Record<SolarSystemId, …>` の網羅性チェックにより型は整合しており(`npm run typecheck` green)、コード上のバグは無い。
+- 追加調査: 49の`planet`種のうち41体(元の準惑星・大型小惑星・彗星核9体+後発の32体)が `solidPlanetEntry`(単色球・`PLANET_VIS_DIST`)で描画され、51の`satellite`種のうち6体(フォボス/イオ/エウロパ/ガニメデ/カリスト/タイタン)のみ実写テクスチャ、残り45体は単色。環を持つ天体も木星・土星・天王星・海王星に加えクワオアー(QUAOAR_RINGS)・カリクロー(CHARIKLO_RINGS)の計6体まで拡大している(`tests/physics/ring.test.ts` はこの2体をまだ検証対象に含めていない)。
+- **2026-08-10 追記**: CLAUDE.md の `celestial-registry.ts`/`solar-system.ts` エントリを実際の構成(101体の内訳、環を持つ6天体)に合わせて書き直した。個々の天体名を全部列挙するのではなく、種別ごとの構成・出典・表示方式の説明にとどめた。`ring.test.ts` が quaoar/chariklo 未対応である点はテスト側の課題として残る(本ブランチはコード変更なしのため対応せず)。
 
 ## [spec?] `src/render/stars.ts` の実装が CLAUDE.md の記述と矛盾
 
-- CLAUDE.md は「stars as tiny world-space triangles (WebGPU points are 1px; THREE.Points size doesn't work)」と説明しているが、実装 (`createStars`) は `8k_stars.jpg` を貼った `SphereGeometry` (BackSide) であり三角形の集合ではない。テクスチャ方式へ置き換わったことが文書に反映されていない。
+- CLAUDE.md は「stars as tiny world-space triangles (WebGPU points are 1px; THREE.Points size doesn't work)」と説明していたが、実装 (`createStars`) は `8k_stars.jpg` を貼った `SphereGeometry` (BackSide) であり三角形の集合ではない。テクスチャ方式へ置き換わったことが文書に反映されていなかった。
+- **2026-08-10 追記**: CLAUDE.md を実装(テクスチャ球殻)に合わせて書き直した。WebGPU の Points 制約自体は `render/ring.ts`/asteroid point-field などの点群描画では依然として有効な制約なので、その旨は残した。
 
 ## [spec?] `EarthBody.phase0` が `Math.random()` によりセッションごとに非決定的
 
 - `src/game/celestial/earth-body.ts:13` — `private readonly phase0 = Math.random() * Math.PI * 2;`
 - 地球の自転位相はセーブ/ロード間で永続化されない(`Ephemeris.getPhaseOffsets`/`setPhaseOffsets` の対象外)。CLAUDE.md には「Ephemeris の位相オフセットはゲームごとにランダム」という前例があり、意図的な設計の可能性があるため [bug] ではなく [spec?] とした。同じセーブを異なるセッションで開くと、軌道上の位置(Ephemeris 側)は完全に再現されるが地球の自転位相だけ毎回変わる非対称が生じる点を確認のうえ報告のみ。
+
+## [spec?] `EarthBody.phase0` 非決定性の追加調査(review/celestial-doc-drift ブランチでの追調査)
+
+`Ephemeris` の位相オフセットとの扱いの違いを確認した:
+
+- `Ephemeris.getPhaseOffsets()`/`setPhaseOffsets(...)` は `GameSaveData.phaseOffsets`(`src/game/save-data.ts:242`)として
+  明示的にセーブデータへ含まれ、`src/game/save/snapshot-service.ts:73` の `capture` が
+  `game.ephemeris.getPhaseOffsets()` を読み、`src/game/game.ts:338` の `Game.restore` が
+  `this._ephemeris.setPhaseOffsets(data.phaseOffsets)` で書き戻す — つまりゲームごとのランダム初期位相
+  ではあるが、**一度始まったゲームの中では永続化され、セーブ/ロードをまたいで再現される**。
+- `EarthBody.phase0`(`src/game/celestial/earth-body.ts:13`)は `GameSaveData` のどのフィールドにも
+  乗っていない。`grep` で確認した限り、地球の自転位相を読み書きする save/restore 経路は存在しない。
+  結果、同じセーブファイルを開き直すたびに地球の自転角だけが違う値から始まる。
+
+この非対称は「ゲームごとのランダム初期位相」という設計方針そのものとは矛盾しない(地球の自転位相を
+セーブごとに変えたいという要求は otherwise あり得る)が、**セーブ内で再現されるべき他の全ての位相
+(公転位相含む)と地球の自転位相だけが異なる扱いになっている点に、意図した設計だと確認できる記述や
+コミットは見つからなかった**。`EarthBody` 側に `getPhaseOffsets`/`setPhaseOffsets` 相当の仕組みが
+無いこと自体が実装漏れである可能性が高いと判断するが、確証はないため引き続き [spec?] として記録する
+(コードは変更しない)。
 
 ## [refactor] `render/orbit-line.ts` の `snap.hHat`/`snap.pHat` がスプレッド構文で Vec3 を作っている
 
