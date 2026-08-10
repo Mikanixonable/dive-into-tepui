@@ -7,7 +7,7 @@ import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Attractor, localOrbitPeriod } from '../../physics/attractor';
-import { sweptSphereToi } from '../../physics/sphere-contact';
+import { containingBody, sweptSphereToi } from '../../physics/sphere-contact';
 import { apsisCrossing } from '../../physics/trajectory-features';
 import { isBurnedUp } from '../../physics/atmosphere';
 import { attractorsNear, classifyAttractors, gravityBodiesAt, mergeAttractors } from '../simulation/attractors';
@@ -56,47 +56,66 @@ function stepDt(state: KinematicState, attractors: readonly Attractor[]): number
 // prev→next の間で body の表面へ実際に到達した状態。区間両端の天体位置(bodyStart/bodyEnd)
 // を使った掃引球TOI(直線弦の解)を初期ブラケットとし、エルミート曲線上で「中心距離 - 半径」
 // の符号が変わる点を固定回数の二分探索で詰め直す — 天体自身も区間内で動くため、直線弦の
-// 比率をそのままエルミート補間へ渡すと交差点がずれる。
+// 比率をそのままエルミート補間へ渡すと交差点がずれる。直線弦モデルでは符号反転していても、
+// エルミート曲線+線形天体位置のモデルでは区間終端まで表面外に留まることがあるため、
+// 二分探索の前に区間終端での符号反転を確認し、無ければ交差なしとして null を返す。
 function refineSurfaceCrossing(
   prev: KinematicState, next: KinematicState, bodyStart: Vec3, bodyEnd: Vec3, radius: number,
-): KinematicState {
+): KinematicState | null {
   const clearanceAt = (u: number): number => {
     const s = hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * u);
     const bodyPos = addScaled(bodyStart, sub(bodyEnd, bodyStart), u);
     return len(sub(s.r, bodyPos)) - radius;
   };
+  const signLo = clearanceAt(0) >= 0;
+  const signHi = clearanceAt(1) >= 0;
+  if (signLo === signHi) return null;
   let lo = 0, hi = 1;
-  let clearanceLo = clearanceAt(lo);
   for (let i = 0; i < IMPACT_REFINE_ITERATIONS; i++) {
     const mid = (lo + hi) / 2;
-    const clearanceMid = clearanceAt(mid);
-    if ((clearanceMid >= 0) === (clearanceLo >= 0)) { lo = mid; clearanceLo = clearanceMid; } else { hi = mid; }
+    if ((clearanceAt(mid) >= 0) === signLo) lo = mid; else hi = mid;
   }
   const u = (lo + hi) / 2;
   return hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * u);
 }
 
 // prev→next の1ステップの間に表面へ到達した候補天体のうち、最も早く(掃引球TOIが小さい)
-// 到達したものを選ぶ。candidates は判定対象の天体一覧、startById/endById はそれぞれ
-// prev.t/next.t 時点の天体位置(id で対応付ける — candidates 自体は1つの評価時刻のみの
-// スナップショットで、動く天体の始終点はここでしか引けない)。
+// 到達したものを選ぶ。掃引球TOIは直線弦モデルの目安に過ぎないため、TOI昇順に
+// refineSurfaceCrossing で検証し、実際にエルミート曲線上でも交差が確認できた最初の候補を
+// 採用する。candidates は判定対象の天体一覧、startBodies/endBodies はそれぞれ prev.t/next.t
+// 時点の天体一覧(id で対応付ける — candidates 自体は1つの評価時刻のみのスナップショットで、
+// 動く天体の始終点はここでしか引けない)。
 function findImpact(
   prev: KinematicState, next: KinematicState, candidates: readonly Attractor[],
-  startById: ReadonlyMap<string, Attractor>, endById: ReadonlyMap<string, Attractor>,
+  startBodies: readonly Attractor[], endBodies: readonly Attractor[],
 ): PlanImpact | null {
-  let bestBody: Attractor | null = null;
-  let bestToi = Infinity;
+  const hits: { body: Attractor; toi: number }[] = [];
   for (const body of candidates) {
-    const bStart = startById.get(body.id);
-    const bEnd = endById.get(body.id);
+    const bStart = startBodies.find((a) => a.id === body.id);
+    const bEnd = endBodies.find((a) => a.id === body.id);
     if (!bStart || !bEnd) continue;
     const hit = sweptSphereToi(prev.r, next.r, bStart.state.r, bEnd.state.r, body.radius);
-    if (hit && hit.toi < bestToi) { bestToi = hit.toi; bestBody = body; }
+    if (hit) hits.push({ body, toi: hit.toi });
   }
-  if (bestBody === null) return null;
-  const bStart = startById.get(bestBody.id)!;
-  const bEnd = endById.get(bestBody.id)!;
-  return { body: bestBody, state: refineSurfaceCrossing(prev, next, bStart.state.r, bEnd.state.r, bestBody.radius) };
+  hits.sort((a, b) => a.toi - b.toi);
+  for (const { body } of hits) {
+    const bStart = startBodies.find((a) => a.id === body.id)!;
+    const bEnd = endBodies.find((a) => a.id === body.id)!;
+    const state = refineSurfaceCrossing(prev, next, bStart.state.r, bEnd.state.r, body.radius);
+    if (state) return { body, state };
+  }
+  return null;
+}
+
+// pos に対して表面まで最も近い天体(clearance = 中心距離 - 半径 が最小のもの)。
+function nearestByClearance(pos: Vec3, bodies: readonly Attractor[]): Attractor | null {
+  let best: Attractor | null = null;
+  let bestClearance = Infinity;
+  for (const body of bodies) {
+    const clearance = len(sub(pos, body.state.r)) - body.radius;
+    if (clearance < bestClearance) { bestClearance = clearance; best = body; }
+  }
+  return best;
 }
 
 export class PlanArc {
@@ -240,13 +259,36 @@ export class PlanArc {
     this.apoapsisState = null;
 
     let steps = 0;
+    // ステップ開始時点(= 前ステップの終端)の重力源一覧。前ステップの終端時刻と今ステップの
+    // 開始時刻は常に一致するため、次ステップの開始側としてそのまま持ち越して
+    // gravityBodiesAt の呼び出しとアロケーションを1回分減らす。
+    let startBodies = mergeAttractors(gravityBodiesAt(ephemeris, trajectory.state.t), dynamicAttractors);
     while (trajectory.state.t < end - EPOCH_EPS) {
-      const sizingClassified = classifyAttractors(
-        mergeAttractors(gravityBodiesAt(ephemeris, trajectory.state.t), dynamicAttractors));
+      const sizingClassified = classifyAttractors(startBodies);
       const sizingAttractors = attractorsNear(trajectory.state.r, sizingClassified);
+
+      // sweptSphereToi は開始時点で既にoverlapしている場合は離散判定へ委譲する契約なので、
+      // ここでその離散判定を満たす。
+      const containing = containingBody(trajectory.state.r, sizingAttractors, 0);
+      if (containing) {
+        this.impact = { state: trajectory.state, body: containing };
+        this.truncated = true;
+        break;
+      }
+
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
       const dt = Math.min(stepDt(trajectory.state, sizingAttractors), end - trajectory.state.t);
-      if (dt <= 1e-9) break;
+      if (dt <= 1e-9) {
+        // ループ条件が残り時間 > EPOCH_EPS を保証するため、ここに来るのは天体接近で
+        // stepDt の接近項が幾何級数的に潰れた場合のみ(clearance がステップごとに
+        // 一定比率で縮み続け、符号は反転しないまま dt だけが 0 に収束する)。打ち切りが
+        // truncated を立てないと、実際には衝突コースの区間が正常終端として扱われてしまう
+        // ので、最寄り天体への衝突として記録する。
+        const nearest = nearestByClearance(trajectory.state.r, sizingAttractors);
+        if (nearest) this.impact = { state: trajectory.state, body: nearest };
+        this.truncated = true;
+        break;
+      }
       // 積分そのものはステップ中点(t + dt/2)の重力源で評価する。
       const stepClassified = classifyAttractors(
         mergeAttractors(gravityBodiesAt(ephemeris, trajectory.state.t + dt / 2), dynamicAttractors));
@@ -269,11 +311,8 @@ export class PlanArc {
       // 区間を跨いだ天体表面接触は区間掃引で判定する — 終端1点だけを見ると、1ステップで
       // 天体を跨いだ通過を見逃す。天体位置はステップ両端それぞれの時刻で引き直す(積分に
       // 使った中点時刻の位置は接触判定には使わない)。
-      const startBodies = mergeAttractors(gravityBodiesAt(ephemeris, prev.t), dynamicAttractors);
       const endBodies = mergeAttractors(gravityBodiesAt(ephemeris, trajectory.state.t), dynamicAttractors);
-      const startById = new Map(startBodies.map((a) => [a.id, a] as const));
-      const endById = new Map(endBodies.map((a) => [a.id, a] as const));
-      const impact = findImpact(prev, trajectory.state, stepAttractors, startById, endById);
+      const impact = findImpact(prev, trajectory.state, stepAttractors, startBodies, endBodies);
       if (impact) {
         this.impact = impact;
         this.truncated = true;
@@ -289,6 +328,7 @@ export class PlanArc {
         this.truncated = true;
         break;
       }
+      startBodies = endBodies;
     }
 
     this.trajectory = trajectory;
