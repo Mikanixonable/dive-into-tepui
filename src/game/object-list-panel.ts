@@ -63,7 +63,8 @@ export class ObjectListPanel {
   // 生成時の1回だけ張るので、ここで毎フレーム innerHTML を書き換えてはいけない
   // (張り直しになり、クリック中に要素が消えてイベントが発火しなくなる)。
   // depthOf に載っている id は、その深さぶん字下げして親子関係を出す(天体セクション)。
-  sync(items: readonly MapPickable[], focusId: string, depthOf: ReadonlyMap<string, number>): void {
+  // focusId が undefined(フォーカス中の天体が無い)なら、どの行も強調しない。
+  sync(items: readonly MapPickable[], focusId: string | undefined, depthOf: ReadonlyMap<string, number>): void {
     const byKind = new Map<MapPickKind, MapPickable[]>();
     for (const item of items) {
       const list = byKind.get(item.kind);
