@@ -82,7 +82,7 @@ export class PlanEditor {
   get editMode(): boolean { return this._editMode; }
   setMapMode(open: boolean): void { this._editMode = open; }
 
-  readonly nodeGizmo = new NodeGizmo();
+  readonly nodeGizmo: NodeGizmo;
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
   private readonly orbitMenu = new ContextMenu<KinematicState, MenuAction>();
 
@@ -111,6 +111,7 @@ export class PlanEditor {
   ) {
     this.ship = ship;
     this.planDisplay = new PlanDisplay(scene, this._hud.root, markerManager, ephemeris, displayTimeManager);
+    this.nodeGizmo = new NodeGizmo(this._hud.root);
     this.gizmo3d = new PlanGizmo3D();
     scene.add(this.gizmo3d.group);
 
@@ -301,9 +302,9 @@ export class PlanEditor {
 
     // 見つからなければ計画軌道上の最寄り点にノードを配置。折れ線が自分自身に重なっていれば
     // その位置に最初に到達する時刻(= referenceT を -Infinity にして最早時刻)を選ぶ。
-    const hit = this.planDisplay.path.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
-    if (hit) {
-      this.selectedNodeIdx = this.plan.addNode(hit.state);
+    const picked = this.planDisplay.path.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
+    if (picked) {
+      this.selectedNodeIdx = this.plan.addNode(picked.state);
       this._sfx.warp();
       return;
     }
@@ -342,10 +343,10 @@ export class PlanEditor {
       // ノードでなくても計画軌道上を右クリックすれば、その位置の時刻まで
       // 自動ワープできる。描画と同じサンプル列から求めるため、表示変換との
       // ずれや月基準フレームの差を生じさせない。
-      const hit = this.planDisplay.path.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
-      if (!hit) return false;
+      const picked = this.planDisplay.path.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
+      if (!picked) return false;
       this.selectedNodeIdx = null;
-      this.orbitMenu.open(mx, my, hit.state, [
+      this.orbitMenu.open(mx, my, picked.state, [
         MenuCommon.warp(),
         MenuCommon.cancel(),
       ]);
@@ -364,9 +365,9 @@ export class PlanEditor {
     const node = this.plan.nodes[idx];
     if (!node) return;
     const arriving = this.planDisplay.path.arrivalStates();
-    const hit = this.planDisplay.path.nearestSample(clientX, clientY, Infinity, node.t, this.plan.nodeTimeRange(idx, this.ephemeris, this.displayTimeManager));
-    if (hit) {
-      this.plan.retimeNode(idx, this.rebuildDraggedNode(hit.state, hit.arcIdx, idx, arriving) ?? hit.state);
+    const picked = this.planDisplay.path.nearestSample(clientX, clientY, Infinity, node.t, this.plan.nodeTimeRange(idx, this.ephemeris, this.displayTimeManager));
+    if (picked) {
+      this.plan.retimeNode(idx, this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state);
       this.selectedNodeIdx = idx;
     }
   }

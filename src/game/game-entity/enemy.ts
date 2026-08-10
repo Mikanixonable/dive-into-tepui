@@ -2,7 +2,10 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
-import { Attractor, hitCelestialBody, strongestAttractor } from '../../physics/attractor';
+import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { isBurnedUp } from '../../physics/atmosphere';
+import type { GameEntity } from './game-entity';
+import type { Contact } from '../simulation/contact';
 import type { FloatingOrigin } from '../floating-origin';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
@@ -99,7 +102,6 @@ export class Enemy extends Ship {
     // 描画メッシュの実スケール後バウンディング球を、弾丸・物理接触の両判定に共有する。
     const visualBounds = new THREE.Box3().setFromObject(this.obj);
     const visualSphere = visualBounds.getBoundingSphere(new THREE.Sphere());
-    this.hitRadius = visualSphere.radius;
     this.radius = visualSphere.radius;
     // 自身の軌道線を作ってシーンへ登録する
     this.orbitLine = new OrbitLine(orbitLineColor, 0.35);
@@ -146,14 +148,14 @@ export class Enemy extends Ship {
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
-  private hitEffect(bullet: Bullet, hitR: Vec3): void {
+  private impactEffect(bullet: Bullet, impactPoint: Vec3): void {
     this._sfx.enemyHit();
     if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, hitR, this.state.v));
+      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, impactPoint, this.state.v));
     } else {
-      this._fx.spawnBulletFlash(kinematicState(this.state.t, hitR, this.state.v));
+      this._fx.spawnBulletFlash(kinematicState(this.state.t, impactPoint, this.state.v));
     }
-    this._fx.spawnGasPuff(kinematicState(this.state.t, hitR, this.state.v));
+    this._fx.spawnGasPuff(kinematicState(this.state.t, impactPoint, this.state.v));
   }
 
   // 撃破時の爆発音・エフェクトを発生させる。
@@ -164,15 +166,12 @@ export class Enemy extends Ship {
   }
 
   // 被弾によるダメージ・致死判定。
-  attacked(bullet: Bullet, simTime: number, activeStage: Stage, hitR: Vec3): void {
-    if (!this.alive) return;
-    if (bullet.shooter === 'enemy') return; // 敵弾の被弾は無効化
-
+  private attackedByBullet(bullet: Bullet, impactPoint: Vec3, simTime: number, activeStage: Stage): void {
     activeStage.scoreCounter.recordHit();
 
     this.applyDamageToParts(bullet.damage);
     if (this.hp > 0) {
-      this.hitEffect(bullet, hitR);
+      this.impactEffect(bullet, impactPoint);
       return;
     }
 
@@ -182,11 +181,19 @@ export class Enemy extends Ship {
     this.destroyEffect();
   }
 
-  // 自機との高速接触によるダメージ・致死判定。speed は接触時の相対速度 [m/s]。
-  collidedAtSpeed(speed: number, simTime: number, activeStage: Stage): void {
+  // 弾は武装のダメージを、それ以外は接触の速度変化 Δv = impulse/mass を根拠にする
+  // (前者はゲームバランス、後者は物理量で、統合すると前者の根拠が消える)。
+  collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
+    const simTime = contact.selfState.t;
 
-    if (!this.applyCollisionDamage(speed)) return;
+    if (other instanceof Bullet) {
+      this.attackedByBullet(other, contact.point, simTime, activeStage);
+      return;
+    }
+
+    // 弾以外(天体・他艦・デブリ等)との接触は Δv ベースの物理ダメージとして扱う。
+    if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
     if (this.hp > 0) {
       this._sfx.clank();
       this._fx.spawnGasPuff(this.state);
@@ -205,10 +212,10 @@ export class Enemy extends Ship {
     activeStage.recordEnemyDeath(this, simTime, 'despawn');
   }
 
-  // 再突入による自然死。alive がすでに false なら何もしない(多重処理防止)。
+  // 大気突入による自然死。固体表面への接触は collideWith が扱う。
   checkLoss(_dt: number, simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
-    if (!hitCelestialBody(this.state.r, attractors, C.REENTRY_ALT)) return;
+    if (!isBurnedUp(this.state.r, attractors, C.REENTRY_ALT)) return;
     this.alive = false;
     this.destroyEffect();
     activeStage.recordEnemyDeath(this, simTime, 'reentry');
@@ -267,12 +274,12 @@ export class Enemy extends Ship {
     const relV = sub(player.state.v, v);
 
     // 正確な見越し時間を計算
-    let timeToHit = solveLeadTime(toPlayer, relV, C.PLASMA_BULLET_SPEED);
-    if (timeToHit === null || timeToHit < 0) {
-      timeToHit = len(toPlayer) / C.PLASMA_BULLET_SPEED; // フォールバック
+    let leadTime = solveLeadTime(toPlayer, relV, C.PLASMA_BULLET_SPEED);
+    if (leadTime === null || leadTime < 0) {
+      leadTime = len(toPlayer) / C.PLASMA_BULLET_SPEED; // フォールバック
     }
 
-    const predictedRelPos = add(toPlayer, scale(relV, timeToHit));
+    const predictedRelPos = add(toPlayer, scale(relV, leadTime));
     const aimDir = norm(predictedRelPos);
 
     const sunDir = ephemeris.sunDirFrom(r, simTime);
@@ -285,7 +292,7 @@ export class Enemy extends Ship {
 
     const bV = add(v, scale(actualAim, C.PLASMA_BULLET_SPEED));
 
-    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_HIT_DAMAGE, this.scene);
+    const pb = new Bullet(kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', C.PLAYER_BULLET_DAMAGE, this._sfx, this.scene);
     pb.obj.position.set(r.x, r.y, r.z);
     // 進行方向に向ける
     const mz = new THREE.Matrix4().lookAt(
