@@ -49,6 +49,7 @@ declare module 'three/tsl' {
   export const normalLocal: Node;
   export const positionLocal: Node;
   export const positionWorld: Node;
+  export const modelNormalMatrix: Node;
   export const cameraPosition: Node;
   export const dot: (a: Node, b: Node) => Node;
   export const max: (a: Node, b: Node | number) => Node;
