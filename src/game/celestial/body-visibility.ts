@@ -80,9 +80,11 @@ export function sameSystemIds(registry: CelestialRegistry, focusId: AttractorId 
   return ids;
 }
 
-// focus 天体を根にした系に、position の主引力天体が属するかを返す。地球をフォーカス
-// している間は地球周回と月周回を含め、土星周回のような別の惑星系は除く。画面上の遮蔽や
-// カメラ距離では判定しないため、地球の裏側に回った機体も引き続き対象になる。
+// focus 天体と同じ惑星系に、position の主引力天体が属するかを返す。衛星をフォーカス
+// した場合は親惑星を系の代表として扱い、親惑星周回・フォーカス衛星周回・同じ惑星の
+// 別衛星周回をすべて含める。地球をフォーカスしている間は地球周回と月周回を含み、
+// 土星周回のような別の惑星系は除く。画面上の遮蔽やカメラ距離では判定しないため、地球の
+// 裏側に回った機体も引き続き対象になる。
 //
 // 天体以外(艦船・固定点など)へフォーカスしている場合は、どの天体系を表示するかを恣意的に
 // 決めないため絞り込まない。これにより、対象艦へフォーカスした瞬間に他艦が消えない。
@@ -94,10 +96,12 @@ export function isPositionInFocusedSystem(
 ): boolean {
   if (focusId === undefined || registry[focusId] === undefined) return true;
 
+  const focusDef = registry[focusId];
+  const systemFocusId = focusDef.kind === 'satellite' ? primaryOf(registry, focusId) : focusId;
   let current: AttractorId | null = strongestAttractor(position, attractors).id;
   // 壊れた親子定義でも停止するよう、レジストリ数を上限にする。
   for (let i = 0; current !== null && i <= Object.keys(registry).length; i++) {
-    if (current === focusId) return true;
+    if (current === systemFocusId) return true;
     if (registry[current] === undefined) return false;
     current = primaryOf(registry, current);
   }
