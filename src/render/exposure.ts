@@ -21,6 +21,12 @@ export const CELESTIAL_EXPOSURE: ExposureAdaptation = {
 // 扱える中立露出を固定の目標にし、以後のフェーズが target だけを差し替えられる形にする。
 export const NEUTRAL_CELESTIAL_EXPOSURE = 1.0;
 
+/** 画面の支配的な線形輝度推定から露出目標を得る。GPU readbackを避ける低コスト測光器用。 */
+export function exposureTargetForLuminance(relativeLuminance: number): number {
+  const luminance = Number.isFinite(relativeLuminance) ? Math.max(0.02, relativeLuminance) : 0.18;
+  return clampExposure(0.92 * Math.sqrt(0.32 / luminance));
+}
+
 export function clampExposure(exposure: number, limits: ExposureAdaptation = CELESTIAL_EXPOSURE): number {
   return Math.min(limits.max, Math.max(limits.min, exposure));
 }

@@ -39,6 +39,7 @@ declare module 'three/tsl' {
   type Node = any;
   export const texture: (map: import('three').Texture, uvNode?: Node) => Node;
   export const uv: () => Node;
+  export const vertexColor: () => Node;
   export const mix: (a: Node, b: Node, t: Node) => Node;
   export const vec2: (x: Node | number, y: Node | number) => Node;
   export const vec3: (x: Node | number, y: Node | number, z: Node | number) => Node;
