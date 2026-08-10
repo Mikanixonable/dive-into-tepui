@@ -10,6 +10,7 @@ import { ContactPhysics } from './contact';
 import { R_EARTH } from '../../physics/solar-system';
 import { v3 } from '../../physics/vec3';
 import { adaptiveSimulationMaxStep, simulationStepDuration } from './time-step';
+import type { NanWatchdog } from '../nan-watchdog';
 
 export class Simulator {
   readonly contactPhysics: ContactPhysics;
@@ -26,6 +27,8 @@ export class Simulator {
   }
 
   // dt 分のシミュレーションを進める。simDt をサブステップに分割して積分し、剛体接触(弾命中含む)・姿勢積分を行う。
+  // nanWatchdog は軌道積分・姿勢積分・剛体接触・ベルトの各境界ごとに自機を検査する
+  // (checkPlayer は軽量なので substep ごとに呼んでよい)。
   advance(
     dt: number,
     simDt: number,
@@ -33,6 +36,7 @@ export class Simulator {
     activeStage: Stage,
     resolveCollision: boolean,
     doSubstep: boolean,
+    nanWatchdog: NanWatchdog,
   ): void {
     const targetTime = this.simTime + simDt;
     while (this.simTime < targetTime - 1e-9) {
@@ -48,7 +52,9 @@ export class Simulator {
       }
 
       this.simTime = this.substep(this.simTime, subDt);
+      if (player) nanWatchdog.checkPlayer('simulator.advance(軌道積分)', player, this.simTime, dt, subDt);
       this.stepAttitudes(subDt);
+      if (player) nanWatchdog.checkPlayer('simulator.advance(姿勢積分)', player, this.simTime, dt, subDt);
       for (const p of this.entities.players) p.stepEnvironment(subDt, this.ephemeris, this.simTime);
       const attractorsNow = this.ephemeris.attractorsAt(this.simTime);
       if (resolveCollision) {
@@ -58,6 +64,7 @@ export class Simulator {
           (p) => p.alive ? p.collisionFolds(this.simTime) : []);
         this.contactPhysics.resolveSubstep(
           this.simTime, [...this.entities.all(), ...radiatorFolds], attractorsNow, activeStage);
+        if (player) nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
       }
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
@@ -70,6 +77,7 @@ export class Simulator {
       this.contactPhysics.resolveBelt(
         dt, this.simTime, player, this.entities.all(), this.ephemeris.attractorsAt(this.simTime), activeStage,
       );
+      nanWatchdog.checkPlayer('simulator.advance(ベルト)', player, this.simTime, dt, this.lastSimDt);
     }
 
     this.lastSimDt = simDt;
