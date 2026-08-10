@@ -7,7 +7,7 @@ import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Attractor, localOrbitPeriod } from '../../physics/attractor';
-import { containingBody } from '../../physics/sphere-contact';
+import { containingBody, sweptSphereToi } from '../../physics/sphere-contact';
 import { isBurnedUp } from '../../physics/atmosphere';
 import { attractorsNear, classifyAttractors, gravityBodiesAt, mergeAttractors } from '../simulation/attractors';
 import { Vec3 } from '../../physics/vec3';
@@ -26,6 +26,13 @@ type ComputeKey = { state0: KinematicState; end: number; };
 // 低軌道では細かく、遠地点では粗くなり、離心軌道でも1周を通して精度が一定になる。
 function stepDt(r: Vec3, attractors: readonly Attractor[]): number {
   return localOrbitPeriod(r, attractors) / C.PLAN_ARC_STEPS_PER_REV;
+}
+
+// prev→next の1ステップ中に body の表面へ実際に達した時刻へ、掃引球TOIで巻き戻した状態。
+// TOI が解けなければ(prev が既にめり込んでいる等)next をそのまま返す。
+function surfaceCrossingState(prev: KinematicState, next: KinematicState, body: Attractor): KinematicState {
+  const hit = sweptSphereToi(prev.r, next.r, body.state.r, body.state.r, body.radius);
+  return hit ? hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * hit.toi) : next;
 }
 
 export class PlanArc {
@@ -169,10 +176,12 @@ export class PlanArc {
         this.truncated = true;
         break;
       }
-      const impacted = containingBody(r, stepAttractors, 0) !== null
-        || isBurnedUp(r, stepAttractors, C.REENTRY_ALT);
+      const body = containingBody(r, stepAttractors, 0);
+      const impacted = body !== null || isBurnedUp(r, stepAttractors, C.REENTRY_ALT);
       if (impacted) {
-        this.impactState = trajectory.state;
+        this.impactState = body
+          ? surfaceCrossingState(trajectory.prevState, trajectory.state, body)
+          : trajectory.state;
         this.truncated = true;
         break;
       }
