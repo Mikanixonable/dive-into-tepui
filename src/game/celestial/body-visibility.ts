@@ -1,8 +1,7 @@
 // マップ上で「いま関心の対象になっている天体」の判定。マップのラベル・配置UIの基準天体は、
 // この1つの集合を共有して表示を絞る — 2つが別々のフィルタを持つと「マップには出ているのに
 // 基準天体の選択肢に無い」が起き、探しているものへ辿り着く道筋が読めなくなる。軌道オブジェクト
-// 一覧だけは意図的にこの集合を経由しない(全天体を候補にし、絞り込みは一覧側の検索・
-// フィルタで行う — camera/focus-markers.ts の allBodyPickables)。
+// 一覧も同じ MapVisibilityPolicy を経由し、表示設定と選択候補の食い違いを防ぐ。
 // 可視性・選択候補はいずれもフォーカス天体という離散的な状態からの親子関係で決める(ズーム
 // 距離のような連続量で判定すると操作の途中で行が明滅する)。systemChainAt だけはカメラ位置
 // という連続量から系の呼び名を導く — 表示を絞る判定ではなく、いまいる場所の説明であるため。
@@ -15,7 +14,7 @@ import { BodyClass, bodyClassOf } from './body-class';
 // 消えると現在地が読めなくなる)。Icon(マーカーの点)と Label(名前)は別トグル——「位置だけ
 // 知りたい(ラベルは煩雑)」「名前だけ確認したい(点は見飽きた)」がそれぞれ独立に成り立つため。
 // Orbit(軌道線)はさらに別軸で、planet/dwarf/smallBody だけが持つ。satellite は衛星の参照軌道線が
-// フォーカス中の系かどうかで別途決まる(environment-scene.ts の showsReferenceLine)ので Orbit
+// フォーカス中の系かどうかで別途決まる(environment-scene.ts の MapVisibilityPolicy)ので Orbit
 // トグルを持たない。lagrange は天体ではなく軌道概念も無いので Icon/Label の2軸のみ。
 export type BodyClassToggles = {
   readonly planetVisible: boolean;

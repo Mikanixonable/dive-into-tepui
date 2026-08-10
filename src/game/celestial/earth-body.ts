@@ -17,6 +17,10 @@ export class EarthBody extends CelestialBody {
     scene.add(this.earth.group);
   }
 
+  setVisible(visible: boolean): void {
+    this.earth.group.visible = visible;
+  }
+
   // 自転初期位相 [rad](セーブ用)。
   spinPhase0(): number { return this.phase0; }
 
@@ -25,6 +29,7 @@ export class EarthBody extends CelestialBody {
 
   // displayTime 時点の位置・自転角・太陽方向・表面アニメーションへ同期する。
   sync(fo: FloatingOrigin, displayTime: number, _cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
+    if (!this.earth.group.visible) return;
     const pos = ephemeris.positionOf('earth', displayTime);
     this.earth.group.position.copy(fo.RtoThreeV3(pos));
     this.earth.setRotation(this.phase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
