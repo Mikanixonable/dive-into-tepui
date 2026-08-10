@@ -9,8 +9,6 @@ import { register as registerTimeStep } from './time-step.test';
 import { register as registerSphereContact } from './sphere-contact.test';
 import { register as registerCollisionResponse } from './collision-response.test';
 import { register as registerAtmosphere } from './atmosphere.test';
-import { register as registerAtmosphereOptics } from './atmosphere-optics.test';
-import { register as registerEarthClouds } from './earth-clouds.test';
 import { register as registerEphemeris } from './ephemeris.test';
 import { register as registerShadow } from './shadow.test';
 import { register as registerSrp } from './srp.test';
@@ -49,10 +47,6 @@ import { register as registerEphemerisPackFormat } from './ephemeris-pack-format
 import { register as registerChebyshevEphemeris } from './chebyshev-ephemeris.test';
 import { register as registerPackedAbsoluteEphemeris } from './packed-absolute-ephemeris.test';
 import { register as registerSaveEphemerisContext } from './save-ephemeris-context.test';
-import { register as registerExposure } from './exposure.test';
-import { register as registerSurfaceMaterial } from './surface-material.test';
-import { register as registerCelestialPhotometry } from './celestial-photometry.test';
-import { register as registerCelestialQuality } from './celestial-quality.test';
 import './creative-placement-validation.test';
 
 registerVec3();
@@ -63,8 +57,6 @@ registerTimeStep();
 registerSphereContact();
 registerCollisionResponse();
 registerAtmosphere();
-registerAtmosphereOptics();
-registerEarthClouds();
 registerEphemeris();
 registerShadow();
 registerSrp();
@@ -103,10 +95,6 @@ registerEphemerisPackFormat();
 registerChebyshevEphemeris();
 registerPackedAbsoluteEphemeris();
 registerSaveEphemerisContext();
-registerExposure();
-registerSurfaceMaterial();
-registerCelestialPhotometry();
-registerCelestialQuality();
 
 runAll().catch((error) => {
   console.error(error);

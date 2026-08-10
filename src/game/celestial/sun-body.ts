@@ -8,7 +8,6 @@ import { R_SUN } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { CelestialBody } from './celestial-body';
-import { CelestialLightingContext } from '../../render/celestial-lighting';
 
 const tmpSunPos = new THREE.Vector3();
 
@@ -29,10 +28,7 @@ export class SunBody extends CelestialBody {
   }
 
   // displayTime 時点の方向・位置へビルボード/実球体を同期する。
-  sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    _lighting: CelestialLightingContext,
-  ): void {
+  sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
     const sunPos = ephemeris.positionOf(this.id, displayTime);
     if (cameraSystem.overviewMode) {
       // 広範囲視点は実スケール: 実 ECI 位置に実半径で置き、ビルボードは隠す

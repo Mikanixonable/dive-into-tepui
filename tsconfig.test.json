@@ -16,8 +16,6 @@
     "src/physics/orbital.ts",
     "src/physics/attitude.ts",
     "src/physics/atmosphere.ts",
-    "src/physics/atmosphere-optics.ts",
-    "src/physics/surface-material.ts",
     "src/physics/ephemeris.ts",
     "src/physics/central-body.ts",
     "src/game/plan/plan.ts",
