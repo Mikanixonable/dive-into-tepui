@@ -52,9 +52,11 @@ export class ViewManager {
     this.docking = docking;
   }
 
-  // ビュー遷移の唯一の入口。遷移できない場合は何もしない。
+  // ビュー遷移の唯一の入口。遷移できない場合は何もしない。既に next にいる場合でも
+  // applyChrome() は必ず走らせ、「この呼び出しの後、カメラ・計画編集・未来表示の各フラグは
+  // 現在のビューに揃っている」という保証を遷移の有無に依らず成り立たせる。
   setView(next: ViewId): void {
-    if (next === this._current) return;
+    if (next === this._current) { this.applyChrome(); return; }
     if (!this.canEnter(next)) return;
 
     const prevWorld = this.worldView;
