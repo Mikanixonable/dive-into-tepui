@@ -96,6 +96,30 @@ export function visibleBodyIds(
   return visible;
 }
 
+// systemChainAt の列に、各天体の子(恒星の子は除く)を合わせた集合。近い順・各天体→その子の
+// 順に並ぶ配列で返す(呼び出し側の選択肢が毎フレーム揺れないよう順序を固定する)。恒星の子は
+// 足さない — 足すと太陽を含む列で全惑星が並んでしまうため。
+export function systemMembersAt(
+  registry: CelestialRegistry, cameraPos: Vec3, attractors: readonly Attractor[],
+): readonly AttractorId[] {
+  const chain = systemChainAt(registry, cameraPos, attractors);
+  const seen = new Set<AttractorId>();
+  const result: AttractorId[] = [];
+  for (const id of chain) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      result.push(id);
+    }
+    if (registry[id] === undefined || primaryOf(registry, id) === null) continue;
+    for (const childId of Object.keys(registry)) {
+      if (seen.has(childId) || primaryOf(registry, childId) !== id) continue;
+      seen.add(childId);
+      result.push(childId);
+    }
+  }
+  return result;
+}
+
 // cameraPos で最も強く重力を及ぼす天体から主星まで遡った id の列(その天体自身を含む)。
 // 最寄り天体が registry に未登録(生存中の重力天体)なら、その id 1つだけを返す。
 export function systemChainAt(

@@ -8,7 +8,7 @@ import { SOLAR_SYSTEM, bodyDef, primaryOf } from '../../src/physics/solar-system
 import {
   TRIANGULAR_STABILITY_MASS_RATIO, collinearClearanceRatio, hasStableTriangularPoints,
 } from '../../src/physics/lagrange';
-import { DEFAULT_BODY_CLASS_TOGGLES, systemChainAt, visibleBodyIds } from '../../src/game/celestial/body-visibility';
+import { DEFAULT_BODY_CLASS_TOGGLES, systemChainAt, systemMembersAt, visibleBodyIds } from '../../src/game/celestial/body-visibility';
 import { v3, addScaled } from '../../src/physics/vec3';
 
 const MIN_CLEARANCE = 10;
@@ -173,5 +173,29 @@ export function register(): void {
 
   test('systemChainAt: attractors が空なら空配列', () => {
     assert.deepEqual(systemChainAt(SOLAR_SYSTEM, v3(), []), []);
+  });
+
+  test('systemMembersAt: 地球近傍では月が含まれ、太陽の子(恒星の子)は含まれない', () => {
+    const e = new Ephemeris();
+    const attractors = e.attractorsAt(0);
+    const members = systemMembersAt(SOLAR_SYSTEM, v3(), attractors);
+    assert.ok(members.includes('earth'));
+    assert.ok(members.includes('moon'), '地球の子である月が足されるべき');
+    assert.ok(members.includes('sun'));
+    for (const id of ['mercury', 'venus', 'mars', 'jupiter']) {
+      assert.ok(!members.includes(id), `${id} は太陽の子なので含まれないべき`);
+    }
+  });
+
+  test('systemMembersAt: 月近傍では地球と月が含まれ、月自身は重複しない', () => {
+    const e = new Ephemeris();
+    const attractors = e.attractorsAt(0);
+    const moon = e.positionOf('moon', 0);
+    const nearMoon = addScaled(moon, v3(1, 0, 0), 1e6);
+    const members = systemMembersAt(SOLAR_SYSTEM, nearMoon, attractors);
+    assert.ok(members.includes('moon'));
+    assert.ok(members.includes('earth'), '月の親である地球が足されるべき');
+    assert.ok(members.includes('sun'));
+    assert.equal(members.filter((id) => id === 'moon').length, 1, '月は重複しない');
   });
 }
