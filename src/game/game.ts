@@ -187,7 +187,7 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.viewManager.setTouchControls(this.touchControls);
 
-    this.simulator = new Simulator(this.entities, this.ephemeris, this._sfx, this.effects);
+    this.simulator = new Simulator(this.entities, this.ephemeris);
     this.predictor = new Predictor(this.entities, this.ephemeris);
 
     if (launch.mode === 'stage') {
@@ -396,7 +396,7 @@ export class Game {
       const simDt = dt * this.simSpeedManager.simSpeed;
       this.simulator.advance(
         dt, simDt, null, this.activeStage,
-        true, false, true,
+        false, true,
       );
       this.predictor.update(
         this.simulator.simTime,
@@ -424,7 +424,7 @@ export class Game {
       player.thrust = null;
       player.torque = v3();
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
-      this.simulator.advance(dt, simDt, player, this.activeStage, false, false, false);
+      this.simulator.advance(dt, simDt, player, this.activeStage, false, false);
       this.nanWatchdog.checkAll('advance(決着後)', player, this.entities, this.simulator.simTime, dt, simDt);
       this.effects.update(dt, this.simulator.simTime);
       // 決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
@@ -461,7 +461,6 @@ export class Game {
     this.applyWarpCommandPolicy();
     const simDt = dt * this.simSpeedManager.simSpeed;
     this.simulator.advance(dt, simDt, player, this.activeStage,
-      true, // bulletCollision
       this.simSpeedManager.canResolvePhysicalCollisions, // resolveCollision
       true, // doSubstep
     );
