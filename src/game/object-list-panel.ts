@@ -18,17 +18,15 @@ interface Section {
   expanded: boolean;
 }
 
-type ObjectListFilter = 'all' | 'near' | 'system' | 'bodies' | Exclude<BodyClass, 'star'>;
+type ObjectListFilter = 'near' | 'system' | Exclude<BodyClass, 'star'>;
 
 const FILTERS: readonly (readonly [ObjectListFilter, string])[] = [
-  ['all', '全て'],
   ['near', '近く'],
   ['planet', '惑星'],
   ['satellite', '衛星'],
   ['dwarf', '準惑星'],
   ['smallBody', '小惑星'],
   ['system', '自艦系'],
-  ['bodies', '天体'],
 ];
 
 // 1件ぶんの行 + その子を畳めるトグル区画。子を持たない行(自艦/敵/弾薬/基地、および
@@ -70,7 +68,8 @@ export class ObjectListPanel {
   private readonly registry: CelestialRegistry;
   private selectedId: string | null = null;
   private query = '';
-  private filter: ObjectListFilter = 'all';
+  private filter: ObjectListFilter = FILTERS[0]![0];
+  private lastFocusId: string | undefined = undefined;
   private readonly breadcrumb: HTMLElement;
 
   constructor(root: HTMLElement, registry: CelestialRegistry) {
@@ -83,14 +82,18 @@ export class ObjectListPanel {
     const title = document.createElement('h3');
     title.textContent = '軌道オブジェクト';
     this.panel.appendChild(title);
-    const tools = document.createElement('div');
-    tools.className = 'object-list-tools';
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'object-list-search';
     const search = document.createElement('input');
     search.type = 'search'; search.placeholder = '検索'; search.setAttribute('aria-label', '軌道オブジェクトを検索');
     search.addEventListener('input', () => { this.query = search.value.trim().toLocaleLowerCase(); });
-    tools.appendChild(search);
+    searchWrap.appendChild(search);
+    this.panel.appendChild(searchWrap);
+
+    const tools = document.createElement('div');
+    tools.className = 'object-list-tools';
     for (const [key, label] of FILTERS) {
-      const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', key === 'all' ? 'true' : 'false');
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', key === this.filter ? 'true' : 'false');
       b.addEventListener('click', () => { this.filter = key; for (const x of Array.from(tools.querySelectorAll('button'))) x.setAttribute('aria-pressed', String(x === b)); });
       tools.appendChild(b);
     }
@@ -136,6 +139,8 @@ export class ObjectListPanel {
     const crumbs: string[] = [];
     for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) crumbs.push(names.get(cur) ?? cur);
     this.breadcrumb.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'フォーカス: なし';
+    const focusChanged = focusId !== this.lastFocusId;
+    this.lastFocusId = focusId;
     const byKind = new Map<MapPickKind, MapPickable[]>();
     for (const item of items) {
       if (!this.matches(item)) continue;
@@ -160,9 +165,10 @@ export class ObjectListPanel {
         const parent = parentOf.get(i.id);
         return parent === undefined || !idsInSection.has(parent);
       });
-      // 現在フォーカス中の天体へ至る枝は自動展開し、別系は初期状態の畳みを保つ。
+      // フォーカスが切り替わった瞬間だけ、そこへ至る枝を自動展開する対象として渡す
+      // (毎フレーム渡すとユーザーが畳んだ直後に開き直ってしまう)。
       const focusAncestors = new Set<string>();
-      for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) focusAncestors.add(cur);
+      if (focusChanged) for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) focusAncestors.add(cur);
 
       const seen = new Set<string>();
       for (const item of roots) {
@@ -176,7 +182,6 @@ export class ObjectListPanel {
 
   private matches(item: MapPickable): boolean {
     if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
-    if (this.filter === 'bodies') return item.kind === 'body';
     if (this.filter === 'system') return item.inFocusedSystem !== false;
     if (this.filter === 'planet' || this.filter === 'satellite' || this.filter === 'dwarf' || this.filter === 'smallBody') {
       return item.kind === 'body' && bodyClassOf(this.registry, item.id) === this.filter;
@@ -199,7 +204,9 @@ export class ObjectListPanel {
       container.appendChild(node.childrenContainer);
     }
     if (node.label.textContent !== item.name) node.label.textContent = item.name;
-    if (node.detail.textContent !== (item.detail ?? '')) node.detail.textContent = item.detail ?? '';
+    const detailText = item.kind === 'body' ? '' : (item.detail ?? '');
+    if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
+    node.detail.style.display = item.kind === 'body' ? 'none' : '';
     node.row.classList.toggle('tgt', item.id === focusId);
     node.row.classList.toggle('selected', item.id === this.selectedId);
 
