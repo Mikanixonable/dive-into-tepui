@@ -39,7 +39,7 @@ interface PlanTickIcon {
   readonly label: string;
 }
 
-// 衝突マーカーのキー(区間ごとに固定)。区間数は SEGMENT_COLORS(plan-trajectory.ts)と同じ
+// 衝突マーカーのキー(区間ごとに固定)。区間数は SEGMENT_COLORS(plan-path.ts)と同じ
 // 上限で足りる。
 const IMPACT_MARKER_KEYS = ['planImpact0', 'planImpact1', 'planImpact2'] as const;
 
