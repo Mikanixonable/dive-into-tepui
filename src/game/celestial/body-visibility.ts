@@ -24,11 +24,16 @@ export type BodyClassToggles = {
   readonly dwarfLabel: boolean;
   readonly satelliteIcon: boolean;
   readonly satelliteLabel: boolean;
+  readonly satelliteOrbit: boolean;
   readonly smallBodyOrbit: boolean;
   readonly smallBodyIcon: boolean;
   readonly smallBodyLabel: boolean;
   readonly lagrangeIcon: boolean;
   readonly lagrangeLabel: boolean;
+  readonly playerIcon: boolean; readonly playerLabel: boolean; readonly playerOrbit: boolean;
+  readonly shipIcon: boolean; readonly shipLabel: boolean; readonly shipOrbit: boolean;
+  readonly ammoIcon: boolean; readonly ammoLabel: boolean; readonly ammoOrbit: boolean;
+  readonly baseIcon: boolean; readonly baseLabel: boolean; readonly baseOrbit: boolean;
 };
 
 // 既定 off は「登録数が多くマップが溢れるから」。planet は数が少なく太陽系の骨格をなすので
@@ -39,9 +44,13 @@ export type BodyClassToggles = {
 export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
   planetOrbit: true, planetIcon: true, planetLabel: true,
   dwarfOrbit: false, dwarfIcon: false, dwarfLabel: false,
-  satelliteIcon: false, satelliteLabel: false,
+  satelliteIcon: false, satelliteLabel: false, satelliteOrbit: false,
   smallBodyOrbit: false, smallBodyIcon: true, smallBodyLabel: true,
   lagrangeIcon: true, lagrangeLabel: true,
+  playerIcon: true, playerLabel: true, playerOrbit: true,
+  shipIcon: true, shipLabel: true, shipOrbit: true,
+  ammoIcon: true, ammoLabel: true, ammoOrbit: true,
+  baseIcon: true, baseLabel: true, baseOrbit: true,
 };
 
 // トグルで足されるクラス(planet/dwarf/satellite/smallBody)の Icon/Label を、そのクラスの
