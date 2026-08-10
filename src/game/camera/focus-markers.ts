@@ -55,6 +55,8 @@ export class FocusMarkers {
 
   private attractors: readonly Attractor[] = [];
 
+  get shownLabelCount(): number { return this.shownLabels.length; }
+
   // レジストリからラベルの全集合を1度だけ組む。ラグランジュ点は5点まとめてではなく、
   // 共線点・三角点それぞれの成立条件を満たす点だけを持たせる。
   constructor(private readonly markerManager: MarkerManager, private readonly ephemeris: Ephemeris) {

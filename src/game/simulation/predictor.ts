@@ -15,6 +15,7 @@ export class Predictor {
   tracked = 0; // 予測対象の個体数
   complete = 0; // うち先端がホライズンに達しているもの
   discarded = 0; // このフレームに乖離で破棄したもの
+  lastSteps = 0; // 直近フレームに予測器が実際に消費した積分step数
 
   constructor(
     private readonly entities: EntityManager,
@@ -33,6 +34,7 @@ export class Predictor {
     this.tracked = 0;
     this.complete = 0;
     this.discarded = 0;
+    this.lastSteps = 0;
     const attractors = this.ephemeris.attractorsAt(simTime);
     for (const e of all) {
       if (e.resyncPrediction(simTime, attractors, horizon)) this.discarded++;
@@ -77,6 +79,7 @@ export class Predictor {
       );
       if (!e.stepPredicted(attractors, simTime, dt, horizon)) break;
       consumed++;
+      this.lastSteps++;
     }
     return consumed;
   }
