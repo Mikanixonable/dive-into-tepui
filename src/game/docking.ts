@@ -42,7 +42,7 @@ export class Docking {
     private readonly cameraSystem: CameraSystem,
     private readonly viewManager: ViewManager,
   ) {
-    this.dockView = new DockView(this.hud.root);
+    this.dockView = new DockView(this.hud.layers.view);
     this.dockView.onClose = () => this.viewManager.leaveDock();
     this.dockView.onLaunchShip = (ship, base) => this.launch(ship, base);
     this.dockView.onBuildShip = (base) => this.buildShip(base);
