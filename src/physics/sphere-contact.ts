@@ -1,6 +1,9 @@
-import { Vec3, v3 } from './vec3';
+// 球どうしの接触の幾何(掃引接触の時刻・法線、点が球の内側にあるかの判定)。
+// 重力源かどうか・天体かどうかには関与しない純粋な幾何。
+import { KinematicState } from './kinematic-state';
+import { Vec3, len, sub, v3 } from './vec3';
 
-export interface SweptSphereHit {
+export interface SphereContact {
   readonly toi: number; // frame区間内の衝突割合 0..1
   readonly normal: Vec3; // aからbへ向く接触法線
 }
@@ -13,8 +16,10 @@ export function sweptSphereToi(
   bStart: Vec3,
   bEnd: Vec3,
   radiusSum: number,
-): SweptSphereHit | null {
+): SphereContact | null {
   // 相対位置 p(t) = p0 + d·t (t∈[0,1]) が半径和 radiusSum の球に触れる最小の t を解く2次方程式。
+  // 各早期returnは `!(x > 0)` 系の否定形で書く — NaN はどの比較でも false になるので、
+  // 非有限な入力はこの形のときだけ自動的に null へ落ちる(`x <= 0` に書き換えると通り抜ける)。
   const px = bStart.x - aStart.x;
   const py = bStart.y - aStart.y;
   const pz = bStart.z - aStart.z;
@@ -37,4 +42,16 @@ export function sweptSphereToi(
   const nLen = Math.sqrt(nx0 * nx0 + ny0 * ny0 + nz0 * nz0);
   if (!(nLen > 1e-12)) return null;
   return { toi, normal: v3(nx0 / nLen, ny0 / nLen, nz0 / nLen) };
+}
+
+// point が bodies のいずれかの半径 + margin の球の内側にあれば、その球を返す。無ければ null。
+export function containingBody<T extends { readonly radius: number; readonly state: KinematicState }>(
+  point: Vec3,
+  bodies: readonly T[],
+  margin: number,
+): T | null {
+  for (const body of bodies) {
+    if (len(sub(point, body.state.r)) < body.radius + margin) return body;
+  }
+  return null;
 }

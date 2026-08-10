@@ -1,12 +1,17 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
-import { KinematicState } from '../../physics/kinematic-state';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Attractor } from '../../physics/attractor';
 import { Vec3 } from '../../physics/vec3';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
+import type { Contact } from '../simulation/contact';
+import type { Sfx } from '../../audio/sfx';
+import type { EffectsSystem } from '../vfx/effects-system';
 import { buildBarrelMesh, buildCasingMesh, buildDebrisMesh, buildMagazineFrame } from '../../render/ships';
 import { GameEntity } from './game-entity';
+import { Player } from '../player/player';
+import { Bullet } from './bullet';
 
 // DebrisPiece の見た目・振る舞いの種別。
 export type DebrisKind =
@@ -31,7 +36,15 @@ export class DebrisPiece extends GameEntity {
 
   // DebrisKind に応じたメッシュ・質量で初期化する。radius は剛体接触半径。fragment は
   // 剛体接触に参加しない(排莢直後の薬莢を弾いてしまう/破片が跳ね回るのを避ける)。
-  constructor(state: KinematicState, readonly debrisKind: DebrisKind, att: Attitude, radius?: number, scene?: THREE.Scene) {
+  constructor(
+    state: KinematicState,
+    readonly debrisKind: DebrisKind,
+    att: Attitude,
+    private readonly _sfx: Sfx,
+    private readonly _fx: EffectsSystem,
+    radius?: number,
+    scene?: THREE.Scene,
+  ) {
     super(state, buildDebrisObj(debrisKind), scene, att);
     this.radius = radius ?? 0;
     this.collides = debrisKind.kind !== 'fragment';
@@ -44,6 +57,16 @@ export class DebrisPiece extends GameEntity {
   }
 
   get kind(): DebrisKind['kind'] { return this.debrisKind.kind; }
+
+  // 弾が当たったらガスパフを噴いて消える(弾自身の消滅は Bullet.collideWith が書く)。
+  // 薬莢が艦(操作対象に限らず Player 全般)に触れたときは、からんと音を鳴らす。
+  collideWith(other: GameEntity | Attractor, contact: Contact): void {
+    if (other instanceof Bullet) {
+      this._fx.spawnGasPuff(kinematicState(contact.selfState.t, contact.point, contact.selfState.v));
+      return;
+    }
+    if (this.debrisKind.kind === 'casing' && other instanceof Player) this._sfx.clank();
+  }
 
   // 薬莢の寿命切れ絶対時刻を返す。薬莢以外、またはすでに過ぎていれば null。
   nextSimulationEventTime(simTime: number): number | null {
