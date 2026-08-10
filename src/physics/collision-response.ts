@@ -33,6 +33,10 @@ export function resolveSphereCollision(
 ): CollisionResponse | null {
   const minD = a.radius + b.radius;
   const invM = a.invMass + b.invMass;
+  // 位置補正・撃力どちらの式も invM を分母に取るので、非有限なら両側へ NaN が、
+  // 0(両者とも無限質量)なら両側へ Infinity が広がる。距離ガードと同じ `!(x > 0)` 形で
+  // 弾く — `x <= 0` と書くと NaN に対する真偽が反転して非有限入力が通り抜ける。
+  if (!(invM > 0)) return null;
 
   const swept = prevRA !== undefined && prevRB !== undefined
     ? sweptSphereToi(prevRA, a.r, prevRB, b.r, minD)

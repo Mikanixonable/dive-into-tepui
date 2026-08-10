@@ -47,6 +47,20 @@ export function register(): void {
     assert.equal(containingBody(v3(6.371e6 + 1500, 0, 0), [earth], 1000), null);
   });
 
+  // 非有限な入力(始点・終点の位置・半径和)はどれも null へ落ちることを固定する —
+  // resolveSphereCollision と同じ「参加者フィルタが破れても伝播しない」最後の砦。
+  test('swept sphere: 始点が非有限なら null', () => {
+    assert.equal(sweptSphereToi(v3(NaN, 0, 0), v3(0, 0, 0), v3(-10, 0, 0), v3(10, 0, 0), 2), null);
+  });
+
+  test('swept sphere: 終点が非有限なら null', () => {
+    assert.equal(sweptSphereToi(v3(0, 0, 0), v3(NaN, 0, 0), v3(-10, 0, 0), v3(10, 0, 0), 2), null);
+  });
+
+  test('swept sphere: 半径和が非有限なら null', () => {
+    assert.equal(sweptSphereToi(v3(0, 0, 0), v3(0, 0, 0), v3(-10, 0, 0), v3(10, 0, 0), NaN), null);
+  });
+
   test('containingBody: 複数の球から最初に触れているものを返す', () => {
     const near: Attractor = {
       id: 'near', mu: 1, radius: 1000, state: kinematicState(0, v3(), v3()), degree2: null, isStar: false,
