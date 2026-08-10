@@ -48,6 +48,7 @@ function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: 
 // 蛇腹1折りぶんの接触代理。艦の姿勢と展開度から一意に決まる剛体の取り付けなので、
 // ベルトと違い Verlet 解法は要らず、毎フレーム RadiatorSystem.collisionFolds が置き直すだけでよい。
 export class RadiatorFold extends GameEntity {
+  // 位置は毎フレーム collisionFolds が置き直すので、ここでは原点で仮生成する。
   constructor(readonly side: RadiatorSide, readonly foldIndex: number, private readonly owner: Player) {
     super(kinematicState(0, v3(), v3()), new THREE.Object3D());
     this.mass = 5;
@@ -62,6 +63,7 @@ export class RadiatorFold extends GameEntity {
     return !(other instanceof GameEntity && other.attachedTo === this.owner);
   }
 
+  // 帰結は owner の collideAtRadiator に委ねる。
   collideWith(other: GameEntity | Attractor, contact: Contact, activeStage: Stage): void {
     this.owner.collideAtRadiator(this.side, other, contact, activeStage);
   }
@@ -186,6 +188,8 @@ export class RadiatorSystem {
       const proxies = this.foldProxies[side];
       while (proxies.length < C.RADIATOR_FOLD_COUNT) proxies.push(new RadiatorFold(side, proxies.length, this.owner));
       const { even, odd } = this.foldThetas(side);
+      // 各折りの機体座標系オフセットを、艦の位置・姿勢・角速度(回転による接線速度込み)で
+      // world 座標へ変換する。
       for (const fold of proxies) {
         const bodyOffset = foldLocalPosition(side, fold.foldIndex, even, odd);
         const worldPos = add(shipR, qRotate(att.q, bodyOffset));
