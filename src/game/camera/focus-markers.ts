@@ -17,12 +17,27 @@ export interface FocusLabel {
   pos: Vec3;
   kind: 'body';
   isLagrange: boolean;
+  // 天体の表示分類に基づくラベル優先度。数値が大きいほど優先して残す。
+  readonly labelPriority: number;
   // 主星を 0 とする階層の深さ。一覧をこの順・この字下げで並べると親子関係がそのまま出る。
   depth: number;
   // このフレームでマーカーの点・名前をそれぞれ描くか。
   showIcon: boolean;
   showLabel: boolean;
+  // ラベル衝突で隠された対象は、ダブルクリックのフォーカス対象にもしない。
+  pickable: boolean;
 }
+
+// 惑星 > 準惑星 > 衛星・小惑星・彗星 > ラグランジュ点。
+// 恒星は太陽系の基準点なので、惑星と同じ最上位として常に残す。
+const LABEL_PRIORITY: Record<'star' | 'planet' | 'dwarf' | 'satellite' | 'smallBody' | 'lagrange', number> = {
+  star: 4,
+  planet: 4,
+  dwarf: 3,
+  satellite: 2,
+  smallBody: 2,
+  lagrange: 1,
+};
 
 export class FocusMarkers {
   // 天体本体1つにつき1ラベル、ラグランジュ点が力学的に意味を持つ天体にはさらに L1〜L5 の
@@ -67,15 +82,17 @@ export class FocusMarkers {
       if (added.has(id)) return;
       added.add(id);
       labels.push({
-        id, name: celestialBodyName(id), pos: v3(0, 0, 0), kind: 'body', isLagrange: false, depth,
-        showIcon: false, showLabel: false,
+        id, name: celestialBodyName(id), pos: v3(0, 0, 0), kind: 'body', isLagrange: false,
+        labelPriority: LABEL_PRIORITY[bodyClassOf(registry, id)], depth,
+        showIcon: false, showLabel: false, pickable: true,
       });
       const primary = primaryOf(registry, id);
       const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
       for (const n of pointsOf.get(id) ?? []) {
         labels.push({
           id: `${id}-l${n}`, name: `${prefix} L${n}`, pos: v3(0, 0, 0),
-          kind: 'body', isLagrange: true, depth: depth + 1, showIcon: false, showLabel: false,
+          kind: 'body', isLagrange: true, labelPriority: LABEL_PRIORITY.lagrange, depth: depth + 1,
+          showIcon: false, showLabel: false, pickable: true,
         });
       }
       for (const child of this.registryIds) {
@@ -130,6 +147,7 @@ export class FocusMarkers {
       const d = display[lbl.id]!;
       lbl.showIcon = d.icon;
       lbl.showLabel = d.label;
+      lbl.pickable = true;
       shown.push(lbl);
     }
     this.shownLabels = shown;
@@ -137,28 +155,38 @@ export class FocusMarkers {
   }
 
   // update が求めた座標へラベルのマーカーを置く。天体に遮られているラベルは隠し、
-  // 天体ラベルと画面上で近接するラグランジュ点ラベルは天体側を優先して隠す。
+  // 画面上で近接するラベルは優先度の低い方を隠す。
   syncLabels(project: ProjectFn, cameraPos: Vec3): void {
-    // 先に天体ラベルの画面位置を集めてから、ラグランジュ点ラベルの間引き判定に使う。
-    const shownBodyScreenPos: { x: number; y: number }[] = [];
+    // 実際に文字列を出すラベルだけを競合対象にする。同じ優先度同士は両方残し、
+    // MarkerManager の通常の衝突緩和へ任せる。
+    const projected: { label: FocusLabel; x: number; y: number }[] = [];
     for (const lbl of this.shownLabels) {
-      if (lbl.isLagrange) continue;
       if (isOccluded(cameraPos, lbl.pos, this.attractors)) continue;
       const p = project(lbl.pos);
-      if (p.front) shownBodyScreenPos.push(p);
+      if (p.front && lbl.showLabel) projected.push({ label: lbl, x: p.x, y: p.y });
+    }
+
+    const hiddenByPriority = new Set<string>();
+    for (let i = 0; i < projected.length; i++) {
+      const a = projected[i]!;
+      for (let j = i + 1; j < projected.length; j++) {
+        const b = projected[j]!;
+        if (Math.hypot(a.x - b.x, a.y - b.y) >= FOCUS_LABEL_PRIORITY_PX) continue;
+        if (a.label.labelPriority > b.label.labelPriority) hiddenByPriority.add(b.label.id);
+        else if (b.label.labelPriority > a.label.labelPriority) hiddenByPriority.add(a.label.id);
+      }
     }
 
     const shownIds: string[] = [];
     for (const lbl of this.shownLabels) {
       shownIds.push(lbl.id);
+      lbl.pickable = !hiddenByPriority.has(lbl.id);
       if (isOccluded(cameraPos, lbl.pos, this.attractors)) {
+        lbl.pickable = false;
         this.markerManager.hide(lbl.id);
         continue;
       }
-      const p = project(lbl.pos);
-      if (lbl.isLagrange && p.front && shownBodyScreenPos.some(
-        (b) => Math.hypot(b.x - p.x, b.y - p.y) < FOCUS_LABEL_PRIORITY_PX,
-      )) {
+      if (hiddenByPriority.has(lbl.id)) {
         this.markerManager.hide(lbl.id);
         continue;
       }

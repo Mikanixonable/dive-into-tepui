@@ -14,6 +14,9 @@ export interface MapPickable {
   readonly detail?: string;
   readonly priority?: number;
   readonly inFocusedSystem?: boolean;
+  // 表示上のラベル衝突で隠された対象は、ダブルクリックのフォーカス候補からも外す。
+  // 他種別では未指定(true扱い)にする。
+  readonly pickable?: boolean;
 }
 
 // items を project で画面へ射影し、(x, y) から半径 radiusPxSq [px^2] 以内で最も近いものを返す。
