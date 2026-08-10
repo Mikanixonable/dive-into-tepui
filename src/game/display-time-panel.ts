@@ -1,7 +1,6 @@
 // 未来表示の操作パネル(表示期間・未来ゴーストスライダー・目盛り・手動レンジ入力・ジャンプ入力)。
 import { hudButton, SegmentedControl } from './hud/buttons';
 import type { DisplayDurationKey } from './display-time-manager';
-import { hudDock } from './hud/dom';
 import type { DisplayTick } from './hud/tick-scale';
 
 const DURATIONS: readonly (readonly [DisplayDurationKey, string])[] = [
@@ -145,7 +144,7 @@ export class DisplayTimePanel {
     this.sliderLabel.textContent = SLIDER_HINT;
     this.panel.appendChild(this.sliderLabel);
 
-    hudDock(root, 'left').appendChild(this.panel);
+    root.appendChild(this.panel);
   }
 
   // パネル全体の表示/非表示を切り替える。
