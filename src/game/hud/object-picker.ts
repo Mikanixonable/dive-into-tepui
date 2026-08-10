@@ -1,34 +1,36 @@
 // 候補が数十〜百件になる値を選ばせるボタン。SegmentedControl は候補を横並びに積むだけなので、
 // 登録天体ぶんの候補を並べると1行に収まらない。現在の選択を出すボタンを押すとポップアップが
-// 開き、上から「よく使う候補」「絞り込み入力」「グループ分けした全候補」の順に並ぶ —
-// 実際に選ばれるのはほぼ常に「いま見ているもの」か「いまいるところ」なので、それを1クリック目に置く。
+// 開き、上から「絞り込み入力」「グループ分けした全候補」の順に並ぶ。候補はグループごとに
+// 複数列のグリッドへ並べる(百件規模を縦一列に積むと画面高をはみ出すため)。
 import { ACCENT, ACCENT_RGB, ACCENT_SOFT, EDGE, FONT, SURFACE, TEXT as INK } from '../theme';
 import { clampOverlayPosition } from './layout';
 import { hudButton } from './buttons';
 
 const STYLE = `
-#hud .body-picker-pop {
+#hud .object-picker-pop {
   position: fixed; display: none; z-index: 12; pointer-events: auto;
   background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px;
   font-family: ${FONT}; font-size: 12px; color: ${INK};
-  width: 240px; max-height: 60vh; overflow-y: auto; user-select: none;
+  width: 520px; max-height: 60vh; overflow-y: auto; user-select: none;
   -webkit-user-select: none;
 }
-#hud .body-picker-pop .bp-filter {
+#hud .object-picker-pop .op-filter {
   width: 100%; box-sizing: border-box; padding: 7px 10px; margin: 0;
   background: rgba(0, 0, 0, 0.35); border: none; border-bottom: 1px solid ${EDGE};
   color: ${INK}; font-family: ${FONT}; font-size: 12px; outline: none;
 }
-#hud .body-picker-pop .bp-group {
-  padding: 5px 10px 3px; font-size: 10px; letter-spacing: 1px; opacity: 0.55;
+#hud .object-picker-pop .op-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
 }
-#hud .body-picker-pop .bp-row {
-  padding: 7px 10px 7px 18px; cursor: pointer; border-bottom: 1px solid ${EDGE};
+#hud .object-picker-pop .op-group {
+  grid-column: 1 / -1; padding: 5px 10px 3px; font-size: 10px; letter-spacing: 1px; opacity: 0.55;
 }
-#hud .body-picker-pop .bp-row:last-child { border-bottom: none; }
-#hud .body-picker-pop .bp-row:hover { background: rgba(${ACCENT_RGB}, 0.18); color: ${ACCENT_SOFT}; }
-#hud .body-picker-pop .bp-row.on { color: ${ACCENT}; }
-#hud .body-picker-pop .bp-empty { padding: 9px 10px; opacity: 0.5; }
+#hud .object-picker-pop .op-row {
+  padding: 7px 10px 7px 18px; cursor: pointer; border-left: 1px solid ${EDGE};
+}
+#hud .object-picker-pop .op-row:hover { background: rgba(${ACCENT_RGB}, 0.18); color: ${ACCENT_SOFT}; }
+#hud .object-picker-pop .op-row.on { color: ${ACCENT}; }
+#hud .object-picker-pop .op-empty { grid-column: 1 / -1; padding: 9px 10px; opacity: 0.5; }
 `;
 
 let styleInjected = false;
@@ -42,18 +44,31 @@ function ensureStyle(): void {
 }
 
 // 見出しつきの候補のまとまり。label が空の group は見出しを出さない。
-export type BodyPickerGroup<T> = {
+export type ObjectPickerGroup<T> = {
   readonly label: string;
   readonly items: readonly (readonly [T, string])[];
 };
 
-export class BodyPicker<T> {
+// groups が現在の内容と同じかどうかを、ラベルと各項目の並び(値は参照同一性)で判定する。
+function groupsEqual<T>(a: readonly ObjectPickerGroup<T>[], b: readonly ObjectPickerGroup<T>[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((ga, i) => {
+    const gb = b[i]!;
+    if (ga.label !== gb.label || ga.items.length !== gb.items.length) return false;
+    return ga.items.every(([v, l], j) => {
+      const [vb, lb] = gb.items[j]!;
+      return v === vb && l === lb;
+    });
+  });
+}
+
+export class ObjectPicker<T> {
   readonly element: HTMLElement;
   private readonly trigger: HTMLElement;
   private readonly pop: HTMLElement;
   private readonly filter: HTMLInputElement;
   private readonly list: HTMLElement;
-  private groups: readonly BodyPickerGroup<T>[] = [];
+  private groups: readonly ObjectPickerGroup<T>[] = [];
   private selected: T | null = null;
   private readonly onSelect: (value: T) => void;
 
@@ -72,10 +87,10 @@ export class BodyPicker<T> {
     this.element.appendChild(this.trigger);
 
     this.pop = document.createElement('div');
-    this.pop.className = 'body-picker-pop';
+    this.pop.className = 'object-picker-pop';
     this.pop.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.filter = document.createElement('input');
-    this.filter.className = 'bp-filter';
+    this.filter.className = 'op-filter';
     this.filter.placeholder = '絞り込み';
     this.filter.addEventListener('input', () => this.renderList());
     this.filter.addEventListener('keydown', (e) => {
@@ -84,6 +99,7 @@ export class BodyPicker<T> {
     });
     this.pop.appendChild(this.filter);
     this.list = document.createElement('div');
+    this.list.className = 'op-grid';
     this.pop.appendChild(this.list);
     root.appendChild(this.pop);
 
@@ -94,8 +110,11 @@ export class BodyPicker<T> {
     }, true);
   }
 
-  // 候補を差し替える。開いている間に呼ばれても、入力中の絞り込みは保つ。
-  setGroups(groups: readonly BodyPickerGroup<T>[]): void {
+  // 候補を差し替える。前回と同じ内容(ラベルと項目の並びが一致)なら何もしない —
+  // 呼び出し側が毎フレーム同じ内容を渡してくることがあり、無条件に再構築するとポップアップを
+  // 開いたままの絞り込み入力・ホバーと競合する。
+  setGroups(groups: readonly ObjectPickerGroup<T>[]): void {
+    if (groupsEqual(this.groups, groups)) return;
     this.groups = groups;
     if (this.pop.style.display === 'block') this.renderList();
     this.syncTriggerLabel();
@@ -159,13 +178,13 @@ export class BodyPicker<T> {
       if (items.length === 0) continue;
       if (group.label !== '') {
         const head = document.createElement('div');
-        head.className = 'bp-group';
+        head.className = 'op-group';
         head.textContent = group.label;
         this.list.appendChild(head);
       }
       for (const [value, label] of items) {
         const row = document.createElement('div');
-        row.className = 'bp-row';
+        row.className = 'op-row';
         row.textContent = label;
         row.classList.toggle('on', value === this.selected);
         row.addEventListener('click', (e) => {
@@ -179,7 +198,7 @@ export class BodyPicker<T> {
     }
     if (shown === 0) {
       const empty = document.createElement('div');
-      empty.className = 'bp-empty';
+      empty.className = 'op-empty';
       empty.textContent = '該当なし';
       this.list.appendChild(empty);
     }

@@ -6,6 +6,7 @@ import { v3 } from '../physics/vec3';
 import { Player } from './player/player';
 import { Enemy } from './game-entity/enemy';
 import { CameraSystem } from './camera/camera-system';
+import { focusPoint } from './camera/focus-target';
 import { Stage } from './stages/stage';
 import { CreativeStage } from './stages/creative-stage';
 import { LaunchSelection } from './game-mode';
@@ -51,6 +52,7 @@ import { ViewBadge } from './hud/view-badge';
 import { Base } from './game-entity/base';
 import { strongestAttractor } from '../physics/attractor';
 import { mergeAttractors } from './simulation/attractors';
+import { FrameControls } from './frame-controls';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -106,6 +108,7 @@ export class Game {
   private readonly predictedTrajectoryLine: PredictedTrajectoryLine;
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
+  private readonly frameControls: FrameControls;
 
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
   constructor(
@@ -170,7 +173,10 @@ export class Game {
       bootstrapPlayer,
       this.displayTimeManager,
     );
-    this.editor.onFocusNode = (state) => this.cameraSystem.overviewCamera.setFocusPos(state.r);
+    this.editor.onFocusNode = (state) => {
+      this.cameraSystem.overviewCamera.setFocusTarget(
+        focusPoint(this.ephemeris, this.ephemeris.inertialFrame, state.r, state.t));
+    };
     this.mapPicker = new MapPicker(
       this, this._hud, this.entities, this.ephemeris, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager,
@@ -231,6 +237,9 @@ export class Game {
     );
     this.mapPicker.setDocking(this.docking);
     this.viewBadge = new ViewBadge(this._hud.root, this.viewManager);
+    this.frameControls = new FrameControls(
+      this._hud.root, this.ephemeris, this.cameraSystem.overviewCamera, this.editor.planDisplay,
+    );
 
     // 暫定値: cameraSystem はまだ update() を経ていないため activeCameraPos が定まらない。
     // 最初の Game.sync() が render より前に必ず上書きするので、これは描画に使われない。
@@ -660,7 +669,7 @@ export class Game {
     const attractors = mergeAttractors(this.ephemeris.attractorsAt(simTime), this.entities.attractors());
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
-    this.cameraSystem.sync(this.floatingOrigin, attractors);
+    this.cameraSystem.sync(this.floatingOrigin);
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
@@ -714,6 +723,7 @@ export class Game {
       this.cameraSystem.activeCameraScale, overviewMode, this.cameraSystem.activeCameraPos,
     );
     this.mapPicker.sync(overviewMode, simTime, attractors, player);
+    this.frameControls.sync(this.mapPicker.pickables, this.cameraSystem.activeCameraPos, attractors, overviewMode);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     const predictedTargets = player?.alive ? [player] : [];

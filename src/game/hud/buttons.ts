@@ -18,6 +18,7 @@ export function hudButton(label: string, onClick: () => void): HTMLElement {
 export class SegmentedControl<T> {
   readonly element: HTMLElement;
   private readonly buttons = new Map<T, HTMLElement>();
+  private items: readonly (readonly [T, string])[] = [];
   private readonly onSelect: (value: T) => void;
 
   // items は [値, 表示ラベル] の並びで、その順にボタンを並べる。
@@ -41,6 +42,12 @@ export class SegmentedControl<T> {
   // ボタン列を items へ丸ごと差し替える(見出しはそのまま)。選べない選択肢を出してから
   // 拒否するのではなく、状況によって選択肢自体を絞りたい呼び出し側のために用意する。
   setItems(items: readonly (readonly [T, string])[]): void {
+    // 同じ内容なら作り直さない — 差し替えると押しかけのボタンが消えてクリックが届かなくなる。
+    const same = (pair: readonly [T, string], i: number): boolean => {
+      const cur = this.items[i];
+      return cur !== undefined && pair[0] === cur[0] && pair[1] === cur[1];
+    };
+    if (items.length === this.items.length && items.every(same)) return;
     for (const btn of this.buttons.values()) btn.remove();
     this.buttons.clear();
     for (const [value, label] of items) {
@@ -48,6 +55,7 @@ export class SegmentedControl<T> {
       this.element.appendChild(btn);
       this.buttons.set(value, btn);
     }
+    this.items = items.map(([value, label]) => [value, label] as const);
   }
 }
 

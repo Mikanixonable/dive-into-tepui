@@ -1,8 +1,12 @@
 // マップ上で「いま関心の対象になっている天体」の判定。マップのラベル・軌道オブジェクト一覧・
 // 配置UIの基準天体は、この1つの集合を共有して表示を絞る — 3つが別々のフィルタを持つと
 // 「マップには出ているのに一覧に無い」が起き、探しているものへ辿り着く道筋が読めなくなる。
-import { AttractorId } from '../../physics/attractor';
+// 可視性・選択候補はいずれもフォーカス天体という離散的な状態からの親子関係で決める(ズーム
+// 距離のような連続量で判定すると操作の途中で行が明滅する)。systemChainAt だけはカメラ位置
+// という連続量から系の呼び名を導く — 表示を絞る判定ではなく、いまいる場所の説明であるため。
+import { Attractor, AttractorId, strongestAttractor } from '../../physics/attractor';
 import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
+import { Vec3 } from '../../physics/vec3';
 import { bodyClassOf } from './body-class';
 
 // クラスごとの表示トグル。恒星と惑星は常に見えるのでトグルを持たない(太陽系の骨格であり、
@@ -33,7 +37,9 @@ export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
 
 // focusId と同じ系にある天体(自分・親・子・親を共有する兄弟)。UI が「いま見ている系」を
 // 先頭に出すときの判定もこれを使う — 可視性と選択候補の並びで系の切り方が食い違わないように。
-export function sameSystemIds(registry: CelestialRegistry, focusId: AttractorId): ReadonlySet<AttractorId> {
+// focusId が undefined(フォーカス中の天体が無い)なら空集合を返す。
+export function sameSystemIds(registry: CelestialRegistry, focusId: AttractorId | undefined): ReadonlySet<AttractorId> {
+  if (focusId === undefined) return new Set();
   const parent = registry[focusId] === undefined ? null : primaryOf(registry, focusId);
   const ids = new Set<AttractorId>([focusId]);
   if (parent !== null) ids.add(parent);
@@ -63,8 +69,9 @@ function ancestorsOf(registry: CelestialRegistry, focusId: AttractorId): Attract
 //      ガリレオ衛星が現れ、離れれば引っ込む。「距離が近いもの」をズーム距離で判定すると
 //      ズーム操作の途中で行が明滅するので、離散的に切り替わるこの親子関係で代用する。
 //   3. トグルで明示的に足したクラスは全数見える。
+// focusId が undefined(フォーカス中の天体が無い)なら 2. は当たらず、1./3. だけで決まる。
 export function visibleBodyIds(
-  registry: CelestialRegistry, focusId: AttractorId, toggles: BodyClassToggles,
+  registry: CelestialRegistry, focusId: AttractorId | undefined, toggles: BodyClassToggles,
 ): ReadonlySet<AttractorId> {
   const ids = Object.keys(registry);
   const visible = new Set<AttractorId>();
@@ -74,6 +81,8 @@ export function visibleBodyIds(
     if (cls === 'star' || cls === 'planet') visible.add(id);
     else if (cls === 'dwarf' ? toggles.dwarfLabel : cls === 'satellite' ? toggles.satelliteLabel : toggles.smallBodyLabel) visible.add(id);
   }
+
+  if (focusId === undefined) return visible;
 
   for (const id of ancestorsOf(registry, focusId)) visible.add(id);
   // 兄弟は「惑星系の中の兄弟」に限る。恒星の子はすべて互いに兄弟なので、そこまで含めると
@@ -85,4 +94,15 @@ export function visibleBodyIds(
     if (siblingsMatter || id === focusId || primaryOf(registry, id) === focusId) visible.add(id);
   }
   return visible;
+}
+
+// cameraPos で最も強く重力を及ぼす天体から主星まで遡った id の列(その天体自身を含む)。
+// 最寄り天体が registry に未登録(生存中の重力天体)なら、その id 1つだけを返す。
+export function systemChainAt(
+  registry: CelestialRegistry, cameraPos: Vec3, attractors: readonly Attractor[],
+): readonly AttractorId[] {
+  if (attractors.length === 0) return [];
+  const nearest = strongestAttractor(cameraPos, attractors).id;
+  if (registry[nearest] === undefined) return [nearest];
+  return ancestorsOf(registry, nearest);
 }

@@ -8,7 +8,8 @@ import { SOLAR_SYSTEM, bodyDef, primaryOf } from '../../src/physics/solar-system
 import {
   TRIANGULAR_STABILITY_MASS_RATIO, collinearClearanceRatio, hasStableTriangularPoints,
 } from '../../src/physics/lagrange';
-import { DEFAULT_BODY_CLASS_TOGGLES, visibleBodyIds } from '../../src/game/celestial/body-visibility';
+import { DEFAULT_BODY_CLASS_TOGGLES, systemChainAt, visibleBodyIds } from '../../src/game/celestial/body-visibility';
+import { v3, addScaled } from '../../src/physics/vec3';
 
 const MIN_CLEARANCE = 10;
 
@@ -135,5 +136,42 @@ export function register(): void {
     const visible = visibleBodyIds(SOLAR_SYSTEM, 'asteroid-1', DEFAULT_BODY_CLASS_TOGGLES);
     assert.ok(visible.has('earth'));
     assert.ok(visible.has('sun'));
+  });
+
+  test('visibility: focusId が undefined でも恒星・惑星とトグルで足したクラスは見える', () => {
+    const visible = visibleBodyIds(SOLAR_SYSTEM, undefined, { ...DEFAULT_BODY_CLASS_TOGGLES, satelliteLabel: true });
+    assert.ok(visible.has('earth'));
+    assert.ok(visible.has('sun'));
+    assert.ok(visible.has('moon'), 'トグルで足したクラスは無条件で見える');
+    // フォーカス由来の親子・兄弟の追加が無いことを、既定トグルの衛星で確認する。
+    const visibleDefault = visibleBodyIds(SOLAR_SYSTEM, undefined, DEFAULT_BODY_CLASS_TOGGLES);
+    assert.ok(!visibleDefault.has('moon'), 'フォーカスが無ければ親子関係による追加も無い');
+  });
+
+  test('systemChainAt: 月の近くでは月→地球→太陽の系列になる', () => {
+    const e = new Ephemeris();
+    const attractors = e.attractorsAt(0);
+    const moon = e.positionOf('moon', 0);
+    // 月の中心そのものは attractorAccel の直接項が距離ゼロで消えるため、月面付近の
+    // 1点(中心から1000km)を使う。
+    const nearMoon = addScaled(moon, v3(1, 0, 0), 1e6);
+    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, nearMoon, attractors), ['moon', 'earth', 'sun']);
+  });
+
+  test('systemChainAt: 地球の近くでは地球→太陽の系列になる', () => {
+    const e = new Ephemeris();
+    const attractors = e.attractorsAt(0);
+    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, v3(), attractors), ['earth', 'sun']);
+  });
+
+  test('systemChainAt: 太陽の近くでは太陽単独になる', () => {
+    const e = new Ephemeris();
+    const attractors = e.attractorsAt(0);
+    const sun = e.positionOf('sun', 0);
+    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, sun, attractors), ['sun']);
+  });
+
+  test('systemChainAt: attractors が空なら空配列', () => {
+    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, v3(), []), []);
   });
 }
