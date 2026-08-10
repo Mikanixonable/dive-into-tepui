@@ -405,6 +405,7 @@ export class Player extends Ship {
     displayTime: number,
     isActive: boolean,
     ephemeris: Ephemeris,
+    attractors: readonly Attractor[],
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
@@ -427,7 +428,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity);
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, camera.activeCameraPos, attractors);
 
     if (this.alive) {
       const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));
