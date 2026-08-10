@@ -324,6 +324,7 @@ export class Player extends Ship {
       return;
     }
 
+    // 弾以外との接触は Δv ベースの物理ダメージとして、無作為なパーツへ振り分ける。
     if (!this.applyCollisionDamage(contact.impulse / this.mass)) return;
     if (this.hp > 0) {
       this._sfx.clank();
@@ -346,6 +347,7 @@ export class Player extends Ship {
       return;
     }
 
+    // 弾以外との接触は、collideWith と異なり side の放熱板パーツへ固定して振り分ける。
     const damagedPart = this.radiatorParts[side === 'up' ? 0 : 1];
     if (!this.applyCollisionDamage(contact.impulse / this.mass, damagedPart)) return;
     if (damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);
