@@ -72,7 +72,7 @@ export class Simulator {
     }
 
     // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
-    // フレームに1回だけ解決する(§3-8)。
+    // フレームに1回だけ解決する。
     if (resolveCollision && player) {
       this.contactPhysics.resolveBelt(
         dt, this.simTime, player, this.entities.all(), this.ephemeris.attractorsAt(this.simTime), activeStage,
