@@ -114,15 +114,18 @@ export class FocusMarkers {
   }
 
   // 表示中の天体・ラグランジュ点の時刻 t の座標。軌道オブジェクト一覧・右クリック候補も
-  // 同じ表示ポリシーを通し、非表示設定の対象を選べない状態にする。
+  // 同じ表示ポリシーを通し、非表示設定の対象を選べない状態にする。遮蔽やラベル衝突で
+  // マーカーを描かなかった対象は pickable: false を伴って出す — 表示設定で消えているわけでは
+  // ないので候補からは落とさず、画面に出ていない対象を掴めないことだけを表す。
   bodyPickables(t: number, visibility: MapVisibilityPolicy): readonly MapPickable[] {
     const ephemeris = this.ephemeris;
     const posOf = new Map(ephemeris.attractorsAt(t).map((a) => [a.id, a.state.r]));
+    const drawn = new Map(this.allLabels.map((lbl) => [lbl.id, lbl.pickable]));
     const items: MapPickable[] = [];
     for (const id of this.registryIds) {
       if (!visibility.body(id).pickable) continue;
       const pos = posOf.get(id);
-      if (pos !== undefined) items.push({ id, name: celestialBodyName(id), pos, kind: 'body' });
+      if (pos !== undefined) items.push({ id, name: celestialBodyName(id), pos, kind: 'body', pickable: drawn.get(id) ?? true });
     }
     for (const { id, points } of this.lagrangeSources) {
       if (!visibility.body(id).category) continue;
@@ -132,7 +135,7 @@ export class FocusMarkers {
       for (const n of points) {
         const lagrangeId = `${id}-l${n}`;
         if (visibility.body(lagrangeId).pickable) {
-          items.push({ id: lagrangeId, name: `${prefix} L${n}`, pos: l[`L${n}`], kind: 'body' });
+          items.push({ id: lagrangeId, name: `${prefix} L${n}`, pos: l[`L${n}`], kind: 'body', pickable: drawn.get(lagrangeId) ?? true });
         }
       }
     }
@@ -228,7 +231,6 @@ export class FocusMarkers {
     const shownIds: string[] = [];
     for (const lbl of this.shownLabels) {
       shownIds.push(lbl.id);
-      lbl.pickable = !hiddenByPriority.has(lbl.id);
       const projectedState = frame.get(lbl.id);
       if (projectedState?.occluded ?? true) {
         lbl.pickable = false;
