@@ -52,7 +52,8 @@ export class PerfMeter {
 
   private phaseText(label: string, stats: PhaseStats, frames: number): string {
     const sorted = [...stats.samples].sort((a, b) => a - b);
-    const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0;
+    const p95Index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * 0.95) - 1));
+    const p95 = sorted[p95Index] ?? 0;
     return `${label} ${(stats.sum / frames).toFixed(2)}/${p95.toFixed(2)}/${stats.max.toFixed(2)}ms`;
   }
 
