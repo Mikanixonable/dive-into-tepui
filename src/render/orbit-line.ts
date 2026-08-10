@@ -21,10 +21,11 @@ const TOL_APSE = Math.cos((0.3 * Math.PI) / 180); // 近点方向の角変化(e 
 // depth 精度によりまだチラつきうるため余裕を持たせる。
 const EXCLUDE_ANGLE_MARGIN = 2.5;
 
-// 2つの角度(ラジアン)の最短距離を [0, π] で返す。
-function angularDiff(a: number, b: number): number {
-  let d = Math.abs(a - b) % (Math.PI * 2);
-  if (d > Math.PI) d = Math.PI * 2 - d;
+// 角度 a の b からの符号付き差を [-π, π] で返す。
+function signedAngularDiff(a: number, b: number): number {
+  let d = (a - b) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
   return d;
 }
 
@@ -117,17 +118,20 @@ export class OrbitLine {
 
   // 現在の除外天体の位置に応じて描画するセグメントを選び直す(頂点は動かさない)。
   // regenerate と独立に、天体が軌道上を動くたび毎フレーム呼ばれる。
+  // 天体の角半径は頂点間隔よりずっと小さいのが普通で、天体はセグメントの途中に来る。
+  // 端点が除外範囲に入るかだけを見るとその一本を取りこぼすので、除外範囲をまたぐ
+  // セグメント(両端の符号付き差の符号が異なるもの)も落とす。
   private updateIndex(excludeNearBody?: { E: number; radius: number }): void {
     if (!this.snap) return;
+    // 天体が軌道に沿って占める角度は、その半径を軌道長半径で割った値で近似できる。
     const gapHalfWidth = excludeNearBody ? (excludeNearBody.radius / this.snap.a) * EXCLUDE_ANGLE_MARGIN : 0;
     let count = 0;
     for (let i = 0; i < POINT_COUNT; i++) {
       if (excludeNearBody) {
-        const e0 = this.eAtIndex[i]!;
-        const e1 = this.eAtIndex[i + 1]!;
-        if (angularDiff(e0, excludeNearBody.E) < gapHalfWidth || angularDiff(e1, excludeNearBody.E) < gapHalfWidth) {
-          continue;
-        }
+        const d0 = signedAngularDiff(this.eAtIndex[i]!, excludeNearBody.E);
+        const d1 = signedAngularDiff(this.eAtIndex[i + 1]!, excludeNearBody.E);
+        const straddles = Math.abs(d0) < Math.PI / 2 && Math.abs(d1) < Math.PI / 2 && d0 * d1 <= 0;
+        if (straddles || Math.abs(d0) < gapHalfWidth || Math.abs(d1) < gapHalfWidth) continue;
       }
       this.indices[count++] = i;
       this.indices[count++] = i + 1;

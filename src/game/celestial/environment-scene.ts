@@ -166,19 +166,21 @@ export class EnvironmentScene {
     for (const [id, line] of this.referenceLines) {
       const show = this.showsReferenceLine(id, focusId, toggles);
       const el = show ? this.orbitElementsFor(id, simTime) : null;
+      const rel = el ? sub(this.ephemeris.stateOf(id, simTime).r, el.center.state.r) : null;
       // 離心率の大きい軌道(彗星など)は近日点付近で曲率が急なので、そこへ頂点を寄せないと
-      // 楕円が多角形として粗く見える。
-      const densifyNear = el && el.e > 0.5 ? positionOnOrbit(el, 0) : undefined;
-      const excludeNearBody = el ? this.excludeNearBodyFor(id, el, simTime) : undefined;
+      // 楕円が多角形として粗く見える。それ以外は天体自身の位置へ寄せる — 除去できる
+      // セグメントの幅は頂点間隔が下限になるので、密にしないと天体半径よりずっと広い
+      // 隙間が空く。
+      const densifyNear = el && rel ? (el.e > 0.5 ? positionOnOrbit(el, 0) : rel) : undefined;
+      const excludeNearBody = el && rel ? this.excludeNearBodyFor(id, el, rel) : undefined;
       line.sync(el, fo, false, densifyNear, excludeNearBody);
     }
   }
 
   // 天体は自らの軌道楕円上に乗っているため、その楕円をそのまま描くと天体メッシュと
   // depth が競合してチラつく(z-fighting)。天体の現在の離心近点角と半径を返し、
-  // OrbitLine 側でその周辺のセグメントを間引かせる。
-  private excludeNearBodyFor(id: OrbitingId, el: OrbitalElements, simTime: number): { E: number; radius: number } {
-    const rel = sub(this.ephemeris.stateOf(id, simTime).r, el.center.state.r);
+  // OrbitLine 側でその周辺のセグメントを間引かせる。rel は中心天体相対の現在位置。
+  private excludeNearBodyFor(id: OrbitingId, el: OrbitalElements, rel: Vec3): { E: number; radius: number } {
     const nu = trueAnomalyAt(el, rel);
     const E = Math.atan2(Math.sqrt(1 - el.e * el.e) * Math.sin(nu), el.e + Math.cos(nu));
     return { E, radius: bodyDef(this.ephemeris.registry, id).radius };
