@@ -1,11 +1,8 @@
 // マップの座標系UIのうち「何に固定/追随するか」を選ばせるゾーン。上段は登録天体・自艦・
 // 敵・基地・弾薬まで含む全候補から選ぶプルダウン(ObjectPicker)、下段はいまカメラがいる
 // 系の天体だけに絞ったクイックボタン(SegmentedControl)。
-import { Attractor } from '../../physics/attractor';
+import { AttractorId } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
-import { primaryOf } from '../../physics/solar-system';
-import { Vec3 } from '../../physics/vec3';
-import { systemChainAt } from '../celestial/body-visibility';
 import type { MapPickable } from '../map-pick';
 import { SegmentedControl } from './buttons';
 import { groupPickables, LAGRANGE_ID, lagrangeParentId } from './object-groups';
@@ -59,27 +56,18 @@ export class AnchorZone {
     this.picker.setGroups(groups);
   }
 
-  // クイックボタンを「いまカメラがいる系」の天体・衛星・ラグランジュ点へ合わせる。
+  // クイックボタンを、渡された系の天体列(+その衛星・ラグランジュ点)へ合わせる。
   // 候補に無い id は出さない(押せてから拒否することになるため)。
-  setNearby(cameraPos: Vec3, attractors: readonly Attractor[], pickables: readonly MapPickable[]): void {
-    const registry = this.ephemeris.registry;
-    const chain = systemChainAt(registry, cameraPos, attractors);
+  setNearby(members: readonly AttractorId[], pickables: readonly MapPickable[]): void {
     const byId = new Map(pickables.map((p) => [p.id, p] as const));
 
-    const bodyIds = chain.filter((id) => byId.has(id));
-    // 系列に含まれる天体を親に持つ衛星を足す。
-    const satelliteIds: string[] = [];
-    for (const p of pickables) {
-      if (p.kind !== 'body' || LAGRANGE_ID.test(p.id) || bodyIds.includes(p.id)) continue;
-      const parent = registry[p.id] === undefined ? null : primaryOf(registry, p.id);
-      if (parent !== null && bodyIds.includes(parent)) satelliteIds.push(p.id);
-    }
-    const baseIds = [...bodyIds, ...satelliteIds];
+    const baseIds = members.filter((id) => byId.has(id));
+    const baseIdSet = new Set(baseIds);
 
     const lagrangeIds: string[] = [];
     for (const p of pickables) {
       if (p.kind !== 'body' || !LAGRANGE_ID.test(p.id)) continue;
-      if (baseIds.includes(lagrangeParentId(p.id))) lagrangeIds.push(p.id);
+      if (baseIdSet.has(lagrangeParentId(p.id))) lagrangeIds.push(p.id);
     }
 
     const items: (readonly [string | null, string])[] = this.releaseLabel !== null ? [[null, '解除']] : [];
