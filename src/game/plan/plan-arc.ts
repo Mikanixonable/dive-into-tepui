@@ -8,6 +8,7 @@ import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Attractor, localOrbitPeriod } from '../../physics/attractor';
 import { containingBody, sweptSphereToi } from '../../physics/sphere-contact';
+import { apsisCrossing } from '../../physics/trajectory-features';
 import { isBurnedUp } from '../../physics/atmosphere';
 import { attractorsNear, classifyAttractors, gravityBodiesAt, mergeAttractors } from '../simulation/attractors';
 import { Vec3 } from '../../physics/vec3';
@@ -41,6 +42,10 @@ export class PlanArc {
   private _samples: readonly KinematicState[] = [];
   // 積分中に最初に天体表面へ達した状態。到達しなければ null。
   private impactState: KinematicState | null = null;
+  // 積分中に最初に見つかった近地点・遠地点。apsisCenter が null、またはその極値へ
+  // 区間が届かなければ null のまま。
+  private periapsisState: KinematicState | null = null;
+  private apoapsisState: KinematicState | null = null;
   // 非有限・天体衝突・ステップ数上限で積分を打ち切ったか。
   private truncated = false;
   private key: ComputeKey | null = null;
@@ -63,6 +68,17 @@ export class PlanArc {
     return this.impactState;
   }
 
+  // 積分中に最初に見つかった近地点。中心天体へ接近し続けたまま表面へ達する
+  // (衝突軌道で近地点が存在しない)場合は null。
+  periapsisPoint(): KinematicState | null {
+    return this.periapsisState;
+  }
+
+  // 積分中に最初に見つかった遠地点。楕円でない、または区間がそこまで届かなければ null。
+  apoapsisPoint(): KinematicState | null {
+    return this.apoapsisState;
+  }
+
   // 起点・終端の変化を検出して再積分する。tracksLiveAnchor(計画が空の間の唯一の区間)では
   // state0 が自機を毎フレーム追従して end も連動して動く。'orbit' プリセットでは区間長
   // (= 起点の接触周期)自体も J2・大気抵抗で毎フレーム連続的に変化するため、区間長・
@@ -74,10 +90,12 @@ export class PlanArc {
   // 差分がどれだけ小さくても即座に再積分する — そうしないと切り替え直後の1フレームが
   // 前の起点と時刻的に近いというだけで、無関係な軌道をサンプル間隔ぶん描き続けてしまう。
   // tracksLiveAnchor でなければ state0/end の同一性・値の変化で即座に再積分する
-  // (ノードの Δv 編集は state0 の同一性変化で必ず拾われる)。
+  // (ノードの Δv 編集は state0 の同一性変化で必ず拾われる)。apsisCenter は
+  // periapsisPoint/apoapsisPoint を検出する基準天体 — null なら検出自体を行わない。
   update(
     state0: KinematicState, end: number, ephemeris: Ephemeris,
     dynamicAttractors: readonly Attractor[], tracksLiveAnchor: boolean,
+    apsisCenter: Attractor | null,
   ): void {
     if (tracksLiveAnchor) {
       // 同一性が変わっても時刻が前進していれば通常の追従とみなし、下のサンプル間隔判定に委ねる。
@@ -92,7 +110,7 @@ export class PlanArc {
       this.recomputed = this.key === null || state0 !== this.key.state0 || end !== this.key.end;
     }
     if (this.recomputed) {
-      this.integrate(state0, end, ephemeris, dynamicAttractors);
+      this.integrate(state0, end, ephemeris, dynamicAttractors, apsisCenter);
       this.key = { state0, end };
     }
   }
@@ -148,12 +166,15 @@ export class PlanArc {
   // 区間長は最大1年に及び、そのあいだの位置を EntityManager には問えないため。
   private integrate(
     state0: KinematicState, end: number, ephemeris: Ephemeris, dynamicAttractors: readonly Attractor[],
+    apsisCenter: Attractor | null,
   ): void {
     const duration = Math.max(0, end - state0.t);
     const trajectory = new DynamicTrajectory(state0);
     const sampleInterval = duration / C.PLAN_ARC_MAX_SAMPLES;
     this.truncated = false;
     this.impactState = null;
+    this.periapsisState = null;
+    this.apoapsisState = null;
 
     let steps = 0;
     while (trajectory.state.t < end - EPOCH_EPS) {
@@ -175,6 +196,11 @@ export class PlanArc {
       if (!finite) {
         this.truncated = true;
         break;
+      }
+      if (apsisCenter && (this.periapsisState === null || this.apoapsisState === null)) {
+        const crossing = apsisCrossing(apsisCenter, trajectory.prevState, trajectory.state);
+        if (crossing?.kind === 'periapsis' && this.periapsisState === null) this.periapsisState = crossing.state;
+        if (crossing?.kind === 'apoapsis' && this.apoapsisState === null) this.apoapsisState = crossing.state;
       }
       const body = containingBody(r, stepAttractors, 0);
       const impacted = body !== null || isBurnedUp(r, stepAttractors, C.REENTRY_ALT);
