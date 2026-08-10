@@ -33,6 +33,7 @@ import { Attractor, orbitalElementsOf, strongestAttractor } from '../physics/att
 import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
 import { bodyDef, primaryOf } from '../physics/solar-system';
+import { isPositionInFocusedSystem } from './celestial/body-visibility';
 
 interface PickHandler {
   itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[];
@@ -135,11 +136,15 @@ export class MapPicker {
     items.push(...this.editor.planDisplay.apsisMarkers);
     items.push(...this.game.equatorNodeMarkers.mapPickables());
 
-    // マップビューでは、天体に遮蔽されて画面上見えていない候補をピック対象から除く —
-    // 見えているのに選べない/見えないのに選べる、という食い違いを防ぐため、表示側
-    // (各所有者の sync)と同じ isOccluded 判定を使う。戦闘ビューでは効かせない。
+    // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
+    // 同じ判定なので、地球の裏側の player は表示・選択でき、土星系の player はどちらにも
+    // 現れない。他の候補は従来どおり天体遮蔽でピック対象から除く。
+    const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
+    const attractors = this.ephemeris.attractorsAt(simTime);
     this.items = this.cameraSystem.overviewMode
-      ? items.filter((item) => !isOccluded(this.cameraSystem.activeCameraPos, item.pos, this.ephemeris.attractorsAt(simTime)))
+      ? items.filter((item) => item.kind === 'player'
+        ? isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, attractors)
+        : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, attractors))
       : items;
   }
 
