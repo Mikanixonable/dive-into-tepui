@@ -2,7 +2,7 @@
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
-import { Attractor } from '../../physics/attractor';
+import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
 import { ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -46,6 +46,9 @@ export class PlanPath {
   // null のとき。PlanArc.samples をそのまま公開する参照で、update で区間を再積分しない限り
   // 同一参照を保つ(render/sampled-line.ts の再bake抑制が参照同一性で効くのはこの前提による)。
   finalSegmentSamples: readonly KinematicState[] | null = null;
+  // 末尾区間の近地点/遠地点状態。区間が地表到達等で打ち切られ近地点/遠地点に到達しなかった場合は null。
+  finalPeriapsisPoint: KinematicState | null = null;
+  finalApoapsisPoint: KinematicState | null = null;
 
   // group をシーンへ登録する(初期状態は非表示)。
   constructor(scene: THREE.Scene, private readonly displayTimeManager: DisplayTimeManager) {
@@ -69,13 +72,20 @@ export class PlanPath {
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       const tracksLiveAnchor = plan.nodes.length === 0 && i === segments.length - 1;
-      this.arcAt(i).update(seg.state0, seg.end, ephemeris, dynamicAttractors, tracksLiveAnchor);
+      // 近地点/遠地点は末尾区間だけが必要とするので、他区間は追跡自体を省く。
+      // 起点自身の時刻の重力源スナップショットで判定する — displayTime 時点の attractors では
+      // 表示時刻に応じて中心天体が変わってしまい、区間の物理そのものと食い違う。
+      const isFinalSegment = i === segments.length - 1;
+      const apsisCenter = isFinalSegment ? strongestAttractor(seg.state0.r, ephemeris.attractorsAt(seg.state0.t)) : null;
+      this.arcAt(i).update(seg.state0, seg.end, ephemeris, dynamicAttractors, tracksLiveAnchor, apsisCenter);
     }
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
     const hasFinalSegment = segments.length > plan.nodes.length;
     this.finalSegmentStart = hasFinalSegment ? segments[segments.length - 1]!.state0 : null;
     this.finalSegmentSamples = hasFinalSegment ? this.arcs[segments.length - 1]!.samples : null;
+    this.finalPeriapsisPoint = hasFinalSegment ? this.arcs[segments.length - 1]!.periapsisPoint() : null;
+    this.finalApoapsisPoint = hasFinalSegment ? this.arcs[segments.length - 1]!.apoapsisPoint() : null;
   }
 
   // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の arc を隠す。

@@ -1,9 +1,11 @@
-// サンプル列(折れ線)そのものから特徴点を探す純粋関数群。接触軌道要素の解析式は評価
-// エポックが変わるだけで値が動く(J2 短周期振動が1周回で数十km)ため、実際に描かれている
-// 積分結果と一致させたい特徴点(アプシス・赤道交点)はここで折れ線を走査して求める。
+// 軌道の特徴点を探す純粋関数群。接触軌道要素の解析式は評価エポックが変わるだけで値が
+// 動く(J2 短周期振動が1周回で数十km)ため、実際に描かれている積分結果と一致させたい
+// 特徴点はここで求める。赤道交点(findEquatorCrossings)はサンプル列(折れ線)を走査して
+// 求め、アプシス(apsisCrossing)は積分の1ステップごとに動径速度の符号反転を直接見て求める
+// — どちらも同じ黄金分割探索/二分法の補間機構(refineExtremum/findCrossing)を使う。
 import { Attractor } from './attractor';
 import { hermiteInterpolate, KinematicState } from './kinematic-state';
-import { len, sub, Vec3 } from './vec3';
+import { dot, len, sub, Vec3 } from './vec3';
 
 // 極値探索・交点二分法の反復回数。固定回数にしているのは、収束判定にすると反復回数が
 // フレームごとに変動し、その分だけ結果がわずかに揺れるため。
@@ -47,29 +49,27 @@ function refineExtremum(
   return atParam(a, b, (lo + hi) / 2);
 }
 
-// [a, b] 区間内で、中心天体からの距離が極小/極大になる点を、隣接3サンプルの
-// 符号パターンから探して補間で追い込む。見つからなければ null。
-export function findApsis(
-  samples: readonly KinematicState[], center: Attractor, kind: 'periapsis' | 'apoapsis',
-): KinematicState | null {
-  if (samples.length < 3) return null;
-  const findMax = kind === 'apoapsis';
-  const dists = samples.map((s) => distFromCenter(center, s));
-  for (let i = 1; i < samples.length - 1; i++) {
-    const isExtremum = findMax
-      ? dists[i]! >= dists[i - 1]! && dists[i]! >= dists[i + 1]!
-      : dists[i]! <= dists[i - 1]! && dists[i]! <= dists[i + 1]!;
-    if (!isExtremum) continue;
-    // 極値が i そのものに乗る退化ケースも、i-1..i と i..i+1 のどちらかの区間内に実際の
-    // 極値があるとみなして絞り込む。放物線近似で「どちら側か」を予測することもできるが
-    // (差が小さい平坦側に頂点が来る)、両側を実際に絞り込んで比較するほうが、近似が外れて
-    // 頂点の無い区間を渡してしまう(→黄金分割探索が端点へ収束するだけに終わる)構造的な
-    // 取り違えが起きない。反復コストは2倍になるが、1フレームに数個のアイコンなので無視できる。
-    const left = refineExtremum(center, samples[i - 1]!, samples[i]!, findMax);
-    const right = refineExtremum(center, samples[i]!, samples[i + 1]!, findMax);
-    const leftDist = distFromCenter(center, left);
-    const rightDist = distFromCenter(center, right);
-    return findMax ? (leftDist >= rightDist ? left : right) : (leftDist <= rightDist ? left : right);
+export type ApsisKind = 'periapsis' | 'apoapsis';
+
+export interface ApsisCrossing {
+  readonly state: KinematicState;
+  readonly kind: ApsisKind;
+}
+
+// prev→next の1積分ステップの間に中心天体からの動径速度(距離の変化率)の符号が
+// 反転していれば、その瞬間がアプシス。減速→増速(負→正)が近地点、増速→減速
+// (正→負)が遠地点で、どちらでもなければ null。中心天体自身も動いている場合が
+// あるので、位置だけでなく速度も中心天体の値を差し引いた相対量で判定する。
+export function apsisCrossing(center: Attractor, prev: KinematicState, next: KinematicState): ApsisCrossing | null {
+  const radialVel = (s: KinematicState): number =>
+    dot(sub(s.r, center.state.r), sub(s.v, center.state.v));
+  const vPrev = radialVel(prev);
+  const vNext = radialVel(next);
+  if (vPrev < 0 && vNext >= 0) {
+    return { state: refineExtremum(center, prev, next, false), kind: 'periapsis' };
+  }
+  if (vPrev > 0 && vNext <= 0) {
+    return { state: refineExtremum(center, prev, next, true), kind: 'apoapsis' };
   }
   return null;
 }
@@ -116,20 +116,4 @@ export function findEquatorCrossings(
     ascending: findCrossing(samples, center, pole, true),
     descending: findCrossing(samples, center, pole, false),
   };
-}
-
-// 円軌道に近いかどうかを、接触軌道要素ではなくサンプル列そのものの半径変動から判定する。
-// (rMax-rMin)/2/rMean を離心率相当の指標として扱う — J2 短周期振動下では接触離心率が
-// エポックごとに揺れるため、エポック依存の値でガードすると解消したい問題がガード側に残る。
-export function apparentEccentricity(samples: readonly KinematicState[], center: Attractor): number {
-  if (samples.length === 0) return 0;
-  let rMin = Infinity, rMax = -Infinity, rSum = 0;
-  for (const s of samples) {
-    const r = distFromCenter(center, s);
-    rMin = Math.min(rMin, r);
-    rMax = Math.max(rMax, r);
-    rSum += r;
-  }
-  const rMean = rSum / samples.length;
-  return rMean > 0 ? (rMax - rMin) / 2 / rMean : 0;
 }

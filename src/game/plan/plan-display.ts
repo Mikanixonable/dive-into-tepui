@@ -3,7 +3,6 @@
 import * as THREE from 'three/webgpu';
 import { Vec3, len, sub } from '../../physics/vec3';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
-import { apparentEccentricity, findApsis } from '../../physics/trajectory-features';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../physics/projection';
 import { ReferenceFrame } from '../../physics/frame';
@@ -179,35 +178,47 @@ export class PlanDisplay {
     return `T+${h}h${String(m).padStart(2, '0')}m 高度 ${fmtMarkerDist(alt, 0)}`;
   }
 
-  // 最後のバーン後の軌道(これから乗る軌道)の近地点・遠地点アイコンを、実際に描かれている
-  // 積分折れ線(finalSegmentSamples)を走査して求める — 解析要素はエポックが動くだけで
-  // J2 短周期振動ぶん値が変わるため、Δv=0 のノードを置いても線の上のアイコンが動かない
-  // ようにするには、ノードの有無に関わらず同じ折れ線から拾う必要がある。
-  // apparentEccentricity がほぼ0(円に近い)なら方向が不定として両方隠す。
+  // 最後のバーン後の軌道(これから乗る軌道)の近地点・遠地点アイコンを、PlanPath が積分中
+  // から直接拾った finalPeriapsisPoint/finalApoapsisPoint から組み立てる。衝突コースの
+  // 区間では近地点に達する前に地表へ達するため finalPeriapsisPoint が null になるのは
+  // 正常な挙動であり、そのときは近地点アイコンを単に出さない。
+  // 両方揃っているときだけ、2点の中心からの距離比から離心率相当の値を求め、ほぼ円
+  // (APSIS_MIN_ECC 未満)なら方向が不定として両方隠す — 片方しか無い場合(双曲線軌道等)は
+  // この判定自体を行わず、そのまま出す。
   private apsisIconsOf(): readonly ApsisIcon[] {
-    const state0 = this.path.finalSegmentStart;
-    const samples = this.path.finalSegmentSamples;
-    if (!state0 || !samples || !this.plan) return [];
-    const center = strongestAttractor(state0.r, this.ephemeris.attractorsAt(state0.t));
-    if (apparentEccentricity(samples, center) < C.APSIS_MIN_ECC) return [];
+    const pe = this.path.finalPeriapsisPoint;
+    const ap = this.path.finalApoapsisPoint;
+    if (!this.plan) return [];
+
+    let peDist = 0;
+    let peCenter: Attractor | null = null;
+    if (pe) {
+      peCenter = strongestAttractor(pe.r, this.ephemeris.attractorsAt(pe.t));
+      peDist = len(sub(pe.r, peCenter.state.r));
+    }
+    let apDist = 0;
+    let apCenter: Attractor | null = null;
+    if (ap) {
+      apCenter = strongestAttractor(ap.r, this.ephemeris.attractorsAt(ap.t));
+      apDist = len(sub(ap.r, apCenter.state.r));
+    }
+    if (pe && ap && (apDist - peDist) / (apDist + peDist) < C.APSIS_MIN_ECC) return [];
 
     const icons: ApsisIcon[] = [];
-    const pe = findApsis(samples, center, 'periapsis');
-    if (pe) {
+    if (pe && peCenter) {
       icons.push({
         id: 'apsisPe', name: '近地点', kind: 'apsis',
         pos: this.path.toDisplay(pe.r, pe.t),
         time: pe.t,
-        label: `Pe ${fmtDist(len(sub(pe.r, center.state.r)) - center.radius)}`,
+        label: `Pe ${fmtDist(peDist - peCenter.radius)}`,
       });
     }
-    const ap = findApsis(samples, center, 'apoapsis');
-    if (ap) {
+    if (ap && apCenter) {
       icons.push({
         id: 'apsisAp', name: '遠地点', kind: 'apsis',
         pos: this.path.toDisplay(ap.r, ap.t),
         time: ap.t,
-        label: `Ap ${fmtDist(len(sub(ap.r, center.state.r)) - center.radius)}`,
+        label: `Ap ${fmtDist(apDist - apCenter.radius)}`,
       });
     }
     return icons;
