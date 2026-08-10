@@ -686,7 +686,7 @@ export class Game {
     for (const ship of this.entities.players) {
       ship.syncPlayer(
         this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused,
-        displayTime, ship === player, this.ephemeris,
+        displayTime, ship === player, this.ephemeris, attractors,
       );
     }
 
