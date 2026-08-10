@@ -1,0 +1,90 @@
+# 章04: セーブ系のレビュー findings
+
+対象: `src/game/save/` 一式、`src/game/save-data.ts`、`src/game/hud/save-browser.ts`、
+各エンティティの `serialize()`/`static restore(...)`、`Game.restore`、`Stage.restore`。
+
+## 修正済み
+
+- **[bug]** `src/game/game-entity/base.ts:50-51` — `Base` のコンストラクタが復元 id を受け取れず、
+  常に `idAllocator.next()`(引数なし)で新規採番していた。`Base.restore`(`base.ts:88-93`)は
+  `data.id` を受け取りながら一切使っておらず、セーブ→ロードのたびに基地の id が変わっていた
+  (`Player`/`Enemy`/`Ammo`/`Asteroid` は同じ `EntityIdAllocator` パターンで復元 id を通しており、
+  `Base` だけ抜けていた)。`serialize()` が `id: this.id` を返している以上 round trip の欠落は明白な
+  バグと判断し、`constructor(..., id?: string)` を追加して `idAllocator.next(id)` に通す形へ修正
+  (フォーマット変更なし、`BaseSaveData.id` は既に存在)。
+
+- **[bug]** `src/game/hud/save-browser.ts:182` — `celestialBodyName(s.centerBodyId)` の戻り値を
+  `esc()` せず `innerHTML` へ直書きしていた。`celestialBodyName`(`hud/frame-labels.ts:9-11`)は
+  未登録 id に対して**そのまま id 文字列を返す**フォールバックを持つため、取り込んだセーブファイルの
+  `centerBodyId`(`checkSlotExportShape` は構造検証のみで各フィールドの型までは検証しない)に
+  任意の文字列を仕込めば、そのスナップショットカードを開いた瞬間に HTML/スクリプトが注入される
+  (格納型 XSS)。`esc()` で包んで修正。他の文字列フィールド(`s.name`/`h.stageId`/`slot.name`)は
+  既に `esc()` を通っていることを確認済み。
+
+## 報告のみ(フォーマット変更を要する/挙動仕様の変更)
+
+- **[bug]** `src/game/game-entity/enemy.ts:335-348`(`Enemy.restore`) — `EnemySaveData` は
+  `accent: string | number` のみを持ち、コンストラクタが個別に取る `accent`(機体色)と
+  `orbitLineColor`(軌道線色)を区別できない。`Enemy.restore` は `data.accent` を両方に渡している。
+  実際に2つが異なる呼び出しが存在する: `stage-utils/spawner/enemy-spawner.ts:51`
+  (`generateDriftingEnemy(..., accent, C.COLOR_ENEMY_ORBIT_LINE, ...)`、accent は敵ごとの個別色、
+  orbitLineColor は暗い固定グレー `C.COLOR_ENEMY_ORBIT_LINE`)。この経路(stage0/stage00 の訓練
+  クラスタ敵)で生成された敵をセーブ→ロードすると、軌道線の色が固定グレーから機体色へ変わる
+  (見た目のみの回帰、当たり判定/HP等には影響なし)。`orbitLineColor` を `EnemySaveData` に
+  追加すればフォーマット変更を要するため修正せず報告のみとする。
+
+- **[refactor]** `src/game/save/save-transfer.ts` の `checkSlotExportShape` — フォーマット・
+  バージョン・トップレベル構造(`slot.stages` が配列であること等)は検証するが、各
+  `SnapshotMeta` の個々のフィールド(`pinned: boolean`・`name: string`・`centerBodyId: string`等)
+  までは型検証していない(`as unknown as StageHistoryMeta` で素通し)。表示側は `num()`/`esc()`で
+  防御しているため実害は今回の XSS 修正で塞がったが、`pinned` が非 boolean だった場合の
+  `pinned:false` フィルタ(`filter(m => m.pinned)`)の挙動などは無保証。深い検証を要求する挙動
+  変更になるため修正はせず記録のみ。
+
+## 確認したが問題なし
+
+- `SnapshotMeta.pinned` を保持軸とする retention: `SaveSlots.addSnapshot`(`save-slots.ts:158-189`)
+  は容量超過時に `oldestAutoIn` で pinned:false のみを1件ずつ落として再試行し、非容量エラーでは
+  即座に諦めて `persist()` で索引を実体と一致させる。`pruneAutoOverflow`(`save-slots.ts:324-330`)
+  は unpinned のリングバッファ(12件)、`setPinned`/`addSnapshot` の pinned 昇格は
+  `PINNED_SNAPSHOT_LIMIT`(30)を超える前に拒否であって追い出しではない。クリップ操作
+  (`SaveBrowser.handleTogglePin`)は `pinned` を立てるだけで `kind` を書き換えない
+  (`save-slots.ts` に `kind` を書き換える経路自体が存在しない)。
+- `importSlot`(`save-slots.ts:269-300`)の失敗時ロールバック: 途中まで書いた本体を
+  `written` 配列で追跡し、失敗時に全て `deleteSnapshot` してから `null` を返す。索引には
+  一切追加していないので中途半端なスロットが残らない。`duplicateSlot` は `importSlot` を
+  経由するため同じ保証を受ける。
+- 書き込みは例外を素通しし読み込みは `null` を返す非対称(`save-store.ts`)は一貫している。
+- `phase !== 'playing'` の書き込みガード: `AutoSave.capture`(`autosave.ts:20-25`)・
+  `SaveBrowser.canCaptureNow`(`save-browser.ts:81-83`)いずれも `activeStage.isPlaying` を見て
+  拒否する。`SnapshotService.restore` 後は `SaveSlots.discardAfter` で復元元より新しい
+  unpinned スナップショットを破棄している(`snapshot-service.ts:60-61`)。
+- `save-transfer.ts` の異物 JSON 検証: `format`/`formatVersion`/トップレベル構造を
+  unknown から段階的に絞り込み、`version` 不一致のスナップショットは個別に
+  メタ配列から落とす(`checkSlotExportShape:150-154`)。全滅時は `totalKept === 0` で
+  インポート自体を拒否。import は常に `genId()` で新規 id を採番し新規スロットとして追加する
+  (`importSlot`)ため、同じファイルを2回取り込んでも既存スロットを壊さない。
+- `SAVE_VERSION`(=2)を上げるべき見落とし: `0e26bcf`(dual-epoch ephemeris)で追加された
+  `GameSaveData.ephemerisContext` は元々 optional フィールドとして設計されており、
+  互換性判定は `SAVE_VERSION` とは独立した `ephemerisContextStatus`/`isEphemerisContextCompatible`
+  (`ephemeris-context.ts`)で行われる。旧セーブ(`ephemerisContext === undefined`)は
+  `'legacy'` 扱いで許容され、明示的な不一致のみ拒否する設計になっており、`SAVE_VERSION` を
+  上げる必要はない。`tests/physics/save-ephemeris-context.test.ts` を含む `test:physics` 390件は
+  全て通過。
+- 各サブシステム(`ThermalSystem`/`RadiatorSystem`/`PowerSystem`/`PlayerThrottle`/
+  `PlayerFire`/`ScoreCounter`/`Logistics`/`Stage0`/`Stage00`)の `serialize()`/`restore()` は
+  フィールド単位で1:1に対応しており、往復欠落なし。`ThrottleSaveData.rcsDamp`/`progradeHold`
+  や `PlayerSaveData.planExecution`/`fineAttitude` など旧セーブに無いフィールドは `??` で
+  既定値へフォールバックしている。
+- `Part`/`AnyPart` の往復: `serialize()` は `{...p}` のプレーンコピー、`restorePart` は
+  `createPart(type, data)` へ全フィールドを上書き引数として渡すため型ごとの取りこぼしがない。
+- `Ship.restoreOverallHp`(Enemy)と `parts` 直接差し替え(Player)の2経路とも、
+  CLAUDE.md の記載どおり `parts` を HP の正本として収束させている。
+- `save-data.ts` はロジックを含まない型定義のみ。
+- `EntityIdAllocator` の追い越し(`reserve`)は Player/Enemy(共有カウンタ、prefix `entity-`)・
+  Ammo・Asteroid で正しく機能していた(`Base` のみ欠落 — 上記で修正済み)。
+
+## 検証
+
+- `npm run typecheck`: 成功。
+- `npm run test:physics`(`save-ephemeris-context.test.ts` を含む): 390/390 成功。
