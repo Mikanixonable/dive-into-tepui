@@ -11,6 +11,7 @@ import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { Simulator } from '../simulation/simulator';
 import type { MarkerManager } from '../marker/marker-manager';
+import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { Attractor, orbitalElementsOf } from '../../physics/attractor';
@@ -108,8 +109,8 @@ export class CreativeStage extends Stage {
   }
 
   // 基地は実寸(半径100m)のメッシュしか持たず、マップ視点では見えないほど小さいので、
-  // FocusMarkers と同じ ● のポイントマーカーを立てて発見できるようにする。戦闘ビューでは
-  // 画面外なら ▣ AMMO の補給と同じ方式の△方位矢印で補う。overviewMode 中は進行方向を向く
+  // 艦と同じ ▲ のポイントマーカーを立てて発見できるようにする。戦闘ビューでは
+  // 画面外なら ▣ AMMO の補給と同じ方式の ↑ 方位矢印で補う。overviewMode 中は進行方向を向く
   // 三角形に差し替える(mk-poi は FocusMarkers の天体ラベルと共用するため、専用の mk-base を使う)。
   private syncBaseMarkers(project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean): void {
     const bases = this._entities.bases;
@@ -126,11 +127,11 @@ export class CreativeStage extends Stage {
       const p = project(ds.r);
       if (overviewMode) {
         const rotationDeg = this._markerManager.headingRotationDeg(ds.r, ds.v, project, scale);
-        this._markerManager.set(key, 'mk-base', '▲', p.x, p.y, p.front, label, 1, undefined, rotationDeg);
+        this._markerManager.set(key, 'mk-base', ENTITY_GLYPH.ship, p.x, p.y, p.front, label, 1, undefined, rotationDeg);
         this._markerManager.hide(bearingKey);
       } else {
-        this._markerManager.set(key, 'mk-poi', '●', p.x, p.y, p.front, label);
-        this._markerManager.setBearing(bearingKey, 'mk-poi', '△', p, label, 0.9);
+        this._markerManager.set(key, 'mk-poi', ENTITY_GLYPH.ship, p.x, p.y, p.front, label);
+        this._markerManager.setBearing(bearingKey, 'mk-poi', DIRECTION_GLYPH.bearing, p, label, 0.9);
       }
     }
     for (let i = bases.length; i < this.lastBaseMarkerCount; i++) {
@@ -213,7 +214,7 @@ export class CreativeStage extends Stage {
     }
     this.previewOrbitLine.sync(this.preview.elements, fo, true);
     this._markerManager.setPosition(
-      'creative-preview', 'mk-self', '▷', this.preview.pos, project,
+      'creative-preview', 'mk-self', ENTITY_GLYPH.preview, this.preview.pos, project,
       'PREVIEW', 1, '#00ffff', 0, false, false,
     );
   }

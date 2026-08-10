@@ -1,5 +1,5 @@
 // 軌道計画の姿の表示: 計画折れ線(PlanPath)の駆動、表示座標系(planFrame)、
-// 表示時刻の計画上の自機位置ゴースト(⬡ plannedPlayer マーカー)。
+// 表示時刻の計画上の自機位置ゴースト(⬢ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { Vec3, len, sub } from '../../physics/vec3';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
@@ -11,6 +11,7 @@ import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
 import { celestialBodyName } from '../hud/frame-labels';
 import { TickRank, calendarBoundaries, tickLabel } from '../hud/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
+import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { MapPickable } from '../map-pick';
@@ -157,14 +158,14 @@ export class PlanDisplay {
     };
   }
 
-  // ⬡ ゴーストマーカーを計画位置に置く。計画がそこまで届いていなければ隠す。
+  // ⬢ ゴーストマーカーを計画位置に置く。計画がそこまで届いていなければ隠す。
   private syncGhost(project: ProjectFn): void {
     if (!this.ghost) {
       this.markerManager.hide('plannedPlayer');
       return;
     }
     this.markerManager.setPosition(
-      'plannedPlayer', 'mk-planned', '⬡', this.ghost.pos, project, this.ghost.label,
+      'plannedPlayer', 'mk-planned', ENTITY_GLYPH.ghost, this.ghost.pos, project, this.ghost.label,
     );
   }
 
@@ -268,7 +269,7 @@ export class PlanDisplay {
     for (const key of ['apsisPe', 'apsisAp'] as const) {
       const icon = this.apsisIcons.find((m) => m.id === key);
       if (icon && !(overviewMode && isOccluded(cameraPos, icon.pos, this.attractors))) {
-        this.markerManager.setPosition(key, 'mk-apsis', '◇', icon.pos, project, icon.label);
+        this.markerManager.setPosition(key, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, icon.pos, project, icon.label);
       } else {
         this.markerManager.hide(key);
       }
@@ -279,7 +280,7 @@ export class PlanDisplay {
   private syncImpactMarkers(project: ProjectFn): void {
     for (const key of IMPACT_MARKER_KEYS) {
       const icon = this.impactIcons.find((m) => m.key === key);
-      if (icon) this.markerManager.setPosition(key, 'mk-impact', '✕', icon.pos, project, icon.label);
+      if (icon) this.markerManager.setPosition(key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label);
       else this.markerManager.hide(key);
     }
   }
