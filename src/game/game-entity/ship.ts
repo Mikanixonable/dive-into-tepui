@@ -14,25 +14,24 @@ export abstract class Ship extends GameEntity {
   readonly predictsFuture = true;
 
   name: string;
-  hitRadius: number; // 被弾判定半径 [m](剛体接触の GameEntity.radius とは別)
   hp: number;
   maxHp: number;
   parts: Part[] = [];
 
-  // 名前・被弾判定半径・HP を初期化し、基底の状態/メッシュ/姿勢を構築する。
+  // 名前・剛体接触半径・HP を初期化し、基底の状態/メッシュ/姿勢を構築する。
   constructor(
     name: string,
     state: KinematicState,
     obj: THREE.Object3D,
     att: Attitude,
-    hitRadius: number,
+    radius: number,
     hp: number,
     scene?: THREE.Scene,
     id?: string,
   ) {
     super(state, obj, scene, att, id);
     this.name = name;
-    this.hitRadius = hitRadius;
+    this.radius = radius;
     this.hp = hp;
     this.maxHp = hp;
     this.initDefaultParts();
@@ -93,14 +92,14 @@ export abstract class Ship extends GameEntity {
   }
 
   // 自身が受けた速度変化 dv = impulse/mass に応じたダメージをパーツへ適用し、
-  // ダメージが発生したかを返す。
-  protected applyCollisionDamage(dv: number): boolean {
+  // ダメージが発生したかを返す。part を指定すると割り振り先をそのパーツに固定する。
+  protected applyCollisionDamage(dv: number, part?: Part): boolean {
     const span = C.COLLISION_DAMAGE_FULL_DV - C.COLLISION_DAMAGE_MIN_DV;
     const t = Math.min(1, Math.max(0, (dv - C.COLLISION_DAMAGE_MIN_DV) / span));
     if (t <= 0) return false;
 
     const damage = this.maxHp * t;
-    this.applyDamageToParts(damage);
+    this.applyDamageToParts(damage, part);
     return true;
   }
 

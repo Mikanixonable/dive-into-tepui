@@ -102,7 +102,6 @@ export class Enemy extends Ship {
     // 描画メッシュの実スケール後バウンディング球を、弾丸・物理接触の両判定に共有する。
     const visualBounds = new THREE.Box3().setFromObject(this.obj);
     const visualSphere = visualBounds.getBoundingSphere(new THREE.Sphere());
-    this.hitRadius = visualSphere.radius;
     this.radius = visualSphere.radius;
     // 自身の軌道線を作ってシーンへ登録する
     this.orbitLine = new OrbitLine(orbitLineColor, 0.35);
