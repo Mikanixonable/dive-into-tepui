@@ -359,8 +359,11 @@ export class CreativeStage extends Stage {
       if (ship.planExecution === 'instant') {
         const node = ship.plan.firstNode();
         if (!node || node.t > simTime + 1e-9) continue;
-        const reached = ship.plan.dropNodesBefore(simTime);
-        if (reached) ship.state = reached;
+        // 瞬間移動では、消化する最後のノードの絶対状態がそのまま到達状態になる(誤差が無い)。
+        const reached = ship.plan.nodes.filter((n) => n.t <= simTime).at(-1);
+        if (!reached) continue;
+        ship.plan.consumeNodesUpTo(simTime, reached);
+        ship.state = reached;
       } else if (ship.planExecution === 'powered' && this.simSpeed) {
         ship.planExecutor.applyIgnitionAndCutoff(ship, simTime, this.simSpeed);
       }
