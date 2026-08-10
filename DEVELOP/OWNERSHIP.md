@@ -195,7 +195,7 @@ main.ts
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
 | `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・EquatorNodeMarkers・PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay) |
 | `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay) |
-| `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | MAP VIEW パネルが書き換え、ラベル側を `FocusMarkers.update`、軌道線側を `EnvironmentScene.showsReferenceLine` が読む。マップのラベル・軌道オブジェクト一覧・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主 |
+| `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | MAP VIEW パネルが書き換え、ラベル側を `FocusMarkers.update`、軌道線側を `EnvironmentScene.showsReferenceLine` が読む。マップのラベル・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主(軌道オブジェクト一覧はこれを経由しない、下記 `FocusMarkers.allBodyPickables` を参照) |
 | `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・ContactPhysics(`Simulator.advance` が呼び出しのたびに参照を渡すだけで保持しない)・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
 | `DisplayTimeManager` | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない) |
@@ -208,7 +208,8 @@ main.ts
 | `SnapshotService` | main.ts | Game(コンストラクタ引数で受け取り、`clipSnapshot` から呼ぶ)・AutoSave(コンストラクタ引数)・SaveBrowser(コンストラクタ引数) |
 | `SaveSlots` | main.ts | SnapshotService(コンストラクタ引数)・SaveBrowser(コンストラクタ引数) |
 | `SaveBrowser` | main.ts | Game(`setSaveBrowser` で受け取った参照。`handleInput` が `[F9]` と一覧表示中の `[Esc]` で `open()`/`close()` を呼ぶだけ) |
-| `FocusMarkers.labels` | CameraSystem(→FocusMarkers) | `MapPicker.refresh()` が読んで生存中の自機・敵船・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapPicker.handleRightClick`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す |
+| `FocusMarkers.allBodyPickables(t)` の戻り値 | CameraSystem(→FocusMarkers、呼ぶたびに作り直す使い捨て配列) | `MapPicker.refresh()` が読んで生存中の自機・敵船・弾薬・基地・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapPicker.handleRightClick`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す。MAP VIEW トグルを経由しない全登録天体+全ラグランジュ点 |
+| `FocusMarkers.allLabels` | CameraSystem(→FocusMarkers、構築時に1度だけ) | `MapPicker.sync()` が id/isLagrange から親子関係(parentOf)を組むのに読む |
 | `PlanDisplay.apsisMarkers` | PlanEditor(→PlanDisplay) | `MapPicker.refresh()` が他の候補と合流させ、`MapPicker.handleRightClick`/`OverviewCamera.update` へ1本の候補列として渡す |
 
 ---
@@ -361,13 +362,13 @@ main.ts
 | `PlanPath.arrivalStates()` / `PlanEditor.nodeDv()` | 各区間の `PlanArc` 終端状態、およびそこから求めるノード Δv の導出値(表示専用) | 呼ぶたび再計算(`PlanArc` 側の積分結果をそのまま読むので、描画中の計画軌道と同じ結果になる) |
 | `PlayerThrottle.thrustAccelVec` | ベルト物理(`Belt.update`)向けの推力加速度ベクトル | 毎フレーム上書き。プルーム・エンジン音は `ThrustEffects.sync` が `ship.thrust`(`GameEntity` 側、`PlayerThrottle`/`PlanExecutor` どちらが書いても同じ)を直接読むので、ここには含まれない |
 | `Player` の各 getter(`rcsDamp` / `magsLeft` 等) | throttle/fire への転送 | — |
-| `FocusMarkers.labels[].pos` | 天体暦から毎フレーム再計算。ただし `visibleBodyIds` が admits した天体だけ — 対象外の天体は座標を引かない | `update(t, focusId, toggles)` 毎(`syncLabels()` はこの値をマーカーへ置くだけ) |
+| `FocusMarkers` 内部の `shownLabels[].pos`(マップの描画マーカー用、private) | 天体暦から毎フレーム再計算。ただし `visibleBodyIds` が admits した天体だけ — 対象外の天体は座標を引かない | `update(t, focusId, toggles)` 毎(`syncLabels()` はこの値をマーカーへ置くだけ) |
 | `NavTarget` の相対 AN/DN 位置・通過時刻 | 自機軌道要素 + 対象の軌道面法線からの導出値(id 自体は正本) | `update()` 毎に全消去→再算出 |
 | `CreativeStage.preview`(軌道要素 + 位置) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM) | `update()` 毎に再算出。パネルを閉じている間・値を解釈できないときは null |
 | `CreativeStage.issues`(`PlacementFieldIssue[]`) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM。centerRadius/mu は `Ephemeris` から引く) | `update()` 毎に再算出、`sync()` で `ShipPlacerPanel.setIssues()` へ push。パネルを閉じている間は空配列 |
 | `PlanDisplay.apsisMarkers` / アイコン位置 | `path.finalPeriapsisPoint`/`.finalApoapsisPoint`(末尾 `PlanArc` が積分中に検出した値)を読み、各点ごとに `strongestAttractor` で中心天体を引き直して距離・高度を出した導出値(軌道要素からの解析的な導出ではない — エポック依存の値だと Δv=0 のノード追加でも動いてしまうため) | `apsisIconsOf()` 毎(`update()` から呼ぶ) |
 | `EquatorNodeMarkers` の自艦ぶんの EqAN/EqDN 位置 | `EqNodeSource.samples`(`Game.equatorNodeSources` が `PlanPath.finalSegmentSamples` を渡す)を `findEquatorCrossings` で走査した導出値。それ以外の source(敵・基地・航法ターゲット)は従来どおり軌道要素からの解析的な導出値 | `update()` 毎 |
-| `MapPicker.pickables` | `FocusMarkers.labels` + 生存中の全 `entities.players`・敵船の displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` の合成(保持しない使い捨て配列) | `mapPicker.refresh()`(`update()` 内、経路ごとの `cameraSystem.update()` 直前)毎に作り直す |
+| `MapPicker.pickables` | `FocusMarkers.allBodyPickables(displayTime)`(全登録天体+全ラグランジュ点、MAP VIEW トグルを経由しない) + 生存中の全 `entities.players`・敵船・弾薬・基地の displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` + `EquatorNodeMarkers.mapPickables()` の合成(保持しない使い捨て配列) | `mapPicker.refresh()`(`update()` 内、経路ごとの `cameraSystem.update()` 直前)毎に作り直す |
 
 ### 基礎データ型の不変性(整合性の前提)
 
