@@ -111,7 +111,7 @@ export class PlanEditor {
   ) {
     this.ship = ship;
     this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayTimeManager);
-    this.nodeGizmo = new NodeGizmo(this._hud.root);
+    this.nodeGizmo = new NodeGizmo(this._hud.layers.marker);
     this.gizmo3d = new PlanGizmo3D();
     scene.add(this.gizmo3d.group);
 
@@ -161,7 +161,7 @@ export class PlanEditor {
     this.dvNrmInput.addEventListener('keydown', stopProp);
     this.dvRadInput.addEventListener('keydown', stopProp);
 
-    hudDock(this._hud.root, 'right').appendChild(this.planPanel);
+    hudDock(this._hud.layers.panel, 'right').appendChild(this.planPanel);
     this.orbitMenu.onSelect = (act, state) => {
       if (act !== 'warp') return;
       if (this.simSpeedManager.startAutoWarpTo(state.t, this.simTime)) this._hud.hint('指定位置まで自動ワープ開始');

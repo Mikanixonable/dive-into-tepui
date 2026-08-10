@@ -2,6 +2,7 @@
 import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, EDGE, BG, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
+import { buildOverlayLayers, OVERLAY_LAYER_STYLE, type OverlayLayers } from './overlay-layer';
 
 
 const throttleKeyLabels = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax].map((k) => k.label).join(' / ');
@@ -18,12 +19,9 @@ const STYLE = `
    ボタンの連打やカメラドラッグのたびにラベルが選択されると操作の邪魔になる。 */
 #hud .seg-btn, #hud .hold-btn, #hud .hud-toggle, #hud .ctx-menu-item,
 #hud .mk, #hud .dock-toggle, #hud-chase-reset, #hud-viewbadge .vb-view-btn { user-select: none; }
-/* --- 重なり順: マーカーは実行時に DOM 末尾へ追加されるため z-index を明示しないとパネルの上に出る。
-     マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0)
-     マーカー群(0-9) < 常設パネル(10) < プロパティウィンドウ(12) < ドックビュー(15) <
-     トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー・セーブブラウザ(40)
-     ドックビューは画面全体を占めるビューなので常設パネル・プロパティウィンドウを覆うが、
-     トースト・ヒントとシステム窓(ヘルプ・ESCメニュー・セーブブラウザ)はその上に出す。 */
+${OVERLAY_LAYER_STYLE}
+/* #hud 直下の兄弟同士の重なり順は overlay-layer.ts のレイヤが持つ。
+   マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0) */
 /* スクロール可能な領域は既定のブラウザ配色ではダークテーマと調和しないため、
    パネルの縁色・アクセント色に揃える。 */
 #hud, #hud * { scrollbar-color: ${EDGE} transparent; }
@@ -36,15 +34,7 @@ const STYLE = `
 #hud .mk-ammo { z-index: 2; }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
-#hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
-#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-globalstatus, #hud-gear, #navball, #hud-shipplacer, #hud-object-list, #hud-creative-logistics { z-index: 10; }
-#dock-view { z-index: 15; }
-#hud-toast, #hud-hint { z-index: 20; }
-#hud-viewbadge { z-index: 20; }
-#hud-end, #hud-help { z-index: 30; }
-#save-browser { z-index: 40; }
-#hud-settings { z-index: 40; }
-#hud-modal-shield { display: none; position: absolute; inset: 0; z-index: 20; pointer-events: none; background: rgba(6,7,9,.3); }
+#hud-modal-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: rgba(6,7,9,.3); }
 body.hud-modal-open #hud-modal-shield { display: block; }
 body.hud-modal-open #touch-ui { display: none; }
 #hud .panel {
@@ -653,6 +643,7 @@ function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLE
 
 export interface HudDomRefs {
   root: HTMLElement;
+  layers: OverlayLayers;
   svgOverlay: SVGSVGElement;
   els: Map<string, HTMLElement>;
 }
@@ -863,30 +854,31 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   return els;
 }
 
-// HUD のスタイル・各パネル・SVG オーバーレイを一括構築し、DOM 参照をまとめて返す。
+// HUD のスタイル・レイヤ・各パネル・SVG オーバーレイを一括構築し、DOM 参照をまとめて返す。
 export function buildHudDom(): HudDomRefs {
   injectStyle();
   const root = el('div', 'hud', document.body);
-  const svgOverlay = buildSvgOverlay(root);
-  el('div', 'hud-dock-left', root, 'hud-dock hud-dock-left');
-  const rightDock = el('div', 'hud-dock-right', root, 'hud-dock hud-dock-right');
-  const leftDock = root.querySelector<HTMLElement>('#hud-dock-left')!;
-  buildDockToggle(root, leftDock, 'left');
-  buildDockToggle(root, rightDock, 'right');
+  const layers = buildOverlayLayers(root);
+  const svgOverlay = buildSvgOverlay(layers.marker);
+  el('div', 'hud-dock-left', layers.panel, 'hud-dock hud-dock-left');
+  const rightDock = el('div', 'hud-dock-right', layers.panel, 'hud-dock hud-dock-right');
+  const leftDock = layers.panel.querySelector<HTMLElement>('#hud-dock-left')!;
+  buildDockToggle(layers.panel, leftDock, 'left');
+  buildDockToggle(layers.panel, rightDock, 'right');
 
   // 常設パネル群を組む。
-  buildInfoPanels(root);
-  buildGlobalStatus(root);
-  buildChaseReset(root);
-  el('div', 'hud-modal-shield', root);
+  buildInfoPanels(layers.panel);
+  buildGlobalStatus(layers.panel);
+  buildChaseReset(layers.panel);
+  el('div', 'hud-modal-shield', layers.notify);
 
-  el('div', 'hud-hint', root);
-  el('div', 'hud-toast', root);
+  el('div', 'hud-hint', layers.notify);
+  el('div', 'hud-toast', layers.notify);
 
-  buildHelpPanel(root);
+  buildHelpPanel(layers.system);
 
-  el('div', 'hud-end', root);
+  el('div', 'hud-end', layers.system);
 
   const els = collectDataIdElements(root);
-  return { root, svgOverlay, els };
+  return { root, layers, svgOverlay, els };
 }
