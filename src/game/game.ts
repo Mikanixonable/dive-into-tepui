@@ -701,7 +701,6 @@ export class Game {
     }
     this.navTarget.sync(project, overviewMode, this.cameraSystem.activeCameraPos);
     this.equatorNodeMarkers.sync(project, overviewMode, this.cameraSystem.activeCameraPos);
-    if (player) this.navball.sync(player.state, player.att, player.alive, target?.state ?? null);
 
     // 敵マーカーは1体では決められない(画面上で近接するものをまとめる)ので集合として渡す。
     // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
