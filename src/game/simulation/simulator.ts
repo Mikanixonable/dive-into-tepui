@@ -1,9 +1,14 @@
 // 実シミュレーションの更新(軌道積分・剛体接触・慣性姿勢積分)。simTime/lastSimDt を保持する。
 import { stepAttitude } from '../../physics/attitude';
+import type { KinematicState } from '../../physics/kinematic-state';
 import * as C from '../const';
 import { attractorsAt, attractorsNearInto, classifyAttractors } from './attractors';
 import { EntityManager } from './entity-manager';
 import { Player } from '../player/player';
+import { Bullet } from '../game-entity/bullet';
+import { DebrisPiece } from '../game-entity/debris-piece';
+import type { GameEntity } from '../game-entity/game-entity';
+import type { Attractor } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Stage } from '../stages/stage';
 import { ContactPhysics } from './contact';
@@ -19,6 +24,7 @@ export class Simulator {
   lastSimDt = 0;
   lastSubsteps = 0;
   lastGravitySourceCount = 0;
+  private readonly adaptiveStatesScratch: KinematicState[] = [];
 
   // entities/ephemeris は参照として保持する。
   constructor(
@@ -45,6 +51,9 @@ export class Simulator {
     this.lastSubsteps = 0;
     this.lastGravitySourceCount = 0;
     const targetTime = this.simTime + simDt;
+    // ×4を超えるワープでは射撃・剛体衝突が無効なので、弾と薬莢/破片は途中のsubstepで
+    // 相互作用を起こさない。これらだけを最後に一度まとめて積分し、高warpのS倍走査を避ける。
+    const passiveWarpLod = !resolveCollision && doSubstep && simDt > C.SUBSTEP_MAX_DT;
     while (this.simTime < targetTime - 1e-9) {
       const remaining = targetTime - this.simTime;
       const maxStep = doSubstep ? this.adaptiveMaxStep() : remaining;
@@ -57,10 +66,10 @@ export class Simulator {
         continue;
       }
 
-      this.simTime = this.substep(this.simTime, subDt);
+      this.simTime = this.substep(this.simTime, subDt, passiveWarpLod);
       this.lastSubsteps++;
       if (player) nanWatchdog.checkPlayer('simulator.advance(軌道積分)', player, this.simTime, dt, subDt);
-      this.stepAttitudes(subDt);
+      this.stepAttitudes(subDt, passiveWarpLod);
       if (player) nanWatchdog.checkPlayer('simulator.advance(姿勢積分)', player, this.simTime, dt, subDt);
       for (const p of this.entities.players) p.stepEnvironment(subDt, this.ephemeris, this.simTime);
       const attractorsNow = this.ephemeris.attractorsAt(this.simTime);
@@ -78,6 +87,8 @@ export class Simulator {
       this.entities.cleanup(subDt, this.simTime, activeStage, player?.state.r ?? v3(), attractorsNow);
     }
 
+    if (passiveWarpLod) this.stepPassiveWarpEntities(this.ephemeris.attractorsAt(this.simTime));
+
     // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
     // フレームに1回だけ解決する。
     if (resolveCollision && player) {
@@ -92,8 +103,12 @@ export class Simulator {
 
   // 生存エンティティの高度から今フレームのサブステップ上限 [s] を求める。
   private adaptiveMaxStep(): number {
+    this.adaptiveStatesScratch.length = 0;
+    for (const e of this.entities.all()) {
+      if (e.alive) this.adaptiveStatesScratch.push(e.state);
+    }
     return adaptiveSimulationMaxStep(
-      this.entities.all().filter((e) => e.alive).map((e) => e.state),
+      this.adaptiveStatesScratch,
       R_EARTH + C.REENTRY_SUBSTEP_ALT,
       C.SUBSTEP_MAX_DT,
       C.REENTRY_SUBSTEP_MAX_DT,
@@ -118,22 +133,47 @@ export class Simulator {
   private substep(
     simTime: number,
     dt: number,
+    passiveWarpLod: boolean,
   ): number {
     const sources = attractorsAt(this.ephemeris, this.entities, simTime + dt / 2);
     this.lastGravitySourceCount = sources.length;
     const classified = classifyAttractors(sources);
-    for (const e of this.entities.all()) e.stepActual(dt, attractorsNear(e.state.r, classified));
+    for (const e of this.entities.all()) {
+      if (passiveWarpLod && this.isPassiveWarpEntity(e)) continue;
+      e.stepActual(dt, attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch));
+    }
 
     return simTime + dt;
   }
 
   // 軌道積分と同じ刻み幅 simDt で全エンティティの姿勢を進める。
-  private stepAttitudes(simDt: number): void {
+  private stepAttitudes(simDt: number, passiveWarpLod: boolean): void {
     for (const p of this.entities.players) p.att = stepAttitude(p.att, p.torque, simDt);
 
     for (const e of this.entities.enemies) if (e.alive) e.att = stepAttitude(e.att, e.torque, simDt);
-    for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, simDt);
-    for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, simDt);
+    if (!passiveWarpLod) {
+      for (const cs of this.entities.casings) cs.att = stepAttitude(cs.att, cs.torque, simDt);
+      for (const d of this.entities.debris) d.att = stepAttitude(d.att, d.torque, simDt);
+    }
     for (const ammo of this.entities.ammos) if (ammo.alive) ammo.att = stepAttitude(ammo.att, ammo.torque, simDt);
+  }
+
+  private isPassiveWarpEntity(e: GameEntity): boolean {
+    return e instanceof Bullet || e instanceof DebrisPiece;
+  }
+
+  // 途中のsubstepを飛ばした弾・破片を、最終時刻まで一度だけ進める。高warp中は弾道命中・
+  // 剛体接触を無効にしているため、途中の掃引判定を失ってもゲームプレイ上の相互作用はない。
+  private stepPassiveWarpEntities(attractors: readonly Attractor[]): void {
+    const step = (e: GameEntity): void => {
+      if (!e.alive) return;
+      const elapsed = this.simTime - e.state.t;
+      if (elapsed <= 1e-9) return;
+      e.stepActual(elapsed, attractors);
+      e.att = stepAttitude(e.att, e.torque, elapsed);
+    };
+    for (const bullet of this.entities.bullets) step(bullet);
+    for (const casing of this.entities.casings) step(casing);
+    for (const debris of this.entities.debris) step(debris);
   }
 }
