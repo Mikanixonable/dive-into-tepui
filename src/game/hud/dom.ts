@@ -32,7 +32,7 @@ ${OVERLAY_LAYER_STYLE}
 #hud ::-webkit-scrollbar-thumb { background: ${EDGE}; border-radius: 4px; }
 #hud ::-webkit-scrollbar-thumb:hover { background: ${ACCENT_SOFT}; }
 #hud .mk { z-index: 0; }
-#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-boardhit, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
+#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
 #hud .mk-ammo { z-index: 2; }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
@@ -185,8 +185,8 @@ body.hud-modal-open #touch-ui { display: none; }
 .mk-rad { color: ${C.COLOR_MARKER_RADIAL}; }
 .mk-tgtdir { color: ${C.COLOR_MARKER_TGTDIR}; }
 .mk-node { color: ${C.COLOR_MARKER_NODE}; }
-.mk-boardhit { color: ${C.COLOR_MARKER_BOARDHIT}; text-shadow: 0 0 5px rgba(255,255,255,0.9), 0 0 10px rgba(255,255,255,0.45); }
-.mk-boardhit .sym { font-size: 8px; }
+.mk-boardpass { color: ${C.COLOR_MARKER_BOARDPASS}; text-shadow: 0 0 5px rgba(255,255,255,0.9), 0 0 10px rgba(255,255,255,0.45); }
+.mk-boardpass .sym { font-size: 8px; }
 .mk-mnode { color: ${ACCENT_SOFT}; }
 .mk-mnode .lbl { white-space: pre; line-height: 1.25; }
 .mk-burn { color: ${ACCENT}; text-shadow: 0 0 8px rgba(${ACCENT_RGB}, 0.7); }

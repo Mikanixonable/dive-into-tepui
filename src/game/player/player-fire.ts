@@ -297,6 +297,7 @@ export class PlayerFire {
       'player',
       'normal',
       ship.weaponDamage,
+      this._sfx,
       this._scene,
     );
     entities.addBullet(bullet);

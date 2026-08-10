@@ -49,6 +49,9 @@ export class GameEntity {
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。Attractor.radius と同じ量
   collides = false; // 剛体接触(ContactPhysics)に参加するか
+  // 特定の艦に取り付いた実体(ベルトの節点・放熱板の折りなど)であれば、その艦自身。
+  // 独立した実体なら既定 null。
+  attachedTo: GameEntity | null = null;
   // 重力定数 GM [m^3/s^2]。0 = 重力を及ぼさない
   mu = 0;
   // 自身が及ぼす二次重力項(J2/C22 等)。null = 質点として扱う

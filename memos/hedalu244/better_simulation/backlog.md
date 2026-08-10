@@ -35,3 +35,21 @@ headless CDP から右クリックのコンテキストメニューを開けず�
 
 11. `SOLAR_SYSTEM_PLAN2_2026-08-09.md` のさらなる陳腐化
 EP0/C-2/E-9/E-13 相当の前提はユーザーの許可を得て実装に合わせて更新したが、作業中に判明した点として、**同文書が想定する登録天体27体に対し実際の `SOLAR_SYSTEM` は既に104体あり**、`hud/frame-picker.ts`/`body-picker.ts` の新設や `ship-placer-panel.ts` の絞り込み変更など EP1〜EP8・EPU 相当の作業も別系統で進行済みであることが分かった。同文書全体がさらに広く陳腐化している可能性が高い。mikanixonable への確認が要る。
+
+12. 敵弾の至近通過音の判定精度
+`Bullet.checkLoss` は substep ごとの位置だけを見て `playerPos` との距離を判定しており、線分での最接近は取っていない(意図的に雑)。高速なプラズマ弾が substep 間で自機の至近を通り抜けると鳴り損ねる。マイク概念の導入(距離・向きから音量・定位を決める)時に最接近距離ごと作り直す。
+
+13. 薬莢の接触音の距離減衰・操作艦以外の扱い
+`DebrisPiece.collideWith` は薬莢が Player 全般に触れたときに一律の音量で `Sfx.clank()` を鳴らす。距離減衰は無く、クリエイティブモードで複数艦を置くと遠くの艦の薬莢も同じ音量で鳴る。マイク概念の導入時に距離・定位ごと作り直す。
+
+14. `NanWatchdog` が発火する場合の残りの発生源(接触経路の外)
+Phase 6 で `game/simulation/contact.ts` の参加者フィルタ(位置・速度・半径・質量の4つ)と
+`physics/collision-response.ts`/`sphere-contact.ts` の非有限値伝播をテストで固定し、
+`Simulator.advance` 内の軌道積分・姿勢積分・接触・ベルトの4境界を `NanWatchdog.checkPlayer`
+で区別できるようにした。**これは接触経路について塞いだというだけで、NaN そのものが直った
+という意味ではない。** 次に `NanWatchdog` が発火した場合に疑うべき、接触経路の外にある発生源:
+
+- 姿勢積分(`physics/attitude.ts` の `stepAttitude`)の発散 — 極端なトルク・角速度での数値安定性は未検証。
+- ベルトの Verlet 解法(`player/belt-physics.ts` の `BeltPhysics`)— 拘束緩和が発散する入力(過大な擬似力)は未検証。
+- 天体表面至近での RK4 の発散(`physics/dynamics.ts` の `stepDynamics`)— 特異点(距離0)近傍での刻み幅の妥当性は未検証。
+- 極端な高度での抵抗・推力(`physics/atmosphere.ts` の `dragAccel`、`player/player-throttle.ts` の推力計算)— 密度テーブル外挿や過大な加速度の扱いは未検証。
