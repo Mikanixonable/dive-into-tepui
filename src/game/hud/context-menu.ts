@@ -1,35 +1,38 @@
 // 画面座標に絶対配置する汎用コンテキストメニュー。開いた対象 T を保持し、項目クリックで
 // onSelect(act, target) を発火して自動で閉じる。
+// #hud の子として popup レイヤへ置くため、`#hud, #hud *` の margin/padding リセットに
+// 勝てるよう全セレクタを `#hud` で始める。
 import { ACCENT_RGB, ACCENT_SOFT, TEXT as INK, FONT } from '../theme';
 import { clampOverlayPosition } from './layout';
 import { shortcutKeyLabel } from './shortcut-hint';
+import { bringToFront } from './overlay-layer';
 
 const SURFACE = 'rgba(13, 15, 18, 0.85)';
 const EDGE = 'rgba(255, 255, 255, 0.16)';
 
 const STYLE = `
-.ctx-menu {
-  position: fixed; display: none; min-width: 168px; z-index: 11;
+#hud .ctx-menu {
+  position: fixed; display: none; min-width: 168px;
   pointer-events: auto; background: ${SURFACE}; border: 1px solid ${EDGE};
   border-radius: 4px; overflow: hidden; font-size: 12px;
   font-family: ${FONT}; user-select: none;
   -webkit-user-select: none;
 }
-.ctx-menu-item {
+#hud .ctx-menu-item {
   padding: 9px 14px; color: ${INK}; cursor: pointer; border-bottom: 1px solid ${EDGE};
 }
-.ctx-menu-item:last-child { border-bottom: none; }
-.ctx-menu-item:hover, .ctx-menu-item:active {
+#hud .ctx-menu-item:last-child { border-bottom: none; }
+#hud .ctx-menu-item:hover, #hud .ctx-menu-item:active {
   background: rgba(${ACCENT_RGB}, 0.18); color: ${ACCENT_SOFT};
 }
-.ctx-menu-header {
+#hud .ctx-menu-header {
   padding: 9px 14px;
   border-bottom: 1px solid ${EDGE};
   background: rgba(0, 0, 0, 0.2);
   color: ${INK};
   font-weight: bold;
 }
-.ctx-menu-header-sub {
+#hud .ctx-menu-header-sub {
   font-size: 11px;
   opacity: 0.7;
   margin-top: 2px;
@@ -53,6 +56,11 @@ export interface MenuItem<A extends string = string> {
   act?: A;
   shortcut?: string;
   subLabel?: string;
+  // 排他選択肢の現在値を示す強調フラグ。ContextMenu 自身は使わず PropertyWindow が読む。
+  readonly selected?: boolean;
+  // 選ばれても(PropertyWindow に限り)自動で閉じない。選択肢を見比べながら切り替え直したい
+  // 排他選択グループの項目に立てる。ContextMenu は選べば常に閉じるので無視する。
+  readonly keepOpen?: boolean;
 }
 
 export class ContextMenu<T, A extends string = string> {
@@ -63,12 +71,12 @@ export class ContextMenu<T, A extends string = string> {
   private requestedY = 0;
   onSelect: ((act: A, target: T) => void) | null = null;
 
-  // メニュー要素を DOM に追加する。要素外へのポインタ操作で自動的に閉じる。
-  constructor() {
+  // メニュー要素を popupLayer(#hud の popup レイヤ)へ追加する。要素外へのポインタ操作で自動的に閉じる。
+  constructor(popupLayer: HTMLElement) {
     ensureStyle();
     this.el = document.createElement('div');
     this.el.className = 'ctx-menu';
-    document.body.appendChild(this.el);
+    popupLayer.appendChild(this.el);
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('resize', () => {
@@ -135,6 +143,7 @@ export class ContextMenu<T, A extends string = string> {
       });
     });
     this.el.style.display = 'block';
+    bringToFront(this.el);
     this.positionWithinViewport();
   }
 

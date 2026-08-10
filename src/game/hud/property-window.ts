@@ -2,16 +2,17 @@
 // ヘッダ(タイトル・サブタイトル・クリップボタン・✕ボタン)/ プロパティ行 / 操作項目の
 // 3段で構成される。表示専用で、プロパティの値をどう導出するかは呼び出し側の責務。
 // 複数存続できる想定のため ContextMenu と異なり呼び出しごとに個別のインスタンスを持つ。
-// #hud の子として置く(dom.ts の重なり順の帯に従う)ため、`#hud, #hud *` の margin/padding
+// #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import { ACCENT, ACCENT_RGB, ACCENT_SOFT, EDGE, SURFACE, TEXT as INK, FONT } from '../theme';
 import { CLICK_MOVE_THRESHOLD } from '../const';
 import { clampOverlayPosition, Point2 } from './layout';
 import { shortcutKeyLabel } from './shortcut-hint';
+import { bringToFront as bringOverlayToFront } from './overlay-layer';
 
 const STYLE = `
 #hud .prop-window {
-  position: fixed; display: block; min-width: 200px; max-width: 280px; z-index: 12;
+  position: fixed; display: block; min-width: 200px; max-width: 280px;
   pointer-events: auto; background: ${SURFACE}; border: 1px solid ${EDGE};
   border-radius: 4px; overflow: hidden; font-size: 12px;
   font-family: ${FONT}; user-select: none;
@@ -56,6 +57,10 @@ const STYLE = `
 #hud .prop-window-item:hover, #hud .prop-window-item:active {
   background: rgba(${ACCENT_RGB}, 0.18); color: ${ACCENT_SOFT};
 }
+#hud .prop-window-item.selected {
+  color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.1);
+}
+#hud .prop-window-item.selected::before { content: '● '; }
 `;
 
 let styleInjected = false;
@@ -80,6 +85,8 @@ export interface PropertyWindowItem<A extends string = string> {
   readonly label: string;
   readonly act: A;
   readonly shortcut?: string;
+  readonly selected?: boolean;
+  readonly keepOpen?: boolean;
 }
 
 export interface PropertyWindowContent<A extends string = string> {
@@ -115,7 +122,6 @@ export class PropertyWindow<A extends string = string> {
   private lastItemsKey = '';
   private _clipped = false;
   private disposed = false;
-  private readonly rootEl: HTMLElement;
   private readonly renameCallback: ((name: string) => void) | null;
   private renaming = false;
 
@@ -127,7 +133,9 @@ export class PropertyWindow<A extends string = string> {
   private readonly onOutsidePointerDown: (e: PointerEvent) => void;
   private readonly onResize: () => void;
 
-  onSelect: ((act: A) => void) | null = null;
+  // keepOpen はクリックした項目自身の PropertyWindowItem.keepOpen — 呼び出し側はこれを見て
+  // 自動クローズを抑制するかを判断する(クリップ状態は別に呼び出し側が持つ)。
+  onSelect: ((act: A, keepOpen: boolean) => void) | null = null;
   // ✕ ボタンで閉じられた(dispose 済み)ことを呼び出し側の管理台帳へ知らせる。
   onClose: (() => void) | null = null;
   // ウィンドウ外での pointerdown を通知するのみで、閉じる/閉じないの判断は呼び出し側が行う。
@@ -141,7 +149,6 @@ export class PropertyWindow<A extends string = string> {
   // グローバルリスナを登録する。
   constructor(root: HTMLElement, clientX: number, clientY: number, content: PropertyWindowContent<A>) {
     ensureStyle();
-    this.rootEl = root;
     this.el = document.createElement('div');
     this.el.className = 'prop-window';
 
@@ -221,6 +228,7 @@ export class PropertyWindow<A extends string = string> {
     this.syncRows(content.rows);
     this.syncItems(content.items);
     this.moveTo(clientX, clientY);
+    this.bringToFront();
   }
 
   // タイトル・サブタイトルを変化があった要素だけ差分更新する。
@@ -276,20 +284,22 @@ export class PropertyWindow<A extends string = string> {
   // 操作項目の集合・ラベル・ショートカットが変わったときだけ DOM を組み直す。クリップ済み
   // ウィンドウでは可変な状態(操作対象か等)に応じて呼び出し側から毎フレーム渡されうる。
   syncItems(items: readonly PropertyWindowItem<A>[]): void {
-    const key = items.map((it) => `${it.act} ${it.label} ${it.shortcut ?? ''}`).join('');
+    const key = items.map((it) => `${it.act} ${it.label} ${it.shortcut ?? ''} ${it.selected ?? ''} ${it.keepOpen ?? ''}`).join('|');
     if (key === this.lastItemsKey) return;
     this.lastItemsKey = key;
     this.itemsEl.innerHTML = '';
     for (const it of items) {
       const row = document.createElement('div');
       row.className = 'prop-window-item';
+      row.classList.toggle('selected', it.selected === true);
       row.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
       row.dataset['act'] = it.act;
       row.dataset['shortcut'] = it.shortcut ?? '';
+      row.dataset['keepOpen'] = it.keepOpen === true ? '1' : '';
       row.addEventListener('click', (e) => {
         // 外側 pointerdown 検出のキャプチャリスナへ伝播しないようにする。
         e.stopPropagation();
-        this.onSelect?.(it.act);
+        this.onSelect?.(it.act, it.keepOpen === true);
       });
       this.itemsEl.appendChild(row);
     }
@@ -305,7 +315,7 @@ export class PropertyWindow<A extends string = string> {
       if (item.dataset['shortcut'] === e.key) {
         e.stopImmediatePropagation();
         e.preventDefault();
-        this.onSelect?.(item.dataset['act'] as A);
+        this.onSelect?.(item.dataset['act'] as A, item.dataset['keepOpen'] === '1');
         return;
       }
     }
@@ -396,9 +406,9 @@ export class PropertyWindow<A extends string = string> {
     this.onClipChange?.(clipped);
   }
 
-  // DOM 順を末尾へ動かして最前面にする(z-index は増やさない)。
+  // window レイヤ内で最前面にする。
   bringToFront(): void {
-    this.rootEl.appendChild(this.el);
+    bringOverlayToFront(this.el);
   }
 
   // 現在位置を要求座標としてビューポート内へクランプし直す。内容の変化でサイズが伸びた

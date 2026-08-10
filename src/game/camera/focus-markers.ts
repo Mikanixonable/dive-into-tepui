@@ -7,7 +7,8 @@ import { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { celestialBodyName } from '../hud/frame-labels';
 import { isOccluded } from '../../physics/occlusion';
-import { BodyClassToggles, visibleBodyIds } from '../celestial/body-visibility';
+import { BodyClassToggles, alwaysFullyVisibleIds, bodyIconLabel, visibleBodyIds } from '../celestial/body-visibility';
+import { bodyClassOf } from '../celestial/body-class';
 import { FOCUS_LABEL_PRIORITY_PX, LAGRANGE_MIN_CLEARANCE_RATIO } from '../const';
 
 export interface FocusLabel {
@@ -18,6 +19,9 @@ export interface FocusLabel {
   isLagrange: boolean;
   // 主星を 0 とする階層の深さ。一覧をこの順・この字下げで並べると親子関係がそのまま出る。
   depth: number;
+  // このフレームでマーカーの点・名前をそれぞれ描くか。
+  showIcon: boolean;
+  showLabel: boolean;
 }
 
 export class FocusMarkers {
@@ -42,9 +46,12 @@ export class FocusMarkers {
     this.lagrangeSources = this.registryIds.flatMap((id) => {
       if (registry[id]!.kind === 'star') return [];
       const collinear = ephemeris.hasUsableCollinearPoints(id, LAGRANGE_MIN_CLEARANCE_RATIO);
-      const triangular = ephemeris.hasStableTriangularPoints(id);
+      // 小天体・準惑星は数が多く、L3・L4・L5 まで並べるとラベルが密集しすぎる。
+      const cls = bodyClassOf(registry, id);
+      const minor = cls === 'smallBody' || cls === 'dwarf';
+      const triangular = !minor && ephemeris.hasStableTriangularPoints(id);
       const points = [
-        ...(collinear ? [1, 2, 3] as const : []),
+        ...(collinear ? (minor ? [1, 2] as const : [1, 2, 3] as const) : []),
         ...(triangular ? [4, 5] as const : []),
       ];
       return points.length === 0 ? [] : [{ id, points }];
@@ -59,13 +66,16 @@ export class FocusMarkers {
     const appendBody = (id: AttractorId, depth: number): void => {
       if (added.has(id)) return;
       added.add(id);
-      labels.push({ id, name: celestialBodyName(id), pos: v3(0, 0, 0), kind: 'body', isLagrange: false, depth });
+      labels.push({
+        id, name: celestialBodyName(id), pos: v3(0, 0, 0), kind: 'body', isLagrange: false, depth,
+        showIcon: false, showLabel: false,
+      });
       const primary = primaryOf(registry, id);
       const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
       for (const n of pointsOf.get(id) ?? []) {
         labels.push({
           id: `${id}-l${n}`, name: `${prefix} L${n}`, pos: v3(0, 0, 0),
-          kind: 'body', isLagrange: true, depth: depth + 1,
+          kind: 'body', isLagrange: true, depth: depth + 1, showIcon: false, showLabel: false,
         });
       }
       for (const child of this.registryIds) {
@@ -87,20 +97,28 @@ export class FocusMarkers {
 
   // 表示時刻 t の各ラベル座標を求め直す。表示対象の外にある天体は座標計算ごと飛ばす —
   // 登録天体が増えるほど lagrangeAt(1天体あたり positionOf 2回 + 回転系1回)が効くため。
-  update(t: number, focusId: AttractorId, toggles: BodyClassToggles): void {
+  update(t: number, focusId: AttractorId | undefined, toggles: BodyClassToggles): void {
     const ephemeris = this.ephemeris;
-    // まず表示対象を決め、その中だけ座標を引く。ラグランジュ点はトグルが立っているときだけ。
+    // まず表示対象を決め、その中だけ座標を引く。ラグランジュ点は Icon/Label のどちらかが
+    // 立っているときだけ。alwaysFullyVisibleIds に含まれる天体は Icon/Label とも常時 true。
     const visible = visibleBodyIds(ephemeris.registry, focusId, toggles);
+    const always = alwaysFullyVisibleIds(ephemeris.registry, focusId);
 
     const positions: Record<string, Vec3> = {};
+    const display: Record<string, { icon: boolean; label: boolean }> = {};
     for (const id of this.registryIds) {
-      if (visible.has(id)) positions[id] = ephemeris.positionOf(id, t);
+      if (!visible.has(id)) continue;
+      positions[id] = ephemeris.positionOf(id, t);
+      display[id] = always.has(id) ? { icon: true, label: true } : bodyIconLabel(ephemeris.registry, toggles, id);
     }
-    if (toggles.lagrange) {
+    if (toggles.lagrangeIcon || toggles.lagrangeLabel) {
       for (const { id, points } of this.lagrangeSources) {
         if (!visible.has(id)) continue;
         const l = ephemeris.lagrangeAt(id, t);
-        for (const n of points) positions[`${id}-l${n}`] = l[`L${n}`];
+        for (const n of points) {
+          positions[`${id}-l${n}`] = l[`L${n}`];
+          display[`${id}-l${n}`] = { icon: toggles.lagrangeIcon, label: toggles.lagrangeLabel };
+        }
       }
     }
 
@@ -109,6 +127,9 @@ export class FocusMarkers {
       const pos = positions[lbl.id];
       if (pos === undefined) continue;
       lbl.pos = pos;
+      const d = display[lbl.id]!;
+      lbl.showIcon = d.icon;
+      lbl.showLabel = d.label;
       shown.push(lbl);
     }
     this.shownLabels = shown;
@@ -141,7 +162,9 @@ export class FocusMarkers {
         this.markerManager.hide(lbl.id);
         continue;
       }
-      this.markerManager.setPosition(lbl.id, 'mk-poi', '●', lbl.pos, project, lbl.name);
+      this.markerManager.setPosition(
+        lbl.id, 'mk-poi', lbl.showIcon ? '●' : '', lbl.pos, project, lbl.showLabel ? lbl.name : '',
+      );
     }
     const nowShown = new Set(shownIds);
     for (const id of this.prevShownIds) if (!nowShown.has(id)) this.markerManager.hide(id);

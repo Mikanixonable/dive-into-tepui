@@ -18,6 +18,7 @@ export function hudButton(label: string, onClick: () => void): HTMLElement {
 export class SegmentedControl<T> {
   readonly element: HTMLElement;
   private readonly buttons = new Map<T, HTMLElement>();
+  private items: readonly (readonly [T, string])[] = [];
   private readonly onSelect: (value: T) => void;
 
   // items は [値, 表示ラベル] の並びで、その順にボタンを並べる。
@@ -41,6 +42,12 @@ export class SegmentedControl<T> {
   // ボタン列を items へ丸ごと差し替える(見出しはそのまま)。選べない選択肢を出してから
   // 拒否するのではなく、状況によって選択肢自体を絞りたい呼び出し側のために用意する。
   setItems(items: readonly (readonly [T, string])[]): void {
+    // 同じ内容なら作り直さない — 差し替えると押しかけのボタンが消えてクリックが届かなくなる。
+    const same = (pair: readonly [T, string], i: number): boolean => {
+      const cur = this.items[i];
+      return cur !== undefined && pair[0] === cur[0] && pair[1] === cur[1];
+    };
+    if (items.length === this.items.length && items.every(same)) return;
     for (const btn of this.buttons.values()) btn.remove();
     this.buttons.clear();
     for (const [value, label] of items) {
@@ -48,6 +55,7 @@ export class SegmentedControl<T> {
       this.element.appendChild(btn);
       this.buttons.set(value, btn);
     }
+    this.items = items.map(([value, label]) => [value, label] as const);
   }
 }
 
@@ -82,6 +90,33 @@ export class HudHoldButton {
     this.element.addEventListener('pointerup', release);
     this.element.addEventListener('pointercancel', release);
     this.element.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+}
+
+// クリックのたびに ON/OFF が切り替わる、絵文字1字程度のグリフだけの小型トグル。複数個を
+// 1行に並べて「アイコン/ラベル/軌道線」のような同種の切り替えをまとめて出す場面向け。
+export class IconToggleButton {
+  readonly element: HTMLElement;
+  private on = false;
+
+  // glyph は表示するグリフ、title はホバー時に出る説明文。onChange は切り替わった後の値で呼ばれる。
+  constructor(glyph: string, title: string, onChange: (on: boolean) => void) {
+    this.element = document.createElement('span');
+    this.element.className = 'seg-btn icon-toggle-btn';
+    this.element.textContent = glyph;
+    this.element.title = title;
+    this.element.addEventListener('pointerdown', (e) => e.stopPropagation());
+    this.element.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setOn(!this.on);
+      onChange(this.on);
+    });
+  }
+
+  // 表示状態を設定する(onChange は呼ばれない)。
+  setOn(on: boolean): void {
+    this.on = on;
+    this.element.classList.toggle('on', on);
   }
 }
 

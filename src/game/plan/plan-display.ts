@@ -13,10 +13,8 @@ import { TickRank, calendarBoundaries, tickLabel } from '../hud/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
-import { FramePicker } from '../hud/frame-picker';
 import { MapPickable } from '../map-pick';
 import * as C from '../const';
-import { hudDock } from '../hud/dom';
 import { Plan } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayTimeManager } from '../display-time-manager';
@@ -64,8 +62,6 @@ export class PlanDisplay {
 
   readonly path: PlanPath;
 
-  private readonly panel: HTMLElement;
-  private readonly frame: FramePicker;
   private apsisIcons: readonly ApsisIcon[] = [];
   private impactIcons: readonly ImpactIcon[] = [];
   private tickIcons: readonly PlanTickIcon[] = [];
@@ -74,34 +70,16 @@ export class PlanDisplay {
   private plan: Plan | null = null;
   // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
   private attractors: readonly Attractor[] = [];
-  // 直近に TRAJECTORY パネルの選択肢を組んだ重力天体 id の集合。変化した回だけ組み直す。
-  private lastDynamicIds = '';
 
-  // 計画折れ線(PlanPath)と TRAJECTORY パネルの DOM を構築する。
+  // 計画折れ線(PlanPath)を構築する。
   constructor(
     scene: THREE.Scene,
-    hudRoot: HTMLElement,
     private readonly markerManager: MarkerManager,
     private readonly ephemeris: Ephemeris,
     displayTimeManager: DisplayTimeManager,
   ) {
     this.planFrame = ephemeris.inertialFrame;
     this.path = new PlanPath(scene, displayTimeManager);
-
-    // TRAJECTORY パネルの DOM を組み立てる
-    this.panel = document.createElement('div');
-    this.panel.id = 'hud-trajframe';
-    this.panel.className = 'panel';
-    this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-    const title = document.createElement('h3');
-    title.textContent = 'TRAJECTORY';
-    this.panel.appendChild(title);
-    // 表示座標系の切り替えボタン
-    this.frame = new FramePicker(hudRoot, '軌道', ephemeris);
-    this.frame.onSelect = (frame) => { this.planFrame = frame; };
-    this.frame.setFrames(ephemeris.frames, []);
-    this.panel.appendChild(this.frame.element);
-    hudDock(hudRoot, 'left').appendChild(this.panel);
   }
 
   // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。
@@ -119,7 +97,6 @@ export class PlanDisplay {
       return;
     }
     this.attractors = this.ephemeris.attractorsAt(displayTime);
-    this.refreshFrameItems();
     this.path.update(plan, this.ephemeris, this.planFrame, simTime, this.attractors, dynamicAttractors);
     this.ghost = this.ghostAt(plan, displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
@@ -128,9 +105,8 @@ export class PlanDisplay {
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。
-  // TRAJECTORY パネルは表示座標系を選ぶ操作 UI なので、操作を受け付けるときだけ showPanel で出す。
   sync(
-    fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, showPanel: boolean,
+    fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn,
     overviewMode: boolean, cameraPos: Vec3,
   ): void {
     // ノードの無い計画は自機の現在軌道そのものを描くだけで情報を持たないので、折れ線は隠す。
@@ -142,11 +118,9 @@ export class PlanDisplay {
     this.syncApsisMarkers(project, overviewMode, cameraPos);
     this.syncImpactMarkers(project);
     this.syncTickMarkers(project, scale);
-    this.panel.style.display = showPanel ? 'block' : 'none';
-    this.frame.setSelected(this.planFrame);
   }
 
-  // 計画折れ線・ゴーストマーカー・アプシスアイコン・TRAJECTORY パネルを非表示にする。
+  // 計画折れ線・ゴーストマーカー・アプシスアイコンを非表示にする。
   hide(): void {
     this.path.setVisible(false);
     this.markerManager.hide('plannedPlayer');
@@ -155,7 +129,6 @@ export class PlanDisplay {
     for (const key of IMPACT_MARKER_KEYS) this.markerManager.hide(key);
     for (let i = 0; i < this.lastTickCount; i++) this.markerManager.hide(`planTick${i}`);
     this.lastTickCount = 0;
-    this.panel.style.display = 'none';
   }
 
   // 近地点・遠地点アイコンの右クリック候補(非表示中は空)。
@@ -167,17 +140,6 @@ export class PlanDisplay {
   apsisTimeOf(id: string): number | null {
     const icon = this.apsisIcons.find((i) => i.id === id);
     return icon?.time ?? null;
-  }
-
-  // 生存中の重力天体の増減を反映して TRAJECTORY パネルの座標系選択肢を組み直す
-  // (登録天体は変わらないので変化しない回は何もしない)。
-  private refreshFrameItems(): void {
-    const dynamicIds = this.attractors.filter((a) => !(a.id in this.ephemeris.registry)).map((a) => a.id).join(',');
-    if (dynamicIds === this.lastDynamicIds) return;
-    this.lastDynamicIds = dynamicIds;
-    const dynamicFrames = this.attractors.filter((a) => !(a.id in this.ephemeris.registry))
-      .map((a) => this.ephemeris.frameFor(a.id));
-    this.frame.setFrames([...this.ephemeris.frames, ...dynamicFrames], this.attractors);
   }
 
   // displayTime における計画上の自機位置とそのラベル。折れ線の届く範囲外、または
