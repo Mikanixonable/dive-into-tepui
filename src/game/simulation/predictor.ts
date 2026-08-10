@@ -23,8 +23,8 @@ export class Predictor {
 
   // Game.update の entities.cleanup(...) の後に呼ぶ(死んだ個体を予測しない、積分後の実状態と
   // 突き合わせる)。視点・モードによる条件分岐は持たない — 予測は表示とは独立に常時進む。
-  // horizon は simTime から先に予測する長さ [s]。canGrow が false の間は既存列の再同期だけ行う。
-  update(simTime: number, player: Player | null, canGrow: boolean, horizon: number): void {
+  // horizon は simTime から先に予測する長さ [s]。
+  update(simTime: number, player: Player | null, horizon: number): void {
     const all = this.entities.all();
 
     // 距離判定は毎フレーム無条件で全対象に行う(二分探索1回ぶんの費用しかかからない)。
@@ -40,8 +40,6 @@ export class Predictor {
       this.tracked++;
       if (e.predictedTrajectory !== null && e.predictedTrajectory.state.t > simTime + horizon) this.complete++;
     }
-
-    if (!canGrow) return;
 
     // 予算配分: 操作対象の艦を先頭に、以降はカーソル位置から最大1周だけ回す。
     let budget = C.PREDICT_STEP_BUDGET;
