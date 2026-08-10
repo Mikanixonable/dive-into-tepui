@@ -125,6 +125,25 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
 #hud-enemies .erow.tgt { color: ${WARNING}; }
+#hud-map-scale {
+  position: absolute; right: 12px; bottom: 12px; display: none; pointer-events: none;
+  padding: 4px 7px 5px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: ${SURFACE}; color: ${INK_SOFT}; font-size: 9px; line-height: 1.1;
+  font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
+}
+#hud-map-scale .map-scale-value { color: ${INK}; }
+#hud-map-scale .map-scale-ruler { position: relative; height: 10px; margin-top: 2px; margin-left: auto; }
+#hud-map-scale .map-scale-ruler::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 5px; border-top: 1px solid ${INK_SOFT};
+}
+#hud-map-scale .map-scale-tick {
+  position: absolute; top: 1px; height: 9px; border-left: 1px solid ${INK};
+}
+#hud-map-scale .map-scale-tick.start { left: 0; }
+#hud-map-scale .map-scale-tick.q1 { left: 25%; }
+#hud-map-scale .map-scale-tick.mid { left: 50%; }
+#hud-map-scale .map-scale-tick.q3 { left: 75%; }
+#hud-map-scale .map-scale-tick.end { right: 0; }
 #hud-object-list { max-height: 320px; overflow-y: auto; }
 #hud-object-list .object-list-tools { display:flex; gap:3px; flex-wrap:wrap; padding:2px 4px; }
 #hud-object-list .object-list-tools input { min-width: 90px; flex:1; background:${SURFACE}; color:${INK}; border:1px solid ${EDGE}; font:inherit; }
@@ -411,6 +430,7 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud-stagestatus .k { font-size: 9px; line-height: 1.35; white-space: normal; }
   #hud-chase-reset { top: 40px; width: 28px; height: 28px; }
   #hud-chase-reset svg { width: 14px; height: 14px; }
+  #hud-map-scale { right: 8px; bottom: 8px; font-size: 8px; }
   #hud .hud-dock { top: 40px; }
 }
 @media (max-width: 520px) {
@@ -426,6 +446,7 @@ body.hud-modal-open #touch-ui { display: none; }
 @media (pointer: coarse) {
   #hud .hud-dock { bottom: 62px; }
   #hud-combat-shelf > .panel { max-height: 104px; }
+  #hud-map-scale { bottom: 62px; }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
   #hud .hud-dock { bottom: 52px; }
@@ -439,6 +460,7 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud-combat-shelf { top: 60px; }
   #hud-combat-shelf > .panel { max-height: 82px; }
   #hud-stagestatus { max-height: 46px; }
+  #hud-map-scale { bottom: 52px; }
 }
 /* ===== DockView ===== */
 /* 戦闘・マップと対等な全画面ビュー。背後の 3D は描画自体が止まるので、
@@ -799,6 +821,18 @@ function buildInfoPanels(root: HTMLElement, targetDock: HTMLElement): void {
   enemies.innerHTML = `
     <h3>CONTACTS <span data-id="count"></span></h3>
     <div data-id="elist"></div>`;
+
+  // マップ視点の縮尺バー。描画自体は HudPanels.sync がカメラの注視点基準で更新する。
+  const mapScale = el('div', 'hud-map-scale', root);
+  mapScale.dataset.id = 'map-scale';
+  mapScale.setAttribute('aria-label', 'マップ縮尺');
+  mapScale.innerHTML = `
+    <div><span class="map-scale-value" data-id="map-scale-value"></span></div>
+    <div class="map-scale-ruler" data-id="map-scale-ruler">
+      <span class="map-scale-tick start"></span><span class="map-scale-tick q1"></span>
+      <span class="map-scale-tick mid"></span><span class="map-scale-tick q3"></span>
+      <span class="map-scale-tick end"></span>
+    </div>`;
 }
 
 // 画面全体のグローバルステータス(MET・時間加速・NODE WARP)を組む。
