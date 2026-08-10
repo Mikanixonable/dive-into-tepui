@@ -16,9 +16,6 @@ declare module 'three/webgpu' {
     setViewport(x: number, y: number, width: number, height: number): void;
     setScissor(x: number, y: number, width: number, height: number): void;
     setScissorTest(enable: boolean): void;
-    toneMapping: import('three').ToneMapping;
-    toneMappingExposure: number;
-    outputColorSpace: import('three').ColorSpace;
   }
   export class MeshStandardNodeMaterial extends import('three').MeshStandardMaterial {
     constructor(parameters?: import('three').MeshStandardMaterialParameters);
@@ -28,7 +25,6 @@ declare module 'three/webgpu' {
     constructor(parameters?: import('three').MeshBasicMaterialParameters);
     colorNode: unknown;
     opacityNode: unknown;
-    normalNode: unknown;
   }
 }
 
@@ -39,17 +35,13 @@ declare module 'three/tsl' {
   type Node = any;
   export const texture: (map: import('three').Texture, uvNode?: Node) => Node;
   export const uv: () => Node;
-  export const vertexColor: () => Node;
   export const mix: (a: Node, b: Node, t: Node) => Node;
   export const vec2: (x: Node | number, y: Node | number) => Node;
   export const vec3: (x: Node | number, y: Node | number, z: Node | number) => Node;
   export const float: (x: number) => Node;
   export const uniform: (value: import('three').Vector3 | number) => Node & { value: import('three').Vector3 | number };
   export const normalWorld: Node;
-  export const normalLocal: Node;
-  export const positionLocal: Node;
   export const positionWorld: Node;
-  export const modelNormalMatrix: Node;
   export const cameraPosition: Node;
   export const dot: (a: Node, b: Node) => Node;
   export const max: (a: Node, b: Node | number) => Node;
@@ -65,6 +57,4 @@ declare module 'three/tsl' {
   export const sub: (a: Node, b: Node) => Node;
   export const clamp: (value: Node, low?: number, high?: number) => Node;
   export const smoothstep: (low: Node | number, high: Node | number, x: Node | number) => Node;
-  export const cross: (a: Node, b: Node) => Node;
-  export const abs: (a: Node) => Node;
 }

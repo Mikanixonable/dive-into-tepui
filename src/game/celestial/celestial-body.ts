@@ -5,13 +5,9 @@ import { AttractorId } from '../../physics/attractor';
 import { Ephemeris } from '../../physics/ephemeris';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
-import { CelestialLightingContext } from '../../render/celestial-lighting';
 
 export abstract class CelestialBody {
   abstract readonly id: AttractorId;
   abstract build(scene: THREE.Scene): void;
-  abstract sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    lighting: CelestialLightingContext,
-  ): void;
+  abstract sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void;
 }
