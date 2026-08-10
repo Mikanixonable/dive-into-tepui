@@ -10,20 +10,24 @@ export class NavballPanel {
     root: HTMLElement,
     gridToggleItems: readonly (readonly [keyof CelestialGridVisibility, string])[],
   ) {
-    const panel = document.createElement('div');
-    panel.id = 'navball';
-    panel.className = 'panel';
-    panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-
-    const title = document.createElement('h3');
-    title.textContent = '表示';
-    panel.appendChild(title);
+    // MAP側の表示パネルが先に作られている場合は、天球グリッドの項目だけを
+    // そこへ追加する。表示設定を二つのウィンドウへ分散させない。
+    const existing = root.querySelector<HTMLElement>('#hud-overview-camera');
+    const panel = existing ?? document.createElement('div');
+    if (!existing) {
+      panel.id = 'navball';
+      panel.className = 'panel';
+      panel.addEventListener('pointerdown', (e) => e.stopPropagation());
+      const title = document.createElement('h3');
+      title.textContent = '表示';
+      panel.appendChild(title);
+    }
 
     for (const [key, label] of gridToggleItems) {
       const toggle = new HudToggle(label, (on) => this.onGridToggle?.(key, on));
       panel.appendChild(toggle.element);
     }
 
-    root.appendChild(panel);
+    if (!existing) root.appendChild(panel);
   }
 }
