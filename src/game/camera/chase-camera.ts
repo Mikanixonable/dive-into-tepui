@@ -8,6 +8,7 @@ import { Hud } from '../hud/hud';
 import { Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { Player } from '../player/player';
 import { Viewpoint } from '../../physics/projection';
+import { ChaseCameraSaveData } from '../save-data';
 
 // 初期視点: 機体後方やや上から見下ろす。
 const DEFAULT_ROT: Quat = qFromAxisAngle(v3(1, 0, 0), 0.3 - (10 * Math.PI) / 180);
@@ -129,5 +130,25 @@ export class ChaseCamera {
       fovDeg: C.BASE_FOV,
       aspect: window.innerWidth / window.innerHeight,
     };
+  }
+
+  // rot/dist/panEci/camFollowAttitude をセーブデータへ書き出す。
+  serialize(): ChaseCameraSaveData {
+    return {
+      rot: { x: this.rot.x, y: this.rot.y, z: this.rot.z, w: this.rot.w },
+      dist: this.dist,
+      pan: { x: this.panEci.x, y: this.panEci.y, z: this.panEci.z },
+      followAttitude: this._camFollowAttitude,
+    };
+  }
+
+  // serialize が書き出した状態をそのまま復元する。rot はセーブ時点の基準フレーム(機体姿勢基準/
+  // ワールド基準)での値のまま代入する — camFollowAttitude セッターは基準の切替時に rot を
+  // 読み替えるため、経由すると意味が変わってしまう。
+  restore(d: ChaseCameraSaveData): void {
+    this.rot = qNormalize({ x: d.rot.x, y: d.rot.y, z: d.rot.z, w: d.rot.w });
+    this.dist = d.dist;
+    this.panEci = v3(d.pan.x, d.pan.y, d.pan.z);
+    this._camFollowAttitude = d.followAttitude;
   }
 }
