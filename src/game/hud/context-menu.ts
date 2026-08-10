@@ -53,6 +53,11 @@ export interface MenuItem<A extends string = string> {
   act?: A;
   shortcut?: string;
   subLabel?: string;
+  // 排他選択肢の現在値を示す強調フラグ。ContextMenu 自身は使わず PropertyWindow が読む。
+  readonly selected?: boolean;
+  // 選ばれても(PropertyWindow に限り)自動で閉じない。選択肢を見比べながら切り替え直したい
+  // 排他選択グループの項目に立てる。ContextMenu は選べば常に閉じるので無視する。
+  readonly keepOpen?: boolean;
 }
 
 export class ContextMenu<T, A extends string = string> {
