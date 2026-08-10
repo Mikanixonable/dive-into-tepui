@@ -13,7 +13,6 @@ import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { Plan, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
 import type { DisplayTimeManager } from '../display-time-manager';
-import { SIM_EPOCH_SEC } from '../hud/utils';
 import * as C from '../const';
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
@@ -114,10 +113,8 @@ export class PlanPath {
     return out;
   }
 
-  // 表示中の区間が覆う時刻範囲(絶対 UTC)に含まれる日付境界(0時0分0秒)の simTime と、
-  // その時刻の折れ線上の位置。区間をまたいでも重複させない。
-  dayBoundaries(): readonly { readonly t: number; readonly pos: Vec3 }[] {
-    if (this.activeCount === 0) return [];
+  // 表示中の区間が覆う simTime の範囲。どの区間にもサンプルが無ければ null。
+  timeRange(): { readonly min: number; readonly max: number } | null {
     let minT = Infinity;
     let maxT = -Infinity;
     for (let i = 0; i < this.activeCount; i++) {
@@ -126,16 +123,8 @@ export class PlanPath {
       minT = Math.min(minT, samples[0]!.t);
       maxT = Math.max(maxT, samples[samples.length - 1]!.t);
     }
-    if (minT > maxT) return [];
-
-    const out: { t: number; pos: Vec3 }[] = [];
-    const firstBoundaryUnix = Math.ceil((SIM_EPOCH_SEC + minT) / 86400) * 86400;
-    for (let unix = firstBoundaryUnix; unix <= SIM_EPOCH_SEC + maxT; unix += 86400) {
-      const t = unix - SIM_EPOCH_SEC;
-      const state = this.sampleAt(t);
-      if (state) out.push({ t, pos: state.r });
-    }
-    return out;
+    if (minT > maxT) return null;
+    return { min: minT, max: maxT };
   }
 
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
