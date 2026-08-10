@@ -44,9 +44,10 @@ export class PlayerMarkers {
     }
   }
 
-  hide(): void {
-    for (const key of COMBAT_KEYS) this.markerManager.hide(`${key}-${this.id}`);
-    this.markerManager.hide(`self-${this.id}`);
+  // キーは艦ごとに一意で増え続けるため、hide ではなく remove で DOM ごと片付ける。
+  dispose(): void {
+    for (const key of COMBAT_KEYS) this.markerManager.remove(`${key}-${this.id}`);
+    this.markerManager.remove(`self-${this.id}`);
   }
 
   // prograde/retrograde/normal/antinormal/radial in-out の6方向マーカーを配置する。

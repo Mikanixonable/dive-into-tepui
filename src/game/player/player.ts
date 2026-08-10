@@ -505,7 +505,7 @@ export class Player extends Ship {
     if (this.disposed) return;
     this.disposed = true;
     this.clearTransientCommands();
-    this.markers.hide();
+    this.markers.dispose();
     this.playerScene.remove(this.orbitLine.line);
     this.orbitLine.dispose();
     this.thrustEffects.dispose(this.playerScene);
