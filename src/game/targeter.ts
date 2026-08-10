@@ -53,9 +53,9 @@ export class Targeter {
     this.orbitLine.line.renderOrder = 3;
     scene.add(this.secondaryOrbitLine.line);
     scene.add(this.orbitLine.line);
-    this.contextMenu.onSelect = (act, hit) => {
-      if (act === 'primary') this.setTarget(this.target === hit ? null : hit);
-      else if (act === 'secondary') this.setSecondaryTarget(this.secondaryTarget === hit ? null : hit);
+    this.contextMenu.onSelect = (act, picked) => {
+      if (act === 'primary') this.setTarget(this.target === picked ? null : picked);
+      else if (act === 'secondary') this.setSecondaryTarget(this.secondaryTarget === picked ? null : picked);
     };
     this.emptySpaceMenu.onSelect = (act) => {
       if (act === 'openSettings') this.settingsPanel.toggle(true);
@@ -197,7 +197,7 @@ export class Targeter {
         continue;
       }
       const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
-      this.markerManager.setPosition(key, 'mk-boardhit', '✦', add(target.state.r, m.off), project, '', 0.25 + 0.75 * fade);
+      this.markerManager.setPosition(key, 'mk-boardpass', '✦', add(target.state.r, m.off), project, '', 0.25 + 0.75 * fade);
     }
   }
 
@@ -221,8 +221,8 @@ export class Targeter {
   private handleTargetContextMenu(input: Input, targets: CombatTarget[], player: Player, project: ProjectFn): void {
     if (!player.alive) return;
     input.takeRightClicks((click) => {
-      const hit = this.pickTargetAt(click, targets, project);
-      if (hit) this.openMenu(click, hit);
+      const picked = this.pickTargetAt(click, targets, project);
+      if (picked) this.openMenu(click, picked);
       else this.emptySpaceMenu.open(click.x, click.y, true, [
         { label: '設定メニューを開く', act: 'openSettings' },
         MenuCommon.cancel(),
@@ -234,18 +234,18 @@ export class Targeter {
   // クリック位置の許容半径内で画面上最も近い生存ターゲットを返す。範囲外なら null。
   private pickTargetAt(click: PointerPoint, targets: CombatTarget[], project: ProjectFn): CombatTarget | null {
     const pickables = targets.filter((e) => e.alive).map((target) => ({ pos: target.state.r, target }));
-    const hit = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);
-    return hit?.target ?? null;
+    const picked = pickNearest(pickables, click.x, click.y, project, C.TARGET_LOCK_PICK_PX_SQ);
+    return picked?.target ?? null;
   }
 
-  // hit を対象に、現在の第一/第二設定に応じたラベルでメニューを開く。
-  private openMenu(click: PointerPoint, hit: CombatTarget): void {
+  // picked を対象に、現在の第一/第二設定に応じたラベルでメニューを開く。
+  private openMenu(click: PointerPoint, picked: CombatTarget): void {
     const items: MenuItem[] = [
-      { label: hit === this.target ? 'ターゲット解除' : 'ターゲットに設定', act: 'primary' },
-      { label: hit === this.secondaryTarget ? '第二ターゲット解除' : '第二ターゲットに設定', act: 'secondary' },
+      { label: picked === this.target ? 'ターゲット解除' : 'ターゲットに設定', act: 'primary' },
+      { label: picked === this.secondaryTarget ? '第二ターゲット解除' : '第二ターゲットに設定', act: 'secondary' },
       { label: 'キャンセル', act: 'cancel' },
     ];
-    this.contextMenu.open(click.x, click.y, hit, items);
+    this.contextMenu.open(click.x, click.y, picked, items);
   }
 
   // 第一ターゲットを設定する。同じ個体が第二ターゲットなら外す(両方兼務を禁止)。

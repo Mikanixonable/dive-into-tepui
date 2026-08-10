@@ -21,10 +21,11 @@
 
 - update フェーズ: `Player.behave` → `Belt.update(dt, mags, rounds, att, thrustAccelVec)`
   (`player.ts:133`)
-- update フェーズ: `CollisionPhysics.resolve` → `belt.collisionSections(...)` で
+- update フェーズ: `ContactPhysics.resolveBelt` → `belt.collisionSections(...)` で
   ワールド ECI のプロキシを渡し、解決後 `belt.applyCollisionSections(...)` で書き戻す
-  (`collision.ts:21,25`)。実 dt(非ワープ)で1フレーム1回だけ、
-  `simSpeedManager.canResolvePhysicalCollisions` が真のときのみ。
+  (`contact.ts` の `resolveBelt`)。実 dt(非ワープ)で1フレーム1回だけ、
+  `simSpeedManager.canResolvePhysicalCollisions` が真のときのみ。substep ごとに解決される他の
+  剛体接触(弾・薬莢・放熱板など)とはここだけ異なるタイミングで走る。
 - sync フェーズ: `Player.syncPlayer` → `Belt.sync(alive)`(`player.ts:271`)
 
 ## 可視リンク数と給弾(`Belt.update`)

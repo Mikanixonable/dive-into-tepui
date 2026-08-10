@@ -50,7 +50,7 @@ main.ts
     ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合
     │   ├── ContextMenu<MapPickable>       ... 空域右クリック('empty-space')専用メニュー
     │   ├── windows: Map<string, WindowEntry>  ... {win: PropertyWindow<MenuAction>, target}。オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new。PropertyWindow は Hud.root(#hud)配下に append
-    │   └── ObjectListPanel                ... DOM は Hud.root 配下。軌道オブジェクトウィンドウ(一覧 + クリックでフォーカス移動)。マップ視点である間は常設表示
+    │   └── ObjectListPanel                ... DOM は Hud.root 配下。軌道オブジェクトウィンドウ(一覧 + クリックでフォーカス移動 + 右クリックでプロパティウィンドウ)。マップ視点である間は常設表示
     ├── NavTarget                      ... 航法ターゲット(id)と自機軌道との相対 AN/DN・▲/▽ マーカー
     ├── Navball                        ... 姿勢儀。基準モード(自機/TGT+/TGT-)と天球グリッド6トグルの正本
     │   └── NavballPanel                   ... DOM は Hud.root 配下。SVG のボール + モード選択 + グリッドトグル
@@ -111,6 +111,9 @@ main.ts
     │   │   │       └── BeltSection[]  ... 剛体接触用プロキシ
     │   │   ├── ThermalSystem
     │   │   ├── RadiatorSystem         ... 放熱板2枚の展開度・損耗度。ヒンジ Group は Player.obj 配下を名前で参照
+    │   │   │   └── foldProxies (Record<side, RadiatorFold[]>) ... 側ごとの剛体接触用プロキシ。折り数まで
+    │   │   │       遅延生成し以後使い回す。collisionFolds() が毎 substep 位置を置き直すだけで、
+    │   │   │       Verlet 等の独立した力学は持たない(艦の姿勢+展開度から一意に決まる剛体の取り付け)
     │   │   ├── PowerSystem            ... 太陽電池の蓄電量。パネル法線は機体固定 (0,1,0)、可動部なし
     │   │   ├── ThrustEffects → Billboard ×2
     │   │   ├── RcsEffects    → Billboard ×8   ... 状態なし。ノズル1基につき1枚、配置は RCS_NOZZLES が正本
@@ -121,16 +124,16 @@ main.ts
     │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
     │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
     │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
-    │   ├── Bullet[]
-    │   ├── DebrisPiece[] (casings)
-    │   ├── DebrisPiece[] (debris)
+    │   ├── Bullet[]                    ... 各々コンストラクタで Sfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)
+    │   ├── DebrisPiece[] (casings)      ... 各々コンストラクタで Sfx・EffectsSystem への参照を持つ(接触音・ガスパフを自分の collideWith から出すため)
+    │   ├── DebrisPiece[] (debris)       ... 同上
     │   ├── Ammo[]
     │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
     │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定。
     │                                       j2/c22 を渡した場合は degree2(pole/tesseral)も構築時に att から一括で固定
     ├── Simulator                      ... 実シミュレーション。EntityManager の参照を受け取って回すだけ(所有しない)
-    │   ├── HitSystem
-    │   └── CollisionPhysics
+    │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts)・剛体解決(physics/collision-response.ts)を
+    │                                       substep ごと(resolveSubstep)/フレームに1回のベルト(resolveBelt)で呼ぶ列挙・順序付け層
     └── Predictor                      ... 予測列の駆動。EntityManager の参照を受け取って回すだけ(所有しない)。
                                             状態はラウンドロビンのカーソルのみ
 ```
@@ -138,9 +141,11 @@ main.ts
 木に現れないインスタンス:
 
 - 全ての `GameEntity`(Player・Enemy[]・Bullet[]・DebrisPiece[]・Ammo[]・Base[]・Asteroid[]・
-  BeltSection[] — 木のどのノードも例外なく)は `id`(コンストラクタで固定。省略時は基底の
-  `EntityIdAllocator` が自動採番)・`radius`(物理半径、既定 0)・`collides`(剛体接触参加可否、
-  既定 false)・`mu`(重力定数 GM、既定 0)・`degree2`(2次重力場、既定 null)・`isStar`(既定 false)
+  BeltSection[]・RadiatorFold[] — 木のどのノードも例外なく)は `id`(コンストラクタで固定。省略時は
+  基底の `EntityIdAllocator` が自動採番)・`radius`(物理半径、既定 0)・`collides`(剛体接触参加可否、
+  既定 false)・`mass`(剛体接触の換算質量、既定 1)・`attachedTo`(自分が取り付いている艦。独立した
+  実体なら既定 `null` — `BeltSection`/`RadiatorFold` が構築時に自身の owner を設定する唯一の書き手で、
+  以後書き換えない)・`mu`(重力定数 GM、既定 0)・`degree2`(2次重力場、既定 null)・`isStar`(既定 false)
   を自身のフィールドとして持つ — 変換なしで `physics/attractor.ts` の `Attractor` と同じ形になり、
   `EntityManager.attractors()` は `mu !== 0` かつ生存中の個体をフィルタするだけで済む。`degree2`/
   `isStar` は(`id`/`radius`/`collides`/`mu` と違い)`readonly` ではない派生クラス可変フィールドで、
@@ -181,8 +186,8 @@ main.ts
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
 | `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・EquatorNodeMarkers・PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay) |
 | `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay) |
-| `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | MAP VIEW パネルが書き換え、`FocusMarkers.update` が読む。マップのラベル・軌道オブジェクト一覧・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主 |
-| `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・HitSystem・CollisionPhysics・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
+| `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | MAP VIEW パネルが書き換え、ラベル側を `FocusMarkers.update`、軌道線側を `EnvironmentScene.showsReferenceLine` が読む。マップのラベル・軌道オブジェクト一覧・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主 |
+| `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・ContactPhysics(`Simulator.advance` が呼び出しのたびに参照を渡すだけで保持しない)・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
 | `DisplayTimeManager` | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない) |
 | `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が activePlayer.plan を転送)・PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)・CreativeStage(`planExecution` 艦のノード消化) |
@@ -203,7 +208,7 @@ main.ts
 
 | 状態 | 正本の所有者 | 備考 |
 | --- | --- | --- |
-| 自機の位置・速度・エポック (ECI) | `Player.state` | 書き換えるのは RK4 積分(Simulator)・反動(PlayerFire)・接触(CollisionPhysics) |
+| 自機の位置・速度・エポック (ECI) | `Player.state` | 書き換えるのは RK4 積分(Simulator)・反動(PlayerFire)・接触(ContactPhysics) |
 | エンティティの過去 state 列(`StateQueue`) | `GameEntity.history`(→ `current.history`) | 記録するのは `DynamicTrajectory.step` だけ。時間窓は `historyDuration`(既定 0、Ship のみ `SHIP_HISTORY_DURATION`)、間引き間隔は `sampleInterval()`(軌道周期ベース)で `cleanup` に渡す |
 | 自機の姿勢・角速度 | `Player.att` | 積分は Simulator.stepAttitudes に一元化 |
 | 機体座標系トルク | `Player.torque` | 毎フレーム PlayerThrottle の戻り値で上書きされる |
@@ -309,7 +314,7 @@ main.ts
 - **`EntityManager.players` は他の配列と対等に `all()` へ入る** — 操作対象かどうかは `Game.player` との
   参照同一性だけで決まる選択であり、`players` 配列自体はアクティブ/非アクティブを区別しない。
   積分(`Simulator.substep`/`.stepAttitudes`)・寿命判定(`EntityManager.cleanup`)・
-  剛体接触(`CollisionPhysics.resolve`)はどの艦も一様に扱う。例外は2つだけ: `EntityManager.sync` は
+  剛体接触(`ContactPhysics.resolveSubstep`)はどの艦も一様に扱う。例外は2つだけ: `EntityManager.sync` は
   `players` を丸ごと素通りする(各艦は `Player.syncPlayer` が個別に同期する)。`Predictor.update` は
   `player` 引数を先頭で明示的に一度予算消化してから `entities.all()`(`players` を含む)を
   ラウンドロビンするので、カーソルが操作対象の艦に当たったフレームは二重に予算が付き得る(意図的)。

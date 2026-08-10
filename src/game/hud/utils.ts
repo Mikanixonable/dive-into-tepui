@@ -1,18 +1,19 @@
 // HUD 表示用の数値整形。
 import * as C from '../const';
 
-// "YYYY...-MM-DDTHH:MM:SSZ" を unix 秒へ変換する。年は4桁を超えてよい(SIM_EPOCH_UTC は
+// "YYYY...-MM-DDTHH:MM:SS" を表示用の unix 秒相当へ変換する。年は4桁を超えてよい(SIM_EPOCH_TDB は
 // 作中世界の遠未来年代を持つ)。Date.parse は ECMA-262 の拡張年表記(符号付き6桁)以外の
 // 5桁以上の年を NaN にするため、Date.parse ではなく年ごと数値で取り出して Date.UTC へ渡す。
-function parseUtcIso(iso: string): number {
-  const m = /^(\d+)-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/.exec(iso);
+function parseDisplayIso(iso: string): number {
+  const m = /^(\d+)-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/.exec(iso);
   if (!m) return NaN;
   const [, y, mo, d, h, mi, s] = m;
   return Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)) / 1000;
 }
 
 // simTime=0 に対応する絶対時刻 [unix s]。
-export const SIM_EPOCH_SEC = parseUtcIso(C.SIM_EPOCH_UTC);
+// 作中カレンダーの表示・日界線目盛用。物理時刻は sim-epoch.ts のJD_TDBを使う。
+export const SIM_EPOCH_SEC = parseDisplayIso(C.SIM_EPOCH_TDB);
 
 // パネル用距離表記(例: "420 m" / "1.23 km" / "1.50 Mm")
 export function fmtDist(m: number): string {
@@ -43,7 +44,7 @@ export function fmtSpeed(ms: number): string {
 }
 
 // UTC 絶対時刻を ISO 8601 (例: "2026-08-08T14:16:00") で表記する。toISOString() の
-// 拡張年表記(4桁を超える年に符号を前置する形式)は SIM_EPOCH_UTC の遠未来年代と噛み合わないので
+// 拡張年表記(4桁を超える年に符号を前置する形式)は SIM_EPOCH_TDB の遠未来年代と噛み合わないので
 // 使わず、各成分を直接取り出して組む。
 export function fmtDateTime(unixSec: number): string {
   if (!isFinite(unixSec)) return '-------------------';
