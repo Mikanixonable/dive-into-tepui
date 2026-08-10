@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
-import { FrameDir, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialDir, toInertialPoint } from '../../physics/frame';
+import { ReferenceFrame, frameDir, toFrameDir, toFramePoint, toFrameState, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { isOccluded } from '../../physics/occlusion';
@@ -180,7 +180,7 @@ export class PlanPath {
     const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.attractors);
     const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, this.attractors);
     const relV = toFrameState(bakeTf, state).v;
-    return toInertialDir(unbakeTf, { x: relV.x, y: relV.y, z: relV.z } as FrameDir);
+    return toInertialDir(unbakeTf, frameDir(relV.x, relV.y, relV.z));
   }
 
   // 時刻 t のサンプル位置 r をスクリーン座標へ投影する。
