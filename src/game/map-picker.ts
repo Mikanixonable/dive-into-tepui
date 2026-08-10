@@ -10,6 +10,7 @@ import { ContextMenu, MenuItem } from './hud/context-menu';
 import { PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem } from './hud/property-window';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { celestialBodyName } from './hud/frame-labels';
+import { lagrangeParentId } from './hud/object-groups';
 import { MapPickable, pickNearest } from './map-pick';
 import { focusTargetId } from './camera/focus-target';
 import { ObjectListPanel } from './object-list-panel';
@@ -271,8 +272,15 @@ export class MapPicker {
   sync(overviewMode: boolean, simTime: number, attractors: readonly Attractor[], player: Player | null): void {
     this.objectListPanel.setVisible(overviewMode);
     if (overviewMode) {
-      const depthOf = new Map(this.cameraSystem.focusMarkers.labels.map((l) => [l.id, l.depth]));
-      this.objectListPanel.sync(this.items, focusTargetId(this.cameraSystem.overviewCamera.focus), depthOf);
+      // ラグランジュ点は自分を持つ天体(衛星ならその衛星自身)、それ以外の天体は主星/主天体を
+      // 親とする — 親が無ければ(恒星、もしくは主天体が未登録)undefined のままにして根として扱う。
+      const registry = this.ephemeris.registry;
+      const parentOf = new Map<string, string>();
+      for (const l of this.cameraSystem.focusMarkers.labels) {
+        const parent = l.isLagrange ? lagrangeParentId(l.id) : primaryOf(registry, l.id);
+        if (parent !== null) parentOf.set(l.id, parent);
+      }
+      this.objectListPanel.sync(this.items, focusTargetId(this.cameraSystem.overviewCamera.focus), parentOf);
     }
 
     const byKey = new Map(this.items.map((i) => [this.windowKey(i), i]));
