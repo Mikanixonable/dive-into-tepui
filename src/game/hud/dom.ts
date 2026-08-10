@@ -142,6 +142,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-object-list .object-list-actions { display:none; gap:2px; }
 #hud-object-list .erow:hover .object-list-actions, #hud-object-list .erow:focus .object-list-actions { display:flex; }
 #hud-object-list .object-list-actions button { padding:0 3px; font-size:8px; }
+.mk-list-selection { color:#fff; font-size:28px; pointer-events:none; }
 #hud-object-list .erow:hover { color: ${INK}; }
 #hud-object-list .erow.tgt { color: ${ACCENT}; }
 #hud-object-list .erow.selected { outline: 1px solid ${EDGE}; color: ${INK}; }
