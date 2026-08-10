@@ -211,6 +211,10 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
 #hud .seg-btn.disabled { opacity: 0.35; pointer-events: none; }
 #hud .seg-btn.hold-btn:active { border-color: ${ACCENT}; color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.16); }
+#hud .icon-toggle-btn { min-width: 20px; padding: 3px 6px; text-align: center; font-size: 12px; }
+#hud .body-class-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+#hud .body-class-row .body-class-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 52px; }
+#hud .body-class-row .body-class-btns { display: flex; gap: 4px; }
 #hud .hud-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 #hud .hud-toggle .toggle-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; }
 #hud .hud-toggle .toggle-track {
