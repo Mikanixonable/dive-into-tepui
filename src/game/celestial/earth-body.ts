@@ -10,12 +10,18 @@ import { CelestialBody } from './celestial-body';
 export class EarthBody extends CelestialBody {
   readonly id = 'earth' as const;
   private readonly earth: Earth = createEarth();
-  private readonly phase0 = Math.random() * Math.PI * 2;
+  private phase0 = Math.random() * Math.PI * 2;
 
   // 地球メッシュをシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
     scene.add(this.earth.group);
   }
+
+  // 自転初期位相 [rad](セーブ用)。
+  spinPhase0(): number { return this.phase0; }
+
+  // 自転初期位相を差し替える(ロード用)。
+  setSpinPhase0(phase0: number): void { this.phase0 = phase0; }
 
   // displayTime 時点の位置・自転角・太陽方向・表面アニメーションへ同期する。
   sync(fo: FloatingOrigin, displayTime: number, _cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
