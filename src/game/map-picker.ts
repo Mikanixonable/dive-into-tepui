@@ -303,6 +303,9 @@ export class MapPicker {
   // (this.items)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
   sync(overviewMode: boolean, simTime: number, attractors: readonly Attractor[], player: Player | null): void {
     this.objectListPanel.setVisible(overviewMode);
+    // マップを離れると ViewManager.closeMap() が開いているウィンドウを閉じる。
+    // 戦闘中は候補列を更新せず、ウィンドウもないため、毎フレームの Map 生成と行導出を省く。
+    if (!overviewMode && this.windows.size === 0) return;
     if (overviewMode) {
       // ラグランジュ点は自分を持つ天体(衛星ならその衛星自身)、それ以外の天体は主星/主天体を
       // 親とする — 親が無ければ(恒星、もしくは主天体が未登録)undefined のままにして根として扱う。
