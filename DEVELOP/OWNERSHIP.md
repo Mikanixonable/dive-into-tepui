@@ -46,7 +46,10 @@ main.ts
     │   │   └── GunsightCamera
     │   ├── OverviewCamera
     │   ├── FocusMarkers
-    │   └── OverviewCameraPanel        ... DOM は Hud.root 配下。視点座標系/視点リセット
+    │   └── OverviewCameraPanel        ... DOM は Hud.root 配下。天体クラス別トグル(軌道線/ラベル)+ 弾薬マーカートグルのみ。座標系の選択は持たない
+    ├── FrameControls                  ... 状態を持たない横断。座標系パネル(カメラ/カメラ回転/並進/計画軌道回転の4ゾーン)から OverviewCamera・PlanDisplay.planFrame を書く
+    │   ├── AnchorZone × 2                 ... カメラ/並進ゾーン。ObjectPicker + SegmentedControl(いまいる系のクイックボタン)
+    │   └── RotationZone × 2               ... カメラ回転/計画軌道回転ゾーン。SegmentedControl のみ
     ├── MapPicker                      ... マップ被選択物の候補列・右クリック解決・種別別プロパティ/操作の配分・開いているプロパティウィンドウ集合
     │   ├── ContextMenu<MapPickable>       ... 空域右クリック('empty-space')専用メニュー
     │   ├── windows: Map<string, WindowEntry>  ... {win: PropertyWindow<MenuAction>, target}。オブジェクト1つ(`${kind}:${id}`)につき高々1枚。呼び出しごとに new。PropertyWindow は Hud.root(#hud)配下に append
@@ -62,9 +65,8 @@ main.ts
     │   └── DisplayTimePanel           ... DOM は Hud.root 配下。期間/未来位置スライダー
     ├── PlanEditor                     ... plan は活艦(ship)の Plan への転送 getter。正本ではない
     │   ├── PlanDisplay                ... 計画の未来表示(「見えるとき何を見せるか」)
-    │   │   ├── PlanPath         ... 計画折れ線 + per-arc キャッシュ + 画面判定
-    │   │   │   └── PlanArc[]          ... arc ごと。各々 DynamicTrajectory 1本(積分の正本)+ SampledLine を持つ
-    │   │   └── TRAJECTORY パネル DOM   ... 表示座標系(frame)の SegmentedControl 1 個のみ
+    │   │   └── PlanPath         ... 計画折れ線 + per-arc キャッシュ + 画面判定
+    │   │       └── PlanArc[]          ... arc ごと。各々 DynamicTrajectory 1本(積分の正本)+ SampledLine を持つ
     │   ├── NodeGizmo
     │   │   └── ContextMenu<number>
     │   ├── HudHoldButton ×6            ... Δv 6方向の長押しボタン(dvButtons)
@@ -230,8 +232,8 @@ main.ts
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNodeIdx` / `.editMode` | 選択は素の `number \| null`。`deleteNode(idx)` は削除後 `selectedNodeIdx >= idx` なら選択を解除する |
 | 直近ノードの接近/達成通知済み | `PlanGuide`(`approachNotified` / `achievedNotified`) | 通知済みのノードそのものへの参照。編集のたびノードは別インスタンスへ置き換わるので、同一性比較がそのまま「同じノードについて通知済みか」の判定になる |
 | 予測表示期間(手動レンジの秒数 `manualDurationSec` を含む)・未来ゴーストスライダー(`sliderT`)・未来表示の禁止(`forceCurrent`) | `DisplayTimeManager` | `forceCurrent` は get/set アクセサで、true をセットすると `sliderT` も 0 へ戻す。期間の切替(`durationKey` 変更)でも同様に `sliderT` を 0 へ戻す |
-| 計画折れ線を描く表示座標系(planFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本 |
-| マップ視点(注視点相対オフセット・パン・上方向)・表示座標系・フォーカス(id)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカス id が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す |
+| 計画折れ線を描く表示座標系(planFrame) | `PlanDisplay` | `OverviewCamera.cameraFrame`(視点固定座標系)とは別の正本。書き換えは `FrameControls` の並進/計画軌道回転ゾーンのみ、いずれも `Ephemeris.frameOf(center, rotatingWith)` 経由 |
+| マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` のカメラ/カメラ回転ゾーンから呼ばれる |
 | 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
 | 現在のビュー(combat/map/dock) | `ViewManager`(private `_current`) | 遷移は `setView()` のみ。影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayTimeManager.forceCurrent` / タッチUI)を一斉に切り替える。ドック表示中は背後の 3D 側ビュー(`returnFromDock`)を保持し、閉じるとそこへ戻る |
 | ドックビューの対象基地 | `Docking`(private `_activeBase`) | 基地の右クリックメニューで設定。これが空でない間だけ `ViewManager.selectableViews()` に `'dock'` が並ぶ |
@@ -251,8 +253,8 @@ main.ts
 | 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | 各要素は位置を時刻つきの `KinematicState` で持ち、`updateFlashEffects` がその時刻から `simTime` まで移流させる |
 | 地球自転の初期位相 | `EarthBody.phase0` | |
 | 各天体の平均黄経の初期位相 | `Ephemeris`(`phaseOffsets`) | 時刻を引数に取るサンプラ。既定で乱数を持つのは月のみ。時刻 `t` 完全一致キーの3スロットのリングキャッシュ(`planetHelioState`/`satelliteRelState`/`attractorsAt`)を持ち、ヒットしない呼び出しだけ天体暦の合成をやり直す。セーブ/ロードは `getPhaseOffsets()`/`setPhaseOffsets()` で読み書きする(`Game.restore` が共有インスタンスへ書き戻す。インスタンスの作り直しはしない。`setPhaseOffsets` は3系統のキャッシュを全てクリアする) |
-| `registry`/`originId`/`epochOffsetSec` | `Ephemeris`(コンストラクタ引数、以後不変) | どのステージも既定値(`SOLAR_SYSTEM`/`'earth'`/`EPOCH_T_OFFSET`)を渡すが、`StageClass.ephemerisConfig` を宣言したステージだけ `Game` が別の値を渡して構築する。`starId`/`inertialFrame`/`frames`(登録天体ぶんの `ReferenceFrame` 一覧)もこの3引数からコンストラクタが1回だけ導出する正本 |
-| `dynamicFrames`(`Map<AttractorId, ReferenceFrame>`) | `Ephemeris`(`frameFor` 経由) | レジストリ未登録の id(生存中の重力天体)向け `ReferenceFrame` を初回アクセス時に生成してキャッシュする、実行時に伸びる正本。`frames` と同じ参照同一性契約(`sampled-line.ts` の `frame === lastFrame`)を満たすためのもの |
+| `registry`/`originId`/`epochOffsetSec` | `Ephemeris`(コンストラクタ引数、以後不変) | どのステージも既定値(`SOLAR_SYSTEM`/`'earth'`/`EPOCH_T_OFFSET`)を渡すが、`StageClass.ephemerisConfig` を宣言したステージだけ `Game` が別の値を渡して構築する。`starId`/`inertialFrame`/`frames`(登録天体ぶんの `ReferenceFrame` 一覧)もこの3引数からコンストラクタが1回だけ導出する正本(いずれも下記 `frameCache` を経由して作る) |
+| `frameCache`(`Map<AttractorId, Map<OrbitingId \| null, ReferenceFrame>>`) | `Ephemeris`(`frameOf` 経由) | `(center, rotatingWith)` の対ごとに `ReferenceFrame` を1個だけ持つ、実行時に伸びる正本。レジストリ登録の有無を問わない(生存中の重力天体を中心にする回転系にも同じ契約で応じる)。`inertialFrame`/`frames`/`frameFor` はすべてこのキャッシュを経由して作られた値を返すので、同じ対に対して異なる参照が生まれない(`sampled-line.ts` の `frame === lastFrame` 参照同一性契約を満たすためのもの) |
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
 | 敵 AI の実行時状態(最終発砲時刻・バースト残数) | `Enemy` | |
 | LEAD マーカーの表示履歴(敵ごとの最終ロック時刻) | `LeadMarkers` | 表示専用の状態なので Enemy には置かない。毎フレーム生存中の敵ぶんだけ作り直す |
@@ -278,14 +280,18 @@ main.ts
   `Game.setActivePlayer` だけで、他はそれぞれ自分の持ち分(視点/編集対象/ロック解除)だけを更新する
   — `ViewManager` が3つのフラグを一斉に切り替えるのと同じ形のトグラー集約。
 - **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `PlanDisplay.planFrame`(計画折れ線を
-  描く座標系)** は別の正本で、ユーザーが独立に選ぶ。PlanPath が受け取るのは後者だけ。
+  描く座標系)** は別の正本で、ユーザーが `FrameControls` の4ゾーン(カメラ/カメラ回転/並進/計画軌道回転)
+  からそれぞれ独立に選ぶ — 4ゾーンとも状態は書き込み先の2クラスに残したまま `FrameControls` は
+  仲介するだけなので、この独立性自体はゾーンの分割で変わらない。PlanPath が受け取るのは後者だけ。
 - **`Targeter.target`(戦闘ターゲット、`Enemy` のみ)と `NavTarget.id`(航法ターゲット、任意の `MapPickable`)**
   は別の正本。前者は射撃・LEAD・的通過マークの対象、後者はマップの相対 AN/DN・時間加速・ノード追加の
   対象で、対象の型も操作系(右クリック位置がヒットしたのが敵かそれ以外か)も異なるため一本化しない。
-- **マップモードの操作パネル**は状態の所有者ごとに分かれる。`OverviewCameraPanel` は CameraSystem が、
-  `DisplayTimePanel`(期間・未来位置スライダー)は DisplayTimeManager が、TRAJECTORY パネル(表示座標系)
-  は PlanDisplay(PlanEditor 所有)が持ち、それぞれ自分の状態だけを映して自分の状態だけを受け取る。
-  表示・非表示も各所有者が毎フレームの sync で押し出す(ViewManager は関与しない)。
+- **マップモードの操作パネル**は状態の所有者ごとに分かれる。`OverviewCameraPanel`(天体クラス別トグル・
+  弾薬トグル)は CameraSystem が、`DisplayTimePanel`(期間・未来位置スライダー)は DisplayTimeManager が
+  持ち、それぞれ自分の状態だけを映して自分の状態だけを受け取る。座標系パネル(FrameControls)だけは
+  例外で、状態を持たず `OverviewCamera` と `PlanDisplay.planFrame` という別々の所有者へ4ゾーンから
+  書き込む横断モジュール(上記「同時に切り替わる」節参照)。表示・非表示も各所有者が毎フレームの
+  sync で押し出す(ViewManager は関与しない)。
 - **キー割り当ての正本は `input/key-mapping.ts` の `KEY_MAPPING`、キーの処理の正本は各担当モジュール**。
   どのキーがどの操作かは KEY_MAPPING(コード + 表示名)だけが持ち、入力を読む側(`Input.down` /
   `Input.takeKey` は `KeyBinding` を受ける)と説明を出す側(ヘルプ表・操作バー・タッチパッド・
