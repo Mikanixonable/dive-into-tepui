@@ -23,16 +23,18 @@ const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
 // 時刻の近さで tie-break するときに同点とみなす幅[s]。
 const TIME_TIE_SEC = 1e-6;
 
-type Segment = { state0: KinematicState; end: number };
+// apsisCenter は末尾区間だけが持つ、起点自身の時刻の重力源から選んだ中心天体。
+type Segment = { state0: KinematicState; end: number; apsisCenter: Attractor | null };
 
 // 最後のバーン後(これから乗る軌道)の区間。samples は PlanArc.samples をそのまま渡す参照で、
 // 区間を再積分しない限り同一参照を保つ。periapsis/apoapsis は、区間が地表到達等で
-// 打ち切られてその極値へ届かなければ null。
+// 打ち切られてその極値へ届かなければ null。apsisCenter はその極値を測った中心天体。
 export interface FinalSegment {
   readonly state0: KinematicState;
   readonly samples: readonly KinematicState[];
   readonly periapsis: KinematicState | null;
   readonly apoapsis: KinematicState | null;
+  readonly apsisCenter: Attractor | null;
 }
 
 export class PlanPath {
@@ -87,13 +89,8 @@ export class PlanPath {
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       const tracksLiveAnchor = plan.nodes.length === 0 && i === segments.length - 1;
-      // 近地点/遠地点は末尾区間だけが必要とするので、他区間は追跡自体を省く。
-      // 起点自身の時刻の重力源スナップショットで判定する — displayTime 時点の attractors では
-      // 表示時刻に応じて中心天体が変わってしまい、区間の物理そのものと食い違う。
-      const isFinalSegment = i === segments.length - 1;
-      const apsisCenter = isFinalSegment ? strongestAttractor(seg.state0.r, ephemeris.attractorsAt(seg.state0.t)) : null;
       const arc = this.arcAt(i);
-      if (arc.update(seg.state0, seg.end, attractorProvider, tracksLiveAnchor, apsisCenter)) {
+      if (arc.update(seg.state0, seg.end, attractorProvider, tracksLiveAnchor, seg.apsisCenter)) {
         this.lastReintegratedArcs++;
         this.lastSteps += arc.lastSteps;
       }
@@ -101,11 +98,13 @@ export class PlanPath {
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
     const finalArc = this.arcs[segments.length - 1]!;
+    const finalSeg = segments[segments.length - 1]!;
     this.final = {
-      state0: segments[segments.length - 1]!.state0,
+      state0: finalSeg.state0,
       samples: finalArc.samples,
       periapsis: finalArc.periapsisPoint(),
       apoapsis: finalArc.apoapsisPoint(),
+      apsisCenter: finalSeg.apsisCenter,
     };
   }
 
@@ -295,16 +294,22 @@ export class PlanPath {
 }
 
 // anchor を起点に nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
-// 末尾の1本は segmentDurationFrom ぶん伸びる。
+// 末尾の1本は segmentDurationFrom ぶん伸び、その起点自身の時刻で選んだ中心天体を持つ
+// (表示時刻の重力源では表示時刻に応じて中心天体が変わり、区間の物理そのものと食い違う)。
 function buildSegments(plan: Plan, ephemeris: Ephemeris, displayTimeManager: DisplayDurationSource): Segment[] {
   const segments: Segment[] = [];
   let state0 = plan.anchor;
   // ノードを1つずつ経由点として区間を切り出す
   for (const node of plan.nodes) {
-    segments.push({ state0, end: node.t });
+    segments.push({ state0, end: node.t, apsisCenter: null });
     state0 = node;
   }
+  // 区間長と中心天体は同じ起点・同じ時刻の問いなので、天体窓は1回だけ引いて両方に使う。
   const attractors = ephemeris.attractorsAt(state0.t);
-  segments.push({ state0, end: state0.t + segmentDurationFrom(state0, attractors, displayTimeManager) });
+  segments.push({
+    state0,
+    end: state0.t + segmentDurationFrom(state0, attractors, displayTimeManager),
+    apsisCenter: strongestAttractor(state0.r, attractors),
+  });
   return segments;
 }
