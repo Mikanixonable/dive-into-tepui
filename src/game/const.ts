@@ -84,7 +84,6 @@ export const ALT_DESCEND_CLEAR_RATE = -1; // この降下率(EMA)まで戻ると
 export const ALT_WARN_HYSTERESIS = 5e3; // しきい値の再警告までのヒステリシス幅 [m]
 
 // --- 地球の影 ---
-export const SHADOW_PENUMBRA = 6e4; // 影の縁のぼかし幅 [m]
 export const SUN_INTENSITY = 2.2; // 太陽光の基準強度
 export const AMBIENT_INTENSITY = 0.25; // 環境光の基準強度
 export const SHADOW_MIN_SUN = 0.04; // 影の中に残す太陽光の割合(星明かり・地球照ぶん)

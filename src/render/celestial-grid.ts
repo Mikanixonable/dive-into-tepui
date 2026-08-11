@@ -55,6 +55,20 @@ function makeLine(color: number, opacity: number): THREE.Line {
   const geo = new THREE.BufferGeometry();
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
   const line = new THREE.Line(geo, mat);
+  // 常にカメラを中心とする殻として置く(sync が position をカメラ位置へ毎フレーム合わせる)ため、
+  // 外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
+  line.frustumCulled = false;
+  line.renderOrder = 0;
+  return line;
+}
+
+// 経緯線の交点マーカー・両極マーカーは、目盛りの数だけ THREE.LineSegments の
+// 頂点対として1つのバッファへ詰め、1グループ=1描画にまとめる。
+function makeLineSegments(color: number, opacity: number): THREE.LineSegments {
+  const geo = new THREE.BufferGeometry();
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
+  const line = new THREE.LineSegments(geo, mat);
+  // makeLine と同じ理由(常にカメラ中心の殻)。
   line.frustumCulled = false;
   line.renderOrder = 0;
   return line;
@@ -74,9 +88,8 @@ function setLinePoints(line: THREE.Line, points: readonly Vec3[]): void {
   line.geometry = geo;
 }
 
-// 緯度 latRad の円周を、始点を終端に複製して閉じた頂点列として返す
-// (WebGPU レンダラーは THREE.LineLoop 非対応のため、THREE.Line で手動に閉じる)。
-// 緯度・経度の交点だけを小さな十字で示す。全周の線を描かないことで、
+// 緯度・経度の交点における東西・南北の短い十字を、LineSegments 用の
+// 頂点対4つ([東西の2点, 南北の2点])として返す。全周の線を描かないことで、
 // 天球上の座標密度を保ちつつ視界を塞がない。
 function intersectionCrossPoints(basis: PlaneBasis, radius: number, latRad: number, lonRad: number): Vec3[] {
   const p = planePoint(basis, radius, latRad, lonRad);
@@ -99,12 +112,14 @@ function intersectionCrossPoints(basis: PlaneBasis, radius: number, latRad: numb
   ];
 }
 
-// 面 1 枚ぶんの表示物: 基準円(plane)・緯線経線の網(grid)・両極マーカー(pole)。
-// 3 種とも独立した可視トグルを持つため、束ねずに別オブジェクトとして保持する。
+// 面 1 枚ぶんの表示物: 基準円(plane)・緯線経線の交点網(grid)・両極マーカー(pole)。
+// 3 種とも独立した可視トグルを持つため束ねずに別オブジェクトとして保持するが、
+// grid/pole はそれぞれ内部の全セグメントを1つの LineSegments に詰め、
+// トグル1つあたり描画1回で済むようにする。
 class GridPlane {
   readonly planeLine: THREE.Line;
-  readonly gridGroup = new THREE.Group();
-  readonly poleGroup = new THREE.Group();
+  readonly gridLine: THREE.LineSegments;
+  readonly poleLine: THREE.LineSegments;
   private readonly labelLayer: HTMLDivElement;
   private readonly labels: HTMLDivElement[] = [];
   private readonly gridLabels: { el: HTMLDivElement; lat: number; lon: number }[] = [];
@@ -124,22 +139,21 @@ class GridPlane {
     })());
     scene.add(this.planeLine);
 
+    // 交点ごとの東西・南北の線分(setLinePoints が組む頂点対)を1本の
+    // LineSegments へ連結する。連続した1本の折れ線にすると線分間が斜めに
+    // 接続され「4」のように見えるため、頂点対を独立したセグメントとして保つ。
+    const gridPoints: Vec3[] = [];
     for (let lat = -75; lat <= 75; lat += GRID_LAT_STEP_DEG) {
       if (lat === 0) continue;
       for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) {
-        const points = intersectionCrossPoints(basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, (lon * Math.PI) / 180);
-        // 交点の東西・南北の線分を別オブジェクトにする。1本の折れ線に
-        // まとめると線分間が斜めに接続され「4」のように見えるため。
-        const lonLine = makeLine(color, 0.3);
-        setLinePoints(lonLine, points.slice(0, 2));
-        this.gridGroup.add(lonLine);
-        const latLine = makeLine(color, 0.3);
-        setLinePoints(latLine, points.slice(2, 4));
-        this.gridGroup.add(latLine);
+        gridPoints.push(...intersectionCrossPoints(basis, STAR_SHELL_RADIUS, (lat * Math.PI) / 180, (lon * Math.PI) / 180));
       }
     }
-    scene.add(this.gridGroup);
+    this.gridLine = makeLineSegments(color, 0.3);
+    setLinePoints(this.gridLine, gridPoints);
+    scene.add(this.gridLine);
 
+    const polePoints: Vec3[] = [];
     for (const sign of [1, -1]) {
       const tip = v3(basis.pole.x * STAR_SHELL_RADIUS * sign, basis.pole.y * STAR_SHELL_RADIUS * sign, basis.pole.z * STAR_SHELL_RADIUS * sign);
       const base = v3(
@@ -147,11 +161,11 @@ class GridPlane {
         tip.y - basis.pole.y * POLE_MARKER_HALF_LEN * sign,
         tip.z - basis.pole.z * POLE_MARKER_HALF_LEN * sign,
       );
-      const line = makeLine(color, 0.7);
-      setLinePoints(line, [base, tip]);
-      this.poleGroup.add(line);
+      polePoints.push(base, tip);
     }
-    scene.add(this.poleGroup);
+    this.poleLine = makeLineSegments(color, 0.7);
+    setLinePoints(this.poleLine, polePoints);
+    scene.add(this.poleLine);
     const addLabel = (text: string, cls = '') => {
       const el = document.createElement('div');
       el.textContent = text; el.className = `celestial-grid-label ${cls}`;
@@ -172,9 +186,9 @@ class GridPlane {
 
   sync(planeVisible: boolean, poleVisible: boolean, gridVisible: boolean, origin: THREE.Vector3, scale: number, camera: THREE.Camera): void {
     this.planeLine.visible = planeVisible;
-    this.gridGroup.visible = gridVisible;
-    this.poleGroup.visible = poleVisible;
-    for (const obj of [this.planeLine, this.gridGroup, this.poleGroup]) {
+    this.gridLine.visible = gridVisible;
+    this.poleLine.visible = poleVisible;
+    for (const obj of [this.planeLine, this.gridLine, this.poleLine]) {
       obj.position.copy(origin);
       obj.scale.setScalar(scale);
     }

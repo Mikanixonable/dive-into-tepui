@@ -228,7 +228,9 @@ export class Player extends Ship {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
     const sunDir = ephemeris.sunDirFrom(this.state.r, simTime);
-    const sunlit = sunlitFactor(this.state.r, sunDir, C.SHADOW_PENUMBRA);
+    const attractorsNow = ephemeris.attractorsAt(simTime);
+    const star = attractorsNow.find((a) => a.id === ephemeris.starId);
+    const sunlit = star ? sunlitFactor(this.state.r, star, attractorsNow) : 1;
     this.thermal.setRadiatorLoad(
       this.radiator.radiatingArea(this.totalCoolingRate),
       this.radiator.solarLoad(sunlit, sunDir, this.att, this.totalCoolingRate),

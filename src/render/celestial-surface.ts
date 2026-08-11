@@ -25,9 +25,25 @@ import {
 } from 'three/tsl';
 import { Vec3 } from '../physics/vec3';
 import { RingSystemDef } from '../physics/solar-system';
+import { SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 
 // 夜側の明るさ(0 で真っ暗)。惑星光・星明かりを表す最低限の底上げ。
 export const NIGHT_AMBIENT = 0.04;
+
+// 分割数の組が SPHERE_LOD_LADDER のいずれかの段と一致する呼び出しだけ、その段の単位球
+// ジオメトリを全呼び出し元(=全天体)で共有する。一致しない組(既存のジオメトリを
+// 個別に書き換える呼び出しなど)は共有すると他の利用元を壊すため、専用に1つ作る。
+const sharedLodGeometries = new Map<SphereLodLevel, THREE.BufferGeometry>();
+function unitSphereGeometry(widthSegments: number, heightSegments: number): THREE.BufferGeometry {
+  const level = SPHERE_LOD_LADDER.find((l) => l.widthSegments === widthSegments && l.heightSegments === heightSegments);
+  if (level === undefined) return new THREE.SphereGeometry(1, widthSegments, heightSegments);
+  let geo = sharedLodGeometries.get(level);
+  if (geo === undefined) {
+    geo = new THREE.SphereGeometry(1, widthSegments, heightSegments);
+    sharedLodGeometries.set(level, geo);
+  }
+  return geo;
+}
 
 type RingShadowBand = {
   readonly axis: ReturnType<typeof uniform>;
@@ -55,7 +71,6 @@ export class CelestialSurface {
     this.albedoNode = albedo;
     this.material = this.buildMaterial(this.albedoNode, false);
     this.mesh = new THREE.Mesh(geometry, this.material as unknown as THREE.Material);
-    this.mesh.frustumCulled = false;
   }
 
   private material: THREE.MeshBasicNodeMaterial;
@@ -107,16 +122,16 @@ export class CelestialSurface {
   }
 
   // 実写テクスチャを貼った球面。
-  static textured(textureUrl: string, widthSegments = 48, heightSegments = 24): CelestialSurface {
+  static textured(textureUrl: string, widthSegments: number, heightSegments: number): CelestialSurface {
     const map = new THREE.TextureLoader().load(textureUrl);
     map.colorSpace = THREE.SRGBColorSpace;
-    return new CelestialSurface(new THREE.SphereGeometry(1, widthSegments, heightSegments), textureNode(map, uv()));
+    return new CelestialSurface(unitSphereGeometry(widthSegments, heightSegments), textureNode(map, uv()));
   }
 
   // テクスチャを持たない天体の単色球面。
-  static solid(color: number): CelestialSurface {
+  static solid(color: number, widthSegments: number, heightSegments: number): CelestialSurface {
     const c = new THREE.Color(color);
-    return new CelestialSurface(new THREE.SphereGeometry(1, 32, 16), vec3(c.r, c.g, c.b));
+    return new CelestialSurface(unitSphereGeometry(widthSegments, heightSegments), vec3(c.r, c.g, c.b));
   }
 
   // この天体の真の ECI 位置から見た恒星方向(単位ベクトル)を与える。

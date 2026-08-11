@@ -4,6 +4,7 @@ import { bodyDef, CelestialRegistry, RingSystemDef, ShapeDef, SOLAR_SYSTEM, Sola
 import { AttractorId } from '../../physics/attractor';
 import { createMoon, MOON_VIS_DIST } from '../../render/stars';
 import { CelestialSurface } from '../../render/celestial-surface';
+import { SphereLodLevel } from '../../render/screen-lod';
 import { CelestialBody } from './celestial-body';
 import { EarthBody } from './earth-body';
 import { SphereBody } from './sphere-body';
@@ -30,7 +31,7 @@ const PLANET_VIS_DIST = 5e7;
 // そのまま渡す)があれば環付きになる。pointBrightness を渡すと戦闘ビューでの表示が
 // PointBody の輝点スプライトになる(省略時は SphereBody の視距離圧縮球のまま)。
 function planetEntry(id: SolarSystemId, name: string, textureUrl: string, pointBrightness?: PointBrightness): CelestialView {
-  const buildSurface = () => CelestialSurface.textured(textureUrl);
+  const buildSurface = (level: SphereLodLevel) => CelestialSurface.textured(textureUrl, level.widthSegments, level.heightSegments);
   const def = bodyDef(SOLAR_SYSTEM, id);
   return {
     name,
@@ -57,14 +58,20 @@ function shapeOf(id: SolarSystemId): ShapeDef | undefined {
 function satelliteEntry(id: SolarSystemId, name: string, color: number): CelestialView {
   return {
     name,
-    create: () => new SphereBody(id, () => CelestialSurface.solid(color), bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST, shapeOf(id)),
+    create: () => new SphereBody(
+      id,
+      (level) => CelestialSurface.solid(color, level.widthSegments, level.heightSegments),
+      bodyDef(SOLAR_SYSTEM, id).radius,
+      MOON_VIS_DIST,
+      shapeOf(id),
+    ),
   };
 }
 
 // テクスチャ付き衛星のレジストリ項を、表示名とテクスチャ URL から組む(実写の全球モザイクが
 // 入手できた衛星のみ; それ以外は satelliteEntry の単色のまま)。表示距離は月と揃える。
 function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: string): CelestialView {
-  const buildSurface = () => CelestialSurface.textured(textureUrl);
+  const buildSurface = (level: SphereLodLevel) => CelestialSurface.textured(textureUrl, level.widthSegments, level.heightSegments);
   return { name, create: () => new SphereBody(id, buildSurface, bodyDef(SOLAR_SYSTEM, id).radius, MOON_VIS_DIST, shapeOf(id)) };
 }
 
@@ -73,7 +80,14 @@ function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: str
 function solidPlanetEntry(id: SolarSystemId, name: string, color: number): CelestialView {
   return {
     name,
-    create: () => new SphereBody(id, () => CelestialSurface.solid(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id)),
+    create: () => new SphereBody(
+      id,
+      (level) => CelestialSurface.solid(color, level.widthSegments, level.heightSegments),
+      bodyDef(SOLAR_SYSTEM, id).radius,
+      PLANET_VIS_DIST,
+      shapeOf(id),
+      ringsOf(id),
+    ),
   };
 }
 
@@ -190,5 +204,10 @@ export function fallbackCelestialView(registry: CelestialRegistry, id: Attractor
   const def = bodyDef(registry, id);
   return def.kind === 'star'
     ? new SunBody(id, def.radius)
-    : new SphereBody(id, () => CelestialSurface.solid(0x888888), def.radius, def.kind === 'satellite' ? MOON_VIS_DIST : PLANET_VIS_DIST);
+    : new SphereBody(
+      id,
+      (level) => CelestialSurface.solid(0x888888, level.widthSegments, level.heightSegments),
+      def.radius,
+      def.kind === 'satellite' ? MOON_VIS_DIST : PLANET_VIS_DIST,
+    );
 }

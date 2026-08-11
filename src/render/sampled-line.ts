@@ -99,6 +99,8 @@ export class SampledLine {
       this.lineDistances = null;
     }
     this.line = new THREE.Line(this.geom, this.mat);
+    // writeVertices はバッファへ書き込んで needsUpdate を立てるだけで外接球を更新しないので、
+    // 既定のフラスタム判定が使う外接球は古いまま(初期値は全頂点ゼロ)になる。
     this.line.frustumCulled = false;
     this.line.renderOrder = renderOrder;
     this.line.visible = false;

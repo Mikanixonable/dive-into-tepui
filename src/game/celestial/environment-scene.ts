@@ -125,11 +125,13 @@ export class EnvironmentScene {
     gridVisibility: CelestialGridVisibility,
     sharedVisibility: MapVisibilityPolicy | null = null,
   ): void {
-    // lit は自機位置の日照率(円柱影の近似)。物理的に正確ではない。主星が無いレジストリでは
-    // 日照そのものが無意味なので計算を飛ばす。
-    const lit = cameraSystem.overviewMode || this.ephemeris.starId === null
-      ? 1.0
-      : sunlitFactor(playerPos, this.ephemeris.sunDirFrom(playerPos, displayTime), C.SHADOW_PENUMBRA);
+    // lit は自機位置の日照率。主星が無いレジストリでは日照そのものが無意味なので計算を飛ばす。
+    let lit = 1.0;
+    if (!cameraSystem.overviewMode && this.ephemeris.starId !== null) {
+      const attractorsNow = this.ephemeris.attractorsAt(displayTime);
+      const star = attractorsNow.find((a) => a.id === this.ephemeris.starId);
+      if (star) lit = sunlitFactor(playerPos, star, attractorsNow);
+    }
     // Game.sync が同じカメラ位置・表示時刻で組んだ policy を渡せるようにする。渡されない
     // 既存経路ではここで一度だけ構築し、参照線にも同じインスタンスを渡す。
     const nearbyIds = cameraSystem.overviewMode && sharedVisibility === null
