@@ -71,7 +71,6 @@ export class CelestialSurface {
     this.albedoNode = albedo;
     this.material = this.buildMaterial(this.albedoNode, false);
     this.mesh = new THREE.Mesh(geometry, this.material as unknown as THREE.Material);
-    this.mesh.frustumCulled = false;
   }
 
   private material: THREE.MeshBasicNodeMaterial;
