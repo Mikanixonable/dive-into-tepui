@@ -7,7 +7,7 @@ import { CelestialRegistry, SolarSystemId, bodyDef, primaryOf } from '../../phys
 import { OrbitalElements, positionOnOrbit } from '../../physics/elements';
 import { Attractor, AttractorId, OrbitingId, orbitalElementsOf } from '../../physics/attractor';
 import { Vec3, v3, sub } from '../../physics/vec3';
-import { OrbitLine } from '../../render/orbit-line';
+import { OrbitLine } from '../orbit-line';
 import { createStars, STAR_SHELL_RADIUS } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';

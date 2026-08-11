@@ -20,11 +20,9 @@ import { KinematicState, hermiteInterpolate, kinematicState } from '../physics/k
 import { ReferenceFrame, toFrameState } from '../physics/frame';
 import { Attractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
-import { FloatingOrigin } from '../game/floating-origin';
+import { FloatingOrigin } from './floating-origin';
 
-// 世界(絶対 ECI)座標1点における画面上の m/px を返す関数。game/camera/camera-system.ts の
-// ScaleFn と同じ形だが、render/ は game/ に依存しない規約のためここで独立に定義する
-// (構造的に同じ関数型なので、呼び出し側は camera-system.ts の ScaleFn をそのまま渡せる)。
+// 世界(絶対 ECI)座標1点における画面上の m/px を返す関数。
 export type ScaleAtFn = (worldPos: Vec3) => number;
 
 // 1辺あたりに許す接線の折れ角の上限。ズームで画面上のサジッタが縮まないぶん際限なく

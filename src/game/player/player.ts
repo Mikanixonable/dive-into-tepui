@@ -15,7 +15,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { OrbitLine } from '../../render/orbit-line';
+import { OrbitLine } from '../orbit-line';
 import { Attractor, reachedBody, strongestAttractor } from '../../physics/attractor';
 import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';

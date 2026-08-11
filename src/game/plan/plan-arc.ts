@@ -14,7 +14,7 @@ import { attractorsNearInto, classifyAttractors } from '../simulation/attractors
 import type { ClassifiedAttractors, PlanAttractorProvider, PlanAttractorSources } from '../simulation/attractors';
 import { addScaled, len, scale, sub, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
-import { SampledLine } from '../../render/sampled-line';
+import { SampledLine } from '../sampled-line';
 import { ScaleFn } from '../camera/camera-system';
 import * as C from '../const';
 
