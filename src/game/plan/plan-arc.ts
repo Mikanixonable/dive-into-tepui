@@ -337,7 +337,7 @@ export class PlanArc {
         trajectory.state.r, held.classified, this.stepAttractorsScratch,
       );
       const prev = trajectory.state;
-      trajectory.step(dt, stepAttractors, C.SHIP_BCINV, C.SHIP_SRP_COEFF, C.SHADOW_PENUMBRA, null, sampleInterval, duration);
+      trajectory.step(dt, stepAttractors, C.SHIP_BCINV, C.SHIP_SRP_COEFF, null, sampleInterval, duration);
 
       const { r, v } = trajectory.state;
       const finite = Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
