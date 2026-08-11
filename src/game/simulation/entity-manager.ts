@@ -1,5 +1,4 @@
 // エンティティ配列の保持・追加・上限管理・寿命回収・描画同期。
-import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
 import { Attractor } from '../../physics/attractor';
 import { FloatingOrigin } from '../floating-origin';
@@ -11,8 +10,6 @@ import { DebrisPiece } from '../game-entity/debris-piece';
 import { Enemy } from '../game-entity/enemy';
 import { Bullet } from '../game-entity/bullet';
 import { Base } from '../game-entity/base';
-import { InstancedPool } from '../../render/instanced-pool';
-import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources } from '../../render/ships';
 import type { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { CombatTarget } from '../targeter';
@@ -28,24 +25,6 @@ export class EntityManager {
   // 他の艦と対等に扱う。ステージモードでは1隻だけが入る。
   readonly players: Player[] = [];
   readonly bases: Base[] = [];
-
-  // 弾本体・弾ハロー・プラズマ弾・薬莢は geometry/material を全個体で共有するため、
-  // 個別の scene 追加ではなく InstancedMesh 1本ずつのプールで描画する(sync が push する)。
-  private readonly bulletBodyPool: InstancedPool;
-  private readonly bulletHaloPool: InstancedPool;
-  private readonly plasmaPool: InstancedPool;
-  private readonly casingPool: InstancedPool;
-
-  constructor(scene: THREE.Scene) {
-    const bulletBody = bulletBodyResources();
-    const bulletHalo = bulletHaloResources();
-    const plasmaBody = plasmaBodyResources();
-    const casingBody = casingBodyResources();
-    this.bulletBodyPool = new InstancedPool(scene, bulletBody.geometry, bulletBody.material, C.MAX_BULLETS * 3);
-    this.bulletHaloPool = new InstancedPool(scene, bulletHalo.geometry, bulletHalo.material, C.MAX_BULLETS * 3);
-    this.plasmaPool = new InstancedPool(scene, plasmaBody.geometry, plasmaBody.material, C.MAX_BULLETS * 3);
-    this.casingPool = new InstancedPool(scene, casingBody.geometry, casingBody.material, C.MAX_CASINGS);
-  }
 
   // all()/otherEntities() はSimulatorの各substepから何度も呼ばれる。配列の内容が変わった
   // ときだけ結合し、Predictor→attractors の入れ子呼び出しでも同じ安定配列を返す。
@@ -240,32 +219,9 @@ export class EntityManager {
   }
 
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
-  // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢の
-  // 変換は各エンティティの obj に同期された後、InstancedPool へ push する。
+  // 軌道線まで持つので Player.syncPlayer が担当する。
   sync(fo: FloatingOrigin, displayTime: number): void {
     for (const e of this.otherEntities()) e.sync(fo, displayTime);
-
-    this.bulletBodyPool.beginFrame();
-    this.bulletHaloPool.beginFrame();
-    this.plasmaPool.beginFrame();
-    this.casingPool.beginFrame();
-    for (const b of this.bullets) {
-      if (!b.obj.visible) continue;
-      if (b.type === 'plasma') {
-        this.plasmaPool.push(b.obj);
-        continue;
-      }
-      // 本体+ハローの Group。シーン外なので matrixWorld は自前で更新する必要があり、
-      // 親で1回呼べば子(本体・ハロー)まで連鎖して更新される。
-      b.obj.updateMatrixWorld();
-      this.bulletBodyPool.push(b.obj.children[0]!);
-      this.bulletHaloPool.push(b.obj.children[1]!);
-    }
-    for (const c of this.casings) this.casingPool.push(c.obj);
-    this.bulletBodyPool.endFrame();
-    this.bulletHaloPool.endFrame();
-    this.plasmaPool.endFrame();
-    this.casingPool.endFrame();
   }
 
   // セーブデータロード時などに全エンティティを破棄して配列を空にする。
