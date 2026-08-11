@@ -96,7 +96,6 @@ export class OrbitLine {
     // three/webgpu の公開型は LineBasicNodeMaterial を含まず暫定シムで補っているため、
     // シム側の基底クラスが LineSegments の要求する Material と型の上では一致しない。
     this.line = new THREE.LineSegments(geo, mat as unknown as THREE.Material);
-    this.line.frustumCulled = false;
     this.line.renderOrder = renderOrder;
   }
 

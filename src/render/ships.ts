@@ -253,7 +253,6 @@ let bulletHaloMat: THREE.MeshBasicMaterial | null = null;
 // 自機弾のメッシュ(本体+ハロー)を生成する。ハロー用ジオメトリ/マテリアルは全弾で共有する。
 export function buildBulletMesh(): THREE.Group {
   const m = parseBullet();
-  m.frustumCulled = false;
 
   // 敵のプラズマ弾と同様、自機の弾丸にも光芒(半透明の加算合成ハロー)を付ける
   if (!bulletHaloGeom) {
@@ -312,7 +311,6 @@ export function buildPlasmaMesh(): THREE.Mesh {
     plasmaBodyMat.opacity = 1.0;
   }
   m.material = plasmaBodyMat;
-  m.frustumCulled = false;
 
   // スケールを大きくして視認性を上げる
   m.scale.set(1.5, 1.5, 1.5);

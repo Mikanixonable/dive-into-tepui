@@ -57,6 +57,8 @@ class PointFieldGroupView {
     const mat = new THREE.MeshBasicMaterial({ color: view.color, depthWrite: false });
     this.mesh = new THREE.InstancedMesh(geom, mat, this.points.length);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // 個体が群の軌道全域(main-belt〜kuiper-belt は AU スケール)へ散らばるため、
+    // 原点周りの外接球によるフラスタムカリングは意味を持たない。
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
   }

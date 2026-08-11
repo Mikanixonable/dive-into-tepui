@@ -19,7 +19,6 @@ export class Billboard {
     });
     // 1x1 平面メッシュとして生成し、sync で毎フレームスケール/位置を与える
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
-    this.mesh.frustumCulled = false;
     this.mesh.renderOrder = renderOrder;
     this.mesh.visible = false;
   }
