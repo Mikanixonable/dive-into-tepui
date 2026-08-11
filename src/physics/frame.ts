@@ -18,7 +18,7 @@ import { Quat, qInvert, qRotate } from './attitude';
 
 // 座標系 = 「どの天体を原点に置くか」×「どの天体の公転に合わせて回すか(null = 回さない)」。
 // 値は必ず Ephemeris.frames/frameFor の要素を参照する — リテラルで組むと参照同一性が崩れ、
-// sampled-line.ts の `frame === lastFrame` によるキャッシュ判定が毎フレーム外れて描画が
+// trajectory-line.ts の `frame === lastFrame` によるキャッシュ判定が毎フレーム外れて描画が
 // 無駄に重くなる。
 export type ReferenceFrame = {
   readonly center: AttractorId;

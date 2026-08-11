@@ -35,7 +35,7 @@ export type DashPattern = CurveDash;
 // 常に外れる)。
 export const EMPTY_SAMPLES: readonly KinematicState[] = [];
 
-export class SampledLine {
+export class TrajectoryLine {
   private readonly curve: Curve;
   readonly line: THREE.Object3D;
   private lastSamples: readonly KinematicState[] | null = null;

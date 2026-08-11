@@ -46,12 +46,25 @@ export function ndcToScreen(ndc: Projected, width: number, height: number, offse
 }
 
 // depth の下限。視点上・視点の背後の点で 0 や負の尺度を返さないための床。
-const MIN_DEPTH = 1e-6;
+export const MIN_DEPTH = 1e-6;
+
+// 垂直画角の半分の tan を既に持っている呼び出し側(同じカメラで多数回評価する適応分割等)が
+// 三角関数を再計算せずに呼べる下位関数。
+export function metersPerPixelFromTanHalfFov(tanHalfFov: number, depth: number, viewportHeight: number): number {
+  return (2 * Math.max(MIN_DEPTH, depth) * tanHalfFov) / viewportHeight;
+}
+
+// 垂直画角 fovDeg のピンホールカメラで、視点から depth 離れた点における画面1ピクセル
+// 相当の実距離 [m]。注視点までの距離を既に持っているカメラ実装(注視点固定のオービット
+// カメラ等)はこれを直接呼べる — worldPos/position の差分から改めて depth を導く必要がない。
+export function metersPerPixelAtDepth(fovDeg: number, depth: number, viewportHeight: number): number {
+  return metersPerPixelFromTanHalfFov(Math.tan((fovDeg * Math.PI) / 360), depth, viewportHeight);
+}
 
 // worldPos の位置における画面1ピクセル相当の実距離 [m]。画面上で一定に見せたい長さに
 // 掛けると、その位置での実距離が得られる。
 export function metersPerPixel(view: Viewpoint, worldPos: Vec3, viewportHeight: number): number {
   const forward = norm(sub(view.lookTarget, view.position));
-  const depth = Math.max(MIN_DEPTH, dot(sub(worldPos, view.position), forward));
-  return (2 * depth * Math.tan((view.fovDeg * Math.PI) / 360)) / viewportHeight;
+  const depth = dot(sub(worldPos, view.position), forward);
+  return metersPerPixelAtDepth(view.fovDeg, depth, viewportHeight);
 }

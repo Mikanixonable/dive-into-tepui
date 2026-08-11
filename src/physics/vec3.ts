@@ -1,6 +1,8 @@
 // Vec3 は不変。生成後に成分を書き換えてはならず、演算はすべて新しい Vec3 を返す。
 // 参照を共有したまま中身を書き換えると、保持側(DynamicTrajectory など)が変化を検知
 // できなくなるため、この不変性が整合性の前提になっている。
+import { randSym } from './random';
+
 export type Vec3 = {
   readonly x: number;
   readonly y: number;
@@ -61,23 +63,6 @@ export function norm(a: Vec3): Vec3 {
   const l = len(a);
   if (l < 1e-12) return { x: 0, y: 0, z: 0 } as Vec3;
   return scale(a, 1 / l);
-}
-
-// シード値から [0, 1) の一様乱数列を生成する mulberry32。Math.random を経由しないので、
-// 同じシードから常に同じ列を再現できる(セーブ・リプレイ・負荷計測の再現性が要る箇所向け)。
-export function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let x = Math.imul(s ^ (s >>> 15), 1 | s);
-    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// [-amp, amp] の一様乱数。rand は [0, 1) を返す生成器(既定 Math.random)。
-export function randSym(amp: number, rand: () => number = Math.random): number {
-  return (rand() * 2 - 1) * amp;
 }
 
 // 各成分が [-amp, amp] の一様乱数ベクトル。rand は [0, 1) を返す生成器(既定 Math.random)。
