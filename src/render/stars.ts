@@ -29,6 +29,8 @@ export function createStars(): THREE.Mesh {
   });
   
   const mesh = new THREE.Mesh(geo, mat);
+  // EnvironmentScene.sync が毎フレーム position をカメラ位置へ合わせる殻なので、
+  // 外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
   mesh.frustumCulled = false;
   mesh.renderOrder = -10;
   return mesh;
@@ -56,6 +58,5 @@ function createSunMesh(): THREE.Mesh {
   const geo = new THREE.SphereGeometry(1, 48, 24);
   const mat = new THREE.MeshBasicMaterial({ color: 0xfff3d0 });
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;
   return mesh;
 }
