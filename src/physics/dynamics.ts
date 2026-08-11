@@ -7,7 +7,7 @@ import { KinematicState, kinematicState } from './kinematic-state';
 import { dragAccel } from './atmosphere';
 import { sunlitFactor } from './shadow';
 import { srpAccel } from './srp';
-import { Vec3, add, cross, dot, norm, v3 } from './vec3';
+import { Vec3, add, cross, dot, v3 } from './vec3';
 
 // 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに呼ばれる。
 type AccelFn = (rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => Vec3;
@@ -104,7 +104,6 @@ function totalAccel(
   attractors: readonly Attractor[],
   bcInv: number,
   srpCoeff: number,
-  penumbra: number,
 ): Vec3 {
   let ax = 0, ay = 0, az = 0;
   for (const attractor of attractors) {
@@ -118,8 +117,7 @@ function totalAccel(
     }
     // 恒星ぶんの輻射圧をすべて加算する(恒星0個なら寄与0)。
     if (attractor.isStar && srpCoeff !== 0) {
-      const radiant = norm(attractor.state.r);
-      const srp = srpAccel(r, attractor, srpCoeff, sunlitFactor(r, radiant, penumbra));
+      const srp = srpAccel(r, attractor, srpCoeff, sunlitFactor(r, attractor, attractors));
       ax += srp.x; ay += srp.y; az += srp.z;
     }
   }
@@ -128,20 +126,19 @@ function totalAccel(
 }
 
 // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力の RK4 1ステップ。attractors はこの
-// ステップぶん呼び出し側が確定させた重力源一覧(Ephemeris.attractorsAt)。bcInv/srpCoeff/
-// thrust は種別ごとに、penumbra は表現上の選択として異なるため引数で受け取り、モジュール内に
-// 既定値を持たない。
+// ステップぶん呼び出し側が確定させた重力源一覧(Ephemeris.attractorsAt)であり、日照率の
+// 遮蔽天体判定にも同じ一覧を使う。bcInv/srpCoeff/thrust は種別ごとに異なるため引数で受け取り、
+// モジュール内に既定値を持たない。
 export function stepDynamics(
   state: KinematicState,
   dt: number,
   attractors: readonly Attractor[],
   bcInv: number,
   srpCoeff: number,
-  penumbra: number,
   thrust: Vec3 | null,
 ): KinematicState {
   return stepRK4(state, dt, (rx, ry, rz, vx, vy, vz) => {
-    const a = totalAccel(v3(rx, ry, rz), v3(vx, vy, vz), attractors, bcInv, srpCoeff, penumbra);
+    const a = totalAccel(v3(rx, ry, rz), v3(vx, vy, vz), attractors, bcInv, srpCoeff);
     return thrust ? add(a, thrust) : a;
   });
 }

@@ -48,13 +48,12 @@ export class DynamicTrajectory {
     attractors: readonly Attractor[],
     bcInv: number,
     srpCoeff: number,
-    penumbra: number,
     thrust: Vec3 | null,
     sampleInterval: number,
     keepDuration: number,
   ): void {
     const prev = this._state;
-    const next = stepDynamics(prev, dt, attractors, bcInv, srpCoeff, penumbra, thrust);
+    const next = stepDynamics(prev, dt, attractors, bcInv, srpCoeff, thrust);
     // 間引き済み history への記録
     if (keepDuration > 0) {
       const newest = this._history.newest;
