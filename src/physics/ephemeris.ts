@@ -62,17 +62,31 @@ function rotatingFrameCenterOf(registry: CelestialRegistry, id: AttractorId): At
 // 異なる先端時刻を引く経路があるため、1段では主要経路のヒット率が 0 になる。
 const TIME_CACHE_SLOTS = 4;
 
+// 時刻キャッシュのヒット/ミスの累計。
+export interface TimeCacheStats {
+  readonly hits: number;
+  readonly misses: number;
+}
+
 // 時刻 t をキーにした固定長リング。キーが厳密に一致したときだけ値を返し、それ以外は undefined。
 class TimeRing<T> {
   private readonly keys: number[] = new Array(TIME_CACHE_SLOTS).fill(NaN);
   private readonly values: (T | undefined)[] = new Array(TIME_CACHE_SLOTS).fill(undefined);
   private next = 0;
 
+  // get の結果の累計。返る値には影響しない。
+  hits = 0;
+  misses = 0;
+
   // t に一致する保持値。無ければ undefined。
   get(t: number): T | undefined {
     for (let i = 0; i < TIME_CACHE_SLOTS; i++) {
-      if (this.keys[i] === t) return this.values[i];
+      if (this.keys[i] === t) {
+        this.hits++;
+        return this.values[i];
+      }
     }
+    this.misses++;
     return undefined;
   }
 
@@ -148,6 +162,26 @@ export class Ephemeris {
   // 親天体へ既存の惑星相対モデルを足して補う。暦パックが無い既存ステージは解析モデルの
   // ままなので、代替太陽系レジストリの挙動を変えない。
   private readonly precise: OriginCenteredEphemeris | null;
+
+  // attractorsAt の時刻キャッシュのヒット/ミス累計。
+  get attractorsCacheStats(): TimeCacheStats {
+    return { hits: this.allAttractorsCache.hits, misses: this.allAttractorsCache.misses };
+  }
+
+  // 保持する全時刻キャッシュを合算したヒット/ミス累計。
+  get timeCacheStats(): TimeCacheStats {
+    let hits = this.allAttractorsCache.hits;
+    let misses = this.allAttractorsCache.misses;
+    for (const ring of this.planetHelioCache.values()) {
+      hits += ring.hits;
+      misses += ring.misses;
+    }
+    for (const ring of this.satelliteRelCache.values()) {
+      hits += ring.hits;
+      misses += ring.misses;
+    }
+    return { hits, misses };
+  }
 
   // 現在の位相オフセットのスナップショット(セーブ用)。
   getPhaseOffsets(): Partial<Record<AttractorId, number>> {
