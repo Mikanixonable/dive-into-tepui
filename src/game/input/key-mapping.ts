@@ -9,9 +9,9 @@ export interface KeyBinding {
 }
 
 export const KEY_MAPPING = {
-  // 並進(機体座標系)。CTRL/SHIFT は前後の同義キー。
-  thrustForward: { code: 'KeyW', altCodes: ['ControlLeft', 'ControlRight'], label: 'W', altLabel: 'CTRL' },
-  thrustBackward: { code: 'KeyS', altCodes: ['ShiftLeft', 'ShiftRight'], label: 'S', altLabel: 'SHIFT' },
+  // 並進(機体座標系)
+  thrustForward: { code: 'KeyW', label: 'W' },
+  thrustBackward: { code: 'KeyS', label: 'S' },
   thrustLeft: { code: 'KeyA', label: 'A' },
   thrustRight: { code: 'KeyD', label: 'D' },
   thrustUp: { code: 'KeyQ', label: 'Q' },
@@ -77,6 +77,7 @@ export const KEY_MAPPING = {
   help: { code: 'KeyH', label: 'H' },
   pauseMenu: { code: 'Escape', label: 'ESC' },
   restart: { code: 'KeyR', label: 'R' },
+  togglePerfWindow: { code: 'F3', label: 'F3' },
   clipSnapshot: { code: 'F5', label: 'F5' },
   openSnapshots: { code: 'F9', label: 'F9' },
 } as const satisfies Record<string, KeyBinding>;
@@ -90,17 +91,7 @@ export const SCROLL_GUARD_KEYS: readonly KeyBinding[] = [
   KEY_MAPPING.cameraYawRight,
   KEY_MAPPING.cameraPitchUp,
   KEY_MAPPING.cameraPitchDown,
+  KEY_MAPPING.togglePerfWindow,
   KEY_MAPPING.clipSnapshot,
   KEY_MAPPING.openSnapshots,
-];
-
-// CTRL 併用時にブラウザのショートカット(保存・リロード等)へ流さないキー。
-// CTRL は前進の同義キーなので、押しながら他キーを打つ状況が常に起きる。
-// Ctrl+W/T/N と Ctrl+数字はブラウザが予約しており JS からは抑止できない。
-export const CTRL_GUARD_KEYS: readonly KeyBinding[] = [
-  KEY_MAPPING.thrustForward,
-  KEY_MAPPING.thrustBackward,
-  KEY_MAPPING.thrustLeft,
-  KEY_MAPPING.thrustRight,
-  KEY_MAPPING.reload,
 ];

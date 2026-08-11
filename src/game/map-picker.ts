@@ -10,7 +10,9 @@ import { ContextMenu, MenuItem } from './hud/context-menu';
 import { PropertyRow, PropertyWindow, PropertyWindowContent, PropertyWindowItem } from './hud/property-window';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { celestialBodyName } from './hud/frame-labels';
+import { lagrangeParentId } from './hud/object-groups';
 import { MapPickable, pickNearest } from './map-pick';
+import { focusTargetId } from './camera/focus-target';
 import { ObjectListPanel } from './object-list-panel';
 import type { Input } from './input/input';
 import { EntityManager } from './simulation/entity-manager';
@@ -22,7 +24,7 @@ import { SimSpeedManager } from './sim-speed-manager';
 import type { Docking } from './docking';
 import type { Game } from './game';
 import type { Player } from './player/player';
-import { nextPlanExecution, planExecutionLabel } from './player/player';
+import { planExecutionLabel, type PlanExecutionMode } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
 import { len, sub, v3 } from '../physics/vec3';
 import type { ObjectType } from './creative/ship-placer-panel';
@@ -31,11 +33,18 @@ import { Attractor, orbitalElementsOf, strongestAttractor } from '../physics/att
 import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
 import { bodyDef, primaryOf } from '../physics/solar-system';
+import { isPositionInFocusedSystem, systemMembersAt } from './celestial/body-visibility';
+import { MapVisibilityPolicy } from './celestial/map-visibility';
 
 interface PickHandler {
   itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[];
   run(act: MenuAction, target: MapPickable): void;
 }
+
+type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
+
+// 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
+const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant', 'powered'];
 
 // 開いているプロパティウィンドウ本体と、開いた時点の対象。rows/items の再導出はこの target
 // (毎フレーム候補列から更新されうる)を経由するので、対象が消滅したかどうかの判定にも使える。
@@ -46,13 +55,17 @@ interface WindowEntry {
 
 export class MapPicker {
   // 'empty-space' は宇宙空間そのものでプロパティを持たないので、従来どおり ContextMenu を使う。
-  private readonly menu = new ContextMenu<MapPickable, MenuAction>();
+  private readonly menu: ContextMenu<MapPickable, MenuAction>;
   // 開いているプロパティウィンドウ。`${kind}:${id}` でオブジェクト1つにつき高々1枚に保つ。
   private readonly windows = new Map<string, WindowEntry>();
   // クリップされていない一時ウィンドウのキー。存在は高々1枚。
   private tempWindowKey: string | null = null;
   private readonly objectListPanel: ObjectListPanel;
-  private items: readonly MapPickable[] = [];
+  private readonly candidateItems: MutableMapPickable[] = [];
+  private readonly visibleItems: MutableMapPickable[] = [];
+  private readonly itemRecords = new Map<string, MutableMapPickable>();
+  private readonly activeRecordKeys = new Set<string>();
+  private items: readonly MapPickable[] = this.candidateItems;
   private lastSimTime = 0;
 
   // このフレームの被選択物候補。refresh の後に読む。
@@ -73,14 +86,23 @@ export class MapPicker {
     private readonly editor: PlanEditor,
     private readonly simSpeedManager: SimSpeedManager,
   ) {
+    this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup);
     this.menu.onSelect = (act, target) => {
       const handler = this.handlers[target.kind];
       if (handler) handler.run(act, target);
     };
-    this.objectListPanel = new ObjectListPanel(hud.root);
+    this.objectListPanel = new ObjectListPanel(hud.layers.panel, ephemeris.registry);
     this.objectListPanel.onSelect = (id) => {
-      this.cameraSystem.overviewCamera.setFocus(id);
+      const target = this.items.find((i) => i.id === id);
+      if (target) this.objectListPanel.select(id);
+    };
+    this.objectListPanel.onFocus = (id) => {
+      this.game.frameControls.setFocus({ kind: 'object', id });
       this.hud.hint(`${this.items.find((i) => i.id === id)?.name ?? id} にフォーカス`);
+    };
+    this.objectListPanel.onNavTarget = (id) => {
+      const target = this.items.find((i) => i.id === id);
+      if (target && this.navTarget.canTarget(id, this.entities, this.ephemeris, this.lastSimTime)) this.navTarget.toggleTarget(id, target.name);
     };
     this.objectListPanel.onSelectRight = (id, clientX, clientY) => {
       const target = this.items.find((i) => i.id === id);
@@ -88,49 +110,133 @@ export class MapPicker {
     };
   }
 
-  // 天体ラベルと航法ターゲットの AN/DN を求め直し、このフレームの候補列を組み直す(天体ラベル +
-  // 生存中の自機・敵船 + AN/DN アイコン + 近地点・遠地点アイコン)。どちらも候補列の一部なので、
-  // 求め直しとの対応付けはここに閉じる。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
+  // マップの天体ラベル(表示のみ)と航法ターゲットの AN/DN を求め直したうえで、このフレームの
+  // 候補列を組み直す(表示中の天体・ラグランジュ点 + 生存中の自艦・敵船・弾薬・基地 + AN/DN
+  // アイコン + 近地点・遠地点アイコン)。天体側も表示と同じ MapVisibilityPolicy を通し、
+  // 非表示にした対象を選べない状態にする。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
   // sync されるメッシュと座標が1ステップずれる。
   refresh(simTime: number, displayTime: number): void {
     this.lastSimTime = simTime;
+    const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
+    const attractors = this.ephemeris.attractorsAt(simTime);
+    const displayAttractors = this.ephemeris.attractorsAt(displayTime);
+    const visibility = new MapVisibilityPolicy(
+      this.ephemeris.registry,
+      this.cameraSystem.bodyClassToggles,
+      focusId,
+      systemMembersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, displayAttractors),
+    );
     this.cameraSystem.focusMarkers.update(
-      displayTime, this.cameraSystem.overviewCamera.focus, this.cameraSystem.bodyClassToggles,
+      displayTime, focusId, this.cameraSystem.bodyClassToggles,
+      this.cameraSystem.activeCameraPos, visibility,
     );
     this.navTarget.update(this.game.player, this.entities, this.ephemeris, simTime);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
-    const items: MapPickable[] = [...this.cameraSystem.focusMarkers.labels];
+    this.candidateItems.length = 0;
+    this.visibleItems.length = 0;
+    this.activeRecordKeys.clear();
+    for (const item of this.cameraSystem.focusMarkers.bodyPickables(displayTime, visibility)) {
+      this.appendPickable(item);
+    }
     for (const ship of this.entities.players) {
-      if (!ship.alive) continue;
+      if (!ship.alive || (this.cameraSystem.overviewMode && !visibility.entity('player', ship === this.game.player).pickable)) continue;
       const pos = ship.displayState(displayTime)?.r;
-      if (pos) items.push({ id: ship.id, name: ship.displayName, pos, kind: 'player' });
+      if (pos) {
+        const center = strongestAttractor(ship.state.r, attractors);
+        const el = ship.orbitalElementsAround(center);
+        const pe = el ? fmtDist(apsisAltitudes(el).pe) : '—';
+        this.addCandidate(
+          ship.id, ship.displayName, pos, 'player',
+          `HP ${Math.round(ship.hp)}/${Math.round(ship.maxHp)} · PE ${pe}`,
+          ship === this.game.player ? -100 : 0,
+        );
+      }
     }
     for (const enemy of this.entities.enemies) {
-      if (!enemy.alive) continue;
+      if (!enemy.alive || (this.cameraSystem.overviewMode && !visibility.entity('ship').pickable)) continue;
       const pos = enemy.displayState(displayTime)?.r;
-      if (pos) items.push({ id: enemy.id, name: enemy.name, pos, kind: 'ship' });
+      if (pos) this.addCandidate(enemy.id, enemy.name, pos, 'ship');
     }
     for (const ammo of this.entities.ammos) {
-      if (!ammo.alive) continue;
+      if (!ammo.alive || (this.cameraSystem.overviewMode && !visibility.entity('ammo').pickable)) continue;
       const pos = ammo.displayState(displayTime)?.r;
-      if (pos) items.push({ id: ammo.id, name: '弾薬', pos, kind: 'ammo' });
+      if (pos) this.addCandidate(ammo.id, '弾薬', pos, 'ammo');
     }
     for (const base of this.entities.bases) {
-      if (!base.alive) continue;
+      if (!base.alive || (this.cameraSystem.overviewMode && !visibility.entity('base').pickable)) continue;
       const pos = base.displayState(displayTime)?.r;
-      if (pos) items.push({ id: base.id, name: base.name, pos, kind: 'base' });
+      if (pos) this.addCandidate(
+        base.id, base.name, pos, 'base', `格納 ${base.baseState.dockedShips.length} 隻`,
+      );
     }
-    items.push(...this.navTarget.mapPickables());
-    items.push(...this.editor.planDisplay.apsisMarkers);
-    items.push(...this.game.equatorNodeMarkers.mapPickables());
+    for (const item of this.navTarget.mapPickables()) this.appendPickable(item);
+    for (const item of this.editor.planDisplay.apsisMarkers) this.appendPickable(item);
+    for (const item of this.game.equatorNodeMarkers.mapPickables()) this.appendPickable(item);
 
-    // マップビューでは、天体に遮蔽されて画面上見えていない候補をピック対象から除く —
-    // 見えているのに選べない/見えないのに選べる、という食い違いを防ぐため、表示側
-    // (各所有者の sync)と同じ isOccluded 判定を使う。戦闘ビューでは効かせない。
-    this.items = this.cameraSystem.overviewMode
-      ? items.filter((item) => !isOccluded(this.cameraSystem.activeCameraPos, item.pos, this.ephemeris.attractorsAt(simTime)))
-      : items;
+    // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
+    const viewer = this.game.player?.state;
+    if (viewer) for (const item of this.candidateItems) {
+      const d = len(sub(item.pos, viewer.r));
+      // 相対速度は対の速度を持つ敵艦にだけ意味がある。
+      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, attractors).id)}` : item.detail;
+      const inFocusedSystem = isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, attractors);
+      item.detail = status;
+      item.distance = d;
+      item.inFocusedSystem = inFocusedSystem;
+    }
+
+    // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
+    // 同じ判定なので、地球の裏側の player は表示・選択でき、土星系の player はどちらにも
+    // 現れない。他の候補は従来どおり天体遮蔽でピック対象から除く。
+    if (this.cameraSystem.overviewMode) {
+      for (const item of this.candidateItems) {
+        const included = item.kind === 'player'
+          ? isPositionInFocusedSystem(this.ephemeris.registry, focusId, item.pos, attractors)
+          : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, attractors);
+        if (included) this.visibleItems.push(item);
+      }
+      this.items = this.visibleItems;
+    } else {
+      this.items = this.candidateItems;
+    }
+    for (const key of this.itemRecords.keys()) {
+      if (!this.activeRecordKeys.has(key)) this.itemRecords.delete(key);
+    }
+  }
+
+  private appendPickable(item: MapPickable): void {
+    this.addCandidate(
+      item.id, item.name, item.pos, item.kind, item.detail, item.priority,
+      item.time, item.pickable,
+    );
+  }
+
+  private addCandidate(
+    id: string, name: string, pos: MapPickable['pos'], kind: MapPickable['kind'],
+    detail?: string, priority?: number, time?: number, pickable?: boolean,
+  ): void {
+    const key = `${kind}:${id}`;
+    this.activeRecordKeys.add(key);
+    let item = this.itemRecords.get(key);
+    if (item === undefined) {
+      item = { id, name, pos, kind };
+      this.itemRecords.set(key, item);
+    } else {
+      item.id = id;
+      item.name = name;
+      item.pos = pos;
+      item.kind = kind;
+    }
+    // 候補が同じ id で別種別へ変わる場合や、前フレームだけ持っていた補助値が残らない
+    // ように、候補へ追加するたびに全ての派生フィールドを上書きする。
+    item.detail = detail;
+    item.distance = undefined;
+    item.priority = priority;
+    item.time = time;
+    item.inFocusedSystem = undefined;
+    item.pickable = pickable;
+    this.candidateItems.push(item);
   }
 
   // 右クリック位置の最寄り候補を探し、当たればその種別に応じたプロパティウィンドウを開いて消費する。
@@ -156,7 +262,7 @@ export class MapPicker {
       existing.win.bringToFront();
       return;
     }
-    const w = new PropertyWindow<MenuAction>(this.hud.root, clientX, clientY, this.buildContent(target, simTime));
+    const w = new PropertyWindow<MenuAction>(this.hud.layers.window, clientX, clientY, this.buildContent(target, simTime));
     const entry: WindowEntry = { win: w, target };
     this.windows.set(key, entry);
     if (!w.clipped) {
@@ -165,12 +271,12 @@ export class MapPicker {
     }
     // 実行時は entry.target(sync のたびに最新化される)を読む — 開いた瞬間の対象を
     // 捕まえたままだと、時刻に依存する操作(ワープ・ノード追加)が古い時刻へ向けて走ってしまう。
-    // 操作項目のクリックは、クリップ済みなら開いたままにする。「削除」は対象自体が消えるので
-    // クリップ状態によらず閉じる。
-    w.onSelect = (act) => {
+    // 操作項目のクリックは、クリップ済みか keepOpen(排他選択肢の切り替え)なら開いたままにする。
+    // 「削除」は対象自体が消えるのでどちらでも閉じる。
+    w.onSelect = (act, keepOpen) => {
       const handler = this.handlers[entry.target.kind];
       if (handler) handler.run(act, entry.target);
-      if (act === 'delete' || !w.clipped) this.closeWindow(key);
+      if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
     w.onClose = () => this.forgetWindow(key);
     w.onOutsideClick = () => { if (!w.clipped) this.closeWindow(key); };
@@ -205,39 +311,49 @@ export class MapPicker {
     this.forgetWindow(key);
   }
 
-  // 左クリック位置の最寄りの自機・基地を選択する: 自機なら操作対象に、基地なら選択状態にする。
-  // 当たらなければ消費せず、PlanEditor のノード配置/選択解除に読み進める(呼び出し側が
-  // editor.handleMapPointer より先に呼ぶことで、マーカーへの命中をノード配置より優先する)。
+  // 左クリック位置の最寄りの自艦・基地を選択する。当たらなければ消費せず、PlanEditor の
+  // ノード配置/選択解除に読み進める(呼び出し側が editor.handleMapPointer より先に呼ぶことで、
+  // マーカーへの命中をノード配置より優先する)。
   handleLeftClick(input: Input): void {
     input.takeClicks((p) => {
       const candidates = this.items.filter((i) => i.kind === 'player' || i.kind === 'base');
       const target = pickNearest(candidates, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ);
       if (!target) return false;
-      this.selectPickable(target);
+      this.selectPickable(target, p.x, p.y);
       return true;
     });
   }
 
-  // ダブルクリック位置の最寄りの被選択物へフォーカスを移す。種別を問わず候補列全体から探す
-  // (プロパティウィンドウの「フォーカスを移動」項目と同じ操作を、より速い経路で提供する)。
+  // ダブルクリック位置の最寄りの被選択物へフォーカスを移し、自艦であれば操作対象にも切り替える。
+  // 種別を問わず候補列全体から探す。ラベル衝突で非表示になった天体は、表示されている別のラベルの
+  // 背後から拾わない。
   handleDoubleClick(input: Input): void {
     input.takeDoubleClicks((p) => {
-      const target = pickNearest(this.items, p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ);
+      const target = pickNearest(
+        this.items.filter((item) => item.pickable !== false),
+        p.x, p.y, this.cameraSystem.activeCameraProjection, C.MAP_PICK_PX_SQ,
+      );
       if (!target) return false;
-      this.cameraSystem.overviewCamera.setFocus(target.id);
+      this.game.frameControls.setFocus({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
+      if (target.kind === 'player') {
+        const ship = this.entities.findPlayer(target.id);
+        if (ship) {
+          this.game.setActivePlayer(ship);
+          this.hud.hint(`${target.name} を操作対象に設定`);
+        }
+      }
       return true;
     });
   }
 
-  // 基地側は selectBase のみ呼び、ドックビューへの遷移はしない — 選択とドックへ入る操作
-  // (activate)を分けて、選択だけでは画面が切り替わらないようにする。
-  private selectPickable(target: MapPickable): void {
+  // 単クリックは選択までに留める: 自艦はプロパティウィンドウを開くだけで操作対象は変えず、
+  // 基地も selectBase のみ呼んでドックビューへは遷移しない。取り消せない操作は明示の項目
+  // (プロパティウィンドウ)かダブルクリックに限る。
+  private selectPickable(target: MapPickable, clientX: number, clientY: number): void {
+    this.objectListPanel.select(target.id);
     if (target.kind === 'player') {
-      const ship = this.entities.findPlayer(target.id);
-      if (!ship) return;
-      this.game.setActivePlayer(ship);
-      this.hud.hint(`${target.name} を操作対象に設定`);
+      this.openPropertyWindow(clientX, clientY, target, this.lastSimTime);
     } else if (target.kind === 'base') {
       const base = this.entities.findBase(target.id);
       if (!base) return;
@@ -261,9 +377,19 @@ export class MapPicker {
   // (this.items)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
   sync(overviewMode: boolean, simTime: number, attractors: readonly Attractor[], player: Player | null): void {
     this.objectListPanel.setVisible(overviewMode);
+    // マップを離れると ViewManager.closeMap() が開いているウィンドウを閉じる。
+    // 戦闘中は候補列を更新せず、ウィンドウもないため、毎フレームの Map 生成と行導出を省く。
+    if (!overviewMode && this.windows.size === 0) return;
     if (overviewMode) {
-      const depthOf = new Map(this.cameraSystem.focusMarkers.labels.map((l) => [l.id, l.depth]));
-      this.objectListPanel.sync(this.items, this.cameraSystem.overviewCamera.focus, depthOf);
+      // ラグランジュ点は自分を持つ天体(衛星ならその衛星自身)、それ以外の天体は主星/主天体を
+      // 親とする — 親が無ければ(恒星、もしくは主天体が未登録)undefined のままにして根として扱う。
+      const registry = this.ephemeris.registry;
+      const parentOf = new Map<string, string>();
+      for (const l of this.cameraSystem.focusMarkers.allLabels) {
+        const parent = l.isLagrange ? lagrangeParentId(l.id) : primaryOf(registry, l.id);
+        if (parent !== null) parentOf.set(l.id, parent);
+      }
+      this.objectListPanel.sync(this.items, focusTargetId(this.cameraSystem.overviewCamera.focus), parentOf);
     }
 
     const byKey = new Map(this.items.map((i) => [this.windowKey(i), i]));
@@ -412,16 +538,19 @@ export class MapPicker {
       itemsFor: (target, simTime) => {
         const ship = this.entities.findPlayer(target.id);
         const isActive = ship === this.game.player;
-        const activate: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '操作対象にする', act: 'activate' }];
+        const activate: readonly MenuItem<MenuAction>[] = [
+          isActive ? { label: '操作対象を解除', act: 'deactivate' } : { label: '操作対象にする', act: 'activate' },
+        ];
         const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
         // 通常ステージには実行モードを進める駆動源(CreativeStage.update/nextSimulationEventTime/
         // applySimulationEvents)が無く、選ばせても何も起きないので出さない。
+        const mode = ship?.planExecution ?? 'off';
         const planExec: readonly MenuItem<MenuAction>[] = this.isCreativeMode()
-          ? [{ label: `軌道計画の実行: ${planExecutionLabel(ship?.planExecution ?? 'off')} (次へ)`, act: 'planExecCycle' }]
+          ? [{ label: `軌道計画の実行: ${planExecutionLabel(mode)}`, act: 'planExecCycle', keepOpen: true }]
           : [];
         return [
-          ...activate,
           ...planExec,
+          ...activate,
           MenuCommon.focus(),
           ...this.navTargetItems(target, simTime),
           ...this.duplicateItems(),
@@ -433,9 +562,14 @@ export class MapPicker {
         if (act === 'activate') {
           const ship = this.entities.findPlayer(target.id);
           if (ship) this.game.setActivePlayer(ship);
+        } else if (act === 'deactivate') {
+          if (this.entities.findPlayer(target.id) === this.game.player) this.game.setActivePlayerOrNull(null);
         } else if (act === 'planExecCycle') {
           const ship = this.entities.findPlayer(target.id);
-          if (ship) ship.planExecution = nextPlanExecution(ship.planExecution);
+          if (ship) {
+            const next = PLAN_EXECUTION_MODES[(PLAN_EXECUTION_MODES.indexOf(ship.planExecution) + 1) % PLAN_EXECUTION_MODES.length]!;
+            ship.planExecution = next;
+          }
         } else if (act === 'duplicate') {
           this.runDuplicate(target);
         } else if (act === 'delete') {
@@ -460,7 +594,7 @@ export class MapPicker {
       run: (act) => {
         if (act === 'openShipPlacer') {
           if (this.isCreativeMode()) {
-            (this.game.activeStage as any).openShipPlacer(this.game.cameraSystem.overviewCamera.focus);
+            (this.game.activeStage as any).openShipPlacer(focusTargetId(this.game.cameraSystem.overviewCamera.focus));
           }
         } else if (act === 'openSettings') {
           this.game.openSettingsMenu();
@@ -568,7 +702,7 @@ export class MapPicker {
     return { title, subtitle, rows: [], items, onRename: this.renameHandlerFor(target) };
   }
 
-  // 改名できる種別(自機・基地)にだけコールバックを渡す。対象は id で引き直す —
+  // 改名できる種別(自艦・基地)にだけコールバックを渡す。対象は id で引き直す —
   // ウィンドウを開いた時点の MapPickable を直接束縛すると、以後の位置更新で
   // 別の実体を指してしまう。
   private renameHandlerFor(target: MapPickable): ((name: string) => void) | undefined {
@@ -592,7 +726,7 @@ export class MapPicker {
     const header = all.find((it) => it.type === 'header');
     const items = all
       .filter((it) => it.type !== 'header' && it.act !== undefined)
-      .map((it) => ({ label: it.label, act: it.act as MenuAction, shortcut: it.shortcut }));
+      .map((it) => ({ label: it.label, act: it.act as MenuAction, shortcut: it.shortcut, selected: it.selected, keepOpen: it.keepOpen }));
     return { title: header?.label ?? target.name, subtitle: header?.subLabel, items };
   }
 
@@ -613,25 +747,26 @@ export class MapPicker {
   }
 
   // 基準天体・高度・速度・AP/PE/INC/PRD の軌道要素一式。ship/base/ammo/player 共通で使う。
-  // 高度・速度以外は詳細トグルの下に畳む。
+  // 「軌道」グループにまとめ、ウィンドウ先頭の折り畳みセクションへ描かれる。
   private orbitRows(entity: GameEntity, attractors: readonly Attractor[]): PropertyRow[] {
     const oi = orbitInfo(entity, attractors);
+    const group = '軌道';
     return [
-      { key: 'center', label: '基準天体', value: oi.centerName, collapsible: true },
-      { key: 'alt', label: '高度', value: fmtDist(oi.alt) },
-      { key: 'spd', label: '速度', value: fmtSpeed(oi.spd) },
-      { key: 'ap', label: '遠地点 AP', value: fmtDist(oi.apAlt), collapsible: true },
-      { key: 'pe', label: '近地点 PE', value: fmtDist(oi.peAlt), collapsible: true },
+      { key: 'center', label: '基準天体', value: oi.centerName, group },
+      { key: 'alt', label: '高度', value: fmtDist(oi.alt), group },
+      { key: 'spd', label: '速度', value: fmtSpeed(oi.spd), group },
+      { key: 'ap', label: '遠地点 AP', value: fmtDist(oi.apAlt), group },
+      { key: 'pe', label: '近地点 PE', value: fmtDist(oi.peAlt), group },
       {
         key: 'inc', label: '傾斜角 INC',
-        value: isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---', collapsible: true,
+        value: isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---', group,
       },
-      { key: 'prd', label: '周期 PRD', value: fmtTime(oi.period), collapsible: true },
+      { key: 'prd', label: '周期 PRD', value: fmtTime(oi.period), group },
     ];
   }
 
   // 名前は既にウィンドウのタイトルにあるので行には含めない。装甲・電力・弾薬を主要行とし、
-  // それ以外(操作対象か・計画追従・軌道要素)は詳細トグルの下に畳む。
+  // それ以外(操作対象か・計画追従)は詳細トグル、軌道要素は「軌道」グループの下に畳む。
   private playerRows(target: MapPickable, attractors: readonly Attractor[]): PropertyRow[] {
     const ship = this.entities.findPlayer(target.id);
     if (!ship) return [];
@@ -648,8 +783,8 @@ export class MapPicker {
     ];
   }
 
-  // 自機がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
-  // 装甲・距離・接近速度を主要行とし、相対速度・軌道要素・相対傾斜角は詳細トグルの下に畳む。
+  // 自艦がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
+  // 装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、軌道要素・相対傾斜角は「軌道」グループの下に畳む。
   private shipRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const enemy = this.entities.findEnemy(target.id);
     if (!enemy) return [];
@@ -666,13 +801,13 @@ export class MapPicker {
     if (rel) {
       rows.push({
         key: 'relinc', label: '相対傾斜 [AN/DN]',
-        value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', collapsible: true,
+        value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', group: '軌道',
       });
     }
     return rows;
   }
 
-  // 自機がいなければ距離の行は出さない。軌道要素は詳細トグルの下に畳む。
+  // 自艦がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
   private baseRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const base = this.entities.findBase(target.id);
     if (!base) return [];
@@ -685,7 +820,7 @@ export class MapPicker {
     return rows;
   }
 
-  // 自機がいなければ距離の行は出さない。軌道要素は詳細トグルの下に畳む。
+  // 自艦がいなければ距離の行は出さない。軌道要素は「軌道」グループの下に畳む。
   private ammoRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const ammo = this.entities.ammos.find((a) => a.id === target.id);
     if (!ammo) return [];
@@ -700,7 +835,7 @@ export class MapPicker {
   private bodyRows(target: MapPickable, attractors: readonly Attractor[], player: Player | null): PropertyRow[] {
     const registry = this.ephemeris.registry;
     const rows: PropertyRow[] = [];
-    if (player) rows.push({ key: 'dist', label: '自機からの距離', value: fmtDist(len(sub(target.pos, player.state.r))) });
+    if (player) rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(len(sub(target.pos, player.state.r))) });
     if (!(target.id in registry)) {
       rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });
       return rows;
@@ -719,10 +854,10 @@ export class MapPicker {
     if (!el) return rows;
     const apsis = apsisAltitudes(el);
     rows.push(
-      { key: 'ap', label: '遠地点 AP', value: fmtDist(apsis.ap) },
-      { key: 'pe', label: '近地点 PE', value: fmtDist(apsis.pe) },
-      { key: 'inc', label: '傾斜角 INC', value: `${el.incDeg.toFixed(2)}°` },
-      { key: 'prd', label: '周期 PRD', value: fmtTime(el.period) },
+      { key: 'ap', label: '遠地点 AP', value: fmtDist(apsis.ap), group: '軌道' },
+      { key: 'pe', label: '近地点 PE', value: fmtDist(apsis.pe), group: '軌道' },
+      { key: 'inc', label: '傾斜角 INC', value: `${el.incDeg.toFixed(2)}°`, group: '軌道' },
+      { key: 'prd', label: '周期 PRD', value: fmtTime(el.period), group: '軌道' },
     );
     return rows;
   }
@@ -748,7 +883,7 @@ export class MapPicker {
 
   private runBodyShip(act: MenuAction, target: MapPickable): void {
     if (act === 'focus') {
-      this.cameraSystem.overviewCamera.setFocus(target.id);
+      this.game.frameControls.setFocus({ kind: 'object', id: target.id });
       this.hud.hint(`${target.name} にフォーカス`);
     } else if (act === 'navTarget') {
       this.navTarget.toggleTarget(target.id, target.name);

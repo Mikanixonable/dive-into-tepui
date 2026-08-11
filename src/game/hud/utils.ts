@@ -25,7 +25,7 @@ export function fmtDist(m: number): string {
 
 // マーカーラベル用コンパクト距離表記(例: "420m" / "2.2km")
 export function fmtMarkerDist(m: number, kmDecimals = 1): string {
-  return m >= 1000 ? `${(m / 1000).toFixed(kmDecimals)}km` : `${m.toFixed(0)}m`;
+  return Math.abs(m) >= 1000 ? `${(m / 1000).toFixed(kmDecimals)}km` : `${m.toFixed(0)}m`;
 }
 
 // パネル用電力量表記(例: "820 kJ" / "1.50 MJ")

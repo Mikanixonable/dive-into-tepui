@@ -2,7 +2,7 @@
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // クリエイティブモードで配置できる艦の上限隻数。
-export const CREATIVE_MAX_SHIPS = 8;
+export const CREATIVE_MAX_SHIPS = 50;
 
 // --- 基地ドッキング ---
 // 収容判定: 基地との距離(m)と相対速度(m/s)がこれ以内なら収容可能とみなす。
@@ -281,6 +281,7 @@ export const FOCUS_LABEL_PRIORITY_PX = 40;
 export const LAGRANGE_MIN_CLEARANCE_RATIO = 10;
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 export const MARKER_BEARING_RING_RATIO = 0.8;
+export const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカーを表示する上限距離 [m]
 export const MARKER_HEADING_PROBE_PX = 20; // 進行方向を測るための投影プローブ距離 [px]
 // 投影差がこれ未満なら視線とほぼ平行とみなし、進行方向を定めない [px]
 export const MARKER_HEADING_DEGENERATE_PX = 4;
@@ -380,14 +381,18 @@ export const PLAN_ARC_GAP_PX = 6;
 export const PLAN_ARC_OPACITY = 0.85;
 // 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
 export const APERIODIC_ARC_DURATION = 86400;
-// 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。
-// physics/trajectory-features.ts の apparentEccentricity(積分折れ線の半径変動から
-// 求めた指標)と比較する — これ未満は円に近くアプシスの方向が不定になるので両方隠す。
+// 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。両方見つかった
+// ときの (遠地点距離-近地点距離)/(遠地点距離+近地点距離) と比較する — これ未満は円に
+// 近くアプシスの方向が不定になるので両方隠す。
 export const APSIS_MIN_ECC = 0.01;
-// 日付境界の目盛(plan/plan-display.ts)を間引く最小画面間隔 [px]^2。カレンダー日ごとに
-// 打つ候補は表示期間・軌道の形によって画面上の間隔が数桁変わるため、固定した日数間隔では
-// なく直前に表示した目盛からの画面距離で間引く。
-export const PLAN_DAY_TICK_MIN_PX_SQ = 50 * 50;
+// 計画軌道上の UTC 暦目盛(plan/plan-display.ts)の間隔・本数を決める値。時・日・月のどの
+// 単位で刻むかは画面上の間隔で選ぶため、固定した時間間隔ではなく画面距離基準で間引く。
+export const PLAN_TICK_MIN_PX = 40; // 目盛同士の最小画面間隔 [px]
+export const PLAN_TICK_LABEL_MIN_PX = 90; // ラベルを付ける最小画面間隔 [px]
+export const PLAN_TICK_MAX_COUNT = 400; // 生成する目盛候補の上限本数
+// 目盛の長さ [px]。単位切替後も平均的な目盛の長さが変わらないよう、絶対の階層ではなく
+// 現在表示中の最細目盛からの相対階層(0/1/2以上)で長さを引く。
+export const PLAN_TICK_LENGTH_PX = [7, 12, 18] as const;
 
 // --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory.history/Predictor) ---
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
@@ -401,12 +406,25 @@ export const PREDICT_STEPS_PER_REV = 600;
 export const PREDICT_MAX_STEPS = 20000;
 export const PREDICT_MAX_SAMPLES = 2000;
 export const PREDICT_STEP_BUDGET = 500; // Predictor が1フレームに配る予測ステップ数の上限
+export const PREDICT_COMBAT_STEP_BUDGET = 128; // 戦闘中は自機の線だけを粗く維持する
 export const PREDICT_MIN_STEP_DT = SUBSTEP_MAX_DT; // 予測刻みの下限(本体シミュレーションより細かくする理由がないため同じ値)
 export const PREDICT_RESET_DIST = 500; // 予測位置と実位置がこれを超えて乖離したら予測列を破棄 [m](補間誤差 30m より十分大きい)
 // TRAJECTORY_SAMPLES_PER_REV で間引いた列を補間したときの位置誤差 [m]。三次エルミート補間の
 // 誤差は間引き間隔の4乗で効くので、上限で間引きが粗くなる長い表示期間では
 // PREDICT_RESET_DIST をこの値から外挿した幅まで広げないと、正しい列まで破棄してしまう。
 export const PREDICT_SAMPLE_ERROR = 30;
+// 1フレームの予測予算のうち操作対象の艦に割ける割合の上限。優先はするが独占はさせない —
+// 予測は表示だけでなく計画軌道の重力源や衝突判定の相手としても消費されるため、艦の予測が
+// 完成するまで他の個体が止まると、計画軌道の形が艦の予測進捗に依存してしまう。
+export const PREDICT_PLAYER_BUDGET_RATIO = 0.5;
+// ラウンドロビンで1体に必ず渡すステップ数の下限。予測列の history に最初のサンプルが積まれる
+// までは at() がほぼ全時刻で null を返し、次フレームの乖離判定で必ず破棄されるので、
+// その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を下回る配分は作り直しを繰り返す。
+export const PREDICT_MIN_ENTITY_STEPS = 16;
+// 予測の重力源配列・空間グリッドを組み直す間隔(予測先端の経過時間 [s])。この間だけ重力源の
+// 位置を据え置く。ステップ数で切ると、表示期間を年スケールにしたときの粗い刻み幅では据え置きが
+// 数か月に相当してしまうので、実時間で切る。月がこの時間に動く距離は月自身の軌道の 1/1000 未満。
+export const PREDICT_ATTRACTOR_REBUILD_SEC = 3600;
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;
@@ -527,3 +545,15 @@ export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道
 export const COLOR_ENEMY_PLASMA = '#ff3333'; // 蛍光色の赤
 export const COLOR_SHIP_DARK_HULL = '#2e3340';
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
+
+// 軌道まわりの線の描画順。値が大きいほど後に描かれ、重なったときに手前へ来る。
+// 描画順は線どうしの相対関係でしか意味を持たない(同値だと透明描画の前後が不定になる)ので、
+// 各線が自分の値を単独で決めず、この表で一括して割り当てる。
+export const LINE_RENDER_ORDER = {
+  reference: 0,        // 天体の参照軌道線
+  shipOrbit: 1,        // 自機の解析楕円
+  secondaryTarget: 2,  // 第二ターゲットの軌道線
+  target: 3,           // 主ターゲットの軌道線
+  plan: 4,             // 計画軌道(破線)
+  predicted: 5,        // 積分予測線。解析楕円の代替なので、両方出る境界フレームでは必ずこちらを手前に置く
+} as const;
