@@ -281,6 +281,7 @@ export const FOCUS_LABEL_PRIORITY_PX = 40;
 export const LAGRANGE_MIN_CLEARANCE_RATIO = 10;
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 export const MARKER_BEARING_RING_RATIO = 0.8;
+export const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカーを表示する上限距離 [m]
 export const MARKER_HEADING_PROBE_PX = 20; // 進行方向を測るための投影プローブ距離 [px]
 // 投影差がこれ未満なら視線とほぼ平行とみなし、進行方向を定めない [px]
 export const MARKER_HEADING_DEGENERATE_PX = 4;
