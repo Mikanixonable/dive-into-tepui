@@ -135,7 +135,7 @@ export class GameEntity {
     const interval = this.historyDuration > 0
       ? this.sampleInterval(attractors, this.state, this.historyDuration)
       : 0;
-    this.actualTrajectory.step(dt, attractors, this.bcInv, this.srpCoeff, C.SHADOW_PENUMBRA, this.thrust, interval, this.historyDuration);
+    this.actualTrajectory.step(dt, attractors, this.bcInv, this.srpCoeff, this.thrust, interval, this.historyDuration);
   }
 
   // シミュレーションを正確に区切る必要がある次の絶対時刻。寿命など、既知の時刻で
@@ -203,7 +203,7 @@ export class GameEntity {
     // 越えたところまで伸ばす。
     if (p.state.t > simTime + horizon) return false;
 
-    p.step(dt, attractors, this.bcInv, this.srpCoeff, C.SHADOW_PENUMBRA, null, this.sampleInterval(attractors, p.state, horizon), horizon);
+    p.step(dt, attractors, this.bcInv, this.srpCoeff, null, this.sampleInterval(attractors, p.state, horizon), horizon);
 
     // 有限チェック
     const { r, v } = p.state;
