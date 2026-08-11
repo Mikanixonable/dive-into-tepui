@@ -62,17 +62,3 @@ export function ringSingleScattering(
   const isotropicRelativePhase = henyeyGreenstein(cosTheta, phaseG) * FOUR_PI;
   return Math.max(0, albedo) * direct * escape * isotropicRelativePhase;
 }
-
-/** 環フラグメントから太陽へ向かう直線が中心天体球に遮られるか。 */
-export function ringPlanetShadow(
-  fragmentFromBody: { x: number; y: number; z: number },
-  sunDirection: { x: number; y: number; z: number },
-  bodyRadius: number,
-): boolean {
-  const along = fragmentFromBody.x * sunDirection.x + fragmentFromBody.y * sunDirection.y + fragmentFromBody.z * sunDirection.z;
-  if (along >= 0) return false;
-  const closestX = fragmentFromBody.x - sunDirection.x * along;
-  const closestY = fragmentFromBody.y - sunDirection.y * along;
-  const closestZ = fragmentFromBody.z - sunDirection.z * along;
-  return closestX * closestX + closestY * closestY + closestZ * closestZ < bodyRadius * bodyRadius;
-}
