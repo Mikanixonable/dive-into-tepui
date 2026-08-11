@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, randomQuat } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { add, randSym, randVec, v3, Vec3 } from '../../physics/vec3';
+import { randSym } from '../../physics/random';
+import { add, randVec, v3, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { DebrisKind, DebrisPiece } from '../game-entity/debris-piece';

@@ -7,7 +7,7 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { Player } from '../player/player';
-import { Viewpoint } from '../../physics/projection';
+import { metersPerPixelAtDepth, Viewpoint } from '../../physics/projection';
 import { ChaseCameraSaveData } from '../save-data';
 
 // 初期視点: 機体後方やや上から見下ろす。
@@ -113,8 +113,7 @@ export class ChaseCamera {
 
     // 中ボタンドラッグ等によるパン変位
     if (mouse.panDx !== 0 || mouse.panDy !== 0) {
-      const fovRad = (C.BASE_FOV * Math.PI) / 180;
-      const metersPerPixel = (2 * this.dist * Math.tan(fovRad * 0.5)) / Math.max(1, window.innerHeight);
+      const metersPerPixel = metersPerPixelAtDepth(C.BASE_FOV, this.dist, Math.max(1, window.innerHeight));
       this.panEci = addScaled(this.panEci, right, mouse.panDx * metersPerPixel);
       this.panEci = addScaled(this.panEci, up, mouse.panDy * metersPerPixel);
     }

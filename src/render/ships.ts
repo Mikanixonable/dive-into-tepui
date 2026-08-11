@@ -4,7 +4,7 @@
 // src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
 import * as THREE from 'three/webgpu';
 import * as C from '../game/const';
-import { mulberry32 } from '../physics/vec3';
+import { mulberry32 } from '../physics/random';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
