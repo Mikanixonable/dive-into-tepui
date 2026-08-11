@@ -8,7 +8,6 @@ import { Player } from './player/player';
 import { Enemy } from './game-entity/enemy';
 import { CameraSystem } from './camera/camera-system';
 import { focusPoint } from './camera/focus-target';
-import { focusTargetId } from './camera/focus-target';
 import { Stage } from './stages/stage';
 import { CreativeStage } from './stages/creative-stage';
 import { LaunchSelection } from './game-mode';
@@ -56,8 +55,6 @@ import { strongestAttractor } from '../physics/attractor';
 import type { Attractor } from '../physics/attractor';
 import { mergeAttractors, planAttractorProvider, planSourceRevision } from './simulation/attractors';
 import { FrameControls } from './frame-controls';
-import { systemMembersAt } from './celestial/body-visibility';
-import { MapVisibilityPolicy } from './celestial/map-visibility';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -786,15 +783,9 @@ export class Game {
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
-    const displayToggles = this.cameraSystem.bodyClassToggles;
-    const mapVisibility = overviewMode
-      ? new MapVisibilityPolicy(
-        this.ephemeris.registry,
-        displayToggles,
-        focusTargetId(this.cameraSystem.overviewCamera.focus),
-        systemMembersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, this.ephemeris.attractorsAt(displayTime)),
-      )
-      : null;
+    // 表示・選択可否はこのフレームの update フェーズで MapPicker が確定させたものを読む
+    // (選べる対象と描かれる対象が同じ判定から出るようにする)。
+    const mapVisibility = overviewMode ? this.mapPicker.visibility : null;
     const target = this.targeter.aliveTarget;
     const secondaryTarget = this.targeter.aliveSecondaryTarget;
 

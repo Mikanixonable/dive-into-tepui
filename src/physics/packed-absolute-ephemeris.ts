@@ -41,7 +41,7 @@ export async function verifyEphemerisPayload(decoded: DecodedEphemerisPack): Pro
   const expected = decoded.manifest.payloadSha256;
   if (expected === undefined) throw new EphemerisPackFormatError('payloadSha256が無い暦packは読み込めない');
   if (!globalThis.crypto?.subtle) throw new EphemerisPackFormatError('SHA-256を検証できない実行環境');
-  const bytes = decoded.payloadBytes.slice();
+  const bytes = decoded.payloadBytes as Uint8Array<ArrayBuffer>;
   const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes));
   const actual = [...digest].map((value) => value.toString(16).padStart(2, '0')).join('');
   if (actual !== expected) throw new EphemerisPackFormatError(

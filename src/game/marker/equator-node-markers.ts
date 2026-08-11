@@ -54,17 +54,16 @@ export class EquatorNodeMarkers {
   update(sources: readonly EqNodeSource[], frame: ReferenceFrame, displayTime: number): void {
     this.attractors = this.ephemeris.attractorsAt(displayTime);
     const pairs: EqNodePair[] = [];
+    // un-bake は表示時刻に固定なので、全 source・全交点で同じ変換を使い回す。
+    const unbakeTf = this.ephemeris.frameTransformAt(frame, displayTime, this.attractors);
+    const toDisplay = (r: Vec3, t: number): Vec3 =>
+      toInertialPoint(unbakeTf, toFramePoint(this.ephemeris.frameTransformAt(frame, t, this.attractors), r));
     for (const source of sources) {
       const state = source.state;
+      // 交点はその source 自身の軌道の性質なので、中心天体も state 自身の時刻で選ぶ。
       const center = strongestAttractor(state.r, this.ephemeris.attractorsAt(state.t));
       const eqNormal = center.degree2?.pole;
       if (!eqNormal) continue;
-
-      const toDisplay = (r: Vec3, t: number): Vec3 => {
-        const bakeTf = this.ephemeris.frameTransformAt(frame, t, this.attractors);
-        const unbakeTf = this.ephemeris.frameTransformAt(frame, displayTime, this.attractors);
-        return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
-      };
 
       let an: { pos: Vec3; time: number } | null;
       let dn: { pos: Vec3; time: number } | null;

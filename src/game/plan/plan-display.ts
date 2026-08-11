@@ -193,17 +193,20 @@ export class PlanDisplay {
     const pe = final.periapsis;
     const ap = final.apoapsis;
 
+    // 中心天体は極値を検出したときと同じもの(区間が持つ apsisCenter)を使い、その位置だけを
+    // 極値の時刻で引き直す — 距離を測る基準が検出時と食い違わないようにするため。
+    const center = final.apsisCenter;
     let peDist = 0;
     let peCenter: Attractor | null = null;
-    if (pe) {
-      peCenter = strongestAttractor(pe.r, this.ephemeris.attractorsAt(pe.t));
-      peDist = len(sub(pe.r, peCenter.state.r));
+    if (pe && center) {
+      peCenter = center;
+      peDist = len(sub(pe.r, this.ephemeris.positionOf(center.id, pe.t)));
     }
     let apDist = 0;
     let apCenter: Attractor | null = null;
-    if (ap) {
-      apCenter = strongestAttractor(ap.r, this.ephemeris.attractorsAt(ap.t));
-      apDist = len(sub(ap.r, apCenter.state.r));
+    if (ap && center) {
+      apCenter = center;
+      apDist = len(sub(ap.r, this.ephemeris.positionOf(center.id, ap.t)));
     }
     if (pe && ap && (apDist - peDist) / (apDist + peDist) < C.APSIS_MIN_ECC) return [];
 
