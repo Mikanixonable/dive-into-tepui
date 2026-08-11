@@ -163,7 +163,7 @@ export class Game {
     this.leadMarkers = new LeadMarkers(this.markerManager);
     this.equatorNodeMarkers = new EquatorNodeMarkers(this.markerManager, this.ephemeris);
 
-    this.entities = new EntityManager();
+    this.entities = new EntityManager(this._scene);
     this.effects = new EffectsSystem(this._scene, this.entities, this._sfx);
     // 依存グラフを組むための一時艦。Creative では構築後に必ず破棄し、実ゲーム上は0隻で開始する。
     const bootstrapPlayer = new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager);
