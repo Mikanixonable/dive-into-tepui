@@ -833,8 +833,10 @@ Phase 10 のレイ積分枠組みが前提。プルーム・RCS・再突入・�
 弾本体・弾ハロー・プラズマ弾・薬莢に加え、デブリ片(`DebrisKind` の `'fragment'`)も
 `render/instanced-pool.ts` の `InstancedPool` 経由でインスタンシング済み。決定的なシードで
 焼いた18種類のバリアント形状から個体ごとに乱択し、色は per-instance color(`setColorAt`)が持つ
-ことで、乱数によるジオメトリ生成と両立させた。排出バレルとマガジンフレームは共有リソースだが
-同時存在数がごく少なく、対象外のまま。
+ことで、乱数によるジオメトリ生成と両立させた。フラッシュ(マズル/被弾/撃破/ガスパフ)も同様に、個体ごとの
+`Billboard` 生成をやめて共有ジオメトリ1組をプールで描く — 加算ブレンドなので個体ごとの
+不透明度は色へ畳める。排出バレルとマガジンフレーム、および噴射プルーム・RCS パフ・
+再突入グロー・太陽・輝点惑星の `Billboard` は、同時存在数が少なく固定なので対象外のまま。
 
 **判明した制約**: `InstancedMesh.count` を毎フレーム書き換えてはならない。three の `InstanceNode`
 は instanceMatrix の受け渡し経路(uniform buffer か instanced attribute か)を `count` から決め、
