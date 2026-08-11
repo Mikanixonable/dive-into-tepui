@@ -33,7 +33,7 @@ ${OVERLAY_LAYER_STYLE}
 #hud ::-webkit-scrollbar-thumb { background: ${EDGE}; border-radius: 4px; }
 #hud ::-webkit-scrollbar-thumb:hover { background: ${ACCENT_SOFT}; }
 #hud .mk { z-index: 0; }
-#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
+#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
 #hud .mk-ammo { z-index: 2; }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
@@ -210,6 +210,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .mk .lbl { margin-top: 2px; }
 .mk-enemy .lbl, .mk-target .lbl { font-size: 9px; line-height: 1.2; white-space: pre; }
 .mk-dir { color: #ffffff; font-size: 11px; text-shadow: none; }
+#hud .mk-bearing-triangle .sym { font-size: 14.67px; }
 #hud .mk-ally-dir .sym { font-size: 7.33px; }
 .mk-boresight { color: #ffffff; font-size: 36px; }
 #mk-bore .sym { width: 48px; height: 48px; }
