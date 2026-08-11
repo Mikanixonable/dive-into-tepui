@@ -94,7 +94,7 @@ export function register(): void {
       { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), degree2: null, isStar: true },
     ];
 
-    const viaNew = stepDynamics(s0, dt, attractors, 0, 0, 0, null);
+    const viaNew = stepDynamics(s0, dt, attractors, 0, 0, null);
     const viaLegacy = stepRK4(s0, dt, (rx, ry, rz) => legacyAccel(v3(rx, ry, rz), sunPos, moonPos));
 
     const posErr = len(sub(viaNew.r, viaLegacy.r)) / len(viaLegacy.r);
@@ -109,8 +109,8 @@ export function register(): void {
     const attractors = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 }).attractorsAt(0);
     const thrust = v3(0, 0, 5); // 大きめの加速度で差が明確に出るようにする
 
-    const withThrust = stepDynamics(s0, dt, attractors, 0, 0, 0, thrust);
-    const withoutThrust = stepDynamics(s0, dt, attractors, 0, 0, 0, null);
+    const withThrust = stepDynamics(s0, dt, attractors, 0, 0, thrust);
+    const withoutThrust = stepDynamics(s0, dt, attractors, 0, 0, null);
 
     assert.ok(len(sub(withThrust.v, withoutThrust.v)) > 1, 'thrust should visibly change the velocity');
   });
@@ -120,8 +120,8 @@ export function register(): void {
     const dt = 10;
     const attractors = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 }).attractorsAt(0);
 
-    const noDrag = stepDynamics(s0, dt, attractors, 0, 0, 0, null);
-    const withDrag = stepDynamics(s0, dt, attractors, 0.01, 0, 0, null);
+    const noDrag = stepDynamics(s0, dt, attractors, 0, 0, null);
+    const withDrag = stepDynamics(s0, dt, attractors, 0.01, 0, null);
 
     assert.ok(len(withDrag.v) < len(noDrag.v), 'drag should reduce orbital speed relative to the drag-free step');
   });
@@ -139,7 +139,7 @@ export function register(): void {
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
       const attractors = ephemeris.attractorsAt(s.t + dt / 2);
-      s = stepDynamics(s, dt, attractors, 0, 0, 0, null);
+      s = stepDynamics(s, dt, attractors, 0, 0, null);
     }
 
     const relFinal = sub(s.r, ephemeris.positionOf('moon', s.t));
@@ -317,17 +317,16 @@ export function register(): void {
     ];
     const dt = 100;
     const srpCoeff = 1e-2;
-    const penumbra = 6e4;
     const speed = Math.sqrt(MU_EARTH / 7e6);
 
     const sunlitStart = kinematicState(0, v3(7e6, 0, 0), v3(0, 0, speed));
-    const withSrp = stepDynamics(sunlitStart, dt, attractors, 0, srpCoeff, penumbra, null);
-    const withoutSrp = stepDynamics(sunlitStart, dt, attractors, 0, 0, penumbra, null);
+    const withSrp = stepDynamics(sunlitStart, dt, attractors, 0, srpCoeff, null);
+    const withoutSrp = stepDynamics(sunlitStart, dt, attractors, 0, 0, null);
     assert.ok(len(sub(withSrp.v, withoutSrp.v)) > 0, 'a sunlit object should feel solar radiation pressure');
 
     const umbraStart = kinematicState(0, v3(-7e6, 0, 0), v3(0, 0, speed));
-    const shadowedWith = stepDynamics(umbraStart, dt, attractors, 0, srpCoeff, penumbra, null);
-    const shadowedWithout = stepDynamics(umbraStart, dt, attractors, 0, 0, penumbra, null);
+    const shadowedWith = stepDynamics(umbraStart, dt, attractors, 0, srpCoeff, null);
+    const shadowedWithout = stepDynamics(umbraStart, dt, attractors, 0, 0, null);
     assert.deepEqual(shadowedWith, shadowedWithout, 'an object in the umbra should feel nothing');
   });
 
