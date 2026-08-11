@@ -96,10 +96,9 @@ GPU に ECI 座標(独自 `Vec3`)が渡らないことを徹底する。
   **引きの絵では画素以下だが、寄ると露見する。Phase 1 で実測する。**
 - **本丸は `sampled-line.ts`** — 絶対 ECI を取る関数型 `ScaleAtFn`(`:28`)を `render/` 自身が定義している。
 
-**切り離しの方法**: (1) 頂点列の生成(bake + Hermite 細分。THREE 非依存)を `game/` へ出し、
-`render/` は「渡された配列をアップロードする」だけにする。(2) 表示 LOD ポリシー
-(サグ `MAX_EDGE_SAG_PX = 0.5`、折れ角上限 5°)は描画の判断なので `render/` に残すが、
-ECI を取らない純関数 `chordCountFor(turnRad, chordLen, metersPerPixel)` として公開する。
+**切り離しの方法**: `OrbitLine` / `SampledLine` を丸ごと `game/` へ移し、`render/` には
+「媒介変数で表される曲線を、品質を保証しつつ折れ線として描く」`curve` だけを残す(Phase 1)。
+表示 LOD ポリシー(サグ `MAX_EDGE_SAG_PX = 0.5`、折れ角上限 5°)は描画の判断なので `render/` に残る。
 
 **完了条件**: `src/render/**` から `Vec3` / `KinematicState` / `ReferenceFrame` / `Attractor` /
 `Ephemeris` / `FloatingOrigin` への import が 0 件。
@@ -535,25 +534,66 @@ Beer–Lambert の透過率を表せない。**
 
 ### Phase 1 — 座標境界の確定
 
-§1-2。
+§1-2。**「`game/` で変換してから `render/` へ渡す」を素朴にやると、変換が `game/` の複数箇所へ
+重複して漏れる。** `OrbitLine` / `SampledLine` が実際にやっているのは物理から描画への橋渡しであり、
+その両方に跨る責務は `game/` が担う。`render/` は描画のことだけを考え、物理のことを考えない
+(`physics/` が THREE 非依存を徹底するのと対称)。
 
-1. `render/` から `FloatingOrigin` を剥がす(2 箇所 — `orbit-line.ts` / `sampled-line.ts`。
-   実測済みで、この 2 箇所以外に `game/` の座標型を import する `render/**` ファイルは無い)。
-   呼び出し側が `THREE.Vector3` を渡す。
-2. 頂点列の生成と頂点バッファのアップロードを分ける。表示 LOD ポリシーは純関数として `render/` に残す。
-   **`render/screen-lod.ts` が既にこの形(スカラーのみを取る純関数)で存在するので、方針は揃っている。**
-3. `sampled-line.ts:28` の `ScaleAtFn` を排除する。
-4. f32 精度の実測 — 海王星軌道線とカイパー帯点群(§1-2)。
+手順:
 
-**完了条件の具体化**: `src/render/**` からの import は、消える側と残る側に分かれる。
-**消える側**(座標型 — これが「0 件」の対象): `game/floating-origin.ts` の `FloatingOrigin`、
-`physics/vec3.ts` の `Vec3`、`physics/kinematic-state.ts` の `KinematicState`、
-`physics/frame.ts` の `ReferenceFrame`、`physics/attractor.ts` の `Attractor`、
-`physics/ephemeris.ts` の `Ephemeris`(いずれも現状 `sampled-line.ts` のみが読む)。
-**残ってよい側**(定数・純粋な数学 — ECI 座標そのものではない): `physics/solar-system.ts` の半径定数、
-`physics/ecliptic.ts`、`physics/attitude.ts`、`physics/elements.ts`、
-`physics/orbit-line-geometry.ts`、および `render/ships.ts` が `game/const.ts` から読む
-色・寸法定数(§5「残す」で明示された読み取り専用の例外であり、本フェーズの対象外)。
+1. **`render/orbit-line.ts` と `render/sampled-line.ts` を `game/` へ移す。**
+   これで `render/**` から座標型への import は 0 件になる。
+2. **`render/curve.ts` を新設し、「THREE で曲線を描く」責務だけを担わせる。**
+   頂点バッファの確保・書き込み・アップロード、マテリアル・色・不透明度・`renderOrder`・破線、
+   可視性。**`curve` は ECI も `FloatingOrigin` も知らない。**
+3. **折れ線の解像度の決定を `curve` へ一本化する。**
+   現状 `OrbitLine` は固定 2048 頂点(画面スケールを見ない)、`SampledLine` は画面上のサジッタから
+   区間ごとに弦数を決める、と**別々の方法で実装されている**。どちらも「どう見えるか」の責務なので
+   `render/` に収める。`curve` は**媒介変数で表される曲線**を受け取り、その折れ線近似の品質を保証する
+   — 入口は「媒介変数からサンプルを得る解析的な関数」に統一する(楕円なのかエルミート補間なのかは
+   呼び出し側が決める)。これにより `sampled-line.ts` の `ScaleAtFn` は不要になる。
+   **描画結果が px 単位で現行と一致する必要はない**(解像度の決め方を統一するのが目的)。
+4. **`game/` 側の軌道描画モジュールの依存関係を整理する。** 上記の移動を含めると、この段階では
+   モジュールが過剰になっている。本質的な責務は「ケプラー軌道を描く」「予測された/実際に通ってきた
+   軌道列を描く」「計画した軌道の1区間を描く」の3種程度なので、そこへ寄せる。判断基準は
+   `/refactor` と `/refactor-fixed`。
+5. f32 精度の実測 — 海王星軌道線とカイパー帯点群(§1-2)。
+
+**`curve` が画面スケールを自前で出せる根拠**: 浮動原点はカメラ位置に置かれる
+(`FloatingOrigin.r` = アクティブカメラの ECI 位置)ので、描画座標系ではカメラが原点近傍にいる。
+よって m/px は THREE のカメラ(fov・視口高さ・視線方向)だけから求まり、ECI を経由する必要がない。
+**これが `ScaleAtFn` を廃せる理由である。**
+
+**実測済みの前提**(調査結果):
+
+| | `OrbitLine` | `SampledLine` |
+|---|---|---|
+| 触れている座標型 | `OrbitalElements` / `FloatingOrigin` | `KinematicState` / `ReferenceFrame` / `Ephemeris` / `Attractor` / `FloatingOrigin` |
+| 解像度 | 固定 2048 頂点 | 画面サジッタ 0.5px・折れ角上限 5° から区間ごとに算出 |
+| 消費者 | 自機・敵・基地・ターゲット2本・参照線・静止軌道・配置プレビュー | `EntityLineSet` 経由の予測線/デバッグ線、`PlanArc` |
+
+**整理の対象として確認済みの重複**:
+
+- `enemy.ts` の `syncBackgroundOrbitLine` と `base.ts` の `syncOrbitLine` が実質同一実装。
+- `predicted-trajectory-line.ts` と `debug-trajectory-line.ts` が同型の薄いラッパー
+  (差分はサンプル列の取得元だけ)。
+- `metersPerPixel` が `physics/projection.ts` にありながら、`chase-camera.ts` と
+  `overview-camera.ts` が同じ式をインラインで再実装している。
+- `SampledLine` は数値積分された軌道の描画にしか使われていないので、実態に合わせて改名する
+  (`/refactor-fixed` の語彙に沿わせる)。
+
+**注意すべき制約**:
+
+- `OrbitLine` が頂点を作り直すのは、軌道要素が閾値を超えて動いたときだけ
+  (J2 等で振動する要素をそのまま反映すると線が毎フレーム揺れる)。**解像度をカメラ依存にすると
+  再分割が毎フレーム走りうるので、`SampledLine` の `SCALE_REBAKE_RATIO` に相当する
+  再 bake の抑制を `curve` 側にも持たせること。**
+- `OrbitLine` の「天体に近い区間をフェードさせて描かない」処理は、頂点の間引きと
+  インデックスの書き換えを伴う。解像度の決定と同じ場所で扱う必要がある。
+- 楕円は閉曲線、積分軌道は開曲線。`curve` は両方を扱えること。
+
+**完了条件**: `src/render/**` から `Vec3` / `KinematicState` / `ReferenceFrame` / `Attractor` /
+`Ephemeris` / `OrbitalElements` / `FloatingOrigin` への import が 0 件。
 
 ### Phase 2 — デッドコード除去、計測、描画設定GUI
 
@@ -754,8 +794,9 @@ Phase 10 のレイ積分枠組みが前提。プルーム・RCS・再突入・�
 
 | 対象 | 現在 | 移動先 | 対応フェーズ |
 |---|---|---|---|
-| 頂点列の生成(bake / 細分) | `render/sampled-line.ts`, `orbit-line.ts` | `game/` — 座標は `game/` の責務 | Phase 1 |
-| 絶対 ECI を取る `ScaleAtFn` 型定義 | `render/sampled-line.ts:28` | 廃止(純関数 `chordCountFor` へ) | Phase 1 |
+| `OrbitLine` / `SampledLine` そのもの | `render/` | `game/` — 物理から描画への橋渡しなので `game/` の責務 | Phase 1 |
+| 曲線の折れ線近似(解像度の決定) | `orbit-line.ts` の固定頂点数 / `sampled-line.ts` のサジッタ計算 | `render/curve.ts` へ一本化 | Phase 1 |
+| 絶対 ECI を取る `ScaleAtFn` 型定義 | `render/sampled-line.ts:28` | 廃止(`curve` がカメラから m/px を自前で出す) | Phase 1 |
 | テクスチャURL表・101天体の配色 | `celestial-registry.ts:13-33, 88-195` | `render/`。レジストリには**表示名とidだけ**残す | Phase 3 |
 | `RingOpticsDef.color` | `physics/solar-system.ts:107-116, 322` | `render/`。τ・アルベド・位相係数は物理なので残す | Phase 3 |
 | エフェクトの size/opacity 式・配色 | `vfx/`, `player/*-effects.ts`, `const.ts:230-247, 499-534` | `render/` | Phase 3 |
@@ -798,7 +839,7 @@ Phase 10 のレイ積分枠組みが前提。プルーム・RCS・再突入・�
 | Phase 5 のクラスタリング | 中 | 「どこで区切るか」の基準が未決。惑星系単位が自然だが、艦が惑星間にいる場合の扱いを決める必要がある |
 | Phase 4/5 のドローコール増 | 中 | ジオメトリを 2 回 + シャドウマップの枚数だけ描く。**LOD/インスタンシングが先に済んでいるので吸収余地がある** |
 | Phase 9 の LTC テーブル | 中 | three.js の `RectAreaLight` 用テーブルが流用できるか、球光源用に別途生成するか要調査 |
-| Phase 1 の頂点生成の移動 | 中 | `sampled-line` は予測軌道・計画軌道・デバッグ線の 3 消費者を持つ |
+| Phase 1 の曲線描画の切り直し | 中 | `sampled-line` は予測軌道・計画軌道・デバッグ線の 3 消費者、`orbit-line` は 7 消費者を持つ。解像度をカメラ依存にすると再分割が毎フレーム走りうるので、再 bake の抑制が要る |
 | Phase 6 のカスケード分割数 | 中 | 実測で決める。まず 2〜3 枚 |
 | G-buffer + 照度 + シャドウのバンド幅 | 中 | 解像度スケールとシャドウ解像度トグル(Phase 2)で逃げ道を確保 |
 | ライトプリパス + 半透明 | 中 | 半透明は恩恵を受けない。Phase 10 は前方描画で確定 |
