@@ -1,6 +1,6 @@
 // 天体の見た目レジストリ: id から表示名と CelestialBody の生成関数を引く。
 // 天体の日本語表示名の定義元はここ1箇所 — 他のモジュールは必ずここを読む。
-import { bodyDef, CelestialRegistry, RingSystemDef, RingTextureId, ShapeDef, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
+import { bodyDef, CelestialRegistry, RingSystemDef, ShapeDef, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
 import { AttractorId } from '../../physics/attractor';
 import { createMoon, MOON_VIS_DIST } from '../../render/stars';
 import { CelestialSurface } from '../../render/celestial-surface';
@@ -17,7 +17,6 @@ import jupiterTextureUrl from '../../assets/2k_jupiter.jpg';
 import saturnTextureUrl from '../../assets/2k_saturn.jpg';
 import uranusTextureUrl from '../../assets/2k_uranus.jpg';
 import neptuneTextureUrl from '../../assets/2k_neptune.jpg';
-import saturnRingTextureUrl from '../../assets/2k_saturn_ring_alpha.png';
 import phobosTextureUrl from '../../assets/2k_phobos.jpg';
 import ioTextureUrl from '../../assets/2k_io.jpg';
 import europaTextureUrl from '../../assets/2k_europa.jpg';
@@ -26,11 +25,6 @@ import callistoTextureUrl from '../../assets/2k_callisto.jpg';
 import titanTextureUrl from '../../assets/2k_titan.jpg';
 
 const PLANET_VIS_DIST = 5e7;
-
-
-// RingBandDef.texture の識別子から実アセット URL を引く表 — 物理データ(solar-system.ts)は
-// 識別子だけを持ち、実アセットの解決はここが担う。
-const RING_TEXTURES: Readonly<Record<RingTextureId, string>> = { saturn: saturnRingTextureUrl };
 
 // テクスチャ付き惑星のレジストリ項を、表示名とテクスチャ URL から組む。rings(bodyDef から
 // そのまま渡す)があれば環付きになる。pointBrightness を渡すと戦闘ビューでの表示が
@@ -42,8 +36,8 @@ function planetEntry(id: SolarSystemId, name: string, textureUrl: string, pointB
     name,
     create: () =>
       pointBrightness === undefined
-        ? new SphereBody(id, buildSurface, def.radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id), RING_TEXTURES)
-        : new PointBody(id, buildSurface, def.radius, pointBrightness, shapeOf(id), ringsOf(id), RING_TEXTURES),
+        ? new SphereBody(id, buildSurface, def.radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id))
+        : new PointBody(id, buildSurface, def.radius, pointBrightness, shapeOf(id), ringsOf(id)),
   };
 }
 
@@ -79,7 +73,7 @@ function texturedSatelliteEntry(id: SolarSystemId, name: string, textureUrl: str
 function solidPlanetEntry(id: SolarSystemId, name: string, color: number): CelestialView {
   return {
     name,
-    create: () => new SphereBody(id, () => CelestialSurface.solid(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id), RING_TEXTURES),
+    create: () => new SphereBody(id, () => CelestialSurface.solid(color), bodyDef(SOLAR_SYSTEM, id).radius, PLANET_VIS_DIST, shapeOf(id), ringsOf(id)),
   };
 }
 

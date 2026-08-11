@@ -17,6 +17,7 @@ import {
 import { R_EARTH } from '../physics/solar-system';
 import { NIGHT_AMBIENT } from './celestial-surface';
 import { Aurora } from './aurora';
+import { SPHERE_LOD_LADDER, sphereLodLevel, SphereLodLevel } from './screen-lod';
 import earthTextureUrl from '../assets/earth.jpg';
 import cloudsTextureUrl from '../assets/8k_clouds.jpg';
 
@@ -31,12 +32,8 @@ const ATMO_RIM_SCALE_H = 90e3;
 type SunDirUniform = ReturnType<typeof uniform>;
 type EarthCenterUniform = ReturnType<typeof uniform>;
 
-// 雲・夕焼け・大気のもやを合成した地表メッシュを組む。
-function buildSurface(sunDir: SunDirUniform): THREE.Mesh {
-  // インデックス付き球ジオメトリ + スムーズシェーディング。
-  // 1024×768 分割で高解像度化
-  const geo = new THREE.SphereGeometry(R_EARTH, 1024, 768);
-
+// 雲・夕焼け・大気のもやを合成した地表マテリアルを組む(全LOD段で共有)。
+function buildSurfaceMaterial(sunDir: SunDirUniform): THREE.MeshBasicNodeMaterial {
   const earthMap = new THREE.TextureLoader().load(earthTextureUrl);
   earthMap.colorSpace = THREE.SRGBColorSpace;
   earthMap.anisotropy = 16;
@@ -76,7 +73,19 @@ function buildSurface(sunDir: SunDirUniform): THREE.Mesh {
   const litColor = mix(baseColor, dynamicAtmoColor, haze.mul(sunFactor));
   mat.colorNode = litColor.mul(float(NIGHT_AMBIENT).add(sunFactor.mul(1 - NIGHT_AMBIENT)));
 
-  return new THREE.Mesh(geo, mat as unknown as THREE.Material);
+  return mat;
+}
+
+// LOD段ごとの地表メッシュを、共有マテリアルで一括生成する。
+function buildSurfaceMeshes(mat: THREE.MeshBasicNodeMaterial): ReadonlyMap<SphereLodLevel, THREE.Mesh> {
+  const meshes = new Map<SphereLodLevel, THREE.Mesh>();
+  for (const level of SPHERE_LOD_LADDER) {
+    const geo = new THREE.SphereGeometry(R_EARTH, level.widthSegments, level.heightSegments);
+    const mesh = new THREE.Mesh(geo, mat as unknown as THREE.Material);
+    mesh.visible = false;
+    meshes.set(level, mesh);
+  }
+  return meshes;
 }
 
 // 大気のリム光: 地球の縁だけをリング状に光らせる加算合成の1枚シェル。
@@ -127,6 +136,8 @@ export interface Earth {
   group: THREE.Group;
   setRotation(angleRad: number): void;
   setSunDir(x: number, y: number, z: number): void;
+  // 見かけ直径[px]から地表メッシュのLOD段を選び、その段だけを visible にする。
+  syncSurfaceLod(apparentDiameterPx: number): void;
   tick(simTime: number): void; // オーロラの明滅アニメーション、大気シェーダの地球中心uniform更新
 }
 
@@ -138,7 +149,9 @@ export function createEarth(): Earth {
   const sunDir = uniform(new THREE.Vector3(1, 0, 0));
   const earthCenter = uniform(new THREE.Vector3(0, 0, 0));
 
-  spin.add(buildSurface(sunDir));
+  const surfaceMeshes = buildSurfaceMeshes(buildSurfaceMaterial(sunDir));
+  let activeSurfaceLevel: SphereLodLevel | null = null;
+  for (const mesh of surfaceMeshes.values()) spin.add(mesh);
 
   // オーロラは磁気極に固定なので自転と一緒に回す
   const auroras = [
@@ -163,6 +176,13 @@ export function createEarth(): Earth {
     // 太陽方向ベクトルを設定する。
     setSunDir(x: number, y: number, z: number) {
       (sunDir.value as THREE.Vector3).set(x, y, z);
+    },
+    // 見かけ直径[px]から地表LOD段を選び、その段のメッシュだけを visible にする。
+    syncSurfaceLod(apparentDiameterPx: number) {
+      const level = sphereLodLevel(apparentDiameterPx);
+      if (level === activeSurfaceLevel) return;
+      activeSurfaceLevel = level;
+      for (const [meshLevel, mesh] of surfaceMeshes) mesh.visible = meshLevel === level;
     },
     // 地球中心位置と、オーロラの明滅・波打ちを simTime に応じて進める。
     tick(simTime: number) {
