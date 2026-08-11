@@ -21,6 +21,9 @@ export interface GroupedMarkerItem {
   name: string; // ラベルの主題。まとめられた代表には "xN" が付く
   detail: string; // ラベル末尾の付随情報(距離など)
   bearingColor: string; // 画面外方位マーカーの色
+  bearingSym?: string; // 画面外方位マーカーの記号。省略時は通常の矢印
+  bearingClass?: string; // 画面外方位マーカーの CSS クラス
+  bearingVisible?: boolean; // false のときは画面外でも方位マーカーを出さない
   color?: string; // 画面内マーカー自体の色。省略時は cls の CSS 色に従う
   symMarkup?: boolean;
 }
@@ -62,9 +65,13 @@ export class GroupedMarkers {
         m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, 1, m.item.color,
         rotationDeg, m.item.symMarkup,
       );
-      // 画面外(背面を含む)の対象は、画面端の ▲ で方位だけを示す。
-      if (overviewMode) this.markerManager.hide(bearingKey(m.item.key));
-      else this.markerManager.setBearing(bearingKey(m.item.key), 'mk-dir', DIRECTION_GLYPH.bearing, m.p, '', 1, m.item.bearingColor);
+      // 画面外(背面を含む)の対象は、画面端の方位マーカーで方位だけを示す。
+      // bearingVisible は味方機など、距離によって方位マーカーを抑制する対象に使う。
+      if (overviewMode || m.item.bearingVisible === false) this.markerManager.hide(bearingKey(m.item.key));
+      else this.markerManager.setBearing(
+        bearingKey(m.item.key), m.item.bearingClass ?? 'mk-dir', m.item.bearingSym ?? DIRECTION_GLYPH.bearing,
+        m.p, '', 1, m.item.bearingColor,
+      );
     }
 
     this.retire(items.map((item) => item.key));
