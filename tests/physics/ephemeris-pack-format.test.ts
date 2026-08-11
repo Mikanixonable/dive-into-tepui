@@ -66,6 +66,23 @@ export function register(): void {
     const nonFinite = bytes.slice();
     new DataView(nonFinite.buffer).setFloat64(nonFinite.length - 8, Number.NaN, true);
     throwsFormat(() => decodeEphemerisPack(nonFinite));
+    const infinite = bytes.slice();
+    new DataView(infinite.buffer).setFloat64(infinite.length - 8, Number.POSITIVE_INFINITY, true);
+    throwsFormat(() => decodeEphemerisPack(infinite));
+  });
+
+  test('ephemeris pack: decoding is unaffected by the input view offset', () => {
+    const data = buildEphemerisPackData(BASE, SEGMENTS);
+    const bytes = encodeEphemerisPack(data.manifest, data.payload);
+
+    // 任意のバイト境界に置いた view でも Float64 の値が壊れないこと。
+    for (const offset of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const shifted = new Uint8Array(offset + bytes.length);
+      shifted.set(bytes, offset);
+      const decoded = decodeEphemerisPack(shifted.subarray(offset));
+      assert.deepEqual(Array.from(decoded.payload), Array.from(data.payload));
+      assert.deepEqual(Array.from(decoded.payloadBytes), Array.from(bytes.subarray(bytes.length - decoded.payloadBytes.length)));
+    }
   });
 
   test('ephemeris pack: manifest version and validity ranges are checked', () => {

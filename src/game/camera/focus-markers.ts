@@ -68,8 +68,11 @@ export class FocusMarkers {
   private readonly frameScratch = new Map<string, FocusProjection>();
   private readonly projectedScratch: ProjectedFocusLabel[] = [];
   private readonly hiddenByPriorityScratch = new Set<string>();
-  private readonly cellsScratch = new Map<string, ProjectedFocusLabel[]>();
+  // セル添字 (cx, cy) を x → y の二段の Map で引く。添字をそのまま鍵にするので、
+  // 別のセルが同じ鍵を共有することはない。
+  private readonly cellsScratch = new Map<number, Map<number, ProjectedFocusLabel[]>>();
   private readonly cellPool: ProjectedFocusLabel[][] = [];
+  private readonly cellRowPool: Map<number, ProjectedFocusLabel[]>[] = [];
   private shownIdsScratch: string[] = [];
   private readonly nowShownScratch = new Set<string>();
 
@@ -275,9 +278,13 @@ export class FocusMarkers {
     hiddenByPriority.clear();
     // 一様グリッドで近傍セルだけを比較する。ラベル数が増えても O(N²) で全画面を走査しない。
     const cellSize = FOCUS_LABEL_PRIORITY_PX;
-    for (const cell of this.cellsScratch.values()) {
-      cell.length = 0;
-      this.cellPool.push(cell);
+    for (const row of this.cellsScratch.values()) {
+      for (const cell of row.values()) {
+        cell.length = 0;
+        this.cellPool.push(cell);
+      }
+      row.clear();
+      this.cellRowPool.push(row);
     }
     this.cellsScratch.clear();
     const cells = this.cellsScratch;
@@ -285,21 +292,29 @@ export class FocusMarkers {
       const cx = Math.floor(current.x / cellSize);
       const cy = Math.floor(current.y / cellSize);
       for (let x = cx - 1; x <= cx + 1; x++) {
+        const row = cells.get(x);
+        if (row === undefined) continue;
         for (let y = cy - 1; y <= cy + 1; y++) {
-          for (const other of cells.get(`${x},${y}`) ?? []) {
+          const cell = row.get(y);
+          if (cell === undefined) continue;
+          for (const other of cell) {
             if (Math.hypot(current.x - other.x, current.y - other.y) >= FOCUS_LABEL_PRIORITY_PX) continue;
             if (current.label.labelPriority > other.label.labelPriority) hiddenByPriority.add(other.label.id);
             else if (other.label.labelPriority > current.label.labelPriority) hiddenByPriority.add(current.label.id);
           }
         }
       }
-      const key = `${cx},${cy}`;
-      const cell = cells.get(key);
+      let row = cells.get(cx);
+      if (row === undefined) {
+        row = this.cellRowPool.pop() ?? new Map<number, ProjectedFocusLabel[]>();
+        cells.set(cx, row);
+      }
+      const cell = row.get(cy);
       if (cell) cell.push(current);
       else {
         const nextCell = this.cellPool.pop() ?? [];
         nextCell.push(current);
-        cells.set(key, nextCell);
+        row.set(cy, nextCell);
       }
     }
 

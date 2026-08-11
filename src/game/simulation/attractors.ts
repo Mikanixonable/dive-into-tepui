@@ -61,14 +61,37 @@ export function planAttractorsAt(
   t: number,
   excludedEntityIds: ReadonlySet<AttractorId> = new Set(),
 ): PlanAttractorSources {
-  const gravity = predictedAttractorsAt(ephemeris, entities, t);
-  const collision: Attractor[] = [...ephemeris.attractorsAt(t)];
-  const seen = new Set(collision.map((a) => a.id));
+  return {
+    gravity: predictedAttractorsAt(ephemeris, entities, t),
+    collision: collectPlanCollision(ephemeris, entities, t, excludedEntityIds, []),
+  };
+}
+
+// 重複排除の作業領域。collectPlanCollision の外へは出ないので使い回す。
+const seenScratch = new Set<AttractorId>();
+
+// 時刻 t の衝突対象を out へ詰め直す。out は呼び出し側の所有物で、既存の内容を捨ててから
+// 使う。out はそのまま返り値になるので、呼び出し側が保持しうる領域を渡してはいけない。
+function collectPlanCollision(
+  ephemeris: Ephemeris,
+  entities: EntityManager,
+  t: number,
+  excludedEntityIds: ReadonlySet<AttractorId>,
+  out: Attractor[],
+): readonly Attractor[] {
+  out.length = 0;
+  const seen = seenScratch;
+  seen.clear();
+  // 解析天体は mu=0 の表示天体も含めて全数が対象。
+  for (const body of ephemeris.attractorsAt(t)) {
+    out.push(body);
+    seen.add(body.id);
+  }
   for (const e of entities.all()) {
     if (!e.alive || !e.collides || !(e.radius > 0) || excludedEntityIds.has(e.id) || seen.has(e.id)) continue;
     const state = e.displayState(t);
     if (state === null) continue;
-    collision.push({
+    out.push({
       id: e.id,
       mu: e.mu,
       radius: e.radius,
@@ -78,7 +101,7 @@ export function planAttractorsAt(
     });
     seen.add(e.id);
   }
-  return { gravity, collision };
+  return out;
 }
 
 // active player のように計画軌道の起点そのものになっている entity を、計画の衝突対象から
@@ -168,9 +191,17 @@ export type ClassifiedAttractors = {
 // 順位ではなく mu の値を返す。
 function alwaysThresholdMu(attractors: readonly Attractor[]): number {
   if (attractors.length <= GRAVITY_ALWAYS_COUNT) return 0;
-  const mus = attractors.map((a) => a.mu).sort((x, y) => y - x);
-  return mus[GRAVITY_ALWAYS_COUNT - 1] ?? 0;
+  muScratch.length = 0;
+  for (const a of attractors) muScratch.push(a.mu);
+  muScratch.sort((x, y) => y - x);
+  return muScratch[GRAVITY_ALWAYS_COUNT - 1] ?? 0;
 }
+
+// alwaysThresholdMu 専用の作業領域。値はこの関数の外へ出ない。
+const muScratch: number[] = [];
+
+// classifyAttractors 専用の作業領域。grid へ挿入し終えた時点で不要になり、外へ出ない。
+const griddedScratch: Attractor[] = [];
 
 // グリッドへ載せた天体のうち最も重いものの引力が GRAVITY_NEGLIGIBLE_ACCEL まで落ちる距離。
 // gridded が空のときのセル一辺は結果に影響しないので任意の正数でよい。
@@ -187,7 +218,8 @@ function gridCellSize(gridded: readonly Attractor[]): number {
 export function classifyAttractors(attractors: readonly Attractor[]): ClassifiedAttractors {
   const thresholdMu = alwaysThresholdMu(attractors);
   const always: Attractor[] = [];
-  const gridded: Attractor[] = [];
+  const gridded = griddedScratch;
+  gridded.length = 0;
   for (const a of attractors) {
     if (a.mu >= thresholdMu) always.push(a);
     else gridded.push(a);

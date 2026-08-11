@@ -51,8 +51,11 @@ export class MarkerManager {
   private activeCount = 0;
   private candidateStamp = new Int32Array(0);
   private readonly candidatesScratch: number[] = [];
-  private readonly collisionBuckets = new Map<string, number[]>();
+  // セル添字 (cellX, cellY) を x → y の二段の Map で引く。添字をそのまま鍵にするので、
+  // 別のセルが同じ鍵を共有することはない。
+  private readonly collisionBuckets = new Map<number, Map<number, number[]>>();
   private readonly bucketPool: number[][] = [];
+  private readonly bucketRowPool: Map<number, number[]>[] = [];
   private readonly svgLinePool: SVGLineElement[] = [];
 
   // root: マーカー要素を追加する親(#hud)。svgOverlay: ラベル引き出し線を描く SVG。
@@ -259,9 +262,13 @@ export class MarkerManager {
     for (let iter = 0; iter < ITER; iter++) {
       // 現在の押し出し位置からグリッドを作り直す。ラベルが前の反復で別セルへ
       // 移動しても候補から漏れないよう、反復をまたいでバケットを再利用しない。
-      for (const bucket of this.collisionBuckets.values()) {
-        bucket.length = 0;
-        this.bucketPool.push(bucket);
+      for (const row of this.collisionBuckets.values()) {
+        for (const bucket of row.values()) {
+          bucket.length = 0;
+          this.bucketPool.push(bucket);
+        }
+        row.clear();
+        this.bucketRowPool.push(row);
       }
       this.collisionBuckets.clear();
       const buckets = this.collisionBuckets;
@@ -278,11 +285,15 @@ export class MarkerManager {
 
         for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
           for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
-            const key = `${cellX},${cellY}`;
-            let bucket = buckets.get(key);
+            let row = buckets.get(cellX);
+            if (!row) {
+              row = this.bucketRowPool.pop() ?? new Map<number, number[]>();
+              buckets.set(cellX, row);
+            }
+            let bucket = row.get(cellY);
             if (!bucket) {
               bucket = this.bucketPool.pop() ?? [];
-              buckets.set(key, bucket);
+              row.set(cellY, bucket);
             }
             bucket.push(i);
           }
@@ -306,8 +317,10 @@ export class MarkerManager {
         candidates.length = 0;
         const stamp = i + 1;
         for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
+          const row = buckets.get(cellX);
+          if (!row) continue;
           for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
-            const bucket = buckets.get(`${cellX},${cellY}`);
+            const bucket = row.get(cellY);
             if (!bucket) continue;
             for (const j of bucket) {
               if (j > i && candidateStamp[j] !== stamp) {

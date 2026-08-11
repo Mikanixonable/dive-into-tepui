@@ -12,12 +12,30 @@ const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
   { kind: 'base', label: '基地' },
 ];
 
+// 1区画ぶんの表示順と親子構造を id で持つ。表示値(距離・詳細)は毎フレーム
+// 引き渡される MapPickable から読み直すため、ここには id しか置かない。
+interface SectionOrder {
+  readonly ids: string[];
+  readonly rootIds: string[];
+  readonly childIds: Map<string, string[]>;
+}
+
 interface Section {
   readonly header: HTMLElement;
   readonly body: HTMLElement;
   readonly rows: Map<string, RowNode>;
+  readonly order: SectionOrder;
   expanded: boolean;
 }
+
+// 区画見出しに添える内訳 — detail に needle を含む行を数え、label 付きで示す。
+const HEADER_SUMMARY: Partial<Record<MapPickKind, { readonly needle: string; readonly label: string }>> = {
+  ship: { needle: '接近', label: '接近' },
+  ammo: { needle: '回収可能', label: '回収可' },
+  base: { needle: 'ドック', label: 'ドック候補' },
+};
+
+const EMPTY_IDS: readonly string[] = [];
 
 type ObjectListFilter = 'system' | Exclude<BodyClass, 'star'>;
 
@@ -60,18 +78,6 @@ interface RowNode {
   expanded: boolean;
 }
 
-// parentOf の親子関係から、items を「直下の子」id 別に束ねる。
-function childrenOfMap(items: readonly MapPickable[], parentOf: ReadonlyMap<string, string>): Map<string, MapPickable[]> {
-  const map = new Map<string, MapPickable[]>();
-  for (const item of items) {
-    const parent = parentOf.get(item.id);
-    if (parent === undefined) continue;
-    const list = map.get(parent);
-    if (list) list.push(item); else map.set(parent, [item]);
-  }
-  return map;
-}
-
 // マップビュー右部に常設の軌道オブジェクト一覧ウィンドウ。種別ごとの区画にタブ見出しで
 // 開閉し、行クリックで onSelect に id を渡す。天体区画は衛星・ラグランジュ点を親の下の
 // トグル子メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
@@ -93,13 +99,21 @@ export class ObjectListPanel {
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
   private readonly namesScratch = new Map<string, string>();
+  private readonly itemsByIdScratch = new Map<string, MapPickable>();
   private readonly crumbsScratch: string[] = [];
-  private readonly byKindScratch = new Map<MapPickKind, MapPickable[]>();
-  private readonly emptyListScratch: MapPickable[] = [];
+  private readonly matchedScratch: MapPickable[] = [];
+  private readonly displayIdsScratch: string[] = [];
   private readonly idsInSectionScratch = new Set<string>();
   private readonly focusAncestorsScratch = new Set<string>();
   private readonly seenScratch = new Set<string>();
-  private readonly rootsScratch: MapPickable[] = [];
+  // 並べ替え・親子構造の入力を前フレームぶん保持し、変化した時だけ組み直す。
+  private readonly prevIds: string[] = [];
+  private readonly prevNames: string[] = [];
+  private readonly prevKinds: MapPickKind[] = [];
+  private readonly prevParents: (string | undefined)[] = [];
+  private readonly prevMatches: boolean[] = [];
+  private prevSort: ObjectListSort | null = null;
+  private prevFilter: ObjectListFilter | null | undefined = undefined;
   private readonly breadcrumb: HTMLElement;
 
   constructor(root: HTMLElement, registry: CelestialRegistry) {
@@ -183,7 +197,8 @@ export class ObjectListPanel {
       header.className = 'object-list-section-header';
       const sectionBody = document.createElement('div');
       sectionBody.className = 'object-list-section-body';
-      const section: Section = { header, body: sectionBody, rows: new Map(), expanded: true };
+      const order: SectionOrder = { ids: [], rootIds: [], childIds: new Map() };
+      const section: Section = { header, body: sectionBody, rows: new Map(), order, expanded: true };
       header.addEventListener('click', () => {
         section.expanded = !section.expanded;
         this.applyExpanded(section);
@@ -211,7 +226,11 @@ export class ObjectListPanel {
   // (フォーカス中の天体が無い)なら、どの行も強調しない。
   sync(items: readonly MapPickable[], focusId: string | undefined, parentOf: ReadonlyMap<string, string>): void {
     this.namesScratch.clear();
-    for (const item of items) this.namesScratch.set(item.id, item.name);
+    this.itemsByIdScratch.clear();
+    for (const item of items) {
+      this.namesScratch.set(item.id, item.name);
+      this.itemsByIdScratch.set(item.id, item);
+    }
     const names = this.namesScratch;
     const crumbs = this.crumbsScratch;
     crumbs.length = 0;
@@ -219,73 +238,137 @@ export class ObjectListPanel {
     this.breadcrumb.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'フォーカス: なし';
     const focusChanged = focusId !== this.lastFocusId;
     this.lastFocusId = focusId;
-    for (const list of this.byKindScratch.values()) list.length = 0;
-    const byKind = this.byKindScratch;
-    for (const item of items) {
-      if (!this.matches(item)) continue;
-      const list = byKind.get(item.kind);
-      if (list) list.push(item); else byKind.set(item.kind, [item]);
-    }
+    const inputsChanged = this.refreshInputs(items, parentOf);
+
+    // フォーカスが切り替わった瞬間だけ、そこへ至る枝を自動展開する対象として渡す
+    // (毎フレーム渡すとユーザーが畳んだ直後に開き直ってしまう)。
+    const focusAncestors = this.focusAncestorsScratch;
+    focusAncestors.clear();
+    if (focusChanged) for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) focusAncestors.add(cur);
 
     for (const { kind, label } of SECTIONS) {
       const section = this.sections.get(kind)!;
-      const list = (byKind.get(kind) ?? this.emptyListScratch).sort(this.sort === 'distance'
-        ? (a, b) => (a.priority ?? 0) - (b.priority ?? 0) || (a.distance ?? 0) - (b.distance ?? 0) || a.name.localeCompare(b.name)
-        : (a, b) => a.name.localeCompare(b.name));
-      section.header.style.display = list.length === 0 ? 'none' : '';
-      const state = kind === 'ship' ? `接近 ${list.filter((i) => i.detail?.includes('接近')).length}`
-        : kind === 'ammo' ? `回収可 ${list.filter((i) => i.detail?.includes('回収可能')).length}`
-        : kind === 'base' ? `ドック候補 ${list.filter((i) => i.detail?.includes('ドック')).length}` : '';
-      section.header.textContent = `${label} (${list.length})${state ? ` · ${state}` : ''} ${section.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH}`;
-
-      // 衛星フィルタでは、衛星自身はフィルタを通っても親の惑星は通らない(bodyClassOf が
-      // 'planet' のため)。親を惑星ごとのクラスタ見出しとして拾い出す — フィルタの一致件数
-      // (ヘッダーの (N))には含めないので、list ではなく別変数に積む。
-      const displayList = kind === 'body' && this.filter === 'satellite' ? this.withClusterParents(list, items, parentOf) : list;
-      const childrenOf = childrenOfMap(displayList, parentOf);
-      const idsInSection = this.idsInSectionScratch;
-      idsInSection.clear();
-      for (const item of displayList) idsInSection.add(item.id);
-      // 親が今フレーム同じ区画に見当たらない(遮蔽等で一時的に消えた等)行は根として扱う —
-      // 親が現れないせいで子ごと画面から消えてしまうより、ひとまず出す方に倒す。
-      const roots = this.rootsScratch;
-      roots.length = 0;
-      for (const item of displayList) {
-        const parent = parentOf.get(item.id);
-        if (parent === undefined || !idsInSection.has(parent)) roots.push(item);
-      }
-      // フォーカスが切り替わった瞬間だけ、そこへ至る枝を自動展開する対象として渡す
-      // (毎フレーム渡すとユーザーが畳んだ直後に開き直ってしまう)。
-      const focusAncestors = this.focusAncestorsScratch;
-      focusAncestors.clear();
-      if (focusChanged) for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) focusAncestors.add(cur);
+      // 距離順では距離が動くだけで正しい並びが変わりうるので、保持している順序が
+      // 今フレームの値でも整列条件を満たすかを確かめ、崩れた時だけ組み直す。
+      if (inputsChanged || !this.orderStillSorted(section.order.ids)) this.rebuildOrder(kind, section.order, items, parentOf);
+      this.syncHeader(section, kind, label);
 
       const seen = this.seenScratch;
       seen.clear();
-      for (const item of roots) {
-        seen.add(item.id);
-        this.syncRow(section.rows, item, childrenOf, focusId, section.body, focusAncestors);
+      for (const id of section.order.rootIds) {
+        seen.add(id);
+        this.syncRow(section.rows, id, section.order.childIds, focusId, section.body, focusAncestors);
       }
       this.pruneRows(section.rows, seen);
     }
     if (this.selectedId !== null && !items.some((i) => i.id === this.selectedId && this.matches(i))) this.selectedId = null;
   }
 
-  // list の各要素の親(未登場なら)を allItems から補って返す — 親自身はフィルタを通って
-  // いなくても、既存の親子ツリー機構(childrenOfMap/roots)にそのままクラスタ見出しとして乗せる。
-  private withClusterParents(
-    list: readonly MapPickable[], allItems: readonly MapPickable[], parentOf: ReadonlyMap<string, string>,
-  ): MapPickable[] {
-    const byId = new Map(allItems.map((i) => [i.id, i]));
-    const seenIds = new Set(list.map((i) => i.id));
-    const result = [...list];
-    for (const item of list) {
-      const parentId = parentOf.get(item.id);
-      if (parentId === undefined || seenIds.has(parentId)) continue;
-      const parent = byId.get(parentId);
-      if (!parent) continue;
+  // 区画見出しへ件数と状況の内訳を書き出す。表示行が無い区画は見出しごと隠す。
+  private syncHeader(section: Section, kind: MapPickKind, label: string): void {
+    const ids = section.order.ids;
+    section.header.style.display = ids.length === 0 ? 'none' : '';
+    const summary = HEADER_SUMMARY[kind];
+    let state = '';
+    if (summary) {
+      let count = 0;
+      for (const id of ids) if (this.itemsByIdScratch.get(id)?.detail?.includes(summary.needle)) count++;
+      state = ` · ${summary.label} ${count}`;
+    }
+    section.header.textContent = `${label} (${ids.length})${state} ${section.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH}`;
+  }
+
+  // 並べ替え・親子構造を決める入力(候補の顔ぶれ・表示名・種別・親・絞り込みの通過可否と
+  // 絞り込み/並び順の選択)を前フレームと突き合わせ、変化していれば真を返して記録を更新する。
+  private refreshInputs(items: readonly MapPickable[], parentOf: ReadonlyMap<string, string>): boolean {
+    let changed = this.prevIds.length !== items.length || this.prevSort !== this.sort || this.prevFilter !== this.filter;
+    let i = 0;
+    for (const item of items) {
+      const parent = parentOf.get(item.id);
+      const matched = this.matches(item);
+      if (!changed && (this.prevIds[i] !== item.id || this.prevNames[i] !== item.name
+        || this.prevKinds[i] !== item.kind || this.prevParents[i] !== parent || this.prevMatches[i] !== matched)) changed = true;
+      this.prevIds[i] = item.id;
+      this.prevNames[i] = item.name;
+      this.prevKinds[i] = item.kind;
+      this.prevParents[i] = parent;
+      this.prevMatches[i] = matched;
+      i++;
+    }
+    // 候補が減ったフレームでは末尾に前フレームの記録が残るので、長さも合わせておく。
+    this.prevIds.length = items.length;
+    this.prevNames.length = items.length;
+    this.prevKinds.length = items.length;
+    this.prevParents.length = items.length;
+    this.prevMatches.length = items.length;
+    this.prevSort = this.sort;
+    this.prevFilter = this.filter;
+    return changed;
+  }
+
+  // 保持している並び ids が、今フレームの値でも比較関数の順序を満たしているか。
+  private orderStillSorted(ids: readonly string[]): boolean {
+    let prev: MapPickable | null = null;
+    for (const id of ids) {
+      const item = this.itemsByIdScratch.get(id);
+      if (!item) return false;
+      if (prev !== null && this.compare(prev, item) > 0) return false;
+      prev = item;
+    }
+    return true;
+  }
+
+  // 現在の並び順での a と b の前後関係。負なら a が先。
+  private compare(a: MapPickable, b: MapPickable): number {
+    if (this.sort === 'name') return a.name.localeCompare(b.name);
+    return (a.priority ?? 0) - (b.priority ?? 0) || (a.distance ?? 0) - (b.distance ?? 0) || a.name.localeCompare(b.name);
+  }
+
+  // kind の区画に出す行を選び直し、表示順・根・親ごとの子を order へ書き直す。
+  private rebuildOrder(
+    kind: MapPickKind, order: SectionOrder, items: readonly MapPickable[], parentOf: ReadonlyMap<string, string>,
+  ): void {
+    const matched = this.matchedScratch;
+    matched.length = 0;
+    for (const item of items) if (item.kind === kind && this.matches(item)) matched.push(item);
+    matched.sort((a, b) => this.compare(a, b));
+    order.ids.length = 0;
+    for (const item of matched) order.ids.push(item.id);
+    // 衛星フィルタでは、衛星自身はフィルタを通っても親の惑星は通らない(bodyClassOf が
+    // 'planet' のため)。親を惑星ごとのクラスタ見出しとして拾い出す — フィルタの一致件数
+    // (ヘッダーの (N))には含めないので、ids へ積んだ後に足す。
+    const displayIds = kind === 'body' && this.filter === 'satellite'
+      ? this.withClusterParents(order.ids, parentOf) : order.ids;
+
+    const idsInSection = this.idsInSectionScratch;
+    idsInSection.clear();
+    for (const id of displayIds) idsInSection.add(id);
+    for (const list of order.childIds.values()) list.length = 0;
+    order.rootIds.length = 0;
+    for (const id of displayIds) {
+      const parent = parentOf.get(id);
+      // 親が今フレーム同じ区画に見当たらない(遮蔽等で一時的に消えた等)行は根として扱う —
+      // 親が現れないせいで子ごと画面から消えてしまうより、ひとまず出す方に倒す。
+      if (parent === undefined || !idsInSection.has(parent)) { order.rootIds.push(id); continue; }
+      const list = order.childIds.get(parent);
+      if (list) list.push(id); else order.childIds.set(parent, [id]);
+    }
+  }
+
+  // ids の各要素の親(未登場なら)を補った並びを返す — 親自身はフィルタを通っていなくても、
+  // 親子ツリーにそのままクラスタ見出しとして乗せる。
+  private withClusterParents(ids: readonly string[], parentOf: ReadonlyMap<string, string>): string[] {
+    const seenIds = this.idsInSectionScratch;
+    seenIds.clear();
+    for (const id of ids) seenIds.add(id);
+    const result = this.displayIdsScratch;
+    result.length = 0;
+    for (const id of ids) result.push(id);
+    for (const id of ids) {
+      const parentId = parentOf.get(id);
+      if (parentId === undefined || seenIds.has(parentId) || !this.itemsByIdScratch.has(parentId)) continue;
       seenIds.add(parentId);
-      result.push(parent);
+      result.push(parentId);
     }
     return result;
   }
@@ -299,10 +382,13 @@ export class ObjectListPanel {
   }
 
   // id に対応する RowNode を(無ければ生成して)最新化し、続けてその子を再帰的に同期する。
+  // id が今フレームの候補に無ければ何もしない。
   private syncRow(
-    rows: Map<string, RowNode>, item: MapPickable,
-    childrenOf: ReadonlyMap<string, MapPickable[]>, focusId: string | undefined, container: HTMLElement, focusAncestors: ReadonlySet<string>,
+    rows: Map<string, RowNode>, id: string,
+    childrenOf: ReadonlyMap<string, string[]>, focusId: string | undefined, container: HTMLElement, focusAncestors: ReadonlySet<string>,
   ): void {
+    const item = this.itemsByIdScratch.get(id);
+    if (!item) return;
     let node = rows.get(item.id);
     if (!node) {
       node = this.createRowNode(item.id);
@@ -317,15 +403,15 @@ export class ObjectListPanel {
     node.row.classList.toggle('tgt', item.id === focusId);
     node.row.classList.toggle('selected', item.id === this.selectedId);
 
-    const children = childrenOf.get(item.id) ?? [];
+    const children = childrenOf.get(item.id) ?? EMPTY_IDS;
     if (focusAncestors.has(item.id)) node.expanded = true;
     node.toggle.style.visibility = children.length > 0 ? 'visible' : 'hidden';
     this.applyRowExpanded(node);
 
     const seen = new Set<string>();
-    for (const child of children) {
-      seen.add(child.id);
-      this.syncRow(node.children, child, childrenOf, focusId, node.childrenContainer, focusAncestors);
+    for (const childId of children) {
+      seen.add(childId);
+      this.syncRow(node.children, childId, childrenOf, focusId, node.childrenContainer, focusAncestors);
     }
     this.pruneRows(node.children, seen);
   }

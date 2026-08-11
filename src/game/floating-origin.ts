@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { sub, Vec3 } from '../physics/vec3';
 
 

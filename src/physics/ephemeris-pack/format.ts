@@ -281,6 +281,27 @@ export function encodeEphemerisPack(manifestValue: unknown, payload: ArrayLike<n
   return output;
 }
 
+const HOST_IS_LITTLE_ENDIAN = new Uint8Array(Uint16Array.of(1).buffer)[0] === 1;
+
+/**
+ * Read `count` little-endian Float64 values out of `bytes`.
+ * Throws EphemerisPackFormatError if any value is non-finite.
+ */
+function decodeFloat64Payload(bytes: Uint8Array, count: number): Float64Array {
+  const payload = new Float64Array(count);
+  if (HOST_IS_LITTLE_ENDIAN) {
+    // Float64Array の buffer は 8 バイト境界に揃うので、payload 側へ写してからビューを張る。
+    new Uint8Array(payload.buffer).set(bytes);
+  } else {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let i = 0; i < count; i++) payload[i] = view.getFloat64(i * 8, true);
+  }
+  for (let i = 0; i < count; i++) {
+    if (!Number.isFinite(payload[i])) throw new EphemerisPackFormatError(`payload[${i}] is not finite`);
+  }
+  return payload;
+}
+
 export function decodeEphemerisPack(input: Uint8Array): DecodedEphemerisPack {
   if (!(input instanceof Uint8Array) || input.length < EPHEMERIS_PACK_HEADER_BYTES) {
     throw new EphemerisPackFormatError('pack is shorter than its header');
@@ -321,14 +342,8 @@ export function decodeEphemerisPack(input: Uint8Array): DecodedEphemerisPack {
   const expectedValues = manifest.series.reduce((sum, item) => sum + item.coefficientCount, 0);
   if (payloadLength !== expectedValues * 8) throw new EphemerisPackFormatError('payload length does not match manifest');
 
-  const payloadBytes = input.slice(payloadStart);
-  const payload = new Float64Array(expectedValues);
-  const payloadView = new DataView(payloadBytes.buffer, payloadBytes.byteOffset, payloadBytes.byteLength);
-  for (let i = 0; i < payload.length; i++) {
-    const value = payloadView.getFloat64(i * 8, true);
-    if (!Number.isFinite(value)) throw new EphemerisPackFormatError(`payload[${i}] is not finite`);
-    payload[i] = value;
-  }
+  const payloadBytes = input.subarray(payloadStart);
+  const payload = decodeFloat64Payload(payloadBytes, expectedValues);
   return { manifest, payload, payloadBytes, manifestJson };
 }
 
