@@ -2,7 +2,6 @@
 // 環の姿勢は極軸だけで決まり、非軸対称アークは本体の自転位相には追従させない。
 import * as THREE from 'three/webgpu';
 import { spinOrientation } from '../../physics/body-orientation';
-import { ringPixelCoverage } from '../../physics/ring-optics';
 import { RingBandDef, RingSystemDef } from '../../physics/solar-system';
 import { Vec3 } from '../../physics/vec3';
 import {
@@ -12,6 +11,7 @@ import {
   RingVisual,
   RingVisualState,
 } from '../../render/ring';
+import { ringPixelCoverage } from '../../render/screen-lod';
 import { ScaleFn } from '../camera/camera-system';
 
 type ThinBand = {

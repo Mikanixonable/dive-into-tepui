@@ -23,12 +23,6 @@ export function henyeyGreenstein(cosTheta: number, g: number): number {
   return (1 - clampedG * clampedG) / (FOUR_PI * Math.pow(Math.max(EPSILON, denominator), 1.5));
 }
 
-/** 帯幅の画面被覆率。1px未満を線にしても総光量が増えないようにする。 */
-export function ringPixelCoverage(widthMeters: number, metersPerPixel: number): number {
-  if (!(widthMeters > 0) || !(metersPerPixel > 0)) return 0;
-  return Math.max(0, Math.min(1, widthMeters / metersPerPixel));
-}
-
 /** アーク区間に入っているときの法線光学的厚さ。重ね描きではなく倍率で表現する。 */
 export function ringArcOpticalDepth(
   baseTau: number,
