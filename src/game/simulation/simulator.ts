@@ -16,6 +16,7 @@ import { R_EARTH } from '../../physics/solar-system';
 import { v3 } from '../../physics/vec3';
 import { adaptiveSimulationMaxStep, simulationStepDuration } from './time-step';
 import type { NanWatchdog } from '../nan-watchdog';
+import { FrameSections, SECTION } from '../../frame-sections';
 
 export class Simulator {
   readonly contactPhysics: ContactPhysics;
@@ -34,10 +35,11 @@ export class Simulator {
   private readonly adaptiveStatesScratch: KinematicState[] = [];
   private readonly contactEntitiesScratch: GameEntity[] = [];
 
-  // entities/ephemeris は参照として保持する。
+  // entities/ephemeris/sections は参照として保持する。
   constructor(
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
+    private readonly sections: FrameSections,
   ) {
     this.contactPhysics = new ContactPhysics();
   }
@@ -75,10 +77,14 @@ export class Simulator {
         continue;
       }
 
+      this.sections.enter(SECTION.orbit);
       this.simTime = this.substep(this.simTime, subDt, passiveWarpLod);
+      this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
       if (player) nanWatchdog.checkPlayer('simulator.advance(軌道積分)', player, this.simTime, dt, subDt);
+      this.sections.enter(SECTION.attitude);
       this.stepAttitudes(subDt, passiveWarpLod);
+      this.sections.exit(SECTION.attitude);
       if (player) nanWatchdog.checkPlayer('simulator.advance(姿勢積分)', player, this.simTime, dt, subDt);
       for (const p of this.entities.players) p.stepEnvironment(subDt, this.ephemeris, this.simTime);
       const attractorsNow = this.ephemeris.attractorsAt(this.simTime);
@@ -91,8 +97,10 @@ export class Simulator {
           if (!p.alive) continue;
           this.contactEntitiesScratch.push(...p.collisionFolds(this.simTime));
         }
+        this.sections.enter(SECTION.contact);
         this.contactPhysics.resolveSubstep(
           this.simTime, this.contactEntitiesScratch, attractorsNow, activeStage);
+        this.sections.exit(SECTION.contact);
         if (player) nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
       }
       activeStage.applySimulationEvents(this.simTime);
@@ -105,9 +113,11 @@ export class Simulator {
     // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
     // フレームに1回だけ解決する。
     if (resolveCollision && player) {
+      this.sections.enter(SECTION.contact);
       this.contactPhysics.resolveBelt(
         dt, this.simTime, player, this.entities.all(), this.ephemeris.attractorsAt(this.simTime), activeStage,
       );
+      this.sections.exit(SECTION.contact);
       nanWatchdog.checkPlayer('simulator.advance(ベルト)', player, this.simTime, dt, this.lastSimDt);
     }
 

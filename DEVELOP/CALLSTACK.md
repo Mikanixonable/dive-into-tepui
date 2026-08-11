@@ -10,6 +10,10 @@
 - 条件分岐で 0 回になり得る呼び出しには `// 条件` を付ける。条件が無いものは毎フレーム必ず1回。
 - 値を計算して返すだけの純粋関数(副作用なし)は省略する。引数も省略する(呼び出し順だけを追う)。
 - ループで複数回呼ばれるものは `// …ごと` と書く。
+- **計測の印(`FrameSections` の `beginFrame`/`enter`/`exit`/`endFrame`)は木に載せない。** 負荷確認
+  ウィンドウを開いている間だけ走り(`FrameSections.enabled`)、閉じていれば時計も読まない条件付きの
+  呼び出しで、しかも `update` のほぼ全ての区切りに1対ずつ入るため、載せると呼び出し順そのものが
+  読めなくなる。どこに区間の境界があるかは `frame-sections.ts` の `SECTION` を見る。
 - 名前は `update`(論理更新)/ `sync`(既存メッシュ・DOM への反映)/ `render`(renderer.render の呼び出し)
   / `build`(生成)の規約に従う(CLAUDE.md 参照)。ここでの三大分岐もその区切りに対応する。
 
@@ -207,8 +211,9 @@
         // radiatorFolds = entities.players のうち alive なものの p.collisionFolds(simTime)(艦の姿勢・展開度から毎 substep 置き直す放熱板の接触代理)
         - isFiniteParticipant() / isFiniteAttractor() でエンティティ・天体を有限値のものだけへ絞る // 空間グリッドへ入れる前に落とす(NaN セル添字を防ぐ主たるガード)
         - resolveInOrder() // 1 substep 内で TOI 昇順に最大 CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP 件解決。超過分は次回へ持ち越し
-          - SpatialGrid 構築(1回、以後の反復で使い回す) // セル一辺 = 2×(参加者中の最大半径+最大移動量)、または CONTACT_GRID_CELL_SIZE_FLOOR
-          - earliestContact() // 27近傍のエンティティ間ペア + 全 attacker×天体ペアから、双方の contactsWith が true かつ未解決のものだけを候補にし、resolveSphereCollision(collision-response.ts)を通して TOI 最小の1件を選ぶ
+          - SpatialGrid 構築(1回、以後の反復で使い回す) // セル一辺 = 2×max(半径+|区間変位−参加者平均変位|)、退化時のみ CONTACT_GRID_CELL_SIZE_FLOOR
+          - collectCandidates()(1回だけ) // 27近傍のエンティティ間ペア(少なくとも一方が attacker)+ 全 attacker×天体ペアのうち、双方の contactsWith が true のものを候補列へ詰める。接触しない組み合わせも response=null の候補として残す
+          - [解決1件ごと、最大 CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP 回] earliestContact() // 候補列を1パス走査し、未解決かつ TOI 最小の1件を返す。直前の解決で状態が変わった当事者を含む候補だけ resolveSphereCollision(collision-response.ts)で response を引き直す
           - applyCandidate() → 双方(または片側、相手が天体の場合)の working state へ代入
             - [impulse > 0 のときだけ] a.collideWith(b, contact, activeStage) と b.collideWith(a, contact, activeStage) を順不同で呼ぶ // Contact は解決前の状態を保持するので呼び出し順に依らない
               - [Bullet.collideWith] alive = false // 相手への作用は相手側の collideWith が書く

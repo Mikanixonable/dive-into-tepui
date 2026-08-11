@@ -258,10 +258,10 @@ export const REENTRY_SUBSTEP_MAX_DT = 1; // 大気圏近傍の最大積分刻み
 // 次の substep へ持ち越す(次回呼び出し時に空間グリッドから改めて列挙し直されるので、
 // 明示的な繰越処理は不要)。
 export const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
-// 接触用27近傍グリッドのセル一辺の下限 [m]。通常は「半径和+区間移動量」の2倍(実測値)が
-// これを上回るので使われない — 全参加者が静止・半径0という退化ケースだけの保険。
-// 1 substep の最大長(SUBSTEP_MAX_DT)を、軌道速度の目安(~7.8km/s)で走った距離の2倍を基準に取る。
-export const CONTACT_GRID_CELL_SIZE_FLOOR = 2 * SUBSTEP_MAX_DT * 7800;
+// 接触用27近傍グリッドのセル一辺の下限 [m]。全参加者の半径も相対変位も 0 という退化ケースで
+// 一辺が 0 になるのを避けるためだけの値で、そのとき接触しうる距離自体が 0 なのでどんな正数でも
+// 判定は正しい。セルを細かく取っても空セルは持たない構造なので、最小の実用値として 1m を取る。
+export const CONTACT_GRID_CELL_SIZE_FLOOR = 1;
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]。
 export const ENEMY_RADIUS = 180; // 視認性のため実機体よりかなり大きい当たり判定
