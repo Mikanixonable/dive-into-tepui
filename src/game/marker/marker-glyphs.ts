@@ -23,6 +23,7 @@ export const DIRECTION_GLYPH = {
   target: '⇨',
   antiTarget: '⇦',
   bearing: '↑',
+  allyBearing: '▲',
   axis: '⇕',
 } as const;
 
