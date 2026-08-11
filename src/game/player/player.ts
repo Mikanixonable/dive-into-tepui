@@ -42,6 +42,7 @@ import { Plan } from '../plan/plan';
 import { PlanExecutor, type PlanExecutionMode } from '../plan/plan-executor';
 import type { PlayerSaveData } from '../save-data';
 import { restorePart, type AnyPart } from '../game-entity/parts';
+import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
 
 export type { PlanExecutionMode };
 
@@ -479,7 +480,8 @@ export class Player extends Ship {
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
   markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): {
     key: string; cls: string; sym: string; pos: Vec3; vel: Vec3; priority: number;
-    name: string; detail: string; bearingColor: string; color: string; symMarkup: boolean;
+    name: string; detail: string; bearingColor: string; bearingSym: string; bearingClass: string;
+    bearingVisible: boolean; color: string; symMarkup: boolean;
   } {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? Infinity : role === 'secondary' ? Number.MAX_SAFE_INTEGER : -dist;
@@ -493,6 +495,9 @@ export class Player extends Ship {
       name: this.displayName,
       detail: '',
       bearingColor: '#00ffff', // 自機/味方と分かりやすいようにシアン
+      bearingSym: DIRECTION_GLYPH.allyBearing,
+      bearingClass: 'mk-ally-dir',
+      bearingVisible: dist <= C.ALLY_BEARING_MAX_DISTANCE,
       color: '#00ffff',
       symMarkup: true,
     };
