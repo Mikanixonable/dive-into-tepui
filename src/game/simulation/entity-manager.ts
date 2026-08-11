@@ -33,6 +33,11 @@ export class EntityManager {
   private readonly cachedOtherEntities: GameEntity[] = [];
   private readonly cachedAllEntities: GameEntity[] = [];
   private readonly cachedAttractors: GameEntity[] = [];
+  // Targeter/Game は取得した配列を読み取り専用として扱う(filter/sort等で破壊しない)ため、
+  // collectionRevision が変わるまで敵・自機の結合結果も再利用する。
+  private combatTargetsRevision = -1;
+  private readonly cachedCombatTargets: CombatTarget[] = [];
+  private readonly cachedCombatTargetsByExcludedPlayer = new Map<Player, CombatTarget[]>();
 
   // 敵を登録する。
   addEnemy(enemy: Enemy): void {
@@ -65,8 +70,24 @@ export class EntityManager {
 
   // ターゲットとなり得るエンティティの一覧を取得する。
   getCombatTargets(excludePlayer: Player | null): CombatTarget[] {
-    const players = excludePlayer ? this.players.filter(p => p !== excludePlayer) : this.players;
-    return [...this.enemies, ...players];
+    this.rebuildCombatTargetsIfNeeded();
+    if (excludePlayer === null) return this.cachedCombatTargets;
+
+    let targets = this.cachedCombatTargetsByExcludedPlayer.get(excludePlayer);
+    if (targets) return targets;
+    targets = [];
+    for (const enemy of this.enemies) targets.push(enemy);
+    for (const player of this.players) if (player !== excludePlayer) targets.push(player);
+    this.cachedCombatTargetsByExcludedPlayer.set(excludePlayer, targets);
+    return targets;
+  }
+
+  private rebuildCombatTargetsIfNeeded(): void {
+    if (this.combatTargetsRevision === this.collectionRevision) return;
+    this.cachedCombatTargets.length = 0;
+    this.cachedCombatTargets.push(...this.enemies, ...this.players);
+    this.cachedCombatTargetsByExcludedPlayer.clear();
+    this.combatTargetsRevision = this.collectionRevision;
   }
 
   // id で名指しされた自機を返す。見つからなければ null。

@@ -44,6 +44,7 @@ export class PointBody extends CelestialBody {
   private readonly billboard: Billboard;
   private readonly scale: number;
   private readonly opacity: number;
+  private readonly outerRadius: number;
   // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
   private readonly axes: THREE.Vector3;
 
@@ -63,6 +64,9 @@ export class PointBody extends CelestialBody {
     this.id = id;
     this.scale = POINT_SCALE[brightness];
     this.opacity = POINT_OPACITY[brightness];
+    this.outerRadius = rings === undefined
+      ? radius
+      : rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), radius);
     // 色はテクスチャ平均色を狙わず単色の白 — 恒星状の光点として過剰演出しない。
     this.billboard = new Billboard(0xffffff, -9);
     const a = shapeAxes(radius, shape);
@@ -128,10 +132,7 @@ export class PointBody extends CelestialBody {
       // それ未満だけを点へ落とし、環を天体クラスだけで無条件に捨てない。
       const rel = sub(pos, cameraSystem.activeCameraPos);
       const trueDistance = Math.max(1, len(rel));
-      const outerRadius = this.rings === undefined
-        ? this.radius
-        : this.rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), this.radius);
-      const projectedDiameterPx = (2 * outerRadius) / cameraSystem.activeCameraScale(pos);
+      const projectedDiameterPx = (2 * this.outerRadius) / cameraSystem.activeCameraScale(pos);
       const showPhysical = projectedDiameterPx >= PHYSICAL_DIAMETER_THRESHOLD_PX;
       const cam = cameraSystem.activeCamera;
       const dir = scaleVec(rel, 1 / trueDistance);
@@ -145,7 +146,8 @@ export class PointBody extends CelestialBody {
         );
         const k = scaleFactor / this.radius;
         this.mesh.scale.set(this.axes.x * k, this.axes.y * k, this.axes.z * k);
-        this.surface.setSunDirection(ephemeris.sunDirFrom(pos, displayTime));
+        const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
+        this.surface.setSunDirection(sunDirection);
         const orientation = ephemeris.poleAt(this.id, displayTime);
         const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
         if (q !== null) this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
@@ -165,7 +167,7 @@ export class PointBody extends CelestialBody {
             orientation === null ? null : orientation.axis,
             pos,
             cameraSystem.activeCameraScale,
-            ephemeris.sunDirFrom(pos, displayTime),
+            sunDirection,
             cameraSystem.activeCamera.position,
           );
         }

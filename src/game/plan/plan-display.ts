@@ -173,7 +173,7 @@ export class PlanDisplay {
   // 高度はその位置で最も強く引く天体の表面からの高さ。
   private plannedPlayerLabel(displayTime: number, simTime: number, r: Vec3): string {
     const tRel = displayTime - simTime;
-    const center = strongestAttractor(r, this.ephemeris.attractorsAt(displayTime));
+    const center = strongestAttractor(r, this.attractors);
     const alt = len(sub(r, center.state.r)) - center.radius;
     if (tRel <= 0) return `計画位置 高度 ${fmtMarkerDist(alt, 0)}`;
     const h = Math.floor(tRel / 3600);

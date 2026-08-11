@@ -90,6 +90,16 @@ export class ObjectListPanel {
   private nearOnly = true;
   private sort: ObjectListSort = 'distance';
   private lastFocusId: string | undefined = undefined;
+  // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
+  // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
+  private readonly namesScratch = new Map<string, string>();
+  private readonly crumbsScratch: string[] = [];
+  private readonly byKindScratch = new Map<MapPickKind, MapPickable[]>();
+  private readonly emptyListScratch: MapPickable[] = [];
+  private readonly idsInSectionScratch = new Set<string>();
+  private readonly focusAncestorsScratch = new Set<string>();
+  private readonly seenScratch = new Set<string>();
+  private readonly rootsScratch: MapPickable[] = [];
   private readonly breadcrumb: HTMLElement;
 
   constructor(root: HTMLElement, registry: CelestialRegistry) {
@@ -200,13 +210,17 @@ export class ObjectListPanel {
   // parentOf は id → 親 id(天体の親子関係のみ、他種別は載らない)。focusId が undefined
   // (フォーカス中の天体が無い)なら、どの行も強調しない。
   sync(items: readonly MapPickable[], focusId: string | undefined, parentOf: ReadonlyMap<string, string>): void {
-    const names = new Map(items.map((i) => [i.id, i.name]));
-    const crumbs: string[] = [];
+    this.namesScratch.clear();
+    for (const item of items) this.namesScratch.set(item.id, item.name);
+    const names = this.namesScratch;
+    const crumbs = this.crumbsScratch;
+    crumbs.length = 0;
     for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) crumbs.push(names.get(cur) ?? cur);
     this.breadcrumb.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'フォーカス: なし';
     const focusChanged = focusId !== this.lastFocusId;
     this.lastFocusId = focusId;
-    const byKind = new Map<MapPickKind, MapPickable[]>();
+    for (const list of this.byKindScratch.values()) list.length = 0;
+    const byKind = this.byKindScratch;
     for (const item of items) {
       if (!this.matches(item)) continue;
       const list = byKind.get(item.kind);
@@ -215,7 +229,7 @@ export class ObjectListPanel {
 
     for (const { kind, label } of SECTIONS) {
       const section = this.sections.get(kind)!;
-      const list = (byKind.get(kind) ?? []).sort(this.sort === 'distance'
+      const list = (byKind.get(kind) ?? this.emptyListScratch).sort(this.sort === 'distance'
         ? (a, b) => (a.priority ?? 0) - (b.priority ?? 0) || (a.distance ?? 0) - (b.distance ?? 0) || a.name.localeCompare(b.name)
         : (a, b) => a.name.localeCompare(b.name));
       section.header.style.display = list.length === 0 ? 'none' : '';
@@ -229,19 +243,25 @@ export class ObjectListPanel {
       // (ヘッダーの (N))には含めないので、list ではなく別変数に積む。
       const displayList = kind === 'body' && this.filter === 'satellite' ? this.withClusterParents(list, items, parentOf) : list;
       const childrenOf = childrenOfMap(displayList, parentOf);
-      const idsInSection = new Set(displayList.map((i) => i.id));
+      const idsInSection = this.idsInSectionScratch;
+      idsInSection.clear();
+      for (const item of displayList) idsInSection.add(item.id);
       // 親が今フレーム同じ区画に見当たらない(遮蔽等で一時的に消えた等)行は根として扱う —
       // 親が現れないせいで子ごと画面から消えてしまうより、ひとまず出す方に倒す。
-      const roots = displayList.filter((i) => {
-        const parent = parentOf.get(i.id);
-        return parent === undefined || !idsInSection.has(parent);
-      });
+      const roots = this.rootsScratch;
+      roots.length = 0;
+      for (const item of displayList) {
+        const parent = parentOf.get(item.id);
+        if (parent === undefined || !idsInSection.has(parent)) roots.push(item);
+      }
       // フォーカスが切り替わった瞬間だけ、そこへ至る枝を自動展開する対象として渡す
       // (毎フレーム渡すとユーザーが畳んだ直後に開き直ってしまう)。
-      const focusAncestors = new Set<string>();
+      const focusAncestors = this.focusAncestorsScratch;
+      focusAncestors.clear();
       if (focusChanged) for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) focusAncestors.add(cur);
 
-      const seen = new Set<string>();
+      const seen = this.seenScratch;
+      seen.clear();
       for (const item of roots) {
         seen.add(item.id);
         this.syncRow(section.rows, item, childrenOf, focusId, section.body, focusAncestors);

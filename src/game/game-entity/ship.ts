@@ -6,6 +6,15 @@ import { GameEntity } from './game-entity';
 import type { Attractor } from '../../physics/attractor';
 import type { FloatingOrigin } from '../floating-origin';
 import { Part, PartType, createPart } from './parts';
+import type {
+  ArmorPart,
+  CockpitPart,
+  RadiatorPart,
+  RcsTankPart,
+  SolarPanelPart,
+  ThrusterPart,
+  WeaponPart,
+} from './parts';
 
 export abstract class Ship extends GameEntity {
   protected readonly bcInv = C.SHIP_BCINV;
@@ -17,6 +26,17 @@ export abstract class Ship extends GameEntity {
   hp: number;
   maxHp: number;
   parts: Part[] = [];
+
+  // パーツ配列の type 走査は性能取得 getter から毎回行わず、換装・復元時だけ組み直す。
+  // HP/fuel はパーツ本体で変化するため、これらはパーツ参照の固定配列であり、値のキャッシュではない。
+  private readonly thrusterPartRefs: ThrusterPart[] = [];
+  private readonly rcsTankPartRefs: RcsTankPart[] = [];
+  private readonly radiatorPartRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
+  private readonly solarPanelPartRefs: [SolarPanelPart | undefined, SolarPanelPart | undefined] = [undefined, undefined];
+  private readonly weaponPartRefs: WeaponPart[] = [];
+  private readonly armorPartRefs: ArmorPart[] = [];
+  private hullPart: Part | undefined;
+  private cockpitPart: CockpitPart | undefined;
 
   // 名前・剛体接触半径・HP を初期化し、基底の状態/メッシュ/姿勢を構築する。
   constructor(
@@ -78,8 +98,47 @@ export abstract class Ship extends GameEntity {
 
   // 部品構成が変わったとき(換装など)に、艦の maxHp と hp を部品側から求め直す。
   refreshFromParts(): void {
-    this.maxHp = this.parts.reduce((sum, p) => sum + p.maxHp, 0);
+    this.rebuildPartReferences();
+    let maxHp = 0;
+    for (const p of this.parts) maxHp += p.maxHp;
+    this.maxHp = maxHp;
     this.updateOverallHp();
+  }
+
+  // パーツの換装・セーブ復元後にだけ呼ぶ type 別参照を再構築する。parts 配列は
+  // DockView/Player の換装経路で splice され、その直後に refreshFromParts が呼ばれる。
+  private rebuildPartReferences(): void {
+    this.thrusterPartRefs.length = 0;
+    this.rcsTankPartRefs.length = 0;
+    this.weaponPartRefs.length = 0;
+    this.armorPartRefs.length = 0;
+    let radiatorIndex = 0;
+    let solarPanelIndex = 0;
+    this.radiatorPartRefs[0] = undefined;
+    this.radiatorPartRefs[1] = undefined;
+    this.solarPanelPartRefs[0] = undefined;
+    this.solarPanelPartRefs[1] = undefined;
+    this.hullPart = undefined;
+    this.cockpitPart = undefined;
+
+    for (const part of this.parts) {
+      switch (part.type) {
+        case 'hull': if (!this.hullPart) this.hullPart = part; break;
+        case 'cockpit': if (!this.cockpitPart) this.cockpitPart = part as CockpitPart; break;
+        case 'armor': this.armorPartRefs.push(part as ArmorPart); break;
+        case 'thruster': this.thrusterPartRefs.push(part as ThrusterPart); break;
+        case 'rcs_tank': this.rcsTankPartRefs.push(part as RcsTankPart); break;
+        case 'radiator':
+          if (radiatorIndex < this.radiatorPartRefs.length) this.radiatorPartRefs[radiatorIndex] = part as RadiatorPart;
+          radiatorIndex++;
+          break;
+        case 'solar_panel':
+          if (solarPanelIndex < this.solarPanelPartRefs.length) this.solarPanelPartRefs[solarPanelIndex] = part as SolarPanelPart;
+          solarPanelIndex++;
+          break;
+        case 'weapon': this.weaponPartRefs.push(part as WeaponPart); break;
+      }
+    }
   }
 
   // セーブされた総HPだけを復元する経路。部品単位のHPまでは保存していない呼び出し元
@@ -113,13 +172,33 @@ export abstract class Ship extends GameEntity {
     }
 
     // 装甲は複数積んでも最も高い軽減率のものだけが効く。
-    const armors = this.parts.filter(p => p.type === 'armor' && p.hp > 0) as import('./parts').ArmorPart[];
-    const reduction = armors.length > 0 ? Math.max(...armors.map(a => a.damageReduction)) : 0;
+    let reduction = 0;
+    let hasArmor = false;
+    for (const armor of this.armorPartRefs) {
+      if (armor.hp <= 0) continue;
+      if (!hasArmor || armor.damageReduction > reduction) reduction = armor.damageReduction;
+      hasArmor = true;
+    }
     const effectiveDamage = amount * (1 - reduction);
 
-    const aliveParts = this.parts.filter(p => p.hp > 0);
-    const targetParts = aliveParts.length > 0 ? aliveParts : this.parts;
-    const target = part ?? targetParts[Math.floor(Math.random() * targetParts.length)];
+    let aliveCount = 0;
+    for (const p of this.parts) if (p.hp > 0) aliveCount++;
+    let target = part;
+    if (!target) {
+      const targetIndex = Math.floor(Math.random() * (aliveCount > 0 ? aliveCount : this.parts.length));
+      if (aliveCount > 0) {
+        let aliveIndex = 0;
+        for (const p of this.parts) {
+          if (p.hp <= 0) continue;
+          if (aliveIndex++ === targetIndex) {
+            target = p;
+            break;
+          }
+        }
+      } else {
+        target = this.parts[targetIndex];
+      }
+    }
 
     if (target) target.hp = Math.max(0, target.hp - effectiveDamage);
     this.updateOverallHp();
@@ -143,10 +222,14 @@ export abstract class Ship extends GameEntity {
   // 他が無事でも行動不能とみなし 0 にする。
   protected updateOverallHp(): void {
     if (this.parts.length === 0) return;
-    const hull = this.parts.find(p => p.type === 'hull');
-    const cockpit = this.parts.find(p => p.type === 'cockpit');
-    const vital = (hull && hull.hp <= 0) || (cockpit && cockpit.hp <= 0);
-    this.hp = vital ? 0 : this.parts.reduce((sum, p) => sum + p.hp, 0);
+    const vital = (this.hullPart && this.hullPart.hp <= 0) || (this.cockpitPart && this.cockpitPart.hp <= 0);
+    if (vital) {
+      this.hp = 0;
+      return;
+    }
+    let hp = 0;
+    for (const p of this.parts) hp += p.hp;
+    this.hp = hp;
   }
 
   // 逆三角形を辺中央の切り欠きで分割し、残HPに応じて発光するSVGを生成する。
@@ -200,28 +283,33 @@ export abstract class Ship extends GameEntity {
 
   // パーツベースの性能取得
   get totalTorque(): number {
-    return (this.parts.filter(p => p.type === 'thruster' && p.hp > 0) as import('./parts').ThrusterPart[])
-      .reduce((sum, p) => sum + p.torque, 0);
+    let total = 0;
+    for (const p of this.thrusterPartRefs) if (p.hp > 0) total += p.torque;
+    return total;
   }
 
   get totalThrust(): number {
-    return (this.parts.filter(p => p.type === 'thruster' && p.hp > 0) as import('./parts').ThrusterPart[])
-      .reduce((sum, p) => sum + p.thrust, 0);
+    let total = 0;
+    for (const p of this.thrusterPartRefs) if (p.hp > 0) total += p.thrust;
+    return total;
   }
   
   get totalFuelConsumptionRate(): number {
-    return (this.parts.filter(p => p.type === 'thruster' && p.hp > 0) as import('./parts').ThrusterPart[])
-      .reduce((sum, p) => sum + p.fuelConsumptionRate, 0);
+    let total = 0;
+    for (const p of this.thrusterPartRefs) if (p.hp > 0) total += p.fuelConsumptionRate;
+    return total;
   }
 
   get totalFuel(): number {
-    return (this.parts.filter(p => p.type === 'rcs_tank' && p.hp > 0) as import('./parts').RcsTankPart[])
-      .reduce((sum, p) => sum + p.fuel, 0);
+    let total = 0;
+    for (const p of this.rcsTankPartRefs) if (p.hp > 0) total += p.fuel;
+    return total;
   }
 
   get totalMaxFuel(): number {
-    return (this.parts.filter(p => p.type === 'rcs_tank' && p.hp > 0) as import('./parts').RcsTankPart[])
-      .reduce((sum, p) => sum + p.maxFuel, 0);
+    let total = 0;
+    for (const p of this.rcsTankPartRefs) if (p.hp > 0) total += p.maxFuel;
+    return total;
   }
 
   // 燃料を消費し、実際に消費できた割合（0.0〜1.0）を返す
@@ -231,8 +319,8 @@ export abstract class Ship extends GameEntity {
     let remainingToConsume = amount;
     let actualConsumed = 0;
     
-    const tanks = this.parts.filter(p => p.type === 'rcs_tank' && p.hp > 0) as import('./parts').RcsTankPart[];
-    for (const tank of tanks) {
+    for (const tank of this.rcsTankPartRefs) {
+      if (tank.hp <= 0) continue;
       if (tank.fuel > 0) {
         const consumeFromTank = Math.min(tank.fuel, remainingToConsume);
         tank.fuel -= consumeFromTank;
@@ -247,45 +335,54 @@ export abstract class Ship extends GameEntity {
 
   // 機体左右2枚の放熱板・太陽電池パドルに対応するパーツ。並び順が side に対応し、
   // 先頭が 'up'(左)、次が 'down'(右)。枚数が足りなければ undefined になる。
-  get radiatorParts(): readonly (import('./parts').RadiatorPart | undefined)[] {
-    const found = this.parts.filter(p => p.type === 'radiator') as import('./parts').RadiatorPart[];
-    return [found[0], found[1]];
+  get radiatorParts(): readonly (RadiatorPart | undefined)[] {
+    return this.radiatorPartRefs;
   }
 
-  get solarParts(): readonly (import('./parts').SolarPanelPart | undefined)[] {
-    const found = this.parts.filter(p => p.type === 'solar_panel') as import('./parts').SolarPanelPart[];
-    return [found[0], found[1]];
+  get solarParts(): readonly (SolarPanelPart | undefined)[] {
+    return this.solarPanelPartRefs;
   }
 
   get totalCoolingRate(): number {
-    return (this.parts.filter(p => p.type === 'radiator' && p.hp > 0) as import('./parts').RadiatorPart[])
-      .reduce((sum, p) => sum + p.coolingRate, 0);
+    let total = 0;
+    for (const p of this.radiatorPartRefs) if (p && p.hp > 0) total += p.coolingRate;
+    return total;
   }
 
   get totalPowerGeneration(): number {
-    return (this.parts.filter(p => p.type === 'solar_panel' && p.hp > 0) as import('./parts').SolarPanelPart[])
-      .reduce((sum, p) => sum + p.powerGeneration, 0);
-  }
-
-  private get aliveWeapons(): import('./parts').WeaponPart[] {
-    return this.parts.filter(p => p.type === 'weapon' && p.hp > 0) as import('./parts').WeaponPart[];
+    let total = 0;
+    for (const p of this.solarPanelPartRefs) if (p && p.hp > 0) total += p.powerGeneration;
+    return total;
   }
 
   // 1発あたりのダメージ。複数積んでいる場合は最も強い武装のものを使う。
   get weaponDamage(): number {
-    const weapons = this.aliveWeapons;
-    return weapons.length === 0 ? 0 : Math.max(...weapons.map(p => p.damage));
+    let damage = 0;
+    let hasWeapon = false;
+    for (const p of this.weaponPartRefs) {
+      if (p.hp <= 0) continue;
+      if (!hasWeapon || p.damage > damage) damage = p.damage;
+      hasWeapon = true;
+    }
+    return damage;
   }
 
   get totalFireRate(): number {
-    return this.aliveWeapons.reduce((sum, p) => sum + p.fireRate, 0);
+    let total = 0;
+    for (const p of this.weaponPartRefs) if (p.hp > 0) total += p.fireRate;
+    return total;
   }
 
   // 生存武装の初速平均。武装が全損している場合は 0(呼び出し側は totalFireRate <= 0 で発射不能を判定する)。
   get averageMuzzleVelocity(): number {
-    const weapons = this.aliveWeapons;
-    if (weapons.length === 0) return 0;
-    return weapons.reduce((sum, p) => sum + p.muzzleVelocity, 0) / weapons.length;
+    let total = 0;
+    let count = 0;
+    for (const p of this.weaponPartRefs) {
+      if (p.hp <= 0) continue;
+      total += p.muzzleVelocity;
+      count++;
+    }
+    return count === 0 ? 0 : total / count;
   }
 
   // メッシュ配下のマテリアルを含めて破棄する。

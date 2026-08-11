@@ -15,6 +15,7 @@ const LINE_OPACITY = 0.55;
 
 export class PredictedTrajectoryLine {
   private readonly lines: EntityLineSet;
+  private readonly targetSet = new Set<GameEntity>();
 
   constructor(scene: THREE.Scene) {
     this.lines = new EntityLineSet(
@@ -35,7 +36,9 @@ export class PredictedTrajectoryLine {
       line.syncTransform(frame, simTime, ephemeris, fo, attractors);
       line.setVisible(true);
     }
-    this.lines.pruneTo(new Set(targets));
+    this.targetSet.clear();
+    for (const entity of targets) this.targetSet.add(entity);
+    this.lines.pruneTo(this.targetSet);
   }
 
   // entity の予測軌道線が、表示中の時間範囲 [simTime, simTime + horizon] を最後まで覆っているかを返す。

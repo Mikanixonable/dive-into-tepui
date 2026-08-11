@@ -49,6 +49,11 @@ function noVisibility(): MapVisibility {
 export class MapVisibilityPolicy {
   private readonly alwaysVisible: ReadonlySet<AttractorId>;
   private readonly nearby: ReadonlySet<AttractorId>;
+  // policy の入力(toggles/focus/nearby)はインスタンス生成後に変わらない。判定結果を
+  // id/kind ごとに保持し、同じフレームで body()/entity() を何度呼んでもオブジェクトと
+  // 条件分岐を作り直さない。呼び出し側がトグルを変える場合は新しい policy を作る。
+  private readonly bodyResults = new Map<AttractorId, MapVisibility>();
+  private readonly entityResults = new Map<string, MapVisibility>();
 
   constructor(
     private readonly registry: CelestialRegistry,
@@ -61,6 +66,15 @@ export class MapVisibilityPolicy {
   }
 
   body(id: AttractorId): MapVisibility {
+    const cached = this.bodyResults.get(id);
+    if (cached !== undefined) return cached;
+
+    const result = this.computeBody(id);
+    this.bodyResults.set(id, result);
+    return result;
+  }
+
+  private computeBody(id: AttractorId): MapVisibility {
     if (/-l[1-5]$/.test(id)) {
       const category = this.toggles.lagrangeVisible;
       const icon = category && this.toggles.lagrangeIcon;
@@ -81,6 +95,16 @@ export class MapVisibilityPolicy {
   }
 
   entity(kind: MapEntityKind, isActivePlayer = false): MapVisibility {
+    const key = `${kind}:${isActivePlayer ? 'active' : 'inactive'}`;
+    const cached = this.entityResults.get(key);
+    if (cached !== undefined) return cached;
+
+    const result = this.computeEntity(kind, isActivePlayer);
+    this.entityResults.set(key, result);
+    return result;
+  }
+
+  private computeEntity(kind: MapEntityKind, isActivePlayer: boolean): MapVisibility {
     const keys = ENTITY_KEYS[kind];
     const categoryToggle = this.toggles[keys.category];
     // 操作対象の自艦は、カテゴリを閉じても現在位置を失わないように残す。ただし
