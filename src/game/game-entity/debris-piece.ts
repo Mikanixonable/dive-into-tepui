@@ -45,7 +45,8 @@ export class DebrisPiece extends GameEntity {
     radius?: number,
     scene?: THREE.Scene,
   ) {
-    super(state, buildDebrisObj(debrisKind), scene, att);
+    // 薬莢のみ InstancedPool 経由で描画するため、obj をシーンへ足さない。
+    super(state, buildDebrisObj(debrisKind), scene, att, undefined, debrisKind.kind !== 'casing');
     this.radius = radius ?? 0;
     this.collides = debrisKind.kind !== 'fragment';
     switch (debrisKind.kind) {
