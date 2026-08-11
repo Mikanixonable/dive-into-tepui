@@ -246,12 +246,12 @@
         - activeStage.recordPlayerLost() // 同上
     - prune() ×5 → entity.dispose() // alive=false の個体ごと(scene から除去、必要なら geometry も破棄)。players は寿命判定のみで prune の対象外(喪失艦も配列に残り続ける)
   - predictor.update(simTime, player, horizon, mode) // cleanup の後(死んだ個体を予測しない・積分後の実状態と突き合わせる)。horizon = _window.duration(update 冒頭で確定済みの window から読むだけ、ここで currentOrbitPeriod() を呼び直すことはない)。mode は 'map'(entities.all() 全対象・PREDICT_STEP_BUDGET)/'combat'(自機のみ・PREDICT_COMBAT_STEP_BUDGET)
-    - discardPredictionIfDiverged(simTime, attractors) // entities.all() の全対象、毎フレーム無条件。attractors は simTime ぶんを1回だけ引いて全対象で使い回す
+    - discardPredictionIfDiverged(simTime, attractors) // entities.all() のうち predictsFuture=true の対象のみ、毎フレーム無条件。attractors は simTime ぶんを1回だけ classifyAttractors し、対象ごとに attractorsNearInto でその位置の近傍へ絞ったもの(advanceBudget とは別のスクラッチ配列)
       - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
     - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループごとに predictedAttractorsAt(ephemeris, entities, tip.t)(先端の時刻 tip.t で他の重力天体の displayState(tip.t) を引き直す — まだその時刻に達していない天体はその回だけ落とす)→ classifyAttractors → attractorsNear で重力源を決め、dt(localOrbitPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で下限、horizon そのもので上限)も Predictor 側が持つ(stepActual に対する substep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
       - player.stepPredicted(attractors, simTime, dt, horizon) // ホライズン超過・打ち切り済み・推力中のいずれかで false を返すまで、dt・attractors を都度計算し直しながら1ステップずつ繰り返し呼ぶ
         - predictedTrajectory.step() // 呼び出し側が確定させた attractors で1ステップ積分
-    - advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player を除外しないので同じフレームで二重に予算が付き得る)。entity.stepPredicted() が最初から false(predictsFuture=false/推力中/truncated)なら消費 0 で次へ即進む
+    - advanceBudget(entity, ...) // 残り予算を entities.all() 上のカーソル位置から1周ぶん配る(player は優先枠で処理済みなのでここでは飛ばす)。1体の取り分は max(PREDICT_MIN_ENTITY_STEPS, floor(残額 / 残り訪問数)) を残額で頭打ちにした値で、使い残しは次の個体へ回る。entity.stepPredicted() が最初から false(predictsFuture=false/推力中/truncated)なら消費 0 で次へ即進む
   - effects.update(dt, simulator.simTime) → flashEffectManager.updateFlashEffects() // フラッシュの寿命と、各エフェクトの時刻から simTime までの移流。ポーズ中は呼ばれない(=止まる)
   - guide.update(plan, player, simTime, editMode, ephemeris.attractorsAt(simTime)) // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させるため
     - [editMode または !player.alive] 即 return
