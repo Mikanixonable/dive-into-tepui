@@ -114,6 +114,11 @@ main.ts
     │   ├── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
     │   └── ContextMenu<Enemy>         ... 第一/第二ターゲットの設定・解除メニュー。DOM は Hud.layers.popup 配下
     ├── EntityManager                  ... エンティティ配列の保持のみ。simTime は持たない
+    │   ├── InstancedPool (bulletBodyPool) ... geometry/material は render/ships.ts のモジュールスコープ
+    │   │                                      共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
+    │   ├── InstancedPool (bulletHaloPool)
+    │   ├── InstancedPool (plasmaPool)
+    │   ├── InstancedPool (casingPool)
     │   ├── Player[] (players)         ... 自機。ステージモードでは1隻のみ。操作対象(Game.player)は
     │   │                                  この配列内の1隻への参照(§3-4 参照)
     │   │   ├── PlayerThrottle
