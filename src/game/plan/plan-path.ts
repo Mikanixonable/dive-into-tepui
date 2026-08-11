@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
-import { ReferenceFrame, frameDir, toFrameDir, toFramePoint, toFrameState, toInertialDir, toInertialPoint } from '../../physics/frame';
+import { FrameTransform, ReferenceFrame, frameDir, toFrameDir, toFramePoint, toFrameState, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { isOccluded } from '../../physics/occlusion';
@@ -46,6 +46,10 @@ export class PlanPath {
   private frame: ReferenceFrame = { center: 'earth', rotatingWith: null };
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
+  // un-bake は update() が受け取った currentTime に固定される。同じフレーム中に ghost/impact/apsis/tick と
+  // 折れ線同期・ポインタ判定が何度も参照するため、update 単位で1回だけ組み立てる。天体暦の
+  // attractors はフレームごとに差し替わりうるので、時刻だけでなく update() ごとに無効化する。
+  private unbakeTransform: FrameTransform | null = null;
   // 直近の update が受け取った重力源一覧。toDisplay/toDisplayDir/nearestSample はポインタ
   // イベント起点でフレーム外から呼ばれうるため、update と同じ値をここから読む。
   private attractors: readonly Attractor[] = [];
@@ -74,6 +78,7 @@ export class PlanPath {
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
     this.attractors = attractors;
+    this.unbakeTransform = ephemeris.frameTransformAt(frame, currentTime, attractors);
     this.lastReintegratedArcs = 0;
     this.lastSteps = 0;
     // anchor→node…→末尾区間に分解する
@@ -180,7 +185,7 @@ export class PlanPath {
   toDisplay(r: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(r.x, r.y, r.z);
     const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.attractors);
-    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, this.attractors);
+    const unbakeTf = this.currentUnbakeTransform()!;
     return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
   }
 
@@ -189,7 +194,7 @@ export class PlanPath {
   toDisplayDir(dir: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(dir.x, dir.y, dir.z);
     const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.attractors);
-    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, this.attractors);
+    const unbakeTf = this.currentUnbakeTransform()!;
     return toInertialDir(unbakeTf, toFrameDir(bakeTf, dir));
   }
 
@@ -199,7 +204,7 @@ export class PlanPath {
   toDisplayTangent(state: KinematicState, t: number): Vec3 {
     if (!this.ephemeris) return v3(state.v.x, state.v.y, state.v.z);
     const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.attractors);
-    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, this.attractors);
+    const unbakeTf = this.currentUnbakeTransform()!;
     const relV = toFrameState(bakeTf, state).v;
     return toInertialDir(unbakeTf, frameDir(relV.x, relV.y, relV.z));
   }
@@ -224,7 +229,7 @@ export class PlanPath {
     const attractors = cameraPos && ephemeris ? ephemeris.attractorsAt(this.unbakeTime) : null;
     // 表示座標への変換をサンプルごとに1回だけ行い、遮蔽判定と投影で共有する。un-bake 側の
     // 変換は時刻が固定なのでループの外で1回だけ引く。
-    const unbakeTf = ephemeris ? ephemeris.frameTransformAt(this.frame, this.unbakeTime, this.attractors) : null;
+    const unbakeTf = ephemeris ? this.currentUnbakeTransform() : null;
     const candidates: { state: KinematicState; arcIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       for (const s of this.arcs[i]!.samples) {
@@ -258,6 +263,18 @@ export class PlanPath {
         || (Math.abs(d - bestD) <= TIME_TIE_SEC && c.state.t < best.state.t)) best = c;
     }
     return best ? { state: best.state, arcIdx: best.arcIdx } : null;
+  }
+
+  // update() がまだ呼ばれていない経路にも、従来どおり遅延評価で対応する。ただし通常の
+  // 表示経路では update() が先に値を入れるため、同一フレーム内の再生成は起きない。
+  private currentUnbakeTransform(): FrameTransform | null {
+    if (!this.ephemeris) return null;
+    if (this.unbakeTransform === null) {
+      this.unbakeTransform = this.ephemeris.frameTransformAt(
+        this.frame, this.unbakeTime, this.attractors,
+      );
+    }
+    return this.unbakeTransform;
   }
 
   // group 全体の表示/非表示を切り替える。
