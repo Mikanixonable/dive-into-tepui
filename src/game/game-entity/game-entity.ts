@@ -82,14 +82,23 @@ export class GameEntity {
   get predictionTruncated(): boolean { return this.truncated; }
 
   // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
-  // id 省略時はこの基底が自動採番する(復元 id を渡すクラスはそれをそのまま通す)。
-  constructor(state: KinematicState, obj: THREE.Object3D, scene?: THREE.Scene, att: Attitude = identityAttitude(), id?: string) {
+  // id 省略時はこの基底が自動採番する(復元 id を渡すクラスはそれをそのまま通す)。addToScene
+  // を false にすると obj をシーンへ足さない — InstancedPool 経由で描画する種別(弾・薬莢)が
+  // 使う。obj 自体は sync が書き込む変換の置き場所として残る。
+  constructor(
+    state: KinematicState,
+    obj: THREE.Object3D,
+    scene?: THREE.Scene,
+    att: Attitude = identityAttitude(),
+    id?: string,
+    addToScene = true,
+  ) {
     this.actualTrajectory = new DynamicTrajectory(state);
     this.id = id ?? GameEntity.idAllocator.next();
     this.att = att;
     this.obj = obj;
     this.scene = scene;
-    this.scene?.add(this.obj);
+    if (addToScene) this.scene?.add(this.obj);
   }
 
   // 質量から剛体接触の換算質量と重力定数 μ を同時に定める。別々に書くと引力の強さと
