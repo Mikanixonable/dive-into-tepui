@@ -8,6 +8,7 @@ import '@sarap422/font-hackgen';
 import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
+import { FrameSections } from './frame-sections';
 import { ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT } from './game/theme';
 import { Hud } from './game/hud/hud';
 import { SettingsPanel } from './game/hud/settings-panel';
@@ -144,7 +145,9 @@ async function initScene(): Promise<GameScene> {
 }
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
-function startAnimationLoop(game: Game, perf: PerfMeter, autoSave: AutoSave): void {
+function startAnimationLoop(
+  game: Game, perf: PerfMeter, sections: FrameSections, autoSave: AutoSave,
+): void {
   let lastTime = performance.now();
   let completedFrames = 0;
   // 1フレーム分: update → sync → render を実行し、計測後に次フレームを予約する
@@ -153,7 +156,9 @@ function startAnimationLoop(game: Game, perf: PerfMeter, autoSave: AutoSave): vo
     lastTime = now;
     const t0 = perf.on ? performance.now() : 0;
     try {
+      sections.beginFrame();
       game.update(dt);
+      sections.endFrame();
       autoSave.update(game);
       const t1 = perf.on ? performance.now() : 0;
       game.sync();
@@ -237,8 +242,9 @@ async function main() {
       hideLoading = null;
     }
   }
+  const sections = new FrameSections();
   const game = new Game(
-    gs, launch, hud, sfx, settingsPanel, unlockmanager, snapshotService, absoluteEphemeris,
+    gs, launch, hud, sfx, settingsPanel, unlockmanager, snapshotService, sections, absoluteEphemeris,
   );
   const activeSlotId = slots.activeSlotId;
   if (activeSlotId !== null) slots.noteLaunch(activeSlotId, launch.mode, game.activeStage.id);
@@ -264,14 +270,14 @@ async function main() {
     if (open) game.pause();
     else game.resume();
   };
-  const perf = new PerfMeter(game, hud.layers.window, gs.renderer);
+  const perf = new PerfMeter(game, hud.layers.window, gs.renderer, sections);
   game.setPerfMeter(perf);
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   settingsPanel.onOpenPerfWindow = () => {
     settingsPanel.toggle(false);
     perf.open();
   };
-  startAnimationLoop(game, perf, new AutoSave(snapshotService));
+  startAnimationLoop(game, perf, sections, new AutoSave(snapshotService));
 }
 
 main().catch((err) => {
