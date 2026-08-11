@@ -3,6 +3,7 @@ import { Quat } from './attitude';
 import { FrameTransform, toFrameState } from './frame';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
+import { containingBody, sweptHermiteSphereToi } from './sphere-contact';
 import { Vec3, lenSq, len, sub, v3 } from './vec3';
 
 // 天体の識別子。具体的なレジストリ(solar-system.ts の SOLAR_SYSTEM など)が実行時に
@@ -98,6 +99,29 @@ const IDENTITY_QUAT: Quat = { x: 0, y: 0, z: 0, w: 1 };
 // Attractor のスナップショットからその場で組む。
 export function frameOfAttractor(center: Attractor): FrameTransform {
   return { origin: center.state.r, originVel: center.state.v, q: IDENTITY_QUAT, omega: v3() };
+}
+
+// prev→next の1ステップの間に、半径 + margin の表面へ到達した天体。到達が無ければ null。
+// 複数に到達していれば最も早いものを返す。prev と next が同一時刻のときは点判定になる。
+export function reachedBody(
+  prev: KinematicState,
+  next: KinematicState,
+  bodies: readonly Attractor[],
+  margin: number,
+): Attractor | null {
+  let earliest: Attractor | null = null;
+  let earliestToi = Infinity;
+  for (const body of bodies) {
+    // 1ステップの間に天体自身が動く距離は、その半径に対しても軌道速度で進む距離に対しても
+    // 十分小さいので、区間を通して静止しているものとして掃引する。
+    const toi = sweptHermiteSphereToi(prev, next, body.state.r, body.state.r, body.radius + margin);
+    if (toi !== null && toi < earliestToi) {
+      earliest = body;
+      earliestToi = toi;
+    }
+  }
+  // 掃引判定は開始時点で既に沈んでいる場合と区間の無い場合を離散判定へ委譲する。
+  return earliest ?? containingBody(prev.r, bodies, margin) ?? containingBody(next.r, bodies, margin);
 }
 
 // 天体 center を中心とする接触軌道要素。中心の選び方には関与しない — 呼び出し側が

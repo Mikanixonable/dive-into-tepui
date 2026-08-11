@@ -187,8 +187,12 @@
   - simulator.advance(resolveCollision=canResolvePhysicalCollisions, doSubstep=true)
     // 弾命中を含む剛体接触・姿勢積分はいずれもこの中。simulator が contactPhysics(ContactPhysics)を所有する。
     // 弾も薬莢もデブリも天体も同じ ContactPhysics を通る一本の経路
-    - [サブステップごと] ×ceil(simDt / SUBSTEP_MAX_DT) // 分割数は simDt のみで決まる(実 fps に依存しない)
-      - nextEventTime(activeStage) // activeStage.nextSimulationEventTime(simTime) と全生存エンティティの nextSimulationEventTime() のうち最も早いものへ subDt を切り詰める
+    - [サブステップごと] ×ceil(simDt / maxStep) // 分割数は simDt と刻み上限のみで決まる(実 fps に依存しない)
+      - adaptiveMaxStep() → adaptiveSimulationMaxStep(生存する艦の state, R_EARTH + REENTRY_SUBSTEP_ALT, SUBSTEP_MAX_DT, REENTRY_SUBSTEP_MAX_DT)
+        // 走査対象は entities.players と entities.enemies のみ。いずれかが再突入高度以下、または現在の降下率でその境界へ到達しうるとき、そのフレームの刻み上限が REENTRY_SUBSTEP_MAX_DT へ落ちる
+      - nextEventTime(activeStage, passiveWarpLod) // activeStage.nextSimulationEventTime(simTime) と、エンティティ側の最小イベント時刻のうち早いものへ subDt を切り詰める
+        // ステージ側は毎 substep 引き直す(艦の現在の Δv と加速度から毎回決まる生きた値のため)。エンティティ側(entityEventTime)は固定の絶対時刻なので控えを使い回し、simTime がその時刻へ到達したとき・entities.collectionRevision が変わったとき・passiveWarpLod が切り替わったときだけ全生存エンティティを走査し直す
+        // passiveWarpLod 中はまとめ積分に回る個体(Bullet / DebrisPiece)を走査から外すので、その締切では substep 境界が立たない
         - [CreativeStage] ship.planExecution==='instant' なら plan.firstNode()?.t、'powered' なら ship.planExecutor.nextEventTime(ship, simTime)(ゲートが閉じている間は常に null。armed 中は点火予定時刻、burn/trim 中は射影から求めた遮断予定時刻。どちらも対象ノードが targetNode(参照)と一致する間だけ)
       - substep()
         - attractorsAt(ephemeris, entities, simTime + dt/2) // サブステップ中点で1回だけ: ephemeris.attractorsAt(t) の mu!==0 部分(gravityBodiesAt)+ entities.attractors()(mu!==0 の生存中 GameEntity)を合流
