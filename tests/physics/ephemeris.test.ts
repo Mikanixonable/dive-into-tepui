@@ -240,6 +240,33 @@ export function register(): void {
     assert.equal(e.attractorsAt(1234), e.attractorsAt(1234));
   });
 
+  test('ephemeris: gravityAttractorsAt は mu が 0 でない天体だけを宣言順で返す', () => {
+    const gravity = eph.gravityAttractorsAt(1234);
+    assert.ok(gravity.every((b) => b.mu !== 0));
+    const expected = eph.attractorsAt(1234).filter((b) => b.mu !== 0).map((b) => b.id);
+    assert.deepEqual(gravity.map((b) => b.id), expected);
+    assert.ok(gravity.length > 0 && gravity.length < eph.attractorsAt(1234).length);
+  });
+
+  test('ephemeris: gravityAttractorsAt の要素は同一 t の attractorsAt と厳密に一致する', () => {
+    const t = 4321;
+    const all = new Map(eph.attractorsAt(t).map((b) => [b.id, b]));
+    for (const g of eph.gravityAttractorsAt(t)) {
+      const a = all.get(g.id)!;
+      assert.deepEqual(g.state.r, a.state.r);
+      assert.deepEqual(g.state.v, a.state.v);
+      assert.equal(g.state.t, a.state.t);
+      assert.equal(g.mu, a.mu);
+      assert.equal(g.radius, a.radius);
+    }
+  });
+
+  test('ephemeris: 同一 t の gravityAttractorsAt は同一配列参照を返す', () => {
+    const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
+    assert.equal(e.gravityAttractorsAt(1234), e.gravityAttractorsAt(1234));
+    assert.notEqual(e.gravityAttractorsAt(1234), e.attractorsAt(1234));
+  });
+
   test('ephemeris: 異なる t では再計算され、値が変わる', () => {
     const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
     const a = e.attractorsAt(0);

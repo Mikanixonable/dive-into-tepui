@@ -421,10 +421,11 @@ export const PREDICT_PLAYER_BUDGET_RATIO = 0.5;
 // までは at() がほぼ全時刻で null を返し、次フレームの乖離判定で必ず破棄されるので、
 // その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を下回る配分は作り直しを繰り返す。
 export const PREDICT_MIN_ENTITY_STEPS = 16;
-// 予測の重力源配列・空間グリッドを組み直す間隔(予測先端の経過時間 [s])。この間だけ重力源の
-// 位置を据え置く。ステップ数で切ると、表示期間を年スケールにしたときの粗い刻み幅では据え置きが
-// 数か月に相当してしまうので、実時間で切る。月がこの時間に動く距離は月自身の軌道の 1/1000 未満。
-export const PREDICT_ATTRACTOR_REBUILD_SEC = 3600;
+// 将来時刻を積分していく間に、重力源配列・空間グリッドを組み直す間隔(積分先端の経過時間 [s])。
+// この間だけ重力源の位置を据え置く。ステップ数で切ると、表示期間を年スケールにしたときの粗い
+// 刻み幅では据え置きが数か月に相当してしまうので、実時間で切る。月がこの時間に動く距離は
+// 月自身の軌道の 1/1000 未満。
+export const ATTRACTOR_REBUILD_SEC = 3600;
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;
