@@ -376,7 +376,7 @@
     - 続けて弾本体/弾ハロー/プラズマ弾/薬莢/破片(fragment、バリアントごとに1本)の各 InstancedPool を beginFrame → (bullets/casings/debris ごとに obj.visible を見て push) → endFrame。Group(本体+ハロー)を持つ通常弾は obj.updateMatrixWorld() で子まで連鎖更新してから両プールへ push。fragment は debrisFragmentPools[fragmentVariant] へ fragmentColor(per-instance color)付きで push
   - [entities.bases ごと] base.syncOrbitLine(overviewMode, bodies) // 中心天体は strongestAttractor(base.state.r, bodies)。マップビューのみ、それ以外は null を渡して線を消す
   - effects.sync() → flashEffectManager.syncFlashEffects()
-    - billboard.sync() // 生存中のフラッシュごと(寿命・移流は update フェーズで済んでいる)
+    - pool.beginFrame() → (生存中のフラッシュごとに transform へ位置/スケール/カメラ正対回転を書き、color = baseColor×opacity で push) → pool.endFrame() // 寿命・移流は update フェーズで済んでいる
   - targeter.sync(attractors) // ターゲットに紐づく表示物をまとめて
     - syncOrbitLine(attractors) // 各線の中心天体は対象ごとに strongestAttractor(target.state.r, attractors) で導出
       - enemy.orbitLine.sync() // 敵ごと。overviewMode かつ生存かつ第一・第二どちらでもないときだけ表示
