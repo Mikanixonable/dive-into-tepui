@@ -24,6 +24,8 @@ export class Simulator {
   lastSimDt = 0;
   lastSubsteps = 0;
   lastGravitySourceCount = 0;
+  // 今フレームに走った軌道積分(GameEntity.stepActual)の呼び出し回数。
+  lastOrbitSteps = 0;
   private readonly adaptiveStatesScratch: KinematicState[] = [];
 
   // entities/ephemeris は参照として保持する。
@@ -50,6 +52,7 @@ export class Simulator {
   ): void {
     this.lastSubsteps = 0;
     this.lastGravitySourceCount = 0;
+    this.lastOrbitSteps = 0;
     const targetTime = this.simTime + simDt;
     // ×4を超えるワープでは射撃・剛体衝突が無効なので、弾と薬莢/破片は途中のsubstepで
     // 相互作用を起こさない。これらだけを最後に一度まとめて積分し、高warpのS倍走査を避ける。
@@ -141,6 +144,7 @@ export class Simulator {
     for (const e of this.entities.all()) {
       if (passiveWarpLod && this.isPassiveWarpEntity(e)) continue;
       e.stepActual(dt, attractorsNearInto(e.state.r, classified, this.nearbyAttractorsScratch));
+      this.lastOrbitSteps++;
     }
 
     return simTime + dt;
@@ -170,6 +174,7 @@ export class Simulator {
       const elapsed = this.simTime - e.state.t;
       if (elapsed <= 1e-9) return;
       e.stepActual(elapsed, attractors);
+      this.lastOrbitSteps++;
       e.att = stepAttitude(e.att, e.torque, elapsed);
     };
     for (const bullet of this.entities.bullets) step(bullet);

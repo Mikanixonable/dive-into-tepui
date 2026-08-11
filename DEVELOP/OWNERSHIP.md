@@ -32,10 +32,10 @@ main.ts
 │   │                       自分がどの層の子になるかを選ぶだけ。層内の前後は DOM 順、最前面化は bringToFront() のみ
 │   └── HudPanels        (buildHudDom が作った要素索引を共有)
 ├── Sfx                  ... 同上
-├── SettingsPanel        ... 同上。DOM は Hud.layers.system 配下。onSettingsOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots は main.ts が settingsPanel.toggle(false) + saveBrowser.open() へ配線
+├── SettingsPanel        ... 同上。DOM は Hud.layers.system 配下。onSettingsOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が settingsPanel.toggle(false) + saveBrowser.open() / perf.open() へ配線
 ├── SaveBrowser            ... Game 自身を構築引数に取るため Game より後に main.ts が new し、Game.setSaveBrowser で遅延注入する(ViewManager.setDocking と同じ形)。所有は main.ts、Game 側は参照を持つだけ。DOM は Hud.layers.system 配下
 ├── AutoSave               ... SnapshotService を参照で持つ。startAnimationLoop() へその場で渡すだけで main() 側は変数に束縛しない
-├── PerfMeter            (?perf=1 の DOM 表示。Game を PerfCountSource として参照するだけ)
+├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として参照し、Game.setPerfMeter で遅延注入される(SaveBrowser と同じ形)。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る
 ├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
 └── Game
     ├── FloatingOrigin       ... sync ごとに作り直す使い捨て
@@ -211,6 +211,8 @@ main.ts
 | `SnapshotService` | main.ts | Game(コンストラクタ引数で受け取り、`clipSnapshot` から呼ぶ)・AutoSave(コンストラクタ引数)・SaveBrowser(コンストラクタ引数) |
 | `SaveSlots` | main.ts | SnapshotService(コンストラクタ引数)・SaveBrowser(コンストラクタ引数) |
 | `SaveBrowser` | main.ts | Game(`setSaveBrowser` で受け取った参照。`handleInput` が `[F9]` と一覧表示中の `[Esc]` で `open()`/`close()` を呼ぶだけ) |
+| `PerfMeter` | main.ts | Game(`setPerfMeter` で受け取った参照。`handleInput` が `[F3]` で `toggle()` を呼ぶだけ)・SettingsPanel(`onOpenPerfWindow` 経由で `open()`) |
+| `PropertyWindow`(負荷確認ウィンドウ) | PerfMeter(`open()` で new し `close()`/✕ で dispose する1枚) | PerfMeter 自身のみ。500ms ごとの flush で `syncRows` へ行一式を渡す |
 | `FocusMarkers.bodyPickables(t, visibility)` の戻り値 | CameraSystem(→FocusMarkers、呼ぶたびに作り直す使い捨て配列) | `MapPicker.refresh()` が読んで生存中の自機・敵船・弾薬・基地・NavTarget のアイコン・`PlanDisplay.apsisMarkers` と合流させ、`MapPicker.handleRightClick`(`pickNearest`)/`OverviewCamera.update` の被選択物候補として渡し直す。引数の `MapVisibilityPolicy` が admits した天体+ラグランジュ点だけを返し、遮蔽・ラベル衝突でこのフレームに描かれなかった対象は `pickable: false` を伴って残す(表示設定で消えているわけではないので候補からは落とさない) |
 | `MapVisibilityPolicy`(1フレームの使い捨て) | 持ち主なし(必要なフレームに各消費側が `registry`/`bodyClassToggles`/`focusTargetId(...)`/`systemMembersAt(cameraPos, ...)` から組み立てる) | `MapPicker.refresh` / `FocusMarkers.update` / `EnvironmentScene.sync`・参照線 / `Game.sync` → `Stage.sync`・`Logistics.syncMarkers`・`CreativeStage.syncBaseMarkers`・`Targeter.sync`。天体は `body(id)`、エンティティは `entity(kind, isActivePlayer)` で `{category, icon, label, orbit, pickable}` を返す判定関数であって状態を持たない(正本は `CameraSystem.bodyClassToggles` とフォーカス・カメラ位置) |
 | `FocusMarkers.allLabels` | CameraSystem(→FocusMarkers、構築時に1度だけ) | `MapPicker.sync()` が id/isLagrange から親子関係(parentOf)を組むのに読む |
