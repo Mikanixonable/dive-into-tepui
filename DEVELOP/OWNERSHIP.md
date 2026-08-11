@@ -35,7 +35,7 @@ main.ts
 ├── SettingsPanel        ... 同上。DOM は Hud.layers.system 配下。onSettingsOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が settingsPanel.toggle(false) + saveBrowser.open() / perf.open() へ配線
 ├── SaveBrowser            ... Game 自身を構築引数に取るため Game より後に main.ts が new し、Game.setSaveBrowser で遅延注入する(ViewManager.setDocking と同じ形)。所有は main.ts、Game 側は参照を持つだけ。DOM は Hud.layers.system 配下
 ├── AutoSave               ... SnapshotService を参照で持つ。startAnimationLoop() へその場で渡すだけで main() 側は変数に束縛しない
-├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として参照し、Game.setPerfMeter で遅延注入される(SaveBrowser と同じ形)。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る
+├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。Game.setPerfMeter で遅延注入される(SaveBrowser と同じ形)。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る
 ├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
 └── Game
     ├── FloatingOrigin       ... sync ごとに作り直す使い捨て
@@ -114,6 +114,11 @@ main.ts
     │   ├── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
     │   └── ContextMenu<Enemy>         ... 第一/第二ターゲットの設定・解除メニュー。DOM は Hud.layers.popup 配下
     ├── EntityManager                  ... エンティティ配列の保持のみ。simTime は持たない
+    │   ├── InstancedPool (bulletBodyPool) ... geometry/material は render/ships.ts のモジュールスコープ
+    │   │                                      共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
+    │   ├── InstancedPool (bulletHaloPool)
+    │   ├── InstancedPool (plasmaPool)
+    │   ├── InstancedPool (casingPool)
     │   ├── Player[] (players)         ... 自機。ステージモードでは1隻のみ。操作対象(Game.player)は
     │   │                                  この配列内の1隻への参照(§3-4 参照)
     │   │   ├── PlayerThrottle
@@ -136,8 +141,11 @@ main.ts
     │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
     │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
     │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
-    │   ├── Bullet[]                    ... 各々コンストラクタで Sfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)
-    │   ├── DebrisPiece[] (casings)      ... 各々コンストラクタで Sfx・EffectsSystem への参照を持つ(接触音・ガスパフを自分の collideWith から出すため)
+    │   ├── Bullet[]                    ... 各々コンストラクタで Sfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)。
+    │   │                                  obj はシーンへ足さない(GameEntity の addToScene=false) — bulletBodyPool/bulletHaloPool/plasmaPool が
+    │   │                                  obj の変換を読んで描画する。obj 自体は Bullet.sync が書き込む変換の置き場所として残る
+    │   ├── DebrisPiece[] (casings)      ... 各々コンストラクタで Sfx・EffectsSystem への参照を持つ(接触音・ガスパフを自分の collideWith から出すため)。
+    │   │                                  obj はシーンへ足さない(addToScene=false) — casingPool が obj の変換を読んで描画する
     │   ├── DebrisPiece[] (debris)       ... 同上
     │   ├── Ammo[]
     │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
