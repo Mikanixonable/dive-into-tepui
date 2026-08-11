@@ -4,10 +4,22 @@ import { Vec3 } from './vec3';
 
 export class SpatialGrid<T> {
   private readonly cells = new Map<string, T[]>();
-  private readonly invCellSize: number;
+  private invCellSize: number;
+  private readonly bucketPool: T[][] = [];
 
   // セルの一辺の長さ cellSize でグリッドを構築する。単位は呼び出し側の座標系に従う。
   constructor(cellSize: number) {
+    this.invCellSize = 1 / cellSize;
+  }
+
+  // 同じ所有者が同期的にグリッドを作り直す場合の再初期化。セルの挿入順と近傍走査順は
+  // 新規生成時と同じで、セル配列だけを再利用して一時オブジェクトを抑える。
+  reset(cellSize: number): void {
+    for (const bucket of this.cells.values()) {
+      bucket.length = 0;
+      this.bucketPool.push(bucket);
+    }
+    this.cells.clear();
     this.invCellSize = 1 / cellSize;
   }
 
@@ -29,7 +41,7 @@ export class SpatialGrid<T> {
     const key = this.cellKey(cx, cy, cz);
     let bucket = this.cells.get(key);
     if (bucket === undefined) {
-      bucket = [];
+      bucket = this.bucketPool.pop() ?? [];
       this.cells.set(key, bucket);
     }
     bucket.push(item);
