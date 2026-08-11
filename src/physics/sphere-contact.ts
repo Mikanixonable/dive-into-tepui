@@ -59,24 +59,49 @@ export function sweptHermiteSphereToi(
 ): number | null {
   const dt = next.t - prev.t;
   if (!(dt > 0) || !Number.isFinite(dt) || !Number.isFinite(radius) || !(radius > 0)) return null;
-  const bodyVelocity = scale(sub(bodyEnd, bodyStart), 1 / dt);
-  const relativeStart = sub(prev.r, bodyStart);
-  const relativeEnd = sub(next.r, bodyEnd);
-  if (![relativeStart.x, relativeStart.y, relativeStart.z, relativeEnd.x, relativeEnd.y, relativeEnd.z,
-    bodyVelocity.x, bodyVelocity.y, bodyVelocity.z].every(Number.isFinite)) return null;
+  // 相対位置のBezier制御点を、まずスカラー座標として求める。
+  const bvx = (bodyEnd.x - bodyStart.x) / dt;
+  const bvy = (bodyEnd.y - bodyStart.y) / dt;
+  const bvz = (bodyEnd.z - bodyStart.z) / dt;
+  const rsx = prev.r.x - bodyStart.x;
+  const rsy = prev.r.y - bodyStart.y;
+  const rsz = prev.r.z - bodyStart.z;
+  const rex = next.r.x - bodyEnd.x;
+  const rey = next.r.y - bodyEnd.y;
+  const rez = next.r.z - bodyEnd.z;
+  if (!Number.isFinite(rsx) || !Number.isFinite(rsy) || !Number.isFinite(rsz)
+    || !Number.isFinite(rex) || !Number.isFinite(rey) || !Number.isFinite(rez)
+    || !Number.isFinite(bvx) || !Number.isFinite(bvy) || !Number.isFinite(bvz)) return null;
 
-  // Hermite の接線は u 微分へ変換するため dt を掛ける。相対位置のBezier制御点。
-  const tangent0 = scale(sub(prev.v, bodyVelocity), dt);
-  const tangent1 = scale(sub(next.v, bodyVelocity), dt);
-  const controls: readonly Vec3[] = [
-    relativeStart,
-    add(relativeStart, scale(tangent0, 1 / 3)),
-    add(relativeEnd, scale(tangent1, -1 / 3)),
-    relativeEnd,
-  ];
+  // Hermite の接線は u 微分へ変換するため dt を掛ける。
+  const t0x = (prev.v.x - bvx) * dt;
+  const t0y = (prev.v.y - bvy) * dt;
+  const t0z = (prev.v.z - bvz) * dt;
+  const t1x = (next.v.x - bvx) * dt;
+  const t1y = (next.v.y - bvy) * dt;
+  const t1z = (next.v.z - bvz) * dt;
+  const c1x = rsx + t0x / 3;
+  const c1y = rsy + t0y / 3;
+  const c1z = rsz + t0z / 3;
+  const c2x = rex - t1x / 3;
+  const c2y = rey - t1y / 3;
+  const c2z = rez - t1z / 3;
+
+  // 全区間の凸包が球から離れていれば交差はない。
+  const boxDistanceSq = axisDistanceSq(rsx, c1x, c2x, rex)
+    + axisDistanceSq(rsy, c1y, c2y, rey)
+    + axisDistanceSq(rsz, c1z, c2z, rez);
+  if (boxDistanceSq > radius * radius) return null;
 
   // 開始時点の重なりは sweptSphereToi と同じく、呼び出し側の離散 solver に委譲する。
-  if (len(relativeStart) <= radius) return null;
+  if (Math.sqrt(rsx * rsx + rsy * rsy + rsz * rsz) <= radius) return null;
+
+  const controls: readonly Vec3[] = [
+    v3(rsx, rsy, rsz),
+    v3(c1x, c1y, c1z),
+    v3(c2x, c2y, c2z),
+    v3(rex, rey, rez),
+  ];
 
   const clearanceAt = (u: number): number => len(cubicPoint(controls, u)) - radius;
   const MAX_DEPTH = 32;
@@ -135,20 +160,19 @@ function splitCubic(control: readonly Vec3[]): readonly [readonly Vec3[], readon
   return [[p0, p01, p012, p0123], [p0123, p123, p23, p3]];
 }
 
-// Bezier の凸包を囲う軸平行箱と原点の最短距離。箱の外にある軸だけ距離を加える。
+// 制御点4つが1軸上に張る区間と原点の距離の2乗。区間が原点を跨ぐなら 0。
+function axisDistanceSq(a: number, b: number, c: number, d: number): number {
+  const min = Math.min(Math.min(a, b), Math.min(c, d));
+  const max = Math.max(Math.max(a, b), Math.max(c, d));
+  const distance = min > 0 ? min : max < 0 ? -max : 0;
+  return distance * distance;
+}
+
+// Bezier の凸包を囲う軸平行箱と原点の最短距離の2乗。
 function distanceSqToControlBox(control: readonly Vec3[]): number {
-  let distanceSq = 0;
-  for (const axis of ['x', 'y', 'z'] as const) {
-    let min = Infinity;
-    let max = -Infinity;
-    for (const p of control) {
-      min = Math.min(min, p[axis]);
-      max = Math.max(max, p[axis]);
-    }
-    const distance = min > 0 ? min : max < 0 ? -max : 0;
-    distanceSq += distance * distance;
-  }
-  return distanceSq;
+  return axisDistanceSq(control[0]!.x, control[1]!.x, control[2]!.x, control[3]!.x)
+    + axisDistanceSq(control[0]!.y, control[1]!.y, control[2]!.y, control[3]!.y)
+    + axisDistanceSq(control[0]!.z, control[1]!.z, control[2]!.z, control[3]!.z);
 }
 
 // point が bodies のいずれかの半径 + margin の球の内側にあれば、その球を返す。無ければ null。
