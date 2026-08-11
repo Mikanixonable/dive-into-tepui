@@ -114,6 +114,14 @@ main.ts
     │   ├── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
     │   └── ContextMenu<Enemy>         ... 第一/第二ターゲットの設定・解除メニュー。DOM は Hud.layers.popup 配下
     ├── EntityManager                  ... エンティティ配列の保持のみ。simTime は持たない
+    │   ├── InstancedPool (bulletBodyPool) ... geometry/material は render/ships.ts のモジュールスコープ
+    │   │                                      共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
+    │   ├── InstancedPool (bulletHaloPool)
+    │   ├── InstancedPool (plasmaPool)
+    │   ├── InstancedPool (casingPool)
+    │   ├── InstancedPool[] (debrisFragmentPools) ... 破片(fragment)バリアントごとに1本(render/ships.ts の
+    │   │                                      debrisFragmentResources が持つジオメトリ配列と1本の白マテリアルを共有)。
+    │   │                                      push の第2引数に DebrisPiece.fragmentColor(per-instance color)を渡す
     │   ├── Player[] (players)         ... 自機。ステージモードでは1隻のみ。操作対象(Game.player)は
     │   │                                  この配列内の1隻への参照(§3-4 参照)
     │   │   ├── PlayerThrottle
@@ -141,7 +149,9 @@ main.ts
     │   │                                  obj の変換を読んで描画する。obj 自体は Bullet.sync が書き込む変換の置き場所として残る
     │   ├── DebrisPiece[] (casings)      ... 各々コンストラクタで Sfx・EffectsSystem への参照を持つ(接触音・ガスパフを自分の collideWith から出すため)。
     │   │                                  obj はシーンへ足さない(addToScene=false) — casingPool が obj の変換を読んで描画する
-    │   ├── DebrisPiece[] (debris)       ... 同上
+    │   ├── DebrisPiece[] (debris)       ... 同上。fragment 種別のみ obj もシーンへ足さない(addToScene=false) —
+    │   │                                  obj は変換の置き場所のみで、debrisFragmentPools[fragmentVariant] が読んで描画する。
+    │   │                                  barrel/magazineFrame 種別は個別メッシュのまま(addToScene=true)
     │   ├── Ammo[]
     │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
     │   └── Asteroid[]                 ... 重力を及ぼし・受ける小天体。mass/radius はコンストラクタ引数から mu = G・mass を導いて固定。
