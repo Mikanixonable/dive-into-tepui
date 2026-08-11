@@ -5,8 +5,9 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import type { Attractor, AttractorId } from '../../physics/attractor';
 import { SpatialGrid } from '../../physics/spatial-grid';
 import { Vec3 } from '../../physics/vec3';
-import { GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL } from '../const';
+import { GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL, PLAN_ARC_MAX_SAMPLES } from '../const';
 import type { EntityManager } from './entity-manager';
+import type { GameEntity } from '../game-entity/game-entity';
 
 // 計画軌道が時刻ごとに参照する二種類の対象。重力積分は従来どおり近傍へ絞れるが、表面衝突は
 // mu=0 の表示天体や、重力を持たない動的 entity も含めた別集合で判定する。
@@ -90,6 +91,69 @@ export function planAttractorProvider(
 ): PlanAttractorProvider {
   const excluded = new Set(excludedEntityIds);
   return { revision, at: (t) => planAttractorsAt(ephemeris, entities, t, excluded) };
+}
+
+const REVISION_MIX_PRIME = 16777619;
+const REVISION_SEED = 2166136261 | 0;
+// 予測列を持たない個体の寄与。量子化した時刻(0以上)と区別できる値。
+const NO_PREDICTION = -1;
+
+// 計画の終端が未確定なフレームで、毎回異なる revision を作るための連番。
+let unresolvedPlanEndTick = 0;
+
+// 32bit 整数への畳み込み。非有限な value は 0 として畳み込まれ、結果は常に有限。
+function mixNumber(acc: number, value: number): number {
+  return Math.imul(acc ^ (value | 0), REVISION_MIX_PRIME) | 0;
+}
+
+// 文字列を文字コード列として畳み込む。
+function mixString(acc: number, value: string): number {
+  let out = acc;
+  for (let i = 0; i < value.length; i++) out = mixNumber(out, value.charCodeAt(i));
+  return out;
+}
+
+// 予測先端を planEnd で頭打ちにし、quantum で量子化した整数。予測が計画の範囲を覆いきると
+// 値が固定される — 覆っている範囲の内側では、先端がさらに伸びても引ける状態は変わらない。
+function predictionTick(entity: GameEntity, planEnd: number, quantum: number): number {
+  const tip = entity.predictedTrajectory?.state.t;
+  if (tip === undefined) return NO_PREDICTION;
+  return Math.floor(Math.min(tip, planEnd) / quantum);
+}
+
+// planAttractorProvider が返す内容を変えうる入力だけを畳み込んだ世代値。planEnd は計画の
+// 折れ線が届いている終端時刻で、simTime より後の有限値でなければ毎回異なる値を返す。
+export function planSourceRevision(
+  ephemeris: Ephemeris,
+  entities: EntityManager,
+  excludedEntityIds: readonly AttractorId[],
+  planRevision: number,
+  planEnd: number,
+  simTime: number,
+): number {
+  // 時刻に依らない入力 — 計画の編集、暦の位相、除外集合。
+  let acc = mixNumber(REVISION_SEED, planRevision);
+  acc = mixNumber(acc, ephemeris.phaseGeneration);
+  for (const id of excludedEntityIds) acc = mixString(acc, id);
+  if (!Number.isFinite(planEnd) || !(planEnd > simTime)) {
+    return mixNumber(acc, ++unresolvedPlanEndTick);
+  }
+  // provider の出力に現れるのは、将来時刻の状態を答えられる個体 — predictsFuture が真のもの —
+  // だけなので、その id と予測先端を畳み込む。id が集合の顔ぶれの変化を、予測先端が各個体の
+  // 引ける時刻範囲の変化を表す。量子化の幅は区間の描画サンプル間隔に合わせる。
+  const excluded = new Set(excludedEntityIds);
+  const quantum = (planEnd - simTime) / PLAN_ARC_MAX_SAMPLES;
+  for (const e of entities.attractors()) {
+    if (!e.predictsFuture) continue;
+    acc = mixString(acc, e.id);
+    acc = mixNumber(acc, predictionTick(e, planEnd, quantum));
+  }
+  for (const e of entities.all()) {
+    if (!e.alive || !e.predictsFuture || !e.collides || !(e.radius > 0) || excluded.has(e.id)) continue;
+    acc = mixString(acc, e.id);
+    acc = mixNumber(acc, predictionTick(e, planEnd, quantum));
+  }
+  return acc;
 }
 
 // 重力源一覧を、常に含める天体(always)と空間グリッドに載せる天体(grid)へ分けたもの。
