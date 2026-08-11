@@ -19,7 +19,6 @@ import {
   vec3,
 } from 'three/tsl';
 import { RingArcDef, RingOpticsDef } from '../physics/solar-system';
-import { ringSingleScattering, ringTransmission } from '../physics/ring-optics';
 
 const RING_TILT = -Math.PI / 2;
 const D2R = Math.PI / 180;
@@ -45,7 +44,13 @@ function colorNode(color: readonly [number, number, number]): ReturnType<typeof 
   return vec3(color[0], color[1], color[2]);
 }
 
-function physicalMaterial(baseColor: any, optics: RingOpticsDef): { material: any; sync: (state: RingVisualState) => void } {
+// annulus/line 共通の光学TSLグラフ。coverage は帯の画面上被覆率(1px未満の細帯を
+// 減光するための係数)で、面・線どちらのジオメトリへ載せても解釈は同じ。
+function ringOpticsNodes(baseColor: any, optics: RingOpticsDef): {
+  colorNode: any;
+  opacityNode: any;
+  sync: (state: RingVisualState) => void;
+} {
   const bodyCenter = uniform(new THREE.Vector3());
   const bodyRadius = uniform(1);
   const sunDirection = uniform(new THREE.Vector3(1, 0, 0));
@@ -90,16 +95,9 @@ function physicalMaterial(baseColor: any, optics: RingOpticsDef): { material: an
   // baseExtinction で割ることで、散乱輝度にもcoverageが一度だけ掛かる。
   const safeBaseExtinction = max(baseExtinction, 0.001);
 
-  const mat = new THREE.MeshBasicNodeMaterial({
-    transparent: true,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-  });
-  mat.colorNode = baseColor.mul(scattering.div(safeBaseExtinction));
-  mat.opacityNode = extinction;
-
   return {
-    material: mat,
+    colorNode: baseColor.mul(scattering.div(safeBaseExtinction)),
+    opacityNode: extinction,
     sync: (state) => {
       bodyCenter.value.copy(state.bodyCenter);
       bodyRadius.value = state.bodyRadius;
@@ -108,6 +106,32 @@ function physicalMaterial(baseColor: any, optics: RingOpticsDef): { material: an
       ringAxis.value.copy(state.ringAxis).normalize();
     },
   };
+}
+
+function physicalMaterial(baseColor: any, optics: RingOpticsDef): { material: any; sync: (state: RingVisualState) => void } {
+  const { colorNode: color, opacityNode, sync } = ringOpticsNodes(baseColor, optics);
+  const mat = new THREE.MeshBasicNodeMaterial({
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  mat.colorNode = color;
+  mat.opacityNode = opacityNode;
+  return { material: mat, sync };
+}
+
+// 面(annulus)と同じ光学TSLグラフを THREE.Line 用マテリアルへ載せる。1px未満に痩せる
+// 細帯はラスタライズで面のまま描くと消えうるので、常にこの線1本で表す(coverage が
+// 被覆率ぶん減光するので、遠方ほど濃くなることはない)。
+function lineOpticsMaterial(baseColor: any, optics: RingOpticsDef): { material: any; sync: (state: RingVisualState) => void } {
+  const { colorNode: color, opacityNode, sync } = ringOpticsNodes(baseColor, optics);
+  const mat = new THREE.LineBasicNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+  });
+  mat.colorNode = color;
+  mat.opacityNode = opacityNode;
+  return { material: mat, sync };
 }
 
 function sectorParts(arcs: readonly RingArcDef[] | undefined): readonly { start: number; length: number; scale: number }[] {
@@ -150,7 +174,6 @@ function buildAnnulusMesh(
   const { material, sync } = physicalMaterial(colorNode(optics.color), optics);
   const mesh = new THREE.Mesh(geo, material as THREE.Material);
   mesh.rotation.x = RING_TILT;
-  mesh.frustumCulled = false;
   return { object: mesh, sync };
 }
 
@@ -168,8 +191,7 @@ export function createAnnulusRing(
   return visuals.length === 1 ? visuals[0]! : combineVisuals(visuals);
 }
 
-function buildRingLineSegment(
-  color: number,
+function buildLineRingSegment(
   optics: RingOpticsDef,
   radius: number,
   thetaStart: number,
@@ -184,39 +206,19 @@ function buildRingLineSegment(
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.LineBasicMaterial({ color, transparent: true, depthWrite: false });
-  const line = new THREE.Line(geo, mat);
+  const { material, sync } = lineOpticsMaterial(colorNode(optics.color), optics);
+  const line = new THREE.Line(geo, material as THREE.Material);
   line.rotation.x = RING_TILT;
-  line.frustumCulled = false;
-  return {
-    object: line,
-    sync: (state) => {
-      const view = state.cameraPosition.clone().sub(state.bodyCenter).normalize();
-      const muView = Math.max(MU_MIN, Math.abs(state.ringAxis.dot(view)));
-      const muSun = Math.max(MU_MIN, Math.abs(state.ringAxis.dot(state.sunDirection)));
-      const cosTheta = Math.max(-1, Math.min(1, state.sunDirection.clone().negate().dot(view)));
-      const baseAlpha = 1 - ringTransmission(optics.normalOpticalDepth, muView);
-      const alpha = baseAlpha * state.coverage;
-      const scatter = ringSingleScattering(optics.normalOpticalDepth, muSun, muView, cosTheta, optics.singleScatteringAlbedo, optics.phaseG);
-      // 1px線は環全周を1 drawで表すため、フラグメントごとの惑星影をCPU側から
-      // 与えられない。誤った全周遮蔽を避け、サブピクセル積分では影を平均化して省略する。
-      mat.opacity = Math.max(0, Math.min(1, alpha));
-      mat.color.setRGB(
-        optics.color[0] * Math.min(1, scatter / Math.max(0.001, baseAlpha)),
-        optics.color[1] * Math.min(1, scatter / Math.max(0.001, baseAlpha)),
-        optics.color[2] * Math.min(1, scatter / Math.max(0.001, baseAlpha)),
-      );
-    },
-  };
+  return { object: line, sync };
 }
 
-/** サブピクセル細環。被覆率を同期時に掛けるので遠方ほど濃くならない。 */
+/** 実幅が細い環の1px前後表示。アークは非重複sectorへ分割するため、実効tauが二重合成されない。 */
 export function createRingLine(
   optics: RingOpticsDef,
   radius: number,
   arcs?: readonly RingArcDef[],
 ): RingVisual {
-  const visuals = sectorParts(arcs).map((part) => buildRingLineSegment(0xffffff, {
+  const visuals = sectorParts(arcs).map((part) => buildLineRingSegment({
     ...optics,
     normalOpticalDepth: optics.normalOpticalDepth * part.scale,
   }, radius, part.start, part.length, part.length >= Math.PI * 1.9 ? 256 : 32));
@@ -261,7 +263,5 @@ export function createTorusRing(
   const { material, sync } = physicalMaterial(colorNode(optics.color), optics);
   const mesh = new THREE.Mesh(geo, material as THREE.Material);
   mesh.rotation.x = RING_TILT;
-  mesh.frustumCulled = false;
   return { object: mesh, sync };
 }
-
