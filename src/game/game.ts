@@ -416,6 +416,9 @@ export class Game {
       this._window = this.resolveWindow();
       this.updateMapPresentation(dt, () => {
         if (!this.editor.editMode) return;
+        // ESCメニュー中はカメラ操作だけを通し、背景のノード配置・コンテキストメニューは
+        // 誤操作防止のため止める。updateMapPresentation 自体は先に呼ばれるので視点は動く。
+        if (this._hud.modalController.isOpen) return;
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
         this.mapPicker.handleLeftClick(this.input);
         this.mapPicker.handleDoubleClick(this.input);
