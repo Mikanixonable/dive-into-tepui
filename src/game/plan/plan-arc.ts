@@ -14,7 +14,7 @@ import { attractorsNearInto, classifyAttractors } from '../simulation/attractors
 import type { ClassifiedAttractors, PlanAttractorProvider, PlanAttractorSources } from '../simulation/attractors';
 import { addScaled, len, scale, sub, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
-import { SampledLine } from '../sampled-line';
+import { TrajectoryLine } from '../trajectory-line';
 import * as C from '../const';
 
 // 積分の終端は要求時刻に対して丸め誤差ぶん手前に落ちうる。この幅までは終端そのものとみなす。
@@ -154,7 +154,7 @@ function nearestByClearance(pos: Vec3, bodies: readonly Attractor[]): Attractor 
 }
 
 export class PlanArc {
-  private readonly line: SampledLine;
+  private readonly line: TrajectoryLine;
   // integrate() は同期的に完了し、これらの配列・Mapを外へ返さない。したがって区間の再積分
   // ごとに同じ一時領域を再利用できる。Mapの挿入順と候補配列の順序は従来の spread と同じ。
   private readonly collisionCandidatesById = new Map<string, Attractor>();
@@ -178,7 +178,7 @@ export class PlanArc {
   // 描画色・不透明度・renderOrder を指定して線を用意する。折れ線は常に破線で描く
   // (実際のパターンは sync() が毎フレーム上書きするので、ここでの初期値に意味は無い)。
   constructor(color: number, opacity = 0.85, renderOrder = 4) {
-    this.line = new SampledLine(color, opacity, renderOrder,
+    this.line = new TrajectoryLine(color, opacity, renderOrder,
       { dashSize: C.PLAN_ARC_DASH_PX, gapSize: C.PLAN_ARC_GAP_PX });
   }
 
