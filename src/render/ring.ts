@@ -174,7 +174,6 @@ function buildAnnulusMesh(
   const { material, sync } = physicalMaterial(colorNode(optics.color), optics);
   const mesh = new THREE.Mesh(geo, material as THREE.Material);
   mesh.rotation.x = RING_TILT;
-  mesh.frustumCulled = false;
   return { object: mesh, sync };
 }
 
@@ -210,7 +209,6 @@ function buildLineRingSegment(
   const { material, sync } = lineOpticsMaterial(colorNode(optics.color), optics);
   const line = new THREE.Line(geo, material as THREE.Material);
   line.rotation.x = RING_TILT;
-  line.frustumCulled = false;
   return { object: line, sync };
 }
 
@@ -265,6 +263,5 @@ export function createTorusRing(
   const { material, sync } = physicalMaterial(colorNode(optics.color), optics);
   const mesh = new THREE.Mesh(geo, material as THREE.Material);
   mesh.rotation.x = RING_TILT;
-  mesh.frustumCulled = false;
   return { object: mesh, sync };
 }
