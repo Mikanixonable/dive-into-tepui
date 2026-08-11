@@ -45,3 +45,12 @@ export function ringPixelCoverage(widthMeters: number, metersPerPixel: number): 
   if (!(widthMeters > 0) || !(metersPerPixel > 0)) return 0;
   return Math.max(0, Math.min(1, widthMeters / metersPerPixel));
 }
+
+// この px を下回ったら、天体を球体として描く価値がない(輝点表示を持つ天体はそちらへ、
+// 持たない天体は非表示へ譲る)。
+const PHYSICAL_DIAMETER_THRESHOLD_PX = 2;
+
+/** 見かけ直径 [px] が、天体を球体として描くに値するか。 */
+export function showsPhysicalSphere(apparentDiameterPx: number): boolean {
+  return apparentDiameterPx >= PHYSICAL_DIAMETER_THRESHOLD_PX;
+}
