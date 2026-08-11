@@ -261,7 +261,7 @@ async function main() {
     if (open) game.pause();
     else game.resume();
   };
-  const perf = new PerfMeter(game, hud.layers.window);
+  const perf = new PerfMeter(game, hud.layers.window, gs.renderer);
   game.setPerfMeter(perf);
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   settingsPanel.onOpenPerfWindow = () => {
