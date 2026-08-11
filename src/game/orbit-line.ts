@@ -1,13 +1,13 @@
 // OrbitalElements から軌道楕円を描画する。頂点は中心天体(OrbitalElements.center)相対座標のまま保持し、
 // フローティングオリジンによる Object3D 平行移動でその天体の ECI 位置へ置く。どの天体を
 // 中心に描くかは OrbitalElements 自身が持つため、呼び出し側が外側で選び直すことはできない。
-// ジオメトリの再生成は軌道要素が閾値を超えて変化したときだけ行う。
+// ジオメトリの再生成は軌道要素が閾値を超えて変化したときだけ行う。描画そのものは Curve に委ねる。
 import * as THREE from 'three/webgpu';
-import { attribute, float } from 'three/tsl';
 import { OrbitalElements } from '../physics/elements';
 import { Vec3 } from '../physics/vec3';
 import { pointSphereFade, segmentIntersectsSphere } from '../physics/orbit-line-geometry';
 import { FloatingOrigin } from './floating-origin';
+import { Curve } from '../render/curve';
 
 // フェードの再計算を省く天体の移動量。天体半径に対するこの割合より小さく動いただけなら、
 // フェード帯の中の各頂点の不透明度は視認できるほど変わらない。
@@ -31,15 +31,12 @@ export interface OrbitLineExcludeNearBody {
 }
 
 export class OrbitLine {
-  readonly line: THREE.Line;
+  private readonly curve: Curve;
+  readonly line: THREE.Object3D;
   private readonly positions: Float32Array;
   private readonly indices: Uint32Array;
   // 頂点ごとの不透明度係数(0=透明〜1=不透明)。
   private readonly fade: Float32Array;
-  // 位置属性を変えた世代。原点を揺らして GPU 更新を誘発するのではなく、頂点バッファの
-  // dirty/version を明示的に進める。描画原点が (0,0,0) で変換が不変でも再生成は伝わる。
-  private positionRevision = 0;
-  private uploadedPositionRevision = -1;
   // fade が全頂点 1・全セグメント描画の状態にあるか。楕円上に天体が乗っていない線
   // (自機・ターゲット・敵の軌道線)は毎フレームこの状態のままなので、GPU への
   // 転送を繰り返さずに済ませる。
@@ -67,36 +64,20 @@ export class OrbitLine {
 
   // 有効な軌道要素を得ている(snap がある)ときだけ、表示要求どおりに描く。
   private applyVisible(): void {
-    this.line.visible = this.displayEnabled && !this.suppressed && this.snap !== null;
+    this.curve.setVisible(this.displayEnabled && !this.suppressed && this.snap !== null);
   }
 
-  // バッファジオメトリと LineBasicNodeMaterial を組み立てる。renderOrder は、この線が他の線と
-  // 重なったときにどちらを手前へ描くかを決める — 透明描画どうしの前後は描画順でしか決まらない。
+  // renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
+  // 透明描画どうしの前後は描画順でしか決まらない。
   constructor(color: string | number, opacity = 0.5, renderOrder = 0) {
     this.positions = new Float32Array((POINT_COUNT + 1) * 3);
     this.indices = new Uint32Array(POINT_COUNT * 2);
     this.fade = new Float32Array(POINT_COUNT + 1).fill(1);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-    geo.setAttribute('fade', new THREE.BufferAttribute(this.fade, 1));
-    geo.setIndex(new THREE.BufferAttribute(this.indices, 1));
     this.resetIndices();
-    geo.setDrawRange(0, POINT_COUNT * 2);
-    const mat = new THREE.LineBasicNodeMaterial({
-      color,
-      transparent: true,
-      depthWrite: false,
+    this.curve = new Curve({
+      color, opacity, renderOrder, maxVertices: POINT_COUNT + 1, perVertexFade: true,
     });
-    // 頂点属性 fade を不透明度に掛ける。一様な material.opacity では頂点ごとに
-    // 値を変えられないため、TSL で頂点属性を読むノードマテリアルを使う。
-    mat.opacityNode = attribute('fade', 'float').mul(float(opacity));
-    // WebGPU レンダラー(r169)は LineLoop 非対応のため、閉路は始点=終端の頂点複製で作る。
-    // excludeNearBody で天体近傍のセグメントを間引けるよう連続ストリップではなく
-    // セグメント単位の LineSegments + インデックスバッファで描く。
-    // three/webgpu の公開型は LineBasicNodeMaterial を含まず暫定シムで補っているため、
-    // シム側の基底クラスが LineSegments の要求する Material と型の上では一致しない。
-    this.line = new THREE.LineSegments(geo, mat as unknown as THREE.Material);
-    this.line.renderOrder = renderOrder;
+    this.line = this.curve.object;
   }
 
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン。force = 要素が能動的に変化している
@@ -115,7 +96,7 @@ export class OrbitLine {
     }
     // 頂点を自機相対座標で毎フレーム書き直すと、osculating 要素の微小なゆらぎで楕円が
     // 振動して見える。頂点は中心天体相対座標のまま固定し、平行移動だけで動かす。
-    this.line.position.copy(fo.RtoThreeV3(el.center.state.r));
+    this.curve.setTransform(fo.RtoThreeV3(el.center.state.r));
 
     let focusE: number | undefined;
     if (densifyNear) {
@@ -129,21 +110,15 @@ export class OrbitLine {
       focusE = Math.atan2(y / b, x / el.a + el.e);
     }
 
+    let regenerated = false;
     if (this.needsRegen(el, force, focusE)) {
       this.regenerate(el, focusE);
       // 頂点ごとの離心近点角が組み直されたので、前回のフェードは対応先を失っている。
       this.lastExclude = null;
+      regenerated = true;
     }
-    this.ensurePositionUpload();
-    this.applyFade(excludeNearBody);
+    this.applyFade(excludeNearBody, regenerated);
     this.applyVisible();
-  }
-
-  // 頂点位置が書き換わったフレームだけ GPU へ転送する。
-  private ensurePositionUpload(): void {
-    if (this.uploadedPositionRevision === this.positionRevision) return;
-    (this.line.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
-    this.uploadedPositionRevision = this.positionRevision;
   }
 
   // 全セグメントを描く並びにインデックスを埋める(描画範囲は呼び出し側が合わせる)。
@@ -154,23 +129,20 @@ export class OrbitLine {
     }
   }
 
-  // 頂点ごとの不透明度と、描くセグメントの選択を求め直す。天体の現在位置を中心とする
-  // 球と各線分の最近接距離を使うので、離心率が大きい軌道や粗いサンプリングでも天体の
-  // 内部を通るセグメントを取りこぼさない。
-  // 完全に透明な頂点を持つセグメントは描画からも外す — 加えて、天体の角半径は頂点間隔より
-  // ずっと小さいのが普通で天体はセグメントの途中に来るため、端点の不透明度だけを見ると
-  // 天体の真上を通る一本を取りこぼす。両端が天体をまたぐセグメントも落とす。
-  private applyFade(excludeNearBody?: OrbitLineExcludeNearBody): void {
-    const fadeAttr = this.line.geometry.getAttribute('fade') as THREE.BufferAttribute;
-    const indexAttr = this.line.geometry.getIndex() as THREE.BufferAttribute;
+  // 頂点ごとの不透明度と、描くセグメントの選択を求め直し、Curve へ反映する。天体の現在位置を
+  // 中心とする球と各線分の最近接距離を使うので、離心率が大きい軌道や粗いサンプリングでも
+  // 天体の内部を通るセグメントを取りこぼさない。完全に透明な頂点を持つセグメントは描画からも
+  // 外す — 加えて、天体の角半径は頂点間隔よりずっと小さいのが普通で天体はセグメントの途中に
+  // 来るため、端点の不透明度だけを見ると天体の真上を通る一本を取りこぼす。両端が天体をまたぐ
+  // セグメントも落とす。forcePush = 頂点位置が変わったので fade が変化していなくても
+  // Curve へ再送が要る。
+  private applyFade(excludeNearBody: OrbitLineExcludeNearBody | undefined, forcePush: boolean): void {
     if (!excludeNearBody) {
       this.lastExclude = null;
-      if (this.fadeNeutral) return;
+      if (this.fadeNeutral && !forcePush) return;
       this.fade.fill(1);
       this.resetIndices();
-      this.line.geometry.setDrawRange(0, POINT_COUNT * 2);
-      fadeAttr.needsUpdate = true;
-      indexAttr.needsUpdate = true;
+      this.pushToCurve(POINT_COUNT * 2);
       this.fadeNeutral = true;
       return;
     }
@@ -178,7 +150,7 @@ export class OrbitLine {
     // フェード帯は天体半径からその2倍までの間に張るので、天体が自身の半径に比べて十分小さく
     // しか動いていないなら、どの頂点の不透明度も実質変わらない。全頂点の走査と GPU 転送を省く。
     const prev = this.lastExclude;
-    if (prev) {
+    if (!forcePush && prev) {
       const dx = excludeNearBody.position.x - prev.position.x;
       const dy = excludeNearBody.position.y - prev.position.y;
       const dz = excludeNearBody.position.z - prev.position.z;
@@ -209,10 +181,17 @@ export class OrbitLine {
       this.indices[count++] = i;
       this.indices[count++] = i + 1;
     }
-    fadeAttr.needsUpdate = true;
-    indexAttr.needsUpdate = true;
-    this.line.geometry.setDrawRange(0, count);
+    this.pushToCurve(count);
     this.fadeNeutral = allOpaque && count === POINT_COUNT * 2;
+  }
+
+  // 現在の positions/fade/indices を Curve へ送る。segmentIndexCount は indices の有効長。
+  private pushToCurve(segmentIndexCount: number): void {
+    this.curve.setVertices(this.positions, POINT_COUNT + 1, {
+      fade: this.fade,
+      segments: this.indices,
+      segmentCount: segmentIndexCount,
+    });
   }
 
   // 現在の要素が直近のスナップショットから許容誤差を超えて変化していれば true(要再生成)。
@@ -240,7 +219,8 @@ export class OrbitLine {
     return false;
   }
 
-  // 軌道要素から楕円頂点を計算し直してジオメトリへ反映し、再生成時点のスナップショットを取る。
+  // 軌道要素から楕円頂点を計算し直し、再生成時点のスナップショットを取る。Curve への反映は
+  // 呼び出し元の applyFade がまとめて行う。
   private regenerate(el: OrbitalElements, focusE?: number): void {
     const b = el.a * Math.sqrt(1 - el.e * el.e);
     for (let i = 0; i < POINT_COUNT; i++) {
@@ -265,9 +245,6 @@ export class OrbitLine {
     this.positions[POINT_COUNT * 3] = this.positions[0]!;
     this.positions[POINT_COUNT * 3 + 1] = this.positions[1]!;
     this.positions[POINT_COUNT * 3 + 2] = this.positions[2]!;
-    this.positionRevision++;
-    this.line.geometry.computeBoundingSphere();
-    this.line.geometry.computeBoundingBox();
     this.snap = {
       a: el.a,
       e: el.e,
@@ -278,10 +255,7 @@ export class OrbitLine {
     this.lastRegen = performance.now();
   }
 
-  // geometry/material を破棄する。このインスタンス固有(コンストラクタで new した)ため、
-  // 他の OrbitLine インスタンスと共有していない — 呼び出し後は再利用不可。
   dispose(): void {
-    this.line.geometry.dispose();
-    (this.line.material as THREE.Material).dispose();
+    this.curve.dispose();
   }
 }
