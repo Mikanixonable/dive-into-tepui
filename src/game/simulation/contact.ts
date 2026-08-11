@@ -43,9 +43,9 @@ function isFiniteAttractor(a: Attractor): boolean {
 }
 
 interface Candidate {
-  readonly a: GameEntity;
-  readonly b: GameEntity | Attractor;
-  readonly response: CollisionResponse;
+  a: GameEntity;
+  b: GameEntity | Attractor;
+  response: CollisionResponse;
 }
 
 // TOI(response.toi、prevState→state 区間内の割合)を接触時刻へ変換する。重なりフォールバック
@@ -107,9 +107,20 @@ function contactCellSize(all: readonly GameEntity[], working: ReadonlyMap<GameEn
 }
 
 export class ContactPhysics {
-  // earliestContact は近傍配列をループ中に消費するだけなので、ContactPhysics 単位で再利用
-  // する。Candidate や解決済み集合は要素参照を保持するが、この配列は保持しない。
+  // 接触解決は Simulator の substep ごとに同期的に完了するため、入力の抽出・作業集合を
+  // ContactPhysics 単位で再利用できる。配列の詰め直しは元の配列走査順をそのまま保つ。
+  private readonly participantScratch: GameEntity[] = [];
+  private readonly beltParticipantScratch: GameEntity[] = [];
+  private readonly otherScratch: GameEntity[] = [];
+  private readonly bodyScratch: Attractor[] = [];
+  private readonly allScratch: GameEntity[] = [];
+  private readonly attackerSetScratch = new Set<GameEntity>();
+  private readonly workingScratch = new Map<GameEntity, KinematicState>();
+  private readonly changedScratch = new Set<GameEntity>();
+  private readonly resolvedPairsScratch = new Set<string>();
   private readonly neighborScratch: number[] = [];
+  private readonly gridScratch = new SpatialGrid<number>(1);
+  private candidateScratch: Candidate | null = null;
 
   // 1 substep ぶんの接触解決。ワープゲート(canResolvePhysicalCollisions)は呼び出し側
   // (Simulator.advance)が判断してから呼ぶ。
@@ -119,9 +130,9 @@ export class ContactPhysics {
     attractors: readonly Attractor[],
     activeStage: Stage,
   ): void {
-    const participants = entities.filter(e => e.alive && e.collides && isFiniteParticipant(e));
-    const bodies = attractors.filter(isFiniteAttractor);
-    this.resolveInOrder(participants, [], bodies, simTime, activeStage);
+    this.collectParticipants(entities, this.participantScratch);
+    this.collectAttractors(attractors, this.bodyScratch);
+    this.resolveInOrder(this.participantScratch, [], this.bodyScratch, simTime, activeStage);
   }
 
   // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
@@ -135,12 +146,28 @@ export class ContactPhysics {
     activeStage: Stage,
   ): void {
     if (!player.alive || dt <= 1e-6) return;
-    const sections = player.belt.collisionSections(dt, player.state.r, player.state.v, player.att)
-      .filter(isFiniteParticipant);
-    const others = entities.filter(e => e.alive && e.collides && isFiniteParticipant(e));
-    const bodies = attractors.filter(isFiniteAttractor);
-    this.resolveInOrder(sections, others, bodies, simTime, activeStage);
+    this.beltParticipantScratch.length = 0;
+    for (const section of player.belt.collisionSections(dt, player.state.r, player.state.v, player.att)) {
+      if (isFiniteParticipant(section)) this.beltParticipantScratch.push(section);
+    }
+    this.collectParticipants(entities, this.otherScratch);
+    this.collectAttractors(attractors, this.bodyScratch);
+    this.resolveInOrder(this.beltParticipantScratch, this.otherScratch, this.bodyScratch, simTime, activeStage);
     player.belt.applyCollisionSections(dt, player.state.r, player.state.v, player.att);
+  }
+
+  private collectParticipants(source: readonly GameEntity[], out: GameEntity[]): void {
+    out.length = 0;
+    for (const entity of source) {
+      if (entity.alive && entity.collides && isFiniteParticipant(entity)) out.push(entity);
+    }
+  }
+
+  private collectAttractors(source: readonly Attractor[], out: Attractor[]): void {
+    out.length = 0;
+    for (const attractor of source) {
+      if (isFiniteAttractor(attractor)) out.push(attractor);
+    }
   }
 
   // attackers 同士・attackers×others・attackers×bodies の接触候補から TOI が最小のものを
@@ -159,16 +186,27 @@ export class ContactPhysics {
     activeStage: Stage,
   ): void {
     if (attackers.length === 0) return;
-    // others が無ければ配列を作り直さず attackers をそのまま使う。
-    const all = others.length === 0 ? attackers : [...attackers, ...others];
-    const attackerSet = new Set(attackers);
-    const working = new Map<GameEntity, KinematicState>();
+    // ベルト解決のように others がある場合だけ結合配列を使う。通常の substep では
+    // attackers 自身をそのまま使い、余分なコピーと走査を発生させない。
+    const all = others.length === 0 ? attackers : this.allScratch;
+    if (others.length !== 0) {
+      this.allScratch.length = 0;
+      this.allScratch.push(...attackers, ...others);
+    }
+    const attackerSet = this.attackerSetScratch;
+    attackerSet.clear();
+    for (const attacker of attackers) attackerSet.add(attacker);
+    const working = this.workingScratch;
+    working.clear();
     for (const e of all) working.set(e, e.state);
-    const changed = new Set<GameEntity>();
-    const resolvedPairs = new Set<string>();
+    const changed = this.changedScratch;
+    changed.clear();
+    const resolvedPairs = this.resolvedPairsScratch;
+    resolvedPairs.clear();
 
     const cellSize = contactCellSize(all, working);
-    const grid = new SpatialGrid<number>(cellSize);
+    const grid = this.gridScratch;
+    grid.reset(cellSize);
     for (let k = 0; k < all.length; k++) grid.insert(k, working.get(all[k]!)!.r);
 
     for (let i = 0; i < C.CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP; i++) {
@@ -178,6 +216,10 @@ export class ContactPhysics {
       resolvedPairs.add(pairKey(best.a, best.b));
     }
     for (const e of changed) e.state = working.get(e)!;
+    working.clear();
+    changed.clear();
+    resolvedPairs.clear();
+    attackerSet.clear();
   }
 
   // grid の27近傍から、少なくとも一方が attackerSet に属し、まだ resolvedPairs に無いペアと
@@ -206,7 +248,7 @@ export class ContactPhysics {
         if (!a.contactsWith(b, simTime) || !b.contactsWith(a, simTime)) continue;
         const response = computeEntityResponse(a, b, working);
         if (response !== null && (best === null || response.toi < best.response.toi)) {
-          best = { a, b, response };
+          best = this.setCandidate(a, b, response);
         }
       }
     }
@@ -217,11 +259,21 @@ export class ContactPhysics {
         if (!a.contactsWith(body, simTime)) continue;
         const response = computeAttractorResponse(a, body, working);
         if (response !== null && (best === null || response.toi < best.response.toi)) {
-          best = { a, b: body, response };
+          best = this.setCandidate(a, body, response);
         }
       }
     }
     return best;
+  }
+
+  private setCandidate(a: GameEntity, b: GameEntity | Attractor, response: CollisionResponse): Candidate {
+    if (this.candidateScratch === null) this.candidateScratch = { a, b, response };
+    else {
+      this.candidateScratch.a = a;
+      this.candidateScratch.b = b;
+      this.candidateScratch.response = response;
+    }
+    return this.candidateScratch;
   }
 
   // 候補を1件解決する: working 上の状態を補正後の値へ差し替え、反発が起きたときだけ両者へ
