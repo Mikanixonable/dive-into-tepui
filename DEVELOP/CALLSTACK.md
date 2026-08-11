@@ -451,7 +451,7 @@
     - markerManager.hide('nd') + hide('burn') // editMode または !player.alive、あるいは直近ノードが無い場合
     - markerManager.setPosition('nd') + setDirection('burn') // 直近ノードがある場合
   - debugTrajectoryLine.sync(debugTargets, editor.planDisplay.planFrame, simTime, ephemeris, fo) // ?debugLines=1 のときのみ実効。座標系は計画軌道の折れ線と同じ editor.planDisplay.planFrame。対象(既定: 自機+ターゲット)ごとに
-    history/predicted.history を1本の SampledLine へ bake + un-bake
+    history/predicted.history を1本の TrajectoryLine へ bake + un-bake
   - markerManager.resolveCollisions() // ラベル衝突緩和 + SVG 引き出し線の再描画。全マーカーが出揃った後に一度だけ
 
 ---

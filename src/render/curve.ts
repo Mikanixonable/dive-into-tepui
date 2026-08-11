@@ -5,6 +5,7 @@
 // THREE.Vector3/THREE.Camera と数値だけ。
 import * as THREE from 'three/webgpu';
 import { attribute, float } from 'three/tsl';
+import { metersPerPixelFromTanHalfFov } from '../physics/projection';
 
 export type CurveDash = { readonly dashSize: number; readonly gapSize: number };
 
@@ -63,8 +64,6 @@ const SCALE_REBAKE_RATIO = 1.2;
 // フェードの再計算を省く excludeSphere の移動量。球の半径に対するこの割合より小さく
 // 動いただけなら、フェード帯の中の各頂点の不透明度は視認できるほど変わらない。
 const EXCLUDE_SKIP_SHIFT_RATIO = 1 / 16;
-
-const MIN_DEPTH = 1e-6;
 
 function smoothstep(edge0: number, edge1: number, value: number): number {
   const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
@@ -204,8 +203,8 @@ export class Curve {
     const dx = this.scratchWorld.x - this.camPos.x;
     const dy = this.scratchWorld.y - this.camPos.y;
     const dz = this.scratchWorld.z - this.camPos.z;
-    const depth = Math.max(MIN_DEPTH, dx * this.camFwd.x + dy * this.camFwd.y + dz * this.camFwd.z);
-    return (2 * depth * this.camTanHalfFov) / window.innerHeight;
+    const depth = dx * this.camFwd.x + dy * this.camFwd.y + dz * this.camFwd.z;
+    return metersPerPixelFromTanHalfFov(this.camTanHalfFov, depth, window.innerHeight);
   }
 
   private pushBaked(x: number, y: number, z: number): void {
