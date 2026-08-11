@@ -93,7 +93,8 @@ export class SettingsPanel {
     const show = force !== undefined ? force : !wasOpen;
     if (show === wasOpen) return;
     this.panel.style.display = show ? 'block' : 'none';
-    this.modalController.setOpen('settings', show);
+    // ESCメニュー表示中も、背景のマップ切替とカメラ操作は受け付ける。
+    this.modalController.setOpen('settings', show, true);
     this.onSettingsOpenChange?.(show);
   }
 
