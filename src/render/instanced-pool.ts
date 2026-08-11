@@ -1,14 +1,9 @@
 // 同一ジオメトリ/マテリアルを共有する大量の個体を、1本の InstancedMesh でまとめて描画するプール。
 import * as THREE from 'three/webgpu';
 
-// three の InstanceNode は instanceMatrix の受け渡し方を InstancedMesh.count で選び、
-// 1000 以下だと uniform buffer 経由になる。この選択は最初の描画時に一度だけ行われ、
-// そのときの count でバッファ長が固定されるうえ、以後の書き換えも伝わらない。
-// count を毎フレーム変える設計はこの分岐を踏むと破綻するので、
-// count は容量に固定したまま動かさず、未使用の枠はゼロ行列で潰して描画対象から外す。
-// 容量自体もこの下限を超えるようにして、常に instanced attribute 側の経路へ乗せる。
-const MIN_CAPACITY = 1001;
-
+// three の InstanceNode は instanceMatrix の受け渡し方を InstancedMesh.count から決め、
+// その判断とバッファ長を最初の描画時に一度だけ確定する。よって count は容量に固定した
+// まま動かさず、未使用の枠はゼロ行列で潰して描画対象から外す。
 const PARKED = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
 // capacity 体までを1本の InstancedMesh で描く。beginFrame → push(...) → endFrame の順に
@@ -21,7 +16,7 @@ export class InstancedPool {
   private lastCount = 0;
 
   constructor(scene: THREE.Scene, geometry: THREE.BufferGeometry, material: THREE.Material, capacity: number, perInstanceColor = false) {
-    this.capacity = Math.max(capacity, MIN_CAPACITY);
+    this.capacity = capacity;
     this.mesh = new THREE.InstancedMesh(geometry, material, this.capacity);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     if (perInstanceColor) {
