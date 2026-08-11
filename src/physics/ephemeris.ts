@@ -121,14 +121,17 @@ export class Ephemeris {
     return this._phaseGeneration;
   }
 
-  // 天体ごとの中間結果と、attractorsAt の時刻キャッシュ。位相オフセットを差し替えたら
+  // 天体ごとの中間結果と、天体一覧を返す各メソッドの時刻キャッシュ。位相オフセットを差し替えたら
   // すべて破棄する。
   private readonly planetHelioCache = new Map<AttractorId, TimeRing<KinematicState>>();
   private readonly satelliteRelCache = new Map<AttractorId, TimeRing<KinematicState>>();
   private readonly allAttractorsCache = new TimeRing<readonly Attractor[]>();
+  private readonly gravityAttractorsCache = new TimeRing<readonly Attractor[]>();
 
   // registry の全天体 id、および attractorsAt が返す配列の順序(宣言順)。
   private readonly ids: readonly AttractorId[];
+  // mu が 0 でない天体の id(宣言順)。mu は時刻に依らないので構築時に確定する。
+  private readonly gravityIds: readonly AttractorId[];
   // registry の主星。0個なら null(輻射源・影の計算がそもそも無意味になる — sunDirAt/dynamics.ts の
   // 呼び出し側はその前提で無害なフォールバックを扱う)。
   readonly starId: AttractorId | null;
@@ -153,6 +156,7 @@ export class Ephemeris {
   ) {
     this.phaseOffsets = phaseOffsets;
     this.ids = Object.keys(registry);
+    this.gravityIds = this.ids.filter((id) => bodyDef(registry, id).mu !== 0);
     this.starId = starOf(registry);
     this.inertialFrame = this.frameOf(originId, null);
     this.frames = [
@@ -179,8 +183,8 @@ export class Ephemeris {
 
   // 保持する全時刻キャッシュを合算したヒット/ミス累計。
   get timeCacheStats(): TimeCacheStats {
-    let hits = this.allAttractorsCache.hits;
-    let misses = this.allAttractorsCache.misses;
+    let hits = this.allAttractorsCache.hits + this.gravityAttractorsCache.hits;
+    let misses = this.allAttractorsCache.misses + this.gravityAttractorsCache.misses;
     for (const ring of this.planetHelioCache.values()) {
       hits += ring.hits;
       misses += ring.misses;
@@ -205,6 +209,7 @@ export class Ephemeris {
     for (const ring of this.planetHelioCache.values()) ring.clear();
     for (const ring of this.satelliteRelCache.values()) ring.clear();
     this.allAttractorsCache.clear();
+    this.gravityAttractorsCache.clear();
   }
 
   // id の平均黄経の初期位相(未指定なら 0)。
@@ -519,13 +524,21 @@ export class Ephemeris {
     return { j2: model.j2, refRadius: model.refRadius, pole: orientation.axis, tesseral };
   }
 
-  // 指定時刻の全登録天体(registry の宣言順)。origin は原点に静止。重力積分・遮蔽判定・
-  // 表面接触・中心天体解決・積分刻み・基準天体解決が読む唯一の窓。
+  // 指定時刻の全登録天体(registry の宣言順)。origin は原点に静止。遮蔽判定・表面接触・
+  // 中心天体解決・積分刻み・基準天体解決が読む窓。
   // 同一 t には同一の配列参照が返るので、**呼び出し側はこの配列と要素を書き換えてはならない。**
   attractorsAt(t: number): readonly Attractor[] {
     const cached = this.allAttractorsCache.get(t);
     if (cached !== undefined) return cached;
     return this.allAttractorsCache.put(t, this.ids.map((id) => this.attractorAt(id, t)));
+  }
+
+  // 指定時刻の重力源天体(mu が 0 でないもの、registry の宣言順)。origin は原点に静止。
+  // 同一 t には同一の配列参照が返るので、**呼び出し側はこの配列と要素を書き換えてはならない。**
+  gravityAttractorsAt(t: number): readonly Attractor[] {
+    const cached = this.gravityAttractorsCache.get(t);
+    if (cached !== undefined) return cached;
+    return this.gravityAttractorsCache.put(t, this.gravityIds.map((id) => this.attractorAt(id, t)));
   }
 
   // 1天体ぶんの時刻 t での重力源表現。

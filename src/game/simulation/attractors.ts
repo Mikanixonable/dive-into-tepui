@@ -5,7 +5,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import type { Attractor, AttractorId } from '../../physics/attractor';
 import { SpatialGrid } from '../../physics/spatial-grid';
 import { Vec3 } from '../../physics/vec3';
-import { GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL, PLAN_ARC_MAX_SAMPLES } from '../const';
+import { GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL } from '../const';
 import type { EntityManager } from './entity-manager';
 import type { GameEntity } from '../game-entity/game-entity';
 
@@ -33,7 +33,7 @@ export function mergeAttractors(bodies: readonly Attractor[], dynamic: readonly 
 // mu !== 0 の一本で決まる — 表示だけの天体は寄与が恒等的にゼロなので加算の候補に載せない
 // (遮蔽・表面接触・中心天体の解決は別の問いで、そちらは Ephemeris の窓をそのまま使う)。
 export function gravityBodiesAt(ephemeris: Ephemeris, t: number): readonly Attractor[] {
-  return ephemeris.attractorsAt(t).filter((a) => a.mu !== 0);
+  return ephemeris.gravityAttractorsAt(t);
 }
 
 // 時刻 t におけるこのステップぶんの重力源一覧。
@@ -95,8 +95,10 @@ export function planAttractorProvider(
 
 const REVISION_MIX_PRIME = 16777619;
 const REVISION_SEED = 2166136261 | 0;
-// 予測列を持たない個体の寄与。量子化した時刻(0以上)と区別できる値。
+// 予測列の届き具合の3値。「持たない」を「届いていない」と混ぜないための区別。
 const NO_PREDICTION = -1;
+const PREDICTION_SHORT = 0;
+const PREDICTION_COVERS_PLAN = 1;
 
 // 計画の終端が未確定なフレームで、毎回異なる revision を作るための連番。
 let unresolvedPlanEndTick = 0;
@@ -113,12 +115,13 @@ function mixString(acc: number, value: string): number {
   return out;
 }
 
-// 予測先端を planEnd で頭打ちにし、quantum で量子化した整数。予測が計画の範囲を覆いきると
-// 値が固定される — 覆っている範囲の内側では、先端がさらに伸びても引ける状態は変わらない。
-function predictionTick(entity: GameEntity, planEnd: number, quantum: number): number {
+// その個体の予測列が計画の終端 planEnd まで届いているか。伸長の途中では値が動かず、
+// 届いた瞬間に一度だけ変わる — 伸びている間の変化を revision に載せると、覆い切りに
+// 何フレームもかかる長い表示期間で計画の再積分が毎フレーム走り続ける。
+function predictionCoverage(entity: GameEntity, planEnd: number): number {
   const tip = entity.predictedTrajectory?.state.t;
   if (tip === undefined) return NO_PREDICTION;
-  return Math.floor(Math.min(tip, planEnd) / quantum);
+  return tip >= planEnd ? PREDICTION_COVERS_PLAN : PREDICTION_SHORT;
 }
 
 // planAttractorProvider が返す内容を変えうる入力だけを畳み込んだ世代値。planEnd は計画の
@@ -139,19 +142,18 @@ export function planSourceRevision(
     return mixNumber(acc, ++unresolvedPlanEndTick);
   }
   // provider の出力に現れるのは、将来時刻の状態を答えられる個体 — predictsFuture が真のもの —
-  // だけなので、その id と予測先端を畳み込む。id が集合の顔ぶれの変化を、予測先端が各個体の
-  // 引ける時刻範囲の変化を表す。量子化の幅は区間の描画サンプル間隔に合わせる。
+  // だけなので、その id と予測の届き具合を畳み込む。id が集合の顔ぶれの変化を、届き具合が
+  // 各個体の引ける時刻範囲の変化を表す。
   const excluded = new Set(excludedEntityIds);
-  const quantum = (planEnd - simTime) / PLAN_ARC_MAX_SAMPLES;
   for (const e of entities.attractors()) {
     if (!e.predictsFuture) continue;
     acc = mixString(acc, e.id);
-    acc = mixNumber(acc, predictionTick(e, planEnd, quantum));
+    acc = mixNumber(acc, predictionCoverage(e, planEnd));
   }
   for (const e of entities.all()) {
     if (!e.alive || !e.predictsFuture || !e.collides || !(e.radius > 0) || excluded.has(e.id)) continue;
     acc = mixString(acc, e.id);
-    acc = mixNumber(acc, predictionTick(e, planEnd, quantum));
+    acc = mixNumber(acc, predictionCoverage(e, planEnd));
   }
   return acc;
 }
