@@ -113,6 +113,14 @@ export class Ephemeris {
   // (共有インスタンスを差し替えないため)。
   private phaseOffsets: Partial<Record<AttractorId, number>>;
 
+  private _phaseGeneration = 0;
+
+  // 位相オフセットを差し替えるたびに増える世代値。同じ時刻でも天体の位置が変わったことを、
+  // 結果をキャッシュしている呼び出し側が知るための値。
+  get phaseGeneration(): number {
+    return this._phaseGeneration;
+  }
+
   // 天体ごとの中間結果と、attractorsAt の時刻キャッシュ。位相オフセットを差し替えたら
   // すべて破棄する。
   private readonly planetHelioCache = new Map<AttractorId, TimeRing<KinematicState>>();
@@ -193,6 +201,7 @@ export class Ephemeris {
   // 時刻キャッシュはすべて破棄する。
   setPhaseOffsets(phaseOffsets: Partial<Record<AttractorId, number>>): void {
     this.phaseOffsets = phaseOffsets;
+    this._phaseGeneration++;
     for (const ring of this.planetHelioCache.values()) ring.clear();
     for (const ring of this.satelliteRelCache.values()) ring.clear();
     this.allAttractorsCache.clear();
