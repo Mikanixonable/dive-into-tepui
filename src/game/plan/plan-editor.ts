@@ -91,6 +91,15 @@ export class PlanEditor {
   readonly planDisplay: PlanDisplay;
   private readonly gizmo3d: PlanGizmo3D;
 
+  // 直近の update() が描いた折れ線が届いている終端時刻。一度も描いていなければ NaN。
+  get lastPlanEnd(): number { return this.planDisplay.path.timeRange()?.max ?? NaN; }
+
+  // 直近フレームに再積分した計画区間の本数。
+  get lastReintegratedArcs(): number { return this.planDisplay.path.lastReintegratedArcs; }
+
+  // 直近フレームに計画区間の再積分で回した積分step数の合計。
+  get lastPlanSteps(): number { return this.planDisplay.path.lastSteps; }
+
   private _editMode = false;
   get editMode(): boolean { return this._editMode; }
   setMapMode(open: boolean): void { this._editMode = open; }

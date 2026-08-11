@@ -137,6 +137,8 @@ export class PlanArc {
   // 非有限・天体衝突・ステップ数上限で積分を打ち切ったか。
   private truncated = false;
   private key: ComputeKey | null = null;
+  // 直近の再積分で回した積分step数。
+  lastSteps = 0;
 
   // 描画色・不透明度・renderOrder を指定して線を用意する。折れ線は常に破線で描く
   // (実際のパターンは sync() が毎フレーム上書きするので、ここでの初期値に意味は無い)。
@@ -178,11 +180,12 @@ export class PlanArc {
   // tracksLiveAnchor でなければ state0/end の同一性・値の変化で即座に再積分する
   // (ノードの Δv 編集は state0 の同一性変化で必ず拾われる)。apsisCenter は
   // periapsisPoint/apoapsisPoint を検出する基準天体 — null なら検出自体を行わない。
+  // 返り値は再積分したかどうか。
   update(
     state0: KinematicState, end: number, attractorProvider: PlanAttractorProvider,
     tracksLiveAnchor: boolean,
     apsisCenter: Attractor | null,
-  ): void {
+  ): boolean {
     const apsisCenterId = apsisCenter?.id ?? null;
     const inputChanged = this.key === null
       || this.key.sourceRevision !== attractorProvider.revision
@@ -204,6 +207,7 @@ export class PlanArc {
       this.integrate(state0, end, attractorProvider, apsisCenter);
       this.key = { state0, end, sourceRevision: attractorProvider.revision, apsisCenterId };
     }
+    return recompute;
   }
 
   // 直近に積分したサンプル列を折れ線メッシュへ反映する。
@@ -340,6 +344,7 @@ export class PlanArc {
       startSources = endSources;
     }
 
+    this.lastSteps = steps;
     this.trajectory = trajectory;
     this._samples = trajectory.samplesOldestFirst();
   }

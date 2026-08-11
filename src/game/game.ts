@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
 import * as C from './const';
 import { v3 } from '../physics/vec3';
+import type { PerfCounts, PerfMeter } from '../perf-meter';
 import { Player } from './player/player';
 import { Enemy } from './game-entity/enemy';
 import { CameraSystem } from './camera/camera-system';
@@ -52,7 +53,7 @@ import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
 import { Base } from './game-entity/base';
 import { strongestAttractor } from '../physics/attractor';
-import { mergeAttractors, planAttractorProvider } from './simulation/attractors';
+import { mergeAttractors, planAttractorProvider, planSourceRevision } from './simulation/attractors';
 import { FrameControls } from './frame-controls';
 import { systemMembersAt } from './celestial/body-visibility';
 import { MapVisibilityPolicy } from './celestial/map-visibility';
@@ -94,6 +95,8 @@ export class Game {
   // SaveBrowser は自分自身(Game)を必要とするため Game より後に作られる。ViewManager が
   // Docking を後から受け取るのと同じ遅延注入。
   private saveBrowser: SaveBrowser | null = null;
+  // PerfMeter は計測点である rAF ループ側の持ち物なので、同じく後から受け取る。
+  private perfMeter: PerfMeter | null = null;
 
   // 単独のオブジェクトでは決められないマーカー群。敵マーカーは「画面上で近接するものを
   // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とする。EqAN/EqDN は
@@ -404,6 +407,11 @@ export class Game {
     this.saveBrowser = browser;
   }
 
+  // 負荷確認ウィンドウを登録する。構築直後に一度だけ呼ぶ。
+  setPerfMeter(meter: PerfMeter): void {
+    this.perfMeter = meter;
+  }
+
   // ------------------------------------------------------------ update
 
   update(dtRaw: number): void {
@@ -580,11 +588,17 @@ export class Game {
   private updateMapPresentation(dt: number, afterRefresh?: () => void): void {
     const displayTime = this._window.displayTime;
     this._environment.update(displayTime, this.cameraSystem.overviewMode);
+    // revision は前フレームの計画終端を基準に畳み込む — 今フレームの終端は editor.update が
+    // これから決めるので、provider を組む時点ではまだ確定していない。
+    const excludedIds = this.player ? [this.player.id] : [];
     const planProvider = planAttractorProvider(
       this.ephemeris,
       this.entities,
-      this.player ? [this.player.id] : [],
-      this.simulator.simTime,
+      excludedIds,
+      planSourceRevision(
+        this.ephemeris, this.entities, excludedIds,
+        this.editor.plan.revision, this.editor.lastPlanEnd, this.simulator.simTime,
+      ),
     );
     this.editor.update(this.simulator.simTime, displayTime, planProvider);
     this.equatorNodeMarkers.update(
@@ -697,6 +711,7 @@ export class Game {
         this.saveBrowser?.open();
       }
     }
+    if (this.input.takeKey(K.togglePerfWindow)) this.perfMeter?.toggle();
   }
 
   // ------------------------------------------------------------------ sync
@@ -862,27 +877,37 @@ export class Game {
 
   // ------------------------------------------------------------------ debug
 
-  // ?perf=1 のデバッグ表示用エンティティ数。
-  perfCounts(): {
-    enemies: number; bullets: number; casings: number; debris: number;
-    predicted: number; predictComplete: number; predictDiscarded: number;
-    mapMode: boolean; mapItems: number; mapLabels: number;
-    simSubsteps: number; gravitySources: number; predictorSteps: number;
-  } {
+  // 負荷確認ウィンドウが読むエンティティ数・シミュレーション規模。集計と整形は PerfMeter 側。
+  perfCounts(): PerfCounts {
+    const attractorsCache = this._ephemeris.attractorsCacheStats;
+    const timeCache = this._ephemeris.timeCacheStats;
     return {
+      players: this.entities.players.length,
       enemies: this.entities.enemies.length,
       bullets: this.entities.bullets.length,
       casings: this.entities.casings.length,
       debris: this.entities.debris.length,
+      ammos: this.entities.ammos.length,
+      asteroids: this.entities.asteroids.length,
+      bases: this.entities.bases.length,
       predicted: this.predictor.tracked,
       predictComplete: this.predictor.finished,
       predictDiscarded: this.predictor.discarded,
+      predictorSteps: this.predictor.lastSteps,
       mapMode: this.cameraSystem.overviewMode,
       mapItems: this.cameraSystem.overviewMode ? this.mapPicker.pickables.length : 0,
       mapLabels: this.cameraSystem.overviewMode ? this.cameraSystem.focusMarkers.shownLabelCount : 0,
+      displayDurationSec: this._window.duration,
       simSubsteps: this.simulator.lastSubsteps,
+      orbitSteps: this.simulator.lastOrbitSteps,
       gravitySources: this.simulator.lastGravitySourceCount,
-      predictorSteps: this.predictor.lastSteps,
+      planArcs: this.editor.lastReintegratedArcs,
+      planSteps: this.editor.lastPlanSteps,
+      attractorsCacheHits: attractorsCache.hits,
+      attractorsCacheMisses: attractorsCache.misses,
+      timeCacheHits: timeCache.hits,
+      timeCacheMisses: timeCache.misses,
+      warp: this.simSpeedManager.simSpeed,
     };
   }
 }

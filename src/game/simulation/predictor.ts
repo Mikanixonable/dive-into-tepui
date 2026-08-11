@@ -13,6 +13,7 @@ import { ClassifiedAttractors, attractorsNearInto, classifyAttractors, predicted
 export class Predictor {
   private cursor = 0;
   private readonly nearbyAttractorsScratch: Attractor[] = [];
+  private readonly divergenceAttractorsScratch: Attractor[] = [];
 
   // 直近の update() で数えた予測列の状況(?perf=1 の表示用)。
   tracked = 0; // 予測対象の個体数
@@ -32,17 +33,18 @@ export class Predictor {
   update(simTime: number, player: Player | null, horizon: number, mode: 'map' | 'combat' = 'map'): void {
     const all = mode === 'map' ? this.entities.all() : player ? [player] : [];
 
-    // 距離判定は毎フレーム無条件で全対象に行う(二分探索1回ぶんの費用しかかからない)。
+    // 距離判定は毎フレーム無条件で予測対象すべてに行う(二分探索1回ぶんの費用しかかからない)。
     // 伸長を止めている間も実状態は進むので、乖離した列をここで落とさないと
     // 現在と無関係な軌道が描かれ続ける。
     this.tracked = 0;
     this.finished = 0;
     this.discarded = 0;
     this.lastSteps = 0;
-    const attractors = this.ephemeris.attractorsAt(simTime);
+    const classified = classifyAttractors(this.ephemeris.attractorsAt(simTime));
     for (const e of all) {
-      if (e.discardPredictionIfDiverged(simTime, attractors)) this.discarded++;
       if (!e.predictsFuture) continue;
+      const attractors = attractorsNearInto(e.state.r, classified, this.divergenceAttractorsScratch);
+      if (e.discardPredictionIfDiverged(simTime, attractors)) this.discarded++;
       this.tracked++;
       const reachedHorizon = e.predictedTrajectory !== null && e.predictedTrajectory.state.t > simTime + horizon;
       if (reachedHorizon || e.predictionTruncated) this.finished++;
@@ -61,12 +63,18 @@ export class Predictor {
       budget -= this.advanceBudget(player, playerBudget, simTime, horizon);
     }
 
+    // 1体あたりの取り分は残額を残り訪問数で割った値。1体が残額を丸ごと食うと、後続の個体は
+    // 予測列に最初のサンプルが積まれるステップ数(PREDICT_MIN_ENTITY_STEPS)にも届かないまま
+    // 次フレームの乖離判定で破棄され、作り直しを繰り返す。
     let visited = 0;
     while (budget > 0 && visited < all.length) {
       const e = all[(this.cursor + visited) % all.length]!;
       // player は上で優先処理済み。map の all にも player が含まれるので、ここで再処理すると
       // 自機だけが予算を二重に消費し、戦闘時は同じ予測線を2回伸ばすことになる。
-      if (e !== player) budget -= this.advanceBudget(e, budget, simTime, horizon);
+      if (e !== player) {
+        const share = Math.max(C.PREDICT_MIN_ENTITY_STEPS, Math.floor(budget / (all.length - visited)));
+        budget -= this.advanceBudget(e, Math.min(budget, share), simTime, horizon);
+      }
       visited++;
     }
     this.cursor = all.length > 0 ? (this.cursor + visited) % all.length : 0;
