@@ -73,7 +73,8 @@
   - [game.isPaused] 以降を実行せず return するポーズ経路 // 決着後の簡略経路より前。ポーズ中は決着後も完全に止まる
     - _window = resolveWindow() // displayTimeManager.window(simTime, currentOrbitPeriod())。4経路(ポーズ/未配置/簡略/通常)それぞれの先頭で1回ずつ確定し、以降このフレームの update フェーズ全体で共有する。以下 displayTime は _window.displayTime を指す
     - environment.update(displayTime, cameraSystem.overviewMode) // 小惑星帯・トロヤ群点群の位置再評価。updateMapPresentation の先頭、editor.update より前(4経路共通)
-    - editor.update(simTime, displayTime) // 計画折れ線の再積分とアプシスアイコン(mapPicker.refresh より前)
+    - planProvider = planAttractorProvider(ephemeris, entities, excludedIds, planSourceRevision(..., editor.plan.revision, editor.lastPlanEnd, simTime)) // editor.update より前に組む。今フレームの計画終端は editor.update がこれから決めるので、revision の量子化は前フレームの終端(PlanPath.timeRange().max)を基準にする
+    - editor.update(simTime, displayTime, planProvider) // 計画折れ線の再積分とアプシスアイコン(mapPicker.refresh より前)。planProvider.revision が前回と同じで起点・終端・基準天体も動いていない区間は再積分せず前回の積分結果を使う
     - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // 操作艦(計画があれば最終区間起点)・navTarget・targeter・生存中の全基地の対象を id で重複除去して EqAN/EqDN を求め直す。mapPicker.refresh より前(候補列に畳み込むため)
     - attractors = mergeAttractors(ephemeris.attractorsAt(simTime), entities.attractors()) // updateMapPresentation(4経路共通)の1回だけ求め、mapPicker.refresh の遮蔽判定・cameraSystem.update の frameTransformAt へ配る
     - mapPicker.refresh() // 天体ラベルと AN/DN を求め直してからこのフレームの被選択物一覧を組む

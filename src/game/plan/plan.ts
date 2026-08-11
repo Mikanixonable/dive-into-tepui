@@ -38,6 +38,13 @@ export interface TimeRange {
 export class Plan {
   private _nodes: KinematicState[] = [];
   private _anchor: KinematicState = kinematicState(0, v3(), v3());
+  private _revision = 0;
+
+  // 編集でノード列またはアンカーが実際に変化するたびに増える世代値。空の計画のアンカー追従は
+  // 編集ではないので変化しない。
+  get revision(): number {
+    return this._revision;
+  }
 
   // ノード列を実行時刻順で返す。
   get nodes(): readonly KinematicState[] {
@@ -75,6 +82,7 @@ export class Plan {
     const idx = this._nodes.filter((node) => node.t < postState.t).length;
     this._nodes.length = idx;
     this._nodes.push(postState);
+    this._revision++;
     return idx;
   }
 
@@ -82,6 +90,7 @@ export class Plan {
   removeNode(idx: number): void {
     if (!this._nodes[idx]) return;
     this._nodes.length = idx;
+    this._revision++;
   }
 
   // 実行時刻が t 以前のノードを実行済みとして取り除き、取り除いた件数を返す。
@@ -98,12 +107,15 @@ export class Plan {
     while (this._nodes[dropped] && this._nodes[dropped]!.t <= actualState.t) dropped++;
     this._nodes.splice(0, dropped);
     this._anchor = actualState;
+    this._revision++;
     return dropped;
   }
 
   // 全ノードを削除する。
   clear(): void {
+    if (this._nodes.length === 0) return;
     this._nodes.length = 0;
+    this._revision++;
   }
 
   // idx 番目のノードを置ける実行時刻の範囲。直前の状態(前のノード、無ければアンカー)の時刻から、
@@ -122,6 +134,7 @@ export class Plan {
     if (!this._nodes[idx]) return null;
     this.truncateAfter(idx);
     this._nodes[idx] = postState;
+    this._revision++;
     return postState;
   }
 

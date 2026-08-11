@@ -34,6 +34,10 @@ function newPhaseStats(): PhaseStats {
 const BUDGET_MS = 16.7;
 const BAR_CELLS = 8;
 
+// 窓を開く既定位置 [px]。マップビューの左ドック(left 12px + 幅 300px まで)の右隣。
+const DEFAULT_X = 324;
+const DEFAULT_Y = 12;
+
 // 所要時間を「████░░░░ 12.3ms」の形にする。
 function barText(ms: number): string {
   const filled = Math.max(0, Math.min(BAR_CELLS, Math.round((ms / BUDGET_MS) * BAR_CELLS)));
@@ -81,7 +85,7 @@ export class PerfMeter {
     this.resetStats(this.renderStats);
     this.frames = 0;
     this.lastFlush = performance.now();
-    this.win = new PropertyWindow(this.root, 12, 12, {
+    this.win = new PropertyWindow(this.root, DEFAULT_X, DEFAULT_Y, {
       title: '負荷',
       rows: this.rows,
       items: [],
