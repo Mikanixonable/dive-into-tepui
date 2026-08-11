@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { Attractor } from '../../physics/attractor';
 import { isBurnedUp } from '../../physics/atmosphere';
 import type { GameEntity } from './game-entity';
 import type { Contact } from '../simulation/contact';
@@ -10,7 +10,7 @@ import type { FloatingOrigin } from '../floating-origin';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
-import { OrbitLine } from '../../render/orbit-line';
+import { OrbitLine } from '../orbit-line';
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../physics/vec3';
 import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
@@ -309,9 +309,10 @@ export class Enemy extends Ship {
   }
 
   // オーバービュー時の非ターゲット背景描画用
-  syncBackgroundOrbitLine(show: boolean, fo: FloatingOrigin, attractors: readonly Attractor[]): void {
-    const center = strongestAttractor(this.state.r, attractors);
-    this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo);
+  syncBackgroundOrbitLine(
+    show: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
+  ): void {
+    this.syncOwnOrbitLine(this.orbitLine, show, fo, camera, attractors);
   }
 
   // セーブデータへ変換する。

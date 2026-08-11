@@ -2,7 +2,8 @@
 // (EntityManager への登録は呼び出し側の Stage0 が Stage.addEnemy 経由で行う)。
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
-import { add, len, norm, randSym, scale } from '../../../physics/vec3';
+import { randSym } from '../../../physics/random';
+import { add, len, norm, scale } from '../../../physics/vec3';
 import * as C from '../../const';
 import { Hud } from '../../hud/hud';
 import { Sfx } from '../../../audio/sfx';

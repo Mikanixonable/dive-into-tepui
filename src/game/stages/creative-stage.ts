@@ -30,7 +30,7 @@ import * as C from '../const';
 import { ElementsForm, LagrangeForm, ObjectType, ReferenceAttractor, ShipPlacerForm, ShipPlacerPanel } from '../creative/ship-placer-panel';
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
-import { OrbitLine } from '../../render/orbit-line';
+import { OrbitLine } from '../orbit-line';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 
 const DEG = Math.PI / 180;
@@ -101,9 +101,12 @@ export class CreativeStage extends Stage {
   }
 
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカー、基地マーカーを同期する。
-  sync(player: Player | null, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibility: MapVisibilityPolicy | null = null): void {
-    super.sync(player, fo, project, scale, displayTime, overviewMode, visibility);
-    this.syncPreview(fo, project);
+  sync(
+    player: Player | null, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number,
+    overviewMode: boolean, visibility: MapVisibilityPolicy | null, camera: THREE.Camera,
+  ): void {
+    super.sync(player, fo, project, scale, displayTime, overviewMode, visibility, camera);
+    this.syncPreview(fo, project, camera);
     this.syncBaseMarkers(project, scale, displayTime, overviewMode, visibility);
     this.placerPanel.setIssues(this.issues);
     this.logisticsPanel.style.display = overviewMode ? 'block' : 'none';
@@ -213,13 +216,13 @@ export class CreativeStage extends Stage {
   }
 
   // 配置プレビューの軌道線と ▷ マーカーを update が求めた値へ同期する。
-  private syncPreview(fo: FloatingOrigin, project: ProjectFn): void {
+  private syncPreview(fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera): void {
     if (!this.preview) {
-      this.previewOrbitLine.sync(null, fo);
+      this.previewOrbitLine.sync(null, fo, camera);
       this._markerManager.hide('creative-preview');
       return;
     }
-    this.previewOrbitLine.sync(this.preview.elements, fo, true);
+    this.previewOrbitLine.sync(this.preview.elements, fo, camera, true);
     this._markerManager.setPosition(
       'creative-preview', 'mk-self', ENTITY_GLYPH.preview, this.preview.pos, project,
       'PREVIEW', 1, '#00ffff', 0, false, false,

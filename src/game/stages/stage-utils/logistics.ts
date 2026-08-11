@@ -1,7 +1,8 @@
 // 補給(ammo)の投入・取り込み・デスポーンと、▣ AMMO マーカーの表示。
 import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../physics/attitude';
-import { add, len, lenSq, randSym, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
+import { randSym } from '../../../physics/random';
+import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
 import * as C from '../../const';
 import { Ammo } from '../../game-entity/ammo';
 import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';

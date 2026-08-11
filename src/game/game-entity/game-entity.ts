@@ -10,6 +10,7 @@ import { containingBody } from '../../physics/sphere-contact';
 import { isBurnedUp } from '../../physics/atmosphere';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
+import { OrbitLine } from '../orbit-line';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';
@@ -116,6 +117,15 @@ export class GameEntity {
       this._memoElements = orbitalElementsOf(this.state, center);
     }
     return this._memoElements;
+  }
+
+  // orbitLine を、このエンティティの現在位置で最も強く引く天体を中心とする軌道楕円に合わせる。
+  // show が false のときは非表示にする。
+  protected syncOwnOrbitLine(
+    orbitLine: OrbitLine, show: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
+  ): void {
+    const center = strongestAttractor(this.state.r, attractors);
+    orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo, camera);
   }
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする

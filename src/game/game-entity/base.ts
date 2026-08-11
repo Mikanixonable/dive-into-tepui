@@ -13,9 +13,9 @@ import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { BaseSaveData } from '../save-data';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { Attractor } from '../../physics/attractor';
 import type { FloatingOrigin } from '../floating-origin';
-import { OrbitLine } from '../../render/orbit-line';
+import { OrbitLine } from '../orbit-line';
 import * as C from '../const';
 
 // 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。
@@ -68,9 +68,10 @@ export class Base extends GameEntity {
 
   // マップ表示中だけ軌道楕円を出す(敵の背景軌道線と同じ判断: 戦闘ビューは近距離を見るための
   // 視点なので、拠点ほど遠い周回全体を示す線は不要)。
-  syncOrbitLine(show: boolean, fo: FloatingOrigin, attractors: readonly Attractor[]): void {
-    const center = strongestAttractor(this.state.r, attractors);
-    this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo);
+  syncOrbitLine(
+    show: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
+  ): void {
+    this.syncOwnOrbitLine(this.orbitLine, show, fo, camera, attractors);
   }
 
   // セーブデータへ変換する。格納艦は player.serialize() に委ねる。

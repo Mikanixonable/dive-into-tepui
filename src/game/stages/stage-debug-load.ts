@@ -9,7 +9,8 @@ import { Asteroid } from '../game-entity/asteroid';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { randomQuat } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
-import { add, mulberry32, v3, Vec3 } from '../../physics/vec3';
+import { mulberry32 } from '../../physics/random';
+import { add, v3, Vec3 } from '../../physics/vec3';
 
 export class StageDebugLoad extends Stage {
   static readonly id = 'debug-load' as const;
