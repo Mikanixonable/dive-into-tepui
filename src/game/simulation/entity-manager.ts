@@ -49,7 +49,7 @@ export class EntityManager {
 
   // all()/otherEntities() はSimulatorの各substepから何度も呼ばれる。配列の内容が変わった
   // ときだけ結合し、Predictor→attractors の入れ子呼び出しでも同じ安定配列を返す。
-  private collectionRevision = 0;
+  private _collectionRevision = 0;
   private cachedRevision = -1;
   private readonly cachedOtherEntities: GameEntity[] = [];
   private readonly cachedAllEntities: GameEntity[] = [];
@@ -57,6 +57,12 @@ export class EntityManager {
   // Targeter/Game は取得した配列を読み取り専用として扱う(filter/sort等で破壊しない)ため、
   // collectionRevision が変わるまで敵・自機の結合結果も再利用する。
   private combatTargetsRevision = -1;
+
+  // 保持するエンティティの顔ぶれの世代。追加・除去・prune のいずれでも増える。
+  get collectionRevision(): number {
+    return this._collectionRevision;
+  }
+
   private readonly cachedCombatTargets: CombatTarget[] = [];
   private readonly cachedCombatTargetsByExcludedPlayer = new Map<Player, CombatTarget[]>();
 
@@ -104,11 +110,11 @@ export class EntityManager {
   }
 
   private rebuildCombatTargetsIfNeeded(): void {
-    if (this.combatTargetsRevision === this.collectionRevision) return;
+    if (this.combatTargetsRevision === this._collectionRevision) return;
     this.cachedCombatTargets.length = 0;
     this.cachedCombatTargets.push(...this.enemies, ...this.players);
     this.cachedCombatTargetsByExcludedPlayer.clear();
-    this.combatTargetsRevision = this.collectionRevision;
+    this.combatTargetsRevision = this._collectionRevision;
   }
 
   // id で名指しされた自機を返す。見つからなければ null。
@@ -162,11 +168,11 @@ export class EntityManager {
   }
 
   private invalidateCaches(): void {
-    this.collectionRevision++;
+    this._collectionRevision++;
   }
 
   private rebuildCachesIfNeeded(): void {
-    if (this.cachedRevision === this.collectionRevision) return;
+    if (this.cachedRevision === this._collectionRevision) return;
     this.cachedOtherEntities.length = 0;
     this.cachedOtherEntities.push(
       ...this.enemies,
@@ -183,7 +189,7 @@ export class EntityManager {
     for (const e of this.cachedAllEntities) {
       if (e.alive && e.mu !== 0) this.cachedAttractors.push(e);
     }
-    this.cachedRevision = this.collectionRevision;
+    this.cachedRevision = this._collectionRevision;
   }
 
   // 自機以外の保持エンティティを1つの配列にまとめて返す。

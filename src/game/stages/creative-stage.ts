@@ -368,7 +368,12 @@ export class CreativeStage extends Stage {
         const node = ship.plan.firstNode();
         if (!node || node.t > simTime + 1e-9) continue;
         // 瞬間移動では、消化する最後のノードの絶対状態がそのまま到達状態になる(誤差が無い)。
-        const reached = ship.plan.nodes.filter((n) => n.t <= simTime).at(-1);
+        const nodes = ship.plan.nodes;
+        let reached: KinematicState | undefined;
+        for (let i = nodes.length - 1; i >= 0; i--) {
+          const n = nodes[i];
+          if (n && n.t <= simTime) { reached = n; break; }
+        }
         if (!reached) continue;
         ship.plan.consumeNodesUpTo(simTime, reached);
         ship.state = reached;
