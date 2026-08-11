@@ -8,7 +8,7 @@ import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';
 import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
-import { buildBarrelMesh, buildCasingMesh, buildDebrisMesh, buildMagazineFrame } from '../../render/ships';
+import { buildBarrelMesh, buildCasingMesh, buildMagazineFrame, DEBRIS_FRAGMENT_VARIANT_COUNT } from '../../render/ships';
 import { GameEntity } from './game-entity';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
@@ -20,10 +20,16 @@ export type DebrisKind =
   | { kind: 'magazineFrame'; }
   | { kind: 'casing'; bornSim: number; };
 
-// DebrisKind の種別に応じたメッシュを構築する。
+// DebrisKind の種別に応じたメッシュを構築する。fragment は InstancedPool 経由で描くため
+// ジオメトリを持たない — size だけを obj.scale へ焼き、どのバリアント/色を使うかは
+// DebrisPiece 自身が持つ(EntityManager.sync が variant ごとのプールへ push する)。
 function buildDebrisObj(debrisKind: DebrisKind): THREE.Object3D {
   switch (debrisKind.kind) {
-    case 'fragment': return buildDebrisMesh(debrisKind.accent, debrisKind.size);
+    case 'fragment': {
+      const obj = new THREE.Object3D();
+      obj.scale.setScalar(debrisKind.size);
+      return obj;
+    }
     case 'barrel': return buildBarrelMesh();
     case 'magazineFrame': return buildMagazineFrame();
     case 'casing': return buildCasingMesh();
@@ -33,6 +39,11 @@ function buildDebrisObj(debrisKind: DebrisKind): THREE.Object3D {
 export class DebrisPiece extends GameEntity {
   protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
+
+  // fragment のみ意味を持つ: どのバリアントジオメトリを使うか、InstancedPool の
+  // per-instance color へ渡す色。EntityManager.sync が variant ごとのプールへ push する。
+  readonly fragmentVariant: number;
+  readonly fragmentColor: THREE.Color | null;
 
   // DebrisKind に応じたメッシュ・質量で初期化する。radius は剛体接触半径。fragment は
   // 剛体接触に参加しない(排莢直後の薬莢を弾いてしまう/破片が跳ね回るのを避ける)。
@@ -45,10 +56,18 @@ export class DebrisPiece extends GameEntity {
     radius?: number,
     scene?: THREE.Scene,
   ) {
-    // 薬莢のみ InstancedPool 経由で描画するため、obj をシーンへ足さない。
-    super(state, buildDebrisObj(debrisKind), scene, att, undefined, debrisKind.kind !== 'casing');
+    // 薬莢・破片は InstancedPool 経由で描画するため、obj をシーンへ足さない。
+    super(state, buildDebrisObj(debrisKind), scene, att, undefined, debrisKind.kind !== 'casing' && debrisKind.kind !== 'fragment');
     this.radius = radius ?? 0;
     this.collides = debrisKind.kind !== 'fragment';
+    if (debrisKind.kind === 'fragment') {
+      this.fragmentVariant = Math.floor(Math.random() * DEBRIS_FRAGMENT_VARIANT_COUNT);
+      const dark = Math.random() < 0.30;
+      this.fragmentColor = new THREE.Color(dark ? C.COLOR_SHIP_DARK_HULL : debrisKind.accent);
+    } else {
+      this.fragmentVariant = -1;
+      this.fragmentColor = null;
+    }
     switch (debrisKind.kind) {
       case 'barrel': this.mass = C.BARREL_MASS; break;
       case 'magazineFrame': this.mass = C.MAGAZINE_FRAME_MASS; break;

@@ -4,6 +4,7 @@
 // src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
 import * as THREE from 'three/webgpu';
 import * as C from '../game/const';
+import { mulberry32 } from '../physics/vec3';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -340,10 +341,10 @@ export function casingBodyResources(): { geometry: THREE.BufferGeometry; materia
   return { geometry: casingGeometry!, material: casingMaterial! };
 }
 
-// 破片: 撃破時の飛散と被弾欠片に使う。style 引数で敵種別ごとの固有形状
-// (mech/crystal/ring/spike/汎用)を生成し、アクセントカラーで敵機のテーマカラーを継承する。
-
-type DebrisMaterial = (opts?: { roughness?: number; metalness?: number; flatShading?: boolean }) => THREE.MeshStandardMaterial;
+// 破片(fragment): 撃破時の飛散と被弾欠片に使う。InstancedPool で個体をまとめて描くため、
+// 個体ごとに乱数でジオメトリを作ることはしない — 固定シードの乱数で起動時に一度だけ
+// DEBRIS_FRAGMENT_VARIANT_COUNT 種類のジオメトリ(単位スケール)を焼き、色は
+// InstancedPool の per-instance color で個体ごとに与える(debrisFragmentResources)。
 
 // ジオメトリ・マテリアルの所有権をマークするヘルパー
 function withDispose(mesh: THREE.Mesh, ownsGeom = true, ownsMat = true): THREE.Mesh {
@@ -363,193 +364,63 @@ function displaceVertices(geo: THREE.BufferGeometry, map: (x: number, y: number,
   geo.computeVertexNormals();
 }
 
-// デブリ形状 'mech' のバリエーションをランダムに1つ生成する。
-function buildMechDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
-  const kind = Math.floor(Math.random() * 4);
-  if (kind === 0) {
-    // T字断面の構造桁材: 垂直に交差する 2 本の矩形桁を結合(ここでは近似としてBoxで包んだGroup)
-    const g2 = new THREE.Group();
-    const m1 = withDispose(new THREE.Mesh(new THREE.BoxGeometry(0.12, 1, 0.12), mat({ roughness: 0.50, metalness: 0.60 })));
-    g2.add(m1);
-    const m2 = withDispose(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.12, 0.12), mat({ roughness: 0.50, metalness: 0.60 })));
-    m2.position.y = 0.40;
-    g2.add(m2);
-    const wrapper = withDispose(new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), mat()));
-    wrapper.add(g2);
-    wrapper.scale.setScalar(size);
-    return wrapper;
-  } else if (kind === 1) {
-    // 歯車状(多角形に突起)
-    const N = 6;
-    const geo = new THREE.CylinderGeometry(1, 1, 0.20, N, 1, false);
-    displaceVertices(geo, (x, y, z) => {
-      const angle = Math.atan2(x, z);
-      const nearToothAngle = Math.round(angle / (Math.PI * 2 / N)) * (Math.PI * 2 / N);
-      const toothAmt = Math.cos((angle - nearToothAngle) * N / 2);
-      const scale2 = 1 + Math.max(0, toothAmt) * 0.5;
-      return [x * scale2, y, z * scale2];
-    });
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.45, metalness: 0.70 })));
-    mesh.scale.setScalar(size);
-    return mesh;
-  } else if (kind === 2) {
-    // 歪んだ外板
-    const geo = new THREE.BoxGeometry(1, 0.08, 0.6);
-    displaceVertices(geo, (x, y, z) => [x + (Math.random() - 0.5) * 0.2, y, z + (Math.random() - 0.5) * 0.15]);
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.60, metalness: 0.55 })));
-    mesh.scale.set(size * (1.2 + Math.random()), size * 0.9, size * (0.8 + Math.random() * 0.6));
-    return mesh;
-  } else {
-    const geo = new THREE.TorusGeometry(0.5, 0.12, 4, 8, Math.PI * (0.6 + Math.random() * 1.2));
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.40, metalness: 0.75 })));
-    mesh.scale.setScalar(size);
-    return mesh;
-  }
-}
+// 破片ジオメトリのバリアント本数。DebrisPiece がこの中から乱択して自分の形状とする。
+export const DEBRIS_FRAGMENT_VARIANT_COUNT = 18;
+// バリアント生成用の乱数シード(起動のたびに形が変わらないよう固定する)。
+const DEBRIS_FRAGMENT_SEED = 0xdeb71;
 
-// デブリ形状 'crystal' のバリエーションをランダムに1つ生成する。
-function buildCrystalDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
-  const kind = Math.floor(Math.random() * 3);
-  if (kind === 0) {
-    // 柱状の結晶
-    const profile = [
-      new THREE.Vector2(0, -1), new THREE.Vector2(0.5, -0.5), new THREE.Vector2(0.55, 0),
-      new THREE.Vector2(0.5, 0.5), new THREE.Vector2(0, 1),
-    ];
-    const geo = new THREE.LatheGeometry(profile, 6);
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.20, metalness: 0.10 })));
-    mesh.scale.set(size * (0.2 + Math.random() * 0.2), size * (0.6 + Math.random() * 0.6), size * (0.2 + Math.random() * 0.2));
-    return mesh;
-  } else if (kind === 1) {
-    // 歪んだ八面体
-    const geo = new THREE.OctahedronGeometry(1, 0);
-    displaceVertices(geo, (x, y, z) => [x * (0.6 + Math.random() * 0.8), y * (0.7 + Math.random() * 0.6), z * (0.6 + Math.random() * 0.8)]);
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.15, metalness: 0.10 })));
-    mesh.scale.setScalar(size);
-    return mesh;
-  } else {
-    // 円錐状の結晶片
-    const geo = new THREE.CylinderGeometry(0.8, 0, 0.3, 5);
-    displaceVertices(geo, (x, y, z) => [x * (0.8 + Math.random() * 0.6), y * (0.8 + Math.random() * 0.6), z * 1.5]);
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.25, metalness: 0.10 })));
-    mesh.scale.setScalar(size);
-    return mesh;
-  }
-}
-
-// デブリ形状 'ring' のバリエーションをランダムに1つ生成する。
-function buildRingDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
-  const kind = Math.floor(Math.random() * 3);
-  if (kind === 0) {
-    // 円弧状のリング
-    const arc = Math.PI * (0.4 + Math.random() * 1.2);
-    const geo = new THREE.TorusGeometry(1, 0.18, 4, 10, arc);
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.50, metalness: 0.60 })));
-    mesh.scale.setScalar(size);
-    return mesh;
-  } else if (kind === 1) {
-    // 歪んだ円盤
-    const geo = new THREE.CylinderGeometry(1, 1, 0.08, 8, 1);
-    displaceVertices(geo, (x, y, z) => [x + (Math.random() - 0.5) * 0.25, y, z + (Math.random() - 0.5) * 0.25]);
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.45, metalness: 0.65 })));
-    mesh.scale.set(size * (0.8 + Math.random() * 0.6), size * 0.6, size * (0.8 + Math.random() * 0.6));
-    return mesh;
-  } else {
-    // 筒状のバンド
-    const geo = new THREE.CylinderGeometry(0.7, 0.7, 0.40, 8, 1, true);
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.40, metalness: 0.70, flatShading: false })));
-    mesh.scale.setScalar(size);
-    return mesh;
-  }
-}
-
-// デブリ形状 'spike' のバリエーションをランダムに1つ生成する。
-function buildSpikeDebris(size: number, mat: DebrisMaterial): THREE.Mesh {
-  const kind = Math.floor(Math.random() * 3);
-  if (kind === 0) {
-    // 円錐状の棘
-    const geo = new THREE.ConeGeometry(0.35, 1 + Math.random() * 0.8, 5, 1);
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.30, metalness: 0.55 })));
-    mesh.scale.set(size, size * (1.5 + Math.random()), size);
-    return mesh;
-  } else if (kind === 1) {
-    // 歪んだ筒
-    const geo = new THREE.CylinderGeometry(0.2, 0.8, 1, 4);
-    displaceVertices(geo, (x, y, z) => [x * (0.5 + Math.random() * 0.8), y, z * (0.5 + Math.random() * 0.8)]);
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.35, metalness: 0.50 })));
-    mesh.scale.setScalar(size);
-    return mesh;
-  } else {
-    // 細長い針
-    const geo = new THREE.CylinderGeometry(0.08, 0.02, 1, 5, 1);
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.35, metalness: 0.50 })));
-    mesh.scale.set(size * 0.8, size * (3.0 + Math.random() * 2.0), size * 0.8);
-    return mesh;
-  }
-}
-
-// 汎用デブリ形状をランダムに1つ生成する。color は非破片(dark)判定込みの表示色。
-function buildGenericDebris(color: string | number, size: number, mat: DebrisMaterial): THREE.Mesh {
-  const kind = Math.random();
+// 破片ジオメトリを1つ、単位スケールで生成する。色は個体ごとに InstancedPool の
+// per-instance color が与えるため、ここでは決めない。size による最終的な大きさは
+// 呼び出し側が obj.scale へ一様倍率として与える。
+function buildDebrisFragmentGeometry(rand: () => number): THREE.BufferGeometry {
+  const kind = rand();
   if (kind < 0.22) {
     // 破損した外殻チャンク
-    const mesh = parseDebrisChunk();
-    // テンプレートの頂点バッファを共有したまま displaceVertices で書き換えると他インスタンスへ波及するため deep clone する
-    mesh.geometry = deepCloneGeometry(mesh.geometry);
-    mesh.userData.ownsGeometry = true;
-    displaceVertices(mesh.geometry, (x, y, z) => [x * (0.5 + Math.random() * 1.2), y * (0.5 + Math.random() * 1.2), z * (0.4 + Math.random() * 1.6)]);
-    mesh.scale.setScalar(size);
-    (mesh.material as THREE.MeshStandardMaterial).color.set(color);
-    return mesh;
+    const geo = deepCloneGeometry(parseDebrisChunk().geometry);
+    displaceVertices(geo, (x, y, z) => [x * (0.5 + rand() * 1.2), y * (0.5 + rand() * 1.2), z * (0.4 + rand() * 1.6)]);
+    return geo;
   } else if (kind < 0.42) {
     // 平板パネル
-    const mesh = parseDebrisPanel();
-    mesh.scale.set(size * (1.5 + Math.random() * 1.2), size * (0.06 + Math.random() * 0.08), size * (0.7 + Math.random() * 0.8));
-    (mesh.material as THREE.MeshStandardMaterial).color.set(color);
-    return mesh;
+    const geo = deepCloneGeometry(parseDebrisPanel().geometry);
+    geo.scale(1.5 + rand() * 1.2, 0.06 + rand() * 0.08, 0.7 + rand() * 0.8);
+    return geo;
   } else if (kind < 0.58) {
     // 構造ロッド
-    const mesh = parseDebrisRod();
-    mesh.scale.set(size * (0.8 + Math.random() * 0.4), size * (2.2 + Math.random() * 1.4), size * (0.8 + Math.random() * 0.4));
-    (mesh.material as THREE.MeshStandardMaterial).color.set(color);
-    return mesh;
+    const geo = deepCloneGeometry(parseDebrisRod().geometry);
+    geo.scale(0.8 + rand() * 0.4, 2.2 + rand() * 1.4, 0.8 + rand() * 0.4);
+    return geo;
   } else if (kind < 0.72) {
     // 歪んだ八面体
     const geo = new THREE.OctahedronGeometry(1, 0);
-    displaceVertices(geo, (x, y, z) => [x * (0.5 + Math.random() * 1.0), y * (0.5 + Math.random() * 1.0), z * (0.7 + Math.random() * 0.9)]);
-    const mesh = withDispose(new THREE.Mesh(geo, mat()));
-    mesh.scale.setScalar(size);
-    return mesh;
+    displaceVertices(geo, (x, y, z) => [x * (0.5 + rand() * 1.0), y * (0.5 + rand() * 1.0), z * (0.7 + rand() * 0.9)]);
+    return geo;
   } else if (kind < 0.86) {
     // 薄い歪んだ板
     const geo = new THREE.BoxGeometry(1, 1, 1);
-    displaceVertices(geo, (x, y, z) => [x + (Math.random() - 0.5) * 0.35, y + (Math.random() - 0.5) * 0.35, z * 0.12]);
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.70, metalness: 0.35 })));
-    mesh.scale.set(size * (1.2 + Math.random() * 1.0), size * (1.2 + Math.random() * 1.0), size * 0.12);
-    return mesh;
+    displaceVertices(geo, (x, y, z) => [x + (rand() - 0.5) * 0.35, y + (rand() - 0.5) * 0.35, z * 0.12]);
+    geo.scale(1.2 + rand() * 1.0, 1.2 + rand() * 1.0, 0.12);
+    return geo;
   } else {
     // 細い棒材
     const geo = new THREE.BoxGeometry(0.15, 1, 0.15);
-    const mesh = withDispose(new THREE.Mesh(geo, mat({ roughness: 0.55, metalness: 0.55 })));
-    mesh.scale.set(size * (0.8 + Math.random() * 0.4), size * (2.0 + Math.random() * 1.6), size * (0.8 + Math.random() * 0.4));
-    return mesh;
+    geo.scale(0.8 + rand() * 0.4, 2.0 + rand() * 1.6, 0.8 + rand() * 0.4);
+    return geo;
   }
 }
 
-// style に応じたデブリメッシュを1つ生成する(未指定時は汎用形状)。
-export function buildDebrisMesh(accent: string | number, size: number, style?: string): THREE.Mesh {
-  const dark = Math.random() < 0.30;
-  const color = dark ? C.COLOR_SHIP_DARK_HULL : accent;
+let debrisFragmentGeometries: THREE.BufferGeometry[] | null = null;
+let debrisFragmentMaterial: THREE.MeshStandardMaterial | null = null;
 
-  const mat: DebrisMaterial = (opts) =>
-    new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.65, metalness: 0.30, ...opts });
-
-  if (style === 'mech') return buildMechDebris(size, mat);
-  if (style === 'crystal') return buildCrystalDebris(size, mat);
-  if (style === 'ring') return buildRingDebris(size, mat);
-  if (style === 'spike') return buildSpikeDebris(size, mat);
-  // default: 汎用形状(複雑化)
-  return buildGenericDebris(color, size, mat);
+// 破片(fragment)全個体が共有するジオメトリ群(バリアント)と単一マテリアルを返す。
+// バリアントは初回呼び出し時に一度だけ構築する。
+export function debrisFragmentResources(): { geometries: readonly THREE.BufferGeometry[]; material: THREE.Material } {
+  if (!debrisFragmentGeometries) {
+    const rand = mulberry32(DEBRIS_FRAGMENT_SEED);
+    debrisFragmentGeometries = [];
+    for (let i = 0; i < DEBRIS_FRAGMENT_VARIANT_COUNT; i++) debrisFragmentGeometries.push(buildDebrisFragmentGeometry(rand));
+    debrisFragmentMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.65, metalness: 0.30 });
+  }
+  return { geometries: debrisFragmentGeometries, material: debrisFragmentMaterial! };
 }
 
 // 不定形の岩塊メッシュ(小惑星用)。二十面体を軸ごとに独立した比率でランダムに歪ませ、

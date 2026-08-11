@@ -12,7 +12,7 @@ import { Enemy } from '../game-entity/enemy';
 import { Bullet } from '../game-entity/bullet';
 import { Base } from '../game-entity/base';
 import { InstancedPool } from '../../render/instanced-pool';
-import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources } from '../../render/ships';
+import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
 import type { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { CombatTarget } from '../targeter';
@@ -35,16 +35,22 @@ export class EntityManager {
   private readonly bulletHaloPool: InstancedPool;
   private readonly plasmaPool: InstancedPool;
   private readonly casingPool: InstancedPool;
+  // 破片(fragment)はバリアントごとに geometry が異なるため、バリアント数だけプールを持つ。
+  // DebrisPiece.fragmentVariant が添字。
+  private readonly debrisFragmentPools: InstancedPool[];
 
   constructor(scene: THREE.Scene) {
     const bulletBody = bulletBodyResources();
     const bulletHalo = bulletHaloResources();
     const plasmaBody = plasmaBodyResources();
     const casingBody = casingBodyResources();
+    const debrisFragment = debrisFragmentResources();
     this.bulletBodyPool = new InstancedPool(scene, bulletBody.geometry, bulletBody.material, C.MAX_BULLETS * 3);
     this.bulletHaloPool = new InstancedPool(scene, bulletHalo.geometry, bulletHalo.material, C.MAX_BULLETS * 3);
     this.plasmaPool = new InstancedPool(scene, plasmaBody.geometry, plasmaBody.material, C.MAX_BULLETS * 3);
     this.casingPool = new InstancedPool(scene, casingBody.geometry, casingBody.material, C.MAX_CASINGS);
+    this.debrisFragmentPools = debrisFragment.geometries.map(
+      (geo) => new InstancedPool(scene, geo, debrisFragment.material, C.MAX_DEBRIS, true));
   }
 
   // all()/otherEntities() はSimulatorの各substepから何度も呼ばれる。配列の内容が変わった
@@ -240,8 +246,8 @@ export class EntityManager {
   }
 
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
-  // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢の
-  // 変換は各エンティティの obj に同期された後、InstancedPool へ push する。
+  // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
+  // 破片(fragment)の変換は各エンティティの obj に同期された後、InstancedPool へ push する。
   sync(fo: FloatingOrigin, displayTime: number): void {
     for (const e of this.otherEntities()) e.sync(fo, displayTime);
 
@@ -249,6 +255,7 @@ export class EntityManager {
     this.bulletHaloPool.beginFrame();
     this.plasmaPool.beginFrame();
     this.casingPool.beginFrame();
+    for (const pool of this.debrisFragmentPools) pool.beginFrame();
     for (const b of this.bullets) {
       if (!b.obj.visible) continue;
       if (b.type === 'plasma') {
@@ -262,10 +269,14 @@ export class EntityManager {
       this.bulletHaloPool.push(b.obj.children[1]!);
     }
     for (const c of this.casings) this.casingPool.push(c.obj);
+    for (const d of this.debris) {
+      if (d.kind === 'fragment') this.debrisFragmentPools[d.fragmentVariant]!.push(d.obj, d.fragmentColor!);
+    }
     this.bulletBodyPool.endFrame();
     this.bulletHaloPool.endFrame();
     this.plasmaPool.endFrame();
     this.casingPool.endFrame();
+    for (const pool of this.debrisFragmentPools) pool.endFrame();
   }
 
   // セーブデータロード時などに全エンティティを破棄して配列を空にする。
