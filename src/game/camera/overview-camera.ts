@@ -6,12 +6,15 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input/input';
 import { Viewpoint } from '../../physics/projection';
-import { ReferenceFrame, FrameDir, toFrameDir, toInertialDir } from '../../physics/frame';
+import { ReferenceFrame, FrameDir, frameDir, framePoint, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
+import { OrbitingId } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { qFromAxisAngle, qRotate } from '../../physics/attitude';
 import { MapPickable } from '../map-pick';
 import { Attractor } from '../../physics/attractor';
 import { bodyDef } from '../../physics/solar-system';
+import { FocusTarget } from './focus-target';
+import { OverviewCameraSaveData } from '../save-data';
 
 const WORLD_UP = v3(0, 1, 0);
 const OVERVIEW_CAMERA_FOV = 50;
@@ -45,29 +48,24 @@ export class OverviewCamera {
   // 最新の update 呼び出しが受け取った重力源一覧。reset/resetPan/cameraFrame setter は
   // フレームの外(入力ハンドラ)から呼ばれるため、update と同じ値をここから読む。
   private attractors: readonly Attractor[] = [];
-  private _focus: string;
-  private _focusPos: Vec3 | null = null;
+  private _focus: FocusTarget;
   private missingFocusFrames = 0;
   private lastResolvedFocus = v3();
 
-  get focus(): string { return this._focus; }
+  get focus(): FocusTarget { return this._focus; }
 
-  setFocus(id: string, resetPan = true): void {
-    this._focus = id;
-    this._focusPos = null;
-    this.missingFocusFrames = 0;
-    if (resetPan) this.resetPan();
-  }
-
-  setFocusPos(pos: Vec3, resetPan = true): void {
-    this._focus = '';
-    this._focusPos = pos;
+  // target が 'point'(座標系に焼き込んだ固定点)で frame が回転系なら、その天体の
+  // 公転に追随する固定点になる。
+  setFocusTarget(target: FocusTarget, resetPan = true): void {
+    this._focus = target;
     this.missingFocusFrames = 0;
     if (resetPan) this.resetPan();
   }
 
   clearFocusIf(id: string): void {
-    if (this._focus === id) this.setFocus(this.ephemeris.originId);
+    if (this._focus.kind === 'object' && this._focus.id === id) {
+      this.setFocusTarget({ kind: 'object', id: this.ephemeris.originId });
+    }
   }
 
   viewpoint: Viewpoint = {
@@ -85,7 +83,7 @@ export class OverviewCamera {
     private readonly ephemeris: Ephemeris,
   ) {
     this._cameraFrame = ephemeris.inertialFrame;
-    this._focus = ephemeris.originId;
+    this._focus = { kind: 'object', id: ephemeris.originId };
     const tf0 = this.ephemeris.frameTransformAt(this._cameraFrame, 0, []);
     this.offset_r = toFrameDir(tf0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST));
     this.pan_r = toFrameDir(tf0, v3());
@@ -125,8 +123,8 @@ export class OverviewCamera {
   // 現在のフォーカス対象がクランプ後も表面下にめり込まない最小注視距離。
   // フォーカスが天体でなければ通常の下限をそのまま使う。
   private get minDist(): number {
-    if (!(this._focus in this.ephemeris.registry)) return C.OVERVIEW_CAMERA_MIN_DIST;
-    return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, bodyDef(this.ephemeris.registry, this._focus).radius);
+    if (this._focus.kind !== 'object' || !(this._focus.id in this.ephemeris.registry)) return C.OVERVIEW_CAMERA_MIN_DIST;
+    return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, bodyDef(this.ephemeris.registry, this._focus.id).radius);
   }
 
   // カメラのロールのみを初期状態(ワールド上方)に戻す。
@@ -141,17 +139,20 @@ export class OverviewCamera {
   }
 
   // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は ECI 原点へ戻す。
-  private resolveFocus(candidates: readonly MapPickable[]): Vec3 {
-    if (this._focusPos) {
-      this.lastResolvedFocus = this._focusPos;
-      return this._focusPos;
+  // point は座標系が回っていれば ECI 座標が動くため、毎フレーム焼き直す。
+  private resolveFocus(candidates: readonly MapPickable[], simTime: number, attractors: readonly Attractor[]): Vec3 {
+    const focus = this._focus;
+    if (focus.kind === 'point') {
+      const tf = this.ephemeris.frameTransformAt(focus.frame, simTime, attractors);
+      this.lastResolvedFocus = toInertialPoint(tf, focus.point);
+      return this.lastResolvedFocus;
     }
-    if (this._focus === this.ephemeris.originId) {
+    if (focus.id === this.ephemeris.originId) {
       this.missingFocusFrames = 0;
       this.lastResolvedFocus = v3();
       return this.lastResolvedFocus;
     }
-    const candidate = candidates.find((c) => c.id === this._focus);
+    const candidate = candidates.find((c) => c.id === focus.id);
     if (candidate) {
       this.missingFocusFrames = 0;
       this.lastResolvedFocus = candidate.pos;
@@ -159,7 +160,7 @@ export class OverviewCamera {
     }
     this.missingFocusFrames++;
     if (this.missingFocusFrames >= 2) {
-      this.setFocus(this.ephemeris.originId);
+      this.setFocusTarget({ kind: 'object', id: this.ephemeris.originId });
       return v3();
     }
     return this.lastResolvedFocus;
@@ -170,8 +171,16 @@ export class OverviewCamera {
     return this._cameraFrame;
   }
 
-  // 切替の瞬間にカメラ視点(ECI)を跳ばせずに座標系を切り替える。
-  set cameraFrame(frame: ReferenceFrame) {
+  // 最後に resolveFocus が解決した注視点の ECI 位置。
+  get resolvedFocus(): Vec3 {
+    return this.lastResolvedFocus;
+  }
+
+  // カメラ視点の回転対象を切り替える。中心は常に ephemeris.originId — offset_r/pan_r/up_r は
+  // 方向(FrameDir)しか持たず原点移動の影響を受けないので、中心をどれにしても視点は変わらない。
+  // 切替の瞬間にカメラ視点(ECI)を跳ばせないよう、現在の座標系から新しい座標系へ変換し直す。
+  setCameraRotation(rotatingWith: OrbitingId | null): void {
+    const frame = this.ephemeris.frameOf(this.ephemeris.originId, rotatingWith);
     const from = this._cameraFrame;
     if (frame === from) return;
     const tfFrom = this.ephemeris.frameTransformAt(from, this.simTime, this.attractors);
@@ -198,7 +207,7 @@ export class OverviewCamera {
   ): void {
     this.simTime = simTime;
     this.attractors = attractors;
-    const focus = this.resolveFocus(candidates);
+    const focus = this.resolveFocus(candidates, simTime, attractors);
     const tf = this.ephemeris.frameTransformAt(this._cameraFrame, simTime, attractors);
     let offEci = toInertialDir(tf, this.offset_r);
     let panEci = toInertialDir(tf, this.pan_r);
@@ -250,5 +259,41 @@ export class OverviewCamera {
     this.up_r = toFrameDir(tf, upEci);
     this.offset_r = toFrameDir(tf, offEci);
     this.pan_r = toFrameDir(tf, panEci);
+  }
+
+  // offset_r/pan_r/up_r・視点の座標系・フォーカス対象をセーブデータへ書き出す。
+  serialize(): OverviewCameraSaveData {
+    const focus: OverviewCameraSaveData['focus'] = this._focus.kind === 'object'
+      ? { kind: 'object', id: this._focus.id }
+      : {
+        kind: 'point',
+        center: this._focus.frame.center,
+        rotatingWith: this._focus.frame.rotatingWith,
+        point: { x: this._focus.point.x, y: this._focus.point.y, z: this._focus.point.z },
+      };
+    return {
+      offset: { x: this.offset_r.x, y: this.offset_r.y, z: this.offset_r.z },
+      pan: { x: this.pan_r.x, y: this.pan_r.y, z: this.pan_r.z },
+      up: { x: this.up_r.x, y: this.up_r.y, z: this.up_r.z },
+      rotatingWith: this._cameraFrame.rotatingWith,
+      focus,
+    };
+  }
+
+  // serialize が書き出した状態をそのまま復元する。座標系は必ず ephemeris.frameOf 経由で解決する —
+  // ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
+  restore(d: OverviewCameraSaveData): void {
+    this._cameraFrame = this.ephemeris.frameOf(this.ephemeris.originId, d.rotatingWith);
+    this.offset_r = frameDir(d.offset.x, d.offset.y, d.offset.z);
+    this.pan_r = frameDir(d.pan.x, d.pan.y, d.pan.z);
+    this.up_r = frameDir(d.up.x, d.up.y, d.up.z);
+    const target: FocusTarget = d.focus.kind === 'object'
+      ? { kind: 'object', id: d.focus.id }
+      : {
+        kind: 'point',
+        frame: this.ephemeris.frameOf(d.focus.center, d.focus.rotatingWith),
+        point: framePoint(d.focus.point.x, d.focus.point.y, d.focus.point.z),
+      };
+    this.setFocusTarget(target, false);
   }
 }

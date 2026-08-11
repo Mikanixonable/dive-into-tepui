@@ -38,6 +38,13 @@ export interface TimeRange {
 export class Plan {
   private _nodes: KinematicState[] = [];
   private _anchor: KinematicState = kinematicState(0, v3(), v3());
+  private _revision = 0;
+
+  // 編集でノード列またはアンカーが実際に変化するたびに増える世代値。空の計画のアンカー追従は
+  // 編集ではないので変化しない。
+  get revision(): number {
+    return this._revision;
+  }
 
   // ノード列を実行時刻順で返す。
   get nodes(): readonly KinematicState[] {
@@ -51,7 +58,7 @@ export class Plan {
 
   // idx より後ろのノードをすべて捨てる。下流ノードは上流ノードの実行後状態を起点に凍結した
   // 絶対状態なので、上流が動いた時点で意味を失う。編集は必ずこれを通す。
-  private deleteFollowingNodes(idx: number): void {
+  private truncateAfter(idx: number): void {
     this._nodes.length = idx + 1;
   }
 
@@ -66,21 +73,16 @@ export class Plan {
     this._anchor = state;
   }
 
-  // アンカーを state へ無条件に差し替える。trackAnchor と違い後続ノードが残っていても効く —
-  // 実行済み区間の起点を「そのノードが本来あるべき理想値」ではなく「実際にそこへ到達した
-  // 状態」に置き換える用途(例: 動力飛行のバーンが計画どおりのΔvを達成できず、誤差を残した
-  // まま先頭ノードを消化した場合)。後続ノード自体は絶対状態のまま動かないので、以降の計画が
-  // ここで書き換わるわけではない。
-  overwriteAnchor(state: KinematicState): void {
-    this._anchor = state;
-  }
-
   // 噴射直後の絶対状態としてノードを追加し、その index を返す。実行時刻順の挿入位置より
-  // 後ろのノードは破棄されるので、追加したノードが常に末尾になる。
+  // 後ろのノードは破棄されるので、追加したノードが常に末尾になる。アンカー時刻以前は
+  // 計画の外なので受け付けず -1 を返す — そこへ置くと nodeTimeRange(0) の下限を割り、
+  // 「ノードは直前の状態より後」という不変条件が最初のノードで破れる。
   addNode(postState: KinematicState): number {
+    if (postState.t <= this._anchor.t) return -1;
     const idx = this._nodes.filter((node) => node.t < postState.t).length;
     this._nodes.length = idx;
     this._nodes.push(postState);
+    this._revision++;
     return idx;
   }
 
@@ -88,22 +90,32 @@ export class Plan {
   removeNode(idx: number): void {
     if (!this._nodes[idx]) return;
     this._nodes.length = idx;
+    this._revision++;
   }
 
-  // 実行時刻が t 以前のノードを実行済みとして取り除き、最後に取り除いたノードを新しい起点に据えて
-  // 返す。取り除くものが無ければ null。
-  dropNodesBefore(t: number): KinematicState | null {
+  // 実行時刻が t 以前のノードを実行済みとして取り除き、取り除いた件数を返す。
+  // 以降の計画は actualState — ノードが目指した理想値ではなく、実際にそこへ到達した状態 —
+  // を起点に描かれる。動力飛行のバーンは計画どおりの Δv を達成しきれないことがあり、その
+  // 誤差は消さずに以降の計画へ残さなければ、計画と実際の乖離が画面から読めなくなる。
+  consumeNodesUpTo(t: number, actualState: KinematicState): number {
     let dropped = 0;
     while (this._nodes[dropped] && this._nodes[dropped]!.t <= t) dropped++;
-    if (dropped === 0) return null;
-    this._anchor = this._nodes[dropped - 1]!;
+    if (dropped === 0) return 0;
+    // actualState の時刻は t より後になりうる(消化を知るのは、その時刻を過ぎてからになる)。
+    // 残るノードを追い越したまま起点に据えると「ノードは直前の状態より後」という不変条件が
+    // 破れ、先頭区間が負の長さになる。追い越した先のノードも消化済みとして扱う。
+    while (this._nodes[dropped] && this._nodes[dropped]!.t <= actualState.t) dropped++;
     this._nodes.splice(0, dropped);
-    return this._anchor;
+    this._anchor = actualState;
+    this._revision++;
+    return dropped;
   }
 
   // 全ノードを削除する。
   clear(): void {
+    if (this._nodes.length === 0) return;
     this._nodes.length = 0;
+    this._revision++;
   }
 
   // idx 番目のノードを置ける実行時刻の範囲。直前の状態(前のノード、無ければアンカー)の時刻から、
@@ -114,18 +126,23 @@ export class Plan {
     return { min: prev.t, max: prev.t + segmentDurationFrom(prev, attractors, displayDuration) };
   }
 
-  // ノードを新しい実行後状態へ移し、下流ノードを破棄する。時刻は nodeTimeRange の範囲内であること。
-  retimeNode(idx: number, postState: KinematicState): void {
-    if (!this._nodes[idx]) return;
-    this.deleteFollowingNodes(idx);
+  // idx 番目のノードを新しい実行後状態へ差し替え、下流ノードを破棄して、置いたノードを返す。
+  // 時刻を動かす場合、postState.t は nodeTimeRange(idx) の範囲内であること。
+  // ノードは不変オブジェクトなので編集は必ず別オブジェクトへの差し替えになる — 参照で
+  // ノードを追っている呼び出し側が追随できるよう、置いた結果を返す。
+  replaceNode(idx: number, postState: KinematicState): KinematicState | null {
+    if (!this._nodes[idx]) return null;
+    this.truncateAfter(idx);
     this._nodes[idx] = postState;
+    this._revision++;
+    return postState;
   }
 
-  // idx 番目のノードの実行後速度へワールド Δv を加え、下流ノードを破棄する。
-  applyNodeDv(idx: number, dvWorld: Vec3): void {
+  // idx 番目のノードの実行後速度へワールド Δv を加え、下流ノードを破棄して、置いたノードを返す。
+  applyNodeDv(idx: number, dvWorld: Vec3): KinematicState | null {
     const node = this._nodes[idx];
-    if (!node) return;
-    this.deleteFollowingNodes(idx);
-    this._nodes[idx] = kinematicState(node.t, node.r, add(node.v, dvWorld));
+    if (!node) return null;
+    this.truncateAfter(idx);
+    return this.replaceNode(idx, kinematicState(node.t, node.r, add(node.v, dvWorld)));
   }
 }

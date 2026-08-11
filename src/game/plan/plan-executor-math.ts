@@ -9,6 +9,12 @@ export function burnDurationFor(dv: number, accel: number): number {
   return accel > 0 ? dv / accel : Infinity;
 }
 
+// 総推力 totalThrust [N] と質量 mass [kg] から全開時の加速度 [m/s^2] を求める。
+// 質量が正でなければ加速度は定義できないので0。
+export function maxAccelOf(totalThrust: number, mass: number): number {
+  return mass > 0 ? totalThrust / mass : 0;
+}
+
 // ノード実行時刻 nodeT を挟んで対称に燃焼する場合の点火予定時刻 [s]。
 export function ignitionTimeFor(nodeT: number, dv: number, accel: number): number {
   return nodeT - burnDurationFor(dv, accel) / 2;

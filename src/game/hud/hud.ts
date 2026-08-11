@@ -1,23 +1,28 @@
 // DOM オーバーレイの HUD のシェル。トースト・ヒント・ヘルプの表示と、
 // root/svgOverlay の公開・ステータスパネル同期(panels)を担う。
-import { buildHudDom, syncHudModalState } from './dom';
+import { buildHudDom } from './dom';
 import { HudPanels } from './panel';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
+import type { OverlayLayers } from './overlay-layer';
+import type { ModalController } from './modal-controller';
 
 export class Hud {
   readonly root: HTMLElement;
+  readonly layers: OverlayLayers;
   readonly svgOverlay: SVGSVGElement;
+  readonly modalController: ModalController;
   readonly panels: HudPanels;
-  readonly settings = { showMapAmmo: false };
   private hintUntil = 0;
   private toastUntil = 0;
 
   // HUD の DOM を構築する。
   constructor() {
-    const { root, svgOverlay, els } = buildHudDom();
+    const { root, layers, svgOverlay, modalController, els } = buildHudDom();
     this.root = root;
+    this.layers = layers;
     this.svgOverlay = svgOverlay;
+    this.modalController = modalController;
     this.panels = new HudPanels(els);
   }
 
@@ -49,7 +54,7 @@ export class Hud {
     const e = document.getElementById('hud-help');
     if (e) {
       e.style.display = e.style.display === 'block' ? 'none' : 'block';
-      syncHudModalState();
+      this.modalController.setOpen('help', e.style.display === 'block');
     }
   }
 

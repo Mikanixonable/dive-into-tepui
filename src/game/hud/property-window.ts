@@ -2,16 +2,18 @@
 // ヘッダ(タイトル・サブタイトル・クリップボタン・✕ボタン)/ プロパティ行 / 操作項目の
 // 3段で構成される。表示専用で、プロパティの値をどう導出するかは呼び出し側の責務。
 // 複数存続できる想定のため ContextMenu と異なり呼び出しごとに個別のインスタンスを持つ。
-// #hud の子として置く(dom.ts の重なり順の帯に従う)ため、`#hud, #hud *` の margin/padding
+// #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import { ACCENT, ACCENT_RGB, ACCENT_SOFT, EDGE, SURFACE, TEXT as INK, FONT } from '../theme';
 import { CLICK_MOVE_THRESHOLD } from '../const';
 import { clampOverlayPosition, Point2 } from './layout';
 import { shortcutKeyLabel } from './shortcut-hint';
+import { bringToFront as bringOverlayToFront } from './overlay-layer';
+import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from './dom';
 
 const STYLE = `
 #hud .prop-window {
-  position: fixed; display: block; min-width: 200px; max-width: 280px; z-index: 12;
+  position: fixed; display: block; min-width: 200px; max-width: 280px;
   pointer-events: auto; background: ${SURFACE}; border: 1px solid ${EDGE};
   border-radius: 4px; overflow: hidden; font-size: 12px;
   font-family: ${FONT}; user-select: none;
@@ -48,6 +50,10 @@ const STYLE = `
   padding: 3px 12px; color: ${INK}; opacity: 0.6; cursor: pointer;
 }
 #hud .prop-window-row-toggle:hover { opacity: 1; color: ${ACCENT_SOFT}; }
+#hud .prop-window-row-group-toggle {
+  padding: 3px 12px; color: ${INK}; opacity: 0.6; cursor: pointer;
+}
+#hud .prop-window-row-group-toggle:hover { opacity: 1; color: ${ACCENT_SOFT}; }
 #hud .prop-window-items { border-top: 1px solid ${EDGE}; }
 #hud .prop-window-item {
   padding: 9px 14px; color: ${INK}; cursor: pointer; border-bottom: 1px solid ${EDGE};
@@ -56,10 +62,21 @@ const STYLE = `
 #hud .prop-window-item:hover, #hud .prop-window-item:active {
   background: rgba(${ACCENT_RGB}, 0.18); color: ${ACCENT_SOFT};
 }
+#hud .prop-window-item.selected {
+  color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.1);
+}
+#hud .prop-window-item.selected::before { content: '▪ '; }
 `;
 
 let styleInjected = false;
 // ウィンドウのスタイルシートを document.head へ一度だけ挿入する。
+// 行グループ見出しの文字列を組む。
+function groupToggleLabel(name: string, rowCount: number, expanded: boolean): string {
+  return expanded
+    ? `${COLLAPSE_EXPANDED_GLYPH} ${name}`
+    : `${COLLAPSE_COLLAPSED_GLYPH} ${name} (${rowCount})`;
+}
+
 function ensureStyle(): void {
   if (styleInjected) return;
   styleInjected = true;
@@ -74,12 +91,17 @@ export interface PropertyRow {
   readonly value: string;
   // 立てると「詳細」トグルの下に畳まれ、既定では隠れる。
   readonly collapsible?: boolean;
+  // 指定すると同名の行同士がグループ見出しの下にまとめられ、既定では畳まれる。
+  // 描画順は rows 中でその名前が最初に現れた順。
+  readonly group?: string;
 }
 
 export interface PropertyWindowItem<A extends string = string> {
   readonly label: string;
   readonly act: A;
   readonly shortcut?: string;
+  readonly selected?: boolean;
+  readonly keepOpen?: boolean;
 }
 
 export interface PropertyWindowContent<A extends string = string> {
@@ -108,14 +130,17 @@ export class PropertyWindow<A extends string = string> {
   private lastSubtitle: string | undefined | typeof PropertyWindow.UNSET = PropertyWindow.UNSET;
   // 前フレームに描画した行の値。同じ値なら DOM に触れない差分更新のための記録。
   private lastRowValues = new Map<string, string>();
+  // 前フレームの行構成(key・group・collapsible の並び)。DOM 組み直しの要否判定に使う。
+  private lastRowShapeKey = '';
   private collapsibleContainerEl: HTMLDivElement | null = null;
   private toggleEl: HTMLDivElement | null = null;
   private collapsibleExpanded = false;
+  // グループ名ごとの開閉状態。syncRows の再構築をまたいで保つ。
+  private readonly groupExpanded = new Map<string, boolean>();
   // 前回描画した操作項目の直列化(act/label/shortcut)。同じなら DOM を組み直さない。
   private lastItemsKey = '';
   private _clipped = false;
   private disposed = false;
-  private readonly rootEl: HTMLElement;
   private readonly renameCallback: ((name: string) => void) | null;
   private renaming = false;
 
@@ -127,7 +152,9 @@ export class PropertyWindow<A extends string = string> {
   private readonly onOutsidePointerDown: (e: PointerEvent) => void;
   private readonly onResize: () => void;
 
-  onSelect: ((act: A) => void) | null = null;
+  // keepOpen はクリックした項目自身の PropertyWindowItem.keepOpen — 呼び出し側はこれを見て
+  // 自動クローズを抑制するかを判断する(クリップ状態は別に呼び出し側が持つ)。
+  onSelect: ((act: A, keepOpen: boolean) => void) | null = null;
   // ✕ ボタンで閉じられた(dispose 済み)ことを呼び出し側の管理台帳へ知らせる。
   onClose: (() => void) | null = null;
   // ウィンドウ外での pointerdown を通知するのみで、閉じる/閉じないの判断は呼び出し側が行う。
@@ -141,7 +168,6 @@ export class PropertyWindow<A extends string = string> {
   // グローバルリスナを登録する。
   constructor(root: HTMLElement, clientX: number, clientY: number, content: PropertyWindowContent<A>) {
     ensureStyle();
-    this.rootEl = root;
     this.el = document.createElement('div');
     this.el.className = 'prop-window';
 
@@ -221,6 +247,7 @@ export class PropertyWindow<A extends string = string> {
     this.syncRows(content.rows);
     this.syncItems(content.items);
     this.moveTo(clientX, clientY);
+    this.bringToFront();
   }
 
   // タイトル・サブタイトルを変化があった要素だけ差分更新する。
@@ -276,20 +303,22 @@ export class PropertyWindow<A extends string = string> {
   // 操作項目の集合・ラベル・ショートカットが変わったときだけ DOM を組み直す。クリップ済み
   // ウィンドウでは可変な状態(操作対象か等)に応じて呼び出し側から毎フレーム渡されうる。
   syncItems(items: readonly PropertyWindowItem<A>[]): void {
-    const key = items.map((it) => `${it.act} ${it.label} ${it.shortcut ?? ''}`).join('');
+    const key = items.map((it) => `${it.act} ${it.label} ${it.shortcut ?? ''} ${it.selected ?? ''} ${it.keepOpen ?? ''}`).join('|');
     if (key === this.lastItemsKey) return;
     this.lastItemsKey = key;
     this.itemsEl.innerHTML = '';
     for (const it of items) {
       const row = document.createElement('div');
       row.className = 'prop-window-item';
+      row.classList.toggle('selected', it.selected === true);
       row.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
       row.dataset['act'] = it.act;
       row.dataset['shortcut'] = it.shortcut ?? '';
+      row.dataset['keepOpen'] = it.keepOpen === true ? '1' : '';
       row.addEventListener('click', (e) => {
         // 外側 pointerdown 検出のキャプチャリスナへ伝播しないようにする。
         e.stopPropagation();
-        this.onSelect?.(it.act);
+        this.onSelect?.(it.act, it.keepOpen === true);
       });
       this.itemsEl.appendChild(row);
     }
@@ -305,7 +334,7 @@ export class PropertyWindow<A extends string = string> {
       if (item.dataset['shortcut'] === e.key) {
         e.stopImmediatePropagation();
         e.preventDefault();
-        this.onSelect?.(item.dataset['act'] as A);
+        this.onSelect?.(item.dataset['act'] as A, item.dataset['keepOpen'] === '1');
         return;
       }
     }
@@ -328,53 +357,93 @@ export class PropertyWindow<A extends string = string> {
     this.lastRowValues.set(r.key, r.value);
   }
 
-  // プロパティ行の値だけを毎フレーム差分更新する。行集合(key の並び)が変わった場合のみ
-  // 行 DOM 全体を組み直す — 操作項目・ヘッダのリスナには触れないので副作用はない。
-  // collapsible な行は末尾の「詳細」トグルの下にまとめ、開閉状態はウィンドウが自分で持つ。
+  // プロパティ行の値だけを毎フレーム差分更新する。行構成(key・group・collapsible の並び)が
+  // 変わった場合のみ行 DOM 全体を組み直す — 操作項目・ヘッダのリスナには触れないので副作用はない。
+  // 描画順は「group を持つ行(グループ見出し単位、初出順)」→「無印の行」→「collapsible な行
+  // (末尾の「詳細」トグルの下)」。グループ・詳細トグルの開閉状態はウィンドウが自分で持つ。
   syncRows(rows: readonly PropertyRow[]): void {
-    const sameShape =
-      rows.length === this.lastRowValues.size && rows.every((r) => this.lastRowValues.has(r.key));
-    if (!sameShape) {
-      this.rowsEl.innerHTML = '';
-      this.lastRowValues.clear();
-      this.collapsibleContainerEl = null;
-      this.toggleEl = null;
-      const collapsible = rows.filter((r) => r.collapsible);
+    const shapeKey = rows.map((r) => `${r.key}${r.group ?? ''}${r.collapsible ?? ''}`).join('');
+    if (shapeKey === this.lastRowShapeKey) {
       for (const r of rows) {
-        if (!r.collapsible) this.appendRowEl(this.rowsEl, r);
+        if (this.lastRowValues.get(r.key) === r.value) continue;
+        this.lastRowValues.set(r.key, r.value);
+        const valueEl = this.rowsEl.querySelector<HTMLElement>(
+          `.prop-window-row[data-key="${r.key}"] .prop-window-row-value`,
+        );
+        if (valueEl) valueEl.textContent = r.value;
       }
-      if (collapsible.length > 0) {
-        const toggle = document.createElement('div');
-        toggle.className = 'prop-window-row-toggle';
-        toggle.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.setCollapsibleExpanded(!this.collapsibleExpanded);
-        });
-        this.rowsEl.appendChild(toggle);
-        this.toggleEl = toggle;
-        const container = document.createElement('div');
-        for (const r of collapsible) this.appendRowEl(container, r);
-        this.rowsEl.appendChild(container);
-        this.collapsibleContainerEl = container;
-        this.syncToggleLabel(collapsible.length);
-        container.style.display = this.collapsibleExpanded ? '' : 'none';
-      }
-      this.reclamp();
       return;
     }
+    this.lastRowShapeKey = shapeKey;
+    this.rowsEl.innerHTML = '';
+    this.lastRowValues.clear();
+    this.collapsibleContainerEl = null;
+    this.toggleEl = null;
+
+    const groupNames: string[] = [];
+    const groupRows = new Map<string, PropertyRow[]>();
+    const plainRows: PropertyRow[] = [];
+    const collapsibleRows: PropertyRow[] = [];
     for (const r of rows) {
-      if (this.lastRowValues.get(r.key) === r.value) continue;
-      this.lastRowValues.set(r.key, r.value);
-      const valueEl = this.rowsEl.querySelector<HTMLElement>(
-        `.prop-window-row[data-key="${r.key}"] .prop-window-row-value`,
-      );
-      if (valueEl) valueEl.textContent = r.value;
+      if (r.group !== undefined) {
+        let list = groupRows.get(r.group);
+        if (!list) { list = []; groupRows.set(r.group, list); groupNames.push(r.group); }
+        list.push(r);
+      } else if (r.collapsible) {
+        collapsibleRows.push(r);
+      } else {
+        plainRows.push(r);
+      }
     }
+
+    for (const name of groupNames) this.appendGroupEl(name, groupRows.get(name) ?? []);
+    for (const r of plainRows) this.appendRowEl(this.rowsEl, r);
+    if (collapsibleRows.length > 0) {
+      const toggle = document.createElement('div');
+      toggle.className = 'prop-window-row-toggle';
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.setCollapsibleExpanded(!this.collapsibleExpanded);
+      });
+      this.rowsEl.appendChild(toggle);
+      this.toggleEl = toggle;
+      const container = document.createElement('div');
+      for (const r of collapsibleRows) this.appendRowEl(container, r);
+      this.rowsEl.appendChild(container);
+      this.collapsibleContainerEl = container;
+      this.syncToggleLabel(collapsibleRows.length);
+      container.style.display = this.collapsibleExpanded ? '' : 'none';
+    }
+    this.reclamp();
+  }
+
+  // 1グループ分の見出しボタンと行コンテナを rowsEl へ足す。開閉状態は groupExpanded に
+  // 名前で記録し、既定は畳んだ状態(未登録なら false)。
+  private appendGroupEl(name: string, rows: readonly PropertyRow[]): void {
+    const expanded = this.groupExpanded.get(name) ?? false;
+    const toggle = document.createElement('div');
+    toggle.className = 'prop-window-row-group-toggle';
+    toggle.textContent = groupToggleLabel(name, rows.length, expanded);
+    const container = document.createElement('div');
+    container.style.display = expanded ? '' : 'none';
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const next = !(this.groupExpanded.get(name) ?? false);
+      this.groupExpanded.set(name, next);
+      toggle.textContent = groupToggleLabel(name, rows.length, next);
+      container.style.display = next ? '' : 'none';
+      this.reclamp();
+    });
+    this.rowsEl.appendChild(toggle);
+    for (const r of rows) this.appendRowEl(container, r);
+    this.rowsEl.appendChild(container);
   }
 
   private syncToggleLabel(count: number): void {
     if (!this.toggleEl) return;
-    this.toggleEl.textContent = this.collapsibleExpanded ? '▲ 詳細を隠す' : `▼ 詳細を表示 (${count})`;
+    this.toggleEl.textContent = this.collapsibleExpanded
+      ? `${COLLAPSE_EXPANDED_GLYPH} 詳細を隠す`
+      : `${COLLAPSE_COLLAPSED_GLYPH} 詳細を表示 (${count})`;
   }
 
   private setCollapsibleExpanded(expanded: boolean): void {
@@ -396,9 +465,9 @@ export class PropertyWindow<A extends string = string> {
     this.onClipChange?.(clipped);
   }
 
-  // DOM 順を末尾へ動かして最前面にする(z-index は増やさない)。
+  // window レイヤ内で最前面にする。
   bringToFront(): void {
-    this.rootEl.appendChild(this.el);
+    bringOverlayToFront(this.el);
   }
 
   // 現在位置を要求座標としてビューポート内へクランプし直す。内容の変化でサイズが伸びた

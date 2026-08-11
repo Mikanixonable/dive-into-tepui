@@ -3,7 +3,7 @@
 // update() で確定させる。エッジトリガは先着順の消費モデルで、
 // take* の handler が true を返したイベントはキューから取り除かれる。
 import { CLICK_MOVE_THRESHOLD } from '../const';
-import { CTRL_GUARD_KEYS, KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
+import { KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
 
 export interface MouseDelta {
   dx: number;
@@ -78,9 +78,6 @@ export class Input {
       // Space スクロール・矢印キーのページスクロールと、割り当ての無い Tab による
       // フォーカス移動(ゲームが操作不能になる)を抑止する
       if (e.code === FOCUS_GUARD_CODE || SCROLL_GUARD_KEYS.some((k) => matchesCode(k, e.code))) {
-        e.preventDefault();
-      }
-      if (e.ctrlKey && CTRL_GUARD_KEYS.some((k) => k.code === e.code)) {
         e.preventDefault();
       }
       if (!e.repeat) this.pendingPresses.push(e.code);

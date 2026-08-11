@@ -1,5 +1,8 @@
-import { hudDock } from './hud/dom';
+import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, buildCollapseToggle, hudDock, type CollapseToggleLabels } from './hud/dom';
+import { BodyClass, bodyClassOf } from './celestial/body-class';
+import type { CelestialRegistry } from '../physics/solar-system';
 import { MapPickable, MapPickKind } from './map-pick';
+import { LAGRANGE_ID } from './hud/object-groups';
 
 const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
   { kind: 'body', label: '天体' },
@@ -12,42 +15,182 @@ const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
 interface Section {
   readonly header: HTMLElement;
   readonly body: HTMLElement;
-  readonly rows: Map<string, HTMLElement>;
+  readonly rows: Map<string, RowNode>;
   expanded: boolean;
 }
 
+type ObjectListFilter = 'system' | Exclude<BodyClass, 'star'>;
+
+const FILTERS: readonly (readonly [ObjectListFilter, string])[] = [
+  ['planet', '惑星'],
+  ['satellite', '衛星'],
+  ['dwarf', '準惑星'],
+  ['smallBody', '小天体'],
+  ['system', '天体以外'],
+];
+
+// 自艦からこの距離 [m] 以内の対象だけを残す「近傍」フィルタのしきい値(3000万km)。
+const NEARBY_THRESHOLD_M = 3e10;
+
+// このパネル自身の折りたたみトグルの見た目。
+const COLLAPSE_LABELS: CollapseToggleLabels = {
+  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
+  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
+  expandedTitle: '軌道オブジェクト一覧を閉じる',
+  collapsedTitle: '軌道オブジェクト一覧を開く',
+};
+
+type ObjectListSort = 'distance' | 'name';
+
+const SORTS: readonly (readonly [ObjectListSort, string])[] = [
+  ['distance', '近さ'],
+  ['name', '名前'],
+];
+
+// 1件ぶんの行 + その子を畳めるトグル区画。子を持たない行(自艦/敵/弾薬/基地、および
+// 子のない天体)でも toggle/childrenContainer 自体は生成しておき、可視性だけ切り替える
+// (子の有無はフレームごとに変わりうるため、生成を後から差し込むより組み替えが少ない)。
+interface RowNode {
+  readonly row: HTMLElement;
+  readonly toggle: HTMLElement;
+  readonly label: HTMLElement;
+  readonly detail: HTMLElement;
+  readonly childrenContainer: HTMLElement;
+  readonly children: Map<string, RowNode>;
+  expanded: boolean;
+}
+
+// parentOf の親子関係から、items を「直下の子」id 別に束ねる。
+function childrenOfMap(items: readonly MapPickable[], parentOf: ReadonlyMap<string, string>): Map<string, MapPickable[]> {
+  const map = new Map<string, MapPickable[]>();
+  for (const item of items) {
+    const parent = parentOf.get(item.id);
+    if (parent === undefined) continue;
+    const list = map.get(parent);
+    if (list) list.push(item); else map.set(parent, [item]);
+  }
+  return map;
+}
+
 // マップビュー右部に常設の軌道オブジェクト一覧ウィンドウ。種別ごとの区画にタブ見出しで
-// 開閉し、行クリックで onSelect に id を渡す。
+// 開閉し、行クリックで onSelect に id を渡す。天体区画は衛星・ラグランジュ点を親の下の
+// トグル子メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
 export class ObjectListPanel {
   onSelect: ((id: string) => void) | null = null;
+  onFocus: ((id: string) => void) | null = null;
+  onNavTarget: ((id: string) => void) | null = null;
   onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
   private readonly sections = new Map<MapPickKind, Section>();
+  private readonly registry: CelestialRegistry;
+  private selectedId: string | null = null;
+  private query = '';
+  private filter: ObjectListFilter | null = null;
+  private nearOnly = true;
+  private sort: ObjectListSort = 'distance';
+  private lastFocusId: string | undefined = undefined;
+  // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
+  // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
+  private readonly namesScratch = new Map<string, string>();
+  private readonly crumbsScratch: string[] = [];
+  private readonly byKindScratch = new Map<MapPickKind, MapPickable[]>();
+  private readonly emptyListScratch: MapPickable[] = [];
+  private readonly idsInSectionScratch = new Set<string>();
+  private readonly focusAncestorsScratch = new Set<string>();
+  private readonly seenScratch = new Set<string>();
+  private readonly rootsScratch: MapPickable[] = [];
+  private readonly breadcrumb: HTMLElement;
 
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, registry: CelestialRegistry) {
+    this.registry = registry;
     this.panel = document.createElement('div');
     this.panel.id = 'hud-object-list';
     this.panel.className = 'panel';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
 
+    const head = document.createElement('div');
+    head.className = 'object-list-head';
+
+    const titleRow = document.createElement('div');
+    titleRow.className = 'object-list-title';
     const title = document.createElement('h3');
     title.textContent = '軌道オブジェクト';
-    this.panel.appendChild(title);
+    titleRow.appendChild(title);
+    head.appendChild(titleRow);
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'object-list-search';
+    const search = document.createElement('input');
+    search.type = 'search'; search.placeholder = '検索'; search.setAttribute('aria-label', '軌道オブジェクトを検索');
+    search.addEventListener('input', () => { this.query = search.value.trim().toLocaleLowerCase(); });
+    // Input は window で keydown を購読しているので、止めないと打った文字がそのまま
+    // ゲーム操作として解釈される。Escape は入力を捨てて欄から抜ける。
+    search.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') { search.value = ''; this.query = ''; search.blur(); }
+    });
+    searchWrap.appendChild(search);
+    head.appendChild(searchWrap);
+
+    const tools = document.createElement('div');
+    tools.className = 'object-list-tools';
+    // 近傍は他のフィルタと独立な単独トグル(既定 ON) — クラスフィルタと重ねて絞れる。
+    const nearButton = document.createElement('button');
+    nearButton.type = 'button'; nearButton.textContent = '近傍'; nearButton.setAttribute('aria-pressed', String(this.nearOnly));
+    nearButton.addEventListener('click', () => {
+      this.nearOnly = !this.nearOnly;
+      nearButton.setAttribute('aria-pressed', String(this.nearOnly));
+    });
+    tools.appendChild(nearButton);
+    // 排他選択の対象はクラスフィルタのボタンだけ — 同居する近傍トグルは独立した状態なので、
+    // DOM の親子関係ではなくこの配列で範囲を決める。
+    const filterButtons: HTMLElement[] = [];
+    for (const [key, label] of FILTERS) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', key === this.filter ? 'true' : 'false');
+      b.addEventListener('click', () => {
+        this.filter = this.filter === key ? null : key;
+        for (const x of filterButtons) x.setAttribute('aria-pressed', String(x === b && this.filter === key));
+      });
+      filterButtons.push(b);
+      tools.appendChild(b);
+    }
+    head.appendChild(tools);
+
+    // 並び順はフィルタとは別行 — 絞り込みと並べ替えは独立な操作であることを見た目でも分ける。
+    const sorts = document.createElement('div');
+    sorts.className = 'object-list-tools';
+    for (const [key, label] of SORTS) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', String(key === this.sort));
+      b.addEventListener('click', () => {
+        this.sort = key;
+        for (const x of Array.from(sorts.querySelectorAll('button'))) x.setAttribute('aria-pressed', String(x === b));
+      });
+      sorts.appendChild(b);
+    }
+    head.appendChild(sorts);
+    this.panel.appendChild(head);
+    // 見出し以外をまとめて畳める区画にする — 一覧は常時表示で画面右を大きく占有するため。
+    const body = document.createElement('div');
+    body.className = 'object-list-body';
+    this.panel.appendChild(body);
+    buildCollapseToggle(titleRow, 'hud-object-list-toggle', 'object-list-collapse', body, COLLAPSE_LABELS);
+    this.breadcrumb = document.createElement('div');
+    this.breadcrumb.className = 'object-list-breadcrumb';
+    body.appendChild(this.breadcrumb);
 
     for (const { kind } of SECTIONS) {
       const header = document.createElement('div');
-      header.className = 'dock-tab-btn object-list-section-header';
-      const body = document.createElement('div');
-      body.className = 'object-list-section-body';
-      const section: Section = { header, body, rows: new Map(), expanded: true };
+      header.className = 'object-list-section-header';
+      const sectionBody = document.createElement('div');
+      sectionBody.className = 'object-list-section-body';
+      const section: Section = { header, body: sectionBody, rows: new Map(), expanded: true };
       header.addEventListener('click', () => {
         section.expanded = !section.expanded;
         this.applyExpanded(section);
       });
       this.sections.set(kind, section);
-      this.panel.appendChild(header);
-      this.panel.appendChild(body);
+      body.appendChild(header);
+      body.appendChild(sectionBody);
       this.applyExpanded(section);
     }
 
@@ -59,54 +202,189 @@ export class ObjectListPanel {
     this.panel.style.display = visible ? 'block' : 'none';
   }
 
+  select(id: string | null): void { this.selectedId = id; }
+
   // 種別ごとの区画へ、既存行は使い回しつつ id 差分だけ足し引きする。行のクリックリスナーは
   // 生成時の1回だけ張るので、ここで毎フレーム innerHTML を書き換えてはいけない
   // (張り直しになり、クリック中に要素が消えてイベントが発火しなくなる)。
-  // depthOf に載っている id は、その深さぶん字下げして親子関係を出す(天体セクション)。
-  sync(items: readonly MapPickable[], focusId: string, depthOf: ReadonlyMap<string, number>): void {
-    const byKind = new Map<MapPickKind, MapPickable[]>();
+  // parentOf は id → 親 id(天体の親子関係のみ、他種別は載らない)。focusId が undefined
+  // (フォーカス中の天体が無い)なら、どの行も強調しない。
+  sync(items: readonly MapPickable[], focusId: string | undefined, parentOf: ReadonlyMap<string, string>): void {
+    this.namesScratch.clear();
+    for (const item of items) this.namesScratch.set(item.id, item.name);
+    const names = this.namesScratch;
+    const crumbs = this.crumbsScratch;
+    crumbs.length = 0;
+    for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) crumbs.push(names.get(cur) ?? cur);
+    this.breadcrumb.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'フォーカス: なし';
+    const focusChanged = focusId !== this.lastFocusId;
+    this.lastFocusId = focusId;
+    for (const list of this.byKindScratch.values()) list.length = 0;
+    const byKind = this.byKindScratch;
     for (const item of items) {
+      if (!this.matches(item)) continue;
       const list = byKind.get(item.kind);
       if (list) list.push(item); else byKind.set(item.kind, [item]);
     }
 
     for (const { kind, label } of SECTIONS) {
       const section = this.sections.get(kind)!;
-      const list = byKind.get(kind) ?? [];
+      const list = (byKind.get(kind) ?? this.emptyListScratch).sort(this.sort === 'distance'
+        ? (a, b) => (a.priority ?? 0) - (b.priority ?? 0) || (a.distance ?? 0) - (b.distance ?? 0) || a.name.localeCompare(b.name)
+        : (a, b) => a.name.localeCompare(b.name));
       section.header.style.display = list.length === 0 ? 'none' : '';
-      section.header.textContent = `${label} (${list.length}) ${section.expanded ? '▾' : '▸'}`;
+      const state = kind === 'ship' ? `接近 ${list.filter((i) => i.detail?.includes('接近')).length}`
+        : kind === 'ammo' ? `回収可 ${list.filter((i) => i.detail?.includes('回収可能')).length}`
+        : kind === 'base' ? `ドック候補 ${list.filter((i) => i.detail?.includes('ドック')).length}` : '';
+      section.header.textContent = `${label} (${list.length})${state ? ` · ${state}` : ''} ${section.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH}`;
 
-      const seen = new Set<string>();
-      for (const item of list) {
+      // 衛星フィルタでは、衛星自身はフィルタを通っても親の惑星は通らない(bodyClassOf が
+      // 'planet' のため)。親を惑星ごとのクラスタ見出しとして拾い出す — フィルタの一致件数
+      // (ヘッダーの (N))には含めないので、list ではなく別変数に積む。
+      const displayList = kind === 'body' && this.filter === 'satellite' ? this.withClusterParents(list, items, parentOf) : list;
+      const childrenOf = childrenOfMap(displayList, parentOf);
+      const idsInSection = this.idsInSectionScratch;
+      idsInSection.clear();
+      for (const item of displayList) idsInSection.add(item.id);
+      // 親が今フレーム同じ区画に見当たらない(遮蔽等で一時的に消えた等)行は根として扱う —
+      // 親が現れないせいで子ごと画面から消えてしまうより、ひとまず出す方に倒す。
+      const roots = this.rootsScratch;
+      roots.length = 0;
+      for (const item of displayList) {
+        const parent = parentOf.get(item.id);
+        if (parent === undefined || !idsInSection.has(parent)) roots.push(item);
+      }
+      // フォーカスが切り替わった瞬間だけ、そこへ至る枝を自動展開する対象として渡す
+      // (毎フレーム渡すとユーザーが畳んだ直後に開き直ってしまう)。
+      const focusAncestors = this.focusAncestorsScratch;
+      focusAncestors.clear();
+      if (focusChanged) for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) focusAncestors.add(cur);
+
+      const seen = this.seenScratch;
+      seen.clear();
+      for (const item of roots) {
         seen.add(item.id);
-        let row = section.rows.get(item.id);
-        if (!row) {
-          row = document.createElement('div');
-          row.className = 'erow';
-          row.addEventListener('click', () => this.onSelect?.(item.id));
-          row.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            this.onSelectRight?.(item.id, e.clientX, e.clientY);
-          });
-          section.rows.set(item.id, row);
-          section.body.appendChild(row);
-        }
-        if (row.textContent !== item.name) row.textContent = item.name;
-        const indent = 4 + (depthOf.get(item.id) ?? 0) * 10;
-        if (row.style.paddingLeft !== `${indent}px`) row.style.paddingLeft = `${indent}px`;
-        row.classList.toggle('tgt', item.id === focusId);
+        this.syncRow(section.rows, item, childrenOf, focusId, section.body, focusAncestors);
       }
-      for (const [id, row] of section.rows) {
-        if (!seen.has(id)) {
-          row.remove();
-          section.rows.delete(id);
-        }
-      }
+      this.pruneRows(section.rows, seen);
     }
+    if (this.selectedId !== null && !items.some((i) => i.id === this.selectedId && this.matches(i))) this.selectedId = null;
+  }
+
+  // list の各要素の親(未登場なら)を allItems から補って返す — 親自身はフィルタを通って
+  // いなくても、既存の親子ツリー機構(childrenOfMap/roots)にそのままクラスタ見出しとして乗せる。
+  private withClusterParents(
+    list: readonly MapPickable[], allItems: readonly MapPickable[], parentOf: ReadonlyMap<string, string>,
+  ): MapPickable[] {
+    const byId = new Map(allItems.map((i) => [i.id, i]));
+    const seenIds = new Set(list.map((i) => i.id));
+    const result = [...list];
+    for (const item of list) {
+      const parentId = parentOf.get(item.id);
+      if (parentId === undefined || seenIds.has(parentId)) continue;
+      const parent = byId.get(parentId);
+      if (!parent) continue;
+      seenIds.add(parentId);
+      result.push(parent);
+    }
+    return result;
+  }
+
+  private matches(item: MapPickable): boolean {
+    if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
+    if (this.nearOnly && item.distance !== undefined && item.distance >= NEARBY_THRESHOLD_M) return false;
+    if (this.filter === null) return true;
+    if (this.filter === 'system') return item.kind !== 'body' && item.inFocusedSystem !== false;
+    return item.kind === 'body' && !LAGRANGE_ID.test(item.id) && bodyClassOf(this.registry, item.id) === this.filter;
+  }
+
+  // id に対応する RowNode を(無ければ生成して)最新化し、続けてその子を再帰的に同期する。
+  private syncRow(
+    rows: Map<string, RowNode>, item: MapPickable,
+    childrenOf: ReadonlyMap<string, MapPickable[]>, focusId: string | undefined, container: HTMLElement, focusAncestors: ReadonlySet<string>,
+  ): void {
+    let node = rows.get(item.id);
+    if (!node) {
+      node = this.createRowNode(item.id);
+      rows.set(item.id, node);
+      container.appendChild(node.row);
+      container.appendChild(node.childrenContainer);
+    }
+    if (node.label.textContent !== item.name) node.label.textContent = item.name;
+    const detailText = item.kind === 'body' ? '' : (item.detail ?? '');
+    if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
+    node.detail.style.display = item.kind === 'body' ? 'none' : '';
+    node.row.classList.toggle('tgt', item.id === focusId);
+    node.row.classList.toggle('selected', item.id === this.selectedId);
+
+    const children = childrenOf.get(item.id) ?? [];
+    if (focusAncestors.has(item.id)) node.expanded = true;
+    node.toggle.style.visibility = children.length > 0 ? 'visible' : 'hidden';
+    this.applyRowExpanded(node);
+
+    const seen = new Set<string>();
+    for (const child of children) {
+      seen.add(child.id);
+      this.syncRow(node.children, child, childrenOf, focusId, node.childrenContainer, focusAncestors);
+    }
+    this.pruneRows(node.children, seen);
+  }
+
+  private pruneRows(rows: Map<string, RowNode>, seen: ReadonlySet<string>): void {
+    for (const [id, node] of rows) {
+      if (seen.has(id)) continue;
+      node.row.remove();
+      node.childrenContainer.remove();
+      rows.delete(id);
+    }
+  }
+
+  // 行 + トグルボタン + 子コンテナを1組生成する。子を持つかどうかはフレームごとに
+  // 変わりうるので、トグルボタンと子コンテナは常に作っておき可視性だけ切り替える。
+  // 既定は畳んだ状態 — 衛星・ラグランジュ点は候補数が多く、常に見る必要は薄いため。
+  private createRowNode(id: string): RowNode {
+    const row = document.createElement('div');
+    row.className = 'erow';
+    const toggle = document.createElement('span');
+    toggle.className = 'object-list-toggle';
+    const label = document.createElement('span');
+    label.className = 'object-list-name';
+    const detail = document.createElement('small');
+    detail.className = 'object-list-detail';
+    row.appendChild(toggle);
+    row.appendChild(label);
+    row.appendChild(detail);
+    const childrenContainer = document.createElement('div');
+    childrenContainer.className = 'object-list-children';
+
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.addEventListener('click', () => this.onSelect?.(id));
+    row.addEventListener('dblclick', () => this.onFocus?.(id));
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); this.onFocus?.(id); }
+      if (e.key.toLowerCase() === 't') { e.preventDefault(); this.onNavTarget?.(id); }
+    });
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this.onSelectRight?.(id, e.clientX, e.clientY);
+    });
+
+    const node: RowNode = { row, toggle, label, detail, childrenContainer, children: new Map(), expanded: false };
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      node.expanded = !node.expanded;
+      this.applyRowExpanded(node);
+    });
+    return node;
+  }
+
+  private applyRowExpanded(node: RowNode): void {
+    node.toggle.textContent = node.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH;
+    node.childrenContainer.style.display = node.expanded ? '' : 'none';
   }
 
   private applyExpanded(section: Section): void {
     section.body.style.display = section.expanded ? '' : 'none';
-    section.header.classList.toggle('active', section.expanded);
   }
 }
