@@ -5,9 +5,14 @@ import * as THREE from 'three/webgpu';
 // 保証されない。three.js の WebGPU バックエンドは instanceMatrix をこの uniform buffer へ
 // 詰めるため、1 本の InstancedMesh に積める mat4(64 バイト/個)はこの上限で頭打ちになる。
 // これを超えると BindGroup 作成自体が失敗し、以後そのフレームの描画が丸ごと欠落する。
+// 同じ uniform buffer には instanceMatrix 以外のノードマテリアル uniform(opacity 等)も
+// 同居するため、上限ぴったりまで詰めると実機の GPU では確保に失敗しうる — 余白を残す。
 const BYTES_PER_MAT4 = 64;
 const MAX_UNIFORM_BUFFER_BINDING_SIZE = 65536;
-const MAX_INSTANCES_PER_CHUNK = Math.floor(MAX_UNIFORM_BUFFER_BINDING_SIZE / BYTES_PER_MAT4);
+const UNIFORM_HEADROOM_BYTES = 4096;
+const MAX_INSTANCES_PER_CHUNK = Math.floor(
+  (MAX_UNIFORM_BUFFER_BINDING_SIZE - UNIFORM_HEADROOM_BYTES) / BYTES_PER_MAT4,
+);
 
 // capacity 体分を、1 本あたり最大 MAX_INSTANCES_PER_CHUNK 体の InstancedMesh 複数本(チャンク)
 // に分けて構築し、全チャンクを scene へ追加する。beginFrame → push(...) → endFrame の順に
