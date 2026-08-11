@@ -116,8 +116,9 @@ export class PlanPath {
   // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の arc を隠す。
   // 画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。破線のドット/隙間は
   // 各区間のサンプル列中央の代表点で scale(m/px)を引き、ピクセル指定を実距離に直してから渡す
-  // — ズームによらず画面上の間隔を一定に保つため。
-  sync(fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, cameraPos: Vec3): void {
+  // — ズームによらず画面上の間隔を一定に保つため。camera は各区間の折れ線の解像度を決める
+  // 画面上のサジッタを実距離へ換算するための描画カメラ。
+  sync(fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, cameraPos: Vec3, camera: THREE.Camera): void {
     this.project = project;
     this.cameraPos = cameraPos;
     if (this.ephemeris === null) return;
@@ -133,7 +134,7 @@ export class PlanPath {
         dashSize = C.PLAN_ARC_DASH_PX * mpp;
         gapSize = C.PLAN_ARC_GAP_PX * mpp;
       }
-      arc.sync(this.ephemeris, this.frame, this.unbakeTime, fo, dashSize, gapSize, scale, this.attractors);
+      arc.sync(this.ephemeris, this.frame, this.unbakeTime, fo, dashSize, gapSize, camera, this.attractors);
     }
     for (let i = this.activeCount; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
   }
