@@ -14,6 +14,7 @@ import type { GameEntity } from './game-entity/game-entity';
 import type { EntityManager } from './simulation/entity-manager';
 import { Hud } from './hud/hud';
 import { MarkerManager } from './marker/marker-manager';
+import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
 import { ProjectFn } from './camera/camera-system';
 import { MapPickable, pickNearest } from './map-pick';
 import type { Base } from './game-entity/base';
@@ -26,7 +27,7 @@ const Z_HAT: Vec3 = v3(0, 0, 1);
 
 export class NavTarget {
   // 戦闘ビューで基地を右クリックしたときの航法ターゲット設定/解除メニュー。
-  private readonly baseMenu = new ContextMenu<Base, MenuAction>();
+  private readonly baseMenu: ContextMenu<Base, MenuAction>;
   private targetId: string | null = null;
   private targetName: string | null = null;
   // 自機軌道上の AN/DN の絶対位置(地球中心)。対象の軌道面が定まらなければ両方 null。
@@ -37,8 +38,10 @@ export class NavTarget {
   private dnTime: number | null = null;
   // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
   private attractors: readonly Attractor[] = [];
+  private readonly pickableCache: MapPickable[] = [];
 
   constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
+    this.baseMenu = new ContextMenu<Base, MenuAction>(_hud.layers.popup);
     this.baseMenu.onSelect = (act, base) => {
       if (act === 'navTarget') this.toggleTarget(base.id, '基地');
     };
@@ -157,18 +160,18 @@ export class NavTarget {
 
   // 右クリック対象として公開する AN/DN アイコン。計算できているぶんだけ返す。
   mapPickables(): MapPickable[] {
-    const items: MapPickable[] = [];
-    if (this.anPos && this.anTime !== null) items.push({ id: 'nav-an', name: 'AN', pos: this.anPos, time: this.anTime, kind: 'relnode' });
-    if (this.dnPos && this.dnTime !== null) items.push({ id: 'nav-dn', name: 'DN', pos: this.dnPos, time: this.dnTime, kind: 'relnode' });
-    return items;
+    this.pickableCache.length = 0;
+    if (this.anPos && this.anTime !== null) this.pickableCache.push({ id: 'nav-an', name: 'AN', pos: this.anPos, time: this.anTime, kind: 'relnode' });
+    if (this.dnPos && this.dnTime !== null) this.pickableCache.push({ id: 'nav-dn', name: 'DN', pos: this.dnPos, time: this.dnTime, kind: 'relnode' });
+    return this.pickableCache;
   }
 
   // マップビューでは、天体に遮蔽されて画面上見えていない AN/DN を隠す(戦闘ビューでは効かせない)。
   sync(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
     const hidden = (pos: Vec3): boolean => overviewMode && isOccluded(cameraPos, pos, this.attractors);
-    if (this.anPos && !hidden(this.anPos)) this.markerManager.setPosition('nav-an', 'mk-node', '▲', this.anPos, project, 'AN');
+    if (this.anPos && !hidden(this.anPos)) this.markerManager.setPosition('nav-an', 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, this.anPos, project, 'AN');
     else this.markerManager.hide('nav-an');
-    if (this.dnPos && !hidden(this.dnPos)) this.markerManager.setPosition('nav-dn', 'mk-node', '▽', this.dnPos, project, 'DN');
+    if (this.dnPos && !hidden(this.dnPos)) this.markerManager.setPosition('nav-dn', 'mk-node', ORBIT_POINT_GLYPH.descendingNode, this.dnPos, project, 'DN');
     else this.markerManager.hide('nav-dn');
   }
 }

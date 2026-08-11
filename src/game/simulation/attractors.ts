@@ -2,11 +2,26 @@
 // GameEntity。呼び出し側が「いつの瞬間か」を決めて1回だけ呼び、同じ配列をそのステップの
 // 全エンティティに使い回す — 重力天体どうしの相互作用を処理順に依存させないため。
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Attractor } from '../../physics/attractor';
+import type { Attractor, AttractorId } from '../../physics/attractor';
 import { SpatialGrid } from '../../physics/spatial-grid';
 import { Vec3 } from '../../physics/vec3';
-import { GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL } from '../const';
+import { GRAVITY_ALWAYS_COUNT, GRAVITY_NEGLIGIBLE_ACCEL, PLAN_ARC_MAX_SAMPLES } from '../const';
 import type { EntityManager } from './entity-manager';
+import type { GameEntity } from '../game-entity/game-entity';
+
+// 計画軌道が時刻ごとに参照する二種類の対象。重力積分は従来どおり近傍へ絞れるが、表面衝突は
+// mu=0 の表示天体や、重力を持たない動的 entity も含めた別集合で判定する。
+export type PlanAttractorSources = {
+  readonly gravity: readonly Attractor[];
+  readonly collision: readonly Attractor[];
+};
+
+// PlanArc は現在状態の配列を凍結せず、各積分時刻に同じ provider を呼ぶ。revision は provider
+// 内の予測列が変化したことを PlanArc の再積分キャッシュへ伝える。
+export type PlanAttractorProvider = {
+  readonly revision: number;
+  readonly at: (t: number) => PlanAttractorSources;
+};
 
 // Ephemeris のリングキャッシュは呼び出し側で破壊してはいけない共有参照を返すので、合流は
 // 常に新しい配列への展開で行う。dynamic が空なら bodies をそのまま返す。
@@ -35,6 +50,110 @@ export function predictedAttractorsAt(ephemeris: Ephemeris, entities: EntityMana
     if (s !== null) dynamic.push({ id: e.id, mu: e.mu, radius: e.radius, degree2: e.degree2, isStar: e.isStar, state: s });
   }
   return mergeAttractors(gravityBodiesAt(ephemeris, t), dynamic);
+}
+
+// 計画軌道用の時刻 t の対象。重力側は予測列が存在する動的重力源だけを返す。衝突側は
+// Ephemeris の全天体( mu=0 を含む)に、未来状態を取得できる collides entity を加える。
+// 未来状態が無い entity を現在位置へ凍結しないのが重要で、予測不能な対象は明示的に除外する。
+export function planAttractorsAt(
+  ephemeris: Ephemeris,
+  entities: EntityManager,
+  t: number,
+  excludedEntityIds: ReadonlySet<AttractorId> = new Set(),
+): PlanAttractorSources {
+  const gravity = predictedAttractorsAt(ephemeris, entities, t);
+  const collision: Attractor[] = [...ephemeris.attractorsAt(t)];
+  const seen = new Set(collision.map((a) => a.id));
+  for (const e of entities.all()) {
+    if (!e.alive || !e.collides || !(e.radius > 0) || excludedEntityIds.has(e.id) || seen.has(e.id)) continue;
+    const state = e.displayState(t);
+    if (state === null) continue;
+    collision.push({
+      id: e.id,
+      mu: e.mu,
+      radius: e.radius,
+      degree2: e.degree2,
+      isStar: e.isStar,
+      state,
+    });
+    seen.add(e.id);
+  }
+  return { gravity, collision };
+}
+
+// active player のように計画軌道の起点そのものになっている entity を、計画の衝突対象から
+// 外すための provider。除外集合は呼び出し間で不変なので、毎ステップ再生成しない。
+export function planAttractorProvider(
+  ephemeris: Ephemeris,
+  entities: EntityManager,
+  excludedEntityIds: readonly AttractorId[] = [],
+  revision = 0,
+): PlanAttractorProvider {
+  const excluded = new Set(excludedEntityIds);
+  return { revision, at: (t) => planAttractorsAt(ephemeris, entities, t, excluded) };
+}
+
+const REVISION_MIX_PRIME = 16777619;
+const REVISION_SEED = 2166136261 | 0;
+// 予測列を持たない個体の寄与。量子化した時刻(0以上)と区別できる値。
+const NO_PREDICTION = -1;
+
+// 計画の終端が未確定なフレームで、毎回異なる revision を作るための連番。
+let unresolvedPlanEndTick = 0;
+
+// 32bit 整数への畳み込み。非有限な value は 0 として畳み込まれ、結果は常に有限。
+function mixNumber(acc: number, value: number): number {
+  return Math.imul(acc ^ (value | 0), REVISION_MIX_PRIME) | 0;
+}
+
+// 文字列を文字コード列として畳み込む。
+function mixString(acc: number, value: string): number {
+  let out = acc;
+  for (let i = 0; i < value.length; i++) out = mixNumber(out, value.charCodeAt(i));
+  return out;
+}
+
+// 予測先端を planEnd で頭打ちにし、quantum で量子化した整数。予測が計画の範囲を覆いきると
+// 値が固定される — 覆っている範囲の内側では、先端がさらに伸びても引ける状態は変わらない。
+function predictionTick(entity: GameEntity, planEnd: number, quantum: number): number {
+  const tip = entity.predictedTrajectory?.state.t;
+  if (tip === undefined) return NO_PREDICTION;
+  return Math.floor(Math.min(tip, planEnd) / quantum);
+}
+
+// planAttractorProvider が返す内容を変えうる入力だけを畳み込んだ世代値。planEnd は計画の
+// 折れ線が届いている終端時刻で、simTime より後の有限値でなければ毎回異なる値を返す。
+export function planSourceRevision(
+  ephemeris: Ephemeris,
+  entities: EntityManager,
+  excludedEntityIds: readonly AttractorId[],
+  planRevision: number,
+  planEnd: number,
+  simTime: number,
+): number {
+  // 時刻に依らない入力 — 計画の編集、暦の位相、除外集合。
+  let acc = mixNumber(REVISION_SEED, planRevision);
+  acc = mixNumber(acc, ephemeris.phaseGeneration);
+  for (const id of excludedEntityIds) acc = mixString(acc, id);
+  if (!Number.isFinite(planEnd) || !(planEnd > simTime)) {
+    return mixNumber(acc, ++unresolvedPlanEndTick);
+  }
+  // provider の出力に現れるのは、将来時刻の状態を答えられる個体 — predictsFuture が真のもの —
+  // だけなので、その id と予測先端を畳み込む。id が集合の顔ぶれの変化を、予測先端が各個体の
+  // 引ける時刻範囲の変化を表す。量子化の幅は区間の描画サンプル間隔に合わせる。
+  const excluded = new Set(excludedEntityIds);
+  const quantum = (planEnd - simTime) / PLAN_ARC_MAX_SAMPLES;
+  for (const e of entities.attractors()) {
+    if (!e.predictsFuture) continue;
+    acc = mixString(acc, e.id);
+    acc = mixNumber(acc, predictionTick(e, planEnd, quantum));
+  }
+  for (const e of entities.all()) {
+    if (!e.alive || !e.predictsFuture || !e.collides || !(e.radius > 0) || excluded.has(e.id)) continue;
+    acc = mixString(acc, e.id);
+    acc = mixNumber(acc, predictionTick(e, planEnd, quantum));
+  }
+  return acc;
 }
 
 // 重力源一覧を、常に含める天体(always)と空間グリッドに載せる天体(grid)へ分けたもの。
@@ -81,4 +200,18 @@ export function classifyAttractors(attractors: readonly Attractor[]): Classified
 export function attractorsNear(pos: Vec3, classified: ClassifiedAttractors): readonly Attractor[] {
   const nearby = classified.grid.neighbors(pos);
   return nearby.length === 0 ? classified.always : [...classified.always, ...nearby];
+}
+
+// attractorsNear と同じ順序の一覧を out へ書き込む再利用版。out は呼び出し側が所有し、
+// この呼び出しの完了後に保持してはいけない。既存の attractorsNear は、PlanArc などが
+// 積分後の判定まで配列を保持できるよう、新規配列を返すAPIとして残す。
+export function attractorsNearInto(
+  pos: Vec3,
+  classified: ClassifiedAttractors,
+  out: Attractor[],
+): Attractor[] {
+  out.length = 0;
+  for (const a of classified.always) out.push(a);
+  classified.grid.appendNeighborsInto(pos, out);
+  return out;
 }

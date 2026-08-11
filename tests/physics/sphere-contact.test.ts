@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { containingBody, sweptSphereToi } from '../../src/physics/sphere-contact';
+import { containingBody, sweptHermiteSphereToi, sweptSphereToi } from '../../src/physics/sphere-contact';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/physics/vec3';
 import { test } from './harness';
@@ -23,6 +23,21 @@ export function register(): void {
   test('swept sphere: misses a near pass and delegates initial overlap to discrete solver', () => {
     assert.equal(sweptSphereToi(v3(), v3(), v3(-10, 3, 0), v3(10, 3, 0), 2), null);
     assert.equal(sweptSphereToi(v3(), v3(), v3(1, 0, 0), v3(3, 0, 0), 2), null);
+  });
+
+  test('Hermite swept sphere: detects a moving-body pass when both endpoints are outside', () => {
+    const prev = kinematicState(0, v3(-10, 0, 0), v3(20, 0, 0));
+    const next = kinematicState(1, v3(10, 0, 0), v3(20, 0, 0));
+    const toi = sweptHermiteSphereToi(prev, next, v3(0, -10, 0), v3(0, 10, 0), 2);
+    assert.ok(toi !== null);
+    const expected = 0.5 - Math.sqrt(2) / 20;
+    assert.ok(Math.abs(toi - expected) < 1e-6, `unexpected moving-body TOI: ${toi}`);
+  });
+
+  test('Hermite swept sphere: does not report an initial overlap', () => {
+    const prev = kinematicState(0, v3(1, 0, 0), v3(1, 0, 0));
+    const next = kinematicState(1, v3(3, 0, 0), v3(1, 0, 0));
+    assert.equal(sweptHermiteSphereToi(prev, next, v3(), v3(), 2), null);
   });
 
   test('containingBody: 半径内の点はその球を返す', () => {

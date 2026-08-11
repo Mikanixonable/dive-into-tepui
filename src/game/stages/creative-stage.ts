@@ -11,6 +11,7 @@ import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { Simulator } from '../simulation/simulator';
 import type { MarkerManager } from '../marker/marker-manager';
+import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { Attractor, orbitalElementsOf } from '../../physics/attractor';
@@ -30,6 +31,7 @@ import { ElementsForm, LagrangeForm, ObjectType, ReferenceAttractor, ShipPlacerF
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { OrbitLine } from '../../render/orbit-line';
+import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 
 const DEG = Math.PI / 180;
 
@@ -50,6 +52,9 @@ export class CreativeStage extends Stage {
   private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
   private issues: readonly PlacementFieldIssue[] = [];
+  // 噴射の可否を substep 境界でも問い合わせられるよう、update() が受け取る参照を保持する
+  // (値ではなく参照なので、境界での読み取りは常にその時点の時間加速段を反映する)。
+  private simSpeed: SimSpeedManager | null = null;
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
   private readonly ammoIdAllocator = new EntityIdAllocator('creative-ammo-');
   // フォールバック名(Player-N 等)の連番。id とは独立(同名は許容する)。
@@ -67,12 +72,12 @@ export class CreativeStage extends Stage {
   ): void {
     super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
 
-    this.previewOrbitLine = new OrbitLine(0xffffff, 0.6);
+    this.previewOrbitLine = new OrbitLine(0xffffff, 0.6, C.LINE_RENDER_ORDER.plan);
     scene.add(this.previewOrbitLine.line);
 
-    this.placerPanel = new ShipPlacerPanel(hud.root, ephemeris);
+    this.placerPanel = new ShipPlacerPanel(hud.layers.panel, hud.layers.popup, ephemeris);
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
-    this.logisticsPanel = this.buildLogisticsPanel(hud.root);
+    this.logisticsPanel = this.buildLogisticsPanel(hud.layers.panel);
   }
 
   // 補給の自動投入トグルを1つ載せたパネルを組み立て、マップ左ドックへ追加して返す。
@@ -87,7 +92,7 @@ export class CreativeStage extends Stage {
     const toggle = new HudToggle('補給の自動投入', (on) => { this.logistics.resupplyEnabled = on; });
     toggle.setOn(this.logistics.resupplyEnabled);
     panel.appendChild(toggle.element);
-    hudDock(hudRoot, 'left').appendChild(panel);
+    hudDock(hudRoot, 'right').appendChild(panel);
     return panel;
   }
 
@@ -96,19 +101,19 @@ export class CreativeStage extends Stage {
   }
 
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカー、基地マーカーを同期する。
-  sync(player: Player | null, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean): void {
-    super.sync(player, fo, project, scale, displayTime, overviewMode);
+  sync(player: Player | null, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibility: MapVisibilityPolicy | null = null): void {
+    super.sync(player, fo, project, scale, displayTime, overviewMode, visibility);
     this.syncPreview(fo, project);
-    this.syncBaseMarkers(project, scale, displayTime, overviewMode);
+    this.syncBaseMarkers(project, scale, displayTime, overviewMode, visibility);
     this.placerPanel.setIssues(this.issues);
     this.logisticsPanel.style.display = overviewMode ? 'block' : 'none';
   }
 
   // 基地は実寸(半径100m)のメッシュしか持たず、マップ視点では見えないほど小さいので、
-  // FocusMarkers と同じ ● のポイントマーカーを立てて発見できるようにする。戦闘ビューでは
-  // 画面外なら ▣ AMMO の補給と同じ方式の△方位矢印で補う。overviewMode 中は進行方向を向く
+  // 実体の族の字形でポイントマーカーを立て、どのズームでも見つけられるようにする。戦闘ビューで
+  // 画面外なら方位矢印で補う。overviewMode 中は進行方向を向く
   // 三角形に差し替える(mk-poi は FocusMarkers の天体ラベルと共用するため、専用の mk-base を使う)。
-  private syncBaseMarkers(project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean): void {
+  private syncBaseMarkers(project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibility: MapVisibilityPolicy | null): void {
     const bases = this._entities.bases;
     for (const [i, base] of bases.entries()) {
       const key = `base${i}`;
@@ -119,15 +124,21 @@ export class CreativeStage extends Stage {
         this._markerManager.hide(bearingKey);
         continue;
       }
+      const display = overviewMode ? visibility?.entity('base') : null;
+      if (display && !display.pickable) {
+        this._markerManager.hide(key);
+        this._markerManager.hide(bearingKey);
+        continue;
+      }
       const label = '基地';
       const p = project(ds.r);
       if (overviewMode) {
         const rotationDeg = this._markerManager.headingRotationDeg(ds.r, ds.v, project, scale);
-        this._markerManager.set(key, 'mk-base', '▲', p.x, p.y, p.front, label, 1, undefined, rotationDeg);
+        this._markerManager.set(key, 'mk-base', display?.icon === false ? '' : ENTITY_GLYPH.ship, p.x, p.y, p.front, display?.label === false ? '' : label, 1, undefined, rotationDeg);
         this._markerManager.hide(bearingKey);
       } else {
-        this._markerManager.set(key, 'mk-poi', '●', p.x, p.y, p.front, label);
-        this._markerManager.setBearing(bearingKey, 'mk-poi', '△', p, label, 0.9);
+        this._markerManager.set(key, 'mk-poi', display?.icon === false ? '' : ENTITY_GLYPH.body, p.x, p.y, p.front, display?.label === false ? '' : label);
+        this._markerManager.setBearing(bearingKey, 'mk-poi', DIRECTION_GLYPH.bearing, p, display?.label === false ? '' : label, 0.9);
       }
     }
     for (let i = bases.length; i < this.lastBaseMarkerCount; i++) {
@@ -210,7 +221,7 @@ export class CreativeStage extends Stage {
     }
     this.previewOrbitLine.sync(this.preview.elements, fo, true);
     this._markerManager.setPosition(
-      'creative-preview', 'mk-self', '▷', this.preview.pos, project,
+      'creative-preview', 'mk-self', ENTITY_GLYPH.preview, this.preview.pos, project,
       'PREVIEW', 1, '#00ffff', 0, false, false,
     );
   }
@@ -331,6 +342,7 @@ export class CreativeStage extends Stage {
     const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
     this.preview = form ? this.computePreview(form) : null;
     this.issues = form ? this.computeFieldIssues(form) : [];
+    this.simSpeed = simSpeed;
     for (const ship of this._entities.players) ship.planExecutor.update(ship, dt, simTime, simSpeed);
   }
 
@@ -340,7 +352,8 @@ export class CreativeStage extends Stage {
     let next: number | null = null;
     for (const ship of this._entities.players) {
       const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t
-        : ship.planExecution === 'powered' ? (ship.planExecutor.nextEventTime(ship, simTime) ?? undefined)
+        : ship.planExecution === 'powered' && this.simSpeed
+          ? (ship.planExecutor.nextEventTime(ship, simTime, this.simSpeed) ?? undefined)
         : undefined;
       if (t !== undefined && t >= simTime && (next === null || t < next)) next = t;
     }
@@ -354,10 +367,13 @@ export class CreativeStage extends Stage {
       if (ship.planExecution === 'instant') {
         const node = ship.plan.firstNode();
         if (!node || node.t > simTime + 1e-9) continue;
-        const reached = ship.plan.dropNodesBefore(simTime);
-        if (reached) ship.state = reached;
-      } else if (ship.planExecution === 'powered') {
-        ship.planExecutor.applyIgnitionAndCutoff(ship, simTime);
+        // 瞬間移動では、消化する最後のノードの絶対状態がそのまま到達状態になる(誤差が無い)。
+        const reached = ship.plan.nodes.filter((n) => n.t <= simTime).at(-1);
+        if (!reached) continue;
+        ship.plan.consumeNodesUpTo(simTime, reached);
+        ship.state = reached;
+      } else if (ship.planExecution === 'powered' && this.simSpeed) {
+        ship.planExecutor.applyIgnitionAndCutoff(ship, simTime, this.simSpeed);
       }
     }
   }
