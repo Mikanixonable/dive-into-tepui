@@ -276,6 +276,17 @@ export function buildBulletMesh(): THREE.Group {
   return g;
 }
 
+// InstancedPool が全弾で使い回す共有ジオメトリ/マテリアルを公開する(複製は作らない)。
+export function bulletBodyResources(): { geometry: THREE.BufferGeometry; material: THREE.Material } {
+  const m = parseBullet();
+  return { geometry: m.geometry, material: m.material as THREE.Material };
+}
+
+export function bulletHaloResources(): { geometry: THREE.BufferGeometry; material: THREE.Material } {
+  buildBulletMesh(); // ハロー用ジオメトリ/マテリアルを未生成なら生成する
+  return { geometry: bulletHaloGeom!, material: bulletHaloMat! };
+}
+
 let plasmaGeomFixed = false;
 let plasmaBodyMat: THREE.MeshBasicMaterial | null = null;
 
@@ -307,6 +318,12 @@ export function buildPlasmaMesh(): THREE.Mesh {
   return m;
 }
 
+// InstancedPool が全プラズマ弾で使い回す共有ジオメトリ/マテリアルを公開する。
+export function plasmaBodyResources(): { geometry: THREE.BufferGeometry; material: THREE.Material } {
+  const m = buildPlasmaMesh();
+  return { geometry: m.geometry, material: m.material as THREE.Material };
+}
+
 // 薬莢メッシュを生成する。全長を通常の2倍にした geometry と銅色 material は共有する。
 export function buildCasingMesh(): THREE.Mesh {
   initCasingResources();
@@ -315,6 +332,12 @@ export function buildCasingMesh(): THREE.Mesh {
   mesh.userData.ownsGeometry = false;
   mesh.userData.ownsMaterial = false;
   return mesh;
+}
+
+// InstancedPool が全薬莢で使い回す共有ジオメトリ/マテリアルを公開する。
+export function casingBodyResources(): { geometry: THREE.BufferGeometry; material: THREE.Material } {
+  initCasingResources();
+  return { geometry: casingGeometry!, material: casingMaterial! };
 }
 
 // 破片: 撃破時の飛散と被弾欠片に使う。style 引数で敵種別ごとの固有形状
