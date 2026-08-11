@@ -4,6 +4,7 @@ import { FloatingOrigin } from './floating-origin';
 import * as C from './const';
 import { v3 } from '../physics/vec3';
 import type { PerfCounts, PerfMeter } from '../perf-meter';
+import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
 import { Enemy } from './game-entity/enemy';
 import { CameraSystem } from './camera/camera-system';
@@ -132,6 +133,8 @@ export class Game {
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
   readonly frameControls: FrameControls;
+  // 計測区間の境界を打つ先。集計と保持はこのオブジェクトが持つ。
+  private readonly sections: FrameSections;
 
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
   constructor(
@@ -142,8 +145,10 @@ export class Game {
     settingsPanel: SettingsPanel,
     unlockManager: UnlockManager,
     snapshotService: SnapshotService,
+    sections: FrameSections,
     absoluteEphemeris?: AbsoluteEphemeris,
   ) {
+    this.sections = sections;
     this.launchMode = launch.mode;
     this._scene = gs.scene;
     this.renderer = gs.renderer;
@@ -216,7 +221,7 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.viewManager.setTouchControls(this.touchControls);
 
-    this.simulator = new Simulator(this.entities, this.ephemeris);
+    this.simulator = new Simulator(this.entities, this.ephemeris, sections);
     this.predictor = new Predictor(this.entities, this.ephemeris);
 
     if (launch.mode === 'stage') {
@@ -457,9 +462,11 @@ export class Game {
   // ------------------------------------------------------------ update
 
   update(dtRaw: number): void {
+    this.sections.enter(SECTION.input);
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
     this.handleInput();
+    this.sections.exit(SECTION.input);
 
     // handleInput より後に置く: ポーズ中も Esc・ヘルプなどは効かせる。
     if (this._isPaused) {
@@ -485,19 +492,28 @@ export class Game {
       this.simSpeedManager.update(this.simulator.simTime);
       this.applyWarpCommandPolicy();
       const simDt = dt * this.simSpeedManager.simSpeed;
+      this.sections.enter(SECTION.integrate);
       this.simulator.advance(
         dt, simDt, null, this.activeStage,
         false, true, this.nanWatchdog,
       );
+      this.sections.exit(SECTION.integrate);
+      this.sections.enter(SECTION.predict);
       this.predictor.update(
         this.simulator.simTime,
         null,
         this._window.duration,
         this.cameraSystem.overviewMode ? 'map' : 'combat',
       );
+      this.sections.exit(SECTION.predict);
+      this.sections.enter(SECTION.stage);
       this.activeStage.update(dt, null, this.entities, this.simulator.simTime, this.simSpeedManager);
+      this.sections.exit(SECTION.stage);
+      this.sections.enter(SECTION.effects);
       this.effects.update(dt, this.simulator.simTime);
+      this.sections.exit(SECTION.effects);
       this.updateMapPresentation(dt);
+      this.sections.enter(SECTION.pointer);
       if (this.editor.editMode) {
         this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
         this.mapPicker.handleLeftClick(this.input);
@@ -506,6 +522,7 @@ export class Game {
         this.mapPicker.handleEmptySpaceRightClick(this.input, this.simulator.simTime);
         this.editor.updateEditing(dt, this.input);
       }
+      this.sections.exit(SECTION.pointer);
       return;
     }
     const player = this.player;
@@ -516,9 +533,13 @@ export class Game {
       player.thrust = null;
       player.torque = v3();
       const simDt = dt * Math.min(this.simSpeedManager.simSpeed, C.MAX_PHYS_SIM_SPEED);
+      this.sections.enter(SECTION.integrate);
       this.simulator.advance(dt, simDt, player, this.activeStage, false, false, this.nanWatchdog);
+      this.sections.exit(SECTION.integrate);
       this.nanWatchdog.checkAll('advance(決着後)', player, this.entities, this.simulator.simTime, dt, simDt);
+      this.sections.enter(SECTION.effects);
       this.effects.update(dt, this.simulator.simTime);
+      this.sections.exit(SECTION.effects);
       // 決着後もカメラ更新は飛ばせない: 飛ばすと視点だけが絶対 ECI に取り残され、
       // 軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする。
       this.updateMapPresentation(dt);
@@ -527,6 +548,7 @@ export class Game {
 
     this.nanWatchdog.checkPlayer('frameStart', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
 
+    this.sections.enter(SECTION.player);
     player.behave({
       dt,
       input: this.input,
@@ -543,20 +565,25 @@ export class Game {
     // 非操作艦にも、表示フレーム基準のベルト・HP回復だけを一度ずつ進める。
     // 熱・電力・ラジエータは Simulator が全艦をsubstepごとに stepEnvironment する。
     for (const ship of this.entities.players) if (ship !== player) ship.updatePassive(dt);
+    this.sections.exit(SECTION.player);
     this.nanWatchdog.checkPlayer('player.behave', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
 
+    this.sections.enter(SECTION.stage);
     this.activeStage.update(dt, player, this.entities, this.simulator.simTime, this.simSpeedManager);
+    this.sections.exit(SECTION.stage);
 
     this.nanWatchdog.checkPlayer('activeStage.update', player, this.simulator.simTime, dt, this.simulator.lastSimDt);
 
     this.simSpeedManager.update(this.simulator.simTime);
     this.applyWarpCommandPolicy();
     const simDt = dt * this.simSpeedManager.simSpeed;
+    this.sections.enter(SECTION.integrate);
     this.simulator.advance(dt, simDt, player, this.activeStage,
       this.simSpeedManager.canResolvePhysicalCollisions, // resolveCollision
       true, // doSubstep
       this.nanWatchdog,
     );
+    this.sections.exit(SECTION.integrate);
     // simulator.advance 直後、predictor.update より前 — このフレームの表示時刻一式を
     // 積分後の状態で確定させ、以降の消費者(predictor/updateMapPresentation)へ共有する。
     this.resolveWindowIfStale();
@@ -590,16 +617,21 @@ export class Game {
 
 
     // Simulator内のsubstep cleanup後に呼ぶ: 死んだ個体を予測せず、積分後の実状態と突き合わせるため。
+    this.sections.enter(SECTION.predict);
     this.predictor.update(
       this.simulator.simTime,
       this.player,
       this._window.duration,
       this.cameraSystem.overviewMode ? 'map' : 'combat',
     );
+    this.sections.exit(SECTION.predict);
 
+    this.sections.enter(SECTION.effects);
     this.effects.update(dt, this.simulator.simTime);
+    this.sections.exit(SECTION.effects);
 
     // trackAnchor より前に置く: 最後のノードが落ちたフレームからアンカーを自機へ追従させる。
+    this.sections.enter(SECTION.plan);
     const activePlayer = this.player;
     if (activePlayer) {
       this.guide.update(
@@ -608,8 +640,10 @@ export class Game {
       );
       this.editor.plan.trackAnchor(activePlayer.state);
     }
+    this.sections.exit(SECTION.plan);
     this.updateMapPresentation(dt);
 
+    this.sections.enter(SECTION.pointer);
     if (this.editor.editMode) {
       this.mapPicker.handleRightClick(this.input, this.simulator.simTime);
       this.mapPicker.handleLeftClick(this.input);
@@ -624,12 +658,14 @@ export class Game {
         this.player, targets, this.input, this.cameraSystem.activeCameraProjection,
       );
     }
+    this.sections.exit(SECTION.pointer);
   }
 
   // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
   private updateMapPresentation(dt: number, afterRefresh?: () => void): void {
     const displayTime = this._window.displayTime;
     this._environment.update(displayTime, this.cameraSystem.overviewMode);
+    this.sections.enter(SECTION.plan);
     // revision は前フレームの計画終端を基準に畳み込む — 今フレームの終端は editor.update が
     // これから決めるので、provider を組む時点ではまだ確定していない。
     const excludedIds = this.player ? [this.player.id] : [];
@@ -648,16 +684,23 @@ export class Game {
     );
     // MapPicker/FocusMarkers は全天体・ラグランジュ点・全エンティティの候補を組む。
     // 戦闘ビューではクリック対象を別経路で処理するため、マップを表示している時だけ更新する。
+    this.sections.exit(SECTION.plan);
+    this.sections.enter(SECTION.mapPick);
     if (this.cameraSystem.overviewMode) {
       this.mapPicker.refresh(this.simulator.simTime, displayTime);
     }
+    this.sections.exit(SECTION.mapPick);
+    this.sections.enter(SECTION.pointer);
     afterRefresh?.();
+    this.sections.exit(SECTION.pointer);
     // 表示側の合流窓(重力を持つ生存中の GameEntity も含める)。sync 側の attractors と
     // 同じ合流だが、update フェーズは simTime 基準でこの1箇所からしか要らないので都度求める。
     const attractors = this.mergedAttractorsAt(this.simulator.simTime);
+    this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
       this.player, this.simulator.simTime, this.input, dt, this.mapPicker.pickables, attractors,
     );
+    this.sections.exit(SECTION.camera);
   }
 
   // EqAN/EqDN を出す対象: 操作艦(計画があれば最終区間の起点、無ければ実状態)・航法ターゲット
