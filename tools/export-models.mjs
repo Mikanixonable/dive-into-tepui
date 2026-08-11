@@ -11,6 +11,7 @@
 // src/ 配下では 'three/webgpu' 以外から THREE をインポートしてはならない
 // (クラスの重複を避けるため)。
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -744,6 +745,51 @@ function buildPlasmaBullet() {
 }
 
 
+// ------------------------------------------------------------- 静的子メッシュの統合
+// 実行時にはメッシュ数がそのまま draw call 数になるため、互いに相対運動しない
+// (= 実行時に個別の Object3D として名前検索・変換されない)兄弟メッシュは
+// 構築時にジオメトリごと1つへ統合し、draw call を減らす。
+// group の直属の Mesh 子だけを対象に、同一 material 参照ごとにジオメトリを
+// ワールド変換込みで結合する。子 Group には踏み込まない(呼び出し側が
+// mergeStaticChildren で再帰する)ので、蛇腹の折り目 Group のように実行時に
+// getObjectByName で引いて個別に rotation を書く Group は、その子だけが
+// 統合され、Group 自身は境界として保たれる。
+function mergeSiblingMeshesByMaterial(group) {
+  const byMaterial = new Map();
+  for (const child of [...group.children]) {
+    if (!child.isMesh) continue;
+    const list = byMaterial.get(child.material) ?? [];
+    list.push(child);
+    byMaterial.set(child.material, list);
+  }
+  for (const [material, meshes] of byMaterial) {
+    if (meshes.length < 2) continue;
+    for (const m of meshes) group.remove(m);
+    const geometries = meshes.map((m) => {
+      m.updateMatrix();
+      return m.geometry.clone().applyMatrix4(m.matrix);
+    });
+    const merged = new THREE.Mesh(mergeGeometries(geometries, false), material);
+    for (const geo of geometries) geo.dispose();
+    // 統合対象は同一 material を共有する兄弟なので role 等の userData も揃っている前提で、
+    // 代表として先頭の子の userData を引き継ぐ(例: マガジンの弾/弾頭の role: 'round')。
+    merged.userData = { ...meshes[0].userData };
+    group.add(merged);
+  }
+}
+
+// root 以下の Group ノードを辿り、各 Group ごとに直属メッシュ子を材質統合する。
+function mergeStaticChildren(root) {
+  const stack = [root];
+  while (stack.length > 0) {
+    const g = stack.pop();
+    for (const child of g.children) {
+      if (child.isGroup) stack.push(child);
+    }
+    mergeSiblingMeshesByMaterial(g);
+  }
+}
+
 // ------------------------------------------------------------- 書き出し
 const models = {
   player:       buildPlayerShip(),
@@ -760,6 +806,12 @@ const models = {
   debrisPanel:  buildDebrisPanel(),
   debrisRod:    buildDebrisRod(),
 };
+
+// player・magazine(ammo が内包する分も含む)は draw call 数の大半を占めるため、
+// 静的な子メッシュを統合する。他のモデルは対象が少なく現状のままでよい。
+mergeStaticChildren(models.player);
+mergeStaticChildren(models.magazine);
+mergeStaticChildren(models.ammo);
 
 for (const [name, object] of Object.entries(models)) {
   // toJSON() は各ノードの `matrix` プロパティをそのままシリアライズするだけで、
