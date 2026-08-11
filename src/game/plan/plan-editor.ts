@@ -737,12 +737,13 @@ export class PlanEditor {
   }
 
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。
+  // camera は折れ線の解像度を決める画面上のサジッタを実距離へ換算するための描画カメラ。
   sync(
     mapDist: number, simTime: number, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn,
-    overviewMode: boolean, cameraPos: Vec3,
+    overviewMode: boolean, cameraPos: Vec3, camera: THREE.Camera,
   ): void {
     if (this.planVisible) {
-      this.planDisplay.sync(fo, project, scale, overviewMode, cameraPos);
+      this.planDisplay.sync(fo, project, scale, overviewMode, cameraPos, camera);
     }
     else {
       this.planDisplay.hide();

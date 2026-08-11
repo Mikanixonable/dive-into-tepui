@@ -470,10 +470,9 @@ export class Player extends Ship {
 
     if (this.alive) {
       const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));
-      const densifyNear = sub(this.state.r, center.state.r);
-      this.orbitLine.sync(this.orbitalElementsAround(center), fo, this.thrust !== null, densifyNear);
+      this.orbitLine.sync(this.orbitalElementsAround(center), fo, camera.activeCamera, this.thrust !== null);
     } else {
-      this.orbitLine.sync(null, fo);
+      this.orbitLine.sync(null, fo, camera.activeCamera);
     }
   }
 

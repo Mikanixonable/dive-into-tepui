@@ -13,7 +13,7 @@ import { KinematicState } from '../physics/kinematic-state';
 import { Attractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from './floating-origin';
-import { EMPTY_SAMPLES, SampledLine, ScaleAtFn } from './sampled-line';
+import { EMPTY_SAMPLES, SampledLine } from './sampled-line';
 import { GameEntity } from './game-entity/game-entity';
 import { EntityLineSet } from './entity-line-set';
 import { LINE_RENDER_ORDER } from './const';
@@ -45,10 +45,10 @@ export class DebugTrajectoryLine {
 
   // targets: このフレームに線を描きたい対象の集合(呼び出し側が決める。既定は自機+ターゲット)。
   // frame は plan/plan-display.ts の PlanDisplay.planFrame と同じ値を渡す(bake の座標系)。
-  // scale は折れ線の細分密度を決める画面スケール。
+  // camera は解像度を決める画面上のサジッタを実距離へ換算するための描画カメラ。
   sync(
     targets: readonly GameEntity[], frame: ReferenceFrame, simTime: number, ephemeris: Ephemeris,
-    fo: FloatingOrigin, scale: ScaleAtFn, attractors: readonly Attractor[],
+    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
     if (!this.enabled) return;
 
@@ -70,8 +70,9 @@ export class DebugTrajectoryLine {
         ? cached.combined
         : [...currentSamples, ...predictedSamples];
       this.concatCache.set(entity, { current: currentSamples, predicted: predictedSamples, combined: samples });
-      line.syncGeometry(samples, frame, ephemeris, scale, attractors);
+      line.syncGeometry(samples, frame, ephemeris, attractors);
       line.syncTransform(frame, simTime, ephemeris, fo, attractors);
+      line.sync(camera);
       line.setVisible(true);
     }
     const alive = new Set(targets);

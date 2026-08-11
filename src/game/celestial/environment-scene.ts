@@ -4,7 +4,7 @@ import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
 import { kinematicState } from '../../physics/kinematic-state';
 import { CelestialRegistry, SolarSystemId, bodyDef, primaryOf } from '../../physics/solar-system';
-import { OrbitalElements, positionOnOrbit } from '../../physics/elements';
+import { OrbitalElements } from '../../physics/elements';
 import { Attractor, AttractorId, OrbitingId, orbitalElementsOf } from '../../physics/attractor';
 import { Vec3, v3, sub } from '../../physics/vec3';
 import { OrbitLine } from '../orbit-line';
@@ -167,7 +167,7 @@ export class EnvironmentScene {
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
       focusTargetId(cameraSystem.overviewCamera.focus), cameraSystem.bodyClassToggles,
-      visibility, nearbyIds);
+      visibility, nearbyIds, cameraSystem.activeCamera);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
@@ -184,10 +184,10 @@ export class EnvironmentScene {
   private syncReferenceLines(
     simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: AttractorId | undefined,
     toggles: BodyClassToggles, sharedVisibility: MapVisibilityPolicy | null,
-    nearbyIds: readonly AttractorId[],
+    nearbyIds: readonly AttractorId[], camera: THREE.Camera,
   ): void {
     if (!overviewMode) {
-      this.geoLine.sync(null, fo);
+      this.geoLine.sync(null, fo, camera);
       for (const [id] of this.referenceLines) this.removeReferenceLine(id);
       return;
     }
@@ -197,7 +197,7 @@ export class EnvironmentScene {
       focusId,
       nearbyIds,
     );
-    this.geoLine.sync(this.geoElements, fo, false);
+    this.geoLine.sync(this.geoElements, fo, camera, false);
     for (const id of this.referenceIds) {
       if (!visibility.body(id).orbit) {
         this.removeReferenceLine(id);
@@ -206,13 +206,8 @@ export class EnvironmentScene {
       const line = this.ensureReferenceLine(id);
       const el = this.orbitElementsFor(id, simTime);
       const rel = el ? sub(this.ephemeris.stateOf(id, simTime).r, el.center.state.r) : null;
-      // 離心率の大きい軌道(彗星など)は近日点付近で曲率が急なので、そこへ頂点を寄せないと
-      // 楕円が多角形として粗く見える。それ以外は天体自身の位置へ寄せる — 除去できる
-      // セグメントの幅は頂点間隔が下限になるので、密にしないと天体半径よりずっと広い
-      // 隙間が空く。
-      const densifyNear = el && rel ? (el.e > 0.5 ? positionOnOrbit(el, 0) : rel) : undefined;
       const excludeNearBody = el && rel ? this.excludeNearBodyFor(id, rel) : undefined;
-      line.sync(el, fo, false, densifyNear, excludeNearBody);
+      line.sync(el, fo, camera, false, excludeNearBody);
     }
   }
 

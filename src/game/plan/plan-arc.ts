@@ -15,7 +15,6 @@ import type { ClassifiedAttractors, PlanAttractorProvider, PlanAttractorSources 
 import { addScaled, len, scale, sub, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { SampledLine } from '../sampled-line';
-import { ScaleFn } from '../camera/camera-system';
 import * as C from '../const';
 
 // 積分の終端は要求時刻に対して丸め誤差ぶん手前に落ちうる。この幅までは終端そのものとみなす。
@@ -246,12 +245,14 @@ export class PlanArc {
     return recompute;
   }
 
-  // 直近に積分したサンプル列を折れ線メッシュへ反映する。
+  // 直近に積分したサンプル列を折れ線メッシュへ反映する。camera は解像度を決める画面上の
+  // サジッタを実距離へ換算するための描画カメラ。
   sync(ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number, fo: FloatingOrigin,
-    dashSize: number, gapSize: number, scale: ScaleFn, attractors: readonly Attractor[]): void {
+    dashSize: number, gapSize: number, camera: THREE.Camera, attractors: readonly Attractor[]): void {
     this.line.setDash(dashSize, gapSize);
-    this.line.syncGeometry(this._samples, frame, ephemeris, scale, attractors);
+    this.line.syncGeometry(this._samples, frame, ephemeris, attractors);
     this.line.syncTransform(frame, currentTime, ephemeris, fo, attractors);
+    this.line.sync(camera);
   }
 
   // 時刻 t の状態。保持区間外は null。
