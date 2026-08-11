@@ -114,6 +114,11 @@ main.ts
     │   ├── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
     │   └── ContextMenu<Enemy>         ... 第一/第二ターゲットの設定・解除メニュー。DOM は Hud.layers.popup 配下
     ├── EntityManager                  ... エンティティ配列の保持のみ。simTime は持たない
+    │   ├── InstancedPool (bulletBodyPool) ... geometry/material は render/ships.ts のモジュールスコープ
+    │   │                                      共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
+    │   ├── InstancedPool (bulletHaloPool)
+    │   ├── InstancedPool (plasmaPool)
+    │   ├── InstancedPool (casingPool)
     │   ├── Player[] (players)         ... 自機。ステージモードでは1隻のみ。操作対象(Game.player)は
     │   │                                  この配列内の1隻への参照(§3-4 参照)
     │   │   ├── PlayerThrottle
@@ -136,8 +141,11 @@ main.ts
     │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
     │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
     │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
-    │   ├── Bullet[]                    ... 各々コンストラクタで Sfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)
-    │   ├── DebrisPiece[] (casings)      ... 各々コンストラクタで Sfx・EffectsSystem への参照を持つ(接触音・ガスパフを自分の collideWith から出すため)
+    │   ├── Bullet[]                    ... 各々コンストラクタで Sfx への参照を持つ(至近通過音を自分の checkLoss から鳴らすため)。
+    │   │                                  obj はシーンへ足さない(GameEntity の addToScene=false) — bulletBodyPool/bulletHaloPool/plasmaPool が
+    │   │                                  obj の変換を読んで描画する。obj 自体は Bullet.sync が書き込む変換の置き場所として残る
+    │   ├── DebrisPiece[] (casings)      ... 各々コンストラクタで Sfx・EffectsSystem への参照を持つ(接触音・ガスパフを自分の collideWith から出すため)。
+    │   │                                  obj はシーンへ足さない(addToScene=false) — casingPool が obj の変換を読んで描画する
     │   ├── DebrisPiece[] (debris)       ... 同上
     │   ├── Ammo[]
     │   ├── Base[]                     ... 各々 baseState(money/inventory/dockedShips)と OrbitLine を持つ
