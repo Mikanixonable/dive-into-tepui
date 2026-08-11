@@ -27,6 +27,7 @@ export class Simulator {
   // 今フレームに走った軌道積分(GameEntity.stepActual)の呼び出し回数。
   lastOrbitSteps = 0;
   private readonly adaptiveStatesScratch: KinematicState[] = [];
+  private readonly contactEntitiesScratch: GameEntity[] = [];
 
   // entities/ephemeris は参照として保持する。
   constructor(
@@ -79,10 +80,14 @@ export class Simulator {
       if (resolveCollision) {
         // 放熱板の折りは EntityManager に登録された実体ではなく、艦の姿勢から毎 substep
         // 置き直す接触代理なので、参加者リストへこの場で合流させる。
-        const radiatorFolds = this.entities.players.flatMap(
-          (p) => p.alive ? p.collisionFolds(this.simTime) : []);
+        this.contactEntitiesScratch.length = 0;
+        this.contactEntitiesScratch.push(...this.entities.all());
+        for (const p of this.entities.players) {
+          if (!p.alive) continue;
+          this.contactEntitiesScratch.push(...p.collisionFolds(this.simTime));
+        }
         this.contactPhysics.resolveSubstep(
-          this.simTime, [...this.entities.all(), ...radiatorFolds], attractorsNow, activeStage);
+          this.simTime, this.contactEntitiesScratch, attractorsNow, activeStage);
         if (player) nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
       }
       activeStage.applySimulationEvents(this.simTime);

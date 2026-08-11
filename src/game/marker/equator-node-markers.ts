@@ -39,6 +39,7 @@ interface EqNodePair {
 
 export class EquatorNodeMarkers {
   private pairs: readonly EqNodePair[] = [];
+  private readonly pickableCache: MapPickable[] = [];
   private lastKeys: readonly string[] = [];
   // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
   private attractors: readonly Attractor[] = [];
@@ -101,11 +102,15 @@ export class EquatorNodeMarkers {
       });
     }
     this.pairs = pairs;
+    this.pickableCache.length = 0;
+    for (const pair of pairs) {
+      this.pickableCache.push(pair.an, pair.dn);
+    }
   }
 
   // 右クリック対象として公開する EqAN/EqDN アイコン。
   mapPickables(): readonly MapPickable[] {
-    return this.pairs.flatMap((p) => [p.an, p.dn]);
+    return this.pickableCache;
   }
 
   // △▽ 交点マーカーを update が求めた位置に置く。show=false なら全て隠す。対象の増減で

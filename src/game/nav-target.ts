@@ -38,6 +38,7 @@ export class NavTarget {
   private dnTime: number | null = null;
   // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
   private attractors: readonly Attractor[] = [];
+  private readonly pickableCache: MapPickable[] = [];
 
   constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {
     this.baseMenu = new ContextMenu<Base, MenuAction>(_hud.layers.popup);
@@ -159,10 +160,10 @@ export class NavTarget {
 
   // 右クリック対象として公開する AN/DN アイコン。計算できているぶんだけ返す。
   mapPickables(): MapPickable[] {
-    const items: MapPickable[] = [];
-    if (this.anPos && this.anTime !== null) items.push({ id: 'nav-an', name: 'AN', pos: this.anPos, time: this.anTime, kind: 'relnode' });
-    if (this.dnPos && this.dnTime !== null) items.push({ id: 'nav-dn', name: 'DN', pos: this.dnPos, time: this.dnTime, kind: 'relnode' });
-    return items;
+    this.pickableCache.length = 0;
+    if (this.anPos && this.anTime !== null) this.pickableCache.push({ id: 'nav-an', name: 'AN', pos: this.anPos, time: this.anTime, kind: 'relnode' });
+    if (this.dnPos && this.dnTime !== null) this.pickableCache.push({ id: 'nav-dn', name: 'DN', pos: this.dnPos, time: this.dnTime, kind: 'relnode' });
+    return this.pickableCache;
   }
 
   // マップビューでは、天体に遮蔽されて画面上見えていない AN/DN を隠す(戦闘ビューでは効かせない)。
