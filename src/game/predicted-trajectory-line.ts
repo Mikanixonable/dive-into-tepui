@@ -5,7 +5,7 @@ import { ReferenceFrame } from '../physics/frame';
 import { Attractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from './floating-origin';
-import { EMPTY_SAMPLES, SampledLine, ScaleAtFn } from './sampled-line';
+import { EMPTY_SAMPLES, SampledLine } from './sampled-line';
 import { GameEntity } from './game-entity/game-entity';
 import { EntityLineSet } from './entity-line-set';
 import { LINE_RENDER_ORDER } from './const';
@@ -23,17 +23,18 @@ export class PredictedTrajectoryLine {
     );
   }
 
-  // targets: このフレームに予測軌道線を描きたい対象の集合。frame は bake の座標系、scale は
-  // 折れ線の細分密度を決める画面スケール。
+  // targets: このフレームに予測軌道線を描きたい対象の集合。frame は bake の座標系、camera は
+  // 解像度を決める画面上のサジッタを実距離へ換算するための描画カメラ。
   sync(
     targets: readonly GameEntity[], frame: ReferenceFrame, simTime: number, ephemeris: Ephemeris,
-    fo: FloatingOrigin, scale: ScaleAtFn, attractors: readonly Attractor[],
+    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
     for (const entity of targets) {
       const line = this.lines.lineFor(entity);
       const samples = entity.predictedTrajectory?.samplesOldestFirst() ?? EMPTY_SAMPLES;
-      line.syncGeometry(samples, frame, ephemeris, scale, attractors);
+      line.syncGeometry(samples, frame, ephemeris, attractors);
       line.syncTransform(frame, simTime, ephemeris, fo, attractors);
+      line.sync(camera);
       line.setVisible(true);
     }
     this.targetSet.clear();
