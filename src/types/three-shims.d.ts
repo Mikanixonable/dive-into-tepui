@@ -16,6 +16,7 @@ declare module 'three/webgpu' {
     setViewport(x: number, y: number, width: number, height: number): void;
     setScissor(x: number, y: number, width: number, height: number): void;
     setScissorTest(enable: boolean): void;
+    info: { render: { drawCalls: number; triangles: number } };
   }
   export class MeshStandardNodeMaterial extends import('three').MeshStandardMaterial {
     constructor(parameters?: import('three').MeshStandardMaterialParameters);
