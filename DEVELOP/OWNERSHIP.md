@@ -108,7 +108,9 @@ main.ts
     │   └── CelestialGrid              ... 赤道面/黄道面それぞれの基準円・緯経線グリッド・両極マーカー
     ├── EffectsSystem
     │   └── FlashEffectManager
-    │       └── FlashEffect[]          ... 各々 Billboard を持つ
+    │       ├── InstancedPool (pool)   ... geometry/material は render/billboard.ts の flashResources() が持つ
+    │       │                              共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
+    │       └── FlashEffect[]          ... 各々 THREE.Object3D(transform)のみ持つ(geometry/material は持たない)
     ├── Targeter
     │   ├── OrbitLine                  ... 第一ターゲット軌道線(オレンジ)
     │   ├── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
