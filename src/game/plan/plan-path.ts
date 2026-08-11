@@ -54,6 +54,9 @@ export class PlanPath {
   // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
   private cameraPos: Vec3 | null = null;
   private final: FinalSegment | null = null;
+  // 直近の update() で再積分した区間の本数と、その積分step数の合計。
+  lastReintegratedArcs = 0;
+  lastSteps = 0;
 
   // group をシーンへ登録する(初期状態は非表示)。
   constructor(scene: THREE.Scene, private readonly displayTimeManager: DisplayDurationSource) {
@@ -71,6 +74,8 @@ export class PlanPath {
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
     this.attractors = attractors;
+    this.lastReintegratedArcs = 0;
+    this.lastSteps = 0;
     // anchor→node…→末尾区間に分解する
     const segments = buildSegments(plan, ephemeris, this.displayTimeManager);
     // ノードが1つも無い間はその唯一の区間(末尾区間)の起点が毎フレーム自機を追従する。
@@ -82,7 +87,11 @@ export class PlanPath {
       // 表示時刻に応じて中心天体が変わってしまい、区間の物理そのものと食い違う。
       const isFinalSegment = i === segments.length - 1;
       const apsisCenter = isFinalSegment ? strongestAttractor(seg.state0.r, ephemeris.attractorsAt(seg.state0.t)) : null;
-      this.arcAt(i).update(seg.state0, seg.end, attractorProvider, tracksLiveAnchor, apsisCenter);
+      const arc = this.arcAt(i);
+      if (arc.update(seg.state0, seg.end, attractorProvider, tracksLiveAnchor, apsisCenter)) {
+        this.lastReintegratedArcs++;
+        this.lastSteps += arc.lastSteps;
+      }
     }
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
