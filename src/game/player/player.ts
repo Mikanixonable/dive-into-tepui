@@ -496,7 +496,7 @@ export class Player extends Ship {
       detail: '',
       bearingColor: '#00ffff', // 自機/味方と分かりやすいようにシアン
       bearingSym: DIRECTION_GLYPH.allyBearing,
-      bearingClass: 'mk-ally-dir',
+      bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: dist <= C.ALLY_BEARING_MAX_DISTANCE,
       color: '#00ffff',
       symMarkup: true,
