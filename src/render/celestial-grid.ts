@@ -55,6 +55,8 @@ function makeLine(color: number, opacity: number): THREE.Line {
   const geo = new THREE.BufferGeometry();
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
   const line = new THREE.Line(geo, mat);
+  // 常にカメラを中心とする殻として置く(sync が position をカメラ位置へ毎フレーム合わせる)ため、
+  // 外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
   line.frustumCulled = false;
   line.renderOrder = 0;
   return line;
@@ -66,6 +68,7 @@ function makeLineSegments(color: number, opacity: number): THREE.LineSegments {
   const geo = new THREE.BufferGeometry();
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
   const line = new THREE.LineSegments(geo, mat);
+  // makeLine と同じ理由(常にカメラ中心の殻)。
   line.frustumCulled = false;
   line.renderOrder = 0;
   return line;
