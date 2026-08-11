@@ -38,8 +38,7 @@ import type { AbsoluteEphemeris } from '../physics/absolute-ephemeris';
 import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from './sim-epoch';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
-import { DebugTrajectoryLine } from './debug-trajectory-line';
-import { PredictedTrajectoryLine } from './predicted-trajectory-line';
+import { EntityTrajectoryLine } from './entity-trajectory-line';
 import { NavTarget } from './nav-target';
 import { MapPicker } from './map-picker';
 import { Navball } from './navball/navball';
@@ -127,8 +126,8 @@ export class Game {
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
-  private readonly debugTrajectoryLine: DebugTrajectoryLine;
-  private readonly predictedTrajectoryLine: PredictedTrajectoryLine;
+  private readonly debugTrajectoryLine: EntityTrajectoryLine;
+  private readonly predictedTrajectoryLine: EntityTrajectoryLine;
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
   readonly frameControls: FrameControls;
@@ -252,8 +251,8 @@ export class Game {
     }
 
     this.nanWatchdog = new NanWatchdog(this._hud);
-    this.debugTrajectoryLine = new DebugTrajectoryLine(this._scene);
-    this.predictedTrajectoryLine = new PredictedTrajectoryLine(this._scene);
+    this.debugTrajectoryLine = EntityTrajectoryLine.debug(this._scene);
+    this.predictedTrajectoryLine = EntityTrajectoryLine.predicted(this._scene);
     this.docking = new Docking(
       this, this._hud, this._sfx, this._scene, this.effects, this.markerManager,
       this.entities, this.mapPicker, this.cameraSystem, this.viewManager,

@@ -2,8 +2,6 @@
 // 単位球面上の点(星殻と同じ半径)で、自機中心に追従する固定半径殻として描く。
 import * as THREE from 'three/webgpu';
 import { Q_ECL_TO_ECI } from '../physics/ecliptic';
-import { qRotate } from '../physics/attitude';
-import { Vec3, v3 } from '../physics/vec3';
 import { STAR_SHELL_RADIUS } from './stars';
 
 export interface CelestialGridVisibility {
@@ -19,18 +17,28 @@ export interface CelestialGridVisibility {
 
 // 面を張る直交基底。e1/e2 が面内、pole が法線(北極方向)。
 interface PlaneBasis {
-  readonly e1: Vec3;
-  readonly e2: Vec3;
-  readonly pole: Vec3;
+  readonly e1: THREE.Vector3;
+  readonly e2: THREE.Vector3;
+  readonly pole: THREE.Vector3;
+}
+
+const eclToEciQuat = new THREE.Quaternion(Q_ECL_TO_ECI.x, Q_ECL_TO_ECI.y, Q_ECL_TO_ECI.z, Q_ECL_TO_ECI.w);
+
+function rotatedAxis(x: number, y: number, z: number): THREE.Vector3 {
+  return new THREE.Vector3(x, y, z).applyQuaternion(eclToEciQuat);
 }
 
 // 赤道面はゲーム ECI そのもの(Y軸 = 北極)。
-const EQUATOR_BASIS: PlaneBasis = { e1: v3(1, 0, 0), e2: v3(0, 0, 1), pole: v3(0, 1, 0) };
+const EQUATOR_BASIS: PlaneBasis = {
+  e1: new THREE.Vector3(1, 0, 0),
+  e2: new THREE.Vector3(0, 0, 1),
+  pole: new THREE.Vector3(0, 1, 0),
+};
 // 黄道面は Q_ECL_TO_ECI で赤道基底から回転させて得る(傾斜角を直書きしない)。
 const ECLIPTIC_BASIS: PlaneBasis = {
-  e1: qRotate(Q_ECL_TO_ECI, v3(1, 0, 0)),
-  e2: qRotate(Q_ECL_TO_ECI, v3(0, 1, 0)),
-  pole: qRotate(Q_ECL_TO_ECI, v3(0, 0, 1)),
+  e1: rotatedAxis(1, 0, 0),
+  e2: rotatedAxis(0, 1, 0),
+  pole: rotatedAxis(0, 0, 1),
 };
 
 const GRID_LAT_STEP_DEG = 15; // 交点の緯度間隔
@@ -39,12 +47,12 @@ const GRID_LABEL_STEP_DEG = 30; // 座標ラベルは間隔を空けて表示
 const CIRCLE_SEGMENTS = 64; // 円1本あたりの分割数
 const POLE_MARKER_HALF_LEN = STAR_SHELL_RADIUS * 0.04; // 極マーカーの殻面からの突き出し長さ
 
-function planePoint(basis: PlaneBasis, radius: number, latRad: number, lonRad: number): Vec3 {
+function planePoint(basis: PlaneBasis, radius: number, latRad: number, lonRad: number): THREE.Vector3 {
   const c = radius * Math.cos(latRad);
   const s = radius * Math.sin(latRad);
   const cl = Math.cos(lonRad);
   const sl = Math.sin(lonRad);
-  return v3(
+  return new THREE.Vector3(
     c * cl * basis.e1.x + c * sl * basis.e2.x + s * basis.pole.x,
     c * cl * basis.e1.y + c * sl * basis.e2.y + s * basis.pole.y,
     c * cl * basis.e1.z + c * sl * basis.e2.z + s * basis.pole.z,
@@ -74,7 +82,7 @@ function makeLineSegments(color: number, opacity: number): THREE.LineSegments {
   return line;
 }
 
-function setLinePoints(line: THREE.Line, points: readonly Vec3[]): void {
+function setLinePoints(line: THREE.Line, points: readonly THREE.Vector3[]): void {
   const arr = new Float32Array(points.length * 3);
   for (let i = 0; i < points.length; i++) {
     const p = points[i]!;
@@ -91,24 +99,24 @@ function setLinePoints(line: THREE.Line, points: readonly Vec3[]): void {
 // 緯度・経度の交点における東西・南北の短い十字を、LineSegments 用の
 // 頂点対4つ([東西の2点, 南北の2点])として返す。全周の線を描かないことで、
 // 天球上の座標密度を保ちつつ視界を塞がない。
-function intersectionCrossPoints(basis: PlaneBasis, radius: number, latRad: number, lonRad: number): Vec3[] {
+function intersectionCrossPoints(basis: PlaneBasis, radius: number, latRad: number, lonRad: number): THREE.Vector3[] {
   const p = planePoint(basis, radius, latRad, lonRad);
   const eps = radius * 0.012;
-  const dLon = v3(
+  const dLon = new THREE.Vector3(
     -Math.sin(lonRad) * basis.e1.x + Math.cos(lonRad) * basis.e2.x,
     -Math.sin(lonRad) * basis.e1.y + Math.cos(lonRad) * basis.e2.y,
     -Math.sin(lonRad) * basis.e1.z + Math.cos(lonRad) * basis.e2.z,
   );
-  const dLat = v3(
+  const dLat = new THREE.Vector3(
     -Math.sin(latRad) * Math.cos(lonRad) * basis.e1.x - Math.sin(latRad) * Math.sin(lonRad) * basis.e2.x + Math.cos(latRad) * basis.pole.x,
     -Math.sin(latRad) * Math.cos(lonRad) * basis.e1.y - Math.sin(latRad) * Math.sin(lonRad) * basis.e2.y + Math.cos(latRad) * basis.pole.y,
     -Math.sin(latRad) * Math.cos(lonRad) * basis.e1.z - Math.sin(latRad) * Math.sin(lonRad) * basis.e2.z + Math.cos(latRad) * basis.pole.z,
   );
   return [
-    v3(p.x - dLon.x * eps, p.y - dLon.y * eps, p.z - dLon.z * eps),
-    v3(p.x + dLon.x * eps, p.y + dLon.y * eps, p.z + dLon.z * eps),
-    v3(p.x - dLat.x * eps, p.y - dLat.y * eps, p.z - dLat.z * eps),
-    v3(p.x + dLat.x * eps, p.y + dLat.y * eps, p.z + dLat.z * eps),
+    new THREE.Vector3(p.x - dLon.x * eps, p.y - dLon.y * eps, p.z - dLon.z * eps),
+    new THREE.Vector3(p.x + dLon.x * eps, p.y + dLon.y * eps, p.z + dLon.z * eps),
+    new THREE.Vector3(p.x - dLat.x * eps, p.y - dLat.y * eps, p.z - dLat.z * eps),
+    new THREE.Vector3(p.x + dLat.x * eps, p.y + dLat.y * eps, p.z + dLat.z * eps),
   ];
 }
 
@@ -133,7 +141,7 @@ class GridPlane {
     document.body.appendChild(this.labelLayer);
     this.planeLine = makeLine(color, 0.35);
     setLinePoints(this.planeLine, (() => {
-      const pts: Vec3[] = [];
+      const pts: THREE.Vector3[] = [];
       for (let i = 0; i <= CIRCLE_SEGMENTS; i++) pts.push(planePoint(basis, STAR_SHELL_RADIUS, 0, (i / CIRCLE_SEGMENTS) * Math.PI * 2));
       return pts;
     })());
@@ -142,7 +150,7 @@ class GridPlane {
     // 交点ごとの東西・南北の線分(setLinePoints が組む頂点対)を1本の
     // LineSegments へ連結する。連続した1本の折れ線にすると線分間が斜めに
     // 接続され「4」のように見えるため、頂点対を独立したセグメントとして保つ。
-    const gridPoints: Vec3[] = [];
+    const gridPoints: THREE.Vector3[] = [];
     for (let lat = -75; lat <= 75; lat += GRID_LAT_STEP_DEG) {
       if (lat === 0) continue;
       for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) {
@@ -153,10 +161,10 @@ class GridPlane {
     setLinePoints(this.gridLine, gridPoints);
     scene.add(this.gridLine);
 
-    const polePoints: Vec3[] = [];
+    const polePoints: THREE.Vector3[] = [];
     for (const sign of [1, -1]) {
-      const tip = v3(basis.pole.x * STAR_SHELL_RADIUS * sign, basis.pole.y * STAR_SHELL_RADIUS * sign, basis.pole.z * STAR_SHELL_RADIUS * sign);
-      const base = v3(
+      const tip = new THREE.Vector3(basis.pole.x * STAR_SHELL_RADIUS * sign, basis.pole.y * STAR_SHELL_RADIUS * sign, basis.pole.z * STAR_SHELL_RADIUS * sign);
+      const base = new THREE.Vector3(
         tip.x - basis.pole.x * POLE_MARKER_HALF_LEN * sign,
         tip.y - basis.pole.y * POLE_MARKER_HALF_LEN * sign,
         tip.z - basis.pole.z * POLE_MARKER_HALF_LEN * sign,
@@ -193,7 +201,7 @@ class GridPlane {
       obj.scale.setScalar(scale);
     }
     this.labels.forEach((el) => { el.style.display = 'none'; });
-    const show = (el: HTMLDivElement, p: Vec3, below = false) => {
+    const show = (el: HTMLDivElement, p: THREE.Vector3, below = false) => {
       const w = window.innerWidth, h = window.innerHeight;
       const v = new THREE.Vector3(origin.x + p.x * scale, origin.y + p.y * scale, origin.z + p.z * scale).project(camera);
       if (v.z < -1 || v.z > 1) return;
@@ -205,12 +213,12 @@ class GridPlane {
     const [plane, pn, ps] = this.labels;
     if (planeVisible) show(plane!, planePoint(this.basis, STAR_SHELL_RADIUS, 0, 0), true);
     if (poleVisible) {
-      show(pn!, v3(this.basis.pole.x * STAR_SHELL_RADIUS, this.basis.pole.y * STAR_SHELL_RADIUS, this.basis.pole.z * STAR_SHELL_RADIUS));
-      show(ps!, v3(-this.basis.pole.x * STAR_SHELL_RADIUS, -this.basis.pole.y * STAR_SHELL_RADIUS, -this.basis.pole.z * STAR_SHELL_RADIUS));
+      show(pn!, new THREE.Vector3(this.basis.pole.x * STAR_SHELL_RADIUS, this.basis.pole.y * STAR_SHELL_RADIUS, this.basis.pole.z * STAR_SHELL_RADIUS));
+      show(ps!, new THREE.Vector3(-this.basis.pole.x * STAR_SHELL_RADIUS, -this.basis.pole.y * STAR_SHELL_RADIUS, -this.basis.pole.z * STAR_SHELL_RADIUS));
     }
     if (gridVisible) {
       const w = window.innerWidth, h = window.innerHeight;
-      const project = (p: Vec3) => new THREE.Vector3(origin.x + p.x * scale, origin.y + p.y * scale, origin.z + p.z * scale).project(camera);
+      const project = (p: THREE.Vector3) => new THREE.Vector3(origin.x + p.x * scale, origin.y + p.y * scale, origin.z + p.z * scale).project(camera);
       for (const item of this.gridLabels) {
         const latRad = item.lat * Math.PI / 180;
         const lonRad = item.lon * Math.PI / 180;
