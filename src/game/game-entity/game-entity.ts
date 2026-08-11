@@ -83,7 +83,8 @@ export class GameEntity {
 
   // 初期状態と姿勢からエンティティを構築する。scene を渡すと obj を即座にシーンへ追加する。
   // id 省略時はこの基底が自動採番する(復元 id を渡すクラスはそれをそのまま通す)。addToScene
-  // を false にすると obj をシーンへ足さない。obj 自体は sync が書き込む変換の置き場所として残る。
+  // を false にすると obj をシーンへ足さない — InstancedPool 経由で描画する種別(弾・薬莢)が
+  // 使う。obj 自体は sync が書き込む変換の置き場所として残る。
   constructor(
     state: KinematicState,
     obj: THREE.Object3D,
