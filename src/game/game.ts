@@ -821,7 +821,7 @@ export class Game {
       ship.orbitLine.setDisplayEnabled(!overviewMode || (mapVisibility?.entity('player', ship === player).orbit ?? false));
     }
     for (const base of this.entities.bases) {
-      base.syncOrbitLine(overviewMode, this.floatingOrigin, attractors);
+      base.syncOrbitLine(overviewMode, this.floatingOrigin, this.cameraSystem.activeCamera, attractors);
       base.orbitLine.setDisplayEnabled(!overviewMode || (mapVisibility?.entity('base').orbit ?? false));
     }
 
@@ -829,7 +829,10 @@ export class Game {
 
     if (player) {
       const targets = this.entities.getCombatTargets(player);
-      this.targeter.sync(this.floatingOrigin, player, targets, overviewMode, project, attractors, mapVisibility);
+      this.targeter.sync(
+        this.floatingOrigin, player, targets, overviewMode, project, this.cameraSystem.activeCamera,
+        attractors, mapVisibility,
+      );
       for (const enemy of this.entities.enemies) {
         enemy.orbitLine.setDisplayEnabled(!overviewMode || (mapVisibility?.entity('ship').orbit ?? false));
       }
@@ -865,6 +868,7 @@ export class Game {
     this.editor.sync(
       this.cameraSystem.overviewCamera.dist, simTime, this.floatingOrigin, project,
       this.cameraSystem.activeCameraScale, overviewMode, this.cameraSystem.activeCameraPos,
+      this.cameraSystem.activeCamera,
     );
     this.mapPicker.sync(overviewMode, simTime, attractors, player);
     this.frameControls.sync(
@@ -875,7 +879,7 @@ export class Game {
     const predictedTargets = player?.alive ? [player] : [];
     this.predictedTrajectoryLine.sync(
       predictedTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
-      this.cameraSystem.activeCameraScale, attractors,
+      this.cameraSystem.activeCamera, attractors,
     );
     // 解析楕円は、積分予測が表示範囲に届いていないあいだの代替表示。予測が表示ホライズンを
     // 覆いきったときだけ抑制する。predictedTrajectoryLine は操作対象艦しか描かないため、
@@ -888,7 +892,10 @@ export class Game {
     if (player) {
       this.touchControls?.syncModeButtons(player.rcsDamp, player.fineAttitude, player.progradeHold);
     }
-    this.activeStage.sync(player, this.floatingOrigin, project, this.cameraSystem.activeCameraScale, displayTime, overviewMode, mapVisibility);
+    this.activeStage.sync(
+      player, this.floatingOrigin, project, this.cameraSystem.activeCameraScale, displayTime, overviewMode,
+      mapVisibility, this.cameraSystem.activeCamera,
+    );
 
     this._hud.panels.sync(this, attractors);
     this._hud.tick();
@@ -898,7 +905,7 @@ export class Game {
     const debugTargets = player ? (target ? [player, target] : [player]) : [];
     this.debugTrajectoryLine.sync(
       debugTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
-      this.cameraSystem.activeCameraScale, attractors,
+      this.cameraSystem.activeCamera, attractors,
     );
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
