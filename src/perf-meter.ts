@@ -1,5 +1,6 @@
 // 負荷確認ウィンドウ: フレーム時間の計測・集計と、その表示。
 // 窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
+import type { WebGPURenderer } from 'three/webgpu';
 import { PropertyRow, PropertyWindow } from './game/hud/property-window';
 import { fmtDuration } from './game/hud/utils';
 
@@ -55,6 +56,8 @@ export class PerfMeter {
   private readonly updateStats = newPhaseStats();
   private readonly syncStats = newPhaseStats();
   private readonly renderStats = newPhaseStats();
+  private readonly drawCallStats = newPhaseStats();
+  private readonly triangleStats = newPhaseStats();
   private frames = 0;
   private lastFlush = performance.now();
   // 前回フラッシュ時点の暦キャッシュ累計。表示する集計期間分の差分を取るために持つ。
@@ -69,7 +72,11 @@ export class PerfMeter {
   get on(): boolean { return this.win !== null; }
 
   // ?perf=1 が付いていれば起動直後から窓を開く。
-  constructor(private readonly counts: PerfCountSource, private readonly root: HTMLElement) {
+  constructor(
+    private readonly counts: PerfCountSource,
+    private readonly root: HTMLElement,
+    private readonly renderer: WebGPURenderer,
+  ) {
     if (new URLSearchParams(location.search).get('perf') === '1') this.open();
   }
 
@@ -83,6 +90,8 @@ export class PerfMeter {
     this.resetStats(this.updateStats);
     this.resetStats(this.syncStats);
     this.resetStats(this.renderStats);
+    this.resetStats(this.drawCallStats);
+    this.resetStats(this.triangleStats);
     this.frames = 0;
     this.lastFlush = performance.now();
     this.win = new PropertyWindow(this.root, DEFAULT_X, DEFAULT_Y, {
@@ -110,6 +119,10 @@ export class PerfMeter {
     this.addSample(this.updateStats, updateMs);
     this.addSample(this.syncStats, syncMs);
     this.addSample(this.renderStats, renderMs);
+    // WebGPURenderer.info.render は autoReset によりフレームごとに 0 へ戻るので、
+    // このフレームの render() 呼び出し直後の値がそのままこのフレームの計測値になる。
+    this.addSample(this.drawCallStats, this.renderer.info.render.drawCalls);
+    this.addSample(this.triangleStats, this.renderer.info.render.triangles);
     this.frames++;
     this.flush(now);
   }
@@ -136,6 +149,11 @@ export class PerfMeter {
     };
   }
 
+  // 個数系の統計1つ分の avg/max 行。
+  private countRow(key: string, label: string, group: string, stats: PhaseStats, frames: number): PropertyRow {
+    return { key, label, group, value: `avg ${Math.round(stats.sum / frames)} max ${Math.round(stats.max)}` };
+  }
+
   // 500ms ごとに蓄積した計測値から表示行を組み、窓へ反映する。
   private flush(now: number): void {
     if (!this.win || now - this.lastFlush < 500) return;
@@ -147,6 +165,8 @@ export class PerfMeter {
     this.resetStats(this.updateStats);
     this.resetStats(this.syncStats);
     this.resetStats(this.renderStats);
+    this.resetStats(this.drawCallStats);
+    this.resetStats(this.triangleStats);
     this.frames = 0;
     this.lastFlush = now;
   }
@@ -180,6 +200,9 @@ export class PerfMeter {
       this.phaseRow('update', 'update', this.updateStats, frames),
       this.phaseRow('sync', 'sync', this.syncStats, frames),
       this.phaseRow('render', 'render', this.renderStats, frames),
+
+      this.countRow('draw-calls', 'draw calls', '描画', this.drawCallStats, frames),
+      this.countRow('draw-tris', 'triangles', '描画', this.triangleStats, frames),
 
       { key: 'plan-arcs', label: '再積分区間', value: `${c.planArcs}`, group: '計画軌道' },
       { key: 'plan-steps', label: '積分step', value: `${c.planSteps}`, group: '計画軌道' },
