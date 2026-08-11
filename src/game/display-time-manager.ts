@@ -33,6 +33,7 @@ const SLIDER_TARGET_STEP_SEC = 10;
 
 export class DisplayTimeManager {
   private _forceCurrent = true;
+  private _revision = 0;
   private durationKey: DisplayDurationKey = 'orbit';
   private sliderT = 0;
   private customDurationSec = C.DISPLAY_DUR_DAY;
@@ -50,20 +51,25 @@ export class DisplayTimeManager {
     this.panel.onDurationSelect = (key) => {
       this.durationKey = key;
       this.sliderT = 0;
+      this._revision++;
     };
     this.panel.onCustomDurationConfirm = (sec) => {
       this.customDurationSec = sec;
       this.durationKey = 'custom';
       this.sliderT = 0;
+      this._revision++;
     };
     this.panel.onSliderChange = (t) => {
       this.sliderT = t;
+      this._revision++;
     };
     this.panel.onResetToNow = () => {
       this.sliderT = 0;
+      this._revision++;
     };
     this.panel.onJumpToTime = (sec) => {
       this.sliderT = Math.max(0, Math.min(1, sec / this.lastDuration));
+      this._revision++;
     };
   }
 
@@ -72,10 +78,18 @@ export class DisplayTimeManager {
     return this._forceCurrent;
   }
 
+  // Game.update() と sync() の間に DOM イベントで表示窓設定が変わったかを検出する世代。
+  // 表示窓をキャッシュする側は simTime と併せてこの値をキーにする。
+  get revision(): number {
+    return this._revision;
+  }
+
   // true にすると未来ゴーストスライダーの位置も原点へ戻す。
   set forceCurrent(value: boolean) {
+    if (this._forceCurrent === value) return;
     this._forceCurrent = value;
     if (value) this.sliderT = 0;
+    this._revision++;
   }
 
   // 選んだ期間の秒数を返す。'orbit' では referencePeriod をそのまま返す — どの軌道の周期を

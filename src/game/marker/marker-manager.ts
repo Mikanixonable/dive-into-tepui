@@ -14,6 +14,23 @@ import * as C from '../const';
 type ProjectFn = (worldPos: Vec3) => Projected;
 type ScaleFn = (worldPos: Vec3) => number;
 
+interface MarkerRecord {
+  root: HTMLElement;
+  sym: HTMLElement;
+  lbl: HTMLElement;
+  fixedLabel: boolean;
+}
+
+interface ActiveLabel {
+  m: MarkerRecord;
+  ox: number;
+  oy: number;
+  w: number;
+  h: number;
+  dx: number;
+  dy: number;
+}
+
 // ラベルの概算矩形を入れる画面空間グリッドのセル幅。ラベルの幅は文字数に
 // よって変わるため、各ラベルは矩形がまたがる全セルへ登録する。
 const COLLISION_BUCKET_SIZE = 64;
@@ -29,7 +46,14 @@ function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLE
 }
 
 export class MarkerManager {
-  private markerDictionary = new Map<string, { root: HTMLElement; sym: HTMLElement; lbl: HTMLElement; fixedLabel: boolean }>();
+  private markerDictionary = new Map<string, MarkerRecord>();
+  private readonly activeScratch: ActiveLabel[] = [];
+  private activeCount = 0;
+  private candidateStamp = new Int32Array(0);
+  private readonly candidatesScratch: number[] = [];
+  private readonly collisionBuckets = new Map<string, number[]>();
+  private readonly bucketPool: number[][] = [];
+  private readonly svgLinePool: SVGLineElement[] = [];
 
   // root: マーカー要素を追加する親(#hud)。svgOverlay: ラベル引き出し線を描く SVG。
   constructor(
@@ -195,7 +219,8 @@ export class MarkerManager {
 
   // 全マーカーのラベルどうしの重なりを緩和し、ずらした分だけ引き出し線を描く。
   resolveCollisions(): void {
-    const active: { m: any; ox: number; oy: number; w: number; h: number; dx: number; dy: number }[] = [];
+    const active = this.activeScratch;
+    this.activeCount = 0;
 
     // 表示中のマーカーと、そのラベルの推定矩形を集める
     for (const m of this.markerDictionary.values()) {
@@ -214,18 +239,33 @@ export class MarkerManager {
       const h = 14;
 
       // ラベル中心の既定位置は、シンボル中心 (x, y) の 12px + h/2 下
-      active.push({ m, ox: x, oy: y + 12 + h / 2, w, h, dx: 0, dy: 0 });
+      const index = this.activeCount++;
+      const a = active[index] ?? (active[index] = { m, ox: 0, oy: 0, w: 0, h: 0, dx: 0, dy: 0 });
+      a.m = m;
+      a.ox = x;
+      a.oy = y + 12 + h / 2;
+      a.w = w;
+      a.h = h;
+      a.dx = 0;
+      a.dy = 0;
     }
 
     // 重なったラベルどうしを反発させて緩和する
     const ITER = 5;
-    const candidateStamp = new Int32Array(active.length);
-    const candidates: number[] = [];
+    if (this.candidateStamp.length < this.activeCount) this.candidateStamp = new Int32Array(this.activeCount);
+    this.candidateStamp.fill(0, 0, this.activeCount);
+    const candidateStamp = this.candidateStamp;
+    const candidates = this.candidatesScratch;
     for (let iter = 0; iter < ITER; iter++) {
       // 現在の押し出し位置からグリッドを作り直す。ラベルが前の反復で別セルへ
       // 移動しても候補から漏れないよう、反復をまたいでバケットを再利用しない。
-      const buckets = new Map<string, number[]>();
-      for (let i = 0; i < active.length; i++) {
+      for (const bucket of this.collisionBuckets.values()) {
+        bucket.length = 0;
+        this.bucketPool.push(bucket);
+      }
+      this.collisionBuckets.clear();
+      const buckets = this.collisionBuckets;
+      for (let i = 0; i < this.activeCount; i++) {
         const a = active[i]!;
         const cx = a.ox + a.dx;
         const cy = a.oy + a.dy;
@@ -241,7 +281,7 @@ export class MarkerManager {
             const key = `${cellX},${cellY}`;
             let bucket = buckets.get(key);
             if (!bucket) {
-              bucket = [];
+              bucket = this.bucketPool.pop() ?? [];
               buckets.set(key, bucket);
             }
             bucket.push(i);
@@ -249,7 +289,7 @@ export class MarkerManager {
         }
       }
 
-      for (let i = 0; i < active.length; i++) {
+      for (let i = 0; i < this.activeCount; i++) {
         const a = active[i]!;
         const ax = a.ox + a.dx;
         const ay = a.oy + a.dy;
@@ -307,21 +347,27 @@ export class MarkerManager {
     }
 
     // ずらした位置を反映し、シンボルとの引き出し線を引く
-    this.svgOverlay.innerHTML = '';
-    for (const a of active) {
+    let lineIndex = 0;
+    for (let i = 0; i < this.activeCount; i++) {
+      const a = active[i]!;
       if (Math.abs(a.dx) > 1 || Math.abs(a.dy) > 1) {
         a.m.lbl.style.transform = `translate(calc(-50% + ${a.dx}px), ${a.dy}px)`;
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        const line = this.svgLinePool[lineIndex] ?? document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        if (lineIndex === this.svgLinePool.length) this.svgLinePool.push(line);
+        line.style.display = '';
         line.setAttribute('x1', a.ox.toString());
         line.setAttribute('y1', (a.oy - 12 - a.h / 2).toString());
         line.setAttribute('x2', (a.ox + a.dx).toString());
         line.setAttribute('y2', (a.oy + a.dy - a.h / 2).toString());
         line.setAttribute('stroke', 'rgba(255,255,255,0.4)');
         line.setAttribute('stroke-width', '1');
+        // 既存ノードの appendChild は同じノードを移動するだけなので、active 順を保つ。
         this.svgOverlay.appendChild(line);
+        lineIndex++;
       } else {
         a.m.lbl.style.transform = 'translateX(-50%)';
       }
     }
+    for (; lineIndex < this.svgLinePool.length; lineIndex++) this.svgLinePool[lineIndex]!.style.display = 'none';
   }
 }
