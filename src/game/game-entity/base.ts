@@ -15,7 +15,7 @@ import type { MarkerManager } from '../marker/marker-manager';
 import type { BaseSaveData } from '../save-data';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import type { FloatingOrigin } from '../floating-origin';
-import { OrbitLine } from '../../render/orbit-line';
+import { OrbitLine } from '../orbit-line';
 import * as C from '../const';
 
 // 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。
