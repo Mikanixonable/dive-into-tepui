@@ -29,6 +29,18 @@ function satelliteOrbitOf(id: string): SatelliteOrbit {
 export function register(): void {
   const eph = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
 
+  test('ephemeris: frameOf は同じ対に同じ参照を返し、inertialFrame/frames/frameFor と一致する', () => {
+    assert.equal(eph.frameOf('earth', null), eph.frameOf('earth', null));
+    assert.equal(eph.frameOf('earth', 'moon'), eph.frameOf('earth', 'moon'));
+    assert.equal(eph.frameOf('earth', null), eph.inertialFrame);
+    assert.equal(eph.frameOf('earth', null), eph.frameFor('earth'));
+    assert.equal(eph.frameOf('sun', null), eph.frameFor('sun'));
+    for (const frame of eph.frames) {
+      assert.equal(eph.frameOf(frame.center, frame.rotatingWith), frame);
+    }
+    assert.notEqual(eph.frameOf('earth', 'moon'), eph.frameOf('earth', null));
+  });
+
   test('ephemeris: 地球は ECI 原点に厳密に静止する', () => {
     for (const t of [0, 1e6, 1e8]) {
       const s = eph.stateOf('earth', t);

@@ -6,6 +6,7 @@ import { len, sub } from '../../physics/vec3';
 import type { Game } from '../game';
 import { SIM_EPOCH_SEC, fmtAmmoStatus, fmtDateTime, fmtDist, fmtSpeed, fmtTime } from './utils';
 import { orbitInfo, relativeInfo } from './orbit-info';
+import { formatMapScaleDistance, mapScaleFor } from './map-scale';
 
 interface GlobalStatusData {
   simSpeedLabel: string;
@@ -67,6 +68,7 @@ export class HudPanels {
   // 毎フレーム呼ぶ。スタッツ/ターゲット/敵一覧パネルの表示を、内部間隔ごとに更新する。
   sync(game: Game, attractors: readonly Attractor[]): void {
     const now = performance.now();
+    this.syncMapScale(game);
     // グローバルステータス(時刻・時間加速・NODE WARP)は自機の有無に関係なく画面全体の
     // 状態なので、自機不在で以降の処理を抜ける早期 return より前に書く。
     this.setText('met', `${fmtDateTime(SIM_EPOCH_SEC + game.simulator.simTime)} / T+ ${fmtTime(game.simulator.simTime)}`);
@@ -90,16 +92,17 @@ export class HudPanels {
     }
     // 未配置状態から最初の艦を置いたとき、操縦HUDを再び通常の同期へ戻す。
     if (!game.cameraSystem.overviewMode) {
-      for (const id of ['hud-status', 'hud-orbit']) {
-        const el = document.getElementById(id);
-        if (el) el.style.display = '';
-      }
+      const el = document.getElementById('hud-status');
+      if (el) el.style.display = '';
     }
-    // CONTACTS は戦闘ビュー専用。マップビューでは計画パネルや軌道表示を優先する。
-    const contacts = document.getElementById('hud-enemies');
-    if (contacts) contacts.style.display = game.cameraSystem.overviewMode ? 'none' : '';
+    // CONTACTS・ORBIT は戦闘ビュー専用。マップビューではプロパティウィンドウの「軌道」グループが代わる。
+    for (const id of ['hud-orbit', 'hud-enemies']) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = game.cameraSystem.overviewMode ? 'none' : '';
+    }
     const tgt = game.targeter.aliveTarget;
     const secTgt = game.targeter.aliveSecondaryTarget;
+    this.setTargetVisibility(tgt !== null);
     const player0 = orbitInfo(player, attractors);
 
     // スタッツパネルを一定間隔で更新
@@ -157,6 +160,29 @@ export class HudPanels {
         .sort((a, b) => a.dist - b.dist);
       this.setEnemyList(rows);
     }
+  }
+
+  // マップ視点の縮尺は、カメラから画面中心までではなく、現在フォーカスしている対象の
+  // 深度における meters-per-pixel から求める。パンしてもフォーカス対象を基準にするため、
+  // 同じ天体を見続ける限り、表示値はスクロールズームだけに対応して変化する。
+  private syncMapScale(game: Game): void {
+    const panel = this.els.get('map-scale');
+    if (!panel) return;
+    const overview = game.cameraSystem.overviewMode;
+    panel.style.display = overview ? '' : 'none';
+    if (!overview) return;
+
+    const focus = game.cameraSystem.overviewCamera.resolvedFocus;
+    const metersPerPixel = game.cameraSystem.activeCameraScale(focus);
+    const scale = mapScaleFor(metersPerPixel);
+    const ruler = this.els.get('map-scale-ruler');
+    if (!scale || !ruler) {
+      panel.style.display = 'none';
+      return;
+    }
+    this.setText('map-scale-value', formatMapScaleDistance(scale.distanceM));
+    ruler.style.width = `${scale.widthPx.toFixed(2)}px`;
+    ruler.setAttribute('aria-label', `${formatMapScaleDistance(scale.distanceM)} の縮尺`);
   }
 
   // id 要素のテキストを、変化があるときだけ書き換える
@@ -255,6 +281,12 @@ export class HudPanels {
       <div class="row"><span class="k">傾斜角 INC</span><span class="v">${isFinite(t.incDeg) ? t.incDeg.toFixed(2) + '°' : '---'}</span></div>
       <div class="row"><span class="k">周期 PRD</span><span class="v">${fmtTime(t.period)}</span></div>
       <div class="row"><span class="k">相対傾斜 [AN/DN]</span><span class="v">${isFinite(t.relIncDeg) ? t.relIncDeg.toFixed(2) + '°' : '---'}</span></div>`;
+  }
+
+  // ターゲットが無いときはパネル自体を隠し、空のTARGETウィンドウを残さない。
+  private setTargetVisibility(visible: boolean): void {
+    const panel = this.els.get('tgtbody')?.closest<HTMLElement>('#hud-target');
+    if (panel) panel.style.display = visible ? '' : 'none';
   }
 
   // 敵一覧パネルの本文を、距離順の行として書き換える。第二ターゲットは第一と別に

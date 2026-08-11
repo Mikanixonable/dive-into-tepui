@@ -12,7 +12,6 @@ import type { EntityManager } from '../simulation/entity-manager';
 import type { Contact } from '../simulation/contact';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { fmtMarkerDist } from '../hud/utils';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
@@ -20,6 +19,8 @@ import { OrbitLine } from '../../render/orbit-line';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
+import { focusTargetId } from '../camera/focus-target';
+import type { MapVisibility } from '../celestial/map-visibility';
 import type { Stage } from '../stages/stage';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
 import { PlayerThrottle } from './player-throttle';
@@ -41,16 +42,11 @@ import { Plan } from '../plan/plan';
 import { PlanExecutor, type PlanExecutionMode } from '../plan/plan-executor';
 import type { PlayerSaveData } from '../save-data';
 import { restorePart, type AnyPart } from '../game-entity/parts';
+import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
 
 export type { PlanExecutionMode };
 
-const PLAN_EXECUTION_CYCLE: readonly PlanExecutionMode[] = ['off', 'instant', 'powered'];
 const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = { off: 'OFF', instant: '瞬間移動', powered: '自動操縦' };
-
-// mode を1段階次のモードへ進める(OFF → 瞬間移動 → 自動操縦 → OFF)。
-export function nextPlanExecution(mode: PlanExecutionMode): PlanExecutionMode {
-  return PLAN_EXECUTION_CYCLE[(PLAN_EXECUTION_CYCLE.indexOf(mode) + 1) % PLAN_EXECUTION_CYCLE.length]!;
-}
 
 // mode の表示ラベル(HUDのメニュー項目・プロパティ行が共有する)。
 export function planExecutionLabel(mode: PlanExecutionMode): string {
@@ -75,7 +71,7 @@ export class Player extends Ship {
   private readonly reentryEffects: ReentryEffects;
   private readonly markers: PlayerMarkers;
   // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
-  readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55);
+  readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.shipOrbit);
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
   readonly planExecutor: PlanExecutor;
@@ -207,7 +203,7 @@ export class Player extends Ship {
     // ワープを下げた瞬間に不意打ちで噴射が始まるのを防ぐ)。
     if (simSpeed.canPlayerThrust) this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
-    // 推力入力の瞬間に予測を即破棄する — resyncPrediction の距離判定を待つと数フレームの遅延が生じる。
+    // 推力入力の瞬間に予測を即破棄する — discardPredictionIfDiverged の距離判定を待つと数フレームの遅延が生じる。
     if (this.thrust !== null) this.invalidatePrediction();
 
     // 操作対象艦での手動並進・手動回転は 'powered' 自動実行を中断する(進行方向ホールドが
@@ -442,10 +438,13 @@ export class Player extends Ship {
     displayTime: number,
     isActive: boolean,
     ephemeris: Ephemeris,
+    attractors: readonly Attractor[],
+    mapVisibility: MapVisibility | null = null,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
-    this.obj.visible = displayState !== null && this.alive && !(isActive && camera.zoomActive);
+    const mapEntityVisible = !camera.overviewMode || mapVisibility === null || mapVisibility.category;
+    this.obj.visible = displayState !== null && this.alive && mapEntityVisible && !(isActive && camera.zoomActive);
     if (displayState !== null) {
       this.obj.position.copy(fo.RtoThreeV3(displayState.r));
       this.obj.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
@@ -455,7 +454,7 @@ export class Player extends Ship {
     // 揃えないと「機体は未来位置、プルームは現在位置」に割れる。表示できる状態が無いときは
     // 各エフェクトが自分で消えられるよう alive を倒して呼ぶ。
     const effectState = displayState ?? this.state;
-    const effectAlive = this.alive && displayState !== null;
+    const effectAlive = this.alive && displayState !== null && mapEntityVisible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
     this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectAlive, isActive, camera);
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectAlive, phasePlaying, paused, camera, isActive);
@@ -464,7 +463,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity);
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.overviewCamera.focus), ephemeris.registry, attractors, mapVisibility);
 
     if (this.alive) {
       const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));
@@ -481,7 +480,8 @@ export class Player extends Ship {
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
   markerItem(role: 'none' | 'primary' | 'secondary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): {
     key: string; cls: string; sym: string; pos: Vec3; vel: Vec3; priority: number;
-    name: string; detail: string; bearingColor: string; color: string; symMarkup: boolean;
+    name: string; detail: string; bearingColor: string; bearingSym: string; bearingClass: string;
+    bearingVisible: boolean; color: string; symMarkup: boolean;
   } {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? Infinity : role === 'secondary' ? Number.MAX_SAFE_INTEGER : -dist;
@@ -493,8 +493,11 @@ export class Player extends Ship {
       vel,
       priority,
       name: this.displayName,
-      detail: fmtMarkerDist(dist),
+      detail: '',
       bearingColor: '#00ffff', // 自機/味方と分かりやすいようにシアン
+      bearingSym: DIRECTION_GLYPH.allyBearing,
+      bearingClass: 'mk-dir mk-ally-dir',
+      bearingVisible: dist <= C.ALLY_BEARING_MAX_DISTANCE,
       color: '#00ffff',
       symMarkup: true,
     };
@@ -581,13 +584,16 @@ export class Player extends Ship {
         v3(data.plan.anchor.v.x, data.plan.anchor.v.y, data.plan.anchor.v.z)
       ));
       // trackAnchor はノードが空の間しか効かないため、ノード復元より先に呼ぶ必要がある
+      let rejected = 0;
       for (const n of data.plan.nodes) {
-        player.plan.addNode(kinematicState(
+        const idx = player.plan.addNode(kinematicState(
           n.t,
           v3(n.r.x, n.r.y, n.r.z),
           v3(n.v.x, n.v.y, n.v.z)
         ));
+        if (idx < 0) rejected++;
       }
+      if (rejected > 0) hud.hint(`${player.displayName}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
     }
 
     return player;

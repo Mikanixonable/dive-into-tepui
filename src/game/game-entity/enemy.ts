@@ -15,6 +15,7 @@ import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub
 import { solveLeadTime } from '../../physics/intercept';
 import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
+import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { EffectsSystem } from '../vfx/effects-system';
@@ -104,7 +105,7 @@ export class Enemy extends Ship {
     const visualSphere = visualBounds.getBoundingSphere(new THREE.Sphere());
     this.radius = visualSphere.radius;
     // 自身の軌道線を作ってシーンへ登録する
-    this.orbitLine = new OrbitLine(orbitLineColor, 0.35);
+    this.orbitLine = new OrbitLine(orbitLineColor, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     scene?.add(this.orbitLine.line);
   }
 
@@ -142,6 +143,8 @@ export class Enemy extends Ship {
       detail: fmtMarkerDist(dist),
       // 敵本体・距離ラベル・画面外方位マーカーは同じ白で統一する。
       bearingColor: '#ffffff',
+      bearingSym: ENTITY_GLYPH.ship,
+      bearingClass: 'mk-dir mk-bearing-triangle',
       color: '#ffffff',
       symMarkup: true,
     };

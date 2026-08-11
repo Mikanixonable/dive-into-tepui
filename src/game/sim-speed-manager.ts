@@ -56,12 +56,6 @@ export class SimSpeedManager {
     return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
   }
 
-  // 現在のワープ倍率で予測列を伸ばす意味があるかどうか。高ワープでは実状態が1フレームで
-  // 予測列を追い越すため、伸ばしても表示に使える列にならない。
-  get canGrowPrediction(): boolean {
-    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
-  }
-
   // 現在のワープ倍率で補給を投入してよいかどうか。他の can* より1段厳しく等倍限定なのは、
   // 補給が「接近して回収する」操作を前提にしており、回収そのものが成立しない倍率で
   // 投入だけが進むと、回収されない補給が軌道上に溜まり続けるため。

@@ -6,6 +6,7 @@ export type MenuAction =
   | 'warp'
   | 'addNode'
   | 'activate'
+  | 'deactivate'
   | 'planExecCycle'
   | 'duplicate'
   | 'delete'
