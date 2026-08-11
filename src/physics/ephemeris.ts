@@ -58,9 +58,10 @@ function rotatingFrameCenterOf(registry: CelestialRegistry, id: AttractorId): At
   return def.kind === 'satellite' ? def.planet : id;
 }
 
-// 時刻キャッシュの保持段数。同一ループ内で t と t + dt/2 を交互に引く経路や、対象ごとに
-// 異なる先端時刻を引く経路があるため、1段では主要経路のヒット率が 0 になる。
-const TIME_CACHE_SLOTS = 4;
+// 時刻キャッシュの保持段数。1フレームには t と t + dt/2 の交互参照、対象ごとの先端時刻、
+// 近点・遠点・ノードなどの単発時刻が流入するので、主要経路の段がそれらに押し出されない
+// 段数を持たせる。照合はこの段数ぶんの数値比較で、ミス1回の再計算に比べれば無視できる。
+const TIME_CACHE_SLOTS = 32;
 
 // 時刻キャッシュのヒット/ミスの累計。
 export interface TimeCacheStats {
