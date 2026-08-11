@@ -13,7 +13,7 @@ import type { Sfx } from '../../audio/sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { BaseSaveData } from '../save-data';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { Attractor } from '../../physics/attractor';
 import type { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
 import * as C from '../const';
@@ -71,8 +71,7 @@ export class Base extends GameEntity {
   syncOrbitLine(
     show: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
-    const center = strongestAttractor(this.state.r, attractors);
-    this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo, camera);
+    this.syncOwnOrbitLine(this.orbitLine, show, fo, camera, attractors);
   }
 
   // セーブデータへ変換する。格納艦は player.serialize() に委ねる。

@@ -120,8 +120,9 @@ export class PointBody extends CelestialBody {
     this.syncLod(apparentDiameterPx);
     const activeSurface = this.surfaces.get(this.activeLevel!)!;
     const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
-    activeSurface.setSunDirection(sunDirection);
+    activeSurface.setSunDirection(new THREE.Vector3(sunDirection.x, sunDirection.y, sunDirection.z));
     const orientation = ephemeris.poleAt(this.id, displayTime);
+    const axis = orientation === null ? null : new THREE.Vector3(orientation.axis.x, orientation.axis.y, orientation.axis.z);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     if (cameraSystem.overviewMode) {
       // 広範囲視点は SphereBody と同じ実スケール。
@@ -134,7 +135,7 @@ export class PointBody extends CelestialBody {
         this.group.position,
         this.radius,
         this.radius,
-        orientation === null ? null : orientation.axis,
+        axis,
       );
       if (this.ring !== undefined) {
         this.ring.group.visible = true;
@@ -169,7 +170,7 @@ export class PointBody extends CelestialBody {
       this.group.position,
       this.radius,
       scaleFactor,
-      orientation === null ? null : orientation.axis,
+      axis,
     );
     this.billboard.hide();
     if (this.ring !== undefined) {

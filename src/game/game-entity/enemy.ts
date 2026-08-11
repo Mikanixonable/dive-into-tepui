@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
 import { Ship } from './ship';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { Attractor } from '../../physics/attractor';
 import { isBurnedUp } from '../../physics/atmosphere';
 import type { GameEntity } from './game-entity';
 import type { Contact } from '../simulation/contact';
@@ -312,8 +312,7 @@ export class Enemy extends Ship {
   syncBackgroundOrbitLine(
     show: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
-    const center = strongestAttractor(this.state.r, attractors);
-    this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo, camera);
+    this.syncOwnOrbitLine(this.orbitLine, show, fo, camera, attractors);
   }
 
   // セーブデータへ変換する。

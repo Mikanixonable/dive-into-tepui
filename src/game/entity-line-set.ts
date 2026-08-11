@@ -1,17 +1,17 @@
-// エンティティごとに1本の SampledLine を対応させ、対象集合から外れたエンティティの線を
+// エンティティごとに1本の TrajectoryLine を対応させ、対象集合から外れたエンティティの線を
 // シーンから外して dispose する管理を担う。線の生成方法(色・不透明度・renderOrder)は
 // 呼び出し側が factory で決め、このクラスはどのエンティティが線を持つかだけを管理する。
 import * as THREE from 'three/webgpu';
 import { GameEntity } from './game-entity/game-entity';
-import { SampledLine } from './sampled-line';
+import { TrajectoryLine } from './trajectory-line';
 
 export class EntityLineSet {
-  private readonly lines = new Map<GameEntity, SampledLine>();
+  private readonly lines = new Map<GameEntity, TrajectoryLine>();
 
-  constructor(private readonly scene: THREE.Scene, private readonly factory: () => SampledLine) {}
+  constructor(private readonly scene: THREE.Scene, private readonly factory: () => TrajectoryLine) {}
 
   // entity の線を返す。まだ無ければ factory() で作りシーンへ登録する。
-  lineFor(entity: GameEntity): SampledLine {
+  lineFor(entity: GameEntity): TrajectoryLine {
     let line = this.lines.get(entity);
     if (!line) {
       line = this.factory();
@@ -22,7 +22,7 @@ export class EntityLineSet {
   }
 
   // entity の線を、無ければ作らずに返す(有無や状態を問い合わせるだけの用途)。
-  peek(entity: GameEntity): SampledLine | undefined {
+  peek(entity: GameEntity): TrajectoryLine | undefined {
     return this.lines.get(entity);
   }
 
