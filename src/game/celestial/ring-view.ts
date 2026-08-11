@@ -3,12 +3,11 @@
 import * as THREE from 'three/webgpu';
 import { spinOrientation } from '../../physics/body-orientation';
 import { ringPixelCoverage } from '../../physics/ring-optics';
-import { RingBandDef, RingSystemDef, RingTextureId } from '../../physics/solar-system';
+import { RingBandDef, RingSystemDef } from '../../physics/solar-system';
 import { Vec3 } from '../../physics/vec3';
 import {
   createAnnulusRing,
   createRingLine,
-  createTexturedRing,
   createTorusRing,
   RingVisual,
   RingVisualState,
@@ -44,17 +43,15 @@ export class RingView {
   private readonly visuals: RingVisual[] = [];
 
   // rings は物理データ(半径は [m])、bodyRadius は本体メッシュと同じ「半径 1」単位への換算元、
-  // textureUrls は RingBandDef.texture の識別子から実アセット URL を引く表、renderOrder は
-  // 半透明の環を本体より後に描くための値。THREE の描画順は Object3D ごとに独立していて
-  // 親から子へ伝播しないので、グループではなく帯のメッシュ1つ1つへ書く。
+  // renderOrder は半透明の環を本体より後に描くための値。THREE の描画順は Object3D ごとに独立
+  // していて親から子へ伝播しないので、グループではなく帯のメッシュ1つ1つへ書く。
   constructor(
     rings: RingSystemDef,
     bodyRadius: number,
-    textureUrls: Readonly<Partial<Record<RingTextureId, string>>>,
     renderOrder: number,
   ) {
     for (const band of rings.bands) {
-      const built = this.buildBand(band, bodyRadius, textureUrls);
+      const built = this.buildBand(band, bodyRadius);
       built.object.traverse((o) => { o.renderOrder = renderOrder; });
       this.group.add(built.object);
       this.visuals.push(built);
@@ -63,18 +60,9 @@ export class RingView {
 
   // 帯1本ぶんの RingVisual を組む。半径は「本体半径 = 1」単位へ換算して渡す。厚みのある帯は
   // 拡散した雲なので扁平トーラス1つ、厚み0の帯は面と線の2つを持ち、その組を thinBands へ控える。
-  private buildBand(
-    band: RingBandDef,
-    bodyRadius: number,
-    textureUrls: Readonly<Partial<Record<RingTextureId, string>>>,
-  ): RingVisual {
+  private buildBand(band: RingBandDef, bodyRadius: number): RingVisual {
     const inner = band.innerRadius / bodyRadius;
     const outer = band.outerRadius / bodyRadius;
-    if (band.texture !== undefined) {
-      const url = textureUrls[band.texture];
-      if (url === undefined) throw new Error(`RingView: 環テクスチャ未登録の識別子: ${band.texture}`);
-      return createTexturedRing(url, band.optics, inner, outer);
-    }
     if (band.thickness > 0) {
       return createTorusRing(band.optics, inner, outer, band.thickness / bodyRadius);
     }

@@ -23,7 +23,7 @@ mkdirSync(outDir, { recursive: true });
 
 // --- 依存のない TypeScript データモジュールを JS にトランスパイルして動的 import ---
 // Node 単体で .ts を import できないため、devDependency の TypeScript コンパイラで
-// その場に変換する(tools/export-earth-texture.mjs と同じ手口)。
+// その場に変換する。
 async function importTsDataModule(relSrcPath) {
   const srcPath = join(__dirname, '..', relSrcPath);
   const fileName = relSrcPath.split('/').pop();

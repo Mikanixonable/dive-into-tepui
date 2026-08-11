@@ -114,14 +114,12 @@ export type RingOpticsDef = {
 
 // arcs は基準bandへ重ね描きするのではなく、その区間の光学的厚さ倍率として適用する。
 export type RingArcDef = { readonly fromDeg: number; readonly toDeg: number; readonly opticalDepthScale: number };
-export type RingTextureId = 'saturn';
 export type RingBandDef = {
   readonly innerRadius: number; // [m]
   readonly outerRadius: number; // [m]
   readonly thickness: number; // [m]
   readonly optics: RingOpticsDef;
   readonly arcs?: readonly RingArcDef[];
-  readonly texture?: RingTextureId; // 省略時は単色
 };
 export type RingSystemDef = { readonly bands: readonly RingBandDef[] };
 
@@ -337,9 +335,8 @@ function ringBand(
   thicknessKm: number,
   optics: RingOpticsDef,
   arcs?: readonly RingArcDef[],
-  texture?: RingTextureId,
 ): RingBandDef {
-  return { innerRadius: innerKm * KM, outerRadius: outerKm * KM, thickness: thicknessKm * KM, optics, arcs, texture };
+  return { innerRadius: innerKm * KM, outerRadius: outerKm * KM, thickness: thicknessKm * KM, optics, arcs };
 }
 
 // 出典: https://en.wikipedia.org/wiki/Rings_of_Jupiter 。ハロー環とゴサマー環(アマルテア・
