@@ -6,8 +6,10 @@ import {
   attractorAccel,
   orbitalElementsOf,
   localOrbitPeriod,
+  reachedBody,
   strongestAttractor,
 } from '../../src/physics/attractor';
+import { containingBody } from '../../src/physics/sphere-contact';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { keplerPeriod, stateFromOrbitalElements, tofBetween } from '../../src/physics/elements';
@@ -138,5 +140,56 @@ export function register(): void {
     assert.equal(byId('moon').mu, MU_MOON);
     assert.equal(byId('sun').mu, MU_SUN);
     assert.equal(byId('sun').radius, R_SUN);
+  });
+
+  // 高ワープでは1ステップが最大20秒 = 軌道速度で約156km になり、点判定では小天体を丸ごと
+  // 素通りする。掃引判定がその貫通を捉えることがこの関数の存在理由。
+  test('reachedBody: 1ステップで小天体を貫通する経路を捉える(点判定は見逃す)', () => {
+    const rock: Attractor = { id: 'rock', mu: 0, radius: 500, state: kinematicState(0, ZERO, ZERO), degree2: null, isStar: false };
+    const vel = v3(7800, 0, 0);
+    const prev = kinematicState(0, v3(-78e3, 0, 0), vel);
+    const next = kinematicState(20, v3(78e3, 0, 0), vel);
+
+    assert.equal(containingBody(prev.r, [rock], 0), null);
+    assert.equal(containingBody(next.r, [rock], 0), null);
+    assert.equal(reachedBody(prev, next, [rock], 0), rock);
+  });
+
+  test('reachedBody: 表面に触れない近傍通過は検出しない', () => {
+    const rock: Attractor = { id: 'rock', mu: 0, radius: 500, state: kinematicState(0, v3(0, 600, 0), ZERO), degree2: null, isStar: false };
+    const vel = v3(7800, 0, 0);
+    const prev = kinematicState(0, v3(-78e3, 0, 0), vel);
+    const next = kinematicState(20, v3(78e3, 0, 0), vel);
+    assert.equal(reachedBody(prev, next, [rock], 0), null);
+  });
+
+  test('reachedBody: 開始時点で既に内部にいる場合もその天体を返す', () => {
+    const vel = v3(0, 0, 0);
+    const inside = kinematicState(0, v3(R_EARTH - 1e3, 0, 0), vel);
+    const later = kinematicState(20, v3(R_EARTH - 2e3, 0, 0), vel);
+    assert.equal(reachedBody(inside, later, [EARTH], 0), EARTH);
+  });
+
+  test('reachedBody: 区間の無い(prev === next)入力は点判定になる', () => {
+    const outside = kinematicState(0, v3(R_EARTH + 420e3, 0, 0), ZERO);
+    assert.equal(reachedBody(outside, outside, [EARTH], 0), null);
+    const inside = kinematicState(0, v3(R_EARTH - 1, 0, 0), ZERO);
+    assert.equal(reachedBody(inside, inside, [EARTH], 0), EARTH);
+  });
+
+  test('reachedBody: margin ぶん表面の外側までを到達とみなす', () => {
+    const s = kinematicState(0, v3(R_EARTH + 500, 0, 0), ZERO);
+    assert.equal(reachedBody(s, s, [EARTH], 0), null);
+    assert.equal(reachedBody(s, s, [EARTH], 1000), EARTH);
+  });
+
+  test('reachedBody: 非有限な入力は到達なしとして扱う', () => {
+    const rock: Attractor = { id: 'rock', mu: 0, radius: 500, state: kinematicState(0, ZERO, ZERO), degree2: null, isStar: false };
+    const vel = v3(7800, 0, 0);
+    const nanPrev = kinematicState(0, v3(NaN, 0, 0), vel);
+    const next = kinematicState(20, v3(78e3, 0, 0), vel);
+    assert.equal(reachedBody(nanPrev, next, [rock], 0), null);
+    const prev = kinematicState(0, v3(-78e3, 0, 0), vel);
+    assert.equal(reachedBody(prev, kinematicState(20, v3(NaN, 0, 0), vel), [rock], 0), null);
   });
 }

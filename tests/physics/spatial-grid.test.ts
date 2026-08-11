@@ -61,6 +61,56 @@ export function register(): void {
     assert.ok(sweptAwareGrid.neighbors(aEnd).includes('c'), '半径和+区間移動量の2倍なら取りこぼさない');
   });
 
+  test('spatial-grid: 負の座標をまたぐ近傍も取りこぼさない', () => {
+    const rand = mulberry32(3);
+    const cellSize = 10;
+    // 原点をまたぐよう、セル添字が負になる領域を必ず含む点群を作る。
+    const points = randomPoints(rand, 200, 60);
+    const grid = new SpatialGrid<number>(cellSize);
+    points.forEach((p, i) => grid.insert(i, p));
+
+    for (let i = 0; i < points.length; i++) {
+      const found = new Set(grid.neighbors(points[i]!));
+      for (let j = 0; j < points.length; j++) {
+        if (i === j) continue;
+        if (len(sub(points[j]!, points[i]!)) <= cellSize) {
+          assert.ok(found.has(j), `点 ${i} の近傍が点 ${j}(距離<=cellSize)を含んでいない`);
+        }
+      }
+    }
+  });
+
+  test('spatial-grid: 太陽系スケールの巨大なセル添字でも別セルの要素が混ざらない', () => {
+    // 一辺 50 km のセルに 1 AU 級の位置を入れると添字は 1e6〜1e9 に達する。
+    const cellSize = 5e4;
+    const grid = new SpatialGrid<string>(cellSize);
+    const far = v3(1.496e11, -7.31e10, 4.2e10);
+    grid.insert('far', far);
+    grid.insert('near', v3(0, 0, 0));
+    // 各軸を1桁ずつ違う量だけずらした点は、いずれも far のセルから遠く離れている。
+    grid.insert('shiftX', v3(far.x + 1e7, far.y, far.z));
+    grid.insert('shiftY', v3(far.x, far.y + 1e7, far.z));
+    grid.insert('shiftZ', v3(far.x, far.y, far.z + 1e7));
+
+    assert.deepEqual(grid.neighbors(far), ['far']);
+    assert.deepEqual(grid.neighbors(v3(0, 0, 0)), ['near']);
+  });
+
+  test('spatial-grid: reset 後に前回の要素は残らない', () => {
+    const grid = new SpatialGrid<string>(10);
+    grid.insert('old', v3(0, 0, 0));
+    grid.insert('old2', v3(100, -100, 100));
+
+    grid.reset(10);
+    assert.deepEqual(grid.neighbors(v3(0, 0, 0)), []);
+    assert.deepEqual(grid.neighbors(v3(100, -100, 100)), []);
+
+    grid.insert('new', v3(0, 0, 0));
+    assert.deepEqual(grid.neighbors(v3(0, 0, 0)), ['new']);
+    // 使い回した中間構造に前回のセルが残っていないこと。
+    assert.deepEqual(grid.neighbors(v3(100, -100, 100)), []);
+  });
+
   test('spatial-grid: 27近傍列挙は同じ要素を二重に返さない', () => {
     const rand = mulberry32(2);
     const cellSize = 10;

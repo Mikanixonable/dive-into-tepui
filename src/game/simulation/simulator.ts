@@ -26,6 +26,11 @@ export class Simulator {
   lastGravitySourceCount = 0;
   // 今フレームに走った軌道積分(GameEntity.stepActual)の呼び出し回数。
   lastOrbitSteps = 0;
+  // エンティティ側の最小イベント時刻の控えと、それを求めたときの LOD・顔ぶれの世代。
+  private cachedEventTime: number | null = null;
+  private cachedEventValid = false;
+  private cachedEventLod = false;
+  private cachedEventRevision = -1;
   private readonly adaptiveStatesScratch: KinematicState[] = [];
   private readonly contactEntitiesScratch: GameEntity[] = [];
 
@@ -61,7 +66,7 @@ export class Simulator {
     while (this.simTime < targetTime - 1e-9) {
       const remaining = targetTime - this.simTime;
       const maxStep = doSubstep ? this.adaptiveMaxStep() : remaining;
-      const eventTime = this.nextEventTime(activeStage);
+      const eventTime = this.nextEventTime(activeStage, passiveWarpLod);
       const subDt = simulationStepDuration(this.simTime, targetTime, maxStep, eventTime);
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
       if (subDt <= 1e-9) {
@@ -109,10 +114,15 @@ export class Simulator {
     this.lastSimDt = simDt;
   }
 
-  // 生存エンティティの高度から今フレームのサブステップ上限 [s] を求める。
+  // 生存する艦の高度から今フレームのサブステップ上限 [s] を求める。
   private adaptiveMaxStep(): number {
     this.adaptiveStatesScratch.length = 0;
-    for (const e of this.entities.all()) {
+    // 加熱・動圧の積分結果が存続を左右し、その帰結をプレイヤーが観測するのは艦だけ。
+    // 他の種別は大気圏に入れば失われるだけで、いつどれだけの精度で失われるかはプレイの結果を変えない。
+    for (const p of this.entities.players) {
+      if (p.alive) this.adaptiveStatesScratch.push(p.state);
+    }
+    for (const e of this.entities.enemies) {
       if (e.alive) this.adaptiveStatesScratch.push(e.state);
     }
     return adaptiveSimulationMaxStep(
@@ -123,14 +133,39 @@ export class Simulator {
     );
   }
 
-  // ステージと全生存エンティティが持つ次イベント時刻のうち最も早いものを返す。無ければ null。
-  private nextEventTime(activeStage: Stage): number | null {
-    let next = activeStage.nextSimulationEventTime(this.simTime);
+  // ステージと生存エンティティが持つ次イベント時刻のうち最も早いものを返す。無ければ null。
+  // ステージ側の時刻は艦の現在の Δv と加速度から毎回決まる生きた値なので毎回引き直す。
+  private nextEventTime(activeStage: Stage, passiveWarpLod: boolean): number | null {
+    const stage = activeStage.nextSimulationEventTime(this.simTime);
+    const entity = this.entityEventTime(passiveWarpLod);
+    if (stage === null) return entity;
+    if (entity === null) return stage;
+    return Math.min(stage, entity);
+  }
+
+  // 生存エンティティが持つ次イベント時刻のうち最も早いもの。無ければ null。エンティティ側の
+  // 締切は固定の絶対時刻なので、保持した時刻を simTime が越えたときと、エンティティの顔ぶれの
+  // 世代が変わったときにだけ全走査で引き直す。
+  private entityEventTime(passiveWarpLod: boolean): number | null {
+    const revision = this.entities.collectionRevision;
+    const stale = !this.cachedEventValid
+      || this.cachedEventLod !== passiveWarpLod
+      || this.cachedEventRevision !== revision
+      || (this.cachedEventTime !== null && this.cachedEventTime <= this.simTime);
+    if (!stale) return this.cachedEventTime;
+
+    let next: number | null = null;
     for (const e of this.entities.all()) {
       if (!e.alive) continue;
+      // まとめ積分に回る個体の締切で substep を切っても、その境界で解決される相互作用がない。
+      if (passiveWarpLod && this.isPassiveWarpEntity(e)) continue;
       const t = e.nextSimulationEventTime(this.simTime);
       if (t !== null && (next === null || t < next)) next = t;
     }
+    this.cachedEventTime = next;
+    this.cachedEventValid = true;
+    this.cachedEventLod = passiveWarpLod;
+    this.cachedEventRevision = revision;
     return next;
   }
 

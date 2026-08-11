@@ -246,9 +246,10 @@ main.ts
 | 放熱板の展開度・損耗度 | `RadiatorSystem` | 温度は持たない。放熱面積と太陽入射を `ThermalSystem.setRadiatorLoad` へ渡すのは `Player` |
 | 太陽電池の蓄電量 | `PowerSystem` | メッシュ操作なし(パネルは固定)。`sync()` を持たない |
 | エンティティ配列(自機/敵/弾/薬莢/デブリ/補給) | `EntityManager` | 追加は `addXxx` 経由。上限管理もここ(`players` のみ無上限で `prune` の対象外 — 喪失艦も配列に残り続ける)。`Simulator` は参照を受け取って回すだけで配列を持たない |
-| 保持配列の顔ぶれの世代 | `EntityManager.collectionRevision`(private) | `addXxx`/除去のたびに増える。`all()`/`attractors()` の結合キャッシュの再構築判定に使う。`alive` が false になっただけでは増えない(除去は `cleanup` → `prune` が毎フレーム行う) |
+| 保持配列の顔ぶれの世代 | `EntityManager.collectionRevision`(private `_collectionRevision` + public getter) | `addXxx`/除去のたびに増える。`all()`/`attractors()` の結合キャッシュの再構築判定に使う。`alive` が false になっただけでは増えない(除去は `cleanup` → `prune` が毎フレーム行う)。public getter は、結合配列そのものは参照が変わらないため、外から顔ぶれの変化を知る唯一の手段になる |
 | 暦の位相世代 | `Ephemeris.phaseGeneration`(private `_phaseGeneration` + public getter) | `setPhaseOffsets`(セーブロード)でのみ増える。同じ時刻でも天体位置が変わったことを、結果をキャッシュしている側(`planSourceRevision`)へ伝える |
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
+| エンティティ側の最小イベント時刻の控え | `Simulator.cachedEventTime`(private。有効性 `cachedEventValid`、算出時の LOD `cachedEventLod`、算出時の顔ぶれの世代 `cachedEventRevision` を併せ持つ) | エンティティの締切は固定の絶対時刻なので substep ごとに引き直さず、simTime がこの時刻へ到達したとき・`EntityManager.collectionRevision` が変わったとき・`passiveWarpLod` が切り替わったときだけ全生存エンティティを走査して求め直す。ステージ側のイベント時刻は艦の現在の Δv と加速度から毎回決まるため、ここには含めず毎 substep 引く |
 | このフレームの表示時刻一式(`DisplayWindow` = `{simTime, referencePeriod, duration, displayTime}`) | `Game._window`(private) | `Game.resolveWindow()`(= `displayTimeManager.window(simulator.simTime, currentOrbitPeriod())`)で組み直す唯一の書き込み経路。update フェーズの4経路(ポーズ/未配置/決着後簡略/通常)それぞれの先頭で1回、sync フェーズの先頭で1回の計2回だけ差し替わる — `currentOrbitPeriod()`(登録天体全体を組んで `strongestAttractor` を回す重い計算)がこの2回に絞られている理由そのもの。update フェーズと sync フェーズで値が異なるのは意図的(積分前後で表示時刻が変わりうる)。`Predictor.update` の horizon・`updateMapPresentation` の displayTime・`displayTimeManager.sync` はいずれもこの1個を読むだけで、それぞれが `currentOrbitPeriod()` を呼び直すことはない |
 | 予測ラウンドロビンのカーソル | `Predictor.cursor` | `EntityManager.all()` のインデックスとして毎フレーム進む。`tracked`/`complete`/`discarded` の3カウンタも同じインスタンスが持つが、`?perf=1` 表示専用の集計値で次フレームの挙動には影響しない |
 | ワープ段・自動ワープ目標時刻 | `SimSpeedManager` | 閾値判定(canPlayerFire 等)もここの getter が唯一 |

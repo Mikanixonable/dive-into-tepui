@@ -16,7 +16,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { OrbitLine } from '../../render/orbit-line';
-import { Attractor, strongestAttractor } from '../../physics/attractor';
+import { Attractor, reachedBody, strongestAttractor } from '../../physics/attractor';
 import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
@@ -363,17 +363,18 @@ export class Player extends Ship {
     return this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime);
   }
 
-  // 熱防御の飽和・空力破壊・大気突入高度の判定(自然死)。固体表面への接触は collideWith が扱う。
+  // 熱防御の飽和・空力破壊・大気突入高度・天体の地表到達の判定(自然死)。
   checkLoss(dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3, attractors: readonly Attractor[]): void {
     if (!this.alive) return;
     const limit = this.thermal.updateAltitudeAlarm(dt, this.alive, earthAltitudeOf(this.state.r));
 
-    // 熱・動圧・大気突入いずれかの限界超過を喪失理由として判定する
+    // 熱・動圧・大気突入・地表到達のいずれかを喪失理由として判定する
     let reason: string | null = null;
     if (limit === 'heat-aero') reason = '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した';
     else if (limit === 'heat-internal') reason = '排熱が追いつかず、機体は熱で機能不全に陥った';
     else if (limit === 'dynpressure') reason = '動圧が構造限界を超え、機体は空力的に分解した';
     else if (isBurnedUp(this.state.r, attractors, C.PLAYER_MIN_ALT)) reason = '大気圏に突入し機体は焼失した';
+    else if (reachedBody(this.actualTrajectory.prevState, this.state, attractors, C.PLAYER_MIN_ALT) !== null) reason = '天体の地表へ到達し機体は失われた';
     if (reason === null) return;
 
     this.alive = false;
