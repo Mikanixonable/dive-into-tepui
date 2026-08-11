@@ -53,7 +53,7 @@ import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
 import { Base } from './game-entity/base';
 import { strongestAttractor } from '../physics/attractor';
-import { mergeAttractors, planAttractorProvider } from './simulation/attractors';
+import { mergeAttractors, planAttractorProvider, planSourceRevision } from './simulation/attractors';
 import { FrameControls } from './frame-controls';
 import { systemMembersAt } from './celestial/body-visibility';
 import { MapVisibilityPolicy } from './celestial/map-visibility';
@@ -585,11 +585,17 @@ export class Game {
   private updateMapPresentation(dt: number, afterRefresh?: () => void): void {
     const displayTime = this._window.displayTime;
     this._environment.update(displayTime, this.cameraSystem.overviewMode);
+    // revision は前フレームの計画終端を基準に畳み込む — 今フレームの終端は editor.update が
+    // これから決めるので、provider を組む時点ではまだ確定していない。
+    const excludedIds = this.player ? [this.player.id] : [];
     const planProvider = planAttractorProvider(
       this.ephemeris,
       this.entities,
-      this.player ? [this.player.id] : [],
-      this.simulator.simTime,
+      excludedIds,
+      planSourceRevision(
+        this.ephemeris, this.entities, excludedIds,
+        this.editor.plan.revision, this.editor.lastPlanEnd, this.simulator.simTime,
+      ),
     );
     this.editor.update(this.simulator.simTime, displayTime, planProvider);
     this.equatorNodeMarkers.update(
