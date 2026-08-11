@@ -2,15 +2,17 @@
 // サンプル列を1本の折れ線として描く。マニューバノードによる区間分割は知らない — 呼び出し側
 // (PlanPath)が arc ごとにこれを持つ。
 import type * as THREE from 'three/webgpu';
-import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-state';
+import { KinematicState, hermiteInterpolate, kinematicState } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Attractor, localOrbitPeriod } from '../../physics/attractor';
-import { containingBody } from '../../physics/sphere-contact';
+import { containingBody, sweptHermiteSphereToi } from '../../physics/sphere-contact';
+import { apsisCrossing } from '../../physics/trajectory-features';
 import { isBurnedUp } from '../../physics/atmosphere';
-import { attractorsNear, classifyAttractors, gravityBodiesAt, mergeAttractors } from '../simulation/attractors';
-import { Vec3 } from '../../physics/vec3';
+import { attractorsNearInto, classifyAttractors } from '../simulation/attractors';
+import type { PlanAttractorProvider } from '../simulation/attractors';
+import { addScaled, len, scale, sub, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { SampledLine } from '../../render/sampled-line';
 import { ScaleFn } from '../camera/camera-system';
@@ -19,25 +21,142 @@ import * as C from '../const';
 // 積分の終端は要求時刻に対して丸め誤差ぶん手前に落ちうる。この幅までは終端そのものとみなす。
 const EPOCH_EPS = 1e-6;
 
-type ComputeKey = { state0: KinematicState; end: number; };
+// 天体接近時、1ステップで表面までの距離を跨いでしまわないための安全率
+// (表面までの距離 ÷ 相対速度 に掛ける上限係数)。
+const APPROACH_STEP_SAFETY = 0.5;
 
-// 刻み幅。その場で最も強く引く天体を中心とする軌道運動の時間スケールを
-// PLAN_ARC_STEPS_PER_REV 等分する。
-// 低軌道では細かく、遠地点では粗くなり、離心軌道でも1周を通して精度が一定になる。
-function stepDt(r: Vec3, attractors: readonly Attractor[]): number {
-  return localOrbitPeriod(r, attractors) / C.PLAN_ARC_STEPS_PER_REV;
+type ComputeKey = {
+  state0: KinematicState;
+  end: number;
+  sourceRevision: number;
+  apsisCenterId: string | null;
+};
+
+// 起点が別の軌道へ飛んだと認めるための余裕係数と、時間差ゼロでも認める位置差の下限[m]。
+// 同じ軌道が dt だけ進んだだけなら位置差は高々「速度 × dt」に収まるので、その
+// ANCHOR_JUMP_SPEED_MARGIN 倍を超える差は連続な伝播では説明が付かない。
+const ANCHOR_JUMP_SPEED_MARGIN = 2;
+const ANCHOR_JUMP_MIN_DIST = 1;
+
+// 起点の差し替えが連続な伝播で説明できない(= 別の軌道へ飛んだ)か。時刻の前後関係は
+// 代理指標として成立しない — 別艦への切り替えやドック発進では新しい起点が普通に前回より
+// 後の時刻を持つので、状態そのものの差を見る。
+function anchorJumped(prev: KinematicState, next: KinematicState): boolean {
+  const dt = Math.abs(next.t - prev.t);
+  const speed = Math.max(len(prev.v), len(next.v));
+  const reachable = speed * dt * ANCHOR_JUMP_SPEED_MARGIN + ANCHOR_JUMP_MIN_DIST;
+  return len(sub(next.r, prev.r)) > reachable;
+}
+
+export interface PlanImpact {
+  readonly state: KinematicState;
+  readonly body: Attractor;
+}
+
+type ImpactCandidate = { body: Attractor; toi: number };
+
+// 刻み幅。その場で最も強く引く天体を中心とする軌道運動の時間スケール(低軌道では細かく、
+// 遠地点では粗くなる)を PLAN_ARC_STEPS_PER_REV 等分した値と、最も近い天体の表面までの
+// 距離をその天体への相対速度で割った接近時間の小さい方。後者が無ければ1ステップで
+// 影響圏を跨いで天体をすり抜けかねない — 月の影響圏外(最強天体が地球)では前者だけで
+// 数万秒のステップになり、その間に自機も月も数万km動くため。
+function stepDt(
+  state: KinematicState,
+  gravityAttractors: readonly Attractor[],
+  collisionBodies: readonly Attractor[],
+): number {
+  const orbitDt = localOrbitPeriod(state.r, gravityAttractors) / C.PLAN_ARC_STEPS_PER_REV;
+  let approachDt = Infinity;
+  for (const body of collisionBodies) {
+    const clearance = len(sub(state.r, body.state.r)) - body.radius;
+    if (clearance <= 0) continue;
+    const closingSpeed = len(sub(state.v, body.state.v));
+    if (closingSpeed <= 1e-9) continue;
+    approachDt = Math.min(approachDt, (clearance / closingSpeed) * APPROACH_STEP_SAFETY);
+  }
+  return Math.min(orbitDt, approachDt);
+}
+
+// prev→next の1ステップの間に表面へ到達した collision body のうち、最も早いものを選ぶ。
+// candidates は start/end の和集合なので、空間グリッドの現在点近傍に候補を限定しない。
+// body の中心は provider が返した始終点を線形補間し、自機側は Hermite 曲線として判定する。
+function findImpact(
+  prev: KinematicState, next: KinematicState, candidates: readonly Attractor[],
+  startBodies: readonly Attractor[], endBodies: readonly Attractor[],
+  hits: ImpactCandidate[],
+): PlanImpact | null {
+  let hitCount = 0;
+  for (const body of candidates) {
+    const bStart = startBodies.find((a) => a.id === body.id);
+    const bEnd = endBodies.find((a) => a.id === body.id);
+    if (!bStart || !bEnd) continue;
+    const toi = sweptHermiteSphereToi(prev, next, bStart.state.r, bEnd.state.r,
+      Math.max(bStart.radius, bEnd.radius));
+    if (toi !== null) {
+      // hits は直前呼び出しのレコードを保持し、現在の件数ぶんだけ上書きする。
+      // sort 後もこの配列の外へレコードを返さないので、次のステップで再利用できる。
+      const hit = hits[hitCount] ?? { body: bStart, toi };
+      hit.body = bStart;
+      hit.toi = toi;
+      hits[hitCount] = hit;
+      hitCount++;
+    }
+  }
+  hits.length = hitCount;
+  hits.sort((a, b) => a.toi - b.toi);
+  for (const { body, toi } of hits) {
+    const state = hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * toi);
+    const endBody = endBodies.find((a) => a.id === body.id)!;
+    const bodyDt = endBody.state.t - body.state.t;
+    const bodyVelocity = bodyDt > 0
+      ? scale(sub(endBody.state.r, body.state.r), 1 / bodyDt)
+      : body.state.v;
+    const bodyAtImpact = {
+      ...body,
+      radius: Math.max(body.radius, endBody.radius),
+      state: kinematicState(
+        state.t,
+        addScaled(body.state.r, sub(endBody.state.r, body.state.r), toi),
+        bodyVelocity,
+      ),
+    };
+    return { body: bodyAtImpact, state };
+  }
+  return null;
+}
+
+// pos に対して表面まで最も近い天体(clearance = 中心距離 - 半径 が最小のもの)。
+function nearestByClearance(pos: Vec3, bodies: readonly Attractor[]): Attractor | null {
+  let best: Attractor | null = null;
+  let bestClearance = Infinity;
+  for (const body of bodies) {
+    const clearance = len(sub(pos, body.state.r)) - body.radius;
+    if (clearance < bestClearance) { bestClearance = clearance; best = body; }
+  }
+  return best;
 }
 
 export class PlanArc {
   private readonly line: SampledLine;
+  // integrate() は同期的に完了し、これらの配列・Mapを外へ返さない。したがって区間の再積分
+  // ごとに同じ一時領域を再利用できる。Mapの挿入順と候補配列の順序は従来の spread と同じ。
+  private readonly collisionCandidatesById = new Map<string, Attractor>();
+  private readonly collisionCandidates: Attractor[] = [];
+  private readonly impactCandidates: ImpactCandidate[] = [];
+  private readonly stepAttractorsScratch: Attractor[] = [];
   private trajectory: DynamicTrajectory | null = null;
   private _samples: readonly KinematicState[] = [];
-  // 積分中に最初に天体表面へ達した状態。到達しなければ null。
-  private impactState: KinematicState | null = null;
+  // 積分中に最初に天体表面へ達した状態とその天体。到達しなければ null。
+  private impact: PlanImpact | null = null;
+  // 積分中に最初に見つかった近地点・遠地点。apsisCenter が null、またはその極値へ
+  // 区間が届かなければ null のまま。
+  private periapsisState: KinematicState | null = null;
+  private apoapsisState: KinematicState | null = null;
   // 非有限・天体衝突・ステップ数上限で積分を打ち切ったか。
   private truncated = false;
   private key: ComputeKey | null = null;
-  private recomputed = false;
+  // 直近の再積分で回した積分step数。
+  lastSteps = 0;
 
   // 描画色・不透明度・renderOrder を指定して線を用意する。折れ線は常に破線で描く
   // (実際のパターンは sync() が毎フレーム上書きするので、ここでの初期値に意味は無い)。
@@ -51,9 +170,20 @@ export class PlanArc {
     return this.line.line;
   }
 
-  // 積分中に最初に天体表面へ達した状態。到達しなければ null。
-  impactPoint(): KinematicState | null {
-    return this.impactState;
+  // 積分中に最初に天体表面へ達した状態と、その天体。到達しなければ null。
+  impactPoint(): PlanImpact | null {
+    return this.impact;
+  }
+
+  // 積分中に最初に見つかった近地点。中心天体へ接近し続けたまま表面へ達する
+  // (衝突軌道で近地点が存在しない)場合は null。
+  periapsisPoint(): KinematicState | null {
+    return this.periapsisState;
+  }
+
+  // 積分中に最初に見つかった遠地点。楕円でない、または区間がそこまで届かなければ null。
+  apoapsisPoint(): KinematicState | null {
+    return this.apoapsisState;
   }
 
   // 起点・終端の変化を検出して再積分する。tracksLiveAnchor(計画が空の間の唯一の区間)では
@@ -62,32 +192,40 @@ export class PlanArc {
   // state0.t のどちらも厳密一致では判定できない。そこで両者とも同じ基準
   // ——直近の再積分結果からの変化が描画解像度のサンプル間隔(区間長 / PLAN_ARC_MAX_SAMPLES)
   // 未満かどうか——で揃えて判定する: それ未満なら折れ線の見た目は変わらないので再積分を
-  // スキップする。ただし起点の同一性が変わっていて、かつ時刻が前進していない場合(別艦への
-  // 切り替え・ドック発進・衝突による状態上書きなど、同じ時刻での非連続な差し替え)は、
-  // 差分がどれだけ小さくても即座に再積分する — そうしないと切り替え直後の1フレームが
-  // 前の起点と時刻的に近いというだけで、無関係な軌道をサンプル間隔ぶん描き続けてしまう。
+  // スキップする。この閾値判定は「同じ軌道が時間方向に進んだだけ」という前提の上でだけ
+  // 正しいので、起点が別の軌道へ飛んだ場合(別艦への切り替え・ドック発進・衝突による
+  // 状態上書き)は anchorJumped で先に拾い、差分の大小に関わらず即座に再積分する。
   // tracksLiveAnchor でなければ state0/end の同一性・値の変化で即座に再積分する
-  // (ノードの Δv 編集は state0 の同一性変化で必ず拾われる)。
+  // (ノードの Δv 編集は state0 の同一性変化で必ず拾われる)。apsisCenter は
+  // periapsisPoint/apoapsisPoint を検出する基準天体 — null なら検出自体を行わない。
+  // 返り値は再積分したかどうか。
   update(
-    state0: KinematicState, end: number, ephemeris: Ephemeris,
-    dynamicAttractors: readonly Attractor[], tracksLiveAnchor: boolean,
-  ): void {
+    state0: KinematicState, end: number, attractorProvider: PlanAttractorProvider,
+    tracksLiveAnchor: boolean,
+    apsisCenter: Attractor | null,
+  ): boolean {
+    const apsisCenterId = apsisCenter?.id ?? null;
+    const inputChanged = this.key === null
+      || this.key.sourceRevision !== attractorProvider.revision
+      || this.key.apsisCenterId !== apsisCenterId;
+    let recompute: boolean;
     if (tracksLiveAnchor) {
-      // 同一性が変わっても時刻が前進していれば通常の追従とみなし、下のサンプル間隔判定に委ねる。
-      const anchorSwapped = this.key !== null && state0 !== this.key.state0 && state0.t <= this.key.state0.t;
+      const anchorSwapped = this.key !== null && state0 !== this.key.state0
+        && anchorJumped(this.key.state0, state0);
       const duration = end - state0.t;
       const keyDuration = this.key ? this.key.end - this.key.state0.t : NaN;
       const sampleInterval = this.key ? keyDuration / C.PLAN_ARC_MAX_SAMPLES : 0;
       const durationChanged = this.key === null || Math.abs(duration - keyDuration) >= sampleInterval;
       const anchorDrifted = this.key !== null && Math.abs(state0.t - this.key.state0.t) >= sampleInterval;
-      this.recomputed = anchorSwapped || durationChanged || anchorDrifted;
+      recompute = inputChanged || anchorSwapped || durationChanged || anchorDrifted;
     } else {
-      this.recomputed = this.key === null || state0 !== this.key.state0 || end !== this.key.end;
+      recompute = inputChanged || this.key === null || state0 !== this.key.state0 || end !== this.key.end;
     }
-    if (this.recomputed) {
-      this.integrate(state0, end, ephemeris, dynamicAttractors);
-      this.key = { state0, end };
+    if (recompute) {
+      this.integrate(state0, end, attractorProvider, apsisCenter);
+      this.key = { state0, end, sourceRevision: attractorProvider.revision, apsisCenterId };
     }
+    return recompute;
   }
 
   // 直近に積分したサンプル列を折れ線メッシュへ反映する。
@@ -100,13 +238,6 @@ export class PlanArc {
 
   // 時刻 t の状態。保持区間外は null。
   at(t: number): KinematicState | null {
-    if (this.trajectory === null) {
-      for (let i = 1; i < this._samples.length; i++) {
-        const a = this._samples[i - 1]!, b = this._samples[i]!;
-        if (t >= a.t && t <= b.t) return hermiteInterpolate(a, b, t);
-      }
-      return this._samples.length && t === this._samples[this._samples.length - 1]!.t ? this._samples[this._samples.length - 1]! : null;
-    }
     if (this.trajectory === null) return null;
     const tip = this.trajectory.state;
     if (t > tip.t) return t - tip.t <= EPOCH_EPS ? tip : null;
@@ -137,29 +268,57 @@ export class PlanArc {
   // 区間長を上限サンプル数で割った値、保持窓は区間長そのものなので、区間全体が間引かれた
   // 解像度で残る。いずれかの天体の表面へ接触するか、地球大気で焼失(REENTRY_ALT)したら、
   // その時点で打ち切る(非有限・ステップ数上限に達した場合も同様)。
-  // dynamicAttractors は呼び出し元がこのフレームで一度だけ求めた値を全ステップで使い回す —
-  // 区間長は最大1年に及び、そのあいだの位置を EntityManager には問えないため。
+  // provider は積分中の各時刻で重力源と衝突体を再構成する。動的 entity の現在位置を区間
+  // 全体へ凍結せず、予測列が存在しない entity は provider 側で明示的に除外する。
   private integrate(
-    state0: KinematicState, end: number, ephemeris: Ephemeris, dynamicAttractors: readonly Attractor[],
+    state0: KinematicState, end: number, attractorProvider: PlanAttractorProvider,
+    apsisCenter: Attractor | null,
   ): void {
     const duration = Math.max(0, end - state0.t);
     const trajectory = new DynamicTrajectory(state0);
     const sampleInterval = duration / C.PLAN_ARC_MAX_SAMPLES;
     this.truncated = false;
-    this.impactState = null;
+    this.impact = null;
+    this.periapsisState = null;
+    this.apoapsisState = null;
 
     let steps = 0;
+    // ステップ開始時点(= 前ステップの終端)の対象。次ステップの開始側へ持ち越し、同じ時刻を
+    // 二度評価しない。
+    let startSources = attractorProvider.at(trajectory.state.t);
     while (trajectory.state.t < end - EPOCH_EPS) {
-      const sizingClassified = classifyAttractors(
-        mergeAttractors(gravityBodiesAt(ephemeris, trajectory.state.t), dynamicAttractors));
-      const sizingAttractors = attractorsNear(trajectory.state.r, sizingClassified);
+      // sweptHermiteSphereToi は開始時点で既に overlap している場合は null を返し、離散判定へ
+      // 委譲する契約なので、衝突体全体に対してここでその離散判定を満たす。
+      const containing = containingBody(trajectory.state.r, startSources.collision, 0);
+      if (containing) {
+        this.impact = { state: trajectory.state, body: containing };
+        this.truncated = true;
+        break;
+      }
+
       // 最後の1歩は end にちょうど着地させる — 終端がそのままノードの到達状態になる。
-      const dt = Math.min(stepDt(trajectory.state.r, sizingAttractors), end - trajectory.state.t);
-      if (dt <= 1e-9) break;
+      const dt = Math.min(
+        stepDt(trajectory.state, startSources.gravity, startSources.collision),
+        end - trajectory.state.t,
+      );
+      if (dt <= 1e-9) {
+        // ループ条件が残り時間 > EPOCH_EPS を保証するため、ここに来るのは天体接近で
+        // stepDt の接近項が幾何級数的に潰れた場合のみ(clearance がステップごとに
+        // 一定比率で縮み続け、符号は反転しないまま dt だけが 0 に収束する)。打ち切りが
+        // truncated を立てないと、実際には衝突コースの区間が正常終端として扱われてしまう
+        // ので、最寄り天体への衝突として記録する。
+        const nearest = nearestByClearance(trajectory.state.r, startSources.collision);
+        if (nearest) this.impact = { state: trajectory.state, body: nearest };
+        this.truncated = true;
+        break;
+      }
       // 積分そのものはステップ中点(t + dt/2)の重力源で評価する。
-      const stepClassified = classifyAttractors(
-        mergeAttractors(gravityBodiesAt(ephemeris, trajectory.state.t + dt / 2), dynamicAttractors));
-      const stepAttractors = attractorsNear(trajectory.state.r, stepClassified);
+      const midSources = attractorProvider.at(trajectory.state.t + dt / 2);
+      const stepClassified = classifyAttractors(midSources.gravity);
+      const stepAttractors = attractorsNearInto(
+        trajectory.state.r, stepClassified, this.stepAttractorsScratch,
+      );
+      const prev = trajectory.state;
       trajectory.step(dt, stepAttractors, C.SHIP_BCINV, C.SHIP_SRP_COEFF, C.SHADOW_PENUMBRA, null, sampleInterval, duration);
 
       const { r, v } = trajectory.state;
@@ -169,10 +328,39 @@ export class PlanArc {
         this.truncated = true;
         break;
       }
-      const impacted = containingBody(r, stepAttractors, 0) !== null
-        || isBurnedUp(r, stepAttractors, C.REENTRY_ALT);
-      if (impacted) {
-        this.impactState = trajectory.state;
+      if (apsisCenter && (this.periapsisState === null || this.apoapsisState === null)) {
+        const crossing = apsisCrossing(apsisCenter, prev, trajectory.state);
+        if (crossing?.kind === 'periapsis' && this.periapsisState === null) this.periapsisState = crossing.state;
+        if (crossing?.kind === 'apoapsis' && this.apoapsisState === null) this.apoapsisState = crossing.state;
+      }
+      // 区間を跨いだ表面接触は、開始/終了時刻の全 collision body を候補にして掃引判定する。
+      // 積分に使った中点の重力源は接触判定へ流用しない — moving body の始終点を provider から
+      // 同じ契約で引き直す。
+      const endSources = attractorProvider.at(trajectory.state.t);
+      this.collisionCandidatesById.clear();
+      this.collisionCandidates.length = 0;
+      for (const body of startSources.collision) {
+        if (this.collisionCandidatesById.has(body.id)) continue;
+        this.collisionCandidatesById.set(body.id, body);
+        this.collisionCandidates.push(body);
+      }
+      for (const body of endSources.collision) {
+        if (this.collisionCandidatesById.has(body.id)) continue;
+        this.collisionCandidatesById.set(body.id, body);
+        this.collisionCandidates.push(body);
+      }
+      const impact = findImpact(
+        prev, trajectory.state, this.collisionCandidates,
+        startSources.collision, endSources.collision, this.impactCandidates,
+      );
+      if (impact) {
+        this.impact = impact;
+        this.truncated = true;
+        break;
+      }
+      if (isBurnedUp(r, stepAttractors, C.REENTRY_ALT)) {
+        const earth = stepAttractors.find((a) => a.id === 'earth');
+        if (earth) this.impact = { state: trajectory.state, body: earth };
         this.truncated = true;
         break;
       }
@@ -180,8 +368,10 @@ export class PlanArc {
         this.truncated = true;
         break;
       }
+      startSources = endSources;
     }
 
+    this.lastSteps = steps;
     this.trajectory = trajectory;
     this._samples = trajectory.samplesOldestFirst();
   }

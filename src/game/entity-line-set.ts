@@ -21,6 +21,11 @@ export class EntityLineSet {
     return line;
   }
 
+  // entity の線を、無ければ作らずに返す(有無や状態を問い合わせるだけの用途)。
+  peek(entity: GameEntity): SampledLine | undefined {
+    return this.lines.get(entity);
+  }
+
   // alive に含まれないエンティティの線をシーンから外して dispose する(GPU リソースリークを防ぐ)。
   pruneTo(alive: ReadonlySet<GameEntity>): void {
     for (const [entity, line] of this.lines) {

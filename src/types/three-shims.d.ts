@@ -16,6 +16,7 @@ declare module 'three/webgpu' {
     setViewport(x: number, y: number, width: number, height: number): void;
     setScissor(x: number, y: number, width: number, height: number): void;
     setScissorTest(enable: boolean): void;
+    info: { render: { drawCalls: number; triangles: number } };
   }
   export class MeshStandardNodeMaterial extends import('three').MeshStandardMaterial {
     constructor(parameters?: import('three').MeshStandardMaterialParameters);
@@ -26,6 +27,11 @@ declare module 'three/webgpu' {
     colorNode: unknown;
     opacityNode: unknown;
   }
+  export class LineBasicNodeMaterial extends import('three').LineBasicMaterial {
+    constructor(parameters?: import('three').LineBasicMaterialParameters);
+    colorNode: unknown;
+    opacityNode: unknown;
+  }
 }
 
 // TSL (Three Shading Language) ノード関数群。型定義が未整備なため、ノード値は
@@ -33,6 +39,7 @@ declare module 'three/webgpu' {
 // オブジェクトのため、個別に型付けする実益が薄い)で緩く扱う。
 declare module 'three/tsl' {
   type Node = any;
+  export const attribute: (name: string, nodeType?: string) => Node;
   export const texture: (map: import('three').Texture, uvNode?: Node) => Node;
   export const uv: () => Node;
   export const mix: (a: Node, b: Node, t: Node) => Node;

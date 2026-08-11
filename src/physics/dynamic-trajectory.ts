@@ -31,6 +31,10 @@ export class DynamicTrajectory {
   get state(): KinematicState { return this._state; }
   get prevState(): KinematicState { return this._prevState; }
   get history(): StateQueue { return this._history; }
+  // 列の最も古い端での間引き間隔 [s]。列がどれだけ粗いかは列自身の属性であり、積んだ後に
+  // 呼び出し側の設定が変わっても、既に積んだサンプルの粗さは変わらない。保持窓が飽和した
+  // 列では、この端が最も古い保持サンプルとその1つ新しい側を挟む補間区間にあたる。
+  get sampleInterval(): number { return this._history.oldestGap; }
 
   // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力で 1 ステップ RK4 積分する
   // (dynamics.ts の stepDynamics)。attractors はそのステップぶん呼び出し側が確定させた

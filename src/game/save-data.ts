@@ -233,6 +233,33 @@ export interface SlotExport {
   snapshots: Record<string, GameSaveData>;
 }
 
+export interface ChaseCameraSaveData {
+  rot: QuatSaveData;
+  dist: number;
+  pan: Vec3SaveData;
+  followAttitude: boolean;
+}
+
+// OverviewCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
+// (center/rotatingWith)と、その座標系相対の点をそのまま持つ。
+export type FocusTargetSaveData =
+  | { kind: 'object'; id: string }
+  | { kind: 'point'; center: string; rotatingWith: string | null; point: Vec3SaveData };
+
+export interface OverviewCameraSaveData {
+  offset: Vec3SaveData;
+  pan: Vec3SaveData;
+  up: Vec3SaveData;
+  rotatingWith: string | null;
+  focus: FocusTargetSaveData;
+}
+
+export interface CameraSaveData {
+  view: 'combat' | 'map';
+  chase: ChaseCameraSaveData;
+  overview: OverviewCameraSaveData;
+}
+
 export interface GameSaveData {
   version: number;
   stageId: string;
@@ -240,10 +267,14 @@ export interface GameSaveData {
   /** 旧スナップショットには無い。存在する場合は現在の暦と一致しなければ復元しない。 */
   ephemerisContext?: EphemerisContext;
   phaseOffsets: Partial<Record<AttractorId, number>>;
+  /** 旧スナップショットには無い。存在しなければ地球の自転初期位相は復元されない。 */
+  earthSpinPhase0?: number;
   players: PlayerSaveData[];
   activePlayerId: string | null;
   enemies: EnemySaveData[];
   ammos: AmmoSaveData[];
   bases: BaseSaveData[];
   stage: StageSaveData;
+  // 旧セーブデータには無いフィールドなので任意。無ければ Game.restore は視点を既定のまま始める。
+  camera?: CameraSaveData;
 }

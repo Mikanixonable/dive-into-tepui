@@ -101,22 +101,25 @@ type LagrangeLabelFlag = { readonly lagrangeLabels?: boolean };
 export type ShapeDef =
   | { readonly kind: 'spheroid'; readonly equatorRadius: number; readonly polarRadius: number }
   | { readonly kind: 'triaxial'; readonly a: number; readonly b: number; readonly c: number };
-// 環1本の帯。半径は天体中心からの距離 [m]。thickness > 0 なら扁平トーラス(木星のハロー環・
-// ゴサマー環、土星の E 環のように厚みが半径の数%ある拡散構造)、0 なら平坦(annulus か、
-// 幅が半径の 1/10,000 程度になる細環 — どちらで描くかは視角依存なので描画側が sync ごとに
-// 決める、solar-system.ts はデータだけを持つ)。arcs は経度限定の明部(海王星アダムス環のような
-// アーク構造)— 省略時は全周が同じ濃さ。経度の基準は各天体固有の元期の固定系で、アーク自身の
-// 公転(非目標)は表現しない。texture は band ごと(1系に複数の帯があるうち実写テクスチャを
-// 持つのは高々1本)— URL 文字列を physics/ に持てない(THREE/アセット非依存の規則)ため
-// 識別子だけを持ち、実アセットの解決は celestial-registry.ts 側が担う。
-export type RingArcDef = { readonly fromDeg: number; readonly toDeg: number };
-export type RingTextureId = 'saturn';
+// 環の光学特性。opacity は保持しない — normalOpticalDepth は環面に垂直な消散光学的厚さで、
+// 描画時に観測開き角から透過率へ変換する。値は可視光の代表値で、各bandコメントに出典と
+// 近似範囲を残す。color は線形RGBの代表アルベド色。
+export type RingOpticsDef = {
+  readonly normalOpticalDepth: number;
+  readonly singleScatteringAlbedo: number;
+  readonly phaseG: number;
+  readonly color: readonly [number, number, number];
+  readonly volumetric?: { readonly radialScale: number; readonly verticalScale: number };
+};
+
+// arcs は基準bandへ重ね描きするのではなく、その区間の光学的厚さ倍率として適用する。
+export type RingArcDef = { readonly fromDeg: number; readonly toDeg: number; readonly opticalDepthScale: number };
 export type RingBandDef = {
   readonly innerRadius: number; // [m]
   readonly outerRadius: number; // [m]
   readonly thickness: number; // [m]
+  readonly optics: RingOpticsDef;
   readonly arcs?: readonly RingArcDef[];
-  readonly texture?: RingTextureId; // 省略時は単色
 };
 export type RingSystemDef = { readonly bands: readonly RingBandDef[] };
 
@@ -314,9 +317,26 @@ function equatorialSatelliteOrbit(p: {
 
 const KM = 1e3;
 
-// [km] 単位の帯を RingBandDef([m])へ変換する。thicknessKm 省略時は平坦。
-function ringBand(innerKm: number, outerKm: number, thicknessKm = 0, arcs?: readonly RingArcDef[], texture?: RingTextureId): RingBandDef {
-  return { innerRadius: innerKm * KM, outerRadius: outerKm * KM, thickness: thicknessKm * KM, arcs, texture };
+const RING_COLOR: readonly [number, number, number] = [0.72, 0.68, 0.58];
+
+function ringOptics(
+  normalOpticalDepth: number,
+  singleScatteringAlbedo: number,
+  phaseG: number,
+  volumetric?: RingOpticsDef['volumetric'],
+): RingOpticsDef {
+  return { normalOpticalDepth, singleScatteringAlbedo, phaseG, color: RING_COLOR, volumetric };
+}
+
+// [km] 単位の帯を RingBandDef([m])へ変換する。optics は全帯で明示的に持つ。
+function ringBand(
+  innerKm: number,
+  outerKm: number,
+  thicknessKm: number,
+  optics: RingOpticsDef,
+  arcs?: readonly RingArcDef[],
+): RingBandDef {
+  return { innerRadius: innerKm * KM, outerRadius: outerKm * KM, thickness: thicknessKm * KM, optics, arcs };
 }
 
 // 出典: https://en.wikipedia.org/wiki/Rings_of_Jupiter 。ハロー環とゴサマー環(アマルテア・
@@ -324,26 +344,28 @@ function ringBand(innerKm: number, outerKm: number, thicknessKm = 0, arcs?: read
 // 主環は厚み 30〜300 km に対し半径 12 万 km 台で扁平トーラスと呼べるほどではないので平坦。
 const JUPITER_RINGS: RingSystemDef = {
   bands: [
-    ringBand(92000, 122500, 12500), // ハロー環
-    ringBand(122500, 129000), // 主環
-    ringBand(129000, 182000, 2300), // アマルテア・ゴサマー環
-    ringBand(129000, 226000, 8400), // テーベ・ゴサマー環
+    ringBand(92000, 122500, 12500, ringOptics(1e-7, 0.55, 0.72, { radialScale: 1, verticalScale: 1 })), // ハロー環
+    ringBand(122500, 129000, 0, ringOptics(8e-6, 0.6, 0.65)), // 主環
+    ringBand(129000, 182000, 2300, ringOptics(1e-7, 0.55, 0.78, { radialScale: 1, verticalScale: 1 })), // アマルテア・ゴサマー環
+    ringBand(129000, 226000, 8400, ringOptics(1e-7, 0.55, 0.78, { radialScale: 1, verticalScale: 1 })), // テーベ・ゴサマー環
   ],
 };
 
 // 出典: https://en.wikipedia.org/wiki/Rings_of_Saturn (一次は Planetary Rings Node)。
-// D〜A 環は1枚のテクスチャに焼き込み(カッシーニの間隙はテクスチャのアルファで表現)、
-// F/G 環は幅の薄い細環、E 環は厚みを持つ扁平トーラス(Enceladus 近傍〜外縁で
-// 3,000〜60,000 km 程度とされる範囲の目安値)、フェーベ環は土星本体の 200 倍の直径を持つ
-// 桁違いの巨大構造 — 追加のフィールドは持たせず、他の帯と同じ視角判定(sync 側)で
-// annulus/線を切り替える(E-6)。
+// D〜A 環は観測代表値で分割し、視覚用PNG alphaを光学tauとして使わない。F/G 環は幅の薄い
+// 細環、E 環は厚みを持つ内径付き拡散構造(Enceladus 近傍〜外縁で3,000〜60,000 km程度とされる
+// 範囲の目安値)、フェーベ環は土星本体の200倍の直径を持つ桁違いの巨大構造として登録する。
 const SATURN_RINGS: RingSystemDef = {
   bands: [
-    ringBand(66900, 136775, 0, undefined, 'saturn'), // D〜A 環(カッシーニの間隙込み)
-    ringBand(139930, 140430), // F 環
-    ringBand(166000, 175000), // G 環
-    ringBand(180000, 480000, 40000), // E 環
-    ringBand(4.0e6, 1.3e7), // フェーベ環
+    ringBand(66900, 74600, 0, ringOptics(1e-3, 0.45, 0.2)), // D 環: 代表値 1e-5〜1e-3
+    ringBand(74600, 91975, 0, ringOptics(0.2, 0.45, 0.15)), // C 環: 代表値 0.05〜0.35
+    ringBand(91975, 117507, 0, ringOptics(1.3, 0.55, 0.05)), // B 環: 代表値 0.4〜2.5
+    ringBand(117507, 122340, 0, ringOptics(0.03, 0.45, 0.1)), // カッシーニの間隙
+    ringBand(122340, 136775, 0, ringOptics(0.6, 0.5, 0.05)), // A 環: 代表値 0.4〜1.0
+    ringBand(139930, 140430, 0, ringOptics(0.1, 0.45, 0.2)), // F 環
+    ringBand(166000, 175000, 0, ringOptics(1e-6, 0.5, 0.65)), // G 環
+    ringBand(180000, 480000, 40000, ringOptics(3e-6, 0.55, 0.78, { radialScale: 1, verticalScale: 1 })), // E 環
+    ringBand(4.0e6, 1.3e7, 0, ringOptics(2e-8, 0.55, 0.9)), // フェーベ環
   ],
 };
 
@@ -352,19 +374,19 @@ const SATURN_RINGS: RingSystemDef = {
 // 以上あり annulus として描くとサブピクセルになるため、視角判定(sync 側)で線に落ちる。
 const URANUS_RINGS: RingSystemDef = {
   bands: [
-    ringBand(37850, 41350), // ζ
-    ringBand(41837 - 1.9 / 2, 41837 + 1.9 / 2), // 6
-    ringBand(42234 - 3.4 / 2, 42234 + 3.4 / 2), // 5
-    ringBand(42570 - 3.4 / 2, 42570 + 3.4 / 2), // 4
-    ringBand(44718 - 7.4 / 2, 44718 + 7.4 / 2), // α
-    ringBand(45661 - 8.75 / 2, 45661 + 8.75 / 2), // β
-    ringBand(47175 - 2.3 / 2, 47175 + 2.3 / 2), // η
-    ringBand(47627 - 4.15 / 2, 47627 + 4.15 / 2), // γ
-    ringBand(48300 - 5.1 / 2, 48300 + 5.1 / 2), // δ
-    ringBand(50023 - 1.5 / 2, 50023 + 1.5 / 2), // λ
-    ringBand(51149 - 58.05 / 2, 51149 + 58.05 / 2), // ε
-    ringBand(66100, 69900), // ν
-    ringBand(86000, 103000), // μ
+    ringBand(37850, 41350, 0, ringOptics(0.8, 0.35, 0.1)), // ζ
+    ringBand(41837 - 1.9 / 2, 41837 + 1.9 / 2, 0, ringOptics(3, 0.35, 0.1)), // 6
+    ringBand(42234 - 3.4 / 2, 42234 + 3.4 / 2, 0, ringOptics(2, 0.35, 0.1)), // 5
+    ringBand(42570 - 3.4 / 2, 42570 + 3.4 / 2, 0, ringOptics(2, 0.35, 0.1)), // 4
+    ringBand(44718 - 7.4 / 2, 44718 + 7.4 / 2, 0, ringOptics(1.5, 0.35, 0.1)), // α
+    ringBand(45661 - 8.75 / 2, 45661 + 8.75 / 2, 0, ringOptics(1.5, 0.35, 0.1)), // β
+    ringBand(47175 - 2.3 / 2, 47175 + 2.3 / 2, 0, ringOptics(1.5, 0.35, 0.1)), // η
+    ringBand(47627 - 4.15 / 2, 47627 + 4.15 / 2, 0, ringOptics(6, 0.35, 0.1)), // γ
+    ringBand(48300 - 5.1 / 2, 48300 + 5.1 / 2, 0, ringOptics(1.5, 0.35, 0.1)), // δ
+    ringBand(50023 - 1.5 / 2, 50023 + 1.5 / 2, 0, ringOptics(3, 0.35, 0.1)), // λ
+    ringBand(51149 - 58.05 / 2, 51149 + 58.05 / 2, 0, ringOptics(8, 0.35, 0.1)), // ε
+    ringBand(66100, 69900, 0, ringOptics(3e-5, 0.55, 0.75)), // ν
+    ringBand(86000, 103000, 0, ringOptics(1.1e-5, 0.55, 0.75)), // μ
   ],
 };
 
@@ -373,16 +395,16 @@ const URANUS_RINGS: RingSystemDef = {
 // 固定系での実測値だが、この実装ではアーク自身の公転を追わず環に静止させたまま描く(非目標)。
 const NEPTUNE_RINGS: RingSystemDef = {
   bands: [
-    ringBand(40900, 42900), // ガレ環
-    ringBand(53200 - 113 / 2, 53200 + 113 / 2), // ル・ヴェリエ環
-    ringBand(53200, 57200), // ラッセル環
-    ringBand(57200 - 25, 57200 + 25), // アラゴ環
-    ringBand(62932 - 32.5 / 2, 62932 + 32.5 / 2, 0, [
-      { fromDeg: 247, toDeg: 257 }, // フラテルニテ
-      { fromDeg: 261, toDeg: 264 }, // エガリテ1
-      { fromDeg: 265, toDeg: 266 }, // エガリテ2
-      { fromDeg: 276, toDeg: 280 }, // リベルテ
-      { fromDeg: 284.5, toDeg: 285.5 }, // クラージュ
+    ringBand(40900, 42900, 0, ringOptics(0.002, 0.45, 0.45)), // ガレ環
+    ringBand(53200 - 113 / 2, 53200 + 113 / 2, 0, ringOptics(0.004, 0.45, 0.45)), // ル・ヴェリエ環
+    ringBand(53200, 57200, 0, ringOptics(0.002, 0.45, 0.45)), // ラッセル環
+    ringBand(57200 - 25, 57200 + 25, 0, ringOptics(0.002, 0.45, 0.45)), // アラゴ環
+    ringBand(62932 - 32.5 / 2, 62932 + 32.5 / 2, 0, ringOptics(0.05, 0.5, 0.55), [
+      { fromDeg: 247, toDeg: 257, opticalDepthScale: 1.8 }, // フラテルニテ
+      { fromDeg: 261, toDeg: 264, opticalDepthScale: 1.8 }, // エガリテ1
+      { fromDeg: 265, toDeg: 266, opticalDepthScale: 1.8 }, // エガリテ2
+      { fromDeg: 276, toDeg: 280, opticalDepthScale: 1.8 }, // リベルテ
+      { fromDeg: 284.5, toDeg: 285.5, opticalDepthScale: 1.8 }, // クラージュ
     ]), // アダムス環
   ],
 };
@@ -397,8 +419,8 @@ function lRateFromSemiMajorAxis(a: number): number {
 // C2R は半径405km・幅約3km。
 const CHARIKLO_RINGS: RingSystemDef = {
   bands: [
-    ringBand(391 - 3.5, 391 + 3.5), // C1R
-    ringBand(405 - 1.5, 405 + 1.5), // C2R
+    ringBand(391 - 3.5, 391 + 3.5, 0, ringOptics(0.4, 0.45, 0.1)), // C1R
+    ringBand(405 - 1.5, 405 + 1.5, 0, ringOptics(0.06, 0.45, 0.1)), // C2R
   ],
 };
 
@@ -406,8 +428,8 @@ const CHARIKLO_RINGS: RingSystemDef = {
 // Q2R は半径2520km・幅約10km。
 const QUAOAR_RINGS: RingSystemDef = {
   bands: [
-    ringBand(4100 - 50, 4100 + 50), // Q1R
-    ringBand(2520 - 5, 2520 + 5), // Q2R
+    ringBand(4100 - 50, 4100 + 50, 0, ringOptics(0.04, 0.45, 0.15)), // Q1R
+    ringBand(2520 - 5, 2520 + 5, 0, ringOptics(0.004, 0.45, 0.15)), // Q2R
   ],
 };
 

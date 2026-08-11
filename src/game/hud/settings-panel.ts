@@ -1,7 +1,7 @@
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import * as C from '../const';
-import { syncHudModalState } from './dom';
+import type { ModalController } from './modal-controller';
 
 export class SettingsPanel {
   private readonly panel: HTMLElement;
@@ -11,9 +11,10 @@ export class SettingsPanel {
   onQuitToTitle: (() => void) | null = null;
   onBgmVolumeChange: ((vol: number) => void) | null = null;
   onOpenSnapshots: (() => void) | null = null;
+  onOpenPerfWindow: (() => void) | null = null;
 
   // ⚙ ボタンとパネル DOM を組み立て、開閉・BGM トグル・タイトルへ戻るのイベントを配線する。
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, private readonly modalController: ModalController) {
 
     // パネル本体
     this.panel = document.createElement('div');
@@ -28,6 +29,9 @@ export class SettingsPanel {
       </div>
       <div class="srow" style="margin-top: 20px;">
         <button data-id="snapshotbtn" class="settings-btn" style="flex:1;">スナップショット</button>
+      </div>
+      <div class="srow" style="margin-top: 10px;">
+        <button data-id="perfbtn" class="settings-btn" style="flex:1;">負荷を表示 [${K.togglePerfWindow.label}]</button>
       </div>
       <div class="squit" data-id="settingsquit">ゲームを中断してタイトル画面に戻る</div>
       <div class="sclose" data-id="settingsclose">[閉じる]</div>`;
@@ -76,6 +80,10 @@ export class SettingsPanel {
     this.panel.querySelector<HTMLElement>('[data-id="snapshotbtn"]')!.addEventListener('click', () => {
       this.onOpenSnapshots?.();
     });
+    // 負荷確認ウィンドウ
+    this.panel.querySelector<HTMLElement>('[data-id="perfbtn"]')!.addEventListener('click', () => {
+      this.onOpenPerfWindow?.();
+    });
     // 閉じる
     this.panel.querySelector<HTMLElement>('[data-id="settingsclose"]')!.addEventListener('click', () =>
       this.toggle(false),
@@ -93,7 +101,8 @@ export class SettingsPanel {
     const show = force !== undefined ? force : !wasOpen;
     if (show === wasOpen) return;
     this.panel.style.display = show ? 'block' : 'none';
-    syncHudModalState();
+    // ESCメニュー表示中も、背景のマップ切替とカメラ操作は受け付ける。
+    this.modalController.setOpen('settings', show, true);
     this.onSettingsOpenChange?.(show);
   }
 

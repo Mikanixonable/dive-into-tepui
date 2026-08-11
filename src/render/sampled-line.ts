@@ -66,6 +66,11 @@ const SCALE_REBAKE_RATIO = 1.2;
 // 呼び出し側が毎フレーム書き換えてよい。
 export type DashPattern = { readonly dashSize: number; readonly gapSize: number };
 
+// 空の点列。syncGeometry の再 bake 抑制は点列の参照同一性で判定するので、点列を持たない
+// フレームでは呼び出し側もこの共有インスタンスを渡すこと(毎回新しい [] を作ると抑制が
+// 常に外れる)。
+export const EMPTY_SAMPLES: readonly KinematicState[] = [];
+
 export class SampledLine {
   readonly line: THREE.Line;
   private readonly geom = new THREE.BufferGeometry();
@@ -76,7 +81,7 @@ export class SampledLine {
   private vertexCount = 0;
   private lastSamples: readonly KinematicState[] | null = null;
   private lastFrame: ReferenceFrame | null = null;
-  private lastScale: number | null = null;
+  private bakedScale: number | null = null;
   private wantVisible = true;
 
   // 単色の折れ線マテリアル・ジオメトリを構築する。dash を渡すと破線になる。
@@ -102,19 +107,20 @@ export class SampledLine {
   // (点列, frame, 画面スケール)が前回から変わったときだけ、頂点を frame 相対座標へ bake し直す
   // (非剛体)。scale は絶対 ECI 位置→m/px(区間ごとの折れ角の許容量をこれで決める — desiredChordCount
   // 参照)。スケールは関数の同一性では比較できない(呼び出し側は毎フレーム新しいクロージャを渡しうる)
-  // ので、点列中央のサンプルで一度評価した数値を SCALE_REBAKE_RATIO 幅で比較する。
+  // ので、点列先頭のサンプルで一度評価した数値を SCALE_REBAKE_RATIO 幅で比較する — 先頭は列が
+  // 伸びても動かない点なので、カメラが静止していれば評価値も動かない。
   // 破線のときは、同じ頂点列挙のついでに始点からの累積距離も焼く。
   syncGeometry(
     samples: readonly KinematicState[], frame: ReferenceFrame, ephemeris: Ephemeris, scale: ScaleAtFn,
     attractors: readonly Attractor[],
   ): void {
-    const scaleNow = samples.length > 0 ? scale(samples[Math.floor(samples.length / 2)]!.r) : 1;
-    const scaleChanged = this.lastScale === null
-      || scaleNow / this.lastScale > SCALE_REBAKE_RATIO || this.lastScale / scaleNow > SCALE_REBAKE_RATIO;
+    const scaleNow = samples.length > 0 ? scale(samples[0]!.r) : null;
+    const scaleChanged = scaleNow !== null && (this.bakedScale === null
+      || scaleNow / this.bakedScale > SCALE_REBAKE_RATIO || this.bakedScale / scaleNow > SCALE_REBAKE_RATIO);
     if (samples === this.lastSamples && frame === this.lastFrame && !scaleChanged) return;
     this.lastSamples = samples;
     this.lastFrame = frame;
-    this.lastScale = scaleNow;
+    if (scaleNow !== null) this.bakedScale = scaleNow;
 
     // hermiteInterpolate は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の
     // 位置と速度をそのまま KinematicState に詰めて渡す(この慣性系ブランドは関数の外へ出ない)。

@@ -1,7 +1,9 @@
 // HUD の静的 DOM/スタイル構築。
 import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, EDGE, BG, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
+import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, SURFACE_OPAQUE, EDGE, BG, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
+import { buildOverlayLayers, OVERLAY_LAYER_STYLE, type OverlayLayers } from './overlay-layer';
+import { ModalController } from './modal-controller';
 
 
 const throttleKeyLabels = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax].map((k) => k.label).join(' / ');
@@ -11,6 +13,8 @@ const STYLE = `
 #hud {
   position: fixed; inset: 0; pointer-events: none; overflow: hidden;
   font-family: ${FONT};
+  /* body 直下の他要素(タッチ操作パッド・天球グリッドのラベル層)との前後関係を決める。
+     #hud の内側の重なり順は overlay-layer.ts のレイヤが持つ。 */
   color: ${INK}; user-select: text; z-index: 10;
   font-size: 13px;
 }
@@ -18,12 +22,9 @@ const STYLE = `
    ボタンの連打やカメラドラッグのたびにラベルが選択されると操作の邪魔になる。 */
 #hud .seg-btn, #hud .hold-btn, #hud .hud-toggle, #hud .ctx-menu-item,
 #hud .mk, #hud .dock-toggle, #hud-chase-reset, #hud-viewbadge .vb-view-btn { user-select: none; }
-/* --- 重なり順: マーカーは実行時に DOM 末尾へ追加されるため z-index を明示しないとパネルの上に出る。
-     マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0)
-     マーカー群(0-9) < 常設パネル(10) < プロパティウィンドウ(12) < ドックビュー(15) <
-     トースト・ヒント(20) < 終了画面・ヘルプ(30) < ESCメニュー・セーブブラウザ(40)
-     ドックビューは画面全体を占めるビューなので常設パネル・プロパティウィンドウを覆うが、
-     トースト・ヒントとシステム窓(ヘルプ・ESCメニュー・セーブブラウザ)はその上に出す。 */
+${OVERLAY_LAYER_STYLE}
+/* #hud 直下の兄弟同士の重なり順は overlay-layer.ts のレイヤが持つ。
+   マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0) */
 /* スクロール可能な領域は既定のブラウザ配色ではダークテーマと調和しないため、
    パネルの縁色・アクセント色に揃える。 */
 #hud, #hud * { scrollbar-color: ${EDGE} transparent; }
@@ -32,19 +33,11 @@ const STYLE = `
 #hud ::-webkit-scrollbar-thumb { background: ${EDGE}; border-radius: 4px; }
 #hud ::-webkit-scrollbar-thumb:hover { background: ${ACCENT_SOFT}; }
 #hud .mk { z-index: 0; }
-#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
+#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
 #hud .mk-ammo { z-index: 2; }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
-#hud-status, #hud-orbit, #hud-target, #hud-enemies, #hud-controls,
-#hud-plan, #hud-displaytime, #hud-trajframe, #hud-overview-camera, #hud-stagestatus, #hud-globalstatus, #hud-gear, #navball, #hud-shipplacer, #hud-object-list, #hud-creative-logistics { z-index: 10; }
-#dock-view { z-index: 15; }
-#hud-toast, #hud-hint { z-index: 20; }
-#hud-viewbadge { z-index: 20; }
-#hud-end, #hud-help { z-index: 30; }
-#save-browser { z-index: 40; }
-#hud-settings { z-index: 40; }
-#hud-modal-shield { display: none; position: absolute; inset: 0; z-index: 20; pointer-events: none; background: rgba(6,7,9,.3); }
+#hud-modal-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: rgba(6,7,9,.3); }
 body.hud-modal-open #hud-modal-shield { display: block; }
 body.hud-modal-open #touch-ui { display: none; }
 #hud .panel {
@@ -124,25 +117,63 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud.map-mode #hud-status { display: none; }
 #hud-orbit { bottom: 12px; left: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-orbit h3 { font-size: 8.8px; }
+#hud.map-mode #hud-orbit { font-size: inherit; }
+#hud.map-mode #hud-orbit h3 { font-size: 11px; }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
-#hud-target { bottom: 12px; right: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
-#hud-target h3 { font-size: 8.8px; }
-#hud.map-mode #hud-target {
-  top: auto; right: 12px; bottom: 12px; left: auto;
-}
+#hud .hud-dock-right > #hud-target { width: 100%; box-sizing: border-box; font-size: 10.4px; }
+#hud .hud-dock-right > #hud-target h3 { font-size: 8.8px; }
 #hud-enemies { bottom: 12px; right: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
 #hud-enemies h3 { font-size: 8.8px; }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
 #hud-enemies .erow.tgt { color: ${WARNING}; }
-#hud-object-list { max-height: 320px; overflow-y: auto; }
+#hud-map-scale {
+  position: absolute; right: 12px; bottom: 12px; display: none; pointer-events: none;
+  padding: 4px 7px 5px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: ${SURFACE}; color: ${INK_SOFT}; font-size: 9px; line-height: 1.1;
+  font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
+}
+#hud-map-scale .map-scale-value { color: ${INK}; }
+#hud-map-scale .map-scale-ruler { position: relative; height: 10px; margin-top: 2px; margin-left: auto; }
+#hud-map-scale .map-scale-ruler::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 5px; border-top: 1px solid ${INK_SOFT};
+}
+#hud-map-scale .map-scale-tick {
+  position: absolute; top: 1px; height: 9px; border-left: 1px solid ${INK};
+}
+#hud-map-scale .map-scale-tick.start { left: 0; }
+#hud-map-scale .map-scale-tick.q1 { left: 25%; }
+#hud-map-scale .map-scale-tick.mid { left: 50%; }
+#hud-map-scale .map-scale-tick.q3 { left: 75%; }
+#hud-map-scale .map-scale-tick.end { right: 0; }
+#hud-object-list { max-height: 544px; overflow-y: auto; }
+/* パネルの padding 分だけ食い込ませて幅いっぱいに広げ、スクロール中も先頭に張り付かせる */
+#hud-object-list .object-list-head { position: sticky; top: -9px; margin: -9px -12px 0; padding: 9px 12px 0; background: ${SURFACE_OPAQUE}; z-index: 1; }
+#hud-object-list .object-list-search { padding:2px 4px; }
+#hud-object-list .object-list-search input { width:100%; box-sizing:border-box; background:${SURFACE}; color:${INK}; border:1px solid ${EDGE}; font:inherit; }
+#hud-object-list .object-list-tools { display:flex; gap:3px; flex-wrap:wrap; padding:2px 4px; }
+#hud-object-list .object-list-tools button {
+  font-size:8px; padding:2px 4px; border:1px solid ${EDGE}; border-radius:4px;
+  background:${SURFACE}; color:${INK_SOFT};
+}
+#hud-object-list .object-list-tools button[aria-pressed="true"] { color:${ACCENT}; border-color:${ACCENT}; }
+#hud-object-list .object-list-collapse {
+  margin-left: auto; background: none; border: none; color: ${INK_SOFT}; font: inherit; cursor: pointer; pointer-events: auto;
+}
+#hud-object-list .object-list-title { display: flex; align-items: center; gap: 4px; }
+#hud-object-list .object-list-body.collapsed { display: none !important; }
+#hud-object-list .object-list-breadcrumb { padding:2px 5px; font-size:8px; color:${INK_SOFT}; border-bottom:1px solid ${EDGE}; }
 #hud-object-list .object-list-section-header {
   display: block; width: 100%; text-align: left; margin: 4px 0 2px;
   padding: 3px 8px; font-size: 10px; letter-spacing: 1px;
 }
 #hud-object-list .object-list-section-body { padding-left: 4px; }
-#hud-object-list .erow { padding: 3px 4px; color: ${INK_SOFT}; cursor: pointer; }
+#hud-object-list .erow { padding: 3px 4px; color: ${INK_SOFT}; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+#hud-object-list .object-list-detail { margin-left: auto; font-size: 8px; color: ${INK_SOFT}; white-space: nowrap; }
 #hud-object-list .erow:hover { color: ${INK}; }
 #hud-object-list .erow.tgt { color: ${ACCENT}; }
+#hud-object-list .erow.selected { outline: 1px solid ${EDGE}; color: ${INK}; }
+#hud-object-list .object-list-toggle { width: 10px; text-align: center; flex: none; }
+#hud-object-list .object-list-children { padding-left: 12px; }
 #hud-combat-shelf { display: contents; }
 
 #hud-hint {
@@ -159,7 +190,6 @@ body.hud-modal-open #touch-ui { display: none; }
   display: flex; justify-content: center; align-items: center;
   padding: 0;
   border: 1px solid ${EDGE}; background: ${SURFACE}; color: ${INK_SOFT};
-  z-index: 10;
 }
 #hud-chase-reset:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
 #hud-toast {
@@ -176,9 +206,12 @@ body.hud-modal-open #touch-ui { display: none; }
   width: 24px; height: 24px;
 }
 .mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; line-height: 1; }
-.mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: 10px; margin-top: 2px; letter-spacing: 1px; }
+.mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: 10px; letter-spacing: 1px; }
+#hud .mk .lbl { margin-top: 2px; }
 .mk-enemy .lbl, .mk-target .lbl { font-size: 9px; line-height: 1.2; white-space: pre; }
 .mk-dir { color: #ffffff; font-size: 11px; text-shadow: none; }
+#hud .mk-bearing-triangle .sym { font-size: 14.67px; }
+#hud .mk-ally-dir .sym { font-size: 7.33px; }
 .mk-boresight { color: #ffffff; font-size: 36px; }
 #mk-bore .sym { width: 48px; height: 48px; }
 #mk-bore .lbl { top: -14px; left: 19px; transform: none; font-size: 8px; letter-spacing: .4px; color: ${INK_SOFT}; text-shadow: 0 0 3px #000; }
@@ -211,6 +244,13 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
 #hud .seg-btn.disabled { opacity: 0.35; pointer-events: none; }
 #hud .seg-btn.hold-btn:active { border-color: ${ACCENT}; color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.16); }
+#hud .icon-toggle-btn { min-width: 20px; padding: 3px 6px; text-align: center; font-size: 12px; }
+#hud .body-class-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+#hud .body-class-row .body-class-title { width: 96px; min-width: 96px; text-align: left; font-size: 10px; letter-spacing: 1px; }
+#hud .body-class-row .body-class-btns { display: flex; gap: 4px; }
+#hud .body-class-row.category-off .icon-toggle-btn.on { border-color: ${EDGE}; color: ${INK_SOFT}; font-weight: 700; opacity: .65; }
+#hud .body-class-row.category-off .icon-toggle-btn.disabled { opacity: .35; }
+#hud .category-toggle-btn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #hud .hud-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 #hud .hud-toggle .toggle-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; }
 #hud .hud-toggle .toggle-track {
@@ -224,10 +264,59 @@ body.hud-modal-open #touch-ui { display: none; }
   background: ${INK_SOFT}; transition: left 0.15s, background 0.15s;
 }
 #hud .hud-toggle .toggle-track.on .toggle-knob { left: 18px; background: ${ACCENT}; }
-/* MAP VIEW/PREDICT/TRAJECTORY の左列は navball ウィンドウの右に置き、重なりを避ける。 */
+/* MAP VIEW の左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-overview-camera { display: none; width: 100%; pointer-events: auto; }
-#hud-displaytime { display: none; width: 100%; pointer-events: auto; }
-#hud-displaytime input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
+/* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも
+   トグルだけがその場(バーがあった位置の上端)に残るようにする。マップビューでは
+   #hud-stagestatus は常に非表示なので、他の下端揃えパネル(.hud-dock 等)と同じ bottom まで詰める。
+   左右ドック(.hud-dock-left/.hud-dock-right)の内側に収まる幅だけを使い、ドックのパネルに重ねない。 */
+#hud-displaytime-wrap {
+  position: absolute; bottom: 12px;
+  left: calc(12px + min(300px, 30vw) + 8px); right: calc(12px + min(300px, 33vw) + 8px);
+  display: flex; flex-direction: column; gap: 4px; pointer-events: none;
+}
+/* #hud を重ねた ID セレクタで、.panel 共通規則(position:absolute)より詳細度を上げて打ち消す。 */
+#hud #hud-displaytime {
+  display: none; position: relative; inset: auto; order: 2; box-sizing: border-box;
+  max-height: 40vh; overflow-y: auto; pointer-events: auto;
+}
+#hud-displaytime.collapsed { display: none !important; }
+#hud-displaytime-toggle {
+  display: none; order: 1; align-self: center; pointer-events: auto; cursor: pointer;
+  width: 26px; height: 26px; border: 1px solid ${EDGE}; border-radius: 4px;
+  background: ${SURFACE}; color: ${ACCENT};
+}
+#hud.map-mode #hud-displaytime-toggle { display: block; }
+#hud.dock-mode #hud-displaytime-toggle { display: none; }
+#hud-displaytime .dtp-row1, #hud-displaytime .dtp-row2 { display: flex; align-items: center; gap: 6px; }
+#hud-displaytime .dtp-row1 { flex-wrap: wrap; margin-bottom: 4px; }
+#hud-displaytime .dtp-pills { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+#hud-displaytime .dtp-reset {
+  pointer-events: auto; cursor: pointer; flex: 0 0 auto;
+  width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT}; font-size: 12px;
+}
+#hud-displaytime .dtp-reset:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud-displaytime .dtp-slider-wrap { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; height: 22px; }
+#hud-displaytime input[type="range"] { width: 100%; height: 22px; margin: 0; pointer-events: auto; accent-color: ${ACCENT}; }
+#hud-displaytime .dtp-elapsed {
+  flex: 0 0 auto; pointer-events: auto; cursor: pointer;
+  font-size: 11px; color: ${INK_SOFT}; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+#hud-displaytime .dtp-elapsed:hover { color: ${INK}; }
+#hud-displaytime .dtp-absolute {
+  flex: 0 0 auto; font-size: 11px; color: ${INK_SOFT};
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+#hud-displaytime .dtp-value-input { display: inline-flex; align-items: center; gap: 4px; margin: 0; }
+/* 単位の SegmentedControl は見出しを持たないので、共通規則の見出し幅を出さない。 */
+#hud-displaytime .dtp-value-input .seg-title { display: none; }
+#hud-displaytime .dtp-value-input input[type="number"] { width: 56px; }
+#hud-displaytime .dtp-edit-btn {
+  pointer-events: auto; cursor: pointer; padding: 2px 6px; font-size: 11px;
+  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
+}
+#hud-displaytime .dtp-edit-btn:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
 /* パネル内の数値・テキスト入力欄の共通見た目(スライダーは上の range 規則が受け持つ)。 */
 #hud .panel input[type="number"], #hud .panel input[type="text"] {
   pointer-events: auto; width: 64px; padding: 3px 6px; font-size: 11px;
@@ -241,13 +330,19 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .settings-btn:active { background: rgba(255, 255, 255, 0.1); border-color: ${ACCENT_SOFT}; }
 #hud-displaytime .slider-ticks { position: relative; height: 11px; margin-top: 2px; }
 #hud-displaytime .slider-ticks span {
-  position: absolute; transform: translateX(-50%);
+  position: absolute;
   font-size: 9px; color: ${INK_SOFT}; white-space: nowrap;
 }
-#hud-displaytime .slider-ticks span:first-child { transform: none; }
-#hud-displaytime .slider-ticks span:last-child { transform: translateX(-100%); }
-#hud-displaytime .slider-label { font-size: 11px; color: ${INK_SOFT}; margin-top: 4px; text-align: center; }
-#hud-trajframe { display: none; width: 100%; pointer-events: auto; }
+#hud-frame-controls { display: none; width: 100%; pointer-events: auto; }
+#hud-frame-controls .hud-frame-scroll-zone {
+  max-height: min(240px, 30vh); overflow-y: auto;
+  scrollbar-width: thin; overscroll-behavior-y: contain;
+}
+/* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
+#hud-frame-controls .hud-frame-origin-zone > .hud-seg:first-child > .seg-title,
+#hud-frame-controls .hud-frame-rotation-zone > .seg-title {
+  flex: 0 0 100%; min-width: 0;
+}
 #hud-creative-logistics { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
@@ -278,13 +373,14 @@ body.hud-modal-open #touch-ui { display: none; }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
 .mk-impact { color: ${WARNING}; text-shadow: 0 0 6px rgba(255,79,94,0.6), 0 0 3px #000; }
-.mk-daytick { color: ${INK_SOFT}; }
-.mk-daytick .sym { font-size: 10px; }
+.mk-plantick { color: ${INK_SOFT}; }
+.mk-plantick .sym svg { display: block; }
 .mk-poi { color: #ffffff; text-shadow: 0 0 4px #000; }
 .mk-poi .sym { font-size: 5px; }
-.mk-poi .lbl { font-size: 11px; margin-top: 4px; padding: 2px 4px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }
+.mk-poi .lbl { font-size: 11px; border-radius: 2px; background: rgba(13,15,18,0.6); }
 .mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px #000; }
-.mk-base .lbl { font-size: 11px; margin-top: 4px; padding: 2px 4px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }
+.mk-base .lbl { font-size: 11px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }
+#hud .mk-poi .lbl, #hud .mk-base .lbl { margin-top: 4px; padding: 2px 4px; }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
   background: rgba(6, 7, 9, 0.82); backdrop-filter: blur(3px);
@@ -356,6 +452,7 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud { font-size: 11px; }
   #hud .panel { padding: 6px 8px; line-height: 1.4; }
   #hud .panel h3 { font-size: 10px; letter-spacing: 1.5px; margin-bottom: 4px; }
+  #hud.map-mode #hud-orbit h3 { font-size: 10px; }
   #hud .row { gap: 8px; }
   #hud .row .v { min-width: 64px; }
   #hud-combat-shelf {
@@ -387,10 +484,16 @@ body.hud-modal-open #touch-ui { display: none; }
   }
   #hud-settings { min-width: 0; width: 78vw; }
   #hud-stagestatus { bottom: 8px; width: min(62vw, 440px); min-width: 0; max-height: 62px; overflow-y: auto; padding: 6px 10px; gap: 8px; }
+  /* このブレークポイントのドック幅に合わせて左右の隙間を再計算する。 */
+  #hud-displaytime-wrap {
+    bottom: 8px;
+    left: calc(8px + min(220px, calc(46vw - 8px)) + 8px); right: calc(8px + min(260px, calc(54vw - 8px)) + 8px);
+  }
   #hud-stagestatus .t { font-size: 11px; }
   #hud-stagestatus .k { font-size: 9px; line-height: 1.35; white-space: normal; }
   #hud-chase-reset { top: 40px; width: 28px; height: 28px; }
   #hud-chase-reset svg { width: 14px; height: 14px; }
+  #hud-map-scale { right: 8px; bottom: 8px; font-size: 8px; }
   #hud .hud-dock { top: 40px; }
 }
 @media (max-width: 520px) {
@@ -400,12 +503,21 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud .hud-seg { gap: 3px; }
   #hud .seg-btn { padding: 3px 5px; font-size: 9px; }
   #hud-displaytime .slider-ticks { display: none; }
+  /* 幅が足りないので、行2はスクラバーと T+ 読み値だけ残す。 */
+  #hud-displaytime .dtp-absolute { display: none; }
+  /* 左右ドックが幅を使い切り隙間が残らないため、ドックの下端を上げて帯の分を空け、バーは全幅に戻す。
+     bottom はここで確保した帯の高さ(28vh)に収まる値まで詰め直す。 */
+  #hud.map-mode .hud-dock { bottom: calc(28vh + 16px); }
+  #hud-displaytime-wrap { left: 8px; right: 8px; bottom: 8px; }
+  #hud-displaytime { max-height: 28vh; }
   #hud-combat-shelf { top: 72px; }
   #hud-combat-shelf > .panel { flex-basis: min(168px, calc(100vw - 16px)); width: min(168px, calc(100vw - 16px)); }
 }
 @media (pointer: coarse) {
   #hud .hud-dock { bottom: 62px; }
   #hud-combat-shelf > .panel { max-height: 104px; }
+  #hud-map-scale { bottom: 62px; }
+  #hud-displaytime-wrap { bottom: 62px; }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
   #hud .hud-dock { bottom: 52px; }
@@ -414,11 +526,13 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud-stagestatus { max-height: 46px; }
   #navball { top: 60px; width: 72px !important; }
   #hud-chase-reset { top: 34px; }
+  #hud-displaytime-wrap { bottom: 52px; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
   #hud-combat-shelf { top: 60px; }
   #hud-combat-shelf > .panel { max-height: 82px; }
   #hud-stagestatus { max-height: 46px; }
+  #hud-map-scale { bottom: 52px; }
 }
 /* ===== DockView ===== */
 /* 戦闘・マップと対等な全画面ビュー。背後の 3D は描画自体が止まるので、
@@ -620,6 +734,8 @@ body.hud-modal-open #touch-ui { display: none; }
   display: flex; flex-direction: column; gap: 3px; padding: 6px 8px;
   border: 1px solid ${EDGE}; border-radius: 5px;
 }
+#save-browser .sb-snap-loadable { cursor: pointer; }
+#save-browser .sb-snap-loadable:hover { border-color: ${INK_SOFT}; background: rgba(255,255,255,.03); }
 #save-browser .sb-snap-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #save-browser .sb-snap-name { font-size: 11px; }
 #save-browser .sb-snap-badge {
@@ -653,7 +769,9 @@ function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLE
 
 export interface HudDomRefs {
   root: HTMLElement;
+  layers: OverlayLayers;
   svgOverlay: SVGSVGElement;
+  modalController: ModalController;
   els: Map<string, HTMLElement>;
 }
 
@@ -663,23 +781,56 @@ export function hudDock(root: HTMLElement, side: 'left' | 'right'): HTMLElement 
   return root.querySelector<HTMLElement>(`#${id}`) ?? root;
 }
 
-function syncDockToggle(button: HTMLElement, dock: HTMLElement, side: 'left' | 'right'): void {
-  const expandedGlyph = side === 'left' ? '◀' : '▶';
-  const collapsedGlyph = side === 'left' ? '▶' : '◀';
-  const collapsed = dock.classList.contains('collapsed');
-  button.textContent = collapsed ? collapsedGlyph : expandedGlyph;
-  button.setAttribute('aria-expanded', String(!collapsed));
-  button.title = `${side === 'left' ? '左' : '右'}マップパネルを${collapsed ? '開く' : '閉じる'}`;
+// 縦方向の開閉トグルの字形。マップのマーカーとは字形の族を分け、開いている状態と
+// 閉じている状態でどちらを向くかを画面内で一貫させる。
+export const COLLAPSE_EXPANDED_GLYPH = '▾';
+export const COLLAPSE_COLLAPSED_GLYPH = '▸';
+
+export interface CollapseToggleLabels {
+  readonly expandedGlyph: string;
+  readonly collapsedGlyph: string;
+  readonly expandedTitle: string;
+  readonly collapsedTitle: string;
 }
 
-export function resetHudDocks(root: HTMLElement): void {
-  for (const side of ['left', 'right'] as const) {
-    const dock = root.querySelector<HTMLElement>(`#hud-dock-${side}`);
-    const button = root.querySelector<HTMLElement>(`#hud-dock-toggle-${side}`);
-    if (!dock || !button) continue;
-    dock.classList.remove('collapsed');
-    syncDockToggle(button, dock, side);
-  }
+// マップビュー下部の PREDICT バー用トグルの見た目。
+export const PREDICT_TOGGLE_LABELS: CollapseToggleLabels = {
+  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
+  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
+  expandedTitle: '下部パネルを閉じる',
+  collapsedTitle: '下部パネルを開く',
+};
+
+function dockToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
+  const label = side === 'left' ? '左' : '右';
+  return {
+    expandedGlyph: side === 'left' ? '◀' : '▶',
+    collapsedGlyph: side === 'left' ? '▶' : '◀',
+    expandedTitle: `${label}マップパネルを閉じる`,
+    collapsedTitle: `${label}マップパネルを開く`,
+  };
+}
+
+// button の見た目(グリフ・aria-expanded・title)を target の collapsed クラスに合わせる。
+function syncCollapseToggle(button: HTMLElement, target: HTMLElement, labels: CollapseToggleLabels): void {
+  const collapsed = target.classList.contains('collapsed');
+  button.textContent = collapsed ? labels.collapsedGlyph : labels.expandedGlyph;
+  button.setAttribute('aria-expanded', String(!collapsed));
+  button.title = collapsed ? labels.collapsedTitle : labels.expandedTitle;
+}
+
+// target の表示/非表示を collapsed クラスで切り替えるボタンを1つ組み、root へ追加して返す。
+export function buildCollapseToggle(
+  root: HTMLElement, id: string, className: string, target: HTMLElement, labels: CollapseToggleLabels,
+): HTMLElement {
+  const button = el('button', id, root, className);
+  button.addEventListener('pointerdown', (event) => event.stopPropagation());
+  button.addEventListener('click', () => {
+    target.classList.toggle('collapsed');
+    syncCollapseToggle(button, target, labels);
+  });
+  syncCollapseToggle(button, target, labels);
+  return button;
 }
 
 export function syncNavballPlacement(root: HTMLElement, mapMode: boolean): void {
@@ -688,31 +839,8 @@ export function syncNavballPlacement(root: HTMLElement, mapMode: boolean): void 
   if (navball && target && navball.parentElement !== target) target.appendChild(navball);
 }
 
-// マップビューでは ORBIT パネルを右ドックへ移し、他の map 系パネルと同様に折り畳めるようにする。
-export function syncOrbitPlacement(root: HTMLElement, mapMode: boolean): void {
-  const orbit = root.querySelector<HTMLElement>('#hud-orbit');
-  const target = root.querySelector<HTMLElement>(mapMode ? '#hud-dock-right' : '#hud-combat-shelf');
-  if (orbit && target && orbit.parentElement !== target) target.appendChild(orbit);
-}
-
-export function syncHudModalState(): void {
-  const helpOpen = getComputedStyle(document.getElementById('hud-help')!).display !== 'none';
-  const settingsOpen = getComputedStyle(document.getElementById('hud-settings')!).display !== 'none';
-  const saveBrowser = document.getElementById('save-browser');
-  const saveBrowserOpen = saveBrowser !== null && getComputedStyle(saveBrowser).display !== 'none';
-  const open = helpOpen || settingsOpen || saveBrowserOpen;
-  document.body.classList.toggle('hud-modal-open', open);
-  if (open) window.dispatchEvent(new Event('tepui-release-touch-inputs'));
-}
-
 function buildDockToggle(root: HTMLElement, dock: HTMLElement, side: 'left' | 'right'): void {
-  const button = el('button', `hud-dock-toggle-${side}`, root, 'dock-toggle');
-  button.addEventListener('pointerdown', (event) => event.stopPropagation());
-  button.addEventListener('click', () => {
-    dock.classList.toggle('collapsed');
-    syncDockToggle(button, dock, side);
-  });
-  syncDockToggle(button, dock, side);
+  buildCollapseToggle(root, `hud-dock-toggle-${side}`, 'dock-toggle', dock, dockToggleLabels(side));
 }
 
 // STYLE の CSS を <head> に注入する。
@@ -736,7 +864,7 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
 }
 
 // 常設の情報パネル(SHIP STATUS/ORBIT/TARGET/CONTACTS)を組む。
-function buildInfoPanels(root: HTMLElement): void {
+function buildInfoPanels(root: HTMLElement, targetDock: HTMLElement): void {
   const shelf = el('div', 'hud-combat-shelf', root);
 
   // SHIP STATUS パネル
@@ -765,7 +893,8 @@ function buildInfoPanels(root: HTMLElement): void {
     <div class="row"><span class="k">機体温度</span><span class="v" data-id="temp"></span></div>`;
 
   // TARGET パネル
-  const target = el('div', 'hud-target', shelf, 'panel');
+  const target = el('div', 'hud-target', targetDock, 'panel');
+  target.style.display = 'none';
   target.innerHTML = `
     <h3 data-id="tgtname">TARGET</h3>
     <div data-id="tgtbody"></div>`;
@@ -775,6 +904,18 @@ function buildInfoPanels(root: HTMLElement): void {
   enemies.innerHTML = `
     <h3>CONTACTS <span data-id="count"></span></h3>
     <div data-id="elist"></div>`;
+
+  // マップ視点の縮尺バー。描画自体は HudPanels.sync がカメラの注視点基準で更新する。
+  const mapScale = el('div', 'hud-map-scale', root);
+  mapScale.dataset.id = 'map-scale';
+  mapScale.setAttribute('aria-label', 'マップ縮尺');
+  mapScale.innerHTML = `
+    <div><span class="map-scale-value" data-id="map-scale-value"></span></div>
+    <div class="map-scale-ruler" data-id="map-scale-ruler">
+      <span class="map-scale-tick start"></span><span class="map-scale-tick q1"></span>
+      <span class="map-scale-tick mid"></span><span class="map-scale-tick q3"></span>
+      <span class="map-scale-tick end"></span>
+    </div>`;
 }
 
 // 画面全体のグローバルステータス(MET・時間加速・NODE WARP)を組む。
@@ -863,30 +1004,32 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   return els;
 }
 
-// HUD のスタイル・各パネル・SVG オーバーレイを一括構築し、DOM 参照をまとめて返す。
+// HUD のスタイル・レイヤ・各パネル・SVG オーバーレイを一括構築し、DOM 参照をまとめて返す。
 export function buildHudDom(): HudDomRefs {
   injectStyle();
   const root = el('div', 'hud', document.body);
-  const svgOverlay = buildSvgOverlay(root);
-  el('div', 'hud-dock-left', root, 'hud-dock hud-dock-left');
-  const rightDock = el('div', 'hud-dock-right', root, 'hud-dock hud-dock-right');
-  const leftDock = root.querySelector<HTMLElement>('#hud-dock-left')!;
-  buildDockToggle(root, leftDock, 'left');
-  buildDockToggle(root, rightDock, 'right');
+  const layers = buildOverlayLayers(root);
+  const svgOverlay = buildSvgOverlay(layers.marker);
+  el('div', 'hud-dock-left', layers.panel, 'hud-dock hud-dock-left');
+  const rightDock = el('div', 'hud-dock-right', layers.panel, 'hud-dock hud-dock-right');
+  const leftDock = layers.panel.querySelector<HTMLElement>('#hud-dock-left')!;
+  buildDockToggle(layers.panel, leftDock, 'left');
+  buildDockToggle(layers.panel, rightDock, 'right');
 
   // 常設パネル群を組む。
-  buildInfoPanels(root);
-  buildGlobalStatus(root);
-  buildChaseReset(root);
-  el('div', 'hud-modal-shield', root);
+  buildInfoPanels(layers.panel, rightDock);
+  buildGlobalStatus(layers.panel);
+  buildChaseReset(layers.panel);
+  const modalShield = el('div', 'hud-modal-shield', layers.notify);
+  const modalController = new ModalController(modalShield, layers.notify);
 
-  el('div', 'hud-hint', root);
-  el('div', 'hud-toast', root);
+  el('div', 'hud-hint', layers.notify);
+  el('div', 'hud-toast', layers.notify);
 
-  buildHelpPanel(root);
+  buildHelpPanel(layers.system);
 
-  el('div', 'hud-end', root);
+  el('div', 'hud-end', layers.system);
 
   const els = collectDataIdElements(root);
-  return { root, svgOverlay, els };
+  return { root, layers, svgOverlay, modalController, els };
 }

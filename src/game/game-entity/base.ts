@@ -38,6 +38,9 @@ export interface BaseState {
 const idAllocator = new EntityIdAllocator('base-');
 
 export class Base extends GameEntity {
+  // 計画軌道の衝突判定でも基地の未来位置を使う。現在位置を凍結すると、長時間計画では
+  // 実際に移動した基地と計画線の衝突判定が食い違うため、通常の entity 予測列へ乗せる。
+  readonly predictsFuture = true;
   // プロパティウィンドウから改名できる表示名。
   name: string;
   readonly orbitLine: OrbitLine;
@@ -47,13 +50,13 @@ export class Base extends GameEntity {
     dockedShips: []
   };
 
-  constructor(state: KinematicState, scene: THREE.Scene, name = '基地', att?: Attitude) {
-    super(state, buildBaseModel(), scene, att, idAllocator.next());
+  constructor(state: KinematicState, scene: THREE.Scene, name = '基地', att?: Attitude, id?: string) {
+    super(state, buildBaseModel(), scene, att, idAllocator.next(id));
     this.mass = 1e6;
     this.radius = 100;
     this.collides = true;
     this.name = name;
-    this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35);
+    this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     scene.add(this.orbitLine.line);
   }
 

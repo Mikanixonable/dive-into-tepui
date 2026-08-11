@@ -5,6 +5,12 @@ import { KinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, v3 } from '../../physics/vec3';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
+import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
+import type { Attractor } from '../../physics/attractor';
+import type { CelestialRegistry } from '../../physics/solar-system';
+import { isPositionInFocusedSystem } from '../celestial/body-visibility';
+import { COLOR_ACCENT } from '../const';
+import type { MapVisibility } from '../celestial/map-visibility';
 
 // 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;
@@ -18,18 +24,20 @@ export class PlayerMarkers {
   // currentState: 現在の自機状態(方向マーカー・ボアサイト用)。
   // displayState: スライダー位置の状態(null なら予測期間超過)、▲ マーカー用。
   // displayName は改名可能なので毎フレーム引数で受け取り、保持しない。
-  sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, alive: boolean, overviewMode: boolean, isActive: boolean, project: ProjectFn, scaleFn: ScaleFn, displayName: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0): void {
+  sync(currentState: KinematicState, displayState: KinematicState | null, att: Attitude, alive: boolean, overviewMode: boolean, isActive: boolean, project: ProjectFn, scaleFn: ScaleFn, displayName: string, rounds = 0, _reloadTimer = 0, beltLinks = 0, muzzleSpeed = 0, focusId?: string, registry?: CelestialRegistry, attractors: readonly Attractor[] = [], visibility: MapVisibility | null = null): void {
     const selfKey = `self-${this.id}`;
 
     if (overviewMode) {
       if (isActive) {
         for (const key of COMBAT_KEYS) this.markerManager.hide(`${key}-${this.id}`);
       }
-      if (displayState) {
-        const color = isActive ? '#ff0000' : undefined;
+      if (displayState && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, attractors))
+        && (!visibility || visibility.pickable)) {
+        const color = isActive ? COLOR_ACCENT : undefined;
         const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn);
         this.markerManager.setPosition(
-          selfKey, 'mk-self', '▲', displayState.r, project, displayName, 1, color, rotationDeg,
+          selfKey, 'mk-self', visibility?.icon === false ? '' : ENTITY_GLYPH.ship, displayState.r, project,
+          isActive && visibility?.label !== false ? displayName : '', 1, color, rotationDeg,
         );
       } else {
         this.markerManager.hide(selfKey);
@@ -55,14 +63,14 @@ export class PlayerMarkers {
     const pr = state.r;
     const { pro: proDir, nrm: nrmDir, radOut: radDir } = orbitAxes(state);
 
-    this.markerManager.setDirection(`pro-${this.id}`, 'mk-pro', '⊙', pr, proDir, project, 'PROGRADE');
-    this.markerManager.setDirection(`retro-${this.id}`, 'mk-retro', '⊗', pr, scale(proDir, -1), project, 'RETROGRADE');
+    this.markerManager.setDirection(`pro-${this.id}`, 'mk-pro', DIRECTION_GLYPH.prograde, pr, proDir, project, 'PROGRADE');
+    this.markerManager.setDirection(`retro-${this.id}`, 'mk-retro', DIRECTION_GLYPH.retrograde, pr, scale(proDir, -1), project, 'RETROGRADE');
 
-    this.markerManager.setDirection(`nrm-${this.id}`, 'mk-nrm', '▲', pr, nrmDir, project, 'NORMAL');
-    this.markerManager.setDirection(`anm-${this.id}`, 'mk-nrm', '▽', pr, scale(nrmDir, -1), project, 'ANTINORMAL');
+    this.markerManager.setDirection(`nrm-${this.id}`, 'mk-nrm', DIRECTION_GLYPH.normal, pr, nrmDir, project, 'NORMAL');
+    this.markerManager.setDirection(`anm-${this.id}`, 'mk-nrm', DIRECTION_GLYPH.antinormal, pr, scale(nrmDir, -1), project, 'ANTINORMAL');
 
-    this.markerManager.setDirection(`radout-${this.id}`, 'mk-rad', '◎', pr, radDir, project, 'RADIAL OUT');
-    this.markerManager.setDirection(`radin-${this.id}`, 'mk-rad', '◉', pr, scale(radDir, -1), project, 'RADIAL IN');
+    this.markerManager.setDirection(`radout-${this.id}`, 'mk-rad', DIRECTION_GLYPH.radialOut, pr, radDir, project, 'RADIAL OUT');
+    this.markerManager.setDirection(`radin-${this.id}`, 'mk-rad', DIRECTION_GLYPH.radialIn, pr, scale(radDir, -1), project, 'RADIAL IN');
   }
 
   // 機首方向にボアサイトマーカーを置く。機体が死亡していれば隠す。

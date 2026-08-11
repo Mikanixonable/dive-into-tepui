@@ -15,9 +15,33 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { Vec3 } from '../../physics/vec3';
 import { metersPerPixel, ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
-import { ReferenceFrame } from '../../physics/frame';
 import { Attractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
+import { CameraSaveData } from '../save-data';
+
+const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.bodyClassToggles';
+
+// localStorage から天体クラス別トグルを読み込む。取得できなければ既定値を返す。
+function loadBodyClassToggles(): BodyClassToggles {
+  try {
+    const raw = localStorage.getItem(BODY_CLASS_TOGGLES_STORAGE_KEY);
+    if (!raw) return DEFAULT_BODY_CLASS_TOGGLES;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_BODY_CLASS_TOGGLES;
+    return { ...DEFAULT_BODY_CLASS_TOGGLES, ...parsed };
+  } catch {
+    return DEFAULT_BODY_CLASS_TOGGLES;
+  }
+}
+
+// 天体クラス別トグルを localStorage へ保存する。
+function saveBodyClassToggles(v: BodyClassToggles): void {
+  try {
+    localStorage.setItem(BODY_CLASS_TOGGLES_STORAGE_KEY, JSON.stringify(v));
+  } catch {
+    /* localStorage 不可なら保存しない(次回リロード時は既定値に戻る) */
+  }
+}
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;
@@ -75,7 +99,7 @@ export class CameraSystem {
   // クラスごとの天体表示トグル。マップのラベル・軌道オブジェクト一覧・配置UIの基準天体が
   // この1つの状態を共有する(body-visibility.ts の visibleBodyIds に渡す)。フォーカスと
   // MAP VIEW パネルを既に所有しているこのクラスが、同じ場所で持つ。
-  private _bodyClassToggles: BodyClassToggles = DEFAULT_BODY_CLASS_TOGGLES;
+  private _bodyClassToggles: BodyClassToggles = loadBodyClassToggles();
   get bodyClassToggles(): BodyClassToggles { return this._bodyClassToggles; }
 
   setMapMode(open: boolean): void { this._overviewMode = open; }
@@ -102,15 +126,10 @@ export class CameraSystem {
     this.combatCamera = new CombatCameraSystem(_hud, sfx, player);
     this.overviewCamera = new OverviewCamera(_hud, sfx, ephemeris);
     // 広範囲視点の操作パネルと各操作のコールバック
-    this.overviewCameraPanel = new OverviewCameraPanel(_hud.root, ephemeris);
+    this.overviewCameraPanel = new OverviewCameraPanel(_hud.layers.panel);
     this.overviewCameraPanel.onBodyClassToggle = (key, on) => {
       this._bodyClassToggles = { ...this._bodyClassToggles, [key]: on };
-    };
-    this.overviewCameraPanel.onFrameSelect = (frame: ReferenceFrame) => {
-      this.overviewCamera.cameraFrame = frame;
-    };
-    this.overviewCameraPanel.onAmmoToggle = (show: boolean) => {
-      _hud.settings.showMapAmmo = show;
+      saveBodyClassToggles(this._bodyClassToggles);
     };
 
     const chaseResetBtn = _hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
@@ -197,7 +216,7 @@ export class CameraSystem {
   }
 
   // 視点状態をフローティングオリジン(fo)で補正してアクティブカメラへ反映する。
-  sync(fo: FloatingOrigin, attractors: readonly Attractor[]): void {
+  sync(fo: FloatingOrigin): void {
     const active = this.overviewMode ? this.overviewCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
     // 広範囲視点のときだけ操作パネルとフォーカスラベルを表示する
@@ -210,8 +229,6 @@ export class CameraSystem {
     if (this._elStageStatus) this._elStageStatus.style.display = hidden;
     if (this._elOrbit) this._elOrbit.style.left = this.overviewMode ? '12px' : '';
     if (this.overviewMode) {
-      this.overviewCameraPanel.refreshFrameItems(attractors);
-      this.overviewCameraPanel.setFrame(this.overviewCamera.cameraFrame);
       this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);
     } else {
       this.focusMarkers.hideLabels();
@@ -226,5 +243,15 @@ export class CameraSystem {
   // アクティブカメラの画面尺度関数を返す。
   get activeCameraScale(): ScaleFn {
     return scaleFromViewpoint(this.overviewMode ? this.overviewCamera.viewpoint : this.combatCamera.viewpoint);
+  }
+
+  // 両サブカメラの視点状態をセーブデータへ書き出す。どちらが表示中かは ViewManager の責務。
+  serialize(): Pick<CameraSaveData, 'chase' | 'overview'> {
+    return { chase: this.combatCamera.serialize(), overview: this.overviewCamera.serialize() };
+  }
+
+  restore(d: Pick<CameraSaveData, 'chase' | 'overview'>): void {
+    this.combatCamera.restore(d.chase);
+    this.overviewCamera.restore(d.overview);
   }
 }

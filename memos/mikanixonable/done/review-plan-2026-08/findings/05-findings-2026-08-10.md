@@ -1,0 +1,66 @@
+# 章05: HUD 汎用ウィジェットのレビュー findings
+
+対象: `src/game/hud/*`, `src/game/object-list-panel.ts`, `src/game/frame-controls.ts`, `src/game/display-time-panel.ts`
+
+## [bug] CSS 特異性: マーカーラベルの margin/padding が `#hud, #hud *` リセットに負ける
+
+- `src/game/hud/dom.ts:183` `.mk .lbl { ... margin-top: 2px; ... }`
+- `src/game/hud/dom.ts:293` `.mk-poi .lbl { ... margin-top: 4px; padding: 2px 4px; ... }`
+- `src/game/hud/dom.ts:295` `.mk-base .lbl { ... margin-top: 4px; padding: 2px 4px; ... }`
+
+いずれも `#hud` プレフィックス無しの裸クラスセレクタ(特異性 (0,2,0))で margin/padding を設定しているが、
+同ファイル冒頭の `#hud, #hud * { margin: 0; padding: 0; }`(特異性 (1,0,0), line 11)は ID を含むため
+必ず勝つ。マーカー要素は `#hud` の子孫(marker レイヤ配下)なので、この3規則は実際には無効化されており、
+`.mk .lbl` のラベル位置調整・`.mk-poi`/`.mk-base` のラベル背景パディングは描画されていない可能性が高い。
+`.mk-mnode .lbl`(line 202, white-space/line-height のみ)は margin/padding を含まないため影響なし。
+他の `#mk-bore .lbl` (line 188, 285) は id セレクタなので問題ない。
+
+## [refactor] z-index が overlay-layer.ts 以外にも複数存在し、規約(CLAUDE.md / overlay-layer.ts 自身のコメント)と食い違う
+
+`overlay-layer.ts:1-2` は「z-index を持つのはこのモジュールだけであり、各ウィジェットは自分がどのレイヤの
+子になるかを選ぶだけで、レイヤ内の前後は DOM 順(bringToFront)で決まる」と明言しているが、実際には
+同じ対象ファイルである `dom.ts` に以下の z-index 代入が残っている(いずれも `#hud` 内、= overlay レイヤの
+中):
+- `src/game/hud/dom.ts:34-38` `.mk`/`.mk-node`等/`.mk-ammo`/`.mk-enemy`等/`.mk-self` のマーカー種別間の重なり順を z-index (0〜4) で決めている。DOM 順ではなく z-index による優先度付けで、宣言コメント(line 26)自体も「マーカー内優先度」と z-index に依存する設計であることを認めている。
+- `src/game/hud/dom.ts:60` `.dock-toggle { z-index: 20; }`
+- `src/game/hud/dom.ts:744` `svgOverlay.style.zIndex = '0';`(marker レイヤ直下の SVG オーバーレイ)
+
+`git blame` で確認したところ、これらは overlay-layer.ts 導入(c8ca2a5, 2026-08-10 11:21)より前に存在した
+z-index で、overlay-layer.ts 導入時に一本化されずに残った。結果として「z-index はこのモジュールだけ」という
+CLAUDE.md/コメントの主張自体が現状のコードと矛盾している。実害(視覚的な重なり不具合)は今のところ無さそうだが、
+規約とコード実体の乖離であり、今後 overlay-layer.ts 以外で z-index を足すハードルを下げてしまう。
+
+## [refactor] `ContextMenu.open` が label/subLabel を無エスケープで innerHTML に流し込む
+
+`src/game/hud/context-menu.ts:123-134` は `it.label`/`it.subLabel` をテンプレートリテラルで直接
+`this.el.innerHTML` に埋め込んでいる(`PropertyWindow`/`ObjectListPanel`/`HudPanels` は `textContent` を
+使っており対照的)。現状の呼び出し元(map-picker.ts の empty-space メニュー、node-gizmo.ts、view-badge.ts)は
+すべて静的な日本語ラベルのみを渡しており実害は無いが、`ContextMenu<T, A>` は汎用ウィジェットとして
+再利用される設計であり(実際 `MapPickable`/`KinematicState`/`number` など多様な T を受けている)、将来
+エンティティ名などの動的文字列を label/subLabel に渡す呼び出しが増えた場合に無警告で HTML インジェクションの
+経路になる。`PropertyWindow` 同様 `textContent`(または `label`/`subLabel` 個別に escape)へ寄せるべき。
+
+## 確認したが問題なしだった観点(要約)
+
+- 差分DOM更新規約: `property-window.ts`(syncHeader/syncRows/syncItems)、`object-list-panel.ts`(sync/syncRow)は
+  いずれも diff キー([`key`]/act+label+shortcut+selected+keepOpen の直列化/id 集合)に基づく差分更新で、
+  listener を保持したまま値のみ書き換えている。`HudPanels.setTarget`/`setEnemyList` は innerHTML を
+  都度組み直すが中身に click listener を持たないため実害なし。
+- リーク: `PropertyWindow.dispose()` は `disposed` フラグで冪等、`map-picker.ts` の `closeWindow`→`dispose()`
+  →`onClose`→`forgetWindow` という二重呼び出し経路もこのガードで安全(該当ファイルは章07だが `dispose()` 側の
+  ガードは本章対象なので確認)。`ContextMenu`/`ObjectPicker` は document capture リスナーに対応する
+  `dispose()` を持たないが、いずれも app 生存期間中に1度だけ構築されるシングルトン(FrameControls / game.ts /
+  ship-placer-panel.ts / CreativeStage いずれも1回だけ new)であり、実行時リークとしては顕在化しない。
+- 一時ウィンドウ不変条件: `PropertyWindow` 側は `_clipped` の間 `handleKeyDown` を早期 return させており
+  (`property-window.ts:311-312`)、クリップ済みウィンドウはショートカットを受けない。`tempWindowKey` 自体の
+  持ち方は map-picker.ts(章07)側の責務。
+- tick-scale.ts / calendar-ticks.ts: 責務混在なし(前者は経過時間 T+ ラベル、後者は UTC 暦境界ラベルで完全に分離)。
+- `orbit-info.ts`: `orbitInfo`/`relativeInfo` とも中心天体解決は `strongestAttractor` 経由のみで Earth 直書きの残骸なし。
+- エスケープ: `property-window.ts`/`object-list-panel.ts`/`object-picker.ts` は動的文字列を全て `textContent` で
+  設定しており安全。`hud.ts`/`unlock-manager.ts`/`nan-watchdog.ts`/`stage-dictionary.ts` の `toast(html)` は
+  innerHTML を受け取る設計だが、現状の呼び出し元はすべて開発者が書いた静的文字列(ステージ名・固定メッセージ)のみ。
+- pointer-events: canvas へクリックが抜ける欠落は見当たらず(`.hud-dock > .panel`/各 id パネルとも
+  `pointer-events: auto` を持つか、auto な親から継承)。
+- `npm run typecheck` 通過(エラーなし)。
+- コメント規約: 改名の痕跡(「旧」「以前は」等)は対象ファイルに見当たらず。主要な公開メソッド
+  (constructor/sync/syncRows/syncItems/open/close 等)には呼出規約コメントが付与されている。

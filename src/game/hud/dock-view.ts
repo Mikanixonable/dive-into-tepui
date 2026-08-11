@@ -6,6 +6,10 @@ import type { AnyPart, Part, PartType, RcsTankPart } from '../game-entity/parts'
 import { createPart } from '../game-entity/parts';
 import * as C from '../const';
 
+function esc(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ショップで購入可能な部品カタログ
 export interface PartCatalogEntry {
   readonly type: PartType;
@@ -196,7 +200,7 @@ export class DockView {
     return `
       <div class="dock-ship-row ${this.currentShip?.id === s.id ? 'selected' : ''}" data-ship-idx="${i}">
         <div class="dock-ship-info">
-          <span class="dock-ship-name">${s.name ?? `艦 #${i + 1}`}</span>
+          <span class="dock-ship-name">${s.name ? esc(s.name) : `艦 #${i + 1}`}</span>
           <span class="dock-ship-hp">HP: ${Math.round(s.hp ?? 0)} / ${Math.round(s.maxHp ?? 0)}</span>
         </div>
         <div class="dock-ship-actions">
@@ -253,7 +257,7 @@ export class DockView {
     const enabled = totalRepairCost > 0 && (this.creative || base.baseState.money >= totalRepairCost);
     return `
       <div class="dock-parts-header">
-        <span class="dock-ship-label">艦: ${shipData.name ?? '---'}</span>
+        <span class="dock-ship-label">艦: ${shipData.name ? esc(shipData.name) : '---'}</span>
         <button class="dock-btn dock-btn-repair-all ${enabled ? '' : 'disabled'}"
           data-ship-id="${shipData.id}"
           ${enabled ? '' : 'disabled'}

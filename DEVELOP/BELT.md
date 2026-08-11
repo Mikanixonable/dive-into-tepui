@@ -1,6 +1,6 @@
 # マガジンベルトの現在の挙動
 
-自機右舷(+X)に垂れ下がる予備マガジンの連鎖の挙動を、実装から読み取れる事実として
+自機左舷(+X)に垂れ下がる予備マガジンの連鎖の挙動を、実装から読み取れる事実として
 まとめたもの。責務の一次情報は `CLAUDE.md` / `OWNERSHIP.md` / `CALLSTACK.md`、
 ここは「実際に何が起きているか」の記述。
 
@@ -128,8 +128,8 @@ q     = bendQ * qFromAxisAngle(+X, beltTwist[i])
 - `applyCollisionSections(...)`: 逆変換して `beltPos` を書き戻し、
   `beltPrevPos = beltPos - v_verlet*dt` として Verlet 速度を復元する。
 - 衝突が起きなければこの往復は恒等変換で、Verlet 状態は変化しない。
-- `collision.ts` はベルト同士のペア(`aBelt && bBelt`)と自機×ベルトのペアを
-  明示的にスキップする。よってベルトが当たる相手は薬莢・敵・補給・デブリのみ。
+- `BeltSection.contactsWith` が吊り元の艦と、それに取り付いた実体(他のベルト節点・放熱板の折り)を
+  落とす。よってベルトが当たる相手は薬莢・敵・補給・デブリのみで、除外の判断は接触を列挙する `simulation/contact.ts` ではなく当事者側にある。
 
 ## 主要定数
 

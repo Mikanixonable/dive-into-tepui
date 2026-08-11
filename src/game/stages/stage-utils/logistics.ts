@@ -10,10 +10,12 @@ import { Sfx } from '../../../audio/sfx';
 import { Player } from '../../player/player';
 import { ProjectFn, ScaleFn } from '../../camera/camera-system';
 import { MarkerManager } from '../../marker/marker-manager';
+import { ENTITY_GLYPH } from '../../marker/marker-glyphs';
 import { fmtMarkerDist } from '../../hud/utils';
 import type { EntityManager } from '../../simulation/entity-manager';
 import type { SimSpeedManager } from '../../sim-speed-manager';
 import type { LogisticsSaveData } from '../../save-data';
+import type { MapVisibilityPolicy } from '../../celestial/map-visibility';
 
 export class Logistics {
   private resupplyCheckAt = 0;
@@ -96,11 +98,13 @@ export class Logistics {
     return count;
   }
 
-  // 生存中の補給へ ▣ マーカー(画面外なら△の方位矢印)を同期する。ラベルの距離表示は
+  // 生存中の補給へ ▣ マーカー(画面外なら小型三角形の方位マーカー)を同期する。ラベルの距離表示は
   // 自機基準なので、艦が1隻も無い間はすべて隠す。overviewMode 中はマーカーを進行方向へ回す。
-  syncMarkers(player: Player | null, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean): void {
+  syncMarkers(player: Player | null, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibility: MapVisibilityPolicy | null = null): void {
     // 表示時刻における生存中ピックアップの位置・速度とラベル
-    const shown = !player ? [] : this.entities.ammos.flatMap((ammo) => {
+    const ammoVisibility = overviewMode ? visibility?.entity('ammo') : null;
+    const hideMapAmmo = overviewMode && (ammoVisibility === null || ammoVisibility === undefined || !ammoVisibility.pickable);
+    const shown = !player || hideMapAmmo ? [] : this.entities.ammos.flatMap((ammo) => {
       const ds = ammo.alive ? ammo.displayState(displayTime) : undefined;
       return ds ? [{ pos: ds.r, vel: ds.v, label: `AMMO ${fmtMarkerDist(len(sub(ds.r, player.state.r)))}` }] : [];
     });
@@ -109,16 +113,15 @@ export class Logistics {
       const key = `mg${i}`;
       const bearing = `${key}-bearing`;
       const p = project(pos);
-      if (overviewMode && !this._hud.settings.showMapAmmo) {
-        this.markerManager.hide(key);
-        this.markerManager.hide(bearing);
-      } else if (overviewMode) {
+      if (overviewMode) {
         const rotationDeg = this.markerManager.headingRotationDeg(pos, vel, project, scale);
-        this.markerManager.set(key, 'mk-ammo', '▲', p.x, p.y, p.front, label, 1, undefined, rotationDeg);
+        this.markerManager.set(key, 'mk-ammo', ammoVisibility?.icon === false ? '' : ENTITY_GLYPH.ship, p.x, p.y, p.front, ammoVisibility?.label === false ? '' : label, 1, undefined, rotationDeg);
         this.markerManager.hide(bearing);
       } else {
-        this.markerManager.set(key, 'mk-ammo', '▣', p.x, p.y, p.front, label);
-        this.markerManager.setBearing(bearing, 'mk-ammo', '△', p, label, 0.9);
+        this.markerManager.set(key, 'mk-ammo', ENTITY_GLYPH.ammo, p.x, p.y, p.front, label);
+        this.markerManager.setBearing(
+          bearing, 'mk-ammo mk-bearing-triangle', ENTITY_GLYPH.ship, p, label, 0.9,
+        );
       }
     }
     // 前フレームより件数が減った分のマーカーを隠す

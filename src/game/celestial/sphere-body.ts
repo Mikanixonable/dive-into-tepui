@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/attractor';
 import { len, scale, sub } from '../../physics/vec3';
-import { RingSystemDef, RingTextureId, ShapeDef, shapeAxes } from '../../physics/solar-system';
+import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
@@ -23,7 +23,7 @@ export class SphereBody extends CelestialBody {
 
   // buildSurface は build() で表面を作る遅延コンストラクタ、radius/visDist は実半径 [m] と
   // 戦闘視点での表示距離 [m]、shape は歪みの形状データ(省略時は radius による真球)。
-  // rings/ringTextures を渡すと環を持つ天体になる(ring-view.ts 参照)。
+  // rings を渡すと環を持つ天体になる(ring-view.ts 参照)。
   constructor(
     id: OrbitingId,
     private readonly buildSurface: () => CelestialSurface,
@@ -31,7 +31,6 @@ export class SphereBody extends CelestialBody {
     private readonly visDist: number,
     shape?: ShapeDef,
     private readonly rings?: RingSystemDef,
-    private readonly ringTextures?: Readonly<Partial<Record<RingTextureId, string>>>,
   ) {
     super();
     this.id = id;
@@ -45,17 +44,24 @@ export class SphereBody extends CelestialBody {
     this.mesh = this.surface.mesh;
     scene.add(this.mesh);
     if (this.rings !== undefined) {
-      this.ring = new RingView(this.rings, this.radius, this.ringTextures ?? {}, this.mesh.renderOrder + 1);
+      this.ring = new RingView(this.rings, this.radius, this.mesh.renderOrder + 1);
       scene.add(this.ring.group);
     }
   }
 
+  setVisible(visible: boolean): void {
+    this.mesh.visible = visible;
+    if (this.ring !== undefined) this.ring.group.visible = visible;
+  }
+
   // displayTime 時点の位置へ、視点モードに応じた実スケール/圧縮距離のどちらかで同期する。
   sync(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris): void {
+    if (!this.mesh.visible) return;
     const pos = ephemeris.positionOf(this.id, displayTime);
     // 陰影は真の位置から見た恒星方向で決める — 戦闘視点では描画位置が圧縮されているため、
     // 描画位置から引くと昼夜境界が実際とずれる。
-    this.surface.setSunDirection(ephemeris.sunDirFrom(pos, displayTime));
+    const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
+    this.surface.setSunDirection(sunDirection);
     let scaleFactor: number;
     if (cameraSystem.overviewMode) {
       // 広範囲視点は実スケール: 実 ECI 位置に実半軸で置く。
@@ -81,8 +87,23 @@ export class SphereBody extends CelestialBody {
     const orientation = ephemeris.poleAt(this.id, displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     if (q !== null) this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
+    this.surface.setRingShadowSystem(
+      this.rings,
+      this.mesh.position,
+      this.radius,
+      scaleFactor,
+      orientation === null ? null : orientation.axis,
+    );
     if (this.ring !== undefined) {
-      this.ring.sync(this.mesh.position, scaleFactor, orientation === null ? null : orientation.axis, pos, cameraSystem.activeCameraScale);
+      this.ring.sync(
+        this.mesh.position,
+        scaleFactor,
+        orientation === null ? null : orientation.axis,
+        pos,
+        cameraSystem.activeCameraScale,
+        sunDirection,
+        cameraSystem.activeCamera.position,
+      );
     }
   }
 }

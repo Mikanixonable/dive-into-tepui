@@ -10,7 +10,8 @@ import { Hud } from './game/hud/hud';
 import { SettingsPanel } from './game/hud/settings-panel';
 import { Sfx } from './audio/sfx';
 import { UnlockManager } from './game/unlock-manager';
-import { ephemerisConfigFor, isStageId } from './game/stages/stage-dictionary';
+import { ephemerisConfigFor, isStageId, STAGE_DEFINITIONS } from './game/stages/stage-dictionary';
+import type { StageId } from './game/stages/stage';
 import { selectLaunch } from './game/launch-select';
 import { LaunchSelection } from './game/game-mode';
 import { LocalStorageSaveStore } from './game/save/save-store';
@@ -24,14 +25,35 @@ import { loadAbsoluteEphemeris } from './physics/ephemeris-catalog';
 import { profileAt } from './physics/ephemeris-profile';
 
 
-// ?stage=00|0|1|2 または ?mode=creative で起動選択画面をスキップ(デバッグ・共有リンク用)。
-// 指定が無い/不正なら選択画面を出す。
-export async function resolveLaunchSelection(unlockManager: UnlockManager): Promise<LaunchSelection> {
+// アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)か判定する
+function isResumableStage(unlockManager: UnlockManager, stageId: string): boolean {
+  if (!isStageId(stageId)) return false;
+  const stage = STAGE_DEFINITIONS.find((s) => s.id === stageId);
+  return stage !== undefined && !stage.hiddenFromSelect && unlockManager.isUnlocked(stageId);
+}
+
+// アクティブスロットの直近起動を再開する選択を返す。再開できる情報が無ければ null。
+function resumeFromActiveSlot(unlockManager: UnlockManager, slots: SaveSlots): LaunchSelection | null {
+  const slot = slots.activeSlot();
+  if (slot === null) return null;
+  if (slot.mode === 'creative') return { mode: 'creative' };
+  return isResumableStage(unlockManager, slot.lastStageId)
+    ? { mode: 'stage', stage: slot.lastStageId as StageId }
+    : null;
+}
+
+// ?title=1 は選択画面へ強制する。?mode=creative/?stage= は共有リンク・デバッグ用の
+// 明示指定として最優先。どちらも無ければアクティブスロットの直近起動を再開し、
+// それも無ければ選択画面を出す。
+export async function resolveLaunchSelection(
+  unlockManager: UnlockManager, slots: SaveSlots,
+): Promise<LaunchSelection> {
   const params = new URLSearchParams(location.search);
+  if (params.get('title') === '1') return selectLaunch(unlockManager);
   if (params.get('mode') === 'creative') return { mode: 'creative' };
   const stageParam = params.get('stage');
   if (isStageId(stageParam)) return { mode: 'stage', stage: stageParam };
-  return selectLaunch(unlockManager);
+  return resumeFromActiveSlot(unlockManager, slots) ?? selectLaunch(unlockManager);
 }
 
 // WebGPU 初期化(シェーダーコンパイル等でしばらく無反応になり得る)の間に表示する
@@ -132,10 +154,11 @@ function startAnimationLoop(game: Game, perf: PerfMeter, autoSave: AutoSave): vo
       autoSave.update(game);
       const t1 = perf.on ? performance.now() : 0;
       game.sync();
-      game.render();
       const t2 = perf.on ? performance.now() : 0;
+      game.render();
+      const t3 = perf.on ? performance.now() : 0;
       if (perf.on) {
-        perf.record(t1 - t0, t2 - t1, t2);
+        perf.record(t1 - t0, t2 - t1, t3 - t2, t3);
       }
       completedFrames++;
       // Dependency-free browser smoke test が「例外なく60フレーム完走」を判定する印。
@@ -163,12 +186,12 @@ function startAnimationLoop(game: Game, perf: PerfMeter, autoSave: AutoSave): vo
 function initHud(): { hud: Hud; sfx: Sfx; settingsPanel: SettingsPanel } {
   const hud = new Hud();
   const sfx = new Sfx();
-  const settingsPanel = new SettingsPanel(hud.root);
+  const settingsPanel = new SettingsPanel(hud.layers.system, hud.modalController);
   settingsPanel.setBgmVolume(sfx.getBgmVolume());
   settingsPanel.onBgmVolumeChange = (vol) => sfx.setBgmVolume(vol);
-  // 「ゲームを中断してタイトル画面に戻る」— ?stage= クエリを落として選択画面へ
+  // 「ゲームを中断してタイトル画面に戻る」— ?title=1 を付けて選択画面へ強制する
   settingsPanel.onQuitToTitle = () => {
-    location.assign(location.pathname);
+    location.assign(`${location.pathname}?title=1`);
   };
   return { hud, sfx, settingsPanel };
 }
@@ -192,7 +215,7 @@ async function main() {
   const snapshotService = new SnapshotService(saveStore, slots);
   const gs = await initScene();
   const { hud, sfx, settingsPanel } = initHud();
-  const launch = await resolveLaunchSelection(unlockmanager);
+  const launch = await resolveLaunchSelection(unlockmanager, slots);
   let absoluteEphemeris;
   // 固有の簡易天体暦を指定するデバッグステージには外部 pack を読み込まない。
   // 通常起動では開始時刻からプロファイルを決定するため、開始時刻を変更しても
@@ -225,7 +248,7 @@ async function main() {
     if (latest !== null) snapshotService.restore(game, latest.id);
   }
 
-  const saveBrowser = new SaveBrowser(hud.root, slots, snapshotService, game);
+  const saveBrowser = new SaveBrowser(hud.layers.system, slots, snapshotService, game, hud.modalController);
   game.setSaveBrowser(saveBrowser);
   saveBrowser.onSlotSwitched = () => location.assign(location.pathname);
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
@@ -238,7 +261,13 @@ async function main() {
     if (open) game.pause();
     else game.resume();
   };
-  const perf = new PerfMeter(game);
+  const perf = new PerfMeter(game, hud.layers.window, gs.renderer);
+  game.setPerfMeter(perf);
+  // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
+  settingsPanel.onOpenPerfWindow = () => {
+    settingsPanel.toggle(false);
+    perf.open();
+  };
   startAnimationLoop(game, perf, new AutoSave(snapshotService));
 }
 

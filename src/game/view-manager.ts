@@ -9,7 +9,7 @@ import { PlanEditor } from './plan/plan-editor';
 import { DisplayTimeManager } from './display-time-manager';
 import { MapPicker } from './map-picker';
 import type { Docking } from './docking';
-import { resetHudDocks, syncNavballPlacement, syncOrbitPlacement } from './hud/dom';
+import { syncNavballPlacement } from './hud/dom';
 
 export type ViewId = 'combat' | 'map' | 'dock';
 
@@ -52,9 +52,11 @@ export class ViewManager {
     this.docking = docking;
   }
 
-  // ビュー遷移の唯一の入口。遷移できない場合は何もしない。
+  // ビュー遷移の唯一の入口。遷移できない場合は何もしない。既に next にいる場合でも
+  // applyChrome() は必ず走らせ、「この呼び出しの後、カメラ・計画編集・未来表示の各フラグは
+  // 現在のビューに揃っている」という保証を遷移の有無に依らず成り立たせる。
   setView(next: ViewId): void {
-    if (next === this._current) return;
+    if (next === this._current) { this.applyChrome(); return; }
     if (!this.canEnter(next)) return;
 
     const prevWorld = this.worldView;
@@ -78,6 +80,16 @@ export class ViewManager {
     if (this._current === 'dock') this.setView(this.returnFromDock);
   }
 
+  // 現在の3D側ビュー(ドック表示中はその背後のビュー)をセーブデータへ書き出す。
+  serializeView(): WorldViewId {
+    return this.worldView;
+  }
+
+  // serializeView が書き出したビューへ遷移する。
+  restoreView(view: WorldViewId): void {
+    this.setView(view);
+  }
+
   // ビュー選択 UI に並べる遷移先。現在のビュー自身と、いま入れないビューは含まない。
   // combatAvailable は操作対象の艦が生存しているか(戦闘ビューは自機を前提とする)。
   selectableViews(combatAvailable: boolean): readonly ViewId[] {
@@ -93,13 +105,13 @@ export class ViewManager {
   }
 
   // 現在のビューに合わせて HUD の見た目と、カメラ・計画編集・未来表示の各フラグを揃える。
+  // ここが決めるのはビュー起因の表示/非表示だけで、パネルの折りたたみはユーザーが
+  // マップビューの中で選んだ独立した状態なので、ビューの往復では触らない。
   private applyChrome(): void {
     const map = this.worldView === 'map';
     this.hud.root.classList.toggle('map-mode', map);
     this.hud.root.classList.toggle('dock-mode', this._current === 'dock');
     syncNavballPlacement(this.hud.root, map);
-    syncOrbitPlacement(this.hud.root, map);
-    if (!map) resetHudDocks(this.hud.root);
     this.touchControls?.setMapMode(map);
     this.cameraSystem.setMapMode(map);
     this.editor.setMapMode(map);

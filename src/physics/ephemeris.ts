@@ -58,9 +58,16 @@ function rotatingFrameCenterOf(registry: CelestialRegistry, id: AttractorId): At
   return def.kind === 'satellite' ? def.planet : id;
 }
 
-// 時刻キャッシュの保持段数。同一ループ内で t と t + dt/2 を交互に引く経路や、対象ごとに
-// 異なる先端時刻を引く経路があるため、1段では主要経路のヒット率が 0 になる。
-const TIME_CACHE_SLOTS = 4;
+// 時刻キャッシュの保持段数。1フレームには t と t + dt/2 の交互参照、対象ごとの先端時刻、
+// 近点・遠点・ノードなどの単発時刻が流入するので、主要経路の段がそれらに押し出されない
+// 段数を持たせる。照合はこの段数ぶんの数値比較で、ミス1回の再計算に比べれば無視できる。
+const TIME_CACHE_SLOTS = 32;
+
+// 時刻キャッシュのヒット/ミスの累計。
+export interface TimeCacheStats {
+  readonly hits: number;
+  readonly misses: number;
+}
 
 // 時刻 t をキーにした固定長リング。キーが厳密に一致したときだけ値を返し、それ以外は undefined。
 class TimeRing<T> {
@@ -68,11 +75,19 @@ class TimeRing<T> {
   private readonly values: (T | undefined)[] = new Array(TIME_CACHE_SLOTS).fill(undefined);
   private next = 0;
 
+  // get の結果の累計。返る値には影響しない。
+  hits = 0;
+  misses = 0;
+
   // t に一致する保持値。無ければ undefined。
   get(t: number): T | undefined {
     for (let i = 0; i < TIME_CACHE_SLOTS; i++) {
-      if (this.keys[i] === t) return this.values[i];
+      if (this.keys[i] === t) {
+        this.hits++;
+        return this.values[i];
+      }
     }
+    this.misses++;
     return undefined;
   }
 
@@ -98,6 +113,14 @@ export class Ephemeris {
   // (共有インスタンスを差し替えないため)。
   private phaseOffsets: Partial<Record<AttractorId, number>>;
 
+  private _phaseGeneration = 0;
+
+  // 位相オフセットを差し替えるたびに増える世代値。同じ時刻でも天体の位置が変わったことを、
+  // 結果をキャッシュしている呼び出し側が知るための値。
+  get phaseGeneration(): number {
+    return this._phaseGeneration;
+  }
+
   // 天体ごとの中間結果と、attractorsAt の時刻キャッシュ。位相オフセットを差し替えたら
   // すべて破棄する。
   private readonly planetHelioCache = new Map<AttractorId, TimeRing<KinematicState>>();
@@ -109,14 +132,14 @@ export class Ephemeris {
   // registry の主星。0個なら null(輻射源・影の計算がそもそも無意味になる — sunDirAt/dynamics.ts の
   // 呼び出し側はその前提で無害なフォールバックを扱う)。
   readonly starId: AttractorId | null;
-  // originId 中心・無回転の慣性系。frames の対応要素と同一参照。
+  // originId 中心・無回転の慣性系。frames の対応要素・frameOf(originId, null) と同一参照。
   readonly inertialFrame: ReferenceFrame;
-  // registry から生成した全天体の慣性系 + 公転天体ぶんの回転系。値は必ずこの配列の要素を
-  // 参照する(sampled-line.ts の frame === lastFrame キャッシュ判定が参照同一性を前提にする)。
+  // registry から生成した全天体の慣性系 + 公転天体ぶんの回転系。値は必ず frameOf が返すのと
+  // 同じ参照になる(sampled-line.ts の frame === lastFrame キャッシュ判定が参照同一性を前提にする)。
   readonly frames: readonly ReferenceFrame[];
-  // registry に登録されていない id(生存中の重力天体)向けの ReferenceFrame。frames と同じ
-  // 参照同一性契約を、初回アクセス時に生成してキャッシュすることで満たす。
-  private readonly dynamicFrames = new Map<AttractorId, ReferenceFrame>();
+  // (center, rotatingWith) の対ごとに ReferenceFrame を1個だけ持つキャッシュ。frameOf/frameFor/
+  // inertialFrame/frames はすべてこれを経由するので、同じ対に対して異なる参照が生まれない。
+  private readonly frameCache = new Map<AttractorId, Map<OrbitingId | null, ReferenceFrame>>();
 
   // registry/originId/epochOffsetSec を省略すると現実の太陽系・地球原点・既定エポックで動く。
   // starId・inertialFrame・frames は registry から1度だけ導出し、以後は参照を使い回す。
@@ -131,13 +154,13 @@ export class Ephemeris {
     this.phaseOffsets = phaseOffsets;
     this.ids = Object.keys(registry);
     this.starId = starOf(registry);
-    this.inertialFrame = { center: originId, rotatingWith: null };
+    this.inertialFrame = this.frameOf(originId, null);
     this.frames = [
       this.inertialFrame,
-      ...this.ids.filter((id) => id !== originId).map((id) => ({ center: id, rotatingWith: null })),
+      ...this.ids.filter((id) => id !== originId).map((id) => this.frameOf(id, null)),
       ...this.ids
         .filter((id) => bodyDef(registry, id).kind !== 'star')
-        .map((id) => ({ center: rotatingFrameCenterOf(registry, id), rotatingWith: id })),
+        .map((id) => this.frameOf(rotatingFrameCenterOf(registry, id), id)),
     ];
     this.precise = absoluteSource === undefined
       ? null
@@ -149,6 +172,26 @@ export class Ephemeris {
   // ままなので、代替太陽系レジストリの挙動を変えない。
   private readonly precise: OriginCenteredEphemeris | null;
 
+  // attractorsAt の時刻キャッシュのヒット/ミス累計。
+  get attractorsCacheStats(): TimeCacheStats {
+    return { hits: this.allAttractorsCache.hits, misses: this.allAttractorsCache.misses };
+  }
+
+  // 保持する全時刻キャッシュを合算したヒット/ミス累計。
+  get timeCacheStats(): TimeCacheStats {
+    let hits = this.allAttractorsCache.hits;
+    let misses = this.allAttractorsCache.misses;
+    for (const ring of this.planetHelioCache.values()) {
+      hits += ring.hits;
+      misses += ring.misses;
+    }
+    for (const ring of this.satelliteRelCache.values()) {
+      hits += ring.hits;
+      misses += ring.misses;
+    }
+    return { hits, misses };
+  }
+
   // 現在の位相オフセットのスナップショット(セーブ用)。
   getPhaseOffsets(): Partial<Record<AttractorId, number>> {
     return { ...this.phaseOffsets };
@@ -158,6 +201,7 @@ export class Ephemeris {
   // 時刻キャッシュはすべて破棄する。
   setPhaseOffsets(phaseOffsets: Partial<Record<AttractorId, number>>): void {
     this.phaseOffsets = phaseOffsets;
+    this._phaseGeneration++;
     for (const ring of this.planetHelioCache.values()) ring.clear();
     for (const ring of this.satelliteRelCache.values()) ring.clear();
     this.allAttractorsCache.clear();
@@ -374,18 +418,26 @@ export class Ephemeris {
     return this.starId === null ? v3(1, 0, 0) : norm(sub(this.positionOf(this.starId, t), r));
   }
 
-  // 登録済みの id ならキャッシュ済みの frames/inertialFrame から、そうでなければ
-  // dynamicFrames から引く(無ければ生成してキャッシュする)。frames と同じ参照同一性契約を、
-  // 生存中の重力天体を回転系の中心にする用途(小惑星など)向けに満たす。
-  frameFor(id: AttractorId): ReferenceFrame {
-    const registered = this.frames.find((f) => f.center === id && f.rotatingWith === null);
-    if (registered !== undefined) return registered;
-    let frame = this.dynamicFrames.get(id);
+  // center 中心・rotatingWith の公転に合わせて回る座標系(rotatingWith が null なら慣性系)。
+  // 同じ対には常に同じ参照を返す。center/rotatingWith は registry に登録されていない id
+  // (生存中の重力天体)でもよい — frameTransformAt 側がその場合の解決を担う。
+  frameOf(center: AttractorId, rotatingWith: OrbitingId | null): ReferenceFrame {
+    let byRotation = this.frameCache.get(center);
+    if (byRotation === undefined) {
+      byRotation = new Map();
+      this.frameCache.set(center, byRotation);
+    }
+    let frame = byRotation.get(rotatingWith);
     if (frame === undefined) {
-      frame = { center: id, rotatingWith: null };
-      this.dynamicFrames.set(id, frame);
+      frame = { center, rotatingWith };
+      byRotation.set(rotatingWith, frame);
     }
     return frame;
+  }
+
+  // 登録の有無を問わず center 中心の慣性系を返す、frameOf(id, null) の別名。
+  frameFor(id: AttractorId): ReferenceFrame {
+    return this.frameOf(id, null);
   }
 
   // ReferenceFrame の時刻 t における剛体運動。origin は frame.center の状態、回転は

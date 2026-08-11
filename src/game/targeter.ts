@@ -14,10 +14,12 @@ import { ProjectFn } from './camera/camera-system';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { MarkerManager } from './marker/marker-manager';
+import { DIRECTION_GLYPH } from './marker/marker-glyphs';
 import { FloatingOrigin } from './floating-origin';
 import { pickNearest } from './map-pick';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import type { SettingsPanel } from './hud/settings-panel';
+import type { MapVisibilityPolicy } from './celestial/map-visibility';
 
 export type CombatTarget = Enemy | Player;
 
@@ -35,22 +37,22 @@ export class Targeter {
   // ターゲット軌道のハイライト線(オレンジ)。自機軌道とほぼ重なるケースが多い
   // (近傍ランデブー狙いのため)。埋もれて見えなくならないよう強い不透明度にし、
   // renderOrder を自機軌道より上げて透明オブジェクトの描画順に依存せず必ず上に描く。
-  readonly orbitLine = new OrbitLine(0xff6a00, 0.9);
+  readonly orbitLine = new OrbitLine(0xff6a00, 0.9, C.LINE_RENDER_ORDER.target);
   // 第二ターゲットのハイライト線(シアン)。第一より薄い renderOrder に置く。
-  readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9);
+  readonly secondaryOrbitLine = new OrbitLine(ACCENT_SECONDARY, 0.9, C.LINE_RENDER_ORDER.secondaryTarget);
 
-  private readonly contextMenu = new ContextMenu<CombatTarget>();
+  private readonly contextMenu: ContextMenu<CombatTarget>;
   // ターゲットに当たらなかった右クリック(何もない箇所)向けのメニュー。実体を持たない
   // 対象なので ViewBadge と同じ形で true を的替わりに使う。
-  private readonly emptySpaceMenu = new ContextMenu<true, MenuAction>();
+  private readonly emptySpaceMenu: ContextMenu<true, MenuAction>;
 
   // sfx は現状未使用だが、hud/sfx は必ず対で注入する方針のため受け取る(フィールドとしては保持しない)。
   constructor(
     private readonly _hud: Hud, _sfx: Sfx, private readonly markerManager: MarkerManager,
     scene: THREE.Scene, private readonly settingsPanel: SettingsPanel,
   ) {
-    this.secondaryOrbitLine.line.renderOrder = 2;
-    this.orbitLine.line.renderOrder = 3;
+    this.contextMenu = new ContextMenu<CombatTarget>(_hud.layers.popup);
+    this.emptySpaceMenu = new ContextMenu<true, MenuAction>(_hud.layers.popup);
     scene.add(this.secondaryOrbitLine.line);
     scene.add(this.orbitLine.line);
     this.contextMenu.onSelect = (act, picked) => {
@@ -155,30 +157,33 @@ export class Targeter {
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
   sync(
     fo: FloatingOrigin, player: Player, targets: CombatTarget[], overviewMode: boolean,
-    project: ProjectFn, attractors: readonly Attractor[],
+    project: ProjectFn, attractors: readonly Attractor[], visibility: MapVisibilityPolicy | null = null,
   ): void {
-    this.syncOrbitLine(fo, targets, overviewMode, attractors);
+    this.syncOrbitLine(fo, player, targets, overviewMode, attractors, visibility);
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
 
   // 第一・第二ターゲットのハイライト線を最新の状態に合わせる。
-  private syncOrbitLine(fo: FloatingOrigin, targets: CombatTarget[], overviewMode: boolean, attractors: readonly Attractor[]): void {
+  private syncOrbitLine(fo: FloatingOrigin, player: Player, targets: CombatTarget[], overviewMode: boolean, attractors: readonly Attractor[], visibility: MapVisibilityPolicy | null): void {
     const tgt = this.aliveTarget;
     const secTgt = this.aliveSecondaryTarget;
     for (const t of targets) {
-      const showGray = overviewMode && t.alive && t !== tgt && t !== secTgt;
+      const entityVisibility = visibility?.entity(t instanceof Player ? 'player' : 'ship', t === player);
+      const showGray = overviewMode && t.alive && t !== tgt && t !== secTgt && (entityVisibility?.orbit ?? true);
       t.syncBackgroundOrbitLine(showGray, fo, attractors);
     }
 
-    if (tgt) {
+    const targetVisibility = tgt === null ? null : visibility?.entity(tgt instanceof Player ? 'player' : 'ship', tgt === player);
+    if (tgt && (targetVisibility?.orbit ?? true)) {
       const center = strongestAttractor(tgt.state.r, attractors);
       this.orbitLine.sync(tgt.orbitalElementsAround(center), fo);
     } else {
       this.orbitLine.sync(null, fo);
     }
 
-    if (secTgt) {
+    const secondaryVisibility = secTgt === null ? null : visibility?.entity(secTgt instanceof Player ? 'player' : 'ship', secTgt === player);
+    if (secTgt && (secondaryVisibility?.orbit ?? true)) {
       const center = strongestAttractor(secTgt.state.r, attractors);
       this.secondaryOrbitLine.sync(secTgt.orbitalElementsAround(center), fo);
     } else {
@@ -211,8 +216,8 @@ export class Targeter {
       return;
     }
     const tgtDir = norm(sub(tgt.state.r, player.state.r));
-    this.markerManager.setDirection('tgtdir', 'mk-tgtdir', '◇', player.state.r, tgtDir, project);
-    this.markerManager.setDirection('atgdir', 'mk-tgtdir', '◆', player.state.r, scale(tgtDir, -1), project);
+    this.markerManager.setDirection('tgtdir', 'mk-tgtdir', DIRECTION_GLYPH.target, player.state.r, tgtDir, project);
+    this.markerManager.setDirection('atgdir', 'mk-tgtdir', DIRECTION_GLYPH.antiTarget, player.state.r, scale(tgtDir, -1), project);
   }
 
   // 戦闘ビューの右クリックは射撃と兼用。移動量が閾値内(input.ts が判定済み)の

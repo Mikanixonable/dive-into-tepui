@@ -12,6 +12,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../physics/vec3';
 import { celestialBodyName } from '../hud/frame-labels';
 import { MarkerManager } from './marker-manager';
+import { ORBIT_POINT_GLYPH } from './marker-glyphs';
 import { ProjectFn } from '../camera/camera-system';
 import { MapPickable } from '../map-pick';
 
@@ -38,6 +39,7 @@ interface EqNodePair {
 
 export class EquatorNodeMarkers {
   private pairs: readonly EqNodePair[] = [];
+  private readonly pickableCache: MapPickable[] = [];
   private lastKeys: readonly string[] = [];
   // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
   private attractors: readonly Attractor[] = [];
@@ -100,11 +102,15 @@ export class EquatorNodeMarkers {
       });
     }
     this.pairs = pairs;
+    this.pickableCache.length = 0;
+    for (const pair of pairs) {
+      this.pickableCache.push(pair.an, pair.dn);
+    }
   }
 
   // 右クリック対象として公開する EqAN/EqDN アイコン。
   mapPickables(): readonly MapPickable[] {
-    return this.pairs.flatMap((p) => [p.an, p.dn]);
+    return this.pickableCache;
   }
 
   // △▽ 交点マーカーを update が求めた位置に置く。show=false なら全て隠す。対象の増減で
@@ -116,9 +122,9 @@ export class EquatorNodeMarkers {
     if (show) {
       for (const p of this.pairs) {
         if (isOccluded(cameraPos, p.an.pos, this.attractors)) this.markerManager.hide(`eqan-${p.sourceId}`);
-        else this.markerManager.setPosition(`eqan-${p.sourceId}`, 'mk-node', '△', p.an.pos, project, p.an.label);
+        else this.markerManager.setPosition(`eqan-${p.sourceId}`, 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, p.an.pos, project, p.an.label);
         if (isOccluded(cameraPos, p.dn.pos, this.attractors)) this.markerManager.hide(`eqdn-${p.sourceId}`);
-        else this.markerManager.setPosition(`eqdn-${p.sourceId}`, 'mk-node', '▽', p.dn.pos, project, p.dn.label);
+        else this.markerManager.setPosition(`eqdn-${p.sourceId}`, 'mk-node', ORBIT_POINT_GLYPH.descendingNode, p.dn.pos, project, p.dn.label);
       }
     }
     for (const id of this.lastKeys) {

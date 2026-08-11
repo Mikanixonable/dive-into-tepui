@@ -9,6 +9,7 @@ import { fmtDist, fmtSpeed, fmtTime } from '../hud/utils';
 import { Sfx } from '../../audio/sfx';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager } from '../marker/marker-manager';
+import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import { Plan } from './plan';
 import type { Player } from '../player/player';
 
@@ -29,7 +30,7 @@ export class PlanGuide {
   // ノードごとに一度だけ通知する。
   update(plan: Plan, player: Player, simTime: number, editMode: boolean, attractors: readonly Attractor[]): void {
     if (editMode || !player.alive) return;
-    plan.dropNodesBefore(simTime - C.NODE_EXPIRE_GRACE);
+    plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state);
 
     const node = plan.firstNode();
     // 実行の窓に入るまでは通知しない。窓の手前では自機はまだ噴射前の軌道にいるので、
@@ -39,7 +40,7 @@ export class PlanGuide {
     this.notifyAchieved(plan, node, player, attractors);
   }
 
-  // 直近ノードの ◆NODE・⬢BURN マーカーを同期する。
+  // 直近ノードの NODE・BURN マーカーを同期する。
   sync(plan: Plan, player: Player, simTime: number, editMode: boolean, project: ProjectFn): void {
     const node = editMode || !player.alive ? undefined : plan.firstNode();
     if (!node) {
@@ -61,13 +62,13 @@ export class PlanGuide {
     const maxAccel = C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1] ?? 1;
     const burnTime = maxAccel > 0 ? mag / maxAccel : 0;
     this.markerManager.setPosition(
-      'nd', 'mk-mnode', '◆', node.r, project,
+      'nd', 'mk-mnode', ORBIT_POINT_GLYPH.maneuverNode, node.r, project,
       `NODE${more}\nBURN ${fmtTime(burnTime)}\nDIST ${fmtDist(nodeDist)}\nTIME ${tLabel}`,
     );
     this.markerManager.setDirection(
       'burn',
       'mk-burn',
-      '⬢',
+      ORBIT_POINT_GLYPH.burnPoint,
       player.state.r,
       dvRem,
       project,
@@ -75,7 +76,7 @@ export class PlanGuide {
     );
     // 噴射方向が視界外(背面を含む)なら、敵・弾薬と同じ画面端の方位ガイドを出す。
     const burnPoint = project(addScaled(player.state.r, norm(dvRem), C.MARKER_DIR_DIST));
-    this.markerManager.setBearing('burn-bearing', 'mk-dir', '▲', burnPoint, '', 0.7, C.COLOR_MARKER_NODE);
+    this.markerManager.setBearing('burn-bearing', 'mk-dir', DIRECTION_GLYPH.bearing, burnPoint, '', 0.7, C.COLOR_MARKER_NODE);
   }
 
   // 実行の窓に入ったことを通知する。
@@ -96,16 +97,16 @@ export class PlanGuide {
     const playerEl = player.orbitalElementsAround(playerCenter);
     if (!playerEl || !targetEl || !orbitalElementsClose(playerEl, targetEl)) return;
     this.achievedNotified = node;
-    // 計画軌道へ到達したノードは、その場で実行済みとして削除する。
-    // dropNodesBefore(node.t) は現在ノードをアンカーへ移し、後続ノードを保持する。
-    const remain = Math.max(0, plan.nodes.length - 1);
+    // 計画軌道へ到達したノードは、その場で実行済みとして削除する。同時刻のノードが複数あれば
+    // まとめて落ちるので、残り件数は落とした後の実数を読む。
+    plan.consumeNodesUpTo(node.t, player.state);
+    const remain = plan.nodes.length;
     if (remain === 0) {
       this._hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
     } else {
       this._hud.hint(`✓ ノード達成 — 残り ${remain} 件`, 4000);
     }
     this._sfx.warp();
-    plan.dropNodesBefore(node.t);
   }
 }
 

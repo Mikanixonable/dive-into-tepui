@@ -1,61 +1,69 @@
-// 表示設定ウィンドウの DOM: 基準モードの排他選択と、天球グリッド(render/celestial-grid.ts)
-// 6トグルを提供する。
-import { hudButton, HudToggle } from '../hud/buttons';
+// 表示設定ウィンドウの DOM: 天球グリッド(render/celestial-grid.ts)の2カテゴリーと
+// 各カテゴリー内の3トグルを提供する。
+import { HudToggleButton, IconToggleButton } from '../hud/buttons';
 import { CelestialGridVisibility } from '../../render/celestial-grid';
-import type { NavballMode } from './navball';
+
+export type GridToggleGroup = {
+  readonly categoryKey: keyof CelestialGridVisibility;
+  readonly label: string;
+  readonly items: readonly (readonly [keyof CelestialGridVisibility, string, string])[];
+};
 
 export class NavballPanel {
-  onModeSelect: ((mode: NavballMode) => void) | null = null;
   onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
+  private readonly gridButtons: readonly (readonly [keyof CelestialGridVisibility, IconToggleButton])[];
+  private readonly categoryButtons: readonly (readonly [keyof CelestialGridVisibility, HudToggleButton, HTMLElement, readonly IconToggleButton[]])[];
 
-  private readonly modeButtons = new Map<NavballMode, HTMLElement>();
-
-  // modeItems/gridToggleItems の並び順どおりにボタン・トグルを組み、root へ追加する。
-  constructor(
-    root: HTMLElement,
-    modeItems: readonly (readonly [NavballMode, string])[],
-    gridToggleItems: readonly (readonly [keyof CelestialGridVisibility, string])[],
-  ) {
-    const panel = document.createElement('div');
-    panel.id = 'navball';
-    panel.className = 'panel';
-    panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-
-    const title = document.createElement('h3');
-    title.textContent = '表示';
-    panel.appendChild(title);
-
-    const modeRow = document.createElement('div');
-    modeRow.className = 'hud-seg';
-    const modeTitle = document.createElement('span');
-    modeTitle.className = 'seg-title';
-    modeTitle.textContent = '基準';
-    modeRow.appendChild(modeTitle);
-    for (const [mode, label] of modeItems) {
-      const btn = hudButton(label, () => this.onModeSelect?.(mode));
-      modeRow.appendChild(btn);
-      this.modeButtons.set(mode, btn);
-    }
-    panel.appendChild(modeRow);
-
-    for (const [key, label] of gridToggleItems) {
-      const toggle = new HudToggle(label, (on) => this.onGridToggle?.(key, on));
-      panel.appendChild(toggle.element);
+  constructor(root: HTMLElement, groups: readonly GridToggleGroup[]) {
+    // MAP側の表示パネルが先に作られている場合は、天球グリッドの項目だけを
+    // そこへ追加する。表示設定を二つのウィンドウへ分散させない。
+    const existing = root.querySelector<HTMLElement>('#hud-overview-camera');
+    const panel = existing ?? document.createElement('div');
+    if (!existing) {
+      panel.id = 'navball';
+      panel.className = 'panel';
+      panel.addEventListener('pointerdown', (e) => e.stopPropagation());
+      const title = document.createElement('h3');
+      title.textContent = '表示';
+      panel.appendChild(title);
     }
 
-    root.appendChild(panel);
+    const gridButtons: (readonly [keyof CelestialGridVisibility, IconToggleButton])[] = [];
+    const categoryButtons: (readonly [keyof CelestialGridVisibility, HudToggleButton, HTMLElement, readonly IconToggleButton[]])[] = [];
+    for (const group of groups) {
+      const row = document.createElement('div');
+      row.className = 'body-class-row grid-class-row';
+      const category = new HudToggleButton(group.label, `${group.label}を表示`, (on) => this.onGridToggle?.(group.categoryKey, on));
+      category.element.classList.add('body-class-title');
+      row.appendChild(category.element);
+
+      const buttonsEl = document.createElement('div');
+      buttonsEl.className = 'body-class-btns';
+      row.appendChild(buttonsEl);
+      const individualButtons: IconToggleButton[] = [];
+      for (const [key, glyph, title] of group.items) {
+        const button = new IconToggleButton(glyph, title, (on) => this.onGridToggle?.(key, on));
+        button.setOn(false);
+        buttonsEl.appendChild(button.element);
+        gridButtons.push([key, button]);
+        individualButtons.push(button);
+      }
+      panel.appendChild(row);
+      categoryButtons.push([group.categoryKey, category, row, individualButtons]);
+    }
+    this.gridButtons = gridButtons;
+    this.categoryButtons = categoryButtons;
+
+    if (!existing) root.appendChild(panel);
   }
 
-  // 選択中モードのボタンを点灯させる。
-  setMode(mode: NavballMode): void {
-    for (const [m, btn] of this.modeButtons) btn.classList.toggle('on', m === mode);
-  }
-
-  // ターゲット不在のあいだ、ターゲット基準の2ボタンをクリック不能にする。
-  setTargetModeEnabled(enabled: boolean): void {
-    for (const key of ['targetPro', 'targetRetro'] as const) {
-      this.modeButtons.get(key)?.classList.toggle('disabled', !enabled);
+  setGridVisibility(visibility: CelestialGridVisibility): void {
+    for (const [key, button] of this.gridButtons) button.setOn(visibility[key]);
+    for (const [key, category, row, buttons] of this.categoryButtons) {
+      const enabled = Boolean(visibility[key]);
+      category.setOn(enabled);
+      row.classList.toggle('category-off', !enabled);
+      for (const button of buttons) button.setEnabled(enabled);
     }
   }
-
 }

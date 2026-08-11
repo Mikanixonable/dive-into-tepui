@@ -2,18 +2,17 @@
 // 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
-import { Attractor } from '../../physics/attractor';
+import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { Vec3, v3 } from '../../physics/vec3';
-import { ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
+import { FrameTransform, ReferenceFrame, frameDir, toFrameDir, toFramePoint, toFrameState, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { isOccluded } from '../../physics/occlusion';
 import { FloatingOrigin } from '../floating-origin';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
-import { Plan, TimeRange, segmentDurationFrom } from './plan';
+import { DisplayDurationSource, Plan, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
-import type { DisplayTimeManager } from '../display-time-manager';
-import { SIM_EPOCH_SEC } from '../hud/utils';
+import type { PlanAttractorProvider } from '../simulation/attractors';
 import * as C from '../const';
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
@@ -21,7 +20,20 @@ const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLOR
 
 const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
 
+// 時刻の近さで tie-break するときに同点とみなす幅[s]。
+const TIME_TIE_SEC = 1e-6;
+
 type Segment = { state0: KinematicState; end: number };
+
+// 最後のバーン後(これから乗る軌道)の区間。samples は PlanArc.samples をそのまま渡す参照で、
+// 区間を再積分しない限り同一参照を保つ。periapsis/apoapsis は、区間が地表到達等で
+// 打ち切られてその極値へ届かなければ null。
+export interface FinalSegment {
+  readonly state0: KinematicState;
+  readonly samples: readonly KinematicState[];
+  readonly periapsis: KinematicState | null;
+  readonly apoapsis: KinematicState | null;
+}
 
 export class PlanPath {
   readonly group = new THREE.Group();
@@ -34,6 +46,10 @@ export class PlanPath {
   private frame: ReferenceFrame = { center: 'earth', rotatingWith: null };
   private ephemeris: Ephemeris | null = null;
   private unbakeTime = 0;
+  // un-bake は update() が受け取った currentTime に固定される。同じフレーム中に ghost/impact/apsis/tick と
+  // 折れ線同期・ポインタ判定が何度も参照するため、update 単位で1回だけ組み立てる。天体暦の
+  // attractors はフレームごとに差し替わりうるので、時刻だけでなく update() ごとに無効化する。
+  private unbakeTransform: FrameTransform | null = null;
   // 直近の update が受け取った重力源一覧。toDisplay/toDisplayDir/nearestSample はポインタ
   // イベント起点でフレーム外から呼ばれうるため、update と同じ値をここから読む。
   private attractors: readonly Attractor[] = [];
@@ -41,15 +57,13 @@ export class PlanPath {
   // sync が最後に受け取ったカメラ位置。nearestSample の遮蔽判定に使う(呼び出しは DOM
   // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
   private cameraPos: Vec3 | null = null;
-  // 最後のバーン後(これから乗る軌道)の起点状態。末尾区間が無ければ null。
-  finalSegmentStart: KinematicState | null = null;
-  // finalSegmentStart と同じ区間の積分済みサンプル列(古い順)。null は finalSegmentStart 自体が
-  // null のとき。PlanArc.samples をそのまま公開する参照で、update で区間を再積分しない限り
-  // 同一参照を保つ(render/sampled-line.ts の再bake抑制が参照同一性で効くのはこの前提による)。
-  finalSegmentSamples: readonly KinematicState[] | null = null;
+  private final: FinalSegment | null = null;
+  // 直近の update() で再積分した区間の本数と、その積分step数の合計。
+  lastReintegratedArcs = 0;
+  lastSteps = 0;
 
   // group をシーンへ登録する(初期状態は非表示)。
-  constructor(scene: THREE.Scene, private readonly displayTimeManager: DisplayTimeManager) {
+  constructor(scene: THREE.Scene, private readonly displayTimeManager: DisplayDurationSource) {
     this.group.visible = false;
     scene.add(this.group);
   }
@@ -58,25 +72,46 @@ export class PlanPath {
   // このフレームのものに更新する。
   update(
     plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
-    attractors: readonly Attractor[], dynamicAttractors: readonly Attractor[],
+    attractors: readonly Attractor[], attractorProvider: PlanAttractorProvider,
   ): void {
     this.frame = frame;
     this.ephemeris = ephemeris;
     this.unbakeTime = currentTime;
     this.attractors = attractors;
+    this.unbakeTransform = ephemeris.frameTransformAt(frame, currentTime, attractors);
+    this.lastReintegratedArcs = 0;
+    this.lastSteps = 0;
     // anchor→node…→末尾区間に分解する
     const segments = buildSegments(plan, ephemeris, this.displayTimeManager);
     // ノードが1つも無い間はその唯一の区間(末尾区間)の起点が毎フレーム自機を追従する。
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       const tracksLiveAnchor = plan.nodes.length === 0 && i === segments.length - 1;
-      this.arcAt(i).update(seg.state0, seg.end, ephemeris, dynamicAttractors, tracksLiveAnchor);
+      // 近地点/遠地点は末尾区間だけが必要とするので、他区間は追跡自体を省く。
+      // 起点自身の時刻の重力源スナップショットで判定する — displayTime 時点の attractors では
+      // 表示時刻に応じて中心天体が変わってしまい、区間の物理そのものと食い違う。
+      const isFinalSegment = i === segments.length - 1;
+      const apsisCenter = isFinalSegment ? strongestAttractor(seg.state0.r, ephemeris.attractorsAt(seg.state0.t)) : null;
+      const arc = this.arcAt(i);
+      if (arc.update(seg.state0, seg.end, attractorProvider, tracksLiveAnchor, apsisCenter)) {
+        this.lastReintegratedArcs++;
+        this.lastSteps += arc.lastSteps;
+      }
     }
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
-    const hasFinalSegment = segments.length > plan.nodes.length;
-    this.finalSegmentStart = hasFinalSegment ? segments[segments.length - 1]!.state0 : null;
-    this.finalSegmentSamples = hasFinalSegment ? this.arcs[segments.length - 1]!.samples : null;
+    const finalArc = this.arcs[segments.length - 1]!;
+    this.final = {
+      state0: segments[segments.length - 1]!.state0,
+      samples: finalArc.samples,
+      periapsis: finalArc.periapsisPoint(),
+      apoapsis: finalArc.apoapsisPoint(),
+    };
+  }
+
+  // 最後のバーン後の区間。update() を一度も通していなければ null。
+  finalSegment(): FinalSegment | null {
+    return this.final;
   }
 
   // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の arc を隠す。
@@ -104,20 +139,19 @@ export class PlanPath {
     for (let i = this.activeCount; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
   }
 
-  // 天体衝突が検出された地点(区間ごとに高々1つ)。今フレーム表示中の区間だけを対象にする。
-  impactPoints(): readonly { readonly state: KinematicState; readonly arcIdx: number }[] {
-    const out: { state: KinematicState; arcIdx: number }[] = [];
+  // 天体衝突が検出された地点と、その相手の天体(区間ごとに高々1つ)。今フレーム表示中の
+  // 区間だけを対象にする。
+  impactPoints(): readonly { readonly state: KinematicState; readonly body: Attractor; readonly arcIdx: number }[] {
+    const out: { state: KinematicState; body: Attractor; arcIdx: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
-      const state = this.arcs[i]?.impactPoint();
-      if (state) out.push({ state, arcIdx: i });
+      const impact = this.arcs[i]?.impactPoint();
+      if (impact) out.push({ state: impact.state, body: impact.body, arcIdx: i });
     }
     return out;
   }
 
-  // 表示中の区間が覆う時刻範囲(絶対 UTC)に含まれる日付境界(0時0分0秒)の simTime と、
-  // その時刻の折れ線上の位置。区間をまたいでも重複させない。
-  dayBoundaries(): readonly { readonly t: number; readonly pos: Vec3 }[] {
-    if (this.activeCount === 0) return [];
+  // 表示中の区間が覆う simTime の範囲。どの区間にもサンプルが無ければ null。
+  timeRange(): { readonly min: number; readonly max: number } | null {
     let minT = Infinity;
     let maxT = -Infinity;
     for (let i = 0; i < this.activeCount; i++) {
@@ -126,16 +160,8 @@ export class PlanPath {
       minT = Math.min(minT, samples[0]!.t);
       maxT = Math.max(maxT, samples[samples.length - 1]!.t);
     }
-    if (minT > maxT) return [];
-
-    const out: { t: number; pos: Vec3 }[] = [];
-    const firstBoundaryUnix = Math.ceil((SIM_EPOCH_SEC + minT) / 86400) * 86400;
-    for (let unix = firstBoundaryUnix; unix <= SIM_EPOCH_SEC + maxT; unix += 86400) {
-      const t = unix - SIM_EPOCH_SEC;
-      const state = this.sampleAt(t);
-      if (state) out.push({ t, pos: state.r });
-    }
-    return out;
+    if (minT > maxT) return null;
+    return { min: minT, max: maxT };
   }
 
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
@@ -159,7 +185,7 @@ export class PlanPath {
   toDisplay(r: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(r.x, r.y, r.z);
     const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.attractors);
-    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, this.attractors);
+    const unbakeTf = this.currentUnbakeTransform()!;
     return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
   }
 
@@ -168,8 +194,19 @@ export class PlanPath {
   toDisplayDir(dir: Vec3, t: number): Vec3 {
     if (!this.ephemeris) return v3(dir.x, dir.y, dir.z);
     const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.attractors);
-    const unbakeTf = this.ephemeris.frameTransformAt(this.frame, this.unbakeTime, this.attractors);
+    const unbakeTf = this.currentUnbakeTransform()!;
     return toInertialDir(unbakeTf, toFrameDir(bakeTf, dir));
+  }
+
+  // 時刻 t の状態 state における折れ線の接線方向を、現在の表示座標(ECI)へ変換する。
+  // 折れ線自体は toFrameState の座標系相対速度(ω×r 項込み)を接線として描かれるため、
+  // 単純な方向変換の toDisplayDir(ω×r 項を持たない)ではその接線と一致しない。
+  toDisplayTangent(state: KinematicState, t: number): Vec3 {
+    if (!this.ephemeris) return v3(state.v.x, state.v.y, state.v.z);
+    const bakeTf = this.ephemeris.frameTransformAt(this.frame, t, this.attractors);
+    const unbakeTf = this.currentUnbakeTransform()!;
+    const relV = toFrameState(bakeTf, state).v;
+    return toInertialDir(unbakeTf, frameDir(relV.x, relV.y, relV.z));
   }
 
   // 時刻 t のサンプル位置 r をスクリーン座標へ投影する。
@@ -188,15 +225,22 @@ export class PlanPath {
   nearestSample(mx: number, my: number, maxPx: number, referenceT: number, range?: TimeRange): { state: KinematicState, arcIdx: number } | null {
     const maxDSq = maxPx * maxPx;
     const cameraPos = this.cameraPos;
-    const attractors = cameraPos && this.ephemeris ? this.ephemeris.attractorsAt(this.unbakeTime) : null;
+    const ephemeris = this.ephemeris;
+    const attractors = cameraPos && ephemeris ? ephemeris.attractorsAt(this.unbakeTime) : null;
+    // 表示座標への変換をサンプルごとに1回だけ行い、遮蔽判定と投影で共有する。un-bake 側の
+    // 変換は時刻が固定なのでループの外で1回だけ引く。
+    const unbakeTf = ephemeris ? this.currentUnbakeTransform() : null;
     const candidates: { state: KinematicState; arcIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       for (const s of this.arcs[i]!.samples) {
         if (range && (s.t < range.min || s.t > range.max)) continue;
+        const pos = ephemeris && unbakeTf
+          ? toInertialPoint(unbakeTf, toFramePoint(ephemeris.frameTransformAt(this.frame, s.t, this.attractors), s.r))
+          : v3(s.r.x, s.r.y, s.r.z);
         // 天体に遮蔽されて画面上見えていない点は候補から除く — マップ右クリックの
         // ピック候補(map-picker.ts)と同じ判定を通す。
-        if (cameraPos && attractors && isOccluded(cameraPos, this.toDisplay(s.r, s.t), attractors)) continue;
-        const p = this.projectPoint(s.r, s.t);
+        if (cameraPos && attractors && isOccluded(cameraPos, pos, attractors)) continue;
+        const p = this.project ? this.project(pos) : OFFSCREEN;
         if (!p.front) continue;
         const dSq = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
         if (dSq <= maxDSq) candidates.push({ state: s, arcIdx: i, dSq });
@@ -215,9 +259,22 @@ export class PlanPath {
       if (c.arcIdx !== nearest.arcIdx || c.dSq > toleranceDSq) continue;
       const d = Math.abs(c.state.t - referenceT);
       const bestD = best ? Math.abs(best.state.t - referenceT) : Infinity;
-      if (!best || d < bestD || (d === bestD && c.state.t < best.state.t)) best = c;
+      if (!best || d < bestD - TIME_TIE_SEC
+        || (Math.abs(d - bestD) <= TIME_TIE_SEC && c.state.t < best.state.t)) best = c;
     }
     return best ? { state: best.state, arcIdx: best.arcIdx } : null;
+  }
+
+  // update() がまだ呼ばれていない経路にも、従来どおり遅延評価で対応する。ただし通常の
+  // 表示経路では update() が先に値を入れるため、同一フレーム内の再生成は起きない。
+  private currentUnbakeTransform(): FrameTransform | null {
+    if (!this.ephemeris) return null;
+    if (this.unbakeTransform === null) {
+      this.unbakeTransform = this.ephemeris.frameTransformAt(
+        this.frame, this.unbakeTime, this.attractors,
+      );
+    }
+    return this.unbakeTransform;
   }
 
   // group 全体の表示/非表示を切り替える。
@@ -229,7 +286,7 @@ export class PlanPath {
   private arcAt(i: number): PlanArc {
     while (this.arcs.length <= i) {
       const idx = this.arcs.length;
-      const arc = new PlanArc(arcColor(idx), C.PLAN_ARC_OPACITY, 4);
+      const arc = new PlanArc(arcColor(idx), C.PLAN_ARC_OPACITY, C.LINE_RENDER_ORDER.plan);
       this.arcs.push(arc);
       this.group.add(arc.object3d);
     }
@@ -239,7 +296,7 @@ export class PlanPath {
 
 // anchor を起点に nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
 // 末尾の1本は segmentDurationFrom ぶん伸びる。
-function buildSegments(plan: Plan, ephemeris: Ephemeris, displayTimeManager: DisplayTimeManager): Segment[] {
+function buildSegments(plan: Plan, ephemeris: Ephemeris, displayTimeManager: DisplayDurationSource): Segment[] {
   const segments: Segment[] = [];
   let state0 = plan.anchor;
   // ノードを1つずつ経由点として区間を切り出す

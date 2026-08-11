@@ -18,6 +18,15 @@ export class StateQueue {
   // 最新サンプル(補間しない生の値)。空なら null。
   get newest(): KinematicState | null { return this.deque.empty ? null : this.deque.peekLeft(); }
 
+  // 最も古い2サンプルの時刻差 [s]。2件未満なら 0。列の古い端での間引きの粗さを表し、
+  // その端を挟む at() の補間誤差を見積もる基準になる。
+  get oldestGap(): number {
+    if (this.deque.size < 2) return 0;
+    const oldest = this.deque.at(this.deque.size - 1);
+    const next = this.deque.at(this.deque.size - 2);
+    return next.t - oldest.t;
+  }
+
   // t 未満に落ちる最初のインデックスを二分探索で返す([0, size])。先頭から見て
   // 「t 以上のもの」がちょうどこの件数だけ並んでいる、という契約だけで push の
   // 重複区間削除・cleanup の寿命境界・at の補間区間探索のすべてを賄う。
