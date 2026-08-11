@@ -15,9 +15,7 @@ import {
   positionWorld,
   select,
   sub,
-  texture as textureNode,
   uniform,
-  uv,
   vec3,
 } from 'three/tsl';
 import { RingArcDef, RingOpticsDef } from '../physics/solar-system';
@@ -110,15 +108,6 @@ function physicalMaterial(baseColor: any, optics: RingOpticsDef): { material: an
       ringAxis.value.copy(state.ringAxis).normalize();
     },
   };
-}
-
-function mapRadialUv(geo: THREE.RingGeometry, innerRadius: number, outerRadius: number): void {
-  const pos = geo.getAttribute('position');
-  const uvAttr = geo.getAttribute('uv');
-  for (let i = 0; i < pos.count; i++) {
-    const r = Math.hypot(pos.getX(i), pos.getY(i));
-    uvAttr.setXY(i, (r - innerRadius) / (outerRadius - innerRadius), 0.5);
-  }
 }
 
 function sectorParts(arcs: readonly RingArcDef[] | undefined): readonly { start: number; length: number; scale: number }[] {
@@ -276,20 +265,3 @@ export function createTorusRing(
   return { object: mesh, sync };
 }
 
-/** 旧アセット互換。画像のalphaは物理tauとして扱わず、RGBだけを散乱色として使う。 */
-export function createTexturedRing(
-  textureUrl: string,
-  optics: RingOpticsDef,
-  innerRadius: number,
-  outerRadius: number,
-): RingVisual {
-  const geo = new THREE.RingGeometry(innerRadius, outerRadius, 128, 1);
-  mapRadialUv(geo, innerRadius, outerRadius);
-  const texture = new THREE.TextureLoader().load(textureUrl);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const { material, sync } = physicalMaterial(textureNode(texture, uv()), optics);
-  const mesh = new THREE.Mesh(geo, material as THREE.Material);
-  mesh.rotation.x = RING_TILT;
-  mesh.frustumCulled = false;
-  return { object: mesh, sync };
-}

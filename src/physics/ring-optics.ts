@@ -23,12 +23,6 @@ export function henyeyGreenstein(cosTheta: number, g: number): number {
   return (1 - clampedG * clampedG) / (FOUR_PI * Math.pow(Math.max(EPSILON, denominator), 1.5));
 }
 
-/** 帯幅の画面被覆率。1px未満を線にしても総光量が増えないようにする。 */
-export function ringPixelCoverage(widthMeters: number, metersPerPixel: number): number {
-  if (!(widthMeters > 0) || !(metersPerPixel > 0)) return 0;
-  return Math.max(0, Math.min(1, widthMeters / metersPerPixel));
-}
-
 /** アーク区間に入っているときの法線光学的厚さ。重ね描きではなく倍率で表現する。 */
 export function ringArcOpticalDepth(
   baseTau: number,
@@ -61,18 +55,4 @@ export function ringSingleScattering(
   const escape = ringTransmission(tau * 0.5, muView);
   const isotropicRelativePhase = henyeyGreenstein(cosTheta, phaseG) * FOUR_PI;
   return Math.max(0, albedo) * direct * escape * isotropicRelativePhase;
-}
-
-/** 環フラグメントから太陽へ向かう直線が中心天体球に遮られるか。 */
-export function ringPlanetShadow(
-  fragmentFromBody: { x: number; y: number; z: number },
-  sunDirection: { x: number; y: number; z: number },
-  bodyRadius: number,
-): boolean {
-  const along = fragmentFromBody.x * sunDirection.x + fragmentFromBody.y * sunDirection.y + fragmentFromBody.z * sunDirection.z;
-  if (along >= 0) return false;
-  const closestX = fragmentFromBody.x - sunDirection.x * along;
-  const closestY = fragmentFromBody.y - sunDirection.y * along;
-  const closestZ = fragmentFromBody.z - sunDirection.z * along;
-  return closestX * closestX + closestY * closestY + closestZ * closestZ < bodyRadius * bodyRadius;
 }
