@@ -10,7 +10,7 @@ import { Attractor, localOrbitPeriod } from '../../physics/attractor';
 import { containingBody, sweptHermiteSphereToi } from '../../physics/sphere-contact';
 import { apsisCrossing } from '../../physics/trajectory-features';
 import { isBurnedUp } from '../../physics/atmosphere';
-import { attractorsNear, classifyAttractors } from '../simulation/attractors';
+import { attractorsNearInto, classifyAttractors } from '../simulation/attractors';
 import type { PlanAttractorProvider } from '../simulation/attractors';
 import { addScaled, len, scale, sub, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
@@ -53,6 +53,8 @@ export interface PlanImpact {
   readonly body: Attractor;
 }
 
+type ImpactCandidate = { body: Attractor; toi: number };
+
 // 刻み幅。その場で最も強く引く天体を中心とする軌道運動の時間スケール(低軌道では細かく、
 // 遠地点では粗くなる)を PLAN_ARC_STEPS_PER_REV 等分した値と、最も近い天体の表面までの
 // 距離をその天体への相対速度で割った接近時間の小さい方。後者が無ければ1ステップで
@@ -81,16 +83,26 @@ function stepDt(
 function findImpact(
   prev: KinematicState, next: KinematicState, candidates: readonly Attractor[],
   startBodies: readonly Attractor[], endBodies: readonly Attractor[],
+  hits: ImpactCandidate[],
 ): PlanImpact | null {
-  const hits: { body: Attractor; toi: number }[] = [];
+  let hitCount = 0;
   for (const body of candidates) {
     const bStart = startBodies.find((a) => a.id === body.id);
     const bEnd = endBodies.find((a) => a.id === body.id);
     if (!bStart || !bEnd) continue;
     const toi = sweptHermiteSphereToi(prev, next, bStart.state.r, bEnd.state.r,
       Math.max(bStart.radius, bEnd.radius));
-    if (toi !== null) hits.push({ body: bStart, toi });
+    if (toi !== null) {
+      // hits は直前呼び出しのレコードを保持し、現在の件数ぶんだけ上書きする。
+      // sort 後もこの配列の外へレコードを返さないので、次のステップで再利用できる。
+      const hit = hits[hitCount] ?? { body: bStart, toi };
+      hit.body = bStart;
+      hit.toi = toi;
+      hits[hitCount] = hit;
+      hitCount++;
+    }
   }
+  hits.length = hitCount;
   hits.sort((a, b) => a.toi - b.toi);
   for (const { body, toi } of hits) {
     const state = hermiteInterpolate(prev, next, prev.t + (next.t - prev.t) * toi);
@@ -126,6 +138,12 @@ function nearestByClearance(pos: Vec3, bodies: readonly Attractor[]): Attractor 
 
 export class PlanArc {
   private readonly line: SampledLine;
+  // integrate() は同期的に完了し、これらの配列・Mapを外へ返さない。したがって区間の再積分
+  // ごとに同じ一時領域を再利用できる。Mapの挿入順と候補配列の順序は従来の spread と同じ。
+  private readonly collisionCandidatesById = new Map<string, Attractor>();
+  private readonly collisionCandidates: Attractor[] = [];
+  private readonly impactCandidates: ImpactCandidate[] = [];
+  private readonly stepAttractorsScratch: Attractor[] = [];
   private trajectory: DynamicTrajectory | null = null;
   private _samples: readonly KinematicState[] = [];
   // 積分中に最初に天体表面へ達した状態とその天体。到達しなければ null。
@@ -297,7 +315,9 @@ export class PlanArc {
       // 積分そのものはステップ中点(t + dt/2)の重力源で評価する。
       const midSources = attractorProvider.at(trajectory.state.t + dt / 2);
       const stepClassified = classifyAttractors(midSources.gravity);
-      const stepAttractors = attractorsNear(trajectory.state.r, stepClassified);
+      const stepAttractors = attractorsNearInto(
+        trajectory.state.r, stepClassified, this.stepAttractorsScratch,
+      );
       const prev = trajectory.state;
       trajectory.step(dt, stepAttractors, C.SHIP_BCINV, C.SHIP_SRP_COEFF, C.SHADOW_PENUMBRA, null, sampleInterval, duration);
 
@@ -317,14 +337,21 @@ export class PlanArc {
       // 積分に使った中点の重力源は接触判定へ流用しない — moving body の始終点を provider から
       // 同じ契約で引き直す。
       const endSources = attractorProvider.at(trajectory.state.t);
-      const collisionCandidatesById = new Map<string, Attractor>();
-      for (const body of startSources.collision) collisionCandidatesById.set(body.id, body);
+      this.collisionCandidatesById.clear();
+      this.collisionCandidates.length = 0;
+      for (const body of startSources.collision) {
+        if (this.collisionCandidatesById.has(body.id)) continue;
+        this.collisionCandidatesById.set(body.id, body);
+        this.collisionCandidates.push(body);
+      }
       for (const body of endSources.collision) {
-        if (!collisionCandidatesById.has(body.id)) collisionCandidatesById.set(body.id, body);
+        if (this.collisionCandidatesById.has(body.id)) continue;
+        this.collisionCandidatesById.set(body.id, body);
+        this.collisionCandidates.push(body);
       }
       const impact = findImpact(
-        prev, trajectory.state, [...collisionCandidatesById.values()],
-        startSources.collision, endSources.collision,
+        prev, trajectory.state, this.collisionCandidates,
+        startSources.collision, endSources.collision, this.impactCandidates,
       );
       if (impact) {
         this.impact = impact;
