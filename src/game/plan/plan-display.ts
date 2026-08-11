@@ -106,16 +106,17 @@ export class PlanDisplay {
     this.tickIcons = this.tickIconsOf();
   }
 
-  // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。
+  // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。camera は
+  // 折れ線の解像度を決める画面上のサジッタを実距離へ換算するための描画カメラ。
   sync(
     fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn,
-    overviewMode: boolean, cameraPos: Vec3,
+    overviewMode: boolean, cameraPos: Vec3, camera: THREE.Camera,
   ): void {
     // ノードの無い計画は自機の現在軌道そのものを描くだけで情報を持たないので、折れ線は隠す。
     // path.sync 自体はノードの有無に関わらず毎フレーム呼ぶ — 画面判定に使う project を
     // 毎フレーム更新しておかないと、クリック当たり判定が古い視点のまま行われてしまう。
     this.path.setVisible((this.plan?.nodes.length ?? 0) > 0);
-    this.path.sync(fo, project, scale, cameraPos);
+    this.path.sync(fo, project, scale, cameraPos, camera);
     this.syncGhost(project);
     this.syncApsisMarkers(project, overviewMode, cameraPos);
     this.syncImpactMarkers(project);

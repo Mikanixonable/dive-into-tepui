@@ -5,7 +5,7 @@ import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { MouseDelta } from '../input/input';
-import { Viewpoint } from '../../physics/projection';
+import { metersPerPixelAtDepth, Viewpoint } from '../../physics/projection';
 import { ReferenceFrame, FrameDir, frameDir, framePoint, toFrameDir, toInertialDir, toInertialPoint } from '../../physics/frame';
 import { OrbitingId } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -241,8 +241,7 @@ export class OverviewCamera {
       const viewDir = scale(newDir, -1);
       const right = norm(cross(viewDir, upEci));
       const camUp = norm(cross(right, viewDir));
-      const metersPerPixel =
-        (2 * dist * Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5))) / Math.max(1, window.innerHeight);
+      const metersPerPixel = metersPerPixelAtDepth(this.fov, dist, Math.max(1, window.innerHeight));
       panEci = addScaled(panEci, right, -mouse.panDx * metersPerPixel);
       panEci = addScaled(panEci, camUp, mouse.panDy * metersPerPixel);
     }

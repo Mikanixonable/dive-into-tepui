@@ -138,7 +138,7 @@ export class Ephemeris {
   // originId 中心・無回転の慣性系。frames の対応要素・frameOf(originId, null) と同一参照。
   readonly inertialFrame: ReferenceFrame;
   // registry から生成した全天体の慣性系 + 公転天体ぶんの回転系。値は必ず frameOf が返すのと
-  // 同じ参照になる(sampled-line.ts の frame === lastFrame キャッシュ判定が参照同一性を前提にする)。
+  // 同じ参照になる(trajectory-line.ts の frame === lastFrame キャッシュ判定が参照同一性を前提にする)。
   readonly frames: readonly ReferenceFrame[];
   // (center, rotatingWith) の対ごとに ReferenceFrame を1個だけ持つキャッシュ。frameOf/frameFor/
   // inertialFrame/frames はすべてこれを経由するので、同じ対に対して異なる参照が生まれない。

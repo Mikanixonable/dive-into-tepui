@@ -23,7 +23,6 @@ import {
   uv,
   vec3,
 } from 'three/tsl';
-import { Vec3 } from '../physics/vec3';
 import { RingSystemDef } from '../physics/solar-system';
 import { SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 
@@ -135,19 +134,19 @@ export class CelestialSurface {
   }
 
   // この天体の真の ECI 位置から見た恒星方向(単位ベクトル)を与える。
-  setSunDirection(dir: Vec3): void {
-    this.sunDirNode.value.set(dir.x, dir.y, dir.z);
+  setSunDirection(dir: THREE.Vector3): void {
+    this.sunDirNode.value.copy(dir);
   }
 
   // 環平面と太陽方向の交点を表面シェーダへ渡す。最大32帯まで、複数帯は透過率を乗算する。
-  setRingShadowSystem(rings: RingSystemDef | undefined, bodyCenter: THREE.Vector3, bodyRadius: number, displayScale: number, axis: Vec3 | null): void {
+  setRingShadowSystem(rings: RingSystemDef | undefined, bodyCenter: THREE.Vector3, bodyRadius: number, displayScale: number, axis: THREE.Vector3 | null): void {
     if (rings !== undefined) this.enableRingShadows();
     const bands = this.ringShadowBands;
     // リング情報を持たない天体では、リング用uniformもshader nodeも存在しない。
     if (bands === null) return;
     const ringAxis = axis === null
       ? this.ringAxis.set(0, 1, 0)
-      : this.ringAxis.set(axis.x, axis.y, axis.z).normalize();
+      : this.ringAxis.copy(axis).normalize();
     for (let i = 0; i < bands.length; i++) {
       const node = bands[i]!;
       const band = rings?.bands[i];
