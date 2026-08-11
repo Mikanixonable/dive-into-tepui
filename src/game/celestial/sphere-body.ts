@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/attractor';
 import { len, scale, sub } from '../../physics/vec3';
-import { RingSystemDef, RingTextureId, ShapeDef, shapeAxes } from '../../physics/solar-system';
+import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
@@ -23,7 +23,7 @@ export class SphereBody extends CelestialBody {
 
   // buildSurface は build() で表面を作る遅延コンストラクタ、radius/visDist は実半径 [m] と
   // 戦闘視点での表示距離 [m]、shape は歪みの形状データ(省略時は radius による真球)。
-  // rings/ringTextures を渡すと環を持つ天体になる(ring-view.ts 参照)。
+  // rings を渡すと環を持つ天体になる(ring-view.ts 参照)。
   constructor(
     id: OrbitingId,
     private readonly buildSurface: () => CelestialSurface,
@@ -31,7 +31,6 @@ export class SphereBody extends CelestialBody {
     private readonly visDist: number,
     shape?: ShapeDef,
     private readonly rings?: RingSystemDef,
-    private readonly ringTextures?: Readonly<Partial<Record<RingTextureId, string>>>,
   ) {
     super();
     this.id = id;
@@ -45,7 +44,7 @@ export class SphereBody extends CelestialBody {
     this.mesh = this.surface.mesh;
     scene.add(this.mesh);
     if (this.rings !== undefined) {
-      this.ring = new RingView(this.rings, this.radius, this.ringTextures ?? {}, this.mesh.renderOrder + 1);
+      this.ring = new RingView(this.rings, this.radius, this.mesh.renderOrder + 1);
       scene.add(this.ring.group);
     }
   }
