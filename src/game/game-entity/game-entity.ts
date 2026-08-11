@@ -1,7 +1,7 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
-import { OrbitalElements } from '../../physics/elements';
+import { OrbitalElements, keplerPeriod } from '../../physics/elements';
 import { Attitude } from '../../physics/attitude';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { StateQueue } from '../../physics/state-queue';
@@ -164,7 +164,7 @@ export class GameEntity {
   // 頭打ちが逆に永久破棄を招くのを防ぐ。
   private divergenceTolerance(attractors: readonly Attractor[]): number {
     const center = strongestAttractor(this.state.r, attractors);
-    const period = localOrbitPeriod(this.state.r, attractors);
+    const period = keplerPeriod(len(sub(this.state.r, center.state.r)), center.mu);
     const span = isFinite(period) && period > 0 ? period : C.SHIP_HISTORY_DURATION;
     const interval = this._predictedTrajectory?.sampleInterval ?? 0;
     const coarsening = Math.max(1, interval / (span / C.TRAJECTORY_SAMPLES_PER_REV));
