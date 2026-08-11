@@ -93,11 +93,11 @@ GPU に ECI 座標(独自 `Vec3`)が渡らないことを徹底する。
 - ただし**大きな絶対値が f32 バッファに載る系統が 2 つある**:
   `orbit-line.ts:76,261-263` の頂点(中心天体相対、海王星軌道 ~4.5e12 m → f32 量子化 ~3e5 m)と
   `point-field-view.ts:92-96` の `instanceMatrix`(太陽中心、カイパー帯 ~7.5e12 m → ~5e5 m)。
-  **引きの絵では画素以下だが、寄ると露見する。Phase 1 で実測する。**
+  **引きの絵では画素以下だが、寄ると露見する。Phase 2 で実測する。**
 - **本丸は `sampled-line.ts`** — 絶対 ECI を取る関数型 `ScaleAtFn`(`:28`)を `render/` 自身が定義している。
 
 **切り離しの方法**: `OrbitLine` / `SampledLine` を丸ごと `game/` へ移し、`render/` には
-「媒介変数で表される曲線を、品質を保証しつつ折れ線として描く」`curve` だけを残す(Phase 1)。
+「媒介変数で表される曲線を、品質を保証しつつ折れ線として描く」`curve` だけを残す。
 表示 LOD ポリシー(サグ `MAX_EDGE_SAG_PX = 0.5`、折れ角上限 5°)は描画の判断なので `render/` に残る。
 
 **完了条件**: `src/render/**` から `Vec3` / `KinematicState` / `ReferenceFrame` / `Attractor` /
@@ -515,7 +515,6 @@ Beer–Lambert の透過率を表せない。**
 
 | v4 | 内容 | v3 |
 |---|---|---|
-| Phase 1 | 座標境界の確定 | Phase 1 |
 | Phase 2 | デッドコード除去・計測・描画設定GUI | Phase 2 |
 | Phase 3 | HDR 線形パイプラインと露出基準 | Phase 3 |
 | Phase 4 | ライトプリパス基盤の導入(**点光源のみ**) | Phase 4 |
@@ -532,71 +531,12 @@ Beer–Lambert の透過率を表せない。**
 
 各フェーズは独立に比較可能であること。**一度に全面置換しない。**
 
-### Phase 1 — 座標境界の確定
-
-§1-2。**「`game/` で変換してから `render/` へ渡す」を素朴にやると、変換が `game/` の複数箇所へ
-重複して漏れる。** `OrbitLine` / `SampledLine` が実際にやっているのは物理から描画への橋渡しであり、
-その両方に跨る責務は `game/` が担う。`render/` は描画のことだけを考え、物理のことを考えない
-(`physics/` が THREE 非依存を徹底するのと対称)。
-
-手順:
-
-1. **`render/orbit-line.ts` と `render/sampled-line.ts` を `game/` へ移す。**
-   これで `render/**` から座標型への import は 0 件になる。
-2. **`render/curve.ts` を新設し、「THREE で曲線を描く」責務だけを担わせる。**
-   頂点バッファの確保・書き込み・アップロード、マテリアル・色・不透明度・`renderOrder`・破線、
-   可視性。**`curve` は ECI も `FloatingOrigin` も知らない。**
-3. **折れ線の解像度の決定を `curve` へ一本化する。**
-   現状 `OrbitLine` は固定 2048 頂点(画面スケールを見ない)、`SampledLine` は画面上のサジッタから
-   区間ごとに弦数を決める、と**別々の方法で実装されている**。どちらも「どう見えるか」の責務なので
-   `render/` に収める。`curve` は**媒介変数で表される曲線**を受け取り、その折れ線近似の品質を保証する
-   — 入口は「媒介変数からサンプルを得る解析的な関数」に統一する(楕円なのかエルミート補間なのかは
-   呼び出し側が決める)。これにより `sampled-line.ts` の `ScaleAtFn` は不要になる。
-   **描画結果が px 単位で現行と一致する必要はない**(解像度の決め方を統一するのが目的)。
-4. **`game/` 側の軌道描画モジュールの依存関係を整理する。** 上記の移動を含めると、この段階では
-   モジュールが過剰になっている。本質的な責務は「ケプラー軌道を描く」「予測された/実際に通ってきた
-   軌道列を描く」「計画した軌道の1区間を描く」の3種程度なので、そこへ寄せる。判断基準は
-   `/refactor` と `/refactor-fixed`。
-5. f32 精度の実測 — 海王星軌道線とカイパー帯点群(§1-2)。
-
-**`curve` が画面スケールを自前で出せる根拠**: 浮動原点はカメラ位置に置かれる
-(`FloatingOrigin.r` = アクティブカメラの ECI 位置)ので、描画座標系ではカメラが原点近傍にいる。
-よって m/px は THREE のカメラ(fov・視口高さ・視線方向)だけから求まり、ECI を経由する必要がない。
-**これが `ScaleAtFn` を廃せる理由である。**
-
-**実測済みの前提**(調査結果):
-
-| | `OrbitLine` | `SampledLine` |
-|---|---|---|
-| 触れている座標型 | `OrbitalElements` / `FloatingOrigin` | `KinematicState` / `ReferenceFrame` / `Ephemeris` / `Attractor` / `FloatingOrigin` |
-| 解像度 | 固定 2048 頂点 | 画面サジッタ 0.5px・折れ角上限 5° から区間ごとに算出 |
-| 消費者 | 自機・敵・基地・ターゲット2本・参照線・静止軌道・配置プレビュー | `EntityLineSet` 経由の予測線/デバッグ線、`PlanArc` |
-
-**整理の対象として確認済みの重複**:
-
-- `enemy.ts` の `syncBackgroundOrbitLine` と `base.ts` の `syncOrbitLine` が実質同一実装。
-- `predicted-trajectory-line.ts` と `debug-trajectory-line.ts` が同型の薄いラッパー
-  (差分はサンプル列の取得元だけ)。
-- `metersPerPixel` が `physics/projection.ts` にありながら、`chase-camera.ts` と
-  `overview-camera.ts` が同じ式をインラインで再実装している。
-- `SampledLine` は数値積分された軌道の描画にしか使われていないので、実態に合わせて改名する
-  (`/refactor-fixed` の語彙に沿わせる)。
-
-**注意すべき制約**:
-
-- `OrbitLine` が頂点を作り直すのは、軌道要素が閾値を超えて動いたときだけ
-  (J2 等で振動する要素をそのまま反映すると線が毎フレーム揺れる)。**解像度をカメラ依存にすると
-  再分割が毎フレーム走りうるので、`SampledLine` の `SCALE_REBAKE_RATIO` に相当する
-  再 bake の抑制を `curve` 側にも持たせること。**
-- `OrbitLine` の「天体に近い区間をフェードさせて描かない」処理は、頂点の間引きと
-  インデックスの書き換えを伴う。解像度の決定と同じ場所で扱う必要がある。
-- 楕円は閉曲線、積分軌道は開曲線。`curve` は両方を扱えること。
-
-**完了条件**: `src/render/**` から `Vec3` / `KinematicState` / `ReferenceFrame` / `Attractor` /
-`Ephemeris` / `OrbitalElements` / `FloatingOrigin` への import が 0 件。
-
 ### Phase 2 — デッドコード除去、計測、描画設定GUI
 
+0. **f32 精度の実測(Phase 1 からの持ち越し。未実施)** — 海王星軌道線とカイパー帯点群(§1-2)。
+   `OrbitLine` は頂点を中心天体相対のまま持ち平行移動で置くので、海王星軌道の ~4.5e12 m は
+   いまも f32 バッファに載る(量子化 ~3e5 m)。`point-field-view.ts` の `instanceMatrix` も同様。
+   **引きの絵では画素以下、寄ると露見するはず** — 実際に寄って確かめる。
 1. `AMBIENT_INTENSITY` の直書き重複を直す。
 2. `perf-meter.ts` の計測を完成させる(`sync` と `render` の分離、可能なら GPU タイムスタンプ)。
    **Phase 5 以降はシャドウマップのパス時間を個別に見たいので、パス単位の計測にしておく。**
@@ -794,9 +734,6 @@ Phase 10 のレイ積分枠組みが前提。プルーム・RCS・再突入・�
 
 | 対象 | 現在 | 移動先 | 対応フェーズ |
 |---|---|---|---|
-| `OrbitLine` / `SampledLine` そのもの | `render/` | `game/` — 物理から描画への橋渡しなので `game/` の責務 | Phase 1 |
-| 曲線の折れ線近似(解像度の決定) | `orbit-line.ts` の固定頂点数 / `sampled-line.ts` のサジッタ計算 | `render/curve.ts` へ一本化 | Phase 1 |
-| 絶対 ECI を取る `ScaleAtFn` 型定義 | `render/sampled-line.ts:28` | 廃止(`curve` がカメラから m/px を自前で出す) | Phase 1 |
 | テクスチャURL表・101天体の配色 | `celestial-registry.ts:13-33, 88-195` | `render/`。レジストリには**表示名とidだけ**残す | Phase 3 |
 | `RingOpticsDef.color` | `physics/solar-system.ts:107-116, 322` | `render/`。τ・アルベド・位相係数は物理なので残す | Phase 3 |
 | エフェクトの size/opacity 式・配色 | `vfx/`, `player/*-effects.ts`, `const.ts:230-247, 499-534` | `render/` | Phase 3 |
@@ -839,7 +776,6 @@ Phase 10 のレイ積分枠組みが前提。プルーム・RCS・再突入・�
 | Phase 5 のクラスタリング | 中 | 「どこで区切るか」の基準が未決。惑星系単位が自然だが、艦が惑星間にいる場合の扱いを決める必要がある |
 | Phase 4/5 のドローコール増 | 中 | ジオメトリを 2 回 + シャドウマップの枚数だけ描く。**LOD/インスタンシングが先に済んでいるので吸収余地がある** |
 | Phase 9 の LTC テーブル | 中 | three.js の `RectAreaLight` 用テーブルが流用できるか、球光源用に別途生成するか要調査 |
-| Phase 1 の曲線描画の切り直し | 中 | `sampled-line` は予測軌道・計画軌道・デバッグ線の 3 消費者、`orbit-line` は 7 消費者を持つ。解像度をカメラ依存にすると再分割が毎フレーム走りうるので、再 bake の抑制が要る |
 | Phase 6 のカスケード分割数 | 中 | 実測で決める。まず 2〜3 枚 |
 | G-buffer + 照度 + シャドウのバンド幅 | 中 | 解像度スケールとシャドウ解像度トグル(Phase 2)で逃げ道を確保 |
 | ライトプリパス + 半透明 | 中 | 半透明は恩恵を受けない。Phase 10 は前方描画で確定 |
@@ -900,21 +836,32 @@ Phase 10 のレイ積分枠組みが前提。プルーム・RCS・再突入・�
 2回描く Phase 4 とシャドウマップの枚数だけ描く Phase 5 に向けた余裕である。
 最新の実測値: 戦闘ビューで draw calls 約165 / triangles 約33万(弾347・薬莢96・デブリ24が出ている状態)。
 
-**次に着手するのは Phase 1(座標境界の確定)。** §4 Phase 1 の内容そのもの:
+### 座標境界(旧 Phase 1)も完了した
 
-1. `render/` から `FloatingOrigin` を剥がす。**実測済み**: `src/render/**` から `game/` の座標型を
-   import しているのは `orbit-line.ts` と `sampled-line.ts` の `FloatingOrigin` の 2 箇所だけ。
-   （`ships.ts` は `game/const.ts` から色・寸法の定数を読んでいるが、これは CLAUDE.md が明示的に
-   認めている読み取り専用の関係であり Phase 1 の対象外。）
-   `physics/` からの import も 2 種に分かれる — 座標型(`vec3`/`kinematic-state`/`frame`/
-   `attractor`/`ephemeris`、いずれも `sampled-line.ts` のみが読む)は消す対象、定数・純粋な数学
-   (`solar-system` の半径、`ecliptic`、`attitude`、`elements`、`orbit-line-geometry`)は残す対象。
-   完了条件「座標型への import が 0 件」はこの前者を指す。
-2. 頂点列の生成と頂点バッファのアップロードを分ける。**表示 LOD ポリシーを純関数として `render/`
-   に残す方針は `render/screen-lod.ts` が既に満たしている**(スカラーのみを取り、THREE にも
-   座標型にも依存しない)ので、ここへ合流させる。
-3. `sampled-line.ts:28` の `ScaleAtFn` を排除する。
-4. f32 精度の実測 — 海王星軌道線とカイパー帯点群(§1-2)。
+| 済んだこと | 結果 |
+|---|---|
+| `OrbitLine` / `TrajectoryLine` の移動 | 物理から描画への橋渡しなので `render/` から `game/` へ |
+| `render/curve.ts` の新設 | 頂点バッファ・マテリアル・破線・頂点ごとの不透明度・描画順・可視性・変換を `Curve` が持つ。座標型を一切知らない |
+| 折れ線の解像度の一本化 | 媒介変数のサンプラーを受け取り、画面上のサジッタが 0.5px を超える区間を適応的に二分割する。楕円の固定 2048 頂点と、点列側の区間ごとの弦数計算という2実装が1つになった。画面スケールは `Curve` がカメラから自前で出すので `ScaleAtFn` は不要になった |
+| 天体近傍のフェード | 表示の規則なので `physics/orbit-line-geometry.ts` を廃し `Curve` へ取り込んだ |
+| `densifyNear` の削除 | 自機付近へ頂点を寄せる非線形マッピングは、適応分割が同じ役割を果たすので不要 |
+| 予測線とデバッグ線の統合 | 同型の薄いラッパー2本を `EntityTrajectoryLine` へ。名前付きファクトリ(`.predicted()` / `.debug()`)で区別する |
+| 敵/基地の軌道線同期の共通化 | `GameEntity.syncOwnOrbitLine` へ寄せた |
+| `SampledLine` の改名 | 積分された軌道しか描かないので `TrajectoryLine` へ |
+| `metersPerPixel` の重複解消 | 式を `physics/projection.ts` へ寄せ、カメラ側と `Curve` が同じ関数を呼ぶ |
+| 乱数生成器の分離 | 座標ではないので `physics/vec3.ts` から `physics/random.ts` へ切り出した |
+
+**完了条件を満たした**: `src/render/**` から `Vec3` / `KinematicState` / `ReferenceFrame` /
+`Attractor` / `Ephemeris` / `OrbitalElements` / `FloatingOrigin` への import が **0 件**。
+
+**確認済みの挙動**: 自機の軌道線が複数のズーム段階で滑らかな楕円として描かれること、静止中に
+再分割が走らないこと(1.5秒空けて draw calls が完全一致)、破線が破線のままであること、
+実行時例外と GPU バリデーションエラーが 0 件であること。
+**未確認**: 参照軌道線(惑星)の遠距離での見た目、天体近傍フェードの見た目、デバッグ線の色分け。
+ヘッドレスでのカメラ操作が安定せず到達できなかった。**次に触るときに合わせて確認すること。**
+
+**次に着手するのは Phase 2(デッドコード除去・計測・描画設定GUI)。** その先頭に
+**Phase 1 から持ち越した f32 精度の実測**が付いている(§4 Phase 2 の項目0)。
 
 **並行して始められるもの**:
 
