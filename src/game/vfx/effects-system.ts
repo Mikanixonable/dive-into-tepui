@@ -5,7 +5,6 @@ import { add, randSym, randVec, v3, Vec3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { DebrisKind, DebrisPiece } from '../game-entity/debris-piece';
-import { Billboard } from '../../render/billboard';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { Sfx } from '../../audio/sfx';
@@ -70,8 +69,12 @@ export class EffectsSystem {
     color: string | number,
     peakOpacity = 1,
   ): void {
-    const billboard = new Billboard(color);
-    const fx: FlashEffect = { billboard, state, age: 0, duration, size0, size1, peakOpacity };
+    const fx: FlashEffect = {
+      transform: new THREE.Object3D(),
+      baseColor: new THREE.Color(color),
+      color: new THREE.Color(),
+      state, age: 0, duration, size0, size1, peakOpacity,
+    };
     this._flashEffects.addFlash(fx);
   }
 

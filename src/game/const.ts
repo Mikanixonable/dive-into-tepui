@@ -193,6 +193,7 @@ export const CASING_MASS = 1; // 薬莢の物理接触用の質量(実物同様�
 export const MAX_BULLETS = 400;
 export const MAX_CASINGS = 260;
 export const MAX_DEBRIS = 600;
+export const MAX_FLASHES = 128; // 同時に存在しうるフラッシュ(発砲・命中・撃破・ガス)の上限。超過分は描画されない
 
 // --- 小惑星(Asteroid、試験配置用) ---
 // 岩石密度(~1900kg/m^3)で半径 ASTEROID_TEST_RADIUS の球とおおよそ整合する質量。

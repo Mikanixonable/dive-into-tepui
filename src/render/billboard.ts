@@ -44,3 +44,16 @@ export class Billboard {
     (this.mesh.material as THREE.Material).dispose();
   }
 }
+
+// InstancedPool が全フラッシュエフェクトで使い回す共有ジオメトリ/マテリアル。色は白のまま
+// 固定し、個体ごとの色は呼び出し側が InstancedPool の per-instance color で与える。
+export function flashResources(): { geometry: THREE.BufferGeometry; material: THREE.Material } {
+  const material = new THREE.MeshBasicMaterial({
+    map: getGlowTexture(),
+    color: 0xffffff,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  return { geometry: new THREE.PlaneGeometry(1, 1), material };
+}
