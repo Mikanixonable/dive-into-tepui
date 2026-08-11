@@ -3,7 +3,7 @@
 // 呼び出し側が factory で決め、このクラスはどのエンティティが線を持つかだけを管理する。
 import * as THREE from 'three/webgpu';
 import { GameEntity } from './game-entity/game-entity';
-import { SampledLine } from '../render/sampled-line';
+import { SampledLine } from './sampled-line';
 
 export class EntityLineSet {
   private readonly lines = new Map<GameEntity, SampledLine>();

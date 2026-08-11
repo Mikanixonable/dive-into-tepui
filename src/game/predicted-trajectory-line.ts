@@ -5,7 +5,7 @@ import { ReferenceFrame } from '../physics/frame';
 import { Attractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { FloatingOrigin } from './floating-origin';
-import { EMPTY_SAMPLES, SampledLine, ScaleAtFn } from '../render/sampled-line';
+import { EMPTY_SAMPLES, SampledLine, ScaleAtFn } from './sampled-line';
 import { GameEntity } from './game-entity/game-entity';
 import { EntityLineSet } from './entity-line-set';
 import { LINE_RENDER_ORDER } from './const';

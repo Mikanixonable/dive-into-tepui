@@ -7,7 +7,7 @@ import { attribute, float } from 'three/tsl';
 import { OrbitalElements } from '../physics/elements';
 import { Vec3 } from '../physics/vec3';
 import { pointSphereFade, segmentIntersectsSphere } from '../physics/orbit-line-geometry';
-import { FloatingOrigin } from '../game/floating-origin';
+import { FloatingOrigin } from './floating-origin';
 
 // フェードの再計算を省く天体の移動量。天体半径に対するこの割合より小さく動いただけなら、
 // フェード帯の中の各頂点の不透明度は視認できるほど変わらない。
