@@ -1,10 +1,9 @@
 // 剛体球どうしの接触の列挙・解決。collides を立てた GameEntity と、逆質量0(無限質量)の
 // 天体を参加者とし、双方へ collideWith を呼ぶ — ダメージ・音・エフェクトはここでは一切扱わない
-// (それぞれの GameEntity 自身の責務)。1 substep 内の接触は TOI(接触時刻)昇順で解決し、
-// 解決するたびに残りの候補の TOI を引き直す。
+// (それぞれの GameEntity 自身の責務)。1 substep 内の接触は TOI(接触時刻)昇順で解決する。
 import * as C from '../const';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, len, scale, sub } from '../../physics/vec3';
+import { Vec3, add, scale } from '../../physics/vec3';
 import { SpatialGrid } from '../../physics/spatial-grid';
 import { GameEntity } from '../game-entity/game-entity';
 import type { Player } from '../player/player';
@@ -25,12 +24,15 @@ export interface Contact {
 
 const RESTITUTION = 0.4;
 
-// 位置・速度・半径・質量がすべて有限で、質量が正であるか。1つでも欠けたエンティティを
-// 空間グリッドへ入れる前に落とす — 非有限座標はセル添字自体を壊す。
+// 区間の両端の位置・速度と半径・質量がすべて有限で、質量が正であるか。1つでも欠けた
+// エンティティを空間グリッドへ入れる前に落とす — 非有限座標はセル添字を壊し、区間変位は
+// セル一辺の算出を通じて全参加者へ伝播する。
 function isFiniteParticipant(e: GameEntity): boolean {
   const { r, v } = e.state;
+  const p = e.prevState.r;
   return Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
     && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z)
+    && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)
     && Number.isFinite(e.radius) && Number.isFinite(e.mass) && e.mass > 0;
 }
 
@@ -42,10 +44,13 @@ function isFiniteAttractor(a: Attractor): boolean {
     && Number.isFinite(a.radius);
 }
 
+// 1 substep 分の接触候補1件。response が null なのは現在の状態では接触しないという意味で、
+// 当事者の状態が変われば非 null になりうる。resolved を立てた候補は以後選ばれない。
 interface Candidate {
   a: GameEntity;
   b: GameEntity | Attractor;
-  response: CollisionResponse;
+  response: CollisionResponse | null;
+  resolved: boolean;
 }
 
 // TOI(response.toi、prevState→state 区間内の割合)を接触時刻へ変換する。重なりフォールバック
@@ -88,22 +93,27 @@ function computeAttractorResponse(
   );
 }
 
-// エンティティ↔エンティティ・エンティティ↔天体どちらのペアも表せる、順序に依らないキー。
-function pairKey(a: GameEntity, b: GameEntity | Attractor): string {
-  return a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
-}
-
-// 27近傍グリッドのセル一辺。重なり判定(半径和)と区間移動量、双方が拾いうる最大距離の
-// 2倍ずつを足した値にする — これ以上離れた27近傍の外のペアは、どちらの判定式でも接触しえない。
+// 27近傍グリッドのセル一辺。接触の成否を決めるのは参加者どうしの相対変位なので、参加者集合に
+// 共通する変位(平均 Δ̄)を差し引いた量で測る。ペア (a,b) が区間内で接触するなら、区間終端の
+// 距離は 半径和 + |Δa−Δ̄| + |Δb−Δ̄| 以下 — つまり各参加者の到達量 半径+|Δ−Δ̄| の最大値の2倍を
+// 一辺に取れば、27近傍の外のペアはどちらの判定式でも接触しえない。
 function contactCellSize(all: readonly GameEntity[], working: ReadonlyMap<GameEntity, KinematicState>): number {
-  let maxRadius = 0;
-  let maxMove = 0;
+  let mx = 0, my = 0, mz = 0;
   for (const e of all) {
-    if (e.radius > maxRadius) maxRadius = e.radius;
-    const move = len(sub(working.get(e)!.r, e.prevState.r));
-    if (move > maxMove) maxMove = move;
+    const w = working.get(e)!.r, p = e.prevState.r;
+    mx += w.x - p.x; my += w.y - p.y; mz += w.z - p.z;
   }
-  return 2 * (maxRadius + maxMove) || C.CONTACT_GRID_CELL_SIZE_FLOOR;
+  const n = all.length;
+  mx /= n; my /= n; mz /= n;
+
+  let maxReach = 0;
+  for (const e of all) {
+    const w = working.get(e)!.r, p = e.prevState.r;
+    const dx = w.x - p.x - mx, dy = w.y - p.y - my, dz = w.z - p.z - mz;
+    const reach = e.radius + Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (reach > maxReach) maxReach = reach;
+  }
+  return 2 * maxReach || C.CONTACT_GRID_CELL_SIZE_FLOOR;
 }
 
 export class ContactPhysics {
@@ -117,10 +127,9 @@ export class ContactPhysics {
   private readonly attackerSetScratch = new Set<GameEntity>();
   private readonly workingScratch = new Map<GameEntity, KinematicState>();
   private readonly changedScratch = new Set<GameEntity>();
-  private readonly resolvedPairsScratch = new Set<string>();
   private readonly neighborScratch: number[] = [];
   private readonly gridScratch = new SpatialGrid<number>(1);
-  private candidateScratch: Candidate | null = null;
+  private readonly candidateScratch: Candidate[] = [];
 
   // 1 substep ぶんの接触解決。ワープゲート(canResolvePhysicalCollisions)は呼び出し側
   // (Simulator.advance)が判断してから呼ぶ。
@@ -170,12 +179,9 @@ export class ContactPhysics {
     }
   }
 
-  // attackers 同士・attackers×others・attackers×bodies の接触候補から TOI が最小のものを
-  // 1つずつ解決する。解決するたびに、まだ解決していない候補だけを対象に TOI を引き直すので、
-  // 順序は接触の発生時刻どおりになり、解決済みのペアが再選択されて反復を浪費することもない。
-  // 上限回数を超えた分は次回の呼び出し(次の substep / 次のフレーム)へ持ち越す。
-  // グリッドは反復間で使い回す — 1件の解決で動く距離はセルサイズの余裕(半径和+区間移動量)
-  // 以下なので、初回に組んだグリッドのまま近傍探索を続けてよい。
+  // attackers 同士・attackers×others・attackers×bodies の接触候補を1回だけ列挙し、TOI が
+  // 最小のものから1件ずつ解決する。上限回数を超えた分は次回の呼び出し(次の substep /
+  // 次のフレーム)へ持ち越す。
   // GameEntity.state への書き戻しは全解決が終わってから一括で行う — ループの途中で書き戻すと
   // state セッタ自身が prevState を書き換えてしまい、以降の反復が区間の始点を失う。
   private resolveInOrder(
@@ -201,30 +207,38 @@ export class ContactPhysics {
     for (const e of all) working.set(e, e.state);
     const changed = this.changedScratch;
     changed.clear();
-    const resolvedPairs = this.resolvedPairsScratch;
-    resolvedPairs.clear();
 
     const cellSize = contactCellSize(all, working);
     const grid = this.gridScratch;
     grid.reset(cellSize);
     for (let k = 0; k < all.length; k++) grid.insert(k, working.get(all[k]!)!.r);
 
+    const count = this.collectCandidates(all, attackerSet, attackers, bodies, simTime, working, grid);
+    // 直前の解決で状態が変わった当事者。これを含まない候補の response は引き直しても同じ値に
+    // なるので、含む候補だけを引き直す。
+    let dirtyA: GameEntity | null = null;
+    let dirtyB: GameEntity | null = null;
     for (let i = 0; i < C.CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP; i++) {
-      const best = this.earliestContact(all, attackerSet, attackers, bodies, simTime, working, grid, resolvedPairs);
+      const best = this.earliestContact(count, dirtyA, dirtyB, working);
       if (best === null) break;
       this.applyCandidate(best, working, changed, activeStage);
-      resolvedPairs.add(pairKey(best.a, best.b));
+      best.resolved = true;
+      dirtyA = best.a;
+      dirtyB = best.b instanceof GameEntity ? best.b : null;
     }
     for (const e of changed) e.state = working.get(e)!;
     working.clear();
     changed.clear();
-    resolvedPairs.clear();
     attackerSet.clear();
+    // 使わなかった末尾を落とす — 候補は当事者を参照で抱えるので、残すと消えたエンティティが
+    // 候補列の中だけ生き続ける。
+    this.candidateScratch.length = count;
   }
 
-  // grid の27近傍から、少なくとも一方が attackerSet に属し、まだ resolvedPairs に無いペアと
-  // attackers×bodies の接触候補を集め、TOI が最小のものを返す(無ければ null)。
-  private earliestContact(
+  // grid の27近傍から、少なくとも一方が attackerSet に属するペアと attackers×bodies のペアを
+  // 集め、contactsWith を通ったものだけを候補列へ詰め直して件数を返す。接触しない組み合わせも
+  // response=null の候補として残す — 当事者の状態が変われば接触しうるため。
+  private collectCandidates(
     all: readonly GameEntity[],
     attackerSet: ReadonlySet<GameEntity>,
     attackers: readonly GameEntity[],
@@ -232,10 +246,8 @@ export class ContactPhysics {
     simTime: number,
     working: ReadonlyMap<GameEntity, KinematicState>,
     grid: SpatialGrid<number>,
-    resolvedPairs: ReadonlySet<string>,
-  ): Candidate | null {
-    let best: Candidate | null = null;
-
+  ): number {
+    let count = 0;
     const n = all.length;
     for (let i = 0; i < n; i++) {
       const a = all[i]!;
@@ -244,36 +256,56 @@ export class ContactPhysics {
         if (j <= i) continue;
         const b = all[j]!;
         if (!attackerSet.has(a) && !attackerSet.has(b)) continue;
-        if (resolvedPairs.has(pairKey(a, b))) continue;
         if (!a.contactsWith(b, simTime) || !b.contactsWith(a, simTime)) continue;
-        const response = computeEntityResponse(a, b, working);
-        if (response !== null && (best === null || response.toi < best.response.toi)) {
-          best = this.setCandidate(a, b, response);
-        }
+        this.pushCandidate(count++, a, b, computeEntityResponse(a, b, working));
       }
     }
 
     for (const a of attackers) {
       for (const body of bodies) {
-        if (resolvedPairs.has(pairKey(a, body))) continue;
         if (!a.contactsWith(body, simTime)) continue;
-        const response = computeAttractorResponse(a, body, working);
-        if (response !== null && (best === null || response.toi < best.response.toi)) {
-          best = this.setCandidate(a, body, response);
-        }
+        this.pushCandidate(count++, a, body, computeAttractorResponse(a, body, working));
       }
     }
-    return best;
+    return count;
   }
 
-  private setCandidate(a: GameEntity, b: GameEntity | Attractor, response: CollisionResponse): Candidate {
-    if (this.candidateScratch === null) this.candidateScratch = { a, b, response };
+  // 候補列の index 番目を書き直す。既にあるスロットはオブジェクトごと使い回す。
+  private pushCandidate(
+    index: number, a: GameEntity, b: GameEntity | Attractor, response: CollisionResponse | null,
+  ): void {
+    const slot = this.candidateScratch[index];
+    if (slot === undefined) this.candidateScratch.push({ a, b, response, resolved: false });
     else {
-      this.candidateScratch.a = a;
-      this.candidateScratch.b = b;
-      this.candidateScratch.response = response;
+      slot.a = a;
+      slot.b = b;
+      slot.response = response;
+      slot.resolved = false;
     }
-    return this.candidateScratch;
+  }
+
+  // 未解決の候補のうち TOI が最小のものを返す(接触するものが無ければ null)。dirtyA/dirtyB を
+  // 当事者に含む候補は、走査のついでに現在の working 上の値で response を引き直す。
+  private earliestContact(
+    count: number,
+    dirtyA: GameEntity | null,
+    dirtyB: GameEntity | null,
+    working: ReadonlyMap<GameEntity, KinematicState>,
+  ): Candidate | null {
+    let best: Candidate | null = null;
+    for (let i = 0; i < count; i++) {
+      const candidate = this.candidateScratch[i]!;
+      if (candidate.resolved) continue;
+      const { a, b } = candidate;
+      if (a === dirtyA || a === dirtyB || b === dirtyA || b === dirtyB) {
+        candidate.response = b instanceof GameEntity
+          ? computeEntityResponse(a, b, working)
+          : computeAttractorResponse(a, b, working);
+      }
+      const response = candidate.response;
+      if (response !== null && (best === null || response.toi < best.response!.toi)) best = candidate;
+    }
+    return best;
   }
 
   // 候補を1件解決する: working 上の状態を補正後の値へ差し替え、反発が起きたときだけ両者へ
@@ -285,7 +317,8 @@ export class ContactPhysics {
     changed: Set<GameEntity>,
     activeStage: Stage,
   ): void {
-    const { a, b, response } = candidate;
+    const { a, b } = candidate;
+    const response = candidate.response!;
     const aBefore = working.get(a)!;
     working.set(a, kinematicState(a.state.t, response.rA, response.vA));
     changed.add(a);

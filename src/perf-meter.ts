@@ -3,6 +3,7 @@
 import type { WebGPURenderer } from 'three/webgpu';
 import { PropertyRow, PropertyWindow } from './game/hud/property-window';
 import { fmtDuration } from './game/hud/utils';
+import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from './frame-sections';
 
 // 計測表示に載せるエンティティ数・シミュレーション規模の一式。
 export type PerfCounts = {
@@ -58,6 +59,8 @@ export class PerfMeter {
   private readonly renderStats = newPhaseStats();
   private readonly drawCallStats = newPhaseStats();
   private readonly triangleStats = newPhaseStats();
+  // update の区間ごとの統計。末尾は区間外へ落ちた時間(その他)。
+  private readonly sectionStats = Array.from({ length: SECTION_COUNT + 1 }, newPhaseStats);
   private frames = 0;
   private lastFlush = performance.now();
   // 前回フラッシュ時点の暦キャッシュ累計。表示する集計期間分の差分を取るために持つ。
@@ -76,6 +79,7 @@ export class PerfMeter {
     private readonly counts: PerfCountSource,
     private readonly root: HTMLElement,
     private readonly renderer: WebGPURenderer,
+    private readonly sections: FrameSections,
   ) {
     if (new URLSearchParams(location.search).get('perf') === '1') this.open();
   }
@@ -92,6 +96,8 @@ export class PerfMeter {
     this.resetStats(this.renderStats);
     this.resetStats(this.drawCallStats);
     this.resetStats(this.triangleStats);
+    for (const s of this.sectionStats) this.resetStats(s);
+    this.sections.enabled = true;
     this.frames = 0;
     this.lastFlush = performance.now();
     this.win = new PropertyWindow(this.root, DEFAULT_X, DEFAULT_Y, {
@@ -99,13 +105,17 @@ export class PerfMeter {
       rows: this.rows,
       items: [],
     });
-    this.win.onClose = () => { this.win = null; };
+    this.win.onClose = () => {
+      this.win = null;
+      this.sections.enabled = false;
+    };
   }
 
   // 窓を閉じ、計測も止める。
   close(): void {
     this.win?.dispose();
     this.win = null;
+    this.sections.enabled = false;
   }
 
   // 開閉を反転する。
@@ -123,6 +133,9 @@ export class PerfMeter {
     // このフレームの render() 呼び出し直後の値がそのままこのフレームの計測値になる。
     this.addSample(this.drawCallStats, this.renderer.info.render.drawCalls);
     this.addSample(this.triangleStats, this.renderer.info.render.triangles);
+    for (const [i, stats] of this.sectionStats.entries()) {
+      this.addSample(stats, i < SECTION_COUNT ? this.sections.msOf(i as SectionId) : this.sections.otherMs());
+    }
     this.frames++;
     this.flush(now);
   }
@@ -167,8 +180,18 @@ export class PerfMeter {
     this.resetStats(this.renderStats);
     this.resetStats(this.drawCallStats);
     this.resetStats(this.triangleStats);
+    for (const s of this.sectionStats) this.resetStats(s);
     this.frames = 0;
     this.lastFlush = now;
+  }
+
+  // update の区間1つ分の平均・最大の行。通らなかった区間も 0.0ms として出す。
+  private sectionRow(index: number, stats: PhaseStats, frames: number): PropertyRow {
+    const label = SECTION_LABELS[index] ?? 'その他';
+    return {
+      key: `usec-${index}`, label, group: 'update内訳',
+      value: `${barText(stats.sum / frames)} max ${stats.max.toFixed(1)}`,
+    };
   }
 
   // 集計期間 elapsedMs / frames 本のフレームから、窓に並べる行一式を組む。
@@ -200,6 +223,8 @@ export class PerfMeter {
       this.phaseRow('update', 'update', this.updateStats, frames),
       this.phaseRow('sync', 'sync', this.syncStats, frames),
       this.phaseRow('render', 'render', this.renderStats, frames),
+
+      ...this.sectionStats.map((s, i) => this.sectionRow(i, s, frames)),
 
       this.countRow('draw-calls', 'draw calls', '描画', this.drawCallStats, frames),
       this.countRow('draw-tris', 'triangles', '描画', this.triangleStats, frames),

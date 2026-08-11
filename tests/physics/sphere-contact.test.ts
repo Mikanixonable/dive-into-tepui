@@ -40,6 +40,22 @@ export function register(): void {
     assert.equal(sweptHermiteSphereToi(prev, next, v3(), v3(), 2), null);
   });
 
+  // 弦は天体から離れているのに Hermite 曲線が膨らんで天体を掠める配置。掃引前の棄却が
+  // 弦の長さで近似されていると、この通過を取りこぼす。
+  test('Hermite swept sphere: 弦は外れていても曲線が膨らんで届く通過を捕まえる', () => {
+    const prev = kinematicState(0, v3(-1000, 900, 0), v3(3000, -5400, 0));
+    const next = kinematicState(1, v3(1000, 900, 0), v3(3000, 5400, 0));
+    assert.equal(sweptSphereToi(v3(), v3(), v3(-1000, 900, 0), v3(1000, 900, 0), 700), null);
+    const toi = sweptHermiteSphereToi(prev, next, v3(), v3(), 700);
+    assert.ok(toi !== null && toi > 0 && toi < 1, `unexpected bulge TOI: ${toi}`);
+  });
+
+  test('Hermite swept sphere: 制御点の箱ごと球から離れた天体は null', () => {
+    const prev = kinematicState(0, v3(-10, 0, 0), v3(20, 0, 0));
+    const next = kinematicState(1, v3(10, 0, 0), v3(20, 0, 0));
+    assert.equal(sweptHermiteSphereToi(prev, next, v3(1e9, 0, 0), v3(1e9, 0, 0), 1000), null);
+  });
+
   test('containingBody: 半径内の点はその球を返す', () => {
     const earth: Attractor = {
       id: 'earth', mu: 1, radius: 6.371e6, state: kinematicState(0, v3(), v3()), degree2: null, isStar: false,
