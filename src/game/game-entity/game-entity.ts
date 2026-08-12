@@ -11,6 +11,9 @@ import { isBurnedUp } from '../../physics/atmosphere';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine, OrbitLineExcludeNearBody } from '../orbit-line';
+import { EMPTY_SAMPLES, TrajectoryLine } from '../trajectory-line';
+import { ReferenceFrame } from '../../physics/frame';
+import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from '../simulation/contact';
@@ -66,6 +69,8 @@ export class GameEntity {
   torque: Vec3 = v3();
   // 自身の軌道楕円を描く線。null = 持たない。
   orbitLine: OrbitLine | null = null;
+  // 自身の予測軌道を描く線。null = 持たない。
+  trajectoryLine: TrajectoryLine | null = null;
   // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。
   protected readonly bcInv: number = 0;
   protected readonly srpCoeff: number = 0;
@@ -130,6 +135,43 @@ export class GameEntity {
     if (this.orbitLine === null) return;
     const center = strongestAttractor(this.state.r, attractors);
     this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo, camera, force, excludeNearBody);
+  }
+
+  // 現在状態を先頭に、predictedTrajectory のうちそれより未来のサンプルを続けた点列。
+  // 線の先頭が常に現在位置に一致するようにする。
+  private predictedSamples(): readonly KinematicState[] {
+    const predicted = this.predictedTrajectory?.samplesOldestFirst() ?? EMPTY_SAMPLES;
+    const now = this.state;
+    let i = 0;
+    while (i < predicted.length && predicted[i]!.t <= now.t) i++;
+    if (i >= predicted.length) return EMPTY_SAMPLES;
+    return [now, ...predicted.slice(i)];
+  }
+
+  // trajectoryLine を予測軌道の点列に合わせる。show が false のときは非表示にする。
+  syncTrajectoryLine(
+    show: boolean, frame: ReferenceFrame, simTime: number, ephemeris: Ephemeris, fo: FloatingOrigin,
+    camera: THREE.Camera, attractors: readonly Attractor[],
+  ): void {
+    if (this.trajectoryLine === null) return;
+    const samples = show ? this.predictedSamples() : EMPTY_SAMPLES;
+    this.trajectoryLine.syncGeometry(samples, frame, ephemeris, attractors);
+    this.trajectoryLine.syncTransform(frame, simTime, ephemeris, fo, attractors);
+    this.trajectoryLine.sync(camera);
+  }
+
+  // 自分の解析楕円(orbitLine)をこの予測軌道線で隠してよいかを返す。マップビューでは楕円が
+  // 表示期間 [simTime, simTime + horizon] 全体の代替を担うため、予測がそこまで覆っている
+  // (天体貫入などで打ち切られ、以後伸びない場合も含む)ときだけ隠す。戦闘ビューには表示期間を
+  // 見せるという用途がなく、予測線が描かれてさえいれば解析楕円と並んで見える方が誤読を招くので、
+  // 覆っているかを問わず隠す。
+  supersedesAnalyticEllipse(simTime: number, horizon: number, overviewMode: boolean): boolean {
+    const line = this.trajectoryLine;
+    if (!line || !line.visible) return false;
+    if (!overviewMode) return true;
+    if (this.predictionTruncated) return true;
+    const tip = this.predictedTrajectory?.state.t;
+    return tip !== undefined && tip >= simTime + horizon;
   }
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする

@@ -16,6 +16,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { OrbitLine } from '../orbit-line';
+import { TrajectoryLine } from '../trajectory-line';
 import { Attractor, reachedBody } from '../../physics/attractor';
 import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
@@ -71,6 +72,7 @@ export class Player extends Ship {
   private readonly reentryEffects: ReentryEffects;
   private readonly markers: PlayerMarkers;
   declare readonly orbitLine: OrbitLine;
+  declare readonly trajectoryLine: TrajectoryLine;
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
   readonly planExecutor: PlanExecutor;
@@ -113,6 +115,8 @@ export class Player extends Ship {
     // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
     this.orbitLine = new OrbitLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.shipOrbit);
     _scene.add(this.orbitLine.line);
+    this.trajectoryLine = new TrajectoryLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.predicted);
+    _scene.add(this.trajectoryLine.line);
   }
 
   // 高度 INITIAL_ALT、傾斜角 INITIAL_INC_DEG の円軌道状態を返す。
@@ -509,6 +513,8 @@ export class Player extends Ship {
     this.markers.dispose();
     this.playerScene.remove(this.orbitLine.line);
     this.orbitLine.dispose();
+    this.playerScene.remove(this.trajectoryLine.line);
+    this.trajectoryLine.dispose();
     this.thrustEffects.dispose(this.playerScene);
     this.rcsEffects.dispose(this.playerScene);
     this.reentryEffects.dispose(this.playerScene);

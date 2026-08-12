@@ -39,7 +39,6 @@ import type { AbsoluteEphemeris } from '../physics/absolute-ephemeris';
 import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from './sim-epoch';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './nan-watchdog';
-import { EntityTrajectoryLine } from './entity-trajectory-line';
 import { NavTarget } from './nav-target';
 import { MapPicker } from './map-picker';
 import { Navball } from './navball/navball';
@@ -127,8 +126,6 @@ export class Game {
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
-  private readonly debugTrajectoryLine: EntityTrajectoryLine;
-  private readonly predictedTrajectoryLine: EntityTrajectoryLine;
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
   readonly frameControls: FrameControls;
@@ -256,8 +253,6 @@ export class Game {
     }
 
     this.nanWatchdog = new NanWatchdog(this._hud);
-    this.debugTrajectoryLine = EntityTrajectoryLine.debug(this._scene);
-    this.predictedTrajectoryLine = EntityTrajectoryLine.predicted(this._scene);
     this.docking = new Docking(
       this, this._hud, this._sfx, this._scene, this.effects, this.markerManager,
       this.entities, this.mapPicker, this.cameraSystem, this.viewManager,
@@ -918,18 +913,14 @@ export class Game {
     );
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
-    const predictedTargets = player?.alive ? [player] : [];
-    this.predictedTrajectoryLine.sync(
-      predictedTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
-      this.cameraSystem.activeCamera, attractors,
-    );
-    // 解析楕円は積分予測の代替表示。predictedTrajectoryLine は操作対象艦しか描かないため、
-    // 他の艦は常に non-suppressed に戻る。
+    // 予測軌道を描くのは操作対象艦だけ — 他の艦は常に解析楕円のまま。
     const predictHorizon = this._window.duration;
     for (const ship of this.entities.players) {
-      ship.orbitLine.setSuppressed(
-        this.predictedTrajectoryLine.supersedesAnalyticEllipse(ship, simTime, predictHorizon, overviewMode),
+      ship.syncTrajectoryLine(
+        ship === player && ship.alive, this.editor.planDisplay.planFrame, simTime, this.ephemeris,
+        this.floatingOrigin, this.cameraSystem.activeCamera, attractors,
       );
+      ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, predictHorizon, overviewMode));
     }
 
     if (player) {
@@ -944,12 +935,6 @@ export class Game {
     this._hud.tick();
 
     if (player) this.guide.sync(this.editor.plan, player, simTime, this.editor.editMode, project);
-
-    const debugTargets = player ? (target ? [player, target] : [player]) : [];
-    this.debugTrajectoryLine.sync(
-      debugTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
-      this.cameraSystem.activeCamera, attractors,
-    );
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions();
