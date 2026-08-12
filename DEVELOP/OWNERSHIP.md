@@ -37,14 +37,17 @@ main.ts
 ├── SnapshotControls       ... Hud・SettingsPanel・SaveBrowser・SnapshotService を参照で持つ。`[F5]`/`[F9]`/一覧表示中の `[Esc]` を扱う。main.ts が SaveBrowser 構築後に new し、rAF ループが `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ(Game 側が消費しなかった入力エッジだけを見る)
 ├── AutoSave               ... SnapshotService を参照で持つ。startAnimationLoop() へその場で渡すだけで main() 側は変数に束縛しない
 ├── FrameSections        ... update の区間別所要時間の集計器(frame-sections.ts)。main.ts が new し、Game(コンストラクタ引数)・PerfMeter(コンストラクタ引数)へ参照で渡す。Game はさらに Simulator のコンストラクタ引数として同じ参照を渡す。rAF ループが game.update(dt) を beginFrame()/endFrame() で挟む。区間の境界(enter/exit)を打つのは Game.update / Game.updateMapPresentation / Simulator.advance だけで、累計を持つのはこのオブジェクト。enabled の書き手は PerfMeter.open()/close() のみ
-├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。Game.setPerfMeter で遅延注入される(ViewManager.setDocking と同じ形)。FrameSections も構築時に参照で受け取り、update内訳の行を組む。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)
+├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。Game.setPerfMeter で遅延注入される(ViewManager.setDocking と同じ形)。FrameSections も構築時に参照で受け取り、update内訳の行を組む。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)。`Game.perfCounts()` は自分では数えず、EntityManager・Predictor・Simulator・PlanEditor・Ephemeris・MapPicker 各自の `perfCounts()` を1つにマージし、`displayDurationSec`(= FrameWindow.current.duration)・`warp` を足すだけ
 ├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
 └── Game
     ├── FloatingOrigin       ... sync ごとに作り直す使い捨て
     ├── Input
     ├── TouchControls?       ... タッチデバイスのみ
     ├── MarkerManager        ... DOM の親は Hud.layers.marker / Hud.svgOverlay、所有は Game
-    ├── Ephemeris            ... 状態を持たない純サンプラ。各所へ参照共有する単一インスタンス
+    │   ├── GroupedMarkers (combatMarkers)  ... 画面上で近接する戦闘対象(敵+自機以外の生存中の全自機)マーカーのまとめ + 画面外方位マーカー。呼ぶのは Targeter.syncTargetMarkers
+    │   ├── LeadMarkers                     ... 戦闘対象ごとの LEAD マーカーと最終ロック時刻。呼ぶのは Targeter.syncTargetMarkers
+    │   └── EquatorNodeMarkers              ... 操作艦・navTarget・targeter の対象ごとの EqAN/EqDN。source 列(id で重複除去)は自分の private sourceScratch/collectSources() が毎フレーム組む(Game は組まない)
+    ├── Ephemeris            ... 状態を持たない純サンプラ。各所へ参照共有する単一インスタンス。MarkerManager のコンストラクタ引数として EquatorNodeMarkers へも渡る
     ├── CameraSystem
     │   ├── CombatCameraSystem
     │   │   ├── ChaseCamera
@@ -65,9 +68,7 @@ main.ts
     ├── NavTarget                      ... 航法ターゲット(id)と自機軌道との相対 AN/DN・▲/▽ マーカー
     ├── Navball                        ... 天球グリッド6トグルの正本
     │   └── NavballPanel                   ... DOM は Hud.layers.panel 配下。グリッドトグルのみ
-    ├── GroupedMarkers (enemyMarkers)  ... 画面上で近接する敵マーカーのまとめ + 画面外方位マーカー
-    ├── LeadMarkers                    ... 敵ごとの LEAD マーカーと最終ロック時刻
-    ├── EquatorNodeMarkers             ... 操作艦・navTarget・targeter の対象ごとの EqAN/EqDN。source 列(id で重複除去)は Game が毎フレーム組む
+    ├── ActivePlayerController         ... 操作対象艦(0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者(CameraSystem・PlanEditor・Targeter・NavTarget・ViewManager・MapPicker・Sfx)への伝播を1箇所へ集める。Game.player はこれへ転送する getter
     ├── SimSpeedManager
     ├── DisplayTimeManager             ... 「いつを見るか」(表示期間・未来ゴーストスライダー)
     │   └── DisplayTimePanel           ... DOM は Hud.layers.panel 配下。期間/未来位置スライダー。画面下端の帯として
@@ -90,8 +91,13 @@ main.ts
     ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約
     ├── ViewBadge                      ... DOM は Hud.layers.notify 配下。ViewManager を参照するだけで自身は状態を持たない
     │   └── ContextMenu<true, ViewId>  ... DOM は Hud.layers.popup 配下
-    ├── Stage (activeStage)            ... initStage() が毎回 new する。クリエイティブモードでは CreativeStage を
-    │                                       game.ts が直接 new する(initStage() は経由しない — §1 末尾の補足参照)
+    ├── Stage (activeStage)            ... game.ts が呼ぶ stage-dictionary.ts の buildStage() が生成する(launch.mode==='stage'
+    │                                       なら内部で initStage() を、'creative' なら CreativeStage を直接 new する分岐は
+    │                                       buildStage() 自身が持つ — §1 末尾の補足参照)。Stage クラス自身が持つ静的宣言
+    │                                       (initialPlayerCount・showsStatusInOverview・ephemerisConfig)は buildStage() 経由で
+    │                                       Game の構築に反映される。prunesDeadPlayers/freeProcurement/executesPlans は
+    │                                       インスタンス側の既定 false なフラグ、authoring は既定 null の ObjectAuthoring
+    │                                       (配置・複製の口)。CreativeStage だけが4つとも有効にし、authoring は自身を返す
     │   ├── ScoreCounter
     │   ├── Logistics                  ... 補給の投入判断と ▣ AMMO マーカー
     │   ├── StageStatusPanel           ... DOM は Hud.layers.panel 配下。HP/補助メッセージ/撃墜数
@@ -165,8 +171,12 @@ main.ts
     ├── Simulator                      ... 実シミュレーション。EntityManager・Ephemeris・FrameSections の参照を受け取って回すだけ(いずれも所有しない)
     │   └── ContactPhysics             ... 接触の検出(physics/sphere-contact.ts)・剛体解決(physics/collision-response.ts)を
     │                                       substep ごと(resolveSubstep)/フレームに1回のベルト(resolveBelt)で呼ぶ列挙・順序付け層
-    └── Predictor                      ... 予測列の駆動。EntityManager の参照を受け取って回すだけ(所有しない)。
-                                            状態はラウンドロビンのカーソルのみ
+    ├── Predictor                      ... 予測列の駆動。EntityManager の参照を受け取って回すだけ(所有しない)。
+    │                                       状態はラウンドロビンのカーソルのみ
+    └── FrameWindow                    ... 1フレーム分の「いつを見るか」(表示時刻窓 DisplayWindow)と「どの重力源を見るか」
+                                            (解析天体+重力を持つ生存中の GameEntity の合流窓)を1回だけ確定させ、update・sync
+                                            両フェーズの全消費者へ共有する。Ephemeris・EntityManager・Simulator・
+                                            DisplayTimeManager・ActivePlayerController の参照を受け取って回すだけ(所有しない)
 ```
 
 木に現れないインスタンス:
@@ -194,14 +204,15 @@ main.ts
   GameEntity(Ship・Ammo のみ)は、`Predictor` が
   `stepPredicted` を呼んだ時点で2本目の `DynamicTrajectory` を `predictedTrajectory` として追加で持つ
   (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。予測する長さ
-  (horizon)は種別ごとの定数ではなく、`Predictor.update` が毎フレーム `Game._window.duration`
-  (`DisplayTimeManager.window(simTime, referencePeriod)` を `Game` が update フェーズの先頭で1回
-  確定させたもの)から渡す引数。
+  (horizon)は種別ごとの定数ではなく、`Predictor.update` が毎フレーム `FrameWindow.current.duration`
+  (`DisplayTimeManager.window(simTime, referencePeriod)` を `FrameWindow.resolve()` が update フェーズ・
+  sync フェーズそれぞれで確定させたもの)から渡す引数。
 - `STAGE_DEFINITIONS`(stage-dictionary.ts のモジュールスコープ)… 選択画面のラベル・解放条件を読む
   ためだけの `Stage` インスタンス列。`setup()`/`init()` は呼ばれず、プレイに使う `activeStage` とは別物。
-  `CreativeStage` はここに含まれない(選択画面のタブには出ない)ので、`game.ts` は `launch.mode ===
-  'creative'` のとき `initStage()` を経由せず `CreativeStage` を直接 `new` し、`setup()`/`init()` を
-  自分で順に呼ぶ(`setup()` は `CreativeStage` 自身が override して `ShipPlacerPanel` の組み立てまで行う)。
+  `CreativeStage` はここに含まれない(選択画面のタブには出ない)。`game.ts` は `stage-dictionary.ts` の
+  `buildStage()` を呼ぶだけで、`launch.mode === 'creative'` のとき `initStage()` を経由せず
+  `CreativeStage` を直接 `new` し `setup()`/`init()` を自分で順に呼ぶ分岐は `buildStage()` 自身が持つ
+  (`setup()` は `CreativeStage` 自身が override して `ShipPlacerPanel` の組み立てまで行う)。
 - `launch-select.ts` の `UnlockManager` … 選択画面用に別途 `new` される。正本は localStorage なので
   Game 側のインスタンスと状態を共有する必要がない。
 
@@ -215,9 +226,9 @@ main.ts
 | --- | --- | --- |
 | `THREE.Scene` / `WebGPURenderer` | `GameScene`(main.ts) | Game・各描画物を持つクラス |
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
-| `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線) |
-| `MarkerManager` | Game | マーカーを出す全モジュール(GroupedMarkers・LeadMarkers・EquatorNodeMarkers・PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay) |
-| `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay) |
+| `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線)・MapPicker(空域右クリックの「設定メニューを開く」項目、`Targeter.emptySpaceMenu` と同じパターン) |
+| `MarkerManager` | Game | マーカーを出す全モジュール(PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay)・MapPicker(`markerManager.equatorNodeMarkers.mapPickables()`/`.sync()` を読む)。`combatMarkers`/`leadMarkers`/`equatorNodeMarkers` は参照共有ではなく MarkerManager 自身の子(§1 参照) |
+| `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・MarkerManager(→EquatorNodeMarkers、コンストラクタ引数)・FrameWindow |
 | `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | MAP VIEW パネルが書き換え、読む側はすべて `MapVisibilityPolicy` を通す(`MapPicker.refresh`・`FocusMarkers.update`・`EnvironmentScene.sync`/参照線・`Game.sync` → Stage/Logistics/CreativeStage/Targeter)。マップの描画・ピック候補・軌道オブジェクト一覧・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主。初期値は `localStorage`(`tepui.bodyClassToggles`)から読み込み(`camera-system.ts` の `loadBodyClassToggles`)、トグルのたびに `saveBodyClassToggles` で書き戻す(同上) || `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・ContactPhysics(`Simulator.advance` が呼び出しのたびに参照を渡すだけで保持しない)・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
 | `DisplayTimeManager`(`plan/plan.ts` の狭い `DisplayDurationSource`(`{durationSec(referencePeriod): number}`)としてのみ見える) | Game | PlanEditor(→PlanDisplay)(コンストラクタ引数で `PlanDisplay` → `PlanPath` へそのまま転送。末尾区間の長さ(`plan.ts` の `segmentDurationFrom`)と `Plan.nodeTimeRange` の上限が PREDICT パネルの選択に追従するための参照で、`PlanPath` はこれを保持するだけで書き換えない。`plan/` 配下は `durationSec` 以外の具象 `DisplayTimeManager` のフィールド・メソッドを一切読まない) |
@@ -262,14 +273,15 @@ main.ts
 | 保持配列の顔ぶれの世代 | `EntityManager.collectionRevision`(private `_collectionRevision` + public getter) | `addXxx`/除去のたびに増える。`all()`/`attractors()` の結合キャッシュの再構築判定に使う。`alive` が false になっただけでは増えない(除去は `cleanup` → `prune` が毎フレーム行う)。public getter は、結合配列そのものは参照が変わらないため、外から顔ぶれの変化を知る唯一の手段になる |
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
 | エンティティ側の最小イベント時刻の控え | `Simulator.cachedEventTime`(private。有効性 `cachedEventValid`、算出時の LOD `cachedEventLod`、算出時の顔ぶれの世代 `cachedEventRevision` を併せ持つ) | エンティティの締切は固定の絶対時刻なので substep ごとに引き直さず、simTime がこの時刻へ到達したとき・`EntityManager.collectionRevision` が変わったとき・`passiveWarpLod` が切り替わったときだけ全生存エンティティを走査して求め直す。ステージ側のイベント時刻は艦の現在の Δv と加速度から毎回決まるため、ここには含めず毎 substep 引く |
-| このフレームの表示時刻一式(`DisplayWindow` = `{simTime, referencePeriod, duration, displayTime}`) | `Game._window`(private) | `Game.resolveWindow()`(= `displayTimeManager.window(simulator.simTime, currentOrbitPeriod())`)で組み直す唯一の書き込み経路。update フェーズの4経路(ポーズ/未配置/決着後簡略/通常)それぞれの先頭で1回、sync フェーズの先頭で1回の計2回だけ差し替わる — `currentOrbitPeriod()`(登録天体全体を組んで `strongestAttractor` を回す重い計算)がこの2回に絞られている理由そのもの。update フェーズと sync フェーズで値が異なるのは意図的(積分前後で表示時刻が変わりうる)。`Predictor.update` の horizon・`updateMapPresentation` の displayTime・`displayTimeManager.sync` はいずれもこの1個を読むだけで、それぞれが `currentOrbitPeriod()` を呼び直すことはない |
+| このフレームの表示時刻一式(`DisplayWindow` = `{simTime, referencePeriod, duration, displayTime}`) | `FrameWindow.current`(private `_current`) | `FrameWindow.resolve()`(= `displayTimeManager.window(simulator.simTime, currentOrbitPeriod())`)で組み直す唯一の書き込み経路。内部でキャッシュキー(simTime・`displayTimeManager.revision`・操作艦・操作艦の `state`)を持ち、いずれも動いていなければ組み直さない — `game.update` から2回(`advanceSimulation` を飛ばした/実行した直後)、`game.sync` の先頭で1回呼ぶが、実際に `currentOrbitPeriod()`(登録天体全体を組んで `strongestAttractor` を回す重い計算)まで走るのはキャッシュキーが動いたときだけ。`Predictor.update` の horizon・`updateMapPresentation` の displayTime・`displayTimeManager.sync` はいずれもこの1個を読むだけで、それぞれが `currentOrbitPeriod()` を呼び直すことはない |
+| このフレームの重力源窓(解析天体 + 重力を持つ生存中の GameEntity の合流) | `FrameWindow.attractorsAt(simTime)`(private キャッシュ、`attractorsBodies`/`attractorsDynamic`/`attractorsCache`) | `ephemeris.attractorsAt(simTime)` と `entities.attractors()` の両方の戻り値(参照)が前回と同じ simTime で一致していれば組み直さず前回の合流配列を返す。`updateMapPresentation` の `cameraSystem.update` と `game.sync` が読む |
 | 予測ラウンドロビンのカーソル | `Predictor.cursor` | `EntityManager.all()` のインデックスとして毎フレーム進む。`tracked`/`complete`/`discarded` の3カウンタも同じインスタンスが持つが、`?perf=1` 表示専用の集計値で次フレームの挙動には影響しない |
 | ワープ段・自動ワープ目標時刻 | `SimSpeedManager` | 閾値判定(canPlayerFire 等)もここの getter が唯一 |
 | 天球グリッド6トグルの可視状態 | `Navball` | `gridVisibility`。`Game.sync` が `navball.gridVisibility` を読んで `EnvironmentScene.sync` の引数(`gridVisibility`)経由で `CelestialGrid.sync` へ渡すだけで、`CelestialGrid` 自身は状態を持たない。初期値は `localStorage`(`tepui.gridVisibility`)から読み込み(`navball.ts` の `loadGridVisibility`)、トグルのたびに `saveGridVisibility` で書き戻す——`UnlockManager`/`tepui.clearCounts` と同じ形だが、正本はこのフィールド自身のまま |
 | Δv アーム/ボタンのホールド継続時間・ラッチ状態 | `PlanEditor.dvHoldTime` / `NodeGizmo.latch` | 6方向ぶんの経過秒数(ホールドレートのランプに使う)と、ドラッグがラッチへ入った軸/超過量。加算そのものは `PlanEditor.applyDv` に一本化 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
 | マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。ノード・アンカーとも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `KinematicState[]` を1本持つだけで、`addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`consumeNodesUpTo(t, actualState)` は実行時刻が `t` 以前のノードをまとめて取り除き、取り除いた件数を返すとともに、`anchor` を `actualState`(実際に到達した状態)へ**後続ノードの有無によらず無条件に**差し替える — 呼ぶのは `PlanGuide.update`・`PlanExecutor.finish`・`CreativeStage.applySimulationEvents` の3か所だけで、動力飛行の残差を消さずに以降の計画へ残すのがこの無条件差し替えの目的。`addNode` は `anchor.t` 以前の状態を受け付けず `-1` を返す。編集世代 `revision`(private `_revision` + public getter)を増やすのは `_nodes`/`_anchor` を実際に変えた呼び出しだけ(`addNode`/`removeNode`/`replaceNode`/`consumeNodesUpTo`/`clear`。`applyNodeDv` は委譲先の `replaceNode` でのみ)。`trackAnchor` の毎フレームのアンカー追従は編集ではないので増やさず、その判定は `PlanArc.represents` 側の閾値(積分済みサンプル間隔との比較・`anchorJumped`)が持つ |
-| 操作対象(アクティブ)艦 | `Game.player` | 唯一の書き換え箇所は `Game.setActivePlayer(ship)`。カメラ参照・計画編集対象・ターゲット解除の副作用もすべてここに閉じる(下記「たまたま同時に切り替わる」節参照) |
+| 操作対象(アクティブ)艦 | `ActivePlayerController`(private `_current`) | `Game.player` はこれへ転送するだけの getter。書き換えは `set(ship)`/`setOrNull(ship \| null)`/`remove(ship)`/`reclaimDead()` の4つに閉じる。カメラ参照・計画編集対象・ターゲット解除の副作用もすべてここに閉じる(下記「たまたま同時に切り替わる」節参照)。`remove`/`reclaimDead` は艦の保持数に上限がありその枠を空ける必要があるステージ(`Stage.prunesDeadPlayers` = true、既定 false・`CreativeStage` のみ true)からだけ呼ばれる |
 | 軌道計画の実行モード | `Player.planExecution`(型 `PlanExecutionMode` = `'off' \| 'instant' \| 'powered'` は `plan/plan-executor.ts` が定義し `player.ts` は re-export するだけ) | 全ての自機が持つ(既定 `'off'`)。`'instant'` は `CreativeStage.applySimulationEvents` がノード時刻ちょうどで `state` をノードの絶対状態へ置き換え、`'powered'` は `PlanExecutor` が姿勢制御・噴射で実行する。操作対象艦での手動並進(`this.thrust !== null`)・手動回転(`throttle.hasManualRotationInput`)は `Player.behave` が `'powered'` を `'off'` へ落とす |
 | PlanExecutor の状態機械(`phase`/`targetNode`/`burnDirWorld`/`burnUpWorld`/`pendingAccel`) | `PlanExecutor`(艦ごとの) | 艦の `planExecution`/ノード/生死/ゲートから毎フレーム `update` が導出。`targetNode` はノードの**参照**を持ち、`node.t` ではなく `node !== targetNode` で差し替わりを検出する(`Plan.applyNodeDv`/`replaceNode` は同じ `t` のまま新しいオブジェクトへ差し替えるため)。噴射ゲート(`simSpeed.canPlayerThrust`)は保持せず、`update`/`applyIgnitionAndCutoff`/`nextEventTime` が各自引数で受け取る。`ship.torque`/`ship.thrust`/`ship.plan` は `PlanExecutor` が唯一書き換える(`'powered'` の間のみ)が、書き込みは `update`(毎フレーム、`Player.behave` の後)と `applyIgnitionAndCutoff`(simTime イベント境界ごと)の両方から起きる — 前者は「操作艦で `behave` が毎フレーム上書きする `thrust` を、その後で確実に正しい値へ戻す」役、後者は「点火・遮断の瞬間を simTime ちょうどに固定する」役で、互いの代わりにはならない |
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNode` / `.editMode` | 選択の正本はノード(`KinematicState`)そのものへの**参照**。`selectedNodeIdx` は `plan.nodes` から同一性で引き直す get/set のみで、列から消えたノード(削除・下流の切り捨て・消化)は自動的に「未選択」になる |
@@ -300,11 +312,12 @@ main.ts
 | `frameCache`(`Map<AttractorId, Map<OrbitingId \| null, ReferenceFrame>>`) | `Ephemeris`(`frameOf` 経由) | `(center, rotatingWith)` の対ごとに `ReferenceFrame` を1個だけ持つ、実行時に伸びる正本。レジストリ登録の有無を問わない(生存中の重力天体を中心にする回転系にも同じ契約で応じる)。`inertialFrame`/`frames`/`frameFor` はすべてこのキャッシュを経由して作られた値を返すので、同じ対に対して異なる参照が生まれない(`trajectory-line.ts` の `frame === lastFrame` 参照同一性契約を満たすためのもの) |
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
 | 敵 AI の実行時状態(最終発砲時刻・バースト残数) | `Enemy` | |
-| LEAD マーカーの表示履歴(敵ごとの最終ロック時刻) | `LeadMarkers` | 表示専用の状態なので Enemy には置かない。毎フレーム生存中の敵ぶんだけ作り直す |
-| EqAN/EqDN アイコン(source ごとの位置・通過時刻) | `EquatorNodeMarkers.pairs` | update が求め直す。source 列自体は `Game.equatorNodeSources()` が毎フレーム組み、このクラスには保持しない |
+| LEAD マーカーの表示履歴(戦闘対象ごとの最終ロック時刻) | `MarkerManager.leadMarkers` | 表示専用の状態なので Enemy/Player には置かない。毎フレーム生存中の戦闘対象(敵 + 自機以外の生存中の全自機)ぶんだけ作り直す。呼ぶのは `Targeter.syncTargetMarkers` |
+| EqAN/EqDN アイコン(source ごとの位置・通過時刻) | `MarkerManager.equatorNodeMarkers`(`pairs`) | update が求め直す。source 列自体は private `sourceScratch`/`collectSources()` がこのクラス自身の内部で毎フレーム組む(呼び出し元の `Game`/`updateMapPresentation` は組まない) |
+| 戦闘ターゲット用の生存対象・マーカー item のスクラッチ配列 | `Targeter`(`aliveScratch`/`markerItemScratch`) | `syncTargetMarkers` が毎フレーム組み直す作業用配列。正データではない |
 | update の区間別所要時間・区間外時間 | `FrameSections.elapsedMs` / `frameMs` | 1フレーム分だけの累計で、`beginFrame` が捨て `endFrame` が総和を確定する。境界を打つのは Game.update / Game.updateMapPresentation / Simulator.advance、読むのは PerfMeter.record だけ |
 | 計測の可否 | `FrameSections.enabled` | 書き手は `PerfMeter.open()`/`close()`(窓の開閉)のみ。偽の間は enter/exit が `performance.now()` を読まない |
-| マーカー DOM 要素のプール | `MarkerManager` | キーで索引。`GroupedMarkers`/`LeadMarkers` は自分が前フレームに出したキーを覚えていて、集合から消えたものを hide する。`EquatorNodeMarkers` は対象の増減でキー集合自体が変わるので remove する |
+| マーカー DOM 要素のプール | `MarkerManager` | キーで索引。`combatMarkers`/`leadMarkers` は自分が前フレームに出したキーを覚えていて、集合から消えたものを hide する。`equatorNodeMarkers` は対象の増減でキー集合自体が変わるので remove する |
 
 ### 正本が分かれていることに意味がある組み合わせ
 
@@ -320,10 +333,12 @@ main.ts
 - **`FloatingOrigin.r`** の正本はアクティブカメラの ECI 位置(`CameraSystem.activeCameraPos`)であり、
   `Player.state.r` とは別物 — 戦闘ビューではチェイスカメラが自機から数十mしか離れないため近い値に
   なるだけ。sync 系は必ず fo を参照し、`player.state.r`/カメラ位置を描画原点として直接使わない。
-- **`Game.player`(操作対象艦)・`ChaseCamera.player`(追従カメラの基準)・`PlanEditor.activePlayer`(計画編集の対象)・
+- **`ActivePlayerController.current`(操作対象艦、`Game.player` はここへ転送する getter)・
+  `ChaseCamera.player`(追従カメラの基準)・`PlanEditor.activePlayer`(計画編集の対象)・
   `Targeter` のロック** は艦を切り替えるたびに揃える必要がある4箇所。同時に切り替えるのは
-  `Game.setActivePlayer` だけで、他はそれぞれ自分の持ち分(視点/編集対象/ロック解除)だけを更新する
-  — `ViewManager` が3つのフラグを一斉に切り替えるのと同じ形のトグラー集約。
+  `ActivePlayerController.set()`/`setOrNull()`/`remove()` だけで、他はそれぞれ自分の持ち分(視点/編集
+  対象/ロック解除)だけを更新する — `ViewManager` が3つのフラグを一斉に切り替えるのと同じ形の
+  トグラー集約。
 - **`OverviewCamera.cameraFrame`(視点を固定する座標系)と `PlanDisplay.planFrame`(計画折れ線を
   描く座標系)** は別の正本で、ユーザーが `FrameControls` の2区画×(中心・回転)の
   4ゾーンからそれぞれ独立に選ぶ — 4ゾーンとも状態は書き込み先の2クラスに残したまま `FrameControls` は
@@ -353,12 +368,14 @@ main.ts
   DOM は操作しない。ステージ固有の状況パネルは `Stage`(`StageStatusPanel`)、タッチUIのトグル点灯は
   `TouchControls.syncModeButtons()` が担当し、いずれも game.sync が自機/ステージの状態を渡す。
 - **HUD マーカーは対象の持ち主が出す**。自機由来(方向/ボアサイト/マップ上の自機)は `PlayerMarkers`、
-  第一ターゲット由来(方位・的通過マーク)は `Targeter`、航法ターゲット由来(相対 AN/DN)は
+  戦闘ターゲット由来(方位・的通過マーク)は `Targeter`、航法ターゲット由来(相対 AN/DN)は
   `NavTarget`、近地点・遠地点は `PlanDisplay`、補給は `Logistics`、天体ラベルは `FocusMarkers`、
-  ノード/BURN は `PlanGuide`、計画上の自機位置ゴーストは `PlanDisplay`。Game が直接持つのは
-  **1つの対象では決められない3つだけ** — `GroupedMarkers`(画面上のまとめ)、`LeadMarkers`(自機と敵の
-  両方に依存)、`EquatorNodeMarkers`(操作艦・navTarget・targeter という複数の役割にまたがる source 列
-  に依存)。`Enemy` は自分の見た目とラベルを `markerItem()` で渡すだけで、まとめの判断には関与しない。
+  ノード/BURN は `PlanGuide`、計画上の自機位置ゴーストは `PlanDisplay`。`MarkerManager` が own するのは
+  **1つの対象では決められない3つだけ** — `combatMarkers`(画面上のまとめ、`Targeter.syncTargetMarkers`
+  が敵 + 自機以外の生存中の全自機を組んで呼ぶ)、`leadMarkers`(同じ対象集合に依存、同じく
+  `Targeter.syncTargetMarkers` が呼ぶ)、`equatorNodeMarkers`(操作艦・navTarget・targeter という複数の
+  役割にまたがる source 列に依存、こちらだけは `Game`(`update`/`sync`)が直接呼ぶ)。`Enemy`/`Player`
+  は自分の見た目とラベルを `markerItem()` で渡すだけで、まとめの判断には関与しない。
 - **`EntityManager.players` は他の配列と対等に `all()` へ入る** — 操作対象かどうかは `Game.player` との
   参照同一性だけで決まる選択であり、`players` 配列自体はアクティブ/非アクティブを区別しない。
   積分(`Simulator.substep`/`.stepAttitudes`)・寿命判定(`EntityManager.cleanup`)・
@@ -393,7 +410,7 @@ main.ts
 | `PlanArc.periapsisState` / `.apoapsisState` | 同じ積分ループの中で、`apsisCenter`(呼び出し側が渡す基準天体。末尾区間以外は null で検出自体を省く)に対して `physics/trajectory-features.ts` の `apsisCrossing` をステップ対ごとに掛けた結果、最初に見つかった近地点・遠地点(それぞれ独立)。折れ線サンプルではなく積分の生ステップ対から求めるので、衝突コースで動径速度が符号反転しない区間は近地点側が null のまま残る。読み出し用の `periapsisPoint()`/`apoapsisPoint()` は、その状態の時刻が `_end` を超えていれば(区間が縮んでその先で見つかったことになれば)null を返す | インスタンス生成時に null で初期化され、以後は見つかった時が最初の1回だけ確定 — `setEnd` → `integrateTo` の継ぎ足しで積分が続いても再リセットはされない(arc を丸ごと差し替えることだけが唯一のリセット契機) |
 | `PlanArc` の `integrateTo()` の据え置き対象(ローカル変数。時刻・`PlanAttractorSources`・衝突体の id 索引・`classifyAttractors` の結果を1つに束ねたもの) | `PlanAttractorProvider.at(t)` は毎回一意な時刻を要求されると暦のキャッシュに当たらないので、積分先端が `ATTRACTOR_REBUILD_SEC` 進むごとに1回だけ組み直し、その間の全ステップで使い回す(`Predictor.advanceBudget` と同じ定数・同じ判断)。据え置いた時間ぶんの天体位置のズレは、この区間の刻み幅そのものが持つ RK4 の誤差より小さい | `integrateTo()` の呼び出しごと(constructor からの初回、または `setEnd` からの継ぎ足し)に作り直し、積分先端が `ATTRACTOR_REBUILD_SEC` 進むたびに更新 |
 | `PlanPath.arcs` / `.lines` / `.activeCount` / `.nodeCount` / `.frame` / `.unbakeTime` / `.project` | 毎フレーム再構築される区間分割と表示文脈(画面判定もこれを使う)。`arcs` は区間の積分結果プールで、`update()` のたび `this.arcs.length = segments.length` へ切り詰められる(区間が減れば末尾を捨てる)。`lines` は折れ線の index ごとのプールで、`lineAt(i)` が遅延生成するだけで縮めない(区間数が減っても捨てず `sync()` が非表示にするだけ — 色が index で決まるため使い回す)。先頭 `activeCount` 本(`arcs`)がこのフレームの区間、先頭 `nodeCount` 本がノードで終わる区間 | `arcs`/`activeCount`/`nodeCount`/`frame`/`unbakeTime`/`project` は `update()` 毎。`lines` は必要な index が初めて登場したときだけ伸びる |
-| `PlanPath.finalSegment()`(private `final`) | 末尾区間(次のバーンが無い区間)の `state0` / `samples`(`PlanArc.samples` ゲッターの返り値をそのまま公開 — `_end` で切る必要が無ければ `trajectory.samplesOldestFirst()` と同じ配列参照を返し続けるので、積分が走らない限り `TrajectoryLine.syncGeometry` の参照同一性による再bake抑制が効く)/ 同じ末尾 arc の `periapsisPoint()`/`apoapsisPoint()`(`_end` を超えていれば null を返すアクセサ経由 — 生の `periapsisState`/`apoapsisState` ではない)をそのまま転送した `periapsis`/`apoapsis` / `apsisCenter`(`Segment` が持つ、その区間の起点自身の時刻で `strongestAttractor` が選んだ基準天体。区間長の算出と同じ天体窓から1回だけ選ぶ)。`PlanDisplay` の Pe/Ap アイコンはこの3つを直接読む。`samples` は `Game.equatorNodeSources` が渡す自艦の EqAN/EqDN 走査元 | `update()` 毎(`update()` を一度も通していなければ null) |
+| `PlanPath.finalSegment()`(private `final`) | 末尾区間(次のバーンが無い区間)の `state0` / `samples`(`PlanArc.samples` ゲッターの返り値をそのまま公開 — `_end` で切る必要が無ければ `trajectory.samplesOldestFirst()` と同じ配列参照を返し続けるので、積分が走らない限り `TrajectoryLine.syncGeometry` の参照同一性による再bake抑制が効く)/ 同じ末尾 arc の `periapsisPoint()`/`apoapsisPoint()`(`_end` を超えていれば null を返すアクセサ経由 — 生の `periapsisState`/`apoapsisState` ではない)をそのまま転送した `periapsis`/`apoapsis` / `apsisCenter`(`Segment` が持つ、その区間の起点自身の時刻で `strongestAttractor` が選んだ基準天体。区間長の算出と同じ天体窓から1回だけ選ぶ)。`PlanDisplay` の Pe/Ap アイコンはこの3つを直接読む。`samples` は `MarkerManager.equatorNodeMarkers` の `collectSources()` が渡す自艦の EqAN/EqDN 走査元 | `update()` 毎(`update()` を一度も通していなければ null) |
 | `PlanPath.cameraPos` / `NavTarget.attractors` / `EquatorNodeMarkers.attractors` / `PlanDisplay.attractors` | マップビューの遮蔽判定(`physics/occlusion.ts` の `isOccluded`)向けに、直近の `sync`/`update` が受け取ったカメラ位置・`Attractor[]` を引き継ぐだけのキャッシュ。`PlanPath.cameraPos` は `nearestSample` が DOM ポインタイベント起点でフレーム外から呼ばれるために要る | 次の `sync`/`update` で上書き |
 | `simulation/attractors.ts` のモジュール内作業領域(`seenScratch` / `muScratch` / `griddedScratch`) | それぞれ `collectPlanCollision` の重複排除、`alwaysThresholdMu` の μ 整列、`classifyAttractors` の grid 投入待ち行列だけに使う器。いずれも使う関数の中で閉じ、返り値からは到達できない(`classifyAttractors` は `SpatialGrid` へ挿入し終えた時点で内容を捨てる) | 使うたび先頭で clear/`length = 0` |
 | `ObjectListPanel` の区画ごとの表示順(`Section.order`: `ids`/`rootIds`/`childIds`、いずれも id のみ)と前フレーム入力の記録(`prevIds`/`prevNames`/`prevKinds`/`prevParents`/`prevMatches`/`prevSort`/`prevFilter`) | 候補列・親子関係・絞り込み/並び順から導く表示順のキャッシュ。行の値(距離・詳細)と見出しの件数はここに入れず毎フレーム候補から引き直す | 入力(id 集合・表示名・種別・親・絞り込み通過可否・絞り込み/並び順の選択)が前フレームと変わったフレーム、または保持している順序が今フレームの値で整列条件を満たさなくなったフレーム(距離順では候補が変わらなくても正しい順序が動くため) |
@@ -405,7 +422,7 @@ main.ts
 | `CreativeStage.preview`(軌道要素 + 位置) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM) | `update()` 毎に再算出。パネルを閉じている間・値を解釈できないときは null |
 | `CreativeStage.issues`(`PlacementFieldIssue[]`) | 艦艇配置フォームの現在値からの導出値(正本はフォームの DOM。centerRadius/mu は `Ephemeris` から引く) | `update()` 毎に再算出、`sync()` で `ShipPlacerPanel.setIssues()` へ push。パネルを閉じている間は空配列 |
 | `PlanDisplay.apsisMarkers` / アイコン位置 | `path.finalSegment()` の `periapsis`/`apoapsis`(末尾 `PlanArc` が積分中に検出した値)を読み、検出時と同じ基準天体(`FinalSegment.apsisCenter`)に対して — その位置だけを極値の時刻で `ephemeris.positionOf` から引き直して — 距離・高度を出した導出値(軌道要素からの解析的な導出ではない — エポック依存の値だと Δv=0 のノード追加でも動いてしまうため) | `apsisIconsOf()` 毎(`update()` から呼ぶ) |
-| `EquatorNodeMarkers` の自艦ぶんの EqAN/EqDN 位置 | `EqNodeSource.samples`(`Game.equatorNodeSources` が `PlanPath.finalSegment()` の `samples` を渡す)を `findEquatorCrossings` で走査した導出値。それ以外の source(敵・基地・航法ターゲット)は従来どおり軌道要素からの解析的な導出値 | `update()` 毎 || `MapPicker.pickables` | `FocusMarkers.bodyPickables(displayTime, visibility)`(そのフレームの `MapVisibilityPolicy` が admits した天体+ラグランジュ点) + 生存中の全 `entities.players`・敵船・弾薬・基地のうち `visibility.entity(kind, ...)` が admits したものの displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` + `EquatorNodeMarkers.mapPickables()` の合成(保持しない使い捨て配列) | `mapPicker.refresh()`(`update()` 内、経路ごとの `cameraSystem.update()` 直前)毎に作り直す |
+| `EquatorNodeMarkers` の自艦ぶんの EqAN/EqDN 位置 | `EqNodeSource.samples`(`collectSources()` 自身が `Game.update` から渡された `PlanPath.finalSegment()` の `samples` を積む)を `findEquatorCrossings` で走査した導出値。それ以外の source(戦闘ターゲット・基地・航法ターゲット)は従来どおり軌道要素からの解析的な導出値 | `update()` 毎 || `MapPicker.pickables` | `FocusMarkers.bodyPickables(displayTime, visibility)`(そのフレームの `MapVisibilityPolicy` が admits した天体+ラグランジュ点) + 生存中の全 `entities.players`・敵船・弾薬・基地のうち `visibility.entity(kind, ...)` が admits したものの displayState + `NavTarget.mapPickables()` + `PlanDisplay.apsisMarkers` + `markerManager.equatorNodeMarkers.mapPickables()` の合成(保持しない使い捨て配列) | `mapPicker.refresh()`(`updateMapPresentation` 内、`cameraSystem.update()` 直前)毎に作り直す |
 
 ### 基礎データ型の不変性(整合性の前提)
 

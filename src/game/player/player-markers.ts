@@ -3,8 +3,8 @@
 import { Attitude, qRotate } from '../../physics/attitude';
 import { KinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, v3 } from '../../physics/vec3';
-import { ProjectFn, ScaleFn } from '../camera/camera-system';
-import { MarkerManager } from '../marker/marker-manager';
+import type { ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { MarkerManager } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { Attractor } from '../../physics/attractor';
 import type { CelestialRegistry } from '../../physics/solar-system';
