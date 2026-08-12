@@ -25,7 +25,7 @@ main.ts
 ├── UnlockManager
 ├── LocalStorageSaveStore  ... セーブの永続化窓口(索引・スナップショット本体の JSON 読み書きのみ)
 ├── SaveSlots              ... LocalStorageSaveStore を参照で持つ。SaveIndex(スロット/ステージ履歴/スナップショットメタ)の正本。initSaveSlots() が pruneOrphans() → migrateLegacySave() → アクティブスロット確定までを起動時に一度だけ行う
-├── SnapshotService        ... LocalStorageSaveStore・SaveSlots を参照で持つ。Game ↔ GameSaveData の変換(capture/restore)。Game のコンストラクタ引数として渡す(Hud/Sfx と同じ「main.ts が先に作って注入する」形)
+├── SnapshotService        ... LocalStorageSaveStore・SaveSlots を参照で持つ。Game ↔ GameSaveData の片方向変換(capture: Game → GameSaveData / load: スナップショットID → GameSaveData | null、いずれも Game 自体は受け取らない)。main.ts が起動時に load() の結果を Game のコンストラクタ引数 initialSave として渡す
 ├── Hud                  ... initHud() でタイトル(ステージ選択)画面より前に生成、Game へ参照を渡す。
 │   │                       root 直下の重なり順は layers: OverlayLayers(overlay-layer.ts、marker/panel/window/popup/view/notify/system の
 │   │                       7層、この順に z-index 10〜16)が正本 — z-index を持つのは overlay-layer.ts だけで、他の全 DOM 所有者は
@@ -33,10 +33,11 @@ main.ts
 │   └── HudPanels        (buildHudDom が作った要素索引を共有)
 ├── Sfx                  ... 同上
 ├── SettingsPanel        ... 同上。DOM は Hud.layers.system 配下。onSettingsOpenChange を Game.pause()/resume() へ配線。onOpenSnapshots / onOpenPerfWindow は main.ts が settingsPanel.toggle(false) + saveBrowser.open() / perf.open() へ配線
-├── SaveBrowser            ... Game 自身を構築引数に取るため Game より後に main.ts が new し、Game.setSaveBrowser で遅延注入する(ViewManager.setDocking と同じ形)。所有は main.ts、Game 側は参照を持つだけ。DOM は Hud.layers.system 配下
+├── SaveBrowser            ... Game 自身を構築引数に取るため Game より後に main.ts が new する。Game 側はこれへの参照を一切持たない(`open()`/`close()` が `game.pause()`/`resume()` を直接呼ぶだけ)。DOM は Hud.layers.system 配下。`onLoadSnapshot` コールバックを main.ts が配線し、スナップショットIDを sessionStorage(`tepui.pendingSnapshot`)へ書いてページを再読込する
+├── SnapshotControls       ... Hud・SettingsPanel・SaveBrowser・SnapshotService を参照で持つ。`[F5]`/`[F9]`/一覧表示中の `[Esc]` を扱う。main.ts が SaveBrowser 構築後に new し、rAF ループが `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ(Game 側が消費しなかった入力エッジだけを見る)
 ├── AutoSave               ... SnapshotService を参照で持つ。startAnimationLoop() へその場で渡すだけで main() 側は変数に束縛しない
 ├── FrameSections        ... update の区間別所要時間の集計器(frame-sections.ts)。main.ts が new し、Game(コンストラクタ引数)・PerfMeter(コンストラクタ引数)へ参照で渡す。Game はさらに Simulator のコンストラクタ引数として同じ参照を渡す。rAF ループが game.update(dt) を beginFrame()/endFrame() で挟む。区間の境界(enter/exit)を打つのは Game.update / Game.updateMapPresentation / Simulator.advance だけで、累計を持つのはこのオブジェクト。enabled の書き手は PerfMeter.open()/close() のみ
-├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。Game.setPerfMeter で遅延注入される(SaveBrowser と同じ形)。FrameSections も構築時に参照で受け取り、update内訳の行を組む。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)
+├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。Game.setPerfMeter で遅延注入される(ViewManager.setDocking と同じ形)。FrameSections も構築時に参照で受け取り、update内訳の行を組む。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)
 ├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
 └── Game
     ├── FloatingOrigin       ... sync ごとに作り直す使い捨て
@@ -225,9 +226,10 @@ main.ts
 | `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
 | `Player` / `Simulator` / `EntityManager` / `Stage` | Game | 毎フレームの引数として相互に渡される |
 | `UnlockManager` | main.ts | ステージセレクト画面と、各Stage（クリア後画面判定のため） |
-| `SnapshotService` | main.ts | Game(コンストラクタ引数で受け取り、`clipSnapshot` から呼ぶ)・AutoSave(コンストラクタ引数)・SaveBrowser(コンストラクタ引数) |
+| `SnapshotService` | main.ts | main.ts 自身(起動時に `load()` して `initialSave` を組む)・AutoSave(コンストラクタ引数)・SaveBrowser(コンストラクタ引数)・SnapshotControls(コンストラクタ引数、`[F5]` から `capture` を呼ぶ)。Game はこれへの参照を持たない |
 | `SaveSlots` | main.ts | SnapshotService(コンストラクタ引数)・SaveBrowser(コンストラクタ引数) |
-| `SaveBrowser` | main.ts | Game(`setSaveBrowser` で受け取った参照。`handleInput` が `[F9]` と一覧表示中の `[Esc]` で `open()`/`close()` を呼ぶだけ) |
+| `SaveBrowser` | main.ts | SnapshotControls(コンストラクタ引数、`[F9]` と一覧表示中の `[Esc]` で `open()`/`close()` を呼ぶ)。Game はこれへの参照を持たない |
+| `SnapshotControls` | main.ts | rAF ループ(`startAnimationLoop` が `game.update(dt)` の直後に `handleInput(game.input, game)` を呼ぶ) |
 | `FrameSections` | main.ts | Game(コンストラクタ引数。`update`/`updateMapPresentation` が区間境界へ `enter`/`exit` を打つだけ)・Simulator(Game 経由のコンストラクタ引数。軌道積分/接触/姿勢の3区間の境界を自分で打つ)・PerfMeter(コンストラクタ引数。`enabled` を開閉で書き、`record` で全区間 + `otherMs()` を採取する) |
 | `PerfMeter` | main.ts | Game(`setPerfMeter` で受け取った参照。`handleInput` が `[F3]` で `toggle()` を呼ぶだけ)・SettingsPanel(`onOpenPerfWindow` 経由で `open()`) |
 | `PropertyWindow`(負荷確認ウィンドウ) | PerfMeter(`open()` で new し `close()`/✕ で dispose する1枚) | PerfMeter 自身のみ。500ms ごとの flush で `syncRows` へ行一式を渡す |
@@ -292,8 +294,8 @@ main.ts
 | ポーズ | `Game.paused` | 駆動源は `SettingsPanel.onSettingsOpenChange` と `SaveBrowser.open()`/`close()` の2つ。どちらもシステム窓で、開いている間だけ止める |
 | スナップショット一覧の表示状態 | `SaveBrowser`(private `_visible`) | `open()`/`close()` のみが書き換える。毎フレーム sync は持たず、操作のたびに自分で DOM を作り直す一発モーダル |
 | 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | 各要素は位置を時刻つきの `KinematicState` で持ち、`updateFlashEffects` がその時刻から `simTime` まで移流させる |
-| 地球自転の初期位相 | `EarthBody.phase0` | `spinPhase0()`/`setSpinPhase0()` で読み書き可能。セーブ/ロードは `GameSaveData.earthSpinPhase0`(`EnvironmentScene.earthSpinPhase0()`/`setEarthSpinPhase0()` 経由、`Game.restore` が値のある場合だけ書き戻す) |
-| 各天体の平均黄経の初期位相 | `Ephemeris`(`phaseOffsets`) | 時刻を引数に取るサンプラ。既定で乱数を持つのは月のみ。時刻 `t` 完全一致キーの3スロットのリングキャッシュ(`planetHelioState`/`satelliteRelState`/`attractorsAt`)を持ち、ヒットしない呼び出しだけ天体暦の合成をやり直す。セーブ/ロードは `getPhaseOffsets()`/`setPhaseOffsets()` で読み書きする(`Game.restore` が共有インスタンスへ書き戻す。インスタンスの作り直しはしない。`setPhaseOffsets` は3系統のキャッシュを全てクリアする) |
+| 地球自転の初期位相 | `EarthBody.phase0` | `spinPhase0()`/`setSpinPhase0()` で読み書き可能。セーブ/ロードは `GameSaveData.earthSpinPhase0`(`EnvironmentScene.earthSpinPhase0()`/`setEarthSpinPhase0()` 経由、`Game` の private `applySaveData` が値のある場合だけ書き戻す。`applySaveData` はコンストラクタが受け取った `initialSave` に対して構築の最後に一度だけ呼ばれる) |
+| 各天体の平均黄経の初期位相 | `Ephemeris`(`phaseOffsets`) | 時刻を引数に取るサンプラ。既定で乱数を持つのは月のみ。時刻 `t` 完全一致キーの3スロットのリングキャッシュ(`planetHelioState`/`satelliteRelState`/`attractorsAt`)を持ち、ヒットしない呼び出しだけ天体暦の合成をやり直す。セーブ/ロードは `getPhaseOffsets()`/`setPhaseOffsets()` で読み書きする(`Game` の private `applySaveData` が共有インスタンスへ書き戻す。インスタンスの作り直しはしない。`setPhaseOffsets` は3系統のキャッシュを全てクリアする) |
 | `registry`/`originId`/`epochOffsetSec` | `Ephemeris`(コンストラクタ引数、以後不変) | どのステージも既定値(`SOLAR_SYSTEM`/`'earth'`/`EPOCH_T_OFFSET`)を渡すが、`StageClass.ephemerisConfig` を宣言したステージだけ `Game` が別の値を渡して構築する。`starId`/`inertialFrame`/`frames`(登録天体ぶんの `ReferenceFrame` 一覧)もこの3引数からコンストラクタが1回だけ導出する正本(いずれも下記 `frameCache` を経由して作る) |
 | `frameCache`(`Map<AttractorId, Map<OrbitingId \| null, ReferenceFrame>>`) | `Ephemeris`(`frameOf` 経由) | `(center, rotatingWith)` の対ごとに `ReferenceFrame` を1個だけ持つ、実行時に伸びる正本。レジストリ登録の有無を問わない(生存中の重力天体を中心にする回転系にも同じ契約で応じる)。`inertialFrame`/`frames`/`frameFor` はすべてこのキャッシュを経由して作られた値を返すので、同じ対に対して異なる参照が生まれない(`trajectory-line.ts` の `frame === lastFrame` 参照同一性契約を満たすためのもの) |
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
