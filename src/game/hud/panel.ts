@@ -339,7 +339,9 @@ export class HudPanels {
     }
     list.innerHTML = rows
       .map((r) => {
-        const style = r.secondary ? ` style="color:${ACCENT_SECONDARY}"` : '';
+        // 1つの波に第一・第二ターゲットが混在しうる。インライン色は .tgt のクラス指定に勝つため、
+        // 第一ターゲットを含む行は ▶ と同じ色に倒す。
+        const style = r.secondary && !r.targeted ? ` style="color:${ACCENT_SECONDARY}"` : '';
         const mark = r.targeted ? '▶ ' : r.secondary ? '▷ ' : '';
         const label = r.kind === 'wave' ? `第${r.waveId}波 ×${r.count}` : r.name;
         return `<div class="erow${r.targeted ? ' tgt' : ''}"${style}><span>${mark}${label}</span><span>${fmtDist(r.dist)}</span></div>`;
