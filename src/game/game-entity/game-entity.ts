@@ -11,7 +11,7 @@ import { isBurnedUp } from '../../physics/atmosphere';
 import { Vec3, len, sub, v3 } from '../../physics/vec3';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine, OrbitLineExcludeNearBody } from '../orbit-line';
-import { EMPTY_SAMPLES, TrajectoryLine } from '../trajectory-line';
+import { TrajectoryLine } from '../trajectory-line';
 import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
@@ -137,25 +137,16 @@ export class GameEntity {
     this.orbitLine.sync(show ? this.orbitalElementsAround(center) : null, fo, camera, force, excludeNearBody);
   }
 
-  // 現在状態を先頭に、predictedTrajectory のうちそれより未来のサンプルを続けた点列。
-  // 線の先頭が常に現在位置に一致するようにする。
-  private predictedSamples(): readonly KinematicState[] {
-    const predicted = this.predictedTrajectory?.samplesOldestFirst() ?? EMPTY_SAMPLES;
-    const now = this.state;
-    let i = 0;
-    while (i < predicted.length && predicted[i]!.t <= now.t) i++;
-    if (i >= predicted.length) return EMPTY_SAMPLES;
-    return [now, ...predicted.slice(i)];
-  }
-
-  // trajectoryLine を予測軌道の点列に合わせる。show が false のときは非表示にする。
+  // trajectoryLine を、現在時刻以降の predictedTrajectory に合わせる(線の先頭が常に現在位置に
+  // 一致するようにする)。show が false のときは非表示にする。
   syncTrajectoryLine(
     show: boolean, frame: ReferenceFrame, simTime: number, ephemeris: Ephemeris, fo: FloatingOrigin,
     camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
     if (this.trajectoryLine === null) return;
-    const samples = show ? this.predictedSamples() : EMPTY_SAMPLES;
-    this.trajectoryLine.syncGeometry(samples, frame, ephemeris, attractors);
+    this.trajectoryLine.syncGeometry(
+      show ? this.predictedTrajectory : null, simTime, frame, ephemeris, attractors,
+    );
     this.trajectoryLine.syncTransform(frame, simTime, ephemeris, fo, attractors);
     this.trajectoryLine.sync(camera);
   }
