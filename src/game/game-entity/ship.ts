@@ -139,11 +139,10 @@ export abstract class Ship extends GameEntity {
     }
   }
 
-  // セーブされた総HPだけを復元する経路。部品単位のHPまでは保存していない呼び出し元
-  // (Enemy — parts構成自体は毎回既定値で組み直す)向けに、既定パーツへ按分して
-  // savedHp 相当の残HPへ揃え直す。initDefaultParts() 直後(全パーツ満タン)に呼ぶ想定。
-  restoreOverallHp(savedHp: number): void {
-    const ratio = this.maxHp > 0 ? Math.max(0, Math.min(1, savedHp / this.maxHp)) : 0;
+  // 既定パーツ構成のまま、総HPを total へ按分して揃える。部品単位のHPまでは持たない
+  // 呼び出し元(Enemy)向けで、initDefaultParts() 直後(全パーツ満タン)に呼ぶ想定。
+  protected setOverallHp(total: number): void {
+    const ratio = this.maxHp > 0 ? Math.max(0, Math.min(1, total / this.maxHp)) : 0;
     for (const p of this.parts) p.hp = p.maxHp * ratio;
     this.updateOverallHp();
   }

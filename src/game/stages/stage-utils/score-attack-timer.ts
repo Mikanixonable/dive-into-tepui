@@ -19,8 +19,4 @@ export class ScoreAttackTimer {
   serialize(): number {
     return this.timeLeft;
   }
-
-  restore(timeLeft: number): void {
-    this.timeLeft = timeLeft;
-  }
 }

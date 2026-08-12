@@ -22,24 +22,24 @@ function phasedState(base: KinematicState, dAlong: number): KinematicState {
 }
 
 // 無秩序に漂う敵(訓練クラスタ・通常ステージのプリセット敵の生成本体): ランダム姿勢+角速度。
-export function generateDriftingEnemy(name: string, state: KinematicState, hp: number, accent: string | number, orbitLineColor: string | number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+export function generateDriftingEnemy(name: string, state: KinematicState, _hp: number, accent: string | number, orbitLineColor: string | number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
   return new Enemy(
-    name,
-    state,
-    { kind: 'drifting' },
     {
-      // ランダムな姿勢・角速度を与える
-      q: randomQuat(),
-      w: v3(randSym(0.12), randSym(0.12), randSym(0.12)),
-      inertia: inertiaForEnemyKind({ kind: 'drifting' }),
+      name,
+      state,
+      enemyKind: { kind: 'drifting' },
+      att: {
+        // ランダムな姿勢・角速度を与える
+        q: randomQuat(),
+        w: v3(randSym(0.12), randSym(0.12), randSym(0.12)),
+        inertia: inertiaForEnemyKind({ kind: 'drifting' }),
+      },
+      accent,
+      orbitLineColor,
     },
-    hp,
-    accent,
-    orbitLineColor,
     hud,
     sfx,
     fx,
-    undefined,
     scene,
   );
 }
@@ -96,25 +96,26 @@ export function generateMolniyaEnemy(
 
 // ステージ00ウェーブ敵: 自機へのフライパスなので、機首をプログレードに向けて生成する。
 export function generateApproachingEnemy(
-  name: string, state: KinematicState, hp: number, accent: number, orbitLineColor: number, typeIndex: number, waveId: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene,
+  name: string, state: KinematicState, _hp: number, accent: number, orbitLineColor: number, typeIndex: number, waveId: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   return new Enemy(
-    name,
-    state,
-    { kind: 'stage0', typeIndex },
     {
-      // 機首をプログレードへ向ける
-      q: qFromForwardUp(state.v, state.r) ?? randomQuat(),
-      w: v3(0, 0, 0),
-      inertia: inertiaForEnemyKind({ kind: 'stage0', typeIndex }),
+      name,
+      state,
+      enemyKind: { kind: 'stage0', typeIndex },
+      att: {
+        // 機首をプログレードへ向ける
+        q: qFromForwardUp(state.v, state.r) ?? randomQuat(),
+        w: v3(0, 0, 0),
+        inertia: inertiaForEnemyKind({ kind: 'stage0', typeIndex }),
+      },
+      accent,
+      orbitLineColor,
+      waveId,
     },
-    hp,
-    accent,
-    orbitLineColor,
     hud,
     sfx,
     fx,
-    waveId,
     scene,
   );
 }

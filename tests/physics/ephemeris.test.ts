@@ -279,13 +279,14 @@ export function register(): void {
     assert.deepEqual(e.attractorsAt(0), a);
   });
 
-  test('ephemeris: setPhaseOffsets 後は古い値を返さない', () => {
-    const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
-    const before = e.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
-    e.setPhaseOffsets({ earth: 0.3, moon: 2.1 });
-    const after = e.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
-    assert.ok(len(sub(before, after)) > 1e6, `位相差し替えが反映されていない: ${len(sub(before, after))}`);
-    assert.deepEqual(after, new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 2.1 }).positionOf('moon', 1234));
+  test('ephemeris: 位相オフセットが違えば同じ時刻でも別の位置になる', () => {
+    const a = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
+    const b = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 2.1 });
+    const moonA = a.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
+    const moonB = b.attractorsAt(1234).find((x) => x.id === 'moon')!.state.r;
+    assert.ok(len(sub(moonA, moonB)) > 1e6, `位相オフセットが反映されていない: ${len(sub(moonA, moonB))}`);
+    // attractorsAt の時刻キャッシュを経由しても positionOf と同じ値を返す。
+    assert.deepEqual(moonB, b.positionOf('moon', 1234));
   });
 
   // EPOCH_T_OFFSET はこの見た目の条件そのものから逆算された定数なので、これはその逆算の検算。

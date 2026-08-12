@@ -69,10 +69,12 @@ export class EnvironmentScene {
   private readonly referenceLines: Map<OrbitingId, OrbitLine>;
 
   // 天体ビューの配列がすべて ephemeris から引く。天体暦はゲーム側が所有する単一インスタンスを
-  // 共有参照する(状態を持たない純サンプラ)。
+  // 共有参照する(状態を持たない純サンプラ)。earthSpinPhase0 を与えると地球の自転初期位相を
+  // その値にする(地球が現在のレジストリに無ければ何もしない)。
   constructor(
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
+    earthSpinPhase0?: number,
   ) {
     this.scene = scene;
     const registry = ephemeris.registry;
@@ -94,6 +96,11 @@ export class EnvironmentScene {
     this.bodies = Object.keys(registry).map((id) =>
       id in CELESTIAL_BODIES ? CELESTIAL_BODIES[id as SolarSystemId].create() : fallbackCelestialView(registry, id));
     for (const body of this.bodies) body.build(scene);
+
+    if (earthSpinPhase0 !== undefined) {
+      const earth = this.bodies.find((b): b is EarthBody => b instanceof EarthBody);
+      earth?.setSpinPhase0(earthSpinPhase0);
+    }
   }
 
   // 表示時刻 t の点群の位置を更新する。
@@ -107,12 +114,6 @@ export class EnvironmentScene {
   earthSpinPhase0(): number | undefined {
     const earth = this.bodies.find((b): b is EarthBody => b instanceof EarthBody);
     return earth?.spinPhase0();
-  }
-
-  // 地球の自転初期位相を差し替える(ロード用)。地球が現在のレジストリに無ければ何もしない。
-  setEarthSpinPhase0(phase0: number): void {
-    const earth = this.bodies.find((b): b is EarthBody => b instanceof EarthBody);
-    earth?.setSpinPhase0(phase0);
   }
 
   // 天体ビュー・星・照明・参照線・天球グリッドを、この1フレームの表示状態に同期する。

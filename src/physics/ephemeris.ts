@@ -108,21 +108,11 @@ class TimeRing<T> {
 }
 
 export class Ephemeris {
-  // 天体ごとの平均黄経の初期オフセット。既定は月のみ乱数(現行の挙動)。テストは決定的な
-  // 位相を渡すためコンストラクタで上書きする。セーブ/ロードは setPhaseOffsets で書き換える
-  // (共有インスタンスを差し替えないため)。
-  private phaseOffsets: Partial<Record<AttractorId, number>>;
+  // 天体ごとの平均黄経の初期オフセット。構築時に決まり、以後変わらない。既定は月のみ乱数で、
+  // テストやセーブからの再開は決定的な位相をコンストラクタへ渡す。
+  private readonly phaseOffsets: Partial<Record<AttractorId, number>>;
 
-  private _phaseGeneration = 0;
-
-  // 位相オフセットを差し替えるたびに増える世代値。同じ時刻でも天体の位置が変わったことを、
-  // 結果をキャッシュしている呼び出し側が知るための値。
-  get phaseGeneration(): number {
-    return this._phaseGeneration;
-  }
-
-  // 天体ごとの中間結果と、天体一覧を返す各メソッドの時刻キャッシュ。位相オフセットを差し替えたら
-  // すべて破棄する。
+  // 天体ごとの中間結果と、天体一覧を返す各メソッドの時刻キャッシュ。
   private readonly planetHelioCache = new Map<AttractorId, TimeRing<KinematicState>>();
   private readonly satelliteRelCache = new Map<AttractorId, TimeRing<KinematicState>>();
   private readonly allAttractorsCache = new TimeRing<readonly Attractor[]>();
@@ -199,17 +189,6 @@ export class Ephemeris {
   // 現在の位相オフセットのスナップショット(セーブ用)。
   getPhaseOffsets(): Partial<Record<AttractorId, number>> {
     return { ...this.phaseOffsets };
-  }
-
-  // 位相オフセットを丸ごと差し替える(ロード用)。同じ時刻でも返る値が変わるので、
-  // 時刻キャッシュはすべて破棄する。
-  setPhaseOffsets(phaseOffsets: Partial<Record<AttractorId, number>>): void {
-    this.phaseOffsets = phaseOffsets;
-    this._phaseGeneration++;
-    for (const ring of this.planetHelioCache.values()) ring.clear();
-    for (const ring of this.satelliteRelCache.values()) ring.clear();
-    this.allAttractorsCache.clear();
-    this.gravityAttractorsCache.clear();
   }
 
   // id の平均黄経の初期位相(未指定なら 0)。

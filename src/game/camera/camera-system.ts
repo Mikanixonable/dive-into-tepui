@@ -112,6 +112,7 @@ export class CameraSystem {
   private readonly showStatusInOverview: boolean;
 
   // 両カメラとフォーカス候補ラベルを構築し、常用ショートリストパネルの選択操作を配線する。
+  // saved があれば両カメラをその視点から組む。
   constructor(
     _hud: Hud,
     sfx: Sfx,
@@ -119,12 +120,13 @@ export class CameraSystem {
     ephemeris: Ephemeris,
     player: Player | null,
     showStatusInOverview = false,
+    saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
   ) {
     this.showStatusInOverview = showStatusInOverview;
     // 両カメラとフォーカス候補ラベル
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
-    this.combatCamera = new CombatCameraSystem(_hud, sfx, player);
-    this.overviewCamera = new OverviewCamera(_hud, sfx, ephemeris);
+    this.combatCamera = new CombatCameraSystem(_hud, sfx, player, saved?.chase);
+    this.overviewCamera = new OverviewCamera(_hud, sfx, ephemeris, saved?.overview);
     // 広範囲視点の操作パネルと各操作のコールバック
     this.overviewCameraPanel = new OverviewCameraPanel(_hud.layers.panel);
     this.overviewCameraPanel.onBodyClassToggle = (key, on) => {
@@ -248,10 +250,5 @@ export class CameraSystem {
   // 両サブカメラの視点状態をセーブデータへ書き出す。どちらが表示中かは ViewManager の責務。
   serialize(): Pick<CameraSaveData, 'chase' | 'overview'> {
     return { chase: this.combatCamera.serialize(), overview: this.overviewCamera.serialize() };
-  }
-
-  restore(d: Pick<CameraSaveData, 'chase' | 'overview'>): void {
-    this.combatCamera.restore(d.chase);
-    this.overviewCamera.restore(d.overview);
   }
 }

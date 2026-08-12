@@ -85,12 +85,6 @@ export class SimSpeedManager {
     this.autoWarpUntil = null;
   }
 
-  // ワープ段を等倍(×1)へ戻し、自動ワープも解除する。
-  reset(): void {
-    this.levelIdx = 0;
-    this.autoWarpUntil = null;
-  }
-
   // 担当キーの受け口: [,]/[.] でワープ段を上下、[N] で直近ノードへの自動ワープをトグルする。
   // 計画編集中は WASDQE などと同じく [N] を計画側へ譲るため editMode 中は受け取らない。
   // ワープ操作は決着後・ポーズ中も効くべきなので、game はこれをそれらの early return より
