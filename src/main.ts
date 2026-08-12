@@ -1,4 +1,4 @@
-// HUD の font-family(theme.ts の FONT)は 'JetBrains Mono' → 'HackGen' の順で、
+// HUD の font-family(theme.ts の FONT_FAMILY)は 'JetBrains Mono' → 'HackGen' の順で、
 // 前者がラテン字形を、後者が日本語を含む残り全てを担う。太さは 400 のみを読み込み、
 // bold 指定はブラウザの合成に任せる。
 import '@fontsource/jetbrains-mono/latin-400.css';
@@ -9,7 +9,10 @@ import { createGameScene, GameScene } from './render/scene';
 import { Game } from './game/game';
 import { PerfMeter } from './perf-meter';
 import { FrameSections } from './frame-sections';
-import { ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT } from './game/theme';
+import {
+  ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT_FAMILY,
+  FONT_2XL, FONT_M, FONT_XL, RADIUS_S, RADIUS_M,
+} from './game/theme';
 import { Hud } from './game/hud/hud';
 import { SettingsPanel } from './game/hud/settings-panel';
 import { Sfx } from './audio/sfx';
@@ -68,12 +71,12 @@ function showLoading(): () => void {
   const div = document.createElement('div');
   div.style.cssText =
     'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-    `gap:14px;color:${TEXT};background:${BG};font-family:${FONT};z-index:200;text-align:center`;
+    `gap:14px;color:${TEXT};background:${BG};font-family:${FONT_FAMILY};z-index:200;text-align:center`;
   div.innerHTML =
-    `<div style="font-size:22px;letter-spacing:6px;color:${ACCENT}">Dive into Tepui</div>` +
+    `<div style="font-size:${FONT_2XL};letter-spacing:6px;color:${ACCENT}">Dive into Tepui</div>` +
     `<div style="width:40px;height:40px;border-radius:50%;border:3px solid ${SURFACE};` +
     `border-top-color:${ACCENT};animation:tepui-spin 0.9s linear infinite"></div>` +
-    `<div style="font-size:12px;color:${TEXT_DIM}">初期化中(WebGPU)…</div>`;
+    `<div style="font-size:${FONT_M};color:${TEXT_DIM}">初期化中(WebGPU)…</div>`;
   const style = document.createElement('style');
   style.textContent = '@keyframes tepui-spin { to { transform: rotate(360deg); } }';
   document.head.appendChild(style);
@@ -99,11 +102,11 @@ function showFatalError(title: string, message: string, error: unknown): void {
   overlay.setAttribute('aria-modal', 'true');
   overlay.style.cssText =
     'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;' +
-    `color:${TEXT};background:${BG};font-family:${FONT};font-size:16px;text-align:center;line-height:2;z-index:1000`;
+    `color:${TEXT};background:${BG};font-family:${FONT_FAMILY};font-size:${FONT_XL};text-align:center;line-height:2;z-index:1000`;
 
   const panel = document.createElement('div');
   panel.style.cssText =
-    `max-width:680px;background:${SURFACE_OPAQUE};border:1px solid ${EDGE};border-radius:4px;padding:22px 32px`;
+    `max-width:680px;background:${SURFACE_OPAQUE};border:1px solid ${EDGE};border-radius:${RADIUS_M};padding:22px 32px`;
 
   const heading = document.createElement('div');
   heading.style.color = ACCENT;
@@ -115,7 +118,7 @@ function showFatalError(title: string, message: string, error: unknown): void {
   panel.appendChild(description);
 
   const detail = document.createElement('div');
-  detail.style.cssText = `color:${TEXT_DIM};font-size:12px;overflow-wrap:anywhere`;
+  detail.style.cssText = `color:${TEXT_DIM};font-size:${FONT_M};overflow-wrap:anywhere`;
   detail.textContent = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   panel.appendChild(detail);
 
@@ -123,7 +126,7 @@ function showFatalError(title: string, message: string, error: unknown): void {
   reload.type = 'button';
   reload.style.cssText =
     `margin-top:14px;padding:8px 18px;color:${TEXT};background:${BG};border:1px solid ${ACCENT};` +
-    `border-radius:3px;font:inherit;cursor:pointer`;
+    `border-radius:${RADIUS_S};font:inherit;cursor:pointer`;
   reload.textContent = 'ページを再読み込み';
   reload.addEventListener('click', () => location.reload());
   panel.appendChild(reload);

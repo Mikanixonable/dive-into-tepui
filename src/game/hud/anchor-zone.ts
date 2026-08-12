@@ -9,7 +9,7 @@ import { groupPickables, LAGRANGE_ID, lagrangeParentId } from './object-groups';
 import { ObjectPicker, ObjectPickerGroup } from './object-picker';
 
 const STYLE = `
-#hud .hud-anchor-zone { display: flex; flex-direction: column; gap: 4px; }
+#hud .hud-anchor-zone { display: flex; flex-direction: column; gap: var(--space-2); }
 `;
 
 let styleInjected = false;

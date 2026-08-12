@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
+import { AXIS_PROGRADE, AXIS_NORMAL, AXIS_RADIAL } from '../theme';
 
 // 選択中ノードの Δv アーム6本(PRO/RET・NRM/ANM・OUT/IN)を表す3D矢印ギズモ。
 export class PlanGizmo3D {
@@ -9,18 +10,18 @@ export class PlanGizmo3D {
   constructor() {
     this.group.renderOrder = 999;
 
-    this.createAxis(new THREE.Vector3(0, 1, 0), 0x3b82f6); // PRO
-    this.createAxis(new THREE.Vector3(0, -1, 0), 0x3b82f6); // RETRO
-    this.createAxis(new THREE.Vector3(0, 0, 1), 0x10b981); // NRM
-    this.createAxis(new THREE.Vector3(0, 0, -1), 0x10b981); // ANTI-NRM
-    this.createAxis(new THREE.Vector3(1, 0, 0), 0xef4444); // RAD
-    this.createAxis(new THREE.Vector3(-1, 0, 0), 0xef4444); // RAD-IN
+    this.createAxis(new THREE.Vector3(0, 1, 0), AXIS_PROGRADE); // PRO
+    this.createAxis(new THREE.Vector3(0, -1, 0), AXIS_PROGRADE); // RETRO
+    this.createAxis(new THREE.Vector3(0, 0, 1), AXIS_NORMAL); // NRM
+    this.createAxis(new THREE.Vector3(0, 0, -1), AXIS_NORMAL); // ANTI-NRM
+    this.createAxis(new THREE.Vector3(1, 0, 0), AXIS_RADIAL); // RAD
+    this.createAxis(new THREE.Vector3(-1, 0, 0), AXIS_RADIAL); // RAD-IN
 
     this.group.visible = false;
   }
 
   // ローカル方向 dir(単位ベクトル)を向く矢印(軸+頭)を1本作り、group へ加える。
-  private createAxis(dir: THREE.Vector3, color: number): void {
+  private createAxis(dir: THREE.Vector3, color: string): void {
     const length = 20;
     const headLength = 4;
     const headWidth = 2.5;

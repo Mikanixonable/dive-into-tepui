@@ -496,11 +496,11 @@ export class Player extends Ship {
       priority,
       name: this.displayName,
       detail: '',
-      bearingColor: '#00ffff', // 自機/味方と分かりやすいようにシアン
+      bearingColor: C.COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: dist <= C.ALLY_BEARING_MAX_DISTANCE,
-      color: '#00ffff',
+      color: C.COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }

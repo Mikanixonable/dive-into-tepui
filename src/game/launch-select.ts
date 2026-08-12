@@ -2,7 +2,10 @@
 import { STAGE_DEFINITIONS } from './stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import { LaunchSelection } from './game-mode';
-import { ACCENT, ACCENT_RGB, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT } from './theme';
+import {
+  ACCENT, ACCENT_EDGE, ACCENT_FILL_WEAK, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT_FAMILY,
+  FONT_S, FONT_M, FONT_L, FONT_2XL, RADIUS_M,
+} from './theme';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 
 // 起動選択画面(ステージモード/クリエイティブモードのタブ)を表示し、
@@ -14,15 +17,15 @@ export function selectLaunch(unlockManager: UnlockManager): Promise<LaunchSelect
     div.style.cssText =
       'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;' +
       'box-sizing:border-box;padding:clamp(28px,8vh,72px) 16px 24px;overflow:hidden;' +
-      `gap:14px;color:${TEXT};background:${BG};font-family:${FONT};z-index:100;text-align:center`;
+      `gap:14px;color:${TEXT};background:${BG};font-family:${FONT_FAMILY};z-index:100;text-align:center`;
     // 1項目分のボタン要素を組み立てる。ロック中は薄く表示しクリック不可にする。
     const btn = (label: string, sub: string, enabled: boolean) => {
       const b = document.createElement('div');
       b.style.cssText =
         `width: 420px; max-width: 92vw; box-sizing: border-box; padding: 16px 24px; background: ${SURFACE};` +
-        `border: 1px solid ${enabled ? `rgba(${ACCENT_RGB}, 0.4)` : EDGE}; border-radius: 4px;` +
+        `border: 1px solid ${enabled ? ACCENT_EDGE : EDGE}; border-radius: ${RADIUS_M};` +
         `line-height: 1.7; ${enabled ? 'cursor: pointer' : 'opacity: 0.45'}`;
-      b.innerHTML = `<div style="font-size:22px;letter-spacing:3px;color:${enabled ? ACCENT : TEXT_DIM}">${label}</div><div style="font-size:12px;color:${TEXT_DIM}">${sub}</div>`;
+      b.innerHTML = `<div style="font-size:${FONT_2XL};letter-spacing:3px;color:${enabled ? ACCENT : TEXT_DIM}">${label}</div><div style="font-size:${FONT_M};color:${TEXT_DIM}">${sub}</div>`;
       return b;
     };
     // rMQRとタイトル文字を同じ幅のロゴブロックにまとめる。画像だけを
@@ -40,7 +43,7 @@ export function selectLaunch(unlockManager: UnlockManager): Promise<LaunchSelect
       const t = document.createElement('button');
       t.textContent = label;
       t.style.cssText =
-        `flex:1;height:38px;padding:6px 12px;font:inherit;font-size:13px;letter-spacing:2px;cursor:pointer;color:${TEXT_DIM};background:transparent;border:0;border-bottom:2px solid transparent;`;
+        `flex:1;height:38px;padding:6px 12px;font:inherit;font-size:${FONT_L};letter-spacing:2px;cursor:pointer;color:${TEXT_DIM};background:transparent;border:0;border-bottom:2px solid transparent;`;
       return t;
     };
     const stageTab = tab('ステージモード');
@@ -55,10 +58,10 @@ export function selectLaunch(unlockManager: UnlockManager): Promise<LaunchSelect
     const setActiveTab = (mode: 'stage' | 'creative') => {
       stageTab.style.color = mode === 'stage' ? ACCENT : TEXT_DIM;
       stageTab.style.borderBottomColor = mode === 'stage' ? ACCENT : 'transparent';
-      stageTab.style.background = mode === 'stage' ? `rgba(${ACCENT_RGB}, 0.08)` : 'transparent';
+      stageTab.style.background = mode === 'stage' ? ACCENT_FILL_WEAK : 'transparent';
       creativeTab.style.color = mode === 'creative' ? ACCENT : TEXT_DIM;
       creativeTab.style.borderBottomColor = mode === 'creative' ? ACCENT : 'transparent';
-      creativeTab.style.background = mode === 'creative' ? `rgba(${ACCENT_RGB}, 0.08)` : 'transparent';
+      creativeTab.style.background = mode === 'creative' ? ACCENT_FILL_WEAK : 'transparent';
       listDiv.innerHTML = '';
       if (mode === 'stage') {
         for (const stage of STAGE_DEFINITIONS) {
@@ -89,7 +92,7 @@ export function selectLaunch(unlockManager: UnlockManager): Promise<LaunchSelect
     const debugLink = document.createElement('div');
     debugLink.textContent = 'debug stage [d]';
     debugLink.style.cssText =
-      `position: fixed; bottom: 10px; left: 14px; font-size: 11px; color: ${TEXT_DIM}; cursor: pointer; z-index: 200;`;
+      `position: fixed; bottom: 10px; left: 14px; font-size: ${FONT_S}; color: ${TEXT_DIM}; cursor: pointer; z-index: 200;`;
     debugLink.addEventListener('click', () => done({ mode: 'stage', stage: 'debug' }));
     document.body.appendChild(debugLink);
 

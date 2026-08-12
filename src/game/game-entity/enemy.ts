@@ -141,11 +141,11 @@ export class Enemy extends Ship {
       priority,
       name: this.name,
       detail: fmtMarkerDist(dist),
-      // 敵本体・距離ラベル・画面外方位マーカーは同じ白で統一する。
-      bearingColor: '#ffffff',
+      // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。
+      bearingColor: C.COLOR_MARKER_ENEMY,
       bearingSym: ENTITY_GLYPH.ship,
       bearingClass: 'mk-dir mk-bearing-triangle',
-      color: '#ffffff',
+      color: C.COLOR_MARKER_ENEMY,
       symMarkup: true,
     };
   }

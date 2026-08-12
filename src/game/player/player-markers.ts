@@ -9,7 +9,7 @@ import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
 import type { Attractor } from '../../physics/attractor';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import { isPositionInFocusedSystem } from '../celestial/body-visibility';
-import { COLOR_ACCENT } from '../const';
+import { ACCENT } from '../theme';
 import type { MapVisibility } from '../celestial/map-visibility';
 
 // 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
@@ -33,7 +33,7 @@ export class PlayerMarkers {
       }
       if (displayState && (!registry || isPositionInFocusedSystem(registry, focusId, displayState.r, attractors))
         && (!visibility || visibility.pickable)) {
-        const color = isActive ? COLOR_ACCENT : undefined;
+        const color = isActive ? ACCENT : undefined;
         const rotationDeg = this.markerManager.headingRotationDeg(displayState.r, displayState.v, project, scaleFn);
         this.markerManager.setPosition(
           selfKey, 'mk-self', visibility?.icon === false ? '' : ENTITY_GLYPH.ship, displayState.r, project,
