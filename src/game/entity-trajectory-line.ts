@@ -101,12 +101,15 @@ export class EntityTrajectoryLine {
     }
   }
 
-  // entity の予測軌道線が、表示中の時間範囲 [simTime, simTime + horizon] を最後まで覆っているかを返す。
-  // 解析楕円は「予測が間に合っていないあいだの代替表示」なので、その抑制可否はこの問いで決まる —
-  // 天体貫入などで打ち切られた列はそれ以上伸びないので、覆えていなくても代替は要らない。
-  coversHorizon(entity: GameEntity, simTime: number, horizon: number): boolean {
+  // entity の解析楕円(代替表示)をこの予測軌道線で隠してよいかを返す。マップビューでは
+  // 楕円が表示期間 [simTime, simTime + horizon] 全体の代替を担うため、予測がそこまで覆って
+  // いる(天体貫入などで打ち切られ、以後伸びない場合も含む)ときだけ隠す。戦闘ビューには
+  // 表示期間を見せるという用途がなく、予測線が描かれてさえいれば解析楕円と並んで見える方が
+  // 誤読を招くので、覆っているかを問わず隠す。
+  supersedesAnalyticEllipse(entity: GameEntity, simTime: number, horizon: number, overviewMode: boolean): boolean {
     const line = this.lines.peek(entity);
     if (!line || !line.visible) return false;
+    if (!overviewMode) return true;
     if (entity.predictionTruncated) return true;
     const tip = entity.predictedTrajectory?.state.t;
     return tip !== undefined && tip >= simTime + horizon;
