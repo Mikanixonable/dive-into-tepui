@@ -5,7 +5,7 @@ import { Vec3, add, v3 } from '../../physics/vec3';
 import { Attractor, orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 
-// segmentDurationFrom が要求する DisplayTimeManager の部分だけを切り出した形。
+// segmentDurationFrom が要求する表示窓の部分だけを切り出した形。
 export interface DisplayDurationSource {
   durationSec(referencePeriod: number): number;
 }
@@ -18,7 +18,7 @@ export function orbitPeriodOf(state: KinematicState, attractors: readonly Attrac
 }
 
 // ある状態を起点に描かれる区間の長さ [s]。その状態の遷移後軌道の公転周期を参照期間として
-// DisplayTimeManager の表示期間を引く。ノードを置ける時刻範囲(nodeTimeRange)と描かれる
+// 表示期間を引く。ノードを置ける時刻範囲(nodeTimeRange)と描かれる
 // 折れ線の長さ(plan-path.ts の buildSegments)は必ずこの値を共有する — 両者が
 // 別々に定義すると描画範囲とノード配置可能範囲がずれる。
 export function segmentDurationFrom(
