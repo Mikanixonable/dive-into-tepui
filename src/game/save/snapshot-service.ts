@@ -40,26 +40,22 @@ export class SnapshotService {
     return this.slots.addSnapshot(slotId, game.activeStage.id, meta, buildSaveData(game)) ? meta : null;
   }
 
-  // snapshotId のスナップショットを game へ復元する。本体欠損・バージョン不一致・
-  // ステージ不一致のいずれかなら何もせず false を返す。
-  restore(game: Game, snapshotId: string): boolean {
+  // snapshotId のスナップショット本体を取得する。本体欠損・バージョン不一致・
+  // 起動先ステージとの不一致のいずれかなら null。
+  load(snapshotId: string, expectedStageId: string): GameSaveData | null {
     const data = this.store.readSnapshot(snapshotId);
-    if (data === null) return false;
-    if (data.version !== SAVE_VERSION) return false;
-    if (game.activeStage.id !== data.stageId) return false;
+    if (data === null) return null;
+    if (data.version !== SAVE_VERSION) return null;
+    if (expectedStageId !== data.stageId) return null;
     // Old snapshots have no context and intentionally retain the existing
     // migration behavior. Once a snapshot explicitly records its ephemeris,
     // loading it under a different epoch/profile/pack would make its absolute
-    // celestial state ambiguous, so decline it without mutating the game.
+    // celestial state ambiguous, so decline it.
     if (!isEphemerisContextCompatible(
       (data as { ephemerisContext?: unknown }).ephemerisContext,
       CURRENT_EPHEMERIS_CONTEXT,
-    )) return false;
-
-    game.restore(data);
-    // ロードした時点より後の自動スナップショットは、もう起きなかった未来なので破棄する。
-    this.slots.discardAfter(snapshotId);
-    return true;
+    )) return null;
+    return data;
   }
 }
 
