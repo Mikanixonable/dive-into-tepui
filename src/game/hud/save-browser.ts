@@ -37,6 +37,8 @@ export class SaveBrowser {
 
   // ページ再読込などスロット切替の実処理は呼び出し側が行う。
   onSlotSwitched: (() => void) | null = null;
+  // スナップショットのロードは Game を作り直すことで表現するため、実処理は呼び出し側が行う。
+  onLoadSnapshot: ((snapshotId: string) => void) | null = null;
 
   get visible(): boolean { return this._visible; }
 
@@ -311,13 +313,7 @@ export class SaveBrowser {
       this.rebuild();
       return;
     }
-    const ok = this.service.restore(this.game, snapId);
-    if (ok) {
-      this.close();
-    } else {
-      this.setStatus('ロードに失敗しました。', true);
-      this.rebuild();
-    }
+    this.onLoadSnapshot?.(snapId);
   }
 
   // クリップ時は名前を尋ね、解除時はそのまま外す。
