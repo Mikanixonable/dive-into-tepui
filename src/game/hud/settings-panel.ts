@@ -90,8 +90,10 @@ export class SettingsPanel {
     );
   }
 
-  // 一時停止メニューを開くキー入力を処理する。
+  // 一時停止メニューを開くキー入力を処理する。スナップショット一覧が開いている間は
+  // [Esc] をそちらの「閉じる」操作に譲る。
   handleInput(input: Input): void {
+    if (this.modalController.isModalOpen('save-browser')) return;
     if (input.takeKey(K.pauseMenu)) this.toggle();
   }
 
