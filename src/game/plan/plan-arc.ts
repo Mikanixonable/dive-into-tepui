@@ -20,6 +20,9 @@ import * as C from '../const';
 // 積分の終端は要求時刻に対して丸め誤差ぶん手前に落ちうる。この幅までは終端そのものとみなす。
 const EPOCH_EPS = 1e-6;
 
+// まだ積分していない区間の samples。参照同一性で変化を判定できるよう共有インスタンスを返す。
+const NO_SAMPLES: readonly KinematicState[] = [];
+
 // 天体接近時、1ステップで表面までの距離を跨いでしまわないための安全率
 // (表面までの距離 ÷ 相対速度 に掛ける上限係数)。
 const APPROACH_STEP_SAFETY = 0.5;
@@ -162,7 +165,6 @@ export class PlanArc {
   private readonly impactCandidates: ImpactCandidate[] = [];
   private readonly stepAttractorsScratch: Attractor[] = [];
   private trajectory: DynamicTrajectory | null = null;
-  private _samples: readonly KinematicState[] = [];
   // 積分中に最初に天体表面へ達した状態とその天体。到達しなければ null。
   private impact: PlanImpact | null = null;
   // 積分中に最初に見つかった近地点・遠地点。apsisCenter が null、またはその極値へ
@@ -250,7 +252,7 @@ export class PlanArc {
   sync(ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number, fo: FloatingOrigin,
     dashSize: number, gapSize: number, camera: THREE.Camera, attractors: readonly Attractor[]): void {
     this.line.setDash(dashSize, gapSize);
-    this.line.syncGeometry(this._samples, frame, ephemeris, attractors);
+    this.line.syncGeometry(this.trajectory, null, frame, ephemeris, attractors);
     this.line.syncTransform(frame, currentTime, ephemeris, fo, attractors);
     this.line.sync(camera);
   }
@@ -270,7 +272,7 @@ export class PlanArc {
 
   // 直近に積分したサンプル列。
   get samples(): readonly KinematicState[] {
-    return this._samples;
+    return this.trajectory?.samplesOldestFirst() ?? NO_SAMPLES;
   }
 
   // 線の表示/非表示を切り替える。
@@ -397,6 +399,5 @@ export class PlanArc {
 
     this.lastSteps = steps;
     this.trajectory = trajectory;
-    this._samples = trajectory.samplesOldestFirst();
   }
 }
