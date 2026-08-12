@@ -75,8 +75,9 @@ main.ts
     │                                       ({frame, simTime, referencePeriod, duration, displayTime})・
     │                                       重力源窓(解析天体+重力を持つ生存中の GameEntity の合流)を resolve() で
     │                                       1回だけ確定させ、update・sync 両フェーズの全消費者へ共有する。
-    │                                       Ephemeris・EntityManager を参照で持つ(所有しない)。entities の直後・
-    │                                       effects の直前に construct する
+    │                                       Ephemeris・EntityManager を参照で持つ(所有しない)。entities の直後に
+    │                                       construct する(entities 自身のコンストラクタが EffectsSystem の
+    │                                       生成まで終えている)
     │   └── DisplayTimePanel           ... DOM は Hud.layers.panel 配下。期間/未来位置スライダー。画面下端の帯として
     │                                       #hud-displaytime-wrap に開閉トグル(hud/dom.ts の buildCollapseToggle)と
     │                                       並べて包まれる。開閉状態はトグル対象要素の `.collapsed` クラスが正本(この
@@ -121,16 +122,15 @@ main.ts
     │   ├── OrbitLine (geoLine)         ... 静止軌道の参照線(天体ではない特例、個別フィールドのまま)
     │   ├── referenceLines: ReadonlyMap<OrbitingId, OrbitLine> ... SOLAR_SYSTEM の公転天体ぶん自動生成(衛星=旧月線色、惑星=白)。天体の登録追加だけで線が増える
     │   └── CelestialGrid              ... 赤道面/黄道面それぞれの基準円・緯経線グリッド・両極マーカー
-    ├── EffectsSystem
-    │   └── FlashEffectManager
-    │       ├── InstancedPool (pool)   ... geometry/material は render/billboard.ts の flashResources() が持つ
-    │       │                              共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
-    │       └── FlashEffect[]          ... 各々 THREE.Object3D(transform)のみ持つ(geometry/material は持たない)
     ├── Targeter
     │   ├── OrbitLine                  ... 第一ターゲット軌道線(オレンジ)
     │   ├── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
     │   └── ContextMenu<Enemy>         ... 第一/第二ターゲットの設定・解除メニュー。DOM は Hud.layers.popup 配下
-    ├── EntityManager                  ... エンティティ配列の保持のみ。simTime は持たない
+    ├── EntityManager                  ... エンティティ配列の保持と、破片(entity)の生成窓口である EffectsSystem
+    │                                       の所有。コンストラクタ引数 init(EntityManagerInit = {playerCount} の
+    │                                       新規開始 or {saved} の復元)の指すとおりに起動時の顔ぶれを配置し、
+    │                                       操作対象にする艦を initialActivePlayer(public readonly)として公開する。
+    │                                       simTime は持たない
     │   ├── InstancedPool (bulletBodyPool) ... geometry/material は render/ships.ts のモジュールスコープ
     │   │                                      共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
     │   ├── InstancedPool (bulletHaloPool)
@@ -139,6 +139,12 @@ main.ts
     │   ├── InstancedPool[] (debrisFragmentPools) ... 破片(fragment)バリアントごとに1本(render/ships.ts の
     │   │                                      debrisFragmentResources が持つジオメトリ配列と1本の白マテリアルを共有)。
     │   │                                      push の第2引数に DebrisPiece.fragmentColor(per-instance color)を渡す
+    │   ├── EffectsSystem               ... フラッシュ・破片の生成窓口。コンストラクタは EntityManager 自身(this)を
+    │   │                                      受け取る(addDebris 呼び出し用の注入クロージャは持たない)
+    │   │   └── FlashEffectManager
+    │   │       ├── InstancedPool (pool)   ... geometry/material は render/billboard.ts の flashResources() が持つ
+    │   │       │                              共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
+    │   │       └── FlashEffect[]          ... 各々 THREE.Object3D(transform)のみ持つ(geometry/material は持たない)
     │   ├── Player[] (players)         ... 自機。ステージモードでは1隻のみ。操作対象(Game.player)は
     │   │                                  この配列内の1隻への参照(§3-4 参照)
     │   │   ├── PlayerThrottle
@@ -236,7 +242,7 @@ main.ts
 | `Plan`(活艦の) | `Player`(活艦自身、`PlanEditor` ではない) | PlanEditor(`plan` getter が activePlayer.plan を転送)・PlanDisplay(`sync` の引数で毎フレーム)・PlanGuide(同)・CreativeStage(`planExecution` 艦のノード消化) |
 | `PlanExecutor`(艦ごとの) | `Player`(艦自身) | CreativeStage(`update`/`nextSimulationEventTime`/`applySimulationEvents` から呼ぶだけで保持しない) |
 | `SimSpeedManager` | Game | PlanEditor(ノードメニューからの自動ワープ) |
-| `EffectsSystem` | Game | Player・PlayerFire・Enemy・Stage |
+| `EffectsSystem`(`EntityManager.effects`) | EntityManager | Player・PlayerFire・Enemy・Stage(`Game` は `entities.effects` 経由でのみ触れる。所有権は持たない) |
 | `Player` / `Simulator` / `EntityManager` / `Stage` | Game | 毎フレームの引数として相互に渡される |
 | `UnlockManager` | main.ts | ステージセレクト画面と、各Stage（クリア後画面判定のため） |
 | `SnapshotService` | main.ts | main.ts 自身(起動時に `load()` して `initialSave` を組む)・AutoSave(コンストラクタ引数)・SaveBrowser(コンストラクタ引数)・SnapshotControls(コンストラクタ引数、`[F5]` から `capture` を呼ぶ)。Game はこれへの参照を持たない |
