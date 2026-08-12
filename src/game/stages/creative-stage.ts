@@ -3,7 +3,6 @@ import type * as THREE from 'three/webgpu';
 import { Stage } from './stage';
 import { Player } from '../player/player';
 import { EntityIdAllocator } from '../game-entity/entity-id';
-import type { StageSaveData } from '../save-data';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { Hud } from '../hud/hud';
@@ -71,6 +70,11 @@ export class CreativeStage extends Stage {
     fx: EffectsSystem, markerManager: MarkerManager, ephemeris: Ephemeris, simulator: Simulator,
   ): void {
     super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
+
+    // 以後の新規配置が既存 id と衝突しないよう、この時点で存在する艦・補給の id を予約する
+    // (スナップショットからの再開では entities が復元済み — 新規開始では空なので何もしない)。
+    for (const p of entities.players) this.playerIdAllocator.next(p.id);
+    for (const a of entities.ammos) this.ammoIdAllocator.next(a.id);
 
     this.previewOrbitLine = new OrbitLine(0xffffff, 0.6, C.LINE_RENDER_ORDER.plan);
     scene.add(this.previewOrbitLine.line);
@@ -243,7 +247,7 @@ export class CreativeStage extends Stage {
       if (form.objectType === 'player') {
         const id = this.playerIdAllocator.next();
         const finalName = name || `Player-${this.nextFallbackNameSeq++}`;
-        const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, finalName, state, id);
+        const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, { name: finalName, state, id });
         this._entities.addPlayer(ship);
         this.onShipPlaced?.(ship);
         this._hud.hint(`${ship.displayName} を配置`);
@@ -254,13 +258,13 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.objectType === 'ammo') {
         const id = this.ammoIdAllocator.next();
-        const ammo = new Ammo(state, undefined, this._scene, id);
+        const ammo = new Ammo({ state, id }, this._scene);
         this._entities.addAmmo(ammo);
         const finalName = name || `Ammo-${this.nextFallbackNameSeq++}`;
         this._hud.hint(`${finalName} を配置`);
       } else if (form.objectType === 'base') {
         const finalName = name || `Base-${this.nextFallbackNameSeq++}`;
-        const base = new Base(state, this._scene, finalName);
+        const base = new Base({ state, name: finalName }, this._scene, this._hud, this._sfx, this._fx, this._markerManager);
         this._entities.addBase(base);
         this._hud.hint(`${base.name} を配置`);
       }
@@ -388,14 +392,6 @@ export class CreativeStage extends Stage {
 
   checkWin(): boolean {
     return false;
-  }
-
-  // 復元済みエンティティの id を各アロケータへ予約し、以後の新規配置が採番済み id と
-  // 衝突しないようにする(Game は super.restore より前に entities を復元し終えている)。
-  restore(data: StageSaveData): void {
-    super.restore(data);
-    for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
-    for (const a of this._entities.ammos) this.ammoIdAllocator.next(a.id);
   }
 
   // 勝敗のないモードなので、艦を喪失しても敗北画面は出さず通知だけにする。

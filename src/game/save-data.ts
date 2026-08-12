@@ -66,7 +66,7 @@ export interface PowerSaveData {
 
 export interface ThrottleSaveData {
   throttleIdx: number;
-  // 旧セーブデータには無いフィールドなので任意。Throttle.restore が既定値(true)で埋める。
+  // 旧セーブデータには無いフィールドなので任意。無ければ既定値(true)。
   rcsDamp?: boolean;
   progradeHold?: boolean;
 }
@@ -79,11 +79,11 @@ export interface PlayerSaveData extends EntitySaveData {
   throttle: ThrottleSaveData;
   parts: AnyPart[];
   plan: PlanSaveData | null;
-  // 旧セーブデータには無いフィールドなので任意。Player.restore が旧 followPlan から移行する。
+  // 旧セーブデータには無いフィールドなので任意。無ければ followPlan から移行する。
   planExecution?: 'off' | 'instant' | 'powered';
   // 'planExecution' 導入前のセーブが持っていたフィールド。
   followPlan?: boolean;
-  // 旧セーブデータには無いフィールドなので任意。Player.restore が既定値(false)で埋める。
+  // 旧セーブデータには無いフィールドなので任意。無ければ既定値(false)。
   fineAttitude?: boolean;
 }
 
@@ -91,7 +91,7 @@ export interface PlayerSaveData extends EntitySaveData {
 // kind で分岐する EntitySaveData の派生ではなく独立した型にする。
 export interface BaseSaveData {
   id: string;
-  // 旧セーブデータには無いフィールドなので任意。Base.restore が既定名で埋める。
+  // 旧セーブデータには無いフィールドなので任意。無ければ既定名。
   name?: string;
   r: Vec3SaveData;
   v: Vec3SaveData;
@@ -130,7 +130,7 @@ export interface LogisticsSaveData {
 }
 
 // 全ステージ共通の内訳(スコア・決着状態・補給タイマー)。ステージ固有の内訳を持つ
-// 具象ステージはこれを拡張した型を自分の serialize/restore で使う(stage0.ts の
+// 具象ステージはこれを拡張した型を自分の serialize() とコンストラクタで使う(stage0.ts の
 // Stage0SaveData・stage00.ts の Stage00SaveData)。
 export interface StageSaveData {
   scoreCounter: ScoreCounterSaveData;

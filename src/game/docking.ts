@@ -68,11 +68,6 @@ export class Docking {
     this.viewManager.setView('dock');
   }
 
-  // 選択中の基地を解除する。
-  clearSelection(): void {
-    this._activeBase = null;
-  }
-
   // ドックビューへ遷移できるか。対象基地が健在な間だけ true。
   canEnterDock(): boolean {
     return this._activeBase !== null && this._activeBase.alive;
@@ -145,7 +140,7 @@ export class Docking {
   private buildShip(base: Base): void {
     const no = ++this.nextBuiltShipNo;
     const id = `${base.id}-built-${no}`;
-    const ship = new Player(this.hud, this.sfx, this.scene, this.effects, this.markerManager, `新造艦-${no}`, base.state, id);
+    const ship = new Player(this.hud, this.sfx, this.scene, this.effects, this.markerManager, { name: `新造艦-${no}`, state: base.state, id });
     ship.alive = false;
     ship.obj.visible = false;
     base.baseState.dockedShips.push({
