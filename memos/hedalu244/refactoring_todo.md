@@ -47,10 +47,11 @@
   モジュール 200行 の基準を大きく超える。`ship-placer-panel.ts` はフィールド宣言だけで20行以上あり、
   「軌道要素フォーム」と「ラグランジュ点フォーム」で分割の余地がある。
 
-- **行数（outdated）** — `render/ships.ts` 605 / `audio/sfx.ts` 505 / `plan/plan-editor.ts` 515 /
-  `game/game.ts` 442 / `hud/dom.ts` 424 / `game/const.ts` 379。200 行基準を大きく超える。
+- **行数** — `hud/dom.ts` 1036 / `plan/plan-editor.ts` 816 / `render/ships.ts` 570 /
+  `game/const.ts` 554 / `game/game.ts` 555 / `audio/sfx.ts` 519。200 行基準を大きく超える。
   `plan-editor.ts` は Δv 編集(キー/ボタン/ドラッグ/ラッチ)とノードギズモの配線が同居しており、
-  分割の余地がある。
+  分割の余地がある。`game.ts` は for 文と条件分岐を持たない配線のみになっているので、
+  これ以上削るならフェーズ(update/sync)そのものを別モジュールへ移す判断が要る。
 
 
 ## 再出撃サイクルの是正
@@ -66,11 +67,15 @@ GameEntityに重ねて表示するマーカーを、GameEntity側が持つとい
 
 例えば、ammoのmarkerがammoではなくlogisticsが管理している。これはパターンを崩すのでダメ。
 
-groupedmarkerの責務がgame.syncやenemy.markerItemに漏洩している。
-まず、enemyのmarkerはplayerやammoと同様、単にmarkerを持っていてそれを更新するという形であるべき。GroupedMarkerItemを返す関数が実装されているべきではなく、enemyはそのmarkerがそのまま表示されるのか、groupedされて表示されるのかを知るべきではない。
+groupedmarkerの責務がenemy.markerItemに漏洩している。
+enemyのmarkerはplayerやammoと同様、単にmarkerを持っていてそれを更新するという形であるべき。GroupedMarkerItemを返す関数が実装されているべきではなく、enemyはそのmarkerがそのまま表示されるのか、groupedされて表示されるのかを知るべきではない。
 groupedMarkerは任意のentityのmarkerをまとめられるように再利用性を高く保っているのに、enemy側に専用実装があったら再利用性が低くて意味がない。
 
-gameではenemy.filter(e=>e!=target);を作ってそれをgroupedMarkerに渡すということだけをする、groupedMarkerは与えられたentity配列（markerEntityみたいなinterfaceを作ってもいいかも）からmarkerを回収し、まとめられるものは非表示にしてまとめたものに置き換え、まとめられないものはそのまま表示するという責務を行う。GroupedmarkerItemを作る作業などを漏洩してはいけない。
+groupedMarkerは与えられたentity配列（markerEntityみたいなinterfaceを作ってもいいかも）からmarkerを回収し、まとめられるものは非表示にしてまとめたものに置き換え、まとめられないものはそのまま表示するという責務を行う。GroupedmarkerItemを作る作業などを漏洩してはいけない。
+
+`MarkerManager` が `combatMarkers` / `leadMarkers` / `equatorNodeMarkers` を保持しているのは
+仮置き（コード上にもTODOコメントあり）。「表示機構」であるMarkerManagerとは別の分類なので、
+上記の整理と合わせて適切な所有者を決める。
 
 
 

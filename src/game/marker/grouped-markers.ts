@@ -7,8 +7,8 @@
 // 見た目とラベル内容(GroupedMarkerItem)は対象自身が用意する。
 import { Vec3 } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
-import { ProjectFn, ScaleFn } from '../camera/camera-system';
-import { MarkerManager } from './marker-manager';
+import type { ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-glyphs';
 
 export interface GroupedMarkerItem {

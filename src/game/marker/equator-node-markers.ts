@@ -11,10 +11,14 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../physics/vec3';
 import { celestialBodyName } from '../hud/frame-labels';
-import { MarkerManager } from './marker-manager';
+import type { MarkerManager } from './marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker-glyphs';
-import { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn } from '../camera/camera-system';
 import { MapPickable } from '../map-pick';
+import type { EntityManager } from '../simulation/entity-manager';
+import type { Player } from '../player/player';
+import type { CombatTarget } from '../targeter';
+import type { FinalSegment } from '../plan/plan-path';
 
 // 交点を求める対象。state はその軌道を代表する状態(自艦なら計画の最終区間の起点、他は実状態)。
 // samples を渡すとその折れ線を走査して交点を求め、省略すると state の軌道要素から解析的に
@@ -44,14 +48,57 @@ export class EquatorNodeMarkers {
   // update が求めた時点の Attractor[]。sync でのマップビュー遮蔽判定に使う。
   private attractors: readonly Attractor[] = [];
 
+  private readonly sourceScratch = new Map<string, EqNodeSource>();
+
   constructor(private readonly markerManager: MarkerManager, private readonly ephemeris: Ephemeris) {}
+
+  // EqAN/EqDN を出す対象を集める。操作艦(計画があれば最終区間の起点、無ければ実状態)・
+  // 航法ターゲット(entities 上の実体として引けるものだけ — 天体・ラグランジュ点はそれ自体が
+  // 軌道要素を持つ「物体」ではないので対象外)・戦闘ターゲット・生存中の全基地(基地は常設の
+  // 静止構造物であり、接近・ドッキングは軌道面合わせそのものなので選択の有無に関わらず常に出す)。
+  // 同じ実体が複数の役割を兼ねうるので id で重複を除く。
+  private collectSources(
+    entities: EntityManager, activePlayer: Player | null, planFinalSegment: FinalSegment | null,
+    navTargetId: string | null, combatTarget: CombatTarget | null,
+  ): Iterable<EqNodeSource> {
+    this.sourceScratch.clear();
+    if (activePlayer) {
+      this.sourceScratch.set(activePlayer.id, {
+        id: activePlayer.id, name: activePlayer.displayName,
+        state: planFinalSegment?.state0 ?? activePlayer.state,
+        samples: planFinalSegment?.samples,
+      });
+    }
+    if (navTargetId) {
+      const navPlayer = entities.findPlayer(navTargetId);
+      const navEnemy = entities.findEnemy(navTargetId);
+      const navBase = entities.findBase(navTargetId);
+      const navSource: EqNodeSource | null =
+        navPlayer ? { id: navPlayer.id, name: navPlayer.displayName, state: navPlayer.state } :
+        navEnemy?.alive ? { id: navEnemy.id, name: navEnemy.name, state: navEnemy.state } :
+        navBase ? { id: navBase.id, name: navBase.name, state: navBase.state } : null;
+      if (navSource) this.sourceScratch.set(navSource.id, navSource);
+    }
+    if (combatTarget) {
+      this.sourceScratch.set(combatTarget.id, { id: combatTarget.id, name: combatTarget.name, state: combatTarget.state });
+    }
+    for (const base of entities.bases) {
+      if (base.alive) this.sourceScratch.set(base.id, { id: base.id, name: base.name, state: base.state });
+    }
+    return this.sourceScratch.values();
+  }
 
   // source ごとに、中心天体の赤道面との交点(EqAN/EqDN)を求め直す。samples を持つ source
   // (自艦の計画軌道)は積分折れ線の走査、それ以外(解析楕円で描かれる敵・基地・航法ターゲット)
   // は軌道要素から解析的に求める。中心天体が自転軸をモデル化していない(degree2 が無い、
   // 太陽・木星など)source は出さない。位置は sample 時刻 t で bake し表示時刻 displayTime で
   // un-bake して frame へ変換する(plan-path.ts の toDisplay と同じ手順を自前で行う)。
-  update(sources: readonly EqNodeSource[], frame: ReferenceFrame, displayTime: number): void {
+  update(
+    entities: EntityManager, activePlayer: Player | null, planFinalSegment: FinalSegment | null,
+    navTargetId: string | null, combatTarget: CombatTarget | null,
+    frame: ReferenceFrame, displayTime: number,
+  ): void {
+    const sources = this.collectSources(entities, activePlayer, planFinalSegment, navTargetId, combatTarget);
     this.attractors = this.ephemeris.attractorsAt(displayTime);
     const pairs: EqNodePair[] = [];
     // un-bake は表示時刻に固定なので、全 source・全交点で同じ変換を使い回す。

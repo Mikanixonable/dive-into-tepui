@@ -17,6 +17,7 @@ import { v3 } from '../../physics/vec3';
 import { adaptiveSimulationMaxStep, simulationStepDuration } from './time-step';
 import type { NanWatchdog } from '../nan-watchdog';
 import { FrameSections, SECTION } from '../../frame-sections';
+import type { PerfCounts } from '../../perf-meter';
 
 export class Simulator {
   readonly contactPhysics: ContactPhysics;
@@ -232,5 +233,14 @@ export class Simulator {
     for (const bullet of this.entities.bullets) step(bullet);
     for (const casing of this.entities.casings) step(casing);
     for (const debris of this.entities.debris) step(debris);
+  }
+
+  // 負荷確認ウィンドウが読む、直近フレームの積分規模。
+  perfCounts(): Pick<PerfCounts, 'simSubsteps' | 'orbitSteps' | 'gravitySources'> {
+    return {
+      simSubsteps: this.lastSubsteps,
+      orbitSteps: this.lastOrbitSteps,
+      gravitySources: this.lastGravitySourceCount,
+    };
   }
 }

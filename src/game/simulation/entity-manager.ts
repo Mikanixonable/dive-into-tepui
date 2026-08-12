@@ -13,9 +13,28 @@ import { Bullet } from '../game-entity/bullet';
 import { Base } from '../game-entity/base';
 import { InstancedPool } from '../../render/instanced-pool';
 import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
-import type { Player } from '../player/player';
+import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { CombatTarget } from '../targeter';
+import type { MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { CameraSystem } from '../camera/camera-system';
+import type { Ephemeris } from '../../physics/ephemeris';
+import type { ReferenceFrame } from '../../physics/frame';
+import type { GameSaveData } from '../save-data';
+import type { Hud } from '../hud/hud';
+import type { Sfx } from '../../audio/sfx';
+import type { EffectsSystem } from '../vfx/effects-system';
+import type { MarkerManager } from '../marker/marker-manager';
+import type { PerfCounts } from '../../perf-meter';
+
+// 自機・敵・弾薬・基地の生成に要る共有依存一式。restoreFromSave/spawnInitialPlayers が使う。
+export interface EntitySpawnDeps {
+  readonly hud: Hud;
+  readonly sfx: Sfx;
+  readonly scene: THREE.Scene;
+  readonly effects: EffectsSystem;
+  readonly markerManager: MarkerManager;
+}
 
 export class EntityManager {
   readonly enemies: Enemy[] = [];
@@ -82,6 +101,38 @@ export class EntityManager {
   addPlayer(player: Player): void {
     this.players.push(player);
     this.invalidateCaches();
+  }
+
+  // 新規開始時の初期配置。艦の隻数は 0..n が一般形で、1隻に固定するかどうかはステージ側の
+  // 判断(stage-dictionary.ts の initialPlayerCountFor)。返すのは操作対象にする最初の1隻。
+  spawnInitialPlayers(count: number, deps: EntitySpawnDeps): Player | null {
+    let first: Player | null = null;
+    for (let i = 0; i < count; i++) {
+      const ship = new Player(deps.hud, deps.sfx, deps.scene, deps.effects, deps.markerManager);
+      this.addPlayer(ship);
+      if (!first) first = ship;
+    }
+    return first;
+  }
+
+  // スナップショットから自機・敵・弾薬・基地を復元する。返すのは save.activePlayerId に
+  // 一致する自機(無ければ復元順の先頭、それも無ければ null)。
+  restoreFromSave(save: GameSaveData, deps: EntitySpawnDeps): Player | null {
+    const simTime = save.simTime;
+    for (const data of save.players) {
+      this.addPlayer(new Player(deps.hud, deps.sfx, deps.scene, deps.effects, deps.markerManager, { saved: data, simTime }));
+    }
+    for (const data of save.enemies) {
+      this.addEnemy(new Enemy({ saved: data, simTime }, deps.hud, deps.sfx, deps.effects, deps.scene));
+    }
+    for (const data of save.ammos) {
+      this.addAmmo(new Ammo({ saved: data, simTime }, deps.scene));
+    }
+    for (const data of save.bases) {
+      this.addBase(new Base(
+        { saved: data, simTime }, deps.scene, deps.hud, deps.sfx, deps.effects, deps.markerManager));
+    }
+    return this.players.find((p) => p.id === save.activePlayerId) ?? this.players[0] ?? null;
   }
 
   // 自機を取り除き、メッシュを破棄する。
@@ -245,6 +296,71 @@ export class EntityManager {
     if (changed) this.invalidateCaches();
   }
 
+  // 操作対象以外の自機に、表示フレーム基準のベルト・HP回復だけを1回ずつ進める。熱・電力・
+  // ラジエータは Simulator が全艦を substep ごとに stepEnvironment する。
+  updatePassivePlayers(dt: number, activePlayer: Player | null): void {
+    for (const ship of this.players) if (ship !== activePlayer) ship.updatePassive(dt);
+  }
+
+  // 高warp中は全自機のRCS command torqueを明示的にゼロへ戻す(active切替やauto-warp開始前の
+  // stale指令を残さない)。
+  suppressAttitudeCommandForWarp(): void {
+    for (const ship of this.players) ship.suppressAttitudeCommandForWarp();
+  }
+
+  // 全自機のメッシュ・エフェクト・マーカーを同期する。方向マーカーや照準ズームは操作艦だけの
+  // ものなので、どれが操作対象かを各艦へ渡す。
+  syncPlayers(
+    activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem, phasePlaying: boolean,
+    paused: boolean, displayTime: number, ephemeris: Ephemeris, attractors: readonly Attractor[],
+    visibilityPolicy: MapVisibilityPolicy | null,
+  ): void {
+    for (const ship of this.players) {
+      ship.syncPlayer(
+        fo, cameraSystem, phasePlaying, paused, displayTime, ship === activePlayer, ephemeris, attractors,
+        visibilityPolicy?.entity('player', ship === activePlayer) ?? null,
+      );
+    }
+  }
+
+  // 全自機の予測軌道線を同期し、それで解析楕円を代替できる艦は楕円側を抑制する。
+  // 積分予測を描くのは操作対象艦だけ — 他の艦は常に解析楕円のまま。
+  syncPlayerTrajectoryLines(
+    activePlayer: Player | null, planFrame: ReferenceFrame, simTime: number, predictHorizon: number,
+    overviewMode: boolean, ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera,
+    attractors: readonly Attractor[],
+  ): void {
+    for (const ship of this.players) {
+      ship.syncTrajectoryLine(
+        ship === activePlayer && ship.alive, planFrame, simTime, ephemeris, fo, camera, attractors);
+      ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, predictHorizon, overviewMode));
+    }
+  }
+
+  // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示/軌道線表示を揃える。
+  // visibilityPolicy が null(戦闘ビュー)のときは非表示扱いを一切かけない。
+  applyVisibility(
+    visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null, overviewMode: boolean,
+    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
+  ): void {
+    if (visibilityPolicy) {
+      for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.obj.visible = false;
+      for (const enemy of this.enemies) if (!visibilityPolicy.entity('ship').category) enemy.obj.visible = false;
+      for (const ammo of this.ammos) if (!visibilityPolicy.entity('ammo').category) ammo.obj.visible = false;
+      for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.obj.visible = false;
+    }
+    for (const ship of this.players) {
+      ship.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('player', ship === activePlayer).orbit ?? false));
+    }
+    for (const enemy of this.enemies) {
+      enemy.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('ship').orbit ?? false));
+    }
+    for (const base of this.bases) {
+      base.syncOrbitLine(overviewMode, fo, camera, attractors);
+      base.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('base').orbit ?? false));
+    }
+  }
+
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
   // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
   // 破片(fragment)の変換は各エンティティの obj に同期された後、InstancedPool へ push する。
@@ -277,5 +393,19 @@ export class EntityManager {
     this.plasmaPool.endFrame();
     this.casingPool.endFrame();
     for (const pool of this.debrisFragmentPools) pool.endFrame();
+  }
+
+  // 負荷確認ウィンドウが読む、保持配列ごとの現在の個体数。
+  perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammos' | 'asteroids' | 'bases'> {
+    return {
+      players: this.players.length,
+      enemies: this.enemies.length,
+      bullets: this.bullets.length,
+      casings: this.casings.length,
+      debris: this.debris.length,
+      ammos: this.ammos.length,
+      asteroids: this.asteroids.length,
+      bases: this.bases.length,
+    };
   }
 }

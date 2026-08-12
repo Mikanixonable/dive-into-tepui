@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { add, addScaled, dot, lenSq, norm, scale, sub, Vec3 } from '../physics/vec3';
+import { add, addScaled, dot, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
 import { Attractor, strongestAttractor } from '../physics/attractor';
 import { OrbitLine } from './orbit-line';
 import * as C from './const';
@@ -10,7 +10,8 @@ import { Player } from './player/player';
 import { Hud } from './hud/hud';
 import { Sfx } from '../audio/sfx';
 import { Input, PointerPoint } from './input/input';
-import { ProjectFn } from './camera/camera-system';
+import { ProjectFn, ScaleFn } from './camera/camera-system';
+import type { GroupedMarkerItem } from './marker/grouped-markers';
 import { ContextMenu, MenuItem } from './hud/context-menu';
 import { MenuAction, MenuCommon } from './hud/menu-actions';
 import { MarkerManager } from './marker/marker-manager';
@@ -23,7 +24,14 @@ import type { MapVisibilityPolicy } from './celestial/map-visibility';
 
 export type CombatTarget = Enemy | Player;
 
+// マーカー上での対象の役割。第一/第二ターゲットは色と字形が変わる。
+export type MarkerRole = 'none' | 'primary' | 'secondary';
+
 export class Targeter {
+  // syncTargetMarkers が毎フレーム組み直す作業用配列。
+  private readonly aliveScratch: CombatTarget[] = [];
+  private readonly markerItemScratch: GroupedMarkerItem[] = [];
+
   // 唯一の真実。右クリックメニューでのみ変わり、自動選定・自動再選択は行わない。
   target: CombatTarget | null = null;
   secondaryTarget: CombatTarget | null = null;
@@ -156,7 +164,7 @@ export class Targeter {
   // ターゲットに紐づく表示物(軌道線・的通過マーク・方位マーカー)をまとめて更新する。
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
   sync(
-    fo: FloatingOrigin, player: Player, targets: CombatTarget[], overviewMode: boolean,
+    fo: FloatingOrigin, player: Player | null, targets: readonly CombatTarget[], overviewMode: boolean,
     project: ProjectFn, camera: THREE.Camera, attractors: readonly Attractor[],
     visibilityPolicy: MapVisibilityPolicy | null = null,
   ): void {
@@ -165,9 +173,43 @@ export class Targeter {
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
 
+  // 全戦闘対象のマーカー集合(第一/第二ターゲットの役割を含む)と LEAD マーカーを同期する。
+  // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
+  // 予測地平の先を指していて displayState を返せない対象と、可視性判定で選択不可の対象は出さない。
+  syncTargetMarkers(
+    player: Player | null, targets: readonly CombatTarget[], displayTime: number, simTime: number,
+    overviewMode: boolean, project: ProjectFn, screenScale: ScaleFn, visibilityPolicy: MapVisibilityPolicy | null,
+  ): void {
+    const viewerPos = player?.state.r ?? v3();
+    this.aliveScratch.length = 0;
+    this.markerItemScratch.length = 0;
+    for (const tgt of targets) {
+      if (!tgt.alive) continue;
+      this.aliveScratch.push(tgt);
+      const ds = tgt.displayState(displayTime);
+      if (!ds) continue;
+      const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : 'ship', tgt === player);
+      if (visibility && !visibility.pickable) continue;
+      const role: MarkerRole =
+        tgt === this.aliveTarget ? 'primary' : tgt === this.aliveSecondaryTarget ? 'secondary' : 'none';
+      const item = tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode);
+      this.markerItemScratch.push(visibility ? {
+        ...item,
+        sym: visibility.icon ? item.sym : '',
+        name: visibility.label ? item.name : '',
+        detail: visibility.label ? item.detail : '',
+      } : item);
+    }
+    this.markerManager.combatMarkers.sync(this.markerItemScratch, project, overviewMode, screenScale);
+    if (player) {
+      this.markerManager.leadMarkers.sync(
+        player, this.aliveScratch, this.aliveTarget, this.aliveSecondaryTarget, simTime, overviewMode, project);
+    }
+  }
+
   // 第一・第二ターゲットのハイライト線を最新の状態に合わせる。
   private syncOrbitLine(
-    fo: FloatingOrigin, player: Player, targets: CombatTarget[], overviewMode: boolean,
+    fo: FloatingOrigin, player: Player | null, targets: readonly CombatTarget[], overviewMode: boolean,
     camera: THREE.Camera, attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const tgt = this.aliveTarget;
@@ -212,9 +254,9 @@ export class Targeter {
 
   // ターゲット/その反対方向を指す方向マーカー(戦闘ビューのみ)。自機の軌道基準方向マーカー
   // (player-markers.ts)と同じ扱いで、自機位置を原点に置く。第一ターゲットのみ。
-  private syncTargetDirMarkers(player: Player, overviewMode: boolean, project: ProjectFn): void {
+  private syncTargetDirMarkers(player: Player | null, overviewMode: boolean, project: ProjectFn): void {
     const tgt = this.aliveTarget;
-    if (overviewMode || !tgt) {
+    if (overviewMode || !tgt || !player) {
       this.markerManager.hide('tgtdir');
       this.markerManager.hide('atgdir');
       return;

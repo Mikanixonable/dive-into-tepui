@@ -33,9 +33,17 @@ export type EphemerisConfig = {
   readonly epochOffsetSec: number;
 };
 
-interface StageClass {
-  readonly id: StageId;
+// ステージクラスが静的に宣言できる起動時の設定。省略した項目は既定値で動く。
+interface StageStatics {
   readonly ephemerisConfig?: EphemerisConfig;
+  // 新規開始時に組む自機の隻数。省略時は1隻。
+  readonly initialPlayerCount?: number;
+  // マップ視点でも艦のステータスパネルを表示するか。省略時は false(戦闘ビューのみ)。
+  readonly showsStatusInOverview?: boolean;
+}
+
+interface StageClass extends StageStatics {
+  readonly id: StageId;
   new (saved?: StageSaveData): Stage;
 }
 
@@ -77,10 +85,50 @@ export function isStageId(value: string | null): value is StageId {
   return STAGE_CLASSES.some((c) => c.id === value);
 }
 
+// launch が指すステージクラスの静的宣言を引く。
+function stageStaticsFor(launch: LaunchSelection): StageStatics | undefined {
+  return launch.mode === 'creative' ? CreativeStage : STAGE_CLASSES.find((c) => c.id === launch.stage);
+}
+
 // launch が指すステージクラスの静的 ephemerisConfig。宣言が無ければ undefined(Ephemeris の
 // コンストラクタ既定値どおり、既定レジストリ・地球原点で構築される)。
 export function ephemerisConfigFor(launch: LaunchSelection): EphemerisConfig | undefined {
-  const stageClass: { readonly id: string; readonly ephemerisConfig?: EphemerisConfig } | undefined =
-    launch.mode === 'creative' ? CreativeStage : STAGE_CLASSES.find((c) => c.id === launch.stage);
-  return stageClass?.ephemerisConfig;
+  return stageStaticsFor(launch)?.ephemerisConfig;
+}
+
+// launch が指すステージクラスの静的 initialPlayerCount(省略時1)。
+export function initialPlayerCountFor(launch: LaunchSelection): number {
+  return stageStaticsFor(launch)?.initialPlayerCount ?? 1;
+}
+
+// launch が指すステージクラスの静的 showsStatusInOverview(省略時 false)。
+export function showsStatusInOverviewFor(launch: LaunchSelection): boolean {
+  return stageStaticsFor(launch)?.showsStatusInOverview ?? false;
+}
+
+// launch に応じたステージを生成し、setup・(スナップショット再開でなければ)初期配置まで済ませて
+// 返す。onShipPlaced は艦の任意隻数配置に対応するステージ(CreativeStage)だけが呼ぶコールバック。
+export function buildStage(
+  launch: LaunchSelection,
+  player: Player | null,
+  entities: EntityManager,
+  hud: Hud,
+  sfx: Sfx,
+  scene: THREE.Scene,
+  unlockManager: UnlockManager,
+  fx: EffectsSystem,
+  markerManager: MarkerManager,
+  ephemeris: Ephemeris,
+  simulator: Simulator,
+  onShipPlaced: (ship: Player) => void,
+  saved?: StageSaveData,
+): Stage {
+  if (launch.mode === 'stage') {
+    return initStage(launch.stage, player, entities, hud, sfx, scene, unlockManager, fx, markerManager, ephemeris, simulator, saved);
+  }
+  const creativeStage = new CreativeStage(saved);
+  creativeStage.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
+  if (saved === undefined) creativeStage.init();
+  creativeStage.onShipPlaced = onShipPlaced;
+  return creativeStage;
 }

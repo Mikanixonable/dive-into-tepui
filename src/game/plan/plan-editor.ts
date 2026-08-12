@@ -30,6 +30,7 @@ import type { Player } from '../player/player';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { toFrameState } from '../../physics/frame';
 import type { PlanAttractorProvider } from '../simulation/attractors';
+import type { PerfCounts } from '../../perf-meter';
 
 interface DvButtons {
   readonly pro: HudHoldButton;
@@ -93,12 +94,6 @@ export class PlanEditor {
 
   // 直近の update() が描いた折れ線が届いている終端時刻。一度も描いていなければ NaN。
   get lastPlanEnd(): number { return this.planDisplay.path.timeRange()?.max ?? NaN; }
-
-  // 直近フレームに作り直した計画区間の本数。
-  get lastRebuiltArcs(): number { return this.planDisplay.path.lastRebuiltArcs; }
-
-  // 直近フレームに計画区間の積分(作り直し・継ぎ足しの両方)で回した積分step数の合計。
-  get lastPlanSteps(): number { return this.planDisplay.path.lastSteps; }
 
   private _editMode = false;
   get editMode(): boolean { return this._editMode; }
@@ -752,6 +747,14 @@ export class PlanEditor {
       this.syncGizmo(mapDist, fo);
       this.syncPanel(simTime);
     }
+  }
+
+  // 負荷確認ウィンドウが読む、直近フレームの計画区間の積分規模。
+  perfCounts(): Pick<PerfCounts, 'planArcs' | 'planSteps'> {
+    return {
+      planArcs: this.planDisplay.path.lastRebuiltArcs,
+      planSteps: this.planDisplay.path.lastSteps,
+    };
   }
 
   // detachedPlan(艦なし)のアンカーは原点固定で実際の軌道を表さないので、計画表示・編集は

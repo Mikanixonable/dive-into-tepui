@@ -21,6 +21,8 @@ import { NavTarget } from './nav-target';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import { SimSpeedManager } from './sim-speed-manager';
+import type { MarkerManager } from './marker/marker-manager';
+import type { SettingsPanel } from './hud/settings-panel';
 import type { Docking } from './docking';
 import type { Game } from './game';
 import type { Player } from './player/player';
@@ -35,6 +37,7 @@ import { apsisAltitudes } from '../physics/elements';
 import { bodyDef, primaryOf } from '../physics/solar-system';
 import { isPositionInFocusedSystem, systemMembersAt } from './celestial/body-visibility';
 import { MapVisibilityPolicy } from './celestial/map-visibility';
+import type { PerfCounts } from '../perf-meter';
 
 interface PickHandler {
   itemsFor(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[];
@@ -89,6 +92,8 @@ export class MapPicker {
     private readonly cameraSystem: CameraSystem,
     private readonly editor: PlanEditor,
     private readonly simSpeedManager: SimSpeedManager,
+    private readonly markerManager: MarkerManager,
+    private readonly settingsPanel: SettingsPanel,
   ) {
     this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup);
     this.menu.onSelect = (act, target) => {
@@ -177,7 +182,7 @@ export class MapPicker {
     }
     for (const item of this.navTarget.mapPickables()) this.appendPickable(item);
     for (const item of this.editor.planDisplay.apsisMarkers) this.appendPickable(item);
-    for (const item of this.game.equatorNodeMarkers.mapPickables()) this.appendPickable(item);
+    for (const item of this.markerManager.equatorNodeMarkers.mapPickables()) this.appendPickable(item);
 
     // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
     const viewer = this.game.player?.state;
@@ -347,7 +352,7 @@ export class MapPicker {
       if (target.kind === 'player') {
         const ship = this.entities.findPlayer(target.id);
         if (ship) {
-          this.game.setActivePlayer(ship);
+          this.game.activePlayers.set(ship);
           this.hud.hint(`${target.name} を操作対象に設定`);
         }
       }
@@ -411,6 +416,16 @@ export class MapPicker {
       entry.win.syncRows(this.buildRows(entry.target, attractors, player, simTime));
       entry.win.syncItems(items);
     }
+  }
+
+  // 負荷確認ウィンドウが読む、マップ視点かどうかとその候補列/ラベル数。
+  perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
+    const overviewMode = this.cameraSystem.overviewMode;
+    return {
+      mapMode: overviewMode,
+      mapItems: overviewMode ? this.items.length : 0,
+      mapLabels: overviewMode ? this.cameraSystem.focusMarkers.shownLabelCount : 0,
+    };
   }
 
   // ウィンドウの対象そのものが消滅したかどうか。生きている実体を指す種別は alive を直接見て、
@@ -550,10 +565,9 @@ export class MapPicker {
           isActive ? { label: '操作対象を解除', act: 'deactivate' } : { label: '操作対象にする', act: 'activate' },
         ];
         const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
-        // 通常ステージには実行モードを進める駆動源(CreativeStage.update/nextSimulationEventTime/
-        // applySimulationEvents)が無く、選ばせても何も起きないので出さない。
+        // 計画を実行するステージだけに出す。駆動源が無いところで選ばせても何も起きない。
         const mode = ship?.planExecution ?? 'off';
-        const planExec: readonly MenuItem<MenuAction>[] = this.isCreativeMode()
+        const planExec: readonly MenuItem<MenuAction>[] = this.game.activeStage.executesPlans
           ? [{ label: `軌道計画の実行: ${planExecutionLabel(mode)}`, act: 'planExecCycle', keepOpen: true }]
           : [];
         return [
@@ -569,9 +583,9 @@ export class MapPicker {
       run: (act, target) => {
         if (act === 'activate') {
           const ship = this.entities.findPlayer(target.id);
-          if (ship) this.game.setActivePlayer(ship);
+          if (ship) this.game.activePlayers.set(ship);
         } else if (act === 'deactivate') {
-          if (this.entities.findPlayer(target.id) === this.game.player) this.game.setActivePlayerOrNull(null);
+          if (this.entities.findPlayer(target.id) === this.game.player) this.game.activePlayers.setOrNull(null);
         } else if (act === 'planExecCycle') {
           const ship = this.entities.findPlayer(target.id);
           if (ship) {
@@ -582,7 +596,7 @@ export class MapPicker {
           this.runDuplicate(target);
         } else if (act === 'delete') {
           const ship = this.entities.findPlayer(target.id);
-          if (ship) this.game.removeCreativePlayer(ship);
+          if (ship) this.game.activePlayers.remove(ship);
         } else {
           this.runBodyShip(act, target);
         }
@@ -590,7 +604,7 @@ export class MapPicker {
     },
     'empty-space': {
       itemsFor: () => {
-        const placeItem: readonly MenuItem<MenuAction>[] = this.isCreativeMode()
+        const placeItem: readonly MenuItem<MenuAction>[] = this.game.activeStage.authoring
           ? [{ label: 'オブジェクトを配置する', act: 'openShipPlacer', shortcut: 'Enter' }]
           : [];
         return [
@@ -601,11 +615,10 @@ export class MapPicker {
       },
       run: (act) => {
         if (act === 'openShipPlacer') {
-          if (this.isCreativeMode()) {
-            (this.game.activeStage as any).openShipPlacer(focusTargetId(this.game.cameraSystem.overviewCamera.focus));
-          }
+          this.game.activeStage.authoring?.openShipPlacer(
+            focusTargetId(this.game.cameraSystem.overviewCamera.focus));
         } else if (act === 'openSettings') {
-          this.game.openSettingsMenu();
+          this.settingsPanel.toggle(true);
         }
       },
     },
@@ -658,24 +671,18 @@ export class MapPicker {
     return canTarget ? [MenuCommon.navTarget(false)] : [];
   }
 
-  // クリエイティブモードで実行中かどうか。activeStage を CreativeStage として直接扱えないので、
-  // 既存の型消去アクセスをここへ集約する。
-  private isCreativeMode(): boolean {
-    return (this.game.activeStage as any).stageId === 'creative';
-  }
-
-  // 「複製」項目。クリエイティブモードでのみ出す — 複製先が艦艇配置パネルであり、
-  // 通常ステージには存在しないため。
+  // 「複製」項目。複製先が艦艇配置パネルなので、それを持つステージだけに出す。
   private duplicateItems(): readonly MenuItem<MenuAction>[] {
-    return this.isCreativeMode() ? [MenuCommon.duplicate()] : [];
+    return this.game.activeStage.authoring ? [MenuCommon.duplicate()] : [];
   }
 
   // 対象の現在状態を軌道要素へ逆算し、その値をプリセットして艦艇配置パネルを開く。
   private runDuplicate(target: MapPickable): void {
-    if (!this.isCreativeMode()) return;
+    const authoring = this.game.activeStage.authoring;
+    if (!authoring) return;
     const source = this.duplicateSourceFor(target);
     if (!source) return;
-    (this.game.activeStage as any).openShipPlacerForDuplicate(source.objectType, source.state);
+    authoring.openShipPlacerForDuplicate(source.objectType, source.state);
   }
 
   // MapPickable を、複製できる実体の種類とその現在状態へ解決する。複製できない種別(天体・

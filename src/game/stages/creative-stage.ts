@@ -1,6 +1,6 @@
 // クリエイティブモード: 勝敗判定を発生させず、艦艇配置と軌道計画を自由に試すためのステージ。
 import type * as THREE from 'three/webgpu';
-import { Stage } from './stage';
+import { Stage, type ObjectAuthoring } from './stage';
 import { Player } from '../player/player';
 import { EntityIdAllocator } from '../game-entity/entity-id';
 import type { EntityManager } from '../simulation/entity-manager';
@@ -36,12 +36,22 @@ const DEG = Math.PI / 180;
 
 export class CreativeStage extends Stage {
   static readonly id = 'creative' as const;
+  // 艦は0隻から始まり、配置パネルで随時追加する(艦0..n隻が一般形で、これはその上限が
+  // 無い側の特殊化にすぎない)。
+  static readonly initialPlayerCount = 0;
+  static readonly showsStatusInOverview = true;
   readonly stageId = 'creative' as const;
   readonly selectLabel = 'CREATIVE';
   readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
   readonly hiddenFromSelect = true;
   readonly selectKeys: string[] = [];
   readonly initialAmmo = { mags: 0, rounds: 0 };
+  // CREATIVE_MAX_SHIPS の枠を空けるため、喪失艦は即座に回収する(他のステージは1隻固定なので
+  // 回収の必要が無く、既定の false のまま撃墜演出用に残る)。
+  readonly prunesDeadPlayers = true;
+  readonly freeProcurement = true;
+  readonly executesPlans = true;
+  readonly authoring: ObjectAuthoring = this;
 
   private placerPanel!: ShipPlacerPanel;
   // 補給の自動投入を切り替えるトグルのパネル。マップ視点でだけ出す。

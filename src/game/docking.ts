@@ -84,7 +84,7 @@ export class Docking {
   enterDock(): void {
     if (!this._activeBase) return;
     this.game.pause();
-    this.dockView.open(this._activeBase, this.game.player, this.game.isCreative);
+    this.dockView.open(this._activeBase, this.game.player, this.game.activeStage.freeProcurement);
   }
 
   // ViewManager がドックから出るときに呼ぶ。
@@ -131,7 +131,7 @@ export class Docking {
       this.sfx.setRcs(false);
     }
     this.entities.parkPlayer(ship);
-    if (wasActive) this.game.setActivePlayerOrNull(this.entities.players.find((p) => p.alive) ?? null);
+    if (wasActive) this.game.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
     this.hud.hint(`${ship.displayName} を基地に収容しました`);
   }
 
@@ -160,7 +160,7 @@ export class Docking {
     ship.state = kinematicState(base.state.t, v3(br.x + 600, br.y, br.z), base.state.v);
     ship.alive = true;
     this.entities.addPlayer(ship);
-    this.game.setActivePlayer(ship);
+    this.game.activePlayers.set(ship);
     this.viewManager.leaveDock();
     this.hud.hint(`${ship.displayName} を発進しました`);
   }
