@@ -430,11 +430,12 @@
     - [overviewMode] cameraRotationZone.setNearby(members) / setSelected(overviewCamera.cameraFrame.rotatingWith)
     - [overviewMode] translationZone.setItems(pickables) / setNearby(members, pickables) / setSelected(planDisplay.planFrame.center) // 計画折れ線の原点
     - [overviewMode] planRotationZone.setNearby(members) / setSelected(planDisplay.planFrame.rotatingWith)
-  - predictedTrajectoryLine.sync(predictedTargets, editor.planDisplay.planFrame, simTime, ephemeris, fo) // predictedTargets = 操作対象の自機が生存していればその1隻、いなければ空配列。計画軌道の折れ線と同じ座標系(editor.planDisplay.planFrame)で bake する。空配列を渡すと内部の pruneTo が線を畳む
-    - line.syncGeometry() // entity.state を先頭に predictedTrajectory の未来サンプルを続けた配列(毎フレーム新規生成、参照同一性ガードは常に外れる)を frame で bake
-    - line.syncTransform()
-    - line.sync(camera) // 頂点2未満なら curve.clear()
-  - entities.players ごとに ship.orbitLine.setSuppressed(predictedTrajectoryLine.supersedesAnalyticEllipse(ship, simTime, _window.duration, overviewMode)) // overviewMode: 予測が表示ホライズンを覆いきったときだけ解析楕円を抑制。!overviewMode: 予測線が描かれてさえいれば抑制
+  - entities.players ごとに // 計画軌道の折れ線と同じ座標系(editor.planDisplay.planFrame)で bake する
+    - ship.syncTrajectoryLine(ship === player && ship.alive, editor.planDisplay.planFrame, simTime, ephemeris, fo, cameraSystem.activeCamera, attractors) // 操作対象の生存艦だけ show=true。それ以外は EMPTY_SAMPLES で畳む
+      - trajectoryLine.syncGeometry() // 現在状態を先頭に predictedTrajectory の未来サンプルを続けた配列(毎フレーム新規生成、参照同一性ガードは表示中常に外れる)を frame で bake
+      - trajectoryLine.syncTransform()
+      - trajectoryLine.sync(camera) // 頂点2未満なら curve.clear()
+    - ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, _window.duration, overviewMode)) // overviewMode: 予測が表示ホライズンを覆いきったときだけ解析楕円を抑制。!overviewMode: 予測線が描かれてさえいれば抑制
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync(player, fo, project, scale, displayTime, overviewMode) // player は Creative の未配置状態で null
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示。player が null なら隠す
@@ -456,8 +457,6 @@
   - guide.sync(plan, player, simTime, editMode, project)
     - markerManager.hide('nd') + hide('burn') // editMode または !player.alive、あるいは直近ノードが無い場合
     - markerManager.setPosition('nd') + setDirection('burn') // 直近ノードがある場合
-  - debugTrajectoryLine.sync(debugTargets, editor.planDisplay.planFrame, simTime, ephemeris, fo) // ?debugLines=1 のときのみ実効。座標系は計画軌道の折れ線と同じ editor.planDisplay.planFrame。対象(既定: 自機+ターゲット)ごとに
-    history/predicted.history を1本の TrajectoryLine へ bake + un-bake
   - markerManager.resolveCollisions() // ラベル衝突緩和 + SVG 引き出し線の再描画。全マーカーが出揃った後に一度だけ
 
 ---
