@@ -1,6 +1,7 @@
 import { Sfx } from '../../audio/sfx';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ScoreCounter } from '../stages/stage-utils/score-counter';
+import { FONT_L, SPACE_6, TEXT_DIM } from '../theme';
 
 // title を渡すと見出しを差し替える(勝敗二択に収まらない結果画面向け)。
 function showEnd(win: boolean, detailHtml: string, title?: string): void {
@@ -14,7 +15,7 @@ function showEnd(win: boolean, detailHtml: string, title?: string): void {
     <h1>${title ?? (win ? 'MISSION COMPLETE' : 'SHIP LOST')}</h1>
     <div class="detail">${detailHtml}</div>
     <div class="restart" style="cursor: pointer;">[${K.restart.label}] キーまたはタップで再出撃</div>
-    <div class="title-return" style="margin-top: 16px; color: #aaa; font-size: 13px; cursor: pointer; text-decoration: underline;">タイトル画面に戻る</div>`;
+    <div class="title-return" style="margin-top: ${SPACE_6}; color: ${TEXT_DIM}; font-size: ${FONT_L}; cursor: pointer; text-decoration: underline;">タイトル画面に戻る</div>`;
   // クリック/タップを各ボタンのアクションとして扱う
   e.querySelector('.restart')!.addEventListener('click', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { code: K.restart.code }));

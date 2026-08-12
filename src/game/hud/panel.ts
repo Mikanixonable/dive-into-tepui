@@ -1,6 +1,6 @@
 // HUD ステータスパネル(スタッツ・ターゲット情報・敵一覧)の同期。
 import * as C from '../const';
-import { ACCENT_SECONDARY, TEXT_DIM as INK_SOFT } from '../theme';
+import { ACCENT, ACCENT_SECONDARY, BAR_BG, BG, DANGER, FONT_XS, SPACE_2, TEXT_DIM, TEXT_STRONG, TRANSITION_FAST } from '../theme';
 import { Attractor } from '../../physics/attractor';
 import { Vec3, len, sub } from '../../physics/vec3';
 import type { Game } from '../game';
@@ -262,7 +262,7 @@ export class HudPanels {
     const title = this.els.get('tgtname');
     if (!t) {
       if (title) title.textContent = 'TARGET';
-      body.innerHTML = `<div style="color:${INK_SOFT}">ターゲットなし</div>`;
+      body.innerHTML = `<div style="color:${TEXT_DIM}">ターゲットなし</div>`;
       return;
     }
     if (title) title.textContent = t.name;
@@ -271,7 +271,7 @@ export class HudPanels {
       <div class="row"><span class="k">距離</span><span class="v">${fmtDist(t.dist)}</span></div>
       <div class="row"><span class="k">接近速度</span><span class="v">${fmtSpeed(t.closing)}</span></div>
       <div class="row"><span class="k">相対速度</span><span class="v">${fmtSpeed(t.relSpeed)}</span></div>
-      <div class="row"><span class="k">装甲</span><span class="v"><div style="display:inline-block; position:relative; width:120px; height:12px; background:${C.COLOR_HUD_BAR_BG}; vertical-align:middle; margin-left:4px;"><div style="width:${Math.max(0, Math.min(100, (t.hp / t.maxHp) * 100))}%; height:100%; background:${t.hp <= t.maxHp * 0.3 ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div><div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${Math.floor(t.hp)} / ${t.maxHp}</div></div></span></div>
+      <div class="row"><span class="k">装甲</span><span class="v"><div style="display:inline-block; position:relative; width:120px; height:12px; background:${BAR_BG}; vertical-align:middle; margin-left:${SPACE_2};"><div style="width:${Math.max(0, Math.min(100, (t.hp / t.maxHp) * 100))}%; height:100%; background:${t.hp <= t.maxHp * 0.3 ? DANGER : ACCENT}; transition:width ${TRANSITION_FAST};"></div><div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:${FONT_XS}; color:${TEXT_STRONG}; text-shadow:0 0 2px ${BG}, 0 0 2px ${BG};">${Math.floor(t.hp)} / ${t.maxHp}</div></div></span></div>
       <div class="row"><span class="k">基準天体</span><span class="v">${t.centerName}</span></div>
       <div class="row"><span class="k">遠地点 AP</span><span class="v">${fmtDist(t.apAlt)}</span></div>
       <div class="row"><span class="k">近地点 PE</span><span class="v">${fmtDist(t.peAlt)}</span></div>
@@ -334,7 +334,7 @@ export class HudPanels {
     if (!list) return;
     // 残存する敵がいなければプレースホルダ表示にする
     if (rows.length === 0) {
-      list.innerHTML = `<div style="color:${INK_SOFT}">残存目標なし</div>`;
+      list.innerHTML = `<div style="color:${TEXT_DIM}">残存目標なし</div>`;
       return;
     }
     list.innerHTML = rows

@@ -1,7 +1,7 @@
 // HUD の静的 DOM/スタイル構築。
 import * as C from '../const';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { ACCENT, ACCENT_SOFT, ACCENT_RGB, ACCENT_SECONDARY, WARNING, SURFACE, SURFACE_OPAQUE, EDGE, BG, TEXT as INK, TEXT_DIM as INK_SOFT, FONT } from '../theme';
+import { injectThemeVariables } from '../theme';
 import { buildOverlayLayers, OVERLAY_LAYER_STYLE, type OverlayLayers } from './overlay-layer';
 import { ModalController } from './modal-controller';
 
@@ -12,11 +12,11 @@ const STYLE = `
 #hud, #hud * { box-sizing: border-box; margin: 0; padding: 0; }
 #hud {
   position: fixed; inset: 0; pointer-events: none; overflow: hidden;
-  font-family: ${FONT};
+  font-family: var(--font-family);
   /* body 直下の他要素(タッチ操作パッド・天球グリッドのラベル層)との前後関係を決める。
      #hud の内側の重なり順は overlay-layer.ts のレイヤが持つ。 */
-  color: ${INK}; user-select: text; z-index: 10;
-  font-size: 13px;
+  color: var(--text); user-select: text; z-index: 10;
+  font-size: var(--font-l);
 }
 /* 読み取りたい数値は選択できるようにするが、操作部品とマーカーは対象外にする —
    ボタンの連打やカメラドラッグのたびにラベルが選択されると操作の邪魔になる。 */
@@ -27,29 +27,29 @@ ${OVERLAY_LAYER_STYLE}
    マーカー内優先度: 宇宙船(4) > 敵(3) > 弾薬(2) > 軌道要素・その他(1) > デフォルト(0) */
 /* スクロール可能な領域は既定のブラウザ配色ではダークテーマと調和しないため、
    パネルの縁色・アクセント色に揃える。 */
-#hud, #hud * { scrollbar-color: ${EDGE} transparent; }
+#hud, #hud * { scrollbar-color: var(--edge) transparent; }
 #hud ::-webkit-scrollbar { width: 8px; height: 8px; }
 #hud ::-webkit-scrollbar-track { background: transparent; }
-#hud ::-webkit-scrollbar-thumb { background: ${EDGE}; border-radius: 4px; }
-#hud ::-webkit-scrollbar-thumb:hover { background: ${ACCENT_SOFT}; }
+#hud ::-webkit-scrollbar-thumb { background: var(--edge); border-radius: var(--radius-m); }
+#hud ::-webkit-scrollbar-thumb:hover { background: var(--accent-soft); }
 #hud .mk { z-index: 0; }
 #hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: 1; }
 #hud .mk-ammo { z-index: 2; }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-secondary-target { z-index: 3; }
 #hud .mk-self { z-index: 4; }
-#hud-modal-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: rgba(6,7,9,.3); }
+#hud-modal-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: var(--shade-1); }
 body.hud-modal-open #hud-modal-shield { display: block; }
 body.hud-modal-open #touch-ui { display: none; }
 #hud .panel {
-  position: absolute; background: ${SURFACE};
-  border: 1px solid ${EDGE}; border-radius: 6px;
-  padding: 9px 12px; line-height: 1.5; backdrop-filter: blur(4px);
+  position: absolute; background: var(--surface);
+  border: 1px solid var(--edge); border-radius: var(--radius-m);
+  padding: var(--space-4) var(--space-5); line-height: 1.5; backdrop-filter: blur(4px);
 }
 /* マップ系パネルは左右のドック内で通常フローに積む。内容が増えても他の
    パネルを押し退けるだけで、固定座標による重なりを起こさない。 */
 #hud .hud-dock {
   position: absolute; top: 40px; bottom: 12px;
-  display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+  display: flex; flex-direction: column; align-items: stretch; gap: var(--space-4);
   pointer-events: none; min-height: 0; overflow-x: hidden; overflow-y: auto;
   scrollbar-width: thin; overscroll-behavior: contain;
 }
@@ -59,8 +59,8 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud .hud-dock > .panel[style*="display: none"] { display: none !important; }
 #hud .dock-toggle {
   display: none; position: absolute; top: 8px; z-index: 20; pointer-events: auto;
-  width: 26px; height: 26px; border: 1px solid ${EDGE}; border-radius: 4px;
-  background: ${SURFACE}; color: ${ACCENT}; cursor: pointer;
+  width: 26px; height: 26px; border: 1px solid var(--edge); border-radius: var(--radius-m);
+  background: var(--surface); color: var(--accent); cursor: pointer;
 }
 #hud.map-mode .dock-toggle { display: block; }
 #hud #hud-dock-toggle-left { left: 8px; }
@@ -76,69 +76,69 @@ body.hud-modal-open #touch-ui { display: none; }
   margin-left: auto;
 }
 #hud .panel h3 {
-  font-size: 11px; letter-spacing: 2.5px; color: ${ACCENT};
-  border-bottom: 1px solid rgba(${ACCENT_RGB}, 0.25); margin-bottom: 6px; padding-bottom: 4px;
+  font-size: var(--font-s); letter-spacing: 2.5px; color: var(--accent);
+  border-bottom: 1px solid var(--accent-edge-soft); margin-bottom: var(--space-3); padding-bottom: var(--space-2);
   font-weight: 600;
 }
 /* マップモードでは #hud-dock-toggle-right(right:8px, 26px 角)がこの位置に重なるので、
    その右端(8+26=34px)より確実に外側へ避けておく。 */
 #hud-viewbadge {
   position: absolute; top: 8px; right: 44px;
-  display: flex; align-items: center; gap: 6px;
-  color: ${INK_SOFT}; font-size: 9px; letter-spacing: 1.2px;
+  display: flex; align-items: center; gap: var(--space-3);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: 1.2px;
   white-space: nowrap; opacity: 0.9;
 }
-#hud-viewbadge .vb-title { color: ${ACCENT}; }
-#hud-viewbadge .vb-mode { color: ${INK_SOFT}; }
+#hud-viewbadge .vb-title { color: var(--accent); }
+#hud-viewbadge .vb-mode { color: var(--text-dim); }
 #hud-viewbadge .vb-view-btn {
   pointer-events: auto; cursor: pointer; background: transparent;
-  border: 1px solid ${EDGE}; border-radius: 4px; padding: 2px 6px;
-  color: ${INK_SOFT}; font: inherit; letter-spacing: inherit;
+  border: 1px solid var(--edge); border-radius: var(--radius-m); padding: var(--space-1) var(--space-3);
+  color: var(--text-dim); font: inherit; letter-spacing: inherit;
 }
-#hud-viewbadge .vb-view-btn:hover { color: ${INK}; border-color: ${ACCENT_SOFT}; }
+#hud-viewbadge .vb-view-btn:hover { color: var(--text); border-color: var(--accent-soft); }
 #hud-globalstatus {
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
   pointer-events: auto;
-  padding: 4px 14px; border-radius: 0 0 6px 6px;
-  background: ${SURFACE}; border: 1px solid ${EDGE}; border-top: none; backdrop-filter: blur(4px);
-  font-size: 11px; letter-spacing: 1px; font-variant-numeric: tabular-nums;
-  color: ${INK_SOFT};
-  display: flex; align-items: center; gap: 8px; white-space: nowrap;
+  padding: var(--space-2) var(--space-5); border-radius: 0 0 var(--radius-m) var(--radius-m);
+  background: var(--surface); border: 1px solid var(--edge); border-top: none; backdrop-filter: blur(4px);
+  font-size: var(--font-s); letter-spacing: 1px; font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  display: flex; align-items: center; gap: var(--space-4); white-space: nowrap;
 }
-#hud-globalstatus .v { color: ${INK}; }
-#hud-globalstatus .gs-sep { color: ${EDGE}; }
-#hud .row { display: flex; justify-content: space-between; gap: 12px; }
-#hud .row .k { color: ${INK_SOFT}; }
-#hud .row .v { color: ${INK}; min-width: 90px; text-align: right; }
-#hud-status { bottom: 12px; left: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
-#hud-status h3 { font-size: 8.8px; }
+#hud-globalstatus .v { color: var(--text); }
+#hud-globalstatus .gs-sep { color: var(--edge); }
+#hud .row { display: flex; justify-content: space-between; gap: var(--space-5); }
+#hud .row .k { color: var(--text-dim); }
+#hud .row .v { color: var(--text); min-width: 90px; text-align: right; }
+#hud-status { bottom: 12px; left: 12px; width: 228px; box-sizing: border-box; font-size: var(--font-xs); }
+#hud-status h3 { font-size: var(--font-xxs); }
 /* マップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
    SHIP STATUS は畳んでパネル占有面積を減らす。戦闘ビューでは従来どおり常設のまま。 */
 #hud.map-mode #hud-status { display: none; }
-#hud-orbit { bottom: 12px; left: 252px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
-#hud-orbit h3 { font-size: 8.8px; }
+#hud-orbit { bottom: 12px; left: 252px; width: 228px; box-sizing: border-box; font-size: var(--font-xs); }
+#hud-orbit h3 { font-size: var(--font-xxs); }
 #hud.map-mode #hud-orbit { font-size: inherit; }
-#hud.map-mode #hud-orbit h3 { font-size: 11px; }
+#hud.map-mode #hud-orbit h3 { font-size: var(--font-s); }
 #hud-status .v, #hud-orbit .v { min-width: 75px; }
-#hud .hud-dock-right > #hud-target { width: 100%; box-sizing: border-box; font-size: 10.4px; }
-#hud .hud-dock-right > #hud-target h3 { font-size: 8.8px; }
-#hud-enemies { bottom: 12px; right: 12px; width: 228px; box-sizing: border-box; font-size: 10.4px; }
-#hud-enemies h3 { font-size: 8.8px; }
-#hud-enemies .erow { display: flex; justify-content: space-between; gap: 8px; color: ${INK_SOFT}; }
-#hud-enemies .erow.tgt { color: ${WARNING}; }
+#hud .hud-dock-right > #hud-target { width: 100%; box-sizing: border-box; font-size: var(--font-xs); }
+#hud .hud-dock-right > #hud-target h3 { font-size: var(--font-xxs); }
+#hud-enemies { bottom: 12px; right: 12px; width: 228px; box-sizing: border-box; font-size: var(--font-xs); }
+#hud-enemies h3 { font-size: var(--font-xxs); }
+#hud-enemies .erow { display: flex; justify-content: space-between; gap: var(--space-4); color: var(--text-dim); }
+#hud-enemies .erow.tgt { color: var(--danger); }
 #hud-map-scale {
   position: absolute; right: 12px; bottom: 12px; display: none; pointer-events: none;
-  padding: 4px 7px 5px; border: 1px solid ${EDGE}; border-radius: 4px;
-  background: ${SURFACE}; color: ${INK_SOFT}; font-size: 9px; line-height: 1.1;
+  padding: var(--space-2) var(--space-4) var(--space-3); border: 1px solid var(--edge); border-radius: var(--radius-m);
+  background: var(--surface); color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.1;
   font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
 }
-#hud-map-scale .map-scale-value { color: ${INK}; }
-#hud-map-scale .map-scale-ruler { position: relative; height: 10px; margin-top: 2px; margin-left: auto; }
+#hud-map-scale .map-scale-value { color: var(--text); }
+#hud-map-scale .map-scale-ruler { position: relative; height: 10px; margin-top: var(--space-1); margin-left: auto; }
 #hud-map-scale .map-scale-ruler::before {
-  content: ''; position: absolute; left: 0; right: 0; top: 5px; border-top: 1px solid ${INK_SOFT};
+  content: ''; position: absolute; left: 0; right: 0; top: 5px; border-top: 1px solid var(--text-dim);
 }
 #hud-map-scale .map-scale-tick {
-  position: absolute; top: 1px; height: 9px; border-left: 1px solid ${INK};
+  position: absolute; top: 1px; height: 9px; border-left: 1px solid var(--text);
 }
 #hud-map-scale .map-scale-tick.start { left: 0; }
 #hud-map-scale .map-scale-tick.q1 { left: 25%; }
@@ -147,41 +147,41 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-map-scale .map-scale-tick.end { right: 0; }
 #hud-object-list { max-height: 544px; overflow-y: auto; }
 /* パネルの padding 分だけ食い込ませて幅いっぱいに広げ、スクロール中も先頭に張り付かせる */
-#hud-object-list .object-list-head { position: sticky; top: -9px; margin: -9px -12px 0; padding: 9px 12px 0; background: ${SURFACE_OPAQUE}; z-index: 1; }
-#hud-object-list .object-list-search { padding:2px 4px; }
-#hud-object-list .object-list-search input { width:100%; box-sizing:border-box; background:${SURFACE}; color:${INK}; border:1px solid ${EDGE}; font:inherit; }
-#hud-object-list .object-list-tools { display:flex; gap:3px; flex-wrap:wrap; padding:2px 4px; }
+#hud-object-list .object-list-head { position: sticky; top: calc(var(--space-4) * -1); margin: calc(var(--space-4) * -1) calc(var(--space-5) * -1) 0; padding: var(--space-4) var(--space-5) 0; background: var(--surface-opaque); z-index: 1; }
+#hud-object-list .object-list-search { padding: var(--space-1) var(--space-2); }
+#hud-object-list .object-list-search input { width:100%; box-sizing:border-box; background:var(--surface); color:var(--text); border:1px solid var(--edge); font:inherit; }
+#hud-object-list .object-list-tools { display:flex; gap: var(--space-2); flex-wrap:wrap; padding: var(--space-1) var(--space-2); }
 #hud-object-list .object-list-tools button {
-  font-size:8px; padding:2px 4px; border:1px solid ${EDGE}; border-radius:4px;
-  background:${SURFACE}; color:${INK_SOFT};
+  font-size: var(--font-xxs); padding: var(--space-1) var(--space-2); border:1px solid var(--edge); border-radius: var(--radius-m);
+  background:var(--surface); color:var(--text-dim);
 }
-#hud-object-list .object-list-tools button[aria-pressed="true"] { color:${ACCENT}; border-color:${ACCENT}; }
+#hud-object-list .object-list-tools button[aria-pressed="true"] { color:var(--accent); border-color:var(--accent); }
 #hud-object-list .object-list-collapse {
-  margin-left: auto; background: none; border: none; color: ${INK_SOFT}; font: inherit; cursor: pointer; pointer-events: auto;
+  margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
-#hud-object-list .object-list-title { display: flex; align-items: center; gap: 4px; }
+#hud-object-list .object-list-title { display: flex; align-items: center; gap: var(--space-2); }
 #hud-object-list .object-list-body.collapsed { display: none !important; }
-#hud-object-list .object-list-breadcrumb { padding:2px 5px; font-size:8px; color:${INK_SOFT}; border-bottom:1px solid ${EDGE}; }
+#hud-object-list .object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
 #hud-object-list .object-list-section-header {
-  display: block; width: 100%; text-align: left; margin: 4px 0 2px;
-  padding: 3px 8px; font-size: 10px; letter-spacing: 1px;
+  display: block; width: 100%; text-align: left; margin: var(--space-2) 0 var(--space-1);
+  padding: var(--space-2) var(--space-4); font-size: var(--font-xs); letter-spacing: 1px;
 }
-#hud-object-list .object-list-section-body { padding-left: 4px; }
-#hud-object-list .erow { padding: 3px 4px; color: ${INK_SOFT}; cursor: pointer; display: flex; align-items: center; gap: 4px; }
-#hud-object-list .object-list-detail { margin-left: auto; font-size: 8px; color: ${INK_SOFT}; white-space: nowrap; }
-#hud-object-list .erow:hover { color: ${INK}; }
-#hud-object-list .erow.tgt { color: ${ACCENT}; }
-#hud-object-list .erow.selected { outline: 1px solid ${EDGE}; color: ${INK}; }
+#hud-object-list .object-list-section-body { padding-left: var(--space-2); }
+#hud-object-list .erow { padding: var(--space-2) var(--space-2); color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); }
+#hud-object-list .object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
+#hud-object-list .erow:hover { color: var(--text); }
+#hud-object-list .erow.tgt { color: var(--accent); }
+#hud-object-list .erow.selected { outline: 1px solid var(--edge); color: var(--text); }
 #hud-object-list .object-list-toggle { width: 10px; text-align: center; flex: none; }
-#hud-object-list .object-list-children { padding-left: 12px; }
+#hud-object-list .object-list-children { padding-left: var(--space-5); }
 #hud-combat-shelf { display: contents; }
 
 #hud-hint {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  background: ${SURFACE}; border: 1px solid rgba(${ACCENT_RGB}, 0.35); border-radius: 4px;
-  padding: 8px 18px;
-  color: ${ACCENT_SOFT}; font-size: 14px;
-  transition: opacity 0.4s; opacity: 0; text-align: center;
+  background: var(--surface); border: 1px solid var(--accent-edge); border-radius: var(--radius-m);
+  padding: var(--space-4) var(--space-6);
+  color: var(--accent-soft); font-size: var(--font-xl);
+  transition: opacity var(--transition-slow); opacity: 0; text-align: center;
 }
 #hud-chase-reset {
   position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
@@ -189,81 +189,81 @@ body.hud-modal-open #touch-ui { display: none; }
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
   padding: 0;
-  border: 1px solid ${EDGE}; background: ${SURFACE}; color: ${INK_SOFT};
+  border: 1px solid var(--edge); background: var(--surface); color: var(--text-dim);
 }
-#hud-chase-reset:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud-chase-reset:hover { border-color: var(--accent); color: var(--accent); }
 #hud-toast {
   position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
-  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px; padding: 14px 26px;
-  color: ${INK}; font-size: 15px; text-align: center;
-  transition: opacity 1s; opacity: 0; line-height: 1.8;
+  background: var(--surface); border: 1px solid var(--edge); border-radius: var(--radius-m); padding: var(--space-5) var(--space-6);
+  color: var(--text); font-size: var(--font-xl); text-align: center;
+  transition: opacity var(--transition-slow); opacity: 0; line-height: 1.8;
 }
-#hud .sim-speed-hot { color: ${ACCENT}; }
-#hud .mode-tgt { color: ${WARNING}; }
+#hud .sim-speed-hot { color: var(--accent); }
+#hud .mode-tgt { color: var(--danger); }
 .mk {
   position: absolute; transform: translate(-50%, -50%);
-  text-align: center; white-space: nowrap; text-shadow: 0 0 4px #000, 0 0 2px #000;
+  text-align: center; white-space: nowrap; text-shadow: 0 0 4px var(--bg), 0 0 2px var(--bg);
   width: 24px; height: 24px;
 }
-.mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; line-height: 1; }
-.mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: 10px; letter-spacing: 1px; }
-#hud .mk .lbl { margin-top: 2px; }
-.mk-enemy .lbl, .mk-target .lbl { font-size: 9px; line-height: 1.2; white-space: pre; }
-.mk-dir { color: #ffffff; font-size: 11px; text-shadow: none; }
-#hud .mk-bearing-triangle .sym { font-size: 14.67px; }
-#hud .mk-ally-dir .sym { font-size: 7.33px; }
-.mk-boresight { color: #ffffff; font-size: 36px; }
+.mk .sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: var(--glyph-base); line-height: 1; }
+.mk .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: var(--font-xs); letter-spacing: 1px; }
+#hud .mk .lbl { margin-top: var(--space-1); }
+.mk-enemy .lbl, .mk-target .lbl { font-size: var(--font-xxs); line-height: 1.2; white-space: pre; }
+.mk-dir { color: var(--text-strong); font-size: var(--font-s); text-shadow: none; }
+#hud .mk-bearing-triangle .sym { font-size: var(--glyph-2-3); }
+#hud .mk-ally-dir .sym { font-size: var(--glyph-1-3); }
+.mk-boresight { color: var(--text-strong); font-size: var(--glyph-boresight); }
 #mk-bore .sym { width: 48px; height: 48px; }
-#mk-bore .lbl { top: -14px; left: 19px; transform: none; font-size: 8px; letter-spacing: .4px; color: ${INK_SOFT}; text-shadow: 0 0 3px #000; }
-.mk-target { color: #ffffff; }
-.mk-secondary-target { color: ${ACCENT_SECONDARY}; }
-.mk-enemy { color: #ffffff; }
-.mk-lead { color: ${WARNING}; }
+#mk-bore .lbl { top: -14px; left: 19px; transform: none; font-size: var(--font-xxs); letter-spacing: .4px; color: var(--text-dim); text-shadow: 0 0 3px var(--bg); }
+.mk-target { color: var(--text-strong); }
+.mk-secondary-target { color: var(--accent-secondary); }
+.mk-enemy { color: var(--text-strong); }
+.mk-lead { color: var(--danger); }
 .mk-pro { color: ${C.COLOR_MARKER_PROGRADE}; }
 .mk-retro { color: ${C.COLOR_MARKER_PROGRADE}; }
 .mk-nrm { color: ${C.COLOR_MARKER_NORMAL}; }
 .mk-rad { color: ${C.COLOR_MARKER_RADIAL}; }
 .mk-tgtdir { color: ${C.COLOR_MARKER_TGTDIR}; }
 .mk-node { color: ${C.COLOR_MARKER_NODE}; }
-.mk-boardpass { color: ${C.COLOR_MARKER_BOARDPASS}; text-shadow: 0 0 5px rgba(255,255,255,0.9), 0 0 10px rgba(255,255,255,0.45); }
-.mk-boardpass .sym { font-size: 8px; }
-.mk-mnode { color: ${ACCENT_SOFT}; }
+.mk-boardpass { color: ${C.COLOR_MARKER_BOARDPASS}; text-shadow: 0 0 5px color-mix(in srgb, ${C.COLOR_MARKER_BOARDPASS} var(--glow-strong), transparent), 0 0 10px color-mix(in srgb, ${C.COLOR_MARKER_BOARDPASS} var(--glow-weak), transparent); }
+.mk-boardpass .sym { font-size: var(--font-xxs); }
+.mk-mnode { color: var(--accent-soft); }
 .mk-mnode .lbl { white-space: pre; line-height: 1.25; }
-.mk-burn { color: ${ACCENT}; text-shadow: 0 0 8px rgba(${ACCENT_RGB}, 0.7); }
+.mk-burn { color: var(--accent); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) var(--glow-strong), transparent); }
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
-.mk-ammo { color: ${ACCENT_SOFT}; text-shadow: 0 0 6px rgba(255,144,64,0.6), 0 0 3px #000; }
-#hud .warn-hot { color: ${WARNING}; }
+.mk-ammo { color: var(--accent-soft); text-shadow: 0 0 6px color-mix(in srgb, var(--accent-soft) var(--glow-strong), transparent), 0 0 3px var(--bg); }
+#hud .warn-hot { color: var(--danger); }
 #hud-plan { min-width: 0; width: 100%; max-width: 300px; overflow-wrap: anywhere; }
-#hud .hud-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
-#hud .hud-seg .seg-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; min-width: 28px; }
+#hud .hud-seg { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
+#hud .hud-seg .seg-title { font-size: var(--font-xs); letter-spacing: 1px; color: var(--text-dim); min-width: 28px; }
 #hud .seg-btn {
-  pointer-events: auto; cursor: pointer; padding: 3px 10px; font-size: 11px;
-  border: 1px solid ${EDGE}; border-radius: 6px; background: ${SURFACE}; color: ${INK_SOFT};
+  pointer-events: auto; cursor: pointer; padding: var(--space-2) var(--space-5); font-size: var(--font-s);
+  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text-dim);
   line-height: 1.2;
 }
-#hud .seg-btn.on { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud .seg-btn.on { border-color: var(--accent); color: var(--accent); }
 #hud .seg-btn.disabled { opacity: 0.35; pointer-events: none; }
-#hud .seg-btn.hold-btn:active { border-color: ${ACCENT}; color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.16); }
-#hud .icon-toggle-btn { min-width: 20px; padding: 3px 6px; text-align: center; font-size: 12px; }
-#hud .body-class-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-#hud .body-class-row .body-class-title { width: 96px; min-width: 96px; text-align: left; font-size: 10px; letter-spacing: 1px; }
-#hud .body-class-row .body-class-btns { display: flex; gap: 4px; }
-#hud .body-class-row.category-off .icon-toggle-btn.on { border-color: ${EDGE}; color: ${INK_SOFT}; font-weight: 700; opacity: .65; }
+#hud .seg-btn.hold-btn:active { border-color: var(--accent); color: var(--accent); background: var(--accent-fill); }
+#hud .icon-toggle-btn { min-width: 20px; padding: var(--space-2) var(--space-3); text-align: center; font-size: var(--font-m); }
+#hud .body-class-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
+#hud .body-class-row .body-class-title { width: 96px; min-width: 96px; text-align: left; font-size: var(--font-xs); letter-spacing: 1px; }
+#hud .body-class-row .body-class-btns { display: flex; gap: var(--space-2); }
+#hud .body-class-row.category-off .icon-toggle-btn.on { border-color: var(--edge); color: var(--text-dim); font-weight: 700; opacity: .65; }
 #hud .body-class-row.category-off .icon-toggle-btn.disabled { opacity: .35; }
 #hud .category-toggle-btn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#hud .hud-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-#hud .hud-toggle .toggle-title { font-size: 10px; letter-spacing: 1px; color: ${INK_SOFT}; }
+#hud .hud-toggle { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-3); }
+#hud .hud-toggle .toggle-title { font-size: var(--font-xs); letter-spacing: 1px; color: var(--text-dim); }
 #hud .hud-toggle .toggle-track {
   pointer-events: auto; cursor: pointer; position: relative; display: inline-block;
-  width: 34px; height: 18px; border-radius: 9px; border: 1px solid ${EDGE};
-  background: ${SURFACE}; transition: border-color 0.15s, background 0.15s;
+  width: 34px; height: 18px; border-radius: var(--radius-l); border: 1px solid var(--edge);
+  background: var(--surface); transition: border-color var(--transition-fast), background var(--transition-fast);
 }
-#hud .hud-toggle .toggle-track.on { border-color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.25); }
+#hud .hud-toggle .toggle-track.on { border-color: var(--accent); background: var(--accent-fill-strong); }
 #hud .hud-toggle .toggle-knob {
   position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
-  background: ${INK_SOFT}; transition: left 0.15s, background 0.15s;
+  background: var(--text-dim); transition: left var(--transition-fast), background var(--transition-fast);
 }
-#hud .hud-toggle .toggle-track.on .toggle-knob { left: 18px; background: ${ACCENT}; }
+#hud .hud-toggle .toggle-track.on .toggle-knob { left: 18px; background: var(--accent); }
 /* MAP VIEW の左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-overview-camera { display: none; width: 100%; pointer-events: auto; }
 /* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも
@@ -273,7 +273,7 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-displaytime-wrap {
   position: absolute; bottom: 12px;
   left: calc(12px + min(300px, 30vw) + 8px); right: calc(12px + min(300px, 33vw) + 8px);
-  display: flex; flex-direction: column; gap: 4px; pointer-events: none;
+  display: flex; flex-direction: column; gap: var(--space-2); pointer-events: none;
 }
 /* #hud を重ねた ID セレクタで、.panel 共通規則(position:absolute)より詳細度を上げて打ち消す。 */
 #hud #hud-displaytime {
@@ -283,55 +283,55 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-displaytime.collapsed { display: none !important; }
 #hud-displaytime-toggle {
   display: none; order: 1; align-self: center; pointer-events: auto; cursor: pointer;
-  width: 26px; height: 26px; border: 1px solid ${EDGE}; border-radius: 4px;
-  background: ${SURFACE}; color: ${ACCENT};
+  width: 26px; height: 26px; border: 1px solid var(--edge); border-radius: var(--radius-m);
+  background: var(--surface); color: var(--accent);
 }
 #hud.map-mode #hud-displaytime-toggle { display: block; }
 #hud.dock-mode #hud-displaytime-toggle { display: none; }
-#hud-displaytime .dtp-row1, #hud-displaytime .dtp-row2 { display: flex; align-items: center; gap: 6px; }
-#hud-displaytime .dtp-row1 { flex-wrap: wrap; margin-bottom: 4px; }
-#hud-displaytime .dtp-pills { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+#hud-displaytime .dtp-row1, #hud-displaytime .dtp-row2 { display: flex; align-items: center; gap: var(--space-3); }
+#hud-displaytime .dtp-row1 { flex-wrap: wrap; margin-bottom: var(--space-2); }
+#hud-displaytime .dtp-pills { display: inline-flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
 #hud-displaytime .dtp-reset {
   pointer-events: auto; cursor: pointer; flex: 0 0 auto;
   width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
-  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT}; font-size: 12px;
+  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text-dim); font-size: var(--font-m);
 }
-#hud-displaytime .dtp-reset:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud-displaytime .dtp-reset:hover { border-color: var(--accent); color: var(--accent); }
 #hud-displaytime .dtp-slider-wrap { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; height: 22px; }
-#hud-displaytime input[type="range"] { width: 100%; height: 22px; margin: 0; pointer-events: auto; accent-color: ${ACCENT}; }
+#hud-displaytime input[type="range"] { width: 100%; height: 22px; margin: 0; pointer-events: auto; accent-color: var(--accent); }
 #hud-displaytime .dtp-elapsed {
   flex: 0 0 auto; pointer-events: auto; cursor: pointer;
-  font-size: 11px; color: ${INK_SOFT}; font-variant-numeric: tabular-nums; white-space: nowrap;
+  font-size: var(--font-s); color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-#hud-displaytime .dtp-elapsed:hover { color: ${INK}; }
+#hud-displaytime .dtp-elapsed:hover { color: var(--text); }
 #hud-displaytime .dtp-absolute {
-  flex: 0 0 auto; font-size: 11px; color: ${INK_SOFT};
+  flex: 0 0 auto; font-size: var(--font-s); color: var(--text-dim);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-#hud-displaytime .dtp-value-input { display: inline-flex; align-items: center; gap: 4px; margin: 0; }
+#hud-displaytime .dtp-value-input { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; }
 /* 単位の SegmentedControl は見出しを持たないので、共通規則の見出し幅を出さない。 */
 #hud-displaytime .dtp-value-input .seg-title { display: none; }
 #hud-displaytime .dtp-value-input input[type="number"] { width: 56px; }
 #hud-displaytime .dtp-edit-btn {
-  pointer-events: auto; cursor: pointer; padding: 2px 6px; font-size: 11px;
-  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
+  pointer-events: auto; cursor: pointer; padding: var(--space-1) var(--space-3); font-size: var(--font-s);
+  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text-dim);
 }
-#hud-displaytime .dtp-edit-btn:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud-displaytime .dtp-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
 /* パネル内の数値・テキスト入力欄の共通見た目(スライダーは上の range 規則が受け持つ)。 */
 #hud .panel input[type="number"], #hud .panel input[type="text"] {
-  pointer-events: auto; width: 64px; padding: 3px 6px; font-size: 11px;
-  border: 1px solid ${EDGE}; border-radius: 6px; background: ${SURFACE}; color: ${INK};
+  pointer-events: auto; width: 64px; padding: var(--space-2) var(--space-3); font-size: var(--font-s);
+  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text);
 }
 #hud .settings-btn {
-  pointer-events: auto; cursor: pointer; padding: 4px 8px; font-size: 11px;
-  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK};
+  pointer-events: auto; cursor: pointer; padding: var(--space-2) var(--space-4); font-size: var(--font-s);
+  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text);
 }
-#hud .settings-btn:hover { background: rgba(255, 255, 255, 0.05); }
-#hud .settings-btn:active { background: rgba(255, 255, 255, 0.1); border-color: ${ACCENT_SOFT}; }
-#hud-displaytime .slider-ticks { position: relative; height: 11px; margin-top: 2px; }
+#hud .settings-btn:hover { background: var(--fill-1); }
+#hud .settings-btn:active { background: var(--fill-2); border-color: var(--accent-soft); }
+#hud-displaytime .slider-ticks { position: relative; height: 11px; margin-top: var(--space-1); }
 #hud-displaytime .slider-ticks span {
   position: absolute;
-  font-size: 9px; color: ${INK_SOFT}; white-space: nowrap;
+  font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap;
 }
 #hud-frame-controls { display: none; width: 100%; pointer-events: auto; }
 #hud-frame-controls .hud-frame-scroll-zone {
@@ -346,118 +346,118 @@ body.hud-modal-open #touch-ui { display: none; }
 #hud-creative-logistics { display: none; width: 100%; pointer-events: auto; }
 /* 艦艇配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
 #hud-shipplacer { display: none; width: 100%; pointer-events: auto; max-height: 70vh; overflow-y: auto; }
-#hud-shipplacer .slider-field { margin-bottom: 8px; }
+#hud-shipplacer .slider-field { margin-bottom: var(--space-4); }
 #hud-shipplacer .slider-field .hud-seg { flex-wrap: nowrap; margin-bottom: 0; }
 #hud-shipplacer .slider-field .slider-col { flex: 1 1 60px; min-width: 60px; }
-#hud-shipplacer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: ${ACCENT}; }
-#hud-shipplacer .slider-field .slider-ticks { display: flex; justify-content: space-between; margin-top: 2px; }
-#hud-shipplacer .slider-field .slider-ticks span { flex: 0 1 auto; min-width: 0; font-size: 9px; color: ${INK_SOFT}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#hud-shipplacer .slider-field input[type="range"] { width: 100%; pointer-events: auto; accent-color: var(--accent); }
+#hud-shipplacer .slider-field .slider-ticks { display: flex; justify-content: space-between; margin-top: var(--space-1); }
+#hud-shipplacer .slider-field .slider-ticks span { flex: 0 1 auto; min-width: 0; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #hud-shipplacer .slider-field .slider-ticks span:first-child { text-align: left; }
 #hud-shipplacer .slider-field .slider-ticks span:last-child { text-align: right; }
 #hud-shipplacer input[type="text"] { flex: 1; width: auto; }
-#hud-shipplacer .preset-row { flex-wrap: wrap; gap: 6px; }
-#hud-shipplacer .field-issue { border: 1px solid ${WARNING}; border-radius: 3px; padding: 2px 4px; }
-#hud-shipplacer .issue-list { margin: 8px 0; padding: 6px 8px; border: 1px solid ${WARNING}; border-radius: 3px; background: rgba(255,79,94,0.08); }
-#hud-shipplacer .issue-list .issue-line { font-size: 11px; color: ${WARNING}; }
+#hud-shipplacer .preset-row { flex-wrap: wrap; gap: var(--space-3); }
+#hud-shipplacer .field-issue { border: 1px solid var(--danger); border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); }
+#hud-shipplacer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--danger); border-radius: var(--radius-s); background: var(--danger-fill); }
+#hud-shipplacer .issue-list .issue-line { font-size: var(--font-s); color: var(--danger); }
 #navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
-#navball .nb-ball { display: block; width: 100%; height: auto; margin: 4px 0 8px; }
-#navball .nb-rim { fill: rgba(255, 255, 255, 0.03); stroke: ${EDGE}; stroke-width: 1; }
-#navball .nb-grid { fill: none; stroke: ${INK_SOFT}; stroke-width: 0.6; opacity: 0.35; }
-#navball .nb-equator { fill: none; stroke: ${INK_SOFT}; stroke-width: 0.9; opacity: 0.55; }
+#navball .nb-ball { display: block; width: 100%; height: auto; margin: var(--space-2) 0 var(--space-4); }
+#navball .nb-rim { fill: var(--fill-1); stroke: var(--edge); stroke-width: 1; }
+#navball .nb-grid { fill: none; stroke: var(--text-dim); stroke-width: 0.6; opacity: 0.35; }
+#navball .nb-equator { fill: none; stroke: var(--text-dim); stroke-width: 0.9; opacity: 0.55; }
 #navball .nb-bore line { stroke: ${C.COLOR_MARKER_BORESIGHT}; stroke-width: 1; opacity: 0.8; }
-#navball text { font-size: 9px; text-anchor: middle; dominant-baseline: middle; }
+#navball text { font-size: var(--font-xxs); text-anchor: middle; dominant-baseline: middle; }
 #navball .nb-pro { fill: ${C.COLOR_MARKER_PROGRADE}; }
 #navball .nb-nrm { fill: ${C.COLOR_MARKER_NORMAL}; }
 #navball .nb-rad { fill: ${C.COLOR_MARKER_RADIAL}; }
-#mk-bore .lbl { top: auto; left: 100%; bottom: 100%; margin: 0 0 2px 5px; white-space: pre; text-align: left; font-size: 9px; line-height: 1.2; }
-.mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
-.mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px rgba(143,208,255,0.6), 0 0 3px #000; }
-.mk-impact { color: ${WARNING}; text-shadow: 0 0 6px rgba(255,79,94,0.6), 0 0 3px #000; }
-.mk-plantick { color: ${INK_SOFT}; }
+#mk-bore .lbl { top: auto; left: 100%; bottom: 100%; margin: 0 0 var(--space-1) var(--space-3); white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2; }
+.mk-planned { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px color-mix(in srgb, ${C.COLOR_MARKER_PLANNED} var(--glow-strong), transparent), 0 0 3px var(--bg); }
+.mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; text-shadow: 0 0 6px color-mix(in srgb, ${C.COLOR_MARKER_PLANNED} var(--glow-strong), transparent), 0 0 3px var(--bg); }
+.mk-impact { color: var(--danger); text-shadow: 0 0 6px color-mix(in srgb, var(--danger) var(--glow-strong), transparent), 0 0 3px var(--bg); }
+.mk-plantick { color: var(--text-dim); }
 .mk-plantick .sym svg { display: block; }
-.mk-poi { color: #ffffff; text-shadow: 0 0 4px #000; }
-.mk-poi .sym { font-size: 5px; }
-.mk-poi .lbl { font-size: 11px; border-radius: 2px; background: rgba(13,15,18,0.6); }
-.mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px #000; }
-.mk-base .lbl { font-size: 11px; border-radius: 2px; background: rgba(13,15,18,0.6); border: 1px solid rgba(255,255,255,0.2); }
-#hud .mk-poi .lbl, #hud .mk-base .lbl { margin-top: 4px; padding: 2px 4px; }
+.mk-poi { color: var(--text-strong); text-shadow: 0 0 4px var(--bg); }
+.mk-poi .sym { font-size: var(--glyph-poi); }
+.mk-poi .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); }
+.mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px var(--bg); }
+.mk-base .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); border: 1px solid var(--fill-3); }
+#hud .mk-poi .lbl, #hud .mk-base .lbl { margin-top: var(--space-2); padding: var(--space-1) var(--space-2); }
 #hud-end {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(6, 7, 9, 0.82); backdrop-filter: blur(3px);
+  background: var(--scrim); backdrop-filter: blur(3px);
   flex-direction: column; text-align: center;
 }
-#hud-end h1 { font-size: 34px; letter-spacing: 6px; margin-bottom: 18px; }
-#hud-end.win h1 { color: ${INK}; text-shadow: 0 0 18px rgba(230,232,235,0.35); }
-#hud-end.lose h1 { color: ${ACCENT}; text-shadow: 0 0 18px rgba(${ACCENT_RGB}, 0.4); }
+#hud-end h1 { font-size: var(--font-3xl); letter-spacing: 6px; margin-bottom: var(--space-6); }
+#hud-end.win h1 { color: var(--text); text-shadow: 0 0 18px color-mix(in srgb, var(--text) var(--glow-weak), transparent); }
+#hud-end.lose h1 { color: var(--accent); text-shadow: 0 0 18px color-mix(in srgb, var(--accent) var(--glow-strong), transparent); }
 #hud-end .detail {
-  font-size: 15px; line-height: 2; color: ${INK};
-  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px; padding: 18px 30px;
+  font-size: var(--font-xl); line-height: 2; color: var(--text);
+  background: var(--surface); border: 1px solid var(--edge); border-radius: var(--radius-m); padding: var(--space-6) var(--space-6);
 }
-#hud-end .restart { margin-top: 22px; color: ${ACCENT_SOFT}; font-size: 13px; }
+#hud-end .restart { margin-top: var(--space-6); color: var(--accent-soft); font-size: var(--font-l); }
 #hud-help {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   display: none; min-width: 480px; max-height: 86vh; overflow-y: auto; pointer-events: auto;
 }
 #hud-help table { border-collapse: collapse; width: 100%; }
-#hud-help td { padding: 3px 10px; color: ${INK}; }
-#hud-help td.key { color: ${ACCENT_SOFT}; text-align: right; white-space: nowrap; }
+#hud-help td { padding: var(--space-2) var(--space-5); color: var(--text); }
+#hud-help td.key { color: var(--accent-soft); text-align: right; white-space: nowrap; }
 
 #hud-stagestatus {
   bottom: 12px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: flex-start; gap: 22px;
-  text-align: left; min-width: 480px; padding: 8px 16px;
+  display: flex; align-items: flex-start; gap: var(--space-6);
+  text-align: left; min-width: 480px; padding: var(--space-4) var(--space-6);
 }
-#hud-stagestatus .t { font-size: 11px; letter-spacing: 2px; color: ${INK}; font-variant-numeric: tabular-nums; }
-#hud-stagestatus .t.warn { color: ${ACCENT}; }
-#hud-stagestatus .k { font-size: 11px; color: ${INK_SOFT}; line-height: 1.8; white-space: nowrap; }
-#hud-stagestatus .k-widgets:not(:empty) { margin-top: 6px; }
-#hud-stagestatus .radiators { display: flex; flex-direction: column; gap: 6px; }
+#hud-stagestatus .t { font-size: var(--font-s); letter-spacing: 2px; color: var(--text); font-variant-numeric: tabular-nums; }
+#hud-stagestatus .t.warn { color: var(--accent); }
+#hud-stagestatus .k { font-size: var(--font-s); color: var(--text-dim); line-height: 1.8; white-space: nowrap; }
+#hud-stagestatus .k-widgets:not(:empty) { margin-top: var(--space-3); }
+#hud-stagestatus .radiators { display: flex; flex-direction: column; gap: var(--space-3); }
 #hud-stagestatus .radiator-btn {
   pointer-events: auto; cursor: pointer; position: relative; overflow: hidden;
-  width: 132px; padding: 4px 8px; border: 1px solid ${EDGE}; border-radius: 4px;
-  background: ${SURFACE}; text-align: left;
+  width: 132px; padding: var(--space-2) var(--space-4); border: 1px solid var(--edge); border-radius: var(--radius-m);
+  background: var(--surface); text-align: left;
 }
 #hud-stagestatus .radiator-btn .fill {
-  position: absolute; inset: 0; z-index: 0; transition: width 0.2s, background 0.2s;
+  position: absolute; inset: 0; z-index: 0; transition: width var(--transition-fast), background var(--transition-fast);
 }
 #hud-stagestatus .radiator-btn .label {
-  position: relative; z-index: 1; color: ${INK}; font-size: 10px; line-height: 1.5;
-  text-shadow: 0 0 3px #000, 0 0 3px #000; transition: color 0.2s;
+  position: relative; z-index: 1; color: var(--text); font-size: var(--font-xs); line-height: 1.5;
+  text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg); transition: color var(--transition-fast);
 }
-#hud-stagestatus .radiator-btn.on { border-color: ${ACCENT}; }
-#hud-stagestatus .radiator-btn.on .label { color: ${ACCENT}; }
+#hud-stagestatus .radiator-btn.on { border-color: var(--accent); }
+#hud-stagestatus .radiator-btn.on .label { color: var(--accent); }
 #hud-settings {
   position: absolute; bottom: 40px; top: auto; left: 50%; transform: translateX(-50%);
   display: none; min-width: 260px; pointer-events: auto;
 }
 #hud-settings .srow {
-  display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 6px 0;
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); padding: var(--space-3) 0;
 }
 #hud-settings .stoggle {
-  pointer-events: auto; cursor: pointer; padding: 4px 16px; min-width: 46px; text-align: center;
-  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT};
+  pointer-events: auto; cursor: pointer; padding: var(--space-2) var(--space-6); min-width: 46px; text-align: center;
+  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text-dim);
 }
-#hud-settings .stoggle.on { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud-settings .stoggle.on { border-color: var(--accent); color: var(--accent); }
 #hud-settings .squit {
-  margin-top: 14px; text-align: center; padding: 8px 10px; cursor: pointer;
-  border: 1px solid ${EDGE}; border-radius: 4px; background: ${SURFACE}; color: ${INK_SOFT}; font-size: 12px;
+  margin-top: var(--space-5); text-align: center; padding: var(--space-4) var(--space-5); cursor: pointer;
+  border: 1px solid var(--edge); border-radius: var(--radius-m); background: var(--surface); color: var(--text-dim); font-size: var(--font-m);
 }
-#hud-settings .squit:hover { border-color: ${ACCENT}; color: ${ACCENT}; }
+#hud-settings .squit:hover { border-color: var(--accent); color: var(--accent); }
 #hud-settings .sclose {
-  margin-top: 10px; text-align: center; color: ${INK_SOFT}; font-size: 11px; cursor: pointer;
+  margin-top: var(--space-5); text-align: center; color: var(--text-dim); font-size: var(--font-s); cursor: pointer;
 }
 
 /* --- モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる --- */
 @media (max-width: 900px), (pointer: coarse) {
-  #hud { font-size: 11px; }
-  #hud .panel { padding: 6px 8px; line-height: 1.4; }
-  #hud .panel h3 { font-size: 10px; letter-spacing: 1.5px; margin-bottom: 4px; }
-  #hud.map-mode #hud-orbit h3 { font-size: 10px; }
-  #hud .row { gap: 8px; }
+  #hud { font-size: var(--font-s); }
+  #hud .panel { padding: var(--space-3) var(--space-4); line-height: 1.4; }
+  #hud .panel h3 { font-size: var(--font-xs); letter-spacing: 1.5px; margin-bottom: var(--space-2); }
+  #hud.map-mode #hud-orbit h3 { font-size: var(--font-xs); }
+  #hud .row { gap: var(--space-4); }
   #hud .row .v { min-width: 64px; }
   #hud-combat-shelf {
     position: absolute; display: flex; left: 8px; right: 8px; top: 76px;
-    gap: 6px; overflow-x: auto; overflow-y: hidden; pointer-events: auto;
+    gap: var(--space-3); overflow-x: auto; overflow-y: hidden; pointer-events: auto;
     scrollbar-width: thin; overscroll-behavior-x: contain; z-index: 1;
   }
   #hud-combat-shelf > .panel {
@@ -468,40 +468,40 @@ body.hud-modal-open #touch-ui { display: none; }
   #hud:not(.map-mode) #hud-viewbadge { display: none; }
   #hud-controls { display: none; }
   #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
-  #hud-toast { max-width: 92vw; padding: 10px 14px; font-size: 13px; }
-  #hud .hud-dock { top: 8px; bottom: 8px; gap: 6px; }
+  #hud-toast { max-width: 92vw; padding: var(--space-5) var(--space-5); font-size: var(--font-l); }
+  #hud .hud-dock { top: 8px; bottom: 8px; gap: var(--space-3); }
   #hud .hud-dock-left { left: 8px; width: min(220px, calc(46vw - 8px)); }
   #hud .hud-dock-right { right: 8px; width: min(260px, calc(54vw - 8px)); }
   #hud-plan { min-width: 0; max-width: none; }
   #hud-help { min-width: 0; width: 94vw; max-height: 78vh; }
-  #hud-end h1 { font-size: 24px; letter-spacing: 3px; }
-  #hud-end .detail { font-size: 13px; padding: 12px 18px; max-width: 92vw; }
+  #hud-end h1 { font-size: var(--font-2xl); letter-spacing: 3px; }
+  #hud-end .detail { font-size: var(--font-l); padding: var(--space-5) var(--space-6); max-width: 92vw; }
   #navball { top: 76px; width: 96px !important; height: auto !important; }
   #navball .hud-seg, #navball .hud-toggle { display: none; }
   #hud-hint {
     top: calc(50% - 40px); transform: translateX(-50%); max-height: 72px;
-    overflow-y: auto; padding: 6px 10px; font-size: 11px;
+    overflow-y: auto; padding: var(--space-3) var(--space-5); font-size: var(--font-s);
   }
   #hud-settings { min-width: 0; width: 78vw; }
-  #hud-stagestatus { bottom: 8px; width: min(62vw, 440px); min-width: 0; max-height: 62px; overflow-y: auto; padding: 6px 10px; gap: 8px; }
+  #hud-stagestatus { bottom: 8px; width: min(62vw, 440px); min-width: 0; max-height: 62px; overflow-y: auto; padding: var(--space-3) var(--space-5); gap: var(--space-4); }
   /* このブレークポイントのドック幅に合わせて左右の隙間を再計算する。 */
   #hud-displaytime-wrap {
     bottom: 8px;
     left: calc(8px + min(220px, calc(46vw - 8px)) + 8px); right: calc(8px + min(260px, calc(54vw - 8px)) + 8px);
   }
-  #hud-stagestatus .t { font-size: 11px; }
-  #hud-stagestatus .k { font-size: 9px; line-height: 1.35; white-space: normal; }
+  #hud-stagestatus .t { font-size: var(--font-s); }
+  #hud-stagestatus .k { font-size: var(--font-xxs); line-height: 1.35; white-space: normal; }
   #hud-chase-reset { top: 40px; width: 28px; height: 28px; }
   #hud-chase-reset svg { width: 14px; height: 14px; }
-  #hud-map-scale { right: 8px; bottom: 8px; font-size: 8px; }
+  #hud-map-scale { right: 8px; bottom: 8px; font-size: var(--font-xxs); }
   #hud .hud-dock { top: 40px; }
 }
 @media (max-width: 520px) {
-  #hud .hud-dock { font-size: 9px; }
+  #hud .hud-dock { font-size: var(--font-xxs); }
   #hud .hud-dock-left { width: calc(44vw - 8px); }
   #hud .hud-dock-right { width: calc(56vw - 8px); }
-  #hud .hud-seg { gap: 3px; }
-  #hud .seg-btn { padding: 3px 5px; font-size: 9px; }
+  #hud .hud-seg { gap: var(--space-2); }
+  #hud .seg-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
   #hud-displaytime .slider-ticks { display: none; }
   /* 幅が足りないので、行2はスクラバーと T+ 読み値だけ残す。 */
   #hud-displaytime .dtp-absolute { display: none; }
@@ -540,11 +540,11 @@ body.hud-modal-open #touch-ui { display: none; }
 #dock-view.dock-view-overlay {
   position: fixed; inset: 0;
   display: flex;
-  background: ${BG};
-  font-family: ${FONT};
+  background: var(--bg);
+  font-family: var(--font-family);
   pointer-events: auto;
   /* 右上のビューバッジは全ビュー共通の枠なのでドック中も残る。その帯を避けて中身を始める。 */
-  padding-top: 30px;
+  padding-top: var(--space-6);
 }
 /* マップ左右ドックの開閉ボタンは、背後のマップごと覆われるので出さない。 */
 #hud.dock-mode .dock-toggle { display: none; }
@@ -553,208 +553,208 @@ body.hud-modal-open #touch-ui { display: none; }
   display: flex; flex-direction: column; overflow: hidden;
 }
 #dock-view .dock-header {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 16px; border-bottom: 1px solid ${EDGE};
+  display: flex; align-items: center; gap: var(--space-5);
+  padding: var(--space-5) var(--space-6); border-bottom: 1px solid var(--edge);
   flex: 0 0 auto;
   width: min(1100px, 100%); margin: 0 auto;
 }
 #dock-view .dock-title {
-  font-size: 15px; font-weight: 700; letter-spacing: 0.12em;
-  color: ${ACCENT}; flex: 0 0 auto;
+  font-size: var(--font-xl); font-weight: 700; letter-spacing: 0.12em;
+  color: var(--accent); flex: 0 0 auto;
 }
-#dock-view .dock-tabs { display: flex; gap: 4px; flex: 1; }
+#dock-view .dock-tabs { display: flex; gap: var(--space-2); flex: 1; }
 #dock-view .dock-tab-btn {
-  padding: 4px 14px; border: 1px solid ${EDGE}; border-radius: 4px;
-  background: transparent; color: ${INK_SOFT}; cursor: pointer;
-  font-size: 12px; transition: color .15s, border-color .15s;
+  padding: var(--space-2) var(--space-5); border: 1px solid var(--edge); border-radius: var(--radius-m);
+  background: transparent; color: var(--text-dim); cursor: pointer;
+  font-size: var(--font-m); transition: color var(--transition-fast), border-color var(--transition-fast);
 }
-#dock-view .dock-tab-btn:hover { color: ${INK}; border-color: ${ACCENT_SOFT}; }
-#dock-view .dock-tab-btn.active { color: ${ACCENT}; border-color: ${ACCENT}; background: rgba(${ACCENT_RGB},.08); }
+#dock-view .dock-tab-btn:hover { color: var(--text); border-color: var(--accent-soft); }
+#dock-view .dock-tab-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-fill-weak); }
 #dock-view .dock-close-btn {
-  padding: 4px 10px; border: 1px solid ${EDGE}; border-radius: 4px;
-  background: transparent; color: ${INK_SOFT}; cursor: pointer; font-size: 14px;
+  padding: var(--space-2) var(--space-5); border: 1px solid var(--edge); border-radius: var(--radius-m);
+  background: transparent; color: var(--text-dim); cursor: pointer; font-size: var(--font-xl);
 }
-#dock-view .dock-close-btn:hover { color: ${INK}; }
+#dock-view .dock-close-btn:hover { color: var(--text); }
 #dock-view .dock-status-bar {
-  padding: 5px 16px; border-bottom: 1px solid ${EDGE};
-  font-size: 12px; color: ${INK_SOFT}; flex: 0 0 auto;
+  padding: var(--space-3) var(--space-6); border-bottom: 1px solid var(--edge);
+  font-size: var(--font-m); color: var(--text-dim); flex: 0 0 auto;
   width: min(1100px, 100%); margin: 0 auto;
 }
 #dock-view .dock-body {
-  flex: 1 1 0; overflow-y: auto; padding: 12px 16px;
+  flex: 1 1 0; overflow-y: auto; padding: var(--space-5) var(--space-6);
   scrollbar-width: thin;
   width: min(1100px, 100%); margin: 0 auto;
 }
-#dock-view .dock-empty { color: ${INK_SOFT}; padding: 24px; text-align: center; line-height: 1.8; }
+#dock-view .dock-empty { color: var(--text-dim); padding: var(--space-6); text-align: center; line-height: 1.8; }
 /* Ships tab */
-#dock-view .dock-ship-list { display: flex; flex-direction: column; gap: 8px; }
+#dock-view .dock-ship-list { display: flex; flex-direction: column; gap: var(--space-4); }
 #dock-view .dock-ship-row {
-  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
-  border: 1px solid ${EDGE}; border-radius: 6px; cursor: pointer;
-  transition: border-color .15s;
+  display: flex; align-items: center; gap: var(--space-5); padding: var(--space-5) var(--space-5);
+  border: 1px solid var(--edge); border-radius: var(--radius-m); cursor: pointer;
+  transition: border-color var(--transition-fast);
 }
-#dock-view .dock-ship-row:hover { border-color: ${ACCENT_SOFT}; }
-#dock-view .dock-ship-row.selected { border-color: ${ACCENT}; background: rgba(${ACCENT_RGB},.06); }
-#dock-view .dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-#dock-view .dock-ship-name { font-size: 13px; }
-#dock-view .dock-ship-hp { font-size: 11px; color: ${INK_SOFT}; }
-#dock-view .dock-ship-actions { display: flex; gap: 6px; }
+#dock-view .dock-ship-row:hover { border-color: var(--accent-soft); }
+#dock-view .dock-ship-row.selected { border-color: var(--accent); background: var(--accent-fill-weak); }
+#dock-view .dock-ship-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
+#dock-view .dock-ship-name { font-size: var(--font-l); }
+#dock-view .dock-ship-hp { font-size: var(--font-s); color: var(--text-dim); }
+#dock-view .dock-ship-actions { display: flex; gap: var(--space-3); }
 /* Parts tab */
 #dock-view .dock-parts-header {
-  display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
-  padding-bottom: 8px; border-bottom: 1px solid ${EDGE};
+  display: flex; align-items: center; gap: var(--space-5); margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4); border-bottom: 1px solid var(--edge);
 }
-#dock-view .dock-ship-label { font-size: 12px; color: ${INK_SOFT}; flex: 1; }
-#dock-view .dock-part-list { display: flex; flex-direction: column; gap: 6px; }
+#dock-view .dock-ship-label { font-size: var(--font-m); color: var(--text-dim); flex: 1; }
+#dock-view .dock-part-list { display: flex; flex-direction: column; gap: var(--space-3); }
 #dock-view .dock-part-row {
   display: grid; grid-template-columns: 1fr 120px 60px auto;
-  align-items: center; gap: 10px; padding: 6px 10px;
-  border: 1px solid ${EDGE}; border-radius: 4px;
+  align-items: center; gap: var(--space-5); padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--edge); border-radius: var(--radius-m);
 }
-#dock-view .dock-part-info { display: flex; flex-direction: column; gap: 2px; }
-#dock-view .dock-part-name { font-size: 12px; }
-#dock-view .dock-part-type { font-size: 10px; color: ${INK_SOFT}; }
-#dock-view .dock-part-hp-bar { height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; }
-#dock-view .dock-part-hp-fill { height: 100%; border-radius: 3px; transition: width .3s; }
-#dock-view .dock-part-hp-text { font-size: 11px; color: ${INK_SOFT}; text-align: right; }
-#dock-view .dock-part-row { display: flex; flex-direction: column; gap: 6px; }
+#dock-view .dock-part-info { display: flex; flex-direction: column; gap: var(--space-1); }
+#dock-view .dock-part-name { font-size: var(--font-m); }
+#dock-view .dock-part-type { font-size: var(--font-xs); color: var(--text-dim); }
+#dock-view .dock-part-hp-bar { height: 6px; background: var(--fill-2); border-radius: var(--radius-s); overflow: hidden; }
+#dock-view .dock-part-hp-fill { height: 100%; border-radius: var(--radius-s); transition: width var(--transition-slow); }
+#dock-view .dock-part-hp-text { font-size: var(--font-s); color: var(--text-dim); text-align: right; }
+#dock-view .dock-part-row { display: flex; flex-direction: column; gap: var(--space-3); }
 #dock-view .dock-part-row-main {
   display: grid; grid-template-columns: 1fr 120px 60px auto;
-  align-items: center; gap: 10px;
+  align-items: center; gap: var(--space-5);
 }
 #dock-view .dock-warehouse-row-main { grid-template-columns: 1fr 60px auto; }
-#dock-view .dock-part-actions { display: flex; align-items: center; gap: 6px; }
+#dock-view .dock-part-actions { display: flex; align-items: center; gap: var(--space-3); }
 #dock-view .dock-part-swap-row {
-  display: flex; align-items: center; gap: 8px;
-  padding-top: 6px; border-top: 1px solid ${EDGE};
-  font-size: 11px; color: ${INK_SOFT};
+  display: flex; align-items: center; gap: var(--space-4);
+  padding-top: var(--space-3); border-top: 1px solid var(--edge);
+  font-size: var(--font-s); color: var(--text-dim);
 }
 #dock-view .dock-part-swap-select {
-  flex: 1; background: rgba(255,255,255,.04); color: ${INK};
-  border: 1px solid ${EDGE}; border-radius: 4px; padding: 3px 6px; font-size: 11px;
+  flex: 1; background: var(--fill-1); color: var(--text);
+  border: 1px solid var(--edge); border-radius: var(--radius-m); padding: var(--space-2) var(--space-3); font-size: var(--font-s);
 }
-#dock-view .dock-parts-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-#dock-view .dock-parts-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-#dock-view .dock-col-title { font-size: 12px; color: ${INK_SOFT}; border-bottom: 1px solid ${EDGE}; padding-bottom: 4px; }
+#dock-view .dock-parts-columns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); }
+#dock-view .dock-parts-col { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+#dock-view .dock-col-title { font-size: var(--font-m); color: var(--text-dim); border-bottom: 1px solid var(--edge); padding-bottom: var(--space-2); }
 /* Shop tab */
-#dock-view .dock-shop-header { margin-bottom: 10px; font-size: 11px; color: ${INK_SOFT}; }
-#dock-view .dock-shop-list { display: flex; flex-direction: column; gap: 6px; }
+#dock-view .dock-shop-header { margin-bottom: var(--space-5); font-size: var(--font-s); color: var(--text-dim); }
+#dock-view .dock-shop-list { display: flex; flex-direction: column; gap: var(--space-3); }
 #dock-view .dock-shop-item {
-  display: flex; align-items: center; gap: 12px; padding: 8px 12px;
-  border: 1px solid ${EDGE}; border-radius: 4px;
+  display: flex; align-items: center; gap: var(--space-5); padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--edge); border-radius: var(--radius-m);
 }
-#dock-view .dock-shop-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-#dock-view .dock-shop-name { font-size: 13px; }
-#dock-view .dock-shop-type { font-size: 10px; color: ${INK_SOFT}; }
-#dock-view .dock-shop-props { font-size: 11px; color: ${INK_SOFT}; }
-#dock-view .dock-shop-stats { font-size: 10px; color: ${INK_SOFT}; }
-#dock-view .dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-#dock-view .dock-shop-price { font-size: 12px; color: ${ACCENT}; }
+#dock-view .dock-shop-info { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
+#dock-view .dock-shop-name { font-size: var(--font-l); }
+#dock-view .dock-shop-type { font-size: var(--font-xs); color: var(--text-dim); }
+#dock-view .dock-shop-props { font-size: var(--font-s); color: var(--text-dim); }
+#dock-view .dock-shop-stats { font-size: var(--font-xs); color: var(--text-dim); }
+#dock-view .dock-shop-actions { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
+#dock-view .dock-shop-price { font-size: var(--font-m); color: var(--accent); }
 /* Common buttons */
 #dock-view .dock-btn {
-  padding: 4px 12px; border: 1px solid ${EDGE}; border-radius: 4px;
-  background: rgba(${ACCENT_RGB},.08); color: ${ACCENT}; cursor: pointer;
-  font-size: 11px; transition: background .15s;
+  padding: var(--space-2) var(--space-5); border: 1px solid var(--edge); border-radius: var(--radius-m);
+  background: var(--accent-fill-weak); color: var(--accent); cursor: pointer;
+  font-size: var(--font-s); transition: background var(--transition-fast);
 }
-#dock-view .dock-btn:hover:not(.disabled) { background: rgba(${ACCENT_RGB},.18); }
+#dock-view .dock-btn:hover:not(.disabled) { background: var(--accent-fill); }
 #dock-view .dock-btn.disabled, #dock-view .dock-btn:disabled { opacity: 0.38; cursor: not-allowed; }
 #dock-view .dock-btn-repair-all {
-  font-size: 11px; padding: 4px 12px;
+  font-size: var(--font-s); padding: var(--space-2) var(--space-5);
 }
 /* ===== SaveBrowser ===== */
 #save-browser {
   position: fixed; inset: 0; display: none;
   align-items: center; justify-content: center;
-  background: rgba(6, 7, 9, 0.82); backdrop-filter: blur(3px);
-  font-family: ${FONT}; pointer-events: auto;
+  background: var(--scrim); backdrop-filter: blur(3px);
+  font-family: var(--font-family); pointer-events: auto;
 }
 #save-browser .sb-panel {
   width: min(1100px, 94vw); height: min(760px, 88vh);
   display: flex; flex-direction: column; overflow: hidden;
-  background: ${BG}; border: 1px solid ${EDGE}; border-radius: 8px;
+  background: var(--bg); border: 1px solid var(--edge); border-radius: var(--radius-l);
 }
 #save-browser .sb-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px; border-bottom: 1px solid ${EDGE}; flex: 0 0 auto;
+  padding: var(--space-5) var(--space-6); border-bottom: 1px solid var(--edge); flex: 0 0 auto;
 }
-#save-browser .sb-title { font-size: 13px; font-weight: 700; letter-spacing: 0.12em; color: ${INK}; }
+#save-browser .sb-title { font-size: var(--font-l); font-weight: 700; letter-spacing: 0.12em; color: var(--text); }
 #save-browser .sb-close-btn {
-  padding: 3px 9px; border: 1px solid ${EDGE}; border-radius: 4px;
-  background: transparent; color: ${INK_SOFT}; cursor: pointer; font-size: 13px;
+  padding: var(--space-2) var(--space-4); border: 1px solid var(--edge); border-radius: var(--radius-m);
+  background: transparent; color: var(--text-dim); cursor: pointer; font-size: var(--font-l);
 }
-#save-browser .sb-close-btn:hover { color: ${INK}; border-color: ${INK_SOFT}; }
-#save-browser .sb-body { flex: 1 1 0; min-height: 0; display: flex; gap: 1px; background: ${EDGE}; }
+#save-browser .sb-close-btn:hover { color: var(--text); border-color: var(--text-dim); }
+#save-browser .sb-body { flex: 1 1 0; min-height: 0; display: flex; gap: 1px; background: var(--edge); }
 #save-browser .sb-pane {
-  flex: 1 1 0; min-width: 0; overflow-y: auto; padding: 10px 12px;
-  display: flex; flex-direction: column; gap: 6px; background: ${BG};
+  flex: 1 1 0; min-width: 0; overflow-y: auto; padding: var(--space-5) var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-3); background: var(--bg);
   scrollbar-width: thin;
 }
 #save-browser .sb-pane-slots { flex: 0 0 34%; }
-#save-browser .sb-pane-title { font-size: 10px; letter-spacing: 1.5px; color: ${INK_SOFT}; }
-#save-browser .sb-empty { color: ${INK_SOFT}; padding: 12px; text-align: center; line-height: 1.7; font-size: 11px; }
-#save-browser .sb-slot-list { display: flex; flex-direction: column; gap: 4px; }
+#save-browser .sb-pane-title { font-size: var(--font-xs); letter-spacing: 1.5px; color: var(--text-dim); }
+#save-browser .sb-empty { color: var(--text-dim); padding: var(--space-5); text-align: center; line-height: 1.7; font-size: var(--font-s); }
+#save-browser .sb-slot-list { display: flex; flex-direction: column; gap: var(--space-2); }
 /* アクティブ行の識別は色数を増やさず、左端 2px のオレンジ帯のみで示す。
    「見ている」行は背景をわずかに明るくするだけで区別する。 */
 #save-browser .sb-slot-row {
-  display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 6px;
-  border: 1px solid ${EDGE}; border-left: 2px solid transparent; border-radius: 5px; cursor: pointer;
+  display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
+  border: 1px solid var(--edge); border-left: 2px solid transparent; border-radius: var(--radius-m); cursor: pointer;
 }
-#save-browser .sb-slot-row.viewed { background: rgba(255,255,255,.05); }
-#save-browser .sb-slot-row.active { border-left-color: ${ACCENT}; }
+#save-browser .sb-slot-row.viewed { background: var(--fill-1); }
+#save-browser .sb-slot-row.active { border-left-color: var(--accent); }
 #save-browser .sb-slot-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-#save-browser .sb-slot-name { font-size: 11.5px; }
-#save-browser .sb-slot-meta { font-size: 9.5px; color: ${INK_SOFT}; }
-#save-browser .sb-slot-actions { display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-end; }
+#save-browser .sb-slot-name { font-size: var(--font-s); }
+#save-browser .sb-slot-meta { font-size: var(--font-xxs); color: var(--text-dim); }
+#save-browser .sb-slot-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
 /* 左ペインは幅が狭いので、フッターのボタンは横並びにせず縦積みにして折り返しを防ぐ。 */
-#save-browser .sb-slot-footer { display: flex; flex-direction: column; gap: 5px; margin-top: auto; padding-top: 6px; }
+#save-browser .sb-slot-footer { display: flex; flex-direction: column; gap: var(--space-3); margin-top: auto; padding-top: var(--space-3); }
 #save-browser .sb-btn {
-  padding: 4px 9px; border: 1px solid ${EDGE}; border-radius: 4px;
-  background: rgba(255,255,255,.04); color: ${INK_SOFT}; cursor: pointer; font-size: 10.5px;
+  padding: var(--space-2) var(--space-4); border: 1px solid var(--edge); border-radius: var(--radius-m);
+  background: var(--fill-1); color: var(--text-dim); cursor: pointer; font-size: var(--font-xs);
   white-space: nowrap;
 }
-#save-browser .sb-btn:hover:not(:disabled) { background: rgba(255,255,255,.09); color: ${INK}; }
+#save-browser .sb-btn:hover:not(:disabled) { background: var(--fill-2); color: var(--text); }
 #save-browser .sb-btn:disabled { opacity: 0.38; cursor: not-allowed; }
-#save-browser .sb-btn-sm { padding: 3px 6px; }
-#save-browser .sb-btn-play { color: ${INK}; border-color: ${INK_SOFT}; }
+#save-browser .sb-btn-sm { padding: var(--space-2) var(--space-3); }
+#save-browser .sb-btn-play { color: var(--text); border-color: var(--text-dim); }
 /* このパネルで唯一の「押すと今の状態が増える」操作 — 注目させるためオレンジを残す。 */
 #save-browser #sb-capture-now {
-  background: rgba(${ACCENT_RGB},.12); color: ${ACCENT}; border-color: rgba(${ACCENT_RGB},.4);
+  background: var(--accent-fill-weak); color: var(--accent); border-color: var(--accent-edge);
 }
-#save-browser #sb-capture-now:hover:not(:disabled) { background: rgba(${ACCENT_RGB},.2); }
-#save-browser .sb-stage-tabs { display: flex; gap: 3px; }
+#save-browser #sb-capture-now:hover:not(:disabled) { background: var(--accent-fill); }
+#save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }
 #save-browser .sb-tab-btn {
-  padding: 3px 9px; border: 1px solid ${EDGE}; border-radius: 4px;
-  background: transparent; color: ${INK_SOFT}; cursor: pointer; font-size: 10.5px;
+  padding: var(--space-2) var(--space-4); border: 1px solid var(--edge); border-radius: var(--radius-m);
+  background: transparent; color: var(--text-dim); cursor: pointer; font-size: var(--font-xs);
 }
-#save-browser .sb-tab-btn.active { color: ${INK}; border-color: ${INK_SOFT}; background: rgba(255,255,255,.05); }
-#save-browser .sb-snapshot-groups { display: flex; flex-direction: column; gap: 4px; }
-#save-browser .sb-snapshot-group-title { font-size: 10px; color: ${INK_SOFT}; margin-top: 4px; }
-#save-browser .sb-snapshot-list { display: flex; flex-direction: column; gap: 4px; }
+#save-browser .sb-tab-btn.active { color: var(--text); border-color: var(--text-dim); background: var(--fill-1); }
+#save-browser .sb-snapshot-groups { display: flex; flex-direction: column; gap: var(--space-2); }
+#save-browser .sb-snapshot-group-title { font-size: var(--font-xs); color: var(--text-dim); margin-top: var(--space-2); }
+#save-browser .sb-snapshot-list { display: flex; flex-direction: column; gap: var(--space-2); }
 #save-browser .sb-snap-card {
-  display: flex; flex-direction: column; gap: 3px; padding: 6px 8px;
-  border: 1px solid ${EDGE}; border-radius: 5px;
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--edge); border-radius: var(--radius-m);
 }
 #save-browser .sb-snap-loadable { cursor: pointer; }
-#save-browser .sb-snap-loadable:hover { border-color: ${INK_SOFT}; background: rgba(255,255,255,.03); }
-#save-browser .sb-snap-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-#save-browser .sb-snap-name { font-size: 11px; }
+#save-browser .sb-snap-loadable:hover { border-color: var(--text-dim); background: var(--fill-1); }
+#save-browser .sb-snap-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+#save-browser .sb-snap-name { font-size: var(--font-s); }
 #save-browser .sb-snap-badge {
-  font-size: 8.5px; letter-spacing: .5px; padding: 1px 6px; border-radius: 8px;
-  border: 1px solid ${EDGE}; color: ${INK_SOFT};
+  font-size: var(--font-xxs); letter-spacing: .5px; padding: 1px var(--space-3); border-radius: var(--radius-l);
+  border: 1px solid var(--edge); color: var(--text-dim);
 }
-#save-browser .sb-snap-badge-checkpoint { color: ${INK}; border-color: ${INK_SOFT}; }
-#save-browser .sb-snap-row { font-size: 10px; color: ${INK_SOFT}; }
+#save-browser .sb-snap-badge-checkpoint { color: var(--text); border-color: var(--text-dim); }
+#save-browser .sb-snap-row { font-size: var(--font-xs); color: var(--text-dim); }
 /* HP バーは細く、満タンでもオレンジで塗らない — このパネルの主役はセーブ操作であって
    HP 表示ではないため、他の注目要素と競合しないモノトーンに留める。 */
-#save-browser .sb-snap-hp-bar { height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; }
-#save-browser .sb-snap-hp-fill { height: 100%; background: ${INK_SOFT}; }
-#save-browser .sb-snap-actions { display: flex; gap: 3px; flex-wrap: wrap; }
+#save-browser .sb-snap-hp-bar { height: 3px; background: var(--fill-2); border-radius: var(--radius-s); overflow: hidden; }
+#save-browser .sb-snap-hp-fill { height: 100%; background: var(--text-dim); }
+#save-browser .sb-snap-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 /* クリップ済み(pin)状態だけは注目対象として残す — この行の意味は「消えずに残る」なので. */
 #save-browser .sb-btn-pin[data-pinned="true"] {
-  background: rgba(${ACCENT_RGB},.12); color: ${ACCENT}; border-color: rgba(${ACCENT_RGB},.4);
+  background: var(--accent-fill-weak); color: var(--accent); border-color: var(--accent-edge);
 }
-#save-browser .sb-status { min-height: 20px; padding: 3px 14px; font-size: 10.5px; color: ${INK_SOFT}; border-top: 1px solid ${EDGE}; }
-#save-browser .sb-status.error { color: ${WARNING}; }
+#save-browser .sb-status { min-height: 20px; padding: var(--space-2) var(--space-5); font-size: var(--font-xs); color: var(--text-dim); border-top: 1px solid var(--edge); }
+#save-browser .sb-status.error { color: var(--danger); }
 `;
 
 
@@ -947,11 +947,11 @@ function buildHelpPanel(root: HTMLElement): void {
         <div style="display:inline-block; text-align:center; line-height:1.2; font-family:monospace; margin-right:8px; vertical-align:middle;">
           <div>W</div><div>A S D</div>
         </div>
-        / 
+        /
         <div style="display:inline-block; text-align:center; line-height:1.2; font-family:monospace; margin-left:8px; vertical-align:middle;">
           <div>↑</div><div>← ↓ →</div>
         </div>
-      </td><td>並進 (前 / 後 / 左 / 右 / 上 / 下)<br><span style="font-size:10px; color:${INK_SOFT};">※ 上下は Q/E</span></td></tr>
+      </td><td>並進 (前 / 後 / 左 / 右 / 上 / 下)<br><span style="font-size:var(--font-xs); color:var(--text-dim);">※ 上下は Q/E</span></td></tr>
       <tr><td class="key">
         <div style="display:inline-block; text-align:center; line-height:1.2; font-family:monospace; vertical-align:middle;">
           <div>I</div><div>J K L</div>
@@ -1006,6 +1006,7 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
 
 // HUD のスタイル・レイヤ・各パネル・SVG オーバーレイを一括構築し、DOM 参照をまとめて返す。
 export function buildHudDom(): HudDomRefs {
+  injectThemeVariables();
   injectStyle();
   const root = el('div', 'hud', document.body);
   const layers = buildOverlayLayers(root);

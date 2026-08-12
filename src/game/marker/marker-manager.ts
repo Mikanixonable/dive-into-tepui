@@ -10,6 +10,7 @@
 import { Vec3, addScaled, norm } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
 import * as C from '../const';
+import { FILL_4 } from '../theme';
 
 type ProjectFn = (worldPos: Vec3) => Projected;
 type ScaleFn = (worldPos: Vec3) => number;
@@ -372,7 +373,7 @@ export class MarkerManager {
         line.setAttribute('y1', (a.oy - 12 - a.h / 2).toString());
         line.setAttribute('x2', (a.ox + a.dx).toString());
         line.setAttribute('y2', (a.oy + a.dy - a.h / 2).toString());
-        line.setAttribute('stroke', 'rgba(255,255,255,0.4)');
+        line.setAttribute('stroke', FILL_4);
         line.setAttribute('stroke-width', '1');
         // 既存ノードの appendChild は同じノードを移動するだけなので、active 順を保つ。
         this.svgOverlay.appendChild(line);

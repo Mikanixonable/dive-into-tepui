@@ -4,33 +4,30 @@
 // 同じ仕組みで扱える。マウス+キーボード環境では生成しない。
 import { Input } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
-import { ACCENT, ACCENT_RGB, TEXT_DIM, FONT } from '../theme';
-import * as C from '../const';
-
-// SURFACE/EDGE はこのファイル固有の不透明度(0.66 / 0.14)を使うため、
-// theme.ts の SURFACE(0.82)/EDGE(0.09)とは別定数のまま保持する。
-const SURFACE = 'rgba(13, 15, 18, 0.66)';
-const EDGE = 'rgba(255, 255, 255, 0.14)';
+import {
+  ACCENT, ACCENT_FILL_STRONG, ACCENT_EDGE, TEXT_DIM, TEXT_MUTED, TEXT_STRONG,
+  SURFACE, EDGE, FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1,
+} from '../theme';
 
 const STYLE = `
 /* z-index 9: システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より下に置く */
 #touch-ui {
   position: fixed; inset: 0; pointer-events: none; z-index: 9;
-  font-family: ${FONT}; user-select: none;
+  font-family: ${FONT_FAMILY}; user-select: none;
   -webkit-user-select: none;
 }
 #touch-ui .tbtn {
   pointer-events: auto; touch-action: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 8px;
-  color: ${C.COLOR_TOUCH_TEXT}; line-height: 1.1;
+  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: ${RADIUS_L};
+  color: ${TEXT_MUTED}; line-height: 1.1;
 }
-#touch-ui .tbtn .g { font-size: 16px; }
-#touch-ui .tbtn .l { font-size: 9px; color: ${TEXT_DIM}; margin-top: 1px; }
-#touch-ui .tbtn.held { background: rgba(${ACCENT_RGB}, 0.28); border-color: ${ACCENT}; color: ${C.COLOR_TOUCH_ACTIVE_TEXT}; }
+#touch-ui .tbtn .g { font-size: ${FONT_XL}; }
+#touch-ui .tbtn .l { font-size: ${FONT_XXS}; color: ${TEXT_DIM}; margin-top: ${SPACE_1}; }
+#touch-ui .tbtn.held { background: ${ACCENT_FILL_STRONG}; border-color: ${ACCENT}; color: ${TEXT_STRONG}; }
 /* .on: 押下中かどうかに関わらず、モードが実際に ON の間ずっと点灯させる
    (制動・微動・ホールドなどのトグル系ボタン向け。.held と見た目は同じでよい) */
-#touch-ui .tbtn.on { background: rgba(${ACCENT_RGB}, 0.28); border-color: ${ACCENT}; color: ${C.COLOR_TOUCH_ACTIVE_TEXT}; }
+#touch-ui .tbtn.on { background: ${ACCENT_FILL_STRONG}; border-color: ${ACCENT}; color: ${TEXT_STRONG}; }
 #touch-ui .mini-col {
   position: absolute; display: grid; gap: 6px; grid-template-rows: repeat(2, 52px);
 }
@@ -45,7 +42,7 @@ const STYLE = `
 #touch-fire {
   position: absolute; right: 22px; bottom: 138px;
   width: 74px; height: 74px; border-radius: 50% !important;
-  border-color: rgba(${ACCENT_RGB}, 0.55) !important; color: ${ACCENT} !important;
+  border-color: ${ACCENT_EDGE} !important; color: ${ACCENT} !important;
 }
 #touch-zoom {
   position: absolute; right: 112px; bottom: 148px;

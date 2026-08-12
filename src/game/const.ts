@@ -510,18 +510,7 @@ export const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の�
 export const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
 // 色管理 (Colors)
-export const COLOR_ACCENT = '#ff6a00';
-export const COLOR_ACCENT_RGB = '255, 106, 0'; // COLOR_ACCENT の RGB 成分（色変更時は必ず両方を同期すること）
-export const COLOR_ACCENT_SOFT = '#ff9040';
-export const COLOR_ACCENT_SECONDARY = '#00c8ff'; // 第二ターゲット用アクセント(シアン)
-export const COLOR_BG = '#08090c';
-// UI用のわずかに紫がかった白。ゲーム世界のマーカー色とは独立したHUD基準色。
-export const COLOR_TEXT = '#eeeaf5';
-export const COLOR_TEXT_DIM = '#aaa5b5';
-export const COLOR_HUD_BAR_BG = '#222222';
-export const COLOR_HUD_TEXT_MUTED = '#dfe3e8';
-export const COLOR_HUD_HP_OK = '#ff6a00';
-export const COLOR_HUD_HP_LOW = '#ff4a3d';
+// ゲーム世界(方位マーカー・演出・軌道線・船体)の色のみ。UI の色は theme.ts が持つ。
 export const COLOR_MARKER_BORESIGHT = '#dfe3e8';
 export const COLOR_MARKER_PROGRADE = '#cfd6dd';
 export const COLOR_MARKER_NORMAL = '#d08cff';
@@ -531,8 +520,9 @@ export const COLOR_MARKER_NODE = '#8b93a0';
 export const COLOR_MARKER_BOARDPASS = '#ffffff';
 export const COLOR_MARKER_SELF = '#dfe3e8';
 export const COLOR_MARKER_PLANNED = '#8fd0ff';
-export const COLOR_TOUCH_TEXT = '#cfd6dd';
-export const COLOR_TOUCH_ACTIVE_TEXT = '#ffffff';
+export const COLOR_MARKER_ALLY = '#00ffff';
+export const COLOR_MARKER_ENEMY = '#ffffff';
+export const COLOR_MARKER_HP_EMPTY = 'rgba(120, 125, 130, .2)';
 export const COLOR_BULLET_IMPACT_FLASH = '#ffe2a0';
 export const COLOR_PLASMA_IMPACT_FLASH = '#ffa0ff';
 export const COLOR_GAS_PUFF_1 = '#aaaaaa';

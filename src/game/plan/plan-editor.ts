@@ -7,7 +7,7 @@ import { Projected } from '../../physics/projection';
 import { Vec3, add, dot, len, scale, sub, v3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
-import { ACCENT, TEXT, TEXT_DIM } from '../theme';
+import { ACCENT, TEXT, TEXT_DIM, FILL_2, AXIS_PROGRADE, AXIS_NORMAL, AXIS_RADIAL } from '../theme';
 import { Hud } from '../hud/hud';
 import { HudHoldButton } from '../hud/buttons';
 import { ContextMenu } from '../hud/context-menu';
@@ -144,19 +144,19 @@ export class PlanEditor {
     this.planPanel.innerHTML = `
       <h3>軌道計画 [${K.toggleMapMode.label}]</h3>
       <div data-id="planbody"></div>
-      <div data-id="planedit" style="display:none; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1)">
+      <div data-id="planedit" style="display:none; margin-top:8px; padding-top:8px; border-top:1px solid ${FILL_2}">
         <div style="font-size:10px; color:${TEXT_DIM}; margin-bottom:4px;">マニューバ手動入力 (m/s)</div>
         <div class="hud-seg">
           <div class="row" style="width:100%; gap:4px; align-items:center;">
-            <span class="k" style="width:28px; color:#3b82f6; font-weight:bold;">PRO</span>
+            <span class="k" style="width:28px; color:${AXIS_PROGRADE}; font-weight:bold;">PRO</span>
             <input type="number" id="pe-dv-pro" step="0.1" style="flex:1; width:0;">
           </div>
           <div class="row" style="width:100%; gap:4px; align-items:center;">
-            <span class="k" style="width:28px; color:#10b981; font-weight:bold;">NRM</span>
+            <span class="k" style="width:28px; color:${AXIS_NORMAL}; font-weight:bold;">NRM</span>
             <input type="number" id="pe-dv-nrm" step="0.1" style="flex:1; width:0;">
           </div>
           <div class="row" style="width:100%; gap:4px; align-items:center;">
-            <span class="k" style="width:28px; color:#ef4444; font-weight:bold;">RAD</span>
+            <span class="k" style="width:28px; color:${AXIS_RADIAL}; font-weight:bold;">RAD</span>
             <input type="number" id="pe-dv-rad" step="0.1" style="flex:1; width:0;">
           </div>
         </div>
