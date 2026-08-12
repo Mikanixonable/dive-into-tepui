@@ -101,9 +101,9 @@ export class Logistics {
 
   // 生存中の補給へ ▣ マーカー(画面外なら小型三角形の方位マーカー)を同期する。ラベルの距離表示は
   // 自機基準なので、艦が1隻も無い間はすべて隠す。overviewMode 中はマーカーを進行方向へ回す。
-  syncMarkers(player: Player | null, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibility: MapVisibilityPolicy | null = null): void {
+  syncMarkers(player: Player | null, project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibilityPolicy: MapVisibilityPolicy | null = null): void {
     // 表示時刻における生存中ピックアップの位置・速度とラベル
-    const ammoVisibility = overviewMode ? visibility?.entity('ammo') : null;
+    const ammoVisibility = overviewMode ? visibilityPolicy?.entity('ammo') : null;
     const hideMapAmmo = overviewMode && (ammoVisibility === null || ammoVisibility === undefined || !ammoVisibility.pickable);
     const shown = !player || hideMapAmmo ? [] : this.entities.ammos.flatMap((ammo) => {
       const ds = ammo.alive ? ammo.displayState(displayTime) : undefined;

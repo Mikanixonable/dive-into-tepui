@@ -158,9 +158,9 @@ export class Targeter {
   sync(
     fo: FloatingOrigin, player: Player, targets: CombatTarget[], overviewMode: boolean,
     project: ProjectFn, camera: THREE.Camera, attractors: readonly Attractor[],
-    visibility: MapVisibilityPolicy | null = null,
+    visibilityPolicy: MapVisibilityPolicy | null = null,
   ): void {
-    this.syncOrbitLine(fo, player, targets, overviewMode, camera, attractors, visibility);
+    this.syncOrbitLine(fo, player, targets, overviewMode, camera, attractors, visibilityPolicy);
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, overviewMode, project);
   }
@@ -168,17 +168,17 @@ export class Targeter {
   // 第一・第二ターゲットのハイライト線を最新の状態に合わせる。
   private syncOrbitLine(
     fo: FloatingOrigin, player: Player, targets: CombatTarget[], overviewMode: boolean,
-    camera: THREE.Camera, attractors: readonly Attractor[], visibility: MapVisibilityPolicy | null,
+    camera: THREE.Camera, attractors: readonly Attractor[], visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const tgt = this.aliveTarget;
     const secTgt = this.aliveSecondaryTarget;
     for (const t of targets) {
-      const entityVisibility = visibility?.entity(t instanceof Player ? 'player' : 'ship', t === player);
+      const entityVisibility = visibilityPolicy?.entity(t instanceof Player ? 'player' : 'ship', t === player);
       const showGray = overviewMode && t.alive && t !== tgt && t !== secTgt && (entityVisibility?.orbit ?? true);
       t.syncOrbitLine(showGray, fo, camera, attractors);
     }
 
-    const targetVisibility = tgt === null ? null : visibility?.entity(tgt instanceof Player ? 'player' : 'ship', tgt === player);
+    const targetVisibility = tgt === null ? null : visibilityPolicy?.entity(tgt instanceof Player ? 'player' : 'ship', tgt === player);
     if (tgt && (targetVisibility?.orbit ?? true)) {
       const center = strongestAttractor(tgt.state.r, attractors);
       this.orbitLine.sync(tgt.orbitalElementsAround(center), fo, camera);
@@ -186,7 +186,7 @@ export class Targeter {
       this.orbitLine.sync(null, fo, camera);
     }
 
-    const secondaryVisibility = secTgt === null ? null : visibility?.entity(secTgt instanceof Player ? 'player' : 'ship', secTgt === player);
+    const secondaryVisibility = secTgt === null ? null : visibilityPolicy?.entity(secTgt instanceof Player ? 'player' : 'ship', secTgt === player);
     if (secTgt && (secondaryVisibility?.orbit ?? true)) {
       const center = strongestAttractor(secTgt.state.r, attractors);
       this.secondaryOrbitLine.sync(secTgt.orbitalElementsAround(center), fo, camera);

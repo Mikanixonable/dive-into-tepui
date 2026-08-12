@@ -103,11 +103,11 @@ export class CreativeStage extends Stage {
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカー、基地マーカーを同期する。
   sync(
     player: Player | null, fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number,
-    overviewMode: boolean, visibility: MapVisibilityPolicy | null, camera: THREE.Camera,
+    overviewMode: boolean, visibilityPolicy: MapVisibilityPolicy | null, camera: THREE.Camera,
   ): void {
-    super.sync(player, fo, project, scale, displayTime, overviewMode, visibility, camera);
+    super.sync(player, fo, project, scale, displayTime, overviewMode, visibilityPolicy, camera);
     this.syncPreview(fo, project, camera);
-    this.syncBaseMarkers(project, scale, displayTime, overviewMode, visibility);
+    this.syncBaseMarkers(project, scale, displayTime, overviewMode, visibilityPolicy);
     this.placerPanel.setIssues(this.issues);
     this.logisticsPanel.style.display = overviewMode ? 'block' : 'none';
   }
@@ -116,7 +116,7 @@ export class CreativeStage extends Stage {
   // 実体の族の字形でポイントマーカーを立て、どのズームでも見つけられるようにする。戦闘ビューで
   // 画面外なら方位矢印で補う。overviewMode 中は進行方向を向く
   // 三角形に差し替える(mk-poi は FocusMarkers の天体ラベルと共用するため、専用の mk-base を使う)。
-  private syncBaseMarkers(project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibility: MapVisibilityPolicy | null): void {
+  private syncBaseMarkers(project: ProjectFn, scale: ScaleFn, displayTime: number, overviewMode: boolean, visibilityPolicy: MapVisibilityPolicy | null): void {
     const bases = this._entities.bases;
     for (const [i, base] of bases.entries()) {
       const key = `base${i}`;
@@ -127,8 +127,8 @@ export class CreativeStage extends Stage {
         this._markerManager.hide(bearingKey);
         continue;
       }
-      const display = overviewMode ? visibility?.entity('base') : null;
-      if (display && !display.pickable) {
+      const visibility = overviewMode ? visibilityPolicy?.entity('base') : null;
+      if (visibility && !visibility.pickable) {
         this._markerManager.hide(key);
         this._markerManager.hide(bearingKey);
         continue;
@@ -137,11 +137,11 @@ export class CreativeStage extends Stage {
       const p = project(ds.r);
       if (overviewMode) {
         const rotationDeg = this._markerManager.headingRotationDeg(ds.r, ds.v, project, scale);
-        this._markerManager.set(key, 'mk-base', display?.icon === false ? '' : ENTITY_GLYPH.ship, p.x, p.y, p.front, display?.label === false ? '' : label, 1, undefined, rotationDeg);
+        this._markerManager.set(key, 'mk-base', visibility?.icon === false ? '' : ENTITY_GLYPH.ship, p.x, p.y, p.front, visibility?.label === false ? '' : label, 1, undefined, rotationDeg);
         this._markerManager.hide(bearingKey);
       } else {
-        this._markerManager.set(key, 'mk-poi', display?.icon === false ? '' : ENTITY_GLYPH.body, p.x, p.y, p.front, display?.label === false ? '' : label);
-        this._markerManager.setBearing(bearingKey, 'mk-poi', DIRECTION_GLYPH.bearing, p, display?.label === false ? '' : label, 0.9);
+        this._markerManager.set(key, 'mk-poi', visibility?.icon === false ? '' : ENTITY_GLYPH.body, p.x, p.y, p.front, visibility?.label === false ? '' : label);
+        this._markerManager.setBearing(bearingKey, 'mk-poi', DIRECTION_GLYPH.bearing, p, visibility?.label === false ? '' : label, 0.9);
       }
     }
     for (let i = bases.length; i < this.lastBaseMarkerCount; i++) {

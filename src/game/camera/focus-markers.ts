@@ -64,7 +64,7 @@ export class FocusMarkers {
   private readonly bodyPickableRecords = new Map<string, MutableMapPickable>();
   private readonly cachedBodyPickables: MutableMapPickable[] = [];
   private cachedBodyPickablesTime: number | null = null;
-  private cachedBodyPickablesVisibility: MapVisibilityPolicy | null = null;
+  private cachedBodyPickablesPolicy: MapVisibilityPolicy | null = null;
   private readonly frameScratch = new Map<string, FocusProjection>();
   private readonly projectedScratch: ProjectedFocusLabel[] = [];
   private readonly hiddenByPriorityScratch = new Set<string>();
@@ -137,8 +137,8 @@ export class FocusMarkers {
   // 同じ表示ポリシーを通し、非表示設定の対象を選べない状態にする。遮蔽やラベル衝突で
   // マーカーを描かなかった対象は pickable: false を伴って出す — 表示設定で消えているわけでは
   // ないので候補からは落とさず、画面に出ていない対象を掴めないことだけを表す。
-  bodyPickables(t: number, visibility: MapVisibilityPolicy): readonly MapPickable[] {
-    if (this.cachedBodyPickablesTime === t && this.cachedBodyPickablesVisibility === visibility) {
+  bodyPickables(t: number, visibilityPolicy: MapVisibilityPolicy): readonly MapPickable[] {
+    if (this.cachedBodyPickablesTime === t && this.cachedBodyPickablesPolicy === visibilityPolicy) {
       // syncLabels は遮蔽・ラベル衝突の結果だけ label.pickable を更新する。候補の配列と
       // 座標はそのまま再利用し、ここではその結果だけを反映する。
       for (const item of this.cachedBodyPickables) {
@@ -154,20 +154,20 @@ export class FocusMarkers {
     const drawn = new Map(this.allLabels.map((lbl) => [lbl.id, lbl.pickable]));
     this.cachedBodyPickables.length = 0;
     for (const id of this.registryIds) {
-      if (!visibility.body(id).pickable) continue;
+      if (!visibilityPolicy.body(id).pickable) continue;
       const pos = posOf.get(id);
       if (pos !== undefined) this.cacheBodyPickable(
         id, celestialBodyName(id), pos, drawn.get(id) ?? true,
       );
     }
     for (const { id, points } of this.lagrangeSources) {
-      if (!visibility.body(id).category) continue;
+      if (!visibilityPolicy.body(id).category) continue;
       const l = ephemeris.lagrangeAt(id, t);
       const primary = primaryOf(ephemeris.registry, id);
       const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
       for (const n of points) {
         const lagrangeId = `${id}-l${n}`;
-        if (visibility.body(lagrangeId).pickable) {
+        if (visibilityPolicy.body(lagrangeId).pickable) {
           this.cacheBodyPickable(
             lagrangeId, `${prefix} L${n}`, l[`L${n}`], drawn.get(lagrangeId) ?? true,
           );
@@ -175,7 +175,7 @@ export class FocusMarkers {
       }
     }
     this.cachedBodyPickablesTime = t;
-    this.cachedBodyPickablesVisibility = visibility;
+    this.cachedBodyPickablesPolicy = visibilityPolicy;
     return this.cachedBodyPickables;
   }
 
@@ -197,45 +197,45 @@ export class FocusMarkers {
   // 登録天体が増えるほど lagrangeAt(1天体あたり positionOf 2回 + 回転系1回)が効くため。
   update(
     t: number, focusId: AttractorId | undefined, toggles: BodyClassToggles, cameraPos: Vec3,
-    sharedVisibility?: MapVisibilityPolicy,
+    sharedVisibilityPolicy?: MapVisibilityPolicy,
   ): void {
     const ephemeris = this.ephemeris;
     const attractors = ephemeris.attractorsAt(t);
     // フォーカスを解除しても、カメラが実際にいる惑星系の衛星は消さない。カメラ位置の
     // 「近さ」を固定距離で判定せず、既存の重力系判定を使うことで、地球/月や木星/衛星の
     // 境界を同じ規則で扱える。
-    const nearby = sharedVisibility === undefined
+    const nearby = sharedVisibilityPolicy === undefined
       ? systemMembersAt(ephemeris.registry, cameraPos, attractors)
       : [];
     // まず表示対象を決め、その中だけ座標を引く。表示の判断は marker/map-picker/参照線と
     // 同じ MapVisibilityPolicy を使い、個別実装の解釈ずれをなくす。
-    const visibility = sharedVisibility
+    const visibilityPolicy = sharedVisibilityPolicy
       ?? new MapVisibilityPolicy(ephemeris.registry, toggles, focusId, nearby);
 
     const positions: Record<string, Vec3> = {};
     const displayMap: Record<string, { icon: boolean; label: boolean }> = {};
     this.cachedBodyPickables.length = 0;
     for (const id of this.registryIds) {
-      const display = visibility.body(id);
-      if (!display.pickable) continue;
+      const visibility = visibilityPolicy.body(id);
+      if (!visibility.pickable) continue;
       const pos = ephemeris.positionOf(id, t);
       positions[id] = pos;
-      displayMap[id] = { icon: display.icon, label: display.label };
+      displayMap[id] = { icon: visibility.icon, label: visibility.label };
       this.cacheBodyPickable(id, celestialBodyName(id), pos, true);
     }
     if (toggles.lagrangeVisible && (toggles.lagrangeIcon || toggles.lagrangeLabel)) {
       for (const { id, points } of this.lagrangeSources) {
-        if (!visibility.body(id).category) continue;
+        if (!visibilityPolicy.body(id).category) continue;
         const l = ephemeris.lagrangeAt(id, t);
         const primary = primaryOf(ephemeris.registry, id);
         const prefix = `${primary === null ? celestialBodyName(id) : celestialBodyName(primary)}-${celestialBodyName(id)}`;
         for (const n of points) {
           const lagrangeId = `${id}-l${n}`;
-          const d = visibility.body(lagrangeId);
-          if (!d.pickable) continue;
+          const visibility = visibilityPolicy.body(lagrangeId);
+          if (!visibility.pickable) continue;
           const pos = l[`L${n}`];
           positions[lagrangeId] = pos;
-          displayMap[lagrangeId] = { icon: d.icon, label: d.label };
+          displayMap[lagrangeId] = { icon: visibility.icon, label: visibility.label };
           this.cacheBodyPickable(lagrangeId, `${prefix} L${n}`, pos, true);
         }
       }
@@ -255,7 +255,7 @@ export class FocusMarkers {
     this.shownLabels = shown;
     this.attractors = attractors;
     this.cachedBodyPickablesTime = t;
-    this.cachedBodyPickablesVisibility = visibility;
+    this.cachedBodyPickablesPolicy = visibilityPolicy;
   }
 
   // update が求めた座標へラベルのマーカーを置く。天体に遮られているラベルは隠し、
