@@ -1,6 +1,5 @@
-// マップで必要な GameEntity の予測列(predictedTrajectory)をフレームあたりの予算内で
-// ラウンドロビンに伸ばす。戦闘ビューでは自機の線だけを小さい予算で維持する。
-// 予測列の長短を問わず一律に扱うため、破棄が多発してもフレーム時間がスパイクしない。
+// GameEntity.predictedTrajectory をフレーム予算内でラウンドロビンに伸ばす。
+// mode='map' で全エンティティ、'combat' で自機のみを対象にする。
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
@@ -15,27 +14,21 @@ export class Predictor {
   private readonly nearbyAttractorsScratch: Attractor[] = [];
   private readonly divergenceAttractorsScratch: Attractor[] = [];
 
-  // 直近の update() で数えた予測列の状況(?perf=1 の表示用)。
   tracked = 0; // 予測対象の個体数
-  finished = 0; // うち伸長が終わったもの(先端がホライズンに達した/打ち切られた)
-  discarded = 0; // このフレームに乖離で破棄したもの
-  lastSteps = 0; // 直近フレームに予測器が実際に消費した積分step数
+  finished = 0; // 先端がホライズンに達した/打ち切られた個体数
+  discarded = 0; // 乖離判定で破棄した個体数
+  lastSteps = 0; // 消費した積分ステップ数
 
   constructor(
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
   ) {}
 
-  // Game.update の entities.cleanup(...) の後に呼ぶ(死んだ個体を予測しない、積分後の実状態と
-  // 突き合わせる)。map では全表示対象、combat では自機だけを候補にする。
-  // 戦闘中も自機の予測線は残すが、予算を小さくして非表示エンティティのresync・RK4を避ける。
-  // horizon は simTime から先に予測する長さ [s]。
+  // entities.cleanup(...) の後に呼ぶ。horizon は simTime から先に予測する長さ [s]。
   update(simTime: number, player: Player | null, horizon: number, mode: 'map' | 'combat' = 'map'): void {
     const all = mode === 'map' ? this.entities.all() : player ? [player] : [];
 
-    // 距離判定は毎フレーム無条件で予測対象すべてに行う(二分探索1回ぶんの費用しかかからない)。
-    // 伸長を止めている間も実状態は進むので、乖離した列をここで落とさないと
-    // 現在と無関係な軌道が描かれ続ける。
+    // 伸長を止めている間も実状態は進み続けるため、乖離判定は毎フレーム全対象に行う。
     this.tracked = 0;
     this.finished = 0;
     this.discarded = 0;
@@ -46,31 +39,25 @@ export class Predictor {
       const attractors = attractorsNearInto(e.state.r, classified, this.divergenceAttractorsScratch);
       if (e.discardPredictionIfDiverged(simTime, attractors)) this.discarded++;
       this.tracked++;
-      const reachedHorizon = e.predictedTrajectory !== null && e.predictedTrajectory.state.t > simTime + horizon;
+      const reachedHorizon = e.predictedTrajectory !== null && e.predictedTrajectory.state.t >= simTime + horizon;
       if (reachedHorizon || e.predictionTruncated) this.finished++;
     }
 
-    // 予算配分: 操作対象の艦を先頭に、以降はカーソル位置から最大1周だけ回す。艦に渡す分は
-    // そのフレームの予算の PREDICT_PLAYER_BUDGET_RATIO までに抑え、残りは必ずラウンドロビンへ
-    // 回す — 艦の予測が完成するまで他の個体が止まると、その予測を重力源として読む計画軌道の
-    // 形まで艦の予測進捗に左右されてしまう。
+    // 操作対象の艦は先頭で処理する。艦の予測を計画軌道が重力源として読むため、艦の予測完成を
+    // 他の個体より優先するが、上限は PREDICT_PLAYER_BUDGET_RATIO に抑えて残りをラウンドロビンへ回す。
     const frameBudget = mode === 'map' ? C.PREDICT_STEP_BUDGET : C.PREDICT_COMBAT_STEP_BUDGET;
     let budget = frameBudget;
     if (player) {
-      // 回す相手が自機しかいないなら上限は意味を持たない(残りを誰も使わない)ので全額渡す。
       const others = all.some((e) => e !== player);
       const playerBudget = others ? Math.floor(frameBudget * C.PREDICT_PLAYER_BUDGET_RATIO) : frameBudget;
       budget -= this.advanceBudget(player, playerBudget, simTime, horizon);
     }
 
-    // 1体あたりの取り分は残額を残り訪問数で割った値。1体が残額を丸ごと食うと、後続の個体は
-    // 予測列に最初のサンプルが積まれるステップ数(PREDICT_MIN_ENTITY_STEPS)にも届かないまま
-    // 次フレームの乖離判定で破棄され、作り直しを繰り返す。
+    // 1体あたりの取り分は残額を残り訪問数で均等割りする。1体が丸ごと消費すると、後続の個体が
+    // PREDICT_MIN_ENTITY_STEPS に届かないまま次フレームの乖離判定で破棄され、作り直しを繰り返す。
     let visited = 0;
     while (budget > 0 && visited < all.length) {
       const e = all[(this.cursor + visited) % all.length]!;
-      // player は上で優先処理済み。map の all にも player が含まれるので、ここで再処理すると
-      // 自機だけが予算を二重に消費し、戦闘時は同じ予測線を2回伸ばすことになる。
       if (e !== player) {
         const share = Math.max(C.PREDICT_MIN_ENTITY_STEPS, Math.floor(budget / (all.length - visited)));
         budget -= this.advanceBudget(e, Math.min(budget, share), simTime, horizon);
@@ -80,15 +67,9 @@ export class Predictor {
     this.cursor = all.length > 0 ? (this.cursor + visited) % all.length : 0;
   }
 
-  // budgetSteps を上限に、1体ぶんの予測列を GameEntity.stepPredicted で1ステップずつ伸ばし、
-  // 消費したステップ数を返す。刻み幅は毎ステップ、現在の予測先端の時刻・位置から求め直す
-  // (先端がまだ無ければ現在状態で代用 — 生成直後は actualTrajectory.state を種にするので
-  // 同じ値になる)。重力源の空間分類は先端が ATTRACTOR_REBUILD_SEC 進むごとに1回
-  // だけ組み、その間は使い回す(Simulator.substep が1サブステップで1回だけ組むのと同じ規約)
-  // — その時間ぶんの重力源位置の遅れは、予測の刻み幅そのものが持つ RK4 の誤差より小さい。
-  // ここが「1ステップぶんの前提を決めて渡す」側、entity 側は「渡された前提で実際に1ステップ
-  // 進めるか判断する」側 — stepActual に対する substep と同じ分担。ホライズン超過などで
-  // stepPredicted が false を返したら、そのエンティティの予算消化を打ち切る。
+  // budgetSteps を上限に予測列を1ステップずつ伸ばし、消費したステップ数を返す。
+  // 重力源の空間分類は先端が ATTRACTOR_REBUILD_SEC 進むごとに組み直す
+  // (それ以外は使い回す — その間の重力源位置のずれは刻み幅自体の RK4 誤差より小さい)。
   private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number, horizon: number): number {
     if (!e.predictsFuture) return 0;
     let consumed = 0;
@@ -101,9 +82,8 @@ export class Predictor {
         classifiedAt = tipState.t;
       }
       const attractors = attractorsNearInto(tipState.r, classified, this.nearbyAttractorsScratch);
-      // 1ステップは表示期間より長くしない。先端は設計上ホライズンを1ステップぶん超えた所で
-      // 止まるので、上限が無いと局所周期が跳ね上がった瞬間に先端が暦の有効域の外まで飛び、
-      // 次の周回で attractorsAt がその時刻を引いて失敗する。
+      // 1ステップを horizon 以下に抑える。上限が無いと局所周期の跳ね上がりで先端が
+      // 一気に暦の有効域外まで進み、次の呼び出しで attractorsAt がその時刻を引けなくなる。
       const dt = Math.min(
         horizon,
         Math.max(
