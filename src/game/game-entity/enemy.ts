@@ -6,7 +6,6 @@ import { Attractor } from '../../physics/attractor';
 import { isBurnedUp } from '../../physics/atmosphere';
 import type { GameEntity } from './game-entity';
 import type { Contact } from '../simulation/contact';
-import type { FloatingOrigin } from '../floating-origin';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
@@ -60,7 +59,7 @@ function buildEnemyObj(enemyKind: EnemyKind, accent: string | number): THREE.Obj
 export class Enemy extends Ship {
   accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
-  readonly orbitLine: OrbitLine;
+  declare readonly orbitLine: OrbitLine;
 
   // 実行時状態(遅延初期化)。未設定 = まだその状態に入っていない
   lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
@@ -306,13 +305,6 @@ export class Enemy extends Ship {
     pb.obj.quaternion.setFromRotationMatrix(mz);
 
     entities.addBullet(pb);
-  }
-
-  // オーバービュー時の非ターゲット背景描画用
-  syncBackgroundOrbitLine(
-    show: boolean, fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
-  ): void {
-    this.syncOwnOrbitLine(this.orbitLine, show, fo, camera, attractors);
   }
 
   // セーブデータへ変換する。
