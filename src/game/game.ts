@@ -923,12 +923,13 @@ export class Game {
       predictedTargets, this.editor.planDisplay.planFrame, simTime, this.ephemeris, this.floatingOrigin,
       this.cameraSystem.activeCamera, attractors,
     );
-    // 解析楕円は、積分予測が表示範囲に届いていないあいだの代替表示。予測が表示ホライズンを
-    // 覆いきったときだけ抑制する。predictedTrajectoryLine は操作対象艦しか描かないため、
+    // 解析楕円は積分予測の代替表示。predictedTrajectoryLine は操作対象艦しか描かないため、
     // 他の艦は常に non-suppressed に戻る。
     const predictHorizon = this._window.duration;
     for (const ship of this.entities.players) {
-      ship.orbitLine.setSuppressed(this.predictedTrajectoryLine.coversHorizon(ship, simTime, predictHorizon));
+      ship.orbitLine.setSuppressed(
+        this.predictedTrajectoryLine.supersedesAnalyticEllipse(ship, simTime, predictHorizon, overviewMode),
+      );
     }
 
     if (player) {
