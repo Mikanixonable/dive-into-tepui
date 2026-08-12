@@ -203,7 +203,7 @@ export class Player extends Ship {
     // ワープを下げた瞬間に不意打ちで噴射が始まるのを防ぐ)。
     if (simSpeed.canPlayerThrust) this.throttle.updateThrustLatches(input);
     this.thrust = this.throttle.updateThrustState(input, simSpeed, this.att, dt, this);
-    // 推力入力の瞬間に予測を即破棄する — discardPredictionIfDiverged の距離判定を待つと数フレームの遅延が生じる。
+    // 噴射中は毎フレーム破棄する — 次の Predictor がその時点の実状態を種に作り直す。
     if (this.thrust !== null) this.invalidatePrediction();
 
     // 操作対象艦での手動並進・手動回転は 'powered' 自動実行を中断する(進行方向ホールドが
