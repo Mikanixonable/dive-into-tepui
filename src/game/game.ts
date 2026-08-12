@@ -11,7 +11,6 @@ import { focusPoint } from './camera/focus-target';
 import { Stage } from './stages/stage';
 import { LaunchSelection } from './game-mode';
 import { MarkerManager } from './marker/marker-manager';
-import { EffectsSystem } from './vfx/effects-system';
 import {
   buildStage, ephemerisConfigFor, initialPlayerCountFor, showsStatusInOverviewFor,
 } from './stages/stage-dictionary';
@@ -84,7 +83,6 @@ export class Game {
   // PerfMeter は計測点である rAF ループ側の持ち物なので、後から受け取る。
   private perfMeter: PerfMeter | null = null;
 
-  private readonly effects: EffectsSystem;
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
   readonly entities: EntityManager;
@@ -126,16 +124,12 @@ export class Game {
 
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay, this.ephemeris);
 
-    this.entities = new EntityManager(this._scene);
+    this.entities = new EntityManager(
+      this._scene, this._hud, this._sfx, this.markerManager,
+      initialSave ? { saved: initialSave } : { playerCount: initialPlayerCountFor(launch) },
+    );
     this.displayWindowManager = new DisplayWindowManager(this._hud.layers.panel, this.ephemeris, this.entities);
-    this.effects = new EffectsSystem(this._scene, this.entities, this._sfx);
-    const spawnDeps = {
-      hud: this._hud, sfx: this._sfx, scene: this._scene,
-      effects: this.effects, markerManager: this.markerManager,
-    };
-    const initialPlayer = initialSave
-      ? this.entities.restoreFromSave(initialSave, spawnDeps)
-      : this.entities.spawnInitialPlayers(initialPlayerCountFor(launch), spawnDeps);
+    const initialPlayer = this.entities.initialActivePlayer;
 
     // 自機より後に生成する: 追従カメラは操作対象艦を参照として直接持つ(遅延解決しない)。
     this.cameraSystem = new CameraSystem(
@@ -192,14 +186,14 @@ export class Game {
 
     this.activeStage = buildStage(
       launch, initialPlayer, this.entities, this._hud, this._sfx, this._scene,
-      this.unlockManager, this.effects, this.markerManager, this.ephemeris, this.simulator,
+      this.unlockManager, this.entities.effects, this.markerManager, this.ephemeris, this.simulator,
       (ship) => { if (this.player === null) this.activePlayers.set(ship); },
       initialSave?.stage,
     );
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
-      this, this._hud, this._sfx, this._scene, this.effects, this.markerManager,
+      this, this._hud, this._sfx, this._scene, this.entities.effects, this.markerManager,
       this.entities, this.mapPicker, this.cameraSystem, this.viewManager,
     );
     this.mapPicker.setDocking(this.docking);
@@ -332,7 +326,7 @@ export class Game {
     }
 
     this.sections.enter(SECTION.effects);
-    this.effects.update(dt, this.simulator.simTime);
+    this.entities.effects.update(dt, this.simulator.simTime);
     this.sections.exit(SECTION.effects);
 
     // reclaimDead が操作対象を差し替えている場合があるので、ここは読み直した艦を見る。
@@ -476,7 +470,7 @@ export class Game {
       visibilityPolicy, player, overviewMode, this.floatingOrigin, this.cameraSystem.activeCamera, attractors,
     );
 
-    this.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
+    this.entities.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
 
     this.targeter.sync(
       this.floatingOrigin, player, combatTargets, overviewMode, project, this.cameraSystem.activeCamera,
