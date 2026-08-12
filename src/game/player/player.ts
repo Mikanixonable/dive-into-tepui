@@ -16,7 +16,7 @@ import { Hud } from '../hud/hud';
 import { Sfx } from '../../audio/sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { OrbitLine } from '../orbit-line';
-import { Attractor, reachedBody, strongestAttractor } from '../../physics/attractor';
+import { Attractor, reachedBody } from '../../physics/attractor';
 import { isBurnedUp } from '../../physics/atmosphere';
 import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
@@ -70,8 +70,7 @@ export class Player extends Ship {
   private readonly rcsEffects: RcsEffects;
   private readonly reentryEffects: ReentryEffects;
   private readonly markers: PlayerMarkers;
-  // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
-  readonly orbitLine = new OrbitLine(0x00ff00, 0.55, C.LINE_RENDER_ORDER.shipOrbit);
+  declare readonly orbitLine: OrbitLine;
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
   readonly planExecutor: PlanExecutor;
@@ -111,6 +110,8 @@ export class Player extends Ship {
     this.markers = new PlayerMarkers(markerManager, this.id);
     this.planExecutor = new PlanExecutor(_hud);
 
+    // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
+    this.orbitLine = new OrbitLine(0x00ff00, 0.55, C.LINE_RENDER_ORDER.shipOrbit);
     _scene.add(this.orbitLine.line);
   }
 
@@ -468,12 +469,7 @@ export class Player extends Ship {
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
     this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.overviewCamera.focus), ephemeris.registry, attractors, mapVisibility);
 
-    if (this.alive) {
-      const center = strongestAttractor(this.state.r, ephemeris.attractorsAt(this.state.t));
-      this.orbitLine.sync(this.orbitalElementsAround(center), fo, camera.activeCamera, this.thrust !== null);
-    } else {
-      this.orbitLine.sync(null, fo, camera.activeCamera);
-    }
+    this.syncOrbitLine(this.alive, fo, camera.activeCamera, attractors, this.thrust !== null);
   }
 
   // Creative で任意削除されるため、Player が所有する線・ビルボード・HUD も一度だけ解放する。

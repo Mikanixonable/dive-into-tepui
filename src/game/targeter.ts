@@ -175,7 +175,7 @@ export class Targeter {
     for (const t of targets) {
       const entityVisibility = visibility?.entity(t instanceof Player ? 'player' : 'ship', t === player);
       const showGray = overviewMode && t.alive && t !== tgt && t !== secTgt && (entityVisibility?.orbit ?? true);
-      t.syncBackgroundOrbitLine(showGray, fo, camera, attractors);
+      t.syncOrbitLine(showGray, fo, camera, attractors);
     }
 
     const targetVisibility = tgt === null ? null : visibility?.entity(tgt instanceof Player ? 'player' : 'ship', tgt === player);
