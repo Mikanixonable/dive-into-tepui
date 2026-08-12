@@ -1,5 +1,8 @@
-// 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、
-// 区間ごとに PlanArc を生成・所有する。画面判定も同じ表示変換を通すため描画とずれない。
+// 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、区間ごとに PlanArc
+// (積分結果)と TrajectoryLine(折れ線)を index で対応付けて持つ。起点・重力源・apsisCenter が
+// 変われば PlanArc を作り直し、終端だけが動いた区間は PlanArc.setEnd に継ぎ足し/縮小させる —
+// どちらの場合も折れ線はその区間の TrajectoryLine プールを使い回す。画面判定も同じ表示変換を
+// 通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
@@ -9,6 +12,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../physics/projection';
 import { isOccluded } from '../../physics/occlusion';
 import { FloatingOrigin } from '../floating-origin';
+import { TrajectoryLine } from '../trajectory-line';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, Plan, TimeRange, segmentDurationFrom } from './plan';
 import { PlanArc } from './plan-arc';
@@ -27,7 +31,7 @@ const TIME_TIE_SEC = 1e-6;
 type Segment = { state0: KinematicState; end: number; apsisCenter: Attractor | null };
 
 // 最後のバーン後(これから乗る軌道)の区間。samples は PlanArc.samples をそのまま渡す参照で、
-// 区間を再積分しない限り同一参照を保つ。periapsis/apoapsis は、区間が地表到達等で
+// その区間の終端(end)が変わらない限り同一参照を保つ。periapsis/apoapsis は、区間が地表到達等で
 // 打ち切られてその極値へ届かなければ null。apsisCenter はその極値を測った中心天体。
 export interface FinalSegment {
   readonly state0: KinematicState;
@@ -39,8 +43,11 @@ export interface FinalSegment {
 
 export class PlanPath {
   readonly group = new THREE.Group();
-  // 先頭 activeCount 本がこのフレームの区間に対応する(色は index で決まるので使い回す)。
+  // 先頭 activeCount 本がこのフレームの区間の積分結果に対応する(区間が減れば末尾を捨てる)。
   private arcs: PlanArc[] = [];
+  // 折れ線は index ごとのプールとして持ち、区間数が減っても捨てない(色は index で決まるので
+  // 使い回す)。
+  private lines: TrajectoryLine[] = [];
   private activeCount = 0;
   // 先頭 nodeCount 本がノードで終わる区間(= 各ノードの到達状態を持つ)。
   private nodeCount = 0;
@@ -60,8 +67,9 @@ export class PlanPath {
   // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
   private cameraPos: Vec3 | null = null;
   private final: FinalSegment | null = null;
-  // 直近の update() で再積分した区間の本数と、その積分step数の合計。
-  lastReintegratedArcs = 0;
+  // 直近の update() で作り直した区間の本数と、積分に回した積分step数の合計
+  // (作り直し・継ぎ足しの両方を含む)。
+  lastRebuiltArcs = 0;
   lastSteps = 0;
 
   // group をシーンへ登録する(初期状態は非表示)。
@@ -70,8 +78,9 @@ export class PlanPath {
     scene.add(this.group);
   }
 
-  // plan から区間列を組み直して各区間を再積分し、表示変換の文脈(座標系・un-bake 時刻)を
-  // このフレームのものに更新する。
+  // plan から区間列を組み直す。起点・重力源・apsisCenter が既存の arc と一致する区間は
+  // setEnd で終端だけ動かし、一致しない区間は arc を作り直す。表示変換の文脈(座標系・
+  // un-bake 時刻)もこのフレームのものに更新する。
   update(
     plan: Plan, ephemeris: Ephemeris, frame: ReferenceFrame, currentTime: number,
     attractors: readonly Attractor[], attractorProvider: PlanAttractorProvider,
@@ -81,7 +90,7 @@ export class PlanPath {
     this.unbakeTime = currentTime;
     this.attractors = attractors;
     this.unbakeTransform = ephemeris.frameTransformAt(frame, currentTime, attractors);
-    this.lastReintegratedArcs = 0;
+    this.lastRebuiltArcs = 0;
     this.lastSteps = 0;
     // anchor→node…→末尾区間に分解する
     const segments = buildSegments(plan, ephemeris, this.displayTimeManager);
@@ -89,12 +98,18 @@ export class PlanPath {
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       const tracksLiveAnchor = plan.nodes.length === 0 && i === segments.length - 1;
-      const arc = this.arcAt(i);
-      if (arc.update(seg.state0, seg.end, attractorProvider, tracksLiveAnchor, seg.apsisCenter)) {
-        this.lastReintegratedArcs++;
-        this.lastSteps += arc.lastSteps;
+      const apsisCenterId = seg.apsisCenter?.id ?? null;
+      let arc = this.arcs[i];
+      if (!arc || !arc.represents(seg.state0, seg.end, attractorProvider.revision, apsisCenterId, tracksLiveAnchor)) {
+        arc = new PlanArc(seg.state0, seg.end, attractorProvider, seg.apsisCenter);
+        this.arcs[i] = arc;
+        this.lastRebuiltArcs++;
+      } else {
+        arc.setEnd(seg.end);
       }
+      this.lastSteps += arc.lastSteps;
     }
+    this.arcs.length = segments.length;
     this.activeCount = segments.length;
     this.nodeCount = plan.nodes.length;
     const finalArc = this.arcs[segments.length - 1]!;
@@ -113,7 +128,7 @@ export class PlanPath {
     return this.final;
   }
 
-  // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の arc を隠す。
+  // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の線を隠す。
   // 画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。破線のドット/隙間は
   // 各区間のサンプル列中央の代表点で scale(m/px)を引き、ピクセル指定を実距離に直してから渡す
   // — ズームによらず画面上の間隔を一定に保つため。camera は各区間の折れ線の解像度を決める
@@ -124,7 +139,8 @@ export class PlanPath {
     if (this.ephemeris === null) return;
     for (let i = 0; i < this.activeCount; i++) {
       const arc = this.arcs[i]!;
-      arc.setVisible(true);
+      const line = this.lineAt(i);
+      line.setVisible(true);
       const samples = arc.samples;
       let dashSize = C.PLAN_ARC_DASH_PX;
       let gapSize = C.PLAN_ARC_GAP_PX;
@@ -134,9 +150,15 @@ export class PlanPath {
         dashSize = C.PLAN_ARC_DASH_PX * mpp;
         gapSize = C.PLAN_ARC_GAP_PX * mpp;
       }
-      arc.sync(this.ephemeris, this.frame, this.unbakeTime, fo, dashSize, gapSize, camera, this.attractors);
+      line.setDash(dashSize, gapSize);
+      // 描画範囲の上限は arc.end — 積分結果が継ぎ足しで先まで伸びていても、この区間として
+      // 答える範囲だけを描く。
+      line.syncGeometry(arc.trajectory, null, arc.end, this.frame, this.ephemeris, this.attractors);
+      line.syncTransform(this.frame, this.unbakeTime, this.ephemeris, fo, this.attractors);
+      line.sync(camera);
     }
-    for (let i = this.activeCount; i < this.arcs.length; i++) this.arcs[i]!.setVisible(false);
+    // 線プールは区間数が減っても捨てずに残すので、隠す範囲は arcs でなく lines の本数まで見る。
+    for (let i = this.activeCount; i < this.lines.length; i++) this.lines[i]!.setVisible(false);
   }
 
   // 天体衝突が検出された地点と、その相手の天体(区間ごとに高々1つ)。今フレーム表示中の
@@ -282,15 +304,16 @@ export class PlanPath {
     this.group.visible = v;
   }
 
-  // i 番目の PlanArc を返す(なければ生成して group へ追加する)。
-  private arcAt(i: number): PlanArc {
-    while (this.arcs.length <= i) {
-      const idx = this.arcs.length;
-      const arc = new PlanArc(arcColor(idx), C.PLAN_ARC_OPACITY, C.LINE_RENDER_ORDER.plan);
-      this.arcs.push(arc);
-      this.group.add(arc.object3d);
+  // i 番目の折れ線を返す(なければ生成して group へ追加する)。区間の色は index で決まる。
+  private lineAt(i: number): TrajectoryLine {
+    while (this.lines.length <= i) {
+      const idx = this.lines.length;
+      const line = new TrajectoryLine(arcColor(idx), C.PLAN_ARC_OPACITY, C.LINE_RENDER_ORDER.plan,
+        { dashSize: C.PLAN_ARC_DASH_PX, gapSize: C.PLAN_ARC_GAP_PX });
+      this.lines.push(line);
+      this.group.add(line.line);
     }
-    return this.arcs[i]!;
+    return this.lines[i]!;
   }
 }
 

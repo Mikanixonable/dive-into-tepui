@@ -145,7 +145,7 @@ export class GameEntity {
   ): void {
     if (this.trajectoryLine === null) return;
     this.trajectoryLine.syncGeometry(
-      show ? this.predictedTrajectory : null, simTime, frame, ephemeris, attractors,
+      show ? this.predictedTrajectory : null, simTime, null, frame, ephemeris, attractors,
     );
     this.trajectoryLine.syncTransform(frame, simTime, ephemeris, fo, attractors);
     this.trajectoryLine.sync(camera);
