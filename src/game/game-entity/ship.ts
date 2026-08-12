@@ -3,8 +3,6 @@ import { Attitude } from '../../physics/attitude';
 import { KinematicState } from '../../physics/kinematic-state';
 import * as C from '../const';
 import { GameEntity } from './game-entity';
-import type { Attractor } from '../../physics/attractor';
-import type { FloatingOrigin } from '../floating-origin';
 import { Part, PartType, createPart } from './parts';
 import type {
   ArmorPart,
@@ -396,8 +394,4 @@ export abstract class Ship extends GameEntity {
     });
   }
 
-  // オーバービュー時の非ターゲット背景描画用
-  syncBackgroundOrbitLine(
-    _show: boolean, _fo: FloatingOrigin, _camera: THREE.Camera, _attractors: readonly Attractor[],
-  ): void {}
 }
