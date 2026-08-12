@@ -116,11 +116,13 @@ export class OrbitLine {
   }
 
   // 現在の要素が直近のスナップショットから許容誤差を超えて変化していれば true(要再生成)。
+  // force は要素が能動的に変化している間なので、最短再生成間隔のスロットルより先に無条件で
+  // 通す — 間隔待ちのぶん追随が刻んで見えることを避ける。
   private needsRegen(el: OrbitalElements, force: boolean): boolean {
     if (!this.snap) return true;
+    if (force) return true;
     const now = performance.now();
     if (now - this.lastRegen < REGEN_MIN_INTERVAL_MS) return false;
-    if (force) return true;
     const s = this.snap;
     if (Math.abs(el.a - s.a) / s.a > TOL_SMA) return true;
     if (Math.abs(el.e - s.e) > TOL_ECC) return true;
