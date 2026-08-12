@@ -57,9 +57,9 @@ export class NanWatchdog {
   // 全エンティティを走査する重い検査。自機より先に汚染されるのは他のエンティティ
   // (薬莢・破片・弾)であることが多く、それが接触を通じて自機へ伝播する。
   // フレームにつき一度だけ呼ぶこと。
-  checkAll(phase: string, player: Player, entities: EntityManager, simTime: number, dt: number, simDt: number): void {
+  checkAll(phase: string, player: Player | null, entities: EntityManager, simTime: number, dt: number, simDt: number): void {
     if (this.tripped) return;
-    this.checkPlayer(phase, player, simTime, dt, simDt);
+    if (player) this.checkPlayer(phase, player, simTime, dt, simDt);
     if (this.tripped) return;
     for (const e of entities.all()) {
       if (finiteVec(e.state.r) && finiteVec(e.state.v)) continue;

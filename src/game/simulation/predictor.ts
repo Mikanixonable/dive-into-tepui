@@ -8,6 +8,7 @@ import { Ephemeris } from '../../physics/ephemeris';
 import type { Attractor } from '../../physics/attractor';
 import { localOrbitPeriod } from '../../physics/attractor';
 import { ClassifiedAttractors, attractorsNearInto, classifyAttractors, predictedAttractorsAt } from './attractors';
+import type { PerfCounts } from '../../perf-meter';
 
 export class Predictor {
   private cursor = 0;
@@ -97,5 +98,15 @@ export class Predictor {
       this.lastSteps++;
     }
     return consumed;
+  }
+
+  // 負荷確認ウィンドウが読む、直近フレームの予測伸長の集計値。
+  perfCounts(): Pick<PerfCounts, 'predicted' | 'predictComplete' | 'predictDiscarded' | 'predictorSteps'> {
+    return {
+      predicted: this.tracked,
+      predictComplete: this.finished,
+      predictDiscarded: this.discarded,
+      predictorSteps: this.lastSteps,
+    };
   }
 }

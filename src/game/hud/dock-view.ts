@@ -1,4 +1,4 @@
-// ドックビュー: 基地に接岸した際に開くフルスクリーンUI。
+﻿// ドックビュー: 基地に接岸した際に開くフルスクリーンUI。
 // 格納されている船の一覧、部品の確認・修理・換装、ショップを提供する。
 import type { Base, DockedShipEntry } from '../game-entity/base';
 import type { Player } from '../player/player';
@@ -79,7 +79,7 @@ export class DockView {
   private currentBase: Base | null = null;
   private currentShip: Player | null = null;
   private currentTab: DockTab = 'ships';
-  private creative = false;
+  private freeProcurement = false;
 
   // 外部コールバック
   onLaunchShip: ((ship: Player, base: Base) => void) | null = null;
@@ -100,9 +100,9 @@ export class DockView {
   }
 
   // ドックビューを開く
-  open(base: Base, inspectShip: Player | null, creative: boolean): void {
+  open(base: Base, inspectShip: Player | null, freeProcurement: boolean): void {
     this.currentBase = base;
-    this.creative = creative;
+    this.freeProcurement = freeProcurement;
     // inspectShip が基地に格納されていれば選択状態にする
     if (inspectShip && base.baseState.dockedShips.some((s) => s.id === inspectShip.id)) {
       this.currentShip = inspectShip;
@@ -163,7 +163,7 @@ export class DockView {
 
     const moneyEl = this.el.querySelector('#dock-base-money');
     if (moneyEl) {
-      const moneyText = this.creative
+      const moneyText = this.freeProcurement
         ? '所持金: ∞ (クリエイティブ)'
         : `所持金: ${this.currentBase.baseState.money.toLocaleString()} Cr`;
       moneyEl.textContent = moneyText;
@@ -214,12 +214,12 @@ export class DockView {
 
   // 新造(既定パーツ一式の艦を1隻、格納艦へ加える)ボタン。
   private buildNewShipHeader(base: Base): string {
-    const canAfford = this.creative || base.baseState.money >= NEW_SHIP_COST;
+    const canAfford = this.freeProcurement || base.baseState.money >= NEW_SHIP_COST;
     return `
       <div class="dock-parts-header">
         <span class="dock-ship-label">既定パーツ一式の艦を1隻建造します</span>
         <button class="dock-btn dock-btn-build-ship ${canAfford ? '' : 'disabled'}" ${canAfford ? '' : 'disabled'}
-        >新造 ${this.creative ? '(無料)' : `${NEW_SHIP_COST.toLocaleString()} Cr`}</button>
+        >新造 ${this.freeProcurement ? '(無料)' : `${NEW_SHIP_COST.toLocaleString()} Cr`}</button>
       </div>
     `;
   }
@@ -255,14 +255,14 @@ export class DockView {
   // 艦の全部品をまとめて修理するボタンの行。
   private buildRepairAllHeader(base: Base, shipData: DockedShipEntry): string {
     const totalRepairCost = shipData.parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
-    const enabled = totalRepairCost > 0 && (this.creative || base.baseState.money >= totalRepairCost);
+    const enabled = totalRepairCost > 0 && (this.freeProcurement || base.baseState.money >= totalRepairCost);
     return `
       <div class="dock-parts-header">
         <span class="dock-ship-label">艦: ${shipData.name ? esc(shipData.name) : '---'}</span>
         <button class="dock-btn dock-btn-repair-all ${enabled ? '' : 'disabled'}"
           data-ship-id="${shipData.id}"
           ${enabled ? '' : 'disabled'}
-        >全修理 ${this.creative ? '(無料)' : `${totalRepairCost.toLocaleString()} Cr`}</button>
+        >全修理 ${this.freeProcurement ? '(無料)' : `${totalRepairCost.toLocaleString()} Cr`}</button>
       </div>
     `;
   }
@@ -272,7 +272,7 @@ export class DockView {
     const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
     const hpColor = hpPct > 60 ? TEXT_MUTED : hpPct > 30 ? ACCENT : DANGER;
     const repairCost = (p.maxHp - p.hp) * REPAIR_COST_PER_HP;
-    const canRepair = repairCost > 0 && (this.creative || base.baseState.money >= repairCost);
+    const canRepair = repairCost > 0 && (this.freeProcurement || base.baseState.money >= repairCost);
 
     const refuelHtml = p.type === 'rcs_tank' ? this.buildRefuelButton(base, p as RcsTankPart, {
       'data-ship-id': shipData.id, 'data-part-idx': String(i),
@@ -305,7 +305,7 @@ export class DockView {
               data-part-idx="${i}"
               data-ship-id="${shipData.id}"
               ${canRepair ? '' : 'disabled'}
-            >${repairCost > 0 ? `修理 ${this.creative ? '無料' : repairCost + ' Cr'}` : '正常'}</button>
+            >${repairCost > 0 ? `修理 ${this.freeProcurement ? '無料' : repairCost + ' Cr'}` : '正常'}</button>
             ${refuelHtml}
           </div>
         </div>
@@ -347,11 +347,11 @@ export class DockView {
   // rcs_tank 用の補給ボタンを作る。data 属性は呼び出し側(搭載/倉庫)ごとに異なる識別子を渡す。
   private buildRefuelButton(base: Base, tank: RcsTankPart, dataAttrs: Record<string, string>, btnClass: string): string {
     const cost = refuelCost(tank);
-    const canRefuel = cost > 0 && (this.creative || base.baseState.money >= cost);
+    const canRefuel = cost > 0 && (this.freeProcurement || base.baseState.money >= cost);
     const attrs = Object.entries(dataAttrs).map(([k, v]) => `${k}="${v}"`).join(' ');
     return `
       <button class="dock-btn ${btnClass} ${canRefuel ? '' : 'disabled'}" ${attrs} ${canRefuel ? '' : 'disabled'}
-      >${cost > 0 ? `燃料補給 ${this.creative ? '無料' : cost + ' Cr'}` : '満タン'}</button>
+      >${cost > 0 ? `燃料補給 ${this.freeProcurement ? '無料' : cost + ' Cr'}` : '満タン'}</button>
     `;
   }
 
@@ -361,7 +361,7 @@ export class DockView {
     const money = base.baseState.money;
 
     const items = SHOP_CATALOG.map((entry, i) => {
-      const canBuy = this.creative || money >= entry.price;
+      const canBuy = this.freeProcurement || money >= entry.price;
       const props = Object.entries(entry.props)
         .map(([k, v]) => `${k}: ${v}`)
         .join(' / ');
@@ -374,7 +374,7 @@ export class DockView {
             <span class="dock-shop-stats">重量: ${entry.weight}kg | HP: ${entry.maxHp}</span>
           </div>
           <div class="dock-shop-actions">
-            <span class="dock-shop-price">${this.creative ? '無料' : entry.price.toLocaleString() + ' Cr'}</span>
+            <span class="dock-shop-price">${this.freeProcurement ? '無料' : entry.price.toLocaleString() + ' Cr'}</span>
             <button class="dock-btn dock-btn-buy ${canBuy ? '' : 'disabled'}"
               data-catalog-idx="${i}"
               ${canBuy ? '' : 'disabled'}
@@ -456,8 +456,8 @@ export class DockView {
   private handleBuildShip(): void {
     const base = this.currentBase;
     if (!base) return;
-    if (!this.creative && base.baseState.money < NEW_SHIP_COST) return;
-    if (!this.creative) base.baseState.money -= NEW_SHIP_COST;
+    if (!this.freeProcurement && base.baseState.money < NEW_SHIP_COST) return;
+    if (!this.freeProcurement) base.baseState.money -= NEW_SHIP_COST;
     this.onBuildShip?.(base);
     this.refresh();
   }
@@ -483,9 +483,9 @@ export class DockView {
     const part: Part | undefined = shipData.parts[partIdx];
     if (!part) return;
     const cost = (part.maxHp - part.hp) * REPAIR_COST_PER_HP;
-    if (!this.creative && base.baseState.money < cost) return;
+    if (!this.freeProcurement && base.baseState.money < cost) return;
 
-    if (!this.creative) base.baseState.money -= cost;
+    if (!this.freeProcurement) base.baseState.money -= cost;
     part.hp = part.maxHp;
     this.syncDockedSnapshot(shipData);
     this.refresh();
@@ -501,9 +501,9 @@ export class DockView {
 
     const parts = shipData.parts;
     const totalCost = parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
-    if (!this.creative && base.baseState.money < totalCost) return;
+    if (!this.freeProcurement && base.baseState.money < totalCost) return;
 
-    if (!this.creative) base.baseState.money -= totalCost;
+    if (!this.freeProcurement) base.baseState.money -= totalCost;
     parts.forEach((p) => { p.hp = p.maxHp; });
     this.syncDockedSnapshot(shipData);
     this.refresh();
@@ -569,8 +569,8 @@ export class DockView {
   private refuelTank(base: Base, tank: RcsTankPart): void {
     const cost = refuelCost(tank);
     if (cost <= 0) return;
-    if (!this.creative && base.baseState.money < cost) return;
-    if (!this.creative) base.baseState.money -= cost;
+    if (!this.freeProcurement && base.baseState.money < cost) return;
+    if (!this.freeProcurement) base.baseState.money -= cost;
     tank.fuel = tank.maxFuel;
   }
 
@@ -594,7 +594,7 @@ export class DockView {
     const idx = parseInt((e.target as HTMLElement).dataset['catalogIdx'] ?? '-1', 10);
     const entry = SHOP_CATALOG[idx];
     if (!entry) return;
-    if (!this.creative && base.baseState.money < entry.price) return;
+    if (!this.freeProcurement && base.baseState.money < entry.price) return;
 
     const part = createPart(entry.type, {
       name: entry.name,
@@ -604,7 +604,7 @@ export class DockView {
       ...entry.props,
     } as Partial<AnyPart>);
 
-    if (!this.creative) base.baseState.money -= entry.price;
+    if (!this.freeProcurement) base.baseState.money -= entry.price;
     base.baseState.inventory.push(part);
     this.refresh();
   }
