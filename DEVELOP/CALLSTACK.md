@@ -431,8 +431,8 @@
     - [overviewMode] translationZone.setItems(pickables) / setNearby(members, pickables) / setSelected(planDisplay.planFrame.center) // 計画折れ線の原点
     - [overviewMode] planRotationZone.setNearby(members) / setSelected(planDisplay.planFrame.rotatingWith)
   - entities.players ごとに // 計画軌道の折れ線と同じ座標系(editor.planDisplay.planFrame)で bake する
-    - ship.syncTrajectoryLine(ship === player && ship.alive, editor.planDisplay.planFrame, simTime, ephemeris, fo, cameraSystem.activeCamera, attractors) // 操作対象の生存艦だけ show=true。それ以外は EMPTY_SAMPLES で畳む
-      - trajectoryLine.syncGeometry() // 現在状態を先頭に predictedTrajectory の未来サンプルを続けた配列(毎フレーム新規生成、参照同一性ガードは表示中常に外れる)を frame で bake
+    - ship.syncTrajectoryLine(ship === player && ship.alive, editor.planDisplay.planFrame, simTime, ephemeris, fo, cameraSystem.activeCamera, attractors) // 操作対象の生存艦だけ show=true。それ以外は trajectory=null で畳む
+      - trajectoryLine.syncGeometry(show ? predictedTrajectory : null, simTime, frame, ...) // predictedTrajectory.samplesOldestFirst() を frame で bake(点列の参照が変わらない限り再bakeしない)。simTime は描画区間の下限で sampler の時刻写像だけを動かす — 線の先頭は predictedTrajectory を simTime で補間した点になる
       - trajectoryLine.syncTransform()
       - trajectoryLine.sync(camera) // 頂点2未満なら curve.clear()
     - ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, _window.duration, overviewMode)) // overviewMode: 予測が表示ホライズンを覆いきったときだけ解析楕円を抑制。!overviewMode: 予測線が描かれてさえいれば抑制
