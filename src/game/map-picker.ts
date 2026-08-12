@@ -67,13 +67,13 @@ export class MapPicker {
   private readonly activeRecordKeys = new Set<string>();
   private items: readonly MapPickable[] = this.candidateItems;
   private lastSimTime = 0;
-  private _visibility: MapVisibilityPolicy | null = null;
+  private _visibilityPolicy: MapVisibilityPolicy | null = null;
 
   // このフレームの被選択物候補。refresh の後に読む。
   get pickables(): readonly MapPickable[] { return this.items; }
 
   // このフレームの表示・選択可否。refresh の後に読む(refresh 前は null)。
-  get visibility(): MapVisibilityPolicy | null { return this._visibility; }
+  get visibilityPolicy(): MapVisibilityPolicy | null { return this._visibilityPolicy; }
 
   // Docking は MapPicker より後に生成されるので、生成後に登録する。
   setDocking(docking: Docking): void { this.docking = docking; }
@@ -124,16 +124,16 @@ export class MapPicker {
     const focusId = focusTargetId(this.cameraSystem.overviewCamera.focus);
     const attractors = this.ephemeris.attractorsAt(simTime);
     const displayAttractors = this.ephemeris.attractorsAt(displayTime);
-    const visibility = new MapVisibilityPolicy(
+    const visibilityPolicy = new MapVisibilityPolicy(
       this.ephemeris.registry,
       this.cameraSystem.bodyClassToggles,
       focusId,
       systemMembersAt(this.ephemeris.registry, this.cameraSystem.activeCameraPos, displayAttractors),
     );
-    this._visibility = visibility;
+    this._visibilityPolicy = visibilityPolicy;
     this.cameraSystem.focusMarkers.update(
       displayTime, focusId, this.cameraSystem.bodyClassToggles,
-      this.cameraSystem.activeCameraPos, visibility,
+      this.cameraSystem.activeCameraPos, visibilityPolicy,
     );
     this.navTarget.update(this.game.player, this.entities, this.ephemeris, simTime);
 
@@ -141,11 +141,11 @@ export class MapPicker {
     this.candidateItems.length = 0;
     this.visibleItems.length = 0;
     this.activeRecordKeys.clear();
-    for (const item of this.cameraSystem.focusMarkers.bodyPickables(displayTime, visibility)) {
+    for (const item of this.cameraSystem.focusMarkers.bodyPickables(displayTime, visibilityPolicy)) {
       this.appendPickable(item);
     }
     for (const ship of this.entities.players) {
-      if (!ship.alive || (this.cameraSystem.overviewMode && !visibility.entity('player', ship === this.game.player).pickable)) continue;
+      if (!ship.alive || (this.cameraSystem.overviewMode && !visibilityPolicy.entity('player', ship === this.game.player).pickable)) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
         const center = strongestAttractor(ship.state.r, attractors);
@@ -159,17 +159,17 @@ export class MapPicker {
       }
     }
     for (const enemy of this.entities.enemies) {
-      if (!enemy.alive || (this.cameraSystem.overviewMode && !visibility.entity('ship').pickable)) continue;
+      if (!enemy.alive || (this.cameraSystem.overviewMode && !visibilityPolicy.entity('ship').pickable)) continue;
       const pos = enemy.displayState(displayTime)?.r;
       if (pos) this.addCandidate(enemy.id, enemy.name, pos, 'ship');
     }
     for (const ammo of this.entities.ammos) {
-      if (!ammo.alive || (this.cameraSystem.overviewMode && !visibility.entity('ammo').pickable)) continue;
+      if (!ammo.alive || (this.cameraSystem.overviewMode && !visibilityPolicy.entity('ammo').pickable)) continue;
       const pos = ammo.displayState(displayTime)?.r;
       if (pos) this.addCandidate(ammo.id, '弾薬', pos, 'ammo');
     }
     for (const base of this.entities.bases) {
-      if (!base.alive || (this.cameraSystem.overviewMode && !visibility.entity('base').pickable)) continue;
+      if (!base.alive || (this.cameraSystem.overviewMode && !visibilityPolicy.entity('base').pickable)) continue;
       const pos = base.displayState(displayTime)?.r;
       if (pos) this.addCandidate(
         base.id, base.name, pos, 'base', `格納 ${base.baseState.dockedShips.length} 隻`,
