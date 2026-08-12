@@ -128,7 +128,7 @@ export class PlanEditor {
     private readonly ephemeris: Ephemeris,
     scene: THREE.Scene,
     markerManager: MarkerManager,
-    ship: Player,
+    ship: Player | null,
     private readonly displayDuration: DisplayDurationSource,
   ) {
     this.ship = ship;

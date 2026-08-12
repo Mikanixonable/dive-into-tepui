@@ -18,7 +18,7 @@ export class PowerSystem {
   private readonly solarFolds: Record<SolarSide, THREE.Object3D[]>;
 
   // shipObj から左右の太陽電池パネルの蛇腹メッシュを名前で探す。見つからなければ例外を投げる。
-  constructor(shipObj: THREE.Object3D) {
+  constructor(shipObj: THREE.Object3D, saved?: PowerSaveData) {
     const collect = (side: SolarSide): THREE.Object3D[] => {
       const namePrefix = 'solar' + (side === 'up' ? 'Up' : 'Down');
       const found = Array.from({ length: 6 }, (_, i) =>
@@ -27,6 +27,7 @@ export class PowerSystem {
       return found as THREE.Object3D[];
     };
     this.solarFolds = { up: collect('up'), down: collect('down') };
+    if (saved) this.charge = saved.charge;
   }
 
   // side のパネルの展開/収納目標を反転する。
@@ -90,9 +91,5 @@ export class PowerSystem {
 
   serialize(): PowerSaveData {
     return { charge: this.charge };
-  }
-
-  restore(data: PowerSaveData): void {
-    this.charge = data.charge;
   }
 }

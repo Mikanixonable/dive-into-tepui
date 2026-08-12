@@ -32,7 +32,13 @@ export class ThermalSystem {
   constructor(
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
-  ) {}
+    saved?: ThermalSaveData,
+  ) {
+    if (saved) {
+      this.hullTemp = saved.hullTemp;
+      this.pendingHeat = saved.pendingHeat;
+    }
+  }
 
   // 発砲 rounds 発ぶんの投入熱量を次の updateThermal 呼び出しへ持ち越す。
   addGunHeat(rounds: number): void {
@@ -139,10 +145,5 @@ export class ThermalSystem {
 
   serialize(): ThermalSaveData {
     return { hullTemp: this.hullTemp, pendingHeat: this.pendingHeat };
-  }
-
-  restore(data: ThermalSaveData): void {
-    this.hullTemp = data.hullTemp;
-    this.pendingHeat = data.pendingHeat;
   }
 }

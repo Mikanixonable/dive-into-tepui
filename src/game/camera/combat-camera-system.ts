@@ -45,8 +45,8 @@ export class CombatCameraSystem {
     aspect: window.innerWidth / window.innerHeight,
   };
 
-  constructor(_hud: Hud, _sfx: Sfx, player: Player | null) {
-    this.chaseCamera = new ChaseCamera(_hud, player);
+  constructor(_hud: Hud, _sfx: Sfx, player: Player | null, saved?: ChaseCameraSaveData) {
+    this.chaseCamera = new ChaseCamera(_hud, player, saved);
   }
 
   // アクティブ艦の切替を追従カメラへ伝える。
@@ -92,9 +92,5 @@ export class CombatCameraSystem {
 
   serialize(): ChaseCameraSaveData {
     return this.chaseCamera.serialize();
-  }
-
-  restore(d: ChaseCameraSaveData): void {
-    this.chaseCamera.restore(d);
   }
 }

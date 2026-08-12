@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { Enemy } from '../game-entity/enemy';
 import { Player } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
-import { ScoreCounter as scoreCounter } from './stage-utils/score-counter';
+import { ScoreCounter } from './stage-utils/score-counter';
 import { StageStatusPanel } from './stage-utils/stage-status-panel';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Hud } from '../hud/hud';
@@ -20,7 +20,7 @@ import type { FloatingOrigin } from '../floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
-import type { StageSaveData } from '../save-data';
+import type { LogisticsSaveData, StageSaveData } from '../save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 
 export type StageId = '00' | '0' | '1' | '2' | 'debug' | 'debug-alt-system' | 'debug-load';
@@ -46,9 +46,11 @@ export abstract class Stage {
   abstract readonly selectKeys: string[];
   abstract readonly initialAmmo: Pick<StageInitData, 'mags' | 'rounds'>;
 
-  readonly scoreCounter = new scoreCounter();
+  readonly scoreCounter: ScoreCounter;
   protected logistics!: Logistics;
   private statusPanel!: StageStatusPanel;
+  // Logistics は hud/scene 等が setup() まで揃わないため生成できない。setup() まで控えておく。
+  private readonly savedLogistics?: LogisticsSaveData;
 
   protected _hud!: Hud;
   protected _sfx!: Sfx;
@@ -60,10 +62,18 @@ export abstract class Stage {
   protected _ephemeris!: Ephemeris;
   protected _simulator!: Simulator;
 
-  private _phase: GamePhase = 'playing';
+  private _phase: GamePhase;
   get phase(): GamePhase { return this._phase; }
   get isPlaying(): boolean { return this._phase === 'playing'; }
   protected setPhase(phase: GamePhase): void { this._phase = phase; }
+
+  // saved 省略時はスコア0・進行中・補給タイマー未経過から始まる。固有の内訳を持つ具象ステージは
+  // 自分のコンストラクタで super(saved) を呼んでから自分の分を組み立てる。
+  constructor(saved?: StageSaveData) {
+    this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
+    this._phase = saved?.phase ?? 'playing';
+    this.savedLogistics = saved?.logistics;
+  }
 
   // ゲーム固有リソース(hud/sfx/scene 等)をインスタンス生成後に一度だけ注入する。
   setup(
@@ -86,8 +96,7 @@ export abstract class Stage {
     this._markerManager = markerManager;
     this._ephemeris = ephemeris;
     this._simulator = simulator;
-    this._phase = 'playing';
-    this.logistics = new Logistics(hud, sfx, scene, entities, markerManager);
+    this.logistics = new Logistics(hud, sfx, scene, entities, markerManager, this.savedLogistics);
     this.statusPanel = new StageStatusPanel(hud.layers.panel);
   }
 
@@ -204,13 +213,5 @@ export abstract class Stage {
       phase: this._phase,
       logistics: this.logistics.serialize(),
     };
-  }
-
-  // serialize() の対になる復元。固有の内訳を持つ具象ステージは super.restore(data) を
-  // 呼んでから自分の分を復元する override を書く。
-  restore(data: StageSaveData): void {
-    this.scoreCounter.restore(data.scoreCounter);
-    this._phase = data.phase;
-    this.logistics.restore(data.logistics);
   }
 }

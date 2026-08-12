@@ -21,7 +21,7 @@ import { FrameSections, SECTION } from '../../frame-sections';
 export class Simulator {
   readonly contactPhysics: ContactPhysics;
 
-  simTime = 0;
+  simTime: number;
   lastSimDt = 0;
   lastSubsteps = 0;
   lastGravitySourceCount = 0;
@@ -35,13 +35,15 @@ export class Simulator {
   private readonly adaptiveStatesScratch: KinematicState[] = [];
   private readonly contactEntitiesScratch: GameEntity[] = [];
 
-  // entities/ephemeris/sections は参照として保持する。
+  // entities/ephemeris/sections は参照として保持する。initialSimTime はシミュレーションの開始時刻。
   constructor(
     private readonly entities: EntityManager,
     private readonly ephemeris: Ephemeris,
     private readonly sections: FrameSections,
+    initialSimTime = 0,
   ) {
     this.contactPhysics = new ContactPhysics();
+    this.simTime = initialSimTime;
   }
 
   private readonly nearbyAttractorsScratch: Parameters<typeof attractorsNearInto>[2] = [];

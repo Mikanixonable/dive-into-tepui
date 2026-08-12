@@ -278,20 +278,4 @@ export class EntityManager {
     this.casingPool.endFrame();
     for (const pool of this.debrisFragmentPools) pool.endFrame();
   }
-
-  // セーブデータロード時などに全エンティティを破棄して配列を空にする。
-  clearAll(): void {
-    for (const e of this.all()) {
-      e.dispose();
-    }
-    this.players.length = 0;
-    this.enemies.length = 0;
-    this.bullets.length = 0;
-    this.casings.length = 0;
-    this.debris.length = 0;
-    this.ammos.length = 0;
-    this.asteroids.length = 0;
-    this.bases.length = 0;
-    this.invalidateCaches();
-  }
 }
