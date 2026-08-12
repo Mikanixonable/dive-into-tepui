@@ -30,6 +30,7 @@ import type { Player } from '../player/player';
 import { Attractor, orbitalElementsOf, frameOfAttractor, strongestAttractor } from '../../physics/attractor';
 import { toFrameState } from '../../physics/frame';
 import type { PlanAttractorProvider } from '../simulation/attractors';
+import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 
 interface DvButtons {
@@ -723,12 +724,9 @@ export class PlanEditor {
   // 計画折れ線を再積分し、ゴースト位置とアプシスアイコンを求め直す。折れ線は戦闘ビューでも
   // 描く — 計画どおりに機体を動かすのは戦闘ビューだから。ただしノードが1つも無い計画は自機の
   // 現在軌道そのものなので、ノードを置ける編集中だけ扱う。
-  update(simTime: number, displayTime: number, attractorProvider: PlanAttractorProvider): void {
-    this.simTime = simTime;
-    this.planDisplay.update(
-      this.plan, simTime, displayTime,
-      this.planVisible, attractorProvider,
-    );
+  update(displayWindow: DisplayWindow, attractorProvider: PlanAttractorProvider): void {
+    this.simTime = displayWindow.simTime;
+    this.planDisplay.update(this.plan, displayWindow, this.planVisible, attractorProvider);
   }
 
   // 計画折れ線を同期する。編集中はさらに操作 UI(TRAJECTORY パネル・ノードギズモ)も出す。

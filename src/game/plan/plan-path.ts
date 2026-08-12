@@ -73,7 +73,7 @@ export class PlanPath {
   lastSteps = 0;
 
   // group をシーンへ登録する(初期状態は非表示)。
-  constructor(scene: THREE.Scene, private readonly displayTimeManager: DisplayDurationSource) {
+  constructor(scene: THREE.Scene, private readonly displayDuration: DisplayDurationSource) {
     this.group.visible = false;
     scene.add(this.group);
   }
@@ -93,7 +93,7 @@ export class PlanPath {
     this.lastRebuiltArcs = 0;
     this.lastSteps = 0;
     // anchor→node…→末尾区間に分解する
-    const segments = buildSegments(plan, ephemeris, this.displayTimeManager);
+    const segments = buildSegments(plan, ephemeris, this.displayDuration);
     // ノードが1つも無い間はその唯一の区間(末尾区間)の起点が毎フレーム自機を追従する。
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
@@ -320,7 +320,7 @@ export class PlanPath {
 // anchor を起点に nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、
 // 末尾の1本は segmentDurationFrom ぶん伸び、その起点自身の時刻で選んだ中心天体を持つ
 // (表示時刻の重力源では表示時刻に応じて中心天体が変わり、区間の物理そのものと食い違う)。
-function buildSegments(plan: Plan, ephemeris: Ephemeris, displayTimeManager: DisplayDurationSource): Segment[] {
+function buildSegments(plan: Plan, ephemeris: Ephemeris, displayDuration: DisplayDurationSource): Segment[] {
   const segments: Segment[] = [];
   let state0 = plan.anchor;
   // ノードを1つずつ経由点として区間を切り出す
@@ -332,7 +332,7 @@ function buildSegments(plan: Plan, ephemeris: Ephemeris, displayTimeManager: Dis
   const attractors = ephemeris.attractorsAt(state0.t);
   segments.push({
     state0,
-    end: state0.t + segmentDurationFrom(state0, attractors, displayTimeManager),
+    end: state0.t + segmentDurationFrom(state0, attractors, displayDuration),
     apsisCenter: strongestAttractor(state0.r, attractors),
   });
   return segments;
