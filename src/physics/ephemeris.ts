@@ -186,6 +186,23 @@ export class Ephemeris {
     return { hits, misses };
   }
 
+  // 負荷確認ウィンドウが読む、時刻キャッシュのヒット/ミス累計。perf-meter.ts の
+  // PerfCounts を import すると DOM/three 依存の連鎖を引き込むため、戻り値の形を
+  // ここで直接書く(tsconfig.test.json でも DOM/three 非依存のまま compile できる)。
+  perfCounts(): {
+    attractorsCacheHits: number; attractorsCacheMisses: number;
+    timeCacheHits: number; timeCacheMisses: number;
+  } {
+    const attractorsCache = this.attractorsCacheStats;
+    const timeCache = this.timeCacheStats;
+    return {
+      attractorsCacheHits: attractorsCache.hits,
+      attractorsCacheMisses: attractorsCache.misses,
+      timeCacheHits: timeCache.hits,
+      timeCacheMisses: timeCache.misses,
+    };
+  }
+
   // 現在の位相オフセットのスナップショット(セーブ用)。
   getPhaseOffsets(): Partial<Record<AttractorId, number>> {
     return { ...this.phaseOffsets };

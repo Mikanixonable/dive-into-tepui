@@ -2,8 +2,8 @@
 // 状態に依存するため、Enemy にも Targeter にも属さない独立責務として切り出してある。
 import * as C from '../const';
 import { leadPoint } from '../../physics/intercept';
-import { ProjectFn } from '../camera/camera-system';
-import { MarkerManager } from './marker-manager';
+import type { ProjectFn } from '../camera/camera-system';
+import type { MarkerManager } from './marker-manager';
 import type { CombatTarget } from '../targeter';
 import { Player } from '../player/player';
 

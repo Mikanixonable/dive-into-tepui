@@ -22,8 +22,17 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
 import type { LogisticsSaveData, StageSaveData } from '../save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { ObjectType } from '../creative/ship-placer-panel';
+import type { KinematicState } from '../../physics/kinematic-state';
 
 export type StageId = '00' | '0' | '1' | '2' | 'debug' | 'debug-alt-system' | 'debug-load';
+
+// 軌道上へオブジェクトを配置・複製する編集機能。これを持つステージだけがマップの
+// 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
+export interface ObjectAuthoring {
+  openShipPlacer(focusId?: string): void;
+  openShipPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void;
+}
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
@@ -43,6 +52,16 @@ export abstract class Stage {
   readonly selectLockedSub?: string;
   // タイトルのステージ選択ボタン列に並べない。
   readonly hiddenFromSelect: boolean = false;
+  // 喪失した自機を即座に配列・操作対象から回収するか。既定では回収しない(喪失艦は撃墜演出・
+  // 追従カメラの基準として残る)。艦の保持数に上限があり埋まった枠を空ける必要があるステージ
+  // (CreativeStage)だけ true で上書きする。
+  readonly prunesDeadPlayers: boolean = false;
+  // ドックでの購入・修理・燃料補給を無償にするか。既定では通貨を消費する。
+  readonly freeProcurement: boolean = false;
+  // 艦の軌道計画を PlanExecutor / 瞬間移動で実行させるか。既定では実行しない。
+  readonly executesPlans: boolean = false;
+  // オブジェクトの配置・複製に対応するステージは自身の編集口を返す。既定では非対応。
+  readonly authoring: ObjectAuthoring | null = null;
   abstract readonly selectKeys: string[];
   abstract readonly initialAmmo: Pick<StageInitData, 'mags' | 'rounds'>;
 

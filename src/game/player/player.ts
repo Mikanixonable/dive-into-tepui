@@ -33,7 +33,7 @@ import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
 import { ReentryEffects } from './reentry-effects';
 import { PlayerMarkers } from './player-markers';
-import { MarkerManager } from '../marker/marker-manager';
+import type { MarkerManager } from '../marker/marker-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
