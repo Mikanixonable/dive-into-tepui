@@ -5,7 +5,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Attitude } from '../../physics/attitude';
 import { v3 } from '../../physics/vec3';
 import type { AnyPart, Part } from './parts';
-import { restorePart } from './parts';
+import { partFromSaveData } from './parts';
 import { Player } from '../player/player';
 import { buildBaseModel } from '../../render/ships';
 import type { Hud } from '../hud/hud';
@@ -35,6 +35,12 @@ export interface BaseState {
 
 const idAllocator = new EntityIdAllocator('base-');
 
+// 新規配置は state/name/att をそのまま使い、スナップショットからの再開は saved を
+// simTime の epoch で展開する。
+export type BaseInit =
+  | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
+  | { readonly saved: BaseSaveData; readonly simTime: number };
+
 export class Base extends GameEntity {
   // 計画軌道の衝突判定でも基地の未来位置を使う。現在位置を凍結すると、長時間計画では
   // 実際に移動した基地と計画線の衝突判定が食い違うため、通常の entity 予測列へ乗せる。
@@ -48,7 +54,24 @@ export class Base extends GameEntity {
     dockedShips: []
   };
 
-  constructor(state: KinematicState, scene: THREE.Scene, name = '基地', att?: Attitude, id?: string) {
+  // hud/sfx/fx/markerManager は格納艦(Player)の組み立てに要る。格納艦は非アクティブ状態
+  // (alive=false・非表示)で作られ、entities.players へは入らない — それが「格納中」の定義。
+  constructor(
+    init: BaseInit,
+    scene: THREE.Scene,
+    hud: Hud,
+    sfx: Sfx,
+    fx: EffectsSystem,
+    markerManager: MarkerManager,
+  ) {
+    const { state, name, att, id } = 'saved' in init
+      ? {
+        state: kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
+        name: init.saved.name || '基地',
+        att: undefined,
+        id: init.saved.id,
+      }
+      : { state: init.state, name: init.name ?? '基地', att: init.att, id: init.id };
     super(state, buildBaseModel(), scene, att, idAllocator.next(id));
     this.mass = 1e6;
     this.radius = 100;
@@ -56,6 +79,24 @@ export class Base extends GameEntity {
     this.name = name;
     this.orbitLine = new OrbitLine(C.COLOR_BASE_ORBIT_LINE, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     scene.add(this.orbitLine.line);
+
+    if ('saved' in init) {
+      this.baseState.money = init.saved.money;
+      this.baseState.inventory = init.saved.inventory.map(partFromSaveData);
+      this.baseState.dockedShips = init.saved.dockedShips.map((shipData) => {
+        const player = new Player(hud, sfx, scene, fx, markerManager, { saved: shipData, simTime: init.simTime });
+        player.alive = false;
+        player.obj.visible = false;
+        return {
+          id: player.id,
+          name: player.displayName,
+          hp: player.hp,
+          maxHp: player.maxHp,
+          parts: player.parts,
+          player,
+        };
+      });
+    }
   }
 
   dispose(): void {
@@ -75,31 +116,5 @@ export class Base extends GameEntity {
       inventory: this.baseState.inventory.map(p => ({ ...p })),
       dockedShips: this.baseState.dockedShips.map(entry => entry.player.serialize()),
     };
-  }
-
-  // 格納艦は Player を作り直して非アクティブ状態(alive=false・非表示)へ戻し、
-  // DockedShipEntry を張り直す。entities.players へは追加しない(格納中の艦の定義)。
-  static restore(
-    data: BaseSaveData, simTime: number, scene: THREE.Scene,
-    hud: Hud, sfx: Sfx, fx: EffectsSystem, markerManager: MarkerManager,
-  ): Base {
-    const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
-    const base = new Base(state, scene, data.name);
-    base.baseState.money = data.money;
-    base.baseState.inventory = data.inventory.map(restorePart);
-    base.baseState.dockedShips = data.dockedShips.map((shipData) => {
-      const player = Player.restore(shipData, simTime, hud, sfx, scene, fx, markerManager);
-      player.alive = false;
-      player.obj.visible = false;
-      return {
-        id: player.id,
-        name: player.displayName,
-        hp: player.hp,
-        maxHp: player.maxHp,
-        parts: player.parts,
-        player,
-      };
-    });
-    return base;
   }
 }

@@ -108,12 +108,6 @@ export class NavTarget {
     if (this.targetId === id) this.targetId = null;
   }
 
-  // 航法ターゲットを無条件に解除する。
-  clear(): void {
-    this.targetId = null;
-    this.targetName = null;
-  }
-
   // 戦闘ビューの右クリックで基地を航法ターゲットに設定/解除する。基地に当たらなければ
   // クリックを消費せず、Targeter の敵ターゲット選択へフォールスルーさせる。
   updateCombatBasePicking(entities: EntityManager, input: Input, project: ProjectFn): void {

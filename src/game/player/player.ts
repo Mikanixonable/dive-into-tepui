@@ -42,7 +42,7 @@ import { sunlitFactor } from '../../physics/shadow';
 import { Plan } from '../plan/plan';
 import { PlanExecutor, type PlanExecutionMode } from '../plan/plan-executor';
 import type { PlayerSaveData } from '../save-data';
-import { restorePart, type AnyPart } from '../game-entity/parts';
+import { partFromSaveData, type AnyPart } from '../game-entity/parts';
 import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
 
 export type { PlanExecutionMode };
@@ -53,6 +53,13 @@ const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = { off: 'OFF', i
 export function planExecutionLabel(mode: PlanExecutionMode): string {
   return PLAN_EXECUTION_LABELS[mode];
 }
+
+// 新規配置は name/state/id を任意指定し、省略時は高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の
+// 円軌道に機首プログレードで初期配置する。スナップショットからの再開は saved を simTime の
+// epoch で展開する。
+export type PlayerInit =
+  | { readonly name?: string; readonly state?: KinematicState; readonly id?: string }
+  | { readonly saved: PlayerSaveData; readonly simTime: number };
 
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
@@ -85,13 +92,22 @@ export class Player extends Ship {
 
   fineAttitude = false;
 
-  // name・initialState 省略時は高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の円軌道に機首プログレード
-  // で初期配置する。複数隻を並べるときは両方を指定して区別する(name が艦の識別子になる)。
+  // init 省略時は名前 'PLAYER'・既定軌道の新規艦になる。複数隻を並べるときは name/state を
+  // 指定して区別する(name が艦の識別子になる)。
   constructor(
     _hud: Hud, _sfx: Sfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
-    name = 'PLAYER', initialState?: KinematicState, entityId = name) {
-    const state = initialState ?? Player.makeInitialState();
-    super(name, state, buildPlayerShip(), Player.progradeAttitude(state), C.PLAYER_HULL_RADIUS, C.PLAYER_MAX_HP, _scene, entityId);
+    init: PlayerInit = {},
+  ) {
+    const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? 'PLAYER');
+    const state = 'saved' in init
+      ? kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z))
+      : (init.state ?? Player.makeInitialState());
+    const id = 'saved' in init ? init.saved.id : (init.id ?? name);
+    const att: Attitude = 'saved' in init
+      ? { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: Player.INERTIA }
+      : Player.progradeAttitude(state);
+
+    super(name, state, buildPlayerShip(), att, C.PLAYER_HULL_RADIUS, C.PLAYER_MAX_HP, _scene, id);
     this.displayName = name;
     this._hud = _hud;
     this._sfx = _sfx;
@@ -100,12 +116,13 @@ export class Player extends Ship {
     this.mass = C.PLAYER_MASS;
     this.collides = true;
 
-    this.throttle = new PlayerThrottle(_hud);
-    this.fire = new PlayerFire(this, _hud, _sfx, _scene, _fx);
+    const saved = 'saved' in init ? init.saved : undefined;
+    this.throttle = new PlayerThrottle(_hud, saved?.throttle);
+    this.fire = new PlayerFire(this, _hud, _sfx, _scene, _fx, saved?.fire);
     this.belt = new Belt(this.obj, this);
-    this.thermal = new ThermalSystem(_hud, _sfx);
-    this.radiator = new RadiatorSystem(this.obj, this);
-    this.power = new PowerSystem(this.obj);
+    this.thermal = new ThermalSystem(_hud, _sfx, saved?.thermal);
+    this.radiator = new RadiatorSystem(this.obj, this, saved?.radiator);
+    this.power = new PowerSystem(this.obj, saved?.power);
     this.thrustEffects = new ThrustEffects(_scene, _sfx);
     this.rcsEffects = new RcsEffects(_scene, _sfx);
     this.reentryEffects = new ReentryEffects(_scene);
@@ -117,6 +134,30 @@ export class Player extends Ship {
     _scene.add(this.orbitLine.line);
     this.trajectoryLine = new TrajectoryLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.predicted);
     _scene.add(this.trajectoryLine.line);
+
+    if (saved) {
+      // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。
+      this.planExecution = saved.planExecution ?? (saved.followPlan ? 'instant' : 'off');
+      this.fineAttitude = saved.fineAttitude ?? false;
+      this.parts.splice(0, this.parts.length, ...saved.parts.map(partFromSaveData));
+      this.refreshFromParts();
+
+      if (saved.plan) {
+        this.plan.clear();
+        // trackAnchor はノードが空の間しか効かないため、ノード復元より先に呼ぶ必要がある
+        this.plan.trackAnchor(kinematicState(
+          saved.plan.anchor.t,
+          v3(saved.plan.anchor.r.x, saved.plan.anchor.r.y, saved.plan.anchor.r.z),
+          v3(saved.plan.anchor.v.x, saved.plan.anchor.v.y, saved.plan.anchor.v.z),
+        ));
+        let rejected = 0;
+        for (const n of saved.plan.nodes) {
+          const idx = this.plan.addNode(kinematicState(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)));
+          if (idx < 0) rejected++;
+        }
+        if (rejected > 0) _hud.hint(`${this.displayName}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
+      }
+    }
   }
 
   // 高度 INITIAL_ALT、傾斜角 INITIAL_INC_DEG の円軌道状態を返す。
@@ -552,54 +593,5 @@ export class Player extends Ship {
         })),
       },
     };
-  }
-
-  // 保存データから艦を再構築する。simTime を復元後の状態の epoch として使う。
-  static restore(
-    data: PlayerSaveData,
-    simTime: number,
-    hud: Hud,
-    sfx: Sfx,
-    scene: THREE.Scene,
-    fx: EffectsSystem,
-    markerManager: MarkerManager
-  ): Player {
-    const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
-    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: Player.INERTIA };
-    const player = new Player(hud, sfx, scene, fx, markerManager, data.name || data.id, state, data.id);
-    player.att = att;
-    
-    player.fire.restore(data.fire);
-    player.thermal.restore(data.thermal);
-    player.radiator.restore(data.radiator);
-    player.power.restore(data.power);
-    player.throttle.restore(data.throttle);
-    // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。
-    player.planExecution = data.planExecution ?? (data.followPlan ? 'instant' : 'off');
-    player.fineAttitude = data.fineAttitude ?? false;
-    player.parts.splice(0, player.parts.length, ...data.parts.map(restorePart));
-    player.refreshFromParts();
-
-    if (data.plan) {
-      player.plan.clear();
-      player.plan.trackAnchor(kinematicState(
-        data.plan.anchor.t,
-        v3(data.plan.anchor.r.x, data.plan.anchor.r.y, data.plan.anchor.r.z),
-        v3(data.plan.anchor.v.x, data.plan.anchor.v.y, data.plan.anchor.v.z)
-      ));
-      // trackAnchor はノードが空の間しか効かないため、ノード復元より先に呼ぶ必要がある
-      let rejected = 0;
-      for (const n of data.plan.nodes) {
-        const idx = player.plan.addNode(kinematicState(
-          n.t,
-          v3(n.r.x, n.r.y, n.r.z),
-          v3(n.v.x, n.v.y, n.v.z)
-        ));
-        if (idx < 0) rejected++;
-      }
-      if (rejected > 0) hud.hint(`${player.displayName}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
-    }
-
-    return player;
   }
 }

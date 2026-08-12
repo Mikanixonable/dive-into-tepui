@@ -76,18 +76,35 @@ export class OverviewCamera {
     aspect: window.innerWidth / window.innerHeight,
   };
 
-  // THREE.PerspectiveCamera と初期視点(offset_r/pan_r)を組む。
+  // THREE.PerspectiveCamera と初期視点(offset_r/pan_r/up_r/座標系/フォーカス)を組む。saved が
+  // あればその値から、無ければ既定の見下ろし視点から組む。座標系は必ず ephemeris.frameOf 経由で
+  // 解決する — ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
   constructor(
     private readonly _hud: Hud,
     _sfx: Sfx,
     private readonly ephemeris: Ephemeris,
+    saved?: OverviewCameraSaveData,
   ) {
-    this._cameraFrame = ephemeris.inertialFrame;
-    this._focus = { kind: 'object', id: ephemeris.originId };
-    const tf0 = this.ephemeris.frameTransformAt(this._cameraFrame, 0, []);
-    this.offset_r = toFrameDir(tf0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST));
-    this.pan_r = toFrameDir(tf0, v3());
-    this.up_r = toFrameDir(tf0, WORLD_UP);
+    if (saved) {
+      this._cameraFrame = ephemeris.frameOf(ephemeris.originId, saved.rotatingWith);
+      this.offset_r = frameDir(saved.offset.x, saved.offset.y, saved.offset.z);
+      this.pan_r = frameDir(saved.pan.x, saved.pan.y, saved.pan.z);
+      this.up_r = frameDir(saved.up.x, saved.up.y, saved.up.z);
+      this._focus = saved.focus.kind === 'object'
+        ? { kind: 'object', id: saved.focus.id }
+        : {
+          kind: 'point',
+          frame: ephemeris.frameOf(saved.focus.center, saved.focus.rotatingWith),
+          point: framePoint(saved.focus.point.x, saved.focus.point.y, saved.focus.point.z),
+        };
+    } else {
+      this._cameraFrame = ephemeris.inertialFrame;
+      const tf0 = ephemeris.frameTransformAt(this._cameraFrame, 0, []);
+      this.offset_r = toFrameDir(tf0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST));
+      this.pan_r = toFrameDir(tf0, v3());
+      this.up_r = toFrameDir(tf0, WORLD_UP);
+      this._focus = { kind: 'object', id: ephemeris.originId };
+    }
     this.camera = new THREE.PerspectiveCamera(
       OVERVIEW_CAMERA_FOV,
       window.innerWidth / window.innerHeight,
@@ -277,22 +294,5 @@ export class OverviewCamera {
       rotatingWith: this._cameraFrame.rotatingWith,
       focus,
     };
-  }
-
-  // serialize が書き出した状態をそのまま復元する。座標系は必ず ephemeris.frameOf 経由で解決する —
-  // ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
-  restore(d: OverviewCameraSaveData): void {
-    this._cameraFrame = this.ephemeris.frameOf(this.ephemeris.originId, d.rotatingWith);
-    this.offset_r = frameDir(d.offset.x, d.offset.y, d.offset.z);
-    this.pan_r = frameDir(d.pan.x, d.pan.y, d.pan.z);
-    this.up_r = frameDir(d.up.x, d.up.y, d.up.z);
-    const target: FocusTarget = d.focus.kind === 'object'
-      ? { kind: 'object', id: d.focus.id }
-      : {
-        kind: 'point',
-        frame: this.ephemeris.frameOf(d.focus.center, d.focus.rotatingWith),
-        point: framePoint(d.focus.point.x, d.focus.point.y, d.focus.point.z),
-      };
-    this.setFocusTarget(target, false);
   }
 }

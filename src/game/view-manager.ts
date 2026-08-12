@@ -85,11 +85,6 @@ export class ViewManager {
     return this.worldView;
   }
 
-  // serializeView が書き出したビューへ遷移する。
-  restoreView(view: WorldViewId): void {
-    this.setView(view);
-  }
-
   // ビュー選択 UI に並べる遷移先。現在のビュー自身と、いま入れないビューは含まない。
   // combatAvailable は操作対象の艦が生存しているか(戦闘ビューは自機を前提とする)。
   selectableViews(combatAvailable: boolean): readonly ViewId[] {

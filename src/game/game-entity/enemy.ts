@@ -56,6 +56,21 @@ function buildEnemyObj(enemyKind: EnemyKind, accent: string | number): THREE.Obj
   return enemyKind.kind === 'stage0' ? buildStage0EnemyShip(accent, enemyKind.typeIndex) : buildEnemyShip(accent);
 }
 
+// 新規配置は各フィールドを直接渡し、スナップショットからの再開は saved を simTime の
+// epoch で展開する(accent/orbitLineColor は保存された accent 1つから両方導く)。
+export type EnemyInit =
+  | {
+    readonly name: string;
+    readonly state: KinematicState;
+    readonly enemyKind: EnemyKind;
+    readonly att: Attitude;
+    readonly accent: string | number;
+    readonly orbitLineColor: string | number;
+    readonly waveId?: number;
+    readonly id?: string;
+  }
+  | { readonly saved: EnemySaveData; readonly simTime: number };
+
 export class Enemy extends Ship {
   accent: string | number; // マーカー色・集団識別。全敵が保持する
   waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
@@ -73,22 +88,26 @@ export class Enemy extends Ship {
   private readonly _fx: EffectsSystem;
   public readonly enemyKind: EnemyKind;
 
-  // enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
+  // init の enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
   constructor(
-    name: string,
-    state: KinematicState,
-    enemyKind: EnemyKind,
-    att: Attitude,
-    _hp: number,
-    accent: string | number,
-    orbitLineColor: string | number,
+    init: EnemyInit,
     _hud: Hud,
     sfx: Sfx,
     fx: EffectsSystem,
-    waveId?: number,
     scene?: THREE.Scene,
-    id?: string,
   ) {
+    const { name, state, enemyKind, att, accent, orbitLineColor, waveId, id } = 'saved' in init
+      ? {
+        name: init.saved.name || '',
+        state: kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
+        enemyKind: init.saved.enemyKind,
+        att: { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: inertiaForEnemyKind(init.saved.enemyKind) } as Attitude,
+        accent: init.saved.accent,
+        orbitLineColor: init.saved.accent,
+        waveId: init.saved.waveId,
+        id: init.saved.id || undefined,
+      }
+      : init;
     const enemyObj = buildEnemyObj(enemyKind, accent);
     super(name, state, enemyObj, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
     this._sfx = sfx;
@@ -106,6 +125,17 @@ export class Enemy extends Ship {
     // 自身の軌道線を作ってシーンへ登録する
     this.orbitLine = new OrbitLine(orbitLineColor, 0.35, C.LINE_RENDER_ORDER.shipOrbit);
     scene?.add(this.orbitLine.line);
+
+    if ('saved' in init) {
+      this.setOverallHp(init.saved.health);
+      this.burstLeft = init.saved.burstLeft;
+      this.burstDelay = init.saved.burstDelay;
+      this.alive = init.saved.alive;
+      if (!this.alive) {
+        this.obj.visible = false;
+        this.orbitLine.line.visible = false;
+      }
+    }
   }
 
   // メッシュと軌道線をシーンから取り除く。
@@ -325,21 +355,5 @@ export class Enemy extends Ship {
       burstLeft: this.burstLeft,
       burstDelay: this.burstDelay,
     };
-  }
-
-  // セーブデータから復元する。
-  static restore(data: EnemySaveData, simTime: number, hud: Hud, sfx: Sfx, fx: EffectsSystem, scene?: THREE.Scene): Enemy {
-    const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
-    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: inertiaForEnemyKind(data.enemyKind) };
-    const enemy = new Enemy(data.name || '', state, data.enemyKind, att, data.health, data.accent, data.accent, hud, sfx, fx, data.waveId, scene, data.id || undefined);
-    enemy.restoreOverallHp(data.health);
-    enemy.burstLeft = data.burstLeft;
-    enemy.burstDelay = data.burstDelay;
-    enemy.alive = data.alive;
-    if (!enemy.alive) {
-      enemy.obj.visible = false;
-      enemy.orbitLine.line.visible = false;
-    }
-    return enemy;
   }
 }

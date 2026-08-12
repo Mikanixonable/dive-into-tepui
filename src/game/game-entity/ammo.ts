@@ -11,6 +11,12 @@ import { kinematicState } from '../../physics/kinematic-state';
 
 const idAllocator = new EntityIdAllocator('ammo-');
 
+// 新規配置は state/att をそのまま使い、スナップショットからの再開は saved を simTime の
+// epoch で展開する。
+export type AmmoInit =
+  | { readonly state: KinematicState; readonly att?: Attitude; readonly id?: string }
+  | { readonly saved: AmmoSaveData; readonly simTime: number };
+
 // 軌道上の補給(接近すると取り込んでベルトを延長できる)
 export class Ammo extends GameEntity {
   protected readonly bcInv = C.SMALL_DEBRIS_BCINV;
@@ -18,7 +24,14 @@ export class Ammo extends GameEntity {
   readonly predictsFuture = true;
 
   // 補給メッシュを組み立て、質量と衝突半径を設定する。id 省略時はここで一意に発番する。
-  constructor(state: KinematicState, att?: Attitude, scene?: THREE.Scene, id?: string) {
+  constructor(init: AmmoInit, scene?: THREE.Scene) {
+    const { state, att, id } = 'saved' in init
+      ? {
+        state: kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
+        att: { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: v3(1, 1, 1) } as Attitude,
+        id: init.saved.id || undefined,
+      }
+      : { state: init.state, att: init.att, id: init.id };
     super(state, buildAmmo(), scene, att, idAllocator.next(id));
     this.mass = 50;
     this.radius = C.AMMO_PHYS_RADIUS;
@@ -46,13 +59,5 @@ export class Ammo extends GameEntity {
       q: { ...this.att.q },
       w: { ...this.att.w },
     };
-  }
-
-  // セーブデータから復元する。
-  static restore(data: AmmoSaveData, simTime: number, scene?: THREE.Scene): Ammo {
-    const state = kinematicState(simTime, v3(data.r.x, data.r.y, data.r.z), v3(data.v.x, data.v.y, data.v.z));
-    const att: Attitude = { q: { ...data.q }, w: v3(data.w.x, data.w.y, data.w.z), inertia: v3(1, 1, 1) };
-    const ammo = new Ammo(state, att, scene, data.id || undefined);
-    return ammo;
   }
 }

@@ -30,10 +30,21 @@ export class ChaseCamera {
     aspect: window.innerWidth / window.innerHeight,
   };
 
+  // saved があればその状態から組む。rot はセーブ時点の基準フレーム(機体姿勢基準/ワールド基準)
+  // での値のまま代入する — camFollowAttitude セッターは基準の切替時に rot を読み替えるため、
+  // 経由すると意味が変わってしまう。
   constructor(
     private readonly _hud: Hud,
     private player: Player | null,
-  ) { }
+    saved?: ChaseCameraSaveData,
+  ) {
+    if (saved) {
+      this.rot = qNormalize({ x: saved.rot.x, y: saved.rot.y, z: saved.rot.z, w: saved.rot.w });
+      this.dist = saved.dist;
+      this.panEci = v3(saved.pan.x, saved.pan.y, saved.pan.z);
+      this._camFollowAttitude = saved.followAttitude;
+    }
+  }
 
   // 追従先の艦を差し替える(アクティブ艦の切替)。姿勢基準の rot はそのまま新しい艦の姿勢に対する
   // 相対値として使い回す。
@@ -139,15 +150,5 @@ export class ChaseCamera {
       pan: { x: this.panEci.x, y: this.panEci.y, z: this.panEci.z },
       followAttitude: this._camFollowAttitude,
     };
-  }
-
-  // serialize が書き出した状態をそのまま復元する。rot はセーブ時点の基準フレーム(機体姿勢基準/
-  // ワールド基準)での値のまま代入する — camFollowAttitude セッターは基準の切替時に rot を
-  // 読み替えるため、経由すると意味が変わってしまう。
-  restore(d: ChaseCameraSaveData): void {
-    this.rot = qNormalize({ x: d.rot.x, y: d.rot.y, z: d.rot.z, w: d.rot.w });
-    this.dist = d.dist;
-    this.panEci = v3(d.pan.x, d.pan.y, d.pan.z);
-    this._camFollowAttitude = d.followAttitude;
   }
 }

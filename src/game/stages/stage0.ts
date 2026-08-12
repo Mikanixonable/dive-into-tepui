@@ -8,7 +8,7 @@ import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
-import type { Stage0SaveData } from '../save-data';
+import type { Stage0SaveData, StageSaveData } from '../save-data';
 
 // 制限時間を分単位で表す(選択画面の説明文とブリーフィングの両方から参照する)
 const stage0TimeLimitMinutes = (): number => Math.floor(C.STAGE0_TIME_LIMIT / 60);
@@ -23,7 +23,14 @@ export class Stage0 extends Stage {
   readonly selectKeys = ['KeyT'];
   readonly initialAmmo = { mags: 0, rounds: 0 };
 
-  private readonly timer = new ScoreAttackTimer(C.STAGE0_TIME_LIMIT);
+  private readonly timer: ScoreAttackTimer;
+
+  // saved の型を StageSaveData に留めるのは stage-dictionary.ts の StageClass 一覧に
+  // 収める都合(具象ごとの拡張型では構築シグネチャが揃わない)。
+  constructor(saved?: StageSaveData) {
+    super(saved);
+    this.timer = new ScoreAttackTimer((saved as Stage0SaveData | undefined)?.timeLeft ?? C.STAGE0_TIME_LIMIT);
+  }
 
   // ステージ開始時のブリーフィング文言を返す。
   briefingHtml(): string {
@@ -67,10 +74,5 @@ export class Stage0 extends Stage {
 
   serialize(): Stage0SaveData {
     return { ...super.serialize(), timeLeft: this.timer.serialize() };
-  }
-
-  restore(data: Stage0SaveData): void {
-    super.restore(data);
-    this.timer.restore(data.timeLeft);
   }
 }

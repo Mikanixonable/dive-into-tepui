@@ -150,16 +150,14 @@ function predictionCoverage(entity: GameEntity, planEnd: number): number {
 // planAttractorProvider が返す内容を変えうる入力だけを畳み込んだ世代値。planEnd は計画の
 // 折れ線が届いている終端時刻で、simTime より後の有限値でなければ毎回異なる値を返す。
 export function planSourceRevision(
-  ephemeris: Ephemeris,
   entities: EntityManager,
   excludedEntityIds: readonly AttractorId[],
   planRevision: number,
   planEnd: number,
   simTime: number,
 ): number {
-  // 時刻に依らない入力 — 計画の編集、暦の位相、除外集合。
+  // 時刻に依らない入力 — 計画の編集と除外集合。
   let acc = mixNumber(REVISION_SEED, planRevision);
-  acc = mixNumber(acc, ephemeris.phaseGeneration);
   for (const id of excludedEntityIds) acc = mixString(acc, id);
   if (!Number.isFinite(planEnd) || !(planEnd > simTime)) {
     return mixNumber(acc, ++unresolvedPlanEndTick);

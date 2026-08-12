@@ -45,7 +45,13 @@ export class PlayerThrottle {
   private readonly latchedThrustKeys = new Set<string>();
   private readonly lastThrustPressTime: Partial<Record<string, number>> = {};
 
-  constructor(private readonly _hud: Hud) {}
+  constructor(private readonly _hud: Hud, saved?: ThrottleSaveData) {
+    if (saved) {
+      this.throttleIdx = saved.throttleIdx;
+      this.rcsDamp = saved.rcsDamp ?? true;
+      this.progradeHold = saved.progradeHold ?? true;
+    }
+  }
 
   // RCS 回転制動の ON/OFF を切り替える。
   toggleRcsDamp(): void {
@@ -86,12 +92,6 @@ export class PlayerThrottle {
 
   serialize(): ThrottleSaveData {
     return { throttleIdx: this.throttleIdx, rcsDamp: this.rcsDamp, progradeHold: this.progradeHold };
-  }
-
-  restore(data: ThrottleSaveData): void {
-    this.throttleIdx = data.throttleIdx;
-    this.rcsDamp = data.rcsDamp ?? true;
-    this.progradeHold = data.progradeHold ?? true;
   }
 
   // 入力から機体座標系の推力加速度を組み立てて返す。warp 中などで噴射不可なら null。

@@ -148,9 +148,11 @@ export class Game {
     this.unlockManager = unlockManager;
 
     const ephemerisConfig = ephemerisConfigFor(launch);
+    const phaseOffsets = initialSave?.phaseOffsets ?? {};
     this._ephemeris = ephemerisConfig === undefined
-      ? new Ephemeris(undefined, undefined, SIM_EPOCH_ET, {}, absoluteEphemeris, SIM_EPOCH_JD_TDB)
-      : new Ephemeris(ephemerisConfig.registry, ephemerisConfig.originId, ephemerisConfig.epochOffsetSec);
+      ? new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, absoluteEphemeris, SIM_EPOCH_JD_TDB)
+      : new Ephemeris(
+        ephemerisConfig.registry, ephemerisConfig.originId, ephemerisConfig.epochOffsetSec, phaseOffsets);
 
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
     this.enemyMarkers = new GroupedMarkers(this.markerManager, C.MARKER_CLUSTER_PX);
@@ -159,10 +161,7 @@ export class Game {
 
     this.entities = new EntityManager(this._scene);
     this.effects = new EffectsSystem(this._scene, this.entities, this._sfx);
-    // 依存グラフを組むための一時艦。Creative では構築後に必ず破棄し、実ゲーム上は0隻で開始する。
-    const bootstrapPlayer = new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager);
-    this.player = bootstrapPlayer;
-    if (launch.mode === 'stage') this.entities.addPlayer(bootstrapPlayer);
+    this.player = this.buildInitialEntities(launch, initialSave);
 
     // Player より後に生成する: 追従カメラは自機を参照として直接持つ(遅延解決しない)。
     this.cameraSystem = new CameraSystem(
@@ -170,15 +169,16 @@ export class Game {
       this._sfx,
       this.markerManager,
       this.ephemeris,
-      bootstrapPlayer,
+      this.player,
       launch.mode === 'creative',
+      initialSave?.camera,
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
 
     this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene, this.settingsPanel);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this._hud.layers.panel);
-    this._environment = new EnvironmentScene(this._scene, this.ephemeris);
+    this._environment = new EnvironmentScene(this._scene, this.ephemeris, initialSave?.earthSpinPhase0);
     this.displayTimeManager = new DisplayTimeManager(this._hud.layers.panel);
     this.editor = new PlanEditor(
       this._hud,
@@ -187,7 +187,7 @@ export class Game {
       this.ephemeris,
       this._scene,
       this.markerManager,
-      bootstrapPlayer,
+      this.player,
       this.displayTimeManager,
     );
     this.editor.onFocusNode = (state) => {
@@ -202,7 +202,7 @@ export class Game {
     // クリエイティブモードはマップから始まる。
     this.viewManager = new ViewManager(
       this._hud, this.editor, this.cameraSystem, this.displayTimeManager, this.mapPicker,
-      launch.mode === 'creative' ? 'map' : 'combat',
+      initialSave?.camera?.view ?? (launch.mode === 'creative' ? 'map' : 'combat'),
     );
 
     this.input = new Input(gs.renderer.domElement);
@@ -210,13 +210,13 @@ export class Game {
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
     this.viewManager.setTouchControls(this.touchControls);
 
-    this.simulator = new Simulator(this.entities, this.ephemeris, sections);
+    this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
     this.predictor = new Predictor(this.entities, this.ephemeris);
 
     if (launch.mode === 'stage') {
       this.activeStage = initStage(
         launch.stage,
-        bootstrapPlayer,
+        this.player,
         this.entities,
         this._hud,
         this._sfx,
@@ -226,23 +226,20 @@ export class Game {
         this.markerManager,
         this.ephemeris,
         this.simulator,
+        initialSave?.stage,
       );
     } else {
-      const creativeStage = new CreativeStage();
+      const creativeStage = new CreativeStage(initialSave?.stage);
       creativeStage.setup(
         this._hud, this._sfx, this._scene, this.entities, this.unlockManager,
         this.effects, this.markerManager, this.ephemeris, this.simulator,
       );
-      creativeStage.init();
+      // 初期配置はスナップショットからの再開では走らせない(initStage と同じ扱い)。
+      if (initialSave === undefined) creativeStage.init();
       this.activeStage = creativeStage;
       creativeStage.onShipPlaced = (ship) => {
         if (this.player === null) this.setActivePlayer(ship);
       };
-      // Creative は0隻で開始する。破棄するbootstrap艦をcamera/editorに保持させない。
-      this.editor.setActivePlayer(null);
-      this.cameraSystem.setActivePlayer(null);
-      bootstrapPlayer.dispose();
-      this.player = null;
     }
 
     this.nanWatchdog = new NanWatchdog(this._hud);
@@ -261,8 +258,36 @@ export class Game {
     this.floatingOrigin = this.player
       ? new FloatingOrigin(this.player.state.r, this.player.state.v)
       : new FloatingOrigin(v3(), v3());
+  }
 
-    if (initialSave) this.applySaveData(initialSave);
+  // スナップショットがあればそこから、無ければ起動モードに応じた初期配置でエンティティを組み、
+  // 操作対象にする艦を返す。クリエイティブの新規開始は0隻なので null。
+  private buildInitialEntities(launch: LaunchSelection, save: GameSaveData | undefined): Player | null {
+    if (save === undefined) {
+      if (launch.mode !== 'stage') return null;
+      const ship = new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager);
+      this.entities.addPlayer(ship);
+      return ship;
+    }
+
+    // 各エンティティのセーブデータは位置と速度だけを持つので、状態の epoch はスナップショット
+    // 全体の simTime になる。
+    const simTime = save.simTime;
+    for (const data of save.players) {
+      this.entities.addPlayer(
+        new Player(this._hud, this._sfx, this._scene, this.effects, this.markerManager, { saved: data, simTime }));
+    }
+    for (const data of save.enemies) {
+      this.entities.addEnemy(new Enemy({ saved: data, simTime }, this._hud, this._sfx, this.effects, this._scene));
+    }
+    for (const data of save.ammos) {
+      this.entities.addAmmo(new Ammo({ saved: data, simTime }, this._scene));
+    }
+    for (const data of save.bases) {
+      this.entities.addBase(new Base(
+        { saved: data, simTime }, this._scene, this._hud, this._sfx, this.effects, this.markerManager));
+    }
+    return this.entities.players.find((p) => p.id === save.activePlayerId) ?? this.entities.players[0] ?? null;
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -376,67 +401,6 @@ export class Game {
   }
 
   get simTime(): number { return this.simulator.simTime; }
-
-  // ------------------------------------------------------------ 初期状態の適用
-
-  // 構築直後の Game へ、与えられた状態(既定の新規開始状態を上書き)を反映する。
-  private applySaveData(data: GameSaveData): void {
-    this.entities.clearAll();
-    this.player = null;
-    this.editor.setActivePlayer(null);
-    this.cameraSystem.setActivePlayer(null);
-    this.targeter.clearTargets();
-    this.navTarget.clear();
-    // entities.clearAll() が旧 Base を dispose するので、それを掴んだままの DockView を
-    // 開いておけない — 対象基地消失時と同じ経路(ViewManager.leaveDock)で閉じる。
-    this.viewManager.leaveDock();
-    this.docking.clearSelection();
-    this.simSpeedManager.reset();
-
-    // 時刻の復元
-    this.simulator.simTime = data.simTime;
-    this._ephemeris.setPhaseOffsets(data.phaseOffsets);
-    if (data.earthSpinPhase0 !== undefined) this._environment.setEarthSpinPhase0(data.earthSpinPhase0);
-
-    // Playerの復元(複数隻ぶん)
-    let activePlayer: Player | null = null;
-    for (const pdata of data.players) {
-      const p = Player.restore(pdata, data.simTime, this._hud, this._sfx, this._scene, this.effects, this.markerManager);
-      this.entities.addPlayer(p);
-      if (pdata.id === data.activePlayerId) activePlayer = p;
-    }
-    if (!activePlayer) activePlayer = this.entities.players[0] ?? null;
-    if (activePlayer) this.setActivePlayer(activePlayer);
-
-    // Enemyの復元
-    for (const edata of data.enemies) {
-      const e = Enemy.restore(edata, data.simTime, this._hud, this._sfx, this.effects, this._scene);
-      this.entities.addEnemy(e);
-    }
-
-    // Ammoの復元
-    for (const adata of data.ammos) {
-      const a = Ammo.restore(adata, data.simTime, this._scene);
-      this.entities.addAmmo(a);
-    }
-
-    // Baseの復元(所持金・在庫・格納艦を含む)
-    for (const bdata of data.bases ?? []) {
-      const b = Base.restore(bdata, data.simTime, this._scene, this._hud, this._sfx, this.effects, this.markerManager);
-      this.entities.addBase(b);
-    }
-
-    // ステージ状態(スコア・決着状態・固有の内訳)の復元。
-    this.activeStage.restore(data.stage);
-
-    // カメラ視点の復元。旧スナップショットには無いので、無ければ既定視点のまま
-    // restoreView を呼び、未来ゴーストスライダー等の表示系フラグだけ現在のビューへ揃え直す。
-    this.viewManager.restoreView(data.camera?.view ?? this.viewManager.serializeView());
-    if (data.camera) this.cameraSystem.restore(data.camera);
-
-    // ロード直後の状態同期と安定化
-    this.entities.sync(this.floatingOrigin, data.simTime);
-  }
 
   // 負荷確認ウィンドウを登録する。構築直後に一度だけ呼ぶ。
   setPerfMeter(meter: PerfMeter): void {
@@ -658,7 +622,7 @@ export class Game {
       this.entities,
       excludedIds,
       planSourceRevision(
-        this.ephemeris, this.entities, excludedIds,
+        this.entities, excludedIds,
         this.editor.plan.revision, this.editor.lastPlanEnd, this.simulator.simTime,
       ),
     );

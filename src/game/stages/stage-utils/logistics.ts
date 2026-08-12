@@ -19,19 +19,24 @@ import type { LogisticsSaveData } from '../../save-data';
 import type { MapVisibilityPolicy } from '../../celestial/map-visibility';
 
 export class Logistics {
-  private resupplyCheckAt = 0;
+  private resupplyCheckAt: number;
   private lastMarkerCount = 0;
 
   // 補給の自動投入を行うかどうか。回収済みの補給や既存の ▣ マーカーには影響しない。
-  resupplyEnabled = true;
+  resupplyEnabled: boolean;
 
+  // saved があればその状態(次回投入判定時刻・自動投入の有効/無効)から始める。
   constructor(
     private readonly _hud: Hud,
     private readonly _sfx: Sfx,
     private readonly _scene: THREE.Scene,
     private readonly entities: EntityManager,
     private readonly markerManager: MarkerManager,
-  ) { }
+    saved?: LogisticsSaveData,
+  ) {
+    this.resupplyCheckAt = saved?.resupplyCheckAt ?? 0;
+    this.resupplyEnabled = saved?.resupplyEnabled ?? true;
+  }
 
   // 自機の軌道上、minDist〜maxDist 先の位相に補給を1個投入する。
   spawnForPlayer(
@@ -46,15 +51,17 @@ export class Logistics {
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
     // ずらした位置・速度と、ランダムな姿勢で補給エンティティを作る
     const ammo = new Ammo(
-      kinematicState(
-        player.state.t,
-        rotateAxis(r, hHat, ang),
-        add(rotateAxis(v, hHat, ang), randVec(1.5)),
-      ),
       {
-        q: randomQuat(),
-        w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),
-        inertia: v3(1, 1.4, 1.2),
+        state: kinematicState(
+          player.state.t,
+          rotateAxis(r, hHat, ang),
+          add(rotateAxis(v, hHat, ang), randVec(1.5)),
+        ),
+        att: {
+          q: randomQuat(),
+          w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),
+          inertia: v3(1, 1.4, 1.2),
+        },
       },
       this._scene,
     );
@@ -85,11 +92,6 @@ export class Logistics {
 
   serialize(): LogisticsSaveData {
     return { resupplyCheckAt: this.resupplyCheckAt, resupplyEnabled: this.resupplyEnabled };
-  }
-
-  restore(data: LogisticsSaveData): void {
-    this.resupplyCheckAt = data.resupplyCheckAt;
-    this.resupplyEnabled = data.resupplyEnabled;
   }
 
   // 生存中の補給の数を返す。

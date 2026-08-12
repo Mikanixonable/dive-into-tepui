@@ -13,6 +13,7 @@ import type { Simulator } from '../simulation/simulator';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import type { AttractorId } from '../../physics/attractor';
 import type { LaunchSelection } from '../game-mode';
+import type { StageSaveData } from '../save-data';
 import { Stage00 } from './stage00';
 import { Stage0 } from './stage0';
 import { Stage1 } from './stage1';
@@ -35,7 +36,7 @@ export type EphemerisConfig = {
 interface StageClass {
   readonly id: StageId;
   readonly ephemerisConfig?: EphemerisConfig;
-  new (): Stage;
+  new (saved?: StageSaveData): Stage;
 }
 
 const STAGE_CLASSES: readonly StageClass[] = [Stage00, Stage0, Stage1, Stage2, StageDebug, StageDebugAltSystem, StageDebugLoad];
@@ -43,10 +44,12 @@ const STAGE_CLASSES: readonly StageClass[] = [Stage00, Stage0, Stage1, Stage2, S
 // 選択画面のラベル・解放判定用の読み取り専用一覧。
 export const STAGE_DEFINITIONS: readonly Stage[] = STAGE_CLASSES.map((StageClass) => new StageClass());
 
-// id からステージを新規生成し、setup/init まで済ませて返す。
+// id からステージを新規生成し、setup まで済ませて返す。saved 省略時のみ初期配置(init)を走らせる
+// — スナップショットからの再開では敵・補給・弾薬は復元済みで、player も未配置(創作モード)なら
+// null になりうる。
 export function initStage(
   stageId: StageId,
-  player: Player,
+  player: Player | null,
   entities: EntityManager,
   hud: Hud,
   sfx: Sfx,
@@ -56,13 +59,16 @@ export function initStage(
   markerManager: MarkerManager,
   ephemeris: Ephemeris,
   simulator: Simulator,
+  saved?: StageSaveData,
 ): Stage {
   const StageClass = STAGE_CLASSES.find((c) => c.id === stageId) ?? STAGE_CLASSES.find((c) => c.id === DEFAULT_STAGE_ID)!;
-  const stage = new StageClass();
+  const stage = new StageClass(saved);
   stage.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
-  const enemyCount = stage.init(player, entities);
-  player.initAmmo(stage.initialAmmo.mags, stage.initialAmmo.rounds);
-  hud.toast(stage.briefingHtml(enemyCount), 12000);
+  if (saved === undefined && player !== null) {
+    const enemyCount = stage.init(player, entities);
+    player.initAmmo(stage.initialAmmo.mags, stage.initialAmmo.rounds);
+    hud.toast(stage.briefingHtml(enemyCount), 12000);
+  }
   return stage;
 }
 

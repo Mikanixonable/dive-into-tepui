@@ -84,7 +84,7 @@ export class RadiatorSystem {
 
   // shipObj は自機メッシュ。上下それぞれ、ヒンジ Group の子孫から折り目 Group を
   // RADIATOR_FOLD_COUNT 個解決して保持する。owner は接触代理が帰結を委ねる先の艦。
-  constructor(shipObj: THREE.Object3D, private readonly owner: Player) {
+  constructor(shipObj: THREE.Object3D, private readonly owner: Player, saved?: RadiatorSaveData) {
     const collect = (side: RadiatorSide, baseName: string): THREE.Object3D[] => {
       const namePrefix = baseName + (side === 'up' ? 'Up' : 'Down');
       const found = Array.from({ length: C.RADIATOR_FOLD_COUNT }, (_, i) =>
@@ -93,6 +93,12 @@ export class RadiatorSystem {
       return found as THREE.Object3D[];
     };
     this.folds = { up: collect('up', 'radiator'), down: collect('down', 'radiator') };
+    if (saved) {
+      for (const side of ['up', 'down'] as const) {
+        this.panels[side].deployTarget = saved[side].deployTarget;
+        this.panels[side].deploy = saved[side].deploy;
+      }
+    }
   }
 
   // side の展開/収納を切り替える。
@@ -221,12 +227,5 @@ export class RadiatorSystem {
       up: { deployTarget: this.panels.up.deployTarget, deploy: this.panels.up.deploy },
       down: { deployTarget: this.panels.down.deployTarget, deploy: this.panels.down.deploy },
     };
-  }
-
-  restore(data: RadiatorSaveData): void {
-    for (const side of ['up', 'down'] as const) {
-      this.panels[side].deployTarget = data[side].deployTarget;
-      this.panels[side].deploy = data[side].deploy;
-    }
   }
 }

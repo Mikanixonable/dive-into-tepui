@@ -16,7 +16,7 @@ import { orbitalElementsOf, strongestAttractor } from '../../physics/attractor';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../physics/vec3';
 import { generateApproachingEnemy } from './spawner/enemy-generator';
-import type { Stage00SaveData } from '../save-data';
+import type { Stage00SaveData, StageSaveData } from '../save-data';
 
 export class Stage00 extends Stage {
   static readonly id = '00' as const;
@@ -25,9 +25,19 @@ export class Stage00 extends Stage {
   readonly selectKeys = ['Digit0'];
   readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
-  private waveState: 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat' = 'waiting_for_ammo';
-  private spawnTimer = 0;
-  private waveCount = 0;
+  private waveState: 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
+  private spawnTimer: number;
+  private waveCount: number;
+
+  // saved の型を StageSaveData に留めるのは stage-dictionary.ts の StageClass 一覧に
+  // 収める都合(具象ごとの拡張型では構築シグネチャが揃わない)。
+  constructor(saved?: StageSaveData) {
+    super(saved);
+    const s = saved as Stage00SaveData | undefined;
+    this.waveState = s?.waveState ?? 'waiting_for_ammo';
+    this.spawnTimer = s?.spawnTimer ?? 0;
+    this.waveCount = s?.waveCount ?? 0;
+  }
 
   // ミッション概要のブリーフィング文(HTML)を返す。
   briefingHtml(): string {
@@ -118,13 +128,6 @@ export class Stage00 extends Stage {
       spawnTimer: this.spawnTimer,
       waveCount: this.waveCount,
     };
-  }
-
-  restore(data: Stage00SaveData): void {
-    super.restore(data);
-    this.waveState = data.waveState;
-    this.spawnTimer = data.spawnTimer;
-    this.waveCount = data.waveCount;
   }
 }
 
