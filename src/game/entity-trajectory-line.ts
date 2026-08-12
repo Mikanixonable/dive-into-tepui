@@ -17,7 +17,7 @@ import { LINE_RENDER_ORDER } from './const';
 
 type Mode = 'predicted' | 'debug';
 
-const MODE_COLOR: Record<Mode, number> = { predicted: 0xff00ff, debug: 0x40e0ff };
+const MODE_COLOR: Record<Mode, number> = { predicted: 0xbfc9d4, debug: 0x40e0ff };
 const MODE_OPACITY: Record<Mode, number> = { predicted: 0.55, debug: 0.6 };
 
 // 過去列・未来列それぞれの直近の参照と、それらを連結した結果を紐付けて憶える。連結先の

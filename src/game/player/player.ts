@@ -111,7 +111,7 @@ export class Player extends Ship {
     this.planExecutor = new PlanExecutor(_hud);
 
     // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
-    this.orbitLine = new OrbitLine(0x00ff00, 0.55, C.LINE_RENDER_ORDER.shipOrbit);
+    this.orbitLine = new OrbitLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.shipOrbit);
     _scene.add(this.orbitLine.line);
   }
 
