@@ -753,13 +753,13 @@ export class Game {
     const overviewMode = this.cameraSystem.overviewMode;
     // 表示・選択可否はこのフレームの update フェーズで MapPicker が確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
-    const mapVisibility = overviewMode ? this.mapPicker.visibility : null;
+    const visibilityPolicy = overviewMode ? this.mapPicker.visibilityPolicy : null;
     const target = this.targeter.aliveTarget;
     const secondaryTarget = this.targeter.aliveSecondaryTarget;
 
     this._environment.sync(
       player?.state.r ?? v3(), this.floatingOrigin, displayTime,
-      this.cameraSystem, this.navball.gridVisibility, mapVisibility,
+      this.cameraSystem, this.navball.gridVisibility, visibilityPolicy,
     );
 
     // 0隻状態へ移ったフレームで、直前の操作艦のRCSループ音を確実に止める。
@@ -768,29 +768,29 @@ export class Game {
       ship.syncPlayer(
         this.floatingOrigin, this.cameraSystem, this.activeStage.isPlaying, this._isPaused,
         displayTime, ship === player, this.ephemeris, attractors,
-        mapVisibility?.entity('player', ship === player) ?? null,
+        visibilityPolicy?.entity('player', ship === player) ?? null,
       );
     }
 
     this.entities.sync(this.floatingOrigin, displayTime);
     for (const ship of this.entities.players) {
-      if (mapVisibility && !mapVisibility.entity('player', ship === player).category) ship.obj.visible = false;
+      if (visibilityPolicy && !visibilityPolicy.entity('player', ship === player).category) ship.obj.visible = false;
     }
     for (const enemy of this.entities.enemies) {
-      if (mapVisibility && !mapVisibility.entity('ship').category) enemy.obj.visible = false;
+      if (visibilityPolicy && !visibilityPolicy.entity('ship').category) enemy.obj.visible = false;
     }
     for (const ammo of this.entities.ammos) {
-      if (mapVisibility && !mapVisibility.entity('ammo').category) ammo.obj.visible = false;
+      if (visibilityPolicy && !visibilityPolicy.entity('ammo').category) ammo.obj.visible = false;
     }
     for (const base of this.entities.bases) {
-      if (mapVisibility && !mapVisibility.entity('base').category) base.obj.visible = false;
+      if (visibilityPolicy && !visibilityPolicy.entity('base').category) base.obj.visible = false;
     }
     for (const ship of this.entities.players) {
-      ship.orbitLine.setDisplayEnabled(!overviewMode || (mapVisibility?.entity('player', ship === player).orbit ?? false));
+      ship.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('player', ship === player).orbit ?? false));
     }
     for (const base of this.entities.bases) {
       base.syncOrbitLine(overviewMode, this.floatingOrigin, this.cameraSystem.activeCamera, attractors);
-      base.orbitLine.setDisplayEnabled(!overviewMode || (mapVisibility?.entity('base').orbit ?? false));
+      base.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('base').orbit ?? false));
     }
 
     this.effects.sync(this.floatingOrigin, this.cameraSystem.activeCamera);
@@ -799,10 +799,10 @@ export class Game {
       const targets = this.entities.getCombatTargets(player);
       this.targeter.sync(
         this.floatingOrigin, player, targets, overviewMode, project, this.cameraSystem.activeCamera,
-        attractors, mapVisibility,
+        attractors, visibilityPolicy,
       );
       for (const enemy of this.entities.enemies) {
-        enemy.orbitLine.setDisplayEnabled(!overviewMode || (mapVisibility?.entity('ship').orbit ?? false));
+        enemy.orbitLine.setDisplayEnabled(!overviewMode || (visibilityPolicy?.entity('ship').orbit ?? false));
       }
     }
     this.navTarget.sync(project, overviewMode, this.cameraSystem.activeCameraPos);
@@ -818,7 +818,7 @@ export class Game {
       const role: 'none' | 'primary' | 'secondary' =
         tgt === target ? 'primary' : tgt === secondaryTarget ? 'secondary' : 'none';
       const entityKind = tgt instanceof Player ? 'player' : 'ship';
-      const visibility = mapVisibility?.entity(entityKind, tgt === player);
+      const visibility = visibilityPolicy?.entity(entityKind, tgt === player);
       if (visibility && !visibility.pickable) continue;
       const item = tgt.markerItem(role, player?.state.r ?? v3(), ds.r, ds.v, overviewMode);
       enemyMarkerItems.push(visibility ? {
@@ -859,7 +859,7 @@ export class Game {
     }
     this.activeStage.sync(
       player, this.floatingOrigin, project, this.cameraSystem.activeCameraScale, displayTime, overviewMode,
-      mapVisibility, this.cameraSystem.activeCamera,
+      visibilityPolicy, this.cameraSystem.activeCamera,
     );
 
     this._hud.panels.sync(this, attractors);
