@@ -24,6 +24,8 @@
 
 実装者が現地確認する際の索引。行番号は 2026-08-12 時点の main 相当。
 
+**注意: §2-2 のうち色・アルファ段階・フォントサイズ・角丸・余白・トランジションの分裂は施策 1 で解消済み**(トークン化された。§4 の施策 1 を参照)。§2-2 に残る未解決の問題は、ウィジェット実装の分裂(トグル6実装・ボタン9系統・閉じるボタン3実装・タブ3実装・HPバー4実装・スライダー3実装・数値入力4実装)、状態クラス語彙6種、hover/active/disabled の表現の不揃い、Enter/Escape/blur 規約の不統一、`seg-btn` という実態に合わないクラス名 — いずれも施策 2 の範囲。行番号は施策 1 の変更でずれているので、内容で探すこと。
+
 ### 2-1. レイアウト・レスポンシブ
 - viewport meta は `viewport-fit=cover` 付きで存在する(`public/index.html:5`)のに `env(safe-area-inset-*)` の使用が src 全体で 0 件。iPhone ノッチ/ホームバー、iPad ジェスチャバーに `bottom:12px` 系要素(タッチパッド `src/game/input/touch.ts:38-58`、`#hud-status` 等)が潜り込む。
 - ドック幅の指定が `src/game/hud/dom.ts:57-58, 275`(基準値 `min(300px,30vw)`/`min(300px,33vw)`)に加え、ブレークポイント別の別値として `dom.ts:473-474, 490, 501-502, 511` にも散在する。CSS 変数化されていないため、幅を参照する側(PREDICT バーの `calc`)と定義する側の対応をブレークポイントごとに手で揃えており、変更が必ず漏れる。
@@ -90,7 +92,39 @@
 
 ## 4. 施策一覧(番号=着手順序)
 
-### 施策 1: デザイントークンの単一定義と全リテラルの置換 [M]
+### 施策 1: デザイントークンの単一定義と全リテラルの置換 [M] — **完了**
+
+実装済み。以下は実施後の確定内容で、着手時の想定から変わった点を含む。後続施策はこの結果を前提にしてよい。
+
+**確定したトークン**(`src/game/theme.ts` が唯一の定義元。`injectThemeVariables()` が `:root` に kebab-case の CSS 変数として一度だけ注入する。`#touch-ui` が `#hud` の外にあるため `:root` に置く):
+色 `ACCENT`/`ACCENT_SOFT`/`ACCENT_SECONDARY`/`DANGER`/`BG`/`SURFACE_WEAK`/`SURFACE`/`SURFACE_OPAQUE`/`EDGE`/`TEXT_STRONG`/`TEXT`/`TEXT_MUTED`/`TEXT_DIM`、
+アクセント薄膜3段+縁2段+`DANGER_FILL`、中立薄膜4段 `FILL_1`〜`FILL_4`、`SHADE_1`/`SCRIM`/`BAR_BG`、
+グロー混合率 `GLOW_STRONG`/`GLOW_WEAK`、Δv3軸 `AXIS_PROGRADE`/`AXIS_NORMAL`/`AXIS_RADIAL`、
+文字8段 `FONT_XXS`〜`FONT_3XL`、`FONT_FAMILY`、グリフ `GLYPH_BASE`/`GLYPH_2_3`/`GLYPH_1_3`/`GLYPH_POI`/`GLYPH_BORESIGHT`、
+角丸4種、余白6段、トランジション2段、`HIT_TARGET_MIN`。
+
+**着手前の想定から変わった点(新事実)**:
+1. **マーカーのグリフサイズは UI の文字スケールに入らない**。`.mk` 系の 22px/14.67px/7.33px/5px/36px は字形に合わせた調整値で、14.67 と 7.33 は 22 の 2/3 と 1/3 という派生だった。計画当初の「フォントサイズ22種→5段、小数px全廃」を機械適用すると壊れるため、`GLYPH_*` という独立スケールとして分離し、派生関係は `calc()` でそのまま表現した。
+2. **グローは色トークンでは表せない**。`text-shadow` のグローは「その要素自身の色を弱めたもの」で、色は要素ごとに違いアルファだけが共通という構造だった。色ごとにトークンを増やすのをやめ、**混合率トークン+`color-mix(in srgb, <色> var(--glow-strong), transparent)`** を規約とした。任意の色に同じ規則が適用できる唯一の方式。
+3. **中立色に 0.22〜0.4 の段が無かった**。スライダーのトラックやSVG引き出し線がこの帯域を使っており、当初の `FILL_1`〜`FILL_3`(最大 0.16)では表せなかった。`FILL_4`(0.32)を足し、あわせて `FILL_*` のベース色を純白から `EDGE` と同じオフホワイトへ統一した(中立の色味は1系統であるべきで、`EDGE` はこの階段の名前付きの一員という関係になった)。危険色にも薄膜が無かったため `DANGER_FILL` を、面にも弱い段が無かったため `SURFACE_WEAK` を足した。
+4. **色リテラルは `#rrggbb`/`rgba()` だけではない**。3D 側は `0x3b82f6` の数値リテラルで色を持つ。完了判定の grep 条件がこれを取りこぼすため、`0x` 形式も確認対象に加えた。
+5. **書体は Share Tech Mono を採用せず、読み込みごと削除した**(計画当初の推奨から変更)。日本語グリフを持たず、HUD の 9〜10px に表示書体は不向きで、モバイルでは外部リクエスト1本の削減の方が価値が高い。HUD に webfont を導入するかは独立した設計判断として §7 に質問を計上する。
+6. **危険色が二重化していた**: `WARNING`(#ff4f5e)と `COLOR_HUD_HP_LOW`(#ff4a3d)が別々に「危険」を表し、`COLOR_HUD_HP_OK` は `ACCENT` と同値の重複だった。`DANGER` 1つへ統合し、良好状態は `ACCENT` を使う。
+7. **ゲーム世界の識別色も複数ファイルに散っていた**。自機・味方のシアン(4ファイル)、敵の白(2箇所)、HPグリフの未点灯色を `const.ts` に `COLOR_MARKER_ALLY`/`COLOR_MARKER_ENEMY`/`COLOR_MARKER_HP_EMPTY` として集約した。
+
+**確定した責務境界**(`.claude/skills/refactor-fixed/SKILL.md` にも記録):
+- `theme.ts` = UI(HUD・パネル・ウィンドウ・ボタン・タッチUI)の見た目のトークン。何も import せず直定義する。
+- `const.ts` の色節 = ゲーム世界の識別色・演出色。UI 色は持たない(依存方向が `theme → const` から反転した)。
+- **同じ色を DOM と 3D の両方で使う必要があるものだけ theme に置く**。Δv3軸がその唯一の例(DOM パネルと 3D ギズモが共有)。3D にしか現れない色(`plan/plan-path.ts` の `SEGMENT_COLORS`、`src/render/` 配下)は theme に入れない。
+- UI の CSS 文字列には色リテラルを書かない。`var(--…)` か theme の TS 定数を使う。
+
+**検証結果**: `npm run typecheck` 通過。`npm run test:physics` 407/407 通過。色リテラルの grep は `theme.ts`/`const.ts` 以外で 0 件(例外は `creative-stage.ts` が敵個体に渡す accent 色1件。他ステージも同様に個体色をリテラルで渡す慣習に従うもの)。UI の小数px font-size 0 件。廃止した名前の残存 0 件。
+
+**未検証**: 見た目の実機確認(§5 の検証マトリクス)は未実施。色・寸法の丸めによる差異が意図通りかは、施策3のレイアウト改修と合わせてまとめて確認する。
+
+---
+
+#### 着手時の計画(参考)
 
 **対象**: `src/game/theme.ts`(全面改稿)、`src/game/const.ts:513-548`(COLOR_* の整理)、色・寸法リテラルを持つ全ファイル(`dom.ts`, `context-menu.ts`, `touch.ts`, `object-picker.ts`, `property-window.ts`, `node-gizmo.ts`, `dock-view.ts`, `plan-editor.ts`, `save-browser.ts`, `launch-select.ts`, `result-screen.ts`, `display-time-panel.ts`, `marker-manager.ts`, `creative-stage.ts`, `lead-markers.ts`, `stage-status-panel.ts`, `panel.ts`)。
 
@@ -211,7 +245,7 @@
 - 各施策とも `npm run typecheck` を必須とする。`src/physics/` には触れないので `test:physics` は不要。
 - 見た目の検証はヘッドレス Chrome スクリーンショット(`/verify` の手順、CLAUDE.md の WebGPU フラグ)で以下のマトリクスを撮る: 375×667(スマホ縦)/ 667×375(スマホ横)/ 768×1024(iPad 縦)/ 1024×768(iPad 横)/ 1440×900(デスクトップ)。各サイズで 戦闘ビュー/マップビュー/DockView/SaveBrowser/一時停止メニュー の 5 画面。`--window-size` と `Emulation.setDeviceMetricsOverride`(pointer:coarse 模擬)を併用。
 - タッチ操作の検証は CDP `Input.dispatchTouchEvent` で長押し→プロパティウィンドウ、二本指ドラッグ→パン、ピンチ→ズームの 3 本をスモークとして流す。
-- 完了判定 grep: 色リテラルが theme.ts と const.ts の色定義節以外で 0 件(施策 1)、`.active`/`.sel`/`.selected` 0 件(施策 2)、`window.addEventListener('keydown'` が `input.ts`(入力層本体)と `launch-select.ts`(タイトル画面)以外で 0 件(施策 4 — OverlayManager 自身も張らない)、旧名 0 件(施策 6)。
+- 完了判定 grep: 色リテラルが theme.ts と const.ts の色定義節以外で 0 件(施策 1。`#rrggbb` と `rgba()` に加え、3D 側が使う `0x` 形式の数値リテラルも確認対象に含めること)、`.active`/`.sel`/`.selected` 0 件(施策 2)、`window.addEventListener('keydown'` が `input.ts`(入力層本体)と `launch-select.ts`(タイトル画面)以外で 0 件(施策 4 — OverlayManager 自身も張らない)、旧名 0 件(施策 6)。
 
 ## 6. 保留(今回やらないと決めたもの)
 
@@ -228,3 +262,5 @@
 3. compact(スマホ縦)での既定「ORBIT/CONTACTS は収納で開始」(施策 7)の閾値・初期選定に異論はないか。
 4. `hud-dock-*` → `hud-rail-*` の改名(施策 6)は localStorage キーや保存データには影響しないが、既存の目視デバッグ習慣(DevTools での id 検索)には影響する。改名の粒度はこれでよいか。
 5. Δv 編集軸の色(パネル/3D ギズモの青/緑/赤)と戦闘ビューの軌道方向マーカー色(`COLOR_MARKER_PROGRADE/NORMAL/RADIAL` の灰/紫/シアン)は、同じ軸概念に二系統の色が併存している。施策 1 では前者のトークン化のみ行い後者は触らないが、将来どちらかに寄せて統一すべきか(寄せるなら、モノトーン基調のマーカー規約と衝突しない形をどう取るか)。
+6. HUD に webfont を導入するか。施策 1 では、未参照のまま読み込まれていた Share Tech Mono を読み込みごと削除し、システム等幅スタックに統一した(日本語グリフを持たず、9〜10px の HUD 文字に表示書体は不向きで、モバイルでは外部リクエストの削減を優先した)。ラテン文字だけでも専用書体を当てて世界観を強めたいなら、日本語部分との字面の差をどう扱うかを含めて別途決める必要がある。
+7. 施策 1 で造船ドックの部品 HP 表示を「良 = モノトーン、注意 = 橙、危険 = 赤」に変えた(緑/橙/赤の信号機配色を廃止)。フラットダークテーマの「通常はモノトーン、注意すべきものだけ色」という原則には合うが、健全な部品が一目で「緑=OK」と読めなくなる。この方針でよいか。

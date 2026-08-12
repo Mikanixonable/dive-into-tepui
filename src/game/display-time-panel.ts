@@ -5,6 +5,7 @@ import { buildCollapseToggle, PREDICT_TOGGLE_LABELS } from './hud/dom';
 import { SIM_EPOCH_SEC, fmtDateTime, fmtDuration } from './hud/utils';
 import type { DisplayDurationKey } from './display-time-manager';
 import type { DisplayTick } from './hud/tick-scale';
+import { FILL_2, FILL_4 } from './theme';
 
 type FixedDurationKey = 'orbit' | 'day' | 'week' | 'month';
 
@@ -26,9 +27,8 @@ const UNITS: readonly (readonly [DurationUnit, string])[] = [
   ['year', '年'],
 ];
 
-// トラックの通常色/未予測区間の減光色(EDGE と同系統、アルファのみ変える)。
-const TRACK_COLOR = 'rgba(238, 235, 248, 0.32)';
-const TRACK_DIM_COLOR = 'rgba(238, 235, 248, 0.1)';
+const TRACK_COLOR = FILL_4;
+const TRACK_DIM_COLOR = FILL_2;
 
 // 値(数値入力)+単位(SegmentedControl)の組。確定操作(Enter/blur/外部からの commit())でのみ
 // クランプ後の秒数を通知する — 打鍵ごとに書き戻すと入力途中の値が壊れて打ち直せなくなるため。

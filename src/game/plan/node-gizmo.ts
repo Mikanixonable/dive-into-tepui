@@ -1,27 +1,27 @@
 // 軌道計画ノードの対話的 DOM レイヤ。ノードハンドル・Δv アーム・コンテキストメニューを
 // 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
 import * as C from '../const';
-import { ACCENT, ACCENT_SOFT, ACCENT_RGB, TEXT as INK, FONT } from '../theme';
+import { ACCENT, ACCENT_SOFT, ACCENT_FILL, ACCENT_FILL_STRONG, TEXT, BG, FONT_FAMILY, FONT_XS } from '../theme';
 import { ContextMenu } from '../hud/context-menu';
 import { MenuAction, MenuCommon } from '../hud/menu-actions';
 
 const STYLE = `
 #hud #node-gizmo {
   position: fixed; inset: 0; pointer-events: none; z-index: 5;
-  font-family: ${FONT}; user-select: none;
+  font-family: ${FONT_FAMILY}; user-select: none;
   -webkit-user-select: none;
 }
 #node-gizmo .gz-node {
   position: absolute; transform: translate(-50%, -50%);
   width: 22px; height: 22px; border-radius: 50%; touch-action: none;
   pointer-events: auto; cursor: grab;
-  border: 2px solid ${ACCENT_SOFT}; background: rgba(${ACCENT_RGB}, 0.16);
+  border: 2px solid ${ACCENT_SOFT}; background: ${ACCENT_FILL};
 }
-#node-gizmo .gz-node.sel { border-color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.38); }
+#node-gizmo .gz-node.sel { border-color: ${ACCENT}; background: ${ACCENT_FILL_STRONG}; }
 #node-gizmo .gz-node .gz-lbl {
   position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
-  font-size: 10px; color: ${INK}; white-space: nowrap;
-  text-shadow: 0 0 4px #000, 0 0 2px #000;
+  font-size: ${FONT_XS}; color: ${TEXT}; white-space: nowrap;
+  text-shadow: 0 0 4px ${BG}, 0 0 2px ${BG};
 }
 #node-gizmo .gz-axis {
   position: absolute; transform: translate(-50%, -50%);
@@ -29,9 +29,9 @@ const STYLE = `
   pointer-events: auto; cursor: grab;
   /* 背景は透明にしつつ、ラベルのテキストは表示する */
   background: transparent; border: none;
-  color: ${INK}; font-size: 10px; font-weight: bold; letter-spacing: 1px;
+  color: ${TEXT}; font-size: ${FONT_XS}; font-weight: bold; letter-spacing: 1px;
   display: flex; align-items: center; justify-content: center;
-  text-shadow: 0 0 2px #000, 0 0 4px #000;
+  text-shadow: 0 0 2px ${BG}, 0 0 4px ${BG};
 }
 #node-gizmo .gz-axis:active { cursor: grabbing; color: ${ACCENT_SOFT}; }
 `;

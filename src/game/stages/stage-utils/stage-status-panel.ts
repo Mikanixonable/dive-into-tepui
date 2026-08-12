@@ -9,6 +9,7 @@ import type { Player } from '../../player/player';
 import type { RadiatorSide } from '../../player/radiator';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { fmtEnergy } from '../../hud/utils';
+import { ACCENT, BAR_BG, DANGER, FONT_XS, TEXT_STRONG, TRANSITION_FAST, BG, SPACE_2, SPACE_4 } from '../../theme';
 
 // side を「左(+X)/右(-X)」ラベルとショートカットキーへ対応させる。
 // (機体の+Zが前なので、後ろから見ると+Xは左になる)
@@ -111,7 +112,7 @@ export class StageStatusPanel {
     dom.button.classList.toggle('on', deployed);
 
     const fillWidth = `${100 - wearPct}%`;
-    const fillColor = highWear ? C.COLOR_HUD_HP_LOW : deployed ? 'transparent' : 'transparent';
+    const fillColor = highWear ? DANGER : deployed ? 'transparent' : 'transparent';
     if (dom.lastFillWidth !== fillWidth) {
       dom.fill.style.width = fillWidth;
       dom.lastFillWidth = fillWidth;
@@ -149,27 +150,27 @@ export class StageStatusPanel {
     const chargePct = Math.max(0, Math.min(100, player.power.chargeRatio * 100));
 
     const hpHtml =
-      `<div style="display:grid; grid-template-columns:auto 1fr; gap:4px 8px; align-items:center;">` +
+      `<div style="display:grid; grid-template-columns:auto 1fr; gap:${SPACE_2} ${SPACE_4}; align-items:center;">` +
       `<span>装甲</span>` +
-      `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
-      `<div style="width:${pct}%; height:100%; background:${low ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
-      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${Math.floor(hp)} / ${maxHp}</div></div>` +
+      `<div style="position:relative; width:160px; height:12px; background:${BAR_BG};">` +
+      `<div style="width:${pct}%; height:100%; background:${low ? DANGER : ACCENT}; transition:width ${TRANSITION_FAST};"></div>` +
+      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:${FONT_XS}; color:${TEXT_STRONG}; text-shadow:0 0 2px ${BG}, 0 0 2px ${BG};">${Math.floor(hp)} / ${maxHp}</div></div>` +
       `<span>出力</span>` +
-      `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
-      `<div style="width:${throttlePct}%; height:100%; background:${C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
-      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${throttleText}</div></div>` +
+      `<div style="position:relative; width:160px; height:12px; background:${BAR_BG};">` +
+      `<div style="width:${throttlePct}%; height:100%; background:${ACCENT}; transition:width ${TRANSITION_FAST};"></div>` +
+      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:${FONT_XS}; color:${TEXT_STRONG}; text-shadow:0 0 2px ${BG}, 0 0 2px ${BG};">${throttleText}</div></div>` +
       `<span>動圧</span>` +
-      `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
-      `<div style="width:${qdynPct}%; height:100%; background:${qdynHigh ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
-      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${qdynText}</div></div>` +
+      `<div style="position:relative; width:160px; height:12px; background:${BAR_BG};">` +
+      `<div style="width:${qdynPct}%; height:100%; background:${qdynHigh ? DANGER : ACCENT}; transition:width ${TRANSITION_FAST};"></div>` +
+      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:${FONT_XS}; color:${TEXT_STRONG}; text-shadow:0 0 2px ${BG}, 0 0 2px ${BG};">${qdynText}</div></div>` +
       `<span>温度</span>` +
-      `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
-      `<div style="width:${tempPct}%; height:100%; background:${tempHigh ? C.COLOR_HUD_HP_LOW : C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
-      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${temp} / ${C.MAX_HULL_TEMP} K</div></div>` +
+      `<div style="position:relative; width:160px; height:12px; background:${BAR_BG};">` +
+      `<div style="width:${tempPct}%; height:100%; background:${tempHigh ? DANGER : ACCENT}; transition:width ${TRANSITION_FAST};"></div>` +
+      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:${FONT_XS}; color:${TEXT_STRONG}; text-shadow:0 0 2px ${BG}, 0 0 2px ${BG};">${temp} / ${C.MAX_HULL_TEMP} K</div></div>` +
       `<span>電力</span>` +
-      `<div style="position:relative; width:160px; height:12px; background:${C.COLOR_HUD_BAR_BG};">` +
-      `<div style="width:${chargePct}%; height:100%; background:${C.COLOR_HUD_HP_OK}; transition:width 0.2s;"></div>` +
-      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000;">${fmtEnergy(chargeJ)} / ${fmtEnergy(C.POWER_CAPACITY)}</div></div>` +
+      `<div style="position:relative; width:160px; height:12px; background:${BAR_BG};">` +
+      `<div style="width:${chargePct}%; height:100%; background:${ACCENT}; transition:width ${TRANSITION_FAST};"></div>` +
+      `<div style="position:absolute; right:4px; top:0; bottom:0; display:flex; align-items:center; font-size:${FONT_XS}; color:${TEXT_STRONG}; text-shadow:0 0 2px ${BG}, 0 0 2px ${BG};">${fmtEnergy(chargeJ)} / ${fmtEnergy(C.POWER_CAPACITY)}</div></div>` +
       `</div>`;
     if (this.lastHpHtml !== hpHtml) {
       this.centerCol.innerHTML = hpHtml;

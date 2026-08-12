@@ -4,6 +4,7 @@ import type { Base, DockedShipEntry } from '../game-entity/base';
 import type { Player } from '../player/player';
 import type { AnyPart, Part, PartType, RcsTankPart } from '../game-entity/parts';
 import { createPart } from '../game-entity/parts';
+import { ACCENT, DANGER, TEXT_MUTED } from '../theme';
 import * as C from '../const';
 
 function esc(text: string): string {
@@ -269,7 +270,7 @@ export class DockView {
   // 搭載部品1件の行を作る。同じ type の在庫があれば換装欄を、rcs_tank なら補給ボタンを添える。
   private buildInstalledPartRow(base: Base, shipData: DockedShipEntry, p: Part, i: number): string {
     const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
-    const hpColor = hpPct > 60 ? '#4caf50' : hpPct > 30 ? '#ff9800' : '#f44336';
+    const hpColor = hpPct > 60 ? TEXT_MUTED : hpPct > 30 ? ACCENT : DANGER;
     const repairCost = (p.maxHp - p.hp) * REPAIR_COST_PER_HP;
     const canRepair = repairCost > 0 && (this.creative || base.baseState.money >= repairCost);
 

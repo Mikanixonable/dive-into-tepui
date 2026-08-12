@@ -2,7 +2,6 @@
 // 登録天体ぶんの候補を並べると1行に収まらない。現在の選択を出すボタンを押すとポップアップが
 // 開き、上から「絞り込み入力」「グループ分けした全候補」の順に並ぶ。候補はグループごとに
 // 複数列のグリッドへ並べる(百件規模を縦一列に積むと画面高をはみ出すため)。
-import { ACCENT, ACCENT_RGB, ACCENT_SOFT, EDGE, FONT, SURFACE, TEXT as INK } from '../theme';
 import { clampOverlayPosition } from './layout';
 import { hudButton } from './buttons';
 import { bringToFront } from './overlay-layer';
@@ -10,28 +9,28 @@ import { bringToFront } from './overlay-layer';
 const STYLE = `
 #hud .object-picker-pop {
   position: fixed; display: none; pointer-events: auto;
-  background: ${SURFACE}; border: 1px solid ${EDGE}; border-radius: 4px;
-  font-family: ${FONT}; font-size: 12px; color: ${INK};
+  background: var(--surface); border: 1px solid var(--edge); border-radius: var(--radius-m);
+  font-family: var(--font-family); font-size: var(--font-m); color: var(--text);
   width: 520px; max-height: 60vh; overflow-y: auto; user-select: none;
   -webkit-user-select: none;
 }
 #hud .object-picker-pop .op-filter {
-  width: 100%; box-sizing: border-box; padding: 7px 10px; margin: 0;
-  background: rgba(0, 0, 0, 0.35); border: none; border-bottom: 1px solid ${EDGE};
-  color: ${INK}; font-family: ${FONT}; font-size: 12px; outline: none;
+  width: 100%; box-sizing: border-box; padding: var(--space-3) var(--space-5); margin: 0;
+  background: var(--shade-1); border: none; border-bottom: 1px solid var(--edge);
+  color: var(--text); font-family: var(--font-family); font-size: var(--font-m); outline: none;
 }
 #hud .object-picker-pop .op-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
 }
 #hud .object-picker-pop .op-group {
-  grid-column: 1 / -1; padding: 5px 10px 3px; font-size: 10px; letter-spacing: 1px; opacity: 0.55;
+  grid-column: 1 / -1; padding: var(--space-3) var(--space-5) var(--space-2); font-size: var(--font-xs); letter-spacing: 1px; opacity: 0.55;
 }
 #hud .object-picker-pop .op-row {
-  padding: 7px 10px 7px 18px; cursor: pointer; border-left: 1px solid ${EDGE};
+  padding: var(--space-3) var(--space-5) var(--space-3) 18px; cursor: pointer; border-left: 1px solid var(--edge);
 }
-#hud .object-picker-pop .op-row:hover { background: rgba(${ACCENT_RGB}, 0.18); color: ${ACCENT_SOFT}; }
-#hud .object-picker-pop .op-row.on { color: ${ACCENT}; }
-#hud .object-picker-pop .op-empty { grid-column: 1 / -1; padding: 9px 10px; opacity: 0.5; }
+#hud .object-picker-pop .op-row:hover { background: var(--accent-fill); color: var(--accent-soft); }
+#hud .object-picker-pop .op-row.on { color: var(--accent); }
+#hud .object-picker-pop .op-empty { grid-column: 1 / -1; padding: var(--space-4) var(--space-5); opacity: 0.5; }
 `;
 
 let styleInjected = false;

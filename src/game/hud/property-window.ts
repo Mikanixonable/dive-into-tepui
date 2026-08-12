@@ -4,7 +4,6 @@
 // 複数存続できる想定のため ContextMenu と異なり呼び出しごとに個別のインスタンスを持つ。
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
-import { ACCENT, ACCENT_RGB, ACCENT_SOFT, EDGE, SURFACE, TEXT as INK, FONT } from '../theme';
 import { CLICK_MOVE_THRESHOLD } from '../const';
 import { clampOverlayPosition, Point2 } from './layout';
 import { shortcutKeyLabel } from './shortcut-hint';
@@ -14,56 +13,56 @@ import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from './dom';
 const STYLE = `
 #hud .prop-window {
   position: fixed; display: block; min-width: 200px; max-width: 280px;
-  pointer-events: auto; background: ${SURFACE}; border: 1px solid ${EDGE};
-  border-radius: 4px; overflow: hidden; font-size: 12px;
-  font-family: ${FONT}; user-select: none;
+  pointer-events: auto; background: var(--surface); border: 1px solid var(--edge);
+  border-radius: var(--radius-m); overflow: hidden; font-size: var(--font-m);
+  font-family: var(--font-family); user-select: none;
   -webkit-user-select: none;
 }
 #hud .prop-window-header {
-  display: flex; align-items: flex-start; gap: 6px;
-  padding: 8px 8px 8px 12px;
-  border-bottom: 1px solid ${EDGE};
-  background: rgba(0, 0, 0, 0.2);
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--edge);
+  background: var(--shade-1);
   cursor: move;
 }
 #hud .prop-window-title { flex: 1; min-width: 0; }
-#hud .prop-window-title-main { color: ${INK}; font-weight: bold; overflow-wrap: break-word; }
-#hud .prop-window-title-sub { color: ${INK}; opacity: 0.7; font-size: 11px; margin-top: 2px; }
+#hud .prop-window-title-main { color: var(--text); font-weight: bold; overflow-wrap: break-word; }
+#hud .prop-window-title-sub { color: var(--text); opacity: 0.7; font-size: var(--font-s); margin-top: var(--space-1); }
 #hud .prop-window-title-input {
-  width: 100%; background: ${SURFACE}; border: 1px solid ${ACCENT}; border-radius: 3px;
-  color: ${INK}; font: inherit; font-weight: bold; padding: 1px 4px; box-sizing: border-box;
+  width: 100%; background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius-s);
+  color: var(--text); font: inherit; font-weight: bold; padding: var(--space-1) var(--space-2); box-sizing: border-box;
 }
 #hud .prop-window-btn {
   flex: none; width: 18px; height: 18px; line-height: 18px; text-align: center;
-  border: 1px solid ${EDGE}; border-radius: 3px; background: transparent; color: ${INK};
-  cursor: pointer; font-size: 11px; padding: 0;
+  border: 1px solid var(--edge); border-radius: var(--radius-s); background: transparent; color: var(--text);
+  cursor: pointer; font-size: var(--font-s); padding: 0;
 }
-#hud .prop-window-btn:hover { background: rgba(${ACCENT_RGB}, 0.18); color: ${ACCENT_SOFT}; }
-#hud .prop-window-btn.clipped { border-color: ${ACCENT}; color: ${ACCENT}; }
-#hud .prop-window-rows { padding: 4px 0; }
+#hud .prop-window-btn:hover { background: var(--accent-fill); color: var(--accent-soft); }
+#hud .prop-window-btn.clipped { border-color: var(--accent); color: var(--accent); }
+#hud .prop-window-rows { padding: var(--space-2) 0; }
 #hud .prop-window-row {
-  display: flex; justify-content: space-between; gap: 10px; padding: 3px 12px; color: ${INK};
+  display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-5); color: var(--text);
 }
 #hud .prop-window-row-label { opacity: 0.7; }
 #hud .prop-window-row-value { text-align: right; }
 #hud .prop-window-row-toggle {
-  padding: 3px 12px; color: ${INK}; opacity: 0.6; cursor: pointer;
+  padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
 }
-#hud .prop-window-row-toggle:hover { opacity: 1; color: ${ACCENT_SOFT}; }
+#hud .prop-window-row-toggle:hover { opacity: 1; color: var(--accent-soft); }
 #hud .prop-window-row-group-toggle {
-  padding: 3px 12px; color: ${INK}; opacity: 0.6; cursor: pointer;
+  padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
 }
-#hud .prop-window-row-group-toggle:hover { opacity: 1; color: ${ACCENT_SOFT}; }
-#hud .prop-window-items { border-top: 1px solid ${EDGE}; }
+#hud .prop-window-row-group-toggle:hover { opacity: 1; color: var(--accent-soft); }
+#hud .prop-window-items { border-top: 1px solid var(--edge); }
 #hud .prop-window-item {
-  padding: 9px 14px; color: ${INK}; cursor: pointer; border-bottom: 1px solid ${EDGE};
+  padding: var(--space-4) var(--space-5); color: var(--text); cursor: pointer; border-bottom: 1px solid var(--edge);
 }
 #hud .prop-window-item:last-child { border-bottom: none; }
 #hud .prop-window-item:hover, #hud .prop-window-item:active {
-  background: rgba(${ACCENT_RGB}, 0.18); color: ${ACCENT_SOFT};
+  background: var(--accent-fill); color: var(--accent-soft);
 }
 #hud .prop-window-item.selected {
-  color: ${ACCENT}; background: rgba(${ACCENT_RGB}, 0.1);
+  color: var(--accent); background: var(--accent-fill-weak);
 }
 #hud .prop-window-item.selected::before { content: '▪ '; }
 `;

@@ -244,7 +244,7 @@ export abstract class Ship extends GameEntity {
       if (b <= a) return;
       const [x1, y1] = points[i]!;
       const [x2, y2] = points[(i + 1) % 3]!;
-      const color = (i * k + j) < lit ? 'currentColor' : 'rgba(120,125,130,.2)';
+      const color = (i * k + j) < lit ? 'currentColor' : C.COLOR_MARKER_HP_EMPTY;
       lines.push(`<line x1="${x1 + (x2 - x1) * a}" y1="${y1 + (y2 - y1) * a}" x2="${x1 + (x2 - x1) * b}" y2="${y1 + (y2 - y1) * b}" stroke="${color}" stroke-width="1.5" stroke-linecap="butt"/>`);
     };
     for (let i = 0; i < 3; i++) {

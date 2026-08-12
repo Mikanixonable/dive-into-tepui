@@ -2,40 +2,37 @@
 // onSelect(act, target) を発火して自動で閉じる。
 // #hud の子として popup レイヤへ置くため、`#hud, #hud *` の margin/padding リセットに
 // 勝てるよう全セレクタを `#hud` で始める。
-import { ACCENT_RGB, ACCENT_SOFT, TEXT as INK, FONT } from '../theme';
 import { clampOverlayPosition } from './layout';
 import { shortcutKeyLabel } from './shortcut-hint';
 import { bringToFront } from './overlay-layer';
 
-const SURFACE = 'rgba(13, 15, 18, 0.85)';
-const EDGE = 'rgba(255, 255, 255, 0.16)';
-
 const STYLE = `
 #hud .ctx-menu {
   position: fixed; display: none; min-width: 168px;
-  pointer-events: auto; background: ${SURFACE}; border: 1px solid ${EDGE};
-  border-radius: 4px; overflow: hidden; font-size: 12px;
-  font-family: ${FONT}; user-select: none;
+  pointer-events: auto; background: var(--surface); border: 1px solid var(--edge);
+  border-radius: var(--radius-m); overflow: hidden; font-size: var(--font-m);
+  font-family: var(--font-family); user-select: none;
   -webkit-user-select: none;
 }
 #hud .ctx-menu-item {
-  padding: 9px 14px; color: ${INK}; cursor: pointer; border-bottom: 1px solid ${EDGE};
+  padding: var(--space-4) var(--space-5); color: var(--text); cursor: pointer;
+  border-bottom: 1px solid var(--edge);
 }
 #hud .ctx-menu-item:last-child { border-bottom: none; }
 #hud .ctx-menu-item:hover, #hud .ctx-menu-item:active {
-  background: rgba(${ACCENT_RGB}, 0.18); color: ${ACCENT_SOFT};
+  background: var(--accent-fill); color: var(--accent-soft);
 }
 #hud .ctx-menu-header {
-  padding: 9px 14px;
-  border-bottom: 1px solid ${EDGE};
-  background: rgba(0, 0, 0, 0.2);
-  color: ${INK};
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--edge);
+  background: var(--shade-1);
+  color: var(--text);
   font-weight: bold;
 }
 #hud .ctx-menu-header-sub {
-  font-size: 11px;
+  font-size: var(--font-s);
   opacity: 0.7;
-  margin-top: 2px;
+  margin-top: var(--space-1);
   font-weight: normal;
 }
 `;

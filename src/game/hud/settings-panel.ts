@@ -1,6 +1,6 @@
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import * as C from '../const';
+import { ACCENT, SPACE_4, SPACE_6 } from '../theme';
 import type { ModalController } from './modal-controller';
 
 export class SettingsPanel {
@@ -24,13 +24,13 @@ export class SettingsPanel {
       <h3>一時停止 / 設定</h3>
       <div class="srow">
         <span class="k">BGM Vol</span>
-        <input type="range" data-id="bgmslider" min="0" max="1" step="0.05" value="1" style="flex:1; margin-left: 10px; cursor: pointer; accent-color: ${C.COLOR_ACCENT};">
-        <div class="stoggle" data-id="bgmmute" style="margin-left: 10px;">消音</div>
+        <input type="range" data-id="bgmslider" min="0" max="1" step="0.05" value="1" style="flex:1; margin-left: ${SPACE_4}; cursor: pointer; accent-color: ${ACCENT};">
+        <div class="stoggle" data-id="bgmmute" style="margin-left: ${SPACE_4};">消音</div>
       </div>
-      <div class="srow" style="margin-top: 20px;">
+      <div class="srow" style="margin-top: ${SPACE_6};">
         <button data-id="snapshotbtn" class="settings-btn" style="flex:1;">スナップショット</button>
       </div>
-      <div class="srow" style="margin-top: 10px;">
+      <div class="srow" style="margin-top: ${SPACE_4};">
         <button data-id="perfbtn" class="settings-btn" style="flex:1;">負荷を表示 [${K.togglePerfWindow.label}]</button>
       </div>
       <div class="squit" data-id="settingsquit">ゲームを中断してタイトル画面に戻る</div>
