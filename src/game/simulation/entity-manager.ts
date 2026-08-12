@@ -23,18 +23,14 @@ import type { DisplayWindow } from '../display-window-manager';
 import type { GameSaveData } from '../save-data';
 import type { Hud } from '../hud/hud';
 import type { Sfx } from '../../audio/sfx';
-import type { EffectsSystem } from '../vfx/effects-system';
+import { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { PerfCounts } from '../../perf-meter';
 
-// 自機・敵・弾薬・基地の生成に要る共有依存一式。restoreFromSave/spawnInitialPlayers が使う。
-export interface EntitySpawnDeps {
-  readonly hud: Hud;
-  readonly sfx: Sfx;
-  readonly scene: THREE.Scene;
-  readonly effects: EffectsSystem;
-  readonly markerManager: MarkerManager;
-}
+// 起動時の顔ぶれ。新規開始は自機の隻数だけを、スナップショットからの再開は保存内容を渡す。
+export type EntityManagerInit =
+  | { readonly playerCount: number }
+  | { readonly saved: GameSaveData };
 
 export class EntityManager {
   readonly enemies: Enemy[] = [];
@@ -58,7 +54,20 @@ export class EntityManager {
   // DebrisPiece.fragmentVariant が添字。
   private readonly debrisFragmentPools: InstancedPool[];
 
-  constructor(scene: THREE.Scene) {
+  // フラッシュ・破片の生成窓口。破片は entity なので、その配列を持つこちらが所有する。
+  readonly effects: EffectsSystem;
+  // 起動時に操作対象とする艦。スナップショットからの再開では save.activePlayerId に一致する
+  // 艦(見つからなければ復元順の先頭)、新規開始では最初に配置した1隻。艦が0隻なら null。
+  readonly initialActivePlayer: Player | null;
+
+  // 描画資源のプールを組み、演出窓口を作ってから、init の指すとおりに起動時の顔ぶれを配置する。
+  constructor(
+    scene: THREE.Scene,
+    hud: Hud,
+    sfx: Sfx,
+    markerManager: MarkerManager,
+    init: EntityManagerInit,
+  ) {
     const bulletBody = bulletBodyResources();
     const bulletHalo = bulletHaloResources();
     const plasmaBody = plasmaBodyResources();
@@ -70,6 +79,45 @@ export class EntityManager {
     this.casingPool = new InstancedPool(scene, casingBody.geometry, casingBody.material, C.MAX_CASINGS);
     this.debrisFragmentPools = debrisFragment.geometries.map(
       (geo) => new InstancedPool(scene, geo, debrisFragment.material, C.MAX_DEBRIS, true));
+    this.effects = new EffectsSystem(scene, this, sfx);
+    this.initialActivePlayer = 'saved' in init
+      ? this.restoreFromSave(init.saved, hud, sfx, scene, markerManager)
+      : this.spawnInitialPlayers(init.playerCount, hud, sfx, scene, markerManager);
+  }
+
+  // 新規開始時の初期配置。艦の隻数は 0..n が一般形で、1隻に固定するかどうかはステージ側の
+  // 判断。返すのは操作対象にする最初の1隻。
+  private spawnInitialPlayers(
+    count: number, hud: Hud, sfx: Sfx, scene: THREE.Scene, markerManager: MarkerManager,
+  ): Player | null {
+    let first: Player | null = null;
+    for (let i = 0; i < count; i++) {
+      const ship = new Player(hud, sfx, scene, this.effects, markerManager);
+      this.addPlayer(ship);
+      if (!first) first = ship;
+    }
+    return first;
+  }
+
+  // スナップショットから自機・敵・弾薬・基地を復元する。返すのは save.activePlayerId に
+  // 一致する自機(無ければ復元順の先頭、それも無ければ null)。
+  private restoreFromSave(
+    save: GameSaveData, hud: Hud, sfx: Sfx, scene: THREE.Scene, markerManager: MarkerManager,
+  ): Player | null {
+    const simTime = save.simTime;
+    for (const data of save.players) {
+      this.addPlayer(new Player(hud, sfx, scene, this.effects, markerManager, { saved: data, simTime }));
+    }
+    for (const data of save.enemies) {
+      this.addEnemy(new Enemy({ saved: data, simTime }, hud, sfx, this.effects, scene));
+    }
+    for (const data of save.ammos) {
+      this.addAmmo(new Ammo({ saved: data, simTime }, scene));
+    }
+    for (const data of save.bases) {
+      this.addBase(new Base({ saved: data, simTime }, scene, hud, sfx, this.effects, markerManager));
+    }
+    return this.players.find((p) => p.id === save.activePlayerId) ?? this.players[0] ?? null;
   }
 
   // all()/otherEntities() はSimulatorの各substepから何度も呼ばれる。配列の内容が変わった
@@ -101,38 +149,6 @@ export class EntityManager {
   addPlayer(player: Player): void {
     this.players.push(player);
     this.invalidateCaches();
-  }
-
-  // 新規開始時の初期配置。艦の隻数は 0..n が一般形で、1隻に固定するかどうかはステージ側の
-  // 判断(stage-dictionary.ts の initialPlayerCountFor)。返すのは操作対象にする最初の1隻。
-  spawnInitialPlayers(count: number, deps: EntitySpawnDeps): Player | null {
-    let first: Player | null = null;
-    for (let i = 0; i < count; i++) {
-      const ship = new Player(deps.hud, deps.sfx, deps.scene, deps.effects, deps.markerManager);
-      this.addPlayer(ship);
-      if (!first) first = ship;
-    }
-    return first;
-  }
-
-  // スナップショットから自機・敵・弾薬・基地を復元する。返すのは save.activePlayerId に
-  // 一致する自機(無ければ復元順の先頭、それも無ければ null)。
-  restoreFromSave(save: GameSaveData, deps: EntitySpawnDeps): Player | null {
-    const simTime = save.simTime;
-    for (const data of save.players) {
-      this.addPlayer(new Player(deps.hud, deps.sfx, deps.scene, deps.effects, deps.markerManager, { saved: data, simTime }));
-    }
-    for (const data of save.enemies) {
-      this.addEnemy(new Enemy({ saved: data, simTime }, deps.hud, deps.sfx, deps.effects, deps.scene));
-    }
-    for (const data of save.ammos) {
-      this.addAmmo(new Ammo({ saved: data, simTime }, deps.scene));
-    }
-    for (const data of save.bases) {
-      this.addBase(new Base(
-        { saved: data, simTime }, deps.scene, deps.hud, deps.sfx, deps.effects, deps.markerManager));
-    }
-    return this.players.find((p) => p.id === save.activePlayerId) ?? this.players[0] ?? null;
   }
 
   // 自機を取り除き、メッシュを破棄する。
