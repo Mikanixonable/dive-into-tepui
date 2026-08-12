@@ -16,18 +16,17 @@ export type ViewId = 'combat' | 'map' | 'dock';
 // 3D 世界を描くビュー。ドックはこのどちらかに重なる形で開き、閉じると元へ戻る。
 type WorldViewId = 'combat' | 'map';
 
+// TODO: 戦闘⇔マップの切り替えと、ドックの開閉という2つの責務が同居している。分けるには
+// 3つのビューを1つの排他選択として外へ見せている口(current / setView / selectableViews)を
+// 2軸へ割る必要があり、ViewBadge のビュー選択 UI まで及ぶため現時点では容易ではない。
 export class ViewManager {
-  private _current: ViewId;
-  private returnFromDock: WorldViewId = 'map';
+  // ドック表示中も保持される 3D 側のビュー。カメラ・軌道計画の状態はこちらに従う。
+  private worldView: WorldViewId;
+  private isDockOpen = false;
   private touchControls: TouchControls | null = null;
   private docking: Docking | null = null;
 
-  get current(): ViewId { return this._current; }
-
-  // ドック表示中に背後で維持している 3D 側のビュー。カメラ・軌道計画の状態はこちらに従う。
-  private get worldView(): WorldViewId {
-    return this._current === 'dock' ? this.returnFromDock : this._current;
-  }
+  get current(): ViewId { return this.isDockOpen ? 'dock' : this.worldView; }
 
   constructor(
     private readonly hud: Hud,
@@ -35,9 +34,9 @@ export class ViewManager {
     private readonly cameraSystem: CameraSystem,
     private readonly displayTimeManager: DisplayTimeManager,
     private readonly mapPicker: MapPicker,
-    initialView: ViewId = 'combat',
+    initialView: WorldViewId = 'combat',
   ) {
-    this._current = initialView;
+    this.worldView = initialView;
     this.applyChrome();
   }
 
@@ -56,13 +55,17 @@ export class ViewManager {
   // applyChrome() は必ず走らせ、「この呼び出しの後、カメラ・計画編集・未来表示の各フラグは
   // 現在のビューに揃っている」という保証を遷移の有無に依らず成り立たせる。
   setView(next: ViewId): void {
-    if (next === this._current) { this.applyChrome(); return; }
+    if (next === this.current) { this.applyChrome(); return; }
     if (!this.canEnter(next)) return;
 
     const prevWorld = this.worldView;
-    if (this._current === 'dock') this.docking?.leaveDock();
-    if (next === 'dock') this.returnFromDock = prevWorld;
-    this._current = next;
+    if (this.isDockOpen) this.docking?.leaveDock();
+    if (next === 'dock') {
+      this.isDockOpen = true;
+    } else {
+      this.isDockOpen = false;
+      this.worldView = next;
+    }
 
     // 3D 側のビューが実際に変わるときだけマップの開閉処理を走らせる。マップ→ドックでは
     // 背後のマップを維持するので、計画編集の後始末(空ノードの間引き)を起こさない。
@@ -77,7 +80,7 @@ export class ViewManager {
 
   // ドックから、開く前のビューへ戻る。
   leaveDock(): void {
-    if (this._current === 'dock') this.setView(this.returnFromDock);
+    if (this.isDockOpen) this.setView(this.worldView);
   }
 
   // 現在の3D側ビュー(ドック表示中はその背後のビュー)をセーブデータへ書き出す。
@@ -89,7 +92,7 @@ export class ViewManager {
   // combatAvailable は操作対象の艦が生存しているか(戦闘ビューは自機を前提とする)。
   selectableViews(combatAvailable: boolean): readonly ViewId[] {
     const all: readonly ViewId[] = ['combat', 'map', 'dock'];
-    return all.filter((v) => v !== this._current && this.canEnter(v, combatAvailable));
+    return all.filter((v) => v !== this.current && this.canEnter(v, combatAvailable));
   }
 
   // そのビューへいま入れるか。ドックは対象基地が要り、戦闘は操作できる艦が要る。
@@ -105,7 +108,7 @@ export class ViewManager {
   private applyChrome(): void {
     const map = this.worldView === 'map';
     this.hud.root.classList.toggle('map-mode', map);
-    this.hud.root.classList.toggle('dock-mode', this._current === 'dock');
+    this.hud.root.classList.toggle('dock-mode', this.isDockOpen);
     syncNavballPlacement(this.hud.root, map);
     this.touchControls?.setMapMode(map);
     this.cameraSystem.setMapMode(map);
@@ -129,14 +132,14 @@ export class ViewManager {
   handleInput(input: Input, isPlaying: boolean, canToggleView: boolean): void {
     // 決着後はどのビューに居ても戦闘ビューへ戻す(結果画面を隠さないため)。
     if (!isPlaying) {
-      if (this._current === 'dock') this.leaveDock();
-      if (this._current === 'map') this.setView('combat');
+      if (this.isDockOpen) this.leaveDock();
+      if (this.current === 'map') this.setView('combat');
       return;
     }
-    if (this._current === 'dock') return;
+    if (this.isDockOpen) return;
     if (!canToggleView || !input.takeKey(K.toggleMapMode)) return;
 
-    if (this._current === 'map') {
+    if (this.current === 'map') {
       this.setView('combat');
       if (this.editor.plan.nodes.length > 0) {
         this.hud.hint(`マニューバ計画 ${this.editor.plan.nodes.length} 件確定 — [${K.autoWarpToNode.label}] で直近ノードへ自動ワープ`, 4500);
