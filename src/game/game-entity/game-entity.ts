@@ -207,9 +207,8 @@ export class GameEntity {
     if (this.truncated) return false;
     const p = this._predictedTrajectory;
 
-    // ホライズン時刻ちょうどを at() で引けるよう、先端は必ずホライズンを1ステップぶん
-    // 越えたところまで伸ばす。
-    if (p.state.t > simTime + horizon) return false;
+    // 先端が既にホライズンへ達していたら、それ以上は伸ばさない。
+    if (p.state.t >= simTime + horizon) return false;
 
     p.step(dt, attractors, this.bcInv, this.srpCoeff, null, this.sampleInterval(attractors, p.state, horizon), horizon);
 
