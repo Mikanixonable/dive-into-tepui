@@ -71,7 +71,7 @@ export class Player extends Ship {
   private readonly reentryEffects: ReentryEffects;
   private readonly markers: PlayerMarkers;
   // 自機軌道線: 明るいグレー。ターゲット(オレンジ)より目立たせない配色。
-  readonly orbitLine = new OrbitLine(0xbfc9d4, 0.55, C.LINE_RENDER_ORDER.shipOrbit);
+  readonly orbitLine = new OrbitLine(0x00ff00, 0.55, C.LINE_RENDER_ORDER.shipOrbit);
   // この艦自身のマニューバ計画。PlanEditor はアクティブ艦のこれを編集する。
   readonly plan = new Plan();
   readonly planExecutor: PlanExecutor;
