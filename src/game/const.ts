@@ -366,6 +366,10 @@ export const DISPLAY_DURATION_MIN = 3600;
 
 // --- 軌道計画の折れ線(plan/plan-arc.ts) ---
 export const PLAN_ARC_MAX_SAMPLES = 2000; // 1区間が保持するサンプル数の上限
+// 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか。表示期間を
+// 短くしたときは積分結果を捨てず答える範囲だけを狭めるが、狭めた区間に残るサンプルが数点まで
+// 減ると、折れ線上のクリック候補が飛び飛びの点になる。これを超えて粗ければ区間を作り直す。
+export const PLAN_ARC_MAX_SAMPLE_COARSENING = 8;
 // 1周回あたりの積分ステップ数。RK4 の誤差は1周あたりのステップ数でほぼ決まるので、
 // これを固定すると高度・離心率によらず精度が揃う(28日ぶんの LEO を積分して長半径誤差 1km 未満)。
 export const PLAN_ARC_STEPS_PER_REV = 100;

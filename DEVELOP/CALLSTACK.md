@@ -275,8 +275,10 @@
     - environment.update(displayTime, cameraSystem.overviewMode) // 小惑星帯・トロヤ群点群の位置再評価。editor.update より前
     - editor.update(simTime, displayTime) // 被選択物候補にアプシスアイコンが入るので mapPicker.refresh より前
     - planDisplay.update(plan, simTime, displayTime, show) // show = hasPlan(=ship!==null) && (editMode || plan.nodes.length > 0)
-      - path.update() // plan の corners を区間へ分解し、区間ごとに PlanArc を再積分。表示座標系と un-bake 時刻もここで確定。buildSegments は末尾区間の起点時刻の天体窓を1回だけ引き、区間長(segmentDurationFrom)と基準天体(strongestAttractor → Segment.apsisCenter)の両方をそこから決める
-        - arc.update() // 区間ごと。(state0, end) が変わったときだけ DynamicTrajectory で RK4 積分し直す(重い)。刻み幅ごとの重力源は classifyAttractors(mergeAttractors(gravityBodiesAt(ephemeris, t), dynamicAttractors)) → attractorsNear — 実積分・予測と同じ組み立て。dynamicAttractors は Game.update が entities.attractors() を1回だけ求めて渡す(区間長は最大1年に及び、そのあいだの位置を EntityManager には問えないので現在の実状態で固定する)。末尾区間だけ apsisCenter(区間起点の重力源スナップショット)が渡り、積分の各ステップ対で apsisCrossing による近地点/遠地点検出が走る
+      - path.update() // plan の corners を区間へ分解。表示座標系と un-bake 時刻もここで確定。buildSegments は末尾区間の起点時刻の天体窓を1回だけ引き、区間長(segmentDurationFrom)と基準天体(strongestAttractor → Segment.apsisCenter)の両方をそこから決める
+        - [区間ごと] arc.represents(state0, end, sourceRevision, apsisCenterId, tracksLiveAnchor) // 既存 arc が今フレームの区間をそのまま表せるか。sourceRevision/apsisCenterId の不一致・積分済みサンプル間隔の粗さのいずれかで false
+          - [false、または対応する arc がまだ無い] new PlanArc(state0, end, provider, apsisCenter) // constructor が end まで同期的に DynamicTrajectory で RK4 積分(重い)。刻み幅ごとの重力源は classifyAttractors(mergeAttractors(gravityBodiesAt(ephemeris, t), dynamicAttractors)) → attractorsNear — 実積分・予測と同じ組み立て。dynamicAttractors は Game.update が entities.attractors() を1回だけ求めて渡す(区間長は最大1年に及び、そのあいだの位置を EntityManager には問えないので現在の実状態で固定する)。末尾区間だけ apsisCenter(区間起点の重力源スナップショット)が渡り、積分の各ステップ対で apsisCrossing による近地点/遠地点検出が走る
+          - [true] arc.setEnd(end) // 終端だけ動かす。積分先端が要求終端にサンプル間隔未満まで届いていなければ integrateTo() で先端から継ぎ足す(区間を作り直さない)。届いていれば何もしない
       - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
       - apsisIconsOf() // path.finalSegment() の periapsis/apoapsis(末尾 arc が積分中に見つけた値)と apsisCenter(検出時と同じ基準天体)を読み、その天体の位置だけを ephemeris.positionOf(center.id, 極値の時刻) で引き直して距離を出す。両方あるとき (遠地点距離-近地点距離)/(遠地点距離+近地点距離) < APSIS_MIN_ECC なら空、片方のみ(双曲線等)ならそのまま出す
   - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // editor.update の後・mapPicker.refresh の前
@@ -411,11 +413,12 @@
       - path.sync(fo, project, scale, cameraPos) // ノードの有無に関わらず毎フレーム呼ぶ(画面判定に使う視点を更新するため)。区間の折れ線メッシュ。表示座標系と un-bake 時刻は update フェーズで確定済み。cameraPos は nearestSample(DOM ポインタイベント起点)向けにここでキャッシュするだけ
         // 区間の終端はノードの t。末尾区間だけは起点の解析軌道1周期ぶん(plan.ts の orbitPeriodOf)
         // ノードの t は Plan.nodeTimeRange の制約で起点から1周期以内なので、どの区間も1周を超えない
-        - [区間ごと] サンプル列中央の代表点で scale(m/px) を引き、破線のドット・隙間のピクセル指定を実距離へ換算
-        - arc.setVisible(true) + arc.sync(dashSize, gapSize) // 有効な区間ごと。先頭で破線パターンを書き込んでからサンプル列全体を1本の線へ同期する
-          - line.syncGeometry() // 点列 or frame が変わったときのみ頂点を bake
+        - [区間ごと] サンプル列中央の代表点で scale(m/px) を引き、破線のドット・隙間のピクセル指定を実距離へ換算。line = lineAt(i)(区間 index に対応する TrajectoryLine プール要素。区間数が減っても捨てず隠すだけ)
+        - line.setVisible(true) + line.setDash(dashSize, gapSize) // 有効な区間ごと
+          - line.syncGeometry(arc.trajectory, null, arc.end, frame, ...) // 点列 or frame or end が変わったときのみ頂点を bake。end は arc.end(積分先端が継ぎ足しで先まで伸びていても、この区間として答える範囲だけへクランプ)
           - line.syncTransform() // 毎フレーム(剛体 un-bake + フローティングオリジン補正)
-        - arc.setVisible(false) // 区間が減って余った PlanArc ごと
+          - line.sync(camera)
+        - lines[i].setVisible(false) // 区間数が減って余った線ごと(index は保持し続ける)
       - syncGhost() → markerManager.setPosition('plannedPlayer') or hide() // update が求めた ghost が null なら hide
       - syncApsisMarkers(project, overviewMode, cameraPos) → markerManager.setPosition('apsisPe'/'apsisAp') or hide() // update が求めたアイコンごと。[overviewMode かつ isOccluded] も hide
     - [!hasPlan、または(!editMode かつ plan.nodes.length === 0)] planDisplay.hide()
@@ -433,7 +436,7 @@
     - [overviewMode] planRotationZone.setNearby(members) / setSelected(planDisplay.planFrame.rotatingWith)
   - entities.players ごとに // 計画軌道の折れ線と同じ座標系(editor.planDisplay.planFrame)で bake する
     - ship.syncTrajectoryLine(ship === player && ship.alive, editor.planDisplay.planFrame, simTime, ephemeris, fo, cameraSystem.activeCamera, attractors) // 操作対象の生存艦だけ show=true。それ以外は trajectory=null で畳む
-      - trajectoryLine.syncGeometry(show ? predictedTrajectory : null, simTime, frame, ...) // predictedTrajectory.samplesOldestFirst() を frame で bake(点列の参照が変わらない限り再bakeしない)。simTime は描画区間の下限で sampler の時刻写像だけを動かす — 線の先頭は predictedTrajectory を simTime で補間した点になる
+      - trajectoryLine.syncGeometry(show ? predictedTrajectory : null, simTime, null, frame, ...) // predictedTrajectory.samplesOldestFirst() を frame で bake(点列の参照が変わらない限り再bakeしない)。simTime は描画区間の下限で sampler の時刻写像だけを動かす — 線の先頭は predictedTrajectory を simTime で補間した点になる。上限は null(先端まで無制限)
       - trajectoryLine.syncTransform()
       - trajectoryLine.sync(camera) // 頂点2未満なら curve.clear()
     - ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, _window.duration, overviewMode)) // overviewMode: 予測が表示ホライズンを覆いきったときだけ解析楕円を抑制。!overviewMode: 予測線が描かれてさえいれば抑制
@@ -482,17 +485,21 @@
   なり `resolveCollision=false` で渡るため、`advance` の中で丸ごとスキップされる(接触判定・弾命中を
   含む)。substep が長大になる高ワープでは弾もすり抜けるが、`canPlayerFire` が同じ閾値で発砲自体を
   止めているので実害は無い。
-- **計画軌道 RK4 の再計算**は `PlanArc.update` が per-arc に持つ `(state0, end)` の変化検出だが、
-  `tracksLiveAnchor` 引数(計画が空のあいだの唯一の区間だけ true — その区間は anchor が自機の
-  現在状態を毎フレーム追従する)で判定基準が変わる。false(ノードを置いた後の区間)なら
-  `state0`/`end` の同一性・値の変化そのものが再積分の合図で、編集していないフレームでは一切
-  再積分されない。true の間は `state0.t` も区間長(≒ 自機の接触周期。[表示時刻] パネルが「1周」
-  のとき J2・大気抵抗で毎フレーム連続的に変化する)も厳密には毎フレーム変わるため、直近の
-  再積分からの変化が描画解像度のサンプル間隔(区間長 / `PLAN_ARC_MAX_SAMPLES`)未満の間だけ
-  再積分をスキップする。ただし `state0` の同一性が変わっていて `t` が前進していない(別艦への
-  切り替え・ドック発進・衝突による状態上書きなどの非連続な差し替え)ときはこの閾値を無視して
-  即座に再積分する。マップモード中でも大半のフレームは `line.syncTransform()`(O(1) の
-  剛体変換)だけで済む。
+- **計画軌道 RK4 の作り直し**は `PlanPath.update` が区間ごとに問う
+  `PlanArc.represents(state0, end, sourceRevision, apsisCenterId, tracksLiveAnchor)` で決まる。
+  `sourceRevision`(重力源プロバイダの revision)/`apsisCenterId` が食い違えば即座に作り直す
+  (`new PlanArc(...)` — constructor 内で end までの同期的な RK4 積分)。一致していても、積分済みの
+  間引き間隔が今回の要求区間の求める間引き間隔([表示期間]を大きく縮めた直後など)を
+  `PLAN_ARC_MAX_SAMPLE_COARSENING` 倍を超えて上回っていれば作り直す(クリック候補が飛び飛びの点に
+  なるのを避けるため)。`state0` が同一参照(ノードを置いた後の区間の通常のフレーム。`end` だけが
+  動く編集も含む)なら represents は真 — 実際に `end` が動いていれば `arc.setEnd(end)` が終端だけを
+  動かす: 積分先端が要求終端にサンプル間隔未満まで届いていれば継ぎ足さず、届いていなければ現在の
+  積分先端から続きを刻む(区間全体は作り直さない)。`tracksLiveAnchor`(計画が空のあいだの唯一の
+  区間)では `state0` が自機を毎フレーム追従するため厳密一致では判定できない —
+  `anchorJumped`(別艦への切り替え・ドック発進・衝突による状態上書きなどの非連続な差し替え)を
+  弾いたうえで、直近の起点からの時刻の変化がサンプル間隔未満なら同じ軌道が時間方向に進んだだけと
+  みなして represents は真のまま(setEnd による継ぎ足しだけで済む)。マップモード中でも大半の
+  フレームは represents が真で `line.syncTransform()`(O(1) の剛体変換)だけで済む。
 - **過去 state の記録・prevState の更新は `physics/dynamic-trajectory.ts` の `DynamicTrajectory`(`GameEntity.actualTrajectory`)の
   `step`/`reset` が行う**ので、この木には独立ノードとして現れない。`entity.stepActual()` /
   `contactPhysics.resolveSubstep()`/`resolveBelt()` の解決結果書き戻し / 反動など、state へ代入する
@@ -510,16 +517,18 @@
   `stateOf`/`positionOf`/`attractorsAt` などを呼ぶたび、ヒットしなければ
   恒星→惑星-衛星系重心→惑星/衛星の合成をゼロから評価する。`attractorsAt` は
   同一 `t` に対して同一の配列参照を返すため、呼び出し側は返り値やその要素を書き換えてはならない。
-- **重力積分が使う配列は3経路(`Simulator.substep`/`Predictor.advanceBudget`/`PlanArc.integrate`)とも
-  同じ組み立て: 合流(`gravityBodiesAt` の解析天体 + 生存中の重力天体)→ `classifyAttractors`
-  → `attractorsNear`(問い合わせ位置の27近傍グリッド)。**
+- **重力積分が使う配列は3経路(`Simulator.substep`/`Predictor.advanceBudget`/`PlanArc` の private
+  `integrateTo`)とも同じ組み立て: 合流(`gravityBodiesAt` の解析天体 + 生存中の重力天体)→
+  `classifyAttractors` → `attractorsNear`(問い合わせ位置の27近傍グリッド)。**
   `substep` はサブステップ中点で1回だけ合流・分類し、その結果をそのサブステップの全エンティティへ
   使い回す(処理順に依存した誤差を避けるため)。`Predictor` は各対象の予測先端の時刻ごとに
   `predictedAttractorsAt` で他の重力天体を引き直す(その時刻に達していない天体は落とす — 現在
   位置に凍結すると「その時刻に居ない場所」から引くことになるため)。`PlanArc` は生存中の重力天体を
-  `Game.update` が1回求めた `dynamicAttractors`(現在の実状態)に固定したまま区間全体で使い回す
-  (区間長は最大1年に及び、そのあいだの位置を `EntityManager` には問えない)。3経路とも `Ephemeris`
-  の窓を直接書き換えず、常に新しい配列へ展開する。
+  `Game.update` が1回求めた `dynamicAttractors`(現在の実状態)に固定したまま使い回す(区間長は
+  最大1年に及び、そのあいだの位置を `EntityManager` には問えない) — `integrateTo` は constructor
+  からの初回だけでなく `setEnd` からの継ぎ足しでも呼ばれうるが、その都度この固定値を読み直すだけで
+  `dynamicAttractors` 自体を更新することはない。3経路とも `Ephemeris` の窓を直接書き換えず、
+  常に新しい配列へ展開する。
 - **HUD マーカーは持ち主の `sync` が自分で出す**。`game.sync` に並ぶのは「1つの対象では決められない」
   ものだけ(`enemyMarkers` = 画面上のまとめ、`leadMarkers` = 自機と敵の両方に依存、`equatorNodeMarkers` =
   操作艦・navTarget・targeter という複数の役割にまたがる source 列に依存)で、残りは

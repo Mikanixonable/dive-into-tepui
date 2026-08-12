@@ -229,7 +229,7 @@ export class PerfMeter {
       this.countRow('draw-calls', 'draw calls', '描画', this.drawCallStats, frames),
       this.countRow('draw-tris', 'triangles', '描画', this.triangleStats, frames),
 
-      { key: 'plan-arcs', label: '再積分区間', value: `${c.planArcs}`, group: '計画軌道' },
+      { key: 'plan-arcs', label: '再生成区間', value: `${c.planArcs}`, group: '計画軌道' },
       { key: 'plan-steps', label: '積分step', value: `${c.planSteps}`, group: '計画軌道' },
 
       { key: 'pred-tracked', label: 'tracked', value: `${c.predicted}`, group: '予測' },

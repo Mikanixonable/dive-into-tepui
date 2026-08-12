@@ -43,6 +43,7 @@ export class TrajectoryLine {
   private lastSamples: readonly KinematicState[] | null = null;
   private lastFrame: ReferenceFrame | null = null;
   private lastFrom: number | null = null;
+  private lastTo: number | null = null;
   // Curve へ渡す revision。(samples, frame, from) の組が変わったときだけ新しいオブジェクトへ差し替える。
   private revision: object = {};
   private readonly unbakeQuat = new THREE.Quaternion();
@@ -51,6 +52,8 @@ export class TrajectoryLine {
   private baked: readonly KinematicState[] = [];
   // 描画区間の下限(bake 済み区間の先頭へクランプ済み)。null は下限なし(保持区間全体を描く)。
   private startTime: number | null = null;
+  // 描画区間の上限(bake 済み区間の末尾へクランプ済み)。null は上限なし。
+  private endTime: number | null = null;
 
   // 単色の折れ線を構築する。dash を渡すと破線になる。
   constructor(color: number, opacity = 0.85, renderOrder = 2, dash?: DashPattern) {
@@ -58,7 +61,7 @@ export class TrajectoryLine {
     this.line = this.curve.object;
   }
 
-  // t∈[0,1] を [startTime, bake済み区間の末尾] の時刻範囲へ線形に写し、その時刻を挟む2点間を
+  // t∈[0,1] を [startTime, endTime] の時刻範囲へ線形に写し、その時刻を挟む2点間を
   // エルミート補間する。
   private readonly sampler: CurveSampler = (t, out) => {
     const baked = this.baked;
@@ -66,7 +69,8 @@ export class TrajectoryLine {
     if (n === 0) return;
     if (n === 1) { out.set(baked[0]!.r.x, baked[0]!.r.y, baked[0]!.r.z); return; }
     const start = this.startTime ?? baked[0]!.t;
-    const time = start + (baked[n - 1]!.t - start) * t;
+    const end = this.endTime ?? baked[n - 1]!.t;
+    const time = start + (end - start) * t;
     let lo = 0, hi = n - 1;
     while (hi - lo > 1) {
       const mid = (lo + hi) >> 1;
@@ -76,13 +80,13 @@ export class TrajectoryLine {
     out.set(r.x, r.y, r.z);
   };
 
-  // trajectory の保持区間のうち from 以降を描く対象にする。trajectory が null なら曲線を持たない
-  // 状態にする。from は描画の下限時刻で、null なら保持区間全体。保持区間より前は補間できないので
-  // 区間の先頭へクランプする。
-  // 座標系相対への焼き直し(非剛体変形)は(点列, frame)が変わったときだけ行う — from は sampler の
-  // 時刻写像だけを変えるので、焼き直さず revision の差し替えだけで足りる。
+  // trajectory の保持区間のうち [from, to] を描く対象にする。trajectory が null なら曲線を持たない
+  // 状態にする。from/to はそれぞれ描画の下限/上限時刻で、null ならその側は無制限(保持区間の
+  // 端まで)。保持区間の外は補間できないので、それぞれ区間の先頭/末尾へクランプする。
+  // 座標系相対への焼き直し(非剛体変形)は(点列, frame)が変わったときだけ行う — from/to は
+  // sampler の時刻写像だけを変えるので、焼き直さず revision の差し替えだけで足りる。
   syncGeometry(
-    trajectory: DynamicTrajectory | null, from: number | null, frame: ReferenceFrame,
+    trajectory: DynamicTrajectory | null, from: number | null, to: number | null, frame: ReferenceFrame,
     ephemeris: Ephemeris, attractors: readonly Attractor[],
   ): void {
     const samples = trajectory?.samplesOldestFirst() ?? NO_SAMPLES;
@@ -99,19 +103,22 @@ export class TrajectoryLine {
       });
     }
     this.startTime = this.baked.length > 0 ? Math.max(from ?? -Infinity, this.baked[0]!.t) : null;
-    if (rebaked || from !== this.lastFrom) {
+    this.endTime = this.baked.length > 0 ? Math.min(to ?? Infinity, this.baked[this.baked.length - 1]!.t) : null;
+    if (rebaked || from !== this.lastFrom || to !== this.lastTo) {
       this.lastFrom = from;
+      this.lastTo = to;
       this.revision = {};
     }
   }
 
   // 適応分割を実行し GPU バッファへ反映する。camera = 画面上のサジッタを実距離へ換算するための
-  // 描画カメラ。描く区間が潰れている(bake 済み点列が2点未満、または有効な開始時刻が末尾の時刻
+  // 描画カメラ。描く区間が潰れている(bake 済み点列が2点未満、または有効な開始時刻が終了時刻
   // 以上)なら曲線を持たない状態へ戻す。
   sync(camera: THREE.Camera): void {
     const baked = this.baked;
     const start = this.startTime;
-    if (baked.length < 2 || start === null || start >= baked[baked.length - 1]!.t) {
+    const end = this.endTime;
+    if (baked.length < 2 || start === null || end === null || start >= end) {
       this.curve.clear();
       return;
     }
