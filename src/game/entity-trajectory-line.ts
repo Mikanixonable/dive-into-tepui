@@ -1,5 +1,6 @@
 // GameEntity ごとに1本、数値積分された点列を実線の折れ線として描く。予測モード(既定)は
-// GameEntity.predictedTrajectory(未来、数値積分で伸びていく予測軌道)だけを描き、計画軌道
+// entity の現在状態を先頭に据え、GameEntity.predictedTrajectory(数値積分で伸びていく予測軌道)
+// のうちそれより未来のサンプルを続ける — 線の先頭が常に現在位置に一致する。計画軌道
 // (まだ実現していない要求)と対になる「実際に起きること」の線であるため破線にはしない。
 // デバッグモードは ?debugLines=1 のときだけ有効になる自己完結の URL パラメータゲート付きで、
 // actualTrajectory.history(過去)+ predictedTrajectory.history(未来、あれば)を1本に連結して描く。
@@ -44,8 +45,9 @@ export class EntityTrajectoryLine {
     );
   }
 
-  // GameEntity.predictedTrajectory(未来、数値積分で伸びていく予測軌道)だけを描く。計画軌道
-  // (まだ実現していない要求)と対になる「実際に起きること」の線であるため破線にはしない。
+  // entity の現在状態を先頭に、GameEntity.predictedTrajectory(数値積分で伸びていく予測軌道)の
+  // 未来のサンプルを続けて描く。計画軌道(まだ実現していない要求)と対になる「実際に起きること」の
+  // 線であるため破線にはしない。
   static predicted(scene: THREE.Scene): EntityTrajectoryLine {
     return new EntityTrajectoryLine(scene, 'predicted');
   }
@@ -56,8 +58,17 @@ export class EntityTrajectoryLine {
     return new EntityTrajectoryLine(scene, 'debug');
   }
 
+  // 描く点列を返す。予測モードでは先頭を entity の現在状態に据え、それより未来の予測サンプル
+  // だけを続ける(線の先頭が常に現在位置に一致する)。
   private samplesFor(entity: GameEntity): readonly KinematicState[] {
-    if (this.mode === 'predicted') return entity.predictedTrajectory?.samplesOldestFirst() ?? EMPTY_SAMPLES;
+    if (this.mode === 'predicted') {
+      const predicted = entity.predictedTrajectory?.samplesOldestFirst() ?? EMPTY_SAMPLES;
+      const now = entity.state;
+      let i = 0;
+      while (i < predicted.length && predicted[i]!.t <= now.t) i++;
+      if (i >= predicted.length) return EMPTY_SAMPLES;
+      return [now, ...predicted.slice(i)];
+    }
 
     const currentSamples = entity.actualTrajectory.samplesOldestFirst();
     let predictedSamples = entity.predictedTrajectory?.samplesOldestFirst() ?? EMPTY_SAMPLES;
@@ -89,7 +100,6 @@ export class EntityTrajectoryLine {
       line.syncGeometry(samples, frame, ephemeris, attractors);
       line.syncTransform(frame, simTime, ephemeris, fo, attractors);
       line.sync(camera);
-      line.setVisible(true);
     }
     this.targetSet.clear();
     for (const entity of targets) this.targetSet.add(entity);

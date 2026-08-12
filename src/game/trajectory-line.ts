@@ -91,9 +91,9 @@ export class TrajectoryLine {
   }
 
   // 適応分割を実行し GPU バッファへ反映する。camera = 画面上のサジッタを実距離へ換算するための
-  // 描画カメラ。点列が2点未満なら Curve が自然に非表示のままになる。
+  // 描画カメラ。点列が2点未満なら曲線を持たない状態へ戻す。
   sync(camera: THREE.Camera): void {
-    if (this.baked.length < 2) { this.curve.setVisible(false); return; }
+    if (this.baked.length < 2) { this.curve.clear(); return; }
     this.curve.setCurve(this.sampler, { revision: this.revision, camera });
   }
 

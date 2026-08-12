@@ -200,8 +200,6 @@ export class GameEntity {
   // horizon は simTime から先に予測する長さ [s]。伸ばせなかったら false。
   stepPredicted(attractors: readonly Attractor[], simTime: number, dt: number, horizon: number): boolean {
     if (!this.predictsFuture) return false;
-    // 自由飛行前提の予測は噴射中に成立しないので、推力がかかっている間は伸ばさない。
-    if (this.thrust !== null) return false;
     if (this._predictedTrajectory === null) {
       this._predictedTrajectory = new DynamicTrajectory(this.actualTrajectory.state);
       this.truncated = false;

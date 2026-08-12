@@ -475,6 +475,19 @@ export class Curve {
     (this.geom.getAttribute('lineDistance') as THREE.BufferAttribute).needsUpdate = true;
   }
 
+  // 曲線を持たない状態へ戻す。表示要求に関わらず何も描かれなくなる。
+  clear(): void {
+    this.bakedCount = 0;
+    this.vertexCount = 0;
+    this.hasBaked = false;
+    this.bakedScale = null;
+    this.lastRevision = undefined;
+    this.hasExcludeCenter = false;
+    this.fadeNeutral = true;
+    this.geom.setDrawRange(0, 0);
+    this.applyVisible();
+  }
+
   // 破線パターンを書き換える。破線でないマテリアルでは何もしない。
   setDash(dashSize: number, gapSize: number): void {
     if (this.mat instanceof THREE.LineDashedMaterial) {
