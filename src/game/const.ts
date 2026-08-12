@@ -354,7 +354,7 @@ export const PLAN_EXECUTOR_DV_EPS = 0.05; // これ未満のΔvは燃焼不要�
 export const PLAN_EXECUTOR_ARM_ANGLE_DEG = 2.0; // 姿勢誤差がこれを切ったら点火を許可する [deg]
 export const PLAN_EXECUTOR_TRIM_DV = 5.0; // 残り射影がこれを下回ったら最低出力段へ落とす [m/s]
 
-// --- 未来表示の時刻(display-time-manager.ts のスライダー) ---
+// --- 未来表示の時刻(display-window-manager.ts のスライダー) ---
 export const DISPLAY_DUR_90MIN = 90 * 60; // 90分
 export const DISPLAY_DUR_DAY = 86400; // 1日
 export const DISPLAY_DUR_WEEK = 7 * 86400; // 7日

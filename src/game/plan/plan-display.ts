@@ -1,11 +1,10 @@
-// 軌道計画の姿の表示: 計画折れ線(PlanPath)の駆動、表示座標系(planFrame)、
-// 表示時刻の計画上の自機位置ゴースト(⬢ plannedPlayer マーカー)。
+// 軌道計画の姿の表示: 計画折れ線(PlanPath)の駆動と、表示時刻の計画上の自機位置ゴースト
+// (⬢ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { Vec3, len, sub } from '../../physics/vec3';
 import { Attractor, strongestAttractor } from '../../physics/attractor';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../physics/projection';
-import { ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist, fmtDist } from '../hud/utils';
 import { celestialBodyName } from '../hud/frame-labels';
@@ -18,6 +17,7 @@ import { MapPickable } from '../map-pick';
 import * as C from '../const';
 import { DisplayDurationSource, Plan } from './plan';
 import { PlanPath } from './plan-path';
+import type { DisplayWindow } from '../display-window-manager';
 import type { PlanAttractorProvider } from '../simulation/attractors';
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
@@ -60,8 +60,6 @@ function screenDistSq(a: Projected, b: Projected): number {
 }
 
 export class PlanDisplay {
-  planFrame: ReferenceFrame;
-
   readonly path: PlanPath;
 
   private apsisIcons: readonly ApsisIcon[] = [];
@@ -80,14 +78,13 @@ export class PlanDisplay {
     private readonly ephemeris: Ephemeris,
     displayDuration: DisplayDurationSource,
   ) {
-    this.planFrame = ephemeris.inertialFrame;
     this.path = new PlanPath(scene, displayDuration);
   }
 
   // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。
   // show=false のときは何も求めない — 出さない計画の位置は持たない。
   update(
-    plan: Plan, simTime: number, displayTime: number, show: boolean,
+    plan: Plan, displayWindow: DisplayWindow, show: boolean,
     attractorProvider: PlanAttractorProvider,
   ): void {
     this.plan = show ? plan : null;
@@ -98,8 +95,9 @@ export class PlanDisplay {
       this.tickIcons = [];
       return;
     }
+    const { simTime, displayTime } = displayWindow;
     this.attractors = this.ephemeris.attractorsAt(displayTime);
-    this.path.update(plan, this.ephemeris, this.planFrame, simTime, this.attractors, attractorProvider);
+    this.path.update(plan, this.ephemeris, displayWindow.frame, simTime, this.attractors, attractorProvider);
     this.ghost = this.ghostAt(plan, displayTime, simTime);
     this.apsisIcons = this.apsisIconsOf();
     this.impactIcons = this.impactIconsOf();

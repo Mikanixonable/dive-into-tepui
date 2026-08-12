@@ -6,7 +6,7 @@ import { TouchControls } from './input/touch';
 import type { Input } from './input/input';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { PlanEditor } from './plan/plan-editor';
-import { DisplayTimeManager } from './display-time-manager';
+import { DisplayWindowManager } from './display-window-manager';
 import { MapPicker } from './map-picker';
 import type { Docking } from './docking';
 import { syncNavballPlacement } from './hud/dom';
@@ -32,7 +32,7 @@ export class ViewManager {
     private readonly hud: Hud,
     private readonly editor: PlanEditor,
     private readonly cameraSystem: CameraSystem,
-    private readonly displayTimeManager: DisplayTimeManager,
+    private readonly displayWindow: DisplayWindowManager,
     private readonly mapPicker: MapPicker,
     initialView: WorldViewId = 'combat',
   ) {
@@ -113,7 +113,7 @@ export class ViewManager {
     this.touchControls?.setMapMode(map);
     this.cameraSystem.setMapMode(map);
     this.editor.setMapMode(map);
-    this.displayTimeManager.forceCurrent = !map;
+    this.displayWindow.forceCurrent = !map;
   }
 
   // マップへ入るときの支度。

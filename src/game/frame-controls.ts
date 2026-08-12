@@ -1,6 +1,6 @@
-// マップモードの「座標系」パネル。マップカメラの視点と計画折れ線の描画基準という、
-// 別々の持ち主にある2つの座標系を1つのパネルから書き換える横断。状態そのものは
-// 両クラスに置いたままにし、ここは参照を受け取って書くだけに留める。
+// マップモードの「座標系」パネル。マップカメラの視点と未来表示(計画折れ線・予測軌道線・
+// 交点マーカー)の描画基準という、別々の持ち主にある2つの座標系を1つのパネルから書き換える
+// 横断。状態そのものは両クラスに置いたままにし、ここは参照を受け取って書くだけに留める。
 import { Attractor } from '../physics/attractor';
 import type { Ephemeris } from '../physics/ephemeris';
 import { Vec3 } from '../physics/vec3';
@@ -14,7 +14,7 @@ import { celestialBodyName } from './hud/frame-labels';
 import { hudDock } from './hud/dom';
 import { TEXT_DIM } from './theme';
 import type { MapPickable } from './map-pick';
-import type { PlanDisplay } from './plan/plan-display';
+import type { DisplayWindowManager } from './display-window-manager';
 
 const STYLE = `
 #hud .frame-section { margin-top: 8px; }
@@ -65,7 +65,7 @@ export class FrameControls {
     popupRoot: HTMLElement,
     private readonly ephemeris: Ephemeris,
     private readonly overviewCamera: OverviewCamera,
-    private readonly planDisplay: PlanDisplay,
+    private readonly displayWindow: DisplayWindowManager,
   ) {
     ensureStyle();
     this.panel = document.createElement('div');
@@ -94,14 +94,14 @@ export class FrameControls {
     this.planCenterZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-origin-zone');
     this.planCenterZone.onSelect = (id) => {
       if (id === null) return;
-      planDisplay.planFrame = ephemeris.frameOf(id, planDisplay.planFrame.rotatingWith);
+      displayWindow.frame = ephemeris.frameOf(id, displayWindow.frame.rotatingWith);
     };
     planSection.appendChild(this.planCenterZone.element);
 
     this.planRotationZone = new RotationZone('線を一緒に回す', ephemeris);
     this.planRotationZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-rotation-zone');
     this.planRotationZone.onSelect = (rotatingWith) => {
-      planDisplay.planFrame = ephemeris.frameOf(planDisplay.planFrame.center, rotatingWith);
+      displayWindow.frame = ephemeris.frameOf(displayWindow.frame.center, rotatingWith);
     };
     planSection.appendChild(this.planRotationZone.element);
 
@@ -135,7 +135,7 @@ export class FrameControls {
     if (!this.followCamera) return;
     const id = focusTargetId(target);
     if (id !== undefined && id in this.ephemeris.registry) {
-      this.planDisplay.planFrame = this.ephemeris.frameOf(id, this.planDisplay.planFrame.rotatingWith);
+      this.displayWindow.frame = this.ephemeris.frameOf(id, this.displayWindow.frame.rotatingWith);
     }
   }
 
@@ -144,8 +144,8 @@ export class FrameControls {
     const camId = focusTargetId(this.overviewCamera.focus);
     const camCenter = camId === undefined ? '固定なし' : celestialBodyName(camId);
     const camRot = this.overviewCamera.cameraFrame.rotatingWith;
-    const planCenter = celestialBodyName(this.planDisplay.planFrame.center);
-    const planRot = this.planDisplay.planFrame.rotatingWith;
+    const planCenter = celestialBodyName(this.displayWindow.frame.center);
+    const planRot = this.displayWindow.frame.rotatingWith;
     const rotText = (id: string | null): string => (id === null ? '慣性系' : `${celestialBodyName(id)}回転系`);
     return `カメラ: ${camCenter}・${rotText(camRot)} / 計画: ${planCenter}・${rotText(planRot)}`;
   }
@@ -169,9 +169,9 @@ export class FrameControls {
 
     this.planCenterZone.setItems(pickables);
     this.planCenterZone.setNearby(members, pickables);
-    this.planCenterZone.setSelected(this.planDisplay.planFrame.center);
+    this.planCenterZone.setSelected(this.displayWindow.frame.center);
     this.planRotationZone.setNearby(members);
-    this.planRotationZone.setSelected(this.planDisplay.planFrame.rotatingWith);
+    this.planRotationZone.setSelected(this.displayWindow.frame.rotatingWith);
 
     this.followToggle.setOn(this.followCamera);
     this.summary.textContent = this.summaryText();

@@ -3,7 +3,7 @@ import * as C from './const';
 import { hudButton, SegmentedControl } from './hud/buttons';
 import { buildCollapseToggle, PREDICT_TOGGLE_LABELS } from './hud/dom';
 import { SIM_EPOCH_SEC, fmtDateTime, fmtDuration } from './hud/utils';
-import type { DisplayDurationKey } from './display-time-manager';
+import type { DisplayDurationKey } from './display-window-manager';
 import type { DisplayTick } from './hud/tick-scale';
 import { FILL_2, FILL_4 } from './theme';
 

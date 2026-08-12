@@ -30,7 +30,7 @@ description: このプロジェクトで確定済みの横断的な責務境界(
 
 1. どちらか一方の所有者へ寄せる。
 2. **その横断そのものを責務とするモジュールを1つ立てる**(`ViewManager` / `MapPicker` /
-   `FrameControls` / `ActivePlayerController` / `FrameWindow` がその形)。
+   `FrameControls` / `ActivePlayerController` / `DisplayWindowManager` がその形)。
 
 `Game` はそれを1行呼ぶだけになる。この判断に例外はない。
 
@@ -228,13 +228,14 @@ THREE 非依存かつ純粋であっても、次のものは `physics/` に置�
 **切り替える側(トグラー)を一箇所に置いて両方を書き換える**(ルール1の2番目の選択肢と同じ形)。
 
 - `PlanEditor.editMode`(入力・編集の可否)・`CameraSystem.overviewMode`(視点・描画)・
-  `DisplayTimeManager.forceCurrent`(未来表示の可否) → 同時トグルは `MapModeToggler` の責務。
-- `OverviewCamera.cameraFrame`(視点が固定される座標系)と `PlanDisplay.planFrame`
-  (計画軌道を描く座標系) → プレイヤーが独立に選ぶ別々の値。`ReferenceFrame` 自体が
-  「原点 × 回転」の直積(`physics/frame.ts`)なので、UI(`frame-controls.ts`)もその形に合わせて
-  4ゾーン(カメラ/カメラ回転/並進/計画軌道回転)に分かれ、`FrameControls` は両方の状態へ書き込む
-  横断モジュールではあっても、書き込み先の2つの正本を1つに統合したり同時に切り替えたりはしない
-  — カメラの原点・回転を変えても `planFrame` は動かず、その逆も同様。
+  `DisplayWindowManager.forceCurrent`(未来表示の可否) → 同時トグルは `MapModeToggler` の責務。
+- `OverviewCamera.cameraFrame`(視点が固定される座標系)と `DisplayWindowManager.frame`
+  (計画軌道・予測軌道線・交点マーカーなど未来表示を描く座標系) → プレイヤーが独立に選ぶ別々の値。
+  `ReferenceFrame` 自体が「原点 × 回転」の直積(`physics/frame.ts`)なので、UI(`frame-controls.ts`)
+  もその形に合わせて4ゾーン(カメラ/カメラ回転/並進/計画軌道回転)に分かれ、`FrameControls` は
+  両方の状態へ書き込む横断モジュールではあっても、書き込み先の2つの正本(`OverviewCamera`・
+  `DisplayWindowManager`)を1つに統合したり同時に切り替えたりはしない — カメラの原点・回転を
+  変えても `frame` は動かず、その逆も同様。
 - `BodyClassToggles` のクラス別の軌道線表示(`*Orbit`)・アイコン表示(`*Icon`)・
   ラベル表示(`*Label`)→ プレイヤーが独立に選ぶ3つの値。読む側も別で、アイコン/ラベルは
   `visibleBodyIds`/`bodyIconLabel`、軌道線は `EnvironmentScene.showsReferenceLine`。

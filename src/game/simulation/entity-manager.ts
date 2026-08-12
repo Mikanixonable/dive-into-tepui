@@ -19,7 +19,7 @@ import type { CombatTarget } from '../targeter';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Ephemeris } from '../../physics/ephemeris';
-import type { ReferenceFrame } from '../../physics/frame';
+import type { DisplayWindow } from '../display-window-manager';
 import type { GameSaveData } from '../save-data';
 import type { Hud } from '../hud/hud';
 import type { Sfx } from '../../audio/sfx';
@@ -326,14 +326,14 @@ export class EntityManager {
   // 全自機の予測軌道線を同期し、それで解析楕円を代替できる艦は楕円側を抑制する。
   // 積分予測を描くのは操作対象艦だけ — 他の艦は常に解析楕円のまま。
   syncPlayerTrajectoryLines(
-    activePlayer: Player | null, planFrame: ReferenceFrame, simTime: number, predictHorizon: number,
-    overviewMode: boolean, ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera,
-    attractors: readonly Attractor[],
+    activePlayer: Player | null, displayWindow: DisplayWindow, overviewMode: boolean, ephemeris: Ephemeris,
+    fo: FloatingOrigin, camera: THREE.Camera, attractors: readonly Attractor[],
   ): void {
+    const { frame, simTime, duration } = displayWindow;
     for (const ship of this.players) {
       ship.syncTrajectoryLine(
-        ship === activePlayer && ship.alive, planFrame, simTime, ephemeris, fo, camera, attractors);
-      ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, predictHorizon, overviewMode));
+        ship === activePlayer && ship.alive, frame, simTime, ephemeris, fo, camera, attractors);
+      ship.orbitLine.setSuppressed(ship.supersedesAnalyticEllipse(simTime, duration, overviewMode));
     }
   }
 
