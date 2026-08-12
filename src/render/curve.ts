@@ -5,7 +5,7 @@
 // THREE.Vector3/THREE.Camera と数値だけ。
 import * as THREE from 'three/webgpu';
 import { attribute, float } from 'three/tsl';
-import { metersPerPixelFromTanHalfFov } from '../physics/projection';
+import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
 
 export type CurveDash = { readonly dashSize: number; readonly gapSize: number };
 
@@ -61,6 +61,16 @@ const MAX_SUBDIVIDE_DEPTH = 24;
 // 焼き直さないための遊び。
 const SCALE_REBAKE_RATIO = 1.2;
 
+// f32 の相対量子化幅(仮数23bit)。sample の座標系は LEO スケールの絶対座標を含みうるため、
+// これをそのまま頂点バッファ(f32)へ書くと、その大きさに応じた量子化ノイズが生じ、近距離の
+// カメラからは画面上のピクセル単位のずれとして見えてしまう。頂点バッファへは常にカメラ近傍の
+// 基準点(pivot)からの差分だけを書き、その基準点をカメラの動きに追従させることでこれを防ぐ。
+const F32_RELATIVE_EPS = 2 ** -24;
+
+// pivot の更新を許す画面上の誤差上限 [px]。MAX_EDGE_SAG_PX(適応分割のサジッタ目標)より
+// 十分小さい値にして、量子化誤差が分割の粗さに埋もれて見えなくなるようにする。
+const PIVOT_MAX_ERROR_PX = 0.1;
+
 // フェードの再計算を省く excludeSphere の移動量。球の半径に対するこの割合より小さく
 // 動いただけなら、フェード帯の中の各頂点の不透明度は視認できるほど変わらない。
 const EXCLUDE_SKIP_SHIFT_RATIO = 1 / 16;
@@ -101,8 +111,10 @@ export class Curve {
   private wantVisible = true;
 
   // 直近に適応分割で焼いた頂点(sample が返した座標系のまま、変換前)。excludeSphere だけが
-  // 変わったフレームで曲線を再サンプリングせずにフェードだけ引き直せるよう保持する。
-  private readonly bakedLocal: Float32Array;
+  // 変わったフレームで曲線を再サンプリングせずにフェードだけ引き直せるよう保持する。倍精度で
+  // 持つ理由は pivot 自体の精度を落とさないため — GPU へ渡す positions(f32)は常にこの配列
+  // から pivot を差し引いた差分として書く。
+  private readonly bakedLocal: Float64Array;
   private bakedCount = 0;
   private hasBaked = false;
   private lastRevision: unknown = undefined;
@@ -112,16 +124,34 @@ export class Curve {
   private lastExcludeRadius = 0;
   private fadeNeutral = true;
 
+  // 頂点バッファ(f32)へ書く直前に bakedLocal の全頂点から差し引く基準点。sample が返す
+  // 座標系のまま、カメラの現在位置に追従させる。
+  private readonly pivot = new THREE.Vector3();
+  private hasPivot = false;
+
+  // setTransform が要求した変換そのもの(pivot 差し引き前)。line.position/quaternion は
+  // pivot 分をこの変換で補って書き込むため、分割判定や pivot の追従判定など pivot に依存
+  // しない計算はこちらを読む。
+  private readonly reqPosition = new THREE.Vector3();
+  private readonly reqQuaternion = new THREE.Quaternion();
+
   private readonly scratchA = new THREE.Vector3();
   private readonly scratchB = new THREE.Vector3();
   private readonly scratchM = new THREE.Vector3();
   private readonly scratchWorld = new THREE.Vector3();
+  private readonly scratchLocalCam = new THREE.Vector3();
+  private readonly scratchInvQuat = new THREE.Quaternion();
+  private readonly scratchPivotWorld = new THREE.Vector3();
 
   // setCurve の呼び出しごとに一度だけ求め直す、カメラのワールド前方向・位置・画角換算値。
   // scaleAtLocal は分割の各テストから読むだけで、自分では取得し直さない。
   private readonly camFwd = new THREE.Vector3();
   private readonly camPos = new THREE.Vector3();
   private camTanHalfFov = 0;
+  private camNear = 0;
+
+  // 現在の初期区間に割り当てられた頂点予算(rebake がこの値までしか subdivide に積ませない)。
+  private segmentBakedLimit = 0;
 
   // color/opacity/renderOrder はマテリアルと描画順、maxVertices は確保する頂点バッファの
   // 上限。dash を渡すと破線(LineDashedMaterial、頂点ごとの累積距離を焼く)。perVertexFade
@@ -132,7 +162,7 @@ export class Curve {
     this.maxVertices = maxVertices;
     this.maxSegments = Math.max(0, maxVertices - 1);
     this.positions = new Float32Array(maxVertices * 3);
-    this.bakedLocal = new Float32Array(maxVertices * 3);
+    this.bakedLocal = new Float64Array(maxVertices * 3);
     this.indices = new Uint32Array(this.maxSegments * 2);
     this.geom = new THREE.BufferGeometry();
     this.geom.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
@@ -188,23 +218,62 @@ export class Curve {
     }
   }
 
-  // 以後の scaleAtLocal が読むカメラのワールド前方向・位置・画角換算値を求め直す。
+  // 以後の scaleAtLocal が読むカメラのワールド前方向・位置・画角換算値・ニアプレーン距離を
+  // 求め直す。
   private cacheCameraFrame(camera: THREE.Camera): void {
     camera.getWorldDirection(this.camFwd);
     this.camPos.setFromMatrixPosition(camera.matrixWorld);
     const fovDeg = camera instanceof THREE.PerspectiveCamera ? camera.fov : 50;
     this.camTanHalfFov = Math.tan((fovDeg * Math.PI) / 360);
+    this.camNear = camera instanceof THREE.PerspectiveCamera ? camera.near : MIN_DEPTH;
   }
 
-  // local 座標(this.line の現在の position/quaternion 系)の点における m/px を返す。
-  // cacheCameraFrame を先に呼んでおくこと。
+  // local 座標(sample が返す座標系、pivot 差し引き前)の点における m/px を返す。
+  // cacheCameraFrame を先に呼んでおくこと。要求された変換(reqPosition/reqQuaternion)で
+  // ワールドへ写す — pivot はカメラの動きに追従するだけの GPU バッファ上の便宜であって
+  // sample→ワールドの変換そのものではないため、ここでは読まない。視点より手前の点は画面上の
+  // どこにも映らないので、前方奥行きではなくカメラからの距離を尺度にする — そうしないと
+  // metersPerPixelFromTanHalfFov 内の下限まで潰れ、背後に回り込んだ区間だけがサジッタ判定を
+  // 常に外して頂点予算を使い切ってしまう。
   private scaleAtLocal(lx: number, ly: number, lz: number): number {
-    this.scratchWorld.set(lx, ly, lz).applyQuaternion(this.line.quaternion).add(this.line.position);
+    this.scratchWorld.set(lx, ly, lz).applyQuaternion(this.reqQuaternion).add(this.reqPosition);
     const dx = this.scratchWorld.x - this.camPos.x;
     const dy = this.scratchWorld.y - this.camPos.y;
     const dz = this.scratchWorld.z - this.camPos.z;
     const depth = dx * this.camFwd.x + dy * this.camFwd.y + dz * this.camFwd.z;
-    return metersPerPixelFromTanHalfFov(this.camTanHalfFov, depth, window.innerHeight);
+    const effective = depth >= this.camNear
+      ? depth
+      : Math.max(this.camNear, Math.sqrt(dx * dx + dy * dy + dz * dz));
+    return metersPerPixelFromTanHalfFov(this.camTanHalfFov, effective, window.innerHeight);
+  }
+
+  // 焼き直し判定と pivot の追従判定に使う代表スケール(m/px)。sample(0) 1点だけを見ると、
+  // その点が視点面をまたぐ曲線で値が乱高下し、SCALE_REBAKE_RATIO を毎フレーム跨いでしまう。
+  // 分割の粗さを決めるのは曲線上で最もカメラに寄っている点なので、初期分割と同じ
+  // INITIAL_SEGMENTS+1 点の中の最小値を代表値とする。cacheCameraFrame を先に呼んでおくこと。
+  private representativeScale(sample: CurveSampler): number {
+    let minScale = Infinity;
+    for (let i = 0; i <= INITIAL_SEGMENTS; i++) {
+      sample(i / INITIAL_SEGMENTS, this.scratchA);
+      const s = this.scaleAtLocal(this.scratchA.x, this.scratchA.y, this.scratchA.z);
+      if (s < minScale) minScale = s;
+    }
+    return minScale;
+  }
+
+  // カメラのワールド位置(cacheCameraFrame 済みの camPos)を、要求された変換の逆で sample の
+  // 座標系へ戻す。pivot をカメラ近傍に据えるための基準点として使う。
+  private localCameraPos(out: THREE.Vector3): THREE.Vector3 {
+    this.scratchInvQuat.copy(this.reqQuaternion).invert();
+    return out.copy(this.camPos).sub(this.reqPosition).applyQuaternion(this.scratchInvQuat);
+  }
+
+  // pivot 込みの実際の position/quaternion を line へ書き込む。要求された変換
+  // (reqPosition/reqQuaternion)と現在の pivot からいつでも導出し直せる。
+  private applyTransform(): void {
+    this.line.quaternion.copy(this.reqQuaternion);
+    this.scratchPivotWorld.copy(this.pivot).applyQuaternion(this.reqQuaternion);
+    this.line.position.copy(this.reqPosition).add(this.scratchPivotWorld);
   }
 
   private pushBaked(x: number, y: number, z: number): void {
@@ -223,7 +292,7 @@ export class Curve {
     t1: number, x1: number, y1: number, z1: number,
     depth: number, sample: CurveSampler,
   ): void {
-    if (this.bakedCount + 1 >= this.maxVertices || depth >= MAX_SUBDIVIDE_DEPTH) {
+    if (this.bakedCount + 1 >= this.segmentBakedLimit || depth >= MAX_SUBDIVIDE_DEPTH) {
       this.pushBaked(x1, y1, z1);
       return;
     }
@@ -250,12 +319,19 @@ export class Curve {
     }
   }
 
+  // 頂点予算を INITIAL_SEGMENTS 個の初期区間へ均等割りしてから各区間を適応分割する。分割は
+  // 深さ優先で、積めなかった頂点は落ちるだけなので、割り当てずに進めると先頭側の区間が予算を
+  // 使い切って以降の区間が1頂点も積めない。均等割りにすることで、予算が尽きても曲線全体が
+  // 一様に粗くなるだけになる(使い残しは残り区間数で割り直されるぶん後続へ回る)。
   private rebake(sample: CurveSampler): void {
     this.bakedCount = 0;
     sample(0, this.scratchA);
     this.pushBaked(this.scratchA.x, this.scratchA.y, this.scratchA.z);
     let t0 = 0, x0 = this.scratchA.x, y0 = this.scratchA.y, z0 = this.scratchA.z;
     for (let i = 1; i <= INITIAL_SEGMENTS; i++) {
+      const remainingSegments = INITIAL_SEGMENTS - i + 1;
+      this.segmentBakedLimit = this.bakedCount
+        + Math.floor((this.maxVertices - this.bakedCount) / remainingSegments);
       const t1 = i / INITIAL_SEGMENTS;
       sample(t1, this.scratchB);
       this.subdivide(t0, x0, y0, z0, t1, this.scratchB.x, this.scratchB.y, this.scratchB.z, 0, sample);
@@ -269,8 +345,7 @@ export class Curve {
   setCurve(sample: CurveSampler, opts: SetCurveOptions): void {
     const { revision, camera, excludeSphere } = opts;
     this.cacheCameraFrame(camera);
-    sample(0, this.scratchA);
-    const scaleNow = this.scaleAtLocal(this.scratchA.x, this.scratchA.y, this.scratchA.z);
+    const scaleNow = this.representativeScale(sample);
     const scaleChanged = this.bakedScale === null
       || scaleNow / this.bakedScale > SCALE_REBAKE_RATIO || this.bakedScale / scaleNow > SCALE_REBAKE_RATIO;
     const revisionChanged = !this.hasBaked || revision !== this.lastRevision;
@@ -284,14 +359,29 @@ export class Curve {
       this.hasExcludeCenter = false; // 頂点が入れ替わったので直前のフェードは対応先を失っている
     }
 
+    // pivot はカメラ近傍に据え続ける基準点。焼き直した頂点はまだ pivot 差し引き後の
+    // positions へ反映されていないので rebake 時は必ず据え直し、それ以外は量子化誤差が
+    // 画面上で無視できなくなったとき(カメラが pivot から離れたとき)だけ据え直す。
+    const localCam = this.localCameraPos(this.scratchLocalCam);
+    let pivotChanged = rebaked || !this.hasPivot;
+    if (!pivotChanged) {
+      const drift = localCam.distanceTo(this.pivot);
+      pivotChanged = (drift * F32_RELATIVE_EPS) / scaleNow > PIVOT_MAX_ERROR_PX;
+    }
+    if (pivotChanged) {
+      this.pivot.copy(localCam);
+      this.hasPivot = true;
+      this.applyTransform();
+    }
+
     if (!excludeSphere) {
-      if (!rebaked && !this.hasExcludeCenter && this.fadeNeutral) return;
+      if (!pivotChanged && !this.hasExcludeCenter && this.fadeNeutral) return;
       this.hasExcludeCenter = false;
       this.writeNeutral();
       return;
     }
 
-    if (!rebaked && this.hasExcludeCenter) {
+    if (!pivotChanged && this.hasExcludeCenter) {
       const shift = this.lastExcludeCenter.distanceTo(excludeSphere.center)
         + Math.abs(excludeSphere.radius - this.lastExcludeRadius);
       if (shift < excludeSphere.radius * EXCLUDE_SKIP_SHIFT_RATIO) return;
@@ -305,7 +395,12 @@ export class Curve {
   // フェード無し・全セグメントの状態を GPU へ反映する。
   private writeNeutral(): void {
     const n = this.bakedCount;
-    for (let i = 0; i < n * 3; i++) this.positions[i] = this.bakedLocal[i]!;
+    const { x: px, y: py, z: pz } = this.pivot;
+    for (let i = 0; i < n; i++) {
+      this.positions[i * 3] = this.bakedLocal[i * 3]! - px;
+      this.positions[i * 3 + 1] = this.bakedLocal[i * 3 + 1]! - py;
+      this.positions[i * 3 + 2] = this.bakedLocal[i * 3 + 2]! - pz;
+    }
     this.vertexCount = n;
     (this.geom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     if (this.fade) {
@@ -326,7 +421,12 @@ export class Curve {
   // ため、線分と球の最近接距離で判定する。
   private writeExcluded(exclude: CurveExcludeSphere): void {
     const n = this.bakedCount;
-    for (let i = 0; i < n * 3; i++) this.positions[i] = this.bakedLocal[i]!;
+    const { x: px, y: py, z: pz } = this.pivot;
+    for (let i = 0; i < n; i++) {
+      this.positions[i * 3] = this.bakedLocal[i * 3]! - px;
+      this.positions[i * 3 + 1] = this.bakedLocal[i * 3 + 1]! - py;
+      this.positions[i * 3 + 2] = this.bakedLocal[i * 3 + 2]! - pz;
+    }
     this.vertexCount = n;
     (this.geom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
 
@@ -383,9 +483,12 @@ export class Curve {
     }
   }
 
+  // sample の座標系をワールドへ写す変換を渡す。実際に line へ書く position/quaternion は
+  // pivot 分の補正を経るため、渡した値がそのまま line.position/quaternion にはならない。
   setTransform(position: THREE.Vector3, quaternion?: THREE.Quaternion): void {
-    this.line.position.copy(position);
-    if (quaternion) this.line.quaternion.copy(quaternion);
+    this.reqPosition.copy(position);
+    if (quaternion) this.reqQuaternion.copy(quaternion);
+    this.applyTransform();
   }
 
   // 表示を要求する。頂点数が2未満の間は実際には隠れたままになる。

@@ -433,7 +433,7 @@
   - predictedTrajectoryLine.sync(predictedTargets, editor.planDisplay.planFrame, simTime, ephemeris, fo) // predictedTargets = 操作対象の自機が生存していればその1隻、いなければ空配列。計画軌道の折れ線と同じ座標系(editor.planDisplay.planFrame)で bake する。空配列を渡すと内部の pruneTo が線を畳む
     - line.syncGeometry() // entity.predictedTrajectory.samplesOldestFirst() を frame で bake
     - line.syncTransform()
-  - entities.players ごとに ship.orbitLine.setSuppressed(predictedTrajectoryLine.coversHorizon(ship, simTime, _window.duration)) // 予測が表示ホライズンを覆いきったときだけ解析楕円を抑制する。overviewMode/!overviewMode どちらも同じ判定
+  - entities.players ごとに ship.orbitLine.setSuppressed(predictedTrajectoryLine.supersedesAnalyticEllipse(ship, simTime, _window.duration, overviewMode)) // overviewMode: 予測が表示ホライズンを覆いきったときだけ解析楕円を抑制。!overviewMode: 予測線が描かれてさえいれば抑制
   - touchControls?.syncModeButtons() // タッチデバイスのみ。制動/微動/ホールドの点灯
   - activeStage.sync(player, fo, project, scale, displayTime, overviewMode) // player は Creative の未配置状態で null
     - syncStatusPanel() // hudSubStatus() が文字列を返すステージだけ表示。player が null なら隠す
