@@ -488,11 +488,11 @@ export class Player extends Ship {
     isActive: boolean,
     ephemeris: Ephemeris,
     attractors: readonly Attractor[],
-    mapVisibility: MapVisibility | null = null,
+    visibility: MapVisibility | null = null,
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.displayState(displayTime);
-    const mapEntityVisible = !camera.overviewMode || mapVisibility === null || mapVisibility.category;
+    const mapEntityVisible = !camera.overviewMode || visibility === null || visibility.category;
     this.obj.visible = displayState !== null && this.alive && mapEntityVisible && !(isActive && camera.zoomActive);
     if (displayState !== null) {
       this.obj.position.copy(fo.RtoThreeV3(displayState.r));
@@ -512,7 +512,7 @@ export class Player extends Ship {
     this.radiator.sync();
     this.power.sync();
     // マーカーと軌道線。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
-    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.overviewCamera.focus), ephemeris.registry, attractors, mapVisibility);
+    this.markers.sync(this.state, displayState, this.att, this.alive, camera.overviewMode, isActive, camera.activeCameraProjection, camera.activeCameraScale, this.displayName, this.roundsInMag, this.reloadTimer, this.magsLeft, this.averageMuzzleVelocity, focusTargetId(camera.overviewCamera.focus), ephemeris.registry, attractors, visibility);
 
     this.syncOrbitLine(this.alive, fo, camera.activeCamera, attractors, this.thrust !== null);
   }

@@ -121,10 +121,10 @@ export abstract class Stage {
   // 進行方向表示に使う。
   sync(
     player: Player | null, _fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, displayTime: number,
-    overviewMode: boolean, visibility: MapVisibilityPolicy | null, _camera: THREE.Camera,
+    overviewMode: boolean, visibilityPolicy: MapVisibilityPolicy | null, _camera: THREE.Camera,
   ): void {
     this.syncStatusPanel(player, overviewMode);
-    this.logistics.syncMarkers(player, project, scale, displayTime, overviewMode, visibility);
+    this.logistics.syncMarkers(player, project, scale, displayTime, overviewMode, visibilityPolicy);
   }
 
   // hudSubStatus() が null ならパネルを隠し、文字列なら HP・スコアとともに表示する。

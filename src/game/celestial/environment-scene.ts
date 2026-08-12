@@ -124,7 +124,7 @@ export class EnvironmentScene {
     displayTime: number,
     cameraSystem: CameraSystem,
     gridVisibility: CelestialGridVisibility,
-    sharedVisibility: MapVisibilityPolicy | null = null,
+    sharedVisibilityPolicy: MapVisibilityPolicy | null = null,
   ): void {
     // lit は自機位置の日照率。主星が無いレジストリでは日照そのものが無意味なので計算を飛ばす。
     let lit = 1.0;
@@ -135,11 +135,11 @@ export class EnvironmentScene {
     }
     // Game.sync が同じカメラ位置・表示時刻で組んだ policy を渡せるようにする。渡されない
     // 既存経路ではここで一度だけ構築し、参照線にも同じインスタンスを渡す。
-    const nearbyIds = cameraSystem.overviewMode && sharedVisibility === null
+    const nearbyIds = cameraSystem.overviewMode && sharedVisibilityPolicy === null
       ? systemMembersAt(this.ephemeris.registry, cameraSystem.activeCameraPos, this.ephemeris.attractorsAt(displayTime))
       : [];
-    const visibility = cameraSystem.overviewMode
-      ? sharedVisibility ?? new MapVisibilityPolicy(
+    const visibilityPolicy = cameraSystem.overviewMode
+      ? sharedVisibilityPolicy ?? new MapVisibilityPolicy(
         this.ephemeris.registry,
         cameraSystem.bodyClassToggles,
         focusTargetId(cameraSystem.overviewCamera.focus),
@@ -147,7 +147,7 @@ export class EnvironmentScene {
       )
       : null;
     for (const body of this.bodies) {
-      body.setVisible(!cameraSystem.overviewMode || visibility!.body(body.id).category);
+      body.setVisible(!cameraSystem.overviewMode || visibilityPolicy!.body(body.id).category);
       body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris);
     }
     // 平行光の向きは描画原点から見た恒星方向 — 照らす相手がその近傍にいる物体だけなので、
@@ -168,7 +168,7 @@ export class EnvironmentScene {
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
       focusTargetId(cameraSystem.overviewCamera.focus), cameraSystem.bodyClassToggles,
-      visibility, nearbyIds, cameraSystem.activeCamera);
+      visibilityPolicy, nearbyIds, cameraSystem.activeCamera);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
@@ -184,7 +184,7 @@ export class EnvironmentScene {
   // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。
   private syncReferenceLines(
     simTime: number, fo: FloatingOrigin, overviewMode: boolean, focusId: AttractorId | undefined,
-    toggles: BodyClassToggles, sharedVisibility: MapVisibilityPolicy | null,
+    toggles: BodyClassToggles, sharedVisibilityPolicy: MapVisibilityPolicy | null,
     nearbyIds: readonly AttractorId[], camera: THREE.Camera,
   ): void {
     if (!overviewMode) {
@@ -192,7 +192,7 @@ export class EnvironmentScene {
       for (const [id] of this.referenceLines) this.removeReferenceLine(id);
       return;
     }
-    const visibility = sharedVisibility ?? new MapVisibilityPolicy(
+    const visibilityPolicy = sharedVisibilityPolicy ?? new MapVisibilityPolicy(
       this.ephemeris.registry,
       toggles,
       focusId,
@@ -200,7 +200,7 @@ export class EnvironmentScene {
     );
     this.geoLine.sync(this.geoElements, fo, camera, false);
     for (const id of this.referenceIds) {
-      if (!visibility.body(id).orbit) {
+      if (!visibilityPolicy.body(id).orbit) {
         this.removeReferenceLine(id);
         continue;
       }

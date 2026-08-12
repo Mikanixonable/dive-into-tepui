@@ -280,7 +280,7 @@
       - ghostAt(displayTime) // 折れ線が displayTime に届かなければ null
       - apsisIconsOf() // path.finalSegment() の periapsis/apoapsis(末尾 arc が積分中に見つけた値)と apsisCenter(検出時と同じ基準天体)を読み、その天体の位置だけを ephemeris.positionOf(center.id, 極値の時刻) で引き直して距離を出す。両方あるとき (遠地点距離-近地点距離)/(遠地点距離+近地点距離) < APSIS_MIN_ECC なら空、片方のみ(双曲線等)ならそのまま出す
   - equatorNodeMarkers.update(equatorNodeSources(), planDisplay.planFrame, displayTime) // editor.update の後・mapPicker.refresh の前
-  - mapPicker.refresh() // 物理積分の後に組む — 積分前だと同フレームで sync されるメッシュと被選択物の座標が1ステップずれる。MapVisibilityPolicy もここで1つだけ組み、sync フェーズは mapPicker.visibility を読むだけ
+  - mapPicker.refresh() // 物理積分の後に組む — 積分前だと同フレームで sync されるメッシュと被選択物の座標が1ステップずれる。MapVisibilityPolicy もここで1つだけ組み、sync フェーズは mapPicker.visibilityPolicy を読むだけ
     - focusMarkers.update(displayTime, overviewCamera.focus, cameraSystem.bodyClassToggles, activeCameraPos) // MapVisibilityPolicy が admits しない天体は座標計算ごと飛ばす / navTarget.update() // 内容は上記ポーズ経路と同じ
   - cameraSystem.update(mapPicker.pickables, attractors) // 追従カメラの基準を積分後の自機位置に合わせるため、物理積分の後に呼ぶ
     - combatCamera.toggleFollowAttitude() // K.followAttitudeToggle。カメラ自身の状態なのでここで消費する
@@ -349,7 +349,7 @@
     - focusMarkers.syncLabels() → markerManager.setPosition() // ラベルごと。overviewMode のみ
     - focusMarkers.hideLabels() // !overviewMode のみ
   - project / overviewMode / simTime / attractors(= ephemeris.attractorsAt(simTime)) / target(= targeter.aliveTarget)を確定 // 以降の sync 系へ配る共通値
-  - mapVisibility = overviewMode ? mapPicker.visibility : null // ここでは組まず、update フェーズの mapPicker.refresh() が確定させた同じ MapVisibilityPolicy を読む。environment.sync / activeStage.sync(→ logistics.syncMarkers・creativeStage.syncBaseMarkers)/ targeter.sync とエンティティの表示・軌道線判定がすべてこれを受け取る
+  - visibilityPolicy = overviewMode ? mapPicker.visibilityPolicy : null // ここでは組まず、update フェーズの mapPicker.refresh() が確定させた同じ MapVisibilityPolicy を読む。environment.sync / activeStage.sync(→ logistics.syncMarkers・creativeStage.syncBaseMarkers)/ targeter.sync とエンティティの表示・軌道線判定がすべてこれを受け取る
   - environment.sync()
     - lit = sunlitFactor(playerPos, ephemeris.sunDirFrom(playerPos, displayTime), …)。overviewMode では 1.0 固定
     - asteroidField.sync(fo, cameraSystem.overviewMode) // !overviewMode ならメッシュを隠して return。overviewMode では update が引き直していない点も含め全インスタンス行列を書き直す(fo が毎フレーム動くため)
