@@ -27,9 +27,14 @@ import { SnapshotService } from './game/save/snapshot-service';
 import { AutoSave } from './game/save/autosave';
 import { migrateLegacySave } from './game/save/legacy-save';
 import { SaveBrowser } from './game/hud/save-browser';
+import { SnapshotControls } from './snapshot-controls';
 import { SIM_EPOCH_JD_TDB } from './game/sim-epoch';
 import { loadAbsoluteEphemeris } from './physics/ephemeris-catalog';
 import { profileAt } from './physics/ephemeris-profile';
+
+// スナップショットのロードを跨いで次のページ読込へ渡す先。ロードは Game を作り直す
+// (=ページ再読込)ことで表現するため、どれを復元するかは sessionStorage 経由で伝える。
+const SNAPSHOT_PENDING_KEY = 'tepui.pendingSnapshot';
 
 
 // アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)か判定する
@@ -149,7 +154,7 @@ async function initScene(): Promise<GameScene> {
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  game: Game, perf: PerfMeter, sections: FrameSections, autoSave: AutoSave,
+  game: Game, perf: PerfMeter, sections: FrameSections, autoSave: AutoSave, snapshotControls: SnapshotControls,
 ): void {
   let lastTime = performance.now();
   let completedFrames = 0;
@@ -162,6 +167,8 @@ function startAnimationLoop(
       sections.beginFrame();
       game.update(dt);
       sections.endFrame();
+      // このフレームで Game が消費しなかった入力エッジだけが残っている。
+      snapshotControls.handleInput(game.input, game);
       autoSave.update(game);
       const t1 = perf.on ? performance.now() : 0;
       game.sync();
@@ -246,23 +253,35 @@ async function main() {
     }
   }
   const sections = new FrameSections();
-  const game = new Game(
-    gs, launch, hud, sfx, settingsPanel, unlockmanager, snapshotService, sections, absoluteEphemeris,
-  );
+
+  const stageId = launch.mode === 'creative' ? 'creative' : launch.stage;
   const activeSlotId = slots.activeSlotId;
+  // ページ再読込を挟んだスナップショットのロード要求を最優先で使う。無ければ、
+  // アクティブスロットの現在ステージにある最新スナップショットを起動時に復元する。
+  // 本体の欠損・バージョン不一致・ステージ不一致は SnapshotService.load() に判定させ、
+  // 復元できない場合は通常の新規起動状態をそのまま使う。
+  const pendingSnapshotId = sessionStorage.getItem(SNAPSHOT_PENDING_KEY);
+  sessionStorage.removeItem(SNAPSHOT_PENDING_KEY);
+  const initialSnapshotId = pendingSnapshotId
+    ?? (activeSlotId !== null ? slots.latestSnapshot(activeSlotId, stageId)?.id ?? null : null);
+  const initialSave = initialSnapshotId !== null
+    ? snapshotService.load(initialSnapshotId, stageId) ?? undefined
+    : undefined;
+  // ロードした時点より後の自動スナップショットは、もう起きなかった未来なので破棄する。
+  if (initialSave && initialSnapshotId !== null) slots.discardAfter(initialSnapshotId);
+
+  const game = new Game(
+    gs, launch, hud, sfx, settingsPanel, unlockmanager, sections, absoluteEphemeris, initialSave,
+  );
   if (activeSlotId !== null) slots.noteLaunch(activeSlotId, launch.mode, game.activeStage.id);
 
-  // アクティブスロットの現在ステージにある最新スナップショットを起動時に復元する。
-  // 本体の欠損・バージョン不一致・ステージ不一致は SnapshotService.restore() に
-  // 判定させ、復元できない場合は通常の新規起動状態をそのまま使う。
-  if (activeSlotId !== null) {
-    const latest = slots.latestSnapshot(activeSlotId, game.activeStage.id);
-    if (latest !== null) snapshotService.restore(game, latest.id);
-  }
-
   const saveBrowser = new SaveBrowser(hud.layers.system, slots, snapshotService, game, hud.modalController);
-  game.setSaveBrowser(saveBrowser);
   saveBrowser.onSlotSwitched = () => location.assign(location.pathname);
+  // スナップショットのロードは別のゲームを始めることなので、ページごと作り直す。
+  saveBrowser.onLoadSnapshot = (id) => {
+    sessionStorage.setItem(SNAPSHOT_PENDING_KEY, id);
+    location.assign(location.pathname);
+  };
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
   settingsPanel.onOpenSnapshots = () => {
     settingsPanel.toggle(false);
@@ -280,7 +299,8 @@ async function main() {
     settingsPanel.toggle(false);
     perf.open();
   };
-  startAnimationLoop(game, perf, sections, new AutoSave(snapshotService));
+  const snapshotControls = new SnapshotControls(hud, settingsPanel, saveBrowser, snapshotService);
+  startAnimationLoop(game, perf, sections, new AutoSave(snapshotService), snapshotControls);
 }
 
 main().catch((err) => {

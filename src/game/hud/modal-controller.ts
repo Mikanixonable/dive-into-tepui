@@ -22,6 +22,7 @@ export class ModalController {
 
   get openCount(): number { return this.openModals.size; }
   get isOpen(): boolean { return this.openModals.size > 0; }
+  isModalOpen(id: HudModalId): boolean { return this.openModals.has(id); }
 
   // allowBackgroundInput はモーダル外のカメラ入力だけを通したい画面向け。モーダル自身の
   // UI は各要素の pointer-events:auto で優先され、通常のモーダルは従来どおり背景を遮る。

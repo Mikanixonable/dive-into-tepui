@@ -275,6 +275,6 @@ export interface GameSaveData {
   ammos: AmmoSaveData[];
   bases: BaseSaveData[];
   stage: StageSaveData;
-  // 旧セーブデータには無いフィールドなので任意。無ければ Game.restore は視点を既定のまま始める。
+  // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。
   camera?: CameraSaveData;
 }

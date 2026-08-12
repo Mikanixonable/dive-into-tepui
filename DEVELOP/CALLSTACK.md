@@ -28,6 +28,10 @@
 
 - animate(now)
   - game.update(dt) // dt = 実経過秒。game 側で 0.1s に clamp される
+  - snapshotControls.handleInput(game.input, game) // このフレームで game.update が消費しなかった入力エッジだけを見る。[Esc](一覧表示中のみ)/K.clipSnapshot/K.openSnapshots
+    - [browser.visible] input.takeKey(K.pauseMenu) → browser.close() // 一覧の [Esc] を最優先で取る(close() 自身が game.resume() する)。以降は評価しない
+    - [K.clipSnapshot] [!activeStage.isPlaying] hud.hint() // 決着後は拒否。それ以外は snapshotService.capture(game, 'manual', null, true) + hud.hint()
+    - [K.openSnapshots] browser の open()/close() をトグル // open() 前に settingsPanel.toggle(false)。open() が game.pause()、close() が game.resume() を呼ぶ
   - autoSave.update(game) // 前回撮影から AUTOSAVE_INTERVAL_REAL_SEC(実時間60秒)経っていれば snapshotService.capture(game, 'auto', null, false) // game.isPaused または !activeStage.isPlaying なら何も撮らない
   - game.sync()
   - game.render()
@@ -41,8 +45,7 @@
   - input.update() // pending キュー(キー/クリック/マウス)を今フレーム分に確定し、次フレーム用にクリア
   - handleInput() // 担当モジュールへ先着順に配る。処理した側が input からそのキーを消費する
     - docking.handleInput() // ドック表示中の [ESC] を先に消費する(設定画面と二重に効かせない)
-    - [saveBrowser?.visible] input.takeKey(K.pauseMenu) → saveBrowser.close() // 一覧の [Esc] を設定メニューより先に取る(close() 自身が game.resume() する)
-    - settingsPanel.handleInput() // K.pauseMenu → toggle() → onSettingsOpenChange → game.pause()/resume()
+    - settingsPanel.handleInput() // [modalController.isModalOpen('save-browser')] なら [Esc] を一切見ずに return(一覧側の close() に譲る)。それ以外は K.pauseMenu → toggle() → onSettingsOpenChange → game.pause()/resume()
     - hud.handleInput() // K.help → toggleHelp()
     - activeStage.handleInput() // K.restart。isPlaying なら素通し(Player の装填へ回る)
       - restart() → location.replace(`?stage=<id>`) // 決着後のみ。同じステージで出撃し直す
@@ -72,8 +75,6 @@
         - [editMode] deleteSelected() → deleteNode()
           - plan.removeNode() / closeMenu() / simSpeedManager.cancelAutoWarp() / hud.hint() // 下流ノードも一緒に消える
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
-    - [K.clipSnapshot] [!activeStage.isPlaying] hud.hint() // 決着後は拒否。それ以外は snapshotService.capture(this, 'manual', null, true) + hud.hint()
-    - [K.openSnapshots] saveBrowser の open()/close() をトグル // open() が game.pause()、close() が game.resume() を呼ぶ
   - [game.isPaused] 以降を実行せず return するポーズ経路 // 決着後の簡略経路より前。ポーズ中は決着後も完全に止まる
     - _window = resolveWindow() // displayTimeManager.window(simTime, currentOrbitPeriod())。4経路(ポーズ/未配置/簡略/通常)それぞれの先頭で1回ずつ確定し、以降このフレームの update フェーズ全体で共有する。以下 displayTime は _window.displayTime を指す
     - environment.update(displayTime, cameraSystem.overviewMode) // 小惑星帯・トロヤ群点群の位置再評価。updateMapPresentation の先頭、editor.update より前(4経路共通)

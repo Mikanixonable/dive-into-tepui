@@ -391,7 +391,7 @@ export class CreativeStage extends Stage {
   }
 
   // 復元済みエンティティの id を各アロケータへ予約し、以後の新規配置が採番済み id と
-  // 衝突しないようにする(Game.restore は super.restore の前に entities を復元済み)。
+  // 衝突しないようにする(Game は super.restore より前に entities を復元し終えている)。
   restore(data: StageSaveData): void {
     super.restore(data);
     for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
