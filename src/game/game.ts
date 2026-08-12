@@ -905,7 +905,7 @@ export class Game {
       simSubsteps: this.simulator.lastSubsteps,
       orbitSteps: this.simulator.lastOrbitSteps,
       gravitySources: this.simulator.lastGravitySourceCount,
-      planArcs: this.editor.lastReintegratedArcs,
+      planArcs: this.editor.lastRebuiltArcs,
       planSteps: this.editor.lastPlanSteps,
       attractorsCacheHits: attractorsCache.hits,
       attractorsCacheMisses: attractorsCache.misses,
