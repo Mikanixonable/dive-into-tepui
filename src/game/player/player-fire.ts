@@ -53,7 +53,16 @@ export class PlayerFire {
     private readonly _sfx: Sfx,
     private readonly _scene: THREE.Scene,
     private readonly _fx: EffectsSystem,
-  ) { }
+    saved?: FireSaveData,
+  ) {
+    if (saved) {
+      this.mags = saved.mags;
+      this.rounds = saved.rounds;
+      this.barrel = saved.barrel;
+      this.cooldown = saved.cooldown;
+      this.muzzleIdx = saved.muzzleIdx;
+    }
+  }
 
   get isFiring(): boolean { return this.wasFiring; }
 
@@ -77,18 +86,6 @@ export class PlayerFire {
       cooldown: this.cooldown,
       muzzleIdx: this.muzzleIdx,
     };
-  }
-
-  // 装填数・クールダウン・砲身状態を復元する。initAmmo と異なり、進行中のリロードを
-  // 打ち切らない(セーブ時点の状態をそのまま引き継ぐ)。
-  restore(data: FireSaveData): void {
-    this.mags = data.mags;
-    this.rounds = data.rounds;
-    this.barrel = data.barrel;
-    this.cooldown = data.cooldown;
-    this.muzzleIdx = data.muzzleIdx;
-    this.wasEmptyClick = false;
-    this.wasFiring = false;
   }
 
   // 拾ったマガジン数を加算する。弾切れ中なら即座に1マガジンを装填する。

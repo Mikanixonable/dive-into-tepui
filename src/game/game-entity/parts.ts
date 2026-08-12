@@ -74,9 +74,9 @@ export function createPart<TType extends PartType>(
   return { ...base, ...overrides } as unknown as ExtractPart<TType>;
 }
 
-// セーブされた AnyPart の生データを createPart 経由で復元する。id も上書きするので、
+// セーブされた AnyPart の生データを createPart 経由で組み立てる。id も引き継ぐので、
 // セーブ前後でパーツの同一性(id)が保たれる。
-export function restorePart(data: AnyPart): AnyPart {
+export function partFromSaveData(data: AnyPart): AnyPart {
   switch (data.type) {
     case 'hull': return createPart('hull', data);
     case 'cockpit': return createPart('cockpit', data);
