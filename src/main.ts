@@ -27,9 +27,8 @@ import { AutoSave } from './game/save/autosave';
 import { migrateLegacySave } from './game/save/legacy-save';
 import { SaveBrowser } from './game/hud/save-browser';
 import { SnapshotControls } from './snapshot-controls';
-import { SIM_EPOCH_JD_TDB } from './game/sim-epoch';
-import { loadAbsoluteEphemeris } from './physics/ephemeris-catalog';
-import { profileAt } from './physics/ephemeris-profile';
+import type { Ephemeris } from './physics/ephemeris';
+import type { AttractorId } from './physics/attractor';
 
 // スナップショットのロードを跨いで次のページ読込へ渡す先。ロードは Game を作り直す
 // (=ページ再読込)ことで表現するため、どれを復元するかは sessionStorage 経由で伝える。
@@ -145,6 +144,19 @@ async function initScene(): Promise<GameScene> {
   return gs;
 }
 
+// ローディング表示の下で、このステージの天体暦を組む。
+async function initEphemeris(
+  stageClass: StageClass, phaseOffsets: Partial<Record<AttractorId, number>>,
+): Promise<Ephemeris> {
+  hideLoading = showLoading();
+  try {
+    return await stageClass.createEphemeris(phaseOffsets);
+  } finally {
+    hideLoading?.();
+    hideLoading = null;
+  }
+}
+
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
   game: Game, perf: PerfMeter, sections: FrameSections, autoSave: AutoSave, snapshotControls: SnapshotControls,
@@ -228,24 +240,6 @@ async function main() {
   const gs = await initScene();
   const { hud, sfx, settingsPanel } = initHud();
   const stageClass = await resolveLaunchStage(unlockmanager, slots);
-  let absoluteEphemeris;
-  // 固有の簡易天体暦を指定するデバッグステージには外部 pack を読み込まない。
-  // 通常起動では開始時刻からプロファイルを決定するため、開始時刻を変更しても
-  // プロファイル ID を別途ハードコードし直す必要がない。
-  if (stageClass.ephemerisConfig === undefined) {
-    hideLoading = showLoading();
-    try {
-      const profile = profileAt(SIM_EPOCH_JD_TDB);
-      absoluteEphemeris = await loadAbsoluteEphemeris(
-        profile.id,
-        SIM_EPOCH_JD_TDB,
-        SIM_EPOCH_JD_TDB + 10 * 365.25,
-      );
-    } finally {
-      hideLoading?.();
-      hideLoading = null;
-    }
-  }
   const sections = new FrameSections();
 
   const activeSlotId = slots.activeSlotId;
@@ -263,8 +257,12 @@ async function main() {
   // ロードした時点より後の自動スナップショットは、もう起きなかった未来なので破棄する。
   if (initialSave && initialSnapshotId !== null) slots.discardAfter(initialSnapshotId);
 
+  const ephemeris = await initEphemeris(stageClass, initialSave?.phaseOffsets ?? {});
+  // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
+  const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
+
   const game = new Game(
-    gs, stageClass, hud, sfx, settingsPanel, unlockmanager, sections, absoluteEphemeris, initialSave,
+    gs, stageClass, hud, sfx, settingsPanel, unlockmanager, sections, ephemeris, earthSpinPhase0, initialSave,
   );
   if (activeSlotId !== null) slots.noteLaunch(activeSlotId, game.activeStage.id);
 

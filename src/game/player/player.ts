@@ -61,6 +61,19 @@ export type PlayerInit =
   | { readonly name?: string; readonly state?: KinematicState; readonly id?: string; readonly ammo?: AmmoLoad }
   | { readonly saved: PlayerSaveData; readonly simTime: number };
 
+// behave 1回分の、そのフレームの入力と状況。
+export type PlayerBehaveParams = {
+  readonly dt: number;
+  readonly input: Input;
+  readonly simSpeed: SimSpeedManager;
+  readonly mapMode: boolean;
+  readonly dvEditActive: boolean;
+  readonly scoreCounter: ScoreCounter;
+  readonly simTime: number;
+  readonly zoomActive: boolean;
+  readonly ephemeris: Ephemeris;
+};
+
 // プレイヤー機: 移動(PlayerThrottle)と射撃(PlayerFire)を束ね、その両方を反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
 export class Player extends Ship {
@@ -199,22 +212,15 @@ export class Player extends Ship {
     this.fire.onPickup(mags);
   }
 
-  // 毎フレームの HP 自然回復と、ユーザー入力に対する移動/発射の試行を一括で行う。
-  behave(params: {
-    dt: number;
-    input: Input;
-    simSpeed: SimSpeedManager;
-    mapMode: boolean;
-    dvEditActive: boolean;
-    scoreCounter: ScoreCounter;
-    simTime: number;
-    zoomActive: boolean;
-    entities: EntityManager;
-    ephemeris: Ephemeris;
-  }): void {
-    const { dt, input, simSpeed, mapMode, dvEditActive, scoreCounter, simTime, zoomActive, entities, ephemeris } = params;
-
-    this.updatePassive(dt);
+  // 毎フレーム、全ての自機に対して1度だけ呼ぶ。controllable はこの艦を今フレーム操作できるか。
+  // 操作できない艦は、次フレームへ持ち越してはならない連続指令をここで畳む。
+  behave(controllable: boolean, entities: EntityManager, params: PlayerBehaveParams): void {
+    this.updatePassive(params.dt);
+    if (!controllable) {
+      this.clearTransientCommands();
+      return;
+    }
+    const { dt, input, simSpeed, mapMode, dvEditActive, scoreCounter, simTime, zoomActive, ephemeris } = params;
     this.handleEdgeInput(input);
     this.updateTorque(input, dt * simSpeed.simSpeed);
 
@@ -246,7 +252,7 @@ export class Player extends Ship {
 
   // 表示フレーム基準の受動状態。環境(熱・電力・ラジエータ)は stepEnvironment で
   // simulation clock に合わせて進めるため、ここで重複させない。
-  updatePassive(dt: number): void {
+  private updatePassive(dt: number): void {
     this.belt.update(dt, this.fire.mags, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
     this.hpRegen(dt);
   }
@@ -433,12 +439,6 @@ export class Player extends Ship {
     this._fx.scatterFragments(this.state.t, tipR, this.state.v, 4, C.COLOR_PLAYER_DESTROY_FRAG, C.DESTROY_FRAG_SIZE_MIN, C.DESTROY_FRAG_SIZE_MAX, 8.0);
   }
 
-  // ポーズ中: 移動/発射の一時状態(推力可視化・射撃継続)を止める。
-  pause(): void {
-    this.clearTransientCommands();
-  }
-
-
   // 入力から機体座標系トルクを求めて this.torque へ反映し、角速度をクランプする。
   private updateTorque(input: Input, attDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
@@ -460,8 +460,6 @@ export class Player extends Ship {
   syncPlayer(
     fo: FloatingOrigin,
     camera: CameraSystem,
-    phasePlaying: boolean,
-    paused: boolean,
     displayTime: number,
     isActive: boolean,
     ephemeris: Ephemeris,
@@ -484,7 +482,7 @@ export class Player extends Ship {
     const effectVisible = displayState !== null && mapEntityVisible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
     this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isActive, camera);
-    this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, phasePlaying, paused, camera, isActive);
+    this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isActive);
     this.reentryEffects.sync(fo, effectState.r, effectState.v, this.thermal.qdyn, effectVisible, camera);
     this.belt.sync();
     this.radiator.sync();

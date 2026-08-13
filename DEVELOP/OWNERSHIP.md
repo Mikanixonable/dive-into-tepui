@@ -38,6 +38,11 @@ main.ts
 ├── AutoSave               ... SnapshotService を参照で持つ。startAnimationLoop() へその場で渡すだけで main() 側は変数に束縛しない
 ├── FrameSections        ... update の区間別所要時間の集計器(frame-sections.ts)。main.ts が new し、Game(コンストラクタ引数)・PerfMeter(コンストラクタ引数)へ参照で渡す。Game はさらに Simulator のコンストラクタ引数として同じ参照を渡す。rAF ループが game.update(dt) を beginFrame()/endFrame() で挟む。区間の境界(enter/exit)を打つのは Game.update / Simulator.advance だけで、累計を持つのはこのオブジェクト。enabled の書き手は PerfMeter.open()/close() のみ
 ├── PerfMeter            ... 負荷確認ウィンドウ。Game を PerfCountSource として、GameScene.renderer(WebGPURenderer)を draw call/triangle 数の読み取り元として、いずれも構築時に参照で受け取る(renderer 参照の新設は main.ts 側の GameScene を経由し、Game には持たせない)。rAF ループが `game.update(dt)` → `snapshotControls.handleInput(...)` の直後に `perf.handleInput(game.input)` を呼び、`[F3]` を消費する。FrameSections も構築時に参照で受け取り、update内訳の行を組む。表示する PropertyWindow を自分で new/dispose し、DOM は Hud.layers.window 配下。開いている間だけ on が真になり計測が走る(同時に FrameSections.enabled も真にする)。`Game.perfCounts()` は自分では数えず、EntityManager・Predictor・Simulator・PlanEditor・Ephemeris・MapPicker 各自の `perfCounts()` を1つにマージし、`displayDurationSec`(= DisplayWindowManager.current.duration)・`warp` を足すだけ
+├── Ephemeris             ... 状態を持たない純サンプラ。main.ts の initEphemeris(stageClass, phaseOffsets) が
+│                              stageClass.createEphemeris(phaseOffsets) を await して Game より前に完成させる
+│                              (既定は Stage 自身の静的実装 — 天体暦プロファイル解決 + 精密暦パック取得を経て
+│                              new Ephemeris(...)。StageDebugAltSystem だけが自前の架空レジストリを同期的に
+│                              返す override を持つ)。完成したインスタンスを Game のコンストラクタへそのまま渡す
 ├── GameScene            (createGameScene: canvas / THREE.Scene / WebGPURenderer)
 └── Game
     ├── Input
@@ -45,7 +50,6 @@ main.ts
     ├── MarkerManager        ... DOM の親は Hud.layers.marker / Hud.svgOverlay、所有は Game
     │   ├── GroupedMarkers (combatMarkers)  ... 画面上で近接する戦闘対象(敵+自機以外の生存中の全自機)マーカーのまとめ + 画面外方位マーカー。呼ぶのは Targeter.syncTargetMarkers
     │   └── LeadMarkers                     ... 戦闘対象ごとの LEAD マーカーと最終ロック時刻。呼ぶのは Targeter.syncTargetMarkers
-    ├── Ephemeris            ... 状態を持たない純サンプラ。各所へ参照共有する単一インスタンス
     ├── CameraSystem
     │   ├── CombatCameraSystem
     │   │   ├── ChaseCamera
@@ -113,8 +117,12 @@ main.ts
     │                                       super() の後に走るため)。自機を置くのは protected addPlayer(init?) で、
     │                                       new Player → entities.addPlayer → activePlayers.claimIfNone をこの1箇所に
     │                                       まとめる(初期弾薬は PlayerInit.ammo として艦の構築引数に載る)。
-    │                                       起動時の静的宣言(ephemerisConfig)は Stage の静的既定値を
-    │                                       クラスごとに override したもので、Game は stageClass から直接読む。
+    │                                       起動時の天体暦は Stage の静的 async createEphemeris(phaseOffsets)
+    │                                       が既定実装(天体暦プロファイル解決 + 精密暦パック取得の末に
+    │                                       new Ephemeris(...))を持ち、StageDebugAltSystem だけが自前の
+    │                                       架空レジストリを同期的に返す override を持つ — 読むのは Game
+    │                                       ではなく main.ts(Stage の構築より前に済ませ、完成した
+    │                                       Ephemeris を Game のコンストラクタへ渡す)。
     │                                       隻数の静的宣言は無い — 何隻をどこへ置くかは init の中身。
     │                                       freeProcurement/executesPlans は
     │                                       インスタンス側の既定 false なフラグ、authoring は既定 null の ObjectAuthoring
@@ -235,7 +243,7 @@ main.ts
   (`resolve(simTime, player)` が update フェーズ・sync フェーズそれぞれで確定させたもの)から渡す引数。
 - `STAGE_CLASSES`(stage-dictionary.ts のモジュールスコープ、`export const`)… クラス参照(`StageClass`)の
   並びだけを持つ配列で、`Stage` インスタンスは1つも作らない。選択画面のラベル・解放条件(`isUnlocked`)・
-  起動時設定(`ephemerisConfig`)はすべて各クラスの静的宣言
+  起動時の天体暦(静的 async `createEphemeris`)はすべて各クラスの静的宣言
   から読む(`stage.ts` の `StageClass` インターフェース参照)。`CreativeStage` も `STAGE_CLASSES` 末尾の
   一員としてここに含まれ、選択画面のクリエイティブモードタブに CREATIVE として出る(タブは各ステージの
   静的 `selectGroup` の初出順に組まれる — `stage-select.ts` 参照)。ID からクラスを引くのは
@@ -260,7 +268,7 @@ main.ts
 | `Hud` / `Sfx` | main.ts | Game(コンストラクタ引数で受け取り)経由でほぼ全サブシステム(hud/sfx は必ず対で注入する方針) |
 | `SettingsPanel` | main.ts | Game(`[Esc]` で `toggle()` を呼ぶだけ。開閉の一時停止反映は main.ts 側の配線)・MapPicker(空域右クリックの「設定メニューを開く」項目、`Targeter.emptySpaceMenu` と同じパターン) |
 | `MarkerManager` | Game | マーカーを出す全モジュール(PlayerMarkers・Targeter・NavTarget・Logistics・FocusMarkers・PlanGuide・PlanDisplay)。`combatMarkers`/`leadMarkers` は参照共有ではなく MarkerManager 自身の子(§1 参照) |
-| `Ephemeris` | Game | EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・DisplayWindowManager(コンストラクタ引数) |
+| `Ephemeris` | main.ts(`Stage.createEphemeris` 経由で `Game` の構築より前に完成させる) | Game(コンストラクタ引数)経由で EnvironmentScene・Simulator・OverviewCamera・FocusMarkers・NavTarget・PlanEditor(→PlanDisplay)・DisplayWindowManager(コンストラクタ引数) |
 | `CameraSystem.bodyClassToggles`(`BodyClassToggles`) | CameraSystem | MAP VIEW パネルが書き換え、読む側はすべて `MapVisibilityPolicy` を通す(`MapPicker.refresh`・`FocusMarkers.update`・`EnvironmentScene.sync`/参照線・`Game.sync` → Stage/Logistics/CreativeStage/Targeter)。マップの描画・ピック候補・軌道オブジェクト一覧・配置UIの基準天体が同じ1つの状態を共有するための唯一の持ち主。初期値は `localStorage`(`tepui.bodyClassToggles`)から読み込み(`camera-system.ts` の `loadBodyClassToggles`)、トグルのたびに `saveBodyClassToggles` で書き戻す(同上) |
 | `EntityManager` | Game | Simulator(コンストラクタ引数、配列を直接持たず参照だけ回す)・ContactPhysics(`Simulator.advance` が呼び出しのたびに参照を渡すだけで保持しない)・Targeter・NavTarget・Enemy.behave・Stage/stages/・Logistics・EffectsSystem・NanWatchdog(いずれも読み取り + `addXxx`/`findPlayer`/`findEnemy` 経由の追加・参照のみ)・PlanEditor(コンストラクタ引数。`update` が `simulation/attractors.ts` の `planAttractorProvider`/`planSourceRevision` を組むのに読むだけで保持しない)・DisplayWindowManager(コンストラクタ引数、`attractorsAt` が `entities.attractors()` を読むだけ)。`attractors()` は毎回のフィルタ呼び出しで正本を持たない(§付録「正本でないもの」) |
 | `PlanPath` | PlanDisplay | PlanEditor(ノードの画面判定 `projectPoint` / `nearestSample` のみ、`planDisplay.path` 経由) |
@@ -341,9 +349,9 @@ main.ts
 | ポーズ | `Game.paused` | 駆動源は `SettingsPanel.onSettingsOpenChange` と `SaveBrowser.open()`/`close()` の2つ。どちらもシステム窓で、開いている間だけ止める |
 | スナップショット一覧の表示状態 | `SaveBrowser`(private `_visible`) | `open()`/`close()` のみが書き換える。毎フレーム sync は持たず、操作のたびに自分で DOM を作り直す一発モーダル |
 | 一時エフェクト(フラッシュ)の配列 | `FlashEffectManager.effects` | 各要素は位置を時刻つきの `KinematicState` で持ち、`updateFlashEffects` がその時刻から `simTime` まで移流させる |
-| 地球自転の初期位相 | `EarthBody.phase0` | `spinPhase0()`/`setSpinPhase0()` で読み書き可能。セーブは `EnvironmentScene.earthSpinPhase0()` 経由。ロードは `Game` のコンストラクタが `new EnvironmentScene(scene, ephemeris, initialSave?.earthSpinPhase0)` として構築時に一度だけ渡し、値がある場合だけ `EnvironmentScene` のコンストラクタが `setSpinPhase0` を呼ぶ(無ければそのセッションのランダム初期位相のまま) |
-| 各天体の平均黄経の初期位相 | `Ephemeris`(`phaseOffsets`、コンストラクタ引数として受け取り以後不変) | 時刻を引数に取るサンプラ。既定で乱数を持つのは月のみ。時刻 `t` 完全一致キーの3スロットのリングキャッシュ(`planetHelioState`/`satelliteRelState`/`attractorsAt`)を持ち、ヒットしない呼び出しだけ天体暦の合成をやり直す。セーブは `getPhaseOffsets()` で読み取るだけ(書き込み経路は無い)。ロードは `Game` のコンストラクタが読み込んだ `phaseOffsets` を新しい `new Ephemeris(...)` へそのまま渡す — 実行中のインスタンスへ書き戻すことはない(スナップショットのロードはページ再読込で `Game`/`Ephemeris` を作り直すため) |
-| `registry`/`originId`/`epochOffsetSec` | `Ephemeris`(コンストラクタ引数、以後不変) | どのステージも既定値(`SOLAR_SYSTEM`/`'earth'`/`EPOCH_T_OFFSET`)を渡すが、`StageClass.ephemerisConfig` を宣言したステージだけ `Game` が別の値を渡して構築する。`starId`/`inertialFrame`/`frames`(登録天体ぶんの `ReferenceFrame` 一覧)もこの3引数からコンストラクタが1回だけ導出する正本(いずれも下記 `frameCache` を経由して作る) |
+| 地球自転の初期位相 | `EarthBody.phase0`(既定 0、乱数は持たない) | `spinPhase0()`/`setSpinPhase0()` で読み書き可能。乱数を引くのは `main.ts` の1箇所だけ(`initialSave?.earthSpinPhase0 ?? Math.random() * 2π`)。`Game` のコンストラクタはその結果を `earthSpinPhase0: number` 引数としてそのまま受け取り、`new EnvironmentScene(scene, ephemeris, earthSpinPhase0)` として構築時に一度だけ渡す。`EnvironmentScene` のコンストラクタは受け取った値で無条件に `setSpinPhase0` を呼ぶ(地球が現在のレジストリに無ければ対象が見つからず何もしないだけ)。セーブは `EnvironmentScene.earthSpinPhase0()` 経由 |
+| 各天体の平均黄経の初期位相 | `Ephemeris`(`phaseOffsets`、コンストラクタ引数として受け取り以後不変) | 時刻を引数に取るサンプラ。既定は空(`{}`)、すなわち全天体オフセット0 — 乱数は一切持たない。時刻 `t` 完全一致キーの3スロットのリングキャッシュ(`planetHelioState`/`satelliteRelState`/`attractorsAt`)を持ち、ヒットしない呼び出しだけ天体暦の合成をやり直す。セーブは `getPhaseOffsets()` で読み取るだけ(書き込み経路は無い)。ロードは `main.ts` が読み込んだ `phaseOffsets`(`initialSave?.phaseOffsets ?? {}`)を `Stage.createEphemeris(phaseOffsets)` 経由の `new Ephemeris(...)` へそのまま渡し、完成した `Ephemeris` を `Game` のコンストラクタへ渡す — 実行中のインスタンスへ書き戻すことはない(スナップショットのロードはページ再読込で `Ephemeris` ごと作り直すため) |
+| `registry`/`originId`/`epochOffsetSec` | `Ephemeris`(コンストラクタ引数、以後不変) | どのステージも既定値(`SOLAR_SYSTEM`/`'earth'`/`EPOCH_T_OFFSET`)で構築されるが、`StageDebugAltSystem` だけは自身の `createEphemeris` override が別のレジストリ・原点・オフセット0 で直接 `new Ephemeris(...)` する。構築するのは `main.ts`(`stageClass.createEphemeris(phaseOffsets)` 経由)で、`Game` 自身はこの3引数を選ばない。`starId`/`inertialFrame`/`frames`(登録天体ぶんの `ReferenceFrame` 一覧)もこの3引数からコンストラクタが1回だけ導出する正本(いずれも下記 `frameCache` を経由して作る) |
 | `frameCache`(`Map<AttractorId, Map<OrbitingId \| null, ReferenceFrame>>`) | `Ephemeris`(`frameOf` 経由) | `(center, rotatingWith)` の対ごとに `ReferenceFrame` を1個だけ持つ、実行時に伸びる正本。レジストリ登録の有無を問わない(生存中の重力天体を中心にする回転系にも同じ契約で応じる)。`inertialFrame`/`frames`/`frameFor` はすべてこのキャッシュを経由して作られた値を返すので、同じ対に対して異なる参照が生まれない(`trajectory-line.ts` の `frame === lastFrame` 参照同一性契約を満たすためのもの) |
 | 入力スナップショット(押下キー・クリック・マウス移動量) | `Input` | フレーム確定は `update()` の1回だけ。エッジは `takeKey`/`takeKeys`/`takeClicks`/`takeRightClicks` で**先着順に消費**され、処理した側より後ろのモジュールには届かない |
 | 敵 AI の実行時状態(最終発砲時刻・バースト残数) | `Enemy` | |

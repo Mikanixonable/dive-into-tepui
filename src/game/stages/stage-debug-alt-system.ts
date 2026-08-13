@@ -1,7 +1,7 @@
 // デバッグ用ステージ: 現実の太陽系とは無関係な架空のレジストリ・原点で進行する。恒星を
 // 1体も持たないため、輻射源・日照率・点群などの太陽系依存の経路が恒星0個でも安全に振る舞う
 // ことを実演する。タイトルの通常ボタン列には出ない。
-import { Stage, type EphemerisConfig, type StageDeps } from './stage';
+import { Stage, type StageDeps } from './stage';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
@@ -13,6 +13,8 @@ import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add } from '../../physics/vec3';
 import type { StageSaveData } from '../save-data';
+import { Ephemeris } from '../../physics/ephemeris';
+import type { AttractorId } from '../../physics/attractor';
 
 const PRIMARY_ID = 'zephyrus';
 const MOON_ID = 'zephyrus-i';
@@ -54,9 +56,9 @@ const ALT_REGISTRY: CelestialRegistry = {
 
 export class StageDebugAltSystem extends Stage {
   static readonly id = 'debug-alt-system' as const;
-  static readonly ephemerisConfig: EphemerisConfig = {
-    registry: ALT_REGISTRY, originId: PRIMARY_ID, epochOffsetSec: 0,
-  };
+  static async createEphemeris(phaseOffsets: Partial<Record<AttractorId, number>>): Promise<Ephemeris> {
+    return new Ephemeris(ALT_REGISTRY, PRIMARY_ID, 0, phaseOffsets);
+  }
   static readonly selectLabel = 'DEBUG(架空星系)';
   static readonly selectSub = '【デバッグ】恒星0個・架空天体2体のレジストリで起動する';
   static readonly hiddenFromSelect = true;

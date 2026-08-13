@@ -18,27 +18,21 @@ import { SimSpeedManager } from '../sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
-import type { Ephemeris } from '../../physics/ephemeris';
+import { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
 import type { StageSaveData } from '../save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { ObjectType } from '../creative/ship-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-player-controller';
-import type { CelestialRegistry } from '../../physics/solar-system';
 import type { AttractorId } from '../../physics/attractor';
+import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
+import { profileAt } from '../../physics/ephemeris-profile';
+import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../sim-epoch';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
 const BRIEFING_TOAST_MS = 12000;
-
-// Ephemeris のコンストラクタ3引数をそのまま束ねた静的宣言。省略したステージは既定の
-// レジストリ・地球原点のまま動く。
-export type EphemerisConfig = {
-  readonly registry: CelestialRegistry;
-  readonly originId: AttractorId;
-  readonly epochOffsetSec: number;
-};
 
 // 全ステージ共通の生成引数(セーブデータを除く)。具象ステージは自分のコンストラクタで
 // これをそのまま基底へ渡す。
@@ -58,7 +52,7 @@ export type StageDeps = [
 // ステージクラスの静的側。起動時の設定はここから読む。
 export interface StageClass {
   readonly id: StageId;
-  readonly ephemerisConfig: EphemerisConfig | undefined;
+  createEphemeris(phaseOffsets: Partial<Record<AttractorId, number>>): Promise<Ephemeris>;
   // 選択画面が読む項目。
   readonly selectLabel: string;
   readonly selectSub: string;
@@ -80,8 +74,12 @@ export interface ObjectAuthoring {
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
 export abstract class Stage {
-  // 固有の天体暦を使うステージだけが宣言する。既定のレジストリ・地球原点で構築される。
-  static readonly ephemerisConfig: EphemerisConfig | undefined = undefined;
+  // 起動時に1度だけ組む天体暦。既定は現実の太陽系で、精密暦パックを読み込む。
+  static async createEphemeris(phaseOffsets: Partial<Record<AttractorId, number>>): Promise<Ephemeris> {
+    const profile = profileAt(SIM_EPOCH_JD_TDB);
+    const pack = await loadAbsoluteEphemeris(profile.id, SIM_EPOCH_JD_TDB, SIM_EPOCH_JD_TDB + 10 * 365.25);
+    return new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, pack, SIM_EPOCH_JD_TDB);
+  }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   static readonly selectLockedSub: string | undefined = undefined;
   // タイトルのステージ選択ボタン列に並べない。

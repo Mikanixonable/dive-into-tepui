@@ -69,12 +69,12 @@ export class EnvironmentScene {
   private readonly referenceLines: Map<OrbitingId, OrbitLine>;
 
   // 天体ビューの配列がすべて ephemeris から引く。天体暦はゲーム側が所有する単一インスタンスを
-  // 共有参照する(状態を持たない純サンプラ)。earthSpinPhase0 を与えると地球の自転初期位相を
-  // その値にする(地球が現在のレジストリに無ければ何もしない)。
+  // 共有参照する(状態を持たない純サンプラ)。earthSpinPhase0 は地球の自転初期位相
+  // (地球が現在のレジストリに無ければ何もしない)。
   constructor(
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
-    earthSpinPhase0?: number,
+    earthSpinPhase0: number,
   ) {
     this.scene = scene;
     const registry = ephemeris.registry;
@@ -97,10 +97,7 @@ export class EnvironmentScene {
       id in CELESTIAL_BODIES ? CELESTIAL_BODIES[id as SolarSystemId].create() : fallbackCelestialView(registry, id));
     for (const body of this.bodies) body.build(scene);
 
-    if (earthSpinPhase0 !== undefined) {
-      const earth = this.bodies.find((b): b is EarthBody => b instanceof EarthBody);
-      earth?.setSpinPhase0(earthSpinPhase0);
-    }
+    this.bodies.find((b): b is EarthBody => b instanceof EarthBody)?.setSpinPhase0(earthSpinPhase0);
   }
 
   // 表示時刻 t の点群の位置を更新する。

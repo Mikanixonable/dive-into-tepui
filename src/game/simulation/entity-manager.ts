@@ -13,7 +13,7 @@ import { Bullet } from '../game-entity/bullet';
 import { Base } from '../game-entity/base';
 import { InstancedPool } from '../../render/instanced-pool';
 import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
-import { Player } from '../player/player';
+import { Player, type PlayerBehaveParams } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { CombatTarget } from '../targeter';
 import type { MapVisibility, MapVisibilityPolicy } from '../celestial/map-visibility';
@@ -289,10 +289,10 @@ export class EntityManager {
     if (changed) this.invalidateCaches();
   }
 
-  // 操作対象以外の自機に、表示フレーム基準のベルト・HP回復だけを1回ずつ進める。熱・電力・
-  // ラジエータは Simulator が全艦を substep ごとに stepEnvironment する。
-  updatePassivePlayers(dt: number, activePlayer: Player | null): void {
-    for (const ship of this.players) if (ship !== activePlayer) ship.updatePassive(dt);
+  // 毎フレーム、全ての自機へ behave を1度ずつ通す。操作できるのは操作対象艦だけで、
+  // それ以外を畳むところまで behave 自身が済ませる。
+  updatePlayers(activePlayer: Player | null, params: PlayerBehaveParams): void {
+    for (const ship of this.players) ship.behave(ship === activePlayer, this, params);
   }
 
   // 操作できない間、全自機の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
@@ -303,13 +303,13 @@ export class EntityManager {
   // 全自機のメッシュ・エフェクト・マーカーを同期する。方向マーカーや照準ズームは操作艦だけの
   // ものなので、どれが操作対象かを各艦へ渡す。
   syncPlayers(
-    activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem, phasePlaying: boolean,
-    paused: boolean, displayTime: number, ephemeris: Ephemeris, attractors: readonly Attractor[],
+    activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
+    displayTime: number, ephemeris: Ephemeris, attractors: readonly Attractor[],
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     for (const ship of this.players) {
       ship.syncPlayer(
-        fo, cameraSystem, phasePlaying, paused, displayTime, ship === activePlayer, ephemeris, attractors,
+        fo, cameraSystem, displayTime, ship === activePlayer, ephemeris, attractors,
         visibilityPolicy?.entity('player', ship === activePlayer) ?? null,
       );
     }
