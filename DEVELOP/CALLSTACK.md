@@ -32,6 +32,7 @@
     - [browser.visible] input.takeKey(K.pauseMenu) → browser.close() // 一覧の [Esc] を最優先で取る(close() 自身が game.resume() する)。以降は評価しない
     - [K.clipSnapshot] [!activeStage.isPlaying] hud.hint() // 決着後は拒否。それ以外は snapshotService.capture(game, 'manual', null, true) + hud.hint()
     - [K.openSnapshots] browser の open()/close() をトグル // open() 前に settingsPanel.toggle(false)。open() が game.pause()、close() が game.resume() を呼ぶ
+  - perf.handleInput(game.input) // [K.togglePerfWindow] toggle()
   - autoSave.update(game) // 前回撮影から AUTOSAVE_INTERVAL_REAL_SEC(実時間60秒)経っていれば snapshotService.capture(game, 'auto', null, false) // game.isPaused または !activeStage.isPlaying なら何も撮らない
   - game.sync()
   - game.render()
@@ -78,7 +79,6 @@
         - [editMode] deleteSelected() → deleteNode()
           - plan.removeNode() / closeMenu() / simSpeedManager.cancelAutoWarp() / hud.hint() // 下流ノードも一緒に消える
         - [!editMode] plan.clear() + simSpeedManager.cancelAutoWarp() + hud.hint() // ノードがある場合のみ
-    - [K.togglePerfWindow] perfMeter?.toggle()
   - sections.exit(SECTION.input)
   - [!game.isPaused] advanceSimulation(dt) // ポーズ中は丸ごと飛ばす(HP自動回復などをポーズ中に汲み出せないようにする)
   - displayWindowManager.resolve(simulator.simTime, player) // advanceSimulation を飛ばした(ポーズ中の)フレームでもここで確定させる。ポーズ中・決着後もカメラ更新だけは飛ばせない — 飛ばすと視点だけが絶対 ECI に取り残され、軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする

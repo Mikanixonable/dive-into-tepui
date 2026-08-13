@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
 import { v3 } from '../physics/vec3';
-import type { PerfCounts, PerfMeter } from '../perf-meter';
+import type { PerfCounts } from '../perf-meter';
 import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
@@ -34,7 +34,6 @@ import { NavTarget } from './nav-target';
 import { MapPicker } from './map-picker';
 import { Navball } from './navball/navball';
 import { GameSaveData } from './save-data';
-import { KEY_MAPPING as K } from './input/key-mapping';
 import { Docking } from './docking';
 import { ViewBadge } from './hud/view-badge';
 import { planAttractorProvider, planSourceRevision } from './simulation/attractors';
@@ -44,7 +43,7 @@ export class Game {
   private readonly _scene: THREE.Scene;
   private readonly renderer: GameScene['renderer'];
   readonly input: Input;
-  touchControls: TouchControls | null = null;
+  private readonly touchControls: TouchControls | null;
   private readonly _hud: Hud;
   private readonly _sfx: Sfx;
   private readonly settingsPanel: SettingsPanel;
@@ -73,8 +72,6 @@ export class Game {
   private readonly navball: Navball;
 
   private readonly unlockManager: UnlockManager;
-  // PerfMeter は計測点である rAF ループ側の持ち物なので、後から受け取る。
-  private perfMeter: PerfMeter | null = null;
 
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
@@ -158,7 +155,7 @@ export class Game {
 
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
-    if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
+    this.touchControls = TouchControls.isTouchDevice() ? new TouchControls(this.input) : null;
 
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
     this.predictor = new Predictor(this.entities, this.ephemeris);
@@ -172,10 +169,9 @@ export class Game {
     // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
     this.viewManager = new ViewManager(
       this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapPicker,
-      this.activePlayers,
+      this.activePlayers, this.touchControls,
       initialSave?.camera?.view,
     );
-    this.viewManager.setTouchControls(this.touchControls);
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
@@ -198,11 +194,6 @@ export class Game {
   resume(): void { this._isPaused = false; }
 
   get simTime(): number { return this.simulator.simTime; }
-
-  // 負荷確認ウィンドウを登録する。構築直後に一度だけ呼ぶ。
-  setPerfMeter(meter: PerfMeter): void {
-    this.perfMeter = meter;
-  }
 
   // ------------------------------------------------------------ update
 
@@ -370,8 +361,6 @@ export class Game {
     );
     this.viewManager.handleInput(this.input);
     this.editor.handleInput(this.input);
-
-    if (this.input.takeKey(K.togglePerfWindow)) this.perfMeter?.toggle();
   }
 
   // ------------------------------------------------------------------ sync
