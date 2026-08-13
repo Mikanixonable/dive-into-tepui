@@ -336,7 +336,7 @@ export class Game {
     } else if (!this._isPaused && this.player) {
       this.navTarget.updateCombatBasePicking(this.entities, this.input, this.cameraSystem.activeCameraProjection);
       this.targeter.updateCombatTargeting(
-        this.player, this.entities.getCombatTargets(this.player), this.input,
+        this.entities.getCombatTargets(this.player), this.input,
         this.cameraSystem.activeCameraProjection,
       );
     }
