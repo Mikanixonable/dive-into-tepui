@@ -139,7 +139,7 @@
   - 以下の player は毎回その場で読む game.player(= activePlayers.current)
   - sections.enter(SECTION.player)
   - nanWatchdog.checkPlayer('frameStart')
-  - entities.updatePlayers(player, input, simSpeed, dt, activeStage, ephemeris) // entities.players 全隻ぶん、1隻ずつ ship.behave(…) を呼ぶ。input が届くのは ship===player かつ simSpeed.canOperatePlayer の艦だけで、それ以外へは null を渡す(操作対象から外れた艦と操作できないワープ倍率は同じ状態なので、判断はここ1箇所)。simDt = dt × simSpeed.simSpeed もここで組む。ステージの決着状態は分岐条件に無い(決着後も操作艦は動く)
+  - entities.updatePlayers(player, input, simSpeed, dt, activeStage, ephemeris) // entities.players 全隻ぶん、1隻ずつ ship.behave(…) を呼ぶ。input が届くのは ship===player かつ simSpeed.canShipAct の艦だけで、それ以外へは null を渡す(操作対象から外れた艦と操作できないワープ倍率は同じ状態なので、判断はここ1箇所)。simDt = dt × simSpeed.simSpeed もここで組む。ステージの決着状態は分岐条件に無い(決着後も操作艦は動く)
     - [ship ごと] ship.behave(input, dt, simDt, entities, activeStage, ephemeris)
       - updatePassive(dt) // belt.update() + hpRegen()。input の有無に関わらず必ず先頭で実行
         - belt.update()
@@ -185,7 +185,7 @@
   - sections.enter(SECTION.stage)
   - activeStage.update() // 具体ステージへディスパッチ。各具体ステージが isPlaying/艦の有無を自分で見て内部で即 return する
     - behaveAllEnemies() // 敵を配置する具体ステージ(Stage0/00/1/2)が先頭で呼ぶ。CreativeStage は player があるときに限り、logistics.updateLogistics の直後で呼ぶ(既存敵の AI は waveAttackEnabled トグルの有無によらず常に進む)
-      - enemy.behave() // 生存中の敵ごと(canEnemyFire・距離・バースト状態の判定は behave 内部)
+      - enemy.behave() // 生存中の敵ごと(canShipAct・距離・バースト状態の判定は behave 内部)
         - firePlasma() → entities.addBullet()
     - [Stage0 訓練スコアアタック] logistics.updateLogistics(simSpeed, respawnOnDespawn=false)
     - [Stage0 訓練スコアアタック] timer.update() // 残り時間が尽きたフレームでのみ true を返す
@@ -206,7 +206,7 @@
     - [Stage1 / Stage2 キャンペーン] logistics.updateLogistics(simSpeed, respawnOnDespawn=false)
     - [CreativeStage] player があれば: logistics.updateLogistics(simTime, player, simSpeed, respawnOnDespawn=true) → behaveAllEnemies()(上記) → [waveAttackEnabled] waveAttack.update(...)(Stage00 と同じ WaveAttack。トグルが制御するのは新規ウェーブの発生のみで、OFF の間も既存敵はそのまま残り AI は進む)
     - [CreativeStage] placerPanel.isOpen なら getForm() を1回だけ呼び、computePreview(form)/computeFieldIssues(form) へ共有する
-    - [CreativeStage] entities.players ごとに ship.planExecutor.update(ship, simDt, simTime, simSpeed) // 刻み幅は simDt = dt × simSpeed.simSpeed(燃料消費を推力の積分ぶんに比例させる)。 !simSpeed.canPlayerThrust なら先頭で idle へ戻して return(連続指令を書く主体は自分でゲートする — 姿勢整列トルクも含めて何も書かない)。planExecution!=='powered' なら idle へ戻すだけ。'powered' なら姿勢整列(idle/slew/armed)、または燃焼中(burn/trim)の出力段選択・燃料消費・ship.thrust の書き直しを進める。ノード時刻に対する猶予窓(NODE_APPROACH_LEAD+見積り燃焼時間+見積り姿勢転回時間)を外れている間は何もしない。死亡していれば停止。点火・遮断そのものはここでは行わない。Simulator.advance より前に呼ばれるので、操作艦で player.behave がこのフレーム player.thrust を null にしていても、積分に渡る前にここで確実に上書きされる
+    - [CreativeStage] entities.players ごとに ship.planExecutor.update(ship, simDt, simTime, simSpeed) // 刻み幅は simDt = dt × simSpeed.simSpeed(燃料消費を推力の積分ぶんに比例させる)。 !simSpeed.canShipAct なら先頭で idle へ戻して return(連続指令を書く主体は自分でゲートする — 姿勢整列トルクも含めて何も書かない)。planExecution!=='powered' なら idle へ戻すだけ。'powered' なら姿勢整列(idle/slew/armed)、または燃焼中(burn/trim)の出力段選択・燃料消費・ship.thrust の書き直しを進める。ノード時刻に対する猶予窓(NODE_APPROACH_LEAD+見積り燃焼時間+見積り姿勢転回時間)を外れている間は何もしない。死亡していれば停止。点火・遮断そのものはここでは行わない。Simulator.advance より前に呼ばれるので、操作艦で player.behave がこのフレーム player.thrust を null にしていても、積分に渡る前にここで確実に上書きされる
   - sections.exit(SECTION.stage)
   - nanWatchdog.checkPlayer('activeStage.update')
   - simSpeedManager.update() // 自動ワープ中のみ実効。残り時間が C.NODE_APPROACH_LEAD 以下なら autoWarpUntil=null + levelIdx=0 で即 return
@@ -488,7 +488,7 @@
 - **高ワープ時**(`simSpeed > MAX_PHYS_SIM_SPEED`)は `substep()` が1フレームに最大64回走るが、
   `advance` の内部で `resolveCollision = simSpeed.canResolvePhysicalCollisions` が false になるため、
   `contactPhysics.resolveSubstep()`/`resolveBelt()` は丸ごとスキップされる(接触判定・弾命中を
-  含む)。substep が長大になる高ワープでは弾もすり抜けるが、`canPlayerFire` が同じ閾値で発砲自体を
+  含む)。substep が長大になる高ワープでは弾もすり抜けるが、`canShipAct` が同じ閾値で発砲自体を
   止めているので実害は無い。
 - **計画軌道 RK4 の作り直し**は `PlanPath.update` が区間ごとに問う
   `PlanArc.represents(state0, end, sourceRevision, apsisCenterId, tracksLiveAnchor)` で決まる。
