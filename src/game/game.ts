@@ -239,7 +239,6 @@ export class Game {
       mapMode: this.editor.editMode,
       dvEditActive: this.editor.dvEditActive,
       activeStage: this.activeStage,
-      zoomActive: this.cameraSystem.zoomActive,
       ephemeris: this.ephemeris,
     });
     this.nanWatchdog.checkPlayer('player.behave', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
@@ -373,7 +372,7 @@ export class Game {
     );
     this.entities.syncMarkers(this.cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy);
 
-    this.entities.effects.sync(fo, this.cameraSystem.activeCamera);
+    this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
     this.targeter.sync(fo, player, combatTargets, this.cameraSystem, attractors, visibilityPolicy);
     this.targeter.syncTargetMarkers(
