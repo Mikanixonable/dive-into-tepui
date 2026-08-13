@@ -124,7 +124,6 @@ export class Game {
       this._hud,
       this.markerManager,
       this.ephemeris,
-      stageClass.showsStatusInOverview,
       initialSave?.camera,
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);

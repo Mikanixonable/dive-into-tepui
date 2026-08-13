@@ -20,7 +20,10 @@
   `init` の中身。`EntityManager` は復元だけを担う。
 - `init` は `void`。機数を出すステージは `scoreCounter.totalEnemiesSpawned` を読む。
 - `ViewManager` の構築は `new stageClass(...)` の後ろ。初期ビューは世界が組み上がった後に決まる。
-- `StageStatusPanel` の入口は `sync(player: Player | null, ...)` 一本。
+- `StageStatusPanel` の入口は `sync(player: Player | null, ...)` 一本。`#hud-stagestatus` /
+  `#hud-status` / `#hud-orbit` の表示を書くのは各パネルの所有者だけで、`CameraSystem` は触らない。
+  どこにも効果を持っていなかった `showsStatusInOverview` は宣言ごと削除し、ステータスパネルは
+  戦闘ビュー専用と言い切った(マップの同じ画面下端中央は PREDICT バーが占める)。
 
 ## 未決の論点
 
@@ -34,13 +37,6 @@ override が7個に増え、規則が守ろうとしている「どちらが一�
 能力フラグ化(`readonly endsOnPlayerLoss`)も、既定をどちらに置いても同じ数の宣言が要る。
 
 **現状維持を推奨するが、規則との緊張は実在するのでユーザーの判断を仰ぐ。**
-
-### #hud-stagestatus の表示の正本が2つある
-
-`CameraSystem.sync` が `overviewMode && !showsStatusInOverview` で `style.display` を書き、
-その後 `StageStatusPanel.sync` が同じ要素の `style.display` を書く。後者が
-`overviewMode` なら常に畳むので、`CreativeStage.showsStatusInOverview = true` は
-実際には効いていない。表示条件を片方へ寄せる必要がある。
 
 ## 範囲外(気付いたが触っていない)
 

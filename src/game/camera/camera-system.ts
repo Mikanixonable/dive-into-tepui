@@ -103,23 +103,14 @@ export class CameraSystem {
 
   setMapMode(open: boolean): void { this._overviewMode = open; }
 
-  // sync() で毎フレーム参照する DOM 要素をコンストラクタ時にキャッシュする。
-  private readonly _elStatus: HTMLElement | null;
-  private readonly _elStageStatus: HTMLElement | null;
-  private readonly _elOrbit: HTMLElement | null;
-  // マップ視点でも艦のステータスを表示するか(ステージが showsStatusInOverview で宣言する)。
-  private readonly showStatusInOverview: boolean;
-
   // 両カメラとフォーカス候補ラベルを構築し、常用ショートリストパネルの選択操作を配線する。
   // saved があれば両カメラをその視点から組む。
   constructor(
     _hud: Hud,
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
-    showStatusInOverview = false,
     saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
   ) {
-    this.showStatusInOverview = showStatusInOverview;
     // 両カメラとフォーカス候補ラベル
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
     this.combatCamera = new CombatCameraSystem(_hud, saved?.chase);
@@ -142,11 +133,6 @@ export class CameraSystem {
         }
       });
     }
-
-    // sync() 用の DOM 要素を事前にキャッシュ
-    this._elStatus = document.getElementById('hud-status');
-    this._elStageStatus = document.getElementById('hud-stagestatus');
-    this._elOrbit = document.getElementById('hud-orbit');
   }
 
   // 現在アクティブなカメラ(広範囲視点/戦闘追従視点)を返す。
@@ -215,11 +201,6 @@ export class CameraSystem {
     this.overviewCameraPanel.setVisible(this.overviewMode);
     this.overviewCameraPanel.setBodyClassToggles(this._bodyClassToggles);
 
-    // 戦闘ビュー固有パネルを広範囲視点では非表示にする
-    const hidden = this.overviewMode && !this.showStatusInOverview ? 'none' : '';
-    if (this._elStatus) this._elStatus.style.display = hidden;
-    if (this._elStageStatus) this._elStageStatus.style.display = hidden;
-    if (this._elOrbit) this._elOrbit.style.left = this.overviewMode ? '12px' : '';
     if (this.overviewMode) {
       this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);
     } else {
