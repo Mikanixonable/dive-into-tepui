@@ -238,7 +238,7 @@ export class Game {
       simSpeed: this.simSpeedManager,
       mapMode: this.editor.editMode,
       dvEditActive: this.editor.dvEditActive,
-      scoreCounter: this.activeStage.scoreCounter,
+      activeStage: this.activeStage,
       zoomActive: this.cameraSystem.zoomActive,
       ephemeris: this.ephemeris,
     });
