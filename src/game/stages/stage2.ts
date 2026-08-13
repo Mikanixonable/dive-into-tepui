@@ -35,7 +35,8 @@ export class Stage2 extends Stage {
   }
 
   // 通常軌道の敵とモルニヤ級軌道の敵を混成配置する。
-  init(player: Player, entities: EntityManager): number {
+  init(player: Player | null, entities: EntityManager): number {
+    if (!player) return 0;
     const base = player.state;
     const hud = this._hud;
     const sfx = this._sfx;

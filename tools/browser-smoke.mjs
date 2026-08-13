@@ -97,7 +97,7 @@ const query = process.env.SMOKE_QUERY ?? '?stage=00';
 if (!query.startsWith('?') || query.includes('#')) {
   throw new Error('SMOKE_QUERY must be a query string beginning with "?" and must not contain a fragment.');
 }
-const expectCreative = new URLSearchParams(query.slice(1)).get('mode') === 'creative';
+const expectCreative = new URLSearchParams(query.slice(1)).get('stage') === 'creative';
 const emulateTouch = process.env.SMOKE_TOUCH === '1';
 const profile = mkdtempSync(path.join(tmpdir(), 'tepui-smoke-'));
 const server = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1', '--directory', 'docs'], {

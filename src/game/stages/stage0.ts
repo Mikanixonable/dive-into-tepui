@@ -43,7 +43,8 @@ export class Stage0 extends Stage {
   }
 
   // 初期補給と敵クラスタを配置し、生成した敵数を返す。
-  init(player: Player, entities: EntityManager): number {
+  init(player: Player | null, entities: EntityManager): number {
+    if (!player) return 0;
     for (let i = 0; i < C.STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
     }

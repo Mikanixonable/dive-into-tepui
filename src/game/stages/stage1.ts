@@ -29,7 +29,8 @@ export class Stage1 extends Stage {
   }
 
   // 5機の敵を初期配置し、敵数を返す。
-  init(player: Player, entities: EntityManager): number {
+  init(player: Player | null, entities: EntityManager): number {
+    if (!player) return 0;
     const base = player.state;
     const hud = this._hud;
     const sfx = this._sfx;

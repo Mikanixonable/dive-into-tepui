@@ -164,7 +164,7 @@ export class DockView {
     const moneyEl = this.el.querySelector('#dock-base-money');
     if (moneyEl) {
       const moneyText = this.freeProcurement
-        ? '所持金: ∞ (クリエイティブ)'
+        ? '所持金: ∞ (調達は無償)'
         : `所持金: ${this.currentBase.baseState.money.toLocaleString()} Cr`;
       moneyEl.textContent = moneyText;
     }

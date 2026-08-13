@@ -29,7 +29,8 @@ export class StageDebug extends Stage {
   }
 
   // 敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
-  init(player: Player, entities: EntityManager): number {
+  init(player: Player | null, entities: EntityManager): number {
+    if (!player) return 0;
     const enemies = generateWave(player.state, this.waveCount++, this._ephemeris, this._hud, this._sfx, this._fx, this._scene, 'random');
     for (const enemy of enemies) this.addEnemy(enemy, entities);
 

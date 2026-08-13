@@ -22,6 +22,7 @@ import { HudToggle } from '../hud/buttons';
 import { hudDock } from '../hud/dom';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { UnlockManager } from '../unlock-manager';
+import type { ActivePlayerController } from '../active-player-controller';
 import { Ammo } from '../game-entity/ammo';
 import { Base } from '../game-entity/base';
 import { generateDriftingEnemy } from './spawner/enemy-generator';
@@ -40,10 +41,9 @@ export class CreativeStage extends Stage {
   // 無い側の特殊化にすぎない)。
   static readonly initialPlayerCount = 0;
   static readonly showsStatusInOverview = true;
-  readonly stageId = 'creative' as const;
   readonly selectLabel = 'CREATIVE';
   readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
-  readonly hiddenFromSelect = true;
+  readonly selectGroup = 'クリエイティブモード';
   readonly selectKeys: string[] = [];
   readonly initialAmmo = { mags: 0, rounds: 0 };
   readonly freeProcurement = true;
@@ -74,8 +74,9 @@ export class CreativeStage extends Stage {
   setup(
     hud: Hud, sfx: Sfx, scene: THREE.Scene, entities: EntityManager, unlockManager: UnlockManager,
     fx: EffectsSystem, markerManager: MarkerManager, ephemeris: Ephemeris, simulator: Simulator,
+    activePlayers: ActivePlayerController,
   ): void {
-    super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator);
+    super.setup(hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activePlayers);
 
     // 以後の新規配置が既存 id と衝突しないよう、この時点で存在する艦・補給の id を予約する
     // (スナップショットからの再開では entities が復元済み — 新規開始では空なので何もしない)。
@@ -93,7 +94,7 @@ export class CreativeStage extends Stage {
   // 補給の自動投入トグルを1つ載せたパネルを組み立て、マップ左ドックへ追加して返す。
   private buildLogisticsPanel(hudRoot: HTMLElement): HTMLElement {
     const panel = document.createElement('div');
-    panel.id = 'hud-creative-logistics';
+    panel.id = 'hud-logistics';
     panel.className = 'panel';
     panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const title = document.createElement('h3');
@@ -104,10 +105,6 @@ export class CreativeStage extends Stage {
     panel.appendChild(toggle.element);
     hudDock(hudRoot, 'right').appendChild(panel);
     return panel;
-  }
-
-  init(): number {
-    return 0;
   }
 
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
@@ -201,8 +198,8 @@ export class CreativeStage extends Stage {
 
   // フォーム値から KinematicState を組み立て、配置する。
   private placeObject(name: string, form: ShipPlacerForm): void {
-    if (form.objectType === 'player' && this._entities.players.length >= C.CREATIVE_MAX_SHIPS) {
-      this._hud.hint(`配置数が上限(${C.CREATIVE_MAX_SHIPS}隻)に達しています`);
+    if (form.objectType === 'player' && this._entities.players.length >= C.MAX_PLACED_SHIPS) {
+      this._hud.hint(`配置数が上限(${C.MAX_PLACED_SHIPS}隻)に達しています`);
       return;
     }
     try {
@@ -215,7 +212,7 @@ export class CreativeStage extends Stage {
         const finalName = name || `Player-${this.nextFallbackNameSeq++}`;
         const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, { name: finalName, state, id });
         this._entities.addPlayer(ship);
-        this.onShipPlaced?.(ship);
+        this._activePlayers.claimIfNone(ship);
         this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
         const finalName = name || `Enemy-${this.nextFallbackNameSeq++}`;
@@ -239,9 +236,6 @@ export class CreativeStage extends Stage {
       this._hud.hint(`配置できません: ${message}`, 5000);
     }
   }
-
-  // Game が Creative のみで接続する。Stage 基底を複数船の概念で汚さない。
-  onShipPlaced: ((ship: Player) => void) | null = null;
 
   // フォームの placementMode に応じて軌道要素指定(stateFromOrbitalElements)かラグランジュ点指定
   // (haloState/lissajousState)のどちらかで KinematicState を組み立てる。

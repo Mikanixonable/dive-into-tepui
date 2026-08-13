@@ -500,7 +500,7 @@ export class Player extends Ship {
     this.syncOrbitLine(true, fo, camera.activeCamera, attractors, this.thrust !== null);
   }
 
-  // Creative で任意削除されるため、Player が所有する線・ビルボード・HUD も一度だけ解放する。
+  // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
   private disposed: boolean = false;
 
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。

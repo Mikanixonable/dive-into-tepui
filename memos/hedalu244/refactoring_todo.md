@@ -28,10 +28,6 @@
   2. `Targeter` が `ContextMenu` を直接持ち、`currentMenuTarget` + `onSelect` ディスパッチという
      **`MapContextGizmo` と同型のパターンを再実装**している(→ 4-5)。
 
-### `CreativeStage` の `private simTime`
-`Simulator.simTime` のコピーを毎フレーム覚え直す。理由はコメントに書かれている
-(配置パネルの confirm が DOM イベントとして非同期に発火するため)が、正データの重複であることに変わりはない。`ShipPlacerPanel.onConfirm` に `simTime` を引数で渡す形にできないか要検討。
-
 ### 9. `Navball` が天球グリッドの可視状態を持つ
 
 指示書 WP-D2b が「グリッドトグル6つはこのウィンドウ内に置く」と指示した帰結で、
@@ -129,8 +125,6 @@ hud、sfx注入パターンのなかで今後必要なくなる可能性が高�
   `strongestAttractor` があるので直せるが、重力源の一般化とは別の仕様変更。
 ## 影判定(`lenSq(...) < R_EARTH_EQ²`)が `game-entity/enemy.ts` と `player/player-fire.ts` に
   同じ実装で2つある。
-## `stages/creative-stage.ts` の `updatePreview` が update から sync 相当の処理(THREE の `.visible`)を
-  触っている(フックが検出。今回の変更セットとは無関係な既存の状態)。
 
 ## ring-viewやbody-visiblityがgame/にある
 責務的にはrender/に近い気がする。game/にピクセル単位の描画の最適化問題を持ち込むのは避けたい。

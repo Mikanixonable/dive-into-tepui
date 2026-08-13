@@ -184,8 +184,7 @@ export interface EphemerisContext {
   packFormatVersion: number;
 }
 
-// 1ステージぶんのスナップショット集合とクリア記録。クリエイティブモードのスロットは
-// これを stageId='creative' の1件だけ持つ。
+// 1ステージぶんのスナップショット集合とクリア記録。スロットは遊んだステージごとに1件持つ。
 export interface StageHistoryMeta {
   stageId: string;
   clearCount: number;
@@ -198,7 +197,6 @@ export interface StageHistoryMeta {
 export interface SaveSlotMeta {
   id: string;
   name: string;
-  mode: 'stage' | 'creative';
   createdAtReal: number;
   lastPlayedAtReal: number;
   lastStageId: string;

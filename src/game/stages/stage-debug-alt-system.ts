@@ -68,7 +68,8 @@ export class StageDebugAltSystem extends Stage {
   }
 
   // 既定の地球 LEO 初期状態(このレジストリでは無意味)を、zephyrus を周回する低軌道で上書きする。
-  init(player: Player): number {
+  init(player: Player | null): number {
+    if (!player) return 0;
     const t = player.state.t;
     const primary = this._ephemeris.attractorsAt(t).find((a) => a.id === PRIMARY_ID)!;
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.mu);
