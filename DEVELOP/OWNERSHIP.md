@@ -96,26 +96,33 @@ main.ts
     │   └── DockView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
     ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約。
     │                                       ActivePlayerController はコンストラクタ引数(ViewManager より先に
-    │                                       生成される)。docking/touchControls への参照はいずれも ViewManager
-    │                                       より後に生成されるため、setDocking()/setTouchControls() で構築後に
-    │                                       注入される(private フィールドとして保持)。Stage への参照は持たない
+    │                                       生成される)。docking への参照は ViewManager より後に生成されるため
+    │                                       setDocking() で構築後に注入される(private フィールドとして保持)。
+    │                                       Stage への参照は持たないが、生成は activeStage より後 — 初期ビューを
+    │                                       canEnter('combat') で解決するので、Stage の初期配置で自機が置かれた後
+    │                                       でなければ判定できない。touchControls は生成直後の
+    │                                       setTouchControls() で渡す
     ├── ViewBadge                      ... DOM は Hud.layers.notify 配下。ViewManager を参照するだけで自身は状態を持たない
     │   └── ContextMenu<true, ViewId>  ... DOM は Hud.layers.popup 配下
     ├── Stage (activeStage)            ... Game のコンストラクタが受け取る解決済みの StageClass を直接 new し、
     │                                       saved(StageSaveData | undefined)と StageDeps 一式(hud/sfx/scene/entities/
     │                                       unlockManager/fx/markerManager/ephemeris/simulator/activePlayers、
     │                                       stage.ts 参照)を渡す(分岐は無く、CREATIVE も同じ経路)。
-    │                                       コンストラクタ一段で初期化が完結し、初期配置・初期弾薬・ブリーフィングは
-    │                                       各具象ステージのコンストラクタ末尾の begin() が行う(基底のコンストラクタ
-    │                                       からは呼べない — 具象側のフィールド初期化が super() の後に走るため)。
-    │                                       起動時の静的宣言(initialPlayerCount・showsStatusInOverview・ephemerisConfig)は
+    │                                       コンストラクタ一段で初期化が完結し、新規開始の世界の初期状態(自機を含む)と
+    │                                       ブリーフィングは各具象ステージのコンストラクタ末尾の begin() → init(entities)
+    │                                       が行う(基底のコンストラクタからは呼べない — 具象側のフィールド初期化が
+    │                                       super() の後に走るため)。自機を置くのは protected addPlayer(init?) で、
+    │                                       new Player → entities.addPlayer → activePlayers.claimIfNone をこの1箇所に
+    │                                       まとめる(初期弾薬は PlayerInit.ammo として艦の構築引数に載る)。
+    │                                       起動時の静的宣言(showsStatusInOverview・ephemerisConfig)は
     │                                       Stage の静的既定値をクラスごとに override したもので、Game は stageClass
-    │                                       から直接読む。freeProcurement/executesPlans は
+    │                                       から直接読む。隻数の静的宣言は無い — 何隻をどこへ置くかは init の中身。
+    │                                       freeProcurement/executesPlans は
     │                                       インスタンス側の既定 false なフラグ、authoring は既定 null の ObjectAuthoring
     │                                       (配置・複製の口)。CreativeStage だけが両方を有効にし、authoring は自身を返す。
     │                                       _activePlayers は StageDeps の一つとして引数で受け取り(protected _activePlayers)、
-    │                                       CreativeStage.placeObject は艦の配置後にこれへ claimIfNone(ship) を呼び、
-    │                                       操作対象が居なければ配置した艦を操作対象にする。喪失した自機の回収は
+    │                                       CreativeStage.placeObject の艦の配置も同じ addPlayer を通る。
+    │                                       喪失した自機の回収は
     │                                       ActivePlayerController.reclaimDead() が全ステージ共通で毎フレーム無条件に
     │                                       行うので、ここに対応するフラグはない
     │   ├── ScoreCounter
@@ -140,10 +147,10 @@ main.ts
     │   ├── OrbitLine (secondaryOrbitLine) ... 第二ターゲット軌道線(シアン)
     │   └── ContextMenu<Enemy>         ... 第一/第二ターゲットの設定・解除メニュー。DOM は Hud.layers.popup 配下
     ├── EntityManager                  ... エンティティ配列の保持と、破片(entity)の生成窓口である EffectsSystem
-    │                                       の所有。コンストラクタ引数 init(EntityManagerInit = {playerCount} の
-    │                                       新規開始 or {saved} の復元)の指すとおりに起動時の顔ぶれを配置する
-    │                                       (どの艦を操作するかは決めない — ActivePlayerController が自分で解決する)。
-    │                                       simTime は持たない
+    │                                       の所有。コンストラクタ引数 saved(GameSaveData | undefined)があれば
+    │                                       その顔ぶれを復元するだけで、新規開始では全配列が空のまま始まる
+    │                                       (起動時の顔ぶれを組むのは Stage.init — どの艦を操作するかも決めない。
+    │                                       ActivePlayerController が自分で解決する)。simTime は持たない
     │   ├── InstancedPool (bulletBodyPool) ... geometry/material は render/ships.ts のモジュールスコープ
     │   │                                      共有リソースを参照するだけ(所有しない)。sync が毎フレーム push する
     │   ├── InstancedPool (bulletHaloPool)
@@ -229,7 +236,7 @@ main.ts
   (`resolve(simTime, player)` が update フェーズ・sync フェーズそれぞれで確定させたもの)から渡す引数。
 - `STAGE_CLASSES`(stage-dictionary.ts のモジュールスコープ、`export const`)… クラス参照(`StageClass`)の
   並びだけを持つ配列で、`Stage` インスタンスは1つも作らない。選択画面のラベル・解放条件(`isUnlocked`)・
-  起動時設定(`ephemerisConfig`/`initialPlayerCount`/`showsStatusInOverview`)はすべて各クラスの静的宣言
+  起動時設定(`ephemerisConfig`/`showsStatusInOverview`)はすべて各クラスの静的宣言
   から読む(`stage.ts` の `StageClass` インターフェース参照)。`CreativeStage` も `STAGE_CLASSES` 末尾の
   一員としてここに含まれ、選択画面のクリエイティブモードタブに CREATIVE として出る(タブは各ステージの
   静的 `selectGroup` の初出順に組まれる — `stage-select.ts` 参照)。ID からクラスを引くのは
