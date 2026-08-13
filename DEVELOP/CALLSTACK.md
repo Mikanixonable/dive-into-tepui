@@ -167,8 +167,8 @@
             - spawnBullet() → entities.addBullet()
             - player.state.v に反動 Δv
             - dropCasing() → fx.spawnCasing()
-            - spawnMuzzleFlash() → fx.spawnFlash()
-            - scoreCounter.recordShot()
+            - spawnMuzzleFlash() → fx.spawnMuzzleFlash() → spawnFlash(dimsInGunsight=true)
+            - activeStage.scoreCounter.recordShot()
             - sfx.fire()
           - spawnEjectedMagazineFrame() + sfx.magFeed() // 'mag-reload'
           - spawnEjectedMagazineFrame() + dropBarrel() + sfx.playReload() // 'barrel-reload'
@@ -397,8 +397,8 @@
     - 自機・敵・基地それぞれ orbitLine.setDisplayEnabled(!overviewMode || visibilityPolicy が admit する orbit) // マップビューのみトグルの対象、戦闘ビューは常に表示
     - [entities.bases ごと] base.syncOrbitLine(overviewMode, fo, camera, attractors) // 中心天体は strongestAttractor(base.state.r, attractors)。マップビューのみ、それ以外は null を渡して線を消す
   - entities.syncMarkers(cameraSystem, displayTime, player?.state.r ?? null, visibilityPolicy) // ammos/bases の各 marker?.sync。displayState(displayTime) → [overviewMode] headingDeg(ds.r, ds.v) → set('entity-<id>', 'mk-ammo'|'mk-base', '▲', rotationDeg) / [!overviewMode] set('entity-<id>', 種別ごとの字形) + setBearing('entity-<id>-bearing')。ラベルは name + viewerPos があれば距離
-  - effects.sync(fo, camera) → flashEffectManager.syncFlashEffects()
-    - pool.beginFrame() → (生存中のフラッシュごとに transform へ位置/スケール/カメラ正対回転を書き、color = baseColor×opacity で push) → pool.endFrame() // 寿命・移流は update フェーズで済んでいる
+  - effects.sync(fo, camera, cameraSystem.zoomActive) → flashEffectManager.syncFlashEffects()
+    - pool.beginFrame() → (生存中のフラッシュごとに transform へ位置/スケール/カメラ正対回転を書き、color = baseColor×opacity で push) → pool.endFrame() // 寿命・移流は update フェーズで済んでいる。opacity には zoomActive かつ dimsInGunsight のフラッシュだけ ZOOM_MUZZLE_FLASH_SCALE が掛かる
   - [player] targeter.sync(fo, player, combatTargets, cameraSystem, attractors, visibilityPolicy) // ターゲットに紐づく表示物をまとめて
     - syncOrbitLine(fo, player, combatTargets, overviewMode, camera, attractors, visibilityPolicy) // 各線の中心天体は対象ごとに strongestAttractor(target.state.r, attractors) で導出
       - [combatTargets ごと] t.syncOrbitLine(showGray, fo, camera, attractors) // showGray = overviewMode かつ生存かつ第一・第二どちらでもない かつ visibilityPolicy が admit する orbit
