@@ -82,13 +82,13 @@ export class PlanDisplay {
   }
 
   // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。
-  // show=false のときは何も求めない — 出さない計画の位置は持たない。
+  // plan が null のときは何も求めない — 出さない計画の位置は持たない。
   update(
-    plan: Plan, displayWindow: DisplayWindow, show: boolean,
+    plan: Plan | null, displayWindow: DisplayWindow,
     attractorProvider: PlanAttractorProvider,
   ): void {
-    this.plan = show ? plan : null;
-    if (!show) {
+    this.plan = plan;
+    if (!plan) {
       this.ghost = null;
       this.apsisIcons = [];
       this.impactIcons = [];
