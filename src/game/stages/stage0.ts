@@ -42,15 +42,14 @@ export class Stage0 extends Stage {
     );
   }
 
-  // 弾薬ゼロの自機を置き、初期補給と敵クラスタを配置して、生成した敵数を返す。
-  protected init(entities: EntityManager): number {
+  // 弾薬ゼロの自機を置き、初期補給と敵クラスタを配置する。
+  protected init(entities: EntityManager): void {
     const player = this.addPlayer({ ammo: { mags: 0, rounds: 0 } });
     for (let i = 0; i < C.STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
     }
     const enemies = generateCluster(player.state, this._hud, this._sfx, this._fx, this._scene);
     for (const enemy of enemies) this.addEnemy(enemy, entities);
-    return enemies.length;
   }
   // 敵の行動・補給・制限時間を1フレーム分進める。
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
