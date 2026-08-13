@@ -108,27 +108,28 @@ export class Game {
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
     this.entities = new EntityManager(this._scene, this._hud, this._sfx, this.markerManager, initialSave);
-    this.displayWindowManager = new DisplayWindowManager(this._hud.layers.panel, this.ephemeris, this.entities);
-
     this.cameraSystem = new CameraSystem(
       this._hud,
       this.markerManager,
       this.ephemeris,
       initialSave?.camera,
     );
+    this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene, this.settingsPanel);
+    this.navTarget = new NavTarget(this._hud, this.markerManager);
+    this.activePlayers = new ActivePlayerController(
+      initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._sfx,
+    );
+    this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
+    this.displayWindowManager = new DisplayWindowManager(
+      this._hud.layers.panel, this.ephemeris, this.entities, this.simulator, this.activePlayers,
+    );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
     this.frameControls = new FrameControls(
       this._hud.layers.panel, this._hud.layers.popup, this.ephemeris, this.cameraSystem.overviewCamera,
       this.displayWindowManager,
     );
-
-    this.targeter = new Targeter(this._hud, this._sfx, this.markerManager, this._scene, this.settingsPanel);
-    this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navball = new Navball(this._hud.layers.panel);
     this._environment = new EnvironmentScene(this._scene, this.ephemeris, earthSpinPhase0);
-    this.activePlayers = new ActivePlayerController(
-      initialSave?.activePlayerId, this.entities, this.cameraSystem, this.targeter, this.navTarget, this._sfx,
-    );
     this.editor = new PlanEditor(
       this._hud,
       this._sfx,
@@ -147,7 +148,6 @@ export class Game {
     this.input.onFirstGesture = () => this._sfx.unlock();
     this.touchControls = TouchControls.isTouchDevice() ? new TouchControls(this.input) : null;
 
-    this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
     this.predictor = new Predictor(this.entities, this.ephemeris);
 
     this.activeStage = new stageClass(
@@ -207,7 +207,7 @@ export class Game {
     // ポーズ中も決着後も飛ばせない。決着は積分を止めないので、飛ばすと描画原点になるカメラ位置
     // だけが絶対 ECI に取り残され、追従対象もフォーカス天体も軌道速度で流れて即フレームアウトする。
     // ポーズ中は積分が止まるが、カメラの旋回・ズーム・パンの入力をここで消化している。
-    const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, this.player);
+    const displayWindow = this.displayWindowManager.current;
     const overviewMode = this.cameraSystem.overviewMode;
     // 計画表示、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._environment.update(displayWindow.displayTime, overviewMode);
@@ -251,8 +251,6 @@ export class Game {
     this.sections.enter(SECTION.integrate);
     this.simulator.advance(dt, simDt, this.player, this.activeStage, this.simSpeedManager, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
-    // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する。
-    this.displayWindowManager.resolve(this.simulator.simTime, this.player);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
     this.nanWatchdog.checkAll('simulator.advance', this.player, this.entities, this.simulator.simTime, dt, simDt);
 
@@ -322,8 +320,8 @@ export class Game {
 
   sync(): void {
     const player = this.player;
-    // 積分が終わった状態でこのフレームの表示窓を確定させ、sync 全体で共有する。
-    const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, player);
+    // sync 全体で共有するこのフレームの表示窓。
+    const displayWindow = this.displayWindowManager.current;
     this.viewBadge.sync(this.activeStage.stageClass.selectLabel);
     // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
     // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
@@ -369,7 +367,7 @@ export class Game {
     this.navTarget.sync(this.cameraSystem);
     this.entities.syncEquatorNodes(this.cameraSystem);
 
-    this.displayWindowManager.sync(player);
+    this.displayWindowManager.sync();
     this.editor.sync(this.cameraSystem, simTime, fo);
     this.mapPicker.sync(simTime, attractors, player);
     this.frameControls.sync(
