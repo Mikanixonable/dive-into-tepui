@@ -1,6 +1,5 @@
 import * as THREE from 'three/webgpu';
 import { Hud } from '../hud/hud';
-import { Sfx } from '../../audio/sfx';
 import { CombatCameraSystem } from './combat-camera-system';
 import { OverviewCamera } from './overview-camera';
 import { OverviewCameraPanel } from './overview-camera-panel';
@@ -115,18 +114,16 @@ export class CameraSystem {
   // saved があれば両カメラをその視点から組む。
   constructor(
     _hud: Hud,
-    sfx: Sfx,
     markerManager: MarkerManager,
     ephemeris: Ephemeris,
-    player: Player | null,
     showStatusInOverview = false,
     saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
   ) {
     this.showStatusInOverview = showStatusInOverview;
     // 両カメラとフォーカス候補ラベル
     this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
-    this.combatCamera = new CombatCameraSystem(_hud, sfx, player, saved?.chase);
-    this.overviewCamera = new OverviewCamera(_hud, sfx, ephemeris, saved?.overview);
+    this.combatCamera = new CombatCameraSystem(_hud, saved?.chase);
+    this.overviewCamera = new OverviewCamera(_hud, ephemeris, saved?.overview);
     // 広範囲視点の操作パネルと各操作のコールバック
     this.overviewCameraPanel = new OverviewCameraPanel(_hud.layers.panel);
     this.overviewCameraPanel.onBodyClassToggle = (key, on) => {
@@ -152,17 +149,13 @@ export class CameraSystem {
     this._elOrbit = document.getElementById('hud-orbit');
   }
 
-  // アクティブ艦の切替を戦闘ビューの追従カメラへ伝える。
-  setActivePlayer(player: Player | null): void {
-    this.combatCamera.setActivePlayer(player);
-  }
-
   // 現在アクティブなカメラ(広範囲視点/戦闘追従視点)を返す。
   get activeCamera(): THREE.PerspectiveCamera {
     return this.overviewMode ? this.overviewCamera.camera : this.combatCamera.camera;
   }
 
-  // アクティブカメラの位置を返す。
+  // アクティブカメラの位置(描画原点になる値)を返す。戦闘ビューにいることは操作対象艦がいることを
+  // 意味する(ViewManager が canEnter で保証する)ので、この値は実在した艦から計算されたものになる。
   get activeCameraPos(): Vec3 {
     return this.overviewMode ? this.overviewCamera.viewpoint.position : this.combatCamera.viewpoint.position;
   }
@@ -181,9 +174,6 @@ export class CameraSystem {
     mapPickables: readonly MapPickable[],
     attractors: readonly Attractor[],
   ): void {
-    // 追従視点トグル
-    if (input.takeKey(K.followAttitudeToggle)) this.combatCamera.toggleFollowAttitude();
-
     // 中クリックで視点リセット
     input.takeMiddleClicks(() => {
       if (this.overviewMode) this.overviewCamera.reset();
