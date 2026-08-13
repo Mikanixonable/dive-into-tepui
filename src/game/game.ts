@@ -117,10 +117,7 @@ export class Game {
 
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
-    this.entities = new EntityManager(
-      this._scene, this._hud, this._sfx, this.markerManager,
-      initialSave ? { saved: initialSave } : { playerCount: stageClass.initialPlayerCount },
-    );
+    this.entities = new EntityManager(this._scene, this._hud, this._sfx, this.markerManager, initialSave);
     this.displayWindowManager = new DisplayWindowManager(this._hud.layers.panel, this.ephemeris, this.entities);
 
     this.cameraSystem = new CameraSystem(
@@ -159,16 +156,10 @@ export class Game {
       this.cameraSystem, this.editor, this.simSpeedManager, this.settingsPanel,
     );
     this.guide = new PlanGuide(this._hud, this._sfx, this.markerManager);
-    this.viewManager = new ViewManager(
-      this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapPicker,
-      this.activePlayers,
-      initialSave?.camera?.view,
-    );
 
     this.input = new Input(gs.renderer.domElement);
     this.input.onFirstGesture = () => this._sfx.unlock();
     if (TouchControls.isTouchDevice()) this.touchControls = new TouchControls(this.input);
-    this.viewManager.setTouchControls(this.touchControls);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
     this.predictor = new Predictor(this.entities, this.ephemeris);
@@ -177,6 +168,15 @@ export class Game {
       initialSave?.stage, this._hud, this._sfx, this._scene, this.entities, this.unlockManager,
       this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activePlayers,
     );
+
+    // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
+    // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
+    this.viewManager = new ViewManager(
+      this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapPicker,
+      this.activePlayers,
+      initialSave?.camera?.view,
+    );
+    this.viewManager.setTouchControls(this.touchControls);
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(

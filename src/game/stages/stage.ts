@@ -2,7 +2,7 @@
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
 import { Enemy } from '../game-entity/enemy';
-import { Player } from '../player/player';
+import { Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StageStatusPanel } from './stage-utils/stage-status-panel';
@@ -59,7 +59,6 @@ export type StageDeps = [
 export interface StageClass {
   readonly id: StageId;
   readonly ephemerisConfig: EphemerisConfig | undefined;
-  readonly initialPlayerCount: number;
   readonly showsStatusInOverview: boolean;
   // 選択画面が読む項目。
   readonly selectLabel: string;
@@ -90,8 +89,6 @@ export interface StageInitData {
 export abstract class Stage {
   // 固有の天体暦を使うステージだけが宣言する。既定のレジストリ・地球原点で構築される。
   static readonly ephemerisConfig: EphemerisConfig | undefined = undefined;
-  // 新規開始時に組む自機の隻数。
-  static readonly initialPlayerCount: number = 1;
   // マップ視点でも艦のステータスパネルを表示するか。
   static readonly showsStatusInOverview: boolean = false;
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
@@ -118,7 +115,6 @@ export abstract class Stage {
   readonly executesPlans: boolean = false;
   // オブジェクトの配置・複製に対応するステージは自身の編集口を返す。既定では非対応。
   readonly authoring: ObjectAuthoring | null = null;
-  abstract readonly initialAmmo: Pick<StageInitData, 'mags' | 'rounds'>;
 
   readonly scoreCounter: ScoreCounter;
   protected readonly logistics: Logistics;
@@ -167,8 +163,7 @@ export abstract class Stage {
   // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
   protected begin(): void {
     if (this.restored) return;
-    const player = this._activePlayers.current;
-    const enemyCount = this.init(player, this._entities);
+    const enemyCount = this.init(this._entities);
     this._hud.toast(this.briefingHtml(enemyCount), BRIEFING_TOAST_MS);
   }
 
@@ -207,6 +202,15 @@ export abstract class Stage {
     this.statusPanel.sync(player, message, this.scoreCounter.kills);
   }
 
+  // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
+  // 何隻をどこへ置くかはステージ自身の宣言。
+  protected addPlayer(init?: PlayerInit): Player {
+    const ship = new Player(this._hud, this._sfx, this._scene, this._fx, this._markerManager, init);
+    this._entities.addPlayer(ship);
+    this._activePlayers.claimIfNone(ship);
+    return ship;
+  }
+
   // 敵を entities へ登録し、出撃数をスコアへ記録する。
   protected addEnemy(enemy: Enemy, entities: EntityManager): void {
     entities.addEnemy(enemy);
@@ -222,7 +226,7 @@ export abstract class Stage {
 
   abstract briefingHtml(enemyCount: number): string;
   // 初期配置。戻り値は初期敵数(ブリーフィング表示用)。既定では何も置かない。
-  protected init(_player: Player | null, _entities: EntityManager): number {
+  protected init(_entities: EntityManager): number {
     return 0;
   }
   // 毎フレーム呼ぶ。艦が1隻も無い間は player が null になる。

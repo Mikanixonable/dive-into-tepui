@@ -19,7 +19,6 @@ export class Stage2 extends Stage {
   static readonly selectSub = '【第二ステージ: モルニヤ戦域】 敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モードでの遷移が必須';
   static readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
   static readonly selectKeys = ['Digit2'];
-  readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
@@ -40,9 +39,9 @@ export class Stage2 extends Stage {
     );
   }
 
-  // 通常軌道の敵とモルニヤ級軌道の敵を混成配置する。
-  protected init(player: Player | null, entities: EntityManager): number {
-    if (!player) return 0;
+  // 自機を置き、通常軌道の敵とモルニヤ級軌道の敵を混成配置する。
+  protected init(entities: EntityManager): number {
+    const player = this.addPlayer();
     const base = player.state;
     const hud = this._hud;
     const sfx = this._sfx;

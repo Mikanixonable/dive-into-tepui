@@ -18,7 +18,6 @@ export class Stage1 extends Stage {
   static readonly selectLabel = 'stage 1';
   static readonly selectSub = '【第一ステージ: LEO戦域】 高度420kmの低軌道。敵5機はすべて近傍軌道に分布';
   static readonly selectKeys = ['Digit1', 'Enter'];
-  readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
@@ -34,9 +33,9 @@ export class Stage1 extends Stage {
     );
   }
 
-  // 5機の敵を初期配置し、敵数を返す。
-  protected init(player: Player | null, entities: EntityManager): number {
-    if (!player) return 0;
+  // 自機と5機の敵を初期配置し、敵数を返す。
+  protected init(entities: EntityManager): number {
+    const player = this.addPlayer();
     const base = player.state;
     const hud = this._hud;
     const sfx = this._sfx;

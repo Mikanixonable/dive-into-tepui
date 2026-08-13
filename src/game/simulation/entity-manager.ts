@@ -27,11 +27,6 @@ import { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { PerfCounts } from '../../perf-meter';
 
-// 起動時の顔ぶれ。新規開始は自機の隻数だけを、スナップショットからの再開は保存内容を渡す。
-export type EntityManagerInit =
-  | { readonly playerCount: number }
-  | { readonly saved: GameSaveData };
-
 export class EntityManager {
   readonly enemies: Enemy[] = [];
   readonly bullets: Bullet[] = [];
@@ -57,13 +52,13 @@ export class EntityManager {
   // フラッシュ・破片の生成窓口。破片は entity なので、その配列を持つこちらが所有する。
   readonly effects: EffectsSystem;
 
-  // 描画資源のプールを組み、演出窓口を作ってから、init の指すとおりに起動時の顔ぶれを配置する。
+  // 描画資源のプールを組み、演出窓口を作ってから、saved があればその顔ぶれを復元する。
   constructor(
     scene: THREE.Scene,
     hud: Hud,
     sfx: Sfx,
     markerManager: MarkerManager,
-    init: EntityManagerInit,
+    saved?: GameSaveData,
   ) {
     const bulletBody = bulletBodyResources();
     const bulletHalo = bulletHaloResources();
@@ -77,17 +72,7 @@ export class EntityManager {
     this.debrisFragmentPools = debrisFragment.geometries.map(
       (geo) => new InstancedPool(scene, geo, debrisFragment.material, C.MAX_DEBRIS, true));
     this.effects = new EffectsSystem(scene, this, sfx);
-    if ('saved' in init) this.restoreFromSave(init.saved, hud, sfx, scene, markerManager);
-    else this.spawnInitialPlayers(init.playerCount, hud, sfx, scene, markerManager);
-  }
-
-  // 新規開始時の初期配置。艦の隻数は 0..n が一般形で、1隻に固定するかどうかはステージ側の判断。
-  private spawnInitialPlayers(
-    count: number, hud: Hud, sfx: Sfx, scene: THREE.Scene, markerManager: MarkerManager,
-  ): void {
-    for (let i = 0; i < count; i++) {
-      this.addPlayer(new Player(hud, sfx, scene, this.effects, markerManager));
-    }
+    if (saved) this.restoreFromSave(saved, hud, sfx, scene, markerManager);
   }
 
   // スナップショットから自機・敵・弾薬・基地を復元する。

@@ -18,7 +18,6 @@ export class StageDebug extends Stage {
   static readonly selectSub = '【デバッグ】敵集団1つ・撃破しても終了しない・敵の射撃を実行中に切替可能';
   static readonly hiddenFromSelect = true;
   static readonly selectKeys = ['KeyD'];
-  readonly initialAmmo = { mags: 20, rounds: C.MAG_ROUNDS };
 
   private enemyFireEnabled = false;
   private fireToggle!: HudToggle;
@@ -34,9 +33,9 @@ export class StageDebug extends Stage {
     return `<b>デバッグステージ</b><br>敵集団 ${enemyCount} 機。撃破しても終了しない。ステータスウィンドウ左部から敵の射撃を切替可能`;
   }
 
-  // 敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
-  protected init(player: Player | null, entities: EntityManager): number {
-    if (!player) return 0;
+  // 自機を置き、敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
+  protected init(entities: EntityManager): number {
+    const player = this.addPlayer({ ammo: { mags: 20, rounds: C.MAG_ROUNDS } });
     const enemies = generateWave(player.state, this.waveCount++, this._ephemeris, this._hud, this._sfx, this._fx, this._scene, 'random');
     for (const enemy of enemies) this.addEnemy(enemy, entities);
 
