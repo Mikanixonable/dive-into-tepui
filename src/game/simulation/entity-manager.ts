@@ -298,7 +298,7 @@ export class EntityManager {
     activePlayer: Player | null, input: Input, simSpeed: SimSpeedManager,
     dt: number, activeStage: Stage, ephemeris: Ephemeris,
   ): void {
-    const operable = simSpeed.canOperatePlayer;
+    const operable = simSpeed.canShipAct;
     const simDt = dt * simSpeed.simSpeed;
     for (const ship of this.players) {
       ship.behave(ship === activePlayer && operable ? input : null, dt, simDt, this, activeStage, ephemeris);

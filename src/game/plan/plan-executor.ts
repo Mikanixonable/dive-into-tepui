@@ -38,7 +38,7 @@ export interface PlanExecutorHud {
 }
 
 export interface PlanExecutorSimSpeed {
-  readonly canPlayerThrust: boolean;
+  readonly canShipAct: boolean;
 }
 
 type Phase = 'idle' | 'slew' | 'armed' | 'burn' | 'trim';
@@ -70,7 +70,7 @@ export class PlanExecutor {
     // ゲートが閉じた場合も保留ではなく中断する — 凍結した噴射方向は「点火から遮断までの
     // 短時間なら慣性系で固定してよい」という近似であって、噴射しないまま時間加速で長く
     // 進んだ先ではもう艦の位置も速度も別物になっている。
-    if (!simSpeed.canPlayerThrust) {
+    if (!simSpeed.canShipAct) {
       this.stopIfActive(ship);
       return;
     }
@@ -177,7 +177,7 @@ export class PlanExecutor {
       }
       const accel = maxAccelOf(ship.totalThrust, ship.mass);
       const ignition = ignitionTimeFor(node.t, dvMag, accel);
-      if (simTime + 1e-9 < ignition || !simSpeed.canPlayerThrust) return;
+      if (simTime + 1e-9 < ignition || !simSpeed.canShipAct) return;
       this.burnDirWorld = scale(dv, 1 / dvMag);
       this.burnUpWorld = burnUpReference(dv, ship.state);
       this.pendingAccel = accel;
@@ -191,7 +191,7 @@ export class PlanExecutor {
     // いないので軌道力学だけによる速度のドリフトを遮断と誤認してはならず、かといって凍結した
     // 噴射方向のまま待つこともできない(点火から遮断までの短時間でしか成り立たない近似)。
     const dir = this.burnDirWorld!;
-    if (!simSpeed.canPlayerThrust) {
+    if (!simSpeed.canShipAct) {
       this.clearState(ship);
       return;
     }
@@ -208,7 +208,7 @@ export class PlanExecutor {
   // Simulator に無駄な精密ステップを刻ませない)。現在の速度差・出力から毎回引き直すので、
   // 燃焼が進むほど遮断予定は正確に収束する。
   nextEventTime(ship: PlanExecutorShip, simTime: number, simSpeed: PlanExecutorSimSpeed): number | null {
-    if (ship.planExecution !== 'powered' || !simSpeed.canPlayerThrust) return null;
+    if (ship.planExecution !== 'powered' || !simSpeed.canShipAct) return null;
     const node = ship.plan.firstNode();
     if (!node || node !== this.targetNode) return null;
 

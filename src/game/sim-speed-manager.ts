@@ -35,24 +35,10 @@ export class SimSpeedManager {
     return Math.max(0, this.autoWarpUntil - simTime);
   }
 
-  // 現在のワープ倍率で物理的な相互作用(推進・射撃・衝突・敵AI)が有効かどうか。
-  // 呼び出し側は simSpeed そのものを受け取って閾値判定するのではなく、ここを見る。
-  get canPlayerThrust(): boolean {
-    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
-  }
-
-  // 現在のワープ倍率で自機の射撃が有効かどうか。
-  get canPlayerFire(): boolean {
-    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
-  }
-
-  // 現在のワープ倍率で敵の射撃が有効かどうか。
-  get canEnemyFire(): boolean {
-    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
-  }
-
-  // 現在のワープ倍率で自機を操作できるかどうか(噴射・射撃・姿勢制御指令が通る倍率かどうか)。
-  get canOperatePlayer(): boolean {
+  // 現在のワープ倍率で自機の行動(推進・射撃・姿勢制御指令・自動操縦バーン)と
+  // 敵の射撃が成立するかどうか。呼び出し側は simSpeed そのものを受け取って
+  // 閾値判定するのではなく、ここを見る。
+  get canShipAct(): boolean {
     return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
   }
 
@@ -76,7 +62,7 @@ export class SimSpeedManager {
     if (next < 0 || next >= C.SIM_SPEED_LEVELS.length) return;
     this.levelIdx = next;
     this._sfx.warp();
-    const gated = this.canOperatePlayer ? '' : `(自機の操作はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能)`;
+    const gated = this.canShipAct ? '' : `(自機の操作はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能)`;
     this._hud.hint(`時間加速 ×${this.simSpeed}${gated}`);
   }
 
