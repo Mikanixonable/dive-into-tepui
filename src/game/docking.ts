@@ -118,7 +118,6 @@ export class Docking {
       parts: ship.parts,
       player: ship,
     });
-    ship.alive = false;
     // parkPlayer した艦は以後 syncPlayer が呼ばれないので、可視状態を一度だけここで確定させる。
     ship.obj.visible = false;
     const wasActive = this.game.player === ship;
@@ -142,7 +141,6 @@ export class Docking {
     const no = ++this.nextBuiltShipNo;
     const id = `${base.id}-built-${no}`;
     const ship = new Player(this.hud, this.sfx, this.scene, this.effects, this.markerManager, { name: `新造艦-${no}`, state: base.state, id });
-    ship.alive = false;
     ship.obj.visible = false;
     base.baseState.dockedShips.push({
       id: ship.id,
@@ -159,7 +157,6 @@ export class Docking {
   private launch(ship: Player, base: Base): void {
     const br = base.state.r;
     ship.state = kinematicState(base.state.t, v3(br.x + 600, br.y, br.z), base.state.v);
-    ship.alive = true;
     this.entities.addPlayer(ship);
     this.game.activePlayers.set(ship);
     this.viewManager.leaveDock();
