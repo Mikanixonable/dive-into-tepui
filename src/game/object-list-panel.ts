@@ -47,9 +47,6 @@ const FILTERS: readonly (readonly [ObjectListFilter, string])[] = [
   ['system', '天体以外'],
 ];
 
-// 自艦からこの距離 [m] 以内の対象だけを残す「近傍」フィルタのしきい値(3000万km)。
-const NEARBY_THRESHOLD_M = 3e10;
-
 // このパネル自身の折りたたみトグルの見た目。
 const COLLAPSE_LABELS: CollapseToggleLabels = {
   expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
@@ -93,7 +90,6 @@ export class ObjectListPanel {
   private selectedId: string | null = null;
   private query = '';
   private filter: ObjectListFilter | null = null;
-  private nearOnly = true;
   private sort: ObjectListSort = 'distance';
   private lastFocusId: string | undefined = undefined;
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
@@ -148,16 +144,6 @@ export class ObjectListPanel {
 
     const tools = document.createElement('div');
     tools.className = 'object-list-tools';
-    // 近傍は他のフィルタと独立な単独トグル(既定 ON) — クラスフィルタと重ねて絞れる。
-    const nearButton = document.createElement('button');
-    nearButton.type = 'button'; nearButton.textContent = '近傍'; nearButton.setAttribute('aria-pressed', String(this.nearOnly));
-    nearButton.addEventListener('click', () => {
-      this.nearOnly = !this.nearOnly;
-      nearButton.setAttribute('aria-pressed', String(this.nearOnly));
-    });
-    tools.appendChild(nearButton);
-    // 排他選択の対象はクラスフィルタのボタンだけ — 同居する近傍トグルは独立した状態なので、
-    // DOM の親子関係ではなくこの配列で範囲を決める。
     const filterButtons: HTMLElement[] = [];
     for (const [key, label] of FILTERS) {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', key === this.filter ? 'true' : 'false');
@@ -375,7 +361,6 @@ export class ObjectListPanel {
 
   private matches(item: MapPickable): boolean {
     if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
-    if (this.nearOnly && item.distance !== undefined && item.distance >= NEARBY_THRESHOLD_M) return false;
     if (this.filter === null) return true;
     if (this.filter === 'system') return item.kind !== 'body' && item.inFocusedSystem !== false;
     return item.kind === 'body' && !LAGRANGE_ID.test(item.id) && bodyClassOf(this.registry, item.id) === this.filter;

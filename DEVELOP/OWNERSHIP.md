@@ -110,7 +110,8 @@ main.ts
     │   ├── ScoreCounter
     │   ├── Logistics                  ... 補給の投入判断
     │   ├── StageStatusPanel           ... DOM は Hud.layers.panel 配下。HP/補助メッセージ/撃墜数
-    │   ├── ScoreAttackTimer           ... Stage0 のみ(Stage00 の波状攻撃フェーズ・波数は Stage00 自身のフィールド)
+    │   ├── ScoreAttackTimer           ... Stage0 のみ
+    │   ├── WaveAttack                 ... Stage00・CreativeStage が setup() で1個ずつ生成して保持(stage-utils/wave-attack.ts)。波状攻撃フェーズ(waiting_for_ammo/spawning_enemies/active_combat)・タイマー・波数の正本。CreativeStage 側は waveAttackEnabled(自身のフィールド、既定 false)が true の間だけ update を呼ぶ — 敵の AI 自体(behaveAllEnemies)はトグルと無関係に毎フレーム進む
     │   └── ShipPlacerPanel            ... CreativeStage のみ。パネル本体は Hud.layers.panel 配下、ObjectPicker のポップアップは Hud.layers.popup 配下(別々の引数で受け取る)。艦艇配置フォーム(開閉状態 isOpen も自身が持つ)
     ├── EnvironmentScene               ... game/celestial/ 配下(game/ への依存を持つため render/ から移動)
     │   ├── CelestialBody[]             ... CELESTIAL_BODIES(celestial-registry.ts)から1体ずつ生成。地球=EarthBody・太陽=SunBody・pointBrightness 未指定の惑星/月/土星等=SphereBody・pointBrightness 指定の惑星(金星・木星・水星・火星・土星・天王星)=PointBody。木星・土星・天王星・海王星は SOLAR_SYSTEM の CelestialBodyDef.rings(物理データ)を own し、build 時に RingView を1つ生成してシーン直下へ追加(本体メッシュの子ではない — sphere-body.ts/point-body.ts 参照)。SphereBody/PointBody は build 時に CelestialSurface(render/celestial-surface.ts、メッシュと昼夜陰影の uniform)を1つ own する
@@ -309,8 +310,9 @@ main.ts
 | 勝敗フェーズ | `Stage`(private `_phase`) | 変更は Stage 自身のみ。外部は `phase`/`isPlaying` を読む |
 | 発射数・命中数・撃破数・出撃数 | `ScoreCounter` | 所有は Stage |
 | 補給の投入間隔タイマー | `Logistics` | 投入できない間は進めない(再開直後のフレームで判定させるため) |
-| 補給の自動投入の可否 | `Logistics.resupplyEnabled` | 書き換えは CreativeStage の LOGISTICS パネルのトグルのみ。ワープ倍率による停止は `SimSpeedManager.canResupplyAmmo` が別途担い、両者の積で投入可否が決まる |
-| ウェーブフェーズ・波数 | `Stage00`(自身のフィールド) | |
+| 補給の自動投入の可否 | `Logistics.resupplyEnabled` | 書き換えは CreativeStage の「設定」パネルのトグルのみ。ワープ倍率による停止は `SimSpeedManager.canResupplyAmmo` が別途担い、両者の積で投入可否が決まる |
+| 敵の波状攻撃(新規ウェーブ発生)の可否 | `CreativeStage.waveAttackEnabled`(既定 false) | 書き換えは「設定」パネルのトグルのみ。true の間だけ `update` が `WaveAttack.update` を呼ぶ。既存敵の AI(`behaveAllEnemies`)はこのフラグと無関係に毎フレーム進む |
+| ウェーブフェーズ・波数 | `WaveAttack`(Stage00・CreativeStage がそれぞれ1個 own) | |
 | 残り時間 | `ScoreAttackTimer`(Stage0) | |
 | ステージクリア回数 | **localStorage**(`tepui.clearCounts`) | UnlockManager はその読み書き窓口。インスタンスは正本ではない |
 | ポーズ | `Game.paused` | 駆動源は `SettingsPanel.onSettingsOpenChange` と `SaveBrowser.open()`/`close()` の2つ。どちらもシステム窓で、開いている間だけ止める |
