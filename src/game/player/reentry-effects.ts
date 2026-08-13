@@ -19,12 +19,12 @@ export class ReentryEffects {
     scene.add(this.outer.mesh);
   }
 
-  // 燃焼の表示を qdyn に応じた強度で速度方向前方に同期する。alive=false または
+  // 燃焼の表示を qdyn に応じた強度で速度方向前方に同期する。visible=false または
   // 強度 0 では隠す。
-  sync(fo: FloatingOrigin, r: Vec3, v: Vec3, qdyn: number, alive: boolean, camera: CameraSystem): void {
+  sync(fo: FloatingOrigin, r: Vec3, v: Vec3, qdyn: number, visible: boolean, camera: CameraSystem): void {
     const t = (qdyn - C.REENTRY_GLOW_MIN_Q) / (C.REENTRY_GLOW_FULL_Q - C.REENTRY_GLOW_MIN_Q);
     const intensity = Math.max(0, Math.min(1, t));
-    if (!alive || intensity <= 0) {
+    if (!visible || intensity <= 0) {
       this.core.hide();
       this.outer.hide();
       return;
