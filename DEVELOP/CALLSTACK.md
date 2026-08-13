@@ -90,7 +90,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
         - applyDv() // nodeGizmo.latch がある間、ラッチ超過量に比例したレートで dt 秒分を積分(アームドラッグが DV_DRAG_LATCH_PX を超えて入る)
   - sections.exit(SECTION.input)
   - [!game.isPaused] advanceSimulation(dt) // ポーズ中は丸ごと飛ばす(HP自動回復などをポーズ中に汲み出せないようにする)
-  - displayWindow = displayWindowManager.current // ポーズ中(advanceSimulation を飛ばした)フレームではここが初回の遅延解決になる。ポーズ中・決着後もカメラ更新だけは飛ばせない — 飛ばすと視点だけが絶対 ECI に取り残され、軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする
+  - displayWindow = displayWindowManager.resolve(simulator.simTime, player) // advanceSimulation を飛ばした(ポーズ中の)フレームでもここで確定させる。ポーズ中・決着後もカメラ更新だけは飛ばせない — 飛ばすと視点だけが絶対 ECI に取り残され、軌道速度で遠ざかる原点(自機)から残骸が即座にフレームアウトする
   - environment.update(displayWindow.displayTime, cameraSystem.overviewMode) // 小惑星帯・トロヤ群点群の位置再評価。editor.update より前
   - sections.enter(SECTION.plan)
   - editor.update(displayWindow) // 計画折れ線の再積分とアプシスアイコン(赤道交点の更新/mapPicker.refresh より前)
@@ -263,6 +263,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
       - nanWatchdog.checkPlayer('simulator.advance(ベルト)')
     - lastSimDt = simDt
   - sections.exit(SECTION.integrate)
+  - displayWindowManager.resolve(simulator.simTime, player) // 積分後の状態でこのフレームの表示窓を確定させ、以降の消費者へ共有する
   - nanWatchdog.checkAll('simulator.advance', player, entities, simTime, dt, simDt) // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る
   - targeter.updateBoardMarks(dt, player, entities) // 既存マークの経過時間を進め、寿命切れを捨てる。自機もターゲットも居なければ全消し
     - boardMarks.push() // 通常弾が的の面を自機側から通過した場合のみ
@@ -272,7 +273,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
   - docking.checkProximity() // 内部で viewManager.current==='dock' なら即 return。それ以外は全 base × 全生存艦を見て、距離・相対速度が閾値内の艦を収容(EntityManager.parkPlayer で破棄せず除去。alive には触れない)
     - [収容した艦が操作対象だった] activePlayers.setOrNull(次の生存艦、居なければ null) → [game.player===null] viewManager.setView('map') // 操縦できる艦が無くなれば戦闘ビューに映すものが無いためマップへ
   - sections.enter(SECTION.predict)
-  - predictor.update(simTime, player, displayWindowManager.current.duration, mode) // simulator.advance 内の substep cleanup 後に呼ぶ(死んだ個体を予測しない・積分後の実状態と突き合わせる)。horizon = displayWindowManager.current.duration(current ゲッターはここで読まれて初めてこのフレームの表示窓を遅延解決する)。mode は 'map'(entities.all() 全対象・PREDICT_STEP_BUDGET)/'combat'(自機のみ・PREDICT_COMBAT_STEP_BUDGET)、cameraSystem.overviewMode で選ぶ
+  - predictor.update(simTime, player, displayWindowManager.current.duration, mode) // simulator.advance 内の substep cleanup 後に呼ぶ(死んだ個体を予測しない・積分後の実状態と突き合わせる)。horizon = displayWindowManager.current.duration(直前の displayWindowManager.resolve() が確定させた窓を読むだけ)。mode は 'map'(entities.all() 全対象・PREDICT_STEP_BUDGET)/'combat'(自機のみ・PREDICT_COMBAT_STEP_BUDGET)、cameraSystem.overviewMode で選ぶ
     - discardPredictionIfDiverged(simTime, attractors) // entities.all() のうち predictsFuture=true の対象のみ、毎フレーム無条件。attractors は simTime ぶんを1回だけ classifyAttractors し、対象ごとに attractorsNearInto でその位置の近傍へ絞ったもの(advanceBudget とは別のスクラッチ配列)
       - invalidatePrediction() // predicted.at(simTime) が実位置から許容量を超えて乖離、または区間外のときのみ。許容量は PREDICT_RESET_DIST を下限に、保持サンプルの間引きが粗いぶんの補間誤差まで広げる
     - advanceBudget(player, ...) // 予算 PREDICT_STEP_BUDGET を操作対象の艦優先で消費。ループごとに predictedAttractorsAt(ephemeris, entities, tip.t)(先端の時刻 tip.t で他の重力天体の displayState(tip.t) を引き直す — まだその時刻に達していない天体はその回だけ落とす)→ classifyAttractors → attractorsNear で重力源を決め、dt(localOrbitPeriod / PREDICT_STEPS_PER_REV、horizon / PREDICT_MAX_STEPS で下限、horizon そのもので上限)も Predictor 側が持つ(stepActual に対する substep と同じ分担)。predictsFuture=false の個体は消費 0 で即 return
@@ -350,7 +351,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
 
 - game.sync()
   - player = game.player(= activePlayers.current)
-  - displayWindow = displayWindowManager.current // sync フェーズの先頭で1回だけ読む。update フェーズ側の読み出しとキャッシュキー(simTime・revision・player・player.state のいずれも動いていない)が一致する限りキャッシュヒットで、sync フェーズ全体(displayTime を読む全消費者・displayWindowManager.sync 自身)がこの1回を共有する
+  - displayWindow = displayWindowManager.resolve(simulator.simTime, player) // sync フェーズの先頭で1回だけ。update フェーズ側で求めた値とは別に、sync フェーズ全体(displayTime を読む全消費者・displayWindowManager.sync 自身)がこの1回を共有する。内部はキャッシュ(simTime・revision・player・player.state のいずれも動いていなければ組み直さない)なので、update フェーズと合わせて実質的な組み直しは1フレームに数回のみ
   - viewBadge.sync(activeStage.selectLabel) // タイトル・Mode・View ドロップダウンの表示反映
   - fo = new FloatingOrigin(cameraSystem.activeCameraPos, player?.state.v ?? v3()) // sync() 冒頭のローカル変数(Game はフィールドとして持たない)。r=アクティブカメラのECI位置(update フェーズの cameraSystem.update() で確定済み)、v=自機速度(艦が無ければゼロ)。以降の sync 系はこの fo だけを参照する
   - { displayTime, simTime } = displayWindow // displayTime は未来ゴーストのスライダーが立っている間だけ先の時刻、simTime は積分後の simulator.simTime と一致する値
@@ -420,7 +421,7 @@ handlePointerInput 参照)。ステージの決着状態(`activeStage.isPlaying`
       - leadPoint() → markerManager.setPosition('lead-<name>') // LEAD_HOLD_SEC 以内 かつ 解がある対象ごと
   - navTarget.sync(cameraSystem) // ▲/▽ nav-an/nav-dn マーカー。navTarget.update() が求めた位置があれば表示、無ければ hide。[overviewMode かつ isOccluded] も hide
   - entities.syncEquatorNodes(cameraSystem) // all() を回して各 equatorNodes?.sync。△/▽ eqan-*/eqdn-* マーカー。show=overviewMode。sync は置いた交点を捨てるので、このフレームに update されなかったペアは自動的に隠れる。[show かつ isOccluded] は hide
-  - displayWindowManager.sync() // PREDICT パネル(期間ピル/スクラバー/目盛り)の表示/内容を押し出す。自機の predictedTrajectory.state.t が current(simTime, duration)のどこまで届いているかの割合(0..1、自機/予測/表示期間のいずれかが無ければ 1)も内部で求めて渡す
+  - displayWindowManager.sync(player) // PREDICT パネル(期間ピル/スクラバー/目盛り)の表示/内容を押し出す。自機の predictedTrajectory.state.t が current(simTime, duration)のどこまで届いているかの割合(0..1、自機/予測/表示期間のいずれかが無ければ 1)も内部で求めて渡す
     - panel.render(state) // visible(=!forceCurrent)・期間ピル・スクラバー(段階数/つまみ位置/未予測区間の減光)・絶対日時/T+ラベル・目盛りを1回でまとめて押し出す。編集中(任意期間フォーム・T+ジャンプフォームを開いている)行は再描画をスキップし、入力中の値を壊さない
   - editor.sync(cameraSystem, simTime, fo) // mapDist は内部で cameraSystem.overviewCamera.dist を読む
     - [visiblePlan !== null] planDisplay.sync(fo, project, scale, overviewMode, cameraPos)

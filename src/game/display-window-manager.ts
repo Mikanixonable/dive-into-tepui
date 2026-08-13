@@ -13,8 +13,6 @@ import { ReferenceFrame } from '../physics/frame';
 import { mergeAttractors } from './simulation/attractors';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { EntityManager } from './simulation/entity-manager';
-import type { Simulator } from './simulation/simulator';
-import type { ActivePlayerController } from './active-player-controller';
 import type { Player } from './player/player';
 
 export type DisplayDurationKey = 'orbit' | 'day' | 'week' | 'month' | 'custom';
@@ -56,7 +54,7 @@ export class DisplayWindowManager {
 
   // update と sync の間に DOM イベントで設定が変わったかを検出する世代。
   private revision = 0;
-  private cached: DisplayWindow | null = null;
+  private _current: DisplayWindow;
   private lastSimTime = NaN;
   private lastRevision = -1;
   private lastPlayer: Player | null = null;
@@ -72,10 +70,12 @@ export class DisplayWindowManager {
     hudRoot: HTMLElement,
     private readonly ephemeris: Ephemeris,
     private readonly entities: EntityManager,
-    private readonly simulator: Simulator,
-    private readonly activePlayers: ActivePlayerController,
   ) {
     this._frame = ephemeris.inertialFrame;
+    this._current = {
+      frame: this._frame, simTime: 0, referencePeriod: NaN,
+      duration: C.APERIODIC_ARC_DURATION, displayTime: 0,
+    };
     this.panel = new DisplayTimePanel(hudRoot);
     // 期間はスライダーの尺度そのものなので、尺度を変えたら位置も原点へ戻す。
     this.panel.onDurationSelect = (key) => {
@@ -98,7 +98,7 @@ export class DisplayWindowManager {
       this.revision++;
     };
     this.panel.onJumpToTime = (sec) => {
-      this.sliderT = Math.max(0, Math.min(1, sec / this.current.duration));
+      this.sliderT = Math.max(0, Math.min(1, sec / this._current.duration));
       this.revision++;
     };
   }
@@ -127,33 +127,9 @@ export class DisplayWindowManager {
     this.revision++;
   }
 
-  // このフレームの表示窓。simTime・操作艦・表示設定のいずれも動いていなければ前回の値を
-  // 返す — currentOrbitPeriod() は登録天体全体を組んで strongestAttractor を回す重い計算
-  // なので、毎フレーム何度読んでも同じ値になるようここで一度だけ組んでキャッシュする。
-  // 表示時刻はスライダーが立っている間だけ未来を指し、forceCurrent または原点では
-  // simTime そのもの。
+  // 直近の resolve() が確定させた表示窓。
   get current(): DisplayWindow {
-    const simTime = this.simulator.simTime;
-    const player = this.activePlayers.current;
-    const playerState = player?.state ?? null;
-    if (this.cached !== null && this.lastSimTime === simTime && this.lastRevision === this.revision
-      && this.lastPlayer === player && this.lastPlayerState === playerState) {
-      return this.cached;
-    }
-    const referencePeriod = this.currentOrbitPeriod(player, simTime);
-    const duration = this.durationSec(referencePeriod);
-    this.cached = {
-      frame: this._frame,
-      simTime,
-      referencePeriod,
-      duration,
-      displayTime: this._forceCurrent || this.sliderT <= 0 ? simTime : simTime + this.sliderT * duration,
-    };
-    this.lastSimTime = simTime;
-    this.lastRevision = this.revision;
-    this.lastPlayer = player;
-    this.lastPlayerState = playerState;
-    return this.cached;
+    return this._current;
   }
 
   // 選んだ期間の秒数を返す。'orbit' では referencePeriod をそのまま返す — どの軌道の周期を
@@ -166,6 +142,32 @@ export class DisplayWindowManager {
     }
     if (this.durationKey === 'custom') return this.customDurationSec;
     return FIXED_DURATION_SEC[this.durationKey];
+  }
+
+  // このフレームの表示窓を確定させて返す。currentOrbitPeriod() は登録天体全体を組んで
+  // strongestAttractor を回す重い計算なので、simTime・表示設定・操作艦の状態のいずれも
+  // 動いていなければ組み直さない。表示時刻はスライダーが立っている間だけ未来を指し、
+  // forceCurrent または原点では simTime そのもの。
+  resolve(simTime: number, player: Player | null): DisplayWindow {
+    const playerState = player?.state ?? null;
+    if (this.lastSimTime === simTime && this.lastRevision === this.revision
+      && this.lastPlayer === player && this.lastPlayerState === playerState) {
+      return this._current;
+    }
+    const referencePeriod = this.currentOrbitPeriod(player, simTime);
+    const duration = this.durationSec(referencePeriod);
+    this._current = {
+      frame: this._frame,
+      simTime,
+      referencePeriod,
+      duration,
+      displayTime: this._forceCurrent || this.sliderT <= 0 ? simTime : simTime + this.sliderT * duration,
+    };
+    this.lastSimTime = simTime;
+    this.lastRevision = this.revision;
+    this.lastPlayer = player;
+    this.lastPlayerState = playerState;
+    return this._current;
   }
 
   // 表示側の重力源窓: 解析天体に、重力を持つ生存中の GameEntity(小惑星)を合流させたもの。
@@ -186,18 +188,17 @@ export class DisplayWindowManager {
   }
 
   // 毎フレーム呼ぶ。操作パネル(期間・スクラバー・目盛り)の表示/非表示と内容を押し出す。
-  sync(): void {
-    const w = this.current;
+  sync(player: Player | null): void {
     this.panel.render({
       visible: !this._forceCurrent,
       durationKey: this.durationKey,
       customDurationSec: this.customDurationSec,
-      duration: w.duration,
-      displayTime: w.displayTime,
-      sliderSteps: this.sliderSteps(w.duration),
+      duration: this._current.duration,
+      displayTime: this._current.displayTime,
+      sliderSteps: this.sliderSteps(),
       sliderT: this.sliderT,
-      predictionRatio: this.predictionCoverageRatio(w),
-      ticks: buildTicks(w.duration, TICK_MAX_COUNT),
+      predictionRatio: this.predictionCoverageRatio(player),
+      ticks: buildTicks(this._current.duration, TICK_MAX_COUNT),
     });
   }
 
@@ -212,15 +213,15 @@ export class DisplayWindowManager {
   // 操作艦の予測軌道が表示期間のどこまで届いているかの割合(0..1)。スライダーがまだ積分の
   // 届いていない未来を指しうることをスクラバー上で示すのに使う。届き具合を警告すべき相手が
   // いない(艦・予測・表示期間のいずれかが無い)間は 1(全域到達済み扱い)。
-  private predictionCoverageRatio(w: DisplayWindow): number {
-    const end = this.activePlayers.current?.predictedTrajectory?.state.t;
-    if (end === undefined || w.duration <= 0) return 1;
-    return Math.max(0, Math.min(1, (end - w.simTime) / w.duration));
+  private predictionCoverageRatio(player: Player | null): number {
+    const end = player?.predictedTrajectory?.state.t;
+    if (end === undefined || this._current.duration <= 0) return 1;
+    return Math.max(0, Math.min(1, (end - this._current.simTime) / this._current.duration));
   }
 
   // 表示期間を SLIDER_TARGET_STEP_SEC 相当の粒度で刻んだ段階数(上下限あり)。
-  private sliderSteps(duration: number): number {
-    const raw = Math.round(duration / SLIDER_TARGET_STEP_SEC);
+  private sliderSteps(): number {
+    const raw = Math.round(this._current.duration / SLIDER_TARGET_STEP_SEC);
     return Math.max(SLIDER_MIN_STEPS, Math.min(SLIDER_MAX_STEPS, raw));
   }
 }
