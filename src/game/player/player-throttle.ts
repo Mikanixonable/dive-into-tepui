@@ -178,14 +178,12 @@ export class PlayerThrottle {
     att: Attitude,
     r: Vec3,
     v: Vec3,
-    alive: boolean,
     input: Input,
     fineAttitude: boolean,
     attDt: number,
     ship: import('../game-entity/ship').Ship,
     onProgradeHoldReleased: () => void,
   ): Vec3 {
-    if (!alive) return v3();
     const inertia = att.inertia;
     const inX = (input.down(K.pitchDown) ? 1 : 0) + (input.down(K.pitchUp) ? -1 : 0);
     const inY = (input.down(K.yawLeft) ? 1 : 0) + (input.down(K.yawRight) ? -1 : 0);

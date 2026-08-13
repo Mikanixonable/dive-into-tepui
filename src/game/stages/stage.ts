@@ -20,12 +20,57 @@ import type { FloatingOrigin } from '../floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
-import type { LogisticsSaveData, StageSaveData } from '../save-data';
+import type { StageSaveData } from '../save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { ObjectType } from '../creative/ship-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
+import type { ActivePlayerController } from '../active-player-controller';
+import type { CelestialRegistry } from '../../physics/solar-system';
+import type { AttractorId } from '../../physics/attractor';
 
-export type StageId = '00' | '0' | '1' | '2' | 'debug' | 'debug-alt-system' | 'debug-load';
+export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
+
+const BRIEFING_TOAST_MS = 12000;
+
+// Ephemeris のコンストラクタ3引数をそのまま束ねた静的宣言。省略したステージは既定の
+// レジストリ・地球原点のまま動く。
+export type EphemerisConfig = {
+  readonly registry: CelestialRegistry;
+  readonly originId: AttractorId;
+  readonly epochOffsetSec: number;
+};
+
+// 全ステージ共通の生成引数(セーブデータを除く)。具象ステージは自分のコンストラクタで
+// これをそのまま基底へ渡す。
+export type StageDeps = [
+  hud: Hud,
+  sfx: Sfx,
+  scene: THREE.Scene,
+  entities: EntityManager,
+  unlockManager: UnlockManager,
+  fx: EffectsSystem,
+  markerManager: MarkerManager,
+  ephemeris: Ephemeris,
+  simulator: Simulator,
+  activePlayers: ActivePlayerController,
+];
+
+// ステージクラスの静的側。起動時の設定はここから読む。
+export interface StageClass {
+  readonly id: StageId;
+  readonly ephemerisConfig: EphemerisConfig | undefined;
+  readonly initialPlayerCount: number;
+  readonly showsStatusInOverview: boolean;
+  // 選択画面が読む項目。
+  readonly selectLabel: string;
+  readonly selectSub: string;
+  readonly selectLockedSub: string | undefined;
+  readonly selectKeys: readonly string[];
+  readonly selectGroup: string;
+  readonly hiddenFromSelect: boolean;
+  isUnlocked(clearCounts: ClearCounts): boolean;
+  new (saved: StageSaveData | undefined, ...deps: StageDeps): Stage;
+}
 
 // 軌道上へオブジェクトを配置・複製する編集機能。これを持つステージだけがマップの
 // 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
@@ -43,69 +88,64 @@ export interface StageInitData {
 }
 
 export abstract class Stage {
-  // サブクラスが持つ static id を返す。
-  get id(): StageId {
-    return (this.constructor as unknown as { id: StageId }).id;
-  }
-  abstract readonly selectLabel: string;
-  abstract readonly selectSub: string;
-  readonly selectLockedSub?: string;
+  // 固有の天体暦を使うステージだけが宣言する。既定のレジストリ・地球原点で構築される。
+  static readonly ephemerisConfig: EphemerisConfig | undefined = undefined;
+  // 新規開始時に組む自機の隻数。
+  static readonly initialPlayerCount: number = 1;
+  // マップ視点でも艦のステータスパネルを表示するか。
+  static readonly showsStatusInOverview: boolean = false;
+  // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
+  static readonly selectLockedSub: string | undefined = undefined;
   // タイトルのステージ選択ボタン列に並べない。
-  readonly hiddenFromSelect: boolean = false;
-  // 喪失した自機を即座に配列・操作対象から回収するか。既定では回収しない(喪失艦は撃墜演出・
-  // 追従カメラの基準として残る)。艦の保持数に上限があり埋まった枠を空ける必要があるステージ
-  // (CreativeStage)だけ true で上書きする。
-  readonly prunesDeadPlayers: boolean = false;
+  static readonly hiddenFromSelect: boolean = false;
+  // 選択画面でこのステージを並べるタブの名前。表示のまとまりだけを決め、挙動には影響しない。
+  static readonly selectGroup: string = 'ステージモード';
+
+  // このステージが解放済みかどうかをクリア回数から判定する。既定では常に解放。
+  static isUnlocked(_clearCounts: ClearCounts): boolean {
+    return true;
+  }
+
+  // 自身のクラス。起動時の静的宣言はここから読む。
+  get stageClass(): StageClass {
+    return this.constructor as unknown as StageClass;
+  }
+  get id(): StageId { return this.stageClass.id; }
+
   // ドックでの購入・修理・燃料補給を無償にするか。既定では通貨を消費する。
   readonly freeProcurement: boolean = false;
   // 艦の軌道計画を PlanExecutor / 瞬間移動で実行させるか。既定では実行しない。
   readonly executesPlans: boolean = false;
   // オブジェクトの配置・複製に対応するステージは自身の編集口を返す。既定では非対応。
   readonly authoring: ObjectAuthoring | null = null;
-  abstract readonly selectKeys: string[];
   abstract readonly initialAmmo: Pick<StageInitData, 'mags' | 'rounds'>;
 
   readonly scoreCounter: ScoreCounter;
-  protected logistics!: Logistics;
-  private statusPanel!: StageStatusPanel;
-  // Logistics は hud/scene 等が setup() まで揃わないため生成できない。setup() まで控えておく。
-  private readonly savedLogistics?: LogisticsSaveData;
+  protected readonly logistics: Logistics;
+  private readonly statusPanel: StageStatusPanel;
 
-  protected _hud!: Hud;
-  protected _sfx!: Sfx;
-  protected _scene!: THREE.Scene;
-  protected _fx!: EffectsSystem;
-  protected _unlockManager!: UnlockManager;
-  protected _entities!: EntityManager;
-  protected _markerManager!: MarkerManager;
-  protected _ephemeris!: Ephemeris;
-  protected _simulator!: Simulator;
+  protected readonly _hud: Hud;
+  protected readonly _sfx: Sfx;
+  protected readonly _scene: THREE.Scene;
+  protected readonly _fx: EffectsSystem;
+  protected readonly _unlockManager: UnlockManager;
+  protected readonly _entities: EntityManager;
+  protected readonly _markerManager: MarkerManager;
+  protected readonly _ephemeris: Ephemeris;
+  protected readonly _simulator: Simulator;
+  protected readonly _activePlayers: ActivePlayerController;
 
   private _phase: GamePhase;
   get phase(): GamePhase { return this._phase; }
   get isPlaying(): boolean { return this._phase === 'playing'; }
   protected setPhase(phase: GamePhase): void { this._phase = phase; }
+  private readonly restored: boolean;
 
-  // saved 省略時はスコア0・進行中・補給タイマー未経過から始まる。固有の内訳を持つ具象ステージは
-  // 自分のコンストラクタで super(saved) を呼んでから自分の分を組み立てる。
-  constructor(saved?: StageSaveData) {
-    this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
-    this._phase = saved?.phase ?? 'playing';
-    this.savedLogistics = saved?.logistics;
-  }
-
-  // ゲーム固有リソース(hud/sfx/scene 等)をインスタンス生成後に一度だけ注入する。
-  setup(
-    hud: Hud,
-    sfx: Sfx,
-    scene: THREE.Scene,
-    entities: EntityManager,
-    unlockManager: UnlockManager,
-    fx: EffectsSystem,
-    markerManager: MarkerManager,
-    ephemeris: Ephemeris,
-    simulator: Simulator,
-  ): void {
+  // saved が undefined ならスナップショットからの再開ではない新規開始で、スコア0・進行中・
+  // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
+  // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
+  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+    const [hud, sfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activePlayers] = deps;
     this._hud = hud;
     this._sfx = sfx;
     this._scene = scene;
@@ -115,8 +155,22 @@ export abstract class Stage {
     this._markerManager = markerManager;
     this._ephemeris = ephemeris;
     this._simulator = simulator;
-    this.logistics = new Logistics(hud, sfx, scene, entities, markerManager, this.savedLogistics);
+    this._activePlayers = activePlayers;
+    this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
+    this._phase = saved?.phase ?? 'playing';
+    this.restored = saved !== undefined;
+    this.logistics = new Logistics(hud, sfx, scene, entities, markerManager, saved?.logistics);
     this.statusPanel = new StageStatusPanel(hud.layers.panel);
+  }
+
+  // 新規開始なら初期配置・初期弾薬・ブリーフィングを行う。具象ステージは自分のコンストラクタの
+  // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
+  protected begin(): void {
+    if (this.restored) return;
+    const player = this._entities.initialActivePlayer;
+    const enemyCount = this.init(player, this._entities);
+    player?.initAmmo(this.initialAmmo.mags, this.initialAmmo.rounds);
+    this._hud.toast(this.briefingHtml(enemyCount), BRIEFING_TOAST_MS);
   }
 
   // ステージ固有の UI(トグル等)をステータスウィンドウ左部へ追加する。
@@ -167,15 +221,12 @@ export abstract class Stage {
     }
   }
 
-  // このステージが解放済みかどうかをクリア回数から判定する。既定では常に解放。
-  isUnlocked(_clearCounts: ClearCounts): boolean {
-    return true;
-  }
-
   abstract briefingHtml(enemyCount: number): string;
-  // 戻り値は初期敵数(ブリーフィング表示用)。
-  abstract init(player: Player, entities: EntityManager): number;
-  // 毎フレーム呼ぶ。艦が1隻も無い間(Creative の未配置状態)は player が null になる。
+  // 初期配置。戻り値は初期敵数(ブリーフィング表示用)。既定では何も置かない。
+  protected init(_player: Player | null, _entities: EntityManager): number {
+    return 0;
+  }
+  // 毎フレーム呼ぶ。艦が1隻も無い間は player が null になる。
   abstract update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
 
   // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。

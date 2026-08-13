@@ -67,7 +67,7 @@ main.ts
     ├── NavTarget                      ... 航法ターゲット(id)と自機軌道との相対 AN/DN・▲/▽ マーカー
     ├── Navball                        ... 天球グリッド6トグルの正本
     │   └── NavballPanel                   ... DOM は Hud.layers.panel 配下。グリッドトグルのみ
-    ├── ActivePlayerController         ... 操作対象艦(0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者(CameraSystem・PlanEditor・Targeter・NavTarget・ViewManager・MapPicker・Sfx)への伝播を1箇所へ集める。Game.player はこれへ転送する getter
+    ├── ActivePlayerController         ... 操作対象艦(0..n隻のうちどれを操作するか)の切替・削除と、それに伴う各所有者(CameraSystem・PlanEditor・Targeter・NavTarget・MapPicker・Sfx)への伝播を1箇所へ集める。ViewManager への参照は持たない。Game.player はこれへ転送する getter
     ├── SimSpeedManager
     ├── DisplayWindowManager           ... 「どの座標系で(frame)・いつを(displayTime)見るか」の正本(表示期間・
     │                                       未来ゴーストスライダー・frame)と、1フレーム分の DisplayWindow
@@ -95,18 +95,29 @@ main.ts
     ├── Docking                        ... 基地への収容・発進(EntityManager/CameraSystem/Game.player にまたがる横断)
     │   └── DockView                       ... DOM は Hud.layers.view 配下。格納艦/部品/ショップタブのフルスクリーン UI
     ├── ViewManager                    ... 現在のビュー(combat/map/dock)の正本。遷移は setView() ひとつに集約。
-    │                                       docking/touchControls/stage への参照はいずれも ViewManager より後に
-    │                                       生成されるため、setDocking()/setTouchControls()/setStage() で構築後に
-    │                                       注入される(private フィールドとして保持)
+    │                                       ActivePlayerController はコンストラクタ引数(ViewManager より先に
+    │                                       生成される)。docking/touchControls への参照はいずれも ViewManager
+    │                                       より後に生成されるため、setDocking()/setTouchControls() で構築後に
+    │                                       注入される(private フィールドとして保持)。Stage への参照は持たない
     ├── ViewBadge                      ... DOM は Hud.layers.notify 配下。ViewManager を参照するだけで自身は状態を持たない
     │   └── ContextMenu<true, ViewId>  ... DOM は Hud.layers.popup 配下
-    ├── Stage (activeStage)            ... game.ts が呼ぶ stage-dictionary.ts の buildStage() が生成する(launch.mode==='stage'
-    │                                       なら内部で initStage() を、'creative' なら CreativeStage を直接 new する分岐は
-    │                                       buildStage() 自身が持つ — §1 末尾の補足参照)。Stage クラス自身が持つ静的宣言
-    │                                       (initialPlayerCount・showsStatusInOverview・ephemerisConfig)は buildStage() 経由で
-    │                                       Game の構築に反映される。prunesDeadPlayers/freeProcurement/executesPlans は
+    ├── Stage (activeStage)            ... Game のコンストラクタが受け取る解決済みの StageClass を直接 new し、
+    │                                       saved(StageSaveData | undefined)と StageDeps 一式(hud/sfx/scene/entities/
+    │                                       unlockManager/fx/markerManager/ephemeris/simulator/activePlayers、
+    │                                       stage.ts 参照)を渡す(分岐は無く、CREATIVE も同じ経路)。
+    │                                       コンストラクタ一段で初期化が完結し、初期配置・初期弾薬・ブリーフィングは
+    │                                       各具象ステージのコンストラクタ末尾の begin() が行う(基底のコンストラクタ
+    │                                       からは呼べない — 具象側のフィールド初期化が super() の後に走るため)。
+    │                                       起動時の静的宣言(initialPlayerCount・showsStatusInOverview・ephemerisConfig)は
+    │                                       Stage の静的既定値をクラスごとに override したもので、Game は stageClass
+    │                                       から直接読む。freeProcurement/executesPlans は
     │                                       インスタンス側の既定 false なフラグ、authoring は既定 null の ObjectAuthoring
-    │                                       (配置・複製の口)。CreativeStage だけが4つとも有効にし、authoring は自身を返す
+    │                                       (配置・複製の口)。CreativeStage だけが両方を有効にし、authoring は自身を返す。
+    │                                       _activePlayers は StageDeps の一つとして引数で受け取り(protected _activePlayers)、
+    │                                       CreativeStage.placeObject は艦の配置後にこれへ claimIfNone(ship) を呼び、
+    │                                       操作対象が居なければ配置した艦を操作対象にする。喪失した自機の回収は
+    │                                       ActivePlayerController.reclaimDead() が全ステージ共通で毎フレーム無条件に
+    │                                       行うので、ここに対応するフラグはない
     │   ├── ScoreCounter
     │   ├── Logistics                  ... 補給の投入判断
     │   ├── StageStatusPanel           ... DOM は Hud.layers.panel 配下。HP/補助メッセージ/撃墜数
@@ -167,7 +178,7 @@ main.ts
     │   │   ├── PlayerMarkers          ... 方向マーカー・ボアサイト・マップ上の自機位置(操作対象の艦だけが sync する)
     │   │   ├── OrbitLine              ... 自機軌道線。中心天体は毎フレーム state から導出(strongestAttractor)。
     │   │   │                              表示抑制(setSuppressed)は Game.sync がこの艦自身の supersedesAnalyticEllipse(...)から渡す(§付録参照)
-    │   │   ├── TrajectoryLine         ... 自機予測軌道線。Game.sync が毎フレーム this.syncTrajectoryLine(操作対象かつ生存, ...)を呼ぶ
+    │   │   ├── TrajectoryLine         ... 自機予測軌道線。Game.sync が毎フレーム this.syncTrajectoryLine(操作対象, ...)を呼ぶ
     │   │   ├── Plan                   ... この艦自身のマニューバ計画(正本)。ノード列 + アンカー
     │   │   └── PlanExecutor           ... この艦自身の計画実行状態機械(正本)。CreativeStage が艦ごとに呼ぶだけで保持しない
     │   ├── Enemy[]                    ... 各々 OrbitLine を持つ
@@ -217,13 +228,19 @@ main.ts
   (§付録「正本でないもの」参照 — 未来位置のキャッシュであり、正データではない)。予測する長さ
   (horizon)は種別ごとの定数ではなく、`Predictor.update` が毎フレーム `DisplayWindowManager.current.duration`
   (`resolve(simTime, player)` が update フェーズ・sync フェーズそれぞれで確定させたもの)から渡す引数。
-- `STAGE_DEFINITIONS`(stage-dictionary.ts のモジュールスコープ)… 選択画面のラベル・解放条件を読む
-  ためだけの `Stage` インスタンス列。`setup()`/`init()` は呼ばれず、プレイに使う `activeStage` とは別物。
-  `CreativeStage` はここに含まれない(選択画面のタブには出ない)。`game.ts` は `stage-dictionary.ts` の
-  `buildStage()` を呼ぶだけで、`launch.mode === 'creative'` のとき `initStage()` を経由せず
-  `CreativeStage` を直接 `new` し `setup()`/`init()` を自分で順に呼ぶ分岐は `buildStage()` 自身が持つ
-  (`setup()` は `CreativeStage` 自身が override して `ShipPlacerPanel` の組み立てまで行う)。
-- `launch-select.ts` の `UnlockManager` … 選択画面用に別途 `new` される。正本は localStorage なので
+- `STAGE_CLASSES`(stage-dictionary.ts のモジュールスコープ、`export const`)… クラス参照(`StageClass`)の
+  並びだけを持つ配列で、`Stage` インスタンスは1つも作らない。選択画面のラベル・解放条件(`isUnlocked`)・
+  起動時設定(`ephemerisConfig`/`initialPlayerCount`/`showsStatusInOverview`)はすべて各クラスの静的宣言
+  から読む(`stage.ts` の `StageClass` インターフェース参照)。`CreativeStage` も `STAGE_CLASSES` 末尾の
+  一員としてここに含まれ、選択画面のクリエイティブモードタブに CREATIVE として出る(タブは各ステージの
+  静的 `selectGroup` の初出順に組まれる — `stage-select.ts` 参照)。ID からクラスを引くのは
+  `findStageClass`(同モジュール)の責務で、`main.ts`(`resolveLaunchStage`/`resumableStageClass`)・
+  `unlock-manager.ts`・`hud/save-browser.ts` がこれを使う。`game.ts`(`Game` のコンストラクタ)は解決済みの
+  `StageClass` を `new stageClass(saved, ...deps)` するだけで、CREATIVE を含め分岐は無い。実行中の
+  `activeStage`(インスタンス)自身は `Stage.stageClass` ゲッター(`this.constructor` を返す)で自身の
+  クラスへ戻れ、`Stage.id`(=`stageClass.id`)や `ViewBadge` が表示するラベル
+  (`activeStage.stageClass.selectLabel`)はここ経由で読む。
+- `stage-select.ts` の `UnlockManager` … 選択画面用に別途 `new` される。正本は localStorage なので
   Game 側のインスタンスと状態を共有する必要がない。
 
 ---
@@ -271,7 +288,7 @@ main.ts
 | 自機の姿勢・角速度 | `Player.att` | 積分は Simulator.stepAttitudes に一元化 |
 | 機体座標系トルク | `Player.torque` | 毎フレーム PlayerThrottle の戻り値で上書きされる |
 | 推力加速度 | `GameEntity.thrust` | 自機は `PlayerThrottle.updateThrustState` の戻り値で毎フレーム上書き。無推力なら null |
-| HP / 生存 | `Ship.hp` / `GameEntity.alive` | 死亡は `alive = false` のみ。除去は EntityManager.cleanup |
+| HP / 生存 | `Ship.hp` / `GameEntity.alive` | 死亡は `alive = false` のみ。除去は非自機が EntityManager.cleanup(→prune)、自機は ActivePlayerController.reclaimDead() |
 | RCS 制動・スロットル段・ホールド | `PlayerThrottle` | |
 | 姿勢微調整モード | `Player.fineAttitude` | |
 | 残弾・マガジン・バレル・装填タイマー | `PlayerFire` | |
@@ -279,8 +296,8 @@ main.ts
 | 外殻温度・動圧・高度警告 | `ThermalSystem` | 破壊判定そのものは `Player.checkLoss` |
 | 放熱板の展開度・損耗度 | `RadiatorSystem` | 温度は持たない。放熱面積と太陽入射を `ThermalSystem.setRadiatorLoad` へ渡すのは `Player` |
 | 太陽電池の蓄電量 | `PowerSystem` | メッシュ操作なし(パネルは固定)。`sync()` を持たない |
-| エンティティ配列(自機/敵/弾/薬莢/デブリ/補給) | `EntityManager` | 追加は `addXxx` 経由。上限管理もここ(`players` のみ無上限で `prune` の対象外 — 喪失艦も配列に残り続ける)。`Simulator` は参照を受け取って回すだけで配列を持たない |
-| 保持配列の顔ぶれの世代 | `EntityManager.collectionRevision`(private `_collectionRevision` + public getter) | `addXxx`/除去のたびに増える。`all()`/`attractors()` の結合キャッシュの再構築判定に使う。`alive` が false になっただけでは増えない(除去は `cleanup` → `prune` が毎フレーム行う)。public getter は、結合配列そのものは参照が変わらないため、外から顔ぶれの変化を知る唯一の手段になる |
+| エンティティ配列(自機/敵/弾/薬莢/デブリ/補給) | `EntityManager` | 追加は `addXxx` 経由。上限管理もここ(`players` のみ無上限で `prune` の対象外 — 除去は `ActivePlayerController.reclaimDead()` が担い、喪失した瞬間に配列から取り除かれる)。`Simulator` は参照を受け取って回すだけで配列を持たない |
+| 保持配列の顔ぶれの世代 | `EntityManager.collectionRevision`(private `_collectionRevision` + public getter) | `addXxx`/除去のたびに増える。`all()`/`attractors()` の結合キャッシュの再構築判定に使う。`alive` が false になっただけでは増えない(除去は非自機が `cleanup` → `prune`、自機が `ActivePlayerController.reclaimDead()` で、それぞれ毎フレーム行う)。public getter は、結合配列そのものは参照が変わらないため、外から顔ぶれの変化を知る唯一の手段になる |
 | シミュレーション時刻 / 前フレームの simDt | `Simulator.simTime` / `.lastSimDt` | |
 | エンティティ側の最小イベント時刻の控え | `Simulator.cachedEventTime`(private。有効性 `cachedEventValid`、算出時の LOD `cachedEventLod`、算出時の顔ぶれの世代 `cachedEventRevision` を併せ持つ) | エンティティの締切は固定の絶対時刻なので substep ごとに引き直さず、simTime がこの時刻へ到達したとき・`EntityManager.collectionRevision` が変わったとき・`passiveWarpLod` が切り替わったときだけ全生存エンティティを走査して求め直す。ステージ側のイベント時刻は艦の現在の Δv と加速度から毎回決まるため、ここには含めず毎 substep 引く |
 | このフレームの表示窓(`DisplayWindow` = `{frame, simTime, referencePeriod, duration, displayTime}`) | `DisplayWindowManager.current`(private `_current`) | `resolve(simTime, player)` で組み直す唯一の書き込み経路。内部でキャッシュキー(引数の simTime・player・player の `state`、および `frame`/`forceCurrent`/`durationKey`/`sliderT` などの setter が増やす private `revision`)を持ち、いずれも動いていなければ組み直さない — `game.update` から2回(`advanceSimulation` を飛ばした/実行した直後)、`game.sync` の先頭で1回呼ぶが、実際に `currentOrbitPeriod()`(登録天体全体を組んで `strongestAttractor` を回す重い計算)まで走るのはキャッシュキーが動いたときだけ。`Predictor.update` の horizon・`updateMapPresentation` の各値・`sync(player)` のパネル反映はいずれもこの1個を読むだけで、それぞれが `currentOrbitPeriod()` を呼び直すことはない |
@@ -291,7 +308,7 @@ main.ts
 | Δv アーム/ボタンのホールド継続時間・ラッチ状態 | `PlanEditor.dvHoldTime` / `NodeGizmo.latch` | 6方向ぶんの経過秒数(ホールドレートのランプに使う)と、ドラッグがラッチへ入った軸/超過量。加算そのものは `PlanEditor.applyDv` に一本化 |
 | NaN 検出済みフラグ | `NanWatchdog`(Game 所有) | 一度検出したら以後の検査を止める |
 | マニューバ計画(ノード列・アンカー) | `Plan` | 所有は各 `Player`(艦ごとに1個。`PlanEditor.plan` は活艦のものを転送する getter)。ノード・アンカーとも 1 個の `KinematicState`(実行時刻 = `t`、Δv は導出値)。ノード列は `KinematicState[]` を1本持つだけで、`addNode` が挿入位置より後ろを破棄してから push するため常に実行時刻順。`consumeNodesUpTo(t, actualState)` は実行時刻が `t` 以前のノードをまとめて取り除き、取り除いた件数を返すとともに、`anchor` を `actualState`(実際に到達した状態)へ**後続ノードの有無によらず無条件に**差し替える — 呼ぶのは `PlanGuide.update`・`PlanExecutor.finish`・`CreativeStage.applySimulationEvents` の3か所だけで、動力飛行の残差を消さずに以降の計画へ残すのがこの無条件差し替えの目的。`addNode` は `anchor.t` 以前の状態を受け付けず `-1` を返す。編集世代 `revision`(private `_revision` + public getter)を増やすのは `_nodes`/`_anchor` を実際に変えた呼び出しだけ(`addNode`/`removeNode`/`replaceNode`/`consumeNodesUpTo`/`clear`。`applyNodeDv` は委譲先の `replaceNode` でのみ)。`trackAnchor` の毎フレームのアンカー追従は編集ではないので増やさず、その判定は `PlanArc.represents` 側の閾値(積分済みサンプル間隔との比較・`anchorJumped`)が持つ |
-| 操作対象(アクティブ)艦 | `ActivePlayerController`(private `_current`) | `Game.player` はこれへ転送するだけの getter。書き換えは `set(ship)`/`setOrNull(ship \| null)`/`remove(ship)`/`reclaimDead()` の4つに閉じる。カメラ参照・計画編集対象・ターゲット解除の副作用もすべてここに閉じる(下記「たまたま同時に切り替わる」節参照)。`remove`/`reclaimDead` は艦の保持数に上限がありその枠を空ける必要があるステージ(`Stage.prunesDeadPlayers` = true、既定 false・`CreativeStage` のみ true)からだけ呼ばれる |
+| 操作対象(アクティブ)艦 | `ActivePlayerController`(private `_current`) | `Game.player` はこれへ転送するだけの getter。書き換えは `set(ship)`/`setOrNull(ship \| null)`/`remove(ship)`/`reclaimDead()` の4つに閉じる。カメラ参照・計画編集対象・ターゲット解除の副作用もすべてここに閉じる(下記「たまたま同時に切り替わる」節参照)。`remove` はマップの削除メニューなど明示的な取り除きから、`reclaimDead` は `Game.advanceSimulation` が全ステージ共通で毎フレーム無条件に呼ぶ(喪失した自機を他のエンティティと同じく速やかに回収する) |
 | 軌道計画の実行モード | `Player.planExecution`(型 `PlanExecutionMode` = `'off' \| 'instant' \| 'powered'` は `plan/plan-executor.ts` が定義し `player.ts` は re-export するだけ) | 全ての自機が持つ(既定 `'off'`)。`'instant'` は `CreativeStage.applySimulationEvents` がノード時刻ちょうどで `state` をノードの絶対状態へ置き換え、`'powered'` は `PlanExecutor` が姿勢制御・噴射で実行する。操作対象艦での手動並進(`this.thrust !== null`)・手動回転(`throttle.hasManualRotationInput`)は `Player.behave` が `'powered'` を `'off'` へ落とす |
 | PlanExecutor の状態機械(`phase`/`targetNode`/`burnDirWorld`/`burnUpWorld`/`pendingAccel`) | `PlanExecutor`(艦ごとの) | 艦の `planExecution`/ノード/生死/ゲートから毎フレーム `update` が導出。`targetNode` はノードの**参照**を持ち、`node.t` ではなく `node !== targetNode` で差し替わりを検出する(`Plan.applyNodeDv`/`replaceNode` は同じ `t` のまま新しいオブジェクトへ差し替えるため)。噴射ゲート(`simSpeed.canPlayerThrust`)は保持せず、`update`/`applyIgnitionAndCutoff`/`nextEventTime` が各自引数で受け取る。`ship.torque`/`ship.thrust`/`ship.plan` は `PlanExecutor` が唯一書き換える(`'powered'` の間のみ)が、書き込みは `update`(毎フレーム、`Player.behave` の後)と `applyIgnitionAndCutoff`(simTime イベント境界ごと)の両方から起きる — 前者は「操作艦で `behave` が毎フレーム上書きする `thrust` を、その後で確実に正しい値へ戻す」役、後者は「点火・遮断の瞬間を simTime ちょうどに固定する」役で、互いの代わりにはならない |
 | 選択中ノード・計画編集モード | `PlanEditor.selectedNode` / `.editMode` | 選択の正本はノード(`KinematicState`)そのものへの**参照**。`selectedNodeIdx` は `plan.nodes` から同一性で引き直す get/set のみで、列から消えたノード(削除・下流の切り捨て・消化)は自動的に「未選択」になる |
@@ -301,7 +318,7 @@ main.ts
 | 予測到達割合(`predictionRatio`)・直近 `sync()` で受け取った表示期間(`lastDuration`) | `DisplayWindowManager` | いずれも private な導出値。`predictionRatio` は `sync(player)` が呼ばれるたび private `predictionCoverageRatio(player)` が自機の `predictedTrajectory.state.t` と `current`(simTime, duration)から自分で求め直す(外部からの書き込みはない)。`lastDuration` は直近の `resolve()` 呼び出しが確定させた表示期間を憶えておくだけの値で、ジャンプ入力(DOM イベント、フレーム外)が `sliderT` を逆算する際にだけ参照される |
 | マップ視点(注視点相対オフセット・パン・上方向)・座標系(cameraFrame)・フォーカス(FocusTarget)・Viewpoint | `OverviewCamera` | `viewpoint: Viewpoint` は `CombatCameraSystem` と同じ形。`CameraSystem` はこの `viewpoint` を読むだけで自分では持たない。フォーカスは `camera/focus-target.ts` の `FocusTarget`(`{kind:'object', id}` または `{kind:'point', frame, point}`)で、`{kind:'object'}` が指す実位置は `OverviewCamera` が持たず、`update` の引数(`MapPicker.refresh()`)から毎フレーム引き直す。書き換えは `setFocusTarget`/`setCameraRotation` のみ、いずれも `FrameControls` の「カメラ(視点)」区画の中心/回転ゾーン(`cameraCenterZone`/`cameraRotationZone`)から呼ばれる |
 | 戦闘視点(Viewpoint: position/lookTarget/up/fovDeg/aspect)・照準ズーム中か(zoomActive) | `CombatCameraSystem` | rot(クオータニオン)/dist・姿勢追従フラグ(camFollowAttitude)は内部の `ChaseCamera` が持つ。zoomActive はこのクラス自身の `update` が `Input` から読んで保持する |
-| 現在のビュー(combat/map/dock) | `ViewManager`(private `worldView`/`isDockOpen`) | 遷移は `setView()` のみ。影響先(`CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayWindowManager.forceCurrent` / タッチUI)を一斉に切り替える。`worldView` が背後の 3D 側ビュー、`isDockOpen` がドックの開閉を持ち、`current` はこの2つから導出する |
+| 現在のビュー(combat/map/dock) | `ViewManager`(private `worldView`/`isDockOpen`) | 遷移は基本的に `setView()` のみ(影響先 `CameraSystem.overviewMode` / `PlanEditor.editMode` / `DisplayWindowManager.forceCurrent` / タッチUI を一斉に切り替える)だが、`leaveDock()` だけは例外で、ドックを閉じて背後のビューへ戻るだけの操作を `setView()` を経由せず `isDockOpen` を直接倒して行う(`worldView` は動かさないので `canEnter` チェックも不要)。`worldView` が背後の 3D 側ビュー、`isDockOpen` がドックの開閉を持ち、`current` はこの2つから導出する |
 | ドックビューの対象基地 | `Docking`(private `_activeBase`) | 基地の右クリックメニューで設定。これが空でない間だけ `ViewManager.selectableViews()` に `'dock'` が並ぶ |
 | マップモード表示 | `CameraSystem.overviewMode` | 描画・視点側の分岐はこれを見る。`CameraSystem.zoomActive` は `!overviewMode && combatCamera.zoomActive` を返すだけの派生 getter(状態は持たない) |
 | 開いているプロパティウィンドウの集合・一時ウィンドウのキー | `MapPicker`(`windows`/`tempWindowKey`) | キーは `` `${kind}:${id}` ``。`openPropertyWindow` が新規/移動を判断し、`closeWindow`/`forgetWindow` が畳む。個々の `PropertyWindow` インスタンス自身はクリップ状態(`clipped`)とドラッグ位置だけを持ち、開閉のポリシー(いつ閉じるか)は持たない — クリップ状態が変わったこと自体は `onClipChange` で `MapPicker` に通知し、`tempWindowKey` の付け替えは通知を受けた `MapPicker` 側が行う |
@@ -346,7 +363,8 @@ main.ts
   `Player.state.r` とは別物 — 戦闘ビューではチェイスカメラが自機から数十mしか離れないため近い値に
   なるだけ。sync 系は必ず fo を参照し、`player.state.r`/カメラ位置を描画原点として直接使わない。
 - **`ActivePlayerController.current`(操作対象艦、`Game.player` はここへ転送する getter)・
-  `ChaseCamera.player`(追従カメラの基準)・`PlanEditor.activePlayer`(計画編集の対象)・
+  `ChaseCamera.target`(追従カメラの基準。型は `GameEntity | null` — `alive` は読まない)・
+  `PlanEditor.activePlayer`(計画編集の対象)・
   `Targeter` のロック** は艦を切り替えるたびに揃える必要がある4箇所。同時に切り替えるのは
   `ActivePlayerController.set()`/`setOrNull()`/`remove()` だけで、他はそれぞれ自分の持ち分(視点/編集
   対象/ロック解除)だけを更新する — `ViewManager` が3つのフラグを一斉に切り替えるのと同じ形の
