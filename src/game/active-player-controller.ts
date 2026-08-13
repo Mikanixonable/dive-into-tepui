@@ -12,15 +12,17 @@ import type { Sfx } from '../audio/sfx';
 export class ActivePlayerController {
   private _current: Player | null;
 
+  // 起動時の操作対象艦を自分で解決する。activePlayerId に一致する艦、無ければ entities.players
+  // の先頭、艦が0隻なら null。
   constructor(
-    initial: Player | null,
+    activePlayerId: string | null | undefined,
     private readonly entities: EntityManager,
     private readonly cameraSystem: CameraSystem,
     private readonly targeter: Targeter,
     private readonly navTarget: NavTarget,
     private readonly sfx: Sfx,
   ) {
-    this._current = initial;
+    this._current = entities.players.find((p) => p.id === activePlayerId) ?? entities.players[0] ?? null;
   }
 
   get current(): Player | null { return this._current; }
