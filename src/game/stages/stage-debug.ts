@@ -1,6 +1,6 @@
 // デバッグ用ステージ: 敵集団1つのみを配置し、勝敗を発生させずに検証を続けられる。
 // 敵の射撃 ON/OFF をパネルから切り替えられる。タイトルの通常ボタン列には出ない。
-import { Stage } from './stage';
+import { Stage, type StageDeps } from './stage';
 import { generateWave } from './stage00';
 import { hudButton, HudToggle } from '../hud/buttons';
 import * as C from '../const';
@@ -10,18 +10,24 @@ import { SimSpeedManager } from '../sim-speed-manager';
 import { Asteroid } from '../game-entity/asteroid';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add, v3 } from '../../physics/vec3';
+import type { StageSaveData } from '../save-data';
 
 export class StageDebug extends Stage {
   static readonly id = 'debug' as const;
-  readonly selectLabel = 'DEBUG';
-  readonly selectSub = '【デバッグ】敵集団1つ・撃破しても終了しない・敵の射撃を実行中に切替可能';
-  readonly hiddenFromSelect = true;
-  readonly selectKeys = ['KeyD'];
+  static readonly selectLabel = 'DEBUG';
+  static readonly selectSub = '【デバッグ】敵集団1つ・撃破しても終了しない・敵の射撃を実行中に切替可能';
+  static readonly hiddenFromSelect = true;
+  static readonly selectKeys = ['KeyD'];
   readonly initialAmmo = { mags: 20, rounds: C.MAG_ROUNDS };
 
   private enemyFireEnabled = false;
   private fireToggle!: HudToggle;
   private waveCount = 2; // ランダム方向からスポーンさせるため2から開始
+
+  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+    super(saved, ...deps);
+    this.begin();
+  }
 
   // デバッグステージのブリーフィング文言を返す。
   briefingHtml(enemyCount: number): string {
@@ -29,7 +35,7 @@ export class StageDebug extends Stage {
   }
 
   // 敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
-  init(player: Player | null, entities: EntityManager): number {
+  protected init(player: Player | null, entities: EntityManager): number {
     if (!player) return 0;
     const enemies = generateWave(player.state, this.waveCount++, this._ephemeris, this._hud, this._sfx, this._fx, this._scene, 'random');
     for (const enemy of enemies) this.addEnemy(enemy, entities);

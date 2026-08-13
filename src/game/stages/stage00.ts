@@ -1,7 +1,7 @@
 // Stage 00: 無限耐久サバイバル。弾薬確保後、波状攻撃が自機破壊まで無限に続く。
 import * as THREE from 'three/webgpu';
 import * as C from '../const';
-import { Stage } from './stage';
+import { Stage, type StageDeps } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { Player } from '../player/player';
@@ -20,23 +20,24 @@ import type { Stage00SaveData, StageSaveData } from '../save-data';
 
 export class Stage00 extends Stage {
   static readonly id = '00' as const;
-  readonly selectLabel = 'stage 00';
-  readonly selectSub = '【無限耐久サバイバル】 常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
-  readonly selectKeys = ['Digit0'];
+  static readonly selectLabel = 'stage 00';
+  static readonly selectSub = '【無限耐久サバイバル】 常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
+  static readonly selectKeys = ['Digit0'];
   readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
   private waveState: 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
   private spawnTimer: number;
   private waveCount: number;
 
-  // saved の型を StageSaveData に留めるのは stage-dictionary.ts の StageClass 一覧に
+  // saved の型を StageSaveData に留めるのは stage.ts の StageClass 一覧に
   // 収める都合(具象ごとの拡張型では構築シグネチャが揃わない)。
-  constructor(saved?: StageSaveData) {
-    super(saved);
+  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+    super(saved, ...deps);
     const s = saved as Stage00SaveData | undefined;
     this.waveState = s?.waveState ?? 'waiting_for_ammo';
     this.spawnTimer = s?.spawnTimer ?? 0;
     this.waveCount = s?.waveCount ?? 0;
+    this.begin();
   }
 
   // ミッション概要のブリーフィング文(HTML)を返す。
@@ -50,7 +51,7 @@ export class Stage00 extends Stage {
   }
 
   // 弾薬ピックアップと初期の敵ウェーブを配置する。
-  init(player: Player | null, entities: EntityManager): number {
+  protected init(player: Player | null, entities: EntityManager): number {
     if (!player) return 0;
     for (let i = 0; i < C.MAX_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);

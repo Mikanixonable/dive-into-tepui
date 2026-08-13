@@ -1,9 +1,9 @@
-// ステージ解放の判定・記録を一元管理する。stages/stage.ts の Stage は
-// isUnlocked(clearCounts) という条件式を持つだけで、localStorage には触れない。
+// ステージ解放の判定・記録を一元管理する。ステージクラスの静的 isUnlocked(clearCounts) は
+// 条件式を持つだけで、localStorage には触れない。
 import { ACCENT } from './theme';
 import { Hud } from './hud/hud';
 import { StageId } from './stages/stage';
-import { STAGE_DEFINITIONS } from './stages/stage-dictionary';
+import { findStageClass, STAGE_CLASSES } from './stages/stage-dictionary';
 
 // ステージ ID → クリア回数。将来の拡張(周回数によるアンロック等)を見越して、
 // 「クリアしたか否か」ではなく回数を記録する。
@@ -32,8 +32,8 @@ function saveClearCounts(counts: ClearCounts): void {
 
 // stage の解放条件を counts から判定する。条件が定義されていなければ常に解放。
 function isStageUnlocked(stage: StageId, counts: ClearCounts): boolean {
-  const def = STAGE_DEFINITIONS.find((s) => s.id === stage);
-  return def?.isUnlocked ? def.isUnlocked(counts) : true;
+  const cls = findStageClass(stage);
+  return cls ? cls.isUnlocked(counts) : true;
 }
 
 export class UnlockManager {
@@ -46,7 +46,7 @@ export class UnlockManager {
 
   // ステージクリアを記録し、それによって新たに解放条件を満たしたステージがあれば toast で知らせる。
   reportClear(stage: StageId, hud: Hud): void {
-    const newlyUnlocked = STAGE_DEFINITIONS.filter((s) => !isStageUnlocked(s.id, this.clearCounts));
+    const newlyUnlocked = STAGE_CLASSES.filter((s) => !isStageUnlocked(s.id, this.clearCounts));
 
     this.clearCounts = { ...this.clearCounts, [stage]: (this.clearCounts[stage] ?? 0) + 1 };
     saveClearCounts(this.clearCounts);

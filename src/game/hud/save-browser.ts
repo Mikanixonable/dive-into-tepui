@@ -9,7 +9,7 @@ import type { SaveSlotMeta, SnapshotMeta } from '../save-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from './utils';
 import { celestialBodyName } from './frame-labels';
 import type { ModalController } from './modal-controller';
-import { STAGE_DEFINITIONS } from '../stages/stage-dictionary';
+import { findStageClass } from '../stages/stage-dictionary';
 
 // スロット名・スナップショット名はプレイヤーの入力と取り込んだファイル由来なので、
 // innerHTML へ差し込む前に必ずこれを通す。
@@ -19,7 +19,7 @@ function esc(text: string): string {
 
 // ステージ id を選択画面と同じ表示名にする。登録の無い id はそのまま出す。
 function stageLabel(stageId: string): string {
-  return STAGE_DEFINITIONS.find((s) => s.id === stageId)?.selectLabel ?? stageId;
+  return findStageClass(stageId)?.selectLabel ?? stageId;
 }
 
 // 数値であるはずのメタ項目。取り込んだファイルでは欠けていることがあり、そのまま

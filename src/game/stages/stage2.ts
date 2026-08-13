@@ -1,6 +1,6 @@
 // Stage 2: 第二ステージ(モルニヤ戦域)。ステージ1クリアで解放。
 import * as C from '../const';
-import { Stage } from './stage';
+import { Stage, type StageDeps } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { ClearCounts } from '../unlock-manager';
 import {
@@ -11,17 +11,23 @@ import {
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
+import type { StageSaveData } from '../save-data';
 
 export class Stage2 extends Stage {
   static readonly id = '2' as const;
-  readonly selectLabel = 'stage 2';
-  readonly selectSub = '【第二ステージ: モルニヤ戦域】 敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モードでの遷移が必須';
-  readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
-  readonly selectKeys = ['Digit2'];
+  static readonly selectLabel = 'stage 2';
+  static readonly selectSub = '【第二ステージ: モルニヤ戦域】 敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モードでの遷移が必須';
+  static readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
+  static readonly selectKeys = ['Digit2'];
   readonly initialAmmo = { mags: C.INITIAL_MAGS - 1, rounds: C.MAG_ROUNDS };
 
+  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+    super(saved, ...deps);
+    this.begin();
+  }
+
   // 第一ステージのクリア実績があれば解放。
-  isUnlocked(clearCounts: ClearCounts): boolean {
+  static isUnlocked(clearCounts: ClearCounts): boolean {
     return (clearCounts['1'] ?? 0) > 0;
   }
 
@@ -35,7 +41,7 @@ export class Stage2 extends Stage {
   }
 
   // 通常軌道の敵とモルニヤ級軌道の敵を混成配置する。
-  init(player: Player | null, entities: EntityManager): number {
+  protected init(player: Player | null, entities: EntityManager): number {
     if (!player) return 0;
     const base = player.state;
     const hud = this._hud;

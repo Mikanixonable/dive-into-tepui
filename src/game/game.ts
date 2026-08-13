@@ -7,11 +7,8 @@ import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
 import { CameraSystem } from './camera/camera-system';
 import { focusPoint } from './camera/focus-target';
-import { Stage, StageId } from './stages/stage';
+import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
-import {
-  buildStage, ephemerisConfigFor, initialPlayerCountFor, showsStatusInOverviewFor,
-} from './stages/stage-dictionary';
 import { ActivePlayerController } from './active-player-controller';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
@@ -96,7 +93,7 @@ export class Game {
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
   constructor(
     gs: GameScene,
-    stageId: StageId,
+    stageClass: StageClass,
     hud: Hud,
     sfx: Sfx,
     settingsPanel: SettingsPanel,
@@ -113,7 +110,7 @@ export class Game {
     this.settingsPanel = settingsPanel;
     this.unlockManager = unlockManager;
 
-    const ephemerisConfig = ephemerisConfigFor(stageId);
+    const ephemerisConfig = stageClass.ephemerisConfig;
     const phaseOffsets = initialSave?.phaseOffsets ?? {};
     this._ephemeris = ephemerisConfig === undefined
       ? new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, absoluteEphemeris, SIM_EPOCH_JD_TDB)
@@ -124,7 +121,7 @@ export class Game {
 
     this.entities = new EntityManager(
       this._scene, this._hud, this._sfx, this.markerManager,
-      initialSave ? { saved: initialSave } : { playerCount: initialPlayerCountFor(stageId) },
+      initialSave ? { saved: initialSave } : { playerCount: stageClass.initialPlayerCount },
     );
     this.displayWindowManager = new DisplayWindowManager(this._hud.layers.panel, this.ephemeris, this.entities);
     const initialPlayer = this.entities.initialActivePlayer;
@@ -136,7 +133,7 @@ export class Game {
       this.markerManager,
       this.ephemeris,
       initialPlayer,
-      showsStatusInOverviewFor(stageId),
+      stageClass.showsStatusInOverview,
       initialSave?.camera,
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._sfx);
@@ -183,10 +180,9 @@ export class Game {
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? 0);
     this.predictor = new Predictor(this.entities, this.ephemeris);
 
-    this.activeStage = buildStage(
-      stageId, initialPlayer, this.entities, this._hud, this._sfx, this._scene,
-      this.unlockManager, this.entities.effects, this.markerManager, this.ephemeris, this.simulator,
-      this.activePlayers, initialSave?.stage,
+    this.activeStage = new stageClass(
+      initialSave?.stage, this._hud, this._sfx, this._scene, this.entities, this.unlockManager,
+      this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activePlayers,
     );
 
     this.nanWatchdog = new NanWatchdog(this._hud);
@@ -400,7 +396,7 @@ export class Game {
     const player = this.player;
     // 積分が終わった状態でこのフレームの表示窓を確定させ、sync 全体で共有する。
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, player);
-    this.viewBadge.sync(this.activeStage.selectLabel);
+    this.viewBadge.sync(this.activeStage.stageClass.selectLabel);
     // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
     // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
     // 速度基準は自機のまま(弾の相対速度描画・再突入エフェクトが前提とする値で、原点とは別concern)。
